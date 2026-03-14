@@ -279,7 +279,7 @@ public class FoxKifuDownload extends JFrame {
       return;
     }
     if (!foxUidText.matches("\\d+")) {
-      Utils.showMsg("仅支持野狐UID，请输入纯数字UID", this);
+      Utils.showMsg("仅支持野狐ID，请输入纯数字ID", this);
       return;
     }
     if (isSearching) {
