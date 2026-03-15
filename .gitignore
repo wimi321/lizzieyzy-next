@@ -3,6 +3,7 @@
 target/
 dist/
 engines/
+runtime/
 weights/
 config.txt
 persist

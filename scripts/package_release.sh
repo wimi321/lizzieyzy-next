@@ -33,6 +33,12 @@ has_engine_files() {
     && find "$ROOT_DIR/engines/katago/$platform_dir" -maxdepth 1 -type f | grep -q .
 }
 
+has_runtime_files() {
+  local platform_dir="$1"
+  [[ -d "$ROOT_DIR/runtime/$platform_dir" ]] \
+    && find "$ROOT_DIR/runtime/$platform_dir" -mindepth 1 -print -quit | grep -q .
+}
+
 bundle_flavor() {
   local platform_dir="$1"
   if has_default_weight && has_engine_files "$platform_dir"; then
@@ -95,12 +101,25 @@ copy_bundle_engine_assets() {
   cp "$ROOT_DIR/weights/default.bin.gz" "$app_dir/weights/default.bin.gz"
 }
 
+copy_bundle_runtime_assets() {
+  local app_dir="$1"
+  local platform_dir="$2"
+
+  if [[ -z "$platform_dir" ]] || ! has_runtime_files "$platform_dir"; then
+    return 0
+  fi
+
+  mkdir -p "$app_dir/runtime"
+  cp -R "$ROOT_DIR/runtime/$platform_dir" "$app_dir/runtime/"
+}
+
 make_bundle() {
   local bundle_name="$1"
   local start_file="$2"
   local start_content="$3"
   local bundle_note="$4"
   local engine_platforms="${5:-}"
+  local runtime_platform="${6:-}"
   local root="$STAGE_DIR/$bundle_name"
   local app="$root/Lizzieyzy"
 
@@ -108,6 +127,7 @@ make_bundle() {
   cp "$JAR_PATH" "$app/"
   cp LICENSE.txt README.md README_EN.md README_KO.md readme_cn.pdf readme_en.pdf "$app/"
   copy_bundle_engine_assets "$app" "$engine_platforms"
+  copy_bundle_runtime_assets "$app" "$runtime_platform"
 
   cat >"$root/$start_file" <<EOF
 $start_content
@@ -116,9 +136,16 @@ EOF
     chmod +x "$root/$start_file"
   fi
 
-  cat >"$root/Required java version.txt" <<'EOF'
+  if [[ -n "$runtime_platform" ]] && has_runtime_files "$runtime_platform"; then
+    cat >"$root/Required java version.txt" <<'EOF'
+Bundled Java runtime included.
+External Java installation is not required for this package.
+EOF
+  else
+    cat >"$root/Required java version.txt" <<'EOF'
 Java 11+ is required.
 EOF
+  fi
 
   cat >"$root/Update.txt" <<EOF
 Project: LizzieYzy Next-FoxUID
@@ -135,6 +162,33 @@ WINDOWS64_FLAVOR="$(bundle_flavor windows-x64)"
 WINDOWS32_FLAVOR="$(bundle_flavor windows-x86)"
 LINUX64_FLAVOR="$(bundle_flavor linux-x64)"
 MAC_LINUX_FLAVOR="$(bundle_flavor_multi macos-amd64 linux-x64)"
+if [[ "$WINDOWS64_FLAVOR" == "with-katago" ]]; then
+  if has_runtime_files windows-x64; then
+    WINDOWS64_RUNTIME_NOTE="Bundled KataGo and Java runtime included for Windows x64."
+  else
+    WINDOWS64_RUNTIME_NOTE="Bundled KataGo included for Windows x64. Install Java 11+ separately."
+  fi
+else
+  WINDOWS64_RUNTIME_NOTE="No bundled KataGo in this package."
+fi
+
+WINDOWS32_RUNTIME_NOTE="No bundled KataGo in this package."
+
+if [[ "$LINUX64_FLAVOR" == "with-katago" ]]; then
+  if has_runtime_files linux-x64; then
+    LINUX64_RUNTIME_NOTE="Bundled KataGo and Java runtime included for Linux x64."
+  else
+    LINUX64_RUNTIME_NOTE="Bundled KataGo included for Linux x64. Install Java 11+ separately."
+  fi
+else
+  LINUX64_RUNTIME_NOTE="No bundled KataGo in this package."
+fi
+
+if [[ "$MAC_LINUX_FLAVOR" == "with-katago" ]]; then
+  MAC_LINUX_RUNTIME_NOTE="Bundled KataGo included for macOS amd64 and Linux x64. Java is not bundled in this package."
+else
+  MAC_LINUX_RUNTIME_NOTE="No bundled KataGo in this package."
+fi
 
 make_bundle \
   "$DATE_TAG-windows64.$WINDOWS64_FLAVOR" \
@@ -142,9 +196,12 @@ make_bundle \
   "@echo off
 setlocal
 cd /d %~dp0
-java -jar \"Lizzieyzy\\lizzie-yzy2.5.3-shaded.jar\"" \
-  "$( [[ "$WINDOWS64_FLAVOR" == "with-katago" ]] && echo "Bundled KataGo included for Windows x64." || echo "No bundled KataGo in this package." )" \
-  "$( [[ "$WINDOWS64_FLAVOR" == "with-katago" ]] && echo "windows-x64" )"
+set \"JAVA_CMD=java\"
+if exist \"Lizzieyzy\\runtime\\windows-x64\\bin\\java.exe\" set \"JAVA_CMD=Lizzieyzy\\runtime\\windows-x64\\bin\\java.exe\"
+\"%JAVA_CMD%\" -jar \"Lizzieyzy\\lizzie-yzy2.5.3-shaded.jar\"" \
+  "$WINDOWS64_RUNTIME_NOTE" \
+  "$( [[ "$WINDOWS64_FLAVOR" == "with-katago" ]] && echo "windows-x64" )" \
+  "windows-x64"
 
 make_bundle \
   "$DATE_TAG-windows32.$WINDOWS32_FLAVOR" \
@@ -152,8 +209,10 @@ make_bundle \
   "@echo off
 setlocal
 cd /d %~dp0
-java -jar \"Lizzieyzy\\lizzie-yzy2.5.3-shaded.jar\"" \
-  "$( [[ "$WINDOWS32_FLAVOR" == "with-katago" ]] && echo "Bundled KataGo included for Windows x86." || echo "No bundled KataGo in this package." )" \
+set \"JAVA_CMD=java\"
+if exist \"Lizzieyzy\\runtime\\windows-x64\\bin\\java.exe\" set \"JAVA_CMD=Lizzieyzy\\runtime\\windows-x64\\bin\\java.exe\"
+\"%JAVA_CMD%\" -jar \"Lizzieyzy\\lizzie-yzy2.5.3-shaded.jar\"" \
+  "$WINDOWS32_RUNTIME_NOTE" \
   "$( [[ "$WINDOWS32_FLAVOR" == "with-katago" ]] && echo "windows-x86" )"
 
 make_bundle \
@@ -162,9 +221,14 @@ make_bundle \
   "#!/usr/bin/env bash
 set -e
 cd \"\$(dirname \"\$0\")\"
-java -jar \"Lizzieyzy/lizzie-yzy2.5.3-shaded.jar\"" \
-  "$( [[ "$LINUX64_FLAVOR" == "with-katago" ]] && echo "Bundled KataGo included for Linux x64." || echo "No bundled KataGo in this package." )" \
-  "$( [[ "$LINUX64_FLAVOR" == "with-katago" ]] && echo "linux-x64" )"
+JAVA_CMD=\"java\"
+if [[ -x \"Lizzieyzy/runtime/linux-x64/bin/java\" ]]; then
+  JAVA_CMD=\"Lizzieyzy/runtime/linux-x64/bin/java\"
+fi
+\"\$JAVA_CMD\" -jar \"Lizzieyzy/lizzie-yzy2.5.3-shaded.jar\"" \
+  "$LINUX64_RUNTIME_NOTE" \
+  "$( [[ "$LINUX64_FLAVOR" == "with-katago" ]] && echo "linux-x64" )" \
+  "linux-x64"
 
 make_bundle \
   "$DATE_TAG-Macosx.amd64.Linux.amd64.$MAC_LINUX_FLAVOR" \
@@ -182,7 +246,7 @@ if [[ \"\$(uname -s)\" == \"Darwin\" ]]; then
   exit 0
 fi
 java -jar \"Lizzieyzy/lizzie-yzy2.5.3-shaded.jar\"" \
-  "$( [[ "$MAC_LINUX_FLAVOR" == "with-katago" ]] && echo "Bundled KataGo included for macOS amd64 and Linux x64." || echo "No bundled KataGo in this package." )" \
+  "$MAC_LINUX_RUNTIME_NOTE" \
   "$( [[ "$MAC_LINUX_FLAVOR" == "with-katago" ]] && echo "macos-amd64,linux-x64" )"
 
 cat >"$STAGE_DIR/$DATE_TAG-Macosx.amd64.Linux.amd64.$MAC_LINUX_FLAVOR/start-mac-arm64.sh" <<'EOF'
