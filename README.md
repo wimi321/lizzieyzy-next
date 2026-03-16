@@ -10,6 +10,11 @@
 * **多平台发布包已恢复**：提供 Windows32/Windows64/Mac+Linux/Other 四类 `without.engine` 包。
 * **Mac 双芯片启动已标注**：发布包内新增 `start-mac-arm64.sh`、`start-mac-amd64.sh` 和自动识别启动脚本。
 
+## 3步快速开始
+1. 到 [Releases](https://github.com/wimi321/lizzieyzy-next-foxuid/releases) 下载适合自己系统的包。
+2. `with-katago` 整合包下载后直接解压或安装即可用；`without.engine` 版本需要自己配置引擎。
+3. 打开程序后，使用“野狐棋谱（输入野狐ID获取）”功能同步最新公开棋谱。
+
 ![screenshot](/screenshot.png?raw=true)
 
 LizzieYzy Next-FoxUID 是 LizzieYzy 的维护分支，专门接手原项目里已经失效或没人继续维护的功能。当前已经修复腾讯野狐棋谱同步，并改成更直接的“输入野狐ID获取”。
@@ -56,6 +61,11 @@ LizzieYzy 是一个引擎界面,修改自[Lizzie](https://github.com/featurecat/
 * **Fetch by Fox ID**: username lookup was removed on purpose. Enter a Fox ID to get the latest public games.
 * **Multi-platform release packages restored**: Windows32/Windows64/Mac+Linux/Other `without.engine` bundles.
 * **Mac dual-chip startup clarified**: includes `start-mac-arm64.sh`, `start-mac-amd64.sh`, plus auto-detect launcher.
+
+## Quick Start In 3 Steps
+1. Download the package for your system from [Releases](https://github.com/wimi321/lizzieyzy-next-foxuid/releases).
+2. `with-katago` bundles can run right after unzip or install. `without.engine` bundles need your own engine setup.
+3. Open the app and use the Fox sync entry to fetch the latest public game by Fox ID.
 
 ![screenshot_en](/screenshot_en.png?raw=true)
 
@@ -105,6 +115,11 @@ We have added some new features on Lizzie's basis: **Hawk Eye, Flash Analyze, Ba
 * **マルチプラットフォーム配布を再整備**: Windows / macOS / Linux 向けの配布パッケージを整理しました。
 * **Mac の両CPU対応を明確化**: `start-mac-arm64.sh`、`start-mac-amd64.sh`、自動判定起動スクリプトを含めています。
 
+## 3ステップですぐ使えます
+1. [Releases](https://github.com/wimi321/lizzieyzy-next-foxuid/releases) から自分の環境に合うパッケージをダウンロードします。
+2. `with-katago` パッケージは解凍またはインストール後すぐ使えます。`without.engine` は別途エンジン設定が必要です。
+3. アプリを開き、野狐IDを入力して最新の公開棋譜を取得します。
+
 ![screenshot_ja](/screenshot_en.png?raw=true)
 
 LizzieYzy Next-FoxUID は、元の LizzieYzy で壊れてしまった機能を復旧し、今後も使える状態を保つためのメンテナンスフォークです。現在は野狐棋譜同期を修復し、より分かりやすい「野狐ID入力」方式に変更しています。
@@ -151,6 +166,11 @@ Lizzie をもとに、**Hawk Eye、Flash Analyze、Batch Analyze、Estimate、Bo
 * **Fox 기보 동기화 복구**: 원래 흐름이 이미 깨져 있어서, 이제 Fox H5 API를 직접 호출하도록 수정했습니다.
 * **Fox ID로 바로 가져오기**: 사용자명 검색은 제거했고, Fox ID를 입력해 최신 공개 기보를 가져오도록 바꿨습니다.
 * **멀티 플랫폼 배포 복구**: Windows / macOS / Linux 배포 파일을 다시 정리했습니다.
+
+## 3단계 빠른 시작
+1. [Releases](https://github.com/wimi321/lizzieyzy-next-foxuid/releases) 에서 내 시스템에 맞는 패키지를 다운로드합니다.
+2. `with-katago` 패키지는 압축 해제 또는 설치 후 바로 사용할 수 있습니다. `without.engine` 패키지는 엔진을 직접 설정해야 합니다.
+3. 앱을 열고 Fox ID를 입력해 최신 공개 기보를 가져옵니다.
 
 ![screenshot_ko](/screenshot_ko.png?raw=true)
 

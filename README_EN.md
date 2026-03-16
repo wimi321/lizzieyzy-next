@@ -10,6 +10,11 @@
 * **Multi-platform release packages restored**: Windows32/Windows64/Mac+Linux/Other `without.engine` bundles.
 * **Mac dual-chip startup clarified**: includes `start-mac-arm64.sh`, `start-mac-amd64.sh`, plus auto-detect launcher.
 
+## Quick Start In 3 Steps
+1. Download the package for your system from [Releases](https://github.com/wimi321/lizzieyzy-next-foxuid/releases).
+2. `with-katago` bundles can run right after unzip or install. `without.engine` bundles need your own engine setup.
+3. Open the app and use the Fox sync entry to fetch the latest public game by Fox ID.
+
 ![screenshot_en](/screenshot_en.png?raw=true)
 
 LizzieYzy Next-FoxUID is a maintained fork of LizzieYzy focused on reviving broken features and keeping the project usable. This branch restores Fox kifu sync and changes it to a simpler Fox ID based flow.

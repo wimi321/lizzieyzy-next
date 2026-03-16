@@ -10,6 +10,11 @@
 * **マルチプラットフォーム配布を再整備**: Windows / macOS / Linux 向けの配布パッケージを整理しました。
 * **Mac の両CPU対応を明確化**: `start-mac-arm64.sh`、`start-mac-amd64.sh`、自動判定起動スクリプトを含めています。
 
+## 3ステップですぐ使えます
+1. [Releases](https://github.com/wimi321/lizzieyzy-next-foxuid/releases) から自分の環境に合うパッケージをダウンロードします。
+2. `with-katago` パッケージは解凍またはインストール後すぐ使えます。`without.engine` は別途エンジン設定が必要です。
+3. アプリを開き、野狐IDを入力して最新の公開棋譜を取得します。
+
 ![screenshot_ja](/screenshot_en.png?raw=true)
 
 LizzieYzy Next-FoxUID は、元の LizzieYzy で壊れてしまった機能を復旧し、今後も使える状態を保つためのメンテナンスフォークです。現在は野狐棋譜同期を修復し、より分かりやすい「野狐ID入力」方式に変更しています。
