@@ -151,8 +151,8 @@ EOF
 Project: LizzieYzy Next-FoxUID
 Date: $DATE_TAG
 Changes:
-- Fix Fox kifu sync by UID using Fox H5 API.
-- UID-only query mode (username lookup removed).
+- Fix Fox kifu sync by Fox ID using Fox H5 API.
+- Fox ID-only query mode (username lookup removed).
 Package:
 - $bundle_note
 EOF
