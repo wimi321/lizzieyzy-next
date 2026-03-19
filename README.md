@@ -24,6 +24,10 @@
   ·
   <a href="#快速开始">快速开始</a>
   ·
+  <a href="docs/INSTALL.md">安装教程</a>
+  ·
+  <a href="docs/TROUBLESHOOTING.md">排错指南</a>
+  ·
   <a href="#下载哪个包">下载建议</a>
   ·
   <a href="#参与维护">参与维护</a>
@@ -74,6 +78,12 @@
 2. 如果你想最省事，优先选 `with-katago` 整合包。
 3. 启动程序后，使用“野狐棋谱（输入野狐ID获取）”功能。
 4. 输入野狐ID，即可抓取最新公开棋谱。
+
+## 详细文档
+
+- [安装指南](docs/INSTALL.md)
+- [常见问题与排错](docs/TROUBLESHOOTING.md)
+- [发布包说明](docs/PACKAGES.md)
 
 ## 和原版相比，变化在哪里
 

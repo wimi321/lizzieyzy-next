@@ -55,6 +55,12 @@ Releases: <https://github.com/wimi321/lizzieyzy-next-foxuid/releases>
 3. Launch the app and use the Fox sync entry.
 4. Enter a **Fox ID** to fetch the latest public Fox games.
 
+## Detailed Docs
+
+- [Installation Guide](docs/INSTALL_EN.md)
+- [Troubleshooting](docs/TROUBLESHOOTING_EN.md)
+- [Package Overview](docs/PACKAGES_EN.md)
+
 ## What Makes This Fork Different
 
 | Topic | Original project | Next-FoxUID |

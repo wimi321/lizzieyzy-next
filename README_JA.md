@@ -46,6 +46,8 @@ Releases: <https://github.com/wimi321/lizzieyzy-next-foxuid/releases>
 2. 簡単に始めたい場合は `with-katago` を選びます。
 3. アプリを開き、野狐IDを入力して最新の公開棋譜を取得します。
 
+Detailed install guide: [Installation Guide](docs/INSTALL_EN.md)
+
 ## 同梱情報
 
 - KataGo: `v1.16.4`
