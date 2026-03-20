@@ -37,24 +37,34 @@
 > [!IMPORTANT]
 > 原版 LizzieYzy 的野狐棋谱同步流程已经失效。本维护版已修复该功能，界面入口统一为“野狐棋谱（输入野狐ID获取）”。
 
-## 这是什么
+## 为什么很多人会先看这个维护版
 
 `LizzieYzy Next-FoxUID` 是原 `lizzieyzy` 的持续维护分支。
 
-这个分支不是为了把原项目另起炉灶重做一遍，而是为了把大家真正会用的那条链路继续维护下去：
+目标很直接：把大家真正会用的那条链路继续维护下去，让你下载安装之后，就能顺利抓谱、分析、继续用。
 
-- 能装
-- 能开
-- 能抓谱
-- 能分析
-
-这个仓库当前重点解决的是三件事：
-
-- 原版已经失效的野狐棋谱同步
-- 新用户很难选对发布包
-- 安装、排错、维护资料不够集中
-
-如果你以前就在用 LizzieYzy，现在最直接的区别就是：这里已经把野狐同步改回可用状态，并把入口统一成更直观的“野狐ID”。
+<table>
+<tr>
+<td width="50%">
+<strong>野狐棋谱同步重新可用</strong><br/>
+原版已经失效的同步流程已经替换成新的可用实现，继续支持按野狐ID获取最新公开棋谱。
+</td>
+<td width="50%">
+<strong>界面和文档统一成“野狐ID”</strong><br/>
+不再混用 UID、用户名等说法，入口更直观，排查问题也更直接。
+</td>
+</tr>
+<tr>
+<td width="50%">
+<strong>发布包更容易选</strong><br/>
+Windows、macOS、Linux 都按“开箱即用 / 自行配置”重新整理，普通用户不必再靠猜。
+</td>
+<td width="50%">
+<strong>这不是一次性修补</strong><br/>
+这个仓库会继续补发包、补文档、收真实安装反馈，而不是修一次就停。
+</td>
+</tr>
+</table>
 
 ## 如果你只想马上开始
 
@@ -67,26 +77,20 @@
 | 提交安装成功 / 失败反馈 | 用 [Installation Report 模板](https://github.com/wimi321/lizzieyzy-next-foxuid/issues/new?template=installation_report.yml) |
 | 提交 bug 或功能建议 | 用 [Issues](https://github.com/wimi321/lizzieyzy-next-foxuid/issues) 或 [Discussions](https://github.com/wimi321/lizzieyzy-next-foxuid/discussions) |
 
-## 当前状态
-
-| 项目状态 | 说明 |
-| --- | --- |
-| 野狐棋谱同步 | 已修复，统一按 **野狐ID** 获取最新公开棋谱 |
-| 发布包 | Windows、macOS、Linux 包已重新整理 |
-| 整合包 | `with-katago` 继续提供开箱即用版本 |
-| 文档 | 已补安装、排错、包说明、维护说明、发布清单 |
-| 实机验证 | Apple Silicon 由维护者实测，其它平台持续收集安装反馈 |
-| 维护方式 | 当前按持续维护项目的方式推进，不是一次性修补后停止更新 |
-
 ## 项目截图
+
+当前界面已经把原来容易让人困惑的 UID 入口统一成“野狐棋谱（输入野狐ID获取）”，同时保留 LizzieYzy 熟悉的分析工作流。
 
 ![LizzieYzy Next-FoxUID Screenshot](screenshot.png)
 
 ## 下载哪个包
 
-普通用户不用想太多，优先选 `with-katago`。
+> [!TIP]
+> 普通用户直接选 `with-katago`。只有在你明确知道自己要自己配引擎时，再选 `without.engine`。
 
-只有在你明确知道自己要手动配置引擎时，再去选 `without.engine`。
+<p align="center">
+  <img src="assets/package-guide.svg" alt="LizzieYzy Next-FoxUID Package Guide" width="100%" />
+</p>
 
 | 系统 | 推荐包 | 是否内置 Java | 是否内置 KataGo | 适合谁 |
 | --- | --- | --- | --- | --- |

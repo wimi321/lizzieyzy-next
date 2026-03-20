@@ -1,83 +1,140 @@
 <svg width="1280" height="720" viewBox="0 0 1280 720" fill="none" xmlns="http://www.w3.org/2000/svg">
   <defs>
-    <linearGradient id="bg" x1="80" y1="60" x2="1200" y2="680" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#F4E2B8"/>
-      <stop offset="1" stop-color="#E7C98D"/>
+    <linearGradient id="bg" x1="84" y1="48" x2="1192" y2="676" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F8ECCC"/>
+      <stop offset="0.52" stop-color="#EECF8F"/>
+      <stop offset="1" stop-color="#D89A40"/>
     </linearGradient>
-    <linearGradient id="panel" x1="0" y1="0" x2="1" y2="1">
-      <stop stop-color="#FFF8E7" stop-opacity="0.96"/>
-      <stop offset="1" stop-color="#FFF1D0" stop-opacity="0.9"/>
+    <radialGradient id="glowTop" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(944 126) rotate(148.992) scale(592 344)">
+      <stop stop-color="#FFFDF6" stop-opacity="0.96"/>
+      <stop offset="1" stop-color="#FFFDF6" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="glowBottom" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(244 684) rotate(-30.6065) scale(520 280)">
+      <stop stop-color="#FFF6DE" stop-opacity="0.84"/>
+      <stop offset="1" stop-color="#FFF6DE" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="boardPanel" x1="94" y1="86" x2="494" y2="648" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F2D99B" stop-opacity="0.92"/>
+      <stop offset="1" stop-color="#E1B763" stop-opacity="0.88"/>
+    </linearGradient>
+    <linearGradient id="mainPanel" x1="528" y1="78" x2="1184" y2="642" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFFDF7" stop-opacity="0.98"/>
+      <stop offset="1" stop-color="#FFF3D7" stop-opacity="0.92"/>
+    </linearGradient>
+    <linearGradient id="cardFill" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#FFF9EB"/>
+      <stop offset="1" stop-color="#FFF1D1"/>
     </linearGradient>
     <filter id="shadow" x="0" y="0" width="1280" height="720" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
-      <feDropShadow dx="0" dy="18" stdDeviation="24" flood-color="#5C4525" flood-opacity="0.16"/>
+      <feDropShadow dx="0" dy="20" stdDeviation="28" flood-color="#6D4B16" flood-opacity="0.16"/>
+    </filter>
+    <filter id="stoneShadow" x="0" y="0" width="1280" height="720" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="10" stdDeviation="8" flood-color="#32230E" flood-opacity="0.24"/>
     </filter>
   </defs>
 
-  <rect width="1280" height="720" rx="32" fill="url(#bg)"/>
+  <rect width="1280" height="720" rx="36" fill="url(#bg)"/>
+  <rect width="1280" height="720" rx="36" fill="url(#glowTop)"/>
+  <rect width="1280" height="720" rx="36" fill="url(#glowBottom)"/>
 
-  <g opacity="0.28">
-    <rect x="68" y="74" width="470" height="470" rx="18" fill="#D5A85A"/>
-    <g stroke="#7F5A24" stroke-width="2.4">
-      <path d="M120 120H486"/>
-      <path d="M120 168H486"/>
-      <path d="M120 216H486"/>
-      <path d="M120 264H486"/>
-      <path d="M120 312H486"/>
-      <path d="M120 360H486"/>
-      <path d="M120 408H486"/>
-      <path d="M120 456H486"/>
-      <path d="M120 504H486"/>
-      <path d="M120 552H486"/>
-      <path d="M120 120V552"/>
-      <path d="M168 120V552"/>
-      <path d="M216 120V552"/>
-      <path d="M264 120V552"/>
-      <path d="M312 120V552"/>
-      <path d="M360 120V552"/>
-      <path d="M408 120V552"/>
-      <path d="M456 120V552"/>
-      <path d="M504 120V552"/>
-    </g>
-    <g fill="#7F5A24">
-      <circle cx="216" cy="216" r="6"/>
-      <circle cx="216" cy="456" r="6"/>
-      <circle cx="360" cy="360" r="6"/>
-      <circle cx="504" cy="216" r="6"/>
-      <circle cx="504" cy="456" r="6"/>
-    </g>
-    <g filter="url(#shadow)">
-      <circle cx="216" cy="264" r="24" fill="#202020"/>
-      <circle cx="264" cy="312" r="24" fill="#F8F5EE" stroke="#CCB792" stroke-width="3"/>
-      <circle cx="312" cy="264" r="24" fill="#202020"/>
-      <circle cx="408" cy="360" r="24" fill="#F8F5EE" stroke="#CCB792" stroke-width="3"/>
-      <circle cx="360" cy="408" r="24" fill="#202020"/>
-      <circle cx="456" cy="264" r="24" fill="#F8F5EE" stroke="#CCB792" stroke-width="3"/>
-    </g>
+  <g opacity="0.12" stroke="#825B1E" stroke-width="1.4">
+    <path d="M90 112H494"/>
+    <path d="M90 208H494"/>
+    <path d="M90 304H494"/>
+    <path d="M90 400H494"/>
+    <path d="M90 496H494"/>
+    <path d="M90 592H494"/>
+    <path d="M126 76V644"/>
+    <path d="M222 76V644"/>
+    <path d="M318 76V644"/>
+    <path d="M414 76V644"/>
   </g>
 
   <g filter="url(#shadow)">
-    <rect x="468" y="92" width="748" height="536" rx="28" fill="url(#panel)"/>
+    <rect x="72" y="78" width="432" height="564" rx="34" fill="url(#boardPanel)" stroke="#FFF4D9" stroke-width="2"/>
   </g>
 
-  <rect x="516" y="146" width="156" height="40" rx="20" fill="#173C34"/>
-  <text x="594" y="172" text-anchor="middle" font-family="Avenir Next, Segoe UI, Arial, sans-serif" font-size="20" font-weight="700" fill="#F9F2E1">ACTIVE FORK</text>
-
-  <text x="516" y="250" font-family="Avenir Next, Segoe UI, Arial, sans-serif" font-size="66" font-weight="800" fill="#1A1A1A">LizzieYzy</text>
-  <text x="516" y="324" font-family="Avenir Next, Segoe UI, Arial, sans-serif" font-size="66" font-weight="800" fill="#1A1A1A">Next-FoxUID</text>
-
-  <text x="516" y="390" font-family="Avenir Next, Segoe UI, Arial, sans-serif" font-size="28" font-weight="600" fill="#6B5631">Fix Fox Weiqi sync. Ship practical KataGo-ready releases.</text>
-  <text x="516" y="432" font-family="Avenir Next, Segoe UI, Arial, sans-serif" font-size="24" font-weight="500" fill="#7A6640">Windows, macOS, Linux • Fox ID fetch • Maintained fork</text>
-
-  <g>
-    <rect x="516" y="494" width="146" height="48" rx="24" fill="#1B4D3E"/>
-    <text x="589" y="524" text-anchor="middle" font-family="Avenir Next, Segoe UI, Arial, sans-serif" font-size="21" font-weight="700" fill="#F6F0E1">Fox ID Sync</text>
-
-    <rect x="678" y="494" width="182" height="48" rx="24" fill="#7F4F24"/>
-    <text x="769" y="524" text-anchor="middle" font-family="Avenir Next, Segoe UI, Arial, sans-serif" font-size="21" font-weight="700" fill="#FFF7E8">Built-in KataGo</text>
-
-    <rect x="876" y="494" width="240" height="48" rx="24" fill="#2F4858"/>
-    <text x="996" y="524" text-anchor="middle" font-family="Avenir Next, Segoe UI, Arial, sans-serif" font-size="21" font-weight="700" fill="#F5F7FA">Windows / macOS / Linux</text>
+  <rect x="114" y="120" width="348" height="348" rx="26" fill="#EDCD85" fill-opacity="0.9"/>
+  <g opacity="0.62" stroke="#7B561F" stroke-width="2.8">
+    <path d="M146 152H430"/>
+    <path d="M146 187.5H430"/>
+    <path d="M146 223H430"/>
+    <path d="M146 258.5H430"/>
+    <path d="M146 294H430"/>
+    <path d="M146 329.5H430"/>
+    <path d="M146 365H430"/>
+    <path d="M146 400.5H430"/>
+    <path d="M146 436H430"/>
+    <path d="M146 152V436"/>
+    <path d="M181.5 152V436"/>
+    <path d="M217 152V436"/>
+    <path d="M252.5 152V436"/>
+    <path d="M288 152V436"/>
+    <path d="M323.5 152V436"/>
+    <path d="M359 152V436"/>
+    <path d="M394.5 152V436"/>
+    <path d="M430 152V436"/>
+  </g>
+  <g fill="#7B561F" opacity="0.48">
+    <circle cx="217" cy="223" r="5.5"/>
+    <circle cx="217" cy="365" r="5.5"/>
+    <circle cx="288" cy="294" r="5.5"/>
+    <circle cx="359" cy="223" r="5.5"/>
+    <circle cx="359" cy="365" r="5.5"/>
   </g>
 
-  <text x="516" y="588" font-family="Avenir Next, Segoe UI, Arial, sans-serif" font-size="20" font-weight="600" fill="#6B5631">From a broken legacy fork to a polished, maintained project page.</text>
+  <g filter="url(#stoneShadow)">
+    <circle cx="181.5" cy="258.5" r="23" fill="#191919"/>
+    <circle cx="217" cy="294" r="23" fill="#F8F3E7" stroke="#D8C39D" stroke-width="3"/>
+    <circle cx="252.5" cy="258.5" r="23" fill="#191919"/>
+    <circle cx="323.5" cy="187.5" r="23" fill="#F8F3E7" stroke="#D8C39D" stroke-width="3"/>
+    <circle cx="323.5" cy="329.5" r="23" fill="#191919"/>
+    <circle cx="359" cy="294" r="23" fill="#F8F3E7" stroke="#D8C39D" stroke-width="3"/>
+    <circle cx="288" cy="329.5" r="23" fill="#E8F5E5" stroke="#4E8B57" stroke-width="4"/>
+  </g>
+
+  <rect x="108" y="500" width="384" height="104" rx="24" fill="#FFF8E9" fill-opacity="0.72" stroke="#F6E7BF"/>
+  <text x="136" y="538" font-family="Avenir Next, Segoe UI, Arial, sans-serif" font-size="22" font-weight="700" fill="#2C2417">Fox public games, back in reach.</text>
+  <text x="136" y="566" font-family="Avenir Next, Segoe UI, Arial, sans-serif" font-size="17" font-weight="500" fill="#70592D">Fetch the latest visible games by Fox ID,</text>
+  <text x="136" y="588" font-family="Avenir Next, Segoe UI, Arial, sans-serif" font-size="17" font-weight="500" fill="#70592D">then keep the LizzieYzy analysis path you know.</text>
+
+  <g filter="url(#shadow)">
+    <rect x="528" y="78" width="680" height="564" rx="34" fill="url(#mainPanel)" stroke="#FFF7E6" stroke-width="2"/>
+  </g>
+
+  <rect x="572" y="126" width="220" height="42" rx="21" fill="#173C34"/>
+  <text x="682" y="153" text-anchor="middle" font-family="Avenir Next, Segoe UI, Arial, sans-serif" font-size="18" font-weight="700" fill="#F8F1E0">MAINTAINED FORK</text>
+
+  <text x="572" y="236" font-family="Avenir Next, Segoe UI, Arial, sans-serif" font-size="70" font-weight="800" fill="#181614">LizzieYzy</text>
+  <text x="572" y="314" font-family="Avenir Next, Segoe UI, Arial, sans-serif" font-size="70" font-weight="800" fill="#181614">Next-FoxUID</text>
+
+  <text x="572" y="372" font-family="Avenir Next, Segoe UI, Arial, sans-serif" font-size="28" font-weight="700" fill="#6B5125">Restored Fox sync.</text>
+  <text x="572" y="408" font-family="Avenir Next, Segoe UI, Arial, sans-serif" font-size="28" font-weight="700" fill="#6B5125">Clearer packages. KataGo-ready releases.</text>
+  <text x="572" y="446" font-family="Avenir Next, Segoe UI, Arial, sans-serif" font-size="20" font-weight="500" fill="#7B6640">Built for the install - sync - analyze path on Windows, macOS, and Linux.</text>
+
+  <rect x="572" y="482" width="186" height="118" rx="24" fill="url(#cardFill)" stroke="#F0DFC1"/>
+  <circle cx="612" cy="522" r="16" fill="#1B4D3E"/>
+  <text x="612" y="528" text-anchor="middle" font-family="Avenir Next, Segoe UI, Arial, sans-serif" font-size="14" font-weight="700" fill="#F7F0DF">01</text>
+  <text x="572" y="558" font-family="Avenir Next, Segoe UI, Arial, sans-serif" font-size="24" font-weight="700" fill="#1E1A16">Fox ID flow</text>
+  <text x="572" y="582" font-family="Avenir Next, Segoe UI, Arial, sans-serif" font-size="16" font-weight="500" fill="#6F5A33">Latest public Fox games</text>
+  <text x="572" y="602" font-family="Avenir Next, Segoe UI, Arial, sans-serif" font-size="16" font-weight="500" fill="#6F5A33">fetched by Fox ID.</text>
+
+  <rect x="775" y="482" width="186" height="118" rx="24" fill="url(#cardFill)" stroke="#F0DFC1"/>
+  <circle cx="815" cy="522" r="16" fill="#7F4F24"/>
+  <text x="815" y="528" text-anchor="middle" font-family="Avenir Next, Segoe UI, Arial, sans-serif" font-size="14" font-weight="700" fill="#FFF6E6">02</text>
+  <text x="775" y="558" font-family="Avenir Next, Segoe UI, Arial, sans-serif" font-size="22" font-weight="700" fill="#1E1A16">Clear packages</text>
+  <text x="775" y="582" font-family="Avenir Next, Segoe UI, Arial, sans-serif" font-size="16" font-weight="500" fill="#6F5A33">Choose builds by</text>
+  <text x="775" y="602" font-family="Avenir Next, Segoe UI, Arial, sans-serif" font-size="16" font-weight="500" fill="#6F5A33">how you install.</text>
+
+  <rect x="978" y="482" width="186" height="118" rx="24" fill="url(#cardFill)" stroke="#F0DFC1"/>
+  <circle cx="1018" cy="522" r="16" fill="#2F4858"/>
+  <text x="1018" y="528" text-anchor="middle" font-family="Avenir Next, Segoe UI, Arial, sans-serif" font-size="14" font-weight="700" fill="#F5F7FA">03</text>
+  <text x="978" y="558" font-family="Avenir Next, Segoe UI, Arial, sans-serif" font-size="22" font-weight="700" fill="#1E1A16">KataGo ready</text>
+  <text x="978" y="582" font-family="Avenir Next, Segoe UI, Arial, sans-serif" font-size="16" font-weight="500" fill="#6F5A33">Bundled builds for</text>
+  <text x="978" y="602" font-family="Avenir Next, Segoe UI, Arial, sans-serif" font-size="16" font-weight="500" fill="#6F5A33">direct review.</text>
+
+  <rect x="572" y="614" width="594" height="16" rx="8" fill="#EAD4A5" fill-opacity="0.64"/>
+  <rect x="572" y="614" width="190" height="16" rx="8" fill="#1B4D3E" fill-opacity="0.94"/>
+  <rect x="776" y="614" width="186" height="16" rx="8" fill="#7F4F24" fill-opacity="0.9"/>
+  <rect x="976" y="614" width="190" height="16" rx="8" fill="#2F4858" fill-opacity="0.9"/>
 </svg>

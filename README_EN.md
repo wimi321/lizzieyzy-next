@@ -35,24 +35,34 @@
 > [!IMPORTANT]
 > The original Fox sync flow in LizzieYzy no longer worked reliably. This fork restores it and standardizes the UI around **Fox ID** input.
 
-## What This Fork Is
+## Why People Look At This Fork First
 
 `LizzieYzy Next-FoxUID` is a maintained fork of the original `lizzieyzy` project.
 
-The goal is not to reinvent the app. The goal is to keep the workflow people actually depend on in working shape:
+The goal is simple: keep the workflow people actually depend on in working shape, so you can install it, fetch games, and keep reviewing without rebuilding everything yourself.
 
-- install it
-- launch it
-- fetch Fox games
-- analyze games
-
-This fork currently focuses on three practical problems:
-
-- the original Fox sync flow stopped working for many users
-- release packages were harder than they should be to choose from
-- install, troubleshooting, and maintenance information was too scattered
-
-If you previously used LizzieYzy, the biggest difference is simple: Fox sync works again here, and the input is consistently called **Fox ID**.
+<table>
+<tr>
+<td width="50%">
+<strong>Fox sync works again</strong><br/>
+The broken public-game fetch flow has been replaced with a working implementation that continues to fetch the latest visible games by Fox ID.
+</td>
+<td width="50%">
+<strong>The wording is finally clear</strong><br/>
+UI and docs now consistently say <strong>Fox ID</strong>, instead of mixing UID, usernames, and older terms.
+</td>
+</tr>
+<tr>
+<td width="50%">
+<strong>Packages are easier to choose</strong><br/>
+Windows, macOS, and Linux releases are reorganized around out-of-box use versus custom engine setup.
+</td>
+<td width="50%">
+<strong>This is an ongoing fork</strong><br/>
+The project keeps shipping packages, docs, and installation feedback fixes instead of stopping after a one-time patch.
+</td>
+</tr>
+</table>
 
 ## If You Just Want To Start
 
@@ -65,26 +75,20 @@ If you previously used LizzieYzy, the biggest difference is simple: Fox sync wor
 | Report install success or failure | Use the [Installation Report template](https://github.com/wimi321/lizzieyzy-next-foxuid/issues/new?template=installation_report.yml) |
 | Report a bug or suggest an improvement | Use [Issues](https://github.com/wimi321/lizzieyzy-next-foxuid/issues) or [Discussions](https://github.com/wimi321/lizzieyzy-next-foxuid/discussions) |
 
-## Current Status
-
-| Project status | Details |
-| --- | --- |
-| Fox sync | Restored, using **Fox ID** for the public-game fetch flow |
-| Release packages | Reorganized for Windows, macOS, and Linux |
-| Bundled setup | `with-katago` packages remain the easiest path |
-| Docs | Installation, troubleshooting, package, maintenance, and release docs are in place |
-| Real-machine verification | Apple Silicon has maintainer-tested coverage; other platforms are still collecting reports |
-| Maintenance model | This is a continuing maintenance fork, not a one-off patch |
-
 ## Screenshot
+
+The current UI now presents the old confusing UID entry as a clearer Fox sync entry based on **Fox ID**, while keeping the familiar LizzieYzy review workflow around it.
 
 ![LizzieYzy Next-FoxUID Screenshot](screenshot_en.png)
 
 ## Which Package To Download
 
-For most users, the right choice is simple: pick a `with-katago` package.
+> [!TIP]
+> For most users, the right choice is simple: pick a `with-katago` package. Only choose `without.engine` if you already know you want to manage the engine yourself.
 
-Only choose `without.engine` if you already know you want to manage the engine yourself.
+<p align="center">
+  <img src="assets/package-guide.svg" alt="LizzieYzy Next-FoxUID Package Guide" width="100%" />
+</p>
 
 | Platform | Recommended package | Bundled Java | Bundled KataGo | Best for |
 | --- | --- | --- | --- | --- |

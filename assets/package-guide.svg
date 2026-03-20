@@ -1,0 +1,71 @@
+<svg width="1280" height="660" viewBox="0 0 1280 660" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="70" y1="44" x2="1210" y2="620" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F9EED1"/>
+      <stop offset="0.54" stop-color="#F0D59B"/>
+      <stop offset="1" stop-color="#E4B65F"/>
+    </linearGradient>
+    <linearGradient id="panel" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#FFFDF8" stop-opacity="0.98"/>
+      <stop offset="1" stop-color="#FFF3D8" stop-opacity="0.93"/>
+    </linearGradient>
+    <linearGradient id="platform" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#FFF7E8"/>
+      <stop offset="1" stop-color="#FBEBC7"/>
+    </linearGradient>
+    <filter id="shadow" x="0" y="0" width="1280" height="660" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="18" stdDeviation="22" flood-color="#6D4B16" flood-opacity="0.15"/>
+    </filter>
+  </defs>
+
+  <rect width="1280" height="660" rx="36" fill="url(#bg)"/>
+
+  <text x="640" y="108" text-anchor="middle" font-family="Avenir Next, Segoe UI, Arial, sans-serif" font-size="46" font-weight="800" fill="#1A1713">Pick the package that matches how you install</text>
+  <text x="640" y="150" text-anchor="middle" font-family="Avenir Next, Segoe UI, Arial, sans-serif" font-size="22" font-weight="500" fill="#735B31">Most users should start with a with-katago build. Switch only when you know you want a custom engine setup.</text>
+
+  <g filter="url(#shadow)">
+    <rect x="92" y="210" width="336" height="272" rx="28" fill="url(#panel)" stroke="#F3E2BE"/>
+    <rect x="472" y="210" width="336" height="272" rx="28" fill="url(#panel)" stroke="#F3E2BE"/>
+    <rect x="852" y="210" width="336" height="272" rx="28" fill="url(#panel)" stroke="#F3E2BE"/>
+  </g>
+
+  <rect x="118" y="238" width="130" height="36" rx="18" fill="#1B4D3E"/>
+  <text x="183" y="261" text-anchor="middle" font-family="Avenir Next, Segoe UI, Arial, sans-serif" font-size="18" font-weight="700" fill="#F7F0DF">MOST USERS</text>
+  <text x="118" y="322" font-family="Avenir Next, Segoe UI, Arial, sans-serif" font-size="34" font-weight="800" fill="#171513">with-katago</text>
+  <text x="118" y="360" font-family="Avenir Next, Segoe UI, Arial, sans-serif" font-size="21" font-weight="700" fill="#715B33">Bundled KataGo</text>
+  <text x="118" y="402" font-family="Avenir Next, Segoe UI, Arial, sans-serif" font-size="18" font-weight="500" fill="#6F5A33">Fastest path from download</text>
+  <text x="118" y="428" font-family="Avenir Next, Segoe UI, Arial, sans-serif" font-size="18" font-weight="500" fill="#6F5A33">to Fox sync and analysis.</text>
+
+  <rect x="498" y="238" width="162" height="36" rx="18" fill="#2F4858"/>
+  <text x="579" y="261" text-anchor="middle" font-family="Avenir Next, Segoe UI, Arial, sans-serif" font-size="18" font-weight="700" fill="#F5F7FA">CUSTOM SETUP</text>
+  <text x="498" y="322" font-family="Avenir Next, Segoe UI, Arial, sans-serif" font-size="34" font-weight="800" fill="#171513">without.engine</text>
+  <text x="498" y="360" font-family="Avenir Next, Segoe UI, Arial, sans-serif" font-size="21" font-weight="700" fill="#715B33">Use your own engine</text>
+  <text x="498" y="402" font-family="Avenir Next, Segoe UI, Arial, sans-serif" font-size="18" font-weight="500" fill="#6F5A33">Keep your existing KataGo,</text>
+  <text x="498" y="428" font-family="Avenir Next, Segoe UI, Arial, sans-serif" font-size="18" font-weight="500" fill="#6F5A33">Leela, or remote setup.</text>
+
+  <rect x="878" y="238" width="124" height="36" rx="18" fill="#7F4F24"/>
+  <text x="940" y="261" text-anchor="middle" font-family="Avenir Next, Segoe UI, Arial, sans-serif" font-size="18" font-weight="700" fill="#FFF7E8">macOS</text>
+  <text x="878" y="322" font-family="Avenir Next, Segoe UI, Arial, sans-serif" font-size="34" font-weight="800" fill="#171513">Use the right dmg</text>
+  <text x="878" y="360" font-family="Avenir Next, Segoe UI, Arial, sans-serif" font-size="21" font-weight="700" fill="#715B33">Pick Apple Silicon or Intel</text>
+  <text x="878" y="402" font-family="Avenir Next, Segoe UI, Arial, sans-serif" font-size="18" font-weight="500" fill="#6F5A33">mac-arm64 for M-series.</text>
+  <text x="878" y="428" font-family="Avenir Next, Segoe UI, Arial, sans-serif" font-size="18" font-weight="500" fill="#6F5A33">mac-amd64 for Intel Macs.</text>
+
+  <g>
+    <rect x="92" y="520" width="252" height="84" rx="24" fill="url(#platform)" stroke="#F1DDB6"/>
+    <rect x="356" y="520" width="252" height="84" rx="24" fill="url(#platform)" stroke="#F1DDB6"/>
+    <rect x="620" y="520" width="252" height="84" rx="24" fill="url(#platform)" stroke="#F1DDB6"/>
+    <rect x="884" y="520" width="304" height="84" rx="24" fill="url(#platform)" stroke="#F1DDB6"/>
+
+    <text x="218" y="554" text-anchor="middle" font-family="Avenir Next, Segoe UI, Arial, sans-serif" font-size="18" font-weight="700" fill="#7A5926">Windows x64</text>
+    <text x="218" y="584" text-anchor="middle" font-family="Avenir Next, Segoe UI, Arial, sans-serif" font-size="17" font-weight="600" fill="#23201C">with-katago / without.engine</text>
+
+    <text x="482" y="554" text-anchor="middle" font-family="Avenir Next, Segoe UI, Arial, sans-serif" font-size="18" font-weight="700" fill="#7A5926">macOS Apple Silicon</text>
+    <text x="482" y="584" text-anchor="middle" font-family="Avenir Next, Segoe UI, Arial, sans-serif" font-size="17" font-weight="600" fill="#23201C">mac-arm64.dmg</text>
+
+    <text x="746" y="554" text-anchor="middle" font-family="Avenir Next, Segoe UI, Arial, sans-serif" font-size="18" font-weight="700" fill="#7A5926">macOS Intel</text>
+    <text x="746" y="584" text-anchor="middle" font-family="Avenir Next, Segoe UI, Arial, sans-serif" font-size="17" font-weight="600" fill="#23201C">mac-amd64.dmg</text>
+
+    <text x="1036" y="554" text-anchor="middle" font-family="Avenir Next, Segoe UI, Arial, sans-serif" font-size="18" font-weight="700" fill="#7A5926">Linux x64</text>
+    <text x="1036" y="584" text-anchor="middle" font-family="Avenir Next, Segoe UI, Arial, sans-serif" font-size="17" font-weight="600" fill="#23201C">linux64.with-katago</text>
+  </g>
+</svg>
