@@ -142,11 +142,13 @@ For most users, the path is straightforward:
 
 ## If You Are Migrating From The Original Project
 
-- The Fox sync entry is now consistently described as a Fox ID based flow
-- Username lookup is no longer part of the supported path
+If you already used the original LizzieYzy, these are the changes that matter most:
+
+- the Fox sync entry is now consistently described as a Fox ID based flow
+- username lookup is no longer part of the supported path
 - Windows x64 still keeps both `with-katago` and `without.engine`
 - macOS releases are centered on `.dmg` installers instead of extra `.app.zip` assets
-- This repository is intended for continued maintenance, not a temporary hotfix drop
+- this repository keeps shipping packages, docs, and install fixes instead of acting as a one-off hotfix
 
 ## Bundled Engine Details
 
@@ -207,20 +209,15 @@ This is a maintained fork built on the original project. The goal is not to repl
 Check [Tested Platforms](docs/TESTED_PLATFORMS.md) first, then follow the [Installation Guide](docs/INSTALL_EN.md). If you can report either a successful install or a failure, that directly improves the project.
 </details>
 
-## Roadmap
+## Current Focus
 
-- [x] Restore Fox sync
-- [x] Switch the user-facing flow to Fox ID
-- [x] Bring back multi-platform release packages
-- [x] Restore Intel Mac packaging
-- [x] Reorganize Windows / macOS / Linux download strategy
-- [x] Add installation and troubleshooting docs
-- [x] Unify Fox ID terminology across UI and docs
-- [x] Add CI and markdown link checks
-- [ ] Add more real-machine installation verification records
-- [ ] Improve screenshots and homepage presentation further
-- [ ] Finish more complete Japanese / Korean troubleshooting docs
-- [ ] Keep reducing first-run friction based on real user feedback
+These are the areas still being improved:
+
+- more real-machine installation reports for Windows, Linux, and Intel Mac
+- continued Fox sync compatibility follow-up
+- better screenshots, demo assets, and release-page guidance
+- fuller Japanese and Korean install / troubleshooting docs
+- lower first-run friction based on real user feedback
 
 ## Contributing
 
