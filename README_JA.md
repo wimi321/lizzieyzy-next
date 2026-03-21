@@ -85,8 +85,8 @@
 
 | 環境 | 推奨パッケージ | Java | KataGo | 向いている人 |
 | --- | --- | --- | --- | --- |
-| Windows x64 | `windows64.with-katago.zip` | 同梱 | 同梱 | ダウンロード後すぐ使いたい |
-| Windows x64 | `windows64.without.engine.zip` | 同梱 | なし | エンジンを自分で管理したい |
+| Windows x64 | `windows64.with-katago.installer.exe` | 同梱 | 同梱 | ダウンロード後すぐ使いたい |
+| Windows x64 | `windows64.without.engine.portable.zip` | 同梱 | なし | エンジンを自分で管理したい |
 | Windows x86 | `windows32.without.engine.zip` | なし | なし | 古い環境や互換用途 |
 | macOS Apple Silicon | `mac-arm64.with-katago.dmg` | App 内蔵 | 同梱 | M シリーズ Mac |
 | macOS Intel | `mac-amd64.with-katago.dmg` | App 内蔵 | 同梱 | Intel Mac |

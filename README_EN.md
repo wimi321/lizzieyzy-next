@@ -8,153 +8,120 @@
   <a href="https://github.com/wimi321/lizzieyzy-next-foxuid/stargazers"><img src="https://img.shields.io/github/stars/wimi321/lizzieyzy-next-foxuid?style=flat&color=7F4F24" alt="Stars"></a>
   <a href="https://github.com/wimi321/lizzieyzy-next-foxuid/releases"><img src="https://img.shields.io/github/downloads/wimi321/lizzieyzy-next-foxuid/total?label=Downloads&color=2F4858" alt="Downloads"></a>
   <a href="LICENSE.txt"><img src="https://img.shields.io/badge/License-GPL%20v3-E7A23B" alt="License"></a>
+  <img src="https://img.shields.io/badge/Platforms-Windows%20%7C%20macOS%20%7C%20Linux-4A5D23" alt="Platforms">
 </p>
 
 <p align="center">
   <a href="README.md">中文</a> · English · <a href="README_JA.md">日本語</a> · <a href="README_KO.md">한국어</a>
 </p>
 
-# LizzieYzy Next-FoxUID
-
-**An actively maintained LizzieYzy fork focused on restoring broken Fox sync, standardizing the workflow around Fox ID, and shipping clearer multi-platform KataGo releases.**
+<p align="center">
+  <strong>A maintained LizzieYzy fork focused on making the broken Fox sync usable again.</strong><br/>
+  The workflow now centers on <strong>Fox ID</strong>, with first-launch auto setup, bundled KataGo packages, and clearer multi-platform releases.
+</p>
 
 <p align="center">
   <a href="https://github.com/wimi321/lizzieyzy-next-foxuid/releases">Download Releases</a>
   ·
-  <a href="#if-you-just-want-to-start">Start Here</a>
+  <a href="#what-to-download-first">What To Download</a>
   ·
-  <a href="#which-package-to-download">Which Package</a>
+  <a href="#three-minute-setup">Three-Minute Setup</a>
   ·
-  <a href="#quick-start">Quick Start</a>
+  <a href="#release-assets">Release Assets</a>
   ·
   <a href="#docs-and-support">Docs & Support</a>
-  ·
-  <a href="#contributing">Contributing</a>
 </p>
 
 > [!IMPORTANT]
-> The original Fox sync flow in LizzieYzy no longer worked reliably. This fork restores it and standardizes the UI around **Fox ID** input.
+> This fork is not trying to reinvent LizzieYzy. It focuses on the practical path users still care about:
+> - restore Fox kifu sync and standardize the UI around **Fox ID**
+> - auto-configure bundled KataGo on first launch whenever possible
+> - ship releases that are easier to choose, with Windows centered on `.installer.exe`
 
-## What This Fork Fixes
+## What To Download First
 
-`LizzieYzy Next-FoxUID` is a maintained fork of the original `lizzieyzy` project.
+| If you are on | Download this first | Best for |
+| --- | --- | --- |
+| Windows x64 and want the easiest path | `windows64.with-katago.installer.exe` | Double-click install, launch, start reviewing |
+| Windows x64 and prefer no installer | `windows64.with-katago.portable.zip` | Unzip and run the packaged app directly |
+| Windows x64 and want your own engine | `windows64.without.engine.portable.zip` | Keep the app runtime and configure KataGo yourself |
+| macOS Apple Silicon | `mac-arm64.with-katago.dmg` | M-series Macs |
+| macOS Intel | `mac-amd64.with-katago.dmg` | Intel Macs |
+| Linux x64 | `linux64.with-katago.zip` | Fastest Linux desktop path |
+| Legacy or advanced custom setup | `windows32.without.engine.zip` / `Macosx.amd64.Linux.amd64.without.engine.zip` | Only if you already know you need them |
 
-This repository is not a rewrite. It keeps the original LizzieYzy usable for the parts people still rely on.
+> [!TIP]
+> Older release tags may still show the previous Windows zip layout. Going forward, the primary Windows downloads are the installer build and the portable `.exe` package.
 
-The main goals are straightforward:
+## Why This Fork Matters
 
-- install it without guesswork
-- fetch public Fox games by **Fox ID**
-- continue with KataGo review
+If you used the original `lizzieyzy`, the real question is not whether the project has a new coat of paint. It is whether the core user path works again:
 
-This fork mainly fixes these problems:
+- can Fox kifu sync fetch public games again
+- does first launch still force manual engine setup
+- can you tell which release asset to download without guessing
+- can you reinstall on another machine without rebuilding your setup from scratch
 
-- the original Fox sync flow stopped working for many users
-- UI and docs mixed Fox ID, UID, and username wording
-- release packages were harder than they should be to choose from
-- install and troubleshooting information was scattered
+`LizzieYzy Next-FoxUID` exists to keep that path usable.
 
-## If You Just Want To Start
+## Three-Minute Setup
 
-| What you need right now | Go here |
-| --- | --- |
-| A package that works out of the box | Go to [Releases](https://github.com/wimi321/lizzieyzy-next-foxuid/releases) and choose a `with-katago` package |
-| A package for custom engine setup | Read [Package Overview](docs/PACKAGES_EN.md) and choose a `without.engine` package |
-| Real-world platform verification status | Read [Tested Platforms](docs/TESTED_PLATFORMS.md) |
-| Install or first-launch help | Read [Installation Guide](docs/INSTALL_EN.md) and [Troubleshooting](docs/TROUBLESHOOTING_EN.md) |
-| Report install success or failure | Use the [Installation Report template](https://github.com/wimi321/lizzieyzy-next-foxuid/issues/new?template=installation_report.yml) |
-| Report a bug or suggest an improvement | Use [Issues](https://github.com/wimi321/lizzieyzy-next-foxuid/issues) or [Discussions](https://github.com/wimi321/lizzieyzy-next-foxuid/discussions) |
+1. Go to [Releases](https://github.com/wimi321/lizzieyzy-next-foxuid/releases) and choose the package for your system.
+2. Windows users should start with `windows64.with-katago.installer.exe`; macOS users should pick the correct `.dmg`; Linux users should choose `linux64.with-katago.zip`.
+3. On first launch, the app now tries to auto-detect bundled KataGo, configs, and the default weight.
+4. Open **Fox Kifu (Fetch by Fox ID)** and enter a numeric Fox ID.
+5. Fetch the latest public games and continue with bundled or custom KataGo review.
+
+## What First Launch Does Now
+
+The maintained fork no longer assumes new users want to configure engines by hand.
+
+At startup, it now tries to:
+
+- detect bundled KataGo binaries, configs, and bundled weight files
+- write a usable default engine configuration automatically
+- offer a guided path to download a recommended official weight if needed
+- fall back to manual setup only when automatic setup still cannot produce a working configuration
+
+That keeps the common case simple: install, open, fetch, review.
 
 ## Screenshot
 
-The current UI now presents the old confusing UID entry as a clearer Fox sync entry based on **Fox ID**, while keeping the familiar LizzieYzy review workflow around it.
-
 ![LizzieYzy Next-FoxUID Screenshot](screenshot_en.png)
 
-## Which Package To Download
+## Release Assets
 
 > [!TIP]
-> For most users, the right choice is simple: pick a `with-katago` package. Only choose `without.engine` if you already know you want to manage the engine yourself.
+> For most users, the rule is simple: choose `with-katago` if you want the shortest path, and `without.engine` only if you want to manage the engine yourself.
 
-<p align="center">
-  <img src="assets/package-guide.svg" alt="LizzieYzy Next-FoxUID Package Guide" width="100%" />
-</p>
-
-| Platform | Recommended package | Bundled Java | Bundled KataGo | Best for |
+| Platform | Recommended asset | Bundled Java | Bundled KataGo | Install style |
 | --- | --- | --- | --- | --- |
-| Windows x64 | `windows64.with-katago.zip` | Yes | Yes | Download and use directly |
-| Windows x64 | `windows64.without.engine.zip` | Yes | No | Custom engine setups |
-| Windows x86 | `windows32.without.engine.zip` | No | No | Legacy or compatibility cases |
-| macOS Apple Silicon | `mac-arm64.with-katago.dmg` | App runtime | Yes | M-series Mac users |
-| macOS Intel | `mac-amd64.with-katago.dmg` | App runtime | Yes | Intel Mac users |
-| Linux x64 | `linux64.with-katago.zip` | Yes | Yes | Linux desktop users |
-| Advanced users | `Macosx.amd64.Linux.amd64.without.engine.zip` | No | No | Fully custom engine setups |
+| Windows x64 | `windows64.with-katago.installer.exe` | Yes | Yes | Installer with Start Menu and desktop shortcut |
+| Windows x64 | `windows64.with-katago.portable.zip` | Yes | Yes | Portable app image, unzip and run `LizzieYzy Next-FoxUID.exe` |
+| Windows x64 | `windows64.without.engine.portable.zip` | Yes | No | Portable app with manual engine setup |
+| Windows x86 | `windows32.without.engine.zip` | No | No | Compatibility package |
+| macOS Apple Silicon | `mac-arm64.with-katago.dmg` | App runtime | Yes | Drag to Applications |
+| macOS Intel | `mac-amd64.with-katago.dmg` | App runtime | Yes | Drag to Applications |
+| Linux x64 | `linux64.with-katago.zip` | Yes | Yes | Unzip and run `start-linux64.sh` |
+| Advanced users | `Macosx.amd64.Linux.amd64.without.engine.zip` | No | No | Manual Java and engine setup |
 
-Related links:
+A few design choices behind this layout:
 
-- [Releases](https://github.com/wimi321/lizzieyzy-next-foxuid/releases)
-- [Package Overview](docs/PACKAGES_EN.md)
-- [Tested Platforms](docs/TESTED_PLATFORMS.md)
-
-## Typical Flow
-
-<p align="center">
-  <img src="assets/start-flow.svg" alt="LizzieYzy Next-FoxUID Start Flow" width="100%" />
-</p>
-
-For most users, the path is straightforward:
-
-1. Download the package for your system, usually `with-katago`
-2. Launch the app and open the Fox sync entry
-3. Enter a numeric **Fox ID** to fetch the latest public games
-4. Continue with bundled or custom KataGo review
-
-The short demo below shows that same path in a more visual way:
-
-<p align="center">
-  <img src="assets/fox-id-demo.gif" alt="LizzieYzy Next-FoxUID Demo" width="100%" />
-</p>
-
-## Quick Start
-
-1. Download the package for your system from the [Releases](https://github.com/wimi321/lizzieyzy-next-foxuid/releases) page.
-2. If you want the shortest path, choose a `with-katago` package.
-3. Launch the app and open the Fox sync entry.
-4. Enter a numeric **Fox ID** to fetch the latest public Fox games.
-5. If your OS blocks the first launch, check the [Installation Guide](docs/INSTALL_EN.md) and [Troubleshooting](docs/TROUBLESHOOTING_EN.md).
-
-## What You Can Do With It
-
-| Use case | Available capability |
-| --- | --- |
-| Fetch games | Pull the latest public Fox games by Fox ID |
-| Review a game | Hawk Eye charts, winrate swings, score swings, mistake tracking |
-| Fast analysis | Parallel whole-game analysis with KataGo analysis mode |
-| Batch workflows | Analyze multiple SGFs in one run |
-| Engine comparison | Dual-engine mode and engine-vs-engine matches |
-| Local study | Tsumego and local-shape analysis helpers |
-| Other retained workflows | Board sync, rough territory judgment, and other commonly used original features |
+- Windows now treats the installer as the primary user-facing package instead of `.bat` launchers.
+- The Windows no-engine package also moves to a portable `.exe` flow instead of a bat-first flow.
+- macOS stays centered on `.dmg` installers, one for Apple Silicon and one for Intel.
+- Linux keeps a practical all-in-one package.
 
 ## Compared With The Original Project
 
 | Topic | Original LizzieYzy | Next-FoxUID |
 | --- | --- | --- |
-| Fox sync | Broken for many users | Restored |
-| Input naming | Mixed UID / username wording | Fox ID only |
-| Release layout | Harder to choose from | Reorganized by platform and use case |
-| macOS distribution | More confusing historical package mix | `.dmg` first, separated by Apple Silicon / Intel |
-| Windows x64 strategy | Less clear package split | Keeps both `with-katago` and `without.engine` |
-| Maintenance | Mostly inactive | Actively maintained as a fork |
-
-## If You Are Migrating From The Original Project
-
-If you already used the original LizzieYzy, these are the changes that matter most:
-
-- the Fox sync entry is now consistently described as a Fox ID based flow
-- username lookup is no longer part of the supported path
-- Windows x64 still keeps both `with-katago` and `without.engine`
-- macOS releases are centered on `.dmg` installers instead of extra `.app.zip` assets
-- this repository keeps shipping packages, docs, and install fixes instead of acting as a one-off hotfix
+| Fox sync | Broken for many users | Restored and maintained |
+| Input wording | UID, username, and mixed labels | Fox ID only |
+| First launch | Often required manual engine setup | Prefers automatic bundled setup |
+| Windows experience | Mostly zip + bat based | Installer-first with portable `.exe` fallback |
+| macOS packages | Historically confusing mix | `.dmg` first, split by Apple Silicon / Intel |
+| Maintenance | Mostly inactive | Ongoing releases, docs, and support |
 
 ## Bundled Engine Details
 
@@ -162,97 +129,74 @@ If you already used the original LizzieYzy, these are the changes that matter mo
 | --- | --- |
 | KataGo version | `v1.16.4` |
 | Default bundled weight | `g170e-b20c256x2-s5303129600-d1228401921.bin.gz` |
+| First-launch auto setup | Enabled |
+| Recommended weight download helper | Included |
 
-Paths:
+Common paths:
 
-- Windows / Linux weight path: `Lizzieyzy/weights/default.bin.gz`
-- macOS weight path: `LizzieYzy Next-FoxUID.app/Contents/app/weights/default.bin.gz`
-- On macOS, if Finder only shows a single `.app`, that is expected. Use “Show Package Contents” to inspect the bundled files.
+- Windows / Linux bundles: `Lizzieyzy/weights/default.bin.gz`
+- macOS bundles: `LizzieYzy Next-FoxUID.app/Contents/app/weights/default.bin.gz`
+- macOS engine directory: `LizzieYzy Next-FoxUID.app/Contents/app/engines/katago/`
 
 ## Docs And Support
 
 | If you need | Go here |
 | --- | --- |
-| Installation help | [Installation Guide](docs/INSTALL_EN.md) |
-| Startup or runtime troubleshooting | [Troubleshooting](docs/TROUBLESHOOTING_EN.md) |
+| Installation steps | [Installation Guide](docs/INSTALL_EN.md) |
 | Package explanations | [Package Overview](docs/PACKAGES_EN.md) |
-| Real-machine platform status | [Tested Platforms](docs/TESTED_PLATFORMS.md) |
-| Support and routing | [Support](SUPPORT.md) |
-| Build from source or contribute code | [Development Guide](docs/DEVELOPMENT_EN.md) |
+| Startup, engine, or Fox sync troubleshooting | [Troubleshooting](docs/TROUBLESHOOTING_EN.md) |
+| Real-machine verification status | [Tested Platforms](docs/TESTED_PLATFORMS.md) |
+| Release process guidance | [Release Checklist](docs/RELEASE_CHECKLIST.md) |
+| Help routing | [Support](SUPPORT.md) |
 | Change history | [Changelog](CHANGELOG.md) |
-| Maintenance policy | [Maintenance Notes](docs/MAINTENANCE_EN.md) |
-| Release self-check | [Release Checklist](docs/RELEASE_CHECKLIST.md) |
 
 ## FAQ
 
 <details>
 <summary><strong>Why remove username lookup?</strong></summary>
 
-Because it caused confusion and was harder to maintain. Fox ID is clearer for users and easier to debug.
+Because it was harder to debug, easier to misunderstand, and less reliable for maintenance. This fork standardizes the user path around Fox ID.
 </details>
 
 <details>
-<summary><strong>Why keep dmg files but remove macOS app.zip from releases?</strong></summary>
+<summary><strong>Do I still need to configure the engine by hand on first launch?</strong></summary>
 
-Because most users want a direct installer workflow, not multiple macOS package formats that look similar.
+Most users should not. The maintained fork now tries to auto-configure the bundled engine first and only falls back to manual setup when necessary.
 </details>
 
 <details>
-<summary><strong>Why keep both with-katago and without.engine for Windows x64?</strong></summary>
+<summary><strong>Why make the Windows installer the main recommendation?</strong></summary>
 
-Because these serve two different audiences: one wants a bundled setup, the other wants to manage engines manually.
+Because regular users want a straightforward install flow: download, double-click, finish setup, and open the app. Portable builds still exist, but they are no longer the main path.
 </details>
 
 <details>
-<summary><strong>What is the relationship between this fork and the original author?</strong></summary>
+<summary><strong>Why can macOS still block first launch?</strong></summary>
 
-This is a maintained fork built on the original project. The goal is not to replace the original author, but to continue maintaining the broken workflows and release experience after the original project became inactive.
+Current maintenance builds are still unsigned and not notarized. That means Gatekeeper may block the first launch until you choose “Open Anyway” in macOS security settings.
 </details>
-
-<details>
-<summary><strong>What if my platform does not have a real-machine verification record yet?</strong></summary>
-
-Check [Tested Platforms](docs/TESTED_PLATFORMS.md) first, then follow the [Installation Guide](docs/INSTALL_EN.md). If you can report either a successful install or a failure, that directly improves the project.
-</details>
-
-## Current Focus
-
-These are the areas still being improved:
-
-- more real-machine installation reports for Windows, Linux, and Intel Mac
-- continued Fox sync compatibility follow-up
-- better screenshots, demo assets, and release-page guidance
-- fuller Japanese and Korean install / troubleshooting docs
-- lower first-run friction based on real user feedback
 
 ## Contributing
 
-Contributions are welcome through issues, discussions, and pull requests.
-
 The most helpful contributions right now are:
 
-- real installation reports for Windows, Linux, and Intel Mac
-- Fox sync compatibility reports
-- documentation, translation, and UI wording improvements
-- packaging, engine-path, and release-process fixes
-- focused small code fixes
+- real-machine Windows, Linux, and Intel Mac install reports
+- Fox sync compatibility feedback
+- better release-page copy, installation docs, and translations
+- packaging, first-launch setup, and engine integration fixes
 
 Links:
 
 - [Contributing Guide](CONTRIBUTING.md)
 - [Code Of Conduct](CODE_OF_CONDUCT.md)
 - [Security Policy](SECURITY.md)
-- [Support](SUPPORT.md)
-- [Tested Platforms](docs/TESTED_PLATFORMS.md)
 - [Issues](https://github.com/wimi321/lizzieyzy-next-foxuid/issues)
 - [Discussions](https://github.com/wimi321/lizzieyzy-next-foxuid/discussions)
 
 ## Credits
 
 - Original project: [yzyray/lizzieyzy](https://github.com/yzyray/lizzieyzy)
-- Upstream GUI base: [featurecat/lizzie](https://github.com/featurecat/lizzie)
 - Engine: [lightvector/KataGo](https://github.com/lightvector/KataGo)
-
-## License
-
-This project keeps the original license. See [LICENSE.txt](LICENSE.txt).
+- Historical Fox sync references:
+  - [yzyray/FoxRequest](https://github.com/yzyray/FoxRequest)
+  - [FuckUbuntu/Lizzieyzy-Helper](https://github.com/FuckUbuntu/Lizzieyzy-Helper)

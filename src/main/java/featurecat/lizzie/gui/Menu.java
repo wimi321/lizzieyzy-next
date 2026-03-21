@@ -5058,6 +5058,16 @@ public class Menu extends JMenuBar {
           }
         });
 
+    final JFontMenuItem autoSetup = new JFontMenuItem(resourceBundle.getString("Menu.autoSetup"));
+    settings.add(autoSetup);
+
+    autoSetup.addActionListener(
+        new ActionListener() {
+          public void actionPerformed(ActionEvent e) {
+            Lizzie.frame.openKataGoAutoSetup();
+          }
+        });
+
     final JFontMenuItem comprehensiveSettings =
         new JFontMenuItem(
             resourceBundle.getString("Menu.comprehensiveSettings")); // ("综合设置(Shift+X)");
@@ -7684,6 +7694,36 @@ public class Menu extends JMenuBar {
             }
           });
 
+      JFontButton btnAutoSetup = new JFontButton(resourceBundle.getString("Menu.autoSetupButton"));
+      btnAutoSetup.setFocusable(false);
+      btnAutoSetup.setMargin(new Insets(0, 10, 0, 10));
+      btnAutoSetup.setPreferredSize(
+          new Dimension(
+              Lizzie.config.isChinese ? Config.menuHeight * 4 : Config.menuHeight * 6,
+              Config.menuHeight));
+      btnAutoSetup.setToolTipText(resourceBundle.getString("Menu.autoSetup"));
+      btnAutoSetup.addActionListener(
+          new ActionListener() {
+            public void actionPerformed(ActionEvent e) {
+              Lizzie.frame.openKataGoAutoSetup();
+            }
+          });
+
+      JFontButton btnFoxKifu = new JFontButton(resourceBundle.getString("Menu.foxKifuButton"));
+      btnFoxKifu.setFocusable(false);
+      btnFoxKifu.setMargin(new Insets(0, 10, 0, 10));
+      btnFoxKifu.setPreferredSize(
+          new Dimension(
+              Lizzie.config.isChinese ? Config.menuHeight * 4 : Config.menuHeight * 6,
+              Config.menuHeight));
+      btnFoxKifu.setToolTipText(resourceBundle.getString("Menu.foxKifu"));
+      btnFoxKifu.addActionListener(
+          new ActionListener() {
+            public void actionPerformed(ActionEvent e) {
+              Lizzie.frame.openFoxReq();
+            }
+          });
+
       JPopupMenu flashAnalyzePopup = new JPopupMenu();
       JFontMenuItem flashAnalyzeAllGame =
           new JFontMenuItem(resourceBundle.getString("Menu.flashAnalyzeAllGame")); // "闪电分析(全局)");
@@ -8052,6 +8092,8 @@ public class Menu extends JMenuBar {
       Lizzie.frame.topPanel.add(btnNewFile);
       Lizzie.frame.topPanel.add(btnOpen);
       Lizzie.frame.topPanel.add(btnSave);
+      Lizzie.frame.topPanel.add(btnAutoSetup);
+      Lizzie.frame.topPanel.add(btnFoxKifu);
       Lizzie.frame.topPanel.add(btnFlashAnalyze);
       Lizzie.frame.topPanel.add(btnAnalyze);
       Lizzie.frame.topPanel.add(btnHawkeye);

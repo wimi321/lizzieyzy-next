@@ -1,0 +1,65 @@
+name: Build Windows Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      date_tag:
+        description: Release date tag, for example 2026-03-21
+        required: true
+        default: 2026-03-21
+      release_tag:
+        description: Existing GitHub release tag to upload into
+        required: true
+        default: 2.5.3-next-foxuid-2026-03-21.1
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      - name: Install packaging tools
+        shell: powershell
+        run: |
+          choco install wixtoolset --no-progress -y
+
+      - name: Build shaded jar
+        shell: bash
+        run: mvn -DskipTests package
+
+      - name: Build Windows installer and portable package
+        shell: bash
+        run: ./scripts/package_windows_exe.sh "${{ inputs.date_tag }}" 2.5.3 target/lizzie-yzy2.5.3-shaded.jar
+
+      - name: Upload workflow artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-release
+          path: |
+            dist/release/*windows64*.installer.exe
+            dist/release/*windows64*.portable.zip
+            dist/release/*windows64*-install.txt
+
+      - name: Upload assets to release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload "${{ inputs.release_tag }}" \
+            dist/release/*windows64*.installer.exe \
+            dist/release/*windows64*.portable.zip \
+            dist/release/*windows64*-install.txt \
+            --repo "${{ github.repository }}" \
+            --clobber

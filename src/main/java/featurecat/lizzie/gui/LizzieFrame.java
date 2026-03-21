@@ -479,6 +479,7 @@ public class LizzieFrame extends JFrame {
   public static boolean isKeepForcing = false;
   public static boolean isTempForcing = false;
   public FoxKifuDownload foxKifuDownload;
+  public KataGoAutoSetupDialog kataGoAutoSetupDialog;
   public int noneMaxX, noneMaxY, noneMaxWidth, noneMaxHeight;
 
   private boolean tempShowBlack;
@@ -12127,9 +12128,21 @@ public class LizzieFrame extends JFrame {
   }
 
   public void openFoxReq() {
-    // TODO Auto-generated method stub
-    foxKifuDownload = new FoxKifuDownload();
+    if (foxKifuDownload == null || !foxKifuDownload.isDisplayable()) {
+      foxKifuDownload = new FoxKifuDownload();
+    }
     foxKifuDownload.setVisible(true);
+    foxKifuDownload.toFront();
+    foxKifuDownload.requestFocus();
+  }
+
+  public void openKataGoAutoSetup() {
+    if (kataGoAutoSetupDialog == null || !kataGoAutoSetupDialog.isDisplayable()) {
+      kataGoAutoSetupDialog = new KataGoAutoSetupDialog(this);
+    }
+    kataGoAutoSetupDialog.refreshState();
+    kataGoAutoSetupDialog.setVisible(true);
+    kataGoAutoSetupDialog.toFront();
   }
 
   public void tryToRefreshVariation() {

@@ -6,21 +6,36 @@
 
 | 環境 | 推奨パッケージ | Java | KataGo |
 | --- | --- | --- | --- |
-| Windows x64 | `<date>-windows64.with-katago.zip` | 同梱 | 同梱 |
-| Windows x64 | `<date>-windows64.without.engine.zip` | 同梱 | なし |
+| Windows x64 | `<date>-windows64.with-katago.installer.exe` | 同梱 | 同梱 |
+| Windows x64 | `<date>-windows64.with-katago.portable.zip` | 同梱 | 同梱 |
+| Windows x64 | `<date>-windows64.without.engine.portable.zip` | 同梱 | なし |
 | Windows x86 | `<date>-windows32.without.engine.zip` | なし | なし |
 | macOS Apple Silicon | `<date>-mac-arm64.with-katago.dmg` | App 内蔵 | 同梱 |
 | macOS Intel | `<date>-mac-amd64.with-katago.dmg` | App 内蔵 | 同梱 |
 | Linux x64 | `<date>-linux64.with-katago.zip` | 同梱 | 同梱 |
 
-簡単に使い始めたい場合は `with-katago` を選んでください。
+簡単に使い始めたい場合は `with-katago` を選んでください。Windows では通常、`installer.exe` が最も分かりやすい選択です。
 
 ## Windows
 
-1. `windows64.with-katago.zip` をダウンロードします。
+### Windows x64 インストーラ
+
+1. `windows64.with-katago.installer.exe` をダウンロードします。
+2. ダブルクリックしてインストーラを実行します。
+3. セットアップウィザードに従ってインストールします。
+4. インストール後、スタートメニューまたはデスクトップから起動します。
+
+### Windows x64 ポータブル版
+
+1. `windows64.with-katago.portable.zip` をダウンロードします。
 2. 普通のフォルダに展開します。
-3. `start-windows64.bat` を実行します。
-4. 初回起動では内蔵 KataGo が自動検出されることが多く、手動設定は通常不要です。
+3. 展開先で `LizzieYzy Next-FoxUID.exe` を実行します。
+
+### Windows x64 無引擎版
+
+1. `windows64.without.engine.portable.zip` をダウンロードします。
+2. 展開後、`LizzieYzy Next-FoxUID.exe` を実行します。
+3. このパッケージには KataGo は含まれていないため、起動後に自分のエンジンを設定します。
 
 ## macOS
 
@@ -47,6 +62,16 @@
 chmod +x start-linux64.sh
 ./start-linux64.sh
 ```
+
+## 初回起動について
+
+現在のメンテナンス版では、初回起動時に次の処理を優先して行います。
+
+- 同梱 KataGo と重みファイルの検出
+- 使える既定エンジン設定の自動作成
+- 必要に応じて推奨公式重みの案内
+
+通常の `with-katago` パッケージであれば、手動設定なしで始められるケースが増えています。
 
 ## 野狐棋譜の取得
 

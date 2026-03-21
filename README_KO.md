@@ -85,8 +85,8 @@
 
 | 환경 | 추천 패키지 | Java | KataGo | 추천 대상 |
 | --- | --- | --- | --- | --- |
-| Windows x64 | `windows64.with-katago.zip` | 포함 | 포함 | 다운로드 후 바로 쓰고 싶은 경우 |
-| Windows x64 | `windows64.without.engine.zip` | 포함 | 없음 | 엔진을 직접 관리하는 경우 |
+| Windows x64 | `windows64.with-katago.installer.exe` | 포함 | 포함 | 다운로드 후 바로 쓰고 싶은 경우 |
+| Windows x64 | `windows64.without.engine.portable.zip` | 포함 | 없음 | 엔진을 직접 관리하는 경우 |
 | Windows x86 | `windows32.without.engine.zip` | 없음 | 없음 | 구형 환경이나 호환성 목적 |
 | macOS Apple Silicon | `mac-arm64.with-katago.dmg` | App 내장 | 포함 | M 시리즈 Mac |
 | macOS Intel | `mac-amd64.with-katago.dmg` | App 내장 | 포함 | Intel Mac |

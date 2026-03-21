@@ -1,44 +1,69 @@
 # 发布包说明
 
-这份文档用来回答三个问题：
+这份文档回答三件事：
 
-1. 现在到底维护哪些包
+1. 当前维护版到底提供哪些包
 2. 每个包里内置了什么
-3. 下载时应该怎么选
+3. 普通用户应该怎么选
 
-## 当前维护的包类型
-
-当前维护版围绕下面这些包类型持续整理和发布：
+## 当前推荐的发布资产
 
 | 包类型 | 典型文件名 | 适合谁 |
 | --- | --- | --- |
-| Windows 64 位整合包 | `<date>-windows64.with-katago.zip` | 下载后直接用 |
-| Windows 64 位无引擎包 | `<date>-windows64.without.engine.zip` | 想自己配引擎 |
-| Windows 32 位兼容包 | `<date>-windows32.without.engine.zip` | 老机器兼容 |
-| macOS Apple Silicon 整合包 | `<date>-mac-arm64.with-katago.dmg` | M 系列 Mac 用户 |
-| macOS Intel 整合包 | `<date>-mac-amd64.with-katago.dmg` | Intel Mac 用户 |
+| Windows 64 位安装器 | `<date>-windows64.with-katago.installer.exe` | 想双击安装、直接使用的普通用户 |
+| Windows 64 位整合便携包 | `<date>-windows64.with-katago.portable.zip` | 不想安装，只想解压后直接运行 |
+| Windows 64 位无引擎便携包 | `<date>-windows64.without.engine.portable.zip` | 想自己配置 KataGo |
+| Windows 32 位兼容包 | `<date>-windows32.without.engine.zip` | 老机器或兼容环境 |
+| macOS Apple Silicon 整合包 | `<date>-mac-arm64.with-katago.dmg` | M 系列 Mac |
+| macOS Intel 整合包 | `<date>-mac-amd64.with-katago.dmg` | Intel Mac |
 | Linux 64 位整合包 | `<date>-linux64.with-katago.zip` | Linux 桌面用户 |
-| Mac/Linux 进阶无引擎包 | `<date>-Macosx.amd64.Linux.amd64.without.engine.zip` | 自定义配置 |
+| Mac/Linux 进阶无引擎包 | `<date>-Macosx.amd64.Linux.amd64.without.engine.zip` | 完全自定义配置 |
 
 说明：
 
-- 文件名前缀里的 `<date>` 代表发布日期，例如 `2026-03-16`。
-- 我们现在已经不再提供 macOS 的额外 `.app.zip` 压缩包。
-- 也不再保留“other systems”那种不清楚用途的大杂烩包。
+- `<date>` 代表发布日期，例如 `2026-03-21`。
+- Windows 64 位现在优先推荐安装器，其次才是便携包。
+- 旧 tag 里如果还看到 `windows64.with-katago.zip`，那属于历史发布格式。
+- macOS 继续只保留 `.dmg` 主包，不再把 `.app.zip` 当主推荐。
 
 ## 每个包里内置了什么
 
-| 包 | Java | KataGo | 权重 | 备注 |
+| 包 | Java | KataGo | 权重 | 打开方式 |
 | --- | --- | --- | --- | --- |
-| `windows64.with-katago` | 内置 | 内置 | 内置 | 最推荐给普通用户 |
-| `windows64.without.engine` | 内置 | 不内置 | 不内置 | 想自己配引擎时用 |
-| `windows32.without.engine` | 不内置 | 不内置 | 不内置 | 需要自己补 Java 和引擎 |
-| `mac-arm64.with-katago.dmg` | App 自带运行时 | 内置 | 内置 | 对应 Apple Silicon |
-| `mac-amd64.with-katago.dmg` | App 自带运行时 | 内置 | 内置 | 对应 Intel Mac |
-| `linux64.with-katago` | 内置 | 内置 | 内置 | Linux 桌面用户首选 |
-| `Macosx.amd64.Linux.amd64.without.engine` | 不内置 | 不内置 | 不内置 | 只建议进阶用户 |
+| `windows64.with-katago.installer.exe` | 内置 | 内置 | 内置 | 安装后从开始菜单或桌面打开 |
+| `windows64.with-katago.portable.zip` | 内置 | 内置 | 内置 | 解压后运行 `LizzieYzy Next-FoxUID.exe` |
+| `windows64.without.engine.portable.zip` | 内置 | 不内置 | 不内置 | 解压后运行 `LizzieYzy Next-FoxUID.exe` |
+| `windows32.without.engine.zip` | 不内置 | 不内置 | 不内置 | 按包内说明启动 |
+| `mac-arm64.with-katago.dmg` | App 自带运行时 | 内置 | 内置 | 拖到 Applications |
+| `mac-amd64.with-katago.dmg` | App 自带运行时 | 内置 | 内置 | 拖到 Applications |
+| `linux64.with-katago.zip` | 内置 | 内置 | 内置 | 运行 `start-linux64.sh` |
+| `Macosx.amd64.Linux.amd64.without.engine.zip` | 不内置 | 不内置 | 不内置 | 手工配置 |
 
-## 内置引擎信息
+## 给普通用户的选择建议
+
+如果你只想尽快开始：
+
+- Windows：选 `windows64.with-katago.installer.exe`
+- macOS：按芯片选对应的 `with-katago.dmg`
+- Linux：选 `linux64.with-katago.zip`
+
+如果你已经熟悉引擎配置：
+
+- Windows：选 `windows64.without.engine.portable.zip`
+- 其它平台完全自定义：选 `Macosx.amd64.Linux.amd64.without.engine.zip`
+
+## 为什么 Windows 现在优先推荐安装器
+
+因为普通用户真正需要的是：
+
+1. 下载后双击就能安装
+2. 不需要理解 `.bat`
+3. 不需要自己找 Java
+4. 第一次打开尽量自动配好内置 KataGo
+
+便携包依然保留，但它的角色已经变成“我明确知道自己不想安装”。
+
+## 当前内置引擎信息
 
 当前整合包默认使用：
 
@@ -50,52 +75,20 @@
 - Windows / Linux 权重：`Lizzieyzy/weights/default.bin.gz`
 - macOS 权重：`LizzieYzy Next-FoxUID.app/Contents/app/weights/default.bin.gz`
 
-## 为什么包名这样设计
+## 新旧发布格式怎么理解
 
-我们现在把包名尽量做成“一眼能看懂”的结构：
+从新的维护版发布开始：
 
-`日期-系统.是否内置引擎.扩展名`
+- Windows 64 位主推荐资产是 `installer.exe`
+- Windows 64 位无引擎包也改成 `.exe` 便携形式
+- `windows64.with-katago.zip` 这种旧格式只作为历史 tag 的兼容说明保留
 
-比如：
-
-- `2026-03-16-windows64.with-katago.zip`
-- `2026-03-16-windows64.without.engine.zip`
-- `2026-03-16-mac-arm64.with-katago.dmg`
-
-这样用户能直接看懂三件事：
-
-- 这是哪个日期的发布
-- 适用于什么系统
-- 是不是带内置引擎
-
-## 给普通用户的下载建议
-
-如果你只是想尽快上手：
-
-- Windows：选 `windows64.with-katago.zip`
-- macOS：按芯片选对应的 `with-katago.dmg`
-- Linux：选 `linux64.with-katago.zip`
-
-如果你已经熟悉引擎配置：
-
-- Windows：选 `windows64.without.engine.zip`
-- 其他需要完全自定义的情况：选 `Macosx.amd64.Linux.amd64.without.engine.zip`
-
-## 给维护者的发布检查点
-
-每次整理 release 时，建议至少确认：
-
-- Windows 64 位同时有 `with-katago` 和 `without.engine`
-- macOS 同时有 `arm64` 和 `amd64` 的 `.dmg`
-- Linux 64 位有 `with-katago`
-- 不再误上传 macOS `.app.zip`
-- 不再误上传“other systems”旧包
-- 发布说明里明确写出“野狐棋谱同步已修复，输入野狐ID获取”
+如果你正在整理 release 页面，建议不要再把旧的 Windows 64 位 zip 包放进主推荐列表。
 
 ## 相关文档
 
 - [安装指南](INSTALL.md)
 - [常见问题与排错](TROUBLESHOOTING.md)
 - [已验证平台](TESTED_PLATFORMS.md)
-- [获取帮助](../SUPPORT.md)
+- [发布检查清单](RELEASE_CHECKLIST.md)
 - [项目首页](../README.md)

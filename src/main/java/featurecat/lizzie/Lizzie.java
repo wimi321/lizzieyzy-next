@@ -11,6 +11,8 @@ import featurecat.lizzie.gui.LizzieFrame;
 import featurecat.lizzie.gui.LoadEngine;
 import featurecat.lizzie.gui.Message;
 import featurecat.lizzie.rules.Board;
+import featurecat.lizzie.util.KataGoAutoSetupHelper;
+import featurecat.lizzie.util.KataGoAutoSetupHelper.SetupSnapshot;
 import featurecat.lizzie.util.MultiOutputStream;
 import featurecat.lizzie.util.Utils;
 import java.awt.Font;
@@ -103,7 +105,9 @@ public class Lizzie {
       config.hostName = hostName;
       config.uiConfig.put("host-name", config.hostName);
       config.isChinese = (resourceBundle.getString("Lizzie.isChinese")).equals("yes");
-      openFirstUseSettings(true);
+      if (!completeAutomaticFirstRunSetup()) {
+        openFirstUseSettings(true);
+      }
     }
     while (Lizzie.config.needReopenFirstUseSettings) {
       if (config.useLanguage == 1)
@@ -198,6 +202,57 @@ public class Lizzie {
   public static void openFirstUseSettings(boolean isOnload) {
     firstUseSettings = new FirstUseSettings(isOnload);
     firstUseSettings.setVisible(true);
+  }
+
+  private static boolean completeAutomaticFirstRunSetup() {
+    if (hasUsableStartupConfiguration()) {
+      return finalizeAutomaticFirstRunSetup();
+    }
+
+    tryAutoSetupEngineProfile();
+    if (hasUsableStartupConfiguration()) {
+      return finalizeAutomaticFirstRunSetup();
+    }
+    return false;
+  }
+
+  private static boolean hasUsableStartupConfiguration() {
+    if (config.uiConfig.optBoolean("autoload-default", false)
+        || config.uiConfig.optBoolean("autoload-last", false)
+        || config.uiConfig.optBoolean("autoload-empty", false)) {
+      return true;
+    }
+    try {
+      return !Utils.getEngineData().isEmpty();
+    } catch (Exception e) {
+      e.printStackTrace();
+      return false;
+    }
+  }
+
+  private static void tryAutoSetupEngineProfile() {
+    try {
+      SetupSnapshot snapshot = KataGoAutoSetupHelper.inspectLocalSetup();
+      if (snapshot.hasEngine() && snapshot.hasConfigs() && snapshot.hasWeight()) {
+        KataGoAutoSetupHelper.applyAutoSetup(snapshot.withActiveWeight(snapshot.activeWeightPath));
+      }
+    } catch (Exception e) {
+      e.printStackTrace();
+    }
+  }
+
+  private static boolean finalizeAutomaticFirstRunSetup() {
+    config.firstTimeLoad = false;
+    config.needReopenFirstUseSettings = false;
+    config.uiConfig.put("first-time-load", false);
+    config.uiConfig.put("host-name", config.hostName);
+    try {
+      config.save();
+      return true;
+    } catch (IOException e) {
+      e.printStackTrace();
+      return false;
+    }
   }
 
   public static void start(int index, boolean loadDefault) {

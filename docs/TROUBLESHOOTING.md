@@ -1,13 +1,45 @@
 # 常见问题与排错
 
-这份文档优先覆盖当前维护版最常见的几类问题：安装失败、启动失败、引擎找不到、野狐抓谱无结果。
+这份文档优先覆盖当前维护版最常见的几类问题：
 
-## 1. macOS 提示“无法打开”或“已损坏”
+- Windows / macOS 安装被拦住
+- 首次启动后没自动连上 KataGo
+- 野狐抓谱没有结果
+- 不知道该用安装器、便携包还是无引擎包
+
+## 1. Windows 安装器打不开或被系统拦住
+
+先确认你下载的是：
+
+- `windows64.with-katago.installer.exe`
+
+常见处理方式：
+
+1. 右键安装器，选择“以管理员身份运行”再试一次。
+2. 如果被 SmartScreen 拦截，点击“更多信息”，再点“仍要运行”。
+3. 确认安装目录不是只读目录。
+
+如果你不想走安装器，也可以先改用 `windows64.with-katago.portable.zip`。
+
+## 2. Windows 便携包或无引擎包打开后没反应
+
+先确认你下载的是：
+
+- `windows64.with-katago.portable.zip`
+- 或 `windows64.without.engine.portable.zip`
+
+排查顺序：
+
+1. 确认你解压的是完整目录，不是只拎出一个 `.jar`。
+2. 确认是双击 `LizzieYzy Next-FoxUID.exe`，不是只看到了某个说明文件。
+3. 如果你用的是无引擎包，第一次打开后还需要自己配置引擎，这属于正常现象。
+
+## 3. macOS 提示“无法打开”或“已损坏”
 
 先确认你下载的是正确芯片版本：
 
-- Apple Silicon: `mac-arm64.with-katago.dmg`
-- Intel: `mac-amd64.with-katago.dmg`
+- Apple Silicon：`mac-arm64.with-katago.dmg`
+- Intel：`mac-amd64.with-katago.dmg`
 
 当前维护版 macOS 包是未签名 / 未公证发布包，第一次被系统拦住是正常现象。
 
@@ -18,40 +50,27 @@
 3. 找到应用拦截提示。
 4. 选择 `仍要打开`。
 
-如果你拿的是别的来源、改过名、被系统移动过位置的包，也建议重新从官方 Releases 下载再试一次。
+## 4. 软件能打开，但没有自动连上 KataGo
 
-## 2. Windows 或 Linux 打开后提示找不到 Java
+`with-katago` 包的设计目标是：
 
-先看你下载的是哪种包：
-
-- `windows64.with-katago.zip`：当前维护策略下通常带 Java
-- `windows64.without.engine.zip`：当前维护策略下通常带 Java
-- `linux64.with-katago.zip`：当前维护策略下通常带 Java
-- `windows32.without.engine.zip`：**不带 Java**
-- `Macosx.amd64.Linux.amd64.without.engine.zip`：**不带 Java**
-
-如果你下载的是后两种，请自行安装 Java 11+。
-
-## 3. 软件能打开，但没有自动连上 KataGo
-
-`with-katago` 整合包的设计目标是：
-
-- 包内同时存在引擎、权重、配置文件时
-- 程序在首次启动时自动优先使用内置 KataGo
+- 包里同时带好引擎、权重和配置文件
+- 第一次启动时优先自动配置
 
 如果没有自动连上，优先检查：
 
 1. 你是不是下载了 `without.engine` 包。
-2. 解压是否完整。
-3. 是否误删了 `weights/default.bin.gz` 或 `engines/katago/`。
-4. 是否把程序主体单独拎出来运行，导致相对路径丢失。
+2. 包内的 `weights/default.bin.gz` 是否还在。
+3. `engines/katago/` 目录是否被误删。
+4. 你是不是只把程序主体单独拎出来运行，导致相对路径丢失。
 
 最稳妥的方式是：
 
-- 不要只拷贝一个 `.jar` 单独运行
-- 直接在完整解压目录中启动
+- 不要只拿一个 `.jar` 单独运行
+- 保持完整目录结构
+- 让程序从完整安装目录或完整解压目录启动
 
-## 4. 野狐抓谱没有结果
+## 5. 野狐抓谱没有结果
 
 先确认下面几件事：
 
@@ -60,9 +79,9 @@
 3. 网络访问正常。
 4. 不是接口的临时波动。
 
-当前维护版就是按 **野狐ID** 工作的。README、界面、Issue 模板也都已经统一到这个口径。
+当前维护版统一按 **野狐ID** 工作。README、界面、Issue 模板也都已经统一到这个口径。
 
-## 5. 提示“仅支持野狐ID，请输入纯数字ID”
+## 6. 提示“仅支持野狐ID，请输入纯数字ID”
 
 这不是程序坏了，而是输入格式不对。
 
@@ -76,7 +95,7 @@
 - `fox_123`
 - `12345abc`
 
-## 6. 我明明输入了野狐ID，还是抓不到
+## 7. 我明明输入了野狐ID，还是抓不到
 
 这种情况常见于：
 
@@ -94,7 +113,7 @@
    - 野狐ID
    - 报错截图
 
-## 7. 想替换权重文件
+## 8. 想替换权重文件
 
 可以直接替换默认权重，但请注意文件名和路径。
 
@@ -105,30 +124,14 @@
 
 替换后如果启动异常，请先恢复原版权重确认是不是新权重本身的问题。
 
-## 8. 想用自己熟悉的引擎，不用内置 KataGo
+## 9. 想用自己熟悉的引擎，不用内置 KataGo
 
-建议直接下载 `without.engine` 包，或者在整合包里手动改引擎设置。
+推荐直接下载：
+
+- `windows64.without.engine.portable.zip`
+- 或 `Macosx.amd64.Linux.amd64.without.engine.zip`
 
 如果你只是想换权重，保留内置 KataGo 即可。
-如果你想换成别的 GTP 引擎，`without.engine` 会更干净。
-
-## 9. 双击没反应，怎么拿到更多信息
-
-### Windows
-
-尽量从包里的 `.bat` 启动，不要只点 `.jar`。
-
-### Linux
-
-从终端启动：
-
-```bash
-./start-linux64.sh
-```
-
-### macOS
-
-先按安装文档完成“仍要打开”，再重试。
 
 ## 10. 反馈问题时最好带什么
 

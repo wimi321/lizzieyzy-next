@@ -5,14 +5,14 @@ import featurecat.lizzie.util.Utils;
 import java.io.IOException;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
 import org.json.JSONObject;
 
 public class GetFoxRequest {
   private static final String BASE_URL = "https://h5.foxwq.com/yehuDiamond/chessbook_local";
 
-  private ScheduledExecutorService executor;
+  private ExecutorService executor;
   private final FoxKifuDownload foxKifuDownload;
 
   public GetFoxRequest(FoxKifuDownload foxKifuDownload) {
@@ -25,10 +25,16 @@ public class GetFoxRequest {
   }
 
   public void sendCommand(String command) {
-    if (command == null || command.trim().isEmpty()) {
+    if (command == null || command.trim().isEmpty() || executor == null || executor.isShutdown()) {
       return;
     }
     executor.execute(() -> handleCommand(command.trim()));
+  }
+
+  public void shutdown() {
+    if (executor != null && !executor.isShutdown()) {
+      executor.shutdownNow();
+    }
   }
 
   private void handleCommand(String command) {

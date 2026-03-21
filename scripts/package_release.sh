@@ -11,6 +11,7 @@ fi
 
 DATE_TAG="${1:-$(date +%F)}"
 JAR_PATH="${2:-target/lizzie-yzy2.5.3-shaded.jar}"
+LEGACY_WINDOWS64_ZIP="${LEGACY_WINDOWS64_ZIP:-0}"
 
 if [[ ! -f "$JAR_PATH" ]]; then
   echo "Jar not found: $JAR_PATH"
@@ -213,31 +214,33 @@ else
   MAC_LINUX_RUNTIME_NOTE="No bundled KataGo in this package."
 fi
 
-make_bundle \
-  "$DATE_TAG-windows64.$WINDOWS64_FLAVOR" \
-  "start-windows64.bat" \
-  "@echo off
+if [[ "$LEGACY_WINDOWS64_ZIP" == "1" ]]; then
+  make_bundle \
+    "$DATE_TAG-windows64.$WINDOWS64_FLAVOR" \
+    "start-windows64.bat" \
+    "@echo off
 setlocal
 cd /d %~dp0
 set \"JAVA_CMD=java\"
 if exist \"Lizzieyzy\\runtime\\windows-x64\\bin\\java.exe\" set \"JAVA_CMD=Lizzieyzy\\runtime\\windows-x64\\bin\\java.exe\"
 \"%JAVA_CMD%\" -jar \"Lizzieyzy\\lizzie-yzy2.5.3-shaded.jar\"" \
-  "$WINDOWS64_RUNTIME_NOTE" \
-  "$( [[ "$WINDOWS64_FLAVOR" == "with-katago" ]] && echo "windows-x64" )" \
-  "windows-x64"
+    "$WINDOWS64_RUNTIME_NOTE" \
+    "$( [[ "$WINDOWS64_FLAVOR" == "with-katago" ]] && echo "windows-x64" )" \
+    "windows-x64"
 
-make_bundle \
-  "$DATE_TAG-windows64.without.engine" \
-  "start-windows64.bat" \
-  "@echo off
+  make_bundle \
+    "$DATE_TAG-windows64.without.engine" \
+    "start-windows64.bat" \
+    "@echo off
 setlocal
 cd /d %~dp0
 set \"JAVA_CMD=java\"
 if exist \"Lizzieyzy\\runtime\\windows-x64\\bin\\java.exe\" set \"JAVA_CMD=Lizzieyzy\\runtime\\windows-x64\\bin\\java.exe\"
 \"%JAVA_CMD%\" -jar \"Lizzieyzy\\lizzie-yzy2.5.3-shaded.jar\"" \
-  "No bundled KataGo in this package. Bundled Java runtime included for Windows x64 if present." \
-  "" \
-  "windows-x64"
+    "No bundled KataGo in this package. Bundled Java runtime included for Windows x64 if present." \
+    "" \
+    "windows-x64"
+fi
 
 make_bundle \
   "$DATE_TAG-windows32.$WINDOWS32_FLAVOR" \
@@ -319,3 +322,6 @@ done
 
 echo "Built release zips:"
 ls -lh "$OUT_DIR"
+if [[ "$LEGACY_WINDOWS64_ZIP" != "1" ]]; then
+  echo "Skipped legacy Windows x64 zip packages. Use scripts/package_windows_exe.sh for current Windows assets."
+fi
