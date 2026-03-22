@@ -3533,6 +3533,13 @@ public class LizzieFrame extends JFrame {
       Utils.showMsg(Lizzie.resourceBundle.getString("LizzieFrame.openFileFailed.inGame"));
       return;
     }
+    final boolean shouldResumeAnalysisAfterLoad =
+        !Lizzie.board.isLoadingFile
+            && !isBatchAna
+            && !isEnginePKSgfStart
+            && !EngineManager.isEngineGame()
+            && !isPlayingAgainstLeelaz
+            && !isAnaPlayingAgainstLeelaz;
     boolean oriSound = Lizzie.config.playSound;
     canGoAfterload = false;
     Lizzie.config.playSound = false;
@@ -3584,10 +3591,18 @@ public class LizzieFrame extends JFrame {
             try {
               Thread.sleep(1000);
             } catch (InterruptedException e) {
-              // TODO Auto-generated catch block
-              e.printStackTrace();
+              Thread.currentThread().interrupt();
+              return;
             }
             canGoAfterload = true;
+            if (shouldResumeAnalysisAfterLoad) {
+              SwingUtilities.invokeLater(
+                  new Runnable() {
+                    public void run() {
+                      resumeAnalysisAfterLoad();
+                    }
+                  });
+            }
           }
         };
     Thread thread = new Thread(runnable);
@@ -12143,6 +12158,28 @@ public class LizzieFrame extends JFrame {
     kataGoAutoSetupDialog.refreshState();
     kataGoAutoSetupDialog.setVisible(true);
     kataGoAutoSetupDialog.toFront();
+  }
+
+  public void openKataGoWeightDownload() {
+    if (kataGoAutoSetupDialog == null || !kataGoAutoSetupDialog.isDisplayable()) {
+      kataGoAutoSetupDialog = new KataGoAutoSetupDialog(this);
+    }
+    kataGoAutoSetupDialog.refreshState();
+    kataGoAutoSetupDialog.setVisible(true);
+    kataGoAutoSetupDialog.toFront();
+    kataGoAutoSetupDialog.startRecommendedWeightDownload();
+  }
+
+  private void resumeAnalysisAfterLoad() {
+    if (Lizzie.leelaz == null
+        || EngineManager.isEmpty
+        || EngineManager.isEngineGame()
+        || isPlayingAgainstLeelaz
+        || isAnaPlayingAgainstLeelaz) {
+      return;
+    }
+    Lizzie.leelaz.ponder();
+    refresh();
   }
 
   public void tryToRefreshVariation() {

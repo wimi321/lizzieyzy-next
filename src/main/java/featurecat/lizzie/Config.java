@@ -2374,7 +2374,7 @@ public class Config {
     ui.put("main-window-position", new JSONArray("[]"));
     ui.put("gtp-console-position", new JSONArray("[]"));
     ui.put("window-maximized", false);
-    ui.put("gtp-console-opened", true);
+    ui.put("gtp-console-opened", false);
 
     config.put("filesystem", filesys);
 

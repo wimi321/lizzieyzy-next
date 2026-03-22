@@ -62,6 +62,7 @@ public class Lizzie {
     mainArgs = args;
     ensureWritableWorkingDir();
     config = new Config();
+    Utils.applyMaintainedDefaultSettings();
     if (config.logConsoleToFile) {
       PrintStream oldPrintStream = System.out;
       FileOutputStream bos =

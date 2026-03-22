@@ -8,3 +8,4 @@ weights/
 config.txt
 persist
 save/
+gtp_logs/

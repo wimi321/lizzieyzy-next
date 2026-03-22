@@ -26,12 +26,14 @@ import java.awt.Graphics;
 import java.awt.Graphics2D;
 import java.awt.Window;
 import java.awt.geom.AffineTransform;
+import java.io.BufferedInputStream;
 import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStreamWriter;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -65,6 +67,9 @@ public class Utils {
   public static String iv2 = "s6st73f49adc4c5d";
   private static int msemaphoretryroom = 1;
   private static boolean alertedNoByoyomiSoundFile = false;
+  private static final int MAX_AUTO_KATAGO_THREADS = 16;
+  private static final String GTP_CONSOLE_MIGRATION_KEY = "migrated-hide-gtp-console-default-v2";
+  private static final String SOUND_RESOURCE_ROOT = "/assets/sound";
 
   public static void ajustScale(Graphics g) {
     if (Lizzie.isMultiScreen) {
@@ -105,6 +110,107 @@ public class Utils {
     if (winrateFontName != null
         && (!(winrateFontName.equals("Lizzie默认") || winrateFontName.equals("Lizzie Default")))) {
       LizzieFrame.winrateFont = new Font(winrateFontName, Font.BOLD, 12);
+    }
+  }
+
+  public static void applyMaintainedDefaultSettings() {
+    boolean changed = false;
+    if (hideGtpConsoleByDefaultOnce()) {
+      changed = true;
+    }
+    if (applyRecommendedKataGoThreads(false)) {
+      changed = true;
+    }
+    if (changed) {
+      persistConfigQuietly();
+    }
+  }
+
+  public static boolean applyRecommendedKataGoThreads(boolean force) {
+    if (Lizzie.config == null || Lizzie.config.uiConfig == null) {
+      return false;
+    }
+
+    String currentValue =
+        Lizzie.config.txtKataEngineThreads == null ? "" : Lizzie.config.txtKataEngineThreads.trim();
+    boolean hasValidValue = isPositiveInteger(currentValue);
+    String resolvedValue = currentValue;
+    if (force || !hasValidValue) {
+      resolvedValue = String.valueOf(getRecommendedKataGoThreads());
+    }
+
+    boolean changed = false;
+    if (!resolvedValue.equals(currentValue)) {
+      Lizzie.config.txtKataEngineThreads = resolvedValue;
+      Lizzie.config.uiConfig.put("txt-kata-engine-threads", resolvedValue);
+      changed = true;
+    }
+    if (!Lizzie.config.autoLoadKataEngineThreads) {
+      Lizzie.config.autoLoadKataEngineThreads = true;
+      Lizzie.config.uiConfig.put("autoload-kata-engine-threads", true);
+      changed = true;
+    }
+    if (Lizzie.config.firstLoadKataGo) {
+      Lizzie.config.firstLoadKataGo = false;
+      Lizzie.config.uiConfig.put("first-load-katago", false);
+      changed = true;
+    }
+    return changed;
+  }
+
+  public static int getRecommendedKataGoThreads() {
+    int processors = Math.max(1, Runtime.getRuntime().availableProcessors());
+    if (processors <= 4) {
+      return processors;
+    }
+    return Math.max(2, Math.min(MAX_AUTO_KATAGO_THREADS, processors - 1));
+  }
+
+  public static void persistConfigQuietly() {
+    if (Lizzie.config == null) {
+      return;
+    }
+    try {
+      Lizzie.config.save();
+    } catch (IOException e) {
+      e.printStackTrace();
+    }
+  }
+
+  private static boolean hideGtpConsoleByDefaultOnce() {
+    if (Lizzie.config == null
+        || Lizzie.config.uiConfig == null
+        || Lizzie.config.persistedUi == null
+        || Lizzie.config.uiConfig.optBoolean(GTP_CONSOLE_MIGRATION_KEY, false)) {
+      return false;
+    }
+    Lizzie.config.persistedUi.put("gtp-console-opened", false);
+    Lizzie.config.uiConfig.put(GTP_CONSOLE_MIGRATION_KEY, true);
+    persistUiStateQuietly();
+    return true;
+  }
+
+  private static boolean isPositiveInteger(String value) {
+    if (value == null || value.trim().isEmpty()) {
+      return false;
+    }
+    try {
+      return Integer.parseInt(value.trim()) > 0;
+    } catch (NumberFormatException e) {
+      return false;
+    }
+  }
+
+  private static void persistUiStateQuietly() {
+    if (Lizzie.config == null || Lizzie.config.persisted == null) {
+      return;
+    }
+    try {
+      Files.write(
+          Paths.get(Lizzie.config.getPersistFilePath()),
+          Lizzie.config.persisted.toString(2).getBytes(StandardCharsets.UTF_8));
+    } catch (IOException e) {
+      e.printStackTrace();
     }
   }
 
@@ -804,10 +910,25 @@ public class Utils {
     }
     String filePath = courseFile + wav;
     if (!filePath.equals("")) {
-      // Get audio input stream
-      AudioInputStream audioInputStream = null;
-      try {
-        audioInputStream = AudioSystem.getAudioInputStream(new File(filePath));
+      try (AudioInputStream audioInputStream = openAudioInputStream(filePath, wav)) {
+        AudioFormat audioFormat = audioInputStream.getFormat();
+        DataLine.Info dataLineInfo =
+            new DataLine.Info(SourceDataLine.class, audioFormat, AudioSystem.NOT_SPECIFIED);
+        SourceDataLine sourceDataLine = (SourceDataLine) AudioSystem.getLine(dataLineInfo);
+        try {
+          sourceDataLine.open(audioFormat);
+          sourceDataLine.start();
+          int count;
+          byte tempBuffer[] = new byte[8192];
+          while ((count = audioInputStream.read(tempBuffer, 0, tempBuffer.length)) != -1) {
+            if (count > 0) {
+              sourceDataLine.write(tempBuffer, 0, count);
+            }
+          }
+          sourceDataLine.drain();
+        } finally {
+          sourceDataLine.close();
+        }
       } catch (Exception e) {
         if (isByoyomi) {
           if (!alertedNoByoyomiSoundFile) {
@@ -821,32 +942,29 @@ public class Utils {
         }
         return;
       }
-      //      Clip clip = AudioSystem.getClip();
-      //      clip.open(audioInputStream);
-      //      FloatControl gainControl = (FloatControl)
-      // clip.getControl(FloatControl.Type.MASTER_GAIN);
-      //      gainControl.setValue(-15.0f); // Reduce volume by 20 decibels.
-      //      clip.start();
-      // Get audio coding object
-      AudioFormat audioFormat = audioInputStream.getFormat();
-      // Set data entry
-      DataLine.Info dataLineInfo =
-          new DataLine.Info(SourceDataLine.class, audioFormat, AudioSystem.NOT_SPECIFIED);
-      SourceDataLine sourceDataLine = (SourceDataLine) AudioSystem.getLine(dataLineInfo);
-      sourceDataLine.open(audioFormat);
-      sourceDataLine.start();
-      // Read from the data sent to the mixer input stream
-      int count;
-      byte tempBuffer[] = new byte[8192];
-      while ((count = audioInputStream.read(tempBuffer, 0, tempBuffer.length)) != -1) {
-        if (count > 0) {
-          sourceDataLine.write(tempBuffer, 0, count);
-        }
-      }
-      // Empty the data buffer, and close the input
-      sourceDataLine.drain();
-      sourceDataLine.close();
     }
+  }
+
+  private static AudioInputStream openAudioInputStream(String filePath, String wav)
+      throws Exception {
+    File soundFile = new File(filePath);
+    if (soundFile.isFile()) {
+      return AudioSystem.getAudioInputStream(soundFile);
+    }
+
+    String normalized = wav.replace('\\', '/');
+    if (!normalized.startsWith("/")) {
+      normalized = "/" + normalized;
+    }
+    String resourcePath =
+        normalized.startsWith("/sound/")
+            ? SOUND_RESOURCE_ROOT + normalized.substring("/sound".length())
+            : SOUND_RESOURCE_ROOT + normalized;
+    InputStream soundStream = Utils.class.getResourceAsStream(resourcePath);
+    if (soundStream == null) {
+      throw new IOException("Missing bundled sound resource: " + resourcePath);
+    }
+    return AudioSystem.getAudioInputStream(new BufferedInputStream(soundStream));
   }
 
   private static Path getDistFile(String path, String newFolderName) throws IOException {

@@ -998,18 +998,8 @@ public class Leelaz {
       //							sendCommandToLeelazWithOutLog("lizzie_use");
       if (params[1].toLowerCase().startsWith("kata")) {
         canAddPlayer = true;
-        if (Lizzie.config.firstLoadKataGo) {
-          Lizzie.config.firstLoadKataGo = false;
-          SwingUtilities.invokeLater(
-              new Runnable() {
-                public void run() {
-                  Utils.showHtmlMessage(
-                      Lizzie.resourceBundle.getString("Message.title"),
-                      Lizzie.resourceBundle.getString("Leelaz.kataGoPerformance"),
-                      Lizzie.frame);
-                }
-              });
-          Lizzie.config.uiConfig.put("first-load-katago", Lizzie.config.firstLoadKataGo);
+        if (Utils.applyRecommendedKataGoThreads(false)) {
+          Utils.persistConfigQuietly();
         }
         if (params[1].startsWith("KataGoPda")) {
           isKatagoCustom = true;
