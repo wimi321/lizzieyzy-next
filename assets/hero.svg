@@ -29,10 +29,10 @@
   <rect width="1280" height="720" rx="36" fill="url(#cool)"/>
 
   <text x="96" y="106" font-family="SF Pro Display, PingFang SC, Hiragino Sans GB, Microsoft YaHei, sans-serif" font-size="20" font-weight="600" letter-spacing="0.04em" fill="#6E6E73">LizzieYzy Next-FoxUID</text>
-  <text x="96" y="206" font-family="SF Pro Display, PingFang SC, Hiragino Sans GB, Microsoft YaHei, sans-serif" font-size="72" font-weight="700" fill="#1D1D1F">原 lizzieyzy 的</text>
-  <text x="96" y="286" font-family="SF Pro Display, PingFang SC, Hiragino Sans GB, Microsoft YaHei, sans-serif" font-size="72" font-weight="700" fill="#1D1D1F">持续维护版</text>
-  <text x="96" y="356" font-family="SF Pro Text, PingFang SC, Hiragino Sans GB, Microsoft YaHei, sans-serif" font-size="28" font-weight="500" fill="#6E6E73">把原版已经失效的野狐棋谱同步重新做回可用，</text>
-  <text x="96" y="396" font-family="SF Pro Text, PingFang SC, Hiragino Sans GB, Microsoft YaHei, sans-serif" font-size="28" font-weight="500" fill="#6E6E73">也把安装和第一次使用尽量做简单。</text>
+  <text x="96" y="206" font-family="SF Pro Display, PingFang SC, Hiragino Sans GB, Microsoft YaHei, sans-serif" font-size="72" font-weight="700" fill="#1D1D1F">让 lizzieyzy</text>
+  <text x="96" y="286" font-family="SF Pro Display, PingFang SC, Hiragino Sans GB, Microsoft YaHei, sans-serif" font-size="72" font-weight="700" fill="#1D1D1F">重新变得好用</text>
+  <text x="96" y="356" font-family="SF Pro Text, PingFang SC, Hiragino Sans GB, Microsoft YaHei, sans-serif" font-size="28" font-weight="500" fill="#6E6E73">把原版已经失效的野狐抓谱修回来，</text>
+  <text x="96" y="396" font-family="SF Pro Text, PingFang SC, Hiragino Sans GB, Microsoft YaHei, sans-serif" font-size="28" font-weight="500" fill="#6E6E73">把安装、启动和内置 KataGo 也做得更省事。</text>
 
   <rect x="96" y="450" width="164" height="46" rx="23" fill="#173C34"/>
   <text x="178" y="480" text-anchor="middle" font-family="SF Pro Text, PingFang SC, Hiragino Sans GB, Microsoft YaHei, sans-serif" font-size="18" font-weight="600" fill="#FFFFFF">野狐昵称</text>
@@ -42,7 +42,7 @@
   <text x="567" y="480" text-anchor="middle" font-family="SF Pro Text, PingFang SC, Hiragino Sans GB, Microsoft YaHei, sans-serif" font-size="18" font-weight="600" fill="#FFFFFF">内置 KataGo</text>
 
   <text x="96" y="544" font-family="SF Pro Text, PingFang SC, Hiragino Sans GB, Microsoft YaHei, sans-serif" font-size="22" font-weight="600" fill="#4C5057">Windows / macOS / Linux</text>
-  <text x="96" y="580" font-family="SF Pro Text, PingFang SC, Hiragino Sans GB, Microsoft YaHei, sans-serif" font-size="18" font-weight="500" fill="#7A7D84">下载、打开、输入野狐昵称，然后继续分析和复盘。</text>
+  <text x="96" y="580" font-family="SF Pro Text, PingFang SC, Hiragino Sans GB, Microsoft YaHei, sans-serif" font-size="18" font-weight="500" fill="#7A7D84">下载、打开、输入野狐昵称，就能继续抓谱、分析、复盘。</text>
 
   <g filter="url(#shadowLarge)">
     <rect x="738" y="72" width="462" height="576" rx="38" fill="#FFFFFF" fill-opacity="0.9" stroke="#EFEFF3"/>
@@ -93,7 +93,7 @@
   <text x="960" y="608" font-family="SF Pro Text, PingFang SC, Hiragino Sans GB, Microsoft YaHei, sans-serif" font-size="16" font-weight="500" fill="#6E6E73">默认权重</text>
 
   <rect x="1066" y="522" width="104" height="90" rx="24" fill="#F5F5F7"/>
-  <text x="1092" y="556" font-family="SF Pro Text, PingFang SC, Hiragino Sans GB, Microsoft YaHei, sans-serif" font-size="18" font-weight="600" fill="#1D1D1F">继续</text>
-  <text x="1092" y="584" font-family="SF Pro Text, PingFang SC, Hiragino Sans GB, Microsoft YaHei, sans-serif" font-size="16" font-weight="500" fill="#6E6E73">发版</text>
-  <text x="1092" y="608" font-family="SF Pro Text, PingFang SC, Hiragino Sans GB, Microsoft YaHei, sans-serif" font-size="16" font-weight="500" fill="#6E6E73">维护</text>
+  <text x="1092" y="556" font-family="SF Pro Text, PingFang SC, Hiragino Sans GB, Microsoft YaHei, sans-serif" font-size="18" font-weight="600" fill="#1D1D1F">直接</text>
+  <text x="1092" y="584" font-family="SF Pro Text, PingFang SC, Hiragino Sans GB, Microsoft YaHei, sans-serif" font-size="16" font-weight="500" fill="#6E6E73">输入昵称</text>
+  <text x="1092" y="608" font-family="SF Pro Text, PingFang SC, Hiragino Sans GB, Microsoft YaHei, sans-serif" font-size="16" font-weight="500" fill="#6E6E73">继续复盘</text>
 </svg>

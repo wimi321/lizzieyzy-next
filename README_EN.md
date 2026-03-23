@@ -14,9 +14,9 @@
 </p>
 
 <p align="center">
-  <strong>Make LizzieYzy simple and useful again.</strong><br/>
-  The original project can no longer fetch Fox games for many users. This maintained fork restores that practical path and keeps first launch much simpler.<br/>
-  <strong>download it, enter a Fox nickname, fetch games, review again.</strong>
+  <strong>Make LizzieYzy useful again.</strong><br/>
+  After years without maintenance, the original project stopped being practical for many Fox users. This maintained fork restores the game-fetching path first, then makes installation, first launch, and bundled KataGo much easier.<br/>
+  <strong>Download it, enter a Fox nickname, and keep reviewing.</strong>
 </p>
 
 <p align="center">
@@ -58,14 +58,14 @@ Quick rule:
 - Mac: choose Apple Silicon or Intel first
 - Linux: choose `with-katago.zip`
 
-## What This Maintained Fork Fixes
+## Why Many Users Start Here
 
-- **Fox sync works again**
-  The original fetch path is broken for many users. This fork restores the common public-game workflow.
-- **You no longer need to know the account number first**
-  Enter a Fox nickname and the app resolves the matching account before fetching recent public games.
-- **First launch is less work**
-  The app now tries to prepare the bundled analysis environment before asking you to configure anything by hand.
+- **It fixes the problem that matters most first**
+  Many users could no longer fetch Fox games at all. This fork restores that common workflow before anything else.
+- **It removes the step normal users usually get stuck on**
+  You can type the Fox nickname you already know. The app resolves the account for you instead of asking for the numeric ID first.
+- **It makes the first run far less annoying**
+  The main bundled packages already include KataGo and a default weight, so most users can get moving much faster.
 
 ## Start In 3 Steps
 

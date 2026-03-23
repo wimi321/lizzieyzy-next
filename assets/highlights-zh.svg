@@ -1,0 +1,62 @@
+<svg width="1280" height="720" viewBox="0 0 1280 720" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="156" y1="54" x2="1122" y2="654" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FBFBFD"/>
+      <stop offset="1" stop-color="#F2F4F7"/>
+    </linearGradient>
+    <radialGradient id="warm" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(1016 120) rotate(148) scale(372 236)">
+      <stop stop-color="#FFE8C2" stop-opacity="0.95"/>
+      <stop offset="1" stop-color="#FFE8C2" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="cool" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(236 132) rotate(40) scale(360 248)">
+      <stop stop-color="#E7F0FF" stop-opacity="0.92"/>
+      <stop offset="1" stop-color="#E7F0FF" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="cardShadow" x="0" y="0" width="1280" height="720" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="18" stdDeviation="24" flood-color="#111111" flood-opacity="0.08"/>
+    </filter>
+  </defs>
+
+  <rect width="1280" height="720" rx="36" fill="url(#bg)"/>
+  <rect width="1280" height="720" rx="36" fill="url(#warm)"/>
+  <rect width="1280" height="720" rx="36" fill="url(#cool)"/>
+
+  <text x="104" y="124" font-family="SF Pro Display, PingFang SC, Hiragino Sans GB, Microsoft YaHei, sans-serif" font-size="20" font-weight="600" letter-spacing="0.04em" fill="#6E6E73">Why People Start Here</text>
+  <text x="104" y="212" font-family="SF Pro Display, PingFang SC, Hiragino Sans GB, Microsoft YaHei, sans-serif" font-size="54" font-weight="700" fill="#1D1D1F">为什么很多人先看这个维护版</text>
+  <text x="104" y="274" font-family="SF Pro Text, PingFang SC, Hiragino Sans GB, Microsoft YaHei, sans-serif" font-size="26" font-weight="500" fill="#6E6E73">因为它先把最常用、最影响体验的那几件事修好了。</text>
+
+  <g filter="url(#cardShadow)">
+    <rect x="104" y="344" width="248" height="238" rx="30" fill="#FFFFFF" fill-opacity="0.92" stroke="#ECECF1"/>
+    <rect x="376" y="344" width="248" height="238" rx="30" fill="#FFFFFF" fill-opacity="0.92" stroke="#ECECF1"/>
+    <rect x="648" y="344" width="248" height="238" rx="30" fill="#FFFFFF" fill-opacity="0.92" stroke="#ECECF1"/>
+    <rect x="920" y="344" width="248" height="238" rx="30" fill="#FFFFFF" fill-opacity="0.92" stroke="#ECECF1"/>
+  </g>
+
+  <rect x="136" y="376" width="78" height="32" rx="16" fill="#173C34"/>
+  <text x="175" y="398" text-anchor="middle" font-family="SF Pro Text, PingFang SC, Hiragino Sans GB, Microsoft YaHei, sans-serif" font-size="16" font-weight="600" fill="#FFFFFF">已修回</text>
+  <text x="136" y="456" font-family="SF Pro Display, PingFang SC, Hiragino Sans GB, Microsoft YaHei, sans-serif" font-size="34" font-weight="700" fill="#1D1D1F">野狐抓谱</text>
+  <text x="136" y="498" font-family="SF Pro Display, PingFang SC, Hiragino Sans GB, Microsoft YaHei, sans-serif" font-size="34" font-weight="700" fill="#1D1D1F">重新可用</text>
+  <text x="136" y="542" font-family="SF Pro Text, PingFang SC, Hiragino Sans GB, Microsoft YaHei, sans-serif" font-size="18" font-weight="500" fill="#6E6E73">原版很多人已经抓不到。</text>
+  <text x="136" y="570" font-family="SF Pro Text, PingFang SC, Hiragino Sans GB, Microsoft YaHei, sans-serif" font-size="18" font-weight="500" fill="#6E6E73">现在常用抓谱链路已恢复。</text>
+
+  <rect x="408" y="376" width="88" height="32" rx="16" fill="#234A7A"/>
+  <text x="452" y="398" text-anchor="middle" font-family="SF Pro Text, PingFang SC, Hiragino Sans GB, Microsoft YaHei, sans-serif" font-size="16" font-weight="600" fill="#FFFFFF">更直接</text>
+  <text x="408" y="456" font-family="SF Pro Display, PingFang SC, Hiragino Sans GB, Microsoft YaHei, sans-serif" font-size="34" font-weight="700" fill="#1D1D1F">直接输入</text>
+  <text x="408" y="498" font-family="SF Pro Display, PingFang SC, Hiragino Sans GB, Microsoft YaHei, sans-serif" font-size="34" font-weight="700" fill="#1D1D1F">野狐昵称</text>
+  <text x="408" y="542" font-family="SF Pro Text, PingFang SC, Hiragino Sans GB, Microsoft YaHei, sans-serif" font-size="18" font-weight="500" fill="#6E6E73">不需要先去找数字账号。</text>
+  <text x="408" y="570" font-family="SF Pro Text, PingFang SC, Hiragino Sans GB, Microsoft YaHei, sans-serif" font-size="18" font-weight="500" fill="#6E6E73">程序会自动匹配账号。</text>
+
+  <rect x="680" y="376" width="88" height="32" rx="16" fill="#7B4B1C"/>
+  <text x="724" y="398" text-anchor="middle" font-family="SF Pro Text, PingFang SC, Hiragino Sans GB, Microsoft YaHei, sans-serif" font-size="16" font-weight="600" fill="#FFFFFF">更省事</text>
+  <text x="680" y="456" font-family="SF Pro Display, PingFang SC, Hiragino Sans GB, Microsoft YaHei, sans-serif" font-size="34" font-weight="700" fill="#1D1D1F">Windows</text>
+  <text x="680" y="498" font-family="SF Pro Display, PingFang SC, Hiragino Sans GB, Microsoft YaHei, sans-serif" font-size="34" font-weight="700" fill="#1D1D1F">直接下安装器</text>
+  <text x="680" y="542" font-family="SF Pro Text, PingFang SC, Hiragino Sans GB, Microsoft YaHei, sans-serif" font-size="18" font-weight="500" fill="#6E6E73">双击安装，装好就能打开。</text>
+  <text x="680" y="570" font-family="SF Pro Text, PingFang SC, Hiragino Sans GB, Microsoft YaHei, sans-serif" font-size="18" font-weight="500" fill="#6E6E73">不用先研究怎么启动。</text>
+
+  <rect x="952" y="376" width="88" height="32" rx="16" fill="#5A6F2C"/>
+  <text x="996" y="398" text-anchor="middle" font-family="SF Pro Text, PingFang SC, Hiragino Sans GB, Microsoft YaHei, sans-serif" font-size="16" font-weight="600" fill="#FFFFFF">更好上手</text>
+  <text x="952" y="456" font-family="SF Pro Display, PingFang SC, Hiragino Sans GB, Microsoft YaHei, sans-serif" font-size="34" font-weight="700" fill="#1D1D1F">整合包已内置</text>
+  <text x="952" y="498" font-family="SF Pro Display, PingFang SC, Hiragino Sans GB, Microsoft YaHei, sans-serif" font-size="34" font-weight="700" fill="#1D1D1F">KataGo</text>
+  <text x="952" y="542" font-family="SF Pro Text, PingFang SC, Hiragino Sans GB, Microsoft YaHei, sans-serif" font-size="18" font-weight="500" fill="#6E6E73">默认权重也已经带好。</text>
+  <text x="952" y="570" font-family="SF Pro Text, PingFang SC, Hiragino Sans GB, Microsoft YaHei, sans-serif" font-size="18" font-weight="500" fill="#6E6E73">第一次打开会自动准备。</text>
+</svg>
