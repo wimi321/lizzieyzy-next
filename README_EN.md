@@ -14,8 +14,8 @@
 </p>
 
 <p align="center">
-  <strong>Make LizzieYzy useful again.</strong><br/>
-  After years without maintenance, the original project stopped being practical for many Fox users. This maintained fork restores the game-fetching path first, then makes installation, first launch, and bundled KataGo much easier.<br/>
+  <strong>A maintained LizzieYzy build that works again for everyday Fox use.</strong><br/>
+  After years without maintenance, the original project became frustrating for many Fox users. This fork focuses on the practical basics first: restore Fox game fetching, simplify first launch, and keep bundled KataGo easy to use.<br/>
   <strong>Download it, enter a Fox nickname, and keep reviewing.</strong>
 </p>
 
@@ -31,9 +31,9 @@
 > Start with these 3 points:
 > - Most Windows users should download `windows64.with-katago.installer.exe`
 > - You can now enter a **Fox nickname** directly. The app resolves the account and fetches recent public games automatically.
-> - First launch now tries to prepare the bundled analysis setup for you.
+> - The recommended bundles already include KataGo and try to finish the first-launch setup automatically.
 
-## Community And Project Status
+## Start Here
 
 | If you want to... | Go here |
 | --- | --- |
@@ -43,11 +43,11 @@
 | See what the project is focusing on next | [ROADMAP.md](ROADMAP.md) |
 | Help maintain the project | [CONTRIBUTING.md](CONTRIBUTING.md) |
 
-This repository is deliberately focused on a few practical goals:
+This repository stays focused on a few practical goals:
 
-- keep the LizzieYzy workflow maintained for the users who still rely on it
+- keep the LizzieYzy workflow alive for people who still use it every day
 - keep Fox game fetching, bundled KataGo, and release packages usable for normal users
-- reduce setup friction instead of assuming everyone wants to hand-configure everything
+- reduce setup friction instead of assuming everyone wants to build a custom environment
 
 ## Most Users Start Here
 
@@ -88,14 +88,14 @@ At a glance:
 - `without.engine.installer.exe`: for people who want installer flow but their own engine
 - `without.engine.portable.zip`: for people who already manage their own engine and do not want installation
 
-## Why Many Users Start Here
+## Why This Fork Is Worth Looking At
 
-- **It fixes the problem that matters most first**
-  Many users could no longer fetch Fox games at all. This fork restores that common workflow before anything else.
-- **It removes the step normal users usually get stuck on**
-  You can type the Fox nickname you already know. The app resolves the account for you instead of asking for the numeric ID first.
-- **It makes the first run far less annoying**
-  The main bundled packages already include KataGo and a default weight, so most users can get moving much faster.
+- **It fixes the part that stopped the original build from being useful**
+  Many users could no longer fetch Fox games at all. This fork restores that workflow first.
+- **It asks for the information users actually know**
+  Enter the Fox nickname you already know. The app resolves the matching account automatically.
+- **It keeps the familiar LizzieYzy workflow, with less setup pain**
+  The main bundled packages already include KataGo and a default weight, so most users can open the app and start reviewing faster.
 
 ## Start In 3 Steps
 

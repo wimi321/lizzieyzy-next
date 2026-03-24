@@ -295,9 +295,11 @@ public class Lizzie {
             try {
               Lizzie.engineManager = new EngineManager(Lizzie.config, index, loadDefault);
             } catch (Exception e) {
+              e.printStackTrace();
               try {
                 Message msg = new Message();
-                msg.setMessage(resourceBundle.getString("Lizzie.engineFailed"));
+                msg.setMessage(
+                    resourceBundle.getString("Lizzie.engineFailed") + "\n" + e.getMessage());
                 //  msg.setVisible(true);
                 Lizzie.engineManager = new EngineManager(Lizzie.config, -1, false);
                 //  frame.refresh();

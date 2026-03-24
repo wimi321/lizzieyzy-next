@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from PIL import Image, ImageDraw, ImageFilter
+import shutil
 import subprocess
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -135,6 +136,10 @@ def save_ico(icon: Image.Image) -> None:
 
 
 def save_icns(icon: Image.Image) -> None:
+    if shutil.which('iconutil') is None:
+        print('iconutil not found, keeping existing app-icon.icns')
+        return
+
     if ICONSET.exists():
         for path in ICONSET.iterdir():
             path.unlink()

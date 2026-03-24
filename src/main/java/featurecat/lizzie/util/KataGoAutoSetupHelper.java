@@ -19,8 +19,10 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
@@ -53,9 +55,15 @@ public final class KataGoAutoSetupHelper {
       Pattern.compile("<td[^>]*>(.*?)</td>", Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
   private static final Pattern HREF_PATTERN =
       Pattern.compile("<a[^>]*href=\"([^\"]+)\"", Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
+  private static final Pattern WEIGHT_FAMILY_PATTERN =
+      Pattern.compile("\\b(b\\d+)c\\d+", Pattern.CASE_INSENSITIVE);
   private static final Pattern VERSION_MODEL_SOURCE_PATTERN =
       Pattern.compile("^Model source:\\s*(.+)$", Pattern.CASE_INSENSITIVE | Pattern.MULTILINE);
   private static final int MAX_OFFICIAL_WEIGHTS = 40;
+  private static final int MAX_OFFICIAL_WEIGHT_FAMILIES = 5;
+  private static final int MAX_OFFICIAL_WEIGHTS_PER_FAMILY = 3;
+  private static final List<String> PREFERRED_WEIGHT_FAMILIES =
+      Collections.unmodifiableList(Arrays.asList("b28", "b40", "b20", "b15", "b10"));
   private static final String DEFAULT_WEIGHT_FILE_NAME = "default.bin.gz";
 
   private KataGoAutoSetupHelper() {}
@@ -241,6 +249,49 @@ public final class KataGoAutoSetupHelper {
         estimateConfigPath,
         activeWeightPath,
         weightCandidates);
+  }
+
+  public static boolean migrateAutoSetupCommandsIfNeeded() {
+    if (Lizzie.config == null
+        || Lizzie.config.leelazConfig == null
+        || Lizzie.config.uiConfig == null) {
+      return false;
+    }
+    org.json.JSONArray engines = Lizzie.config.leelazConfig.optJSONArray("engine-settings-list");
+    if (engines == null) {
+      return false;
+    }
+    boolean needsRewrite = false;
+    for (int i = 0; i < engines.length(); i++) {
+      org.json.JSONObject engineInfo = engines.optJSONObject(i);
+      if (engineInfo == null) {
+        continue;
+      }
+      String name = engineInfo.optString("name", "").trim();
+      String command = engineInfo.optString("command", "").trim();
+      if (AUTO_SETUP_ENGINE_NAME.equals(name) && hasRelativeBundledPath(command)) {
+        needsRewrite = true;
+        break;
+      }
+    }
+    if (!needsRewrite
+        && (hasRelativeBundledPath(Lizzie.config.uiConfig.optString("analysis-engine-command", ""))
+            || hasRelativeBundledPath(Lizzie.config.uiConfig.optString("estimate-command", "")))) {
+      needsRewrite = true;
+    }
+    if (!needsRewrite) {
+      return false;
+    }
+    try {
+      SetupSnapshot snapshot = inspectLocalSetup();
+      if (snapshot.hasEngine() && snapshot.hasConfigs() && snapshot.hasWeight()) {
+        applyAutoSetup(snapshot.withActiveWeight(snapshot.activeWeightPath));
+        return true;
+      }
+    } catch (Exception e) {
+      e.printStackTrace();
+    }
+    return false;
   }
 
   public static List<RemoteWeightInfo> fetchOfficialWeights() throws IOException {
@@ -518,45 +569,46 @@ public final class KataGoAutoSetupHelper {
     }
 
     Matcher tableMatcher = TABLE_PATTERN.matcher(html);
-    if (!tableMatcher.find()) {
+    List<RemoteWeightInfo> parsedWeights = new ArrayList<>();
+    LinkedHashSet<String> seen = new LinkedHashSet<>();
+    boolean foundTable = false;
+    while (tableMatcher.find()) {
+      foundTable = true;
+      Matcher rowMatcher = ROW_PATTERN.matcher(tableMatcher.group(1));
+      while (rowMatcher.find()) {
+        List<String> cells = extractCells(rowMatcher.group(2));
+        if (cells.size() < 4) {
+          continue;
+        }
+        String modelName = cleanHtmlText(cells.get(0));
+        String uploadedAt = cleanHtmlText(cells.get(1));
+        String eloRating = cleanHtmlText(cells.get(2));
+        String downloadUrl = resolveUrl(extractHref(cells.get(3)));
+        if (modelName.isEmpty() || downloadUrl.isEmpty()) {
+          continue;
+        }
+        String dedupKey = modelName.toLowerCase(Locale.ROOT);
+        if (!seen.add(dedupKey)) {
+          continue;
+        }
+        boolean recommended =
+            matchesRemoteWeight(modelName, downloadUrl, strongestName, strongestUrl);
+        boolean latest = matchesRemoteWeight(modelName, downloadUrl, latestName, latestUrl);
+        parsedWeights.add(
+            new RemoteWeightInfo(
+                buildTypeLabel(recommended, latest, buildWeightFamilyDisplay(modelName)),
+                modelName,
+                downloadUrl,
+                uploadedAt,
+                eloRating,
+                recommended,
+                latest));
+      }
+    }
+    if (!foundTable) {
       throw new IOException("Unable to parse KataGo weight table.");
     }
-
-    List<RemoteWeightInfo> weights = new ArrayList<>();
-    LinkedHashSet<String> seen = new LinkedHashSet<>();
-    Matcher rowMatcher = ROW_PATTERN.matcher(tableMatcher.group(1));
-    while (rowMatcher.find()) {
-      List<String> cells = extractCells(rowMatcher.group(2));
-      if (cells.size() < 4) {
-        continue;
-      }
-      String modelName = cleanHtmlText(cells.get(0));
-      String uploadedAt = cleanHtmlText(cells.get(1));
-      String eloRating = cleanHtmlText(cells.get(2));
-      String downloadUrl = resolveUrl(extractHref(cells.get(3)));
-      if (modelName.isEmpty() || downloadUrl.isEmpty()) {
-        continue;
-      }
-      String dedupKey = modelName.toLowerCase(Locale.ROOT);
-      if (!seen.add(dedupKey)) {
-        continue;
-      }
-      boolean recommended =
-          matchesRemoteWeight(modelName, downloadUrl, strongestName, strongestUrl);
-      boolean latest = matchesRemoteWeight(modelName, downloadUrl, latestName, latestUrl);
-      weights.add(
-          new RemoteWeightInfo(
-              buildTypeLabel(recommended, latest),
-              modelName,
-              downloadUrl,
-              uploadedAt,
-              eloRating,
-              recommended,
-              latest));
-      if (weights.size() >= MAX_OFFICIAL_WEIGHTS) {
-        break;
-      }
-    }
+    List<RemoteWeightInfo> weights = selectOfficialWeightChoices(parsedWeights);
     if (weights.isEmpty()) {
       throw new IOException("Unable to parse KataGo official weights.");
     }
@@ -613,20 +665,105 @@ public final class KataGoAutoSetupHelper {
     return !expectedName.isEmpty() && expectedName.equalsIgnoreCase(modelName);
   }
 
-  private static String buildTypeLabel(boolean recommended, boolean latest) {
+  private static String buildTypeLabel(boolean recommended, boolean latest, String familyLabel) {
     String recommendedLabel = resource("AutoSetup.recommendedStrongest", "Strongest");
     String latestLabel = resource("AutoSetup.recommendedLatest", "Latest");
     String officialLabel = resource("AutoSetup.officialWeight", "Official");
+    String baseLabel;
     if (recommended && latest) {
-      return recommendedLabel + " / " + latestLabel;
+      baseLabel = recommendedLabel + " / " + latestLabel;
+    } else if (recommended) {
+      baseLabel = recommendedLabel;
+    } else if (latest) {
+      baseLabel = latestLabel;
+    } else {
+      baseLabel = officialLabel;
     }
-    if (recommended) {
-      return recommendedLabel;
+    if (familyLabel.isEmpty()) {
+      return baseLabel;
     }
-    if (latest) {
-      return latestLabel;
+    return baseLabel + " · " + familyLabel;
+  }
+
+  private static List<RemoteWeightInfo> selectOfficialWeightChoices(
+      List<RemoteWeightInfo> parsedWeights) {
+    if (parsedWeights.isEmpty()) {
+      return parsedWeights;
     }
-    return officialLabel;
+    LinkedHashMap<String, List<RemoteWeightInfo>> byFamily = new LinkedHashMap<>();
+    for (RemoteWeightInfo info : parsedWeights) {
+      String family = normalizeWeightFamily(info.modelName);
+      if (family.isEmpty()) {
+        family = info.modelName.toLowerCase(Locale.ROOT);
+      }
+      List<RemoteWeightInfo> familyWeights = byFamily.get(family);
+      if (familyWeights == null) {
+        familyWeights = new ArrayList<>();
+        byFamily.put(family, familyWeights);
+      }
+      familyWeights.add(info);
+    }
+
+    List<String> chosenFamilies = chooseOfficialWeightFamilies(byFamily);
+    List<RemoteWeightInfo> selected = new ArrayList<>();
+    for (String family : chosenFamilies) {
+      List<RemoteWeightInfo> familyWeights = byFamily.get(family);
+      if (familyWeights == null) {
+        continue;
+      }
+      for (int i = 0; i < familyWeights.size() && i < MAX_OFFICIAL_WEIGHTS_PER_FAMILY; i++) {
+        selected.add(familyWeights.get(i));
+      }
+    }
+    if (selected.isEmpty()) {
+      return new ArrayList<>(
+          parsedWeights.subList(0, Math.min(parsedWeights.size(), MAX_OFFICIAL_WEIGHTS)));
+    }
+    if (selected.size() > MAX_OFFICIAL_WEIGHTS) {
+      return new ArrayList<>(selected.subList(0, MAX_OFFICIAL_WEIGHTS));
+    }
+    return selected;
+  }
+
+  private static List<String> chooseOfficialWeightFamilies(
+      LinkedHashMap<String, List<RemoteWeightInfo>> byFamily) {
+    List<String> chosen = new ArrayList<>();
+    for (String family : PREFERRED_WEIGHT_FAMILIES) {
+      if (byFamily.containsKey(family)) {
+        chosen.add(family);
+      }
+      if (chosen.size() >= MAX_OFFICIAL_WEIGHT_FAMILIES) {
+        return chosen;
+      }
+    }
+    for (String family : byFamily.keySet()) {
+      if (!chosen.contains(family)) {
+        chosen.add(family);
+      }
+      if (chosen.size() >= MAX_OFFICIAL_WEIGHT_FAMILIES) {
+        break;
+      }
+    }
+    return chosen;
+  }
+
+  private static String normalizeWeightFamily(String modelName) {
+    if (modelName == null || modelName.trim().isEmpty()) {
+      return "";
+    }
+    Matcher matcher = WEIGHT_FAMILY_PATTERN.matcher(modelName);
+    if (matcher.find()) {
+      return matcher.group(1).toLowerCase(Locale.ROOT);
+    }
+    return "";
+  }
+
+  private static String buildWeightFamilyDisplay(String modelName) {
+    String family = normalizeWeightFamily(modelName);
+    if (family.isEmpty() || family.length() <= 1) {
+      return "";
+    }
+    return family.substring(1).toUpperCase(Locale.ROOT) + "B";
   }
 
   private static List<String> extractCells(String rowHtml) {
@@ -899,11 +1036,18 @@ public final class KataGoAutoSetupHelper {
 
   private static String quoteCommandPath(Path workingDir, Path path) {
     Path normalized = path.toAbsolutePath().normalize();
-    Path displayPath = normalized;
-    if (normalized.startsWith(workingDir)) {
-      displayPath = workingDir.relativize(normalized);
+    return '"' + normalized.toString() + '"';
+  }
+
+  private static boolean hasRelativeBundledPath(String command) {
+    if (command == null || command.trim().isEmpty()) {
+      return false;
     }
-    return '"' + displayPath.toString() + '"';
+    String normalized = command.replace('\\', '/');
+    return normalized.contains("\"engines/")
+        || normalized.contains(" engines/")
+        || normalized.contains("\"weights/")
+        || normalized.contains(" weights/");
   }
 
   private static String fileNameFromUrl(String url) {

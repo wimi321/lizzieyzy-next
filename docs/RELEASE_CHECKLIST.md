@@ -10,6 +10,7 @@
 - `with-katago` 包尽量开箱即用
 - 野狐棋谱同步仍然可用，而且明确写成“野狐昵称”
 - README、安装文档、发布页文案、真实资产名保持一致
+- 程序窗口图标、安装包图标、README 展示图标不要混成两套
 
 ## 二、当前推荐的公开资产集合
 
@@ -42,6 +43,7 @@
 
 - `scripts/prepare_bundled_runtime.sh`
 - `scripts/prepare_bundled_katago.sh`
+- `scripts/generate_app_icons.py`
 - `scripts/package_release.sh`
 - `scripts/package_macos_dmg.sh`
 - `scripts/package_windows_exe.sh`
@@ -62,6 +64,7 @@ GitHub Actions：
 - 安装文档里的 Windows 主路径仍然是 `installer.exe`
 - 如果提供 Windows 无引擎包，要同时核对 `without.engine.installer.exe` 和 `without.engine.portable.zip`
 - 界面里仍然写的是 `野狐棋谱（输入野狐昵称获取）`
+- `src/main/resources/assets/logo.png`、`packaging/icons/app-icon.ico`、`packaging/icons/app-icon.icns` 代表的是同一套当前图标
 - `weights/default.bin.gz` 存在
 - `engines/katago/` 下目标平台文件完整
 - 如需 bundled Java，对应 `runtime/` 目录仍然存在
@@ -82,7 +85,13 @@ mvn -DskipTests package
 ./scripts/prepare_bundled_runtime.sh
 ```
 
-### 3. 准备 bundled KataGo
+### 3. 同步程序图标
+
+```bash
+python3 scripts/generate_app_icons.py
+```
+
+### 4. 准备 bundled KataGo
 
 ```bash
 ./scripts/prepare_bundled_katago.sh
@@ -93,14 +102,14 @@ mvn -DskipTests package
 - KataGo 版本：`v1.16.4`
 - 默认模型：`g170e-b20c256x2-s5303129600-d1228401921.bin.gz`
 
-### 4. 构建 Windows 安装器和便携包
+### 5. 构建 Windows 安装器和便携包
 
 ```bash
 ./scripts/package_windows_exe.sh 2026-03-21 2.5.3 target/lizzie-yzy2.5.3-shaded.jar
 ./scripts/validate_release_assets.sh windows dist/release 2026-03-21
 ```
 
-### 5. 构建 Linux 主整合包
+### 6. 构建 Linux 主整合包
 
 ```bash
 ./scripts/package_release.sh 2026-03-21 target/lizzie-yzy2.5.3-shaded.jar
@@ -113,7 +122,7 @@ mvn -DskipTests package
 LEGACY_WINDOWS32_ZIP=1 LEGACY_OTHER_SYSTEMS_ZIP=1 ./scripts/package_release.sh 2026-03-21 target/lizzie-yzy2.5.3-shaded.jar
 ```
 
-### 6. 构建 macOS dmg
+### 7. 构建 macOS dmg
 
 在对应芯片机器上运行：
 
@@ -122,7 +131,7 @@ LEGACY_WINDOWS32_ZIP=1 LEGACY_OTHER_SYSTEMS_ZIP=1 ./scripts/package_release.sh 2
 ./scripts/validate_release_assets.sh mac-arm64 dist/release 2026-03-21
 ```
 
-### 7. 生成发布页文案
+### 8. 生成发布页文案
 
 本地先预览 release notes：
 
@@ -178,3 +187,4 @@ gh workflow run update-release-notes.yml \
 - Windows 用户会不会第一眼看到 `.exe` 安装器而不是历史 zip
 - 中文说明是不是在最前面，而且信息足够醒目
 - “野狐昵称”和“首启自动配置”有没有被写清楚
+- 下载后的应用图标、安装器图标、主窗口图标是不是同一套

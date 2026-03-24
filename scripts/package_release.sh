@@ -205,8 +205,8 @@ EOF
 Project: LizzieYzy Next
 Date: $DATE_TAG
 Changes:
-- Restore Fox kifu sync with nickname lookup using Fox H5 API.
-- Nickname search now resolves the matching account automatically.
+- Restored Fox public-game fetch using a Fox nickname.
+- First launch now prefers automatic bundled KataGo setup.
 Package:
 - $bundle_note
 EOF

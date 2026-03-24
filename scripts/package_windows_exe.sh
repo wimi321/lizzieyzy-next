@@ -22,6 +22,7 @@ if [[ ! -f "$JAR_PATH" ]]; then
 fi
 
 APP_NAME="LizzieYzy Next"
+APP_DESCRIPTION="Maintained LizzieYzy build with Fox nickname fetch and easier KataGo setup"
 MAIN_JAR="$(basename "$JAR_PATH")"
 ICON_PATH="$ROOT_DIR/packaging/icons/app-icon.ico"
 ENGINE_PLATFORM_DIR="windows-x64"
@@ -137,7 +138,7 @@ build_app_image() {
     --dest "$app_image_dir" \
     --app-version "$WINDOWS_APP_VERSION" \
     --vendor "wimi321" \
-    --description "LizzieYzy maintained fork with restored Fox nickname sync" \
+    --description "$APP_DESCRIPTION" \
     --icon "$ICON_PATH" \
     --java-options "-Xmx4096m"
 
@@ -165,7 +166,7 @@ build_installer() {
     --dest "$installer_dir" \
     --app-version "$WINDOWS_APP_VERSION" \
     --vendor "wimi321" \
-    --description "LizzieYzy maintained fork with restored Fox nickname sync" \
+    --description "$APP_DESCRIPTION" \
     --icon "$ICON_PATH" \
     --win-dir-chooser \
     --win-menu \

@@ -226,12 +226,41 @@ public class GetFoxRequest {
       JSONObject json = new JSONObject(payload);
       String sgf = json.optString("chess", "");
       if (!sgf.trim().isEmpty()) {
-        json.put("chess", retainMainLineOnly(sgf));
+        json.put("chess", retainMainLineOnly(sanitizeFoxSgf(sgf)));
       }
       return json.toString();
     } catch (Exception e) {
       return payload;
     }
+  }
+
+  private String sanitizeFoxSgf(String sgf) {
+    if (sgf == null || sgf.trim().isEmpty()) {
+      return sgf;
+    }
+    String text = sgf.replace("\uFEFF", "").trim();
+    StringBuilder out = new StringBuilder(text.length());
+    boolean insideValue = false;
+    for (int i = 0; i < text.length(); i++) {
+      char current = text.charAt(i);
+      if (insideValue) {
+        out.append(current);
+        if (current == '\\' && i + 1 < text.length()) {
+          out.append(text.charAt(++i));
+        } else if (current == ']') {
+          insideValue = false;
+        }
+        continue;
+      }
+      if (current == '\\') {
+        continue;
+      }
+      out.append(current);
+      if (current == '[') {
+        insideValue = true;
+      }
+    }
+    return out.toString();
   }
 
   private String retainMainLineOnly(String sgf) {
@@ -276,6 +305,12 @@ public class GetFoxRequest {
       expect('(');
       out.append('(');
       skipWhitespace();
+      appendTreeBody(out);
+      expect(')');
+      out.append(')');
+    }
+
+    private void appendTreeBody(StringBuilder out) {
       while (index < input.length() && input.charAt(index) == ';') {
         appendNode(out);
         skipWhitespace();
@@ -283,15 +318,20 @@ public class GetFoxRequest {
       boolean keptChild = false;
       while (index < input.length() && input.charAt(index) == '(') {
         if (!keptChild) {
-          appendTree(out);
+          appendChildMainLine(out);
           keptChild = true;
         } else {
           skipTree();
         }
         skipWhitespace();
       }
+    }
+
+    private void appendChildMainLine(StringBuilder out) {
+      expect('(');
+      skipWhitespace();
+      appendTreeBody(out);
       expect(')');
-      out.append(')');
     }
 
     private void appendNode(StringBuilder out) {

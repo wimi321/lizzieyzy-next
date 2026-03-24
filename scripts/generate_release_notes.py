@@ -135,14 +135,14 @@ def build_release_notes(asset_map: dict[str, str | None], bundle: dict[str, str]
 
 ## 中文
 
-原版 `lizzieyzy` 很多人已经没法正常同步野狐棋谱了。这个维护版把最常用的那条链路重新做回可用：下载安装，输入 **野狐昵称**，继续抓谱、分析、复盘。
+这是一个继续维护 `lizzieyzy` 的版本，先解决普通用户最关心的事情：野狐抓谱重新可用、下载包更容易选、第一次打开尽量少设置。下载安装后，直接输入 **野狐昵称**，就能继续抓最近公开棋谱、分析和复盘。
 
-### 先看这几句
+### 下载前先看这几句
 
 - Windows 普通用户直接下载 {windows_installer}
 - 抓谱时直接输入 **野狐昵称**，程序会自动匹配账号并获取最近公开棋谱
-- 第一次启动会优先自动准备分析环境
-- 主整合包已经内置 KataGo `{katago_version}` 和默认权重 `{model_source}`
+- 主推荐整合包已内置 KataGo `{katago_version}` 和默认权重 `{model_source}`
+- 第一次启动会优先自动完成分析环境配置
 
 ### 下载建议
 
@@ -156,30 +156,35 @@ def build_release_notes(asset_map: dict[str, str | None], bundle: dict[str, str]
 | macOS Intel | {mac_amd64} |
 | Linux 64 位 | {linux64} |
 
-### 这次发布值得先看的地方
+### 这一版为什么值得先看
 
-- 原版已经失效的野狐棋谱同步，现在重新可用
-- 现在统一改成“野狐昵称”输入路径，普通用户更容易直接上手
-- Windows 继续把安装器放在最前面，下载后更容易直接开始用
+- 原版已经失效的野狐抓谱链路，现在重新可用
+- 现在直接输入“野狐昵称”，程序会自动找到账号再抓最近公开棋谱
+- Windows 继续把 `.installer.exe` 放在最前面，普通用户更容易直接开始用
 - macOS 继续提供 Apple Silicon / Intel 两种 `.dmg`
-- 整合包继续内置 KataGo 与默认权重，安装后可以更快开始分析
+- 整合包继续内置 KataGo 与默认权重，打开后更快进入分析
+
+### 交流
+
+- QQ 群：`299419120`
 
 ## English
 
-This maintained fork restores the broken Fox public-game fetch path for LizzieYzy and keeps the common review workflow usable.
+This maintained release keeps LizzieYzy practical again for normal users: Fox game fetching works again, download choices stay easy to understand, and first launch needs less manual setup.
 
 - Windows first choice: {windows_installer_en}
 - Windows custom-engine installer: {windows_no_engine_installer_en}
 - Windows custom-engine portable: {windows_no_engine_portable_en}
 - Fox fetch now starts from a **Fox nickname** and resolves the matching account automatically.
+- The recommended bundles include KataGo `{katago_version}` and the default weight `{model_source}`.
 - First launch tries to prepare the bundled analysis setup automatically.
-- Bundled packages include KataGo `{katago_version}` and the default weight `{model_source}`.
 - macOS downloads: Apple Silicon {mac_arm64_en}, Intel {mac_amd64_en}
 - Linux download: {linux64_en}
+- Chinese QQ group: `299419120`
 
 ## 日本語
 
-このメンテ版は、元の `lizzieyzy` で使えなくなっていた野狐棋譜取得の流れを、もう一度使える状態に戻すための継続保守版です。
+この保守版は、元の `lizzieyzy` をまだ使いたい利用者向けに、壊れていた野狐棋譜取得を復旧し、ダウンロード後すぐ使いやすい形に整えた継続保守版です。
 
 - Windows 利用者の多くは {windows_installer_en} を選べば始めやすいです
 - 自分のエンジンを使いたい場合は {windows_no_engine_installer_en} または {windows_no_engine_portable_en} を選べます
@@ -189,7 +194,7 @@ This maintained fork restores the broken Fox public-game fetch path for LizzieYz
 
 ## 한국어
 
-이 유지보수판은 원래 `lizzieyzy` 에서 더 이상 잘 동작하지 않던 Fox 공개 기보 가져오기를 다시 쓸 수 있게 만든 지속 유지보수 포크입니다.
+이 유지보수판은 아직 `lizzieyzy` 를 쓰고 싶은 사용자를 위해, 고장난 Fox 공개 기보 가져오기를 복구하고 다운로드 후 바로 쓰기 쉬운 형태로 정리한 지속 유지보수 포크입니다.
 
 - 대부분의 Windows 사용자는 {windows_installer_en} 를 먼저 받으면 가장 쉽습니다
 - 직접 엔진을 쓰고 싶다면 {windows_no_engine_installer_en} 또는 {windows_no_engine_portable_en} 를 고를 수 있습니다

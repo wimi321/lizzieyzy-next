@@ -121,6 +121,9 @@ public class Utils {
     if (applyRecommendedKataGoThreads(false)) {
       changed = true;
     }
+    if (KataGoAutoSetupHelper.migrateAutoSetupCommandsIfNeeded()) {
+      changed = true;
+    }
     if (changed) {
       persistConfigQuietly();
     }

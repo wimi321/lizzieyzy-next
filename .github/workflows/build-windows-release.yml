@@ -30,6 +30,18 @@ jobs:
           java-version: '21'
           cache: maven
 
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Generate app icons
+        shell: powershell
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pillow
+          python scripts/generate_app_icons.py
+
       - name: Install packaging tools
         shell: powershell
         run: |
