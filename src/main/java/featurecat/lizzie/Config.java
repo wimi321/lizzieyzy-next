@@ -1588,7 +1588,7 @@ public class Config {
     autoLoadLzsaiEngineResign = uiConfig.optBoolean("autoload-Lzsai-engineresign", false);
     txtLzsaiEngineResign = uiConfig.optString("txt-lzsai-engineresign", "");
 
-    // chkKataEnginePDA  = uiConfig.optBoolean("chk-kata-engine-pda", false);
+    chkKataEnginePDA = uiConfig.optBoolean("chk-kata-engine-pda", false);
     txtKataEnginePDA = uiConfig.optString("txt-kata-engine-pda", "");
     autoLoadKataEnginePDA = uiConfig.optBoolean("autoload-kata-engine-pda", false);
 
@@ -1598,10 +1598,11 @@ public class Config {
     autoLoadTxtKataEnginePDA = uiConfig.optString("auto-load-txt-kata-engine-pda", "");
     autoLoadTxtKataEngineWRN = uiConfig.optString("auto-load-txt-kata-engine-wrn", "");
 
-    //  chkKataEngineWRN  = uiConfig.optBoolean("chk-kata-engine-wrn", false);
+    chkKataEngineWRN = uiConfig.optBoolean("chk-kata-engine-wrn", false);
     txtKataEngineWRN = uiConfig.optString("txt-kata-engine-wrn", "");
     autoLoadKataEngineWRN = uiConfig.optBoolean("autoload-kata-engine-wrn", false);
 
+    chkKataEngineThreads = uiConfig.optBoolean("chk-kata-engine-threads", false);
     txtKataEngineThreads = uiConfig.optString("txt-kata-engine-threads", "");
     autoLoadKataEngineThreads = uiConfig.optBoolean("autoload-kata-engine-threads", false);
 

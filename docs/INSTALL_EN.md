@@ -42,6 +42,7 @@ Some older tags still show transitional zip names or compatibility packages, but
 4. Launch the app from the Start Menu or desktop shortcut.
 
 This is now the primary Windows path for regular users.
+The regular Windows bundle can also open `KataGo Auto Setup` and run `Smart Optimize` to write a better thread setting automatically.
 
 ### Windows x64 NVIDIA bundle
 
@@ -50,7 +51,8 @@ If your PC has an NVIDIA GPU and you want higher analysis speed:
 1. Download `windows64.nvidia.installer.exe`.
 2. Double-click the installer.
 3. Finish setup.
-4. Launch `LizzieYzy Next NVIDIA` from the Start Menu or desktop shortcut.
+4. On first launch, the app automatically prepares the required official NVIDIA runtime files in your user folder.
+5. Launch `LizzieYzy Next NVIDIA` from the Start Menu or desktop shortcut.
 
 If you prefer a no-install package:
 
@@ -58,7 +60,7 @@ If you prefer a no-install package:
 2. Extract it.
 3. Run `LizzieYzy Next NVIDIA.exe`.
 
-This bundle ships with the official KataGo CUDA Windows build. If you are not sure whether your PC has an NVIDIA GPU, use the regular `windows64.with-katago.installer.exe` instead.
+This bundle ships with the official KataGo CUDA Windows build. If you want to tune speed further, open `KataGo Auto Setup` once and run `Smart Optimize` to apply a benchmark-based thread setting automatically. If you are not sure whether your PC has an NVIDIA GPU, use the regular `windows64.with-katago.installer.exe` instead.
 
 ### Windows x64 portable build
 

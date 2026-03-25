@@ -88,18 +88,18 @@ public final class KataGoAutoSetupHelper {
       return cancelled || Thread.currentThread().isInterrupted();
     }
 
-    private void attach(HttpURLConnection conn) {
+    void attach(HttpURLConnection conn) {
       connection = conn;
       if (cancelled && conn != null) {
         conn.disconnect();
       }
     }
 
-    private void clear() {
+    void clear() {
       connection = null;
     }
 
-    private void throwIfCancelled() throws DownloadCancelledException {
+    void throwIfCancelled() throws DownloadCancelledException {
       if (isCancelled()) {
         throw new DownloadCancelledException(
             resource("AutoSetup.downloadCancelled", "Download cancelled."));
@@ -108,7 +108,7 @@ public final class KataGoAutoSetupHelper {
   }
 
   public static final class DownloadCancelledException extends InterruptedIOException {
-    private DownloadCancelledException(String message) {
+    DownloadCancelledException(String message) {
       super(message);
     }
   }

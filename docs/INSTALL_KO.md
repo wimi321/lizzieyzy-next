@@ -29,11 +29,14 @@
 2. 설치 프로그램을 실행합니다.
 3. 설치가 끝나면 `LizzieYzy Next.exe` 를 실행합니다.
 
+일반 Windows 패키지도 `KataGo Auto Setup` 에서 `Smart Optimize` 를 한 번 실행하면 더 잘 맞는 스레드 수를 자동으로 저장할 수 있습니다.
+
 NVIDIA 그래픽카드가 있고 속도를 더 원한다면:
 
 1. `windows64.nvidia.installer.exe` 를 다운로드합니다.
 2. 설치 프로그램을 실행합니다.
-3. 설치가 끝나면 `LizzieYzy Next NVIDIA.exe` 를 실행합니다.
+3. 처음 실행할 때 필요한 공식 NVIDIA 런타임을 사용자 폴더에 자동으로 준비합니다.
+4. `LizzieYzy Next NVIDIA.exe` 를 실행합니다.
 
 설치 없이 쓰고 싶다면:
 

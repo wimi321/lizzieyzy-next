@@ -166,6 +166,11 @@ public class Utils {
   }
 
   public static int getRecommendedKataGoThreads() {
+    KataGoRuntimeHelper.BenchmarkResult benchmarkResult =
+        KataGoRuntimeHelper.getStoredBenchmarkResult();
+    if (benchmarkResult != null && benchmarkResult.recommendedThreads > 0) {
+      return benchmarkResult.recommendedThreads;
+    }
     int processors = Math.max(1, Runtime.getRuntime().availableProcessors());
     if (processors <= 4) {
       return processors;

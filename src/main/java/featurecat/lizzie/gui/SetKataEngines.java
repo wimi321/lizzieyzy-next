@@ -146,7 +146,7 @@ public class SetKataEngines extends JDialog {
             // Lizzie.config.txtKataEngineRPT);
             //            else Lizzie.leelaz.sendCommand("kata-set-param rootPolicyTemperature
             // 1.0");
-            // Lizzie.config.uiConfig.put("chk-kata-engine-pda", Lizzie.config.chkKataEnginePDA  );
+            Lizzie.config.uiConfig.put("chk-kata-engine-pda", Lizzie.config.chkKataEnginePDA);
             Lizzie.config.uiConfig.put(
                 "autoload-kata-engine-pda", Lizzie.config.autoLoadKataEnginePDA);
             Lizzie.config.uiConfig.put("txt-kata-engine-pda", Lizzie.config.txtKataEnginePDA);
@@ -157,11 +157,12 @@ public class SetKataEngines extends JDialog {
             //            Lizzie.config.uiConfig.put("txt-kata-engine-rpt",
             // Lizzie.config.txtKataEngineRPT);
 
-            //   Lizzie.config.uiConfig.put("chk-kata-engine-wrn", Lizzie.config.chkKataEngineWRN
-            // );
+            Lizzie.config.uiConfig.put("chk-kata-engine-wrn", Lizzie.config.chkKataEngineWRN);
             Lizzie.config.uiConfig.put(
                 "autoload-kata-engine-wrn", Lizzie.config.autoLoadKataEngineWRN);
             Lizzie.config.uiConfig.put("txt-kata-engine-wrn", Lizzie.config.txtKataEngineWRN);
+            Lizzie.config.uiConfig.put(
+                "chk-kata-engine-threads", Lizzie.config.chkKataEngineThreads);
             setVisible(false);
             LizzieFrame.menu.updateMenuStatusForEngine();
             if (Lizzie.leelaz.isPondering()) Lizzie.leelaz.ponder();

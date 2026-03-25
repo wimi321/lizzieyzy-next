@@ -58,6 +58,8 @@ If you are on **Windows**:
 - If your PC has an **NVIDIA GPU** and you care about speed first, choose **`windows64.nvidia.installer.exe`**
 
 The first one is the main beginner-friendly build. The NVIDIA package is the faster Windows option for NVIDIA graphics users.
+On first launch, the NVIDIA bundle now prepares the required official NVIDIA runtime files automatically in the user folder before starting accelerated analysis.
+Both the regular Windows bundle and the NVIDIA bundle can use `KataGo Auto Setup -> Smart Optimize`. The regular bundle just does not need the extra NVIDIA runtime step.
 
 ## What To Download
 
@@ -102,6 +104,8 @@ At a glance:
   Enter the Fox nickname you already know. The app resolves the matching account automatically.
 - **It keeps the familiar LizzieYzy workflow, with less setup pain**
   The main bundled packages already include KataGo and a default weight, so most users can open the app and start reviewing faster.
+- **It adds a smarter performance path instead of leaving tuning to guesswork**
+  `KataGo Auto Setup` now includes Smart Optimize, which runs KataGo's official benchmark flow and writes back a better thread setting automatically.
 
 ## Start In 3 Steps
 

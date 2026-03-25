@@ -12,6 +12,7 @@ import featurecat.lizzie.rules.Board;
 import featurecat.lizzie.rules.BoardData;
 import featurecat.lizzie.rules.BoardHistoryNode;
 import featurecat.lizzie.rules.Stone;
+import featurecat.lizzie.util.KataGoRuntimeHelper;
 import featurecat.lizzie.util.Utils;
 import java.awt.Component;
 import java.io.BufferedOutputStream;
@@ -19,6 +20,7 @@ import java.io.BufferedReader;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.nio.file.Path;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.List;
@@ -325,10 +327,31 @@ public class Leelaz {
         return;
       }
     } else {
-      ProcessBuilder processBuilder = new ProcessBuilder(commands);
+      Path engineExecutable = KataGoRuntimeHelper.resolveCommandExecutable(commands);
       if (Config.isBundledKataGoCommand(engineCommand)) {
-        processBuilder.directory(Lizzie.config.getRuntimeWorkDirectory());
+        try {
+          KataGoRuntimeHelper.ensureBundledRuntimeReady(engineExecutable, Lizzie.frame);
+        } catch (IOException e) {
+          String err = e.getLocalizedMessage();
+          try {
+            tryToDignostic(
+                Lizzie.resourceBundle.getString("Leelaz.engineFailed")
+                    + ": "
+                    + ((err == null)
+                        ? Lizzie.resourceBundle.getString("Leelaz.engineStartNoExceptionMessage")
+                        : err),
+                true);
+            LizzieFrame.openMoreEngineDialog();
+          } catch (JSONException e1) {
+            e1.printStackTrace();
+            isDownWithError = true;
+          }
+          isDownWithError = true;
+          return;
+        }
       }
+      ProcessBuilder processBuilder = new ProcessBuilder(commands);
+      KataGoRuntimeHelper.configureBundledProcessBuilder(processBuilder, engineExecutable);
       processBuilder.redirectErrorStream(false);
       try {
         process = processBuilder.start();

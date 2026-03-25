@@ -8,6 +8,7 @@ import featurecat.lizzie.util.KataGoAutoSetupHelper.DownloadSession;
 import featurecat.lizzie.util.KataGoAutoSetupHelper.RemoteWeightInfo;
 import featurecat.lizzie.util.KataGoAutoSetupHelper.SetupResult;
 import featurecat.lizzie.util.KataGoAutoSetupHelper.SetupSnapshot;
+import featurecat.lizzie.util.KataGoRuntimeHelper;
 import featurecat.lizzie.util.Utils;
 import java.awt.BorderLayout;
 import java.awt.Color;
@@ -50,6 +51,8 @@ public class KataGoAutoSetupDialog extends JDialog {
   private final JLabel lblWeightValue = new JFontLabel();
   private final JLabel lblWeightModelValue = new JFontLabel();
   private final JLabel lblConfigValue = new JFontLabel();
+  private final JLabel lblNvidiaRuntimeValue = new JFontLabel();
+  private final JLabel lblBenchmarkValue = new JFontLabel();
   private final JLabel lblRemoteDetailValue = new JFontLabel();
   private final JLabel lblStatus = new JFontLabel();
   private final JFontComboBox<RemoteWeightInfo> cmbRemoteWeights =
@@ -58,6 +61,8 @@ public class KataGoAutoSetupDialog extends JDialog {
   private final JFontButton btnRefresh = new JFontButton();
   private final JFontButton btnAutoSetup = new JFontButton();
   private final JFontButton btnDownloadWeight = new JFontButton();
+  private final JFontButton btnInstallNvidiaRuntime = new JFontButton();
+  private final JFontButton btnOptimizePerformance = new JFontButton();
   private final JFontButton btnStopDownload = new JFontButton();
   private final JFontButton btnClose = new JFontButton();
 
@@ -65,8 +70,8 @@ public class KataGoAutoSetupDialog extends JDialog {
     super(owner);
     setModal(false);
     setTitle(text("AutoSetup.title"));
-    setSize(780, 420);
-    setMinimumSize(new Dimension(740, 390));
+    setSize(860, 500);
+    setMinimumSize(new Dimension(820, 460));
     setLocationRelativeTo(owner);
     setAlwaysOnTop(owner instanceof LizzieFrame && ((LizzieFrame) owner).isAlwaysOnTop());
 
@@ -91,6 +96,8 @@ public class KataGoAutoSetupDialog extends JDialog {
     addInfoRow(infoPanel, gbc, text("AutoSetup.localWeight"), lblWeightValue);
     addInfoRow(infoPanel, gbc, text("AutoSetup.localWeightModel"), lblWeightModelValue);
     addInfoRow(infoPanel, gbc, text("AutoSetup.localConfig"), lblConfigValue);
+    addInfoRow(infoPanel, gbc, text("AutoSetup.nvidiaRuntime"), lblNvidiaRuntimeValue);
+    addInfoRow(infoPanel, gbc, text("AutoSetup.performance"), lblBenchmarkValue);
 
     cmbRemoteWeights.setMaximumRowCount(18);
     cmbRemoteWeights.setRenderer(
@@ -126,17 +133,23 @@ public class KataGoAutoSetupDialog extends JDialog {
     btnRefresh.setText(text("AutoSetup.refresh"));
     btnAutoSetup.setText(text("AutoSetup.autoSetup"));
     btnDownloadWeight.setText(text("AutoSetup.downloadWeight"));
+    btnInstallNvidiaRuntime.setText(text("AutoSetup.installNvidiaRuntime"));
+    btnOptimizePerformance.setText(text("AutoSetup.optimizePerformance"));
     btnStopDownload.setText(text("AutoSetup.stopDownload"));
     btnClose.setText(text("AutoSetup.close"));
 
     btnRefresh.addActionListener(e -> refreshState());
     btnAutoSetup.addActionListener(e -> autoSetupOrDownload());
     btnDownloadWeight.addActionListener(e -> startRecommendedWeightDownload(false));
+    btnInstallNvidiaRuntime.addActionListener(e -> startNvidiaRuntimeInstall());
+    btnOptimizePerformance.addActionListener(e -> startPerformanceBenchmark());
     btnStopDownload.addActionListener(e -> stopActiveDownload());
     btnClose.addActionListener(e -> setVisible(false));
 
     buttonPanel.add(btnRefresh);
+    buttonPanel.add(btnInstallNvidiaRuntime);
     buttonPanel.add(btnDownloadWeight);
+    buttonPanel.add(btnOptimizePerformance);
     buttonPanel.add(btnStopDownload);
     buttonPanel.add(btnAutoSetup);
     buttonPanel.add(btnClose);
@@ -191,6 +204,8 @@ public class KataGoAutoSetupDialog extends JDialog {
     setInfoValue(lblWeightValue, snapshot.hasWeight(), formatWeight(snapshot));
     setInfoValue(lblWeightModelValue, snapshot.hasWeight(), formatWeightModel(snapshot));
     setInfoValue(lblConfigValue, snapshot.hasConfigs(), formatConfig(snapshot));
+    updateNvidiaRuntimeInfo();
+    updateBenchmarkInfo();
     lblRemoteDetailValue.setText(text("AutoSetup.loadingRemote"));
     lblRemoteDetailValue.setToolTipText(null);
     lblRemoteDetailValue.setForeground(Color.DARK_GRAY);
@@ -257,6 +272,46 @@ public class KataGoAutoSetupDialog extends JDialog {
             : state.gtpConfigPath.getFileName())
         + "  |  "
         + state.gtpConfigPath.getParent();
+  }
+
+  private void updateNvidiaRuntimeInfo() {
+    KataGoRuntimeHelper.NvidiaRuntimeStatus status =
+        snapshot == null ? null : KataGoRuntimeHelper.inspectNvidiaRuntime(snapshot);
+    if (status == null || !status.applicable) {
+      lblNvidiaRuntimeValue.setText(text("AutoSetup.nvidiaRuntimeNotApplicable"));
+      lblNvidiaRuntimeValue.setToolTipText(null);
+      lblNvidiaRuntimeValue.setForeground(Color.DARK_GRAY);
+      btnInstallNvidiaRuntime.setEnabled(false);
+      return;
+    }
+    lblNvidiaRuntimeValue.setText(status.detailText);
+    lblNvidiaRuntimeValue.setToolTipText(status.runtimeDir.toAbsolutePath().normalize().toString());
+    lblNvidiaRuntimeValue.setForeground(status.ready ? OK_COLOR : WARN_COLOR);
+    btnInstallNvidiaRuntime.setEnabled(activeDownloadSession == null && !status.ready);
+  }
+
+  private void updateBenchmarkInfo() {
+    if (snapshot == null
+        || !snapshot.hasEngine()
+        || !snapshot.hasConfigs()
+        || !snapshot.hasWeight()) {
+      lblBenchmarkValue.setText(text("AutoSetup.benchmarkUnavailable"));
+      lblBenchmarkValue.setToolTipText(null);
+      lblBenchmarkValue.setForeground(ERROR_COLOR);
+      btnOptimizePerformance.setEnabled(false);
+      return;
+    }
+    KataGoRuntimeHelper.BenchmarkResult result = KataGoRuntimeHelper.getStoredBenchmarkResult();
+    if (result == null) {
+      lblBenchmarkValue.setText(text("AutoSetup.benchmarkMissing"));
+      lblBenchmarkValue.setToolTipText(null);
+      lblBenchmarkValue.setForeground(WARN_COLOR);
+    } else {
+      lblBenchmarkValue.setText(KataGoRuntimeHelper.formatBenchmarkResult(result));
+      lblBenchmarkValue.setToolTipText(result.summary);
+      lblBenchmarkValue.setForeground(OK_COLOR);
+    }
+    btnOptimizePerformance.setEnabled(activeWorkerThread == null && activeDownloadSession == null);
   }
 
   private void loadRemoteWeightInfo() {
@@ -379,6 +434,134 @@ public class KataGoAutoSetupDialog extends JDialog {
     worker.start();
   }
 
+  private void startNvidiaRuntimeInstall() {
+    if (snapshot == null || !snapshot.hasEngine()) {
+      Utils.showMsg(text("AutoSetup.missingEngine"), this);
+      return;
+    }
+    KataGoRuntimeHelper.NvidiaRuntimeStatus status =
+        KataGoRuntimeHelper.inspectNvidiaRuntime(snapshot);
+    if (!status.applicable) {
+      Utils.showMsg(text("AutoSetup.nvidiaRuntimeNotApplicable"), this);
+      return;
+    }
+    if (status.ready) {
+      Utils.showMsg(text("AutoSetup.nvidiaRuntimeAlreadyReady"), this);
+      return;
+    }
+
+    final DownloadSession session = new DownloadSession();
+    activeDownloadSession = session;
+    setBusy(true, text("AutoSetup.installingNvidiaRuntime"), 0, -1);
+    Thread worker =
+        new Thread(
+            () -> {
+              try {
+                KataGoRuntimeHelper.downloadAndInstallNvidiaRuntime(
+                    snapshot.enginePath,
+                    (statusText, downloadedBytes, totalBytes) ->
+                        SwingUtilities.invokeLater(
+                            () ->
+                                setBusy(
+                                    true,
+                                    text("AutoSetup.installingNvidiaRuntime") + " " + statusText,
+                                    downloadedBytes,
+                                    totalBytes)),
+                    session);
+                SwingUtilities.invokeLater(
+                    () -> {
+                      setBusy(false, text("AutoSetup.installNvidiaRuntimeDone"), 0, 0);
+                      snapshot = KataGoAutoSetupHelper.inspectLocalSetup();
+                      renderSnapshot();
+                      updateSelectedRemoteWeightInfo();
+                      Utils.showMsg(text("AutoSetup.installNvidiaRuntimeDoneMessage"), this);
+                    });
+              } catch (DownloadCancelledException e) {
+                SwingUtilities.invokeLater(() -> onDownloadCancelled());
+              } catch (IOException e) {
+                SwingUtilities.invokeLater(() -> onBackgroundError(e));
+              } finally {
+                clearActiveDownload(session, Thread.currentThread());
+              }
+            },
+            "katago-install-nvidia-runtime");
+    activeWorkerThread = worker;
+    worker.start();
+  }
+
+  private void startPerformanceBenchmark() {
+    if (snapshot == null
+        || !snapshot.hasEngine()
+        || !snapshot.hasConfigs()
+        || !snapshot.hasWeight()) {
+      Utils.showMsg(text("AutoSetup.benchmarkUnavailable"), this);
+      return;
+    }
+
+    final DownloadSession session = new DownloadSession();
+    activeDownloadSession = session;
+    setBusy(true, text("AutoSetup.benchmarking"), 0, -1);
+    Thread worker =
+        new Thread(
+            () -> {
+              try {
+                SetupSnapshot currentSnapshot = snapshot;
+                KataGoRuntimeHelper.NvidiaRuntimeStatus runtimeStatus =
+                    KataGoRuntimeHelper.inspectNvidiaRuntime(currentSnapshot);
+                if (runtimeStatus.applicable && !runtimeStatus.ready) {
+                  KataGoRuntimeHelper.downloadAndInstallNvidiaRuntime(
+                      currentSnapshot.enginePath,
+                      (statusText, downloadedBytes, totalBytes) ->
+                          SwingUtilities.invokeLater(
+                              () ->
+                                  setBusy(
+                                      true,
+                                      text("AutoSetup.installingNvidiaRuntime") + " " + statusText,
+                                      downloadedBytes,
+                                      totalBytes)),
+                      session);
+                  currentSnapshot = KataGoAutoSetupHelper.inspectLocalSetup();
+                }
+                activeDownloadSession = null;
+                SetupSnapshot benchmarkSnapshot = currentSnapshot;
+                KataGoRuntimeHelper.BenchmarkResult result =
+                    KataGoRuntimeHelper.runBenchmarkAndApply(
+                        benchmarkSnapshot,
+                        (statusText, downloadedBytes, totalBytes) ->
+                            SwingUtilities.invokeLater(
+                                () ->
+                                    setBusy(
+                                        true,
+                                        text("AutoSetup.benchmarking") + " " + statusText,
+                                        0,
+                                        -1)),
+                        null);
+                applyBenchmarkToRunningEngine(result);
+                SwingUtilities.invokeLater(
+                    () -> {
+                      setBusy(false, text("AutoSetup.benchmarkDone"), 0, 0);
+                      snapshot = KataGoAutoSetupHelper.inspectLocalSetup();
+                      renderSnapshot();
+                      updateSelectedRemoteWeightInfo();
+                      Utils.showMsg(
+                          text("AutoSetup.benchmarkDoneMessage")
+                              + "\n"
+                              + KataGoRuntimeHelper.formatBenchmarkResult(result),
+                          this);
+                    });
+              } catch (DownloadCancelledException e) {
+                SwingUtilities.invokeLater(() -> onDownloadCancelled());
+              } catch (IOException e) {
+                SwingUtilities.invokeLater(() -> onBackgroundError(e));
+              } finally {
+                clearActiveDownload(session, Thread.currentThread());
+              }
+            },
+            "katago-performance-benchmark");
+    activeWorkerThread = worker;
+    worker.start();
+  }
+
   private void startAutoSetup(SetupSnapshot state) {
     setBusy(true, text("AutoSetup.settingUp"), 0, -1);
     new Thread(
@@ -427,19 +610,33 @@ public class KataGoAutoSetupDialog extends JDialog {
 
   private void onBackgroundError(Exception e) {
     setBusy(false, text("AutoSetup.failed"), 0, 0);
+    renderSnapshot();
     Utils.showMsg(text("AutoSetup.failed") + "\n" + e.getMessage(), this);
   }
 
   private void onDownloadCancelled() {
     setBusy(false, text("AutoSetup.downloadCancelled"), 0, 0);
+    renderSnapshot();
     lblStatus.setText(text("AutoSetup.downloadCancelled"));
     lblStatus.setForeground(WARN_COLOR);
+  }
+
+  private void applyBenchmarkToRunningEngine(KataGoRuntimeHelper.BenchmarkResult result) {
+    if (result == null || result.recommendedThreads <= 0 || Lizzie.leelaz == null) {
+      return;
+    }
+    try {
+      Lizzie.leelaz.sendCommand("kata-set-param numSearchThreads " + result.recommendedThreads);
+    } catch (Exception e) {
+    }
   }
 
   private void setBusy(boolean busy, String statusText, long downloadedBytes, long totalBytes) {
     btnRefresh.setEnabled(!busy);
     btnAutoSetup.setEnabled(!busy);
     btnDownloadWeight.setEnabled(!busy && getSelectedRemoteWeight() != null);
+    btnInstallNvidiaRuntime.setEnabled(!busy && canInstallNvidiaRuntime());
+    btnOptimizePerformance.setEnabled(!busy && canRunBenchmark());
     btnStopDownload.setEnabled(busy && activeDownloadSession != null);
     btnClose.setEnabled(true);
 
@@ -470,6 +667,22 @@ public class KataGoAutoSetupDialog extends JDialog {
       progressBar.setValue(0);
       progressBar.setString(statusText);
     }
+  }
+
+  private boolean canInstallNvidiaRuntime() {
+    if (snapshot == null || !snapshot.hasEngine()) {
+      return false;
+    }
+    KataGoRuntimeHelper.NvidiaRuntimeStatus status =
+        KataGoRuntimeHelper.inspectNvidiaRuntime(snapshot);
+    return status.applicable && !status.ready;
+  }
+
+  private boolean canRunBenchmark() {
+    return snapshot != null
+        && snapshot.hasEngine()
+        && snapshot.hasConfigs()
+        && snapshot.hasWeight();
   }
 
   private String formatSize(long bytes) {
