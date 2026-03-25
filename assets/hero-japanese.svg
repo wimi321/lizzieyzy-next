@@ -1,0 +1,99 @@
+<svg width="1280" height="720" viewBox="0 0 1280 720" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="180" y1="44" x2="1136" y2="674" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FBFBFD"/>
+      <stop offset="1" stop-color="#F2F4F7"/>
+    </linearGradient>
+    <radialGradient id="warm" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(1038 124) rotate(148) scale(378 238)">
+      <stop stop-color="#FFE8C2" stop-opacity="0.92"/>
+      <stop offset="1" stop-color="#FFE8C2" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="cool" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(206 120) rotate(44) scale(356 246)">
+      <stop stop-color="#E7F0FF" stop-opacity="0.92"/>
+      <stop offset="1" stop-color="#E7F0FF" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="boardBg" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#F7D48A"/>
+      <stop offset="1" stop-color="#E8B864"/>
+    </linearGradient>
+    <filter id="shadowLarge" x="0" y="0" width="1280" height="720" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="20" stdDeviation="26" flood-color="#111111" flood-opacity="0.08"/>
+    </filter>
+    <filter id="shadowSoft" x="0" y="0" width="1280" height="720" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="14" stdDeviation="18" flood-color="#111111" flood-opacity="0.07"/>
+    </filter>
+  </defs>
+
+  <rect width="1280" height="720" rx="36" fill="url(#bg)"/>
+  <rect width="1280" height="720" rx="36" fill="url(#warm)"/>
+  <rect width="1280" height="720" rx="36" fill="url(#cool)"/>
+
+  <text x="96" y="106" font-family="SF Pro Display, Hiragino Sans, Yu Gothic, Meiryo, sans-serif" font-size="20" font-weight="600" letter-spacing="0.04em" fill="#6E6E73">LizzieYzy Next</text>
+  <text x="96" y="206" font-family="SF Pro Display, Hiragino Sans, Yu Gothic, Meiryo, sans-serif" font-size="68" font-weight="700" fill="#1D1D1F">lizzieyzy を</text>
+  <text x="96" y="286" font-family="SF Pro Display, Hiragino Sans, Yu Gothic, Meiryo, sans-serif" font-size="68" font-weight="700" fill="#1D1D1F">また使いやすく</text>
+  <text x="96" y="356" font-family="SF Pro Text, Hiragino Sans, Yu Gothic, Meiryo, sans-serif" font-size="28" font-weight="500" fill="#6E6E73">野狐の棋譜取得をもう一度使える形に戻し、</text>
+  <text x="96" y="396" font-family="SF Pro Text, Hiragino Sans, Yu Gothic, Meiryo, sans-serif" font-size="28" font-weight="500" fill="#6E6E73">インストールと初回起動もわかりやすく整えました。</text>
+
+  <rect x="96" y="450" width="202" height="46" rx="23" fill="#173C34"/>
+  <text x="197" y="480" text-anchor="middle" font-family="SF Pro Text, Hiragino Sans, Yu Gothic, Meiryo, sans-serif" font-size="18" font-weight="600" fill="#FFFFFF">野狐ニックネーム</text>
+  <rect x="316" y="450" width="224" height="46" rx="23" fill="#234A7A"/>
+  <text x="428" y="480" text-anchor="middle" font-family="SF Pro Text, Hiragino Sans, Yu Gothic, Meiryo, sans-serif" font-size="18" font-weight="600" fill="#FFFFFF">Windows インストーラ</text>
+  <rect x="558" y="450" width="158" height="46" rx="23" fill="#7B4B1C"/>
+  <text x="637" y="480" text-anchor="middle" font-family="SF Pro Text, Hiragino Sans, Yu Gothic, Meiryo, sans-serif" font-size="18" font-weight="600" fill="#FFFFFF">KataGo 同梱</text>
+
+  <text x="96" y="544" font-family="SF Pro Text, Hiragino Sans, Yu Gothic, Meiryo, sans-serif" font-size="22" font-weight="600" fill="#4C5057">Windows / macOS / Linux</text>
+  <text x="96" y="580" font-family="SF Pro Text, Hiragino Sans, Yu Gothic, Meiryo, sans-serif" font-size="18" font-weight="500" fill="#7A7D84">ダウンロードして、開いて、ニックネーム入力で復習を続けられます。</text>
+
+  <g filter="url(#shadowLarge)">
+    <rect x="738" y="72" width="462" height="576" rx="38" fill="#FFFFFF" fill-opacity="0.9" stroke="#EFEFF3"/>
+  </g>
+
+  <rect x="778" y="108" width="118" height="34" rx="17" fill="#173C34"/>
+  <text x="837" y="131" text-anchor="middle" font-family="SF Pro Text, Hiragino Sans, Yu Gothic, Meiryo, sans-serif" font-size="16" font-weight="600" fill="#FFFFFF">継続保守</text>
+
+  <rect x="778" y="164" width="382" height="58" rx="29" fill="#F5F5F7"/>
+  <text x="969" y="201" text-anchor="middle" font-family="SF Pro Text, Hiragino Sans, Yu Gothic, Meiryo, sans-serif" font-size="21" font-weight="600" fill="#1D1D1F">野狐棋譜（ニックネームで取得）</text>
+
+  <g filter="url(#shadowSoft)">
+    <rect x="810" y="248" width="316" height="244" rx="30" fill="url(#boardBg)"/>
+  </g>
+  <g opacity="0.54" stroke="#7E5627" stroke-width="2.2">
+    <path d="M842 280H1094"/>
+    <path d="M842 311.5H1094"/>
+    <path d="M842 343H1094"/>
+    <path d="M842 374.5H1094"/>
+    <path d="M842 406H1094"/>
+    <path d="M842 437.5H1094"/>
+    <path d="M842 469H1094"/>
+    <path d="M842 280V469"/>
+    <path d="M873.5 280V469"/>
+    <path d="M905 280V469"/>
+    <path d="M936.5 280V469"/>
+    <path d="M968 280V469"/>
+    <path d="M999.5 280V469"/>
+    <path d="M1031 280V469"/>
+    <path d="M1062.5 280V469"/>
+    <path d="M1094 280V469"/>
+  </g>
+  <circle cx="905" cy="343" r="19" fill="#141414"/>
+  <circle cx="936.5" cy="374.5" r="19" fill="#F8F8F8" stroke="#D9D9DE" stroke-width="2.6"/>
+  <circle cx="968" cy="343" r="19" fill="#141414"/>
+  <circle cx="1031" cy="311.5" r="19" fill="#F8F8F8" stroke="#D9D9DE" stroke-width="2.6"/>
+  <circle cx="1031" cy="406" r="19" fill="#141414"/>
+  <circle cx="999.5" cy="374.5" r="19" fill="#EAF5EA" stroke="#5C9B63" stroke-width="3.2"/>
+
+  <rect x="790" y="522" width="124" height="90" rx="24" fill="#F5F5F7"/>
+  <text x="822" y="556" font-family="SF Pro Text, Hiragino Sans, Yu Gothic, Meiryo, sans-serif" font-size="18" font-weight="600" fill="#1D1D1F">Windows</text>
+  <text x="822" y="584" font-family="SF Pro Text, Hiragino Sans, Yu Gothic, Meiryo, sans-serif" font-size="16" font-weight="500" fill="#6E6E73">まずは</text>
+  <text x="822" y="608" font-family="SF Pro Text, Hiragino Sans, Yu Gothic, Meiryo, sans-serif" font-size="16" font-weight="500" fill="#6E6E73">導入版</text>
+
+  <rect x="928" y="522" width="124" height="90" rx="24" fill="#F5F5F7"/>
+  <text x="960" y="556" font-family="SF Pro Text, Hiragino Sans, Yu Gothic, Meiryo, sans-serif" font-size="18" font-weight="600" fill="#1D1D1F">KataGo</text>
+  <text x="960" y="584" font-family="SF Pro Text, Hiragino Sans, Yu Gothic, Meiryo, sans-serif" font-size="16" font-weight="500" fill="#6E6E73">同梱済み</text>
+  <text x="960" y="608" font-family="SF Pro Text, Hiragino Sans, Yu Gothic, Meiryo, sans-serif" font-size="16" font-weight="500" fill="#6E6E73">すぐ開始</text>
+
+  <rect x="1066" y="522" width="104" height="90" rx="24" fill="#F5F5F7"/>
+  <text x="1092" y="556" font-family="SF Pro Text, Hiragino Sans, Yu Gothic, Meiryo, sans-serif" font-size="18" font-weight="600" fill="#1D1D1F">入力</text>
+  <text x="1092" y="584" font-family="SF Pro Text, Hiragino Sans, Yu Gothic, Meiryo, sans-serif" font-size="16" font-weight="500" fill="#6E6E73">ニックネーム</text>
+  <text x="1092" y="608" font-family="SF Pro Text, Hiragino Sans, Yu Gothic, Meiryo, sans-serif" font-size="16" font-weight="500" fill="#6E6E73">復習継続</text>
+</svg>

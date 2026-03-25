@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/hero.svg" alt="LizzieYzy Next" width="100%" />
+  <img src="assets/hero-japanese.svg" alt="LizzieYzy Next" width="100%" />
 </p>
 
 <p align="center">
