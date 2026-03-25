@@ -52,6 +52,7 @@ import javax.swing.JComponent;
 import javax.swing.JTable;
 import javax.swing.JTextField;
 import javax.swing.table.TableModel;
+import org.jdesktop.swingx.util.OS;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -188,6 +189,63 @@ public class Utils {
       Lizzie.config.save();
     } catch (IOException e) {
       e.printStackTrace();
+    }
+  }
+
+  public static String resolveJavaCommand() {
+    List<String> candidates = new ArrayList<String>();
+    String javaHome = System.getProperty("java.home", "");
+    if (!isBlank(javaHome)) {
+      addJavaCandidate(
+          candidates,
+          new File(javaHome, "bin" + File.separator + (OS.isWindows() ? "java.exe" : "java"))
+              .getPath());
+    }
+    if (OS.isWindows()) {
+      addJavaCandidate(candidates, java64Path1);
+      addJavaCandidate(candidates, java64Path2);
+      addJavaCandidate(candidates, java32Path);
+      addJavaCandidate(
+          candidates,
+          "runtime"
+              + File.separator
+              + "windows-x64"
+              + File.separator
+              + "bin"
+              + File.separator
+              + "java.exe");
+    }
+    for (String candidate : candidates) {
+      if (new File(candidate).isFile()) {
+        return candidate;
+      }
+    }
+    return "java";
+  }
+
+  public static Process startJavaJar(File jarFile, List<String> appArgs, List<String> jvmArgs)
+      throws IOException {
+    return buildJavaJarProcess(jarFile, appArgs, jvmArgs).start();
+  }
+
+  public static ProcessBuilder buildJavaJarProcess(
+      File jarFile, List<String> appArgs, List<String> jvmArgs) {
+    List<String> command = new ArrayList<String>();
+    command.add(resolveJavaCommand());
+    if (jvmArgs != null) {
+      command.addAll(jvmArgs);
+    }
+    command.add("-jar");
+    command.add(jarFile.getPath());
+    if (appArgs != null) {
+      command.addAll(appArgs);
+    }
+    return new ProcessBuilder(command);
+  }
+
+  private static void addJavaCandidate(List<String> candidates, String candidate) {
+    if (!isBlank(candidate) && !candidates.contains(candidate)) {
+      candidates.add(candidate);
     }
   }
 

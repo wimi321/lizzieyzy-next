@@ -20,7 +20,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
-import org.jdesktop.swingx.util.OS;
 
 public class ReadBoard {
   public Process process;
@@ -98,95 +97,21 @@ public class ReadBoard {
 
   public void startEngine(String engineCommand, int index) throws Exception {
     if (javaReadBoard) {
-      File javaReadBoard = new File("readboard_java" + File.separator + javaReadBoardName);
-      if (!javaReadBoard.exists()) {
+      File javaReadBoardJar = new File("readboard_java" + File.separator + javaReadBoardName);
+      if (!javaReadBoardJar.exists()) {
         Utils.deleteDir(new File("readboard_java"));
         Utils.copyReadBoardJava(javaReadBoardName);
       }
-      // 共传入5个参数,语言 是否java外观 字体大小 宽 高
-      String param = "";
-      param = param + " " + Lizzie.resourceBundle.getString("ReadBoard.language") + " ";
-      if (Lizzie.config.useJavaLooks) param = param + "true ";
-      else param = param + "false ";
-      param = param + (int) Math.round(Config.frameFontSize * Lizzie.javaScaleFactor);
-      param = " " + param + " " + Board.boardWidth + " " + Board.boardHeight;
+      List<String> jvmArgs = new ArrayList<String>();
+      jvmArgs.add("-Dsun.java2d.uiScale=1.0");
+      List<String> appArgs = new ArrayList<String>();
+      appArgs.add(Lizzie.resourceBundle.getString("ReadBoard.language"));
+      appArgs.add(Lizzie.config.useJavaLooks ? "true" : "false");
+      appArgs.add(String.valueOf((int) Math.round(Config.frameFontSize * Lizzie.javaScaleFactor)));
+      appArgs.add(String.valueOf(Board.boardWidth));
+      appArgs.add(String.valueOf(Board.boardHeight));
       try {
-        if (OS.isWindows()) {
-          boolean success = false;
-          File java64_1 = new File(Utils.java64Path1);
-
-          if (java64_1.exists()) {
-            try {
-              process =
-                  Runtime.getRuntime()
-                      .exec(
-                          Utils.java64Path1
-                              + " -jar -Dsun.java2d.uiScale=1.0 readboard_java"
-                              + File.separator
-                              + javaReadBoardName
-                              + param);
-              success = true;
-            } catch (Exception e) {
-              success = false;
-              e.printStackTrace();
-            }
-          }
-          if (!success) {
-            File java64_2 = new File(Utils.java64Path2);
-            if (java64_2.exists()) {
-              try {
-                process =
-                    Runtime.getRuntime()
-                        .exec(
-                            Utils.java64Path2
-                                + " -jar -Dsun.java2d.uiScale=1.0 readboard_java"
-                                + File.separator
-                                + javaReadBoardName
-                                + param);
-                success = true;
-              } catch (Exception e) {
-                success = false;
-                e.printStackTrace();
-              }
-            }
-          }
-          if (!success) {
-            File java32 = new File(Utils.java32Path);
-            if (java32.exists()) {
-              try {
-                process =
-                    Runtime.getRuntime()
-                        .exec(
-                            Utils.java32Path
-                                + " -jar -Dsun.java2d.uiScale=1.0 readboard_java"
-                                + File.separator
-                                + javaReadBoardName
-                                + param);
-                success = true;
-              } catch (Exception e) {
-                success = false;
-                e.printStackTrace();
-              }
-            }
-          }
-          if (!success) {
-            process =
-                Runtime.getRuntime()
-                    .exec(
-                        "java -Dsun.java2d.uiScale=1.0 -jar readboard_java"
-                            + File.separator
-                            + javaReadBoardName
-                            + param);
-          }
-        } else {
-          process =
-              Runtime.getRuntime()
-                  .exec(
-                      "java -Dsun.java2d.uiScale=1.0 -jar readboard_java"
-                          + File.separator
-                          + javaReadBoardName
-                          + param);
-        }
+        process = Utils.startJavaJar(javaReadBoardJar, appArgs, jvmArgs);
       } catch (Exception e) {
         Utils.showMsg(e.getLocalizedMessage());
       }

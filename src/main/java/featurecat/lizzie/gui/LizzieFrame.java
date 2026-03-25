@@ -12241,65 +12241,7 @@ public class LizzieFrame extends JFrame {
       File javaReadBoard = new File("clockHelper" + File.separator + javaReadBoardName);
       if (!javaReadBoard.exists()) Utils.copyClockHelper();
       try {
-        boolean success = false;
-        File java64_1 = new File(Utils.java64Path1);
-
-        if (java64_1.exists()) {
-          try {
-            processClockHelper =
-                Runtime.getRuntime()
-                    .exec(
-                        Utils.java64Path1
-                            + " -jar clockHelper"
-                            + File.separator
-                            + javaReadBoardName);
-            success = true;
-          } catch (Exception e) {
-            success = false;
-            e.printStackTrace();
-          }
-        }
-        if (!success) {
-          File java64_2 = new File(Utils.java64Path2);
-          if (java64_2.exists()) {
-            try {
-              processClockHelper =
-                  Runtime.getRuntime()
-                      .exec(
-                          Utils.java64Path2
-                              + " -jar clockHelper"
-                              + File.separator
-                              + javaReadBoardName);
-              success = true;
-            } catch (Exception e) {
-              success = false;
-              e.printStackTrace();
-            }
-          }
-        }
-        if (!success) {
-          File java32 = new File(Utils.java32Path);
-          if (java32.exists()) {
-            try {
-              processClockHelper =
-                  Runtime.getRuntime()
-                      .exec(
-                          Utils.java32Path
-                              + " -jar clockHelper"
-                              + File.separator
-                              + javaReadBoardName);
-              success = true;
-            } catch (Exception e) {
-              success = false;
-              e.printStackTrace();
-            }
-          }
-        }
-        if (!success) {
-          processClockHelper =
-              Runtime.getRuntime()
-                  .exec("java -jar clockHelper" + File.separator + javaReadBoardName);
-        }
+        processClockHelper = Utils.startJavaJar(javaReadBoard, null, null);
       } catch (Exception e) {
         Utils.showMsg(e.getLocalizedMessage());
       }
