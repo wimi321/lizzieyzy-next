@@ -1,5 +1,6 @@
 package featurecat.lizzie.util;
 
+import featurecat.lizzie.Config;
 import featurecat.lizzie.Lizzie;
 import featurecat.lizzie.gui.EngineData;
 import java.io.BufferedInputStream;
@@ -288,6 +289,70 @@ public final class KataGoAutoSetupHelper {
         applyAutoSetup(snapshot.withActiveWeight(snapshot.activeWeightPath));
         return true;
       }
+    } catch (Exception e) {
+      e.printStackTrace();
+    }
+    return false;
+  }
+
+  public static boolean repairBrokenBundledCommandsIfNeeded() {
+    if (Lizzie.config == null
+        || Lizzie.config.uiConfig == null
+        || Lizzie.config.leelazConfig == null) {
+      return false;
+    }
+    try {
+      SetupSnapshot snapshot = inspectLocalSetup();
+      if (!snapshot.hasEngine() || !snapshot.hasConfigs() || !snapshot.hasWeight()) {
+        return false;
+      }
+      ArrayList<EngineData> engines = Utils.getEngineData();
+      int defaultEngine = Lizzie.config.uiConfig.optInt("default-engine", -1);
+      boolean repairDefault = false;
+      if (defaultEngine >= 0 && defaultEngine < engines.size()) {
+        EngineData engineData = engines.get(defaultEngine);
+        repairDefault =
+            shouldRepairBundledCommand(
+                engineData.name,
+                engineData.commands,
+                snapshot.enginePath,
+                snapshot.gtpConfigPath,
+                snapshot.activeWeightPath);
+      }
+      if (!repairDefault) {
+        for (EngineData engineData : engines) {
+          if (engineData != null
+              && engineData.isDefault
+              && shouldRepairBundledCommand(
+                  engineData.name,
+                  engineData.commands,
+                  snapshot.enginePath,
+                  snapshot.gtpConfigPath,
+                  snapshot.activeWeightPath)) {
+            repairDefault = true;
+            break;
+          }
+        }
+      }
+      boolean repairAnalysis =
+          shouldRepairAuxCommand(
+              Lizzie.config.uiConfig.optString("analysis-engine-command", ""),
+              snapshot.enginePath,
+              snapshot.analysisConfigPath,
+              snapshot.activeWeightPath);
+      boolean repairEstimate =
+          shouldRepairAuxCommand(
+              Lizzie.config.uiConfig.optString("estimate-command", ""),
+              snapshot.enginePath,
+              snapshot.estimateConfigPath != null
+                  ? snapshot.estimateConfigPath
+                  : snapshot.gtpConfigPath,
+              snapshot.activeWeightPath);
+      if (!(repairDefault || repairAnalysis || repairEstimate)) {
+        return false;
+      }
+      applyAutoSetup(snapshot.withActiveWeight(snapshot.activeWeightPath));
+      return true;
     } catch (Exception e) {
       e.printStackTrace();
     }
@@ -1048,6 +1113,81 @@ public final class KataGoAutoSetupHelper {
         || normalized.contains(" engines/")
         || normalized.contains("\"weights/")
         || normalized.contains(" weights/");
+  }
+
+  private static boolean shouldRepairBundledCommand(
+      String name,
+      String command,
+      Path expectedEnginePath,
+      Path expectedConfigPath,
+      Path expectedWeightPath) {
+    if (command == null || command.trim().isEmpty()) {
+      return false;
+    }
+    boolean bundledLike =
+        AUTO_SETUP_ENGINE_NAME.equals(name)
+            || "KataGo Bundled".equals(name)
+            || Config.isBundledKataGoCommand(command);
+    if (!bundledLike) {
+      return false;
+    }
+    return isCommandBrokenOrOutdated(
+        command, expectedEnginePath, expectedConfigPath, expectedWeightPath);
+  }
+
+  private static boolean shouldRepairAuxCommand(
+      String command, Path expectedEnginePath, Path expectedConfigPath, Path expectedWeightPath) {
+    if (!Config.isBundledKataGoCommand(command)) {
+      return false;
+    }
+    return isCommandBrokenOrOutdated(
+        command, expectedEnginePath, expectedConfigPath, expectedWeightPath);
+  }
+
+  private static boolean isCommandBrokenOrOutdated(
+      String command, Path expectedEnginePath, Path expectedConfigPath, Path expectedWeightPath) {
+    List<String> commandParts = Utils.splitCommand(command);
+    Path actualEnginePath = KataGoRuntimeHelper.resolveCommandExecutable(commandParts);
+    if (!pathMatches(actualEnginePath, expectedEnginePath)) {
+      return true;
+    }
+    Path actualWeightPath = extractOptionPath(commandParts, "-model");
+    if (!pathMatches(actualWeightPath, expectedWeightPath)) {
+      return true;
+    }
+    Path actualConfigPath = extractOptionPath(commandParts, "-config");
+    if (!pathMatches(actualConfigPath, expectedConfigPath)) {
+      return true;
+    }
+    return false;
+  }
+
+  private static Path extractOptionPath(List<String> commandParts, String optionName) {
+    if (commandParts == null || optionName == null) {
+      return null;
+    }
+    for (int i = 0; i < commandParts.size() - 1; i++) {
+      if (optionName.equals(commandParts.get(i))) {
+        try {
+          return Paths.get(commandParts.get(i + 1)).toAbsolutePath().normalize();
+        } catch (Exception e) {
+          return null;
+        }
+      }
+    }
+    return null;
+  }
+
+  private static boolean pathMatches(Path actual, Path expected) {
+    if (expected == null) {
+      return actual != null && Files.isRegularFile(actual);
+    }
+    if (actual == null) {
+      return false;
+    }
+    Path normalizedActual = actual.toAbsolutePath().normalize();
+    Path normalizedExpected = expected.toAbsolutePath().normalize();
+    return Files.isRegularFile(normalizedActual) && normalizedActual.equals(normalizedExpected);
   }
 
   private static String fileNameFromUrl(String url) {

@@ -848,15 +848,41 @@ public class SGFParser {
   public static String saveMainTrunkRawToString() throws IOException {
     boolean originalSavingRaw = LizzieFrame.isSavingRaw;
     boolean originalSavingRawComment = LizzieFrame.isSavingRawComment;
-    try (StringWriter writer = new StringWriter()) {
+    GameInfo originalGameInfo = copyGameInfo(Lizzie.board.getHistory().getGameInfo());
+    int startMoveNumber = 0;
+    boolean blackToPlay = Lizzie.board.getHistory().getStart().getData().blackToPlay;
+    if (Lizzie.board.hasStartStone) {
+      startMoveNumber += Lizzie.board.startStonelist.size();
+    }
+    try {
+      Lizzie.board.saveListForEdit();
+      Lizzie.board.clearforedit();
+      Lizzie.board.getHistory().setGameInfo(originalGameInfo);
+      Lizzie.board.setMoveListWithFlatten(
+          Lizzie.board.tempallmovelist, startMoveNumber, blackToPlay);
+      Lizzie.board.getHistory().getStart().getData().comment = "";
       LizzieFrame.isSavingRaw = true;
       LizzieFrame.isSavingRawComment = false;
-      saveToStream(Lizzie.board, writer, false, false, true, true);
-      return writer.toString();
+      return saveToString(false);
     } finally {
       LizzieFrame.isSavingRaw = originalSavingRaw;
       LizzieFrame.isSavingRawComment = originalSavingRawComment;
+      Lizzie.board.clearEditStuff();
     }
+  }
+
+  private static GameInfo copyGameInfo(GameInfo original) {
+    GameInfo copy = new GameInfo();
+    if (original == null) {
+      return copy;
+    }
+    copy.setPlayerBlack(original.getPlayerBlack());
+    copy.setPlayerWhite(original.getPlayerWhite());
+    copy.setDate(original.getDate());
+    copy.setKomiNoMenu(original.getKomi());
+    copy.setHandicap(original.getHandicap());
+    copy.setResult(original.getResult());
+    return copy;
   }
 
   public static void appendGameTimeAndPlayouts() {

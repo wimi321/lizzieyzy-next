@@ -125,6 +125,9 @@ public class Utils {
     if (KataGoAutoSetupHelper.migrateAutoSetupCommandsIfNeeded()) {
       changed = true;
     }
+    if (KataGoAutoSetupHelper.repairBrokenBundledCommandsIfNeeded()) {
+      changed = true;
+    }
     if (changed) {
       persistConfigQuietly();
     }
