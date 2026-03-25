@@ -28,8 +28,9 @@
 </p>
 
 > [!IMPORTANT]
-> 먼저 이 3가지만 보면 됩니다:
+> 먼저 이 4가지만 보면 됩니다:
 > - 대부분의 Windows 사용자는 `windows64.with-katago.installer.exe` 를 받으면 가장 쉽습니다
+> - PC 에 **NVIDIA 그래픽카드** 가 있고 더 빠른 분석을 원하면 `windows64.nvidia.installer.exe` 를 고르면 됩니다
 > - Fox 기보 가져오기는 이제 **Fox 닉네임** 을 입력하면 됩니다. 앱이 맞는 계정을 자동으로 찾습니다
 > - 주 추천 통합 패키지는 KataGo 를 포함하고 있고, 첫 실행에서는 자동 설정을 먼저 시도합니다
 
@@ -49,13 +50,14 @@
 - Fox 기보 가져오기, KataGo 포함 패키지, 첫 실행 경험을 이해하기 쉽게 유지하기
 - 설정에 익숙한 소수만이 아니라 일반 사용자도 바로 쓰기 쉽게 만들기
 
-## 대부분의 사용자는 여기부터 보면 됩니다
+## Windows 사용자는 여기부터 보면 됩니다
 
-**Windows** 를 쓴다면 먼저 이것을 다운로드하세요.
+**Windows** 를 쓴다면:
 
-**`windows64.with-katago.installer.exe`**
+- 대부분의 사용자는 **`windows64.with-katago.installer.exe`**
+- NVIDIA 그래픽카드가 있고 속도를 더 원하면 **`windows64.nvidia.installer.exe`**
 
-가장 쉬운 주 추천판입니다. 다운로드하고, 더블클릭해서 설치하고, 바로 실행해 사용할 수 있습니다.
+앞의 패키지는 가장 쉬운 기본판이고, NVIDIA 패키지는 NVIDIA GPU 사용자를 위한 빠른 분석판입니다.
 
 ## 무엇을 다운로드해야 하나요
 
@@ -68,6 +70,8 @@
 | 내 컴퓨터 | 먼저 받을 파일 |
 | --- | --- |
 | Windows x64 | `windows64.with-katago.installer.exe` |
+| Windows x64, NVIDIA GPU, 더 빠르게 | `windows64.nvidia.installer.exe` |
+| Windows x64, NVIDIA GPU, 설치 없이 사용 | `windows64.nvidia.portable.zip` |
 | Windows x64, 설치 없이 사용 | `windows64.with-katago.portable.zip` |
 | Windows x64, 내 엔진 사용 + 설치형 | `windows64.without.engine.installer.exe` |
 | Windows x64, 내 엔진 사용 | `windows64.without.engine.portable.zip` |
@@ -77,13 +81,15 @@
 
 간단한 기준:
 
-- Windows: 모르겠으면 `installer.exe`
+- Windows: NVIDIA GPU 인지 모르겠으면 `windows64.with-katago.installer.exe`
 - Mac: Apple Silicon 인지 Intel 인지 먼저 확인
 - Linux: `with-katago.zip`
 
 짧게 정리하면:
 
 - `installer.exe` 는 대부분의 Windows 사용자용 기본 선택
+- `nvidia.installer.exe` 는 NVIDIA GPU 사용자용 빠른 패키지
+- `nvidia.portable.zip` 는 NVIDIA GPU 사용자용 무설치 패키지
 - `portable.zip` 는 설치 없이 압축만 풀어 쓰고 싶은 경우
 - `without.engine.installer.exe` 는 설치형을 원하지만 엔진은 직접 쓰려는 경우
 - `without.engine.portable.zip` 는 이미 자기 엔진을 관리하고 설치도 원하지 않는 경우

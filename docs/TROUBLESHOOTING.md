@@ -11,6 +11,7 @@
 ### Windows
 
 - 安装器版：重新运行 `windows64.with-katago.installer.exe`
+- NVIDIA 极速版：确认你下载的是 `windows64.nvidia.installer.exe` 或 `windows64.nvidia.portable.zip`
 - 便携版：确认你启动的是 `LizzieYzy Next.exe`
 - 不要再从旧的 `.bat` 路径排查当前主发布版
 
@@ -91,7 +92,7 @@ chmod +x start-linux64.sh
 
 - 安装包文件名
 - 操作系统和版本
-- 是否是 `with-katago` 或 `without.engine`
+- 是否是普通 `with-katago`、`nvidia`，还是 `without.engine`
 - 完整报错截图或复现步骤
 
 相关入口：

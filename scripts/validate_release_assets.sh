@@ -19,6 +19,8 @@ expected=()
 case "$PLATFORM" in
   windows)
     expected=(
+      "${DATE_TAG}-windows64.nvidia.installer.exe"
+      "${DATE_TAG}-windows64.nvidia.portable.zip"
       "${DATE_TAG}-windows64.with-katago.installer.exe"
       "${DATE_TAG}-windows64.with-katago.portable.zip"
       "${DATE_TAG}-windows64.without.engine.installer.exe"

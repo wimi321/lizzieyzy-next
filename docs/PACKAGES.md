@@ -17,6 +17,8 @@
 | 包类型 | 典型文件名 | 适合谁 |
 | --- | --- | --- |
 | Windows 64 位安装器 | `<date>-windows64.with-katago.installer.exe` | 想双击安装、直接使用的普通用户 |
+| Windows 64 位 NVIDIA 极速安装器 | `<date>-windows64.nvidia.installer.exe` | 有 NVIDIA 显卡，想要更高分析速度 |
+| Windows 64 位 NVIDIA 极速便携包 | `<date>-windows64.nvidia.portable.zip` | 有 NVIDIA 显卡，不想安装 |
 | Windows 64 位整合便携包 | `<date>-windows64.with-katago.portable.zip` | 不想安装，只想解压后直接运行 |
 | Windows 64 位无引擎安装器 | `<date>-windows64.without.engine.installer.exe` | 想保留安装流程，但自己配置分析引擎 |
 | Windows 64 位无引擎便携包 | `<date>-windows64.without.engine.portable.zip` | 想自己配置分析引擎 |
@@ -27,7 +29,7 @@
 说明：
 
 - `<date>` 代表发布日期，例如 `2026-03-21`。
-- 当前维护版公开 release 主列表只保留这 7 个用户向主资产。
+- 当前维护版公开 release 主列表只保留这 9 个用户向主资产。
 - Windows 64 位现在优先推荐安装器，其次才是便携包。
 - 旧 tag 里如果还看到兼容 zip 或历史包，那属于历史发布格式。
 
@@ -36,6 +38,8 @@
 | 包 | 是否自带运行环境 | 是否打开后就能分析 | 打开方式 |
 | --- | --- | --- | --- |
 | `windows64.with-katago.installer.exe` | 是 | 是 | 安装后从开始菜单或桌面打开 |
+| `windows64.nvidia.installer.exe` | 是 | 是 | 安装后从开始菜单或桌面打开 |
+| `windows64.nvidia.portable.zip` | 是 | 是 | 解压后运行 `LizzieYzy Next NVIDIA.exe` |
 | `windows64.with-katago.portable.zip` | 是 | 是 | 解压后运行 `LizzieYzy Next.exe` |
 | `windows64.without.engine.installer.exe` | 是 | 否 | 安装后从开始菜单或桌面打开 |
 | `windows64.without.engine.portable.zip` | 是 | 否 | 解压后运行 `LizzieYzy Next.exe` |
@@ -48,6 +52,7 @@
 如果你只想尽快开始：
 
 - Windows：选 `windows64.with-katago.installer.exe`
+- Windows + NVIDIA 显卡：选 `windows64.nvidia.installer.exe`
 - macOS：按芯片选对应的 `with-katago.dmg`
 - Linux：选 `linux64.with-katago.zip`
 
@@ -84,8 +89,9 @@
 从新的维护版发布开始：
 
 - Windows 64 位主推荐资产是 `installer.exe`
+- Windows 64 位额外提供 `nvidia.installer.exe` 和 `nvidia.portable.zip`
 - Windows 64 位无引擎包同时提供安装器和 `.portable.zip`
-- 当前公开 release 主列表固定为 7 个用户向主资产
+- 当前公开 release 主列表固定为 9 个用户向主资产
 - 旧的兼容 zip 只作为历史 tag 说明保留，不再放进主推荐区
 
 ## 相关文档

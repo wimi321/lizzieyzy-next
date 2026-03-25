@@ -22,7 +22,7 @@ If you need help with `LizzieYzy Next`, start with the closest path below. Clear
 - 操作系统和版本
 - 你下载的安装包文件名
 - 机器架构：Windows x64 / Windows x86 / macOS Apple Silicon / macOS Intel / Linux x64
-- 是否使用 `with-katago` 或 `without.engine`
+- 是否使用普通 `with-katago`、`nvidia`，还是 `without.engine`
 - 如果问题和野狐抓谱相关，请提供你输入的 **野狐昵称**
 - 错误截图、日志、系统安全提示
 

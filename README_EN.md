@@ -28,8 +28,9 @@
 </p>
 
 > [!IMPORTANT]
-> Start with these 3 points:
+> Start with these 4 points:
 > - Most Windows users should download `windows64.with-katago.installer.exe`
+> - If your PC has an **NVIDIA GPU** and you want faster analysis, download `windows64.nvidia.installer.exe`
 > - You can now enter a **Fox nickname** directly. The app resolves the account and fetches recent public games automatically.
 > - The recommended bundles already include KataGo and try to finish the first-launch setup automatically.
 
@@ -49,13 +50,14 @@ This repository stays focused on a few practical goals:
 - keep Fox game fetching, bundled KataGo, and release packages usable for normal users
 - reduce setup friction instead of assuming everyone wants to build a custom environment
 
-## Most Users Start Here
+## Windows Users Start Here
 
-If you are on **Windows**, download:
+If you are on **Windows**:
 
-**`windows64.with-katago.installer.exe`**
+- Most users should start with **`windows64.with-katago.installer.exe`**
+- If your PC has an **NVIDIA GPU** and you care about speed first, choose **`windows64.nvidia.installer.exe`**
 
-This is the main beginner-friendly build: download it, double-click it, install it, open it, start reviewing.
+The first one is the main beginner-friendly build. The NVIDIA package is the faster Windows option for NVIDIA graphics users.
 
 ## What To Download
 
@@ -68,6 +70,8 @@ If you prefer a visual chooser first, start with this:
 | Your computer | Download this |
 | --- | --- |
 | Windows x64 | `windows64.with-katago.installer.exe` |
+| Windows x64, NVIDIA GPU, faster analysis | `windows64.nvidia.installer.exe` |
+| Windows x64, NVIDIA GPU, no installer | `windows64.nvidia.portable.zip` |
 | Windows x64, no installer | `windows64.with-katago.portable.zip` |
 | Windows x64, your own engine with installer | `windows64.without.engine.installer.exe` |
 | Windows x64, your own engine | `windows64.without.engine.portable.zip` |
@@ -77,13 +81,15 @@ If you prefer a visual chooser first, start with this:
 
 Quick rule:
 
-- Windows: if you are not sure, choose `installer.exe`
+- Windows: if you are not sure whether your PC has an NVIDIA GPU, choose `windows64.with-katago.installer.exe`
 - Mac: choose Apple Silicon or Intel first
 - Linux: choose `with-katago.zip`
 
 At a glance:
 
 - `installer.exe`: best default choice for most Windows users
+- `nvidia.installer.exe`: Windows NVIDIA bundle for higher KataGo speed
+- `nvidia.portable.zip`: unzip-and-run NVIDIA build
 - `portable.zip`: for people who want unzip-and-run without installing
 - `without.engine.installer.exe`: for people who want installer flow but their own engine
 - `without.engine.portable.zip`: for people who already manage their own engine and do not want installation

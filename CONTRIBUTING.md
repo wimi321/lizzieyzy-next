@@ -22,7 +22,7 @@ This project is a maintained fork. We care about practical fixes, clear packagin
 2. 你的问题是不是已经在 README、release notes 或现有 issue 里出现过。
 3. 如果是野狐抓谱问题，请优先确认你输入的是 **野狐昵称**，并确认该账号最近有公开棋谱。
 4. 如果是 macOS 问题，请说明是 Apple Silicon 还是 Intel。
-5. 如果是 Windows / Linux 问题，请说明你使用的是 `with-katago` 还是 `without.engine` 包。
+5. 如果是 Windows / Linux 问题，请说明你使用的是普通 `with-katago`、`nvidia`，还是 `without.engine` 包。
 
 如果你只是想确认“某个发布包在这台机器上能不能正常安装”，优先使用 Installation Report 模板，而不是普通 bug 模板。
 
@@ -57,7 +57,7 @@ A concise, reproducible report saves a lot of time for everyone.
 2. 不要顺手混入无关重构。
 3. 如果改了打包、引擎路径、野狐同步流程，请说明测试方式。打包相关改动建议同时参考 [docs/RELEASE_CHECKLIST.md](docs/RELEASE_CHECKLIST.md)。
 4. 如果改了文案或界面，请附截图。
-5. 尽量保持中英文术语一致，尤其是 `Fox nickname / 野狐昵称`、`with-katago`、`without.engine`。
+5. 尽量保持中英文术语一致，尤其是 `Fox nickname / 野狐昵称`、`with-katago`、`nvidia`、`without.engine`。
 
 如果你准备从源码构建、改打包脚本或继续维护，建议先看 [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)。
 

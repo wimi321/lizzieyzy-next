@@ -23,13 +23,18 @@ fi
 
 APP_NAME="LizzieYzy Next"
 APP_DESCRIPTION="Maintained LizzieYzy build with Fox nickname fetch and easier KataGo setup"
+NVIDIA_APP_NAME="LizzieYzy Next NVIDIA"
+NVIDIA_APP_DESCRIPTION="Maintained LizzieYzy build with bundled NVIDIA CUDA KataGo"
 MAIN_JAR="$(basename "$JAR_PATH")"
 ICON_PATH="$ROOT_DIR/packaging/icons/app-icon.ico"
-ENGINE_PLATFORM_DIR="windows-x64"
 ARCH_TAG="windows64"
+STANDARD_ENGINE_PLATFORM_DIR="windows-x64"
+NVIDIA_ENGINE_PLATFORM_DIR="${WINDOWS_NVIDIA_ENGINE_PLATFORM_DIR:-windows-x64-nvidia}"
+NVIDIA_ARCH_TAG="${ARCH_TAG}.nvidia"
 DIST_DIR="$ROOT_DIR/dist/windows"
 RELEASE_DIR="$ROOT_DIR/dist/release"
 META_DIR="$ROOT_DIR/dist/release-meta"
+WINDOWS_UPGRADE_UUID_NVIDIA="${WINDOWS_UPGRADE_UUID_NVIDIA:-14a4599e-6d5b-4b86-9895-7748266f0c25}"
 
 rm -rf "$DIST_DIR"
 mkdir -p "$DIST_DIR" "$RELEASE_DIR" "$META_DIR"
@@ -80,9 +85,10 @@ PY
 WINDOWS_APP_VERSION="$(derive_windows_app_version "$DATE_TAG")"
 
 has_bundled_katago() {
+  local engine_platform_dir="${1:-$STANDARD_ENGINE_PLATFORM_DIR}"
   [[ -f "$ROOT_DIR/weights/default.bin.gz" ]] \
-    && [[ -d "$ROOT_DIR/engines/katago/$ENGINE_PLATFORM_DIR" ]] \
-    && find "$ROOT_DIR/engines/katago/$ENGINE_PLATFORM_DIR" -maxdepth 1 -type f | grep -q .
+    && [[ -d "$ROOT_DIR/engines/katago/$engine_platform_dir" ]] \
+    && find "$ROOT_DIR/engines/katago/$engine_platform_dir" -maxdepth 1 -type f | grep -q .
 }
 
 copy_common_inputs() {
@@ -96,9 +102,12 @@ copy_common_inputs() {
 
 copy_bundle_engine_assets() {
   local input_dir="$1"
+  local engine_source_dir="${2:-$STANDARD_ENGINE_PLATFORM_DIR}"
+  local engine_target_dir="${3:-$STANDARD_ENGINE_PLATFORM_DIR}"
 
   mkdir -p "$input_dir/engines/katago" "$input_dir/weights"
-  cp -R "$ROOT_DIR/engines/katago/$ENGINE_PLATFORM_DIR" "$input_dir/engines/katago/"
+  cp -R "$ROOT_DIR/engines/katago/$engine_source_dir" \
+    "$input_dir/engines/katago/$engine_target_dir"
   if [[ -d "$ROOT_DIR/engines/katago/configs" ]]; then
     cp -R "$ROOT_DIR/engines/katago/configs" "$input_dir/engines/katago/"
   fi
@@ -120,58 +129,67 @@ to_native_path() {
 build_app_image() {
   local flavor="$1"
   local include_katago="$2"
+  local app_name="${3:-$APP_NAME}"
+  local app_description="${4:-$APP_DESCRIPTION}"
+  local engine_source_dir="${5:-$STANDARD_ENGINE_PLATFORM_DIR}"
+  local engine_target_dir="${6:-$STANDARD_ENGINE_PLATFORM_DIR}"
   local input_dir="$DIST_DIR/input-$flavor"
   local app_image_dir="$DIST_DIR/app-image-$flavor"
 
   rm -rf "$input_dir" "$app_image_dir"
   copy_common_inputs "$input_dir"
   if [[ "$include_katago" == "true" ]]; then
-    copy_bundle_engine_assets "$input_dir"
+    copy_bundle_engine_assets "$input_dir" "$engine_source_dir" "$engine_target_dir"
   fi
 
   jpackage \
     --type app-image \
-    --name "$APP_NAME" \
+    --name "$app_name" \
     --input "$input_dir" \
     --main-jar "$MAIN_JAR" \
     --main-class featurecat.lizzie.Lizzie \
     --dest "$app_image_dir" \
     --app-version "$WINDOWS_APP_VERSION" \
     --vendor "wimi321" \
-    --description "$APP_DESCRIPTION" \
+    --description "$app_description" \
     --icon "$ICON_PATH" \
     --java-options "-Xmx4096m"
 
-  printf '%s\n' "$app_image_dir/$APP_NAME"
+  printf '%s\n' "$app_image_dir/$app_name"
 }
 
 build_installer() {
   local flavor="$1"
   local include_katago="$2"
+  local app_name="${3:-$APP_NAME}"
+  local app_description="${4:-$APP_DESCRIPTION}"
+  local engine_source_dir="${5:-$STANDARD_ENGINE_PLATFORM_DIR}"
+  local engine_target_dir="${6:-$STANDARD_ENGINE_PLATFORM_DIR}"
+  local upgrade_uuid="${7:-$WINDOWS_UPGRADE_UUID}"
   local input_dir="$DIST_DIR/input-$flavor"
   local installer_dir="$DIST_DIR/installer-$flavor"
 
   rm -rf "$installer_dir"
   copy_common_inputs "$input_dir"
   if [[ "$include_katago" == "true" ]]; then
-    copy_bundle_engine_assets "$input_dir"
+    copy_bundle_engine_assets "$input_dir" "$engine_source_dir" "$engine_target_dir"
   fi
 
   jpackage \
     --type exe \
-    --name "$APP_NAME" \
+    --name "$app_name" \
     --input "$input_dir" \
     --main-jar "$MAIN_JAR" \
     --main-class featurecat.lizzie.Lizzie \
     --dest "$installer_dir" \
     --app-version "$WINDOWS_APP_VERSION" \
     --vendor "wimi321" \
-    --description "$APP_DESCRIPTION" \
+    --description "$app_description" \
     --icon "$ICON_PATH" \
     --win-dir-chooser \
     --win-menu \
     --win-shortcut \
-    --win-upgrade-uuid "$WINDOWS_UPGRADE_UUID" \
+    --win-upgrade-uuid "$upgrade_uuid" \
     --java-options "-Xmx4096m"
 
   find "$installer_dir" -maxdepth 1 -type f -name '*.exe' | head -n 1
@@ -179,7 +197,8 @@ build_installer() {
 
 write_windows_install_note() {
   local has_with_katago="$1"
-  local has_no_engine_installer="$2"
+  local has_nvidia_katago="$2"
+  local has_no_engine_installer="$3"
   local note_file="$META_DIR/${DATE_TAG}-${ARCH_TAG}-install.txt"
 
   cat >"$note_file" <<EOF
@@ -195,6 +214,15 @@ EOF
   Recommended for most users. Run the installer, finish setup, then launch from Start Menu or desktop.
 - ${DATE_TAG}-${ARCH_TAG}.with-katago.portable.zip
   Use this if you do not want the installer. Unzip it and open ${APP_NAME}.exe.
+EOF
+  fi
+
+  if [[ "$has_nvidia_katago" == "true" ]]; then
+    cat >>"$note_file" <<EOF
+- ${DATE_TAG}-${NVIDIA_ARCH_TAG}.installer.exe
+  Only for PCs with an NVIDIA graphics card. This bundle uses the official CUDA KataGo build for higher analysis speed.
+- ${DATE_TAG}-${NVIDIA_ARCH_TAG}.portable.zip
+  NVIDIA-only portable build. Unzip it and open ${NVIDIA_APP_NAME}.exe.
 EOF
   fi
 
@@ -234,6 +262,13 @@ EOF
 EOF
   fi
 
+  if [[ "$has_nvidia_katago" == "true" ]]; then
+    cat >>"$note_file" <<'EOF'
+- The NVIDIA assets include the official KataGo CUDA 12.1 Windows build.
+- Only choose the NVIDIA package if your PC has an NVIDIA GPU. If you are not sure, use the regular with-katago installer instead.
+EOF
+  fi
+
   cat >>"$note_file" <<'EOF'
 
 Fox kifu note:
@@ -243,9 +278,9 @@ EOF
 }
 
 create_portable_zip() {
-  local flavor="$1"
+  local release_basename="$1"
   local app_image_root="$2"
-  local portable_zip="$RELEASE_DIR/${DATE_TAG}-${ARCH_TAG}.${flavor}.portable.zip"
+  local portable_zip="$RELEASE_DIR/${DATE_TAG}-${release_basename}.portable.zip"
   local native_root
   local native_zip
 
@@ -255,33 +290,92 @@ create_portable_zip() {
     "Compress-Archive -Path '$native_root' -DestinationPath '$native_zip' -Force"
 }
 
+build_release_variant() {
+  local flavor="$1"
+  local include_katago="$2"
+  local app_name="$3"
+  local app_description="$4"
+  local engine_source_dir="$5"
+  local engine_target_dir="$6"
+  local release_basename="$7"
+  local upgrade_uuid="$8"
+
+  local app_root
+  local installer_path
+  local final_installer
+
+  app_root="$(build_app_image \
+    "$flavor" \
+    "$include_katago" \
+    "$app_name" \
+    "$app_description" \
+    "$engine_source_dir" \
+    "$engine_target_dir")"
+  create_portable_zip "$release_basename" "$app_root"
+  installer_path="$(build_installer \
+    "$flavor" \
+    "$include_katago" \
+    "$app_name" \
+    "$app_description" \
+    "$engine_source_dir" \
+    "$engine_target_dir" \
+    "$upgrade_uuid")"
+  final_installer="$RELEASE_DIR/${DATE_TAG}-${release_basename}.installer.exe"
+  cp "$installer_path" "$final_installer"
+  artifacts+=("$final_installer" "$RELEASE_DIR/${DATE_TAG}-${release_basename}.portable.zip")
+}
+
 artifacts=()
 build_no_engine_installer="true"
 has_with_katago_assets="false"
+has_nvidia_katago_assets="false"
 
-if has_bundled_katago; then
+if has_bundled_katago "$STANDARD_ENGINE_PLATFORM_DIR"; then
   has_with_katago_assets="true"
-  with_katago_root="$(build_app_image with-katago true)"
-  create_portable_zip with-katago "$with_katago_root"
-  installer_path="$(build_installer with-katago true)"
-  final_installer="$RELEASE_DIR/${DATE_TAG}-${ARCH_TAG}.with-katago.installer.exe"
-  cp "$installer_path" "$final_installer"
-  artifacts+=("$final_installer" "$RELEASE_DIR/${DATE_TAG}-${ARCH_TAG}.with-katago.portable.zip")
+  build_release_variant \
+    "with-katago" \
+    "true" \
+    "$APP_NAME" \
+    "$APP_DESCRIPTION" \
+    "$STANDARD_ENGINE_PLATFORM_DIR" \
+    "$STANDARD_ENGINE_PLATFORM_DIR" \
+    "${ARCH_TAG}.with-katago" \
+    "$WINDOWS_UPGRADE_UUID"
 else
   has_with_katago_assets="false"
 fi
 
-without_engine_root="$(build_app_image without.engine false)"
-create_portable_zip without.engine "$without_engine_root"
-installer_path="$(build_installer without.engine false)"
-final_installer="$RELEASE_DIR/${DATE_TAG}-${ARCH_TAG}.without.engine.installer.exe"
-cp "$installer_path" "$final_installer"
-artifacts+=("$final_installer")
-artifacts+=("$RELEASE_DIR/${DATE_TAG}-${ARCH_TAG}.without.engine.portable.zip")
+if has_bundled_katago "$NVIDIA_ENGINE_PLATFORM_DIR"; then
+  has_nvidia_katago_assets="true"
+  build_release_variant \
+    "nvidia" \
+    "true" \
+    "$NVIDIA_APP_NAME" \
+    "$NVIDIA_APP_DESCRIPTION" \
+    "$NVIDIA_ENGINE_PLATFORM_DIR" \
+    "$STANDARD_ENGINE_PLATFORM_DIR" \
+    "$NVIDIA_ARCH_TAG" \
+    "$WINDOWS_UPGRADE_UUID_NVIDIA"
+else
+  has_nvidia_katago_assets="false"
+fi
+
+build_release_variant \
+  "without.engine" \
+  "false" \
+  "$APP_NAME" \
+  "$APP_DESCRIPTION" \
+  "$STANDARD_ENGINE_PLATFORM_DIR" \
+  "$STANDARD_ENGINE_PLATFORM_DIR" \
+  "${ARCH_TAG}.without.engine" \
+  "$WINDOWS_UPGRADE_UUID"
 
 install_note="$META_DIR/${DATE_TAG}-${ARCH_TAG}-install.txt"
 checksum_file="$META_DIR/${DATE_TAG}-${ARCH_TAG}-sha256.txt"
-write_windows_install_note "$has_with_katago_assets" "$build_no_engine_installer"
+write_windows_install_note \
+  "$has_with_katago_assets" \
+  "$has_nvidia_katago_assets" \
+  "$build_no_engine_installer"
 write_sha256_file "$checksum_file" "${artifacts[@]}" "$install_note"
 
 echo "Artifacts:"
@@ -289,6 +383,7 @@ ls -lh "${artifacts[@]}"
 echo
 echo "Windows installer version: $WINDOWS_APP_VERSION"
 echo "Windows upgrade UUID: $WINDOWS_UPGRADE_UUID"
+echo "Windows NVIDIA upgrade UUID: $WINDOWS_UPGRADE_UUID_NVIDIA"
 echo
 echo "Maintainer metadata:"
 ls -lh "$install_note" "$checksum_file"

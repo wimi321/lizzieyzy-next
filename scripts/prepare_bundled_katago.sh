@@ -6,6 +6,7 @@ CACHE_DIR="${CACHE_DIR:-$ROOT_DIR/.cache/katago}"
 KATAGO_TAG="${KATAGO_TAG:-v1.16.4}"
 KATAGO_RELEASE_BASE="https://github.com/lightvector/KataGo/releases/download/${KATAGO_TAG}"
 WINDOWS_ASSET="${WINDOWS_ASSET:-katago-${KATAGO_TAG}-opencl-windows-x64.zip}"
+WINDOWS_NVIDIA_ASSET="${WINDOWS_NVIDIA_ASSET:-katago-${KATAGO_TAG}-cuda12.1-cudnn8.9.7-windows-x64.zip}"
 LINUX_ASSET="${LINUX_ASSET:-katago-${KATAGO_TAG}-eigen-linux-x64.zip}"
 PREFERRED_MODEL_NAME="${PREFERRED_MODEL_NAME:-g170e-b20c256x2-s5303129600-d1228401921.bin.gz}"
 MODEL_SOURCE="${MODEL_SOURCE:-}"
@@ -14,6 +15,7 @@ ENGINES_ROOT="$ROOT_DIR/engines/katago"
 WEIGHTS_ROOT="$ROOT_DIR/weights"
 CONFIG_ROOT="$ENGINES_ROOT/configs"
 WINDOWS_ROOT="$ENGINES_ROOT/windows-x64"
+WINDOWS_NVIDIA_ROOT="$ENGINES_ROOT/windows-x64-nvidia"
 LINUX_ROOT="$ENGINES_ROOT/linux-x64"
 
 detect_macos_platform_dir() {
@@ -155,9 +157,10 @@ prepare_configs() {
 
 prepare_windows_bundle() {
   local source_dir="$1"
-  rm -rf "$WINDOWS_ROOT"
-  mkdir -p "$WINDOWS_ROOT"
-  copy_matching_files "$source_dir" "$WINDOWS_ROOT" "katago.exe" "*.dll" "cacert.pem"
+  local dest_dir="$2"
+  rm -rf "$dest_dir"
+  mkdir -p "$dest_dir"
+  copy_matching_files "$source_dir" "$dest_dir" "katago.exe" "*.dll" "cacert.pem"
 }
 
 prepare_linux_bundle() {
@@ -232,6 +235,7 @@ write_manifest() {
   cat >"$ENGINES_ROOT/VERSION.txt" <<EOF
 KataGo release: $KATAGO_TAG
 Windows bundle: $WINDOWS_ASSET
+Windows NVIDIA bundle: $WINDOWS_NVIDIA_ASSET
 Linux bundle: $LINUX_ASSET
 Model source: $(basename "$model_path")
 Prepared at: $(date '+%F %T %z')
@@ -243,12 +247,15 @@ main() {
   require_cmd unzip
 
   download_asset "$WINDOWS_ASSET"
+  download_asset "$WINDOWS_NVIDIA_ASSET"
   download_asset "$LINUX_ASSET"
 
   local windows_src
+  local windows_nvidia_src
   local linux_src
   local model_path
   windows_src="$(extract_asset "$WINDOWS_ASSET")"
+  windows_nvidia_src="$(extract_asset "$WINDOWS_NVIDIA_ASSET")"
   linux_src="$(extract_asset "$LINUX_ASSET")"
   model_path="$(find_model_source)"
 
@@ -256,7 +263,8 @@ main() {
   cp -f "$model_path" "$WEIGHTS_ROOT/default.bin.gz"
 
   prepare_configs "$windows_src"
-  prepare_windows_bundle "$windows_src"
+  prepare_windows_bundle "$windows_src" "$WINDOWS_ROOT"
+  prepare_windows_bundle "$windows_nvidia_src" "$WINDOWS_NVIDIA_ROOT"
   prepare_linux_bundle "$linux_src"
   prepare_macos_bundle
   write_manifest "$model_path"

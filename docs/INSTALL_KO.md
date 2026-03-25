@@ -5,14 +5,17 @@
 ## 먼저 기억할 것
 
 1. 대부분의 Windows 사용자는 `windows64.with-katago.installer.exe` 를 선택하면 됩니다.
-2. `with-katago` 패키지는 KataGo 와 기본 가중치를 포함합니다.
-3. Fox 기보를 가져올 때는 이제 **Fox 닉네임** 을 입력합니다.
+2. NVIDIA 그래픽카드가 있고 더 빠른 분석을 원하면 `windows64.nvidia.installer.exe` 를 선택할 수 있습니다.
+3. `with-katago` 패키지는 KataGo 와 기본 가중치를 포함합니다.
+4. Fox 기보를 가져올 때는 이제 **Fox 닉네임** 을 입력합니다.
 
 ## 무엇을 다운로드하나요
 
 | 환경 | 추천 패키지 |
 | --- | --- |
 | Windows x64 | `<date>-windows64.with-katago.installer.exe` |
+| Windows x64, NVIDIA GPU, 더 빠른 분석 | `<date>-windows64.nvidia.installer.exe` |
+| Windows x64, NVIDIA GPU, 설치 없이 사용 | `<date>-windows64.nvidia.portable.zip` |
 | Windows x64, 설치 없이 사용 | `<date>-windows64.with-katago.portable.zip` |
 | Windows x64, 내 엔진 사용 + 설치형 | `<date>-windows64.without.engine.installer.exe` |
 | Windows x64, 직접 엔진 설정 | `<date>-windows64.without.engine.portable.zip` |
@@ -25,6 +28,19 @@
 1. `windows64.with-katago.installer.exe` 를 다운로드합니다.
 2. 설치 프로그램을 실행합니다.
 3. 설치가 끝나면 `LizzieYzy Next.exe` 를 실행합니다.
+
+NVIDIA 그래픽카드가 있고 속도를 더 원한다면:
+
+1. `windows64.nvidia.installer.exe` 를 다운로드합니다.
+2. 설치 프로그램을 실행합니다.
+3. 설치가 끝나면 `LizzieYzy Next NVIDIA.exe` 를 실행합니다.
+
+설치 없이 쓰고 싶다면:
+
+1. `windows64.nvidia.portable.zip` 를 다운로드합니다.
+2. 압축을 푼 뒤 `LizzieYzy Next NVIDIA.exe` 를 실행합니다.
+
+NVIDIA 그래픽카드인지 확실하지 않다면 일반 `windows64.with-katago.installer.exe` 를 선택하면 됩니다.
 
 직접 엔진을 쓰고 싶다면:
 

@@ -11,6 +11,7 @@ Check these first:
 ### Windows
 
 - Installer build: rerun `windows64.with-katago.installer.exe`
+- NVIDIA bundle: confirm whether you downloaded `windows64.nvidia.installer.exe` or `windows64.nvidia.portable.zip`
 - Portable build: make sure you are launching `LizzieYzy Next.exe`
 - The current public release should not require `.bat` launchers for the main Windows path
 
@@ -91,7 +92,7 @@ The most useful items are:
 
 - the release asset filename
 - your OS and version
-- whether you used `with-katago` or `without.engine`
+- whether you used the regular `with-katago`, `nvidia`, or `without.engine` package
 - a full screenshot or exact reproduction steps
 
 Related docs:

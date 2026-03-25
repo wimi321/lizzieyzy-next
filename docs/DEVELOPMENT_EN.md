@@ -130,7 +130,7 @@ Start with:
 Also check:
 
 - terminology stays consistent across Chinese and English
-- `with-katago` and `without.engine` spelling remains unchanged
+- `with-katago`, `nvidia`, and `without.engine` spelling remains unchanged
 - user-visible changes are reflected in README or install docs if needed
 
 ### 3. Packaging, bundled engine, or release asset changes

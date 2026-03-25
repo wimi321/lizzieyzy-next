@@ -28,8 +28,9 @@
 </p>
 
 > [!IMPORTANT]
-> まずはこの 3 点だけ見れば大丈夫です:
+> まずはこの 4 点だけ見れば大丈夫です:
 > - Windows 利用者の多くは `windows64.with-katago.installer.exe` を選べば始めやすいです
+> - NVIDIA GPU を使っていて、より速い解析を求めるなら `windows64.nvidia.installer.exe` を選べます
 > - 野狐棋譜取得では **野狐のニックネーム** を入力します。アプリが対応するアカウントを自動で見つけます
 > - 主な統合パッケージには KataGo が含まれており、初回起動では自動設定を優先します
 
@@ -49,13 +50,14 @@
 - 野狐棋譜取得、KataGo 同梱、初回起動のわかりやすさを保つこと
 - 設定に詳しい少数者だけでなく、普通の利用者にも使いやすくすること
 
-## まず多くの人はここだけ見れば大丈夫です
+## Windows 利用者はここから見れば大丈夫です
 
-**Windows** を使っているなら、まずはこれをダウンロードしてください。
+**Windows** を使っているなら:
 
-**`windows64.with-katago.installer.exe`**
+- 多くの人は **`windows64.with-katago.installer.exe`**
+- NVIDIA GPU があり、速度を優先したいなら **`windows64.nvidia.installer.exe`**
 
-いちばん簡単な主推薦版です。ダウンロードして、ダブルクリックして、インストールして、そのまま使い始められます。
+前者は最も無難な主推薦版で、後者は NVIDIA GPU 向けの高速版です。
 
 ## どれをダウンロードするか
 
@@ -68,6 +70,8 @@
 | あなたの環境 | まず選ぶもの |
 | --- | --- |
 | Windows x64 | `windows64.with-katago.installer.exe` |
+| Windows x64、NVIDIA GPU、より速い解析 | `windows64.nvidia.installer.exe` |
+| Windows x64、NVIDIA GPU、インストーラ不要 | `windows64.nvidia.portable.zip` |
 | Windows x64、インストーラ不要 | `windows64.with-katago.portable.zip` |
 | Windows x64、自分でエンジンを設定したい、インストーラあり | `windows64.without.engine.installer.exe` |
 | Windows x64、自分でエンジンを設定したい | `windows64.without.engine.portable.zip` |
@@ -77,13 +81,15 @@
 
 迷ったときの目安:
 
-- Windows: 迷ったら `installer.exe`
+- Windows: NVIDIA GPU かどうかわからない場合は `windows64.with-katago.installer.exe`
 - Mac: Apple Silicon か Intel かを先に確認
 - Linux: `with-katago.zip`
 
 ざっくり言うと:
 
 - `installer.exe` は多くの Windows 利用者向け
+- `nvidia.installer.exe` は NVIDIA GPU 利用者向けの高速版
+- `nvidia.portable.zip` は NVIDIA GPU 利用者向けの非インストール版
 - `portable.zip` はインストールせずにすぐ使いたい人向け
 - `without.engine.installer.exe` はインストーラ経由で自分のエンジンを使いたい人向け
 - `without.engine.portable.zip` は自分のエンジンを使い、インストールも省きたい人向け

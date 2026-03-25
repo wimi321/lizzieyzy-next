@@ -5,14 +5,17 @@
 ## まず覚えること
 
 1. Windows 利用者の多くは `windows64.with-katago.installer.exe` を選べば大丈夫です。
-2. `with-katago` パッケージは KataGo と既定の重みを含みます。
-3. 野狐棋譜を取得するときは、いまは **野狐のニックネーム** を入力します。
+2. NVIDIA GPU を使っていて、より速い解析を求めるなら `windows64.nvidia.installer.exe` を選べます。
+3. `with-katago` パッケージは KataGo と既定の重みを含みます。
+4. 野狐棋譜を取得するときは、いまは **野狐のニックネーム** を入力します。
 
 ## ダウンロードするもの
 
 | 環境 | 推奨パッケージ |
 | --- | --- |
 | Windows x64 | `<date>-windows64.with-katago.installer.exe` |
+| Windows x64、NVIDIA GPU、高速解析向け | `<date>-windows64.nvidia.installer.exe` |
+| Windows x64、NVIDIA GPU、インストーラ不要 | `<date>-windows64.nvidia.portable.zip` |
 | Windows x64、インストーラ不要 | `<date>-windows64.with-katago.portable.zip` |
 | Windows x64、自分でエンジン設定、インストーラあり | `<date>-windows64.without.engine.installer.exe` |
 | Windows x64、自分でエンジン設定 | `<date>-windows64.without.engine.portable.zip` |
@@ -25,6 +28,19 @@
 1. `windows64.with-katago.installer.exe` をダウンロードします。
 2. インストーラを実行します。
 3. インストール完了後、`LizzieYzy Next.exe` を起動します。
+
+NVIDIA GPU があり、速度を優先したい場合:
+
+1. `windows64.nvidia.installer.exe` をダウンロードします。
+2. インストーラを実行します。
+3. インストール完了後、`LizzieYzy Next NVIDIA.exe` を起動します。
+
+インストーラ不要なら:
+
+1. `windows64.nvidia.portable.zip` を選びます。
+2. 展開して `LizzieYzy Next NVIDIA.exe` を起動します。
+
+NVIDIA GPU かどうかわからない場合は、通常の `windows64.with-katago.installer.exe` を選んでください。
 
 自分のエンジンを使いたい場合:
 

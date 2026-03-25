@@ -18,6 +18,8 @@
 
 - `windows64.with-katago.installer.exe`
 - `windows64.with-katago.portable.zip`
+- `windows64.nvidia.installer.exe`
+- `windows64.nvidia.portable.zip`
 - `windows64.without.engine.installer.exe`
 - `windows64.without.engine.portable.zip`
 - `windows64.with-katago-install.txt`
@@ -62,6 +64,7 @@ GitHub Actions：
 
 - `README.md` 和 `README_EN.md` 的包名与计划上传的文件完全一致
 - 安装文档里的 Windows 主路径仍然是 `installer.exe`
+- 如果提供 NVIDIA 极速包，要同时核对 `nvidia.installer.exe` 和 `nvidia.portable.zip`
 - 如果提供 Windows 无引擎包，要同时核对 `without.engine.installer.exe` 和 `without.engine.portable.zip`
 - 界面里仍然写的是 `野狐棋谱（输入野狐昵称获取）`
 - `src/main/resources/assets/logo.png`、`packaging/icons/app-icon.ico`、`packaging/icons/app-icon.icns` 代表的是同一套当前图标
@@ -101,6 +104,7 @@ python3 scripts/generate_app_icons.py
 
 - KataGo 版本：`v1.16.4`
 - 默认模型：`g170e-b20c256x2-s5303129600-d1228401921.bin.gz`
+- Windows NVIDIA 包：官方 `cuda12.1-cudnn8.9.7` 构建
 
 ### 5. 构建 Windows 安装器和便携包
 

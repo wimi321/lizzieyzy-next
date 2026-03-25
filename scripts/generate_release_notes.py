@@ -14,6 +14,8 @@ VERSION_FILE = ROOT / 'engines' / 'katago' / 'VERSION.txt'
 ASSET_SPECS = [
     ('windows_installer', 'windows64.with-katago.installer.exe', 'Windows 64 位', 'Windows x64'),
     ('windows_portable', 'windows64.with-katago.portable.zip', 'Windows 64 位，想免安装', 'Windows x64, no installer'),
+    ('windows_nvidia_installer', 'windows64.nvidia.installer.exe', 'Windows 64 位，英伟达显卡', 'Windows x64, NVIDIA GPU'),
+    ('windows_nvidia_portable', 'windows64.nvidia.portable.zip', 'Windows 64 位，英伟达显卡，免安装', 'Windows x64, NVIDIA GPU, no installer'),
     ('windows_no_engine_installer', 'windows64.without.engine.installer.exe', 'Windows 64 位，想自己配引擎，也想安装器', 'Windows x64, your own engine with installer'),
     ('windows_no_engine_portable', 'windows64.without.engine.portable.zip', 'Windows 64 位，想自己配引擎', 'Windows x64, your own engine'),
     ('mac_arm64', 'mac-arm64.with-katago.dmg', 'macOS Apple Silicon', 'macOS Apple Silicon'),
@@ -37,6 +39,8 @@ def load_bundle_metadata() -> dict[str, str]:
     metadata = {
         'katago_version': 'Unknown',
         'model_source': 'Unknown',
+        'windows_bundle': 'Unknown',
+        'windows_nvidia_bundle': 'Unknown',
     }
     if not VERSION_FILE.exists():
         return metadata
@@ -49,8 +53,21 @@ def load_bundle_metadata() -> dict[str, str]:
         value = value.strip()
         if key == 'katago release':
             metadata['katago_version'] = value
+        elif key == 'windows bundle':
+            metadata['windows_bundle'] = value
+        elif key == 'windows nvidia bundle':
+            metadata['windows_nvidia_bundle'] = value
         elif key == 'model source':
             metadata['model_source'] = value
+
+    katago_version = metadata['katago_version']
+    if katago_version != 'Unknown':
+        if metadata['windows_bundle'] == 'Unknown':
+            metadata['windows_bundle'] = f'katago-{katago_version}-opencl-windows-x64.zip'
+        if metadata['windows_nvidia_bundle'] == 'Unknown':
+            metadata['windows_nvidia_bundle'] = (
+                f'katago-{katago_version}-cuda12.1-cudnn8.9.7-windows-x64.zip'
+            )
     return metadata
 
 
@@ -115,6 +132,8 @@ def format_asset_en(asset_name: str | None, repo: str, release_tag: str | None) 
 def build_release_notes(asset_map: dict[str, str | None], bundle: dict[str, str], repo: str, release_tag: str | None) -> str:
     windows_installer = format_asset(asset_map['windows_installer'], repo, release_tag)
     windows_portable = format_asset(asset_map['windows_portable'], repo, release_tag)
+    windows_nvidia_installer = format_asset(asset_map['windows_nvidia_installer'], repo, release_tag)
+    windows_nvidia_portable = format_asset(asset_map['windows_nvidia_portable'], repo, release_tag)
     windows_no_engine_installer = format_asset(asset_map['windows_no_engine_installer'], repo, release_tag)
     windows_no_engine_portable = format_asset(asset_map['windows_no_engine_portable'], repo, release_tag)
     mac_arm64 = format_asset(asset_map['mac_arm64'], repo, release_tag)
@@ -122,6 +141,8 @@ def build_release_notes(asset_map: dict[str, str | None], bundle: dict[str, str]
     linux64 = format_asset(asset_map['linux64'], repo, release_tag)
 
     windows_installer_en = format_asset_en(asset_map['windows_installer'], repo, release_tag)
+    windows_nvidia_installer_en = format_asset_en(asset_map['windows_nvidia_installer'], repo, release_tag)
+    windows_nvidia_portable_en = format_asset_en(asset_map['windows_nvidia_portable'], repo, release_tag)
     windows_no_engine_installer_en = format_asset_en(asset_map['windows_no_engine_installer'], repo, release_tag)
     windows_no_engine_portable_en = format_asset_en(asset_map['windows_no_engine_portable'], repo, release_tag)
     mac_arm64_en = format_asset_en(asset_map['mac_arm64'], repo, release_tag)
@@ -130,6 +151,7 @@ def build_release_notes(asset_map: dict[str, str | None], bundle: dict[str, str]
 
     katago_version = bundle['katago_version']
     model_source = bundle['model_source']
+    windows_nvidia_bundle = bundle['windows_nvidia_bundle']
 
     return f"""# LizzieYzy Next
 
@@ -140,6 +162,7 @@ def build_release_notes(asset_map: dict[str, str | None], bundle: dict[str, str]
 ### 下载前先看这几句
 
 - Windows 普通用户直接下载 {windows_installer}
+- 如果你的电脑是 **英伟达显卡**，优先下载 {windows_nvidia_installer}
 - 抓谱时直接输入 **野狐昵称**，程序会自动匹配账号并获取最近公开棋谱
 - 主推荐整合包已内置 KataGo `{katago_version}` 和默认权重 `{model_source}`
 - 第一次启动会优先自动完成分析环境配置
@@ -149,6 +172,8 @@ def build_release_notes(asset_map: dict[str, str | None], bundle: dict[str, str]
 | 你的电脑 | 直接下载这个 |
 | --- | --- |
 | Windows 64 位 | {windows_installer} |
+| Windows 64 位，英伟达显卡，想更快 | {windows_nvidia_installer} |
+| Windows 64 位，英伟达显卡，想免安装 | {windows_nvidia_portable} |
 | Windows 64 位，想免安装 | {windows_portable} |
 | Windows 64 位，想自己配引擎，也想安装器 | {windows_no_engine_installer} |
 | Windows 64 位，想自己配引擎 | {windows_no_engine_portable} |
@@ -161,6 +186,7 @@ def build_release_notes(asset_map: dict[str, str | None], bundle: dict[str, str]
 - 原版已经失效的野狐抓谱链路，现在重新可用
 - 现在直接输入“野狐昵称”，程序会自动找到账号再抓最近公开棋谱
 - Windows 继续把 `.installer.exe` 放在最前面，普通用户更容易直接开始用
+- 对有 NVIDIA 独显的 Windows 用户，额外提供官方 CUDA 版 KataGo 的极速整合包
 - macOS 继续提供 Apple Silicon / Intel 两种 `.dmg`
 - 整合包继续内置 KataGo 与默认权重，打开后更快进入分析
 
@@ -173,10 +199,13 @@ def build_release_notes(asset_map: dict[str, str | None], bundle: dict[str, str]
 This maintained release keeps LizzieYzy practical again for normal users: Fox game fetching works again, download choices stay easy to understand, and first launch needs less manual setup.
 
 - Windows first choice: {windows_installer_en}
+- Windows NVIDIA choice: {windows_nvidia_installer_en}
+- Windows NVIDIA portable: {windows_nvidia_portable_en}
 - Windows custom-engine installer: {windows_no_engine_installer_en}
 - Windows custom-engine portable: {windows_no_engine_portable_en}
 - Fox fetch now starts from a **Fox nickname** and resolves the matching account automatically.
 - The recommended bundles include KataGo `{katago_version}` and the default weight `{model_source}`.
+- The NVIDIA package uses the official KataGo CUDA build `{windows_nvidia_bundle}`.
 - First launch tries to prepare the bundled analysis setup automatically.
 - macOS downloads: Apple Silicon {mac_arm64_en}, Intel {mac_amd64_en}
 - Linux download: {linux64_en}
@@ -187,6 +216,7 @@ This maintained release keeps LizzieYzy practical again for normal users: Fox ga
 この保守版は、元の `lizzieyzy` をまだ使いたい利用者向けに、壊れていた野狐棋譜取得を復旧し、ダウンロード後すぐ使いやすい形に整えた継続保守版です。
 
 - Windows 利用者の多くは {windows_installer_en} を選べば始めやすいです
+- NVIDIA GPU を使っていて、より速い解析を求める場合は {windows_nvidia_installer_en} を選べます
 - 自分のエンジンを使いたい場合は {windows_no_engine_installer_en} または {windows_no_engine_portable_en} を選べます
 - 棋譜取得では **野狐のニックネーム** を入力します。アプリが一致するアカウントを自動で探します
 - 初回起動では、内蔵の解析環境を自動で準備する流れを優先します
@@ -197,6 +227,7 @@ This maintained release keeps LizzieYzy practical again for normal users: Fox ga
 이 유지보수판은 아직 `lizzieyzy` 를 쓰고 싶은 사용자를 위해, 고장난 Fox 공개 기보 가져오기를 복구하고 다운로드 후 바로 쓰기 쉬운 형태로 정리한 지속 유지보수 포크입니다.
 
 - 대부분의 Windows 사용자는 {windows_installer_en} 를 먼저 받으면 가장 쉽습니다
+- NVIDIA 그래픽카드가 있고 더 빠른 분석을 원하면 {windows_nvidia_installer_en} 를 고를 수 있습니다
 - 직접 엔진을 쓰고 싶다면 {windows_no_engine_installer_en} 또는 {windows_no_engine_portable_en} 를 고를 수 있습니다
 - 기보를 가져올 때는 **Fox 닉네임** 을 입력하면 앱이 맞는 계정을 자동으로 찾아 줍니다
 - 첫 실행에서는 내장 분석 환경을 자동으로 준비하는 흐름을 먼저 시도합니다

@@ -130,7 +130,7 @@ mvn -B -DskipTests package
 建议同时确认：
 
 - 中文、英文术语一致
-- `with-katago`、`without.engine` 拼写保持一致
+- `with-katago`、`nvidia`、`without.engine` 拼写保持一致
 - 用户可见文案变化是否需要同步 README 或安装文档
 
 ### 3. 改打包、内置引擎、发布资产

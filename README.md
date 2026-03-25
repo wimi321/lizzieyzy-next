@@ -33,8 +33,9 @@
 > 欢迎进群交流使用问题、反馈 bug、讨论功能，或者一起继续维护这个项目。
 
 > [!IMPORTANT]
-> 先知道这 3 件事就够了：
+> 先知道这 4 件事就够了：
 > - Windows 大多数用户下载 `windows64.with-katago.installer.exe`
+> - 如果你的电脑有 **NVIDIA 显卡**，想要更快分析，下载 `windows64.nvidia.installer.exe`
 > - 现在直接输入 **野狐昵称** 就行，程序会自动找到账号并获取最近公开棋谱
 > - 主推荐整合包已内置 KataGo，第一次打开会优先自动完成配置
 
@@ -58,13 +59,14 @@
   <img src="assets/highlights-zh.svg" alt="LizzieYzy Next 维护版亮点" width="100%" />
 </p>
 
-## Windows 用户先下载这个
+## Windows 用户先看这里
 
-如果你用的是 **Windows 电脑**，先下载：
+如果你用的是 **Windows 电脑**：
 
-**`windows64.with-katago.installer.exe`**
+- 大多数用户先下 **`windows64.with-katago.installer.exe`**
+- 如果你的电脑有 **NVIDIA 显卡**，并且你更在意分析速度，先下 **`windows64.nvidia.installer.exe`**
 
-这是最省事的版本。下载后双击安装，装好就能直接打开使用。
+前者更通用，后者是英伟达显卡专用的极速整合包。
 
 ## 按系统选择
 
@@ -77,6 +79,8 @@
 | 你的电脑 | 直接下载这个 |
 | --- | --- |
 | Windows 64 位 | `windows64.with-katago.installer.exe` |
+| Windows 64 位，NVIDIA 显卡，想更快 | `windows64.nvidia.installer.exe` |
+| Windows 64 位，NVIDIA 显卡，想免安装 | `windows64.nvidia.portable.zip` |
 | Windows 64 位，想免安装 | `windows64.with-katago.portable.zip` |
 | Windows 64 位，想自己配引擎，也想安装器 | `windows64.without.engine.installer.exe` |
 | Windows 64 位，想自己配引擎 | `windows64.without.engine.portable.zip` |
@@ -86,13 +90,15 @@
 
 如果你懒得分辨：
 
-- Windows：不知道怎么选，就下 `installer.exe`
+- Windows：不知道自己是不是 NVIDIA 显卡，就下 `windows64.with-katago.installer.exe`
 - Mac：先看自己是 Apple Silicon 还是 Intel
 - Linux：直接下 `with-katago.zip`
 
 一眼记住版本定位：
 
 - `installer.exe`：最适合大多数 Windows 用户
+- `nvidia.installer.exe`：只给 NVIDIA 显卡用户，默认分析速度更高
+- `nvidia.portable.zip`：给 NVIDIA 显卡用户的免安装版
 - `portable.zip`：适合不想安装、只想解压就跑
 - `without.engine.installer.exe`：适合想保留安装流程、但自己配引擎的人
 - `without.engine.portable.zip`：适合你已经有自己的分析引擎，也不想安装

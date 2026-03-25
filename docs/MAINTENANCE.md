@@ -29,9 +29,11 @@
 
 当前发布包策略以“普通用户能快速选对并直接用”为核心。
 
-当前主推荐矩阵固定为 7 个公开资产：
+当前主推荐矩阵固定为 9 个公开资产：
 
 - Windows 64 位：`with-katago.installer.exe`
+- Windows 64 位：`nvidia.installer.exe`
+- Windows 64 位：`nvidia.portable.zip`
 - Windows 64 位：`with-katago.portable.zip`
 - Windows 64 位：`without.engine.installer.exe`
 - Windows 64 位：`without.engine.portable.zip`
@@ -57,7 +59,7 @@
 
 - 中文：`野狐昵称`
 - 英文：`Fox nickname`
-- 包类型：`with-katago`、`without.engine`
+- 包类型：`with-katago`、`nvidia`、`without.engine`
 
 不要再要求用户先理解 UID 或账号数字，再去抓谱。
 

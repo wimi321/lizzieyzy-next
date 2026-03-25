@@ -12,6 +12,8 @@ This guide answers four practical questions:
 | Platform | Recommended package | Bundled Java | Bundled KataGo | Best for |
 | --- | --- | --- | --- | --- |
 | Windows x64 | `<date>-windows64.with-katago.installer.exe` | Yes | Yes | Main recommendation for regular users |
+| Windows x64 | `<date>-windows64.nvidia.installer.exe` | Yes | Yes | NVIDIA GPU users who want higher analysis speed |
+| Windows x64 | `<date>-windows64.nvidia.portable.zip` | Yes | Yes | NVIDIA GPU users who do not want an installer |
 | Windows x64 | `<date>-windows64.with-katago.portable.zip` | Yes | Yes | No installer, unzip and run |
 | Windows x64 | `<date>-windows64.without.engine.installer.exe` | Yes | No | Installer flow with your own engine |
 | Windows x64 | `<date>-windows64.without.engine.portable.zip` | Yes | No | Custom engine setup |
@@ -22,12 +24,13 @@ This guide answers four practical questions:
 Quick rule:
 
 - choose `with-katago` if you want the shortest path
+- choose `windows64.nvidia.installer.exe` if your PC has an NVIDIA GPU and you want faster KataGo analysis
 - choose `without.engine.installer.exe` or `without.engine.portable.zip` on Windows if you plan to manage the engine yourself
 - on Windows, regular users should start with the installer build
 
 ### Legacy tag note
 
-Some older tags still show transitional zip names or compatibility packages, but the current maintained release now centers on 7 primary assets: 4 Windows, 2 macOS, and 1 Linux package.
+Some older tags still show transitional zip names or compatibility packages, but the current maintained release now centers on 9 primary assets: 6 Windows, 2 macOS, and 1 Linux package.
 
 ## Windows
 
@@ -39,6 +42,23 @@ Some older tags still show transitional zip names or compatibility packages, but
 4. Launch the app from the Start Menu or desktop shortcut.
 
 This is now the primary Windows path for regular users.
+
+### Windows x64 NVIDIA bundle
+
+If your PC has an NVIDIA GPU and you want higher analysis speed:
+
+1. Download `windows64.nvidia.installer.exe`.
+2. Double-click the installer.
+3. Finish setup.
+4. Launch `LizzieYzy Next NVIDIA` from the Start Menu or desktop shortcut.
+
+If you prefer a no-install package:
+
+1. Download `windows64.nvidia.portable.zip`.
+2. Extract it.
+3. Run `LizzieYzy Next NVIDIA.exe`.
+
+This bundle ships with the official KataGo CUDA Windows build. If you are not sure whether your PC has an NVIDIA GPU, use the regular `windows64.with-katago.installer.exe` instead.
 
 ### Windows x64 portable build
 

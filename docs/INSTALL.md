@@ -12,6 +12,8 @@
 | 你的系统 | 推荐下载 | 内置 Java | 内置 KataGo | 适合谁 |
 | --- | --- | --- | --- | --- |
 | Windows 64 位 | `<date>-windows64.with-katago.installer.exe` | 是 | 是 | 普通用户首选，双击安装 |
+| Windows 64 位 | `<date>-windows64.nvidia.installer.exe` | 是 | 是 | 有 NVIDIA 显卡，想要更快分析 |
+| Windows 64 位 | `<date>-windows64.nvidia.portable.zip` | 是 | 是 | 有 NVIDIA 显卡，不想安装 |
 | Windows 64 位 | `<date>-windows64.with-katago.portable.zip` | 是 | 是 | 不想安装，只想解压后直接运行 |
 | Windows 64 位 | `<date>-windows64.without.engine.installer.exe` | 是 | 否 | 想保留安装流程，但自己配引擎 |
 | Windows 64 位 | `<date>-windows64.without.engine.portable.zip` | 是 | 否 | 想自己配引擎 |
@@ -22,12 +24,13 @@
 一句话建议：
 
 - 想最省事：选 `with-katago`
+- 想在 NVIDIA 显卡上跑得更快：选 `windows64.nvidia.installer.exe`
 - 想自己管引擎：Windows 选 `without.engine.installer.exe` 或 `without.engine.portable.zip`
 - Windows 普通用户：优先选 `.installer.exe`
 
 ### 历史 tag 说明
 
-部分旧 tag 还会看到早期的 zip 命名或兼容包，但当前维护版公开 release 已统一成 7 个主资产：4 个 Windows、2 个 macOS、1 个 Linux。普通用户直接按上面的表选即可。
+部分旧 tag 还会看到早期的 zip 命名或兼容包，但当前维护版公开 release 已统一成 9 个主资产：6 个 Windows、2 个 macOS、1 个 Linux。普通用户直接按上面的表选即可。
 
 ## Windows 安装
 
@@ -39,6 +42,25 @@
 4. 安装完成后，从桌面快捷方式或开始菜单打开程序。
 
 这是当前最推荐给普通用户的 Windows 路径。
+
+### Windows 64 位 NVIDIA 极速版
+
+如果你的电脑有 NVIDIA 显卡，而且你更在意分析速度：
+
+1. 下载 `windows64.nvidia.installer.exe`。
+2. 双击运行安装器。
+3. 安装完成后，从开始菜单或桌面打开程序。
+4. 这个包内置的是官方 KataGo CUDA Windows 版本。
+
+如果你想免安装：
+
+1. 下载 `windows64.nvidia.portable.zip`。
+2. 解压后运行 `LizzieYzy Next NVIDIA.exe`。
+
+注意：
+
+- 这个版本只适合 NVIDIA 显卡电脑。
+- 如果你不确定自己是不是 NVIDIA 显卡，直接下载普通的 `windows64.with-katago.installer.exe`。
 
 ### Windows 64 位便携包
 
