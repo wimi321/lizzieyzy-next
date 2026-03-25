@@ -21,17 +21,17 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Java 21
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '21'
           cache: maven
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.x'
 
@@ -123,7 +123,7 @@ jobs:
             -UpgradeUuid "c2ef73ec-f99a-4f3d-b950-f52c0186122a"
 
       - name: Upload workflow artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: windows-release
           path: |
@@ -133,7 +133,7 @@ jobs:
 
       - name: Upload Windows smoke logs
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: windows-smoke-logs
           path: |
