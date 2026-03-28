@@ -252,6 +252,37 @@ function Assert-RepairedBundledEngineConfig {
     }
 }
 
+function Wait-ForRepairedBundledEngineConfig {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$ConfigPath,
+
+        [int]$TimeoutSeconds = 45,
+
+        [int]$PollIntervalSeconds = 2
+    )
+
+    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+    $lastError = $null
+
+    while ((Get-Date) -lt $deadline) {
+        try {
+            Assert-RepairedBundledEngineConfig -ConfigPath $ConfigPath
+            Write-Host "Bundled engine config repair detected."
+            return
+        } catch {
+            $lastError = $_
+            Start-Sleep -Seconds $PollIntervalSeconds
+        }
+    }
+
+    if ($lastError) {
+        throw $lastError
+    }
+
+    throw "Timed out while waiting for bundled engine config repair."
+}
+
 $tempRoot = Join-Path $env:RUNNER_TEMP "lizzieyzy-next-msi-smoke"
 $oldDest = Join-Path $tempRoot "old"
 $newDest = Join-Path $tempRoot "new"
@@ -297,4 +328,4 @@ if ($LASTEXITCODE -ne 0) {
     throw "Installed app smoke test failed after MSI upgrade."
 }
 
-Assert-RepairedBundledEngineConfig -ConfigPath $configPath
+Wait-ForRepairedBundledEngineConfig -ConfigPath $configPath
