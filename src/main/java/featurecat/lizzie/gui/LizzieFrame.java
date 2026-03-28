@@ -12241,9 +12241,16 @@ public class LizzieFrame extends JFrame {
       File javaReadBoard = new File("clockHelper" + File.separator + javaReadBoardName);
       if (!javaReadBoard.exists()) Utils.copyClockHelper();
       try {
+        String javaCommand = Utils.resolveJavaCommand();
+        if (Utils.resolveExistingExecutable(javaCommand) == null
+            && ("java".equals(javaCommand) || "java.exe".equalsIgnoreCase(javaCommand))) {
+          System.out.println("Clock helper skipped: bundled Java runtime was not resolved.");
+          return;
+        }
         processClockHelper = Utils.startJavaJar(javaReadBoard, null, null);
       } catch (Exception e) {
-        Utils.showMsg(e.getLocalizedMessage());
+        System.out.println("Clock helper skipped: " + e.getLocalizedMessage());
+        e.printStackTrace();
       }
     }
   }

@@ -8,7 +8,9 @@ param(
 
     [int]$HealthyProcessSeconds = 15,
 
-    [int]$WaitSeconds = 60
+    [int]$WaitSeconds = 60,
+
+    [switch]$PreserveConfig
 )
 
 $ErrorActionPreference = "Stop"
@@ -21,7 +23,7 @@ $appDir = Split-Path -Parent $AppExe
 $consoleLogs = Join-Path $appDir "LastConsoleLogs_*.txt"
 $errorLogs = Join-Path $appDir "LastErrorLogs_*.txt"
 
-if (Test-Path -LiteralPath $ConfigDir) {
+if ((-not $PreserveConfig) -and (Test-Path -LiteralPath $ConfigDir)) {
     Remove-Item -LiteralPath $ConfigDir -Recurse -Force
 }
 

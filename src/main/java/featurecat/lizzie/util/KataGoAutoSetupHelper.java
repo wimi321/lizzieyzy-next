@@ -359,6 +359,37 @@ public final class KataGoAutoSetupHelper {
     return false;
   }
 
+  public static boolean repairBrokenStartupEngineIfNeeded() {
+    if (Lizzie.config == null
+        || Lizzie.config.uiConfig == null
+        || Lizzie.config.leelazConfig == null) {
+      return false;
+    }
+    try {
+      SetupSnapshot snapshot = inspectLocalSetup();
+      if (!snapshot.hasEngine() || !snapshot.hasConfigs() || !snapshot.hasWeight()) {
+        return false;
+      }
+      ArrayList<EngineData> engines = Utils.getEngineData();
+      int startupEngineIndex = resolveStartupEngineIndex(engines);
+      if (!shouldRepairStartupEngine(engines, startupEngineIndex, snapshot)) {
+        return false;
+      }
+      if (startupEngineIndex >= 0 && startupEngineIndex < engines.size()) {
+        EngineData startupEngine = engines.get(startupEngineIndex);
+        if (startupEngine != null) {
+          startupEngine.name = AUTO_SETUP_ENGINE_NAME;
+          Utils.saveEngineSettings(engines);
+        }
+      }
+      applyAutoSetup(snapshot.withActiveWeight(snapshot.activeWeightPath));
+      return true;
+    } catch (Exception e) {
+      e.printStackTrace();
+    }
+    return false;
+  }
+
   public static List<RemoteWeightInfo> fetchOfficialWeights() throws IOException {
     return parseOfficialWeights(httpGet(NETWORKS_URL));
   }
@@ -1133,6 +1164,135 @@ public final class KataGoAutoSetupHelper {
     }
     return isCommandBrokenOrOutdated(
         command, expectedEnginePath, expectedConfigPath, expectedWeightPath);
+  }
+
+  private static int resolveStartupEngineIndex(ArrayList<EngineData> engines) {
+    if (engines == null || engines.isEmpty()) {
+      return -1;
+    }
+    int defaultEngine = Lizzie.config.uiConfig.optInt("default-engine", -1);
+    if (defaultEngine >= 0 && defaultEngine < engines.size()) {
+      return defaultEngine;
+    }
+    for (int i = 0; i < engines.size(); i++) {
+      EngineData engineData = engines.get(i);
+      if (engineData != null && engineData.isDefault) {
+        return i;
+      }
+    }
+    return -1;
+  }
+
+  private static boolean shouldRepairStartupEngine(
+      ArrayList<EngineData> engines, int startupEngineIndex, SetupSnapshot snapshot) {
+    if (engines == null || engines.isEmpty()) {
+      return true;
+    }
+    if (startupEngineIndex < 0 || startupEngineIndex >= engines.size()) {
+      return true;
+    }
+    EngineData startupEngine = engines.get(startupEngineIndex);
+    if (startupEngine == null) {
+      return true;
+    }
+    if (startupEngine.useJavaSSH) {
+      return false;
+    }
+    String command = startupEngine.commands == null ? "" : startupEngine.commands.trim();
+    if (command.isEmpty()) {
+      return true;
+    }
+    if (shouldRepairBundledCommand(
+        startupEngine.name,
+        command,
+        snapshot.enginePath,
+        snapshot.gtpConfigPath,
+        snapshot.activeWeightPath)) {
+      return true;
+    }
+    return isLegacyStartupCommandBroken(startupEngine.name, command);
+  }
+
+  private static boolean isLegacyStartupCommandBroken(String name, String command) {
+    List<String> commandParts = Utils.splitCommand(command);
+    if (commandParts == null || commandParts.isEmpty()) {
+      return true;
+    }
+    String executableToken = commandParts.get(0);
+    Path executablePath = KataGoRuntimeHelper.resolveCommandExecutable(commandParts);
+    boolean executableMissing = executablePath == null || !Files.isRegularFile(executablePath);
+    if (Utils.isJavaCommand(executableToken)) {
+      return executableMissing || !hasUsableJarTarget(commandParts);
+    }
+    if (!looksLikeManagedStartupCommand(name, command)) {
+      return false;
+    }
+    if (executableMissing) {
+      return true;
+    }
+    if (referencesManagedAssets(command) && hasMissingReferencedAsset(commandParts)) {
+      return true;
+    }
+    return false;
+  }
+
+  private static boolean looksLikeManagedStartupCommand(String name, String command) {
+    String normalizedName = name == null ? "" : name.trim().toLowerCase(Locale.ROOT);
+    if (AUTO_SETUP_ENGINE_NAME.equals(name) || "KataGo Bundled".equals(name)) {
+      return true;
+    }
+    if (normalizedName.contains("katago")
+        || normalizedName.contains("lizzie")
+        || normalizedName.contains("foxuid")) {
+      return true;
+    }
+    String normalizedCommand = command == null ? "" : command.toLowerCase(Locale.ROOT);
+    return normalizedCommand.contains("katago")
+        || normalizedCommand.contains(".bin.gz")
+        || normalizedCommand.contains(".jar")
+        || normalizedCommand.contains("weights")
+        || normalizedCommand.contains("analysis.cfg")
+        || normalizedCommand.contains("gtp.cfg");
+  }
+
+  private static boolean referencesManagedAssets(String command) {
+    if (command == null || command.trim().isEmpty()) {
+      return false;
+    }
+    String normalized = command.toLowerCase(Locale.ROOT).replace('\\', '/');
+    return normalized.contains("engines/")
+        || normalized.contains("weights/")
+        || normalized.contains(".lizzieyzy-next")
+        || normalized.contains(".lizzieyzy-next-foxuid")
+        || normalized.contains("lizzieyzy next")
+        || normalized.contains("lizzieyzy-next")
+        || normalized.contains("lizzie-yzy");
+  }
+
+  private static boolean hasUsableJarTarget(List<String> commandParts) {
+    for (int i = 0; i < commandParts.size() - 1; i++) {
+      if ("-jar".equals(commandParts.get(i))) {
+        try {
+          return Files.isRegularFile(
+              Paths.get(commandParts.get(i + 1)).toAbsolutePath().normalize());
+        } catch (Exception e) {
+          return false;
+        }
+      }
+    }
+    return true;
+  }
+
+  private static boolean hasMissingReferencedAsset(List<String> commandParts) {
+    Path modelPath = extractOptionPath(commandParts, "-model");
+    if (modelPath != null && !Files.isRegularFile(modelPath)) {
+      return true;
+    }
+    Path configPath = extractOptionPath(commandParts, "-config");
+    if (configPath != null && !Files.isRegularFile(configPath)) {
+      return true;
+    }
+    return false;
   }
 
   private static boolean shouldRepairAuxCommand(

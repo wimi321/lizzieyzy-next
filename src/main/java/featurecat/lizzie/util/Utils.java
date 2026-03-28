@@ -33,11 +33,13 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStreamWriter;
+import java.net.URISyntaxException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -125,6 +127,9 @@ public class Utils {
     if (KataGoAutoSetupHelper.migrateAutoSetupCommandsIfNeeded()) {
       changed = true;
     }
+    if (KataGoAutoSetupHelper.repairBrokenStartupEngineIfNeeded()) {
+      changed = true;
+    }
     if (KataGoAutoSetupHelper.repairBrokenBundledCommandsIfNeeded()) {
       changed = true;
     }
@@ -201,27 +206,18 @@ public class Utils {
   }
 
   public static String resolveJavaCommand() {
-    List<String> candidates = new ArrayList<String>();
+    LinkedHashSet<String> candidates = new LinkedHashSet<String>();
     String javaHome = System.getProperty("java.home", "");
-    if (!isBlank(javaHome)) {
-      addJavaCandidate(
-          candidates,
-          new File(javaHome, "bin" + File.separator + (OS.isWindows() ? "java.exe" : "java"))
-              .getPath());
-    }
+    addBundledJavaCandidates(candidates, javaHome);
     if (OS.isWindows()) {
       addJavaCandidate(candidates, java64Path1);
       addJavaCandidate(candidates, java64Path2);
       addJavaCandidate(candidates, java32Path);
-      addJavaCandidate(
-          candidates,
-          "runtime"
-              + File.separator
-              + "windows-x64"
-              + File.separator
-              + "bin"
-              + File.separator
-              + "java.exe");
+    }
+    Path currentDir = Paths.get("").toAbsolutePath().normalize();
+    addBundledJavaCandidates(candidates, currentDir.toString());
+    for (Path parent : collectCodeSourceParents()) {
+      addBundledJavaCandidates(candidates, parent.toString());
     }
     for (String candidate : candidates) {
       if (new File(candidate).isFile()) {
@@ -251,10 +247,168 @@ public class Utils {
     return new ProcessBuilder(command);
   }
 
-  private static void addJavaCandidate(List<String> candidates, String candidate) {
+  private static void addJavaCandidate(java.util.Collection<String> candidates, String candidate) {
     if (!isBlank(candidate) && !candidates.contains(candidate)) {
       candidates.add(candidate);
     }
+  }
+
+  private static void addBundledJavaCandidates(
+      LinkedHashSet<String> candidates, String basePathText) {
+    if (isBlank(basePathText)) {
+      return;
+    }
+    Path basePath;
+    try {
+      basePath = Paths.get(basePathText).toAbsolutePath().normalize();
+    } catch (Exception e) {
+      return;
+    }
+
+    String javaBinary = OS.isWindows() ? "java.exe" : "java";
+    addJavaCandidate(candidates, basePath.resolve("bin").resolve(javaBinary).toString());
+    addJavaCandidate(
+        candidates, basePath.resolve("runtime").resolve("bin").resolve(javaBinary).toString());
+    addJavaCandidate(
+        candidates,
+        basePath
+            .resolve("runtime")
+            .resolve(OS.isWindows() ? "windows-x64" : "")
+            .resolve("bin")
+            .resolve(javaBinary)
+            .normalize()
+            .toString());
+    Path parent = basePath.getParent();
+    if (parent != null) {
+      addJavaCandidate(candidates, parent.resolve("bin").resolve(javaBinary).toString());
+      addJavaCandidate(
+          candidates, parent.resolve("runtime").resolve("bin").resolve(javaBinary).toString());
+    }
+  }
+
+  private static List<Path> collectCodeSourceParents() {
+    LinkedHashSet<Path> results = new LinkedHashSet<Path>();
+    try {
+      Path codePath =
+          Paths.get(Utils.class.getProtectionDomain().getCodeSource().getLocation().toURI())
+              .toAbsolutePath()
+              .normalize();
+      Path current = Files.isDirectory(codePath) ? codePath : codePath.getParent();
+      for (int depth = 0; current != null && depth < 6; depth++) {
+        results.add(current);
+        current = current.getParent();
+      }
+    } catch (URISyntaxException | RuntimeException e) {
+      e.printStackTrace();
+    }
+    return new ArrayList<Path>(results);
+  }
+
+  public static Path resolveExistingExecutable(String executable) {
+    if (isBlank(executable)) {
+      return null;
+    }
+    String trimmed = executable.trim();
+    String lower = trimmed.toLowerCase();
+    if (isJavaCommand(lower)) {
+      String javaCommand = resolveJavaCommand();
+      if (!isBlank(javaCommand)
+          && !"java".equals(javaCommand)
+          && !"java.exe".equalsIgnoreCase(javaCommand)) {
+        Path javaPath = toExistingPath(javaCommand);
+        if (javaPath != null) {
+          return javaPath;
+        }
+      }
+    }
+    Path direct = toExistingPath(trimmed);
+    if (direct != null) {
+      return direct;
+    }
+    return resolveExecutableFromPath(trimmed);
+  }
+
+  public static boolean isJavaCommand(String executable) {
+    if (isBlank(executable)) {
+      return false;
+    }
+    String normalized = executable.trim().toLowerCase();
+    int slash = Math.max(normalized.lastIndexOf('/'), normalized.lastIndexOf('\\'));
+    String fileName = slash >= 0 ? normalized.substring(slash + 1) : normalized;
+    return "java".equals(fileName)
+        || "java.exe".equals(fileName)
+        || "javaw".equals(fileName)
+        || "javaw.exe".equals(fileName);
+  }
+
+  private static Path toExistingPath(String candidate) {
+    try {
+      Path path = Paths.get(candidate);
+      if (!path.isAbsolute()) {
+        path = path.toAbsolutePath();
+      }
+      path = path.normalize();
+      return Files.isRegularFile(path) ? path : null;
+    } catch (Exception e) {
+      return null;
+    }
+  }
+
+  private static Path resolveExecutableFromPath(String executable) {
+    String pathEnv = System.getenv("PATH");
+    if (isBlank(pathEnv)) {
+      return null;
+    }
+    List<String> suffixes = new ArrayList<String>();
+    if (OS.isWindows()) {
+      String pathext = System.getenv("PATHEXT");
+      if (!isBlank(pathext)) {
+        for (String ext : pathext.split(";")) {
+          String trimmed = ext == null ? "" : ext.trim();
+          if (!trimmed.isEmpty()) {
+            suffixes.add(trimmed.toLowerCase());
+          }
+        }
+      }
+      if (suffixes.isEmpty()) {
+        suffixes.add(".exe");
+        suffixes.add(".bat");
+        suffixes.add(".cmd");
+      }
+    } else {
+      suffixes.add("");
+    }
+
+    boolean hasExtension = executable.contains(".") && !executable.endsWith(".");
+    for (String entry : pathEnv.split(File.pathSeparator)) {
+      if (isBlank(entry)) {
+        continue;
+      }
+      Path baseDir;
+      try {
+        baseDir = Paths.get(entry).toAbsolutePath().normalize();
+      } catch (Exception e) {
+        continue;
+      }
+      if (!Files.isDirectory(baseDir)) {
+        continue;
+      }
+      if (!OS.isWindows() || hasExtension) {
+        Path direct = toExistingPath(baseDir.resolve(executable).toString());
+        if (direct != null) {
+          return direct;
+        }
+      }
+      if (OS.isWindows()) {
+        for (String suffix : suffixes) {
+          Path candidate = toExistingPath(baseDir.resolve(executable + suffix).toString());
+          if (candidate != null) {
+            return candidate;
+          }
+        }
+      }
+    }
+    return null;
   }
 
   private static boolean hideGtpConsoleByDefaultOnce() {

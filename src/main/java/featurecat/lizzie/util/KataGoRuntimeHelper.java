@@ -249,8 +249,16 @@ public final class KataGoRuntimeHelper {
     if (executable == null || executable.trim().isEmpty()) {
       return null;
     }
+    Path resolved = Utils.resolveExistingExecutable(executable);
+    if (resolved != null) {
+      return resolved.toAbsolutePath().normalize();
+    }
     try {
-      return Paths.get(executable).toAbsolutePath().normalize();
+      Path direct = Paths.get(executable);
+      if (!direct.isAbsolute()) {
+        direct = direct.toAbsolutePath();
+      }
+      return direct.normalize();
     } catch (Exception e) {
       return null;
     }
