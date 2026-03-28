@@ -66,20 +66,19 @@ public final class KataGoRuntimeHelper {
       Pattern.compile("You are currently using the (.+?) version of KataGo\\.");
   private static final Pattern BENCHMARK_SUMMARY_LINE_PATTERN =
       Pattern.compile("^numSearchThreads\\s*=\\s*\\d+:.*$");
-  private static final List<String> REQUIRED_RUNTIME_DLLS =
+  private static final List<List<String>> REQUIRED_RUNTIME_DLL_GROUPS =
       Arrays.asList(
-          "cudart64_12.dll",
-          "cublas64_12.dll",
-          "cublasLt64_12.dll",
-          "cudnn64_8.dll",
-          "nvJitLink*.dll",
-          "zlibwapi.dll");
+          Arrays.asList("cudart64_12.dll"),
+          Arrays.asList("cublas64_12.dll"),
+          Arrays.asList("cublasLt64_12.dll"),
+          Arrays.asList("cudnn64_8.dll"),
+          Arrays.asList("nvJitLink*.dll"),
+          Arrays.asList("zlibwapi.dll", "libz.dll"));
   private static final Object NVIDIA_RUNTIME_LOCK = new Object();
   private static final int BENCHMARK_VISITS = 120;
   private static final int BENCHMARK_POSITIONS = 4;
   private static final int BENCHMARK_MIN_TIME_SECONDS = 2;
   private static final int BENCHMARK_MAX_TIME_SECONDS = 8;
-  private static final long APPROX_RUNTIME_DOWNLOAD_BYTES = 1230764542L;
 
   private KataGoRuntimeHelper() {}
 
@@ -177,8 +176,8 @@ public final class KataGoRuntimeHelper {
               "<html>"
                   + resource(
                           "AutoSetup.nvidiaBootstrapDescription",
-                          "The NVIDIA package needs official NVIDIA runtime files on first launch."
-                              + " LizzieYzy Next is downloading them into your user folder now.")
+                          "LizzieYzy Next is checking the bundled NVIDIA files in your package."
+                              + " If files are missing, reinstall the NVIDIA package.")
                       .replace("\n", "<br>")
                   + "</html>");
       content.add(description, BorderLayout.NORTH);
@@ -293,13 +292,7 @@ public final class KataGoRuntimeHelper {
     if (!status.applicable || status.ready) {
       return;
     }
-    synchronized (NVIDIA_RUNTIME_LOCK) {
-      status = inspectNvidiaRuntime(enginePath);
-      if (status.ready) {
-        return;
-      }
-      installNvidiaRuntimeWithDialog(owner, enginePath, status);
-    }
+    throw new IOException(buildMissingRuntimeMessage(status));
   }
 
   public static void configureBundledProcessBuilder(
@@ -343,15 +336,9 @@ public final class KataGoRuntimeHelper {
     }
 
     List<Path> searchDirs = collectRuntimeSearchDirs(enginePath, runtimeDir);
-    List<String> missing = new ArrayList<String>();
-    for (String dllName : REQUIRED_RUNTIME_DLLS) {
-      if (!hasFile(searchDirs, dllName)) {
-        missing.add(dllName);
-      }
-    }
+    List<String> missing = collectMissingRuntimeGroups(searchDirs);
     Path readyDir = findDirectoryContainingRequiredDlls(searchDirs);
     boolean ready = readyDir != null;
-    long downloadBytes = APPROX_RUNTIME_DOWNLOAD_BYTES;
     String detailText;
     if (ready) {
       detailText =
@@ -362,83 +349,32 @@ public final class KataGoRuntimeHelper {
       detailText =
           resource(
                   "AutoSetup.nvidiaRuntimeMissing",
-                  "Missing official NVIDIA runtime files. First-time download is required.")
-              + "  |  "
-              + formatBytes(downloadBytes)
+                  "Bundled NVIDIA runtime files are missing. Please reinstall the NVIDIA package.")
               + "  |  "
               + String.join(", ", missing);
     }
-    return new NvidiaRuntimeStatus(
-        true, ready, enginePath, runtimeDir, missing, downloadBytes, detailText);
+    return new NvidiaRuntimeStatus(true, ready, enginePath, runtimeDir, missing, 0L, detailText);
   }
 
   public static void downloadAndInstallNvidiaRuntime(
       Path enginePath, ProgressListener listener, DownloadSession session) throws IOException {
-    if (!OS.isWindows() || !isNvidiaBundledPath(enginePath)) {
+    NvidiaRuntimeStatus status = inspectNvidiaRuntime(enginePath);
+    if (!status.applicable) {
       return;
     }
-    synchronized (NVIDIA_RUNTIME_LOCK) {
-      NvidiaRuntimeStatus current = inspectNvidiaRuntime(enginePath);
-      if (current.ready) {
-        if (listener != null) {
-          listener.onProgress(
-              resource("AutoSetup.nvidiaRuntimeReady", "Ready"),
-              current.downloadBytes,
-              current.downloadBytes);
-        }
-        return;
+    if (status.ready) {
+      if (listener != null) {
+        listener.onProgress(resource("AutoSetup.nvidiaRuntimeReady", "Ready"), 0L, 0L);
       }
-
-      DownloadSession activeSession = session != null ? session : new DownloadSession();
-      activeSession.throwIfCancelled();
-      Path runtimeDir = getNvidiaRuntimeDir();
-      Path cacheDir = runtimeDir.resolve("cache");
-      Path licenseDir = runtimeDir.resolve("licenses");
-      Files.createDirectories(cacheDir);
-      Files.createDirectories(licenseDir);
-
-      List<RuntimePackageSpec> packages = resolveRequiredRuntimePackages();
-      long totalBytes = 0L;
-      for (RuntimePackageSpec spec : packages) {
-        totalBytes += Math.max(0L, spec.sizeBytes);
-      }
-      final long totalDownloadBytes = totalBytes;
-
-      long downloadedBytesBase = 0L;
-      for (RuntimePackageSpec spec : packages) {
-        final long base = downloadedBytesBase;
-        Path archivePath = cacheDir.resolve(spec.fileName());
-        downloadRuntimePackage(
-            spec,
-            archivePath,
-            activeSession,
-            (statusText, downloadedBytes, ignoredTotalBytes) -> {
-              if (listener != null) {
-                listener.onProgress(statusText, base + downloadedBytes, totalDownloadBytes);
-              }
-            });
-        if (listener != null) {
-          listener.onProgress(
-              spec.displayName + " (extracting)", downloadedBytesBase, totalDownloadBytes);
-        }
-        extractRuntimePackage(spec, archivePath, runtimeDir, licenseDir);
-        downloadedBytesBase += Math.max(0L, spec.sizeBytes);
-        if (listener != null) {
-          listener.onProgress(spec.displayName, downloadedBytesBase, totalDownloadBytes);
-        }
-      }
-
-      writeRuntimeManifest(runtimeDir, packages);
-      NvidiaRuntimeStatus refreshed = inspectNvidiaRuntime(enginePath);
-      if (!refreshed.ready) {
-        throw new IOException(
-            resource(
-                    "AutoSetup.nvidiaRuntimeInstallFailed",
-                    "NVIDIA runtime install did not finish correctly.")
-                + " "
-                + String.join(", ", refreshed.missingDlls));
-      }
+      return;
     }
+    if (listener != null) {
+      listener.onProgress(
+          resource("AutoSetup.installingNvidiaRuntime", "Checking bundled NVIDIA files..."),
+          0L,
+          0L);
+    }
+    throw new IOException(buildMissingRuntimeMessage(status));
   }
 
   public static BenchmarkResult getStoredBenchmarkResult() {
@@ -480,7 +416,7 @@ public final class KataGoRuntimeHelper {
 
     DownloadSession activeSession = session != null ? session : new DownloadSession();
     if (OS.isWindows() && isNvidiaBundledPath(snapshot.enginePath)) {
-      downloadAndInstallNvidiaRuntime(snapshot.enginePath, listener, activeSession);
+      ensureBundledRuntimeReady(snapshot.enginePath, null);
     }
 
     int benchmarkTime = resolveBenchmarkTimeSeconds();
@@ -771,14 +707,43 @@ public final class KataGoRuntimeHelper {
     return false;
   }
 
+  private static List<String> collectMissingRuntimeGroups(List<Path> searchDirs) {
+    List<String> missing = new ArrayList<String>();
+    for (List<String> requirementGroup : REQUIRED_RUNTIME_DLL_GROUPS) {
+      if (!hasAnyFile(searchDirs, requirementGroup)) {
+        missing.add(describeRequirementGroup(requirementGroup));
+      }
+    }
+    return missing;
+  }
+
+  private static boolean hasAnyFile(List<Path> searchDirs, List<String> fileNames) {
+    for (String fileName : fileNames) {
+      if (hasFile(searchDirs, fileName)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private static String describeRequirementGroup(List<String> requirementGroup) {
+    if (requirementGroup == null || requirementGroup.isEmpty()) {
+      return "";
+    }
+    if (requirementGroup.size() == 1) {
+      return requirementGroup.get(0);
+    }
+    return String.join(" or ", requirementGroup);
+  }
+
   private static Path findDirectoryContainingRequiredDlls(List<Path> searchDirs) {
     for (Path dir : searchDirs) {
       if (dir == null) {
         continue;
       }
       boolean allPresent = true;
-      for (String dllName : REQUIRED_RUNTIME_DLLS) {
-        if (!hasFile(Arrays.asList(dir), dllName)) {
+      for (List<String> requirementGroup : REQUIRED_RUNTIME_DLL_GROUPS) {
+        if (!hasAnyFile(Arrays.asList(dir), requirementGroup)) {
           allPresent = false;
           break;
         }
@@ -788,6 +753,23 @@ public final class KataGoRuntimeHelper {
       }
     }
     return null;
+  }
+
+  private static String buildMissingRuntimeMessage(NvidiaRuntimeStatus status) {
+    StringBuilder builder =
+        new StringBuilder(
+            resource(
+                "AutoSetup.nvidiaRuntimeInstallFailed",
+                "Bundled NVIDIA files are incomplete. Please reinstall the NVIDIA package."));
+    if (status != null && status.missingDlls != null && !status.missingDlls.isEmpty()) {
+      builder.append(" Missing: ").append(String.join(", ", status.missingDlls));
+    }
+    if (status != null && status.enginePath != null && status.enginePath.getParent() != null) {
+      builder
+          .append(" | ")
+          .append(status.enginePath.getParent().toAbsolutePath().normalize().toString());
+    }
+    return builder.toString();
   }
 
   private static Path getNvidiaRuntimeDir() {

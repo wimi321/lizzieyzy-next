@@ -105,10 +105,19 @@ jobs:
           test -f "dist/windows/app-image-nvidia/LizzieYzy Next NVIDIA/LizzieYzy Next NVIDIA.exe"
           test -f "dist/windows/input-nvidia/engines/katago/windows-x64/katago.exe"
           test -f "dist/windows/input-nvidia/engines/katago/windows-x64/cudart64_12.dll"
+          test -f "dist/windows/input-nvidia/engines/katago/windows-x64/cublas64_12.dll"
+          test -f "dist/windows/input-nvidia/engines/katago/windows-x64/cublasLt64_12.dll"
           test -f "dist/windows/input-nvidia/engines/katago/windows-x64/cudnn64_8.dll"
+          test -f "dist/windows/input-nvidia/engines/katago/windows-x64/libz.dll"
           test -f "dist/windows/input-nvidia/engines/katago/windows-x64/lizzieyzy-next-nvidia-runtime-manifest.txt"
           find "dist/windows/input-nvidia/engines/katago/windows-x64" -maxdepth 1 -type f -name 'nvJitLink*.dll' | grep -q .
           grep -qx "nvidia" "dist/windows/input-nvidia/engines/katago/windows-x64/lizzieyzy-next-engine-backend.txt"
+          test -f "dist/windows/app-image-nvidia/LizzieYzy Next NVIDIA/app/engines/katago/windows-x64/cudart64_12.dll"
+          test -f "dist/windows/app-image-nvidia/LizzieYzy Next NVIDIA/app/engines/katago/windows-x64/cublas64_12.dll"
+          test -f "dist/windows/app-image-nvidia/LizzieYzy Next NVIDIA/app/engines/katago/windows-x64/cublasLt64_12.dll"
+          test -f "dist/windows/app-image-nvidia/LizzieYzy Next NVIDIA/app/engines/katago/windows-x64/cudnn64_8.dll"
+          test -f "dist/windows/app-image-nvidia/LizzieYzy Next NVIDIA/app/engines/katago/windows-x64/libz.dll"
+          find "dist/windows/app-image-nvidia/LizzieYzy Next NVIDIA/app/engines/katago/windows-x64" -maxdepth 1 -type f -name 'nvJitLink*.dll' | grep -q .
 
       - name: Smoke test bundled Windows app image
         shell: powershell

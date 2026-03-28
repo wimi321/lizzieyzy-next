@@ -285,7 +285,7 @@ public class KataGoAutoSetupDialog extends JDialog {
       return;
     }
     lblNvidiaRuntimeValue.setText(status.detailText);
-    lblNvidiaRuntimeValue.setToolTipText(status.runtimeDir.toAbsolutePath().normalize().toString());
+    lblNvidiaRuntimeValue.setToolTipText(status.detailText);
     lblNvidiaRuntimeValue.setForeground(status.ready ? OK_COLOR : WARN_COLOR);
     btnInstallNvidiaRuntime.setEnabled(activeDownloadSession == null && !status.ready);
   }
@@ -449,44 +449,15 @@ public class KataGoAutoSetupDialog extends JDialog {
       Utils.showMsg(text("AutoSetup.nvidiaRuntimeAlreadyReady"), this);
       return;
     }
-
-    final DownloadSession session = new DownloadSession();
-    activeDownloadSession = session;
-    setBusy(true, text("AutoSetup.installingNvidiaRuntime"), 0, -1);
-    Thread worker =
-        new Thread(
-            () -> {
-              try {
-                KataGoRuntimeHelper.downloadAndInstallNvidiaRuntime(
-                    snapshot.enginePath,
-                    (statusText, downloadedBytes, totalBytes) ->
-                        SwingUtilities.invokeLater(
-                            () ->
-                                setBusy(
-                                    true,
-                                    text("AutoSetup.installingNvidiaRuntime") + " " + statusText,
-                                    downloadedBytes,
-                                    totalBytes)),
-                    session);
-                SwingUtilities.invokeLater(
-                    () -> {
-                      setBusy(false, text("AutoSetup.installNvidiaRuntimeDone"), 0, 0);
-                      snapshot = KataGoAutoSetupHelper.inspectLocalSetup();
-                      renderSnapshot();
-                      updateSelectedRemoteWeightInfo();
-                      Utils.showMsg(text("AutoSetup.installNvidiaRuntimeDoneMessage"), this);
-                    });
-              } catch (DownloadCancelledException e) {
-                SwingUtilities.invokeLater(() -> onDownloadCancelled());
-              } catch (IOException e) {
-                SwingUtilities.invokeLater(() -> onBackgroundError(e));
-              } finally {
-                clearActiveDownload(session, Thread.currentThread());
-              }
-            },
-            "katago-install-nvidia-runtime");
-    activeWorkerThread = worker;
-    worker.start();
+    try {
+      KataGoRuntimeHelper.ensureBundledRuntimeReady(snapshot.enginePath, this);
+      snapshot = KataGoAutoSetupHelper.inspectLocalSetup();
+      renderSnapshot();
+      updateSelectedRemoteWeightInfo();
+      Utils.showMsg(text("AutoSetup.installNvidiaRuntimeDoneMessage"), this);
+    } catch (IOException e) {
+      onBackgroundError(e);
+    }
   }
 
   private void startPerformanceBenchmark() {
@@ -509,17 +480,7 @@ public class KataGoAutoSetupDialog extends JDialog {
                 KataGoRuntimeHelper.NvidiaRuntimeStatus runtimeStatus =
                     KataGoRuntimeHelper.inspectNvidiaRuntime(currentSnapshot);
                 if (runtimeStatus.applicable && !runtimeStatus.ready) {
-                  KataGoRuntimeHelper.downloadAndInstallNvidiaRuntime(
-                      currentSnapshot.enginePath,
-                      (statusText, downloadedBytes, totalBytes) ->
-                          SwingUtilities.invokeLater(
-                              () ->
-                                  setBusy(
-                                      true,
-                                      text("AutoSetup.installingNvidiaRuntime") + " " + statusText,
-                                      downloadedBytes,
-                                      totalBytes)),
-                      session);
+                  KataGoRuntimeHelper.ensureBundledRuntimeReady(currentSnapshot.enginePath, this);
                   currentSnapshot = KataGoAutoSetupHelper.inspectLocalSetup();
                 }
                 activeDownloadSession = null;

@@ -329,7 +329,7 @@ EOF
     cat >>"$note_file" <<'EOF'
 - The NVIDIA assets include the official KataGo CUDA 12.1 Windows build.
 - The NVIDIA assets also include the required official NVIDIA runtime files, so first launch should work offline on supported NVIDIA PCs.
-- If those NVIDIA runtime files are missing later, the app can still repair them automatically in the user folder.
+- If those NVIDIA runtime files are missing later, reinstall the NVIDIA package instead of downloading extra files at startup.
 - Only choose the NVIDIA package if your PC has an NVIDIA GPU. If you are not sure, use the regular with-katago installer instead.
 EOF
   fi
