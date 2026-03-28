@@ -166,6 +166,27 @@ function Set-StaleLegacyEngineConfig {
         $config | Add-Member -NotePropertyName leelaz -NotePropertyValue ([pscustomobject]@{})
     }
 
+    function Set-JsonProperty {
+        param(
+            [Parameter(Mandatory = $true)]
+            [psobject]$Target,
+
+            [Parameter(Mandatory = $true)]
+            [string]$Name,
+
+            [Parameter(Mandatory = $false)]
+            $Value
+        )
+
+        $property = $Target.PSObject.Properties[$Name]
+        if ($null -eq $property) {
+            $Target | Add-Member -NotePropertyName $Name -NotePropertyValue $Value
+            return
+        }
+
+        $property.Value = $Value
+    }
+
     $legacyEngine = [pscustomobject]@{
         ip = ""
         initialCommand = ""
@@ -184,13 +205,13 @@ function Set-StaleLegacyEngineConfig {
         height = 19
     }
 
-    $config.leelaz.'engine-settings-list' = @($legacyEngine)
-    $config.ui.'default-engine' = 0
-    $config.ui.'autoload-default' = $true
-    $config.ui.'autoload-empty' = $false
-    $config.ui.'first-time-load' = $false
-    $config.ui.'analysis-engine-command' = 'java -jar legacy\broken-analysis-launcher.jar'
-    $config.ui.'estimate-command' = 'java -jar legacy\broken-estimate-launcher.jar'
+    Set-JsonProperty -Target $config.leelaz -Name 'engine-settings-list' -Value @($legacyEngine)
+    Set-JsonProperty -Target $config.ui -Name 'default-engine' -Value 0
+    Set-JsonProperty -Target $config.ui -Name 'autoload-default' -Value $true
+    Set-JsonProperty -Target $config.ui -Name 'autoload-empty' -Value $false
+    Set-JsonProperty -Target $config.ui -Name 'first-time-load' -Value $false
+    Set-JsonProperty -Target $config.ui -Name 'analysis-engine-command' -Value 'java -jar legacy\broken-analysis-launcher.jar'
+    Set-JsonProperty -Target $config.ui -Name 'estimate-command' -Value 'java -jar legacy\broken-estimate-launcher.jar'
 
     $json = $config | ConvertTo-Json -Depth 100
     [System.IO.File]::WriteAllText($ConfigPath, $json, [System.Text.Encoding]::UTF8)
