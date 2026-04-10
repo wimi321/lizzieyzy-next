@@ -151,7 +151,7 @@ The main day-to-day actions are now visible on the main window instead of being 
 | Item | Current value |
 | --- | --- |
 | KataGo version | `v1.16.4` |
-| Default weight | `g170e-b20c256x2-s5303129600-d1228401921.bin.gz` |
+| Default weight | `kata1-zhizi-b28c512nbt-muonfd2.bin.gz` |
 | First-launch auto setup | Enabled |
 | Official weight download entry | Included |
 

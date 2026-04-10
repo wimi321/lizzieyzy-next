@@ -72,7 +72,7 @@ Portable packages still exist, but they are now secondary to the installer flow.
 Current bundled defaults:
 
 - KataGo version: `v1.16.4`
-- Default weight: `g170e-b20c256x2-s5303129600-d1228401921.bin.gz`
+- Default weight: `kata1-zhizi-b28c512nbt-muonfd2.bin.gz`
 
 Paths:
 

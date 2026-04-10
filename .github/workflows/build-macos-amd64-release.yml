@@ -53,7 +53,14 @@ jobs:
           HTTPS_PROXY: ""
           HTTP_PROXY: ""
           ALL_PROXY: ""
-        run: ./scripts/prepare_bundled_katago.sh
+          MODEL_NAME: kata1-zhizi-b28c512nbt-muonfd2.bin.gz
+          MODEL_URL: https://katagotraining.org/media/games/kata1/kata1-zhizi-b28c512nbt-muonfd2.bin.gz
+        run: |
+          set -euo pipefail
+          mkdir -p .cache/katago
+          MODEL_SOURCE="$PWD/.cache/katago/$MODEL_NAME"
+          curl -fL --retry 5 --retry-all-errors -o "$MODEL_SOURCE" "$MODEL_URL"
+          PREFERRED_MODEL_NAME="$MODEL_NAME" MODEL_SOURCE="$MODEL_SOURCE" ./scripts/prepare_bundled_katago.sh
 
       - name: Build macOS amd64 package
         run: ./scripts/package_macos_dmg.sh "${{ inputs.date_tag }}" 2.5.3 target/lizzie-yzy2.5.3-shaded.jar

@@ -150,7 +150,7 @@ CPU 版、OpenCL 版、NVIDIA 版はいずれも `KataGo Auto Setup` の `Smart 
 | 項目 | 現在の値 |
 | --- | --- |
 | KataGo バージョン | `v1.16.4` |
-| 既定の重み | `g170e-b20c256x2-s5303129600-d1228401921.bin.gz` |
+| 既定の重み | `kata1-zhizi-b28c512nbt-muonfd2.bin.gz` |
 | 初回起動の自動設定 | 有効 |
 | 公式重みダウンロード入口 | あり |
 

@@ -10,7 +10,7 @@ WINDOWS_ASSET="${WINDOWS_ASSET:-katago-${KATAGO_TAG}-eigen-windows-x64.zip}"
 WINDOWS_OPENCL_ASSET="${WINDOWS_OPENCL_ASSET:-katago-${KATAGO_TAG}-opencl-windows-x64.zip}"
 WINDOWS_NVIDIA_ASSET="${WINDOWS_NVIDIA_ASSET:-katago-${KATAGO_TAG}-cuda12.1-cudnn8.9.7-windows-x64.zip}"
 LINUX_ASSET="${LINUX_ASSET:-katago-${KATAGO_TAG}-eigen-linux-x64.zip}"
-PREFERRED_MODEL_NAME="${PREFERRED_MODEL_NAME:-g170e-b20c256x2-s5303129600-d1228401921.bin.gz}"
+PREFERRED_MODEL_NAME="${PREFERRED_MODEL_NAME:-kata1-zhizi-b28c512nbt-muonfd2.bin.gz}"
 MODEL_SOURCE="${MODEL_SOURCE:-}"
 
 ENGINES_ROOT="$ROOT_DIR/engines/katago"
@@ -104,12 +104,18 @@ find_model_source() {
 
   local candidates=(
     "${katago_share_dir:+$katago_share_dir/$PREFERRED_MODEL_NAME}"
+    "${katago_share_dir:+$katago_share_dir/kata1-zhizi-b28c512nbt-muonfd2.bin.gz}"
+    "${katago_share_dir:+$katago_share_dir/kata1-zhizi-b40c768nbt-fdx6c.bin.gz}"
     "${katago_share_dir:+$katago_share_dir/g170-b40c256x2-s5095420928-d1229425124.bin.gz}"
     "${katago_share_dir:+$katago_share_dir/kata1-b18c384nbt-s9996604416-d4316597426.bin.gz}"
     "/usr/local/opt/katago/share/katago/$PREFERRED_MODEL_NAME"
+    "/usr/local/opt/katago/share/katago/kata1-zhizi-b28c512nbt-muonfd2.bin.gz"
+    "/usr/local/opt/katago/share/katago/kata1-zhizi-b40c768nbt-fdx6c.bin.gz"
     "/usr/local/opt/katago/share/katago/g170-b40c256x2-s5095420928-d1229425124.bin.gz"
     "/usr/local/opt/katago/share/katago/kata1-b18c384nbt-s9996604416-d4316597426.bin.gz"
     "/opt/homebrew/opt/katago/share/katago/$PREFERRED_MODEL_NAME"
+    "/opt/homebrew/opt/katago/share/katago/kata1-zhizi-b28c512nbt-muonfd2.bin.gz"
+    "/opt/homebrew/opt/katago/share/katago/kata1-zhizi-b40c768nbt-fdx6c.bin.gz"
     "/opt/homebrew/opt/katago/share/katago/g170-b40c256x2-s5095420928-d1229425124.bin.gz"
     "/opt/homebrew/opt/katago/share/katago/kata1-b18c384nbt-s9996604416-d4316597426.bin.gz"
   )

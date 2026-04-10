@@ -50,30 +50,15 @@ jobs:
         run: mvn -DskipTests package
 
       - name: Prepare bundled KataGo assets
+        env:
+          MODEL_NAME: kata1-zhizi-b28c512nbt-muonfd2.bin.gz
+          MODEL_URL: https://katagotraining.org/media/games/kata1/kata1-zhizi-b28c512nbt-muonfd2.bin.gz
         run: |
           set -euo pipefail
           mkdir -p .cache/katago
-          NETWORKS_HTML="$(curl -fsSL https://katagotraining.org/networks/)"
-          RECOMMENDED_PATH="$(printf '%s' "$NETWORKS_HTML" | perl -0ne '
-            if (/Strongest confidently-rated network:<\/span>\s*<a href="([^"]+)"/si) {
-              print $1;
-              exit 0;
-            }
-            if (/Latest network:<\/span>\s*<a href="([^"]+)"/si) {
-              print $1;
-              exit 0;
-            }
-            exit 1;
-          ')"
-          if [[ "$RECOMMENDED_PATH" != http* ]]; then
-            RECOMMENDED_URL="https://katagotraining.org${RECOMMENDED_PATH}"
-          else
-            RECOMMENDED_URL="$RECOMMENDED_PATH"
-          fi
-          MODEL_FILENAME="$(basename "${RECOMMENDED_URL%%\?*}")"
-          MODEL_SOURCE="$PWD/.cache/katago/$MODEL_FILENAME"
-          curl -fL --retry 5 --retry-all-errors -o "$MODEL_SOURCE" "$RECOMMENDED_URL"
-          MODEL_SOURCE="$MODEL_SOURCE" ./scripts/prepare_bundled_katago.sh
+          MODEL_SOURCE="$PWD/.cache/katago/$MODEL_NAME"
+          curl -fL --retry 5 --retry-all-errors -o "$MODEL_SOURCE" "$MODEL_URL"
+          PREFERRED_MODEL_NAME="$MODEL_NAME" MODEL_SOURCE="$MODEL_SOURCE" ./scripts/prepare_bundled_katago.sh
 
       - name: Build Linux package
         run: ./scripts/package_release.sh "${{ inputs.date_tag }}" target/lizzie-yzy2.5.3-shaded.jar

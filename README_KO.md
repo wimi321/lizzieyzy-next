@@ -150,7 +150,7 @@ CPU 버전, OpenCL 버전, NVIDIA 버전 모두 `KataGo Auto Setup` 의 `Smart O
 | 항목 | 현재 값 |
 | --- | --- |
 | KataGo 버전 | `v1.16.4` |
-| 기본 가중치 | `g170e-b20c256x2-s5303129600-d1228401921.bin.gz` |
+| 기본 가중치 | `kata1-zhizi-b28c512nbt-muonfd2.bin.gz` |
 | 첫 실행 자동 설정 | 사용 |
 | 공식 가중치 다운로드 입구 | 포함 |
 
