@@ -519,7 +519,7 @@ public class InputIndependentMainBoard implements KeyListener {
           }
         }
         break;
-        // this is copyed from https://github.com/zsalch/lizzie/tree/n_avoiddialog
+      // this is copyed from https://github.com/zsalch/lizzie/tree/n_avoiddialog
       case VK_DECIMAL:
       case VK_SLASH:
         if (Lizzie.frame.isCounting) {
@@ -574,7 +574,7 @@ public class InputIndependentMainBoard implements KeyListener {
           Lizzie.config.toggleEvaluationColoring();
         }
         break;
-        // Use Ctrl+Num to switching multiple engine
+      // Use Ctrl+Num to switching multiple engine
 
       case VK_1:
         if (e.isAltDown()) {

@@ -275,10 +275,10 @@ public class IndependentMainBoard extends JFrame {
     // allPanel.setLayout(null);
     getContentPane().add(allPanel);
 
-    allPanel.add(topUntop, new Integer(200));
-    allPanel.add(lockUnlock, new Integer(200));
-    allPanel.add(btnClose, new Integer(200));
-    allPanel.add(mainPanel, new Integer(100));
+    allPanel.add(topUntop, Integer.valueOf(200));
+    allPanel.add(lockUnlock, Integer.valueOf(200));
+    allPanel.add(btnClose, Integer.valueOf(200));
+    allPanel.add(mainPanel, Integer.valueOf(100));
 
     pack();
     boolean persisted = Lizzie.config.persistedUi != null;

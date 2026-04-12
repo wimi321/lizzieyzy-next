@@ -93,10 +93,17 @@ public class Lizzie {
     // -Dsun.java2d.uiScale=1.0
     javaVersionString = System.getProperty("java.version");
     try {
-      javaVersion =
-          Math.max(
-              8, Integer.parseInt(javaVersionString.substring(0, javaVersionString.indexOf('.'))));
+      int majorVersion;
+      if (javaVersionString.startsWith("1.")) {
+        majorVersion =
+            Integer.parseInt(javaVersionString.substring(2, javaVersionString.indexOf('.', 2)));
+      } else {
+        majorVersion =
+            Integer.parseInt(javaVersionString.substring(0, javaVersionString.indexOf('.')));
+      }
+      javaVersion = Math.max(8, majorVersion);
     } catch (Exception e) {
+      javaVersion = 8;
     }
     System.out.println("java version:" + javaVersionString);
     installApplicationIcon();
@@ -117,25 +124,25 @@ public class Lizzie {
     }
     while (Lizzie.config.needReopenFirstUseSettings) {
       if (config.useLanguage == 1)
-        resourceBundle = ResourceBundle.getBundle("l10n.DisplayStrings", new Locale("zh", "CN"));
+        resourceBundle = ResourceBundle.getBundle("l10n.DisplayStrings", Locale.CHINA);
       else if (config.useLanguage == 2)
-        resourceBundle = ResourceBundle.getBundle("l10n.DisplayStrings", new Locale("en", "US"));
+        resourceBundle = ResourceBundle.getBundle("l10n.DisplayStrings", Locale.US);
       else if (config.useLanguage == 3)
-        resourceBundle = ResourceBundle.getBundle("l10n.DisplayStrings", new Locale("ko"));
+        resourceBundle = ResourceBundle.getBundle("l10n.DisplayStrings", Locale.KOREAN);
       else if (config.useLanguage == 4)
-        resourceBundle = ResourceBundle.getBundle("l10n.DisplayStrings", new Locale("ja", "JP"));
+        resourceBundle = ResourceBundle.getBundle("l10n.DisplayStrings", Locale.JAPAN);
       config.isChinese = (resourceBundle.getString("Lizzie.isChinese")).equals("yes");
       FirstUseSettings firstUseSettings = new FirstUseSettings(true);
       firstUseSettings.setVisible(true);
     }
     if (config.useLanguage == 1)
-      resourceBundle = ResourceBundle.getBundle("l10n.DisplayStrings", new Locale("zh", "CN"));
+      resourceBundle = ResourceBundle.getBundle("l10n.DisplayStrings", Locale.CHINA);
     else if (config.useLanguage == 2)
-      resourceBundle = ResourceBundle.getBundle("l10n.DisplayStrings", new Locale("en", "US"));
+      resourceBundle = ResourceBundle.getBundle("l10n.DisplayStrings", Locale.US);
     else if (config.useLanguage == 3)
-      resourceBundle = ResourceBundle.getBundle("l10n.DisplayStrings", new Locale("ko"));
+      resourceBundle = ResourceBundle.getBundle("l10n.DisplayStrings", Locale.KOREAN);
     else if (config.useLanguage == 4)
-      resourceBundle = ResourceBundle.getBundle("l10n.DisplayStrings", new Locale("ja", "JP"));
+      resourceBundle = ResourceBundle.getBundle("l10n.DisplayStrings", Locale.JAPAN);
     config.isChinese = (resourceBundle.getString("Lizzie.isChinese")).equals("yes");
     if (config.theme.uiFontName() != null) config.uiFontName = config.theme.uiFontName();
     Utils.loadFonts(config.uiFontName, config.fontName, config.winrateFontName);

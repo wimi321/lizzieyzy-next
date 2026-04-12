@@ -6,6 +6,7 @@ import java.io.OutputStream;
 import java.io.UnsupportedEncodingException;
 import java.net.HttpURLConnection;
 import java.net.Proxy;
+import java.net.URI;
 import java.net.URL;
 import java.net.URLConnection;
 import java.net.URLEncoder;
@@ -75,7 +76,7 @@ public class AjaxHttpRequest {
 
   public void open(String method, String url, boolean async, String userName, String password)
       throws IOException {
-    open(method, new URL(null, url), async, userName, password);
+    open(method, URI.create(url).toURL(), async, userName, password);
   }
 
   public void open(

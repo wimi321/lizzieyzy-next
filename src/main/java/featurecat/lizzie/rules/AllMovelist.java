@@ -13,6 +13,7 @@ public class AllMovelist {
   public String comment;
 
   public ArrayList<AllMovelist> variations = new ArrayList<AllMovelist>();
+
   //  public boolean isMain() {
   //	  AllMovelist node = this;
   //	    while (node.previous!=null) {

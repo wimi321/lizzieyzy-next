@@ -18,7 +18,7 @@ import java.io.InputStreamReader;
 import java.io.InterruptedIOException;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
-import java.net.URL;
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
@@ -925,7 +925,7 @@ public final class KataGoRuntimeHelper {
     Files.deleteIfExists(tempPath);
     HttpURLConnection conn = null;
     try {
-      conn = (HttpURLConnection) new URL(spec.url).openConnection();
+      conn = (HttpURLConnection) URI.create(spec.url).toURL().openConnection();
       session.attach(conn);
       session.throwIfCancelled();
       conn.setInstanceFollowRedirects(true);
@@ -1046,7 +1046,7 @@ public final class KataGoRuntimeHelper {
   private static String httpGet(String url) throws IOException {
     HttpURLConnection conn = null;
     try {
-      conn = (HttpURLConnection) new URL(url).openConnection();
+      conn = (HttpURLConnection) URI.create(url).toURL().openConnection();
       conn.setInstanceFollowRedirects(true);
       conn.setRequestMethod("GET");
       conn.setConnectTimeout(15000);

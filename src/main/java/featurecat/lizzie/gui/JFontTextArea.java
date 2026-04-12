@@ -50,9 +50,9 @@ public class JFontTextArea extends JTextArea implements MouseListener {
     pop.add(copy = new JFontMenuItem(Lizzie.resourceBundle.getString("JTextPane.copy")));
     pop.add(paste = new JFontMenuItem(Lizzie.resourceBundle.getString("JTextPane.paste")));
     pop.add(cut = new JFontMenuItem(Lizzie.resourceBundle.getString("JTextPane.cut")));
-    copy.setAccelerator(KeyStroke.getKeyStroke('C', InputEvent.CTRL_MASK));
-    paste.setAccelerator(KeyStroke.getKeyStroke('V', InputEvent.CTRL_MASK));
-    cut.setAccelerator(KeyStroke.getKeyStroke('X', InputEvent.CTRL_MASK));
+    copy.setAccelerator(KeyStroke.getKeyStroke('C', InputEvent.CTRL_DOWN_MASK));
+    paste.setAccelerator(KeyStroke.getKeyStroke('V', InputEvent.CTRL_DOWN_MASK));
+    cut.setAccelerator(KeyStroke.getKeyStroke('X', InputEvent.CTRL_DOWN_MASK));
     copy.addActionListener(
         new ActionListener() {
           public void actionPerformed(ActionEvent e) {

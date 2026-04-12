@@ -47,13 +47,10 @@ public class Theme {
     File file = new File(this.path + this.configFile);
     boolean canReadFile = file.canRead();
     if (canReadFile) {
-      FileInputStream fp;
-      try {
-        fp = new FileInputStream(file);
+      try (FileInputStream fp = new FileInputStream(file)) {
         config = new JSONObject(new JSONTokener(fp));
-        fp.close();
-      } catch (IOException e) {
-      } catch (JSONException e) {
+      } catch (IOException | JSONException e) {
+        e.printStackTrace();
       }
     }
     return canReadFile;
@@ -101,13 +98,10 @@ public class Theme {
     this.path = Theme.pathPrefix + (themeName.isEmpty() ? "" : themeName + separator);
     File file = new File(this.path + this.configFile);
     if (file.canRead()) {
-      FileInputStream fp;
-      try {
-        fp = new FileInputStream(file);
+      try (FileInputStream fp = new FileInputStream(file)) {
         config = new JSONObject(new JSONTokener(fp));
-        fp.close();
-      } catch (IOException e) {
-      } catch (JSONException e) {
+      } catch (IOException | JSONException e) {
+        e.printStackTrace();
       }
     }
   }
@@ -252,6 +246,7 @@ public class Theme {
   public int backgroundFilter() {
     return getIntByKey("background-filter", 20);
   }
+
   /** The size of the shadow */
   public int nodeColorMode() {
     return getIntByKey("node-color-mode", 0);
@@ -309,7 +304,7 @@ public class Theme {
     array.ifPresent(
         m -> {
           blunderWinrateThresholds = Optional.of(new ArrayList<Double>());
-          m.forEach(a -> blunderWinrateThresholds.get().add(new Double(a.toString())));
+          m.forEach(a -> blunderWinrateThresholds.get().add(Double.valueOf(a.toString())));
         });
     return blunderWinrateThresholds;
   }
@@ -379,22 +374,18 @@ public class Theme {
       File file = new File(this.path + this.configFile);
       file.createNewFile();
 
-      FileOutputStream fp = new FileOutputStream(file);
-      OutputStreamWriter writer = new OutputStreamWriter(fp);
-
-      Iterator<String> keys = config.keys();
-      while (keys.hasNext()) {
-        String key = keys.next();
-        Object value = config.get(key);
-        if (value == null || (value instanceof String && ((String) value).trim().isEmpty())) {
-          keys.remove();
+      try (FileOutputStream fp = new FileOutputStream(file);
+          OutputStreamWriter writer = new OutputStreamWriter(fp)) {
+        Iterator<String> keys = config.keys();
+        while (keys.hasNext()) {
+          String key = keys.next();
+          Object value = config.get(key);
+          if (value == null || (value instanceof String && ((String) value).trim().isEmpty())) {
+            keys.remove();
+          }
         }
+        writer.write(config.toString(2));
       }
-
-      writer.write(config.toString(2));
-
-      writer.close();
-      fp.close();
     } catch (IOException e) {
       e.printStackTrace();
     }
@@ -425,5 +416,71 @@ public class Theme {
 
   private int getIntByKey(String key, int defaultValue) {
     return config.optInt(key, uiConfig.optInt(key, defaultValue));
+  }
+
+  public Color morandiSuggestionColor(int level) {
+    if (!Lizzie.config.useMorandiColors) {
+      return null;
+    }
+    return MorandiPalette.getSuggestionColor(level);
+  }
+
+  public Color morandiSuggestionAlphaColor(int level) {
+    if (!Lizzie.config.useMorandiColors) {
+      return null;
+    }
+    return MorandiPalette.getSuggestionAlphaColor(level);
+  }
+
+  public Color morandiSuggestionLightColor(int level) {
+    if (!Lizzie.config.useMorandiColors) {
+      return null;
+    }
+    return MorandiPalette.getSuggestionLightColor(level);
+  }
+
+  public Color morandiPanelBackground() {
+    if (!Lizzie.config.useMorandiColors) return null;
+    return MorandiPalette.PANEL_BACKGROUND;
+  }
+
+  public Color morandiPanelBackgroundLight() {
+    if (!Lizzie.config.useMorandiColors) return null;
+    return MorandiPalette.PANEL_BACKGROUND_LIGHT;
+  }
+
+  public Color morandiTableHeader() {
+    if (!Lizzie.config.useMorandiColors) return null;
+    return MorandiPalette.TABLE_HEADER;
+  }
+
+  public Color morandiTableRowEven() {
+    if (!Lizzie.config.useMorandiColors) return null;
+    return MorandiPalette.TABLE_ROW_EVEN;
+  }
+
+  public Color morandiTableRowOdd() {
+    if (!Lizzie.config.useMorandiColors) return null;
+    return MorandiPalette.TABLE_ROW_ODD;
+  }
+
+  public Color morandiTextPrimary() {
+    if (!Lizzie.config.useMorandiColors) return null;
+    return MorandiPalette.TEXT_PRIMARY;
+  }
+
+  public Color morandiTextSecondary() {
+    if (!Lizzie.config.useMorandiColors) return null;
+    return MorandiPalette.TEXT_SECONDARY;
+  }
+
+  public Color morandiControlsOverlay() {
+    if (!Lizzie.config.useMorandiColors) return null;
+    return MorandiPalette.CONTROLS_OVERLAY;
+  }
+
+  public Color morandiControlsBorder() {
+    if (!Lizzie.config.useMorandiColors) return null;
+    return MorandiPalette.CONTROLS_BORDER;
   }
 }

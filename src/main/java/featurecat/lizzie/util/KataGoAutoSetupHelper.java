@@ -11,8 +11,8 @@ import java.io.InputStreamReader;
 import java.io.InterruptedIOException;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
+import java.net.URI;
 import java.net.URISyntaxException;
-import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
@@ -446,7 +446,7 @@ public final class KataGoAutoSetupHelper {
     Path temp = weightsDir.resolve(info.fileName() + ".part");
     HttpURLConnection conn = null;
     try {
-      conn = (HttpURLConnection) new URL(info.downloadUrl).openConnection();
+      conn = (HttpURLConnection) URI.create(info.downloadUrl).toURL().openConnection();
       activeSession.attach(conn);
       activeSession.throwIfCancelled();
       conn.setInstanceFollowRedirects(true);
@@ -714,7 +714,7 @@ public final class KataGoAutoSetupHelper {
   private static String httpGet(String url) throws IOException {
     HttpURLConnection conn = null;
     try {
-      conn = (HttpURLConnection) new URL(url).openConnection();
+      conn = (HttpURLConnection) URI.create(url).toURL().openConnection();
       conn.setInstanceFollowRedirects(true);
       conn.setRequestMethod("GET");
       conn.setConnectTimeout(15000);
@@ -1375,8 +1375,8 @@ public final class KataGoAutoSetupHelper {
       return trimmed;
     }
     try {
-      return new URL(new URL(NETWORKS_URL), trimmed).toString();
-    } catch (IOException e) {
+      return URI.create(NETWORKS_URL).resolve(trimmed).toString();
+    } catch (IllegalArgumentException e) {
       return trimmed;
     }
   }

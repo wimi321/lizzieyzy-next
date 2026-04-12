@@ -106,6 +106,7 @@ public class BoardHistoryList {
   public void addOrGoto(BoardData data, boolean newBranch, boolean changeMove, boolean tsumego) {
     head = head.addOrGoto(data, newBranch, changeMove, tsumego);
   }
+
   /**
    * moves the pointer to the left, returns the data stored there
    *
@@ -118,7 +119,8 @@ public class BoardHistoryList {
   }
 
   public void toStart() {
-    while (previous().isPresent()) ;
+    while (previous().isPresent())
+      ;
   }
 
   /**
@@ -169,7 +171,9 @@ public class BoardHistoryList {
     return head.next(includeDummy).map(x -> x.getData());
   }
 
-  /** @return nexts for display */
+  /**
+   * @return nexts for display
+   */
   public List<BoardHistoryNode> getNexts() {
     return head.getVariations();
   }
@@ -183,7 +187,9 @@ public class BoardHistoryList {
     return head.previous().map(p -> p.getData());
   }
 
-  /** @return the data of the current node */
+  /**
+   * @return the data of the current node
+   */
   public BoardData getData() {
     return head.getData();
   }

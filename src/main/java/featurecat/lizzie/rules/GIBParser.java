@@ -25,16 +25,16 @@ public class GIBParser {
     }
 
     String encoding = EncodingDetector.detect(filename);
-    FileInputStream fp = new FileInputStream(file);
-    if (encoding == "WINDOWS-1252") encoding = "GB18030";
-    InputStreamReader reader = new InputStreamReader(fp, encoding);
-    StringBuilder builder = new StringBuilder();
-    while (reader.ready()) {
-      builder.append((char) reader.read());
+    String value;
+    try (FileInputStream fp = new FileInputStream(file);
+        InputStreamReader reader =
+            new InputStreamReader(fp, encoding.equals("WINDOWS-1252") ? "GB18030" : encoding)) {
+      StringBuilder builder = new StringBuilder();
+      while (reader.ready()) {
+        builder.append((char) reader.read());
+      }
+      value = builder.toString();
     }
-    reader.close();
-    fp.close();
-    String value = builder.toString();
     if (value.isEmpty()) {
       EngineManager.isEmpty = oriEmpty;
       return false;
@@ -116,8 +116,11 @@ public class GIBParser {
     gameInfo.setPlayerBlack(blackPlayer);
     gameInfo.setPlayerWhite(whitePlayer);
     // Rewind to game start
-    while (Lizzie.board.previousMove(false)) ;
-    if (Lizzie.config.loadSgfLast) while (Lizzie.board.nextMove(false)) ;
+    while (Lizzie.board.previousMove(false))
+      ;
+    if (Lizzie.config.loadSgfLast)
+      while (Lizzie.board.nextMove(false))
+        ;
     Lizzie.board.clearAfterMove();
     Lizzie.frame.refresh();
     Lizzie.config.playSound = oriPlaySound;

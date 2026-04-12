@@ -2,6 +2,7 @@ package featurecat.lizzie.gui;
 
 import featurecat.lizzie.Config;
 import featurecat.lizzie.Lizzie;
+import featurecat.lizzie.theme.MorandiPalette;
 import java.awt.Font;
 import java.awt.datatransfer.Clipboard;
 import java.awt.datatransfer.DataFlavor;
@@ -15,6 +16,7 @@ import javax.swing.JMenuItem;
 import javax.swing.JPopupMenu;
 import javax.swing.JTextField;
 import javax.swing.KeyStroke;
+import javax.swing.border.LineBorder;
 
 public class JFontTextField extends JTextField implements MouseListener {
   private JPopupMenu pop = null; // 弹出菜单
@@ -23,6 +25,7 @@ public class JFontTextField extends JTextField implements MouseListener {
   public JFontTextField() {
     super();
     this.setFont(new Font(Config.sysDefaultFontName, Font.PLAIN, Config.frameFontSize));
+    initTextFieldStyle();
     init();
   }
 
@@ -30,7 +33,16 @@ public class JFontTextField extends JTextField implements MouseListener {
     super();
     this.setText(text);
     this.setFont(new Font(Config.sysDefaultFontName, Font.PLAIN, Config.frameFontSize));
+    initTextFieldStyle();
     init();
+  }
+
+  private void initTextFieldStyle() {
+    this.setBackground(MorandiPalette.CREAM_WHITE);
+    this.setForeground(MorandiPalette.MENU_ITEM_TEXT);
+    this.setBorder(new LineBorder(MorandiPalette.TOOLBAR_BUTTON_BORDER, 1));
+    this.setSelectedTextColor(MorandiPalette.CREAM_WHITE);
+    this.setSelectionColor(MorandiPalette.MUDED_TEAL);
   }
 
   private void init() {
@@ -39,9 +51,9 @@ public class JFontTextField extends JTextField implements MouseListener {
     pop.add(copy = new JFontMenuItem(Lizzie.resourceBundle.getString("JTextPane.copy")));
     pop.add(paste = new JFontMenuItem(Lizzie.resourceBundle.getString("JTextPane.paste")));
     pop.add(cut = new JFontMenuItem(Lizzie.resourceBundle.getString("JTextPane.cut")));
-    copy.setAccelerator(KeyStroke.getKeyStroke('C', InputEvent.CTRL_MASK));
-    paste.setAccelerator(KeyStroke.getKeyStroke('V', InputEvent.CTRL_MASK));
-    cut.setAccelerator(KeyStroke.getKeyStroke('X', InputEvent.CTRL_MASK));
+    copy.setAccelerator(KeyStroke.getKeyStroke('C', InputEvent.CTRL_DOWN_MASK));
+    paste.setAccelerator(KeyStroke.getKeyStroke('V', InputEvent.CTRL_DOWN_MASK));
+    cut.setAccelerator(KeyStroke.getKeyStroke('X', InputEvent.CTRL_DOWN_MASK));
     copy.addActionListener(
         new ActionListener() {
           public void actionPerformed(ActionEvent e) {

@@ -614,168 +614,159 @@ public class EngineManager {
       String resultOther)
       throws IOException {
 
-    FileOutputStream writerStream = new FileOutputStream(file);
-    BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(writerStream, "UTF-8"));
-    double games = (double) engineGameInfo.batchNumberCurrent;
-    double wr =
-        (double) engineGameInfo.getFirstEngineWins()
-            / (double) (engineGameInfo.getFirstEngineWins() + engineGameInfo.getSecondEngineWins());
+    try (FileOutputStream writerStream = new FileOutputStream(file);
+        BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(writerStream, "UTF-8"))) {
+      double games = (double) engineGameInfo.batchNumberCurrent;
+      double wr =
+          (double) engineGameInfo.getFirstEngineWins()
+              / (double)
+                  (engineGameInfo.getFirstEngineWins() + engineGameInfo.getSecondEngineWins());
 
-    double elo = Math.log10(1.0 / wr - 1.0) * 400;
-    double zxwr = (wr + 1.0 / (2.0 * games)) / (1.0 + 1.0 / games);
-    double zxwrc =
-        1.0
-            * Math.sqrt(wr * (1.0 - wr) / games + 1.0 / ((2.0 * games) * (2.0 * games)))
-            / (1.0 + 1.0 / games);
-    double zxwr2 = (wr + 4.0 / (2.0 * games)) / (1.0 + 4.0 / games);
-    double zxwrc2 =
-        2.0
-            * Math.sqrt(wr * (1.0 - wr) / games + 4.0 / ((2.0 * games) * (2.0 * games)))
-            / (1.0 + 4.0 / games);
-    double zxwr3 = (wr + 9.0 / (2.0 * games)) / (1.0 + 9.0 / games);
-    double zxwrc3 =
-        3.0
-            * Math.sqrt(wr * (1.0 - wr) / games + 9.0 / ((2.0 * games) * (2.0 * games)))
-            / (1.0 + 9.0 / games);
-    double elo2 = Math.log10(1.0 / ((zxwr2 > 0.5 ? zxwr2 + zxwrc2 : zxwr2 - zxwrc2)) - 1.0) * 400;
+      double elo = Math.log10(1.0 / wr - 1.0) * 400;
+      double zxwr = (wr + 1.0 / (2.0 * games)) / (1.0 + 1.0 / games);
+      double zxwrc =
+          1.0
+              * Math.sqrt(wr * (1.0 - wr) / games + 1.0 / ((2.0 * games) * (2.0 * games)))
+              / (1.0 + 1.0 / games);
+      double zxwr2 = (wr + 4.0 / (2.0 * games)) / (1.0 + 4.0 / games);
+      double zxwrc2 =
+          2.0
+              * Math.sqrt(wr * (1.0 - wr) / games + 4.0 / ((2.0 * games) * (2.0 * games)))
+              / (1.0 + 4.0 / games);
+      double zxwr3 = (wr + 9.0 / (2.0 * games)) / (1.0 + 9.0 / games);
+      double zxwrc3 =
+          3.0
+              * Math.sqrt(wr * (1.0 - wr) / games + 9.0 / ((2.0 * games) * (2.0 * games)))
+              / (1.0 + 9.0 / games);
+      double elo2 = Math.log10(1.0 / ((zxwr2 > 0.5 ? zxwr2 + zxwrc2 : zxwr2 - zxwrc2)) - 1.0) * 400;
 
-    writer.write(
-        settingAll
-            + resourceBundle.getString("EngineGameInfo.backgroundPonder")
-            + (Lizzie.config.enginePkPonder
-                ? resourceBundle.getString("EngineGameInfo.yes")
-                : resourceBundle.getString("EngineGameInfo.no")));
-    writer.write("\r\n");
-    writer.write("\r\n");
-    writer.write(settingB);
-    writer.write("\r\n");
-    writer.write("\r\n");
-    writer.write(settingW);
-    writer.write("\r\n");
-    writer.write("\r\n");
-    writer.write(
-        resourceBundle.getString("EngineGameInfo.totalGameResults")
-            + engineGameInfo.batchNumberCurrent
-            + resourceBundle.getString("EngineGameInfo.gameScore")
-            + engineGameInfo.getFirstEngineWins()
-            + ":"
-            + engineGameInfo.getSecondEngineWins()
-            + resourceBundle.getString("EngineGameInfo.gameWinrate")
-            + String.format(Locale.ENGLISH, "%.2f", wr * 100)
-            + "%");
-    writer.write("\r\n");
-    writer.write("\r\n");
-    writer.write(resultB);
-    writer.write("\r\n");
-    writer.write(resultW);
-    writer.write("\r\n");
-    writer.write("\r\n");
-    writer.write(resourceBundle.getString("EngineGameInfo.timeVisitsTips"));
-    // 注:用时和计算量以界面接收为准,因为有输出间隔存在,实际引擎用时更短,计算量可能更高
-    writer.write("\r\n");
-    writer.write("\r\n");
-    writer.write(resultOther);
-    writer.write("\r\n");
-    writer.write("\r\n");
-    if (engineGameInfo.getFirstEngineWins() == 0 || engineGameInfo.getFirstEngineWins() == 0)
       writer.write(
-          resourceBundle.getString("EngineGameInfo.secondEngineElo")
-              + resourceBundle.getString("EngineGameInfo.elo100Wr"));
-    else {
-      writer.write(
-          resourceBundle.getString("EngineGameInfo.secondEngineElo")
-              + (elo > 0 ? "+" : "")
-              + String.format(Locale.ENGLISH, "%.2f", elo)
-              + " ± "
-              + (zxwr2 + zxwrc2 < 1 && zxwr2 + zxwrc2 > 0
-                  ? String.format(Locale.ENGLISH, "%.2f", Math.abs(elo2 - elo))
-                  : ""));
-      if (EngineManager.engineGameInfo.batchNumberCurrent < 50)
-        writer.write("?(" + resourceBundle.getString("EngineGameInfo.notEnoughGames") + ")");
-    }
-    writer.write("\r\n");
-    writer.write(
-        resourceBundle.getString("EngineGameInfo.oneStdev") // "一个标准差置信区间为:"
-            + String.format(Locale.ENGLISH, "%.2f", zxwr * 100)
-            + "% ± "
-            + String.format(Locale.ENGLISH, "%.2f", zxwrc * 100)
-            + "%");
-    writer.write("\r\n");
-    writer.write(
-        resourceBundle.getString("EngineGameInfo.twoStdev") // "两个标准差置信区间为:"
-            + String.format(Locale.ENGLISH, "%.2f", zxwr2 * 100)
-            + "% ± "
-            + String.format(Locale.ENGLISH, "%.2f", zxwrc2 * 100)
-            + "%");
-    writer.write("\r\n");
-    writer.write(
-        resourceBundle.getString("EngineGameInfo.threeStdev") // "三个标准差置信区间为:"
-            + String.format(Locale.ENGLISH, "%.2f", zxwr3 * 100)
-            + "% ± "
-            + String.format(Locale.ENGLISH, "%.2f", zxwrc3 * 100)
-            + "%");
-    writer.write("\r\n");
-
-    Lizzie.frame.hasEnginePkTitile = true;
-    Lizzie.frame.enginePkTitile =
-        //        resourceBundle.getString("EngineGameInfo.titleScore") //  " 比分 "
-        //            +
-        engineGameInfo.getFirstEngineWins()
-            + ":"
-            + engineGameInfo.getSecondEngineWins()
-            + " "
-            + engineList.get(engineGameInfo.firstEngineIndex).oriEnginename
-            + " VS "
-            + engineList.get(engineGameInfo.secondEngineIndex).oriEnginename
-            + resourceBundle.getString("EngineGameInfo.titleWinRate") //  + " 胜率 "
-            + String.format(Locale.ENGLISH, "%.1f", wr * 100)
-            + "%"
-            + " 2σ "
-            + String.format(Locale.ENGLISH, "%.2f", zxwr2 * 100)
-            + "%±"
-            + String.format(Locale.ENGLISH, "%.2f", zxwrc2 * 100)
-            + "%"; // +" 3σ "+ String.format(Locale.ENGLISH,"%.2f", zxwr3*100)+"%±"+
-    // String.format(Locale.ENGLISH,"%.2f",
-    // zxwrc3*100)+"%";
-
-    if (Lizzie.config.chkEngineSgfStart) {
+          settingAll
+              + resourceBundle.getString("EngineGameInfo.backgroundPonder")
+              + (Lizzie.config.enginePkPonder
+                  ? resourceBundle.getString("EngineGameInfo.yes")
+                  : resourceBundle.getString("EngineGameInfo.no")));
+      writer.write("\r\n");
+      writer.write("\r\n");
+      writer.write(settingB);
+      writer.write("\r\n");
+      writer.write("\r\n");
+      writer.write(settingW);
+      writer.write("\r\n");
       writer.write("\r\n");
       writer.write(
-          resourceBundle.getString("EngineGameInfo.sgfStartNumber") // "使用开局SGF集: 是    开局SGF数量: "
-              + Lizzie.frame.enginePKSgfString.size());
+          resourceBundle.getString("EngineGameInfo.totalGameResults")
+              + engineGameInfo.batchNumberCurrent
+              + resourceBundle.getString("EngineGameInfo.gameScore")
+              + engineGameInfo.getFirstEngineWins()
+              + ":"
+              + engineGameInfo.getSecondEngineWins()
+              + resourceBundle.getString("EngineGameInfo.gameWinrate")
+              + String.format(Locale.ENGLISH, "%.2f", wr * 100)
+              + "%");
       writer.write("\r\n");
-      for (SgfWinLossList wl : Lizzie.frame.enginePkSgfWinLoss) {
+      writer.write("\r\n");
+      writer.write(resultB);
+      writer.write("\r\n");
+      writer.write(resultW);
+      writer.write("\r\n");
+      writer.write("\r\n");
+      writer.write(resourceBundle.getString("EngineGameInfo.timeVisitsTips"));
+      writer.write("\r\n");
+      writer.write("\r\n");
+      writer.write(resultOther);
+      writer.write("\r\n");
+      writer.write("\r\n");
+      if (engineGameInfo.getFirstEngineWins() == 0 || engineGameInfo.getFirstEngineWins() == 0)
         writer.write(
-            resourceBundle.getString("EngineGameInfo.sgfStartOpen")
-                + (Lizzie.config.isChinese ? "" : " ") //  "开局"
-                + wl.SgfNumber
-                + ":\n"
-                + resourceBundle.getString("EngineGameInfo.engine1")
-                + ": "
-                + resourceBundle.getString("EngineGameInfo.allWins") // "引擎1:总胜局 "
-                + wl.engineOneWins
-                + resourceBundle.getString("EngineGameInfo.sgfStartBlackWin") // "  执黑胜局 "
-                + wl.engineOneWinsAsBlack
-                + resourceBundle.getString("EngineGameInfo.sgfStartWhiteWin") // "  执白胜局"
-                + wl.engineOneWinsAsWhite
-                + "   "
-                + resourceBundle.getString("EngineGameInfo.engine2")
-                + ": "
-                + resourceBundle.getString("EngineGameInfo.allWins") // "\n引擎2:总胜局 "
-                + wl.engineTwoWins
-                + resourceBundle.getString("EngineGameInfo.sgfStartBlackWin") // "  执黑胜局 "
-                + wl.engineTwoWinsAsBlack
-                + resourceBundle.getString("EngineGameInfo.sgfStartWhiteWin") // "  执白胜局"
-                + wl.engineTwoWinsAsWhite);
-        writer.write("\r\n");
+            resourceBundle.getString("EngineGameInfo.secondEngineElo")
+                + resourceBundle.getString("EngineGameInfo.elo100Wr"));
+      else {
+        writer.write(
+            resourceBundle.getString("EngineGameInfo.secondEngineElo")
+                + (elo > 0 ? "+" : "")
+                + String.format(Locale.ENGLISH, "%.2f", elo)
+                + " ± "
+                + (zxwr2 + zxwrc2 < 1 && zxwr2 + zxwrc2 > 0
+                    ? String.format(Locale.ENGLISH, "%.2f", Math.abs(elo2 - elo))
+                    : ""));
+        if (EngineManager.engineGameInfo.batchNumberCurrent < 50)
+          writer.write("?(" + resourceBundle.getString("EngineGameInfo.notEnoughGames") + ")");
       }
-    }
-    try {
+      writer.write("\r\n");
+      writer.write(
+          resourceBundle.getString("EngineGameInfo.oneStdev")
+              + String.format(Locale.ENGLISH, "%.2f", zxwr * 100)
+              + "% ± "
+              + String.format(Locale.ENGLISH, "%.2f", zxwrc * 100)
+              + "%");
+      writer.write("\r\n");
+      writer.write(
+          resourceBundle.getString("EngineGameInfo.twoStdev")
+              + String.format(Locale.ENGLISH, "%.2f", zxwr2 * 100)
+              + "% ± "
+              + String.format(Locale.ENGLISH, "%.2f", zxwrc2 * 100)
+              + "%");
+      writer.write("\r\n");
+      writer.write(
+          resourceBundle.getString("EngineGameInfo.threeStdev")
+              + String.format(Locale.ENGLISH, "%.2f", zxwr3 * 100)
+              + "% ± "
+              + String.format(Locale.ENGLISH, "%.2f", zxwrc3 * 100)
+              + "%");
+      writer.write("\r\n");
+
+      Lizzie.frame.hasEnginePkTitile = true;
+      Lizzie.frame.enginePkTitile =
+          engineGameInfo.getFirstEngineWins()
+              + ":"
+              + engineGameInfo.getSecondEngineWins()
+              + " "
+              + engineList.get(engineGameInfo.firstEngineIndex).oriEnginename
+              + " VS "
+              + engineList.get(engineGameInfo.secondEngineIndex).oriEnginename
+              + resourceBundle.getString("EngineGameInfo.titleWinRate")
+              + String.format(Locale.ENGLISH, "%.1f", wr * 100)
+              + "%"
+              + " 2σ "
+              + String.format(Locale.ENGLISH, "%.2f", zxwr2 * 100)
+              + "%±"
+              + String.format(Locale.ENGLISH, "%.2f", zxwrc2 * 100)
+              + "%";
+
+      if (Lizzie.config.chkEngineSgfStart) {
+        writer.write("\r\n");
+        writer.write(
+            resourceBundle.getString("EngineGameInfo.sgfStartNumber")
+                + Lizzie.frame.enginePKSgfString.size());
+        writer.write("\r\n");
+        for (SgfWinLossList wl : Lizzie.frame.enginePkSgfWinLoss) {
+          writer.write(
+              resourceBundle.getString("EngineGameInfo.sgfStartOpen")
+                  + (Lizzie.config.isChinese ? "" : " ")
+                  + wl.SgfNumber
+                  + ":\n"
+                  + resourceBundle.getString("EngineGameInfo.engine1")
+                  + ": "
+                  + resourceBundle.getString("EngineGameInfo.allWins")
+                  + wl.engineOneWins
+                  + resourceBundle.getString("EngineGameInfo.sgfStartBlackWin")
+                  + wl.engineOneWinsAsBlack
+                  + resourceBundle.getString("EngineGameInfo.sgfStartWhiteWin")
+                  + wl.engineOneWinsAsWhite
+                  + "   "
+                  + resourceBundle.getString("EngineGameInfo.engine2")
+                  + ": "
+                  + resourceBundle.getString("EngineGameInfo.allWins")
+                  + wl.engineTwoWins
+                  + resourceBundle.getString("EngineGameInfo.sgfStartBlackWin")
+                  + wl.engineTwoWinsAsBlack
+                  + resourceBundle.getString("EngineGameInfo.sgfStartWhiteWin")
+                  + wl.engineTwoWinsAsWhite);
+          writer.write("\r\n");
+        }
+      }
       writer.flush();
-      writer.close();
-    } catch (IOException e) {
-      // TODO Auto-generated catch block
-      e.printStackTrace();
     }
   }
 

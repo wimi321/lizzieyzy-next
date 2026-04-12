@@ -23,7 +23,9 @@ public class Zobrist {
     this.zhash = zhash;
   }
 
-  /** @return a copy of this zobrist */
+  /**
+   * @return a copy of this zobrist
+   */
   public Zobrist clone() {
     return new Zobrist(zhash);
   }

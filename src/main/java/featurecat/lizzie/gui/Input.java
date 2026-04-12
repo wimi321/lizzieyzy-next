@@ -676,7 +676,7 @@ public class Input implements MouseListener, KeyListener, MouseWheelListener, Mo
           }
         }
         break;
-        // this is copyed from https://github.com/zsalch/lizzie/tree/n_avoiddialog
+      // this is copyed from https://github.com/zsalch/lizzie/tree/n_avoiddialog
       case VK_DECIMAL:
       case VK_SLASH:
         if (Lizzie.frame.isCounting) {
@@ -730,7 +730,7 @@ public class Input implements MouseListener, KeyListener, MouseWheelListener, Mo
           Lizzie.config.toggleEvaluationColoring();
         }
         break;
-        // Use Ctrl+Num to switching multiple engine
+      // Use Ctrl+Num to switching multiple engine
 
       case VK_1:
         if (e.isAltDown()) {

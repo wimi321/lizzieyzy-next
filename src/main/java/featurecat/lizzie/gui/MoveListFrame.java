@@ -7593,11 +7593,11 @@ public class MoveListFrame extends JFrame {
                     "%.1f",
                     // Math.pow(data.percentsMatch, (double) 1 / Lizzie.config.matchAiTemperature)
                     data.percentsMatch * 100);
-                //                if (data.previousPlayouts > 0
-                //                    && data.moveNum <= (Lizzie.config.matchAiLastMove + 1)
-                //                    && data.moveNum > Lizzie.config.matchAiFirstMove)
-                //                  return data.isMatchAi ? "是" : "否";
-                //                else return "无";
+              //                if (data.previousPlayouts > 0
+              //                    && data.moveNum <= (Lizzie.config.matchAiLastMove + 1)
+              //                    && data.moveNum > Lizzie.config.matchAiFirstMove)
+              //                  return data.isMatchAi ? "是" : "否";
+              //                else return "无";
               default:
                 return "";
             }
@@ -7661,11 +7661,11 @@ public class MoveListFrame extends JFrame {
                     "%.1f",
                     // Math.pow(data.percentsMatch, (double) 1 / Lizzie.config.matchAiTemperature)
                     data.percentsMatch * 100);
-                //                if (data.previousPlayouts > 0
-                //                    && data.moveNum <= (Lizzie.config.matchAiLastMove + 1)
-                //                    && data.moveNum > Lizzie.config.matchAiFirstMove)
-                //                  return data.isMatchAi ? "是" : "否";
-                //                else return "无";
+              //                if (data.previousPlayouts > 0
+              //                    && data.moveNum <= (Lizzie.config.matchAiLastMove + 1)
+              //                    && data.moveNum > Lizzie.config.matchAiFirstMove)
+              //                  return data.isMatchAi ? "是" : "否";
+              //                else return "无";
               default:
                 return "";
             }

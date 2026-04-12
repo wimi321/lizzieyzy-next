@@ -6,6 +6,7 @@ import featurecat.lizzie.analysis.EngineManager;
 import featurecat.lizzie.rules.BoardHistoryNode;
 import featurecat.lizzie.rules.Movelist;
 import featurecat.lizzie.rules.SGFParser;
+import featurecat.lizzie.theme.MorandiPalette;
 import featurecat.lizzie.util.Utils;
 import java.awt.Color;
 import java.awt.Dimension;
@@ -277,12 +278,7 @@ public class BottomToolbar extends JPanel {
   private boolean isAutoPlaySub = false;
 
   public BottomToolbar() {
-    Color hsbColor =
-        Color.getHSBColor(
-            Color.RGBtoHSB(232, 232, 232, null)[0],
-            Color.RGBtoHSB(232, 232, 232, null)[1],
-            Color.RGBtoHSB(232, 232, 232, null)[2]);
-    this.setBackground(hsbColor);
+    this.setBackground(MorandiPalette.TOOLBAR_BG);
 
     setLayout(null);
     NumberFormat nf = NumberFormat.getIntegerInstance();
@@ -356,6 +352,22 @@ public class BottomToolbar extends JPanel {
       e.printStackTrace();
     }
     detail = new JButton("");
+    detail.setBackground(MorandiPalette.TOOLBAR_BUTTON_BG);
+    detail.setForeground(MorandiPalette.TOOLBAR_TEXT);
+    detail.setBorder(BorderFactory.createLineBorder(MorandiPalette.TOOLBAR_BUTTON_BORDER, 1));
+    detail.setOpaque(true);
+    detail.setContentAreaFilled(true);
+    detail.setFocusPainted(false);
+    rightMove.setBackground(MorandiPalette.TOOLBAR_BUTTON_BG);
+    rightMove.setForeground(MorandiPalette.TOOLBAR_TEXT);
+    rightMove.setBorder(BorderFactory.createLineBorder(MorandiPalette.TOOLBAR_BUTTON_BORDER, 1));
+    rightMove.setOpaque(true);
+    rightMove.setContentAreaFilled(true);
+    leftMove.setBackground(MorandiPalette.TOOLBAR_BUTTON_BG);
+    leftMove.setForeground(MorandiPalette.TOOLBAR_TEXT);
+    leftMove.setBorder(BorderFactory.createLineBorder(MorandiPalette.TOOLBAR_BUTTON_BORDER, 1));
+    leftMove.setOpaque(true);
+    leftMove.setContentAreaFilled(true);
 
     //    buttonPane2=new JPanel();
     //    buttonPane2.setLayout(null);
@@ -363,6 +375,8 @@ public class BottomToolbar extends JPanel {
 
     buttonPane = new PanelWithToolTips();
     buttonPane.setLayout(null);
+    buttonPane.setBackground(MorandiPalette.TOOLBAR_BG);
+    buttonPane.setOpaque(true);
     this.add(buttonPane);
 
     add(rightMove);
@@ -514,8 +528,18 @@ public class BottomToolbar extends JPanel {
     setButtonSize(moveRank, false);
     setButtonSize(coords, true);
     setButtonSize(gotomove, true);
-    styleShortcutButton(foxKifuButton, new Color(255, 241, 214), new Color(217, 145, 58));
-    styleShortcutButton(downloadWeightButton, new Color(230, 242, 255), new Color(90, 142, 210));
+    styleShortcutButton(foxKifuButton, new Color(240, 232, 218), MorandiPalette.MUDED_ORANGE);
+    styleShortcutButton(downloadWeightButton, new Color(225, 235, 245), MorandiPalette.MUDED_TEAL);
+    // Style navigation buttons with Morandi theme
+    JButton[] navButtons = {firstButton, lastButton, forward10, backward10, forward1, backward1};
+    for (JButton btn : navButtons) {
+      btn.setBackground(MorandiPalette.TOOLBAR_BUTTON_BG);
+      btn.setForeground(MorandiPalette.TOOLBAR_TEXT);
+      btn.setBorder(BorderFactory.createLineBorder(MorandiPalette.TOOLBAR_BUTTON_BORDER, 1));
+      btn.setOpaque(true);
+      btn.setContentAreaFilled(true);
+      btn.setFocusPainted(false);
+    }
     firstButton.setSize(30, 26);
     backward10.setSize(30, 26);
     backward1.setSize(30, 26);
@@ -2190,7 +2214,9 @@ public class BottomToolbar extends JPanel {
     button.setOpaque(true);
     button.setContentAreaFilled(true);
     button.setBackground(background);
+    button.setForeground(MorandiPalette.TOOLBAR_TEXT);
     button.setBorder(BorderFactory.createLineBorder(border));
+    button.setFocusPainted(false);
   }
 
   private void setButtonSize(JButton button) {

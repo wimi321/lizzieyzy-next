@@ -264,15 +264,15 @@ public class FloatBoard extends JDialog {
     allPanel = new JLayeredPane();
     allPanel.setLayout(null);
     getContentPane().add(allPanel);
-    allPanel.add(btnShowPos, new Integer(200));
-    allPanel.add(btnLeft, new Integer(200));
-    allPanel.add(btnRight, new Integer(200));
-    allPanel.add(btnUp, new Integer(200));
-    allPanel.add(btnDown, new Integer(200));
-    allPanel.add(btnHideShow, new Integer(200));
-    allPanel.add(btnStopGo, new Integer(200));
-    allPanel.add(btnEdit, new Integer(200));
-    allPanel.add(mainPanel, new Integer(100));
+    allPanel.add(btnShowPos, Integer.valueOf(200));
+    allPanel.add(btnLeft, Integer.valueOf(200));
+    allPanel.add(btnRight, Integer.valueOf(200));
+    allPanel.add(btnUp, Integer.valueOf(200));
+    allPanel.add(btnDown, Integer.valueOf(200));
+    allPanel.add(btnHideShow, Integer.valueOf(200));
+    allPanel.add(btnStopGo, Integer.valueOf(200));
+    allPanel.add(btnEdit, Integer.valueOf(200));
+    allPanel.add(mainPanel, Integer.valueOf(100));
 
     this.setUndecorated(true);
     this.setBackground(new Color(0, 0, 0, 0));
@@ -621,6 +621,7 @@ public class FloatBoard extends JDialog {
     }
     return false;
   }
+
   //
   //  private boolean openRightClickMenu(int x, int y) {
   //    if (Lizzie.frame.clickOrder != -1) {

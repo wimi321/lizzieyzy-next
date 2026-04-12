@@ -22,6 +22,7 @@ public class AutoPlay extends JFrame {
   private final ResourceBundle resourceBundle = Lizzie.resourceBundle;
   private JTextField txtAutoPlayBranch;
   private JTextField txtDisplayEntireVariationFirst;
+
   /** Create the frame. */
   public AutoPlay() {
     // setBounds(100, 100, 491, 233);

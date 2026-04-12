@@ -39,11 +39,14 @@ public class JPaintTextPane extends JTextPane implements MouseListener {
 
   private JPopupMenu pop = null; // 弹出菜单
   private JMenuItem copy = null, paste = null, cut = null; // 三个功能菜单
+
   // 内部类
   // 以下内部类全都用于实现自动强制折行
 
   public class WarpEditorKit extends StyledEditorKit {
-    /** @Fields serialVersionUID : TODO */
+    /**
+     * @Fields serialVersionUID : TODO
+     */
     private static final long serialVersionUID = 1L;
 
     private ViewFactory defaultFactory = new WarpColumnFactory();
@@ -130,9 +133,9 @@ public class JPaintTextPane extends JTextPane implements MouseListener {
     pop.add(copy = new JFontMenuItem(Lizzie.resourceBundle.getString("JTextPane.copy")));
     pop.add(paste = new JFontMenuItem(Lizzie.resourceBundle.getString("JTextPane.paste")));
     pop.add(cut = new JFontMenuItem(Lizzie.resourceBundle.getString("JTextPane.cut")));
-    copy.setAccelerator(KeyStroke.getKeyStroke('C', InputEvent.CTRL_MASK));
-    paste.setAccelerator(KeyStroke.getKeyStroke('V', InputEvent.CTRL_MASK));
-    cut.setAccelerator(KeyStroke.getKeyStroke('X', InputEvent.CTRL_MASK));
+    copy.setAccelerator(KeyStroke.getKeyStroke('C', InputEvent.CTRL_DOWN_MASK));
+    paste.setAccelerator(KeyStroke.getKeyStroke('V', InputEvent.CTRL_DOWN_MASK));
+    cut.setAccelerator(KeyStroke.getKeyStroke('X', InputEvent.CTRL_DOWN_MASK));
     copy.addActionListener(
         new ActionListener() {
           public void actionPerformed(ActionEvent e) {

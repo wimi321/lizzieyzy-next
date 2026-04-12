@@ -29,6 +29,7 @@ import featurecat.lizzie.rules.Movelist;
 import featurecat.lizzie.rules.NodeInfo;
 import featurecat.lizzie.rules.SGFParser;
 import featurecat.lizzie.rules.Stone;
+import featurecat.lizzie.theme.MorandiPalette;
 import featurecat.lizzie.util.Utils;
 import java.awt.*;
 import java.awt.datatransfer.Clipboard;
@@ -458,9 +459,9 @@ public class LizzieFrame extends JFrame {
   public boolean isAutoReplying = false;
   public boolean isBatchAnalysisMode = false;
   // int testFontSize = 12;
-  private Color blunderBackground = new Color(225, 225, 225);
-  private Color blunderForeground = Color.BLACK;
-  private Color listTableBackground = new Color(0, 0, 0, 10);
+  private Color blunderBackground = MorandiPalette.BG_SECONDARY;
+  private Color blunderForeground = MorandiPalette.TEXT_PRIMARY;
+  private Color listTableBackground = MorandiPalette.TABLE_ROW_ODD;
   public boolean isAutoAnalyzingDiffNode = false;
 
   public boolean isInScoreMode = false;
@@ -571,7 +572,7 @@ public class LizzieFrame extends JFrame {
     tempGamePanelAll.setVisible(false);
     tempGamePanelAll.setFocusable(false);
     tempGamePanelAll.enableInputMethods(false);
-    tempGamePanelAll.setBackground(new Color(100, 100, 100));
+    tempGamePanelAll.setBackground(MorandiPalette.BG_PRIMARY);
     tempGamePanel = new JPanel();
     tempGameScrollPanel = new JScrollPane(tempGamePanel);
     tempGameScrollPanel.setVisible(false);
@@ -582,17 +583,17 @@ public class LizzieFrame extends JFrame {
     tempGamePanelTop.setLayout(null);
     tempGamePanelTop.setFocusable(false);
     tempGamePanelTop.enableInputMethods(false);
-    tempGamePanelTop.setBackground(new Color(100, 100, 100));
+    tempGamePanelTop.setBackground(MorandiPalette.BG_PRIMARY);
     tempGameScrollPanel.setVerticalScrollBarPolicy(ScrollPaneConstants.VERTICAL_SCROLLBAR_ALWAYS);
 
-    tempGamePanel.setBackground(new Color(100, 100, 100));
+    tempGamePanel.setBackground(MorandiPalette.BG_PRIMARY);
     tempGamePanel.setFocusable(false);
     tempGamePanel.enableInputMethods(false);
     tempGameScrollPanel.getVerticalScrollBar().setUnitIncrement(16);
     tempGameScrollPanel.getVerticalScrollBar().setUI(new DemoScrollBarUI());
 
-    tempGamePanelAll.add(tempGamePanelTop, new Integer(2));
-    tempGamePanelAll.add(tempGameScrollPanel, new Integer(1));
+    tempGamePanelAll.add(tempGamePanelTop, Integer.valueOf(2));
+    tempGamePanelAll.add(tempGameScrollPanel, Integer.valueOf(1));
 
     varTreePane =
         new JPanel() {
@@ -688,6 +689,10 @@ public class LizzieFrame extends JFrame {
         });
     topPanel.setLayout(new ModifiedFlowLayout(FlowLayout.LEFT, 0, -2));
     topPanel.setFloatable(false);
+    topPanel.setBackground(MorandiPalette.TOOLBAR_BG);
+    topPanel.setOpaque(true);
+    topPanel.setBorder(
+        javax.swing.BorderFactory.createMatteBorder(0, 0, 1, 0, MorandiPalette.TOOLBAR_BORDER));
     listDataModel = getTableModel();
     listTable = new JTable(listDataModel);
     TableCellRenderer tcr = new ColorTableCellRenderer();
@@ -709,8 +714,8 @@ public class LizzieFrame extends JFrame {
     listTable.setFont(new Font(Config.sysDefaultFontName, Font.PLAIN, Config.frameFontSize));
     DefaultTableCellRenderer cellRenderer = new DefaultTableCellRenderer();
     DefaultTableCellRenderer cellRenderer2 = new DefaultTableCellRenderer();
-    cellRenderer.setBackground(new Color(208, 208, 208));
-    cellRenderer2.setBackground(new Color(178, 178, 178));
+    cellRenderer.setBackground(MorandiPalette.TABLE_ROW_EVEN);
+    cellRenderer2.setBackground(MorandiPalette.TABLE_ROW_ODD);
     cellRenderer.setHorizontalAlignment(SwingConstants.CENTER);
     cellRenderer2.setHorizontalAlignment(SwingConstants.CENTER);
     /** 循环修改表头列 */
@@ -720,7 +725,7 @@ public class LizzieFrame extends JFrame {
       else column.setHeaderRenderer(cellRenderer2);
     }
     listScrollpane = new JScrollPane(listTable);
-    listScrollpane.getViewport().setBackground(new Color(243, 243, 243));
+    listScrollpane.getViewport().setBackground(MorandiPalette.CREAM_WHITE);
     varTreePane.addMouseMotionListener(
         new MouseAdapter() {
           public void mouseMoved(MouseEvent e) {
@@ -742,7 +747,7 @@ public class LizzieFrame extends JFrame {
     listScrollpane.setVerticalScrollBarPolicy(
         javax.swing.ScrollPaneConstants.VERTICAL_SCROLLBAR_ALWAYS);
     listScrollpane.getVerticalScrollBar().setUI(new DemoScrollBarUI2(false));
-    listScrollpane.setBackground(new Color(235, 235, 235));
+    listScrollpane.setBackground(MorandiPalette.BG_SECONDARY);
     hiddenColumn(1, listTable);
     listTable.getColumnModel().getColumn(0).setPreferredWidth(10);
     listTable.getColumnModel().getColumn(2).setPreferredWidth(30);
@@ -1357,11 +1362,11 @@ public class LizzieFrame extends JFrame {
     tablePanelMinWhite.add(minScrollpaneWhite);
     blunderContentPane.add(tablePanelMinBlack);
     blunderContentPane.add(tablePanelMinWhite);
-    minScrollpaneBlack.setBackground(new Color(158, 158, 158));
+    minScrollpaneBlack.setBackground(MorandiPalette.COOL_GRAY);
     minScrollpaneBlack.getVerticalScrollBar().setUI(new DemoScrollBarUI2(true));
     //    minScrollpaneBlack.setVerticalScrollBarPolicy(
     //        javax.swing.ScrollPaneConstants.VERTICAL_SCROLLBAR_ALWAYS);
-    minScrollpaneWhite.setBackground(new Color(158, 158, 158));
+    minScrollpaneWhite.setBackground(MorandiPalette.COOL_GRAY);
     minScrollpaneWhite.getVerticalScrollBar().setUI(new DemoScrollBarUI2(true));
     //    minScrollpaneWhite.setVerticalScrollBarPolicy(
     //        javax.swing.ScrollPaneConstants.VERTICAL_SCROLLBAR_ALWAYS);
@@ -1562,16 +1567,16 @@ public class LizzieFrame extends JFrame {
     } else basePanel.setBackground(Color.GRAY);
     getContentPane().add(basePanel);
     basePanel.setLayout(null);
-    basePanel.add(commentBlunderControlPane, new Integer(10));
-    basePanel.add(tempGamePanelAll, new Integer(9));
-    basePanel.add(varTreeScrollPane, new Integer(8));
-    basePanel.add(listScrollpane, new Integer(7));
-    basePanel.add(blunderContentPane, new Integer(6));
-    basePanel.add(commentEditPane, new Integer(5));
-    basePanel.add(commentScrollPane, new Integer(4));
-    basePanel.add(topPanel, new Integer(3));
-    basePanel.add(toolbar, new Integer(2));
-    basePanel.add(mainPanel, new Integer(1));
+    basePanel.add(commentBlunderControlPane, Integer.valueOf(10));
+    basePanel.add(tempGamePanelAll, Integer.valueOf(9));
+    basePanel.add(varTreeScrollPane, Integer.valueOf(8));
+    basePanel.add(listScrollpane, Integer.valueOf(7));
+    basePanel.add(blunderContentPane, Integer.valueOf(6));
+    basePanel.add(commentEditPane, Integer.valueOf(5));
+    basePanel.add(commentScrollPane, Integer.valueOf(4));
+    basePanel.add(topPanel, Integer.valueOf(3));
+    basePanel.add(toolbar, Integer.valueOf(2));
+    basePanel.add(mainPanel, Integer.valueOf(1));
     mainPanel.setVisible(false);
     commentScrollPane.setVisible(false);
     blunderContentPane.setVisible(false);
@@ -1790,9 +1795,9 @@ public class LizzieFrame extends JFrame {
     ////        .setHorizontalAlignment(JLabel.CENTER);
 
     DefaultTableCellRenderer cellRenderer = new DefaultTableCellRenderer();
-    cellRenderer.setBackground(Color.LIGHT_GRAY);
+    cellRenderer.setBackground(MorandiPalette.WARM_GRAY);
     DefaultTableCellRenderer cellRenderer2 = new DefaultTableCellRenderer();
-    cellRenderer2.setBackground(new Color(158, 158, 158));
+    cellRenderer2.setBackground(MorandiPalette.COOL_GRAY);
     cellRenderer.setHorizontalAlignment(SwingConstants.CENTER);
     cellRenderer2.setHorizontalAlignment(SwingConstants.CENTER);
     /** 循环修改表头列 */
@@ -3523,7 +3528,8 @@ public class LizzieFrame extends JFrame {
       File file2 = new File("save" + File.separator + "autoGame2.sgf");
       if (file2.exists()) loadFile(file2, true, true);
     }
-    while (Lizzie.board.nextMove(false)) ;
+    while (Lizzie.board.nextMove(false))
+      ;
     Lizzie.board.clearAfterMove();
     refresh();
   }
@@ -5110,9 +5116,18 @@ public class LizzieFrame extends JFrame {
         || vy + vh > cachedBackground.getMinY() + cachedBackground.getHeight()) {
       return;
     }
-    BufferedImage result = new BufferedImage(vw, vh, TYPE_INT_ARGB);
-    filter20.filter(cachedBackground.getSubimage(vx, vy, vw, vh), result);
-    g.drawImage(result, vx, vy, null);
+    if (Lizzie.config.glassEffectLevel > 0) {
+      GlassEffectRenderer.GlassLevel level =
+          Lizzie.config.glassEffectLevel >= 2
+              ? GlassEffectRenderer.GlassLevel.LIQUID
+              : GlassEffectRenderer.GlassLevel.FROSTED;
+      GlassEffectRenderer.drawGlassPanel(
+          (Graphics2D) g, cachedBackground, vx, vy, vw, vh, level, 16);
+    } else {
+      BufferedImage result = new BufferedImage(vw, vh, TYPE_INT_ARGB);
+      filter20.filter(cachedBackground.getSubimage(vx, vy, vw, vh), result);
+      g.drawImage(result, vx, vy, null);
+    }
   }
 
   private void drawPonderingState(
@@ -5296,6 +5311,7 @@ public class LizzieFrame extends JFrame {
   }
 
   public GaussianFilter filter20 = new GaussianFilter(Lizzie.config.backgroundFilter);
+
   // private GaussianFilter filter10 = new GaussianFilter(10);
 
   /** Display the controls */
@@ -5339,13 +5355,13 @@ public class LizzieFrame extends JFrame {
     //        cachedBackground.getSubimage(commandsX, commandsY, boxWidth, boxHeight), result);
     //    g.drawImage(result, commandsX, commandsY, null);
 
-    g.setColor(new Color(0, 0, 0, 130));
+    g.setColor(MorandiPalette.CONTROLS_OVERLAY);
     g.fillRect(commandsX, commandsY, boxWidth, boxHeight);
     int strokeRadius = 1;
     g.setStroke(new BasicStroke(strokeRadius == 1 ? strokeRadius : 2 * strokeRadius));
 
     int verticalLineX = (int) (commandsX + boxWidth * 0.3);
-    g.setColor(new Color(0, 0, 0, 60));
+    g.setColor(MorandiPalette.CONTROLS_BORDER);
     g.drawLine(
         verticalLineX,
         commandsY + 2 * strokeRadius,
@@ -6931,6 +6947,7 @@ public class LizzieFrame extends JFrame {
       refresh();
     }
   }
+
   /**
    * Create comment cached image
    *
@@ -7944,7 +7961,8 @@ public class LizzieFrame extends JFrame {
             if (reStoreMainListHead.isPass && reStoreMainListHead.previous.isPresent())
               reStoreMainListHead = reStoreMainListHead.previous.get();
           }
-          while (Lizzie.board.previousMove(false)) ;
+          while (Lizzie.board.previousMove(false))
+            ;
           MoveLinkedList listHead =
               Lizzie.board.getMoveLinkedListAfter(
                   Lizzie.board.getHistory().getCurrentHistoryNode());
@@ -7969,7 +7987,8 @@ public class LizzieFrame extends JFrame {
             listHead.needSkip = true;
             Lizzie.board.placeLinkedList(listHead, null, false, -1);
             // 返回原点
-            while (Lizzie.board.previousMove(false)) ;
+            while (Lizzie.board.previousMove(false))
+              ;
             if (reStoreMainListHead != null)
               Lizzie.board.placeLinkedListReverse(reStoreMainListHead);
           }
@@ -9497,7 +9516,8 @@ public class LizzieFrame extends JFrame {
   }
 
   public void setAsMain() {
-    while (Lizzie.board.setAsMainBranch()) ;
+    while (Lizzie.board.setAsMainBranch())
+      ;
     renderVarTree(0, 0, false, false);
     refresh();
   }
@@ -10171,47 +10191,85 @@ public class LizzieFrame extends JFrame {
 
       } else {
         if (isSelect) {
-          setForeground(Color.BLUE);
+          setForeground(Lizzie.config.useMorandiColors ? MorandiPalette.MUDED_TEAL : Color.BLUE);
           setBackground(new Color(0, 0, 0, 70));
         }
         if (isChanged) {
-          setForeground(Color.RED);
+          setForeground(Lizzie.config.useMorandiColors ? MorandiPalette.MUDED_RED : Color.RED);
         }
         if (isNextMove) {
           if (isSelect) {
             if (diff <= Lizzie.config.winLossThreshold5
                 || scoreDiff <= Lizzie.config.scoreLossThreshold5)
-              setBackground(new Color(85, 25, 80, 120));
+              setBackground(
+                  Lizzie.config.useMorandiColors
+                      ? MorandiPalette.SUGGESTION_BLUNDER_ALPHA
+                      : new Color(85, 25, 80, 120));
             else if (diff <= Lizzie.config.winLossThreshold4
                 || scoreDiff <= Lizzie.config.scoreLossThreshold4)
-              setBackground(new Color(208, 16, 19, 100));
+              setBackground(
+                  Lizzie.config.useMorandiColors
+                      ? MorandiPalette.SUGGESTION_MISTAKE_ALPHA
+                      : new Color(208, 16, 19, 100));
             else if (diff <= Lizzie.config.winLossThreshold3
                 || scoreDiff <= Lizzie.config.scoreLossThreshold3)
-              setBackground(new Color(200, 140, 50, 100));
+              setBackground(
+                  Lizzie.config.useMorandiColors
+                      ? MorandiPalette.SUGGESTION_SLOW_ALPHA
+                      : new Color(200, 140, 50, 100));
             else if (diff <= Lizzie.config.winLossThreshold2
                 || scoreDiff <= Lizzie.config.scoreLossThreshold2)
-              setBackground(new Color(180, 180, 0, 100));
+              setBackground(
+                  Lizzie.config.useMorandiColors
+                      ? MorandiPalette.SUGGESTION_CAUTION_ALPHA
+                      : new Color(180, 180, 0, 100));
             else if (diff <= Lizzie.config.winLossThreshold1
                 || scoreDiff <= Lizzie.config.scoreLossThreshold1)
-              setBackground(new Color(140, 202, 34, 100));
-            else setBackground(new Color(0, 180, 0, 100));
+              setBackground(
+                  Lizzie.config.useMorandiColors
+                      ? MorandiPalette.SUGGESTION_GOOD_ALPHA
+                      : new Color(140, 202, 34, 100));
+            else
+              setBackground(
+                  Lizzie.config.useMorandiColors
+                      ? MorandiPalette.SUGGESTION_BEST_ALPHA
+                      : new Color(0, 180, 0, 100));
           } else {
             if (diff <= Lizzie.config.winLossThreshold5
                 || scoreDiff <= Lizzie.config.scoreLossThreshold5)
-              setBackground(new Color(85, 25, 80, 70));
+              setBackground(
+                  Lizzie.config.useMorandiColors
+                      ? MorandiPalette.SUGGESTION_BLUNDER_LIGHT
+                      : new Color(85, 25, 80, 70));
             else if (diff <= Lizzie.config.winLossThreshold4
                 || scoreDiff <= Lizzie.config.scoreLossThreshold4)
-              setBackground(new Color(208, 16, 19, 50));
+              setBackground(
+                  Lizzie.config.useMorandiColors
+                      ? MorandiPalette.SUGGESTION_MISTAKE_LIGHT
+                      : new Color(208, 16, 19, 50));
             else if (diff <= Lizzie.config.winLossThreshold3
                 || scoreDiff <= Lizzie.config.scoreLossThreshold3)
-              setBackground(new Color(200, 140, 50, 50));
+              setBackground(
+                  Lizzie.config.useMorandiColors
+                      ? MorandiPalette.SUGGESTION_SLOW_LIGHT
+                      : new Color(200, 140, 50, 50));
             else if (diff <= Lizzie.config.winLossThreshold2
                 || scoreDiff <= Lizzie.config.scoreLossThreshold2)
-              setBackground(new Color(180, 180, 0, 50));
+              setBackground(
+                  Lizzie.config.useMorandiColors
+                      ? MorandiPalette.SUGGESTION_CAUTION_LIGHT
+                      : new Color(180, 180, 0, 50));
             else if (diff <= Lizzie.config.winLossThreshold1
                 || scoreDiff <= Lizzie.config.scoreLossThreshold1)
-              setBackground(new Color(140, 202, 34, 50));
-            else setBackground(new Color(0, 180, 0, 60));
+              setBackground(
+                  Lizzie.config.useMorandiColors
+                      ? MorandiPalette.SUGGESTION_GOOD_LIGHT
+                      : new Color(140, 202, 34, 50));
+            else
+              setBackground(
+                  Lizzie.config.useMorandiColors
+                      ? MorandiPalette.SUGGESTION_BEST_LIGHT
+                      : new Color(0, 180, 0, 60));
           }
         } else if (!isSelect && !isChanged) {
           setForeground(Color.BLACK);
@@ -11857,7 +11915,10 @@ public class LizzieFrame extends JFrame {
       String coordStr = table.getValueAt(row, 1).toString();
       int[] coords = Board.convertNameToCoordinates(coordStr);
       if (coords[0] == Lizzie.frame.clickbadmove[0] && coords[1] == Lizzie.frame.clickbadmove[1]) {
-        setBackground(new Color(238, 221, 130));
+        setBackground(
+            Lizzie.config.useMorandiColors
+                ? MorandiPalette.MUDED_YELLOW
+                : new Color(238, 221, 130));
       } else setBackground(blunderBackground);
       try {
         double diffWinrate =
@@ -11874,46 +11935,115 @@ public class LizzieFrame extends JFrame {
                       .toString()
                       .substring(0, table.getValueAt(row, 3).toString().length() - 1));
           if (column == 3) {
-            if (scoreDiff >= 1.5) setForeground(new Color(0, 170, 170));
+            if (scoreDiff >= 1.5)
+              setForeground(
+                  Lizzie.config.useMorandiColors
+                      ? MorandiPalette.MUDED_TEAL
+                      : new Color(0, 170, 170));
             else if (scoreDiff <= Lizzie.config.scoreLossThreshold5)
-              setForeground(new Color(165, 25, 160));
+              setForeground(
+                  Lizzie.config.useMorandiColors
+                      ? MorandiPalette.MUDED_PURPLE
+                      : new Color(165, 25, 160));
             else if (scoreDiff <= Lizzie.config.scoreLossThreshold4)
-              setForeground(new Color(175, 16, 19));
+              setForeground(
+                  Lizzie.config.useMorandiColors
+                      ? MorandiPalette.MUDED_RED
+                      : new Color(175, 16, 19));
             else if (scoreDiff <= Lizzie.config.scoreLossThreshold3)
-              setForeground(new Color(105, 162, 34));
+              setForeground(
+                  Lizzie.config.useMorandiColors
+                      ? MorandiPalette.MUDED_GREEN
+                      : new Color(105, 162, 34));
             else if (scoreDiff <= Lizzie.config.scoreLossThreshold2)
-              setForeground(new Color(150, 150, 0));
+              setForeground(
+                  Lizzie.config.useMorandiColors
+                      ? MorandiPalette.MUDED_YELLOW
+                      : new Color(150, 150, 0));
             else if (scoreDiff <= Lizzie.config.scoreLossThreshold1)
-              setForeground(new Color(180, 120, 45));
-            else setForeground(new Color(0, 150, 0));
+              setForeground(
+                  Lizzie.config.useMorandiColors
+                      ? MorandiPalette.MUDED_ORANGE
+                      : new Color(180, 120, 45));
+            else
+              setForeground(
+                  Lizzie.config.useMorandiColors
+                      ? MorandiPalette.MUDED_TEAL
+                      : new Color(0, 150, 0));
           } else if (column == 2) {
-            if (diffWinrate >= 3) setForeground(new Color(0, 170, 170));
+            if (diffWinrate >= 3)
+              setForeground(
+                  Lizzie.config.useMorandiColors
+                      ? MorandiPalette.MUDED_TEAL
+                      : new Color(0, 170, 170));
             else if (diffWinrate <= Lizzie.config.winLossThreshold5)
-              setForeground(new Color(165, 25, 160));
+              setForeground(
+                  Lizzie.config.useMorandiColors
+                      ? MorandiPalette.MUDED_PURPLE
+                      : new Color(165, 25, 160));
             else if (diffWinrate <= Lizzie.config.winLossThreshold4)
-              setForeground(new Color(175, 16, 19));
+              setForeground(
+                  Lizzie.config.useMorandiColors
+                      ? MorandiPalette.MUDED_RED
+                      : new Color(175, 16, 19));
             else if (diffWinrate <= Lizzie.config.winLossThreshold3)
-              setForeground(new Color(105, 162, 34));
+              setForeground(
+                  Lizzie.config.useMorandiColors
+                      ? MorandiPalette.MUDED_GREEN
+                      : new Color(105, 162, 34));
             else if (diffWinrate <= Lizzie.config.winLossThreshold2)
-              setForeground(new Color(150, 150, 0));
+              setForeground(
+                  Lizzie.config.useMorandiColors
+                      ? MorandiPalette.MUDED_YELLOW
+                      : new Color(150, 150, 0));
             else if (diffWinrate <= Lizzie.config.winLossThreshold1)
-              setForeground(new Color(180, 120, 45));
-            else setForeground(new Color(0, 150, 0));
+              setForeground(
+                  Lizzie.config.useMorandiColors
+                      ? MorandiPalette.MUDED_ORANGE
+                      : new Color(180, 120, 45));
+            else
+              setForeground(
+                  Lizzie.config.useMorandiColors
+                      ? MorandiPalette.MUDED_TEAL
+                      : new Color(0, 150, 0));
           } else setForeground(blunderForeground);
         } else {
           if (column == 2) {
-            if (diffWinrate >= 3) setForeground(new Color(0, 170, 170));
+            if (diffWinrate >= 3)
+              setForeground(
+                  Lizzie.config.useMorandiColors
+                      ? MorandiPalette.MUDED_TEAL
+                      : new Color(0, 170, 170));
             else if (diffWinrate <= Lizzie.config.winLossThreshold5)
-              setForeground(new Color(165, 25, 160));
+              setForeground(
+                  Lizzie.config.useMorandiColors
+                      ? MorandiPalette.MUDED_PURPLE
+                      : new Color(165, 25, 160));
             else if (diffWinrate <= Lizzie.config.winLossThreshold4)
-              setForeground(new Color(175, 16, 19));
+              setForeground(
+                  Lizzie.config.useMorandiColors
+                      ? MorandiPalette.MUDED_RED
+                      : new Color(175, 16, 19));
             else if (diffWinrate <= Lizzie.config.winLossThreshold3)
-              setForeground(new Color(105, 162, 34));
+              setForeground(
+                  Lizzie.config.useMorandiColors
+                      ? MorandiPalette.MUDED_GREEN
+                      : new Color(105, 162, 34));
             else if (diffWinrate <= Lizzie.config.winLossThreshold2)
-              setForeground(new Color(150, 150, 0));
+              setForeground(
+                  Lizzie.config.useMorandiColors
+                      ? MorandiPalette.MUDED_YELLOW
+                      : new Color(150, 150, 0));
             else if (diffWinrate <= Lizzie.config.winLossThreshold1)
-              setForeground(new Color(180, 120, 45));
-            else setForeground(new Color(0, 150, 0));
+              setForeground(
+                  Lizzie.config.useMorandiColors
+                      ? MorandiPalette.MUDED_ORANGE
+                      : new Color(180, 120, 45));
+            else
+              setForeground(
+                  Lizzie.config.useMorandiColors
+                      ? MorandiPalette.MUDED_TEAL
+                      : new Color(0, 150, 0));
           } else setForeground(blunderForeground);
         }
         return super.getTableCellRendererComponent(table, value, false, false, row, column);

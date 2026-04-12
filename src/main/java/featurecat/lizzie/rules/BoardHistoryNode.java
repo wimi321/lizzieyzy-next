@@ -240,12 +240,16 @@ public class BoardHistoryNode {
     return node;
   }
 
-  /** @return data stored on this node */
+  /**
+   * @return data stored on this node
+   */
   public BoardData getData() {
     return data;
   }
 
-  /** @return variations for display */
+  /**
+   * @return variations for display
+   */
   public List<BoardHistoryNode> getVariations() {
     return variations;
   }
@@ -397,12 +401,16 @@ public class BoardHistoryNode {
     }
   }
 
-  /** @param fromBackChildren the fromBackChildren to set */
+  /**
+   * @param fromBackChildren the fromBackChildren to set
+   */
   public void setFromBackChildren(int fromBackChildren) {
     this.fromBackChildren = fromBackChildren;
   }
 
-  /** @return the fromBackChildren */
+  /**
+   * @return the fromBackChildren
+   */
   public int getFromBackChildren() {
     return fromBackChildren;
   }
@@ -600,6 +608,7 @@ public class BoardHistoryNode {
     }
     return false;
   }
+
   /**
    * Check if node is part of the main trunk (rightmost branch)
    *

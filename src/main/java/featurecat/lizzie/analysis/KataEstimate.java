@@ -71,6 +71,7 @@ public class KataEstimate {
   public boolean javaSSHClosed = false;
   public boolean isNormalEnd = false;
   private boolean noGtp = false;
+
   // public boolean noread = false;
 
   public KataEstimate(boolean isPreLoad) throws IOException {

@@ -25,11 +25,14 @@ import javax.imageio.ImageIO;
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
 
-/** @author unknown */
+/**
+ * @author unknown
+ */
 public class NewEngineGameDialog extends JDialog {
   // create formatters
   public static final DecimalFormat FORMAT_KOMI = new DecimalFormat("#0.0");
   public static final DecimalFormat FORMAT_HANDICAP = new DecimalFormat("0");
+
   // public static final JFontLabel PLACEHOLDER = new JFontLabel("");
 
   static {

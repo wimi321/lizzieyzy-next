@@ -269,6 +269,7 @@ public class SubBoardRenderer {
   public void clearBranch() {
     branchStonesImage = new BufferedImage(boardWidth, boardHeight, TYPE_INT_ARGB);
   }
+
   /**
    * Return the best move of Leelaz's suggestions
    *
@@ -1414,7 +1415,9 @@ public class SubBoardRenderer {
     drawString(g, x, y, fontBase, Font.PLAIN, string, maximumFontHeight, maximumFontWidth, 0);
   }
 
-  /** @return a font with kerning enabled */
+  /**
+   * @return a font with kerning enabled
+   */
   private Font makeFont(Font fontBase, int style) {
     Font font = fontBase.deriveFont(style, 100);
     Map<TextAttribute, Object> atts = new HashMap<>();

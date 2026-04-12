@@ -5,6 +5,7 @@ import featurecat.lizzie.Lizzie;
 import featurecat.lizzie.analysis.EngineManager;
 import featurecat.lizzie.analysis.FastLink;
 import featurecat.lizzie.analysis.GameInfo;
+import featurecat.lizzie.theme.MorandiPalette;
 import featurecat.lizzie.util.Utils;
 import java.awt.Color;
 import java.awt.Component;
@@ -28,6 +29,7 @@ import java.util.ResourceBundle;
 import javax.imageio.ImageIO;
 import javax.swing.*;
 import javax.swing.JToolBar.Separator;
+import javax.swing.border.EmptyBorder;
 import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
 import javax.swing.event.MenuEvent;
@@ -154,12 +156,14 @@ public class Menu extends JMenuBar {
 
   public Menu() {
     setPreferredSize(new Dimension(100, Config.menuHeight)); // 中25 大30
+    setOpaque(true);
+    setBackground(MorandiPalette.TOOLBAR_BG);
+    setBorder(new EmptyBorder(0, 0, 0, 0));
     // headFont = new Font(Config.sysDefaultFontName, Font.PLAIN,
     // Math.max(Lizzie.config.allFontSize, 12)); // 中16 大20
     Font baseMenuFont = new Font(Config.sysDefaultFontName, Font.PLAIN, Config.frameFontSize);
     final JFontMenu fileMenu = new JFontMenu(resourceBundle.getString("Menu.fileMenu")); // ("文件");
     fileMenu.setFont(baseMenuFont);
-    fileMenu.setForeground(Color.BLACK);
     // fileMenu.setFont(headFont);
     this.add(fileMenu);
 
@@ -459,13 +463,13 @@ public class Menu extends JMenuBar {
     final JFontMenu viewMenu = new JFontMenu(resourceBundle.getString("Menu.viewMenu")); // ("显示");
     viewMenu.setFont(baseMenuFont);
     this.add(viewMenu);
-    viewMenu.setForeground(Color.BLACK);
+    viewMenu.setForeground(MorandiPalette.MENU_ITEM_TEXT);
     // viewMenu.setFont(headFont);
     final JFontMenu panel = new JFontMenu(resourceBundle.getString("Menu.panel")); // ("面板");
     viewMenu.add(panel);
 
     final JFontMenu toolBar = new JFontMenu(resourceBundle.getString("Menu.toolbar"));
-    toolBar.setForeground(Color.BLACK);
+    toolBar.setForeground(MorandiPalette.MENU_ITEM_TEXT);
     viewMenu.add(toolBar);
 
     final JFontMenu mainBoardPos =
@@ -2767,7 +2771,7 @@ public class Menu extends JMenuBar {
 
     final JFontMenu gameMenu = new JFontMenu(resourceBundle.getString("Menu.game"));
     gameMenu.setFont(baseMenuFont);
-    gameMenu.setForeground(Color.BLACK);
+    gameMenu.setForeground(MorandiPalette.MENU_ITEM_TEXT);
     this.add(gameMenu);
 
     final JFontMenu newGame = new JFontMenu(resourceBundle.getString("Menu.newGame")); // ("新对局");
@@ -3122,7 +3126,7 @@ public class Menu extends JMenuBar {
 
     final JFontMenu analyzeMenu = new JFontMenu(resourceBundle.getString("Menu.analyze"));
     analyzeMenu.setFont(baseMenuFont);
-    analyzeMenu.setForeground(Color.BLACK);
+    analyzeMenu.setForeground(MorandiPalette.MENU_ITEM_TEXT);
     // analyMenu.setFont(headFont);
     this.add(analyzeMenu);
 
@@ -3379,7 +3383,7 @@ public class Menu extends JMenuBar {
 
     final JFontMenu editMenu = new JFontMenu(resourceBundle.getString("Menu.edit"));
     editMenu.setFont(baseMenuFont);
-    editMenu.setForeground(Color.BLACK);
+    editMenu.setForeground(MorandiPalette.MENU_ITEM_TEXT);
     // editMenu.setFont(headFont);
     this.add(editMenu);
     iconblack2 = new ImageIcon();
@@ -3869,7 +3873,7 @@ public class Menu extends JMenuBar {
 
     final JFontMenu shareKifu = new JFontMenu(resourceBundle.getString("Menu.share"));
     shareKifu.setFont(baseMenuFont);
-    shareKifu.setForeground(Color.BLACK);
+    shareKifu.setForeground(MorandiPalette.MENU_ITEM_TEXT);
     // shareKifu.setFont(headFont);
     // this.add(shareKifu);
 
@@ -3954,7 +3958,7 @@ public class Menu extends JMenuBar {
 
     final JFontMenu live = new JFontMenu(resourceBundle.getString("Menu.sync"));
     live.setFont(baseMenuFont);
-    live.setForeground(Color.BLACK);
+    live.setForeground(MorandiPalette.MENU_ITEM_TEXT);
     // live.setFont(headFont);
     this.add(live);
 
@@ -4933,7 +4937,7 @@ public class Menu extends JMenuBar {
         });
 
     final JFontMenu helpMenu = new JFontMenu(resourceBundle.getString("Menu.help"));
-    helpMenu.setForeground(Color.BLACK);
+    helpMenu.setForeground(MorandiPalette.MENU_ITEM_TEXT);
     helpMenu.setFont(baseMenuFont);
     // helpMenu.setFont(headFont);
     this.add(helpMenu);
@@ -5000,14 +5004,14 @@ public class Menu extends JMenuBar {
         });
 
     quickLinks = new JFontMenu(resourceBundle.getString("Menu.quickLinks")); // ("快速启动");
-    quickLinks.setForeground(Color.BLACK);
+    quickLinks.setForeground(MorandiPalette.MENU_ITEM_TEXT);
     quickLinks.setFont(baseMenuFont);
     // quickLinks.setFont(headFont);
     this.add(quickLinks);
     updateFastLinks();
 
     final JFontMenu settings = new JFontMenu(resourceBundle.getString("Menu.settings"));
-    settings.setForeground(Color.BLACK);
+    settings.setForeground(MorandiPalette.MENU_ITEM_TEXT);
     settings.setFont(baseMenuFont);
     // settings.setFont(headFont);
     this.add(settings);
@@ -5116,7 +5120,7 @@ public class Menu extends JMenuBar {
             Lizzie.config.useLanguage = 1;
             Lizzie.config.uiConfig.put("use-language", Lizzie.config.useLanguage);
             Utils.showMsg(
-                ResourceBundle.getBundle("l10n.DisplayStrings", new Locale("zh", "CN"))
+                ResourceBundle.getBundle("l10n.DisplayStrings", Locale.CHINA)
                     .getString("Lizzie.hint.restart"));
           }
         });
@@ -5129,7 +5133,7 @@ public class Menu extends JMenuBar {
             Lizzie.config.useLanguage = 2;
             Lizzie.config.uiConfig.put("use-language", Lizzie.config.useLanguage);
             Utils.showMsg(
-                ResourceBundle.getBundle("l10n.DisplayStrings", new Locale("en", "US"))
+                ResourceBundle.getBundle("l10n.DisplayStrings", Locale.US)
                     .getString("Lizzie.hint.restart"));
           }
         });
@@ -5143,7 +5147,7 @@ public class Menu extends JMenuBar {
             Lizzie.config.useLanguage = 3;
             Lizzie.config.uiConfig.put("use-language", Lizzie.config.useLanguage);
             Utils.showMsg(
-                ResourceBundle.getBundle("l10n.DisplayStrings", new Locale("ko"))
+                ResourceBundle.getBundle("l10n.DisplayStrings", Locale.KOREAN)
                     .getString("Lizzie.hint.restart"));
           }
         });
@@ -5157,7 +5161,7 @@ public class Menu extends JMenuBar {
             Lizzie.config.useLanguage = 4;
             Lizzie.config.uiConfig.put("use-language", Lizzie.config.useLanguage);
             Utils.showMsg(
-                ResourceBundle.getBundle("l10n.DisplayStrings", new Locale("ja", "JP"))
+                ResourceBundle.getBundle("l10n.DisplayStrings", Locale.JAPAN)
                     .getString("Lizzie.hint.restart"));
           }
         });
@@ -5340,7 +5344,7 @@ public class Menu extends JMenuBar {
         });
 
     contributeMenu = new JFontMenu(resourceBundle.getString("Menu.contributeMenu")); // ("跑谱贡献");
-    contributeMenu.setForeground(Color.BLACK);
+    contributeMenu.setForeground(MorandiPalette.MENU_ITEM_TEXT);
     contributeMenu.setFont(baseMenuFont);
     this.add(contributeMenu);
     contributeMenu.setVisible(Lizzie.config.showContribute);
@@ -5385,7 +5389,7 @@ public class Menu extends JMenuBar {
         });
 
     engineMenu = new JFontMenu(resourceBundle.getString("Menu.noEngine"));
-    engineMenu.setForeground(Color.BLACK);
+    engineMenu.setForeground(MorandiPalette.MENU_ITEM_TEXT);
     // headFont = new Font(Config.sysDefaultFontName, Font.BOLD,
     // Math.max(Lizzie.config.frameFontSize, 15));
     engineMenu.setFont(
@@ -5393,7 +5397,7 @@ public class Menu extends JMenuBar {
     this.add(engineMenu);
 
     engineMenu2 = new JFontMenu(resourceBundle.getString("Menu.noEngine"));
-    engineMenu2.setForeground(Color.BLACK);
+    engineMenu2.setForeground(MorandiPalette.MENU_ITEM_TEXT);
     engineMenu2.setFont(
         new Font(Config.sysDefaultFontName, Font.BOLD, Math.max(Config.frameFontSize, 15)));
     //   headFont = new Font(Config.sysDefaultFontName, Font.PLAIN,
@@ -9756,8 +9760,8 @@ public class Menu extends JMenuBar {
             if (Lizzie.config.isFrameFontSmall()) {
               komiContentPanel = new JPanel();
               if (!Lizzie.config.useJavaLooks) {
-                komiContentPanel.setBackground(new Color(232, 232, 232));
-                komiPanel.setBackground(new Color(232, 232, 232));
+                komiContentPanel.setBackground(MorandiPalette.TOOLBAR_BG);
+                komiPanel.setBackground(MorandiPalette.TOOLBAR_BG);
               }
               komiContentPanel.setLayout(null);
               komiContentPanel.add(komiPanel);
@@ -9871,14 +9875,14 @@ public class Menu extends JMenuBar {
     this.remove(engineMenu2);
     engineMenu = new JFontMenu(resourceBundle.getString("Menu.noEngine"));
     engineMenu.setText(resourceBundle.getString("Menu.noEngine"));
-    engineMenu.setForeground(Color.BLACK);
+    engineMenu.setForeground(MorandiPalette.MENU_ITEM_TEXT);
     engineMenu.setFont(
         new Font(Config.sysDefaultFontName, Font.BOLD, Math.max(Config.frameFontSize, 15)));
     this.add(engineMenu);
     //   if (Lizzie.config.Lizzie.config.isDoubleEngineMode()) {
     engineMenu2 = new JFontMenu(resourceBundle.getString("Menu.noEngine"));
     engineMenu2.setText(resourceBundle.getString("Menu.noEngine"));
-    engineMenu2.setForeground(Color.BLACK);
+    engineMenu2.setForeground(MorandiPalette.MENU_ITEM_TEXT);
     engineMenu2.setFont(
         new Font(Config.sysDefaultFontName, Font.BOLD, Math.max(Config.frameFontSize, 15)));
     this.add(engineMenu2);
@@ -10222,7 +10226,7 @@ public class Menu extends JMenuBar {
     if (!Lizzie.config.useJavaLooks
         && OS.isWindows()
         && (Boolean) Toolkit.getDefaultToolkit().getDesktopProperty("win.xpstyle.themeActive")) {
-      g.setColor(new Color(232, 232, 232));
+      g.setColor(MorandiPalette.TOOLBAR_BG);
       g.fillRect(0, 0, getWidth(), getHeight());
     }
   }

@@ -14,7 +14,9 @@ import javax.imageio.ImageIO;
 import javax.swing.*;
 import javax.swing.border.*;
 
-/** @author unknown */
+/**
+ * @author unknown
+ */
 public class GameInfoDialog extends JDialog {
   // create formatters
   public static final DecimalFormat FORMAT_HANDICAP = new DecimalFormat("0");

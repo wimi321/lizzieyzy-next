@@ -39,13 +39,16 @@ public class BrowserFrame extends JFrame {
   private boolean browserFocus_ = true;
   private JToolBar toolbar;
   private boolean isYike;
+
   /**
    * To display a simple browser window, it suffices completely to create an instance of the class
    * CefBrowser and to assign its UI component to your application (e.g. to your content pane). But
    * to be more verbose, this CTOR keeps an instance of each object on the way to the browser UI.
    */
   public BrowserFrame(String startURL, String title, boolean yike)
-      throws UnsupportedPlatformException, CefInitializationException, IOException,
+      throws UnsupportedPlatformException,
+          CefInitializationException,
+          IOException,
           InterruptedException {
     // (0) Initialize CEF using the maven loader
     this.isYike = yike;

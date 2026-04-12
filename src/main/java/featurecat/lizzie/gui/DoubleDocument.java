@@ -15,6 +15,7 @@ public class DoubleDocument extends PlainDocument {
   public DoubleDocument() {
     super();
   }
+
   //
   //	public DoubleDocument(int newDecimalLen, int newMaxLen) {
   //		super();

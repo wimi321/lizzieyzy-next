@@ -53,6 +53,7 @@ public enum Stone {
         return false;
     }
   }
+
   /**
    * used to keep track of which stones were visited during removal of dead stones
    *
@@ -69,7 +70,9 @@ public enum Stone {
     }
   }
 
-  /** @return Whether or not this stone is of the black variants. */
+  /**
+   * @return Whether or not this stone is of the black variants.
+   */
   public boolean isBlack() {
     return this == BLACK || this == BLACK_RECURSED;
   }
@@ -81,7 +84,10 @@ public enum Stone {
   public boolean needDrawBlack() {
     return this == BLACK || this == BLACK_RECURSED;
   }
-  /** @return Whether or not this stone is of the white variants. */
+
+  /**
+   * @return Whether or not this stone is of the white variants.
+   */
   public boolean isWhite() {
     return this != EMPTY && !this.isBlack();
   }

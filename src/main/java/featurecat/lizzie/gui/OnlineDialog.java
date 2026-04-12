@@ -559,7 +559,7 @@ public class OnlineDialog extends JDialog {
     new Thread() {
       public void run() {
         try {
-          URL url = new URL(ajaxUrl);
+          URL url = URI.create(ajaxUrl).toURL();
           HttpURLConnection con = (HttpURLConnection) url.openConnection();
 
           con.setRequestMethod("GET");
@@ -1199,7 +1199,8 @@ public class OnlineDialog extends JDialog {
           if (num > 0 && !Utils.isBlank(comment)) {
             history.goToMoveNumber(num, false);
             history.getData().comment += comment + "\n";
-            while (history.next(true).isPresent()) ;
+            while (history.next(true).isPresent())
+              ;
           }
         } else if (f.type == 8185) {
           JSONObject branch = (JSONObject) f.line.opt("AAA79");
@@ -1231,7 +1232,8 @@ public class OnlineDialog extends JDialog {
                   }
                 }
                 history.toBranchTop();
-                while (history.next(true).isPresent()) ;
+                while (history.next(true).isPresent())
+                  ;
               }
             }
           }
@@ -1244,7 +1246,8 @@ public class OnlineDialog extends JDialog {
             client.close();
           }
           String result = result(f.type, f.line);
-          while (history.next().isPresent()) ;
+          while (history.next().isPresent())
+            ;
           history.getEnd().getData().comment = result + "\n" + history.getEnd().getData().comment;
           Lizzie.frame.setResult(result);
           Lizzie.board.getHistory().getGameInfo().setResult(result);
@@ -1252,13 +1255,15 @@ public class OnlineDialog extends JDialog {
       }
     }
     if (history != null) {
-      while (history.previous().isPresent()) ;
+      while (history.previous().isPresent())
+        ;
       int diffMove = Lizzie.board.getHistory().sync(history);
       if (diffMove >= 0) {
         //     Lizzie.board.goToMoveNumberBeyondBranch(diffMove > 0 ? diffMove - 1 : 0);
         //    while (Lizzie.board.nextMove()) {}
       }
-      while (history.next(true).isPresent()) ;
+      while (history.next(true).isPresent())
+        ;
     }
   }
 
@@ -2337,7 +2342,8 @@ public class OnlineDialog extends JDialog {
   }
 
   void sync() {
-    while (history.previous().isPresent()) ;
+    while (history.previous().isPresent())
+      ;
     Lizzie.board.getHistory().sync(history);
   }
 
@@ -2388,7 +2394,8 @@ public class OnlineDialog extends JDialog {
           history.previous();
         }
         subIndex = SGFParser.parseBranch(history, sgf);
-        while (history.next(true).isPresent()) ;
+        while (history.next(true).isPresent())
+          ;
       }
     }
     return subIndex;
@@ -2422,7 +2429,8 @@ public class OnlineDialog extends JDialog {
       } else {
         history.getData().comment = comment + "\n";
       }
-      while (history.next(true).isPresent()) ;
+      while (history.next(true).isPresent())
+        ;
     }
   }
 
@@ -2435,7 +2443,8 @@ public class OnlineDialog extends JDialog {
       c[0] = m.optInt("x");
       c[1] = m.optInt("y");
       boolean changeMove = false;
-      while (history.next(true).isPresent()) ;
+      while (history.next(true).isPresent())
+        ;
       Stone color = (m.optInt("c") == -1) ? Stone.WHITE : Stone.BLACK;
       //      Stone color =
       //          (move - history.getData().moveNumber) % 2 == 0
@@ -2511,7 +2520,8 @@ public class OnlineDialog extends JDialog {
       sio.close();
       String result = g.optString("resultDesc");
       if (!Utils.isBlank(result)) {
-        while (Lizzie.board.getHistory().next().isPresent()) ;
+        while (Lizzie.board.getHistory().next().isPresent())
+          ;
         Lizzie.board.getHistory().getEnd().getData().comment =
             result + "\n" + Lizzie.board.getHistory().getEnd().getData().comment;
         Lizzie.frame.setResult(result);

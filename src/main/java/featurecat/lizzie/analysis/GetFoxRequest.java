@@ -11,6 +11,7 @@ import featurecat.lizzie.util.Utils;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.Proxy;
+import java.net.URI;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -219,7 +220,7 @@ public class GetFoxRequest {
     for (int attempt = 1; attempt <= HTTP_MAX_RETRIES; attempt++) {
       java.net.HttpURLConnection conn = null;
       try {
-        conn = (java.net.HttpURLConnection) new java.net.URL(url).openConnection(Proxy.NO_PROXY);
+        conn = (java.net.HttpURLConnection) URI.create(url).toURL().openConnection(Proxy.NO_PROXY);
         conn.setRequestMethod(method);
         conn.setConnectTimeout(HTTP_CONNECT_TIMEOUT_MS);
         conn.setReadTimeout(HTTP_READ_TIMEOUT_MS);

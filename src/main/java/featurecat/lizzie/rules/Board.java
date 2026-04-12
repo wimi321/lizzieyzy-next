@@ -961,7 +961,8 @@ public class Board {
     boolean oriPlaySound = Lizzie.config.playSound;
     Lizzie.config.playSound = false;
     Lizzie.board.isLoadingFile = true;
-    while (previousMove(false)) ;
+    while (previousMove(false))
+      ;
     Lizzie.board.isLoadingFile = false;
     if (!forSpin) {
       if (Lizzie.board.hasStartStone) {
@@ -997,7 +998,8 @@ public class Board {
 
     boolean oriPlaySound = Lizzie.config.playSound;
     Lizzie.config.playSound = false;
-    while (previousMove(false)) ;
+    while (previousMove(false))
+      ;
     int lenth = movelist.size();
     for (int i = 0; i < lenth; i++) {
       Movelist move = movelist.get(lenth - 1 - i);
@@ -1017,7 +1019,8 @@ public class Board {
   public void setmovelistForEditClean(ArrayList<Movelist> movelist) {
     boolean oriPlaySound = Lizzie.config.playSound;
     Lizzie.config.playSound = false;
-    while (previousMove(false)) ;
+    while (previousMove(false))
+      ;
     int lenth = movelist.size();
     if (hasStartStone) {
       for (int i = 0; i < startStonelist.size(); i++) {
@@ -1895,6 +1898,7 @@ public class Board {
       return false;
     }
   }
+
   /** for handicap */
   public void flatten() {
     Stone[] stones = history.getStones();
@@ -3006,6 +3010,7 @@ public class Board {
   public boolean inAnalysisMode() {
     return analysisMode;
   }
+
   //
   //  public boolean inScoreMode() {
   //    return scoreMode;
@@ -3899,7 +3904,8 @@ public class Board {
 
   public void setMoveListWithFlattenExit(
       ArrayList<Movelist> movelist, int flattenNumber, boolean flattenBlackToPlay) {
-    while (previousMove(false)) ;
+    while (previousMove(false))
+      ;
     int lenth = movelist.size();
     for (int i = 0; i < lenth; i++) {
       Movelist move = movelist.get(lenth - 1 - i);
@@ -3983,7 +3989,8 @@ public class Board {
         if (reStoreMainListHead.isPass && reStoreMainListHead.previous.isPresent())
           reStoreMainListHead = reStoreMainListHead.previous.get();
       }
-      while (Lizzie.board.previousMove(false)) ;
+      while (Lizzie.board.previousMove(false))
+        ;
       MoveLinkedList listHead =
           Lizzie.board.getMoveLinkedListAfter(Lizzie.board.getHistory().getCurrentHistoryNode());
       if (listHead == null) {
@@ -4007,7 +4014,8 @@ public class Board {
         listHead.needSkip = true;
         Lizzie.board.placeLinkedList(listHead, null, false, -1);
         // 返回原点
-        while (Lizzie.board.previousMove(false)) ;
+        while (Lizzie.board.previousMove(false))
+          ;
         if (reStoreMainListHead != null) Lizzie.board.placeLinkedListReverse(reStoreMainListHead);
       }
     }
@@ -4353,7 +4361,8 @@ public class Board {
   public int continueLadder() {
     int k;
     // Repeating continueLadderByOne() is inefficient. So what? :p
-    for (k = 0; continueLadderByOne(); k++) ;
+    for (k = 0; continueLadderByOne(); k++)
+      ;
     Lizzie.frame.refresh();
     return k;
   }

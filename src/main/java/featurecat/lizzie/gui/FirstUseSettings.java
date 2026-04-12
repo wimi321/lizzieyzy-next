@@ -808,8 +808,7 @@ public class FirstUseSettings extends JDialog {
             } else {
               Lizzie.config.useLanguage = 1;
               Lizzie.config.uiConfig.put("use-language", Lizzie.config.useLanguage);
-              Lizzie.resourceBundle =
-                  ResourceBundle.getBundle("l10n.DisplayStrings", new Locale("zh", "CN"));
+              Lizzie.resourceBundle = ResourceBundle.getBundle("l10n.DisplayStrings", Locale.CHINA);
               Lizzie.config.isChinese = true;
               setVisible(false);
               FirstUseSettings firstUseSettings = new FirstUseSettings(false);
@@ -830,8 +829,7 @@ public class FirstUseSettings extends JDialog {
             } else {
               Lizzie.config.useLanguage = 2;
               Lizzie.config.uiConfig.put("use-language", Lizzie.config.useLanguage);
-              Lizzie.resourceBundle =
-                  ResourceBundle.getBundle("l10n.DisplayStrings", new Locale("en", "US"));
+              Lizzie.resourceBundle = ResourceBundle.getBundle("l10n.DisplayStrings", Locale.US);
               Lizzie.config.isChinese = false;
               setVisible(false);
               FirstUseSettings firstUseSettings = new FirstUseSettings(false);
@@ -853,7 +851,7 @@ public class FirstUseSettings extends JDialog {
               Lizzie.config.useLanguage = 3;
               Lizzie.config.uiConfig.put("use-language", Lizzie.config.useLanguage);
               Lizzie.resourceBundle =
-                  ResourceBundle.getBundle("l10n.DisplayStrings", new Locale("ko"));
+                  ResourceBundle.getBundle("l10n.DisplayStrings", Locale.KOREAN);
               Lizzie.config.isChinese = false;
               setVisible(false);
               FirstUseSettings firstUseSettings = new FirstUseSettings(false);
@@ -874,8 +872,7 @@ public class FirstUseSettings extends JDialog {
             } else {
               Lizzie.config.useLanguage = 4;
               Lizzie.config.uiConfig.put("use-language", Lizzie.config.useLanguage);
-              Lizzie.resourceBundle =
-                  ResourceBundle.getBundle("l10n.DisplayStrings", new Locale("ja", "JP"));
+              Lizzie.resourceBundle = ResourceBundle.getBundle("l10n.DisplayStrings", Locale.JAPAN);
               Lizzie.config.isChinese = false;
               setVisible(false);
               FirstUseSettings firstUseSettings = new FirstUseSettings(false);

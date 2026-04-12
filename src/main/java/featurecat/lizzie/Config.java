@@ -98,6 +98,11 @@ public class Config {
   public boolean isShowingWinrateGraph = true;
   public boolean isShowingMoveList = true;
   public int moveListSelectedBranch = 0;
+  public boolean useMorandiColors = true;
+  public int glassEffectLevel = 1;
+  public boolean showStoneHighlight = true;
+  public boolean showBoardLightGradient = true;
+  public boolean showHoverGlow = true;
   // public double matchAiTemperature = 1;
   public boolean showMoveListGraph = true;
   public boolean whiteSuggestionWhite = false;
@@ -666,7 +671,8 @@ public class Config {
   public int openingEndMove = 60;
   public int middleEndMove = 160;
 
-  public boolean checkRandomVisits = false;;
+  public boolean checkRandomVisits = false;
+  ;
   public double percentsRandomVisits = 10;
 
   public int suggestionColorRatio = 2;
@@ -1131,18 +1137,11 @@ public class Config {
         System.exit(1);
       }
     }
-    try {
-      FileInputStream fp = new FileInputStream(file);
-      InputStreamReader reader = new InputStreamReader(fp, "utf-8");
-
+    try (FileInputStream fp = new FileInputStream(file);
+        InputStreamReader reader = new InputStreamReader(fp, "utf-8")) {
       JSONObject mergedcfg = new JSONObject(new JSONTokener(reader));
       boolean modified = mergeDefaults(mergedcfg, defaultCfg);
-      fp.close();
 
-      // Validate and correct settings
-      //    if (needValidation && validateAndCorrectSettings(mergedcfg)) {
-      //      modified = true;
-      //    }
       if (needValidation) checkEmptyBlunderThresholds(mergedcfg);
       if (modified) {
         writeConfig(mergedcfg, file);
@@ -1175,22 +1174,17 @@ public class Config {
       }
     }
 
-    FileInputStream fp = new FileInputStream(file);
-    InputStreamReader reader = new InputStreamReader(fp, "utf-8");
-    JSONObject mergedcfg = new JSONObject(new JSONTokener(reader));
-    boolean modified = mergeDefaults(mergedcfg, defaultCfg);
+    try (FileInputStream fp = new FileInputStream(file);
+        InputStreamReader reader = new InputStreamReader(fp, "utf-8")) {
+      JSONObject mergedcfg = new JSONObject(new JSONTokener(reader));
+      boolean modified = mergeDefaults(mergedcfg, defaultCfg);
 
-    fp.close();
-
-    // Validate and correct settings
-    //    if (needValidation && validateAndCorrectSettings(mergedcfg)) {
-    //      modified = true;
-    //    }
-    if (needValidation) checkEmptyBlunderThresholds(mergedcfg);
-    if (modified) {
-      writeConfig(mergedcfg, file);
+      if (needValidation) checkEmptyBlunderThresholds(mergedcfg);
+      if (modified) {
+        writeConfig(mergedcfg, file);
+      }
+      return mergedcfg;
     }
-    return mergedcfg;
   }
 
   private JSONObject loadAndMergeConfigdef(
@@ -1204,23 +1198,17 @@ public class Config {
       System.exit(1);
     }
 
-    FileInputStream fp = new FileInputStream(file);
-    InputStreamReader reader = new InputStreamReader(fp, "utf-8");
+    try (FileInputStream fp = new FileInputStream(file);
+        InputStreamReader reader = new InputStreamReader(fp, "utf-8")) {
+      JSONObject mergedcfg = new JSONObject(new JSONTokener(reader));
+      boolean modified = mergeDefaults(mergedcfg, defaultCfg);
 
-    JSONObject mergedcfg = new JSONObject(new JSONTokener(reader));
-    boolean modified = mergeDefaults(mergedcfg, defaultCfg);
-
-    fp.close();
-
-    // Validate and correct settings
-    // if (needValidation && validateAndCorrectSettings(mergedcfg)) {
-    //  modified = true;
-    // }
-    if (needValidation) checkEmptyBlunderThresholds(mergedcfg);
-    if (modified) {
-      writeConfig(mergedcfg, file);
+      if (needValidation) checkEmptyBlunderThresholds(mergedcfg);
+      if (modified) {
+        writeConfig(mergedcfg, file);
+      }
+      return mergedcfg;
     }
-    return mergedcfg;
   }
 
   /**
@@ -1323,22 +1311,17 @@ public class Config {
   }
 
   public static void copyFile(File sourceFile, File targetFile) throws IOException {
-    FileInputStream input = new FileInputStream(sourceFile);
-    BufferedInputStream inBuff = new BufferedInputStream(input);
-    FileOutputStream output = new FileOutputStream(targetFile);
-    BufferedOutputStream outBuff = new BufferedOutputStream(output);
-
-    byte[] b = new byte[1024 * 5];
-    int len;
-    while ((len = inBuff.read(b)) != -1) {
-      outBuff.write(b, 0, len);
+    try (FileInputStream input = new FileInputStream(sourceFile);
+        BufferedInputStream inBuff = new BufferedInputStream(input);
+        FileOutputStream output = new FileOutputStream(targetFile);
+        BufferedOutputStream outBuff = new BufferedOutputStream(output)) {
+      byte[] b = new byte[1024 * 5];
+      int len;
+      while ((len = inBuff.read(b)) != -1) {
+        outBuff.write(b, 0, len);
+      }
+      outBuff.flush();
     }
-    outBuff.flush();
-
-    inBuff.close();
-    outBuff.close();
-    output.close();
-    input.close();
   }
 
   public Config() throws IOException {
@@ -1595,6 +1578,11 @@ public class Config {
     moveListTopCurNode = uiConfig.optBoolean("movelist-top-curnode", false);
     showMoveListGraph = uiConfig.optBoolean("show-movelist-graph", true);
     showBlueRing = uiConfig.optBoolean("show-blue-ring", true);
+    useMorandiColors = uiConfig.optBoolean("use-morandi-colors", true);
+    glassEffectLevel = uiConfig.optInt("glass-effect-level", 1);
+    showStoneHighlight = uiConfig.optBoolean("show-stone-highlight", true);
+    showBoardLightGradient = uiConfig.optBoolean("show-board-light-gradient", true);
+    showHoverGlow = uiConfig.optBoolean("show-hover-glow", true);
 
     showEditbar = uiConfig.optBoolean("show-edit-bar", true);
     showForceMenu = uiConfig.optBoolean("show-force-menu", true);
@@ -2389,6 +2377,7 @@ public class Config {
     uiConfig.put("show-next-moves", showNextMoves);
     Lizzie.frame.refresh();
   }
+
   // public void toggleHandicapInsteadOfWinrate() {
   // this.handicapInsteadOfWinrate = !this.handicapInsteadOfWinrate;
   // }
@@ -2595,11 +2584,10 @@ public class Config {
 
   private void writeConfig(JSONObject config, File file) throws IOException, JSONException {
     file.createNewFile();
-    FileOutputStream fp = new FileOutputStream(file);
-    OutputStreamWriter writer = new OutputStreamWriter(fp, "utf-8");
-    writer.write(config.toString(2));
-    writer.close();
-    fp.close();
+    try (FileOutputStream fp = new FileOutputStream(file);
+        OutputStreamWriter writer = new OutputStreamWriter(fp, "utf-8")) {
+      writer.write(config.toString(2));
+    }
   }
 
   public void persist() throws IOException {

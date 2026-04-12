@@ -1003,7 +1003,7 @@ public class Utils {
     if (txt.getText().trim().isEmpty()) {
       return 0.0;
     } else {
-      return new Double(txt.getText().trim());
+      return Double.valueOf(txt.getText().trim());
     }
   }
 
