@@ -62,6 +62,7 @@ public class AnalysisEngine {
   public boolean javaSSHClosed;
   private boolean shouldRePonder = false;
   private boolean isLoaded = false;
+  private boolean silentProgress = false;
 
   public AnalysisEngine(boolean isPreLoad) throws IOException {
     engineCommand = Lizzie.config.analysisEngineCommand;
@@ -241,6 +242,7 @@ public class AnalysisEngine {
     JSONArray moveInfos = result.getJSONArray("moveInfos");
     int id = Integer.parseInt(result.getString("id"));
     BoardHistoryNode node = analyzeMap.get(id);
+    if (node == null) return;
     List<MoveData> moves = Utils.getBestMovesFromJsonArray(moveInfos, true, true);
     if (result.has("ownership")) {
       JSONArray ownership = result.getJSONArray("ownership");
@@ -262,7 +264,12 @@ public class AnalysisEngine {
 
     node.getData().comment = SGFParser.formatComment(node);
     resultCount++;
-    waitFrame.setProgress(resultCount, analyzeMap.size());
+    if (waitFrame != null) {
+      waitFrame.setProgress(resultCount, analyzeMap.size());
+    } else if (silentProgress && (resultCount == 1 || resultCount % 8 == 0)) {
+      Lizzie.board.setMovelistAll();
+      Lizzie.frame.refresh();
+    }
     if (resultCount == analyzeMap.size()) setResult();
   }
 
@@ -294,10 +301,16 @@ public class AnalysisEngine {
   }
 
   public void startRequestAllBranches() {
+    startRequestAllBranches(true);
+  }
+
+  public void startRequestAllBranches(boolean showProgressDialog) {
     if (!isLoaded) return;
     analyzeMap.clear();
-    globalID = 1;
+    if (globalID <= 0) globalID = 1;
     resultCount = 0;
+    silentProgress = !showProgressDialog;
+    waitFrame = null;
     if (Lizzie.leelaz.isPondering()) {
       Lizzie.leelaz.togglePonder();
       shouldRePonder = true;
@@ -314,20 +327,28 @@ public class AnalysisEngine {
       }
     }
     if (analyzeMap.size() > 0) {
-      waitFrame = new WaitForAnalysis();
-      if (Lizzie.config.analysisEnginePreLoad) waitFrame.setProgress(0, analyzeMap.size());
-      waitFrame.setLocationRelativeTo(Lizzie.frame != null ? Lizzie.frame : null);
-      waitFrame.setVisible(true);
+      if (showProgressDialog) {
+        waitFrame = new WaitForAnalysis();
+        if (Lizzie.config.analysisEnginePreLoad) waitFrame.setProgress(0, analyzeMap.size());
+        waitFrame.setLocationRelativeTo(Lizzie.frame != null ? Lizzie.frame : null);
+        waitFrame.setVisible(true);
+      }
     } else if (Lizzie.frame.isBatchAnalysisMode) {
       Lizzie.frame.flashAutoAnaSaveAndLoad();
     }
   }
 
   public void startRequest(int startMove, int endMove) {
+    startRequest(startMove, endMove, true);
+  }
+
+  public void startRequest(int startMove, int endMove, boolean showProgressDialog) {
     if (!isLoaded) return;
     analyzeMap.clear();
-    globalID = 1;
+    if (globalID <= 0) globalID = 1;
     resultCount = 0;
+    silentProgress = !showProgressDialog;
+    waitFrame = null;
     if (Lizzie.leelaz.isPondering()) {
       Lizzie.leelaz.togglePonder();
       shouldRePonder = true;
@@ -355,10 +376,12 @@ public class AnalysisEngine {
     }
     if (startAnalyze) sendRequest(node);
     if (analyzeMap.size() > 0) {
-      waitFrame = new WaitForAnalysis();
-      if (Lizzie.config.analysisEnginePreLoad) waitFrame.setProgress(0, analyzeMap.size());
-      waitFrame.setLocationRelativeTo(Lizzie.frame != null ? Lizzie.frame : null);
-      waitFrame.setVisible(true);
+      if (showProgressDialog) {
+        waitFrame = new WaitForAnalysis();
+        if (Lizzie.config.analysisEnginePreLoad) waitFrame.setProgress(0, analyzeMap.size());
+        waitFrame.setLocationRelativeTo(Lizzie.frame != null ? Lizzie.frame : null);
+        waitFrame.setVisible(true);
+      }
     } else if (Lizzie.frame.isBatchAnalysisMode) {
       Lizzie.frame.flashAutoAnaSaveAndLoad();
     }

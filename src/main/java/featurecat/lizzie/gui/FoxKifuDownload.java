@@ -382,7 +382,7 @@ public class FoxKifuDownload extends JFrame {
           normalizeException.printStackTrace();
         }
         Lizzie.board.setMovelistAll();
-        if (Lizzie.leelaz.isPondering()) Lizzie.leelaz.ponder();
+        Lizzie.frame.scheduleResumeAnalysisAfterLoad(200);
         Lizzie.frame.refresh();
         Lizzie.config.readKomi = oriReadKomi;
         if (Lizzie.config.foxAfterGet == 0) setExtendedState(JFrame.ICONIFIED);

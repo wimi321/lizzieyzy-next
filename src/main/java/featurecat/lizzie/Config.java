@@ -877,6 +877,7 @@ public class Config {
   public boolean analysisUseCurrentRules = true;
   public boolean analysisEnginePreLoad = false;
   public boolean analysisAlwaysOverride = false;
+  public boolean autoQuickAnalyzeOnLoad = true;
   public String analysisSpecificRules = "";
 
   public boolean analysisRecentIsPartGame = false;
@@ -1635,6 +1636,7 @@ public class Config {
     analysisUseCurrentRules = uiConfig.optBoolean("analysis-use-current-rules", true);
     analysisEnginePreLoad = uiConfig.optBoolean("analysis-engine-preload", false);
     analysisAlwaysOverride = uiConfig.optBoolean("analysis-always-override", false);
+    autoQuickAnalyzeOnLoad = uiConfig.optBoolean("auto-quick-analyze-on-load", true);
     analysisSpecificRules = uiConfig.optString("analysis-specific-rules", "");
     showScoreLeadLine = uiConfig.optBoolean("show-score-lead-line", true);
     showWinrateLine = uiConfig.optBoolean("show-win-rate-line", true);
@@ -2514,6 +2516,7 @@ public class Config {
     ui.put("large-winrate-graph", false);
     ui.put("winrate-stroke-width", 1.7);
     ui.put("show-blunder-bar", true);
+    ui.put("auto-quick-analyze-on-load", true);
     ui.put("minimum-blunder-bar-width", 1);
     ui.put("weighted-blunder-bar-height", false);
     // ui.put("dynamic-winrate-graph-width", true);

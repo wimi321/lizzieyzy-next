@@ -3,14 +3,42 @@ package featurecat.lizzie.gui;
 import featurecat.lizzie.Config;
 import featurecat.lizzie.Lizzie;
 import featurecat.lizzie.analysis.EngineManager;
+import featurecat.lizzie.rules.Board;
 import featurecat.lizzie.rules.BoardHistoryNode;
 import featurecat.lizzie.util.Utils;
 import java.awt.*;
 import java.awt.geom.Point2D;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 
 public class WinrateGraph {
+
+  private static class QuickOverviewMove {
+    final BoardHistoryNode node;
+    final int moveNumber;
+    final String moveName;
+    final double winrate;
+    final double swing;
+    final boolean hasAnalysis;
+
+    QuickOverviewMove(
+        BoardHistoryNode node,
+        int moveNumber,
+        String moveName,
+        double winrate,
+        double swing,
+        boolean hasAnalysis) {
+      this.node = node;
+      this.moveNumber = moveNumber;
+      this.moveName = moveName;
+      this.winrate = winrate;
+      this.swing = swing;
+      this.hasAnalysis = hasAnalysis;
+    }
+  }
 
   private int DOT_RADIUS = 3;
   private int[] origParams = {0, 0, 0, 0};
@@ -1366,12 +1394,234 @@ public class WinrateGraph {
       x = Math.min(x, origParams[0] + origParams[2] - stringWidth);
       g.drawString(scoreString, x, cScoreHeight);
     }
+    drawQuickOverview(g, gBlunder, gBackground, curMove, posx, width, numMoves);
 
     params[0] = posx;
     params[1] = posy;
     params[2] = width;
     params[3] = height;
     params[4] = numMoves;
+  }
+
+  private void drawQuickOverview(
+      Graphics2D g,
+      Graphics2D gBlunder,
+      Graphics2D gBackground,
+      BoardHistoryNode curMove,
+      int posx,
+      int width,
+      int numMoves) {
+    if (origParams[2] < 180 || origParams[3] < 120 || width < 140 || numMoves < 2) return;
+
+    List<QuickOverviewMove> moves = buildQuickOverviewMoves(curMove);
+    if (moves.size() < 2) return;
+
+    int overviewHeight = Math.max(42, Math.min(68, origParams[3] / 5));
+    int overviewY = origParams[1] + origParams[3] - overviewHeight - 4;
+    int overviewX = posx;
+    int overviewWidth = width;
+    int innerPadding = Math.max(4, overviewHeight / 8);
+    int innerX = overviewX + innerPadding;
+    int innerY = overviewY + innerPadding;
+    int innerWidth = Math.max(10, overviewWidth - innerPadding * 2);
+    int innerHeight = Math.max(10, overviewHeight - innerPadding * 2);
+    int centerY = innerY + innerHeight / 2;
+    int dotSize = Math.max(4, DOT_RADIUS * 2);
+    int barWidth = Math.max(2, (int) Math.ceil(innerWidth / Math.max(70.0, numMoves)));
+    double issueThreshold =
+        Lizzie.config.blunderWinThreshold > 0 ? Lizzie.config.blunderWinThreshold : 3.0;
+    double maxSwing = issueThreshold;
+    double maxWinrateSpread = 10;
+
+    for (QuickOverviewMove move : moves) {
+      if (move.hasAnalysis) {
+        maxSwing = Math.max(maxSwing, move.swing);
+        maxWinrateSpread = Math.max(maxWinrateSpread, Math.abs(move.winrate - 50.0));
+      }
+    }
+
+    double winrateScale = Math.max(10.0, Math.ceil(maxWinrateSpread / 5.0) * 5.0);
+    double swingScale = Math.max(issueThreshold, Math.ceil(maxSwing / 5.0) * 5.0);
+    Color overviewLineColor =
+        Lizzie.config.winrateLineColor != null
+            ? Lizzie.config.winrateLineColor.brighter()
+            : new Color(255, 208, 84);
+    Stroke previousStroke = g.getStroke();
+
+    gBackground.setColor(new Color(15, 20, 28, 205));
+    gBackground.fillRoundRect(overviewX - 2, overviewY, overviewWidth + 4, overviewHeight, 12, 12);
+    gBackground.setColor(new Color(255, 255, 255, 65));
+    gBackground.drawRoundRect(overviewX - 2, overviewY, overviewWidth + 4, overviewHeight, 12, 12);
+    gBackground.setColor(new Color(255, 255, 255, 40));
+    gBackground.drawLine(innerX, centerY, innerX + innerWidth, centerY);
+
+    QuickOverviewMove lastMove = null;
+    int lastX = -1;
+    int lastY = -1;
+    for (QuickOverviewMove move : moves) {
+      int x = innerX + (move.moveNumber - 1) * innerWidth / numMoves;
+      int y =
+          centerY
+              - (int) Math.round((move.winrate - 50.0) * (innerHeight / 2.0 - 2) / winrateScale);
+
+      if (move.hasAnalysis && move.swing >= issueThreshold) {
+        int barHeight = Math.max(3, (int) Math.round(move.swing * innerHeight * 0.75 / swingScale));
+        gBlunder.setColor(quickOverviewBarColor(move.swing, issueThreshold, swingScale));
+        gBlunder.fillRoundRect(
+            x - barWidth / 2, innerY + innerHeight - barHeight, barWidth, barHeight, 4, 4);
+      }
+
+      if (lastMove != null) {
+        g.setColor(
+            lastMove.hasAnalysis && move.hasAnalysis
+                ? overviewLineColor
+                : new Color(180, 180, 180, 140));
+        g.setStroke(new BasicStroke(Math.max(1.6f, (float) Lizzie.config.winrateStrokeWidth)));
+        g.drawLine(lastX, lastY, x, y);
+      }
+      lastMove = move;
+      lastX = x;
+      lastY = y;
+    }
+    g.setStroke(previousStroke);
+
+    QuickOverviewMove currentMove = findQuickOverviewMove(moves, curMove);
+    QuickOverviewMove hoverMove = findQuickOverviewMove(moves, mouseOverNode);
+
+    if (currentMove != null) {
+      int x = innerX + (currentMove.moveNumber - 1) * innerWidth / numMoves;
+      int y =
+          centerY
+              - (int)
+                  Math.round((currentMove.winrate - 50.0) * (innerHeight / 2.0 - 2) / winrateScale);
+      g.setColor(new Color(255, 255, 255, 170));
+      g.drawLine(x, innerY, x, innerY + innerHeight);
+      g.fillOval(x - dotSize / 2, y - dotSize / 2, dotSize, dotSize);
+    }
+
+    if (hoverMove != null) {
+      int x = innerX + (hoverMove.moveNumber - 1) * innerWidth / numMoves;
+      int y =
+          centerY
+              - (int)
+                  Math.round((hoverMove.winrate - 50.0) * (innerHeight / 2.0 - 2) / winrateScale);
+      g.setColor(new Color(61, 204, 255, 230));
+      g.drawLine(x, innerY, x, innerY + innerHeight);
+      g.fillOval(x - dotSize / 2, y - dotSize / 2, dotSize, dotSize);
+      drawQuickOverviewLabel(g, hoverMove, x, overviewY, innerX, innerX + innerWidth);
+    }
+  }
+
+  private List<QuickOverviewMove> buildQuickOverviewMoves(BoardHistoryNode curMove) {
+    ArrayList<BoardHistoryNode> path = new ArrayList<>();
+    ArrayList<QuickOverviewMove> moves = new ArrayList<>();
+    BoardHistoryNode node = curMove;
+    double lastWinrate = 50;
+
+    while (node.next().isPresent()) {
+      node = node.next().get();
+    }
+    path.add(node);
+    while (node.previous().isPresent()) {
+      node = node.previous().get();
+      path.add(node);
+    }
+    Collections.reverse(path);
+
+    for (BoardHistoryNode pathNode : path) {
+      if (!pathNode.previous().isPresent()) continue;
+
+      double previousWinrate = lastWinrate;
+      double currentWinrate = resolveQuickOverviewWinrate(pathNode, previousWinrate);
+      lastWinrate = currentWinrate;
+      String moveName =
+          pathNode.getData().lastMove.isPresent()
+              ? Board.convertCoordinatesToName(
+                  pathNode.getData().lastMove.get()[0], pathNode.getData().lastMove.get()[1])
+              : "PASS";
+      boolean hasAnalysis = pathNode.getData().getPlayouts() > 0;
+      double swing = resolveQuickOverviewSwing(pathNode, previousWinrate, currentWinrate);
+      moves.add(
+          new QuickOverviewMove(
+              pathNode,
+              pathNode.getData().moveNumber,
+              moveName,
+              currentWinrate,
+              swing,
+              hasAnalysis));
+    }
+    return moves;
+  }
+
+  private double resolveQuickOverviewWinrate(BoardHistoryNode node, double fallback) {
+    double wr = node.getData().winrate;
+    if (node.getData().getPlayouts() <= 0 || wr < 0) return fallback;
+    if (!node.getData().blackToPlay) return 100 - wr;
+    return wr;
+  }
+
+  private double resolveQuickOverviewSwing(
+      BoardHistoryNode node, double previousWinrate, double currentWinrate) {
+    if (node.previous().isPresent()) {
+      BoardHistoryNode previousNode = node.previous().get();
+      if (previousNode.nodeInfo != null
+          && previousNode.nodeInfo.moveNum == node.getData().moveNumber
+          && previousNode.nodeInfo.analyzed) {
+        return Math.abs(previousNode.nodeInfo.diffWinrate);
+      }
+    }
+    return Math.abs(currentWinrate - previousWinrate);
+  }
+
+  private QuickOverviewMove findQuickOverviewMove(
+      List<QuickOverviewMove> moves, BoardHistoryNode targetNode) {
+    if (targetNode == null) return null;
+    for (QuickOverviewMove move : moves) {
+      if (move.node == targetNode) return move;
+    }
+    return null;
+  }
+
+  private void drawQuickOverviewLabel(
+      Graphics2D g, QuickOverviewMove move, int x, int overviewY, int minX, int maxX) {
+    Font previousFont = g.getFont();
+    Font font =
+        new Font(Config.sysDefaultFontName, Font.BOLD, largeEnough ? Utils.zoomOut(11) : 11);
+    g.setFont(font);
+
+    String label =
+        String.format(
+            Locale.ENGLISH,
+            "#%d %s %.1f%% swing %.1f",
+            move.moveNumber,
+            move.moveName,
+            move.winrate,
+            move.swing);
+    FontMetrics metrics = g.getFontMetrics();
+    int paddingX = 6;
+    int paddingY = 4;
+    int labelWidth = metrics.stringWidth(label) + paddingX * 2;
+    int labelHeight = metrics.getAscent() + paddingY * 2;
+    int labelX = Math.max(minX, Math.min(x - labelWidth / 2, maxX - labelWidth));
+    int labelY = Math.max(origParams[1] + 2, overviewY - labelHeight - 4);
+
+    g.setColor(new Color(0, 0, 0, 210));
+    g.fillRoundRect(labelX, labelY, labelWidth, labelHeight, 10, 10);
+    g.setColor(new Color(255, 255, 255, 90));
+    g.drawRoundRect(labelX, labelY, labelWidth, labelHeight, 10, 10);
+    g.setColor(Color.WHITE);
+    g.drawString(label, labelX + paddingX, labelY + paddingY + metrics.getAscent() - 1);
+    g.setFont(previousFont);
+  }
+
+  private Color quickOverviewBarColor(double swing, double threshold, double swingScale) {
+    double severity =
+        Math.max(0.0, Math.min(1.0, (swing - threshold) / Math.max(1.0, swingScale - threshold)));
+    int red = 255;
+    int green = Math.max(70, (int) Math.round(176 - 96 * severity));
+    int blue = Math.max(36, (int) Math.round(84 - 48 * severity));
+    int alpha = Math.min(255, (int) Math.round(150 + 80 * severity));
+    return new Color(red, green, blue, alpha);
   }
 
   private double convertScoreLead(double coreMean) {

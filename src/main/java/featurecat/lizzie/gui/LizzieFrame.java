@@ -3533,13 +3533,6 @@ public class LizzieFrame extends JFrame {
       Utils.showMsg(Lizzie.resourceBundle.getString("LizzieFrame.openFileFailed.inGame"));
       return;
     }
-    final boolean shouldResumeAnalysisAfterLoad =
-        !Lizzie.board.isLoadingFile
-            && !isBatchAna
-            && !isEnginePKSgfStart
-            && !EngineManager.isEngineGame()
-            && !isPlayingAgainstLeelaz
-            && !isAnaPlayingAgainstLeelaz;
     boolean oriSound = Lizzie.config.playSound;
     canGoAfterload = false;
     Lizzie.config.playSound = false;
@@ -3585,27 +3578,36 @@ public class LizzieFrame extends JFrame {
     Lizzie.config.playSound = oriSound;
     fileNameTitle = file.getName();
     updateTitle();
+    scheduleResumeAnalysisAfterLoad(1000);
+  }
+
+  public void scheduleResumeAnalysisAfterLoad() {
+    scheduleResumeAnalysisAfterLoad(1000);
+  }
+
+  public void scheduleResumeAnalysisAfterLoad(int delayMillis) {
+    final int scheduleDelay = Math.max(0, delayMillis);
+    canGoAfterload = false;
     Runnable runnable =
         new Runnable() {
           public void run() {
             try {
-              Thread.sleep(1000);
+              if (scheduleDelay > 0) Thread.sleep(scheduleDelay);
             } catch (InterruptedException e) {
               Thread.currentThread().interrupt();
               return;
             }
             canGoAfterload = true;
-            if (shouldResumeAnalysisAfterLoad) {
-              SwingUtilities.invokeLater(
-                  new Runnable() {
-                    public void run() {
-                      resumeAnalysisAfterLoad();
-                    }
-                  });
-            }
+            SwingUtilities.invokeLater(
+                new Runnable() {
+                  public void run() {
+                    resumeAnalysisAfterLoad();
+                  }
+                });
           }
         };
-    Thread thread = new Thread(runnable);
+    Thread thread = new Thread(runnable, "lizzie-post-load-analysis");
+    thread.setDaemon(true);
     thread.start();
   }
 
@@ -7347,9 +7349,9 @@ public class LizzieFrame extends JFrame {
     if (!sgfContent.isEmpty() && SGFParser.isSGF(sgfContent)) {
       SGFParser.loadFromString(sgfContent);
       Lizzie.board.setMovelistAll();
-      if (Lizzie.leelaz.isPondering()) Lizzie.leelaz.ponder();
       Lizzie.frame.resetMovelistFrameandAnalysisFrame();
       Lizzie.frame.setVisible(true);
+      scheduleResumeAnalysisAfterLoad(200);
     }
   }
 
@@ -11536,29 +11538,37 @@ public class LizzieFrame extends JFrame {
   }
 
   public void flashAnalyzeGame(boolean isAllGame, boolean isAllBranches) {
-    Lizzie.config.analysisRecentIsPartGame = isAllGame;
-    Lizzie.config.analysisRecentIsAllBranches = isAllBranches;
+    flashAnalyzeGame(isAllGame, isAllBranches, false);
+  }
+
+  public void flashAnalyzeGame(boolean isAllGame, boolean isAllBranches, boolean silentAnalyze) {
+    if (!silentAnalyze) {
+      Lizzie.config.analysisRecentIsPartGame = isAllGame;
+      Lizzie.config.analysisRecentIsAllBranches = isAllBranches;
+    }
     if (analysisEngine == null
         || analysisEngine.useJavaSSH && analysisEngine.javaSSHClosed
         || (!analysisEngine.useJavaSSH
             && (analysisEngine.process == null || !analysisEngine.process.isAlive()))) {
       try {
         analysisEngine = new AnalysisEngine(false);
-        if (isAllBranches) analysisEngine.startRequestAllBranches();
+        if (isAllBranches) analysisEngine.startRequestAllBranches(!silentAnalyze);
         else
           analysisEngine.startRequest(
               isAllGame ? -1 : Lizzie.config.analysisStartMove,
-              isAllGame ? -1 : Lizzie.config.analysisEndMove);
+              isAllGame ? -1 : Lizzie.config.analysisEndMove,
+              !silentAnalyze);
       } catch (IOException e) {
         // TODO Auto-generated catch block
         e.printStackTrace();
       }
     } else {
-      if (isAllBranches) analysisEngine.startRequestAllBranches();
+      if (isAllBranches) analysisEngine.startRequestAllBranches(!silentAnalyze);
       else
         analysisEngine.startRequest(
             isAllGame ? -1 : Lizzie.config.analysisStartMove,
-            isAllGame ? -1 : Lizzie.config.analysisEndMove);
+            isAllGame ? -1 : Lizzie.config.analysisEndMove,
+            !silentAnalyze);
     }
   }
 
@@ -12175,8 +12185,30 @@ public class LizzieFrame extends JFrame {
         || isAnaPlayingAgainstLeelaz) {
       return;
     }
+    if (shouldAutoQuickAnalyzeLoadedGame()) {
+      flashAnalyzeGame(true, false, true);
+      return;
+    }
     Lizzie.leelaz.ponder();
     refresh();
+  }
+
+  private boolean shouldAutoQuickAnalyzeLoadedGame() {
+    if (!Lizzie.config.autoQuickAnalyzeOnLoad || isBatchAna || isEnginePKSgfStart || isTrying) {
+      return false;
+    }
+    BoardHistoryNode node = Lizzie.board.getHistory().getStart();
+    int mainTrunkMoves = 0;
+    int analyzedMoves = 0;
+    while (node.next().isPresent()) {
+      node = node.next().get();
+      if (!node.getData().lastMove.isPresent()) continue;
+      mainTrunkMoves++;
+      if (node.getData().getPlayouts() > 0 || node.getData().isKataData) {
+        analyzedMoves++;
+      }
+    }
+    return mainTrunkMoves > 0 && analyzedMoves < mainTrunkMoves;
   }
 
   public void tryToRefreshVariation() {

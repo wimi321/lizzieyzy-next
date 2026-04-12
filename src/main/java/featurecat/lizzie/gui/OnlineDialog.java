@@ -487,7 +487,7 @@ public class OnlineDialog extends JDialog {
         sgf = data;
         SGFParser.loadFromString(sgf);
         Lizzie.board.setMovelistAll();
-        if (Lizzie.leelaz.isPondering()) Lizzie.leelaz.ponder();
+        Lizzie.frame.scheduleResumeAnalysisAfterLoad(200);
         return;
       }
     }

@@ -77,6 +77,7 @@ public class SocketGetFile {
           SGFParser.loadFromString(sgfString);
           Lizzie.board.setMovelistAll();
           Lizzie.frame.setVisible(true);
+          Lizzie.frame.scheduleResumeAnalysisAfterLoad(200);
           Lizzie.frame.refresh();
         }
         if (str.startsWith("errorFileInfo")) {
