@@ -6,8 +6,10 @@ import featurecat.lizzie.gui.FloatBoard;
 import featurecat.lizzie.gui.LizzieFrame;
 import featurecat.lizzie.gui.SMessage;
 import featurecat.lizzie.rules.Board;
+import featurecat.lizzie.rules.BoardData;
 import featurecat.lizzie.rules.BoardHistoryNode;
 import featurecat.lizzie.rules.Stone;
+import featurecat.lizzie.rules.Zobrist;
 import featurecat.lizzie.util.Utils;
 import java.io.BufferedOutputStream;
 import java.io.File;
@@ -18,6 +20,7 @@ import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 
@@ -55,6 +58,7 @@ public class ReadBoard {
   private boolean hideFloadBoardBeforePlace = false;
   private boolean hideFromPlace = false;
   public boolean editMode = false;
+  private final SyncConflictTracker conflictTracker = new SyncConflictTracker();
 
   public ReadBoard(boolean usePipe, boolean isJavaReadBoard) throws Exception {
     this.usePipe = usePipe;
@@ -162,9 +166,7 @@ public class ReadBoard {
 
       if (usePipe) commands.add("0");
       else commands.add("1");
-      // if (Lizzie.config.isChinese)
       commands.add(Lizzie.resourceBundle.getString("ReadBoard.language"));
-      // else commands.add("1");
       if (usePipe) commands.add("-1");
       else commands.add(String.valueOf(port));
       ProcessBuilder processBuilder = new ProcessBuilder(commands);
@@ -173,7 +175,6 @@ public class ReadBoard {
       try {
         process = processBuilder.start();
       } catch (IOException e) {
-        // TODO Auto-generated catch block
         if (!usePipe) {
           Utils.showMsg(e.getLocalizedMessage());
           SMessage msg = new SMessage();
@@ -292,6 +293,7 @@ public class ReadBoard {
       tempcount = new ArrayList<Integer>();
     }
     if (line.startsWith("clear")) {
+      conflictTracker.clear();
       Lizzie.board.clear(false);
       Lizzie.frame.refresh();
     }
@@ -301,11 +303,14 @@ public class ReadBoard {
         int boardWidth = Integer.parseInt(params[1]);
         int boardHeight = Integer.parseInt(params[2]);
         if (boardWidth != Board.boardWidth || boardHeight != Board.boardHeight) {
+          conflictTracker.clear();
           Lizzie.board.reopen(boardWidth, boardHeight);
         } else {
+          conflictTracker.clear();
           Lizzie.board.clear(false);
         }
       } else {
+        conflictTracker.clear();
         Lizzie.board.clear(false);
       }
     }
@@ -329,6 +334,8 @@ public class ReadBoard {
     }
     if (line.startsWith("endsync")) {
       noMsg = true;
+      conflictTracker.clear();
+      tempcount = new ArrayList<Integer>();
       Lizzie.frame.syncBoard = false;
       if (Lizzie.frame.isAnaPlayingAgainstLeelaz) {
         Lizzie.frame.stopAiPlayingAndPolicy();
@@ -339,6 +346,8 @@ public class ReadBoard {
       }
     }
     if (line.startsWith("stopsync")) {
+      conflictTracker.clear();
+      tempcount = new ArrayList<Integer>();
       Lizzie.frame.syncBoard = false;
       if (Lizzie.frame.isAnaPlayingAgainstLeelaz) {
         Lizzie.frame.stopAiPlayingAndPolicy();
@@ -527,6 +536,7 @@ public class ReadBoard {
     //    }
     if (tempcount.size() > Board.boardWidth * Board.boardHeight) {
       tempcount = new ArrayList<Integer>();
+      conflictTracker.clear();
       return;
     }
     isSyncing = true;
@@ -539,6 +549,7 @@ public class ReadBoard {
     boolean isLastBlack = false;
     BoardHistoryNode node = Lizzie.board.getHistory().getCurrentHistoryNode();
     BoardHistoryNode node2 = Lizzie.board.getHistory().getMainEnd();
+    Stone[] syncStartStones = node2.getData().stones.clone();
     Stone[] stones = Lizzie.board.getHistory().getMainEnd().getData().stones;
 
     boolean needRefresh = false;
@@ -642,22 +653,30 @@ public class ReadBoard {
         }
       }
     }
-    if (!Lizzie.frame.bothSync && !needReSync) {
-      if (played
-          && !Lizzie.config.alwaysGotoLastOnLive
-          && !(showInBoard
-              && Lizzie.frame.floatBoard != null
-              && !Lizzie.frame.floatBoard.hideSuggestion)
-          && Lizzie.board.getHistory().getCurrentHistoryNode().previous().isPresent()
-          && node != node2) {
-        Lizzie.board.moveToAnyPosition(node);
+    if (!needReSync) {
+      applySyncViewState(played, node, node2);
+    }
+    if (needReSync && !isSecondTime) {
+      int[] snapshotCodes = getSnapshotCodes();
+      if (tryApplySingleMoveRecovery(node, node2, syncStartStones, snapshotCodes)) {
+        played = true;
+        needReSync = false;
+        needRefresh = true;
+      } else {
+        if (!played && !needRefresh) {
+          SyncConflictTracker.Decision conflictDecision = conflictTracker.evaluate(snapshotCodes);
+          if (conflictDecision == SyncConflictTracker.Decision.HOLD) {
+            isSyncing = false;
+            return;
+          }
+        }
+        conflictTracker.clear();
+        Lizzie.board.clear(false);
+        syncBoardStones(true);
       }
     }
-    if (editMode) Lizzie.board.moveToAnyPosition(node);
-    if (played) Lizzie.frame.renderVarTree(0, 0, false, false);
-    if (needReSync && !isSecondTime) {
-      Lizzie.board.clear(false);
-      syncBoardStones(true);
+    if (!needReSync) {
+      conflictTracker.clear();
     }
     if (played || needRefresh) {
       Lizzie.frame.refresh();
@@ -694,6 +713,111 @@ public class ReadBoard {
     //	    }
   }
 
+  private int[] getSnapshotCodes() {
+    int[] codes = new int[tempcount.size()];
+    for (int index = 0; index < tempcount.size(); index++) {
+      codes[index] = tempcount.get(index);
+    }
+    return codes;
+  }
+
+  private void restoreViewedNodeAfterSync(
+      boolean played, BoardHistoryNode currentNode, BoardHistoryNode syncEndNode) {
+    if (Lizzie.frame.bothSync
+        || !played
+        || Lizzie.config.alwaysGotoLastOnLive
+        || (showInBoard
+            && Lizzie.frame.floatBoard != null
+            && !Lizzie.frame.floatBoard.hideSuggestion)
+        || !Lizzie.board.getHistory().getCurrentHistoryNode().previous().isPresent()
+        || currentNode == syncEndNode) {
+      return;
+    }
+    Lizzie.board.moveToAnyPosition(currentNode);
+  }
+
+  private boolean tryApplySingleMoveRecovery(
+      BoardHistoryNode currentNode,
+      BoardHistoryNode syncStartNode,
+      Stone[] syncStartStones,
+      int[] snapshotCodes) {
+    SyncSnapshotClassifier classifier =
+        new SyncSnapshotClassifier(Board.boardWidth, Board.boardHeight);
+    Optional<SyncSnapshotClassifier.SingleMove> recoveredMove =
+        classifier.findSingleMoveCapture(syncStartStones, snapshotCodes);
+    if (!recoveredMove.isPresent()) {
+      return false;
+    }
+    SyncSnapshotClassifier.SingleMove move = recoveredMove.get();
+    if (!canApplySingleMoveRecovery(syncStartNode, move, snapshotCodes)) {
+      return false;
+    }
+    Lizzie.board.moveToAnyPosition(syncStartNode);
+    Lizzie.board.placeForSync(move.x, move.y, move.color, false);
+    if (Lizzie.config.alwaysSyncBoardStat || showInBoard) {
+      Lizzie.frame.lastMove();
+    }
+    applySyncViewState(true, currentNode, syncStartNode);
+    return true;
+  }
+
+  private void applySyncViewState(
+      boolean played, BoardHistoryNode currentNode, BoardHistoryNode syncEndNode) {
+    restoreViewedNodeAfterSync(played, currentNode, syncEndNode);
+    if (editMode) Lizzie.board.moveToAnyPosition(currentNode);
+    if (played) Lizzie.frame.renderVarTree(0, 0, false, false);
+  }
+
+  private boolean canApplySingleMoveRecovery(
+      BoardHistoryNode syncStartNode, SyncSnapshotClassifier.SingleMove move, int[] snapshotCodes) {
+    BoardData syncStartData = syncStartNode.getData();
+    Stone[] stones = syncStartData.stones.clone();
+    int moveIndex = Board.getIndex(move.x, move.y);
+    if (!stones[moveIndex].isEmpty()) {
+      return false;
+    }
+    Zobrist zobrist = syncStartData.zobrist.clone();
+    stones[moveIndex] = move.color;
+    zobrist.toggleStone(move.x, move.y, move.color);
+    int isSuicidal = 0;
+    if (!Lizzie.config.noCapture) {
+      Board.removeDeadChain(move.x + 1, move.y, move.color.opposite(), stones, zobrist);
+      Board.removeDeadChain(move.x, move.y + 1, move.color.opposite(), stones, zobrist);
+      Board.removeDeadChain(move.x - 1, move.y, move.color.opposite(), stones, zobrist);
+      Board.removeDeadChain(move.x, move.y - 1, move.color.opposite(), stones, zobrist);
+      isSuicidal = Board.removeDeadChain(move.x, move.y, move.color, stones, zobrist);
+    }
+    if (violatesRecoveryKo(syncStartNode, zobrist) || violatesRecoverySuicide(isSuicidal)) {
+      return false;
+    }
+    return !hasSnapshotDiff(stones, snapshotCodes);
+  }
+
+  private boolean violatesRecoveryKo(BoardHistoryNode syncStartNode, Zobrist zobrist) {
+    return syncStartNode
+        .previous()
+        .map(previousNode -> previousNode != null && zobrist.equals(previousNode.getData().zobrist))
+        .orElse(false);
+  }
+
+  private boolean violatesRecoverySuicide(int isSuicidal) {
+    if (Lizzie.leelaz.canSuicidal) {
+      return isSuicidal == 1;
+    }
+    return isSuicidal > 0;
+  }
+
+  private boolean hasSnapshotDiff(Stone[] stones, int[] snapshotCodes) {
+    for (int index = 0; index < snapshotCodes.length; index++) {
+      int y = index / Board.boardWidth;
+      int x = index % Board.boardWidth;
+      if (isStoneDiff(snapshotCodes[index], stones, x, y)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   private boolean isStoneDiff(int m, Stone[] stones, int x, int y) {
     // TODO Auto-generated method stub
     Stone stone = stones[Board.getIndex(x, y)];
@@ -720,6 +844,8 @@ public class ReadBoard {
 
   public void shutdown() {
     noMsg = true;
+    conflictTracker.clear();
+    tempcount = new ArrayList<Integer>();
     Lizzie.frame.syncBoard = false;
     Lizzie.frame.bothSync = false;
     this.sendCommand("quit");
