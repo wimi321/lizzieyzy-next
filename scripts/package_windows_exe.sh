@@ -123,6 +123,10 @@ copy_common_inputs() {
   cp "$JAR_PATH" "$input_dir/"
   cp README.md README_EN.md README_JA.md README_KO.md LICENSE.txt "$input_dir/"
   cp readme_cn.pdf readme_en.pdf "$input_dir/"
+  if [[ -d "$ROOT_DIR/src/main/resources/assets/readboard_java" ]]; then
+    mkdir -p "$input_dir/readboard_java"
+    cp -R "$ROOT_DIR/src/main/resources/assets/readboard_java/." "$input_dir/readboard_java/"
+  fi
 }
 
 copy_bundle_engine_assets() {
@@ -326,6 +330,7 @@ Download verification:
 
 What is bundled:
 - Windows release assets include a packaged Java runtime via jpackage.
+- The built-in Java readboard helper is included in `readboard_java/`.
 EOF
 
   if [[ "$has_with_katago" == "true" ]]; then

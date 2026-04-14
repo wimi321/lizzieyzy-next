@@ -5,7 +5,9 @@ import featurecat.lizzie.Lizzie;
 import featurecat.lizzie.analysis.EngineManager;
 import featurecat.lizzie.analysis.FastLink;
 import featurecat.lizzie.analysis.GameInfo;
+import featurecat.lizzie.analysis.ReadBoard;
 import featurecat.lizzie.theme.MorandiPalette;
+import featurecat.lizzie.theme.Theme;
 import featurecat.lizzie.util.Utils;
 import java.awt.Color;
 import java.awt.Component;
@@ -625,6 +627,40 @@ public class Menu extends JMenuBar {
           }
         });
     viewMenu.add(deletePersistFile);
+    viewMenu.addSeparator();
+
+    final JFontCheckBoxMenuItem toggleAppleStyle = new JFontCheckBoxMenuItem("Apple 风格 UI");
+    toggleAppleStyle.setSelected(Lizzie.config.isAppleStyle);
+    toggleAppleStyle.addActionListener(
+        e -> {
+          Lizzie.config.isAppleStyle = toggleAppleStyle.isSelected();
+          Lizzie.config.uiConfig.put("is-apple-style", Lizzie.config.isAppleStyle);
+          persistUiSettings();
+          Lizzie.frame.backgroundPaint = null;
+          Lizzie.frame.redrawBackgroundAnyway = true;
+          Lizzie.frame.repaint();
+          Lizzie.frame.refresh();
+        });
+    viewMenu.add(toggleAppleStyle);
+
+    final JFontMenuItem setCustomBoard = new JFontMenuItem("设置自定义棋盘背景...");
+    setCustomBoard.addActionListener(
+        e -> chooseAndApplyCustomImage(Theme.CUSTOM_BOARD_IMAGE_KEY, true));
+    viewMenu.add(setCustomBoard);
+
+    final JFontMenuItem clearCustomBoard = new JFontMenuItem("恢复默认棋盘背景");
+    clearCustomBoard.addActionListener(e -> clearCustomImage(Theme.CUSTOM_BOARD_IMAGE_KEY, true));
+    viewMenu.add(clearCustomBoard);
+
+    final JFontMenuItem setCustomBackground = new JFontMenuItem("设置自定义窗口背景...");
+    setCustomBackground.addActionListener(
+        e -> chooseAndApplyCustomImage(Theme.CUSTOM_BACKGROUND_IMAGE_KEY, false));
+    viewMenu.add(setCustomBackground);
+
+    final JFontMenuItem clearCustomBackground = new JFontMenuItem("恢复默认窗口背景");
+    clearCustomBackground.addActionListener(
+        e -> clearCustomImage(Theme.CUSTOM_BACKGROUND_IMAGE_KEY, false));
+    viewMenu.add(clearCustomBackground);
     viewMenu.addSeparator();
 
     final JFontCheckBoxMenuItem noMoveNum =
@@ -4013,7 +4049,7 @@ public class Menu extends JMenuBar {
 
     final JFontMenuItem readBoard =
         new JFontMenuItem(resourceBundle.getString("Menu.readBoard")); // ("棋盘识别工具(Alt+O)");
-    if (OS.isWindows()) live.add(readBoard);
+    if (OS.isWindows() && ReadBoard.isLegacyNativeReadBoardAvailable()) live.add(readBoard);
 
     readBoard.addActionListener(
         new ActionListener() {
@@ -6386,6 +6422,89 @@ public class Menu extends JMenuBar {
     if (Lizzie.readMode) {
       engineMenu2.setVisible(false);
       engineMenu.setVisible(false);
+    }
+  }
+
+  private void persistUiSettings() {
+    try {
+      Lizzie.config.save();
+    } catch (IOException ex) {
+      ex.printStackTrace();
+    }
+  }
+
+  private void chooseAndApplyCustomImage(String configKey, boolean boardSurface) {
+    JFileChooser fileChooser = new JFileChooser();
+    fileChooser.setFileSelectionMode(JFileChooser.FILES_ONLY);
+    if (fileChooser.showOpenDialog(Lizzie.frame) == JFileChooser.APPROVE_OPTION) {
+      File selectedFile = fileChooser.getSelectedFile();
+      if (selectedFile != null) {
+        applyCustomImage(configKey, selectedFile.getAbsolutePath(), boardSurface);
+      }
+    }
+  }
+
+  private void applyCustomImage(String configKey, String path, boolean boardSurface) {
+    if (path == null || path.trim().isEmpty()) {
+      return;
+    }
+    Lizzie.config.uiConfig.put(configKey, path.trim());
+    persistUiSettings();
+    refreshCustomBackgrounds(boardSurface, !boardSurface);
+  }
+
+  private void clearCustomImage(String configKey, boolean boardSurface) {
+    Lizzie.config.uiConfig.remove(configKey);
+    persistUiSettings();
+    refreshCustomBackgrounds(boardSurface, !boardSurface);
+  }
+
+  private void refreshCustomBackgrounds(boolean boardSurfaceChanged, boolean windowChanged) {
+    Lizzie.config.readThemeVaule(false);
+    if (boardSurfaceChanged) {
+      Lizzie.config.theme.clearBoardCache();
+      LizzieFrame.boardRenderer.clearBoardImageCache();
+      if (LizzieFrame.boardRenderer2 != null) {
+        LizzieFrame.boardRenderer2.clearBoardImageCache();
+      }
+      if (Lizzie.frame != null) {
+        if (Lizzie.frame.subBoardRenderer != null) {
+          Lizzie.frame.subBoardRenderer.clearBoardImageCache();
+        }
+        if (Lizzie.frame.subBoardRenderer2 != null) {
+          Lizzie.frame.subBoardRenderer2.clearBoardImageCache();
+        }
+        if (Lizzie.frame.subBoardRenderer3 != null) {
+          Lizzie.frame.subBoardRenderer3.clearBoardImageCache();
+        }
+        if (Lizzie.frame.subBoardRenderer4 != null) {
+          Lizzie.frame.subBoardRenderer4.clearBoardImageCache();
+        }
+        if (Lizzie.frame.independentMainBoard != null) {
+          Lizzie.frame.independentMainBoard.boardRenderer.clearBoardImageCache();
+        }
+        if (Lizzie.frame.independentSubBoard != null) {
+          Lizzie.frame.independentSubBoard.subBoardRenderer.clearBoardImageCache();
+        }
+        if (Lizzie.frame.floatBoard != null) {
+          Lizzie.frame.floatBoard.boardRenderer.clearBoardImageCache();
+        }
+      }
+    }
+    if (windowChanged) {
+      Lizzie.config.theme.clearBackgroundCache();
+      LizzieFrame.boardRenderer.clearWallpaperCache();
+      if (LizzieFrame.boardRenderer2 != null) {
+        LizzieFrame.boardRenderer2.clearWallpaperCache();
+      }
+    }
+    if (Lizzie.frame != null) {
+      if (windowChanged) {
+        Lizzie.frame.backgroundPaint = null;
+        Lizzie.frame.redrawBackgroundAnyway = true;
+      }
+      Lizzie.frame.refresh();
+      Lizzie.frame.repaint();
     }
   }
 

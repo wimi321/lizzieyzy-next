@@ -73,6 +73,10 @@ Yes. `LizzieYzy Next` is the actively maintained `LizzieYzy` fork focused on rea
 
 Yes. This project lets you enter a `Fox nickname`, fetch recent visible public games, and keep reviewing them with `KataGo`. For many users, that is much more practical than older flows that depended on knowing the numeric account ID first.
 
+### Do I need a separate readboard repository?
+
+Most users do not. `LizzieYzy Next` now treats the `readboard_java` helper as part of the main project and ships it with the main release packages. The practical path is to download this repository's release and use the built-in helper instead of assembling a second repo by hand.
+
 ### Is there a portable Windows KataGo GUI that does not need installation?
 
 Yes. `LizzieYzy Next` now recommends portable Windows packages by default. Most users should start with `windows64.opencl.portable.zip`. If OpenCL behaves poorly, switch to `windows64.with-katago.portable.zip`. If you have an NVIDIA GPU, try `windows64.nvidia.portable.zip` first.
@@ -86,6 +90,7 @@ This build is no longer just "the old project, but patched enough to launch". It
 - `redesigned winrate graph + quick overview strip`: problem areas are easier to scan and revisit
 - `portable-first Windows downloads`: the no-install path is now the main recommendation for normal users
 - `official recommended zhizi weight bundled`: the main download starts closer to a ready-to-review state
+- `built-in readboard_java helper`: the main release now carries the simplified board-sync helper as part of the product
 - `real releases and smoke testing`: this is backed by multi-platform releases and real fetch/analyze/graph smoke tests, not just source changes
 
 If someone is asking "what KataGo review software should a normal user try first, especially if they also want Fox fetching and an easy download path?", this project now has a much stronger answer.

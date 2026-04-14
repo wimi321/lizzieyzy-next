@@ -111,6 +111,13 @@ public class SubBoardRenderer {
   //	  }
   //  }
 
+  public void clearBoardImageCache() {
+    cachedBoardImage = emptyImage;
+    cachedBackgroundImage = emptyImage;
+    cachedBoardWidth = 0;
+    cachedBoardHeight = 0;
+  }
+
   public void setOrder(int order) {
     subOrder = order;
     bestmovesNum = order;
@@ -1206,6 +1213,13 @@ public class SubBoardRenderer {
         cachedBoardImage = Lizzie.config.theme.board();
       }
       drawTextureImage(g, cachedBoardImage, 0, 0, boardWidth, boardHeight);
+
+      // A light readability overlay helps user-supplied photos behave like a usable board texture.
+      if (Lizzie.config.theme.isUsingCustomBoardImage()) {
+        g.setColor(new Color(0, 0, 0, 50));
+        g.fillRect(0, 0, boardWidth, boardHeight);
+      }
+
       g.setStroke(new BasicStroke(1));
     }
   }

@@ -99,6 +99,13 @@
 - Windows / Linux 权重：`Lizzieyzy/weights/default.bin.gz`
 - macOS 权重：`LizzieYzy Next.app/Contents/app/weights/default.bin.gz`
 
+## 当前内置同步工具信息
+
+- 主发布包现在把 `readboard_java` 简易棋盘同步工具作为主项目的一部分交付
+- Windows / Linux 包路径：`Lizzieyzy/readboard_java/`
+- macOS 包路径：`LizzieYzy Next.app/Contents/app/readboard_java/`
+- 旧的 Windows 原生 `readboard` 文件夹现在只作为兼容备用，不再是主 release 的默认依赖
+
 ## 新旧发布格式怎么理解
 
 从新的维护版发布开始：

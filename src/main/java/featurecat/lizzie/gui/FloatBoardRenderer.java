@@ -115,6 +115,14 @@ public class FloatBoardRenderer {
   List<String> pvVistis;
   private int drawUnimportantSuggCount = 100;
   public boolean editMode = false;
+
+  public void clearBoardImageCache() {
+    cachedBoardImage = emptyImage;
+    cachedBackgroundImage = emptyImage;
+    cachedBoardWidth = 0;
+    cachedBoardHeight = 0;
+  }
+
   private boolean cachedEditMode = false;
 
   public FloatBoardRenderer() {}
@@ -2879,6 +2887,13 @@ public class FloatBoardRenderer {
       }
 
       drawTextureImage(g, cachedBoardImage, 0, 0, boardWidth, boardHeight, true);
+
+      // A light readability overlay helps user-supplied photos behave like a usable board texture.
+      if (Lizzie.config.theme.isUsingCustomBoardImage()) {
+        g.setColor(new Color(0, 0, 0, 50));
+        g.fillRect(0, 0, boardWidth, boardHeight);
+      }
+
       g.setStroke(new BasicStroke(1));
     }
   }

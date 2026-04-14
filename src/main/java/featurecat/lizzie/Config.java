@@ -58,6 +58,7 @@ public class Config {
   public boolean showSuggestionMaxRed = true;
   public boolean showStatus = true;
   public boolean isClassicMode = false;
+  public boolean isAppleStyle = false;
   // public boolean changedStatus = false;
   public boolean showBranch = true;
   public boolean showBestMoves = true;
@@ -969,6 +970,9 @@ public class Config {
 
   public boolean isShowingBlunderTabel = false;
   public boolean blunderTabelOnlyAfter = false;
+  public String problemListMetric = "winrate";
+  public String problemListSideFilter = "black";
+  public double problemListWinrateThreshold = 10.0;
   public boolean hideBlunderControlPane = false;
   public boolean allowCloseCommentControlHint = true;
 
@@ -1373,6 +1377,7 @@ public class Config {
     allowMoveNumber = uiConfig.optInt("allow-move-number", allowMoveNumber);
     newMoveNumberInBranch = uiConfig.optBoolean("new-move-number-in-branch", true);
     isClassicMode = uiConfig.optBoolean("is-classic-mode", false);
+    isAppleStyle = uiConfig.optBoolean("is-apple-style", false);
     showStatus = isClassicMode ? false : uiConfig.getBoolean("show-status");
     // changedStatus = uiConfig.optBoolean("changed-status", false);
     showBranch = uiConfig.getBoolean("show-leelaz-variation");
@@ -1460,6 +1465,9 @@ public class Config {
 
     isShowingBlunderTabel = uiConfig.optBoolean("is-showing-blunder-table", false);
     blunderTabelOnlyAfter = uiConfig.optBoolean("blunder-table-only-after", false);
+    problemListMetric = uiConfig.optString("problem-list-metric", "winrate");
+    problemListSideFilter = uiConfig.optString("problem-list-side-filter", "black");
+    problemListWinrateThreshold = uiConfig.optDouble("problem-list-winrate-threshold", 10.0);
     allowCloseCommentControlHint = uiConfig.optBoolean("allow-close-comment-control-hint", true);
     hideBlunderControlPane = uiConfig.optBoolean("hide-blunder-table-control-pane", false);
     blunderSortNumNAF = uiConfig.optInt("blunder-sort-num-NAF", 2);
@@ -2518,6 +2526,17 @@ public class Config {
     ui.put("show-next-moves", true);
     ui.put("show-subboard", true);
     ui.put("large-subboard", false);
+    ui.put("problem-list-metric", "winrate");
+    ui.put("problem-list-side-filter", "black");
+    ui.put("problem-list-winrate-threshold", 10.0);
+    ui.put("glass-panel-overlay-color", Theme.color2Array(new Color(24, 24, 26, 102)));
+    ui.put("glass-panel-border-color", Theme.color2Array(new Color(255, 255, 255, 26)));
+    ui.put("glass-panel-highlight-color", Theme.color2Array(new Color(255, 255, 255, 77)));
+    ui.put("glass-panel-shadow-color", Theme.color2Array(new Color(0, 0, 0, 64)));
+    ui.put("glass-accent-color", Theme.color2ArrayNoAlpha(new Color(96, 165, 250)));
+    ui.put("glass-blur-radius", 10);
+    ui.put("liquid-blur-radius", 15);
+    ui.put("glass-corner-radius", 12);
     ui.put("win-rate-always-black", false);
     ui.put("confirm-exit", false);
     ui.put("resume-previous-game", false);
@@ -2528,6 +2547,7 @@ public class Config {
     // ui.put("min-playout-ratio-for-stats", 0.0);
     ui.put("theme", "default");
     ui.put("only-last-move-number", 1);
+    ui.put("is-apple-style", false);
     ui.put("new-move-number-in-branch", true);
     ui.put("append-winrate-to-comment", true);
     ui.put("replay-branch-interval-seconds", 0.9);

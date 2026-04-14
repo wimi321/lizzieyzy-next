@@ -5,11 +5,14 @@ import static java.io.File.separator;
 import featurecat.lizzie.Lizzie;
 import featurecat.lizzie.util.Utils;
 import java.awt.Color;
+import java.awt.Graphics2D;
+import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.OutputStreamWriter;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -26,6 +29,9 @@ import org.json.JSONTokener;
 
 /** Theme Allow to load the external image & theme config */
 public class Theme {
+  public static final String CUSTOM_BOARD_IMAGE_KEY = "custom-board-image";
+  public static final String CUSTOM_BACKGROUND_IMAGE_KEY = "custom-window-background-image";
+
   BufferedImage blackStoneCached = null;
   BufferedImage whiteStoneCached = null;
   BufferedImage boardCached = null;
@@ -61,7 +67,7 @@ public class Theme {
   }
 
   public String backgroundPath() {
-    return getImagePathByKey("background-image");
+    return getEffectiveImagePath(CUSTOM_BACKGROUND_IMAGE_KEY, "background-image");
   }
 
   public int stoneIndicatorType() {
@@ -78,7 +84,7 @@ public class Theme {
   }
 
   public String boardPath() {
-    return getImagePathByKey("board-image");
+    return getEffectiveImagePath(CUSTOM_BOARD_IMAGE_KEY, "board-image");
   }
 
   public Color pureBoardColor() {
@@ -107,11 +113,12 @@ public class Theme {
   }
 
   public String boardImageString() {
-    return this.path + config.optString("oard-image", "board.png");
+    return getEffectiveImageString(CUSTOM_BOARD_IMAGE_KEY, "board-image", "board.png");
   }
 
   public String backgroundImageString() {
-    return this.path + config.optString("background-image", "background.png");
+    return getEffectiveImageString(
+        CUSTOM_BACKGROUND_IMAGE_KEY, "background-image", "background.png");
   }
 
   public String whiteStoneImageString() {
@@ -125,6 +132,9 @@ public class Theme {
   public BufferedImage blackStone() {
     if (blackStoneCached == null) {
       blackStoneCached = getImageByKey("black-stone-image", "black.png", "black0.png");
+      if (blackStoneCached == null) {
+        blackStoneCached = createStoneFallback(new Color(30, 30, 30), new Color(0, 0, 0, 180));
+      }
     }
     return blackStoneCached;
   }
@@ -132,22 +142,53 @@ public class Theme {
   public BufferedImage whiteStone() {
     if (whiteStoneCached == null) {
       whiteStoneCached = getImageByKey("white-stone-image", "white.png", "white0.png");
+      if (whiteStoneCached == null) {
+        whiteStoneCached =
+            createStoneFallback(new Color(245, 245, 245), new Color(180, 180, 180, 220));
+      }
     }
     return whiteStoneCached;
   }
 
   public BufferedImage board() {
     if (boardCached == null) {
-      boardCached = getImageByKey("board-image", "board.png", "board.png");
+      boardCached =
+          getImageByKeyWithOverride(
+              CUSTOM_BOARD_IMAGE_KEY, "board-image", "board.png", "board.png");
+      if (boardCached == null) {
+        boardCached = createSolidFallbackImage(128, 128, new Color(217, 152, 77));
+      }
     }
     return boardCached;
   }
 
+  public void clearBoardCache() {
+    boardCached = null;
+  }
+
   public BufferedImage background() {
     if (backgroundCached == null) {
-      backgroundCached = getImageByKey("background-image", "background.png", "background.jpg");
+      backgroundCached =
+          getImageByKeyWithOverride(
+              CUSTOM_BACKGROUND_IMAGE_KEY, "background-image", "background.png", "background.jpg");
+      if (backgroundCached == null) {
+        backgroundCached = createSolidFallbackImage(128, 128, new Color(38, 38, 42));
+      }
     }
     return backgroundCached;
+  }
+
+  public void clearBackgroundCache() {
+    backgroundCached = null;
+  }
+
+  public boolean isUsingCustomBoardImage() {
+    return hasReadableConfiguredImage(getUiImagePath(CUSTOM_BOARD_IMAGE_KEY), Theme.pathPrefix);
+  }
+
+  public boolean isUsingCustomBackgroundImage() {
+    return hasReadableConfiguredImage(
+        getUiImagePath(CUSTOM_BACKGROUND_IMAGE_KEY), Theme.pathPrefix);
   }
 
   /** Use custom font for general text */
@@ -351,28 +392,138 @@ public class Theme {
 
   private BufferedImage getImageByKey(String key, String defaultValue, String defaultImg) {
     BufferedImage image = null;
-    String p = this.path + config.optString(key, defaultValue);
     try {
-      image = ImageIO.read(new File(p));
+      image = readConfiguredImage(config.optString(key, defaultValue), this.path);
     } catch (IOException e) {
+      image = null;
+    }
+    if (image == null) {
       try {
-        p = Theme.pathPrefix + uiConfig.optString(key, defaultValue);
-        image = ImageIO.read(new File(p));
+        image = readConfiguredImage(uiConfig.optString(key, defaultValue), Theme.pathPrefix);
       } catch (IOException e1) {
-        try {
-          image = ImageIO.read(getClass().getResourceAsStream("/assets/" + defaultImg));
-        } catch (IOException e2) {
-          e2.printStackTrace();
-        }
+        image = null;
       }
     }
+    if (image == null) {
+      try (InputStream stream = getClass().getResourceAsStream("/assets/" + defaultImg)) {
+        if (stream != null) {
+          image = ImageIO.read(stream);
+        }
+      } catch (IOException | IllegalArgumentException e2) {
+        e2.printStackTrace();
+      }
+    }
+    return image;
+  }
+
+  private BufferedImage getImageByKeyWithOverride(
+      String overrideKey, String key, String defaultValue, String defaultImg) {
+    BufferedImage image = null;
+    try {
+      image = readConfiguredImage(getUiImagePath(overrideKey), Theme.pathPrefix);
+    } catch (IOException e) {
+      image = null;
+    }
+    if (image != null) {
+      return image;
+    }
+    return getImageByKey(key, defaultValue, defaultImg);
+  }
+
+  private String getUiImagePath(String key) {
+    return uiConfig == null ? "" : uiConfig.optString(key, "").trim();
+  }
+
+  private String getEffectiveImagePath(String overrideKey, String key) {
+    String overridePath = getUiImagePath(overrideKey);
+    if (!overridePath.isEmpty()) {
+      return overridePath;
+    }
+    return getImagePathByKey(key);
+  }
+
+  private String getEffectiveImageString(String overrideKey, String key, String defaultValue) {
+    String overridePath = getUiImagePath(overrideKey);
+    if (!overridePath.isEmpty()) {
+      return normalizeImagePath(overridePath, Theme.pathPrefix);
+    }
+    if (config.has(key)) {
+      return normalizeImagePath(config.optString(key, defaultValue), this.path);
+    }
+    if (uiConfig != null && uiConfig.has(key)) {
+      return normalizeImagePath(uiConfig.optString(key, defaultValue), Theme.pathPrefix);
+    }
+    return normalizeImagePath(defaultValue, this.path);
+  }
+
+  private String normalizeImagePath(String configuredPath, String basePath) {
+    if (configuredPath == null || configuredPath.trim().isEmpty()) {
+      return "";
+    }
+    File file = new File(configuredPath);
+    if (file.isAbsolute()) {
+      return file.getPath();
+    }
+    return basePath + configuredPath;
+  }
+
+  private BufferedImage readConfiguredImage(String configuredPath, String basePath)
+      throws IOException {
+    File file = resolveConfiguredFile(configuredPath, basePath);
+    if (!file.canRead()) {
+      return null;
+    }
+    return ImageIO.read(file);
+  }
+
+  private File resolveConfiguredFile(String configuredPath, String basePath) {
+    if (configuredPath == null || configuredPath.trim().isEmpty()) {
+      return new File("");
+    }
+    File file = new File(configuredPath);
+    if (!file.isAbsolute()) {
+      file = new File(basePath + configuredPath);
+    }
+    return file;
+  }
+
+  private boolean hasReadableConfiguredImage(String configuredPath, String basePath) {
+    File file = resolveConfiguredFile(configuredPath, basePath);
+    return file.canRead();
+  }
+
+  private BufferedImage createSolidFallbackImage(int width, int height, Color color) {
+    BufferedImage image = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
+    Graphics2D g = image.createGraphics();
+    g.setColor(color);
+    g.fillRect(0, 0, width, height);
+    g.dispose();
+    return image;
+  }
+
+  private BufferedImage createStoneFallback(Color fill, Color outline) {
+    int size = 200;
+    BufferedImage image = new BufferedImage(size, size, BufferedImage.TYPE_INT_ARGB);
+    Graphics2D g = image.createGraphics();
+    g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+    g.setColor(fill);
+    g.fillOval(8, 8, size - 16, size - 16);
+    g.setColor(outline);
+    g.drawOval(8, 8, size - 17, size - 17);
+    g.dispose();
     return image;
   }
 
   public void save() {
     try {
       File file = new File(this.path + this.configFile);
-      file.createNewFile();
+      File parent = file.getParentFile();
+      if (parent != null && !parent.exists()) {
+        parent.mkdirs();
+      }
+      if (!file.exists()) {
+        file.createNewFile();
+      }
 
       try (FileOutputStream fp = new FileOutputStream(file);
           OutputStreamWriter writer = new OutputStreamWriter(fp)) {
@@ -482,5 +633,37 @@ public class Theme {
   public Color morandiControlsBorder() {
     if (!Lizzie.config.useMorandiColors) return null;
     return MorandiPalette.CONTROLS_BORDER;
+  }
+
+  public Color glassPanelOverlayColor() {
+    return getColorByKey("glass-panel-overlay-color", new Color(24, 24, 26, 102));
+  }
+
+  public Color glassPanelBorderColor() {
+    return getColorByKey("glass-panel-border-color", new Color(255, 255, 255, 26));
+  }
+
+  public Color glassPanelHighlightColor() {
+    return getColorByKey("glass-panel-highlight-color", new Color(255, 255, 255, 77));
+  }
+
+  public Color glassPanelShadowColor() {
+    return getColorByKey("glass-panel-shadow-color", new Color(0, 0, 0, 64));
+  }
+
+  public Color glassAccentColor() {
+    return getColorByKey("glass-accent-color", new Color(96, 165, 250));
+  }
+
+  public int glassBlurRadius() {
+    return Math.max(0, getIntByKey("glass-blur-radius", 10));
+  }
+
+  public int liquidBlurRadius() {
+    return Math.max(0, getIntByKey("liquid-blur-radius", 15));
+  }
+
+  public int glassCornerRadius() {
+    return Math.max(4, getIntByKey("glass-corner-radius", 12));
   }
 }

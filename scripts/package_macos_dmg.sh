@@ -76,6 +76,10 @@ mkdir -p "$INPUT_DIR" "$APP_IMAGE_DIR" "$DMG_DIR" "$META_DIR"
 cp "$JAR_PATH" "$INPUT_DIR/"
 cp README.md README_EN.md README_JA.md README_KO.md LICENSE.txt "$INPUT_DIR/"
 cp readme_cn.pdf readme_en.pdf "$INPUT_DIR/"
+if [[ -d "$ROOT_DIR/src/main/resources/assets/readboard_java" ]]; then
+  mkdir -p "$INPUT_DIR/readboard_java"
+  cp -R "$ROOT_DIR/src/main/resources/assets/readboard_java/." "$INPUT_DIR/readboard_java/"
+fi
 copy_bundle_engine_assets
 
 APP_NAME="LizzieYzy Next"
@@ -150,6 +154,7 @@ Bundled KataGo paths inside the app bundle:
 Notes:
 - This package is unsigned and not notarized.
 - For Intel/Apple Silicon dual-native support, build once on each architecture.
+- The built-in Java readboard helper is included in `LizzieYzy Next.app/Contents/app/readboard_java/`.
 EOF
 
 write_sha256_file "$SHA256_FILE" "$FINAL_DMG" "$INSTALL_NOTE"

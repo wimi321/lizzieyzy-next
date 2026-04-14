@@ -134,7 +134,7 @@ public class AnalysisEngine {
       List<String> launchCommands =
           KataGoRuntimeHelper.prepareBundledLaunchCommand(commands, engineExecutable);
       ProcessBuilder processBuilder = new ProcessBuilder(launchCommands);
-      CommandLaunchHelper.applyWorkingDirectory(processBuilder, launchSpec);
+      CommandLaunchHelper.configureProcessBuilder(processBuilder, launchSpec);
       KataGoRuntimeHelper.configureBundledProcessBuilder(processBuilder, engineExecutable);
       processBuilder.redirectErrorStream(true);
       try {
@@ -267,7 +267,9 @@ public class AnalysisEngine {
               MoveData.getPlayouts(moves));
 
     node.getData().comment = SGFParser.formatComment(node);
+    Lizzie.board.updateMovelist(node);
     resultCount++;
+    Lizzie.frame.requestProblemListRefresh();
     if (waitFrame != null) {
       waitFrame.setProgress(resultCount, analyzeMap.size());
     } else if (silentProgress && (resultCount == 1 || resultCount % 8 == 0)) {
@@ -288,6 +290,7 @@ public class AnalysisEngine {
     if (Lizzie.board.getHistory().getCurrentHistoryNode() == Lizzie.board.getHistory().getStart())
       Lizzie.board.nextMove(true);
     Lizzie.frame.refresh();
+    Lizzie.frame.requestProblemListRefresh();
     if (Lizzie.config.analysisAutoQuit && !Lizzie.frame.isBatchAna) {
       normalQuit();
     }
@@ -302,6 +305,7 @@ public class AnalysisEngine {
     isNormalEnd = true;
     if (this.useJavaSSH) this.javaSSH.close();
     else this.process.destroyForcibly();
+    Lizzie.frame.requestProblemListRefresh();
   }
 
   public void startRequestAllBranches() {
@@ -331,6 +335,7 @@ public class AnalysisEngine {
       }
     }
     if (analyzeMap.size() > 0) {
+      Lizzie.frame.requestProblemListRefresh();
       if (showProgressDialog) {
         waitFrame = new WaitForAnalysis();
         if (Lizzie.config.analysisEnginePreLoad) waitFrame.setProgress(0, analyzeMap.size());
@@ -380,6 +385,7 @@ public class AnalysisEngine {
     }
     if (startAnalyze) sendRequest(node);
     if (analyzeMap.size() > 0) {
+      Lizzie.frame.requestProblemListRefresh();
       if (showProgressDialog) {
         waitFrame = new WaitForAnalysis();
         if (Lizzie.config.analysisEnginePreLoad) waitFrame.setProgress(0, analyzeMap.size());
@@ -477,5 +483,9 @@ public class AnalysisEngine {
     } catch (Exception e) {
       e.printStackTrace();
     }
+  }
+
+  public synchronized boolean isAnalysisInProgress() {
+    return analyzeMap.size() > 0 && resultCount < analyzeMap.size();
   }
 }

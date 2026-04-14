@@ -118,6 +118,15 @@ copy_bundle_runtime_assets() {
   cp -R "$ROOT_DIR/runtime/$platform_dir" "$app_dir/runtime/"
 }
 
+copy_desktop_helper_assets() {
+  local app_dir="$1"
+
+  if [[ -d "$ROOT_DIR/src/main/resources/assets/readboard_java" ]]; then
+    mkdir -p "$app_dir/readboard_java"
+    cp -R "$ROOT_DIR/src/main/resources/assets/readboard_java/." "$app_dir/readboard_java/"
+  fi
+}
+
 write_linux_install_note() {
   local asset_path="$1"
   local flavor="$2"
@@ -164,6 +173,7 @@ Notes:
 - If your desktop environment does not start the app on double-click, launch it from the terminal first.
 - Fox kifu sync supports entering a Fox nickname directly.
 - If nickname search succeeds, the app also shows the matched nickname and account number in the results.
+- The built-in Java readboard helper is included in `Lizzieyzy/readboard_java/`.
 EOF
 }
 
@@ -180,6 +190,7 @@ make_bundle() {
   mkdir -p "$app"
   cp "$JAR_PATH" "$app/"
   cp LICENSE.txt README.md README_EN.md README_JA.md README_KO.md readme_cn.pdf readme_en.pdf "$app/"
+  copy_desktop_helper_assets "$app"
   copy_bundle_engine_assets "$app" "$engine_platforms"
   copy_bundle_runtime_assets "$app" "$runtime_platform"
 

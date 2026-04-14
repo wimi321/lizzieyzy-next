@@ -3,6 +3,7 @@ package featurecat.lizzie.gui;
 import featurecat.lizzie.Config;
 import featurecat.lizzie.Lizzie;
 import featurecat.lizzie.analysis.EngineManager;
+import featurecat.lizzie.analysis.ReadBoard;
 import featurecat.lizzie.rules.BoardHistoryNode;
 import featurecat.lizzie.rules.Movelist;
 import featurecat.lizzie.rules.SGFParser;
@@ -819,7 +820,7 @@ public class BottomToolbar extends JPanel {
             Lizzie.frame.openBoardSync();
           }
         });
-    if (OS.isWindows()) yike.add(syncBoard);
+    if (OS.isWindows() && ReadBoard.isLegacyNativeReadBoardAvailable()) yike.add(syncBoard);
 
     autoPlay.addActionListener(
         new ActionListener() {

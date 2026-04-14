@@ -3,6 +3,7 @@ package featurecat.lizzie.gui;
 import static java.awt.image.BufferedImage.TYPE_INT_ARGB;
 
 import com.jhlabs.image.GaussianFilter;
+import featurecat.lizzie.Lizzie;
 import featurecat.lizzie.theme.MorandiPalette;
 import java.awt.BasicStroke;
 import java.awt.Color;
@@ -21,11 +22,10 @@ public class GlassEffectRenderer {
     LIQUID
   }
 
-  private static GaussianFilter glassBlurFilter = new GaussianFilter(10);
-  private static GaussianFilter liquidBlurFilter = new GaussianFilter(15);
-
   private static long lastHighlightTime = 0;
   private static float highlightPhase = 0f;
+  private static Integer glassBlurRadiusOverride = null;
+  private static Integer liquidBlurRadiusOverride = null;
 
   public static void drawGlassPanel(
       Graphics2D g,
@@ -72,30 +72,23 @@ public class GlassEffectRenderer {
 
     BufferedImage blurred = new BufferedImage(srcW, srcH, TYPE_INT_ARGB);
 
-    if (level == GlassLevel.LIQUID) {
-      liquidBlurFilter.filter(blurSource, blurred);
-    } else {
-      glassBlurFilter.filter(blurSource, blurred);
-    }
+    GaussianFilter blurFilter =
+        new GaussianFilter(level == GlassLevel.LIQUID ? liquidBlurRadius() : glassBlurRadius());
+    blurFilter.filter(blurSource, blurred);
 
     g.drawImage(blurred, vx, vy, vw, vh, null);
 
-    Color overlayColor = MorandiPalette.GLASS_OVERLAY;
+    Color overlayColor = glassPanelOverlayColor();
     g.setColor(overlayColor);
     g.fillRoundRect(vx, vy, vw, vh, cornerRadius, cornerRadius);
 
-    g.setColor(MorandiPalette.GLASS_BORDER);
+    g.setColor(glassPanelBorderColor());
     g.setStroke(new BasicStroke(1f));
     g.drawRoundRect(vx, vy, vw, vh, cornerRadius, cornerRadius);
 
     GradientPaint topLight =
         new GradientPaint(
-            vx,
-            vy,
-            MorandiPalette.GLASS_HIGHLIGHT,
-            vx,
-            vy + vh * 0.3f,
-            new Color(255, 255, 255, 0));
+            vx, vy, glassPanelHighlightColor(), vx, vy + vh * 0.3f, new Color(255, 255, 255, 0));
     Paint oldPaint = g.getPaint();
     g.setPaint(topLight);
     g.fillRoundRect(vx + 1, vy + 1, vw - 2, vh / 3, cornerRadius, cornerRadius);
@@ -115,6 +108,42 @@ public class GlassEffectRenderer {
       int vh,
       GlassLevel level) {
     drawGlassPanel(g, cachedBackground, vx, vy, vw, vh, level, 16);
+  }
+
+  private static int glassBlurRadius() {
+    if (glassBlurRadiusOverride != null) {
+      return glassBlurRadiusOverride;
+    }
+    return Lizzie.config != null && Lizzie.config.theme != null
+        ? Lizzie.config.theme.glassBlurRadius()
+        : 10;
+  }
+
+  private static int liquidBlurRadius() {
+    if (liquidBlurRadiusOverride != null) {
+      return liquidBlurRadiusOverride;
+    }
+    return Lizzie.config != null && Lizzie.config.theme != null
+        ? Lizzie.config.theme.liquidBlurRadius()
+        : 15;
+  }
+
+  private static Color glassPanelOverlayColor() {
+    return Lizzie.config != null && Lizzie.config.theme != null
+        ? Lizzie.config.theme.glassPanelOverlayColor()
+        : MorandiPalette.GLASS_OVERLAY;
+  }
+
+  private static Color glassPanelBorderColor() {
+    return Lizzie.config != null && Lizzie.config.theme != null
+        ? Lizzie.config.theme.glassPanelBorderColor()
+        : MorandiPalette.GLASS_BORDER;
+  }
+
+  private static Color glassPanelHighlightColor() {
+    return Lizzie.config != null && Lizzie.config.theme != null
+        ? Lizzie.config.theme.glassPanelHighlightColor()
+        : MorandiPalette.GLASS_HIGHLIGHT;
   }
 
   private static void drawLiquidEffects(
@@ -265,10 +294,10 @@ public class GlassEffectRenderer {
   }
 
   public static void setGlassBlurRadius(int radius) {
-    glassBlurFilter = new GaussianFilter(Math.max(radius, 5));
+    glassBlurRadiusOverride = Math.max(radius, 5);
   }
 
   public static void setLiquidBlurRadius(int radius) {
-    liquidBlurFilter = new GaussianFilter(Math.max(radius, 10));
+    liquidBlurRadiusOverride = Math.max(radius, 10);
   }
 }

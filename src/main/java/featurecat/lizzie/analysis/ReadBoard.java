@@ -22,6 +22,12 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 
 public class ReadBoard {
+  public static boolean isLegacyNativeReadBoardAvailable() {
+    File readBoardDir = new File("readboard");
+    return new File(readBoardDir, "readboard.exe").canRead()
+        || new File(readBoardDir, "readboard.bat").canRead();
+  }
+
   public Process process;
   private InputStreamReader inputStream;
   private BufferedOutputStream outputStream;

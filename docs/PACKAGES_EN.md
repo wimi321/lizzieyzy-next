@@ -93,6 +93,13 @@ Paths:
 - Windows / Linux bundles: `Lizzieyzy/weights/default.bin.gz`
 - macOS bundles: `LizzieYzy Next.app/Contents/app/weights/default.bin.gz`
 
+## Bundled Board Sync Helper
+
+- Main release packages now ship the simplified `readboard_java` helper as part of the main product
+- Windows / Linux path: `Lizzieyzy/readboard_java/`
+- macOS path: `LizzieYzy Next.app/Contents/app/readboard_java/`
+- The older Windows-native `readboard` folder is now treated as a legacy compatibility path, not the main release dependency
+
 ## How To Read Old Versus New Release Layouts
 
 From the new maintained releases onward:
