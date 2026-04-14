@@ -6,8 +6,10 @@ import featurecat.lizzie.gui.FloatBoard;
 import featurecat.lizzie.gui.LizzieFrame;
 import featurecat.lizzie.gui.SMessage;
 import featurecat.lizzie.rules.Board;
+import featurecat.lizzie.rules.BoardData;
 import featurecat.lizzie.rules.BoardHistoryNode;
 import featurecat.lizzie.rules.Stone;
+import featurecat.lizzie.rules.Zobrist;
 import featurecat.lizzie.util.Utils;
 import java.io.BufferedOutputStream;
 import java.io.File;
@@ -750,11 +752,11 @@ public class ReadBoard {
       return false;
     }
     SyncSnapshotClassifier.SingleMove move = recoveredMove.get();
-    Lizzie.board.moveToAnyPosition(syncStartNode);
-    Lizzie.board.placeForSync(move.x, move.y, move.color, false);
-    if (hasSnapshotDiff(Lizzie.board.getHistory().getMainEnd().getData().stones, snapshotCodes)) {
+    if (!canApplySingleMoveRecovery(syncStartNode, move, snapshotCodes)) {
       return false;
     }
+    Lizzie.board.moveToAnyPosition(syncStartNode);
+    Lizzie.board.placeForSync(move.x, move.y, move.color, false);
     if (Lizzie.config.alwaysSyncBoardStat || showInBoard) {
       Lizzie.frame.lastMove();
     }
@@ -762,6 +764,45 @@ public class ReadBoard {
     if (editMode) Lizzie.board.moveToAnyPosition(currentNode);
     Lizzie.frame.renderVarTree(0, 0, false, false);
     return true;
+  }
+
+  private boolean canApplySingleMoveRecovery(
+      BoardHistoryNode syncStartNode, SyncSnapshotClassifier.SingleMove move, int[] snapshotCodes) {
+    BoardData syncStartData = syncStartNode.getData();
+    Stone[] stones = syncStartData.stones.clone();
+    int moveIndex = Board.getIndex(move.x, move.y);
+    if (!stones[moveIndex].isEmpty()) {
+      return false;
+    }
+    Zobrist zobrist = syncStartData.zobrist.clone();
+    stones[moveIndex] = move.color;
+    zobrist.toggleStone(move.x, move.y, move.color);
+    int isSuicidal = 0;
+    if (!Lizzie.config.noCapture) {
+      Board.removeDeadChain(move.x + 1, move.y, move.color.opposite(), stones, zobrist);
+      Board.removeDeadChain(move.x, move.y + 1, move.color.opposite(), stones, zobrist);
+      Board.removeDeadChain(move.x - 1, move.y, move.color.opposite(), stones, zobrist);
+      Board.removeDeadChain(move.x, move.y - 1, move.color.opposite(), stones, zobrist);
+      isSuicidal = Board.removeDeadChain(move.x, move.y, move.color, stones, zobrist);
+    }
+    if (violatesRecoveryKo(syncStartNode, zobrist) || violatesRecoverySuicide(isSuicidal)) {
+      return false;
+    }
+    return !hasSnapshotDiff(stones, snapshotCodes);
+  }
+
+  private boolean violatesRecoveryKo(BoardHistoryNode syncStartNode, Zobrist zobrist) {
+    return syncStartNode
+        .previous()
+        .map(previousNode -> previousNode != null && zobrist.equals(previousNode.getData().zobrist))
+        .orElse(false);
+  }
+
+  private boolean violatesRecoverySuicide(int isSuicidal) {
+    if (Lizzie.leelaz.canSuicidal) {
+      return isSuicidal == 1;
+    }
+    return isSuicidal > 0;
   }
 
   private boolean hasSnapshotDiff(Stone[] stones, int[] snapshotCodes) {
