@@ -654,10 +654,8 @@ public class ReadBoard {
       }
     }
     if (!needReSync) {
-      restoreViewedNodeAfterSync(played, node, node2);
+      applySyncViewState(played, node, node2);
     }
-    if (editMode) Lizzie.board.moveToAnyPosition(node);
-    if (played) Lizzie.frame.renderVarTree(0, 0, false, false);
     if (needReSync && !isSecondTime) {
       int[] snapshotCodes = getSnapshotCodes();
       if (tryApplySingleMoveRecovery(node, node2, syncStartStones, snapshotCodes)) {
@@ -760,10 +758,15 @@ public class ReadBoard {
     if (Lizzie.config.alwaysSyncBoardStat || showInBoard) {
       Lizzie.frame.lastMove();
     }
-    restoreViewedNodeAfterSync(true, currentNode, syncStartNode);
-    if (editMode) Lizzie.board.moveToAnyPosition(currentNode);
-    Lizzie.frame.renderVarTree(0, 0, false, false);
+    applySyncViewState(true, currentNode, syncStartNode);
     return true;
+  }
+
+  private void applySyncViewState(
+      boolean played, BoardHistoryNode currentNode, BoardHistoryNode syncEndNode) {
+    restoreViewedNodeAfterSync(played, currentNode, syncEndNode);
+    if (editMode) Lizzie.board.moveToAnyPosition(currentNode);
+    if (played) Lizzie.frame.renderVarTree(0, 0, false, false);
   }
 
   private boolean canApplySingleMoveRecovery(
