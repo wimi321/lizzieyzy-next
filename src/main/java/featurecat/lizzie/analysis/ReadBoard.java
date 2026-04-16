@@ -66,6 +66,10 @@ public class ReadBoard {
   public boolean editMode = false;
   private final SyncConflictTracker conflictTracker = new SyncConflictTracker();
 
+  private SyncSnapshotRebuildPolicy rebuildPolicy() {
+    return new SyncSnapshotRebuildPolicy(Board.boardWidth);
+  }
+
   public ReadBoard(boolean usePipe, boolean isJavaReadBoard) throws Exception {
     this.usePipe = usePipe;
     this.javaReadBoard = isJavaReadBoard;
@@ -670,6 +674,13 @@ public class ReadBoard {
         needRefresh = true;
       } else {
         if (!played && !needRefresh) {
+          if (rebuildPolicy().shouldRebuildImmediately(node2, snapshotCodes)) {
+            conflictTracker.clear();
+            Lizzie.board.clear(false);
+            syncBoardStones(true);
+            isSyncing = false;
+            return;
+          }
           SyncConflictTracker.Decision conflictDecision = conflictTracker.evaluate(snapshotCodes);
           if (conflictDecision == SyncConflictTracker.Decision.HOLD) {
             isSyncing = false;
