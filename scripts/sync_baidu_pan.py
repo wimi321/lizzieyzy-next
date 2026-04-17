@@ -593,6 +593,24 @@ def collect_existing_paths_by_name(
     ]
 
 
+def map_items_by_name(items: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    return {
+        item['server_filename']: item
+        for item in items
+        if item.get('server_filename') and item.get('path')
+    }
+
+
+def item_size(item: dict[str, Any] | None) -> int | None:
+    if not item:
+        return None
+    size = item.get('size')
+    try:
+        return int(size)
+    except (TypeError, ValueError):
+        return None
+
+
 def normalize_remote_file_path(base_dir: str, filename: str) -> str:
     path = f'{base_dir}/{quote(filename, safe=".-_() ")}'
     return path.replace('%20', ' ')
@@ -664,17 +682,43 @@ def main() -> int:
     ]
     client.delete_paths(latest_delete_paths)
 
-    replace_asset_names = {asset.name for asset in assets}
-    history_replace_paths = collect_existing_paths_by_name(
-        client.list_dir(history_dir), replace_asset_names
-    )
-    latest_replace_paths = collect_existing_paths_by_name(latest_items, allowed_latest_names)
-    client.delete_paths(history_replace_paths)
-    client.delete_paths(latest_replace_paths)
+    history_items = client.list_dir(history_dir)
+    history_items_by_name = map_items_by_name(history_items)
+    latest_items_by_name = map_items_by_name(latest_items)
 
     for asset in assets:
         history_path = normalize_remote_file_path(history_dir, asset.name)
         latest_path = normalize_remote_file_path(latest_dir, asset.name)
+        history_item = history_items_by_name.get(asset.name)
+        latest_item = latest_items_by_name.get(asset.name)
+        history_matches = item_size(history_item) == asset.size
+        latest_matches = item_size(latest_item) == asset.size
+
+        if history_matches and latest_matches:
+            print(f'Skipping existing mirrored asset: {asset.name}')
+            continue
+
+        if history_matches:
+            if latest_item and not latest_matches:
+                client.delete_paths([latest_item['path']])
+            print(f'Copying existing history asset to latest: {asset.name}')
+            client.copy_path(history_path, latest_dir, Path(latest_path).name)
+            continue
+
+        if latest_matches:
+            if history_item and not history_matches:
+                client.delete_paths([history_item['path']])
+            print(f'Backfilling history from existing latest asset: {asset.name}')
+            client.copy_path(latest_path, history_dir, Path(history_path).name)
+            continue
+
+        delete_paths: list[str] = []
+        if history_item:
+            delete_paths.append(history_item['path'])
+        if latest_item:
+            delete_paths.append(latest_item['path'])
+        client.delete_paths(delete_paths)
+
         print(f'Uploading history copy: {asset.name}')
         client.upload_asset(asset, history_path)
         print(f'Copying to latest: {asset.name}')
