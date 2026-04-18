@@ -22,10 +22,17 @@
 <p align="center">
   <a href="https://github.com/wimi321/lizzieyzy-next/releases"><strong>下载发布包</strong></a>
   ·
+  <a href="https://pan.baidu.com/s/1wthaL8YwGMxy_u0U7Mabpw?pwd=3i8w"><strong>百度网盘下载</strong></a>
+  ·
   <a href="docs/INSTALL.md"><strong>安装说明</strong></a>
   ·
   <a href="docs/TROUBLESHOOTING.md"><strong>常见问题</strong></a>
 </p>
+
+> [!NOTE]
+> 国内用户可直接使用公开百度网盘下载：
+> [https://pan.baidu.com/s/1wthaL8YwGMxy_u0U7Mabpw?pwd=3i8w](https://pan.baidu.com/s/1wthaL8YwGMxy_u0U7Mabpw?pwd=3i8w)
+> 提取码：`3i8w`
 
 > [!TIP]
 > 项目讨论 QQ 群：`299419120`

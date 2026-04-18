@@ -22,10 +22,17 @@
 <p align="center">
   <a href="https://github.com/wimi321/lizzieyzy-next/releases"><strong>Releases</strong></a>
   ·
+  <a href="https://pan.baidu.com/s/1wthaL8YwGMxy_u0U7Mabpw?pwd=3i8w"><strong>Baidu 다운로드</strong></a>
+  ·
   <a href="docs/INSTALL_KO.md"><strong>설치 가이드</strong></a>
   ·
   <a href="docs/TROUBLESHOOTING_EN.md"><strong>문제 해결</strong></a>
 </p>
+
+> [!NOTE]
+> 중국 본토 사용자라면 공개 Baidu Netdisk 다운로드도 바로 사용할 수 있습니다:
+> [https://pan.baidu.com/s/1wthaL8YwGMxy_u0U7Mabpw?pwd=3i8w](https://pan.baidu.com/s/1wthaL8YwGMxy_u0U7Mabpw?pwd=3i8w)
+> 추출 코드: `3i8w`
 
 > [!TIP]
 > 중국어 QQ 그룹: `299419120`
