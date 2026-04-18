@@ -14,8 +14,8 @@
 </p>
 
 <p align="center">
-  <strong>LizzieYzy Next is the actively maintained LizzieYzy fork and a practical KataGo review GUI for normal users.</strong><br/>
-  The goal is simple: easier downloads, less setup friction, working Fox fetching again, and faster mistake finding during review.<br/>
+  <strong>LizzieYzy Next is the actively maintained LizzieYzy fork and a practical KataGo review GUI for everyday players.</strong><br/>
+  It focuses on the parts that actually affect the user experience: easier package selection, less painful first launch, Fox fetching that works again, and a whole-game view that is easier to read at a glance.<br/>
   <strong>Download it, enter a Fox nickname, fetch recent public games, run fast full-game analysis, and use the redesigned winrate graph plus quick overview strip to jump to the key moves faster.</strong>
 </p>
 
@@ -30,10 +30,10 @@
 > [!TIP]
 > Chinese QQ group: `299419120`
 >
-> It is the fastest place for day-to-day user feedback, bug reports, and maintenance discussion.
+> It is the fastest place for day-to-day user feedback, bug reports, and feature discussion.
 
 > [!IMPORTANT]
-> If you only read one section, remember these 6 points:
+> If you only want the shortest possible answer, remember these 6 points:
 > - Most Windows users should go to [Releases](https://github.com/wimi321/lizzieyzy-next/releases) and download `*windows64.opencl.portable.zip`
 > - If your PC has an NVIDIA GPU and you want more speed, download `*windows64.nvidia.portable.zip`
 > - If OpenCL behaves badly on your PC, switch to `*windows64.with-katago.portable.zip`
@@ -41,13 +41,13 @@
 > - The main bundles include KataGo `v1.16.4` and the official recommended `zhizi` weight `kata1-zhizi-b28c512nbt-muonfd2.bin.gz`
 > - Main release packages now ship the `readboard_java` helper, so most users do not need a separate readboard repository
 
-## What This Project Is
+## Why Many Users Start Here
 
 `LizzieYzy Next` is:
 
-- a practical `KataGo review software` project
-- an actively maintained `LizzieYzy replacement / maintained fork`
-- a desktop tool that bundles `Fox fetching + KataGo analysis + portable builds + a default weight`
+- an actively maintained `KataGo review desktop app`
+- a practical workflow that combines `Fox fetching + fast whole-game analysis + multi-platform release packages`
+- the maintained branch that makes it easier for long-time `lizzieyzy` users to keep going without rebuilding their setup
 
 If you are searching for these things, this is the project to check first:
 
@@ -57,7 +57,7 @@ If you are searching for these things, this is the project to check first:
 - `Fox game fetch + KataGo review`
 - `portable Windows Go AI review tool`
 
-## What It Can Do Right Now
+## What You Can Do Right Away
 
 | What you want | How the project handles it now |
 | --- | --- |
@@ -98,7 +98,7 @@ Quick rule:
 - Mac: choose Apple Silicon or Intel first
 - Linux: choose `*linux64.with-katago.zip`
 
-## Why This Build Deserves To Be Recommended First
+## Why This Build Fits Real Users Better
 
 - `Fox fetching works again`
   Users can enter the Fox nickname they already know instead of hunting for the numeric ID first.
@@ -177,18 +177,22 @@ Usually no. The app now supports fast full-game analysis, so the main graph and 
 
 The current macOS builds are still unsigned and not notarized. If macOS blocks the app the first time, follow the steps in [Installation Guide](docs/INSTALL_EN.md).
 
-## Docs And Community
+## User Docs
 
 - [Installation Guide](docs/INSTALL_EN.md)
 - [Package Overview](docs/PACKAGES_EN.md)
 - [Troubleshooting](docs/TROUBLESHOOTING_EN.md)
 - [Tested Platforms](docs/TESTED_PLATFORMS.md)
+- [GitHub Releases](https://github.com/wimi321/lizzieyzy-next/releases)
+- GitHub Discussions: <https://github.com/wimi321/lizzieyzy-next/discussions>
+- Chinese QQ group: `299419120`
+
+## Project Links
+
 - [Roadmap](ROADMAP.md)
 - [Contributing](CONTRIBUTING.md)
 - [Changelog](CHANGELOG.md)
 - [Support](SUPPORT.md)
-- GitHub Discussions: <https://github.com/wimi321/lizzieyzy-next/discussions>
-- Chinese QQ group: `299419120`
 
 ## Credits
 
