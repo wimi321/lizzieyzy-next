@@ -14,9 +14,9 @@
 </p>
 
 <p align="center">
-  <strong>LizzieYzy Next 是当前仍在维护的 lizzieyzy 维护版，也是一个面向普通用户的 KataGo 围棋复盘 GUI。</strong><br/>
-  这个项目现在只做几件最重要的事：下载更好选、首次启动更省心、野狐抓谱继续可用、复盘时更快看出问题手。<br/>
-  <strong>下载安装，输入野狐昵称，就能抓最近公开棋谱、做快速全盘分析，并用新版胜率图和底部快速概览更快定位关键手。</strong>
+  <strong>LizzieYzy Next 是当前仍在维护的 lizzieyzy 维护版，也是一个面向普通棋友的 KataGo 围棋复盘 GUI。</strong><br/>
+  它把真正影响体验的几件事重新打磨了一遍：更好选的下载包、更省心的首次启动、继续可用的野狐抓谱，以及更容易看懂的整盘分析视角。<br/>
+  <strong>下载安装，输入野狐昵称，抓最近公开棋谱，跑快速全盘分析，再用新版胜率图和底部快速概览快速定位关键手。</strong>
 </p>
 
 <p align="center">
@@ -27,22 +27,13 @@
   <a href="docs/TROUBLESHOOTING.md"><strong>常见问题</strong></a>
 </p>
 
-> [!NOTE]
-> 国内用户现在可以直接走固定百度网盘镜像：
->
-> - 百度网盘国内下载：[https://pan.baidu.com/s/1wthaL8YwGMxy_u0U7Mabpw?pwd=3i8w](https://pan.baidu.com/s/1wthaL8YwGMxy_u0U7Mabpw?pwd=3i8w)
-> - 提取码：`3i8w`
-> - 镜像内容：当前主推的 2 个 Windows 免安装包
->
-> 维护方式和同步说明见 [百度网盘镜像维护说明](docs/BAIDU_PAN_MIRROR.md)。
-
 > [!TIP]
 > 项目讨论 QQ 群：`299419120`
 >
-> 欢迎交流使用问题、反馈 bug、讨论功能，或者一起继续维护这个项目。
+> 欢迎交流使用问题、反馈 bug、分享使用体验，或者讨论接下来最想加的功能。
 
 > [!IMPORTANT]
-> 如果你只看首页，先记住这 6 句：
+> 如果你只想先下对版本，先记住这 6 句：
 > - Windows 大多数用户：到 [Releases](https://github.com/wimi321/lizzieyzy-next/releases) 下载 `*windows64.opencl.portable.zip`
 > - 如果你的电脑有 NVIDIA 显卡并且想更快：下载 `*windows64.nvidia.portable.zip`
 > - 如果 OpenCL 在你的电脑上不稳定：下载 `*windows64.with-katago.portable.zip`
@@ -50,15 +41,15 @@
 > - 主推荐整合包已内置 KataGo `v1.16.4` 和官方推荐 `zhizi` 权重 `kata1-zhizi-b28c512nbt-muonfd2.bin.gz`
 > - 主发布包已内置 `readboard_java`，多数用户不需要再单独找 readboard 仓库
 
-## 这是什么项目
+## 为什么很多用户会直接选它
 
 `LizzieYzy Next` 可以直接理解成：
 
-- 一个面向普通用户的 `KataGo 围棋复盘软件`
-- 一个还在持续维护的 `lizzieyzy 维护版 / 替代项目`
-- 一个把 `野狐抓谱 + KataGo 分析 + 免安装发布包 + 默认权重` 整合到一起的桌面工具
+- 一套还在持续维护的 `KataGo 围棋复盘桌面工具`
+- 一条把 `野狐抓谱 + 快速全盘分析 + 多平台发布包` 串起来的实用工作流
+- 一个让老 `lizzieyzy` 用户更容易继续用下去的维护分支
 
-如果你在找的是这些东西，这个项目就应该优先看：
+如果你正在找这些东西，这个项目应该优先看：
 
 - `KataGo 围棋复盘软件`
 - `KataGo GUI`
@@ -66,7 +57,7 @@
 - `野狐棋谱抓取 + KataGo 复盘`
 - `Windows 免安装围棋 AI 复盘工具`
 
-## 现在已经能做什么
+## 你打开后马上能做什么
 
 | 你想做什么 | 这个项目现在怎么解决 |
 | --- | --- |
@@ -107,7 +98,7 @@
 - Mac：先分清 Apple Silicon 还是 Intel
 - Linux：直接下 `*linux64.with-katago.zip`
 
-## 为什么这一版现在值得优先看
+## 为什么这一版更适合普通用户
 
 - `野狐抓谱能继续用`
   现在支持直接输入野狐昵称，普通用户不用先查数字账号。
@@ -186,19 +177,21 @@
 
 当前 macOS 包还没有做签名和公证。第一次被系统拦住时，按 [安装说明](docs/INSTALL.md) 里的步骤点“仍要打开”即可。
 
-## 文档与交流
+## 用户文档
 
 - [安装说明](docs/INSTALL.md)
 - [发布包说明](docs/PACKAGES.md)
 - [常见问题与排错](docs/TROUBLESHOOTING.md)
 - [已验证平台](docs/TESTED_PLATFORMS.md)
-- [百度网盘镜像维护说明](docs/BAIDU_PAN_MIRROR.md)
+- [GitHub Releases](https://github.com/wimi321/lizzieyzy-next/releases)
+- GitHub Discussions: <https://github.com/wimi321/lizzieyzy-next/discussions>
+- QQ 群：`299419120`
+
+## 项目链接
 - [项目路线图](ROADMAP.md)
 - [参与贡献](CONTRIBUTING.md)
 - [更新日志](CHANGELOG.md)
 - [Support](SUPPORT.md)
-- GitHub Discussions: <https://github.com/wimi321/lizzieyzy-next/discussions>
-- QQ 群：`299419120`
 
 ## 致谢
 
