@@ -27,6 +27,15 @@
   <a href="docs/TROUBLESHOOTING.md"><strong>常见问题</strong></a>
 </p>
 
+> [!NOTE]
+> 国内用户现在可以直接走固定百度网盘镜像：
+>
+> - 百度网盘国内下载：[https://pan.baidu.com/s/1wthaL8YwGMxy_u0U7Mabpw?pwd=3i8w](https://pan.baidu.com/s/1wthaL8YwGMxy_u0U7Mabpw?pwd=3i8w)
+> - 提取码：`3i8w`
+> - 镜像内容：当前主推的 2 个 Windows 免安装包
+>
+> 维护方式和同步说明见 [百度网盘镜像维护说明](docs/BAIDU_PAN_MIRROR.md)。
+
 > [!TIP]
 > 项目讨论 QQ 群：`299419120`
 >
@@ -183,6 +192,7 @@
 - [发布包说明](docs/PACKAGES.md)
 - [常见问题与排错](docs/TROUBLESHOOTING.md)
 - [已验证平台](docs/TESTED_PLATFORMS.md)
+- [百度网盘镜像维护说明](docs/BAIDU_PAN_MIRROR.md)
 - [项目路线图](ROADMAP.md)
 - [参与贡献](CONTRIBUTING.md)
 - [更新日志](CHANGELOG.md)

@@ -27,6 +27,15 @@
   <a href="docs/TROUBLESHOOTING_EN.md"><strong>トラブル対応</strong></a>
 </p>
 
+> [!NOTE]
+> 中国向けの固定ミラーは公開済みです。
+>
+> - Baidu Netdisk: [https://pan.baidu.com/s/1wthaL8YwGMxy_u0U7Mabpw?pwd=3i8w](https://pan.baidu.com/s/1wthaL8YwGMxy_u0U7Mabpw?pwd=3i8w)
+> - 取り出しコード: `3i8w`
+> - ミラー対象: 主な Windows 非インストール版 2 本
+>
+> 運用メモ: [Baidu mirror doc](docs/BAIDU_PAN_MIRROR.md)。
+
 > [!TIP]
 > 中国語 QQ グループ: `299419120`
 >
@@ -183,6 +192,7 @@
 - [Package Overview](docs/PACKAGES_EN.md)
 - [Troubleshooting](docs/TROUBLESHOOTING_EN.md)
 - [Tested Platforms](docs/TESTED_PLATFORMS.md)
+- [Baidu mirror notes](docs/BAIDU_PAN_MIRROR.md)
 - [Roadmap](ROADMAP.md)
 - [Contributing](CONTRIBUTING.md)
 - [Changelog](CHANGELOG.md)

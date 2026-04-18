@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import subprocess
 import sys
@@ -192,12 +193,33 @@ def build_release_notes(asset_map: dict[str, str | None], bundle: dict[str, str]
     model_source = bundle['model_source']
     windows_opencl_bundle = bundle['windows_opencl_bundle']
     windows_nvidia_bundle = bundle['windows_nvidia_bundle']
+    china_mirror_url = os.getenv('CHINA_MIRROR_URL', '').strip()
+    china_mirror_code = os.getenv('CHINA_MIRROR_CODE', '').strip()
+
+    mirror_cn = ''
+    mirror_other = ''
+    if china_mirror_url:
+        mirror_cn = '\n'.join(
+            [
+                '### 国内高速下载（百度网盘）',
+                '',
+                f'- 分享链接：[{china_mirror_url}]({china_mirror_url})',
+                f'- 提取码：`{china_mirror_code or "请联系维护者补充"}`',
+                '',
+            ]
+        )
+        mirror_other = (
+            f'- China mirror: [Baidu Netdisk]({china_mirror_url})'
+            + (f' (code: `{china_mirror_code}`)' if china_mirror_code else '')
+        )
 
     return f"""# LizzieYzy Next
 
 ## 中文
 
 这是当前仍在维护的 `lizzieyzy` 维护版，也是一个面向普通用户的 `KataGo 围棋复盘 GUI`。这一版继续把最常用的链路做实：野狐棋谱重新能抓、Windows 免安装包更好选、KataGo 更容易开箱即用。下载安装后，直接输入 **野狐昵称**，就能继续抓最近公开棋谱、分析和复盘。
+
+{mirror_cn}
 
 ### 下载前先看这几句
 
@@ -249,6 +271,7 @@ def build_release_notes(asset_map: dict[str, str | None], bundle: dict[str, str]
 
 This is the actively maintained `LizzieYzy` fork and a practical `KataGo review GUI` for normal users. Fox game fetching works again, portable Windows downloads are easier to choose, and first launch needs less manual setup.
 
+{mirror_other}
 - Windows first choice: {windows_opencl_portable_en} for the recommended no-install OpenCL build
 - Windows CPU fallback: {windows_portable_en}
 - Windows NVIDIA choice: {windows_nvidia_portable_en}
@@ -274,6 +297,7 @@ This is the actively maintained `LizzieYzy` fork and a practical `KataGo review 
 
 このリリースは、現在も保守されている `lizzieyzy` の保守版であり、普通の利用者向けの `KataGo 復盤 GUI` でもあります。壊れていた野狐棋譜取得を復旧し、ダウンロード後すぐ使いやすい形に整えています。
 
+{mirror_other}
 - Windows 利用者の多くは {windows_opencl_portable_en} を選べば始めやすいです
 - OpenCL の相性が悪い場合は {windows_portable_en} を代わりに選べます
 - NVIDIA GPU を使っていて、より速い解析を求める場合は {windows_nvidia_portable_en} を選べます
@@ -291,6 +315,7 @@ This is the actively maintained `LizzieYzy` fork and a practical `KataGo review 
 
 이 릴리스는 지금도 유지보수 중인 `lizzieyzy` 유지보수판이자, 일반 사용자를 위한 `KataGo 복기 GUI` 입니다. 고장난 Fox 공개 기보 가져오기를 복구하고, 다운로드 후 바로 쓰기 쉬운 형태로 정리했습니다.
 
+{mirror_other}
 - 대부분의 Windows 사용자는 {windows_opencl_portable_en} 를 먼저 받으면 가장 쉽습니다
 - OpenCL 이 잘 맞지 않는 PC 라면 {windows_portable_en} 를 대신 고를 수 있습니다
 - NVIDIA 그래픽카드가 있고 더 빠른 분석을 원하면 {windows_nvidia_portable_en} 를 고를 수 있습니다

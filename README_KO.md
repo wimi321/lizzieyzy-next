@@ -27,6 +27,15 @@
   <a href="docs/TROUBLESHOOTING_EN.md"><strong>문제 해결</strong></a>
 </p>
 
+> [!NOTE]
+> 중국용 고정 미러가 이제 공개되어 있습니다.
+>
+> - Baidu Netdisk: [https://pan.baidu.com/s/1wthaL8YwGMxy_u0U7Mabpw?pwd=3i8w](https://pan.baidu.com/s/1wthaL8YwGMxy_u0U7Mabpw?pwd=3i8w)
+> - 추출 코드: `3i8w`
+> - 미러 범위: 대표 Windows 무설치 패키지 2종
+>
+> 운영 문서: [Baidu mirror doc](docs/BAIDU_PAN_MIRROR.md).
+
 > [!TIP]
 > 중국어 QQ 그룹: `299419120`
 >
@@ -183,6 +192,7 @@
 - [Package Overview](docs/PACKAGES_EN.md)
 - [Troubleshooting](docs/TROUBLESHOOTING_EN.md)
 - [Tested Platforms](docs/TESTED_PLATFORMS.md)
+- [Baidu mirror notes](docs/BAIDU_PAN_MIRROR.md)
 - [Roadmap](ROADMAP.md)
 - [Contributing](CONTRIBUTING.md)
 - [Changelog](CHANGELOG.md)

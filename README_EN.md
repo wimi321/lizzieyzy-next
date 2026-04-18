@@ -27,6 +27,15 @@
   <a href="docs/TROUBLESHOOTING_EN.md"><strong>Troubleshooting</strong></a>
 </p>
 
+> [!NOTE]
+> China mirror is now live:
+>
+> - Baidu Netdisk: [https://pan.baidu.com/s/1wthaL8YwGMxy_u0U7Mabpw?pwd=3i8w](https://pan.baidu.com/s/1wthaL8YwGMxy_u0U7Mabpw?pwd=3i8w)
+> - Extraction code: `3i8w`
+> - Mirror scope: the 2 primary Windows portable packages
+>
+> Maintenance notes: [Baidu mirror doc](docs/BAIDU_PAN_MIRROR.md).
+
 > [!TIP]
 > Chinese QQ group: `299419120`
 >
@@ -183,6 +192,7 @@ The current macOS builds are still unsigned and not notarized. If macOS blocks t
 - [Package Overview](docs/PACKAGES_EN.md)
 - [Troubleshooting](docs/TROUBLESHOOTING_EN.md)
 - [Tested Platforms](docs/TESTED_PLATFORMS.md)
+- [Baidu Mirror Notes](docs/BAIDU_PAN_MIRROR.md)
 - [Roadmap](ROADMAP.md)
 - [Contributing](CONTRIBUTING.md)
 - [Changelog](CHANGELOG.md)
