@@ -87,13 +87,19 @@ jobs:
           grep -q "Smart Optimize" "$note_file"
           grep -q "first launch should work offline" "$note_file"
           test -f "dist/windows/input-with-katago/engines/katago/windows-x64/katago.exe"
+          test -f "dist/windows/input-with-katago/PROJECT_INFO.txt"
           grep -Eq '^Windows bundle: katago-v[0-9.]+-eigen-windows-x64\.zip$' "dist/windows/input-with-katago/engines/katago/VERSION.txt"
           test -f "dist/windows/input-opencl/engines/katago/windows-x64/katago.exe"
+          test -f "dist/windows/input-opencl/PROJECT_INFO.txt"
           grep -Eq '^Windows OpenCL bundle: katago-v[0-9.]+-opencl-windows-x64\.zip$' "dist/windows/input-opencl/engines/katago/VERSION.txt"
           test -f "dist/windows/app-image-with-katago/LizzieYzy Next/LizzieYzy Next.exe"
+          test -f "dist/windows/app-image-with-katago/LizzieYzy Next/app/PROJECT_INFO.txt"
           test -f "dist/windows/app-image-opencl/LizzieYzy Next OpenCL/LizzieYzy Next OpenCL.exe"
+          test -f "dist/windows/app-image-opencl/LizzieYzy Next OpenCL/app/PROJECT_INFO.txt"
           test -f "dist/windows/app-image-nvidia/LizzieYzy Next NVIDIA/LizzieYzy Next NVIDIA.exe"
+          test -f "dist/windows/app-image-nvidia/LizzieYzy Next NVIDIA/app/PROJECT_INFO.txt"
           test -f "dist/windows/input-nvidia/engines/katago/windows-x64/katago.exe"
+          test -f "dist/windows/input-nvidia/PROJECT_INFO.txt"
           test -f "dist/windows/input-nvidia/engines/katago/windows-x64/cudart64_12.dll"
           test -f "dist/windows/input-nvidia/engines/katago/windows-x64/cublas64_12.dll"
           test -f "dist/windows/input-nvidia/engines/katago/windows-x64/cublasLt64_12.dll"
@@ -108,6 +114,8 @@ jobs:
           test -f "dist/windows/app-image-nvidia/LizzieYzy Next NVIDIA/app/engines/katago/windows-x64/cudnn64_8.dll"
           test -f "dist/windows/app-image-nvidia/LizzieYzy Next NVIDIA/app/engines/katago/windows-x64/libz.dll"
           find "dist/windows/app-image-nvidia/LizzieYzy Next NVIDIA/app/engines/katago/windows-x64" -maxdepth 1 -type f -name 'nvJitLink*.dll' | grep -q .
+          test -f "dist/windows/input-without.engine/PROJECT_INFO.txt"
+          test -f "dist/windows/app-image-without.engine/LizzieYzy Next/app/PROJECT_INFO.txt"
 
       - name: Smoke test bundled Windows app image
         shell: powershell
@@ -155,3 +163,20 @@ jobs:
             dist/release/*windows64*.portable.zip \
             --repo "${{ github.repository }}" \
             --clobber
+
+      - name: Sync public Windows portable assets to Baidu Netdisk mirror
+        shell: bash
+        env:
+          BAIDU_APP_KEY: ${{ secrets.BAIDU_APP_KEY }}
+          BAIDU_APP_SECRET: ${{ secrets.BAIDU_APP_SECRET }}
+          BAIDU_REFRESH_TOKEN: ${{ secrets.BAIDU_REFRESH_TOKEN }}
+          BAIDU_ACCESS_TOKEN: ${{ secrets.BAIDU_ACCESS_TOKEN }}
+          BAIDU_SHARE_URL: ${{ secrets.BAIDU_SHARE_URL }}
+          BAIDU_SHARE_CODE: ${{ secrets.BAIDU_SHARE_CODE }}
+          BAIDU_REMOTE_ROOT: ${{ secrets.BAIDU_REMOTE_ROOT }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          python scripts/sync_baidu_pan.py \
+            --local-release-dir dist/release \
+            --release-tag "${{ inputs.release_tag }}" \
+            --date-tag "${{ inputs.date_tag }}"

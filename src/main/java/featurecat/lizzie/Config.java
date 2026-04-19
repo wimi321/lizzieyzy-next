@@ -148,6 +148,7 @@ public class Config {
   private String configFilename = WORK_DIR + File.separator + "config.txt";
   private String persistFilename = WORK_DIR + File.separator + "persist";
   private String saveBoardFilename = WORK_DIR + File.separator + "save" + File.separator + "save";
+  private final File runtimeWorkDirectoryOverride;
 
   public Theme theme;
   public float winrateStrokeWidth = 1.7f;
@@ -1328,7 +1329,17 @@ public class Config {
     }
   }
 
+  static Config createForTests(File runtimeWorkDirectory) {
+    return new Config(runtimeWorkDirectory);
+  }
+
+  private Config(File runtimeWorkDirectory) {
+    this.runtimeWorkDirectoryOverride =
+        Objects.requireNonNull(runtimeWorkDirectory, "runtimeWorkDirectory").getAbsoluteFile();
+  }
+
   public Config() throws IOException {
+    this.runtimeWorkDirectoryOverride = null;
     JSONObject defaultConfig = createDefaultConfig();
     JSONObject persistConfig = createPersistConfig();
     JSONObject saveBoardConf = createSaveBoardConfig();
@@ -3001,7 +3012,14 @@ public class Config {
   }
 
   public File getRuntimeWorkDirectory() {
-    File runtimeDir = new File(WORK_DIR, RUNTIME_WORK_DIR).getAbsoluteFile();
+    File runtimeDir = runtimeWorkDirectoryOverride;
+    if (runtimeDir == null) {
+      runtimeDir = new File(WORK_DIR, RUNTIME_WORK_DIR).getAbsoluteFile();
+    }
+    return ensureRuntimeWorkDirectory(runtimeDir);
+  }
+
+  private File ensureRuntimeWorkDirectory(File runtimeDir) {
     if (!runtimeDir.exists()) {
       runtimeDir.mkdirs();
     }

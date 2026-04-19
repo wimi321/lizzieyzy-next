@@ -1,8 +1,14 @@
 blank_issues_enabled: false
 contact_links:
+  - name: Support Guide
+    url: https://github.com/wimi321/lizzieyzy-next/blob/main/SUPPORT.md
+    about: Find the right path for downloads, install help, package selection, bug reports, and Discussions.
   - name: Project Discussions
     url: https://github.com/wimi321/lizzieyzy-next/discussions
     about: Ask questions, share ideas, or discuss packaging and user workflows.
+  - name: Package Guide
+    url: https://github.com/wimi321/lizzieyzy-next/blob/main/docs/PACKAGES.md
+    about: See which Windows, macOS, or Linux package you should download first.
   - name: Installation Guide
     url: https://github.com/wimi321/lizzieyzy-next/blob/main/docs/INSTALL.md
     about: Start here if the app does not install or launch as expected.

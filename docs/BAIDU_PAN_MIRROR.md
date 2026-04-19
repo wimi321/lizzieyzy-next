@@ -6,7 +6,7 @@
 
 - 百度网盘账号：个人网盘 / PCS
 - 分享方式：手动创建一次固定共享文件夹
-- 自动化：GitHub release 完成后，工作流自动上传 2 个 Windows 免安装主资产
+- 自动化：Windows 发版工作流完成后，自动把 2 个 Windows 免安装主资产同步到百度网盘
 - 手动兜底：如果 Actions 侧同步太慢或大文件不稳定，可以先把 2 个目标包下载到本机，再用同一套脚本本地上传
 - README / release notes：后续统一展示固定百度网盘链接和提取码
 
@@ -144,10 +144,10 @@ python3 scripts/sync_baidu_pan.py \
 
 ## 五、工作流现在会怎么同步
 
-当前设计接在 `update-release-notes.yml` 后面：
+正常发版时，固定走 `build-windows-release.yml` 里的这条链路：
 
-1. 先生成并更新 GitHub release notes
-2. 在 GitHub Actions runner 上下载当前 GitHub release 的 2 个 Windows 免安装包
+1. 构建并上传 Windows installer / portable 资产到当前 GitHub release
+2. 直接复用同一次构建产物里的 `dist/release`
 3. 调用 `scripts/sync_baidu_pan.py`
 4. 自动同步到：
    - `最新版本/`
@@ -158,6 +158,12 @@ python3 scripts/sync_baidu_pan.py \
 - `最新版本` 只保留当前版本的 2 个 Windows 免安装包
 - `历史版本/<release_tag>` 保留该版完整镜像
 - `最新版本/当前版本.txt` 会写入当前 release 信息、GitHub release URL，以及当时已经配置好的百度分享信息
+
+`update-release-notes.yml` 现在继续保留，但角色改成：
+
+- 在所有平台资产都上传完以后，重刷 GitHub release notes
+- 如果百度分享链接、提取码有变化，手动补跑一次
+- 如果百度镜像同步失败，作为补跑入口重新执行
 
 ## 六、同步后怎么验收
 

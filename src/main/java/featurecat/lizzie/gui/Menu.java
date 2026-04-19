@@ -5,7 +5,6 @@ import featurecat.lizzie.Lizzie;
 import featurecat.lizzie.analysis.EngineManager;
 import featurecat.lizzie.analysis.FastLink;
 import featurecat.lizzie.analysis.GameInfo;
-import featurecat.lizzie.analysis.ReadBoard;
 import featurecat.lizzie.theme.MorandiPalette;
 import featurecat.lizzie.theme.Theme;
 import featurecat.lizzie.util.Utils;
@@ -4048,7 +4047,7 @@ public class Menu extends JMenuBar {
 
     final JFontMenuItem readBoard =
         new JFontMenuItem(resourceBundle.getString("Menu.readBoard")); // ("棋盘识别工具(Alt+O)");
-    if (OS.isWindows() && ReadBoard.isLegacyNativeReadBoardAvailable()) live.add(readBoard);
+    if (OS.isWindows()) live.add(readBoard);
 
     readBoard.addActionListener(
         new ActionListener() {

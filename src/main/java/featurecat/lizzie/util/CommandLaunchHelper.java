@@ -5,6 +5,7 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.net.URISyntaxException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -13,10 +14,31 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.TreeMap;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import org.jdesktop.swingx.util.OS;
 
 public final class CommandLaunchHelper {
+  private static final String PATH_KEY = "PATH";
+  private static final String PATH_KEY_MIXED = "Path";
+  private static final String WINDOWS_PATH_SEPARATOR = ";";
+  private static final String MACHINE_ENVIRONMENT_KEY =
+      "HKLM\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment";
+  private static final String USER_ENVIRONMENT_KEY = "HKCU\\Environment";
+  private static final int MAX_ENV_EXPANSION_DEPTH = 8;
+  private static final Pattern WINDOWS_DRIVE_PATH_PATTERN = Pattern.compile("^[A-Za-z]:\\\\.*");
+  private static final Pattern WINDOWS_VARIABLE_PATTERN = Pattern.compile("%([^%]+)%");
+  private static final ConcurrentMap<String, String> WINDOWS_REGISTRY_PATH_CACHE =
+      new ConcurrentHashMap<String, String>();
+  private static final WindowsRegistryProcessStarter DEFAULT_WINDOWS_REGISTRY_PROCESS_STARTER =
+      ProcessBuilder::start;
+  private static final WindowsRegistryPathReader DEFAULT_WINDOWS_REGISTRY_PATH_READER =
+      new ProcessWindowsRegistryPathReader(DEFAULT_WINDOWS_REGISTRY_PROCESS_STARTER);
+  private static volatile WindowsRegistryPathReader windowsRegistryPathReader =
+      DEFAULT_WINDOWS_REGISTRY_PATH_READER;
   private static final String[] FILE_PATH_OPTIONS = {
     "-model",
     "--model",
@@ -33,9 +55,6 @@ public final class CommandLaunchHelper {
     "-cacerts",
     "--cacerts"
   };
-  private static final Pattern REGISTRY_PATH_LINE_PATTERN =
-      Pattern.compile("^\\s*Path\\s+REG_(?:SZ|EXPAND_SZ)\\s+(.*)$", Pattern.CASE_INSENSITIVE);
-  private static final Pattern WINDOWS_ENV_REFERENCE_PATTERN = Pattern.compile("%([^%]+)%");
 
   private CommandLaunchHelper() {}
 
@@ -55,20 +74,29 @@ public final class CommandLaunchHelper {
   }
 
   public static void applyWorkingDirectory(ProcessBuilder processBuilder, LaunchSpec launchSpec) {
-    if (processBuilder == null || launchSpec == null || launchSpec.getWorkingDirectory() == null) {
-      return;
-    }
-    if (processBuilder.directory() == null) {
-      processBuilder.directory(launchSpec.getWorkingDirectory());
-    }
+    configureProcessBuilder(processBuilder, launchSpec);
   }
 
   public static void configureProcessBuilder(ProcessBuilder processBuilder, LaunchSpec launchSpec) {
-    applyWorkingDirectory(processBuilder, launchSpec);
-    if (!isWindowsPlatform() || processBuilder == null) {
+    if (processBuilder == null || launchSpec == null) {
       return;
     }
-    configureWindowsSearchPath(processBuilder, launchSpec);
+    File workingDirectory = launchSpec.getWorkingDirectory();
+    if (workingDirectory != null) {
+      processBuilder.directory(workingDirectory);
+    }
+    if (!OS.isWindows()) {
+      return;
+    }
+    replaceWindowsPath(
+        processBuilder.environment(),
+        buildWindowsPath(
+            launchSpec.getCommandParts(),
+            workingDirectory,
+            processBuilder.environment(),
+            System.getenv(),
+            getWindowsRegistryPath(MACHINE_ENVIRONMENT_KEY),
+            getWindowsRegistryPath(USER_ENVIRONMENT_KEY)));
   }
 
   private static Path detectWorkingDirectory(List<String> commandParts) {
@@ -165,6 +193,14 @@ public final class CommandLaunchHelper {
       current = current.getParent();
     }
     return null;
+  }
+
+  private static boolean isFilesystemRoot(Path path) {
+    if (path == null) {
+      return false;
+    }
+    Path normalized = path.toAbsolutePath().normalize();
+    return normalized.getParent() == null;
   }
 
   private static int scoreCandidate(List<String> commandParts, Path root) {
@@ -278,6 +314,296 @@ public final class CommandLaunchHelper {
     return roots;
   }
 
+  static List<String> buildWindowsPathEntries(
+      List<String> commandParts,
+      File workingDirectory,
+      Map<String, String> processEnvironment,
+      Map<String, String> systemEnvironment,
+      String machineRegistryPath,
+      String userRegistryPath) {
+    List<String> entries = new ArrayList<String>();
+    LinkedHashSet<String> seenEntries = new LinkedHashSet<String>();
+    Map<String, String> expansionVariables =
+        buildExpansionVariables(processEnvironment, systemEnvironment);
+    addWindowsPathEntry(
+        entries, seenEntries, getWindowsExecutableDirectory(commandParts), expansionVariables);
+    addWindowsPathEntry(
+        entries,
+        seenEntries,
+        workingDirectory == null ? null : workingDirectory.getPath(),
+        expansionVariables);
+    addEnvironmentPathEntries(
+        entries, seenEntries, processEnvironment, PATH_KEY, expansionVariables);
+    addEnvironmentPathEntries(
+        entries, seenEntries, processEnvironment, PATH_KEY_MIXED, expansionVariables);
+    addEnvironmentPathEntries(
+        entries, seenEntries, systemEnvironment, PATH_KEY, expansionVariables);
+    addEnvironmentPathEntries(
+        entries, seenEntries, systemEnvironment, PATH_KEY_MIXED, expansionVariables);
+    addWindowsPathEntries(entries, seenEntries, machineRegistryPath, expansionVariables);
+    addWindowsPathEntries(entries, seenEntries, userRegistryPath, expansionVariables);
+    return entries;
+  }
+
+  private static String buildWindowsPath(
+      List<String> commandParts,
+      File workingDirectory,
+      Map<String, String> processEnvironment,
+      Map<String, String> systemEnvironment,
+      String machineRegistryPath,
+      String userRegistryPath) {
+    return String.join(
+        WINDOWS_PATH_SEPARATOR,
+        buildWindowsPathEntries(
+            commandParts,
+            workingDirectory,
+            processEnvironment,
+            systemEnvironment,
+            machineRegistryPath,
+            userRegistryPath));
+  }
+
+  private static Map<String, String> buildExpansionVariables(
+      Map<String, String> processEnvironment, Map<String, String> systemEnvironment) {
+    Map<String, String> variables = new TreeMap<String, String>(String.CASE_INSENSITIVE_ORDER);
+    putExpansionVariables(variables, systemEnvironment);
+    putExpansionVariables(variables, processEnvironment);
+    return variables;
+  }
+
+  private static void putExpansionVariables(
+      Map<String, String> target, Map<String, String> source) {
+    if (source == null) {
+      return;
+    }
+    for (Map.Entry<String, String> entry : source.entrySet()) {
+      if (entry.getKey() == null || entry.getValue() == null) {
+        continue;
+      }
+      target.put(entry.getKey(), entry.getValue());
+    }
+  }
+
+  private static void addEnvironmentPathEntries(
+      List<String> entries,
+      LinkedHashSet<String> seenEntries,
+      Map<String, String> environment,
+      String key,
+      Map<String, String> expansionVariables) {
+    addWindowsPathEntries(
+        entries,
+        seenEntries,
+        environment == null ? null : environment.get(key),
+        expansionVariables);
+  }
+
+  private static void addWindowsPathEntries(
+      List<String> entries,
+      LinkedHashSet<String> seenEntries,
+      String rawPathText,
+      Map<String, String> expansionVariables) {
+    if (rawPathText == null || rawPathText.trim().isEmpty()) {
+      return;
+    }
+    for (String rawEntry : rawPathText.split(Pattern.quote(WINDOWS_PATH_SEPARATOR))) {
+      addWindowsPathEntry(entries, seenEntries, rawEntry, expansionVariables);
+    }
+  }
+
+  private static void addWindowsPathEntry(
+      List<String> entries,
+      LinkedHashSet<String> seenEntries,
+      String rawEntry,
+      Map<String, String> expansionVariables) {
+    if (rawEntry == null) {
+      return;
+    }
+    String normalized = normalizeWindowsPath(expandWindowsVariables(rawEntry, expansionVariables));
+    if (normalized == null) {
+      return;
+    }
+    String dedupeKey = normalized.toLowerCase(Locale.ROOT);
+    if (seenEntries.add(dedupeKey)) {
+      entries.add(normalized);
+    }
+  }
+
+  private static String getWindowsExecutableDirectory(List<String> commandParts) {
+    if (commandParts == null || commandParts.isEmpty()) {
+      return null;
+    }
+    return getWindowsAbsoluteParent(commandParts.get(0));
+  }
+
+  private static String getWindowsAbsoluteParent(String rawPathText) {
+    String normalized = normalizeWindowsPath(rawPathText);
+    if (normalized == null || !isWindowsAbsolutePath(normalized)) {
+      return null;
+    }
+    int separator = normalized.lastIndexOf('\\');
+    if (separator <= 0) {
+      return null;
+    }
+    return normalized.substring(0, separator);
+  }
+
+  private static boolean isWindowsAbsolutePath(String rawPathText) {
+    return rawPathText.startsWith("\\\\")
+        || WINDOWS_DRIVE_PATH_PATTERN.matcher(rawPathText).matches();
+  }
+
+  private static String normalizeWindowsPath(String rawPathText) {
+    if (rawPathText == null) {
+      return null;
+    }
+    String trimmed = rawPathText.trim();
+    if (trimmed.isEmpty()) {
+      return null;
+    }
+    return trimmed.replace('/', '\\');
+  }
+
+  private static String expandWindowsVariables(
+      String rawPathText, Map<String, String> expansionVariables) {
+    String expanded = rawPathText;
+    for (int i = 0; i < MAX_ENV_EXPANSION_DEPTH; i++) {
+      Matcher matcher = WINDOWS_VARIABLE_PATTERN.matcher(expanded);
+      StringBuffer rebuilt = new StringBuffer();
+      boolean changed = false;
+      while (matcher.find()) {
+        String replacement = expansionVariables.get(matcher.group(1));
+        if (replacement == null) {
+          matcher.appendReplacement(rebuilt, Matcher.quoteReplacement(matcher.group(0)));
+          continue;
+        }
+        matcher.appendReplacement(rebuilt, Matcher.quoteReplacement(replacement));
+        changed = true;
+      }
+      matcher.appendTail(rebuilt);
+      expanded = rebuilt.toString();
+      if (!changed) {
+        return expanded;
+      }
+    }
+    return expanded;
+  }
+
+  private static void replaceWindowsPath(
+      Map<String, String> environment, String rebuiltWindowsPath) {
+    environment.remove(PATH_KEY);
+    environment.remove(PATH_KEY_MIXED);
+    environment.put(PATH_KEY, rebuiltWindowsPath);
+  }
+
+  static String getWindowsRegistryPath(String environmentKey) {
+    if (environmentKey == null || environmentKey.trim().isEmpty()) {
+      return "";
+    }
+    return WINDOWS_REGISTRY_PATH_CACHE.computeIfAbsent(
+        environmentKey, CommandLaunchHelper::loadWindowsRegistryPath);
+  }
+
+  static void setWindowsRegistryPathReaderForTest(WindowsRegistryPathReader reader) {
+    windowsRegistryPathReader = reader == null ? DEFAULT_WINDOWS_REGISTRY_PATH_READER : reader;
+    resetWindowsRegistryPathCacheForTest();
+  }
+
+  static void resetWindowsRegistryPathReaderForTest() {
+    windowsRegistryPathReader = DEFAULT_WINDOWS_REGISTRY_PATH_READER;
+    resetWindowsRegistryPathCacheForTest();
+  }
+
+  static void resetWindowsRegistryPathCacheForTest() {
+    WINDOWS_REGISTRY_PATH_CACHE.clear();
+  }
+
+  private static String loadWindowsRegistryPath(String environmentKey) {
+    String path = windowsRegistryPathReader.readPath(environmentKey);
+    return path == null ? "" : path;
+  }
+
+  static String readWindowsRegistryPathForTest(
+      String environmentKey, WindowsRegistryProcessStarter processStarter) {
+    return readWindowsRegistryPath(environmentKey, processStarter);
+  }
+
+  private static String readWindowsRegistryPath(String environmentKey) {
+    return readWindowsRegistryPath(environmentKey, DEFAULT_WINDOWS_REGISTRY_PROCESS_STARTER);
+  }
+
+  private static String readWindowsRegistryPath(
+      String environmentKey, WindowsRegistryProcessStarter processStarter) {
+    WindowsRegistryProcessStarter starter =
+        processStarter == null ? DEFAULT_WINDOWS_REGISTRY_PROCESS_STARTER : processStarter;
+    ProcessBuilder query = new ProcessBuilder("reg", "query", environmentKey, "/v", PATH_KEY_MIXED);
+    query.redirectErrorStream(true);
+    try {
+      Process process = starter.start(query);
+      String output = readProcessOutput(process);
+      int exitCode = waitForProcess(process);
+      if (exitCode != 0) {
+        return "";
+      }
+      return extractRegistryPath(output);
+    } catch (IOException e) {
+      return "";
+    }
+  }
+
+  private static String readProcessOutput(Process process) throws IOException {
+    StringBuilder output = new StringBuilder();
+    try (BufferedReader reader =
+        new BufferedReader(
+            new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
+      String line;
+      while ((line = reader.readLine()) != null) {
+        output.append(line).append('\n');
+      }
+    }
+    return output.toString();
+  }
+
+  private static int waitForProcess(Process process) {
+    try {
+      return process.waitFor();
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      return -1;
+    }
+  }
+
+  private static String extractRegistryPath(String output) {
+    if (output == null || output.trim().isEmpty()) {
+      return "";
+    }
+    String[] lines = output.split("\\R");
+    for (String line : lines) {
+      String path = extractRegistryPathFromLine(line);
+      if (path != null) {
+        return path;
+      }
+    }
+    return "";
+  }
+
+  private static String extractRegistryPathFromLine(String line) {
+    if (line == null) {
+      return null;
+    }
+    String trimmed = line.trim();
+    if (trimmed.isEmpty()) {
+      return null;
+    }
+    String[] columns = trimmed.split("\\s+", 3);
+    if (columns.length < 3 || !PATH_KEY_MIXED.equalsIgnoreCase(columns[0])) {
+      return null;
+    }
+    if (!columns[1].toUpperCase(Locale.ROOT).startsWith("REG_")) {
+      return null;
+    }
+    return columns[2].trim();
+  }
+
   private static void addCandidateRoot(LinkedHashSet<Path> roots, String rootText) {
     if (rootText == null || rootText.trim().isEmpty()) {
       return;
@@ -338,254 +664,6 @@ public final class CommandLaunchHelper {
     return root.resolve(relativeToken).toAbsolutePath().normalize();
   }
 
-  private static boolean isWindowsPlatform() {
-    return System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("win");
-  }
-
-  private static boolean isFilesystemRoot(Path path) {
-    return path != null && path.toAbsolutePath().normalize().getParent() == null;
-  }
-
-  private static void configureWindowsSearchPath(
-      ProcessBuilder processBuilder, LaunchSpec launchSpec) {
-    Map<String, String> environment = processBuilder.environment();
-    if (environment == null) {
-      return;
-    }
-
-    List<String> orderedEntries = new ArrayList<String>();
-    LinkedHashSet<String> seenEntries = new LinkedHashSet<String>();
-
-    addLaunchDirectory(orderedEntries, seenEntries, launchSpec);
-    addWorkingDirectory(orderedEntries, seenEntries, launchSpec);
-    addPathEntries(orderedEntries, seenEntries, readEnvironmentPath(environment));
-    addPathEntries(orderedEntries, seenEntries, System.getenv("PATH"));
-    addPathEntries(orderedEntries, seenEntries, System.getenv("Path"));
-    addPathEntries(
-        orderedEntries,
-        seenEntries,
-        readRegistryPath("HKLM\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment"));
-    addPathEntries(orderedEntries, seenEntries, readRegistryPath("HKCU\\Environment"));
-
-    if (orderedEntries.isEmpty()) {
-      return;
-    }
-
-    String pathKey = findEnvironmentKeyIgnoreCase(environment, "PATH");
-    removeEnvironmentKeysIgnoreCase(environment, "PATH");
-    environment.put(
-        pathKey == null ? "Path" : pathKey, String.join(File.pathSeparator, orderedEntries));
-  }
-
-  private static void addLaunchDirectory(
-      List<String> orderedEntries, LinkedHashSet<String> seenEntries, LaunchSpec launchSpec) {
-    if (launchSpec == null
-        || launchSpec.getCommandParts() == null
-        || launchSpec.getCommandParts().isEmpty()) {
-      return;
-    }
-    String executableToken = launchSpec.getCommandParts().get(0);
-    Path executablePath = Utils.resolveExistingExecutable(executableToken);
-    if (executablePath == null) {
-      Path executableDirectory = toAbsoluteReferenceDirectory(executableToken);
-      if (executableDirectory != null) {
-        executablePath = executableDirectory;
-      }
-    }
-    if (executablePath == null) {
-      return;
-    }
-    Path directory =
-        Files.isDirectory(executablePath) ? executablePath : executablePath.getParent();
-    if (directory != null) {
-      addPathEntry(orderedEntries, seenEntries, directory.toAbsolutePath().normalize().toString());
-    }
-  }
-
-  private static void addWorkingDirectory(
-      List<String> orderedEntries, LinkedHashSet<String> seenEntries, LaunchSpec launchSpec) {
-    if (launchSpec == null || launchSpec.getWorkingDirectory() == null) {
-      return;
-    }
-    File workingDirectory = launchSpec.getWorkingDirectory();
-    if (workingDirectory.isDirectory()) {
-      addPathEntry(orderedEntries, seenEntries, workingDirectory.getAbsolutePath());
-    }
-  }
-
-  private static String readEnvironmentPath(Map<String, String> environment) {
-    if (environment == null) {
-      return null;
-    }
-    StringBuilder builder = new StringBuilder();
-    for (Map.Entry<String, String> entry : environment.entrySet()) {
-      if (entry.getKey() == null || !entry.getKey().equalsIgnoreCase("PATH")) {
-        continue;
-      }
-      appendPathValue(builder, entry.getValue());
-    }
-    return builder.toString();
-  }
-
-  private static void appendPathValue(StringBuilder builder, String value) {
-    if (builder == null || value == null) {
-      return;
-    }
-    String trimmed = value.trim();
-    if (trimmed.isEmpty()) {
-      return;
-    }
-    if (builder.length() > 0) {
-      builder.append(File.pathSeparator);
-    }
-    builder.append(trimmed);
-  }
-
-  private static void addPathEntries(
-      List<String> orderedEntries, LinkedHashSet<String> seenEntries, String pathValue) {
-    if (pathValue == null || pathValue.trim().isEmpty()) {
-      return;
-    }
-    for (String rawEntry : pathValue.split(Pattern.quote(File.pathSeparator))) {
-      addPathEntry(orderedEntries, seenEntries, rawEntry);
-    }
-  }
-
-  private static void addPathEntry(
-      List<String> orderedEntries, LinkedHashSet<String> seenEntries, String rawEntry) {
-    if (orderedEntries == null || seenEntries == null || rawEntry == null) {
-      return;
-    }
-    String cleaned = stripWrappingQuotes(rawEntry.trim());
-    if (cleaned.isEmpty()) {
-      return;
-    }
-    String normalizedKey = cleaned.replace('/', '\\').toLowerCase(Locale.ROOT);
-    if (!seenEntries.add(normalizedKey)) {
-      return;
-    }
-    orderedEntries.add(cleaned);
-  }
-
-  private static String stripWrappingQuotes(String value) {
-    if (value == null) {
-      return "";
-    }
-    String trimmed = value.trim();
-    if (trimmed.length() >= 2 && trimmed.startsWith("\"") && trimmed.endsWith("\"")) {
-      return trimmed.substring(1, trimmed.length() - 1).trim();
-    }
-    return trimmed;
-  }
-
-  private static String findEnvironmentKeyIgnoreCase(Map<String, String> environment, String key) {
-    if (environment == null || key == null) {
-      return null;
-    }
-    for (String existingKey : environment.keySet()) {
-      if (existingKey != null && existingKey.equalsIgnoreCase(key)) {
-        return existingKey;
-      }
-    }
-    return null;
-  }
-
-  private static void removeEnvironmentKeysIgnoreCase(Map<String, String> environment, String key) {
-    if (environment == null || key == null) {
-      return;
-    }
-    List<String> toRemove = new ArrayList<String>();
-    for (String existingKey : environment.keySet()) {
-      if (existingKey != null && existingKey.equalsIgnoreCase(key)) {
-        toRemove.add(existingKey);
-      }
-    }
-    for (String existingKey : toRemove) {
-      environment.remove(existingKey);
-    }
-  }
-
-  private static String readRegistryPath(String keyPath) {
-    String systemRoot = firstNonBlank(System.getenv("SystemRoot"), System.getenv("WINDIR"));
-    if (systemRoot == null || keyPath == null || keyPath.trim().isEmpty()) {
-      return null;
-    }
-    Path regExe = Paths.get(systemRoot, "System32", "reg.exe");
-    if (!Files.isRegularFile(regExe)) {
-      return null;
-    }
-
-    ProcessBuilder processBuilder =
-        new ProcessBuilder(regExe.toString(), "query", keyPath, "/v", "Path");
-    processBuilder.redirectErrorStream(true);
-    try {
-      Process process = processBuilder.start();
-      String pathValue = null;
-      try (BufferedReader reader =
-          new BufferedReader(new InputStreamReader(process.getInputStream()))) {
-        String line;
-        while ((line = reader.readLine()) != null) {
-          Matcher matcher = REGISTRY_PATH_LINE_PATTERN.matcher(line);
-          if (matcher.matches()) {
-            pathValue = matcher.group(1).trim();
-          }
-        }
-      }
-      int exitCode = process.waitFor();
-      if (exitCode != 0 || pathValue == null || pathValue.trim().isEmpty()) {
-        return null;
-      }
-      return expandWindowsEnvironmentReferences(pathValue, System.getenv());
-    } catch (IOException e) {
-      return null;
-    } catch (InterruptedException e) {
-      Thread.currentThread().interrupt();
-      return null;
-    }
-  }
-
-  private static String firstNonBlank(String... values) {
-    if (values == null) {
-      return null;
-    }
-    for (String value : values) {
-      if (value != null && !value.trim().isEmpty()) {
-        return value.trim();
-      }
-    }
-    return null;
-  }
-
-  private static String expandWindowsEnvironmentReferences(
-      String value, Map<String, String> environment) {
-    if (value == null || value.indexOf('%') < 0) {
-      return value;
-    }
-    Matcher matcher = WINDOWS_ENV_REFERENCE_PATTERN.matcher(value);
-    StringBuffer buffer = new StringBuffer();
-    while (matcher.find()) {
-      String variableName = matcher.group(1);
-      String replacement = getEnvironmentValueIgnoreCase(environment, variableName);
-      if (replacement == null) {
-        replacement = matcher.group(0);
-      }
-      matcher.appendReplacement(buffer, Matcher.quoteReplacement(replacement));
-    }
-    matcher.appendTail(buffer);
-    return buffer.toString();
-  }
-
-  private static String getEnvironmentValueIgnoreCase(Map<String, String> environment, String key) {
-    if (environment != null) {
-      for (Map.Entry<String, String> entry : environment.entrySet()) {
-        if (entry.getKey() != null && entry.getKey().equalsIgnoreCase(key)) {
-          return entry.getValue();
-        }
-      }
-    }
-    return null;
-  }
-
   public static final class LaunchSpec {
     private final List<String> commandParts;
     private final File workingDirectory;
@@ -601,6 +679,28 @@ public final class CommandLaunchHelper {
 
     public File getWorkingDirectory() {
       return workingDirectory;
+    }
+  }
+
+  interface WindowsRegistryProcessStarter {
+    Process start(ProcessBuilder processBuilder) throws IOException;
+  }
+
+  interface WindowsRegistryPathReader {
+    String readPath(String environmentKey);
+  }
+
+  private static final class ProcessWindowsRegistryPathReader implements WindowsRegistryPathReader {
+    private final WindowsRegistryProcessStarter processStarter;
+
+    private ProcessWindowsRegistryPathReader(WindowsRegistryProcessStarter processStarter) {
+      this.processStarter =
+          processStarter == null ? DEFAULT_WINDOWS_REGISTRY_PROCESS_STARTER : processStarter;
+    }
+
+    @Override
+    public String readPath(String environmentKey) {
+      return readWindowsRegistryPath(environmentKey, processStarter);
     }
   }
 }

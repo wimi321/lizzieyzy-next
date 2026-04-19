@@ -121,7 +121,7 @@ copy_common_inputs() {
 
   mkdir -p "$input_dir"
   cp "$JAR_PATH" "$input_dir/"
-  cp README.md README_EN.md README_JA.md README_KO.md LICENSE.txt "$input_dir/"
+  cp README.md README_EN.md README_JA.md README_KO.md LICENSE.txt packaging/PROJECT_INFO.txt "$input_dir/"
   cp readme_cn.pdf readme_en.pdf "$input_dir/"
   if [[ -d "$ROOT_DIR/src/main/resources/assets/readboard_java" ]]; then
     mkdir -p "$input_dir/readboard_java"

@@ -30,6 +30,7 @@ import javax.swing.JButton;
 import javax.swing.JComboBox;
 import javax.swing.JFrame;
 import javax.swing.JLabel;
+import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
 import javax.swing.JTable;
@@ -156,6 +157,16 @@ public class FoxKifuDownload extends JFrame {
 
     recentSearchesPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 0));
     recentWrapper.add(recentSearchesPanel, BorderLayout.CENTER);
+
+    JButton btnClearRecent =
+        new JFontButton(Lizzie.resourceBundle.getString("FoxKifuDownload.clearRecent"));
+    btnClearRecent.addActionListener(
+        new ActionListener() {
+          public void actionPerformed(ActionEvent e) {
+            clearRecentSearches();
+          }
+        });
+    recentWrapper.add(btnClearRecent, BorderLayout.EAST);
 
     updateCurrentUserLabel(txtUserName.getText().trim(), null);
     updateRecentSearchesPanel();
@@ -373,14 +384,6 @@ public class FoxKifuDownload extends JFrame {
         boolean oriReadKomi = Lizzie.config.readKomi;
         Lizzie.config.readKomi = false;
         SGFParser.loadFromString(kifu);
-        try {
-          String normalizedKifu = SGFParser.saveMainTrunkRawToString();
-          if (SGFParser.isSGF(normalizedKifu)) {
-            SGFParser.loadFromString(normalizedKifu);
-          }
-        } catch (IOException normalizeException) {
-          normalizeException.printStackTrace();
-        }
         Lizzie.board.setMovelistAll();
         Lizzie.frame.scheduleResumeAnalysisAfterLoad(200);
         Lizzie.frame.refresh();
@@ -671,6 +674,20 @@ public class FoxKifuDownload extends JFrame {
     while (recentSearches.size() > 8) {
       recentSearches.remove(recentSearches.size() - 1);
     }
+    saveRecentSearches();
+    updateRecentSearchesPanel();
+  }
+
+  private void clearRecentSearches() {
+    if (recentSearches.isEmpty()) return;
+    int choice =
+        JOptionPane.showConfirmDialog(
+            this,
+            Lizzie.resourceBundle.getString("FoxKifuDownload.clearRecentConfirm"),
+            Lizzie.resourceBundle.getString("FoxKifuDownload.clearRecentTitle"),
+            JOptionPane.OK_CANCEL_OPTION);
+    if (choice != JOptionPane.OK_OPTION) return;
+    recentSearches.clear();
     saveRecentSearches();
     updateRecentSearchesPanel();
   }

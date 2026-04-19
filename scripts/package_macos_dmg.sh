@@ -74,7 +74,7 @@ rm -rf "$INPUT_DIR" "$APP_IMAGE_DIR" "$DMG_DIR"
 mkdir -p "$INPUT_DIR" "$APP_IMAGE_DIR" "$DMG_DIR" "$META_DIR"
 
 cp "$JAR_PATH" "$INPUT_DIR/"
-cp README.md README_EN.md README_JA.md README_KO.md LICENSE.txt "$INPUT_DIR/"
+cp README.md README_EN.md README_JA.md README_KO.md LICENSE.txt packaging/PROJECT_INFO.txt "$INPUT_DIR/"
 cp readme_cn.pdf readme_en.pdf "$INPUT_DIR/"
 if [[ -d "$ROOT_DIR/src/main/resources/assets/readboard_java" ]]; then
   mkdir -p "$INPUT_DIR/readboard_java"

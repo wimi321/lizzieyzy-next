@@ -2269,8 +2269,12 @@ public class LizzieFrame extends JFrame {
   }
 
   public void openBoardSync() {
-    if (!ReadBoard.isLegacyNativeReadBoardAvailable()) {
+    if (!OS.isWindows()) {
       openReadBoardJava();
+      return;
+    }
+    if (!ReadBoard.isLegacyNativeReadBoardAvailable()) {
+      showLegacyReadBoardDownloadDialog();
       return;
     }
     if (readBoard == null) {
@@ -2307,6 +2311,33 @@ public class LizzieFrame extends JFrame {
         }
       }
     }
+  }
+
+  private void showLegacyReadBoardDownloadDialog() {
+    LegacyReadBoardPrompts.promptMissingLegacyReadBoardDownload(
+        Lizzie.resourceBundle,
+        this::confirmLegacyReadBoardDownload,
+        uri -> Desktop.getDesktop().browse(uri),
+        Utils::showMsg);
+  }
+
+  private boolean confirmLegacyReadBoardDownload(
+      String title, String message, String confirmLabel, String cancelLabel) {
+    Object[] options = new Object[] {confirmLabel, cancelLabel};
+    Object defaultOption = cancelLabel;
+    JOptionPane optionPane =
+        new JOptionPane(
+            message,
+            JOptionPane.QUESTION_MESSAGE,
+            JOptionPane.YES_NO_OPTION,
+            null,
+            options,
+            defaultOption);
+    JDialog dialog = optionPane.createDialog(this, title);
+    dialog.setVisible(true);
+    dialog.dispose();
+    Object value = optionPane.getValue();
+    return value != null && value.equals(confirmLabel);
   }
 
   public void openConfigDialog2(int index) {
