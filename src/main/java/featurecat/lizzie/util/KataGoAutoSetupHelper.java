@@ -638,9 +638,19 @@ public final class KataGoAutoSetupHelper {
   }
 
   private static int findAutoSetupEngineIndex(ArrayList<EngineData> engines) {
+    // First preference: an existing auto-setup engine entry.
     for (int i = 0; i < engines.size(); i++) {
       EngineData engineData = engines.get(i);
       if (AUTO_SETUP_ENGINE_NAME.equals(engineData.name)) {
+        return i;
+      }
+    }
+    // Second preference: reuse the bundled entry (shares the same binary/weight) so we don't
+    // end up with two near-identical KataGo engines after first-run auto setup.
+    for (int i = 0; i < engines.size(); i++) {
+      EngineData engineData = engines.get(i);
+      if ("KataGo Bundled".equals(engineData.name)
+          || (engineData.commands != null && hasRelativeBundledPath(engineData.commands))) {
         return i;
       }
     }

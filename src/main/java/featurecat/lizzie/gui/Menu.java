@@ -5,6 +5,7 @@ import featurecat.lizzie.Lizzie;
 import featurecat.lizzie.analysis.EngineManager;
 import featurecat.lizzie.analysis.FastLink;
 import featurecat.lizzie.analysis.GameInfo;
+import featurecat.lizzie.analysis.Leelaz;
 import featurecat.lizzie.theme.MorandiPalette;
 import featurecat.lizzie.theme.Theme;
 import featurecat.lizzie.util.Utils;
@@ -5009,6 +5010,35 @@ public class Menu extends JMenuBar {
           }
         });
 
+    helpMenu.addSeparator();
+    final JFontMenuItem clearUserData = new JFontMenuItem("清除所有个人数据");
+    helpMenu.add(clearUserData);
+    clearUserData.addActionListener(
+        new ActionListener() {
+          public void actionPerformed(ActionEvent e) {
+            int choice =
+                JOptionPane.showConfirmDialog(
+                    Lizzie.frame,
+                    "将清除以下个人数据:\n  • 野狐账号搜索记录\n  • 最近打开的棋谱列表\n  • 批量分析记录\n  • 分享棋谱历史\n\n"
+                        + "该操作不可撤销，是否继续?",
+                    "清除所有个人数据",
+                    JOptionPane.OK_CANCEL_OPTION,
+                    JOptionPane.WARNING_MESSAGE);
+            if (choice != JOptionPane.OK_OPTION) return;
+            Lizzie.config.uiConfig.remove("fox-recent-searches");
+            Lizzie.config.uiConfig.remove("recent-files");
+            Lizzie.config.uiConfig.remove("batch-analysis-history");
+            Lizzie.config.uiConfig.remove("share-history");
+            try {
+              Lizzie.config.save();
+            } catch (IOException ex) {
+              ex.printStackTrace();
+            }
+            JOptionPane.showMessageDialog(
+                Lizzie.frame, "已清除。", "完成", JOptionPane.INFORMATION_MESSAGE);
+          }
+        });
+
     quickLinks = new JFontMenu(resourceBundle.getString("Menu.quickLinks")); // ("快速启动");
     quickLinks.setForeground(MorandiPalette.MENU_ITEM_TEXT);
     quickLinks.setFont(baseMenuFont);
@@ -5550,7 +5580,7 @@ public class Menu extends JMenuBar {
     txtKomi = new JFontTextField();
     txtKomi.setDocument(new KomiDocument(true));
     txtKomi.setText(String.valueOf(Lizzie.board.getHistory().getGameInfo().getKomi()));
-    txtKomi.setHorizontalAlignment(JFontTextField.RIGHT);
+    txtKomi.setHorizontalAlignment(JFontTextField.CENTER);
     // txtKomi.setFocusable(false);
     txtKomi.addKeyListener(
         new KeyAdapter() {
@@ -5631,8 +5661,23 @@ public class Menu extends JMenuBar {
 
     lblPDASpinner = new JFontLabel(resourceBundle.getString("Menu.lblPDA"));
     txtPDA = new JFontTextField();
+    txtPDA.setDocument(new DoubleDocument());
     txtPDA.setHorizontalAlignment(JFontTextField.RIGHT);
-    txtPDA.setFocusable(false);
+    txtPDA.setFocusable(true);
+    txtPDA.addKeyListener(
+        new KeyAdapter() {
+          @Override
+          public void keyReleased(KeyEvent e) {
+            String text = txtPDA.getText().trim();
+            if (text.isEmpty() || text.equals("-") || text.equals(".")) return;
+            try {
+              double value = Double.parseDouble(text);
+              Lizzie.leelaz.sendCommand("kata-set-param playoutDoublingAdvantage " + value);
+              if (Lizzie.leelaz.isPondering()) Lizzie.leelaz.ponder();
+            } catch (NumberFormatException ignored) {
+            }
+          }
+        });
 
     ImageIcon komiUp;
     komiUp = new ImageIcon();
@@ -6758,7 +6803,8 @@ public class Menu extends JMenuBar {
             });
         return;
       } else {
-        engine[i].setText("[" + (i + 1) + "] " + engineDt.name);
+        String friendlyName = Leelaz.friendlyEngineName(engineDt.name, engineDt.commands);
+        engine[i].setText("[" + (i + 1) + "] " + friendlyName);
         engine[i].setToolTipText(engineDt.commands);
         engine[i].setVisible(true);
         engine[i].setToolTipText(engineDt.commands);
@@ -6778,6 +6824,9 @@ public class Menu extends JMenuBar {
     if (Lizzie.readMode) {
       engineMenu2.setVisible(false);
       engineMenu.setVisible(false);
+    }
+    if (Lizzie.frame != null && Lizzie.frame.windowMenuStrip != null) {
+      Lizzie.frame.windowMenuStrip.rebuild();
     }
   }
 
@@ -6805,7 +6854,8 @@ public class Menu extends JMenuBar {
             });
         return;
       } else {
-        engine2[i].setText("[" + (i + 1) + "] " + engineDt.name);
+        String friendlyName2 = Leelaz.friendlyEngineName(engineDt.name, engineDt.commands);
+        engine2[i].setText("[" + (i + 1) + "] " + friendlyName2);
         engine2[i].setToolTipText(engineDt.commands);
         engine2[i].setVisible(true);
         int a = i;
@@ -10113,7 +10163,8 @@ public class Menu extends JMenuBar {
         if (!Lizzie.config.isDoubleEngineMode()) engineMenu2.setVisible(false);
         return;
       } else {
-        engine[i].setText("[" + (i + 1) + "] " + engineDt.name);
+        String friendlyName = Leelaz.friendlyEngineName(engineDt.name, engineDt.commands);
+        engine[i].setText("[" + (i + 1) + "] " + friendlyName);
         engine[i].setToolTipText(engineDt.commands);
         engine[i].setVisible(true);
         int a = i;
@@ -10123,7 +10174,7 @@ public class Menu extends JMenuBar {
                 Lizzie.engineManager.switchEngine(a, true);
               }
             });
-        engine2[i].setText("[" + (i + 1) + "] " + engineDt.name);
+        engine2[i].setText("[" + (i + 1) + "] " + friendlyName);
         engine2[i].setToolTipText(engineDt.commands);
         engine2[i].setVisible(true);
 

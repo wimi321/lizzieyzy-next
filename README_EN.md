@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <a href="README.md">中文</a> · English · <a href="README_JA.md">日本語</a> · <a href="README_KO.md">한국어</a>
+  <a href="README.md">简体中文</a> · <a href="README_ZH_TW.md">繁體中文</a> · English · <a href="README_JA.md">日本語</a> · <a href="README_KO.md">한국어</a> · <a href="README_TH.md">ภาษาไทย</a>
 </p>
 
 <p align="center">
@@ -208,3 +208,7 @@ The current macOS builds are still unsigned and not notarized. If macOS blocks t
 Historical Fox sync references:
 - [yzyray/FoxRequest](https://github.com/yzyray/FoxRequest)
 - [FuckUbuntu/Lizzieyzy-Helper](https://github.com/FuckUbuntu/Lizzieyzy-Helper)
+
+## Translations
+
+We welcome translations! If you want to translate this README into your native language, please feel free to submit a Pull Request.

@@ -667,7 +667,7 @@ public class LizzieFrame extends JFrame {
     commentEditTextPane = new JIMSendTextPane(true);
     commentEditTextPane.setBorder(BorderFactory.createEmptyBorder());
     commentEditTextPane.setBackground(Color.LIGHT_GRAY);
-    commentEditTextPane.setForeground(AppleStyleSupport.dialogTextColor());
+    commentEditTextPane.setForeground(Color.WHITE);
     commentEditPane = new JScrollPane(commentEditTextPane);
     commentEditPane.setBorder(BorderFactory.createEmptyBorder());
     commentEditPane.getVerticalScrollBar().setUI(new DemoScrollBarUI());
@@ -5083,8 +5083,7 @@ public class LizzieFrame extends JFrame {
     if (minScrollpaneWhite != null)
       minScrollpaneWhite.setBackground(
           useMorandi ? MorandiPalette.COOL_GRAY : new Color(158, 158, 158));
-    if (commentEditTextPane != null)
-      commentEditTextPane.setForeground(AppleStyleSupport.dialogTextColor());
+    if (commentEditTextPane != null) commentEditTextPane.setForeground(Color.WHITE);
     if (windowMenuStrip != null) {
       windowMenuStrip.refreshColors();
       windowMenuStrip.repaint();

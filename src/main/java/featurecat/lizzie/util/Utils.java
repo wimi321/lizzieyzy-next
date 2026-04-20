@@ -429,21 +429,10 @@ public class Utils {
   }
 
   private static boolean enableAppleStyleByDefaultOnce() {
-    if (Lizzie.config == null
-        || Lizzie.config.uiConfig == null
-        || Lizzie.config.uiConfig.optBoolean(APPLE_STYLE_MIGRATION_KEY, false)) {
-      return false;
-    }
-    // Only enable if the user has never explicitly set is-apple-style.
-    // If the key already exists in config, the user made a conscious choice — respect it.
-    if (Lizzie.config.uiConfig.has("is-apple-style")) {
-      Lizzie.config.uiConfig.put(APPLE_STYLE_MIGRATION_KEY, true);
-      return false;
-    }
-    Lizzie.config.isAppleStyle = true;
-    Lizzie.config.uiConfig.put("is-apple-style", true);
-    Lizzie.config.uiConfig.put(APPLE_STYLE_MIGRATION_KEY, true);
-    return true;
+    // Classic (lizzieyzy original) is now the default appearance.
+    // Historically this migration force-enabled Apple style once; keep it as a
+    // no-op so existing users' saved preferences continue to apply unchanged.
+    return false;
   }
 
   private static boolean isPositiveInteger(String value) {

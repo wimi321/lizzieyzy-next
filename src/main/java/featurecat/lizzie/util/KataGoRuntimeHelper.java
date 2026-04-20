@@ -77,10 +77,10 @@ public final class KataGoRuntimeHelper {
           Arrays.asList("nvJitLink*.dll"),
           Arrays.asList("zlibwapi.dll", "libz.dll"));
   private static final Object NVIDIA_RUNTIME_LOCK = new Object();
-  private static final int BENCHMARK_VISITS = 120;
-  private static final int BENCHMARK_POSITIONS = 4;
-  private static final int BENCHMARK_MIN_TIME_SECONDS = 2;
-  private static final int BENCHMARK_MAX_TIME_SECONDS = 8;
+  private static final int BENCHMARK_VISITS = 800;
+  private static final int BENCHMARK_POSITIONS = 6;
+  private static final int BENCHMARK_MIN_TIME_SECONDS = 5;
+  private static final int BENCHMARK_MAX_TIME_SECONDS = 15;
   private static final int APPLE_AUTO_OPTIMIZE_VERSION = 1;
   private static final int APPLE_AUTO_OPTIMIZE_DELAY_MILLIS = 2500;
   private static final int MAX_APPLE_ANALYSIS_THREADS = 8;

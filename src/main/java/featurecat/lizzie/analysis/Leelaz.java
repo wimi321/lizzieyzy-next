@@ -287,7 +287,9 @@ public class Leelaz {
   public String getEngineName(int index) {
     if (index < 0) return Lizzie.resourceBundle.getString("Menu.noEngine");
     ArrayList<EngineData> engineData = Utils.getEngineData();
-    currentEnginename = engineData.get(index).name;
+    EngineData data = engineData.get(index);
+    String rawName = data.name;
+    currentEnginename = deriveDisplayName(rawName, data.commands);
     oriEnginename = currentEnginename;
     String regEx = "[`~!@#$%^&*()+=|{}':;',\\[\\].<>/?~！@#￥%……&*（）——+|{}【】‘；：”“’。，、？]";
     String aa = "";
@@ -296,6 +298,85 @@ public class Leelaz {
     currentEnginename = m.replaceAll(aa).trim();
     bestMovesEnginename = currentEnginename.replaceAll(" ", "");
     return currentEnginename;
+  }
+
+  /**
+   * If the stored engine name is a generic placeholder ("KataGo Bundled", "KataGo Auto Setup"),
+   * derive a friendlier name from the weight file referenced in the engine command. Otherwise keep
+   * the user-assigned name.
+   */
+  public static String friendlyEngineName(String rawName, String command) {
+    return deriveDisplayName(rawName, command);
+  }
+
+  private static String deriveDisplayName(String rawName, String command) {
+    String name = rawName == null ? "" : rawName.trim();
+    boolean placeholder =
+        name.isEmpty()
+            || name.equalsIgnoreCase("KataGo Bundled")
+            || name.equalsIgnoreCase("KataGo Auto Setup");
+    if (!placeholder) return name;
+    String shortWeight = extractWeightShortName(command);
+    if (shortWeight != null && !shortWeight.isEmpty()) return shortWeight;
+    return name.isEmpty() ? "KataGo" : name;
+  }
+
+  static String extractWeightShortName(String command) {
+    if (command == null || command.isEmpty()) return null;
+    String[] flags = {"-model", "--model", "-weights", "--weights"};
+    for (String flag : flags) {
+      int idx = command.indexOf(flag);
+      while (idx >= 0) {
+        int after = idx + flag.length();
+        if (after >= command.length()
+            || (command.charAt(after) != ' '
+                && command.charAt(after) != '='
+                && command.charAt(after) != '\t')) {
+          idx = command.indexOf(flag, after);
+          continue;
+        }
+        int start = after + 1;
+        while (start < command.length()
+            && (command.charAt(start) == ' '
+                || command.charAt(start) == '\t'
+                || command.charAt(start) == '=')) {
+          start++;
+        }
+        if (start >= command.length()) return null;
+        boolean quoted = false;
+        char q = 0;
+        if (command.charAt(start) == '"' || command.charAt(start) == '\'') {
+          quoted = true;
+          q = command.charAt(start);
+          start++;
+        }
+        int end = start;
+        while (end < command.length()) {
+          char c = command.charAt(end);
+          if (quoted && c == q) break;
+          if (!quoted && (c == ' ' || c == '\t')) break;
+          end++;
+        }
+        String path = command.substring(start, end).trim();
+        if (path.isEmpty()) return null;
+        return shortenWeightPath(path);
+      }
+    }
+    return null;
+  }
+
+  private static String shortenWeightPath(String path) {
+    int slash = Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\'));
+    String base = slash >= 0 ? path.substring(slash + 1) : path;
+    String lower = base.toLowerCase();
+    String[] suffixes = {".bin.gz", ".txt.gz", ".bin", ".txt", ".gz"};
+    for (String suf : suffixes) {
+      if (lower.endsWith(suf)) {
+        base = base.substring(0, base.length() - suf.length());
+        break;
+      }
+    }
+    return base;
   }
 
   public void startEngine(int index) throws IOException {

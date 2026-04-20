@@ -58,7 +58,7 @@ public class Config {
   public boolean showSuggestionMaxRed = true;
   public boolean showStatus = true;
   public boolean isClassicMode = false;
-  public boolean isAppleStyle = true;
+  public boolean isAppleStyle = false;
   // public boolean changedStatus = false;
   public boolean showBranch = true;
   public boolean showBestMoves = true;
@@ -99,7 +99,7 @@ public class Config {
   public boolean isShowingWinrateGraph = true;
   public boolean isShowingMoveList = true;
   public int moveListSelectedBranch = 0;
-  public boolean useMorandiColors = true;
+  public boolean useMorandiColors = false;
   public int glassEffectLevel = 1;
   public boolean showStoneHighlight = true;
   public boolean showBoardLightGradient = true;
@@ -610,21 +610,38 @@ public class Config {
     }
 
     int bundledIndex = -1;
+    int autoSetupIndex = -1;
     for (int i = 0; i < engineSettings.length(); i++) {
       JSONObject engineInfo = engineSettings.optJSONObject(i);
       if (engineInfo == null) {
         continue;
       }
-      if (BUNDLED_ENGINE_NAME.equals(engineInfo.optString("name", ""))
-          || isBundledKataGoCommand(engineInfo.optString("command", ""))) {
+      String name = engineInfo.optString("name", "");
+      String command = engineInfo.optString("command", "");
+      if (autoSetupIndex < 0 && "KataGo Auto Setup".equals(name)) {
+        autoSetupIndex = i;
+      }
+      if (bundledIndex < 0
+          && (BUNDLED_ENGINE_NAME.equals(name) || isBundledKataGoCommand(command))) {
         bundledIndex = i;
-        break;
       }
     }
 
+    // If both "KataGo Bundled" and "KataGo Auto Setup" exist (legacy configs), the auto-setup
+    // variant has better tuned parameters; keep it and drop the duplicate bundled entry.
+    if (autoSetupIndex >= 0 && bundledIndex >= 0 && autoSetupIndex != bundledIndex) {
+      engineSettings.remove(bundledIndex);
+      if (autoSetupIndex > bundledIndex) autoSetupIndex--;
+      bundledIndex = autoSetupIndex;
+    } else if (autoSetupIndex >= 0) {
+      bundledIndex = autoSetupIndex;
+    }
+
     JSONObject bundledEngine;
+    boolean reusedAutoSetupEntry = false;
     if (bundledIndex >= 0) {
       bundledEngine = engineSettings.getJSONObject(bundledIndex);
+      reusedAutoSetupEntry = "KataGo Auto Setup".equals(bundledEngine.optString("name", ""));
     } else {
       bundledEngine = new JSONObject();
       engineSettings.put(bundledEngine);
@@ -632,7 +649,9 @@ public class Config {
     }
 
     bundledEngine.put("command", bundledConfig.engineCommand);
-    bundledEngine.put("name", BUNDLED_ENGINE_NAME);
+    if (!reusedAutoSetupEntry) {
+      bundledEngine.put("name", BUNDLED_ENGINE_NAME);
+    }
     bundledEngine.put("preload", false);
     bundledEngine.put("komi", 7.5);
     bundledEngine.put("width", 19);
@@ -1388,7 +1407,7 @@ public class Config {
     allowMoveNumber = uiConfig.optInt("allow-move-number", allowMoveNumber);
     newMoveNumberInBranch = uiConfig.optBoolean("new-move-number-in-branch", true);
     isClassicMode = uiConfig.optBoolean("is-classic-mode", false);
-    isAppleStyle = uiConfig.optBoolean("is-apple-style", true);
+    isAppleStyle = uiConfig.optBoolean("is-apple-style", false);
     showStatus = isClassicMode ? false : uiConfig.getBoolean("show-status");
     // changedStatus = uiConfig.optBoolean("changed-status", false);
     showBranch = uiConfig.getBoolean("show-leelaz-variation");
@@ -1597,7 +1616,7 @@ public class Config {
     moveListTopCurNode = uiConfig.optBoolean("movelist-top-curnode", false);
     showMoveListGraph = uiConfig.optBoolean("show-movelist-graph", true);
     showBlueRing = uiConfig.optBoolean("show-blue-ring", true);
-    useMorandiColors = uiConfig.optBoolean("use-morandi-colors", true);
+    useMorandiColors = uiConfig.optBoolean("use-morandi-colors", false);
     glassEffectLevel = uiConfig.optInt("glass-effect-level", 1);
     showStoneHighlight = uiConfig.optBoolean("show-stone-highlight", true);
     showBoardLightGradient = uiConfig.optBoolean("show-board-light-gradient", true);
@@ -2558,7 +2577,7 @@ public class Config {
     // ui.put("min-playout-ratio-for-stats", 0.0);
     ui.put("theme", "default");
     ui.put("only-last-move-number", 1);
-    ui.put("is-apple-style", true);
+    ui.put("is-apple-style", false);
     ui.put("new-move-number-in-branch", true);
     ui.put("append-winrate-to-comment", true);
     ui.put("replay-branch-interval-seconds", 0.9);

@@ -68,7 +68,6 @@ public class SidebarHeaderPanel extends JPanel {
     FontMetrics fm = g2.getFontMetrics();
 
     if (!Lizzie.config.isAppleStyle) {
-      // Classic flat UI
       g2.setColor(new Color(36, 38, 42));
       g2.fillRect(0, 0, getWidth(), getHeight());
 

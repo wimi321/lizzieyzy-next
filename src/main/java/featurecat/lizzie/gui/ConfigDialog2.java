@@ -361,6 +361,12 @@ public class ConfigDialog2 extends JDialog {
                 + resourceBundle.getString("LizzieConfig.about.lblOriginLizzieInfo2"));
 
     lblOriginLizzieInfo.setFont(new Font(Config.sysDefaultFontName, Font.PLAIN, 14));
+
+    LinkLabel lblQQGroup =
+        new LinkLabel(
+            "<html><b>项目讨论 QQ 群：299419120</b><br />"
+                + "欢迎交流使用问题、反馈 bug、分享使用体验，或者讨论接下来最想加的功能。</html>");
+    lblQQGroup.setFont(new Font(Config.sysDefaultFontName, Font.PLAIN, 14));
     // 注释这里
     GroupLayout gl = new GroupLayout(aboutTab);
     gl.setHorizontalGroup(
@@ -390,6 +396,14 @@ public class ConfigDialog2 extends JDialog {
                                         620,
                                         GroupLayout.PREFERRED_SIZE))
                             .addGroup(
+                                gl.createSequentialGroup()
+                                    .addContainerGap()
+                                    .addComponent(
+                                        lblQQGroup,
+                                        GroupLayout.PREFERRED_SIZE,
+                                        620,
+                                        GroupLayout.PREFERRED_SIZE))
+                            .addGroup(
                                 gl.createSequentialGroup().addComponent(lblLizzieName).addGap(225)))
                     .addContainerGap()));
     gl.setVerticalGroup(
@@ -408,9 +422,12 @@ public class ConfigDialog2 extends JDialog {
                     .addComponent(
                         lblOriginLizzieInfo,
                         GroupLayout.PREFERRED_SIZE,
-                        282,
+                        220,
                         GroupLayout.PREFERRED_SIZE)
-                    .addGap(126)));
+                    .addPreferredGap(ComponentPlacement.RELATED)
+                    .addComponent(
+                        lblQQGroup, GroupLayout.PREFERRED_SIZE, 60, GroupLayout.PREFERRED_SIZE)
+                    .addGap(50)));
     aboutTab.setLayout(gl);
     ButtonGroup group = new ButtonGroup();
     nf.setGroupingUsed(false);
@@ -3030,19 +3047,14 @@ public class ConfigDialog2 extends JDialog {
       htmlKit = new HtmlKit();
       htmlDoc = (HTMLDocument) htmlKit.createDefaultDocument();
       htmlStyle = htmlKit.getStyleSheet();
+      boolean apple = AppleStyleSupport.isAppleStyleEnabled();
+      java.awt.Color bg = apple ? new java.awt.Color(30, 33, 38) : java.awt.Color.WHITE;
+      java.awt.Color fg = apple ? java.awt.Color.WHITE : java.awt.Color.BLACK;
       String style =
-          "body {background:"
-              + String.format(
-                  "%02x%02x%02x",
-                  Lizzie.config.commentBackgroundColor.getRed(),
-                  Lizzie.config.commentBackgroundColor.getGreen(),
-                  Lizzie.config.commentBackgroundColor.getBlue())
+          "body {background:#"
+              + String.format("%02x%02x%02x", bg.getRed(), bg.getGreen(), bg.getBlue())
               + "; color:#"
-              + String.format(
-                  "%02x%02x%02x",
-                  Lizzie.config.commentFontColor.getRed(),
-                  Lizzie.config.commentFontColor.getGreen(),
-                  Lizzie.config.commentFontColor.getBlue())
+              + String.format("%02x%02x%02x", fg.getRed(), fg.getGreen(), fg.getBlue())
               + "; font-family:"
               + Config.sysDefaultFontName
               + ";"

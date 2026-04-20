@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <a href="README.md">中文</a> · <a href="README_EN.md">English</a> · <a href="README_JA.md">日本語</a> · 한국어
+  <a href="README.md">简体中文</a> · <a href="README_ZH_TW.md">繁體中文</a> · <a href="README_EN.md">English</a> · <a href="README_JA.md">日本語</a> · 한국어 · <a href="README_TH.md">ภาษาไทย</a>
 </p>
 
 <p align="center">
@@ -208,3 +208,9 @@
 Historical Fox sync references:
 - [yzyray/FoxRequest](https://github.com/yzyray/FoxRequest)
 - [FuckUbuntu/Lizzieyzy-Helper](https://github.com/FuckUbuntu/Lizzieyzy-Helper)
+
+## 번역 참여
+
+번역을 환영합니다! 이 README를 모국어로 번역해 주실 분은 Pull Request를 보내 주세요.
+
+We welcome translations! If you want to translate this README into your native language, please feel free to submit a Pull Request.

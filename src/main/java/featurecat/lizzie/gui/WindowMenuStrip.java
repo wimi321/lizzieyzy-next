@@ -47,7 +47,7 @@ public class WindowMenuStrip extends JPanel {
     int menuCount = sourceMenuBar.getMenuCount();
     for (int i = 0; i < menuCount; i++) {
       JMenu menu = sourceMenuBar.getMenu(i);
-      if (menu == null) {
+      if (menu == null || !menu.isVisible()) {
         continue;
       }
       String text = menu.getText();

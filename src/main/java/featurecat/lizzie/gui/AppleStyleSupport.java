@@ -48,9 +48,9 @@ public final class AppleStyleSupport {
   private static final String LEGACY_BUTTON_UI = "lizzie.apple.legacy.button.ui";
   private static final String LEGACY_CHECKBOX_ICON = "lizzie.apple.legacy.checkbox.icon";
   private static final String LEGACY_COMBO_RENDERER = "lizzie.apple.legacy.combo.renderer";
-  private static final Insets TEXT_BUTTON_INSETS = new Insets(0, 12, 0, 12);
-  private static final Insets ICON_BUTTON_INSETS = new Insets(0, 6, 0, 6);
-  private static final Insets FIELD_INSETS = new Insets(4, 8, 4, 8);
+  private static final Insets TEXT_BUTTON_INSETS = new Insets(0, 8, 0, 8);
+  private static final Insets ICON_BUTTON_INSETS = new Insets(0, 4, 0, 4);
+  private static final Insets FIELD_INSETS = new Insets(2, 5, 2, 5);
 
   private AppleStyleSupport() {}
 
@@ -114,6 +114,9 @@ public final class AppleStyleSupport {
     UIManager.put("TextField.caretForeground", controlTextColor());
     UIManager.put("TextField.selectionBackground", accentFillColor(170));
     UIManager.put("TextField.selectionForeground", Color.WHITE);
+    UIManager.put("Label.foreground", controlTextColor());
+    UIManager.put("RadioButton.foreground", controlTextColor());
+    UIManager.put("CheckBox.foreground", controlTextColor());
   }
 
   public static void refreshMainChrome() {
@@ -183,7 +186,7 @@ public final class AppleStyleSupport {
     }
 
     if (isTopHeaderBtn) {
-      button.setForeground(Color.WHITE);
+      button.setForeground(isAppleStyleEnabled() ? Color.WHITE : Color.BLACK);
     }
     Insets insets = isIconOnly(button) ? ICON_BUTTON_INSETS : TEXT_BUTTON_INSETS;
     button.setBorder(new EmptyBorder(insets));
@@ -211,7 +214,8 @@ public final class AppleStyleSupport {
     button.setFont(new Font(Config.sysDefaultFontName, Font.PLAIN, Config.frameFontSize));
     button.setOpaque(false);
     button.setContentAreaFilled(false);
-    button.setForeground(isTopHeaderBtn ? Color.WHITE : controlTextColor());
+    button.setForeground(
+        isTopHeaderBtn ? (isAppleStyleEnabled() ? Color.WHITE : Color.BLACK) : controlTextColor());
     button.setFocusPainted(false);
     button.setBorder(BorderFactory.createEmptyBorder(0, 2, 0, 4));
     button.setIcon(new AppleCheckIcon(false));
@@ -232,7 +236,8 @@ public final class AppleStyleSupport {
     button.setFont(new Font(Config.sysDefaultFontName, Font.PLAIN, Config.frameFontSize));
     button.setOpaque(false);
     button.setContentAreaFilled(false);
-    button.setForeground(isTopHeaderBtn ? Color.WHITE : controlTextColor());
+    button.setForeground(
+        isTopHeaderBtn ? (isAppleStyleEnabled() ? Color.WHITE : Color.BLACK) : controlTextColor());
     button.setFocusPainted(false);
     button.setBorder(BorderFactory.createEmptyBorder(0, 2, 0, 4));
     button.setIcon(new AppleRadioIcon(false));
@@ -249,17 +254,29 @@ public final class AppleStyleSupport {
     }
 
     boolean isTopHeaderBtn = isInsideTopHeader(textComponent);
+    boolean darkTopHeader = isTopHeaderBtn && isAppleStyleEnabled();
 
     textComponent.setFont(new Font(Config.sysDefaultFontName, Font.PLAIN, Config.frameFontSize));
     textComponent.setOpaque(true);
-    textComponent.setBackground(
-        isTopHeaderBtn ? new Color(255, 255, 255, 40) : fieldBackgroundColor());
-    textComponent.setForeground(isTopHeaderBtn ? Color.WHITE : controlTextColor());
-    textComponent.setCaretColor(isTopHeaderBtn ? Color.WHITE : controlTextColor());
+    if (darkTopHeader) {
+      textComponent.setBackground(new Color(255, 255, 255, 40));
+      textComponent.setForeground(Color.WHITE);
+      textComponent.setCaretColor(Color.WHITE);
+    } else if (isTopHeaderBtn) {
+      // Classic/Morandi mode top header: light background in the top strip
+      textComponent.setBackground(Color.WHITE);
+      textComponent.setForeground(Color.BLACK);
+      textComponent.setCaretColor(Color.BLACK);
+    } else {
+      textComponent.setBackground(fieldBackgroundColor());
+      textComponent.setForeground(controlTextColor());
+      textComponent.setCaretColor(controlTextColor());
+    }
     textComponent.setSelectionColor(accentFillColor(isAppleStyleEnabled() ? 190 : 140));
     textComponent.setSelectedTextColor(Color.WHITE);
     Border outer = new RoundedLineBorder(controlBorderColor(), controlCornerRadius());
-    textComponent.setBorder(new CompoundBorder(outer, new EmptyBorder(FIELD_INSETS)));
+    Insets insets = isTopHeaderBtn ? new Insets(1, 6, 1, 6) : FIELD_INSETS;
+    textComponent.setBorder(new CompoundBorder(outer, new EmptyBorder(insets)));
   }
 
   public static void installComboBoxStyle(JComboBox<?> comboBox) {
@@ -331,7 +348,8 @@ public final class AppleStyleSupport {
     boolean isTopHeaderBtn = isInsideTopHeader(label);
 
     label.setFont(new Font(Config.sysDefaultFontName, Font.PLAIN, Config.frameFontSize));
-    label.setForeground(isTopHeaderBtn ? Color.WHITE : controlTextColor());
+    label.setForeground(
+        isTopHeaderBtn ? (isAppleStyleEnabled() ? Color.WHITE : Color.BLACK) : controlTextColor());
   }
 
   public static void applyToContainer(Container container) {
@@ -401,9 +419,15 @@ public final class AppleStyleSupport {
       g.setColor(edge);
       g.drawLine(0, top ? height - 1 : 0, width, top ? height - 1 : 0);
     } else {
-      g.setColor(MorandiPalette.TOOLBAR_BG);
-      g.fillRect(0, 0, width, height);
-      g.setColor(MorandiPalette.TOOLBAR_BORDER);
+      if (isClassicEnabled()) {
+        g.setColor(new Color(232, 232, 232));
+        g.fillRect(0, 0, width, height);
+        g.setColor(new Color(200, 200, 200));
+      } else {
+        g.setColor(MorandiPalette.TOOLBAR_BG);
+        g.fillRect(0, 0, width, height);
+        g.setColor(MorandiPalette.TOOLBAR_BORDER);
+      }
       g.drawLine(0, height - 1, width, height - 1);
     }
     g.dispose();
@@ -422,6 +446,11 @@ public final class AppleStyleSupport {
   private static Color buttonTextColor(AbstractButton button) {
     String role = buttonRole(button);
     if (ROLE_PRIMARY.equals(role) || ROLE_DANGER.equals(role)) {
+      // Classic mode uses flat light fills instead of saturated accent colors,
+      // so black text reads better than white.
+      if (isClassicEnabled() && !isAppleStyleEnabled()) {
+        return Color.BLACK;
+      }
       return Color.WHITE;
     }
     return controlTextColor();
@@ -432,10 +461,21 @@ public final class AppleStyleSupport {
     if (!enabled) {
       return isAppleStyleEnabled() ? new Color(255, 255, 255, 16) : new Color(225, 220, 213, 110);
     }
+    boolean classic = isClassicEnabled() && !isAppleStyleEnabled();
     if (ROLE_PRIMARY.equals(role)) {
+      if (classic) {
+        return pressed
+            ? new Color(200, 220, 245)
+            : hover ? new Color(215, 230, 250) : new Color(225, 238, 255);
+      }
       return pressed ? accentFillColor(230) : accentFillColor(hover ? 215 : 190);
     }
     if (ROLE_DANGER.equals(role)) {
+      if (classic) {
+        return pressed
+            ? new Color(245, 205, 205)
+            : hover ? new Color(250, 220, 220) : new Color(252, 232, 232);
+      }
       return pressed ? new Color(210, 62, 62, 230) : new Color(210, 62, 62, hover ? 210 : 185);
     }
     if (isAppleStyleEnabled()) {

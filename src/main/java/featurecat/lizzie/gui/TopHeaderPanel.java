@@ -30,9 +30,9 @@ public class TopHeaderPanel extends JPanel {
   public TopHeaderPanel() {
     setLayout(new BorderLayout());
     setOpaque(false);
-    setBorder(new EmptyBorder(4, 10, 4, 10));
+    setBorder(new EmptyBorder(2, 6, 2, 6));
 
-    contentPanel = new JPanel(new WrapLayout(FlowLayout.LEFT, 6, 4));
+    contentPanel = new JPanel(new WrapLayout(FlowLayout.LEFT, 3, 2));
     contentPanel.setOpaque(false);
 
     leftGroup = new GroupPanel();
@@ -114,7 +114,7 @@ public class TopHeaderPanel extends JPanel {
     private boolean attached;
 
     private GroupPanel() {
-      super(new FlowLayout(FlowLayout.LEFT, 4, 0));
+      super(new FlowLayout(FlowLayout.LEFT, 2, 0));
       setOpaque(false);
     }
 

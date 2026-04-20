@@ -199,13 +199,13 @@ public class NewEngineGameDialog extends JDialog {
     txtresignSettingBlackMinMove.setBounds(
         Lizzie.config.isFrameFontSmall() ? 192 : (Lizzie.config.isFrameFontMiddle() ? 195 : 226),
         Lizzie.config.isFrameFontSmall() ? 183 : (Lizzie.config.isFrameFontMiddle() ? 182 : 181),
-        30,
-        Lizzie.config.isFrameFontSmall() ? 20 : (Lizzie.config.isFrameFontMiddle() ? 22 : 24));
+        50,
+        Lizzie.config.isFrameFontSmall() ? 22 : (Lizzie.config.isFrameFontMiddle() ? 24 : 26));
     txtresignSettingBlack.setBounds(
         Lizzie.config.isFrameFontSmall() ? 272 : (Lizzie.config.isFrameFontMiddle() ? 272 : 297),
         Lizzie.config.isFrameFontSmall() ? 183 : (Lizzie.config.isFrameFontMiddle() ? 182 : 181),
-        20,
-        Lizzie.config.isFrameFontSmall() ? 20 : (Lizzie.config.isFrameFontMiddle() ? 22 : 24));
+        40,
+        Lizzie.config.isFrameFontSmall() ? 22 : (Lizzie.config.isFrameFontMiddle() ? 24 : 26));
     txtresignSettingBlack2.setBounds(
         Lizzie.config.isFrameFontSmall() ? 373 : (Lizzie.config.isFrameFontMiddle() ? 383 : 425),
         Lizzie.config.isFrameFontSmall() ? 183 : (Lizzie.config.isFrameFontMiddle() ? 182 : 181),
@@ -255,13 +255,13 @@ public class NewEngineGameDialog extends JDialog {
     txtresignSettingWhiteMinMove.setBounds(
         Lizzie.config.isFrameFontSmall() ? 192 : (Lizzie.config.isFrameFontMiddle() ? 195 : 226),
         Lizzie.config.isFrameFontSmall() ? 214 : (Lizzie.config.isFrameFontMiddle() ? 213 : 212),
-        30,
-        Lizzie.config.isFrameFontSmall() ? 20 : (Lizzie.config.isFrameFontMiddle() ? 22 : 24));
+        50,
+        Lizzie.config.isFrameFontSmall() ? 22 : (Lizzie.config.isFrameFontMiddle() ? 24 : 26));
     txtresignSettingWhite.setBounds(
         Lizzie.config.isFrameFontSmall() ? 272 : (Lizzie.config.isFrameFontMiddle() ? 272 : 297),
         Lizzie.config.isFrameFontSmall() ? 214 : (Lizzie.config.isFrameFontMiddle() ? 213 : 212),
-        20,
-        Lizzie.config.isFrameFontSmall() ? 20 : (Lizzie.config.isFrameFontMiddle() ? 22 : 24));
+        40,
+        Lizzie.config.isFrameFontSmall() ? 22 : (Lizzie.config.isFrameFontMiddle() ? 24 : 26));
     txtresignSettingWhite2.setBounds(
         Lizzie.config.isFrameFontSmall() ? 373 : (Lizzie.config.isFrameFontMiddle() ? 383 : 425),
         Lizzie.config.isFrameFontSmall() ? 214 : (Lizzie.config.isFrameFontMiddle() ? 213 : 212),
