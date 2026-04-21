@@ -31,8 +31,6 @@ jobs:
       - name: Generate release notes
         env:
           GH_TOKEN: ${{ github.token }}
-          CHINA_MIRROR_URL: ${{ secrets.CHINA_MIRROR_URL }}
-          CHINA_MIRROR_CODE: ${{ secrets.CHINA_MIRROR_CODE }}
         run: |
           python3 scripts/generate_release_notes.py \
             --from-gh \
@@ -54,31 +52,3 @@ jobs:
           gh release edit "${{ inputs.release_tag }}" \
             --repo "${{ github.repository }}" \
             --notes-file "dist/release-meta/${{ inputs.date_tag }}-release-notes.md"
-
-      - name: Download public release assets for Baidu mirror
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          mkdir -p dist/release-gh
-          gh release download "${{ inputs.release_tag }}" \
-            --repo "${{ github.repository }}" \
-            --dir dist/release-gh \
-            --clobber \
-            -p "${{ inputs.date_tag }}-windows64.opencl.portable.zip" \
-            -p "${{ inputs.date_tag }}-windows64.nvidia.portable.zip"
-
-      - name: Sync public assets to Baidu Netdisk mirror
-        env:
-          BAIDU_APP_KEY: ${{ secrets.BAIDU_APP_KEY }}
-          BAIDU_APP_SECRET: ${{ secrets.BAIDU_APP_SECRET }}
-          BAIDU_REFRESH_TOKEN: ${{ secrets.BAIDU_REFRESH_TOKEN }}
-          BAIDU_ACCESS_TOKEN: ${{ secrets.BAIDU_ACCESS_TOKEN }}
-          BAIDU_SHARE_URL: ${{ secrets.BAIDU_SHARE_URL }}
-          BAIDU_SHARE_CODE: ${{ secrets.BAIDU_SHARE_CODE }}
-          BAIDU_REMOTE_ROOT: ${{ secrets.BAIDU_REMOTE_ROOT }}
-          GITHUB_REPOSITORY: ${{ github.repository }}
-        run: |
-          python3 scripts/sync_baidu_pan.py \
-            --local-release-dir dist/release-gh \
-            --release-tag "${{ inputs.release_tag }}" \
-            --date-tag "${{ inputs.date_tag }}"
