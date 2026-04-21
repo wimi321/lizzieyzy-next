@@ -4,13 +4,18 @@ import featurecat.lizzie.Config;
 import featurecat.lizzie.Lizzie;
 import featurecat.lizzie.analysis.EngineManager;
 import featurecat.lizzie.rules.Board;
+import featurecat.lizzie.rules.BoardData;
 import featurecat.lizzie.rules.BoardHistoryNode;
 import featurecat.lizzie.util.Utils;
 import java.awt.*;
+import java.awt.image.BufferedImage;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Optional;
 
 public class WinrateGraph {
@@ -22,6 +27,7 @@ public class WinrateGraph {
     final double winrate;
     final double swing;
     final boolean hasAnalysis;
+    final boolean connectsToPrevious;
 
     QuickOverviewMove(
         BoardHistoryNode node,
@@ -29,17 +35,92 @@ public class WinrateGraph {
         String moveName,
         double winrate,
         double swing,
-        boolean hasAnalysis) {
+        boolean hasAnalysis,
+        boolean connectsToPrevious) {
       this.node = node;
       this.moveNumber = moveNumber;
       this.moveName = moveName;
       this.winrate = winrate;
       this.swing = swing;
       this.hasAnalysis = hasAnalysis;
+      this.connectsToPrevious = connectsToPrevious;
+    }
+  }
+
+  private static class QuickOverviewPoint {
+    final QuickOverviewMove move;
+    final int x;
+    final int y;
+
+    QuickOverviewPoint(QuickOverviewMove move, int x, int y) {
+      this.move = move;
+      this.x = x;
+      this.y = y;
+    }
+  }
+
+  private static class QuickOverviewLayout {
+    final List<QuickOverviewPoint> points;
+    final int overviewX;
+    final int overviewY;
+    final int overviewWidth;
+    final int overviewHeight;
+    final int innerX;
+    final int innerY;
+    final int innerWidth;
+    final int innerHeight;
+    final int dotSize;
+    final boolean[][] dotMask;
+    final int barWidth;
+    final double issueThreshold;
+    final double swingScale;
+
+    QuickOverviewLayout(
+        List<QuickOverviewPoint> points,
+        int overviewX,
+        int overviewY,
+        int overviewWidth,
+        int overviewHeight,
+        int innerX,
+        int innerY,
+        int innerWidth,
+        int innerHeight,
+        int dotSize,
+        boolean[][] dotMask,
+        int barWidth,
+        double issueThreshold,
+        double swingScale) {
+      this.points = points;
+      this.overviewX = overviewX;
+      this.overviewY = overviewY;
+      this.overviewWidth = overviewWidth;
+      this.overviewHeight = overviewHeight;
+      this.innerX = innerX;
+      this.innerY = innerY;
+      this.innerWidth = innerWidth;
+      this.innerHeight = innerHeight;
+      this.dotSize = dotSize;
+      this.dotMask = dotMask;
+      this.barWidth = barWidth;
+      this.issueThreshold = issueThreshold;
+      this.swingScale = swingScale;
+    }
+  }
+
+  private static class GraphPoint {
+    final BoardHistoryNode node;
+    final int x;
+    final int y;
+
+    GraphPoint(BoardHistoryNode node, int x, int y) {
+      this.node = node;
+      this.x = x;
+      this.y = y;
     }
   }
 
   private int DOT_RADIUS = 3;
+  private static final int GRAPH_ANCHOR_HIT_HALF_SIZE = 2;
   private int[] origParams = {0, 0, 0, 0};
   private int[] params = {0, 0, 0, 0, 0};
   public BoardHistoryNode mouseOverNode;
@@ -53,6 +134,19 @@ public class WinrateGraph {
   private boolean scoreAjustBelow;
   private Color whiteColor = new Color(240, 240, 240);
   private boolean noC = false;
+  private List<GraphPoint> renderedGraphPoints = Collections.emptyList();
+  private QuickOverviewLayout renderedQuickOverviewLayout;
+  private int[] renderedOrigParams = {0, 0, 0, 0};
+  private int[] renderedParams = {0, 0, 0, 0, 0};
+  private BoardHistoryNode renderedCurrentGraphNode;
+  private BoardHistoryNode renderedGraphEndNode;
+  private BoardHistoryNode renderedMainEndNode;
+  private int renderedMode;
+  private boolean renderedEngineGame;
+  private boolean renderedPkBoard;
+  private boolean renderedShowWinrateLine;
+  private boolean renderedFrameInPlayMode;
+  private final Map<Integer, boolean[][]> quickOverviewDotMaskCache = new HashMap<>();
 
   private Color getBlunderColor(double winrateDrop, double scoreDrop) {
     if (scoreDrop > 5.0 || winrateDrop > 20.0) return new Color(235, 60, 60, 220);
@@ -71,10 +165,9 @@ public class WinrateGraph {
       int width,
       int height) {
     largeEnough = width > 475 && height > 335;
+    clearRenderedPointSources();
     BoardHistoryNode curMove = Lizzie.board.getHistory().getCurrentHistoryNode();
-    BoardHistoryNode node;
-    if (Lizzie.frame.isTrying) node = Lizzie.board.getHistory().getMainEnd();
-    else node = curMove;
+    BoardHistoryNode node = curMove;
     // draw background rectangle
     final Paint customBackground = new Color(24, 28, 32, 235);
     gBackground.setPaint(customBackground);
@@ -233,18 +326,21 @@ public class WinrateGraph {
               moveNumString, moveNum < numMoves / 2 ? x + 3 : x - 16, posy + height - margin);
       }
       while (node.previous().isPresent() && node.previous().get().previous().isPresent()) {
+        BoardHistoryNode twoBackNode = node.previous().get().previous().get();
+        int currentMoveIndex = node.getData().moveNumber - 1;
+        int twoBackMoveIndex = Math.max(0, twoBackNode.getData().moveNumber - 1);
         double wr = 50;
         double score = 0;
         if (node.getData().getPlayouts() > 0) {
           wr = node.getData().winrate;
           score = node.getData().scoreMean;
-        } else if (node.previous().get().previous().get().getData().getPlayouts() > 0) {
-          wr = node.previous().get().previous().get().getData().winrate;
-          score = node.previous().get().previous().get().getData().scoreMean;
+        } else if (twoBackNode.getData().getPlayouts() > 0) {
+          wr = twoBackNode.getData().winrate;
+          score = twoBackNode.getData().scoreMean;
         }
-        if (node.previous().get().previous().get().getData().getPlayouts() > 0) {
-          lastWr = node.previous().get().previous().get().getData().winrate;
-          lastScore = node.previous().get().previous().get().getData().scoreMean;
+        if (twoBackNode.getData().getPlayouts() > 0) {
+          lastWr = twoBackNode.getData().winrate;
+          lastScore = twoBackNode.getData().scoreMean;
         } else {
           lastWr = wr;
           lastScore = score;
@@ -254,44 +350,41 @@ public class WinrateGraph {
           double lastMoveScoreRate = Math.abs(lastScore - score);
           gBlunder.setColor(getBlunderColor(lastMoveRate, lastMoveScoreRate));
           int lastHeight = Math.min(15, Math.max(6, height / 12));
-          int rectWidth =
-              Math.max(
-                  Lizzie.config.minimumBlunderBarWidth,
-                  (int) (movenum * width / numMoves) - (int) ((movenum - 1) * width / numMoves));
-          gBlunder.fillRect(
-              posx + (int) ((movenum - 1) * width / numMoves),
-              blunderBottom - lastHeight,
-              rectWidth + 1,
-              lastHeight);
+          int leftIndex = Math.min(twoBackMoveIndex, currentMoveIndex);
+          int rightIndex = Math.max(twoBackMoveIndex, currentMoveIndex);
+          int rectStart = posx + leftIndex * width / numMoves;
+          int rectEnd = posx + rightIndex * width / numMoves;
+          int rectWidth = Math.max(Lizzie.config.minimumBlunderBarWidth, rectEnd - rectStart);
+          gBlunder.fillRect(rectStart, blunderBottom - lastHeight, rectWidth + 1, lastHeight);
         }
 
-        lastOkMove = movenum - 2;
+        lastOkMove = twoBackMoveIndex;
         if (Lizzie.config.showWinrateLine) {
           if (node.getData().blackToPlay) {
             g.setColor(new Color(100, 180, 255));
             g.drawLine(
-                posx + ((movenum - 2) * width / numMoves),
+                posx + (twoBackMoveIndex * width / numMoves),
                 posy + height - (int) (lastWr * height / 100),
-                posx + (movenum * width / numMoves),
+                posx + (currentMoveIndex * width / numMoves),
                 posy + height - (int) (wr * height / 100));
 
           } else {
             g.setColor(whiteColor);
             g.drawLine(
-                posx + ((movenum - 2) * width / numMoves),
+                posx + (twoBackMoveIndex * width / numMoves),
                 posy + height - (int) (lastWr * height / 100),
-                posx + (movenum * width / numMoves),
+                posx + (currentMoveIndex * width / numMoves),
                 posy + height - (int) (wr * height / 100));
           }
-          if (curMove.previous().isPresent() && movenum > 1) {
+          if (curMove.previous().isPresent() && currentMoveIndex > 1) {
             if (node == curMove) {
-              saveCurMovenum = movenum;
+              saveCurMovenum = currentMoveIndex;
               saveCurWr = wr;
             } else if (node == curMove.previous().get()) {
               if (node.getData().blackToPlay) {
                 g.setColor(new Color(100, 180, 255));
                 g.fillOval(
-                    posx + (movenum * width / numMoves) - DOT_RADIUS,
+                    posx + (currentMoveIndex * width / numMoves) - DOT_RADIUS,
                     posy + height - (int) (wr * height / 100) - DOT_RADIUS,
                     DOT_RADIUS * 2,
                     DOT_RADIUS * 2);
@@ -301,7 +394,7 @@ public class WinrateGraph {
                 g.setFont(f);
                 String wrString = String.format(Locale.ENGLISH, "%.1f", wr);
                 int stringWidth = g.getFontMetrics().stringWidth(wrString);
-                int xPos = posx + (movenum * width / numMoves) - stringWidth / 2;
+                int xPos = posx + (currentMoveIndex * width / numMoves) - stringWidth / 2;
                 xPos = Math.max(xPos, origParams[0]);
                 xPos = Math.min(xPos, origParams[0] + origParams[2] - stringWidth);
                 if (wr > 50) {
@@ -332,7 +425,7 @@ public class WinrateGraph {
               } else {
                 g.setColor(whiteColor);
                 g.fillOval(
-                    posx + (movenum * width / numMoves) - DOT_RADIUS,
+                    posx + (currentMoveIndex * width / numMoves) - DOT_RADIUS,
                     posy + height - (int) (wr * height / 100) - DOT_RADIUS,
                     DOT_RADIUS * 2,
                     DOT_RADIUS * 2);
@@ -343,7 +436,7 @@ public class WinrateGraph {
                 g.setColor(Color.WHITE);
                 String wrString = String.format(Locale.ENGLISH, "%.1f", wr);
                 int stringWidth = g.getFontMetrics().stringWidth(wrString);
-                int xPos = posx + (movenum * width / numMoves) - stringWidth / 2;
+                int xPos = posx + (currentMoveIndex * width / numMoves) - stringWidth / 2;
                 xPos = Math.max(xPos, origParams[0]);
                 xPos = Math.min(xPos, origParams[0] + origParams[2] - stringWidth);
                 if (wr > 50) {
@@ -376,7 +469,6 @@ public class WinrateGraph {
           }
         }
         node = node.previous().get();
-        movenum = movenum - 1;
       }
       if (saveCurMovenum > 1) {
         String wrString = String.format(Locale.ENGLISH, "%.1f", saveCurWr);
@@ -580,14 +672,15 @@ public class WinrateGraph {
               canDrawBlunderBar = false;
               forkNode = topOfVariation.get();
               g.setStroke(dashed);
-              while (node.next().isPresent()) {
-                node = node.next().get();
-              }
+              node = graphTraversalEnd(node);
               movenum = node.getData().moveNumber - 1;
-              lastWr = node.getData().winrate;
+              Double continuationWinrate = displayedGraphWinrate(node, lastWr);
+              if (continuationWinrate != null) {
+                lastWr = continuationWinrate;
+                wr = continuationWinrate;
+              }
               lastScore = node.getData().scoreMean;
               if (!node.getData().blackToPlay) {
-                lastWr = 100 - lastWr;
                 lastScore = -lastScore;
               }
               // g.setStroke(new BasicStroke(Lizzie.config.winrateStrokeWidth));
@@ -716,6 +809,7 @@ public class WinrateGraph {
       } else if (mode == 1) {
         //    boolean isMain = node.isMainTrunk();
         while (node.previous().isPresent()) {
+          int currentMoveIndex = node.getData().moveNumber - 1;
           double wr = node.getData().winrate;
           double score = node.getData().scoreMean;
           int playouts = node.getData().getPlayouts();
@@ -728,7 +822,7 @@ public class WinrateGraph {
             // Draw a vertical line at the current move
             // Stroke previousStroke = g.getStroke();
             Stroke previousStroke = g.getStroke();
-            int x = posx + (movenum * width / numMoves);
+            int x = posx + (currentMoveIndex * width / numMoves);
             g.setStroke(new BasicStroke(2));
             g.setColor(new Color(120, 220, 255, 200));
             if (curMove != Lizzie.board.getHistory().getEnd())
@@ -777,19 +871,21 @@ public class WinrateGraph {
             // wr = lastWr;
             // }
 
-            if (lastOkMove > 0 && Math.abs(movenum - lastOkMove) < 25) {
+            if (lastOkMove >= 0 && Math.abs(currentMoveIndex - lastOkMove) < 25) {
               if (Lizzie.config.showBlunderBar) {
                 double lastMoveRate = Math.abs(lastWr - wr);
                 double lastMoveScoreRate = Math.abs(lastScore - score);
                 gBlunder.setColor(getBlunderColor(lastMoveRate, lastMoveScoreRate));
                 int lastHeight = Math.min(15, Math.max(6, height / 12));
+                int leftIndex = Math.min(lastOkMove, currentMoveIndex);
+                int rightIndex = Math.max(lastOkMove, currentMoveIndex);
                 int rectWidth =
                     Math.max(
                         Lizzie.config.minimumBlunderBarWidth,
-                        (int) ((movenum + 1) * width / numMoves)
-                            - (int) (movenum * width / numMoves));
+                        (int) (rightIndex * width / numMoves)
+                            - (int) (leftIndex * width / numMoves));
                 gBlunder.fillRect(
-                    posx + (int) (((movenum + lastOkMove - 1)) * width / numMoves / 2),
+                    posx + (int) (leftIndex * width / numMoves),
                     blunderBottom - lastHeight,
                     rectWidth + 1,
                     lastHeight);
@@ -809,7 +905,7 @@ public class WinrateGraph {
                 g.drawLine(
                     posx + (lastOkMove * width / numMoves),
                     posy + height - (int) (lastWr * height / 100),
-                    posx + (movenum * width / numMoves),
+                    posx + (currentMoveIndex * width / numMoves),
                     posy + height - (int) (wr * height / 100));
                 //       if (isMain) {
                 g.setColor(whiteColor);
@@ -824,7 +920,7 @@ public class WinrateGraph {
                 g.drawLine(
                     posx + (lastOkMove * width / numMoves),
                     posy + height - (int) ((100 - lastWr) * height / 100),
-                    posx + (movenum * width / numMoves),
+                    posx + (currentMoveIndex * width / numMoves),
                     posy + height - (int) ((100 - wr) * height / 100));
               }
             }
@@ -835,7 +931,7 @@ public class WinrateGraph {
                       && curMove.getData().getPlayouts() <= 0)) {
                 g.setColor(new Color(100, 180, 255));
                 g.fillOval(
-                    posx + (movenum * width / numMoves) - DOT_RADIUS,
+                    posx + (currentMoveIndex * width / numMoves) - DOT_RADIUS,
                     posy + height - (int) (wr * height / 100) - DOT_RADIUS,
                     DOT_RADIUS * 2,
                     DOT_RADIUS * 2);
@@ -846,7 +942,7 @@ public class WinrateGraph {
 
                 String wrString = String.format(Locale.ENGLISH, "%.1f", wr);
                 int stringWidth = g.getFontMetrics().stringWidth(wrString);
-                int x = posx + (movenum * width / numMoves) - stringWidth / 2;
+                int x = posx + (currentMoveIndex * width / numMoves) - stringWidth / 2;
                 x = Math.max(x, origParams[0]);
                 x = Math.min(x, origParams[0] + origParams[2] - stringWidth);
 
@@ -874,14 +970,14 @@ public class WinrateGraph {
                 g.setFont(fw);
                 g.setColor(Color.WHITE);
                 g.fillOval(
-                    posx + (movenum * width / numMoves) - DOT_RADIUS,
+                    posx + (currentMoveIndex * width / numMoves) - DOT_RADIUS,
                     posy + height - (int) ((100 - wr) * height / 100) - DOT_RADIUS,
                     DOT_RADIUS * 2,
                     DOT_RADIUS * 2);
 
                 wrString = String.format(Locale.ENGLISH, "%.1f", 100 - wr);
                 stringWidth = g.getFontMetrics().stringWidth(wrString);
-                x = posx + (movenum * width / numMoves) - stringWidth / 2;
+                x = posx + (currentMoveIndex * width / numMoves) - stringWidth / 2;
                 x = Math.max(x, origParams[0]);
                 x = Math.min(x, origParams[0] + origParams[2] - stringWidth);
 
@@ -931,13 +1027,12 @@ public class WinrateGraph {
             //                lastNodeOk = false;
             //              }
             //            }
-            lastOkMove = lastNodeOk ? movenum : -1;
+            lastOkMove = lastNodeOk ? currentMoveIndex : -1;
           } else {
             lastNodeOk = false;
           }
           // g.setStroke(new BasicStroke(1));
           node = node.previous().get();
-          movenum--;
         }
       }
     }
@@ -1373,16 +1468,20 @@ public class WinrateGraph {
       x = Math.min(x, origParams[0] + origParams[2] - stringWidth);
       g.drawString(scoreString, x, cScoreHeight);
     }
-    drawQuickOverview(g, gBlunder, gBackground, curMove, posx, width, numMoves);
-
     params[0] = posx;
     params[1] = posy;
     params[2] = width;
     params[3] = height;
     params[4] = numMoves;
+    BoardHistoryNode graphBaseNode = curMove;
+    List<GraphPoint> renderedAnchors = buildGraphAnchorPoints(graphBaseNode);
+    drawGraphAnchors(g, renderedAnchors);
+    QuickOverviewLayout quickOverviewLayout =
+        drawQuickOverview(g, gBlunder, gBackground, curMove, posx, width, numMoves);
+    rememberRenderedPointSources(quickOverviewLayout, renderedAnchors);
   }
 
-  private void drawQuickOverview(
+  private QuickOverviewLayout drawQuickOverview(
       Graphics2D g,
       Graphics2D gBlunder,
       Graphics2D gBackground,
@@ -1390,37 +1489,10 @@ public class WinrateGraph {
       int posx,
       int width,
       int numMoves) {
-    if (origParams[2] < 180 || origParams[3] < 120 || width < 140 || numMoves < 2) return;
+    QuickOverviewLayout layout = buildQuickOverviewLayout(curMove, posx, width, numMoves, g);
+    if (layout == null) return null;
+    occludeMainGraphUnderQuickOverview(g, gBlunder, layout);
 
-    List<QuickOverviewMove> moves = buildQuickOverviewMoves(curMove);
-    if (moves.size() < 2) return;
-
-    int overviewHeight = Math.max(42, Math.min(68, origParams[3] / 5));
-    int overviewY = origParams[1] + origParams[3] - overviewHeight - 4;
-    int overviewX = posx;
-    int overviewWidth = width;
-    int innerPadding = Math.max(4, overviewHeight / 8);
-    int innerX = overviewX + innerPadding;
-    int innerY = overviewY + innerPadding;
-    int innerWidth = Math.max(10, overviewWidth - innerPadding * 2);
-    int innerHeight = Math.max(10, overviewHeight - innerPadding * 2);
-    int centerY = innerY + innerHeight / 2;
-    int dotSize = Math.max(4, DOT_RADIUS * 2);
-    int barWidth = Math.max(2, (int) Math.ceil(innerWidth / Math.max(70.0, numMoves)));
-    double issueThreshold =
-        Lizzie.config.blunderWinThreshold > 0 ? Lizzie.config.blunderWinThreshold : 3.0;
-    double maxSwing = issueThreshold;
-    double maxWinrateSpread = 10;
-
-    for (QuickOverviewMove move : moves) {
-      if (move.hasAnalysis) {
-        maxSwing = Math.max(maxSwing, move.swing);
-        maxWinrateSpread = Math.max(maxWinrateSpread, Math.abs(move.winrate - 50.0));
-      }
-    }
-
-    double winrateScale = Math.max(10.0, Math.ceil(maxWinrateSpread / 5.0) * 5.0);
-    double swingScale = Math.max(issueThreshold, Math.ceil(maxSwing / 5.0) * 5.0);
     Color overviewLineColor =
         Lizzie.config.winrateLineColor != null
             ? Lizzie.config.winrateLineColor.brighter()
@@ -1428,113 +1500,233 @@ public class WinrateGraph {
     Stroke previousStroke = g.getStroke();
 
     gBackground.setColor(new Color(15, 20, 28, 205));
-    gBackground.fillRoundRect(overviewX - 2, overviewY, overviewWidth + 4, overviewHeight, 12, 12);
+    gBackground.fillRoundRect(
+        layout.overviewX - 2,
+        layout.overviewY,
+        layout.overviewWidth + 4,
+        layout.overviewHeight,
+        12,
+        12);
     gBackground.setColor(new Color(255, 255, 255, 65));
-    gBackground.drawRoundRect(overviewX - 2, overviewY, overviewWidth + 4, overviewHeight, 12, 12);
+    gBackground.drawRoundRect(
+        layout.overviewX - 2,
+        layout.overviewY,
+        layout.overviewWidth + 4,
+        layout.overviewHeight,
+        12,
+        12);
     gBackground.setColor(new Color(255, 255, 255, 40));
-    gBackground.drawLine(innerX, centerY, innerX + innerWidth, centerY);
+    int centerY = layout.innerY + layout.innerHeight / 2;
+    gBackground.drawLine(layout.innerX, centerY, layout.innerX + layout.innerWidth, centerY);
 
-    QuickOverviewMove lastMove = null;
-    int lastX = -1;
-    int lastY = -1;
+    QuickOverviewPoint lastPoint = null;
+    for (QuickOverviewPoint point : layout.points) {
+      QuickOverviewMove move = point.move;
+
+      if (move.hasAnalysis && move.swing >= layout.issueThreshold) {
+        int barHeight =
+            Math.max(
+                3, (int) Math.round(move.swing * layout.innerHeight * 0.75 / layout.swingScale));
+        gBlunder.setColor(
+            quickOverviewBarColor(move.swing, layout.issueThreshold, layout.swingScale));
+        gBlunder.fillRoundRect(
+            point.x - layout.barWidth / 2,
+            layout.innerY + layout.innerHeight - barHeight,
+            layout.barWidth,
+            barHeight,
+            4,
+            4);
+      }
+
+      if (lastPoint != null && move.connectsToPrevious) {
+        g.setColor(
+            lastPoint.move.hasAnalysis && move.hasAnalysis
+                ? overviewLineColor
+                : new Color(180, 180, 180, 140));
+        g.setStroke(new BasicStroke(Math.max(1.6f, (float) Lizzie.config.winrateStrokeWidth)));
+        g.drawLine(lastPoint.x, lastPoint.y, point.x, point.y);
+      }
+      g.setColor(quickOverviewDotColor(move, overviewLineColor));
+      g.fillOval(
+          point.x - layout.dotSize / 2,
+          point.y - layout.dotSize / 2,
+          layout.dotSize,
+          layout.dotSize);
+      lastPoint = point;
+    }
+    g.setStroke(previousStroke);
+
+    QuickOverviewPoint currentPoint = findQuickOverviewPoint(layout.points, curMove);
+    QuickOverviewPoint hoverPoint = findQuickOverviewPoint(layout.points, mouseOverNode);
+
+    if (currentPoint != null) {
+      g.setColor(new Color(255, 255, 255, 170));
+      g.drawLine(currentPoint.x, layout.innerY, currentPoint.x, layout.innerY + layout.innerHeight);
+      g.fillOval(
+          currentPoint.x - layout.dotSize / 2,
+          currentPoint.y - layout.dotSize / 2,
+          layout.dotSize,
+          layout.dotSize);
+    }
+
+    if (hoverPoint != null) {
+      g.setColor(new Color(61, 204, 255, 230));
+      g.drawLine(hoverPoint.x, layout.innerY, hoverPoint.x, layout.innerY + layout.innerHeight);
+      g.fillOval(
+          hoverPoint.x - layout.dotSize / 2,
+          hoverPoint.y - layout.dotSize / 2,
+          layout.dotSize,
+          layout.dotSize);
+      drawQuickOverviewLabel(
+          g,
+          hoverPoint.move,
+          hoverPoint.x,
+          layout.overviewY,
+          layout.innerX,
+          layout.innerX + layout.innerWidth);
+    }
+    return layout;
+  }
+
+  private List<QuickOverviewMove> buildQuickOverviewMoves(BoardHistoryNode curMove) {
+    ArrayList<QuickOverviewMove> moves = new ArrayList<>();
+    double lastWinrate = 50;
+    int lastMoveNumber = 0;
+    boolean startsNewSegment = false;
+    List<BoardHistoryNode> path = buildGraphPath(curMove);
+
+    for (BoardHistoryNode pathNode : path) {
+      if (!pathNode.previous().isPresent()) continue;
+      BoardData data = pathNode.getData();
+      boolean isSnapshot = data.isSnapshotNode();
+      if (!isSnapshot && !isRealHistoryActionNode(data)) continue;
+      if (!moves.isEmpty() && pathNode.getData().moveNumber <= lastMoveNumber) {
+        startsNewSegment = true;
+      }
+
+      double previousWinrate = lastWinrate;
+      double currentWinrate = resolveQuickOverviewWinrate(pathNode, previousWinrate);
+      boolean connectsToPrevious = !moves.isEmpty() && !startsNewSegment && !isSnapshot;
+      lastWinrate = currentWinrate;
+      String moveName = quickOverviewMoveName(data);
+      boolean hasAnalysis = hasPrimaryAnalysisPayload(data);
+      double swing =
+          startsNewSegment || isSnapshot
+              ? 0
+              : resolveQuickOverviewSwing(pathNode, previousWinrate, currentWinrate);
+      moves.add(
+          new QuickOverviewMove(
+              pathNode,
+              data.moveNumber,
+              moveName,
+              currentWinrate,
+              swing,
+              hasAnalysis,
+              connectsToPrevious));
+      startsNewSegment = isSnapshot;
+      lastMoveNumber = data.moveNumber;
+    }
+    return moves;
+  }
+
+  private String quickOverviewMoveName(BoardData data) {
+    if (data.isPassNode()) {
+      return "PASS";
+    }
+    if (data.isMoveNode() && data.lastMove.isPresent()) {
+      return Board.convertCoordinatesToName(data.lastMove.get()[0], data.lastMove.get()[1]);
+    }
+    return "SNAPSHOT";
+  }
+
+  private QuickOverviewLayout buildQuickOverviewLayout(
+      BoardHistoryNode currentNode, int posx, int width, int numMoves, Graphics2D graphics) {
+    if (!canShowQuickOverview(width, numMoves)) return null;
+
+    List<QuickOverviewMove> moves = buildQuickOverviewMoves(currentNode);
+    if (moves.size() < 2) return null;
+
+    int overviewHeight = Math.max(42, Math.min(68, origParams[3] / 5));
+    int overviewY = origParams[1] + origParams[3] - overviewHeight - 4;
+    int innerPadding = Math.max(4, overviewHeight / 8);
+    int innerX = posx + innerPadding;
+    int innerY = overviewY + innerPadding;
+    int innerWidth = Math.max(10, width - innerPadding * 2);
+    int innerHeight = Math.max(10, overviewHeight - innerPadding * 2);
+    double issueThreshold =
+        Lizzie.config.blunderWinThreshold > 0 ? Lizzie.config.blunderWinThreshold : 3.0;
+    double winrateScale = quickOverviewWinrateScale(moves);
+    double swingScale = quickOverviewSwingScale(moves, issueThreshold);
+    int dotSize = Math.max(4, DOT_RADIUS * 2);
+    boolean[][] dotMask =
+        graphics == null
+            ? quickOverviewDotMask(dotSize)
+            : quickOverviewDotMask(dotSize, graphics.getRenderingHints());
+    return new QuickOverviewLayout(
+        buildQuickOverviewPoints(
+            moves, innerX, innerY, innerWidth, innerHeight, numMoves, winrateScale),
+        posx,
+        overviewY,
+        width,
+        overviewHeight,
+        innerX,
+        innerY,
+        innerWidth,
+        innerHeight,
+        dotSize,
+        dotMask,
+        Math.max(2, (int) Math.ceil(innerWidth / Math.max(70.0, numMoves))),
+        issueThreshold,
+        swingScale);
+  }
+
+  private boolean canShowQuickOverview(int width, int numMoves) {
+    return origParams[2] >= 180 && origParams[3] >= 120 && width >= 140 && numMoves >= 2;
+  }
+
+  private double quickOverviewWinrateScale(List<QuickOverviewMove> moves) {
+    double maxWinrateSpread = 10;
+    for (QuickOverviewMove move : moves) {
+      if (move.hasAnalysis) {
+        maxWinrateSpread = Math.max(maxWinrateSpread, Math.abs(move.winrate - 50.0));
+      }
+    }
+    return Math.max(10.0, Math.ceil(maxWinrateSpread / 5.0) * 5.0);
+  }
+
+  private double quickOverviewSwingScale(List<QuickOverviewMove> moves, double issueThreshold) {
+    double maxSwing = issueThreshold;
+    for (QuickOverviewMove move : moves) {
+      if (move.hasAnalysis) {
+        maxSwing = Math.max(maxSwing, move.swing);
+      }
+    }
+    return Math.max(issueThreshold, Math.ceil(maxSwing / 5.0) * 5.0);
+  }
+
+  private List<QuickOverviewPoint> buildQuickOverviewPoints(
+      List<QuickOverviewMove> moves,
+      int innerX,
+      int innerY,
+      int innerWidth,
+      int innerHeight,
+      int numMoves,
+      double winrateScale) {
+    ArrayList<QuickOverviewPoint> points = new ArrayList<>(moves.size());
+    int centerY = innerY + innerHeight / 2;
     for (QuickOverviewMove move : moves) {
       int x = innerX + (move.moveNumber - 1) * innerWidth / numMoves;
       int y =
           centerY
               - (int) Math.round((move.winrate - 50.0) * (innerHeight / 2.0 - 2) / winrateScale);
-
-      if (move.hasAnalysis && move.swing >= issueThreshold) {
-        int barHeight = Math.max(3, (int) Math.round(move.swing * innerHeight * 0.75 / swingScale));
-        gBlunder.setColor(quickOverviewBarColor(move.swing, issueThreshold, swingScale));
-        gBlunder.fillRoundRect(
-            x - barWidth / 2, innerY + innerHeight - barHeight, barWidth, barHeight, 4, 4);
-      }
-
-      if (lastMove != null) {
-        g.setColor(
-            lastMove.hasAnalysis && move.hasAnalysis
-                ? overviewLineColor
-                : new Color(180, 180, 180, 140));
-        g.setStroke(new BasicStroke(Math.max(1.6f, (float) Lizzie.config.winrateStrokeWidth)));
-        g.drawLine(lastX, lastY, x, y);
-      }
-      lastMove = move;
-      lastX = x;
-      lastY = y;
+      points.add(new QuickOverviewPoint(move, x, y));
     }
-    g.setStroke(previousStroke);
-
-    QuickOverviewMove currentMove = findQuickOverviewMove(moves, curMove);
-    QuickOverviewMove hoverMove = findQuickOverviewMove(moves, mouseOverNode);
-
-    if (currentMove != null) {
-      int x = innerX + (currentMove.moveNumber - 1) * innerWidth / numMoves;
-      int y =
-          centerY
-              - (int)
-                  Math.round((currentMove.winrate - 50.0) * (innerHeight / 2.0 - 2) / winrateScale);
-      g.setColor(new Color(255, 255, 255, 170));
-      g.drawLine(x, innerY, x, innerY + innerHeight);
-      g.fillOval(x - dotSize / 2, y - dotSize / 2, dotSize, dotSize);
-    }
-
-    if (hoverMove != null) {
-      int x = innerX + (hoverMove.moveNumber - 1) * innerWidth / numMoves;
-      int y =
-          centerY
-              - (int)
-                  Math.round((hoverMove.winrate - 50.0) * (innerHeight / 2.0 - 2) / winrateScale);
-      g.setColor(new Color(61, 204, 255, 230));
-      g.drawLine(x, innerY, x, innerY + innerHeight);
-      g.fillOval(x - dotSize / 2, y - dotSize / 2, dotSize, dotSize);
-      drawQuickOverviewLabel(g, hoverMove, x, overviewY, innerX, innerX + innerWidth);
-    }
-  }
-
-  private List<QuickOverviewMove> buildQuickOverviewMoves(BoardHistoryNode curMove) {
-    ArrayList<BoardHistoryNode> path = new ArrayList<>();
-    ArrayList<QuickOverviewMove> moves = new ArrayList<>();
-    BoardHistoryNode node = curMove;
-    double lastWinrate = 50;
-
-    while (node.next().isPresent()) {
-      node = node.next().get();
-    }
-    path.add(node);
-    while (node.previous().isPresent()) {
-      node = node.previous().get();
-      path.add(node);
-    }
-    Collections.reverse(path);
-
-    for (BoardHistoryNode pathNode : path) {
-      if (!pathNode.previous().isPresent()) continue;
-
-      double previousWinrate = lastWinrate;
-      double currentWinrate = resolveQuickOverviewWinrate(pathNode, previousWinrate);
-      lastWinrate = currentWinrate;
-      String moveName =
-          pathNode.getData().lastMove.isPresent()
-              ? Board.convertCoordinatesToName(
-                  pathNode.getData().lastMove.get()[0], pathNode.getData().lastMove.get()[1])
-              : "PASS";
-      boolean hasAnalysis = pathNode.getData().getPlayouts() > 0;
-      double swing = resolveQuickOverviewSwing(pathNode, previousWinrate, currentWinrate);
-      moves.add(
-          new QuickOverviewMove(
-              pathNode,
-              pathNode.getData().moveNumber,
-              moveName,
-              currentWinrate,
-              swing,
-              hasAnalysis));
-    }
-    return moves;
+    return points;
   }
 
   private double resolveQuickOverviewWinrate(BoardHistoryNode node, double fallback) {
     double wr = node.getData().winrate;
-    if (node.getData().getPlayouts() <= 0 || wr < 0) return fallback;
+    if (!hasPrimaryAnalysisPayload(node.getData()) || wr < 0) return fallback;
     if (!node.getData().blackToPlay) return 100 - wr;
     return wr;
   }
@@ -1552,11 +1744,11 @@ public class WinrateGraph {
     return Math.abs(currentWinrate - previousWinrate);
   }
 
-  private QuickOverviewMove findQuickOverviewMove(
-      List<QuickOverviewMove> moves, BoardHistoryNode targetNode) {
+  private QuickOverviewPoint findQuickOverviewPoint(
+      List<QuickOverviewPoint> points, BoardHistoryNode targetNode) {
     if (targetNode == null) return null;
-    for (QuickOverviewMove move : moves) {
-      if (move.node == targetNode) return move;
+    for (QuickOverviewPoint point : points) {
+      if (point.move.node == targetNode) return point;
     }
     return null;
   }
@@ -1603,6 +1795,17 @@ public class WinrateGraph {
     return new Color(red, green, blue, alpha);
   }
 
+  private Color quickOverviewDotColor(QuickOverviewMove move, Color analyzedColor) {
+    if (move.node != null && move.node.getData().isSnapshotNode()) {
+      return new Color(255, 208, 84, 210);
+    }
+    if (move.hasAnalysis) {
+      return new Color(
+          analyzedColor.getRed(), analyzedColor.getGreen(), analyzedColor.getBlue(), 210);
+    }
+    return new Color(200, 200, 200, 170);
+  }
+
   private double convertScoreLead(double coreMean) {
     if (coreMean > maxScoreLead) return maxScoreLead;
     if (coreMean < 0 && Math.abs(coreMean) > maxScoreLead) return -maxScoreLead;
@@ -1631,27 +1834,782 @@ public class WinrateGraph {
   public void clearParames() {
     origParams = new int[] {0, 0, 0, 0};
     params = new int[] {0, 0, 0, 0, 0};
+    clearRenderedPointSources();
+  }
+
+  BoardHistoryNode resolveMoveTargetNode(int x, int y) {
+    if (Lizzie.board == null || Lizzie.board.getHistory() == null) {
+      return null;
+    }
+    QuickOverviewLayout quickOverviewLayout = currentQuickOverviewLayout();
+    if (quickOverviewLayout != null && isInsideQuickOverview(quickOverviewLayout, x, y)) {
+      QuickOverviewPoint point = directQuickOverviewPointHit(quickOverviewLayout, x, y);
+      if (point == null && !isFrameTryingMode()) {
+        point = columnQuickOverviewPointHit(quickOverviewLayout, x, y);
+      }
+      return point == null ? null : point.move.node;
+    }
+    if (!isInsideGraphBounds(x, y)) {
+      return null;
+    }
+    List<GraphPoint> points = currentGraphPoints();
+    if (points.isEmpty()) {
+      return null;
+    }
+    GraphPoint point = directGraphPointHit(points, x, y);
+    if (point == null) {
+      point = columnGraphPointHit(points, x, y);
+    }
+    return point == null ? null : point.node;
   }
 
   public int moveNumber(int x, int y) {
-    int origPosx = origParams[0];
-    int origPosy = origParams[1];
-    int origWidth = origParams[2];
-    int origHeight = origParams[3];
-    int posx = params[0];
-    int width = params[2];
-    int numMoves = params[4];
-    if (origPosx <= x && x < origPosx + origWidth && origPosy <= y && y < origPosy + origHeight) {
-      // x == posx + (movenum * width / numMoves) ==> movenum = ...
-      int movenum = Math.round((x - posx) * numMoves / (float) width);
-      // movenum == moveNumber - 1 ==> moveNumber = ...
-      return movenum + 1;
-    } else {
-      return -1;
-    }
+    BoardHistoryNode targetNode = resolveMoveTargetNode(x, y);
+    return targetNode == null ? -1 : targetNode.getData().moveNumber;
   }
 
   public void resetMaxScoreLead() {
     maxScoreLead = Lizzie.config.initialMaxScoreLead;
+  }
+
+  private BoardHistoryNode currentGraphNode() {
+    if (Lizzie.board == null || Lizzie.board.getHistory() == null) {
+      return null;
+    }
+    return Lizzie.board.getHistory().getCurrentHistoryNode();
+  }
+
+  private List<BoardHistoryNode> buildGraphPath(BoardHistoryNode currentNode) {
+    ArrayList<BoardHistoryNode> path = new ArrayList<>();
+    if (currentNode == null) {
+      return path;
+    }
+    BoardHistoryNode node = currentNode;
+    while (node.next().isPresent()) {
+      node = node.next().get();
+    }
+    path.add(node);
+    while (node.previous().isPresent()) {
+      node = node.previous().get();
+      path.add(node);
+    }
+    Collections.reverse(path);
+    appendVisibleMainTrunkNodes(currentNode, path);
+    return path;
+  }
+
+  private void appendVisibleMainTrunkNodes(
+      BoardHistoryNode currentNode, List<BoardHistoryNode> path) {
+    if (currentNode.isMainTrunk()) {
+      return;
+    }
+    BoardHistoryNode forkNode = currentNode.findTop();
+    Optional<BoardHistoryNode> mainNode = forkNode.next();
+    while (mainNode.isPresent()) {
+      path.add(mainNode.get());
+      mainNode = mainNode.get().next();
+    }
+  }
+
+  private boolean isGraphAnchorNode(BoardData data) {
+    return data.isSnapshotNode() || isRealHistoryActionNode(data);
+  }
+
+  private boolean isRealHistoryActionNode(BoardData data) {
+    return data.isMoveNode() || (data.isPassNode() && !data.dummy);
+  }
+
+  private List<GraphPoint> buildGraphAnchorPoints(BoardHistoryNode currentNode) {
+    if (!isShowWinrateLineEnabled()) {
+      return Collections.emptyList();
+    }
+    if (params[2] <= 0 || params[3] <= 0 || params[4] <= 0 || currentNode == null) {
+      return Collections.emptyList();
+    }
+    if (isEngineOrPkGraphMode()) {
+      return buildEngineGraphAnchorPoints(currentNode);
+    }
+    if (mode == 1) {
+      return buildDualCurveGraphAnchorPoints(currentNode);
+    }
+    return buildDefaultGraphAnchorPoints(currentNode);
+  }
+
+  private List<GraphPoint> buildDefaultGraphAnchorPoints(BoardHistoryNode currentNode) {
+    ArrayList<GraphPoint> points = new ArrayList<>();
+    BoardHistoryNode node = graphTraversalEnd(currentNode);
+    Optional<BoardHistoryNode> variationTop =
+        currentNode.isMainTrunk() ? Optional.empty() : Optional.of(currentNode.findTop());
+    double lastWinrate = 50;
+    while (node.previous().isPresent()) {
+      Double displayedWinrate = displayedDefaultAnchorWinrate(node, lastWinrate);
+      if (displayedWinrate != null) {
+        lastWinrate = displayedWinrate;
+        appendGraphPoint(points, node, displayedWinrate.doubleValue());
+      }
+      if (variationTop.isPresent() && variationTop.get() == node && node.next().isPresent()) {
+        node = graphTraversalEnd(node);
+        displayedWinrate = displayedDefaultAnchorWinrate(node, lastWinrate);
+        if (displayedWinrate != null) {
+          lastWinrate = displayedWinrate;
+          appendGraphPoint(points, node, displayedWinrate.doubleValue());
+        }
+        variationTop = Optional.empty();
+      }
+      node = node.previous().get();
+    }
+    return points;
+  }
+
+  private Double displayedDefaultAnchorWinrate(BoardHistoryNode node, double fallbackWinrate) {
+    Double displayedWinrate = displayedGraphWinrate(node, fallbackWinrate);
+    if (displayedWinrate != null) {
+      return displayedWinrate;
+    }
+    if (node == null || node.getData() == null) {
+      return null;
+    }
+    BoardData data = node.getData();
+    if (!data.isSnapshotNode() || hasPrimaryAnalysisPayload(data)) {
+      return null;
+    }
+    return Math.max(0, Math.min(100, fallbackWinrate));
+  }
+
+  private List<GraphPoint> buildEngineGraphAnchorPoints(BoardHistoryNode currentNode) {
+    ArrayList<GraphPoint> points = new ArrayList<>();
+    BoardHistoryNode node = graphTraversalEnd(currentNode);
+    while (node.previous().isPresent() && node.previous().get().previous().isPresent()) {
+      BoardHistoryNode twoBackNode = node.previous().get().previous().get();
+      double currentWinrate = resolveEngineGraphWinrate(node, twoBackNode);
+      double twoBackWinrate = resolveEngineGraphBackWinrate(twoBackNode, currentWinrate);
+      appendGraphPoint(points, node, currentWinrate);
+      appendGraphPoint(points, twoBackNode, twoBackWinrate);
+      node = node.previous().get();
+    }
+    return points;
+  }
+
+  private double resolveEngineGraphWinrate(BoardHistoryNode node, BoardHistoryNode twoBackNode) {
+    if (hasPrimaryAnalysisPayload(node.getData())) {
+      return node.getData().winrate;
+    }
+    if (hasPrimaryAnalysisPayload(twoBackNode.getData())) {
+      return twoBackNode.getData().winrate;
+    }
+    return 50;
+  }
+
+  private double resolveEngineGraphBackWinrate(
+      BoardHistoryNode twoBackNode, double fallbackWinrate) {
+    if (hasPrimaryAnalysisPayload(twoBackNode.getData())) {
+      return twoBackNode.getData().winrate;
+    }
+    return fallbackWinrate;
+  }
+
+  private List<GraphPoint> buildDualCurveGraphAnchorPoints(BoardHistoryNode currentNode) {
+    ArrayList<GraphPoint> points = new ArrayList<>();
+    BoardHistoryNode node = graphTraversalEnd(currentNode);
+    double lastWinrate = 50;
+    while (node.previous().isPresent()) {
+      Double blackCurveWinrate = displayedDualCurveAnchorWinrate(node, lastWinrate);
+      if (blackCurveWinrate != null) {
+        lastWinrate = blackCurveWinrate.doubleValue();
+        appendGraphPoint(points, node, blackCurveWinrate.doubleValue());
+        appendGraphPoint(points, node, 100 - blackCurveWinrate.doubleValue());
+      }
+      node = node.previous().get();
+    }
+    return points;
+  }
+
+  private Double displayedDualCurveAnchorWinrate(BoardHistoryNode node, double fallbackWinrate) {
+    Double displayedWinrate = displayedDualCurveBlackWinrate(node, fallbackWinrate);
+    if (displayedWinrate != null) {
+      return displayedWinrate;
+    }
+    if (node == null || node.getData() == null) {
+      return null;
+    }
+    BoardData data = node.getData();
+    if (!data.isSnapshotNode() || hasPrimaryAnalysisPayload(data)) {
+      return null;
+    }
+    return Math.max(0, Math.min(100, fallbackWinrate));
+  }
+
+  private Double displayedDualCurveBlackWinrate(BoardHistoryNode node, double fallbackWinrate) {
+    if (node == null || node.getData() == null || !hasPrimaryAnalysisPayload(node.getData())) {
+      return null;
+    }
+    double winrate = node.getData().winrate;
+    if (winrate < 0) {
+      winrate = 100 - fallbackWinrate;
+    } else if (!node.getData().blackToPlay) {
+      winrate = 100 - winrate;
+    }
+    return winrate;
+  }
+
+  private boolean isEngineOrPkGraphMode() {
+    return EngineManager.isEngineGame || (Lizzie.board != null && Lizzie.board.isPkBoard);
+  }
+
+  private BoardHistoryNode graphTraversalEnd(BoardHistoryNode node) {
+    BoardHistoryNode current = node;
+    while (current.next().isPresent()) {
+      current = current.next().get();
+    }
+    return current;
+  }
+
+  private void appendGraphPoint(List<GraphPoint> points, BoardHistoryNode node, double winrate) {
+    if (!node.previous().isPresent() || !isGraphAnchorNode(node.getData())) {
+      return;
+    }
+    points.add(new GraphPoint(node, graphPointX(node.getData().moveNumber), graphPointY(winrate)));
+  }
+
+  private void drawGraphAnchors(Graphics2D g, List<GraphPoint> points) {
+    if (points.isEmpty()) {
+      return;
+    }
+    int markerHalfWidth = graphAnchorHitHalfWidth(points);
+    int markerWidth = graphAnchorMarkerWidth(markerHalfWidth);
+    int markerHeight = graphAnchorMarkerHeight();
+    for (GraphPoint point : points) {
+      g.setColor(graphAnchorColor(point.node.getData()));
+      g.fillRect(
+          point.x - markerHalfWidth,
+          point.y - GRAPH_ANCHOR_HIT_HALF_SIZE,
+          markerWidth,
+          markerHeight);
+    }
+  }
+
+  private int graphAnchorMarkerWidth(int markerHalfWidth) {
+    return markerHalfWidth * 2 + 1;
+  }
+
+  private int graphAnchorMarkerHeight() {
+    return GRAPH_ANCHOR_HIT_HALF_SIZE * 2 + 1;
+  }
+
+  private Color graphAnchorColor(BoardData data) {
+    if (data != null && data.isSnapshotNode()) {
+      return new Color(255, 208, 84, 220);
+    }
+    Color baseColor =
+        Lizzie.config.winrateLineColor != null
+            ? Lizzie.config.winrateLineColor
+            : new Color(100, 180, 255);
+    return new Color(baseColor.getRed(), baseColor.getGreen(), baseColor.getBlue(), 190);
+  }
+
+  private Double displayedGraphWinrate(BoardHistoryNode node, double fallbackWinrate) {
+    if (node == null) {
+      return null;
+    }
+    BoardData data = node.getData();
+    if (data == null || !hasPrimaryAnalysisPayload(data)) {
+      return null;
+    }
+    double winrate = data.winrate;
+    if (winrate < 0) {
+      winrate = 100 - fallbackWinrate;
+    } else if (!data.blackToPlay) {
+      winrate = 100 - winrate;
+    }
+    return Math.max(0, Math.min(100, winrate));
+  }
+
+  private boolean isInsideQuickOverview(QuickOverviewLayout layout, int x, int y) {
+    int minX = quickOverviewHitMinX(layout);
+    int maxX = quickOverviewHitMaxX(layout);
+    int maxY = quickOverviewHitMaxY(layout);
+    return minX <= x && x < maxX && layout.overviewY <= y && y < maxY;
+  }
+
+  private boolean hasPrimaryAnalysisPayload(BoardData data) {
+    return data != null
+        && (data.getPlayouts() > 0
+            || data.analysisHeaderSlots > 0
+            || !Utils.isBlank(data.engineName)
+            || (data.bestMoves != null && !data.bestMoves.isEmpty())
+            || data.isKataData
+            || (data.estimateArray != null && !data.estimateArray.isEmpty()));
+  }
+
+  private int quickOverviewHitMinX(QuickOverviewLayout layout) {
+    return layout.overviewX - 2;
+  }
+
+  private int quickOverviewHitMaxX(QuickOverviewLayout layout) {
+    return layout.overviewX + layout.overviewWidth + 2;
+  }
+
+  private int quickOverviewHitMaxY(QuickOverviewLayout layout) {
+    return layout.overviewY + layout.overviewHeight;
+  }
+
+  private Rectangle quickOverviewHitBounds(QuickOverviewLayout layout) {
+    int minX = quickOverviewHitMinX(layout);
+    int width = quickOverviewHitMaxX(layout) - minX;
+    return new Rectangle(minX, layout.overviewY, width, layout.overviewHeight);
+  }
+
+  private void occludeMainGraphUnderQuickOverview(
+      Graphics2D graphGraphics, Graphics2D blunderGraphics, QuickOverviewLayout layout) {
+    Rectangle bounds = quickOverviewHitBounds(layout);
+    clearGraphicsRegion(graphGraphics, bounds);
+    clearGraphicsRegion(blunderGraphics, bounds);
+  }
+
+  private void clearGraphicsRegion(Graphics2D graphics, Rectangle bounds) {
+    if (graphics == null || bounds == null || bounds.width <= 0 || bounds.height <= 0) {
+      return;
+    }
+    Composite previousComposite = graphics.getComposite();
+    try {
+      graphics.setComposite(AlphaComposite.Clear);
+      graphics.fillRect(bounds.x, bounds.y, bounds.width, bounds.height);
+    } finally {
+      graphics.setComposite(previousComposite);
+    }
+  }
+
+  private QuickOverviewPoint directQuickOverviewPointHit(
+      QuickOverviewLayout layout, int targetX, int targetY) {
+    QuickOverviewPoint bestPoint = null;
+    long bestDistance = Long.MAX_VALUE;
+    for (QuickOverviewPoint point : layout.points) {
+      if (!isInsideQuickOverviewDotPixel(layout, point, targetX, targetY)) {
+        continue;
+      }
+      long distance = quickOverviewDistanceSquared(point, targetX, targetY);
+      if (distance <= bestDistance) {
+        bestPoint = point;
+        bestDistance = distance;
+      }
+    }
+    return bestPoint;
+  }
+
+  private boolean isInsideQuickOverviewDotPixel(
+      QuickOverviewLayout layout, QuickOverviewPoint point, int targetX, int targetY) {
+    int dotSize = layout.dotSize;
+    if (dotSize <= 0) {
+      return false;
+    }
+    int dotLeft = point.x - dotSize / 2;
+    int dotTop = point.y - dotSize / 2;
+    int localX = targetX - dotLeft;
+    int localY = targetY - dotTop;
+    if (localX < 0 || localX >= dotSize || localY < 0 || localY >= dotSize) {
+      return false;
+    }
+    boolean[][] dotMask = quickOverviewDotMask(layout);
+    return dotMask[localY][localX];
+  }
+
+  private boolean[][] quickOverviewDotMask(QuickOverviewLayout layout) {
+    if (layout != null
+        && layout.dotMask != null
+        && layout.dotMask.length == layout.dotSize
+        && layout.dotSize > 0
+        && layout.dotMask[0].length == layout.dotSize) {
+      return layout.dotMask;
+    }
+    return quickOverviewDotMask(layout == null ? 0 : layout.dotSize);
+  }
+
+  private boolean[][] quickOverviewDotMask(int dotSize) {
+    if (dotSize <= 0) {
+      return new boolean[0][0];
+    }
+    boolean[][] mask = quickOverviewDotMaskCache.get(dotSize);
+    if (mask != null) {
+      return mask;
+    }
+
+    BufferedImage dotImage = new BufferedImage(dotSize, dotSize, BufferedImage.TYPE_INT_ARGB);
+    Graphics2D dotGraphics = dotImage.createGraphics();
+    try {
+      dotGraphics.fillOval(0, 0, dotSize, dotSize);
+    } finally {
+      dotGraphics.dispose();
+    }
+
+    boolean[][] computedMask = new boolean[dotSize][dotSize];
+    for (int y = 0; y < dotSize; y++) {
+      for (int x = 0; x < dotSize; x++) {
+        computedMask[y][x] = ((dotImage.getRGB(x, y) >>> 24) & 0xff) > 0;
+      }
+    }
+    quickOverviewDotMaskCache.put(dotSize, computedMask);
+    return computedMask;
+  }
+
+  private boolean[][] quickOverviewDotMask(int dotSize, RenderingHints renderingHints) {
+    if (dotSize <= 0) {
+      return new boolean[0][0];
+    }
+    BufferedImage dotImage = new BufferedImage(dotSize, dotSize, BufferedImage.TYPE_INT_ARGB);
+    Graphics2D dotGraphics = dotImage.createGraphics();
+    try {
+      if (renderingHints != null) {
+        dotGraphics.addRenderingHints(renderingHints);
+      }
+      dotGraphics.fillOval(0, 0, dotSize, dotSize);
+    } finally {
+      dotGraphics.dispose();
+    }
+    boolean[][] computedMask = new boolean[dotSize][dotSize];
+    for (int y = 0; y < dotSize; y++) {
+      for (int x = 0; x < dotSize; x++) {
+        computedMask[y][x] = ((dotImage.getRGB(x, y) >>> 24) & 0xff) > 0;
+      }
+    }
+    return computedMask;
+  }
+
+  private long quickOverviewDistanceSquared(QuickOverviewPoint point, int targetX, int targetY) {
+    long dx = point.x - targetX;
+    long dy = point.y - targetY;
+    return dx * dx + dy * dy;
+  }
+
+  private QuickOverviewPoint columnQuickOverviewPointHit(
+      QuickOverviewLayout layout, int targetX, int targetY) {
+    QuickOverviewPoint bestPoint = null;
+    long bestDistance = Long.MAX_VALUE;
+    int hitHalfWidth = quickOverviewColumnHitHalfWidth(layout);
+    for (QuickOverviewPoint point : layout.points) {
+      if (!isInsideQuickOverviewColumnHitRegion(point, targetX, hitHalfWidth)) {
+        continue;
+      }
+      long distance = quickOverviewDistanceSquared(point, targetX, targetY);
+      if (distance <= bestDistance) {
+        bestPoint = point;
+        bestDistance = distance;
+      }
+    }
+    return bestPoint;
+  }
+
+  private boolean isInsideQuickOverviewColumnHitRegion(
+      QuickOverviewPoint point, int targetX, int hitHalfWidth) {
+    return Math.abs(point.x - targetX) <= hitHalfWidth;
+  }
+
+  private GraphPoint directGraphPointHit(List<GraphPoint> points, int targetX, int targetY) {
+    GraphPoint bestPoint = null;
+    long bestDistance = Long.MAX_VALUE;
+    int xHitHalfWidth = graphAnchorHitHalfWidth(points);
+    for (GraphPoint point : points) {
+      if (!isInsideGraphAnchorHitRegion(point, targetX, targetY, xHitHalfWidth)) {
+        continue;
+      }
+      long distance = graphDistanceSquared(point, targetX, targetY);
+      if (distance <= bestDistance) {
+        bestPoint = point;
+        bestDistance = distance;
+      }
+    }
+    return bestPoint;
+  }
+
+  private GraphPoint columnGraphPointHit(List<GraphPoint> points, int targetX, int targetY) {
+    GraphPoint bestPoint = null;
+    long bestDistance = Long.MAX_VALUE;
+    int hitHalfWidth = graphColumnHitHalfWidth(points);
+    for (GraphPoint point : points) {
+      if (!isInsideGraphColumnHitRegion(point, targetX, hitHalfWidth)) {
+        continue;
+      }
+      long distance = graphDistanceSquared(point, targetX, targetY);
+      if (distance <= bestDistance) {
+        bestPoint = point;
+        bestDistance = distance;
+      }
+    }
+    return bestPoint;
+  }
+
+  private boolean isInsideGraphAnchorHitRegion(
+      GraphPoint point, int targetX, int targetY, int xHitHalfWidth) {
+    return Math.abs(point.x - targetX) <= xHitHalfWidth
+        && Math.abs(point.y - targetY) <= GRAPH_ANCHOR_HIT_HALF_SIZE;
+  }
+
+  private boolean isInsideGraphColumnHitRegion(GraphPoint point, int targetX, int hitHalfWidth) {
+    return Math.abs(point.x - targetX) <= hitHalfWidth;
+  }
+
+  private long graphDistanceSquared(GraphPoint point, int targetX, int targetY) {
+    long dx = point.x - targetX;
+    long dy = point.y - targetY;
+    return dx * dx + dy * dy;
+  }
+
+  private int graphColumnHitHalfWidth(List<GraphPoint> points) {
+    int minSpacing = minPositiveGraphColumnSpacing(points);
+    if (minSpacing == Integer.MAX_VALUE) {
+      return 0;
+    }
+    int spacingLimitedHalfWidth = Math.max(0, (minSpacing - 1) / 2);
+    return Math.min(GRAPH_ANCHOR_HIT_HALF_SIZE, spacingLimitedHalfWidth);
+  }
+
+  private int graphAnchorHitHalfWidth(List<GraphPoint> points) {
+    return graphColumnHitHalfWidth(points);
+  }
+
+  private int minPositiveGraphColumnSpacing(List<GraphPoint> points) {
+    int minSpacing = Integer.MAX_VALUE;
+    for (int i = 0; i < points.size(); i++) {
+      int xi = points.get(i).x;
+      for (int j = i + 1; j < points.size(); j++) {
+        int spacing = Math.abs(xi - points.get(j).x);
+        if (spacing > 0 && spacing < minSpacing) {
+          minSpacing = spacing;
+        }
+      }
+    }
+    return minSpacing;
+  }
+
+  private int quickOverviewColumnHitHalfWidth(QuickOverviewLayout layout) {
+    int maxHalfWidth = Math.max(1, layout.barWidth);
+    int minSpacing = minPositiveQuickOverviewColumnSpacing(layout.points);
+    if (minSpacing == Integer.MAX_VALUE) {
+      return 0;
+    }
+    int spacingLimitedHalfWidth = Math.max(0, (minSpacing - 1) / 2);
+    return Math.min(maxHalfWidth, spacingLimitedHalfWidth);
+  }
+
+  private int minPositiveQuickOverviewColumnSpacing(List<QuickOverviewPoint> points) {
+    int minSpacing = Integer.MAX_VALUE;
+    for (int i = 0; i < points.size(); i++) {
+      int xi = points.get(i).x;
+      for (int j = i + 1; j < points.size(); j++) {
+        int spacing = Math.abs(xi - points.get(j).x);
+        if (spacing > 0 && spacing < minSpacing) {
+          minSpacing = spacing;
+        }
+      }
+    }
+    return minSpacing;
+  }
+
+  private void rememberRenderedPointSources(QuickOverviewLayout quickOverviewLayout) {
+    BoardHistoryNode graphBaseNode = currentGraphNode();
+    rememberRenderedPointSources(quickOverviewLayout, buildGraphAnchorPoints(graphBaseNode));
+  }
+
+  private void rememberRenderedPointSources(
+      QuickOverviewLayout quickOverviewLayout, List<GraphPoint> renderedAnchors) {
+    renderedGraphPoints =
+        renderedAnchors == null ? Collections.emptyList() : new ArrayList<>(renderedAnchors);
+    renderedQuickOverviewLayout = quickOverviewLayout;
+    renderedOrigParams = origParams.clone();
+    renderedParams = params.clone();
+    rememberRenderedStateSnapshot();
+  }
+
+  private void clearRenderedPointSources() {
+    renderedGraphPoints = Collections.emptyList();
+    renderedQuickOverviewLayout = null;
+    renderedOrigParams = new int[] {0, 0, 0, 0};
+    renderedParams = new int[] {0, 0, 0, 0, 0};
+    renderedCurrentGraphNode = null;
+    renderedGraphEndNode = null;
+    renderedMainEndNode = null;
+    renderedMode = 0;
+    renderedEngineGame = false;
+    renderedPkBoard = false;
+    renderedShowWinrateLine = false;
+    renderedFrameInPlayMode = false;
+  }
+
+  private List<GraphPoint> currentGraphPoints() {
+    if (!hasFreshRenderedSources()) {
+      return Collections.emptyList();
+    }
+    return renderedGraphPoints;
+  }
+
+  private QuickOverviewLayout currentQuickOverviewLayout() {
+    if (!hasFreshRenderedSources()) {
+      return null;
+    }
+    return renderedQuickOverviewLayout;
+  }
+
+  private boolean hasFreshRenderedSources() {
+    return hasFreshRenderedParams() && hasFreshRenderedState();
+  }
+
+  private boolean hasFreshRenderedParams() {
+    return Arrays.equals(renderedOrigParams, origParams) && Arrays.equals(renderedParams, params);
+  }
+
+  private void rememberRenderedStateSnapshot() {
+    BoardHistoryNode currentNode = currentGraphNode();
+    renderedCurrentGraphNode = currentNode;
+    renderedGraphEndNode = currentNode == null ? null : graphTraversalEnd(currentNode);
+    renderedMainEndNode = currentMainEndNode();
+    renderedMode = mode;
+    renderedEngineGame = EngineManager.isEngineGame;
+    renderedPkBoard = Lizzie.board != null && Lizzie.board.isPkBoard;
+    renderedShowWinrateLine = isShowWinrateLineEnabled();
+    renderedFrameInPlayMode = isFrameInPlayMode();
+  }
+
+  private boolean hasFreshRenderedState() {
+    boolean sameState =
+        currentMainEndNode() == renderedMainEndNode
+            && mode == renderedMode
+            && EngineManager.isEngineGame == renderedEngineGame
+            && (Lizzie.board != null && Lizzie.board.isPkBoard) == renderedPkBoard
+            && isShowWinrateLineEnabled() == renderedShowWinrateLine
+            && isFrameInPlayMode() == renderedFrameInPlayMode;
+    if (!sameState) {
+      return false;
+    }
+    return hasFreshRenderedGraphPoints(renderedCurrentGraphNode)
+        && hasFreshRenderedQuickOverviewLayout(renderedCurrentGraphNode);
+  }
+
+  private boolean hasFreshRenderedGraphPoints(BoardHistoryNode currentNode) {
+    return sameGraphPoints(renderedGraphPoints, buildGraphAnchorPoints(currentNode));
+  }
+
+  private boolean hasFreshRenderedQuickOverviewLayout(BoardHistoryNode currentNode) {
+    QuickOverviewLayout currentLayout =
+        buildQuickOverviewLayout(currentNode, params[0], params[2], params[4], null);
+    return sameQuickOverviewLayout(renderedQuickOverviewLayout, currentLayout);
+  }
+
+  private boolean sameGraphPoints(List<GraphPoint> renderedPoints, List<GraphPoint> currentPoints) {
+    if (renderedPoints.size() != currentPoints.size()) {
+      return false;
+    }
+    for (int i = 0; i < renderedPoints.size(); i++) {
+      GraphPoint renderedPoint = renderedPoints.get(i);
+      GraphPoint currentPoint = currentPoints.get(i);
+      if (renderedPoint.node != currentPoint.node
+          || renderedPoint.x != currentPoint.x
+          || renderedPoint.y != currentPoint.y) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  private boolean sameQuickOverviewLayout(
+      QuickOverviewLayout rendered, QuickOverviewLayout current) {
+    if (rendered == current) {
+      return true;
+    }
+    if (rendered == null || current == null) {
+      return false;
+    }
+    if (rendered.overviewX != current.overviewX
+        || rendered.overviewY != current.overviewY
+        || rendered.overviewWidth != current.overviewWidth
+        || rendered.overviewHeight != current.overviewHeight
+        || rendered.innerX != current.innerX
+        || rendered.innerY != current.innerY
+        || rendered.innerWidth != current.innerWidth
+        || rendered.innerHeight != current.innerHeight
+        || rendered.dotSize != current.dotSize) {
+      return false;
+    }
+    return sameQuickOverviewPoints(rendered.points, current.points);
+  }
+
+  private boolean sameQuickOverviewPoints(
+      List<QuickOverviewPoint> renderedPoints, List<QuickOverviewPoint> currentPoints) {
+    if (renderedPoints.size() != currentPoints.size()) {
+      return false;
+    }
+    for (int i = 0; i < renderedPoints.size(); i++) {
+      QuickOverviewPoint renderedPoint = renderedPoints.get(i);
+      QuickOverviewPoint currentPoint = currentPoints.get(i);
+      if (renderedPoint.move.node != currentPoint.move.node
+          || renderedPoint.x != currentPoint.x
+          || renderedPoint.y != currentPoint.y) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  private BoardHistoryNode currentMainEndNode() {
+    if (Lizzie.board == null || Lizzie.board.getHistory() == null) {
+      return null;
+    }
+    return Lizzie.board.getHistory().getMainEnd();
+  }
+
+  private boolean isFrameInPlayMode() {
+    return Lizzie.frame != null && Lizzie.frame.isInPlayMode();
+  }
+
+  private boolean isShowWinrateLineEnabled() {
+    return Lizzie.config != null && Lizzie.config.showWinrateLine;
+  }
+
+  private boolean isFrameTryingMode() {
+    return Lizzie.frame != null && Lizzie.frame.isTrying;
+  }
+
+  private GraphPoint findGraphPoint(List<GraphPoint> points, BoardHistoryNode targetNode) {
+    if (targetNode == null) return null;
+    for (GraphPoint point : points) {
+      if (point.node == targetNode) return point;
+    }
+    return null;
+  }
+
+  private int[] renderedGraphPoint(BoardHistoryNode targetNode) {
+    GraphPoint point = findGraphPoint(currentGraphPoints(), targetNode);
+    if (point == null) return null;
+    return new int[] {point.x, point.y};
+  }
+
+  private int[] renderedQuickOverviewPoint(BoardHistoryNode targetNode) {
+    QuickOverviewLayout layout = currentQuickOverviewLayout();
+    if (layout == null) return null;
+    QuickOverviewPoint point = findQuickOverviewPoint(layout.points, targetNode);
+    if (point == null) return null;
+    return new int[] {point.x, point.y};
+  }
+
+  private int graphPointX(int moveNumber) {
+    return graphPointXByMoveIndex(moveNumber - 1);
+  }
+
+  private int graphPointXByMoveIndex(int moveIndex) {
+    int x = params[0] + moveIndex * params[2] / params[4];
+    int maxX = params[0] + Math.max(0, params[2] - 1);
+    return Math.max(params[0], Math.min(maxX, x));
+  }
+
+  private int graphPointY(double winrate) {
+    int y = params[1] + params[3] - (int) (winrate * params[3] / 100);
+    int maxY = params[1] + Math.max(0, params[3] - 1);
+    return Math.max(params[1], Math.min(maxY, y));
+  }
+
+  private boolean isInsideGraphBounds(int x, int y) {
+    int origPosx = origParams[0];
+    int origPosy = origParams[1];
+    int origWidth = origParams[2];
+    int origHeight = origParams[3];
+    return origPosx <= x && x < origPosx + origWidth && origPosy <= y && y < origPosy + origHeight;
   }
 }

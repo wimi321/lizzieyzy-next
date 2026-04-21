@@ -533,17 +533,8 @@ public class IndependentMainBoard extends JFrame {
                 }
                 if (isCoordsChanged) {
                   boolean isCurMouseOver = false;
-                  if (Lizzie.config.showNextMoveBlunder) {
-                    if (Lizzie.board.getHistory().getCurrentHistoryNode().next().isPresent()) {
-                      BoardData nextData =
-                          Lizzie.board.getHistory().getCurrentHistoryNode().next().get().getData();
-                      if (nextData.getPlayouts() > 0)
-                        if (nextData.lastMove.isPresent())
-                          if (nextData.lastMove.get()[0] == curCoords[0]
-                              && nextData.lastMove.get()[1] == curCoords[1]) {
-                            isCurMouseOver = true;
-                          }
-                    }
+                  if (isNextMoveBlunderTarget(curCoords)) {
+                    isCurMouseOver = true;
                   }
                   List<MoveData> bestMoves = Lizzie.frame.getBestMoves();
                   if (!bestMoves.isEmpty())
@@ -864,6 +855,15 @@ public class IndependentMainBoard extends JFrame {
     }
 
     refresh();
+  }
+
+  private boolean isNextMoveBlunderTarget(int[] curCoords) {
+    if (!Lizzie.config.showNextMoveBlunder
+        || !Lizzie.board.getHistory().getCurrentHistoryNode().next().isPresent()) {
+      return false;
+    }
+    BoardData nextData = Lizzie.board.getHistory().getCurrentHistoryNode().next().get().getData();
+    return LizzieFrame.isNextMoveBlunderTarget(nextData, curCoords);
   }
 
   private boolean isMouseOver2(int x, int y) {

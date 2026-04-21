@@ -11,6 +11,7 @@ import featurecat.lizzie.analysis.Branch;
 import featurecat.lizzie.analysis.Leelaz;
 import featurecat.lizzie.analysis.MoveData;
 import featurecat.lizzie.rules.Board;
+import featurecat.lizzie.rules.BoardData;
 import featurecat.lizzie.rules.BoardHistoryNode;
 import featurecat.lizzie.rules.Stone;
 import featurecat.lizzie.rules.Zobrist;
@@ -188,6 +189,25 @@ public class SubBoardRenderer {
   }
 
   private boolean isShowingEstimate = false;
+
+  private BoardData getDisplayedBoardData(Board board) {
+    return branchOpt.map(b -> b.data).orElse(board.getData());
+  }
+
+  private int getDisplayedLastMoveNumber(int[] moveNumberList) {
+    return branchOpt.map(b -> b.length).orElse(Arrays.stream(moveNumberList).max().getAsInt());
+  }
+
+  private Optional<int[]> getDisplayedLastMove(Board board, BoardData data) {
+    if (data.isSnapshotNode()) {
+      return Optional.empty();
+    }
+    return branchOpt.map(b -> copyCoords(b.data.lastMove)).orElse(copyCoords(board.getLastMove()));
+  }
+
+  private Optional<int[]> copyCoords(Optional<int[]> coordsOpt) {
+    return coordsOpt.map(coords -> coords.clone());
+  }
 
   private void drawEstimate() {
     boolean hasDraw = false;
@@ -983,18 +1003,17 @@ public class SubBoardRenderer {
   private void drawMoveNumbers(Graphics2D g) {
     g.setRenderingHint(KEY_ANTIALIASING, VALUE_ANTIALIAS_ON);
     Board board = Lizzie.board;
-    Optional<int[]> lastMoveOpt = branchOpt.map(b -> b.data.lastMove).orElse(board.getLastMove());
+    BoardData data = getDisplayedBoardData(board);
+    Optional<int[]> lastMoveOpt = getDisplayedLastMove(board, data);
 
-    if (!lastMoveOpt.isPresent() && board.getData().moveNumber != 0 && !board.getData().dummy) {
-      g.setColor(
-          board.getData().blackToPlay ? new Color(255, 255, 255, 150) : new Color(0, 0, 0, 150));
+    if (data.isPassNode() && data.moveNumber != 0 && !data.dummy) {
+      g.setColor(data.blackToPlay ? new Color(255, 255, 255, 150) : new Color(0, 0, 0, 150));
       g.fillOval(
           x + boardWidth / 2 - 4 * stoneRadius,
           y + boardHeight / 2 - 4 * stoneRadius,
           stoneRadius * 8,
           stoneRadius * 8);
-      g.setColor(
-          board.getData().blackToPlay ? new Color(0, 0, 0, 255) : new Color(255, 255, 255, 255));
+      g.setColor(data.blackToPlay ? new Color(0, 0, 0, 255) : new Color(255, 255, 255, 255));
       drawString(
           g,
           x + boardWidth / 2,
@@ -1004,6 +1023,7 @@ public class SubBoardRenderer {
           stoneRadius * 4,
           stoneRadius * 6);
     }
+    if (data.isSnapshotNode()) return;
     //    if (Lizzie.config.allowMoveNumber == 0 && !branchOpt.isPresent()) {
     //      if (lastMoveOpt.isPresent()) {
     //        int[] lastMove = lastMoveOpt.get();
@@ -1036,10 +1056,7 @@ public class SubBoardRenderer {
         branchOpt.map(b -> b.data.moveNumberList).orElse(board.getMoveNumberList());
 
     // Allow to display only last move number
-    int lastMoveNumber =
-        branchOpt
-            .map(b -> b.data.moveNumber)
-            .orElse(Arrays.stream(moveNumberList).max().getAsInt());
+    int lastMoveNumber = getDisplayedLastMoveNumber(moveNumberList);
 
     for (int i = 0; i < Board.boardWidth; i++) {
       for (int j = 0; j < Board.boardHeight; j++) {

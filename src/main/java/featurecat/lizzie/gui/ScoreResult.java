@@ -2,6 +2,7 @@ package featurecat.lizzie.gui;
 
 import featurecat.lizzie.Config;
 import featurecat.lizzie.Lizzie;
+import featurecat.lizzie.rules.BoardData;
 import featurecat.lizzie.rules.BoardHistoryNode;
 import featurecat.lizzie.rules.Movelist;
 import featurecat.lizzie.rules.Stone;
@@ -261,16 +262,8 @@ public class ScoreResult extends JDialog {
       else if (jo.optString("whiteHandicapBonus", "").contentEquals("N-1"))
         whiteHandicapBonusN1 = true;
       if (whiteHandicapBonusN1 || whiteHandicapBonusN) {
-        int blackStoneForCalcHandicap = 0;
-        BoardHistoryNode node = Lizzie.board.getHistory().getCurrentHistoryNode();
-
-        while (node.previous().isPresent()) {
-          if (node.getData().lastMove.isPresent()) {
-            if (node.getData().lastMoveColor == Stone.BLACK) blackStoneForCalcHandicap++;
-            else if (node.getData().lastMoveColor == Stone.WHITE) blackStoneForCalcHandicap = 0;
-          }
-          node = node.previous().get();
-        }
+        int blackStoneForCalcHandicap =
+            countBlackHandicapStones(Lizzie.board.getHistory().getCurrentHistoryNode());
         if (Lizzie.board.hasStartStone) {
           for (Movelist move : Lizzie.board.startStonelist) {
             if (!move.ispass) {
@@ -341,6 +334,29 @@ public class ScoreResult extends JDialog {
       scoreResult.setForeground(Color.BLACK);
     }
     setLblRule();
+  }
+
+  private static int countBlackHandicapStones(BoardHistoryNode node) {
+    int blackHandicapStones = 0;
+    BoardHistoryNode current = node;
+    while (current.previous().isPresent()) {
+      BoardData data = current.getData();
+      if (isRealHistoryAction(data) && data.isMoveNode()) {
+        if (data.lastMoveColor == Stone.BLACK) {
+          blackHandicapStones++;
+        } else if (data.lastMoveColor == Stone.WHITE) {
+          blackHandicapStones = 0;
+        }
+      } else if (isRealHistoryAction(data) && data.lastMoveColor == Stone.WHITE) {
+        blackHandicapStones = 0;
+      }
+      current = current.previous().get();
+    }
+    return blackHandicapStones;
+  }
+
+  private static boolean isRealHistoryAction(BoardData data) {
+    return data.isMoveNode() || (data.isPassNode() && !data.dummy);
   }
 
   private void setLblRule() {

@@ -262,6 +262,9 @@ public class LizzieFrame extends JFrame {
   public KataEstimate zen;
   public SetEstimateParam setEstimateParam;
   public ReadBoard readBoard;
+  private Object readBoardRestartLock;
+  private ReadBoard readBoardRestartTarget;
+  private ReadBoardFactory pendingReadBoardFactory;
   public ConfigDialog2 configDialog2;
   public boolean isShowingPolicy = false;
   public boolean isShowingHeatmap = false;
@@ -2255,11 +2258,11 @@ public class LizzieFrame extends JFrame {
   }
 
   public void openBoardSync() {
-    if (!OS.isWindows()) {
+    if (!isNativeBoardSyncSupported()) {
       openReadBoardJava();
       return;
     }
-    if (!ReadBoard.isLegacyNativeReadBoardAvailable()) {
+    if (!isLegacyNativeReadBoardAvailable()) {
       showLegacyReadBoardDownloadDialog();
       return;
     }
@@ -2272,15 +2275,20 @@ public class LizzieFrame extends JFrame {
       return;
     }
     ReadBoard existingReadBoard = readBoard;
+    if (queueReadBoardRestart(existingReadBoard, factory)) {
+      return;
+    }
     Thread restartThread =
         new Thread(
             () -> {
               shutdownReadBoard(existingReadBoard);
               SwingUtilities.invokeLater(
                   () -> {
-                    if (readBoard == null) {
-                      startReadBoard(factory);
+                    ReadBoardFactory nextFactory = finishReadBoardRestart(existingReadBoard);
+                    if (nextFactory == null) {
+                      return;
                     }
+                    startReadBoard(nextFactory);
                   });
             },
             "lizzie-readboard-restart");
@@ -2290,7 +2298,14 @@ public class LizzieFrame extends JFrame {
   private void replaceReadBoard(ReadBoardFactory factory) {
     ReadBoard existingReadBoard = readBoard;
     if (existingReadBoard != null) {
+      if (queueReadBoardRestart(existingReadBoard, factory)) {
+        return;
+      }
       shutdownReadBoard(existingReadBoard);
+      factory = finishReadBoardRestart(existingReadBoard);
+      if (factory == null) {
+        return;
+      }
     }
     startReadBoard(factory);
   }
@@ -2318,6 +2333,14 @@ public class LizzieFrame extends JFrame {
     return new ReadBoard(true, true);
   }
 
+  protected boolean isNativeBoardSyncSupported() {
+    return OS.isWindows();
+  }
+
+  protected boolean isLegacyNativeReadBoardAvailable() {
+    return ReadBoard.isLegacyNativeReadBoardAvailable();
+  }
+
   protected ReadBoard createNativeReadBoard() throws Exception {
     try {
       return new ReadBoard(true, false);
@@ -2327,12 +2350,50 @@ public class LizzieFrame extends JFrame {
     }
   }
 
+  private boolean queueReadBoardRestart(ReadBoard existingReadBoard, ReadBoardFactory factory) {
+    synchronized (readBoardRestartLock()) {
+      pendingReadBoardFactory = factory;
+      if (readBoardRestartTarget == existingReadBoard) {
+        return true;
+      }
+      readBoardRestartTarget = existingReadBoard;
+      return false;
+    }
+  }
+
+  private ReadBoardFactory finishReadBoardRestart(ReadBoard existingReadBoard) {
+    synchronized (readBoardRestartLock()) {
+      if (readBoard != null && readBoard != existingReadBoard) {
+        readBoardRestartTarget = null;
+        pendingReadBoardFactory = null;
+        return null;
+      }
+      readBoard = null;
+      readBoardRestartTarget = null;
+      ReadBoardFactory nextFactory = pendingReadBoardFactory;
+      pendingReadBoardFactory = null;
+      return nextFactory;
+    }
+  }
+
+  private Object readBoardRestartLock() {
+    if (readBoardRestartLock != null) {
+      return readBoardRestartLock;
+    }
+    synchronized (this) {
+      if (readBoardRestartLock == null) {
+        readBoardRestartLock = new Object();
+      }
+      return readBoardRestartLock;
+    }
+  }
+
   @FunctionalInterface
   private interface ReadBoardFactory {
     ReadBoard create() throws Exception;
   }
 
-  private void showLegacyReadBoardDownloadDialog() {
+  protected void showLegacyReadBoardDownloadDialog() {
     LegacyReadBoardPrompts.promptMissingLegacyReadBoardDownload(
         Lizzie.resourceBundle,
         this::confirmLegacyReadBoardDownload,
@@ -6128,12 +6189,12 @@ public class LizzieFrame extends JFrame {
 
   public void onClickedWinrateOnly(int x, int y) {
     if (isPlayingAgainstLeelaz || isAnaPlayingAgainstLeelaz) return;
-    int moveNumber = winrateGraph.moveNumber(x - grx, y - gry);
-    if (Lizzie.config.showWinrateGraph && moveNumber >= 0) {
+    BoardHistoryNode targetNode = resolveWinrateGraphTargetNode(x, y);
+    if (targetNode != null) {
       // isPlayingAgainstLeelaz = false;
       // menu.toggleDoubleMenuGameStatus();
       // noautocounting();
-      if (canGoAfterload) Lizzie.board.goToMoveNumberBeyondBranch(moveNumber);
+      if (canGoAfterload) goToWinrateGraphTarget(targetNode, false);
     }
   }
 
@@ -6184,8 +6245,6 @@ public class LizzieFrame extends JFrame {
     } else {
       boardCoordinates = boardRenderer.convertScreenToCoordinates(x, y);
     }
-    int moveNumber = winrateGraph.moveNumber(x - grx, y - gry);
-
     if (boardCoordinates.isPresent()) {
       if (Lizzie.frame.isContributing) return;
       int[] coords = boardCoordinates.get();
@@ -6221,11 +6280,12 @@ public class LizzieFrame extends JFrame {
         }
       }
     }
-    if (Lizzie.config.showWinrateGraph && moveNumber >= 0) {
+    BoardHistoryNode targetNode = resolveWinrateGraphTargetNode(x, y);
+    if (targetNode != null) {
       if (isPlayingAgainstLeelaz || isAnaPlayingAgainstLeelaz) return;
       // isPlayingAgainstLeelaz = false;
       // noautocounting();
-      if (canGoAfterload) Lizzie.board.goToMoveNumberBeyondBranch(moveNumber);
+      if (canGoAfterload) goToWinrateGraphTarget(targetNode, false);
     }
     // if (Lizzie.config.showSubBoard && subBoardRenderer.isInside(x, y)) {
     // Lizzie.config.toggleLargeSubBoard();
@@ -6475,42 +6535,32 @@ public class LizzieFrame extends JFrame {
     return bestMoves;
   }
 
-  public boolean processMouseMoveOnWinrateGraph(int x, int y) {
-    if (winrateGraph.mode == 1) return false;
-    int moveNumber = winrateGraph.moveNumber(x - this.grx, y - this.gry);
-    boolean noRefresh = false;
-    if (moveNumber >= 0) {
-      BoardHistoryNode curNode = Lizzie.board.getHistory().getCurrentHistoryNode();
-      BoardHistoryNode mouseOverNode = curNode;
-      int curMoveNumber = (mouseOverNode.getData()).moveNumber;
-      if (curMoveNumber > moveNumber) {
-        for (int i = 0; i < curMoveNumber - moveNumber; i++) {
-          if (mouseOverNode.previous().isPresent()) {
-            mouseOverNode = mouseOverNode.previous().get();
-          } else {
-            noRefresh = true;
-            break;
-          }
-        }
-      } else if (curMoveNumber < moveNumber) {
-        for (int i = 0; i < moveNumber - curMoveNumber; i++) {
-          if (mouseOverNode.next().isPresent()) {
-            mouseOverNode = mouseOverNode.next().get();
-          } else {
-            noRefresh = true;
-            break;
-          }
-        }
-      }
-      winrateGraph.setMouseOverNode(mouseOverNode);
-      if (mouseOverNode != curNode || !noRefresh) {
-        redrawWinratePaneOnly = true;
-        refreshWinratePane = true;
-        repaint();
-      }
-      return true;
+  static boolean hasRealMoveCoordinates(BoardData data) {
+    return data != null && data.isMoveNode() && data.lastMove.isPresent();
+  }
+
+  static boolean isNextMoveBlunderTarget(BoardData data, int[] curCoords) {
+    if (!hasRealMoveCoordinates(data) || data.getPlayouts() <= 0) {
+      return false;
     }
-    return false;
+    int[] lastMove = data.lastMove.get();
+    return lastMove[0] == curCoords[0] && lastMove[1] == curCoords[1];
+  }
+
+  public boolean processMouseMoveOnWinrateGraph(int x, int y) {
+    BoardHistoryNode targetNode = resolveWinrateGraphTargetNode(x, y);
+    if (targetNode == null) {
+      return false;
+    }
+    BoardHistoryNode currentNode = Lizzie.board.getHistory().getCurrentHistoryNode();
+    BoardHistoryNode previousHoverNode = winrateGraph.mouseOverNode;
+    winrateGraph.setMouseOverNode(targetNode);
+    if (targetNode != currentNode || previousHoverNode != targetNode) {
+      redrawWinratePaneOnly = true;
+      refreshWinratePane = true;
+      repaint();
+    }
+    return true;
   }
 
   public boolean onMouseMoved(int x, int y) {
@@ -6584,12 +6634,9 @@ public class LizzieFrame extends JFrame {
           if (Lizzie.board.getHistory().getCurrentHistoryNode().next().isPresent()) {
             BoardData nextData =
                 Lizzie.board.getHistory().getCurrentHistoryNode().next().get().getData();
-            if (nextData.getPlayouts() > 0)
-              if (nextData.lastMove.isPresent())
-                if (nextData.lastMove.get()[0] == curCoords[0]
-                    && nextData.lastMove.get()[1] == curCoords[1]) {
-                  isCurMouseOver = true;
-                }
+            if (isNextMoveBlunderTarget(nextData, curCoords)) {
+              isCurMouseOver = true;
+            }
           }
         }
         List<MoveData> bestMoves = getBestMoves();
@@ -6741,10 +6788,103 @@ public class LizzieFrame extends JFrame {
   }
 
   public void onMouseDragged(int x, int y) {
-    int moveNumber = winrateGraph.moveNumber(x - grx, y - gry);
-    if (Lizzie.config.showWinrateGraph && moveNumber >= 0 && canGoAfterload) {
-      Lizzie.board.goToMoveNumberWithinBranch(moveNumber);
+    BoardHistoryNode targetNode = resolveWinrateGraphTargetNode(x, y);
+    if (targetNode != null && canGoAfterload) {
+      goToWinrateGraphTarget(targetNode, true);
     }
+  }
+
+  private BoardHistoryNode resolveWinrateGraphTargetNode(int x, int y) {
+    if (!Lizzie.config.showWinrateGraph || winrateGraph == null) {
+      return null;
+    }
+    return winrateGraph.resolveMoveTargetNode(x - grx, y - gry);
+  }
+
+  private boolean goToWinrateGraphTarget(BoardHistoryNode targetNode, boolean withinBranch) {
+    if (targetNode == null || Lizzie.board == null) {
+      return false;
+    }
+    BoardHistoryNode currentNode = Lizzie.board.getHistory().getCurrentHistoryNode();
+    if (currentNode == targetNode) {
+      return false;
+    }
+    if (canReachWinrateGraphTarget(currentNode, targetNode, true)) {
+      return stepToWinrateGraphTarget(targetNode, true, withinBranch);
+    }
+    if (canReachWinrateGraphTarget(currentNode, targetNode, false)) {
+      return stepToWinrateGraphTarget(targetNode, false, withinBranch);
+    }
+    if (!withinBranch && canJumpToVisibleMainTrunkTarget(currentNode, targetNode)) {
+      return stepToVisibleMainTrunkTarget(currentNode, targetNode);
+    }
+    return false;
+  }
+
+  private boolean canJumpToVisibleMainTrunkTarget(
+      BoardHistoryNode currentNode, BoardHistoryNode targetNode) {
+    if (currentNode == null || targetNode == null) {
+      return false;
+    }
+    if (currentNode.isMainTrunk() || !targetNode.isMainTrunk()) {
+      return false;
+    }
+    BoardHistoryNode forkNode = currentNode.findTop();
+    return forkNode != targetNode && canReachWinrateGraphTarget(forkNode, targetNode, false);
+  }
+
+  private boolean canReachWinrateGraphTarget(
+      BoardHistoryNode startNode, BoardHistoryNode targetNode, boolean backwards) {
+    BoardHistoryNode node = startNode;
+    while (node != targetNode) {
+      Optional<BoardHistoryNode> nextNode = backwards ? node.previous() : node.next();
+      if (!nextNode.isPresent()) {
+        return false;
+      }
+      node = nextNode.get();
+    }
+    return true;
+  }
+
+  private boolean stepToWinrateGraphTarget(
+      BoardHistoryNode targetNode, boolean backwards, boolean withinBranch) {
+    boolean moved = moveToWinrateGraphTarget(targetNode, backwards, withinBranch);
+    if (moved) {
+      Lizzie.board.clearAfterMove();
+      refresh();
+    }
+    return moved;
+  }
+
+  private boolean moveToWinrateGraphTarget(
+      BoardHistoryNode targetNode, boolean backwards, boolean withinBranch) {
+    boolean moved = false;
+    while (Lizzie.board.getHistory().getCurrentHistoryNode() != targetNode) {
+      BoardHistoryNode currentNode = Lizzie.board.getHistory().getCurrentHistoryNode();
+      if (backwards && withinBranch && !currentNode.isFirstChild()) {
+        break;
+      }
+      boolean stepOk = backwards ? Lizzie.board.previousMove(false) : Lizzie.board.nextMove(false);
+      if (!stepOk) {
+        break;
+      }
+      moved = true;
+    }
+    return moved;
+  }
+
+  private boolean stepToVisibleMainTrunkTarget(
+      BoardHistoryNode currentNode, BoardHistoryNode targetNode) {
+    BoardHistoryNode forkNode = currentNode.findTop();
+    boolean moved = moveToWinrateGraphTarget(forkNode, true, false);
+    if (Lizzie.board.getHistory().getCurrentHistoryNode() == forkNode) {
+      moved = moveToWinrateGraphTarget(targetNode, false, false) || moved;
+    }
+    if (moved) {
+      Lizzie.board.clearAfterMove();
+      refresh();
+    }
+    return moved;
   }
 
   public boolean isInPlayMode() {
@@ -7671,7 +7811,7 @@ public class LizzieFrame extends JFrame {
     if (validLastWinrate && validWinrate) {
       double lastWinDiff = 100 - lastWR - curWR;
       double lastScoreDiff = -lastScore - curScore;
-      if ((lastWinDiff < 0 || lastScoreDiff < 0) && node.getData().lastMove.isPresent()) {
+      if ((lastWinDiff < 0 || lastScoreDiff < 0) && isRealHistoryActionNode(node.getData())) {
         if (node.isBest) {
           winScoreDiff[0] = 0;
           winScoreDiff[1] = 0;
@@ -9918,7 +10058,7 @@ public class LizzieFrame extends JFrame {
         try {
           if (Lizzie.board.getHistory().getCurrentHistoryNode().next().isPresent()) {
             BoardHistoryNode next = Lizzie.board.getHistory().getCurrentHistoryNode().next().get();
-            if (next.getData().lastMove.isPresent()) {
+            if (hasRealMoveCoordinates(next.getData())) {
               int[] coords = next.getData().lastMove.get();
               boolean hasData = false;
               for (MoveData move : data2) {
@@ -12333,13 +12473,17 @@ public class LizzieFrame extends JFrame {
     int analyzedMoves = 0;
     while (node.next().isPresent()) {
       node = node.next().get();
-      if (!node.getData().lastMove.isPresent()) continue;
+      if (!isRealHistoryActionNode(node.getData())) continue;
       mainTrunkMoves++;
       if (node.getData().getPlayouts() > 0 || node.getData().isKataData) {
         analyzedMoves++;
       }
     }
     return mainTrunkMoves > 0 && analyzedMoves < mainTrunkMoves;
+  }
+
+  private boolean isRealHistoryActionNode(BoardData data) {
+    return data != null && (data.isMoveNode() || (data.isPassNode() && !data.dummy));
   }
 
   public void tryToRefreshVariation() {

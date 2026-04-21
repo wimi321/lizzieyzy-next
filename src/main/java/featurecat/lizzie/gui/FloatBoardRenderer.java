@@ -988,7 +988,7 @@ public class FloatBoardRenderer {
         limit--;
         if (limit < 0) break;
       }
-      if (node.getData().lastMove.isPresent()) {
+      if (LizzieFrame.hasRealMoveCoordinates(node.getData())) {
         int[] coords = node.getData().lastMove.get();
         int index = Board.getIndex(coords[0], coords[1]);
         if (branchOpt.isPresent()) {
@@ -1106,7 +1106,11 @@ public class FloatBoardRenderer {
   private void drawMoveNumbers(Graphics2D g) {
     g.setRenderingHint(KEY_ANTIALIASING, VALUE_ANTIALIAS_ON);
     Board board = Lizzie.board;
-    Optional<int[]> lastMoveOpt = branchOpt.map(b -> b.data.lastMove).orElse(board.getLastMove());
+    BoardData data = getDisplayedBoardData(board);
+    if (data.isSnapshotNode()) {
+      return;
+    }
+    Optional<int[]> lastMoveOpt = getDisplayedLastMove(board);
     if (!branchOpt.isPresent()) {
       return;
     }
@@ -1304,6 +1308,22 @@ public class FloatBoardRenderer {
         }
       }
     }
+  }
+
+  private BoardData getDisplayedBoardData(Board board) {
+    return branchOpt.map(b -> b.data).orElse(board.getData());
+  }
+
+  private Optional<int[]> getDisplayedLastMove(Board board) {
+    BoardData data = getDisplayedBoardData(board);
+    if (data.isSnapshotNode()) {
+      return Optional.empty();
+    }
+    return branchOpt.map(b -> copyCoords(b.data.lastMove)).orElse(copyCoords(board.getLastMove()));
+  }
+
+  private Optional<int[]> copyCoords(Optional<int[]> coordsOpt) {
+    return coordsOpt.map(coords -> coords.clone());
   }
 
   /**

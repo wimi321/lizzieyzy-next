@@ -3,6 +3,7 @@ package featurecat.lizzie.gui;
 import featurecat.lizzie.Config;
 import featurecat.lizzie.Lizzie;
 import featurecat.lizzie.analysis.EngineManager;
+import featurecat.lizzie.rules.BoardData;
 import featurecat.lizzie.rules.BoardHistoryNode;
 import featurecat.lizzie.rules.Movelist;
 import featurecat.lizzie.rules.SGFParser;
@@ -4168,9 +4169,7 @@ public class BottomToolbar extends JPanel {
                   } else if (!Lizzie.board.nextMove(true)) {
                     if (Lizzie.config.continueWithBestMove) {
                       BoardHistoryNode cur = Lizzie.board.getHistory().getCurrentHistoryNode();
-                      if (!cur.getData().lastMove.isPresent()
-                          && cur.previous().isPresent()
-                          && !cur.previous().get().getData().lastMove.isPresent()) break;
+                      if (isConsecutivePass(cur)) break;
                       Lizzie.frame.playBestMove();
                     } else {
                       if (autoQuit) break;
@@ -4193,6 +4192,17 @@ public class BottomToolbar extends JPanel {
         };
     Thread thread = new Thread(runnable);
     thread.start();
+  }
+
+  private boolean isConsecutivePass(BoardHistoryNode node) {
+    if (!isRealPass(node.getData()) || !node.previous().isPresent()) {
+      return false;
+    }
+    return isRealPass(node.previous().get().getData());
+  }
+
+  private boolean isRealPass(BoardData data) {
+    return data != null && data.isPassNode() && !data.dummy;
   }
 
   public void autoPlaySub() {

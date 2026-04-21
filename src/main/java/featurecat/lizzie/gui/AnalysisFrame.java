@@ -805,7 +805,7 @@ public class AnalysisFrame extends JFrame {
         if (Lizzie.config.anaFrameShowNext
             && Lizzie.board.getHistory().getCurrentHistoryNode().next().isPresent()) {
           BoardHistoryNode next = Lizzie.board.getHistory().getCurrentHistoryNode().next().get();
-          if (next.getData().lastMove.isPresent()) {
+          if (LizzieFrame.hasRealMoveCoordinates(next.getData())) {
             int[] coords = next.getData().lastMove.get();
             boolean hasData = false;
             for (MoveData move : data2) {
