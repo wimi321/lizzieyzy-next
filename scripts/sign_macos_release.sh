@@ -59,6 +59,53 @@ cleanup() {
 }
 trap cleanup EXIT
 
+sign_embedded_jar_natives() {
+  local app_bundle="$1"
+  local jar_file
+  local signed_any=0
+
+  while IFS= read -r -d '' jar_file; do
+    if ! jar tf "$jar_file" | grep -Eq '\.(dylib|jnilib)$'; then
+      continue
+    fi
+
+    local jar_work rebuilt_jar native_count
+    jar_work="$(mktemp -d -t lizzieyzy-jar-sign.XXXXXX)"
+    rebuilt_jar="$(mktemp -t lizzieyzy-signed-jar.XXXXXX).jar"
+    rm -f "$rebuilt_jar"
+
+    (
+      cd "$jar_work"
+      jar xf "$jar_file"
+    )
+
+    native_count="$(
+      find "$jar_work" -type f \( -name '*.dylib' -o -name '*.jnilib' \) -print | wc -l | tr -d ' '
+    )"
+    if [[ "$native_count" -eq 0 ]]; then
+      rm -rf "$jar_work"
+      continue
+    fi
+
+    echo "Signing $native_count native libraries embedded in $(basename "$jar_file")"
+    find "$jar_work" -type f \( -name '*.dylib' -o -name '*.jnilib' \) -print0 |
+      xargs -0 codesign --force --options runtime --timestamp \
+                         --keychain "$keychain" --sign "$sign_identity"
+
+    (
+      cd "$jar_work"
+      zip -qry "$rebuilt_jar" .
+    )
+    mv "$rebuilt_jar" "$jar_file"
+    rm -rf "$jar_work"
+    signed_any=1
+  done < <(find "$app_bundle/Contents/app" -type f -name '*.jar' -print0 2>/dev/null)
+
+  if [[ "$signed_any" -eq 0 ]]; then
+    echo "No embedded native libraries found inside app jars."
+  fi
+}
+
 dmg_pattern="*${mac_arch}*.dmg"
 shopt -s nullglob
 dmg_files=( "$release_dir"/$dmg_pattern )
@@ -89,6 +136,8 @@ for dmg in "${dmg_files[@]}"; do
   hdiutil detach "$mount_point" -quiet >/dev/null 2>&1 || true
 
   staged_app="$staging/$(basename "$app_path")"
+
+  sign_embedded_jar_natives "$staged_app"
 
   # Sign every helper binary first so the outer signature is valid.
   find "$staged_app" -type f \( -name '*.dylib' -o -name 'katago' -o -perm -u+x \) \
