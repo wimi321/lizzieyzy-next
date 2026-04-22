@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LizzieYzy Web Viewer</title>
+  <link rel="stylesheet" href="board.css">
+</head>
+<body>
+  <div id="app">
+    <div id="board-container">
+      <canvas id="board-canvas"></canvas>
+    </div>
+    <div id="info-panel">
+      <div id="status-bar">
+        <span id="move-number">-</span>
+        <span id="current-player">-</span>
+        <span id="winrate">-</span>
+        <span id="score-mean">-</span>
+        <span id="playouts">-</span>
+      </div>
+      <div id="controls">
+        <button id="toggle-heatmap" style="display:none">形势判断</button>
+        <button id="toggle-score">目差曲线</button>
+      </div>
+      <canvas id="winrate-chart"></canvas>
+    </div>
+  </div>
+  <div id="connection-overlay" style="display:none">
+    <div id="connection-message">连接断开，正在重连...</div>
+  </div>
+  <script>window.WS_PORT = __WS_PORT__;</script>
+  <script src="board.js"></script>
+</body>
+</html>

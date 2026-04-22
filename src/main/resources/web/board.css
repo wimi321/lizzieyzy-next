@@ -1,0 +1,29 @@
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #1a1a2e; color: #ccc; font-family: -apple-system, sans-serif; overflow: hidden; height: 100vh; }
+
+#app { display: flex; height: 100vh; }
+#board-container { flex: 3; display: flex; align-items: center; justify-content: center; padding: 16px; }
+#board-canvas { max-width: 100%; max-height: 100%; }
+
+#info-panel { flex: 1.2; display: flex; flex-direction: column; padding: 16px; border-left: 1px solid #333; min-width: 200px; }
+#status-bar { display: flex; flex-direction: column; gap: 8px; font-size: 14px; padding-bottom: 12px; border-bottom: 1px solid #333; }
+#status-bar span { display: flex; justify-content: space-between; }
+#controls { padding: 8px 0; display: flex; gap: 8px; }
+#controls button { background: #2a2a3e; color: #ccc; border: 1px solid #444; padding: 4px 10px; border-radius: 4px; cursor: pointer; font-size: 12px; }
+#controls button.active { background: #3a5a3a; border-color: #4a7a4a; }
+#winrate-chart { flex: 1; min-height: 80px; }
+
+#connection-overlay {
+  position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+  background: rgba(0,0,0,0.7); display: flex; align-items: center; justify-content: center; z-index: 100;
+}
+#connection-message { color: #fff; font-size: 18px; }
+
+/* Mobile: stack vertically */
+@media (max-width: 768px) {
+  #app { flex-direction: column; }
+  #board-container { flex: none; padding: 8px; }
+  #info-panel { flex: none; border-left: none; border-top: 1px solid #333; padding: 8px; min-width: auto; }
+  #status-bar { flex-direction: row; flex-wrap: wrap; justify-content: space-around; }
+  #status-bar span { flex-direction: row; gap: 4px; }
+}
