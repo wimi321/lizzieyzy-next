@@ -505,7 +505,7 @@
     longPressTimer = setTimeout(function () {
       var boardHeight = boardState.boardHeight || 19;
       var boardWidth = boardState.boardWidth || 19;
-      var size = boardCanvas.width;
+      var size = parseInt(boardCanvas.style.width) || boardCanvas.width;
       var margin = size * 0.04;
       var gridSize = (size - 2 * margin) / (Math.max(boardWidth, boardHeight) - 1);
 
