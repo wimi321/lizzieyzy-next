@@ -10,11 +10,14 @@ import java.net.Socket;
 import java.net.SocketException;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 public class WebBoardHttpServer {
   private final int port;
   private ServerSocket serverSocket;
   private Thread acceptThread;
+  private ExecutorService clientPool;
   private volatile boolean running;
   private volatile int wsPort;
 
@@ -36,6 +39,14 @@ public class WebBoardHttpServer {
 
   public void start() throws IOException {
     serverSocket = new ServerSocket(port);
+    clientPool =
+        Executors.newFixedThreadPool(
+            4,
+            r -> {
+              Thread t = new Thread(r, "WebBoardHttp-client");
+              t.setDaemon(true);
+              return t;
+            });
     running = true;
     acceptThread = new Thread(this::acceptLoop, "WebBoardHttp");
     acceptThread.setDaemon(true);
@@ -48,15 +59,14 @@ public class WebBoardHttpServer {
       if (serverSocket != null) serverSocket.close();
     } catch (IOException ignored) {
     }
+    if (clientPool != null) clientPool.shutdownNow();
   }
 
   private void acceptLoop() {
     while (running) {
       try {
         Socket client = serverSocket.accept();
-        Thread handler = new Thread(() -> handleClient(client), "WebBoardHttp-client");
-        handler.setDaemon(true);
-        handler.start();
+        clientPool.execute(() -> handleClient(client));
       } catch (SocketException e) {
         if (!running) break;
       } catch (IOException e) {
@@ -72,6 +82,12 @@ public class WebBoardHttpServer {
 
       String requestLine = in.readLine();
       if (requestLine == null) return;
+
+      // Drain request headers
+      String headerLine;
+      while ((headerLine = in.readLine()) != null && !headerLine.isEmpty()) {
+        // skip
+      }
 
       String[] parts = requestLine.split(" ");
       if (parts.length < 2) return;

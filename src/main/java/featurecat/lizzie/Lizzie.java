@@ -619,6 +619,13 @@ public class Lizzie {
     }
     Lizzie.frame.destroyEstimateEngine();
     Lizzie.frame.destroyAnalysisEngine();
+    if (webBoardManager != null) {
+      try {
+        webBoardManager.stop();
+      } catch (Exception e) {
+        e.printStackTrace();
+      }
+    }
     System.exit(0);
   }
 

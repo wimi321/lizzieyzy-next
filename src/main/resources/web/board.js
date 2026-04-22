@@ -128,8 +128,12 @@
     var size = Math.min(container.clientWidth, container.clientHeight);
     if (size <= 0) return;
 
-    boardCanvas.width = size;
-    boardCanvas.height = size;
+    var dpr = window.devicePixelRatio || 1;
+    boardCanvas.width = size * dpr;
+    boardCanvas.height = size * dpr;
+    boardCanvas.style.width = size + "px";
+    boardCanvas.style.height = size + "px";
+    boardCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
     var boardWidth = boardState.boardWidth || 19;
     var boardHeight = boardState.boardHeight || 19;
@@ -455,7 +459,7 @@
 
     var boardWidth = boardState.boardWidth || 19;
     var boardHeight = boardState.boardHeight || 19;
-    var size = boardCanvas.width;
+    var size = parseInt(boardCanvas.style.width) || boardCanvas.width;
     var margin = size * 0.04;
     var gridSize = (size - 2 * margin) / (Math.max(boardWidth, boardHeight) - 1);
 

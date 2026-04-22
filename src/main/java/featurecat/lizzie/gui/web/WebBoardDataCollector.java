@@ -12,6 +12,7 @@ import java.util.Optional;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
@@ -31,7 +32,7 @@ public class WebBoardDataCollector {
   private volatile WebBoardServer server;
   private volatile long lastBroadcastTime = 0;
   private static final long MIN_BROADCAST_INTERVAL_MS = 100; // 10 updates/sec max
-  private volatile boolean pendingUpdate = false;
+  private final AtomicBoolean pendingUpdate = new AtomicBoolean(false);
 
   public WebBoardDataCollector() {}
 
@@ -43,8 +44,7 @@ public class WebBoardDataCollector {
   public void onAnalysisUpdated() {
     long now = System.currentTimeMillis();
     if (now - lastBroadcastTime < MIN_BROADCAST_INTERVAL_MS) {
-      if (!pendingUpdate) {
-        pendingUpdate = true;
+      if (pendingUpdate.compareAndSet(false, true)) {
         long delay = MIN_BROADCAST_INTERVAL_MS - (now - lastBroadcastTime);
         executor.schedule(this::doBroadcastAnalysis, delay, TimeUnit.MILLISECONDS);
       }
@@ -59,7 +59,7 @@ public class WebBoardDataCollector {
   }
 
   private void doBroadcastAnalysis() {
-    pendingUpdate = false;
+    pendingUpdate.set(false);
     lastBroadcastTime = System.currentTimeMillis();
     if (server == null) return;
     try {
@@ -256,25 +256,28 @@ public class WebBoardDataCollector {
     return obj;
   }
 
-  /**
-   * Builds a winrate_history JSON message by walking from root to current along the main variation.
-   */
+  /** Builds a winrate_history JSON message by walking from root to current node. */
   static JSONObject buildWinrateHistoryJson(BoardHistoryNode root, BoardHistoryNode current) {
     JSONObject obj = new JSONObject();
     obj.put("type", "winrate_history");
-    JSONArray data = new JSONArray();
 
-    BoardHistoryNode node = root;
+    // Walk backwards from current to root to collect the actual path
+    java.util.LinkedList<BoardHistoryNode> path = new java.util.LinkedList<>();
+    BoardHistoryNode node = current;
     while (node != null) {
-      BoardData d = node.getData();
+      path.addFirst(node);
+      Optional<BoardHistoryNode> prev = node.previous();
+      node = prev.isPresent() ? prev.get() : null;
+    }
+
+    JSONArray data = new JSONArray();
+    for (BoardHistoryNode n : path) {
+      BoardData d = n.getData();
       JSONObject entry = new JSONObject();
       entry.put("moveNumber", d.moveNumber);
       entry.put("winrate", d.winrate);
       entry.put("scoreMean", d.scoreMean);
       data.put(entry);
-      if (node == current) break;
-      Optional<BoardHistoryNode> next = node.next();
-      node = next.isPresent() ? next.get() : null;
     }
 
     obj.put("data", data);

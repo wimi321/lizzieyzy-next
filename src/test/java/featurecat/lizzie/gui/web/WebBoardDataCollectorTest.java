@@ -182,8 +182,8 @@ public class WebBoardDataCollectorTest {
     BoardHistoryNode node0 = new BoardHistoryNode(d0);
     BoardHistoryNode node1 = new BoardHistoryNode(d1);
     BoardHistoryNode node2 = new BoardHistoryNode(d2);
-    node0.variations.add(node1);
-    node1.variations.add(node2);
+    node0.add(node1);
+    node1.add(node2);
 
     JSONObject json = WebBoardDataCollector.buildWinrateHistoryJson(node0, node2);
     assertEquals("winrate_history", json.getString("type"));
