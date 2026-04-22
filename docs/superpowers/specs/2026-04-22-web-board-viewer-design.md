@@ -50,9 +50,31 @@ KataGo 引擎 ─ GTP ─▶ Leelaz.java ─ 事件 ─▶ WebBoardDataCollector
 3. `WebBoardDataCollector` 注册到引擎分析回调，开始收集和广播数据
 4. 用户点击「停止」时关闭两个服务器并清理资源
 
+### 并发模型
+
+- `WebBoardDataCollector` 内部持有一个单线程 `ScheduledExecutorService`
+- 引擎回调（engine reader thread）和棋盘变化回调（EDT）仅向 collector 提交数据快照，不直接广播
+- JSON 序列化和 WebSocket 广播在 collector 的单线程 executor 上执行，避免竞争
+- `WebBoardServer` 的连接管理由 `Java-WebSocket` 内部线程处理，广播时对连接集合加锁
+
+### 连接上限
+
+最大同时连接数默认 **20**，可在 `config.json` 中配置（`max-connections`）。超出上限时拒绝新连接并返回关闭帧。
+
+### HTTP 安全
+
+`WebBoardHttpServer` 仅提供 classpath `/web/` 前缀下的文件。请求路径包含 `..` 或绝对路径时返回 403。仅支持 GET 方法。
+
 ### 端口冲突处理
 
 默认端口被占用时，自动尝试 +1 递增，最多尝试 10 次。端口可在 `config.json` 中配置。
+
+### 关闭顺序
+
+停止时按以下顺序：
+1. 注销 `WebBoardDataCollector` 的引擎/棋盘回调，停止 executor
+2. 关闭 `WebBoardServer`（断开所有 WebSocket 连接）
+3. 关闭 `WebBoardHttpServer`
 
 ## WebSocket JSON 消息协议
 
@@ -81,7 +103,7 @@ KataGo 引擎 ─ GTP ─▶ Leelaz.java ─ 事件 ─▶ WebBoardDataCollector
 - `stones`：长度 `boardWidth * boardHeight` 的数组，`0`=空、`1`=黑、`2`=白
 - `lastMove`：`[x, y]` 坐标或 `null`
 - `currentPlayer`：`"B"` 或 `"W"`
-- `estimateArray`：形势判断，每点 `-1`（白方领地）到 `1`（黑方领地）
+- `estimateArray`：形势判断，每点 `-1`（白方领地）到 `1`（黑方领地）；可为 `null`（引擎未启用形势判断时）
 
 ### 2. `analysis_update` — 分析增量更新
 
@@ -168,6 +190,7 @@ KataGo 引擎 ─ GTP ─▶ Leelaz.java ─ 事件 ─▶ WebBoardDataCollector
 **形势判断热力图：**
 - 按钮切换显示/隐藏
 - 黑方领地偏蓝/绿色，白方领地偏红/橙色，中性区域透明
+- 当 `estimateArray` 为 `null` 时，隐藏热力图开关按钮
 
 **胜率曲线图：**
 - Canvas 折线图，X 轴手数，Y 轴胜率 0%-100%
@@ -205,7 +228,8 @@ src/main/resources/web/
 {
   "web-board": {
     "http-port": 9998,
-    "ws-port": 9999
+    "ws-port": 9999,
+    "max-connections": 20
   }
 }
 ```
@@ -217,3 +241,4 @@ src/main/resources/web/
 - HTTPS 支持
 - 棋谱加载/保存
 - 多语言支持（前端）
+- HTTP 与 WebSocket 合并为单端口（当前 Java-WebSocket 1.6.0 不原生支持）
