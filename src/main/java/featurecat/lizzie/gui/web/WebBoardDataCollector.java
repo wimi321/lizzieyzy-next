@@ -1,6 +1,8 @@
 package featurecat.lizzie.gui.web;
 
+import featurecat.lizzie.Lizzie;
 import featurecat.lizzie.analysis.MoveData;
+import featurecat.lizzie.rules.Board;
 import featurecat.lizzie.rules.BoardData;
 import featurecat.lizzie.rules.BoardHistoryNode;
 import featurecat.lizzie.rules.Stone;
@@ -60,13 +62,54 @@ public class WebBoardDataCollector {
     pendingUpdate = false;
     lastBroadcastTime = System.currentTimeMillis();
     if (server == null) return;
-    // Stub: will be wired to live data in Task 5
+    try {
+      BoardData data = Lizzie.board.getHistory().getCurrentHistoryNode().getData();
+      if (data.bestMoves == null || data.bestMoves.isEmpty()) return;
+      int bw = Board.boardWidth;
+      int bh = Board.boardHeight;
+      JSONObject json =
+          buildAnalysisUpdateJson(
+              data.bestMoves,
+              data.winrate,
+              data.scoreMean,
+              data.getPlayouts(),
+              data.estimateArray,
+              bw,
+              bh);
+      server.broadcastMessage(json.toString());
+    } catch (Exception ignored) {
+    }
   }
 
   private void doBroadcastFullState() {
     lastBroadcastTime = System.currentTimeMillis();
     if (server == null) return;
-    // Stub: will be wired to live data in Task 5
+    try {
+      BoardHistoryNode currentNode = Lizzie.board.getHistory().getCurrentHistoryNode();
+      BoardData data = currentNode.getData();
+      int bw = Board.boardWidth;
+      int bh = Board.boardHeight;
+      int[] lastMove = data.lastMove.isPresent() ? data.lastMove.get() : null;
+      JSONObject fullState =
+          buildFullStateJson(
+              bw,
+              bh,
+              data.stones,
+              lastMove,
+              data.moveNumber,
+              data.blackToPlay,
+              data.bestMoves,
+              data.winrate,
+              data.scoreMean,
+              data.getPlayouts(),
+              data.estimateArray);
+      server.broadcastFullState(fullState.toString());
+
+      BoardHistoryNode root = Lizzie.board.getHistory().getStart();
+      JSONObject history = buildWinrateHistoryJson(root, currentNode);
+      server.broadcastMessage(history.toString());
+    } catch (Exception ignored) {
+    }
   }
 
   /** Shuts down the executor. */
@@ -78,8 +121,8 @@ public class WebBoardDataCollector {
   // --- Static JSON serialization methods ---
 
   /**
-   * Converts a Stone array to a JSONArray of ints. BLACK/BLACK_RECURSED -> 1,
-   * WHITE/WHITE_RECURSED -> 2, EMPTY/CAPTURED -> 0.
+   * Converts a Stone array to a JSONArray of ints. BLACK/BLACK_RECURSED -> 1, WHITE/WHITE_RECURSED
+   * -> 2, EMPTY/CAPTURED -> 0.
    */
   static JSONArray buildStonesArray(Stone[] stones) {
     JSONArray arr = new JSONArray();
@@ -92,8 +135,8 @@ public class WebBoardDataCollector {
   }
 
   /**
-   * Parses a GTP coordinate (e.g. "Q16") to [x, y]. Column A=0, skip I, row maps to y =
-   * boardHeight - rowNumber.
+   * Parses a GTP coordinate (e.g. "Q16") to [x, y]. Column A=0, skip I, row maps to y = boardHeight
+   * - rowNumber.
    */
   static int[] gtpToXY(String coordinate, int boardHeight) {
     if (coordinate == null || coordinate.length() < 2) return null;
@@ -209,8 +252,7 @@ public class WebBoardDataCollector {
   }
 
   /**
-   * Builds a winrate_history JSON message by walking from root to current along the main
-   * variation.
+   * Builds a winrate_history JSON message by walking from root to current along the main variation.
    */
   static JSONObject buildWinrateHistoryJson(BoardHistoryNode root, BoardHistoryNode current) {
     JSONObject obj = new JSONObject();

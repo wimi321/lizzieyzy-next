@@ -5120,6 +5120,7 @@ public class LizzieFrame extends JFrame {
     appendComment();
     requestProblemListRefresh();
     repaint();
+    notifyWebBoard(false);
   }
 
   public void refresh(int mode) {
@@ -5136,7 +5137,19 @@ public class LizzieFrame extends JFrame {
       case 1:
         refreshFromInfo = true;
         repaint();
+        notifyWebBoard(true);
+        break;
       default:
+    }
+  }
+
+  private void notifyWebBoard(boolean analysisOnly) {
+    if (Lizzie.webBoardManager != null && Lizzie.webBoardManager.isRunning()) {
+      featurecat.lizzie.gui.web.WebBoardDataCollector c = Lizzie.webBoardManager.getCollector();
+      if (c != null) {
+        if (analysisOnly) c.onAnalysisUpdated();
+        else c.onBoardStateChanged();
+      }
     }
   }
 

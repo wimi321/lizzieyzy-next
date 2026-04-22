@@ -10,6 +10,7 @@ import featurecat.lizzie.gui.GtpConsolePane;
 import featurecat.lizzie.gui.LizzieFrame;
 import featurecat.lizzie.gui.LoadEngine;
 import featurecat.lizzie.gui.Message;
+import featurecat.lizzie.gui.web.WebBoardManager;
 import featurecat.lizzie.rules.Board;
 import featurecat.lizzie.util.KataGoAutoSetupHelper;
 import featurecat.lizzie.util.KataGoAutoSetupHelper.SetupSnapshot;
@@ -53,6 +54,7 @@ public class Lizzie {
   public static boolean readMode = false;
   private static String[] mainArgs;
   public static EngineManager engineManager;
+  public static WebBoardManager webBoardManager = new WebBoardManager();
   public static int javaVersion = 8;
   public static Float javaScaleFactor = 1.0f;
   public static boolean isMultiScreen = false;
