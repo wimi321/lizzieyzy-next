@@ -10,3 +10,4 @@ config.txt
 persist
 save/
 gtp_logs/
+.superpowers/
