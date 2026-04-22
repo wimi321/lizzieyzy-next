@@ -732,7 +732,7 @@ public class ReadBoard {
       acknowledgeLocalMoveIfSnapshotCaughtUp(stones, currentSnapshotCodes);
 
       boolean needRefresh = false;
-      if (snapshotDelta.allowsIncrementalSync()) {
+      if (allowsIncrementalSync(snapshotDelta, node2, currentRemoteContext)) {
         for (int i = 0; i < tempcount.size(); i++) {
           int m = tempcount.get(i);
           int y = i / Board.boardWidth;
@@ -802,11 +802,6 @@ public class ReadBoard {
             isLastBlack = false;
           }
         }
-        if (firstSync) {
-          Lizzie.board.hasStartStone = true;
-          Lizzie.board.addStartListAll();
-          Lizzie.board.flatten();
-        }
         // 落最后一步
         if (holdLastMove && !needReSync) {
           if (!played) {
@@ -858,6 +853,9 @@ public class ReadBoard {
       }
       if (!needReSync) {
         BoardHistoryNode currentSyncEndNode = Lizzie.board.getHistory().getMainEnd();
+        if (played && !singleMoveRecovered) {
+          rememberResolvedSnapshotNode(currentSyncEndNode);
+        }
         if (singleMoveRecovered) {
           keepViewOnRecoveredMainEnd(currentSyncEndNode);
         }
@@ -967,6 +965,30 @@ public class ReadBoard {
 
   private OptionalInt currentPendingFoxMoveNumber() {
     return currentPendingRemoteContext().recoveryMoveNumber();
+  }
+
+  private boolean allowsIncrementalSync(
+      SyncSnapshotClassifier.SnapshotDelta snapshotDelta,
+      BoardHistoryNode syncStartNode,
+      SyncRemoteContext remoteContext) {
+    return snapshotDelta.allowsIncrementalSync()
+        || allowsFoxMarkerlessSingleStep(snapshotDelta, syncStartNode, remoteContext);
+  }
+
+  private boolean allowsFoxMarkerlessSingleStep(
+      SyncSnapshotClassifier.SnapshotDelta snapshotDelta,
+      BoardHistoryNode syncStartNode,
+      SyncRemoteContext remoteContext) {
+    if (snapshotDelta == null
+        || syncStartNode == null
+        || remoteContext == null
+        || !remoteContext.supportsFoxRecovery()
+        || snapshotDelta.hasMarker()
+        || !snapshotDelta.hasOnlyAdditions()
+        || snapshotDelta.additions() != 1) {
+      return false;
+    }
+    return remoteContext.recoveryMoveNumber().getAsInt() == syncStartNode.getData().moveNumber + 1;
   }
 
   private void clearPendingRemoteContext() {

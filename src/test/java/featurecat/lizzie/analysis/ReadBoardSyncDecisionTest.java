@@ -332,14 +332,18 @@ class ReadBoardSyncDecisionTest {
       harness.readBoard.parseLine("liveTitleMove 2");
       harness.readBoard.parseLine("foxMoveNumber 2");
       harness.sync(
-          snapshot(moveTwo.getData().stones, moveTwo.getData().lastMove, moveTwo.getData().lastMoveColor));
+          snapshot(
+              moveTwo.getData().stones,
+              moveTwo.getData().lastMove,
+              moveTwo.getData().lastMoveColor));
 
       assertSame(mainEnd, harness.board.getHistory().getMainEnd());
       assertSame(
           moveTwo,
           harness.board.getHistory().getCurrentHistoryNode(),
           "forwarding to an already-existing next node should leave the view on that node.");
-      assertEquals(0, harness.leelaz.clearCount, "existing-node forward navigation should not rebuild.");
+      assertEquals(
+          0, harness.leelaz.clearCount, "existing-node forward navigation should not rebuild.");
     }
   }
 
@@ -371,7 +375,8 @@ class ReadBoardSyncDecisionTest {
           mainEnd,
           harness.board.getHistory().getCurrentHistoryNode(),
           "forwarding to the already-existing main end should not be treated as a stale steady-state frame.");
-      assertEquals(0, harness.leelaz.clearCount, "existing main-end navigation should not rebuild.");
+      assertEquals(
+          0, harness.leelaz.clearCount, "existing main-end navigation should not rebuild.");
     }
   }
 
@@ -394,7 +399,10 @@ class ReadBoardSyncDecisionTest {
       harness.readBoard.parseLine("liveTitleMove 2");
       harness.readBoard.parseLine("foxMoveNumber 2");
       harness.sync(
-          snapshot(moveTwo.getData().stones, moveTwo.getData().lastMove, moveTwo.getData().lastMoveColor));
+          snapshot(
+              moveTwo.getData().stones,
+              moveTwo.getData().lastMove,
+              moveTwo.getData().lastMoveColor));
 
       assertSame(mainEnd, harness.board.getHistory().getMainEnd());
       assertSame(
@@ -426,7 +434,10 @@ class ReadBoardSyncDecisionTest {
       harness.readBoard.parseLine("recordTitleFingerprint record-fingerprint");
       harness.readBoard.parseLine("foxMoveNumber 2");
       harness.sync(
-          snapshot(moveTwo.getData().stones, moveTwo.getData().lastMove, moveTwo.getData().lastMoveColor));
+          snapshot(
+              moveTwo.getData().stones,
+              moveTwo.getData().lastMove,
+              moveTwo.getData().lastMoveColor));
 
       assertSame(mainEnd, harness.board.getHistory().getMainEnd());
       assertSame(
@@ -914,6 +925,58 @@ class ReadBoardSyncDecisionTest {
   }
 
   @Test
+  void foxMarkerlessOpeningMoveBecomesRealHistoryInsteadOfSnapshotRebuild() throws Exception {
+    Stone[] target = stones(placement(0, 0, Stone.BLACK));
+
+    try (SyncHarness harness = SyncHarness.create(false, emptyHistory())) {
+      armFoxMoveNumber(harness.readBoard, 1);
+      harness.sync(snapshot(target, Optional.empty(), Stone.EMPTY));
+
+      BoardHistoryNode mainEnd = harness.board.getHistory().getMainEnd();
+      BoardData data = mainEnd.getData();
+
+      assertEquals(
+          1, harness.board.placeForSyncCount, "opening move should be appended incrementally.");
+      assertSame(mainEnd, harness.board.getHistory().getCurrentHistoryNode());
+      assertTrue(data.isMoveNode(), "first proven Fox move should stay a MOVE node.");
+      assertTrue(mainEnd.previous().isPresent(), "opening move should keep explicit history.");
+      assertEquals(1, data.moveNumber, "opening move should keep its real move number.");
+      assertFalse(
+          harness.board.hasStartStone, "incremental opening sync must not rewrite root setup.");
+    }
+  }
+
+  @Test
+  void foxMarkerlessFirstMoveAfterHandicapSetupBecomesRealHistory() throws Exception {
+    Stone[] handicapRoot = stones(placement(0, 0, Stone.BLACK));
+    Stone[] target = stones(placement(0, 0, Stone.BLACK), placement(1, 0, Stone.WHITE));
+
+    try (SyncHarness harness =
+        SyncHarness.create(
+            false,
+            rootHistory(
+                handicapRoot, Optional.empty(), Stone.EMPTY, false, 0, BoardNodeKind.SNAPSHOT))) {
+      armFoxMoveNumber(harness.readBoard, 1);
+      harness.sync(snapshot(target, Optional.empty(), Stone.EMPTY));
+
+      BoardHistoryNode root = harness.board.getHistory().root();
+      BoardHistoryNode mainEnd = harness.board.getHistory().getMainEnd();
+
+      assertEquals(
+          1,
+          harness.board.placeForSyncCount,
+          "first move after setup should append incrementally.");
+      assertTrue(
+          mainEnd.getData().isMoveNode(),
+          "the move after handicap setup should become a MOVE node.");
+      assertTrue(
+          root.getData().isSnapshotNode(), "the original setup root should remain a SNAPSHOT.");
+      assertEquals(
+          1, mainEnd.getData().moveNumber, "the first post-setup move should stay move 1.");
+    }
+  }
+
+  @Test
   void foxMoveNumberAheadOfVisibleSyncRebuildsMetadataAfterIncrementalMove() throws Exception {
     Stone[] target = stones(placement(0, 0, Stone.BLACK));
 
@@ -926,7 +989,8 @@ class ReadBoardSyncDecisionTest {
   }
 
   @Test
-  void steadyStateFoxFrameAfterSnapshotRebuildKeepsSnapshotNode() throws Exception {
+  void steadyStateFoxOpeningFrameKeepsRealMoveNodeAfterMarkerlessIncrementalSync()
+      throws Exception {
     Stone[] target = stones(placement(0, 0, Stone.BLACK));
 
     try (SyncHarness harness = SyncHarness.create(false, emptyHistory())) {
@@ -935,11 +999,8 @@ class ReadBoardSyncDecisionTest {
 
       BoardHistoryNode trackedMainEnd = harness.board.getHistory().getMainEnd();
       assertTrue(
-          trackedMainEnd.getData().isSnapshotNode(),
-          "markerless fox sync should rebuild to a SNAPSHOT node.");
-      assertFalse(
-          trackedMainEnd.previous().isPresent(),
-          "markerless fox sync should not fabricate tracked move history.");
+          trackedMainEnd.getData().isMoveNode(),
+          "first markerless Fox move should no longer rebuild.");
 
       harness.board.resetCounters();
       harness.frame.refreshCount = 0;
@@ -952,14 +1013,31 @@ class ReadBoardSyncDecisionTest {
       assertSame(
           trackedMainEnd,
           harness.board.getHistory().getMainEnd(),
-          "steady-state fox frames should keep the rebuilt snapshot node.");
+          "steady-state Fox frames should keep the existing MOVE node.");
       assertTrue(
-          harness.board.getHistory().getMainEnd().getData().isSnapshotNode(),
-          "steady-state fox frames should preserve SNAPSHOT semantics.");
+          harness.board.getHistory().getMainEnd().getData().isMoveNode(),
+          "steady-state Fox frames should preserve MOVE semantics.");
       assertEquals(
           0, harness.leelaz.clearCount, "steady-state fox frames should not resync the engine.");
       assertEquals(
           0, harness.frame.refreshCount, "steady-state fox frames should not refresh again.");
+    }
+  }
+
+  @Test
+  void firstSyncMarkedOpeningDoesNotFlattenRealMoveIntoRootSetup() throws Exception {
+    Stone[] target = stones(placement(0, 0, Stone.BLACK));
+
+    try (SyncHarness harness = SyncHarness.create(true, emptyHistory())) {
+      harness.sync(snapshot(target, Optional.of(new int[] {0, 0}), Stone.BLACK));
+
+      BoardHistoryNode mainEnd = harness.board.getHistory().getMainEnd();
+      assertTrue(
+          mainEnd.getData().isMoveNode(), "first sync incremental move should remain a MOVE node.");
+      assertTrue(mainEnd.previous().isPresent(), "first sync should keep explicit history.");
+      assertFalse(
+          harness.board.hasStartStone,
+          "first sync should not convert the prefix into start stones.");
     }
   }
 
@@ -1925,7 +2003,8 @@ class ReadBoardSyncDecisionTest {
           ancestorNode,
           harness.board.getHistory().getCurrentHistoryNode(),
           "record-at-end title metadata should recover the ancestor snapshot directly.");
-      assertEquals(0, harness.leelaz.clearCount, "record-at-end ancestor recovery should not rebuild.");
+      assertEquals(
+          0, harness.leelaz.clearCount, "record-at-end ancestor recovery should not rebuild.");
     }
   }
 

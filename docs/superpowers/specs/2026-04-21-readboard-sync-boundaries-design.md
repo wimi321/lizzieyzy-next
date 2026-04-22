@@ -36,6 +36,7 @@
 
 - `foxMoveNumber` 绑定到“远端快照身份”，不绑定到“真实历史手顺”。
 - `marker` 是增强信号，不是硬前提；稳定时可参与命中，不稳定时不能绑架同步流程。
+- `marker` 抖动同时包含颜色抖动和“本帧有 marker、下一帧无 marker”的抖动；这类抖动只能弱化 `marker` 信号，不能单独制造新的冲突身份。
 - `blackToPlay` 在 markerless 场景下不能作为硬身份键，因为让子棋、`setup/PL`、标题奇偶都可能让它不可靠。
 - `blackToPlay` 只在来源可信时参与辅助判断；否则只作为 rebuild 后的元数据填充候选。
 
@@ -63,6 +64,8 @@
 
 - `stones + foxMoveNumber + marker`
 
+若 marker 缺失或短暂不稳定，则直接退回 `stones + foxMoveNumber` 主身份，不把这类抖动额外派生成新的冲突类别。
+
 额外辅助失效信号：
 
 - `roomToken`
@@ -83,6 +86,8 @@
 当 marker 唯一且稳定时，增强为：
 
 - `stones + currentMoveFromTitle + marker`
+
+若 marker 缺失或短暂不稳定，则直接退回 `stones + currentMoveFromTitle` 主身份，不把这类抖动额外派生成新的冲突类别。
 
 辅助校验信号：
 
@@ -149,6 +154,14 @@
 
 如果远端正好等于命中的祖先节点，则最终结果记作 `NO_CHANGE`；只是同步前允许先把本地定位回该祖先。
 
+这里的“当前保留主线窗口”只包含：
+
+- 当前显示节点
+- 当前显示节点的主线祖先链
+- 当前显示节点到当前 `mainEnd` 的现有主线节点链
+
+variation、窗口外旧历史、以及需要跨旧 `SNAPSHOT` 断口回捞的节点都不参与这条窗口命中。
+
 ### 4.3 `LIVE_ROOM` 决策矩阵
 
 1. `roomToken` 明确变化：
@@ -156,30 +169,36 @@
    - 禁止继续沿用旧 `lastResolved`。
    - 默认偏向 `FORCE_REBUILD`，不依赖 `HOLD` 拖延。
 
-2. 命中当前主线祖先：
+2. 远端目标已是当前保留主线窗口内的现有节点：
+   - 直接导航到该节点。
+   - 不生成新历史，不触发 `FORCE_REBUILD`。
+   - variation 不参与这条命中。
+
+3. 命中当前主线祖先：
    - 允许直接回退到该祖先。
    - 若远端就等于该祖先局面，结果为 `NO_CHANGE`。
 
-3. 命中 `lastResolved` 同一手：
+4. 命中 `lastResolved` 同一手：
    - 结果为 `NO_CHANGE`。
 
-4. 只比 `lastResolved` 前进一手，且这一步唯一可证：
+5. 只比 `lastResolved` 前进一手，且这一步唯一可证：
    - 结果为 `SINGLE_MOVE_RECOVERY`。
    - 只补这一手真实 `MOVE`。
 
-5. 回退但没有命中当前主线祖先：
+6. 回退但没有命中当前主线祖先：
    - 结果为 `FORCE_REBUILD`。
    - 这包括“本地只保留少量近期历史，远端已经退到这段窗口之前一手或更多手”的场景。
 
-6. 跨多手跳转、移除棋子、顺序不唯一、缺真实 pass：
+7. 跨多手跳转、移除棋子、顺序不唯一、缺真实 pass：
    - 结果为 `FORCE_REBUILD`。
 
-7. 冲突快照第一次出现：
+8. 冲突快照第一次出现：
    - 可返回 `HOLD`。
    - 但“同一冲突”的判定必须基于归一化远端身份，不能再用原始 `snapshotCodes` 整帧全等判断。
+   - `marker` 颜色抖动和“有 / 无 marker”抖动都归入同一归一化冲突，不得把同一冲突拆成两次新的 `HOLD`。
    - 若这是 readboard `start/clear` 之后的新 session 第一帧，则不使用这条 `HOLD` 分支。
 
-8. 同一归一化冲突再次出现：
+9. 同一归一化冲突再次出现：
    - 结果为 `FORCE_REBUILD`。
 
 ### 4.4 `RECORD_VIEW` 决策矩阵
@@ -191,31 +210,37 @@
 2. `totalMove` 明显冲突：
    - 默认 `FORCE_REBUILD`。
 
-3. 命中当前主线祖先：
+3. 远端目标已是当前保留主线窗口内的现有节点：
+   - 直接导航到该节点。
+   - 不生成新历史，不触发 `FORCE_REBUILD`。
+   - variation 不参与这条命中。
+
+4. 命中当前主线祖先：
    - 允许直接回退到该祖先。
    - 若远端就等于该祖先局面，结果为 `NO_CHANGE`。
 
-4. 命中 `lastResolved` 同一手：
+5. 命中 `lastResolved` 同一手：
    - 结果为 `NO_CHANGE`。
 
-5. 只比 `lastResolved` 前进一手，且可唯一证明：
+6. 只比 `lastResolved` 前进一手，且可唯一证明：
    - 结果为 `SINGLE_MOVE_RECOVERY`。
 
-6. 多手前跳或后跳：
+7. 多手前跳或后跳：
    - 结果为 `FORCE_REBUILD`。
    - 不做多步补写，不做批量回放推断。
    - 本地只保留局部近期历史，而目标落在这段窗口之外时，同样归入这里。
 
-7. 标题只显示“总 `N` 手”：
+8. 标题只显示“总 `N` 手”：
    - 先归一化成 `currentMove=N, totalMove=N`
    - 再走同一套矩阵
 
-8. 冲突快照第一次出现：
+9. 冲突快照第一次出现：
    - 可短暂 `HOLD`
    - 同样必须按归一化身份判定“是否同一冲突”
+   - `marker` 颜色抖动和“有 / 无 marker”抖动都归入同一归一化冲突，不得把同一冲突拆成两次新的 `HOLD`
    - 若这是 readboard `start/clear` 之后的新 session 第一帧，则不使用这条 `HOLD` 分支
 
-9. 同一归一化冲突再次出现：
+10. 同一归一化冲突再次出现：
    - 结果为 `FORCE_REBUILD`
 
 ### 4.5 `UNKNOWN` 决策矩阵
@@ -225,6 +250,13 @@
 - 当前盘面完全相同：`NO_CHANGE`
 - 能唯一证明是一手合法落子：`SINGLE_MOVE_RECOVERY`
 - 其他情况：`FORCE_REBUILD`
+
+### 4.6 混帧与 `marker` 抖动
+
+- 同房间 / 同棋谱弱上下文未断开，且 `stones + recoveryMoveNumber` 已命中主身份时，`marker` 与本地 `lastMove` 的短暂不一致不能单独触发 `FORCE_REBUILD`。
+- 这类帧优先按“`marker` 降级为不可信后重判”处理；只有主身份本身不成立，或冲突按归一化身份重复出现，才进入 `FORCE_REBUILD`。
+- 对明显像“标题手数与盘面未原子绑定”的混帧，允许最多一次 `HOLD`；再次出现同一归一化冲突后再 `FORCE_REBUILD`。
+- 以上规则只影响“是否立即重建”的决策，不放宽真实历史追加边界；多手跳转、顺序不唯一、缺 pass 等情况仍不得伪造 `MOVE/PASS`。
 
 ## 5. 状态生命周期
 
@@ -306,6 +338,7 @@
 ### 6.1 总原则
 
 - 不依赖 `Leelaz.clear()` 的隐式副作用来恢复分析。
+- 同步链路分成“本地棋盘 / history 落地”和“引擎 exact snapshot restore”两个阶段；前者不依赖引擎可用，后者依赖。
 - rebuild 成功后，应在快照真正被引擎消费成功之后，显式恢复分析。
 - 恢复分析动作要绑定到本次成功落地的目标节点，避免旧 restore 回写过时分析状态。
 
@@ -313,9 +346,17 @@
 
 任何 `FORCE_REBUILD` 成功后：
 
-1. 等 `loadsgf` 确认成功消费。
-2. 显式触发一次“重建后恢复分析”。
-3. 若 restore 期间已出现更新的远端目标，旧恢复请求失效。
+1. 先保证本地棋盘 / history 的 `SNAPSHOT` 已落地。
+2. 若引擎可用，再等 `loadsgf` 确认成功消费。
+3. 只有 `loadsgf` 成功消费后，才显式触发一次“重建后恢复分析”。
+4. 若 restore 期间已出现更新的远端目标，旧恢复请求失效。
+
+无引擎或引擎未启动时：
+
+- 允许停在明确的 board-only sync 路径。
+- 该帧视为“棋盘同步成功，但无分析恢复”。
+- 不把这条路径伪装成 exact snapshot restore 成功。
+- 后续若引擎才启动，不自动消费旧的重建后恢复请求；只有新的同步成功落地才触发新的分析恢复。
 
 ### 6.3 `SINGLE_MOVE_RECOVERY`
 
@@ -412,6 +453,7 @@
 5. 棋谱窗口最后一手只显示“总 `N` 手”时，正确归一化为 `currentMove=N`。
 6. `roomToken` 只截取到第一个 `号`，并保留原始字符串格式。
 7. 新浪、弈城等非野狐平台只在“唯一可证的一手”时保留真实历史，其余情况走重建。
+8. 无引擎时，普通同步帧和 `FORCE_REBUILD` 帧都能把棋盘同步到 lizzie，本地不会因为缺少引擎而整帧失败。
 
 ## 10. 测试与验收矩阵
 
@@ -461,10 +503,12 @@
 | `LZ-POLICY-001` | P0 | `SyncSnapshotRebuildPolicyTest` | 远端命中当前主线祖先，而不是当前节点 | 返回祖先节点作为有效基线 |
 | `LZ-POLICY-002` | P0 | `SyncSnapshotRebuildPolicyTest` | 重复盘面存在更早旧节点，但不在当前主线祖先链上 | 不得回捞旧节点续接 |
 | `LZ-POLICY-003` | P0 | `SyncSnapshotRebuildPolicyTest` | marker 抖动但 `stones + foxMoveNumber` 相同 | 冲突身份按归一化身份合并，不因原始帧不同而永久 `HOLD` |
+| `LZ-POLICY-003A` | P0 | `SyncSnapshotRebuildPolicyTest` | 同一落点在相邻帧里“有 marker / 无 marker”但 `stones + foxMoveNumber` 相同 | 同样按归一化身份合并，不得把同一冲突拆成两次新的 `HOLD` |
 | `LZ-POLICY-004` | P0 | `SyncSnapshotRebuildPolicyTest` | `LIVE_ROOM` 缺少有效 `foxMoveNumber` | 不进入野狐完整恢复路径，退回保守路径 |
 | `LZ-POLICY-005` | P1 | `SyncSnapshotRebuildPolicyTest` | `RECORD_VIEW` 标题只显示“总 `N` 手” | 视为 `currentMove=N` 参与命中 |
 | `LZ-POLICY-006` | P1 | `SyncSnapshotRebuildPolicyTest` | `roomToken` 变化 | 旧 `lastResolved` 失效，不能直接续接 |
 | `LZ-POLICY-007` | P1 | `SyncSnapshotRebuildPolicyTest` | `titleFingerprint` 或 `totalMove` 明显冲突 | 旧 `lastResolved` 失效，偏向重建 |
+| `LZ-POLICY-008` | P0 | `SyncSnapshotRebuildPolicyTest` | 远端目标已是当前保留主线窗口内的现有节点 | 直接返回该现有主线节点，不扫描 variation |
 | `LZ-DECISION-001` | P0 | `ReadBoardSyncDecisionTest` | 观战房手动回退，且远端命中当前主线祖先 | 直接回退到祖先，最终结果 `NO_CHANGE` |
 | `LZ-DECISION-002` | P0 | `ReadBoardSyncDecisionTest` | 观战房手动回退，但没有命中当前主线祖先 | 最终 `FORCE_REBUILD` |
 | `LZ-DECISION-002A` | P0 | `ReadBoardSyncDecisionTest` | 本地只保留少量近期历史，远端逐步回退到最早保留节点之前一手 | 不得永久停在旧局面；命中该帧后直接 `FORCE_REBUILD` |
@@ -475,6 +519,8 @@
 | `LZ-DECISION-006` | P0 | `ReadBoardSyncDecisionTest` | readboard 发来 `start/clear` | 不立即清空本地棋盘，等待第一帧快照后决策 |
 | `LZ-DECISION-006A` | P0 | `ReadBoardSyncDecisionTest` | readboard `start/clear` 后第一帧就是多手回退或多手前跳 | 首帧不走 `HOLD`，直接 `FORCE_REBUILD` |
 | `LZ-DECISION-007` | P0 | `ReadBoardSyncDecisionTest` | 一次性 `forceRebuild` 标记到达 | 跳过祖先命中、`lastResolved`、`HOLD`，直接重建 |
+| `LZ-DECISION-007A` | P0 | `ReadBoardSyncDecisionTest` | 无引擎时命中 `FORCE_REBUILD` | 本地 `SNAPSHOT` 仍正确落地，不发送 `loadsgf`，不同步失败 |
+| `LZ-DECISION-007B` | P0 | `ReadBoardSyncDecisionTest` | 当前视图停在祖先，远端目标是当前保留主线窗口内的已有节点 | 直接导航到该节点，不重建，也不把视图还原回旧节点 |
 | `LZ-DECISION-008` | P1 | `ReadBoardSyncDecisionTest` | 非野狐平台连续单步、无歧义 | 允许 `SINGLE_MOVE_RECOVERY` |
 | `LZ-DECISION-009` | P1 | `ReadBoardSyncDecisionTest` | 非野狐平台回退 | 直接 `FORCE_REBUILD` |
 | `LZ-DECISION-010` | P1 | `ReadBoardSyncDecisionTest` | 非野狐平台单步提多子但唯一可证 | 仍允许记成真实 `MOVE` |
@@ -494,6 +540,8 @@
 | `LZ-ENGINE-003` | P0 | 同上 | `SINGLE_MOVE_RECOVERY` 成功后 | 当前节点立即进入分析态 |
 | `LZ-ENGINE-004` | P1 | 同上 | rebuild 过程中又收到更新目标 | 旧恢复分析请求失效，不把分析拉回旧局面 |
 | `LZ-ENGINE-005` | P1 | 同上 | 双引擎快照恢复成功 | 两侧都在各自 restore 成功后恢复分析 |
+| `LZ-ENGINE-006` | P1 | `ReadBoardEngineResumeTest` 或新协同测试 | 收到 `sync` 时引擎未启动 | 只进入棋盘同步态，不强行 `togglePonder()` |
+| `LZ-ENGINE-007` | P1 | 同上 | board-only rebuild 完成后，引擎稍后才启动 | 不自动复用旧的重建后恢复请求，直到下一次同步成功落地 |
 
 ### 10.5 手工验收矩阵
 
@@ -518,6 +566,7 @@
 | `MAN-FOX-RECORD-002` | P0 | 棋谱窗口最后一手只显示总手数 | 打开已走到终局的棋谱窗口 | 正确识别为 `currentMove=totalMove`，不同步错乱 |
 | `MAN-FOX-RECORD-003` | P1 | 棋谱窗口回退到当前主线祖先 | 在同一份棋谱中向前跳回 | lizzie 允许直接回到主线祖先 |
 | `MAN-FOX-RECORD-004` | P1 | 棋谱窗口切到另一份棋谱 | 打开另一份棋谱文件/窗口 | 旧 `lastResolved` 不再续接，偏向重建 |
+| `MAN-ENGINE-001` | P0 | 未启动引擎，仅开启棋盘同步工具 | 在野狐连续看棋、回退、触发重建 | lizzie 棋盘仍持续同步；只是没有分析结果，不出现“偶尔同步一下又卡住” |
 | `MAN-GENERIC-001` | P1 | 新浪/弈城连续单步落子 | 正常一手一手跟进 | 仅在唯一可证时记真实历史 |
 | `MAN-GENERIC-002` | P1 | 新浪/弈城发生回退 | 在平台侧回退棋子 | 不尝试保留旧历史，直接重建 |
 | `MAN-GENERIC-003` | P1 | 新浪/弈城发生单步提多子 | 形成明确单手提子 | 若唯一可证则仍视为一手，不因提子数直接重建 |

@@ -324,10 +324,7 @@ public class SyncSnapshotRebuildPolicyTest {
         policy.findMatchingNodeInMainlineWindow(
             moveOne,
             mainlineMoveTwo,
-            snapshot(
-                variationMoveTwo.getData().stones,
-                variationMoveTwo.getData().lastMove,
-                4),
+            snapshot(variationMoveTwo.getData().stones, variationMoveTwo.getData().lastMove, 4),
             foxLiveContext(2, "43581号"));
 
     assertFalse(matchedNode.isPresent());

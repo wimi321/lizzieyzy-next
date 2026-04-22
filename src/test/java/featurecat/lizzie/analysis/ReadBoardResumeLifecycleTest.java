@@ -104,6 +104,24 @@ class ReadBoardResumeLifecycleTest {
     }
   }
 
+  @Test
+  void ordinaryIncrementalSyncAdvancesResumeStateToNewMainEnd() throws Exception {
+    try (ResumeHarness harness = ResumeHarness.create(rootHistory(emptyStones(), true))) {
+      harness.readBoard.parseLine("syncPlatform fox");
+      harness.readBoard.parseLine("foxMoveNumber 1");
+      harness.sync(
+          snapshot(
+              stones(placement(0, 0, Stone.BLACK)), Optional.of(new int[] {0, 0}), Stone.BLACK));
+
+      SyncResumeState resumeState = (SyncResumeState) getField(harness.readBoard, "resumeState");
+      BoardHistoryNode mainEnd = harness.board.getHistory().getMainEnd();
+
+      assertNotNull(resumeState, "successful incremental sync should arm resumeState.");
+      assertSame(mainEnd, resumeState.node, "resumeState should track the newest proven node.");
+      assertSame(mainEnd, getField(harness.readBoard, "lastResolvedSnapshotNode"));
+    }
+  }
+
   private static void armResumeState(ReadBoard readBoard, BoardHistoryNode node, int moveNumber)
       throws Exception {
     SyncResumeState resumeState =
@@ -346,6 +364,14 @@ class ReadBoardResumeLifecycleTest {
       hasStartStone = false;
       if (Lizzie.frame != null && Lizzie.frame.readBoard != null) {
         Lizzie.frame.readBoard.firstSync = true;
+      }
+    }
+
+    @Override
+    public void placeForSync(int x, int y, Stone color, boolean newBranch) {
+      getHistory().place(x, y, color, newBranch);
+      if (Lizzie.frame != null && Lizzie.frame.readBoard != null) {
+        Lizzie.frame.readBoard.lastMovePlayByLizzie = false;
       }
     }
 
