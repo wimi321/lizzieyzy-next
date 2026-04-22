@@ -238,6 +238,12 @@ public class LizzieFrame extends JFrame {
   private ProblemListSnapshot problemListSnapshot;
   private final List<Consumer<ProblemListSnapshot>> problemListListeners = new ArrayList<>();
   private boolean problemSidebarRefreshPending = false;
+  private JPanel kifuLoadGlassPane;
+  private JLabel kifuLoadMessageLabel;
+  private JProgressBar kifuLoadProgressBar;
+  private javax.swing.Timer kifuLoadFinishTimer;
+  private long kifuLoadVisibleSince;
+  private volatile int kifuMovelistRefreshGeneration = 0;
 
   private TableModel blunderModelBlack;
   private TableModel blunderModelWhite;
@@ -2293,7 +2299,8 @@ public class LizzieFrame extends JFrame {
     }
     // Windows release packages include native readboard. If a custom/dev checkout is missing it,
     // fall back to the bundled Java helper instead of downloading anything at runtime.
-    if (!ReadBoard.isLegacyNativeReadBoardAvailable()) {
+    if (!ReadBoard.isNativeReadBoardExeAvailable()) {
+      Utils.showMsg(Lizzie.resourceBundle.getString("ReadBoard.nativeExeMissing"));
       openReadBoardJava();
       return;
     }
@@ -2312,12 +2319,16 @@ public class LizzieFrame extends JFrame {
       readBoard = new ReadBoard(true, false);
     } catch (Exception e) {
       e.printStackTrace();
-      try {
-        readBoard = new ReadBoard(false, false);
-      } catch (Exception e1) {
-        e1.printStackTrace();
-        openReadBoardJava();
+      if (ReadBoard.isNativeReadBoardBatAvailable()) {
+        try {
+          readBoard = new ReadBoard(false, false);
+          return;
+        } catch (Exception e1) {
+          e1.printStackTrace();
+        }
       }
+      Utils.showMsg(Lizzie.resourceBundle.getString("ReadBoard.nativeStartFailed"));
+      openReadBoardJava();
     }
   }
 
@@ -3499,6 +3510,304 @@ public class LizzieFrame extends JFrame {
     refresh();
   }
 
+  public String kifuLoadText(String key, String chineseText, String englishText) {
+    try {
+      if (Lizzie.resourceBundle != null && Lizzie.resourceBundle.containsKey(key)) {
+        return Lizzie.resourceBundle.getString(key);
+      }
+    } catch (Exception ignored) {
+    }
+    return Lizzie.config != null && Lizzie.config.isChinese ? chineseText : englishText;
+  }
+
+  public void beginKifuLoad(String message) {
+    runKifuLoadUiUpdate(
+        new Runnable() {
+          public void run() {
+            ensureKifuLoadGlassPane();
+            if (kifuLoadFinishTimer != null) {
+              kifuLoadFinishTimer.stop();
+              kifuLoadFinishTimer = null;
+            }
+            kifuLoadMessageLabel.setText(message);
+            kifuLoadProgressBar.setIndeterminate(true);
+            kifuLoadProgressBar.setString(message);
+            kifuLoadGlassPane.setVisible(true);
+            kifuLoadVisibleSince = System.currentTimeMillis();
+          }
+        });
+  }
+
+  public void updateKifuLoad(String message) {
+    runKifuLoadUiUpdate(
+        new Runnable() {
+          public void run() {
+            ensureKifuLoadGlassPane();
+            kifuLoadMessageLabel.setText(message);
+            kifuLoadProgressBar.setString(message);
+            if (!kifuLoadGlassPane.isVisible()) {
+              kifuLoadGlassPane.setVisible(true);
+              kifuLoadVisibleSince = System.currentTimeMillis();
+            }
+          }
+        });
+  }
+
+  public void finishKifuLoad() {
+    finishKifuLoad(null);
+  }
+
+  public void finishKifuLoad(Runnable afterFirstPaint) {
+    Runnable finish =
+        new Runnable() {
+          public void run() {
+            refresh();
+            if (kifuLoadFinishTimer != null) {
+              kifuLoadFinishTimer.stop();
+            }
+            int hideDelay =
+                (int) Math.max(160, 500 - (System.currentTimeMillis() - kifuLoadVisibleSince));
+            kifuLoadFinishTimer =
+                new javax.swing.Timer(
+                    hideDelay,
+                    new ActionListener() {
+                      public void actionPerformed(ActionEvent e) {
+                        if (kifuLoadGlassPane != null) {
+                          kifuLoadGlassPane.setVisible(false);
+                        }
+                        kifuLoadFinishTimer = null;
+                        if (afterFirstPaint != null) {
+                          afterFirstPaint.run();
+                        }
+                      }
+                    });
+            kifuLoadFinishTimer.setRepeats(false);
+            kifuLoadFinishTimer.start();
+          }
+        };
+    if (SwingUtilities.isEventDispatchThread()) {
+      finish.run();
+    } else {
+      SwingUtilities.invokeLater(finish);
+    }
+  }
+
+  public void failKifuLoad(String message) {
+    Runnable fail =
+        new Runnable() {
+          public void run() {
+            if (kifuLoadFinishTimer != null) {
+              kifuLoadFinishTimer.stop();
+              kifuLoadFinishTimer = null;
+            }
+            if (kifuLoadGlassPane != null) {
+              kifuLoadGlassPane.setVisible(false);
+            }
+            if (message != null && !message.trim().isEmpty()) {
+              Utils.showMsg(message, Lizzie.frame);
+            }
+          }
+        };
+    if (SwingUtilities.isEventDispatchThread()) {
+      fail.run();
+    } else {
+      SwingUtilities.invokeLater(fail);
+    }
+  }
+
+  public boolean loadSgfStringWithFeedback(
+      String sgfContent,
+      String initialMessage,
+      int resumeDelayMillis,
+      boolean readKomi,
+      boolean resetAnalysisWindows,
+      Runnable afterFirstPaint) {
+    return loadSgfStringInternal(
+        sgfContent,
+        initialMessage,
+        resumeDelayMillis,
+        readKomi,
+        resetAnalysisWindows,
+        afterFirstPaint,
+        true);
+  }
+
+  public boolean loadSgfString(
+      String sgfContent,
+      int resumeDelayMillis,
+      boolean readKomi,
+      boolean resetAnalysisWindows,
+      Runnable afterLoad) {
+    return loadSgfStringInternal(
+        sgfContent, null, resumeDelayMillis, readKomi, resetAnalysisWindows, afterLoad, false);
+  }
+
+  private boolean loadSgfStringInternal(
+      String sgfContent,
+      String initialMessage,
+      int resumeDelayMillis,
+      boolean readKomi,
+      boolean resetAnalysisWindows,
+      Runnable afterLoad,
+      boolean showFeedback) {
+    if (!SwingUtilities.isEventDispatchThread()) {
+      final boolean[] loaded = new boolean[] {false};
+      try {
+        SwingUtilities.invokeAndWait(
+            new Runnable() {
+              public void run() {
+                loaded[0] =
+                    loadSgfStringInternal(
+                        sgfContent,
+                        initialMessage,
+                        resumeDelayMillis,
+                        readKomi,
+                        resetAnalysisWindows,
+                        afterLoad,
+                        showFeedback);
+              }
+            });
+      } catch (Exception e) {
+        e.printStackTrace();
+        showKifuLoadError(e);
+      }
+      return loaded[0];
+    }
+    if (showFeedback) {
+      beginKifuLoad(initialMessage);
+    }
+    boolean oriReadKomi = Lizzie.config.readKomi;
+    try {
+      if (showFeedback) {
+        updateKifuLoad(kifuLoadText("KifuLoad.parsing", "正在解析棋谱…", "Parsing game record..."));
+      }
+      Lizzie.config.readKomi = readKomi;
+      SGFParser.loadFromString(sgfContent);
+      if (showFeedback) {
+        updateKifuLoad(
+            kifuLoadText("KifuLoad.refreshing", "正在刷新胜率曲线…", "Refreshing winrate graph..."));
+      }
+      scheduleMovelistRefreshAfterKifuLoad();
+      if (resetAnalysisWindows) {
+        resetMovelistFrameandAnalysisFrame();
+      }
+      setVisible(true);
+      scheduleResumeAnalysisAfterLoad(resumeDelayMillis);
+      refresh();
+      if (showFeedback) {
+        finishKifuLoad(afterLoad);
+      } else if (afterLoad != null) {
+        afterLoad.run();
+      }
+      return true;
+    } catch (Exception e) {
+      e.printStackTrace();
+      if (showFeedback) {
+        failKifuLoad(
+            kifuLoadText("KifuLoad.failed", "棋谱加载失败：", "Failed to load game record: ")
+                + e.getMessage());
+      } else {
+        showKifuLoadError(e);
+      }
+      return false;
+    } finally {
+      Lizzie.config.readKomi = oriReadKomi;
+    }
+  }
+
+  private void showKifuLoadError(Exception e) {
+    String message =
+        kifuLoadText("KifuLoad.failed", "棋谱加载失败：", "Failed to load game record: ")
+            + (e == null ? "" : e.getMessage());
+    if (SwingUtilities.isEventDispatchThread()) {
+      Utils.showMsg(message, Lizzie.frame);
+    } else {
+      SwingUtilities.invokeLater(
+          new Runnable() {
+            public void run() {
+              Utils.showMsg(message, Lizzie.frame);
+            }
+          });
+    }
+  }
+
+  private void ensureKifuLoadGlassPane() {
+    if (kifuLoadGlassPane != null) {
+      return;
+    }
+    kifuLoadGlassPane =
+        new JPanel(new GridBagLayout()) {
+          protected void paintComponent(Graphics g) {
+            super.paintComponent(g);
+            Graphics2D g2 = (Graphics2D) g.create();
+            g2.setColor(new Color(20, 24, 28, 72));
+            g2.fillRect(0, 0, getWidth(), getHeight());
+            g2.dispose();
+          }
+        };
+    kifuLoadGlassPane.setOpaque(false);
+    kifuLoadGlassPane.addMouseListener(new MouseAdapter() {});
+    kifuLoadGlassPane.addMouseMotionListener(
+        new MouseMotionListener() {
+          public void mouseDragged(MouseEvent e) {}
+
+          public void mouseMoved(MouseEvent e) {}
+        });
+    kifuLoadGlassPane.setFocusTraversalKeysEnabled(false);
+    kifuLoadGlassPane.setFocusable(false);
+
+    JPanel card = new JPanel(new BorderLayout(12, 10));
+    card.setBackground(new Color(250, 250, 250));
+    card.setBorder(
+        javax.swing.BorderFactory.createCompoundBorder(
+            javax.swing.BorderFactory.createLineBorder(new Color(96, 112, 128)),
+            javax.swing.BorderFactory.createEmptyBorder(18, 24, 18, 24)));
+
+    kifuLoadMessageLabel = new JFontLabel();
+    kifuLoadMessageLabel.setFont(
+        new Font(Config.sysDefaultFontName, Font.PLAIN, Config.frameFontSize));
+    card.add(kifuLoadMessageLabel, BorderLayout.CENTER);
+
+    kifuLoadProgressBar = new JProgressBar();
+    kifuLoadProgressBar.setIndeterminate(true);
+    kifuLoadProgressBar.setStringPainted(true);
+    kifuLoadProgressBar.setPreferredSize(new Dimension(380, 22));
+    card.add(kifuLoadProgressBar, BorderLayout.SOUTH);
+
+    GridBagConstraints gbc = new GridBagConstraints();
+    gbc.gridx = 0;
+    gbc.gridy = 0;
+    kifuLoadGlassPane.add(card, gbc);
+    setGlassPane(kifuLoadGlassPane);
+  }
+
+  private void runKifuLoadUiUpdate(Runnable runnable) {
+    if (SwingUtilities.isEventDispatchThread()) {
+      runnable.run();
+      paintKifuLoadOverlayNow();
+    } else {
+      SwingUtilities.invokeLater(
+          new Runnable() {
+            public void run() {
+              runnable.run();
+              paintKifuLoadOverlayNow();
+            }
+          });
+    }
+  }
+
+  private void paintKifuLoadOverlayNow() {
+    if (kifuLoadGlassPane == null || !kifuLoadGlassPane.isVisible()) {
+      return;
+    }
+    kifuLoadGlassPane.revalidate();
+    kifuLoadGlassPane.repaint();
+    Rectangle bounds = kifuLoadGlassPane.getBounds();
+    if (bounds.width > 0 && bounds.height > 0) {
+      kifuLoadGlassPane.paintImmediately(0, 0, bounds.width, bounds.height);
+    }
+  }
+
   public void loadFile(File file, boolean fromTemp, boolean showHint) {
     if (EngineManager.isEngineGame() || isPlayingAgainstLeelaz || isAnaPlayingAgainstLeelaz) {
       Utils.showMsg(Lizzie.resourceBundle.getString("LizzieFrame.openFileFailed.inGame"));
@@ -3528,6 +3837,7 @@ public class LizzieFrame extends JFrame {
         }
       }
     } catch (IOException err) {
+      Lizzie.config.playSound = oriSound;
       SwingUtilities.invokeLater(
           new Runnable() {
             public void run() {
@@ -3538,8 +3848,9 @@ public class LizzieFrame extends JFrame {
                   JOptionPane.ERROR);
             }
           });
+      return;
     }
-    Lizzie.board.setMovelistAll();
+    scheduleMovelistRefreshAfterKifuLoad();
     requestProblemListRefresh();
     if (showHint) {
       Lizzie.frame.resetMovelistFrameandAnalysisFrame();
@@ -3551,10 +3862,38 @@ public class LizzieFrame extends JFrame {
     fileNameTitle = file.getName();
     updateTitle();
     scheduleResumeAnalysisAfterLoad(1000);
+    refresh();
   }
 
   public void scheduleResumeAnalysisAfterLoad() {
     scheduleResumeAnalysisAfterLoad(1000);
+  }
+
+  private void scheduleMovelistRefreshAfterKifuLoad() {
+    scheduleMovelistRefreshAfterKifuLoad(900);
+  }
+
+  private void scheduleMovelistRefreshAfterKifuLoad(int delayMillis) {
+    final int generation = ++kifuMovelistRefreshGeneration;
+    final int scheduleDelay = Math.max(0, delayMillis);
+    Runnable runnable =
+        new Runnable() {
+          public void run() {
+            try {
+              if (scheduleDelay > 0) Thread.sleep(scheduleDelay);
+            } catch (InterruptedException e) {
+              Thread.currentThread().interrupt();
+              return;
+            }
+            if (generation == kifuMovelistRefreshGeneration) {
+              Lizzie.board.setMovelistAll();
+            }
+          }
+        };
+    Thread thread = new Thread(runnable, "lizzie-delayed-movelist-refresh");
+    thread.setDaemon(true);
+    thread.setPriority(Thread.MIN_PRIORITY);
+    thread.start();
   }
 
   public void scheduleResumeAnalysisAfterLoad(int delayMillis) {
@@ -7395,11 +7734,7 @@ public class LizzieFrame extends JFrame {
 
     // Load game contents from sgf string
     if (!sgfContent.isEmpty() && SGFParser.isSGF(sgfContent)) {
-      SGFParser.loadFromString(sgfContent);
-      Lizzie.board.setMovelistAll();
-      Lizzie.frame.resetMovelistFrameandAnalysisFrame();
-      Lizzie.frame.setVisible(true);
-      scheduleResumeAnalysisAfterLoad(200);
+      loadSgfString(sgfContent, 200, Lizzie.config.readKomi, true, null);
     }
   }
 

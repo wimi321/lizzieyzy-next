@@ -13,6 +13,8 @@ import java.awt.Component;
 import java.awt.Dimension;
 import java.awt.FlowLayout;
 import java.awt.Window;
+import java.awt.event.WindowAdapter;
+import java.awt.event.WindowEvent;
 import java.io.BufferedInputStream;
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -45,6 +47,7 @@ import java.util.stream.Stream;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 import javax.swing.BorderFactory;
+import javax.swing.JButton;
 import javax.swing.JDialog;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
@@ -477,6 +480,7 @@ public final class KataGoRuntimeHelper {
     }
 
     DownloadSession activeSession = session != null ? session : new DownloadSession();
+    activeSession.throwIfCancelled();
     if (isWindowsPlatform() && isNvidiaBundledPath(snapshot.enginePath)) {
       ensureBundledRuntimeReady(snapshot.enginePath, null);
     }
@@ -508,6 +512,10 @@ public final class KataGoRuntimeHelper {
     Process process;
     try {
       process = processBuilder.start();
+      if (activeSession.isCancelled()) {
+        process.destroyForcibly();
+        activeSession.throwIfCancelled();
+      }
       notifyProgress(
           listener,
           resource("AutoSetup.benchmarkRunning", "KataGo benchmark is running..."),
@@ -523,16 +531,27 @@ public final class KataGoRuntimeHelper {
 
     StringBuilder output = new StringBuilder();
     BenchmarkProgressTracker progressTracker = new BenchmarkProgressTracker();
+    Thread cancellationWatcher = startBenchmarkCancellationWatcher(process, activeSession);
     try {
       readBenchmarkOutput(
           process.getInputStream(), output, listener, activeSession, process, progressTracker);
     } catch (IOException e) {
       process.destroyForcibly();
+      if (activeSession.isCancelled()) {
+        throw new DownloadCancelledException(
+            resource("AutoSetup.benchmarkCancelled", "Benchmark stopped."));
+      }
       throw e;
+    } finally {
+      if (cancellationWatcher != null) {
+        cancellationWatcher.interrupt();
+      }
     }
 
     try {
+      activeSession.throwIfCancelled();
       int exitCode = process.waitFor();
+      activeSession.throwIfCancelled();
       if (exitCode != 0) {
         throw new IOException(
             resource("AutoSetup.benchmarkFailed", "Unable to run KataGo benchmark right now.")
@@ -556,6 +575,32 @@ public final class KataGoRuntimeHelper {
     return result;
   }
 
+  private static Thread startBenchmarkCancellationWatcher(
+      Process process, DownloadSession session) {
+    if (process == null || session == null) {
+      return null;
+    }
+    Thread watcher =
+        new Thread(
+            () -> {
+              try {
+                while (process.isAlive()) {
+                  if (session.isCancelled()) {
+                    process.destroyForcibly();
+                    return;
+                  }
+                  Thread.sleep(100L);
+                }
+              } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+              }
+            },
+            "katago-benchmark-cancel-watch");
+    watcher.setDaemon(true);
+    watcher.start();
+    return watcher;
+  }
+
   private static void readBenchmarkOutput(
       InputStream inputStream,
       StringBuilder output,
@@ -572,7 +617,7 @@ public final class KataGoRuntimeHelper {
         if (session != null && session.isCancelled()) {
           process.destroyForcibly();
           throw new DownloadCancelledException(
-              resource("AutoSetup.downloadCancelled", "Download cancelled."));
+              resource("AutoSetup.benchmarkCancelled", "Benchmark stopped."));
         }
         for (int i = 0; i < read; i++) {
           char ch = buffer[i];
@@ -708,11 +753,14 @@ public final class KataGoRuntimeHelper {
                   return;
                 }
 
+                DownloadSession session = new DownloadSession();
                 notice =
                     showBenchmarkNotice(
                         "正在进行 Apple Silicon 智能测速优化",
-                        "正在按 KataGo 官方 benchmark 自动测试最合适的线程数，" + "测速期间会暂停当前分析，完成后会自动恢复。");
+                        "正在按 KataGo 官方 benchmark 自动测试最合适的线程数，" + "测速期间会暂停当前分析，完成后会自动恢复。",
+                        session);
                 final JDialog progressNotice = notice;
+                if (session.isCancelled()) return;
                 pausedAnalysis = pauseCurrentAnalysisForBenchmark();
 
                 System.out.println(
@@ -726,10 +774,12 @@ public final class KataGoRuntimeHelper {
                                 progressNotice, statusText, downloadedBytes, totalBytes);
                           }
                         },
-                        null);
+                        session);
                 applyBenchmarkResultToRunningEngines(result);
                 System.out.println(
                     "Apple Silicon KataGo tuning applied: " + formatBenchmarkResult(result));
+              } catch (DownloadCancelledException e) {
+                System.out.println("Apple Silicon KataGo auto benchmark cancelled by user.");
               } catch (Exception e) {
                 System.err.println(
                     "Apple Silicon KataGo auto benchmark failed: " + e.getLocalizedMessage());
@@ -750,11 +800,16 @@ public final class KataGoRuntimeHelper {
   }
 
   private static JDialog showBenchmarkNotice(String title, String message) {
+    return showBenchmarkNotice(title, message, null);
+  }
+
+  private static JDialog showBenchmarkNotice(
+      String title, String message, DownloadSession cancelSession) {
     if (Lizzie.frame == null) return null;
     final JDialog[] noticeHolder = new JDialog[1];
     Runnable task =
         () -> {
-          JDialog notice = createBenchmarkNotice(title, message);
+          JDialog notice = createBenchmarkNotice(title, message, cancelSession);
           if (notice != null) {
             noticeHolder[0] = notice;
             notice.setVisible(true);
@@ -780,13 +835,25 @@ public final class KataGoRuntimeHelper {
     return noticeHolder[0];
   }
 
-  private static JDialog createBenchmarkNotice(String title, String message) {
+  private static JDialog createBenchmarkNotice(
+      String title, String message, DownloadSession cancelSession) {
     if (Lizzie.frame == null) return null;
     JDialog notice = new JDialog(Lizzie.frame, title, false);
     notice.setDefaultCloseOperation(JDialog.DO_NOTHING_ON_CLOSE);
+    if (cancelSession != null) {
+      notice.getRootPane().putClientProperty("lizzie.benchmark.notice.session", cancelSession);
+      notice.addWindowListener(
+          new WindowAdapter() {
+            public void windowClosing(WindowEvent e) {
+              cancelBenchmarkNotice(notice, cancelSession);
+            }
+          });
+    }
     notice.setAlwaysOnTop(true);
     notice.setType(Window.Type.UTILITY);
-    notice.setFocusableWindowState(false);
+    if (cancelSession == null) {
+      notice.setFocusableWindowState(false);
+    }
     JPanel panel = new JPanel(new BorderLayout(12, 12));
     panel.setOpaque(true);
     panel.setBackground(new Color(255, 248, 232));
@@ -809,12 +876,34 @@ public final class KataGoRuntimeHelper {
     pb.setString("准备测速… 0%");
     pb.setPreferredSize(new Dimension(520, 24));
     pb.putClientProperty("lizzie.benchmark.notice.bar", Boolean.TRUE);
-    panel.add(pb, BorderLayout.SOUTH);
+    JPanel bottomPanel = new JPanel(new BorderLayout(0, 8));
+    bottomPanel.setOpaque(false);
+    bottomPanel.add(pb, BorderLayout.CENTER);
+    if (cancelSession != null) {
+      JButton cancelButton = new JButton(resource("AutoSetup.stopBenchmark", "Stop benchmark"));
+      cancelButton.addActionListener(e -> cancelBenchmarkNotice(notice, cancelSession));
+      JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 0, 0));
+      buttonPanel.setOpaque(false);
+      buttonPanel.add(cancelButton);
+      bottomPanel.add(buttonPanel, BorderLayout.SOUTH);
+    }
+    panel.add(bottomPanel, BorderLayout.SOUTH);
     notice.setContentPane(panel);
     notice.setMinimumSize(new Dimension(560, 150));
     notice.pack();
     notice.setLocationRelativeTo(Lizzie.frame);
     return notice;
+  }
+
+  private static void cancelBenchmarkNotice(JDialog notice, DownloadSession cancelSession) {
+    if (cancelSession != null) {
+      cancelSession.cancel();
+    }
+    if (notice != null) {
+      updateBenchmarkNotice(
+          notice, resource("AutoSetup.benchmarkCancelled", "Benchmark stopped."), 0L, 1000L);
+      notice.dispose();
+    }
   }
 
   private static void disposeBenchmarkNotice(JDialog notice) {
@@ -834,36 +923,38 @@ public final class KataGoRuntimeHelper {
               totalBytes > 0
                   ? (int) Math.max(0L, Math.min(1000L, (downloadedBytes * 1000L) / totalBytes))
                   : -1;
-          for (Component child : ((JPanel) root).getComponents()) {
-            if (child instanceof JLabel
-                && Boolean.TRUE.equals(
-                    ((JLabel) child).getClientProperty("lizzie.benchmark.notice.status"))) {
-              ((JLabel) child)
-                  .setText(
-                      statusText == null || statusText.trim().isEmpty() ? "测速中..." : statusText);
-            }
-            if (child instanceof JProgressBar) {
-              JProgressBar progressBar = (JProgressBar) child;
-              int displayProgress = progressValue >= 0 ? progressValue : progressBar.getValue();
-              if (progressValue >= 0) {
-                progressBar.setIndeterminate(false);
-                progressBar.setMaximum(1000);
-                progressBar.setValue(progressValue);
-              } else {
-                progressBar.setIndeterminate(false);
-                progressBar.setMaximum(1000);
-              }
-              progressBar.setString(
-                  (statusText == null || statusText.trim().isEmpty() ? "测速中..." : statusText)
-                      + "  "
-                      + Math.max(0, Math.min(1000, displayProgress)) / 10
-                      + "%");
-            }
-          }
+          updateBenchmarkNoticeComponents(root, statusText, progressValue);
           notice.getContentPane().revalidate();
           notice.getContentPane().repaint();
           notice.getRootPane().paintImmediately(notice.getRootPane().getVisibleRect());
         });
+  }
+
+  private static void updateBenchmarkNoticeComponents(
+      Component component, String statusText, int progressValue) {
+    String displayStatus =
+        statusText == null || statusText.trim().isEmpty() ? "测速中..." : statusText;
+    if (component instanceof JLabel
+        && Boolean.TRUE.equals(
+            ((JLabel) component).getClientProperty("lizzie.benchmark.notice.status"))) {
+      ((JLabel) component).setText(displayStatus);
+    }
+    if (component instanceof JProgressBar) {
+      JProgressBar progressBar = (JProgressBar) component;
+      int displayProgress = progressValue >= 0 ? progressValue : progressBar.getValue();
+      progressBar.setIndeterminate(false);
+      progressBar.setMaximum(1000);
+      if (progressValue >= 0) {
+        progressBar.setValue(progressValue);
+      }
+      progressBar.setString(
+          displayStatus + "  " + Math.max(0, Math.min(1000, displayProgress)) / 10 + "%");
+    }
+    if (component instanceof java.awt.Container) {
+      for (Component child : ((java.awt.Container) component).getComponents()) {
+        updateBenchmarkNoticeComponents(child, statusText, progressValue);
+      }
+    }
   }
 
   private static final class BenchmarkProgressTracker {
@@ -1040,6 +1131,7 @@ public final class KataGoRuntimeHelper {
               }
               if (getStoredBenchmarkResult() != null) return;
 
+              final DownloadSession benchmarkSession = new DownloadSession();
               final javax.swing.JDialog notice =
                   Lizzie.frame != null && Lizzie.frame.isShowing()
                       ? showBenchmarkNotice(
@@ -1048,21 +1140,29 @@ public final class KataGoRuntimeHelper {
                               + "用于自动选出最适合你这台电脑的线程数，<br/>"
                               + "完成后分析速度会更稳定、更快。<br/><br/>"
                               + "这是 KataGo 官方 benchmark 流程，可能需要数分钟，请稍候，<br/>"
-                              + "期间分析会被暂停，完成后会自动恢复。")
+                              + "期间分析会被暂停，完成后会自动恢复。<br/>"
+                              + "如果暂时不想测速，可以关闭这个窗口停止测速。",
+                          benchmarkSession)
                       : null;
 
-              boolean pausedAnalysis = pauseCurrentAnalysisForBenchmark();
+              boolean pausedAnalysis = false;
 
               try {
+                if (benchmarkSession.isCancelled()) {
+                  return;
+                }
+                pausedAnalysis = pauseCurrentAnalysisForBenchmark();
                 BenchmarkResult result =
                     runBenchmarkAndApply(
                         snapshot,
                         (statusText, downloadedBytes, totalBytes) ->
                             updateBenchmarkNotice(notice, statusText, downloadedBytes, totalBytes),
-                        null);
+                        benchmarkSession);
                 applyBenchmarkResultToRunningEngines(result);
                 System.out.println(
                     "First-run KataGo benchmark applied: " + formatBenchmarkResult(result));
+              } catch (DownloadCancelledException e) {
+                System.out.println("First-run KataGo benchmark cancelled by user.");
               } catch (Exception e) {
                 System.err.println("First-run KataGo benchmark failed: " + e.getLocalizedMessage());
               } finally {

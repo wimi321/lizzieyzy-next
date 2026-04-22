@@ -3,7 +3,6 @@ package featurecat.lizzie.gui;
 import featurecat.lizzie.Config;
 import featurecat.lizzie.Lizzie;
 import featurecat.lizzie.analysis.GetFoxRequest;
-import featurecat.lizzie.rules.SGFParser;
 import featurecat.lizzie.util.Utils;
 import java.awt.BorderLayout;
 import java.awt.Color;
@@ -14,6 +13,7 @@ import java.awt.Font;
 import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
 import java.awt.Insets;
+import java.awt.Rectangle;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.awt.event.ItemEvent;
@@ -66,6 +66,7 @@ public class FoxKifuDownload extends JFrame {
   private int curTabNumber = 1;
   private boolean isComplete = false;
   private boolean isSearching = false;
+  private boolean isKifuLoading = false;
   private boolean advanceToNextPageAfterLoad = false;
   JLabel lblTab;
   private ArrayList<String[]> rows;
@@ -73,6 +74,7 @@ public class FoxKifuDownload extends JFrame {
   private boolean isRequestEmpty = false;
   private JPanel progressGlassPane;
   private JLabel progressMessageLabel;
+  private JProgressBar progressBar;
 
   public FoxKifuDownload() {
     Lizzie.setFrameSize(this, 980, 680);
@@ -200,8 +202,7 @@ public class FoxKifuDownload extends JFrame {
             int col = table.columnAtPoint(e.getPoint());
             if (e.getClickCount() == 2) {
               if (row >= 0 && col >= 0 && foxReq != null) {
-                showProgressNotice("正在下载棋谱，请稍候…");
-                foxReq.sendCommand("chessid " + table.getValueAt(row, 10).toString());
+                loadFoxKifu(table.getValueAt(row, 10).toString());
               }
             }
           }
@@ -326,6 +327,15 @@ public class FoxKifuDownload extends JFrame {
       Utils.showMsg(Lizzie.resourceBundle.getString("FoxKifuDownload.waitLastSearch"), this);
       return;
     }
+    if (isKifuLoading) {
+      Utils.showMsg(
+          Lizzie.frame.kifuLoadText(
+              "KifuLoad.wait",
+              "请等待当前棋谱加载完成。",
+              "Please wait for the current game record to finish loading."),
+          this);
+      return;
+    }
     myUid = "";
     currentFoxNickname = normalizedUser;
     isSearching = true;
@@ -350,16 +360,48 @@ public class FoxKifuDownload extends JFrame {
     foxReq.sendCommand("user_name " + normalizedUser);
   }
 
+  public void loadFoxKifu(String chessid) {
+    if (foxReq == null || chessid == null || chessid.trim().isEmpty()) {
+      return;
+    }
+    if (isKifuLoading) {
+      return;
+    }
+    isKifuLoading = true;
+    setTableBusy(true);
+    String message =
+        Lizzie.frame.kifuLoadText(
+            "KifuLoad.foxDownloading", "正在下载棋谱…", "Downloading game record...");
+    showProgressNotice(message);
+    foxReq.sendCommand("chessid " + chessid.trim());
+  }
+
+  private void setTableBusy(boolean busy) {
+    if (table != null) {
+      table.setEnabled(!busy);
+    }
+  }
+
   private void showProgressNotice(String message) {
-    javax.swing.SwingUtilities.invokeLater(
+    Runnable show =
         () -> {
           ensureProgressOverlay();
           progressMessageLabel.setText(message);
+          progressBar.setString(message);
           presentWindow();
           progressGlassPane.setVisible(true);
           progressGlassPane.revalidate();
           progressGlassPane.repaint();
-        });
+          Rectangle bounds = progressGlassPane.getBounds();
+          if (bounds.width > 0 && bounds.height > 0) {
+            progressGlassPane.paintImmediately(0, 0, bounds.width, bounds.height);
+          }
+        };
+    if (SwingUtilities.isEventDispatchThread()) {
+      show.run();
+    } else {
+      SwingUtilities.invokeLater(show);
+    }
   }
 
   private void hideProgressNotice() {
@@ -377,6 +419,7 @@ public class FoxKifuDownload extends JFrame {
     }
     progressGlassPane = new JPanel(new GridBagLayout());
     progressGlassPane.setOpaque(false);
+    progressGlassPane.setFocusable(false);
 
     JPanel card = new JPanel(new BorderLayout(12, 10));
     card.setBackground(new Color(250, 250, 250));
@@ -388,7 +431,7 @@ public class FoxKifuDownload extends JFrame {
     progressMessageLabel = new JFontLabel();
     card.add(progressMessageLabel, BorderLayout.CENTER);
 
-    JProgressBar progressBar = new JProgressBar();
+    progressBar = new JProgressBar();
     progressBar.setIndeterminate(true);
     progressBar.setStringPainted(true);
     progressBar.setString("处理中...");
@@ -416,6 +459,16 @@ public class FoxKifuDownload extends JFrame {
       JSONObject jsonObject = new JSONObject(string);
       if (jsonObject.optInt("result", 0) != 0) {
         isSearching = false;
+        if (isKifuLoading) {
+          isKifuLoading = false;
+          setTableBusy(false);
+          Utils.showMsg(
+              Lizzie.resourceBundle.getString("FoxKifuDownload.getKifuFailed")
+                  + jsonObject.optString("resultstr", string),
+              this);
+          hideProgressNotice();
+          return;
+        }
         hideProgressNotice();
         Utils.showMsg(
             Lizzie.resourceBundle.getString("FoxKifuDownload.getKifuFailed")
@@ -441,24 +494,95 @@ public class FoxKifuDownload extends JFrame {
       }
       if (jsonObject.has("chess")) {
         String kifu = jsonObject.getString("chess");
-        boolean oriReadKomi = Lizzie.config.readKomi;
-        Lizzie.config.readKomi = false;
-        SGFParser.loadFromString(kifu);
-        Lizzie.board.setMovelistAll();
-        Lizzie.frame.scheduleResumeAnalysisAfterLoad(200);
-        Lizzie.frame.refresh();
-        Lizzie.config.readKomi = oriReadKomi;
-        hideProgressNotice();
-        if (Lizzie.config.foxAfterGet == 0) setExtendedState(JFrame.ICONIFIED);
-        else if (Lizzie.config.foxAfterGet == 1) setVisible(false);
+        showProgressNotice(
+            Lizzie.frame.kifuLoadText("KifuLoad.parsing", "正在解析棋谱…", "Parsing game record..."));
+        boolean loaded = Lizzie.frame.loadSgfString(kifu, 200, false, false, null);
+        if (loaded) {
+          finishFoxKifuLoadAfterMainPaint();
+        } else {
+          isKifuLoading = false;
+          setTableBusy(false);
+          hideProgressNotice();
+        }
       }
-    } catch (JSONException e1) {
+    } catch (Exception e1) {
       e1.printStackTrace();
       hideProgressNotice();
+      if (isKifuLoading) {
+        isKifuLoading = false;
+        setTableBusy(false);
+        Utils.showMsg(
+            Lizzie.resourceBundle.getString("FoxKifuDownload.getKifuFailed") + string, this);
+        isSearching = false;
+        return;
+      }
       Utils.showMsg(
           Lizzie.resourceBundle.getString("FoxKifuDownload.getKifuFailed") + string, this);
       isSearching = false;
     }
+  }
+
+  private void finishFoxKifuLoadAfterMainPaint() {
+    showProgressNotice(
+        Lizzie.frame.kifuLoadText(
+            "KifuLoad.refreshing", "正在刷新胜率曲线…", "Refreshing winrate graph..."));
+    SwingUtilities.invokeLater(
+        new Runnable() {
+          public void run() {
+            Lizzie.frame.refresh();
+            if (Lizzie.frame.mainPanel != null
+                && Lizzie.frame.mainPanel.getWidth() > 0
+                && Lizzie.frame.mainPanel.getHeight() > 0) {
+              Lizzie.frame.mainPanel.paintImmediately(
+                  0, 0, Lizzie.frame.mainPanel.getWidth(), Lizzie.frame.mainPanel.getHeight());
+            }
+            javax.swing.Timer finishTimer =
+                new javax.swing.Timer(
+                    120,
+                    new ActionListener() {
+                      public void actionPerformed(ActionEvent e) {
+                        completeFoxKifuLoad();
+                      }
+                    });
+            finishTimer.setRepeats(false);
+            finishTimer.start();
+          }
+        });
+  }
+
+  private void completeFoxKifuLoad() {
+    isKifuLoading = false;
+    setTableBusy(false);
+    hideProgressNotice();
+    if (Lizzie.config.foxAfterGet == 0) setExtendedState(JFrame.ICONIFIED);
+    else if (Lizzie.config.foxAfterGet == 1) setVisible(false);
+    focusMainFrameAfterKifuLoad();
+  }
+
+  private void focusMainFrameAfterKifuLoad() {
+    Runnable focusMainFrame =
+        new Runnable() {
+          public void run() {
+            Lizzie.frame.setVisible(true);
+            Lizzie.frame.toFront();
+            Lizzie.frame.requestFocus();
+            Lizzie.frame.requestFocusInWindow();
+            if (Lizzie.frame.mainPanel != null) {
+              Lizzie.frame.mainPanel.requestFocusInWindow();
+            }
+          }
+        };
+    SwingUtilities.invokeLater(focusMainFrame);
+    javax.swing.Timer delayedFocus =
+        new javax.swing.Timer(
+            120,
+            new ActionListener() {
+              public void actionPerformed(ActionEvent e) {
+                focusMainFrame.run();
+              }
+            });
+    delayedFocus.setRepeats(false);
+    delayedFocus.start();
   }
 
   private void handleChessList(JSONArray jsonArray, String resolvedNickname, String resolvedUid)
@@ -907,7 +1031,7 @@ class MyButtonOpenFoxKifuEditor extends AbstractCellEditor implements TableCellE
           public void actionPerformed(ActionEvent e) {
             if (Lizzie.frame.foxKifuDownload != null
                 && Lizzie.frame.foxKifuDownload.foxReq != null) {
-              Lizzie.frame.foxKifuDownload.foxReq.sendCommand("chessid " + chessid);
+              Lizzie.frame.foxKifuDownload.loadFoxKifu(chessid);
             }
           }
         });

@@ -43,7 +43,11 @@ WINDOWS_UPGRADE_UUID_OPENCL="${WINDOWS_UPGRADE_UUID_OPENCL:-0ec8b17f-06b0-4f6a-9
 ENGINE_BACKEND_MARKER_NAME="lizzieyzy-next-engine-backend.txt"
 NVIDIA_RUNTIME_PREPARE_SCRIPT="$ROOT_DIR/scripts/prepare_bundled_nvidia_runtime.py"
 NVIDIA_RUNTIME_STAGE_DIR="$DIST_DIR/nvidia-runtime"
-READBOARD_RELEASE_API="${READBOARD_RELEASE_API:-https://api.github.com/repos/qiyi71w/readboard/releases/latest}"
+READBOARD_RELEASE_REPO="${READBOARD_RELEASE_REPO:-qiyi71w/readboard}"
+READBOARD_RELEASE_TAG="${READBOARD_RELEASE_TAG:-v2.0.2}"
+READBOARD_ASSET_NAME="${READBOARD_ASSET_NAME:-readboard-github-release-v2.0.2.zip}"
+READBOARD_ASSET_SHA256="${READBOARD_ASSET_SHA256:-b388b1281fdb713dda10f471b8db528833968ef187b790aec4083a853c8e2d62}"
+READBOARD_RELEASE_API="${READBOARD_RELEASE_API:-https://api.github.com/repos/${READBOARD_RELEASE_REPO}/releases/tags/${READBOARD_RELEASE_TAG}}"
 READBOARD_CACHE_DIR="$ROOT_DIR/.cache/readboard"
 READBOARD_STAGE_DIR="$DIST_DIR/readboard"
 PYTHON_BIN=""
@@ -66,8 +70,15 @@ resolve_python_bin() {
 
 prepare_bundled_readboard_assets() {
   resolve_python_bin
-  "$PYTHON_BIN" - "$READBOARD_RELEASE_API" "$READBOARD_CACHE_DIR" "$READBOARD_STAGE_DIR" <<'PY'
+  "$PYTHON_BIN" - \
+    "$READBOARD_RELEASE_API" \
+    "$READBOARD_CACHE_DIR" \
+    "$READBOARD_STAGE_DIR" \
+    "$READBOARD_RELEASE_TAG" \
+    "$READBOARD_ASSET_NAME" \
+    "$READBOARD_ASSET_SHA256" <<'PY'
 import json
+import hashlib
 import os
 import shutil
 import sys
@@ -75,8 +86,9 @@ import tempfile
 import urllib.request
 import zipfile
 
-api_url, cache_dir, stage_dir = sys.argv[1:4]
+api_url, cache_dir, stage_dir, release_tag, asset_name, expected_sha256 = sys.argv[1:7]
 source_dir = os.environ.get("READBOARD_SOURCE_DIR", "").strip()
+expected_sha256 = expected_sha256.replace("sha256:", "").lower()
 
 def reset_dir(path):
     if os.path.exists(path):
@@ -105,12 +117,29 @@ def find_readboard_root(root):
     candidates.sort()
     return candidates[0][2]
 
+def file_sha256(path):
+    digest = hashlib.sha256()
+    with open(path, "rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+def write_manifest(source):
+    manifest_path = os.path.join(stage_dir, "lizzieyzy-next-readboard-manifest.txt")
+    with open(manifest_path, "w", encoding="utf-8", newline="\n") as handle:
+        handle.write(f"release-tag={release_tag}\n")
+        handle.write(f"asset-name={asset_name}\n")
+        handle.write(f"sha256={expected_sha256}\n")
+        handle.write(f"source={source}\n")
+
 if source_dir:
     if not os.path.isdir(source_dir):
         raise SystemExit(f"READBOARD_SOURCE_DIR does not exist: {source_dir}")
     copy_contents(find_readboard_root(source_dir), stage_dir)
+    write_manifest(f"local:{source_dir}")
 else:
-    os.makedirs(cache_dir, exist_ok=True)
+    tag_cache_dir = os.path.join(cache_dir, release_tag)
+    os.makedirs(tag_cache_dir, exist_ok=True)
     request = urllib.request.Request(
         api_url,
         headers={
@@ -120,37 +149,54 @@ else:
     )
     with urllib.request.urlopen(request, timeout=30) as response:
         metadata = json.load(response)
+    if metadata.get("tag_name") != release_tag:
+        raise SystemExit(
+            f"Expected readboard release tag {release_tag}, got {metadata.get('tag_name')}"
+        )
     asset = None
     for candidate in metadata.get("assets", []):
         name = candidate.get("name", "")
-        lower_name = name.lower()
-        if lower_name.endswith(".zip") and "readboard" in lower_name:
+        if name == asset_name:
             asset = candidate
             break
     if not asset or not asset.get("browser_download_url"):
-        raise SystemExit("Unable to find a native readboard zip in the latest release assets")
+        raise SystemExit(
+            f"Unable to find pinned native readboard asset {asset_name} in {release_tag}"
+        )
+    asset_digest = (asset.get("digest") or "").replace("sha256:", "").lower()
+    if asset_digest and asset_digest != expected_sha256:
+        raise SystemExit(
+            f"Readboard release digest mismatch: expected {expected_sha256}, got {asset_digest}"
+        )
 
-    zip_name = asset.get("name") or "readboard.zip"
-    zip_path = os.path.join(cache_dir, zip_name)
+    zip_path = os.path.join(tag_cache_dir, asset_name)
+    if os.path.exists(zip_path) and file_sha256(zip_path) != expected_sha256:
+        os.remove(zip_path)
     if not os.path.exists(zip_path) or os.path.getsize(zip_path) == 0:
         tmp_path = zip_path + ".tmp"
         with urllib.request.urlopen(asset["browser_download_url"], timeout=120) as response:
             with open(tmp_path, "wb") as out:
                 shutil.copyfileobj(response, out)
         os.replace(tmp_path, zip_path)
+    actual_sha256 = file_sha256(zip_path)
+    if actual_sha256 != expected_sha256:
+        raise SystemExit(
+            f"Downloaded readboard checksum mismatch: expected {expected_sha256}, got {actual_sha256}"
+        )
 
-    temp_dir = tempfile.mkdtemp(prefix="readboard-", dir=cache_dir)
+    temp_dir = tempfile.mkdtemp(prefix="readboard-", dir=tag_cache_dir)
     try:
         with zipfile.ZipFile(zip_path) as archive:
             archive.extractall(temp_dir)
         copy_contents(find_readboard_root(temp_dir), stage_dir)
+        write_manifest(f"github:{release_tag}")
     finally:
         shutil.rmtree(temp_dir, ignore_errors=True)
 
 readboard_exe = os.path.join(stage_dir, "readboard.exe")
 if not os.path.isfile(readboard_exe):
     raise SystemExit("Windows release must include native readboard.exe")
-print(f"Prepared native readboard assets in {stage_dir}")
+print(f"Prepared native readboard assets {release_tag}/{asset_name} in {stage_dir}")
 PY
 }
 
@@ -437,6 +483,7 @@ Download verification:
 What is bundled:
 - Windows release assets include a packaged Java runtime via jpackage.
 - Native Windows readboard is included in `readboard/`.
+- Native Windows readboard is pinned to qiyi71w/readboard ${READBOARD_RELEASE_TAG} (${READBOARD_ASSET_NAME}, SHA256 ${READBOARD_ASSET_SHA256}).
 - The built-in Java readboard helper is also included in `readboard_java/` as a fallback.
 EOF
 

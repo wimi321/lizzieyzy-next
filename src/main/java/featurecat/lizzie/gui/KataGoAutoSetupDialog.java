@@ -20,6 +20,8 @@ import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
 import java.awt.Insets;
 import java.awt.Window;
+import java.awt.event.WindowAdapter;
+import java.awt.event.WindowEvent;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.Collections;
@@ -76,8 +78,15 @@ public class KataGoAutoSetupDialog extends JDialog {
     setTitle(text("AutoSetup.title"));
     setSize(920, 620);
     setMinimumSize(new Dimension(880, 560));
+    setDefaultCloseOperation(DO_NOTHING_ON_CLOSE);
     setLocationRelativeTo(owner);
     setAlwaysOnTop(owner instanceof LizzieFrame && ((LizzieFrame) owner).isAlwaysOnTop());
+    addWindowListener(
+        new WindowAdapter() {
+          public void windowClosing(WindowEvent e) {
+            closeOrCancelActiveTask();
+          }
+        });
 
     JPanel content = new JPanel(new BorderLayout(0, 12));
     content.setBorder(BorderFactory.createEmptyBorder(14, 16, 14, 16));
@@ -164,7 +173,7 @@ public class KataGoAutoSetupDialog extends JDialog {
     btnInstallNvidiaRuntime.addActionListener(e -> startNvidiaRuntimeInstall());
     btnOptimizePerformance.addActionListener(e -> startPerformanceBenchmark());
     btnStopDownload.addActionListener(e -> stopActiveDownload());
-    btnClose.addActionListener(e -> setVisible(false));
+    btnClose.addActionListener(e -> closeOrCancelActiveTask());
 
     buttonPanel.add(btnRefresh);
     buttonPanel.add(btnInstallNvidiaRuntime);
@@ -492,6 +501,7 @@ public class KataGoAutoSetupDialog extends JDialog {
     final DownloadSession session = new DownloadSession();
     activeDownloadSession = session;
     final boolean analysisWasPondering = KataGoRuntimeHelper.pauseCurrentAnalysisForBenchmark();
+    btnStopDownload.setText(text("AutoSetup.stopBenchmark"));
     setBusy(true, text("AutoSetup.benchmarkPreparing"), 0, 1000);
     Thread worker =
         new Thread(
@@ -504,7 +514,6 @@ public class KataGoAutoSetupDialog extends JDialog {
                   KataGoRuntimeHelper.ensureBundledRuntimeReady(currentSnapshot.enginePath, this);
                   currentSnapshot = KataGoAutoSetupHelper.inspectLocalSetup();
                 }
-                activeDownloadSession = null;
                 SetupSnapshot benchmarkSnapshot = currentSnapshot;
                 KataGoRuntimeHelper.BenchmarkResult result =
                     KataGoRuntimeHelper.runBenchmarkAndApply(
@@ -517,7 +526,7 @@ public class KataGoAutoSetupDialog extends JDialog {
                                         text("AutoSetup.benchmarking") + " " + statusText,
                                         downloadedBytes,
                                         totalBytes)),
-                        null);
+                        session);
                 applyBenchmarkToRunningEngine(result);
                 SwingUtilities.invokeLater(
                     () -> {
@@ -532,12 +541,14 @@ public class KataGoAutoSetupDialog extends JDialog {
                           this);
                     });
               } catch (DownloadCancelledException e) {
-                SwingUtilities.invokeLater(() -> onDownloadCancelled());
+                SwingUtilities.invokeLater(() -> onBenchmarkCancelled());
               } catch (IOException e) {
                 SwingUtilities.invokeLater(() -> onBackgroundError(e));
               } finally {
                 KataGoRuntimeHelper.restoreAnalysisAfterBenchmark(analysisWasPondering);
                 clearActiveDownload(session, Thread.currentThread());
+                SwingUtilities.invokeLater(
+                    () -> btnStopDownload.setText(text("AutoSetup.stopDownload")));
               }
             },
             "katago-performance-benchmark");
@@ -602,6 +613,20 @@ public class KataGoAutoSetupDialog extends JDialog {
     renderSnapshot();
     lblStatus.setText(text("AutoSetup.downloadCancelled"));
     lblStatus.setForeground(WARN_COLOR);
+  }
+
+  private void onBenchmarkCancelled() {
+    setBusy(false, text("AutoSetup.benchmarkCancelled"), 0, 0);
+    renderSnapshot();
+    lblStatus.setText(text("AutoSetup.benchmarkCancelled"));
+    lblStatus.setForeground(WARN_COLOR);
+  }
+
+  private void closeOrCancelActiveTask() {
+    if (activeDownloadSession != null) {
+      stopActiveDownload();
+    }
+    setVisible(false);
   }
 
   private void applyBenchmarkToRunningEngine(KataGoRuntimeHelper.BenchmarkResult result) {
