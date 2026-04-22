@@ -129,7 +129,6 @@ public class WebBoardManager {
 
   private static boolean isPortAvailable(int port) {
     try (ServerSocket ss = new ServerSocket(port)) {
-      ss.setReuseAddress(true);
       return true;
     } catch (IOException e) {
       return false;
