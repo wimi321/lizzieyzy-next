@@ -1862,14 +1862,6 @@ public class ReadBoard {
     return false;
   }
 
-  private int[] snapshotCodes() {
-    int[] snapshotCodes = new int[tempcount.size()];
-    for (int index = 0; index < tempcount.size(); index++) {
-      snapshotCodes[index] = tempcount.get(index);
-    }
-    return snapshotCodes;
-  }
-
   public void shutdown() {
     noMsg = true;
     resetActiveSyncState();

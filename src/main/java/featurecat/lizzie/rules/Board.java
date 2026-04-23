@@ -1262,58 +1262,6 @@ public class Board {
     return null;
   }
 
-  private List<Movelist> collectSnapshotStones(BoardData rootData) {
-    List<Movelist> stones = new ArrayList<>();
-    int knownMoves = 0;
-    for (int x = 0; x < boardWidth; x++) {
-      for (int y = 0; y < boardHeight; y++) {
-        int index = getIndex(x, y);
-        Stone stone = rootData.stones[index];
-        if (stone.isEmpty()) {
-          continue;
-        }
-        Movelist move = new Movelist();
-        move.x = x;
-        move.y = y;
-        move.isblack = stone.isBlack();
-        move.movenum = rootData.moveNumberList == null ? 0 : rootData.moveNumberList[index];
-        stones.add(move);
-        if (move.movenum > 0) {
-          knownMoves++;
-        }
-      }
-    }
-    if (knownMoves > 1) {
-      stones.sort(this::compareRootSnapshotStonesByMoveNumber);
-    } else {
-      stones.sort(this::compareRootSnapshotStonesByPosition);
-    }
-    return stones;
-  }
-
-  private int compareRootSnapshotStonesByMoveNumber(Movelist left, Movelist right) {
-    boolean leftKnown = left.movenum > 0;
-    boolean rightKnown = right.movenum > 0;
-    if (leftKnown && rightKnown) {
-      int moveNumberComparison = Integer.compare(left.movenum, right.movenum);
-      if (moveNumberComparison != 0) {
-        return moveNumberComparison;
-      }
-    }
-    if (leftKnown != rightKnown) {
-      return leftKnown ? -1 : 1;
-    }
-    return compareRootSnapshotStonesByPosition(left, right);
-  }
-
-  private int compareRootSnapshotStonesByPosition(Movelist left, Movelist right) {
-    int yComparison = Integer.compare(left.y, right.y);
-    if (yComparison != 0) {
-      return yComparison;
-    }
-    return Integer.compare(left.x, right.x);
-  }
-
   public ArrayList<Movelist> getMoveList() {
     ArrayList<Movelist> movelist = new ArrayList<Movelist>();
     BoardHistoryNode node = history.getCurrentHistoryNode();
