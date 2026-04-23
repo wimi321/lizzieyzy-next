@@ -2,6 +2,7 @@ package featurecat.lizzie.gui;
 
 import featurecat.lizzie.Lizzie;
 import featurecat.lizzie.analysis.GameInfo;
+import featurecat.lizzie.analysis.TrackingEngine;
 import featurecat.lizzie.rules.Board;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
@@ -443,6 +444,30 @@ public class RightClickMenu extends JPopupMenu {
     Lizzie.leelaz.ponder();
     Lizzie.board.clearBestMovesAfter(Lizzie.board.getHistory().getStart());
     LizzieFrame.boardRenderer.removeSelectedRect();
+    Lizzie.frame.refresh();
+  }
+
+  private void trackPointAction() {
+    if (!Lizzie.board.iscoordsempty(coords[0], coords[1])) return;
+    String coordName = Board.convertCoordinatesToName(coords[0], coords[1]);
+    Lizzie.frame.trackedCoords.add(coordName);
+    if (!Lizzie.frame.ensureTrackingEngineWithWarning()) {
+      Lizzie.frame.trackedCoords.remove(coordName);
+      return;
+    }
+    Lizzie.frame.triggerTrackingAnalysis();
+  }
+
+  private void untrackPointAction() {
+    String coordName = Board.convertCoordinatesToName(coords[0], coords[1]);
+    Lizzie.frame.trackedCoords.remove(coordName);
+    if (Lizzie.frame.trackedCoords.isEmpty()) {
+      TrackingEngine te = Lizzie.frame.trackingEngine;
+      if (te != null) te.clearTrackedMoves();
+      Lizzie.frame.isKeepTracking = false;
+    } else {
+      Lizzie.frame.triggerTrackingAnalysis();
+    }
     Lizzie.frame.refresh();
   }
 

@@ -1754,6 +1754,8 @@ public class EngineManager {
     Lizzie.leelaz.notPondering();
     Lizzie.leelaz.isLoaded = true;
     Menu.engineMenu.setText(resourceBundle.getString("Menu.noEngine"));
+    Lizzie.frame.clearTrackedCoords();
+    Lizzie.frame.destroyTrackingEngine();
     Lizzie.frame.refresh();
   }
 
@@ -1849,6 +1851,8 @@ public class EngineManager {
     Lizzie.leelaz.isLoaded = true;
     Lizzie.leelaz.notPondering();
     Lizzie.leelaz.clearBestMoves();
+    Lizzie.frame.clearTrackedCoords();
+    Lizzie.frame.destroyTrackingEngine();
   }
 
   public void killThisEngines2() {
@@ -2057,6 +2061,17 @@ public class EngineManager {
       }
       if (isMain) Lizzie.leelaz = newEng;
       else Lizzie.leelaz2 = newEng;
+      if (isMain && Lizzie.frame != null) {
+        if (newEng.isKatago) {
+          if (!Lizzie.frame.trackedCoords.isEmpty()) {
+            Lizzie.frame.destroyTrackingEngineSync();
+            Lizzie.frame.ensureTrackingEngine();
+          }
+        } else {
+          Lizzie.frame.clearTrackedCoords();
+          Lizzie.frame.destroyTrackingEngine();
+        }
+      }
       boolean changedKomi = Lizzie.board.getHistory().getGameInfo().changedKomi;
       if (!isMain || changedKomi) {
         newEng.komi = (float) Lizzie.board.getHistory().getGameInfo().getKomi();

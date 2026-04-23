@@ -247,6 +247,9 @@ public class ConfigDialog2 extends JDialog {
   private JCheckBox chkShowVarMove;
   private JCheckBox chkSgfLoadLast;
   private JCheckBox chkAutoLoadEstimate;
+  private JCheckBox chkTrackingEnginePreload;
+  private JTextField txtTrackingEngineMaxVisits;
+  private boolean pendingResetTrackingWarning = false;
   private JCheckBox chkShowMoveList;
   private JLabel lblShowMoveNumInVariationPane;
   private JLabel lblLoadEstimate;
@@ -288,7 +291,7 @@ public class ConfigDialog2 extends JDialog {
     setModalityType(ModalityType.APPLICATION_MODAL);
     // setType(Type.POPUP);
     // setBounds(100, 100, 890, 834);
-    Lizzie.setFrameSize(this, 890, 825);
+    Lizzie.setFrameSize(this, 890, 855);
     try {
       setIconImage(ImageIO.read(getClass().getResourceAsStream("/assets/logo.png")));
     } catch (IOException e) {
@@ -1479,6 +1482,53 @@ public class ConfigDialog2 extends JDialog {
     ButtonGroup estimateEngineGroup = new ButtonGroup();
     estimateEngineGroup.add(rdbtnKatago);
     estimateEngineGroup.add(rdbtnZen);
+
+    JLabel lblTrackingPreload =
+        new JLabel(resourceBundle.getString("LizzieConfig.lblTrackingPreload"));
+    lblTrackingPreload.setBounds(10, 727, 290, 15);
+    uiTab.add(lblTrackingPreload);
+
+    chkTrackingEnginePreload = new JCheckBox();
+    chkTrackingEnginePreload.setBounds(312, 724, 30, 23);
+    chkTrackingEnginePreload.setSelected(Lizzie.config.trackingEnginePreload);
+    chkTrackingEnginePreload.addActionListener(
+        e -> {
+          if (chkTrackingEnginePreload.isSelected()) {
+            int ret =
+                javax.swing.JOptionPane.showConfirmDialog(
+                    ConfigDialog2.this,
+                    resourceBundle.getString("LizzieFrame.trackingEngineWarning"),
+                    resourceBundle.getString("LizzieFrame.trackingEngineWarningTitle"),
+                    javax.swing.JOptionPane.OK_CANCEL_OPTION,
+                    javax.swing.JOptionPane.WARNING_MESSAGE);
+            if (ret != javax.swing.JOptionPane.OK_OPTION) {
+              chkTrackingEnginePreload.setSelected(false);
+            }
+          }
+        });
+    uiTab.add(chkTrackingEnginePreload);
+
+    JLabel lblTrackingMaxVisits =
+        new JLabel(resourceBundle.getString("LizzieConfig.lblTrackingMaxVisits"));
+    lblTrackingMaxVisits.setBounds(380, 727, 214, 15);
+    uiTab.add(lblTrackingMaxVisits);
+
+    txtTrackingEngineMaxVisits = new JTextField();
+    txtTrackingEngineMaxVisits.setBounds(570, 724, 60, 23);
+    txtTrackingEngineMaxVisits.setText(String.valueOf(Lizzie.config.trackingEngineMaxVisits));
+    uiTab.add(txtTrackingEngineMaxVisits);
+
+    JButton btnResetTrackingWarning =
+        new JButton(resourceBundle.getString("LizzieConfig.btnResetTrackingWarning"));
+    btnResetTrackingWarning.setBounds(640, 724, 130, 23);
+    btnResetTrackingWarning.setMargin(new java.awt.Insets(0, 0, 0, 0));
+    btnResetTrackingWarning.addActionListener(
+        e -> {
+          pendingResetTrackingWarning = true;
+          javax.swing.JOptionPane.showMessageDialog(
+              ConfigDialog2.this, resourceBundle.getString("LizzieConfig.trackingWarningReset"));
+        });
+    uiTab.add(btnResetTrackingWarning);
 
     JLabel lblShowMoveList = new JLabel(resourceBundle.getString("LizzieConfig.lblShowMoveList"));
     lblShowMoveList.setBounds(608, 78, 173, 15);
@@ -3840,6 +3890,17 @@ public class ConfigDialog2 extends JDialog {
       Lizzie.config.uiConfig.put("use-zen-estimate", Lizzie.config.useZenEstimate);
       Lizzie.config.loadEstimateEngine = chkAutoLoadEstimate.isSelected();
       Lizzie.config.uiConfig.put("load-estimate-engine", Lizzie.config.loadEstimateEngine);
+      Lizzie.config.trackingEnginePreload = chkTrackingEnginePreload.isSelected();
+      Lizzie.config.uiConfig.put("tracking-engine-preload", Lizzie.config.trackingEnginePreload);
+      Lizzie.config.trackingEngineMaxVisits =
+          Utils.parseTextToInt(txtTrackingEngineMaxVisits, Lizzie.config.trackingEngineMaxVisits);
+      if (Lizzie.config.trackingEngineMaxVisits <= 0) Lizzie.config.trackingEngineMaxVisits = 500;
+      Lizzie.config.uiConfig.put(
+          "tracking-engine-max-visits", Lizzie.config.trackingEngineMaxVisits);
+      if (pendingResetTrackingWarning) {
+        Lizzie.config.trackingEngineSkipWarning = false;
+        Lizzie.config.uiConfig.put("tracking-engine-skip-warning", false);
+      }
       Lizzie.config.loadSgfLast = chkSgfLoadLast.isSelected();
       Lizzie.config.uiConfig.put("load-sgf-last", Lizzie.config.loadSgfLast);
       Lizzie.config.showVarMove = chkShowVarMove.isSelected();

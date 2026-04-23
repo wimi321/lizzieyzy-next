@@ -1137,6 +1137,9 @@ public class Leelaz {
         isLoaded = true;
         closeBundledStartupDialog();
         isTuning = false;
+        if (this == Lizzie.leelaz && Lizzie.config.trackingEnginePreload && Lizzie.frame != null) {
+          Lizzie.frame.ensureTrackingEngine();
+        }
         if (Lizzie.leelaz2 != null && this == Lizzie.leelaz2) {
           if (currentEngineN > 20) LizzieFrame.menu.changeEngineIcon2(20, 2);
           else LizzieFrame.menu.changeEngineIcon2(currentEngineN, 2);

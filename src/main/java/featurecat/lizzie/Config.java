@@ -885,6 +885,9 @@ public class Config {
   public boolean analysisUseCurrentRules = true;
   public boolean analysisEnginePreLoad = false;
   public boolean analysisAlwaysOverride = false;
+  public boolean trackingEnginePreload = false;
+  public int trackingEngineMaxVisits = 500;
+  public boolean trackingEngineSkipWarning = false;
   public boolean autoQuickAnalyzeOnLoad = true;
   public String analysisSpecificRules = "";
 
@@ -1643,6 +1646,9 @@ public class Config {
     analysisUseCurrentRules = uiConfig.optBoolean("analysis-use-current-rules", true);
     analysisEnginePreLoad = uiConfig.optBoolean("analysis-engine-preload", false);
     analysisAlwaysOverride = uiConfig.optBoolean("analysis-always-override", false);
+    trackingEnginePreload = uiConfig.optBoolean("tracking-engine-preload", false);
+    trackingEngineMaxVisits = uiConfig.optInt("tracking-engine-max-visits", 500);
+    trackingEngineSkipWarning = uiConfig.optBoolean("tracking-engine-skip-warning", false);
     autoQuickAnalyzeOnLoad = uiConfig.optBoolean("auto-quick-analyze-on-load", true);
     analysisSpecificRules = uiConfig.optString("analysis-specific-rules", "");
     showScoreLeadLine = uiConfig.optBoolean("show-score-lead-line", true);

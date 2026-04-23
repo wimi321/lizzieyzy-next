@@ -18,6 +18,7 @@ import featurecat.lizzie.analysis.KataEstimate;
 import featurecat.lizzie.analysis.Leelaz;
 import featurecat.lizzie.analysis.MoveData;
 import featurecat.lizzie.analysis.ReadBoard;
+import featurecat.lizzie.analysis.TrackingEngine;
 import featurecat.lizzie.rules.Board;
 import featurecat.lizzie.rules.BoardData;
 import featurecat.lizzie.rules.BoardHistoryNode;
@@ -461,6 +462,10 @@ public class LizzieFrame extends JFrame {
   public ArrayList<String> priorityMoveCoords = new ArrayList<String>();
 
   public AnalysisEngine analysisEngine;
+  public volatile TrackingEngine trackingEngine;
+  public TrackingConsolePane trackingConsolePane;
+  public Set<String> trackedCoords = Collections.synchronizedSet(new LinkedHashSet<>());
+  public volatile boolean isKeepTracking = false;
   private boolean redrawWinratePaneOnly = false;
   public boolean mouseOverChanged = false;
   public boolean isAutoReplying = false;
@@ -11665,6 +11670,133 @@ public class LizzieFrame extends JFrame {
         analysisEngine.process.destroyForcibly();
       }
     }
+  }
+
+  private final java.util.concurrent.atomic.AtomicBoolean trackingEngineStarting =
+      new java.util.concurrent.atomic.AtomicBoolean(false);
+
+  public void ensureTrackingEngine() {
+    if (trackingEngine != null && trackingEngine.isLoaded()) return;
+    if (!trackingEngineStarting.compareAndSet(false, true)) return;
+    boolean threadStarted = false;
+    try {
+      if (trackingEngine != null && trackingEngine.isLoaded()) return;
+      if (trackingEngine != null) trackingEngine.shutdown();
+      TrackingEngine engine = new TrackingEngine();
+      trackingEngine = engine;
+      SwingUtilities.invokeLater(
+          () -> {
+            if (trackingConsolePane == null || !trackingConsolePane.isDisplayable()) {
+              trackingConsolePane = new TrackingConsolePane();
+            }
+            engine.setConsolePane(trackingConsolePane);
+            trackingConsolePane.setVisible(true);
+          });
+      String engineCmd = Lizzie.leelaz != null ? Lizzie.leelaz.engineCommand : "";
+      if (engineCmd == null || engineCmd.trim().isEmpty()) return;
+      threadStarted = true;
+      new Thread(
+              () -> {
+                try {
+                  if (engine != trackingEngine) return;
+                  engine.startEngine(engineCmd);
+                } finally {
+                  trackingEngineStarting.set(false);
+                }
+              })
+          .start();
+    } finally {
+      if (!threadStarted) trackingEngineStarting.set(false);
+    }
+  }
+
+  public boolean ensureTrackingEngineWithWarning() {
+    if (trackingEngine != null && trackingEngine.isLoaded()) return true;
+    if (!Lizzie.config.trackingEngineSkipWarning) {
+      if (!showTrackingEngineWarning()) return false;
+    }
+    ensureTrackingEngine();
+    return true;
+  }
+
+  private boolean showTrackingEngineWarning() {
+    JCheckBox chkDontAsk =
+        new JCheckBox(Lizzie.resourceBundle.getString("LizzieFrame.trackingDontAskAgain"));
+    Object[] message = {
+      Lizzie.resourceBundle.getString("LizzieFrame.trackingEngineWarning"), chkDontAsk
+    };
+    int result =
+        JOptionPane.showConfirmDialog(
+            this,
+            message,
+            Lizzie.resourceBundle.getString("LizzieFrame.trackingEngineWarningTitle"),
+            JOptionPane.OK_CANCEL_OPTION,
+            JOptionPane.WARNING_MESSAGE);
+    if (result == JOptionPane.OK_OPTION) {
+      if (chkDontAsk.isSelected()) {
+        Lizzie.config.trackingEngineSkipWarning = true;
+        Lizzie.config.uiConfig.put("tracking-engine-skip-warning", true);
+      }
+      return true;
+    }
+    return false;
+  }
+
+  public void destroyTrackingEngine() {
+    TrackingEngine te = trackingEngine;
+    trackingEngine = null;
+    if (te != null) {
+      new Thread(
+              () -> {
+                try {
+                  te.shutdown();
+                } catch (Throwable t) {
+                  t.printStackTrace();
+                }
+              })
+          .start();
+    }
+  }
+
+  public void destroyTrackingEngineSync() {
+    TrackingEngine te = trackingEngine;
+    trackingEngine = null;
+    if (te != null) {
+      try {
+        te.shutdown();
+      } catch (Throwable t) {
+        t.printStackTrace();
+      }
+    }
+  }
+
+  public void toggleTrackingConsole() {
+    SwingUtilities.invokeLater(
+        () -> {
+          if (trackingConsolePane == null || !trackingConsolePane.isDisplayable()) {
+            trackingConsolePane = new TrackingConsolePane();
+            TrackingEngine te = trackingEngine;
+            if (te != null) te.setConsolePane(trackingConsolePane);
+          }
+          trackingConsolePane.setVisible(!trackingConsolePane.isVisible());
+        });
+  }
+
+  public void clearTrackedCoords() {
+    trackedCoords.clear();
+    isKeepTracking = false;
+    TrackingEngine te = trackingEngine;
+    if (te != null) te.clearTrackedMoves();
+    refresh();
+  }
+
+  public void triggerTrackingAnalysis() {
+    TrackingEngine te = trackingEngine;
+    if (te == null || !te.isLoaded()) return;
+    if (trackedCoords.isEmpty()) return;
+    if (Lizzie.board == null) return;
+    BoardHistoryNode node = Lizzie.board.getHistory().getCurrentHistoryNode();
+    te.sendTrackingRequest(node, trackedCoords);
   }
 
   public void flashAnalyzeGameBatch(int firstMove, int lastMove, boolean isAllBranches) {

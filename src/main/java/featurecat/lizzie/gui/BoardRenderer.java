@@ -12,6 +12,7 @@ import featurecat.lizzie.analysis.Branch;
 import featurecat.lizzie.analysis.EngineManager;
 import featurecat.lizzie.analysis.Leelaz;
 import featurecat.lizzie.analysis.MoveData;
+import featurecat.lizzie.analysis.TrackingEngine;
 import featurecat.lizzie.rules.Board;
 import featurecat.lizzie.rules.BoardData;
 import featurecat.lizzie.rules.BoardHistoryNode;
@@ -2956,6 +2957,135 @@ public class BoardRenderer {
       } else {
         clearAfterMove();
       }
+    }
+
+    try {
+      if (Lizzie.board == null) return;
+      TrackingEngine te = Lizzie.frame != null ? Lizzie.frame.trackingEngine : null;
+      if (te != null && te.isLoaded()) {
+        List<MoveData> trackedMoves = te.getCurrentTrackedMoves();
+        if (trackedMoves != null && !trackedMoves.isEmpty()) {
+          java.util.Set<String> mainCoords = new java.util.HashSet<>();
+          if (bestMoves != null) {
+            for (MoveData m : bestMoves) mainCoords.add(m.coordinate);
+          }
+          long maxPlayoutsTracked = 0;
+          for (MoveData m : trackedMoves) {
+            if (m.playouts > maxPlayoutsTracked) maxPlayoutsTracked = m.playouts;
+          }
+          float orangeHue = Color.RGBtoHSB(255, 165, 0, null)[0];
+          for (MoveData move : trackedMoves) {
+            String moveCoord = move.coordinate;
+            if (moveCoord == null) continue;
+            int movePlayouts = move.playouts;
+            double moveWinrate = move.winrate;
+            double moveScoreMean = move.scoreMean;
+            boolean moveIsKataData = move.isKataData;
+            if (mainCoords.contains(moveCoord)) continue;
+            if (movePlayouts == 0) continue;
+            Optional<int[]> coordsOpt = Board.asCoordinates(moveCoord);
+            if (!coordsOpt.isPresent()) continue;
+            int[] tCoords = coordsOpt.get();
+            if (tCoords[0] < 0
+                || tCoords[0] >= Board.boardWidth
+                || tCoords[1] < 0
+                || tCoords[1] >= Board.boardHeight) continue;
+            int suggestionX = x + scaledMarginWidth + squareWidth * tCoords[0];
+            int suggestionY = y + scaledMarginHeight + squareHeight * tCoords[1];
+
+            float alphaRatio =
+                maxPlayoutsTracked > 0
+                    ? max(
+                        0,
+                        (float) log((double) movePlayouts / maxPlayoutsTracked) / alphaFactor + 1)
+                    : 1.0f;
+            int alpha = (int) (minAlpha + (maxAlpha - minAlpha) * alphaRatio);
+            Color hsbColor = Color.getHSBColor(orangeHue, 1.0f, 0.85f);
+            Color trackColor =
+                new Color(hsbColor.getRed(), hsbColor.getGreen(), hsbColor.getBlue(), alpha);
+
+            g.setColor(trackColor);
+            fillCircle(g, suggestionX, suggestionY, stoneRadius + 1);
+            float alphaCircle = 48 + 48 * alphaRatio;
+            g.setColor(new Color(0, 0, 0, (int) alphaCircle));
+            drawCircle(g, suggestionX, suggestionY, stoneRadius + 1, 26.5f);
+
+            boolean flipWinrate =
+                Lizzie.config.winrateAlwaysBlack && !Lizzie.board.getData().blackToPlay;
+            double roundedWinrate = round(moveWinrate * 10) / 10.0;
+            if (flipWinrate) roundedWinrate = 100.0 - roundedWinrate;
+            g.setColor(Color.BLACK);
+            String winrateText = String.format(Locale.ENGLISH, "%.1f", roundedWinrate);
+            String playoutsText = Utils.getPlayoutsString(movePlayouts);
+            boolean showScoreLead = moveIsKataData && Lizzie.config.showScoremeanInSuggestion;
+            if (showScoreLead) {
+              String scoreLeadText = Utils.convertScoreToString(moveScoreMean, moveScoreMean);
+              float availableWidth = squareWidth * (Board.boardWidth - 1);
+              drawStringFor3row(
+                  g,
+                  suggestionX,
+                  suggestionY - (int) round(squareWidth * 0.09),
+                  LizzieFrame.winrateFont,
+                  Font.PLAIN,
+                  winrateText,
+                  squareWidth * 0.36f,
+                  squareWidth * 0.67);
+              drawStringFor3row(
+                  g,
+                  suggestionX,
+                  suggestionY + (int) round(squareWidth * 0.18),
+                  LizzieFrame.playoutsFont,
+                  Font.PLAIN,
+                  playoutsText,
+                  squareWidth * 0.34f,
+                  stoneRadius * 1.3);
+              drawStringFor3row(
+                  g,
+                  suggestionX,
+                  suggestionY + (int) round(squareWidth * 0.435),
+                  LizzieFrame.winrateFont,
+                  Font.PLAIN,
+                  scoreLeadText,
+                  availableWidth * 0.273f / (Board.boardWidth - 1),
+                  stoneRadius * 1.6);
+            } else {
+              if (roundedWinrate < 10) {
+                drawString(
+                    g,
+                    suggestionX,
+                    suggestionY - squareWidth / 15,
+                    LizzieFrame.winrateFont,
+                    Font.PLAIN,
+                    winrateText,
+                    stoneRadius,
+                    squareWidth * 0.57,
+                    1);
+              } else {
+                drawString(
+                    g,
+                    suggestionX,
+                    suggestionY - squareWidth / 16,
+                    LizzieFrame.winrateFont,
+                    Font.PLAIN,
+                    winrateText,
+                    stoneRadius,
+                    squareWidth * 0.735,
+                    1);
+              }
+              drawString(
+                  g,
+                  suggestionX,
+                  suggestionY + stoneRadius * 15 / 35,
+                  LizzieFrame.playoutsFont,
+                  playoutsText,
+                  stoneRadius * 0.77f,
+                  stoneRadius * 1.8);
+            }
+          }
+        }
+      }
+    } catch (Exception e) {
+      e.printStackTrace();
     }
   }
 

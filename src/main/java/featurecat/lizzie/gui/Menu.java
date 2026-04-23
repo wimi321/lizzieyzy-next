@@ -1200,6 +1200,17 @@ public class Menu extends JMenuBar {
           }
         });
 
+    final JFontMenuItem trackingConsoleItem =
+        new JFontMenuItem(resourceBundle.getString("Menu.trackingConsole"));
+    panel.add(trackingConsoleItem);
+    trackingConsoleItem.addActionListener(
+        new ActionListener() {
+          @Override
+          public void actionPerformed(ActionEvent e) {
+            Lizzie.frame.toggleTrackingConsole();
+          }
+        });
+
     final JFontCheckBoxMenuItem ctrlPanel =
         new JFontCheckBoxMenuItem(resourceBundle.getString("Menu.ctrlPanel"));
     panel.add(ctrlPanel);
