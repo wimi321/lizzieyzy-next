@@ -3,10 +3,10 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/wimi321/lizzieyzy-next/releases"><img src="https://img.shields.io/github/v/release/wimi321/lizzieyzy-next?display_name=tag&label=Release&color=111111" alt="Release"></a>
-  <a href="https://github.com/wimi321/lizzieyzy-next/stargazers"><img src="https://img.shields.io/github/stars/wimi321/lizzieyzy-next?style=flat&color=444444" alt="Stars"></a>
-  <a href="https://github.com/wimi321/lizzieyzy-next/releases"><img src="https://img.shields.io/github/downloads/wimi321/lizzieyzy-next/total?label=Downloads&color=666666" alt="Downloads"></a>
-  <img src="https://img.shields.io/badge/Platforms-Windows%20%7C%20macOS%20%7C%20Linux-888888" alt="Platforms">
+  <a href="https://github.com/wimi321/lizzieyzy-next/releases"><img src="https://img.shields.io/github/v/release/wimi321/lizzieyzy-next?display_name=tag&label=Latest%20Release&color=111111" alt="Latest Release"></a>
+  <a href="https://github.com/wimi321/lizzieyzy-next/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/wimi321/lizzieyzy-next/ci.yml?branch=main&label=CI&color=1f6feb" alt="CI"></a>
+  <a href="LICENSE.txt"><img src="https://img.shields.io/github/license/wimi321/lizzieyzy-next?color=5b5b5b" alt="License"></a>
+  <img src="https://img.shields.io/badge/Platforms-Windows%20%7C%20macOS%20%7C%20Linux-6b7280" alt="Platforms">
 </p>
 
 <p align="center">
@@ -14,117 +14,94 @@
 </p>
 
 <p align="center">
-  <strong>LizzieYzy Next は、現在も保守されている lizzieyzy 系の実用版であり、普通の利用者向けの KataGo 復盤 GUI です。</strong><br/>
-  配布物の選びやすさ、初回起動の負担、野狐棋譜取得の使いやすさ、そして全局を見渡しやすい解析体験の4点を、いまの利用者目線で整え直しています。<br/>
-  <strong>ダウンロードして、野狐のニックネームを入力し、公開棋譜を取得して、全局を素早く解析し、新しい勝率グラフと下部のクイック概要で重要な手へすぐ移動できます。</strong>
+  <strong>LizzieYzy Next は継続保守されている KataGo 復盤デスクトップ GUI であり、<code>lizzieyzy 2.5.3</code> を土台にした現行メンテナンスラインです。</strong><br/>
+  利用者が実際によく困る部分、つまり配布物の選び方、初回起動、野狐棋譜の取得、Windows の棋盤同期、そして全局レビューへ素早く入る流れを優先して整えています。
 </p>
 
 <p align="center">
-  <a href="https://github.com/wimi321/lizzieyzy-next/releases"><strong>Releases</strong></a>
-  ·
-  <a href="https://pan.baidu.com/s/1wthaL8YwGMxy_u0U7Mabpw?pwd=3i8w"><strong>Baidu ダウンロード</strong></a>
+  <a href="https://github.com/wimi321/lizzieyzy-next/releases"><strong>安定版をダウンロード</strong></a>
   ·
   <a href="docs/INSTALL_JA.md"><strong>インストールガイド</strong></a>
   ·
+  <a href="docs/PACKAGES_EN.md"><strong>パッケージ一覧</strong></a>
+  ·
   <a href="docs/TROUBLESHOOTING_EN.md"><strong>トラブル対応</strong></a>
+  ·
+  <a href="https://github.com/wimi321/lizzieyzy-next/discussions"><strong>Discussions</strong></a>
 </p>
 
-> [!NOTE]
-> 中国本土から利用する場合は、公開されている Baidu Netdisk ダウンロードも使えます:
-> [https://pan.baidu.com/s/1wthaL8YwGMxy_u0U7Mabpw?pwd=3i8w](https://pan.baidu.com/s/1wthaL8YwGMxy_u0U7Mabpw?pwd=3i8w)
-> 取り出しコード: `3i8w`
-
-> [!TIP]
-> 中国語 QQ グループ: `299419120`
->
-> 日常の利用相談、バグ報告、機能要望のやり取りが一番速い場所です。
+| プロジェクト状態 | 現在の値 |
+| --- | --- |
+| 利用者向けバージョン表記 | `LizzieYzy Next 1.0.0` |
+| ベース | `lizzieyzy 2.5.3` |
+| 既定エンジン | `KataGo v1.16.4` |
+| 既定ウェイト | `kata1-zhizi-b28c512nbt-muonfd2.bin.gz` |
+| 公式ダウンロード先 | GitHub Releases |
 
 > [!IMPORTANT]
-> まずはこの 6 点だけ押さえれば大丈夫です:
-> - Windows 利用者の多くは [Releases](https://github.com/wimi321/lizzieyzy-next/releases) で `*windows64.opencl.portable.zip` を選べば始めやすいです
-> - NVIDIA GPU があり、より速く解析したい場合は `*windows64.nvidia.portable.zip` を選べます
-> - OpenCL の相性が悪い場合は `*windows64.with-katago.portable.zip` に切り替えられます
-> - 野狐棋譜取得はニックネーム入力に対応しており、多くの利用者はアカウント番号を先に知らなくても大丈夫です
-> - 主な統合パッケージには KataGo `v1.16.4` と公式推奨の `zhizi` 重み `kata1-zhizi-b28c512nbt-muonfd2.bin.gz` が含まれています
-> - 主な release パッケージには `readboard_java` も同梱されており、多くの利用者は別の readboard リポジトリを用意する必要がありません
+> 公式の公開ダウンロード先は現在 GitHub Releases のみです。
+> 通常の Windows release には native `readboard.exe` が含まれており、`readboard_java` へのフォールバックは native ヘルパーが見つからない、または起動できない場合だけです。
 
-## なぜ多くの利用者がここから始めるのか
+## このプロジェクトを見る価値
 
-`LizzieYzy Next` は次のように考えればわかりやすいです。
+- 一時的なパッチ分岐ではなく、`lizzieyzy` の実用ワークフローを継続保守する公開版です。
+- ソースだけでなく、配布物、初回起動、release ページ、インストール文書、回帰確認まで含めて維持しています。
+- 棋譜取得、SGF レビュー、勝率推移、全局解析、Windows 上での起動と同期といった実利用を優先しています。
 
-- 普通の利用者向けに使いやすく整えた `KataGo 復盤ソフト`
-- `野狐棋譜取得 + 全局を素早く見る解析 + 複数 OS 向け配布` を一つにした実用ワークフロー
-- 古い `lizzieyzy` 環境から移りやすい現行の保守ブランチ
+## 現在の主な能力
 
-次のようなものを探しているなら、まずこのプロジェクトを見る価値があります。
-
-- `KataGo 復盤ソフト`
-- `KataGo GUI`
-- `lizzieyzy 保守版`
-- `野狐棋譜取得 + KataGo 復盤`
-- `Windows 非インストール 囲碁 AI ツール`
-
-## 起動したあとすぐできること
-
-| やりたいこと | いまのプロジェクトでどうできるか |
+| やりたいこと | 現在の体験 |
 | --- | --- |
-| 最近の公開野狐棋譜を取りたい | 野狐のニックネームを入力するとアプリが自動で対応アカウントを探します |
-| 全局の流れを早く見たい | 一手ずつ手動で進めなくても、全局を素早く見る解析を使えます |
-| 問題手を早く見たい | 新しい主勝率グラフと下部のヒート概要で大きな損失を見つけやすくなっています |
-| 設定をあまり触りたくない | 推奨パッケージに KataGo、既定の重み、初回自動設定が入っています |
-| インストールしたくない | Windows では `portable.zip` を優先して選べます |
-| 棋盤同期も使いたい | 主な配布物に `readboard_java` が同梱されています |
+| ダウンロード後すぐ使い始めたい | Windows / macOS / Linux すべてに公開統合パッケージがあり、多くの利用者は先に環境を組む必要がありません |
+| 最近の公開野狐棋譜を取りたい | 野狐のニックネームを入力するとアプリが自動でアカウントを解決します |
+| Smart Optimize を使いたい | KataGo の benchmark ベースの流れで、進捗表示・中止・解析の一時停止と再開に対応します |
+| Windows で棋盤同期を使いたい | 通常 release では native `readboard.exe` を優先し、必要時のみ Java 版に切り替えます |
+| 棋譜読み込み中も早く操作したい | ローカル SGF や野狐読み込みでは先に操作を戻し、勝率の詳細は後から補完します |
+| macOS に入れたい | 公式 DMG は release パイプラインで署名と公証を通します |
 
-## まずどれをダウンロードするか
+## どのパッケージを選ぶか
 
-すべての配布物は [Releases](https://github.com/wimi321/lizzieyzy-next/releases) にあります。下の表は、最新 release ページで探すときのキーワードです。
+公開ダウンロードはすべて [GitHub Releases](https://github.com/wimi321/lizzieyzy-next/releases) にあります。まずは次の表だけ見れば十分です。
 
 <p align="center">
   <img src="assets/package-guide.svg" alt="LizzieYzy Next package guide" width="100%" />
 </p>
 
-| あなたの環境 | Releases でこのキーワードを含むファイルを探す |
+| あなたの環境 | Releases で探すキーワード |
 | --- | --- |
-| Windows 利用者の多く、推奨、非インストール | `*windows64.opencl.portable.zip` |
-| Windows、OpenCL 版、インストーラあり | `*windows64.opencl.installer.exe` |
-| Windows、OpenCL が不安定、CPU フォールバック、非インストール | `*windows64.with-katago.portable.zip` |
-| Windows、CPU フォールバック、インストーラあり | `*windows64.with-katago.installer.exe` |
-| Windows、NVIDIA GPU、より速い解析、非インストール | `*windows64.nvidia.portable.zip` |
-| Windows、NVIDIA GPU、インストーラあり | `*windows64.nvidia.installer.exe` |
-| Windows、自分のエンジンを使う、非インストール | `*windows64.without.engine.portable.zip` |
-| Windows、自分のエンジンを使う、インストーラあり | `*windows64.without.engine.installer.exe` |
+| Windows 利用者の多く、標準推奨 | `*windows64.opencl.portable.zip` |
+| Windows、OpenCL が不安定、CPU フォールバック | `*windows64.with-katago.portable.zip` |
+| Windows、NVIDIA GPU、より速さ重視 | `*windows64.nvidia.portable.zip` |
+| Windows、自分でエンジン設定 | `*windows64.without.engine.portable.zip` |
 | macOS Apple Silicon | `*mac-arm64.with-katago.dmg` |
 | macOS Intel | `*mac-amd64.with-katago.dmg` |
 | Linux | `*linux64.with-katago.zip` |
 
-迷ったときの目安:
+補足:
 
-- Windows: まず `*windows64.opencl.portable.zip`
-- Windows + NVIDIA GPU: まず `*windows64.nvidia.portable.zip`
-- OpenCL が合わない: `*windows64.with-katago.portable.zip`
-- Mac: Apple Silicon か Intel かを先に確認
-- Linux: `*linux64.with-katago.zip`
+- Windows でインストーラ形式がよければ、対応する `*.installer.exe` も選べます。
+- 公開されている 11 個の資産全体と内容は [docs/PACKAGES_EN.md](docs/PACKAGES_EN.md) を見てください。
+- 通常の Windows release には native の棋盤同期ヘルパーが同梱されています。
 
-## なぜ今この版が使いやすいのか
+## 現在の公開版ハイライト
 
-- `野狐棋譜取得が再び使える`
-  利用者が覚えているニックネームから始められます。
-- `全局を素早く見る解析が主導線になった`
-  一手ずつ積み上げなくても、全体像を早く作れます。
-- `主勝率グラフ + 下部クイック概要`
-  大きな損失が出た場所を先に探しやすくなりました。
-- `Windows は非インストール版を先に案内`
-  OpenCL / NVIDIA / CPU フォールバックの違いがわかりやすくなっています。
-- `readboard_java を主 release に同梱`
-  多くの利用者は別リポジトリを組み合わせなくて済みます。
-- `実際の release とスモークテスト`
-  単にソースを更新するだけでなく、複数 OS の配布と確認も続けています。
+- `Fox ニックネーム取得`
+  数字のアカウント番号を前提にせず、野狐のニックネームから始められます。
+- `KataGo Auto Setup`
+  主な統合パッケージには `KataGo v1.16.4` と既定ウェイトが入り、Smart Optimize は benchmark ベースの調整と中止に対応します。
+- `より強い Windows 同期経路`
+  release パッケージに `readboard.exe` と依存ファイルを同梱し、必要なときだけ Java 版に戻します。
+- `より直接的な棋譜読み込み体験`
+  ダウンロード完了後はまず主ウィンドウを操作可能に戻し、勝率の細部はその後に補います。
+- `より正式プロジェクトに近い release 運用`
+  クロスプラットフォーム配布、CI、release notes、インストール文書を一体で管理しています。
 
-## 3 ステップで開始
+## クイックスタート
 
-1. [Releases](https://github.com/wimi321/lizzieyzy-next/releases) から自分の環境に合うものをダウンロードします。
-2. `野狐棋譜` を開いて野狐のニックネームを入力します。
-3. 棋譜を取得し、全局を素早く解析して、グラフと概要から重要な手へ移動します。
+1. [Releases](https://github.com/wimi321/lizzieyzy-next/releases) から自分の環境に合うパッケージを取得します。
+2. Windows の内蔵 KataGo 版を使う場合は、`KataGo Auto Setup` で `Smart Optimize` を一度実行します。
+3. ローカル SGF を開くか、野狐ニックネーム取得フローから最近の公開棋譜を読み込みます。
+4. グラフ、`Down`、キーボード操作で重要局面を追いながら、残りのレビュー情報が埋まるのを待ちます。
 
 <p align="center">
   <a href="assets/fox-id-demo.gif">
@@ -132,85 +109,62 @@
   </a>
 </p>
 
-<p align="center">
-  GitHub 上で GIF の再生が遅い場合は、上の画像をクリックすると全体を開けます。
-</p>
-
-## 実際の画面
-
-以下は現在のメンテ版そのものの実画面です。
+## 画面プレビュー
 
 <p align="center">
-  <img src="assets/interface-overview-2026-04.png" alt="LizzieYzy Next actual interface" width="100%" />
+  <img src="assets/interface-overview-2026-04.png" alt="LizzieYzy Next interface preview" width="100%" />
 </p>
-
-グラフ部分は次のように読むとわかりやすいです。
 
 <p align="center">
-  <img src="assets/winrate-quick-overview-2026-04.png" alt="LizzieYzy Next winrate graph and quick overview" width="46%" />
+  <img src="assets/winrate-quick-overview-2026-04.png" alt="LizzieYzy Next winrate graph and quick overview" width="52%" />
 </p>
 
-- 青線 / 紫線: 双方の勝率の流れ
-- 緑線: 目差の変化
-- 下部のヒート帯: 全局の中で大きな問題が集まっている場所
-- 縦のガイド線: 現在の手やホバー中の手の位置
+現在の画面は次の 3 層で見るとわかりやすいです。
 
-## 元の lizzieyzy との違い
+- 盤面エリア: 現局面、候補手、局所読み。
+- 勝率グラフ: 全局の流れと大きな転換点。
+- 下部クイック概要: 全手を追う前に、どこから見返すべきかを先に教えてくれます。
 
-| 比較項目 | 元の `lizzieyzy` | `LizzieYzy Next` |
-| --- | --- | --- |
-| 現在の状態 | 多くの人が覚えている元プロジェクトだが、実用面の継続保守は弱い | 使用感と配布体験を継続保守する現行ブランチ |
-| 野狐棋譜取得 | 古い取得フローは壊れた場面が多い | よく使う取得フローを復旧し、ニックネーム入力にも対応 |
-| 入力方法 | 数字のアカウント番号を先に知っている前提が強い | 野狐のニックネームを入れるとアプリが自動で対応付け |
-| KataGo 利用の敷居 | 自分で環境や不足リソースを補う場面が多い | 推奨パッケージに KataGo と既定の重みを同梱 |
-| Windows での選びやすさ | 利用者が自分で判断する余地が大きい | `portable.zip` を先に勧める構成でわかりやすい |
-| 同期ツール | 利用者が自分で組み合わせる場面が多い | 主な release に `readboard_java` を同梱 |
+## ドキュメントとコミュニティ
 
-## よくある質問
-
-### readboard 用に別リポジトリは必要ですか？
-
-多くの利用者には不要です。`LizzieYzy Next` は `readboard_java` を主な release パッケージに含めています。
-
-### 野狐のアカウント番号を先に知っておく必要はありますか？
-
-多くの場合は不要です。野狐のニックネームを入力すれば、アプリが対応するアカウントを探します。
-
-### 全局の流れを見るのに、まだ一手ずつ進める必要がありますか？
-
-通常はそこまで必要ありません。全局を素早く見る解析があるため、主勝率グラフと概要をかなり早く作れます。
-
-### macOS で初回起動時にブロックされたらどうすればよいですか？
-
-現在の macOS 配布物は未署名・未公証です。初回にブロックされた場合は [インストールガイド](docs/INSTALL_JA.md) の手順を見てください。
-
-## 利用者向けドキュメント
-
-- [サポートガイド](SUPPORT.md)
 - [インストールガイド](docs/INSTALL_JA.md)
-- [配布パッケージ一覧 (English)](docs/PACKAGES_EN.md)
-- [トラブル対応 (English)](docs/TROUBLESHOOTING_EN.md)
-- [検証済みプラットフォーム (English)](docs/TESTED_PLATFORMS.md)
-- [GitHub Releases](https://github.com/wimi321/lizzieyzy-next/releases)
-- GitHub Discussions: <https://github.com/wimi321/lizzieyzy-next/discussions>
+- [パッケージ一覧](docs/PACKAGES_EN.md)
+- [トラブル対応](docs/TROUBLESHOOTING_EN.md)
+- [検証済みプラットフォーム](docs/TESTED_PLATFORMS.md)
+- [変更履歴](CHANGELOG.md)
+- [ロードマップ](ROADMAP.md)
+- [コントリビュート](CONTRIBUTING.md)
+- [サポート](SUPPORT.md)
+- [GitHub Discussions](https://github.com/wimi321/lizzieyzy-next/discussions)
 - 中国語 QQ グループ: `299419120`
 
-## プロジェクトリンク
-- [Roadmap](ROADMAP.md)
-- [Contributing](CONTRIBUTING.md)
-- [Changelog](CHANGELOG.md)
-- [Support](SUPPORT.md)
+## ソースからビルド
 
-## Credits
+必要なもの:
+
+- JDK 17
+- Maven 3.9+
+
+ビルドコマンド:
+
+```bash
+mvn test
+mvn -DskipTests package
+java -jar target/lizzie-yzy2.5.3-shaded.jar
+```
+
+パッケージング、release、運用自動化まで扱う場合は次も参照してください。
+
+- [docs/DEVELOPMENT_EN.md](docs/DEVELOPMENT_EN.md)
+- [docs/MAINTENANCE_EN.md](docs/MAINTENANCE_EN.md)
+- [docs/RELEASE_CHECKLIST.md](docs/RELEASE_CHECKLIST.md)
+
+## 謝辞
 
 - Original project: [yzyray/lizzieyzy](https://github.com/yzyray/lizzieyzy)
 - KataGo: [lightvector/KataGo](https://github.com/lightvector/KataGo)
-Historical Fox sync references:
-- [yzyray/FoxRequest](https://github.com/yzyray/FoxRequest)
-- [FuckUbuntu/Lizzieyzy-Helper](https://github.com/FuckUbuntu/Lizzieyzy-Helper)
+- Historical Fox sync references: [yzyray/FoxRequest](https://github.com/yzyray/FoxRequest), [FuckUbuntu/Lizzieyzy-Helper](https://github.com/FuckUbuntu/Lizzieyzy-Helper)
 
-## 翻訳について
+## ライセンス
 
-翻訳を歓迎します！この README をあなたの母語に翻訳したい方は、ぜひ Pull Request をお送りください。
-
-We welcome translations! If you want to translate this README into your native language, please feel free to submit a Pull Request.
+本プロジェクトは [GPL-3.0](LICENSE.txt) の下で公開されています。

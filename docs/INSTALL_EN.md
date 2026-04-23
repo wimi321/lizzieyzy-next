@@ -122,7 +122,10 @@ If you prefer the installer flow:
 
 ### If Gatekeeper blocks first launch
 
-Current maintenance builds are still unsigned and not notarized.
+Current official macOS releases are signed and notarized in the release pipeline.
+
+If you downloaded the current DMG from the official release page, it should usually open normally.
+If macOS still blocks it the first time, the cause is usually a local security cache, policy, or an older app record. Use the steps below:
 
 If macOS blocks the first launch:
 

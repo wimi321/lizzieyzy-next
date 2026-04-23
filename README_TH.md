@@ -3,10 +3,10 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/wimi321/lizzieyzy-next/releases"><img src="https://img.shields.io/github/v/release/wimi321/lizzieyzy-next?display_name=tag&label=Release&color=111111" alt="Release"></a>
-  <a href="https://github.com/wimi321/lizzieyzy-next/stargazers"><img src="https://img.shields.io/github/stars/wimi321/lizzieyzy-next?style=flat&color=444444" alt="Stars"></a>
-  <a href="https://github.com/wimi321/lizzieyzy-next/releases"><img src="https://img.shields.io/github/downloads/wimi321/lizzieyzy-next/total?label=Downloads&color=666666" alt="Downloads"></a>
-  <img src="https://img.shields.io/badge/Platforms-Windows%20%7C%20macOS%20%7C%20Linux-888888" alt="Platforms">
+  <a href="https://github.com/wimi321/lizzieyzy-next/releases"><img src="https://img.shields.io/github/v/release/wimi321/lizzieyzy-next?display_name=tag&label=Latest%20Release&color=111111" alt="Latest Release"></a>
+  <a href="https://github.com/wimi321/lizzieyzy-next/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/wimi321/lizzieyzy-next/ci.yml?branch=main&label=CI&color=1f6feb" alt="CI"></a>
+  <a href="LICENSE.txt"><img src="https://img.shields.io/github/license/wimi321/lizzieyzy-next?color=5b5b5b" alt="License"></a>
+  <img src="https://img.shields.io/badge/Platforms-Windows%20%7C%20macOS%20%7C%20Linux-6b7280" alt="Platforms">
 </p>
 
 <p align="center">
@@ -14,78 +14,157 @@
 </p>
 
 <p align="center">
-  <strong>LizzieYzy Next คือเวอร์ชันที่ดูแลต่อของ lizzieyzy ซึ่งเป็นเครื่องมือ GUI สำหรับทบทวนเกมโกะด้วย KataGo สำหรับผู้เล่นทั่วไป</strong><br/>
-  โปรเจกต์นี้ปรับปรุงประสบการณ์หลักใหม่ทั้งหมด: แพ็กเกจดาวน์โหลดที่เลือกง่ายขึ้น, การเริ่มต้นครั้งแรกที่ลื่นไหล, การดึงเกมจาก Fox (野狐) ที่ใช้งานได้ และมุมมองวิเคราะห์เกมทั้งกระดานที่เข้าใจง่ายกว่าเดิม<br/>
-  <strong>ดาวน์โหลดและติดตั้ง ใส่ชื่อเล่น Fox ดึงเกมสาธารณะล่าสุด รันการวิเคราะห์ทั้งกระดานอย่างรวดเร็ว จากนั้นใช้กราฟอัตราชนะและภาพรวมด้านล่างเพื่อหาจังหวะสำคัญทันที</strong>
+  <strong>LizzieYzy Next คือเดสก์ท็อป GUI สำหรับรีวิวเกมโกะด้วย KataGo ที่ยังคงได้รับการดูแลต่อ และเป็นสายพัฒนาต่อจาก <code>lizzieyzy 2.5.3</code> ที่ใช้งานจริงอยู่ในตอนนี้</strong><br/>
+  โปรเจกต์นี้เน้นแก้ปัญหาที่ผู้ใช้พบจริงบ่อยที่สุด: จะเลือกแพ็กเกจดาวน์โหลดอย่างไร, เริ่มต้นครั้งแรกให้ลื่นขึ้นอย่างไร, ดึงเกมจาก Fox ให้ใช้งานได้จริง, ทำให้ซิงก์กระดานบน Windows ใช้ได้จากในแพ็กเกจ และเข้าสู่การรีวิวทั้งกระดานได้เร็วขึ้น
 </p>
 
 <p align="center">
-  <a href="https://github.com/wimi321/lizzieyzy-next/releases"><strong>ดาวน์โหลดรีลีส</strong></a>
+  <a href="https://github.com/wimi321/lizzieyzy-next/releases"><strong>ดาวน์โหลดเวอร์ชันเสถียร</strong></a>
   ·
-  <a href="docs/INSTALL.md"><strong>คู่มือติดตั้ง</strong></a>
+  <a href="docs/INSTALL_EN.md"><strong>คู่มือติดตั้ง</strong></a>
   ·
-  <a href="docs/TROUBLESHOOTING.md"><strong>คำถามที่พบบ่อย</strong></a>
+  <a href="docs/PACKAGES_EN.md"><strong>คู่มือแพ็กเกจ</strong></a>
+  ·
+  <a href="docs/TROUBLESHOOTING_EN.md"><strong>การแก้ปัญหา</strong></a>
+  ·
+  <a href="https://github.com/wimi321/lizzieyzy-next/discussions"><strong>Discussions</strong></a>
 </p>
 
+| สถานะโปรเจกต์ | ค่าปัจจุบัน |
+| --- | --- |
+| เวอร์ชันที่ผู้ใช้เห็น | `LizzieYzy Next 1.0.0` |
+| ฐานต้นทาง | `lizzieyzy 2.5.3` |
+| เอนจินเริ่มต้น | `KataGo v1.16.4` |
+| น้ำหนักเริ่มต้น | `kata1-zhizi-b28c512nbt-muonfd2.bin.gz` |
+| ช่องทางดาวน์โหลดทางการ | GitHub Releases |
+
 > [!IMPORTANT]
-> ถ้าคุณแค่อยากดาวน์โหลดเวอร์ชันที่ใช่ ให้จำ 6 ข้อนี้:
-> - ผู้ใช้ Windows ส่วนใหญ่: ไปที่ [Releases](https://github.com/wimi321/lizzieyzy-next/releases) แล้วดาวน์โหลด `*windows64.opencl.portable.zip`
-> - ถ้าคุณมีการ์ดจอ NVIDIA และต้องการความเร็วสูงกว่า: ดาวน์โหลด `*windows64.nvidia.portable.zip`
-> - ถ้า OpenCL ไม่เสถียรบนเครื่องของคุณ: ดาวน์โหลด `*windows64.with-katago.portable.zip`
-> - ตอนนี้รองรับการใส่ชื่อเล่น Fox โดยตรงเพื่อดึงเกมสาธารณะล่าสุด ไม่ต้องรู้เลขบัญชีก่อน
-> - แพ็กเกจแนะนำมาพร้อม KataGo `v1.16.4` และน้ำหนักที่แนะนำอย่างเป็นทางการ `zhizi` (`kata1-zhizi-b28c512nbt-muonfd2.bin.gz`)
-> - แพ็กเกจหลักมาพร้อม `readboard_java` ผู้ใช้ส่วนใหญ่ไม่ต้องไปหา readboard แยกอีก
+> ช่องทางดาวน์โหลดสาธารณะอย่างเป็นทางการตอนนี้เหลือเพียง GitHub Releases
+> Windows release ปกติจะมาพร้อม native `readboard.exe` และจะย้อนกลับไปใช้ `readboard_java` เฉพาะเมื่อ native helper หายไปหรือเปิดไม่ขึ้นเท่านั้น
 
-## ทำไมหลายคนเลือกโปรเจกต์นี้
+## ทำไมโปรเจกต์นี้จึงน่าติดตาม
 
-`LizzieYzy Next` สามารถเข้าใจได้ว่า:
+- นี่ไม่ใช่แค่ branch แก้ชั่วคราว แต่เป็นเวอร์ชันสาธารณะที่ดูแลเวิร์กโฟลว์ใช้งานจริงของ `lizzieyzy` ต่อเนื่อง
+- ไม่ได้ดูแลแค่ซอร์สโค้ด แต่ดูแลแพ็กเกจ, ประสบการณ์เปิดครั้งแรก, หน้า release, เอกสารติดตั้ง และการตรวจสอบย้อนหลังไปพร้อมกัน
+- ให้ความสำคัญกับการใช้งานจริง เช่น การดึงเกม, รีวิว SGF, ดูกราฟอัตราชนะ, วิเคราะห์ทั้งกระดาน และการเริ่มต้นกับการซิงก์บน Windows
 
-- เครื่องมือ `KataGo ทบทวนเกมโกะบนเดสก์ท็อป` ที่ยังดูแลอย่างต่อเนื่อง
-- เวิร์กโฟลว์ที่รวม `ดึงเกมจาก Fox + การวิเคราะห์ทั้งกระดานรวดเร็ว + แพ็กเกจหลายแพลตฟอร์ม` เข้าด้วยกัน
-- สาขาที่ดูแลต่อเพื่อให้ผู้ใช้ `lizzieyzy` เก่าใช้งานได้อย่างต่อเนื่อง
+## ความสามารถหลักในตอนนี้
 
-## เปิดแล้วทำอะไรได้ทันที
-
-| คุณต้องการทำอะไร | โปรเจกต์นี้จัดการอย่างไร |
+| สิ่งที่คุณอยากทำ | ประสบการณ์ตอนนี้ |
 | --- | --- |
-| ดึงเกม Fox สาธารณะล่าสุด | ใส่ชื่อเล่น Fox โดยตรง โปรแกรมจะจับคู่บัญชีและดึงเกมให้ |
-| ดูแนวโน้มทั้งกระดานอย่างรวดเร็ว | การวิเคราะห์ทั้งกระดานรวดเร็ว ไม่ต้องคลิกทีละหมาก |
-| ค้นหาจังหวะสำคัญอย่างรวดเร็ว | กราฟอัตราชนะใหม่และภาพรวม heatmap ด้านล่าง เห็นปัญหาใหญ่ได้ทันที |
-| การตั้งค่าน้อย | แพ็กเกจแนะนำมาพร้อม KataGo, น้ำหนักเริ่มต้น และ auto setup ครั้งแรก |
-| ไม่อยากติดตั้ง | Windows แนะนำแพ็กเกจ `portable.zip` ก่อน |
-| ซิงก์กระดาน | แพ็กเกจหลักมาพร้อม `readboard_java` |
+| เริ่มใช้ได้เร็วหลังดาวน์โหลด | Windows, macOS และ Linux มีแพ็กเกจรวมพร้อมใช้งาน ผู้ใช้ส่วนใหญ่ไม่ต้องประกอบสภาพแวดล้อมเองก่อน |
+| ดึงเกม Fox สาธารณะล่าสุด | ใส่ชื่อเล่น Fox แล้วโปรแกรมจะหาบัญชีที่ตรงให้โดยอัตโนมัติ |
+| ใช้ Smart Optimize | ใช้แนวทาง benchmark ของ KataGo พร้อมความคืบหน้าที่มองเห็นได้, ยกเลิกได้, และหยุด/คืนการวิเคราะห์อัตโนมัติ |
+| ใช้ซิงก์กระดานบน Windows | release ปกติจะใช้ native `readboard.exe` เป็นหลัก และค่อยกลับไป Java helper เมื่อจำเป็นจริง ๆ |
+| ควบคุมโปรแกรมได้เร็วระหว่างโหลดเกม | การโหลด SGF และเกมจาก Fox จะคืนการควบคุมให้หน้าต่างหลักก่อน แล้วค่อยเติมรายละเอียดกราฟชนะทีหลัง |
+| ติดตั้งบน macOS | DMG ทางการผ่านขั้นตอนเซ็นและ notarize ใน release pipeline |
 
-## เลือกดาวน์โหลดตัวไหน
+## ควรดาวน์โหลดแพ็กเกจไหน
 
-ดาวน์โหลดทั้งหมดอยู่ใน [Releases](https://github.com/wimi321/lizzieyzy-next/releases)
+ดาวน์โหลดสาธารณะทั้งหมดอยู่ที่ [GitHub Releases](https://github.com/wimi321/lizzieyzy-next/releases) ถ้าต้องการเลือกให้ถูกอย่างรวดเร็ว ตารางนี้ก็พอแล้ว
 
-| สถานการณ์ของคุณ | คีย์เวิร์ดไฟล์ที่ควรหา |
+<p align="center">
+  <img src="assets/package-guide.svg" alt="LizzieYzy Next package guide" width="100%" />
+</p>
+
+| สถานการณ์ของคุณ | คีย์เวิร์ดไฟล์ที่ควรมองหาใน Releases |
 | --- | --- |
-| ผู้ใช้ Windows ส่วนใหญ่ (แนะนำ, portable) | `*windows64.opencl.portable.zip` |
-| Windows, OpenCL, ต้องการตัวติดตั้ง | `*windows64.opencl.installer.exe` |
-| Windows, OpenCL ไม่เสถียร, ใช้ CPU, portable | `*windows64.with-katago.portable.zip` |
-| Windows, การ์ดจอ NVIDIA, ต้องการความเร็ว, portable | `*windows64.nvidia.portable.zip` |
-| Windows, ตั้งค่าเอนจินเอง, portable | `*windows64.without.engine.portable.zip` |
+| ผู้ใช้ Windows ส่วนใหญ่, ตัวแนะนำหลัก | `*windows64.opencl.portable.zip` |
+| Windows, OpenCL ไม่เสถียร, ตัวเลือก CPU | `*windows64.with-katago.portable.zip` |
+| Windows, มี NVIDIA GPU, ต้องการความเร็วมากขึ้น | `*windows64.nvidia.portable.zip` |
+| Windows, ต้องการตั้งค่าเอนจินเอง | `*windows64.without.engine.portable.zip` |
 | macOS Apple Silicon | `*mac-arm64.with-katago.dmg` |
 | macOS Intel | `*mac-amd64.with-katago.dmg` |
 | Linux | `*linux64.with-katago.zip` |
 
-## เริ่มต้นใน 3 ขั้นตอน
+หมายเหตุ:
 
-1. ไปที่ [Releases](https://github.com/wimi321/lizzieyzy-next/releases) และดาวน์โหลดแพ็กเกจที่เหมาะกับระบบของคุณ
-2. เปิดโปรแกรมแล้วคลิก `Fox` เพื่อใส่ชื่อเล่น Fox
-3. หลังจากดึงเกมแล้ว ให้รันการวิเคราะห์ทั้งกระดานรวดเร็ว ใช้กราฟอัตราชนะและภาพรวมด้านล่างเพื่อหาจังหวะสำคัญ
+- ถ้าผู้ใช้ Windows ต้องการตัวติดตั้ง สามารถเลือกแพ็กเกจ `*.installer.exe` ที่ตรงกันได้
+- หากต้องการดูทรัพย์สินสาธารณะทั้ง 11 รายการและสิ่งที่บรรจุอยู่ในแต่ละแพ็กเกจ ให้ดู [docs/PACKAGES_EN.md](docs/PACKAGES_EN.md)
+- Windows release ปกติมี helper สำหรับซิงก์กระดานแบบ native รวมมาแล้ว
+
+## จุดเด่นของเวอร์ชันสาธารณะปัจจุบัน
+
+- `ดึงเกมด้วยชื่อเล่น Fox`
+  ไม่ถือว่าผู้ใช้ทั่วไปต้องรู้เลขบัญชี Fox ก่อนอีกต่อไป
+- `KataGo Auto Setup`
+  แพ็กเกจหลักมี `KataGo v1.16.4` และน้ำหนักเริ่มต้นรวมมาให้ ส่วน Smart Optimize ใช้การปรับตาม benchmark และยกเลิกได้
+- `เส้นทางซิงก์กระดานบน Windows ที่แข็งแรงขึ้น`
+  แพ็กเกจ release บรรจุ `readboard.exe` และไฟล์พึ่งพามาให้ พร้อม fallback ไป Java เฉพาะตอนจำเป็น
+- `ประสบการณ์โหลดเกมที่ตรงไปตรงมาขึ้น`
+  หลังดาวน์โหลดเกมเสร็จ หน้าต่างหลักจะกลับมาควบคุมได้ก่อน แล้วรายละเอียดอัตราชนะค่อยเติมต่อ
+- `การออก release แบบโปรเจกต์เดสก์ท็อปจริง`
+  มีการดูแลแพ็กเกจข้ามแพลตฟอร์ม, CI, release notes และเอกสารติดตั้งเป็นส่วนหนึ่งของตัวผลิตภัณฑ์
+
+## เริ่มต้นอย่างรวดเร็ว
+
+1. ไปที่ [Releases](https://github.com/wimi321/lizzieyzy-next/releases) แล้วดาวน์โหลดแพ็กเกจที่เหมาะกับระบบของคุณ
+2. ถ้าใช้ Windows bundle ที่มี KataGo ในตัว ให้เปิด `KataGo Auto Setup` แล้วรัน `Smart Optimize` สักครั้ง
+3. เปิด SGF ในเครื่อง หรือใช้ขั้นตอนดึงเกมสาธารณะจากชื่อเล่น Fox
+4. ใช้กราฟ, ปุ่ม `Down` และการนำทางด้วยคีย์บอร์ด เพื่อดูจังหวะสำคัญระหว่างที่ข้อมูลรีวิวส่วนที่เหลือค่อย ๆ เติมเข้ามา
+
+<p align="center">
+  <a href="assets/fox-id-demo.gif">
+    <img src="assets/fox-id-demo-cover.png" alt="LizzieYzy Next Fox nickname demo" width="100%" />
+  </a>
+</p>
+
+## ภาพตัวอย่างหน้าตาโปรแกรม
+
+<p align="center">
+  <img src="assets/interface-overview-2026-04.png" alt="LizzieYzy Next interface preview" width="100%" />
+</p>
+
+<p align="center">
+  <img src="assets/winrate-quick-overview-2026-04.png" alt="LizzieYzy Next winrate graph and quick overview" width="52%" />
+</p>
+
+อินเทอร์เฟซปัจจุบันสามารถมองได้เป็น 3 ชั้นของข้อมูล:
+
+- พื้นที่กระดาน: ตำแหน่งปัจจุบัน, จุดแนะนำ, และการอ่านเฉพาะจุด
+- กราฟอัตราชนะ: แนวโน้มทั้งกระดานและจุดเปลี่ยนสำคัญ
+- ภาพรวมแบบเร็วด้านล่าง: ช่วยบอกว่าควรย้อนกลับไปดูช่วงไหนก่อนที่จะไล่ทุกหมากละเอียด
+
+## เอกสารและชุมชน
+
+- [คู่มือติดตั้ง](docs/INSTALL_EN.md)
+- [คู่มือแพ็กเกจ](docs/PACKAGES_EN.md)
+- [การแก้ปัญหา](docs/TROUBLESHOOTING_EN.md)
+- [แพลตฟอร์มที่ทดสอบแล้ว](docs/TESTED_PLATFORMS.md)
+- [บันทึกการเปลี่ยนแปลง](CHANGELOG.md)
+- [แผนงาน](ROADMAP.md)
+- [การมีส่วนร่วม](CONTRIBUTING.md)
+- [การขอความช่วยเหลือ](SUPPORT.md)
+- [GitHub Discussions](https://github.com/wimi321/lizzieyzy-next/discussions)
+- กลุ่ม QQ ภาษาจีน: `299419120`
+
+## สร้างจากซอร์ส
+
+สิ่งที่ต้องมี:
+
+- JDK 17
+- Maven 3.9+
+
+คำสั่ง build:
+
+```bash
+mvn test
+mvn -DskipTests package
+java -jar target/lizzie-yzy2.5.3-shaded.jar
+```
+
+ถ้าคุณจะดูแลแพ็กเกจ, release หรือกระบวนการอัตโนมัติด้วย ให้ดูเพิ่มเติมที่:
+
+- [docs/DEVELOPMENT_EN.md](docs/DEVELOPMENT_EN.md)
+- [docs/MAINTENANCE_EN.md](docs/MAINTENANCE_EN.md)
+- [docs/RELEASE_CHECKLIST.md](docs/RELEASE_CHECKLIST.md)
 
 ## เครดิต
 
-- โปรเจกต์ดั้งเดิม: [yzyray/lizzieyzy](https://github.com/yzyray/lizzieyzy)
+- โปรเจกต์ต้นฉบับ: [yzyray/lizzieyzy](https://github.com/yzyray/lizzieyzy)
 - KataGo: [lightvector/KataGo](https://github.com/lightvector/KataGo)
-อ้างอิงประวัติการดึงเกม Fox:
-- [yzyray/FoxRequest](https://github.com/yzyray/FoxRequest)
-- [FuckUbuntu/Lizzieyzy-Helper](https://github.com/FuckUbuntu/Lizzieyzy-Helper)
+- อ้างอิงประวัติการดึงเกมจาก Fox: [yzyray/FoxRequest](https://github.com/yzyray/FoxRequest), [FuckUbuntu/Lizzieyzy-Helper](https://github.com/FuckUbuntu/Lizzieyzy-Helper)
 
-## การแปล
+## สัญญาอนุญาต
 
-ยินดีรับการแปล! ถ้าคุณต้องการแปล README นี้เป็นภาษาแม่ของคุณ โปรดส่ง Pull Request ได้เลย
-
-We welcome translations! If you want to translate this README into your native language, please feel free to submit a Pull Request.
+โปรเจกต์นี้เผยแพร่ภายใต้ [GPL-3.0](LICENSE.txt)
