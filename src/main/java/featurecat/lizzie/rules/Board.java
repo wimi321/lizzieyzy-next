@@ -10,6 +10,7 @@ import featurecat.lizzie.analysis.Leelaz;
 import featurecat.lizzie.analysis.MoveData;
 import featurecat.lizzie.gui.LizzieFrame;
 import featurecat.lizzie.gui.ScoreResult;
+import featurecat.lizzie.util.KataGoRuntimeHelper;
 import featurecat.lizzie.util.Utils;
 import java.io.File;
 import java.io.IOException;
@@ -1149,6 +1150,9 @@ public class Board {
   }
 
   public void resendMoveToEngine(Leelaz leelaz, boolean loadEngine) {
+    if (KataGoRuntimeHelper.isBenchmarkEngineSyncSuppressed()) {
+      return;
+    }
     ArrayList<Movelist> mv = getMoveList();
     leelaz.sendCommand("clear_board");
     Lizzie.board.restoreMoveNumber(mv, false, leelaz, loadEngine);

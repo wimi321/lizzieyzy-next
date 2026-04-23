@@ -45,6 +45,7 @@ public class KataGoAutoSetupDialog extends JDialog {
   private static final Color ERROR_COLOR = new Color(170, 42, 42);
   private static final Color INFO_BG = new Color(248, 249, 251);
   private static final Color INFO_BORDER = new Color(224, 228, 234);
+  private static final String BENCHMARK_PROGRESS_KEY = "lizzie.benchmark.dialog.progress";
 
   private SetupSnapshot snapshot;
   private List<RemoteWeightInfo> remoteWeightInfos = Collections.emptyList();
@@ -279,15 +280,11 @@ public class KataGoAutoSetupDialog extends JDialog {
     if (state.activeWeightPath == null) {
       return text("AutoSetup.notFound");
     }
-    String actualModelName = KataGoAutoSetupHelper.resolveActiveWeightModelName(state);
-    if (actualModelName == null || actualModelName.trim().isEmpty()) {
+    String displayName = KataGoAutoSetupHelper.resolveActiveWeightDisplayName(state);
+    if (displayName == null || displayName.trim().isEmpty()) {
       return state.activeWeightPath.getFileName().toString();
     }
-    String activeFile = state.activeWeightPath.getFileName().toString();
-    if (actualModelName.equalsIgnoreCase(activeFile)) {
-      return actualModelName;
-    }
-    return actualModelName;
+    return displayName;
   }
 
   private String formatConfig(SetupSnapshot state) {
@@ -502,7 +499,7 @@ public class KataGoAutoSetupDialog extends JDialog {
     activeDownloadSession = session;
     final boolean analysisWasPondering = KataGoRuntimeHelper.pauseCurrentAnalysisForBenchmark();
     btnStopDownload.setText(text("AutoSetup.stopBenchmark"));
-    setBusy(true, text("AutoSetup.benchmarkPreparing"), 0, 1000);
+    setBusy(true, text("AutoSetup.benchmarkPreparing"), 30, 1000);
     Thread worker =
         new Thread(
             () -> {
@@ -654,29 +651,37 @@ public class KataGoAutoSetupDialog extends JDialog {
     if (!busy) {
       progressBar.setIndeterminate(false);
       progressBar.setValue(0);
+      progressBar.putClientProperty(BENCHMARK_PROGRESS_KEY, Integer.valueOf(0));
       progressBar.setString("");
     } else if (totalBytes > 0) {
       progressBar.setMaximum(1000);
-      progressBar.setValue((int) Math.min(1000, (downloadedBytes * 1000L) / totalBytes));
-      long percent = Math.min(100, (downloadedBytes * 100L) / totalBytes);
+      int progressValue = (int) Math.min(1000, (downloadedBytes * 1000L) / totalBytes);
       if (isBenchmarkPermilleProgress(statusText, downloadedBytes, totalBytes)) {
-        progressBar.setString(statusText + "  " + percent + "%");
+        int previousProgress =
+            progressBar.getClientProperty(BENCHMARK_PROGRESS_KEY) instanceof Integer
+                ? ((Integer) progressBar.getClientProperty(BENCHMARK_PROGRESS_KEY)).intValue()
+                : 0;
+        progressValue = Math.max(previousProgress, progressValue);
+        progressBar.putClientProperty(BENCHMARK_PROGRESS_KEY, Integer.valueOf(progressValue));
       } else {
+        progressBar.putClientProperty(BENCHMARK_PROGRESS_KEY, Integer.valueOf(0));
+      }
+      progressBar.setValue(progressValue);
+      if (isBenchmarkPermilleProgress(statusText, downloadedBytes, totalBytes)) {
+        long percent = Math.min(100, progressValue / 10L);
+        progressBar.setString(percent + "%");
+      } else {
+        long percent = Math.min(100, (downloadedBytes * 100L) / totalBytes);
         progressBar.setString(
-            statusText
-                + "  "
-                + percent
-                + "%  "
-                + formatSize(downloadedBytes)
-                + " / "
-                + formatSize(totalBytes));
+            percent + "%  " + formatSize(downloadedBytes) + " / " + formatSize(totalBytes));
       }
     } else if (downloadedBytes > 0) {
       progressBar.setValue(0);
-      progressBar.setString(statusText + "  " + formatSize(downloadedBytes));
+      progressBar.setString(formatSize(downloadedBytes));
     } else {
       progressBar.setValue(0);
-      progressBar.setString(statusText);
+      progressBar.putClientProperty(BENCHMARK_PROGRESS_KEY, Integer.valueOf(0));
+      progressBar.setString("");
     }
 
     progressPanel.revalidate();

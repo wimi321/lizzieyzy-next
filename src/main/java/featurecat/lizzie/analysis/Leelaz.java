@@ -14,6 +14,7 @@ import featurecat.lizzie.rules.BoardData;
 import featurecat.lizzie.rules.BoardHistoryNode;
 import featurecat.lizzie.rules.Stone;
 import featurecat.lizzie.util.CommandLaunchHelper;
+import featurecat.lizzie.util.KataGoAutoSetupHelper;
 import featurecat.lizzie.util.KataGoRuntimeHelper;
 import featurecat.lizzie.util.Utils;
 import java.awt.Component;
@@ -366,6 +367,13 @@ public class Leelaz {
   }
 
   private static String shortenWeightPath(String path) {
+    try {
+      String displayName = KataGoAutoSetupHelper.resolveWeightDisplayName(Path.of(path));
+      if (displayName != null && !displayName.trim().isEmpty()) {
+        return displayName;
+      }
+    } catch (Exception ignored) {
+    }
     int slash = Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\'));
     String base = slash >= 0 ? path.substring(slash + 1) : path;
     String lower = base.toLowerCase();
