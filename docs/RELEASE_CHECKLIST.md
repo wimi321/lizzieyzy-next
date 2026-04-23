@@ -26,12 +26,11 @@
 - `windows64.nvidia.installer.exe`
 - `windows64.without.engine.portable.zip`
 - `windows64.without.engine.installer.exe`
-- `windows64.with-katago-install.txt`
-- `windows64.without.engine-install.txt`
-- `mac-arm64.with-katago.dmg`
-- `mac-arm64.with-katago-install.txt`
-- `mac-amd64.with-katago.dmg`
-- `mac-amd64.with-katago-install.txt`
+- `windows64-install.txt`
+- `mac-apple-silicon.with-katago.dmg`
+- `mac-apple-silicon-install.txt`
+- `mac-intel.with-katago.dmg`
+- `mac-intel-install.txt`
 - `linux64.with-katago.zip`
 
 不再建议重新上传的旧思路：

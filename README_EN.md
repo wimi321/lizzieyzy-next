@@ -93,8 +93,8 @@ All downloads are on [Releases](https://github.com/wimi321/lizzieyzy-next/releas
 | Windows, NVIDIA GPU, installer option | `*windows64.nvidia.installer.exe` |
 | Windows, bring your own engine, no installer | `*windows64.without.engine.portable.zip` |
 | Windows, bring your own engine, installer option | `*windows64.without.engine.installer.exe` |
-| macOS Apple Silicon | `*mac-arm64.with-katago.dmg` |
-| macOS Intel | `*mac-amd64.with-katago.dmg` |
+| macOS Apple Silicon | `*mac-apple-silicon.with-katago.dmg` |
+| macOS Intel | `*mac-intel.with-katago.dmg` |
 | Linux | `*linux64.with-katago.zip` |
 
 Quick rule:

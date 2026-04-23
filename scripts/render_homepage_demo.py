@@ -57,7 +57,7 @@ LOCALES = {
             'Start with the bundled package.',
             'Switch later only if you manage your own engine.',
         ],
-        'step1_helper_chips': ['windows64.with-katago', 'mac-arm64.dmg', 'mac-amd64.dmg', 'linux64.with-katago'],
+        'step1_helper_chips': ['windows64.with-katago', 'mac-apple-silicon.dmg', 'mac-intel.dmg', 'linux64.with-katago'],
         'modal_chip': 'Fox nickname',
         'modal_title': 'Enter a Fox nickname',
         'modal_sub': 'Fetch recent public games automatically.',
@@ -68,7 +68,7 @@ LOCALES = {
             {
                 'title': 'Pick the right package',
                 'lines': ['For most people, start with', 'the bundled release.'],
-                'chips': [('Windows', False), ('mac-arm64', False), ('mac-amd64', False), ('Linux', False), ('with-katago', True)],
+                'chips': [('Windows', False), ('mac-apple-silicon', False), ('mac-intel', False), ('Linux', False), ('with-katago', True)],
             },
             {
                 'title': 'Open the Fox sync entry',
@@ -118,7 +118,7 @@ LOCALES = {
             '大多数用户先用内置 KataGo 的版本。',
             '后面再按需要换成自己的引擎。',
         ],
-        'step1_helper_chips': ['windows64.with-katago', 'mac-arm64.dmg', 'mac-amd64.dmg', 'linux64.with-katago'],
+        'step1_helper_chips': ['windows64.with-katago', 'mac-apple-silicon.dmg', 'mac-intel.dmg', 'linux64.with-katago'],
         'modal_chip': '野狐昵称',
         'modal_title': '输入野狐昵称',
         'modal_sub': '自动匹配账号并获取最近公开棋谱',
@@ -129,7 +129,7 @@ LOCALES = {
             {
                 'title': '先选安装包',
                 'lines': ['大多数用户先选', 'with-katago 就行'],
-                'chips': [('Windows', False), ('mac-arm64', False), ('mac-amd64', False), ('Linux', False), ('with-katago', True)],
+                'chips': [('Windows', False), ('mac-apple-silicon', False), ('mac-intel', False), ('Linux', False), ('with-katago', True)],
             },
             {
                 'title': '打开野狐同步',

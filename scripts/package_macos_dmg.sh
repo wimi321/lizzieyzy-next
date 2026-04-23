@@ -29,9 +29,11 @@ fi
 ARCH="$(uname -m)"
 if [[ "$ARCH" == "arm64" ]]; then
   ARCH_TAG="mac-arm64"
+  PUBLIC_ARCH_TAG="mac-apple-silicon"
   ENGINE_PLATFORM_DIR="macos-arm64"
 else
   ARCH_TAG="mac-amd64"
+  PUBLIC_ARCH_TAG="mac-intel"
   ENGINE_PLATFORM_DIR="macos-amd64"
 fi
 
@@ -116,9 +118,9 @@ jpackage \
   --java-options "-Xmx4096m"
 
 DMG_FILE="$(ls "$DMG_DIR"/*.dmg | head -n 1)"
-FINAL_DMG="$ROOT_DIR/dist/release/${DATE_TAG}-${ARCH_TAG}.${PACKAGE_FLAVOR}.dmg"
-INSTALL_NOTE="$META_DIR/${DATE_TAG}-${ARCH_TAG}-install.txt"
-SHA256_FILE="$META_DIR/${DATE_TAG}-${ARCH_TAG}-sha256.txt"
+FINAL_DMG="$ROOT_DIR/dist/release/${DATE_TAG}-${PUBLIC_ARCH_TAG}.${PACKAGE_FLAVOR}.dmg"
+INSTALL_NOTE="$META_DIR/${DATE_TAG}-${PUBLIC_ARCH_TAG}-install.txt"
+SHA256_FILE="$META_DIR/${DATE_TAG}-${PUBLIC_ARCH_TAG}-sha256.txt"
 
 mkdir -p "$ROOT_DIR/dist/release"
 cp "$DMG_FILE" "$FINAL_DMG"
@@ -154,7 +156,7 @@ Bundled KataGo paths inside the app bundle:
 Notes:
 - This package is unsigned and not notarized.
 - For Intel/Apple Silicon dual-native support, build once on each architecture.
-- The built-in Java readboard helper is included in `LizzieYzy Next.app/Contents/app/readboard_java/`.
+- The built-in Java readboard helper is included in LizzieYzy Next.app/Contents/app/readboard_java/.
 EOF
 
 write_sha256_file "$SHA256_FILE" "$FINAL_DMG" "$INSTALL_NOTE"

@@ -71,8 +71,8 @@
 | Windows，OpenCL 不穩定，CPU 相容兜底，免安裝 | `*windows64.with-katago.portable.zip` |
 | Windows，NVIDIA 顯示卡，想更快，免安裝 | `*windows64.nvidia.portable.zip` |
 | Windows，自己設定引擎，免安裝 | `*windows64.without.engine.portable.zip` |
-| macOS Apple Silicon | `*mac-arm64.with-katago.dmg` |
-| macOS Intel | `*mac-amd64.with-katago.dmg` |
+| macOS Apple Silicon | `*mac-apple-silicon.with-katago.dmg` |
+| macOS Intel | `*mac-intel.with-katago.dmg` |
 | Linux | `*linux64.with-katago.zip` |
 
 ## 三步開始

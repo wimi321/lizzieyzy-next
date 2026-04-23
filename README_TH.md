@@ -66,8 +66,8 @@
 | Windows, OpenCL ไม่เสถียร, ใช้ CPU, portable | `*windows64.with-katago.portable.zip` |
 | Windows, การ์ดจอ NVIDIA, ต้องการความเร็ว, portable | `*windows64.nvidia.portable.zip` |
 | Windows, ตั้งค่าเอนจินเอง, portable | `*windows64.without.engine.portable.zip` |
-| macOS Apple Silicon | `*mac-arm64.with-katago.dmg` |
-| macOS Intel | `*mac-amd64.with-katago.dmg` |
+| macOS Apple Silicon | `*mac-apple-silicon.with-katago.dmg` |
+| macOS Intel | `*mac-intel.with-katago.dmg` |
 | Linux | `*linux64.with-katago.zip` |
 
 ## เริ่มต้นใน 3 ขั้นตอน

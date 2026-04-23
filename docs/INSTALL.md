@@ -29,8 +29,8 @@
 | Windows 64 位 | `<date>-windows64.nvidia.installer.exe` | 是 | 是 | 有 NVIDIA 显卡，想保留安装流程 |
 | Windows 64 位 | `<date>-windows64.without.engine.portable.zip` | 是 | 否 | 想自己配引擎，也不想安装 |
 | Windows 64 位 | `<date>-windows64.without.engine.installer.exe` | 是 | 否 | 想保留安装流程，但自己配引擎 |
-| macOS Apple Silicon | `<date>-mac-arm64.with-katago.dmg` | App 自带运行时 | 是 | M 系列 Mac |
-| macOS Intel | `<date>-mac-amd64.with-katago.dmg` | App 自带运行时 | 是 | Intel Mac |
+| macOS Apple Silicon | `<date>-mac-apple-silicon.with-katago.dmg` | App 自带运行时 | 是 | M 系列 Mac |
+| macOS Intel | `<date>-mac-intel.with-katago.dmg` | App 自带运行时 | 是 | Intel Mac |
 | Linux 64 位 | `<date>-linux64.with-katago.zip` | 是 | 是 | Linux 桌面用户 |
 
 一句话建议：
@@ -114,8 +114,8 @@ OpenCL 免安装包也能直接打开 `KataGo 一键设置`，点一次“智能
 
 ### 先确认你的芯片
 
-- `Apple 菜单 -> 关于本机` 中显示 Apple M 系列：下载 `mac-arm64.with-katago.dmg`
-- 显示 Intel：下载 `mac-amd64.with-katago.dmg`
+- `Apple 菜单 -> 关于本机` 中显示 Apple M 系列：下载 `mac-apple-silicon.with-katago.dmg`
+- 显示 Intel：下载 `mac-intel.with-katago.dmg`
 
 ### 安装步骤
 

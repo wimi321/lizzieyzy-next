@@ -93,8 +93,8 @@
 | Windows，NVIDIA 显卡，想安装 | `*windows64.nvidia.installer.exe` |
 | Windows，自己配引擎，免安装 | `*windows64.without.engine.portable.zip` |
 | Windows，自己配引擎，想安装 | `*windows64.without.engine.installer.exe` |
-| macOS Apple Silicon | `*mac-arm64.with-katago.dmg` |
-| macOS Intel | `*mac-amd64.with-katago.dmg` |
+| macOS Apple Silicon | `*mac-apple-silicon.with-katago.dmg` |
+| macOS Intel | `*mac-intel.with-katago.dmg` |
 | Linux | `*linux64.with-katago.zip` |
 
 如果你懒得分辨：

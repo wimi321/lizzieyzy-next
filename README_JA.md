@@ -93,8 +93,8 @@
 | Windows、NVIDIA GPU、インストーラあり | `*windows64.nvidia.installer.exe` |
 | Windows、自分のエンジンを使う、非インストール | `*windows64.without.engine.portable.zip` |
 | Windows、自分のエンジンを使う、インストーラあり | `*windows64.without.engine.installer.exe` |
-| macOS Apple Silicon | `*mac-arm64.with-katago.dmg` |
-| macOS Intel | `*mac-amd64.with-katago.dmg` |
+| macOS Apple Silicon | `*mac-apple-silicon.with-katago.dmg` |
+| macOS Intel | `*mac-intel.with-katago.dmg` |
 | Linux | `*linux64.with-katago.zip` |
 
 迷ったときの目安:

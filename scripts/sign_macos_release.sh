@@ -13,12 +13,13 @@
 #   APPLE_SIGN_IDENTITY    Optional override, e.g. "Developer ID Application: Name (TEAMID)"
 #
 # Usage: sign_macos_release.sh <release-dir> <mac-arch>
-#        release-dir contains the *.dmg produced by jpackage
+#        release-dir contains the public *.dmg asset
 #        mac-arch is either "mac-arm64" or "mac-amd64"
 set -euo pipefail
 
 release_dir="${1:-dist/release}"
 mac_arch="${2:-mac-arm64}"
+entitlements_path="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/packaging/macos-entitlements.plist"
 
 if [[ -z "${APPLE_CERT_P12:-}" || -z "${APPLE_TEAM_ID:-}" ]]; then
   echo "Apple Developer credentials not configured; skipping sign/notarize."
@@ -27,6 +28,11 @@ fi
 
 if ! command -v codesign >/dev/null 2>&1 || ! command -v xcrun >/dev/null 2>&1; then
   echo "codesign or xcrun not available; cannot sign on this host." >&2
+  exit 1
+fi
+
+if [[ ! -f "$entitlements_path" ]]; then
+  echo "Missing macOS entitlements file: $entitlements_path" >&2
   exit 1
 fi
 
@@ -106,7 +112,39 @@ sign_embedded_jar_natives() {
   fi
 }
 
-dmg_pattern="*${mac_arch}*.dmg"
+verify_required_entitlements() {
+  local code_path="$1"
+  local entitlement_dump
+
+  entitlement_dump="$(codesign -d --entitlements /dev/stdout "$code_path" 2>&1 || true)"
+  if [[ -z "$entitlement_dump" ]]; then
+    echo "Failed to read entitlements from $code_path" >&2
+    exit 1
+  fi
+
+  for required_key in \
+    "com.apple.security.cs.allow-jit" \
+    "com.apple.security.cs.allow-unsigned-executable-memory" \
+    "com.apple.security.cs.disable-library-validation"; do
+    if ! grep -q "$required_key" <<<"$entitlement_dump"; then
+      echo "Missing required entitlement $required_key on $code_path" >&2
+      echo "$entitlement_dump" >&2
+      exit 1
+    fi
+  done
+}
+
+case "$mac_arch" in
+  mac-arm64)
+    dmg_pattern="*mac-apple-silicon*.dmg"
+    ;;
+  mac-amd64)
+    dmg_pattern="*mac-intel*.dmg"
+    ;;
+  *)
+    dmg_pattern="*${mac_arch}*.dmg"
+    ;;
+esac
 shopt -s nullglob
 dmg_files=( "$release_dir"/$dmg_pattern )
 shopt -u nullglob
@@ -144,8 +182,22 @@ for dmg in "${dmg_files[@]}"; do
     -exec codesign --force --options runtime --timestamp \
                    --keychain "$keychain" --sign "$sign_identity" {} + >/dev/null
 
+  launcher_path="$staged_app/Contents/MacOS/$(basename "$staged_app" .app)"
+  if [[ ! -x "$launcher_path" ]]; then
+    echo "Main launcher not found: $launcher_path" >&2
+    exit 1
+  fi
+
+  codesign --force --options runtime --timestamp \
+           --entitlements "$entitlements_path" \
+           --keychain "$keychain" --sign "$sign_identity" "$launcher_path"
+
   codesign --force --deep --options runtime --timestamp \
+           --entitlements "$entitlements_path" \
            --keychain "$keychain" --sign "$sign_identity" "$staged_app"
+
+  verify_required_entitlements "$staged_app"
+  verify_required_entitlements "$launcher_path"
 
   # Rebuild DMG from the signed app.
   signed_dmg="$work_dir/$(basename "$dmg")"

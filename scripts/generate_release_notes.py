@@ -22,8 +22,8 @@ ASSET_SPECS = [
     ('windows_nvidia_portable', 'windows64.nvidia.portable.zip', 'Windows 64 位，英伟达显卡，免安装', 'Windows x64, NVIDIA GPU, no installer'),
     ('windows_no_engine_installer', 'windows64.without.engine.installer.exe', 'Windows 64 位，想自己配引擎，也想安装器', 'Windows x64, your own engine with installer'),
     ('windows_no_engine_portable', 'windows64.without.engine.portable.zip', 'Windows 64 位，想自己配引擎', 'Windows x64, your own engine'),
-    ('mac_arm64', 'mac-arm64.with-katago.dmg', 'macOS Apple Silicon', 'macOS Apple Silicon'),
-    ('mac_amd64', 'mac-amd64.with-katago.dmg', 'macOS Intel', 'macOS Intel'),
+    ('mac_arm64', 'mac-apple-silicon.with-katago.dmg', 'macOS Apple Silicon', 'macOS Apple Silicon'),
+    ('mac_amd64', 'mac-intel.with-katago.dmg', 'macOS Intel', 'macOS Intel'),
     ('linux64', 'linux64.with-katago.zip', 'Linux 64 位', 'Linux x64'),
 ]
 

@@ -83,13 +83,13 @@ jobs:
         with:
           name: macos-arm64-with-katago
           path: |
-            dist/release/*mac-arm64.with-katago.dmg
+            dist/release/*mac-apple-silicon.with-katago.dmg
 
       - name: Upload assets to release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release upload "${{ inputs.release_tag }}" \
-            dist/release/*mac-arm64.with-katago.dmg \
+            dist/release/*mac-apple-silicon.with-katago.dmg \
             --repo "${{ github.repository }}" \
             --clobber
