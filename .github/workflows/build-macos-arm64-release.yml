@@ -63,7 +63,14 @@ jobs:
           PREFERRED_MODEL_NAME="$MODEL_NAME" MODEL_SOURCE="$MODEL_SOURCE" ./scripts/prepare_bundled_katago.sh
 
       - name: Build macOS arm64 package
-        run: ./scripts/package_macos_dmg.sh "${{ inputs.date_tag }}" 1.0.0 target/lizzie-yzy2.5.3-shaded.jar
+        run: ./scripts/package_macos_dmg.sh "${{ inputs.date_tag }}" 1.0.0 target/lizzie-yzy2.5.3-shaded.jar "${{ inputs.release_tag }}"
+
+      - name: Audit macOS arm64 display version
+        run: |
+          grep -q -- "java-options=-Dlizzie.next.version=${{ inputs.release_tag }}" \
+            "dist/macos/app-image/LizzieYzy Next.app/Contents/app/LizzieYzy Next.cfg"
+          grep -q -- "Release display version: ${{ inputs.release_tag }}" \
+            "dist/release-meta/${{ inputs.date_tag }}-mac-apple-silicon-install.txt"
 
       - name: Sign and notarize (if Apple Developer credentials configured)
         env:

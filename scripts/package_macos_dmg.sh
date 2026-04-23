@@ -8,6 +8,7 @@ source "$ROOT_DIR/scripts/release_metadata.sh"
 DATE_TAG="${1:-$(date +%F)}"
 APP_VERSION="${2:-1.0.0}"
 JAR_PATH="${3:-target/lizzie-yzy2.5.3-shaded.jar}"
+APP_DISPLAY_VERSION="${LIZZIE_NEXT_VERSION:-${4:-$APP_VERSION}}"
 
 JAVA_HOME_DEFAULT="$ROOT_DIR/.tools/jdk-21/jdk-21.0.10.jdk/Contents/Home"
 if [[ -d "$JAVA_HOME_DEFAULT" ]]; then
@@ -101,7 +102,8 @@ jpackage \
   --vendor "wimi321" \
   --description "$APP_DESCRIPTION" \
   --icon "$ICON_PATH" \
-  --java-options "-Xmx4096m"
+  --java-options "-Xmx4096m" \
+  --java-options "-Dlizzie.next.version=$APP_DISPLAY_VERSION"
 
 jpackage \
   --type dmg \
@@ -115,7 +117,8 @@ jpackage \
   --description "$APP_DESCRIPTION" \
   --icon "$ICON_PATH" \
   --mac-package-identifier "$IDENTIFIER" \
-  --java-options "-Xmx4096m"
+  --java-options "-Xmx4096m" \
+  --java-options "-Dlizzie.next.version=$APP_DISPLAY_VERSION"
 
 DMG_FILE="$(ls "$DMG_DIR"/*.dmg | head -n 1)"
 FINAL_DMG="$ROOT_DIR/dist/release/${DATE_TAG}-${PUBLIC_ARCH_TAG}.${PACKAGE_FLAVOR}.dmg"
@@ -129,6 +132,7 @@ cat >"$INSTALL_NOTE" <<EOF
 Package type: unsigned macOS app + dmg
 Build architecture: $ARCH
 Generated on: $DATE_TAG
+Release display version: $APP_DISPLAY_VERSION
 Main asset: $(basename "$FINAL_DMG")
 Engine: $PACKAGE_NOTE
 

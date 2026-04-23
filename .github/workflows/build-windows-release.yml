@@ -74,7 +74,7 @@ jobs:
             serial="${GITHUB_RUN_ATTEMPT:-0}"
           fi
           WINDOWS_BUILD_SERIAL="$serial" \
-            ./scripts/package_windows_exe.sh "${{ inputs.date_tag }}" 1.0.0 target/lizzie-yzy2.5.3-shaded.jar
+            ./scripts/package_windows_exe.sh "${{ inputs.date_tag }}" 1.0.0 target/lizzie-yzy2.5.3-shaded.jar "${{ inputs.release_tag }}"
 
       - name: Validate public Windows assets
         shell: bash
@@ -86,6 +86,7 @@ jobs:
           set -euo pipefail
           note_file="dist/release-meta/${{ inputs.date_tag }}-windows64-install.txt"
           test -f "$note_file"
+          grep -q "Release display version: ${{ inputs.release_tag }}" "$note_file"
           grep -q "Smart Optimize" "$note_file"
           grep -q "first launch should work offline" "$note_file"
           grep -q "qiyi71w/readboard v2.0.2" "$note_file"
@@ -104,13 +105,16 @@ jobs:
           grep -Eq '^Windows OpenCL bundle: katago-v[0-9.]+-opencl-windows-x64\.zip$' "dist/windows/input-opencl/engines/katago/VERSION.txt"
           test -f "dist/windows/app-image-with-katago/LizzieYzy Next/LizzieYzy Next.exe"
           test -f "dist/windows/app-image-with-katago/LizzieYzy Next/app/PROJECT_INFO.txt"
+          grep -q "java-options=-Dlizzie.next.version=${{ inputs.release_tag }}" "dist/windows/app-image-with-katago/LizzieYzy Next/app/LizzieYzy Next.cfg"
           test -f "dist/windows/app-image-with-katago/LizzieYzy Next/app/readboard/readboard.exe"
           test -f "dist/windows/app-image-with-katago/LizzieYzy Next/app/readboard/lizzieyzy-next-readboard-manifest.txt"
           test -f "dist/windows/app-image-opencl/LizzieYzy Next OpenCL/LizzieYzy Next OpenCL.exe"
           test -f "dist/windows/app-image-opencl/LizzieYzy Next OpenCL/app/PROJECT_INFO.txt"
+          grep -q "java-options=-Dlizzie.next.version=${{ inputs.release_tag }}" "dist/windows/app-image-opencl/LizzieYzy Next OpenCL/app/LizzieYzy Next OpenCL.cfg"
           test -f "dist/windows/app-image-opencl/LizzieYzy Next OpenCL/app/readboard/readboard.exe"
           test -f "dist/windows/app-image-nvidia/LizzieYzy Next NVIDIA/LizzieYzy Next NVIDIA.exe"
           test -f "dist/windows/app-image-nvidia/LizzieYzy Next NVIDIA/app/PROJECT_INFO.txt"
+          grep -q "java-options=-Dlizzie.next.version=${{ inputs.release_tag }}" "dist/windows/app-image-nvidia/LizzieYzy Next NVIDIA/app/LizzieYzy Next NVIDIA.cfg"
           test -f "dist/windows/app-image-nvidia/LizzieYzy Next NVIDIA/app/readboard/readboard.exe"
           test -f "dist/windows/input-nvidia/engines/katago/windows-x64/katago.exe"
           test -f "dist/windows/input-nvidia/PROJECT_INFO.txt"
@@ -118,6 +122,9 @@ jobs:
           test -f "dist/windows/input-nvidia/readboard/lizzieyzy-next-readboard-manifest.txt"
           test -f "dist/windows/input-nvidia/engines/katago/windows-x64/cudart64_12.dll"
           test -f "dist/windows/input-nvidia/engines/katago/windows-x64/cublas64_12.dll"
+          test -f "dist/windows/app-image-without.engine/LizzieYzy Next/LizzieYzy Next.exe"
+          test -f "dist/windows/app-image-without.engine/LizzieYzy Next/app/PROJECT_INFO.txt"
+          grep -q "java-options=-Dlizzie.next.version=${{ inputs.release_tag }}" "dist/windows/app-image-without.engine/LizzieYzy Next/app/LizzieYzy Next.cfg"
           test -f "dist/windows/input-nvidia/engines/katago/windows-x64/cublasLt64_12.dll"
           test -f "dist/windows/input-nvidia/engines/katago/windows-x64/cudnn64_8.dll"
           test -f "dist/windows/input-nvidia/engines/katago/windows-x64/libz.dll"

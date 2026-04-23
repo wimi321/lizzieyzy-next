@@ -51,4 +51,5 @@ jobs:
         run: |
           gh release edit "${{ inputs.release_tag }}" \
             --repo "${{ github.repository }}" \
+            --title "LizzieYzy Next ${{ inputs.release_tag }}" \
             --notes-file "dist/release-meta/${{ inputs.date_tag }}-release-notes.md"

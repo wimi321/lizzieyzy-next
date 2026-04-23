@@ -8,6 +8,7 @@ source "$ROOT_DIR/scripts/release_metadata.sh"
 DATE_TAG="${1:-$(date +%F)}"
 APP_VERSION="${2:-1.0.0}"
 JAR_PATH="${3:-target/lizzie-yzy2.5.3-shaded.jar}"
+APP_DISPLAY_VERSION="${LIZZIE_NEXT_VERSION:-${4:-$APP_VERSION}}"
 WINDOWS_UPGRADE_UUID="${WINDOWS_UPGRADE_UUID:-c2ef73ec-f99a-4f3d-b950-f52c0186122a}"
 
 if ! command -v jpackage >/dev/null 2>&1; then
@@ -379,7 +380,8 @@ build_app_image() {
     --vendor "wimi321" \
     --description "$app_description" \
     --icon "$ICON_PATH" \
-    --java-options "-Xmx4096m" >&2
+    --java-options "-Xmx4096m" \
+    --java-options "-Dlizzie.next.version=$APP_DISPLAY_VERSION" >&2
   log_step "Finished Windows app image: $app_name [$flavor]"
 
   printf '%s\n' "$app_image_dir/$app_name"
@@ -422,7 +424,8 @@ build_installer() {
     --win-menu \
     --win-shortcut \
     --win-upgrade-uuid "$upgrade_uuid" \
-    --java-options "-Xmx4096m" >&2
+    --java-options "-Xmx4096m" \
+    --java-options "-Dlizzie.next.version=$APP_DISPLAY_VERSION" >&2
   log_step "Finished Windows installer: $app_name [$flavor]"
 
   find "$installer_dir" -maxdepth 1 -type f -name '*.exe' | head -n 1
@@ -438,6 +441,7 @@ write_windows_install_note() {
   cat >"$note_file" <<EOF
 Package type: Windows x64 release assets
 Generated on: $DATE_TAG
+Release display version: $APP_DISPLAY_VERSION
 
 How to pick the right file:
 EOF

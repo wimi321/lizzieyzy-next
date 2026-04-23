@@ -166,6 +166,13 @@ def format_asset_en(asset_name: str | None, repo: str, release_tag: str | None) 
     return f'[`{asset_name}`]({url})'
 
 
+def release_heading(release_tag: str | None) -> str:
+    tag = (release_tag or '').strip()
+    if not tag:
+        return '# LizzieYzy Next'
+    return f'# LizzieYzy Next {tag}'
+
+
 def validate_release_sections(sections: list[dict[str, object]]) -> None:
     languages = tuple(str(section.get('language', '')) for section in sections)
     if languages != RELEASE_LANGUAGES:
@@ -632,7 +639,7 @@ def build_release_notes(asset_map: dict[str, str | None], bundle: dict[str, str]
 
     validate_release_sections(sections)
 
-    return '# LizzieYzy Next\n\n' + '\n\n---\n\n'.join(
+    return release_heading(release_tag) + '\n\n' + '\n\n---\n\n'.join(
         render_language_section(section) for section in sections
     ) + '\n'
 

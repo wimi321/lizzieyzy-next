@@ -52,7 +52,8 @@ public class Lizzie {
   public static Leelaz leelaz2;
   public static String appName = "LizzieYzy Next";
   public static String lizzieVersion = "2.5.3";
-  public static String nextVersion = "1.0.0";
+  private static final String DEFAULT_NEXT_VERSION = "1.0.0-dev";
+  public static String nextVersion = resolveNextVersion();
   public static String checkVersion = "230614";
   public static boolean readMode = false;
   private static String[] mainArgs;
@@ -190,6 +191,31 @@ public class Lizzie {
 
   public static String getAppDisplayName() {
     return appName + " " + nextVersion;
+  }
+
+  public static String resolveNextVersion() {
+    return chooseNextVersion(
+        System.getProperty("lizzie.next.version"), System.getenv("LIZZIE_NEXT_VERSION"));
+  }
+
+  static String chooseNextVersion(String propertyValue, String environmentValue) {
+    String propertyVersion = trimToNull(propertyValue);
+    if (propertyVersion != null) {
+      return propertyVersion;
+    }
+    String environmentVersion = trimToNull(environmentValue);
+    if (environmentVersion != null) {
+      return environmentVersion;
+    }
+    return DEFAULT_NEXT_VERSION;
+  }
+
+  private static String trimToNull(String value) {
+    if (value == null) {
+      return null;
+    }
+    String trimmed = value.trim();
+    return trimmed.isEmpty() ? null : trimmed;
   }
 
   private static void ensureWritableWorkingDir() {
