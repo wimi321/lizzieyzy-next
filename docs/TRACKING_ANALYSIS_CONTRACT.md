@@ -72,6 +72,14 @@
 `tracking-engine-skip-warning` 配置必须可在 ConfigDialog2 中重置，否则用户无法恢复警告。
 重置操作必须遵循 ConfigDialog2 标准的 OK/Cancel 流程——点重置按钮只暂存意图，OK 时才真正写入 config，Cancel 时不生效。
 
+## 命令转换合约
+
+`TrackingEngine.toAnalysisCommand` 必须把主引擎命令中的 `gtp` 子命令 token 替换为 `analysis`，并补充 analysis 模式必需参数：
+- 使用 `(\\s)gtp(\\s|$)` 而非 `\\bgtp\\b` 进行匹配，确保只替换"两侧均为空白或行尾"的独立 token
+- 路径中含 `gtp` 字符串（如 `/usr/local/gtp/bin/katago`）不得被破坏
+- `numAnalysisThreads=1` 与 `nnMaxBatchSize=8` 必须出现在最终命令中（追加到 `-override-config`，已存在则跳过）
+- **已知限制**：如果可执行路径**目录名含空格且包含 gtp 子串**（如 `/path with gtp dir/katago gtp ...`），`replaceFirst` 会优先匹配路径里的 `gtp`。生产环境中 KataGo 通常装在简单路径下，此 case 不在保障范围；如需支持需切换到 `Utils.splitCommand` token 级解析。
+
 ## EDT 防御
 
 `TrackingConsolePane` 的按钮事件回调可能在主窗口尚未完全初始化或正在销毁时触发。所有访问 `Lizzie.frame.xxx` 的回调都必须先做 `Lizzie.frame != null` 防御。
