@@ -147,7 +147,7 @@ jobs:
         shell: powershell
         run: |
           $appExe = Join-Path $PWD "dist\windows\app-image-with-katago\LizzieYzy Next\LizzieYzy Next.exe"
-          & "$PWD\scripts\windows_smoke_test.ps1" -AppExe $appExe -WaitSeconds 60
+          & "$PWD\scripts\windows_smoke_test.ps1" -AppExe $appExe -WaitSeconds 60 -ProbeBoardSync
 
       - name: Smoke test Windows upgrade install path
         shell: powershell

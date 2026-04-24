@@ -12,7 +12,9 @@ param(
 
     [switch]$PreserveConfig,
 
-    [switch]$RequireConfig
+    [switch]$RequireConfig,
+
+    [switch]$ProbeBoardSync
 )
 
 $ErrorActionPreference = "Stop"
@@ -212,6 +214,159 @@ function Invoke-BundledKataGoBenchmarkProbe {
     }
 }
 
+function Get-NativeReadBoardAssets {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$AppExe
+    )
+
+    $appDir = Split-Path -Parent $AppExe
+    $readBoardDir = Join-Path (Join-Path $appDir "app") "readboard"
+    $readBoardExe = Join-Path $readBoardDir "readboard.exe"
+    if (-not (Test-Path -LiteralPath $readBoardExe)) {
+        throw "Native readboard.exe was not found in the packaged app layout: $readBoardExe"
+    }
+
+    return [pscustomobject]@{
+        Directory = $readBoardDir
+        ExePath = $readBoardExe
+    }
+}
+
+function Stop-NativeReadBoardProcesses {
+    param(
+        [string]$ReadBoardExePath = ""
+    )
+
+    Get-CimInstance Win32_Process -Filter "Name = 'readboard.exe'" -ErrorAction SilentlyContinue |
+        Where-Object {
+            (-not $ReadBoardExePath) -or
+            ($_.ExecutablePath -and ($_.ExecutablePath -ieq $ReadBoardExePath)) -or
+            ($_.CommandLine -and ($_.CommandLine -like "*$ReadBoardExePath*"))
+        } |
+        ForEach-Object {
+            Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue
+        }
+}
+
+function Invoke-NativeReadBoardPipeProbe {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$AppExe
+    )
+
+    $assets = Get-NativeReadBoardAssets -AppExe $AppExe
+    Stop-NativeReadBoardProcesses -ReadBoardExePath $assets.ExePath
+
+    $stdoutPath = Join-Path $assets.Directory "lizzieyzy-next-readboard-probe.stdout.txt"
+    $stderrPath = Join-Path $assets.Directory "lizzieyzy-next-readboard-probe.stderr.txt"
+    Remove-Item -LiteralPath $stdoutPath, $stderrPath -Force -ErrorAction SilentlyContinue
+
+    $process = $null
+    try {
+        $psi = [System.Diagnostics.ProcessStartInfo]::new()
+        $psi.FileName = $assets.ExePath
+        $psi.WorkingDirectory = $assets.Directory
+        $psi.UseShellExecute = $false
+        $psi.RedirectStandardInput = $true
+        $psi.RedirectStandardOutput = $true
+        $psi.RedirectStandardError = $true
+        $psi.CreateNoWindow = $false
+        $psi.Arguments = 'yzy " " " " " " 0 en -1'
+
+        Write-Host "Probing native readboard pipe launch: $($assets.ExePath)"
+        $process = [System.Diagnostics.Process]::Start($psi)
+        Start-Sleep -Seconds 5
+
+        if ($process.HasExited) {
+            $stdout = $process.StandardOutput.ReadToEnd()
+            $stderr = $process.StandardError.ReadToEnd()
+            [System.IO.File]::WriteAllText($stdoutPath, $stdout)
+            [System.IO.File]::WriteAllText($stderrPath, $stderr)
+            throw "Native readboard exited during pipe launch probe with code $($process.ExitCode). Stdout: $stdout Stderr: $stderr"
+        }
+
+        Write-Host "Native readboard pipe probe passed. Process id: $($process.Id)"
+    }
+    finally {
+        if ($process -and -not $process.HasExited) {
+            Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
+        }
+        Stop-NativeReadBoardProcesses -ReadBoardExePath $assets.ExePath
+    }
+}
+
+function Invoke-BoardSyncHotkeyProbe {
+    param(
+        [Parameter(Mandatory = $true)]
+        [System.Diagnostics.Process]$AppProcess,
+
+        [Parameter(Mandatory = $true)]
+        [string]$AppExe,
+
+        [int]$TimeoutSeconds = 25
+    )
+
+    $assets = Get-NativeReadBoardAssets -AppExe $AppExe
+    Stop-NativeReadBoardProcesses -ReadBoardExePath $assets.ExePath
+
+    Add-Type -AssemblyName System.Windows.Forms
+    Add-Type -TypeDefinition @"
+using System;
+using System.Runtime.InteropServices;
+public static class LizzieYzySmokeWin32 {
+    [DllImport("user32.dll")]
+    public static extern bool SetForegroundWindow(IntPtr hWnd);
+    [DllImport("user32.dll")]
+    public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+}
+"@
+
+    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+    $windowHandle = [IntPtr]::Zero
+    while ((Get-Date) -lt $deadline) {
+        $AppProcess.Refresh()
+        if ($AppProcess.HasExited) {
+            throw "Application exited before board sync hotkey probe could run."
+        }
+        if ($AppProcess.MainWindowHandle -ne [IntPtr]::Zero) {
+            $windowHandle = $AppProcess.MainWindowHandle
+            break
+        }
+        Start-Sleep -Milliseconds 500
+    }
+
+    if ($windowHandle -eq [IntPtr]::Zero) {
+        throw "Application main window handle was not available for board sync hotkey probe."
+    }
+
+    [void][LizzieYzySmokeWin32]::ShowWindow($windowHandle, 9)
+    [void][LizzieYzySmokeWin32]::SetForegroundWindow($windowHandle)
+    Start-Sleep -Seconds 1
+
+    Write-Host "Sending Alt+O to trigger native board sync."
+    [System.Windows.Forms.SendKeys]::SendWait("%o")
+
+    $probeDeadline = (Get-Date).AddSeconds($TimeoutSeconds)
+    while ((Get-Date) -lt $probeDeadline) {
+        Start-Sleep -Milliseconds 500
+        $match = Get-CimInstance Win32_Process -Filter "Name = 'readboard.exe'" -ErrorAction SilentlyContinue |
+            Where-Object {
+                ($_.ExecutablePath -and ($_.ExecutablePath -ieq $assets.ExePath)) -or
+                ($_.CommandLine -and ($_.CommandLine -like "*$($assets.ExePath)*")) -or
+                ($_.ExecutablePath -and ($_.ExecutablePath -like "*\app\readboard\readboard.exe"))
+            } |
+            Select-Object -First 1
+        if ($match) {
+            Write-Host "Board sync hotkey probe passed. readboard.exe process id: $($match.ProcessId)"
+            Stop-NativeReadBoardProcesses -ReadBoardExePath $assets.ExePath
+            return
+        }
+    }
+
+    throw "Alt+O did not start packaged native readboard.exe within $TimeoutSeconds seconds."
+}
+
 if (-not (Test-Path -LiteralPath $AppExe)) {
     throw "App executable not found: $AppExe"
 }
@@ -269,6 +424,10 @@ try {
                 Assert-NoBundledEngineStartupFailure -RuntimeLogDir $requiredRuntimeLogDir
             }
             Invoke-BundledKataGoBenchmarkProbe -AppExe $AppExe -ConfigDir $activeConfigDir
+            if ($ProbeBoardSync) {
+                Invoke-NativeReadBoardPipeProbe -AppExe $AppExe
+                Invoke-BoardSyncHotkeyProbe -AppProcess $process -AppExe $AppExe
+            }
             if ($hasRuntimeLogs) {
                 Write-Host "Smoke test passed. Config files and bundled KataGo runtime logs were created."
             }
