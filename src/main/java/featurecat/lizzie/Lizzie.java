@@ -4,6 +4,7 @@ import featurecat.lizzie.analysis.AnalysisEngine;
 import featurecat.lizzie.analysis.EngineManager;
 import featurecat.lizzie.analysis.KataEstimate;
 import featurecat.lizzie.analysis.Leelaz;
+import featurecat.lizzie.gui.AppleStyleSupport;
 import featurecat.lizzie.gui.AwareScaled;
 import featurecat.lizzie.gui.FirstUseSettings;
 import featurecat.lizzie.gui.GtpConsolePane;
@@ -14,6 +15,7 @@ import featurecat.lizzie.gui.web.WebBoardManager;
 import featurecat.lizzie.rules.Board;
 import featurecat.lizzie.util.KataGoAutoSetupHelper;
 import featurecat.lizzie.util.KataGoAutoSetupHelper.SetupSnapshot;
+import featurecat.lizzie.util.KataGoRuntimeHelper;
 import featurecat.lizzie.util.MultiOutputStream;
 import featurecat.lizzie.util.Utils;
 import java.awt.Font;
@@ -49,7 +51,10 @@ public class Lizzie {
   public static Board board;
   public static Leelaz leelaz;
   public static Leelaz leelaz2;
+  public static String appName = "LizzieYzy Next";
   public static String lizzieVersion = "2.5.3";
+  private static final String DEFAULT_NEXT_VERSION = "1.0.0-dev";
+  public static String nextVersion = resolveNextVersion();
   public static String checkVersion = "230614";
   public static boolean readMode = false;
   private static String[] mainArgs;
@@ -71,14 +76,13 @@ public class Lizzie {
     Utils.applyMaintainedDefaultSettings();
     if (config.logConsoleToFile) {
       PrintStream oldPrintStream = System.out;
-      FileOutputStream bos =
-          new FileOutputStream("LastConsoleLogs_" + lizzieVersion + ".txt", true);
+      FileOutputStream bos = new FileOutputStream("LastConsoleLogs_" + nextVersion + ".txt", true);
       MultiOutputStream multi = new MultiOutputStream(new PrintStream(bos), oldPrintStream);
       System.setOut(new PrintStream(multi));
 
       PrintStream oldErrorPrintStream = System.err;
       FileOutputStream bosError =
-          new FileOutputStream("LastErrorLogs_" + lizzieVersion + ".txt", true);
+          new FileOutputStream("LastErrorLogs_" + nextVersion + ".txt", true);
       MultiOutputStream multiError =
           new MultiOutputStream(new PrintStream(bosError), oldErrorPrintStream);
       System.setErr(new PrintStream(multiError));
@@ -185,6 +189,35 @@ public class Lizzie {
       }
     }
     if (Lizzie.config.autoReplayBranch) frame.autoReplayBranch();
+  }
+
+  public static String getAppDisplayName() {
+    return appName + " " + nextVersion;
+  }
+
+  public static String resolveNextVersion() {
+    return chooseNextVersion(
+        System.getProperty("lizzie.next.version"), System.getenv("LIZZIE_NEXT_VERSION"));
+  }
+
+  static String chooseNextVersion(String propertyValue, String environmentValue) {
+    String propertyVersion = trimToNull(propertyValue);
+    if (propertyVersion != null) {
+      return propertyVersion;
+    }
+    String environmentVersion = trimToNull(environmentValue);
+    if (environmentVersion != null) {
+      return environmentVersion;
+    }
+    return DEFAULT_NEXT_VERSION;
+  }
+
+  private static String trimToNull(String value) {
+    if (value == null) {
+      return null;
+    }
+    String trimmed = value.trim();
+    return trimmed.isEmpty() ? null : trimmed;
   }
 
   private static void ensureWritableWorkingDir() {
@@ -438,6 +471,8 @@ public class Lizzie {
                 e.printStackTrace();
               }
             }
+            KataGoRuntimeHelper.startAppleSiliconAutoOptimizationAsync();
+            KataGoRuntimeHelper.startFirstRunBenchmarkAsync();
           }
         });
     //    if (config.autoCheckVersion) {
@@ -455,7 +490,10 @@ public class Lizzie {
       if (System.getProperty("os.name").contains("Mac")) {
         if (config.useJavaLooks)
           setUIFont(new javax.swing.plaf.FontUIResource(Config.sysDefaultFontName, Font.PLAIN, 12));
-        else System.setProperty("apple.laf.useScreenMenuBar", "true");
+        else {
+          // Keep the app menu visible inside the main window.
+          System.setProperty("apple.laf.useScreenMenuBar", "false");
+        }
       } else {
         setUIFont(new javax.swing.plaf.FontUIResource(Config.sysDefaultFontName, Font.PLAIN, 12));
       }
@@ -473,6 +511,7 @@ public class Lizzie {
         // String lookAndFeel = "com.sun.java.swing.plaf.windows.WindowsClassicLookAndFeel";
         UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
       }
+      AppleStyleSupport.applyUiDefaults();
     } catch (IllegalAccessException e) {
       e.printStackTrace();
     } catch (ClassNotFoundException e) {
@@ -493,6 +532,7 @@ public class Lizzie {
         String lookAndFeel = UIManager.getSystemLookAndFeelClassName();
         UIManager.setLookAndFeel(lookAndFeel);
       }
+      AppleStyleSupport.applyUiDefaults();
     } catch (IllegalAccessException e) {
       e.printStackTrace();
     } catch (ClassNotFoundException e) {

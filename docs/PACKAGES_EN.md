@@ -28,8 +28,8 @@ This page describes the public release layout of the maintained `LizzieYzy Next`
 | Windows x64 NVIDIA installer | `<date>-windows64.nvidia.installer.exe` | NVIDIA GPU users who prefer an installer |
 | Windows x64 no-engine portable | `<date>-windows64.without.engine.portable.zip` | Custom KataGo setup |
 | Windows x64 no-engine installer | `<date>-windows64.without.engine.installer.exe` | Users who want installer flow with their own engine |
-| macOS Apple Silicon bundle | `<date>-mac-arm64.with-katago.dmg` | M-series Macs |
-| macOS Intel bundle | `<date>-mac-amd64.with-katago.dmg` | Intel Macs |
+| macOS Apple Silicon bundle | `<date>-mac-apple-silicon.with-katago.dmg` | M-series Macs |
+| macOS Intel bundle | `<date>-mac-intel.with-katago.dmg` | Intel Macs |
 | Linux x64 bundle | `<date>-linux64.with-katago.zip` | Linux desktop users |
 
 Notes:
@@ -51,8 +51,8 @@ Notes:
 | `windows64.nvidia.installer.exe` | Bundled | Bundled | Bundled | Install, then launch `LizzieYzy Next NVIDIA` |
 | `windows64.without.engine.portable.zip` | Bundled | Not bundled | Not bundled | Unzip and run `LizzieYzy Next.exe` |
 | `windows64.without.engine.installer.exe` | Bundled | Not bundled | Not bundled | Install, then launch from Start Menu or desktop |
-| `mac-arm64.with-katago.dmg` | App runtime | Bundled | Bundled | Drag to Applications |
-| `mac-amd64.with-katago.dmg` | App runtime | Bundled | Bundled | Drag to Applications |
+| `mac-apple-silicon.with-katago.dmg` | App runtime | Bundled | Bundled | Drag to Applications |
+| `mac-intel.with-katago.dmg` | App runtime | Bundled | Bundled | Drag to Applications |
 | `linux64.with-katago.zip` | Bundled | Bundled | Bundled | Run `start-linux64.sh` |
 
 ## Simple Download Advice
@@ -95,10 +95,11 @@ Paths:
 
 ## Bundled Board Sync Helper
 
-- Main release packages now ship the simplified `readboard_java` helper as part of the main product
-- Windows / Linux path: `Lizzieyzy/readboard_java/`
+- Windows release packages now include native `readboard/readboard.exe` and its dependency files, so normal users do not need to download a separate board sync tool
+- The simplified `readboard_java` helper still ships as a fallback
+- Windows native path: `Lizzieyzy/readboard/`
+- Windows / Linux Java helper path: `Lizzieyzy/readboard_java/`
 - macOS path: `LizzieYzy Next.app/Contents/app/readboard_java/`
-- The older Windows-native `readboard` folder is now treated as a legacy compatibility path, not the main release dependency
 
 ## How To Read Old Versus New Release Layouts
 

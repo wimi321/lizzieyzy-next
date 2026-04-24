@@ -117,7 +117,7 @@ public class EstimateResults extends JDialog {
         Lizzie.config.isChinese
             ? (Lizzie.javaVersion == 8 ? 255 : 245)
             : (Lizzie.javaVersion == 8 ? 265 : 255),
-        201);
+        245);
 
     this.setLocNearBoard();
 
@@ -303,10 +303,14 @@ public class EstimateResults extends JDialog {
   @Override
   public void paint(Graphics g) // 画图对象
       {
-    int width = getWidth();
-    int height = getHeight();
-    int topCap = (int) ((Lizzie.sysScaleFactor - Lizzie.javaScaleFactor) * 20) + 5;
-    Graphics2D g2 = (Graphics2D) g;
+    super.paint(g);
+    Insets frameInsets = getInsets();
+    int buttonHeight = buttonpanel == null ? 0 : buttonpanel.getHeight();
+    int width = Math.max(1, getWidth() - frameInsets.left - frameInsets.right);
+    int height = Math.max(1, getHeight() - frameInsets.top - frameInsets.bottom - buttonHeight);
+    int topCap = 8;
+    Graphics2D g2 = (Graphics2D) g.create();
+    g2.translate(frameInsets.left, frameInsets.top);
     if (cachedBackgroundImage == null) {
       try {
         cachedBackgroundImage =
@@ -547,6 +551,7 @@ public class EstimateResults extends JDialog {
     btnAuto.repaint();
     btnArea.repaint();
     btnSettings.repaint();
+    g2.dispose();
   }
 
   //  private void invisiable() {

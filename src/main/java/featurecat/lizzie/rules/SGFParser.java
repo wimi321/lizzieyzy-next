@@ -1074,8 +1074,8 @@ public class SGFParser {
               || Lizzie.board.isPkBoardKataW)
             generalProps.append(
                 String.format(
-                    "KM[%s]PW[%s]PB[%s]DT[%s]DZ[KW]AP[Lizzie: %s]RE[%s]SZ[%s]CA[UTF-8]",
-                    komi, playerW, playerB, date, Lizzie.lizzieVersion, result, boardSizeTag));
+                    "KM[%s]PW[%s]PB[%s]DT[%s]DZ[KW]AP[LizzieYzy Next: %s]RE[%s]SZ[%s]CA[UTF-8]",
+                    komi, playerW, playerB, date, Lizzie.nextVersion, result, boardSizeTag));
           else if (Lizzie.engineManager.engineList.get(
                       EngineManager.engineGameInfo.blackEngineIndex)
                   .isKatago
@@ -1084,24 +1084,24 @@ public class SGFParser {
               || Lizzie.board.isPkBoardKataB)
             generalProps.append(
                 String.format(
-                    "KM[%s]PW[%s]PB[%s]DT[%s]DZ[KB]AP[Lizzie: %s]RE[%s]SZ[%s]CA[UTF-8]",
-                    komi, playerW, playerB, date, Lizzie.lizzieVersion, result, boardSizeTag));
+                    "KM[%s]PW[%s]PB[%s]DT[%s]DZ[KB]AP[LizzieYzy Next: %s]RE[%s]SZ[%s]CA[UTF-8]",
+                    komi, playerW, playerB, date, Lizzie.nextVersion, result, boardSizeTag));
           else
             generalProps.append(
                 String.format(
-                    "KM[%s]PW[%s]PB[%s]DT[%s]DZ[Y]AP[Lizzie: %s]RE[%s]SZ[%s]CA[UTF-8]",
-                    komi, playerW, playerB, date, Lizzie.lizzieVersion, result, boardSizeTag));
+                    "KM[%s]PW[%s]PB[%s]DT[%s]DZ[Y]AP[LizzieYzy Next: %s]RE[%s]SZ[%s]CA[UTF-8]",
+                    komi, playerW, playerB, date, Lizzie.nextVersion, result, boardSizeTag));
         } else {
           if (Lizzie.leelaz.isKatago || Lizzie.board.isKataBoard)
             generalProps.append(
                 String.format(
-                    "KM[%s]PW[%s]PB[%s]DT[%s]DZ[G]AP[Lizzie: %s]RE[%s]SZ[%s]CA[UTF-8]",
-                    komi, playerW, playerB, date, Lizzie.lizzieVersion, result, boardSizeTag));
+                    "KM[%s]PW[%s]PB[%s]DT[%s]DZ[G]AP[LizzieYzy Next: %s]RE[%s]SZ[%s]CA[UTF-8]",
+                    komi, playerW, playerB, date, Lizzie.nextVersion, result, boardSizeTag));
           else
             generalProps.append(
                 String.format(
-                    "KM[%s]PW[%s]PB[%s]DT[%s]AP[Lizzie: %s]RE[%s]SZ[%s]CA[UTF-8]",
-                    komi, playerW, playerB, date, Lizzie.lizzieVersion, result, boardSizeTag));
+                    "KM[%s]PW[%s]PB[%s]DT[%s]AP[LizzieYzy Next: %s]RE[%s]SZ[%s]CA[UTF-8]",
+                    komi, playerW, playerB, date, Lizzie.nextVersion, result, boardSizeTag));
         }
       }
       // To append the winrate to the comment of sgf we might need to update the

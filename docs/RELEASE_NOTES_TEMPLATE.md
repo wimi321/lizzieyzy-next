@@ -41,8 +41,8 @@
 | Windows 64 位，NVIDIA 显卡 | `<date>-windows64.nvidia.installer.exe` | 想保留安装流程的 NVIDIA 版 |
 | Windows 64 位 | `<date>-windows64.without.engine.portable.zip` | 想自己决定分析引擎时再选 |
 | Windows 64 位 | `<date>-windows64.without.engine.installer.exe` | 想保留安装流程，但自己决定分析引擎 |
-| macOS Apple Silicon | `<date>-mac-arm64.with-katago.dmg` | M1 / M2 / M3 / M4 等机器 |
-| macOS Intel | `<date>-mac-amd64.with-katago.dmg` | Intel 芯片 Mac |
+| macOS Apple Silicon | `<date>-mac-apple-silicon.with-katago.dmg` | M1 / M2 / M3 / M4 等机器 |
+| macOS Intel | `<date>-mac-intel.with-katago.dmg` | Intel 芯片 Mac |
 | Linux 64 位 | `<date>-linux64.with-katago.zip` | Linux 64 位整合包 |
 
 ## 这次你会直接感受到什么
@@ -69,8 +69,8 @@
 - Windows x64 NVIDIA installer alternative: choose `<date>-windows64.nvidia.installer.exe`
 - Windows x64 custom engine: choose `<date>-windows64.without.engine.portable.zip`
 - Windows x64 custom engine installer: choose `<date>-windows64.without.engine.installer.exe`
-- macOS Apple Silicon: choose `<date>-mac-arm64.with-katago.dmg`
-- macOS Intel: choose `<date>-mac-amd64.with-katago.dmg`
+- macOS Apple Silicon: choose `<date>-mac-apple-silicon.with-katago.dmg`
+- macOS Intel: choose `<date>-mac-intel.with-katago.dmg`
 - Linux x64: choose `<date>-linux64.with-katago.zip`
 
 ## Highlights

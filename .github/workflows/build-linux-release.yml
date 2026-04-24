@@ -10,7 +10,7 @@ on:
       release_tag:
         description: Existing GitHub release tag to upload into
         required: true
-        default: 2.5.3-next-2026-03-24.2
+        default: 1.0.0-next-2026-03-24.2
 
 permissions:
   contents: write
@@ -61,7 +61,14 @@ jobs:
           PREFERRED_MODEL_NAME="$MODEL_NAME" MODEL_SOURCE="$MODEL_SOURCE" ./scripts/prepare_bundled_katago.sh
 
       - name: Build Linux package
-        run: ./scripts/package_release.sh "${{ inputs.date_tag }}" target/lizzie-yzy2.5.3-shaded.jar
+        run: ./scripts/package_release.sh "${{ inputs.date_tag }}" target/lizzie-yzy2.5.3-shaded.jar "${{ inputs.release_tag }}"
+
+      - name: Audit Linux display version
+        run: |
+          grep -q -- "-Dlizzie.next.version=\"${{ inputs.release_tag }}\"" \
+            "dist/stage/${{ inputs.date_tag }}-linux64.with-katago/start-linux64.sh"
+          grep -q -- "Release display version: ${{ inputs.release_tag }}" \
+            "dist/release-meta/${{ inputs.date_tag }}-linux64-install.txt"
 
       - name: Validate public Linux assets
         run: bash ./scripts/validate_release_assets.sh linux dist/release "${{ inputs.date_tag }}"

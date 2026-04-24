@@ -1,10 +1,8 @@
 package featurecat.lizzie.gui;
 
 import featurecat.lizzie.Config;
-import featurecat.lizzie.theme.MorandiPalette;
 import java.awt.Font;
 import javax.swing.JMenu;
-import javax.swing.border.EmptyBorder;
 
 public class JFontMenu extends JMenu {
   public JFontMenu() {
@@ -21,10 +19,12 @@ public class JFontMenu extends JMenu {
   }
 
   private void initStyle() {
-    this.setOpaque(true);
-    this.setBackground(MorandiPalette.TOOLBAR_BG);
-    this.setForeground(MorandiPalette.MENU_ITEM_TEXT);
-    this.setBorder(new EmptyBorder(2, 4, 2, 4));
-    this.setFocusPainted(false);
+    AppleStyleSupport.styleMenuItem(this);
+  }
+
+  @Override
+  public void updateUI() {
+    super.updateUI();
+    AppleStyleSupport.styleMenuItem(this);
   }
 }

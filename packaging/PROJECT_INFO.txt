@@ -1,0 +1,31 @@
+LizzieYzy Next
+
+Project:
+https://github.com/wimi321/lizzieyzy-next
+
+Releases:
+https://github.com/wimi321/lizzieyzy-next/releases
+
+Issues:
+https://github.com/wimi321/lizzieyzy-next/issues
+
+China mirror (Baidu Netdisk):
+https://pan.baidu.com/s/1wthaL8YwGMxy_u0U7Mabpw?pwd=3i8w
+Code: 3i8w
+
+中文简介
+LizzieYzy Next 是持续维护中的 LizzieYzy / KataGo 围棋分析界面，重点提供：
+- 输入野狐昵称获取最新公开棋谱
+- 更顺手的整局快速分析与胜率走势查看
+- Windows、macOS、Linux 多平台发布包
+- 更适合普通用户开箱即用的内置引擎方案
+
+English
+LizzieYzy Next is an actively maintained LizzieYzy / KataGo GUI for Go review, focused on:
+- Fox nickname based public-game fetch
+- Faster whole-game analysis and winrate overview
+- Cross-platform releases for Windows, macOS, and Linux
+- Easier out-of-box bundled engine experience
+
+If this package helps you, star the project and watch Releases:
+https://github.com/wimi321/lizzieyzy-next

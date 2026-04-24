@@ -2662,8 +2662,8 @@ class BoardNodeKindHistoryPipelineTest {
       Lizzie.board.setHistory(history);
 
       String expected =
-          "(;AB[aa]AW[cc]PL[W]SZ[3]KM[6.5]PW[White]PB[Black]DT[2020-01-02]AP[Lizzie: "
-              + Lizzie.lizzieVersion
+          "(;AB[aa]AW[cc]PL[W]SZ[3]KM[6.5]PW[White]PB[Black]DT[2020-01-02]AP[LizzieYzy Next: "
+              + Lizzie.nextVersion
               + "]RE[]CA[UTF-8];B[ba])";
       String firstSave = SGFParser.saveToString(false);
       assertEquals(expected, firstSave, "root setup should be serialized only once on root.");

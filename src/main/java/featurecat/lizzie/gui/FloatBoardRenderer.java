@@ -170,7 +170,7 @@ public class FloatBoardRenderer {
   }
 
   private void gainPaint() {
-    cachedBoardImage = Lizzie.config.theme.board();
+    cachedBoardImage = Lizzie.config.theme.defaultBoard();
     paint =
         new TexturePaint(
             cachedBoardImage,
@@ -2903,16 +2903,10 @@ public class FloatBoardRenderer {
       // fancy version
       isFancyBoard = true;
       if (cachedBoardImage == emptyImage) {
-        cachedBoardImage = Lizzie.config.theme.board();
+        cachedBoardImage = Lizzie.config.theme.defaultBoard();
       }
 
       drawTextureImage(g, cachedBoardImage, 0, 0, boardWidth, boardHeight, true);
-
-      // A light readability overlay helps user-supplied photos behave like a usable board texture.
-      if (Lizzie.config.theme.isUsingCustomBoardImage()) {
-        g.setColor(new Color(0, 0, 0, 50));
-        g.fillRect(0, 0, boardWidth, boardHeight);
-      }
 
       g.setStroke(new BasicStroke(1));
     }

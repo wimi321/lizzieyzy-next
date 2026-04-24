@@ -388,7 +388,7 @@ public class GetFoxRequest {
         return input;
       }
       SgfNode rootNode = tree.nodes.get(0);
-      List<SgfProperty> rootProperties = buildCleanRootProperties(rootNode.properties);
+      List<SgfProperty> rootProperties = buildRootProperties(tree.nodes);
       List<SgfMove> rootMoves = extractMoves(rootNode.properties);
       List<SgfMove> mainLineMoves = recoverPreferredMoves(tree, rootMoves);
       String nextColor = mainLineMoves.isEmpty() ? null : mainLineMoves.get(0).color;
@@ -489,6 +489,18 @@ public class GetFoxRequest {
         }
       }
       throw new IllegalStateException("Unterminated SGF value");
+    }
+
+    private List<SgfProperty> buildRootProperties(List<SgfNode> nodes) {
+      List<SgfProperty> collected = new ArrayList<SgfProperty>();
+      for (int i = 0; i < nodes.size(); i++) {
+        SgfNode node = nodes.get(i);
+        if (i > 0 && !extractMoves(node.properties).isEmpty()) {
+          break;
+        }
+        collected.addAll(node.properties);
+      }
+      return buildCleanRootProperties(collected);
     }
 
     private List<SgfProperty> buildCleanRootProperties(List<SgfProperty> properties) {

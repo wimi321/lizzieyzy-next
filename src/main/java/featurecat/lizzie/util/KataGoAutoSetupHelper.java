@@ -58,6 +58,10 @@ public final class KataGoAutoSetupHelper {
       Pattern.compile("<a[^>]*href=\"([^\"]+)\"", Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
   private static final Pattern WEIGHT_FAMILY_PATTERN =
       Pattern.compile("\\b(b\\d+)c\\d+", Pattern.CASE_INSENSITIVE);
+  private static final Pattern WEIGHT_MODEL_DISPLAY_PATTERN =
+      Pattern.compile(
+          "^kata1-(?:([a-z][a-z0-9]*(?:-[a-z0-9]+)*)-)?(b\\d+)c\\d+[^-]*(?:-(.+))?$",
+          Pattern.CASE_INSENSITIVE);
   private static final Pattern VERSION_MODEL_SOURCE_PATTERN =
       Pattern.compile("^Model source:\\s*(.+)$", Pattern.CASE_INSENSITIVE | Pattern.MULTILINE);
   private static final int MAX_OFFICIAL_WEIGHTS = 40;
@@ -529,6 +533,34 @@ public final class KataGoAutoSetupHelper {
     return fileName;
   }
 
+  public static String resolveActiveWeightDisplayName(SetupSnapshot snapshot) {
+    if (snapshot == null || snapshot.activeWeightPath == null) {
+      return "";
+    }
+    return resolveWeightDisplayName(
+        snapshot.activeWeightPath, snapshot.workingDir, snapshot.appRoot);
+  }
+
+  public static String resolveWeightDisplayName(Path weightPath) {
+    return resolveWeightDisplayName(weightPath, null, null);
+  }
+
+  private static String resolveWeightDisplayName(Path weightPath, Path workingDir, Path appRoot) {
+    if (weightPath == null) {
+      return "";
+    }
+    Path normalizedWeightPath = weightPath.toAbsolutePath().normalize();
+    String fileName = normalizedWeightPath.getFileName().toString();
+    String resolvedModelName = fileName;
+    if (DEFAULT_WEIGHT_FILE_NAME.equalsIgnoreCase(fileName)) {
+      String bundledModel = readBundledModelSource(normalizedWeightPath, workingDir, appRoot);
+      if (!bundledModel.isEmpty()) {
+        resolvedModelName = bundledModel;
+      }
+    }
+    return toWeightDisplayName(resolvedModelName);
+  }
+
   public static SetupResult applyAutoSetup(SetupSnapshot snapshot) throws IOException {
     if (snapshot == null) {
       snapshot = inspectLocalSetup();
@@ -607,8 +639,16 @@ public final class KataGoAutoSetupHelper {
 
     Utils.saveEngineSettings(engines);
     rememberPreferredWeight(snapshot.activeWeightPath);
-    Lizzie.config.uiConfig.put("autoload-default", true);
-    Lizzie.config.uiConfig.put("autoload-empty", false);
+    // Only force autoload=default on a truly fresh install. Once the user has picked
+    // "start with no engine" or "pick manually", respect that choice across setup runs.
+    boolean firstRunSetup =
+        !Lizzie.config.uiConfig.has("autoload-default")
+            && !Lizzie.config.uiConfig.has("autoload-empty")
+            && !Lizzie.config.uiConfig.has("autoload-last");
+    if (firstRunSetup) {
+      Lizzie.config.uiConfig.put("autoload-default", true);
+      Lizzie.config.uiConfig.put("autoload-empty", false);
+    }
     Lizzie.config.uiConfig.put("default-engine", engineIndex);
     Lizzie.config.uiConfig.put("analysis-engine-command", analysisCommand);
     Lizzie.config.uiConfig.put("estimate-command", estimateCommand);
@@ -638,9 +678,19 @@ public final class KataGoAutoSetupHelper {
   }
 
   private static int findAutoSetupEngineIndex(ArrayList<EngineData> engines) {
+    // First preference: an existing auto-setup engine entry.
     for (int i = 0; i < engines.size(); i++) {
       EngineData engineData = engines.get(i);
       if (AUTO_SETUP_ENGINE_NAME.equals(engineData.name)) {
+        return i;
+      }
+    }
+    // Second preference: reuse the bundled entry (shares the same binary/weight) so we don't
+    // end up with two near-identical KataGo engines after first-run auto setup.
+    for (int i = 0; i < engines.size(); i++) {
+      EngineData engineData = engines.get(i);
+      if ("KataGo Bundled".equals(engineData.name)
+          || (engineData.commands != null && hasRelativeBundledPath(engineData.commands))) {
         return i;
       }
     }
@@ -862,6 +912,73 @@ public final class KataGoAutoSetupHelper {
     return family.substring(1).toUpperCase(Locale.ROOT) + "B";
   }
 
+  private static String toWeightDisplayName(String modelName) {
+    String baseName = stripWeightFileExtension(modelName);
+    if (baseName.isEmpty()) {
+      return "";
+    }
+    Matcher displayMatcher = WEIGHT_MODEL_DISPLAY_PATTERN.matcher(baseName);
+    if (displayMatcher.matches()) {
+      String alias = displayMatcher.group(1);
+      String family = displayMatcher.group(2);
+      String suffix = displayMatcher.group(3);
+      List<String> parts = new ArrayList<>();
+      if (alias != null && !alias.trim().isEmpty()) {
+        parts.add(alias.trim());
+      }
+      if (family != null && family.length() > 1) {
+        parts.add(family.substring(1).toUpperCase(Locale.ROOT) + "B");
+      }
+      String normalizedSuffix = normalizeWeightDisplaySuffix(suffix);
+      if (!normalizedSuffix.isEmpty()) {
+        parts.add(normalizedSuffix);
+      }
+      if (!parts.isEmpty()) {
+        return String.join(" ", parts);
+      }
+    }
+    String family = buildWeightFamilyDisplay(baseName);
+    if (!family.isEmpty()) {
+      return family;
+    }
+    return baseName;
+  }
+
+  private static String normalizeWeightDisplaySuffix(String suffix) {
+    if (suffix == null || suffix.trim().isEmpty()) {
+      return "";
+    }
+    String normalized = suffix.trim().replace('-', ' ');
+    normalized = normalized.replaceAll("\\s+", " ");
+    String[] tokens = normalized.split(" ");
+    List<String> selected = new ArrayList<>();
+    for (String token : tokens) {
+      String trimmed = token.trim();
+      if (!trimmed.isEmpty()) {
+        selected.add(trimmed);
+      }
+      if (selected.size() >= 2) {
+        break;
+      }
+    }
+    return String.join(" ", selected);
+  }
+
+  private static String stripWeightFileExtension(String modelName) {
+    String baseName = modelName == null ? "" : modelName.trim();
+    if (baseName.isEmpty()) {
+      return "";
+    }
+    String lower = baseName.toLowerCase(Locale.ROOT);
+    String[] suffixes = {".bin.gz", ".txt.gz", ".bin", ".txt", ".gz"};
+    for (String suffix : suffixes) {
+      if (lower.endsWith(suffix)) {
+        return baseName.substring(0, baseName.length() - suffix.length());
+      }
+    }
+    return baseName;
+  }
+
   private static List<String> extractCells(String rowHtml) {
     List<String> cells = new ArrayList<>();
     Matcher cellMatcher = CELL_PATTERN.matcher(rowHtml);
@@ -923,12 +1040,28 @@ public final class KataGoAutoSetupHelper {
   }
 
   private static String readBundledModelSource(Path workingDir, Path appRoot) {
+    return readBundledModelSource(null, workingDir, appRoot);
+  }
+
+  private static String readBundledModelSource(Path weightPath, Path workingDir, Path appRoot) {
     List<Path> candidates = new ArrayList<>();
-    candidates.add(workingDir.resolve("engines").resolve("katago").resolve("VERSION.txt"));
-    if (!workingDir.equals(appRoot)) {
+    if (workingDir != null) {
+      candidates.add(workingDir.resolve("engines").resolve("katago").resolve("VERSION.txt"));
+    }
+    if (appRoot != null && !appRoot.equals(workingDir)) {
       candidates.add(appRoot.resolve("engines").resolve("katago").resolve("VERSION.txt"));
     }
-    for (Path candidate : candidates) {
+    if (weightPath != null) {
+      Path current = weightPath.toAbsolutePath().normalize().getParent();
+      int depth = 0;
+      while (current != null && depth < 8) {
+        candidates.add(current.resolve("engines").resolve("katago").resolve("VERSION.txt"));
+        current = current.getParent();
+        depth += 1;
+      }
+    }
+    LinkedHashSet<Path> uniqueCandidates = new LinkedHashSet<Path>(candidates);
+    for (Path candidate : uniqueCandidates) {
       if (!Files.isRegularFile(candidate)) {
         continue;
       }

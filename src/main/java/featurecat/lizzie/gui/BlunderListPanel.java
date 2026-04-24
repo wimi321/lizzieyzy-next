@@ -16,7 +16,7 @@ public class BlunderListPanel extends JPanel {
   private int hoveredIndex = -1;
 
   private static final int HEADER_HEIGHT = 20;
-  private static final int CARD_HEIGHT = 56;
+  private static final int CARD_HEIGHT = 64;
   private static final int PADDING = 10;
   private static final int DEFAULT_CARD_CORNER_RADIUS = 10;
 
@@ -182,7 +182,7 @@ public class BlunderListPanel extends JPanel {
       g2.setColor(TEXT_PRIMARY);
       g2.drawString(text, boxX + (boxW - fm.stringWidth(text)) / 2, boxY + 34);
       g2.setColor(TEXT_SECONDARY);
-      String sub = "静默全盘分析后，这里会列出掉胜率 >= 10% 的问题手";
+      String sub = "全盘分析后，这里会列出掉胜率较多的问题手";
       g2.setFont(new Font(Lizzie.config.uiFontName, Font.PLAIN, 12));
       FontMetrics subFm = g2.getFontMetrics();
       g2.drawString(sub, boxX + (boxW - subFm.stringWidth(sub)) / 2, boxY + 58);
@@ -211,7 +211,7 @@ public class BlunderListPanel extends JPanel {
       int y = startY + i * CARD_HEIGHT;
       int x = startX + PADDING;
       int w = colWidth - PADDING * 2;
-      int h = CARD_HEIGHT - 6;
+      int h = CARD_HEIGHT - 12;
 
       boolean isHovered = (hoveredIndex == i);
       boolean isSelected = entry.isCurrent;
@@ -221,13 +221,13 @@ public class BlunderListPanel extends JPanel {
       if (!Lizzie.config.isAppleStyle) {
         // flat classic background
         if (isSelected) {
-          g2.setColor(new Color(60, 60, 80));
+          g2.setColor(new Color(52, 56, 68));
         } else if (isHovered) {
-          g2.setColor(new Color(40, 40, 50));
+          g2.setColor(new Color(44, 46, 52));
         } else {
-          g2.setColor(new Color(30, 30, 30));
+          g2.setColor(new Color(34, 36, 40));
         }
-        g2.fillRect(x, y, w, h);
+        g2.fillRoundRect(x, y, w, h, 8, 8);
       } else {
         // Apple style background
         int cardCornerRadius = cardCornerRadius();
@@ -269,21 +269,39 @@ public class BlunderListPanel extends JPanel {
       }
 
       // Left semantic edge line
-      g2.setColor(entry.isBlack ? new Color(0, 0, 0, 200) : new Color(255, 255, 255, 200));
-      g2.fillRoundRect(x, y, 4, h, 3, 3);
+      if (Lizzie.config.isAppleStyle) {
+        int edgeW = 3;
+        int edgeInset = 5;
+        Color edgeBase = entry.isBlack ? new Color(0, 0, 0) : new Color(255, 255, 255);
+        LinearGradientPaint edgePaint =
+            new LinearGradientPaint(
+                x + 1,
+                y + edgeInset,
+                x + 1,
+                y + h - edgeInset,
+                new float[] {0.0f, 0.5f, 1.0f},
+                new Color[] {
+                  withAlpha(edgeBase, 0), withAlpha(edgeBase, 220), withAlpha(edgeBase, 0)
+                });
+        g2.setPaint(edgePaint);
+        g2.fillRoundRect(x + 1, y + edgeInset, edgeW, h - edgeInset * 2, 2, 2);
+      } else {
+        g2.setColor(entry.isBlack ? new Color(0, 0, 0, 200) : new Color(255, 255, 255, 200));
+        g2.fillRoundRect(x + 1, y + 4, 3, h - 8, 3, 3);
+      }
 
       // Text: #手数 坐标
       g2.setFont(new Font(Lizzie.config.uiFontName, Font.BOLD, 14));
       g2.setColor(TEXT_PRIMARY);
       String moveText = "#" + entry.moveNumber + "  " + entry.coords;
-      g2.drawString(moveText, x + 12, y + 20);
+      g2.drawString(moveText, x + 12, y + 22);
 
       // Text: Loss
       g2.setFont(new Font(Lizzie.config.uiFontName, Font.PLAIN, 12));
       Color severityColor = getSeverityColor(entry.severityTier);
       g2.setColor(severityColor);
       String lossText = "🔻 " + String.format("%.1f%%", entry.winrateLossAbs);
-      g2.drawString(lossText, x + 12, y + 38);
+      g2.drawString(lossText, x + 12, y + 40);
 
       // Text: Playouts
       g2.setColor(TEXT_SECONDARY);
@@ -294,7 +312,7 @@ public class BlunderListPanel extends JPanel {
                   ? String.format("%.1fk", entry.playouts / 1000.0)
                   : entry.playouts);
       int lossWidth = fm.stringWidth(lossText);
-      g2.drawString(playoutText, x + 12 + lossWidth + 5, y + 38);
+      g2.drawString(playoutText, x + 12 + lossWidth + 5, y + 40);
 
       // Thermal dot
       Color dotColor = null;

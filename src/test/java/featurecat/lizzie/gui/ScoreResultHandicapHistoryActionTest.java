@@ -44,11 +44,11 @@ class ScoreResultHandicapHistoryActionTest {
       Lizzie.leelaz.recentRulesLine = "= {\"whiteHandicapBonus\":\"N\"}";
 
       ScoreResult result = newScoreResult();
-      result.setScore(10, 0, 0, 0, 0, 0, 0.0);
+      setScoreSilently(result, 10, 0, 0, 0, 0, 0, 0.0);
 
       assertEquals(
           "B:10+0=10.0",
-          label(result, "blackScore").getText(),
+          labelText(result, "blackScore"),
           "snapshot markers should not reduce black's area score as handicap stones.");
     } finally {
       env.close();
@@ -63,11 +63,11 @@ class ScoreResultHandicapHistoryActionTest {
       Lizzie.leelaz.recentRulesLine = "= {\"whiteHandicapBonus\":\"N-1\"}";
 
       ScoreResult result = newScoreResult();
-      result.setScore(10, 0, 0, 0, 0, 0, 0.0);
+      setScoreSilently(result, 10, 0, 0, 0, 0, 0, 0.0);
 
       assertEquals(
           "B:10+0=10.0",
-          label(result, "blackScore").getText(),
+          labelText(result, "blackScore"),
           "explicit black passes should not add handicap stones.");
     } finally {
       env.close();
@@ -82,11 +82,11 @@ class ScoreResultHandicapHistoryActionTest {
       Lizzie.leelaz.recentRulesLine = "= {\"whiteHandicapBonus\":\"N\"}";
 
       ScoreResult result = newScoreResult();
-      result.setScore(10, 0, 0, 0, 0, 0, 0.0);
+      setScoreSilently(result, 10, 0, 0, 0, 0, 0, 0.0);
 
       assertEquals(
           "B:8+0=8.0",
-          label(result, "blackScore").getText(),
+          labelText(result, "blackScore"),
           "dummy white PASS placeholders should not clear black's handicap-stone count.");
     } finally {
       env.close();
@@ -128,17 +128,49 @@ class ScoreResultHandicapHistoryActionTest {
 
   private static ScoreResult newScoreResult() throws Exception {
     ScoreResult result = allocate(ScoreResult.class);
-    setField(result, "lblRule", new JFontLabel());
-    setField(result, "blackScore", new JFontLabel());
-    setField(result, "whiteScore", new JFontLabel());
-    setField(result, "scoreResult", new JFontLabel());
+    Object lblRule = newScoreTextLine();
+    Object blackScore = newScoreTextLine();
+    Object whiteScore = newScoreTextLine();
+    Object scoreResult = newScoreTextLine();
+    setField(result, "lblRule", lblRule);
+    setField(result, "blackScore", blackScore);
+    setField(result, "whiteScore", whiteScore);
+    setField(result, "scoreResult", scoreResult);
+    setField(result, "contentPanel", new javax.swing.JPanel());
     return result;
   }
 
-  private static JFontLabel label(ScoreResult result, String fieldName) throws Exception {
+  private static void setScoreSilently(
+      ScoreResult result,
+      int args0,
+      int args1,
+      int args2,
+      int args3,
+      int args4,
+      int args5,
+      double komi) {
+    try {
+      result.setScore(args0, args1, args2, args3, args4, args5, komi);
+    } catch (NullPointerException ignored) {
+      // ScoreResult.setScore tail-calls relayoutAfterTextChange() which touches
+      // AWT internals not initialized by Unsafe.allocateInstance. The score text
+      // fields are populated before the AWT call, so the NPE is harmless for
+      // these unit tests.
+    }
+  }
+
+  private static Object newScoreTextLine() throws Exception {
+    Class<?> cls = Class.forName("featurecat.lizzie.gui.ScoreResult$ScoreTextLine");
+    java.lang.reflect.Constructor<?> ctor = cls.getDeclaredConstructor();
+    ctor.setAccessible(true);
+    return ctor.newInstance();
+  }
+
+  private static String labelText(ScoreResult result, String fieldName) throws Exception {
     Field field = ScoreResult.class.getDeclaredField(fieldName);
     field.setAccessible(true);
-    return (JFontLabel) field.get(result);
+    Object obj = field.get(result);
+    return (String) obj.getClass().getMethod("getText").invoke(obj);
   }
 
   private static void setField(Object target, String fieldName, Object value) throws Exception {

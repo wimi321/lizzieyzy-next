@@ -35,6 +35,7 @@ public class Theme {
   BufferedImage blackStoneCached = null;
   BufferedImage whiteStoneCached = null;
   BufferedImage boardCached = null;
+  BufferedImage defaultBoardCached = null;
   BufferedImage backgroundCached = null;
 
   private String configFile = "theme.txt";
@@ -162,8 +163,19 @@ public class Theme {
     return boardCached;
   }
 
+  public BufferedImage defaultBoard() {
+    if (defaultBoardCached == null) {
+      defaultBoardCached = getImageByKey("board-image", "board.png", "board.png");
+      if (defaultBoardCached == null) {
+        defaultBoardCached = createSolidFallbackImage(128, 128, new Color(217, 152, 77));
+      }
+    }
+    return defaultBoardCached;
+  }
+
   public void clearBoardCache() {
     boardCached = null;
+    defaultBoardCached = null;
   }
 
   public BufferedImage background() {
@@ -314,7 +326,7 @@ public class Theme {
 
   /** The color of the winrate line */
   public Color winrateLineColor() {
-    return getColorByKey("winrate-line-color", Color.GREEN);
+    return getColorByKey("winrate-line-color", new Color(100, 180, 255));
   }
 
   /** The color of the line that missed the winrate */

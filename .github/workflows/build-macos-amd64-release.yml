@@ -10,7 +10,7 @@ on:
       release_tag:
         description: Existing GitHub release tag to upload into
         required: true
-        default: 2.5.3-next-2026-03-24.2
+        default: 1.0.0-next-2026-03-24.2
 
 permissions:
   contents: write
@@ -63,7 +63,24 @@ jobs:
           PREFERRED_MODEL_NAME="$MODEL_NAME" MODEL_SOURCE="$MODEL_SOURCE" ./scripts/prepare_bundled_katago.sh
 
       - name: Build macOS amd64 package
-        run: ./scripts/package_macos_dmg.sh "${{ inputs.date_tag }}" 2.5.3 target/lizzie-yzy2.5.3-shaded.jar
+        run: ./scripts/package_macos_dmg.sh "${{ inputs.date_tag }}" 1.0.0 target/lizzie-yzy2.5.3-shaded.jar "${{ inputs.release_tag }}"
+
+      - name: Audit macOS amd64 display version
+        run: |
+          grep -q -- "java-options=-Dlizzie.next.version=${{ inputs.release_tag }}" \
+            "dist/macos/app-image/LizzieYzy Next.app/Contents/app/LizzieYzy Next.cfg"
+          grep -q -- "Release display version: ${{ inputs.release_tag }}" \
+            "dist/release-meta/${{ inputs.date_tag }}-mac-intel-install.txt"
+
+      - name: Sign and notarize (if Apple Developer credentials configured)
+        env:
+          APPLE_CERT_P12: ${{ secrets.APPLE_CERT_P12 }}
+          APPLE_CERT_PASSWORD: ${{ secrets.APPLE_CERT_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_SIGN_IDENTITY: ${{ secrets.APPLE_SIGN_IDENTITY }}
+        run: bash ./scripts/sign_macos_release.sh dist/release mac-amd64
 
       - name: Validate public macOS amd64 assets
         run: bash ./scripts/validate_release_assets.sh mac-amd64 dist/release "${{ inputs.date_tag }}"
@@ -73,13 +90,13 @@ jobs:
         with:
           name: macos-amd64-with-katago
           path: |
-            dist/release/*mac-amd64.with-katago.dmg
+            dist/release/*mac-intel.with-katago.dmg
 
       - name: Upload assets to release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release upload "${{ inputs.release_tag }}" \
-            dist/release/*mac-amd64.with-katago.dmg \
+            dist/release/*mac-intel.with-katago.dmg \
             --repo "${{ github.repository }}" \
             --clobber

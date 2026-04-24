@@ -34,8 +34,8 @@
 | Windows 64 位 NVIDIA 极速安装器 | `<date>-windows64.nvidia.installer.exe` | 有 NVIDIA 显卡，想保留安装流程 |
 | Windows 64 位无引擎便携包 | `<date>-windows64.without.engine.portable.zip` | 想自己配置分析引擎 |
 | Windows 64 位无引擎安装器 | `<date>-windows64.without.engine.installer.exe` | 想保留安装流程，但自己配置分析引擎 |
-| macOS Apple Silicon 整合包 | `<date>-mac-arm64.with-katago.dmg` | M 系列 Mac |
-| macOS Intel 整合包 | `<date>-mac-amd64.with-katago.dmg` | Intel Mac |
+| macOS Apple Silicon 整合包 | `<date>-mac-apple-silicon.with-katago.dmg` | M 系列 Mac |
+| macOS Intel 整合包 | `<date>-mac-intel.with-katago.dmg` | Intel Mac |
 | Linux 64 位整合包 | `<date>-linux64.with-katago.zip` | Linux 桌面用户 |
 
 说明：
@@ -57,8 +57,8 @@
 | `windows64.nvidia.installer.exe` | 是 | 是 | 安装后从开始菜单或桌面打开 |
 | `windows64.without.engine.portable.zip` | 是 | 否 | 解压后运行 `LizzieYzy Next.exe` |
 | `windows64.without.engine.installer.exe` | 是 | 否 | 安装后从开始菜单或桌面打开 |
-| `mac-arm64.with-katago.dmg` | App 自带 | 是 | 拖到 Applications |
-| `mac-amd64.with-katago.dmg` | App 自带 | 是 | 拖到 Applications |
+| `mac-apple-silicon.with-katago.dmg` | App 自带 | 是 | 拖到 Applications |
+| `mac-intel.with-katago.dmg` | App 自带 | 是 | 拖到 Applications |
 | `linux64.with-katago.zip` | 是 | 是 | 运行 `start-linux64.sh` |
 
 ## 给普通用户的选择建议
@@ -101,10 +101,11 @@
 
 ## 当前内置同步工具信息
 
-- 主发布包现在把 `readboard_java` 简易棋盘同步工具作为主项目的一部分交付
-- Windows / Linux 包路径：`Lizzieyzy/readboard_java/`
+- Windows 发布包现在内置原生 `readboard/readboard.exe` 和依赖文件，正常使用不需要下载外部同步工具
+- `readboard_java` 简易棋盘同步工具仍作为备用方案随包交付
+- Windows 原生路径：`Lizzieyzy/readboard/`
+- Windows / Linux Java 版路径：`Lizzieyzy/readboard_java/`
 - macOS 包路径：`LizzieYzy Next.app/Contents/app/readboard_java/`
-- 旧的 Windows 原生 `readboard` 文件夹现在只作为兼容备用，不再是主 release 的默认依赖
 
 ## 新旧发布格式怎么理解
 

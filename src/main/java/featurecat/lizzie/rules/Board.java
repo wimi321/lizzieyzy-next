@@ -10,6 +10,7 @@ import featurecat.lizzie.analysis.Leelaz;
 import featurecat.lizzie.analysis.MoveData;
 import featurecat.lizzie.gui.LizzieFrame;
 import featurecat.lizzie.gui.ScoreResult;
+import featurecat.lizzie.util.KataGoRuntimeHelper;
 import featurecat.lizzie.util.Utils;
 import java.io.File;
 import java.io.IOException;
@@ -43,6 +44,7 @@ public class Board {
 
   private static final String alphabet = "ABCDEFGHJKLMNOPQRSTUVWXYZ";
   private static final String alphabetWithI = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+  private static final int MOVELIST_REFRESH_NAVIGATION_PAUSE_MS = 450;
   private BoardHistoryList history;
   // private boolean scoreMode;
   private boolean analysisMode;
@@ -67,6 +69,8 @@ public class Board {
   private boolean hasBigBranch = false;
   public boolean isExtremlySmallBoard = false;
   private boolean neverPassedInGame = true;
+  private volatile int movelistRefreshGeneration = 0;
+  private volatile long lastMoveNavigationAt = 0L;
 
   public boolean isMouseOnStone = false;
   private boolean preMouseOnStone = false;
@@ -1158,6 +1162,9 @@ public class Board {
   }
 
   public void resendMoveToEngine(Leelaz leelaz, boolean loadEngine) {
+    if (KataGoRuntimeHelper.isBenchmarkEngineSyncSuppressed()) {
+      return;
+    }
     restoreEnginePosition(leelaz, getMoveList());
     if (loadEngine) {
       Lizzie.initializeAfterVersionCheck(false, leelaz);
@@ -2417,6 +2424,7 @@ public class Board {
   /** Goes to the next coordinate, thread safe */
   public boolean nextMove(boolean needRefresh) {
     // canGetBestMoves = false;
+    markMoveNavigationForMovelistRefresh();
     synchronized (this) {
       modifyStart();
       updateWinrate();
@@ -2457,6 +2465,7 @@ public class Board {
    * @return true when has next variation
    */
   public boolean nextMove(int fromBackChildren) {
+    markMoveNavigationForMovelistRefresh();
     synchronized (this) {
       return nextVariation(fromBackChildren);
     }
@@ -3137,6 +3146,7 @@ public class Board {
 
   /** Goes to the previous coordinate, thread safe */
   public boolean previousMove(boolean needRefresh) {
+    markMoveNavigationForMovelistRefresh();
     synchronized (this) {
       modifyStart();
       BoardData currentData = history.getData();
@@ -3463,21 +3473,69 @@ public class Board {
   }
 
   public void setMovelistAll() {
-    new Thread() {
-      public void run() {
-        BoardHistoryNode node = Lizzie.board.getHistory().getStart();
-        Stack<BoardHistoryNode> stack = new Stack<>();
-        stack.push(node);
-        while (!stack.isEmpty()) {
-          BoardHistoryNode cur = stack.pop();
-          updateMovelist(cur);
-          if (cur.numberOfChildren() >= 1) {
-            for (int i = cur.numberOfChildren() - 1; i >= 0; i--)
-              stack.push(cur.getVariations().get(i));
-          }
-        }
-      }
-    }.start();
+    final int generation = ++movelistRefreshGeneration;
+    Thread thread =
+        new Thread(
+            new Runnable() {
+              public void run() {
+                BoardHistoryNode node = Lizzie.board.getHistory().getStart();
+                Stack<BoardHistoryNode> stack = new Stack<>();
+                stack.push(node);
+                int processed = 0;
+                while (!stack.isEmpty()) {
+                  if (generation != movelistRefreshGeneration) {
+                    return;
+                  }
+                  if (!pauseMovelistRefreshForRecentNavigation()) {
+                    return;
+                  }
+                  BoardHistoryNode cur = stack.pop();
+                  updateMovelist(cur);
+                  processed++;
+                  if (cur.numberOfChildren() >= 1) {
+                    for (int i = cur.numberOfChildren() - 1; i >= 0; i--)
+                      stack.push(cur.getVariations().get(i));
+                  }
+                  if (processed % 32 == 0) {
+                    Thread.yield();
+                  }
+                  if (processed % 128 == 0 && !sleepMovelistRefresh(1)) {
+                    return;
+                  }
+                }
+              }
+            },
+            "lizzie-movelist-refresh");
+    thread.setDaemon(true);
+    thread.setPriority(Thread.MIN_PRIORITY);
+    thread.start();
+  }
+
+  private void markMoveNavigationForMovelistRefresh() {
+    if (!isLoadingFile) {
+      lastMoveNavigationAt = System.currentTimeMillis();
+    }
+  }
+
+  private boolean pauseMovelistRefreshForRecentNavigation() {
+    long idleMillis = System.currentTimeMillis() - lastMoveNavigationAt;
+    if (idleMillis >= 0 && idleMillis < MOVELIST_REFRESH_NAVIGATION_PAUSE_MS) {
+      return sleepMovelistRefresh(MOVELIST_REFRESH_NAVIGATION_PAUSE_MS - idleMillis);
+    }
+    return true;
+  }
+
+  private boolean sleepMovelistRefresh(long millis) {
+    if (millis <= 0) {
+      return true;
+    }
+    try {
+      Thread.sleep(millis);
+      return true;
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      return false;
+    }
   }
 
   public void setMovelistAll2() {

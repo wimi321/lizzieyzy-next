@@ -30,10 +30,10 @@ case "$PLATFORM" in
     )
     ;;
   mac-arm64)
-    expected=("${DATE_TAG}-mac-arm64.with-katago.dmg")
+    expected=("${DATE_TAG}-mac-apple-silicon.with-katago.dmg")
     ;;
   mac-amd64)
-    expected=("${DATE_TAG}-mac-amd64.with-katago.dmg")
+    expected=("${DATE_TAG}-mac-intel.with-katago.dmg")
     ;;
   linux)
     expected=("${DATE_TAG}-linux64.with-katago.zip")

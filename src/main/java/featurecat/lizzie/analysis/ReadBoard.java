@@ -29,6 +29,7 @@ import java.util.OptionalInt;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import javax.swing.SwingUtilities;
 
 public class ReadBoard {
   private static final long PROCESS_EXIT_WAIT_TIMEOUT_MS = 1000L;
@@ -39,6 +40,14 @@ public class ReadBoard {
 
   public static boolean isLegacyNativeReadBoardAvailable() {
     return isLegacyNativeReadBoardAvailable(legacyNativeReadBoardDirectory());
+  }
+
+  public static boolean isNativeReadBoardExeAvailable() {
+    return new File(legacyNativeReadBoardDirectory(), LEGACY_NATIVE_READBOARD_EXE).canRead();
+  }
+
+  public static boolean isNativeReadBoardBatAvailable() {
+    return new File(legacyNativeReadBoardDirectory(), LEGACY_NATIVE_READBOARD_BAT).canRead();
   }
 
   public Process process;
@@ -334,18 +343,7 @@ public class ReadBoard {
       }
       System.out.println("Board synchronization tool process ended.");
       if (!javaReadBoard && !isLoaded) {
-        try {
-          new ProcessBuilder("powershell", "/c", "start", "readboard\\readboard.bat").start();
-        } catch (IOException e) {
-          try {
-            new ProcessBuilder("powershell", "/c", "start", "readboard\\readboard.exe").start();
-          } catch (Exception s) {
-            s.printStackTrace();
-          }
-          e.printStackTrace();
-        }
-        SMessage msg = new SMessage();
-        msg.setMessage(Lizzie.resourceBundle.getString("ReadBoard.loadFailed"), 2);
+        fallbackToJavaReadBoard();
         shutdown();
       } else shutdown();
       // Do no exit for switching weights
@@ -356,6 +354,16 @@ public class ReadBoard {
       Lizzie.frame.syncBoard = false;
       // System.exit(-1);
     }
+  }
+
+  private void fallbackToJavaReadBoard() {
+    SwingUtilities.invokeLater(
+        new Runnable() {
+          public void run() {
+            Utils.showMsg(Lizzie.resourceBundle.getString("ReadBoard.nativeStartFailed"));
+            Lizzie.frame.openReadBoardJava();
+          }
+        });
   }
 
   public void parseLine(String line) {

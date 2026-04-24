@@ -12,6 +12,13 @@ All notable maintenance updates to this fork are documented here.
 - Polished the repository landing page, community health files, and multilingual README structure.
 - Added internal release metadata generation and a validator that keeps public releases limited to the main novice-friendly assets.
 
+## 2026-04-17 - Board Sync Entry Recovery
+
+- Restored the Windows board sync entry so users can still open the feature even when the legacy native `readboard` folder is not bundled.
+- Added a guided download prompt that opens the maintained `readboard` releases page when the legacy helper is missing.
+- Added regression tests for the missing-helper prompt flow and the new localization keys.
+- Historical tag at that time: `2.5.3-next-2026-04-17.1`
+
 ## 2026-03-16 - First Maintained Release
 
 - Restored Fox kifu sync for the maintained fork.

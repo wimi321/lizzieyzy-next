@@ -26,7 +26,7 @@ public class SidebarPanel extends JPanel {
     this.commentEditPane = commentEditPane;
     setOpaque(false);
     setLayout(new BorderLayout());
-    setBorder(BorderFactory.createEmptyBorder(8, 8, 10, 10));
+    setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
 
     headerPanel = new SidebarHeaderPanel(this);
     add(headerPanel, BorderLayout.NORTH);
@@ -137,7 +137,7 @@ public class SidebarPanel extends JPanel {
           panelH - shadowInset,
           cornerRadius,
           cornerRadius);
-      g2.setColor(new Color(28, 29, 33, 220));
+      g2.setColor(new Color(30, 33, 38, 220));
       g2.fillRoundRect(panelX, panelY, panelW, panelH, cornerRadius, cornerRadius);
       g2.setColor(new Color(255, 255, 255, 18));
       g2.drawRoundRect(panelX, panelY, panelW - 1, panelH - 1, cornerRadius, cornerRadius);

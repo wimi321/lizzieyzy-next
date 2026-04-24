@@ -10,30 +10,37 @@
 </p>
 
 <p align="center">
-  <a href="README.md">中文</a> · English · <a href="README_JA.md">日本語</a> · <a href="README_KO.md">한국어</a>
+  <a href="README.md">简体中文</a> · <a href="README_ZH_TW.md">繁體中文</a> · English · <a href="README_JA.md">日本語</a> · <a href="README_KO.md">한국어</a> · <a href="README_TH.md">ภาษาไทย</a>
 </p>
 
 <p align="center">
-  <strong>LizzieYzy Next is the actively maintained LizzieYzy fork and a practical KataGo review GUI for normal users.</strong><br/>
-  The goal is simple: easier downloads, less setup friction, working Fox fetching again, and faster mistake finding during review.<br/>
+  <strong>LizzieYzy Next is the actively maintained LizzieYzy fork and a practical KataGo review GUI for everyday players.</strong><br/>
+  It focuses on the parts that actually affect the user experience: easier package selection, less painful first launch, Fox fetching that works again, and a whole-game view that is easier to read at a glance.<br/>
   <strong>Download it, enter a Fox nickname, fetch recent public games, run fast full-game analysis, and use the redesigned winrate graph plus quick overview strip to jump to the key moves faster.</strong>
 </p>
 
 <p align="center">
   <a href="https://github.com/wimi321/lizzieyzy-next/releases"><strong>Download Releases</strong></a>
   ·
+  <a href="https://pan.baidu.com/s/1wthaL8YwGMxy_u0U7Mabpw?pwd=3i8w"><strong>Baidu Download</strong></a>
+  ·
   <a href="docs/INSTALL_EN.md"><strong>Installation Guide</strong></a>
   ·
   <a href="docs/TROUBLESHOOTING_EN.md"><strong>Troubleshooting</strong></a>
 </p>
 
+> [!NOTE]
+> For users in mainland China, a public Baidu Netdisk download is available:
+> [https://pan.baidu.com/s/1wthaL8YwGMxy_u0U7Mabpw?pwd=3i8w](https://pan.baidu.com/s/1wthaL8YwGMxy_u0U7Mabpw?pwd=3i8w)
+> Extraction code: `3i8w`
+
 > [!TIP]
 > Chinese QQ group: `299419120`
 >
-> It is the fastest place for day-to-day user feedback, bug reports, and maintenance discussion.
+> It is the fastest place for day-to-day user feedback, bug reports, and feature discussion.
 
 > [!IMPORTANT]
-> If you only read one section, remember these 6 points:
+> If you only want the shortest possible answer, remember these 6 points:
 > - Most Windows users should go to [Releases](https://github.com/wimi321/lizzieyzy-next/releases) and download `*windows64.opencl.portable.zip`
 > - If your PC has an NVIDIA GPU and you want more speed, download `*windows64.nvidia.portable.zip`
 > - If OpenCL behaves badly on your PC, switch to `*windows64.with-katago.portable.zip`
@@ -41,13 +48,13 @@
 > - The main bundles include KataGo `v1.16.4` and the official recommended `zhizi` weight `kata1-zhizi-b28c512nbt-muonfd2.bin.gz`
 > - Main release packages now ship the `readboard_java` helper, so most users do not need a separate readboard repository
 
-## What This Project Is
+## Why Many Users Start Here
 
 `LizzieYzy Next` is:
 
-- a practical `KataGo review software` project
-- an actively maintained `LizzieYzy replacement / maintained fork`
-- a desktop tool that bundles `Fox fetching + KataGo analysis + portable builds + a default weight`
+- an actively maintained `KataGo review desktop app`
+- a practical workflow that combines `Fox fetching + fast whole-game analysis + multi-platform release packages`
+- the maintained branch that makes it easier for long-time `lizzieyzy` users to keep going without rebuilding their setup
 
 If you are searching for these things, this is the project to check first:
 
@@ -57,7 +64,7 @@ If you are searching for these things, this is the project to check first:
 - `Fox game fetch + KataGo review`
 - `portable Windows Go AI review tool`
 
-## What It Can Do Right Now
+## What You Can Do Right Away
 
 | What you want | How the project handles it now |
 | --- | --- |
@@ -86,8 +93,8 @@ All downloads are on [Releases](https://github.com/wimi321/lizzieyzy-next/releas
 | Windows, NVIDIA GPU, installer option | `*windows64.nvidia.installer.exe` |
 | Windows, bring your own engine, no installer | `*windows64.without.engine.portable.zip` |
 | Windows, bring your own engine, installer option | `*windows64.without.engine.installer.exe` |
-| macOS Apple Silicon | `*mac-arm64.with-katago.dmg` |
-| macOS Intel | `*mac-amd64.with-katago.dmg` |
+| macOS Apple Silicon | `*mac-apple-silicon.with-katago.dmg` |
+| macOS Intel | `*mac-intel.with-katago.dmg` |
 | Linux | `*linux64.with-katago.zip` |
 
 Quick rule:
@@ -98,7 +105,7 @@ Quick rule:
 - Mac: choose Apple Silicon or Intel first
 - Linux: choose `*linux64.with-katago.zip`
 
-## Why This Build Deserves To Be Recommended First
+## Why This Build Fits Real Users Better
 
 - `Fox fetching works again`
   Users can enter the Fox nickname they already know instead of hunting for the numeric ID first.
@@ -177,18 +184,22 @@ Usually no. The app now supports fast full-game analysis, so the main graph and 
 
 The current macOS builds are still unsigned and not notarized. If macOS blocks the app the first time, follow the steps in [Installation Guide](docs/INSTALL_EN.md).
 
-## Docs And Community
+## User Docs
 
+- [Support Guide](SUPPORT.md)
 - [Installation Guide](docs/INSTALL_EN.md)
 - [Package Overview](docs/PACKAGES_EN.md)
 - [Troubleshooting](docs/TROUBLESHOOTING_EN.md)
 - [Tested Platforms](docs/TESTED_PLATFORMS.md)
+- [GitHub Releases](https://github.com/wimi321/lizzieyzy-next/releases)
+- GitHub Discussions: <https://github.com/wimi321/lizzieyzy-next/discussions>
+- Chinese QQ group: `299419120`
+
+## Project Links
 - [Roadmap](ROADMAP.md)
 - [Contributing](CONTRIBUTING.md)
 - [Changelog](CHANGELOG.md)
 - [Support](SUPPORT.md)
-- GitHub Discussions: <https://github.com/wimi321/lizzieyzy-next/discussions>
-- Chinese QQ group: `299419120`
 
 ## Credits
 
@@ -197,3 +208,7 @@ The current macOS builds are still unsigned and not notarized. If macOS blocks t
 Historical Fox sync references:
 - [yzyray/FoxRequest](https://github.com/yzyray/FoxRequest)
 - [FuckUbuntu/Lizzieyzy-Helper](https://github.com/FuckUbuntu/Lizzieyzy-Helper)
+
+## Translations
+
+We welcome translations! If you want to translate this README into your native language, please feel free to submit a Pull Request.

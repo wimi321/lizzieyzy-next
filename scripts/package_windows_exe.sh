@@ -6,8 +6,9 @@ cd "$ROOT_DIR"
 source "$ROOT_DIR/scripts/release_metadata.sh"
 
 DATE_TAG="${1:-$(date +%F)}"
-APP_VERSION="${2:-2.5.3}"
+APP_VERSION="${2:-1.0.0}"
 JAR_PATH="${3:-target/lizzie-yzy2.5.3-shaded.jar}"
+APP_DISPLAY_VERSION="${LIZZIE_NEXT_VERSION:-${4:-$APP_VERSION}}"
 WINDOWS_UPGRADE_UUID="${WINDOWS_UPGRADE_UUID:-c2ef73ec-f99a-4f3d-b950-f52c0186122a}"
 
 if ! command -v jpackage >/dev/null 2>&1; then
@@ -43,7 +44,18 @@ WINDOWS_UPGRADE_UUID_OPENCL="${WINDOWS_UPGRADE_UUID_OPENCL:-0ec8b17f-06b0-4f6a-9
 ENGINE_BACKEND_MARKER_NAME="lizzieyzy-next-engine-backend.txt"
 NVIDIA_RUNTIME_PREPARE_SCRIPT="$ROOT_DIR/scripts/prepare_bundled_nvidia_runtime.py"
 NVIDIA_RUNTIME_STAGE_DIR="$DIST_DIR/nvidia-runtime"
+READBOARD_RELEASE_REPO="${READBOARD_RELEASE_REPO:-qiyi71w/readboard}"
+READBOARD_RELEASE_TAG="${READBOARD_RELEASE_TAG:-v2.0.2}"
+READBOARD_ASSET_NAME="${READBOARD_ASSET_NAME:-readboard-github-release-v2.0.2.zip}"
+READBOARD_ASSET_SHA256="${READBOARD_ASSET_SHA256:-b388b1281fdb713dda10f471b8db528833968ef187b790aec4083a853c8e2d62}"
+READBOARD_RELEASE_API="${READBOARD_RELEASE_API:-https://api.github.com/repos/${READBOARD_RELEASE_REPO}/releases/tags/${READBOARD_RELEASE_TAG}}"
+READBOARD_CACHE_DIR="$ROOT_DIR/.cache/readboard"
+READBOARD_STAGE_DIR="$DIST_DIR/readboard"
 PYTHON_BIN=""
+
+log_step() {
+  printf '\n[%s] %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$*" >&2
+}
 
 resolve_python_bin() {
   if [[ -n "$PYTHON_BIN" ]]; then
@@ -59,6 +71,151 @@ resolve_python_bin() {
   fi
   echo "Python not found. Install Python 3 to prepare the Windows NVIDIA runtime."
   exit 1
+}
+
+prepare_bundled_readboard_assets() {
+  resolve_python_bin
+  log_step "Preparing pinned native readboard assets"
+  "$PYTHON_BIN" - \
+    "$READBOARD_RELEASE_API" \
+    "$READBOARD_CACHE_DIR" \
+    "$READBOARD_STAGE_DIR" \
+    "$READBOARD_RELEASE_TAG" \
+    "$READBOARD_ASSET_NAME" \
+    "$READBOARD_ASSET_SHA256" <<'PY'
+import json
+import hashlib
+import os
+import shutil
+import sys
+import tempfile
+import urllib.request
+import zipfile
+
+api_url, cache_dir, stage_dir, release_tag, asset_name, expected_sha256 = sys.argv[1:7]
+source_dir = os.environ.get("READBOARD_SOURCE_DIR", "").strip()
+expected_sha256 = expected_sha256.replace("sha256:", "").lower()
+
+def reset_dir(path):
+    if os.path.exists(path):
+        shutil.rmtree(path)
+    os.makedirs(path, exist_ok=True)
+
+def copy_contents(src, dst):
+    reset_dir(dst)
+    for name in os.listdir(src):
+        source = os.path.join(src, name)
+        target = os.path.join(dst, name)
+        if os.path.isdir(source):
+            shutil.copytree(source, target)
+        else:
+            shutil.copy2(source, target)
+
+def find_readboard_root(root):
+    candidates = []
+    for current, _dirs, files in os.walk(root):
+        lower_files = {name.lower() for name in files}
+        if "readboard.exe" in lower_files or "readboard.bat" in lower_files:
+            has_exe = "readboard.exe" in lower_files
+            candidates.append((0 if has_exe else 1, len(current), current))
+    if not candidates:
+        raise SystemExit("Native readboard package did not contain readboard.exe/readboard.bat")
+    candidates.sort()
+    return candidates[0][2]
+
+def file_sha256(path):
+    digest = hashlib.sha256()
+    with open(path, "rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+def write_manifest(source):
+    manifest_path = os.path.join(stage_dir, "lizzieyzy-next-readboard-manifest.txt")
+    with open(manifest_path, "w", encoding="utf-8", newline="\n") as handle:
+        handle.write(f"release-tag={release_tag}\n")
+        handle.write(f"asset-name={asset_name}\n")
+        handle.write(f"sha256={expected_sha256}\n")
+        handle.write(f"source={source}\n")
+
+if source_dir:
+    if not os.path.isdir(source_dir):
+        raise SystemExit(f"READBOARD_SOURCE_DIR does not exist: {source_dir}")
+    copy_contents(find_readboard_root(source_dir), stage_dir)
+    write_manifest(f"local:{source_dir}")
+else:
+    tag_cache_dir = os.path.join(cache_dir, release_tag)
+    os.makedirs(tag_cache_dir, exist_ok=True)
+    request = urllib.request.Request(
+        api_url,
+        headers={
+            "Accept": "application/vnd.github+json",
+            "User-Agent": "LizzieYzy-Next-Packager",
+        },
+    )
+    with urllib.request.urlopen(request, timeout=30) as response:
+        metadata = json.load(response)
+    if metadata.get("tag_name") != release_tag:
+        raise SystemExit(
+            f"Expected readboard release tag {release_tag}, got {metadata.get('tag_name')}"
+        )
+    asset = None
+    for candidate in metadata.get("assets", []):
+        name = candidate.get("name", "")
+        if name == asset_name:
+            asset = candidate
+            break
+    if not asset or not asset.get("browser_download_url"):
+        raise SystemExit(
+            f"Unable to find pinned native readboard asset {asset_name} in {release_tag}"
+        )
+    asset_digest = (asset.get("digest") or "").replace("sha256:", "").lower()
+    if asset_digest and asset_digest != expected_sha256:
+        raise SystemExit(
+            f"Readboard release digest mismatch: expected {expected_sha256}, got {asset_digest}"
+        )
+
+    zip_path = os.path.join(tag_cache_dir, asset_name)
+    if os.path.exists(zip_path) and file_sha256(zip_path) != expected_sha256:
+        os.remove(zip_path)
+    if not os.path.exists(zip_path) or os.path.getsize(zip_path) == 0:
+        tmp_path = zip_path + ".tmp"
+        with urllib.request.urlopen(asset["browser_download_url"], timeout=120) as response:
+            with open(tmp_path, "wb") as out:
+                shutil.copyfileobj(response, out)
+        os.replace(tmp_path, zip_path)
+    actual_sha256 = file_sha256(zip_path)
+    if actual_sha256 != expected_sha256:
+        raise SystemExit(
+            f"Downloaded readboard checksum mismatch: expected {expected_sha256}, got {actual_sha256}"
+        )
+
+    temp_dir = tempfile.mkdtemp(prefix="readboard-", dir=tag_cache_dir)
+    try:
+        with zipfile.ZipFile(zip_path) as archive:
+            archive.extractall(temp_dir)
+        copy_contents(find_readboard_root(temp_dir), stage_dir)
+        write_manifest(f"github:{release_tag}")
+    finally:
+        shutil.rmtree(temp_dir, ignore_errors=True)
+
+readboard_exe = os.path.join(stage_dir, "readboard.exe")
+if not os.path.isfile(readboard_exe):
+    raise SystemExit("Windows release must include native readboard.exe")
+print(f"Prepared native readboard assets {release_tag}/{asset_name} in {stage_dir}")
+PY
+}
+
+copy_bundled_readboard_assets() {
+  local input_dir="$1"
+
+  if [[ ! -f "$READBOARD_STAGE_DIR/readboard.exe" ]]; then
+    echo "Missing bundled native readboard.exe in $READBOARD_STAGE_DIR"
+    exit 1
+  fi
+
+  mkdir -p "$input_dir/readboard"
+  cp -R "$READBOARD_STAGE_DIR/." "$input_dir/readboard/"
 }
 
 rm -rf "$DIST_DIR"
@@ -121,12 +278,13 @@ copy_common_inputs() {
 
   mkdir -p "$input_dir"
   cp "$JAR_PATH" "$input_dir/"
-  cp README.md README_EN.md README_JA.md README_KO.md LICENSE.txt "$input_dir/"
+  cp README.md README_EN.md README_JA.md README_KO.md LICENSE.txt packaging/PROJECT_INFO.txt "$input_dir/"
   cp readme_cn.pdf readme_en.pdf "$input_dir/"
   if [[ -d "$ROOT_DIR/src/main/resources/assets/readboard_java" ]]; then
     mkdir -p "$input_dir/readboard_java"
     cp -R "$ROOT_DIR/src/main/resources/assets/readboard_java/." "$input_dir/readboard_java/"
   fi
+  copy_bundled_readboard_assets "$input_dir"
 }
 
 copy_bundle_engine_assets() {
@@ -157,6 +315,7 @@ prepare_bundled_nvidia_runtime_assets() {
     echo "Missing NVIDIA runtime prepare script: $NVIDIA_RUNTIME_PREPARE_SCRIPT"
     exit 1
   fi
+  log_step "Preparing NVIDIA CUDA runtime DLLs"
   "$PYTHON_BIN" "$NVIDIA_RUNTIME_PREPARE_SCRIPT" --output-dir "$NVIDIA_RUNTIME_STAGE_DIR"
 }
 
@@ -209,6 +368,7 @@ build_app_image() {
     fi
   fi
 
+  log_step "Building Windows app image: $app_name [$flavor]"
   jpackage \
     --type app-image \
     --name "$app_name" \
@@ -220,7 +380,9 @@ build_app_image() {
     --vendor "wimi321" \
     --description "$app_description" \
     --icon "$ICON_PATH" \
-    --java-options "-Xmx4096m"
+    --java-options "-Xmx4096m" \
+    --java-options "-Dlizzie.next.version=$APP_DISPLAY_VERSION" >&2
+  log_step "Finished Windows app image: $app_name [$flavor]"
 
   printf '%s\n' "$app_image_dir/$app_name"
 }
@@ -246,6 +408,7 @@ build_installer() {
     fi
   fi
 
+  log_step "Building Windows installer: $app_name [$flavor]"
   jpackage \
     --type exe \
     --name "$app_name" \
@@ -261,7 +424,9 @@ build_installer() {
     --win-menu \
     --win-shortcut \
     --win-upgrade-uuid "$upgrade_uuid" \
-    --java-options "-Xmx4096m"
+    --java-options "-Xmx4096m" \
+    --java-options "-Dlizzie.next.version=$APP_DISPLAY_VERSION" >&2
+  log_step "Finished Windows installer: $app_name [$flavor]"
 
   find "$installer_dir" -maxdepth 1 -type f -name '*.exe' | head -n 1
 }
@@ -276,6 +441,7 @@ write_windows_install_note() {
   cat >"$note_file" <<EOF
 Package type: Windows x64 release assets
 Generated on: $DATE_TAG
+Release display version: $APP_DISPLAY_VERSION
 
 How to pick the right file:
 EOF
@@ -330,7 +496,9 @@ Download verification:
 
 What is bundled:
 - Windows release assets include a packaged Java runtime via jpackage.
-- The built-in Java readboard helper is included in `readboard_java/`.
+- Native Windows readboard is included in `readboard/`.
+- Native Windows readboard is pinned to qiyi71w/readboard ${READBOARD_RELEASE_TAG} (${READBOARD_ASSET_NAME}, SHA256 ${READBOARD_ASSET_SHA256}).
+- The built-in Java readboard helper is also included in `readboard_java/` as a fallback.
 EOF
 
   if [[ "$has_with_katago" == "true" ]]; then
@@ -380,8 +548,10 @@ create_portable_zip() {
 
   native_root="$(to_native_path "$app_image_root")"
   native_zip="$(to_native_path "$portable_zip")"
+  log_step "Creating Windows portable zip: $(basename "$portable_zip")"
   powershell.exe -NoProfile -Command \
     "Compress-Archive -Path '$native_root' -DestinationPath '$native_zip' -Force"
+  log_step "Finished Windows portable zip: $(basename "$portable_zip")"
 }
 
 build_release_variant() {
@@ -399,6 +569,7 @@ build_release_variant() {
   local installer_path
   local final_installer
 
+  log_step "Starting Windows release variant: $release_basename"
   app_root="$(build_app_image \
     "$flavor" \
     "$include_katago" \
@@ -420,6 +591,7 @@ build_release_variant() {
   final_installer="$RELEASE_DIR/${DATE_TAG}-${release_basename}.installer.exe"
   cp "$installer_path" "$final_installer"
   artifacts+=("$final_installer" "$RELEASE_DIR/${DATE_TAG}-${release_basename}.portable.zip")
+  log_step "Finished Windows release variant: $release_basename"
 }
 
 artifacts=()
@@ -427,6 +599,8 @@ build_no_engine_installer="true"
 has_with_katago_assets="false"
 has_opencl_katago_assets="false"
 has_nvidia_katago_assets="false"
+
+prepare_bundled_readboard_assets
 
 if has_bundled_katago "$STANDARD_ENGINE_PLATFORM_DIR"; then
   has_with_katago_assets="true"

@@ -15,7 +15,7 @@
 - 如果你想找 `还能继续用的 lizzieyzy 维护版`，这个项目就是现在应该优先看的版本
 - 如果你想 `输入野狐昵称后直接抓谱再复盘`，当前维护版已经支持
 - 如果你担心第一次启动要自己配很多东西，主推荐整合包已经内置 KataGo 和默认权重
-- 如果你在意棋盘同步工具，主发布包现在也直接带 `readboard_java` 简易版，不用再额外找单独仓库
+- 如果你在意棋盘同步工具，Windows 主发布包现在直接带原生 `readboard.exe`，也保留 `readboard_java` 简易版备用，不用再额外找单独仓库
 
 ## 先选对包
 
@@ -29,8 +29,8 @@
 | Windows 64 位 | `<date>-windows64.nvidia.installer.exe` | 是 | 是 | 有 NVIDIA 显卡，想保留安装流程 |
 | Windows 64 位 | `<date>-windows64.without.engine.portable.zip` | 是 | 否 | 想自己配引擎，也不想安装 |
 | Windows 64 位 | `<date>-windows64.without.engine.installer.exe` | 是 | 否 | 想保留安装流程，但自己配引擎 |
-| macOS Apple Silicon | `<date>-mac-arm64.with-katago.dmg` | App 自带运行时 | 是 | M 系列 Mac |
-| macOS Intel | `<date>-mac-amd64.with-katago.dmg` | App 自带运行时 | 是 | Intel Mac |
+| macOS Apple Silicon | `<date>-mac-apple-silicon.with-katago.dmg` | App 自带运行时 | 是 | M 系列 Mac |
+| macOS Intel | `<date>-mac-intel.with-katago.dmg` | App 自带运行时 | 是 | Intel Mac |
 | Linux 64 位 | `<date>-linux64.with-katago.zip` | 是 | 是 | Linux 桌面用户 |
 
 一句话建议：
@@ -114,8 +114,8 @@ OpenCL 免安装包也能直接打开 `KataGo 一键设置`，点一次“智能
 
 ### 先确认你的芯片
 
-- `Apple 菜单 -> 关于本机` 中显示 Apple M 系列：下载 `mac-arm64.with-katago.dmg`
-- 显示 Intel：下载 `mac-amd64.with-katago.dmg`
+- `Apple 菜单 -> 关于本机` 中显示 Apple M 系列：下载 `mac-apple-silicon.with-katago.dmg`
+- 显示 Intel：下载 `mac-intel.with-katago.dmg`
 
 ### 安装步骤
 
@@ -126,7 +126,10 @@ OpenCL 免安装包也能直接打开 `KataGo 一键设置`，点一次“智能
 
 ### 第一次被系统拦住怎么办
 
-当前维护版的 macOS 包仍然是未签名 / 未公证包。
+当前官方 macOS release 会在发布流程里完成签名和公证。
+
+如果你下载的是官方发布页里的当前 DMG，通常可以直接打开。
+如果第一次仍被系统拦住，往往是系统缓存、安全策略或旧版本残留记录导致，可以按下面步骤处理：
 
 如果第一次打不开：
 

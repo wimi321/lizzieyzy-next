@@ -1,7 +1,6 @@
 package featurecat.lizzie.gui;
 
 import featurecat.lizzie.Lizzie;
-import featurecat.lizzie.rules.SGFParser;
 import featurecat.lizzie.util.Utils;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
@@ -10,6 +9,7 @@ import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
 import java.io.PrintWriter;
 import java.net.Socket;
+import javax.swing.SwingUtilities;
 
 public class SocketGetFile {
   SMessage msg;
@@ -19,8 +19,23 @@ public class SocketGetFile {
   Socket socket = null;
 
   public void SocketGetFile(String name, String date, String file) {
-    // TODO Auto-generated method stub
+    recievedServer = false;
+    Lizzie.frame.beginKifuLoad(
+        Lizzie.frame.kifuLoadText(
+            "KifuLoad.sharedDownloading", "正在下载棋谱…", "Downloading game record..."));
+    Thread thread =
+        new Thread(
+            new Runnable() {
+              public void run() {
+                downloadSocketFile(name, date, file);
+              }
+            },
+            "lizzie-shared-kifu-download");
+    thread.setDaemon(true);
+    thread.start();
+  }
 
+  private void downloadSocketFile(String name, String date, String file) {
     BufferedReader br = null;
     PrintWriter pw = null;
     try {
@@ -56,7 +71,13 @@ public class SocketGetFile {
                     //
                     // "连接失败...请重试或下载最新版Lizzie,链接:https://pan.baidu.com/s/1q615GHD62F92mNZbTYfcxA");
                     //     msg.setVisible(true);
-                    Utils.showMsg(Lizzie.resourceBundle.getString("Socket.connectFailed"));
+                    SwingUtilities.invokeLater(
+                        new Runnable() {
+                          public void run() {
+                            Lizzie.frame.failKifuLoad(
+                                Lizzie.resourceBundle.getString("Socket.connectFailed"));
+                          }
+                        });
                   } catch (IOException e) {
                     // TODO Auto-generated catch block
                     e.printStackTrace();
@@ -74,11 +95,14 @@ public class SocketGetFile {
         recievedServer = true;
         sgfString += str + "\n";
         if (str.startsWith("getFileEnd")) {
-          SGFParser.loadFromString(sgfString);
-          Lizzie.board.setMovelistAll();
-          Lizzie.frame.setVisible(true);
-          Lizzie.frame.scheduleResumeAnalysisAfterLoad(200);
-          Lizzie.frame.refresh();
+          String loadedSgf = sgfString;
+          SwingUtilities.invokeLater(
+              new Runnable() {
+                public void run() {
+                  Lizzie.frame.failKifuLoad(null);
+                  Lizzie.frame.loadSgfString(loadedSgf, 200, Lizzie.config.readKomi, false, null);
+                }
+              });
         }
         if (str.startsWith("errorFileInfo")) {
           errMsg = true;
@@ -86,17 +110,28 @@ public class SocketGetFile {
         }
       }
       if (errMsg) {
-        Utils.showMsg(err);
+        String error = err;
+        SwingUtilities.invokeLater(
+            new Runnable() {
+              public void run() {
+                Lizzie.frame.failKifuLoad(error);
+              }
+            });
       }
 
     } catch (Exception e) {
-      // e.printStackTrace();
+      SwingUtilities.invokeLater(
+          new Runnable() {
+            public void run() {
+              Lizzie.frame.failKifuLoad(Lizzie.resourceBundle.getString("Socket.connectFailed"));
+            }
+          });
     } finally {
       if (socket != null)
         try {
           // System.out.println("close......");
-          br.close();
-          pw.close();
+          if (br != null) br.close();
+          if (pw != null) pw.close();
           socket.close();
         } catch (IOException e) {
           // TODO Auto-generated catch block
@@ -105,7 +140,12 @@ public class SocketGetFile {
       else {
         // System.out.println("连接失败...");
         //  Lizzie.gtpConsole.addLine("连接失败..." + "\n");
-        Utils.showMsg(Lizzie.resourceBundle.getString("Socket.connectFailed"));
+        SwingUtilities.invokeLater(
+            new Runnable() {
+              public void run() {
+                Lizzie.frame.failKifuLoad(Lizzie.resourceBundle.getString("Socket.connectFailed"));
+              }
+            });
         // msg = new SMessage();
         // msg.setMessage("连接失败...请重试或下载最新版Lizzie,链接:https://pan.baidu.com/s/1q615GHD62F92mNZbTYfcxA");
 

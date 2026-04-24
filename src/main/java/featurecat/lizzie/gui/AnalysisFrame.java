@@ -702,7 +702,7 @@ public class AnalysisFrame extends JFrame {
           }
         } else if (!isSelect && !isChanged) {
           setForeground(Color.BLACK);
-          setBackground(Color.WHITE);
+          setBackground(AppleStyleSupport.validFieldBackground());
         }
       }
       super.paintComponent(g);

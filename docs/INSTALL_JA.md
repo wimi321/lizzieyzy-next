@@ -30,8 +30,8 @@
 | Windows x64、NVIDIA GPU、インストーラあり | `<date>-windows64.nvidia.installer.exe` |
 | Windows x64、自分でエンジン設定 | `<date>-windows64.without.engine.portable.zip` |
 | Windows x64、自分でエンジン設定、インストーラあり | `<date>-windows64.without.engine.installer.exe` |
-| macOS Apple Silicon | `<date>-mac-arm64.with-katago.dmg` |
-| macOS Intel | `<date>-mac-amd64.with-katago.dmg` |
+| macOS Apple Silicon | `<date>-mac-apple-silicon.with-katago.dmg` |
+| macOS Intel | `<date>-mac-intel.with-katago.dmg` |
 | Linux x64 | `<date>-linux64.with-katago.zip` |
 
 ## Windows

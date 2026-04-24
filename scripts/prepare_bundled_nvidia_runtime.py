@@ -57,6 +57,7 @@ def download_file(url: str, destination: Path) -> None:
     temp_path = destination.with_suffix(destination.suffix + ".part")
     if temp_path.exists():
         temp_path.unlink()
+    print(f"Downloading {url} -> {destination}", flush=True)
     request = Request(url, headers={"User-Agent": USER_AGENT})
     context = ssl.create_default_context()
     with urlopen(request, timeout=60, context=context) as response, temp_path.open("wb") as handle:
@@ -124,6 +125,7 @@ def ensure_archive(package: dict[str, object], archives_dir: Path) -> Path:
     destination = archives_dir / file_name
     expected_sha = str(package["sha256"])
     if destination.exists() and sha256(destination) == expected_sha:
+        print(f"Using cached NVIDIA runtime archive: {destination}", flush=True)
         return destination
     if destination.exists():
         destination.unlink()

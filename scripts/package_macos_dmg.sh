@@ -6,8 +6,9 @@ cd "$ROOT_DIR"
 source "$ROOT_DIR/scripts/release_metadata.sh"
 
 DATE_TAG="${1:-$(date +%F)}"
-APP_VERSION="${2:-2.5.3}"
+APP_VERSION="${2:-1.0.0}"
 JAR_PATH="${3:-target/lizzie-yzy2.5.3-shaded.jar}"
+APP_DISPLAY_VERSION="${LIZZIE_NEXT_VERSION:-${4:-$APP_VERSION}}"
 
 JAVA_HOME_DEFAULT="$ROOT_DIR/.tools/jdk-21/jdk-21.0.10.jdk/Contents/Home"
 if [[ -d "$JAVA_HOME_DEFAULT" ]]; then
@@ -29,9 +30,11 @@ fi
 ARCH="$(uname -m)"
 if [[ "$ARCH" == "arm64" ]]; then
   ARCH_TAG="mac-arm64"
+  PUBLIC_ARCH_TAG="mac-apple-silicon"
   ENGINE_PLATFORM_DIR="macos-arm64"
 else
   ARCH_TAG="mac-amd64"
+  PUBLIC_ARCH_TAG="mac-intel"
   ENGINE_PLATFORM_DIR="macos-amd64"
 fi
 
@@ -74,7 +77,7 @@ rm -rf "$INPUT_DIR" "$APP_IMAGE_DIR" "$DMG_DIR"
 mkdir -p "$INPUT_DIR" "$APP_IMAGE_DIR" "$DMG_DIR" "$META_DIR"
 
 cp "$JAR_PATH" "$INPUT_DIR/"
-cp README.md README_EN.md README_JA.md README_KO.md LICENSE.txt "$INPUT_DIR/"
+cp README.md README_EN.md README_JA.md README_KO.md LICENSE.txt packaging/PROJECT_INFO.txt "$INPUT_DIR/"
 cp readme_cn.pdf readme_en.pdf "$INPUT_DIR/"
 if [[ -d "$ROOT_DIR/src/main/resources/assets/readboard_java" ]]; then
   mkdir -p "$INPUT_DIR/readboard_java"
@@ -99,7 +102,8 @@ jpackage \
   --vendor "wimi321" \
   --description "$APP_DESCRIPTION" \
   --icon "$ICON_PATH" \
-  --java-options "-Xmx4096m"
+  --java-options "-Xmx4096m" \
+  --java-options "-Dlizzie.next.version=$APP_DISPLAY_VERSION"
 
 jpackage \
   --type dmg \
@@ -113,12 +117,13 @@ jpackage \
   --description "$APP_DESCRIPTION" \
   --icon "$ICON_PATH" \
   --mac-package-identifier "$IDENTIFIER" \
-  --java-options "-Xmx4096m"
+  --java-options "-Xmx4096m" \
+  --java-options "-Dlizzie.next.version=$APP_DISPLAY_VERSION"
 
 DMG_FILE="$(ls "$DMG_DIR"/*.dmg | head -n 1)"
-FINAL_DMG="$ROOT_DIR/dist/release/${DATE_TAG}-${ARCH_TAG}.${PACKAGE_FLAVOR}.dmg"
-INSTALL_NOTE="$META_DIR/${DATE_TAG}-${ARCH_TAG}-install.txt"
-SHA256_FILE="$META_DIR/${DATE_TAG}-${ARCH_TAG}-sha256.txt"
+FINAL_DMG="$ROOT_DIR/dist/release/${DATE_TAG}-${PUBLIC_ARCH_TAG}.${PACKAGE_FLAVOR}.dmg"
+INSTALL_NOTE="$META_DIR/${DATE_TAG}-${PUBLIC_ARCH_TAG}-install.txt"
+SHA256_FILE="$META_DIR/${DATE_TAG}-${PUBLIC_ARCH_TAG}-sha256.txt"
 
 mkdir -p "$ROOT_DIR/dist/release"
 cp "$DMG_FILE" "$FINAL_DMG"
@@ -127,6 +132,7 @@ cat >"$INSTALL_NOTE" <<EOF
 Package type: unsigned macOS app + dmg
 Build architecture: $ARCH
 Generated on: $DATE_TAG
+Release display version: $APP_DISPLAY_VERSION
 Main asset: $(basename "$FINAL_DMG")
 Engine: $PACKAGE_NOTE
 
@@ -154,7 +160,7 @@ Bundled KataGo paths inside the app bundle:
 Notes:
 - This package is unsigned and not notarized.
 - For Intel/Apple Silicon dual-native support, build once on each architecture.
-- The built-in Java readboard helper is included in `LizzieYzy Next.app/Contents/app/readboard_java/`.
+- The built-in Java readboard helper is included in LizzieYzy Next.app/Contents/app/readboard_java/.
 EOF
 
 write_sha256_file "$SHA256_FILE" "$FINAL_DMG" "$INSTALL_NOTE"

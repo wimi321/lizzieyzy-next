@@ -11,10 +11,14 @@ import java.awt.BorderLayout;
 import java.awt.Color;
 import java.awt.Container;
 import java.awt.Dimension;
+import java.awt.Font;
+import java.awt.FontMetrics;
+import java.awt.Graphics;
+import java.awt.Graphics2D;
 import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
-import java.awt.GridLayout;
 import java.awt.Insets;
+import java.awt.RenderingHints;
 import java.awt.Toolkit;
 import java.awt.Window;
 import java.awt.event.ActionEvent;
@@ -25,8 +29,8 @@ import java.io.IOException;
 import java.util.Locale;
 import javax.imageio.ImageIO;
 import javax.swing.JButton;
+import javax.swing.JComponent;
 import javax.swing.JDialog;
-import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.border.EmptyBorder;
 import org.json.JSONObject;
@@ -35,12 +39,12 @@ public class ScoreResult extends JDialog {
   private JPanel dialogPane = new JPanel();
   private JPanel contentPanel = new JPanel();
   private JPanel buttonBar = new JPanel();
-  private JFontLabel lblRule = new JFontLabel("");
-  private JFontLabel blackScore =
-      new JFontLabel(Lizzie.resourceBundle.getString("ScoreResult.lblBlackScore"));
-  private JFontLabel whiteScore =
-      new JFontLabel(Lizzie.resourceBundle.getString("ScoreResult.lblWhiteScore"));
-  private JFontLabel scoreResult = new JFontLabel();
+  private ScoreTextLine lblRule = new ScoreTextLine("");
+  private ScoreTextLine blackScore =
+      new ScoreTextLine(Lizzie.resourceBundle.getString("ScoreResult.lblBlackScore"));
+  private ScoreTextLine whiteScore =
+      new ScoreTextLine(Lizzie.resourceBundle.getString("ScoreResult.lblWhiteScore"));
+  private ScoreTextLine scoreResult = new ScoreTextLine();
 
   private JButton btnRecalculate;
   private JButton btnClose;
@@ -85,6 +89,10 @@ public class ScoreResult extends JDialog {
 
     initDialogPane(contentPane);
 
+    packAndPosition();
+  }
+
+  private void packAndPosition() {
     pack();
     int width = this.getWidth();
     int height = this.getHeight();
@@ -126,8 +134,8 @@ public class ScoreResult extends JDialog {
   }
 
   private void initDialogPane(Container contentPane) {
-    dialogPane.setBorder(new EmptyBorder(5, 12, 5, 12));
-    dialogPane.setLayout(new BorderLayout());
+    dialogPane.setBorder(new EmptyBorder(28, 22, 16, 22));
+    dialogPane.setLayout(new BorderLayout(0, 8));
 
     initContentPanel();
     initButtonBar();
@@ -136,18 +144,31 @@ public class ScoreResult extends JDialog {
   }
 
   private void initContentPanel() {
-    GridLayout gridLayout = new GridLayout(5, 1, 4, 4);
-    contentPanel.setLayout(gridLayout);
-    JLabel hint = new JFontLabel(Lizzie.resourceBundle.getString("ScoreResult.hint"));
-    hint.setForeground(Color.BLUE);
+    contentPanel.setLayout(new GridBagLayout());
+
+    ScoreTextLine hint = new ScoreTextLine(Lizzie.resourceBundle.getString("ScoreResult.hint"));
+    hint.setForeground(new Color(30, 100, 200));
     setLblRule();
-    contentPanel.add(hint);
-    contentPanel.add(lblRule);
-    contentPanel.add(blackScore);
-    contentPanel.add(whiteScore);
     scoreResult.setOpaque(true);
-    contentPanel.add(scoreResult);
+
+    int row = 0;
+    addScoreLine(hint, row++, new Insets(0, 0, 8, 0));
+    addScoreLine(lblRule, row++, new Insets(0, 0, 4, 0));
+    addScoreLine(blackScore, row++, new Insets(0, 0, 4, 0));
+    addScoreLine(whiteScore, row++, new Insets(0, 0, 8, 0));
+    addScoreLine(scoreResult, row, new Insets(0, 0, 0, 0));
     dialogPane.add(contentPanel, BorderLayout.CENTER);
+  }
+
+  private void addScoreLine(ScoreTextLine line, int row, Insets insets) {
+    GridBagConstraints gbc = new GridBagConstraints();
+    gbc.gridx = 0;
+    gbc.gridy = row;
+    gbc.weightx = 1.0;
+    gbc.fill = GridBagConstraints.HORIZONTAL;
+    gbc.anchor = GridBagConstraints.WEST;
+    gbc.insets = insets;
+    contentPanel.add(line, gbc);
   }
 
   private void initButtonBar() {
@@ -330,10 +351,11 @@ public class ScoreResult extends JDialog {
       scoreResult.setBackground(Color.BLACK);
       scoreResult.setForeground(Color.WHITE);
     } else {
-      scoreResult.setBackground(Color.WHITE);
+      scoreResult.setBackground(AppleStyleSupport.validFieldBackground());
       scoreResult.setForeground(Color.BLACK);
     }
     setLblRule();
+    relayoutAfterTextChange();
   }
 
   private static int countBlackHandicapStones(BoardHistoryNode node) {
@@ -363,5 +385,106 @@ public class ScoreResult extends JDialog {
     if (Lizzie.config.useTerritoryInScore)
       lblRule.setText(Lizzie.resourceBundle.getString("ScoreResult.lblUseTerritoryScoring"));
     else lblRule.setText(Lizzie.resourceBundle.getString("ScoreResult.lblUseAreaScoring"));
+  }
+
+  private void relayoutAfterTextChange() {
+    contentPanel.revalidate();
+    contentPanel.repaint();
+    if (isShowing()) {
+      pack();
+    } else {
+      packAndPosition();
+    }
+  }
+
+  private static class ScoreTextLine extends JComponent {
+    private static final int HORIZONTAL_PADDING = 4;
+    private static final int VERTICAL_PADDING = 9;
+    private String text;
+
+    private ScoreTextLine() {
+      this("");
+    }
+
+    private ScoreTextLine(String text) {
+      this.text = text == null ? "" : text;
+      applyScoreLabelStyle();
+    }
+
+    @Override
+    public void updateUI() {
+      super.updateUI();
+      applyScoreLabelStyle();
+    }
+
+    public String getText() {
+      return text;
+    }
+
+    public void setText(String text) {
+      String oldText = this.text;
+      this.text = text == null ? "" : text;
+      firePropertyChange("text", oldText, this.text);
+      revalidate();
+      repaint();
+    }
+
+    @Override
+    public Dimension getPreferredSize() {
+      Font font = getFont();
+      if (font == null) {
+        return new Dimension(1, Config.menuHeight + VERTICAL_PADDING * 2);
+      }
+      FontMetrics metrics = getFontMetrics(font);
+      int safeHeight =
+          Math.max(
+              Config.menuHeight + VERTICAL_PADDING,
+              metrics.getAscent()
+                  + metrics.getDescent()
+                  + metrics.getLeading()
+                  + VERTICAL_PADDING * 2);
+      int safeWidth = metrics.stringWidth(text) + HORIZONTAL_PADDING * 2;
+      return new Dimension(safeWidth, safeHeight);
+    }
+
+    @Override
+    public Dimension getMinimumSize() {
+      return getPreferredSize();
+    }
+
+    @Override
+    protected void paintComponent(Graphics g) {
+      Graphics2D g2 = (Graphics2D) g.create();
+      try {
+        g2.setRenderingHint(
+            RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
+        if (isOpaque()) {
+          g2.setColor(getBackground());
+          g2.fillRect(0, 0, getWidth(), getHeight());
+        }
+        Font font = getFont();
+        if (font == null) {
+          return;
+        }
+        FontMetrics metrics = g2.getFontMetrics(font);
+        int availableHeight = getHeight() - VERTICAL_PADDING * 2;
+        int textY =
+            VERTICAL_PADDING
+                + Math.max(0, (availableHeight - metrics.getHeight()) / 2)
+                + metrics.getAscent();
+        g2.setFont(font);
+        g2.setColor(getForeground());
+        g2.drawString(text, HORIZONTAL_PADDING, textY);
+      } finally {
+        g2.dispose();
+      }
+    }
+
+    private void applyScoreLabelStyle() {
+      if (Config.sysDefaultFontName != null) {
+        setFont(new Font(Config.sysDefaultFontName, Font.PLAIN, Config.frameFontSize));
+      }
+      setForeground(AppleStyleSupport.dialogTextColor());
+    }
   }
 }
