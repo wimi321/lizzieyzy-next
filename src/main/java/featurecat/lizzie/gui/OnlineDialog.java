@@ -59,6 +59,7 @@ import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.JTextField;
 import javax.swing.SwingConstants;
+import javax.swing.SwingUtilities;
 import javax.swing.Timer;
 import javax.swing.text.AttributeSet;
 import javax.swing.text.BadLocationException;
@@ -459,6 +460,15 @@ public class OnlineDialog extends JDialog {
 
   @SuppressWarnings("deprecation")
   public void parseSgf(String data, String format, int num, boolean decode, boolean first) {
+    if (!SwingUtilities.isEventDispatchThread()) {
+      SwingUtilities.invokeLater(
+          new Runnable() {
+            public void run() {
+              parseSgf(data, format, num, decode, first);
+            }
+          });
+      return;
+    }
     JSONObject o = null;
     JSONObject live = null;
     try {
@@ -485,9 +495,7 @@ public class OnlineDialog extends JDialog {
         }
       } else {
         sgf = data;
-        SGFParser.loadFromString(sgf);
-        Lizzie.board.setMovelistAll();
-        Lizzie.frame.scheduleResumeAnalysisAfterLoad(200);
+        Lizzie.frame.loadSgfString(sgf, 200, Lizzie.config.readKomi, false, null);
         return;
       }
     }
@@ -546,6 +554,9 @@ public class OnlineDialog extends JDialog {
             Lizzie.board.previousMove(false);
             Lizzie.board.nextMove(true);
           }
+        }
+        if (first) {
+          Lizzie.frame.refresh();
         }
       } else {
         error(true);

@@ -17,20 +17,33 @@ import java.util.concurrent.ScheduledExecutorService;
 import javax.swing.JFrame;
 
 public class CaptureTsumeGo {
+  private static boolean macPermissionHintShown = false;
+
   private Process process;
   private BufferedReader inputStream;
-  // private BufferedOutputStream outputStream;
   private BufferedReader errorStream;
   private ScheduledExecutorService executor;
   private ScheduledExecutorService executorErr;
 
   public CaptureTsumeGo() {
+    maybeShowMacScreenRecordingHint();
     if (start()) {
       initializeStreams();
       executor = Executors.newSingleThreadScheduledExecutor();
       executor.execute(this::read);
       executorErr = Executors.newSingleThreadScheduledExecutor();
       executorErr.execute(this::readError);
+    } else {
+      Lizzie.frame.setExtendedState(JFrame.NORMAL);
+    }
+  }
+
+  private static void maybeShowMacScreenRecordingHint() {
+    if (macPermissionHintShown) return;
+    String osName = System.getProperty("os.name", "").toLowerCase();
+    if (osName.contains("mac")) {
+      macPermissionHintShown = true;
+      Utils.showMsgNoModal("macOS 需要授予\"屏幕录制\"权限才能使用抓死活棋功能。\n" + "请在 系统设置 → 隐私与安全性 → 屏幕录制 中允许本应用。");
     }
   }
 
@@ -38,7 +51,10 @@ public class CaptureTsumeGo {
     String jarName = "CaptureTsumeGo1.2.jar";
     File jarFile = new File("captureTsumeGo" + File.separator + jarName);
     if (!jarFile.exists()) Utils.copyCaptureTsumeGo();
-    boolean success = false;
+    if (!jarFile.exists()) {
+      Utils.showMsg("找不到 " + jarFile.getAbsolutePath() + "，抓死活棋功能无法启动。");
+      return false;
+    }
     try {
       List<String> jvmArgs = new ArrayList<String>();
       jvmArgs.add("-Dsun.java2d.uiScale=1.0");
@@ -57,24 +73,21 @@ public class CaptureTsumeGo {
       appArgs.add(String.valueOf(Lizzie.config.captureWhitePercent));
       appArgs.add(String.valueOf(Lizzie.config.captureGrayOffset));
       process = Utils.startJavaJar(jarFile, appArgs, jvmArgs);
-      success = true;
+      return true;
     } catch (Exception e) {
-      success = false;
-      Utils.showMsg(e.getLocalizedMessage());
+      Utils.showMsg("抓死活棋启动失败: " + e.getLocalizedMessage());
+      return false;
     }
-    return success;
   }
 
   private void initializeStreams() {
     inputStream = new BufferedReader(new InputStreamReader(process.getInputStream()));
-    // outputStream = new BufferedOutputStream(process.getOutputStream());
     errorStream = new BufferedReader(new InputStreamReader(process.getErrorStream()));
   }
 
   private void read() {
     try {
       String line = "";
-      // while ((c = inputStream.read()) != -1) {
       while ((line = inputStream.readLine()) != null) {
         try {
           parseLine(line.toString());
@@ -82,16 +95,11 @@ public class CaptureTsumeGo {
           ex.printStackTrace();
         }
       }
-      // this line will be reached when engine shuts down
       System.out.println("Capture process ended.");
-      // Do no exit for switching weights
-      // System.exit(-1);
     } catch (IOException e) {
     }
-
-    process = null;
     shutdown();
-    return;
+    process = null;
   }
 
   private void readError() {
@@ -105,7 +113,6 @@ public class CaptureTsumeGo {
         }
       }
     } catch (IOException e) {
-      // TODO Auto-generated catch block
       e.printStackTrace();
     }
   }
@@ -116,7 +123,6 @@ public class CaptureTsumeGo {
   private ArrayList<int[]> stoneData;
 
   private void parseLine(String line) {
-    // Lizzie.gtpConsole.addLine(line + "\n");
     if (line.equals("esc")) {
       Lizzie.frame.setExtendedState(JFrame.NORMAL);
       Lizzie.frame.openCaptureTsumego();
@@ -131,6 +137,7 @@ public class CaptureTsumeGo {
       }
     }
     if (line.startsWith("#")) {
+      if (stoneData == null) return;
       String[] params = line.substring(2).split(" ");
       int[] data = new int[params.length];
       for (int i = 0; i < params.length; i++) {
@@ -139,6 +146,7 @@ public class CaptureTsumeGo {
       stoneData.add(data);
     }
     if (line.equals("end")) {
+      if (stoneData == null || direction < 0 || bw < 0 || bh < 0) return;
       processStoneData(stoneData, direction, bw, bh);
       Lizzie.frame.setExtendedState(JFrame.NORMAL);
       Lizzie.frame.openTsumego();
@@ -191,6 +199,19 @@ public class CaptureTsumeGo {
   }
 
   public void shutdown() {
-    process.destroy();
+    if (process != null) {
+      try {
+        process.destroy();
+      } catch (Exception ignored) {
+      }
+    }
+    if (executor != null) {
+      executor.shutdownNow();
+      executor = null;
+    }
+    if (executorErr != null) {
+      executorErr.shutdownNow();
+      executorErr = null;
+    }
   }
 }

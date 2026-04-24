@@ -13,12 +13,15 @@ import featurecat.lizzie.util.Utils;
 import java.awt.BorderLayout;
 import java.awt.Color;
 import java.awt.Component;
+import java.awt.Container;
 import java.awt.Dimension;
 import java.awt.FlowLayout;
 import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
 import java.awt.Insets;
 import java.awt.Window;
+import java.awt.event.WindowAdapter;
+import java.awt.event.WindowEvent;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.Collections;
@@ -33,6 +36,7 @@ import javax.swing.JList;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.JProgressBar;
+import javax.swing.JScrollPane;
 import javax.swing.SwingUtilities;
 
 public class KataGoAutoSetupDialog extends JDialog {
@@ -41,6 +45,7 @@ public class KataGoAutoSetupDialog extends JDialog {
   private static final Color ERROR_COLOR = new Color(170, 42, 42);
   private static final Color INFO_BG = new Color(248, 249, 251);
   private static final Color INFO_BORDER = new Color(224, 228, 234);
+  private static final String BENCHMARK_PROGRESS_KEY = "lizzie.benchmark.dialog.progress";
 
   private SetupSnapshot snapshot;
   private List<RemoteWeightInfo> remoteWeightInfos = Collections.emptyList();
@@ -55,6 +60,8 @@ public class KataGoAutoSetupDialog extends JDialog {
   private final JLabel lblBenchmarkValue = new JFontLabel();
   private final JLabel lblRemoteDetailValue = new JFontLabel();
   private final JLabel lblStatus = new JFontLabel();
+  private final JPanel progressPanel = new JPanel(new BorderLayout(0, 6));
+  private final JLabel progressStatusLabel = new JFontLabel();
   private final JFontComboBox<RemoteWeightInfo> cmbRemoteWeights =
       new JFontComboBox<RemoteWeightInfo>();
   private final JProgressBar progressBar = new JProgressBar();
@@ -70,10 +77,17 @@ public class KataGoAutoSetupDialog extends JDialog {
     super(owner);
     setModal(false);
     setTitle(text("AutoSetup.title"));
-    setSize(860, 500);
-    setMinimumSize(new Dimension(820, 460));
+    setSize(920, 620);
+    setMinimumSize(new Dimension(880, 560));
+    setDefaultCloseOperation(DO_NOTHING_ON_CLOSE);
     setLocationRelativeTo(owner);
     setAlwaysOnTop(owner instanceof LizzieFrame && ((LizzieFrame) owner).isAlwaysOnTop());
+    addWindowListener(
+        new WindowAdapter() {
+          public void windowClosing(WindowEvent e) {
+            closeOrCancelActiveTask();
+          }
+        });
 
     JPanel content = new JPanel(new BorderLayout(0, 12));
     content.setBorder(BorderFactory.createEmptyBorder(14, 16, 14, 16));
@@ -84,7 +98,11 @@ public class KataGoAutoSetupDialog extends JDialog {
     content.add(description, BorderLayout.NORTH);
 
     JPanel infoPanel = new JPanel(new GridBagLayout());
-    content.add(infoPanel, BorderLayout.CENTER);
+    JScrollPane infoScrollPane = new JScrollPane(infoPanel);
+    infoScrollPane.setBorder(null);
+    infoScrollPane.getViewport().setOpaque(false);
+    infoScrollPane.setOpaque(false);
+    content.add(infoScrollPane, BorderLayout.CENTER);
 
     GridBagConstraints gbc = new GridBagConstraints();
     gbc.gridx = 0;
@@ -123,9 +141,21 @@ public class KataGoAutoSetupDialog extends JDialog {
     JPanel bottomPanel = new JPanel(new BorderLayout(0, 10));
     content.add(bottomPanel, BorderLayout.SOUTH);
 
+    progressPanel.setOpaque(true);
+    progressPanel.setBackground(new Color(255, 248, 232));
+    progressPanel.setBorder(
+        BorderFactory.createCompoundBorder(
+            BorderFactory.createLineBorder(new Color(230, 190, 122)),
+            BorderFactory.createEmptyBorder(8, 10, 8, 10)));
+    progressPanel.setVisible(false);
+    progressStatusLabel.setForeground(WARN_COLOR);
+    progressStatusLabel.setText("");
     progressBar.setStringPainted(true);
-    progressBar.setVisible(false);
-    bottomPanel.add(progressBar, BorderLayout.NORTH);
+    progressBar.setPreferredSize(new Dimension(10, 24));
+    progressBar.setMinimumSize(new Dimension(10, 22));
+    progressPanel.add(progressStatusLabel, BorderLayout.NORTH);
+    progressPanel.add(progressBar, BorderLayout.CENTER);
+    bottomPanel.add(progressPanel, BorderLayout.NORTH);
 
     JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
     bottomPanel.add(buttonPanel, BorderLayout.SOUTH);
@@ -144,7 +174,7 @@ public class KataGoAutoSetupDialog extends JDialog {
     btnInstallNvidiaRuntime.addActionListener(e -> startNvidiaRuntimeInstall());
     btnOptimizePerformance.addActionListener(e -> startPerformanceBenchmark());
     btnStopDownload.addActionListener(e -> stopActiveDownload());
-    btnClose.addActionListener(e -> setVisible(false));
+    btnClose.addActionListener(e -> closeOrCancelActiveTask());
 
     buttonPanel.add(btnRefresh);
     buttonPanel.add(btnInstallNvidiaRuntime);
@@ -250,15 +280,11 @@ public class KataGoAutoSetupDialog extends JDialog {
     if (state.activeWeightPath == null) {
       return text("AutoSetup.notFound");
     }
-    String actualModelName = KataGoAutoSetupHelper.resolveActiveWeightModelName(state);
-    if (actualModelName == null || actualModelName.trim().isEmpty()) {
+    String displayName = KataGoAutoSetupHelper.resolveActiveWeightDisplayName(state);
+    if (displayName == null || displayName.trim().isEmpty()) {
       return state.activeWeightPath.getFileName().toString();
     }
-    String activeFile = state.activeWeightPath.getFileName().toString();
-    if (actualModelName.equalsIgnoreCase(activeFile)) {
-      return actualModelName;
-    }
-    return actualModelName + "  |  " + activeFile;
+    return displayName;
   }
 
   private String formatConfig(SetupSnapshot state) {
@@ -471,7 +497,9 @@ public class KataGoAutoSetupDialog extends JDialog {
 
     final DownloadSession session = new DownloadSession();
     activeDownloadSession = session;
-    setBusy(true, text("AutoSetup.benchmarking"), 0, -1);
+    final boolean analysisWasPondering = KataGoRuntimeHelper.pauseCurrentAnalysisForBenchmark();
+    btnStopDownload.setText(text("AutoSetup.stopBenchmark"));
+    setBusy(true, text("AutoSetup.benchmarkPreparing"), 30, 1000);
     Thread worker =
         new Thread(
             () -> {
@@ -483,7 +511,6 @@ public class KataGoAutoSetupDialog extends JDialog {
                   KataGoRuntimeHelper.ensureBundledRuntimeReady(currentSnapshot.enginePath, this);
                   currentSnapshot = KataGoAutoSetupHelper.inspectLocalSetup();
                 }
-                activeDownloadSession = null;
                 SetupSnapshot benchmarkSnapshot = currentSnapshot;
                 KataGoRuntimeHelper.BenchmarkResult result =
                     KataGoRuntimeHelper.runBenchmarkAndApply(
@@ -494,9 +521,9 @@ public class KataGoAutoSetupDialog extends JDialog {
                                     setBusy(
                                         true,
                                         text("AutoSetup.benchmarking") + " " + statusText,
-                                        0,
-                                        -1)),
-                        null);
+                                        downloadedBytes,
+                                        totalBytes)),
+                        session);
                 applyBenchmarkToRunningEngine(result);
                 SwingUtilities.invokeLater(
                     () -> {
@@ -511,11 +538,14 @@ public class KataGoAutoSetupDialog extends JDialog {
                           this);
                     });
               } catch (DownloadCancelledException e) {
-                SwingUtilities.invokeLater(() -> onDownloadCancelled());
+                SwingUtilities.invokeLater(() -> onBenchmarkCancelled());
               } catch (IOException e) {
                 SwingUtilities.invokeLater(() -> onBackgroundError(e));
               } finally {
+                KataGoRuntimeHelper.restoreAnalysisAfterBenchmark(analysisWasPondering);
                 clearActiveDownload(session, Thread.currentThread());
+                SwingUtilities.invokeLater(
+                    () -> btnStopDownload.setText(text("AutoSetup.stopDownload")));
               }
             },
             "katago-performance-benchmark");
@@ -582,17 +612,32 @@ public class KataGoAutoSetupDialog extends JDialog {
     lblStatus.setForeground(WARN_COLOR);
   }
 
+  private void onBenchmarkCancelled() {
+    setBusy(false, text("AutoSetup.benchmarkCancelled"), 0, 0);
+    renderSnapshot();
+    lblStatus.setText(text("AutoSetup.benchmarkCancelled"));
+    lblStatus.setForeground(WARN_COLOR);
+  }
+
+  private void closeOrCancelActiveTask() {
+    if (activeDownloadSession != null) {
+      stopActiveDownload();
+    }
+    setVisible(false);
+  }
+
   private void applyBenchmarkToRunningEngine(KataGoRuntimeHelper.BenchmarkResult result) {
-    if (result == null || result.recommendedThreads <= 0 || Lizzie.leelaz == null) {
-      return;
-    }
-    try {
-      Lizzie.leelaz.sendCommand("kata-set-param numSearchThreads " + result.recommendedThreads);
-    } catch (Exception e) {
-    }
+    KataGoRuntimeHelper.applyBenchmarkResultToRunningEngines(result);
   }
 
   private void setBusy(boolean busy, String statusText, long downloadedBytes, long totalBytes) {
+    if (statusText == null || statusText.trim().isEmpty()) {
+      statusText = busy ? text("AutoSetup.benchmarking") : "";
+    }
+    lblStatus.setText(statusText);
+    lblStatus.setForeground(busy ? WARN_COLOR : Color.DARK_GRAY);
+    progressStatusLabel.setText(statusText);
+    progressStatusLabel.setForeground(busy ? WARN_COLOR : Color.DARK_GRAY);
     btnRefresh.setEnabled(!busy);
     btnAutoSetup.setEnabled(!busy);
     btnDownloadWeight.setEnabled(!busy && getSelectedRemoteWeight() != null);
@@ -601,32 +646,59 @@ public class KataGoAutoSetupDialog extends JDialog {
     btnStopDownload.setEnabled(busy && activeDownloadSession != null);
     btnClose.setEnabled(true);
 
-    progressBar.setVisible(busy);
+    progressPanel.setVisible(busy);
     progressBar.setIndeterminate(busy && totalBytes <= 0);
     if (!busy) {
       progressBar.setIndeterminate(false);
       progressBar.setValue(0);
+      progressBar.putClientProperty(BENCHMARK_PROGRESS_KEY, Integer.valueOf(0));
       progressBar.setString("");
-      return;
-    }
-
-    if (totalBytes > 0) {
+    } else if (totalBytes > 0) {
       progressBar.setMaximum(1000);
-      progressBar.setValue((int) Math.min(1000, (downloadedBytes * 1000L) / totalBytes));
-      progressBar.setString(
-          statusText
-              + "  "
-              + Math.min(100, (downloadedBytes * 100L) / totalBytes)
-              + "%  "
-              + formatSize(downloadedBytes)
-              + " / "
-              + formatSize(totalBytes));
+      int progressValue = (int) Math.min(1000, (downloadedBytes * 1000L) / totalBytes);
+      if (isBenchmarkPermilleProgress(statusText, downloadedBytes, totalBytes)) {
+        int previousProgress =
+            progressBar.getClientProperty(BENCHMARK_PROGRESS_KEY) instanceof Integer
+                ? ((Integer) progressBar.getClientProperty(BENCHMARK_PROGRESS_KEY)).intValue()
+                : 0;
+        progressValue = Math.max(previousProgress, progressValue);
+        progressBar.putClientProperty(BENCHMARK_PROGRESS_KEY, Integer.valueOf(progressValue));
+      } else {
+        progressBar.putClientProperty(BENCHMARK_PROGRESS_KEY, Integer.valueOf(0));
+      }
+      progressBar.setValue(progressValue);
+      if (isBenchmarkPermilleProgress(statusText, downloadedBytes, totalBytes)) {
+        long percent = Math.min(100, progressValue / 10L);
+        progressBar.setString(percent + "%");
+      } else {
+        long percent = Math.min(100, (downloadedBytes * 100L) / totalBytes);
+        progressBar.setString(
+            percent + "%  " + formatSize(downloadedBytes) + " / " + formatSize(totalBytes));
+      }
     } else if (downloadedBytes > 0) {
       progressBar.setValue(0);
-      progressBar.setString(statusText + "  " + formatSize(downloadedBytes));
+      progressBar.setString(formatSize(downloadedBytes));
     } else {
       progressBar.setValue(0);
-      progressBar.setString(statusText);
+      progressBar.putClientProperty(BENCHMARK_PROGRESS_KEY, Integer.valueOf(0));
+      progressBar.setString("");
+    }
+
+    progressPanel.revalidate();
+    progressPanel.repaint();
+    progressStatusLabel.repaint();
+    progressBar.repaint();
+    Container parent = progressPanel.getParent();
+    if (parent != null) {
+      parent.revalidate();
+      parent.repaint();
+    }
+    getContentPane().revalidate();
+    getContentPane().repaint();
+    if (busy && isShowing()) {
+      progressPanel.paintImmediately(progressPanel.getVisibleRect());
+      lblStatus.paintImmediately(lblStatus.getVisibleRect());
+      progressBar.paintImmediately(progressBar.getVisibleRect());
     }
   }
 
@@ -644,6 +716,11 @@ public class KataGoAutoSetupDialog extends JDialog {
         && snapshot.hasEngine()
         && snapshot.hasConfigs()
         && snapshot.hasWeight();
+  }
+
+  private boolean isBenchmarkPermilleProgress(
+      String statusText, long downloadedBytes, long totalBytes) {
+    return totalBytes == 1000L && downloadedBytes >= 0L && downloadedBytes <= 1000L;
   }
 
   private String formatSize(long bytes) {

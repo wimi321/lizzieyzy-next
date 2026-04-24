@@ -25,9 +25,9 @@
     200
   ],
   "winrate-line-color": [
-    0,
+    100,
+    180,
     255,
-    0,
     200
   ],
   "blunder-node-colors": [

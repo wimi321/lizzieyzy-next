@@ -1213,12 +1213,12 @@ public class SGFParser {
             || Lizzie.board.isPkBoardKataW)
           generalProps.append(
               String.format(
-                  "KM[%s]PW[%s]PB[%s]DT[%s]DZ[KW]AP[Lizzie: %s]RE[%s]SZ[%s]CA[UTF-8]",
+                  "KM[%s]PW[%s]PB[%s]DT[%s]DZ[KW]AP[LizzieYzy Next: %s]RE[%s]SZ[%s]CA[UTF-8]",
                   komi,
                   playerW,
                   playerB,
                   date,
-                  Lizzie.lizzieVersion,
+                  Lizzie.nextVersion,
                   result,
                   Board.boardWidth
                       + (Board.boardWidth != Board.boardHeight ? ":" + Board.boardHeight : "")));
@@ -1229,24 +1229,24 @@ public class SGFParser {
             || Lizzie.board.isPkBoardKataB)
           generalProps.append(
               String.format(
-                  "KM[%s]PW[%s]PB[%s]DT[%s]DZ[KB]AP[Lizzie: %s]RE[%s]SZ[%s]CA[UTF-8]",
+                  "KM[%s]PW[%s]PB[%s]DT[%s]DZ[KB]AP[LizzieYzy Next: %s]RE[%s]SZ[%s]CA[UTF-8]",
                   komi,
                   playerW,
                   playerB,
                   date,
-                  Lizzie.lizzieVersion,
+                  Lizzie.nextVersion,
                   result,
                   Board.boardWidth
                       + (Board.boardWidth != Board.boardHeight ? ":" + Board.boardHeight : "")));
         else
           generalProps.append(
               String.format(
-                  "KM[%s]PW[%s]PB[%s]DT[%s]DZ[Y]AP[Lizzie: %s]RE[%s]SZ[%s]CA[UTF-8]",
+                  "KM[%s]PW[%s]PB[%s]DT[%s]DZ[Y]AP[LizzieYzy Next: %s]RE[%s]SZ[%s]CA[UTF-8]",
                   komi,
                   playerW,
                   playerB,
                   date,
-                  Lizzie.lizzieVersion,
+                  Lizzie.nextVersion,
                   result,
                   Board.boardWidth
                       + (Board.boardWidth != Board.boardHeight ? ":" + Board.boardHeight : "")));
@@ -1254,24 +1254,24 @@ public class SGFParser {
         if (Lizzie.leelaz.isKatago || Lizzie.board.isKataBoard)
           generalProps.append(
               String.format(
-                  "KM[%s]PW[%s]PB[%s]DT[%s]DZ[G]AP[Lizzie: %s]RE[%s]SZ[%s]CA[UTF-8]",
+                  "KM[%s]PW[%s]PB[%s]DT[%s]DZ[G]AP[LizzieYzy Next: %s]RE[%s]SZ[%s]CA[UTF-8]",
                   komi,
                   playerW,
                   playerB,
                   date,
-                  Lizzie.lizzieVersion,
+                  Lizzie.nextVersion,
                   result,
                   Board.boardWidth
                       + (Board.boardWidth != Board.boardHeight ? ":" + Board.boardHeight : "")));
         else
           generalProps.append(
               String.format(
-                  "KM[%s]PW[%s]PB[%s]DT[%s]AP[Lizzie: %s]RE[%s]SZ[%s]CA[UTF-8]",
+                  "KM[%s]PW[%s]PB[%s]DT[%s]AP[LizzieYzy Next: %s]RE[%s]SZ[%s]CA[UTF-8]",
                   komi,
                   playerW,
                   playerB,
                   date,
-                  Lizzie.lizzieVersion,
+                  Lizzie.nextVersion,
                   result,
                   Board.boardWidth
                       + (Board.boardWidth != Board.boardHeight ? ":" + Board.boardHeight : "")));

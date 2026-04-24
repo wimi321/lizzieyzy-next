@@ -12,6 +12,7 @@ fi
 
 DATE_TAG="${1:-$(date +%F)}"
 JAR_PATH="${2:-target/lizzie-yzy2.5.3-shaded.jar}"
+APP_DISPLAY_VERSION="${LIZZIE_NEXT_VERSION:-${3:-1.0.0-dev}}"
 LEGACY_WINDOWS64_ZIP="${LEGACY_WINDOWS64_ZIP:-0}"
 LEGACY_WINDOWS32_ZIP="${LEGACY_WINDOWS32_ZIP:-0}"
 LEGACY_OTHER_SYSTEMS_ZIP="${LEGACY_OTHER_SYSTEMS_ZIP:-0}"
@@ -135,6 +136,7 @@ write_linux_install_note() {
   cat >"$note_file" <<EOF
 Package type: Linux x64 release assets
 Generated on: $DATE_TAG
+Release display version: $APP_DISPLAY_VERSION
 Main asset: $(basename "$asset_path")
 
 How to use:
@@ -189,7 +191,7 @@ make_bundle() {
 
   mkdir -p "$app"
   cp "$JAR_PATH" "$app/"
-  cp LICENSE.txt README.md README_EN.md README_JA.md README_KO.md readme_cn.pdf readme_en.pdf "$app/"
+  cp LICENSE.txt README.md README_EN.md README_JA.md README_KO.md readme_cn.pdf readme_en.pdf packaging/PROJECT_INFO.txt "$app/"
   copy_desktop_helper_assets "$app"
   copy_bundle_engine_assets "$app" "$engine_platforms"
   copy_bundle_runtime_assets "$app" "$runtime_platform"
@@ -215,6 +217,7 @@ EOF
   cat >"$root/Update.txt" <<EOF
 Project: LizzieYzy Next
 Date: $DATE_TAG
+Version: $APP_DISPLAY_VERSION
 Changes:
 - Restored Fox public-game fetch using a Fox nickname.
 - First launch now prefers automatic bundled KataGo setup.
@@ -287,7 +290,7 @@ setlocal
 cd /d %~dp0
 set \"JAVA_CMD=java\"
 if exist \"Lizzieyzy\\runtime\\windows-x64\\bin\\java.exe\" set \"JAVA_CMD=Lizzieyzy\\runtime\\windows-x64\\bin\\java.exe\"
-\"%JAVA_CMD%\" -jar \"Lizzieyzy\\lizzie-yzy2.5.3-shaded.jar\"" \
+\"%JAVA_CMD%\" -Dlizzie.next.version=$APP_DISPLAY_VERSION -jar \"Lizzieyzy\\lizzie-yzy2.5.3-shaded.jar\"" \
     "$WINDOWS64_RUNTIME_NOTE" \
     "$( [[ "$WINDOWS64_FLAVOR" == "with-katago" ]] && echo "windows-x64" )" \
     "windows-x64"
@@ -300,7 +303,7 @@ setlocal
 cd /d %~dp0
 set \"JAVA_CMD=java\"
 if exist \"Lizzieyzy\\runtime\\windows-x64\\bin\\java.exe\" set \"JAVA_CMD=Lizzieyzy\\runtime\\windows-x64\\bin\\java.exe\"
-\"%JAVA_CMD%\" -jar \"Lizzieyzy\\lizzie-yzy2.5.3-shaded.jar\"" \
+\"%JAVA_CMD%\" -Dlizzie.next.version=$APP_DISPLAY_VERSION -jar \"Lizzieyzy\\lizzie-yzy2.5.3-shaded.jar\"" \
     "No bundled KataGo in this package. Bundled Java runtime included for Windows x64 if present." \
     "" \
     "windows-x64"
@@ -315,7 +318,7 @@ setlocal
 cd /d %~dp0
 set \"JAVA_CMD=java\"
 if exist \"Lizzieyzy\\runtime\\windows-x64\\bin\\java.exe\" set \"JAVA_CMD=Lizzieyzy\\runtime\\windows-x64\\bin\\java.exe\"
-\"%JAVA_CMD%\" -jar \"Lizzieyzy\\lizzie-yzy2.5.3-shaded.jar\"" \
+\"%JAVA_CMD%\" -Dlizzie.next.version=$APP_DISPLAY_VERSION -jar \"Lizzieyzy\\lizzie-yzy2.5.3-shaded.jar\"" \
   "$WINDOWS32_RUNTIME_NOTE" \
   "$( [[ "$WINDOWS32_FLAVOR" == "with-katago" ]] && echo "windows-x86" )"
 
@@ -331,7 +334,7 @@ JAVA_CMD=\"java\"
 if [[ -x \"Lizzieyzy/runtime/linux-x64/bin/java\" ]]; then
   JAVA_CMD=\"Lizzieyzy/runtime/linux-x64/bin/java\"
 fi
-\"\$JAVA_CMD\" -jar \"Lizzieyzy/lizzie-yzy2.5.3-shaded.jar\"" \
+\"\$JAVA_CMD\" -Dlizzie.next.version=\"$APP_DISPLAY_VERSION\" -jar \"Lizzieyzy/lizzie-yzy2.5.3-shaded.jar\"" \
   "$LINUX64_RUNTIME_NOTE" \
   "$( [[ "$LINUX64_FLAVOR" == "with-katago" ]] && echo "linux-x64" )" \
   "linux-x64"
@@ -352,23 +355,23 @@ if [[ \"\$(uname -s)\" == \"Darwin\" ]]; then
   sh ./start-mac-amd64.sh
   exit 0
 fi
-java -jar \"Lizzieyzy/lizzie-yzy2.5.3-shaded.jar\"" \
+java -Dlizzie.next.version=\"$APP_DISPLAY_VERSION\" -jar \"Lizzieyzy/lizzie-yzy2.5.3-shaded.jar\"" \
   "$MAC_LINUX_RUNTIME_NOTE" \
   "$( [[ "$MAC_LINUX_FLAVOR" == "with-katago" ]] && echo "macos-amd64,linux-x64" )"
 
-cat >"$STAGE_DIR/$DATE_TAG-Macosx.amd64.Linux.amd64.$MAC_LINUX_FLAVOR/start-mac-arm64.sh" <<'EOF'
+cat >"$STAGE_DIR/$DATE_TAG-Macosx.amd64.Linux.amd64.$MAC_LINUX_FLAVOR/start-mac-arm64.sh" <<EOF
 #!/usr/bin/env bash
 set -e
-cd "$(dirname "$0")"
-java -jar "Lizzieyzy/lizzie-yzy2.5.3-shaded.jar"
+cd "\$(dirname "\$0")"
+java -Dlizzie.next.version="$APP_DISPLAY_VERSION" -jar "Lizzieyzy/lizzie-yzy2.5.3-shaded.jar"
 EOF
 chmod +x "$STAGE_DIR/$DATE_TAG-Macosx.amd64.Linux.amd64.$MAC_LINUX_FLAVOR/start-mac-arm64.sh"
 
-cat >"$STAGE_DIR/$DATE_TAG-Macosx.amd64.Linux.amd64.$MAC_LINUX_FLAVOR/start-mac-amd64.sh" <<'EOF'
+cat >"$STAGE_DIR/$DATE_TAG-Macosx.amd64.Linux.amd64.$MAC_LINUX_FLAVOR/start-mac-amd64.sh" <<EOF
 #!/usr/bin/env bash
 set -e
-cd "$(dirname "$0")"
-java -jar "Lizzieyzy/lizzie-yzy2.5.3-shaded.jar"
+cd "\$(dirname "\$0")"
+java -Dlizzie.next.version="$APP_DISPLAY_VERSION" -jar "Lizzieyzy/lizzie-yzy2.5.3-shaded.jar"
 EOF
 chmod +x "$STAGE_DIR/$DATE_TAG-Macosx.amd64.Linux.amd64.$MAC_LINUX_FLAVOR/start-mac-amd64.sh"
 

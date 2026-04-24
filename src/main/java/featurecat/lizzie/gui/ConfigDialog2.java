@@ -339,8 +339,12 @@ public class ConfigDialog2 extends JDialog {
     aboutTab = new PanelWithToolTips();
     LinkLabel lblLizzieName =
         new LinkLabel(
-            "<html><div align=\"center\"><b>Lizzie Yzy 2.5.3</b></div>"
-                + "<div align=\"center\"><font style=\"font-weight:plain;font-size:12;\">Java version: "
+            "<html><div align=\"center\"><b>LizzieYzy Next "
+                + Lizzie.nextVersion
+                + "</b></div>"
+                + "<div align=\"center\"><font style=\"font-weight:plain;font-size:12;\">基于 lizzieyzy "
+                + Lizzie.lizzieVersion
+                + " · Java "
                 + Lizzie.javaVersionString
                 + "</font></div></html>");
     lblLizzieName.setFont(new Font(Config.sysDefaultFontName, Font.BOLD, 24));
@@ -359,6 +363,12 @@ public class ConfigDialog2 extends JDialog {
                 + resourceBundle.getString("LizzieConfig.about.lblOriginLizzieInfo2"));
 
     lblOriginLizzieInfo.setFont(new Font(Config.sysDefaultFontName, Font.PLAIN, 14));
+
+    LinkLabel lblQQGroup =
+        new LinkLabel(
+            "<html><b>项目讨论 QQ 群：299419120</b><br />"
+                + "欢迎交流使用问题、反馈 bug、分享使用体验，或者讨论接下来最想加的功能。</html>");
+    lblQQGroup.setFont(new Font(Config.sysDefaultFontName, Font.PLAIN, 14));
     // 注释这里
     GroupLayout gl = new GroupLayout(aboutTab);
     gl.setHorizontalGroup(
@@ -388,6 +398,14 @@ public class ConfigDialog2 extends JDialog {
                                         620,
                                         GroupLayout.PREFERRED_SIZE))
                             .addGroup(
+                                gl.createSequentialGroup()
+                                    .addContainerGap()
+                                    .addComponent(
+                                        lblQQGroup,
+                                        GroupLayout.PREFERRED_SIZE,
+                                        620,
+                                        GroupLayout.PREFERRED_SIZE))
+                            .addGroup(
                                 gl.createSequentialGroup().addComponent(lblLizzieName).addGap(225)))
                     .addContainerGap()));
     gl.setVerticalGroup(
@@ -406,9 +424,12 @@ public class ConfigDialog2 extends JDialog {
                     .addComponent(
                         lblOriginLizzieInfo,
                         GroupLayout.PREFERRED_SIZE,
-                        282,
+                        220,
                         GroupLayout.PREFERRED_SIZE)
-                    .addGap(126)));
+                    .addPreferredGap(ComponentPlacement.RELATED)
+                    .addComponent(
+                        lblQQGroup, GroupLayout.PREFERRED_SIZE, 60, GroupLayout.PREFERRED_SIZE)
+                    .addGap(50)));
     aboutTab.setLayout(gl);
     ButtonGroup group = new ButtonGroup();
     nf.setGroupingUsed(false);
@@ -3028,25 +3049,21 @@ public class ConfigDialog2 extends JDialog {
       htmlKit = new HtmlKit();
       htmlDoc = (HTMLDocument) htmlKit.createDefaultDocument();
       htmlStyle = htmlKit.getStyleSheet();
+      boolean apple = AppleStyleSupport.isAppleStyleEnabled();
+      java.awt.Color fg = apple ? java.awt.Color.WHITE : java.awt.Color.BLACK;
+      // Let the component's parent background show through for a uniform look.
       String style =
-          "body {background:"
-              + String.format(
-                  "%02x%02x%02x",
-                  Lizzie.config.commentBackgroundColor.getRed(),
-                  Lizzie.config.commentBackgroundColor.getGreen(),
-                  Lizzie.config.commentBackgroundColor.getBlue())
-              + "; color:#"
-              + String.format(
-                  "%02x%02x%02x",
-                  Lizzie.config.commentFontColor.getRed(),
-                  Lizzie.config.commentFontColor.getGreen(),
-                  Lizzie.config.commentFontColor.getBlue())
+          "body {color:#"
+              + String.format("%02x%02x%02x", fg.getRed(), fg.getGreen(), fg.getBlue())
               + "; font-family:"
               + Config.sysDefaultFontName
               + ";"
               + (Lizzie.config.commentFontSize > 0
                   ? "font-size:" + Lizzie.config.commentFontSize
                   : "")
+              + "}"
+              + " a {color:#"
+              + (apple ? "8ab4f8" : "1565c0")
               + "}";
       htmlStyle.addRule(style);
 
@@ -3055,6 +3072,7 @@ public class ConfigDialog2 extends JDialog {
       setText(text);
       setEditable(false);
       setOpaque(false);
+      setBackground(new Color(0, 0, 0, 0));
       putClientProperty(JEditorPane.HONOR_DISPLAY_PROPERTIES, Boolean.TRUE);
       addHyperlinkListener(
           new HyperlinkListener() {
@@ -3533,7 +3551,8 @@ public class ConfigDialog2 extends JDialog {
     btnWhiteStonePath.setEnabled(false);
     txtWhiteStonePath.setText("/assets/white0.png");
     lblWinrateLineColor.setColor(
-        Theme.array2Color(Lizzie.config.uiConfig.optJSONArray("winrate-line-color"), Color.green));
+        Theme.array2Color(
+            Lizzie.config.uiConfig.optJSONArray("winrate-line-color"), new Color(100, 180, 255)));
     lblWinrateMissLineColor.setColor(
         Theme.array2Color(
             Lizzie.config.uiConfig.optJSONArray("winrate-miss-line-color"), Color.blue.darker()));

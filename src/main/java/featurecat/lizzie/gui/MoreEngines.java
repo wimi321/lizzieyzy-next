@@ -987,7 +987,7 @@ public class MoreEngines extends JPanel {
       this.txtName.setEnabled(true);
       txtInitialCommand.setEnabled(true);
       this.command.setEnabled(true);
-      command.setBackground(Color.WHITE);
+      command.setBackground(AppleStyleSupport.validFieldBackground());
       this.preload.setEnabled(true);
       this.txtWidth.setEnabled(true);
       this.txtHeight.setEnabled(true);

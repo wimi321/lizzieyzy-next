@@ -154,25 +154,33 @@ public class SubBoardRenderer {
 
   /** Draw a go board */
   public void draw(Graphics2D g) {
-    drawGoban(g);
-    if ((!showHeat && !Lizzie.config.subBoardRaw)
-        || (Lizzie.config.isFourSubMode() && !showHeat && this != Lizzie.frame.subBoardRenderer4)) {
-      drawPlay(g);
-      if (!maybeCleanBranch()) {
-        if (!isMouseOver || statChanged || wheeled) drawBranch();
+    Shape oldClip = g.getClip();
+    g.clipRect(x, y, boardWidth, boardHeight);
+    try {
+      drawGoban(g);
+      if ((!showHeat && !Lizzie.config.subBoardRaw)
+          || (Lizzie.config.isFourSubMode()
+              && !showHeat
+              && this != Lizzie.frame.subBoardRenderer4)) {
+        drawPlay(g);
+        if (!maybeCleanBranch()) {
+          if (!isMouseOver || statChanged || wheeled) drawBranch();
+        }
+        if (wheeled) wheeled = false;
       }
-      if (wheeled) wheeled = false;
-    }
-    if (!isMouseOver) drawStones();
-    if (showHeat) {
-      drawLeelazSuggestions();
-    }
-    drawEstimate();
-    renderImages(g);
-    if (Lizzie.frame.isInPlayMode()) return;
-    if (showingBranch && !showHeat) {
-      drawMoveNumbers(g);
-      return;
+      if (!isMouseOver) drawStones();
+      if (showHeat) {
+        drawLeelazSuggestions();
+      }
+      drawEstimate();
+      renderImages(g);
+      if (Lizzie.frame.isInPlayMode()) return;
+      if (showingBranch && !showHeat) {
+        drawMoveNumbers(g);
+        return;
+      }
+    } finally {
+      g.setClip(oldClip);
     }
   }
 
@@ -1210,15 +1218,9 @@ public class SubBoardRenderer {
     } else {
       // fancy version
       if (cachedBoardImage == emptyImage) {
-        cachedBoardImage = Lizzie.config.theme.board();
+        cachedBoardImage = Lizzie.config.theme.defaultBoard();
       }
       drawTextureImage(g, cachedBoardImage, 0, 0, boardWidth, boardHeight);
-
-      // A light readability overlay helps user-supplied photos behave like a usable board texture.
-      if (Lizzie.config.theme.isUsingCustomBoardImage()) {
-        g.setColor(new Color(0, 0, 0, 50));
-        g.fillRect(0, 0, boardWidth, boardHeight);
-      }
 
       g.setStroke(new BasicStroke(1));
     }

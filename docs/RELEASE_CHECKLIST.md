@@ -12,6 +12,7 @@
 - 普通 Windows 包支持“智能优化”的信息要写清楚
 - NVIDIA Windows 包“首次自动准备官方运行库”的信息要写清楚
 - README、安装文档、发布页文案、真实资产名保持一致
+- 软件内“关于”、主窗口标题、安装包启动参数、GitHub release 标题必须显示同一个 release tag，不能停在 `1.0.0`
 - 程序窗口图标、安装包图标、README 展示图标不要混成两套
 
 ## 二、当前推荐的公开资产集合
@@ -26,12 +27,11 @@
 - `windows64.nvidia.installer.exe`
 - `windows64.without.engine.portable.zip`
 - `windows64.without.engine.installer.exe`
-- `windows64.with-katago-install.txt`
-- `windows64.without.engine-install.txt`
-- `mac-arm64.with-katago.dmg`
-- `mac-arm64.with-katago-install.txt`
-- `mac-amd64.with-katago.dmg`
-- `mac-amd64.with-katago-install.txt`
+- `windows64-install.txt`
+- `mac-apple-silicon.with-katago.dmg`
+- `mac-apple-silicon-install.txt`
+- `mac-intel.with-katago.dmg`
+- `mac-intel-install.txt`
 - `linux64.with-katago.zip`
 
 不再建议重新上传的旧思路：
@@ -59,6 +59,8 @@
 GitHub Actions：
 
 - `.github/workflows/build-windows-release.yml`
+- `.github/workflows/build-linux-release.yml`
+- `.github/workflows/build-macos-arm64-release.yml`
 - `.github/workflows/build-macos-amd64-release.yml`
 - `.github/workflows/update-release-notes.yml`
 
@@ -78,6 +80,7 @@ GitHub Actions：
 - `weights/default.bin.gz` 存在
 - `engines/katago/` 下目标平台文件完整
 - 如需 bundled Java，对应 `runtime/` 目录仍然存在
+- 发版 tag 已确定，例如 `1.0.0-next-2026-04-24.2`；构建脚本最后一个参数必须传这个 tag
 
 ## 五、建议构建顺序
 
@@ -116,21 +119,21 @@ python3 scripts/generate_app_icons.py
 ### 5. 构建 Windows 安装器和便携包
 
 ```bash
-./scripts/package_windows_exe.sh 2026-03-21 2.5.3 target/lizzie-yzy2.5.3-shaded.jar
-./scripts/validate_release_assets.sh windows dist/release 2026-03-21
+./scripts/package_windows_exe.sh 2026-04-24 1.0.0 target/lizzie-yzy2.5.3-shaded.jar 1.0.0-next-2026-04-24.2
+./scripts/validate_release_assets.sh windows dist/release 2026-04-24
 ```
 
 ### 6. 构建 Linux 主整合包
 
 ```bash
-./scripts/package_release.sh 2026-03-21 target/lizzie-yzy2.5.3-shaded.jar
-./scripts/validate_release_assets.sh linux dist/release 2026-03-21
+./scripts/package_release.sh 2026-04-24 target/lizzie-yzy2.5.3-shaded.jar 1.0.0-next-2026-04-24.2
+./scripts/validate_release_assets.sh linux dist/release 2026-04-24
 ```
 
 如果确实需要历史兼容 zip，额外显式打开：
 
 ```bash
-LEGACY_WINDOWS32_ZIP=1 LEGACY_OTHER_SYSTEMS_ZIP=1 ./scripts/package_release.sh 2026-03-21 target/lizzie-yzy2.5.3-shaded.jar
+LEGACY_WINDOWS32_ZIP=1 LEGACY_OTHER_SYSTEMS_ZIP=1 ./scripts/package_release.sh 2026-04-24 target/lizzie-yzy2.5.3-shaded.jar 1.0.0-next-2026-04-24.2
 ```
 
 ### 7. 构建 macOS dmg
@@ -138,8 +141,8 @@ LEGACY_WINDOWS32_ZIP=1 LEGACY_OTHER_SYSTEMS_ZIP=1 ./scripts/package_release.sh 2
 在对应芯片机器上运行：
 
 ```bash
-./scripts/package_macos_dmg.sh 2026-03-21 2.5.3 target/lizzie-yzy2.5.3-shaded.jar
-./scripts/validate_release_assets.sh mac-arm64 dist/release 2026-03-21
+./scripts/package_macos_dmg.sh 2026-04-24 1.0.0 target/lizzie-yzy2.5.3-shaded.jar 1.0.0-next-2026-04-24.2
+./scripts/validate_release_assets.sh mac-arm64 dist/release 2026-04-24
 ```
 
 ### 8. 生成发布页文案
@@ -148,17 +151,18 @@ LEGACY_WINDOWS32_ZIP=1 LEGACY_OTHER_SYSTEMS_ZIP=1 ./scripts/package_release.sh 2
 
 ```bash
 python3 scripts/generate_release_notes.py \
-  --date-tag 2026-03-21 \
+  --date-tag 2026-04-24 \
+  --release-tag 1.0.0-next-2026-04-24.2 \
   --release-dir dist/release \
-  --output dist/release-meta/2026-03-21-release-notes.md
+  --output dist/release-meta/2026-04-24-release-notes.md
 ```
 
 如果资产已经上传到 GitHub release，可以直接用工作流更新发布页正文：
 
 ```bash
 gh workflow run update-release-notes.yml \
-  -f date_tag=2026-03-21 \
-  -f release_tag=2.5.3-next-2026-03-24.1
+  -f date_tag=2026-04-24 \
+  -f release_tag=1.0.0-next-2026-04-24.2
 ```
 
 ## 六、Release Notes 应该先写什么

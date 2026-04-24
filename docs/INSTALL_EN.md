@@ -15,7 +15,7 @@ This installation guide is for the actively maintained `LizzieYzy Next` fork, wh
 - If you are looking for a maintained `LizzieYzy` build that still works, this is the project to check first
 - If you want to enter a `Fox nickname`, fetch games, and review them right away, the maintained fork already supports that flow
 - If you are worried about first-launch setup, the recommended bundles already include KataGo and a default weight
-- If you care about board sync, the main release packages now also include the simplified `readboard_java` helper, so you do not need a separate repo first
+- If you care about board sync, the Windows release packages now include native `readboard.exe` and still keep the simplified `readboard_java` fallback, so you do not need a separate repo first
 
 ## Pick The Right Package
 
@@ -29,8 +29,8 @@ This installation guide is for the actively maintained `LizzieYzy Next` fork, wh
 | Windows x64 | `<date>-windows64.nvidia.installer.exe` | Yes | Yes | NVIDIA GPU users who prefer an installer |
 | Windows x64 | `<date>-windows64.without.engine.portable.zip` | Yes | No | Custom engine setup without installation |
 | Windows x64 | `<date>-windows64.without.engine.installer.exe` | Yes | No | Installer flow with your own engine |
-| macOS Apple Silicon | `<date>-mac-arm64.with-katago.dmg` | App runtime | Yes | M-series Macs |
-| macOS Intel | `<date>-mac-amd64.with-katago.dmg` | App runtime | Yes | Intel Macs |
+| macOS Apple Silicon | `<date>-mac-apple-silicon.with-katago.dmg` | App runtime | Yes | M-series Macs |
+| macOS Intel | `<date>-mac-intel.with-katago.dmg` | App runtime | Yes | Intel Macs |
 | Linux x64 | `<date>-linux64.with-katago.zip` | Yes | Yes | Linux desktop users |
 
 Quick rule:
@@ -111,8 +111,8 @@ If you prefer the installer flow:
 
 ### Pick the correct chip build
 
-- Apple Silicon: `mac-arm64.with-katago.dmg`
-- Intel: `mac-amd64.with-katago.dmg`
+- Apple Silicon: `mac-apple-silicon.with-katago.dmg`
+- Intel: `mac-intel.with-katago.dmg`
 
 ### Installation steps
 
@@ -122,7 +122,10 @@ If you prefer the installer flow:
 
 ### If Gatekeeper blocks first launch
 
-Current maintenance builds are still unsigned and not notarized.
+Current official macOS releases are signed and notarized in the release pipeline.
+
+If you downloaded the current DMG from the official release page, it should usually open normally.
+If macOS still blocks it the first time, the cause is usually a local security cache, policy, or an older app record. Use the steps below:
 
 If macOS blocks the first launch:
 

@@ -110,7 +110,7 @@ public class BrowserFrame extends JFrame {
     if (Lizzie.config.logConsoleToFile) {
       PrintStream oldErrorPrintStream = System.err;
       FileOutputStream bosError =
-          new FileOutputStream("LastErrorLogs_" + Lizzie.lizzieVersion + ".txt", true);
+          new FileOutputStream("LastErrorLogs_" + Lizzie.nextVersion + ".txt", true);
       MultiOutputStream multiError =
           new MultiOutputStream(new PrintStream(bosError), oldErrorPrintStream);
       System.setErr(new PrintStream(multiError));

@@ -1,7 +1,6 @@
 package featurecat.lizzie.gui;
 
 import featurecat.lizzie.Config;
-import featurecat.lizzie.theme.MorandiPalette;
 import java.awt.Font;
 import javax.swing.JCheckBox;
 
@@ -20,8 +19,12 @@ public class JFontCheckBox extends JCheckBox {
   }
 
   private void initStyle() {
-    this.setOpaque(false);
-    this.setForeground(MorandiPalette.MENU_ITEM_TEXT);
-    this.setFocusPainted(false);
+    AppleStyleSupport.installCheckBoxStyle(this);
+  }
+
+  @Override
+  public void updateUI() {
+    super.updateUI();
+    AppleStyleSupport.installCheckBoxStyle(this);
   }
 }

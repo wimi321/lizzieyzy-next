@@ -72,6 +72,7 @@ public class Utils {
   private static boolean alertedNoByoyomiSoundFile = false;
   private static final int MAX_AUTO_KATAGO_THREADS = 16;
   private static final String GTP_CONSOLE_MIGRATION_KEY = "migrated-hide-gtp-console-default-v2";
+  private static final String APPLE_STYLE_MIGRATION_KEY = "migrated-apple-style-default-v1";
   private static final String SOUND_RESOURCE_ROOT = "/assets/sound";
 
   public static void ajustScale(Graphics g) {
@@ -118,6 +119,9 @@ public class Utils {
 
   public static void applyMaintainedDefaultSettings() {
     boolean changed = false;
+    if (enableAppleStyleByDefaultOnce()) {
+      changed = true;
+    }
     if (hideGtpConsoleByDefaultOnce()) {
       changed = true;
     }
@@ -422,6 +426,13 @@ public class Utils {
     Lizzie.config.uiConfig.put(GTP_CONSOLE_MIGRATION_KEY, true);
     persistUiStateQuietly();
     return true;
+  }
+
+  private static boolean enableAppleStyleByDefaultOnce() {
+    // Classic (lizzieyzy original) is now the default appearance.
+    // Historically this migration force-enabled Apple style once; keep it as a
+    // no-op so existing users' saved preferences continue to apply unchanged.
+    return false;
   }
 
   private static boolean isPositiveInteger(String value) {

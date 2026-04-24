@@ -143,7 +143,7 @@ public class LizzieFrame extends JFrame {
     Lizzie.resourceBundle.getString("LizzieFrame.commands.keyDelete"),
     Lizzie.resourceBundle.getString("LizzieFrame.commands.keyE"),
   };
-  private String DEFAULT_TITLE = Lizzie.resourceBundle.getString("LizzieFrame.title");
+  private String DEFAULT_TITLE = Lizzie.getAppDisplayName();
   private JLayeredPane basePanel;
   public static BoardRenderer boardRenderer;
   public static BoardRenderer boardRenderer2;
@@ -160,6 +160,8 @@ public class LizzieFrame extends JFrame {
   public static WinrateGraph winrateGraph;
   public static Menu menu;
   public static BottomToolbar toolbar;
+  public WindowMenuStrip windowMenuStrip;
+  private int windowMenuHeight = Config.menuHeight;
   // public static EditToolbar editToolbar;
   public Optional<List<String>> variationOpt;
 
@@ -236,6 +238,12 @@ public class LizzieFrame extends JFrame {
   private ProblemListSnapshot problemListSnapshot;
   private final List<Consumer<ProblemListSnapshot>> problemListListeners = new ArrayList<>();
   private boolean problemSidebarRefreshPending = false;
+  private JPanel kifuLoadGlassPane;
+  private JLabel kifuLoadMessageLabel;
+  private JProgressBar kifuLoadProgressBar;
+  private javax.swing.Timer kifuLoadFinishTimer;
+  private long kifuLoadVisibleSince;
+  private volatile int kifuMovelistRefreshGeneration = 0;
 
   private TableModel blunderModelBlack;
   private TableModel blunderModelWhite;
@@ -284,7 +292,7 @@ public class LizzieFrame extends JFrame {
   private int[] startcoords = new int[2];
   private int[] draggedCoords;
   public JPanel mainPanel;
-  public JToolBar topPanel;
+  public TopHeaderPanel topPanel;
   // private JPanel listPanel;
   private boolean canShowBigBoardImage = true;
   private boolean oriShowListPane;
@@ -463,9 +471,12 @@ public class LizzieFrame extends JFrame {
   public boolean isAutoReplying = false;
   public boolean isBatchAnalysisMode = false;
   // int testFontSize = 12;
-  private Color blunderBackground = MorandiPalette.BG_SECONDARY;
-  private Color blunderForeground = MorandiPalette.TEXT_PRIMARY;
-  private Color listTableBackground = MorandiPalette.TABLE_ROW_ODD;
+  private Color blunderBackground =
+      Lizzie.config.useMorandiColors ? MorandiPalette.BG_SECONDARY : new Color(225, 225, 225);
+  private Color blunderForeground =
+      Lizzie.config.useMorandiColors ? MorandiPalette.TEXT_PRIMARY : Color.BLACK;
+  private Color listTableBackground =
+      Lizzie.config.useMorandiColors ? MorandiPalette.TABLE_ROW_ODD : new Color(0, 0, 0, 10);
   public boolean isAutoAnalyzingDiffNode = false;
 
   public boolean isInScoreMode = false;
@@ -512,8 +523,9 @@ public class LizzieFrame extends JFrame {
     variationTreeBig = new VariationTreeBig();
     winrateGraph = new WinrateGraph();
     toolbar = new BottomToolbar();
-    topPanel = new JToolBar();
+    topPanel = new TopHeaderPanel();
     menu = new Menu();
+    windowMenuStrip = new WindowMenuStrip(menu);
     RightClickMenu = new RightClickMenu();
     RightClickMenu2 = new RightClickMenu2();
     openInVisibleFrame();
@@ -576,7 +588,8 @@ public class LizzieFrame extends JFrame {
     tempGamePanelAll.setVisible(false);
     tempGamePanelAll.setFocusable(false);
     tempGamePanelAll.enableInputMethods(false);
-    tempGamePanelAll.setBackground(MorandiPalette.BG_PRIMARY);
+    tempGamePanelAll.setBackground(
+        Lizzie.config.useMorandiColors ? MorandiPalette.BG_PRIMARY : new Color(100, 100, 100));
     tempGamePanel = new JPanel();
     tempGameScrollPanel = new JScrollPane(tempGamePanel);
     tempGameScrollPanel.setVisible(false);
@@ -587,10 +600,12 @@ public class LizzieFrame extends JFrame {
     tempGamePanelTop.setLayout(null);
     tempGamePanelTop.setFocusable(false);
     tempGamePanelTop.enableInputMethods(false);
-    tempGamePanelTop.setBackground(MorandiPalette.BG_PRIMARY);
+    tempGamePanelTop.setBackground(
+        Lizzie.config.useMorandiColors ? MorandiPalette.BG_PRIMARY : new Color(100, 100, 100));
     tempGameScrollPanel.setVerticalScrollBarPolicy(ScrollPaneConstants.VERTICAL_SCROLLBAR_ALWAYS);
 
-    tempGamePanel.setBackground(MorandiPalette.BG_PRIMARY);
+    tempGamePanel.setBackground(
+        Lizzie.config.useMorandiColors ? MorandiPalette.BG_PRIMARY : new Color(100, 100, 100));
     tempGamePanel.setFocusable(false);
     tempGamePanel.enableInputMethods(false);
     tempGameScrollPanel.getVerticalScrollBar().setUnitIncrement(16);
@@ -658,7 +673,7 @@ public class LizzieFrame extends JFrame {
     commentEditTextPane = new JIMSendTextPane(true);
     commentEditTextPane.setBorder(BorderFactory.createEmptyBorder());
     commentEditTextPane.setBackground(Color.LIGHT_GRAY);
-    commentEditTextPane.setForeground(Color.BLACK);
+    commentEditTextPane.setForeground(Color.WHITE);
     commentEditPane = new JScrollPane(commentEditTextPane);
     commentEditPane.setBorder(BorderFactory.createEmptyBorder());
     commentEditPane.getVerticalScrollBar().setUI(new DemoScrollBarUI());
@@ -691,12 +706,10 @@ public class LizzieFrame extends JFrame {
             }
           }
         });
-    topPanel.setLayout(new ModifiedFlowLayout(FlowLayout.LEFT, 0, -2));
-    topPanel.setFloatable(false);
-    topPanel.setBackground(MorandiPalette.TOOLBAR_BG);
-    topPanel.setOpaque(true);
-    topPanel.setBorder(
-        javax.swing.BorderFactory.createMatteBorder(0, 0, 1, 0, MorandiPalette.TOOLBAR_BORDER));
+    topPanel.setBackground(
+        Lizzie.config.useMorandiColors ? MorandiPalette.TOOLBAR_BG : new Color(232, 232, 232));
+    topPanel.setOpaque(false);
+    topPanel.setBorder(BorderFactory.createEmptyBorder());
     listDataModel = getTableModel();
     listTable = new JTable(listDataModel);
     TableCellRenderer tcr = new ColorTableCellRenderer();
@@ -718,8 +731,10 @@ public class LizzieFrame extends JFrame {
     listTable.setFont(new Font(Config.sysDefaultFontName, Font.PLAIN, Config.frameFontSize));
     DefaultTableCellRenderer cellRenderer = new DefaultTableCellRenderer();
     DefaultTableCellRenderer cellRenderer2 = new DefaultTableCellRenderer();
-    cellRenderer.setBackground(MorandiPalette.TABLE_ROW_EVEN);
-    cellRenderer2.setBackground(MorandiPalette.TABLE_ROW_ODD);
+    cellRenderer.setBackground(
+        Lizzie.config.useMorandiColors ? MorandiPalette.TABLE_ROW_EVEN : new Color(208, 208, 208));
+    cellRenderer2.setBackground(
+        Lizzie.config.useMorandiColors ? MorandiPalette.TABLE_ROW_ODD : new Color(178, 178, 178));
     cellRenderer.setHorizontalAlignment(SwingConstants.CENTER);
     cellRenderer2.setHorizontalAlignment(SwingConstants.CENTER);
     /** 循环修改表头列 */
@@ -729,7 +744,10 @@ public class LizzieFrame extends JFrame {
       else column.setHeaderRenderer(cellRenderer2);
     }
     listScrollpane = new JScrollPane(listTable);
-    listScrollpane.getViewport().setBackground(MorandiPalette.CREAM_WHITE);
+    listScrollpane
+        .getViewport()
+        .setBackground(
+            Lizzie.config.useMorandiColors ? MorandiPalette.CREAM_WHITE : new Color(243, 243, 243));
     varTreePane.addMouseMotionListener(
         new MouseAdapter() {
           public void mouseMoved(MouseEvent e) {
@@ -751,7 +769,8 @@ public class LizzieFrame extends JFrame {
     listScrollpane.setVerticalScrollBarPolicy(
         javax.swing.ScrollPaneConstants.VERTICAL_SCROLLBAR_ALWAYS);
     listScrollpane.getVerticalScrollBar().setUI(new DemoScrollBarUI2(false));
-    listScrollpane.setBackground(MorandiPalette.BG_SECONDARY);
+    listScrollpane.setBackground(
+        Lizzie.config.useMorandiColors ? MorandiPalette.BG_SECONDARY : new Color(235, 235, 235));
     hiddenColumn(1, listTable);
     listTable.getColumnModel().getColumn(0).setPreferredWidth(10);
     listTable.getColumnModel().getColumn(2).setPreferredWidth(30);
@@ -901,7 +920,7 @@ public class LizzieFrame extends JFrame {
               }
             });
     tableTimer.start();
-    setJMenuBar(menu);
+    setJMenuBar(null);
     if (Lizzie.config.isDoubleEngineMode()) {
       boardRenderer2 = new BoardRenderer(false);
       boardRenderer2.setOrder(1);
@@ -982,7 +1001,7 @@ public class LizzieFrame extends JFrame {
         });
 
     mainPanel.setFocusable(true);
-    this.getJMenuBar().setBorder(new EmptyBorder(0, 0, 0, 0));
+    menu.setBorder(new EmptyBorder(0, 0, 0, 0));
     if (this.toolbarHeight == 0) toolbar.setVisible(false);
 
     htmlKit = new HtmlKit();
@@ -1367,11 +1386,13 @@ public class LizzieFrame extends JFrame {
     tablePanelMinWhite.add(minScrollpaneWhite);
     blunderContentPane.add(tablePanelMinBlack);
     blunderContentPane.add(tablePanelMinWhite);
-    minScrollpaneBlack.setBackground(MorandiPalette.COOL_GRAY);
+    minScrollpaneBlack.setBackground(
+        Lizzie.config.useMorandiColors ? MorandiPalette.COOL_GRAY : new Color(158, 158, 158));
     minScrollpaneBlack.getVerticalScrollBar().setUI(new DemoScrollBarUI2(true));
     //    minScrollpaneBlack.setVerticalScrollBarPolicy(
     //        javax.swing.ScrollPaneConstants.VERTICAL_SCROLLBAR_ALWAYS);
-    minScrollpaneWhite.setBackground(MorandiPalette.COOL_GRAY);
+    minScrollpaneWhite.setBackground(
+        Lizzie.config.useMorandiColors ? MorandiPalette.COOL_GRAY : new Color(158, 158, 158));
     minScrollpaneWhite.getVerticalScrollBar().setUI(new DemoScrollBarUI2(true));
     //    minScrollpaneWhite.setVerticalScrollBarPolicy(
     //        javax.swing.ScrollPaneConstants.VERTICAL_SCROLLBAR_ALWAYS);
@@ -1577,6 +1598,7 @@ public class LizzieFrame extends JFrame {
     basePanel.add(varTreeScrollPane, Integer.valueOf(8));
     basePanel.add(listScrollpane, Integer.valueOf(7));
     basePanel.add(sidebarPanel, Integer.valueOf(6));
+    basePanel.add(windowMenuStrip, Integer.valueOf(4));
     basePanel.add(topPanel, Integer.valueOf(3));
     basePanel.add(toolbar, Integer.valueOf(2));
     basePanel.add(mainPanel, Integer.valueOf(1));
@@ -1799,9 +1821,11 @@ public class LizzieFrame extends JFrame {
     ////        .setHorizontalAlignment(JLabel.CENTER);
 
     DefaultTableCellRenderer cellRenderer = new DefaultTableCellRenderer();
-    cellRenderer.setBackground(MorandiPalette.WARM_GRAY);
+    cellRenderer.setBackground(
+        Lizzie.config.useMorandiColors ? MorandiPalette.WARM_GRAY : new Color(178, 178, 178));
     DefaultTableCellRenderer cellRenderer2 = new DefaultTableCellRenderer();
-    cellRenderer2.setBackground(MorandiPalette.COOL_GRAY);
+    cellRenderer2.setBackground(
+        Lizzie.config.useMorandiColors ? MorandiPalette.COOL_GRAY : new Color(158, 158, 158));
     cellRenderer.setHorizontalAlignment(SwingConstants.CENTER);
     cellRenderer2.setHorizontalAlignment(SwingConstants.CENTER);
     /** 循环修改表头列 */
@@ -2268,6 +2292,7 @@ public class LizzieFrame extends JFrame {
   }
 
   public void openBoardSync() {
+    // Non-Windows has no native readboard — always use the bundled Java version.
     if (!OS.isWindows()) {
       openReadBoardJava();
       return;
@@ -2276,39 +2301,31 @@ public class LizzieFrame extends JFrame {
       showLegacyReadBoardDownloadDialog();
       return;
     }
-    if (readBoard == null) {
-      try {
-        readBoard = new ReadBoard(true, false);
-      } catch (Exception e) {
-        // TODO Auto-generated catch block
-        e.printStackTrace();
-        try {
-          readBoard = new ReadBoard(false, false);
-        } catch (Exception e1) {
-          // TODO Auto-generated catch block
-          e1.printStackTrace();
-        }
-      }
+    launchNativeReadBoard();
+  }
 
-    } else {
+  private void launchNativeReadBoard() {
+    if (readBoard != null) {
       try {
         readBoard.shutdown();
       } catch (Exception e) {
         e.printStackTrace();
-        // Failed to save config
       }
-      try {
-        readBoard = new ReadBoard(true, false);
-      } catch (Exception e) {
-        // TODO Auto-generated catch block
-        e.printStackTrace();
+    }
+    try {
+      readBoard = new ReadBoard(true, false);
+    } catch (Exception e) {
+      e.printStackTrace();
+      if (ReadBoard.isNativeReadBoardBatAvailable()) {
         try {
           readBoard = new ReadBoard(false, false);
+          return;
         } catch (Exception e1) {
-          // TODO Auto-generated catch block
           e1.printStackTrace();
         }
       }
+      Utils.showMsg(Lizzie.resourceBundle.getString("ReadBoard.nativeStartFailed"));
+      openReadBoardJava();
     }
   }
 
@@ -2806,12 +2823,8 @@ public class LizzieFrame extends JFrame {
     if (!Lizzie.config.showWinrateGraph) Lizzie.config.toggleShowWinrate();
     if (Lizzie.config.showLargeWinrateOnly()) Lizzie.config.toggleLargeWinrate();
     if (!Lizzie.config.showLargeSubBoard()) Lizzie.config.toggleLargeSubBoard();
-    if (!Lizzie.config.showComment) Lizzie.config.toggleShowComment();
+    if (Lizzie.config.showComment) Lizzie.config.toggleShowComment();
     if (!Lizzie.config.showCaptured) Lizzie.config.toggleShowCaptured();
-    //    if (!Lizzie.config.changedStatus && Lizzie.config.showStatus)
-    //      Lizzie.config.toggleShowStatus(true);
-    // if (!Lizzie.config.showVariationGraph) Lizzie.config.toggleShowVariationGraph();
-    // if (Lizzie.frame.getWidth() - Lizzie.frame.getHeight() < 485)
     LizzieFrame.subBoardRenderer.showHeat = Lizzie.config.showHeat;
     LizzieFrame.subBoardRenderer.showHeatAfterCalc = Lizzie.config.showHeatAfterCalc;
     try {
@@ -3521,6 +3534,304 @@ public class LizzieFrame extends JFrame {
     refresh();
   }
 
+  public String kifuLoadText(String key, String chineseText, String englishText) {
+    try {
+      if (Lizzie.resourceBundle != null && Lizzie.resourceBundle.containsKey(key)) {
+        return Lizzie.resourceBundle.getString(key);
+      }
+    } catch (Exception ignored) {
+    }
+    return Lizzie.config != null && Lizzie.config.isChinese ? chineseText : englishText;
+  }
+
+  public void beginKifuLoad(String message) {
+    runKifuLoadUiUpdate(
+        new Runnable() {
+          public void run() {
+            ensureKifuLoadGlassPane();
+            if (kifuLoadFinishTimer != null) {
+              kifuLoadFinishTimer.stop();
+              kifuLoadFinishTimer = null;
+            }
+            kifuLoadMessageLabel.setText(message);
+            kifuLoadProgressBar.setIndeterminate(true);
+            kifuLoadProgressBar.setString(message);
+            kifuLoadGlassPane.setVisible(true);
+            kifuLoadVisibleSince = System.currentTimeMillis();
+          }
+        });
+  }
+
+  public void updateKifuLoad(String message) {
+    runKifuLoadUiUpdate(
+        new Runnable() {
+          public void run() {
+            ensureKifuLoadGlassPane();
+            kifuLoadMessageLabel.setText(message);
+            kifuLoadProgressBar.setString(message);
+            if (!kifuLoadGlassPane.isVisible()) {
+              kifuLoadGlassPane.setVisible(true);
+              kifuLoadVisibleSince = System.currentTimeMillis();
+            }
+          }
+        });
+  }
+
+  public void finishKifuLoad() {
+    finishKifuLoad(null);
+  }
+
+  public void finishKifuLoad(Runnable afterFirstPaint) {
+    Runnable finish =
+        new Runnable() {
+          public void run() {
+            refresh();
+            if (kifuLoadFinishTimer != null) {
+              kifuLoadFinishTimer.stop();
+            }
+            int hideDelay =
+                (int) Math.max(160, 500 - (System.currentTimeMillis() - kifuLoadVisibleSince));
+            kifuLoadFinishTimer =
+                new javax.swing.Timer(
+                    hideDelay,
+                    new ActionListener() {
+                      public void actionPerformed(ActionEvent e) {
+                        if (kifuLoadGlassPane != null) {
+                          kifuLoadGlassPane.setVisible(false);
+                        }
+                        kifuLoadFinishTimer = null;
+                        if (afterFirstPaint != null) {
+                          afterFirstPaint.run();
+                        }
+                      }
+                    });
+            kifuLoadFinishTimer.setRepeats(false);
+            kifuLoadFinishTimer.start();
+          }
+        };
+    if (SwingUtilities.isEventDispatchThread()) {
+      finish.run();
+    } else {
+      SwingUtilities.invokeLater(finish);
+    }
+  }
+
+  public void failKifuLoad(String message) {
+    Runnable fail =
+        new Runnable() {
+          public void run() {
+            if (kifuLoadFinishTimer != null) {
+              kifuLoadFinishTimer.stop();
+              kifuLoadFinishTimer = null;
+            }
+            if (kifuLoadGlassPane != null) {
+              kifuLoadGlassPane.setVisible(false);
+            }
+            if (message != null && !message.trim().isEmpty()) {
+              Utils.showMsg(message, Lizzie.frame);
+            }
+          }
+        };
+    if (SwingUtilities.isEventDispatchThread()) {
+      fail.run();
+    } else {
+      SwingUtilities.invokeLater(fail);
+    }
+  }
+
+  public boolean loadSgfStringWithFeedback(
+      String sgfContent,
+      String initialMessage,
+      int resumeDelayMillis,
+      boolean readKomi,
+      boolean resetAnalysisWindows,
+      Runnable afterFirstPaint) {
+    return loadSgfStringInternal(
+        sgfContent,
+        initialMessage,
+        resumeDelayMillis,
+        readKomi,
+        resetAnalysisWindows,
+        afterFirstPaint,
+        true);
+  }
+
+  public boolean loadSgfString(
+      String sgfContent,
+      int resumeDelayMillis,
+      boolean readKomi,
+      boolean resetAnalysisWindows,
+      Runnable afterLoad) {
+    return loadSgfStringInternal(
+        sgfContent, null, resumeDelayMillis, readKomi, resetAnalysisWindows, afterLoad, false);
+  }
+
+  private boolean loadSgfStringInternal(
+      String sgfContent,
+      String initialMessage,
+      int resumeDelayMillis,
+      boolean readKomi,
+      boolean resetAnalysisWindows,
+      Runnable afterLoad,
+      boolean showFeedback) {
+    if (!SwingUtilities.isEventDispatchThread()) {
+      final boolean[] loaded = new boolean[] {false};
+      try {
+        SwingUtilities.invokeAndWait(
+            new Runnable() {
+              public void run() {
+                loaded[0] =
+                    loadSgfStringInternal(
+                        sgfContent,
+                        initialMessage,
+                        resumeDelayMillis,
+                        readKomi,
+                        resetAnalysisWindows,
+                        afterLoad,
+                        showFeedback);
+              }
+            });
+      } catch (Exception e) {
+        e.printStackTrace();
+        showKifuLoadError(e);
+      }
+      return loaded[0];
+    }
+    if (showFeedback) {
+      beginKifuLoad(initialMessage);
+    }
+    boolean oriReadKomi = Lizzie.config.readKomi;
+    try {
+      if (showFeedback) {
+        updateKifuLoad(kifuLoadText("KifuLoad.parsing", "正在解析棋谱…", "Parsing game record..."));
+      }
+      Lizzie.config.readKomi = readKomi;
+      SGFParser.loadFromString(sgfContent);
+      if (showFeedback) {
+        updateKifuLoad(
+            kifuLoadText("KifuLoad.refreshing", "正在刷新胜率曲线…", "Refreshing winrate graph..."));
+      }
+      scheduleMovelistRefreshAfterKifuLoad();
+      if (resetAnalysisWindows) {
+        resetMovelistFrameandAnalysisFrame();
+      }
+      setVisible(true);
+      scheduleResumeAnalysisAfterLoad(resumeDelayMillis);
+      refresh();
+      if (showFeedback) {
+        finishKifuLoad(afterLoad);
+      } else if (afterLoad != null) {
+        afterLoad.run();
+      }
+      return true;
+    } catch (Exception e) {
+      e.printStackTrace();
+      if (showFeedback) {
+        failKifuLoad(
+            kifuLoadText("KifuLoad.failed", "棋谱加载失败：", "Failed to load game record: ")
+                + e.getMessage());
+      } else {
+        showKifuLoadError(e);
+      }
+      return false;
+    } finally {
+      Lizzie.config.readKomi = oriReadKomi;
+    }
+  }
+
+  private void showKifuLoadError(Exception e) {
+    String message =
+        kifuLoadText("KifuLoad.failed", "棋谱加载失败：", "Failed to load game record: ")
+            + (e == null ? "" : e.getMessage());
+    if (SwingUtilities.isEventDispatchThread()) {
+      Utils.showMsg(message, Lizzie.frame);
+    } else {
+      SwingUtilities.invokeLater(
+          new Runnable() {
+            public void run() {
+              Utils.showMsg(message, Lizzie.frame);
+            }
+          });
+    }
+  }
+
+  private void ensureKifuLoadGlassPane() {
+    if (kifuLoadGlassPane != null) {
+      return;
+    }
+    kifuLoadGlassPane =
+        new JPanel(new GridBagLayout()) {
+          protected void paintComponent(Graphics g) {
+            super.paintComponent(g);
+            Graphics2D g2 = (Graphics2D) g.create();
+            g2.setColor(new Color(20, 24, 28, 72));
+            g2.fillRect(0, 0, getWidth(), getHeight());
+            g2.dispose();
+          }
+        };
+    kifuLoadGlassPane.setOpaque(false);
+    kifuLoadGlassPane.addMouseListener(new MouseAdapter() {});
+    kifuLoadGlassPane.addMouseMotionListener(
+        new MouseMotionListener() {
+          public void mouseDragged(MouseEvent e) {}
+
+          public void mouseMoved(MouseEvent e) {}
+        });
+    kifuLoadGlassPane.setFocusTraversalKeysEnabled(false);
+    kifuLoadGlassPane.setFocusable(false);
+
+    JPanel card = new JPanel(new BorderLayout(12, 10));
+    card.setBackground(new Color(250, 250, 250));
+    card.setBorder(
+        javax.swing.BorderFactory.createCompoundBorder(
+            javax.swing.BorderFactory.createLineBorder(new Color(96, 112, 128)),
+            javax.swing.BorderFactory.createEmptyBorder(18, 24, 18, 24)));
+
+    kifuLoadMessageLabel = new JFontLabel();
+    kifuLoadMessageLabel.setFont(
+        new Font(Config.sysDefaultFontName, Font.PLAIN, Config.frameFontSize));
+    card.add(kifuLoadMessageLabel, BorderLayout.CENTER);
+
+    kifuLoadProgressBar = new JProgressBar();
+    kifuLoadProgressBar.setIndeterminate(true);
+    kifuLoadProgressBar.setStringPainted(true);
+    kifuLoadProgressBar.setPreferredSize(new Dimension(380, 22));
+    card.add(kifuLoadProgressBar, BorderLayout.SOUTH);
+
+    GridBagConstraints gbc = new GridBagConstraints();
+    gbc.gridx = 0;
+    gbc.gridy = 0;
+    kifuLoadGlassPane.add(card, gbc);
+    setGlassPane(kifuLoadGlassPane);
+  }
+
+  private void runKifuLoadUiUpdate(Runnable runnable) {
+    if (SwingUtilities.isEventDispatchThread()) {
+      runnable.run();
+      paintKifuLoadOverlayNow();
+    } else {
+      SwingUtilities.invokeLater(
+          new Runnable() {
+            public void run() {
+              runnable.run();
+              paintKifuLoadOverlayNow();
+            }
+          });
+    }
+  }
+
+  private void paintKifuLoadOverlayNow() {
+    if (kifuLoadGlassPane == null || !kifuLoadGlassPane.isVisible()) {
+      return;
+    }
+    kifuLoadGlassPane.revalidate();
+    kifuLoadGlassPane.repaint();
+    Rectangle bounds = kifuLoadGlassPane.getBounds();
+    if (bounds.width > 0 && bounds.height > 0) {
+      kifuLoadGlassPane.paintImmediately(0, 0, bounds.width, bounds.height);
+    }
+  }
+
   public void loadFile(File file, boolean fromTemp, boolean showHint) {
     if (EngineManager.isEngineGame() || isPlayingAgainstLeelaz || isAnaPlayingAgainstLeelaz) {
       Utils.showMsg(Lizzie.resourceBundle.getString("LizzieFrame.openFileFailed.inGame"));
@@ -3550,6 +3861,7 @@ public class LizzieFrame extends JFrame {
         }
       }
     } catch (IOException err) {
+      Lizzie.config.playSound = oriSound;
       SwingUtilities.invokeLater(
           new Runnable() {
             public void run() {
@@ -3560,8 +3872,9 @@ public class LizzieFrame extends JFrame {
                   JOptionPane.ERROR);
             }
           });
+      return;
     }
-    Lizzie.board.setMovelistAll();
+    scheduleMovelistRefreshAfterKifuLoad();
     requestProblemListRefresh();
     if (showHint) {
       Lizzie.frame.resetMovelistFrameandAnalysisFrame();
@@ -3573,10 +3886,38 @@ public class LizzieFrame extends JFrame {
     fileNameTitle = file.getName();
     updateTitle();
     scheduleResumeAnalysisAfterLoad(1000);
+    refresh();
   }
 
   public void scheduleResumeAnalysisAfterLoad() {
     scheduleResumeAnalysisAfterLoad(1000);
+  }
+
+  private void scheduleMovelistRefreshAfterKifuLoad() {
+    scheduleMovelistRefreshAfterKifuLoad(900);
+  }
+
+  private void scheduleMovelistRefreshAfterKifuLoad(int delayMillis) {
+    final int generation = ++kifuMovelistRefreshGeneration;
+    final int scheduleDelay = Math.max(0, delayMillis);
+    Runnable runnable =
+        new Runnable() {
+          public void run() {
+            try {
+              if (scheduleDelay > 0) Thread.sleep(scheduleDelay);
+            } catch (InterruptedException e) {
+              Thread.currentThread().interrupt();
+              return;
+            }
+            if (generation == kifuMovelistRefreshGeneration) {
+              Lizzie.board.setMovelistAll();
+            }
+          }
+        };
+    Thread thread = new Thread(runnable, "lizzie-delayed-movelist-refresh");
+    thread.setDaemon(true);
+    thread.setPriority(Thread.MIN_PRIORITY);
+    thread.start();
   }
 
   public void scheduleResumeAnalysisAfterLoad(int delayMillis) {
@@ -4219,6 +4560,10 @@ public class LizzieFrame extends JFrame {
           boolean noBasic = !Lizzie.config.showCaptured;
           boolean noWinrate = !Lizzie.config.showWinrateGraph;
           boolean noComment = !Lizzie.config.showComment;
+          if (noComment) {
+            sidebarPanel.setVisible(false);
+            sidebarPanel.setBounds(0, 0, 0, 0);
+          }
 
           boolean noVariation = !Lizzie.config.showVariationGraph;
           boolean noListPane = !Lizzie.config.showListPane();
@@ -4428,6 +4773,10 @@ public class LizzieFrame extends JFrame {
           //  boolean noBasic = !Lizzie.config.showCaptured;
           boolean noSubBoard = !Lizzie.config.showSubBoard;
           boolean noComment = !Lizzie.config.showComment;
+          if (noComment) {
+            sidebarPanel.setVisible(false);
+            sidebarPanel.setBounds(0, 0, 0, 0);
+          }
           boolean isLargeSubboard =
               Lizzie.config.showLargeSubBoard() && !Lizzie.config.largeWinrateGraph;
           // board
@@ -4497,7 +4846,8 @@ public class LizzieFrame extends JFrame {
                               - ponderingSize * (Lizzie.config.userKnownX ? 1.15 : 0.75)));
 
           // subboard
-          int subBoardY = gry + grh;
+          int subBoardGap = 0;
+          int subBoardY = gry + grh + subBoardGap;
           int subBoardWidth = grw;
           int subBoardHeight = ponderingY - subBoardY;
           int subBoardLength = min(subBoardWidth, subBoardHeight);
@@ -4657,6 +5007,7 @@ public class LizzieFrame extends JFrame {
                 treeh = treeh + vh / 2 - subBoardLength;
                 if (noVariation) subBoardY = subBoardY + vh - subBoardLength;
                 else subBoardY = subBoardY + vh / 2 - subBoardLength;
+                subBoardY = Math.max(subBoardY, vy);
               }
             }
             if (backgroundG.isPresent()) {
@@ -5029,6 +5380,45 @@ public class LizzieFrame extends JFrame {
     if (Lizzie.config.isFloatBoardMode()) this.paintMianPanel(mainPanel.getGraphics());
   }
 
+  public void refreshPanelColors() {
+    boolean useMorandi = Lizzie.config.useMorandiColors;
+    blunderBackground = useMorandi ? MorandiPalette.BG_SECONDARY : new Color(225, 225, 225);
+    blunderForeground = useMorandi ? MorandiPalette.TEXT_PRIMARY : Color.BLACK;
+    listTableBackground = useMorandi ? MorandiPalette.TABLE_ROW_ODD : new Color(0, 0, 0, 10);
+    if (tempGamePanelAll != null)
+      tempGamePanelAll.setBackground(
+          useMorandi ? MorandiPalette.BG_PRIMARY : new Color(100, 100, 100));
+    if (tempGamePanelTop != null)
+      tempGamePanelTop.setBackground(
+          useMorandi ? MorandiPalette.BG_PRIMARY : new Color(100, 100, 100));
+    if (tempGamePanel != null)
+      tempGamePanel.setBackground(
+          useMorandi ? MorandiPalette.BG_PRIMARY : new Color(100, 100, 100));
+    if (topPanel != null)
+      topPanel.setBackground(useMorandi ? MorandiPalette.TOOLBAR_BG : new Color(232, 232, 232));
+    if (listScrollpane != null) {
+      listScrollpane.setBackground(
+          useMorandi ? MorandiPalette.BG_SECONDARY : new Color(235, 235, 235));
+      if (listScrollpane.getViewport() != null)
+        listScrollpane
+            .getViewport()
+            .setBackground(useMorandi ? MorandiPalette.CREAM_WHITE : new Color(243, 243, 243));
+    }
+    if (minScrollpaneBlack != null)
+      minScrollpaneBlack.setBackground(
+          useMorandi ? MorandiPalette.COOL_GRAY : new Color(158, 158, 158));
+    if (minScrollpaneWhite != null)
+      minScrollpaneWhite.setBackground(
+          useMorandi ? MorandiPalette.COOL_GRAY : new Color(158, 158, 158));
+    if (commentEditTextPane != null) commentEditTextPane.setForeground(Color.WHITE);
+    if (windowMenuStrip != null) {
+      windowMenuStrip.refreshColors();
+      windowMenuStrip.repaint();
+    }
+    refresh();
+    repaint();
+  }
+
   public void refresh() {
     // 分开各部分刷新,1代表来自info move的刷新
     redrawWinratePaneOnly = false;
@@ -5351,13 +5741,15 @@ public class LizzieFrame extends JFrame {
     //        cachedBackground.getSubimage(commandsX, commandsY, boxWidth, boxHeight), result);
     //    g.drawImage(result, commandsX, commandsY, null);
 
-    g.setColor(MorandiPalette.CONTROLS_OVERLAY);
+    g.setColor(
+        Lizzie.config.useMorandiColors ? MorandiPalette.CONTROLS_OVERLAY : new Color(0, 0, 0, 130));
     g.fillRect(commandsX, commandsY, boxWidth, boxHeight);
     int strokeRadius = 1;
     g.setStroke(new BasicStroke(strokeRadius == 1 ? strokeRadius : 2 * strokeRadius));
 
     int verticalLineX = (int) (commandsX + boxWidth * 0.3);
-    g.setColor(MorandiPalette.CONTROLS_BORDER);
+    g.setColor(
+        Lizzie.config.useMorandiColors ? MorandiPalette.CONTROLS_BORDER : new Color(0, 0, 0, 60));
     g.drawLine(
         verticalLineX,
         commandsY + 2 * strokeRadius,
@@ -7274,11 +7666,17 @@ public class LizzieFrame extends JFrame {
     if (hasEnginePkTitile && enginePkTitile != null) {
       sb.append(Lizzie.leelaz.oriEnginename);
       sb.append(visitsString + " ");
-      setTitle(enginePkTitile + " " + sb.toString());
+      setTitle(enginePkTitile + " " + DEFAULT_TITLE + " - " + sb.toString());
     } else {
-      // sb.append(DEFAULT_TITLE);
+      String titlePrefix = sb.toString();
+      sb.setLength(0);
+      sb.append(DEFAULT_TITLE);
+      if (!titlePrefix.trim().isEmpty()) {
+        sb.append(" - ");
+        sb.append(titlePrefix);
+      }
       if (EngineManager.isEmpty) {
-        sb.append("Lizzie ");
+        sb.append(" ");
       } else sb.append(Lizzie.leelaz.oriEnginename);
       if (!EngineManager.isEmpty) {
         if (Lizzie.leelaz.isPondering()) sb.append(visitsString + " ");
@@ -7360,11 +7758,7 @@ public class LizzieFrame extends JFrame {
 
     // Load game contents from sgf string
     if (!sgfContent.isEmpty() && SGFParser.isSGF(sgfContent)) {
-      SGFParser.loadFromString(sgfContent);
-      Lizzie.board.setMovelistAll();
-      Lizzie.frame.resetMovelistFrameandAnalysisFrame();
-      Lizzie.frame.setVisible(true);
-      scheduleResumeAnalysisAfterLoad(200);
+      loadSgfString(sgfContent, 200, Lizzie.config.readKomi, true, null);
     }
   }
 
@@ -7437,7 +7831,7 @@ public class LizzieFrame extends JFrame {
     w = Utils.zoomIn(w);
     h = Utils.zoomIn(h);
 
-    int sidebarY = y + (Lizzie.config.showDoubleMenu ? topPanelHeight : 0);
+    int sidebarY = y + windowMenuHeight + (Lizzie.config.showDoubleMenu ? topPanelHeight : 0);
     if (x != sidebarPanel.getX()
         || sidebarY != sidebarPanel.getY()
         || w != sidebarPanel.getWidth()
@@ -9071,15 +9465,13 @@ public class LizzieFrame extends JFrame {
     } else if (!listScrollpane.isVisible()) {
       listScrollpane.setVisible(true);
     }
+    int overlayY = windowMenuHeight + (Lizzie.config.showDoubleMenu ? topPanelHeight : 0);
     if (listScrollpane.getX() != vx
-        || listScrollpane.getY() != vy + (Lizzie.config.showDoubleMenu ? topPanelHeight : 0)
+        || listScrollpane.getY() != vy + overlayY
         || listScrollpane.getWidth() != vw
         || listScrollpane.getHeight() != vh)
       listScrollpane.setBounds(
-          Utils.zoomIn(vx),
-          Utils.zoomIn(vy) + (Lizzie.config.showDoubleMenu ? topPanelHeight : 0),
-          Utils.zoomIn(vw),
-          Utils.zoomIn(vh));
+          Utils.zoomIn(vx), Utils.zoomIn(vy) + overlayY, Utils.zoomIn(vw), Utils.zoomIn(vh));
   }
 
   public void setHideListScrollpane(boolean visible) {
@@ -9203,7 +9595,9 @@ public class LizzieFrame extends JFrame {
               varTreePane.updateUI();
               varTreeScrollPane.setBounds(
                   Utils.zoomIn(vx),
-                  Utils.zoomIn(vy) + (Lizzie.config.showDoubleMenu ? topPanelHeight : 0),
+                  Utils.zoomIn(vy)
+                      + windowMenuHeight
+                      + (Lizzie.config.showDoubleMenu ? topPanelHeight : 0),
                   Utils.zoomIn(vw),
                   Utils.zoomIn(vh));
 
@@ -9642,21 +10036,42 @@ public class LizzieFrame extends JFrame {
         new Thread() {
           public void run() {
             int width = getWidth() - getInsets().left - getInsets().right;
+            windowMenuStrip.rebuild();
+            windowMenuHeight =
+                windowMenuStrip.getPreferredSize().height > 0
+                    ? windowMenuStrip.getPreferredSize().height
+                    : Config.menuHeight;
+            windowMenuStrip.setBounds(0, 0, width, windowMenuHeight);
+            windowMenuStrip.setPreferredSize(new Dimension(width, windowMenuHeight));
+            windowMenuStrip.invalidate();
+            windowMenuStrip.revalidate();
+            windowMenuStrip.doLayout();
+            windowMenuStrip.repaint();
+            windowMenuStrip.setVisible(true);
             if (Lizzie.config.showTopToolBar) {
               if (Lizzie.config.autoWrapToolBar) {
+                // To allow FlowLayout wrapping properly, let it take its preferred height
+                // based on the actual layout, rather than blindly assuming Config.menuHeight.
                 topPanel.setBounds(
-                    0, 0, width, Config.menuHeight + (Lizzie.config.useJavaLooks ? 1 : 0));
-                int curHeight = topPanel.getPreferredSize().height + 8;
-                topPanelHeight = Config.menuHeight;
-                if (curHeight / Config.menuHeight > 1) {
-                  topPanelHeight = (curHeight / Config.menuHeight) * Config.menuHeight;
-                  topPanel.setBounds(
-                      0, 0, width, topPanelHeight + (Lizzie.config.useJavaLooks ? 1 : 0));
-                }
+                    0, windowMenuHeight, width, 9999); // give it space to calculate preferred size
+                topPanel.invalidate();
+                topPanel.doLayout();
+                int curHeight = topPanel.getPreferredSize().height;
+                topPanelHeight = curHeight > 0 ? curHeight : Config.menuHeight;
+
+                // Adjust bounds with actual wrapped height
+                topPanel.setBounds(
+                    0,
+                    windowMenuHeight,
+                    width,
+                    topPanelHeight + (Lizzie.config.useJavaLooks ? 1 : 0));
                 topPanel.revalidate();
               } else {
                 topPanel.setBounds(
-                    0, 0, 9999, Config.menuHeight + (Lizzie.config.useJavaLooks ? 1 : 0));
+                    0,
+                    windowMenuHeight,
+                    9999,
+                    Config.menuHeight + (Lizzie.config.useJavaLooks ? 1 : 0));
                 topPanelHeight = Config.menuHeight;
               }
             } else {
@@ -9665,19 +10080,18 @@ public class LizzieFrame extends JFrame {
             }
             mainPanel.setBounds(
                 0,
-                (Lizzie.config.showDoubleMenu ? topPanelHeight : 0),
+                windowMenuHeight + (Lizzie.config.showDoubleMenu ? topPanelHeight : 0),
                 Utils.zoomOut(width),
                 Utils.zoomOut(
                     Lizzie.frame.getHeight()
-                        - Lizzie.frame.getJMenuBar().getHeight()
                         - Lizzie.frame.getInsets().top
                         - Lizzie.frame.getInsets().bottom
+                        - windowMenuHeight
                         - toolbarHeight
                         - (Lizzie.config.showDoubleMenu ? topPanelHeight : 0)));
             toolbar.setBounds(
                 0,
                 Lizzie.frame.getHeight()
-                    - Lizzie.frame.getJMenuBar().getHeight()
                     - Lizzie.frame.getInsets().top
                     - Lizzie.frame.getInsets().bottom
                     - toolbarHeight,
@@ -10919,12 +11333,12 @@ public class LizzieFrame extends JFrame {
             - 12;
     tempGamePanelAll.setBounds(
         0,
-        Lizzie.config.showDoubleMenu ? topPanelHeight : 0,
+        windowMenuHeight + (Lizzie.config.showDoubleMenu ? topPanelHeight : 0),
         Lizzie.frame.getWidth() - Lizzie.frame.getInsets().left - Lizzie.frame.getInsets().right,
         Lizzie.frame.getHeight()
-            - Lizzie.frame.getJMenuBar().getHeight()
             - Lizzie.frame.getInsets().top
             - Lizzie.frame.getInsets().bottom
+            - windowMenuHeight
             - toolbarHeight
             - (Lizzie.config.showDoubleMenu ? topPanelHeight : 0));
 
@@ -10939,9 +11353,9 @@ public class LizzieFrame extends JFrame {
         0,
         Lizzie.frame.getWidth() - Lizzie.frame.getInsets().left - Lizzie.frame.getInsets().right,
         Lizzie.frame.getHeight()
-            - Lizzie.frame.getJMenuBar().getHeight()
             - Lizzie.frame.getInsets().top
             - Lizzie.frame.getInsets().bottom
+            - windowMenuHeight
             - toolbarHeight
             - (Lizzie.config.showDoubleMenu ? topPanelHeight : 0));
     tempGamePanelAll.setVisible(true);
@@ -12501,7 +12915,12 @@ public class LizzieFrame extends JFrame {
     setExtendedState(JFrame.ICONIFIED);
     if (captureTsumeGoFrame != null && captureTsumeGoFrame.isVisible())
       captureTsumeGoFrame.setVisible(false);
-    new CaptureTsumeGo();
+    try {
+      new CaptureTsumeGo();
+    } catch (Throwable t) {
+      setExtendedState(JFrame.NORMAL);
+      t.printStackTrace();
+    }
   }
 
   public void openCaptureTsumego() {

@@ -66,18 +66,13 @@ public class AnalysisEngine {
   private boolean silentProgress = false;
 
   public AnalysisEngine(boolean isPreLoad) throws IOException {
-    engineCommand = Lizzie.config.analysisEngineCommand;
     int maxVisits =
         Lizzie.frame.isBatchAnalysisMode
             ? Math.max(2, Lizzie.config.batchAnalysisPlayouts)
             : Lizzie.config.analysisMaxVisits + 1;
-    if (maxVisits <= 36 && !engineCommand.toLowerCase().contains("-override-config")) {
-      engineCommand =
-          engineCommand
-              + " -override-config \"numSearchThreadsPerAnalysisThread="
-              + Math.max(1, maxVisits / 10)
-              + "\"";
-    }
+    engineCommand =
+        KataGoRuntimeHelper.optimizeAnalysisEngineCommand(
+            Lizzie.config.analysisEngineCommand, maxVisits, Lizzie.frame.isBatchAnalysisMode);
     this.isPreLoad = isPreLoad;
     RemoteEngineData remoteData = Utils.getAnalysisEngineRemoteEngineData();
     this.useJavaSSH = remoteData.useJavaSSH;

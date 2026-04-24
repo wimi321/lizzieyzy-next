@@ -22,9 +22,9 @@
   ],
   "background-image": "background.jpg",
   "winrate-line-color": [
-    0,
-    255,
-    0
+    100,
+    180,
+    255
   ],
   "comment-font-color": [
     255,

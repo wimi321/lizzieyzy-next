@@ -28,6 +28,7 @@ import java.awt.font.TextAttribute;
 import java.awt.font.TextLayout;
 import java.awt.geom.AffineTransform;
 import java.awt.geom.Point2D;
+import java.awt.geom.Rectangle2D;
 import java.awt.image.BufferedImage;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -3538,7 +3539,11 @@ public class BoardRenderer {
         cachedBoardImage = Lizzie.config.theme.board();
       }
 
-      drawTextureImage(g, cachedBoardImage, 0, 0, boardWidth, boardHeight, true);
+      if (Lizzie.config.theme.isUsingCustomBoardImage()) {
+        drawCoverTextureImage(g, cachedBoardImage, 0, 0, boardWidth, boardHeight, true);
+      } else {
+        drawTextureImage(g, cachedBoardImage, 0, 0, boardWidth, boardHeight, true);
+      }
 
       // A light readability overlay helps user-supplied photos behave like a usable board texture.
       if (Lizzie.config.theme.isUsingCustomBoardImage()) {
@@ -3916,6 +3921,26 @@ public class BoardRenderer {
       paint = new TexturePaint(img, new Rectangle(0, 0, img.getWidth(), img.getHeight()));
       g.setPaint(paint);
     } else g.setPaint(new TexturePaint(img, new Rectangle(0, 0, img.getWidth(), img.getHeight())));
+    g.fill(new Rectangle(x, y, width, height));
+  }
+
+  private void drawCoverTextureImage(
+      Graphics2D g, BufferedImage img, int x, int y, int width, int height, boolean createPaint) {
+    if (img == null || img.getWidth() <= 0 || img.getHeight() <= 0 || width <= 0 || height <= 0) {
+      return;
+    }
+
+    double scale = Math.max(width / (double) img.getWidth(), height / (double) img.getHeight());
+    double drawWidth = img.getWidth() * scale;
+    double drawHeight = img.getHeight() * scale;
+    double drawX = x + (width - drawWidth) / 2.0;
+    double drawY = y + (height - drawHeight) / 2.0;
+    TexturePaint coverPaint =
+        new TexturePaint(img, new Rectangle2D.Double(drawX, drawY, drawWidth, drawHeight));
+    if (createPaint) {
+      paint = coverPaint;
+    }
+    g.setPaint(coverPaint);
     g.fill(new Rectangle(x, y, width, height));
   }
 

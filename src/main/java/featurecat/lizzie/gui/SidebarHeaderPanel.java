@@ -29,8 +29,8 @@ public class SidebarHeaderPanel extends JPanel {
             int y = e.getY();
 
             // Click on [ 评论 | 问题手 ]
-            if (y >= 12 && y <= 36 && x >= 10 && x <= 130) {
-              if (x < 70) {
+            if (y >= 12 && y <= 44 && x >= 10 && x <= 142) {
+              if (x < 76) {
                 parentPanel.switchTo("COMMENTS");
               } else {
                 parentPanel.switchTo("BLUNDERS");
@@ -38,8 +38,8 @@ public class SidebarHeaderPanel extends JPanel {
             }
 
             // Click on [ 黑 | 白 ]
-            if (y >= 44 && y <= 66 && x >= 10 && x <= 110) {
-              if (x < 60) {
+            if (y >= 44 && y <= 76 && x >= 10 && x <= 122) {
+              if (x < 66) {
                 Lizzie.frame.setProblemListSideFilter(ProblemListSideFilter.BLACK);
               } else {
                 Lizzie.frame.setProblemListSideFilter(ProblemListSideFilter.WHITE);
@@ -68,8 +68,7 @@ public class SidebarHeaderPanel extends JPanel {
     FontMetrics fm = g2.getFontMetrics();
 
     if (!Lizzie.config.isAppleStyle) {
-      // Classic flat UI
-      g2.setColor(new Color(50, 50, 50));
+      g2.setColor(new Color(36, 38, 42));
       g2.fillRect(0, 0, getWidth(), getHeight());
 
       int x = 10;
@@ -113,7 +112,7 @@ public class SidebarHeaderPanel extends JPanel {
             new Color[] {topWash, new Color(255, 255, 255, 8), new Color(255, 255, 255, 0)}));
     g2.fillRoundRect(0, 0, getWidth(), getHeight() + 12, 18, 18);
 
-    g2.setColor(new Color(255, 255, 255, 22));
+    g2.setColor(new Color(255, 255, 255, 36));
     g2.drawLine(4, getHeight() - 1, getWidth() - 8, getHeight() - 1);
 
     // 1. [ 评论 | 问题手 ] (Apple Style Segmented Control)

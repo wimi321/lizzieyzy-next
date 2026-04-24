@@ -9,8 +9,12 @@ import featurecat.lizzie.rules.SGFParser;
 import featurecat.lizzie.theme.MorandiPalette;
 import featurecat.lizzie.util.Utils;
 import java.awt.Color;
+import java.awt.Component;
 import java.awt.Dimension;
+import java.awt.Graphics;
+import java.awt.Graphics2D;
 import java.awt.Insets;
+import java.awt.RenderingHints;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.awt.event.FocusEvent;
@@ -48,6 +52,12 @@ import org.jdesktop.swingx.util.OS;
 import org.json.JSONArray;
 
 public class BottomToolbar extends JPanel {
+  private static final int MAIN_BAR_HEIGHT = 26;
+  private static final int DETAIL_PANEL_HEIGHT = 44;
+  private static final int DETAIL_PANEL_GAP = 8;
+  private static final int TOOLBAR_SIDE_PADDING = 10;
+  private static final int TOOLBAR_BUTTON_GAP = 6;
+
   private final ResourceBundle resourceBundle = Lizzie.resourceBundle;
   public boolean showDetail = Lizzie.config.showDetailedToolbarMenu && Lizzie.config.isChinese;
   JButton firstButton;
@@ -88,6 +98,8 @@ public class BottomToolbar extends JPanel {
   JButton flashAnalyze;
   JButton foxKifuButton;
   JButton downloadWeightButton;
+  JButton moreActionsButton;
+  JPopupMenu moreActionsPopup;
 
   PanelWithToolTips buttonPane;
   //  JPanel buttonPane2;
@@ -277,8 +289,307 @@ public class BottomToolbar extends JPanel {
   private boolean isAutoPlayMain = false;
   private boolean isAutoPlaySub = false;
 
+  private static final class DetailPanelSlot {
+    private final JPanel panel;
+    private final int preferredWidth;
+    private final int order;
+
+    private DetailPanelSlot(JPanel panel, int preferredWidth, int order) {
+      this.panel = panel;
+      this.preferredWidth = preferredWidth;
+      this.order = order;
+    }
+  }
+
+  @Override
+  protected void paintComponent(Graphics g) {
+    super.paintComponent(g);
+    if (!Lizzie.config.useMorandiColors) {
+      Graphics2D g2 = (Graphics2D) g.create();
+      g2.setColor(new Color(232, 232, 232));
+      g2.fillRect(0, 0, getWidth(), getHeight());
+      g2.dispose();
+      return;
+    }
+    Graphics2D g2 = (Graphics2D) g.create();
+    g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+    g2.setColor(new Color(15, 18, 22, 248));
+    g2.fillRect(0, 0, getWidth(), getHeight());
+
+    g2.setColor(new Color(255, 255, 255, 18));
+    g2.fillRect(0, 0, getWidth(), Math.min(MAIN_BAR_HEIGHT, getHeight()));
+
+    g2.setColor(new Color(255, 255, 255, 26));
+    g2.drawLine(0, 0, getWidth(), 0);
+
+    if (getHeight() > MAIN_BAR_HEIGHT) {
+      g2.setColor(new Color(255, 255, 255, 10));
+      g2.drawLine(0, MAIN_BAR_HEIGHT, getWidth(), MAIN_BAR_HEIGHT);
+    }
+    g2.dispose();
+  }
+
+  public void refreshComponentStyles() {
+    setOpaque(false);
+    setForeground(Lizzie.config.useMorandiColors ? MorandiPalette.TOOLBAR_TEXT : Color.BLACK);
+    if (buttonPane != null) {
+      buttonPane.setOpaque(false);
+      AppleStyleSupport.applyPanelStyle(buttonPane);
+    }
+    if (anaPanel != null) {
+      anaPanel.setOpaque(false);
+      AppleStyleSupport.applyPanelStyle(anaPanel);
+    }
+    if (autoPlayPanel != null) {
+      autoPlayPanel.setOpaque(false);
+      AppleStyleSupport.applyPanelStyle(autoPlayPanel);
+    }
+    if (enginePkPanel != null) {
+      enginePkPanel.setOpaque(false);
+      AppleStyleSupport.applyPanelStyle(enginePkPanel);
+    }
+    if (yike != null) {
+      AppleStyleSupport.installPopupStyle(yike);
+    }
+    if (sharePopup != null) {
+      AppleStyleSupport.installPopupStyle(sharePopup);
+    }
+    if (autoAnalyzePopup != null) {
+      AppleStyleSupport.installPopupStyle(autoAnalyzePopup);
+    }
+    if (flashAnalyzePopup != null) {
+      AppleStyleSupport.installPopupStyle(flashAnalyzePopup);
+    }
+    if (moreActionsPopup != null) {
+      AppleStyleSupport.installPopupStyle(moreActionsPopup);
+    }
+    AppleStyleSupport.applyToContainer(this);
+    revalidate();
+    repaint();
+  }
+
+  private int componentWidth(Component component) {
+    if (component == null) {
+      return 0;
+    }
+    // Prefer preferred size (explicitly set) over current width (may be stale)
+    if (component.isPreferredSizeSet() && component.getPreferredSize() != null) {
+      return Math.max(component.getPreferredSize().width, 0);
+    }
+    int width = component.getWidth();
+    if (width <= 0 && component.getPreferredSize() != null) {
+      width = component.getPreferredSize().width;
+    }
+    return Math.max(width, 0);
+  }
+
+  private List<JButton> visibleButtons(JButton... buttons) {
+    List<JButton> visible = new ArrayList<>();
+    for (JButton button : buttons) {
+      if (button != null && button.isVisible()) {
+        visible.add(button);
+      }
+    }
+    return visible;
+  }
+
+  private List<Component> visibleComponents(Component... components) {
+    List<Component> visible = new ArrayList<>();
+    for (Component component : components) {
+      if (component != null && component.isVisible()) {
+        visible.add(component);
+      }
+    }
+    return visible;
+  }
+
+  private int measureComponents(List<? extends Component> components, int gap) {
+    if (components.isEmpty()) {
+      return 0;
+    }
+    int width = 0;
+    for (Component component : components) {
+      width += componentWidth(component);
+    }
+    width += Math.max(0, components.size() - 1) * gap;
+    return width;
+  }
+
+  private int layoutLeftButtons(
+      List<JButton> buttons, int startX, int top, int limitX, List<JButton> overflowButtons) {
+    int x = startX;
+    for (JButton button : buttons) {
+      int width = componentWidth(button);
+      if (x + width > limitX) {
+        button.setVisible(false);
+        overflowButtons.add(button);
+        continue;
+      }
+      button.setVisible(true);
+      button.setBounds(x, top, width, MAIN_BAR_HEIGHT);
+      x += width + TOOLBAR_BUTTON_GAP;
+    }
+    return x;
+  }
+
+  private int layoutRightButtons(
+      List<JButton> buttons, int endX, int top, int limitX, List<JButton> overflowButtons) {
+    int x = endX;
+    for (int i = buttons.size() - 1; i >= 0; i--) {
+      JButton button = buttons.get(i);
+      int width = componentWidth(button);
+      if (x - width < limitX) {
+        button.setVisible(false);
+        overflowButtons.add(button);
+        continue;
+      }
+      x -= width;
+      button.setVisible(true);
+      button.setBounds(x, top, width, MAIN_BAR_HEIGHT);
+      x -= TOOLBAR_BUTTON_GAP;
+    }
+    return x;
+  }
+
+  private int layoutRightButtonsPrioritized(
+      List<JButton> primaryButtons,
+      List<JButton> optionalButtons,
+      int endX,
+      int top,
+      int limitX,
+      List<JButton> overflowButtons) {
+    int x = endX;
+    int primaryWidth = measureComponents(primaryButtons, TOOLBAR_BUTTON_GAP);
+
+    for (int i = optionalButtons.size() - 1; i >= 0; i--) {
+      JButton button = optionalButtons.get(i);
+      int width = componentWidth(button);
+      if (x - width < limitX + primaryWidth + TOOLBAR_BUTTON_GAP) {
+        button.setVisible(false);
+        overflowButtons.add(button);
+        continue;
+      }
+      x -= width;
+      button.setVisible(true);
+      button.setBounds(x, top, width, MAIN_BAR_HEIGHT);
+      x -= TOOLBAR_BUTTON_GAP;
+    }
+
+    return layoutRightButtons(primaryButtons, x, top, limitX, overflowButtons);
+  }
+
+  private void layoutCenteredComponents(List<Component> components, int startX, int top) {
+    int x = startX;
+    for (Component component : components) {
+      int height = component == txtMoveNumber ? 22 : MAIN_BAR_HEIGHT;
+      int y = component == txtMoveNumber ? top + 2 : top;
+      int width = componentWidth(component);
+      component.setVisible(true);
+      component.setBounds(x, y, width, height);
+      x += width + TOOLBAR_BUTTON_GAP;
+    }
+  }
+
+  private void hideButtons(JButton... buttons) {
+    for (JButton button : buttons) {
+      if (button != null) {
+        button.setVisible(false);
+      }
+    }
+  }
+
+  private void hideComponents(Component... components) {
+    for (Component component : components) {
+      if (component != null) {
+        component.setVisible(false);
+      }
+    }
+  }
+
+  private String overflowLabel(JButton button) {
+    if (button == null) {
+      return "";
+    }
+    String text = button.getText();
+    if (text != null && !text.trim().isEmpty()) {
+      return text;
+    }
+    String toolTip = button.getToolTipText();
+    return toolTip == null ? "" : toolTip;
+  }
+
+  private void rebuildMoreActionsPopup(List<JButton> overflowButtons) {
+    moreActionsPopup.removeAll();
+    List<JButton> deduped = new ArrayList<>();
+    for (JButton button : overflowButtons) {
+      if (button != null && !deduped.contains(button)) {
+        deduped.add(button);
+      }
+    }
+    for (JButton button : deduped) {
+      String label = overflowLabel(button);
+      if (label.trim().isEmpty()) {
+        continue;
+      }
+      JFontMenuItem item = new JFontMenuItem(label);
+      item.addActionListener(
+          new ActionListener() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+              button.doClick();
+            }
+          });
+      moreActionsPopup.add(item);
+    }
+    AppleStyleSupport.installPopupStyle(moreActionsPopup);
+    moreActionsButton.setVisible(!deduped.isEmpty());
+  }
+
+  private boolean isDetailExpanded() {
+    return Lizzie.frame != null && Lizzie.frame.toolbarHeight > MAIN_BAR_HEIGHT;
+  }
+
+  private int layoutDetailPanels() {
+    if (!isDetailExpanded()) {
+      anaPanel.setVisible(false);
+      autoPlayPanel.setVisible(false);
+      enginePkPanel.setVisible(false);
+      return MAIN_BAR_HEIGHT;
+    }
+
+    List<DetailPanelSlot> slots = new ArrayList<>();
+    slots.add(new DetailPanelSlot(anaPanel, 400, anaPanelOrder));
+    slots.add(new DetailPanelSlot(enginePkPanel, 600, enginePkOrder));
+    slots.add(new DetailPanelSlot(autoPlayPanel, 495, autoPlayOrder));
+    slots.sort((a, b) -> Integer.compare(a.order, b.order));
+
+    int availableWidth = Math.max(320, getWidth() - TOOLBAR_SIDE_PADDING * 2);
+    int x = TOOLBAR_SIDE_PADDING;
+    int y = MAIN_BAR_HEIGHT + 4;
+    int rows = 1;
+
+    for (DetailPanelSlot slot : slots) {
+      int panelWidth = Math.min(slot.preferredWidth, availableWidth);
+      if (x > TOOLBAR_SIDE_PADDING && x + panelWidth > getWidth() - TOOLBAR_SIDE_PADDING) {
+        rows++;
+        x = TOOLBAR_SIDE_PADDING;
+        y += DETAIL_PANEL_HEIGHT + DETAIL_PANEL_GAP;
+      }
+      slot.panel.setVisible(true);
+      slot.panel.setBounds(x, y, panelWidth, DETAIL_PANEL_HEIGHT);
+      x += panelWidth + DETAIL_PANEL_GAP;
+    }
+
+    return MAIN_BAR_HEIGHT
+        + 4
+        + rows * DETAIL_PANEL_HEIGHT
+        + Math.max(0, rows - 1) * DETAIL_PANEL_GAP;
+  }
+
   public BottomToolbar() {
-    this.setBackground(MorandiPalette.TOOLBAR_BG);
+    this.setBackground(
+        Lizzie.config.useMorandiColors ? MorandiPalette.TOOLBAR_BG : new Color(232, 232, 232));
+    this.setOpaque(false);
 
     setLayout(null);
     NumberFormat nf = NumberFormat.getIntegerInstance();
@@ -288,6 +599,7 @@ public class BottomToolbar extends JPanel {
     leftMove = new JButton("《");
     deleteMove =
         new JFontButton(Lizzie.resourceBundle.getString("BottomToolbar.deleteMove")); // ("删除");
+    AppleStyleSupport.markDanger(deleteMove);
     badMoves =
         new JFontButton(Lizzie.resourceBundle.getString("BottomToolbar.badMoves")); // ("超级鹰眼");
     share = new JFontButton(Lizzie.resourceBundle.getString("BottomToolbar.share")); // ("分享");
@@ -299,6 +611,7 @@ public class BottomToolbar extends JPanel {
         new JFontButton(Lizzie.resourceBundle.getString("BottomToolbar.liveButton")); // ("直播");
     clearButton =
         new JFontButton(Lizzie.resourceBundle.getString("BottomToolbar.clearButton")); // ("清空棋盘");
+    AppleStyleSupport.markDanger(clearButton);
     firstButton = new JFontButton("|<");
     lastButton = new JFontButton(">|");
     countButton =
@@ -319,6 +632,7 @@ public class BottomToolbar extends JPanel {
         new JFontButton(
             Lizzie.resourceBundle.getString("BottomToolbar.kataEstimate")); // ("Kata评估");
     analyse = new JFontButton(Lizzie.resourceBundle.getString("BottomToolbar.analyse")); // ("分析");
+    AppleStyleSupport.markPrimary(analyse);
     heatMap = new JFontButton(Lizzie.resourceBundle.getString("BottomToolbar.heatMap")); // ("纯网络");
     backMain =
         new JFontButton(Lizzie.resourceBundle.getString("BottomToolbar.backMain")); // ("返回主分支");
@@ -326,6 +640,7 @@ public class BottomToolbar extends JPanel {
         new JFontButton(Lizzie.resourceBundle.getString("BottomToolbar.setMain")); // ("设为主分支");
     batchOpen =
         new JFontButton(Lizzie.resourceBundle.getString("BottomToolbar.batchOpen")); // ("批量分析");
+    AppleStyleSupport.markPrimary(batchOpen);
     refresh = new JFontButton(Lizzie.resourceBundle.getString("BottomToolbar.refresh")); // ("刷新");
     tryPlay = new JFontButton(Lizzie.resourceBundle.getString("BottomToolbar.tryPlay")); // ("试下");
     analyzeList =
@@ -335,6 +650,7 @@ public class BottomToolbar extends JPanel {
     coords = new JFontButton(Lizzie.resourceBundle.getString("BottomToolbar.coords")); // ("坐标");
     autoPlay =
         new JFontButton(Lizzie.resourceBundle.getString("BottomToolbar.autoPlay")); // ("自动播放");
+    moreActionsButton = new JFontButton(resourceBundle.getString("BottomToolbar.moreActions"));
 
     iconUp = new ImageIcon();
 
@@ -352,20 +668,23 @@ public class BottomToolbar extends JPanel {
       e.printStackTrace();
     }
     detail = new JButton("");
-    detail.setBackground(MorandiPalette.TOOLBAR_BUTTON_BG);
-    detail.setForeground(MorandiPalette.TOOLBAR_TEXT);
-    detail.setBorder(BorderFactory.createLineBorder(MorandiPalette.TOOLBAR_BUTTON_BORDER, 1));
+    detail.setBackground(new Color(0, 0, 0, 10));
+    detail.setForeground(
+        Lizzie.config.useMorandiColors ? MorandiPalette.TOOLBAR_TEXT : Color.BLACK);
+    detail.setBorder(BorderFactory.createEmptyBorder(2, 6, 2, 6));
     detail.setOpaque(true);
     detail.setContentAreaFilled(true);
     detail.setFocusPainted(false);
-    rightMove.setBackground(MorandiPalette.TOOLBAR_BUTTON_BG);
-    rightMove.setForeground(MorandiPalette.TOOLBAR_TEXT);
-    rightMove.setBorder(BorderFactory.createLineBorder(MorandiPalette.TOOLBAR_BUTTON_BORDER, 1));
+    rightMove.setBackground(new Color(0, 0, 0, 10));
+    rightMove.setForeground(
+        Lizzie.config.useMorandiColors ? MorandiPalette.TOOLBAR_TEXT : Color.BLACK);
+    rightMove.setBorder(BorderFactory.createEmptyBorder(2, 6, 2, 6));
     rightMove.setOpaque(true);
     rightMove.setContentAreaFilled(true);
-    leftMove.setBackground(MorandiPalette.TOOLBAR_BUTTON_BG);
-    leftMove.setForeground(MorandiPalette.TOOLBAR_TEXT);
-    leftMove.setBorder(BorderFactory.createLineBorder(MorandiPalette.TOOLBAR_BUTTON_BORDER, 1));
+    leftMove.setBackground(new Color(0, 0, 0, 10));
+    leftMove.setForeground(
+        Lizzie.config.useMorandiColors ? MorandiPalette.TOOLBAR_TEXT : Color.BLACK);
+    leftMove.setBorder(BorderFactory.createEmptyBorder(2, 6, 2, 6));
     leftMove.setOpaque(true);
     leftMove.setContentAreaFilled(true);
 
@@ -375,8 +694,9 @@ public class BottomToolbar extends JPanel {
 
     buttonPane = new PanelWithToolTips();
     buttonPane.setLayout(null);
-    buttonPane.setBackground(MorandiPalette.TOOLBAR_BG);
-    buttonPane.setOpaque(true);
+    buttonPane.setBackground(
+        Lizzie.config.useMorandiColors ? MorandiPalette.TOOLBAR_BG : new Color(232, 232, 232));
+    buttonPane.setOpaque(false);
     this.add(buttonPane);
 
     add(rightMove);
@@ -418,6 +738,7 @@ public class BottomToolbar extends JPanel {
     buttonPane.add(move);
     buttonPane.add(coords);
     buttonPane.add(autoPlay);
+    buttonPane.add(moreActionsButton);
 
     rightMove.setVisible(false);
     leftMove.setVisible(false);
@@ -456,6 +777,7 @@ public class BottomToolbar extends JPanel {
     badMoves.setFocusable(false);
     deleteMove.setFocusable(false);
     autoPlay.setFocusable(false);
+    moreActionsButton.setFocusable(false);
 
     share.setMargin(new Insets(0, 0, 0, 0));
     flashAnalyze.setMargin(new Insets(0, 0, 0, 0));
@@ -492,6 +814,7 @@ public class BottomToolbar extends JPanel {
     liveButton.setMargin(new Insets(0, 0, 0, 0));
     rightMove.setMargin(new Insets(0, 0, 0, 0));
     leftMove.setMargin(new Insets(0, 0, 0, 0));
+    moreActionsButton.setMargin(new Insets(0, 0, 0, 0));
 
     //    int extraLength = 0;
     //    if (System.getProperty("os.name").toLowerCase().contains("mac")
@@ -528,33 +851,27 @@ public class BottomToolbar extends JPanel {
     setButtonSize(moveRank, false);
     setButtonSize(coords, true);
     setButtonSize(gotomove, true);
-    styleShortcutButton(foxKifuButton, new Color(240, 232, 218), MorandiPalette.MUDED_ORANGE);
-    styleShortcutButton(downloadWeightButton, new Color(225, 235, 245), MorandiPalette.MUDED_TEAL);
-    // Style navigation buttons with Morandi theme
-    JButton[] navButtons = {firstButton, lastButton, forward10, backward10, forward1, backward1};
-    for (JButton btn : navButtons) {
-      btn.setBackground(MorandiPalette.TOOLBAR_BUTTON_BG);
-      btn.setForeground(MorandiPalette.TOOLBAR_TEXT);
-      btn.setBorder(BorderFactory.createLineBorder(MorandiPalette.TOOLBAR_BUTTON_BORDER, 1));
-      btn.setOpaque(true);
-      btn.setContentAreaFilled(true);
-      btn.setFocusPainted(false);
+    setButtonSize(moreActionsButton, true);
+    // Nav button sizes — compute from text width + border insets (24px for AppleStyle EmptyBorder)
+    for (JButton navBtn :
+        new JButton[] {firstButton, backward10, backward1, forward1, forward10, lastButton}) {
+      int textW = navBtn.getFontMetrics(navBtn.getFont()).stringWidth(navBtn.getText());
+      int w = Math.max(textW + 26, 36);
+      Dimension d = new Dimension(w, MAIN_BAR_HEIGHT);
+      navBtn.setSize(d);
+      navBtn.setPreferredSize(d);
+      navBtn.setMinimumSize(d);
     }
-    firstButton.setSize(30, 26);
-    backward10.setSize(30, 26);
-    backward1.setSize(30, 26);
-    forward1.setSize(30, 26);
-    forward10.setSize(30, 26);
-    lastButton.setSize(30, 26);
     // NumberFormat nf = NumberFormat.getNumberInstance();
 
     // nf.setGroupingUsed(false);
     // nf.setParseIntegerOnly(true);
 
     txtMoveNumber = new JTextField();
-    txtMoveNumber.setSize(28, 24);
+    txtMoveNumber.setSize(40, 24);
+    txtMoveNumber.setPreferredSize(new Dimension(40, 22));
     buttonPane.add(txtMoveNumber);
-    txtMoveNumber.setColumns(3);
+    txtMoveNumber.setColumns(4);
 
     txtMoveNumber.addKeyListener(
         new KeyListener() {
@@ -565,7 +882,8 @@ public class BottomToolbar extends JPanel {
               checkMove();
               txtMoveNumber.setFocusable(false);
               txtMoveNumber.setFocusable(true);
-              txtMoveNumber.setBackground(Color.WHITE);
+              txtMoveNumber.setBackground(
+                  Lizzie.config.useMorandiColors ? MorandiPalette.TOOLBAR_TEXT : Color.WHITE);
               txtMoveNumber.setText("");
               if (changeMoveNumber != 0) Lizzie.board.goToMoveNumberBeyondBranch(changeMoveNumber);
             }
@@ -626,6 +944,7 @@ public class BottomToolbar extends JPanel {
         });
 
     flashAnalyzePopup = new JPopupMenu();
+    moreActionsPopup = new JPopupMenu();
 
     final JFontMenuItem flashAnalyzeAllGame =
         new JFontMenuItem(resourceBundle.getString("Menu.flashAnalyzeAllGame"));
@@ -676,6 +995,19 @@ public class BottomToolbar extends JPanel {
                 buttonPane,
                 flashAnalyze.getX(),
                 flashAnalyze.getY() - flashAnalyzePopup.getHeight());
+          }
+        });
+
+    moreActionsButton.addActionListener(
+        new ActionListener() {
+          @Override
+          public void actionPerformed(ActionEvent e) {
+            if (moreActionsPopup.getComponentCount() > 0) {
+              moreActionsPopup.show(
+                  buttonPane,
+                  moreActionsButton.getX(),
+                  moreActionsButton.getY() - moreActionsPopup.getPreferredSize().height);
+            }
           }
         });
 
@@ -959,11 +1291,11 @@ public class BottomToolbar extends JPanel {
     detail.addActionListener(
         new ActionListener() {
           public void actionPerformed(ActionEvent e) {
-            if (Lizzie.frame.toolbarHeight == 26) {
-              Lizzie.frame.toolbarHeight = 70;
+            if (Lizzie.frame.toolbarHeight <= MAIN_BAR_HEIGHT) {
+              Lizzie.frame.toolbarHeight = MAIN_BAR_HEIGHT + DETAIL_PANEL_HEIGHT;
 
             } else {
-              Lizzie.frame.toolbarHeight = 26;
+              Lizzie.frame.toolbarHeight = MAIN_BAR_HEIGHT;
             }
             Lizzie.frame.reSetLoc();
           }
@@ -1025,7 +1357,8 @@ public class BottomToolbar extends JPanel {
             if (EngineManager.isEngineGame) return;
             checkMove();
             if (Lizzie.frame.commentEditPane.isVisible()) Lizzie.frame.setCommentEditable(false);
-            txtMoveNumber.setBackground(Color.WHITE);
+            txtMoveNumber.setBackground(
+                Lizzie.config.useMorandiColors ? MorandiPalette.TOOLBAR_TEXT : Color.WHITE);
             txtMoveNumber.setText("");
             // Lizzie.board.savelist(changeMoveNumber);
             // Lizzie.board.setlist();
@@ -1293,6 +1626,7 @@ public class BottomToolbar extends JPanel {
     txtAnaFirstPlayouts.setBounds(298, 2, 42, 18);
 
     start = new JButton("开始");
+    AppleStyleSupport.markPrimary(start);
     start.addActionListener(
         new ActionListener() {
           public void actionPerformed(ActionEvent e) {
@@ -1791,6 +2125,7 @@ public class BottomToolbar extends JPanel {
         });
 
     btnStartPk = new JButton("开始");
+    AppleStyleSupport.markPrimary(btnStartPk);
     enginePkPanel.add(btnStartPk);
     btnStartPk.setBounds(8, 22, 35, 20);
     btnStartPk.setMargin(new Insets(0, 0, 0, 0));
@@ -1828,7 +2163,8 @@ public class BottomToolbar extends JPanel {
     lblengineBlack.setBounds(75, 0, 15, 20);
     UI ui = new UI();
     enginePkBlack.setUI(ui);
-    enginePkBlack.setBackground(Color.WHITE);
+    enginePkBlack.setBackground(
+        Lizzie.config.useMorandiColors ? MorandiPalette.TOOLBAR_TEXT : Color.WHITE);
     ((Popup) ui.getPopup()).setDisplaySize(200, 200);
 
     lblenginePkResult = new JLabel("0:0");
@@ -1842,7 +2178,8 @@ public class BottomToolbar extends JPanel {
 
     UI ui2 = new UI();
     enginePkWhite.setUI(ui2);
-    enginePkWhite.setBackground(Color.WHITE);
+    enginePkWhite.setBackground(
+        Lizzie.config.useMorandiColors ? MorandiPalette.TOOLBAR_TEXT : Color.WHITE);
     ((Popup) ui2.getPopup()).setDisplaySize(200, 200);
 
     lblengineWhite = new JLabel("白:");
@@ -2201,32 +2538,31 @@ public class BottomToolbar extends JPanel {
     setGenmove();
     if (chkenginePkBatch.isSelected()) txtenginePkBatch.setEnabled(true);
     else txtenginePkBatch.setEnabled(false);
+    refreshComponentStyles();
     //  setFontSize(Lizzie.config.bottomFontSize);
   }
 
   private void setButtonSize(JButton button, boolean widden) {
-    button.setSize(
-        button.getFontMetrics(button.getFont()).stringWidth(button.getText()) + (widden ? 14 : 12),
-        26);
-  }
-
-  private void styleShortcutButton(JButton button, Color background, Color border) {
-    button.setOpaque(true);
-    button.setContentAreaFilled(true);
-    button.setBackground(background);
-    button.setForeground(MorandiPalette.TOOLBAR_TEXT);
-    button.setBorder(BorderFactory.createLineBorder(border));
-    button.setFocusPainted(false);
+    int width =
+        button.getFontMetrics(button.getFont()).stringWidth(button.getText()) + (widden ? 28 : 26);
+    Dimension d = new Dimension(width, MAIN_BAR_HEIGHT);
+    button.setSize(d);
+    button.setPreferredSize(d);
+    button.setMinimumSize(d);
   }
 
   private void setButtonSize(JButton button) {
-    button.setSize(button.getFontMetrics(button.getFont()).stringWidth(button.getText()) + 33, 26);
+    int width = button.getFontMetrics(button.getFont()).stringWidth(button.getText()) + 38;
+    Dimension d = new Dimension(width, MAIN_BAR_HEIGHT);
+    button.setSize(d);
+    button.setPreferredSize(d);
+    button.setMinimumSize(d);
   }
 
   public void setDetailIcon() {
     // TODO Auto-generated method stub
-    if (Lizzie.frame.toolbarHeight == 26) detail.setIcon(iconUp);
-    else if (Lizzie.frame.toolbarHeight == 70) detail.setIcon(iconDown);
+    if (Lizzie.frame.toolbarHeight <= MAIN_BAR_HEIGHT) detail.setIcon(iconUp);
+    else detail.setIcon(iconDown);
   }
 
   public void restShowDetail() {
@@ -4638,74 +4974,155 @@ public class BottomToolbar extends JPanel {
 
   public void reSetButtonLocation() {
     setButtonVisiable();
-    int w = Lizzie.frame.getWidth();
+    int w = Math.max(getWidth(), Lizzie.frame.getWidth());
     if (Lizzie.leelaz == null || !Lizzie.leelaz.isKatago) {
       kataEstimate.setVisible(false);
     } else if (Lizzie.config.kataEstimate) {
       kataEstimate.setVisible(true);
     }
-    int length = calcButtonLength();
-    if (length < w - (this.showDetail ? (Config.isScaled ? 34 : 33) : 16)) {
-      rightMove.setVisible(false);
-      leftMove.setVisible(false);
-      setLocationLeft(0);
-      if (showDetail)
-        buttonPane.setBounds(
-            (Math.max(0, w - 16 - length - (Config.isScaled ? 20 : 19)) / 2)
-                + (Config.isScaled ? 20 : 19),
-            0,
-            length,
-            26);
-      else buttonPane.setBounds(Math.max(0, (w - 16 - length) / 2), 0, length, 26);
-    } else if (rightMode) {
-      rightMove.setVisible(false);
-      if (showDetail) w = setLocationRight(w - (Config.isScaled ? 20 : 19));
-      else w = setLocationRight(w);
-      if (w < 15) {
-        if (showDetail)
-          buttonPane.setBounds(Config.isScaled ? 40 : 38, 0, Lizzie.frame.getWidth(), 26);
-        else buttonPane.setBounds(Config.isScaled ? 20 : 19, 0, Lizzie.frame.getWidth(), 26);
-        leftMove.setVisible(true);
-        w = Lizzie.frame.getWidth();
-        setLocationRight(w - (showDetail ? 55 : 35));
-      } else {
-        buttonPane.setBounds(showDetail ? 19 : 0, 0, Lizzie.frame.getWidth(), 26);
-        leftMove.setVisible(false);
+    rightMove.setVisible(false);
+    leftMove.setVisible(false);
+
+    detail.setVisible(showDetail);
+    if (showDetail) {
+      detail.setBounds(TOOLBAR_SIDE_PADDING, 2, 24, 22);
+    }
+
+    buttonPane.setBounds(0, 0, w, MAIN_BAR_HEIGHT);
+    buttonPane.setOpaque(false);
+
+    // Build layout lists BEFORE hiding — visibleButtons checks isVisible()
+    List<JButton> leftPrimary = visibleButtons(analyse, batchOpen, flashAnalyze);
+    List<JButton> leftOptional =
+        visibleButtons(
+            openfile,
+            savefile,
+            foxKifuButton,
+            downloadWeightButton,
+            kataEstimate,
+            heatMap,
+            analyzeList,
+            badMoves,
+            refresh,
+            share,
+            liveButton);
+    List<Component> centerComponents =
+        visibleComponents(
+            firstButton,
+            backward10,
+            backward1,
+            txtMoveNumber,
+            gotomove,
+            forward1,
+            forward10,
+            lastButton,
+            autoPlay);
+    List<JButton> rightPrimary = visibleButtons(tryPlay, backMain, setMain, moveRank, move, coords);
+    List<JButton> rightOptional = visibleButtons(countButton, finalScore, clearButton, deleteMove);
+
+    int leftStart = TOOLBAR_SIDE_PADDING + (showDetail ? 32 : 0);
+    int centerWidth = measureComponents(centerComponents, TOOLBAR_BUTTON_GAP);
+    int overflowWidth = componentWidth(moreActionsButton) + TOOLBAR_BUTTON_GAP;
+    List<JButton> overflowButtons = new ArrayList<>();
+
+    for (int pass = 0; pass < 2; pass++) {
+      boolean reserveOverflow = pass == 1;
+      overflowButtons.clear();
+      hideButtons(
+          foxKifuButton,
+          downloadWeightButton,
+          share,
+          flashAnalyze,
+          liveButton,
+          deleteMove,
+          badMoves,
+          clearButton,
+          lastButton,
+          firstButton,
+          countButton,
+          finalScore,
+          forward10,
+          savefile,
+          backward10,
+          gotomove,
+          backward1,
+          forward1,
+          openfile,
+          kataEstimate,
+          analyse,
+          heatMap,
+          backMain,
+          setMain,
+          batchOpen,
+          refresh,
+          tryPlay,
+          analyzeList,
+          moveRank,
+          move,
+          coords,
+          autoPlay,
+          moreActionsButton);
+
+      int rightEdge = w - TOOLBAR_SIDE_PADDING - (reserveOverflow ? overflowWidth : 0);
+      int minCenterStart =
+          leftStart + measureComponents(leftPrimary, TOOLBAR_BUTTON_GAP) + TOOLBAR_BUTTON_GAP * 2;
+      int maxCenterStart =
+          rightEdge
+              - measureComponents(rightPrimary, TOOLBAR_BUTTON_GAP)
+              - centerWidth
+              - TOOLBAR_BUTTON_GAP * 2;
+      int centeredStart = (w - centerWidth) / 2;
+      int centerStart = Math.max(minCenterStart, Math.min(centeredStart, maxCenterStart));
+      if (centerStart < leftStart) {
+        centerStart = leftStart;
       }
-    } else {
-      leftMove.setVisible(false);
-      int x = setLocationLeft(0);
-      if (w < x + (showDetail ? (Config.isScaled ? 34 : 33) : 16)) {
-        if (showDetail)
-          buttonPane.setBounds(
-              (Config.isScaled ? 20 : 19), 0, this.getWidth() - (Config.isScaled ? 41 : 39), 26);
-        else buttonPane.setBounds(0, 0, this.getWidth() - (Config.isScaled ? 20 : 19), 26);
-        rightMove.setVisible(true);
-        if (showDetail)
-          rightMove.setBounds(this.getWidth() - (Config.isScaled ? 21 : 20), 0, 20, 26);
-        else rightMove.setBounds(this.getWidth() - (Config.isScaled ? 20 : 19), 0, 20, 26);
-      } else {
-        buttonPane.setBounds(showDetail ? 20 : 0, 0, w - (Config.isScaled ? 20 : 19), 26);
-        rightMove.setVisible(false);
+
+      int leftCursor =
+          layoutLeftButtons(
+              leftPrimary, leftStart, 0, centerStart - TOOLBAR_BUTTON_GAP, overflowButtons);
+      layoutLeftButtons(
+          leftOptional, leftCursor, 0, centerStart - TOOLBAR_BUTTON_GAP, overflowButtons);
+
+      int rightLimit = centerStart + centerWidth + TOOLBAR_BUTTON_GAP;
+      layoutRightButtonsPrioritized(
+          rightPrimary, rightOptional, rightEdge, 0, rightLimit, overflowButtons);
+      layoutCenteredComponents(centerComponents, centerStart, 0);
+
+      if (!reserveOverflow && overflowButtons.isEmpty()) {
+        break;
+      }
+
+      if (reserveOverflow) {
+        int moreWidth = componentWidth(moreActionsButton);
+        moreActionsButton.setVisible(!overflowButtons.isEmpty());
+        moreActionsButton.setBounds(
+            w - TOOLBAR_SIDE_PADDING - moreWidth, 0, moreWidth, MAIN_BAR_HEIGHT);
+        rebuildMoreActionsPopup(overflowButtons);
+        break;
       }
     }
-    //    if (liveButtonListener != null) liveButton.removeActionListener(liveButtonListener);
-    //    liveButtonListener =
-    //        new ActionListener() {
-    //          public void actionPerformed(ActionEvent e) {
-    //            yike.show(buttonPane, yike.getX(), yike.getY() - yike.getHeight());
-    //          }
-    //        };
-    //    liveButton.addActionListener(liveButtonListener);
-    //
-    //    if (shareListener != null) share.removeActionListener(shareListener);
-    //    shareListener =
-    //        new ActionListener() {
-    //          public void actionPerformed(ActionEvent e) {
-    //            sharePopup.show(buttonPane, share.getX(), share.getY() - sharePopup.getHeight());
-    //          }
-    //        };
-    //    share.addActionListener(shareListener);
+
+    if (overflowButtons.isEmpty()) {
+      moreActionsButton.setVisible(false);
+      rebuildMoreActionsPopup(overflowButtons);
+    }
+
+    int desiredHeight = layoutDetailPanels();
+    if (Lizzie.frame.toolbarHeight != desiredHeight) {
+      Lizzie.frame.toolbarHeight = desiredHeight;
+      javax.swing.SwingUtilities.invokeLater(
+          new Runnable() {
+            @Override
+            public void run() {
+              Lizzie.frame.reSetLoc();
+            }
+          });
+      return;
+    }
+
+    setDetailIcon();
+    revalidate();
+    repaint();
   }
 
   public void setChkShowBlack(boolean show) {

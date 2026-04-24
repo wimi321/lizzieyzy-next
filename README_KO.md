@@ -10,27 +10,34 @@
 </p>
 
 <p align="center">
-  <a href="README.md">中文</a> · <a href="README_EN.md">English</a> · <a href="README_JA.md">日本語</a> · 한국어
+  <a href="README.md">简体中文</a> · <a href="README_ZH_TW.md">繁體中文</a> · <a href="README_EN.md">English</a> · <a href="README_JA.md">日本語</a> · 한국어 · <a href="README_TH.md">ภาษาไทย</a>
 </p>
 
 <p align="center">
   <strong>LizzieYzy Next 는 지금도 유지보수 중인 lizzieyzy 계열 실사용판이며, 일반 사용자를 위한 KataGo 복기 GUI 입니다.</strong><br/>
-  이 프로젝트가 가장 중요하게 보는 것은 배포판을 고르기 쉽게 만드는 것, 첫 실행을 덜 번거롭게 만드는 것, Fox 기보 가져오기를 다시 쓸 수 있게 하는 것, 그리고 복기 중 문제수를 더 빨리 찾게 하는 것입니다.<br/>
+  사용자가 실제로 체감하는 부분인 배포판 선택, 첫 실행 준비, Fox 기보 가져오기, 전판을 한눈에 읽는 분석 경험을 지금 시점에 맞게 다시 다듬고 있습니다.<br/>
   <strong>다운로드하고, Fox 닉네임을 입력하고, 공개 기보를 가져오고, 빠른 전판 분석을 돌린 뒤, 새 승률 그래프와 하단 빠른 개요로 중요한 수로 바로 이동할 수 있습니다.</strong>
 </p>
 
 <p align="center">
   <a href="https://github.com/wimi321/lizzieyzy-next/releases"><strong>Releases</strong></a>
   ·
+  <a href="https://pan.baidu.com/s/1wthaL8YwGMxy_u0U7Mabpw?pwd=3i8w"><strong>Baidu 다운로드</strong></a>
+  ·
   <a href="docs/INSTALL_KO.md"><strong>설치 가이드</strong></a>
   ·
   <a href="docs/TROUBLESHOOTING_EN.md"><strong>문제 해결</strong></a>
 </p>
 
+> [!NOTE]
+> 중국 본토 사용자라면 공개 Baidu Netdisk 다운로드도 바로 사용할 수 있습니다:
+> [https://pan.baidu.com/s/1wthaL8YwGMxy_u0U7Mabpw?pwd=3i8w](https://pan.baidu.com/s/1wthaL8YwGMxy_u0U7Mabpw?pwd=3i8w)
+> 추출 코드: `3i8w`
+
 > [!TIP]
 > 중국어 QQ 그룹: `299419120`
 >
-> 일상적인 사용 질문, 버그 제보, 유지보수 관련 대화를 가장 빠르게 주고받는 곳입니다.
+> 일상적인 사용 질문, 버그 제보, 기능 요청을 가장 빠르게 주고받는 곳입니다.
 
 > [!IMPORTANT]
 > 먼저 이 6가지만 기억하면 됩니다:
@@ -41,13 +48,13 @@
 > - 주요 통합 패키지에는 KataGo `v1.16.4` 와 공식 추천 `zhizi` 가중치 `kata1-zhizi-b28c512nbt-muonfd2.bin.gz` 가 포함됩니다
 > - 주요 release 패키지에는 `readboard_java` 도 들어 있으므로, 대부분의 사용자는 별도 readboard 저장소가 필요하지 않습니다
 
-## 이 프로젝트는 무엇인가
+## 왜 많은 사용자가 여기서 시작하는가
 
 `LizzieYzy Next` 는 이렇게 이해하면 됩니다.
 
-- 일반 사용자를 위한 `KataGo 복기 소프트웨어`
-- 실사용 흐름을 계속 관리하는 `lizzieyzy 유지보수판 / 대체 프로젝트`
-- `Fox 기보 가져오기 + KataGo 분석 + 무설치 배포 + 기본 가중치` 를 한데 묶은 데스크톱 도구
+- 일반 사용자가 바로 쓰기 쉬운 `KataGo 복기 소프트웨어`
+- `Fox 기보 가져오기 + 빠른 전판 분석 + 여러 OS 배포판` 을 한데 묶은 실사용 워크플로
+- 오래된 `lizzieyzy` 환경에서 이어서 쓰기 쉬운 현재 유지보수 브랜치
 
 다음 같은 것을 찾고 있다면 이 프로젝트를 먼저 보면 됩니다.
 
@@ -57,7 +64,7 @@
 - `Fox 기보 가져오기 + KataGo 복기`
 - `Windows 무설치 바둑 AI 도구`
 
-## 지금 할 수 있는 것
+## 실행하자마자 할 수 있는 것
 
 | 하고 싶은 일 | 지금 이 프로젝트에서 어떻게 해결되는가 |
 | --- | --- |
@@ -86,8 +93,8 @@
 | Windows, NVIDIA GPU, 설치형 | `*windows64.nvidia.installer.exe` |
 | Windows, 내 엔진 사용, 무설치 | `*windows64.without.engine.portable.zip` |
 | Windows, 내 엔진 사용, 설치형 | `*windows64.without.engine.installer.exe` |
-| macOS Apple Silicon | `*mac-arm64.with-katago.dmg` |
-| macOS Intel | `*mac-amd64.with-katago.dmg` |
+| macOS Apple Silicon | `*mac-apple-silicon.with-katago.dmg` |
+| macOS Intel | `*mac-intel.with-katago.dmg` |
 | Linux | `*linux64.with-katago.zip` |
 
 헷갈릴 때는 이렇게 보면 됩니다:
@@ -98,7 +105,7 @@
 - Mac: Apple Silicon 인지 Intel 인지 먼저 확인
 - Linux: `*linux64.with-katago.zip`
 
-## 왜 지금 이 버전을 먼저 추천할 수 있는가
+## 왜 지금 이 버전이 더 쓰기 쉬운가
 
 - `Fox 기보 가져오기가 다시 작동`
   사용자가 기억하는 닉네임에서 바로 시작할 수 있습니다.
@@ -177,18 +184,22 @@
 
 현재 macOS 배포판은 아직 서명과 공증이 없습니다. 첫 실행에서 막히면 [설치 가이드](docs/INSTALL_KO.md) 를 따라 진행하면 됩니다.
 
-## 문서와 커뮤니티
+## 사용자 문서
 
+- [지원 가이드](SUPPORT.md)
 - [설치 가이드](docs/INSTALL_KO.md)
-- [Package Overview](docs/PACKAGES_EN.md)
-- [Troubleshooting](docs/TROUBLESHOOTING_EN.md)
-- [Tested Platforms](docs/TESTED_PLATFORMS.md)
+- [패키지 안내 (English)](docs/PACKAGES_EN.md)
+- [문제 해결 (English)](docs/TROUBLESHOOTING_EN.md)
+- [검증된 플랫폼 (English)](docs/TESTED_PLATFORMS.md)
+- [GitHub Releases](https://github.com/wimi321/lizzieyzy-next/releases)
+- GitHub Discussions: <https://github.com/wimi321/lizzieyzy-next/discussions>
+- 중국어 QQ 그룹: `299419120`
+
+## 프로젝트 링크
 - [Roadmap](ROADMAP.md)
 - [Contributing](CONTRIBUTING.md)
 - [Changelog](CHANGELOG.md)
 - [Support](SUPPORT.md)
-- GitHub Discussions: <https://github.com/wimi321/lizzieyzy-next/discussions>
-- 중국어 QQ 그룹: `299419120`
 
 ## Credits
 
@@ -197,3 +208,9 @@
 Historical Fox sync references:
 - [yzyray/FoxRequest](https://github.com/yzyray/FoxRequest)
 - [FuckUbuntu/Lizzieyzy-Helper](https://github.com/FuckUbuntu/Lizzieyzy-Helper)
+
+## 번역 참여
+
+번역을 환영합니다! 이 README를 모국어로 번역해 주실 분은 Pull Request를 보내 주세요.
+
+We welcome translations! If you want to translate this README into your native language, please feel free to submit a Pull Request.

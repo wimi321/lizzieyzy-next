@@ -977,10 +977,10 @@ public class MoveListFrame extends JFrame {
               error = true;
             }
             if (error) {
-              winrateDiffRange1.setBackground(Color.RED);
+              winrateDiffRange1.setBackground(AppleStyleSupport.errorFieldBackground());
               return;
             } else {
-              winrateDiffRange1.setBackground(Color.WHITE);
+              winrateDiffRange1.setBackground(AppleStyleSupport.validFieldBackground());
               if (selectedIndex == 3 || selectedIndex == 6) {
                 Lizzie.config.scoreDiffRange1 = range1;
                 Lizzie.config.uiConfig.put("score-diff-range1", Lizzie.config.scoreDiffRange1);
@@ -1003,10 +1003,10 @@ public class MoveListFrame extends JFrame {
               error = true;
             }
             if (error) {
-              winrateDiffRange1.setBackground(Color.RED);
+              winrateDiffRange1.setBackground(AppleStyleSupport.errorFieldBackground());
               return;
             } else {
-              winrateDiffRange1.setBackground(Color.WHITE);
+              winrateDiffRange1.setBackground(AppleStyleSupport.validFieldBackground());
               if (selectedIndex == 3 || selectedIndex == 6) {
                 Lizzie.config.scoreDiffRange1 = range1;
                 Lizzie.config.uiConfig.put("score-diff-range1", Lizzie.config.scoreDiffRange1);
@@ -1029,10 +1029,10 @@ public class MoveListFrame extends JFrame {
               error = true;
             }
             if (error) {
-              winrateDiffRange1.setBackground(Color.RED);
+              winrateDiffRange1.setBackground(AppleStyleSupport.errorFieldBackground());
               return;
             } else {
-              winrateDiffRange1.setBackground(Color.WHITE);
+              winrateDiffRange1.setBackground(AppleStyleSupport.validFieldBackground());
               if (selectedIndex == 3 || selectedIndex == 6) {
                 Lizzie.config.scoreDiffRange1 = range1;
                 Lizzie.config.uiConfig.put("score-diff-range1", Lizzie.config.scoreDiffRange1);
@@ -1059,10 +1059,10 @@ public class MoveListFrame extends JFrame {
               error = true;
             }
             if (error) {
-              winrateDiffRange2.setBackground(Color.RED);
+              winrateDiffRange2.setBackground(AppleStyleSupport.errorFieldBackground());
               return;
             } else {
-              winrateDiffRange2.setBackground(Color.WHITE);
+              winrateDiffRange2.setBackground(AppleStyleSupport.validFieldBackground());
               if (selectedIndex == 3 || selectedIndex == 6) {
                 Lizzie.config.scoreDiffRange2 = range2;
                 Lizzie.config.uiConfig.put("score-diff-range2", Lizzie.config.scoreDiffRange2);
@@ -1085,10 +1085,10 @@ public class MoveListFrame extends JFrame {
               error = true;
             }
             if (error) {
-              winrateDiffRange2.setBackground(Color.RED);
+              winrateDiffRange2.setBackground(AppleStyleSupport.errorFieldBackground());
               return;
             } else {
-              winrateDiffRange2.setBackground(Color.WHITE);
+              winrateDiffRange2.setBackground(AppleStyleSupport.validFieldBackground());
               if (selectedIndex == 3 || selectedIndex == 6) {
                 Lizzie.config.scoreDiffRange2 = range2;
                 Lizzie.config.uiConfig.put("score-diff-range2", Lizzie.config.scoreDiffRange2);
@@ -1111,10 +1111,10 @@ public class MoveListFrame extends JFrame {
               error = true;
             }
             if (error) {
-              winrateDiffRange2.setBackground(Color.RED);
+              winrateDiffRange2.setBackground(AppleStyleSupport.errorFieldBackground());
               return;
             } else {
-              winrateDiffRange2.setBackground(Color.WHITE);
+              winrateDiffRange2.setBackground(AppleStyleSupport.validFieldBackground());
               if (selectedIndex == 3 || selectedIndex == 6) {
                 Lizzie.config.scoreDiffRange2 = range2;
                 Lizzie.config.uiConfig.put("score-diff-range2", Lizzie.config.scoreDiffRange2);
@@ -1929,10 +1929,10 @@ public class MoveListFrame extends JFrame {
     }
     if (percent > 100 || percent < 0) error = true;
     if (error) {
-      percentPlayouts.setBackground(Color.RED);
+      percentPlayouts.setBackground(AppleStyleSupport.errorFieldBackground());
       return;
     } else {
-      percentPlayouts.setBackground(Color.WHITE);
+      percentPlayouts.setBackground(AppleStyleSupport.validFieldBackground());
       applyChange(Lizzie.config.matchAiMoves, percent);
     }
   }
@@ -1950,10 +1950,10 @@ public class MoveListFrame extends JFrame {
     }
     if (moves < 1) error = true;
     if (error) {
-      suggestionMoves.setBackground(Color.RED);
+      suggestionMoves.setBackground(AppleStyleSupport.errorFieldBackground());
       return;
     } else {
-      suggestionMoves.setBackground(Color.WHITE);
+      suggestionMoves.setBackground(AppleStyleSupport.validFieldBackground());
       applyChange(moves, Lizzie.config.matchAiPercentsPlayouts);
     }
   }
@@ -2011,10 +2011,10 @@ public class MoveListFrame extends JFrame {
       error = true;
     }
     if (error) {
-      middleEndMove.setBackground(Color.RED);
+      middleEndMove.setBackground(AppleStyleSupport.errorFieldBackground());
       return;
     } else {
-      middleEndMove.setBackground(Color.WHITE);
+      middleEndMove.setBackground(AppleStyleSupport.validFieldBackground());
       Lizzie.config.middleEndMove = curParse2Move;
       Lizzie.config.uiConfig.put("middle-end-move", Lizzie.config.middleEndMove);
       applyChkPeriod();
@@ -2033,10 +2033,10 @@ public class MoveListFrame extends JFrame {
       error = true;
     }
     if (error) {
-      openingEndMove.setBackground(Color.RED);
+      openingEndMove.setBackground(AppleStyleSupport.errorFieldBackground());
       return;
     } else {
-      openingEndMove.setBackground(Color.WHITE);
+      openingEndMove.setBackground(AppleStyleSupport.validFieldBackground());
       Lizzie.config.openingEndMove = curParse1Move;
       Lizzie.config.uiConfig.put("opening-end-move", Lizzie.config.openingEndMove);
       applyChkPeriod();
@@ -6830,7 +6830,7 @@ public class MoveListFrame extends JFrame {
       } else if (coords[0] == Lizzie.frame.clickbadmove[0]
           && coords[1] == Lizzie.frame.clickbadmove[1]) {
         setBackground(new Color(238, 221, 130));
-      } else setBackground(Color.WHITE);
+      } else setBackground(AppleStyleSupport.validFieldBackground());
       double diffWinrate =
           Float.parseFloat(
               table
@@ -6902,7 +6902,7 @@ public class MoveListFrame extends JFrame {
 
       if (coords[0] == Lizzie.frame.clickbadmove[0] && coords[1] == Lizzie.frame.clickbadmove[1]) {
         setBackground(new Color(238, 221, 130));
-      } else setBackground(Color.WHITE);
+      } else setBackground(AppleStyleSupport.validFieldBackground());
       double diffWinrate =
           Float.parseFloat(
               table

@@ -10,27 +10,34 @@
 </p>
 
 <p align="center">
-  <a href="README.md">中文</a> · <a href="README_EN.md">English</a> · 日本語 · <a href="README_KO.md">한국어</a>
+  <a href="README.md">简体中文</a> · <a href="README_ZH_TW.md">繁體中文</a> · <a href="README_EN.md">English</a> · 日本語 · <a href="README_KO.md">한국어</a> · <a href="README_TH.md">ภาษาไทย</a>
 </p>
 
 <p align="center">
   <strong>LizzieYzy Next は、現在も保守されている lizzieyzy 系の実用版であり、普通の利用者向けの KataGo 復盤 GUI です。</strong><br/>
-  このプロジェクトが重視しているのは、配布物を選びやすくすること、初回起動を簡単にすること、野狐棋譜取得を使える状態に戻すこと、そして復盤中に問題手をより早く見つけられるようにすることです。<br/>
+  配布物の選びやすさ、初回起動の負担、野狐棋譜取得の使いやすさ、そして全局を見渡しやすい解析体験の4点を、いまの利用者目線で整え直しています。<br/>
   <strong>ダウンロードして、野狐のニックネームを入力し、公開棋譜を取得して、全局を素早く解析し、新しい勝率グラフと下部のクイック概要で重要な手へすぐ移動できます。</strong>
 </p>
 
 <p align="center">
   <a href="https://github.com/wimi321/lizzieyzy-next/releases"><strong>Releases</strong></a>
   ·
+  <a href="https://pan.baidu.com/s/1wthaL8YwGMxy_u0U7Mabpw?pwd=3i8w"><strong>Baidu ダウンロード</strong></a>
+  ·
   <a href="docs/INSTALL_JA.md"><strong>インストールガイド</strong></a>
   ·
   <a href="docs/TROUBLESHOOTING_EN.md"><strong>トラブル対応</strong></a>
 </p>
 
+> [!NOTE]
+> 中国本土から利用する場合は、公開されている Baidu Netdisk ダウンロードも使えます:
+> [https://pan.baidu.com/s/1wthaL8YwGMxy_u0U7Mabpw?pwd=3i8w](https://pan.baidu.com/s/1wthaL8YwGMxy_u0U7Mabpw?pwd=3i8w)
+> 取り出しコード: `3i8w`
+
 > [!TIP]
 > 中国語 QQ グループ: `299419120`
 >
-> 日常の利用相談、バグ報告、保守方針のやり取りが一番速い場所です。
+> 日常の利用相談、バグ報告、機能要望のやり取りが一番速い場所です。
 
 > [!IMPORTANT]
 > まずはこの 6 点だけ押さえれば大丈夫です:
@@ -41,13 +48,13 @@
 > - 主な統合パッケージには KataGo `v1.16.4` と公式推奨の `zhizi` 重み `kata1-zhizi-b28c512nbt-muonfd2.bin.gz` が含まれています
 > - 主な release パッケージには `readboard_java` も同梱されており、多くの利用者は別の readboard リポジトリを用意する必要がありません
 
-## このプロジェクトは何か
+## なぜ多くの利用者がここから始めるのか
 
 `LizzieYzy Next` は次のように考えればわかりやすいです。
 
-- 普通の利用者向けの `KataGo 復盤ソフト`
-- 実用面を継続保守している `lizzieyzy 保守版 / 代替プロジェクト`
-- `野狐棋譜取得 + KataGo 解析 + 非インストール配布 + 既定の重み` をまとめたデスクトップツール
+- 普通の利用者向けに使いやすく整えた `KataGo 復盤ソフト`
+- `野狐棋譜取得 + 全局を素早く見る解析 + 複数 OS 向け配布` を一つにした実用ワークフロー
+- 古い `lizzieyzy` 環境から移りやすい現行の保守ブランチ
 
 次のようなものを探しているなら、まずこのプロジェクトを見る価値があります。
 
@@ -57,7 +64,7 @@
 - `野狐棋譜取得 + KataGo 復盤`
 - `Windows 非インストール 囲碁 AI ツール`
 
-## いまできること
+## 起動したあとすぐできること
 
 | やりたいこと | いまのプロジェクトでどうできるか |
 | --- | --- |
@@ -86,8 +93,8 @@
 | Windows、NVIDIA GPU、インストーラあり | `*windows64.nvidia.installer.exe` |
 | Windows、自分のエンジンを使う、非インストール | `*windows64.without.engine.portable.zip` |
 | Windows、自分のエンジンを使う、インストーラあり | `*windows64.without.engine.installer.exe` |
-| macOS Apple Silicon | `*mac-arm64.with-katago.dmg` |
-| macOS Intel | `*mac-amd64.with-katago.dmg` |
+| macOS Apple Silicon | `*mac-apple-silicon.with-katago.dmg` |
+| macOS Intel | `*mac-intel.with-katago.dmg` |
 | Linux | `*linux64.with-katago.zip` |
 
 迷ったときの目安:
@@ -98,7 +105,7 @@
 - Mac: Apple Silicon か Intel かを先に確認
 - Linux: `*linux64.with-katago.zip`
 
-## なぜ今この版を先に勧めやすいのか
+## なぜ今この版が使いやすいのか
 
 - `野狐棋譜取得が再び使える`
   利用者が覚えているニックネームから始められます。
@@ -177,18 +184,22 @@
 
 現在の macOS 配布物は未署名・未公証です。初回にブロックされた場合は [インストールガイド](docs/INSTALL_JA.md) の手順を見てください。
 
-## ドキュメントとコミュニティ
+## 利用者向けドキュメント
 
+- [サポートガイド](SUPPORT.md)
 - [インストールガイド](docs/INSTALL_JA.md)
-- [Package Overview](docs/PACKAGES_EN.md)
-- [Troubleshooting](docs/TROUBLESHOOTING_EN.md)
-- [Tested Platforms](docs/TESTED_PLATFORMS.md)
+- [配布パッケージ一覧 (English)](docs/PACKAGES_EN.md)
+- [トラブル対応 (English)](docs/TROUBLESHOOTING_EN.md)
+- [検証済みプラットフォーム (English)](docs/TESTED_PLATFORMS.md)
+- [GitHub Releases](https://github.com/wimi321/lizzieyzy-next/releases)
+- GitHub Discussions: <https://github.com/wimi321/lizzieyzy-next/discussions>
+- 中国語 QQ グループ: `299419120`
+
+## プロジェクトリンク
 - [Roadmap](ROADMAP.md)
 - [Contributing](CONTRIBUTING.md)
 - [Changelog](CHANGELOG.md)
 - [Support](SUPPORT.md)
-- GitHub Discussions: <https://github.com/wimi321/lizzieyzy-next/discussions>
-- 中国語 QQ グループ: `299419120`
 
 ## Credits
 
@@ -197,3 +208,9 @@
 Historical Fox sync references:
 - [yzyray/FoxRequest](https://github.com/yzyray/FoxRequest)
 - [FuckUbuntu/Lizzieyzy-Helper](https://github.com/FuckUbuntu/Lizzieyzy-Helper)
+
+## 翻訳について
+
+翻訳を歓迎します！この README をあなたの母語に翻訳したい方は、ぜひ Pull Request をお送りください。
+
+We welcome translations! If you want to translate this README into your native language, please feel free to submit a Pull Request.

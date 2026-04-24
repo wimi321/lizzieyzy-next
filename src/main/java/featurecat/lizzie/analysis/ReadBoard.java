@@ -23,12 +23,23 @@ import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
+import javax.swing.SwingUtilities;
 
 public class ReadBoard {
+  private static final File NATIVE_READBOARD_DIR = new File("readboard");
+  private static final String NATIVE_READBOARD_EXE = "readboard.exe";
+  private static final String NATIVE_READBOARD_BAT = "readboard.bat";
+
   public static boolean isLegacyNativeReadBoardAvailable() {
-    File readBoardDir = new File("readboard");
-    return new File(readBoardDir, "readboard.exe").canRead()
-        || new File(readBoardDir, "readboard.bat").canRead();
+    return isNativeReadBoardExeAvailable() || isNativeReadBoardBatAvailable();
+  }
+
+  public static boolean isNativeReadBoardExeAvailable() {
+    return new File(NATIVE_READBOARD_DIR, NATIVE_READBOARD_EXE).canRead();
+  }
+
+  public static boolean isNativeReadBoardBatAvailable() {
+    return new File(NATIVE_READBOARD_DIR, NATIVE_READBOARD_BAT).canRead();
   }
 
   public Process process;
@@ -72,8 +83,8 @@ public class ReadBoard {
     if (s != null && !s.isClosed()) {
       s.close();
     }
-    if (usePipe) engineCommand = "readboard\\readboard.exe";
-    else engineCommand = "readboard\\readboard.bat";
+    if (usePipe) engineCommand = NATIVE_READBOARD_EXE;
+    else engineCommand = new File(NATIVE_READBOARD_DIR, NATIVE_READBOARD_BAT).getPath();
     startEngine(engineCommand, 0);
   }
 
@@ -176,7 +187,7 @@ public class ReadBoard {
       if (usePipe) commands.add("-1");
       else commands.add(String.valueOf(port));
       ProcessBuilder processBuilder = new ProcessBuilder(commands);
-      if (usePipe) processBuilder.directory(new File("readboard"));
+      if (usePipe) processBuilder.directory(NATIVE_READBOARD_DIR);
       processBuilder.redirectErrorStream(true);
       try {
         process = processBuilder.start();
@@ -234,18 +245,7 @@ public class ReadBoard {
       }
       System.out.println("Board synchronization tool process ended.");
       if (!javaReadBoard && !isLoaded) {
-        try {
-          new ProcessBuilder("powershell", "/c", "start", "readboard\\readboard.bat").start();
-        } catch (IOException e) {
-          try {
-            new ProcessBuilder("powershell", "/c", "start", "readboard\\readboard.exe").start();
-          } catch (Exception s) {
-            s.printStackTrace();
-          }
-          e.printStackTrace();
-        }
-        SMessage msg = new SMessage();
-        msg.setMessage(Lizzie.resourceBundle.getString("ReadBoard.loadFailed"), 2);
+        fallbackToJavaReadBoard();
         shutdown();
       } else shutdown();
       // Do no exit for switching weights
@@ -256,6 +256,16 @@ public class ReadBoard {
       Lizzie.frame.syncBoard = false;
       // System.exit(-1);
     }
+  }
+
+  private void fallbackToJavaReadBoard() {
+    SwingUtilities.invokeLater(
+        new Runnable() {
+          public void run() {
+            Utils.showMsg(Lizzie.resourceBundle.getString("ReadBoard.nativeStartFailed"));
+            Lizzie.frame.openReadBoardJava();
+          }
+        });
   }
 
   public void parseLine(String line) {

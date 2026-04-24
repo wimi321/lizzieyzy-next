@@ -5,7 +5,6 @@ import featurecat.lizzie.Lizzie;
 import featurecat.lizzie.analysis.EngineManager;
 import featurecat.lizzie.gui.LizzieFrame.HtmlKit;
 import featurecat.lizzie.util.Utils;
-import java.awt.Color;
 import java.awt.Desktop;
 import java.awt.Dimension;
 import java.awt.Font;
@@ -203,8 +202,8 @@ public class SetKataEngines extends JDialog {
               error = true;
             }
             if (error || pda > 3 || pda < -3) {
-              txtPDA.setBackground(Color.RED);
-            } else txtPDA.setBackground(Color.WHITE);
+              txtPDA.setBackground(AppleStyleSupport.errorFieldBackground());
+            } else txtPDA.setBackground(AppleStyleSupport.validFieldBackground());
           }
 
           public void removeUpdate(DocumentEvent e) {
@@ -217,8 +216,8 @@ public class SetKataEngines extends JDialog {
               error = true;
             }
             if (error || pda > 3 || pda < -3) {
-              txtPDA.setBackground(Color.RED);
-            } else txtPDA.setBackground(Color.WHITE);
+              txtPDA.setBackground(AppleStyleSupport.errorFieldBackground());
+            } else txtPDA.setBackground(AppleStyleSupport.validFieldBackground());
           }
 
           public void changedUpdate(DocumentEvent e) {
@@ -231,8 +230,8 @@ public class SetKataEngines extends JDialog {
               error = true;
             }
             if (error || pda > 3 || pda < -3) {
-              txtPDA.setBackground(Color.RED);
-            } else txtPDA.setBackground(Color.WHITE);
+              txtPDA.setBackground(AppleStyleSupport.errorFieldBackground());
+            } else txtPDA.setBackground(AppleStyleSupport.validFieldBackground());
           }
         });
 
@@ -336,8 +335,8 @@ public class SetKataEngines extends JDialog {
               error = true;
             }
             if (error || wrn > 2 || wrn < 0) {
-              txtWRN.setBackground(Color.RED);
-            } else txtWRN.setBackground(Color.WHITE);
+              txtWRN.setBackground(AppleStyleSupport.errorFieldBackground());
+            } else txtWRN.setBackground(AppleStyleSupport.validFieldBackground());
           }
 
           public void removeUpdate(DocumentEvent e) {
@@ -350,8 +349,8 @@ public class SetKataEngines extends JDialog {
               error = true;
             }
             if (error || wrn > 2 || wrn < 0) {
-              txtWRN.setBackground(Color.RED);
-            } else txtWRN.setBackground(Color.WHITE);
+              txtWRN.setBackground(AppleStyleSupport.errorFieldBackground());
+            } else txtWRN.setBackground(AppleStyleSupport.validFieldBackground());
           }
 
           public void changedUpdate(DocumentEvent e) {
@@ -364,8 +363,8 @@ public class SetKataEngines extends JDialog {
               error = true;
             }
             if (error || wrn > 2 || wrn < 0) {
-              txtWRN.setBackground(Color.RED);
-            } else txtWRN.setBackground(Color.WHITE);
+              txtWRN.setBackground(AppleStyleSupport.errorFieldBackground());
+            } else txtWRN.setBackground(AppleStyleSupport.validFieldBackground());
           }
         });
 
@@ -423,8 +422,8 @@ public class SetKataEngines extends JDialog {
               error = true;
             }
             if (error || rpt > 100 || rpt < 0.01) {
-              txtRPT.setBackground(Color.RED);
-            } else txtRPT.setBackground(Color.WHITE);
+              txtRPT.setBackground(AppleStyleSupport.errorFieldBackground());
+            } else txtRPT.setBackground(AppleStyleSupport.validFieldBackground());
           }
 
           public void removeUpdate(DocumentEvent e) {
@@ -437,8 +436,8 @@ public class SetKataEngines extends JDialog {
               error = true;
             }
             if (error || rpt > 100 || rpt < 0.01) {
-              txtRPT.setBackground(Color.RED);
-            } else txtRPT.setBackground(Color.WHITE);
+              txtRPT.setBackground(AppleStyleSupport.errorFieldBackground());
+            } else txtRPT.setBackground(AppleStyleSupport.validFieldBackground());
           }
 
           public void changedUpdate(DocumentEvent e) {
@@ -451,8 +450,8 @@ public class SetKataEngines extends JDialog {
               error = true;
             }
             if (error || rpt > 100 || rpt < 0.01) {
-              txtRPT.setBackground(Color.RED);
-            } else txtRPT.setBackground(Color.WHITE);
+              txtRPT.setBackground(AppleStyleSupport.errorFieldBackground());
+            } else txtRPT.setBackground(AppleStyleSupport.validFieldBackground());
           }
         });
 
