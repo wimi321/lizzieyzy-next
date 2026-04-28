@@ -281,6 +281,7 @@ public class ConfigDialog2 extends JDialog {
   private JCheckBox chkFastSwtich;
   private JCheckBox chkPonder;
   private JCheckBox chkStopAtEmpty;
+  private JCheckBox chkEnableStartupBenchmark;
 
   private JCheckBox chkUseScoreDiff;
   private JTextField txtPercentScoreDiff;
@@ -291,7 +292,7 @@ public class ConfigDialog2 extends JDialog {
     setModalityType(ModalityType.APPLICATION_MODAL);
     // setType(Type.POPUP);
     // setBounds(100, 100, 890, 834);
-    Lizzie.setFrameSize(this, 890, 855);
+    Lizzie.setFrameSize(this, 890, 885);
     try {
       setIconImage(ImageIO.read(getClass().getResourceAsStream("/assets/logo.png")));
     } catch (IOException e) {
@@ -1924,6 +1925,16 @@ public class ConfigDialog2 extends JDialog {
     chkLogGtpToFile.setToolTipText(
         resourceBundle.getString("LizzieConfig.lblLogGtpToFile.tooltips"));
     chkLogGtpToFile.setSelected(Lizzie.config.logGtpToFile);
+
+    JLabel lblEnableStartupBenchmark =
+        new JLabel(resourceBundle.getString("LizzieConfig.lblEnableStartupBenchmark"));
+    lblEnableStartupBenchmark.setBounds(10, 757, 205, 15);
+    uiTab.add(lblEnableStartupBenchmark);
+
+    chkEnableStartupBenchmark = new JCheckBox();
+    chkEnableStartupBenchmark.setBounds(215, 754, 26, 23);
+    uiTab.add(chkEnableStartupBenchmark);
+    chkEnableStartupBenchmark.setSelected(Lizzie.config.enableStartupBenchmark);
 
     chkPonder = new JCheckBox();
     chkPonder.setBounds(125, 497, 26, 23);
@@ -3763,6 +3774,8 @@ public class ConfigDialog2 extends JDialog {
     Lizzie.config.logGtpToFile = chkLogGtpToFile.isSelected();
     Lizzie.config.uiConfig.put("log-console-to-file", Lizzie.config.logConsoleToFile);
     Lizzie.config.uiConfig.put("log-gtp-to-file", Lizzie.config.logGtpToFile);
+    Lizzie.config.enableStartupBenchmark = chkEnableStartupBenchmark.isSelected();
+    Lizzie.config.uiConfig.put("enable-startup-benchmark", Lizzie.config.enableStartupBenchmark);
     if (rdoLastMark.isSelected()) {
       int lastRankMove = Utils.parseTextToInt(txtLastMark, 1);
       Lizzie.config.moveRankMarkLastMove = lastRankMove;

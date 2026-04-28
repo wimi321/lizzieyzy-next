@@ -1061,6 +1061,7 @@ public class Config {
   public boolean disableMoveRankInOrigin = false;
   public boolean logConsoleToFile = false;
   public boolean logGtpToFile = false;
+  public boolean enableStartupBenchmark = true;
   public boolean readBoardPonder = false;
   public boolean readBoardGetFocus = true;
 
@@ -1846,6 +1847,7 @@ public class Config {
     disableMoveRankInOrigin = uiConfig.optBoolean("disable-move-rank-in-origin", false);
     logConsoleToFile = uiConfig.optBoolean("log-console-to-file", false);
     logGtpToFile = uiConfig.optBoolean("log-gtp-to-file", false);
+    enableStartupBenchmark = uiConfig.optBoolean("enable-startup-benchmark", true);
     readBoardGetFocus = uiConfig.optBoolean("read-board-get-focus", true);
     useScoreLossInMoveRank = uiConfig.optBoolean("use-score-loss-in-move-rank", true);
     useWinLossInMoveRank = uiConfig.optBoolean("use-win-loss-in-move-rank", true);

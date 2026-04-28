@@ -26,6 +26,10 @@ import org.cef.browser.CefMessageRouter;
 import org.cef.handler.CefDisplayHandlerAdapter;
 import org.cef.handler.CefFocusHandlerAdapter;
 import org.cef.handler.CefLifeSpanHandlerAdapter;
+import org.cef.handler.CefLoadHandler;
+import org.cef.handler.CefLoadHandlerAdapter;
+import org.cef.handler.CefRequestHandler;
+import org.cef.handler.CefRequestHandlerAdapter;
 import org.json.JSONObject;
 import org.json.JSONTokener;
 
@@ -36,7 +40,7 @@ public class BrowserFrame extends JFrame {
   private final CefClient client_;
   private final CefBrowser browser_;
   private final Component browerUI_;
-  private boolean browserFocus_ = true;
+  private volatile boolean browserFocus_ = true;
   private JToolBar toolbar;
   private boolean isYike;
 
@@ -63,6 +67,10 @@ public class BrowserFrame extends JFrame {
     // windowless_rendering_enabled must be set to false if not wanted.
     builder.getCefSettings().windowless_rendering_enabled = false;
     builder.getCefSettings().log_severity = LogSeverity.LOGSEVERITY_DISABLE;
+    File cefCache = new File("jcef-bundle", "cache");
+    if (!cefCache.exists()) cefCache.mkdirs();
+    builder.getCefSettings().root_cache_path = cefCache.getAbsolutePath();
+    builder.getCefSettings().cache_path = cefCache.getAbsolutePath();
     // USE builder.setAppHandler INSTEAD OF CefApp.addAppHandler!
     // Fixes compatibility issues with MacOSX
     builder.setAppHandler(
@@ -135,6 +143,60 @@ public class BrowserFrame extends JFrame {
     CefMessageRouter msgRouter = CefMessageRouter.create();
     client_.addMessageRouter(msgRouter);
 
+    client_.addLoadHandler(
+        new CefLoadHandlerAdapter() {
+          @Override
+          public void onLoadError(
+              CefBrowser browser,
+              CefFrame frame,
+              CefLoadHandler.ErrorCode errorCode,
+              String errorText,
+              String failedUrl) {
+            if (frame.isMain()
+                && errorCode != CefLoadHandler.ErrorCode.ERR_ABORTED
+                && errorCode != CefLoadHandler.ErrorCode.ERR_NONE) {
+              String safeUrl = failedUrl.replace("\\", "\\\\").replace("'", "\\'");
+              String safeError = errorText.replace("\\", "\\\\").replace("'", "\\'");
+              browser.executeJavaScript(
+                  "document.body.textContent='';"
+                      + "var d=document.createElement('div');"
+                      + "d.style.cssText='text-align:center;padding:60px;font-family:sans-serif;color:#333';"
+                      + "d.innerHTML='<h2>\\u52a0\\u8f7d\\u5931\\u8d25</h2>"
+                      + "<p>\\u9519\\u8bef: "
+                      + safeError
+                      + " ("
+                      + errorCode
+                      + ")</p>"
+                      + "<p>URL: "
+                      + safeUrl
+                      + "</p>"
+                      + "<button onclick=\"location.reload()\" style=\"padding:8px 24px;"
+                      + "font-size:14px;cursor:pointer\">\\u91cd\\u8bd5</button>';"
+                      + "document.body.appendChild(d);",
+                  frame.getURL(),
+                  0);
+            }
+          }
+        });
+
+    client_.addRequestHandler(
+        new CefRequestHandlerAdapter() {
+          @Override
+          public void onRenderProcessTerminated(
+              CefBrowser browser,
+              CefRequestHandler.TerminationStatus status,
+              int errorCode,
+              String errorString) {
+            javax.swing.SwingUtilities.invokeLater(
+                () -> {
+                  String url = address_.getText();
+                  if (url != null && !url.isEmpty()) {
+                    browser_.loadURL(url);
+                  }
+                });
+          }
+        });
+
     // (4) One CefBrowser instance is responsible to control what you'll see on
     //     the UI component of the instance. It can be displayed off-screen
     //     rendered or windowed rendered. To get an instance of CefBrowser you
@@ -182,7 +244,7 @@ public class BrowserFrame extends JFrame {
         new CefDisplayHandlerAdapter() {
           @Override
           public void onAddressChange(CefBrowser browser, CefFrame frame, String url) {
-            address_.setText(url);
+            SwingUtilities.invokeLater(() -> address_.setText(url));
           }
         });
 
@@ -205,8 +267,11 @@ public class BrowserFrame extends JFrame {
           public void onGotFocus(CefBrowser browser) {
             if (browserFocus_) return;
             browserFocus_ = true;
-            KeyboardFocusManager.getCurrentKeyboardFocusManager().clearGlobalFocusOwner();
-            browser.setFocus(true);
+            SwingUtilities.invokeLater(
+                () -> {
+                  KeyboardFocusManager.getCurrentKeyboardFocusManager().clearGlobalFocusOwner();
+                  browser.setFocus(true);
+                });
           }
 
           @Override
@@ -222,11 +287,14 @@ public class BrowserFrame extends JFrame {
           @Override
           public boolean onBeforePopup(
               CefBrowser browser, CefFrame frame, String target_url, String target_frame_name) {
-            if (isYike && !browser.getURL().equals(target_url)) {
-              Lizzie.frame.syncOnline(target_url);
-            }
-            browser_.loadURL(target_url);
-            // 返回true表示取消弹出窗口
+            final String currentUrl = browser.getURL();
+            SwingUtilities.invokeLater(
+                () -> {
+                  if (isYike && !currentUrl.equals(target_url)) {
+                    Lizzie.frame.syncOnline(target_url);
+                  }
+                  browser_.loadURL(target_url);
+                });
             return true;
           }
         });

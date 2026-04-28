@@ -203,17 +203,7 @@ class SnapshotNodeRenderGateTest {
     moveNumberList[Board.getIndex(0, 0)] = 1;
     moveNumberList[Board.getIndex(1, 0)] = 2;
     return BoardData.move(
-        stones,
-        new int[] {1, 0},
-        Stone.WHITE,
-        true,
-        new Zobrist(),
-        2,
-        moveNumberList,
-        0,
-        0,
-        50,
-        0);
+        stones, new int[] {1, 0}, Stone.WHITE, true, new Zobrist(), 2, moveNumberList, 0, 0, 50, 0);
   }
 
   private static Board boardWithRoot(BoardData root) throws Exception {

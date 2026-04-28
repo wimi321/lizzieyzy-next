@@ -1353,6 +1353,7 @@ public final class KataGoRuntimeHelper {
   public static void startFirstRunBenchmarkAsync() {
     if (Lizzie.config == null || Lizzie.config.uiConfig == null) return;
     if (isAppleSiliconHost()) return;
+    if (!Lizzie.config.enableStartupBenchmark) return;
     if (getStoredBenchmarkResult() != null) return;
 
     Thread worker =
