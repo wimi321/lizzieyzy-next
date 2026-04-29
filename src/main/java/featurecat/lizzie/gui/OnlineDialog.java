@@ -136,6 +136,7 @@ public class OnlineDialog extends JDialog {
 
   public OnlineDialog(Window owner) {
     super(owner);
+    yikeDebugLog("OnlineDialog created");
     setTitle(resourceBundle.getString("OnlineDialog.title.config"));
     setModalityType(ModalityType.APPLICATION_MODAL);
     setAlwaysOnTop(Lizzie.frame.isAlwaysOnTop());
@@ -346,7 +347,8 @@ public class OnlineDialog extends JDialog {
     return type == YikeUrlInfo.TYPE_OLD_LIVE_ROOM
         || type == YikeUrlInfo.TYPE_OLD_LIVE_BOARD
         || type == YikeUrlInfo.TYPE_GAME_ROOM
-        || type == YikeUrlInfo.TYPE_NEW_LIVE_ROOM;
+        || type == YikeUrlInfo.TYPE_NEW_LIVE_ROOM
+        || type == YikeUrlInfo.TYPE_UNITE_ROOM;
   }
 
   private String currentYikeSourceUrl() {
@@ -498,6 +500,11 @@ public class OnlineDialog extends JDialog {
       case 6:
         reqNewYikeRoom(true);
         break;
+      case 7:
+        // TODO: 弈客对弈房间（unite/<id>）需要从 JCEF 内嵌浏览器读取 game-server API 的 JWT token
+        // 才能调 https://game-server.yikeweiqi.com/game/info?id=<roomId>。当前未实现。
+        yikeDebugLog("type=7 (UNITE_ROOM) not yet implemented");
+        break;
       case 2:
         refresh("(?s).*?(\\\"Content\\\":\\\")(.+)(\\\",\\\")(?s).*");
         break;
@@ -525,7 +532,8 @@ public class OnlineDialog extends JDialog {
     return type == YikeUrlInfo.TYPE_OLD_LIVE_ROOM
         || type == YikeUrlInfo.TYPE_OLD_LIVE_BOARD
         || type == YikeUrlInfo.TYPE_GAME_ROOM
-        || type == YikeUrlInfo.TYPE_NEW_LIVE_ROOM;
+        || type == YikeUrlInfo.TYPE_NEW_LIVE_ROOM
+        || type == YikeUrlInfo.TYPE_UNITE_ROOM;
   }
 
   private boolean shouldReplaceYikeMainline() {
@@ -617,6 +625,7 @@ public class OnlineDialog extends JDialog {
           return;
         }
         int diffMove = Lizzie.board.getHistory().sync(liveNode);
+        sendYikeContextToReadBoard(liveNode != null ? liveNode.getMoveNumber() : 0);
         if (diffMove >= 0) {
           //     Lizzie.board.goToMoveNumberBeyondBranch(diffMove > 0 ? diffMove - 1 : 0);
           //    while (Lizzie.board.nextMove()) ;
@@ -716,6 +725,7 @@ public class OnlineDialog extends JDialog {
     }
     firstTime = false;
     Lizzie.frame.refresh();
+    sendYikeContextToReadBoard(liveNode != null ? liveNode.getMoveNumber() : 0);
   }
 
   public void get() throws IOException {
@@ -2224,19 +2234,21 @@ public class OnlineDialog extends JDialog {
   }
 
   public void req2(boolean clear) throws URISyntaxException {
+    yikeDebugLog("req2 start, clear=" + clear);
     if (clear) Lizzie.board.clearForOnline();
     if (sio != null) {
       sio.close();
     }
     seqs = 0;
     URI uri = new URI(new String(c1));
+    yikeDebugLog("req2 uri=" + uri);
     sio = IO.socket(uri);
     sio.on(
             Socket.EVENT_CONNECT,
             new Emitter.Listener() {
               @Override
               public void call(Object... args) {
-                // System.out.println("io:connect");
+                yikeDebugLog("Socket.IO connected");
                 login();
               }
             })
@@ -2285,7 +2297,9 @@ public class OnlineDialog extends JDialog {
             new Emitter.Listener() {
               @Override
               public void call(Object... args) {
-                // System.out.println("io:EVENT_CONNECT_ERROR");
+                yikeDebugLog(
+                    "Socket.IO connect error: "
+                        + (args == null || args.length == 0 ? "?" : String.valueOf(args[0])));
               }
             })
         .on(
@@ -2293,7 +2307,7 @@ public class OnlineDialog extends JDialog {
             new Emitter.Listener() {
               @Override
               public void call(Object... args) {
-                // System.out.println("io:EVENT_CONNECT_TIMEOUT");
+                yikeDebugLog("Socket.IO connect timeout");
               }
             })
         .on(
@@ -2375,7 +2389,8 @@ public class OnlineDialog extends JDialog {
             new Emitter.Listener() {
               @Override
               public void call(Object... args) {
-                // System.out.println("io:init:" + strJson(args));
+                yikeDebugLog(
+                    "Socket.IO init event received, args=" + (args == null ? "null" : args.length));
                 initData(args == null || args.length < 1 ? null : ((JSONObject) args[0]));
               }
             })
@@ -2469,6 +2484,7 @@ public class OnlineDialog extends JDialog {
   }
 
   private void initData(JSONObject data) {
+    yikeDebugLog("initData called, data=" + (data == null ? "null" : "present"));
     if (data == null) return;
     JSONObject info = data.optJSONObject("game_info");
     int size = info.optInt("boardSize", 19);
@@ -2492,6 +2508,7 @@ public class OnlineDialog extends JDialog {
       }
       Lizzie.board.getHistory().getGameInfo().setHandicap(handicap);
       int diffMove = Lizzie.board.getHistory().sync(history);
+      sendYikeContextToReadBoard();
       if (diffMove >= 0) {
         //      Lizzie.board.goToMoveNumberBeyondBranch(diffMove > 0 ? diffMove - 1 : 0);
         //      while (Lizzie.board.nextMove()) ;
@@ -2512,7 +2529,7 @@ public class OnlineDialog extends JDialog {
     if (history == null) {
       //      error(true);
       sio.close();
-      if (isEnd && type == 1) {
+      if (isEnd && (type == 1 || type == 5)) {
         try {
           refresh("(?s).*?(\\\"Content\\\":\\\")(.+)(\\\",\\\")(?s).*", 2, false, false);
         } catch (IOException e) {
@@ -2583,9 +2600,48 @@ public class OnlineDialog extends JDialog {
   }
 
   void sync() {
+    if (history == null) return;
     while (history.previous().isPresent())
       ;
     Lizzie.board.getHistory().sync(history);
+    sendYikeContextToReadBoard();
+  }
+
+  private static final String YIKE_LOG_PATH = "D:/dev/weiqi/lizzieyzy-next/target/yike-debug.log";
+
+  private static void yikeDebugLog(String msg) {
+    try {
+      java.io.FileWriter fw = new java.io.FileWriter(YIKE_LOG_PATH, true);
+      fw.write(
+          "["
+              + new java.text.SimpleDateFormat("HH:mm:ss.SSS").format(new java.util.Date())
+              + "] "
+              + msg
+              + "\n");
+      fw.close();
+    } catch (Exception ignored) {
+    }
+  }
+
+  private void sendYikeContextToReadBoard() {
+    sendYikeContextToReadBoard(history != null ? history.getMoveNumber() : 0);
+  }
+
+  private void sendYikeContextToReadBoard(int moveNumber) {
+    try {
+      if (Lizzie.frame == null || Lizzie.frame.readBoard == null) {
+        yikeDebugLog("sendYike: readBoard is null");
+        return;
+      }
+      StringBuilder sb = new StringBuilder("yike");
+      if (roomId > 0) sb.append(" room=").append(roomId);
+      if (moveNumber > 0) sb.append(" move=").append(moveNumber);
+      String cmd = sb.toString();
+      yikeDebugLog("sendYike: " + cmd);
+      Lizzie.frame.readBoard.sendCommand(cmd);
+    } catch (Exception e) {
+      yikeDebugLog("sendYike error: " + e.toString());
+    }
   }
 
   private void procComments(JSONObject cb) {
@@ -2676,7 +2732,7 @@ public class OnlineDialog extends JDialog {
   }
 
   private void move(JSONObject d) {
-    if (d == null || d.opt("move") == null) return;
+    if (d == null || d.opt("move") == null || history == null) return;
     JSONObject m = (JSONObject) d.get("move");
     int move = m.optInt("mcnt");
     if (move > 0) {
@@ -2846,12 +2902,14 @@ public class OnlineDialog extends JDialog {
   }
 
   public void applyChangeWeb(String url) {
+    yikeDebugLog("applyChangeWeb url=" + url);
     //
     isStoped = false;
     fromBrowser = true;
     firstTime = true;
     txtUrl.setText(url);
     type = checkUrl();
+    yikeDebugLog("applyChangeWeb type=" + type);
     LizzieFrame.urlSgf = true;
     Lizzie.frame.setCommentPaneOrArea(false);
     if (type > 0) {

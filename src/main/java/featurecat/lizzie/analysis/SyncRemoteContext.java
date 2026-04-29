@@ -7,6 +7,7 @@ import java.util.OptionalInt;
 final class SyncRemoteContext {
   enum SyncPlatform {
     FOX,
+    YIKE,
     GENERIC
   }
 
