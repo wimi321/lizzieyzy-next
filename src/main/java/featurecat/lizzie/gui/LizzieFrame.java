@@ -247,6 +247,9 @@ public class LizzieFrame extends JFrame {
   private long kifuLoadVisibleSince;
   private volatile int kifuMovelistRefreshGeneration = 0;
 
+  /** Web 试下模式下的渲染节点覆盖。null 表示无 override，渲染端读 Board.history 当前节点。 */
+  private volatile featurecat.lizzie.rules.BoardHistoryNode displayNodeOverride;
+
   private TableModel blunderModelBlack;
   private TableModel blunderModelWhite;
   public JTable blunderTabelBlack;
@@ -1858,6 +1861,20 @@ public class LizzieFrame extends JFrame {
       sidebarPanel.switchTo("COMMENTS");
     }
     sidebarPanel.setVisible(true);
+  }
+
+  public featurecat.lizzie.rules.BoardHistoryNode getDisplayNode() {
+    featurecat.lizzie.rules.BoardHistoryNode override = displayNodeOverride;
+    if (override != null) return override;
+    return Lizzie.board.getHistory().getCurrentHistoryNode();
+  }
+
+  public void setDisplayNodeOverride(featurecat.lizzie.rules.BoardHistoryNode node) {
+    this.displayNodeOverride = node;
+  }
+
+  public boolean isTrialActive() {
+    return displayNodeOverride != null;
   }
 
   public void setCommentPaneContent() {
