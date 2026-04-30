@@ -86,6 +86,7 @@ public class OnlineDialog extends JDialog {
   private JTextField txtUrl;
   private String ajaxUrl = "";
   private String lastYikeMainlineSgf = "";
+  private int lastYikeHandsCount = -1;
   private Map queryMap = null;
   private String query = "";
   private String whitePlayer = "";
@@ -474,6 +475,7 @@ public class OnlineDialog extends JDialog {
     done = false;
     history = null;
     lastYikeMainlineSgf = "";
+    lastYikeHandsCount = -1;
     Lizzie.board.clearForOnline();
     switch (type) {
       case 1:
@@ -501,9 +503,7 @@ public class OnlineDialog extends JDialog {
         reqNewYikeRoom(true);
         break;
       case 7:
-        // TODO: 弈客对弈房间（unite/<id>）需要从 JCEF 内嵌浏览器读取 game-server API 的 JWT token
-        // 才能调 https://game-server.yikeweiqi.com/game/info?id=<roomId>。当前未实现。
-        yikeDebugLog("type=7 (UNITE_ROOM) not yet implemented");
+        startYikeUnitePolling();
         break;
       case 2:
         refresh("(?s).*?(\\\"Content\\\":\\\")(.+)(\\\",\\\")(?s).*");
@@ -537,7 +537,7 @@ public class OnlineDialog extends JDialog {
   }
 
   private boolean shouldReplaceYikeMainline() {
-    return type == YikeUrlInfo.TYPE_NEW_LIVE_ROOM;
+    return type == YikeUrlInfo.TYPE_NEW_LIVE_ROOM || type == YikeUrlInfo.TYPE_UNITE_ROOM;
   }
 
   @SuppressWarnings("deprecation")
@@ -2607,9 +2607,11 @@ public class OnlineDialog extends JDialog {
     sendYikeContextToReadBoard();
   }
 
+  private static final boolean YIKE_DEBUG_LOG_ENABLED = false;
   private static final String YIKE_LOG_PATH = "D:/dev/weiqi/lizzieyzy-next/target/yike-debug.log";
 
   private static void yikeDebugLog(String msg) {
+    if (!YIKE_DEBUG_LOG_ENABLED) return;
     try {
       java.io.FileWriter fw = new java.io.FileWriter(YIKE_LOG_PATH, true);
       fw.write(
@@ -2641,6 +2643,90 @@ public class OnlineDialog extends JDialog {
       Lizzie.frame.readBoard.sendCommand(cmd);
     } catch (Exception e) {
       yikeDebugLog("sendYike error: " + e.toString());
+    }
+  }
+
+  private void startYikeUnitePolling() {
+    if (roomId <= 0) {
+      yikeDebugLog("startYikeUnitePolling: roomId<=0");
+      return;
+    }
+    if (Lizzie.frame.browserFrame == null) {
+      yikeDebugLog("startYikeUnitePolling: browserFrame is null");
+      return;
+    }
+    int intervalMs = Math.max(refreshTime, 5) * 1000;
+    yikeDebugLog("startYikeUnitePolling room=" + roomId + " intervalMs=" + intervalMs);
+    Lizzie.frame.browserFrame.installYikeUnitePoller(roomId, intervalMs);
+  }
+
+  /** 由 BrowserFrame 在浏览器内 fetch game-server API 后通过 cefQuery 回传调用。 */
+  public void handleYikeUniteSgf(String envelope) {
+    if (envelope == null || envelope.isEmpty()) return;
+    yikeDebugLog(
+        "handleYikeUniteSgf envelope len="
+            + envelope.length()
+            + " head="
+            + envelope.substring(0, Math.min(envelope.length(), 200)));
+    try {
+      JSONObject env = new JSONObject(envelope);
+      String tag = env.optString("tag");
+      if ("ping".equals(tag)) {
+        yikeDebugLog("yikeUnite ping: " + env.optString("body"));
+        return;
+      }
+      if ("error".equals(tag)) {
+        yikeDebugLog("yikeUnite fetch error: " + env.optString("body"));
+        return;
+      }
+      if (!"resp".equals(tag)) {
+        yikeDebugLog("yikeUnite unknown tag=" + tag);
+        return;
+      }
+      if (isStoped || type != YikeUrlInfo.TYPE_UNITE_ROOM) {
+        yikeDebugLog("yikeUnite resp skipped (isStoped=" + isStoped + " type=" + type + ")");
+        return;
+      }
+      JSONObject body = env.optJSONObject("body");
+      if (body == null) {
+        yikeDebugLog("yikeUnite resp has no body");
+        return;
+      }
+      int status = body.optInt("status", -1);
+      String text = body.optString("body", "");
+      yikeDebugLog("yikeUnite resp status=" + status + " len=" + body.optInt("len"));
+      if (status != 200 || Utils.isBlank(text)) return;
+      JSONObject root = new JSONObject(text);
+      JSONObject data = root.optJSONObject("data");
+      if (data == null) {
+        yikeDebugLog("yikeUnite resp: no data field, root keys=" + root.keySet());
+        return;
+      }
+      String sgf = data.optString("sgf");
+      if (Utils.isBlank(sgf)) {
+        yikeDebugLog("yikeUnite resp: sgf is blank");
+        return;
+      }
+      // 用 hands_count 做主去重：弈客 game/info 里 hands_count 直接给当前手数，比字符串比较快
+      int hands = data.optInt("hands_count", -1);
+      if (hands >= 0 && hands == lastYikeHandsCount) {
+        return; // 没有新走子
+      }
+      String mainlineSgf = YikeSgfMainline.withoutVariations(sgf);
+      boolean hasNewMoves = !mainlineSgf.equals(lastYikeMainlineSgf);
+      if (!hasNewMoves) {
+        if (hands >= 0) lastYikeHandsCount = hands;
+        return;
+      }
+      lastYikeMainlineSgf = mainlineSgf;
+      if (hands >= 0) lastYikeHandsCount = hands;
+      JSONObject wrapper = new JSONObject();
+      wrapper.put("result", data);
+      parseSgf(wrapper.toString(), "", 0, false, firstTime);
+    } catch (JSONException e) {
+      yikeDebugLog("handleYikeUniteSgf JSON error: " + e.toString());
+    } catch (RuntimeException e) {
+      yikeDebugLog("handleYikeUniteSgf error: " + e.toString());
     }
   }
 
@@ -2877,6 +2963,12 @@ public class OnlineDialog extends JDialog {
     isStoped = true;
     if (schedule != null && !schedule.isCancelled() && !schedule.isDone()) {
       schedule.cancel(false);
+    }
+    if (Lizzie.frame.browserFrame != null) {
+      try {
+        Lizzie.frame.browserFrame.stopYikeUnitePoller();
+      } catch (Exception ignored) {
+      }
     }
     //    if (client != null && client.isOpen()) {
     //      client.close();

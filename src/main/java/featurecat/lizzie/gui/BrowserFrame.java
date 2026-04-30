@@ -23,11 +23,13 @@ import org.cef.CefSettings.LogSeverity;
 import org.cef.browser.CefBrowser;
 import org.cef.browser.CefFrame;
 import org.cef.browser.CefMessageRouter;
+import org.cef.callback.CefQueryCallback;
 import org.cef.handler.CefDisplayHandlerAdapter;
 import org.cef.handler.CefFocusHandlerAdapter;
 import org.cef.handler.CefLifeSpanHandlerAdapter;
 import org.cef.handler.CefLoadHandler;
 import org.cef.handler.CefLoadHandlerAdapter;
+import org.cef.handler.CefMessageRouterHandlerAdapter;
 import org.cef.handler.CefRequestHandler;
 import org.cef.handler.CefRequestHandlerAdapter;
 import org.json.JSONObject;
@@ -140,7 +142,35 @@ public class BrowserFrame extends JFrame {
     client_ = cefApp_.createClient();
 
     // (3) Create a simple message router to receive messages from CEF.
-    CefMessageRouter msgRouter = CefMessageRouter.create();
+    CefMessageRouter msgRouter =
+        CefMessageRouter.create(
+            new CefMessageRouterHandlerAdapter() {
+              @Override
+              public boolean onQuery(
+                  CefBrowser browser,
+                  CefFrame frame,
+                  long queryId,
+                  String request,
+                  boolean persistent,
+                  CefQueryCallback callback) {
+                if (request != null && request.startsWith("yikeUnite:")) {
+                  // 立即回调，绝不在 CEF UI 线程里做解析/Swing/IO，否则消息队列堵了会拖死整个进程
+                  if (callback != null) callback.success("");
+                  final String payload = request.substring("yikeUnite:".length());
+                  YikeQueryWorker.submit(
+                      () -> {
+                        try {
+                          if (LizzieFrame.onlineDialog != null) {
+                            LizzieFrame.onlineDialog.handleYikeUniteSgf(payload);
+                          }
+                        } catch (Throwable ignored) {
+                        }
+                      });
+                  return true;
+                }
+                return false;
+              }
+            });
     client_.addMessageRouter(msgRouter);
 
     client_.addLoadHandler(
@@ -445,5 +475,121 @@ public class BrowserFrame extends JFrame {
             setFrameSize();
           }
         });
+  }
+
+  /**
+   * 在已加载的弈客对弈页面里被动 hook fetch/XHR：第一次抓到 game-server.yikeweiqi.com/game/info 的请求时 完整捕获请求（fetch 路径捕获
+   * Request 对象，XHR 路径捕获 method/url/headers/body），之后每 intervalMs 用 同样方式重发，把响应通过 cefQuery 回传
+   * Java。借用弈客网页自己的鉴权，不用关心 token / CORS。
+   */
+  public void installYikeUnitePoller(long roomId, int intervalMs) {
+    int periodMs = Math.max(500, intervalMs);
+    String js =
+        "(function(){"
+            + "var ROOM='"
+            + roomId
+            + "';"
+            + "var PERIOD="
+            + periodMs
+            + ";"
+            + "var send=function(tag,body){try{window.cefQuery({request:'yikeUnite:'+"
+            + "JSON.stringify({tag:tag,body:body}),persistent:false,"
+            + "onSuccess:function(){},onFailure:function(){}});}catch(e){}};"
+            + "var matchHttp=function(u){return typeof u==='string' && u.indexOf('game-server.yikeweiqi.com/game/info')>=0;};"
+            + "if(window.__yikeUnitePoller){clearInterval(window.__yikeUnitePoller);window.__yikeUnitePoller=null;}"
+            + "var origFetch=window.__yikeUniteOrigFetch||window.fetch;"
+            + "window.__yikeUniteOrigFetch=origFetch;"
+            + "var XO=window.XMLHttpRequest;"
+            + "var origXOpen=window.__yikeUniteOrigXOpen||(XO&&XO.prototype.open);"
+            + "var origXSend=window.__yikeUniteOrigXSend||(XO&&XO.prototype.send);"
+            + "var origXSetHdr=window.__yikeUniteOrigXSetHdr||(XO&&XO.prototype.setRequestHeader);"
+            + "window.__yikeUniteOrigXOpen=origXOpen;window.__yikeUniteOrigXSend=origXSend;"
+            + "window.__yikeUniteOrigXSetHdr=origXSetHdr;"
+            + "var deliverResp=function(url,status,text){"
+            + "send('resp',{url:url,status:status,len:text.length,body:text.substring(0,500000)});};"
+            + "var poll=function(){"
+            + "var saved=window.__yikeUniteSaved;if(!saved)return;"
+            + "if(saved.kind==='fetch'){try{"
+            + "var req=saved.req.clone();"
+            + "origFetch(req).then(function(r){return r.clone().text().then(function(t){"
+            + "deliverResp(saved.url,r.status,t);});}).catch(function(e){send('error','poll fetch: '+e);});"
+            + "}catch(e){send('error','poll fetch throw: '+e);}}"
+            + "else if(saved.kind==='xhr'){try{"
+            + "var x=new XO();"
+            + "origXOpen.call(x,saved.method||'GET',saved.url,true);"
+            + "if(saved.headers){for(var k in saved.headers){try{origXSetHdr.call(x,k,saved.headers[k]);}catch(e){}}}"
+            + "x.addEventListener('load',function(){deliverResp(saved.url,x.status,x.responseText||'');});"
+            + "x.addEventListener('error',function(){send('error','poll xhr: network');});"
+            + "origXSend.call(x,saved.body||null);"
+            + "}catch(e){send('error','poll xhr throw: '+e);}}"
+            + "};"
+            + "var startPolling=function(){"
+            + "if(window.__yikeUnitePoller)return;"
+            + "send('ping','start polling kind='+window.__yikeUniteSaved.kind+' url='+window.__yikeUniteSaved.url+' period='+PERIOD);"
+            + "window.__yikeUnitePoller=setInterval(poll,PERIOD);"
+            + "};"
+            + "if(window.__yikeUniteHookInstalled){"
+            + "send('ping','hook already installed');"
+            + "if(window.__yikeUniteSaved)startPolling();"
+            + "return;}"
+            + "window.__yikeUniteHookInstalled=true;"
+            + "send('ping','installing hook for room='+ROOM);"
+            + "window.fetch=function(input,init){"
+            + "var url=typeof input==='string'?input:(input&&input.url);"
+            + "var p=origFetch.apply(this,arguments);"
+            + "if(matchHttp(url)){"
+            + "p.then(function(r){r.clone().text().then(function(t){"
+            + "deliverResp(url,r.status,t);"
+            + "if(!window.__yikeUniteSaved){"
+            + "try{var req;"
+            + "if(input&&typeof input!=='string'&&typeof input.clone==='function'){req=input.clone();}"
+            + "else if(typeof Request!=='undefined'){req=new Request(url,init||{});}"
+            + "if(req){window.__yikeUniteSaved={kind:'fetch',url:url,req:req};startPolling();}"
+            + "}catch(e){send('error','save fetch: '+e);}"
+            + "}"
+            + "}).catch(function(){});}).catch(function(){});}"
+            + "return p;};"
+            + "if(XO&&XO.prototype){"
+            + "XO.prototype.open=function(m,u){this.__yikeUrl=u;this.__yikeMethod=m;this.__yikeHdrs={};return origXOpen.apply(this,arguments);};"
+            + "XO.prototype.setRequestHeader=function(k,v){try{this.__yikeHdrs=this.__yikeHdrs||{};this.__yikeHdrs[k]=v;}catch(e){}return origXSetHdr.apply(this,arguments);};"
+            + "XO.prototype.send=function(body){var x=this;x.__yikeBody=body;"
+            + "x.addEventListener('load',function(){try{if(matchHttp(x.__yikeUrl)){"
+            + "deliverResp(x.__yikeUrl,x.status,x.responseText||'');"
+            + "if(!window.__yikeUniteSaved){"
+            + "window.__yikeUniteSaved={kind:'xhr',url:x.__yikeUrl,method:x.__yikeMethod||'GET',"
+            + "headers:x.__yikeHdrs||{},body:x.__yikeBody};"
+            + "startPolling();}}}catch(e){}});"
+            + "return origXSend.apply(this,arguments);};}"
+            // -- WebSocket hook: 弈客通过 WS 推送落子，收到任何消息立刻触发一次 fetch
+            + "var WSO=window.__yikeUniteOrigWS||window.WebSocket;"
+            + "window.__yikeUniteOrigWS=WSO;"
+            + "if(WSO && !window.__yikeUniteWSHook){window.__yikeUniteWSHook=true;"
+            + "var WSP=function(url,protocols){"
+            + "var ws=protocols?new WSO(url,protocols):new WSO(url);"
+            + "var u=String(url);"
+            + "if(u.indexOf('yikeweiqi.com')>=0){"
+            + "send('ping','ws-open '+u);"
+            + "ws.addEventListener('message',function(){"
+            + "if(window.__yikeUniteSaved){"
+            + "if(window.__yikeUniteWsDebounce)clearTimeout(window.__yikeUniteWsDebounce);"
+            + "window.__yikeUniteWsDebounce=setTimeout(function(){poll();},80);"
+            + "}});}"
+            + "return ws;};"
+            + "WSP.prototype=WSO.prototype;WSP.CONNECTING=WSO.CONNECTING;WSP.OPEN=WSO.OPEN;"
+            + "WSP.CLOSING=WSO.CLOSING;WSP.CLOSED=WSO.CLOSED;"
+            + "window.WebSocket=WSP;"
+            + "}"
+            + "})();";
+    browser_.executeJavaScript(js, browser_.getURL(), 0);
+  }
+
+  public void stopYikeUnitePoller() {
+    String js =
+        "if(window.__yikeUnitePoller){clearInterval(window.__yikeUnitePoller);"
+            + "window.__yikeUnitePoller=null;}"
+            + "if(window.__yikeUniteWsDebounce){clearTimeout(window.__yikeUniteWsDebounce);"
+            + "window.__yikeUniteWsDebounce=null;}"
+            + "window.__yikeUniteSaved=null;";
+    browser_.executeJavaScript(js, browser_.getURL(), 0);
   }
 }
