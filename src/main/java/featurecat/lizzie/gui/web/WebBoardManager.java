@@ -96,6 +96,8 @@ public class WebBoardManager {
     collector = new WebBoardDataCollector();
     collector.setServer(wsServer);
 
+    wsServer.setMessageHandler(this::handleClientMessage);
+
     String ip = getLanIp();
     accessUrl = "http://" + ip + ":" + actualHttpPort;
     running = true;
@@ -103,8 +105,58 @@ public class WebBoardManager {
     return true;
   }
 
+  private void handleClientMessage(org.java_websocket.WebSocket conn, JSONObject msg) {
+    String type = msg.optString("type");
+    switch (type) {
+      case "enter_trial":
+        {
+          String clientId = msg.optString("clientId");
+          BoardHistoryNode anchor = Lizzie.board.getHistory().getCurrentHistoryNode();
+          boolean ok = enterTrial(clientId, anchor);
+          if (!ok) {
+            JSONObject denied =
+                new JSONObject()
+                    .put("type", "trial_denied")
+                    .put("reason", "in_use")
+                    .put("ownerClientId", getCurrentTrialOwner());
+            wsServer.sendToConnection(conn, denied.toString());
+          } else {
+            collector.broadcastTrialState(activeSession);
+          }
+          break;
+        }
+      case "exit_trial":
+        exitTrial(msg.optString("clientId"));
+        collector.broadcastTrialState(null);
+        break;
+      case "trial_move":
+        {
+          int x = msg.optInt("x", -1);
+          int y = msg.optInt("y", -1);
+          if (x < 0 || y < 0) return;
+          applyTrialMove(msg.optString("clientId"), x, y);
+          break;
+        }
+      case "trial_navigate":
+        if (msg.has("childIndex")) {
+          int childIndex = msg.optInt("childIndex", -1);
+          if (childIndex < 0) return;
+          trialNavigateForward(msg.optString("clientId"), childIndex);
+        } else {
+          trialNavigate(msg.optString("clientId"), msg.optString("direction"));
+        }
+        break;
+      case "trial_reset":
+        trialReset(msg.optString("clientId"));
+        break;
+      default:
+        // unknown type — ignore
+    }
+  }
+
   public synchronized void stop() {
     if (!running) return;
+    forceExitTrial();
     if (collector != null) {
       collector.shutdown();
       collector = null;
@@ -170,6 +222,10 @@ public class WebBoardManager {
   }
 
   // --- Trial session API ---
+
+  public synchronized String getCurrentTrialOwner() {
+    return activeSession != null ? activeSession.ownerClientId : "";
+  }
 
   public synchronized boolean enterTrial(String clientId, BoardHistoryNode anchor) {
     if (activeSession != null) {
