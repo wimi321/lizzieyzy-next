@@ -102,6 +102,9 @@ public class WebBoardDataCollector {
       int[] lastMove = data.lastMove.isPresent() ? data.lastMove.get() : null;
       double wr = data.blackToPlay ? data.winrate : 100 - data.winrate;
       double sm = data.blackToPlay ? data.scoreMean : -data.scoreMean;
+      // 试下中：anchor 节点本身仍带 mainline 引擎分析，但这些分析对应真 currentNode
+      // 不是 displayNode，画在 Web 上会误导。统一不广播分析字段，保持桌面端隐藏候选点的行为对称。
+      boolean trialActive = Lizzie.frame != null && Lizzie.frame.isTrialActive();
       JSONObject fullState =
           buildFullStateJson(
               bw,
@@ -110,11 +113,11 @@ public class WebBoardDataCollector {
               lastMove,
               data.moveNumber,
               data.blackToPlay,
-              data.bestMoves,
-              wr,
-              sm,
-              data.getPlayouts(),
-              data.estimateArray);
+              trialActive ? null : data.bestMoves,
+              trialActive ? 0 : wr,
+              trialActive ? 0 : sm,
+              trialActive ? 0 : data.getPlayouts(),
+              trialActive ? null : data.estimateArray);
       server.broadcastFullState(fullState.toString());
 
       BoardHistoryNode root = Lizzie.board.getHistory().getStart();

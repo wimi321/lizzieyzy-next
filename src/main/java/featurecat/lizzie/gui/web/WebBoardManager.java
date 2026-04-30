@@ -327,6 +327,14 @@ public class WebBoardManager {
       newData.blackToPlay = !parentData.blackToPlay;
       newData.moveNumber = parentData.moveNumber + 1;
       newData.dummy = false;
+      // 试下分支没有引擎分析，清空从 parent clone 来的候选点 / 胜率 / 形势
+      newData.bestMoves = new java.util.ArrayList<>();
+      newData.bestMovesOutOfRange = new java.util.ArrayList<>();
+      newData.bestMoves2 = new java.util.ArrayList<>();
+      newData.bestMoves2OutOfRange = new java.util.ArrayList<>();
+      newData.estimateArray = null;
+      newData.estimateArray2 = null;
+      newData.setPlayouts(0);
 
       BoardHistoryNode child = new BoardHistoryNode(newData);
       parent.variations.add(child);
