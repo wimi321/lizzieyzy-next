@@ -159,6 +159,8 @@ anchorNode (mainline)
 
 `displayNode = anchorNode`。试下子树保留。
 
+> **实现备注**：所有上行消息（`exit_trial` / `trial_move` / `trial_navigate` / `trial_reset`）都需携带 `clientId` 字段，服务端用它做 owner 校验。spec 上文 JSON 示例为简洁未列出，实现需补齐。
+
 ### 下行（服务端 → 客户端）
 
 #### `trial_state` — 试下状态广播
