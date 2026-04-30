@@ -34,6 +34,41 @@ body { background: #1a1a2e; color: #ccc; font-family: -apple-system, sans-serif;
 }
 #connection-message { color: #fff; font-size: 18px; }
 
+#trial-bar {
+  padding: 6px 8px;
+  border-bottom: 1px solid #ddd;
+  margin-bottom: 6px;
+}
+#trial-bar button {
+  margin-right: 6px;
+  padding: 4px 10px;
+  cursor: pointer;
+}
+#trial-bar button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+#trial-active-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+#trial-status-text {
+  margin-right: 8px;
+  font-size: 0.9em;
+  color: #555;
+}
+.trial-exit {
+  margin-left: auto;
+  background: #fee;
+}
+#trial-follow-text {
+  font-size: 0.9em;
+  color: #888;
+  font-style: italic;
+}
+
 /* Mobile: stack vertically */
 @media (max-width: 768px) {
   body { overflow-y: auto; }

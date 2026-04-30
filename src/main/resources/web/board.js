@@ -19,6 +19,26 @@
   var reconnectDelay = 1000;
   var longPressTimer = null;
 
+  var clientId = (function () {
+    var id = null;
+    try { id = localStorage.getItem("webBoardClientId"); } catch (_) {}
+    if (!id) {
+      if (window.crypto && window.crypto.randomUUID) {
+        id = window.crypto.randomUUID();
+      } else {
+        // 退化：随机 16 字节十六进制
+        var arr = new Uint8Array(16);
+        (window.crypto || window.msCrypto).getRandomValues(arr);
+        id = Array.from(arr).map(function (b) { return ("0" + b.toString(16)).slice(-2); }).join("");
+      }
+      try { localStorage.setItem("webBoardClientId", id); } catch (_) {}
+    }
+    return id;
+  })();
+
+  var trialState = null;          // 最新一次 trial_state 消息（null = idle）
+  var siblingMarkers = null;       // 当前试下分叉处的非主线子节点位置
+
   // DOM references
   var boardCanvas = document.getElementById("board-canvas");
   var boardCtx = boardCanvas.getContext("2d");
@@ -105,6 +125,16 @@
           renderScoreChart();
           renderBlunderList();
           break;
+        case "trial_state":
+          trialState = msg.active ? msg : null;
+          siblingMarkers = (msg.active && msg.siblingMarkers) ? msg.siblingMarkers : null;
+          applyTrialUiState();
+          render();  // 重画棋盘以反映 sibling markers 变化
+          break;
+        case "trial_denied":
+          // 简单 alert 即可（spec 没要求 toast）
+          alert("另一位用户正在试下中，稍后再试");
+          break;
       }
     };
 
@@ -171,6 +201,9 @@
         margin,
         gridSize
       );
+    }
+    if (siblingMarkers && siblingMarkers.length > 0) {
+      drawSiblingMarkers(boardCtx, siblingMarkers, boardHeight, margin, gridSize);
     }
 
     updateStatusBar();
@@ -791,6 +824,91 @@
   scoreCanvas.addEventListener("mouseleave", function () { chartTooltip.style.display = "none"; chartHoverIdx = -1; renderWinrateChart(); renderScoreChart(); });
 
   // ---------------------------------------------------------------------------
+  // Trial mode helpers
+  // ---------------------------------------------------------------------------
+  function sendTrial(type, extra) {
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    var msg = { type: type, clientId: clientId };
+    if (extra) {
+      for (var k in extra) {
+        if (Object.prototype.hasOwnProperty.call(extra, k)) msg[k] = extra[k];
+      }
+    }
+    ws.send(JSON.stringify(msg));
+  }
+
+  function applyTrialUiState() {
+    var enterBtn = document.getElementById("trial-enter-btn");
+    var activeControls = document.getElementById("trial-active-controls");
+    var followText = document.getElementById("trial-follow-text");
+    var statusText = document.getElementById("trial-status-text");
+    var backBtn = document.getElementById("trial-back-btn");
+    var forwardBtn = document.getElementById("trial-forward-btn");
+
+    if (!trialState) {
+      enterBtn.style.display = "";
+      activeControls.style.display = "none";
+      followText.style.display = "none";
+      return;
+    }
+    if (trialState.ownerClientId === clientId) {
+      enterBtn.style.display = "none";
+      activeControls.style.display = "";
+      followText.style.display = "none";
+      statusText.textContent =
+        "试下中：从第 " + trialState.anchorMoveNumber + " 手起，已下到第 "
+        + trialState.displayMoveNumber + " 手";
+      backBtn.disabled = !trialState.canBack;
+      forwardBtn.disabled = !trialState.canForward;
+    } else {
+      enterBtn.style.display = "none";
+      activeControls.style.display = "none";
+      followText.style.display = "";
+      followText.textContent = "他人正在试下中（从第 " + trialState.anchorMoveNumber + " 手起）";
+    }
+  }
+
+  function pixelToBoardCoord(e) {
+    if (!boardState) return null;
+    var rect = boardCanvas.getBoundingClientRect();
+    var px = e.clientX - rect.left;
+    var py = e.clientY - rect.top;
+
+    var size = Math.min(rect.width, rect.height);
+    var boardWidth = boardState.boardWidth || 19;
+    var boardHeight = boardState.boardHeight || 19;
+    var margin = coordStyle !== "off" ? size * 0.06 : size * 0.04;
+    var gridSize = (size - 2 * margin) / (Math.max(boardWidth, boardHeight) - 1);
+
+    var cx = Math.round((px - margin) / gridSize);
+    var cy = Math.round((py - margin) / gridSize);
+    if (cx < 0 || cx >= boardWidth || cy < 0 || cy >= boardHeight) return null;
+    return { x: cx, y: cy };
+  }
+
+  function drawSiblingMarkers(ctx, markers, boardHeight, margin, gridSize) {
+    ctx.save();
+    for (var i = 0; i < markers.length; i++) {
+      var m = markers[i];
+      var px = margin + m.x * gridSize;
+      var py = margin + m.y * gridSize;
+      ctx.beginPath();
+      ctx.arc(px, py, gridSize * 0.35, 0, Math.PI * 2);
+      ctx.fillStyle = "rgba(255, 200, 0, 0.85)";
+      ctx.fill();
+      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = "rgba(120, 80, 0, 1)";
+      ctx.stroke();
+      ctx.fillStyle = "black";
+      ctx.font = "bold " + Math.floor(gridSize * 0.45) + "px sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(m.label, px, py);
+    }
+    ctx.restore();
+  }
+
+  // ---------------------------------------------------------------------------
   // Mouse interaction
   // ---------------------------------------------------------------------------
   boardCanvas.addEventListener("mousemove", function (e) {
@@ -839,6 +957,22 @@
       hoveredMove = null;
       render();
     }
+  });
+
+  boardCanvas.addEventListener("click", function (e) {
+    if (!trialState || trialState.ownerClientId !== clientId) return;
+    var coord = pixelToBoardCoord(e);
+    if (!coord) return;
+    if (siblingMarkers) {
+      for (var i = 0; i < siblingMarkers.length; i++) {
+        var m = siblingMarkers[i];
+        if (m.x === coord.x && m.y === coord.y) {
+          sendTrial("trial_navigate", { direction: "forward", childIndex: m.childIndex });
+          return;
+        }
+      }
+    }
+    sendTrial("trial_move", { x: coord.x, y: coord.y });
   });
 
   // Mobile touch support
@@ -930,6 +1064,22 @@
     render();
   });
 
+  document.getElementById("trial-enter-btn").addEventListener("click", function () {
+    sendTrial("enter_trial");
+  });
+  document.getElementById("trial-exit-btn").addEventListener("click", function () {
+    sendTrial("exit_trial");
+  });
+  document.getElementById("trial-back-btn").addEventListener("click", function () {
+    sendTrial("trial_navigate", { direction: "back" });
+  });
+  document.getElementById("trial-forward-btn").addEventListener("click", function () {
+    sendTrial("trial_navigate", { direction: "forward" });
+  });
+  document.getElementById("trial-reset-btn").addEventListener("click", function () {
+    sendTrial("trial_reset");
+  });
+
   // ---------------------------------------------------------------------------
   // Resize
   // ---------------------------------------------------------------------------
@@ -942,5 +1092,6 @@
   // ---------------------------------------------------------------------------
   // Init
   // ---------------------------------------------------------------------------
+  applyTrialUiState();
   connectWs();
 })();

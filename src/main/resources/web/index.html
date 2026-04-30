@@ -12,6 +12,17 @@
       <canvas id="board-canvas"></canvas>
     </div>
     <div id="info-panel">
+      <div id="trial-bar">
+        <button id="trial-enter-btn">进入试下</button>
+        <div id="trial-active-controls" style="display:none">
+          <span id="trial-status-text"></span>
+          <button id="trial-back-btn" disabled>← 后退</button>
+          <button id="trial-forward-btn" disabled>→ 前进</button>
+          <button id="trial-reset-btn">↩ 回锚点</button>
+          <button id="trial-exit-btn" class="trial-exit">✕ 退出试下</button>
+        </div>
+        <div id="trial-follow-text" style="display:none"></div>
+      </div>
       <div id="status-bar">
         <span id="move-number">-</span>
         <span id="current-player">-</span>
