@@ -1877,6 +1877,10 @@ public class LizzieFrame extends JFrame {
     return displayNodeOverride != null;
   }
 
+  public void showTrialBlockedHint() {
+    Utils.showMsgNoModalForTime("Web 试下进行中，桌面端暂不响应落子（在「同步」菜单可强制结束）", 3);
+  }
+
   public void setCommentPaneContent() {
     // TODO Auto-generated method stub
     sidebarPanel.setVisible(Lizzie.config.showComment);
@@ -6594,6 +6598,10 @@ public class LizzieFrame extends JFrame {
    * @param y y coordinate
    */
   public void onClickedForManul(int x, int y) {
+    if (isTrialActive()) {
+      showTrialBlockedHint();
+      return;
+    }
     Optional<int[]> boardCoordinates = boardRenderer.convertScreenToCoordinates(x, y);
     if (boardCoordinates.isPresent()) {
       int[] coords = boardCoordinates.get();
@@ -6652,6 +6660,10 @@ public class LizzieFrame extends JFrame {
   }
 
   public void onClicked(int x, int y) {
+    if (isTrialActive()) {
+      showTrialBlockedHint();
+      return;
+    }
     // Check for board click
     Optional<int[]> boardCoordinates;
     if (Lizzie.config.isThinkingMode()) {
@@ -6763,6 +6775,10 @@ public class LizzieFrame extends JFrame {
   }
 
   public void onDoubleClicked(int x, int y) {
+    if (isTrialActive()) {
+      showTrialBlockedHint();
+      return;
+    }
     Optional<int[]> boardCoordinates = boardRenderer.convertScreenToCoordinates(x, y);
     if (boardCoordinates.isPresent()) {
       int[] coords = boardCoordinates.get();
