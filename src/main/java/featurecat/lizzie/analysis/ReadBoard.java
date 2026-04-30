@@ -731,7 +731,10 @@ public class ReadBoard {
       Lizzie.gtpConsole.addLineReadBoard(line + (usePipe ? "" : "\n"));
     }
     if (line.startsWith("end")) {
-      if (!isSyncing) syncBoardStones(false);
+      boolean isYikePlatform =
+          pendingRemoteContext != null
+              && pendingRemoteContext.platform == SyncRemoteContext.SyncPlatform.YIKE;
+      if (!isSyncing && !isYikePlatform) syncBoardStones(false);
       clearPendingRemoteContext();
       tempcount = new ArrayList<Integer>();
     }
@@ -1219,9 +1222,10 @@ public class ReadBoard {
   }
 
   private SyncRemoteContext.SyncPlatform parseSyncPlatform(String platformToken) {
-    return "fox".equalsIgnoreCase(platformToken.trim())
-        ? SyncRemoteContext.SyncPlatform.FOX
-        : SyncRemoteContext.SyncPlatform.GENERIC;
+    String t = platformToken.trim();
+    if ("fox".equalsIgnoreCase(t)) return SyncRemoteContext.SyncPlatform.FOX;
+    if ("yike".equalsIgnoreCase(t)) return SyncRemoteContext.SyncPlatform.YIKE;
+    return SyncRemoteContext.SyncPlatform.GENERIC;
   }
 
   private OptionalInt parseOptionalInt(String line, String prefix) {
