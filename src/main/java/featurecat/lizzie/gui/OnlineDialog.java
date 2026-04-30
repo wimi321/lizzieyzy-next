@@ -697,6 +697,13 @@ public class OnlineDialog extends JDialog {
       ;
     while (liveNode.next(true).isPresent())
       ;
+    if (type == YikeUrlInfo.TYPE_UNITE_ROOM) {
+      if (isUserExploringVariation()) {
+        appendNewMainlineMovesPreservingHead(liveNode);
+        return;
+      }
+      preserveUserBranchesOnto(liveNode);
+    }
     Lizzie.board.setHistory(liveNode);
     Lizzie.board.getHistory().getGameInfo().setPlayerBlack(blackPlayer);
     Lizzie.board.getHistory().getGameInfo().setPlayerWhite(whitePlayer);
@@ -726,6 +733,68 @@ public class OnlineDialog extends JDialog {
     firstTime = false;
     Lizzie.frame.refresh();
     sendYikeContextToReadBoard(liveNode != null ? liveNode.getMoveNumber() : 0);
+  }
+
+  /** 把用户在主线节点上摆出的"变化分支"按手数搬到新 liveNode 主线对应节点上，避免每次同步丢失复盘分支。 */
+  private void preserveUserBranchesOnto(BoardHistoryList liveNode) {
+    BoardHistoryList current = Lizzie.board.getHistory();
+    if (current == null || liveNode == null) return;
+    BoardHistoryNode curHead = current.getCurrentHistoryNode();
+    if (curHead == null) return;
+    while (curHead.previous().isPresent()) curHead = curHead.previous().get();
+    BoardHistoryNode liveHead = liveNode.getCurrentHistoryNode();
+    if (liveHead == null) return;
+    while (liveHead.previous().isPresent()) liveHead = liveHead.previous().get();
+
+    Map<Integer, BoardHistoryNode> liveByMove = new HashMap<>();
+    for (BoardHistoryNode n = liveHead; n != null; n = n.next(true).orElse(null)) {
+      liveByMove.put(n.getData().moveNumber, n);
+    }
+
+    for (BoardHistoryNode old = curHead; old != null; old = old.next(true).orElse(null)) {
+      if (old.numberOfChildren() <= 1) continue;
+      BoardHistoryNode liveAtSameMove = liveByMove.get(old.getData().moveNumber);
+      if (liveAtSameMove == null) continue;
+      for (int i = 1; i < old.numberOfChildren(); i++) {
+        BoardHistoryNode branch = old.getVariation(i).orElse(null);
+        if (branch != null) branch.reparentAsLastVariationOf(liveAtSameMove);
+      }
+    }
+  }
+
+  /** 用户当前是否在试下变化：head 不在主线，或在主线但已往前翻过棋。试下时直接 setHistory 会拉走视图，所以走 append 路径。 */
+  private boolean isUserExploringVariation() {
+    BoardHistoryList current = Lizzie.board.getHistory();
+    if (current == null) return false;
+    BoardHistoryNode head = current.getCurrentHistoryNode();
+    if (head == null) return false;
+    if (!head.isMainTrunk()) return true;
+    return head.next(true).isPresent();
+  }
+
+  /** 试下时不动 head，只把 liveNode 主线上多出的手数克隆挂到现有主线末尾，用户回到末尾就能看到新走子。 */
+  private void appendNewMainlineMovesPreservingHead(BoardHistoryList liveNode) {
+    BoardHistoryList current = Lizzie.board.getHistory();
+    if (current == null || liveNode == null) return;
+    BoardHistoryNode curHead = current.getCurrentHistoryNode();
+    if (curHead == null) return;
+    BoardHistoryNode tail = curHead.getLast();
+    int existingTailMove = tail.getData().moveNumber;
+    BoardHistoryNode liveTail = liveNode.getCurrentHistoryNode();
+    while (liveTail != null && liveTail.getData().moveNumber > existingTailMove + 1) {
+      liveTail = liveTail.previous().orElse(null);
+    }
+    java.util.Deque<BoardHistoryNode> toAppend = new java.util.ArrayDeque<>();
+    for (BoardHistoryNode c = liveTail;
+        c != null && c.getData().moveNumber > existingTailMove;
+        c = c.previous().orElse(null)) {
+      toAppend.push(c);
+    }
+    for (BoardHistoryNode src : toAppend) {
+      BoardHistoryNode newNode = new BoardHistoryNode(src.getData().clone());
+      newNode.reparentAsFirstVariationOf(tail);
+      tail = newNode;
+    }
   }
 
   public void get() throws IOException {
@@ -2629,6 +2698,12 @@ public class OnlineDialog extends JDialog {
     sendYikeContextToReadBoard(history != null ? history.getMoveNumber() : 0);
   }
 
+  private void reportSyncStatus(String text) {
+    if (Lizzie.frame != null && Lizzie.frame.browserFrame != null) {
+      Lizzie.frame.browserFrame.setSyncStatus(text);
+    }
+  }
+
   private void sendYikeContextToReadBoard(int moveNumber) {
     try {
       if (Lizzie.frame == null || Lizzie.frame.readBoard == null) {
@@ -2677,6 +2752,7 @@ public class OnlineDialog extends JDialog {
       }
       if ("error".equals(tag)) {
         yikeDebugLog("yikeUnite fetch error: " + env.optString("body"));
+        reportSyncStatus("拉取异常: " + env.optString("body"));
         return;
       }
       if (!"resp".equals(tag)) {
@@ -2695,7 +2771,11 @@ public class OnlineDialog extends JDialog {
       int status = body.optInt("status", -1);
       String text = body.optString("body", "");
       yikeDebugLog("yikeUnite resp status=" + status + " len=" + body.optInt("len"));
-      if (status != 200 || Utils.isBlank(text)) return;
+      if (status != 200) {
+        reportSyncStatus("game-server 响应 HTTP " + status);
+        return;
+      }
+      if (Utils.isBlank(text)) return;
       JSONObject root = new JSONObject(text);
       JSONObject data = root.optJSONObject("data");
       if (data == null) {
@@ -2723,10 +2803,13 @@ public class OnlineDialog extends JDialog {
       JSONObject wrapper = new JSONObject();
       wrapper.put("result", data);
       parseSgf(wrapper.toString(), "", 0, false, firstTime);
+      reportSyncStatus(syncStatusPrefix() + "第 " + (hands >= 0 ? hands : "?") + " 手");
     } catch (JSONException e) {
       yikeDebugLog("handleYikeUniteSgf JSON error: " + e.toString());
+      reportSyncStatus("解析响应失败: " + e.getMessage());
     } catch (RuntimeException e) {
       yikeDebugLog("handleYikeUniteSgf error: " + e.toString());
+      reportSyncStatus("处理响应异常: " + e.getMessage());
     }
   }
 
@@ -2990,6 +3073,7 @@ public class OnlineDialog extends JDialog {
       sio.close();
     }
     setVisible(false);
+    reportSyncStatus("已停止同步");
     //  Lizzie.frame.onlineDialog.dispose();
   }
 
@@ -3009,11 +3093,35 @@ public class OnlineDialog extends JDialog {
       try {
         Lizzie.frame.setResult("");
         proc();
+        reportSyncStatus(syncStatusPrefix() + "已启动");
       } catch (IOException | URISyntaxException e) {
         e.printStackTrace();
+        reportSyncStatus("同步启动失败: " + e.getMessage());
       }
     } else {
-      // error(true);
+      reportSyncStatus("URL 无法识别");
     }
+  }
+
+  private String syncStatusPrefix() {
+    String label;
+    switch (type) {
+      case YikeUrlInfo.TYPE_UNITE_ROOM:
+        label = "弈客对弈";
+        break;
+      case YikeUrlInfo.TYPE_NEW_LIVE_ROOM:
+        label = "弈客直播(新)";
+        break;
+      case YikeUrlInfo.TYPE_OLD_LIVE_ROOM:
+      case YikeUrlInfo.TYPE_OLD_LIVE_BOARD:
+        label = "弈客直播";
+        break;
+      case YikeUrlInfo.TYPE_GAME_ROOM:
+        label = "弈客对局";
+        break;
+      default:
+        label = "同步";
+    }
+    return roomId > 0 ? label + " 房间 " + roomId + " " : label + " ";
   }
 }

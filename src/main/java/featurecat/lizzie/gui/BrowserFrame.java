@@ -44,6 +44,10 @@ public class BrowserFrame extends JFrame {
   private final Component browerUI_;
   private volatile boolean browserFocus_ = true;
   private JToolBar toolbar;
+  private String baseTitle = "";
+  private String lastSyncStatus = null;
+  private long pendingYikeRoomId = 0;
+  private int pendingYikeIntervalMs = 1000;
   private boolean isYike;
 
   /**
@@ -58,7 +62,8 @@ public class BrowserFrame extends JFrame {
           InterruptedException {
     // (0) Initialize CEF using the maven loader
     this.isYike = yike;
-    this.setTitle(title);
+    this.baseTitle = title == null ? "" : title;
+    this.setTitle(this.baseTitle);
     try {
       setIconImage(ImageIO.read(getClass().getResourceAsStream("/assets/logo.png")));
     } catch (IOException e) {
@@ -175,6 +180,22 @@ public class BrowserFrame extends JFrame {
 
     client_.addLoadHandler(
         new CefLoadHandlerAdapter() {
+          @Override
+          public void onLoadStart(
+              CefBrowser browser, CefFrame frame, org.cef.network.CefRequest.TransitionType t) {
+            // 在页面 DOM 刚开始构建时就装 hook，赶在弈客网页主动调 game/info 之前
+            if (frame != null && frame.isMain() && pendingYikeRoomId > 0) {
+              installYikeUnitePoller(pendingYikeRoomId, pendingYikeIntervalMs);
+            }
+          }
+
+          @Override
+          public void onLoadEnd(CefBrowser browser, CefFrame frame, int httpStatusCode) {
+            if (frame != null && frame.isMain() && pendingYikeRoomId > 0) {
+              installYikeUnitePoller(pendingYikeRoomId, pendingYikeIntervalMs);
+            }
+          }
+
           @Override
           public void onLoadError(
               CefBrowser browser,
@@ -352,28 +373,28 @@ public class BrowserFrame extends JFrame {
         });
     back.setFocusable(false);
 
-    JButton load = new JButton(Lizzie.resourceBundle.getString("LizzieFrame.onLoad")); // ("加载");
-    load.setFocusable(false);
-    load.addActionListener(
-        new ActionListener() {
+    JLabel load = makeLabelButton(Lizzie.resourceBundle.getString("LizzieFrame.onLoad"));
+    load.addMouseListener(
+        new java.awt.event.MouseAdapter() {
           @Override
-          public void actionPerformed(ActionEvent e) {
-            // TBD未完成
-            browser_.loadURL(address_.getText());
-            if (isYike) Lizzie.frame.syncOnline(address_.getText());
+          public void mouseClicked(java.awt.event.MouseEvent e) {
+            String addr = address_.getText();
+            if (isYike) {
+              Lizzie.frame.syncOnline(addr);
+            }
+            browser_.loadURL(addr);
           }
         });
 
-    JButton stop =
-        new JButton(Lizzie.resourceBundle.getString("LizzieFrame.stopSync")); // ("停止同步");
-    stop.setFocusable(false);
-    stop.addActionListener(
-        new ActionListener() {
+    JLabel stop = makeLabelButton(Lizzie.resourceBundle.getString("LizzieFrame.stopSync"));
+    stop.addMouseListener(
+        new java.awt.event.MouseAdapter() {
           @Override
-          public void actionPerformed(ActionEvent e) {
-            // TBD
+          public void mouseClicked(java.awt.event.MouseEvent e) {
             if (LizzieFrame.onlineDialog != null) {
               LizzieFrame.onlineDialog.stopSync();
+            } else {
+              setSyncStatus("无同步任务");
             }
           }
         });
@@ -469,10 +490,64 @@ public class BrowserFrame extends JFrame {
         new Runnable() {
           public void run() {
             isYike = yike;
-            setTitle(title);
+            baseTitle = title == null ? "" : title;
+            lastSyncStatus = null;
+            if (!yike) pendingYikeRoomId = 0;
+            setTitle(baseTitle);
             setVisible(true);
             toolbar.setVisible(isYike);
             setFrameSize();
+          }
+        });
+  }
+
+  /** 用 JLabel 模拟按钮，完全自绘，绕开 Windows L&F + JToolBar 的 hover/pressed 残影。 */
+  private static JLabel makeLabelButton(String text) {
+    JLabel lbl = new JLabel(text, SwingConstants.CENTER);
+    lbl.setOpaque(true);
+    lbl.setBackground(new Color(0xF0F0F0));
+    lbl.setForeground(Color.BLACK);
+    lbl.setBorder(
+        BorderFactory.createCompoundBorder(
+            BorderFactory.createLineBorder(new Color(0xB0B0B0)),
+            BorderFactory.createEmptyBorder(4, 12, 4, 12)));
+    lbl.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+    lbl.addMouseListener(
+        new java.awt.event.MouseAdapter() {
+          @Override
+          public void mouseEntered(java.awt.event.MouseEvent e) {
+            lbl.setBackground(new Color(0xE0E0E0));
+          }
+
+          @Override
+          public void mouseExited(java.awt.event.MouseEvent e) {
+            lbl.setBackground(new Color(0xF0F0F0));
+          }
+
+          @Override
+          public void mousePressed(java.awt.event.MouseEvent e) {
+            lbl.setBackground(new Color(0xC8C8C8));
+          }
+
+          @Override
+          public void mouseReleased(java.awt.event.MouseEvent e) {
+            lbl.setBackground(
+                lbl.contains(e.getPoint()) ? new Color(0xE0E0E0) : new Color(0xF0F0F0));
+          }
+        });
+    return lbl;
+  }
+
+  public void setSyncStatus(String text) {
+    String normalized = Utils.isBlank(text) ? "" : text;
+    if (java.util.Objects.equals(normalized, lastSyncStatus)) return;
+    lastSyncStatus = normalized;
+    SwingUtilities.invokeLater(
+        () -> {
+          if (normalized.isEmpty()) {
+            setTitle(baseTitle);
+          } else {
+            setTitle(baseTitle + "  —  " + normalized);
           }
         });
   }
@@ -483,6 +558,8 @@ public class BrowserFrame extends JFrame {
    * Java。借用弈客网页自己的鉴权，不用关心 token / CORS。
    */
   public void installYikeUnitePoller(long roomId, int intervalMs) {
+    pendingYikeRoomId = roomId;
+    pendingYikeIntervalMs = intervalMs;
     int periodMs = Math.max(500, intervalMs);
     String js =
         "(function(){"
@@ -584,6 +661,7 @@ public class BrowserFrame extends JFrame {
   }
 
   public void stopYikeUnitePoller() {
+    pendingYikeRoomId = 0;
     String js =
         "if(window.__yikeUnitePoller){clearInterval(window.__yikeUnitePoller);"
             + "window.__yikeUnitePoller=null;}"
