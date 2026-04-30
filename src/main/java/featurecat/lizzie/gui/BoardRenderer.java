@@ -203,7 +203,10 @@ public class BoardRenderer {
       if (!Lizzie.frame.isInScoreMode) drawBranch();
       else isShowingBranch = false;
 
-      if (!isShowingBranch) drawStones(Lizzie.board.getData(), Lizzie.board.getStones());
+      if (!isShowingBranch) {
+        featurecat.lizzie.rules.BoardHistoryNode displayNode = Lizzie.frame.getDisplayNode();
+        drawStones(displayNode.getData(), displayNode.getData().stones);
+      }
       drawEstimate();
       renderImages(g);
 
@@ -211,7 +214,7 @@ public class BoardRenderer {
           && !Lizzie.frame.isInPlayMode()
           && !EngineManager.isEngineGame
           && Lizzie.config.moveRankMarkLastMove >= 0) {
-        drawMoveRankMark(g, Lizzie.board.getHistory().getCurrentHistoryNode());
+        drawMoveRankMark(g, Lizzie.frame.getDisplayNode());
         if (isShowingBranch) drawMoveNumbers(g);
       } else drawMoveNumbers(g);
 
@@ -312,6 +315,7 @@ public class BoardRenderer {
   }
 
   private void drawEstimate() {
+    if (Lizzie.frame != null && Lizzie.frame.isTrialActive()) return;
     boolean hasDraw = false;
     if (!Lizzie.frame.isInScoreMode
         && !Lizzie.frame.isCounting
@@ -1466,6 +1470,7 @@ public class BoardRenderer {
 
   /** Draw the 'ghost stones' which show a variationOpt Leelaz is thinking about */
   private void drawBranch() {
+    if (Lizzie.frame != null && Lizzie.frame.isTrialActive()) return;
     branchOpt = Optional.empty();
     // calculate best moves and branch
     if (this.boardIndex == 1) {
@@ -1862,6 +1867,7 @@ public class BoardRenderer {
 
   /** Draw move numbers and/or mark the last played move */
   private void drawMoveNumbers(Graphics2D g) {
+    if (Lizzie.frame != null && Lizzie.frame.isTrialActive()) return;
     g.setRenderingHint(KEY_ANTIALIASING, VALUE_ANTIALIAS_ON);
     Board board = Lizzie.board;
     BoardData data = getDisplayedBoardData(board);
@@ -2162,6 +2168,7 @@ public class BoardRenderer {
    * Draw all of Leelaz's suggestions as colored stones with winrate/playout statistics overlayed
    */
   private void drawLeelazSuggestions(Graphics2D g) {
+    if (Lizzie.frame != null && Lizzie.frame.isTrialActive()) return;
     //  g.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_SPEED);
     int minAlpha = 32;
     // float winrateHueFactor = 0.9f;
@@ -3129,6 +3136,7 @@ public class BoardRenderer {
   }
 
   private void drawLeelazSuggestionsUnimportant() {
+    if (Lizzie.frame != null && Lizzie.frame.isTrialActive()) return;
     BufferedImage newUnImportantSugg = new BufferedImage(boardWidth, boardHeight, TYPE_INT_ARGB);
     hasDrawBackground = new boolean[Board.boardHeight * Board.boardWidth];
     Graphics2D g = newUnImportantSugg.createGraphics();
@@ -3238,6 +3246,7 @@ public class BoardRenderer {
   }
 
   private void drawNextMoves(Graphics2D g) {
+    if (Lizzie.frame != null && Lizzie.frame.isTrialActive()) return;
     List<BoardHistoryNode> nexts = new ArrayList<BoardHistoryNode>();
     for (BoardHistoryNode next : Lizzie.board.getHistory().getNexts()) {
       if (next.getData().isMoveNode()) {
@@ -4067,6 +4076,7 @@ public class BoardRenderer {
    * @param g
    */
   private void drawStoneMarkup(Graphics2D g) {
+    if (Lizzie.frame != null && Lizzie.frame.isTrialActive()) return;
     if (isShowingBranch) return;
     BoardData data = Lizzie.board.getHistory().getData();
 

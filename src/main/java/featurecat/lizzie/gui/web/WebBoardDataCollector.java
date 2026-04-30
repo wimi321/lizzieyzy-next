@@ -73,6 +73,8 @@ public class WebBoardDataCollector {
     pendingUpdate.set(false);
     lastBroadcastTime = System.currentTimeMillis();
     if (server == null) return;
+    if (Lizzie.frame != null && Lizzie.frame.isTrialActive())
+      return; // 试下中不广播分析（候选点针对 mainline 不对应试下盘面）
     try {
       BoardData data = Lizzie.board.getHistory().getCurrentHistoryNode().getData();
       if (data.bestMoves == null || data.bestMoves.isEmpty()) return;
