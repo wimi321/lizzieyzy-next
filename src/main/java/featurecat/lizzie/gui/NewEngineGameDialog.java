@@ -69,7 +69,7 @@ public class NewEngineGameDialog extends JDialog {
   // private ActionListener chkEnginePkContinueListener;
   // private ActionListener chkBatchGameListener;
   private JFontLabel lblsgf =
-      new JFontLabel(Lizzie.resourceBundle.getString("NewEngineGameDialog.lblsgf"));
+      new JFontLabel(Lizzie.resourceBundle.getString("NewEngineGameDialog.lblsgf").trim());
 
   private boolean cancelled = true;
   private GameInfo gameInfo;
@@ -85,14 +85,33 @@ public class NewEngineGameDialog extends JDialog {
   private JFontTextField txtWhiteAdvanceTime;
   private Window thisDialog = this;
 
+  private int dialogWidth() {
+    if (Lizzie.config.isFrameFontSmall()) return 760;
+    if (Lizzie.config.isFrameFontMiddle()) return 820;
+    return 880;
+  }
+
+  private int dialogHeight() {
+    if (Lizzie.config.isFrameFontSmall()) return 468;
+    if (Lizzie.config.isFrameFontMiddle()) return 482;
+    return 500;
+  }
+
+  private int controlHeight() {
+    if (Lizzie.config.isFrameFontSmall()) return 24;
+    if (Lizzie.config.isFrameFontMiddle()) return 26;
+    return 28;
+  }
+
+  private void setGridBounds(Component component, int x, int y, int width) {
+    component.setBounds(x, y, width, controlHeight());
+  }
+
   private void initComponents() {
     // if (Lizzie.config.showHiddenYzy) setMinimumSize(new Dimension(380, 330));
     // else
     // setMinimumSize(new Dimension(580, 530));
-    Lizzie.setFrameSize(
-        this,
-        Lizzie.config.isFrameFontSmall() ? 445 : (Lizzie.config.isFrameFontMiddle() ? 515 : 595),
-        Lizzie.config.isFrameFontSmall() ? 408 : (Lizzie.config.isFrameFontMiddle() ? 409 : 421));
+    Lizzie.setFrameSize(this, dialogWidth(), dialogHeight());
     setResizable(false);
     setTitle(Lizzie.resourceBundle.getString("NewEngineGameDialog.title")); // "引擎对战");
     setModal(true);
@@ -122,6 +141,47 @@ public class NewEngineGameDialog extends JDialog {
 
   private void initContentPanel() {
     contentPanel.setLayout(null);
+    int margin = 18;
+    int labelX = margin;
+    int labelW =
+        Lizzie.config.isFrameFontSmall() ? 150 : (Lizzie.config.isFrameFontMiddle() ? 175 : 200);
+    int checkX = labelX + labelW + 12;
+    int checkW = 24;
+    int blackX = checkX + checkW + 10;
+    int fieldW =
+        Lizzie.config.isFrameFontSmall() ? 200 : (Lizzie.config.isFrameFontMiddle() ? 215 : 230);
+    int columnGap = Lizzie.config.isFrameFontSmall() ? 20 : 24;
+    int whiteX = blackX + fieldW + columnGap;
+    int headerY = 8;
+    int engineY = 38;
+    int timeY = 68;
+    int advanceY = 98;
+    int playoutY = 128;
+    int firstPlayoutY = 158;
+    int resignBlackY = 194;
+    int resignWhiteY = 226;
+    int komiY = 260;
+    int continueY = 292;
+    int optionY = 324;
+    int option2Y = 354;
+    int rightEdge = dialogWidth() - 44;
+    int helpIconX = checkX - 26;
+    int resignGap = Lizzie.config.isFrameFontSmall() ? 6 : 8;
+    int resignMinLabelW =
+        Lizzie.config.isFrameFontSmall() ? 64 : (Lizzie.config.isFrameFontMiddle() ? 72 : 82);
+    int resignConsistentLabelW =
+        Lizzie.config.isFrameFontSmall() ? 38 : (Lizzie.config.isFrameFontMiddle() ? 42 : 50);
+    int resignBelowLabelW =
+        Lizzie.config.isFrameFontSmall() ? 90 : (Lizzie.config.isFrameFontMiddle() ? 100 : 116);
+    int resignFieldW = Lizzie.config.isFrameFontSmall() ? 46 : 50;
+    int resignMinLabelX = labelX + labelW + resignGap;
+    int resignMinFieldX = resignMinLabelX + resignMinLabelW;
+    int resignConsistentLabelX = resignMinFieldX + resignFieldW + resignGap;
+    int resignConsistentFieldX = resignConsistentLabelX + resignConsistentLabelW;
+    int resignBelowLabelX = resignConsistentFieldX + resignFieldW + resignGap;
+    int resignBelowFieldX = resignBelowLabelX + resignBelowLabelW;
+    int resignPercentX = resignBelowFieldX + resignFieldW + 4;
+    contentPanel.setPreferredSize(new Dimension(dialogWidth() - 28, dialogHeight() - 82));
 
     //    checkBoxPlayerIsBlack =
     //        new JCheckBox(resourceBundle.getString("NewGameDialog.PlayBlack"), true);
@@ -165,52 +225,20 @@ public class NewEngineGameDialog extends JDialog {
     contentPanel.add(txtresignSettingBlack2);
     contentPanel.add(txtresignSettingBlackMinMove);
 
-    resignThresoldHint.setBounds(
-        5,
-        180,
-        Lizzie.config.isFrameFontSmall() ? 425 : (Lizzie.config.isFrameFontMiddle() ? 495 : 575),
-        55);
+    resignThresoldHint.setBounds(labelX, resignBlackY, rightEdge - labelX, controlHeight() * 2 + 6);
     resignThresoldHint.setVisible(false);
-    lblresignSettingBlack.setBounds(
-        5,
-        180,
-        Lizzie.config.isFrameFontSmall() ? 435 : (Lizzie.config.isFrameFontMiddle() ? 505 : 585),
-        25);
-    lblresignSettingBlackConsistent.setBounds(
-        Lizzie.config.isFrameFontSmall() ? 140 : (Lizzie.config.isFrameFontMiddle() ? 125 : 143),
-        180,
-        197,
-        25);
-    lblresignSettingBlack2.setBounds(
-        Lizzie.config.isFrameFontSmall() ? 225 : (Lizzie.config.isFrameFontMiddle() ? 228 : 257),
-        180,
-        57,
-        25);
-    lblresignSettingBlack3.setBounds(
-        Lizzie.config.isFrameFontSmall() ? 295 : (Lizzie.config.isFrameFontMiddle() ? 295 : 317),
-        180,
-        122,
-        25);
-    lblresignSettingBlack4.setBounds(
-        Lizzie.config.isFrameFontSmall() ? 411 : (Lizzie.config.isFrameFontMiddle() ? 426 : 472),
-        180,
-        25,
-        25);
-    txtresignSettingBlackMinMove.setBounds(
-        Lizzie.config.isFrameFontSmall() ? 192 : (Lizzie.config.isFrameFontMiddle() ? 195 : 226),
-        Lizzie.config.isFrameFontSmall() ? 183 : (Lizzie.config.isFrameFontMiddle() ? 182 : 181),
-        50,
-        Lizzie.config.isFrameFontSmall() ? 22 : (Lizzie.config.isFrameFontMiddle() ? 24 : 26));
-    txtresignSettingBlack.setBounds(
-        Lizzie.config.isFrameFontSmall() ? 272 : (Lizzie.config.isFrameFontMiddle() ? 272 : 297),
-        Lizzie.config.isFrameFontSmall() ? 183 : (Lizzie.config.isFrameFontMiddle() ? 182 : 181),
-        40,
-        Lizzie.config.isFrameFontSmall() ? 22 : (Lizzie.config.isFrameFontMiddle() ? 24 : 26));
-    txtresignSettingBlack2.setBounds(
-        Lizzie.config.isFrameFontSmall() ? 373 : (Lizzie.config.isFrameFontMiddle() ? 383 : 425),
-        Lizzie.config.isFrameFontSmall() ? 183 : (Lizzie.config.isFrameFontMiddle() ? 182 : 181),
-        Lizzie.config.isFrameFontSmall() ? 35 : (Lizzie.config.isFrameFontMiddle() ? 40 : 45),
-        Lizzie.config.isFrameFontSmall() ? 20 : (Lizzie.config.isFrameFontMiddle() ? 22 : 24));
+    setGridBounds(lblresignSettingBlack, labelX, resignBlackY, labelW);
+    setGridBounds(
+        lblresignSettingBlackConsistent,
+        resignConsistentLabelX,
+        resignBlackY,
+        resignConsistentLabelW);
+    setGridBounds(lblresignSettingBlack2, resignMinLabelX, resignBlackY, resignMinLabelW);
+    setGridBounds(lblresignSettingBlack3, resignBelowLabelX, resignBlackY, resignBelowLabelW);
+    setGridBounds(lblresignSettingBlack4, resignPercentX, resignBlackY, 24);
+    setGridBounds(txtresignSettingBlackMinMove, resignMinFieldX, resignBlackY, resignFieldW);
+    setGridBounds(txtresignSettingBlack, resignConsistentFieldX, resignBlackY, resignFieldW);
+    setGridBounds(txtresignSettingBlack2, resignBelowFieldX, resignBlackY, resignFieldW);
 
     JFontLabel lblresignSettingWhite =
         new JFontLabel(Lizzie.resourceBundle.getString("EnginePkConfig.lblresignSettingWhite"));
@@ -230,43 +258,18 @@ public class NewEngineGameDialog extends JDialog {
     txtresignSettingWhiteMinMove = new JFontTextField();
     txtresignSettingWhiteMinMove.setDocument(new IntDocument());
 
-    lblresignSettingWhite.setBounds(5, 210, 197, 25);
-    lblresignSettingWhiteConsistent.setBounds(
-        Lizzie.config.isFrameFontSmall() ? 140 : (Lizzie.config.isFrameFontMiddle() ? 125 : 143),
-        210,
-        197,
-        25);
-    lblresignSettingWhite2.setBounds(
-        Lizzie.config.isFrameFontSmall() ? 225 : (Lizzie.config.isFrameFontMiddle() ? 228 : 257),
-        210,
-        57,
-        25);
-    lblresignSettingWhite3.setBounds(
-        Lizzie.config.isFrameFontSmall() ? 295 : (Lizzie.config.isFrameFontMiddle() ? 295 : 317),
-        210,
-        122,
-        25);
-    lblresignSettingWhite4.setBounds(
-        Lizzie.config.isFrameFontSmall() ? 411 : (Lizzie.config.isFrameFontMiddle() ? 426 : 472),
-        210,
-        25,
-        25);
-
-    txtresignSettingWhiteMinMove.setBounds(
-        Lizzie.config.isFrameFontSmall() ? 192 : (Lizzie.config.isFrameFontMiddle() ? 195 : 226),
-        Lizzie.config.isFrameFontSmall() ? 214 : (Lizzie.config.isFrameFontMiddle() ? 213 : 212),
-        50,
-        Lizzie.config.isFrameFontSmall() ? 22 : (Lizzie.config.isFrameFontMiddle() ? 24 : 26));
-    txtresignSettingWhite.setBounds(
-        Lizzie.config.isFrameFontSmall() ? 272 : (Lizzie.config.isFrameFontMiddle() ? 272 : 297),
-        Lizzie.config.isFrameFontSmall() ? 214 : (Lizzie.config.isFrameFontMiddle() ? 213 : 212),
-        40,
-        Lizzie.config.isFrameFontSmall() ? 22 : (Lizzie.config.isFrameFontMiddle() ? 24 : 26));
-    txtresignSettingWhite2.setBounds(
-        Lizzie.config.isFrameFontSmall() ? 373 : (Lizzie.config.isFrameFontMiddle() ? 383 : 425),
-        Lizzie.config.isFrameFontSmall() ? 214 : (Lizzie.config.isFrameFontMiddle() ? 213 : 212),
-        Lizzie.config.isFrameFontSmall() ? 35 : (Lizzie.config.isFrameFontMiddle() ? 40 : 45),
-        Lizzie.config.isFrameFontSmall() ? 20 : (Lizzie.config.isFrameFontMiddle() ? 22 : 24));
+    setGridBounds(lblresignSettingWhite, labelX, resignWhiteY, labelW);
+    setGridBounds(
+        lblresignSettingWhiteConsistent,
+        resignConsistentLabelX,
+        resignWhiteY,
+        resignConsistentLabelW);
+    setGridBounds(lblresignSettingWhite2, resignMinLabelX, resignWhiteY, resignMinLabelW);
+    setGridBounds(lblresignSettingWhite3, resignBelowLabelX, resignWhiteY, resignBelowLabelW);
+    setGridBounds(lblresignSettingWhite4, resignPercentX, resignWhiteY, 24);
+    setGridBounds(txtresignSettingWhiteMinMove, resignMinFieldX, resignWhiteY, resignFieldW);
+    setGridBounds(txtresignSettingWhite, resignConsistentFieldX, resignWhiteY, resignFieldW);
+    setGridBounds(txtresignSettingWhite2, resignBelowFieldX, resignWhiteY, resignFieldW);
 
     contentPanel.add(lblresignSettingWhite);
     contentPanel.add(lblresignSettingWhiteConsistent);
@@ -387,28 +390,16 @@ public class NewEngineGameDialog extends JDialog {
     JFontLabel lblW =
         new JFontLabel(Lizzie.resourceBundle.getString("NewEngineGameDialog.lblW")); // ("白方设置");
     lblW.setHorizontalAlignment(JLabel.CENTER);
-    lblB.setBounds(165, 2, 113, 20);
-    lblW.setBounds(288, 2, 113, 20);
+    setGridBounds(lblB, blackX, headerY, fieldW);
+    setGridBounds(lblW, whiteX, headerY, fieldW);
 
     JFontLabel lblengine =
         new JFontLabel(
             Lizzie.resourceBundle.getString("NewEngineGameDialog.lblengine")); // ("选择引擎");
-    lblengine.setBounds(5, 30, 120, 20);
+    setGridBounds(lblengine, labelX, engineY, labelW);
 
-    enginePkBlack.setBounds(
-        167,
-        Lizzie.config.isFrameFontSmall() ? 30 : (Lizzie.config.isFrameFontMiddle() ? 29 : 28),
-        113,
-        Lizzie.config.isFrameFontSmall()
-            ? 20
-            : (Lizzie.config.isFrameFontMiddle() ? 22 : 24)); // (134, 30, 113, 20);
-    enginePkWhite.setBounds(
-        290,
-        Lizzie.config.isFrameFontSmall() ? 30 : (Lizzie.config.isFrameFontMiddle() ? 29 : 28),
-        113,
-        Lizzie.config.isFrameFontSmall()
-            ? 20
-            : (Lizzie.config.isFrameFontMiddle() ? 22 : 24)); // (255, 30, 113, 20);
+    setGridBounds(enginePkBlack, blackX, engineY, fieldW);
+    setGridBounds(enginePkWhite, whiteX, engineY, fieldW);
     contentPanel.add(lblengine);
     contentPanel.add(lblB);
     contentPanel.add(lblW);
@@ -427,26 +418,10 @@ public class NewEngineGameDialog extends JDialog {
     JFontLabel lblTime =
         new JFontLabel(
             Lizzie.resourceBundle.getString("NewEngineGameDialog.lblTime")); // ("每手时间(秒)");
-    lblTime.setBounds(5, 60, 136, 20);
-    LizzieFrame.toolbar.chkenginePkTime.setBounds(
-        143,
-        Lizzie.config.isFrameFontSmall() ? 60 : (Lizzie.config.isFrameFontMiddle() ? 59 : 58),
-        20,
-        Lizzie.config.isFrameFontSmall() ? 20 : (Lizzie.config.isFrameFontMiddle() ? 22 : 24));
-    LizzieFrame.toolbar.txtenginePkTime.setBounds(
-        167,
-        Lizzie.config.isFrameFontSmall() ? 60 : (Lizzie.config.isFrameFontMiddle() ? 59 : 58),
-        113,
-        Lizzie.config.isFrameFontSmall()
-            ? 20
-            : (Lizzie.config.isFrameFontMiddle() ? 22 : 24)); // (134, 60, 113, 20);
-    LizzieFrame.toolbar.txtenginePkTimeWhite.setBounds(
-        290,
-        Lizzie.config.isFrameFontSmall() ? 60 : (Lizzie.config.isFrameFontMiddle() ? 59 : 58),
-        113,
-        Lizzie.config.isFrameFontSmall()
-            ? 20
-            : (Lizzie.config.isFrameFontMiddle() ? 22 : 24)); // (255, 60, 113, 20);
+    setGridBounds(lblTime, labelX, timeY, labelW);
+    setGridBounds(LizzieFrame.toolbar.chkenginePkTime, checkX, timeY, checkW);
+    setGridBounds(LizzieFrame.toolbar.txtenginePkTime, blackX, timeY, fieldW);
+    setGridBounds(LizzieFrame.toolbar.txtenginePkTimeWhite, whiteX, timeY, fieldW);
     contentPanel.add(lblTime);
     contentPanel.add(LizzieFrame.toolbar.chkenginePkTime);
     contentPanel.add(LizzieFrame.toolbar.txtenginePkTime);
@@ -460,26 +435,10 @@ public class NewEngineGameDialog extends JDialog {
         new JFontLabel(
             Lizzie.resourceBundle.getString("NewEngineGameDialog.lblPlayout")); // ("总计算量");
 
-    lblPlayout.setBounds(5, 120, 136, 20);
-    LizzieFrame.toolbar.chkenginePkPlayouts.setBounds(
-        143,
-        Lizzie.config.isFrameFontSmall() ? 120 : (Lizzie.config.isFrameFontMiddle() ? 119 : 118),
-        20,
-        Lizzie.config.isFrameFontSmall() ? 20 : (Lizzie.config.isFrameFontMiddle() ? 22 : 24));
-    LizzieFrame.toolbar.txtenginePkPlayputs.setBounds(
-        167,
-        Lizzie.config.isFrameFontSmall() ? 120 : (Lizzie.config.isFrameFontMiddle() ? 119 : 118),
-        113,
-        Lizzie.config.isFrameFontSmall()
-            ? 20
-            : (Lizzie.config.isFrameFontMiddle() ? 22 : 24)); // (134, 120, 113, 20);
-    LizzieFrame.toolbar.txtenginePkPlayputsWhite.setBounds(
-        290,
-        Lizzie.config.isFrameFontSmall() ? 120 : (Lizzie.config.isFrameFontMiddle() ? 119 : 118),
-        113,
-        Lizzie.config.isFrameFontSmall()
-            ? 20
-            : (Lizzie.config.isFrameFontMiddle() ? 22 : 24)); // (255, 120, 113, 20);
+    setGridBounds(lblPlayout, labelX, playoutY, labelW);
+    setGridBounds(LizzieFrame.toolbar.chkenginePkPlayouts, checkX, playoutY, checkW);
+    setGridBounds(LizzieFrame.toolbar.txtenginePkPlayputs, blackX, playoutY, fieldW);
+    setGridBounds(LizzieFrame.toolbar.txtenginePkPlayputsWhite, whiteX, playoutY, fieldW);
     contentPanel.add(lblPlayout);
     contentPanel.add(LizzieFrame.toolbar.chkenginePkPlayouts);
     contentPanel.add(LizzieFrame.toolbar.txtenginePkPlayputs);
@@ -492,22 +451,10 @@ public class NewEngineGameDialog extends JDialog {
     JFontLabel lblFirstPlayout =
         new JFontLabel(
             Lizzie.resourceBundle.getString("NewEngineGameDialog.lblFirstPlayout")); // ("首位计算量");
-    lblFirstPlayout.setBounds(5, 150, 136, 20);
-    LizzieFrame.toolbar.chkenginePkFirstPlayputs.setBounds(143, 150, 20, 20);
-    LizzieFrame.toolbar.txtenginePkFirstPlayputs.setBounds(
-        167,
-        Lizzie.config.isFrameFontSmall() ? 150 : (Lizzie.config.isFrameFontMiddle() ? 149 : 148),
-        113,
-        Lizzie.config.isFrameFontSmall()
-            ? 20
-            : (Lizzie.config.isFrameFontMiddle() ? 22 : 24)); // (134, 150, 113, 20);
-    LizzieFrame.toolbar.txtenginePkFirstPlayputsWhite.setBounds(
-        290,
-        Lizzie.config.isFrameFontSmall() ? 150 : (Lizzie.config.isFrameFontMiddle() ? 149 : 148),
-        113,
-        Lizzie.config.isFrameFontSmall()
-            ? 20
-            : (Lizzie.config.isFrameFontMiddle() ? 22 : 24)); // (255, 150, 113, 20);
+    setGridBounds(lblFirstPlayout, labelX, firstPlayoutY, labelW);
+    setGridBounds(LizzieFrame.toolbar.chkenginePkFirstPlayputs, checkX, firstPlayoutY, checkW);
+    setGridBounds(LizzieFrame.toolbar.txtenginePkFirstPlayputs, blackX, firstPlayoutY, fieldW);
+    setGridBounds(LizzieFrame.toolbar.txtenginePkFirstPlayputsWhite, whiteX, firstPlayoutY, fieldW);
 
     contentPanel.add(lblFirstPlayout);
     contentPanel.add(LizzieFrame.toolbar.chkenginePkFirstPlayputs);
@@ -522,22 +469,15 @@ public class NewEngineGameDialog extends JDialog {
     JFontLabel handicap =
         new JFontLabel(
             Lizzie.resourceBundle.getString("NewEngineGameDialog.handicap")); // ("让子(仅支持19路棋盘)");
-    komi.setBounds(5, 240, 45, 20);
-    textFieldKomi.setBounds(
-        Lizzie.config.isFrameFontSmall() ? 38 : (Lizzie.config.isFrameFontMiddle() ? 42 : 47),
-        Lizzie.config.isFrameFontSmall() ? 241 : (Lizzie.config.isFrameFontMiddle() ? 240 : 239),
-        Lizzie.config.isFrameFontSmall() ? 30 : (Lizzie.config.isFrameFontMiddle() ? 35 : 40),
-        Lizzie.config.isFrameFontSmall() ? 20 : (Lizzie.config.isFrameFontMiddle() ? 22 : 24));
-    handicap.setBounds(
-        Lizzie.config.isFrameFontSmall() ? 78 : (Lizzie.config.isFrameFontMiddle() ? 88 : 93),
-        240,
-        320,
-        20);
-    textFieldHandicap.setBounds(
-        Lizzie.config.isFrameFontSmall() ? 194 : (Lizzie.config.isFrameFontMiddle() ? 242 : 284),
-        Lizzie.config.isFrameFontSmall() ? 241 : (Lizzie.config.isFrameFontMiddle() ? 240 : 239),
-        Lizzie.config.isFrameFontSmall() ? 30 : (Lizzie.config.isFrameFontMiddle() ? 35 : 40),
-        Lizzie.config.isFrameFontSmall() ? 20 : (Lizzie.config.isFrameFontMiddle() ? 22 : 24));
+    int komiFieldX = labelX + 50;
+    int handicapX = komiFieldX + 64;
+    int handicapLabelW =
+        Lizzie.config.isFrameFontSmall() ? 150 : (Lizzie.config.isFrameFontMiddle() ? 175 : 190);
+    int handicapFieldX = handicapX + handicapLabelW + 8;
+    setGridBounds(komi, labelX, komiY, 46);
+    setGridBounds(textFieldKomi, komiFieldX, komiY, 52);
+    setGridBounds(handicap, handicapX, komiY, handicapLabelW);
+    setGridBounds(textFieldHandicap, handicapFieldX, komiY, 52);
     contentPanel.add(komi);
     contentPanel.add(textFieldKomi);
     contentPanel.add(handicap);
@@ -547,7 +487,17 @@ public class NewEngineGameDialog extends JDialog {
         new JFontCheckBox(
             Lizzie.resourceBundle.getString("NewEngineGameDialog.lblContinue")); // ("当前局面续弈");
 
-    chkContinuePlay.setBounds(5, 270, 156, 20);
+    int sgfButtonW =
+        Lizzie.config.isFrameFontSmall() ? 86 : (Lizzie.config.isFrameFontMiddle() ? 92 : 102);
+    int sgfComboW =
+        Lizzie.config.isFrameFontSmall() ? 76 : (Lizzie.config.isFrameFontMiddle() ? 82 : 88);
+    int sgfButtonX = rightEdge - sgfButtonW;
+    int sgfComboX = sgfButtonX - sgfComboW - 8;
+    int sgfCheckX = sgfComboX - checkW - 6;
+    int sgfLabelX = labelX + Math.min(210, labelW + 22);
+    int sgfLabelW = Math.max(88, sgfCheckX - sgfLabelX - 8);
+
+    setGridBounds(chkContinuePlay, labelX, continueY, sgfLabelX - labelX - 12);
     // LizzieFrame.toolbar.chkenginePkContinue.setBounds(5, 270, 20, 20);
     contentPanel.add(chkContinuePlay);
     // contentPanel.add(LizzieFrame.toolbar.chkenginePkContinue);
@@ -593,27 +543,16 @@ public class NewEngineGameDialog extends JDialog {
 
     JFontLabel lblBatchGame =
         new JFontLabel(
-            Lizzie.resourceBundle.getString("NewEngineGameDialog.lblBatchGame")); // ("多盘");
-    lblBatchGame.setBounds(
-        Lizzie.config.isFrameFontSmall() ? 279 : (Lizzie.config.isFrameFontMiddle() ? 283 : 328),
-        240,
-        100,
-        20);
-    LizzieFrame.toolbar.chkenginePkBatch.setBounds(
-        Lizzie.config.isFrameFontSmall() ? 350 : (Lizzie.config.isFrameFontMiddle() ? 375 : 410),
-        240,
-        20,
-        20);
-    LizzieFrame.toolbar.txtenginePkBatch.setBounds(
-        Lizzie.config.isFrameFontSmall() ? 370 : (Lizzie.config.isFrameFontMiddle() ? 395 : 430),
-        Lizzie.config.isFrameFontSmall() ? 241 : (Lizzie.config.isFrameFontMiddle() ? 240 : 239),
-        40,
-        Lizzie.config.isFrameFontSmall() ? 20 : (Lizzie.config.isFrameFontMiddle() ? 22 : 24));
-    btnConfig.setBounds(
-        Lizzie.config.isFrameFontSmall() ? 331 : (Lizzie.config.isFrameFontMiddle() ? 365 : 430),
-        Lizzie.config.isFrameFontSmall() ? 322 : (Lizzie.config.isFrameFontMiddle() ? 320 : 321),
-        Lizzie.config.isFrameFontSmall() ? 80 : (Lizzie.config.isFrameFontMiddle() ? 80 : 100),
-        Lizzie.config.isFrameFontSmall() ? 23 : (Lizzie.config.isFrameFontMiddle() ? 25 : 26));
+            Lizzie.resourceBundle.getString("NewEngineGameDialog.lblBatchGame").trim()); // ("多盘");
+    int batchLabelW =
+        Lizzie.config.isFrameFontSmall() ? 72 : (Lizzie.config.isFrameFontMiddle() ? 82 : 92);
+    setGridBounds(lblBatchGame, whiteX, komiY, batchLabelW);
+    setGridBounds(LizzieFrame.toolbar.chkenginePkBatch, whiteX + batchLabelW + 4, komiY, checkW);
+    setGridBounds(
+        LizzieFrame.toolbar.txtenginePkBatch, whiteX + batchLabelW + checkW + 12, komiY, 56);
+    int configButtonW =
+        Lizzie.config.isFrameFontSmall() ? 92 : (Lizzie.config.isFrameFontMiddle() ? 98 : 112);
+    setGridBounds(btnConfig, rightEdge - configButtonW, option2Y, configButtonW);
     contentPanel.add(lblBatchGame);
     contentPanel.add(LizzieFrame.toolbar.chkenginePkBatch);
     contentPanel.add(LizzieFrame.toolbar.txtenginePkBatch);
@@ -636,24 +575,16 @@ public class NewEngineGameDialog extends JDialog {
         new JFontLabel(
             Lizzie.resourceBundle.getString(
                 "NewEngineGameDialog.lblAdvanceTime")); // ("高级时间设置"); // $NON-NLS-1$
-    lblAdvanceTime.setBounds(5, 90, 136, 20);
+    setGridBounds(lblAdvanceTime, labelX, advanceY, labelW);
     contentPanel.add(lblAdvanceTime);
 
     txtBlackAdvanceTime = new JFontTextField();
-    txtBlackAdvanceTime.setBounds(
-        167,
-        Lizzie.config.isFrameFontSmall() ? 90 : (Lizzie.config.isFrameFontMiddle() ? 89 : 88),
-        113,
-        Lizzie.config.isFrameFontSmall() ? 20 : (Lizzie.config.isFrameFontMiddle() ? 22 : 24));
+    setGridBounds(txtBlackAdvanceTime, blackX, advanceY, fieldW);
     contentPanel.add(txtBlackAdvanceTime);
     txtBlackAdvanceTime.setColumns(10);
 
     txtWhiteAdvanceTime = new JFontTextField();
-    txtWhiteAdvanceTime.setBounds(
-        290,
-        Lizzie.config.isFrameFontSmall() ? 90 : (Lizzie.config.isFrameFontMiddle() ? 89 : 88),
-        113,
-        Lizzie.config.isFrameFontSmall() ? 20 : (Lizzie.config.isFrameFontMiddle() ? 22 : 24));
+    setGridBounds(txtWhiteAdvanceTime, whiteX, advanceY, fieldW);
     contentPanel.add(txtWhiteAdvanceTime);
     txtWhiteAdvanceTime.setColumns(10);
 
@@ -699,12 +630,12 @@ public class NewEngineGameDialog extends JDialog {
                 thisDialog);
           }
         });
-    aboutAdvanceTimeSettings.setBounds(125, 91, 18, 18);
+    aboutAdvanceTimeSettings.setBounds(helpIconX, advanceY + 3, 18, 18);
     aboutAdvanceTimeSettings.setFocusable(false);
     contentPanel.add(aboutAdvanceTimeSettings);
 
-    chkUseAdvanceTime = new JCheckBox(); // $NON-NLS-1$
-    chkUseAdvanceTime.setBounds(143, 88, 20, 20);
+    chkUseAdvanceTime = new JFontCheckBox(); // $NON-NLS-1$
+    setGridBounds(chkUseAdvanceTime, checkX, advanceY, checkW);
     contentPanel.add(chkUseAdvanceTime);
     if (!LizzieFrame.toolbar.isGenmoveToolbar) chkUseAdvanceTime.setEnabled(false);
 
@@ -739,11 +670,7 @@ public class NewEngineGameDialog extends JDialog {
         new JFontCheckBox(
             Lizzie.resourceBundle.getString(
                 "NewEngineGameDialog.checkBoxAllowPonder")); // ("允许后台计算(同一台电脑对战时不可勾选)");
-    checkBoxAllowPonder.setBounds(
-        5,
-        296,
-        Lizzie.config.isFrameFontSmall() ? 317 : (Lizzie.config.isFrameFontMiddle() ? 357 : 419),
-        23);
+    setGridBounds(checkBoxAllowPonder, labelX, optionY, rightEdge - labelX);
     checkBoxAllowPonder.addActionListener(
         new ActionListener() {
           public void actionPerformed(ActionEvent e) {
@@ -765,21 +692,13 @@ public class NewEngineGameDialog extends JDialog {
           }
         });
     chkDisableWRNInGame.setSelected(Lizzie.config.disableWRNInGame);
-    chkDisableWRNInGame.setBounds(
-        5,
-        322,
-        Lizzie.config.isFrameFontSmall() ? 300 : (Lizzie.config.isFrameFontMiddle() ? 350 : 400),
-        23);
+    setGridBounds(chkDisableWRNInGame, labelX, option2Y, rightEdge - labelX - configButtonW - 12);
     chkDisableWRNInGame.setSelected(Lizzie.config.disableWRNInGame);
     contentPanel.add(chkDisableWRNInGame);
     chkDisableWRNInGame.setVisible(!LizzieFrame.toolbar.isGenmoveToolbar);
 
-    chkSGFstart = new JCheckBox();
-    chkSGFstart.setBounds(
-        Lizzie.config.isFrameFontSmall() ? 257 : (Lizzie.config.isFrameFontMiddle() ? 257 : 277),
-        269,
-        20,
-        23);
+    chkSGFstart = new JFontCheckBox();
+    setGridBounds(chkSGFstart, sgfCheckX, continueY, checkW);
     contentPanel.add(chkSGFstart);
     chkSGFstart.addActionListener(
         new ActionListener() {
@@ -811,19 +730,11 @@ public class NewEngineGameDialog extends JDialog {
             Lizzie.frame.openSgfStart();
           }
         });
-    btnSGFstart.setBounds(
-        Lizzie.config.isFrameFontSmall() ? 348 : (Lizzie.config.isFrameFontMiddle() ? 348 : 368),
-        Lizzie.config.isFrameFontSmall() ? 270 : (Lizzie.config.isFrameFontMiddle() ? 268 : 267),
-        Lizzie.config.isFrameFontSmall() ? 63 : (Lizzie.config.isFrameFontMiddle() ? 73 : 88),
-        Lizzie.config.isFrameFontSmall() ? 20 : (Lizzie.config.isFrameFontMiddle() ? 25 : 26));
+    setGridBounds(btnSGFstart, sgfButtonX, continueY, sgfButtonW);
     contentPanel.add(btnSGFstart);
     btnSGFstart.setMargin(new Insets(0, 0, 0, 0));
 
-    lblsgf.setBounds(
-        Lizzie.config.isFrameFontSmall() ? 160 : (Lizzie.config.isFrameFontMiddle() ? 130 : 110),
-        270,
-        180,
-        20);
+    setGridBounds(lblsgf, sgfLabelX, continueY, sgfLabelW);
     contentPanel.add(lblsgf);
     // lblsgf.setEnabled(LizzieFrame.toolbar.chkenginePkBatch.isSelected());
 
@@ -832,11 +743,7 @@ public class NewEngineGameDialog extends JDialog {
         Lizzie.resourceBundle.getString("NewEngineGameDialog.cbxRandomSgf1")); // ("顺序");
     cbxRandomSgf.addItem(
         Lizzie.resourceBundle.getString("NewEngineGameDialog.cbxRandomSgf2")); // ("随机");
-    cbxRandomSgf.setBounds(
-        Lizzie.config.isFrameFontSmall() ? 277 : (Lizzie.config.isFrameFontMiddle() ? 277 : 297),
-        Lizzie.config.isFrameFontSmall() ? 270 : (Lizzie.config.isFrameFontMiddle() ? 269 : 268),
-        69,
-        Lizzie.config.isFrameFontSmall() ? 20 : (Lizzie.config.isFrameFontMiddle() ? 23 : 24));
+    setGridBounds(cbxRandomSgf, sgfComboX, continueY, sgfComboW);
     contentPanel.add(cbxRandomSgf);
     cbxRandomSgf.addItemListener(
         new ItemListener() {
