@@ -12,6 +12,7 @@ import java.util.Optional;
 import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.json.JSONArray;
@@ -131,6 +132,28 @@ public class WebBoardDataCollector {
       Thread.currentThread().interrupt();
     }
     server = null;
+  }
+
+  /** Web 试下：在内部 executor 上同步派发任务。 */
+  public void runOnExecutor(Runnable r) {
+    try {
+      executor.execute(r);
+    } catch (RejectedExecutionException ignored) {
+    }
+  }
+
+  /** Web 试下：在内部 executor 上调度延迟任务。 */
+  public ScheduledFuture<?> scheduleOnExecutor(Runnable r, long delay, TimeUnit unit) {
+    try {
+      return executor.schedule(r, delay, unit);
+    } catch (RejectedExecutionException ignored) {
+      return null;
+    }
+  }
+
+  /** Web 试下：广播 TrialSession 状态。Task 4 落地完整 JSON 序列化。 */
+  public void broadcastTrialState(WebBoardManager.TrialSession s) {
+    // 当前空实现保证 Task 3 编译/单测通过
   }
 
   // --- Static JSON serialization methods ---

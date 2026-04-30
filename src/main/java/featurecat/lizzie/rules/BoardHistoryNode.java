@@ -101,6 +101,11 @@ public class BoardHistoryNode {
     return node;
   }
 
+  /** Web 试下专用：把 child 的 previous 设为 this。 */
+  public void setPreviousForChild(BoardHistoryNode child) {
+    child.previous = Optional.of(this);
+  }
+
   public BoardHistoryNode addAtLast(BoardData data) {
     if (!this.previous.isPresent()) {
       data.moveMNNumber = 1;

@@ -1,6 +1,10 @@
 package featurecat.lizzie.gui.web;
 
 import featurecat.lizzie.Lizzie;
+import featurecat.lizzie.rules.Board;
+import featurecat.lizzie.rules.BoardData;
+import featurecat.lizzie.rules.BoardHistoryNode;
+import featurecat.lizzie.rules.Stone;
 import java.io.IOException;
 import java.net.Inet4Address;
 import java.net.InetAddress;
@@ -9,9 +13,34 @@ import java.net.NetworkInterface;
 import java.net.ServerSocket;
 import java.net.SocketException;
 import java.util.Enumeration;
+import java.util.Optional;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
 import org.json.JSONObject;
 
 public class WebBoardManager {
+  private static final long IDLE_TIMEOUT_MS = 5 * 60 * 1000L;
+
+  @FunctionalInterface
+  public interface DisplayNodeOverrideSink {
+    void set(BoardHistoryNode node);
+  }
+
+  public static class TrialSession {
+    public final String ownerClientId;
+    public final BoardHistoryNode anchorNode;
+    public volatile BoardHistoryNode displayNode;
+    volatile long lastActivityMs;
+    ScheduledFuture<?> idleTimer;
+
+    TrialSession(String owner, BoardHistoryNode anchor) {
+      this.ownerClientId = owner;
+      this.anchorNode = anchor;
+      this.displayNode = anchor;
+      this.lastActivityMs = System.currentTimeMillis();
+    }
+  }
+
   private volatile WebBoardServer wsServer;
   private volatile WebBoardHttpServer httpServer;
   private volatile WebBoardDataCollector collector;
@@ -19,6 +48,10 @@ public class WebBoardManager {
   private volatile String accessUrl;
   private int actualHttpPort;
   private int actualWsPort;
+
+  private volatile DisplayNodeOverrideSink overrideSink =
+      node -> Lizzie.frame.setDisplayNodeOverride(node);
+  private volatile TrialSession activeSession;
 
   public synchronized boolean start() {
     if (running) return true;
@@ -134,5 +167,169 @@ public class WebBoardManager {
     } catch (IOException e) {
       return false;
     }
+  }
+
+  // --- Trial session API ---
+
+  public synchronized boolean enterTrial(String clientId, BoardHistoryNode anchor) {
+    if (activeSession != null) {
+      return activeSession.ownerClientId.equals(clientId);
+    }
+    activeSession = new TrialSession(clientId, anchor);
+    overrideSink.set(anchor);
+    scheduleIdleTimeout(activeSession);
+    return true;
+  }
+
+  public synchronized void exitTrial(String clientId) {
+    if (activeSession == null || !activeSession.ownerClientId.equals(clientId)) return;
+    cancelIdleTimer(activeSession);
+    activeSession = null;
+    overrideSink.set(null);
+  }
+
+  public synchronized void forceExitTrial() {
+    if (activeSession == null) return;
+    cancelIdleTimer(activeSession);
+    activeSession = null;
+    overrideSink.set(null);
+  }
+
+  public synchronized void applyTrialMove(String clientId, int x, int y) {
+    TrialSession s = activeSession;
+    if (s == null || !s.ownerClientId.equals(clientId)) return;
+    collector.runOnExecutor(() -> doApplyMove(s, x, y));
+    touchActivity(s);
+  }
+
+  public synchronized void trialNavigate(String clientId, String direction) {
+    TrialSession s = activeSession;
+    if (s == null || !s.ownerClientId.equals(clientId)) return;
+    if ("back".equals(direction)) {
+      if (s.displayNode == s.anchorNode) return;
+      Optional<BoardHistoryNode> prev = s.displayNode.previous();
+      if (!prev.isPresent()) return;
+      s.displayNode = prev.get();
+    } else if ("forward".equals(direction)) {
+      if (s.displayNode.variations.isEmpty()) return;
+      s.displayNode = s.displayNode.variations.get(0);
+    } else {
+      return;
+    }
+    overrideSink.set(s.displayNode);
+    collector.onBoardStateChanged();
+    collector.broadcastTrialState(s);
+    touchActivity(s);
+  }
+
+  public synchronized void trialNavigateForward(String clientId, int childIndex) {
+    TrialSession s = activeSession;
+    if (s == null || !s.ownerClientId.equals(clientId)) return;
+    if (childIndex < 0 || childIndex >= s.displayNode.variations.size()) return;
+    s.displayNode = s.displayNode.variations.get(childIndex);
+    overrideSink.set(s.displayNode);
+    collector.onBoardStateChanged();
+    collector.broadcastTrialState(s);
+    touchActivity(s);
+  }
+
+  public synchronized void trialReset(String clientId) {
+    TrialSession s = activeSession;
+    if (s == null || !s.ownerClientId.equals(clientId)) return;
+    s.displayNode = s.anchorNode;
+    overrideSink.set(s.anchorNode);
+    collector.onBoardStateChanged();
+    collector.broadcastTrialState(s);
+    touchActivity(s);
+  }
+
+  private void doApplyMove(TrialSession s, int x, int y) {
+    synchronized (this) {
+      if (activeSession != s) return;
+      BoardHistoryNode parent = s.displayNode;
+      BoardData parentData = parent.getData();
+
+      for (BoardHistoryNode existing : parent.variations) {
+        BoardData ed = existing.getData();
+        if (ed.lastMove.isPresent() && ed.lastMove.get()[0] == x && ed.lastMove.get()[1] == y) {
+          s.displayNode = existing;
+          overrideSink.set(existing);
+          collector.onBoardStateChanged();
+          collector.broadcastTrialState(s);
+          return;
+        }
+      }
+
+      int idx = Board.getIndex(x, y);
+      if (parentData.stones[idx] != Stone.EMPTY) return;
+
+      Stone color = parentData.blackToPlay ? Stone.BLACK : Stone.WHITE;
+
+      BoardData newData = parentData.clone();
+      newData.stones[idx] = color;
+      newData.lastMove = Optional.of(new int[] {x, y});
+      newData.blackToPlay = !parentData.blackToPlay;
+      newData.moveNumber = parentData.moveNumber + 1;
+      newData.dummy = false;
+
+      BoardHistoryNode child = new BoardHistoryNode(newData);
+      parent.variations.add(child);
+      parent.setPreviousForChild(child);
+
+      s.displayNode = child;
+      overrideSink.set(child);
+      collector.onBoardStateChanged();
+      collector.broadcastTrialState(s);
+    }
+  }
+
+  private void scheduleIdleTimeout(TrialSession s) {
+    if (collector == null) return;
+    s.idleTimer =
+        collector.scheduleOnExecutor(
+            () -> {
+              if (activeSession == s) forceExitTrial();
+            },
+            IDLE_TIMEOUT_MS,
+            TimeUnit.MILLISECONDS);
+  }
+
+  private void cancelIdleTimer(TrialSession s) {
+    if (s.idleTimer != null) {
+      s.idleTimer.cancel(false);
+      s.idleTimer = null;
+    }
+  }
+
+  private void touchActivity(TrialSession s) {
+    s.lastActivityMs = System.currentTimeMillis();
+    cancelIdleTimer(s);
+    scheduleIdleTimeout(s);
+  }
+
+  // --- Test hooks (package-private) ---
+
+  void setOverrideSinkForTest(DisplayNodeOverrideSink sink) {
+    this.overrideSink = sink;
+  }
+
+  void setCollectorForTest(WebBoardDataCollector c) {
+    this.collector = c;
+  }
+
+  String getTrialOwnerForTest() {
+    return activeSession != null ? activeSession.ownerClientId : null;
+  }
+
+  BoardHistoryNode getDisplayNodeForTest() {
+    return activeSession != null ? activeSession.displayNode : null;
+  }
+
+  BoardHistoryNode getTrialAnchorForTest() {
+    return activeSession != null ? activeSession.anchorNode : null;
+  }
+
+  void setDisplayNodeForTest(BoardHistoryNode n) {
+    if (activeSession != null) activeSession.displayNode = n;
   }
 }
