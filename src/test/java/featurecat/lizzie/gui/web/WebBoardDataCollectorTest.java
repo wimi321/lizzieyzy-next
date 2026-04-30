@@ -3,6 +3,7 @@ package featurecat.lizzie.gui.web;
 import static org.junit.jupiter.api.Assertions.*;
 
 import featurecat.lizzie.analysis.MoveData;
+import featurecat.lizzie.rules.Board;
 import featurecat.lizzie.rules.BoardData;
 import featurecat.lizzie.rules.BoardHistoryNode;
 import featurecat.lizzie.rules.Stone;
@@ -287,6 +288,81 @@ public class WebBoardDataCollectorTest {
     JSONArray data = json.getJSONArray("data");
     assertTrue(data.getJSONObject(0).getBoolean("blackToPlay"));
     assertFalse(data.getJSONObject(1).getBoolean("blackToPlay"));
+  }
+
+  @Test
+  void buildTrialStateJsonForActiveSessionIncludesAllFields() {
+    BoardHistoryNode anchor =
+        new BoardHistoryNode(BoardData.empty(Board.boardWidth, Board.boardHeight));
+    BoardHistoryNode display = anchor;
+    WebBoardDataCollector.TrialSessionView view =
+        new WebBoardDataCollector.TrialSessionView("client-x", 0, anchor, display);
+    JSONObject json = WebBoardDataCollector.buildTrialStateJson(view);
+    assertEquals("trial_state", json.getString("type"));
+    assertTrue(json.getBoolean("active"));
+    assertEquals("client-x", json.getString("ownerClientId"));
+    assertEquals(0, json.getInt("anchorMoveNumber"));
+    assertFalse(json.getBoolean("canBack"));
+    assertFalse(json.getBoolean("canForward"));
+    assertEquals(0, json.getJSONArray("siblingMarkers").length());
+  }
+
+  @Test
+  void buildTrialStateJsonForIdleReturnsActiveFalse() {
+    JSONObject json = WebBoardDataCollector.buildTrialStateJson(null);
+    assertEquals("trial_state", json.getString("type"));
+    assertFalse(json.getBoolean("active"));
+    assertFalse(json.has("siblingMarkers"));
+  }
+
+  @Test
+  void buildTrialStateJsonSiblingMarkersOnlyIncludeNonMainline() {
+    BoardHistoryNode anchor = makeNodeWithLastMove(-1, -1, true);
+    BoardHistoryNode mainline = makeNodeWithLastMove(3, 3, false);
+    BoardHistoryNode s1 = makeNodeWithLastMove(15, 15, false);
+    BoardHistoryNode s2 = makeNodeWithLastMove(9, 9, false);
+    anchor.variations.add(mainline);
+    anchor.variations.add(s1);
+    anchor.variations.add(s2);
+
+    WebBoardDataCollector.TrialSessionView view =
+        new WebBoardDataCollector.TrialSessionView("c1", 0, anchor, anchor);
+    JSONObject json = WebBoardDataCollector.buildTrialStateJson(view);
+    JSONArray markers = json.getJSONArray("siblingMarkers");
+    assertEquals(2, markers.length());
+    assertEquals(1, markers.getJSONObject(0).getInt("childIndex"));
+    assertEquals("1", markers.getJSONObject(0).getString("label"));
+    assertEquals(15, markers.getJSONObject(0).getInt("x"));
+    assertEquals(15, markers.getJSONObject(0).getInt("y"));
+    assertEquals(2, markers.getJSONObject(1).getInt("childIndex"));
+    assertEquals("2", markers.getJSONObject(1).getString("label"));
+  }
+
+  @Test
+  void buildTrialStateJsonCanForwardWhenVariationsExist() {
+    BoardHistoryNode anchor = makeNodeWithLastMove(-1, -1, true);
+    BoardHistoryNode child = makeNodeWithLastMove(3, 3, false);
+    anchor.variations.add(child);
+    WebBoardDataCollector.TrialSessionView view =
+        new WebBoardDataCollector.TrialSessionView("c1", 0, anchor, anchor);
+    assertTrue(WebBoardDataCollector.buildTrialStateJson(view).getBoolean("canForward"));
+  }
+
+  @Test
+  void buildTrialStateJsonCanBackWhenDisplayDifferentFromAnchor() {
+    BoardHistoryNode anchor = makeNodeWithLastMove(-1, -1, true);
+    BoardHistoryNode display = makeNodeWithLastMove(3, 3, false);
+    WebBoardDataCollector.TrialSessionView view =
+        new WebBoardDataCollector.TrialSessionView("c1", 0, anchor, display);
+    assertTrue(WebBoardDataCollector.buildTrialStateJson(view).getBoolean("canBack"));
+  }
+
+  private BoardHistoryNode makeNodeWithLastMove(int x, int y, boolean blackToPlay) {
+    BoardData data = BoardData.empty(Board.boardWidth, Board.boardHeight);
+    data.lastMove =
+        (x >= 0 && y >= 0) ? java.util.Optional.of(new int[] {x, y}) : java.util.Optional.empty();
+    data.blackToPlay = blackToPlay;
+    return new BoardHistoryNode(data);
   }
 
   private BoardData createBoardData(

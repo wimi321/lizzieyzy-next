@@ -288,7 +288,9 @@ public class WebBoardManager {
     s.idleTimer =
         collector.scheduleOnExecutor(
             () -> {
-              if (activeSession == s) forceExitTrial();
+              synchronized (this) {
+                if (activeSession == s) forceExitTrial();
+              }
             },
             IDLE_TIMEOUT_MS,
             TimeUnit.MILLISECONDS);

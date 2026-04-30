@@ -93,7 +93,7 @@ public class WebBoardDataCollector {
     lastBroadcastTime = System.currentTimeMillis();
     if (server == null) return;
     try {
-      BoardHistoryNode currentNode = Lizzie.board.getHistory().getCurrentHistoryNode();
+      BoardHistoryNode currentNode = Lizzie.frame.getDisplayNode();
       BoardData data = currentNode.getData();
       int bw = Board.boardWidth;
       int bh = Board.boardHeight;
@@ -153,7 +153,73 @@ public class WebBoardDataCollector {
 
   /** Web 试下：广播 TrialSession 状态。Task 4 落地完整 JSON 序列化。 */
   public void broadcastTrialState(WebBoardManager.TrialSession s) {
-    // 当前空实现保证 Task 3 编译/单测通过
+    if (server == null) return;
+    if (s == null) {
+      server.broadcastMessage(buildIdleTrialStateJson().toString());
+      return;
+    }
+    TrialSessionView view =
+        new TrialSessionView(
+            s.ownerClientId, s.anchorNode.getData().moveNumber, s.anchorNode, s.displayNode);
+    server.broadcastMessage(buildTrialStateJson(view).toString());
+  }
+
+  /** Web 试下：不可变快照，避免跨线程共享 TrialSession 可变字段。 */
+  public static final class TrialSessionView {
+    public final String ownerClientId;
+    public final int anchorMoveNumber;
+    public final BoardHistoryNode anchorNode;
+    public final BoardHistoryNode displayNode;
+
+    public TrialSessionView(
+        String ownerClientId,
+        int anchorMoveNumber,
+        BoardHistoryNode anchorNode,
+        BoardHistoryNode displayNode) {
+      this.ownerClientId = ownerClientId;
+      this.anchorMoveNumber = anchorMoveNumber;
+      this.anchorNode = anchorNode;
+      this.displayNode = displayNode;
+    }
+  }
+
+  /** Web 试下：构造 trial_state JSON。view 为空表示无活跃 session。 */
+  static JSONObject buildTrialStateJson(TrialSessionView view) {
+    JSONObject obj = new JSONObject();
+    obj.put("type", "trial_state");
+    if (view == null) {
+      obj.put("active", false);
+      return obj;
+    }
+    obj.put("active", true);
+    obj.put("ownerClientId", view.ownerClientId);
+    obj.put("anchorMoveNumber", view.anchorMoveNumber);
+    obj.put("displayMoveNumber", view.displayNode.getData().moveNumber);
+    obj.put("canBack", view.displayNode != view.anchorNode);
+    obj.put("canForward", !view.displayNode.variations.isEmpty());
+
+    JSONArray markers = new JSONArray();
+    int label = 0;
+    for (int i = 1; i < view.displayNode.variations.size(); i++) {
+      BoardHistoryNode sib = view.displayNode.variations.get(i);
+      BoardData sd = sib.getData();
+      if (!sd.lastMove.isPresent()) continue;
+      label++;
+      int[] xy = sd.lastMove.get();
+      JSONObject m = new JSONObject();
+      m.put("x", xy[0]);
+      m.put("y", xy[1]);
+      m.put("label", String.valueOf(label));
+      m.put("childIndex", i);
+      markers.put(m);
+    }
+    obj.put("siblingMarkers", markers);
+    return obj;
+  }
+
+  /** Web 试下：闲置/退出后的 trial_state 广播载荷。 */
+  static JSONObject buildIdleTrialStateJson() {
+    return buildTrialStateJson(null);
   }
 
   // --- Static JSON serialization methods ---
