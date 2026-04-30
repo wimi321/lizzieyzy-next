@@ -1877,6 +1877,16 @@ public class LizzieFrame extends JFrame {
     return displayNodeOverride != null;
   }
 
+  /**
+   * 试下激活时，只有 displayNode 与真 currentNode 重合（用户在锚点没动过 / 按了"回锚点"）才与引擎分析对得上。 走到 anchor 之外的 displayNode
+   * 上时，引擎分析仍针对 mainline 真 currentNode，画在试下盘面上是误导，需要隐藏。
+   */
+  public boolean isAnalysisHiddenForTrial() {
+    featurecat.lizzie.rules.BoardHistoryNode override = displayNodeOverride;
+    if (override == null) return false;
+    return override != Lizzie.board.getHistory().getCurrentHistoryNode();
+  }
+
   public void showTrialBlockedHint() {
     Utils.showMsgNoModalForTime("Web 试下进行中，桌面端暂不响应落子（在「同步」菜单可强制结束）", 3);
   }

@@ -923,7 +923,7 @@
 
     var boardWidth = boardState.boardWidth || 19;
     var boardHeight = boardState.boardHeight || 19;
-    var size = parseInt(boardCanvas.style.width) || boardCanvas.width;
+    var size = Math.min(rect.width, rect.height);
     var margin = coordStyle !== "off" ? size * 0.06 : size * 0.04;
     var gridSize = (size - 2 * margin) / (Math.max(boardWidth, boardHeight) - 1);
 
@@ -989,7 +989,7 @@
       if (!snap || !snap.bestMoves) return;
       var boardHeight = snap.boardHeight || 19;
       var boardWidth = snap.boardWidth || 19;
-      var size = parseInt(boardCanvas.style.width) || boardCanvas.width;
+      var size = Math.min(rect.width, rect.height);
       var margin = coordStyle !== "off" ? size * 0.06 : size * 0.04;
       var gridSize = (size - 2 * margin) / (Math.max(boardWidth, boardHeight) - 1);
 

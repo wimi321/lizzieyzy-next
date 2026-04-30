@@ -73,7 +73,7 @@ public class WebBoardDataCollector {
     pendingUpdate.set(false);
     lastBroadcastTime = System.currentTimeMillis();
     if (server == null) return;
-    if (Lizzie.frame != null && Lizzie.frame.isTrialActive())
+    if (Lizzie.frame != null && Lizzie.frame.isAnalysisHiddenForTrial())
       return; // 试下中不广播分析（候选点针对 mainline 不对应试下盘面）
     try {
       BoardData data = Lizzie.board.getHistory().getCurrentHistoryNode().getData();
@@ -104,7 +104,7 @@ public class WebBoardDataCollector {
       double sm = data.blackToPlay ? data.scoreMean : -data.scoreMean;
       // 试下中：anchor 节点本身仍带 mainline 引擎分析，但这些分析对应真 currentNode
       // 不是 displayNode，画在 Web 上会误导。统一不广播分析字段，保持桌面端隐藏候选点的行为对称。
-      boolean trialActive = Lizzie.frame != null && Lizzie.frame.isTrialActive();
+      boolean trialActive = Lizzie.frame != null && Lizzie.frame.isAnalysisHiddenForTrial();
       JSONObject fullState =
           buildFullStateJson(
               bw,
