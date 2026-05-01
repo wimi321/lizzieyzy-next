@@ -14,6 +14,8 @@
 
 **Spotless 杂音：** 每次 mvn 跑后还原 `git checkout -- src/test/java/featurecat/lizzie/gui/SnapshotNodeRenderGateTest.java`
 
+**基线 commit：** 本计划基于 `77bb1f7`（最新 fix 之上）。早期版本提到的 `WebBoardManager` 行号（line 261/269/312/325/335/353/397）已飘移；实施时按**调用点**而非行号定位，不要依赖 plan 里的具体数字。
+
 **通用约束：**
 - commit 中文，**不**加 Co-Authored-By 等 AI 标识
 - 测试不引入 mockito
@@ -528,6 +530,12 @@ public final class LeelazEngineCommandSink implements EngineCommandSink {
 
 ⚠️ 实施时必须先 grep `Leelaz.java` 确认实际存在的 sync 方法名（如 `syncBoardStateWithEngine` / `fixEngineSync` / 类似名字）；如没有现成方法，则在 `Leelaz` 里加一个**仅做工厂动作**的 `void resyncFromHistory()`（实现仅是已有 fix-sync 路径的封装，不新增逻辑）。
 
+⚠️ **dummy 节点处理**：`WebBoardManager.cleanupMainlineDummy`（commit `4deb696`）改为：试下退出时若 anchor 下已有用户落的非 dummy 试下子，**保留** dummy 占位（防止试下子接续主线）。这意味着引擎 `forceResync` 走 `Lizzie.leelaz.<sync>` 时，BoardHistoryList 中可能存在 `BoardData.dummy == true` 的节点。**实施 Step 1 前先核对** lizzie 现有 fix-sync 路径是否会跳过 `dummy == true` 的 BoardData：
+- 若已跳过：直接调用即可
+- 若未跳过：在 `LeelazEngineCommandSink.resyncFromCurrentHistory` 里加一层包装，遍历 history 时跳过 dummy 节点；或者在 Leelaz 的 sync helper 里加 `if (data.dummy) continue;`（前者侵入小，更可取）
+
+dummy 节点定位：`grep -n "data.dummy\|getData\(\)\.dummy\|\.dummy = true" src/main/java/featurecat/lizzie/`
+
 - [ ] **Step 2：编译**
 
 ```
@@ -584,13 +592,48 @@ public synchronized boolean enterTrial(String clientId, BoardHistoryNode anchor)
 
 - [ ] **Step 3：所有 displayNode 变更 hook 加 controller 调用**
 
-修改点：
-- `applyTrialMove` → `doApplyMove` 末尾（line 397 之后）：`if (engineController != null) engineController.onTrialDisplayNodeChanged(child);`（同位置子节点复用分支 line 353 也要加 `onTrialDisplayNodeChanged(existing)`）
-- `trialNavigate` line 312 之后：`if (engineController != null) engineController.onTrialDisplayNodeChanged(s.displayNode);`
-- `trialNavigateForward` line 325 之后：同上
-- `trialReset` line 335 之后：同上
-- `exitTrial` line 261 之后：`if (engineController != null) engineController.onTrialExit(Lizzie.board.history.getCurrentHistoryNode());`
-- `forceExitTrial` line 269 之后：同 exitTrial
+⚠️ **以 commit `77bb1f7` 为基线**，`WebBoardManager` 新增了 `applyOverrideAndRefresh(node)` 私有包装器（覆盖 `overrideSink.set` + `desktopRefresher.refresh`），所有 displayNode 变更点已统一调它。Plan 早期版本写的"line 312 / 325 / 335 / 353 / 397 / 261 / 269"行号已飘移；按**调用点**而非行号定位。
+
+**最简实施方式：把 controller hook 也搬进 `applyOverrideAndRefresh`**：
+
+```java
+private void applyOverrideAndRefresh(BoardHistoryNode node) {
+  overrideSink.set(node);
+  desktopRefresher.refresh();
+  EngineFollowController c = engineController;
+  if (c != null) {
+    if (node == null) {
+      // 退出试下：node==null 表示 displayNodeOverride 被清空，引擎要切回真 mainline tail
+      BoardHistoryNode tail = mainlineTailSupplier.get();
+      if (tail != null) c.onTrialExit(tail);
+    } else {
+      // 试下中各种 displayNode 切换；onTrialEnter 仍单独在 enterTrial 里调（区分"进入"语义）
+      if (activeSession != null && node != activeSession.anchorNode || c.isTrialActive()) {
+        c.onTrialDisplayNodeChanged(node);
+      }
+    }
+  }
+}
+```
+
+⚠️ 上面分支判断要小心 enterTrial 第一次调 `applyOverrideAndRefresh(anchor)` 时 `activeSession` 已经 set 但 controller 还没 `onTrialEnter`——会误进 `onTrialDisplayNodeChanged` 分支。**正确做法**：让 `enterTrial` 在调 `applyOverrideAndRefresh(anchor)` **之前**先调 `controller.onTrialEnter(anchor)`，让 `c.isTrialActive()` 已为 true，然后 `applyOverrideAndRefresh` 中走 `onTrialDisplayNodeChanged(anchor)` 是 no-op（同节点 path 为空）。或者更简单：
+
+**推荐方案**：不把 hook 搬进 `applyOverrideAndRefresh`，而在每个调用点之后**显式**追加一行 controller 调用，按语义区分：
+
+| 调用点 | controller 调用 |
+|---|---|
+| `enterTrial`：`applyOverrideAndRefresh(anchor)` 之后 | `c.onTrialEnter(anchor)` |
+| `exitTrial` / `forceExitTrial`：`applyOverrideAndRefresh(null)` 之后 | `c.onTrialExit(mainlineTailSupplier.get())` |
+| `trialNavigate` / `trialNavigateForward` / `trialReset`：`applyOverrideAndRefresh(s.displayNode)` 之后 | `c.onTrialDisplayNodeChanged(s.displayNode)` |
+| `doApplyMove` 同位置子节点复用分支：`applyOverrideAndRefresh(existing)` 之后 | `c.onTrialDisplayNodeChanged(existing)` |
+| `doApplyMove` 新建子节点分支：`applyOverrideAndRefresh(child)` 之后 | `c.onTrialDisplayNodeChanged(child)` |
+
+每处统一用：
+
+```java
+EngineFollowController c = engineController;
+if (c != null) c.onTrialDisplayNodeChanged(<node>);  // 或 onTrialEnter / onTrialExit
+```
 
 ⚠️ `Lizzie.board.history.getCurrentHistoryNode()` 也是静态全局；为可测，把"取 mainlineTail"也抽成 `Supplier<BoardHistoryNode>` 注入：
 
@@ -611,6 +654,7 @@ public void setMainlineTailSupplier(java.util.function.Supplier<BoardHistoryNode
 @Test
 public void enterTrial_refusesWhenDesktopPlaying() {
   WebBoardManager mgr = new WebBoardManager(/* 现有 fixture */);
+  mgr.setDesktopRefresherForTest(() -> {}); // 不触发真实 EDT
   mgr.setDesktopPlayingProbe(() -> true);
   BoardHistoryNode anchor = /* 构 anchor */;
   assertFalse(mgr.enterTrial("client-1", anchor));
@@ -621,6 +665,7 @@ public void applyTrialMove_invokesControllerHook() {
   RecordingEngineCommandSink sink = new RecordingEngineCommandSink();
   EngineFollowController c = new EngineFollowController(sink);
   WebBoardManager mgr = /* fixture */;
+  mgr.setDesktopRefresherForTest(() -> {});
   mgr.setEngineFollowController(c);
   /* enterTrial + applyTrialMove */
   c.awaitIdle();
