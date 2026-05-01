@@ -26,6 +26,12 @@ public class WebBoardManager {
     void set(BoardHistoryNode node);
   }
 
+  /** 试下状态变化后通知桌面端 EDT 重绘棋盘和历史树。 */
+  @FunctionalInterface
+  public interface DesktopRefresher {
+    void refresh();
+  }
+
   public static class TrialSession {
     public final String ownerClientId;
     public final BoardHistoryNode anchorNode;
@@ -54,7 +60,15 @@ public class WebBoardManager {
   private int actualWsPort;
 
   private volatile DisplayNodeOverrideSink overrideSink =
-      node -> Lizzie.frame.setDisplayNodeOverride(node);
+      node -> {
+        if (Lizzie.frame != null) Lizzie.frame.setDisplayNodeOverride(node);
+      };
+  private volatile DesktopRefresher desktopRefresher =
+      () -> {
+        if (Lizzie.frame != null) {
+          javax.swing.SwingUtilities.invokeLater(() -> Lizzie.frame.refresh());
+        }
+      };
   private volatile TrialSession activeSession;
 
   public synchronized boolean start() {
@@ -248,7 +262,7 @@ public class WebBoardManager {
       s.mainlineDummy = dummy;
     }
     activeSession = s;
-    overrideSink.set(anchor);
+    applyOverrideAndRefresh(anchor);
     scheduleIdleTimeout(activeSession);
     return true;
   }
@@ -258,7 +272,7 @@ public class WebBoardManager {
     cancelIdleTimer(activeSession);
     cleanupMainlineDummy(activeSession);
     activeSession = null;
-    overrideSink.set(null);
+    applyOverrideAndRefresh(null);
   }
 
   public synchronized void forceExitTrial() {
@@ -266,7 +280,7 @@ public class WebBoardManager {
     cancelIdleTimer(activeSession);
     cleanupMainlineDummy(activeSession);
     activeSession = null;
-    overrideSink.set(null);
+    applyOverrideAndRefresh(null);
   }
 
   /**
@@ -309,7 +323,7 @@ public class WebBoardManager {
     } else {
       return;
     }
-    overrideSink.set(s.displayNode);
+    applyOverrideAndRefresh(s.displayNode);
     collector.onBoardStateChanged();
     collector.broadcastTrialState(s);
     touchActivity(s);
@@ -322,7 +336,7 @@ public class WebBoardManager {
     BoardHistoryNode target = s.displayNode.variations.get(childIndex);
     if (target.getData().dummy) return; // 不允许跳到 dummy 占位
     s.displayNode = target;
-    overrideSink.set(s.displayNode);
+    applyOverrideAndRefresh(s.displayNode);
     collector.onBoardStateChanged();
     collector.broadcastTrialState(s);
     touchActivity(s);
@@ -332,7 +346,7 @@ public class WebBoardManager {
     TrialSession s = activeSession;
     if (s == null || !s.ownerClientId.equals(clientId)) return;
     s.displayNode = s.anchorNode;
-    overrideSink.set(s.anchorNode);
+    applyOverrideAndRefresh(s.anchorNode);
     collector.onBoardStateChanged();
     collector.broadcastTrialState(s);
     touchActivity(s);
@@ -350,7 +364,7 @@ public class WebBoardManager {
         if (ed.dummy) continue;
         if (ed.lastMove.isPresent() && ed.lastMove.get()[0] == x && ed.lastMove.get()[1] == y) {
           s.displayNode = existing;
-          overrideSink.set(existing);
+          applyOverrideAndRefresh(existing);
           collector.onBoardStateChanged();
           collector.broadcastTrialState(s);
           return;
@@ -394,7 +408,7 @@ public class WebBoardManager {
       parent.setPreviousForChild(child);
 
       s.displayNode = child;
-      overrideSink.set(child);
+      applyOverrideAndRefresh(child);
       collector.onBoardStateChanged();
       collector.broadcastTrialState(s);
     }
@@ -430,6 +444,19 @@ public class WebBoardManager {
 
   void setOverrideSinkForTest(DisplayNodeOverrideSink sink) {
     this.overrideSink = sink;
+  }
+
+  void setDesktopRefresherForTest(DesktopRefresher refresher) {
+    this.desktopRefresher = refresher;
+  }
+
+  /**
+   * 设置 displayNode override 并通知桌面端 EDT 重绘。 因为 manager 直接操作 BoardHistoryNode.variations 而绕过了 lizzie
+   * 的常规 place/refresh 链， 必须显式触发 refresh，否则棋盘画面与历史树视图都不会更新。
+   */
+  private void applyOverrideAndRefresh(BoardHistoryNode node) {
+    overrideSink.set(node);
+    desktopRefresher.refresh();
   }
 
   void setCollectorForTest(WebBoardDataCollector c) {
