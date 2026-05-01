@@ -124,9 +124,13 @@ public class Board {
   }
 
   private void feedEngineForMainlineMove(Stone color, String coord) {
-    EngineFollowController c = Lizzie.engineFollowController;
-    if (c != null && c.isTrialActive()) return;
+    if (isEngineFollowTrialActive()) return;
     Lizzie.leelaz.playMove(color, coord);
+  }
+
+  private static boolean isEngineFollowTrialActive() {
+    EngineFollowController c = Lizzie.engineFollowController;
+    return c != null && c.isTrialActive();
   }
 
   public static int[] getCoord(int index) {
@@ -1903,11 +1907,9 @@ public class Board {
         needGenmove = true;
       } else if (!Lizzie.frame.isPlayingAgainstLeelaz
           && !Lizzie.leelaz.isInputCommand
-          && !EngineManager.isEngineGame) {
-        EngineFollowController c = Lizzie.engineFollowController;
-        if (c == null || !c.isTrialActive()) {
-          Lizzie.leelaz.playMove(color, convertCoordinatesToName(x, y), true, color.isWhite());
-        }
+          && !EngineManager.isEngineGame
+          && !isEngineFollowTrialActive()) {
+        Lizzie.leelaz.playMove(color, convertCoordinatesToName(x, y), true, color.isWhite());
       }
       if (!forSync
           && Lizzie.frame.bothSync

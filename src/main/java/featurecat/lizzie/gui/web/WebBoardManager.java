@@ -300,9 +300,7 @@ public class WebBoardManager {
     if (anchor.variations.isEmpty()) {
       BoardData dummyData = anchor.getData().clone();
       dummyData.dummy = true;
-      // 清掉 lastMove，否则 BoardRenderer 在 anchor 上画 variations[0] 的 ghost 时
-      // 会拿 dummy 的 lastMove（=anchor 的 lastMove）当幽灵候选点，渲染成
-      // "anchor 最后一手位置叠加一个候选点 ghost" 的视觉错位。
+      // 清掉 lastMove，否则 BoardRenderer 画 variations[0] 的 ghost 时会落在 anchor 真实棋子位置。
       dummyData.lastMove = java.util.Optional.empty();
       BoardHistoryNode dummy = new BoardHistoryNode(dummyData);
       anchor.variations.add(dummy);
