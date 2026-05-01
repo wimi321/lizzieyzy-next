@@ -339,6 +339,34 @@ public class WebBoardDataCollectorTest {
   }
 
   @Test
+  void buildTrialStateJsonAllNonDummyChildrenAreSiblingsWhenMainlineIsDummy() {
+    // anchor 进入试下时是 mainline 末端，插了 dummy 占位；后续两次试下落子。
+    // variations = [dummy, 子A, 子B]，期望两个 sibling marker：A=childIndex 1 label 1，B=childIndex 2 label
+    // 2。
+    BoardHistoryNode anchor = makeNodeWithLastMove(-1, -1, true);
+    BoardData dummyData = makeNodeWithLastMove(-1, -1, true).getData();
+    dummyData.dummy = true;
+    BoardHistoryNode dummy = new BoardHistoryNode(dummyData);
+    BoardHistoryNode childA = makeNodeWithLastMove(15, 15, false);
+    BoardHistoryNode childB = makeNodeWithLastMove(9, 9, false);
+    anchor.variations.add(dummy);
+    anchor.variations.add(childA);
+    anchor.variations.add(childB);
+
+    WebBoardDataCollector.TrialSessionView view =
+        new WebBoardDataCollector.TrialSessionView("c1", 0, anchor, anchor);
+    JSONObject json = WebBoardDataCollector.buildTrialStateJson(view);
+    JSONArray markers = json.getJSONArray("siblingMarkers");
+    assertEquals(2, markers.length());
+    assertEquals(1, markers.getJSONObject(0).getInt("childIndex"));
+    assertEquals("1", markers.getJSONObject(0).getString("label"));
+    assertEquals(15, markers.getJSONObject(0).getInt("x"));
+    assertEquals(2, markers.getJSONObject(1).getInt("childIndex"));
+    assertEquals("2", markers.getJSONObject(1).getString("label"));
+    assertEquals(9, markers.getJSONObject(1).getInt("x"));
+  }
+
+  @Test
   void buildTrialStateJsonCanForwardWhenVariationsExist() {
     BoardHistoryNode anchor = makeNodeWithLastMove(-1, -1, true);
     BoardHistoryNode child = makeNodeWithLastMove(3, 3, false);

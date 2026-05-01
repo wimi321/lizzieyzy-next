@@ -213,15 +213,17 @@ public class WebBoardDataCollector {
 
     JSONArray markers = new JSONArray();
     int label = 0;
-    boolean firstNonDummySeen = false;
-    for (int i = 0; i < view.displayNode.variations.size(); i++) {
+    // 主线子定义：variations[0] 是真 mainline 子（非 dummy）时跳过它；
+    // 若 variations[0] 是 dummy 占位（anchor 原本是 mainline 末端，进入试下时插的 dummy），
+    // 说明 mainline 本就没有"原主线子"，所有非 dummy 子都是分叉，全部画 marker。
+    boolean hasRealMainlineChild =
+        !view.displayNode.variations.isEmpty()
+            && !view.displayNode.variations.get(0).getData().dummy;
+    int startIdx = hasRealMainlineChild ? 1 : 0;
+    for (int i = startIdx; i < view.displayNode.variations.size(); i++) {
       BoardHistoryNode sib = view.displayNode.variations.get(i);
       BoardData sd = sib.getData();
       if (sd.dummy) continue; // 跳过 dummy 占位
-      if (!firstNonDummySeen) {
-        firstNonDummySeen = true; // 第一个非 dummy 是"主线子"，不画 sibling marker
-        continue;
-      }
       if (!sd.lastMove.isPresent()) continue;
       label++;
       int[] xy = sd.lastMove.get();
