@@ -2,9 +2,14 @@ package featurecat.lizzie.gui.web;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import featurecat.lizzie.analysis.EngineCommandSink;
+import featurecat.lizzie.analysis.EngineFollowController;
 import featurecat.lizzie.rules.Board;
 import featurecat.lizzie.rules.BoardData;
 import featurecat.lizzie.rules.BoardHistoryNode;
+import featurecat.lizzie.rules.Stone;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
@@ -150,7 +155,100 @@ public class WebBoardManagerTest {
     assertEquals(0, firstChild.variations.size());
   }
 
+  @Test
+  void enterTrialRefusesWhenDesktopPlaying() {
+    WebBoardManager m = new WebBoardManager();
+    m.setOverrideSinkForTest(n -> {});
+    m.setDesktopRefresherForTest(() -> {});
+    m.setCollectorForTest(stubCollector());
+    m.setDesktopPlayingProbe(() -> true);
+    BoardHistoryNode anchor = anyNode();
+    assertFalse(m.enterTrial("client-1", anchor));
+    assertNull(m.getTrialOwnerForTest());
+  }
+
+  @Test
+  void applyTrialMoveInvokesControllerHook() throws Exception {
+    BoardHistoryNode anchor = anyNode();
+    RecordingEngineCommandSink sink = new RecordingEngineCommandSink();
+    EngineFollowController c = new EngineFollowController(sink);
+    c.setCurrentEngineNode(anchor);
+
+    WebBoardManager m = new WebBoardManager();
+    m.setOverrideSinkForTest(n -> {});
+    m.setDesktopRefresherForTest(() -> {});
+    m.setCollectorForTest(stubCollector());
+    m.setEngineFollowController(c);
+
+    m.enterTrial("c1", anchor);
+    m.applyTrialMove("c1", 3, 3);
+    c.awaitIdle();
+
+    String coord = Board.convertCoordinatesToName(3, 3);
+    // anchor 是空棋盘 -> blackToPlay=true，下一手是 BLACK
+    assertTrue(
+        sink.calls.contains("play B " + coord), "expected 'play B " + coord + "' in " + sink.calls);
+    assertTrue(sink.calls.contains("clearBestMoves"), "expected clearBestMoves in " + sink.calls);
+  }
+
+  @Test
+  void exitTrialInvokesControllerExit() throws Exception {
+    BoardHistoryNode anchor = anyNode();
+    RecordingEngineCommandSink sink = new RecordingEngineCommandSink();
+    EngineFollowController c = new EngineFollowController(sink);
+    c.setCurrentEngineNode(anchor);
+
+    WebBoardManager m = new WebBoardManager();
+    m.setOverrideSinkForTest(n -> {});
+    m.setDesktopRefresherForTest(() -> {});
+    m.setCollectorForTest(stubCollector());
+    m.setEngineFollowController(c);
+    m.setMainlineTailSupplier(() -> anchor);
+
+    m.enterTrial("c1", anchor);
+    m.applyTrialMove("c1", 3, 3);
+    c.awaitIdle();
+    sink.calls.clear();
+
+    m.exitTrial("c1");
+    c.awaitIdle();
+
+    // exit 时 displayNode 在子节点，要 undo 一手回到 anchor，再 clearBestMoves
+    assertTrue(sink.calls.contains("undo"), "expected undo in " + sink.calls);
+    assertTrue(sink.calls.contains("clearBestMoves"), "expected clearBestMoves in " + sink.calls);
+  }
+
   // --- Helpers ---
+
+  /** 测试用 sink：与 EngineFollowControllerTest 中同名类等价，包内复制。 */
+  private static final class RecordingEngineCommandSink implements EngineCommandSink {
+    final List<String> calls = new ArrayList<>();
+
+    @Override
+    public void playMove(Stone color, String coord) {
+      calls.add("play " + (color == Stone.BLACK ? "B" : "W") + " " + coord);
+    }
+
+    @Override
+    public void undo() {
+      calls.add("undo");
+    }
+
+    @Override
+    public void clear() {
+      calls.add("clear");
+    }
+
+    @Override
+    public void clearBestMoves() {
+      calls.add("clearBestMoves");
+    }
+
+    @Override
+    public void resyncFromCurrentHistory(BoardHistoryNode target) {
+      calls.add("resync");
+    }
+  }
 
   private WebBoardManager setupTrial(String clientId, BoardHistoryNode anchor) {
     WebBoardManager m = new WebBoardManager();

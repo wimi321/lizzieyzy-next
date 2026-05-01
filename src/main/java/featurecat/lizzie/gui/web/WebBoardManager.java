@@ -1,6 +1,7 @@
 package featurecat.lizzie.gui.web;
 
 import featurecat.lizzie.Lizzie;
+import featurecat.lizzie.analysis.EngineFollowController;
 import featurecat.lizzie.rules.Board;
 import featurecat.lizzie.rules.BoardData;
 import featurecat.lizzie.rules.BoardHistoryNode;
@@ -86,6 +87,30 @@ public class WebBoardManager {
       };
   private volatile TrialSession activeSession;
 
+  private volatile EngineFollowController engineController;
+  private volatile java.util.function.BooleanSupplier desktopPlayingProbe = () -> false;
+  private volatile java.util.function.Supplier<BoardHistoryNode> mainlineTailSupplier =
+      () -> {
+        if (Lizzie.board == null) return null;
+        BoardHistoryNode n = Lizzie.board.getHistory().getCurrentHistoryNode();
+        while (n != null && n.getData() != null && n.getData().dummy) {
+          n = n.previous().orElse(null);
+        }
+        return n;
+      };
+
+  public void setEngineFollowController(EngineFollowController c) {
+    this.engineController = c;
+  }
+
+  public void setDesktopPlayingProbe(java.util.function.BooleanSupplier p) {
+    if (p != null) this.desktopPlayingProbe = p;
+  }
+
+  public void setMainlineTailSupplier(java.util.function.Supplier<BoardHistoryNode> s) {
+    if (s != null) this.mainlineTailSupplier = s;
+  }
+
   public synchronized boolean start() {
     if (running) return true;
     JSONObject cfg = Lizzie.config.config.optJSONObject("web-board");
@@ -147,10 +172,11 @@ public class WebBoardManager {
           BoardHistoryNode anchor = Lizzie.board.getHistory().getCurrentHistoryNode();
           boolean ok = enterTrial(clientId, anchor);
           if (!ok) {
+            String reason = desktopPlayingProbe.getAsBoolean() ? "engine_busy" : "in_use";
             JSONObject denied =
                 new JSONObject()
                     .put("type", "trial_denied")
-                    .put("reason", "in_use")
+                    .put("reason", reason)
                     .put("ownerClientId", getCurrentTrialOwner());
             wsServer.sendToConnection(conn, denied.toString());
           } else {
@@ -261,6 +287,9 @@ public class WebBoardManager {
   }
 
   public synchronized boolean enterTrial(String clientId, BoardHistoryNode anchor) {
+    if (desktopPlayingProbe.getAsBoolean()) {
+      return false;
+    }
     if (activeSession != null) {
       return activeSession.ownerClientId.equals(clientId);
     }
@@ -278,6 +307,8 @@ public class WebBoardManager {
     }
     activeSession = s;
     applyOverrideAndRefresh(anchor);
+    EngineFollowController c = engineController;
+    if (c != null) c.onTrialEnter(anchor);
     scheduleIdleTimeout(activeSession);
     return true;
   }
@@ -288,6 +319,11 @@ public class WebBoardManager {
     cleanupMainlineDummy(activeSession);
     activeSession = null;
     applyOverrideAndRefresh(null);
+    EngineFollowController c = engineController;
+    if (c != null) {
+      BoardHistoryNode tail = mainlineTailSupplier.get();
+      if (tail != null) c.onTrialExit(tail);
+    }
   }
 
   public synchronized void forceExitTrial() {
@@ -296,6 +332,11 @@ public class WebBoardManager {
     cleanupMainlineDummy(activeSession);
     activeSession = null;
     applyOverrideAndRefresh(null);
+    EngineFollowController c = engineController;
+    if (c != null) {
+      BoardHistoryNode tail = mainlineTailSupplier.get();
+      if (tail != null) c.onTrialExit(tail);
+    }
   }
 
   /**
@@ -353,6 +394,10 @@ public class WebBoardManager {
       return;
     }
     applyOverrideAndRefresh(s.displayNode);
+    {
+      EngineFollowController c = engineController;
+      if (c != null) c.onTrialDisplayNodeChanged(s.displayNode);
+    }
     collector.onBoardStateChanged();
     collector.broadcastTrialState(s);
     touchActivity(s);
@@ -366,6 +411,10 @@ public class WebBoardManager {
     if (target.getData().dummy) return; // 不允许跳到 dummy 占位
     s.displayNode = target;
     applyOverrideAndRefresh(s.displayNode);
+    {
+      EngineFollowController c = engineController;
+      if (c != null) c.onTrialDisplayNodeChanged(s.displayNode);
+    }
     collector.onBoardStateChanged();
     collector.broadcastTrialState(s);
     touchActivity(s);
@@ -376,6 +425,10 @@ public class WebBoardManager {
     if (s == null || !s.ownerClientId.equals(clientId)) return;
     s.displayNode = s.anchorNode;
     applyOverrideAndRefresh(s.anchorNode);
+    {
+      EngineFollowController c = engineController;
+      if (c != null) c.onTrialDisplayNodeChanged(s.anchorNode);
+    }
     collector.onBoardStateChanged();
     collector.broadcastTrialState(s);
     touchActivity(s);
@@ -394,6 +447,10 @@ public class WebBoardManager {
         if (ed.lastMove.isPresent() && ed.lastMove.get()[0] == x && ed.lastMove.get()[1] == y) {
           s.displayNode = existing;
           applyOverrideAndRefresh(existing);
+          {
+            EngineFollowController c = engineController;
+            if (c != null) c.onTrialDisplayNodeChanged(existing);
+          }
           collector.onBoardStateChanged();
           collector.broadcastTrialState(s);
           return;
@@ -438,6 +495,10 @@ public class WebBoardManager {
 
       s.displayNode = child;
       applyOverrideAndRefresh(child);
+      {
+        EngineFollowController c = engineController;
+        if (c != null) c.onTrialDisplayNodeChanged(child);
+      }
       collector.onBoardStateChanged();
       collector.broadcastTrialState(s);
     }
