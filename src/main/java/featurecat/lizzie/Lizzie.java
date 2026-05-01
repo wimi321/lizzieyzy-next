@@ -62,6 +62,7 @@ public class Lizzie {
   public static boolean readMode = false;
   private static String[] mainArgs;
   public static EngineManager engineManager;
+  public static featurecat.lizzie.analysis.EngineFollowController engineFollowController;
   public static WebBoardManager webBoardManager = new WebBoardManager();
   public static int javaVersion = 8;
   public static Float javaScaleFactor = 1.0f;

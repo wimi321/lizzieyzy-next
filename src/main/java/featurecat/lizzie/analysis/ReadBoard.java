@@ -1032,6 +1032,10 @@ public class ReadBoard {
               moveToAnyPositionWithoutTracking(node2);
             }
             Lizzie.board.placeForSync(x, y, Stone.BLACK, true);
+            {
+              EngineFollowController c = Lizzie.engineFollowController;
+              if (c != null) c.onMainlineAdvance(Lizzie.board.getHistory().getCurrentHistoryNode());
+            }
             if (node2.variations.size() > 0 && node2.variations.get(0).isEndDummay()) {
               node2.variations.add(0, node2.variations.get(node2.variations.size() - 1));
               node2.variations.remove(1);
@@ -1052,6 +1056,10 @@ public class ReadBoard {
               moveToAnyPositionWithoutTracking(node2);
             }
             Lizzie.board.placeForSync(x, y, Stone.WHITE, true);
+            {
+              EngineFollowController c = Lizzie.engineFollowController;
+              if (c != null) c.onMainlineAdvance(Lizzie.board.getHistory().getCurrentHistoryNode());
+            }
             if (node2.variations.size() > 0 && node2.variations.get(0).isEndDummay()) {
               node2.variations.add(0, node2.variations.get(node2.variations.size() - 1));
               node2.variations.remove(1);
@@ -1092,6 +1100,10 @@ public class ReadBoard {
             moveToAnyPositionWithoutTracking(node2);
           }
           Lizzie.board.placeForSync(lastX, lastY, isLastBlack ? Stone.BLACK : Stone.WHITE, true);
+          {
+            EngineFollowController c = Lizzie.engineFollowController;
+            if (c != null) c.onMainlineAdvance(Lizzie.board.getHistory().getCurrentHistoryNode());
+          }
           if (node2.variations.size() > 0 && node2.variations.get(0).isEndDummay()) {
             node2.variations.add(0, node2.variations.get(node2.variations.size() - 1));
             node2.variations.remove(1);
@@ -1992,6 +2004,10 @@ public class ReadBoard {
     historyJumpTracker.clear();
     moveToAnyPositionWithoutTracking(syncStartNode);
     Lizzie.board.placeForSync(move.x, move.y, move.color, false);
+    {
+      EngineFollowController c = Lizzie.engineFollowController;
+      if (c != null) c.onMainlineAdvance(Lizzie.board.getHistory().getCurrentHistoryNode());
+    }
     if (Lizzie.config.alwaysSyncBoardStat || showInBoard) {
       lastMoveWithoutTracking();
     }
