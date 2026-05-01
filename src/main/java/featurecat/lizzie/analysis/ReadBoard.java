@@ -47,6 +47,7 @@ public class ReadBoard {
   };
   private static final int SYNC_ANALYSIS_RESUME_DELAY_MS = 200;
   private static final int STARTUP_OUTPUT_LOG_LIMIT = 8;
+  private static final String READBOARD_UPDATE_SUPPORTED_COMMAND = "readboardUpdateSupported";
 
   public static boolean isLegacyNativeReadBoardAvailable() {
     return isLegacyNativeReadBoardAvailable(legacyNativeReadBoardDirectory());
@@ -616,6 +617,7 @@ public class ReadBoard {
             if (!isLoaded) {
               isLoaded = true;
               if (!javaReadBoard) checkVersion();
+              announceHostedUpdateSupport();
             }
           } catch (Exception ex) {
             ex.printStackTrace();
@@ -646,6 +648,11 @@ public class ReadBoard {
 
   public void parseLine(String line) {
     ensureTransientSyncStateInitialized();
+    ReadBoardUpdateRequest updateRequest = ReadBoardUpdateRequest.tryParse(line);
+    if (updateRequest != null) {
+      handleHostedUpdateRequest(updateRequest);
+      return;
+    }
     // if (Lizzie.gtpConsole.isVisible())
     // Lizzie.gtpConsole.addLine(line);
     //  System.out.println(line);
@@ -2221,6 +2228,24 @@ public class ReadBoard {
 
   public void checkVersion() {
     sendCommand("version");
+  }
+
+  public boolean shouldAnnounceHostedUpdateSupport() {
+    return usePipe && !javaReadBoard;
+  }
+
+  public void announceHostedUpdateSupport() {
+    if (shouldAnnounceHostedUpdateSupport()) {
+      sendCommand(READBOARD_UPDATE_SUPPORTED_COMMAND);
+    }
+  }
+
+  private void handleHostedUpdateRequest(ReadBoardUpdateRequest request) {
+    LizzieFrame frame = Lizzie.frame;
+    if (frame == null) {
+      return;
+    }
+    frame.handleReadBoardHostedUpdateRequest(this, request);
   }
 
   private void releaseHostedResources() {

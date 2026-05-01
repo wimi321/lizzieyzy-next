@@ -18,6 +18,8 @@ import featurecat.lizzie.analysis.KataEstimate;
 import featurecat.lizzie.analysis.Leelaz;
 import featurecat.lizzie.analysis.MoveData;
 import featurecat.lizzie.analysis.ReadBoard;
+import featurecat.lizzie.analysis.ReadBoardUpdateInstaller;
+import featurecat.lizzie.analysis.ReadBoardUpdateRequest;
 import featurecat.lizzie.analysis.TrackingEngine;
 import featurecat.lizzie.rules.Board;
 import featurecat.lizzie.rules.BoardData;
@@ -275,6 +277,8 @@ public class LizzieFrame extends JFrame {
   private Object readBoardRestartLock = new Object();
   private ReadBoard readBoardRestartTarget;
   private ReadBoardFactory pendingReadBoardFactory;
+  private boolean hostedReadBoardUpdateInProgress;
+  private final ReadBoardUpdateInstaller readBoardUpdateInstaller = new ReadBoardUpdateInstaller();
   public ConfigDialog2 configDialog2;
   public boolean isShowingPolicy = false;
   public boolean isShowingHeatmap = false;
@@ -2328,15 +2332,20 @@ public class LizzieFrame extends JFrame {
 
   private void replaceReadBoard(ReadBoardFactory factory) {
     ReadBoard existingReadBoard = readBoard;
-    if (existingReadBoard != null) {
-      if (queueReadBoardRestart(existingReadBoard, factory)) {
+    if (existingReadBoard == null) {
+      if (queueReadBoardStartIfRestarting(factory)) {
         return;
       }
-      shutdownReadBoard(existingReadBoard);
-      factory = finishReadBoardRestart(existingReadBoard);
-      if (factory == null) {
-        return;
-      }
+      startReadBoard(factory);
+      return;
+    }
+    if (queueReadBoardRestart(existingReadBoard, factory)) {
+      return;
+    }
+    shutdownReadBoard(existingReadBoard);
+    factory = finishReadBoardRestart(existingReadBoard);
+    if (factory == null) {
+      return;
     }
     startReadBoard(factory);
   }
@@ -2394,14 +2403,153 @@ public class LizzieFrame extends JFrame {
     return new ReadBoard(true, false);
   }
 
+  public void handleReadBoardHostedUpdateRequest(
+      ReadBoard sourceReadBoard, ReadBoardUpdateRequest request) {
+    if (sourceReadBoard == null || request == null) {
+      return;
+    }
+    Thread prepareThread =
+        new Thread(
+            () -> prepareHostedReadBoardUpdate(sourceReadBoard, request),
+            "lizzie-readboard-update-prepare");
+    prepareThread.start();
+  }
+
+  private void prepareHostedReadBoardUpdate(
+      ReadBoard sourceReadBoard, ReadBoardUpdateRequest request) {
+    try {
+      readBoardUpdateInstaller.validateRequest(request);
+    } catch (IOException validationFailure) {
+      sourceReadBoard.sendCommand(
+          "readboardUpdateFailed\t" + sanitizeHostedUpdateMessage(validationFailure.getMessage()));
+      return;
+    }
+
+    SwingUtilities.invokeLater(() -> confirmHostedReadBoardUpdate(sourceReadBoard, request));
+  }
+
+  private void confirmHostedReadBoardUpdate(
+      ReadBoard sourceReadBoard, ReadBoardUpdateRequest request) {
+    if (sourceReadBoard != readBoard) {
+      sendHostedUpdateFailed(
+          sourceReadBoard,
+          Lizzie.resourceBundle.getString("ReadBoard.updateInstallNoLongerActive"));
+      return;
+    }
+    int decision =
+        JOptionPane.showConfirmDialog(
+            this,
+            String.format(
+                Lizzie.resourceBundle.getString("ReadBoard.updateInstallConfirmMessage"),
+                request.versionTag()),
+            Lizzie.resourceBundle.getString("ReadBoard.updateInstallConfirmTitle"),
+            JOptionPane.YES_NO_OPTION,
+            JOptionPane.WARNING_MESSAGE);
+    if (decision != JOptionPane.YES_OPTION) {
+      sourceReadBoard.sendCommand("readboardUpdateCancelled");
+      return;
+    }
+    if (!beginHostedReadBoardUpdate(sourceReadBoard)) {
+      sendHostedUpdateFailed(
+          sourceReadBoard,
+          Lizzie.resourceBundle.getString("ReadBoard.updateInstallNoLongerActive"));
+      return;
+    }
+
+    Thread installThread =
+        new Thread(
+            () -> installHostedReadBoardUpdate(sourceReadBoard, request),
+            "lizzie-readboard-update-install");
+    installThread.start();
+  }
+
+  private void installHostedReadBoardUpdate(
+      ReadBoard sourceReadBoard, ReadBoardUpdateRequest request) {
+    sourceReadBoard.sendCommand("readboardUpdateInstalling");
+    File installDirectory = ReadBoard.nativeReadBoardDirectoryForDiagnostics();
+    try {
+      shutdownReadBoard(sourceReadBoard);
+      readBoardUpdateInstaller.install(request, installDirectory.toPath());
+      SwingUtilities.invokeLater(
+          () ->
+              restartReadBoardAfterHostedUpdate(
+                  sourceReadBoard, request, "ReadBoard.updateInstallSucceeded", null));
+    } catch (IOException installFailure) {
+      SwingUtilities.invokeLater(
+          () ->
+              restartReadBoardAfterHostedUpdate(
+                  sourceReadBoard,
+                  request,
+                  "ReadBoard.updateInstallFailed",
+                  installFailure.getMessage()));
+    }
+  }
+
+  private void restartReadBoardAfterHostedUpdate(
+      ReadBoard sourceReadBoard, ReadBoardUpdateRequest request, String messageKey, String detail) {
+    try {
+      ReadBoardFactory nextFactory = finishReadBoardRestart(sourceReadBoard);
+      if (nextFactory != null) {
+        startReadBoard(nextFactory);
+      }
+    } finally {
+      String message =
+          detail == null
+              ? String.format(Lizzie.resourceBundle.getString(messageKey), request.versionTag())
+              : String.format(
+                  Lizzie.resourceBundle.getString(messageKey), request.versionTag(), detail);
+      Utils.showMsg(message);
+    }
+  }
+
+  private static String sanitizeHostedUpdateMessage(String message) {
+    if (message == null || message.isBlank()) {
+      return "readboard update failed";
+    }
+    return message.replace('\r', ' ').replace('\n', ' ').replace('\t', ' ').trim();
+  }
+
+  private static void sendHostedUpdateFailed(ReadBoard sourceReadBoard, String message) {
+    sourceReadBoard.sendCommand("readboardUpdateFailed\t" + sanitizeHostedUpdateMessage(message));
+  }
+
   private boolean queueReadBoardRestart(ReadBoard existingReadBoard, ReadBoardFactory factory) {
     synchronized (readBoardRestartLock) {
+      if (hostedReadBoardUpdateInProgress) {
+        return true;
+      }
       pendingReadBoardFactory = factory;
-      if (readBoardRestartTarget == existingReadBoard) {
+      if (readBoardRestartTarget != null) {
         return true;
       }
       readBoardRestartTarget = existingReadBoard;
       return false;
+    }
+  }
+
+  private boolean queueReadBoardStartIfRestarting(ReadBoardFactory factory) {
+    synchronized (readBoardRestartLock) {
+      if (readBoardRestartTarget == null) {
+        return false;
+      }
+      if (!hostedReadBoardUpdateInProgress) {
+        pendingReadBoardFactory = factory;
+      }
+      return true;
+    }
+  }
+
+  private boolean beginHostedReadBoardUpdate(ReadBoard existingReadBoard) {
+    synchronized (readBoardRestartLock) {
+      if (hostedReadBoardUpdateInProgress
+          || readBoardRestartTarget != null
+          || readBoard != existingReadBoard) {
+        return false;
+      }
+      readBoardRestartTarget = existingReadBoard;
+      pendingReadBoardFactory = this::createNativeReadBoard;
+      hostedReadBoardUpdateInProgress = true;
+      return true;
     }
   }
 
@@ -2410,12 +2558,14 @@ public class LizzieFrame extends JFrame {
       if (readBoard != null && readBoard != existingReadBoard) {
         readBoardRestartTarget = null;
         pendingReadBoardFactory = null;
+        hostedReadBoardUpdateInProgress = false;
         return null;
       }
       readBoard = null;
       readBoardRestartTarget = null;
       ReadBoardFactory nextFactory = pendingReadBoardFactory;
       pendingReadBoardFactory = null;
+      hostedReadBoardUpdateInProgress = false;
       return nextFactory;
     }
   }
