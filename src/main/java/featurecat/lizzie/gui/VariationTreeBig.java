@@ -173,7 +173,7 @@ public class VariationTreeBig {
               g.drawString(
                   String.valueOf(moveNum), moveNum >= 100 ? curposx - 3 : curposx, posy + diff - 5);
           }
-          if (startNode == Lizzie.board.getHistory().getCurrentHistoryNode()) {
+          if (startNode == Lizzie.frame.getDisplayNode()) {
             if (blunderColor != Color.WHITE) g.setColor(reverseColor(blunderColor));
             else g.setColor(Color.RED);
             g.fillOval(
@@ -187,7 +187,7 @@ public class VariationTreeBig {
           g.setColor(Color.BLACK);
           g.setStroke(new BasicStroke(1f));
           g.drawRect(curposx - 1, posy - 1, DOT_DIAM + 1, DOT_DIAM + 1);
-          if (cur == Lizzie.board.getHistory().getCurrentHistoryNode()) {
+          if (cur == Lizzie.frame.getDisplayNode()) {
             g.setColor(Color.RED);
             g.fillRect(
                 curposx + rectBorder,
@@ -337,7 +337,7 @@ public class VariationTreeBig {
     int xoffset = 20;
     laneUsageList.clear();
 
-    curMove = Lizzie.board.getHistory().getCurrentHistoryNode();
+    curMove = Lizzie.frame.getDisplayNode();
     // curMove = Lizzie.board.getHistory().getStart();
     // Is current move a variation? If so, find top of variation
     BoardHistoryNode top = curMove.findTop();

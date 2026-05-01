@@ -175,7 +175,7 @@ public class VariationTree {
             g.drawString(
                 String.valueOf(moveNum), moveNum >= 100 ? curposx - 3 : curposx, posy + diff - 5);
         }
-        if (startNode == Lizzie.board.getHistory().getCurrentHistoryNode()) {
+        if (startNode == Lizzie.frame.getDisplayNode()) {
           //    if (blunderColor != Color.WHITE) g.setColor(reverseColor(blunderColor));
           //   else
           g.setColor(Color.BLACK);
@@ -199,7 +199,7 @@ public class VariationTree {
         g.setColor(Color.BLACK);
         g.setStroke(new BasicStroke(1f));
         g.drawRect(curposx - 1, posy - 1, DOT_DIAM + 1, DOT_DIAM + 1);
-        if (cur == Lizzie.board.getHistory().getCurrentHistoryNode()) {
+        if (cur == Lizzie.frame.getDisplayNode()) {
           g.setColor(Color.RED);
           g.fillRect(
               curposx + rectBorder, posy + rectBorder, DOT_DIAM - rect_DIAM, DOT_DIAM - rect_DIAM);
@@ -257,7 +257,7 @@ public class VariationTree {
                 RING_DIAM);
           else g.fillOval(curposx + diff, posy + diff, diam, diam);
         }
-        if (cur == Lizzie.board.getHistory().getCurrentHistoryNode()) {
+        if (cur == Lizzie.frame.getDisplayNode()) {
           // if (blunderColor != Color.WHITE) g.setColor(reverseColor(blunderColor));
           // else
           g.setColor(Color.BLACK);
