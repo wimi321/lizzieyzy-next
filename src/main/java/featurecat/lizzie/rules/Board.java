@@ -1900,7 +1900,8 @@ public class Board {
         Lizzie.leelaz.playMovePonder(color.isBlack() ? "B" : "W", move);
         LizzieFrame.toolbar.isPkStop = false;
       } else if (Lizzie.frame.isPlayingAgainstLeelaz
-          && Lizzie.frame.playerIsBlack == getData().blackToPlay) {
+          && Lizzie.frame.playerIsBlack == getData().blackToPlay
+          && !isEngineFollowTrialActive()) {
         if (Lizzie.engineManager.playingAgainstHumanEngineCountDown != null)
           Lizzie.engineManager.playingAgainstHumanEngineCountDown.sendTimeLeft(false);
         Lizzie.leelaz.playMove(color, convertCoordinatesToName(x, y), true, color.isWhite());
