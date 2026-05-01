@@ -12,6 +12,7 @@ import featurecat.lizzie.rules.Board;
 import featurecat.lizzie.rules.BoardData;
 import featurecat.lizzie.rules.BoardHistoryList;
 import featurecat.lizzie.rules.Movelist;
+import featurecat.lizzie.rules.SGFParser;
 import featurecat.lizzie.rules.Stone;
 import featurecat.lizzie.rules.Zobrist;
 import java.io.IOException;
@@ -54,6 +55,30 @@ class AnalysisEngineRequestTest {
       assertEquals("W", request.getString("initialPlayer"));
       assertEquals(List.of(), request.getJSONArray("moves").toList());
       assertEquals(List.of(0), request.getJSONArray("analyzeTurns").toList());
+    }
+  }
+
+  @Test
+  void foxHandicapSgfAnalysisRequestKeepsSetupStonesAndZeroKomi() throws Exception {
+    try (TestEnvironment env = TestEnvironment.open()) {
+      Board parseBoard =
+          boardWithHistory(new BoardHistoryList(BoardData.empty(BOARD_SIZE, BOARD_SIZE)));
+      parseBoard.isLoadingFile = true;
+      BoardHistoryList history = SGFParser.parseSgf("(;SZ[3]KM[0]HA[2]AB[aa]AB[ca];W[ba])", true);
+      boardWithHistory(history);
+      history.next();
+      TrackingAnalysisEngine engine = TrackingAnalysisEngine.create();
+
+      engine.sendRequest(history.getCurrentHistoryNode());
+
+      JSONObject request = engine.singleRequest();
+      assertEquals(
+          Set.of("B:A3", "B:C3"),
+          stoneSet(request.getJSONArray("initialStones")),
+          "Fox handicap imports must send root handicap stones to KataGo analysis.");
+      assertEquals(List.of(List.of("W", "B3")), request.getJSONArray("moves").toList());
+      assertEquals(0.0, request.getDouble("komi"), 0.0001);
+      assertEquals(2, history.getGameInfo().getHandicap());
     }
   }
 
@@ -655,10 +680,18 @@ class AnalysisEngineRequestTest {
       config.autoLoadKataRules = false;
       config.kataRules = "";
       config.analysisEnginePreLoad = false;
+      config.readKomi = true;
       Lizzie.config = config;
 
       TrackingLizzieFrame frame = allocate(TrackingLizzieFrame.class);
       frame.isBatchAnalysisMode = false;
+      frame.priorityMoveCoords = new ArrayList<>();
+      frame.clickOrder = -1;
+      frame.selectedorder = -1;
+      frame.currentRow = -1;
+      frame.clickbadmove = LizzieFrame.outOfBoundCoordinate;
+      frame.mouseOverCoordinate = LizzieFrame.outOfBoundCoordinate;
+      frame.suggestionclick = LizzieFrame.outOfBoundCoordinate;
       Lizzie.frame = frame;
       Lizzie.leelaz = allocate(Leelaz.class);
 
@@ -691,6 +724,9 @@ class AnalysisEngineRequestTest {
 
     @Override
     public void flashAutoAnaSaveAndLoad() {}
+
+    @Override
+    public void clearKataEstimate() {}
   }
 
   private static final class TrackingAnalysisEngine extends AnalysisEngine {

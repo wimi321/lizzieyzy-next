@@ -124,6 +124,28 @@ class LizzieFrameRegressionTest {
   }
 
   @Test
+  void openBoardSyncDoesNotStartReplacementWhileRestartStillReserved() throws Exception {
+    TestEnvironment env = TestEnvironment.open();
+    try {
+      TrackingFrame frame = newTrackingFrame();
+      frame.nativeBoardSyncSupported = true;
+      frame.nativeReadBoardAvailable = true;
+      setField(frame, "readBoardRestartTarget", fakeReadBoard());
+      Lizzie.frame = frame;
+
+      SwingUtilities.invokeAndWait(frame::openBoardSync);
+
+      assertEquals(0, frame.nativeCreateCount.get());
+      assertEquals(0, frame.javaCreateCount.get());
+      assertEquals(0, frame.createCount.get());
+      assertTrue(getField(frame, "pendingReadBoardFactory") != null);
+    } finally {
+      drainEdt();
+      env.close();
+    }
+  }
+
+  @Test
   void autoQuickAnalyzeIgnoresSnapshotMarkersInMoveCount() throws Exception {
     TestEnvironment env = TestEnvironment.open();
     try {
@@ -310,9 +332,19 @@ class LizzieFrameRegressionTest {
   }
 
   private static void initReadBoardRestartLock(LizzieFrame frame) throws Exception {
-    Field field = LizzieFrame.class.getDeclaredField("readBoardRestartLock");
+    setField(frame, "readBoardRestartLock", new Object());
+  }
+
+  private static Object getField(Object target, String name) throws Exception {
+    Field field = LizzieFrame.class.getDeclaredField(name);
     field.setAccessible(true);
-    field.set(frame, new Object());
+    return field.get(target);
+  }
+
+  private static void setField(Object target, String name, Object value) throws Exception {
+    Field field = LizzieFrame.class.getDeclaredField(name);
+    field.setAccessible(true);
+    field.set(target, value);
   }
 
   private static final class TestEnvironment implements AutoCloseable {
