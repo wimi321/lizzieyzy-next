@@ -284,13 +284,27 @@ public class WebBoardManager {
   }
 
   /**
-   * 退出试下时清掉 enter 时插入的 dummy 占位。 若同步管线 (ReadBoard line ~1035) 已经把 dummy 从 variations[0]
-   * 替换走，本方法无副作用。 否则把 dummy 从 anchor.variations 中移除。
+   * 退出试下时清理 enter 时插入的 dummy 占位。
+   *
+   * <p>仅当用户进入试下后**没有落任何子**（anchor.variations 里只有 dummy）才删 dummy 让 anchor 回到原来"无主线下一手"的状态。否则保留 dummy
+   * 当 mainline 占位，让试下子永远停在 variations[1+] 当分叉——若退出时把 dummy 删了，试下子会接续 mainline 污染主线。
+   *
+   * <p>保留的 dummy 是 EndDummay（dummy=true && variations.isEmpty()），lizzie 现有渲染会跳过它
+   * （VariationTree.java:222），同步管线 ReadBoard 推新主线时会自动替换它（line ~1035）。
    */
   private static void cleanupMainlineDummy(TrialSession s) {
     BoardHistoryNode dummy = s.mainlineDummy;
     if (dummy == null) return;
-    s.anchorNode.variations.remove(dummy);
+    boolean hasNonDummy = false;
+    for (BoardHistoryNode v : s.anchorNode.variations) {
+      if (v != dummy && !v.getData().dummy) {
+        hasNonDummy = true;
+        break;
+      }
+    }
+    if (!hasNonDummy) {
+      s.anchorNode.variations.remove(dummy);
+    }
     s.mainlineDummy = null;
   }
 
