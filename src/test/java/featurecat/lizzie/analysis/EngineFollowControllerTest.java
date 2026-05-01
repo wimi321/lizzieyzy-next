@@ -5,7 +5,6 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import featurecat.lizzie.rules.Board;
 import featurecat.lizzie.rules.BoardData;
 import featurecat.lizzie.rules.BoardHistoryNode;
 import featurecat.lizzie.rules.Stone;
@@ -125,7 +124,7 @@ public class EngineFollowControllerTest {
   }
 
   @Test
-  public void displayNodeChanged_oneForward_emitsOnePlay() throws Exception {
+  public void displayNodeChanged_oneForward_forceResyncs() throws Exception {
     BoardHistoryNode anchor = new BoardHistoryNode(mkMove(0, 0, Stone.BLACK));
     BoardHistoryNode child = new BoardHistoryNode(mkMove(3, 3, Stone.WHITE));
     anchor.variations.add(child);
@@ -138,12 +137,13 @@ public class EngineFollowControllerTest {
     c.onTrialDisplayNodeChanged(child);
     c.awaitIdle();
 
-    String coord = Board.convertCoordinatesToName(3, 3);
-    assertEquals(Arrays.asList("play W " + coord, "clearBestMoves"), sink.calls);
+    // 试下切 displayNode 一律 forceResync，避免 sync 旁路改写引擎位置后 applySwitch 用错位游标
+    // 算出错误 path（重复 play / 漏 undo）导致吞子。
+    assertEquals(Arrays.asList("resync", "clearBestMoves"), sink.calls);
   }
 
   @Test
-  public void displayNodeChanged_oneBack_emitsOneUndo() throws Exception {
+  public void displayNodeChanged_oneBack_forceResyncs() throws Exception {
     BoardHistoryNode anchor = new BoardHistoryNode(mkMove(0, 0, Stone.BLACK));
     BoardHistoryNode child = new BoardHistoryNode(mkMove(3, 3, Stone.WHITE));
     anchor.variations.add(child);
@@ -156,11 +156,11 @@ public class EngineFollowControllerTest {
     c.onTrialDisplayNodeChanged(anchor);
     c.awaitIdle();
 
-    assertEquals(Arrays.asList("undo", "clearBestMoves"), sink.calls);
+    assertEquals(Arrays.asList("resync", "clearBestMoves"), sink.calls);
   }
 
   @Test
-  public void displayNodeChanged_siblingJump_emitsUndoThenPlay() throws Exception {
+  public void displayNodeChanged_siblingJump_forceResyncs() throws Exception {
     BoardHistoryNode root = new BoardHistoryNode(mkMove(0, 0, Stone.BLACK));
     BoardHistoryNode left = new BoardHistoryNode(mkMove(3, 3, Stone.BLACK));
     BoardHistoryNode right = new BoardHistoryNode(mkMove(15, 15, Stone.BLACK));
@@ -176,8 +176,7 @@ public class EngineFollowControllerTest {
     c.onTrialDisplayNodeChanged(right);
     c.awaitIdle();
 
-    String coord = Board.convertCoordinatesToName(15, 15);
-    assertEquals(Arrays.asList("undo", "play B " + coord, "clearBestMoves"), sink.calls);
+    assertEquals(Arrays.asList("resync", "clearBestMoves"), sink.calls);
   }
 
   @Test
@@ -199,7 +198,7 @@ public class EngineFollowControllerTest {
   }
 
   @Test
-  public void mainlineAdvance_outsideTrial_emitsPlay() throws Exception {
+  public void mainlineAdvance_outsideTrial_updatesCursorWithoutGtp() throws Exception {
     BoardHistoryNode root = new BoardHistoryNode(mkMove(0, 0, Stone.BLACK));
     BoardHistoryNode child = new BoardHistoryNode(mkMove(3, 3, Stone.WHITE));
     root.variations.add(child);
@@ -211,8 +210,13 @@ public class EngineFollowControllerTest {
     c.onMainlineAdvance(child);
     c.awaitIdle();
 
-    String coord = Board.convertCoordinatesToName(3, 3);
-    assertEquals(Arrays.asList("play W " + coord, "clearBestMoves"), sink.calls);
+    // Board.place 已在 sync 路径上 play 过；controller 仅对账游标，不再发命令避免双发。
+    assertTrue(sink.calls.isEmpty(), "expected no calls but got " + sink.calls);
+
+    // 游标已对齐到 child：进入 trial 时不应触发 forceResync。
+    c.onTrialEnter(child);
+    c.awaitIdle();
+    assertTrue(sink.calls.isEmpty(), "expected no calls but got " + sink.calls);
   }
 
   @Test

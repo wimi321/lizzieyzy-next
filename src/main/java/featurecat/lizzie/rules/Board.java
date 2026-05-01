@@ -1904,7 +1904,10 @@ public class Board {
       } else if (!Lizzie.frame.isPlayingAgainstLeelaz
           && !Lizzie.leelaz.isInputCommand
           && !EngineManager.isEngineGame) {
-        Lizzie.leelaz.playMove(color, convertCoordinatesToName(x, y), true, color.isWhite());
+        EngineFollowController c = Lizzie.engineFollowController;
+        if (c == null || !c.isTrialActive()) {
+          Lizzie.leelaz.playMove(color, convertCoordinatesToName(x, y), true, color.isWhite());
+        }
       }
       if (!forSync
           && Lizzie.frame.bothSync

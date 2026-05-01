@@ -58,20 +58,28 @@ public class EngineFollowController {
   }
 
   public void onTrialDisplayNodeChanged(BoardHistoryNode node) {
-    executor.submit(() -> applySwitch(node));
+    // 试下期间 sync 旁路（rebuildFromSnapshot / Board.place / tryApplySingleMoveRecovery）
+    // 会反复改写 board 历史与引擎位置，currentEngineNode 跟踪不可靠。
+    // 每次切换都强制按当前历史重建，避免 applySwitch 用错位游标发出错误 play 序列导致吞子。
+    executor.submit(() -> forceResync(node));
   }
 
   public void onTrialExit(BoardHistoryNode mainlineTail) {
     executor.submit(
         () -> {
-          applySwitch(mainlineTail);
+          // 试下期间 sync 路径（Board.place / nextMove / nextVariation / tryApplySingleMoveRecovery）
+          // 会绕过 controller 直接动引擎，currentEngineNode 与实际引擎位置可能错位。
+          // 退出时一律强制重建（clear_board + loadsgf 当前历史），避免 applySwitch 用错位的 path
+          // 发出错误的 undo/play 序列导致引擎位置错乱。
+          forceResync(mainlineTail);
           trialActive = false;
         });
   }
 
   public void onMainlineAdvance(BoardHistoryNode newTail) {
     if (trialActive) return;
-    executor.submit(() -> applySwitch(newTail));
+    // 同步路径上 Board.place 已经把 play 发给引擎，这里只对账游标，避免重复 play 导致 illegal move。
+    executor.submit(() -> currentEngineNode = newTail);
   }
 
   /** 测试钩子：等所有已派发任务跑完。不 shutdown executor。 */
