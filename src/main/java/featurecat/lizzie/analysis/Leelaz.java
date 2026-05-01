@@ -759,7 +759,8 @@ public class Leelaz {
     }
     currentTotalPlayouts = MoveData.getPlayouts(bestMoves);
     if (Lizzie.config.isDoubleEngineMode() && Lizzie.leelaz2 != null && this == Lizzie.leelaz2)
-      Lizzie.board
+      Lizzie.frame
+          .getDisplayNode()
           .getData()
           .tryToSetBestMoves2(bestMoves, bestMovesEnginename, true, currentTotalPlayouts);
     else {
@@ -772,12 +773,14 @@ public class Leelaz {
                 && this
                     == Lizzie.engineManager.engineList.get(
                         EngineManager.engineGameInfo.whiteEngineIndex)) {
-          Lizzie.board
+          Lizzie.frame
+              .getDisplayNode()
               .getData()
               .tryToSetBestMoves(bestMoves, bestMovesEnginename, true, currentTotalPlayouts);
         }
       } else
-        Lizzie.board
+        Lizzie.frame
+            .getDisplayNode()
             .getData()
             .tryToSetBestMoves(bestMoves, bestMovesEnginename, true, currentTotalPlayouts);
     }
@@ -799,7 +802,8 @@ public class Leelaz {
     }
     currentTotalPlayouts = MoveData.getPlayouts(bestMoves);
     if (Lizzie.config.isDoubleEngineMode() && Lizzie.leelaz2 != null && this == Lizzie.leelaz2)
-      Lizzie.board
+      Lizzie.frame
+          .getDisplayNode()
           .getData()
           .tryToSetBestMoves2(bestMoves, bestMovesEnginename, true, currentTotalPlayouts);
     else {
@@ -813,12 +817,14 @@ public class Leelaz {
                     == Lizzie.engineManager.engineList.get(
                         EngineManager.engineGameInfo.whiteEngineIndex)) {
           // if(!isModifying)
-          Lizzie.board
+          Lizzie.frame
+              .getDisplayNode()
               .getData()
               .tryToSetBestMoves(bestMoves, bestMovesEnginename, true, currentTotalPlayouts);
         }
       } else
-        Lizzie.board
+        Lizzie.frame
+            .getDisplayNode()
             .getData()
             .tryToSetBestMoves(bestMoves, bestMovesEnginename, true, currentTotalPlayouts);
     }
@@ -854,7 +860,8 @@ public class Leelaz {
       }
     } else estimateArray = null;
     if (Lizzie.config.isDoubleEngineMode() && Lizzie.leelaz2 != null && this == Lizzie.leelaz2)
-      Lizzie.board
+      Lizzie.frame
+          .getDisplayNode()
           .getData()
           .tryToSetBestMoves2(
               bestMoves, bestMovesEnginename, true, currentTotalPlayouts, estimateArray);
@@ -869,13 +876,15 @@ public class Leelaz {
                     == Lizzie.engineManager.engineList.get(
                         EngineManager.engineGameInfo.whiteEngineIndex)) {
           //	if(!isModifying)
-          Lizzie.board
+          Lizzie.frame
+              .getDisplayNode()
               .getData()
               .tryToSetBestMoves(
                   bestMoves, bestMovesEnginename, true, currentTotalPlayouts, estimateArray);
         }
       } else
-        Lizzie.board
+        Lizzie.frame
+            .getDisplayNode()
             .getData()
             .tryToSetBestMoves(
                 bestMoves, bestMovesEnginename, true, currentTotalPlayouts, estimateArray);
