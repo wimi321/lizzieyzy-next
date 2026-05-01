@@ -399,7 +399,12 @@ public void displayNodeChanged_oneForward_emitsOnePlay() throws Exception {
 }
 ```
 
-⚠️ 坐标 `D17` 计算：x=3,y=3 在 19 路上 → A19 是 (0,0)，所以 (3,3) → D16？需要按 lizzie 现有 `Board.convertCoordinatesToName` / `BoardRenderer` 的转换逻辑核实。在测试里用一个稳定的小工具方法 `coord(x, y)` 算预期值，避免硬编码出错。**实际写测试时先 grep `convertCoordinatesToName`，调它算预期值。**
+⚠️ 坐标 `D17` 计算：x=3,y=3 在 19 路上 → A19 是 (0,0)，所以 (3,3) → D16？需要按 lizzie 现有 `Board.convertCoordinatesToName` / `BoardRenderer` 的转换逻辑核实。**测试里不要硬编码字符串**——在 setup 里调 `Board.convertCoordinatesToName(x, y)` 算预期，断言用变量：
+
+```java
+String expectedCoord = featurecat.lizzie.rules.Board.convertCoordinatesToName(3, 3);
+assertEquals(java.util.Arrays.asList("play B " + expectedCoord, "clearBestMoves"), sink.calls);
+```
 
 补充测试：
 
@@ -452,8 +457,10 @@ public void enter_whenEngineNodeMismatch_forceResyncs() throws Exception {
 - `onTrialExit(target)`：submit task → 与 onTrialDisplayNodeChanged 同逻辑，最后 `trialActive = false`
 - `onMainlineAdvance(newTail)`：若 `trialActive` 直接 return；否则 submit task：算 path 推进 + 更新 `currentEngineNode`
 - `forceResync(target)`：catch 内部异常打日志，调用 `sink.resyncFromCurrentHistory(target)` → `clearBestMoves` → `currentEngineNode = target`
+  - **注**：spec 决策 3 早期措辞写"clear()+从根全量 play"。本计划采用委托方案（与 SNAPSHOT 段一致）：controller **不**自己跑 clear+playback，全量重 sync 由 `sink.resyncFromCurrentHistory` 委托给 Leelaz 现有 fix-sync 路径。`EngineCommandSink.clear()` 接口仍保留以备特殊场景，但 controller 自身不调用
 - 任何 task 中 sink 抛异常 → catch 调 `forceResync(目标 node)`；forceResync 自身抛异常 → 记 ERROR 日志（用 `org.slf4j.Logger`，仿照 WebBoardManager 的日志风格），不再重抛
 - `awaitIdle()` 测试钩子：submit 一个空任务并 `.get(2, SECONDS)`（不要 shutdown，方便后续测试继续用）
+- `setCurrentEngineNode(node)`：仅供启动入口（Task 8）调用一次做初始化对齐；assert `!trialActive`
 
 - [ ] **Step 4：跑测试确认通过**
 
@@ -619,6 +626,14 @@ public void applyTrialMove_invokesControllerHook() {
   c.awaitIdle();
   // 断言 sink.calls 含 "play X Y" + "clearBestMoves"
 }
+
+@Test
+public void idleTimeout_invokesControllerExitHook() throws Exception {
+  // 直接在 fixture 里把 idle timeout 缩到 0 / 提供可触发钩子（sleep 测试不可取，会 flake）
+  // 推荐做法：在 WebBoardManager 加 package-private `triggerIdleTimeoutForTest(TrialSession s)`
+  // 或把 idleTimeout 回调抽成 Runnable 让测试直接调
+  // 断言：sink.calls 包含 onTrialExit 对应的命令序列（试下深度 1 时为 1 次 undo + clearBestMoves）
+}
 ```
 
 ⚠️ 现有 `WebBoardManagerTest` 的 fixture 通常需要 `WebBoardDataCollector` mock/fake；沿用现有测试模式，不引入 mockito。
@@ -664,29 +679,52 @@ private void feedEngineForMainlineMove(Stone color, String coord) {
 
 `Lizzie.engineFollowController` 是 Task 8 加的静态字段。
 
-- [ ] **Step 2：把 `Board.java` 中所有 mainline 同步路径的 `Lizzie.leelaz.playMove(...)` 调用替换为 `feedEngineForMainlineMove(...)`**
+- [ ] **Step 2：把 `Board.java` 中 mainline 同步路径的 `Lizzie.leelaz.playMove(...)` 调用替换为 `feedEngineForMainlineMove(...)`**
 
-grep 结果（前面已收集，约 13 处）。**不要替换的**：
-- 用户落子路径（spec 决策 8 已 guard，但代码上无法区分 mainline / user 路径时优先保守；判断方式：看上下文有无 `LizzieFrame.displayNodeOverride != null` guard，已 guard 的路径无所谓改不改）
-- 注释行（line 1732 / 2072）
-- `playMovePonder`（line 1889，不是 playMove）
-- SGF 加载路径（如果有，通常调用 loadsgf 而非 playMove）
+**callsite 分类查表（需替换 = 走 mainline 推进路径）：**
 
-替换前用 `git diff` 逐行核对每处上下文，确保改的是 mainline 推进路径。
+| 行号 | 上下文 | 分类 | 处理 |
+|---|---|---|---|
+| 985  | `placeForSync` 黑棋分支 | mainline 同步 | **替换** |
+| 1032 | `placeForSync` 白棋分支 | mainline 同步 | **替换** |
+| 1584 | pass 路径，前置 `!EngineManager.isEngineGame` | 用户/SGF pass | **替换**（pass 也属 mainline 推进，试下中也要短路） |
+| 1619 | pass 路径 | 用户 pass | **替换** |
+| 1728 | 用户落子主路径 | 用户落子 | **不动**（前置 spec 决策 8 入口 guard 已拒绝试下中的用户落子） |
+| 1732 | 注释 | — | 不动 |
+| 1758 | 用户落子（另一重载） | 用户落子 | **不动** |
+| 1761 | 用户落子（另一重载） | 用户落子 | **不动** |
+| 1889 | `playMovePonder`，不是 `playMove` | — | 不动 |
+| 1895 | 用户落子带 ponder 标志 | 用户落子 | **不动** |
+| 1900 | 用户落子带 ponder 标志 | 用户落子 | **不动** |
+| 2020 | `addStone`/复盘添加 | mainline 同步 | **替换** |
+| 2063 | `addStone`/复盘添加 | mainline 同步 | **替换** |
+| 2072 | 注释 | — | 不动 |
+| 2438 | SGF 加载 / restore 路径 | SGF 加载 | **不动**（SGF 加载与试下不交互） |
+| 2440 | SGF 加载 pass | SGF 加载 | **不动** |
+| 2626 | restore / undo 重放 | mainline 同步 | **替换** |
+| 2628 | restore pass 重放 | mainline 同步 | **替换** |
 
-⚠️ 实施时第一步先把整个 `Board.java` 的 `Lizzie.leelaz.playMove` 行号全部列出，按调用上下文分类（mainline 推进 / 用户落子 / pass / SGF），仅替换"mainline 推进"分类。每替换 3-5 处编译一次确认。
+⚠️ 表中"用户落子"分类的 4 处不动是基于"前置 spec 决策 8 在 `Board.place` 入口 guard 早返"的假设。实施时**先打开 1700-1900 行段，确认入口处确有 `if (LizzieFrame.displayNodeOverride != null)` 早返**；如果没有，必须先按前置 spec 决策 8 加 guard 再决定是否替换。
 
-- [ ] **Step 3：在 `ReadBoard.java`（或同步落点）每次 `Board.place` 之后追加**
+- [ ] **Step 3：在 `ReadBoard.java` 同步落点之后追加 `controller.onMainlineAdvance(...)`**
+
+**ReadBoard 推 mainline 用的是 `Lizzie.board.placeForSync(...)`，而非 `Board.place`**。grep 已确认 4 处：
+
+| 行号 | 上下文 |
+|---|---|
+| 1034 | 黑棋同步落子 |
+| 1054 | 白棋同步落子 |
+| 1094 | 最后一手同步 |
+| 1994 | move 序列同步落点 |
+
+每处之后插入：
 
 ```java
 EngineFollowController c = Lizzie.engineFollowController;
-if (c != null) {
-  BoardHistoryNode tail = Lizzie.board.getHistory().getCurrentHistoryNode();
-  c.onMainlineAdvance(tail);
-}
+if (c != null) c.onMainlineAdvance(Lizzie.board.getHistory().getCurrentHistoryNode());
 ```
 
-具体行号：`grep -n "Lizzie.board.place\|Lizzie\.board\.placeMoveQuick" src/main/java/featurecat/lizzie/analysis/ReadBoard.java` 找到落点，在最近的 place 之后插。
+⚠️ `placeForSync` 内部最终调 `Board.place` → 命中 Step 2 表的 985 / 1032 / 2020 / 2063 路径（已替换为 `feedEngineForMainlineMove`），所以 GTP 短路在 Board 层面完成；ReadBoard 这一步只通知 controller 更新内部 `currentEngineNode` 指针（试下中跳过、非试下时发 playMove）。两层互不重复。
 
 - [ ] **Step 4：编译 + 跑全测**
 
@@ -721,13 +759,14 @@ git commit -m "feat(engine-follow): Board.place mainline 拦截与 ReadBoard 通
 
 - [ ] **Step 2：删除 collector 2 处抑制**
 
-`WebBoardDataCollector.java` line 76 + line 107 附近的 `isAnalysisHiddenForTrial` 短路条件。
+**已 read line 70-130 确认现状：**
 
-⚠️ line 76 是 `analysis_update` 广播抑制，删后试下中 `analysis_update` 正常发；line 107 是某字段填充逻辑（可能涉及 winrate_history）。**winrate_history 仍要保持 spec 决策 5：仅含 anchor 之前 mainline**——所以 line 107 不能简单删，要核对其逻辑：
-- 如果 line 107 的 `trialActive` 分支是"试下时只取 anchor 之前 mainline 计算 winrate_history"（即正确实现），则**保留**这个分支
-- 如果 line 107 是"试下时整个 winrate_history 设空"，则改为"沿 displayNode 上溯到 anchor，再从 anchor 沿 previous 取 mainline 序列"——但这一步如果太大就拆出独立任务
-
-实施步骤：先 read `WebBoardDataCollector.java` 70-130 行看清楚两处分支语义，再决定删 / 改。**默认行为：line 76 删（恢复广播）；line 107 仅在它是"整段抑制"时删，若是"按 anchor 计算"则保留。**
+- **line 76**（`doBroadcastAnalysis`）：`if (... isAnalysisHiddenForTrial()) return;` —— 整段抑制 `analysis_update`。**整行删除**，恢复广播（候选点对得上 displayNode 之后就该发）
+- **line 107**（`doBroadcastFullState`）：`boolean trialActive = ...` 决定 `bestMoves / wr / sm / playouts` 是否置空。原意是"试下中 anchor 节点的 mainline 分析对不上 displayNode 不广播"。引擎跟随后 displayNode 节点本身就持有自己的引擎结果（由 collector 写入），**直接删 line 107 + 把 `trialActive ? null : data.bestMoves` 改回 `data.bestMoves`、`trialActive ? 0 : wr` 改回 `wr`**，等等。winrate_history 字段在 build 调用的另一处单独算（spec 决策 5：仍仅 anchor 之前 mainline）——若在 `buildFullStateJson` 的同一调用段内有 `winrate_history` 参数，需要 read 上下文确认它是单独算的。**实施步骤**：
+  1. read line 100-160 看清 `buildFullStateJson` 的全部参数
+  2. 仅把 `bestMoves / wr / sm / playouts` 4 个三元改回直读 `data.*`
+  3. `winrate_history` 参数如果通过 `trialActive` 影响过，**保留**对 winrate_history 的"仅 anchor 之前 mainline"逻辑
+  4. 删除 `boolean trialActive` 局部变量定义
 
 - [ ] **Step 3：删除 `LizzieFrame.isAnalysisHiddenForTrial()` 方法**
 
