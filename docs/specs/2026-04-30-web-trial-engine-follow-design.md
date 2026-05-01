@@ -16,7 +16,7 @@ Web 试下骨架已实现：用户在浏览器试下时，桌面端通过 `displ
 | 1 | 试下期间 mainline 棋盘画面正常更新（ReadBoard 仍推 BoardHistoryList），但发往引擎的 `playMove` 调用排队延迟，待退出试下后由 controller 一次性补发 |
 | 2 | 试下进入时若桌面端处于人机对弈状态（`isPlayingAgainstLeelaz \|\| isAnaPlayingAgainstLeelaz`）则拒绝，回 Web "桌面端正在对弈，无法进入试下"提示 |
 | 3 | 引擎切换走"算 LCA → undo 到 LCA → play 到目标"的增量路径；任意切换异常降级到 `clear()` + 从根全量重 play 兜底 |
-| 4 | 不维护具体队列结构；controller 仅持有 `currentEngineNode` 指针，退出时按 BoardHistoryList 当前 mainline 末端补发 |
+| 4 | 不维护具体队列结构；controller 仅持有 `currentEngineNode` 指针，退出时取 `Lizzie.board.history.currentHistoryNode` 作为 mainline 末端补发目标（试下不改 `currentHistoryNode`，故试下期间该字段恒等于 mainline tail） |
 | 5 | 胜率曲线仍仅画 anchor 之前 mainline；当前节点胜率/目差数字与候选点跟随 displayNode 实时显示 |
 | 6 | 所有引擎切换（含退出）异步发 GTP；视图层 `displayNodeOverride` 立即清除，候选点慢半拍刷新 |
 | 7 | controller 通过 `EngineCommandSink` 接口注入；单元测试用 fake sink 断言 GTP 序列 |
@@ -43,7 +43,7 @@ clearBestMoves()
 
 **字段**：
 - `EngineCommandSink sink`（构造注入）
-- `volatile BoardHistoryNode currentEngineNode`：引擎当前对齐到的节点
+- `volatile BoardHistoryNode currentEngineNode`：引擎当前对齐到的节点。**试下激活期间 mainline 推进不更新此字段**——引擎仍停在 displayNode 路径上，待 `onTrialExit` 现取 `mainlineTail` 作为目标，所以 controller 不需要单独维护"待补发 tail"
 - `volatile boolean trialActive`
 - 单线程 `Executor`：串行化所有切换请求，避免并发发 GTP 命令交错
 
@@ -82,6 +82,7 @@ clearBestMoves()
 - 该方法判断：若 `EngineFollowController.isTrialActive()` 为真，则**不发 GTP**，直接返回；否则照旧调 `Lizzie.leelaz.playMove(...)`
 - 用户落子（试下中桌面端落子已被前置 spec 决策 8 拒绝）和 SGF 加载路径不受影响（前者被 guard，后者不走 `Board.place` 的 mainline 同步分支）
 - 严格保持 `Board.place` 对 `BoardHistoryList` 的副作用与现状一致——只改"是否发 GTP"这一点
+- **调用面收敛**：试下中桌面端用户落子已在前置 spec 决策 8（`Board.place` 用户路径入口 guard，toast + return）层面被拒绝，不会进入 `feedEngineForMainlineMove`；SGF 加载 / 引擎切换走 `loadsgf` / 不经 `Board.place`；因此试下激活期间 `feedEngineForMainlineMove` 的调用方实际上只剩 ReadBoard 同步路径。实现时若发现尚未覆盖到的 `place` 入口能在试下中触发，必须先按前置 guard 模式拦截，再考虑放行 controller
 
 ### `pathBetween` 与 SNAPSHOT 节点的处理
 
