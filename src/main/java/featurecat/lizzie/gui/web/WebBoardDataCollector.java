@@ -201,13 +201,27 @@ public class WebBoardDataCollector {
     obj.put("anchorMoveNumber", view.anchorMoveNumber);
     obj.put("displayMoveNumber", view.displayNode.getData().moveNumber);
     obj.put("canBack", view.displayNode != view.anchorNode);
-    obj.put("canForward", !view.displayNode.variations.isEmpty());
+    // canForward / siblingMarkers 都要排除 dummy 占位（试下 enter 时插的 mainline 占位）
+    boolean canForward = false;
+    for (BoardHistoryNode v : view.displayNode.variations) {
+      if (!v.getData().dummy) {
+        canForward = true;
+        break;
+      }
+    }
+    obj.put("canForward", canForward);
 
     JSONArray markers = new JSONArray();
     int label = 0;
-    for (int i = 1; i < view.displayNode.variations.size(); i++) {
+    boolean firstNonDummySeen = false;
+    for (int i = 0; i < view.displayNode.variations.size(); i++) {
       BoardHistoryNode sib = view.displayNode.variations.get(i);
       BoardData sd = sib.getData();
+      if (sd.dummy) continue; // 跳过 dummy 占位
+      if (!firstNonDummySeen) {
+        firstNonDummySeen = true; // 第一个非 dummy 是"主线子"，不画 sibling marker
+        continue;
+      }
       if (!sd.lastMove.isPresent()) continue;
       label++;
       int[] xy = sd.lastMove.get();

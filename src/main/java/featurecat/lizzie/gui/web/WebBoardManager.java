@@ -30,6 +30,10 @@ public class WebBoardManager {
     public final String ownerClientId;
     public final BoardHistoryNode anchorNode;
     public volatile BoardHistoryNode displayNode;
+
+    /** 进入试下时若 anchor 是 mainline 末端（variations 为空），插入的 dummy 占位节点。null 表示未插入。 */
+    BoardHistoryNode mainlineDummy;
+
     volatile long lastActivityMs;
     ScheduledFuture<?> idleTimer;
 
@@ -231,7 +235,19 @@ public class WebBoardManager {
     if (activeSession != null) {
       return activeSession.ownerClientId.equals(clientId);
     }
-    activeSession = new TrialSession(clientId, anchor);
+    TrialSession s = new TrialSession(clientId, anchor);
+    // 试下子要走分叉而非接续 mainline。若 anchor 是 mainline 末端（无主线下一手），
+    // 先插一个 dummy 占据 variations[0]，让后续试下子永远 add 到 index>=1。
+    // ReadBoard 同步推进 mainline 时会识别 dummy 并把它替换走（line ~1035），互不干扰。
+    if (anchor.variations.isEmpty()) {
+      BoardData dummyData = anchor.getData().clone();
+      dummyData.dummy = true;
+      BoardHistoryNode dummy = new BoardHistoryNode(dummyData);
+      anchor.variations.add(dummy);
+      anchor.setPreviousForChild(dummy);
+      s.mainlineDummy = dummy;
+    }
+    activeSession = s;
     overrideSink.set(anchor);
     scheduleIdleTimeout(activeSession);
     return true;
@@ -240,6 +256,7 @@ public class WebBoardManager {
   public synchronized void exitTrial(String clientId) {
     if (activeSession == null || !activeSession.ownerClientId.equals(clientId)) return;
     cancelIdleTimer(activeSession);
+    cleanupMainlineDummy(activeSession);
     activeSession = null;
     overrideSink.set(null);
   }
@@ -247,8 +264,20 @@ public class WebBoardManager {
   public synchronized void forceExitTrial() {
     if (activeSession == null) return;
     cancelIdleTimer(activeSession);
+    cleanupMainlineDummy(activeSession);
     activeSession = null;
     overrideSink.set(null);
+  }
+
+  /**
+   * 退出试下时清掉 enter 时插入的 dummy 占位。 若同步管线 (ReadBoard line ~1035) 已经把 dummy 从 variations[0]
+   * 替换走，本方法无副作用。 否则把 dummy 从 anchor.variations 中移除。
+   */
+  private static void cleanupMainlineDummy(TrialSession s) {
+    BoardHistoryNode dummy = s.mainlineDummy;
+    if (dummy == null) return;
+    s.anchorNode.variations.remove(dummy);
+    s.mainlineDummy = null;
   }
 
   public synchronized void applyTrialMove(String clientId, int x, int y) {
@@ -267,8 +296,16 @@ public class WebBoardManager {
       if (!prev.isPresent()) return;
       s.displayNode = prev.get();
     } else if ("forward".equals(direction)) {
-      if (s.displayNode.variations.isEmpty()) return;
-      s.displayNode = s.displayNode.variations.get(0);
+      // 跳过 dummy 占位（enter 时插的 mainline 占位 + ReadBoard 同步可能产生的 dummy）
+      BoardHistoryNode firstReal = null;
+      for (BoardHistoryNode v : s.displayNode.variations) {
+        if (!v.getData().dummy) {
+          firstReal = v;
+          break;
+        }
+      }
+      if (firstReal == null) return;
+      s.displayNode = firstReal;
     } else {
       return;
     }
@@ -282,7 +319,9 @@ public class WebBoardManager {
     TrialSession s = activeSession;
     if (s == null || !s.ownerClientId.equals(clientId)) return;
     if (childIndex < 0 || childIndex >= s.displayNode.variations.size()) return;
-    s.displayNode = s.displayNode.variations.get(childIndex);
+    BoardHistoryNode target = s.displayNode.variations.get(childIndex);
+    if (target.getData().dummy) return; // 不允许跳到 dummy 占位
+    s.displayNode = target;
     overrideSink.set(s.displayNode);
     collector.onBoardStateChanged();
     collector.broadcastTrialState(s);
@@ -305,8 +344,10 @@ public class WebBoardManager {
       BoardHistoryNode parent = s.displayNode;
       BoardData parentData = parent.getData();
 
+      // 复用同位置子节点（跳过 dummy 占位）
       for (BoardHistoryNode existing : parent.variations) {
         BoardData ed = existing.getData();
+        if (ed.dummy) continue;
         if (ed.lastMove.isPresent() && ed.lastMove.get()[0] == x && ed.lastMove.get()[1] == y) {
           s.displayNode = existing;
           overrideSink.set(existing);
@@ -321,22 +362,34 @@ public class WebBoardManager {
 
       Stone color = parentData.blackToPlay ? Stone.BLACK : Stone.WHITE;
 
-      BoardData newData = parentData.clone();
-      newData.stones[idx] = color;
-      newData.lastMove = Optional.of(new int[] {x, y});
-      newData.blackToPlay = !parentData.blackToPlay;
-      newData.moveNumber = parentData.moveNumber + 1;
-      newData.dummy = false;
-      // 试下分支没有引擎分析，清空从 parent clone 来的候选点 / 胜率 / 形势
-      newData.bestMoves = new java.util.ArrayList<>();
-      newData.bestMovesOutOfRange = new java.util.ArrayList<>();
-      newData.bestMoves2 = new java.util.ArrayList<>();
-      newData.bestMoves2OutOfRange = new java.util.ArrayList<>();
-      newData.estimateArray = null;
-      newData.estimateArray2 = null;
-      newData.setPlayouts(0);
+      // 用 BoardData.move(...) 工厂构造，保证 nodeKind=MOVE、moveNumberList、zobrist 等渲染必须字段齐全
+      Stone[] newStones = parentData.stones.clone();
+      newStones[idx] = color;
+      int newMoveNumber = parentData.moveNumber + 1;
+      int[] newMoveNumberList =
+          parentData.moveNumberList == null ? null : parentData.moveNumberList.clone();
+      if (newMoveNumberList != null) newMoveNumberList[idx] = newMoveNumber;
+      featurecat.lizzie.rules.Zobrist newZobrist =
+          parentData.zobrist == null ? null : parentData.zobrist.clone();
+      if (newZobrist != null) newZobrist.toggleStone(x, y, color);
+
+      BoardData newData =
+          BoardData.move(
+              newStones,
+              new int[] {x, y},
+              color,
+              !parentData.blackToPlay,
+              newZobrist,
+              newMoveNumber,
+              newMoveNumberList,
+              parentData.blackCaptures,
+              parentData.whiteCaptures,
+              0,
+              0);
+      // 试下分支没有引擎分析（默认 bestMoves 即空、playouts=0）
 
       BoardHistoryNode child = new BoardHistoryNode(newData);
+      // 试下永远走分叉：如果第一个子是 dummy 占位，把 child add 到末尾（自然在 dummy 之后）
       parent.variations.add(child);
       parent.setPreviousForChild(child);
 

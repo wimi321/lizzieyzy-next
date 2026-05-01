@@ -116,8 +116,10 @@ public class WebBoardManagerTest {
     m.applyTrialMove("c", 3, 3);
     BoardHistoryNode display = m.getDisplayNodeForTest();
     assertNotSame(anchor, display);
-    assertEquals(1, anchor.variations.size());
-    assertSame(anchor.variations.get(0), display);
+    // anchor.variations: [dummy 占位, 试下子]
+    assertEquals(2, anchor.variations.size());
+    assertTrue(anchor.variations.get(0).getData().dummy);
+    assertSame(anchor.variations.get(1), display);
     BoardData childData = display.getData();
     assertTrue(childData.lastMove.isPresent());
     assertEquals(3, childData.lastMove.get()[0]);
@@ -133,7 +135,8 @@ public class WebBoardManagerTest {
     m.trialReset("c");
     m.applyTrialMove("c", 3, 3);
     assertSame(firstChild, m.getDisplayNodeForTest());
-    assertEquals(1, anchor.variations.size());
+    // 仍然是 [dummy 占位, 试下子] 两个，没创建新分支
+    assertEquals(2, anchor.variations.size());
   }
 
   @Test
