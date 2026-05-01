@@ -874,7 +874,12 @@
     var px = e.clientX - rect.left;
     var py = e.clientY - rect.top;
 
-    var size = Math.min(rect.width, rect.height);
+    // 跟 render() 完全一致地算 size：用 container 尺寸 + min，而不是 canvas rect。
+    // 浏览器 zoom 或刚 resize 时 canvas rect 可能跟最新的渲染基准对不上，
+    // 而棋子绘制基准由 render() 决定，所以反算必须用同一基准。
+    var container = document.getElementById("board-container");
+    var size = Math.min(container.clientWidth, container.clientHeight);
+    if (size <= 0) return null;
     var boardWidth = boardState.boardWidth || 19;
     var boardHeight = boardState.boardHeight || 19;
     var margin = coordStyle !== "off" ? size * 0.06 : size * 0.04;
@@ -923,7 +928,9 @@
 
     var boardWidth = boardState.boardWidth || 19;
     var boardHeight = boardState.boardHeight || 19;
-    var size = Math.min(rect.width, rect.height);
+    // 跟 render() 用同一基准 (container) 算 size，避免浏览器 zoom / resize 时 rect 与渲染基准不一致
+    var container = document.getElementById("board-container");
+    var size = Math.min(container.clientWidth, container.clientHeight);
     var margin = coordStyle !== "off" ? size * 0.06 : size * 0.04;
     var gridSize = (size - 2 * margin) / (Math.max(boardWidth, boardHeight) - 1);
 
@@ -989,7 +996,8 @@
       if (!snap || !snap.bestMoves) return;
       var boardHeight = snap.boardHeight || 19;
       var boardWidth = snap.boardWidth || 19;
-      var size = Math.min(rect.width, rect.height);
+      var container = document.getElementById("board-container");
+      var size = Math.min(container.clientWidth, container.clientHeight);
       var margin = coordStyle !== "off" ? size * 0.06 : size * 0.04;
       var gridSize = (size - 2 * margin) / (Math.max(boardWidth, boardHeight) - 1);
 

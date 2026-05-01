@@ -65,9 +65,20 @@ public class WebBoardManager {
       };
   private volatile DesktopRefresher desktopRefresher =
       () -> {
-        if (Lizzie.frame != null) {
-          javax.swing.SwingUtilities.invokeLater(() -> Lizzie.frame.refresh());
-        }
+        if (Lizzie.frame == null) return;
+        javax.swing.SwingUtilities.invokeLater(() -> Lizzie.frame.refresh());
+        // 变化树由异步线程重算缓存图（LizzieFrame.createVarTreeImage），第一次 refresh 触发的
+        // paint 启动线程后，cachedVariationTreeBigImage 还没更新；要等下次 paint 才显示新树。
+        // 退出试下/导航这类离散事件后没有连续 paint（不像引擎 update 会持续触发），
+        // 用户感觉树视图"卡住"。延迟一次 repaint 让新缓存上屏。
+        javax.swing.Timer timer =
+            new javax.swing.Timer(
+                250,
+                ev -> {
+                  if (Lizzie.frame != null) Lizzie.frame.repaint();
+                });
+        timer.setRepeats(false);
+        timer.start();
       };
   private volatile TrialSession activeSession;
 
