@@ -74,7 +74,7 @@ public class WebBoardDataCollector {
     lastBroadcastTime = System.currentTimeMillis();
     if (server == null) return;
     try {
-      BoardData data = Lizzie.board.getHistory().getCurrentHistoryNode().getData();
+      BoardData data = Lizzie.frame.getDisplayNode().getData();
       if (data.bestMoves == null || data.bestMoves.isEmpty()) return;
       int bw = Board.boardWidth;
       int bh = Board.boardHeight;
