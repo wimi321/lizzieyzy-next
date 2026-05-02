@@ -62,6 +62,47 @@ class WinrateGraphEnginePkModeHitTest {
   }
 
   @Test
+  void endedEngineGameKeepsRenderedPkGraphHitCacheBeforeRedraw() throws Exception {
+    TestEnvironment env = TestEnvironment.open();
+    try {
+      RenderFixture fixture = modeZeroFixture();
+      fixture.board.isPkBoard = true;
+      EngineManager.isEngineGame = true;
+
+      int[] clickPixel =
+          renderedModeZeroDotPixel(fixture.graph, fixture.target, fixture.targetWinrate);
+      EngineManager.isEngineGame = false;
+
+      fixture.graph.clearMouseOverNode();
+      boolean handled = fixture.frame.processMouseMoveOnWinrateGraph(clickPixel[0], clickPixel[1]);
+      assertTrue(handled, "ended engine game hover should keep using the rendered PK graph cache.");
+      assertSame(
+          fixture.target,
+          fixture.graph.mouseOverNode,
+          "ended engine game hover should still resolve the rendered target.");
+
+      fixture.frame.onClickedWinrateOnly(clickPixel[0], clickPixel[1]);
+      assertSame(
+          fixture.target,
+          fixture.board.getHistory().getCurrentHistoryNode(),
+          "ended engine game click should navigate before the next graph repaint.");
+
+      fixture.board.getHistory().setHead(fixture.current);
+      EngineManager.isEngineGame = true;
+      int[] dragPixel =
+          renderedModeZeroDotPixel(fixture.graph, fixture.target, fixture.targetWinrate);
+      EngineManager.isEngineGame = false;
+      fixture.frame.onMouseDragged(dragPixel[0], dragPixel[1]);
+      assertSame(
+          fixture.target,
+          fixture.board.getHistory().getCurrentHistoryNode(),
+          "ended engine game drag should navigate before the next graph repaint.");
+    } finally {
+      env.close();
+    }
+  }
+
+  @Test
   void modeOneClickAndDragUseRenderedWhiteDotPixel() throws Exception {
     TestEnvironment env = TestEnvironment.open();
     try {

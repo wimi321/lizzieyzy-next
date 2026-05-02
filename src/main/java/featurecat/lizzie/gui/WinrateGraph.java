@@ -142,8 +142,7 @@ public class WinrateGraph {
   private BoardHistoryNode renderedGraphEndNode;
   private BoardHistoryNode renderedMainEndNode;
   private int renderedMode;
-  private boolean renderedEngineGame;
-  private boolean renderedPkBoard;
+  private boolean renderedEngineOrPkGraphMode;
   private boolean renderedShowWinrateLine;
   private boolean renderedFrameInPlayMode;
   private final Map<Integer, boolean[][]> quickOverviewDotMaskCache = new HashMap<>();
@@ -2519,8 +2518,7 @@ public class WinrateGraph {
     renderedGraphEndNode = null;
     renderedMainEndNode = null;
     renderedMode = 0;
-    renderedEngineGame = false;
-    renderedPkBoard = false;
+    renderedEngineOrPkGraphMode = false;
     renderedShowWinrateLine = false;
     renderedFrameInPlayMode = false;
   }
@@ -2553,8 +2551,7 @@ public class WinrateGraph {
     renderedGraphEndNode = currentNode == null ? null : graphTraversalEnd(currentNode);
     renderedMainEndNode = currentMainEndNode();
     renderedMode = mode;
-    renderedEngineGame = EngineManager.isEngineGame;
-    renderedPkBoard = Lizzie.board != null && Lizzie.board.isPkBoard;
+    renderedEngineOrPkGraphMode = isEngineOrPkGraphMode();
     renderedShowWinrateLine = isShowWinrateLineEnabled();
     renderedFrameInPlayMode = isFrameInPlayMode();
   }
@@ -2564,8 +2561,7 @@ public class WinrateGraph {
         (!isFrameTryingMode() || currentGraphNode() == renderedCurrentGraphNode)
             && currentMainEndNode() == renderedMainEndNode
             && mode == renderedMode
-            && EngineManager.isEngineGame == renderedEngineGame
-            && (Lizzie.board != null && Lizzie.board.isPkBoard) == renderedPkBoard
+            && isEngineOrPkGraphMode() == renderedEngineOrPkGraphMode
             && isShowWinrateLineEnabled() == renderedShowWinrateLine
             && isFrameInPlayMode() == renderedFrameInPlayMode;
     if (!sameState) {
