@@ -10,6 +10,8 @@ WINDOWS_ASSET="${WINDOWS_ASSET:-katago-${KATAGO_TAG}-eigen-windows-x64.zip}"
 WINDOWS_OPENCL_ASSET="${WINDOWS_OPENCL_ASSET:-katago-${KATAGO_TAG}-opencl-windows-x64.zip}"
 WINDOWS_NVIDIA_ASSET="${WINDOWS_NVIDIA_ASSET:-katago-${KATAGO_TAG}-cuda12.1-cudnn8.9.7-windows-x64.zip}"
 LINUX_ASSET="${LINUX_ASSET:-katago-${KATAGO_TAG}-eigen-linux-x64.zip}"
+LINUX_OPENCL_ASSET="${LINUX_OPENCL_ASSET:-katago-${KATAGO_TAG}-opencl-linux-x64.zip}"
+LINUX_NVIDIA_ASSET="${LINUX_NVIDIA_ASSET:-katago-${KATAGO_TAG}-cuda12.1-cudnn8.9.7-linux-x64.zip}"
 PREFERRED_MODEL_NAME="${PREFERRED_MODEL_NAME:-kata1-zhizi-b28c512nbt-muonfd2.bin.gz}"
 MODEL_SOURCE="${MODEL_SOURCE:-}"
 
@@ -20,6 +22,8 @@ WINDOWS_ROOT="$ENGINES_ROOT/windows-x64"
 WINDOWS_OPENCL_ROOT="$ENGINES_ROOT/windows-x64-opencl"
 WINDOWS_NVIDIA_ROOT="$ENGINES_ROOT/windows-x64-nvidia"
 LINUX_ROOT="$ENGINES_ROOT/linux-x64"
+LINUX_OPENCL_ROOT="$ENGINES_ROOT/linux-x64-opencl"
+LINUX_NVIDIA_ROOT="$ENGINES_ROOT/linux-x64-nvidia"
 
 detect_macos_platform_dir() {
   local arch
@@ -174,10 +178,11 @@ prepare_windows_bundle() {
 
 prepare_linux_bundle() {
   local source_dir="$1"
-  rm -rf "$LINUX_ROOT"
-  mkdir -p "$LINUX_ROOT"
-  copy_matching_files "$source_dir" "$LINUX_ROOT" "katago" "*.so" "*.so.*" "cacert.pem"
-  chmod +x "$LINUX_ROOT/katago"
+  local dest_dir="$2"
+  rm -rf "$dest_dir"
+  mkdir -p "$dest_dir"
+  copy_matching_files "$source_dir" "$dest_dir" "katago" "*.so" "*.so.*" "cacert.pem"
+  chmod +x "$dest_dir/katago"
 }
 
 prepare_macos_bundle() {
@@ -247,6 +252,8 @@ Windows bundle: $WINDOWS_ASSET
 Windows OpenCL bundle: $WINDOWS_OPENCL_ASSET
 Windows NVIDIA bundle: $WINDOWS_NVIDIA_ASSET
 Linux bundle: $LINUX_ASSET
+Linux OpenCL bundle: $LINUX_OPENCL_ASSET
+Linux NVIDIA bundle: $LINUX_NVIDIA_ASSET
 Model source: $(basename "$model_path")
 Prepared at: $(date '+%F %T %z')
 EOF
@@ -260,16 +267,22 @@ main() {
   download_asset "$WINDOWS_OPENCL_ASSET"
   download_asset "$WINDOWS_NVIDIA_ASSET"
   download_asset "$LINUX_ASSET"
+  download_asset "$LINUX_OPENCL_ASSET"
+  download_asset "$LINUX_NVIDIA_ASSET"
 
   local windows_src
   local windows_opencl_src
   local windows_nvidia_src
   local linux_src
+  local linux_opencl_src
+  local linux_nvidia_src
   local model_path
   windows_src="$(extract_asset "$WINDOWS_ASSET")"
   windows_opencl_src="$(extract_asset "$WINDOWS_OPENCL_ASSET")"
   windows_nvidia_src="$(extract_asset "$WINDOWS_NVIDIA_ASSET")"
   linux_src="$(extract_asset "$LINUX_ASSET")"
+  linux_opencl_src="$(extract_asset "$LINUX_OPENCL_ASSET")"
+  linux_nvidia_src="$(extract_asset "$LINUX_NVIDIA_ASSET")"
   model_path="$(find_model_source)"
 
   mkdir -p "$WEIGHTS_ROOT"
@@ -279,7 +292,9 @@ main() {
   prepare_windows_bundle "$windows_src" "$WINDOWS_ROOT"
   prepare_windows_bundle "$windows_opencl_src" "$WINDOWS_OPENCL_ROOT"
   prepare_windows_bundle "$windows_nvidia_src" "$WINDOWS_NVIDIA_ROOT"
-  prepare_linux_bundle "$linux_src"
+  prepare_linux_bundle "$linux_src" "$LINUX_ROOT"
+  prepare_linux_bundle "$linux_opencl_src" "$LINUX_OPENCL_ROOT"
+  prepare_linux_bundle "$linux_nvidia_src" "$LINUX_NVIDIA_ROOT"
   prepare_macos_bundle
   write_manifest "$model_path"
 

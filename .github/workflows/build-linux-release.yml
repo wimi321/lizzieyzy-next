@@ -65,10 +65,33 @@ jobs:
 
       - name: Audit Linux display version
         run: |
-          grep -q -- "-Dlizzie.next.version=\"${{ inputs.release_tag }}\"" \
-            "dist/stage/${{ inputs.date_tag }}-linux64.with-katago/start-linux64.sh"
+          for flavor in with-katago opencl nvidia; do
+            grep -q -- "-Dlizzie.next.version=\"${{ inputs.release_tag }}\"" \
+              "dist/stage/${{ inputs.date_tag }}-linux64.${flavor}/start-linux64.sh"
+          done
           grep -q -- "Release display version: ${{ inputs.release_tag }}" \
             "dist/release-meta/${{ inputs.date_tag }}-linux64-install.txt"
+
+      - name: Audit Linux KataGo backends
+        run: |
+          set -euo pipefail
+          declare -A expected_backend=(
+            [with-katago]=cpu
+            [opencl]=opencl
+            [nvidia]=nvidia
+          )
+          for flavor in with-katago opencl nvidia; do
+            engine_dir="dist/stage/${{ inputs.date_tag }}-linux64.${flavor}/Lizzieyzy/engines/katago/linux-x64"
+            test -x "$engine_dir/katago"
+            test -f "$engine_dir/lizzieyzy-next-engine-backend.txt"
+            grep -qx "${expected_backend[$flavor]}" "$engine_dir/lizzieyzy-next-engine-backend.txt"
+          done
+          grep -Eq "Linux bundle: katago-v.*-eigen-linux-x64.zip" "dist/stage/${{ inputs.date_tag }}-linux64.with-katago/Lizzieyzy/engines/katago/VERSION.txt"
+          grep -Eq "Linux OpenCL bundle: katago-v.*-opencl-linux-x64.zip" "dist/stage/${{ inputs.date_tag }}-linux64.opencl/Lizzieyzy/engines/katago/VERSION.txt"
+          grep -Eq "Linux NVIDIA bundle: katago-v.*-cuda.*-linux-x64.zip" "dist/stage/${{ inputs.date_tag }}-linux64.nvidia/Lizzieyzy/engines/katago/VERSION.txt"
+          cpu_version="$(dist/stage/${{ inputs.date_tag }}-linux64.with-katago/Lizzieyzy/engines/katago/linux-x64/katago version 2>&1)"
+          echo "$cpu_version"
+          echo "$cpu_version" | grep -q "Using Eigen"
 
       - name: Validate public Linux assets
         run: bash ./scripts/validate_release_assets.sh linux dist/release "${{ inputs.date_tag }}"
@@ -78,13 +101,13 @@ jobs:
         with:
           name: linux-release
           path: |
-            dist/release/*linux64.with-katago.zip
+            dist/release/*linux64*.zip
 
       - name: Upload assets to release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release upload "${{ inputs.release_tag }}" \
-            dist/release/*linux64.with-katago.zip \
+            dist/release/*linux64*.zip \
             --repo "${{ github.repository }}" \
             --clobber

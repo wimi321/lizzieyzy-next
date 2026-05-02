@@ -24,7 +24,9 @@ ASSET_SPECS = [
     ('windows_no_engine_portable', 'windows64.without.engine.portable.zip', 'Windows 64 位，想自己配引擎', 'Windows x64, your own engine'),
     ('mac_arm64', 'mac-apple-silicon.with-katago.dmg', 'macOS Apple Silicon', 'macOS Apple Silicon'),
     ('mac_amd64', 'mac-intel.with-katago.dmg', 'macOS Intel', 'macOS Intel'),
-    ('linux64', 'linux64.with-katago.zip', 'Linux 64 位', 'Linux x64'),
+    ('linux64', 'linux64.with-katago.zip', 'Linux 64 位，CPU 兼容版', 'Linux x64, CPU fallback'),
+    ('linux64_opencl', 'linux64.opencl.zip', 'Linux 64 位，OpenCL 版', 'Linux x64, OpenCL'),
+    ('linux64_nvidia', 'linux64.nvidia.zip', 'Linux 64 位，NVIDIA CUDA 版', 'Linux x64, NVIDIA CUDA'),
 ]
 
 RELEASE_LANGUAGES = ('中文', '繁體中文', 'English', '日本語', '한국어', 'ภาษาไทย')
@@ -49,6 +51,9 @@ def load_bundle_metadata() -> dict[str, str]:
         'windows_bundle': 'Unknown',
         'windows_opencl_bundle': 'Unknown',
         'windows_nvidia_bundle': 'Unknown',
+        'linux_bundle': 'Unknown',
+        'linux_opencl_bundle': 'Unknown',
+        'linux_nvidia_bundle': 'Unknown',
     }
     if VERSION_FILE.exists():
         for raw_line in VERSION_FILE.read_text(encoding='utf-8').splitlines():
@@ -65,6 +70,12 @@ def load_bundle_metadata() -> dict[str, str]:
                 metadata['windows_opencl_bundle'] = value
             elif key == 'windows nvidia bundle':
                 metadata['windows_nvidia_bundle'] = value
+            elif key == 'linux bundle':
+                metadata['linux_bundle'] = value
+            elif key == 'linux opencl bundle':
+                metadata['linux_opencl_bundle'] = value
+            elif key == 'linux nvidia bundle':
+                metadata['linux_nvidia_bundle'] = value
             elif key == 'model source':
                 metadata['model_source'] = value
 
@@ -75,6 +86,9 @@ def load_bundle_metadata() -> dict[str, str]:
             'windows_bundle': r'WINDOWS_ASSET="\$\{WINDOWS_ASSET:-([^"]+)\}"',
             'windows_opencl_bundle': r'WINDOWS_OPENCL_ASSET="\$\{WINDOWS_OPENCL_ASSET:-([^"]+)\}"',
             'windows_nvidia_bundle': r'WINDOWS_NVIDIA_ASSET="\$\{WINDOWS_NVIDIA_ASSET:-([^"]+)\}"',
+            'linux_bundle': r'LINUX_ASSET="\$\{LINUX_ASSET:-([^"]+)\}"',
+            'linux_opencl_bundle': r'LINUX_OPENCL_ASSET="\$\{LINUX_OPENCL_ASSET:-([^"]+)\}"',
+            'linux_nvidia_bundle': r'LINUX_NVIDIA_ASSET="\$\{LINUX_NVIDIA_ASSET:-([^"]+)\}"',
             'model_source': r'PREFERRED_MODEL_NAME="\$\{PREFERRED_MODEL_NAME:-([^"]+)\}"',
         }
         script_metadata: dict[str, str] = {}
@@ -87,7 +101,14 @@ def load_bundle_metadata() -> dict[str, str]:
             if metadata[key] == 'Unknown' and key in script_metadata:
                 metadata[key] = script_metadata[key]
 
-        for key in ('windows_bundle', 'windows_opencl_bundle', 'windows_nvidia_bundle'):
+        for key in (
+            'windows_bundle',
+            'windows_opencl_bundle',
+            'windows_nvidia_bundle',
+            'linux_bundle',
+            'linux_opencl_bundle',
+            'linux_nvidia_bundle',
+        ):
             if key in script_metadata:
                 metadata[key] = script_metadata[key]
 
@@ -96,6 +117,9 @@ def load_bundle_metadata() -> dict[str, str]:
         metadata['windows_bundle'] = metadata['windows_bundle'].replace('${KATAGO_TAG}', katago_version)
         metadata['windows_opencl_bundle'] = metadata['windows_opencl_bundle'].replace('${KATAGO_TAG}', katago_version)
         metadata['windows_nvidia_bundle'] = metadata['windows_nvidia_bundle'].replace('${KATAGO_TAG}', katago_version)
+        metadata['linux_bundle'] = metadata['linux_bundle'].replace('${KATAGO_TAG}', katago_version)
+        metadata['linux_opencl_bundle'] = metadata['linux_opencl_bundle'].replace('${KATAGO_TAG}', katago_version)
+        metadata['linux_nvidia_bundle'] = metadata['linux_nvidia_bundle'].replace('${KATAGO_TAG}', katago_version)
     if katago_version != 'Unknown':
         if metadata['windows_bundle'] == 'Unknown':
             metadata['windows_bundle'] = f'katago-{katago_version}-eigen-windows-x64.zip'
@@ -104,6 +128,14 @@ def load_bundle_metadata() -> dict[str, str]:
         if metadata['windows_nvidia_bundle'] == 'Unknown':
             metadata['windows_nvidia_bundle'] = (
                 f'katago-{katago_version}-cuda12.1-cudnn8.9.7-windows-x64.zip'
+            )
+        if metadata['linux_bundle'] == 'Unknown':
+            metadata['linux_bundle'] = f'katago-{katago_version}-eigen-linux-x64.zip'
+        if metadata['linux_opencl_bundle'] == 'Unknown':
+            metadata['linux_opencl_bundle'] = f'katago-{katago_version}-opencl-linux-x64.zip'
+        if metadata['linux_nvidia_bundle'] == 'Unknown':
+            metadata['linux_nvidia_bundle'] = (
+                f'katago-{katago_version}-cuda12.1-cudnn8.9.7-linux-x64.zip'
             )
     return metadata
 
@@ -290,7 +322,9 @@ def build_release_notes(asset_map: dict[str, str | None], bundle: dict[str, str]
                     ('Windows 64 位，想自己配引擎，也想安装器', assets_cn['windows_no_engine_installer']),
                     ('macOS Apple Silicon', assets_cn['mac_arm64']),
                     ('macOS Intel', assets_cn['mac_amd64']),
-                    ('Linux 64 位', assets_cn['linux64']),
+                    ('Linux 64 位，CPU 兼容版', assets_cn['linux64']),
+                    ('Linux 64 位，OpenCL 版，AMD/Intel GPU', assets_cn['linux64_opencl']),
+                    ('Linux 64 位，NVIDIA CUDA 版', assets_cn['linux64_nvidia']),
                 ],
             },
             'why': {
@@ -355,7 +389,9 @@ def build_release_notes(asset_map: dict[str, str | None], bundle: dict[str, str]
                     ('Windows 64 位，想自己配引擎，也想安裝器', assets_cn['windows_no_engine_installer']),
                     ('macOS Apple Silicon', assets_cn['mac_arm64']),
                     ('macOS Intel', assets_cn['mac_amd64']),
-                    ('Linux 64 位', assets_cn['linux64']),
+                    ('Linux 64 位，CPU 相容版', assets_cn['linux64']),
+                    ('Linux 64 位，OpenCL 版，AMD/Intel GPU', assets_cn['linux64_opencl']),
+                    ('Linux 64 位，NVIDIA CUDA 版', assets_cn['linux64_nvidia']),
                 ],
             },
             'why': {
@@ -420,7 +456,9 @@ def build_release_notes(asset_map: dict[str, str | None], bundle: dict[str, str]
                     ('Windows 64-bit, configure your own engine, installer', assets['windows_no_engine_installer']),
                     ('macOS Apple Silicon', assets['mac_arm64']),
                     ('macOS Intel', assets['mac_amd64']),
-                    ('Linux 64-bit', assets['linux64']),
+                    ('Linux 64-bit, CPU fallback', assets['linux64']),
+                    ('Linux 64-bit, OpenCL for AMD/Intel GPU', assets['linux64_opencl']),
+                    ('Linux 64-bit, NVIDIA CUDA', assets['linux64_nvidia']),
                 ],
             },
             'why': {
@@ -485,7 +523,9 @@ def build_release_notes(asset_map: dict[str, str | None], bundle: dict[str, str]
                     ('Windows 64-bit、自分でエンジンを設定したい場合、インストーラ', assets['windows_no_engine_installer']),
                     ('macOS Apple Silicon', assets['mac_arm64']),
                     ('macOS Intel', assets['mac_amd64']),
-                    ('Linux 64-bit', assets['linux64']),
+                    ('Linux 64-bit、CPU fallback', assets['linux64']),
+                    ('Linux 64-bit、OpenCL、AMD/Intel GPU', assets['linux64_opencl']),
+                    ('Linux 64-bit、NVIDIA CUDA', assets['linux64_nvidia']),
                 ],
             },
             'why': {
@@ -550,7 +590,9 @@ def build_release_notes(asset_map: dict[str, str | None], bundle: dict[str, str]
                     ('Windows 64-bit, 직접 엔진 설정, 설치형', assets['windows_no_engine_installer']),
                     ('macOS Apple Silicon', assets['mac_arm64']),
                     ('macOS Intel', assets['mac_amd64']),
-                    ('Linux 64-bit', assets['linux64']),
+                    ('Linux 64-bit, CPU fallback', assets['linux64']),
+                    ('Linux 64-bit, OpenCL, AMD/Intel GPU', assets['linux64_opencl']),
+                    ('Linux 64-bit, NVIDIA CUDA', assets['linux64_nvidia']),
                 ],
             },
             'why': {
@@ -615,7 +657,9 @@ def build_release_notes(asset_map: dict[str, str | None], bundle: dict[str, str]
                     ('Windows 64-bit, ต้องการตั้งค่า engine เองและอยากใช้ installer', assets['windows_no_engine_installer']),
                     ('macOS Apple Silicon', assets['mac_arm64']),
                     ('macOS Intel', assets['mac_amd64']),
-                    ('Linux 64-bit', assets['linux64']),
+                    ('Linux 64-bit, CPU fallback', assets['linux64']),
+                    ('Linux 64-bit, OpenCL สำหรับ AMD/Intel GPU', assets['linux64_opencl']),
+                    ('Linux 64-bit, NVIDIA CUDA', assets['linux64_nvidia']),
                 ],
             },
             'why': {
