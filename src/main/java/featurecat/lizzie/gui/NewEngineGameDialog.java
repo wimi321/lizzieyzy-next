@@ -43,6 +43,7 @@ public class NewEngineGameDialog extends JDialog {
   private PanelWithToolTips contentPanel = new PanelWithToolTips();
   private PanelWithToolTips buttonBar = new PanelWithToolTips();
   private JFontButton okButton = new JFontButton();
+  private JFontButton btnConfig;
 
   // private JCheckBox checkBoxPlayerIsBlack;
   private JFontTextField textFieldKomi;
@@ -86,15 +87,15 @@ public class NewEngineGameDialog extends JDialog {
   private Window thisDialog = this;
 
   private int dialogWidth() {
-    if (Lizzie.config.isFrameFontSmall()) return 760;
-    if (Lizzie.config.isFrameFontMiddle()) return 820;
-    return 880;
+    if (Lizzie.config.isFrameFontSmall()) return 680;
+    if (Lizzie.config.isFrameFontMiddle()) return 720;
+    return 760;
   }
 
   private int dialogHeight() {
-    if (Lizzie.config.isFrameFontSmall()) return 468;
-    if (Lizzie.config.isFrameFontMiddle()) return 482;
-    return 500;
+    if (Lizzie.config.isFrameFontSmall()) return 520;
+    if (Lizzie.config.isFrameFontMiddle()) return 560;
+    return 600;
   }
 
   private int controlHeight() {
@@ -103,17 +104,12 @@ public class NewEngineGameDialog extends JDialog {
     return 28;
   }
 
-  private void setGridBounds(Component component, int x, int y, int width) {
-    component.setBounds(x, y, width, controlHeight());
-  }
-
   private void initComponents() {
     // if (Lizzie.config.showHiddenYzy) setMinimumSize(new Dimension(380, 330));
     // else
     // setMinimumSize(new Dimension(580, 530));
-    Lizzie.setFrameSize(this, dialogWidth(), dialogHeight());
-    setResizable(false);
     setTitle(Lizzie.resourceBundle.getString("NewEngineGameDialog.title")); // "引擎对战");
+    setResizable(true);
     setModal(true);
     try {
       this.setIconImage(ImageIO.read(MoreEngines.class.getResourceAsStream("/assets/logo.png")));
@@ -125,8 +121,57 @@ public class NewEngineGameDialog extends JDialog {
 
     initDialogPane(contentPane);
     setAlwaysOnTop(Lizzie.frame.isAlwaysOnTop());
-    // pack();
+    pack();
+    Rectangle usableBounds = getUsableScreenBounds();
+    Dimension targetSize =
+        new Dimension(
+            Math.min(dialogWidth(), Math.max(720, usableBounds.width - 40)),
+            Math.min(dialogHeight(), Math.max(500, usableBounds.height - 40)));
+    setMinimumSize(
+        new Dimension(Math.min(720, targetSize.width), Math.min(500, targetSize.height)));
+    setSize(targetSize);
     setLocationRelativeTo(getOwner());
+    adjustLocationForScaledDisplay();
+    keepDialogOnScreen(usableBounds);
+  }
+
+  private Rectangle getUsableScreenBounds() {
+    GraphicsConfiguration configuration =
+        getOwner() != null ? getOwner().getGraphicsConfiguration() : getGraphicsConfiguration();
+    if (configuration == null) {
+      return GraphicsEnvironment.getLocalGraphicsEnvironment().getMaximumWindowBounds();
+    }
+    Rectangle bounds = configuration.getBounds();
+    Insets insets = Toolkit.getDefaultToolkit().getScreenInsets(configuration);
+    return new Rectangle(
+        bounds.x + insets.left,
+        bounds.y + insets.top,
+        bounds.width - insets.left - insets.right,
+        bounds.height - insets.top - insets.bottom);
+  }
+
+  private void keepDialogOnScreen(Rectangle usableBounds) {
+    int maxX = usableBounds.x + usableBounds.width - getWidth();
+    int maxY = usableBounds.y + usableBounds.height - getHeight();
+    int x = Math.max(usableBounds.x, Math.min(getX(), maxX));
+    int y = Math.max(usableBounds.y, Math.min(getY(), maxY));
+    setLocation(x, y);
+  }
+
+  private void adjustLocationForScaledDisplay() {
+    GraphicsConfiguration configuration = getGraphicsConfiguration();
+    if (configuration == null) {
+      return;
+    }
+    java.awt.geom.AffineTransform transform = configuration.getDefaultTransform();
+    double scaleX = transform.getScaleX();
+    double scaleY = transform.getScaleY();
+    if (scaleX <= 1.0 && scaleY <= 1.0) {
+      return;
+    }
+    int xOffset = (int) Math.round(getWidth() * (scaleX - 1.0) / 2.0);
+    int yOffset = (int) Math.round(getHeight() * (scaleY - 1.0) / 2.0);
+    setLocation(getX() - xOffset, getY() - yOffset);
   }
 
   private void initDialogPane(Container contentPane) {
@@ -140,60 +185,29 @@ public class NewEngineGameDialog extends JDialog {
   }
 
   private void initContentPanel() {
-    contentPanel.setLayout(null);
-    int margin = 18;
-    int labelX = margin;
-    int labelW =
-        Lizzie.config.isFrameFontSmall() ? 150 : (Lizzie.config.isFrameFontMiddle() ? 175 : 200);
-    int checkX = labelX + labelW + 12;
-    int checkW = 24;
-    int blackX = checkX + checkW + 10;
-    int fieldW =
-        Lizzie.config.isFrameFontSmall() ? 200 : (Lizzie.config.isFrameFontMiddle() ? 215 : 230);
-    int columnGap = Lizzie.config.isFrameFontSmall() ? 20 : 24;
-    int whiteX = blackX + fieldW + columnGap;
-    int headerY = 8;
-    int engineY = 38;
-    int timeY = 68;
-    int advanceY = 98;
-    int playoutY = 128;
-    int firstPlayoutY = 158;
-    int resignBlackY = 194;
-    int resignWhiteY = 226;
-    int komiY = 260;
-    int continueY = 292;
-    int optionY = 324;
-    int option2Y = 354;
-    int rightEdge = dialogWidth() - 44;
-    int helpIconX = checkX - 26;
-    int resignGap = Lizzie.config.isFrameFontSmall() ? 6 : 8;
-    int resignMinLabelW =
-        Lizzie.config.isFrameFontSmall() ? 64 : (Lizzie.config.isFrameFontMiddle() ? 72 : 82);
-    int resignConsistentLabelW =
-        Lizzie.config.isFrameFontSmall() ? 38 : (Lizzie.config.isFrameFontMiddle() ? 42 : 50);
-    int resignBelowLabelW =
-        Lizzie.config.isFrameFontSmall() ? 90 : (Lizzie.config.isFrameFontMiddle() ? 100 : 116);
-    int resignFieldW = Lizzie.config.isFrameFontSmall() ? 46 : 50;
-    int resignMinLabelX = labelX + labelW + resignGap;
-    int resignMinFieldX = resignMinLabelX + resignMinLabelW;
-    int resignConsistentLabelX = resignMinFieldX + resignFieldW + resignGap;
-    int resignConsistentFieldX = resignConsistentLabelX + resignConsistentLabelW;
-    int resignBelowLabelX = resignConsistentFieldX + resignFieldW + resignGap;
-    int resignBelowFieldX = resignBelowLabelX + resignBelowLabelW;
-    int resignPercentX = resignBelowFieldX + resignFieldW + 4;
-    contentPanel.setPreferredSize(new Dimension(dialogWidth() - 28, dialogHeight() - 82));
+    contentPanel.setLayout(new BorderLayout());
+    contentPanel.setBorder(new EmptyBorder(0, 0, 0, 0));
 
-    //    checkBoxPlayerIsBlack =
-    //        new JCheckBox(resourceBundle.getString("NewGameDialog.PlayBlack"), true);
-    //    checkBoxPlayerIsBlack.addChangeListener(evt -> togglePlayerIsBlack());
+    JPanel mainPanel = new ViewportWidthPanel(new GridBagLayout());
+    mainPanel.setBorder(new EmptyBorder(16, 18, 12, 18));
+
+    JScrollPane scrollPane = new JScrollPane(mainPanel);
+    scrollPane.setBorder(null);
+    scrollPane.setHorizontalScrollBarPolicy(ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
+    scrollPane.getVerticalScrollBar().setUnitIncrement(Math.max(16, controlHeight()));
+    scrollPane.setPreferredSize(new Dimension(dialogWidth() - 28, dialogHeight() - 112));
+    contentPanel.add(scrollPane, BorderLayout.CENTER);
+    dialogPane.add(contentPanel, BorderLayout.CENTER);
 
     JTextArea resignThresoldHint =
         new JTextArea(Lizzie.resourceBundle.getString("EnginePkConfig.lblresignGenmove"));
     resignThresoldHint.setFont(
         new Font(Config.sysDefaultFontName, Font.PLAIN, Config.frameFontSize));
     resignThresoldHint.setLineWrap(true);
+    resignThresoldHint.setWrapStyleWord(true);
     resignThresoldHint.setFocusable(false);
-    resignThresoldHint.setBackground(this.getBackground());
+    resignThresoldHint.setEditable(false);
+    resignThresoldHint.setOpaque(false);
 
     JFontLabel lblresignSettingBlack =
         new JFontLabel(
@@ -215,31 +229,6 @@ public class NewEngineGameDialog extends JDialog {
     txtresignSettingBlackMinMove = new JFontTextField();
     txtresignSettingBlackMinMove.setDocument(new IntDocument());
 
-    contentPanel.add(resignThresoldHint);
-    contentPanel.add(lblresignSettingBlack);
-    contentPanel.add(lblresignSettingBlackConsistent);
-    contentPanel.add(lblresignSettingBlack2);
-    contentPanel.add(lblresignSettingBlack3);
-    contentPanel.add(lblresignSettingBlack4);
-    contentPanel.add(txtresignSettingBlack);
-    contentPanel.add(txtresignSettingBlack2);
-    contentPanel.add(txtresignSettingBlackMinMove);
-
-    resignThresoldHint.setBounds(labelX, resignBlackY, rightEdge - labelX, controlHeight() * 2 + 6);
-    resignThresoldHint.setVisible(false);
-    setGridBounds(lblresignSettingBlack, labelX, resignBlackY, labelW);
-    setGridBounds(
-        lblresignSettingBlackConsistent,
-        resignConsistentLabelX,
-        resignBlackY,
-        resignConsistentLabelW);
-    setGridBounds(lblresignSettingBlack2, resignMinLabelX, resignBlackY, resignMinLabelW);
-    setGridBounds(lblresignSettingBlack3, resignBelowLabelX, resignBlackY, resignBelowLabelW);
-    setGridBounds(lblresignSettingBlack4, resignPercentX, resignBlackY, 24);
-    setGridBounds(txtresignSettingBlackMinMove, resignMinFieldX, resignBlackY, resignFieldW);
-    setGridBounds(txtresignSettingBlack, resignConsistentFieldX, resignBlackY, resignFieldW);
-    setGridBounds(txtresignSettingBlack2, resignBelowFieldX, resignBlackY, resignFieldW);
-
     JFontLabel lblresignSettingWhite =
         new JFontLabel(Lizzie.resourceBundle.getString("EnginePkConfig.lblresignSettingWhite"));
     JFontLabel lblresignSettingWhiteConsistent =
@@ -257,28 +246,6 @@ public class NewEngineGameDialog extends JDialog {
     txtresignSettingWhite2.setDocument(new DoubleDocument());
     txtresignSettingWhiteMinMove = new JFontTextField();
     txtresignSettingWhiteMinMove.setDocument(new IntDocument());
-
-    setGridBounds(lblresignSettingWhite, labelX, resignWhiteY, labelW);
-    setGridBounds(
-        lblresignSettingWhiteConsistent,
-        resignConsistentLabelX,
-        resignWhiteY,
-        resignConsistentLabelW);
-    setGridBounds(lblresignSettingWhite2, resignMinLabelX, resignWhiteY, resignMinLabelW);
-    setGridBounds(lblresignSettingWhite3, resignBelowLabelX, resignWhiteY, resignBelowLabelW);
-    setGridBounds(lblresignSettingWhite4, resignPercentX, resignWhiteY, 24);
-    setGridBounds(txtresignSettingWhiteMinMove, resignMinFieldX, resignWhiteY, resignFieldW);
-    setGridBounds(txtresignSettingWhite, resignConsistentFieldX, resignWhiteY, resignFieldW);
-    setGridBounds(txtresignSettingWhite2, resignBelowFieldX, resignWhiteY, resignFieldW);
-
-    contentPanel.add(lblresignSettingWhite);
-    contentPanel.add(lblresignSettingWhiteConsistent);
-    contentPanel.add(lblresignSettingWhite3);
-    contentPanel.add(lblresignSettingWhite2);
-    contentPanel.add(lblresignSettingWhite4);
-    contentPanel.add(txtresignSettingWhiteMinMove);
-    contentPanel.add(txtresignSettingWhite);
-    contentPanel.add(txtresignSettingWhite2);
 
     txtresignSettingBlack.setText(String.valueOf(Lizzie.config.firstEngineResignMoveCounts));
     txtresignSettingBlack2.setText(String.valueOf(Lizzie.config.firstEngineResignWinrate));
@@ -302,87 +269,10 @@ public class NewEngineGameDialog extends JDialog {
     enginePkBlack.setFont(new Font(Config.sysDefaultFontName, Font.PLAIN, Config.frameFontSize));
     enginePkWhite = LizzieFrame.toolbar.enginePkWhite;
     enginePkWhite.setFont(new Font(Config.sysDefaultFontName, Font.PLAIN, Config.frameFontSize));
-    JFontButton btnConfig =
+    btnConfig =
         new JFontButton(
             Lizzie.resourceBundle.getString("NewEngineGameDialog.btnConfig")); // ("更多设置");
     btnConfig.setMargin(new Insets(0, 0, 0, 0));
-    btnConfig.addActionListener(
-        new ActionListener() {
-          @Override
-          public void actionPerformed(ActionEvent e) {
-            // TBD未完成
-            EnginePkConfig engineconfig = new EnginePkConfig(false);
-            engineconfig.setVisible(true);
-            engineconfig.setAlwaysOnTop(true);
-            if (LizzieFrame.toolbar.isGenmoveToolbar) {
-              chkDisableWRNInGame.setVisible(false);
-              txtresignSettingBlack.setVisible(false);
-              txtresignSettingBlack2.setVisible(false);
-              txtresignSettingBlackMinMove.setVisible(false);
-              resignThresoldHint.setVisible(true);
-              lblresignSettingBlack.setVisible(false); // "Genmove模式下,认输由引擎控制,请在引擎参数中设置认输阈值");
-              lblresignSettingBlackConsistent.setVisible(false);
-              lblresignSettingBlack2.setVisible(false);
-              lblresignSettingBlack3.setVisible(false);
-              lblresignSettingBlack4.setVisible(false);
-
-              txtresignSettingWhite.setVisible(false);
-              txtresignSettingWhite2.setVisible(false);
-              txtresignSettingWhiteMinMove.setVisible(false);
-              lblresignSettingWhite.setVisible(false);
-              lblresignSettingWhiteConsistent.setVisible(false);
-              lblresignSettingWhite2.setVisible(false);
-              lblresignSettingWhite3.setVisible(false);
-              lblresignSettingWhite4.setVisible(false);
-              txtBlackAdvanceTime.setEnabled(true);
-              txtWhiteAdvanceTime.setEnabled(true);
-              chkUseAdvanceTime.setEnabled(true);
-              if (Lizzie.config.pkAdvanceTimeSettings) {
-                LizzieFrame.toolbar.chkenginePkTime.setEnabled(false);
-                LizzieFrame.toolbar.txtenginePkTime.setEnabled(false);
-                LizzieFrame.toolbar.txtenginePkTimeWhite.setEnabled(false);
-                txtBlackAdvanceTime.setEnabled(true);
-                txtWhiteAdvanceTime.setEnabled(true);
-              } else {
-                LizzieFrame.toolbar.chkenginePkTime.setEnabled(true);
-                if (LizzieFrame.toolbar.chkenginePkTime.isSelected()) {
-                  LizzieFrame.toolbar.txtenginePkTime.setEnabled(true);
-                  LizzieFrame.toolbar.txtenginePkTimeWhite.setEnabled(true);
-                }
-                txtBlackAdvanceTime.setEnabled(false);
-                txtWhiteAdvanceTime.setEnabled(false);
-              }
-            } else {
-              chkDisableWRNInGame.setVisible(true);
-              txtresignSettingBlack.setVisible(true);
-              txtresignSettingBlack2.setVisible(true);
-              txtresignSettingBlackMinMove.setVisible(true);
-              resignThresoldHint.setVisible(false);
-              lblresignSettingBlack.setVisible(true);
-              lblresignSettingBlackConsistent.setVisible(true);
-              lblresignSettingBlack2.setVisible(true);
-              lblresignSettingBlack3.setVisible(true);
-              lblresignSettingBlack4.setVisible(true);
-
-              txtresignSettingWhite.setVisible(true);
-              txtresignSettingWhite2.setVisible(true);
-              txtresignSettingWhiteMinMove.setVisible(true);
-              lblresignSettingWhite.setVisible(true);
-              lblresignSettingWhiteConsistent.setVisible(true);
-              lblresignSettingWhite2.setVisible(true);
-              lblresignSettingWhite3.setVisible(true);
-              lblresignSettingWhite4.setVisible(true);
-              LizzieFrame.toolbar.chkenginePkTime.setEnabled(true);
-              if (LizzieFrame.toolbar.chkenginePkTime.isSelected()) {
-                LizzieFrame.toolbar.txtenginePkTime.setEnabled(true);
-                LizzieFrame.toolbar.txtenginePkTimeWhite.setEnabled(true);
-              }
-              txtBlackAdvanceTime.setEnabled(false);
-              txtWhiteAdvanceTime.setEnabled(false);
-              chkUseAdvanceTime.setEnabled(false);
-            }
-          }
-        });
 
     JFontLabel lblB =
         new JFontLabel(Lizzie.resourceBundle.getString("NewEngineGameDialog.lblB")); // ("黑方设置");
@@ -390,21 +280,12 @@ public class NewEngineGameDialog extends JDialog {
     JFontLabel lblW =
         new JFontLabel(Lizzie.resourceBundle.getString("NewEngineGameDialog.lblW")); // ("白方设置");
     lblW.setHorizontalAlignment(JLabel.CENTER);
-    setGridBounds(lblB, blackX, headerY, fieldW);
-    setGridBounds(lblW, whiteX, headerY, fieldW);
+    lblB.setFont(lblB.getFont().deriveFont(Font.BOLD));
+    lblW.setFont(lblW.getFont().deriveFont(Font.BOLD));
 
     JFontLabel lblengine =
         new JFontLabel(
             Lizzie.resourceBundle.getString("NewEngineGameDialog.lblengine")); // ("选择引擎");
-    setGridBounds(lblengine, labelX, engineY, labelW);
-
-    setGridBounds(enginePkBlack, blackX, engineY, fieldW);
-    setGridBounds(enginePkWhite, whiteX, engineY, fieldW);
-    contentPanel.add(lblengine);
-    contentPanel.add(lblB);
-    contentPanel.add(lblW);
-    contentPanel.add(enginePkBlack);
-    contentPanel.add(enginePkWhite);
     if (enginePkBlack.getSelectedIndex() == enginePkWhite.getSelectedIndex())
       enginePkWhite.setSelectedIndex(
           enginePkBlack.getSelectedIndex() <= enginePkWhite.getItemCount() - 2
@@ -418,14 +299,6 @@ public class NewEngineGameDialog extends JDialog {
     JFontLabel lblTime =
         new JFontLabel(
             Lizzie.resourceBundle.getString("NewEngineGameDialog.lblTime")); // ("每手时间(秒)");
-    setGridBounds(lblTime, labelX, timeY, labelW);
-    setGridBounds(LizzieFrame.toolbar.chkenginePkTime, checkX, timeY, checkW);
-    setGridBounds(LizzieFrame.toolbar.txtenginePkTime, blackX, timeY, fieldW);
-    setGridBounds(LizzieFrame.toolbar.txtenginePkTimeWhite, whiteX, timeY, fieldW);
-    contentPanel.add(lblTime);
-    contentPanel.add(LizzieFrame.toolbar.chkenginePkTime);
-    contentPanel.add(LizzieFrame.toolbar.txtenginePkTime);
-    contentPanel.add(LizzieFrame.toolbar.txtenginePkTimeWhite);
     if (!LizzieFrame.toolbar.chkenginePkTime.isSelected()) {
       LizzieFrame.toolbar.txtenginePkTime.setEnabled(false);
       LizzieFrame.toolbar.txtenginePkTimeWhite.setEnabled(false);
@@ -434,15 +307,6 @@ public class NewEngineGameDialog extends JDialog {
     JFontLabel lblPlayout =
         new JFontLabel(
             Lizzie.resourceBundle.getString("NewEngineGameDialog.lblPlayout")); // ("总计算量");
-
-    setGridBounds(lblPlayout, labelX, playoutY, labelW);
-    setGridBounds(LizzieFrame.toolbar.chkenginePkPlayouts, checkX, playoutY, checkW);
-    setGridBounds(LizzieFrame.toolbar.txtenginePkPlayputs, blackX, playoutY, fieldW);
-    setGridBounds(LizzieFrame.toolbar.txtenginePkPlayputsWhite, whiteX, playoutY, fieldW);
-    contentPanel.add(lblPlayout);
-    contentPanel.add(LizzieFrame.toolbar.chkenginePkPlayouts);
-    contentPanel.add(LizzieFrame.toolbar.txtenginePkPlayputs);
-    contentPanel.add(LizzieFrame.toolbar.txtenginePkPlayputsWhite);
     if (!LizzieFrame.toolbar.chkenginePkPlayouts.isSelected()) {
       LizzieFrame.toolbar.txtenginePkPlayputs.setEnabled(false);
       LizzieFrame.toolbar.txtenginePkPlayputsWhite.setEnabled(false);
@@ -451,15 +315,6 @@ public class NewEngineGameDialog extends JDialog {
     JFontLabel lblFirstPlayout =
         new JFontLabel(
             Lizzie.resourceBundle.getString("NewEngineGameDialog.lblFirstPlayout")); // ("首位计算量");
-    setGridBounds(lblFirstPlayout, labelX, firstPlayoutY, labelW);
-    setGridBounds(LizzieFrame.toolbar.chkenginePkFirstPlayputs, checkX, firstPlayoutY, checkW);
-    setGridBounds(LizzieFrame.toolbar.txtenginePkFirstPlayputs, blackX, firstPlayoutY, fieldW);
-    setGridBounds(LizzieFrame.toolbar.txtenginePkFirstPlayputsWhite, whiteX, firstPlayoutY, fieldW);
-
-    contentPanel.add(lblFirstPlayout);
-    contentPanel.add(LizzieFrame.toolbar.chkenginePkFirstPlayputs);
-    contentPanel.add(LizzieFrame.toolbar.txtenginePkFirstPlayputs);
-    contentPanel.add(LizzieFrame.toolbar.txtenginePkFirstPlayputsWhite);
     if (!LizzieFrame.toolbar.chkenginePkFirstPlayputs.isSelected()) {
       LizzieFrame.toolbar.txtenginePkFirstPlayputs.setEnabled(false);
       LizzieFrame.toolbar.txtenginePkFirstPlayputsWhite.setEnabled(false);
@@ -469,37 +324,11 @@ public class NewEngineGameDialog extends JDialog {
     JFontLabel handicap =
         new JFontLabel(
             Lizzie.resourceBundle.getString("NewEngineGameDialog.handicap")); // ("让子(仅支持19路棋盘)");
-    int komiFieldX = labelX + 50;
-    int handicapX = komiFieldX + 64;
-    int handicapLabelW =
-        Lizzie.config.isFrameFontSmall() ? 150 : (Lizzie.config.isFrameFontMiddle() ? 175 : 190);
-    int handicapFieldX = handicapX + handicapLabelW + 8;
-    setGridBounds(komi, labelX, komiY, 46);
-    setGridBounds(textFieldKomi, komiFieldX, komiY, 52);
-    setGridBounds(handicap, handicapX, komiY, handicapLabelW);
-    setGridBounds(textFieldHandicap, handicapFieldX, komiY, 52);
-    contentPanel.add(komi);
-    contentPanel.add(textFieldKomi);
-    contentPanel.add(handicap);
-    contentPanel.add(textFieldHandicap);
 
     chkContinuePlay =
         new JFontCheckBox(
             Lizzie.resourceBundle.getString("NewEngineGameDialog.lblContinue")); // ("当前局面续弈");
-
-    int sgfButtonW =
-        Lizzie.config.isFrameFontSmall() ? 86 : (Lizzie.config.isFrameFontMiddle() ? 92 : 102);
-    int sgfComboW =
-        Lizzie.config.isFrameFontSmall() ? 76 : (Lizzie.config.isFrameFontMiddle() ? 82 : 88);
-    int sgfButtonX = rightEdge - sgfButtonW;
-    int sgfComboX = sgfButtonX - sgfComboW - 8;
-    int sgfCheckX = sgfComboX - checkW - 6;
-    int sgfLabelX = labelX + Math.min(210, labelW + 22);
-    int sgfLabelW = Math.max(88, sgfCheckX - sgfLabelX - 8);
-
-    setGridBounds(chkContinuePlay, labelX, continueY, sgfLabelX - labelX - 12);
     // LizzieFrame.toolbar.chkenginePkContinue.setBounds(5, 270, 20, 20);
-    contentPanel.add(chkContinuePlay);
     // contentPanel.add(LizzieFrame.toolbar.chkenginePkContinue);
     chkContinuePlay.addActionListener(
         new ActionListener() {
@@ -544,75 +373,22 @@ public class NewEngineGameDialog extends JDialog {
     JFontLabel lblBatchGame =
         new JFontLabel(
             Lizzie.resourceBundle.getString("NewEngineGameDialog.lblBatchGame").trim()); // ("多盘");
-    int batchLabelW =
-        Lizzie.config.isFrameFontSmall() ? 72 : (Lizzie.config.isFrameFontMiddle() ? 82 : 92);
-    setGridBounds(lblBatchGame, whiteX, komiY, batchLabelW);
-    setGridBounds(LizzieFrame.toolbar.chkenginePkBatch, whiteX + batchLabelW + 4, komiY, checkW);
-    setGridBounds(
-        LizzieFrame.toolbar.txtenginePkBatch, whiteX + batchLabelW + checkW + 12, komiY, 56);
-    int configButtonW =
-        Lizzie.config.isFrameFontSmall() ? 92 : (Lizzie.config.isFrameFontMiddle() ? 98 : 112);
-    setGridBounds(btnConfig, rightEdge - configButtonW, option2Y, configButtonW);
-    contentPanel.add(lblBatchGame);
-    contentPanel.add(LizzieFrame.toolbar.chkenginePkBatch);
-    contentPanel.add(LizzieFrame.toolbar.txtenginePkBatch);
-    contentPanel.add(btnConfig);
 
     textFieldKomi.setEnabled(true);
-
-    //    if (Lizzie.config.showHiddenYzy) {
-    //      JFontLabel delay = new JFontLabel("延时(分):"); // $NON-NLS-1$
-    //      delay.setBounds(269, 237, 60, 20);
-    //      contentPanel.add(delay);
-    //
-    //      textFieldDelay = new JFormattedTextField(FORMAT_HANDICAP);
-    //      textFieldDelay.setBounds(324, 237, 40, 20);
-    //      contentPanel.add(textFieldDelay);
-    //    }
-    dialogPane.add(contentPanel, BorderLayout.CENTER);
 
     JFontLabel lblAdvanceTime =
         new JFontLabel(
             Lizzie.resourceBundle.getString(
                 "NewEngineGameDialog.lblAdvanceTime")); // ("高级时间设置"); // $NON-NLS-1$
-    setGridBounds(lblAdvanceTime, labelX, advanceY, labelW);
-    contentPanel.add(lblAdvanceTime);
 
     txtBlackAdvanceTime = new JFontTextField();
-    setGridBounds(txtBlackAdvanceTime, blackX, advanceY, fieldW);
-    contentPanel.add(txtBlackAdvanceTime);
     txtBlackAdvanceTime.setColumns(10);
 
     txtWhiteAdvanceTime = new JFontTextField();
-    setGridBounds(txtWhiteAdvanceTime, whiteX, advanceY, fieldW);
-    contentPanel.add(txtWhiteAdvanceTime);
     txtWhiteAdvanceTime.setColumns(10);
 
     txtBlackAdvanceTime.setText(Lizzie.config.advanceBlackTimeTxt);
     txtWhiteAdvanceTime.setText(Lizzie.config.advanceWhiteTimeTxt);
-    if (!LizzieFrame.toolbar.isGenmoveToolbar) {
-      txtBlackAdvanceTime.setEnabled(false);
-      txtWhiteAdvanceTime.setEnabled(false);
-    } else {
-      txtresignSettingBlack.setVisible(false);
-      txtresignSettingBlack2.setVisible(false);
-      txtresignSettingBlackMinMove.setVisible(false);
-      resignThresoldHint.setVisible(true);
-      lblresignSettingBlack.setVisible(false);
-      lblresignSettingBlackConsistent.setVisible(false);
-      lblresignSettingBlack2.setVisible(false);
-      lblresignSettingBlack3.setVisible(false);
-      lblresignSettingBlack4.setVisible(false);
-
-      txtresignSettingWhite.setVisible(false);
-      txtresignSettingWhite2.setVisible(false);
-      txtresignSettingWhiteMinMove.setVisible(false);
-      lblresignSettingWhiteConsistent.setVisible(false);
-      lblresignSettingWhite.setVisible(false);
-      lblresignSettingWhite2.setVisible(false);
-      lblresignSettingWhite3.setVisible(false);
-      lblresignSettingWhite4.setVisible(false);
-    }
     ImageIcon iconSettings = new ImageIcon();
     try {
       iconSettings.setImage(ImageIO.read(getClass().getResourceAsStream("/assets/settings.png")));
@@ -630,13 +406,10 @@ public class NewEngineGameDialog extends JDialog {
                 thisDialog);
           }
         });
-    aboutAdvanceTimeSettings.setBounds(helpIconX, advanceY + 3, 18, 18);
+    aboutAdvanceTimeSettings.setPreferredSize(new Dimension(controlHeight(), controlHeight()));
     aboutAdvanceTimeSettings.setFocusable(false);
-    contentPanel.add(aboutAdvanceTimeSettings);
 
     chkUseAdvanceTime = new JFontCheckBox(); // $NON-NLS-1$
-    setGridBounds(chkUseAdvanceTime, checkX, advanceY, checkW);
-    contentPanel.add(chkUseAdvanceTime);
     if (!LizzieFrame.toolbar.isGenmoveToolbar) chkUseAdvanceTime.setEnabled(false);
 
     chkUseAdvanceTime.addActionListener(
@@ -670,7 +443,6 @@ public class NewEngineGameDialog extends JDialog {
         new JFontCheckBox(
             Lizzie.resourceBundle.getString(
                 "NewEngineGameDialog.checkBoxAllowPonder")); // ("允许后台计算(同一台电脑对战时不可勾选)");
-    setGridBounds(checkBoxAllowPonder, labelX, optionY, rightEdge - labelX);
     checkBoxAllowPonder.addActionListener(
         new ActionListener() {
           public void actionPerformed(ActionEvent e) {
@@ -680,7 +452,6 @@ public class NewEngineGameDialog extends JDialog {
           }
         });
     checkBoxAllowPonder.setSelected(Lizzie.config.enginePkPonder);
-    contentPanel.add(checkBoxAllowPonder);
 
     chkDisableWRNInGame =
         new JFontCheckBox(Lizzie.resourceBundle.getString("NewAnaGameDialog.lblDisableWRNInGame"));
@@ -692,14 +463,10 @@ public class NewEngineGameDialog extends JDialog {
           }
         });
     chkDisableWRNInGame.setSelected(Lizzie.config.disableWRNInGame);
-    setGridBounds(chkDisableWRNInGame, labelX, option2Y, rightEdge - labelX - configButtonW - 12);
     chkDisableWRNInGame.setSelected(Lizzie.config.disableWRNInGame);
-    contentPanel.add(chkDisableWRNInGame);
     chkDisableWRNInGame.setVisible(!LizzieFrame.toolbar.isGenmoveToolbar);
 
     chkSGFstart = new JFontCheckBox();
-    setGridBounds(chkSGFstart, sgfCheckX, continueY, checkW);
-    contentPanel.add(chkSGFstart);
     chkSGFstart.addActionListener(
         new ActionListener() {
           public void actionPerformed(ActionEvent e) {
@@ -730,21 +497,13 @@ public class NewEngineGameDialog extends JDialog {
             Lizzie.frame.openSgfStart();
           }
         });
-    setGridBounds(btnSGFstart, sgfButtonX, continueY, sgfButtonW);
-    contentPanel.add(btnSGFstart);
     btnSGFstart.setMargin(new Insets(0, 0, 0, 0));
-
-    setGridBounds(lblsgf, sgfLabelX, continueY, sgfLabelW);
-    contentPanel.add(lblsgf);
-    // lblsgf.setEnabled(LizzieFrame.toolbar.chkenginePkBatch.isSelected());
 
     cbxRandomSgf = new JFontComboBox<String>();
     cbxRandomSgf.addItem(
         Lizzie.resourceBundle.getString("NewEngineGameDialog.cbxRandomSgf1")); // ("顺序");
     cbxRandomSgf.addItem(
         Lizzie.resourceBundle.getString("NewEngineGameDialog.cbxRandomSgf2")); // ("随机");
-    setGridBounds(cbxRandomSgf, sgfComboX, continueY, sgfComboW);
-    contentPanel.add(cbxRandomSgf);
     cbxRandomSgf.addItemListener(
         new ItemListener() {
           public void itemStateChanged(final ItemEvent e) {
@@ -757,19 +516,106 @@ public class NewEngineGameDialog extends JDialog {
           }
         });
     cbxRandomSgf.setSelectedIndex(Lizzie.config.engineSgfStartRandom ? 1 : 0);
-    if (Lizzie.config.pkAdvanceTimeSettings && LizzieFrame.toolbar.isGenmoveToolbar) {
-      LizzieFrame.toolbar.chkenginePkTime.setEnabled(false);
-      txtBlackAdvanceTime.setEnabled(true);
-      txtWhiteAdvanceTime.setEnabled(true);
-    } else {
-      LizzieFrame.toolbar.chkenginePkTime.setEnabled(true);
-      if (LizzieFrame.toolbar.chkenginePkTime.isSelected()) {
-        LizzieFrame.toolbar.txtenginePkTime.setEnabled(true);
-        LizzieFrame.toolbar.txtenginePkTimeWhite.setEnabled(true);
-      }
-      txtBlackAdvanceTime.setEnabled(false);
-      txtWhiteAdvanceTime.setEnabled(false);
-    }
+
+    int engineColumnWidth =
+        Lizzie.config.isFrameFontSmall() ? 150 : (Lizzie.config.isFrameFontMiddle() ? 170 : 190);
+    setPreferredControlWidth(enginePkBlack, engineColumnWidth);
+    setPreferredControlWidth(enginePkWhite, engineColumnWidth);
+    setPreferredControlWidth(LizzieFrame.toolbar.txtenginePkTime, engineColumnWidth);
+    setPreferredControlWidth(LizzieFrame.toolbar.txtenginePkTimeWhite, engineColumnWidth);
+    setPreferredControlWidth(txtBlackAdvanceTime, engineColumnWidth);
+    setPreferredControlWidth(txtWhiteAdvanceTime, engineColumnWidth);
+    setPreferredControlWidth(LizzieFrame.toolbar.txtenginePkPlayputs, engineColumnWidth);
+    setPreferredControlWidth(LizzieFrame.toolbar.txtenginePkPlayputsWhite, engineColumnWidth);
+    setPreferredControlWidth(LizzieFrame.toolbar.txtenginePkFirstPlayputs, engineColumnWidth);
+    setPreferredControlWidth(LizzieFrame.toolbar.txtenginePkFirstPlayputsWhite, engineColumnWidth);
+
+    JPanel enginePanel = createSectionPanel();
+    addEngineHeader(enginePanel, lblB, lblW);
+    addEngineRow(enginePanel, 1, lblengine, null, enginePkBlack, enginePkWhite);
+    addEngineRow(
+        enginePanel,
+        2,
+        lblTime,
+        LizzieFrame.toolbar.chkenginePkTime,
+        LizzieFrame.toolbar.txtenginePkTime,
+        LizzieFrame.toolbar.txtenginePkTimeWhite);
+    addEngineRow(
+        enginePanel,
+        3,
+        inlinePanel(lblAdvanceTime, aboutAdvanceTimeSettings),
+        chkUseAdvanceTime,
+        txtBlackAdvanceTime,
+        txtWhiteAdvanceTime);
+    addEngineRow(
+        enginePanel,
+        4,
+        lblPlayout,
+        LizzieFrame.toolbar.chkenginePkPlayouts,
+        LizzieFrame.toolbar.txtenginePkPlayputs,
+        LizzieFrame.toolbar.txtenginePkPlayputsWhite);
+    addEngineRow(
+        enginePanel,
+        5,
+        lblFirstPlayout,
+        LizzieFrame.toolbar.chkenginePkFirstPlayputs,
+        LizzieFrame.toolbar.txtenginePkFirstPlayputs,
+        LizzieFrame.toolbar.txtenginePkFirstPlayputsWhite);
+    addMainSection(mainPanel, enginePanel, 0);
+
+    JPanel resignSection = createSectionPanel();
+    resignSection.setLayout(new BorderLayout());
+    JPanel resignControls = plainPanel(new GridBagLayout());
+    addResignRow(
+        resignControls,
+        0,
+        lblresignSettingBlack,
+        lblresignSettingBlackConsistent,
+        txtresignSettingBlackMinMove,
+        lblresignSettingBlack2,
+        txtresignSettingBlack,
+        lblresignSettingBlack3,
+        txtresignSettingBlack2,
+        lblresignSettingBlack4);
+    addResignRow(
+        resignControls,
+        1,
+        lblresignSettingWhite,
+        lblresignSettingWhiteConsistent,
+        txtresignSettingWhiteMinMove,
+        lblresignSettingWhite2,
+        txtresignSettingWhite,
+        lblresignSettingWhite3,
+        txtresignSettingWhite2,
+        lblresignSettingWhite4);
+    resignSection.add(resignControls, BorderLayout.CENTER);
+    resignSection.add(resignThresoldHint, BorderLayout.NORTH);
+    addMainSection(mainPanel, resignSection, 1);
+
+    JPanel gamePanel = createSectionPanel();
+    addGameSetupRows(gamePanel, komi, handicap, lblBatchGame);
+    addMainSection(mainPanel, gamePanel, 2);
+
+    JPanel optionsPanel = createSectionPanel();
+    addFullWidth(optionsPanel, checkBoxAllowPonder, 0, new Insets(0, 0, 8, 0));
+    addFullWidth(optionsPanel, chkDisableWRNInGame, 1, new Insets(0, 0, 0, 0));
+    addMainSection(mainPanel, optionsPanel, 3);
+
+    addMainFiller(mainPanel, 4);
+
+    btnConfig.addActionListener(
+        new ActionListener() {
+          @Override
+          public void actionPerformed(ActionEvent e) {
+            EnginePkConfig engineconfig = new EnginePkConfig(false);
+            engineconfig.setVisible(true);
+            engineconfig.setAlwaysOnTop(true);
+            updateModeDependentControls(resignControls, resignThresoldHint);
+          }
+        });
+
+    updateModeDependentControls(resignControls, resignThresoldHint);
+
     chkSGFstart.setSelected(Lizzie.config.chkEngineSgfStart);
     if (LizzieFrame.toolbar.chkenginePkContinue.isSelected()) {
       chkContinuePlay.setSelected(true);
@@ -814,6 +660,243 @@ public class NewEngineGameDialog extends JDialog {
         new Font(Config.sysDefaultFontName, Font.PLAIN, Config.frameFontSize));
   }
 
+  private JPanel createSectionPanel() {
+    JPanel panel = plainPanel(new GridBagLayout());
+    panel.setBorder(
+        BorderFactory.createCompoundBorder(
+            BorderFactory.createLineBorder(new Color(220, 224, 230)),
+            new EmptyBorder(12, 12, 12, 12)));
+    return panel;
+  }
+
+  private JPanel plainPanel(LayoutManager layout) {
+    JPanel panel = new JPanel(layout);
+    panel.setOpaque(false);
+    return panel;
+  }
+
+  private JPanel inlinePanel(Component... components) {
+    JPanel panel = plainPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
+    for (Component component : components) {
+      panel.add(component);
+    }
+    return panel;
+  }
+
+  private void addMainSection(JPanel mainPanel, JComponent section, int row) {
+    GridBagConstraints constraints = baseConstraints(0, row);
+    constraints.fill = GridBagConstraints.HORIZONTAL;
+    constraints.weightx = 1.0;
+    constraints.insets = new Insets(row == 0 ? 0 : 12, 0, 0, 0);
+    mainPanel.add(section, constraints);
+  }
+
+  private void addMainFiller(JPanel mainPanel, int row) {
+    GridBagConstraints constraints = baseConstraints(0, row);
+    constraints.fill = GridBagConstraints.BOTH;
+    constraints.weightx = 1.0;
+    constraints.weighty = 1.0;
+    mainPanel.add(Box.createGlue(), constraints);
+  }
+
+  private void addEngineHeader(JPanel panel, JComponent blackHeader, JComponent whiteHeader) {
+    panel.add(Box.createHorizontalStrut(1), engineConstraints(0, 0, 1, 0.0));
+    panel.add(Box.createHorizontalStrut(1), engineConstraints(1, 0, 1, 0.0));
+    panel.add(blackHeader, engineConstraints(2, 0, 1, 0.5));
+    panel.add(whiteHeader, engineConstraints(3, 0, 1, 0.5));
+  }
+
+  private void addEngineRow(
+      JPanel panel,
+      int row,
+      JComponent label,
+      JComponent enableControl,
+      JComponent blackControl,
+      JComponent whiteControl) {
+    GridBagConstraints labelConstraints = engineConstraints(0, row, 1, 0.0);
+    labelConstraints.anchor = GridBagConstraints.WEST;
+    panel.add(label, labelConstraints);
+
+    JComponent enableCell =
+        enableControl != null ? enableControl : (JComponent) Box.createHorizontalStrut(24);
+    GridBagConstraints enableConstraints = engineConstraints(1, row, 1, 0.0);
+    enableConstraints.fill = GridBagConstraints.NONE;
+    enableConstraints.anchor = GridBagConstraints.CENTER;
+    panel.add(enableCell, enableConstraints);
+
+    panel.add(blackControl, engineConstraints(2, row, 1, 0.5));
+    panel.add(whiteControl, engineConstraints(3, row, 1, 0.5));
+  }
+
+  private GridBagConstraints engineConstraints(int x, int y, int width, double weightx) {
+    GridBagConstraints constraints = baseConstraints(x, y);
+    constraints.gridwidth = width;
+    constraints.weightx = weightx;
+    constraints.fill = GridBagConstraints.HORIZONTAL;
+    constraints.insets = new Insets(y == 0 ? 0 : 8, x == 0 ? 0 : 10, y == 0 ? 8 : 0, 0);
+    return constraints;
+  }
+
+  private void addResignRow(
+      JPanel panel,
+      int row,
+      JComponent title,
+      JComponent minMoveLabel,
+      JComponent minMoveField,
+      JComponent consistentLabel,
+      JComponent consistentField,
+      JComponent belowLabel,
+      JComponent belowField,
+      JComponent percentLabel) {
+    setPreferredControlWidth(minMoveField, 58);
+    setPreferredControlWidth(consistentField, 58);
+    setPreferredControlWidth(belowField, 68);
+
+    panel.add(title, resignConstraints(0, row, 0.0, GridBagConstraints.HORIZONTAL));
+    panel.add(minMoveLabel, resignConstraints(1, row, 0.0, GridBagConstraints.NONE));
+    panel.add(minMoveField, resignConstraints(2, row, 0.0, GridBagConstraints.HORIZONTAL));
+    panel.add(consistentLabel, resignConstraints(3, row, 0.0, GridBagConstraints.NONE));
+    panel.add(consistentField, resignConstraints(4, row, 0.0, GridBagConstraints.HORIZONTAL));
+    panel.add(belowLabel, resignConstraints(5, row, 0.0, GridBagConstraints.NONE));
+    panel.add(belowField, resignConstraints(6, row, 0.0, GridBagConstraints.HORIZONTAL));
+    panel.add(percentLabel, resignConstraints(7, row, 0.0, GridBagConstraints.NONE));
+    panel.add(
+        Box.createHorizontalGlue(), resignConstraints(8, row, 1.0, GridBagConstraints.HORIZONTAL));
+  }
+
+  private GridBagConstraints resignConstraints(int x, int y, double weightx, int fill) {
+    GridBagConstraints constraints = baseConstraints(x, y);
+    constraints.weightx = weightx;
+    constraints.fill = fill;
+    constraints.anchor = GridBagConstraints.WEST;
+    constraints.insets = new Insets(y == 0 ? 0 : 8, x == 0 ? 0 : 8, 0, 0);
+    return constraints;
+  }
+
+  private void addGameSetupRows(
+      JPanel panel, JComponent komi, JComponent handicap, JComponent batchLabel) {
+    setPreferredControlWidth(textFieldKomi, 72);
+    setPreferredControlWidth(textFieldHandicap, 72);
+    setPreferredControlWidth(LizzieFrame.toolbar.txtenginePkBatch, 72);
+    setPreferredControlWidth(cbxRandomSgf, 90);
+    setPreferredControlWidth(btnSGFstart, 104);
+
+    panel.add(komi, compactConstraints(0, 0, 0.0));
+    panel.add(textFieldKomi, compactConstraints(1, 0, 0.0));
+    panel.add(handicap, compactConstraints(2, 0, 0.0));
+    panel.add(textFieldHandicap, compactConstraints(3, 0, 0.0));
+
+    panel.add(batchLabel, compactConstraints(0, 1, 0.0));
+    panel.add(LizzieFrame.toolbar.chkenginePkBatch, compactConstraints(1, 1, 0.0));
+    GridBagConstraints batchFieldConstraints = compactConstraints(2, 1, 1.0);
+    batchFieldConstraints.gridwidth = 2;
+    panel.add(LizzieFrame.toolbar.txtenginePkBatch, batchFieldConstraints);
+
+    GridBagConstraints continueConstraints = compactConstraints(0, 2, 0.0);
+    continueConstraints.gridwidth = 2;
+    panel.add(chkContinuePlay, continueConstraints);
+
+    GridBagConstraints sgfToggleConstraints = compactConstraints(2, 2, 0.0);
+    sgfToggleConstraints.gridwidth = 2;
+    panel.add(inlinePanel(chkSGFstart, lblsgf), sgfToggleConstraints);
+
+    panel.add(cbxRandomSgf, compactConstraints(0, 3, 0.0));
+    GridBagConstraints buttonConstraints = compactConstraints(1, 3, 1.0);
+    buttonConstraints.gridwidth = 3;
+    panel.add(btnSGFstart, buttonConstraints);
+  }
+
+  private GridBagConstraints compactConstraints(int x, int y, double weightx) {
+    GridBagConstraints constraints = baseConstraints(x, y);
+    constraints.weightx = weightx;
+    constraints.fill = GridBagConstraints.HORIZONTAL;
+    constraints.anchor = GridBagConstraints.WEST;
+    constraints.insets = new Insets(y == 0 ? 0 : 10, x == 0 ? 0 : 12, 0, 0);
+    return constraints;
+  }
+
+  private void addFullWidth(JPanel panel, JComponent component, int row, Insets insets) {
+    GridBagConstraints constraints = baseConstraints(0, row);
+    constraints.fill = GridBagConstraints.HORIZONTAL;
+    constraints.weightx = 1.0;
+    constraints.insets = insets;
+    panel.add(component, constraints);
+  }
+
+  private GridBagConstraints baseConstraints(int x, int y) {
+    GridBagConstraints constraints = new GridBagConstraints();
+    constraints.gridx = x;
+    constraints.gridy = y;
+    constraints.anchor = GridBagConstraints.WEST;
+    return constraints;
+  }
+
+  private void setPreferredControlWidth(JComponent component, int width) {
+    Dimension preferred = component.getPreferredSize();
+    component.setPreferredSize(new Dimension(width, Math.max(controlHeight(), preferred.height)));
+    component.setMinimumSize(new Dimension(Math.min(width, 48), Math.max(22, preferred.height)));
+  }
+
+  private void updateModeDependentControls(JPanel resignControls, JTextArea resignThresoldHint) {
+    boolean genmoveMode = LizzieFrame.toolbar.isGenmoveToolbar;
+    chkDisableWRNInGame.setVisible(!genmoveMode);
+    resignControls.setVisible(!genmoveMode);
+    resignThresoldHint.setVisible(genmoveMode);
+    chkUseAdvanceTime.setEnabled(genmoveMode);
+
+    if (genmoveMode && Lizzie.config.pkAdvanceTimeSettings) {
+      LizzieFrame.toolbar.chkenginePkTime.setEnabled(false);
+      LizzieFrame.toolbar.txtenginePkTime.setEnabled(false);
+      LizzieFrame.toolbar.txtenginePkTimeWhite.setEnabled(false);
+      txtBlackAdvanceTime.setEnabled(true);
+      txtWhiteAdvanceTime.setEnabled(true);
+    } else {
+      LizzieFrame.toolbar.chkenginePkTime.setEnabled(true);
+      boolean standardTimeEnabled = LizzieFrame.toolbar.chkenginePkTime.isSelected();
+      LizzieFrame.toolbar.txtenginePkTime.setEnabled(standardTimeEnabled);
+      LizzieFrame.toolbar.txtenginePkTimeWhite.setEnabled(standardTimeEnabled);
+      txtBlackAdvanceTime.setEnabled(false);
+      txtWhiteAdvanceTime.setEnabled(false);
+    }
+    if (!genmoveMode) {
+      chkUseAdvanceTime.setEnabled(false);
+    }
+    contentPanel.revalidate();
+    contentPanel.repaint();
+  }
+
+  private static class ViewportWidthPanel extends JPanel implements Scrollable {
+    ViewportWidthPanel(LayoutManager layout) {
+      super(layout);
+      setOpaque(false);
+    }
+
+    @Override
+    public Dimension getPreferredScrollableViewportSize() {
+      return getPreferredSize();
+    }
+
+    @Override
+    public int getScrollableUnitIncrement(Rectangle visibleRect, int orientation, int direction) {
+      return 24;
+    }
+
+    @Override
+    public int getScrollableBlockIncrement(Rectangle visibleRect, int orientation, int direction) {
+      return Math.max(120, visibleRect.height - 48);
+    }
+
+    @Override
+    public boolean getScrollableTracksViewportWidth() {
+      return true;
+    }
+
+    @Override
+    public boolean getScrollableTracksViewportHeight() {
+      return false;
+    }
+  }
+
   //  private void togglePlayerIsBlack() {
   //    JFontTextField humanTextField = playerIsBlack() ? textFieldBlack : textFieldWhite;
   //    JFontTextField computerTextField = playerIsBlack() ? textFieldWhite : textFieldBlack;
@@ -836,20 +919,27 @@ public class NewEngineGameDialog extends JDialog {
   }
 
   private void initButtonBar() {
-    buttonBar.setBorder(new EmptyBorder(7, 0, 0, 0));
+    buttonBar.setBorder(new EmptyBorder(10, 18, 14, 18));
     buttonBar.setLayout(new GridBagLayout());
-    ((GridBagLayout) buttonBar.getLayout()).columnWidths = new int[] {0, 70};
-    ((GridBagLayout) buttonBar.getLayout()).columnWeights = new double[] {1.0, 0.0};
+    ((GridBagLayout) buttonBar.getLayout()).columnWidths = new int[] {120, 0, 104};
+    ((GridBagLayout) buttonBar.getLayout()).columnWeights = new double[] {0.0, 1.0, 0.0};
 
     // ---- okButton ----
     okButton.setText(Lizzie.resourceBundle.getString("NewEngineGameDialog.okButton")); // ("确定");
+    okButton.setPreferredSize(new Dimension(104, controlHeight() + 4));
     okButton.addActionListener(e -> apply());
 
     int center = GridBagConstraints.CENTER;
     int both = GridBagConstraints.BOTH;
+    if (btnConfig != null) {
+      btnConfig.setPreferredSize(new Dimension(120, controlHeight() + 4));
+      buttonBar.add(
+          btnConfig,
+          new GridBagConstraints(0, 0, 1, 1, 0.0, 0.0, center, both, new Insets(0, 0, 0, 0), 0, 0));
+    }
     buttonBar.add(
         okButton,
-        new GridBagConstraints(1, 0, 1, 1, 0.0, 0.0, center, both, new Insets(0, 0, 0, 0), 0, 0));
+        new GridBagConstraints(2, 0, 1, 1, 0.0, 0.0, center, both, new Insets(0, 0, 0, 0), 0, 0));
 
     dialogPane.add(buttonBar, BorderLayout.SOUTH);
   }

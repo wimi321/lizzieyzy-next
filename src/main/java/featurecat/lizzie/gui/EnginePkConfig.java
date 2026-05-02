@@ -3,16 +3,10 @@ package featurecat.lizzie.gui;
 import featurecat.lizzie.Config;
 import featurecat.lizzie.Lizzie;
 import featurecat.lizzie.analysis.EngineManager;
-import java.awt.Font;
-import java.awt.Insets;
-import java.awt.event.ActionEvent;
-import java.awt.event.ActionListener;
+import java.awt.*;
 import java.util.ResourceBundle;
-import javax.swing.ButtonGroup;
-import javax.swing.JButton;
-import javax.swing.JDialog;
-import javax.swing.JRadioButton;
-import javax.swing.JTextArea;
+import javax.swing.*;
+import javax.swing.border.EmptyBorder;
 
 public class EnginePkConfig extends JDialog {
   private final ResourceBundle resourceBundle = Lizzie.resourceBundle;
@@ -24,7 +18,6 @@ public class EnginePkConfig extends JDialog {
   JFontTextField txtresignSettingWhite2;
   JFontTextField txtnameSetting;
   JFontTextField txtGameMAX;
-  // JFontCheckBox chkGenmove;
   JRadioButton rdoGenmove;
   JRadioButton rdoAna;
   JRadioButton rdoCurrentMove;
@@ -46,55 +39,53 @@ public class EnginePkConfig extends JDialog {
   private JFontTextField txtStartNum;
 
   public EnginePkConfig(boolean formToolbar) {
-    // setType(Type.POPUP);
     setModal(true);
-    setTitle(resourceBundle.getString("EnginePkConfig.title")); // ("引擎对局设置");
-    //  setBounds(0, 0, 530, 293);
-    setSize(815, 480);
-    Lizzie.setFrameSize(
-        this,
-        Lizzie.config.isFrameFontSmall() ? 515 : (Lizzie.config.isFrameFontMiddle() ? 620 : 750),
-        Lizzie.config.isFrameFontSmall()
-            ? (formToolbar ? 335 : 305)
-            : (Lizzie.config.isFrameFontMiddle() ? 325 : 350));
-    setResizable(false);
+    setTitle(resourceBundle.getString("EnginePkConfig.title"));
+    setResizable(true);
     setAlwaysOnTop(Lizzie.frame.isAlwaysOnTop());
-    PanelWithToolTips contentPane = new PanelWithToolTips();
-    add(contentPane);
-    contentPane.setLayout(null);
-    setLocationRelativeTo(getOwner());
-    JFontLabel lblresignSettingBlack =
-        new JFontLabel(
-            resourceBundle.getString("EnginePkConfig.lblresignSettingBlack")); // ("认输阈值:连续");
-    JFontLabel lblresignSettingBlack2 =
-        new JFontLabel(resourceBundle.getString("EnginePkConfig.lblresignSetting2")); // ("手胜率低于");
-    JFontLabel lblresignSettingBlack3 =
-        new JFontLabel(resourceBundle.getString("EnginePkConfig.lblresignSetting3"));
-    JFontLabel lblresignSettingBlack4 = new JFontLabel("%");
+    setDefaultCloseOperation(DISPOSE_ON_CLOSE);
 
+    initControls(formToolbar);
+
+    JPanel mainPanel = new ViewportWidthPanel(new GridBagLayout());
+    mainPanel.setBorder(new EmptyBorder(14, 16, 12, 16));
+
+    int row = 0;
+    addMainSection(mainPanel, buildModeSection(formToolbar), row++);
+    addMainSection(mainPanel, buildGameOptionsSection(), row++);
+    addMainSection(mainPanel, buildRandomMoveSection(), row++);
+    if (formToolbar) {
+      addMainSection(mainPanel, buildResignSection(), row++);
+    }
+    addMainSection(mainPanel, buildCandidateSection(), row++);
+    addMainSection(mainPanel, buildHintSection(), row++);
+    addMainFiller(mainPanel, row);
+
+    JScrollPane scrollPane = new JScrollPane(mainPanel);
+    scrollPane.setBorder(null);
+    scrollPane.setHorizontalScrollBarPolicy(ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
+    scrollPane.getVerticalScrollBar().setUnitIncrement(Math.max(18, controlHeight()));
+
+    Container contentPane = getContentPane();
+    contentPane.setLayout(new BorderLayout());
+    contentPane.add(scrollPane, BorderLayout.CENTER);
+    contentPane.add(buildButtonBar(), BorderLayout.SOUTH);
+
+    initControlValues();
+    pack();
+    applyDialogSize(formToolbar);
+    setLocationRelativeTo(Lizzie.frame);
+    adjustLocationForScaledDisplay();
+    keepDialogOnScreen(getUsableScreenBounds());
+  }
+
+  private void initControls(boolean formToolbar) {
     txtresignSettingBlack = new JFontTextField();
     txtresignSettingBlack.setDocument(new IntDocument());
     txtresignSettingBlack2 = new JFontTextField();
     txtresignSettingBlack2.setDocument(new DoubleDocument());
     txtresignSettingBlackMinMove = new JFontTextField();
     txtresignSettingBlackMinMove.setDocument(new IntDocument());
-
-    lblresignSettingBlack3.setBounds(308, 92, 82, 25);
-    lblresignSettingBlack.setBounds(10, 92, 197, 25);
-    lblresignSettingBlack2.setBounds(230, 92, 57, 25);
-    lblresignSettingBlack4.setBounds(431, 92, 15, 25);
-    txtresignSettingBlackMinMove.setBounds(197, 96, 30, 18);
-    txtresignSettingBlack.setBounds(282, 96, 20, 18);
-    txtresignSettingBlack2.setBounds(389, 96, 35, 18);
-
-    JFontLabel lblresignSettingWhite =
-        new JFontLabel(resourceBundle.getString("EnginePkConfig.lblresignSettingWhite"));
-    JFontLabel lblresignSettingWhite2 =
-        new JFontLabel(resourceBundle.getString("EnginePkConfig.lblresignSetting2"));
-    JFontLabel lblresignSettingWhite3 =
-        new JFontLabel(resourceBundle.getString("EnginePkConfig.lblresignSetting3"));
-    JFontLabel lblresignSettingWhite4 = new JFontLabel("%");
-
     txtresignSettingWhite = new JFontTextField();
     txtresignSettingWhite.setDocument(new IntDocument());
     txtresignSettingWhite2 = new JFontTextField();
@@ -102,360 +93,213 @@ public class EnginePkConfig extends JDialog {
     txtresignSettingWhiteMinMove = new JFontTextField();
     txtresignSettingWhiteMinMove.setDocument(new IntDocument());
 
-    lblresignSettingWhite.setBounds(10, 111, 197, 25);
-    lblresignSettingWhite3.setBounds(308, 111, 82, 25);
-    lblresignSettingWhite4.setBounds(431, 111, 15, 25);
-    lblresignSettingWhite2.setBounds(230, 111, 57, 25);
+    chkExchange = new JFontCheckBox(resourceBundle.getString("EnginePkConfig.chkExchange"));
+    chkGameMAX = new JFontCheckBox(resourceBundle.getString("EnginePkConfig.lblGameMAX"));
+    txtGameMAX = new JFontTextField();
+    txtGameMAX.setDocument(new IntDocument());
+    chkAutosave = new JFontCheckBox(resourceBundle.getString("EnginePkConfig.chkAutosave"));
+    chkSaveWinrate = new JFontCheckBox(resourceBundle.getString("EnginePkConfig.chkSaveWinrate"));
 
-    txtresignSettingWhiteMinMove.setBounds(197, 115, 30, 18);
-    txtresignSettingWhite.setBounds(282, 115, 20, 18);
-    txtresignSettingWhite2.setBounds(389, 115, 35, 18);
+    chkRandomMove = new JFontCheckBox(resourceBundle.getString("EnginePkConfig.chkRandomMove"));
+    txtRandomMove = new JFontTextField();
+    txtRandomMove.setDocument(new IntDocument());
+    txtRandomDiffWinrate = new JFontTextField();
+    txtRandomDiffWinrate.setDocument(new DoubleDocument());
+    chkRandomMoveVists =
+        new JFontCheckBox(resourceBundle.getString("EnginePkConfig.chkRandomMoveVists"));
+    txtRandomMoveVists = new JFontTextField();
+    txtRandomMoveVists.setDocument(new DoubleDocument());
 
+    txtnameSetting = new JFontTextField();
+    chkSatartNum = new JFontCheckBox(resourceBundle.getString("EnginePkConfig.chkSatartNum"));
+    txtStartNum = new JFontTextField();
+    txtStartNum.setDocument(new IntDocument());
+
+    rdoGenmove = new JFontRadioButton(resourceBundle.getString("EnginePkConfig.rdoGenmove"));
+    rdoAna = new JFontRadioButton(resourceBundle.getString("EnginePkConfig.rdoAna"));
+    rdoAna.addActionListener(e -> setTextEnable(true));
+    rdoGenmove.addActionListener(e -> setTextEnable(false));
+    rdoAna.setFocusable(false);
+    rdoGenmove.setFocusable(false);
+    ButtonGroup modeGroup = new ButtonGroup();
+    modeGroup.add(rdoGenmove);
+    modeGroup.add(rdoAna);
+
+    rdoCurrentMove =
+        new JFontRadioButton(resourceBundle.getString("EnginePkConfig.rdoCurrentMove"));
+    rdoLastMove = new JFontRadioButton(resourceBundle.getString("EnginePkConfig.rdoLastMove"));
+    ButtonGroup bestMoveGroup = new ButtonGroup();
+    bestMoveGroup.add(rdoCurrentMove);
+    bestMoveGroup.add(rdoLastMove);
+    rdoLastMove.addActionListener(
+        e -> chkPreviousBestmovesOnlyFirstMove.setEnabled(rdoLastMove.isSelected()));
+    rdoCurrentMove.addActionListener(
+        e -> chkPreviousBestmovesOnlyFirstMove.setEnabled(rdoLastMove.isSelected()));
+    chkPreviousBestmovesOnlyFirstMove =
+        new JFontCheckBox(
+            resourceBundle.getString("EnginePkConfig.chkPreviousBestmovesOnlyFirstMove"));
+
+    chkPkPonder =
+        new JFontCheckBox(resourceBundle.getString("NewEngineGameDialog.checkBoxAllowPonder"));
+    chkPkPonder.addActionListener(
+        e -> {
+          Lizzie.config.enginePkPonder = chkPkPonder.isSelected();
+          Lizzie.config.uiConfig.put("engine-pk-ponder", Lizzie.config.enginePkPonder);
+        });
+    chkPkPonder.setVisible(formToolbar);
+
+    setPreferredControlWidth(txtresignSettingBlackMinMove, 64);
+    setPreferredControlWidth(txtresignSettingBlack, 64);
+    setPreferredControlWidth(txtresignSettingBlack2, 72);
+    setPreferredControlWidth(txtresignSettingWhiteMinMove, 64);
+    setPreferredControlWidth(txtresignSettingWhite, 64);
+    setPreferredControlWidth(txtresignSettingWhite2, 72);
+    setPreferredControlWidth(txtGameMAX, 72);
+    setPreferredControlWidth(txtRandomMove, 64);
+    setPreferredControlWidth(txtRandomDiffWinrate, 64);
+    setPreferredControlWidth(txtRandomMoveVists, 72);
+    setPreferredControlWidth(txtnameSetting, 240);
+    setPreferredControlWidth(txtStartNum, 72);
+  }
+
+  private JPanel buildModeSection(boolean formToolbar) {
+    JPanel panel = createSectionPanel();
+    JFontButton aboutAnalyzeGame = new JFontButton("?");
+    aboutAnalyzeGame.setFocusable(false);
+    aboutAnalyzeGame.setMargin(new Insets(0, 0, 0, 0));
+    aboutAnalyzeGame.setPreferredSize(new Dimension(controlHeight() + 2, controlHeight() + 2));
+    aboutAnalyzeGame.addActionListener(e -> Lizzie.frame.showAnalyzeGenmoveInfo());
+
+    addFullWidth(panel, inlinePanel(rdoGenmove, rdoAna, aboutAnalyzeGame), 0);
     if (formToolbar) {
-      contentPane.add(lblresignSettingBlack);
-      contentPane.add(lblresignSettingBlack2);
-      contentPane.add(txtresignSettingBlack);
-      contentPane.add(txtresignSettingBlack2);
-      contentPane.add(lblresignSettingBlack4);
-      contentPane.add(lblresignSettingBlack3);
-      contentPane.add(txtresignSettingBlackMinMove);
-      contentPane.add(txtresignSettingWhiteMinMove);
-      contentPane.add(txtresignSettingWhite);
-      contentPane.add(txtresignSettingWhite2);
-      contentPane.add(lblresignSettingWhite);
-      contentPane.add(lblresignSettingWhite2);
-      contentPane.add(lblresignSettingWhite3);
-      contentPane.add(lblresignSettingWhite4);
+      addFullWidth(panel, chkPkPonder, 1);
     }
+    return panel;
+  }
 
+  private JPanel buildGameOptionsSection() {
+    JPanel panel = createSectionPanel();
+    addFullWidth(panel, inlinePanel(chkExchange, chkGameMAX, txtGameMAX), 0);
+    addFullWidth(panel, inlinePanel(chkAutosave, chkSaveWinrate), 1);
+
+    JFontLabel lblnameSetting =
+        new JFontLabel(resourceBundle.getString("EnginePkConfig.lblnameSetting"));
+    addFullWidth(panel, inlinePanel(lblnameSetting, txtnameSetting), 2);
+    addFullWidth(panel, inlinePanel(chkSatartNum, txtStartNum), 3);
+    return panel;
+  }
+
+  private JPanel buildRandomMoveSection() {
+    JPanel panel = createSectionPanel();
+    JFontLabel lblRandomWinrate =
+        new JFontLabel(resourceBundle.getString("EnginePkConfig.lblRandomWinrate"));
+    addFullWidth(
+        panel,
+        inlinePanel(
+            chkRandomMove, txtRandomMove, lblRandomWinrate, txtRandomDiffWinrate, percent()),
+        0);
+    addFullWidth(panel, inlinePanel(chkRandomMoveVists, txtRandomMoveVists, percent()), 1);
+    return panel;
+  }
+
+  private JPanel buildResignSection() {
+    JPanel panel = createSectionPanel();
+    addResignRow(
+        panel,
+        0,
+        new JFontLabel(resourceBundle.getString("EnginePkConfig.lblresignSettingBlack")),
+        txtresignSettingBlackMinMove,
+        txtresignSettingBlack,
+        txtresignSettingBlack2);
+    addResignRow(
+        panel,
+        1,
+        new JFontLabel(resourceBundle.getString("EnginePkConfig.lblresignSettingWhite")),
+        txtresignSettingWhiteMinMove,
+        txtresignSettingWhite,
+        txtresignSettingWhite2);
+    return panel;
+  }
+
+  private JPanel buildCandidateSection() {
+    JPanel panel = createSectionPanel();
+    addFullWidth(
+        panel,
+        inlinePanel(
+            new JFontLabel(resourceBundle.getString("EnginePkConfig.lblChooseBestMoves")),
+            rdoCurrentMove,
+            rdoLastMove),
+        0);
+    addFullWidth(panel, chkPreviousBestmovesOnlyFirstMove, 1);
+    return panel;
+  }
+
+  private JPanel buildHintSection() {
+    JPanel panel = createSectionPanel();
+    JTextArea textAreaHint = new JTextArea();
+    textAreaHint.setFont(new Font(Config.sysDefaultFontName, Font.PLAIN, Config.frameFontSize));
+    textAreaHint.setLineWrap(true);
+    textAreaHint.setWrapStyleWord(true);
+    textAreaHint.setText(resourceBundle.getString("EnginePkConfig.textAreaHint"));
+    textAreaHint.setOpaque(false);
+    textAreaHint.setEditable(false);
+    textAreaHint.setFocusable(false);
+    addFullWidth(panel, textAreaHint, 0);
+    return panel;
+  }
+
+  private JPanel buildButtonBar() {
+    JPanel panel = plainPanel(new GridBagLayout());
+    panel.setBorder(new EmptyBorder(10, 16, 14, 16));
+    JFontButton okButton = new JFontButton(resourceBundle.getString("EnginePkConfig.okButton"));
+    JFontButton cancelButton =
+        new JFontButton(resourceBundle.getString("EnginePkConfig.cancelButton"));
+    okButton.setPreferredSize(new Dimension(104, controlHeight() + 4));
+    cancelButton.setPreferredSize(new Dimension(104, controlHeight() + 4));
+    okButton.setMargin(new Insets(0, 0, 0, 0));
+    cancelButton.setMargin(new Insets(0, 0, 0, 0));
+    okButton.addActionListener(e -> applyChange());
+    cancelButton.addActionListener(e -> setVisible(false));
+
+    GridBagConstraints filler = baseConstraints(0, 0);
+    filler.weightx = 1.0;
+    filler.fill = GridBagConstraints.HORIZONTAL;
+    panel.add(Box.createHorizontalGlue(), filler);
+    panel.add(cancelButton, buttonConstraints(1, 0, new Insets(0, 0, 0, 10)));
+    panel.add(okButton, buttonConstraints(2, 0, new Insets(0, 0, 0, 0)));
+    return panel;
+  }
+
+  private void initControlValues() {
     txtresignSettingBlack.setText(String.valueOf(Lizzie.config.firstEngineResignMoveCounts));
     txtresignSettingBlack2.setText(String.valueOf(Lizzie.config.firstEngineResignWinrate));
     txtresignSettingBlackMinMove.setText(String.valueOf(Lizzie.config.firstEngineMinMove));
-
     txtresignSettingWhite.setText(String.valueOf(Lizzie.config.secondEngineResignMoveCounts));
     txtresignSettingWhite2.setText(String.valueOf(Lizzie.config.secondEngineResignWinrate));
     txtresignSettingWhiteMinMove.setText(String.valueOf(Lizzie.config.secondEngineMinMove));
 
-    chkExchange =
-        new JFontCheckBox(resourceBundle.getString("EnginePkConfig.chkExchange")); // ("交换黑白");
-    contentPane.add(chkExchange);
-    chkExchange.setBounds(7, 28, 145, 18);
-
-    chkRandomMove =
-        new JFontCheckBox(resourceBundle.getString("EnginePkConfig.chkRandomMove")); // ("随机落子:前");
-    contentPane.add(chkRandomMove);
-    chkRandomMove.setBounds(
-        6,
-        53,
-        Lizzie.config.isFrameFontSmall() ? 98 : (Lizzie.config.isFrameFontMiddle() ? 110 : 140),
-        20);
-
-    txtRandomMove = new JFontTextField();
-    txtRandomMove.setDocument(new IntDocument());
-    contentPane.add(txtRandomMove);
-    txtRandomMove.setBounds(
-        Lizzie.config.isFrameFontSmall() ? 104 : (Lizzie.config.isFrameFontMiddle() ? 120 : 150),
-        Lizzie.config.isFrameFontSmall() ? 55 : (Lizzie.config.isFrameFontMiddle() ? 54 : 53),
-        Lizzie.config.isFrameFontSmall() ? 30 : (Lizzie.config.isFrameFontMiddle() ? 35 : 40),
-        Lizzie.config.isFrameFontSmall() ? 18 : (Lizzie.config.isFrameFontMiddle() ? 20 : 22));
-
-    JFontLabel lblRandomWinrate =
-        new JFontLabel(
-            resourceBundle.getString("EnginePkConfig.lblRandomWinrate")); // ("手,胜率不低于首位");
-    contentPane.add(lblRandomWinrate);
-    lblRandomWinrate.setBounds(
-        Lizzie.config.isFrameFontSmall() ? 142 : (Lizzie.config.isFrameFontMiddle() ? 165 : 193),
-        53,
-        193,
-        20);
-
-    chkRandomMoveVists =
-        new JFontCheckBox(
-            resourceBundle.getString("EnginePkConfig.chkRandomMoveVists")); // ("且计算量不低于最高值");
-    chkRandomMoveVists.setBounds(
-        Lizzie.config.isFrameFontSmall() ? 299 : (Lizzie.config.isFrameFontMiddle() ? 352 : 425),
-        51,
-        Lizzie.config.isFrameFontSmall() ? 145 : (Lizzie.config.isFrameFontMiddle() ? 185 : 230),
-        24);
-    contentPane.add(chkRandomMoveVists);
-
-    txtRandomMoveVists = new JFontTextField();
-    txtRandomMoveVists.setDocument(new DoubleDocument());
-    txtRandomMoveVists.setBounds(
-        Lizzie.config.isFrameFontSmall() ? 444 : (Lizzie.config.isFrameFontMiddle() ? 540 : 660),
-        Lizzie.config.isFrameFontSmall() ? 55 : (Lizzie.config.isFrameFontMiddle() ? 54 : 53),
-        Lizzie.config.isFrameFontSmall() ? 35 : (Lizzie.config.isFrameFontMiddle() ? 42 : 49),
-        Lizzie.config.isFrameFontSmall() ? 18 : (Lizzie.config.isFrameFontMiddle() ? 20 : 22));
-    contentPane.add(txtRandomMoveVists);
-
-    txtRandomDiffWinrate = new JFontTextField();
-    txtRandomDiffWinrate.setDocument(new DoubleDocument());
-    contentPane.add(txtRandomDiffWinrate);
-    txtRandomDiffWinrate.setBounds(
-        Lizzie.config.isFrameFontSmall() ? 255 : (Lizzie.config.isFrameFontMiddle() ? 300 : 365),
-        Lizzie.config.isFrameFontSmall() ? 55 : (Lizzie.config.isFrameFontMiddle() ? 54 : 53),
-        Lizzie.config.isFrameFontSmall() ? 25 : (Lizzie.config.isFrameFontMiddle() ? 30 : 35),
-        Lizzie.config.isFrameFontSmall() ? 18 : (Lizzie.config.isFrameFontMiddle() ? 20 : 22));
-
-    JFontLabel lblRandomWinrate2 = new JFontLabel("%");
-    contentPane.add(lblRandomWinrate2);
-    lblRandomWinrate2.setBounds(
-        Lizzie.config.isFrameFontSmall() ? 282 : (Lizzie.config.isFrameFontMiddle() ? 332 : 401),
-        54,
-        35,
-        20);
-
-    JFontLabel lblnameSetting =
-        new JFontLabel(
-            resourceBundle.getString("EnginePkConfig.lblnameSetting")); // ("多盘对战棋谱保存文件夹名(一次有效):");
-    txtnameSetting = new JFontTextField();
-    contentPane.add(lblnameSetting);
-    contentPane.add(txtnameSetting);
-    lblnameSetting.setBounds(10, formToolbar ? 73 : 78, 454, 25);
-    txtnameSetting.setBounds(
-        Lizzie.config.isFrameFontSmall() ? 222 : (Lizzie.config.isFrameFontMiddle() ? 285 : 355),
-        Lizzie.config.isFrameFontSmall()
-            ? (formToolbar ? 77 : 82)
-            : (Lizzie.config.isFrameFontMiddle() ? 81 : 80),
-        100,
-        Lizzie.config.isFrameFontSmall() ? 18 : (Lizzie.config.isFrameFontMiddle() ? 20 : 22));
-
-    chkSatartNum =
-        new JFontCheckBox(
-            resourceBundle.getString("EnginePkConfig.chkSatartNum")); // ("开始序号(默认为1)");
-    chkSatartNum.setBounds(
-        Lizzie.config.isFrameFontSmall() ? 322 : (Lizzie.config.isFrameFontMiddle() ? 385 : 455),
-        formToolbar ? 75 : 79,
-        Lizzie.config.isFrameFontSmall() ? 142 : (Lizzie.config.isFrameFontMiddle() ? 160 : 194),
-        formToolbar ? 20 : 23);
-    contentPane.add(chkSatartNum);
-
-    txtStartNum = new JFontTextField();
-    txtStartNum.setDocument(new IntDocument());
-    txtStartNum.setBounds(
-        Lizzie.config.isFrameFontSmall() ? 465 : (Lizzie.config.isFrameFontMiddle() ? 547 : 650),
-        Lizzie.config.isFrameFontSmall()
-            ? (formToolbar ? 77 : 82)
-            : (Lizzie.config.isFrameFontMiddle() ? 81 : 80),
-        Lizzie.config.isFrameFontSmall() ? 30 : (Lizzie.config.isFrameFontMiddle() ? 35 : 40),
-        Lizzie.config.isFrameFontSmall() ? 18 : (Lizzie.config.isFrameFontMiddle() ? 20 : 22));
-    contentPane.add(txtStartNum);
-    // txtStartNum.setColumns(10);
-
     chkSatartNum.setSelected(Lizzie.config.chkPkStartNum);
     txtStartNum.setText(String.valueOf(Lizzie.config.pkStartNum));
-
-    rdoGenmove =
-        new JFontRadioButton(
-            resourceBundle.getString("EnginePkConfig.rdoGenmove")); // ("genmove模式对战");
-    rdoAna = new JFontRadioButton(resourceBundle.getString("EnginePkConfig.rdoAna")); // ("分析模式对战");
-    rdoAna.addActionListener(
-        new ActionListener() {
-          public void actionPerformed(ActionEvent e) {
-            setTextEnable(true);
-          }
-        });
-
-    rdoGenmove.addActionListener(
-        new ActionListener() {
-          public void actionPerformed(ActionEvent e) {
-            setTextEnable(false);
-          }
-        });
-    rdoAna.setFocusable(false);
-    rdoGenmove.setFocusable(false);
-
-    ButtonGroup wrgroup = new ButtonGroup();
-    wrgroup.add(rdoGenmove);
-    wrgroup.add(rdoAna);
-
-    contentPane.add(rdoGenmove);
-    contentPane.add(rdoAna);
-
-    rdoGenmove.setBounds(7, 6, 164, 20);
-    rdoAna.setBounds(
-        172,
-        6,
-        Lizzie.config.isChinese
-            ? Lizzie.config.isFrameFontSmall() ? 80 : (Lizzie.config.isFrameFontMiddle() ? 95 : 110)
-            : Lizzie.config.isFrameFontSmall()
-                ? 100
-                : (Lizzie.config.isFrameFontMiddle() ? 120 : 143),
-        20);
-
-    JButton aboutAnalyzeGame = new JFontButton("?");
-    aboutAnalyzeGame.addActionListener(
-        new ActionListener() {
-          @Override
-          public void actionPerformed(ActionEvent e) {
-            Lizzie.frame.showAnalyzeGenmoveInfo();
-          }
-        });
-    aboutAnalyzeGame.setFocusable(false);
-    aboutAnalyzeGame.setMargin(new Insets(0, 0, 0, 0));
-    aboutAnalyzeGame.setBounds(
-        Lizzie.config.isChinese
-            ? Lizzie.config.isFrameFontSmall()
-                ? 255
-                : (Lizzie.config.isFrameFontMiddle() ? 270 : 285)
-            : Lizzie.config.isFrameFontSmall()
-                ? 275
-                : (Lizzie.config.isFrameFontMiddle() ? 295 : 318),
-        Lizzie.config.isFrameFontSmall() ? 6 : (Lizzie.config.isFrameFontMiddle() ? 3 : 1),
-        Config.frameFontSize > 16 ? Config.menuHeight - 5 : Config.menuHeight,
-        Config.frameFontSize > 16 ? Config.menuHeight - 5 : Config.menuHeight);
-    contentPane.add(aboutAnalyzeGame);
-
-    chkGameMAX = new JFontCheckBox(resourceBundle.getString("EnginePkConfig.lblGameMAX"));
-    txtGameMAX = new JFontTextField();
-    txtGameMAX.setDocument(new IntDocument());
-    contentPane.add(chkGameMAX);
-    contentPane.add(txtGameMAX);
-
-    chkGameMAX.setBounds(
-        154,
-        28,
-        Lizzie.config.isFrameFontSmall() ? 75 : (Lizzie.config.isFrameFontMiddle() ? 90 : 105),
-        20);
-    txtGameMAX.setBounds(
-        Lizzie.config.isFrameFontSmall() ? 229 : (Lizzie.config.isFrameFontMiddle() ? 244 : 259),
-        Lizzie.config.isFrameFontSmall() ? 30 : (Lizzie.config.isFrameFontMiddle() ? 29 : 27),
-        Lizzie.config.isFrameFontSmall() ? 40 : (Lizzie.config.isFrameFontMiddle() ? 45 : 50),
-        Lizzie.config.isFrameFontSmall() ? 18 : (Lizzie.config.isFrameFontMiddle() ? 20 : 22));
-
-    chkAutosave =
-        new JFontCheckBox(resourceBundle.getString("EnginePkConfig.chkAutosave")); // ("自动保存棋谱");
-    // JFontLabel lblAutosave = new JFontLabel("自动保存棋谱");
-    contentPane.add(chkAutosave);
-    // add(lblAutosave);
-    chkAutosave.setBounds(
-        Lizzie.config.isFrameFontSmall() ? 288 : (Lizzie.config.isFrameFontMiddle() ? 310 : 330),
-        28,
-        Lizzie.config.isFrameFontSmall() ? 100 : (Lizzie.config.isFrameFontMiddle() ? 130 : 160),
-        20);
-    // lblAutosave.setBounds(242, 65, 100, 18);
-
-    chkSaveWinrate =
-        new JFontCheckBox(resourceBundle.getString("EnginePkConfig.chkSaveWinrate")); // ("保存胜率截图");
-    contentPane.add(chkSaveWinrate);
-    chkSaveWinrate.setBounds(
-        Lizzie.config.isFrameFontSmall() ? 387 : (Lizzie.config.isFrameFontMiddle() ? 446 : 495),
-        28,
-        178,
-        20);
-
-    JFontLabel lblChooseBestMoves =
-        new JFontLabel(resourceBundle.getString("EnginePkConfig.lblChooseBestMoves")); // 选点显示为:
-    contentPane.add(lblChooseBestMoves);
-    lblChooseBestMoves.setBounds(10, formToolbar ? 133 : 105, 128, 25);
-    rdoCurrentMove =
-        new JFontRadioButton(resourceBundle.getString("EnginePkConfig.rdoCurrentMove"));
-    rdoLastMove = new JFontRadioButton(resourceBundle.getString("EnginePkConfig.rdoLastMove"));
-    ButtonGroup groupBestmoves = new ButtonGroup();
-    groupBestmoves.add(rdoCurrentMove);
-    groupBestmoves.add(rdoLastMove);
-    contentPane.add(rdoLastMove);
-    contentPane.add(rdoCurrentMove);
-    rdoCurrentMove.setBounds(130, formToolbar ? 133 : 105, 108, 25);
-    if (Lizzie.config.isChinese)
-      rdoLastMove.setBounds(
-          235,
-          formToolbar ? 133 : 105,
-          Lizzie.config.isFrameFontSmall() ? 65 : (Lizzie.config.isFrameFontMiddle() ? 75 : 90),
-          25);
-    else
-      rdoLastMove.setBounds(
-          235,
-          formToolbar ? 133 : 105,
-          Lizzie.config.isFrameFontSmall() ? 110 : (Lizzie.config.isFrameFontMiddle() ? 125 : 150),
-          25);
-    if (Lizzie.config.showPreviousBestmovesInEngineGame) rdoLastMove.setSelected(true);
-    else rdoCurrentMove.setSelected(true);
-    rdoLastMove.addActionListener(
-        new ActionListener() {
-          public void actionPerformed(ActionEvent e) {
-            chkPreviousBestmovesOnlyFirstMove.setEnabled(rdoLastMove.isSelected());
-          }
-        });
-    rdoCurrentMove.addActionListener(
-        new ActionListener() {
-          public void actionPerformed(ActionEvent e) {
-            chkPreviousBestmovesOnlyFirstMove.setEnabled(rdoLastMove.isSelected());
-          }
-        });
-
-    chkPreviousBestmovesOnlyFirstMove =
-        new JFontCheckBox(
-            resourceBundle.getString("EnginePkConfig.chkPreviousBestmovesOnlyFirstMove"));
-    chkPreviousBestmovesOnlyFirstMove.setSelected(Lizzie.config.showPreviousBestmovesOnlyFirstMove);
-    chkPreviousBestmovesOnlyFirstMove.setEnabled(rdoLastMove.isSelected());
-    if (Lizzie.config.isChinese)
-      chkPreviousBestmovesOnlyFirstMove.setBounds(
-          Lizzie.config.isFrameFontSmall() ? 305 : (Lizzie.config.isFrameFontMiddle() ? 315 : 330),
-          formToolbar ? 133 : 105,
-          208,
-          25);
-    else
-      chkPreviousBestmovesOnlyFirstMove.setBounds(
-          Lizzie.config.isFrameFontSmall() ? 345 : (Lizzie.config.isFrameFontMiddle() ? 370 : 395),
-          formToolbar ? 133 : 105,
-          208,
-          25);
-    contentPane.add(chkPreviousBestmovesOnlyFirstMove);
-
-    JTextArea textAreaHint = new JTextArea();
-    textAreaHint.setFont(new Font(Config.sysDefaultFontName, Font.PLAIN, Config.frameFontSize));
-    textAreaHint.setLineWrap(true);
-    textAreaHint.setText(resourceBundle.getString("EnginePkConfig.textAreaHint"));
-    textAreaHint.setBackground(this.getBackground());
-    textAreaHint.setBounds(
-        7,
-        (formToolbar ? 158 : 133),
-        Lizzie.config.isFrameFontSmall() ? 491 : (Lizzie.config.isFrameFontMiddle() ? 580 : 700),
-        Lizzie.config.isFrameFontSmall() ? 107 : (Lizzie.config.isFrameFontMiddle() ? 125 : 145));
-    textAreaHint.setEditable(false);
-    contentPane.add(textAreaHint);
-
-    JFontButton okButton = new JFontButton(resourceBundle.getString("EnginePkConfig.okButton"));
-    JFontButton cancelButton =
-        new JFontButton(resourceBundle.getString("EnginePkConfig.cancelButton"));
-    contentPane.add(okButton);
-    contentPane.add(cancelButton);
-    okButton.setMargin(new Insets(0, 0, 0, 0));
-    cancelButton.setMargin(new Insets(0, 0, 0, 0));
-    okButton.setBounds(
-        175,
-        Lizzie.config.isFrameFontSmall()
-            ? (formToolbar ? 271 : 241)
-            : (Lizzie.config.isFrameFontMiddle() ? 260 : 280),
-        85,
-        25);
-    cancelButton.setBounds(
-        266,
-        Lizzie.config.isFrameFontSmall()
-            ? (formToolbar ? 271 : 241)
-            : (Lizzie.config.isFrameFontMiddle() ? 260 : 280),
-        85,
-        25);
-
-    okButton.addActionListener(
-        new ActionListener() {
-          public void actionPerformed(ActionEvent e) {
-            applyChange();
-          }
-        });
-
-    cancelButton.addActionListener(
-        new ActionListener() {
-          public void actionPerformed(ActionEvent e) {
-            setVisible(false);
-          }
-        });
     if (EngineManager.engineGameInfo != null && EngineManager.engineGameInfo.batchGameName != null)
       txtnameSetting.setText(LizzieFrame.toolbar.batchPkNameToolbar);
-    if (LizzieFrame.toolbar.AutosavePk) {
-      chkAutosave.setSelected(true);
-    }
+    chkAutosave.setSelected(LizzieFrame.toolbar.AutosavePk);
+    chkExchange.setSelected(LizzieFrame.toolbar.exChangeToolbar);
+    chkGameMAX.setSelected(LizzieFrame.toolbar.checkGameMaxMove);
+    txtGameMAX.setText(String.valueOf(LizzieFrame.toolbar.maxGameMoves));
+    chkRandomMove.setSelected(LizzieFrame.toolbar.isRandomMove);
+    if (LizzieFrame.toolbar.randomMove > 0)
+      txtRandomMove.setText(String.valueOf(LizzieFrame.toolbar.randomMove));
+    txtRandomDiffWinrate.setText(String.valueOf(LizzieFrame.toolbar.randomDiffWinrate));
+    chkSaveWinrate.setSelected(LizzieFrame.toolbar.enginePkSaveWinrate);
+    chkRandomMoveVists.setSelected(Lizzie.config.checkRandomVisits);
+    txtRandomMoveVists.setText(String.valueOf(Lizzie.config.percentsRandomVisits));
+    chkPkPonder.setSelected(Lizzie.config.enginePkPonder);
+
+    if (Lizzie.config.showPreviousBestmovesInEngineGame) rdoLastMove.setSelected(true);
+    else rdoCurrentMove.setSelected(true);
+    chkPreviousBestmovesOnlyFirstMove.setSelected(Lizzie.config.showPreviousBestmovesOnlyFirstMove);
+    chkPreviousBestmovesOnlyFirstMove.setEnabled(rdoLastMove.isSelected());
+
     if (LizzieFrame.toolbar.isGenmoveToolbar) {
       rdoGenmove.setSelected(true);
       setTextEnable(false);
@@ -463,52 +307,207 @@ public class EnginePkConfig extends JDialog {
       rdoAna.setSelected(true);
       setTextEnable(true);
     }
-    if (LizzieFrame.toolbar.exChangeToolbar) {
-      chkExchange.setSelected(true);
+  }
+
+  private void addResignRow(
+      JPanel panel,
+      int row,
+      JComponent title,
+      JComponent minMoveField,
+      JComponent consistentField,
+      JComponent belowField) {
+    panel.add(title, compactConstraints(0, row, 0.0));
+    panel.add(
+        new JFontLabel(resourceBundle.getString("EnginePkConfig.lblresignSettingConsistent")),
+        compactConstraints(1, row, 0.0));
+    panel.add(minMoveField, compactConstraints(2, row, 0.0));
+    panel.add(
+        new JFontLabel(resourceBundle.getString("EnginePkConfig.lblresignSetting2")),
+        compactConstraints(3, row, 0.0));
+    panel.add(consistentField, compactConstraints(4, row, 0.0));
+    panel.add(
+        new JFontLabel(resourceBundle.getString("EnginePkConfig.lblresignSetting3")),
+        compactConstraints(5, row, 0.0));
+    panel.add(belowField, compactConstraints(6, row, 0.0));
+    panel.add(percent(), compactConstraints(7, row, 0.0));
+    GridBagConstraints filler = compactConstraints(8, row, 1.0);
+    filler.fill = GridBagConstraints.HORIZONTAL;
+    panel.add(Box.createHorizontalGlue(), filler);
+  }
+
+  private JLabel percent() {
+    return new JFontLabel("%");
+  }
+
+  private JPanel createSectionPanel() {
+    JPanel panel = plainPanel(new GridBagLayout());
+    panel.setBorder(
+        BorderFactory.createCompoundBorder(
+            BorderFactory.createLineBorder(new Color(220, 224, 230)),
+            new EmptyBorder(12, 12, 12, 12)));
+    return panel;
+  }
+
+  private JPanel plainPanel(LayoutManager layout) {
+    JPanel panel = new JPanel(layout);
+    panel.setOpaque(false);
+    return panel;
+  }
+
+  private JPanel inlinePanel(Component... components) {
+    JPanel panel = plainPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
+    for (Component component : components) {
+      panel.add(component);
     }
-    if (LizzieFrame.toolbar.checkGameMaxMove) {
-      chkGameMAX.setSelected(true);
+    return panel;
+  }
+
+  private void addMainSection(JPanel mainPanel, JComponent section, int row) {
+    GridBagConstraints constraints = baseConstraints(0, row);
+    constraints.fill = GridBagConstraints.HORIZONTAL;
+    constraints.weightx = 1.0;
+    constraints.insets = new Insets(row == 0 ? 0 : 10, 0, 0, 0);
+    mainPanel.add(section, constraints);
+  }
+
+  private void addMainFiller(JPanel mainPanel, int row) {
+    GridBagConstraints constraints = baseConstraints(0, row);
+    constraints.fill = GridBagConstraints.BOTH;
+    constraints.weightx = 1.0;
+    constraints.weighty = 1.0;
+    mainPanel.add(Box.createGlue(), constraints);
+  }
+
+  private void addFullWidth(JPanel panel, JComponent component, int row) {
+    GridBagConstraints constraints = baseConstraints(0, row);
+    constraints.gridwidth = GridBagConstraints.REMAINDER;
+    constraints.fill = GridBagConstraints.HORIZONTAL;
+    constraints.weightx = 1.0;
+    constraints.insets = new Insets(row == 0 ? 0 : 8, 0, 0, 0);
+    panel.add(component, constraints);
+  }
+
+  private GridBagConstraints compactConstraints(int x, int y, double weightx) {
+    GridBagConstraints constraints = baseConstraints(x, y);
+    constraints.weightx = weightx;
+    constraints.fill = weightx > 0 ? GridBagConstraints.HORIZONTAL : GridBagConstraints.NONE;
+    constraints.anchor = GridBagConstraints.WEST;
+    constraints.insets = new Insets(y == 0 ? 0 : 8, x == 0 ? 0 : 10, 0, 0);
+    return constraints;
+  }
+
+  private GridBagConstraints buttonConstraints(int x, int y, Insets insets) {
+    GridBagConstraints constraints = baseConstraints(x, y);
+    constraints.fill = GridBagConstraints.BOTH;
+    constraints.insets = insets;
+    return constraints;
+  }
+
+  private GridBagConstraints baseConstraints(int x, int y) {
+    GridBagConstraints constraints = new GridBagConstraints();
+    constraints.gridx = x;
+    constraints.gridy = y;
+    constraints.anchor = GridBagConstraints.WEST;
+    return constraints;
+  }
+
+  private void setPreferredControlWidth(JComponent component, int width) {
+    Dimension preferred = component.getPreferredSize();
+    component.setPreferredSize(new Dimension(width, Math.max(controlHeight(), preferred.height)));
+    component.setMinimumSize(new Dimension(Math.min(width, 48), Math.max(22, preferred.height)));
+  }
+
+  private int controlHeight() {
+    if (Lizzie.config.isFrameFontSmall()) return 24;
+    if (Lizzie.config.isFrameFontMiddle()) return 26;
+    return 28;
+  }
+
+  private void applyDialogSize(boolean formToolbar) {
+    Rectangle usableBounds = getUsableScreenBounds();
+    int desiredWidth =
+        Lizzie.config.isFrameFontSmall() ? 680 : (Lizzie.config.isFrameFontMiddle() ? 730 : 780);
+    int desiredHeight =
+        formToolbar
+            ? (Lizzie.config.isFrameFontSmall() ? 600 : 650)
+            : (Lizzie.config.isFrameFontSmall() ? 540 : 590);
+    Dimension targetSize =
+        new Dimension(
+            Math.min(desiredWidth, Math.max(640, usableBounds.width - 40)),
+            Math.min(desiredHeight, Math.max(500, usableBounds.height - 40)));
+    setMinimumSize(
+        new Dimension(Math.min(640, targetSize.width), Math.min(500, targetSize.height)));
+    setSize(targetSize);
+  }
+
+  private Rectangle getUsableScreenBounds() {
+    GraphicsConfiguration configuration = getGraphicsConfiguration();
+    if (configuration == null) {
+      return GraphicsEnvironment.getLocalGraphicsEnvironment().getMaximumWindowBounds();
     }
-    txtGameMAX.setText(String.valueOf(LizzieFrame.toolbar.maxGameMoves));
+    Rectangle bounds = configuration.getBounds();
+    Insets insets = Toolkit.getDefaultToolkit().getScreenInsets(configuration);
+    return new Rectangle(
+        bounds.x + insets.left,
+        bounds.y + insets.top,
+        bounds.width - insets.left - insets.right,
+        bounds.height - insets.top - insets.bottom);
+  }
 
-    //    if (Lizzie.frame.toolbar.checkGameMinMove) {
-    //      chkGameMIN.setSelected(true);
-    //    }
+  private void keepDialogOnScreen(Rectangle usableBounds) {
+    int maxX = usableBounds.x + usableBounds.width - getWidth();
+    int maxY = usableBounds.y + usableBounds.height - getHeight();
+    int x = Math.max(usableBounds.x, Math.min(getX(), maxX));
+    int y = Math.max(usableBounds.y, Math.min(getY(), maxY));
+    setLocation(x, y);
+  }
 
-    if (LizzieFrame.toolbar.isRandomMove) {
-      chkRandomMove.setSelected(true);
+  private void adjustLocationForScaledDisplay() {
+    GraphicsConfiguration configuration = getGraphicsConfiguration();
+    if (configuration == null) {
+      return;
     }
-    if (LizzieFrame.toolbar.randomMove > 0)
-      txtRandomMove.setText(String.valueOf(LizzieFrame.toolbar.randomMove));
-    txtRandomDiffWinrate.setText(String.valueOf(LizzieFrame.toolbar.randomDiffWinrate));
-
-    JFontLabel label = new JFontLabel("%"); // (第一选点永不排除)
-    label.setBounds(
-        Lizzie.config.isFrameFontSmall() ? 481 : (Lizzie.config.isFrameFontMiddle() ? 585 : 710),
-        54,
-        25,
-        20);
-    contentPane.add(label);
-    if (LizzieFrame.toolbar.enginePkSaveWinrate) chkSaveWinrate.setSelected(true);
-
-    chkRandomMoveVists.setSelected(Lizzie.config.checkRandomVisits);
-    txtRandomMoveVists.setText(String.valueOf(Lizzie.config.percentsRandomVisits));
-
-    chkPkPonder = new JFontCheckBox("后台计算");
-    chkPkPonder.setBounds(428, 6, 77, 23);
-    if (formToolbar) {
-      contentPane.add(chkPkPonder);
+    java.awt.geom.AffineTransform transform = configuration.getDefaultTransform();
+    double scaleX = transform.getScaleX();
+    double scaleY = transform.getScaleY();
+    if (scaleX <= 1.0 && scaleY <= 1.0) {
+      return;
     }
-    // if (formToolbar)
-    chkPkPonder.addActionListener(
-        new ActionListener() {
-          public void actionPerformed(ActionEvent e) {
-            if (chkPkPonder.isSelected()) Lizzie.config.enginePkPonder = true;
-            else Lizzie.config.enginePkPonder = false;
-            Lizzie.config.uiConfig.put("engine-pk-ponder", Lizzie.config.enginePkPonder);
-          }
-        });
-    chkPkPonder.setSelected(Lizzie.config.enginePkPonder);
+    int xOffset = (int) Math.round(getWidth() * (scaleX - 1.0) / 2.0);
+    int yOffset = (int) Math.round(getHeight() * (scaleY - 1.0) / 2.0);
+    setLocation(getX() - xOffset, getY() - yOffset);
+  }
+
+  private static class ViewportWidthPanel extends JPanel implements Scrollable {
+    ViewportWidthPanel(LayoutManager layout) {
+      super(layout);
+      setOpaque(false);
+    }
+
+    @Override
+    public Dimension getPreferredScrollableViewportSize() {
+      return getPreferredSize();
+    }
+
+    @Override
+    public int getScrollableUnitIncrement(Rectangle visibleRect, int orientation, int direction) {
+      return 24;
+    }
+
+    @Override
+    public int getScrollableBlockIncrement(Rectangle visibleRect, int orientation, int direction) {
+      return Math.max(120, visibleRect.height - 48);
+    }
+
+    @Override
+    public boolean getScrollableTracksViewportWidth() {
+      return true;
+    }
+
+    @Override
+    public boolean getScrollableTracksViewportHeight() {
+      return false;
+    }
   }
 
   private void setTextEnable(boolean status) {
@@ -521,9 +520,6 @@ public class EnginePkConfig extends JDialog {
     chkRandomMove.setEnabled(status);
     txtRandomMove.setEnabled(status);
     txtRandomDiffWinrate.setEnabled(status);
-    chkRandomMove.setEnabled(status);
-    txtRandomDiffWinrate.setEnabled(status);
-    txtRandomMove.setEnabled(status);
     txtRandomMoveVists.setEnabled(status);
     chkRandomMoveVists.setEnabled(status);
   }
@@ -534,8 +530,6 @@ public class EnginePkConfig extends JDialog {
     } catch (NumberFormatException err) {
     }
     Lizzie.config.chkPkStartNum = chkSatartNum.isSelected();
-    // Lizzie.config.uiConfig.put("chkpk-start-num", Lizzie.config.chkPkStartNum);
-    // Lizzie.config.uiConfig.put("pk-start-num", Lizzie.config.pkStartNum);
 
     try {
       Lizzie.config.firstEngineResignMoveCounts = Integer.parseInt(txtresignSettingBlack.getText());
@@ -614,11 +608,6 @@ public class EnginePkConfig extends JDialog {
       LizzieFrame.toolbar.maxGameMoves = Integer.parseInt(txtGameMAX.getText().trim());
     } catch (NumberFormatException err) {
     }
-    //    Lizzie.frame.toolbar.checkGameMinMove = chkGameMIN.isSelected();
-    //    try {
-    //      Lizzie.frame.toolbar.minGanmeMove = Integer.parseInt(txtGameMIN.getText().trim());
-    //    } catch (NumberFormatException err) {
-    //    }
     setVisible(false);
   }
 }
