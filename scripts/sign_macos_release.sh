@@ -65,6 +65,20 @@ cleanup() {
 }
 trap cleanup EXIT
 
+detach_image() {
+  local target="$1"
+  local attempt
+
+  for attempt in 1 2 3 4 5; do
+    if hdiutil detach "$target" -quiet >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep "$attempt"
+  done
+
+  hdiutil detach "$target" -force -quiet >/dev/null 2>&1
+}
+
 sign_embedded_jar_natives() {
   local app_bundle="$1"
   local jar_file
@@ -158,12 +172,40 @@ for dmg in "${dmg_files[@]}"; do
 
   work_dir="$(mktemp -d -t lizzieyzy-sign.XXXXXX)"
   mount_point="$work_dir/mount"
+  mounted_target=""
   mkdir -p "$mount_point"
+  cleanup_work_dir() {
+    if [[ -n "$mounted_target" ]]; then
+      detach_image "$mounted_target" || true
+    elif mount | grep -q " on $mount_point "; then
+      detach_image "$mount_point" || true
+    fi
+    rm -rf "$work_dir"
+  }
+  trap 'cleanup_work_dir; cleanup' EXIT
 
-  hdiutil attach "$dmg" -mountpoint "$mount_point" -nobrowse -noautoopen -readonly >/dev/null
+  attach_plist="$work_dir/attach.plist"
+  hdiutil attach "$dmg" -mountpoint "$mount_point" -nobrowse -noautoopen -readonly -plist >"$attach_plist"
+  mounted_target="$(
+    python3 - "$attach_plist" <<'PY'
+import plistlib
+import sys
+
+with open(sys.argv[1], "rb") as f:
+    data = plistlib.load(f)
+for entity in data.get("system-entities", []):
+    if entity.get("mount-point"):
+        print(entity.get("dev-entry", ""))
+        break
+PY
+  )"
+  if [[ -z "$mounted_target" ]]; then
+    mounted_target="$mount_point"
+  fi
   app_path="$(find "$mount_point" -maxdepth 2 -name '*.app' -print -quit || true)"
   if [[ -z "$app_path" ]]; then
-    hdiutil detach "$mount_point" -quiet >/dev/null 2>&1 || true
+    detach_image "$mounted_target" || true
+    mounted_target=""
     echo "No .app bundle found inside $dmg" >&2
     exit 1
   fi
@@ -171,7 +213,9 @@ for dmg in "${dmg_files[@]}"; do
   staging="$work_dir/staging"
   mkdir -p "$staging"
   cp -R "$app_path" "$staging/"
-  hdiutil detach "$mount_point" -quiet >/dev/null 2>&1 || true
+  detach_image "$mounted_target"
+  mounted_target=""
+  sleep 2
 
   staged_app="$staging/$(basename "$app_path")"
 
@@ -232,5 +276,6 @@ for dmg in "${dmg_files[@]}"; do
 
   mv "$signed_dmg" "$dmg"
   rm -rf "$work_dir"
+  trap cleanup EXIT
   echo "Signed and notarized: $dmg"
 done
