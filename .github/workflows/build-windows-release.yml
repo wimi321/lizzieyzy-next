@@ -178,15 +178,6 @@ jobs:
           $appExe = Join-Path $PWD "dist\windows\app-image-with-katago\LizzieYzy Next\LizzieYzy Next.exe"
           & "$PWD\scripts\windows_smoke_test.ps1" -AppExe $appExe -WaitSeconds 60 -ProbeBoardSync
 
-      - name: Upload workflow artifacts
-        uses: actions/upload-artifact@v6
-        with:
-          name: windows-release
-          path: |
-            dist/release/*windows64*.installer.exe
-            dist/release/*windows64*.portable.zip
-            dist/release-meta/*windows64-*.txt
-
       - name: Upload assets to release
         shell: bash
         env:
@@ -197,6 +188,17 @@ jobs:
             dist/release/*windows64*.portable.zip \
             --repo "${{ github.repository }}" \
             --clobber
+
+      - name: Upload workflow artifacts
+        timeout-minutes: 20
+        continue-on-error: true
+        uses: actions/upload-artifact@v6
+        with:
+          name: windows-release
+          path: |
+            dist/release/*windows64*.installer.exe
+            dist/release/*windows64*.portable.zip
+            dist/release-meta/*windows64-*.txt
 
       - name: Smoke test Windows upgrade install path
         timeout-minutes: 25
