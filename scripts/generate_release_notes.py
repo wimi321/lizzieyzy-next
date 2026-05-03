@@ -264,7 +264,69 @@ def render_language_section(section: dict[str, object]) -> str:
     return '\n'.join(lines).rstrip()
 
 
+def build_next_2026_05_03_1_notes(
+    asset_map: dict[str, str | None],
+    repo: str,
+    release_tag: str | None,
+) -> str:
+    assets_cn = {
+        key: format_asset(asset_map[key], repo, release_tag)
+        for key in asset_map
+    }
+    tag = release_tag or 'next-2026-05-03.1'
+    return f"""# LizzieYzy Next {tag}
+
+## 本次更新
+
+这版主要修复最近几轮测试反馈的界面、同步和发版链路问题。
+
+### 主要修复
+
+- 优化“评论 / 问题手”侧栏：顶部区域和正文不再有突兀色差，黑棋/白棋筛选放到“问题手”同一行右侧，切换点击区域更稳定。
+- 修复“问题手”列表卡片过宽和底部无意义横向滚动条，列表现在会按侧栏宽度自适应，窄侧栏下也不会横向撑开。
+- 问题手进度改成“评估中 / 已评估 / 评估完成”，分母按实际可评估的位置计算，避免 230 手棋最终看起来停在 229/230 的误解。
+- 修复弈客直播棋谱同步后主引擎没有同步到当前棋谱历史的问题，载入弈客棋局后分析状态更一致。
+- 调整评论区、问题手区、胜率图相关背景绘制，让透明/半透明背景在不同主题下更自然，不再出现奇怪的大块空白或残留感。
+- 公开 release tag 改成 `next-YYYY-MM-DD.N`，从本版起不再使用 `1.0.0-` 前缀；安装包内部仍保留平台打包工具需要的数字版本。
+- 修复发版链路：macOS DMG 签名/公证后重打包时增加卸载重试，避免 `hdiutil: Resource busy`；Windows workflow 优先把正式 release 资产上传到 GitHub，非关键 Actions artifact/升级 smoke 不再阻塞下载。
+
+### 验证
+
+- 本地 `mvn test` 通过：530 tests，0 failures，1 skipped。
+- 本地 `mvn -DskipTests package` 通过。
+- Windows release workflow 已通过：打包、公开资产校验、UX 检查、bundled app-image smoke test，并已上传 Windows installer/portable。
+- Linux release workflow 已通过，并上传 CPU / OpenCL / NVIDIA 三个包。
+- macOS Intel workflow 已通过并上传 DMG。
+- macOS Apple Silicon 初次签名重打包遇到 `Resource busy`，修复签名脚本后复跑通过并上传 DMG。
+
+## 下载建议
+
+| 你的电脑 | 推荐下载 |
+| --- | --- |
+| Windows 64 位，OpenCL 版，推荐更快，免安装 | {assets_cn['windows_opencl_portable']} |
+| Windows 64 位，OpenCL 版，想安装 | {assets_cn['windows_opencl_installer']} |
+| Windows 64 位，CPU 兼容版，免安装 | {assets_cn['windows_portable']} |
+| Windows 64 位，CPU 兼容版，想安装 | {assets_cn['windows_installer']} |
+| Windows 64 位，NVIDIA 显卡，免安装 | {assets_cn['windows_nvidia_portable']} |
+| Windows 64 位，NVIDIA 显卡，想安装 | {assets_cn['windows_nvidia_installer']} |
+| Windows 64 位，自己配置引擎，免安装 | {assets_cn['windows_no_engine_portable']} |
+| Windows 64 位，自己配置引擎，想安装 | {assets_cn['windows_no_engine_installer']} |
+| macOS Apple Silicon | {assets_cn['mac_arm64']} |
+| macOS Intel | {assets_cn['mac_amd64']} |
+| Linux 64 位，CPU 兼容版 | {assets_cn['linux64']} |
+| Linux 64 位，OpenCL 版 | {assets_cn['linux64_opencl']} |
+| Linux 64 位，NVIDIA CUDA 版 | {assets_cn['linux64_nvidia']} |
+
+## 交流
+
+- QQ 群：`299419120`
+"""
+
+
 def build_release_notes(asset_map: dict[str, str | None], bundle: dict[str, str], repo: str, release_tag: str | None) -> str:
+    if release_tag == 'next-2026-05-03.1':
+        return build_next_2026_05_03_1_notes(asset_map, repo, release_tag)
+
     assets_cn = {
         key: format_asset(asset_map[key], repo, release_tag)
         for key in asset_map
