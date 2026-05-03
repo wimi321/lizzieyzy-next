@@ -909,7 +909,9 @@ public class ReadBoard {
       if (Lizzie.frame.isAnaPlayingAgainstLeelaz) {
         Lizzie.frame.stopAiPlayingAndPolicy();
       }
-      Lizzie.leelaz.togglePonder();
+      if (Lizzie.leelaz.isPondering()) {
+        Lizzie.leelaz.togglePonder();
+      }
     }
     if (line.startsWith("noinboard")) {
       if (Lizzie.frame.floatBoard != null && Lizzie.frame.floatBoard.isVisible()) {
