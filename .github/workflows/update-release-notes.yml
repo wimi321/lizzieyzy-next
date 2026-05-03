@@ -6,11 +6,11 @@ on:
       date_tag:
         description: Release date tag, for example 2026-03-23
         required: true
-        default: 2026-03-24
+        default: 2026-05-03
       release_tag:
         description: Existing GitHub release tag to update
         required: true
-        default: 1.0.0-next-2026-03-24.2
+        default: next-2026-05-03.1
 
 permissions:
   contents: write

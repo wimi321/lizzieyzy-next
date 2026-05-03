@@ -1022,13 +1022,7 @@ public class LizzieFrame extends JFrame {
     htmlDoc = (HTMLDocument) htmlKit.createDefaultDocument();
     htmlStyle = htmlKit.getStyleSheet();
     String style =
-        "body {background:"
-            + String.format(
-                "%02x%02x%02x",
-                Lizzie.config.commentBackgroundColor.getRed(),
-                Lizzie.config.commentBackgroundColor.getGreen(),
-                Lizzie.config.commentBackgroundColor.getBlue())
-            + "; color:#"
+        "body {background:transparent; color:#"
             + String.format(
                 "%02x%02x%02x",
                 Lizzie.config.commentFontColor.getRed(),
@@ -1037,14 +1031,16 @@ public class LizzieFrame extends JFrame {
             + "; font-family:"
             + Lizzie.config.uiFontName
             + ", Consolas, Menlo, Monaco, 'Ubuntu Mono', monospace;"
+            + " font-size:"
             + (Lizzie.config.commentFontSize > 0
                 ? Lizzie.config.commentFontSize
                 : commentPaneFontSize > 0 ? commentPaneFontSize : Config.frameFontSize)
+            + "px;"
             + "}";
     htmlStyle.addRule(style);
     commentTextPane = new JPaintTextPane();
     commentTextPane.setBorder(BorderFactory.createEmptyBorder());
-    // commentTextPane.setOpaque(false);
+    commentTextPane.setOpaque(false);
     commentTextPane.setEditorKit(htmlKit);
     commentTextPane.setDocument(htmlDoc);
     commentTextPane.setEditable(false);
@@ -1907,14 +1903,14 @@ public class LizzieFrame extends JFrame {
     ArrayList<ProblemMoveEntry> whiteEntries = new ArrayList<>();
     BoardHistoryNode node = Lizzie.board.getHistory().getStart();
     int analyzedMoves = 0;
-    int totalMoves =
-        Math.max(
-            Lizzie.board.getHistory().mainTrunkLength(),
-            Lizzie.board.getHistory().getMainEnd().getData().moveNumber);
+    int totalMoves = 0;
     while (node != null) {
       NodeInfo info = node.nodeInfoMain != null ? node.nodeInfoMain : node.nodeInfo;
       Optional<BoardHistoryNode> nextNode = node.next();
-      if (info != null && info.moveNum > 0) {
+      if (nextNode.map(this::isProblemListEvaluationMove).orElse(false)) {
+        totalMoves++;
+      }
+      if (info != null && isProblemListInfoForNextMove(info, nextNode)) {
         if (info.analyzed) {
           analyzedMoves++;
         }
@@ -1942,6 +1938,23 @@ public class LizzieFrame extends JFrame {
         new ProblemListSnapshot(
             metric, blackEntries, whiteEntries, analyzedMoves, totalMoves, analysisRunning);
     notifyProblemListListeners();
+  }
+
+  private boolean isProblemListEvaluationMove(BoardHistoryNode node) {
+    BoardData data = node.getData();
+    return data != null && data.moveNumber > 1 && data.isMoveNode();
+  }
+
+  private boolean isProblemListInfoForNextMove(NodeInfo info, Optional<BoardHistoryNode> nextNode) {
+    return nextNode
+        .map(BoardHistoryNode::getData)
+        .map(
+            data ->
+                data != null
+                    && data.isMoveNode()
+                    && data.moveNumber > 1
+                    && data.moveNumber == info.moveNum)
+        .orElse(false);
   }
 
   public ProblemListSnapshot getProblemListSnapshot() {
@@ -7806,13 +7819,7 @@ public class LizzieFrame extends JFrame {
         if (commentPaneFontSize != fontSize) {
           commentPaneFontSize = fontSize;
           String style =
-              "body {background:"
-                  + String.format(
-                      "%02x%02x%02x",
-                      Lizzie.config.commentBackgroundColor.getRed(),
-                      Lizzie.config.commentBackgroundColor.getGreen(),
-                      Lizzie.config.commentBackgroundColor.getBlue())
-                  + "; color:#"
+              "body {background:transparent; color:#"
                   + String.format(
                       "%02x%02x%02x",
                       Lizzie.config.commentFontColor.getRed(),
@@ -8189,9 +8196,11 @@ public class LizzieFrame extends JFrame {
       commentEditPane.setVisible(true);
       commentEditTextPane.requestFocus(true);
       commentScrollPane.setVisible(false);
+      sidebarPanel.syncCommentVisibility();
     } else if (commentEditPane.isVisible()) {
       commentScrollPane.setVisible(true);
       commentEditPane.setVisible(false);
+      sidebarPanel.syncCommentVisibility();
       String text = commentEditTextPane.getText();
       if (text.endsWith("\n")) text = text.substring(0, text.length() - 1);
       Lizzie.board.getHistory().getCurrentHistoryNode().getData().comment = text;
@@ -8213,13 +8222,7 @@ public class LizzieFrame extends JFrame {
     commentTextPane.setForeground(Lizzie.config.commentFontColor);
     commentTextPane.setBackground(Lizzie.config.commentBackgroundColor);
     String style =
-        "body {background:"
-            + String.format(
-                "%02x%02x%02x",
-                Lizzie.config.commentBackgroundColor.getRed(),
-                Lizzie.config.commentBackgroundColor.getGreen(),
-                Lizzie.config.commentBackgroundColor.getBlue())
-            + "; color:#"
+        "body {background:transparent; color:#"
             + String.format(
                 "%02x%02x%02x",
                 Lizzie.config.commentFontColor.getRed(),
@@ -8228,11 +8231,14 @@ public class LizzieFrame extends JFrame {
             + "; font-family:"
             + Lizzie.config.uiFontName
             + ", Consolas, Menlo, Monaco, 'Ubuntu Mono', monospace;"
+            + " font-size:"
             + (Lizzie.config.commentFontSize > 0
                 ? Lizzie.config.commentFontSize
                 : commentFontSize > 0 ? commentFontSize : Config.frameFontSize)
+            + "px;"
             + "}";
     htmlStyle.addRule(style);
+    commentTextPane.setOpaque(false);
     commentTextArea.setFont(
         new Font(
             Lizzie.config.uiFontName,
@@ -8243,6 +8249,9 @@ public class LizzieFrame extends JFrame {
     commentTextArea.setForeground(Lizzie.config.commentFontColor);
     commentTextArea.setBackground(Lizzie.config.commentBackgroundColor);
     commentScrollPane.setBackground(Lizzie.config.commentBackgroundColor);
+    commentScrollPane.setOpaque(false);
+    commentScrollPane.getViewport().setOpaque(false);
+    sidebarPanel.repaint();
   }
 
   private void setCommentComponet() {

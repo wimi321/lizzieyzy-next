@@ -7,6 +7,7 @@ import java.awt.FontMetrics;
 import java.awt.Graphics2D;
 import java.awt.Point;
 import java.awt.image.BufferedImage;
+import java.util.Collections;
 import org.junit.jupiter.api.Test;
 
 class SidebarHeaderPanelHitTest {
@@ -31,8 +32,8 @@ class SidebarHeaderPanelHitTest {
         "the whole classic tab row should be clickable, not only the glyph pixels.");
     assertEquals(
         1,
-        SidebarHeaderPanel.primarySegmentIndexAt(new Point(130, 25), false, metrics),
-        "keep the forgiving right side of the classic tab hit area.");
+        SidebarHeaderPanel.primarySegmentIndexAt(new Point(102, 25), false, metrics),
+        "keep a forgiving right side for 问题手 without covering the inline filters.");
   }
 
   @Test
@@ -55,11 +56,29 @@ class SidebarHeaderPanelHitTest {
   void sideFilterHitTestingMatchesVisibleLabels() {
     FontMetrics metrics = headerMetrics();
 
-    assertEquals(0, SidebarHeaderPanel.sideSegmentIndexAt(new Point(18, 55), false, metrics));
-    assertEquals(1, SidebarHeaderPanel.sideSegmentIndexAt(new Point(58, 55), false, metrics));
-    assertEquals(1, SidebarHeaderPanel.sideSegmentIndexAt(new Point(110, 55), false, metrics));
-    assertEquals(0, SidebarHeaderPanel.sideSegmentIndexAt(new Point(20, 62), true, metrics));
-    assertEquals(1, SidebarHeaderPanel.sideSegmentIndexAt(new Point(88, 62), true, metrics));
+    assertEquals(0, SidebarHeaderPanel.sideSegmentIndexAt(new Point(116, 25), false, metrics));
+    assertEquals(1, SidebarHeaderPanel.sideSegmentIndexAt(new Point(160, 25), false, metrics));
+    assertEquals(1, SidebarHeaderPanel.sideSegmentIndexAt(new Point(206, 25), false, metrics));
+    assertEquals(0, SidebarHeaderPanel.sideSegmentIndexAt(new Point(156, 28), true, metrics));
+    assertEquals(1, SidebarHeaderPanel.sideSegmentIndexAt(new Point(204, 28), true, metrics));
+  }
+
+  @Test
+  void problemHeaderKeepsFiltersInlineWithoutTakingAnExtraRow() {
+    assertEquals(48, SidebarHeaderPanel.preferredHeight(false, false));
+    assertEquals(48, SidebarHeaderPanel.preferredHeight(true, false));
+    assertEquals(56, SidebarHeaderPanel.preferredHeight(false, true));
+    assertEquals(56, SidebarHeaderPanel.preferredHeight(true, true));
+  }
+
+  @Test
+  void progressLabelExplainsTheRightSideCounter() {
+    assertEquals("", SidebarHeaderPanel.progressLabelFor(snapshot(0, 0, false)));
+    assertEquals("评估中 228/229", SidebarHeaderPanel.progressLabelFor(snapshot(228, 229, true)));
+    assertEquals("已评估 228/229", SidebarHeaderPanel.progressLabelFor(snapshot(228, 229, false)));
+    assertEquals("评估完成", SidebarHeaderPanel.progressLabelFor(snapshot(229, 229, false)));
+    assertEquals(
+        "问题手评估进度：已评估 228/229。", SidebarHeaderPanel.progressTooltipFor(snapshot(228, 229, false)));
   }
 
   private static FontMetrics headerMetrics() {
@@ -71,5 +90,15 @@ class SidebarHeaderPanelHitTest {
     } finally {
       graphics.dispose();
     }
+  }
+
+  private static ProblemListSnapshot snapshot(int analyzedMoves, int totalMoves, boolean running) {
+    return new ProblemListSnapshot(
+        ProblemListMetric.WINRATE_LOSS,
+        Collections.emptyList(),
+        Collections.emptyList(),
+        analyzedMoves,
+        totalMoves,
+        running);
   }
 }

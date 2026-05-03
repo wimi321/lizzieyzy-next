@@ -627,6 +627,7 @@ public class OnlineDialog extends JDialog {
         int diffMove = Lizzie.board.getHistory().sync(liveNode);
         sendYikeContextToReadBoard(liveNode != null ? liveNode.getMoveNumber() : 0);
         if (diffMove >= 0) {
+          syncYikeAnalysisEngineToCurrentHistory();
           //     Lizzie.board.goToMoveNumberBeyondBranch(diffMove > 0 ? diffMove - 1 : 0);
           //    while (Lizzie.board.nextMove()) ;
         }
@@ -731,8 +732,23 @@ public class OnlineDialog extends JDialog {
       }
     }
     firstTime = false;
+    syncYikeAnalysisEngineToCurrentHistory();
     Lizzie.frame.refresh();
     sendYikeContextToReadBoard(liveNode != null ? liveNode.getMoveNumber() : 0);
+  }
+
+  private void syncYikeAnalysisEngineToCurrentHistory() {
+    try {
+      if (Lizzie.board != null
+          && Lizzie.frame != null
+          && Lizzie.board.resendCurrentPositionToPrimaryEngine()) {
+        Lizzie.frame.scheduleResumeAnalysisAfterLoad(250);
+      }
+    } catch (RuntimeException e) {
+      updateYikeSyncStatus(
+          currentYikeSourceUrl(),
+          text("YikeLiveDialog.syncFailed", "Yike sync failed.") + ": " + e.getMessage());
+    }
   }
 
   /** 把用户在主线节点上摆出的"变化分支"按手数搬到新 liveNode 主线对应节点上，避免每次同步丢失复盘分支。 */
@@ -2579,6 +2595,7 @@ public class OnlineDialog extends JDialog {
       int diffMove = Lizzie.board.getHistory().sync(history);
       sendYikeContextToReadBoard();
       if (diffMove >= 0) {
+        syncYikeAnalysisEngineToCurrentHistory();
         //      Lizzie.board.goToMoveNumberBeyondBranch(diffMove > 0 ? diffMove - 1 : 0);
         //      while (Lizzie.board.nextMove()) ;
       }
@@ -2672,7 +2689,10 @@ public class OnlineDialog extends JDialog {
     if (history == null) return;
     while (history.previous().isPresent())
       ;
-    Lizzie.board.getHistory().sync(history);
+    int diffMove = Lizzie.board.getHistory().sync(history);
+    if (diffMove >= 0) {
+      syncYikeAnalysisEngineToCurrentHistory();
+    }
     sendYikeContextToReadBoard();
   }
 

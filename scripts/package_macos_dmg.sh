@@ -8,7 +8,7 @@ source "$ROOT_DIR/scripts/release_metadata.sh"
 DATE_TAG="${1:-$(date +%F)}"
 APP_VERSION="${2:-1.0.0}"
 JAR_PATH="${3:-target/lizzie-yzy2.5.3-shaded.jar}"
-APP_DISPLAY_VERSION="${LIZZIE_NEXT_VERSION:-${4:-$APP_VERSION}}"
+APP_DISPLAY_VERSION="${LIZZIE_NEXT_VERSION:-${4:-next-dev}}"
 
 JAVA_HOME_DEFAULT="$ROOT_DIR/.tools/jdk-21/jdk-21.0.10.jdk/Contents/Home"
 if [[ -d "$JAVA_HOME_DEFAULT" ]]; then

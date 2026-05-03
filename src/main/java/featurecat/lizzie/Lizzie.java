@@ -53,7 +53,7 @@ public class Lizzie {
   public static Leelaz leelaz2;
   public static String appName = "LizzieYzy Next";
   public static String lizzieVersion = "2.5.3";
-  private static final String DEFAULT_NEXT_VERSION = "1.0.0-dev";
+  private static final String DEFAULT_NEXT_VERSION = "next-dev";
   private static final String SMOKE_OPEN_BOARD_SYNC_PROPERTY = "lizzie.smoke.openBoardSync";
   private static final String SMOKE_OPEN_BOARD_SYNC_DELAY_MS_PROPERTY =
       "lizzie.smoke.openBoardSyncDelayMs";

@@ -284,7 +284,7 @@ public class AnalysisSettings extends JDialog {
       htmlDoc = (HTMLDocument) htmlKit.createDefaultDocument();
       htmlStyle = htmlKit.getStyleSheet();
       String style =
-          "body {background:"
+          "body {background:#"
               + String.format(
                   "%02x%02x%02x",
                   Lizzie.config.commentBackgroundColor.getRed(),
