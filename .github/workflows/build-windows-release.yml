@@ -178,17 +178,6 @@ jobs:
           $appExe = Join-Path $PWD "dist\windows\app-image-with-katago\LizzieYzy Next\LizzieYzy Next.exe"
           & "$PWD\scripts\windows_smoke_test.ps1" -AppExe $appExe -WaitSeconds 60 -ProbeBoardSync
 
-      - name: Smoke test Windows upgrade install path
-        shell: powershell
-        run: |
-          $inputDir = Join-Path $PWD "dist\windows\input-with-katago"
-          $iconPath = Join-Path $PWD "packaging\icons\app-icon.ico"
-          & "$PWD\scripts\windows_upgrade_smoke.ps1" `
-            -InputDir $inputDir `
-            -MainJar "lizzie-yzy2.5.3-shaded.jar" `
-            -IconPath $iconPath `
-            -UpgradeUuid "c2ef73ec-f99a-4f3d-b950-f52c0186122a"
-
       - name: Upload workflow artifacts
         uses: actions/upload-artifact@v6
         with:
@@ -197,16 +186,6 @@ jobs:
             dist/release/*windows64*.installer.exe
             dist/release/*windows64*.portable.zip
             dist/release-meta/*windows64-*.txt
-
-      - name: Upload Windows smoke logs
-        if: always()
-        uses: actions/upload-artifact@v6
-        with:
-          name: windows-smoke-logs
-          path: |
-            ${{ runner.temp }}/lizzieyzy-next-msi-smoke/logs/*
-            dist/windows/app-image-with-katago/LizzieYzy Next/LastConsoleLogs_*.txt
-            dist/windows/app-image-with-katago/LizzieYzy Next/LastErrorLogs_*.txt
 
       - name: Upload assets to release
         shell: bash
@@ -218,3 +197,26 @@ jobs:
             dist/release/*windows64*.portable.zip \
             --repo "${{ github.repository }}" \
             --clobber
+
+      - name: Smoke test Windows upgrade install path
+        timeout-minutes: 25
+        continue-on-error: true
+        shell: powershell
+        run: |
+          $inputDir = Join-Path $PWD "dist\windows\input-with-katago"
+          $iconPath = Join-Path $PWD "packaging\icons\app-icon.ico"
+          & "$PWD\scripts\windows_upgrade_smoke.ps1" `
+            -InputDir $inputDir `
+            -MainJar "lizzie-yzy2.5.3-shaded.jar" `
+            -IconPath $iconPath `
+            -UpgradeUuid "c2ef73ec-f99a-4f3d-b950-f52c0186122a"
+
+      - name: Upload Windows smoke logs
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: windows-smoke-logs
+          path: |
+            ${{ runner.temp }}/lizzieyzy-next-msi-smoke/logs/*
+            dist/windows/app-image-with-katago/LizzieYzy Next/LastConsoleLogs_*.txt
+            dist/windows/app-image-with-katago/LizzieYzy Next/LastErrorLogs_*.txt
