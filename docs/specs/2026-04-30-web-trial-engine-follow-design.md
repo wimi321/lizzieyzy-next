@@ -163,6 +163,32 @@ clearBestMoves()
 - 多人协同试下、抢占式接管（沿用前置 spec 决策 1 / 6）
 - 修改 `SNAPSHOT_NODE_KIND` / `TRACKING_ANALYSIS_CONTRACT` 契约
 
+## 实现注记：trial 期间 kata-analyze 视角
+
+`Leelaz.maybeAddPlayer()` 决定 `kata-analyze X` 的玩家颜色，原实现读
+`Lizzie.board.getHistory().isBlacksTurn()`。trial 激活时 mainline `currentHistoryNode`
+始终停在 anchor，与实际要分析的 displayNode 轮次不一致 → KataGo 用错视角输出 winrate →
+画面表现"双方都觉得自己稳赢"（典型如黑下完 Q16 后白方应招，KataGo 报告 winrate=98%）。
+
+修复：trial 激活时改读 `Lizzie.frame.getDisplayNode().getData().blackToPlay`，让
+kata-analyze 跟 displayNode 轮次对齐。非 trial 路径（含让子棋等正常分析）走原代码。
+
+## 实现注记：snapshot SGF 的 KM 字段
+
+`SnapshotEngineRestore.buildSnapshotSgf` 之前不写 `KM[]`。KataGo `loadsgf` 加载没有 KM 字段的
+SGF 后，会按 SGF 默认值重置进程内 komi（与 lizzie 启动后 GTP `komi X` 设置过的进程内 komi
+脱钩）。修复：写入 `KM[komi]`，值取自 `Lizzie.board.getHistory().getGameInfo().getKomi()`。
+
+## 诊断日志
+
+代码里保留一组诊断日志，默认关闭。启动加 `-Dlizzie.trial.diag=true` 打开：
+- `[trial-apply]`：用户落子坐标 + 落子前 displayNode 的引擎首选（`WebBoardManager.doApplyMove`）
+- `[trial-resync]` / `[trial-replay]`：sync 重 play 序列（`LeelazEngineCommandSink`）
+- `[trial-sgf]`：snapshot 路径生成的 SGF 内容（`SnapshotEngineRestore.writeSnapshotSgf`）
+- `[trial-kata-info]` / `[mainline-kata-info]`：KataGo info 写入哪个 displayNode（`Leelaz.parseInfoKatago`）
+- `[trial-raw-info]`：KataGo 原始 info 行前缀（`Leelaz.parseLine`）
+- `[katago-cmd]` / `[katago-stderr]`：发给/来自 KataGo 的所有命令与 stderr（`Leelaz.sendCommand` / `Leelaz.readError`）
+
 ## 与现有契约的关系
 
 ### `SNAPSHOT_NODE_KIND.md`

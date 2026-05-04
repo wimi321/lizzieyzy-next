@@ -441,6 +441,23 @@ public class WebBoardManager {
       if (activeSession != s) return;
       BoardHistoryNode parent = s.displayNode;
       BoardData parentData = parent.getData();
+      // 试下诊断（默认关闭，-Dlizzie.trial.diag=true 打开）：用户落子坐标 + 落子前 displayNode 引擎首选
+      if (featurecat.lizzie.analysis.TrialDiag.ENABLED) {
+        try {
+          String userCoord = featurecat.lizzie.rules.Board.convertCoordinatesToName(x, y);
+          String topEng = "(none)";
+          double topWR = -1;
+          if (parentData.bestMoves != null && !parentData.bestMoves.isEmpty()) {
+            featurecat.lizzie.analysis.MoveData top = parentData.bestMoves.get(0);
+            topEng = top.coordinate;
+            topWR = top.winrate;
+          }
+          System.out.printf(
+              "[trial-apply] parent moveNum=%d blackToPlay=%s userClick=%s engineTop=%s engineTopWR=%.2f%n",
+              parentData.moveNumber, parentData.blackToPlay, userCoord, topEng, topWR);
+        } catch (Exception ignored) {
+        }
+      }
 
       // 复用同位置子节点（跳过 dummy 占位）
       for (BoardHistoryNode existing : parent.variations) {
@@ -467,13 +484,33 @@ public class WebBoardManager {
       // 用 BoardData.move(...) 工厂构造，保证 nodeKind=MOVE、moveNumberList、zobrist 等渲染必须字段齐全
       Stone[] newStones = parentData.stones.clone();
       newStones[idx] = color;
-      int newMoveNumber = parentData.moveNumber + 1;
-      int[] newMoveNumberList =
-          parentData.moveNumberList == null ? null : parentData.moveNumberList.clone();
-      if (newMoveNumberList != null) newMoveNumberList[idx] = newMoveNumber;
       featurecat.lizzie.rules.Zobrist newZobrist =
           parentData.zobrist == null ? null : parentData.zobrist.clone();
       if (newZobrist != null) newZobrist.toggleStone(x, y, color);
+
+      // 提子：移除四邻方向上对方的死子链（与 Board.place 主流程一致）
+      int capturedStones = 0;
+      Stone opp = color.opposite();
+      capturedStones += Board.removeDeadChain(x + 1, y, opp, newStones, newZobrist);
+      capturedStones += Board.removeDeadChain(x, y + 1, opp, newStones, newZobrist);
+      capturedStones += Board.removeDeadChain(x - 1, y, opp, newStones, newZobrist);
+      capturedStones += Board.removeDeadChain(x, y - 1, opp, newStones, newZobrist);
+      // 自杀手禁手：上面提子后，如果新落子链自身仍无气，拒绝该落子
+      if (Board.removeDeadChain(x, y, color, newStones, newZobrist) > 0) return;
+
+      int newMoveNumber = parentData.moveNumber + 1;
+      int[] newMoveNumberList =
+          parentData.moveNumberList == null ? null : parentData.moveNumberList.clone();
+      if (newMoveNumberList != null) {
+        newMoveNumberList[idx] = newMoveNumber;
+        // 提子位置上的旧编号要清掉
+        for (int i = 0; i < newStones.length; i++) {
+          if (newStones[i] == Stone.EMPTY) newMoveNumberList[i] = 0;
+        }
+      }
+
+      int newBlackCaptures = parentData.blackCaptures + (color.isBlack() ? capturedStones : 0);
+      int newWhiteCaptures = parentData.whiteCaptures + (color.isWhite() ? capturedStones : 0);
 
       BoardData newData =
           BoardData.move(
@@ -484,8 +521,8 @@ public class WebBoardManager {
               newZobrist,
               newMoveNumber,
               newMoveNumberList,
-              parentData.blackCaptures,
-              parentData.whiteCaptures,
+              newBlackCaptures,
+              newWhiteCaptures,
               0,
               0);
       // 试下分支没有引擎分析（默认 bestMoves 即空、playouts=0）
@@ -548,6 +585,11 @@ public class WebBoardManager {
    */
   private void applyOverrideAndRefresh(BoardHistoryNode node) {
     overrideSink.set(node);
+    // 切换 displayNode 后立刻清掉鼠标 hover：否则原坐标在新 displayNode 的 bestMoves 里同位置 move 上，
+    // 渲染层会继续把它当 hover 画出 branch + 选点高亮，要把鼠标挪开才消失。
+    if (Lizzie.frame != null) {
+      Lizzie.frame.mouseOverCoordinate = featurecat.lizzie.gui.LizzieFrame.outOfBoundCoordinate;
+    }
     desktopRefresher.refresh();
   }
 

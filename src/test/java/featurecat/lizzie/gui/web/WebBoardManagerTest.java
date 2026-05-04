@@ -184,10 +184,9 @@ public class WebBoardManagerTest {
     m.applyTrialMove("c1", 3, 3);
     c.awaitIdle();
 
-    String coord = Board.convertCoordinatesToName(3, 3);
-    // anchor 是空棋盘 -> blackToPlay=true，下一手是 BLACK
-    assertTrue(
-        sink.calls.contains("play B " + coord), "expected 'play B " + coord + "' in " + sink.calls);
+    // controller 三个入口都走 forceResync 路径（详见 EngineFollowController 注释），
+    // 因此应观察到 resync + clearBestMoves，而不是单独的 undo / play 增量命令。
+    assertTrue(sink.calls.contains("resync"), "expected 'resync' in " + sink.calls);
     assertTrue(sink.calls.contains("clearBestMoves"), "expected clearBestMoves in " + sink.calls);
   }
 
@@ -213,8 +212,8 @@ public class WebBoardManagerTest {
     m.exitTrial("c1");
     c.awaitIdle();
 
-    // exit 时 displayNode 在子节点，要 undo 一手回到 anchor，再 clearBestMoves
-    assertTrue(sink.calls.contains("undo"), "expected undo in " + sink.calls);
+    // controller 退出试下也走 forceResync 路径（同样不再用增量 undo）
+    assertTrue(sink.calls.contains("resync"), "expected 'resync' in " + sink.calls);
     assertTrue(sink.calls.contains("clearBestMoves"), "expected clearBestMoves in " + sink.calls);
   }
 
