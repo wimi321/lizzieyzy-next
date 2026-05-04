@@ -189,17 +189,6 @@ jobs:
             --repo "${{ github.repository }}" \
             --clobber
 
-      - name: Upload workflow artifacts
-        timeout-minutes: 20
-        continue-on-error: true
-        uses: actions/upload-artifact@v6
-        with:
-          name: windows-release
-          path: |
-            dist/release/*windows64*.installer.exe
-            dist/release/*windows64*.portable.zip
-            dist/release-meta/*windows64-*.txt
-
       - name: Smoke test Windows upgrade install path
         timeout-minutes: 25
         continue-on-error: true
@@ -212,6 +201,15 @@ jobs:
             -MainJar "lizzie-yzy2.5.3-shaded.jar" `
             -IconPath $iconPath `
             -UpgradeUuid "c2ef73ec-f99a-4f3d-b950-f52c0186122a"
+
+      - name: Upload workflow metadata
+        timeout-minutes: 5
+        continue-on-error: true
+        uses: actions/upload-artifact@v6
+        with:
+          name: windows-release-meta
+          path: |
+            dist/release-meta/*windows64-*.txt
 
       - name: Upload Windows smoke logs
         if: always()
