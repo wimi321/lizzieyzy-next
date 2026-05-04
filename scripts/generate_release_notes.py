@@ -653,9 +653,388 @@ def build_next_2026_05_03_1_notes(
     ) + '\n'
 
 
+def build_next_2026_05_04_1_notes(
+    asset_map: dict[str, str | None],
+    repo: str,
+    release_tag: str | None,
+) -> str:
+    assets_cn = {
+        key: format_asset(asset_map[key], repo, release_tag)
+        for key in asset_map
+    }
+    assets = {
+        key: format_asset_en(asset_map[key], repo, release_tag)
+        for key in asset_map
+    }
+    asset_order = [
+        'windows_opencl_portable',
+        'windows_opencl_installer',
+        'windows_portable',
+        'windows_installer',
+        'windows_nvidia_portable',
+        'windows_nvidia_installer',
+        'windows_no_engine_portable',
+        'windows_no_engine_installer',
+        'mac_arm64',
+        'mac_amd64',
+        'linux64',
+        'linux64_opencl',
+        'linux64_nvidia',
+    ]
+
+    def download_rows(labels: list[str], localized_assets: dict[str, str]) -> list[tuple[str, str]]:
+        return list(zip(labels, (localized_assets[key] for key in asset_order)))
+
+    shared_download_labels = {
+        'zh': [
+            'Windows 64 位，OpenCL 版，推荐更快，免安装',
+            'Windows 64 位，OpenCL 版，想安装',
+            'Windows 64 位，CPU 兼容版，免安装',
+            'Windows 64 位，CPU 兼容版，想安装',
+            'Windows 64 位，NVIDIA 显卡，免安装',
+            'Windows 64 位，NVIDIA 显卡，想安装',
+            'Windows 64 位，想自己配引擎',
+            'Windows 64 位，想自己配引擎，也想安装器',
+            'macOS Apple Silicon',
+            'macOS Intel',
+            'Linux 64 位，CPU 兼容版',
+            'Linux 64 位，OpenCL 版，AMD/Intel GPU',
+            'Linux 64 位，NVIDIA CUDA 版',
+        ],
+        'zh_hant': [
+            'Windows 64 位，OpenCL 版，推薦更快，免安裝',
+            'Windows 64 位，OpenCL 版，想安裝',
+            'Windows 64 位，CPU 相容版，免安裝',
+            'Windows 64 位，CPU 相容版，想安裝',
+            'Windows 64 位，NVIDIA 顯示卡，免安裝',
+            'Windows 64 位，NVIDIA 顯示卡，想安裝',
+            'Windows 64 位，想自己配引擎',
+            'Windows 64 位，想自己配引擎，也想安裝器',
+            'macOS Apple Silicon',
+            'macOS Intel',
+            'Linux 64 位，CPU 相容版',
+            'Linux 64 位，OpenCL 版，AMD/Intel GPU',
+            'Linux 64 位，NVIDIA CUDA 版',
+        ],
+        'en': [
+            'Windows 64-bit, OpenCL, recommended and faster, no install',
+            'Windows 64-bit, OpenCL, installer',
+            'Windows 64-bit, CPU compatible build, no install',
+            'Windows 64-bit, CPU compatible build, installer',
+            'Windows 64-bit, NVIDIA GPU, no install',
+            'Windows 64-bit, NVIDIA GPU, installer',
+            'Windows 64-bit, configure your own engine',
+            'Windows 64-bit, configure your own engine, installer',
+            'macOS Apple Silicon',
+            'macOS Intel',
+            'Linux 64-bit, CPU compatible build',
+            'Linux 64-bit, OpenCL for AMD/Intel GPU',
+            'Linux 64-bit, NVIDIA CUDA',
+        ],
+        'ja': [
+            'Windows 64-bit、OpenCL 推奨高速版、インストール不要',
+            'Windows 64-bit、OpenCL 版、インストーラ',
+            'Windows 64-bit、CPU 互換版、インストール不要',
+            'Windows 64-bit、CPU 互換版、インストーラ',
+            'Windows 64-bit、NVIDIA GPU、インストール不要',
+            'Windows 64-bit、NVIDIA GPU、インストーラ',
+            'Windows 64-bit、自分でエンジンを設定したい場合',
+            'Windows 64-bit、自分でエンジンを設定したい場合、インストーラ',
+            'macOS Apple Silicon',
+            'macOS Intel',
+            'Linux 64-bit、CPU 互換版',
+            'Linux 64-bit、OpenCL、AMD/Intel GPU',
+            'Linux 64-bit、NVIDIA CUDA',
+        ],
+        'ko': [
+            'Windows 64-bit, OpenCL 추천 고속판, 무설치',
+            'Windows 64-bit, OpenCL, 설치형',
+            'Windows 64-bit, CPU 호환 빌드, 무설치',
+            'Windows 64-bit, CPU 호환 빌드, 설치형',
+            'Windows 64-bit, NVIDIA GPU, 무설치',
+            'Windows 64-bit, NVIDIA GPU, 설치형',
+            'Windows 64-bit, 직접 엔진 설정',
+            'Windows 64-bit, 직접 엔진 설정, 설치형',
+            'macOS Apple Silicon',
+            'macOS Intel',
+            'Linux 64-bit, CPU 호환 빌드',
+            'Linux 64-bit, OpenCL, AMD/Intel GPU',
+            'Linux 64-bit, NVIDIA CUDA',
+        ],
+        'th': [
+            'Windows 64-bit, OpenCL, แนะนำและเร็วกว่า, ไม่ต้องติดตั้ง',
+            'Windows 64-bit, OpenCL, แบบติดตั้ง',
+            'Windows 64-bit, CPU compatible build, ไม่ต้องติดตั้ง',
+            'Windows 64-bit, CPU compatible build, แบบติดตั้ง',
+            'Windows 64-bit, การ์ดจอ NVIDIA, ไม่ต้องติดตั้ง',
+            'Windows 64-bit, การ์ดจอ NVIDIA, แบบติดตั้ง',
+            'Windows 64-bit, ต้องการตั้งค่า engine เอง',
+            'Windows 64-bit, ต้องการตั้งค่า engine เองและอยากใช้ installer',
+            'macOS Apple Silicon',
+            'macOS Intel',
+            'Linux 64-bit, CPU compatible build',
+            'Linux 64-bit, OpenCL สำหรับ AMD/Intel GPU',
+            'Linux 64-bit, NVIDIA CUDA',
+        ],
+    }
+
+    content: list[dict[str, object]] = [
+        {
+            'language': '中文',
+            'intro': (
+                '这一版是一次小而关键的维护更新：合并并补强社区 PR #16，'
+                '修复棋盘同步工具发出停止思考信号后，主引擎可能被重新打开分析的问题。'
+            ),
+            'updates_heading': '本版主要更新',
+            'updates': [
+                '感谢 @qiyi71w 提交 PR #16：readboard 的 `noponder` 信号现在只会在引擎确实正在 ponder 时才切换状态。',
+                '修复引擎对局 / 棋盘同步结束后，`stopAiPlayingAndPolicy()` 已经停止分析，但后续 `togglePonder()` 又把分析重新打开的边界问题。',
+                '新增 `stopPonderingIfActive()` 作为统一停止入口，避免以后再出现“停止命令反向启动引擎”的同类问题。',
+                '补充 readboard 引擎生命周期回归测试，覆盖已停止、自动对局停止、仍在 ponder 三种场景。',
+                '复查同类调用：`sync` 命令仍保留按需启动分析；`noponder` 只负责停止，不再改变用户已经停止的状态。',
+            ],
+            'before_heading': '下载前先看这几句',
+            'before': [
+                f'Windows 普通用户仍然优先下载 {assets_cn["windows_opencl_portable"]}，这是 **OpenCL 版（推荐，免安装）**。',
+                f'如果 OpenCL 在你的电脑上不稳定，再改用 {assets_cn["windows_portable"]}。',
+                f'如果你的电脑是 **NVIDIA 显卡**，优先下载 {assets_cn["windows_nvidia_portable"]}。',
+                '这版是稳定性修复版，重点解决 PR #16 指向的引擎状态问题。',
+                '本地已通过 `mvn test` 和 `mvn -DskipTests package`；发布工作流会继续生成 Windows / Linux / macOS 全量包。',
+            ],
+            'download_heading': '下载建议',
+            'download_headers': ('你的电脑', '直接下载这个'),
+            'download_labels': shared_download_labels['zh'],
+            'why_heading': '这一版为什么值得更新',
+            'why': [
+                '棋盘同步工具停止分析时，不会再把已经停止的主引擎误启动。',
+                '引擎对局结束、同步结束、手动停止分析之间的状态更一致。',
+                '这类状态机问题已经补上自动化测试，后续改 readboard 同步逻辑更稳。',
+                '社区 PR 被保留并补强测试后合并，贡献记录清楚，也更方便继续协作。',
+            ],
+            'contact_heading': '交流',
+            'contact': ['QQ 群：`299419120`'],
+        },
+        {
+            'language': '繁體中文',
+            'intro': (
+                '這一版是一次小而關鍵的維護更新：合併並補強社群 PR #16，'
+                '修復棋盤同步工具發出停止思考訊號後，主引擎可能被重新打開分析的問題。'
+            ),
+            'updates_heading': '本版主要更新',
+            'updates': [
+                '感謝 @qiyi71w 提交 PR #16：readboard 的 `noponder` 訊號現在只會在引擎確實正在 ponder 時才切換狀態。',
+                '修復引擎對局 / 棋盤同步結束後，`stopAiPlayingAndPolicy()` 已經停止分析，但後續 `togglePonder()` 又把分析重新打開的邊界問題。',
+                '新增 `stopPonderingIfActive()` 作為統一停止入口，避免以後再出現「停止命令反向啟動引擎」的同類問題。',
+                '補充 readboard 引擎生命週期回歸測試，覆蓋已停止、自動對局停止、仍在 ponder 三種場景。',
+                '復查同類呼叫：`sync` 命令仍保留按需啟動分析；`noponder` 只負責停止，不再改變使用者已經停止的狀態。',
+            ],
+            'before_heading': '下載前先看這幾句',
+            'before': [
+                f'Windows 一般使用者仍然優先下載 {assets_cn["windows_opencl_portable"]}，這是 **OpenCL 版（推薦，免安裝）**。',
+                f'如果 OpenCL 在你的電腦上不穩定，再改用 {assets_cn["windows_portable"]}。',
+                f'如果你的電腦是 **NVIDIA 顯示卡**，優先下載 {assets_cn["windows_nvidia_portable"]}。',
+                '這版是穩定性修復版，重點解決 PR #16 指向的引擎狀態問題。',
+                '本地已通過 `mvn test` 和 `mvn -DskipTests package`；發版 workflow 會繼續產生 Windows / Linux / macOS 全量包。',
+            ],
+            'download_heading': '下載建議',
+            'download_headers': ('你的電腦', '直接下載這個'),
+            'download_labels': shared_download_labels['zh_hant'],
+            'why_heading': '這一版為什麼值得更新',
+            'why': [
+                '棋盤同步工具停止分析時，不會再把已經停止的主引擎誤啟動。',
+                '引擎對局結束、同步結束、手動停止分析之間的狀態更一致。',
+                '這類狀態機問題已經補上自動化測試，後續修改 readboard 同步邏輯更穩。',
+                '社群 PR 被保留並補強測試後合併，貢獻記錄清楚，也更方便繼續協作。',
+            ],
+            'contact_heading': '交流',
+            'contact': ['QQ 群：`299419120`'],
+        },
+        {
+            'language': 'English',
+            'intro': (
+                'This is a focused maintenance build: it merges and strengthens community PR #16, '
+                'fixing a readboard stop signal that could accidentally restart primary-engine analysis.'
+            ),
+            'updates_heading': 'Release Highlights',
+            'updates': [
+                'Thanks to @qiyi71w for PR #16: readboard `noponder` now toggles ponder only when the engine is actually pondering.',
+                'Fixed the edge case where `stopAiPlayingAndPolicy()` had already stopped analysis after engine play or board sync, but a later `togglePonder()` started analysis again.',
+                'Added `stopPonderingIfActive()` as the single guarded stop path, reducing the chance of another stop command turning into a start command.',
+                'Added readboard engine-lifecycle regression tests for already stopped, auto-play stopped, and still-pondering states.',
+                'Reviewed related call sites: `sync` still starts analysis when needed, while `noponder` now only stops active analysis.',
+            ],
+            'before_heading': 'Read Before Downloading',
+            'before': [
+                f'Most Windows users should still download {assets["windows_opencl_portable"]}, the **recommended no-install OpenCL build**.',
+                f'If OpenCL is unstable on your PC, use {assets["windows_portable"]} instead.',
+                f'If your PC has an **NVIDIA GPU**, try {assets["windows_nvidia_portable"]} first.',
+                'This is a stability release focused on the engine-state issue fixed by PR #16.',
+                'Local `mvn test` and `mvn -DskipTests package` passed; release workflows will build the full Windows / Linux / macOS asset set.',
+            ],
+            'download_heading': 'Download Guide',
+            'download_headers': ('Your computer', 'Download this file'),
+            'download_labels': shared_download_labels['en'],
+            'why_heading': 'Why This Release Is Worth Updating',
+            'why': [
+                'Stopping the board-sync tool no longer restarts a primary engine that was already stopped.',
+                'Engine-game end, sync end, and manual analysis stop states are now more consistent.',
+                'The readboard state-machine behavior now has regression coverage for future changes.',
+                'The community contribution is merged with clear credit and additional project-side safeguards.',
+            ],
+            'contact_heading': 'Contact',
+            'contact': ['QQ group: `299419120`'],
+        },
+        {
+            'language': '日本語',
+            'intro': (
+                'このビルドは小さくても重要なメンテナンス更新です。コミュニティ PR #16 を取り込み、'
+                'readboard の停止信号によって主エンジン分析が誤って再開される問題を修正しました。'
+            ),
+            'updates_heading': '主な更新',
+            'updates': [
+                '@qiyi71w さんの PR #16 に感謝します。readboard の `noponder` は、エンジンが実際に ponder 中のときだけ状態を切り替えるようになりました。',
+                'エンジン対局 / 棋盤同期の終了後、`stopAiPlayingAndPolicy()` が分析を止めたのに、後続の `togglePonder()` が分析を再開してしまう境界ケースを修正しました。',
+                '停止処理を `stopPonderingIfActive()` に集約し、停止コマンドが開始コマンドに変わる同種の問題を起こしにくくしました。',
+                'readboard のエンジンライフサイクル回帰テストを追加し、停止済み、自動対局で停止済み、まだ ponder 中の 3 状態を確認しています。',
+                '関連呼び出しも確認しました。`sync` は必要なときだけ分析を開始し、`noponder` は active な分析だけを止めます。',
+            ],
+            'before_heading': 'ダウンロード前に',
+            'before': [
+                f'多くの Windows ユーザーは {assets["windows_opencl_portable"]} を選ぶのがおすすめです。これは **推奨 OpenCL 版、インストール不要** です。',
+                f'OpenCL が不安定な場合は {assets["windows_portable"]} を使ってください。',
+                f'**NVIDIA GPU** 搭載 PC では {assets["windows_nvidia_portable"]} を優先してください。',
+                'この版は PR #16 のエンジン状態修正に集中した安定性更新です。',
+                'ローカルの `mvn test` と `mvn -DskipTests package` は通過済みです。release workflow が Windows / Linux / macOS の全パッケージを生成します。',
+            ],
+            'download_heading': 'ダウンロード案内',
+            'download_headers': ('お使いの環境', 'ダウンロードするファイル'),
+            'download_labels': shared_download_labels['ja'],
+            'why_heading': 'このリリースを更新する理由',
+            'why': [
+                '棋盤同期ツールを停止したとき、すでに停止している主エンジンを誤って再起動しなくなりました。',
+                'エンジン対局終了、同期終了、手動停止の状態がより一貫します。',
+                'readboard の状態遷移に回帰テストが入り、今後の変更も安全に進めやすくなりました。',
+                'コミュニティからの貢献を、明確なクレジットと追加の安全策付きで取り込みました。',
+            ],
+            'contact_heading': '連絡先',
+            'contact': ['QQ グループ: `299419120`'],
+        },
+        {
+            'language': '한국어',
+            'intro': (
+                '이번 빌드는 작지만 중요한 유지보수 릴리스입니다. 커뮤니티 PR #16 을 병합하고 보강하여, '
+                'readboard 중지 신호가 주 엔진 분석을 다시 켜는 문제를 수정했습니다.'
+            ),
+            'updates_heading': '주요 업데이트',
+            'updates': [
+                'PR #16 을 제출해 준 @qiyi71w 님께 감사드립니다. readboard `noponder` 는 이제 엔진이 실제로 ponder 중일 때만 상태를 전환합니다.',
+                '엔진 대국 / 보드 동기화 종료 후 `stopAiPlayingAndPolicy()` 가 이미 분석을 멈췄는데, 뒤이어 `togglePonder()` 가 분석을 다시 시작하던 경계 문제를 고쳤습니다.',
+                '`stopPonderingIfActive()` 를 단일 보호 중지 경로로 추가해, 중지 명령이 시작 명령처럼 동작하는 같은 유형의 문제를 줄였습니다.',
+                'readboard 엔진 lifecycle 회귀 테스트를 추가해 이미 멈춘 상태, 자동 대국으로 멈춘 상태, 아직 ponder 중인 상태를 모두 확인합니다.',
+                '관련 호출도 점검했습니다. `sync` 는 필요할 때 분석을 시작하고, `noponder` 는 active 분석만 멈춥니다.',
+            ],
+            'before_heading': '다운로드 전 확인',
+            'before': [
+                f'대부분의 Windows 사용자는 {assets["windows_opencl_portable"]} 를 먼저 받으면 됩니다. 이는 **추천 OpenCL 무설치 빌드** 입니다.',
+                f'OpenCL 이 PC에서 불안정하면 {assets["windows_portable"]} 를 대신 사용하세요.',
+                f'**NVIDIA GPU** 가 있다면 {assets["windows_nvidia_portable"]} 를 우선 사용해 보세요.',
+                '이번 버전은 PR #16 이 수정한 엔진 상태 문제에 집중한 안정성 릴리스입니다.',
+                '로컬 `mvn test` 와 `mvn -DskipTests package` 는 통과했습니다. release workflow 가 Windows / Linux / macOS 전체 패키지를 생성합니다.',
+            ],
+            'download_heading': '다운로드 안내',
+            'download_headers': ('내 컴퓨터', '다운로드할 파일'),
+            'download_labels': shared_download_labels['ko'],
+            'why_heading': '이번 릴리스를 업데이트할 이유',
+            'why': [
+                '보드 동기화 도구를 멈출 때 이미 멈춘 주 엔진이 다시 시작되지 않습니다.',
+                '엔진 대국 종료, 동기화 종료, 수동 분석 중지 상태가 더 일관됩니다.',
+                'readboard 상태 전환에 회귀 테스트가 추가되어 이후 변경도 더 안전합니다.',
+                '커뮤니티 기여를 명확한 크레딧과 추가 안전장치와 함께 병합했습니다.',
+            ],
+            'contact_heading': '연락처',
+            'contact': ['QQ 그룹: `299419120`'],
+        },
+        {
+            'language': 'ภาษาไทย',
+            'intro': (
+                'บิลด์นี้เป็น maintenance release ขนาดเล็กแต่สำคัญ: รวมและเสริม PR #16 จากชุมชน '
+                'เพื่อแก้ปัญหาสัญญาณหยุดของ readboard ที่อาจเปิด analysis ของ primary engine กลับขึ้นมาเอง'
+            ),
+            'updates_heading': 'ไฮไลต์ของเวอร์ชันนี้',
+            'updates': [
+                'ขอบคุณ @qiyi71w สำหรับ PR #16: ตอนนี้ readboard `noponder` จะ toggle ponder เฉพาะเมื่อ engine กำลัง ponder จริง ๆ เท่านั้น',
+                'แก้ edge case ที่ `stopAiPlayingAndPolicy()` หยุด analysis แล้วหลังจบ engine game / board sync แต่ `togglePonder()` ถัดมาทำให้ analysis เริ่มใหม่',
+                'เพิ่ม `stopPonderingIfActive()` เป็นทางหยุดแบบมี guard เพื่อลดโอกาสที่คำสั่ง stop จะกลายเป็นคำสั่ง start',
+                'เพิ่ม regression tests สำหรับ lifecycle ของ readboard engine ครอบคลุมสถานะ already stopped, auto-play stopped และ still pondering',
+                'ตรวจ call sites ที่เกี่ยวข้องแล้ว: `sync` ยังเริ่ม analysis เมื่อจำเป็น ส่วน `noponder` จะหยุดเฉพาะ analysis ที่ active อยู่',
+            ],
+            'before_heading': 'ก่อนดาวน์โหลด ดูตรงนี้ก่อน',
+            'before': [
+                f'ผู้ใช้ Windows ส่วนใหญ่ยังแนะนำให้ดาวน์โหลด {assets["windows_opencl_portable"]} ซึ่งเป็น **OpenCL รุ่นแนะนำ แบบไม่ต้องติดตั้ง**',
+                f'ถ้า OpenCL ไม่เสถียรบนเครื่องของคุณ ให้ใช้ {assets["windows_portable"]} แทน',
+                f'ถ้ามี **NVIDIA GPU** แนะนำให้ลอง {assets["windows_nvidia_portable"]} ก่อน',
+                'รีลีสนี้เป็น stability release ที่เน้นปัญหา engine-state จาก PR #16',
+                'ในเครื่อง local ผ่าน `mvn test` และ `mvn -DskipTests package` แล้ว และ release workflows จะสร้าง assets ครบสำหรับ Windows / Linux / macOS',
+            ],
+            'download_heading': 'แนะนำการดาวน์โหลด',
+            'download_headers': ('เครื่องของคุณ', 'ดาวน์โหลดไฟล์นี้'),
+            'download_labels': shared_download_labels['th'],
+            'why_heading': 'ทำไมเวอร์ชันนี้ควรอัปเดต',
+            'why': [
+                'เมื่อหยุด board-sync tool จะไม่ทำให้ primary engine ที่หยุดอยู่แล้วเริ่มใหม่โดยไม่ตั้งใจ',
+                'สถานะหลังจบ engine game, จบ sync และหยุด analysis เองจะสอดคล้องกันมากขึ้น',
+                'state-machine ของ readboard มี regression coverage แล้ว ทำให้การแก้ไขในอนาคตปลอดภัยขึ้น',
+                'รวม contribution จากชุมชนพร้อม credit ชัดเจนและ safeguards เพิ่มเติมฝั่งโปรเจกต์',
+            ],
+            'contact_heading': 'ติดต่อ',
+            'contact': ['QQ group: `299419120`'],
+        },
+    ]
+
+    sections: list[dict[str, object]] = []
+    for block in content:
+        language = str(block['language'])
+        localized_assets = assets_cn if language in ('中文', '繁體中文') else assets
+        sections.append(
+            {
+                'language': language,
+                'intro': block['intro'],
+                'updates': {
+                    'heading': block['updates_heading'],
+                    'items': block['updates'],
+                },
+                'before': {
+                    'heading': block['before_heading'],
+                    'items': block['before'],
+                },
+                'download': {
+                    'heading': block['download_heading'],
+                    'headers': block['download_headers'],
+                    'rows': download_rows(block['download_labels'], localized_assets),
+                },
+                'why': {
+                    'heading': block['why_heading'],
+                    'items': block['why'],
+                },
+                'contact': {
+                    'heading': block['contact_heading'],
+                    'items': block['contact'],
+                },
+            }
+        )
+
+    validate_release_sections(sections)
+
+    return release_heading(release_tag) + '\n\n' + '\n\n---\n\n'.join(
+        render_language_section(section) for section in sections
+    ) + '\n'
+
+
 def build_release_notes(asset_map: dict[str, str | None], bundle: dict[str, str], repo: str, release_tag: str | None) -> str:
     if release_tag == 'next-2026-05-03.1':
         return build_next_2026_05_03_1_notes(asset_map, repo, release_tag)
+    if release_tag == 'next-2026-05-04.1':
+        return build_next_2026_05_04_1_notes(asset_map, repo, release_tag)
 
     assets_cn = {
         key: format_asset(asset_map[key], repo, release_tag)
