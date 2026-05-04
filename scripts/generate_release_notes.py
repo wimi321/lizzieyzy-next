@@ -273,54 +273,384 @@ def build_next_2026_05_03_1_notes(
         key: format_asset(asset_map[key], repo, release_tag)
         for key in asset_map
     }
-    tag = release_tag or 'next-2026-05-03.1'
-    return f"""# LizzieYzy Next {tag}
+    assets = {
+        key: format_asset_en(asset_map[key], repo, release_tag)
+        for key in asset_map
+    }
+    sections: list[dict[str, object]] = [
+        {
+            'language': '中文',
+            'intro': (
+                '这一版集中修复最近几轮真机测试反馈的界面、同步和发版链路问题。'
+                '重点是把“评论 / 问题手”侧栏重新排顺，把弈客同步后的引擎状态补齐，'
+                '并把公开版本号改成更清楚的 `next-日期.编号`。'
+            ),
+            'updates': {
+                'heading': '本版主要更新',
+                'items': [
+                    '优化“评论 / 问题手”侧栏：顶部区域和正文不再有突兀色差，黑棋/白棋筛选放到“问题手”同一行右侧，切换点击区域更稳定。',
+                    '修复“问题手”列表卡片过宽和底部无意义横向滚动条，列表现在会按侧栏宽度自适应。',
+                    '问题手进度改成“评估中 / 已评估 / 评估完成”，分母按实际可评估的位置计算，避免 230 手棋最终看起来停在 229/230 的误解。',
+                    '修复弈客直播棋谱同步后主引擎没有同步到当前棋谱历史的问题，载入弈客棋局后分析状态更一致。',
+                    '调整评论区、问题手区、胜率图相关背景绘制，让透明/半透明背景在不同主题下更自然。',
+                    '公开 release tag 改成 `next-YYYY-MM-DD.N`，从本版起不再使用 `1.0.0-` 前缀。',
+                    '修复发版链路：macOS DMG 签名/公证后重打包增加卸载重试；Windows workflow 优先上传正式 release 资产，非关键 artifact/升级 smoke 不再阻塞下载。',
+                ],
+            },
+            'before': {
+                'heading': '下载前先看这几句',
+                'items': [
+                    f'Windows 普通用户仍然优先下载 {assets_cn["windows_opencl_portable"]}，这是 **OpenCL 版（推荐，免安装）**。',
+                    f'如果 OpenCL 在你的电脑上不稳定，再改用 {assets_cn["windows_portable"]}。',
+                    f'如果你的电脑是 **NVIDIA 显卡**，优先下载 {assets_cn["windows_nvidia_portable"]}。',
+                    '如果你更喜欢安装流程，再选同系列的 `installer.exe`。',
+                    '这版主要修 UI 与同步体验；已经在本地通过 `mvn test` 和 `mvn -DskipTests package`。',
+                    'Windows / Linux / macOS 打包工作流已完成关键校验并上传本版资产。',
+                ],
+            },
+            'download': {
+                'heading': '下载建议',
+                'headers': ('你的电脑', '直接下载这个'),
+                'rows': [
+                    ('Windows 64 位，OpenCL 版，推荐更快，免安装', assets_cn['windows_opencl_portable']),
+                    ('Windows 64 位，OpenCL 版，想安装', assets_cn['windows_opencl_installer']),
+                    ('Windows 64 位，CPU 兼容版，免安装', assets_cn['windows_portable']),
+                    ('Windows 64 位，CPU 兼容版，想安装', assets_cn['windows_installer']),
+                    ('Windows 64 位，NVIDIA 显卡，免安装', assets_cn['windows_nvidia_portable']),
+                    ('Windows 64 位，NVIDIA 显卡，想安装', assets_cn['windows_nvidia_installer']),
+                    ('Windows 64 位，想自己配引擎', assets_cn['windows_no_engine_portable']),
+                    ('Windows 64 位，想自己配引擎，也想安装器', assets_cn['windows_no_engine_installer']),
+                    ('macOS Apple Silicon', assets_cn['mac_arm64']),
+                    ('macOS Intel', assets_cn['mac_amd64']),
+                    ('Linux 64 位，CPU 兼容版', assets_cn['linux64']),
+                    ('Linux 64 位，OpenCL 版，AMD/Intel GPU', assets_cn['linux64_opencl']),
+                    ('Linux 64 位，NVIDIA CUDA 版', assets_cn['linux64_nvidia']),
+                ],
+            },
+            'why': {
+                'heading': '这一版为什么值得更新',
+                'items': [
+                    '评论和问题手区域占位、色差、点击范围、横向滚动条这些细节都重新收拾过，日常复盘更顺眼。',
+                    '问题手分析完成时会显示真正完成状态，不再让人误以为还差最后一手。',
+                    '弈客直播载入后主引擎能跟上当前棋谱历史，后续分析更可靠。',
+                    '公开版本号不再长期停在 `1.0.0`，以后看 tag 就能知道日期和编号。',
+                    'macOS 和 Windows 发版链路针对这次暴露出的阻塞点做了加固。',
+                ],
+            },
+            'contact': {'heading': '交流', 'items': ['QQ 群：`299419120`']},
+        },
+        {
+            'language': '繁體中文',
+            'intro': (
+                '這一版集中修復最近幾輪真機測試回饋的介面、同步與發版流程問題。'
+                '重點是重新整理「評論 / 問題手」側欄，補齊弈客同步後的引擎狀態，'
+                '並把公開版本號改成更清楚的 `next-日期.編號`。'
+            ),
+            'updates': {
+                'heading': '本版主要更新',
+                'items': [
+                    '優化「評論 / 問題手」側欄：頂部區域與正文不再有突兀色差，黑棋/白棋篩選放到「問題手」同一行右側，切換點擊區域更穩定。',
+                    '修復「問題手」列表卡片過寬和底部無意義橫向捲軸，列表現在會依側欄寬度自適應。',
+                    '問題手進度改成「評估中 / 已評估 / 評估完成」，分母按實際可評估的位置計算，避免 230 手棋最終看起來停在 229/230 的誤解。',
+                    '修復弈客直播棋譜同步後主引擎沒有同步到目前棋譜歷史的問題，載入弈客棋局後分析狀態更一致。',
+                    '調整評論區、問題手區、勝率圖相關背景繪製，讓透明/半透明背景在不同主題下更自然。',
+                    '公開 release tag 改成 `next-YYYY-MM-DD.N`，從本版起不再使用 `1.0.0-` 前綴。',
+                    '修復發版流程：macOS DMG 簽名/公證後重打包增加卸載重試；Windows workflow 優先上傳正式 release 資產，非關鍵 artifact/升級 smoke 不再阻塞下載。',
+                ],
+            },
+            'before': {
+                'heading': '下載前先看這幾句',
+                'items': [
+                    f'Windows 一般使用者仍然優先下載 {assets_cn["windows_opencl_portable"]}，這是 **OpenCL 版（推薦，免安裝）**。',
+                    f'如果 OpenCL 在你的電腦上不穩定，再改用 {assets_cn["windows_portable"]}。',
+                    f'如果你的電腦是 **NVIDIA 顯示卡**，優先下載 {assets_cn["windows_nvidia_portable"]}。',
+                    '如果你更喜歡安裝流程，再選同系列的 `installer.exe`。',
+                    '這版主要修 UI 與同步體驗；已經在本地通過 `mvn test` 和 `mvn -DskipTests package`。',
+                    'Windows / Linux / macOS 打包 workflow 已完成關鍵校驗並上傳本版資產。',
+                ],
+            },
+            'download': {
+                'heading': '下載建議',
+                'headers': ('你的電腦', '直接下載這個'),
+                'rows': [
+                    ('Windows 64 位，OpenCL 版，推薦更快，免安裝', assets_cn['windows_opencl_portable']),
+                    ('Windows 64 位，OpenCL 版，想安裝', assets_cn['windows_opencl_installer']),
+                    ('Windows 64 位，CPU 相容版，免安裝', assets_cn['windows_portable']),
+                    ('Windows 64 位，CPU 相容版，想安裝', assets_cn['windows_installer']),
+                    ('Windows 64 位，NVIDIA 顯示卡，免安裝', assets_cn['windows_nvidia_portable']),
+                    ('Windows 64 位，NVIDIA 顯示卡，想安裝', assets_cn['windows_nvidia_installer']),
+                    ('Windows 64 位，想自己配引擎', assets_cn['windows_no_engine_portable']),
+                    ('Windows 64 位，想自己配引擎，也想安裝器', assets_cn['windows_no_engine_installer']),
+                    ('macOS Apple Silicon', assets_cn['mac_arm64']),
+                    ('macOS Intel', assets_cn['mac_amd64']),
+                    ('Linux 64 位，CPU 相容版', assets_cn['linux64']),
+                    ('Linux 64 位，OpenCL 版，AMD/Intel GPU', assets_cn['linux64_opencl']),
+                    ('Linux 64 位，NVIDIA CUDA 版', assets_cn['linux64_nvidia']),
+                ],
+            },
+            'why': {
+                'heading': '這一版為什麼值得更新',
+                'items': [
+                    '評論和問題手區域的占位、色差、點擊範圍、橫向捲軸等細節都重新整理過，日常復盤更順眼。',
+                    '問題手分析完成時會顯示真正完成狀態，不再讓人誤以為還差最後一手。',
+                    '弈客直播載入後主引擎能跟上目前棋譜歷史，後續分析更可靠。',
+                    '公開版本號不再長期停在 `1.0.0`，之後看 tag 就能知道日期和編號。',
+                    'macOS 和 Windows 發版流程針對這次暴露出的阻塞點做了加固。',
+                ],
+            },
+            'contact': {'heading': '交流', 'items': ['QQ 群：`299419120`']},
+        },
+        {
+            'language': 'English',
+            'intro': (
+                'This build focuses on the UI, sync, and release-pipeline issues found during recent real-machine testing. '
+                'It cleans up the Comments / Problem Moves sidebar, keeps the engine in sync after Yike live-game loading, '
+                'and switches public release tags to the clearer `next-date.serial` format.'
+            ),
+            'updates': {
+                'heading': 'Release Highlights',
+                'items': [
+                    'Improved the Comments / Problem Moves sidebar: the header and content no longer have a harsh color mismatch, Black/White filters sit on the Problem Moves row, and tab hit areas are more reliable.',
+                    'Fixed overly wide problem-move cards and the meaningless horizontal scrollbar; the list now adapts to the sidebar width.',
+                    'Problem-move progress now uses In Progress / Evaluated / Complete states, and the denominator counts only positions that can actually be evaluated.',
+                    'Fixed Yike live-game sync so the primary engine is resent the current board history after a game is loaded.',
+                    'Adjusted background painting for comments, problem moves, and the winrate graph so translucent themes look cleaner.',
+                    'Public release tags now use `next-YYYY-MM-DD.N`; the public `1.0.0-` prefix is no longer used.',
+                    'Hardened release automation: macOS DMG signing now retries detach before rebuilding, and Windows uploads release assets before non-critical artifact and upgrade-smoke steps.',
+                ],
+            },
+            'before': {
+                'heading': 'Read Before Downloading',
+                'items': [
+                    f'Most Windows users should still download {assets["windows_opencl_portable"]}, the **recommended no-install OpenCL build**.',
+                    f'If OpenCL is unstable on your PC, use {assets["windows_portable"]} instead.',
+                    f'If your PC has an **NVIDIA GPU**, try {assets["windows_nvidia_portable"]} first.',
+                    'If you prefer an installer workflow, choose the matching `installer.exe` package.',
+                    'This release mainly improves UI and sync behavior; local `mvn test` and `mvn -DskipTests package` both passed.',
+                    'Windows, Linux, and macOS packaging workflows completed their key validation steps and uploaded the release assets.',
+                ],
+            },
+            'download': {
+                'heading': 'Download Guide',
+                'headers': ('Your computer', 'Download this file'),
+                'rows': [
+                    ('Windows 64-bit, OpenCL, recommended and faster, no install', assets['windows_opencl_portable']),
+                    ('Windows 64-bit, OpenCL, installer', assets['windows_opencl_installer']),
+                    ('Windows 64-bit, CPU compatible build, no install', assets['windows_portable']),
+                    ('Windows 64-bit, CPU compatible build, installer', assets['windows_installer']),
+                    ('Windows 64-bit, NVIDIA GPU, no install', assets['windows_nvidia_portable']),
+                    ('Windows 64-bit, NVIDIA GPU, installer', assets['windows_nvidia_installer']),
+                    ('Windows 64-bit, configure your own engine', assets['windows_no_engine_portable']),
+                    ('Windows 64-bit, configure your own engine, installer', assets['windows_no_engine_installer']),
+                    ('macOS Apple Silicon', assets['mac_arm64']),
+                    ('macOS Intel', assets['mac_amd64']),
+                    ('Linux 64-bit, CPU compatible build', assets['linux64']),
+                    ('Linux 64-bit, OpenCL for AMD/Intel GPU', assets['linux64_opencl']),
+                    ('Linux 64-bit, NVIDIA CUDA', assets['linux64_nvidia']),
+                ],
+            },
+            'why': {
+                'heading': 'Why This Release Is Worth Updating',
+                'items': [
+                    'The comments and problem-move panel now has cleaner spacing, colors, hit areas, and scrolling behavior for daily review work.',
+                    'Problem-move analysis now ends with a real complete state instead of looking stuck on the last move.',
+                    'After loading a Yike live game, the primary engine follows the current game history more reliably.',
+                    'Public versions are no longer stuck behind `1.0.0`; the tag now tells you the release date and serial directly.',
+                    'macOS and Windows release workflows are more resilient against the blockers exposed by this release.',
+                ],
+            },
+            'contact': {'heading': 'Contact', 'items': ['QQ group: `299419120`']},
+        },
+        {
+            'language': '日本語',
+            'intro': (
+                'このビルドは、直近の実機テストで見つかった UI、同期、リリース工程の問題修正に集中しています。'
+                '「コメント / 問題手」サイドバーを整理し、弈客ライブ棋譜読み込み後のエンジン同期を補強し、'
+                '公開 release tag を分かりやすい `next-日付.番号` 形式へ変更しました。'
+            ),
+            'updates': {
+                'heading': '主な更新',
+                'items': [
+                    '「コメント / 問題手」サイドバーを改善しました。ヘッダーと本文の不自然な色差をなくし、黒/白フィルタを問題手と同じ行に置き、タブのクリック範囲も安定させました。',
+                    '問題手カードが広すぎる問題と意味のない横スクロールバーを修正し、リストがサイドバー幅に合わせて表示されるようにしました。',
+                    '問題手の進捗表示を「評価中 / 評価済み / 評価完了」に変更し、分母は実際に評価可能な局面だけを数えるようにしました。',
+                    '弈客ライブ棋譜を読み込んだ後、現在の棋譜履歴を主エンジンへ再送するように修正しました。',
+                    'コメント、問題手、勝率グラフの背景描画を調整し、半透明テーマでもより自然に見えるようにしました。',
+                    '公開 release tag は `next-YYYY-MM-DD.N` 形式になり、公開用の `1.0.0-` 接頭辞は使わなくなりました。',
+                    'リリース自動化を強化しました。macOS DMG 署名後の detach を再試行し、Windows は非重要 artifact / upgrade smoke より先に release asset をアップロードします。',
+                ],
+            },
+            'before': {
+                'heading': 'ダウンロード前に',
+                'items': [
+                    f'多くの Windows ユーザーは {assets["windows_opencl_portable"]} を選ぶのがおすすめです。これは **推奨 OpenCL 版、インストール不要** です。',
+                    f'OpenCL が不安定な場合は {assets["windows_portable"]} を使ってください。',
+                    f'**NVIDIA GPU** 搭載 PC では {assets["windows_nvidia_portable"]} を優先してください。',
+                    'インストーラ形式がよい場合は、同じ系列の `installer.exe` を選んでください。',
+                    'このリリースは主に UI と同期体験の改善です。ローカルの `mvn test` と `mvn -DskipTests package` はどちらも通過しました。',
+                    'Windows / Linux / macOS のパッケージ workflow は主要な検証を終え、このリリースの asset をアップロード済みです。',
+                ],
+            },
+            'download': {
+                'heading': 'ダウンロード案内',
+                'headers': ('お使いの環境', 'ダウンロードするファイル'),
+                'rows': [
+                    ('Windows 64-bit、OpenCL 推奨高速版、インストール不要', assets['windows_opencl_portable']),
+                    ('Windows 64-bit、OpenCL 版、インストーラ', assets['windows_opencl_installer']),
+                    ('Windows 64-bit、CPU 互換版、インストール不要', assets['windows_portable']),
+                    ('Windows 64-bit、CPU 互換版、インストーラ', assets['windows_installer']),
+                    ('Windows 64-bit、NVIDIA GPU、インストール不要', assets['windows_nvidia_portable']),
+                    ('Windows 64-bit、NVIDIA GPU、インストーラ', assets['windows_nvidia_installer']),
+                    ('Windows 64-bit、自分でエンジンを設定したい場合', assets['windows_no_engine_portable']),
+                    ('Windows 64-bit、自分でエンジンを設定したい場合、インストーラ', assets['windows_no_engine_installer']),
+                    ('macOS Apple Silicon', assets['mac_arm64']),
+                    ('macOS Intel', assets['mac_amd64']),
+                    ('Linux 64-bit、CPU 互換版', assets['linux64']),
+                    ('Linux 64-bit、OpenCL、AMD/Intel GPU', assets['linux64_opencl']),
+                    ('Linux 64-bit、NVIDIA CUDA', assets['linux64_nvidia']),
+                ],
+            },
+            'why': {
+                'heading': 'このリリースを更新する理由',
+                'items': [
+                    'コメントと問題手パネルの余白、色、クリック範囲、スクロール挙動が整理され、日常の復盤で見やすくなりました。',
+                    '問題手分析の完了時に本当に完了状態が表示され、最後の一手で止まっているように見えなくなりました。',
+                    '弈客ライブ棋譜の読み込み後、主エンジンが現在の棋譜履歴により確実に追従します。',
+                    '公開バージョンは `1.0.0` に見え続ける状態ではなくなり、tag だけで日付と番号が分かります。',
+                    'macOS と Windows のリリース工程は、今回見つかった阻害要因に対してより強くなりました。',
+                ],
+            },
+            'contact': {'heading': '連絡先', 'items': ['QQ グループ: `299419120`']},
+        },
+        {
+            'language': '한국어',
+            'intro': (
+                '이번 빌드는 최근 실제 PC 테스트에서 확인된 UI, 동기화, 릴리스 파이프라인 문제를 고치는 데 집중했습니다. '
+                'Comments / Problem Moves 사이드바를 정리하고, Yike 라이브 기보 로딩 후 엔진 동기화를 보강했으며, '
+                '공개 release tag 를 더 명확한 `next-date.serial` 형식으로 바꿨습니다.'
+            ),
+            'updates': {
+                'heading': '주요 업데이트',
+                'items': [
+                    'Comments / Problem Moves 사이드바를 개선했습니다. 헤더와 본문 사이의 어색한 색 차이를 줄이고, 흑/백 필터를 Problem Moves 행 오른쪽에 배치했으며, 탭 클릭 영역도 더 안정적으로 만들었습니다.',
+                    '문제수 카드가 지나치게 넓고 의미 없는 가로 스크롤바가 생기던 문제를 고쳐, 목록이 사이드바 폭에 맞게 표시됩니다.',
+                    '문제수 진행 표시는 In Progress / Evaluated / Complete 상태를 사용하며, 분모는 실제로 평가 가능한 위치만 계산합니다.',
+                    'Yike 라이브 기보를 불러온 뒤 현재 기보 이력을 주 엔진에 다시 보내도록 수정했습니다.',
+                    '댓글, 문제수, 승률 그래프의 배경 그리기를 조정해 반투명 테마에서도 더 자연스럽게 보이도록 했습니다.',
+                    '공개 release tag 는 이제 `next-YYYY-MM-DD.N` 형식을 사용하며, 공개용 `1.0.0-` 접두사는 더 이상 쓰지 않습니다.',
+                    '릴리스 자동화를 보강했습니다. macOS DMG 서명 후 detach 를 재시도하고, Windows 는 비핵심 artifact / upgrade smoke 보다 release asset 업로드를 먼저 수행합니다.',
+                ],
+            },
+            'before': {
+                'heading': '다운로드 전 확인',
+                'items': [
+                    f'대부분의 Windows 사용자는 {assets["windows_opencl_portable"]} 를 먼저 받으면 됩니다. 이는 **추천 OpenCL 무설치 빌드** 입니다.',
+                    f'OpenCL 이 PC에서 불안정하면 {assets["windows_portable"]} 를 대신 사용하세요.',
+                    f'**NVIDIA GPU** 가 있다면 {assets["windows_nvidia_portable"]} 를 우선 사용해 보세요.',
+                    '설치형 흐름을 원한다면 같은 계열의 `installer.exe` 를 고르세요.',
+                    '이번 릴리스는 주로 UI 와 동기화 경험을 개선합니다. 로컬 `mvn test` 와 `mvn -DskipTests package` 는 모두 통과했습니다.',
+                    'Windows / Linux / macOS 패키징 workflow 는 주요 검증을 완료하고 이번 릴리스 asset 을 업로드했습니다.',
+                ],
+            },
+            'download': {
+                'heading': '다운로드 안내',
+                'headers': ('내 컴퓨터', '다운로드할 파일'),
+                'rows': [
+                    ('Windows 64-bit, OpenCL 추천 고속판, 무설치', assets['windows_opencl_portable']),
+                    ('Windows 64-bit, OpenCL, 설치형', assets['windows_opencl_installer']),
+                    ('Windows 64-bit, CPU 호환 빌드, 무설치', assets['windows_portable']),
+                    ('Windows 64-bit, CPU 호환 빌드, 설치형', assets['windows_installer']),
+                    ('Windows 64-bit, NVIDIA GPU, 무설치', assets['windows_nvidia_portable']),
+                    ('Windows 64-bit, NVIDIA GPU, 설치형', assets['windows_nvidia_installer']),
+                    ('Windows 64-bit, 직접 엔진 설정', assets['windows_no_engine_portable']),
+                    ('Windows 64-bit, 직접 엔진 설정, 설치형', assets['windows_no_engine_installer']),
+                    ('macOS Apple Silicon', assets['mac_arm64']),
+                    ('macOS Intel', assets['mac_amd64']),
+                    ('Linux 64-bit, CPU 호환 빌드', assets['linux64']),
+                    ('Linux 64-bit, OpenCL, AMD/Intel GPU', assets['linux64_opencl']),
+                    ('Linux 64-bit, NVIDIA CUDA', assets['linux64_nvidia']),
+                ],
+            },
+            'why': {
+                'heading': '이번 릴리스를 업데이트할 이유',
+                'items': [
+                    '댓글과 문제수 패널의 여백, 색상, 클릭 영역, 스크롤 동작을 정리해 일상 복기가 더 편해졌습니다.',
+                    '문제수 분석 완료 시 실제 완료 상태가 표시되어 마지막 수에서 멈춘 것처럼 보이지 않습니다.',
+                    'Yike 라이브 기보를 불러온 뒤 주 엔진이 현재 기보 이력을 더 안정적으로 따라갑니다.',
+                    '공개 버전이 더 이상 `1.0.0` 에 묶여 보이지 않으며, tag 만 봐도 날짜와 번호를 알 수 있습니다.',
+                    'macOS 와 Windows 릴리스 workflow 는 이번에 드러난 차단 지점에 더 강해졌습니다.',
+                ],
+            },
+            'contact': {'heading': '연락처', 'items': ['QQ 그룹: `299419120`']},
+        },
+        {
+            'language': 'ภาษาไทย',
+            'intro': (
+                'บิลด์นี้เน้นแก้ปัญหา UI, การซิงก์ และขั้นตอน release ที่พบจากการทดสอบบนเครื่องจริงรอบล่าสุด '
+                'โดยจัดระเบียบแถบ Comments / Problem Moves, ทำให้ engine ตามประวัติหมากหลังโหลดเกม Yike live ได้ถูกต้องขึ้น, '
+                'และเปลี่ยน release tag สาธารณะเป็นรูปแบบ `next-date.serial` ที่อ่านง่ายกว่าเดิม'
+            ),
+            'updates': {
+                'heading': 'ไฮไลต์ของเวอร์ชันนี้',
+                'items': [
+                    'ปรับปรุงแถบ Comments / Problem Moves: ลดสีที่ตัดกันเกินไประหว่างหัวแถบกับเนื้อหา, ย้ายตัวกรอง Black/White ไปอยู่แถวเดียวกับ Problem Moves, และทำให้พื้นที่กดแท็บเสถียรขึ้น',
+                    'แก้การ์ด problem move ที่กว้างเกินไปและ scrollbar แนวนอนที่ไม่มีประโยชน์ ตอนนี้รายการจะปรับตามความกว้างของ sidebar',
+                    'สถานะ progress ของ problem move เปลี่ยนเป็น In Progress / Evaluated / Complete และตัวหารจะนับเฉพาะตำแหน่งที่ประเมินได้จริง',
+                    'แก้ Yike live-game sync ให้ส่งประวัติกระดานปัจจุบันกลับไปยัง primary engine หลังโหลดเกม',
+                    'ปรับการวาดพื้นหลังของ comments, problem moves และ winrate graph ให้ธีมโปร่งแสงดูเป็นธรรมชาติมากขึ้น',
+                    'release tag สาธารณะเปลี่ยนเป็น `next-YYYY-MM-DD.N` และไม่ใช้ prefix `1.0.0-` สำหรับผู้ใช้แล้ว',
+                    'ปรับ release automation: macOS DMG signing จะ retry detach ก่อน rebuild และ Windows จะอัปโหลด release assets ก่อนขั้นตอน artifact / upgrade smoke ที่ไม่ใช่ critical path',
+                ],
+            },
+            'before': {
+                'heading': 'ก่อนดาวน์โหลด ดูตรงนี้ก่อน',
+                'items': [
+                    f'ผู้ใช้ Windows ส่วนใหญ่ยังแนะนำให้ดาวน์โหลด {assets["windows_opencl_portable"]} ซึ่งเป็น **OpenCL รุ่นแนะนำ แบบไม่ต้องติดตั้ง**',
+                    f'ถ้า OpenCL ไม่เสถียรบนเครื่องของคุณ ให้ใช้ {assets["windows_portable"]} แทน',
+                    f'ถ้ามี **NVIDIA GPU** แนะนำให้ลอง {assets["windows_nvidia_portable"]} ก่อน',
+                    'ถ้าต้องการแบบติดตั้ง ให้เลือกไฟล์ `installer.exe` ในชุดเดียวกัน',
+                    'รีลีสนี้เน้นปรับ UI และประสบการณ์ sync โดย `mvn test` และ `mvn -DskipTests package` ผ่านแล้วในเครื่อง local',
+                    'Windows / Linux / macOS packaging workflows ผ่าน validation สำคัญและอัปโหลด assets ของรีลีสนี้แล้ว',
+                ],
+            },
+            'download': {
+                'heading': 'แนะนำการดาวน์โหลด',
+                'headers': ('เครื่องของคุณ', 'ดาวน์โหลดไฟล์นี้'),
+                'rows': [
+                    ('Windows 64-bit, OpenCL, แนะนำและเร็วกว่า, ไม่ต้องติดตั้ง', assets['windows_opencl_portable']),
+                    ('Windows 64-bit, OpenCL, แบบติดตั้ง', assets['windows_opencl_installer']),
+                    ('Windows 64-bit, CPU compatible build, ไม่ต้องติดตั้ง', assets['windows_portable']),
+                    ('Windows 64-bit, CPU compatible build, แบบติดตั้ง', assets['windows_installer']),
+                    ('Windows 64-bit, การ์ดจอ NVIDIA, ไม่ต้องติดตั้ง', assets['windows_nvidia_portable']),
+                    ('Windows 64-bit, การ์ดจอ NVIDIA, แบบติดตั้ง', assets['windows_nvidia_installer']),
+                    ('Windows 64-bit, ต้องการตั้งค่า engine เอง', assets['windows_no_engine_portable']),
+                    ('Windows 64-bit, ต้องการตั้งค่า engine เองและอยากใช้ installer', assets['windows_no_engine_installer']),
+                    ('macOS Apple Silicon', assets['mac_arm64']),
+                    ('macOS Intel', assets['mac_amd64']),
+                    ('Linux 64-bit, CPU compatible build', assets['linux64']),
+                    ('Linux 64-bit, OpenCL สำหรับ AMD/Intel GPU', assets['linux64_opencl']),
+                    ('Linux 64-bit, NVIDIA CUDA', assets['linux64_nvidia']),
+                ],
+            },
+            'why': {
+                'heading': 'ทำไมเวอร์ชันนี้ควรอัปเดต',
+                'items': [
+                    'พื้นที่ comments และ problem moves ถูกปรับทั้ง spacing, สี, hit area และ scrolling ทำให้ใช้งานตอน review เกมได้สบายขึ้น',
+                    'เมื่อวิเคราะห์ problem moves จบแล้วจะแสดงสถานะเสร็จจริง ไม่ดูเหมือนค้างที่หมากสุดท้าย',
+                    'หลังโหลดเกม Yike live primary engine จะตามประวัติหมากปัจจุบันได้เชื่อถือมากขึ้น',
+                    'เวอร์ชันสาธารณะไม่ดูเหมือนติดอยู่ที่ `1.0.0` อีกต่อไป ดู tag ก็รู้วันที่และหมายเลข release ได้ทันที',
+                    'workflow release ของ macOS และ Windows ถูกเสริมให้ทนต่อจุดที่เคยบล็อกในรอบนี้มากขึ้น',
+                ],
+            },
+            'contact': {'heading': 'ติดต่อ', 'items': ['QQ group: `299419120`']},
+        },
+    ]
 
-## 本次更新
+    validate_release_sections(sections)
 
-这版主要修复最近几轮测试反馈的界面、同步和发版链路问题。
-
-### 主要修复
-
-- 优化“评论 / 问题手”侧栏：顶部区域和正文不再有突兀色差，黑棋/白棋筛选放到“问题手”同一行右侧，切换点击区域更稳定。
-- 修复“问题手”列表卡片过宽和底部无意义横向滚动条，列表现在会按侧栏宽度自适应，窄侧栏下也不会横向撑开。
-- 问题手进度改成“评估中 / 已评估 / 评估完成”，分母按实际可评估的位置计算，避免 230 手棋最终看起来停在 229/230 的误解。
-- 修复弈客直播棋谱同步后主引擎没有同步到当前棋谱历史的问题，载入弈客棋局后分析状态更一致。
-- 调整评论区、问题手区、胜率图相关背景绘制，让透明/半透明背景在不同主题下更自然，不再出现奇怪的大块空白或残留感。
-- 公开 release tag 改成 `next-YYYY-MM-DD.N`，从本版起不再使用 `1.0.0-` 前缀；安装包内部仍保留平台打包工具需要的数字版本。
-- 修复发版链路：macOS DMG 签名/公证后重打包时增加卸载重试，避免 `hdiutil: Resource busy`；Windows workflow 优先把正式 release 资产上传到 GitHub，非关键 Actions artifact/升级 smoke 不再阻塞下载。
-
-### 验证
-
-- 本地 `mvn test` 通过：530 tests，0 failures，1 skipped。
-- 本地 `mvn -DskipTests package` 通过。
-- Windows release workflow 已通过：打包、公开资产校验、UX 检查、bundled app-image smoke test，并已上传 Windows installer/portable。
-- Linux release workflow 已通过，并上传 CPU / OpenCL / NVIDIA 三个包。
-- macOS Intel workflow 已通过并上传 DMG。
-- macOS Apple Silicon 初次签名重打包遇到 `Resource busy`，修复签名脚本后复跑通过并上传 DMG。
-
-## 下载建议
-
-| 你的电脑 | 推荐下载 |
-| --- | --- |
-| Windows 64 位，OpenCL 版，推荐更快，免安装 | {assets_cn['windows_opencl_portable']} |
-| Windows 64 位，OpenCL 版，想安装 | {assets_cn['windows_opencl_installer']} |
-| Windows 64 位，CPU 兼容版，免安装 | {assets_cn['windows_portable']} |
-| Windows 64 位，CPU 兼容版，想安装 | {assets_cn['windows_installer']} |
-| Windows 64 位，NVIDIA 显卡，免安装 | {assets_cn['windows_nvidia_portable']} |
-| Windows 64 位，NVIDIA 显卡，想安装 | {assets_cn['windows_nvidia_installer']} |
-| Windows 64 位，自己配置引擎，免安装 | {assets_cn['windows_no_engine_portable']} |
-| Windows 64 位，自己配置引擎，想安装 | {assets_cn['windows_no_engine_installer']} |
-| macOS Apple Silicon | {assets_cn['mac_arm64']} |
-| macOS Intel | {assets_cn['mac_amd64']} |
-| Linux 64 位，CPU 兼容版 | {assets_cn['linux64']} |
-| Linux 64 位，OpenCL 版 | {assets_cn['linux64_opencl']} |
-| Linux 64 位，NVIDIA CUDA 版 | {assets_cn['linux64_nvidia']} |
-
-## 交流
-
-- QQ 群：`299419120`
-"""
+    return release_heading(release_tag) + '\n\n' + '\n\n---\n\n'.join(
+        render_language_section(section) for section in sections
+    ) + '\n'
 
 
 def build_release_notes(asset_map: dict[str, str | None], bundle: dict[str, str], repo: str, release_tag: str | None) -> str:
