@@ -909,9 +909,7 @@ public class ReadBoard {
       if (Lizzie.frame.isAnaPlayingAgainstLeelaz) {
         Lizzie.frame.stopAiPlayingAndPolicy();
       }
-      if (Lizzie.leelaz.isPondering()) {
-        Lizzie.leelaz.togglePonder();
-      }
+      stopPonderingIfActive();
     }
     if (line.startsWith("noinboard")) {
       if (Lizzie.frame.floatBoard != null && Lizzie.frame.floatBoard.isVisible()) {
@@ -2066,6 +2064,12 @@ public class ReadBoard {
 
   private boolean isReadBoardAnalysisEngineAvailable() {
     return Lizzie.leelaz != null && Lizzie.leelaz.isStarted();
+  }
+
+  private void stopPonderingIfActive() {
+    if (Lizzie.leelaz != null && Lizzie.leelaz.isPondering()) {
+      Lizzie.leelaz.togglePonder();
+    }
   }
 
   private static final class SnapshotHistoryState {
