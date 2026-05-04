@@ -21,6 +21,8 @@ public class YikeUrlParser {
           "https*://(?s).*?([^\\./]+\\.[^\\./]+)/(?s).*?(game/[a-zA-Z]+/)[0-9]+/([^/\\s]+)");
   private static final Pattern HALL_ROOM =
       Pattern.compile("https*://(?s).*?([^\\./]+\\.[^\\./]+)/(?s).*?(room=)([0-9]+)(&hall)(?s).*?");
+  private static final Pattern UNITE_ROOM =
+      Pattern.compile("https*://(?s).*?([^\\./]+\\.[^\\./]+)/(?s).*?(unite/)([0-9]+)(?s).*?");
 
   public static Optional<YikeUrlInfo> parse(String rawUrl) {
     if (Utils.isBlank(rawUrl)) return Optional.empty();
@@ -106,6 +108,21 @@ public class YikeUrlParser {
                 matcher.group(3),
                 roomId,
                 "https://api." + matcher.group(1) + "/golive/dtl?id=" + roomId));
+      }
+    }
+
+    matcher = UNITE_ROOM.matcher(url);
+    if (matcher.matches() && matcher.groupCount() >= 3) {
+      long roomId = parseLongOrDefault(matcher.group(3), 0);
+      if (roomId > 0) {
+        return Optional.of(
+            new YikeUrlInfo(
+                YikeUrlInfo.TYPE_UNITE_ROOM,
+                matcher.group(3),
+                roomId,
+                "https://game-server.yikeweiqi.com/game/info?id="
+                    + roomId
+                    + "&sgf_option=true&players_option=true&setting_option=true&clock_option=true&is_void=true"));
       }
     }
 

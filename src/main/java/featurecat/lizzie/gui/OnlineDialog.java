@@ -86,6 +86,7 @@ public class OnlineDialog extends JDialog {
   private JTextField txtUrl;
   private String ajaxUrl = "";
   private String lastYikeMainlineSgf = "";
+  private int lastYikeHandsCount = -1;
   private Map queryMap = null;
   private String query = "";
   private String whitePlayer = "";
@@ -136,6 +137,7 @@ public class OnlineDialog extends JDialog {
 
   public OnlineDialog(Window owner) {
     super(owner);
+    yikeDebugLog("OnlineDialog created");
     setTitle(resourceBundle.getString("OnlineDialog.title.config"));
     setModalityType(ModalityType.APPLICATION_MODAL);
     setAlwaysOnTop(Lizzie.frame.isAlwaysOnTop());
@@ -346,7 +348,8 @@ public class OnlineDialog extends JDialog {
     return type == YikeUrlInfo.TYPE_OLD_LIVE_ROOM
         || type == YikeUrlInfo.TYPE_OLD_LIVE_BOARD
         || type == YikeUrlInfo.TYPE_GAME_ROOM
-        || type == YikeUrlInfo.TYPE_NEW_LIVE_ROOM;
+        || type == YikeUrlInfo.TYPE_NEW_LIVE_ROOM
+        || type == YikeUrlInfo.TYPE_UNITE_ROOM;
   }
 
   private String currentYikeSourceUrl() {
@@ -472,6 +475,7 @@ public class OnlineDialog extends JDialog {
     done = false;
     history = null;
     lastYikeMainlineSgf = "";
+    lastYikeHandsCount = -1;
     Lizzie.board.clearForOnline();
     switch (type) {
       case 1:
@@ -497,6 +501,9 @@ public class OnlineDialog extends JDialog {
         break;
       case 6:
         reqNewYikeRoom(true);
+        break;
+      case 7:
+        startYikeUnitePolling();
         break;
       case 2:
         refresh("(?s).*?(\\\"Content\\\":\\\")(.+)(\\\",\\\")(?s).*");
@@ -525,11 +532,12 @@ public class OnlineDialog extends JDialog {
     return type == YikeUrlInfo.TYPE_OLD_LIVE_ROOM
         || type == YikeUrlInfo.TYPE_OLD_LIVE_BOARD
         || type == YikeUrlInfo.TYPE_GAME_ROOM
-        || type == YikeUrlInfo.TYPE_NEW_LIVE_ROOM;
+        || type == YikeUrlInfo.TYPE_NEW_LIVE_ROOM
+        || type == YikeUrlInfo.TYPE_UNITE_ROOM;
   }
 
   private boolean shouldReplaceYikeMainline() {
-    return type == YikeUrlInfo.TYPE_NEW_LIVE_ROOM;
+    return type == YikeUrlInfo.TYPE_NEW_LIVE_ROOM || type == YikeUrlInfo.TYPE_UNITE_ROOM;
   }
 
   @SuppressWarnings("deprecation")
@@ -617,7 +625,9 @@ public class OnlineDialog extends JDialog {
           return;
         }
         int diffMove = Lizzie.board.getHistory().sync(liveNode);
+        sendYikeContextToReadBoard(liveNode != null ? liveNode.getMoveNumber() : 0);
         if (diffMove >= 0) {
+          syncYikeAnalysisEngineToCurrentHistory();
           //     Lizzie.board.goToMoveNumberBeyondBranch(diffMove > 0 ? diffMove - 1 : 0);
           //    while (Lizzie.board.nextMove()) ;
         }
@@ -688,6 +698,13 @@ public class OnlineDialog extends JDialog {
       ;
     while (liveNode.next(true).isPresent())
       ;
+    if (type == YikeUrlInfo.TYPE_UNITE_ROOM) {
+      if (isUserExploringVariation()) {
+        appendNewMainlineMovesPreservingHead(liveNode);
+        return;
+      }
+      preserveUserBranchesOnto(liveNode);
+    }
     Lizzie.board.setHistory(liveNode);
     Lizzie.board.getHistory().getGameInfo().setPlayerBlack(blackPlayer);
     Lizzie.board.getHistory().getGameInfo().setPlayerWhite(whitePlayer);
@@ -715,7 +732,85 @@ public class OnlineDialog extends JDialog {
       }
     }
     firstTime = false;
+    syncYikeAnalysisEngineToCurrentHistory();
     Lizzie.frame.refresh();
+    sendYikeContextToReadBoard(liveNode != null ? liveNode.getMoveNumber() : 0);
+  }
+
+  private void syncYikeAnalysisEngineToCurrentHistory() {
+    try {
+      if (Lizzie.board != null
+          && Lizzie.frame != null
+          && Lizzie.board.resendCurrentPositionToPrimaryEngine()) {
+        Lizzie.frame.scheduleResumeAnalysisAfterLoad(250);
+      }
+    } catch (RuntimeException e) {
+      updateYikeSyncStatus(
+          currentYikeSourceUrl(),
+          text("YikeLiveDialog.syncFailed", "Yike sync failed.") + ": " + e.getMessage());
+    }
+  }
+
+  /** 把用户在主线节点上摆出的"变化分支"按手数搬到新 liveNode 主线对应节点上，避免每次同步丢失复盘分支。 */
+  private void preserveUserBranchesOnto(BoardHistoryList liveNode) {
+    BoardHistoryList current = Lizzie.board.getHistory();
+    if (current == null || liveNode == null) return;
+    BoardHistoryNode curHead = current.getCurrentHistoryNode();
+    if (curHead == null) return;
+    while (curHead.previous().isPresent()) curHead = curHead.previous().get();
+    BoardHistoryNode liveHead = liveNode.getCurrentHistoryNode();
+    if (liveHead == null) return;
+    while (liveHead.previous().isPresent()) liveHead = liveHead.previous().get();
+
+    Map<Integer, BoardHistoryNode> liveByMove = new HashMap<>();
+    for (BoardHistoryNode n = liveHead; n != null; n = n.next(true).orElse(null)) {
+      liveByMove.put(n.getData().moveNumber, n);
+    }
+
+    for (BoardHistoryNode old = curHead; old != null; old = old.next(true).orElse(null)) {
+      if (old.numberOfChildren() <= 1) continue;
+      BoardHistoryNode liveAtSameMove = liveByMove.get(old.getData().moveNumber);
+      if (liveAtSameMove == null) continue;
+      for (int i = 1; i < old.numberOfChildren(); i++) {
+        BoardHistoryNode branch = old.getVariation(i).orElse(null);
+        if (branch != null) branch.reparentAsLastVariationOf(liveAtSameMove);
+      }
+    }
+  }
+
+  /** 用户当前是否在试下变化：head 不在主线，或在主线但已往前翻过棋。试下时直接 setHistory 会拉走视图，所以走 append 路径。 */
+  private boolean isUserExploringVariation() {
+    BoardHistoryList current = Lizzie.board.getHistory();
+    if (current == null) return false;
+    BoardHistoryNode head = current.getCurrentHistoryNode();
+    if (head == null) return false;
+    if (!head.isMainTrunk()) return true;
+    return head.next(true).isPresent();
+  }
+
+  /** 试下时不动 head，只把 liveNode 主线上多出的手数克隆挂到现有主线末尾，用户回到末尾就能看到新走子。 */
+  private void appendNewMainlineMovesPreservingHead(BoardHistoryList liveNode) {
+    BoardHistoryList current = Lizzie.board.getHistory();
+    if (current == null || liveNode == null) return;
+    BoardHistoryNode curHead = current.getCurrentHistoryNode();
+    if (curHead == null) return;
+    BoardHistoryNode tail = curHead.getLast();
+    int existingTailMove = tail.getData().moveNumber;
+    BoardHistoryNode liveTail = liveNode.getCurrentHistoryNode();
+    while (liveTail != null && liveTail.getData().moveNumber > existingTailMove + 1) {
+      liveTail = liveTail.previous().orElse(null);
+    }
+    java.util.Deque<BoardHistoryNode> toAppend = new java.util.ArrayDeque<>();
+    for (BoardHistoryNode c = liveTail;
+        c != null && c.getData().moveNumber > existingTailMove;
+        c = c.previous().orElse(null)) {
+      toAppend.push(c);
+    }
+    for (BoardHistoryNode src : toAppend) {
+      BoardHistoryNode newNode = new BoardHistoryNode(src.getData().clone());
+      newNode.reparentAsFirstVariationOf(tail);
+      tail = newNode;
+    }
   }
 
   public void get() throws IOException {
@@ -2224,19 +2319,21 @@ public class OnlineDialog extends JDialog {
   }
 
   public void req2(boolean clear) throws URISyntaxException {
+    yikeDebugLog("req2 start, clear=" + clear);
     if (clear) Lizzie.board.clearForOnline();
     if (sio != null) {
       sio.close();
     }
     seqs = 0;
     URI uri = new URI(new String(c1));
+    yikeDebugLog("req2 uri=" + uri);
     sio = IO.socket(uri);
     sio.on(
             Socket.EVENT_CONNECT,
             new Emitter.Listener() {
               @Override
               public void call(Object... args) {
-                // System.out.println("io:connect");
+                yikeDebugLog("Socket.IO connected");
                 login();
               }
             })
@@ -2285,7 +2382,9 @@ public class OnlineDialog extends JDialog {
             new Emitter.Listener() {
               @Override
               public void call(Object... args) {
-                // System.out.println("io:EVENT_CONNECT_ERROR");
+                yikeDebugLog(
+                    "Socket.IO connect error: "
+                        + (args == null || args.length == 0 ? "?" : String.valueOf(args[0])));
               }
             })
         .on(
@@ -2293,7 +2392,7 @@ public class OnlineDialog extends JDialog {
             new Emitter.Listener() {
               @Override
               public void call(Object... args) {
-                // System.out.println("io:EVENT_CONNECT_TIMEOUT");
+                yikeDebugLog("Socket.IO connect timeout");
               }
             })
         .on(
@@ -2375,7 +2474,8 @@ public class OnlineDialog extends JDialog {
             new Emitter.Listener() {
               @Override
               public void call(Object... args) {
-                // System.out.println("io:init:" + strJson(args));
+                yikeDebugLog(
+                    "Socket.IO init event received, args=" + (args == null ? "null" : args.length));
                 initData(args == null || args.length < 1 ? null : ((JSONObject) args[0]));
               }
             })
@@ -2469,6 +2569,7 @@ public class OnlineDialog extends JDialog {
   }
 
   private void initData(JSONObject data) {
+    yikeDebugLog("initData called, data=" + (data == null ? "null" : "present"));
     if (data == null) return;
     JSONObject info = data.optJSONObject("game_info");
     int size = info.optInt("boardSize", 19);
@@ -2492,7 +2593,9 @@ public class OnlineDialog extends JDialog {
       }
       Lizzie.board.getHistory().getGameInfo().setHandicap(handicap);
       int diffMove = Lizzie.board.getHistory().sync(history);
+      sendYikeContextToReadBoard();
       if (diffMove >= 0) {
+        syncYikeAnalysisEngineToCurrentHistory();
         //      Lizzie.board.goToMoveNumberBeyondBranch(diffMove > 0 ? diffMove - 1 : 0);
         //      while (Lizzie.board.nextMove()) ;
       }
@@ -2512,7 +2615,7 @@ public class OnlineDialog extends JDialog {
     if (history == null) {
       //      error(true);
       sio.close();
-      if (isEnd && type == 1) {
+      if (isEnd && (type == 1 || type == 5)) {
         try {
           refresh("(?s).*?(\\\"Content\\\":\\\")(.+)(\\\",\\\")(?s).*", 2, false, false);
         } catch (IOException e) {
@@ -2583,9 +2686,151 @@ public class OnlineDialog extends JDialog {
   }
 
   void sync() {
+    if (history == null) return;
     while (history.previous().isPresent())
       ;
-    Lizzie.board.getHistory().sync(history);
+    int diffMove = Lizzie.board.getHistory().sync(history);
+    if (diffMove >= 0) {
+      syncYikeAnalysisEngineToCurrentHistory();
+    }
+    sendYikeContextToReadBoard();
+  }
+
+  private static final boolean YIKE_DEBUG_LOG_ENABLED = false;
+  private static final String YIKE_LOG_PATH = "D:/dev/weiqi/lizzieyzy-next/target/yike-debug.log";
+
+  private static void yikeDebugLog(String msg) {
+    if (!YIKE_DEBUG_LOG_ENABLED) return;
+    try {
+      java.io.FileWriter fw = new java.io.FileWriter(YIKE_LOG_PATH, true);
+      fw.write(
+          "["
+              + new java.text.SimpleDateFormat("HH:mm:ss.SSS").format(new java.util.Date())
+              + "] "
+              + msg
+              + "\n");
+      fw.close();
+    } catch (Exception ignored) {
+    }
+  }
+
+  private void sendYikeContextToReadBoard() {
+    sendYikeContextToReadBoard(history != null ? history.getMoveNumber() : 0);
+  }
+
+  private void reportSyncStatus(String text) {
+    if (Lizzie.frame != null && Lizzie.frame.browserFrame != null) {
+      Lizzie.frame.browserFrame.setSyncStatus(text);
+    }
+  }
+
+  private void sendYikeContextToReadBoard(int moveNumber) {
+    try {
+      if (Lizzie.frame == null || Lizzie.frame.readBoard == null) {
+        yikeDebugLog("sendYike: readBoard is null");
+        return;
+      }
+      StringBuilder sb = new StringBuilder("yike");
+      if (roomId > 0) sb.append(" room=").append(roomId);
+      if (moveNumber > 0) sb.append(" move=").append(moveNumber);
+      String cmd = sb.toString();
+      yikeDebugLog("sendYike: " + cmd);
+      Lizzie.frame.readBoard.sendCommand(cmd);
+    } catch (Exception e) {
+      yikeDebugLog("sendYike error: " + e.toString());
+    }
+  }
+
+  private void startYikeUnitePolling() {
+    if (roomId <= 0) {
+      yikeDebugLog("startYikeUnitePolling: roomId<=0");
+      return;
+    }
+    if (Lizzie.frame.browserFrame == null) {
+      yikeDebugLog("startYikeUnitePolling: browserFrame is null");
+      return;
+    }
+    int intervalMs = Math.max(refreshTime, 5) * 1000;
+    yikeDebugLog("startYikeUnitePolling room=" + roomId + " intervalMs=" + intervalMs);
+    Lizzie.frame.browserFrame.installYikeUnitePoller(roomId, intervalMs);
+  }
+
+  /** 由 BrowserFrame 在浏览器内 fetch game-server API 后通过 cefQuery 回传调用。 */
+  public void handleYikeUniteSgf(String envelope) {
+    if (envelope == null || envelope.isEmpty()) return;
+    yikeDebugLog(
+        "handleYikeUniteSgf envelope len="
+            + envelope.length()
+            + " head="
+            + envelope.substring(0, Math.min(envelope.length(), 200)));
+    try {
+      JSONObject env = new JSONObject(envelope);
+      String tag = env.optString("tag");
+      if ("ping".equals(tag)) {
+        yikeDebugLog("yikeUnite ping: " + env.optString("body"));
+        return;
+      }
+      if ("error".equals(tag)) {
+        yikeDebugLog("yikeUnite fetch error: " + env.optString("body"));
+        reportSyncStatus("拉取异常: " + env.optString("body"));
+        return;
+      }
+      if (!"resp".equals(tag)) {
+        yikeDebugLog("yikeUnite unknown tag=" + tag);
+        return;
+      }
+      if (isStoped || type != YikeUrlInfo.TYPE_UNITE_ROOM) {
+        yikeDebugLog("yikeUnite resp skipped (isStoped=" + isStoped + " type=" + type + ")");
+        return;
+      }
+      JSONObject body = env.optJSONObject("body");
+      if (body == null) {
+        yikeDebugLog("yikeUnite resp has no body");
+        return;
+      }
+      int status = body.optInt("status", -1);
+      String text = body.optString("body", "");
+      yikeDebugLog("yikeUnite resp status=" + status + " len=" + body.optInt("len"));
+      if (status != 200) {
+        reportSyncStatus("game-server 响应 HTTP " + status);
+        return;
+      }
+      if (Utils.isBlank(text)) return;
+      JSONObject root = new JSONObject(text);
+      JSONObject data = root.optJSONObject("data");
+      if (data == null) {
+        yikeDebugLog("yikeUnite resp: no data field, root keys=" + root.keySet());
+        return;
+      }
+      String sgf = data.optString("sgf");
+      if (Utils.isBlank(sgf)) {
+        yikeDebugLog("yikeUnite resp: sgf is blank");
+        return;
+      }
+      // 用 hands_count 做主去重：弈客 game/info 里 hands_count 直接给当前手数，比字符串比较快
+      int hands = data.optInt("hands_count", -1);
+      if (hands >= 0 && hands == lastYikeHandsCount) {
+        return; // 没有新走子
+      }
+      String mainlineSgf = YikeSgfMainline.withoutVariations(sgf);
+      boolean hasNewMoves = !mainlineSgf.equals(lastYikeMainlineSgf);
+      if (!hasNewMoves) {
+        if (hands >= 0) lastYikeHandsCount = hands;
+        return;
+      }
+      lastYikeMainlineSgf = mainlineSgf;
+      if (hands >= 0) lastYikeHandsCount = hands;
+      JSONObject wrapper = new JSONObject();
+      wrapper.put("result", data);
+      parseSgf(wrapper.toString(), "", 0, false, firstTime);
+      reportSyncStatus(syncStatusPrefix() + "第 " + (hands >= 0 ? hands : "?") + " 手");
+    } catch (JSONException e) {
+      yikeDebugLog("handleYikeUniteSgf JSON error: " + e.toString());
+      reportSyncStatus("解析响应失败: " + e.getMessage());
+    } catch (RuntimeException e) {
+      yikeDebugLog("handleYikeUniteSgf error: " + e.toString());
+      reportSyncStatus("处理响应异常: " + e.getMessage());
+    }
   }
 
   private void procComments(JSONObject cb) {
@@ -2676,7 +2921,7 @@ public class OnlineDialog extends JDialog {
   }
 
   private void move(JSONObject d) {
-    if (d == null || d.opt("move") == null) return;
+    if (d == null || d.opt("move") == null || history == null) return;
     JSONObject m = (JSONObject) d.get("move");
     int move = m.optInt("mcnt");
     if (move > 0) {
@@ -2822,6 +3067,12 @@ public class OnlineDialog extends JDialog {
     if (schedule != null && !schedule.isCancelled() && !schedule.isDone()) {
       schedule.cancel(false);
     }
+    if (Lizzie.frame.browserFrame != null) {
+      try {
+        Lizzie.frame.browserFrame.stopYikeUnitePoller();
+      } catch (Exception ignored) {
+      }
+    }
     //    if (client != null && client.isOpen()) {
     //      client.close();
     //      client = null;
@@ -2842,16 +3093,19 @@ public class OnlineDialog extends JDialog {
       sio.close();
     }
     setVisible(false);
+    reportSyncStatus("已停止同步");
     //  Lizzie.frame.onlineDialog.dispose();
   }
 
   public void applyChangeWeb(String url) {
+    yikeDebugLog("applyChangeWeb url=" + url);
     //
     isStoped = false;
     fromBrowser = true;
     firstTime = true;
     txtUrl.setText(url);
     type = checkUrl();
+    yikeDebugLog("applyChangeWeb type=" + type);
     LizzieFrame.urlSgf = true;
     Lizzie.frame.setCommentPaneOrArea(false);
     if (type > 0) {
@@ -2859,11 +3113,35 @@ public class OnlineDialog extends JDialog {
       try {
         Lizzie.frame.setResult("");
         proc();
+        reportSyncStatus(syncStatusPrefix() + "已启动");
       } catch (IOException | URISyntaxException e) {
         e.printStackTrace();
+        reportSyncStatus("同步启动失败: " + e.getMessage());
       }
     } else {
-      // error(true);
+      reportSyncStatus("URL 无法识别");
     }
+  }
+
+  private String syncStatusPrefix() {
+    String label;
+    switch (type) {
+      case YikeUrlInfo.TYPE_UNITE_ROOM:
+        label = "弈客对弈";
+        break;
+      case YikeUrlInfo.TYPE_NEW_LIVE_ROOM:
+        label = "弈客直播(新)";
+        break;
+      case YikeUrlInfo.TYPE_OLD_LIVE_ROOM:
+      case YikeUrlInfo.TYPE_OLD_LIVE_BOARD:
+        label = "弈客直播";
+        break;
+      case YikeUrlInfo.TYPE_GAME_ROOM:
+        label = "弈客对局";
+        break;
+      default:
+        label = "同步";
+    }
+    return roomId > 0 ? label + " 房间 " + roomId + " " : label + " ";
   }
 }

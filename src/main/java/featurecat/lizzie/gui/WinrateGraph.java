@@ -142,8 +142,7 @@ public class WinrateGraph {
   private BoardHistoryNode renderedGraphEndNode;
   private BoardHistoryNode renderedMainEndNode;
   private int renderedMode;
-  private boolean renderedEngineGame;
-  private boolean renderedPkBoard;
+  private boolean renderedEngineOrPkGraphMode;
   private boolean renderedShowWinrateLine;
   private boolean renderedFrameInPlayMode;
   private final Map<Integer, boolean[][]> quickOverviewDotMaskCache = new HashMap<>();
@@ -160,6 +159,31 @@ public class WinrateGraph {
     return new Color(120, 120, 120, 50);
   }
 
+  static Color resolveGraphBackgroundColor(Color panelColor, boolean appleStyle) {
+    Color fallback = appleStyle ? new Color(34, 39, 46, 150) : new Color(38, 44, 52, 158);
+    if (panelColor == null) {
+      return fallback;
+    }
+    Color lift = appleStyle ? new Color(62, 68, 78) : new Color(58, 66, 76);
+    int red = blend(panelColor.getRed(), lift.getRed(), 0.38);
+    int green = blend(panelColor.getGreen(), lift.getGreen(), 0.38);
+    int blue = blend(panelColor.getBlue(), lift.getBlue(), 0.38);
+    int alpha = clamp(panelColor.getAlpha() - 35, 118, 178);
+    return new Color(red, green, blue, alpha);
+  }
+
+  static Color resolveGridLineColor() {
+    return new Color(255, 255, 255, 72);
+  }
+
+  private static int blend(int base, int lift, double liftRatio) {
+    return clamp((int) Math.round(base * (1.0 - liftRatio) + lift * liftRatio), 0, 255);
+  }
+
+  private static int clamp(int value, int min, int max) {
+    return Math.max(min, Math.min(max, value));
+  }
+
   public void draw(
       Graphics2D g,
       Graphics2D gBlunder,
@@ -174,7 +198,8 @@ public class WinrateGraph {
     BoardHistoryNode node = curMove;
     // draw background rectangle
     final Paint customBackground =
-        Lizzie.config.isAppleStyle ? new Color(22, 25, 30, 230) : new Color(24, 28, 32, 235);
+        resolveGraphBackgroundColor(
+            Lizzie.config.commentBackgroundColor, Lizzie.config.isAppleStyle);
     gBackground.setPaint(customBackground);
     gBackground.fillRect(posx, posy, width, height);
 
@@ -196,7 +221,7 @@ public class WinrateGraph {
         new BasicStroke(1, BasicStroke.CAP_BUTT, BasicStroke.JOIN_BEVEL, 0, new float[] {4}, 0);
     gBackground.setStroke(dashed);
 
-    gBackground.setColor(new Color(255, 255, 255, 30));
+    gBackground.setColor(resolveGridLineColor());
     int winRateGridLines = Lizzie.frame.winRateGridLines;
     for (int i = 1; i <= winRateGridLines; i++) {
       double percent = i * 100.0 / (winRateGridLines + 1);
@@ -2519,8 +2544,7 @@ public class WinrateGraph {
     renderedGraphEndNode = null;
     renderedMainEndNode = null;
     renderedMode = 0;
-    renderedEngineGame = false;
-    renderedPkBoard = false;
+    renderedEngineOrPkGraphMode = false;
     renderedShowWinrateLine = false;
     renderedFrameInPlayMode = false;
   }
@@ -2553,8 +2577,7 @@ public class WinrateGraph {
     renderedGraphEndNode = currentNode == null ? null : graphTraversalEnd(currentNode);
     renderedMainEndNode = currentMainEndNode();
     renderedMode = mode;
-    renderedEngineGame = EngineManager.isEngineGame;
-    renderedPkBoard = Lizzie.board != null && Lizzie.board.isPkBoard;
+    renderedEngineOrPkGraphMode = isEngineOrPkGraphMode();
     renderedShowWinrateLine = isShowWinrateLineEnabled();
     renderedFrameInPlayMode = isFrameInPlayMode();
   }
@@ -2564,8 +2587,7 @@ public class WinrateGraph {
         (!isFrameTryingMode() || currentGraphNode() == renderedCurrentGraphNode)
             && currentMainEndNode() == renderedMainEndNode
             && mode == renderedMode
-            && EngineManager.isEngineGame == renderedEngineGame
-            && (Lizzie.board != null && Lizzie.board.isPkBoard) == renderedPkBoard
+            && isEngineOrPkGraphMode() == renderedEngineOrPkGraphMode
             && isShowWinrateLineEnabled() == renderedShowWinrateLine
             && isFrameInPlayMode() == renderedFrameInPlayMode;
     if (!sameState) {

@@ -7,19 +7,16 @@ import org.junit.jupiter.api.Test;
 class LizzieVersionTest {
   @Test
   void prefersReleasePropertyForDisplayVersion() {
-    assertEquals(
-        "1.0.0-next-2026-04-24.2",
-        Lizzie.chooseNextVersion(" 1.0.0-next-2026-04-24.2 ", "ignored"));
+    assertEquals("next-2026-05-03.1", Lizzie.chooseNextVersion(" next-2026-05-03.1 ", "ignored"));
   }
 
   @Test
   void fallsBackToEnvironmentDisplayVersion() {
-    assertEquals(
-        "1.0.0-next-2026-04-25.1", Lizzie.chooseNextVersion("", "1.0.0-next-2026-04-25.1"));
+    assertEquals("next-2026-05-03.1", Lizzie.chooseNextVersion("", "next-2026-05-03.1"));
   }
 
   @Test
   void marksUnpackagedLocalBuildsAsDevelopmentBuilds() {
-    assertEquals("1.0.0-dev", Lizzie.chooseNextVersion(null, " "));
+    assertEquals("next-dev", Lizzie.chooseNextVersion(null, " "));
   }
 }

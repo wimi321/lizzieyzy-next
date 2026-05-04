@@ -92,6 +92,10 @@ public final class KataGoRuntimeHelper {
           Arrays.asList("nvJitLink*.dll"),
           Arrays.asList("zlibwapi.dll", "libz.dll"));
   private static final Object NVIDIA_RUNTIME_LOCK = new Object();
+  private static final int BENCHMARK_VISITS = 800;
+  private static final int BENCHMARK_POSITIONS = 6;
+  private static final int BENCHMARK_MIN_TIME_SECONDS = 5;
+  private static final int BENCHMARK_MAX_TIME_SECONDS = 15;
   private static final int APPLE_AUTO_OPTIMIZE_VERSION = 3;
   private static final int APPLE_AUTO_OPTIMIZE_DELAY_MILLIS = 8000;
   private static final int APPLE_AUTO_OPTIMIZE_READY_TIMEOUT_MILLIS = 45000;
@@ -494,20 +498,7 @@ public final class KataGoRuntimeHelper {
       ensureBundledRuntimeReady(snapshot.enginePath, null);
     }
 
-    List<String> command = new ArrayList<String>();
-    command.add(snapshot.enginePath.toAbsolutePath().normalize().toString());
-    command.add("benchmark");
-    command.add("-config");
-    command.add(snapshot.gtpConfigPath.toAbsolutePath().normalize().toString());
-    command.add("-model");
-    command.add(snapshot.activeWeightPath.toAbsolutePath().normalize().toString());
-    // Follow KataGo's official benchmark flow: with -s, KataGo performs its own thread search
-    // using the backend-specific defaults (Metal/OpenCL/CUDA default 800 visits, Eigen default 80).
-    command.add("-s");
-    command.add("-override-config");
-    command.add("logToStderr=false,logAllGTPCommunication=false,logSearchInfo=false");
-
-    command = prepareBundledLaunchCommand(command, snapshot.enginePath);
+    List<String> command = buildBenchmarkCommand(snapshot);
     notifyProgress(
         listener,
         resource("AutoSetup.benchmarkStarting", "Starting KataGo benchmark..."),
@@ -603,6 +594,27 @@ public final class KataGoRuntimeHelper {
           resource("AutoSetup.benchmarkFailed", "Unable to run KataGo benchmark right now."));
     }
     return result;
+  }
+
+  static List<String> buildBenchmarkCommand(SetupSnapshot snapshot) {
+    int benchmarkTime = resolveBenchmarkTimeSeconds();
+    List<String> command = new ArrayList<String>();
+    command.add(snapshot.enginePath.toAbsolutePath().normalize().toString());
+    command.add("benchmark");
+    command.add("-config");
+    command.add(snapshot.gtpConfigPath.toAbsolutePath().normalize().toString());
+    command.add("-model");
+    command.add(snapshot.activeWeightPath.toAbsolutePath().normalize().toString());
+    command.add("-s");
+    command.add("-n");
+    command.add(String.valueOf(BENCHMARK_POSITIONS));
+    command.add("-v");
+    command.add(String.valueOf(BENCHMARK_VISITS));
+    command.add("-time");
+    command.add(String.valueOf(benchmarkTime));
+    command.add("-override-config");
+    command.add("logToStderr=false,logAllGTPCommunication=false,logSearchInfo=false");
+    return prepareBundledLaunchCommand(command, snapshot.enginePath);
   }
 
   private static Thread startBenchmarkCancellationWatcher(
@@ -1353,6 +1365,7 @@ public final class KataGoRuntimeHelper {
   public static void startFirstRunBenchmarkAsync() {
     if (Lizzie.config == null || Lizzie.config.uiConfig == null) return;
     if (isAppleSiliconHost()) return;
+    if (!Lizzie.config.enableStartupBenchmark) return;
     if (getStoredBenchmarkResult() != null) return;
 
     Thread worker =
@@ -2244,6 +2257,14 @@ public final class KataGoRuntimeHelper {
     } catch (Exception e) {
       return 0L;
     }
+  }
+
+  private static int resolveBenchmarkTimeSeconds() {
+    int seconds = 5;
+    if (Lizzie.config != null) {
+      seconds = Math.max(seconds, Lizzie.config.maxGameThinkingTimeSeconds);
+    }
+    return Math.max(BENCHMARK_MIN_TIME_SECONDS, Math.min(BENCHMARK_MAX_TIME_SECONDS, seconds));
   }
 
   private static String trimStatusForUi(String line) {

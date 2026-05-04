@@ -6,11 +6,11 @@ on:
       date_tag:
         description: Release date tag, for example 2026-03-24
         required: true
-        default: 2026-03-24
+        default: 2026-05-04
       release_tag:
         description: Existing GitHub release tag to upload into
         required: true
-        default: 1.0.0-next-2026-03-24.2
+        default: next-2026-05-04.1
 
 permissions:
   contents: write
@@ -178,7 +178,20 @@ jobs:
           $appExe = Join-Path $PWD "dist\windows\app-image-with-katago\LizzieYzy Next\LizzieYzy Next.exe"
           & "$PWD\scripts\windows_smoke_test.ps1" -AppExe $appExe -WaitSeconds 60 -ProbeBoardSync
 
+      - name: Upload assets to release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload "${{ inputs.release_tag }}" \
+            dist/release/*windows64*.installer.exe \
+            dist/release/*windows64*.portable.zip \
+            --repo "${{ github.repository }}" \
+            --clobber
+
       - name: Smoke test Windows upgrade install path
+        timeout-minutes: 25
+        continue-on-error: true
         shell: powershell
         run: |
           $inputDir = Join-Path $PWD "dist\windows\input-with-katago"
@@ -189,13 +202,13 @@ jobs:
             -IconPath $iconPath `
             -UpgradeUuid "c2ef73ec-f99a-4f3d-b950-f52c0186122a"
 
-      - name: Upload workflow artifacts
+      - name: Upload workflow metadata
+        timeout-minutes: 5
+        continue-on-error: true
         uses: actions/upload-artifact@v6
         with:
-          name: windows-release
+          name: windows-release-meta
           path: |
-            dist/release/*windows64*.installer.exe
-            dist/release/*windows64*.portable.zip
             dist/release-meta/*windows64-*.txt
 
       - name: Upload Windows smoke logs
@@ -207,14 +220,3 @@ jobs:
             ${{ runner.temp }}/lizzieyzy-next-msi-smoke/logs/*
             dist/windows/app-image-with-katago/LizzieYzy Next/LastConsoleLogs_*.txt
             dist/windows/app-image-with-katago/LizzieYzy Next/LastErrorLogs_*.txt
-
-      - name: Upload assets to release
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          gh release upload "${{ inputs.release_tag }}" \
-            dist/release/*windows64*.installer.exe \
-            dist/release/*windows64*.portable.zip \
-            --repo "${{ github.repository }}" \
-            --clobber

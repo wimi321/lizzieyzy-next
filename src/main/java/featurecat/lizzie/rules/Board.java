@@ -1182,6 +1182,20 @@ public class Board {
     }
   }
 
+  public boolean resendCurrentPositionToPrimaryEngine() {
+    if (Lizzie.leelaz == null
+        || EngineManager.isEmpty
+        || !Lizzie.leelaz.isStarted()
+        || !Lizzie.leelaz.isLoaded()) {
+      return false;
+    }
+    if (Lizzie.leelaz.width != boardWidth || Lizzie.leelaz.height != boardHeight) {
+      Lizzie.leelaz.boardSize(boardWidth, boardHeight);
+    }
+    resendMoveToEngine(Lizzie.leelaz, false);
+    return true;
+  }
+
   private BoardData createEditedCurrentBoardAnchor(BoardHistoryNode currentNode) {
     if (currentNode == null || !currentNode.hasRemovedStone()) {
       return null;

@@ -36,7 +36,11 @@ case "$PLATFORM" in
     expected=("${DATE_TAG}-mac-intel.with-katago.dmg")
     ;;
   linux)
-    expected=("${DATE_TAG}-linux64.with-katago.zip")
+    expected=(
+      "${DATE_TAG}-linux64.opencl.zip"
+      "${DATE_TAG}-linux64.nvidia.zip"
+      "${DATE_TAG}-linux64.with-katago.zip"
+    )
     ;;
   *)
     echo "Unsupported platform: $PLATFORM"

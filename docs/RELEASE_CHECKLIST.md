@@ -12,7 +12,7 @@
 - 普通 Windows 包支持“智能优化”的信息要写清楚
 - NVIDIA Windows 包“首次自动准备官方运行库”的信息要写清楚
 - README、安装文档、发布页文案、真实资产名保持一致
-- 软件内“关于”、主窗口标题、安装包启动参数、GitHub release 标题必须显示同一个 release tag，不能停在 `1.0.0`
+- 软件内“关于”、主窗口标题、安装包启动参数、GitHub release 标题必须显示同一个 release tag，不能停在 `1.0.0`，也不要再把 `1.0.0-` 作为公开 tag 前缀
 - 程序窗口图标、安装包图标、README 展示图标不要混成两套
 
 ## 二、当前推荐的公开资产集合
@@ -80,7 +80,7 @@ GitHub Actions：
 - `weights/default.bin.gz` 存在
 - `engines/katago/` 下目标平台文件完整
 - 如需 bundled Java，对应 `runtime/` 目录仍然存在
-- 发版 tag 已确定，例如 `1.0.0-next-2026-04-24.2`；构建脚本最后一个参数必须传这个 tag
+- 发版 tag 已确定，例如 `next-2026-04-24.2`；构建脚本最后一个参数必须传这个 tag
 
 ## 五、建议构建顺序
 
@@ -119,21 +119,21 @@ python3 scripts/generate_app_icons.py
 ### 5. 构建 Windows 安装器和便携包
 
 ```bash
-./scripts/package_windows_exe.sh 2026-04-24 1.0.0 target/lizzie-yzy2.5.3-shaded.jar 1.0.0-next-2026-04-24.2
+./scripts/package_windows_exe.sh 2026-04-24 1.0.0 target/lizzie-yzy2.5.3-shaded.jar next-2026-04-24.2
 ./scripts/validate_release_assets.sh windows dist/release 2026-04-24
 ```
 
 ### 6. 构建 Linux 主整合包
 
 ```bash
-./scripts/package_release.sh 2026-04-24 target/lizzie-yzy2.5.3-shaded.jar 1.0.0-next-2026-04-24.2
+./scripts/package_release.sh 2026-04-24 target/lizzie-yzy2.5.3-shaded.jar next-2026-04-24.2
 ./scripts/validate_release_assets.sh linux dist/release 2026-04-24
 ```
 
 如果确实需要历史兼容 zip，额外显式打开：
 
 ```bash
-LEGACY_WINDOWS32_ZIP=1 LEGACY_OTHER_SYSTEMS_ZIP=1 ./scripts/package_release.sh 2026-04-24 target/lizzie-yzy2.5.3-shaded.jar 1.0.0-next-2026-04-24.2
+LEGACY_WINDOWS32_ZIP=1 LEGACY_OTHER_SYSTEMS_ZIP=1 ./scripts/package_release.sh 2026-04-24 target/lizzie-yzy2.5.3-shaded.jar next-2026-04-24.2
 ```
 
 ### 7. 构建 macOS dmg
@@ -141,7 +141,7 @@ LEGACY_WINDOWS32_ZIP=1 LEGACY_OTHER_SYSTEMS_ZIP=1 ./scripts/package_release.sh 2
 在对应芯片机器上运行：
 
 ```bash
-./scripts/package_macos_dmg.sh 2026-04-24 1.0.0 target/lizzie-yzy2.5.3-shaded.jar 1.0.0-next-2026-04-24.2
+./scripts/package_macos_dmg.sh 2026-04-24 1.0.0 target/lizzie-yzy2.5.3-shaded.jar next-2026-04-24.2
 ./scripts/validate_release_assets.sh mac-arm64 dist/release 2026-04-24
 ```
 
@@ -152,7 +152,7 @@ LEGACY_WINDOWS32_ZIP=1 LEGACY_OTHER_SYSTEMS_ZIP=1 ./scripts/package_release.sh 2
 ```bash
 python3 scripts/generate_release_notes.py \
   --date-tag 2026-04-24 \
-  --release-tag 1.0.0-next-2026-04-24.2 \
+  --release-tag next-2026-04-24.2 \
   --release-dir dist/release \
   --output dist/release-meta/2026-04-24-release-notes.md
 ```
@@ -162,7 +162,7 @@ python3 scripts/generate_release_notes.py \
 ```bash
 gh workflow run update-release-notes.yml \
   -f date_tag=2026-04-24 \
-  -f release_tag=1.0.0-next-2026-04-24.2
+  -f release_tag=next-2026-04-24.2
 ```
 
 ## 六、Release Notes 应该先写什么

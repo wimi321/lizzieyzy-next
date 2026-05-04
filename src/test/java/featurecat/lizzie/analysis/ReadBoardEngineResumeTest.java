@@ -1,6 +1,7 @@
 package featurecat.lizzie.analysis;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 
@@ -119,6 +120,51 @@ class ReadBoardEngineResumeTest {
 
       assertEquals(0, harness.leelaz.ponderCount);
       assertEquals(true, harness.frame.syncBoard);
+    }
+  }
+
+  @Test
+  void noponderDoesNotStartPonderWhenAlreadyStopped() throws Exception {
+    try (EngineResumeHarness harness =
+        EngineResumeHarness.create(rootHistory(emptyStones(), true))) {
+      harness.leelaz.notPondering();
+
+      harness.readBoard.parseLine("noponder");
+
+      assertEquals(0, harness.leelaz.togglePonderCount);
+      assertEquals(0, harness.leelaz.ponderCount);
+      assertFalse(harness.leelaz.isPondering());
+    }
+  }
+
+  @Test
+  void noponderDoesNotRestartPonderAfterAutoPlayStopHandlesEngine() throws Exception {
+    try (EngineResumeHarness harness =
+        EngineResumeHarness.create(rootHistory(emptyStones(), true))) {
+      harness.leelaz.Pondering();
+      harness.frame.isAnaPlayingAgainstLeelaz = true;
+
+      harness.readBoard.parseLine("noponder");
+
+      assertEquals(1, harness.frame.stopAiPlayingAndPolicyCount);
+      assertEquals(0, harness.leelaz.togglePonderCount);
+      assertEquals(0, harness.leelaz.ponderCount);
+      assertFalse(harness.leelaz.isPondering());
+    }
+  }
+
+  @Test
+  void noponderStopsActivePonderWhenNoGameStopHandledIt() throws Exception {
+    try (EngineResumeHarness harness =
+        EngineResumeHarness.create(rootHistory(emptyStones(), true))) {
+      harness.leelaz.Pondering();
+
+      harness.readBoard.parseLine("noponder");
+
+      assertEquals(1, harness.leelaz.togglePonderCount);
+      assertEquals(1, harness.leelaz.nameCmdCount);
+      assertEquals(0, harness.leelaz.ponderCount);
+      assertFalse(harness.leelaz.isPondering());
     }
   }
 
@@ -466,6 +512,7 @@ class ReadBoardEngineResumeTest {
 
   private static final class TrackingFrame extends LizzieFrame {
     private int scheduleResumeAnalysisCount;
+    private int stopAiPlayingAndPolicyCount;
     private Runnable lastScheduledResumeAction;
     private TrackingBoard board;
 
@@ -496,6 +543,19 @@ class ReadBoardEngineResumeTest {
 
     @Override
     public void clearTryPlay() {}
+
+    @Override
+    public boolean stopAiPlayingAndPolicy() {
+      stopAiPlayingAndPolicyCount++;
+      boolean wasGaming = isPlayingAgainstLeelaz || isAnaPlayingAgainstLeelaz;
+      isPlayingAgainstLeelaz = false;
+      isAnaPlayingAgainstLeelaz = false;
+      if (Lizzie.leelaz != null) {
+        Lizzie.leelaz.notPondering();
+        Lizzie.leelaz.isThinking = false;
+      }
+      return wasGaming;
+    }
 
     @Override
     public void scheduleResumeAnalysisAfterLoad(int delayMillis) {

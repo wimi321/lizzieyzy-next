@@ -1,14 +1,18 @@
 package featurecat.lizzie.util;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import featurecat.lizzie.Config;
 import featurecat.lizzie.ConfigTestHelper;
 import featurecat.lizzie.Lizzie;
+import featurecat.lizzie.util.KataGoAutoSetupHelper.SetupSnapshot;
 import java.io.IOException;
+import java.lang.reflect.Constructor;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Arrays;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 
 public class KataGoRuntimeHelperTest {
@@ -106,6 +110,40 @@ public class KataGoRuntimeHelperTest {
         });
   }
 
+  @Test
+  void smartOptimizeUsesBoundedOfficialBenchmarkArguments() throws Exception {
+    Path tempRoot = Files.createTempDirectory("katago-helper-benchmark-command");
+    Path enginePath = touch(tempRoot.resolve("external-engine").resolve("katago"));
+    Path gtpConfigPath = touch(tempRoot.resolve("configs").resolve("gtp.cfg"));
+    Path analysisConfigPath = touch(tempRoot.resolve("configs").resolve("analysis.cfg"));
+    Path estimateConfigPath = touch(tempRoot.resolve("configs").resolve("estimate.cfg"));
+    Path weightPath = touch(tempRoot.resolve("weights").resolve("default.bin.gz"));
+    Path runtimeWorkDirectory = Files.createDirectories(tempRoot.resolve("runtime-root"));
+    SetupSnapshot snapshot =
+        setupSnapshot(
+            tempRoot,
+            tempRoot,
+            enginePath,
+            gtpConfigPath,
+            analysisConfigPath,
+            estimateConfigPath,
+            weightPath);
+
+    withConfig(
+        runtimeWorkDirectory,
+        () -> {
+          Lizzie.config.maxGameThinkingTimeSeconds = 12;
+          List<String> command = KataGoRuntimeHelper.buildBenchmarkCommand(snapshot);
+
+          assertEquals(normalize(enginePath).toString(), command.get(0));
+          assertEquals("benchmark", command.get(1));
+          assertTrue(command.contains("-s"), "Smart Optimize should keep KataGo official tuning.");
+          assertOptionValue(command, "-n", "6");
+          assertOptionValue(command, "-v", "800");
+          assertOptionValue(command, "-time", "12");
+        });
+  }
+
   private static ProcessBuilder createProcessBuilder(Path directory, String pathValue) {
     ProcessBuilder processBuilder = new ProcessBuilder("echo");
     processBuilder.directory(directory.toFile());
@@ -165,6 +203,44 @@ public class KataGoRuntimeHelperTest {
 
   private static Path normalize(Path path) {
     return path.toAbsolutePath().normalize();
+  }
+
+  private static SetupSnapshot setupSnapshot(
+      Path workingDir,
+      Path appRoot,
+      Path enginePath,
+      Path gtpConfigPath,
+      Path analysisConfigPath,
+      Path estimateConfigPath,
+      Path weightPath)
+      throws Exception {
+    Constructor<SetupSnapshot> constructor =
+        SetupSnapshot.class.getDeclaredConstructor(
+            Path.class,
+            Path.class,
+            Path.class,
+            Path.class,
+            Path.class,
+            Path.class,
+            Path.class,
+            List.class);
+    constructor.setAccessible(true);
+    return constructor.newInstance(
+        workingDir,
+        appRoot,
+        enginePath,
+        gtpConfigPath,
+        analysisConfigPath,
+        estimateConfigPath,
+        weightPath,
+        Arrays.asList(weightPath));
+  }
+
+  private static void assertOptionValue(List<String> command, String option, String expectedValue) {
+    int index = command.indexOf(option);
+    assertTrue(index >= 0, "Expected benchmark option " + option);
+    assertTrue(index + 1 < command.size(), "Expected a value after benchmark option " + option);
+    assertEquals(expectedValue, command.get(index + 1));
   }
 
   private interface ThrowingRunnable {

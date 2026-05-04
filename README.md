@@ -203,9 +203,16 @@
 
 ## 致谢
 
+`LizzieYzy Next` 能继续向前走，离不开这些项目和贡献者：
+
 - 原项目：[yzyray/lizzieyzy](https://github.com/yzyray/lizzieyzy)
 - KataGo：[lightvector/KataGo](https://github.com/lightvector/KataGo)
+- 棋盘同步工具：[qiyi71w/readboard](https://github.com/qiyi71w/readboard)
+
+特别感谢 [qiyi71w](https://github.com/qiyi71w) 持续优化 readboard，对 `LizzieYzy Next` 的棋盘同步体验帮助很大。也欢迎更多开发者、棋友和工具作者参与到这个项目中来，一起把它打磨得更稳定、更好用。
+
 野狐抓谱历史参考：
+
 - [yzyray/FoxRequest](https://github.com/yzyray/FoxRequest)
 - [FuckUbuntu/Lizzieyzy-Helper](https://github.com/FuckUbuntu/Lizzieyzy-Helper)
 

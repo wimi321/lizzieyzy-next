@@ -47,6 +47,7 @@ public class ReadBoard {
   };
   private static final int SYNC_ANALYSIS_RESUME_DELAY_MS = 200;
   private static final int STARTUP_OUTPUT_LOG_LIMIT = 8;
+  private static final String READBOARD_UPDATE_SUPPORTED_COMMAND = "readboardUpdateSupported";
 
   public static boolean isLegacyNativeReadBoardAvailable() {
     return isLegacyNativeReadBoardAvailable(legacyNativeReadBoardDirectory());
@@ -616,6 +617,7 @@ public class ReadBoard {
             if (!isLoaded) {
               isLoaded = true;
               if (!javaReadBoard) checkVersion();
+              announceHostedUpdateSupport();
             }
           } catch (Exception ex) {
             ex.printStackTrace();
@@ -646,6 +648,11 @@ public class ReadBoard {
 
   public void parseLine(String line) {
     ensureTransientSyncStateInitialized();
+    ReadBoardUpdateRequest updateRequest = ReadBoardUpdateRequest.tryParse(line);
+    if (updateRequest != null) {
+      handleHostedUpdateRequest(updateRequest);
+      return;
+    }
     // if (Lizzie.gtpConsole.isVisible())
     // Lizzie.gtpConsole.addLine(line);
     //  System.out.println(line);
@@ -731,7 +738,10 @@ public class ReadBoard {
       Lizzie.gtpConsole.addLineReadBoard(line + (usePipe ? "" : "\n"));
     }
     if (line.startsWith("end")) {
-      if (!isSyncing) syncBoardStones(false);
+      boolean isYikePlatform =
+          pendingRemoteContext != null
+              && pendingRemoteContext.platform == SyncRemoteContext.SyncPlatform.YIKE;
+      if (!isSyncing && !isYikePlatform) syncBoardStones(false);
       clearPendingRemoteContext();
       tempcount = new ArrayList<Integer>();
     }
@@ -899,7 +909,7 @@ public class ReadBoard {
       if (Lizzie.frame.isAnaPlayingAgainstLeelaz) {
         Lizzie.frame.stopAiPlayingAndPolicy();
       }
-      Lizzie.leelaz.togglePonder();
+      stopPonderingIfActive();
     }
     if (line.startsWith("noinboard")) {
       if (Lizzie.frame.floatBoard != null && Lizzie.frame.floatBoard.isVisible()) {
@@ -1231,9 +1241,10 @@ public class ReadBoard {
   }
 
   private SyncRemoteContext.SyncPlatform parseSyncPlatform(String platformToken) {
-    return "fox".equalsIgnoreCase(platformToken.trim())
-        ? SyncRemoteContext.SyncPlatform.FOX
-        : SyncRemoteContext.SyncPlatform.GENERIC;
+    String t = platformToken.trim();
+    if ("fox".equalsIgnoreCase(t)) return SyncRemoteContext.SyncPlatform.FOX;
+    if ("yike".equalsIgnoreCase(t)) return SyncRemoteContext.SyncPlatform.YIKE;
+    return SyncRemoteContext.SyncPlatform.GENERIC;
   }
 
   private OptionalInt parseOptionalInt(String line, String prefix) {
@@ -1900,7 +1911,12 @@ public class ReadBoard {
   }
 
   private void lastMoveWithoutTracking() {
-    runWithoutTrackingLocalHistoryNavigation(() -> Lizzie.frame.lastMove());
+    runWithoutTrackingLocalHistoryNavigation(
+        () -> {
+          if (Lizzie.frame != null) {
+            Lizzie.frame.lastMove();
+          }
+        });
   }
 
   private void runWithoutTrackingLocalHistoryNavigation(Runnable navigation) {
@@ -2064,6 +2080,12 @@ public class ReadBoard {
 
   private boolean isReadBoardAnalysisEngineAvailable() {
     return Lizzie.leelaz != null && Lizzie.leelaz.isStarted();
+  }
+
+  private void stopPonderingIfActive() {
+    if (Lizzie.leelaz != null && Lizzie.leelaz.isPondering()) {
+      Lizzie.leelaz.togglePonder();
+    }
   }
 
   private static final class SnapshotHistoryState {
@@ -2233,6 +2255,24 @@ public class ReadBoard {
 
   public void checkVersion() {
     sendCommand("version");
+  }
+
+  public boolean shouldAnnounceHostedUpdateSupport() {
+    return usePipe && !javaReadBoard;
+  }
+
+  public void announceHostedUpdateSupport() {
+    if (shouldAnnounceHostedUpdateSupport()) {
+      sendCommand(READBOARD_UPDATE_SUPPORTED_COMMAND);
+    }
+  }
+
+  private void handleHostedUpdateRequest(ReadBoardUpdateRequest request) {
+    LizzieFrame frame = Lizzie.frame;
+    if (frame == null) {
+      return;
+    }
+    frame.handleReadBoardHostedUpdateRequest(this, request);
   }
 
   private void releaseHostedResources() {

@@ -13,9 +13,12 @@ public class SidebarPanel extends JPanel {
   private CardLayout cardLayout;
   private BlunderListPanel blunderListPanel;
   private JPanel commentsContainer;
+  private CardLayout commentCardLayout;
   private final LizzieFrame parentFrame;
   private final JScrollPane commentScrollPane;
   private final JScrollPane commentEditPane;
+  private static final String COMMENT_VIEW_CARD = "COMMENT_VIEW";
+  private static final String COMMENT_EDIT_CARD = "COMMENT_EDIT";
 
   private Consumer<ProblemListSnapshot> snapshotListener;
 
@@ -38,19 +41,16 @@ public class SidebarPanel extends JPanel {
     // Comments Container
     commentsContainer = new JPanel();
     commentsContainer.setOpaque(false);
-    commentsContainer.setLayout(new OverlayLayout(commentsContainer));
+    commentCardLayout = new CardLayout();
+    commentsContainer.setLayout(commentCardLayout);
     commentScrollPane.setOpaque(false);
     commentScrollPane.getViewport().setOpaque(false);
     commentScrollPane.setBorder(BorderFactory.createEmptyBorder());
     commentEditPane.setOpaque(false);
     commentEditPane.getViewport().setOpaque(false);
     commentEditPane.setBorder(BorderFactory.createEmptyBorder());
-    commentScrollPane.setAlignmentX(0.5f);
-    commentScrollPane.setAlignmentY(0.5f);
-    commentEditPane.setAlignmentX(0.5f);
-    commentEditPane.setAlignmentY(0.5f);
-    commentsContainer.add(commentEditPane);
-    commentsContainer.add(commentScrollPane);
+    commentsContainer.add(commentScrollPane, COMMENT_VIEW_CARD);
+    commentsContainer.add(commentEditPane, COMMENT_EDIT_CARD);
     cardPanel.add(commentsContainer, "COMMENTS");
 
     // Blunders Container
@@ -59,6 +59,8 @@ public class SidebarPanel extends JPanel {
     blunderScrollPane.setOpaque(false);
     blunderScrollPane.getViewport().setOpaque(false);
     blunderScrollPane.setBorder(BorderFactory.createEmptyBorder());
+    blunderScrollPane.setHorizontalScrollBarPolicy(ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
+    blunderScrollPane.setVerticalScrollBarPolicy(ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED);
     blunderScrollPane.getVerticalScrollBar().setUnitIncrement(16);
     blunderScrollPane.getVerticalScrollBar().setUI(new DemoScrollBarUI());
 
@@ -90,10 +92,12 @@ public class SidebarPanel extends JPanel {
     cardLayout.show(cardPanel, viewName);
     if ("COMMENTS".equals(viewName)) {
       Lizzie.config.isShowingBlunderTabel = false;
+      headerPanel.setShowingBlunders(false);
       syncCommentVisibility();
       parentFrame.appendComment();
     } else {
       Lizzie.config.isShowingBlunderTabel = true;
+      headerPanel.setShowingBlunders(true);
       parentFrame.requestProblemListRefresh();
     }
     Lizzie.config.uiConfig.put("is-showing-blunder-table", Lizzie.config.isShowingBlunderTabel);
@@ -102,12 +106,15 @@ public class SidebarPanel extends JPanel {
     headerPanel.repaint();
   }
 
-  private void syncCommentVisibility() {
+  void syncCommentVisibility() {
     if (commentEditPane.isVisible()) {
       commentScrollPane.setVisible(false);
+      commentEditPane.setVisible(true);
+      commentCardLayout.show(commentsContainer, COMMENT_EDIT_CARD);
     } else {
       commentScrollPane.setVisible(true);
       commentEditPane.setVisible(false);
+      commentCardLayout.show(commentsContainer, COMMENT_VIEW_CARD);
     }
     commentsContainer.revalidate();
     commentsContainer.repaint();
@@ -128,6 +135,9 @@ public class SidebarPanel extends JPanel {
     int panelW = Math.max(0, width - 2);
     int panelH = Math.max(0, height - 2);
 
+    Color commentFill =
+        resolveCommentPanelFillColor(
+            Lizzie.config.commentBackgroundColor, Lizzie.config.isAppleStyle);
     if (!Lizzie.config.isAppleStyle) {
       g2.setColor(new Color(0, 0, 0, 52));
       g2.fillRoundRect(
@@ -137,7 +147,7 @@ public class SidebarPanel extends JPanel {
           panelH - shadowInset,
           cornerRadius,
           cornerRadius);
-      g2.setColor(new Color(30, 33, 38, 220));
+      g2.setColor(commentFill);
       g2.fillRoundRect(panelX, panelY, panelW, panelH, cornerRadius, cornerRadius);
       g2.setColor(new Color(255, 255, 255, 18));
       g2.drawRoundRect(panelX, panelY, panelW - 1, panelH - 1, cornerRadius, cornerRadius);
@@ -177,9 +187,9 @@ public class SidebarPanel extends JPanel {
             Math.max(1, panelH),
             new float[] {0.0f, 0.45f, 1.0f},
             new Color[] {
-              withAlpha(overlay, Math.max(150, overlay.getAlpha() + 48)),
-              withAlpha(overlay, Math.max(132, overlay.getAlpha() + 28)),
-              new Color(18, 22, 28, 176)
+              withAlpha(commentFill, clampAlpha(commentFill.getAlpha() + 30)),
+              withAlpha(blend(commentFill, overlay, 0.22), commentFill.getAlpha()),
+              withAlpha(blend(commentFill, new Color(18, 22, 28), 0.28), commentFill.getAlpha())
             });
     g2.setPaint(bodyFill);
     g2.fillRoundRect(panelX, panelY, panelW, panelH, cornerRadius, cornerRadius);
@@ -245,8 +255,32 @@ public class SidebarPanel extends JPanel {
         : 12;
   }
 
-  private Color withAlpha(Color color, int alpha) {
+  static Color resolveCommentPanelFillColor(Color configuredColor, boolean appleStyle) {
+    if (configuredColor == null) {
+      return appleStyle ? new Color(24, 24, 26, 156) : new Color(30, 33, 38, 200);
+    }
     return new Color(
-        color.getRed(), color.getGreen(), color.getBlue(), Math.max(0, Math.min(255, alpha)));
+        configuredColor.getRed(),
+        configuredColor.getGreen(),
+        configuredColor.getBlue(),
+        clampAlpha(configuredColor.getAlpha()));
+  }
+
+  private static Color blend(Color base, Color overlay, double overlayRatio) {
+    double baseRatio = 1.0 - overlayRatio;
+    return new Color(
+        clampAlpha((int) Math.round(base.getRed() * baseRatio + overlay.getRed() * overlayRatio)),
+        clampAlpha(
+            (int) Math.round(base.getGreen() * baseRatio + overlay.getGreen() * overlayRatio)),
+        clampAlpha((int) Math.round(base.getBlue() * baseRatio + overlay.getBlue() * overlayRatio)),
+        base.getAlpha());
+  }
+
+  private static int clampAlpha(int alpha) {
+    return Math.max(0, Math.min(255, alpha));
+  }
+
+  private Color withAlpha(Color color, int alpha) {
+    return new Color(color.getRed(), color.getGreen(), color.getBlue(), clampAlpha(alpha));
   }
 }

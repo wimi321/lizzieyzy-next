@@ -20,6 +20,8 @@ class SnapshotTrackingLeelaz extends Leelaz {
 
   int clearCount;
   int ponderCount;
+  int togglePonderCount;
+  int nameCmdCount;
   List<String> playedMoves;
   List<String> sentCommands;
   private Stone[] stones;
@@ -35,6 +37,8 @@ class SnapshotTrackingLeelaz extends Leelaz {
         (SnapshotTrackingLeelaz) UnsafeHolder.UNSAFE.allocateInstance(SnapshotTrackingLeelaz.class);
     leelaz.clearCount = 0;
     leelaz.ponderCount = 0;
+    leelaz.togglePonderCount = 0;
+    leelaz.nameCmdCount = 0;
     leelaz.playedMoves = new ArrayList<>();
     leelaz.sentCommands = new ArrayList<>();
     leelaz.started = true;
@@ -46,14 +50,34 @@ class SnapshotTrackingLeelaz extends Leelaz {
   public void clear() {
     clearCount++;
     ponderCount = 0;
+    togglePonderCount = 0;
+    nameCmdCount = 0;
     playedMoves = new ArrayList<>();
     sentCommands = new ArrayList<>();
     resetBoardState();
   }
 
   @Override
+  public void togglePonder() {
+    togglePonderCount++;
+    if (isPondering()) {
+      notPondering();
+      nameCmd();
+    } else {
+      Pondering();
+      ponder();
+    }
+  }
+
+  @Override
   public void ponder() {
     ponderCount++;
+  }
+
+  @Override
+  public void nameCmd() {
+    nameCmdCount++;
+    sendCommand("name");
   }
 
   @Override

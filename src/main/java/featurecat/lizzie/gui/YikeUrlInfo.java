@@ -5,6 +5,7 @@ public class YikeUrlInfo {
   public static final int TYPE_OLD_LIVE_BOARD = 2;
   public static final int TYPE_GAME_ROOM = 5;
   public static final int TYPE_NEW_LIVE_ROOM = 6;
+  public static final int TYPE_UNITE_ROOM = 7;
 
   private final int type;
   private final String id;

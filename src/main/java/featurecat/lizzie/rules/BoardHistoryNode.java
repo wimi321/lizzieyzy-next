@@ -261,6 +261,18 @@ public class BoardHistoryNode {
     return previous;
   }
 
+  /** 把已有节点重挂到新父节点末尾，维持父链一致。仅用于跨树搬运现成节点的特殊场景。 */
+  public void reparentAsLastVariationOf(BoardHistoryNode newParent) {
+    this.previous = Optional.of(newParent);
+    newParent.variations.add(this);
+  }
+
+  /** 把已有节点重挂为新父节点的主线（variations[0]），其它分支顺延。 */
+  public void reparentAsFirstVariationOf(BoardHistoryNode newParent) {
+    this.previous = Optional.of(newParent);
+    newParent.variations.add(0, this);
+  }
+
   public Optional<BoardHistoryNode> next() {
     return next(false);
   }

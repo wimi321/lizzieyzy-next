@@ -8,7 +8,7 @@ source "$ROOT_DIR/scripts/release_metadata.sh"
 DATE_TAG="${1:-$(date +%F)}"
 APP_VERSION="${2:-1.0.0}"
 JAR_PATH="${3:-target/lizzie-yzy2.5.3-shaded.jar}"
-APP_DISPLAY_VERSION="${LIZZIE_NEXT_VERSION:-${4:-$APP_VERSION}}"
+APP_DISPLAY_VERSION="${LIZZIE_NEXT_VERSION:-${4:-next-dev}}"
 WINDOWS_UPGRADE_UUID="${WINDOWS_UPGRADE_UUID:-c2ef73ec-f99a-4f3d-b950-f52c0186122a}"
 
 if ! command -v jpackage >/dev/null 2>&1; then

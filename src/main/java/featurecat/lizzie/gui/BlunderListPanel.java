@@ -10,7 +10,7 @@ import java.util.Comparator;
 import java.util.List;
 import javax.swing.*;
 
-public class BlunderListPanel extends JPanel {
+public class BlunderListPanel extends JPanel implements Scrollable {
   private ProblemListSnapshot currentSnapshot;
 
   private int hoveredIndex = -1;
@@ -140,11 +140,50 @@ public class BlunderListPanel extends JPanel {
 
   @Override
   public Dimension getPreferredSize() {
-    if (currentSnapshot == null) {
-      return new Dimension(0, 0);
+    int rows = currentSnapshot == null ? 0 : getMergedEntries().size();
+    int height = currentSnapshot == null ? 1 : HEADER_HEIGHT + rows * CARD_HEIGHT + PADDING;
+    return new Dimension(preferredViewportWidth(), Math.max(1, height));
+  }
+
+  @Override
+  public Dimension getPreferredScrollableViewportSize() {
+    return getPreferredSize();
+  }
+
+  @Override
+  public int getScrollableUnitIncrement(Rectangle visibleRect, int orientation, int direction) {
+    return orientation == SwingConstants.VERTICAL ? Math.max(16, CARD_HEIGHT / 2) : 16;
+  }
+
+  @Override
+  public int getScrollableBlockIncrement(Rectangle visibleRect, int orientation, int direction) {
+    if (orientation == SwingConstants.VERTICAL) {
+      return Math.max(CARD_HEIGHT, visibleRect.height - CARD_HEIGHT);
     }
-    int rows = getMergedEntries().size();
-    return new Dimension(getWidth(), HEADER_HEIGHT + rows * CARD_HEIGHT + PADDING);
+    return Math.max(16, visibleRect.width - PADDING * 2);
+  }
+
+  @Override
+  public boolean getScrollableTracksViewportWidth() {
+    return true;
+  }
+
+  @Override
+  public boolean getScrollableTracksViewportHeight() {
+    Container parent = getParent();
+    return parent instanceof JViewport
+        && ((JViewport) parent).getHeight() > getPreferredSize().height;
+  }
+
+  private int preferredViewportWidth() {
+    Container parent = getParent();
+    if (parent instanceof JViewport) {
+      int viewportWidth = ((JViewport) parent).getWidth();
+      if (viewportWidth > 0) {
+        return viewportWidth;
+      }
+    }
+    return Math.max(1, getWidth());
   }
 
   @Override
@@ -158,7 +197,7 @@ public class BlunderListPanel extends JPanel {
     Graphics2D g2 = (Graphics2D) g.create();
     g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
 
-    int width = getWidth();
+    int width = Math.max(1, getWidth());
     drawColumn(g2, getMergedEntries(), 0, HEADER_HEIGHT, width);
     g2.dispose();
   }
