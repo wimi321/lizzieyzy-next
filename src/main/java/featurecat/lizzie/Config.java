@@ -186,7 +186,7 @@ public class Config {
   // public int nodeColorMode = 0;
   public boolean appendWinrateToComment = true;
   public int boardPositionProportion = 4;
-  public int limitBranchLength = 0;
+  public int limitBranchLength = 15;
   public int limitMaxSuggestion = 10;
   public boolean showNoSuggCircle = false;
   public int moveListWinrateThreshold = 0;
@@ -1697,7 +1697,7 @@ public class Config {
     customLayout1 = uiConfig.optJSONObject("custom-layout-1");
     customLayout2 = uiConfig.optJSONObject("custom-layout-2");
 
-    limitBranchLength = leelazConfig.optInt("limit-branch-length", 0);
+    limitBranchLength = leelazConfig.optInt("limit-branch-length", 15);
     limitMaxSuggestion = leelazConfig.optInt("limit-max-suggestion", 10);
     showNoSuggCircle = leelazConfig.optBoolean("show-nosugg-circle", false);
     enableLizzieCache = leelazConfig.optBoolean("enable-lizzie-cache", true);
@@ -2551,7 +2551,7 @@ public class Config {
     //  leelaz.put("engine-start-location", ".");
     // leelaz.put("max-analyze-time-minutes", 10);
     leelaz.put("limit-max-suggestion", 10);
-    leelaz.put("limit-branch-length", 0);
+    leelaz.put("limit-branch-length", 15);
     // leelaz.put("badmoves-winrate-limits", 0);
     // leelaz.put("badmoves-playouts-limits", 0);
     leelaz.put("max-game-thinking-time-seconds", 2);

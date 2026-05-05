@@ -13246,7 +13246,9 @@ public class LizzieFrame extends JFrame {
       kataGoAutoSetupDialog = new KataGoAutoSetupDialog(this);
     }
     kataGoAutoSetupDialog.refreshState();
+    kataGoAutoSetupDialog.ensureVisibleOnScreen();
     kataGoAutoSetupDialog.setVisible(true);
+    kataGoAutoSetupDialog.ensureVisibleOnScreen();
     kataGoAutoSetupDialog.toFront();
   }
 
@@ -13255,7 +13257,9 @@ public class LizzieFrame extends JFrame {
       kataGoAutoSetupDialog = new KataGoAutoSetupDialog(this);
     }
     kataGoAutoSetupDialog.refreshState();
+    kataGoAutoSetupDialog.ensureVisibleOnScreen();
     kataGoAutoSetupDialog.setVisible(true);
+    kataGoAutoSetupDialog.ensureVisibleOnScreen();
     kataGoAutoSetupDialog.toFront();
   }
 

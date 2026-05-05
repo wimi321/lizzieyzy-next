@@ -1,7 +1,6 @@
 package featurecat.lizzie.gui;
 
 import featurecat.lizzie.Config;
-import featurecat.lizzie.Lizzie;
 import featurecat.lizzie.gui.LizzieFrame.HtmlKit;
 import java.awt.Desktop;
 import java.awt.Font;
@@ -26,7 +25,8 @@ public class HtmlMessage extends JDialog {
     setTitle(title);
     setAlwaysOnTop(true);
     JTextPane lblMessage = new JTextPane();
-    lblMessage.setBackground(this.getBackground());
+    getContentPane().setBackground(MessageTheme.background());
+    MessageTheme.apply(lblMessage);
     HTMLDocument htmlDoc;
     HtmlKit htmlKit;
     StyleSheet htmlStyle;
@@ -34,22 +34,16 @@ public class HtmlMessage extends JDialog {
     htmlKit = new HtmlKit();
     htmlDoc = (HTMLDocument) htmlKit.createDefaultDocument();
     htmlStyle = htmlKit.getStyleSheet();
+    String background = MessageTheme.cssColor(MessageTheme.background());
+    String foreground = MessageTheme.cssColor(MessageTheme.foreground());
     String style =
         "body {background:#"
-            + String.format(
-                "%02x%02x%02x",
-                Lizzie.config.commentBackgroundColor.getRed(),
-                Lizzie.config.commentBackgroundColor.getGreen(),
-                Lizzie.config.commentBackgroundColor.getBlue())
+            + background
             + "; color:#"
-            + String.format(
-                "%02x%02x%02x",
-                Lizzie.config.commentFontColor.getRed(),
-                Lizzie.config.commentFontColor.getGreen(),
-                Lizzie.config.commentFontColor.getBlue())
+            + foreground
             + "; font-family:"
-            + Lizzie.config.fontName
-            + ", Consolas, Menlo, Monaco, 'Ubuntu Mono', monospace;"
+            + Config.sysDefaultFontName
+            + ", 'Microsoft YaHei', 'PingFang SC', Consolas, Menlo, Monaco, 'Ubuntu Mono', monospace;"
             + "}";
     htmlStyle.addRule(style);
 
@@ -57,7 +51,6 @@ public class HtmlMessage extends JDialog {
     lblMessage.setDocument(htmlDoc);
     lblMessage.setText(content);
     lblMessage.setEditable(false);
-    lblMessage.setOpaque(false);
     lblMessage.setFont(new Font(Config.sysDefaultFontName, Font.PLAIN, Config.frameFontSize));
     lblMessage.putClientProperty(JEditorPane.HONOR_DISPLAY_PROPERTIES, Boolean.TRUE);
     lblMessage.addHyperlinkListener(

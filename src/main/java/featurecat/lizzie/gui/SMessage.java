@@ -5,6 +5,7 @@ import featurecat.lizzie.Lizzie;
 import java.awt.Font;
 import java.io.IOException;
 import javax.imageio.ImageIO;
+import javax.swing.BorderFactory;
 import javax.swing.JDialog;
 import javax.swing.JTextArea;
 
@@ -19,7 +20,9 @@ public class SMessage extends JDialog {
     setAlwaysOnTop(true);
     setLocationByPlatform(true);
     lblMessage = new JTextArea("");
-    lblMessage.setBackground(this.getBackground());
+    getContentPane().setBackground(MessageTheme.background());
+    MessageTheme.apply(lblMessage);
+    lblMessage.setBorder(BorderFactory.createEmptyBorder(12, 16, 12, 16));
     lblMessage.setLineWrap(true);
     lblMessage.setFont(new Font(Config.sysDefaultFontName, Font.PLAIN, Config.frameFontSize));
     this.add(lblMessage);

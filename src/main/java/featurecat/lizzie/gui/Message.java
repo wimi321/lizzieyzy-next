@@ -7,6 +7,7 @@ import java.awt.Window;
 import java.io.IOException;
 import java.util.ResourceBundle;
 import javax.imageio.ImageIO;
+import javax.swing.BorderFactory;
 import javax.swing.JDialog;
 import javax.swing.JLabel;
 
@@ -22,6 +23,9 @@ public class Message extends JDialog {
     setAlwaysOnTop(true);
     //  setLocationByPlatform(true);
     lblmessage = new JLabel("", JLabel.CENTER);
+    getContentPane().setBackground(MessageTheme.background());
+    MessageTheme.apply(lblmessage);
+    lblmessage.setBorder(BorderFactory.createEmptyBorder(12, 16, 12, 16));
     lblmessage.setFont(new Font(Config.sysDefaultFontName, Font.PLAIN, Config.frameFontSize));
     this.add(lblmessage);
     try {
