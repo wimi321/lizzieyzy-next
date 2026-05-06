@@ -1916,8 +1916,6 @@ public class Board {
       } else if (Lizzie.frame.isPlayingAgainstLeelaz
           && Lizzie.frame.playerIsBlack == getData().blackToPlay
           && !isEngineFollowTrialActive()) {
-        if (Lizzie.engineManager.playingAgainstHumanEngineCountDown != null)
-          Lizzie.engineManager.playingAgainstHumanEngineCountDown.sendTimeLeft(false);
         Lizzie.leelaz.playMove(color, convertCoordinatesToName(x, y), true, color.isWhite());
         needGenmove = true;
       } else if (!Lizzie.frame.isPlayingAgainstLeelaz

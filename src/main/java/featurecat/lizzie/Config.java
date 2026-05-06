@@ -533,6 +533,12 @@ public class Config {
     return false;
   }
 
+  private static void putIfMissing(JSONObject json, String key, Object value) {
+    if (json != null && !json.has(key)) {
+      json.put(key, value);
+    }
+  }
+
   private static BundledKataGoConfig detectBundledKataGoConfig() {
     Optional<Path> appRootOpt = findBundledAppRoot();
     if (!appRootOpt.isPresent()) {
@@ -644,6 +650,7 @@ public class Config {
 
     JSONObject bundledEngine;
     boolean reusedAutoSetupEntry = false;
+    boolean createdBundledEngine = bundledIndex < 0;
     if (bundledIndex >= 0) {
       bundledEngine = engineSettings.getJSONObject(bundledIndex);
       reusedAutoSetupEntry = "KataGo Auto Setup".equals(bundledEngine.optString("name", ""));
@@ -657,21 +664,35 @@ public class Config {
     if (!reusedAutoSetupEntry) {
       bundledEngine.put("name", BUNDLED_ENGINE_NAME);
     }
-    bundledEngine.put("preload", false);
-    bundledEngine.put("komi", 7.5);
-    bundledEngine.put("width", 19);
-    bundledEngine.put("height", 19);
-    bundledEngine.put("useJavaSSH", false);
-    bundledEngine.put("useKeyGen", false);
-    bundledEngine.put("keyGenPath", "");
-    bundledEngine.put("ip", "");
-    bundledEngine.put("port", "");
-    bundledEngine.put("userName", "");
-    bundledEngine.put("password", "");
-    bundledEngine.put("initialCommand", "");
+    if (createdBundledEngine) {
+      bundledEngine.put("preload", false);
+      bundledEngine.put("komi", 7.5);
+      bundledEngine.put("width", 19);
+      bundledEngine.put("height", 19);
+      bundledEngine.put("useJavaSSH", false);
+      bundledEngine.put("useKeyGen", false);
+      bundledEngine.put("keyGenPath", "");
+      bundledEngine.put("ip", "");
+      bundledEngine.put("port", "");
+      bundledEngine.put("userName", "");
+      bundledEngine.put("password", "");
+      bundledEngine.put("initialCommand", "");
+    } else {
+      putIfMissing(bundledEngine, "preload", false);
+      putIfMissing(bundledEngine, "komi", 7.5);
+      putIfMissing(bundledEngine, "width", 19);
+      putIfMissing(bundledEngine, "height", 19);
+      putIfMissing(bundledEngine, "useJavaSSH", false);
+      putIfMissing(bundledEngine, "useKeyGen", false);
+      putIfMissing(bundledEngine, "keyGenPath", "");
+      putIfMissing(bundledEngine, "ip", "");
+      putIfMissing(bundledEngine, "port", "");
+      putIfMissing(bundledEngine, "userName", "");
+      putIfMissing(bundledEngine, "password", "");
+      putIfMissing(bundledEngine, "initialCommand", "");
+    }
 
-    boolean shouldPreferBundled =
-        firstTimeLoadFlag || !hadConfiguredEngine || bundledEngine.optBoolean("isDefault", false);
+    boolean shouldPreferBundled = firstTimeLoadFlag || !hadConfiguredEngine;
     if (shouldPreferBundled) {
       for (int i = 0; i < engineSettings.length(); i++) {
         JSONObject engineInfo = engineSettings.optJSONObject(i);
@@ -680,6 +701,8 @@ public class Config {
         }
       }
       ui.put("autoload-default", true);
+      ui.put("autoload-last", false);
+      ui.put("autoload-empty", false);
       ui.put("default-engine", bundledIndex);
       ui.put("analysis-engine-command", bundledConfig.analysisCommand);
       ui.put("estimate-command", bundledConfig.estimateCommand);

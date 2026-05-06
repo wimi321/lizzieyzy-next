@@ -1418,10 +1418,10 @@ def build_release_notes(asset_map: dict[str, str | None], bundle: dict[str, str]
             'updates': {
                 'heading': '本版主要更新',
                 'items': [
-                    '首次启动和手动智能测速现在都可以主动取消：关闭窗口或点击“停止测速”会结束 KataGo benchmark 进程，并恢复当前分析。',
-                    '棋谱加载改成“可操作优先”：本地 SGF、野狐棋谱、在线/共享棋谱加载后，胜率曲线和 movelist 补齐前也能立即用方向键走棋。',
-                    'Windows 棋盘同步工具改为内置固定版 native `readboard.exe` v3.0.1 自包含运行时，降低用户电脑缺少运行库导致 Alt+O 无反应的风险。',
-                    '发布说明已精简为本版新增变化，同时继续保持 6 种语言同结构和同一下载表格式。',
+                    'KataGo 人机对弈的“AI 每手用时”现在按固定秒数执行，不再因为 KataGo 时间管理而提前秒下；本机实测设置 4 秒时约 4.03 秒落子。',
+                    '引擎设置里的自动加载方式（默认引擎、最后退出的引擎、手动选择、无引擎）和贴目现在会保存，重启后不再被内置 KataGo 默认项覆盖。',
+                    '合并 qiyi71w 的 PR #17：新增 Web 端试下模式与引擎跟随分析。感谢 qiyi71w 持续优化和贡献。',
+                    '发布前已重新跑全量测试、打包和本机启动冒烟；当前 GitHub 开放 PR 已清空。',
                 ],
             },
             'before': {
@@ -1485,10 +1485,10 @@ def build_release_notes(asset_map: dict[str, str | None], bundle: dict[str, str]
             'updates': {
                 'heading': '本版主要更新',
                 'items': [
-                    '首次啟動和手動智慧測速現在都可以主動取消：關閉視窗或點擊「停止測速」會結束 KataGo benchmark 行程，並恢復目前分析。',
-                    '棋譜載入改成「可操作優先」：本地 SGF、野狐棋譜、線上/共享棋譜載入後，勝率曲線和 movelist 補齊前也能立即用方向鍵走棋。',
-                    'Windows 棋盤同步工具改為內建固定版 native `readboard.exe` v3.0.1 自包含執行環境，降低使用者電腦缺少 runtime 導致 Alt+O 無反應的風險。',
-                    '發布說明已精簡為本版新增變化，同時繼續保持 6 種語言同結構和同一下載表格式。',
+                    'KataGo 人機對弈的「AI 每手用時」現在會按固定秒數執行，不再因 KataGo 時間管理而提前秒下；本機實測設定 4 秒時約 4.03 秒落子。',
+                    '引擎設定裡的自動載入方式（預設引擎、最後退出的引擎、手動選擇、無引擎）和貼目現在會儲存，重啟後不再被內建 KataGo 預設項覆蓋。',
+                    '合併 qiyi71w 的 PR #17：新增 Web 端試下模式與引擎跟隨分析。感謝 qiyi71w 持續最佳化與貢獻。',
+                    '發布前已重新跑完整測試、打包和本機啟動冒煙；目前 GitHub 開放 PR 已清空。',
                 ],
             },
             'before': {
@@ -1552,10 +1552,10 @@ def build_release_notes(asset_map: dict[str, str | None], bundle: dict[str, str]
             'updates': {
                 'heading': 'Release Highlights',
                 'items': [
-                    'First-run and manual Smart Optimize benchmarks can now be cancelled: closing the window or pressing Stop kills the KataGo benchmark process and restores analysis.',
-                    'Game-record loading now prioritizes interaction: after local SGF, Fox game, online SGF, or shared-game loading, arrow-key navigation works immediately while the winrate graph and movelist catch up.',
-                    'The Windows board sync tool now bundles pinned native `readboard.exe` v3.0.1 with a self-contained runtime, reducing Alt+O no-op risk on PCs missing external runtimes.',
-                    'Release notes now focus on changes introduced in this release while keeping the fixed six-language structure and matching download tables.',
+                    'KataGo human-vs-AI games now honor the fixed “AI seconds per move” setting instead of moving early because of KataGo time management; a local 4-second smoke test moved in about 4.03 seconds.',
+                    'Engine Settings now persist auto-load mode (default engine, last engine, manual choice, no engine) and komi across restart instead of being overwritten by bundled KataGo defaults.',
+                    'Merged qiyi71w’s PR #17: Web trial mode plus engine-following analysis. Thank you qiyi71w for the continued improvements and contributions.',
+                    'Before release, full tests, packaging, and a local launch smoke test were rerun; there are no open GitHub PRs at publish time.',
                 ],
             },
             'before': {
@@ -1619,10 +1619,10 @@ def build_release_notes(asset_map: dict[str, str | None], bundle: dict[str, str]
             'updates': {
                 'heading': '主な更新',
                 'items': [
-                    '初回起動時と手動のスマート最適化 benchmark は、ウィンドウを閉じるか停止ボタンを押すことでキャンセルできます。キャンセル時は KataGo benchmark プロセスを終了し、分析を復帰します。',
-                    '棋譜読み込みは操作可能性を優先します。ローカル SGF、野狐棋譜、オンライン/共有棋譜の読み込み後、勝率グラフと movelist の補完前でも方向キーで進められます。',
-                    'Windows の棋盤同期ツールは、固定版 native `readboard.exe` v3.0.1 と自己完結 runtime を同梱し、外部 runtime 不足で Alt+O が無反応になるリスクを下げました。',
-                    'リリースノートはこのリリースで追加された変更に絞りつつ、6 言語同一構造と同じダウンロード表形式を維持します。',
+                    'KataGo との人間対 AI 対局で、「AI の 1 手あたり秒数」が固定秒数として効くようになりました。KataGo の時間管理で早打ちする問題を避け、ローカル 4 秒テストでは約 4.03 秒で着手しました。',
+                    'エンジン設定の自動読み込み方式（既定エンジン、最後に終了したエンジン、手動選択、エンジンなし）とコミが再起動後も保持され、同梱 KataGo の既定値で上書きされなくなりました。',
+                    'qiyi71w さんの PR #17 をマージしました。Web 端末の試し打ちモードと、表示局面に追従するエンジン分析が追加されています。継続的な改善と貢献に感謝します。',
+                    'リリース前に full test、package、ローカル起動 smoke test を再実行しました。公開時点で GitHub の open PR はありません。',
                 ],
             },
             'before': {
@@ -1686,10 +1686,10 @@ def build_release_notes(asset_map: dict[str, str | None], bundle: dict[str, str]
             'updates': {
                 'heading': '주요 업데이트',
                 'items': [
-                    '첫 실행 및 수동 Smart Optimize 벤치마크는 이제 취소할 수 있습니다. 창을 닫거나 Stop 버튼을 누르면 KataGo benchmark 프로세스를 종료하고 분석을 복구합니다.',
-                    '기보 로딩은 즉시 조작을 우선합니다. 로컬 SGF, Fox 기보, 온라인/공유 기보를 불러온 뒤 승률 그래프와 movelist 가 보완되기 전에도 방향키 이동이 바로 가능합니다.',
-                    'Windows 보드 동기화 도구는 고정 버전 native `readboard.exe` v3.0.1 과 self-contained runtime 을 포함해, 외부 runtime 부족으로 Alt+O 가 반응하지 않는 위험을 줄였습니다.',
-                    'release notes 는 이번 릴리스에서 추가된 변경 사항에 집중하면서도 6개 언어 동일 구조와 같은 다운로드 표 형식을 유지합니다.',
+                    'KataGo 인간 대 AI 대국에서 “AI 한 수당 시간” 설정이 고정 초 단위로 적용됩니다. KataGo 시간 관리 때문에 너무 빨리 두던 문제를 피했으며, 로컬 4초 smoke test 에서는 약 4.03초에 착수했습니다.',
+                    '엔진 설정의 자동 로드 방식(기본 엔진, 마지막 종료 엔진, 수동 선택, 엔진 없음)과 덤이 재시작 후에도 유지되며, 내장 KataGo 기본값으로 덮어써지지 않습니다.',
+                    'qiyi71w 의 PR #17 을 병합했습니다. Web 시험수 모드와 현재 표시 국면을 따라가는 엔진 분석이 추가되었습니다. 지속적인 개선과 기여에 감사드립니다.',
+                    '릴리스 전에 full test, package, 로컬 실행 smoke test 를 다시 수행했습니다. 공개 시점의 GitHub open PR 은 없습니다.',
                 ],
             },
             'before': {
@@ -1753,10 +1753,10 @@ def build_release_notes(asset_map: dict[str, str | None], bundle: dict[str, str]
             'updates': {
                 'heading': 'ไฮไลต์ของเวอร์ชันนี้',
                 'items': [
-                    'benchmark ครั้งแรกและ Smart Optimize แบบกดเองสามารถยกเลิกได้แล้ว: ปิดหน้าต่างหรือกด Stop จะหยุด process benchmark ของ KataGo และคืนค่าการวิเคราะห์',
-                    'การโหลด SGF/บันทึกเกมเน้นให้ใช้งานได้ทันที: local SGF, เกม Fox, online/shared SGF สามารถใช้ปุ่มลูกศรเดินหมากได้ทันที แม้กราฟอัตราชนะและ movelist จะยังเติมข้อมูลตามมา',
-                    'เครื่องมือซิงก์กระดานบน Windows รวม native `readboard.exe` v3.0.1 แบบ self-contained runtime เพื่อลดความเสี่ยงที่ Alt+O ไม่ตอบสนองเพราะเครื่องผู้ใช้ไม่มี runtime ภายนอก',
-                    'release notes ถูกย่อให้เน้นเฉพาะการเปลี่ยนแปลงของเวอร์ชันนี้ พร้อมคงโครงสร้าง 6 ภาษาและตารางดาวน์โหลดรูปแบบเดียวกัน',
+                    'โหมดคนเล่นกับ KataGo จะทำตามค่า “เวลา AI ต่อหนึ่งตา” แบบคงที่แล้ว ไม่เดินเร็วเกินไปจาก time management ของ KataGo; ทดสอบในเครื่องที่ 4 วินาทีแล้วเดินประมาณ 4.03 วินาที',
+                    'Engine Settings จะจำโหมดโหลดอัตโนมัติ (default engine, last engine, manual choice, no engine) และ komi หลังรีสตาร์ต ไม่ถูกค่า default ของ KataGo ที่มากับโปรแกรมทับอีก',
+                    'รวม PR #17 ของ qiyi71w แล้ว: เพิ่ม Web trial mode และการวิเคราะห์ที่ engine ติดตามตำแหน่งที่แสดงอยู่ ขอบคุณ qiyi71w สำหรับการปรับปรุงและการร่วมพัฒนาอย่างต่อเนื่อง',
+                    'ก่อนปล่อยเวอร์ชันนี้ ได้รัน full test, package และ local launch smoke test ซ้ำแล้ว และตอนเผยแพร่ไม่มี GitHub PR ที่เปิดค้างอยู่',
                 ],
             },
             'before': {

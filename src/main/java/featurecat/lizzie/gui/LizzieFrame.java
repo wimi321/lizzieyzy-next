@@ -3169,22 +3169,34 @@ public class LizzieFrame extends JFrame {
     }
   }
 
+  static String buildDefaultAiMoveTimeSettings(int seconds) {
+    return "time_settings 0 " + Math.max(0, seconds) + " 1";
+  }
+
+  static String buildKataGoFixedMoveTimeCommand(int seconds) {
+    if (seconds <= 0) return "kata-set-param maxTime 1e20";
+    return "kata-set-param maxTime " + seconds;
+  }
+
+  private static void installPlayingAgainstHumanCountDown(
+      String timeSettings, Leelaz engine, boolean needCountDown) {
+    if (!needCountDown || engine == null) return;
+    Lizzie.engineManager.playingAgainstHumanEngineCountDown = new EngineCountDown();
+    if (!Lizzie.engineManager.playingAgainstHumanEngineCountDown.setEngineCountDown(
+        timeSettings, engine)) {
+      Lizzie.engineManager.playingAgainstHumanEngineCountDown = null;
+      Utils.showMsgNoModal(
+          Lizzie.resourceBundle.getString("EngineManager.parseAdvcanceTimeSettingsFailed"));
+      return;
+    }
+    Lizzie.engineManager.playingAgainstHumanEngineCountDown.initialize(!Lizzie.frame.playerIsBlack);
+    Lizzie.engineManager.StartCountDown();
+  }
+
   public static void sendAiTime(boolean needCountDown, Leelaz engine, boolean showTimeMsg) {
     if (Lizzie.config.advanceTimeSettings) {
-      Lizzie.leelaz.sendCommand(Lizzie.config.advanceTimeTxt);
-      if (needCountDown) {
-        Lizzie.engineManager.playingAgainstHumanEngineCountDown = new EngineCountDown();
-        if (!Lizzie.engineManager.playingAgainstHumanEngineCountDown.setEngineCountDown(
-            Lizzie.config.advanceTimeTxt, Lizzie.leelaz)) {
-          Lizzie.engineManager.playingAgainstHumanEngineCountDown = null;
-          Utils.showMsgNoModal(
-              Lizzie.resourceBundle.getString("EngineManager.parseAdvcanceTimeSettingsFailed"));
-        } else {
-          Lizzie.engineManager.playingAgainstHumanEngineCountDown.initialize(
-              !Lizzie.frame.playerIsBlack);
-          Lizzie.engineManager.StartCountDown();
-        }
-      }
+      engine.sendCommand(Lizzie.config.advanceTimeTxt);
+      installPlayingAgainstHumanCountDown(Lizzie.config.advanceTimeTxt, engine, needCountDown);
     } else {
       if (Lizzie.config.kataTimeSettings) {
         // kata-time_settings fischer byoyomi absolute
@@ -3211,26 +3223,30 @@ public class LizzieFrame extends JFrame {
             break;
         }
         engine.sendCommand(txtKataTimeSettings);
-        if (needCountDown) {
-          Lizzie.engineManager.playingAgainstHumanEngineCountDown = new EngineCountDown();
-          if (!Lizzie.engineManager.playingAgainstHumanEngineCountDown.setEngineCountDown(
-              txtKataTimeSettings, Lizzie.leelaz)) {
-            Lizzie.engineManager.playingAgainstHumanEngineCountDown = null;
-            Utils.showMsgNoModal(
-                Lizzie.resourceBundle.getString("EngineManager.parseAdvcanceTimeSettingsFailed"));
-          } else {
-            Lizzie.engineManager.playingAgainstHumanEngineCountDown.initialize(
-                !Lizzie.frame.playerIsBlack);
-            Lizzie.engineManager.StartCountDown();
-          }
-        }
+        installPlayingAgainstHumanCountDown(txtKataTimeSettings, engine, needCountDown);
         if (showTimeMsg && !engine.isKatago) {
           Utils.showMsg(
               Lizzie.resourceBundle.getString(
                   "LizzieFrame.sendTimes.kataGoTimeMismatch")); // "引擎时间设置为KataGo专用,但当前引擎不是KataGo,可能无法正确控制时间!");
         }
-      } else
-        engine.sendCommand("time_settings 0 " + Lizzie.config.maxGameThinkingTimeSeconds + " 1");
+      } else {
+        int fixedMoveSeconds = Lizzie.config.maxGameThinkingTimeSeconds;
+        if (engine.isKatago) {
+          engine.sendCommand("kata-time_settings none");
+          engine.sendCommand(buildKataGoFixedMoveTimeCommand(fixedMoveSeconds));
+          if (needCountDown) {
+            Lizzie.engineManager.clearPlayingAgainstHumanEngineCountDown();
+          }
+        } else {
+          String defaultTimeSettings = buildDefaultAiMoveTimeSettings(fixedMoveSeconds);
+          engine.sendCommand(defaultTimeSettings);
+          if (fixedMoveSeconds > 0) {
+            installPlayingAgainstHumanCountDown(defaultTimeSettings, engine, needCountDown);
+          } else if (needCountDown) {
+            Lizzie.engineManager.clearPlayingAgainstHumanEngineCountDown();
+          }
+        }
+      }
     }
   }
 
@@ -9772,13 +9788,14 @@ public class LizzieFrame extends JFrame {
           Lizzie.config.getMyByoyomiTimes());
     if (isGenmove) {
       if (!Lizzie.leelaz.isThinking) {
-        if (!Lizzie.config.genmoveGameNoTime) sendAiTime(true, Lizzie.leelaz, true);
         isPlayingAgainstLeelaz = true;
         if (continueNow) {
           Lizzie.frame.playerIsBlack = !Lizzie.board.getData().blackToPlay;
+          if (!Lizzie.config.genmoveGameNoTime) sendAiTime(true, Lizzie.leelaz, true);
           Lizzie.leelaz.genmove((Lizzie.board.getData().blackToPlay ? "B" : "W"));
         } else {
           playerIsBlack = playerIsB;
+          if (!Lizzie.config.genmoveGameNoTime) sendAiTime(true, Lizzie.leelaz, true);
           if (playerIsB) {
             if (Lizzie.board.getData().blackToPlay != playerIsBlack) {
               Lizzie.leelaz.genmove("W");

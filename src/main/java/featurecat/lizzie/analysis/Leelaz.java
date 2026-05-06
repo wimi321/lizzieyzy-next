@@ -3930,6 +3930,7 @@ public class Leelaz {
   }
 
   public void genmove(String color) {
+    sendPlayingAgainstHumanTimeLeftBeforeGenmove();
     String command =
         (this.isKatago
             ? ("kata-genmove_analyze " + color + " " + getInterval() + addKataTag())
@@ -3941,6 +3942,14 @@ public class Leelaz {
     sendCommand(command);
     isThinking = true;
     LizzieFrame.menu.toggleEngineMenuStatus(false, true);
+  }
+
+  private void sendPlayingAgainstHumanTimeLeftBeforeGenmove() {
+    if (Lizzie.frame == null || !Lizzie.frame.isPlayingAgainstLeelaz) return;
+    if (Lizzie.engineManager == null
+        || Lizzie.engineManager.playingAgainstHumanEngineCountDown == null) return;
+    if (this != Lizzie.leelaz) return;
+    Lizzie.engineManager.playingAgainstHumanEngineCountDown.sendTimeLeft(false);
   }
 
   public void genmoveForPk(String color) {
