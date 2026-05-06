@@ -1193,6 +1193,19 @@ public class BottomToolbar extends JPanel {
         });
     yike.add(webBoardToggle);
 
+    final JFontMenuItem forceExitTrial =
+        new JFontMenuItem(Lizzie.resourceBundle.getString("Menu.webBoardForceExitTrial"));
+    forceExitTrial.addActionListener(
+        e -> {
+          if (Lizzie.webBoardManager != null && Lizzie.webBoardManager.isRunning()) {
+            Lizzie.webBoardManager.forceExitTrial();
+            featurecat.lizzie.gui.web.WebBoardDataCollector c =
+                Lizzie.webBoardManager.getCollector();
+            if (c != null) c.broadcastTrialState(null);
+          }
+        });
+    yike.add(forceExitTrial);
+
     yike.addPopupMenuListener(
         new javax.swing.event.PopupMenuListener() {
           public void popupMenuWillBecomeVisible(javax.swing.event.PopupMenuEvent e) {
@@ -1201,6 +1214,12 @@ public class BottomToolbar extends JPanel {
                     Lizzie.webBoardManager.isRunning()
                         ? "Menu.webBoardStop"
                         : "Menu.webBoardStart"));
+            boolean trialActive =
+                Lizzie.webBoardManager != null
+                    && Lizzie.webBoardManager.isRunning()
+                    && Lizzie.frame != null
+                    && Lizzie.frame.isTrialActive();
+            forceExitTrial.setEnabled(trialActive);
           }
 
           public void popupMenuWillBecomeInvisible(javax.swing.event.PopupMenuEvent e) {}

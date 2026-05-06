@@ -249,6 +249,9 @@ public class LizzieFrame extends JFrame {
   private long kifuLoadVisibleSince;
   private volatile int kifuMovelistRefreshGeneration = 0;
 
+  /** Web 试下模式下的渲染节点覆盖。null 表示无 override，渲染端读 Board.history 当前节点。 */
+  private volatile featurecat.lizzie.rules.BoardHistoryNode displayNodeOverride;
+
   private TableModel blunderModelBlack;
   private TableModel blunderModelWhite;
   public JTable blunderTabelBlack;
@@ -1858,6 +1861,24 @@ public class LizzieFrame extends JFrame {
       sidebarPanel.switchTo("COMMENTS");
     }
     sidebarPanel.setVisible(true);
+  }
+
+  public featurecat.lizzie.rules.BoardHistoryNode getDisplayNode() {
+    featurecat.lizzie.rules.BoardHistoryNode override = displayNodeOverride;
+    if (override != null) return override;
+    return Lizzie.board.getHistory().getCurrentHistoryNode();
+  }
+
+  public void setDisplayNodeOverride(featurecat.lizzie.rules.BoardHistoryNode node) {
+    this.displayNodeOverride = node;
+  }
+
+  public boolean isTrialActive() {
+    return displayNodeOverride != null;
+  }
+
+  public void showTrialBlockedHint() {
+    Utils.showMsgNoModalForTime("Web 试下进行中，桌面端暂不响应落子（在「同步」菜单可强制结束）", 3);
   }
 
   public void setCommentPaneContent() {
@@ -6746,6 +6767,10 @@ public class LizzieFrame extends JFrame {
    * @param y y coordinate
    */
   public void onClickedForManul(int x, int y) {
+    if (isTrialActive()) {
+      showTrialBlockedHint();
+      return;
+    }
     Optional<int[]> boardCoordinates = boardRenderer.convertScreenToCoordinates(x, y);
     if (boardCoordinates.isPresent()) {
       int[] coords = boardCoordinates.get();
@@ -6804,6 +6829,10 @@ public class LizzieFrame extends JFrame {
   }
 
   public void onClicked(int x, int y) {
+    if (isTrialActive()) {
+      showTrialBlockedHint();
+      return;
+    }
     // Check for board click
     Optional<int[]> boardCoordinates;
     if (Lizzie.config.isThinkingMode()) {
@@ -6915,6 +6944,10 @@ public class LizzieFrame extends JFrame {
   }
 
   public void onDoubleClicked(int x, int y) {
+    if (isTrialActive()) {
+      showTrialBlockedHint();
+      return;
+    }
     Optional<int[]> boardCoordinates = boardRenderer.convertScreenToCoordinates(x, y);
     if (boardCoordinates.isPresent()) {
       int[] coords = boardCoordinates.get();

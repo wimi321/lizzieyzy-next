@@ -203,7 +203,10 @@ public class BoardRenderer {
       if (!Lizzie.frame.isInScoreMode) drawBranch();
       else isShowingBranch = false;
 
-      if (!isShowingBranch) drawStones(Lizzie.board.getData(), Lizzie.board.getStones());
+      if (!isShowingBranch) {
+        featurecat.lizzie.rules.BoardHistoryNode displayNode = Lizzie.frame.getDisplayNode();
+        drawStones(displayNode.getData(), displayNode.getData().stones);
+      }
       drawEstimate();
       renderImages(g);
 
@@ -211,7 +214,7 @@ public class BoardRenderer {
           && !Lizzie.frame.isInPlayMode()
           && !EngineManager.isEngineGame
           && Lizzie.config.moveRankMarkLastMove >= 0) {
-        drawMoveRankMark(g, Lizzie.board.getHistory().getCurrentHistoryNode());
+        drawMoveRankMark(g, Lizzie.frame.getDisplayNode());
         if (isShowingBranch) drawMoveNumbers(g);
       } else drawMoveNumbers(g);
 
@@ -226,8 +229,9 @@ public class BoardRenderer {
           }
           // timer.lap("movenumbers");
           if (Lizzie.config.showBestMovesNow()) {
-            if ((Lizzie.board.getHistory().isBlacksTurn() && Lizzie.config.showBlackCandidates)
-                || (!Lizzie.board.getHistory().isBlacksTurn()
+            if ((Lizzie.frame.getDisplayNode().getData().blackToPlay
+                    && Lizzie.config.showBlackCandidates)
+                || (!Lizzie.frame.getDisplayNode().getData().blackToPlay
                     && Lizzie.config.showWhiteCandidates)) {
               if (!Lizzie.frame.isShowingHeatmap && !Lizzie.frame.isShowingPolicy) {
                 drawUnimportantSuggCount = drawUnimportantSuggCount + 1;
@@ -1155,7 +1159,8 @@ public class BoardRenderer {
       ArrayList<Double> estimateList, boolean reverse, boolean fromRawNet) {
     BufferedImage newEstimateImage = new BufferedImage(boardWidth, boardHeight, TYPE_INT_ARGB);
     Graphics2D g = newEstimateImage.createGraphics();
-    boolean blackToPlay = Lizzie.board.getHistory().isBlacksTurn();
+    BoardData displayData = Lizzie.frame.getDisplayNode().getData();
+    boolean blackToPlay = displayData.blackToPlay;
     boolean showBigSize = shouldShowCountBlockBig();
     if (reverse) blackToPlay = !blackToPlay;
     for (int i = 0; i < estimateList.size(); i++) {
@@ -1166,8 +1171,7 @@ public class BoardRenderer {
         if (!showBigSize)
           if ((!fromRawNet && Lizzie.config.showKataGoEstimateNotOnlive)
               || (fromRawNet && Lizzie.config.showPureEstimateNotOnlive)) {
-            if (Lizzie.board.getHistory().getData().stones[Board.getIndex(c[0], c[1])]
-                == Stone.BLACK) continue;
+            if (displayData.stones[Board.getIndex(c[0], c[1])] == Stone.BLACK) continue;
           }
         int stoneX = scaledMarginWidth + squareWidth * x;
         int stoneY = scaledMarginHeight + squareHeight * y;
@@ -1176,8 +1180,7 @@ public class BoardRenderer {
         int alpha =
             showBigSize ? (int) (estimateList.get(i) * 105) : (int) (estimateList.get(i) * 255);
         Color cl = new Color(0, 0, 0, Math.abs(alpha));
-        if (!shouldShowCountBlockBig()
-            && Lizzie.board.getHistory().getStones()[Board.getIndex(x, y)].isBlack()) {
+        if (!shouldShowCountBlockBig() && displayData.stones[Board.getIndex(x, y)].isBlack()) {
           Color cl2 =
               new Color(
                   127 - (Math.abs(alpha) - 1) / 2,
@@ -1204,8 +1207,7 @@ public class BoardRenderer {
         if (!showBigSize)
           if ((!fromRawNet && Lizzie.config.showKataGoEstimateNotOnlive)
               || (fromRawNet && Lizzie.config.showPureEstimateNotOnlive)) {
-            if (Lizzie.board.getHistory().getData().stones[Board.getIndex(c[0], c[1])]
-                == Stone.WHITE) continue;
+            if (displayData.stones[Board.getIndex(c[0], c[1])] == Stone.WHITE) continue;
           }
         int stoneX = scaledMarginWidth + squareWidth * x;
         int stoneY = scaledMarginHeight + squareHeight * y;
@@ -1245,7 +1247,7 @@ public class BoardRenderer {
   public void drawKataEstimateBySize(ArrayList<Double> estimateList, boolean reverse) {
     BufferedImage newEstimateImage = new BufferedImage(boardWidth, boardHeight, TYPE_INT_ARGB);
     Graphics2D g = newEstimateImage.createGraphics();
-    boolean blackToPlay = Lizzie.board.getHistory().isBlacksTurn();
+    boolean blackToPlay = Lizzie.frame.getDisplayNode().getData().blackToPlay;
     if (reverse) blackToPlay = !blackToPlay;
     for (int i = 0; i < estimateList.size(); i++) {
       int[] c = Lizzie.board.getCoordKataGo(i);
@@ -1309,7 +1311,7 @@ public class BoardRenderer {
   public void drawmoveblock(int x, int y, boolean isblack) {
     if (boardWidth == 0 || boardHeight == 0) return;
     blockimage = new BufferedImage(boardWidth, boardHeight, TYPE_INT_ARGB);
-    Stone[] stones = Lizzie.board.getStones();
+    Stone[] stones = Lizzie.frame.getDisplayNode().getData().stones;
     if (stones[Board.getIndex(x, y)].isBlack() || stones[Board.getIndex(x, y)].isWhite()) {
       return;
     }
@@ -1469,19 +1471,12 @@ public class BoardRenderer {
     branchOpt = Optional.empty();
     // calculate best moves and branch
     if (this.boardIndex == 1) {
-      bestMoves = Lizzie.board.getHistory().getCurrentHistoryNode().getData().bestMoves2;
-      estimateArray = Lizzie.board.getHistory().getCurrentHistoryNode().getData().estimateArray2;
+      bestMoves = Lizzie.frame.getDisplayNode().getData().bestMoves2;
+      estimateArray = Lizzie.frame.getDisplayNode().getData().estimateArray2;
       if (Lizzie.config.showKataGoEstimate
           && estimateArray == null
-          && Lizzie.board.getHistory().getCurrentHistoryNode().previous().isPresent()) {
-        preEstimateArray =
-            Lizzie.board
-                .getHistory()
-                .getCurrentHistoryNode()
-                .previous()
-                .get()
-                .getData()
-                .estimateArray2;
+          && Lizzie.frame.getDisplayNode().previous().isPresent()) {
+        preEstimateArray = Lizzie.frame.getDisplayNode().previous().get().getData().estimateArray2;
       } else preEstimateArray = null;
     } else {
       if (shouldShowPreviousBestMoves()) {
@@ -1505,19 +1500,12 @@ public class BoardRenderer {
           estimateArray = preData.estimateArray;
         }
       } else {
-        bestMoves = Lizzie.board.getHistory().getCurrentHistoryNode().getData().bestMoves;
-        estimateArray = Lizzie.board.getHistory().getCurrentHistoryNode().getData().estimateArray;
+        bestMoves = Lizzie.frame.getDisplayNode().getData().bestMoves;
+        estimateArray = Lizzie.frame.getDisplayNode().getData().estimateArray;
         if (Lizzie.config.showKataGoEstimate
             && estimateArray == null
-            && Lizzie.board.getHistory().getCurrentHistoryNode().previous().isPresent()) {
-          preEstimateArray =
-              Lizzie.board
-                  .getHistory()
-                  .getCurrentHistoryNode()
-                  .previous()
-                  .get()
-                  .getData()
-                  .estimateArray;
+            && Lizzie.frame.getDisplayNode().previous().isPresent()) {
+          preEstimateArray = Lizzie.frame.getDisplayNode().previous().get().getData().estimateArray;
         } else preEstimateArray = null;
       }
     }
@@ -1541,14 +1529,14 @@ public class BoardRenderer {
     }
     boolean notChangedMouseOverMove =
         mouseOverTemp != null
-            && mouseOverTempNode == Lizzie.board.getHistory().getCurrentHistoryNode()
+            && mouseOverTempNode == Lizzie.frame.getDisplayNode()
             && mouseOverTemp.coordinate.equals(suggestedMove.get().coordinate);
     mouseOverTemp = suggestedMove.get();
     if (Lizzie.config.useMovesOwnership) {
       ArrayList<Double> array = mouseOverTemp.movesEstimateArray;
       if (array != null) estimateArray = array;
     }
-    mouseOverTempNode = Lizzie.board.getHistory().getCurrentHistoryNode();
+    mouseOverTempNode = Lizzie.frame.getDisplayNode();
     int maxPlayouts = 0;
     for (MoveData move : bestMoves) {
       if (move.playouts > maxPlayouts) maxPlayouts = move.playouts;
@@ -1772,8 +1760,7 @@ public class BoardRenderer {
           }
         }
       }
-    if (mouseOverTemp != null
-        && mouseOverTempNode == Lizzie.board.getHistory().getCurrentHistoryNode()) {
+    if (mouseOverTemp != null && mouseOverTempNode == Lizzie.frame.getDisplayNode()) {
       boolean needAddback = false;
       Optional<int[]> coords = Board.asCoordinates(mouseOverTemp.coordinate);
       if (coords.isPresent()) {
@@ -1787,8 +1774,8 @@ public class BoardRenderer {
         if (needAddback) {
           List<MoveData> outOfRangeMoves =
               this.boardIndex == 1
-                  ? Lizzie.board.getHistory().getCurrentHistoryNode().getData().bestMoves2OutOfRange
-                  : Lizzie.board.getHistory().getCurrentHistoryNode().getData().bestMovesOutOfRange;
+                  ? Lizzie.frame.getDisplayNode().getData().bestMoves2OutOfRange
+                  : Lizzie.frame.getDisplayNode().getData().bestMovesOutOfRange;
           if (outOfRangeMoves != null) {
             for (MoveData move : outOfRangeMoves) {
               if (move.coordinate.equals(mouseOverTemp.coordinate)) {
@@ -1893,17 +1880,22 @@ public class BoardRenderer {
           switch (Lizzie.config.stoneIndicatorType) {
             case 0:
               g.setColor(Color.red);
-              // g.setColor(Lizzie.board.getData().blackToPlay ? Color.BLUE : Color.RED);
+              // g.setColor(Lizzie.frame.getDisplayNode().getData().blackToPlay ? Color.BLUE :
+              // Color.RED);
               drawPolygon(g, stoneX, stoneY, stoneRadius);
               break;
             case 1:
               g.setColor(
-                  Lizzie.board.getData().lastMoveColor.isWhite() ? Color.BLACK : Color.WHITE);
+                  Lizzie.frame.getDisplayNode().getData().lastMoveColor.isWhite()
+                      ? Color.BLACK
+                      : Color.WHITE);
               drawCircle(g, stoneX, stoneY, (int) Math.round(squareWidth * 0.22f), 5f);
               break;
             case 2:
               g.setColor(
-                  Lizzie.board.getData().lastMoveColor.isWhite() ? Color.BLACK : Color.WHITE);
+                  Lizzie.frame.getDisplayNode().getData().lastMoveColor.isWhite()
+                      ? Color.BLACK
+                      : Color.WHITE);
               fillCircle(g, stoneX, stoneY, (int) (stoneRadius * 0.325));
               break;
           }
@@ -2380,7 +2372,7 @@ public class BoardRenderer {
           if (!coordsOpt.isPresent()) {
             continue;
           }
-          boolean blackToPlay = Lizzie.board.getData().blackToPlay;
+          boolean blackToPlay = Lizzie.frame.getDisplayNode().getData().blackToPlay;
           if (this.shouldIgnoreBestMove) {
             int[] coords = coordsOpt.get();
             if (coords[0] == this.ignoreBestMoveX && coords[1] == this.ignoreBestMoveY) {
@@ -2388,7 +2380,11 @@ public class BoardRenderer {
                 int suggestionX = x + scaledMarginWidth + squareWidth * coords[0];
                 int suggestionY = y + scaledMarginHeight + squareHeight * coords[1];
                 drawOrder(
-                    g, suggestionX, suggestionY, move.order, Lizzie.board.getData().blackToPlay);
+                    g,
+                    suggestionX,
+                    suggestionY,
+                    move.order,
+                    Lizzie.frame.getDisplayNode().getData().blackToPlay);
               }
               if (Lizzie.config.showSuggestionOrder && move.order == 0) {
                 int suggestionX = x + scaledMarginWidth + squareWidth * coords[0];
@@ -2412,7 +2408,8 @@ public class BoardRenderer {
           boolean isBestMove = bestMoves.get(0) == move;
           boolean hasMaxWinrate = move.winrate == maxWinrate;
           boolean flipWinrate =
-              Lizzie.config.winrateAlwaysBlack && !Lizzie.board.getData().blackToPlay;
+              Lizzie.config.winrateAlwaysBlack
+                  && !Lizzie.frame.getDisplayNode().getData().blackToPlay;
           double fraction = 0;
           float percentPlayouts = (float) move.playouts / maxPlayouts;
           int[] coords = coordsOpt.get();
@@ -2483,8 +2480,16 @@ public class BoardRenderer {
               (outOfOrder || lackOfPlayouts) && !isMouseOver && !isBestMove && !needShow;
           if (!branchOpt.isPresent()) {
             if (shouldShowPreviousBestMoves()
-                && (Lizzie.board.getStones()[Board.getIndex(coords[0], coords[1])].isBlack()
-                    || Lizzie.board.getStones()[Board.getIndex(coords[0], coords[1])].isWhite())) {
+                && (Lizzie.frame
+                        .getDisplayNode()
+                        .getData()
+                        .stones[Board.getIndex(coords[0], coords[1])]
+                        .isBlack()
+                    || Lizzie.frame
+                        .getDisplayNode()
+                        .getData()
+                        .stones[Board.getIndex(coords[0], coords[1])]
+                        .isWhite())) {
 
             } else {
               if (!hasBackground || isMouseOver) {
@@ -2536,7 +2541,11 @@ public class BoardRenderer {
           if (isMouseOverNextBlunder && isMouseOver) {
             if (Lizzie.config.showSuggestionOrder && move.order < 9 && move.order > 0) {
               drawOrder(
-                  g, suggestionX, suggestionY, move.order, Lizzie.board.getData().blackToPlay);
+                  g,
+                  suggestionX,
+                  suggestionY,
+                  move.order,
+                  Lizzie.frame.getDisplayNode().getData().blackToPlay);
             }
           }
           if (!branchOpt.isPresent() || (isMouseOver && !isMouseOverNextBlunder)) {
@@ -2546,7 +2555,11 @@ public class BoardRenderer {
             }
             if (Lizzie.config.showSuggestionOrder && move.order < 9 && move.order > 0) {
               drawOrder(
-                  g, suggestionX, suggestionY, move.order, Lizzie.board.getData().blackToPlay);
+                  g,
+                  suggestionX,
+                  suggestionY,
+                  move.order,
+                  Lizzie.frame.getDisplayNode().getData().blackToPlay);
             }
             if (isMouseOver && isShowingBranch) {
               // Color oriColor = g.getColor();
@@ -2558,10 +2571,10 @@ public class BoardRenderer {
             if (Lizzie.config.whiteSuggestionWhite) {
               {
                 if (shouldShowPreviousBestMoves()) {
-                  if (Lizzie.board.getHistory().isBlacksTurn()) g.setColor(Color.WHITE);
+                  if (Lizzie.frame.getDisplayNode().getData().blackToPlay) g.setColor(Color.WHITE);
                   else g.setColor(Color.BLACK);
                 } else {
-                  if (Lizzie.board.getHistory().isBlacksTurn()) g.setColor(Color.BLACK);
+                  if (Lizzie.frame.getDisplayNode().getData().blackToPlay) g.setColor(Color.BLACK);
                   else g.setColor(Color.WHITE);
                 }
               }
@@ -2573,7 +2586,7 @@ public class BoardRenderer {
             boolean isGenmoveBest = false;
             if (shouldShowPreviousBestMoves()) {
               if (matchesHistoryMove(getCurrentHistoryMoveCoords(), coords)) {
-                if (Lizzie.board.getData().blackToPlay) g.setColor(Color.BLACK);
+                if (Lizzie.frame.getDisplayNode().getData().blackToPlay) g.setColor(Color.BLACK);
                 else g.setColor(Color.WHITE);
                 isGenmoveBest = true;
               }
@@ -3012,7 +3025,8 @@ public class BoardRenderer {
             drawCircle(g, suggestionX, suggestionY, stoneRadius + 1, 26.5f);
 
             boolean flipWinrate =
-                Lizzie.config.winrateAlwaysBlack && !Lizzie.board.getData().blackToPlay;
+                Lizzie.config.winrateAlwaysBlack
+                    && !Lizzie.frame.getDisplayNode().getData().blackToPlay;
             double roundedWinrate = round(moveWinrate * 10) / 10.0;
             if (flipWinrate) roundedWinrate = 100.0 - roundedWinrate;
             g.setColor(Color.BLACK);
@@ -3526,7 +3540,7 @@ public class BoardRenderer {
     drawCircle(g, moveX, moveY, stoneRadius + 2);
     if (isGoodMove) g.setColor(Color.BLACK);
     else g.setColor(Color.WHITE);
-    if (Lizzie.config.winrateAlwaysBlack && !Lizzie.board.getData().blackToPlay)
+    if (Lizzie.config.winrateAlwaysBlack && !Lizzie.frame.getDisplayNode().getData().blackToPlay)
       winrate = 100 - winrate;
     if (Lizzie.config.showWinrateInSuggestion && Lizzie.config.showScoremeanInSuggestion) {
       nextBlunderWinrate = String.format(Locale.ENGLISH, "%.1f", winrate);
@@ -3618,7 +3632,7 @@ public class BoardRenderer {
     g.setStroke(new BasicStroke(Math.max(stoneRadius / 7f, 2f)));
     g.setColor(color);
     drawCircle(g, moveX, moveY, stoneRadius + 2);
-    if (Lizzie.config.winrateAlwaysBlack && !Lizzie.board.getData().blackToPlay)
+    if (Lizzie.config.winrateAlwaysBlack && !Lizzie.frame.getDisplayNode().getData().blackToPlay)
       winrate = 100 - winrate;
     if (Lizzie.config.showWinrateInSuggestion) {
       if (isGoodMove) g.setColor(Color.BLACK);
