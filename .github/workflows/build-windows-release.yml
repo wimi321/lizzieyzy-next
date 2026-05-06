@@ -67,6 +67,8 @@ jobs:
       - name: Build Windows installer and portable package
         timeout-minutes: 120
         shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           serial="${{ inputs.release_tag }}"
           serial="${serial##*.}"

@@ -94,7 +94,23 @@ import zipfile
 
 api_url, cache_dir, stage_dir, release_tag, asset_name, expected_sha256 = sys.argv[1:7]
 source_dir = os.environ.get("READBOARD_SOURCE_DIR", "").strip()
+github_token = (
+    os.environ.get("READBOARD_GITHUB_TOKEN")
+    or os.environ.get("GITHUB_TOKEN")
+    or os.environ.get("GH_TOKEN")
+    or ""
+).strip()
 expected_sha256 = expected_sha256.replace("sha256:", "").lower()
+
+def github_headers(accept):
+    headers = {
+        "Accept": accept,
+        "User-Agent": "LizzieYzy-Next-Packager",
+        "X-GitHub-Api-Version": "2022-11-28",
+    }
+    if github_token:
+        headers["Authorization"] = f"Bearer {github_token}"
+    return headers
 
 def reset_dir(path):
     if os.path.exists(path):
@@ -165,13 +181,7 @@ if source_dir:
 else:
     tag_cache_dir = os.path.join(cache_dir, release_tag)
     os.makedirs(tag_cache_dir, exist_ok=True)
-    request = urllib.request.Request(
-        api_url,
-        headers={
-            "Accept": "application/vnd.github+json",
-            "User-Agent": "LizzieYzy-Next-Packager",
-        },
-    )
+    request = urllib.request.Request(api_url, headers=github_headers("application/vnd.github+json"))
     with urllib.request.urlopen(request, timeout=30) as response:
         metadata = json.load(response)
     if metadata.get("tag_name") != release_tag:
