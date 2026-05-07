@@ -256,6 +256,23 @@ class ReadBoardEngineResumeTest {
     }
   }
 
+  @Test
+  void syncSpecificResumeSkipsAutoQuickAnalyzeLoadedGame() throws Exception {
+    try (EngineResumeHarness harness =
+        EngineResumeHarness.create(rootHistory(emptyStones(), true))) {
+      Lizzie.config.autoQuickAnalyzeOnLoad = true;
+      HistoryPath path =
+          buildHistory(harness.board, placement(0, 0, Stone.BLACK), placement(1, 0, Stone.WHITE));
+      harness.board.moveToAnyPosition(path.nodes.get(path.nodes.size() - 1));
+
+      boolean resumed = harness.frame.ensureAnalysisResumedAfterSyncLoad();
+
+      assertEquals(true, resumed);
+      assertEquals(1, harness.leelaz.ponderCount);
+      assertEquals(0, harness.frame.flashAnalyzeGameCount);
+    }
+  }
+
   private static HistoryPath buildHistory(TrackingBoard board, Placement... moves) {
     BoardHistoryList history = board.getHistory();
     List<BoardHistoryNode> nodes = new ArrayList<>();
@@ -513,6 +530,7 @@ class ReadBoardEngineResumeTest {
   private static final class TrackingFrame extends LizzieFrame {
     private int scheduleResumeAnalysisCount;
     private int stopAiPlayingAndPolicyCount;
+    private int flashAnalyzeGameCount;
     private Runnable lastScheduledResumeAction;
     private TrackingBoard board;
 
@@ -526,6 +544,11 @@ class ReadBoardEngineResumeTest {
 
     @Override
     public void refresh() {}
+
+    @Override
+    public void flashAnalyzeGame(boolean isAllGame, boolean isAllBranches, boolean silentAnalyze) {
+      flashAnalyzeGameCount++;
+    }
 
     @Override
     public void renderVarTree(int vw, int vh, boolean changeSize, boolean needGetEnd) {}

@@ -34,6 +34,7 @@ import featurecat.lizzie.rules.SGFParser;
 import featurecat.lizzie.rules.Stone;
 import featurecat.lizzie.theme.MorandiPalette;
 import featurecat.lizzie.util.Utils;
+import featurecat.lizzie.util.YikeSyncDebugLog;
 import java.awt.*;
 import java.awt.datatransfer.Clipboard;
 import java.awt.datatransfer.DataFlavor;
@@ -4160,6 +4161,10 @@ public class LizzieFrame extends JFrame {
 
   public void scheduleResumeAnalysisAfterLoad(int delayMillis) {
     scheduleResumeAnalysisAfterLoad(delayMillis, this::resumeAnalysisAfterLoad);
+  }
+
+  public void scheduleResumeAnalysisAfterSyncLoad(int delayMillis) {
+    scheduleResumeAnalysisAfterLoad(delayMillis, this::resumeAnalysisAfterSyncLoad);
   }
 
   public void scheduleResumeAnalysisAfterLoad(int delayMillis, Runnable action) {
@@ -9461,16 +9466,22 @@ public class LizzieFrame extends JFrame {
   }
 
   public void syncOnline(String url) {
+    YikeSyncDebugLog.log(
+        "LizzieFrame.syncOnline url=" + url + " onlineDialog=" + (onlineDialog != null));
     if (onlineDialog == null) onlineDialog = new OnlineDialog(this);
     else {
       try {
+        YikeSyncDebugLog.log("LizzieFrame.syncOnline stopping existing OnlineDialog");
         onlineDialog.stopSync();
       } catch (Exception ex) {
+        YikeSyncDebugLog.log("LizzieFrame.syncOnline stop existing failed: " + ex.toString());
       }
     }
 
+    YikeSyncDebugLog.log("LizzieFrame.syncOnline applyChangeWeb");
     onlineDialog.applyChangeWeb(url);
     syncLiveBoardStat();
+    YikeSyncDebugLog.log("LizzieFrame.syncOnline done");
   }
 
   public void openYikeLiveDialog() {
@@ -13263,6 +13274,10 @@ public class LizzieFrame extends JFrame {
     ensureAnalysisResumedAfterLoad();
   }
 
+  private void resumeAnalysisAfterSyncLoad() {
+    ensureAnalysisResumedAfterSyncLoad();
+  }
+
   public boolean ensureAnalysisResumedAfterLoad() {
     if (Lizzie.leelaz == null
         || EngineManager.isEmpty
@@ -13274,6 +13289,19 @@ public class LizzieFrame extends JFrame {
     if (shouldAutoQuickAnalyzeLoadedGame()) {
       flashAnalyzeGame(true, false, true);
       return true;
+    }
+    Lizzie.leelaz.ponder();
+    refresh();
+    return true;
+  }
+
+  public boolean ensureAnalysisResumedAfterSyncLoad() {
+    if (Lizzie.leelaz == null
+        || EngineManager.isEmpty
+        || EngineManager.isEngineGame()
+        || isPlayingAgainstLeelaz
+        || isAnaPlayingAgainstLeelaz) {
+      return false;
     }
     Lizzie.leelaz.ponder();
     refresh();

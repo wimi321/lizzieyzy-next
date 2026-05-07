@@ -51,6 +51,92 @@ class BoardPrimaryEngineSyncTest {
   }
 
   @Test
+  void trySyncCurrentPositionToPrimaryEngineIncrementallyPlaysSingleAppendedMoveWithoutReset()
+      throws Exception {
+    try (TestHarness harness = TestHarness.open()) {
+      Board board = allocate(Board.class);
+      board.startStonelist = new ArrayList<>();
+      board.hasStartStone = false;
+      BoardHistoryList history = new BoardHistoryList(BoardData.empty(BOARD_SIZE, BOARD_SIZE));
+      BoardData previousPosition = history.getData().clone();
+      history.add(moveNode(0, 0, Stone.BLACK, false, 1));
+      board.setHistory(history);
+      Lizzie.board = board;
+
+      Leelaz engine = new Leelaz("");
+      engine.isLoaded = true;
+      setStarted(engine, true);
+      RecordingOutputStream output = new RecordingOutputStream();
+      setOutputStream(engine, output);
+      Lizzie.leelaz = engine;
+
+      assertTrue(
+          board.trySyncCurrentPositionToPrimaryEngineIncrementally(
+              previousPosition, BOARD_SIZE, BOARD_SIZE));
+
+      assertEquals(List.of("boardsize 3", "play B A3"), output.commands());
+    }
+  }
+
+  @Test
+  void trySyncCurrentPositionToPrimaryEngineIncrementallySkipsWhenDisplayedPositionDidNotChange()
+      throws Exception {
+    try (TestHarness harness = TestHarness.open()) {
+      Board board = allocate(Board.class);
+      board.startStonelist = new ArrayList<>();
+      board.hasStartStone = false;
+      BoardHistoryList history = new BoardHistoryList(BoardData.empty(BOARD_SIZE, BOARD_SIZE));
+      history.add(moveNode(0, 0, Stone.BLACK, false, 1));
+      history.previous();
+      BoardData previousPosition = history.getData().clone();
+      board.setHistory(history);
+      Lizzie.board = board;
+
+      Leelaz engine = new Leelaz("");
+      engine.isLoaded = true;
+      setStarted(engine, true);
+      RecordingOutputStream output = new RecordingOutputStream();
+      setOutputStream(engine, output);
+      Lizzie.leelaz = engine;
+
+      assertTrue(
+          board.trySyncCurrentPositionToPrimaryEngineIncrementally(
+              previousPosition, BOARD_SIZE, BOARD_SIZE));
+
+      assertTrue(output.commands().isEmpty());
+    }
+  }
+
+  @Test
+  void trySyncCurrentPositionToPrimaryEngineIncrementallyRejectsMultipleAppendedMoves()
+      throws Exception {
+    try (TestHarness harness = TestHarness.open()) {
+      Board board = allocate(Board.class);
+      board.startStonelist = new ArrayList<>();
+      board.hasStartStone = false;
+      BoardHistoryList history = new BoardHistoryList(BoardData.empty(BOARD_SIZE, BOARD_SIZE));
+      BoardData previousPosition = history.getData().clone();
+      history.add(moveNode(0, 0, Stone.BLACK, false, 1));
+      history.add(moveNode(1, 1, Stone.WHITE, true, 2));
+      board.setHistory(history);
+      Lizzie.board = board;
+
+      Leelaz engine = new Leelaz("");
+      engine.isLoaded = true;
+      setStarted(engine, true);
+      RecordingOutputStream output = new RecordingOutputStream();
+      setOutputStream(engine, output);
+      Lizzie.leelaz = engine;
+
+      assertFalse(
+          board.trySyncCurrentPositionToPrimaryEngineIncrementally(
+              previousPosition, BOARD_SIZE, BOARD_SIZE));
+
+      assertTrue(output.commands().isEmpty());
+    }
+  }
+
+  @Test
   void resendCurrentPositionToPrimaryEngineSkipsUnavailableEngine() throws Exception {
     try (TestHarness harness = TestHarness.open()) {
       Lizzie.leelaz = null;

@@ -16,6 +16,7 @@ import java.io.File;
 import java.io.IOException;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Locale;
@@ -1172,10 +1173,7 @@ public class Board {
   }
 
   public boolean resendCurrentPositionToPrimaryEngine() {
-    if (Lizzie.leelaz == null
-        || EngineManager.isEmpty
-        || !Lizzie.leelaz.isStarted()
-        || !Lizzie.leelaz.isLoaded()) {
+    if (!isPrimaryEngineReady()) {
       return false;
     }
     if (Lizzie.leelaz.width != boardWidth || Lizzie.leelaz.height != boardHeight) {
@@ -1183,6 +1181,82 @@ public class Board {
     }
     resendMoveToEngine(Lizzie.leelaz, false);
     return true;
+  }
+
+  public boolean trySyncCurrentPositionToPrimaryEngineIncrementally(
+      BoardData previousPosition, int previousBoardWidth, int previousBoardHeight) {
+    if (previousPosition == null || !isPrimaryEngineReady()) {
+      return false;
+    }
+    if (previousBoardWidth != boardWidth || previousBoardHeight != boardHeight) {
+      return false;
+    }
+    BoardHistoryList currentHistory = getHistory();
+    if (currentHistory == null) {
+      return false;
+    }
+    BoardData currentPosition = currentHistory.getData();
+    if (matchesEnginePosition(previousPosition, currentPosition)) {
+      return true;
+    }
+    BoardHistoryNode previousNode = currentHistory.getCurrentHistoryNode().previous().orElse(null);
+    if (previousNode == null || !matchesEnginePosition(previousPosition, previousNode.getData())) {
+      return false;
+    }
+    return playHistoryActionToPrimaryEngine(currentPosition);
+  }
+
+  private boolean isPrimaryEngineReady() {
+    return Lizzie.leelaz != null
+        && !EngineManager.isEmpty
+        && Lizzie.leelaz.isStarted()
+        && Lizzie.leelaz.isLoaded();
+  }
+
+  private boolean matchesEnginePosition(BoardData left, BoardData right) {
+    return left != null
+        && right != null
+        && left.getNodeKind() == right.getNodeKind()
+        && left.moveNumber == right.moveNumber
+        && left.lastMoveColor == right.lastMoveColor
+        && left.blackToPlay == right.blackToPlay
+        && left.blackCaptures == right.blackCaptures
+        && left.whiteCaptures == right.whiteCaptures
+        && matchesLastMove(left, right)
+        && Arrays.equals(left.stones, right.stones);
+  }
+
+  private boolean matchesLastMove(BoardData left, BoardData right) {
+    if (left.lastMove.isPresent() != right.lastMove.isPresent()) {
+      return false;
+    }
+    if (!left.lastMove.isPresent()) {
+      return true;
+    }
+    return Arrays.equals(left.lastMove.get(), right.lastMove.get());
+  }
+
+  private boolean playHistoryActionToPrimaryEngine(BoardData data) {
+    if (data == null) {
+      return false;
+    }
+    if (Lizzie.leelaz.width != boardWidth || Lizzie.leelaz.height != boardHeight) {
+      Lizzie.leelaz.boardSize(boardWidth, boardHeight);
+    }
+    if (data.isMoveNode() && data.lastMove.isPresent()) {
+      int[] lastMove = data.lastMove.get();
+      Lizzie.leelaz.playMove(
+          data.lastMoveColor,
+          convertCoordinatesToName(lastMove[0], lastMove[1]),
+          true,
+          data.blackToPlay);
+      return true;
+    }
+    if (isKnownPass(data)) {
+      Lizzie.leelaz.playMove(data.lastMoveColor, "pass", true, data.blackToPlay);
+      return true;
+    }
+    return false;
   }
 
   private BoardData createEditedCurrentBoardAnchor(BoardHistoryNode currentNode) {
