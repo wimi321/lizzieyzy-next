@@ -1323,7 +1323,19 @@ public class Leelaz {
     // System.out.println(line);
     synchronized (this) {
       if (line.startsWith("info")) {
-        if ((isResponseUpToDate())) {
+        boolean upToDate = isResponseUpToDate();
+        if (this == Lizzie.leelaz) {
+          YikeSyncDebugLog.log(
+              "Leelaz parseLine info upToDate="
+                  + upToDate
+                  + " currentCmd="
+                  + currentCmdNum
+                  + " cmd="
+                  + cmdNumber
+                  + " isPondering="
+                  + isPondering);
+        }
+        if ((upToDate)) {
           if (EngineManager.isEngineGame) {
             // Lizzie.frame.subBoardRenderer.reverseBestmoves = false;
             // Lizzie.frame.boardRenderer.reverseBestmoves = false;
@@ -1353,6 +1365,9 @@ public class Leelaz {
             this.bestMoves = parseInfoSai(line.substring(5));
           } else {
             this.bestMoves = parseInfo(line.substring(5));
+          }
+          if (this == Lizzie.leelaz) {
+            YikeSyncDebugLog.log("Leelaz parseLine bestMoves size=" + this.bestMoves.size());
           }
           if (!this.bestMoves.isEmpty()) {
             notifyAutoPK(false);
@@ -2710,6 +2725,26 @@ public class Leelaz {
   }
 
   public void sendCommand(String command) {
+    if (command != null
+        && (command.startsWith("clear_board") || command.startsWith("kata-analyze"))) {
+      StringBuilder sb = new StringBuilder();
+      StackTraceElement[] st = Thread.currentThread().getStackTrace();
+      int taken = 0;
+      for (StackTraceElement e : st) {
+        if (!e.getClassName().startsWith("featurecat.lizzie")) continue;
+        if (e.getClassName().equals(Leelaz.class.getName())
+            && (e.getMethodName().equals("sendCommand")
+                || e.getMethodName().equals("getStackTrace"))) continue;
+        if (sb.length() > 0) sb.append(" <- ");
+        sb.append(e.getClassName().substring("featurecat.lizzie.".length()))
+            .append("#")
+            .append(e.getMethodName())
+            .append(":")
+            .append(e.getLineNumber());
+        if (++taken >= 6) break;
+      }
+      YikeSyncDebugLog.log("Leelaz sendCommand TRACE command=" + command + " caller=" + sb);
+    }
     sendCommand(command, null);
   }
 
@@ -3973,6 +4008,7 @@ public class Leelaz {
 
   public void clear() {
     synchronized (this) {
+      YikeSyncDebugLog.log("Leelaz clear() entered isPondering=" + isPondering);
       sendCommand("clear_board");
       if (isKatago) {
         scoreMean = 0;

@@ -2594,6 +2594,7 @@ public class Board {
   }
 
   private void restoreEnginePosition(Leelaz engine, ArrayList<Movelist> fallbackMoves) {
+    boolean wasPondering = engine.isPondering();
     engine.sendCommand("clear_board");
     BoardHistoryNode currentNode = getHistory().getCurrentHistoryNode();
     BoardData editedCurrentBoard = createEditedCurrentBoardAnchor(currentNode);
@@ -2601,6 +2602,7 @@ public class Board {
       SnapshotEngineRestore.RestoreLifecycle lifecycle =
           replaySnapshotToEngine(engine, editedCurrentBoard);
       lifecycle.finishTailReplay();
+      if (wasPondering) engine.ponder();
       return;
     }
     ArrayList<Movelist> replayMoves = fallbackMoves;
@@ -2614,9 +2616,11 @@ public class Board {
       } finally {
         lifecycle.finishTailReplay();
       }
+      if (wasPondering) engine.ponder();
       return;
     }
     replayMovesToEngine(engine, replayMoves);
+    if (wasPondering) engine.ponder();
   }
 
   private void replayMovesToEngine(Leelaz engine, ArrayList<Movelist> moves) {

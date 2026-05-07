@@ -9,7 +9,7 @@ public final class YikeSyncDebugLog {
   private static final String LOG_PATH =
       System.getProperty("lizzie.yike.debugLog", "target/yike-sync-debug.log");
   private static final boolean ENABLED =
-      Boolean.parseBoolean(System.getProperty("lizzie.yike.debugLog.enabled", "false"));
+      Boolean.parseBoolean(System.getProperty("lizzie.yike.debugLog.enabled", "true"));
 
   private YikeSyncDebugLog() {}
 

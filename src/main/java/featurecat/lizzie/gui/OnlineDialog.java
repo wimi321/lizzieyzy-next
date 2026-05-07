@@ -2869,10 +2869,26 @@ public class OnlineDialog extends JDialog {
                 + envelope.optJSONObject("line")
                 + " structured="
                 + envelope.optJSONObject("structured")
+                + " svgLines="
+                + envelope.optJSONObject("svgLines")
+                + " canvasPixels="
+                + envelope.optJSONObject("canvasPixels")
+                + " wgoInstance="
+                + envelope.optJSONObject("wgoInstance")
+                + " stones="
+                + envelope.optJSONObject("stones")
                 + " smallCount="
                 + envelope.optInt("smallCount", -1)
                 + " sampleNodes="
-                + envelope.optJSONArray("sampleNodes"));
+                + envelope.optJSONArray("sampleNodes")
+                + " domDump="
+                + envelope.optJSONArray("domDump")
+                + " allCanvasSvg="
+                + envelope.optJSONArray("allCanvasSvg")
+                + " iframes="
+                + envelope.optJSONArray("iframes")
+                + " centerStack="
+                + envelope.optJSONArray("centerStack"));
         return;
       }
       if (!"probe".equals(tag)) {
@@ -3064,6 +3080,7 @@ public class OnlineDialog extends JDialog {
     if (node.contains("wgo-player-board")) score += 90;
     if (node.startsWith("canvas")) score += 110;
     if (node.startsWith("svg")) score += 110;
+    if (reason.contains("wgo-instance")) score += 300;
     if (reason.startsWith("selector:")) score += 40;
     if (reason.contains(":inner-media")) score += 95;
     if (reason.contains(":hit")) score += 70;
@@ -3192,11 +3209,30 @@ public class OnlineDialog extends JDialog {
     if (cellX <= 0d || cellY <= 0d) {
       return geometry;
     }
+    int left = geometry.left;
+    int top = geometry.top;
+    int width = geometry.width;
+    int height = geometry.height;
+    Double boardLeft = optFiniteDouble(grid, "boardLeft");
+    Double boardTop = optFiniteDouble(grid, "boardTop");
+    Double boardWidth = optFiniteDouble(grid, "boardWidth");
+    Double boardHeight = optFiniteDouble(grid, "boardHeight");
+    if (boardLeft != null
+        && boardTop != null
+        && boardWidth != null
+        && boardHeight != null
+        && boardWidth > 40
+        && boardHeight > 40) {
+      left = (int) Math.round(boardLeft);
+      top = (int) Math.round(boardTop);
+      width = (int) Math.round(boardWidth);
+      height = (int) Math.round(boardHeight);
+    }
     return new YikeGeometrySnapshot(
-        geometry.left,
-        geometry.top,
-        geometry.width,
-        geometry.height,
+        left,
+        top,
+        width,
+        height,
         firstX,
         firstY,
         cellX,
