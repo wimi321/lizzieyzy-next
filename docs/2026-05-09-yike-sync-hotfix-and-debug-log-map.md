@@ -56,6 +56,21 @@
 -Dlizzie.yike.debugLog=target/yike-sync-debug.log
 ```
 
+### 几何探针可视化与重型包（默认关闭）
+
+白框/橙点叠层和 `gridProbe` 详细包默认关闭。  
+需要排查页面几何时可临时开启：
+
+```text
+-Dlizzie.yike.geometryProbeDebug.enabled=true
+```
+
+`OnlineDialog` 的额外落盘日志路径支持通过 JVM 参数覆盖（不设置时默认 `target/yike-debug.log`）：
+
+```text
+-Dlizzie.yike.extraDebugLog=target/yike-debug.log
+```
+
 ## 相关代码文件
 
 - `src/main/java/featurecat/lizzie/util/YikeSyncDebugLog.java`

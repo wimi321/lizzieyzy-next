@@ -40,6 +40,8 @@ import org.json.JSONTokener;
 public class BrowserFrame extends JFrame {
   private static final long serialVersionUID = -5570653778104813836L;
   private static final String YIKE_BROWSER_SYNC_STOP_COMMAND = "yikeBrowserSyncStop";
+  private static final boolean YIKE_GEOMETRY_PROBE_DEBUG =
+      Boolean.parseBoolean(System.getProperty("lizzie.yike.geometryProbeDebug.enabled", "false"));
   private final JTextField address_;
   private final CefApp cefApp_;
   private final CefClient client_;
@@ -1030,6 +1032,9 @@ public class BrowserFrame extends JFrame {
     String js =
         "(function(){"
             + "var send=function(payload){try{window.cefQuery({request:'yikeGeometry:'+JSON.stringify(payload),persistent:false,onSuccess:function(){},onFailure:function(){}});}catch(e){}};"
+            + "var DEBUG="
+            + (YIKE_GEOMETRY_PROBE_DEBUG ? "true" : "false")
+            + ";"
             + "var installWgoHook=function(){"
             + "if(window.__lizzieWgoHook||!window.WGo||!window.WGo.Board)return;"
             + "var proto=window.WGo.Board.prototype;"
@@ -1319,7 +1324,7 @@ public class BrowserFrame extends JFrame {
             + "var firstY=fy.min;while(firstY-fy.step>r.top+fy.step*0.3)firstY-=fy.step;"
             + "return {mode:'stone-paths',firstX:norm(firstX),firstY:norm(firstY),cellX:norm(fx.step),cellY:norm(fy.step),stoneCount:filtered.length,medianDiameter:norm(medD),xMin:norm(fx.min),xMax:norm(fx.max)};"
             + "}catch(e){}return null;};"
-            + "var drawProbe=function(r,bounds,grid){"
+            + "var drawProbe=function(r,bounds,grid){if(!DEBUG)return;"
             + "var id='__lizzie_yike_grid_probe_overlay';var c=document.getElementById(id);"
             + "if(!c){c=document.createElement('canvas');c.id=id;c.style.cssText='position:fixed;left:0;top:0;width:100vw;height:100vh;pointer-events:none;z-index:2147483646';document.documentElement.appendChild(c);}"
             + "var dpr=window.devicePixelRatio||1;c.width=Math.round(window.innerWidth*dpr);c.height=Math.round(window.innerHeight*dpr);"
@@ -1342,6 +1347,7 @@ public class BrowserFrame extends JFrame {
             + "var bounds=gridModel(r,'bounds'),line=gridModel(r,'line');var small=smallCenters(r);var structured=gridFromCenters(r,small);var svgLines=gridFromGridLines(r);var canvasPx=gridFromCanvasPixels(r);var wgoInst=gridFromWgoInstance(r);var stones=gridFromStonePaths(r);"
             + "var chosen=wgoInst||stones||canvasPx||svgLines||structured||line;"
             + "drawProbe(r,bounds,chosen);"
+            + "if(!DEBUG){clearProbe();return chosen;}"
             + "var dump=[];try{"
             + "var all=document.querySelectorAll('*');"
             + "for(var di=0;di<all.length;di++){"

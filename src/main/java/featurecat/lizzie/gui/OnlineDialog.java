@@ -3706,7 +3706,8 @@ public class OnlineDialog extends JDialog {
   }
 
   private static final boolean YIKE_DEBUG_LOG_ENABLED = false;
-  private static final String YIKE_LOG_PATH = "D:/dev/weiqi/lizzieyzy-next/target/yike-debug.log";
+  private static final String YIKE_LOG_PATH =
+      System.getProperty("lizzie.yike.extraDebugLog", "target/yike-debug.log");
 
   private static void yikeDebugLog(String msg) {
     YikeSyncDebugLog.log("OnlineDialog " + msg);
