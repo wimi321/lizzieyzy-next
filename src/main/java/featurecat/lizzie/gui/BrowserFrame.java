@@ -14,6 +14,7 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.PrintStream;
 import java.io.UnsupportedEncodingException;
+import java.util.Optional;
 import javax.imageio.ImageIO;
 import javax.swing.*;
 import me.friwi.jcefmaven.*;
@@ -48,11 +49,13 @@ public class BrowserFrame extends JFrame {
   private JToolBar toolbar;
   private String baseTitle = "";
   private String lastSyncStatus = null;
+  private String lastAutoYikeSyncUrl = "";
   private long pendingYikeRoomId = 0;
   private int pendingYikeIntervalMs = 1000;
   private String pendingYikeInfoUrl = "";
   private boolean isYike;
   private volatile boolean yikeBrowserSyncEnabled = false;
+  private volatile String lastObservedYikePageUrl = "";
 
   /**
    * To display a simple browser window, it suffices completely to create an instance of the class
@@ -180,6 +183,7 @@ public class BrowserFrame extends JFrame {
                 if (request != null && request.startsWith("yikeGeometry:")) {
                   if (callback != null) callback.success("");
                   final String payload = request.substring("yikeGeometry:".length());
+                  rememberYikeGeometryPageUrl(payload);
                   YikeQueryWorker.submit(
                       () -> {
                         try {
@@ -324,6 +328,20 @@ public class BrowserFrame extends JFrame {
                   address_.setText(url);
                   if (frame != null && frame.isMain() && isYike) {
                     installYikeGeometryProbe();
+                    if (!YikeUrlParser.parse(url).isPresent()) {
+                      YikeSyncDebugLog.log("BrowserFrame address change waiting page url=" + url);
+                      return;
+                    }
+                    if (shouldAutoStartYikeSyncForAddress(isYike, yikeBrowserSyncEnabled, url)
+                        && !isSameYikeRoomUrl(url, lastAutoYikeSyncUrl)) {
+                      lastAutoYikeSyncUrl = url;
+                      if (startYikeSync(url, false)) {
+                        YikeSyncDebugLog.log(
+                            "BrowserFrame reload current address after auto room switch addr="
+                                + url);
+                        browser_.loadURL(url);
+                      }
+                    }
                   }
                 });
           }
@@ -529,28 +547,122 @@ public class BrowserFrame extends JFrame {
   }
 
   public void startYikeSyncFromCurrentAddress() {
-    String addr = address_ == null ? "" : address_.getText();
+    String addr = currentAddressForYikeSync();
     YikeSyncDebugLog.log("BrowserFrame start from current address addr=" + addr);
-    if (startYikeSync(addr, true) && browser_ != null) {
+    startYikeSync(addr, true);
+  }
+
+  public void startYikeSyncFromReadBoard() {
+    String currentUrl = currentAddressForYikeSync();
+    YikeSyncDebugLog.log(
+        "BrowserFrame start from readboard isYike="
+            + isYike
+            + " enabled="
+            + yikeBrowserSyncEnabled
+            + " address="
+            + currentUrl
+            + " observed="
+            + lastObservedYikePageUrl
+            + " browser="
+            + currentBrowserUrlForSync()
+            + " addressField="
+            + (address_ == null ? "" : address_.getText()));
+    if (shouldKeepYikeListenerEnabledOnPage(isYike, currentUrl) && !yikeBrowserSyncEnabled) {
+      yikeBrowserSyncEnabled = true;
+    }
+    if (!YikeUrlParser.parse(currentUrl).isPresent()) {
+      YikeSyncDebugLog.log("BrowserFrame start from readboard skipped non-room url");
+      return;
+    }
+    if (startYikeSync(currentUrl, true)) {
       YikeSyncDebugLog.log(
-          "BrowserFrame reload current address for readboard yike sync addr=" + addr);
-      browser_.loadURL(addr);
+          "BrowserFrame force reload current address for explicit yike sync addr=" + currentUrl);
+      browser_.loadURL(currentUrl);
     }
   }
 
   public void ensureYikeSyncFromCurrentAddress() {
+    String currentUrl = currentAddressForYikeSync();
     YikeSyncDebugLog.log(
         "BrowserFrame ensure start isYike="
             + isYike
             + " enabled="
             + yikeBrowserSyncEnabled
             + " address="
+            + currentUrl
+            + " observed="
+            + lastObservedYikePageUrl
+            + " browser="
+            + currentBrowserUrlForSync()
+            + " addressField="
             + (address_ == null ? "" : address_.getText()));
-    if (!shouldStartYikeSyncFromPlatformSignal(isYike, yikeBrowserSyncEnabled)) {
+    if (shouldKeepYikeListenerEnabledOnPage(isYike, currentUrl) && !yikeBrowserSyncEnabled) {
+      yikeBrowserSyncEnabled = true;
+    }
+    if (!shouldCreateOrRefreshYikeRoomSession(
+        isYike, yikeBrowserSyncEnabled, currentUrl, lastAutoYikeSyncUrl)) {
       YikeSyncDebugLog.log("BrowserFrame ensure skipped");
       return;
     }
-    startYikeSyncFromCurrentAddress();
+    if (startYikeSync(currentUrl, true)) {
+      YikeSyncDebugLog.log(
+          "BrowserFrame reload current address for readboard yike sync addr=" + currentUrl);
+      browser_.loadURL(currentUrl);
+    }
+  }
+
+  private String currentAddressForYikeSync() {
+    String observedUrl = lastObservedYikePageUrl;
+    String browserUrl = currentBrowserUrlForSync();
+    String addressUrl = address_ == null ? "" : address_.getText();
+    return selectYikeCurrentAddress(observedUrl, browserUrl, addressUrl);
+  }
+
+  public String currentBrowserUrlForSync() {
+    if (browser_ != null) {
+      try {
+        String url = browser_.getURL();
+        if (!Utils.isBlank(url)) {
+          return url;
+        }
+      } catch (Exception ignored) {
+      }
+    }
+    return address_ == null ? "" : address_.getText();
+  }
+
+  static String selectYikeCurrentAddress(String observedUrl, String browserUrl, String addressUrl) {
+    if (YikeUrlParser.parse(observedUrl).isPresent()) {
+      return observedUrl;
+    }
+    if (YikeUrlParser.parse(browserUrl).isPresent()) {
+      return browserUrl;
+    }
+    if (YikeUrlParser.parse(addressUrl).isPresent()) {
+      return addressUrl;
+    }
+    if (!Utils.isBlank(observedUrl)) {
+      return observedUrl;
+    }
+    if (!Utils.isBlank(browserUrl)) {
+      return browserUrl;
+    }
+    return addressUrl;
+  }
+
+  private void rememberYikeGeometryPageUrl(String payload) {
+    if (Utils.isBlank(payload)) {
+      return;
+    }
+    try {
+      JSONObject envelope = new JSONObject(payload);
+      String href = envelope.optString("href", "").trim();
+      if (!Utils.isBlank(href)) {
+        lastObservedYikePageUrl = href;
+        YikeSyncDebugLog.log("BrowserFrame remember yike geometry href=" + href);
+      }
+    } catch (Exception ignored) {
+    }
   }
 
   public void stopYikeSyncFromReadBoard() {
@@ -562,13 +674,96 @@ public class BrowserFrame extends JFrame {
     return isYike && yikeBrowserSyncEnabled;
   }
 
+  static boolean shouldAutoStartYikeSyncForAddress(
+      boolean isYike, boolean yikeBrowserSyncEnabled, String url) {
+    return shouldAutoStartYikeSync(isYike, yikeBrowserSyncEnabled)
+        && YikeUrlParser.parse(url).isPresent();
+  }
+
+  static boolean shouldKeepYikeListenerEnabledOnPage(boolean isYike, String currentUrl) {
+    if (!isYike) {
+      return false;
+    }
+    String pageKind = yikePageKind(currentUrl);
+    return "live-list".equals(pageKind)
+        || "game-lobby".equals(pageKind)
+        || "live-room".equals(pageKind)
+        || "unite-board".equals(pageKind);
+  }
+
+  static boolean shouldCreateOrRefreshYikeRoomSession(
+      boolean isYike, boolean yikeBrowserSyncEnabled, String currentUrl, String lastSyncedUrl) {
+    if (!isYike || !yikeBrowserSyncEnabled) {
+      return false;
+    }
+    if (!YikeUrlParser.parse(currentUrl).isPresent()) {
+      return false;
+    }
+    return !isSameYikeRoomUrl(currentUrl, lastSyncedUrl);
+  }
+
   static boolean shouldStartYikeSyncFromPlatformSignal(
       boolean isYike, boolean yikeBrowserSyncEnabled) {
-    return isYike && !yikeBrowserSyncEnabled;
+    return isYike;
+  }
+
+  static boolean shouldSyncYikeCurrentAddressFromPlatformSignal(
+      boolean isYike, boolean yikeBrowserSyncEnabled, String currentUrl, String lastSyncedUrl) {
+    return shouldCreateOrRefreshYikeRoomSession(
+            isYike, yikeBrowserSyncEnabled, currentUrl, lastSyncedUrl)
+        || (!yikeBrowserSyncEnabled && YikeUrlParser.parse(currentUrl).isPresent());
   }
 
   private boolean shouldAutoStartYikeSync() {
     return shouldAutoStartYikeSync(isYike, yikeBrowserSyncEnabled);
+  }
+
+  private static boolean isSameYikeRoomUrl(String leftUrl, String rightUrl) {
+    String leftKey = yikeRoomSessionKey(leftUrl);
+    String rightKey = yikeRoomSessionKey(rightUrl);
+    if (!Utils.isBlank(leftKey) && leftKey.equals(rightKey)) {
+      return true;
+    }
+    return !Utils.isBlank(leftUrl)
+        && !Utils.isBlank(rightUrl)
+        && leftUrl.equalsIgnoreCase(rightUrl);
+  }
+
+  private static String yikeRoomSessionKey(String rawUrl) {
+    Optional<YikeUrlInfo> parsed = YikeUrlParser.parse(rawUrl);
+    if (!parsed.isPresent()) {
+      return "";
+    }
+    YikeUrlInfo info = parsed.get();
+    long roomId = info.getRoomId();
+    String roomToken = roomId > 0 ? String.valueOf(roomId) : info.getId();
+    if (Utils.isBlank(roomToken)) {
+      return "";
+    }
+    int type = info.getType();
+    if (type == YikeUrlInfo.TYPE_NEW_LIVE_ROOM
+        || type == YikeUrlInfo.TYPE_OLD_LIVE_ROOM
+        || type == YikeUrlInfo.TYPE_OLD_LIVE_BOARD) {
+      return "live-room:" + roomToken;
+    }
+    return "unite-board:" + roomToken;
+  }
+
+  private static String yikePageKind(String rawUrl) {
+    String route = rawUrl == null ? "" : rawUrl.toLowerCase();
+    if (route.contains("#/live/new-room/") || route.contains("#/live/room/")) {
+      return "live-room";
+    }
+    if (route.contains("#/live")) {
+      return "live-list";
+    }
+    if (route.contains("#/unite/") || route.contains("#/game/play/")) {
+      return "unite-board";
+    }
+    if (route.contains("#/game")) {
+      return "game-lobby";
+    }
+    return "";
   }
 
   private boolean startYikeSync(String addr, boolean enableFutureAutoSync) {
@@ -590,12 +785,20 @@ public class BrowserFrame extends JFrame {
       YikeSyncDebugLog.log("BrowserFrame startYikeSync skipped blank url");
       return false;
     }
+    Optional<YikeUrlInfo> parsed = YikeUrlParser.parse(addr);
+    if (!parsed.isPresent()) {
+      setSyncStatus("URL 无法识别");
+      YikeSyncDebugLog.log("BrowserFrame startYikeSync skipped unrecognized url");
+      return false;
+    }
     if (enableFutureAutoSync) {
       yikeBrowserSyncEnabled = true;
     }
+    lastAutoYikeSyncUrl = addr;
     YikeSyncDebugLog.log(
         "BrowserFrame calling LizzieFrame.syncOnline enabledAfter=" + yikeBrowserSyncEnabled);
     Lizzie.frame.syncOnline(addr);
+    installYikeGeometryProbe();
     return true;
   }
 
@@ -611,6 +814,7 @@ public class BrowserFrame extends JFrame {
             + (LizzieFrame.onlineDialog != null));
     if (isYike) {
       yikeBrowserSyncEnabled = false;
+      lastAutoYikeSyncUrl = "";
     }
     if (LizzieFrame.onlineDialog != null) {
       LizzieFrame.onlineDialog.stopSync();
@@ -811,7 +1015,8 @@ public class BrowserFrame extends JFrame {
         "if(window.__yikeUnitePoller){clearInterval(window.__yikeUnitePoller);"
             + "window.__yikeUnitePoller=null;}"
             + "if(window.__yikeUniteWsDebounce){clearTimeout(window.__yikeUniteWsDebounce);"
-            + "window.__yikeUniteWsDebounce=null;}";
+            + "window.__yikeUniteWsDebounce=null;}"
+            + "window.__yikeUniteSaved=null;";
     browser_.executeJavaScript(js, browser_.getURL(), 0);
   }
 
@@ -843,7 +1048,35 @@ public class BrowserFrame extends JFrame {
             + "var id=el.id?('#'+trim(el.id,48)):'';"
             + "var cls=trim((el.className&&typeof el.className==='string')?el.className:'',96).replace(/\\s+/g,'.');"
             + "return trim(el.tagName.toLowerCase()+id+(cls?'.'+cls:''),160);};"
+            + "var scope=function(el){"
+            + "var out=[];try{var cur=el;while(cur&&cur!==document.documentElement&&out.length<8){var d=desc(cur);"
+            + "if(d.indexOf('#board_width')>=0||d.indexOf('board_detail_new')>=0||d.indexOf('board_content')>=0||d.indexOf('room_list_box')>=0||d.indexOf('.live')>=0||d.indexOf('wgo-player-main')>=0||d.indexOf('wgo-board')>=0)out.push(d);"
+            + "cur=cur.parentElement;}}catch(e){}return trim(out.join('>'),320);};"
+            + "var pageKind=function(){var h=String(location.href||'').toLowerCase();if(h.indexOf('#/live/new-room/')>=0||h.indexOf('#/live/room/')>=0)return 'live-room';if(h.indexOf('#/live')>=0)return 'live-list';if(h.indexOf('#/unite/')>=0||h.indexOf('#/game/play/')>=0)return 'unite-board';if(h.indexOf('#/game')>=0)return 'game-lobby';return '';};"
+            + "var routeCompatible=function(c){var k=pageKind();if(!k||!c)return true;var text=String((c.scope||'')+' '+(c.node||'')).toLowerCase();"
+            + "if(k==='live-list')return false;"
+            + "if(k==='game-lobby')return false;"
+            + "if(k==='live-room'&&(text.indexOf('#board_width')>=0||text.indexOf('board_detail_new')>=0))return false;"
+            + "if(k==='unite-board'&&(text.indexOf('board_content')>=0||text.indexOf('room_list_box')>=0||text.indexOf('.live')>=0))return false;"
+            + "return true;};"
             + "var collect=function(reason){"
+            + "if(window.__wgoInst&&window.__wgoInst.element){"
+            + "var __we=window.__wgoInst.element;"
+            + "var __wb=__we.getBoundingClientRect();"
+            + "var __vis=__we.isConnected&&__wb&&__wb.width>0&&__wb.height>0&&__wb.left<window.innerWidth&&__wb.top<window.innerHeight&&__wb.left+__wb.width>0&&__wb.top+__wb.height>0;"
+            + "var __sameDoc=document.contains(__we);"
+            + "var __route=routeCompatible({node:'wgo-board-element',reason:'wgo-instance',scope:scope(__we)});"
+            + "if(!__vis||!__sameDoc||!__route){window.__wgoInst=null;}"
+            + "}"
+            + "if(!window.__wgoInst){"
+            + "try{var __nodes=document.querySelectorAll('div.wgo-board');"
+            + "for(var __ni=0;__ni<__nodes.length;__ni++){"
+            + "var __n=__nodes[__ni];var __nb=__n.getBoundingClientRect();"
+            + "if(__nb.width<40||__nb.height<40)continue;"
+            + "if(__nb.left>=window.innerWidth||__nb.top>=window.innerHeight||__nb.left+__nb.width<=0||__nb.top+__nb.height<=0)continue;"
+            + "var __cv=__n.querySelector('canvas');if(!__cv)continue;"
+            + "try{__cv.dispatchEvent(new MouseEvent('mousemove',{bubbles:true,clientX:__nb.left+__nb.width/2,clientY:__nb.top+__nb.height/2}));}catch(e){}"
+            + "break;}}catch(e){}}"
             + "var seen=[];"
             + "var out=[];"
             + "var push=function(el,tag){"
@@ -856,6 +1089,7 @@ public class BrowserFrame extends JFrame {
             + "out.push({"
             + "reason:tag,"
             + "node:desc(el),"
+            + "scope:scope(el),"
             + "rect:{left:norm(r.left),top:norm(r.top),width:norm(r.width),height:norm(r.height)},"
             + "client:{width:el.clientWidth||0,height:el.clientHeight||0},"
             + "scroll:{width:el.scrollWidth||0,height:el.scrollHeight||0},"
@@ -867,6 +1101,7 @@ public class BrowserFrame extends JFrame {
             + "out.push({"
             + "reason:tag,"
             + "node:node,"
+            + "scope:node,"
             + "rect:{left:norm(left),top:norm(top),width:norm(width),height:norm(height)},"
             + "client:{width:Math.round(width),height:Math.round(height)},"
             + "scroll:{width:Math.round(width),height:Math.round(height)},"
@@ -946,7 +1181,7 @@ public class BrowserFrame extends JFrame {
             + "var d=Math.abs(w-h);if(d<=Math.max(12,w/12))s+=40;else s-=Math.min(60,d);"
             + "return s;};"
             + "var rankCandidates=function(list){"
-            + "return (list||[]).filter(function(c){return c&&c.rect;}).sort(function(a,b){"
+            + "return (list||[]).filter(function(c){return c&&c.rect&&routeCompatible(c)&&candidateScore(c)>=60;}).sort(function(a,b){"
             + "var ds=candidateScore(b)-candidateScore(a);if(ds)return ds;"
             + "var aa=(a.rect.width||0)*(a.rect.height||0),ab=(b.rect.width||0)*(b.rect.height||0);"
             + "return ab-aa;});};"
@@ -1037,16 +1272,18 @@ public class BrowserFrame extends JFrame {
             + "var gridFromWgoInstance=function(r){"
             + "try{"
             + "var i=window.__wgoInst;if(!i)return null;"
-            + "if(!i.element||typeof i.left!=='number'||typeof i.fieldWidth!=='number')return null;"
-            + "var cv=i.element.querySelector('canvas');if(!cv)return null;"
+            + "if(!i.element||!i.element.isConnected||typeof i.left!=='number'||typeof i.fieldWidth!=='number')return null;"
+            + "if(!routeCompatible({node:'wgo-board-element',reason:'wgo-instance',scope:scope(i.element)}))return null;"
+            + "var cv=i.element.querySelector('canvas');if(!cv||!cv.isConnected)return null;"
             + "var b=cv.getBoundingClientRect();if(!b||b.width<40||b.height<40)return null;"
+            + "var elBcr=i.element.getBoundingClientRect();"
             + "var dpr=i.pixelRatio||1;"
             + "var fxV=b.left+i.left/dpr;"
             + "var fyV=b.top+i.top/dpr;"
             + "var cxV=i.fieldWidth/dpr;"
             + "var cyV=i.fieldHeight/dpr;"
             + "if(cxV<8||cyV<8)return null;"
-            + "return {mode:'wgo-instance',firstX:norm(fxV),firstY:norm(fyV),cellX:norm(cxV),cellY:norm(cyV),size:i.size,canvasW:b.width,canvasH:b.height,pixelRatio:dpr,boardLeft:norm(b.left),boardTop:norm(b.top),boardWidth:norm(b.width),boardHeight:norm(b.height),scrollX:window.scrollX||window.pageXOffset||0,scrollY:window.scrollY||window.pageYOffset||0};"
+            + "return {mode:'wgo-instance',firstX:norm(fxV),firstY:norm(fyV),cellX:norm(cxV),cellY:norm(cyV),size:i.size,canvasW:b.width,canvasH:b.height,pixelRatio:dpr,boardLeft:norm(b.left),boardTop:norm(b.top),boardWidth:norm(b.width),boardHeight:norm(b.height),elemLeft:norm(elBcr.left),elemTop:norm(elBcr.top),elemWidth:norm(elBcr.width),elemHeight:norm(elBcr.height),scrollX:window.scrollX||window.pageXOffset||0,scrollY:window.scrollY||window.pageYOffset||0};"
             + "}catch(e){}"
             + "return null;};"
             + "var gridFromStonePaths=function(r){"
@@ -1087,15 +1324,19 @@ public class BrowserFrame extends JFrame {
             + "var ctx=c.getContext('2d');ctx.setTransform(dpr,0,0,dpr,0,0);ctx.clearRect(0,0,window.innerWidth,window.innerHeight);"
             + "var draw=function(m,color){ctx.fillStyle=color;for(var x=0;x<19;x++){for(var y=0;y<19;y++){var px=m.firstX+m.cellX*x,py=m.firstY+m.cellY*y;ctx.beginPath();ctx.arc(px,py,(x===9&&y===9)?4:2,0,Math.PI*2);ctx.fill();}}};"
             + "var frameRect=r;"
-            + "if(window.__wgoInst&&window.__wgoInst.element){var wb=window.__wgoInst.element.getBoundingClientRect();if(wb&&wb.width>=40&&wb.height>=40){frameRect={left:wb.left,top:wb.top,width:wb.width,height:wb.height};}}"
+            + "var liveInst=(window.__wgoInst&&window.__wgoInst.element&&window.__wgoInst.element.isConnected)?window.__wgoInst:null;"
+            + "if(liveInst){var wb=liveInst.element.getBoundingClientRect();var wc={node:'wgo-board-element',reason:'wgo-instance',scope:scope(liveInst.element)};if(wb&&wb.width>=40&&wb.height>=40&&routeCompatible(wc)){frameRect={left:wb.left,top:wb.top,width:wb.width,height:wb.height};}}"
             + "ctx.strokeStyle='rgba(255,255,255,.9)';ctx.strokeRect(frameRect.left,frameRect.top,frameRect.width,frameRect.height);"
             + "draw(bounds,'rgba(34,211,238,.88)');if(grid)draw(grid,'rgba(249,115,22,.88)');};"
+            + "var clearProbe=function(){try{var c=document.getElementById('__lizzie_yike_grid_probe_overlay');if(c)c.remove();}catch(e){}};"
+            + "var triggerRouteCollect=function(reason){clearProbe();setTimeout(function(){collect(reason+'-120');},120);setTimeout(function(){collect(reason+'-800');},800);setTimeout(function(){collect(reason+'-2500');},2500);};"
             + "var emitGridProbe=function(list,reason){"
             + "var c=pickGrid(list);"
-            + "if(window.__wgoInst&&window.__wgoInst.element){"
+            + "if(window.__wgoInst&&window.__wgoInst.element&&window.__wgoInst.element.isConnected){"
             + "var wb=window.__wgoInst.element.getBoundingClientRect();"
-            + "if(wb&&wb.width>=40&&wb.height>=40){c={node:'wgo-board-element',reason:'wgo-instance',rect:{left:wb.left,top:wb.top,width:wb.width,height:wb.height}};}}"
-            + "if(!c||!c.rect)return null;var r=c.rect;"
+            + "var wc={node:'wgo-board-element',reason:'wgo-instance',scope:scope(window.__wgoInst.element),rect:{left:wb.left,top:wb.top,width:wb.width,height:wb.height}};"
+            + "if(wb&&wb.width>=40&&wb.height>=40&&routeCompatible(wc)){c=wc;}}"
+            + "if(!c||!c.rect){clearProbe();send({tag:'clear',reason:reason,href:location.href,title:document.title});return null;}var r=c.rect;"
             + "var bounds=gridModel(r,'bounds'),line=gridModel(r,'line');var small=smallCenters(r);var structured=gridFromCenters(r,small);var svgLines=gridFromGridLines(r);var canvasPx=gridFromCanvasPixels(r);var wgoInst=gridFromWgoInstance(r);var stones=gridFromStonePaths(r);"
             + "var chosen=wgoInst||stones||canvasPx||svgLines||structured||line;"
             + "drawProbe(r,bounds,chosen);"
@@ -1138,7 +1379,7 @@ public class BrowserFrame extends JFrame {
             + "var el=stack[si];var b=el.getBoundingClientRect();"
             + "insideRect.push({tag:el.tagName.toLowerCase(),id:el.id||'',cls:trim((el.getAttribute&&el.getAttribute('class'))||'',60),x:norm(b.left),y:norm(b.top),w:norm(b.width),h:norm(b.height)});"
             + "}}catch(e){}"
-            + "send({tag:'gridProbe',reason:reason,node:c.node,candidateReason:c.reason,rect:r,bounds:bounds,line:line,structured:structured,svgLines:svgLines,canvasPixels:canvasPx,wgoInstance:wgoInst,stones:stones,smallCount:small.centers.length,sampleCenters:small.centers.slice(0,24),sampleNodes:small.nodes,domDump:dump,allCanvasSvg:allCanvas,iframes:iframes,centerStack:insideRect});"
+            + "send({tag:'gridProbe',reason:reason,node:c.node,candidateReason:c.reason,scope:c.scope,rect:r,bounds:bounds,line:line,structured:structured,svgLines:svgLines,canvasPixels:canvasPx,wgoInstance:wgoInst,stones:stones,smallCount:small.centers.length,sampleCenters:small.centers.slice(0,24),sampleNodes:small.nodes,domDump:dump,allCanvasSvg:allCanvas,iframes:iframes,centerStack:insideRect});"
             + "return chosen;};"
             + "['canvas','svg','[class*=board]','[id*=board]','[class*=goban]','[id*=goban]','[class*=chess]','[class*=weiqi]'].forEach(function(sel){"
             + "try{document.querySelectorAll(sel).forEach(function(el){"
@@ -1154,7 +1395,7 @@ public class BrowserFrame extends JFrame {
             + "if(ratio<0.75||ratio>1.35)return;"
             + "push(el,'square-candidate');"
             + "});"
-            + "if(window.__wgoInst&&window.__wgoInst.element){push(window.__wgoInst.element,'wgo-instance');var inner=window.__wgoInst.element.querySelector('canvas');if(inner)push(inner,'wgo-instance:canvas');}"
+            + "if(window.__wgoInst&&window.__wgoInst.element&&window.__wgoInst.element.isConnected){push(window.__wgoInst.element,'wgo-instance');var inner=window.__wgoInst.element.querySelector('canvas');if(inner)push(inner,'wgo-instance:canvas');}"
             + "var ranked=rankCandidates(out);"
             + "var packet={"
             + "tag:'probe',"
@@ -1177,6 +1418,7 @@ public class BrowserFrame extends JFrame {
             + "setTimeout(function(){collect('delay-5000');},5000);"
             + "setTimeout(function(){collect('delay-8000');},8000);"
             + "setTimeout(function(){collect('delay-15000');},15000);"
+            + "if(!window.__lizzieYikeGeomRouteWatch){window.__lizzieYikeGeomRouteWatch=true;window.addEventListener('hashchange',function(){triggerRouteCollect('hashchange');},{passive:true});window.addEventListener('popstate',function(){triggerRouteCollect('popstate');},{passive:true});try{var __push=history.pushState;if(typeof __push==='function'){history.pushState=function(){var r=__push.apply(this,arguments);setTimeout(function(){triggerRouteCollect('pushstate');},0);return r;};}}catch(e){}try{var __replace=history.replaceState;if(typeof __replace==='function'){history.replaceState=function(){var r=__replace.apply(this,arguments);setTimeout(function(){triggerRouteCollect('replacestate');},0);return r;};}}catch(e){}}"
             + "var wgoWatchRetry=0;"
             + "var wgoWatchTimer=setInterval(function(){"
             + "if(window.__wgoInst){clearInterval(wgoWatchTimer);collect('wgo-instance-ready');return;}"

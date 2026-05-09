@@ -1,6 +1,9 @@
 package featurecat.lizzie.gui;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.awt.Rectangle;
@@ -80,6 +83,106 @@ class YikeGeometryNormalizationTest {
   }
 
   @Test
+  void rejectsGameBoardScopeOnLiveRoomRoute() {
+    JSONArray candidates = new JSONArray();
+    candidates.put(
+        candidate(
+            "div#board.board.wgo-player-main",
+            "selector:[class*=board]:hit",
+            "#board_width.board_width.noselect_text>div.board_detail_new",
+            25,
+            60,
+            722,
+            722));
+
+    assertEquals(
+        null,
+        OnlineDialog.describeAcceptedYikeGeometry(
+            candidates, 1397, 792, "https://home.yikeweiqi.com/#/live/new-room/186530/0/0"));
+  }
+
+  @Test
+  void rejectsBoardCandidateOnLiveListRoute() {
+    JSONArray candidates = new JSONArray();
+    candidates.put(
+        candidate(
+            "div#board.board.wgo-player-main",
+            "selector:[class*=board]:hit",
+            "div.board_content>wgo-board-element",
+            25,
+            60,
+            722,
+            722));
+
+    assertEquals(
+        null,
+        OnlineDialog.describeAcceptedYikeGeometry(
+            candidates, 1397, 792, "https://home.yikeweiqi.com/#/live"));
+  }
+
+  @Test
+  void distinguishesYikeGameLobbyFromBoardRoutes() {
+    assertEquals("live-list", OnlineDialog.yikeRouteKind("https://home.yikeweiqi.com/#/live"));
+    assertEquals(
+        "live-room",
+        OnlineDialog.yikeRouteKind("https://home.yikeweiqi.com/#/live/new-room/186530/0/0"));
+    assertEquals("game-lobby", OnlineDialog.yikeRouteKind("https://home.yikeweiqi.com/#/game"));
+    assertEquals(
+        "unite-board", OnlineDialog.yikeRouteKind("https://home.yikeweiqi.com/#/unite/66304678"));
+    assertEquals(
+        "unite-board",
+        OnlineDialog.yikeRouteKind("https://home.yikeweiqi.com/#/game/play/1/15630642"));
+  }
+
+  @Test
+  void sessionKeyKeepsLiveRoomAndUniteBoardGeometrySeparated() {
+    String liveRoomSession =
+        OnlineDialog.yikeSessionKey("https://home.yikeweiqi.com/#/live/new-room/186530/0/0");
+    String uniteSession =
+        OnlineDialog.yikeSessionKey("https://home.yikeweiqi.com/#/unite/66304678");
+
+    assertNotEquals(liveRoomSession, uniteSession);
+    assertFalse(OnlineDialog.isGeometryForCurrentSession(liveRoomSession, uniteSession));
+  }
+
+  @Test
+  void acceptsLiveRoomBoardCandidateOnLiveRoomRoute() {
+    JSONArray candidates = new JSONArray();
+    candidates.put(
+        candidate(
+            "div#board.board.wgo-player-main",
+            "selector:[class*=board]:hit",
+            "div#board.board.wgo-player-main>div.board_content",
+            45,
+            60,
+            654,
+            654));
+
+    assertEquals(
+        "div#board.board.wgo-player-main|selector:[class*=board]:hit",
+        OnlineDialog.describeAcceptedYikeGeometry(
+            candidates, 1397, 792, "https://home.yikeweiqi.com/#/live/new-room/186530/0/0"));
+  }
+
+  @Test
+  void rejectsAnyBoardCandidateOnGameLobbyRoute() {
+    JSONArray candidates = new JSONArray();
+    candidates.put(
+        candidate(
+            "div#board.board.wgo-player-main",
+            "selector:[class*=board]:hit",
+            "div#board.board.wgo-player-main>div.board_content",
+            45,
+            60,
+            654,
+            654));
+
+    assertNull(
+        OnlineDialog.describeAcceptedYikeGeometry(
+            candidates, 1397, 792, "https://home.yikeweiqi.com/#/game"));
+  }
+
+  @Test
   void acceptedGeometryCommandIncludesExplicitGridAndSkipsSquareNormalization() {
     JSONArray candidates = new JSONArray();
     candidates.put(
@@ -112,6 +215,13 @@ class YikeGeometryNormalizationTest {
     candidate.getJSONObject("rect").put("top", top);
     candidate.getJSONObject("rect").put("width", width);
     candidate.getJSONObject("rect").put("height", height);
+    return candidate;
+  }
+
+  private static JSONObject candidate(
+      String node, String reason, String scope, int left, int top, int width, int height) {
+    JSONObject candidate = candidate(node, reason, left, top, width, height);
+    candidate.put("scope", scope);
     return candidate;
   }
 }

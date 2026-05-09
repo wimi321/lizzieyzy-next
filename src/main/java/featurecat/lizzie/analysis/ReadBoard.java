@@ -671,7 +671,7 @@ public class ReadBoard {
     }
     if (isYikeSyncStartCommand(line)) {
       YikeSyncDebugLog.log("ReadBoard received yikeSyncStart");
-      handleYikeSyncStartCommand();
+      handleYikeSyncStartCommand(true);
       return;
     }
     if (isYikeSyncStopCommand(line)) {
@@ -715,7 +715,7 @@ public class ReadBoard {
               .withPlatform(parseSyncPlatform(line.substring("syncPlatform ".length())));
       if (isYikeSyncPlatformLine(line)) {
         YikeSyncDebugLog.log("ReadBoard received syncPlatform yike");
-        handleYikeSyncStartCommand();
+        handleYikeSyncStartCommand(false);
       }
       return;
     }
@@ -1021,7 +1021,7 @@ public class ReadBoard {
     return line != null && command.equals(line.trim());
   }
 
-  private void handleYikeSyncStartCommand() {
+  private void handleYikeSyncStartCommand(final boolean forceReloadCurrentRoom) {
     SwingUtilities.invokeLater(
         new Runnable() {
           public void run() {
@@ -1029,9 +1029,15 @@ public class ReadBoard {
                 "ReadBoard handling yike start on EDT frame="
                     + (Lizzie.frame != null)
                     + " browserFrame="
-                    + (Lizzie.frame != null && Lizzie.frame.browserFrame != null));
+                    + (Lizzie.frame != null && Lizzie.frame.browserFrame != null)
+                    + " forceReload="
+                    + forceReloadCurrentRoom);
             if (Lizzie.frame != null && Lizzie.frame.browserFrame != null) {
-              Lizzie.frame.browserFrame.ensureYikeSyncFromCurrentAddress();
+              if (forceReloadCurrentRoom) {
+                Lizzie.frame.browserFrame.startYikeSyncFromReadBoard();
+              } else {
+                Lizzie.frame.browserFrame.ensureYikeSyncFromCurrentAddress();
+              }
             }
           }
         });
@@ -2284,6 +2290,18 @@ public class ReadBoard {
   }
 
   public void sendCommand(String command) {
+    if (command != null
+        && (command.startsWith("yike")
+            || command.startsWith("place")
+            || command.startsWith("syncPlatform"))) {
+      YikeSyncDebugLog.log(
+          "ReadBoard sendCommand command="
+              + command
+              + " usePipe="
+              + usePipe
+              + " syncing="
+              + isSyncing);
+    }
     if (command.startsWith("place")) {
       if (hideFloadBoardBeforePlace && Lizzie.frame.floatBoard != null) {
         Lizzie.frame.floatBoard.setVisible(false);

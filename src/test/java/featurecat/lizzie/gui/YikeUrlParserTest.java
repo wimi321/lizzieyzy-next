@@ -55,4 +55,35 @@ class YikeUrlParserTest {
     assertEquals(15630642, info.getRoomId());
     assertEquals("https://api.yikeweiqi.com/golive/dtl?id=15630642", info.getAjaxUrl());
   }
+
+  @Test
+  void parsesYikeUniteRoomUrl() {
+    Optional<YikeUrlInfo> parsed =
+        YikeUrlParser.parse("https://home.yikeweiqi.com/#/unite/66304678");
+
+    assertTrue(parsed.isPresent());
+    YikeUrlInfo info = parsed.get();
+    assertEquals(YikeUrlInfo.TYPE_UNITE_ROOM, info.getType());
+    assertEquals(66304678, info.getRoomId());
+    assertEquals(
+        "https://game-server.yikeweiqi.com/game/info?id=66304678&sgf_option=true&players_option=true&setting_option=true&clock_option=true&is_void=true",
+        info.getAjaxUrl());
+  }
+
+  @Test
+  void doesNotParseYikeLobbyUrls() {
+    assertTrue(YikeUrlParser.parse("https://home.yikeweiqi.com/#/live").isEmpty());
+    assertTrue(YikeUrlParser.parse("https://home.yikeweiqi.com/#/game").isEmpty());
+  }
+
+  @Test
+  void buildsStableSessionKeysForRoomUrls() {
+    assertEquals(
+        "live-room:186031",
+        OnlineDialog.yikeSessionKey("https://home.yikeweiqi.com/#/live/new-room/186031/0/0"));
+    assertEquals(
+        "unite-board:66304678",
+        OnlineDialog.yikeSessionKey("https://home.yikeweiqi.com/#/unite/66304678"));
+    assertEquals("", OnlineDialog.yikeSessionKey("https://home.yikeweiqi.com/#/live"));
+  }
 }
