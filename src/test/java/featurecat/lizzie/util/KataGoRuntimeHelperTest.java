@@ -144,6 +144,67 @@ public class KataGoRuntimeHelperTest {
         });
   }
 
+  @Test
+  void bundledLaunchCommandAddsHomeDataDirAndPvLengthOverride() throws Exception {
+    Path tempRoot = Files.createTempDirectory("katago-helper-bundled-command");
+    Path enginePath =
+        touch(
+            tempRoot
+                .resolve("engines")
+                .resolve("katago")
+                .resolve("windows-x64")
+                .resolve("katago.exe"));
+    Path runtimeWorkDirectory = Files.createDirectories(tempRoot.resolve("runtime-root"));
+
+    withConfig(
+        runtimeWorkDirectory,
+        () -> {
+          Lizzie.config.limitBranchLength = 32;
+          List<String> command =
+              KataGoRuntimeHelper.prepareBundledLaunchCommand(
+                  Arrays.asList(enginePath.toString(), "gtp", "-config", "gtp.cfg"), enginePath);
+
+          assertTrue(command.contains("-override-config"));
+          String overrides = command.get(command.indexOf("-override-config") + 1);
+          assertTrue(overrides.contains("homeDataDir="));
+          assertTrue(overrides.contains("analysisPVLen=32"));
+        });
+  }
+
+  @Test
+  void katagoAnalysisCommandReceivesPvLengthOverride() throws Exception {
+    Path runtimeWorkDirectory = Files.createTempDirectory("katago-helper-pvlen");
+    withConfig(
+        runtimeWorkDirectory,
+        () -> {
+          Lizzie.config.limitBranchLength = 28;
+          String command =
+              KataGoRuntimeHelper.optimizeAnalysisEngineCommand(
+                  "katago analysis -model model.bin.gz -config analysis.cfg", 100, false);
+
+          assertTrue(command.contains("analysisPVLen=28"));
+        });
+  }
+
+  @Test
+  void nonKataGoAnalysisCommandKeepsOriginalText() throws Exception {
+    Path runtimeWorkDirectory = Files.createTempDirectory("katago-helper-nonkatago");
+    withConfig(
+        runtimeWorkDirectory,
+        () ->
+            assertEquals(
+                "leelaz --gtp",
+                KataGoRuntimeHelper.optimizeAnalysisEngineCommand("leelaz --gtp", 100, false)));
+  }
+
+  @Test
+  void benchmarkHeartbeatSmoothsLateSilentProgress() {
+    int smoothed = KataGoRuntimeHelper.smoothSilentBenchmarkProgress(880, 12000L);
+
+    assertTrue(smoothed > 880, "Silent official benchmark output should still feel alive.");
+    assertTrue(smoothed <= 970, "Heartbeat should leave room for the real final summary.");
+  }
+
   private static ProcessBuilder createProcessBuilder(Path directory, String pathValue) {
     ProcessBuilder processBuilder = new ProcessBuilder("echo");
     processBuilder.directory(directory.toFile());

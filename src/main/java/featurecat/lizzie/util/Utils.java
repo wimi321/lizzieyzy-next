@@ -821,16 +821,18 @@ public class Utils {
 
   public static void saveEngineSettings(ArrayList<EngineData> engineData) {
     JSONArray engineDate = new JSONArray();
+    int defaultEngineIndex = normalizeDefaultEngineFlags(engineData);
     for (int i = 0; i < engineData.size(); i++) {
       JSONObject engineInfo = new JSONObject();
       EngineData engineDt = engineData.get(i);
+      boolean isDefault = engineDt.isDefault;
       engineInfo.put("command", engineDt.commands);
       engineInfo.put("name", engineDt.name);
       engineInfo.put("preload", engineDt.preload);
       engineInfo.put("komi", engineDt.komi);
       engineInfo.put("width", engineDt.width);
       engineInfo.put("height", engineDt.height);
-      engineInfo.put("isDefault", engineDt.isDefault);
+      engineInfo.put("isDefault", isDefault);
       engineInfo.put("useJavaSSH", engineDt.useJavaSSH);
       engineInfo.put("ip", engineDt.ip);
       engineInfo.put("port", engineDt.port);
@@ -842,11 +844,37 @@ public class Utils {
       engineDate.put(engineInfo);
     }
     Lizzie.config.leelazConfig.put("engine-settings-list", engineDate);
+    if (Lizzie.config.uiConfig != null) {
+      Lizzie.config.uiConfig.put("default-engine", defaultEngineIndex);
+    }
     try {
       Lizzie.config.save();
     } catch (IOException e) {
       e.printStackTrace();
     }
+  }
+
+  static int normalizeDefaultEngineFlags(ArrayList<EngineData> engineData) {
+    int defaultEngineIndex = -1;
+    if (engineData == null) {
+      return defaultEngineIndex;
+    }
+    for (int i = 0; i < engineData.size(); i++) {
+      EngineData engineDt = engineData.get(i);
+      if (engineDt != null && engineDt.isDefault) {
+        defaultEngineIndex = i;
+        break;
+      }
+    }
+    for (int i = 0; i < engineData.size(); i++) {
+      EngineData engineDt = engineData.get(i);
+      if (engineDt == null) {
+        continue;
+      }
+      engineDt.index = i;
+      engineDt.isDefault = i == defaultEngineIndex;
+    }
+    return defaultEngineIndex;
   }
 
   public static ArrayList<EngineData> getEngineDataOld() {

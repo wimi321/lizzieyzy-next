@@ -391,6 +391,7 @@ public final class KataGoRuntimeHelper {
     }
 
     appendOverrideConfig(launchCommand, "homeDataDir=" + homeDataDir.toString());
+    appendAnalysisPvLenOverride(launchCommand);
     return launchCommand;
   }
 
@@ -665,7 +666,10 @@ public final class KataGoRuntimeHelper {
                   long sinceLastProgress = now - lastProgressAt.get();
                   if (sinceLastProgress >= 1200L) {
                     int syntheticPermille =
-                        estimateSyntheticBenchmarkPermille(now - benchmarkStartedAt.get());
+                        estimateSyntheticBenchmarkPermille(
+                            now - benchmarkStartedAt.get(),
+                            sinceLastProgress,
+                            lastProgressPermille.get());
                     int displayPermille = Math.max(lastProgressPermille.get(), syntheticPermille);
                     notifyProgress(
                         listener,
@@ -1452,17 +1456,23 @@ public final class KataGoRuntimeHelper {
         hasOverrideConfigKey(commandParts, "numSearchThreadsPerAnalysisThread")
             || hasOverrideConfigKey(commandParts, "numSearchThreads");
     boolean hasAnalysisThreadOverride = hasOverrideConfigKey(commandParts, "numAnalysisThreads");
+    boolean commandChanged = false;
+    if (looksLikeKataGoCommand(engineCommand)) {
+      commandChanged = appendAnalysisPvLenOverride(commandParts);
+    }
 
     if (shouldUseAppleSiliconAnalysisProfile(engineCommand)) {
       AnalysisThreadProfile profile =
           resolveAppleSiliconAnalysisProfile(maxVisits, isBatchAnalysisMode);
       if (!hasAnalysisThreadOverride) {
         appendOverrideConfig(commandParts, "numAnalysisThreads=" + profile.numAnalysisThreads);
+        commandChanged = true;
       }
       if (!hasSearchThreadOverride) {
         appendOverrideConfig(
             commandParts,
             "numSearchThreadsPerAnalysisThread=" + profile.numSearchThreadsPerAnalysisThread);
+        commandChanged = true;
       }
       return buildCommandLine(commandParts);
     }
@@ -1473,7 +1483,7 @@ public final class KataGoRuntimeHelper {
       return buildCommandLine(commandParts);
     }
 
-    return engineCommand;
+    return commandChanged ? buildCommandLine(commandParts) : engineCommand;
   }
 
   private static void installNvidiaRuntimeWithDialog(
@@ -1611,6 +1621,11 @@ public final class KataGoRuntimeHelper {
     return Config.isBundledKataGoCommand(engineCommand);
   }
 
+  private static boolean looksLikeKataGoCommand(String engineCommand) {
+    String normalized = engineCommand == null ? "" : engineCommand.toLowerCase(Locale.ROOT);
+    return normalized.contains("katago");
+  }
+
   private static AnalysisThreadProfile resolveAppleSiliconAnalysisProfile(
       int maxVisits, boolean isBatchAnalysisMode) {
     int totalThreadBudget = Math.max(4, Math.min(16, Utils.getRecommendedKataGoThreads()));
@@ -1668,6 +1683,7 @@ public final class KataGoRuntimeHelper {
     if (command == null || keyValue == null || keyValue.trim().isEmpty()) {
       return;
     }
+    String normalizedKey = overrideConfigKey(keyValue);
 
     for (int i = 0; i < command.size(); i++) {
       if (!"-override-config".equals(command.get(i))) {
@@ -1680,7 +1696,7 @@ public final class KataGoRuntimeHelper {
       }
 
       String existing = command.get(i + 1);
-      if (existing != null && existing.toLowerCase(Locale.ROOT).contains("homedatadir=")) {
+      if (!normalizedKey.isEmpty() && containsOverrideConfigKey(existing, normalizedKey)) {
         return;
       }
       if (existing == null || existing.trim().isEmpty()) {
@@ -1693,6 +1709,22 @@ public final class KataGoRuntimeHelper {
 
     command.add("-override-config");
     command.add(keyValue);
+  }
+
+  private static boolean appendAnalysisPvLenOverride(List<String> command) {
+    int pvLen = resolveAnalysisPvLenOverride();
+    if (pvLen <= 0 || hasOverrideConfigKey(command, "analysisPVLen")) {
+      return false;
+    }
+    appendOverrideConfig(command, "analysisPVLen=" + pvLen);
+    return true;
+  }
+
+  static int resolveAnalysisPvLenOverride() {
+    if (Lizzie.config == null) {
+      return 15;
+    }
+    return Math.max(0, Lizzie.config.limitBranchLength);
   }
 
   private static boolean hasOverrideConfigKey(List<String> command, String key) {
@@ -1708,19 +1740,39 @@ public final class KataGoRuntimeHelper {
       if (overrideValue == null || overrideValue.trim().isEmpty()) {
         continue;
       }
-      for (String entry : overrideValue.split(",")) {
-        String trimmed = entry == null ? "" : entry.trim();
-        if (trimmed.isEmpty()) {
-          continue;
-        }
-        int eqIndex = trimmed.indexOf('=');
-        String entryKey = eqIndex >= 0 ? trimmed.substring(0, eqIndex).trim() : trimmed.trim();
-        if (entryKey.toLowerCase(Locale.ROOT).equals(normalizedKey)) {
-          return true;
-        }
+      if (containsOverrideConfigKey(overrideValue, normalizedKey)) {
+        return true;
       }
     }
     return false;
+  }
+
+  private static boolean containsOverrideConfigKey(String overrideValue, String normalizedKey) {
+    if (overrideValue == null || normalizedKey == null || normalizedKey.trim().isEmpty()) {
+      return false;
+    }
+    for (String entry : overrideValue.split(",")) {
+      String trimmed = entry == null ? "" : entry.trim();
+      if (trimmed.isEmpty()) {
+        continue;
+      }
+      int eqIndex = trimmed.indexOf('=');
+      String entryKey = eqIndex >= 0 ? trimmed.substring(0, eqIndex).trim() : trimmed.trim();
+      if (entryKey.toLowerCase(Locale.ROOT).equals(normalizedKey)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private static String overrideConfigKey(String keyValue) {
+    String trimmed = keyValue == null ? "" : keyValue.trim();
+    if (trimmed.isEmpty()) {
+      return "";
+    }
+    int eqIndex = trimmed.indexOf('=');
+    String key = eqIndex >= 0 ? trimmed.substring(0, eqIndex).trim() : trimmed;
+    return key.toLowerCase(Locale.ROOT);
   }
 
   private static String buildCommandLine(List<String> commands) {
@@ -2299,18 +2351,33 @@ public final class KataGoRuntimeHelper {
     return trimmed;
   }
 
-  private static int estimateSyntheticBenchmarkPermille(long elapsedMillis) {
+  static int estimateSyntheticBenchmarkPermille(
+      long elapsedMillis, long sinceLastProgressMillis, int lastProgressPermille) {
     long elapsed = Math.max(0L, elapsedMillis);
+    long silent = Math.max(0L, sinceLastProgressMillis);
+    int last = Math.max(0, Math.min(1000, lastProgressPermille));
     if (elapsed <= 8000L) {
-      return 40 + (int) ((elapsed * 80L) / 8000L);
+      return Math.max(last, 40 + (int) ((elapsed * 80L) / 8000L));
     }
     if (elapsed <= 30000L) {
-      return 120 + (int) (((elapsed - 8000L) * 180L) / 22000L);
+      return Math.max(last, 120 + (int) (((elapsed - 8000L) * 180L) / 22000L));
     }
     if (elapsed <= 300000L) {
-      return 300 + (int) (((elapsed - 30000L) * 580L) / 270000L);
+      int synthetic = 300 + (int) (((elapsed - 30000L) * 580L) / 270000L);
+      return Math.max(last, Math.max(synthetic, smoothSilentBenchmarkProgress(last, silent)));
     }
-    return 880;
+    return Math.max(last, Math.max(880, smoothSilentBenchmarkProgress(last, silent)));
+  }
+
+  static int smoothSilentBenchmarkProgress(int lastProgressPermille, long sinceLastProgressMillis) {
+    int last = Math.max(0, Math.min(1000, lastProgressPermille));
+    if (last < 820 || sinceLastProgressMillis < 2500L) {
+      return last;
+    }
+    long extraSeconds = Math.max(0L, (sinceLastProgressMillis - 2500L) / 1000L);
+    int ceiling = last >= 970 ? 985 : 970;
+    int smoothed = last + (int) Math.min(ceiling - last, extraSeconds * 8L);
+    return Math.max(last, Math.min(ceiling, smoothed));
   }
 
   private static String formatBenchmarkHeartbeatStatus(long elapsedMillis) {

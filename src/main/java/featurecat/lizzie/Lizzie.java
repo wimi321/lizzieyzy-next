@@ -1,9 +1,12 @@
 package featurecat.lizzie;
 
 import featurecat.lizzie.analysis.AnalysisEngine;
+import featurecat.lizzie.analysis.EngineCommandSink;
+import featurecat.lizzie.analysis.EngineFollowController;
 import featurecat.lizzie.analysis.EngineManager;
 import featurecat.lizzie.analysis.KataEstimate;
 import featurecat.lizzie.analysis.Leelaz;
+import featurecat.lizzie.analysis.LeelazEngineCommandSink;
 import featurecat.lizzie.gui.AppleStyleSupport;
 import featurecat.lizzie.gui.AwareScaled;
 import featurecat.lizzie.gui.FirstUseSettings;
@@ -13,6 +16,7 @@ import featurecat.lizzie.gui.LoadEngine;
 import featurecat.lizzie.gui.Message;
 import featurecat.lizzie.gui.web.WebBoardManager;
 import featurecat.lizzie.rules.Board;
+import featurecat.lizzie.rules.BoardHistoryNode;
 import featurecat.lizzie.util.KataGoAutoSetupHelper;
 import featurecat.lizzie.util.KataGoAutoSetupHelper.SetupSnapshot;
 import featurecat.lizzie.util.KataGoRuntimeHelper;
@@ -62,6 +66,7 @@ public class Lizzie {
   public static boolean readMode = false;
   private static String[] mainArgs;
   public static EngineManager engineManager;
+  public static featurecat.lizzie.analysis.EngineFollowController engineFollowController;
   public static WebBoardManager webBoardManager = new WebBoardManager();
   public static int javaVersion = 8;
   public static Float javaScaleFactor = 1.0f;
@@ -426,6 +431,16 @@ public class Lizzie {
     frame.reSetLoc();
     frame.showMainPanel();
     frame.addResizeLis();
+    // 引擎跟随控制器：试下期间让引擎跟随 displayNode 实时分析
+    EngineCommandSink sink = new LeelazEngineCommandSink();
+    engineFollowController = new EngineFollowController(sink);
+    BoardHistoryNode initialTail = board.getHistory().getCurrentHistoryNode();
+    if (initialTail != null) {
+      engineFollowController.setCurrentEngineNode(initialTail);
+    }
+    webBoardManager.setEngineFollowController(engineFollowController);
+    webBoardManager.setDesktopPlayingProbe(
+        () -> frame != null && (frame.isPlayingAgainstLeelaz || frame.isAnaPlayingAgainstLeelaz));
     SwingUtilities.invokeLater(
         new Thread() {
           public void run() {

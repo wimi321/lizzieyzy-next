@@ -12,6 +12,7 @@ import java.util.Optional;
 import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.json.JSONArray;
@@ -73,7 +74,7 @@ public class WebBoardDataCollector {
     lastBroadcastTime = System.currentTimeMillis();
     if (server == null) return;
     try {
-      BoardData data = Lizzie.board.getHistory().getCurrentHistoryNode().getData();
+      BoardData data = Lizzie.frame.getDisplayNode().getData();
       if (data.bestMoves == null || data.bestMoves.isEmpty()) return;
       int bw = Board.boardWidth;
       int bh = Board.boardHeight;
@@ -92,7 +93,7 @@ public class WebBoardDataCollector {
     lastBroadcastTime = System.currentTimeMillis();
     if (server == null) return;
     try {
-      BoardHistoryNode currentNode = Lizzie.board.getHistory().getCurrentHistoryNode();
+      BoardHistoryNode currentNode = Lizzie.frame.getDisplayNode();
       BoardData data = currentNode.getData();
       int bw = Board.boardWidth;
       int bh = Board.boardHeight;
@@ -131,6 +132,110 @@ public class WebBoardDataCollector {
       Thread.currentThread().interrupt();
     }
     server = null;
+  }
+
+  /** Web 试下：在内部 executor 上同步派发任务。 */
+  public void runOnExecutor(Runnable r) {
+    try {
+      executor.execute(r);
+    } catch (RejectedExecutionException ignored) {
+    }
+  }
+
+  /** Web 试下：在内部 executor 上调度延迟任务。 */
+  public ScheduledFuture<?> scheduleOnExecutor(Runnable r, long delay, TimeUnit unit) {
+    try {
+      return executor.schedule(r, delay, unit);
+    } catch (RejectedExecutionException ignored) {
+      return null;
+    }
+  }
+
+  /** Web 试下：广播 TrialSession 状态。Task 4 落地完整 JSON 序列化。 */
+  public void broadcastTrialState(WebBoardManager.TrialSession s) {
+    if (server == null) return;
+    if (s == null) {
+      server.broadcastMessage(buildIdleTrialStateJson().toString());
+      return;
+    }
+    TrialSessionView view =
+        new TrialSessionView(
+            s.ownerClientId, s.anchorNode.getData().moveNumber, s.anchorNode, s.displayNode);
+    server.broadcastMessage(buildTrialStateJson(view).toString());
+  }
+
+  /** Web 试下：不可变快照，避免跨线程共享 TrialSession 可变字段。 */
+  public static final class TrialSessionView {
+    public final String ownerClientId;
+    public final int anchorMoveNumber;
+    public final BoardHistoryNode anchorNode;
+    public final BoardHistoryNode displayNode;
+
+    public TrialSessionView(
+        String ownerClientId,
+        int anchorMoveNumber,
+        BoardHistoryNode anchorNode,
+        BoardHistoryNode displayNode) {
+      this.ownerClientId = ownerClientId;
+      this.anchorMoveNumber = anchorMoveNumber;
+      this.anchorNode = anchorNode;
+      this.displayNode = displayNode;
+    }
+  }
+
+  /** Web 试下：构造 trial_state JSON。view 为空表示无活跃 session。 */
+  static JSONObject buildTrialStateJson(TrialSessionView view) {
+    JSONObject obj = new JSONObject();
+    obj.put("type", "trial_state");
+    if (view == null) {
+      obj.put("active", false);
+      return obj;
+    }
+    obj.put("active", true);
+    obj.put("ownerClientId", view.ownerClientId);
+    obj.put("anchorMoveNumber", view.anchorMoveNumber);
+    obj.put("displayMoveNumber", view.displayNode.getData().moveNumber);
+    obj.put("canBack", view.displayNode != view.anchorNode);
+    // canForward / siblingMarkers 都要排除 dummy 占位（试下 enter 时插的 mainline 占位）
+    boolean canForward = false;
+    for (BoardHistoryNode v : view.displayNode.variations) {
+      if (!v.getData().dummy) {
+        canForward = true;
+        break;
+      }
+    }
+    obj.put("canForward", canForward);
+
+    JSONArray markers = new JSONArray();
+    int label = 0;
+    // 主线子定义：variations[0] 是真 mainline 子（非 dummy）时跳过它；
+    // 若 variations[0] 是 dummy 占位（anchor 原本是 mainline 末端，进入试下时插的 dummy），
+    // 说明 mainline 本就没有"原主线子"，所有非 dummy 子都是分叉，全部画 marker。
+    boolean hasRealMainlineChild =
+        !view.displayNode.variations.isEmpty()
+            && !view.displayNode.variations.get(0).getData().dummy;
+    int startIdx = hasRealMainlineChild ? 1 : 0;
+    for (int i = startIdx; i < view.displayNode.variations.size(); i++) {
+      BoardHistoryNode sib = view.displayNode.variations.get(i);
+      BoardData sd = sib.getData();
+      if (sd.dummy) continue; // 跳过 dummy 占位
+      if (!sd.lastMove.isPresent()) continue;
+      label++;
+      int[] xy = sd.lastMove.get();
+      JSONObject m = new JSONObject();
+      m.put("x", xy[0]);
+      m.put("y", xy[1]);
+      m.put("label", String.valueOf(label));
+      m.put("childIndex", i);
+      markers.put(m);
+    }
+    obj.put("siblingMarkers", markers);
+    return obj;
+  }
+
+  /** Web 试下：闲置/退出后的 trial_state 广播载荷。 */
+  static JSONObject buildIdleTrialStateJson() {
+    return buildTrialStateJson(null);
   }
 
   // --- Static JSON serialization methods ---

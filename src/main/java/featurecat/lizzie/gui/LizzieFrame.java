@@ -250,6 +250,9 @@ public class LizzieFrame extends JFrame {
   private long kifuLoadVisibleSince;
   private volatile int kifuMovelistRefreshGeneration = 0;
 
+  /** Web 试下模式下的渲染节点覆盖。null 表示无 override，渲染端读 Board.history 当前节点。 */
+  private volatile featurecat.lizzie.rules.BoardHistoryNode displayNodeOverride;
+
   private TableModel blunderModelBlack;
   private TableModel blunderModelWhite;
   public JTable blunderTabelBlack;
@@ -1861,6 +1864,24 @@ public class LizzieFrame extends JFrame {
     sidebarPanel.setVisible(true);
   }
 
+  public featurecat.lizzie.rules.BoardHistoryNode getDisplayNode() {
+    featurecat.lizzie.rules.BoardHistoryNode override = displayNodeOverride;
+    if (override != null) return override;
+    return Lizzie.board.getHistory().getCurrentHistoryNode();
+  }
+
+  public void setDisplayNodeOverride(featurecat.lizzie.rules.BoardHistoryNode node) {
+    this.displayNodeOverride = node;
+  }
+
+  public boolean isTrialActive() {
+    return displayNodeOverride != null;
+  }
+
+  public void showTrialBlockedHint() {
+    Utils.showMsgNoModalForTime("Web 试下进行中，桌面端暂不响应落子（在「同步」菜单可强制结束）", 3);
+  }
+
   public void setCommentPaneContent() {
     // TODO Auto-generated method stub
     sidebarPanel.setVisible(Lizzie.config.showComment);
@@ -3149,22 +3170,34 @@ public class LizzieFrame extends JFrame {
     }
   }
 
+  static String buildDefaultAiMoveTimeSettings(int seconds) {
+    return "time_settings 0 " + Math.max(0, seconds) + " 1";
+  }
+
+  static String buildKataGoFixedMoveTimeCommand(int seconds) {
+    if (seconds <= 0) return "kata-set-param maxTime 1e20";
+    return "kata-set-param maxTime " + seconds;
+  }
+
+  private static void installPlayingAgainstHumanCountDown(
+      String timeSettings, Leelaz engine, boolean needCountDown) {
+    if (!needCountDown || engine == null) return;
+    Lizzie.engineManager.playingAgainstHumanEngineCountDown = new EngineCountDown();
+    if (!Lizzie.engineManager.playingAgainstHumanEngineCountDown.setEngineCountDown(
+        timeSettings, engine)) {
+      Lizzie.engineManager.playingAgainstHumanEngineCountDown = null;
+      Utils.showMsgNoModal(
+          Lizzie.resourceBundle.getString("EngineManager.parseAdvcanceTimeSettingsFailed"));
+      return;
+    }
+    Lizzie.engineManager.playingAgainstHumanEngineCountDown.initialize(!Lizzie.frame.playerIsBlack);
+    Lizzie.engineManager.StartCountDown();
+  }
+
   public static void sendAiTime(boolean needCountDown, Leelaz engine, boolean showTimeMsg) {
     if (Lizzie.config.advanceTimeSettings) {
-      Lizzie.leelaz.sendCommand(Lizzie.config.advanceTimeTxt);
-      if (needCountDown) {
-        Lizzie.engineManager.playingAgainstHumanEngineCountDown = new EngineCountDown();
-        if (!Lizzie.engineManager.playingAgainstHumanEngineCountDown.setEngineCountDown(
-            Lizzie.config.advanceTimeTxt, Lizzie.leelaz)) {
-          Lizzie.engineManager.playingAgainstHumanEngineCountDown = null;
-          Utils.showMsgNoModal(
-              Lizzie.resourceBundle.getString("EngineManager.parseAdvcanceTimeSettingsFailed"));
-        } else {
-          Lizzie.engineManager.playingAgainstHumanEngineCountDown.initialize(
-              !Lizzie.frame.playerIsBlack);
-          Lizzie.engineManager.StartCountDown();
-        }
-      }
+      engine.sendCommand(Lizzie.config.advanceTimeTxt);
+      installPlayingAgainstHumanCountDown(Lizzie.config.advanceTimeTxt, engine, needCountDown);
     } else {
       if (Lizzie.config.kataTimeSettings) {
         // kata-time_settings fischer byoyomi absolute
@@ -3191,26 +3224,30 @@ public class LizzieFrame extends JFrame {
             break;
         }
         engine.sendCommand(txtKataTimeSettings);
-        if (needCountDown) {
-          Lizzie.engineManager.playingAgainstHumanEngineCountDown = new EngineCountDown();
-          if (!Lizzie.engineManager.playingAgainstHumanEngineCountDown.setEngineCountDown(
-              txtKataTimeSettings, Lizzie.leelaz)) {
-            Lizzie.engineManager.playingAgainstHumanEngineCountDown = null;
-            Utils.showMsgNoModal(
-                Lizzie.resourceBundle.getString("EngineManager.parseAdvcanceTimeSettingsFailed"));
-          } else {
-            Lizzie.engineManager.playingAgainstHumanEngineCountDown.initialize(
-                !Lizzie.frame.playerIsBlack);
-            Lizzie.engineManager.StartCountDown();
-          }
-        }
+        installPlayingAgainstHumanCountDown(txtKataTimeSettings, engine, needCountDown);
         if (showTimeMsg && !engine.isKatago) {
           Utils.showMsg(
               Lizzie.resourceBundle.getString(
                   "LizzieFrame.sendTimes.kataGoTimeMismatch")); // "引擎时间设置为KataGo专用,但当前引擎不是KataGo,可能无法正确控制时间!");
         }
-      } else
-        engine.sendCommand("time_settings 0 " + Lizzie.config.maxGameThinkingTimeSeconds + " 1");
+      } else {
+        int fixedMoveSeconds = Lizzie.config.maxGameThinkingTimeSeconds;
+        if (engine.isKatago) {
+          engine.sendCommand("kata-time_settings none");
+          engine.sendCommand(buildKataGoFixedMoveTimeCommand(fixedMoveSeconds));
+          if (needCountDown) {
+            Lizzie.engineManager.clearPlayingAgainstHumanEngineCountDown();
+          }
+        } else {
+          String defaultTimeSettings = buildDefaultAiMoveTimeSettings(fixedMoveSeconds);
+          engine.sendCommand(defaultTimeSettings);
+          if (fixedMoveSeconds > 0) {
+            installPlayingAgainstHumanCountDown(defaultTimeSettings, engine, needCountDown);
+          } else if (needCountDown) {
+            Lizzie.engineManager.clearPlayingAgainstHumanEngineCountDown();
+          }
+        }
+      }
     }
   }
 
@@ -6751,6 +6788,10 @@ public class LizzieFrame extends JFrame {
    * @param y y coordinate
    */
   public void onClickedForManul(int x, int y) {
+    if (isTrialActive()) {
+      showTrialBlockedHint();
+      return;
+    }
     Optional<int[]> boardCoordinates = boardRenderer.convertScreenToCoordinates(x, y);
     if (boardCoordinates.isPresent()) {
       int[] coords = boardCoordinates.get();
@@ -6809,6 +6850,10 @@ public class LizzieFrame extends JFrame {
   }
 
   public void onClicked(int x, int y) {
+    if (isTrialActive()) {
+      showTrialBlockedHint();
+      return;
+    }
     // Check for board click
     Optional<int[]> boardCoordinates;
     if (Lizzie.config.isThinkingMode()) {
@@ -6920,6 +6965,10 @@ public class LizzieFrame extends JFrame {
   }
 
   public void onDoubleClicked(int x, int y) {
+    if (isTrialActive()) {
+      showTrialBlockedHint();
+      return;
+    }
     Optional<int[]> boardCoordinates = boardRenderer.convertScreenToCoordinates(x, y);
     if (boardCoordinates.isPresent()) {
       int[] coords = boardCoordinates.get();
@@ -9750,13 +9799,14 @@ public class LizzieFrame extends JFrame {
           Lizzie.config.getMyByoyomiTimes());
     if (isGenmove) {
       if (!Lizzie.leelaz.isThinking) {
-        if (!Lizzie.config.genmoveGameNoTime) sendAiTime(true, Lizzie.leelaz, true);
         isPlayingAgainstLeelaz = true;
         if (continueNow) {
           Lizzie.frame.playerIsBlack = !Lizzie.board.getData().blackToPlay;
+          if (!Lizzie.config.genmoveGameNoTime) sendAiTime(true, Lizzie.leelaz, true);
           Lizzie.leelaz.genmove((Lizzie.board.getData().blackToPlay ? "B" : "W"));
         } else {
           playerIsBlack = playerIsB;
+          if (!Lizzie.config.genmoveGameNoTime) sendAiTime(true, Lizzie.leelaz, true);
           if (playerIsB) {
             if (Lizzie.board.getData().blackToPlay != playerIsBlack) {
               Lizzie.leelaz.genmove("W");
@@ -13257,7 +13307,9 @@ public class LizzieFrame extends JFrame {
       kataGoAutoSetupDialog = new KataGoAutoSetupDialog(this);
     }
     kataGoAutoSetupDialog.refreshState();
+    kataGoAutoSetupDialog.ensureVisibleOnScreen();
     kataGoAutoSetupDialog.setVisible(true);
+    kataGoAutoSetupDialog.ensureVisibleOnScreen();
     kataGoAutoSetupDialog.toFront();
   }
 
@@ -13266,7 +13318,9 @@ public class LizzieFrame extends JFrame {
       kataGoAutoSetupDialog = new KataGoAutoSetupDialog(this);
     }
     kataGoAutoSetupDialog.refreshState();
+    kataGoAutoSetupDialog.ensureVisibleOnScreen();
     kataGoAutoSetupDialog.setVisible(true);
+    kataGoAutoSetupDialog.ensureVisibleOnScreen();
     kataGoAutoSetupDialog.toFront();
   }
 

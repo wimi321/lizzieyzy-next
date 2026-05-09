@@ -1030,11 +1030,371 @@ def build_next_2026_05_04_1_notes(
     ) + '\n'
 
 
+def build_next_2026_05_06_1_notes(
+    asset_map: dict[str, str | None],
+    repo: str,
+    release_tag: str | None,
+) -> str:
+    assets_cn = {
+        key: format_asset(asset_map[key], repo, release_tag)
+        for key in asset_map
+    }
+    assets = {
+        key: format_asset_en(asset_map[key], repo, release_tag)
+        for key in asset_map
+    }
+    asset_order = [
+        'windows_opencl_portable',
+        'windows_opencl_installer',
+        'windows_portable',
+        'windows_installer',
+        'windows_nvidia_portable',
+        'windows_nvidia_installer',
+        'windows_no_engine_portable',
+        'windows_no_engine_installer',
+        'mac_arm64',
+        'mac_amd64',
+        'linux64',
+        'linux64_opencl',
+        'linux64_nvidia',
+    ]
+
+    def download_rows(labels: list[str], localized_assets: dict[str, str]) -> list[tuple[str, str]]:
+        return list(zip(labels, (localized_assets[key] for key in asset_order)))
+
+    shared_download_labels = {
+        'zh': [
+            'Windows 64 位，OpenCL 版，推荐更快，免安装',
+            'Windows 64 位，OpenCL 版，想安装',
+            'Windows 64 位，CPU 兼容版，免安装',
+            'Windows 64 位，CPU 兼容版，想安装',
+            'Windows 64 位，NVIDIA 显卡，免安装',
+            'Windows 64 位，NVIDIA 显卡，想安装',
+            'Windows 64 位，想自己配引擎',
+            'Windows 64 位，想自己配引擎，也想安装器',
+            'macOS Apple Silicon',
+            'macOS Intel',
+            'Linux 64 位，CPU 兼容版',
+            'Linux 64 位，OpenCL 版，AMD/Intel GPU',
+            'Linux 64 位，NVIDIA CUDA 版',
+        ],
+        'zh_hant': [
+            'Windows 64 位，OpenCL 版，推薦更快，免安裝',
+            'Windows 64 位，OpenCL 版，想安裝',
+            'Windows 64 位，CPU 相容版，免安裝',
+            'Windows 64 位，CPU 相容版，想安裝',
+            'Windows 64 位，NVIDIA 顯示卡，免安裝',
+            'Windows 64 位，NVIDIA 顯示卡，想安裝',
+            'Windows 64 位，想自己配引擎',
+            'Windows 64 位，想自己配引擎，也想安裝器',
+            'macOS Apple Silicon',
+            'macOS Intel',
+            'Linux 64 位，CPU 相容版',
+            'Linux 64 位，OpenCL 版，AMD/Intel GPU',
+            'Linux 64 位，NVIDIA CUDA 版',
+        ],
+        'en': [
+            'Windows 64-bit, OpenCL, recommended and faster, no install',
+            'Windows 64-bit, OpenCL, installer',
+            'Windows 64-bit, CPU compatible build, no install',
+            'Windows 64-bit, CPU compatible build, installer',
+            'Windows 64-bit, NVIDIA GPU, no install',
+            'Windows 64-bit, NVIDIA GPU, installer',
+            'Windows 64-bit, configure your own engine',
+            'Windows 64-bit, configure your own engine, installer',
+            'macOS Apple Silicon',
+            'macOS Intel',
+            'Linux 64-bit, CPU compatible build',
+            'Linux 64-bit, OpenCL for AMD/Intel GPU',
+            'Linux 64-bit, NVIDIA CUDA',
+        ],
+        'ja': [
+            'Windows 64-bit、OpenCL 推奨高速版、インストール不要',
+            'Windows 64-bit、OpenCL 版、インストーラ',
+            'Windows 64-bit、CPU 互換版、インストール不要',
+            'Windows 64-bit、CPU 互換版、インストーラ',
+            'Windows 64-bit、NVIDIA GPU、インストール不要',
+            'Windows 64-bit、NVIDIA GPU、インストーラ',
+            'Windows 64-bit、自分でエンジンを設定したい場合',
+            'Windows 64-bit、自分でエンジンを設定したい場合、インストーラ',
+            'macOS Apple Silicon',
+            'macOS Intel',
+            'Linux 64-bit、CPU 互換版',
+            'Linux 64-bit、OpenCL、AMD/Intel GPU',
+            'Linux 64-bit、NVIDIA CUDA',
+        ],
+        'ko': [
+            'Windows 64-bit, OpenCL 추천 고속판, 무설치',
+            'Windows 64-bit, OpenCL, 설치형',
+            'Windows 64-bit, CPU 호환 빌드, 무설치',
+            'Windows 64-bit, CPU 호환 빌드, 설치형',
+            'Windows 64-bit, NVIDIA GPU, 무설치',
+            'Windows 64-bit, NVIDIA GPU, 설치형',
+            'Windows 64-bit, 직접 엔진 설정',
+            'Windows 64-bit, 직접 엔진 설정, 설치형',
+            'macOS Apple Silicon',
+            'macOS Intel',
+            'Linux 64-bit, CPU 호환 빌드',
+            'Linux 64-bit, OpenCL, AMD/Intel GPU',
+            'Linux 64-bit, NVIDIA CUDA',
+        ],
+        'th': [
+            'Windows 64-bit, OpenCL, แนะนำและเร็วกว่า, ไม่ต้องติดตั้ง',
+            'Windows 64-bit, OpenCL, แบบติดตั้ง',
+            'Windows 64-bit, CPU compatible build, ไม่ต้องติดตั้ง',
+            'Windows 64-bit, CPU compatible build, แบบติดตั้ง',
+            'Windows 64-bit, การ์ดจอ NVIDIA, ไม่ต้องติดตั้ง',
+            'Windows 64-bit, การ์ดจอ NVIDIA, แบบติดตั้ง',
+            'Windows 64-bit, ต้องการตั้งค่า engine เอง',
+            'Windows 64-bit, ต้องการตั้งค่า engine เองและอยากใช้ installer',
+            'macOS Apple Silicon',
+            'macOS Intel',
+            'Linux 64-bit, CPU compatible build',
+            'Linux 64-bit, OpenCL สำหรับ AMD/Intel GPU',
+            'Linux 64-bit, NVIDIA CUDA',
+        ],
+    }
+
+    content: list[dict[str, object]] = [
+        {
+            'language': '中文',
+            'intro': '这是面向公开测试的稳定性 pre-release，重点修复 KataGo 智能测速、一键设置、默认引擎保存和经典配色提示框。',
+            'updates_heading': '本版主要更新',
+            'updates': [
+                '智能测速保留官方 KataGo benchmark 流程，但优化静默阶段的进度心跳，避免 88% 长时间不动造成“卡住”的错觉。',
+                '一键设置新增“导入自定义权重”，下载权重和应用权重分离；本地可以保留多个权重，再选择一个应用。',
+                '修复默认引擎/权重保存：重启后不再被第一项或 auto setup 覆盖，调整顺序也能正确保留默认项。',
+                '综合设置里的“限制变化图长度”默认改为 15，并传入 KataGo `analysisPVLen`，右下角小棋盘变化图长度设置开始真正生效。',
+                '经典配色下的通用提示框改成可读背景，避免引擎未加载完时点规则等功能弹出黑底提示。',
+                '一键设置弹窗在高 DPI Windows 上不再被长路径撑出屏幕，导入、应用、下载按钮完整可见。',
+                '感谢 @qiyi71w 的 PR #17，已隔离编译验证但本轮不混入大功能；感谢 @tosuhun-sys 的 issue #14，相关界面问题已关闭。',
+            ],
+            'before_heading': '下载前先看这几句',
+            'before': [
+                f'Windows 普通用户优先下载 {assets_cn["windows_opencl_portable"]}。',
+                f'如果 OpenCL 不稳定，再改用 {assets_cn["windows_portable"]}。',
+                f'NVIDIA 显卡用户优先试 {assets_cn["windows_nvidia_portable"]}。',
+                '这是 pre-release，建议愿意帮忙测试 benchmark、一键设置和默认引擎保存的用户优先试用。',
+                '本地已通过 `mvn test`、`mvn -DskipTests package`，并在 Windows OpenCL 便携包上完成真实 GUI 复测。',
+            ],
+            'download_heading': '下载建议',
+            'download_headers': ('你的电脑', '直接下载这个'),
+            'download_labels': shared_download_labels['zh'],
+            'why_heading': '这一版为什么值得测试',
+            'why': [
+                '测速不会再给用户“88% 卡死”的体验。',
+                '自定义权重可以像正常产品一样导入、保存、选择、应用。',
+                '默认引擎和默认权重终于不再被启动修复流程抢回去。',
+                '变化图长度设置和 KataGo 实际分析参数对齐。',
+            ],
+            'contact_heading': '交流',
+            'contact': ['QQ 群：`299419120`'],
+        },
+        {
+            'language': '繁體中文',
+            'intro': '這是面向公開測試的穩定性 pre-release，重點修復 KataGo 智慧測速、一鍵設定、預設引擎保存和經典配色提示框。',
+            'updates_heading': '本版主要更新',
+            'updates': [
+                '智慧測速保留官方 KataGo benchmark 流程，但最佳化靜默階段的進度心跳，避免 88% 長時間不動造成「卡住」的錯覺。',
+                '一鍵設定新增「匯入自訂權重」，下載權重和套用權重分離；本地可以保留多個權重，再選擇一個套用。',
+                '修復預設引擎/權重保存：重新啟動後不再被第一項或 auto setup 覆蓋，調整順序也能正確保留預設項。',
+                '綜合設定裡的「限制變化圖長度」預設改為 15，並傳入 KataGo `analysisPVLen`，右下角小棋盤變化圖長度設定開始真正生效。',
+                '經典配色下的通用提示框改成可讀背景，避免引擎未載入完成時點規則等功能彈出黑底提示。',
+                '一鍵設定視窗在高 DPI Windows 上不再被長路徑撐出螢幕，匯入、套用、下載按鈕完整可見。',
+                '感謝 @qiyi71w 的 PR #17，已隔離編譯驗證但本輪不混入大功能；感謝 @tosuhun-sys 的 issue #14，相關介面問題已關閉。',
+            ],
+            'before_heading': '下載前先看這幾句',
+            'before': [
+                f'Windows 一般使用者優先下載 {assets_cn["windows_opencl_portable"]}。',
+                f'如果 OpenCL 不穩定，再改用 {assets_cn["windows_portable"]}。',
+                f'NVIDIA 顯示卡使用者優先試 {assets_cn["windows_nvidia_portable"]}。',
+                '這是 pre-release，建議願意幫忙測試 benchmark、一鍵設定和預設引擎保存的使用者優先試用。',
+                '本地已通過 `mvn test`、`mvn -DskipTests package`，並在 Windows OpenCL 便攜包上完成真實 GUI 複測。',
+            ],
+            'download_heading': '下載建議',
+            'download_headers': ('你的電腦', '直接下載這個'),
+            'download_labels': shared_download_labels['zh_hant'],
+            'why_heading': '這一版為什麼值得測試',
+            'why': [
+                '測速不會再給使用者「88% 卡死」的體驗。',
+                '自訂權重可以像正常產品一樣匯入、保存、選擇、套用。',
+                '預設引擎和預設權重不再被啟動修復流程搶回去。',
+                '變化圖長度設定和 KataGo 實際分析參數對齊。',
+            ],
+            'contact_heading': '交流',
+            'contact': ['QQ 群：`299419120`'],
+        },
+        {
+            'language': 'English',
+            'intro': 'This public testing pre-release focuses on KataGo Smart Optimize, one-click setup, default-engine persistence, and readable classic-theme dialogs.',
+            'updates_heading': 'Release Highlights',
+            'updates': [
+                'Smart Optimize still uses the official KataGo benchmark, but the silent late phase now gets smoother progress heartbeats so 88% no longer looks frozen.',
+                'One-click setup can now import custom weights. Downloading a weight and applying a weight are separate, so users can keep multiple local weights and choose one to use.',
+                'Fixed default engine and weight persistence: restarts no longer reset the default to the first row or auto setup, and reordered engines keep the intended default.',
+                'The “limit variation length” setting now defaults to 15 and is passed to KataGo as `analysisPVLen`, so the lower-right board variation length setting takes effect.',
+                'Generic message dialogs now use readable colors in the classic theme, avoiding black-background warnings when engine-related actions are clicked before loading finishes.',
+                'The one-click setup dialog no longer stretches off-screen on high-DPI Windows; import, apply, and download buttons remain visible.',
+                'Thanks to @qiyi71w for PR #17; it passed isolated package compilation but is held for a dedicated feature review. Thanks to @tosuhun-sys for issue #14, now closed.',
+            ],
+            'before_heading': 'Read Before Downloading',
+            'before': [
+                f'Most Windows users should try {assets["windows_opencl_portable"]} first.',
+                f'If OpenCL is unstable, use {assets["windows_portable"]}.',
+                f'NVIDIA GPU users should try {assets["windows_nvidia_portable"]} first.',
+                'This is a pre-release for users willing to test benchmark progress, one-click setup, and default-engine persistence.',
+                'Local `mvn test` and `mvn -DskipTests package` passed, with real Windows OpenCL portable GUI verification.',
+            ],
+            'download_heading': 'Download Guide',
+            'download_headers': ('Your computer', 'Download this file'),
+            'download_labels': shared_download_labels['en'],
+            'why_heading': 'Why This Release Is Worth Testing',
+            'why': [
+                'Benchmark progress no longer feels stuck at 88%.',
+                'Custom weights can be imported, kept locally, selected, and applied explicitly.',
+                'Default engine and weight choices are not overwritten by startup repair.',
+                'Variation-length UI settings now match the actual KataGo analysis parameter.',
+            ],
+            'contact_heading': 'Contact',
+            'contact': ['QQ group: `299419120`'],
+        },
+        {
+            'language': '日本語',
+            'intro': 'この pre-release は、KataGo Smart Optimize、一括設定、既定エンジン保存、classic テーマのメッセージ表示を重点的に改善します。',
+            'updates_heading': '主な更新',
+            'updates': [
+                'Smart Optimize は公式 KataGo benchmark をそのまま使い、後半の無出力区間だけ進捗表示をなめらかにして 88% で止まったように見える問題を減らしました。',
+                '一括設定でカスタム重みをインポートできます。ダウンロードと適用を分離し、複数のローカル重みから選んで使えます。',
+                '既定エンジン/重みの保存を修正しました。再起動後に先頭行や auto setup に戻らず、並べ替え後も既定項目を維持します。',
+                '「変化図長さ制限」の既定値を 15 にし、KataGo `analysisPVLen` に渡すことで右下の小盤の変化図長さ設定が有効になります。',
+                'classic テーマの共通メッセージダイアログを読みやすい背景に変更し、エンジン読込前の警告が黒背景にならないようにしました。',
+                '高 DPI Windows で一括設定ダイアログが画面外へ伸びないようにし、インポート/適用/ダウンロードボタンを表示します。',
+                '@qiyi71w さんの PR #17 に感謝します。隔離ビルドは通過しましたが、大きな機能なので別途レビューします。issue #14 の @tosuhun-sys さんにも感謝します。',
+            ],
+            'before_heading': 'ダウンロード前に',
+            'before': [
+                f'多くの Windows ユーザーは {assets["windows_opencl_portable"]} を先に試してください。',
+                f'OpenCL が不安定な場合は {assets["windows_portable"]} を使ってください。',
+                f'NVIDIA GPU では {assets["windows_nvidia_portable"]} を優先してください。',
+                'これは benchmark、一括設定、既定エンジン保存の確認に協力できるユーザー向け pre-release です。',
+                'ローカル `mvn test`、`mvn -DskipTests package` に通過し、Windows OpenCL portable で実機 GUI 検証済みです。',
+            ],
+            'download_heading': 'ダウンロード案内',
+            'download_headers': ('お使いの環境', 'ダウンロードするファイル'),
+            'download_labels': shared_download_labels['ja'],
+            'why_heading': 'この版をテストする理由',
+            'why': [
+                'benchmark が 88% で固まったように見えにくくなります。',
+                'カスタム重みをインポートし、ローカル保存、選択、適用できます。',
+                '既定エンジンと重みが起動時の修復処理で上書きされません。',
+                '変化図長さ設定が実際の KataGo 分析パラメータと一致します。',
+            ],
+            'contact_heading': '連絡先',
+            'contact': ['QQ グループ: `299419120`'],
+        },
+        {
+            'language': '한국어',
+            'intro': '이 pre-release 는 KataGo Smart Optimize, 원클릭 설정, 기본 엔진 저장, classic 테마 메시지 가독성 개선에 집중합니다.',
+            'updates_heading': '주요 업데이트',
+            'updates': [
+                'Smart Optimize 는 공식 KataGo benchmark 를 그대로 사용하되, 후반 무출력 구간의 진행 표시를 부드럽게 해 88% 에서 멈춘 것처럼 보이는 문제를 줄였습니다.',
+                '원클릭 설정에서 사용자 지정 가중치를 가져올 수 있습니다. 다운로드와 적용을 분리해 여러 로컬 가중치를 보관하고 선택해 적용할 수 있습니다.',
+                '기본 엔진/가중치 저장을 수정했습니다. 재시작 후 첫 번째 행이나 auto setup 으로 돌아가지 않고, 순서를 바꿔도 기본 항목이 유지됩니다.',
+                '“변화도 길이 제한” 기본값을 15 로 바꾸고 KataGo `analysisPVLen` 으로 전달해 오른쪽 아래 작은 보드의 변화도 길이 설정이 실제로 적용됩니다.',
+                'classic 테마의 공통 메시지 다이얼로그 배경을 읽기 쉬운 색으로 바꿔, 엔진 로딩 전 경고가 검은 배경으로 뜨지 않게 했습니다.',
+                '고 DPI Windows 에서 원클릭 설정 창이 화면 밖으로 늘어나지 않고, 가져오기/적용/다운로드 버튼이 보입니다.',
+                '@qiyi71w 님의 PR #17 에 감사드립니다. 격리 패키지 빌드는 통과했지만 큰 기능이라 별도 리뷰로 진행합니다. issue #14 의 @tosuhun-sys 님께도 감사드립니다.',
+            ],
+            'before_heading': '다운로드 전 확인',
+            'before': [
+                f'대부분의 Windows 사용자는 {assets["windows_opencl_portable"]} 를 먼저 사용해 보세요.',
+                f'OpenCL 이 불안정하면 {assets["windows_portable"]} 를 사용하세요.',
+                f'NVIDIA GPU 사용자는 {assets["windows_nvidia_portable"]} 를 우선 권장합니다.',
+                'benchmark 진행, 원클릭 설정, 기본 엔진 저장을 함께 테스트할 사용자를 위한 pre-release 입니다.',
+                '로컬 `mvn test`, `mvn -DskipTests package` 를 통과했고 Windows OpenCL portable 에서 실제 GUI 검증을 마쳤습니다.',
+            ],
+            'download_heading': '다운로드 안내',
+            'download_headers': ('내 컴퓨터', '다운로드할 파일'),
+            'download_labels': shared_download_labels['ko'],
+            'why_heading': '이번 버전을 테스트할 이유',
+            'why': [
+                'benchmark 진행률이 88% 에서 멈춘 것처럼 느껴지지 않습니다.',
+                '사용자 지정 가중치를 가져오고, 로컬에 보관하고, 선택해서 적용할 수 있습니다.',
+                '기본 엔진과 가중치가 시작 복구 과정에서 덮어써지지 않습니다.',
+                '변화도 길이 설정이 실제 KataGo 분석 파라미터와 일치합니다.',
+            ],
+            'contact_heading': '연락처',
+            'contact': ['QQ 그룹: `299419120`'],
+        },
+        {
+            'language': 'ภาษาไทย',
+            'intro': 'pre-release นี้เน้นแก้ Smart Optimize ของ KataGo, one-click setup, การจำ default engine และกล่องข้อความให้อ่านง่ายใน classic theme',
+            'updates_heading': 'ไฮไลต์ของเวอร์ชันนี้',
+            'updates': [
+                'Smart Optimize ยังใช้ benchmark ทางการของ KataGo แต่เพิ่ม heartbeat ของ progress ในช่วงท้ายที่เงียบ ทำให้ 88% ไม่ดูเหมือนค้าง',
+                'one-click setup รองรับการนำเข้า custom weight แล้ว การดาวน์โหลด weight และการ apply weight แยกจากกัน ผู้ใช้เก็บหลาย weight ในเครื่องแล้วเลือกใช้ได้',
+                'แก้การจำ default engine/weight หลังรีสตาร์ต ไม่กลับไปแถวแรกหรือ auto setup และการเลื่อนลำดับยังคง default ที่ตั้งไว้',
+                'ค่า “จำกัดความยาว variation” ตั้งต้นเป็น 15 และส่งเข้า KataGo เป็น `analysisPVLen` ทำให้ small board มุมขวาล่างใช้ค่านี้จริง',
+                'กล่องข้อความทั่วไปใน classic theme ใช้พื้นหลังที่อ่านง่าย ไม่เป็นกล่องดำเมื่อกดเมนูเกี่ยวกับ engine ก่อนโหลดเสร็จ',
+                'หน้าต่าง one-click setup บน Windows high DPI ไม่ยืดหลุดจอ และปุ่ม import/apply/download เห็นครบ',
+                'ขอบคุณ @qiyi71w สำหรับ PR #17 ซึ่งผ่าน isolated package compile แล้วแต่จะรีวิวแยก และขอบคุณ @tosuhun-sys สำหรับ issue #14 ที่ปิดแล้ว',
+            ],
+            'before_heading': 'ก่อนดาวน์โหลด ดูตรงนี้ก่อน',
+            'before': [
+                f'ผู้ใช้ Windows ส่วนใหญ่ให้ลอง {assets["windows_opencl_portable"]} ก่อน',
+                f'ถ้า OpenCL ไม่เสถียร ให้ใช้ {assets["windows_portable"]}',
+                f'ผู้ใช้ NVIDIA GPU แนะนำ {assets["windows_nvidia_portable"]}',
+                'นี่คือ pre-release สำหรับผู้ใช้ที่ช่วยทดสอบ benchmark progress, one-click setup และ default-engine persistence ได้',
+                'ผ่าน `mvn test`, `mvn -DskipTests package` ในเครื่อง และทดสอบ GUI จริงด้วย Windows OpenCL portable แล้ว',
+            ],
+            'download_heading': 'แนะนำการดาวน์โหลด',
+            'download_headers': ('เครื่องของคุณ', 'ดาวน์โหลดไฟล์นี้'),
+            'download_labels': shared_download_labels['th'],
+            'why_heading': 'ทำไมเวอร์ชันนี้ควรทดสอบ',
+            'why': [
+                'benchmark จะไม่รู้สึกเหมือนค้างที่ 88%',
+                'custom weight สามารถ import, เก็บในเครื่อง, เลือก และ apply ได้ชัดเจน',
+                'default engine และ weight จะไม่ถูก startup repair เขียนทับ',
+                'ค่าความยาว variation ใน UI ตรงกับพารามิเตอร์ KataGo จริง',
+            ],
+            'contact_heading': 'ติดต่อ',
+            'contact': ['QQ group: `299419120`'],
+        },
+    ]
+
+    sections: list[dict[str, object]] = []
+    for block in content:
+        language = str(block['language'])
+        localized_assets = assets_cn if language in ('中文', '繁體中文') else assets
+        sections.append(
+            {
+                'language': language,
+                'intro': block['intro'],
+                'updates': {'heading': block['updates_heading'], 'items': block['updates']},
+                'before': {'heading': block['before_heading'], 'items': block['before']},
+                'download': {
+                    'heading': block['download_heading'],
+                    'headers': block['download_headers'],
+                    'rows': download_rows(block['download_labels'], localized_assets),
+                },
+                'why': {'heading': block['why_heading'], 'items': block['why']},
+                'contact': {'heading': block['contact_heading'], 'items': block['contact']},
+            }
+        )
+
+    validate_release_sections(sections)
+    return release_heading(release_tag) + '\n\n' + '\n\n---\n\n'.join(
+        render_language_section(section) for section in sections
+    ) + '\n'
+
+
 def build_release_notes(asset_map: dict[str, str | None], bundle: dict[str, str], repo: str, release_tag: str | None) -> str:
     if release_tag == 'next-2026-05-03.1':
         return build_next_2026_05_03_1_notes(asset_map, repo, release_tag)
     if release_tag == 'next-2026-05-04.1':
         return build_next_2026_05_04_1_notes(asset_map, repo, release_tag)
+    if release_tag == 'next-2026-05-06.1':
+        return build_next_2026_05_06_1_notes(asset_map, repo, release_tag)
 
     assets_cn = {
         key: format_asset(asset_map[key], repo, release_tag)
@@ -1058,10 +1418,10 @@ def build_release_notes(asset_map: dict[str, str | None], bundle: dict[str, str]
             'updates': {
                 'heading': '本版主要更新',
                 'items': [
-                    '首次启动和手动智能测速现在都可以主动取消：关闭窗口或点击“停止测速”会结束 KataGo benchmark 进程，并恢复当前分析。',
-                    '棋谱加载改成“可操作优先”：本地 SGF、野狐棋谱、在线/共享棋谱加载后，胜率曲线和 movelist 补齐前也能立即用方向键走棋。',
-                    'Windows 棋盘同步工具改为内置固定版 native `readboard.exe` v3.0.1 自包含运行时，降低用户电脑缺少运行库导致 Alt+O 无反应的风险。',
-                    '发布说明已精简为本版新增变化，同时继续保持 6 种语言同结构和同一下载表格式。',
+                    'KataGo 人机对弈的“AI 每手用时”现在按固定秒数执行，不再因为 KataGo 时间管理而提前秒下；本机实测设置 4 秒时约 4.03 秒落子。',
+                    '引擎设置里的自动加载方式（默认引擎、最后退出的引擎、手动选择、无引擎）和贴目现在会保存，重启后不再被内置 KataGo 默认项覆盖。',
+                    '合并 qiyi71w 的 PR #17：新增 Web 端试下模式与引擎跟随分析。感谢 qiyi71w 持续优化和贡献。',
+                    '发布前已重新跑全量测试、打包和本机启动冒烟；当前 GitHub 开放 PR 已清空。',
                 ],
             },
             'before': {
@@ -1125,10 +1485,10 @@ def build_release_notes(asset_map: dict[str, str | None], bundle: dict[str, str]
             'updates': {
                 'heading': '本版主要更新',
                 'items': [
-                    '首次啟動和手動智慧測速現在都可以主動取消：關閉視窗或點擊「停止測速」會結束 KataGo benchmark 行程，並恢復目前分析。',
-                    '棋譜載入改成「可操作優先」：本地 SGF、野狐棋譜、線上/共享棋譜載入後，勝率曲線和 movelist 補齊前也能立即用方向鍵走棋。',
-                    'Windows 棋盤同步工具改為內建固定版 native `readboard.exe` v3.0.1 自包含執行環境，降低使用者電腦缺少 runtime 導致 Alt+O 無反應的風險。',
-                    '發布說明已精簡為本版新增變化，同時繼續保持 6 種語言同結構和同一下載表格式。',
+                    'KataGo 人機對弈的「AI 每手用時」現在會按固定秒數執行，不再因 KataGo 時間管理而提前秒下；本機實測設定 4 秒時約 4.03 秒落子。',
+                    '引擎設定裡的自動載入方式（預設引擎、最後退出的引擎、手動選擇、無引擎）和貼目現在會儲存，重啟後不再被內建 KataGo 預設項覆蓋。',
+                    '合併 qiyi71w 的 PR #17：新增 Web 端試下模式與引擎跟隨分析。感謝 qiyi71w 持續最佳化與貢獻。',
+                    '發布前已重新跑完整測試、打包和本機啟動冒煙；目前 GitHub 開放 PR 已清空。',
                 ],
             },
             'before': {
@@ -1192,10 +1552,10 @@ def build_release_notes(asset_map: dict[str, str | None], bundle: dict[str, str]
             'updates': {
                 'heading': 'Release Highlights',
                 'items': [
-                    'First-run and manual Smart Optimize benchmarks can now be cancelled: closing the window or pressing Stop kills the KataGo benchmark process and restores analysis.',
-                    'Game-record loading now prioritizes interaction: after local SGF, Fox game, online SGF, or shared-game loading, arrow-key navigation works immediately while the winrate graph and movelist catch up.',
-                    'The Windows board sync tool now bundles pinned native `readboard.exe` v3.0.1 with a self-contained runtime, reducing Alt+O no-op risk on PCs missing external runtimes.',
-                    'Release notes now focus on changes introduced in this release while keeping the fixed six-language structure and matching download tables.',
+                    'KataGo human-vs-AI games now honor the fixed “AI seconds per move” setting instead of moving early because of KataGo time management; a local 4-second smoke test moved in about 4.03 seconds.',
+                    'Engine Settings now persist auto-load mode (default engine, last engine, manual choice, no engine) and komi across restart instead of being overwritten by bundled KataGo defaults.',
+                    'Merged qiyi71w’s PR #17: Web trial mode plus engine-following analysis. Thank you qiyi71w for the continued improvements and contributions.',
+                    'Before release, full tests, packaging, and a local launch smoke test were rerun; there are no open GitHub PRs at publish time.',
                 ],
             },
             'before': {
@@ -1259,10 +1619,10 @@ def build_release_notes(asset_map: dict[str, str | None], bundle: dict[str, str]
             'updates': {
                 'heading': '主な更新',
                 'items': [
-                    '初回起動時と手動のスマート最適化 benchmark は、ウィンドウを閉じるか停止ボタンを押すことでキャンセルできます。キャンセル時は KataGo benchmark プロセスを終了し、分析を復帰します。',
-                    '棋譜読み込みは操作可能性を優先します。ローカル SGF、野狐棋譜、オンライン/共有棋譜の読み込み後、勝率グラフと movelist の補完前でも方向キーで進められます。',
-                    'Windows の棋盤同期ツールは、固定版 native `readboard.exe` v3.0.1 と自己完結 runtime を同梱し、外部 runtime 不足で Alt+O が無反応になるリスクを下げました。',
-                    'リリースノートはこのリリースで追加された変更に絞りつつ、6 言語同一構造と同じダウンロード表形式を維持します。',
+                    'KataGo との人間対 AI 対局で、「AI の 1 手あたり秒数」が固定秒数として効くようになりました。KataGo の時間管理で早打ちする問題を避け、ローカル 4 秒テストでは約 4.03 秒で着手しました。',
+                    'エンジン設定の自動読み込み方式（既定エンジン、最後に終了したエンジン、手動選択、エンジンなし）とコミが再起動後も保持され、同梱 KataGo の既定値で上書きされなくなりました。',
+                    'qiyi71w さんの PR #17 をマージしました。Web 端末の試し打ちモードと、表示局面に追従するエンジン分析が追加されています。継続的な改善と貢献に感謝します。',
+                    'リリース前に full test、package、ローカル起動 smoke test を再実行しました。公開時点で GitHub の open PR はありません。',
                 ],
             },
             'before': {
@@ -1326,10 +1686,10 @@ def build_release_notes(asset_map: dict[str, str | None], bundle: dict[str, str]
             'updates': {
                 'heading': '주요 업데이트',
                 'items': [
-                    '첫 실행 및 수동 Smart Optimize 벤치마크는 이제 취소할 수 있습니다. 창을 닫거나 Stop 버튼을 누르면 KataGo benchmark 프로세스를 종료하고 분석을 복구합니다.',
-                    '기보 로딩은 즉시 조작을 우선합니다. 로컬 SGF, Fox 기보, 온라인/공유 기보를 불러온 뒤 승률 그래프와 movelist 가 보완되기 전에도 방향키 이동이 바로 가능합니다.',
-                    'Windows 보드 동기화 도구는 고정 버전 native `readboard.exe` v3.0.1 과 self-contained runtime 을 포함해, 외부 runtime 부족으로 Alt+O 가 반응하지 않는 위험을 줄였습니다.',
-                    'release notes 는 이번 릴리스에서 추가된 변경 사항에 집중하면서도 6개 언어 동일 구조와 같은 다운로드 표 형식을 유지합니다.',
+                    'KataGo 인간 대 AI 대국에서 “AI 한 수당 시간” 설정이 고정 초 단위로 적용됩니다. KataGo 시간 관리 때문에 너무 빨리 두던 문제를 피했으며, 로컬 4초 smoke test 에서는 약 4.03초에 착수했습니다.',
+                    '엔진 설정의 자동 로드 방식(기본 엔진, 마지막 종료 엔진, 수동 선택, 엔진 없음)과 덤이 재시작 후에도 유지되며, 내장 KataGo 기본값으로 덮어써지지 않습니다.',
+                    'qiyi71w 의 PR #17 을 병합했습니다. Web 시험수 모드와 현재 표시 국면을 따라가는 엔진 분석이 추가되었습니다. 지속적인 개선과 기여에 감사드립니다.',
+                    '릴리스 전에 full test, package, 로컬 실행 smoke test 를 다시 수행했습니다. 공개 시점의 GitHub open PR 은 없습니다.',
                 ],
             },
             'before': {
@@ -1393,10 +1753,10 @@ def build_release_notes(asset_map: dict[str, str | None], bundle: dict[str, str]
             'updates': {
                 'heading': 'ไฮไลต์ของเวอร์ชันนี้',
                 'items': [
-                    'benchmark ครั้งแรกและ Smart Optimize แบบกดเองสามารถยกเลิกได้แล้ว: ปิดหน้าต่างหรือกด Stop จะหยุด process benchmark ของ KataGo และคืนค่าการวิเคราะห์',
-                    'การโหลด SGF/บันทึกเกมเน้นให้ใช้งานได้ทันที: local SGF, เกม Fox, online/shared SGF สามารถใช้ปุ่มลูกศรเดินหมากได้ทันที แม้กราฟอัตราชนะและ movelist จะยังเติมข้อมูลตามมา',
-                    'เครื่องมือซิงก์กระดานบน Windows รวม native `readboard.exe` v3.0.1 แบบ self-contained runtime เพื่อลดความเสี่ยงที่ Alt+O ไม่ตอบสนองเพราะเครื่องผู้ใช้ไม่มี runtime ภายนอก',
-                    'release notes ถูกย่อให้เน้นเฉพาะการเปลี่ยนแปลงของเวอร์ชันนี้ พร้อมคงโครงสร้าง 6 ภาษาและตารางดาวน์โหลดรูปแบบเดียวกัน',
+                    'โหมดคนเล่นกับ KataGo จะทำตามค่า “เวลา AI ต่อหนึ่งตา” แบบคงที่แล้ว ไม่เดินเร็วเกินไปจาก time management ของ KataGo; ทดสอบในเครื่องที่ 4 วินาทีแล้วเดินประมาณ 4.03 วินาที',
+                    'Engine Settings จะจำโหมดโหลดอัตโนมัติ (default engine, last engine, manual choice, no engine) และ komi หลังรีสตาร์ต ไม่ถูกค่า default ของ KataGo ที่มากับโปรแกรมทับอีก',
+                    'รวม PR #17 ของ qiyi71w แล้ว: เพิ่ม Web trial mode และการวิเคราะห์ที่ engine ติดตามตำแหน่งที่แสดงอยู่ ขอบคุณ qiyi71w สำหรับการปรับปรุงและการร่วมพัฒนาอย่างต่อเนื่อง',
+                    'ก่อนปล่อยเวอร์ชันนี้ ได้รัน full test, package และ local launch smoke test ซ้ำแล้ว และตอนเผยแพร่ไม่มี GitHub PR ที่เปิดค้างอยู่',
                 ],
             },
             'before': {

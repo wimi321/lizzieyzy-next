@@ -41,6 +41,7 @@ import javax.swing.table.DefaultTableCellRenderer;
 import javax.swing.table.TableCellRenderer;
 import javax.swing.table.TableModel;
 import org.json.JSONException;
+import org.json.JSONObject;
 
 public class MoreEngines extends JPanel {
   public static Config config;
@@ -888,23 +889,32 @@ public class MoreEngines extends JPanel {
   public void saveDefaultEngine() {
     // if (this.chkDefault.isSelected()) Lizzie.config.uiConfig.put("default-engine",
     // this.curIndex);
-    if (rdoDefault.isSelected()) {
-      Lizzie.config.uiConfig.put("autoload-default", true);
-      Lizzie.config.uiConfig.put("autoload-last", false);
-      Lizzie.config.uiConfig.put("autoload-empty", false);
-    } else if (rdoLast.isSelected()) {
-      Lizzie.config.uiConfig.put("autoload-last", true);
-      Lizzie.config.uiConfig.put("autoload-default", false);
-      Lizzie.config.uiConfig.put("autoload-empty", false);
-    } else if (rdoMannul.isSelected()) {
-      Lizzie.config.uiConfig.put("autoload-last", false);
-      Lizzie.config.uiConfig.put("autoload-default", false);
-      Lizzie.config.uiConfig.put("autoload-empty", false);
-    } else if (rdoNone.isSelected()) {
-      Lizzie.config.uiConfig.put("autoload-last", false);
-      Lizzie.config.uiConfig.put("autoload-default", false);
-      Lizzie.config.uiConfig.put("autoload-empty", true);
+    if (updateStartupMode(
+        Lizzie.config.uiConfig,
+        rdoDefault.isSelected(),
+        rdoLast.isSelected(),
+        rdoNone.isSelected())) {
+      try {
+        Lizzie.config.save();
+      } catch (IOException e) {
+        e.printStackTrace();
+      }
     }
+  }
+
+  static boolean updateStartupMode(
+      JSONObject uiConfig, boolean autoloadDefault, boolean autoloadLast, boolean autoloadEmpty) {
+    boolean oldDefault = uiConfig.optBoolean("autoload-default", false);
+    boolean oldLast = uiConfig.optBoolean("autoload-last", false);
+    boolean oldEmpty = uiConfig.optBoolean("autoload-empty", false);
+    boolean newDefault = autoloadDefault;
+    boolean newLast = !newDefault && autoloadLast;
+    boolean newEmpty = !newDefault && !newLast && autoloadEmpty;
+
+    uiConfig.put("autoload-default", newDefault);
+    uiConfig.put("autoload-last", newLast);
+    uiConfig.put("autoload-empty", newEmpty);
+    return oldDefault != newDefault || oldLast != newLast || oldEmpty != newEmpty;
   }
 
   private void checkSave() {

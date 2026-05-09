@@ -760,7 +760,8 @@ public class Leelaz {
     }
     currentTotalPlayouts = MoveData.getPlayouts(bestMoves);
     if (Lizzie.config.isDoubleEngineMode() && Lizzie.leelaz2 != null && this == Lizzie.leelaz2)
-      Lizzie.board
+      Lizzie.frame
+          .getDisplayNode()
           .getData()
           .tryToSetBestMoves2(bestMoves, bestMovesEnginename, true, currentTotalPlayouts);
     else {
@@ -773,12 +774,14 @@ public class Leelaz {
                 && this
                     == Lizzie.engineManager.engineList.get(
                         EngineManager.engineGameInfo.whiteEngineIndex)) {
-          Lizzie.board
+          Lizzie.frame
+              .getDisplayNode()
               .getData()
               .tryToSetBestMoves(bestMoves, bestMovesEnginename, true, currentTotalPlayouts);
         }
       } else
-        Lizzie.board
+        Lizzie.frame
+            .getDisplayNode()
             .getData()
             .tryToSetBestMoves(bestMoves, bestMovesEnginename, true, currentTotalPlayouts);
     }
@@ -800,7 +803,8 @@ public class Leelaz {
     }
     currentTotalPlayouts = MoveData.getPlayouts(bestMoves);
     if (Lizzie.config.isDoubleEngineMode() && Lizzie.leelaz2 != null && this == Lizzie.leelaz2)
-      Lizzie.board
+      Lizzie.frame
+          .getDisplayNode()
           .getData()
           .tryToSetBestMoves2(bestMoves, bestMovesEnginename, true, currentTotalPlayouts);
     else {
@@ -814,12 +818,14 @@ public class Leelaz {
                     == Lizzie.engineManager.engineList.get(
                         EngineManager.engineGameInfo.whiteEngineIndex)) {
           // if(!isModifying)
-          Lizzie.board
+          Lizzie.frame
+              .getDisplayNode()
               .getData()
               .tryToSetBestMoves(bestMoves, bestMovesEnginename, true, currentTotalPlayouts);
         }
       } else
-        Lizzie.board
+        Lizzie.frame
+            .getDisplayNode()
             .getData()
             .tryToSetBestMoves(bestMoves, bestMovesEnginename, true, currentTotalPlayouts);
     }
@@ -855,7 +861,8 @@ public class Leelaz {
       }
     } else estimateArray = null;
     if (Lizzie.config.isDoubleEngineMode() && Lizzie.leelaz2 != null && this == Lizzie.leelaz2)
-      Lizzie.board
+      Lizzie.frame
+          .getDisplayNode()
           .getData()
           .tryToSetBestMoves2(
               bestMoves, bestMovesEnginename, true, currentTotalPlayouts, estimateArray);
@@ -870,18 +877,54 @@ public class Leelaz {
                     == Lizzie.engineManager.engineList.get(
                         EngineManager.engineGameInfo.whiteEngineIndex)) {
           //	if(!isModifying)
-          Lizzie.board
+          Lizzie.frame
+              .getDisplayNode()
               .getData()
               .tryToSetBestMoves(
                   bestMoves, bestMovesEnginename, true, currentTotalPlayouts, estimateArray);
         }
       } else
-        Lizzie.board
+        Lizzie.frame
+            .getDisplayNode()
             .getData()
             .tryToSetBestMoves(
                 bestMoves, bestMovesEnginename, true, currentTotalPlayouts, estimateArray);
     }
+    logTrialKataInfo(bestMoves);
     return bestMoves;
+  }
+
+  // 试下诊断：限频打印 katago info 落到哪个 displayNode、引擎首选 winrate。开关见 TrialDiag。
+  private static long lastTrialKataLogMs = 0L;
+  private static long lastMainlineKataLogMs = 0L;
+  private static long lastRawInfoLogMs = 0L;
+
+  private void logTrialKataInfo(List<MoveData> bestMoves) {
+    if (!TrialDiag.ENABLED) return;
+    if (bestMoves == null || bestMoves.isEmpty()) return;
+    boolean trial =
+        Lizzie.engineFollowController != null && Lizzie.engineFollowController.isTrialActive();
+    long now = System.currentTimeMillis();
+    if (trial) {
+      if (now - lastTrialKataLogMs < 500) return;
+      lastTrialKataLogMs = now;
+    } else {
+      if (now - lastMainlineKataLogMs < 1500) return;
+      lastMainlineKataLogMs = now;
+    }
+    featurecat.lizzie.rules.BoardHistoryNode dn = Lizzie.frame.getDisplayNode();
+    featurecat.lizzie.rules.BoardData dd = dn.getData();
+    MoveData top = bestMoves.get(0);
+    System.out.printf(
+        "[%s-kata-info] writeTo displayNode moveNum=%d blackToPlay=%s "
+            + "topMove=%s topWR=%.2f topScore=%.2f totalVisits=%d%n",
+        trial ? "trial" : "mainline",
+        dd.moveNumber,
+        dd.blackToPlay,
+        top.coordinate,
+        top.winrate,
+        top.scoreMean,
+        currentTotalPlayouts);
   }
 
   /**
@@ -1320,7 +1363,21 @@ public class Leelaz {
   }
 
   private void parseLine(String line) {
-    // System.out.println(line);
+    if (TrialDiag.ENABLED && line.startsWith("info")) {
+      // 只在试下激活时打 KataGo 原始 info 行第一段，限频
+      if (Lizzie.engineFollowController != null && Lizzie.engineFollowController.isTrialActive()) {
+        long now = System.currentTimeMillis();
+        if (now - lastRawInfoLogMs > 500) {
+          lastRawInfoLogMs = now;
+          int end = line.indexOf(" pv ");
+          String head =
+              end < 0
+                  ? line.substring(0, Math.min(line.length(), 200))
+                  : line.substring(0, Math.min(end, 200));
+          System.out.println("[trial-raw-info] " + head);
+        }
+      }
+    }
     synchronized (this) {
       if (line.startsWith("info")) {
         boolean upToDate = isResponseUpToDate();
@@ -2203,6 +2260,9 @@ public class Leelaz {
     String line = "";
     try {
       while ((line = errorStream.readLine()) != null) {
+        if (TrialDiag.ENABLED && line != null && !line.isEmpty()) {
+          System.out.println("[katago-stderr] " + line);
+        }
         rememberRecentLine(recentStderrLines, line);
         try {
           parseLineForError(line);
@@ -2744,6 +2804,9 @@ public class Leelaz {
         if (++taken >= 6) break;
       }
       YikeSyncDebugLog.log("Leelaz sendCommand TRACE command=" + command + " caller=" + sb);
+    }
+    if (TrialDiag.ENABLED) {
+      System.out.println("[katago-cmd] " + command);
     }
     sendCommand(command, null);
   }
@@ -3936,6 +3999,7 @@ public class Leelaz {
   }
 
   public void genmove(String color) {
+    sendPlayingAgainstHumanTimeLeftBeforeGenmove();
     String command =
         (this.isKatago
             ? ("kata-genmove_analyze " + color + " " + getInterval() + addKataTag())
@@ -3947,6 +4011,14 @@ public class Leelaz {
     sendCommand(command);
     isThinking = true;
     LizzieFrame.menu.toggleEngineMenuStatus(false, true);
+  }
+
+  private void sendPlayingAgainstHumanTimeLeftBeforeGenmove() {
+    if (Lizzie.frame == null || !Lizzie.frame.isPlayingAgainstLeelaz) return;
+    if (Lizzie.engineManager == null
+        || Lizzie.engineManager.playingAgainstHumanEngineCountDown == null) return;
+    if (this != Lizzie.leelaz) return;
+    Lizzie.engineManager.playingAgainstHumanEngineCountDown.sendTimeLeft(false);
   }
 
   public void genmoveForPk(String color) {
@@ -4196,7 +4268,17 @@ public class Leelaz {
   private String maybeAddPlayer(boolean addPlayer, boolean reverse) {
     if (!canAddPlayer) return "";
     else if (addPlayer) return (reverse ? "B " : "W ");
-    else return (Lizzie.board.getHistory().isBlacksTurn() ? "B " : "W ");
+    // 试下激活时 mainline currentHistoryNode 停在 anchor，但要分析的是 displayNode（trial 子树里），
+    // 用 mainline 视角会让 kata-analyze 颜色错位 → KataGo 用错视角给 winrate → 画面上"轮谁谁稳赢"。
+    if (Lizzie.engineFollowController != null
+        && Lizzie.engineFollowController.isTrialActive()
+        && Lizzie.frame != null) {
+      featurecat.lizzie.rules.BoardHistoryNode dn = Lizzie.frame.getDisplayNode();
+      if (dn != null && dn.getData() != null) {
+        return dn.getData().blackToPlay ? "B " : "W ";
+      }
+    }
+    return (Lizzie.board.getHistory().isBlacksTurn() ? "B " : "W ");
   }
 
   public int getInterval() {

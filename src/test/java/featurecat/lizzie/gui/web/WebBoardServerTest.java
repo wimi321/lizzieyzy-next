@@ -107,6 +107,34 @@ public class WebBoardServerTest {
     clients.forEach(TestClient::close);
   }
 
+  @Test
+  void onMessageDispatchesEnterTrialToHandler() {
+    java.util.concurrent.atomic.AtomicReference<org.json.JSONObject> received =
+        new java.util.concurrent.atomic.AtomicReference<>();
+    WebBoardServer s = new WebBoardServer(new InetSocketAddress("127.0.0.1", 0), 20);
+    s.setMessageHandler((conn, json) -> received.set(json));
+    s.onMessage(null, "{\"type\":\"enter_trial\",\"clientId\":\"abc\"}");
+    assertNotNull(received.get());
+    assertEquals("enter_trial", received.get().getString("type"));
+    assertEquals("abc", received.get().getString("clientId"));
+  }
+
+  @Test
+  void onMessageIgnoresMalformedJson() {
+    java.util.concurrent.atomic.AtomicBoolean called =
+        new java.util.concurrent.atomic.AtomicBoolean(false);
+    WebBoardServer s = new WebBoardServer(new InetSocketAddress("127.0.0.1", 0), 20);
+    s.setMessageHandler((conn, json) -> called.set(true));
+    s.onMessage(null, "not json");
+    assertFalse(called.get());
+  }
+
+  @Test
+  void onMessageNoOpWhenHandlerNotSet() {
+    WebBoardServer s = new WebBoardServer(new InetSocketAddress("127.0.0.1", 0), 20);
+    s.onMessage(null, "{\"type\":\"x\"}");
+  }
+
   private static class TestClient extends WebSocketClient {
     private final CountDownLatch openLatch;
     private final CountDownLatch closeLatch;

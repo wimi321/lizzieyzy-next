@@ -73,7 +73,11 @@ public final class SnapshotEngineRestore {
   private static Path writeSnapshotSgf(BoardData snapshotData) {
     try {
       Path sgfFile = Files.createTempFile("lizzie-snapshot-", ".sgf");
-      Files.writeString(sgfFile, buildSnapshotSgf(snapshotData));
+      String sgf = buildSnapshotSgf(snapshotData);
+      Files.writeString(sgfFile, sgf);
+      if (featurecat.lizzie.analysis.TrialDiag.ENABLED) {
+        System.out.println("[trial-sgf] " + sgf);
+      }
       return sgfFile;
     } catch (IOException ex) {
       throw new IllegalStateException("Failed to build snapshot SGF for engine restore", ex);
@@ -113,11 +117,34 @@ public final class SnapshotEngineRestore {
     StringBuilder builder = new StringBuilder();
     builder.append("(;FF[4]GM[1]CA[UTF-8]");
     builder.append("SZ[").append(formatBoardSizeTag(boardWidth, boardHeight)).append(']');
+    // 写入 KM 字段：KataGo loadsgf 会按 SGF 的 KM 重置 komi。漏写让 KataGo 进程内的 komi 退回 SGF 默认值
+    // 而不是 lizzie 启动时已经 GTP `komi X` 设的值。优先用 snapshotData.komi（引擎分析过的节点会填）；
+    // 否则读 Lizzie.board.history.gameInfo.komi；测试场景下两者都拿不到时跳过 KM 字段。
+    Double komi = resolveKomi(snapshotData);
+    if (komi != null) {
+      builder.append("KM[").append(formatKomi(komi)).append(']');
+    }
     builder.append("PL[").append(snapshotData.blackToPlay ? "B" : "W").append(']');
     appendStones(builder, snapshotData.stones, Stone.BLACK, "AB", boardWidth, boardHeight);
     appendStones(builder, snapshotData.stones, Stone.WHITE, "AW", boardWidth, boardHeight);
     builder.append(')');
     return builder.toString();
+  }
+
+  private static String formatKomi(double komi) {
+    return String.format(java.util.Locale.US, "%.1f", komi);
+  }
+
+  /** 取 komi 写入 SGF：snapshotData 自身 → Lizzie 全局历史 → 都拿不到时返回 null（跳过 KM 字段）。 */
+  private static Double resolveKomi(BoardData snapshotData) {
+    if (snapshotData.komi != -999) return snapshotData.komi;
+    Board board = featurecat.lizzie.Lizzie.board;
+    if (board == null) return null;
+    BoardHistoryList history = board.getHistory();
+    if (history == null) return null;
+    featurecat.lizzie.analysis.GameInfo gameInfo = history.getGameInfo();
+    if (gameInfo == null) return null;
+    return gameInfo.getKomi();
   }
 
   private static void appendStones(

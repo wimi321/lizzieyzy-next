@@ -79,6 +79,44 @@ detach_image() {
   hdiutil detach "$target" -force -quiet >/dev/null 2>&1
 }
 
+wait_for_unmount() {
+  local mount_point="$1"
+  local attempt
+
+  for attempt in 1 2 3 4 5; do
+    if ! mount | grep -q " on $mount_point "; then
+      return 0
+    fi
+    sleep "$attempt"
+  done
+
+  if mount | grep -q " on $mount_point "; then
+    echo "Timed out waiting for DMG mount point to unmount: $mount_point" >&2
+    return 1
+  fi
+}
+
+create_dmg_with_retry() {
+  local volume_name="$1"
+  local source_folder="$2"
+  local output_dmg="$3"
+  local attempt
+
+  rm -f "$output_dmg"
+  for attempt in 1 2 3 4 5; do
+    if hdiutil create -volname "$volume_name" \
+                      -srcfolder "$source_folder" -ov -format UDZO "$output_dmg" >/dev/null; then
+      return 0
+    fi
+    rm -f "$output_dmg"
+    echo "hdiutil create failed for $output_dmg; retrying in ${attempt}s..." >&2
+    sleep "$attempt"
+  done
+
+  hdiutil create -volname "$volume_name" \
+                 -srcfolder "$source_folder" -ov -format UDZO "$output_dmg" >/dev/null
+}
+
 sign_embedded_jar_natives() {
   local app_bundle="$1"
   local jar_file
@@ -215,6 +253,8 @@ PY
   cp -R "$app_path" "$staging/"
   detach_image "$mounted_target"
   mounted_target=""
+  wait_for_unmount "$mount_point"
+  rmdir "$mount_point" >/dev/null 2>&1 || true
   sleep 2
 
   staged_app="$staging/$(basename "$app_path")"
@@ -245,8 +285,7 @@ PY
 
   # Rebuild DMG from the signed app.
   signed_dmg="$work_dir/$(basename "$dmg")"
-  hdiutil create -volname "$(basename "$staged_app" .app)" \
-                 -srcfolder "$staging" -ov -format UDZO "$signed_dmg" >/dev/null
+  create_dmg_with_retry "$(basename "$staged_app" .app)" "$staging" "$signed_dmg"
   codesign --force --timestamp --keychain "$keychain" --sign "$sign_identity" "$signed_dmg"
 
   echo "Submitting $signed_dmg for notarization..."

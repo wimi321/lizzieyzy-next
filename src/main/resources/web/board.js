@@ -8,16 +8,71 @@
   var analysisData = null;
   var winrateHistory = null;
   var hoveredMove = null;
-  var heatmapEnabled = false;
-  var viewAsBlack = true;
-  var coordStyle = "off";
+  // 用 localStorage 持久化用户偏好。读不到 / 解析失败时取默认。
+  var prefsKey = "lizzie-web-prefs-v1";
+  var PREF_DEFAULTS = {
+    heatmapEnabled: false,
+    viewAsBlack: true,
+    coordStyle: "off",
+    showCiWinrate: true,
+    showCiPlayouts: true,
+    showCiScore: true,
+  };
+  function loadPrefs() {
+    try {
+      var raw = localStorage.getItem(prefsKey);
+      if (!raw) return {};
+      return JSON.parse(raw) || {};
+    } catch (err) {
+      return {};
+    }
+  }
+  function savePrefs() {
+    try {
+      localStorage.setItem(prefsKey, JSON.stringify({
+        heatmapEnabled: heatmapEnabled,
+        viewAsBlack: viewAsBlack,
+        coordStyle: coordStyle,
+        showCiWinrate: showCiWinrate,
+        showCiPlayouts: showCiPlayouts,
+        showCiScore: showCiScore,
+      }));
+    } catch (err) {}
+  }
+  function prefOr(prefs, key) {
+    return prefs[key] !== undefined ? prefs[key] : PREF_DEFAULTS[key];
+  }
+  var __prefs = loadPrefs();
+  var heatmapEnabled = prefOr(__prefs, "heatmapEnabled");
+  var viewAsBlack = prefOr(__prefs, "viewAsBlack");
+  var coordStyle = prefOr(__prefs, "coordStyle");
   var chartHoverIdx = -1;
-  var showCiWinrate = true;
-  var showCiPlayouts = true;
-  var showCiScore = true;
+  var showCiWinrate = prefOr(__prefs, "showCiWinrate");
+  var showCiPlayouts = prefOr(__prefs, "showCiPlayouts");
+  var showCiScore = prefOr(__prefs, "showCiScore");
   var ws = null;
   var reconnectDelay = 1000;
   var longPressTimer = null;
+
+  var clientId = (function () {
+    var id = null;
+    try { id = localStorage.getItem("webBoardClientId"); } catch (_) {}
+    if (!id) {
+      if (window.crypto && window.crypto.randomUUID) {
+        id = window.crypto.randomUUID();
+      } else {
+        // 退化：随机 16 字节十六进制
+        var arr = new Uint8Array(16);
+        (window.crypto || window.msCrypto).getRandomValues(arr);
+        id = Array.from(arr).map(function (b) { return ("0" + b.toString(16)).slice(-2); }).join("");
+      }
+      try { localStorage.setItem("webBoardClientId", id); } catch (_) {}
+    }
+    return id;
+  })();
+
+  var trialState = null;          // 最新一次 trial_state 消息（null = idle）
+  var siblingMarkers = null;       // 当前试下分叉处的非主线子节点位置
 
   // DOM references
   var boardCanvas = document.getElementById("board-canvas");
@@ -105,6 +160,16 @@
           renderScoreChart();
           renderBlunderList();
           break;
+        case "trial_state":
+          trialState = msg.active ? msg : null;
+          siblingMarkers = (msg.active && msg.siblingMarkers) ? msg.siblingMarkers : null;
+          applyTrialUiState();
+          render();  // 重画棋盘以反映 sibling markers 变化
+          break;
+        case "trial_denied":
+          // 简单 alert 即可（spec 没要求 toast）
+          alert("另一位用户正在试下中，稍后再试");
+          break;
       }
     };
 
@@ -172,6 +237,9 @@
         gridSize
       );
     }
+    if (siblingMarkers && siblingMarkers.length > 0) {
+      drawSiblingMarkers(boardCtx, siblingMarkers, boardHeight, margin, gridSize);
+    }
 
     updateStatusBar();
   }
@@ -232,7 +300,8 @@
   var COLS_WITH_I = "ABCDEFGHIJKLMNOPQRS";
 
   function getColLabel(x) {
-    if (coordStyle === "withI") return COLS_WITH_I.charAt(x);
+    // 野狐 / withI 都用含 I 的列字母；GTP 标准（off / 默认）跳过 I。
+    if (coordStyle === "withI" || coordStyle === "fox") return COLS_WITH_I.charAt(x);
     return COLS_SKIP_I.charAt(x);
   }
 
@@ -791,6 +860,98 @@
   scoreCanvas.addEventListener("mouseleave", function () { chartTooltip.style.display = "none"; chartHoverIdx = -1; renderWinrateChart(); renderScoreChart(); });
 
   // ---------------------------------------------------------------------------
+  // Trial mode helpers
+  // ---------------------------------------------------------------------------
+  function sendTrial(type, extra) {
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    var msg = { type: type, clientId: clientId };
+    if (extra) {
+      for (var k in extra) {
+        if (Object.prototype.hasOwnProperty.call(extra, k)) msg[k] = extra[k];
+      }
+    }
+    ws.send(JSON.stringify(msg));
+  }
+
+  function applyTrialUiState() {
+    var enterBtn = document.getElementById("trial-enter-btn");
+    var activeControls = document.getElementById("trial-active-controls");
+    var followText = document.getElementById("trial-follow-text");
+    var statusText = document.getElementById("trial-status-text");
+    var backBtn = document.getElementById("trial-back-btn");
+    var forwardBtn = document.getElementById("trial-forward-btn");
+
+    if (!trialState) {
+      enterBtn.style.display = "";
+      activeControls.style.display = "none";
+      followText.style.display = "none";
+      return;
+    }
+    if (trialState.ownerClientId === clientId) {
+      enterBtn.style.display = "none";
+      activeControls.style.display = "";
+      followText.style.display = "none";
+      statusText.textContent =
+        "试下中：从第 " + trialState.anchorMoveNumber + " 手起，已下到第 "
+        + trialState.displayMoveNumber + " 手";
+      backBtn.disabled = !trialState.canBack;
+      forwardBtn.disabled = !trialState.canForward;
+    } else {
+      enterBtn.style.display = "none";
+      activeControls.style.display = "none";
+      followText.style.display = "";
+      followText.textContent = "他人正在试下中（从第 " + trialState.anchorMoveNumber + " 手起）";
+    }
+  }
+
+  function pixelToBoardCoord(e) {
+    if (!boardState) return null;
+    var rect = boardCanvas.getBoundingClientRect();
+    var pxScreen = e.clientX - rect.left;
+    var pyScreen = e.clientY - rect.top;
+
+    // render() 用 container.clientWidth/Height 算 size 并把棋子按 size 画到内部画面。
+    // 但浏览器实际显示的 canvas（rect）可能因 CSS / layout 被压缩成非正方形，
+    // 屏幕坐标 (pxScreen, pyScreen) 在 rect.width × rect.height 上，需缩回内部 size × size 坐标系。
+    var container = document.getElementById("board-container");
+    var size = Math.min(container.clientWidth, container.clientHeight);
+    if (size <= 0 || rect.width <= 0 || rect.height <= 0) return null;
+    var px = pxScreen * size / rect.width;
+    var py = pyScreen * size / rect.height;
+    var boardWidth = boardState.boardWidth || 19;
+    var boardHeight = boardState.boardHeight || 19;
+    var margin = coordStyle !== "off" ? size * 0.06 : size * 0.04;
+    var gridSize = (size - 2 * margin) / (Math.max(boardWidth, boardHeight) - 1);
+
+    var cx = Math.round((px - margin) / gridSize);
+    var cy = Math.round((py - margin) / gridSize);
+    if (cx < 0 || cx >= boardWidth || cy < 0 || cy >= boardHeight) return null;
+    return { x: cx, y: cy };
+  }
+
+  function drawSiblingMarkers(ctx, markers, boardHeight, margin, gridSize) {
+    ctx.save();
+    for (var i = 0; i < markers.length; i++) {
+      var m = markers[i];
+      var px = margin + m.x * gridSize;
+      var py = margin + m.y * gridSize;
+      ctx.beginPath();
+      ctx.arc(px, py, gridSize * 0.35, 0, Math.PI * 2);
+      ctx.fillStyle = "rgba(255, 200, 0, 0.85)";
+      ctx.fill();
+      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = "rgba(120, 80, 0, 1)";
+      ctx.stroke();
+      ctx.fillStyle = "black";
+      ctx.font = "bold " + Math.floor(gridSize * 0.45) + "px sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(m.label, px, py);
+    }
+    ctx.restore();
+  }
+
+  // ---------------------------------------------------------------------------
   // Mouse interaction
   // ---------------------------------------------------------------------------
   boardCanvas.addEventListener("mousemove", function (e) {
@@ -800,12 +961,17 @@
     }
 
     var rect = boardCanvas.getBoundingClientRect();
-    var mx = e.clientX - rect.left;
-    var my = e.clientY - rect.top;
+    var mxScreen = e.clientX - rect.left;
+    var myScreen = e.clientY - rect.top;
 
     var boardWidth = boardState.boardWidth || 19;
     var boardHeight = boardState.boardHeight || 19;
-    var size = parseInt(boardCanvas.style.width) || boardCanvas.width;
+    // 跟 pixelToBoardCoord 一致：屏幕坐标按 rect 比例缩回内部 size 坐标系
+    var container = document.getElementById("board-container");
+    var size = Math.min(container.clientWidth, container.clientHeight);
+    if (size <= 0 || rect.width <= 0 || rect.height <= 0) return;
+    var mx = mxScreen * size / rect.width;
+    var my = myScreen * size / rect.height;
     var margin = coordStyle !== "off" ? size * 0.06 : size * 0.04;
     var gridSize = (size - 2 * margin) / (Math.max(boardWidth, boardHeight) - 1);
 
@@ -841,21 +1007,47 @@
     }
   });
 
+  boardCanvas.addEventListener("click", function (e) {
+    if (!trialState || trialState.ownerClientId !== clientId) return;
+    var coord = pixelToBoardCoord(e);
+    if (!coord) return;
+    if (siblingMarkers) {
+      for (var i = 0; i < siblingMarkers.length; i++) {
+        var m = siblingMarkers[i];
+        if (m.x === coord.x && m.y === coord.y) {
+          sendTrial("trial_navigate", { direction: "forward", childIndex: m.childIndex });
+          return;
+        }
+      }
+    }
+    // 落子瞬间清掉 hoveredMove + 重画，避免分支预览/选点高亮残留
+    // 直到鼠标挪开才消失（鼠标位置没变 → mousemove 不会触发，hoveredMove 还指向旧 move）
+    if (hoveredMove) {
+      hoveredMove = null;
+      render();
+    }
+    sendTrial("trial_move", { x: coord.x, y: coord.y });
+  });
+
   // Mobile touch support
   boardCanvas.addEventListener("touchstart", function (e) {
     if (!boardState || !boardState.bestMoves) return;
 
     var touch = e.touches[0];
     var rect = boardCanvas.getBoundingClientRect();
-    var mx = touch.clientX - rect.left;
-    var my = touch.clientY - rect.top;
+    var mxScreen = touch.clientX - rect.left;
+    var myScreen = touch.clientY - rect.top;
     var snap = boardState;
 
     longPressTimer = setTimeout(function () {
       if (!snap || !snap.bestMoves) return;
       var boardHeight = snap.boardHeight || 19;
       var boardWidth = snap.boardWidth || 19;
-      var size = parseInt(boardCanvas.style.width) || boardCanvas.width;
+      var container = document.getElementById("board-container");
+      var size = Math.min(container.clientWidth, container.clientHeight);
+      if (size <= 0 || rect.width <= 0 || rect.height <= 0) return;
+      var mx = mxScreen * size / rect.width;
+      var my = myScreen * size / rect.height;
       var margin = coordStyle !== "off" ? size * 0.06 : size * 0.04;
       var gridSize = (size - 2 * margin) / (Math.max(boardWidth, boardHeight) - 1);
 
@@ -897,6 +1089,7 @@
   document.getElementById("toggle-heatmap").addEventListener("click", function () {
     heatmapEnabled = !heatmapEnabled;
     this.classList.toggle("active", heatmapEnabled);
+    savePrefs();
     render();
   });
 
@@ -907,6 +1100,7 @@
     var label = viewAsBlack ? "黑方视角" : "白方视角";
     document.getElementById("chart-label-winrate").textContent = "胜率曲线（" + label + "）";
     document.getElementById("chart-label-score").textContent = "目差曲线（" + label + "）";
+    savePrefs();
     render();
     renderWinrateChart();
     renderScoreChart();
@@ -914,20 +1108,66 @@
 
   document.getElementById("coord-style").addEventListener("change", function () {
     coordStyle = this.value;
+    savePrefs();
     render();
   });
 
   document.getElementById("ci-winrate").addEventListener("change", function () {
     showCiWinrate = this.checked;
+    savePrefs();
     render();
   });
   document.getElementById("ci-playouts").addEventListener("change", function () {
     showCiPlayouts = this.checked;
+    savePrefs();
     render();
   });
   document.getElementById("ci-score").addEventListener("change", function () {
     showCiScore = this.checked;
+    savePrefs();
     render();
+  });
+
+  // 把持久化偏好同步到 UI 控件，并触发一次依赖渲染
+  (function applyPrefsToUi() {
+    var heatBtn = document.getElementById("toggle-heatmap");
+    if (heatBtn) heatBtn.classList.toggle("active", heatmapEnabled);
+    var persBtn = document.getElementById("toggle-perspective");
+    if (persBtn) {
+      persBtn.textContent = "切换" + (viewAsBlack ? "白" : "黑") + "方视角";
+    }
+    var winrateLabel = document.getElementById("chart-label-winrate");
+    if (winrateLabel) {
+      winrateLabel.textContent = "胜率曲线（" + (viewAsBlack ? "黑方视角" : "白方视角") + "）";
+    }
+    var scoreLabel = document.getElementById("chart-label-score");
+    if (scoreLabel) {
+      scoreLabel.textContent = "目差曲线（" + (viewAsBlack ? "黑方视角" : "白方视角") + "）";
+    }
+    var coordSel = document.getElementById("coord-style");
+    if (coordSel) coordSel.value = coordStyle;
+    var ciW = document.getElementById("ci-winrate");
+    if (ciW) ciW.checked = showCiWinrate;
+    var ciP = document.getElementById("ci-playouts");
+    if (ciP) ciP.checked = showCiPlayouts;
+    var ciS = document.getElementById("ci-score");
+    if (ciS) ciS.checked = showCiScore;
+  })();
+
+  document.getElementById("trial-enter-btn").addEventListener("click", function () {
+    sendTrial("enter_trial");
+  });
+  document.getElementById("trial-exit-btn").addEventListener("click", function () {
+    sendTrial("exit_trial");
+  });
+  document.getElementById("trial-back-btn").addEventListener("click", function () {
+    sendTrial("trial_navigate", { direction: "back" });
+  });
+  document.getElementById("trial-forward-btn").addEventListener("click", function () {
+    sendTrial("trial_navigate", { direction: "forward" });
+  });
+  document.getElementById("trial-reset-btn").addEventListener("click", function () {
+    sendTrial("trial_reset");
   });
 
   // ---------------------------------------------------------------------------
@@ -942,5 +1182,6 @@
   // ---------------------------------------------------------------------------
   // Init
   // ---------------------------------------------------------------------------
+  applyTrialUiState();
   connectWs();
 })();

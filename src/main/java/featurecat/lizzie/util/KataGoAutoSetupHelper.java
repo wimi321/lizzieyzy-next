@@ -290,7 +290,7 @@ public final class KataGoAutoSetupHelper {
     try {
       SetupSnapshot snapshot = inspectLocalSetup();
       if (snapshot.hasEngine() && snapshot.hasConfigs() && snapshot.hasWeight()) {
-        applyAutoSetup(snapshot.withActiveWeight(snapshot.activeWeightPath));
+        applyAutoSetup(snapshot.withActiveWeight(snapshot.activeWeightPath), false);
         return true;
       }
     } catch (Exception e) {
@@ -355,7 +355,7 @@ public final class KataGoAutoSetupHelper {
       if (!(repairDefault || repairAnalysis || repairEstimate)) {
         return false;
       }
-      applyAutoSetup(snapshot.withActiveWeight(snapshot.activeWeightPath));
+      applyAutoSetup(snapshot.withActiveWeight(snapshot.activeWeightPath), false);
       return true;
     } catch (Exception e) {
       e.printStackTrace();
@@ -386,7 +386,7 @@ public final class KataGoAutoSetupHelper {
           Utils.saveEngineSettings(engines);
         }
       }
-      applyAutoSetup(snapshot.withActiveWeight(snapshot.activeWeightPath));
+      applyAutoSetup(snapshot.withActiveWeight(snapshot.activeWeightPath), false);
       return true;
     } catch (Exception e) {
       e.printStackTrace();
@@ -440,7 +440,6 @@ public final class KataGoAutoSetupHelper {
 
     Path target = weightsDir.resolve(info.fileName());
     if (Files.isRegularFile(target) && Files.size(target) > 1024L * 1024L) {
-      rememberPreferredWeight(target);
       if (listener != null) {
         listener.onProgress(info.modelName, Files.size(target), Files.size(target));
       }
@@ -494,7 +493,6 @@ public final class KataGoAutoSetupHelper {
       } catch (AtomicMoveNotSupportedException e) {
         Files.move(temp, target, StandardCopyOption.REPLACE_EXISTING);
       }
-      rememberPreferredWeight(target);
       return target;
     } catch (IOException e) {
       Files.deleteIfExists(temp);
@@ -509,6 +507,28 @@ public final class KataGoAutoSetupHelper {
       }
       activeSession.clear();
     }
+  }
+
+  public static Path importWeight(Path source) throws IOException {
+    if (source == null) {
+      throw new IOException(resource("AutoSetup.importWeightInvalid", "Unsupported weight file."));
+    }
+    Path normalizedSource = source.toAbsolutePath().normalize();
+    if (!Files.isRegularFile(normalizedSource) || !isSupportedWeightFile(normalizedSource)) {
+      throw new IOException(resource("AutoSetup.importWeightInvalid", "Unsupported weight file."));
+    }
+    SetupSnapshot snapshot = inspectLocalSetup();
+    Path weightsDir = snapshot.workingDir.resolve("weights").toAbsolutePath().normalize();
+    Files.createDirectories(weightsDir);
+    Path target = uniqueWeightTarget(weightsDir, normalizedSource.getFileName().toString());
+    try {
+      if (Files.isSameFile(normalizedSource, target)) {
+        return target;
+      }
+    } catch (IOException e) {
+    }
+    Files.copy(normalizedSource, target, StandardCopyOption.COPY_ATTRIBUTES);
+    return target;
   }
 
   public static String resolveActiveWeightModelName(SetupSnapshot snapshot) {
@@ -562,6 +582,11 @@ public final class KataGoAutoSetupHelper {
   }
 
   public static SetupResult applyAutoSetup(SetupSnapshot snapshot) throws IOException {
+    return applyAutoSetup(snapshot, true);
+  }
+
+  public static SetupResult applyAutoSetup(SetupSnapshot snapshot, boolean makeDefault)
+      throws IOException {
     if (snapshot == null) {
       snapshot = inspectLocalSetup();
     }
@@ -617,7 +642,9 @@ public final class KataGoAutoSetupHelper {
     for (int i = 0; i < engines.size(); i++) {
       EngineData existing = engines.get(i);
       existing.index = i;
-      existing.isDefault = false;
+      if (makeDefault) {
+        existing.isDefault = false;
+      }
     }
 
     engineData.index = engineIndex;
@@ -627,7 +654,7 @@ public final class KataGoAutoSetupHelper {
     engineData.width = 19;
     engineData.height = 19;
     engineData.komi = 7.5F;
-    engineData.isDefault = true;
+    engineData.isDefault = makeDefault || engineData.isDefault;
     engineData.useJavaSSH = false;
     engineData.ip = "";
     engineData.port = "";
@@ -649,7 +676,9 @@ public final class KataGoAutoSetupHelper {
       Lizzie.config.uiConfig.put("autoload-default", true);
       Lizzie.config.uiConfig.put("autoload-empty", false);
     }
-    Lizzie.config.uiConfig.put("default-engine", engineIndex);
+    if (makeDefault) {
+      Lizzie.config.uiConfig.put("default-engine", engineIndex);
+    }
     Lizzie.config.uiConfig.put("analysis-engine-command", analysisCommand);
     Lizzie.config.uiConfig.put("estimate-command", estimateCommand);
     Lizzie.config.uiConfig.put(
@@ -1169,8 +1198,7 @@ public final class KataGoAutoSetupHelper {
     try (Stream<Path> paths = Files.walk(weightsDir, 3)) {
       paths
           .filter(Files::isRegularFile)
-          .filter(
-              path -> path.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(".bin.gz"))
+          .filter(KataGoAutoSetupHelper::isSupportedWeightFile)
           .sorted(
               Comparator.comparing(
                       (Path path) ->
@@ -1188,6 +1216,38 @@ public final class KataGoAutoSetupHelper {
           .forEach(path -> out.add(path.toAbsolutePath().normalize()));
     } catch (IOException e) {
     }
+  }
+
+  private static boolean isSupportedWeightFile(Path path) {
+    if (path == null || path.getFileName() == null) {
+      return false;
+    }
+    String fileName = path.getFileName().toString().toLowerCase(Locale.ROOT);
+    return fileName.endsWith(".bin.gz") || fileName.endsWith(".txt.gz");
+  }
+
+  private static Path uniqueWeightTarget(Path weightsDir, String fileName) {
+    Path target = weightsDir.resolve(fileName).toAbsolutePath().normalize();
+    if (!Files.exists(target)) {
+      return target;
+    }
+    int dot = fileName.toLowerCase(Locale.ROOT).endsWith(".bin.gz") ? fileName.length() - 7 : -1;
+    if (dot < 0 && fileName.toLowerCase(Locale.ROOT).endsWith(".txt.gz")) {
+      dot = fileName.length() - 7;
+    }
+    String baseName = dot > 0 ? fileName.substring(0, dot) : fileName;
+    String extension = dot > 0 ? fileName.substring(dot) : "";
+    for (int i = 1; i < 1000; i++) {
+      Path candidate =
+          weightsDir.resolve(baseName + "-" + i + extension).toAbsolutePath().normalize();
+      if (!Files.exists(candidate)) {
+        return candidate;
+      }
+    }
+    return weightsDir
+        .resolve(baseName + "-" + System.currentTimeMillis() + extension)
+        .toAbsolutePath()
+        .normalize();
   }
 
   private static Path chooseActiveWeight(Path workingDir, Path appRoot, List<Path> candidates) {

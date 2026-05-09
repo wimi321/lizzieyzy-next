@@ -4,6 +4,7 @@ import static java.lang.Math.min;
 import static java.util.Collections.singletonList;
 
 import featurecat.lizzie.Lizzie;
+import featurecat.lizzie.analysis.EngineFollowController;
 import featurecat.lizzie.analysis.EngineManager;
 import featurecat.lizzie.analysis.GameInfo;
 import featurecat.lizzie.analysis.Leelaz;
@@ -121,6 +122,16 @@ public class Board {
    */
   public static int getIndex(int x, int y) {
     return x * Board.boardHeight + y;
+  }
+
+  private void feedEngineForMainlineMove(Stone color, String coord) {
+    if (isEngineFollowTrialActive()) return;
+    Lizzie.leelaz.playMove(color, coord);
+  }
+
+  private static boolean isEngineFollowTrialActive() {
+    EngineFollowController c = Lizzie.engineFollowController;
+    return c != null && c.isTrialActive();
   }
 
   public static int[] getCoord(int index) {
@@ -983,7 +994,7 @@ public class Board {
           history.place(move.x, move.y, move.isblack ? Stone.BLACK : Stone.WHITE);
         } else {
           if (history.getStones()[getIndex(move.x, move.y)] != Stone.EMPTY)
-            Lizzie.leelaz.playMove(
+            feedEngineForMainlineMove(
                 move.isblack ? Stone.BLACK : Stone.WHITE, convertCoordinatesToName(move.x, move.y));
           else place(move.x, move.y, move.isblack ? Stone.BLACK : Stone.WHITE);
         }
@@ -1030,7 +1041,7 @@ public class Board {
     if (hasStartStone) {
       for (int i = 0; i < startStonelist.size(); i++) {
         Movelist move = startStonelist.get(i);
-        Lizzie.leelaz.playMove(
+        feedEngineForMainlineMove(
             move.isblack ? Stone.BLACK : Stone.WHITE, convertCoordinatesToName(move.x, move.y));
       }
     }
@@ -1669,7 +1680,7 @@ public class Board {
         // redo's
         history.next();
         if (Lizzie.config.playSound) Utils.playVoiceFile();
-        if (!EngineManager.isEngineGame) Lizzie.leelaz.playMove(color, "pass");
+        if (!EngineManager.isEngineGame) feedEngineForMainlineMove(color, "pass");
 
         if (Lizzie.frame.isPlayingAgainstLeelaz
             && Lizzie.frame.playerIsBlack != getData().blackToPlay)
@@ -1704,7 +1715,7 @@ public class Board {
       history.addOrGoto(newState, newBranch);
       // update leelaz with pass
       if (!Lizzie.leelaz.isInputCommand && !EngineManager.isEngineGame)
-        Lizzie.leelaz.playMove(color, "pass");
+        feedEngineForMainlineMove(color, "pass");
 
       if (Lizzie.frame.isPlayingAgainstLeelaz
           && Lizzie.frame.playerIsBlack != getData().blackToPlay)
@@ -1977,14 +1988,14 @@ public class Board {
         Lizzie.leelaz.playMovePonder(color.isBlack() ? "B" : "W", move);
         LizzieFrame.toolbar.isPkStop = false;
       } else if (Lizzie.frame.isPlayingAgainstLeelaz
-          && Lizzie.frame.playerIsBlack == getData().blackToPlay) {
-        if (Lizzie.engineManager.playingAgainstHumanEngineCountDown != null)
-          Lizzie.engineManager.playingAgainstHumanEngineCountDown.sendTimeLeft(false);
+          && Lizzie.frame.playerIsBlack == getData().blackToPlay
+          && !isEngineFollowTrialActive()) {
         Lizzie.leelaz.playMove(color, convertCoordinatesToName(x, y), true, color.isWhite());
         needGenmove = true;
       } else if (!Lizzie.frame.isPlayingAgainstLeelaz
           && !Lizzie.leelaz.isInputCommand
-          && !EngineManager.isEngineGame) {
+          && !EngineManager.isEngineGame
+          && !isEngineFollowTrialActive()) {
         Lizzie.leelaz.playMove(color, convertCoordinatesToName(x, y), true, color.isWhite());
       }
       if (!forSync
@@ -2105,7 +2116,7 @@ public class Board {
         move.movenum = moveNum;
         startStonelist.add(move);
         moveNum++;
-        Lizzie.leelaz.playMove(stone.color, convertCoordinatesToName(stone.x, stone.y));
+        feedEngineForMainlineMove(stone.color, convertCoordinatesToName(stone.x, stone.y));
       }
     }
     history.getGameInfo().setKomi(komi);
@@ -2148,7 +2159,7 @@ public class Board {
         move.movenum = moveNum;
         startStonelist.add(move);
         moveNum++;
-        Lizzie.leelaz.playMove(stone.color, convertCoordinatesToName(stone.x, stone.y));
+        feedEngineForMainlineMove(stone.color, convertCoordinatesToName(stone.x, stone.y));
       }
     }
     Lizzie.leelaz.ponder();
@@ -2715,9 +2726,9 @@ public class Board {
         } else if (currentData.isMoveNode()) {
           int[] lastMove = currentData.lastMove.get();
           String name = convertCoordinatesToName(lastMove[0], lastMove[1]);
-          Lizzie.leelaz.playMove(currentData.lastMoveColor, name);
+          feedEngineForMainlineMove(currentData.lastMoveColor, name);
         } else if (isKnownPass(currentData)) {
-          Lizzie.leelaz.playMove(currentData.lastMoveColor, "pass");
+          feedEngineForMainlineMove(currentData.lastMoveColor, "pass");
         }
         modifyEnd();
         Lizzie.frame.refresh();
