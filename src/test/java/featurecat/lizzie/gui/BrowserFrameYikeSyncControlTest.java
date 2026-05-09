@@ -71,6 +71,15 @@ class BrowserFrameYikeSyncControlTest {
   }
 
   @Test
+  void explicitReadboardStartSignalKeepsSameRoomIdempotent() {
+    String sameRoomUrl = "https://home.yikeweiqi.com/#/unite/66304678";
+    assertFalse(
+        BrowserFrame.shouldStartYikeSyncFromReadboardSignal(true, true, sameRoomUrl, sameRoomUrl));
+    assertTrue(
+        BrowserFrame.shouldStartYikeSyncFromReadboardSignal(true, false, sameRoomUrl, sameRoomUrl));
+  }
+
+  @Test
   void yikeAutoSyncRequiresRecognizedRoomUrl() {
     assertFalse(BrowserFrame.shouldAutoStartYikeSyncForAddress(true, true, ""));
     assertFalse(

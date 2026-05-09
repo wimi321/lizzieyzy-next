@@ -570,8 +570,9 @@ public class BrowserFrame extends JFrame {
     if (shouldKeepYikeListenerEnabledOnPage(isYike, currentUrl) && !yikeBrowserSyncEnabled) {
       yikeBrowserSyncEnabled = true;
     }
-    if (!YikeUrlParser.parse(currentUrl).isPresent()) {
-      YikeSyncDebugLog.log("BrowserFrame start from readboard skipped non-room url");
+    if (!shouldStartYikeSyncFromReadboardSignal(
+        isYike, yikeBrowserSyncEnabled, currentUrl, lastAutoYikeSyncUrl)) {
+      YikeSyncDebugLog.log("BrowserFrame start from readboard skipped by idempotent gate");
       return;
     }
     if (startYikeSync(currentUrl, true)) {
@@ -702,16 +703,17 @@ public class BrowserFrame extends JFrame {
     return !isSameYikeRoomUrl(currentUrl, lastSyncedUrl);
   }
 
-  static boolean shouldStartYikeSyncFromPlatformSignal(
-      boolean isYike, boolean yikeBrowserSyncEnabled) {
-    return isYike;
-  }
-
   static boolean shouldSyncYikeCurrentAddressFromPlatformSignal(
       boolean isYike, boolean yikeBrowserSyncEnabled, String currentUrl, String lastSyncedUrl) {
     return shouldCreateOrRefreshYikeRoomSession(
             isYike, yikeBrowserSyncEnabled, currentUrl, lastSyncedUrl)
         || (!yikeBrowserSyncEnabled && YikeUrlParser.parse(currentUrl).isPresent());
+  }
+
+  static boolean shouldStartYikeSyncFromReadboardSignal(
+      boolean isYike, boolean yikeBrowserSyncEnabled, String currentUrl, String lastSyncedUrl) {
+    return shouldSyncYikeCurrentAddressFromPlatformSignal(
+        isYike, yikeBrowserSyncEnabled, currentUrl, lastSyncedUrl);
   }
 
   private boolean shouldAutoStartYikeSync() {
