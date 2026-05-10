@@ -45,6 +45,9 @@ NVIDIA_ARCH_TAG="${ARCH_TAG}.nvidia"
 NVIDIA50_CUDA_ARCH_TAG="${ARCH_TAG}.nvidia50.cuda"
 NVIDIA50_TRT_ARCH_TAG="${ARCH_TAG}.nvidia50.trt"
 BUILD_NVIDIA50_TRT_INSTALLER="${WINDOWS_BUILD_NVIDIA50_TRT_INSTALLER:-false}"
+SPLIT_LARGE_RELEASE_ASSETS="${WINDOWS_SPLIT_LARGE_RELEASE_ASSETS:-true}"
+MAX_RELEASE_ASSET_BYTES="${WINDOWS_RELEASE_ASSET_MAX_BYTES:-2000000000}"
+RELEASE_SPLIT_SIZE="${WINDOWS_RELEASE_SPLIT_SIZE:-1900M}"
 DIST_DIR="$ROOT_DIR/dist/windows"
 RELEASE_DIR="$ROOT_DIR/dist/release"
 META_DIR="$ROOT_DIR/dist/release-meta"
@@ -579,10 +582,18 @@ EOF
   fi
 
   if [[ "$has_nvidia50_trt_katago" == "true" ]]; then
-    cat >>"$note_file" <<EOF
+    if [[ "$SPLIT_LARGE_RELEASE_ASSETS" == "true" ]]; then
+      cat >>"$note_file" <<EOF
+- ${DATE_TAG}-${NVIDIA50_TRT_ARCH_TAG}.portable.zip.part01 / part02
+  Experimental RTX 50 TensorRT portable build split into parts for GitHub's release asset size limit. Download every part, then recombine with:
+  copy /b ${DATE_TAG}-${NVIDIA50_TRT_ARCH_TAG}.portable.zip.part01+${DATE_TAG}-${NVIDIA50_TRT_ARCH_TAG}.portable.zip.part02 ${DATE_TAG}-${NVIDIA50_TRT_ARCH_TAG}.portable.zip
+EOF
+    else
+      cat >>"$note_file" <<EOF
 - ${DATE_TAG}-${NVIDIA50_TRT_ARCH_TAG}.portable.zip
   Experimental RTX 50 TensorRT portable build. Unzip it and open ${NVIDIA50_TRT_APP_NAME}.exe.
 EOF
+    fi
     if [[ "$BUILD_NVIDIA50_TRT_INSTALLER" == "true" ]]; then
       cat >>"$note_file" <<EOF
 - ${DATE_TAG}-${NVIDIA50_TRT_ARCH_TAG}.installer.exe
@@ -614,10 +625,10 @@ Download verification:
 
 What is bundled:
 - Windows release assets include a packaged Java runtime via jpackage.
-- Native Windows readboard is included in `readboard/`.
+- Native Windows readboard is included in 'readboard/'.
 - Native Windows readboard is pinned to qiyi71w/readboard ${READBOARD_RELEASE_TAG} (${READBOARD_ASSET_NAME}, SHA256 ${READBOARD_ASSET_SHA256}).
-- The built-in Java readboard helper is also included in `readboard_java/` for the explicit Java sync entry.
-- The JCEF browser runtime for Yike web page and Yike hall is included in `jcef-bundle/` (${JCEF_RELEASE_TAG}, SHA256 ${JCEF_ASSET_SHA256}), so these entries do not download browser components on first use.
+- The built-in Java readboard helper is also included in 'readboard_java/' for the explicit Java sync entry.
+- The JCEF browser runtime for Yike web page and Yike hall is included in 'jcef-bundle/' (${JCEF_RELEASE_TAG}, SHA256 ${JCEF_ASSET_SHA256}), so these entries do not download browser components on first use.
 EOF
 
   if [[ "$has_with_katago" == "true" ]]; then
@@ -690,6 +701,48 @@ create_portable_zip() {
   powershell.exe -NoProfile -Command \
     "Compress-Archive -Path '$native_root' -DestinationPath '$native_zip' -Force"
   log_step "Finished Windows portable zip: $(basename "$portable_zip")"
+}
+
+split_large_release_artifacts() {
+  if [[ "$SPLIT_LARGE_RELEASE_ASSETS" != "true" ]]; then
+    return 0
+  fi
+
+  local next_artifacts=()
+  local artifact
+  for artifact in "${artifacts[@]}"; do
+    if [[ ! -f "$artifact" ]]; then
+      next_artifacts+=("$artifact")
+      continue
+    fi
+
+    local size
+    size="$(stat -c '%s' "$artifact")"
+    if (( size <= MAX_RELEASE_ASSET_BYTES )); then
+      next_artifacts+=("$artifact")
+      continue
+    fi
+
+    log_step "Splitting oversized release asset: $(basename "$artifact") (${size} bytes)"
+    rm -f "$artifact".part[0-9][0-9]
+    split -b "$RELEASE_SPLIT_SIZE" -d -a 2 --numeric-suffixes=1 "$artifact" "$artifact.part"
+    rm -f "$artifact"
+
+    shopt -s nullglob
+    local parts=("$artifact".part[0-9][0-9])
+    shopt -u nullglob
+    if (( ${#parts[@]} < 2 )); then
+      echo "Expected multiple split parts for oversized asset: $artifact" >&2
+      return 1
+    fi
+
+    local part
+    for part in "${parts[@]}"; do
+      next_artifacts+=("$part")
+    done
+  done
+
+  artifacts=("${next_artifacts[@]}")
 }
 
 build_release_variant() {
@@ -853,6 +906,8 @@ build_release_variant \
   "" \
   "${ARCH_TAG}.without.engine" \
   "$WINDOWS_UPGRADE_UUID"
+
+split_large_release_artifacts
 
 install_note="$META_DIR/${DATE_TAG}-${ARCH_TAG}-install.txt"
 checksum_file="$META_DIR/${DATE_TAG}-${ARCH_TAG}-sha256.txt"
