@@ -14,6 +14,7 @@ import featurecat.lizzie.rules.Movelist;
 import featurecat.lizzie.rules.Stone;
 import featurecat.lizzie.rules.Zobrist;
 import featurecat.lizzie.util.Utils;
+import featurecat.lizzie.util.YikeSyncDebugLog;
 import java.io.BufferedOutputStream;
 import java.io.Closeable;
 import java.io.File;
@@ -34,6 +35,7 @@ import java.util.Set;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import javax.swing.SwingUtilities;
 
 public class ReadBoard {
   private static final long PROCESS_EXIT_WAIT_TIMEOUT_MS = 1000L;
@@ -48,6 +50,8 @@ public class ReadBoard {
   private static final int SYNC_ANALYSIS_RESUME_DELAY_MS = 200;
   private static final int STARTUP_OUTPUT_LOG_LIMIT = 8;
   private static final String READBOARD_UPDATE_SUPPORTED_COMMAND = "readboardUpdateSupported";
+  private static final String YIKE_SYNC_START_COMMAND = "yikeSyncStart";
+  private static final String YIKE_SYNC_STOP_COMMAND = "yikeSyncStop";
 
   public static boolean isLegacyNativeReadBoardAvailable() {
     return isLegacyNativeReadBoardAvailable(legacyNativeReadBoardDirectory());
@@ -63,6 +67,18 @@ public class ReadBoard {
 
   public static File nativeReadBoardDirectoryForDiagnostics() {
     return legacyNativeReadBoardDirectory();
+  }
+
+  static boolean isYikeSyncStartCommand(String line) {
+    return isExactReadBoardCommand(line, YIKE_SYNC_START_COMMAND);
+  }
+
+  static boolean isYikeSyncStopCommand(String line) {
+    return isExactReadBoardCommand(line, YIKE_SYNC_STOP_COMMAND);
+  }
+
+  static boolean isYikeSyncPlatformLine(String line) {
+    return line != null && "syncPlatform yike".equalsIgnoreCase(line.trim());
   }
 
   public Process process;
@@ -653,6 +669,16 @@ public class ReadBoard {
       handleHostedUpdateRequest(updateRequest);
       return;
     }
+    if (isYikeSyncStartCommand(line)) {
+      YikeSyncDebugLog.log("ReadBoard received yikeSyncStart");
+      handleYikeSyncStartCommand(true);
+      return;
+    }
+    if (isYikeSyncStopCommand(line)) {
+      YikeSyncDebugLog.log("ReadBoard received yikeSyncStop");
+      handleYikeSyncStopCommand();
+      return;
+    }
     // if (Lizzie.gtpConsole.isVisible())
     // Lizzie.gtpConsole.addLine(line);
     //  System.out.println(line);
@@ -687,6 +713,10 @@ public class ReadBoard {
       pendingRemoteContext =
           currentPendingRemoteContext()
               .withPlatform(parseSyncPlatform(line.substring("syncPlatform ".length())));
+      if (isYikeSyncPlatformLine(line)) {
+        YikeSyncDebugLog.log("ReadBoard received syncPlatform yike");
+        handleYikeSyncStartCommand(false);
+      }
       return;
     }
     if (line.startsWith("roomToken ")) {
@@ -985,6 +1015,48 @@ public class ReadBoard {
         if (Lizzie.frame.floatBoard != null) Lizzie.frame.floatBoard.setVisible(true);
       }
     }
+  }
+
+  private static boolean isExactReadBoardCommand(String line, String command) {
+    return line != null && command.equals(line.trim());
+  }
+
+  private void handleYikeSyncStartCommand(final boolean forceReloadCurrentRoom) {
+    SwingUtilities.invokeLater(
+        new Runnable() {
+          public void run() {
+            YikeSyncDebugLog.log(
+                "ReadBoard handling yike start on EDT frame="
+                    + (Lizzie.frame != null)
+                    + " browserFrame="
+                    + (Lizzie.frame != null && Lizzie.frame.browserFrame != null)
+                    + " forceReload="
+                    + forceReloadCurrentRoom);
+            if (Lizzie.frame != null && Lizzie.frame.browserFrame != null) {
+              if (forceReloadCurrentRoom) {
+                Lizzie.frame.browserFrame.startYikeSyncFromReadBoard();
+              } else {
+                Lizzie.frame.browserFrame.ensureYikeSyncFromCurrentAddress();
+              }
+            }
+          }
+        });
+  }
+
+  private void handleYikeSyncStopCommand() {
+    SwingUtilities.invokeLater(
+        new Runnable() {
+          public void run() {
+            YikeSyncDebugLog.log(
+                "ReadBoard handling yike stop on EDT frame="
+                    + (Lizzie.frame != null)
+                    + " browserFrame="
+                    + (Lizzie.frame != null && Lizzie.frame.browserFrame != null));
+            if (Lizzie.frame != null && Lizzie.frame.browserFrame != null) {
+              Lizzie.frame.browserFrame.stopYikeSyncFromReadBoard();
+            }
+          }
+        });
   }
 
   private void syncBoardStones(boolean isSecondTime) {
@@ -2234,6 +2306,18 @@ public class ReadBoard {
   }
 
   public void sendCommand(String command) {
+    if (command != null
+        && (command.startsWith("yike")
+            || command.startsWith("place")
+            || command.startsWith("syncPlatform"))) {
+      YikeSyncDebugLog.log(
+          "ReadBoard sendCommand command="
+              + command
+              + " usePipe="
+              + usePipe
+              + " syncing="
+              + isSyncing);
+    }
     if (command.startsWith("place")) {
       if (hideFloadBoardBeforePlace && Lizzie.frame.floatBoard != null) {
         Lizzie.frame.floatBoard.setVisible(false);

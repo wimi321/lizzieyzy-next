@@ -62,6 +62,8 @@ public class BoardRenderer {
   private int scaledMarginHeight, availableHeight, squareHeight;
   public Optional<Branch> branchOpt = Optional.empty();
   private List<MoveData> bestMoves = new ArrayList<MoveData>();
+  private long lastSuggestLogMs = 0;
+  private long lastDrawCallLogMs = 0;
   private ArrayList<Double> estimateArray;
   private ArrayList<Double> preEstimateArray;
   private List<int[]> nextCoords;
@@ -229,6 +231,21 @@ public class BoardRenderer {
           }
           // timer.lap("movenumbers");
           if (Lizzie.config.showBestMovesNow()) {
+            if (this.boardIndex == 0) {
+              long now = System.currentTimeMillis();
+              if (now - lastDrawCallLogMs > 1000) {
+                lastDrawCallLogMs = now;
+                featurecat.lizzie.util.YikeSyncDebugLog.log(
+                    "BoardRenderer paint pre-suggestions isBlacks="
+                        + Lizzie.board.getHistory().isBlacksTurn()
+                        + " showBlack="
+                        + Lizzie.config.showBlackCandidates
+                        + " showWhite="
+                        + Lizzie.config.showWhiteCandidates
+                        + " isAnaPlay="
+                        + Lizzie.frame.isAnaPlayingAgainstLeelaz);
+              }
+            }
             if ((Lizzie.frame.getDisplayNode().getData().blackToPlay
                     && Lizzie.config.showBlackCandidates)
                 || (!Lizzie.frame.getDisplayNode().getData().blackToPlay
@@ -2154,6 +2171,32 @@ public class BoardRenderer {
    * Draw all of Leelaz's suggestions as colored stones with winrate/playout statistics overlayed
    */
   private void drawLeelazSuggestions(Graphics2D g) {
+    if (this.boardIndex == 0) {
+      long now = System.currentTimeMillis();
+      if (now - lastSuggestLogMs > 1000) {
+        lastSuggestLogMs = now;
+        featurecat.lizzie.util.YikeSyncDebugLog.log(
+            "BoardRenderer drawSuggestions enter bestMovesSize="
+                + (this.bestMoves == null ? -1 : this.bestMoves.size())
+                + " currentNodeBestMoves="
+                + (Lizzie.board != null
+                        && Lizzie.board.getHistory() != null
+                        && Lizzie.board.getHistory().getCurrentHistoryNode() != null
+                        && Lizzie.board.getHistory().getCurrentHistoryNode().getData() != null
+                        && Lizzie.board.getHistory().getCurrentHistoryNode().getData().bestMoves
+                            != null
+                    ? Lizzie.board.getHistory().getCurrentHistoryNode().getData().bestMoves.size()
+                    : -1)
+                + " isShowingBranch="
+                + this.isShowingBranch
+                + " showBest="
+                + Lizzie.config.showBestMovesNow()
+                + " isHeatmap="
+                + Lizzie.frame.isShowingHeatmap
+                + " isPolicy="
+                + Lizzie.frame.isShowingPolicy);
+      }
+    }
     //  g.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_SPEED);
     int minAlpha = 32;
     // float winrateHueFactor = 0.9f;
@@ -2366,6 +2409,22 @@ public class BoardRenderer {
           MoveData move = bestMoves.get(i);
 
           if (move.playouts == 0) {
+            if (this.boardIndex == 0 && i == bestMoves.size() - 1) {
+              long now = System.currentTimeMillis();
+              if (now - lastSuggestLogMs > 1500) {
+                lastSuggestLogMs = now;
+                MoveData m0 = bestMoves.get(0);
+                featurecat.lizzie.util.YikeSyncDebugLog.log(
+                    "BoardRenderer skip-zeroPlayouts maxPlayouts="
+                        + maxPlayouts
+                        + " move0Playouts="
+                        + m0.playouts
+                        + " move0Coord="
+                        + m0.coordinate
+                        + " move0Winrate="
+                        + m0.winrate);
+              }
+            }
             continue; // This actually can happen
           }
           Optional<int[]> coordsOpt = Board.asCoordinates(move.coordinate);
