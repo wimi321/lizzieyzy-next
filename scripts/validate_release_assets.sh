@@ -25,7 +25,6 @@ case "$PLATFORM" in
       "${DATE_TAG}-windows64.nvidia.portable.zip"
       "${DATE_TAG}-windows64.nvidia50.cuda.installer.exe"
       "${DATE_TAG}-windows64.nvidia50.cuda.portable.zip"
-      "${DATE_TAG}-windows64.nvidia50.trt.installer.exe"
       "${DATE_TAG}-windows64.nvidia50.trt.portable.zip"
       "${DATE_TAG}-windows64.with-katago.installer.exe"
       "${DATE_TAG}-windows64.with-katago.portable.zip"

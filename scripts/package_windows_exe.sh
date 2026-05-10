@@ -44,6 +44,7 @@ OPENCL_ARCH_TAG="${ARCH_TAG}.opencl"
 NVIDIA_ARCH_TAG="${ARCH_TAG}.nvidia"
 NVIDIA50_CUDA_ARCH_TAG="${ARCH_TAG}.nvidia50.cuda"
 NVIDIA50_TRT_ARCH_TAG="${ARCH_TAG}.nvidia50.trt"
+BUILD_NVIDIA50_TRT_INSTALLER="${WINDOWS_BUILD_NVIDIA50_TRT_INSTALLER:-false}"
 DIST_DIR="$ROOT_DIR/dist/windows"
 RELEASE_DIR="$ROOT_DIR/dist/release"
 META_DIR="$ROOT_DIR/dist/release-meta"
@@ -579,11 +580,15 @@ EOF
 
   if [[ "$has_nvidia50_trt_katago" == "true" ]]; then
     cat >>"$note_file" <<EOF
-- ${DATE_TAG}-${NVIDIA50_TRT_ARCH_TAG}.installer.exe
-  Experimental RTX 50 TensorRT package for users willing to test higher peak performance.
 - ${DATE_TAG}-${NVIDIA50_TRT_ARCH_TAG}.portable.zip
   Experimental RTX 50 TensorRT portable build. Unzip it and open ${NVIDIA50_TRT_APP_NAME}.exe.
 EOF
+    if [[ "$BUILD_NVIDIA50_TRT_INSTALLER" == "true" ]]; then
+      cat >>"$note_file" <<EOF
+- ${DATE_TAG}-${NVIDIA50_TRT_ARCH_TAG}.installer.exe
+  Experimental RTX 50 TensorRT installer. This is disabled by default because the TensorRT runtime makes the MSI/EXE build very large.
+EOF
+    fi
   fi
 
   cat >>"$note_file" <<EOF
@@ -698,6 +703,7 @@ build_release_variant() {
   local release_basename="$8"
   local upgrade_uuid="$9"
   local runtime_stage_dir="${10:-}"
+  local build_installer_asset="${11:-true}"
 
   local app_root
   local installer_path
@@ -714,19 +720,28 @@ build_release_variant() {
     "$engine_backend" \
     "$runtime_stage_dir")"
   create_portable_zip "$release_basename" "$app_root"
-  installer_path="$(build_installer \
-    "$flavor" \
-    "$include_katago" \
-    "$app_name" \
-    "$app_description" \
-    "$engine_source_dir" \
-    "$engine_target_dir" \
-    "$engine_backend" \
-    "$runtime_stage_dir" \
-    "$upgrade_uuid")"
-  final_installer="$RELEASE_DIR/${DATE_TAG}-${release_basename}.installer.exe"
-  cp "$installer_path" "$final_installer"
-  artifacts+=("$final_installer" "$RELEASE_DIR/${DATE_TAG}-${release_basename}.portable.zip")
+  artifacts+=("$RELEASE_DIR/${DATE_TAG}-${release_basename}.portable.zip")
+  if [[ "$build_installer_asset" == "true" ]]; then
+    installer_path="$(build_installer \
+      "$flavor" \
+      "$include_katago" \
+      "$app_name" \
+      "$app_description" \
+      "$engine_source_dir" \
+      "$engine_target_dir" \
+      "$engine_backend" \
+      "$runtime_stage_dir" \
+      "$upgrade_uuid")"
+    if [[ -z "$installer_path" || ! -f "$installer_path" ]]; then
+      echo "Windows installer was not produced for $release_basename" >&2
+      return 1
+    fi
+    final_installer="$RELEASE_DIR/${DATE_TAG}-${release_basename}.installer.exe"
+    cp "$installer_path" "$final_installer"
+    artifacts+=("$final_installer")
+  else
+    log_step "Skipping Windows installer for $release_basename"
+  fi
   log_step "Finished Windows release variant: $release_basename"
 }
 
@@ -822,7 +837,8 @@ if has_bundled_katago "$NVIDIA50_TRT_ENGINE_PLATFORM_DIR"; then
     "nvidia50-trt" \
     "$NVIDIA50_TRT_ARCH_TAG" \
     "$WINDOWS_UPGRADE_UUID_NVIDIA50_TRT" \
-    "$NVIDIA50_TRT_RUNTIME_STAGE_DIR"
+    "$NVIDIA50_TRT_RUNTIME_STAGE_DIR" \
+    "$BUILD_NVIDIA50_TRT_INSTALLER"
 else
   has_nvidia50_trt_katago_assets="false"
 fi
