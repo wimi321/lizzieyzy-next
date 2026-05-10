@@ -2417,15 +2417,41 @@ public class WinrateGraph {
   }
 
   private GraphPoint columnGraphPointHit(List<GraphPoint> points, int targetX, int targetY) {
+    Integer targetColumnX = targetGraphColumnX(targetX);
+    if (targetColumnX != null) {
+      GraphPoint point = graphPointHitOnColumn(points, targetColumnX.intValue(), targetX, targetY);
+      if (point != null || hasGraphPointOnColumn(points, targetColumnX.intValue())) {
+        return point;
+      }
+    }
+    int fallbackColumnX = nearestVisibleGraphColumnX(points, targetX);
+    if (fallbackColumnX == Integer.MIN_VALUE) {
+      return null;
+    }
+    return graphPointHitOnColumn(points, fallbackColumnX, targetX, targetY);
+  }
+
+  private GraphPoint graphPointHitOnColumn(
+      List<GraphPoint> points, int columnX, int targetX, int targetY) {
     GraphPoint bestPoint = null;
     long bestDistance = Long.MAX_VALUE;
-    int hitHalfWidth = graphColumnHitHalfWidth(points);
+    BoardHistoryNode firstNode = null;
+    boolean hasDifferentNodes = false;
     for (GraphPoint point : points) {
-      if (!isInsideGraphColumnHitRegion(point, targetX, hitHalfWidth)) {
+      if (point.x != columnX) {
         continue;
       }
-      if (hasOverlappingPointsAtColumn(points, point)
-          && !isInsideNodeRenderedYRange(points, point.node, targetY)) {
+      if (firstNode == null) {
+        firstNode = point.node;
+      } else if (firstNode != point.node) {
+        hasDifferentNodes = true;
+      }
+    }
+    for (GraphPoint point : points) {
+      if (point.x != columnX) {
+        continue;
+      }
+      if (hasDifferentNodes && !isInsideNodeRenderedYRange(points, point.node, targetY)) {
         continue;
       }
       long distance = graphDistanceSquared(point, targetX, targetY);
@@ -2437,14 +2463,36 @@ public class WinrateGraph {
     return bestPoint;
   }
 
-  private boolean hasOverlappingPointsAtColumn(List<GraphPoint> points, GraphPoint subject) {
-    for (GraphPoint other : points) {
-      if (other == subject) continue;
-      if (other.x == subject.x) {
+  private boolean hasGraphPointOnColumn(List<GraphPoint> points, int columnX) {
+    for (GraphPoint point : points) {
+      if (point.x == columnX) {
         return true;
       }
     }
     return false;
+  }
+
+  private Integer targetGraphColumnX(int targetX) {
+    if (params[2] <= 0 || params[4] <= 0) {
+      return null;
+    }
+    double scaledMoveIndex = (double) (targetX - params[0]) * params[4] / params[2];
+    int moveIndex = (int) Math.round(scaledMoveIndex);
+    moveIndex = Math.max(0, Math.min(params[4] - 1, moveIndex));
+    return Integer.valueOf(graphPointXByMoveIndex(moveIndex));
+  }
+
+  private int nearestVisibleGraphColumnX(List<GraphPoint> points, int targetX) {
+    int bestColumnX = Integer.MIN_VALUE;
+    long bestDistance = Long.MAX_VALUE;
+    for (GraphPoint point : points) {
+      long distance = Math.abs((long) point.x - targetX);
+      if (distance < bestDistance) {
+        bestColumnX = point.x;
+        bestDistance = distance;
+      }
+    }
+    return bestColumnX;
   }
 
   private boolean isInsideNodeRenderedYRange(

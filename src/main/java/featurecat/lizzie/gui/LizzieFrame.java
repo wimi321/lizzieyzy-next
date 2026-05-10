@@ -7404,14 +7404,39 @@ public class LizzieFrame extends JFrame {
     return suggestionclick[0] == x && suggestionclick[1] == y;
   }
 
+  private BoardHistoryNode pendingWinrateGraphDragTarget;
+  private boolean winrateGraphDragScheduled;
+
   public void onMouseDragged(int x, int y) {
-    BoardHistoryNode targetNode = resolveWinrateGraphTargetNode(x, y);
-    if (targetNode != null && canGoAfterload) {
-      goToWinrateGraphTarget(targetNode, true);
+    BoardHistoryNode targetNode = canGoAfterload ? resolveWinrateGraphTargetNode(x, y) : null;
+    if (!SwingUtilities.isEventDispatchThread()) {
+      if (targetNode != null) {
+        goToWinrateGraphTarget(targetNode, true);
+      }
+      return;
     }
+    // The latest drag event wins; a miss clears any queued graph target.
+    pendingWinrateGraphDragTarget = targetNode;
+    if (targetNode == null || winrateGraphDragScheduled) {
+      return;
+    }
+    winrateGraphDragScheduled = true;
+    SwingUtilities.invokeLater(
+        () -> {
+          winrateGraphDragScheduled = false;
+          BoardHistoryNode queuedTarget = pendingWinrateGraphDragTarget;
+          pendingWinrateGraphDragTarget = null;
+          if (queuedTarget != null && canGoAfterload) {
+            goToWinrateGraphTarget(queuedTarget, true);
+          }
+        });
   }
 
-  private BoardHistoryNode resolveWinrateGraphTargetNode(int x, int y) {
+  boolean hasWinrateGraphTargetAt(int x, int y) {
+    return resolveWinrateGraphTargetNode(x, y) != null;
+  }
+
+  BoardHistoryNode resolveWinrateGraphTargetNode(int x, int y) {
     if (!Lizzie.config.showWinrateGraph || winrateGraph == null) {
       return null;
     }
