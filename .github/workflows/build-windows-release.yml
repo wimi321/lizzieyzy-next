@@ -92,11 +92,19 @@ jobs:
           grep -q "Smart Optimize" "$note_file"
           grep -q "first launch should work offline" "$note_file"
           grep -q "qiyi71w/readboard v3.0.5" "$note_file"
+          grep -q "JCEF browser runtime" "$note_file"
           grep -q "RTX 5070/5080/5090" "$note_file"
           test -f "dist/windows/input-with-katago/engines/katago/windows-x64/katago.exe"
           test -f "dist/windows/input-with-katago/PROJECT_INFO.txt"
           test -f "dist/windows/input-with-katago/readboard/readboard.exe"
           test -f "dist/windows/input-with-katago/readboard/lizzieyzy-next-readboard-manifest.txt"
+          test -f "dist/windows/input-with-katago/jcef-bundle/build_meta.json"
+          test -f "dist/windows/input-with-katago/jcef-bundle/install.lock"
+          test -f "dist/windows/input-with-katago/jcef-bundle/libcef.dll"
+          test -f "dist/windows/input-with-katago/jcef-bundle/lizzieyzy-next-jcef-manifest.txt"
+          grep -qx "release-tag=jcef-99c2f7a+cef-127.3.1+g6cbb30e+chromium-127.0.6533.100" "dist/windows/input-with-katago/jcef-bundle/lizzieyzy-next-jcef-manifest.txt"
+          grep -qx "platform=windows-amd64" "dist/windows/input-with-katago/jcef-bundle/lizzieyzy-next-jcef-manifest.txt"
+          grep -qx "sha256=6d0466b9d5a2c4607a8a9eded1b5b9f77ca4514eadb68a1333b19053a462ceac" "dist/windows/input-with-katago/jcef-bundle/lizzieyzy-next-jcef-manifest.txt"
           grep -qx "release-tag=v3.0.5" "dist/windows/input-with-katago/readboard/lizzieyzy-next-readboard-manifest.txt"
           grep -qx "asset-name=readboard-github-release-v3.0.5.zip" "dist/windows/input-with-katago/readboard/lizzieyzy-next-readboard-manifest.txt"
           grep -qx "sha256=160e399b06e7d19bd61dc5be1d6ef827b88afc6fca88f0d91a7fdb103a34dde1" "dist/windows/input-with-katago/readboard/lizzieyzy-next-readboard-manifest.txt"
@@ -111,6 +119,10 @@ jobs:
           grep -q "java-options=-Dlizzie.next.version=${{ inputs.release_tag }}" "dist/windows/app-image-with-katago/LizzieYzy Next/app/LizzieYzy Next.cfg"
           test -f "dist/windows/app-image-with-katago/LizzieYzy Next/app/readboard/readboard.exe"
           test -f "dist/windows/app-image-with-katago/LizzieYzy Next/app/readboard/lizzieyzy-next-readboard-manifest.txt"
+          test -f "dist/windows/app-image-with-katago/LizzieYzy Next/app/jcef-bundle/build_meta.json"
+          test -f "dist/windows/app-image-with-katago/LizzieYzy Next/app/jcef-bundle/install.lock"
+          test -f "dist/windows/app-image-with-katago/LizzieYzy Next/app/jcef-bundle/libcef.dll"
+          test -f "dist/windows/app-image-with-katago/LizzieYzy Next/app/jcef-bundle/lizzieyzy-next-jcef-manifest.txt"
           test -f "dist/windows/app-image-opencl/LizzieYzy Next OpenCL/LizzieYzy Next OpenCL.exe"
           test -f "dist/windows/app-image-opencl/LizzieYzy Next OpenCL/app/PROJECT_INFO.txt"
           grep -q "java-options=-Dlizzie.next.version=${{ inputs.release_tag }}" "dist/windows/app-image-opencl/LizzieYzy Next OpenCL/app/LizzieYzy Next OpenCL.cfg"
@@ -199,6 +211,23 @@ jobs:
           test -f "dist/windows/app-image-without.engine/LizzieYzy Next/app/readboard/readboard.exe"
           test -f "dist/windows/app-image-without.engine/LizzieYzy Next/runtime/bin/java.exe"
           test -f "dist/windows/app-image-with-katago/LizzieYzy Next/runtime/bin/java.exe"
+          shopt -s nullglob
+          jcef_bundle_count=0
+          for jcef_bundle in dist/windows/input-*/jcef-bundle dist/windows/app-image-*/*/app/jcef-bundle; do
+            test -f "$jcef_bundle/build_meta.json"
+            test -f "$jcef_bundle/install.lock"
+            test -f "$jcef_bundle/libcef.dll"
+            test -f "$jcef_bundle/jcef.dll"
+            test -f "$jcef_bundle/jcef_helper.exe"
+            test -f "$jcef_bundle/lizzieyzy-next-jcef-manifest.txt"
+            grep -qx "release-tag=jcef-99c2f7a+cef-127.3.1+g6cbb30e+chromium-127.0.6533.100" "$jcef_bundle/lizzieyzy-next-jcef-manifest.txt"
+            grep -qx "platform=windows-amd64" "$jcef_bundle/lizzieyzy-next-jcef-manifest.txt"
+            jcef_bundle_count=$((jcef_bundle_count + 1))
+          done
+          if (( jcef_bundle_count < 2 )); then
+            echo "Expected bundled JCEF runtime in Windows inputs and app images"
+            exit 1
+          fi
           for app_cfg in \
             "dist/windows/app-image-with-katago/LizzieYzy Next/app/LizzieYzy Next.cfg" \
             "dist/windows/app-image-opencl/LizzieYzy Next OpenCL/app/LizzieYzy Next OpenCL.cfg" \

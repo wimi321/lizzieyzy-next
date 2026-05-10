@@ -8,13 +8,16 @@ import java.awt.*;
 import java.awt.event.*;
 import java.io.File;
 import java.io.FileInputStream;
-import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.PrintStream;
-import java.io.UnsupportedEncodingException;
+import java.security.CodeSource;
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import javax.imageio.ImageIO;
 import javax.swing.*;
 import me.friwi.jcefmaven.*;
@@ -39,6 +42,10 @@ import org.json.JSONTokener;
 
 public class BrowserFrame extends JFrame {
   private static final long serialVersionUID = -5570653778104813836L;
+  static final String JCEF_RELEASE_TAG =
+      "jcef-99c2f7a+cef-127.3.1+g6cbb30e+chromium-127.0.6533.100";
+  static final String JCEF_BUNDLE_DIRECTORY = "jcef-bundle";
+  static final String JCEF_BUNDLE_MANIFEST = "lizzieyzy-next-jcef-manifest.txt";
   private static final String YIKE_BROWSER_SYNC_STOP_COMMAND = "yikeBrowserSyncStop";
   private static final boolean YIKE_GEOMETRY_PROBE_DEBUG =
       Boolean.parseBoolean(System.getProperty("lizzie.yike.geometryProbeDebug.enabled", "false"));
@@ -78,12 +85,14 @@ public class BrowserFrame extends JFrame {
     } catch (IOException e) {
       e.printStackTrace();
     }
-    checkBundleFolder();
+    File jcefBundle = resolveJcefBundleFolder();
+    checkBundleFolder(jcefBundle);
     CefAppBuilder builder = new CefAppBuilder();
+    builder.setInstallDir(jcefBundle);
     // windowless_rendering_enabled must be set to false if not wanted.
     builder.getCefSettings().windowless_rendering_enabled = false;
     builder.getCefSettings().log_severity = LogSeverity.LOGSEVERITY_DISABLE;
-    File cefCache = new File("jcef-bundle", "cache");
+    File cefCache = resolveJcefCacheFolder();
     if (!cefCache.exists()) cefCache.mkdirs();
     builder.getCefSettings().root_cache_path = cefCache.getAbsolutePath();
     builder.getCefSettings().cache_path = cefCache.getAbsolutePath();
@@ -489,34 +498,114 @@ public class BrowserFrame extends JFrame {
         });
   }
 
-  private void checkBundleFolder() {
-    // TODO Auto-generated method stub
-    String tag = "jcef-99c2f7a+cef-127.3.1+g6cbb30e+chromium-127.0.6533.100";
-    File meta = new File("jcef-bundle" + File.separator + "build_meta.json");
-    if (meta.exists()) {
-      FileInputStream fp;
-      try {
-        fp = new FileInputStream(meta);
-        InputStreamReader reader;
-        reader = new InputStreamReader(fp, "utf-8");
-        JSONObject json = new JSONObject(new JSONTokener(reader));
-        reader.close();
-        fp.close();
-        if (!json.has("release_tag") || !json.getString("release_tag").equals(tag)) {
-          File dir = new File("jcef-bundle");
-          Utils.deleteDir(dir);
+  private static File resolveJcefBundleFolder() throws IOException {
+    Optional<File> bundledFolder = findBundledJcefFolder(defaultJcefSearchBases());
+    if (bundledFolder.isPresent()) {
+      return bundledFolder.get();
+    }
+    return new File(JCEF_BUNDLE_DIRECTORY).getCanonicalFile();
+  }
+
+  static Optional<File> findBundledJcefFolder(List<File> bases) throws IOException {
+    Set<String> seen = new LinkedHashSet<>();
+    for (File base : bases) {
+      if (base == null) {
+        continue;
+      }
+      File canonicalBase = base.getCanonicalFile();
+      for (File candidate : jcefCandidatesForBase(canonicalBase)) {
+        File canonicalCandidate = candidate.getCanonicalFile();
+        if (seen.add(canonicalCandidate.getAbsolutePath())
+            && isExpectedJcefBundle(canonicalCandidate)) {
+          return Optional.of(canonicalCandidate);
         }
-      } catch (FileNotFoundException e) {
-        // TODO Auto-generated catch block
-        e.printStackTrace();
-      } catch (UnsupportedEncodingException e1) {
-        // TODO Auto-generated catch block
-        e1.printStackTrace();
-      } catch (IOException e2) {
-        // TODO Auto-generated catch block
-        e2.printStackTrace();
       }
     }
+    return Optional.empty();
+  }
+
+  private static List<File> defaultJcefSearchBases() {
+    List<File> bases = new ArrayList<>();
+    bases.add(new File(System.getProperty("user.dir", ".")));
+    File codeSourceFolder = getCodeSourceFolder();
+    if (codeSourceFolder != null) {
+      bases.add(codeSourceFolder);
+      bases.add(codeSourceFolder.getParentFile());
+    }
+    return bases;
+  }
+
+  private static List<File> jcefCandidatesForBase(File base) {
+    List<File> candidates = new ArrayList<>();
+    candidates.add(new File(base, JCEF_BUNDLE_DIRECTORY));
+    candidates.add(new File(new File(base, "app"), JCEF_BUNDLE_DIRECTORY));
+    return candidates;
+  }
+
+  private static File getCodeSourceFolder() {
+    try {
+      CodeSource codeSource = BrowserFrame.class.getProtectionDomain().getCodeSource();
+      if (codeSource == null || codeSource.getLocation() == null) {
+        return null;
+      }
+      File location = new File(codeSource.getLocation().toURI());
+      return location.isFile() ? location.getParentFile() : location;
+    } catch (Exception ignored) {
+      return null;
+    }
+  }
+
+  static boolean isExpectedJcefBundle(File dir) {
+    File meta = new File(dir, "build_meta.json");
+    File installLock = new File(dir, "install.lock");
+    if (!meta.isFile() || !installLock.isFile() || !hasCefNativeRuntime(dir)) {
+      return false;
+    }
+    try (FileInputStream fp = new FileInputStream(meta);
+        InputStreamReader reader = new InputStreamReader(fp, "utf-8")) {
+      JSONObject json = new JSONObject(new JSONTokener(reader));
+      if (!JCEF_RELEASE_TAG.equals(json.optString("release_tag", ""))) {
+        return false;
+      }
+      String platform = json.optString("platform", "");
+      if (platform.isEmpty() || "*".equals(platform)) {
+        return true;
+      }
+      return platform.equals(EnumPlatform.getCurrentPlatform().getIdentifier());
+    } catch (Exception e) {
+      return false;
+    }
+  }
+
+  private static boolean hasCefNativeRuntime(File dir) {
+    return new File(dir, "libcef.dll").isFile()
+        || new File(dir, "libcef.so").isFile()
+        || new File(dir, "Chromium Embedded Framework.framework").exists()
+        || new File(new File(dir, "Frameworks"), "Chromium Embedded Framework.framework").exists();
+  }
+
+  private static File resolveJcefCacheFolder() throws IOException {
+    String localAppData = System.getenv("LOCALAPPDATA");
+    if (localAppData != null && !localAppData.isBlank()) {
+      return new File(new File(localAppData, "LizzieYzy Next"), "jcef-cache").getCanonicalFile();
+    }
+    String userHome = System.getProperty("user.home", ".");
+    return new File(new File(userHome, ".lizzieyzy-next"), "jcef-cache").getCanonicalFile();
+  }
+
+  private static void checkBundleFolder(File bundleDir) throws IOException {
+    File meta = new File(bundleDir, "build_meta.json");
+    if (!meta.exists() || isExpectedJcefBundle(bundleDir)) {
+      return;
+    }
+    if (new File(bundleDir, JCEF_BUNDLE_MANIFEST).exists()) {
+      throw new IOException(
+          "Bundled JCEF browser runtime does not match "
+              + JCEF_RELEASE_TAG
+              + ": "
+              + bundleDir.getAbsolutePath());
+    }
+    Utils.deleteDir(bundleDir);
   }
 
   private void setFrameSize() {

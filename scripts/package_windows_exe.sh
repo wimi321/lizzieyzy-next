@@ -56,6 +56,11 @@ NVIDIA_RUNTIME_PREPARE_SCRIPT="$ROOT_DIR/scripts/prepare_bundled_nvidia_runtime.
 NVIDIA_RUNTIME_STAGE_DIR="$DIST_DIR/nvidia-runtime/cuda12.1-cudnn8"
 NVIDIA50_CUDA_RUNTIME_STAGE_DIR="$DIST_DIR/nvidia-runtime/cuda12.8-cudnn9"
 NVIDIA50_TRT_RUNTIME_STAGE_DIR="$DIST_DIR/nvidia-runtime/trt10.9-cuda12.8"
+JCEF_BUNDLE_PREPARE_SCRIPT="$ROOT_DIR/scripts/prepare_bundled_jcef.py"
+JCEF_BUNDLE_STAGE_DIR="$DIST_DIR/jcef-bundle"
+JCEF_PLATFORM="${WINDOWS_JCEF_PLATFORM:-windows-amd64}"
+JCEF_RELEASE_TAG="jcef-99c2f7a+cef-127.3.1+g6cbb30e+chromium-127.0.6533.100"
+JCEF_ASSET_SHA256="6d0466b9d5a2c4607a8a9eded1b5b9f77ca4514eadb68a1333b19053a462ceac"
 READBOARD_RELEASE_REPO="${READBOARD_RELEASE_REPO:-qiyi71w/readboard}"
 READBOARD_RELEASE_TAG="${READBOARD_RELEASE_TAG:-v3.0.5}"
 READBOARD_ASSET_NAME="${READBOARD_ASSET_NAME:-readboard-github-release-v3.0.5.zip}"
@@ -264,6 +269,34 @@ copy_bundled_readboard_assets() {
   cp -R "$READBOARD_STAGE_DIR/." "$input_dir/readboard/"
 }
 
+prepare_bundled_jcef_assets() {
+  resolve_python_bin
+  if [[ ! -f "$JCEF_BUNDLE_PREPARE_SCRIPT" ]]; then
+    echo "Missing JCEF prepare script: $JCEF_BUNDLE_PREPARE_SCRIPT"
+    exit 1
+  fi
+  log_step "Preparing pinned JCEF browser runtime assets [$JCEF_PLATFORM]"
+  "$PYTHON_BIN" "$JCEF_BUNDLE_PREPARE_SCRIPT" \
+    --platform "$JCEF_PLATFORM" \
+    --cache-dir "$ROOT_DIR/.cache/jcef" \
+    --output-dir "$JCEF_BUNDLE_STAGE_DIR"
+}
+
+copy_bundled_jcef_assets() {
+  local input_dir="$1"
+
+  if [[ ! -f "$JCEF_BUNDLE_STAGE_DIR/build_meta.json" ]] \
+    || [[ ! -f "$JCEF_BUNDLE_STAGE_DIR/install.lock" ]] \
+    || [[ ! -f "$JCEF_BUNDLE_STAGE_DIR/libcef.dll" ]] \
+    || [[ ! -f "$JCEF_BUNDLE_STAGE_DIR/lizzieyzy-next-jcef-manifest.txt" ]]; then
+    echo "Missing prepared bundled JCEF browser runtime in $JCEF_BUNDLE_STAGE_DIR"
+    exit 1
+  fi
+
+  mkdir -p "$input_dir/jcef-bundle"
+  cp -R "$JCEF_BUNDLE_STAGE_DIR/." "$input_dir/jcef-bundle/"
+}
+
 rm -rf "$DIST_DIR"
 mkdir -p "$DIST_DIR" "$RELEASE_DIR" "$META_DIR"
 
@@ -331,6 +364,7 @@ copy_common_inputs() {
     cp -R "$ROOT_DIR/src/main/resources/assets/readboard_java/." "$input_dir/readboard_java/"
   fi
   copy_bundled_readboard_assets "$input_dir"
+  copy_bundled_jcef_assets "$input_dir"
 }
 
 copy_bundle_engine_assets() {
@@ -578,6 +612,7 @@ What is bundled:
 - Native Windows readboard is included in `readboard/`.
 - Native Windows readboard is pinned to qiyi71w/readboard ${READBOARD_RELEASE_TAG} (${READBOARD_ASSET_NAME}, SHA256 ${READBOARD_ASSET_SHA256}).
 - The built-in Java readboard helper is also included in `readboard_java/` for the explicit Java sync entry.
+- The JCEF browser runtime for Yike web page and Yike hall is included in `jcef-bundle/` (${JCEF_RELEASE_TAG}, SHA256 ${JCEF_ASSET_SHA256}), so these entries do not download browser components on first use.
 EOF
 
   if [[ "$has_with_katago" == "true" ]]; then
@@ -704,6 +739,7 @@ has_nvidia50_cuda_katago_assets="false"
 has_nvidia50_trt_katago_assets="false"
 
 prepare_bundled_readboard_assets
+prepare_bundled_jcef_assets
 
 if has_bundled_katago "$STANDARD_ENGINE_PLATFORM_DIR"; then
   has_with_katago_assets="true"
