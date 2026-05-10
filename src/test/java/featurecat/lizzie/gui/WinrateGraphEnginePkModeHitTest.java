@@ -1,7 +1,6 @@
 package featurecat.lizzie.gui;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -16,8 +15,10 @@ import featurecat.lizzie.rules.BoardHistoryList;
 import featurecat.lizzie.rules.BoardHistoryNode;
 import featurecat.lizzie.rules.Stone;
 import featurecat.lizzie.rules.Zobrist;
+import java.awt.Canvas;
 import java.awt.Color;
 import java.awt.Graphics2D;
+import java.awt.event.MouseEvent;
 import java.awt.image.BufferedImage;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
@@ -180,7 +181,7 @@ class WinrateGraphEnginePkModeHitTest {
   }
 
   @Test
-  void modeOneZeroPlayoutSnapshotHitPixelsStayOnForeground() throws Exception {
+  void modeOneZeroPlayoutSnapshotBlankPixelsStillScrubToBoundaryColumn() throws Exception {
     TestEnvironment env = TestEnvironment.open();
     try {
       SnapshotGapFixture fixture = snapshotGapFixture(1);
@@ -188,48 +189,104 @@ class WinrateGraphEnginePkModeHitTest {
       EngineManager.isEngineGame = false;
       WinrateGraph graph = fixture.renderFixture.graph;
       BufferedImage layer = renderGraphLayer(graph);
-      int[] anchor = renderedGraphPoint(graph, fixture.snapshotBoundary);
+      int[] anchor =
+          renderedModeOneWhiteDotPixel(
+              graph, fixture.snapshotBoundary, fixture.renderFixture.whiteDotWinrate);
       assertNotNull(anchor, "mode 1 should keep a snapshot boundary anchor point.");
-      assertAllHittablePixelsHaveForeground(graph, fixture.snapshotBoundary, layer, anchor, 8);
+      int[] blankPixel =
+          blankPixelResolvingToNode(graph, fixture.snapshotBoundary, layer, anchor, 8);
+      assertSame(
+          fixture.snapshotBoundary,
+          graph.resolveMoveTargetNode(blankPixel[0], blankPixel[1]),
+          "mode 1 zero-playout snapshot should scrub from blank graph pixels to its boundary column.");
     } finally {
       env.close();
     }
   }
 
   @Test
-  void engineGameBlankGraphBackgroundIgnoresHoverClickAndDrag() throws Exception {
+  void engineGameBlankGraphBackgroundScrubsToNearestVisibleColumn() throws Exception {
     TestEnvironment env = TestEnvironment.open();
     try {
       RenderFixture fixture = modeZeroFixture();
       fixture.board.isPkBoard = false;
       EngineManager.isEngineGame = true;
-      assertBlankGraphBackgroundMisses(fixture, "engine game");
+      assertBlankGraphBackgroundScrubsToNearestVisibleColumn(fixture, "engine game");
     } finally {
       env.close();
     }
   }
 
   @Test
-  void pkBlankGraphBackgroundIgnoresHoverClickAndDrag() throws Exception {
+  void pkBlankGraphBackgroundScrubsToNearestVisibleColumn() throws Exception {
     TestEnvironment env = TestEnvironment.open();
     try {
       RenderFixture fixture = modeZeroFixture();
       fixture.board.isPkBoard = true;
       EngineManager.isEngineGame = false;
-      assertBlankGraphBackgroundMisses(fixture, "pk");
+      assertBlankGraphBackgroundScrubsToNearestVisibleColumn(fixture, "pk");
     } finally {
       env.close();
     }
   }
 
   @Test
-  void modeOneBlankGraphBackgroundIgnoresHoverClickAndDrag() throws Exception {
+  void engineGameMousePressedOnGraphScrubPixelUsesWinrateNavigation() throws Exception {
+    TestEnvironment env = TestEnvironment.open();
+    try {
+      RenderFixture fixture = modeZeroFixture();
+      fixture.board.isPkBoard = false;
+      EngineManager.isEngineGame = true;
+      BufferedImage layer = renderGraphLayer(fixture.graph);
+      int[] anchorPoint = renderedPrimaryGraphPixel(fixture);
+      int[] scrubPixel =
+          blankPixelResolvingToNode(fixture.graph, fixture.target, layer, anchorPoint, 8);
+
+      Input input = new Input();
+      MouseEvent press =
+          new MouseEvent(
+              new Canvas(),
+              MouseEvent.MOUSE_PRESSED,
+              System.currentTimeMillis(),
+              0,
+              scrubPixel[0],
+              scrubPixel[1],
+              1,
+              false,
+              MouseEvent.BUTTON1);
+
+      input.mousePressed(press);
+
+      assertSame(
+          fixture.target,
+          fixture.board.getHistory().getCurrentHistoryNode(),
+          "engine-game left click on graph scrub pixel should navigate by winrate graph.");
+    } finally {
+      env.close();
+    }
+  }
+
+  @Test
+  void engineGameBlankPixelOnDuplicatedColumnStaysOnSameMoveNumber() throws Exception {
+    TestEnvironment env = TestEnvironment.open();
+    try {
+      RenderFixture fixture = modeZeroDuplicatedColumnFixture();
+      fixture.board.isPkBoard = false;
+      EngineManager.isEngineGame = true;
+      assertExactColumnBlankPixelStaysOnTarget(fixture, "engine game duplicated column");
+    } finally {
+      env.close();
+    }
+  }
+
+  @Test
+  void modeOneBlankGraphBackgroundScrubsToNearestVisibleColumn() throws Exception {
     TestEnvironment env = TestEnvironment.open();
     try {
       RenderFixture fixture = modeOneFixture();
       fixture.board.isPkBoard = false;
       EngineManager.isEngineGame = false;
-      assertBlankGraphBackgroundMisses(fixture, "mode 1");
+      assertBlankGraphBackgroundScrubsToNearestVisibleColumn(fixture, "mode 1");
     } finally {
       env.close();
     }
@@ -260,29 +317,66 @@ class WinrateGraphEnginePkModeHitTest {
     assertHoverClickDragHitSameNode(fixture.renderFixture, snapshotBoundary, pixel, modeLabel);
   }
 
-  private static void assertBlankGraphBackgroundMisses(RenderFixture fixture, String modeLabel)
-      throws Exception {
-    renderGraphLayer(fixture.graph);
-    int[] blankPixel = blankGraphPixel(fixture.graph);
+  private static void assertBlankGraphBackgroundScrubsToNearestVisibleColumn(
+      RenderFixture fixture, String modeLabel) throws Exception {
+    BufferedImage layer = renderGraphLayer(fixture.graph);
+    int[] anchorPoint = renderedPrimaryGraphPixel(fixture);
+    int[] blankPixel =
+        blankPixelResolvingToNode(fixture.graph, fixture.target, layer, anchorPoint, 8);
     BoardHistoryNode start = fixture.board.getHistory().getCurrentHistoryNode();
 
     fixture.graph.clearMouseOverNode();
     boolean handled = fixture.frame.processMouseMoveOnWinrateGraph(blankPixel[0], blankPixel[1]);
-    assertFalse(handled, modeLabel + " blank graph hover should not hit any node.");
+    assertTrue(
+        handled, modeLabel + " blank graph hover should scrub to the nearest visible column.");
     assertSame(
-        null, fixture.graph.mouseOverNode, modeLabel + " blank graph hover should stay null.");
+        fixture.target,
+        fixture.graph.mouseOverNode,
+        modeLabel + " blank graph hover should scrub to the nearest visible column target.");
 
     fixture.frame.onClickedWinrateOnly(blankPixel[0], blankPixel[1]);
     assertSame(
-        start,
+        fixture.target,
         fixture.board.getHistory().getCurrentHistoryNode(),
-        modeLabel + " blank graph click should keep current node unchanged.");
+        modeLabel + " blank graph click should jump to the nearest visible column target.");
 
+    fixture.board.getHistory().setHead(start);
     fixture.frame.onMouseDragged(blankPixel[0], blankPixel[1]);
     assertSame(
-        start,
+        fixture.target,
         fixture.board.getHistory().getCurrentHistoryNode(),
-        modeLabel + " blank graph drag should keep current node unchanged.");
+        modeLabel + " blank graph drag should jump to the nearest visible column target.");
+  }
+
+  private static void assertExactColumnBlankPixelStaysOnTarget(
+      RenderFixture fixture, String modeLabel) throws Exception {
+    BufferedImage layer = renderGraphLayer(fixture.graph);
+    int[] anchorPoint = renderedPrimaryGraphPixel(fixture);
+    int[] blankPixel =
+        blankPixelOnExactColumn(
+            fixture.graph, fixture.target, layer, anchorPoint[0], anchorPoint[1], 20);
+
+    fixture.graph.clearMouseOverNode();
+    boolean handled = fixture.frame.processMouseMoveOnWinrateGraph(blankPixel[0], blankPixel[1]);
+    assertTrue(
+        handled, modeLabel + " exact-column blank hover should stay on the same move-number.");
+    assertSame(
+        fixture.target,
+        fixture.graph.mouseOverNode,
+        modeLabel + " exact-column blank hover should not drift to another move.");
+
+    fixture.frame.onClickedWinrateOnly(blankPixel[0], blankPixel[1]);
+    assertSame(
+        fixture.target,
+        fixture.board.getHistory().getCurrentHistoryNode(),
+        modeLabel + " exact-column blank click should stay on the same move-number.");
+
+    fixture.board.getHistory().setHead(fixture.current);
+    fixture.frame.onMouseDragged(blankPixel[0], blankPixel[1]);
+    assertSame(
+        fixture.target,
+        fixture.board.getHistory().getCurrentHistoryNode(),
+        modeLabel + " exact-column blank drag should stay on the same move-number.");
   }
 
   private static void assertHoverClickDragHitSameNode(
@@ -365,6 +459,26 @@ class WinrateGraphEnginePkModeHitTest {
     return setupGraph(board, current, target, 80, 1, 80);
   }
 
+  private static RenderFixture modeZeroDuplicatedColumnFixture() throws Exception {
+    TrackingBoard board = allocate(TrackingBoard.class);
+    board.startStonelist = new ArrayList<>();
+    board.hasStartStone = false;
+
+    BoardHistoryList history = new BoardHistoryList(BoardData.empty(BOARD_SIZE, BOARD_SIZE));
+    history.add(moveNode(0, 0, Stone.BLACK, false, 1, 35, 1));
+    history.add(moveNode(1, 0, Stone.WHITE, true, 2, 42, 1));
+    history.add(moveNode(2, 0, Stone.BLACK, false, 3, 50, 1));
+    history.add(moveNode(0, 1, Stone.WHITE, true, 4, 82, 1));
+    BoardHistoryNode target = history.getCurrentHistoryNode();
+    history.add(moveNode(1, 1, Stone.BLACK, false, 5, 82, 1));
+    history.add(moveNode(2, 1, Stone.WHITE, true, 6, 65, 1));
+    BoardHistoryNode current = history.getCurrentHistoryNode();
+    history.setHead(current);
+    board.setHistory(history);
+
+    return setupGraph(board, current, target, 82, 0, 0);
+  }
+
   private static SnapshotGapFixture snapshotGapFixture(int mode) throws Exception {
     TrackingBoard board = allocate(TrackingBoard.class);
     board.startStonelist = new ArrayList<>();
@@ -395,12 +509,23 @@ class WinrateGraphEnginePkModeHitTest {
     WinrateGraph graph = new WinrateGraph();
     graph.mode = mode;
     TrackingFrame frame = allocate(TrackingFrame.class);
+    javax.swing.JScrollPane commentEditPane = new javax.swing.JScrollPane();
+    commentEditPane.setVisible(false);
+    setField(frame, LizzieFrame.class, "commentEditPane", commentEditPane);
+    setField(frame, LizzieFrame.class, "mainPanel", new javax.swing.JPanel());
 
     Lizzie.board = board;
     Lizzie.frame = frame;
     LizzieFrame.winrateGraph = graph;
 
     return new RenderFixture(board, frame, graph, current, target, targetWinrate, whiteDotWinrate);
+  }
+
+  private static int[] renderedPrimaryGraphPixel(RenderFixture fixture) throws Exception {
+    if (fixture.graph.mode == 1) {
+      return renderedModeOneWhiteDotPixel(fixture.graph, fixture.target, fixture.whiteDotWinrate);
+    }
+    return renderedModeZeroDotPixel(fixture.graph, fixture.target, fixture.targetWinrate);
   }
 
   private static int[] renderedModeZeroDotPixel(
@@ -501,22 +626,6 @@ class WinrateGraphEnginePkModeHitTest {
     throw new AssertionError("expected rendered graph point to paint an opaque pixel.");
   }
 
-  private static int[] blankGraphPixel(WinrateGraph graph) throws Exception {
-    int[] origParams = (int[]) getField(graph, "origParams");
-    int minX = origParams[0];
-    int maxX = minX + origParams[2];
-    int minY = origParams[1];
-    int maxY = minY + Math.max(1, origParams[3] / 2);
-    for (int y = minY; y < maxY; y++) {
-      for (int x = minX; x < maxX; x++) {
-        if (graph.resolveMoveTargetNode(x, y) == null) {
-          return new int[] {x, y};
-        }
-      }
-    }
-    throw new AssertionError("expected blank graph background pixel.");
-  }
-
   private static int[] foregroundPixelResolvingToNode(
       WinrateGraph graph, BoardHistoryNode expectedNode, BufferedImage layer, int[] anchorPoint) {
     int centerX = anchorPoint[0];
@@ -543,7 +652,7 @@ class WinrateGraphEnginePkModeHitTest {
         "expected a rendered foreground pixel that resolves to snapshot boundary.");
   }
 
-  private static void assertAllHittablePixelsHaveForeground(
+  private static int[] blankPixelResolvingToNode(
       WinrateGraph graph,
       BoardHistoryNode expectedNode,
       BufferedImage layer,
@@ -551,23 +660,48 @@ class WinrateGraphEnginePkModeHitTest {
       int radius) {
     int centerX = anchor[0];
     int centerY = anchor[1];
-    int hitCount = 0;
     for (int y = Math.max(0, centerY - radius);
         y <= Math.min(layer.getHeight() - 1, centerY + radius);
         y++) {
       for (int x = Math.max(0, centerX - radius);
           x <= Math.min(layer.getWidth() - 1, centerX + radius);
           x++) {
-        BoardHistoryNode hitNode = graph.resolveMoveTargetNode(x, y);
-        if (hitNode != expectedNode) continue;
-        hitCount++;
         Color pixel = new Color(layer.getRGB(x, y), true);
-        assertTrue(
-            pixel.getAlpha() > 0,
-            "mode 1 snapshot hit pixel should map to foreground: (" + x + "," + y + ")");
+        if (pixel.getAlpha() > 0) {
+          continue;
+        }
+        if (graph.resolveMoveTargetNode(x, y) == expectedNode) {
+          return new int[] {x, y};
+        }
       }
     }
-    assertTrue(hitCount > 0, "expected at least one hittable snapshot boundary pixel.");
+    throw new AssertionError("expected a blank graph pixel that scrubs to the target node.");
+  }
+
+  private static int[] blankPixelOnExactColumn(
+      WinrateGraph graph,
+      BoardHistoryNode expectedNode,
+      BufferedImage layer,
+      int columnX,
+      int preferredY,
+      int radius) {
+    for (int offset = 0; offset <= radius; offset++) {
+      int up = preferredY - offset;
+      if (up >= 0) {
+        Color pixel = new Color(layer.getRGB(columnX, up), true);
+        if (pixel.getAlpha() == 0 && graph.resolveMoveTargetNode(columnX, up) == expectedNode) {
+          return new int[] {columnX, up};
+        }
+      }
+      int down = preferredY + offset;
+      if (down < layer.getHeight()) {
+        Color pixel = new Color(layer.getRGB(columnX, down), true);
+        if (pixel.getAlpha() == 0 && graph.resolveMoveTargetNode(columnX, down) == expectedNode) {
+          return new int[] {columnX, down};
+        }
+      }
+    }
+    throw new AssertionError("expected a blank exact-column pixel that stays on the target node.");
   }
 
   private static BoardData moveNode(
@@ -642,6 +776,13 @@ class WinrateGraphEnginePkModeHitTest {
     Field field = target.getClass().getDeclaredField(fieldName);
     field.setAccessible(true);
     return field.get(target);
+  }
+
+  private static void setField(Object target, Class<?> owner, String fieldName, Object value)
+      throws Exception {
+    Field field = owner.getDeclaredField(fieldName);
+    field.setAccessible(true);
+    field.set(target, value);
   }
 
   @SuppressWarnings("unchecked")

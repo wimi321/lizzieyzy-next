@@ -48,8 +48,15 @@ public class Input implements MouseListener, KeyListener, MouseWheelListener, Mo
         return;
       }
       if (EngineManager.isEngineGame) {
-        if (e.getButton() == MouseEvent.BUTTON1)
-          Lizzie.frame.onClickedForManul(Utils.zoomOut(e.getX()), Utils.zoomOut(e.getY()));
+        if (e.getButton() == MouseEvent.BUTTON1) {
+          int x = Utils.zoomOut(e.getX());
+          int y = Utils.zoomOut(e.getY());
+          if (Lizzie.frame.hasWinrateGraphTargetAt(x, y)) {
+            Lizzie.frame.onClickedWinrateOnly(x, y);
+          } else {
+            Lizzie.frame.onClickedForManul(x, y);
+          }
+        }
         return;
       }
       if (Lizzie.config.isFloatBoardMode()) {

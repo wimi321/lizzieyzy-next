@@ -1,7 +1,6 @@
 package featurecat.lizzie.gui;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -22,6 +21,7 @@ import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Optional;
+import javax.swing.SwingUtilities;
 import org.junit.jupiter.api.Test;
 
 class WinrateGraphSnapshotBoundaryHitTest {
@@ -264,7 +264,7 @@ class WinrateGraphSnapshotBoundaryHitTest {
   }
 
   @Test
-  void zeroPlayoutSnapshotEveryHittablePixelStaysWithinSnapshotColumn() throws Exception {
+  void zeroPlayoutSnapshotBlankPixelsStillScrubToSnapshotBoundaryColumn() throws Exception {
     TestEnvironment env = TestEnvironment.open();
     try {
       TrackingBoard board = boardWithSnapshotGapHistoryAtEnd(40, 80);
@@ -278,16 +278,19 @@ class WinrateGraphSnapshotBoundaryHitTest {
       BufferedImage winrateLayer = renderGraphLayer(graph);
       int[] anchor = renderedGraphPoint(graph, snapshotBoundary);
       assertNotNull(anchor, "snapshot boundary should keep a rendered hit anchor.");
-
-      assertAllHittablePixelsStayWithinSnapshotColumn(
-          graph, snapshotBoundary, anchor[0], winrateLayer, anchor, 8);
+      int[] blankPixel =
+          blankPixelResolvingToNode(graph, snapshotBoundary, winrateLayer, anchor, 8);
+      assertSame(
+          snapshotBoundary,
+          resolveTargetNode(graph, blankPixel[0], blankPixel[1]),
+          "zero-playout snapshot should still scrub from blank pixels to the boundary column.");
     } finally {
       env.close();
     }
   }
 
   @Test
-  void blankGraphBackgroundIgnoresHoverClickAndDrag() throws Exception {
+  void blankGraphBackgroundScrubsToNearestVisibleColumn() throws Exception {
     TestEnvironment env = TestEnvironment.open();
     try {
       TrackingBoard board = boardWithSnapshotGapHistory();
@@ -297,25 +300,32 @@ class WinrateGraphSnapshotBoundaryHitTest {
       LizzieFrame.winrateGraph = graph;
       Lizzie.frame = frame;
 
-      int[] blankPixel = blankGraphPixel(graph);
+      BoardHistoryNode snapshotBoundary = snapshotBoundaryNode(board);
+      int[] snapshotPoint = renderedGraphPoint(graph, snapshotBoundary);
+      assertNotNull(snapshotPoint, "snapshot boundary should keep a rendered graph anchor.");
+      int[] blankPixel = graphColumnScrubPixel(graph, snapshotPoint);
       BoardHistoryNode start = board.getHistory().getCurrentHistoryNode();
       graph.clearMouseOverNode();
 
       boolean handled = frame.processMouseMoveOnWinrateGraph(blankPixel[0], blankPixel[1]);
-      assertFalse(handled, "graph blank hover should not hit any anchor node.");
-      assertSame(null, graph.mouseOverNode, "graph blank hover should keep mouseOver null.");
+      assertTrue(handled, "graph blank hover should scrub to the nearest visible column.");
+      assertSame(
+          snapshotBoundary,
+          graph.mouseOverNode,
+          "graph blank hover should resolve to the snapshot boundary on the same column.");
 
       frame.onClickedWinrateOnly(blankPixel[0], blankPixel[1]);
       assertSame(
-          start,
+          snapshotBoundary,
           board.getHistory().getCurrentHistoryNode(),
-          "graph blank click should keep current node unchanged.");
+          "graph blank click should jump to the nearest visible column target.");
 
+      board.getHistory().setHead(start);
       frame.onMouseDragged(blankPixel[0], blankPixel[1]);
       assertSame(
-          start,
+          snapshotBoundary,
           board.getHistory().getCurrentHistoryNode(),
-          "graph blank drag should keep current node unchanged.");
+          "graph blank drag should jump to the nearest visible column target.");
     } finally {
       env.close();
     }
@@ -363,7 +373,36 @@ class WinrateGraphSnapshotBoundaryHitTest {
   }
 
   @Test
-  void narrowGraphMidColumnBackgroundMissesAndNeighborColumnsDoNotCrossTalk() throws Exception {
+  void queuedDragTargetClearsWhenLaterDragLeavesGraphBeforeEdtDispatch() throws Exception {
+    TestEnvironment env = TestEnvironment.open();
+    try {
+      TrackingBoard board = boardWithSnapshotGapHistory();
+      Lizzie.board = board;
+      WinrateGraph graph = configuredGraph();
+      TrackingFrame frame = allocate(TrackingFrame.class);
+      LizzieFrame.winrateGraph = graph;
+      Lizzie.frame = frame;
+
+      BoardHistoryNode snapshotBoundary = snapshotBoundaryNode(board);
+      BoardHistoryNode start = board.getHistory().getCurrentHistoryNode();
+      int[] snapshotPoint = renderedGraphPoint(graph, snapshotBoundary);
+      assertNotNull(snapshotPoint, "snapshot boundary should keep a rendered graph anchor.");
+
+      enqueueOnEdt(() -> frame.onMouseDragged(snapshotPoint[0], snapshotPoint[1]));
+      enqueueOnEdt(() -> frame.onMouseDragged(-10, -10));
+      flushEdt();
+
+      assertSame(
+          start,
+          board.getHistory().getCurrentHistoryNode(),
+          "later miss drag should clear queued target instead of jumping to a stale node.");
+    } finally {
+      env.close();
+    }
+  }
+
+  @Test
+  void narrowGraphBlankBackgroundScrubsToNearestNeighborColumn() throws Exception {
     TestEnvironment env = TestEnvironment.open();
     try {
       TrackingBoard board = boardWithLinearHistory(7);
@@ -374,19 +413,15 @@ class WinrateGraphSnapshotBoundaryHitTest {
       BoardHistoryNode moveTwo = moveOne.next().get();
       int xMoveOne = graphCenterX((int[]) getField(graph, "params"), moveOne.getData().moveNumber);
       int xMoveTwo = graphCenterX((int[]) getField(graph, "params"), moveTwo.getData().moveNumber);
-      int midX = (xMoveOne + xMoveTwo) / 2;
       int y = GRAPH_HEIGHT / 2;
-
-      BoardHistoryNode middleHit = resolveTargetNode(graph, midX, y);
-      assertSame(null, middleHit, "blank background between dense columns should remain miss.");
 
       BoardHistoryNode nearMoveOne = resolveTargetNode(graph, xMoveOne + 1, y);
       assertSame(
-          moveOne, nearMoveOne, "neighbor pixel near move-one column should resolve move one.");
+          moveOne, nearMoveOne, "blank pixel near move-one column should scrub to move one.");
 
       BoardHistoryNode nearMoveTwo = resolveTargetNode(graph, xMoveTwo - 1, y);
       assertSame(
-          moveTwo, nearMoveTwo, "neighbor pixel near move-two column should resolve move two.");
+          moveTwo, nearMoveTwo, "blank pixel near move-two column should scrub to move two.");
     } finally {
       env.close();
     }
@@ -436,11 +471,11 @@ class WinrateGraphSnapshotBoundaryHitTest {
           board.getHistory().getCurrentHistoryNode(),
           "drag should navigate to the target node from rendered anchor edge foreground.");
 
-      int[] blankPixel = blankPixelNearAnchor(winrateLayer, graph, anchor, 6);
+      int[] blankPixel = blankPixelResolvingToNode(graph, targetNode, winrateLayer, anchor, 6);
       assertSame(
-          null,
+          targetNode,
           resolveTargetNode(graph, blankPixel[0], blankPixel[1]),
-          "blank background near dense anchors should remain miss.");
+          "blank background near dense anchors should scrub to the nearest anchor column.");
     } finally {
       env.close();
     }
@@ -606,8 +641,12 @@ class WinrateGraphSnapshotBoundaryHitTest {
         "expected a rendered foreground pixel that resolves to the target node.");
   }
 
-  private static int[] blankPixelNearAnchor(
-      BufferedImage layer, WinrateGraph graph, int[] anchor, int radius) {
+  private static int[] blankPixelResolvingToNode(
+      WinrateGraph graph,
+      BoardHistoryNode expectedNode,
+      BufferedImage layer,
+      int[] anchor,
+      int radius) {
     int centerX = anchor[0];
     int centerY = anchor[1];
     for (int y = Math.max(0, centerY - radius);
@@ -618,39 +657,12 @@ class WinrateGraphSnapshotBoundaryHitTest {
           x++) {
         Color pixel = new Color(layer.getRGB(x, y), true);
         if (pixel.getAlpha() > 0) continue;
-        if (safeResolveTargetNode(graph, x, y) == null) {
+        if (safeResolveTargetNode(graph, x, y) == expectedNode) {
           return new int[] {x, y};
         }
       }
     }
-    throw new AssertionError("expected blank background pixel near rendered anchor.");
-  }
-
-  private static void assertAllHittablePixelsStayWithinSnapshotColumn(
-      WinrateGraph graph,
-      BoardHistoryNode expectedNode,
-      int expectedColumnX,
-      BufferedImage layer,
-      int[] anchor,
-      int radius) {
-    int centerX = anchor[0];
-    int centerY = anchor[1];
-    int hitCount = 0;
-    for (int y = Math.max(0, centerY - radius);
-        y <= Math.min(layer.getHeight() - 1, centerY + radius);
-        y++) {
-      for (int x = Math.max(0, centerX - radius);
-          x <= Math.min(layer.getWidth() - 1, centerX + radius);
-          x++) {
-        BoardHistoryNode hitNode = safeResolveTargetNode(graph, x, y);
-        if (hitNode != expectedNode) continue;
-        hitCount++;
-        assertTrue(
-            Math.abs(x - expectedColumnX) <= 2,
-            "snapshot hit pixel should stay on snapshot column: (" + x + "," + y + ")");
-      }
-    }
-    assertTrue(hitCount > 0, "expected at least one pixel to hit the snapshot boundary.");
+    throw new AssertionError("expected blank background pixel that scrubs to the target node.");
   }
 
   private static BoardHistoryNode safeResolveTargetNode(WinrateGraph graph, int x, int y) {
@@ -745,15 +757,38 @@ class WinrateGraphSnapshotBoundaryHitTest {
     return (BoardHistoryNode) method.invoke(graph, x, y);
   }
 
-  private static int[] blankGraphPixel(WinrateGraph graph) throws Exception {
-    for (int y = 0; y < GRAPH_HEIGHT; y++) {
-      for (int x = 0; x < GRAPH_WIDTH; x++) {
-        if (resolveTargetNode(graph, x, y) == null) {
-          return new int[] {x, y};
-        }
-      }
+  private static int[] graphColumnScrubPixel(WinrateGraph graph, int[] point) throws Exception {
+    int[] origParams = (int[]) getField(graph, "origParams");
+    int minX = origParams[0];
+    int maxX = origParams[0] + origParams[2] - 1;
+    int minY = origParams[1];
+    int maxY = origParams[1] + origParams[3] - 1;
+    int right = point[0] + 3;
+    if (right <= maxX) {
+      return new int[] {right, Math.abs(minY - point[1]) > 4 ? minY : maxY};
     }
-    throw new AssertionError("expected blank graph background pixel.");
+    int left = point[0] - 3;
+    if (left >= minX) {
+      return new int[] {left, Math.abs(minY - point[1]) > 4 ? minY : maxY};
+    }
+    int up = minY;
+    if (Math.abs(up - point[1]) > 4) {
+      return new int[] {point[0], up};
+    }
+    int down = maxY;
+    if (Math.abs(down - point[1]) > 4) {
+      return new int[] {point[0], down};
+    }
+    throw new AssertionError("expected graph scrub pixel away from rendered anchor.");
+  }
+
+  private static void flushEdt() throws Exception {
+    SwingUtilities.invokeAndWait(() -> {});
+    SwingUtilities.invokeAndWait(() -> {});
+  }
+
+  private static void enqueueOnEdt(Runnable runnable) {
+    SwingUtilities.invokeLater(runnable);
   }
 
   private static void primeRenderedPointSources(WinrateGraph graph) throws Exception {
