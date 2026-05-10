@@ -9,6 +9,8 @@ KATAGO_RELEASE_BASE="https://github.com/lightvector/KataGo/releases/download/${K
 WINDOWS_ASSET="${WINDOWS_ASSET:-katago-${KATAGO_TAG}-eigen-windows-x64.zip}"
 WINDOWS_OPENCL_ASSET="${WINDOWS_OPENCL_ASSET:-katago-${KATAGO_TAG}-opencl-windows-x64.zip}"
 WINDOWS_NVIDIA_ASSET="${WINDOWS_NVIDIA_ASSET:-katago-${KATAGO_TAG}-cuda12.1-cudnn8.9.7-windows-x64.zip}"
+WINDOWS_NVIDIA50_CUDA_ASSET="${WINDOWS_NVIDIA50_CUDA_ASSET:-katago-${KATAGO_TAG}-cuda12.8-cudnn9.8.0-windows-x64.zip}"
+WINDOWS_NVIDIA50_TRT_ASSET="${WINDOWS_NVIDIA50_TRT_ASSET:-katago-${KATAGO_TAG}-trt10.9.0-cuda12.8-windows-x64.zip}"
 LINUX_ASSET="${LINUX_ASSET:-katago-${KATAGO_TAG}-eigen-linux-x64.zip}"
 LINUX_OPENCL_ASSET="${LINUX_OPENCL_ASSET:-katago-${KATAGO_TAG}-opencl-linux-x64.zip}"
 LINUX_NVIDIA_ASSET="${LINUX_NVIDIA_ASSET:-katago-${KATAGO_TAG}-cuda12.1-cudnn8.9.7-linux-x64.zip}"
@@ -21,6 +23,8 @@ CONFIG_ROOT="$ENGINES_ROOT/configs"
 WINDOWS_ROOT="$ENGINES_ROOT/windows-x64"
 WINDOWS_OPENCL_ROOT="$ENGINES_ROOT/windows-x64-opencl"
 WINDOWS_NVIDIA_ROOT="$ENGINES_ROOT/windows-x64-nvidia"
+WINDOWS_NVIDIA50_CUDA_ROOT="$ENGINES_ROOT/windows-x64-nvidia50-cuda"
+WINDOWS_NVIDIA50_TRT_ROOT="$ENGINES_ROOT/windows-x64-nvidia50-trt"
 LINUX_ROOT="$ENGINES_ROOT/linux-x64"
 LINUX_OPENCL_ROOT="$ENGINES_ROOT/linux-x64-opencl"
 LINUX_NVIDIA_ROOT="$ENGINES_ROOT/linux-x64-nvidia"
@@ -251,6 +255,8 @@ KataGo release: $KATAGO_TAG
 Windows bundle: $WINDOWS_ASSET
 Windows OpenCL bundle: $WINDOWS_OPENCL_ASSET
 Windows NVIDIA bundle: $WINDOWS_NVIDIA_ASSET
+Windows NVIDIA 50 CUDA bundle: $WINDOWS_NVIDIA50_CUDA_ASSET
+Windows NVIDIA 50 TensorRT bundle: $WINDOWS_NVIDIA50_TRT_ASSET
 Linux bundle: $LINUX_ASSET
 Linux OpenCL bundle: $LINUX_OPENCL_ASSET
 Linux NVIDIA bundle: $LINUX_NVIDIA_ASSET
@@ -266,6 +272,8 @@ main() {
   download_asset "$WINDOWS_ASSET"
   download_asset "$WINDOWS_OPENCL_ASSET"
   download_asset "$WINDOWS_NVIDIA_ASSET"
+  download_asset "$WINDOWS_NVIDIA50_CUDA_ASSET"
+  download_asset "$WINDOWS_NVIDIA50_TRT_ASSET"
   download_asset "$LINUX_ASSET"
   download_asset "$LINUX_OPENCL_ASSET"
   download_asset "$LINUX_NVIDIA_ASSET"
@@ -273,6 +281,8 @@ main() {
   local windows_src
   local windows_opencl_src
   local windows_nvidia_src
+  local windows_nvidia50_cuda_src
+  local windows_nvidia50_trt_src
   local linux_src
   local linux_opencl_src
   local linux_nvidia_src
@@ -280,6 +290,8 @@ main() {
   windows_src="$(extract_asset "$WINDOWS_ASSET")"
   windows_opencl_src="$(extract_asset "$WINDOWS_OPENCL_ASSET")"
   windows_nvidia_src="$(extract_asset "$WINDOWS_NVIDIA_ASSET")"
+  windows_nvidia50_cuda_src="$(extract_asset "$WINDOWS_NVIDIA50_CUDA_ASSET")"
+  windows_nvidia50_trt_src="$(extract_asset "$WINDOWS_NVIDIA50_TRT_ASSET")"
   linux_src="$(extract_asset "$LINUX_ASSET")"
   linux_opencl_src="$(extract_asset "$LINUX_OPENCL_ASSET")"
   linux_nvidia_src="$(extract_asset "$LINUX_NVIDIA_ASSET")"
@@ -292,6 +304,8 @@ main() {
   prepare_windows_bundle "$windows_src" "$WINDOWS_ROOT"
   prepare_windows_bundle "$windows_opencl_src" "$WINDOWS_OPENCL_ROOT"
   prepare_windows_bundle "$windows_nvidia_src" "$WINDOWS_NVIDIA_ROOT"
+  prepare_windows_bundle "$windows_nvidia50_cuda_src" "$WINDOWS_NVIDIA50_CUDA_ROOT"
+  prepare_windows_bundle "$windows_nvidia50_trt_src" "$WINDOWS_NVIDIA50_TRT_ROOT"
   prepare_linux_bundle "$linux_src" "$LINUX_ROOT"
   prepare_linux_bundle "$linux_opencl_src" "$LINUX_OPENCL_ROOT"
   prepare_linux_bundle "$linux_nvidia_src" "$LINUX_NVIDIA_ROOT"

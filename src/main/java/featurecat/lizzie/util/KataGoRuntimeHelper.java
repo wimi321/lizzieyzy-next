@@ -64,6 +64,11 @@ public final class KataGoRuntimeHelper {
       "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
           + "(KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36";
   private static final String NVIDIA_ENGINE_DIR = "windows-x64-nvidia";
+  private static final String NVIDIA50_CUDA_ENGINE_DIR = "windows-x64-nvidia50-cuda";
+  private static final String NVIDIA50_TRT_ENGINE_DIR = "windows-x64-nvidia50-trt";
+  private static final String NVIDIA_BACKEND = "nvidia";
+  private static final String NVIDIA50_CUDA_BACKEND = "nvidia50-cuda";
+  private static final String NVIDIA50_TRT_BACKEND = "nvidia50-trt";
   private static final String ENGINE_BACKEND_MARKER_NAME = "lizzieyzy-next-engine-backend.txt";
   private static final String NVIDIA_RUNTIME_ROOT = "nvidia-runtime";
   private static final String BUNDLED_HOME_DATA_DIR = "katago-home";
@@ -83,13 +88,31 @@ public final class KataGoRuntimeHelper {
       Pattern.compile("numSearchThreads\\s*=\\s*(\\d+):\\s*(\\d+)\\s*/\\s*(\\d+)\\s*positions");
   private static final Pattern BENCHMARK_POSSIBLE_THREADS_PATTERN =
       Pattern.compile("Possible numbers of threads to test:\\s*(.*)");
-  private static final List<List<String>> REQUIRED_RUNTIME_DLL_GROUPS =
+  private static final List<List<String>> REQUIRED_NVIDIA_CUDA12_1_RUNTIME_DLL_GROUPS =
       Arrays.asList(
           Arrays.asList("cudart64_12.dll"),
           Arrays.asList("cublas64_12.dll"),
           Arrays.asList("cublasLt64_12.dll"),
           Arrays.asList("cudnn64_8.dll"),
           Arrays.asList("nvJitLink*.dll"),
+          Arrays.asList("zlibwapi.dll", "libz.dll"));
+  private static final List<List<String>> REQUIRED_NVIDIA_CUDA12_8_RUNTIME_DLL_GROUPS =
+      Arrays.asList(
+          Arrays.asList("cudart64_12.dll"),
+          Arrays.asList("cublas64_12.dll"),
+          Arrays.asList("cublasLt64_12.dll"),
+          Arrays.asList("cudnn64_9.dll"),
+          Arrays.asList("nvJitLink*.dll"),
+          Arrays.asList("zlibwapi.dll", "libz.dll"));
+  private static final List<List<String>> REQUIRED_NVIDIA_TRT10_9_RUNTIME_DLL_GROUPS =
+      Arrays.asList(
+          Arrays.asList("cudart64_12.dll"),
+          Arrays.asList("cublas64_12.dll"),
+          Arrays.asList("cublasLt64_12.dll"),
+          Arrays.asList("cudnn64_9.dll"),
+          Arrays.asList("nvJitLink*.dll"),
+          Arrays.asList("nvinfer_10.dll", "nvinfer*.dll"),
+          Arrays.asList("nvinfer_plugin_10.dll", "nvinfer_plugin*.dll"),
           Arrays.asList("zlibwapi.dll", "libz.dll"));
   private static final Object NVIDIA_RUNTIME_LOCK = new Object();
   private static final int BENCHMARK_VISITS = 800;
@@ -311,26 +334,50 @@ public final class KataGoRuntimeHelper {
   }
 
   public static boolean isNvidiaBundledPath(Path enginePath) {
+    return resolveNvidiaBackend(enginePath) != null;
+  }
+
+  private static String resolveNvidiaBackend(Path enginePath) {
     if (enginePath == null) {
-      return false;
+      return null;
     }
     String normalized = enginePath.toAbsolutePath().normalize().toString().replace('\\', '/');
-    if (normalized.toLowerCase(Locale.ROOT).contains("/" + NVIDIA_ENGINE_DIR + "/")) {
-      return true;
+    String normalizedLower = normalized.toLowerCase(Locale.ROOT);
+    if (normalizedLower.contains("/" + NVIDIA50_TRT_ENGINE_DIR + "/")) {
+      return NVIDIA50_TRT_BACKEND;
+    }
+    if (normalizedLower.contains("/" + NVIDIA50_CUDA_ENGINE_DIR + "/")) {
+      return NVIDIA50_CUDA_BACKEND;
+    }
+    if (normalizedLower.contains("/" + NVIDIA_ENGINE_DIR + "/")) {
+      return NVIDIA_BACKEND;
     }
     Path engineDir = enginePath.toAbsolutePath().normalize().getParent();
     if (engineDir == null) {
-      return false;
+      return null;
     }
     Path markerPath = engineDir.resolve(ENGINE_BACKEND_MARKER_NAME);
     if (!Files.isRegularFile(markerPath)) {
-      return false;
+      return null;
     }
     try {
       String backend = Files.readString(markerPath, StandardCharsets.UTF_8).trim();
-      return "nvidia".equalsIgnoreCase(backend);
+      String backendLower = backend.toLowerCase(Locale.ROOT);
+      if (NVIDIA50_TRT_BACKEND.equals(backendLower)) {
+        return NVIDIA50_TRT_BACKEND;
+      }
+      if (NVIDIA50_CUDA_BACKEND.equals(backendLower)) {
+        return NVIDIA50_CUDA_BACKEND;
+      }
+      if (NVIDIA_BACKEND.equals(backendLower)) {
+        return NVIDIA_BACKEND;
+      }
+      if (backendLower.startsWith("nvidia")) {
+        return backendLower;
+      }
+      return null;
     } catch (IOException e) {
-      return false;
+      return null;
     }
   }
 
@@ -401,7 +448,8 @@ public final class KataGoRuntimeHelper {
 
   public static NvidiaRuntimeStatus inspectNvidiaRuntime(Path enginePath) {
     Path runtimeDir = getNvidiaRuntimeDir();
-    if (!isWindowsPlatform() || !isNvidiaBundledPath(enginePath)) {
+    String backend = resolveNvidiaBackend(enginePath);
+    if (!isWindowsPlatform() || backend == null) {
       return new NvidiaRuntimeStatus(
           false,
           false,
@@ -415,8 +463,9 @@ public final class KataGoRuntimeHelper {
     }
 
     List<Path> searchDirs = collectRuntimeSearchDirs(enginePath, runtimeDir);
-    List<String> missing = collectMissingRuntimeGroups(searchDirs);
-    Path readyDir = findDirectoryContainingRequiredDlls(searchDirs);
+    List<List<String>> requiredDllGroups = requiredRuntimeDllGroups(backend);
+    List<String> missing = collectMissingRuntimeGroups(searchDirs, requiredDllGroups);
+    Path readyDir = findDirectoryContainingRequiredDlls(searchDirs, requiredDllGroups);
     boolean ready = readyDir != null;
     String detailText;
     if (ready) {
@@ -1976,9 +2025,20 @@ public final class KataGoRuntimeHelper {
     return false;
   }
 
-  private static List<String> collectMissingRuntimeGroups(List<Path> searchDirs) {
+  private static List<List<String>> requiredRuntimeDllGroups(String backend) {
+    if (NVIDIA50_TRT_BACKEND.equalsIgnoreCase(backend)) {
+      return REQUIRED_NVIDIA_TRT10_9_RUNTIME_DLL_GROUPS;
+    }
+    if (NVIDIA50_CUDA_BACKEND.equalsIgnoreCase(backend)) {
+      return REQUIRED_NVIDIA_CUDA12_8_RUNTIME_DLL_GROUPS;
+    }
+    return REQUIRED_NVIDIA_CUDA12_1_RUNTIME_DLL_GROUPS;
+  }
+
+  private static List<String> collectMissingRuntimeGroups(
+      List<Path> searchDirs, List<List<String>> requiredDllGroups) {
     List<String> missing = new ArrayList<String>();
-    for (List<String> requirementGroup : REQUIRED_RUNTIME_DLL_GROUPS) {
+    for (List<String> requirementGroup : requiredDllGroups) {
       if (!hasAnyFile(searchDirs, requirementGroup)) {
         missing.add(describeRequirementGroup(requirementGroup));
       }
@@ -2005,13 +2065,14 @@ public final class KataGoRuntimeHelper {
     return String.join(" or ", requirementGroup);
   }
 
-  private static Path findDirectoryContainingRequiredDlls(List<Path> searchDirs) {
+  private static Path findDirectoryContainingRequiredDlls(
+      List<Path> searchDirs, List<List<String>> requiredDllGroups) {
     for (Path dir : searchDirs) {
       if (dir == null) {
         continue;
       }
       boolean allPresent = true;
-      for (List<String> requirementGroup : REQUIRED_RUNTIME_DLL_GROUPS) {
+      for (List<String> requirementGroup : requiredDllGroups) {
         if (!hasAnyFile(Arrays.asList(dir), requirementGroup)) {
           allPresent = false;
           break;

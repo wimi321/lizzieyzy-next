@@ -29,7 +29,7 @@
 
 当前发布包策略以“普通用户能快速选对并直接用”为核心。
 
-当前主推荐矩阵固定为 11 个公开资产：
+当前主推荐矩阵固定为 15 个公开资产：
 
 - Windows 64 位：`opencl.portable.zip`
 - Windows 64 位：`opencl.installer.exe`
@@ -37,6 +37,10 @@
 - Windows 64 位：`with-katago.installer.exe`
 - Windows 64 位：`nvidia.portable.zip`
 - Windows 64 位：`nvidia.installer.exe`
+- Windows 64 位：`nvidia50.cuda.portable.zip`
+- Windows 64 位：`nvidia50.cuda.installer.exe`
+- Windows 64 位：`nvidia50.trt.portable.zip`
+- Windows 64 位：`nvidia50.trt.installer.exe`
 - Windows 64 位：`without.engine.portable.zip`
 - Windows 64 位：`without.engine.installer.exe`
 - macOS Apple Silicon：`.dmg`

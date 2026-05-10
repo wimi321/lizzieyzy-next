@@ -10,11 +10,12 @@
 
 这份文档讲的是当前维护版 `LizzieYzy Next` 的公开发布格式，不是旧 `lizzieyzy` 的历史发布布局。
 
-- 当前维护版公开主推 11 个用户向主资产
+- 当前维护版公开主推 15 个用户向主资产
 - Windows 默认优先推荐 `portable.zip`
 - 大多数普通用户先下 `windows64.opencl.portable.zip`
 - OpenCL 表现不好时改用 `windows64.with-katago.portable.zip`
-- 有 NVIDIA 显卡并且更在意速度时改用 `windows64.nvidia.portable.zip`
+- RTX 20/30/40 系列 NVIDIA 显卡并且更在意速度时改用 `windows64.nvidia.portable.zip`
+- RTX 5070/5080/5090 优先试 `windows64.nvidia50.cuda.portable.zip`，`windows64.nvidia50.trt.portable.zip` 是试验包
 
 如果你只想先看图再决定，先看这里：
 
@@ -32,6 +33,10 @@
 | Windows 64 位 CPU 兜底安装器 | `<date>-windows64.with-katago.installer.exe` | 想安装的 CPU 兜底用户 |
 | Windows 64 位 NVIDIA 极速免安装包 | `<date>-windows64.nvidia.portable.zip` | 有 NVIDIA 显卡，想要更高分析速度，也不想安装 |
 | Windows 64 位 NVIDIA 极速安装器 | `<date>-windows64.nvidia.installer.exe` | 有 NVIDIA 显卡，想保留安装流程 |
+| Windows 64 位 RTX 50 CUDA 免安装包 | `<date>-windows64.nvidia50.cuda.portable.zip` | RTX 5070/5080/5090 用户首选 |
+| Windows 64 位 RTX 50 CUDA 安装器 | `<date>-windows64.nvidia50.cuda.installer.exe` | RTX 5070/5080/5090 用户，想保留安装流程 |
+| Windows 64 位 RTX 50 TensorRT 试验免安装包 | `<date>-windows64.nvidia50.trt.portable.zip` | 愿意测试 TensorRT 性能并反馈日志的 RTX 50 用户 |
+| Windows 64 位 RTX 50 TensorRT 试验安装器 | `<date>-windows64.nvidia50.trt.installer.exe` | 愿意测试 TensorRT 性能并反馈日志，且想安装的 RTX 50 用户 |
 | Windows 64 位无引擎便携包 | `<date>-windows64.without.engine.portable.zip` | 想自己配置分析引擎 |
 | Windows 64 位无引擎安装器 | `<date>-windows64.without.engine.installer.exe` | 想保留安装流程，但自己配置分析引擎 |
 | macOS Apple Silicon 整合包 | `<date>-mac-apple-silicon.with-katago.dmg` | M 系列 Mac |
@@ -41,7 +46,7 @@
 说明：
 
 - `<date>` 代表发布日期，例如 `2026-03-21`。
-- 当前维护版公开 release 主列表只保留这 11 个用户向主资产。
+- 当前维护版公开 release 主列表只保留这 15 个用户向主资产。
 - Windows 64 位现在优先推荐免安装包，安装器作为可选路径保留。
 - 旧 tag 里如果还看到兼容 zip 或历史包，那属于历史发布格式。
 
@@ -55,6 +60,10 @@
 | `windows64.with-katago.installer.exe` | 是 | 是 | 安装后从开始菜单或桌面打开 |
 | `windows64.nvidia.portable.zip` | 是 | 是 | 解压后运行 `LizzieYzy Next NVIDIA.exe` |
 | `windows64.nvidia.installer.exe` | 是 | 是 | 安装后从开始菜单或桌面打开 |
+| `windows64.nvidia50.cuda.portable.zip` | 是 | 是 | 解压后运行 `LizzieYzy Next NVIDIA 50 CUDA.exe` |
+| `windows64.nvidia50.cuda.installer.exe` | 是 | 是 | 安装后从开始菜单或桌面打开 |
+| `windows64.nvidia50.trt.portable.zip` | 是 | 是 | 解压后运行 `LizzieYzy Next NVIDIA 50 TensorRT.exe` |
+| `windows64.nvidia50.trt.installer.exe` | 是 | 是 | 安装后从开始菜单或桌面打开 |
 | `windows64.without.engine.portable.zip` | 是 | 否 | 解压后运行 `LizzieYzy Next.exe` |
 | `windows64.without.engine.installer.exe` | 是 | 否 | 安装后从开始菜单或桌面打开 |
 | `mac-apple-silicon.with-katago.dmg` | App 自带 | 是 | 拖到 Applications |
@@ -66,7 +75,8 @@
 如果你只想尽快开始：
 
 - Windows：选 `windows64.opencl.portable.zip`
-- Windows + NVIDIA 显卡：选 `windows64.nvidia.portable.zip`
+- Windows + RTX 20/30/40 NVIDIA 显卡：选 `windows64.nvidia.portable.zip`
+- Windows + RTX 5070/5080/5090：优先选 `windows64.nvidia50.cuda.portable.zip`
 - macOS：按芯片选对应的 `with-katago.dmg`
 - Linux：选 `linux64.with-katago.zip`
 
@@ -112,9 +122,9 @@
 从新的维护版发布开始：
 
 - Windows 64 位主推荐资产是 `portable.zip`
-- Windows 64 位同时提供 `opencl`、`with-katago`、`nvidia` 三条线的安装器和便携包
+- Windows 64 位同时提供 `opencl`、`with-katago`、`nvidia`、`nvidia50.cuda`、`nvidia50.trt` 五条线的安装器和便携包
 - Windows 64 位无引擎包同时提供安装器和 `.portable.zip`
-- 当前公开 release 主列表固定为 11 个用户向主资产
+- 当前公开 release 主列表固定为 15 个用户向主资产
 - 旧的兼容 zip 只作为历史 tag 说明保留，不再放进主推荐区
 
 ## 相关文档

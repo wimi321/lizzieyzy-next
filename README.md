@@ -40,9 +40,10 @@
 > 欢迎交流使用问题、反馈 bug、分享使用体验，或者讨论接下来最想加的功能。
 
 > [!IMPORTANT]
-> 如果你只想先下对版本，先记住这 6 句：
+> 如果你只想先下对版本，先记住这 7 句：
 > - Windows 大多数用户：到 [Releases](https://github.com/wimi321/lizzieyzy-next/releases) 下载 `*windows64.opencl.portable.zip`
-> - 如果你的电脑有 NVIDIA 显卡并且想更快：下载 `*windows64.nvidia.portable.zip`
+> - RTX 20/30/40 NVIDIA 显卡并且想更快：下载 `*windows64.nvidia.portable.zip`
+> - RTX 5070/5080/5090：优先下载 `*windows64.nvidia50.cuda.portable.zip`，TensorRT 版是试验包
 > - 如果 OpenCL 在你的电脑上不稳定：下载 `*windows64.with-katago.portable.zip`
 > - 现在支持直接输入野狐昵称抓最近公开棋谱，不需要先查账号数字
 > - 主推荐整合包已内置 KataGo `v1.16.4` 和官方推荐 `zhizi` 权重 `kata1-zhizi-b28c512nbt-muonfd2.bin.gz`
@@ -91,6 +92,10 @@
 | Windows，CPU 兼容兜底，想安装 | `*windows64.with-katago.installer.exe` |
 | Windows，NVIDIA 显卡，想更快，免安装 | `*windows64.nvidia.portable.zip` |
 | Windows，NVIDIA 显卡，想安装 | `*windows64.nvidia.installer.exe` |
+| Windows，RTX 5070/5080/5090，CUDA 版，免安装 | `*windows64.nvidia50.cuda.portable.zip` |
+| Windows，RTX 5070/5080/5090，CUDA 版，想安装 | `*windows64.nvidia50.cuda.installer.exe` |
+| Windows，RTX 50 TensorRT 试验版，免安装 | `*windows64.nvidia50.trt.portable.zip` |
+| Windows，RTX 50 TensorRT 试验版，想安装 | `*windows64.nvidia50.trt.installer.exe` |
 | Windows，自己配引擎，免安装 | `*windows64.without.engine.portable.zip` |
 | Windows，自己配引擎，想安装 | `*windows64.without.engine.installer.exe` |
 | macOS Apple Silicon | `*mac-apple-silicon.with-katago.dmg` |
@@ -100,7 +105,8 @@
 如果你懒得分辨：
 
 - Windows：先下 `*windows64.opencl.portable.zip`
-- Windows + NVIDIA 显卡：先下 `*windows64.nvidia.portable.zip`
+- Windows + RTX 20/30/40 NVIDIA 显卡：先下 `*windows64.nvidia.portable.zip`
+- Windows + RTX 5070/5080/5090：先下 `*windows64.nvidia50.cuda.portable.zip`
 - OpenCL 不稳定：改下 `*windows64.with-katago.portable.zip`
 - Mac：先分清 Apple Silicon 还是 Intel
 - Linux：直接下 `*linux64.with-katago.zip`

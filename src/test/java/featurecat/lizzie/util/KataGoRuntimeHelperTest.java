@@ -111,6 +111,127 @@ public class KataGoRuntimeHelperTest {
   }
 
   @Test
+  void nvidia50MarkerPrependsRuntimePath() throws Exception {
+    withOsName(
+        WINDOWS_OS_NAME,
+        () -> {
+          Path tempRoot = Files.createTempDirectory("katago-helper-bundled-nvidia50");
+          Path engineDir =
+              Files.createDirectories(
+                  tempRoot.resolve("engines").resolve("katago").resolve("windows-x64"));
+          Files.writeString(
+              engineDir.resolve("lizzieyzy-next-engine-backend.txt"), "nvidia50-cuda");
+          Path enginePath = touch(engineDir.resolve("katago.exe"));
+          Path originalDirectory = Files.createDirectories(tempRoot.resolve("working-dir"));
+          Path runtimeWorkDirectory = Files.createDirectories(tempRoot.resolve("runtime-root"));
+          Path runtimeDir = Files.createDirectories(runtimeWorkDirectory.resolve("nvidia-runtime"));
+          String originalPath = String.join(PATH_SEPARATOR, Arrays.asList("alpha", "beta"));
+          ProcessBuilder processBuilder = createProcessBuilder(originalDirectory, originalPath);
+
+          withConfig(
+              runtimeWorkDirectory,
+              () -> KataGoRuntimeHelper.configureBundledProcessBuilder(processBuilder, enginePath));
+
+          assertEquals(
+              normalize(runtimeDir),
+              firstPathEntry(processBuilder.environment().get("PATH")),
+              "RTX 50 NVIDIA package should prepend the runtime directory.");
+          assertEquals(
+              normalize(enginePath.getParent()),
+              secondPathEntry(processBuilder.environment().get("PATH")),
+              "RTX 50 NVIDIA package should keep the engine directory after runtime.");
+        });
+  }
+
+  @Test
+  void nvidia50CudaRuntimeAcceptsCudnn9() throws Exception {
+    withOsName(
+        WINDOWS_OS_NAME,
+        () -> {
+          Path tempRoot = Files.createTempDirectory("katago-helper-nvidia50-cuda-runtime");
+          Path engineDir =
+              Files.createDirectories(
+                  tempRoot.resolve("engines").resolve("katago").resolve("windows-x64"));
+          Files.writeString(
+              engineDir.resolve("lizzieyzy-next-engine-backend.txt"), "nvidia50-cuda");
+          Path enginePath = touch(engineDir.resolve("katago.exe"));
+          touchRequiredCuda12_8Dlls(engineDir);
+          Path runtimeWorkDirectory = Files.createDirectories(tempRoot.resolve("runtime-root"));
+
+          withConfig(
+              runtimeWorkDirectory,
+              () -> {
+                KataGoRuntimeHelper.NvidiaRuntimeStatus status =
+                    KataGoRuntimeHelper.inspectNvidiaRuntime(enginePath);
+
+                assertTrue(status.applicable, "RTX 50 CUDA package should need NVIDIA runtime.");
+                assertTrue(status.ready, "CUDA 12.8/cuDNN 9 runtime should satisfy RTX 50 CUDA.");
+                assertEquals(0, status.missingDlls.size());
+              });
+        });
+  }
+
+  @Test
+  void nvidia50CudaRuntimeRejectsOldCudnn8OnlyBundle() throws Exception {
+    withOsName(
+        WINDOWS_OS_NAME,
+        () -> {
+          Path tempRoot = Files.createTempDirectory("katago-helper-nvidia50-cuda-old-cudnn");
+          Path engineDir =
+              Files.createDirectories(
+                  tempRoot.resolve("engines").resolve("katago").resolve("windows-x64"));
+          Files.writeString(
+              engineDir.resolve("lizzieyzy-next-engine-backend.txt"), "nvidia50-cuda");
+          Path enginePath = touch(engineDir.resolve("katago.exe"));
+          touchCommonCuda12Dlls(engineDir);
+          touch(engineDir.resolve("cudnn64_8.dll"));
+          touch(engineDir.resolve("libz.dll"));
+          Path runtimeWorkDirectory = Files.createDirectories(tempRoot.resolve("runtime-root"));
+
+          withConfig(
+              runtimeWorkDirectory,
+              () -> {
+                KataGoRuntimeHelper.NvidiaRuntimeStatus status =
+                    KataGoRuntimeHelper.inspectNvidiaRuntime(enginePath);
+
+                assertTrue(status.applicable);
+                assertEquals(false, status.ready);
+                assertTrue(
+                    status.missingDlls.contains("cudnn64_9.dll"),
+                    "RTX 50 CUDA package must require cuDNN 9.");
+              });
+        });
+  }
+
+  @Test
+  void nvidia50TensorRtRuntimeRequiresTensorRtDlls() throws Exception {
+    withOsName(
+        WINDOWS_OS_NAME,
+        () -> {
+          Path tempRoot = Files.createTempDirectory("katago-helper-nvidia50-trt-runtime");
+          Path engineDir =
+              Files.createDirectories(
+                  tempRoot.resolve("engines").resolve("katago").resolve("windows-x64"));
+          Files.writeString(engineDir.resolve("lizzieyzy-next-engine-backend.txt"), "nvidia50-trt");
+          Path enginePath = touch(engineDir.resolve("katago.exe"));
+          touchRequiredCuda12_8Dlls(engineDir);
+          touch(engineDir.resolve("nvinfer_10.dll"));
+          touch(engineDir.resolve("nvinfer_plugin_10.dll"));
+          Path runtimeWorkDirectory = Files.createDirectories(tempRoot.resolve("runtime-root"));
+
+          withConfig(
+              runtimeWorkDirectory,
+              () -> {
+                KataGoRuntimeHelper.NvidiaRuntimeStatus status =
+                    KataGoRuntimeHelper.inspectNvidiaRuntime(enginePath);
+
+                assertTrue(status.applicable, "TensorRT package should need NVIDIA runtime.");
+                assertTrue(status.ready, "TensorRT runtime DLLs should satisfy the package.");
+              });
+        });
+  }
+
+  @Test
   void smartOptimizeUsesBoundedOfficialBenchmarkArguments() throws Exception {
     Path tempRoot = Files.createTempDirectory("katago-helper-benchmark-command");
     Path enginePath = touch(tempRoot.resolve("external-engine").resolve("katago"));
@@ -260,6 +381,19 @@ public class KataGoRuntimeHelperTest {
   private static Path touch(Path file) throws IOException {
     Files.createDirectories(file.getParent());
     return Files.write(file, new byte[0]);
+  }
+
+  private static void touchCommonCuda12Dlls(Path directory) throws IOException {
+    touch(directory.resolve("cudart64_12.dll"));
+    touch(directory.resolve("cublas64_12.dll"));
+    touch(directory.resolve("cublasLt64_12.dll"));
+    touch(directory.resolve("nvJitLink64_12.dll"));
+  }
+
+  private static void touchRequiredCuda12_8Dlls(Path directory) throws IOException {
+    touchCommonCuda12Dlls(directory);
+    touch(directory.resolve("cudnn64_9.dll"));
+    touch(directory.resolve("libz.dll"));
   }
 
   private static Path normalize(Path path) {

@@ -21,7 +21,7 @@
   <rect width="1280" height="660" rx="36" fill="url(#bg)"/>
 
   <text x="640" y="108" text-anchor="middle" font-family="Avenir Next, Segoe UI, Arial, sans-serif" font-size="46" font-weight="800" fill="#1A1713">Pick the package that matches how you install</text>
-  <text x="640" y="150" text-anchor="middle" font-family="Avenir Next, Segoe UI, Arial, sans-serif" font-size="22" font-weight="500" fill="#735B31">Most Windows users should start with opencl portable. If you have an NVIDIA GPU and want more speed, pick nvidia portable.</text>
+  <text x="640" y="150" text-anchor="middle" font-family="Avenir Next, Segoe UI, Arial, sans-serif" font-size="22" font-weight="500" fill="#735B31">Most Windows users should start with opencl portable. RTX 50 users should try nvidia50 cuda portable first.</text>
 
   <g filter="url(#shadow)">
     <rect x="92" y="210" width="336" height="272" rx="28" fill="url(#panel)" stroke="#F3E2BE"/>
@@ -57,7 +57,7 @@
     <rect x="884" y="520" width="304" height="84" rx="24" fill="url(#platform)" stroke="#F1DDB6"/>
 
     <text x="218" y="554" text-anchor="middle" font-family="Avenir Next, Segoe UI, Arial, sans-serif" font-size="18" font-weight="700" fill="#7A5926">Windows x64</text>
-    <text x="218" y="584" text-anchor="middle" font-family="Avenir Next, Segoe UI, Arial, sans-serif" font-size="16" font-weight="600" fill="#23201C">opencl portable / nvidia / installer optional</text>
+    <text x="218" y="584" text-anchor="middle" font-family="Avenir Next, Segoe UI, Arial, sans-serif" font-size="16" font-weight="600" fill="#23201C">opencl / nvidia / nvidia50 / installer optional</text>
 
     <text x="482" y="554" text-anchor="middle" font-family="Avenir Next, Segoe UI, Arial, sans-serif" font-size="18" font-weight="700" fill="#7A5926">macOS Apple Silicon</text>
     <text x="482" y="584" text-anchor="middle" font-family="Avenir Next, Segoe UI, Arial, sans-serif" font-size="17" font-weight="600" fill="#23201C">mac-arm64.dmg</text>

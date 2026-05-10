@@ -151,12 +151,60 @@ public class WinrateGraph {
     return Math.max(origParams[1], Math.min(origParams[1] + origParams[3] - dotRadius * 2, dotY));
   }
 
+  private Color winrateLineColor() {
+    return Lizzie.config != null && Lizzie.config.winrateLineColor != null
+        ? Lizzie.config.winrateLineColor
+        : new Color(100, 180, 255);
+  }
+
+  private Color winrateMissLineColor() {
+    return Lizzie.config != null && Lizzie.config.winrateMissLineColor != null
+        ? Lizzie.config.winrateMissLineColor
+        : whiteColor;
+  }
+
+  private Color winrateGuideColor(int alpha) {
+    return withAlpha(winrateLineColor(), alpha);
+  }
+
+  private static Color withAlpha(Color color, int alpha) {
+    return new Color(color.getRed(), color.getGreen(), color.getBlue(), clamp(alpha, 0, 255));
+  }
+
   private Color getBlunderColor(double winrateDrop, double scoreDrop) {
+    if (Lizzie.config != null && Lizzie.config.blunderBarColor != null) {
+      return Lizzie.config.blunderBarColor;
+    }
     if (scoreDrop > 5.0 || winrateDrop > 20.0) return new Color(235, 60, 60, 220);
     if (scoreDrop > 2.0 || winrateDrop > 10.0) return new Color(230, 140, 40, 220);
     if (scoreDrop > 1.0 || winrateDrop > 5.0) return new Color(230, 200, 50, 200);
     if (scoreDrop > 0.3 || winrateDrop > 2.0) return new Color(150, 180, 80, 150);
     return new Color(120, 120, 120, 50);
+  }
+
+  private void drawBlunderBar(
+      Graphics2D gBlunder,
+      int graphX,
+      int graphWidth,
+      int numMoves,
+      int fromMoveIndex,
+      int toMoveIndex,
+      int graphHeight,
+      int blunderBottom,
+      double winrateDrop,
+      double scoreDrop) {
+    if (!Lizzie.config.showBlunderBar || numMoves <= 0) {
+      return;
+    }
+    gBlunder.setColor(getBlunderColor(winrateDrop, scoreDrop));
+    int barHeight = Math.min(15, Math.max(6, graphHeight / 12));
+    int leftIndex = Math.min(fromMoveIndex, toMoveIndex);
+    int rightIndex = Math.max(fromMoveIndex, toMoveIndex);
+    int rectStart = graphX + leftIndex * graphWidth / numMoves;
+    int rectEnd = graphX + rightIndex * graphWidth / numMoves;
+    int rectWidth =
+        Math.max(Math.max(1, Lizzie.config.minimumBlunderBarWidth), rectEnd - rectStart);
+    gBlunder.fillRect(rectStart, blunderBottom - barHeight, rectWidth + 1, barHeight);
   }
 
   static Color resolveGraphBackgroundColor(Color panelColor, boolean appleStyle) {
@@ -232,7 +280,7 @@ public class WinrateGraph {
     //    if(Lizzie.frame.extraMode==8)
     //    	{if(width>65)width=width-12;
     //    	else width=width*85/100;}
-    g.setColor(Lizzie.config.winrateLineColor);
+    g.setColor(winrateLineColor());
     // g.setColor(Color.BLACK);
     g.setStroke(new BasicStroke(Lizzie.config.winrateStrokeWidth));
 
@@ -323,7 +371,7 @@ public class WinrateGraph {
                   * width
                   / numMoves);
       g.setStroke(new BasicStroke(2));
-      g.setColor(new Color(120, 220, 255, 200));
+      g.setColor(winrateGuideColor(200));
       // if (Lizzie.board.getHistory().getCurrentHistoryNode() !=
       // Lizzie.board.getHistory().getEnd())
       g.drawLine(x, posy, x, posy + height);
@@ -378,20 +426,23 @@ public class WinrateGraph {
         if (Lizzie.config.showBlunderBar) {
           double lastMoveRate = Math.abs(lastWr - wr);
           double lastMoveScoreRate = Math.abs(lastScore - score);
-          gBlunder.setColor(getBlunderColor(lastMoveRate, lastMoveScoreRate));
-          int lastHeight = Math.min(15, Math.max(6, height / 12));
-          int leftIndex = Math.min(twoBackMoveIndex, currentMoveIndex);
-          int rightIndex = Math.max(twoBackMoveIndex, currentMoveIndex);
-          int rectStart = posx + leftIndex * width / numMoves;
-          int rectEnd = posx + rightIndex * width / numMoves;
-          int rectWidth = Math.max(Lizzie.config.minimumBlunderBarWidth, rectEnd - rectStart);
-          gBlunder.fillRect(rectStart, blunderBottom - lastHeight, rectWidth + 1, lastHeight);
+          drawBlunderBar(
+              gBlunder,
+              posx,
+              width,
+              numMoves,
+              twoBackMoveIndex,
+              currentMoveIndex,
+              height,
+              blunderBottom,
+              lastMoveRate,
+              lastMoveScoreRate);
         }
 
         lastOkMove = twoBackMoveIndex;
         if (Lizzie.config.showWinrateLine) {
           if (node.getData().blackToPlay) {
-            g.setColor(new Color(100, 180, 255));
+            g.setColor(winrateLineColor());
             g.drawLine(
                 posx + (twoBackMoveIndex * width / numMoves),
                 posy + height - (int) (lastWr * height / 100),
@@ -399,7 +450,7 @@ public class WinrateGraph {
                 posy + height - (int) (wr * height / 100));
 
           } else {
-            g.setColor(whiteColor);
+            g.setColor(winrateMissLineColor());
             g.drawLine(
                 posx + (twoBackMoveIndex * width / numMoves),
                 posy + height - (int) (lastWr * height / 100),
@@ -412,7 +463,7 @@ public class WinrateGraph {
               saveCurWr = wr;
             } else if (node == curMove.previous().get()) {
               if (node.getData().blackToPlay) {
-                g.setColor(new Color(100, 180, 255));
+                g.setColor(winrateLineColor());
                 g.fillOval(
                     posx + (currentMoveIndex * width / numMoves) - DOT_RADIUS,
                     clampDotY(posy + height - (int) (wr * height / 100) - DOT_RADIUS, DOT_RADIUS),
@@ -453,7 +504,7 @@ public class WinrateGraph {
                   }
                 }
               } else {
-                g.setColor(whiteColor);
+                g.setColor(winrateMissLineColor());
                 g.fillOval(
                     posx + (currentMoveIndex * width / numMoves) - DOT_RADIUS,
                     clampDotY(posy + height - (int) (wr * height / 100) - DOT_RADIUS, DOT_RADIUS),
@@ -507,7 +558,7 @@ public class WinrateGraph {
         xPos = Math.max(xPos, origParams[0]);
         xPos = Math.min(xPos, origParams[0] + origParams[2] - stringWidth);
         if (curMove.getData().blackToPlay) {
-          g.setColor(new Color(100, 180, 255));
+          g.setColor(winrateLineColor());
           g.fillOval(
               posx + (saveCurMovenum * width / numMoves) - DOT_RADIUS,
               clampDotY(posy + height - (int) (saveCurWr * height / 100) - DOT_RADIUS, DOT_RADIUS),
@@ -542,7 +593,7 @@ public class WinrateGraph {
             }
           }
         } else {
-          g.setColor(whiteColor);
+          g.setColor(winrateMissLineColor());
           g.fillOval(
               posx + (saveCurMovenum * width / numMoves) - DOT_RADIUS,
               clampDotY(posy + height - (int) (saveCurWr * height / 100) - DOT_RADIUS, DOT_RADIUS),
@@ -599,7 +650,7 @@ public class WinrateGraph {
               Stroke previousStroke = g.getStroke();
               int x = posx + (movenum * width / numMoves);
               g.setStroke(new BasicStroke(2));
-              g.setColor(new Color(120, 220, 255, 200));
+              g.setColor(winrateGuideColor(200));
               g.drawLine(x, posy, x, posy + height);
               // Show move number
               String moveNumString = String.valueOf(node.getData().moveNumber);
@@ -658,11 +709,24 @@ public class WinrateGraph {
             // wr = lastWr;
             // }
 
-            if (lastNodeOk) g.setColor(new Color(100, 180, 255));
+            if (lastNodeOk) g.setColor(winrateLineColor());
             // g.setColor(Color.BLACK);
-            else g.setColor(Lizzie.config.winrateMissLineColor);
+            else g.setColor(winrateMissLineColor());
 
             if (lastOkMove > 0 && lastOkMove - movenum < 25) {
+              if (canDrawBlunderBar && Lizzie.config.showBlunderBar) {
+                drawBlunderBar(
+                    gBlunder,
+                    posx,
+                    width,
+                    numMoves,
+                    lastOkMove,
+                    movenum,
+                    height,
+                    blunderBottom,
+                    Math.abs(lastWr - wr),
+                    Math.abs(lastScore - score));
+              }
               if (Lizzie.config.showWinrateLine) {
                 g.drawLine(
                     posx + (lastOkMove * width / numMoves),
@@ -708,7 +772,7 @@ public class WinrateGraph {
                   || (curMove.previous().isPresent()
                       && node == curMove.previous().get()
                       && curMove.getData().getPlayouts() <= 0)) {
-                g.setColor(Lizzie.config.winrateLineColor);
+                g.setColor(winrateLineColor());
                 g.fillOval(
                     posx + (movenum * width / numMoves) - DOT_RADIUS,
                     clampDotY(posy + height - (int) (wr * height / 100) - DOT_RADIUS, DOT_RADIUS),
@@ -726,7 +790,7 @@ public class WinrateGraph {
               Stroke previousStroke = g.getStroke();
               int x = posx + (movenum * width / numMoves);
               g.setStroke(new BasicStroke(2));
-              g.setColor(new Color(120, 220, 255, 200));
+              g.setColor(winrateGuideColor(200));
               g.drawLine(x, posy, x, posy + height);
               // Show move number
               if (!noC) {
@@ -764,7 +828,7 @@ public class WinrateGraph {
             int x = posx + (movenum * width / numMoves);
             g.setStroke(dashed);
 
-            g.setColor(new Color(100, 200, 255, 180));
+            g.setColor(winrateGuideColor(180));
 
             g.drawLine(x, posy, x, posy + height);
             // Show move number
@@ -838,7 +902,7 @@ public class WinrateGraph {
             Stroke previousStroke = g.getStroke();
             int x = posx + (currentMoveIndex * width / numMoves);
             g.setStroke(new BasicStroke(2));
-            g.setColor(new Color(120, 220, 255, 200));
+            g.setColor(winrateGuideColor(200));
             if (curMove != Lizzie.board.getHistory().getEnd())
               g.drawLine(x, posy, x, posy + height);
 
@@ -889,24 +953,21 @@ public class WinrateGraph {
               if (Lizzie.config.showBlunderBar) {
                 double lastMoveRate = Math.abs(lastWr - wr);
                 double lastMoveScoreRate = Math.abs(lastScore - score);
-                gBlunder.setColor(getBlunderColor(lastMoveRate, lastMoveScoreRate));
-                int lastHeight = Math.min(15, Math.max(6, height / 12));
-                int leftIndex = Math.min(lastOkMove, currentMoveIndex);
-                int rightIndex = Math.max(lastOkMove, currentMoveIndex);
-                int rectWidth =
-                    Math.max(
-                        Lizzie.config.minimumBlunderBarWidth,
-                        (int) (rightIndex * width / numMoves)
-                            - (int) (leftIndex * width / numMoves));
-                gBlunder.fillRect(
-                    posx + (int) (leftIndex * width / numMoves),
-                    blunderBottom - lastHeight,
-                    rectWidth + 1,
-                    lastHeight);
+                drawBlunderBar(
+                    gBlunder,
+                    posx,
+                    width,
+                    numMoves,
+                    lastOkMove,
+                    currentMoveIndex,
+                    height,
+                    blunderBottom,
+                    lastMoveRate,
+                    lastMoveScoreRate);
               }
 
               //        if (isMain) {
-              g.setColor(new Color(100, 180, 255));
+              g.setColor(winrateLineColor());
               g.setStroke(new BasicStroke(Lizzie.config.winrateStrokeWidth));
               //              } else {
               //                g.setColor(Color.BLACK);
@@ -922,7 +983,7 @@ public class WinrateGraph {
                     posx + (currentMoveIndex * width / numMoves),
                     posy + height - (int) (wr * height / 100));
                 //       if (isMain) {
-                g.setColor(whiteColor);
+                g.setColor(winrateMissLineColor());
                 g.setStroke(new BasicStroke(Lizzie.config.winrateStrokeWidth));
                 //              } else {
                 //                g.setColor(Color.WHITE);
@@ -943,7 +1004,7 @@ public class WinrateGraph {
                   || (curMove.previous().isPresent()
                       && node == curMove.previous().get()
                       && curMove.getData().getPlayouts() <= 0)) {
-                g.setColor(new Color(100, 180, 255));
+                g.setColor(winrateLineColor());
                 g.fillOval(
                     posx + (currentMoveIndex * width / numMoves) - DOT_RADIUS,
                     clampDotY(posy + height - (int) (wr * height / 100) - DOT_RADIUS, DOT_RADIUS),
@@ -977,18 +1038,19 @@ public class WinrateGraph {
                         wrString, x, posy + (height - (int) (wr * height / 100)) + 6 * DOT_RADIUS);
                   }
                 }
-                g.setColor(whiteColor);
+                g.setColor(winrateMissLineColor());
                 Font fw =
                     new Font(
                         Config.sysDefaultFontName, Font.BOLD, largeEnough ? Utils.zoomOut(16) : 16);
                 g.setFont(fw);
-                g.setColor(Color.WHITE);
+                g.setColor(winrateMissLineColor());
                 g.fillOval(
                     posx + (currentMoveIndex * width / numMoves) - DOT_RADIUS,
                     clampDotY(
                         posy + height - (int) ((100 - wr) * height / 100) - DOT_RADIUS, DOT_RADIUS),
                     DOT_RADIUS * 2,
                     DOT_RADIUS * 2);
+                g.setColor(Color.WHITE);
 
                 wrString = String.format(Locale.ENGLISH, "%.1f", 100 - wr);
                 stringWidth = g.getFontMetrics().stringWidth(wrString);
@@ -1513,15 +1575,12 @@ public class WinrateGraph {
 
     if (isTwoLine) {
       labels.add("\u9ed1\u80dc\u7387");
-      colors.add(new Color(100, 180, 255));
+      colors.add(winrateLineColor());
       labels.add("\u767d\u80dc\u7387");
-      colors.add(whiteColor);
+      colors.add(winrateMissLineColor());
     } else {
       labels.add("\u80dc\u7387");
-      colors.add(
-          Lizzie.config.winrateLineColor != null
-              ? Lizzie.config.winrateLineColor
-              : new Color(100, 180, 255));
+      colors.add(winrateLineColor());
     }
     if (hasScoreLead) {
       labels.add("\u76ee\u5dee");
@@ -1581,10 +1640,7 @@ public class WinrateGraph {
     if (layout == null) return null;
     occludeMainGraphUnderQuickOverview(g, gBlunder, layout);
 
-    Color overviewLineColor =
-        Lizzie.config.winrateLineColor != null
-            ? Lizzie.config.winrateLineColor.brighter()
-            : new Color(255, 208, 84);
+    Color overviewLineColor = winrateLineColor();
     Stroke previousStroke = g.getStroke();
 
     gBackground.setColor(new Color(15, 20, 28, 205));
@@ -1882,12 +1938,16 @@ public class WinrateGraph {
   }
 
   private Color quickOverviewBarColor(double swing, double threshold, double swingScale) {
+    Color customColor = Lizzie.config == null ? null : Lizzie.config.blunderBarColor;
     double severity =
         Math.max(0.0, Math.min(1.0, (swing - threshold) / Math.max(1.0, swingScale - threshold)));
+    int alpha = Math.min(255, (int) Math.round(150 + 80 * severity));
+    if (customColor != null) {
+      return withAlpha(customColor, Math.max(customColor.getAlpha(), alpha));
+    }
     int red = 255;
     int green = Math.max(70, (int) Math.round(176 - 96 * severity));
     int blue = Math.max(36, (int) Math.round(84 - 48 * severity));
-    int alpha = Math.min(255, (int) Math.round(150 + 80 * severity));
     return new Color(red, green, blue, alpha);
   }
 
@@ -2196,10 +2256,7 @@ public class WinrateGraph {
     if (data != null && data.isSnapshotNode()) {
       return new Color(255, 208, 84, 110);
     }
-    Color baseColor =
-        Lizzie.config.winrateLineColor != null
-            ? Lizzie.config.winrateLineColor
-            : new Color(100, 180, 255);
+    Color baseColor = winrateLineColor();
     return new Color(baseColor.getRed(), baseColor.getGreen(), baseColor.getBlue(), 80);
   }
 

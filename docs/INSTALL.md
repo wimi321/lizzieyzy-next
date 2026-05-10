@@ -27,6 +27,10 @@
 | Windows 64 位 | `<date>-windows64.with-katago.installer.exe` | 是 | 是 | 想安装的 CPU 兜底版 |
 | Windows 64 位 | `<date>-windows64.nvidia.portable.zip` | 是 | 是 | 有 NVIDIA 显卡，想要更快分析，也不想安装 |
 | Windows 64 位 | `<date>-windows64.nvidia.installer.exe` | 是 | 是 | 有 NVIDIA 显卡，想保留安装流程 |
+| Windows 64 位 | `<date>-windows64.nvidia50.cuda.portable.zip` | 是 | 是 | RTX 5070/5080/5090 首选，免安装 |
+| Windows 64 位 | `<date>-windows64.nvidia50.cuda.installer.exe` | 是 | 是 | RTX 5070/5080/5090 首选，想保留安装流程 |
+| Windows 64 位 | `<date>-windows64.nvidia50.trt.portable.zip` | 是 | 是 | RTX 50 TensorRT 试验包，愿意反馈日志的用户 |
+| Windows 64 位 | `<date>-windows64.nvidia50.trt.installer.exe` | 是 | 是 | RTX 50 TensorRT 试验包，想保留安装流程 |
 | Windows 64 位 | `<date>-windows64.without.engine.portable.zip` | 是 | 否 | 想自己配引擎，也不想安装 |
 | Windows 64 位 | `<date>-windows64.without.engine.installer.exe` | 是 | 否 | 想保留安装流程，但自己配引擎 |
 | macOS Apple Silicon | `<date>-mac-apple-silicon.with-katago.dmg` | App 自带运行时 | 是 | M 系列 Mac |
@@ -37,13 +41,14 @@
 
 - 想最省事：选 `windows64.opencl.portable.zip`
 - 如果 OpenCL 在你电脑上不稳定：改用 `windows64.with-katago.portable.zip`
-- 想在 NVIDIA 显卡上跑得更快：选 `windows64.nvidia.portable.zip`
+- RTX 20/30/40 NVIDIA 显卡想跑得更快：选 `windows64.nvidia.portable.zip`
+- RTX 5070/5080/5090：优先选 `windows64.nvidia50.cuda.portable.zip`
 - 想自己管引擎：Windows 选 `without.engine.portable.zip`，想安装再选同名 `installer.exe`
 - Windows 普通用户：优先选 `.portable.zip`，想保留安装流程再选同名 `.installer.exe`
 
 ### 历史 tag 说明
 
-部分旧 tag 还会看到早期的 zip 命名或兼容包，但当前维护版公开 release 已统一成 11 个主资产：8 个 Windows、2 个 macOS、1 个 Linux。普通用户直接按上面的表选即可。
+部分旧 tag 还会看到早期的 zip 命名或兼容包，但当前维护版公开 release 已统一成 15 个主资产：12 个 Windows、2 个 macOS、1 个 Linux。普通用户直接按上面的表选即可。
 
 ## Windows 安装
 
@@ -93,6 +98,16 @@ OpenCL 免安装包也能直接打开 `KataGo 一键设置`，点一次“智能
 
 - 这个版本只适合 NVIDIA 显卡电脑。
 - 如果你不确定自己是不是 NVIDIA 显卡，直接下载普通的 `windows64.opencl.portable.zip`。
+
+### Windows 64 位 RTX 50 CUDA / TensorRT 版
+
+如果你的显卡是 RTX 5070、RTX 5080 或 RTX 5090：
+
+1. 优先下载 `windows64.nvidia50.cuda.portable.zip`。
+2. 解压后运行 `LizzieYzy Next NVIDIA 50 CUDA.exe`。
+3. 如果你更喜欢安装流程，改用 `windows64.nvidia50.cuda.installer.exe`。
+
+`windows64.nvidia50.trt.portable.zip` 和 `windows64.nvidia50.trt.installer.exe` 是 TensorRT 试验包。它们适合愿意测试更高峰值性能，并反馈 `nvidia-smi`、KataGo stderr 和智能测速结果的用户。
 
 ### Windows 64 位无引擎包
 

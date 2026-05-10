@@ -14,7 +14,8 @@
 
 - Windows 用户先下载 `<date>-windows64.opencl.portable.zip`
 - 如果 OpenCL 在你的电脑上表现不好，就改用 `<date>-windows64.with-katago.portable.zip`
-- 如果你的电脑有 NVIDIA 显卡，想更快分析，就下载 `<date>-windows64.nvidia.portable.zip`
+- 如果你的电脑是 RTX 20/30/40 系列 NVIDIA 显卡，想更快分析，就下载 `<date>-windows64.nvidia.portable.zip`
+- 如果你的电脑是 RTX 5070/5080/5090，优先下载 `<date>-windows64.nvidia50.cuda.portable.zip`；TensorRT 版是试验包
 - 抓野狐棋谱时直接输入“野狐昵称”，程序会自动找到账号并抓最近公开棋谱
 - 主推荐整合包已内置 KataGo，第一次启动会优先自动完成配置
 - Windows 普通整合包也支持“智能优化”，测速后会自动保存更合适的线程设置
@@ -39,6 +40,10 @@
 | Windows 64 位 | `<date>-windows64.with-katago.installer.exe` | 想安装的 CPU 兜底版 |
 | Windows 64 位，NVIDIA 显卡 | `<date>-windows64.nvidia.portable.zip` | 只适合 NVIDIA 显卡电脑，默认分析速度更高 |
 | Windows 64 位，NVIDIA 显卡 | `<date>-windows64.nvidia.installer.exe` | 想保留安装流程的 NVIDIA 版 |
+| Windows 64 位，RTX 50 CUDA | `<date>-windows64.nvidia50.cuda.portable.zip` | RTX 5070/5080/5090 首选，免安装 |
+| Windows 64 位，RTX 50 CUDA | `<date>-windows64.nvidia50.cuda.installer.exe` | RTX 5070/5080/5090 首选，安装器 |
+| Windows 64 位，RTX 50 TensorRT 试验版 | `<date>-windows64.nvidia50.trt.portable.zip` | 愿意测试 TensorRT 性能和反馈日志的用户 |
+| Windows 64 位，RTX 50 TensorRT 试验版 | `<date>-windows64.nvidia50.trt.installer.exe` | 愿意测试 TensorRT 性能和反馈日志，且想安装的用户 |
 | Windows 64 位 | `<date>-windows64.without.engine.portable.zip` | 想自己决定分析引擎时再选 |
 | Windows 64 位 | `<date>-windows64.without.engine.installer.exe` | 想保留安装流程，但自己决定分析引擎 |
 | macOS Apple Silicon | `<date>-mac-apple-silicon.with-katago.dmg` | M1 / M2 / M3 / M4 等机器 |
@@ -51,7 +56,8 @@
 - 现在直接输入野狐昵称，程序自动找到账号再抓最近公开棋谱
 - Windows 主推荐现在放在 `.portable.zip`
 - 普通 Windows 包也支持智能优化，一次测速后就会自动保存推荐线程数
-- 额外提供 NVIDIA 显卡专用的 CUDA 极速整合包，并会在首启时自动准备官方运行库
+- 额外提供 NVIDIA 显卡专用的 CUDA 极速整合包，并把官方运行库打入发布包
+- RTX 50 系列额外提供 CUDA 12.8 包和 TensorRT 10.9 试验包，便于 5070/5080/5090 用户测试
 - 第一次启动会优先准备好内置分析环境
 - 发布页尽量只保留普通用户最容易选的主包
 
@@ -65,8 +71,12 @@
 - Windows x64 OpenCL installer alternative: choose `<date>-windows64.opencl.installer.exe`
 - Windows x64 CPU fallback: choose `<date>-windows64.with-katago.portable.zip`
 - Windows x64 CPU fallback installer: choose `<date>-windows64.with-katago.installer.exe`
-- Windows x64 with NVIDIA GPU: choose `<date>-windows64.nvidia.portable.zip`
+- Windows x64 with RTX 20/30/40 NVIDIA GPU: choose `<date>-windows64.nvidia.portable.zip`
 - Windows x64 NVIDIA installer alternative: choose `<date>-windows64.nvidia.installer.exe`
+- Windows x64 with RTX 5070/5080/5090: choose `<date>-windows64.nvidia50.cuda.portable.zip`
+- Windows x64 RTX 50 CUDA installer: choose `<date>-windows64.nvidia50.cuda.installer.exe`
+- Windows x64 RTX 50 TensorRT experimental: choose `<date>-windows64.nvidia50.trt.portable.zip`
+- Windows x64 RTX 50 TensorRT experimental installer: choose `<date>-windows64.nvidia50.trt.installer.exe`
 - Windows x64 custom engine: choose `<date>-windows64.without.engine.portable.zip`
 - Windows x64 custom engine installer: choose `<date>-windows64.without.engine.installer.exe`
 - macOS Apple Silicon: choose `<date>-mac-apple-silicon.with-katago.dmg`

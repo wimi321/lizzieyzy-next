@@ -20,6 +20,10 @@ ASSET_SPECS = [
     ('windows_opencl_portable', 'windows64.opencl.portable.zip', 'Windows 64 位，OpenCL 推荐版，免安装', 'Windows x64, OpenCL recommended, no installer'),
     ('windows_nvidia_installer', 'windows64.nvidia.installer.exe', 'Windows 64 位，英伟达显卡', 'Windows x64, NVIDIA GPU'),
     ('windows_nvidia_portable', 'windows64.nvidia.portable.zip', 'Windows 64 位，英伟达显卡，免安装', 'Windows x64, NVIDIA GPU, no installer'),
+    ('windows_nvidia50_cuda_installer', 'windows64.nvidia50.cuda.installer.exe', 'Windows 64 位，RTX 50 CUDA 版', 'Windows x64, RTX 50 CUDA'),
+    ('windows_nvidia50_cuda_portable', 'windows64.nvidia50.cuda.portable.zip', 'Windows 64 位，RTX 50 CUDA 版，免安装', 'Windows x64, RTX 50 CUDA, no installer'),
+    ('windows_nvidia50_trt_installer', 'windows64.nvidia50.trt.installer.exe', 'Windows 64 位，RTX 50 TensorRT 试验版', 'Windows x64, RTX 50 TensorRT experimental'),
+    ('windows_nvidia50_trt_portable', 'windows64.nvidia50.trt.portable.zip', 'Windows 64 位，RTX 50 TensorRT 试验版，免安装', 'Windows x64, RTX 50 TensorRT experimental, no installer'),
     ('windows_no_engine_installer', 'windows64.without.engine.installer.exe', 'Windows 64 位，想自己配引擎，也想安装器', 'Windows x64, your own engine with installer'),
     ('windows_no_engine_portable', 'windows64.without.engine.portable.zip', 'Windows 64 位，想自己配引擎', 'Windows x64, your own engine'),
     ('mac_arm64', 'mac-apple-silicon.with-katago.dmg', 'macOS Apple Silicon', 'macOS Apple Silicon'),
@@ -51,6 +55,8 @@ def load_bundle_metadata() -> dict[str, str]:
         'windows_bundle': 'Unknown',
         'windows_opencl_bundle': 'Unknown',
         'windows_nvidia_bundle': 'Unknown',
+        'windows_nvidia50_cuda_bundle': 'Unknown',
+        'windows_nvidia50_trt_bundle': 'Unknown',
         'linux_bundle': 'Unknown',
         'linux_opencl_bundle': 'Unknown',
         'linux_nvidia_bundle': 'Unknown',
@@ -70,6 +76,10 @@ def load_bundle_metadata() -> dict[str, str]:
                 metadata['windows_opencl_bundle'] = value
             elif key == 'windows nvidia bundle':
                 metadata['windows_nvidia_bundle'] = value
+            elif key == 'windows nvidia 50 cuda bundle':
+                metadata['windows_nvidia50_cuda_bundle'] = value
+            elif key == 'windows nvidia 50 tensorrt bundle':
+                metadata['windows_nvidia50_trt_bundle'] = value
             elif key == 'linux bundle':
                 metadata['linux_bundle'] = value
             elif key == 'linux opencl bundle':
@@ -86,6 +96,8 @@ def load_bundle_metadata() -> dict[str, str]:
             'windows_bundle': r'WINDOWS_ASSET="\$\{WINDOWS_ASSET:-([^"]+)\}"',
             'windows_opencl_bundle': r'WINDOWS_OPENCL_ASSET="\$\{WINDOWS_OPENCL_ASSET:-([^"]+)\}"',
             'windows_nvidia_bundle': r'WINDOWS_NVIDIA_ASSET="\$\{WINDOWS_NVIDIA_ASSET:-([^"]+)\}"',
+            'windows_nvidia50_cuda_bundle': r'WINDOWS_NVIDIA50_CUDA_ASSET="\$\{WINDOWS_NVIDIA50_CUDA_ASSET:-([^"]+)\}"',
+            'windows_nvidia50_trt_bundle': r'WINDOWS_NVIDIA50_TRT_ASSET="\$\{WINDOWS_NVIDIA50_TRT_ASSET:-([^"]+)\}"',
             'linux_bundle': r'LINUX_ASSET="\$\{LINUX_ASSET:-([^"]+)\}"',
             'linux_opencl_bundle': r'LINUX_OPENCL_ASSET="\$\{LINUX_OPENCL_ASSET:-([^"]+)\}"',
             'linux_nvidia_bundle': r'LINUX_NVIDIA_ASSET="\$\{LINUX_NVIDIA_ASSET:-([^"]+)\}"',
@@ -105,6 +117,8 @@ def load_bundle_metadata() -> dict[str, str]:
             'windows_bundle',
             'windows_opencl_bundle',
             'windows_nvidia_bundle',
+            'windows_nvidia50_cuda_bundle',
+            'windows_nvidia50_trt_bundle',
             'linux_bundle',
             'linux_opencl_bundle',
             'linux_nvidia_bundle',
@@ -117,6 +131,8 @@ def load_bundle_metadata() -> dict[str, str]:
         metadata['windows_bundle'] = metadata['windows_bundle'].replace('${KATAGO_TAG}', katago_version)
         metadata['windows_opencl_bundle'] = metadata['windows_opencl_bundle'].replace('${KATAGO_TAG}', katago_version)
         metadata['windows_nvidia_bundle'] = metadata['windows_nvidia_bundle'].replace('${KATAGO_TAG}', katago_version)
+        metadata['windows_nvidia50_cuda_bundle'] = metadata['windows_nvidia50_cuda_bundle'].replace('${KATAGO_TAG}', katago_version)
+        metadata['windows_nvidia50_trt_bundle'] = metadata['windows_nvidia50_trt_bundle'].replace('${KATAGO_TAG}', katago_version)
         metadata['linux_bundle'] = metadata['linux_bundle'].replace('${KATAGO_TAG}', katago_version)
         metadata['linux_opencl_bundle'] = metadata['linux_opencl_bundle'].replace('${KATAGO_TAG}', katago_version)
         metadata['linux_nvidia_bundle'] = metadata['linux_nvidia_bundle'].replace('${KATAGO_TAG}', katago_version)
@@ -128,6 +144,14 @@ def load_bundle_metadata() -> dict[str, str]:
         if metadata['windows_nvidia_bundle'] == 'Unknown':
             metadata['windows_nvidia_bundle'] = (
                 f'katago-{katago_version}-cuda12.1-cudnn8.9.7-windows-x64.zip'
+            )
+        if metadata['windows_nvidia50_cuda_bundle'] == 'Unknown':
+            metadata['windows_nvidia50_cuda_bundle'] = (
+                f'katago-{katago_version}-cuda12.8-cudnn9.8.0-windows-x64.zip'
+            )
+        if metadata['windows_nvidia50_trt_bundle'] == 'Unknown':
+            metadata['windows_nvidia50_trt_bundle'] = (
+                f'katago-{katago_version}-trt10.9.0-cuda12.8-windows-x64.zip'
             )
         if metadata['linux_bundle'] == 'Unknown':
             metadata['linux_bundle'] = f'katago-{katago_version}-eigen-linux-x64.zip'
@@ -236,6 +260,88 @@ def validate_release_sections(sections: list[dict[str, object]]) -> None:
             items = block.get('items')
             if not isinstance(items, list) or not items:
                 raise SystemExit(f'{language} release notes section "{key}" needs bullet items')
+
+
+def add_nvidia50_download_rows(
+    sections: list[dict[str, object]],
+    assets_cn: dict[str, str],
+    assets: dict[str, str],
+) -> None:
+    labels_by_language = {
+        '中文': (
+            'Windows 64 位，RTX 50 CUDA 版，5070/5080/5090 优先，免安装',
+            'Windows 64 位，RTX 50 CUDA 版，5070/5080/5090 优先，想安装',
+            'Windows 64 位，RTX 50 TensorRT 试验版，免安装',
+            'Windows 64 位，RTX 50 TensorRT 试验版，想安装',
+        ),
+        '繁體中文': (
+            'Windows 64 位，RTX 50 CUDA 版，5070/5080/5090 優先，免安裝',
+            'Windows 64 位，RTX 50 CUDA 版，5070/5080/5090 優先，想安裝',
+            'Windows 64 位，RTX 50 TensorRT 試驗版，免安裝',
+            'Windows 64 位，RTX 50 TensorRT 試驗版，想安裝',
+        ),
+        'English': (
+            'Windows 64-bit, RTX 50 CUDA, recommended for 5070/5080/5090, no install',
+            'Windows 64-bit, RTX 50 CUDA, recommended for 5070/5080/5090, installer',
+            'Windows 64-bit, RTX 50 TensorRT experimental, no install',
+            'Windows 64-bit, RTX 50 TensorRT experimental, installer',
+        ),
+        '日本語': (
+            'Windows 64-bit、RTX 50 CUDA、5070/5080/5090 推奨、インストール不要',
+            'Windows 64-bit、RTX 50 CUDA、5070/5080/5090 推奨、インストーラ',
+            'Windows 64-bit、RTX 50 TensorRT 試験版、インストール不要',
+            'Windows 64-bit、RTX 50 TensorRT 試験版、インストーラ',
+        ),
+        '한국어': (
+            'Windows 64-bit, RTX 50 CUDA, 5070/5080/5090 권장, 무설치',
+            'Windows 64-bit, RTX 50 CUDA, 5070/5080/5090 권장, 설치형',
+            'Windows 64-bit, RTX 50 TensorRT 실험판, 무설치',
+            'Windows 64-bit, RTX 50 TensorRT 실험판, 설치형',
+        ),
+        'ภาษาไทย': (
+            'Windows 64-bit, RTX 50 CUDA, แนะนำสำหรับ 5070/5080/5090, ไม่ต้องติดตั้ง',
+            'Windows 64-bit, RTX 50 CUDA, แนะนำสำหรับ 5070/5080/5090, แบบติดตั้ง',
+            'Windows 64-bit, RTX 50 TensorRT รุ่นทดลอง, ไม่ต้องติดตั้ง',
+            'Windows 64-bit, RTX 50 TensorRT รุ่นทดลอง, แบบติดตั้ง',
+        ),
+    }
+    before_note_by_language = {
+        '中文': 'RTX 5070/5080/5090 用户优先下载 RTX 50 CUDA 版；TensorRT 版是试验包，适合愿意反馈测速和日志的用户。',
+        '繁體中文': 'RTX 5070/5080/5090 使用者優先下載 RTX 50 CUDA 版；TensorRT 版是試驗包，適合願意回報測速和日誌的使用者。',
+        'English': 'RTX 5070/5080/5090 users should try the RTX 50 CUDA build first; the TensorRT build is experimental for users willing to report benchmark results and logs.',
+        '日本語': 'RTX 5070/5080/5090 ユーザーは RTX 50 CUDA 版を優先してください。TensorRT 版は、ベンチマーク結果とログを共有できる方向けの試験版です。',
+        '한국어': 'RTX 5070/5080/5090 사용자는 RTX 50 CUDA 버전을 먼저 권장합니다. TensorRT 버전은 벤치마크와 로그 피드백을 줄 수 있는 사용자를 위한 실험판입니다.',
+        'ภาษาไทย': 'ผู้ใช้ RTX 5070/5080/5090 ควรลอง RTX 50 CUDA ก่อน ส่วน TensorRT เป็นรุ่นทดลองสำหรับผู้ที่ยินดีส่งผล benchmark และ log กลับมา',
+    }
+    for section in sections:
+        language = str(section['language'])
+        download = section['download']
+        assert isinstance(download, dict)
+        rows = download['rows']
+        assert isinstance(rows, list)
+        if any('nvidia50.cuda' in str(row[1]) for row in rows if isinstance(row, tuple)):
+            continue
+        localized_assets = assets_cn if language in ('中文', '繁體中文') else assets
+        labels = labels_by_language.get(language, labels_by_language['English'])
+        additions = [
+            (labels[0], localized_assets['windows_nvidia50_cuda_portable']),
+            (labels[1], localized_assets['windows_nvidia50_cuda_installer']),
+            (labels[2], localized_assets['windows_nvidia50_trt_portable']),
+            (labels[3], localized_assets['windows_nvidia50_trt_installer']),
+        ]
+        insert_at = min(6, len(rows))
+        for index, row in enumerate(rows):
+            if isinstance(row, tuple) and 'windows64.nvidia.installer' in str(row[1]):
+                insert_at = index + 1
+                break
+        rows[insert_at:insert_at] = additions
+        before = section['before']
+        assert isinstance(before, dict)
+        before_items = before['items']
+        assert isinstance(before_items, list)
+        note = before_note_by_language.get(language, before_note_by_language['English'])
+        if note not in before_items:
+            before_items.append(note)
 
 
 def render_language_section(section: dict[str, object]) -> str:
@@ -646,6 +752,7 @@ def build_next_2026_05_03_1_notes(
         },
     ]
 
+    add_nvidia50_download_rows(sections, assets_cn, assets)
     validate_release_sections(sections)
 
     return release_heading(release_tag) + '\n\n' + '\n\n---\n\n'.join(
@@ -1023,6 +1130,7 @@ def build_next_2026_05_04_1_notes(
             }
         )
 
+    add_nvidia50_download_rows(sections, assets_cn, assets)
     validate_release_sections(sections)
 
     return release_heading(release_tag) + '\n\n' + '\n\n---\n\n'.join(
@@ -1382,6 +1490,7 @@ def build_next_2026_05_06_1_notes(
             }
         )
 
+    add_nvidia50_download_rows(sections, assets_cn, assets)
     validate_release_sections(sections)
     return release_heading(release_tag) + '\n\n' + '\n\n---\n\n'.join(
         render_language_section(section) for section in sections
@@ -1812,6 +1921,7 @@ def build_release_notes(asset_map: dict[str, str | None], bundle: dict[str, str]
         },
     ]
 
+    add_nvidia50_download_rows(sections, assets_cn, assets)
     validate_release_sections(sections)
 
     return release_heading(release_tag) + '\n\n' + '\n\n---\n\n'.join(

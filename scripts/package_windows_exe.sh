@@ -28,26 +28,38 @@ OPENCL_APP_NAME="LizzieYzy Next OpenCL"
 OPENCL_APP_DESCRIPTION="Maintained LizzieYzy build with Fox nickname fetch and bundled OpenCL KataGo"
 NVIDIA_APP_NAME="LizzieYzy Next NVIDIA"
 NVIDIA_APP_DESCRIPTION="Maintained LizzieYzy build with bundled NVIDIA CUDA KataGo"
+NVIDIA50_CUDA_APP_NAME="LizzieYzy Next NVIDIA 50 CUDA"
+NVIDIA50_CUDA_APP_DESCRIPTION="Maintained LizzieYzy build with bundled RTX 50 CUDA KataGo"
+NVIDIA50_TRT_APP_NAME="LizzieYzy Next NVIDIA 50 TensorRT"
+NVIDIA50_TRT_APP_DESCRIPTION="Maintained LizzieYzy build with bundled RTX 50 TensorRT KataGo"
 MAIN_JAR="$(basename "$JAR_PATH")"
 ICON_PATH="$ROOT_DIR/packaging/icons/app-icon.ico"
 ARCH_TAG="windows64"
 STANDARD_ENGINE_PLATFORM_DIR="windows-x64"
 OPENCL_ENGINE_PLATFORM_DIR="${WINDOWS_OPENCL_ENGINE_PLATFORM_DIR:-windows-x64-opencl}"
 NVIDIA_ENGINE_PLATFORM_DIR="${WINDOWS_NVIDIA_ENGINE_PLATFORM_DIR:-windows-x64-nvidia}"
+NVIDIA50_CUDA_ENGINE_PLATFORM_DIR="${WINDOWS_NVIDIA50_CUDA_ENGINE_PLATFORM_DIR:-windows-x64-nvidia50-cuda}"
+NVIDIA50_TRT_ENGINE_PLATFORM_DIR="${WINDOWS_NVIDIA50_TRT_ENGINE_PLATFORM_DIR:-windows-x64-nvidia50-trt}"
 OPENCL_ARCH_TAG="${ARCH_TAG}.opencl"
 NVIDIA_ARCH_TAG="${ARCH_TAG}.nvidia"
+NVIDIA50_CUDA_ARCH_TAG="${ARCH_TAG}.nvidia50.cuda"
+NVIDIA50_TRT_ARCH_TAG="${ARCH_TAG}.nvidia50.trt"
 DIST_DIR="$ROOT_DIR/dist/windows"
 RELEASE_DIR="$ROOT_DIR/dist/release"
 META_DIR="$ROOT_DIR/dist/release-meta"
 WINDOWS_UPGRADE_UUID_NVIDIA="${WINDOWS_UPGRADE_UUID_NVIDIA:-14a4599e-6d5b-4b86-9895-7748266f0c25}"
+WINDOWS_UPGRADE_UUID_NVIDIA50_CUDA="${WINDOWS_UPGRADE_UUID_NVIDIA50_CUDA:-8339893c-59d8-4bb0-9cde-e54d6bb969f5}"
+WINDOWS_UPGRADE_UUID_NVIDIA50_TRT="${WINDOWS_UPGRADE_UUID_NVIDIA50_TRT:-d7d66f6f-3a05-4662-b5b8-0677b87a1a43}"
 WINDOWS_UPGRADE_UUID_OPENCL="${WINDOWS_UPGRADE_UUID_OPENCL:-0ec8b17f-06b0-4f6a-9246-cf61953743cf}"
 ENGINE_BACKEND_MARKER_NAME="lizzieyzy-next-engine-backend.txt"
 NVIDIA_RUNTIME_PREPARE_SCRIPT="$ROOT_DIR/scripts/prepare_bundled_nvidia_runtime.py"
-NVIDIA_RUNTIME_STAGE_DIR="$DIST_DIR/nvidia-runtime"
+NVIDIA_RUNTIME_STAGE_DIR="$DIST_DIR/nvidia-runtime/cuda12.1-cudnn8"
+NVIDIA50_CUDA_RUNTIME_STAGE_DIR="$DIST_DIR/nvidia-runtime/cuda12.8-cudnn9"
+NVIDIA50_TRT_RUNTIME_STAGE_DIR="$DIST_DIR/nvidia-runtime/trt10.9-cuda12.8"
 READBOARD_RELEASE_REPO="${READBOARD_RELEASE_REPO:-qiyi71w/readboard}"
-READBOARD_RELEASE_TAG="${READBOARD_RELEASE_TAG:-v3.0.1}"
-READBOARD_ASSET_NAME="${READBOARD_ASSET_NAME:-readboard-github-release-v3.0.1.zip}"
-READBOARD_ASSET_SHA256="${READBOARD_ASSET_SHA256:-b3c971c4192de96b6da9403ad6e70442a5f0e44b207627544238acb3123f6133}"
+READBOARD_RELEASE_TAG="${READBOARD_RELEASE_TAG:-v3.0.5}"
+READBOARD_ASSET_NAME="${READBOARD_ASSET_NAME:-readboard-github-release-v3.0.5.zip}"
+READBOARD_ASSET_SHA256="${READBOARD_ASSET_SHA256:-160e399b06e7d19bd61dc5be1d6ef827b88afc6fca88f0d91a7fdb103a34dde1}"
 READBOARD_RELEASE_API="${READBOARD_RELEASE_API:-https://api.github.com/repos/${READBOARD_RELEASE_REPO}/releases/tags/${READBOARD_RELEASE_TAG}}"
 READBOARD_CACHE_DIR="$ROOT_DIR/.cache/readboard"
 READBOARD_STAGE_DIR="$DIST_DIR/readboard"
@@ -344,32 +356,37 @@ copy_bundle_engine_assets() {
 }
 
 prepare_bundled_nvidia_runtime_assets() {
+  local runtime_profile="$1"
+  local runtime_stage_dir="$2"
   resolve_python_bin
   if [[ ! -f "$NVIDIA_RUNTIME_PREPARE_SCRIPT" ]]; then
     echo "Missing NVIDIA runtime prepare script: $NVIDIA_RUNTIME_PREPARE_SCRIPT"
     exit 1
   fi
-  log_step "Preparing NVIDIA CUDA runtime DLLs"
-  "$PYTHON_BIN" "$NVIDIA_RUNTIME_PREPARE_SCRIPT" --output-dir "$NVIDIA_RUNTIME_STAGE_DIR"
+  log_step "Preparing NVIDIA runtime DLLs [$runtime_profile]"
+  "$PYTHON_BIN" "$NVIDIA_RUNTIME_PREPARE_SCRIPT" \
+    --profile "$runtime_profile" \
+    --output-dir "$runtime_stage_dir"
 }
 
 copy_bundle_nvidia_runtime_assets() {
   local input_dir="$1"
   local engine_target_dir="${2:-$STANDARD_ENGINE_PLATFORM_DIR}"
+  local runtime_stage_dir="${3:-$NVIDIA_RUNTIME_STAGE_DIR}"
   local engine_dir="$input_dir/engines/katago/$engine_target_dir"
 
-  if [[ ! -d "$NVIDIA_RUNTIME_STAGE_DIR" ]]; then
-    echo "Bundled NVIDIA runtime assets not prepared: $NVIDIA_RUNTIME_STAGE_DIR"
+  if [[ ! -d "$runtime_stage_dir" ]]; then
+    echo "Bundled NVIDIA runtime assets not prepared: $runtime_stage_dir"
     exit 1
   fi
 
   mkdir -p "$engine_dir"
-  find "$NVIDIA_RUNTIME_STAGE_DIR" -maxdepth 1 -type f \( -name '*.dll' -o -name 'lizzieyzy-next-nvidia-runtime-manifest.txt' \) \
+  find "$runtime_stage_dir" -maxdepth 1 -type f \( -name '*.dll' -o -name 'lizzieyzy-next-nvidia-runtime-manifest.txt' \) \
     -exec cp -f {} "$engine_dir/" \;
 
-  if [[ -d "$NVIDIA_RUNTIME_STAGE_DIR/licenses" ]]; then
+  if [[ -d "$runtime_stage_dir/licenses" ]]; then
     mkdir -p "$engine_dir/licenses/nvidia-runtime"
-    cp -R "$NVIDIA_RUNTIME_STAGE_DIR/licenses/." "$engine_dir/licenses/nvidia-runtime/"
+    cp -R "$runtime_stage_dir/licenses/." "$engine_dir/licenses/nvidia-runtime/"
   fi
 }
 
@@ -390,6 +407,7 @@ build_app_image() {
   local engine_source_dir="${5:-$STANDARD_ENGINE_PLATFORM_DIR}"
   local engine_target_dir="${6:-$STANDARD_ENGINE_PLATFORM_DIR}"
   local engine_backend="${7:-}"
+  local runtime_stage_dir="${8:-}"
   local input_dir="$DIST_DIR/input-$flavor"
   local app_image_dir="$DIST_DIR/app-image-$flavor"
 
@@ -397,8 +415,8 @@ build_app_image() {
   copy_common_inputs "$input_dir"
   if [[ "$include_katago" == "true" ]]; then
     copy_bundle_engine_assets "$input_dir" "$engine_source_dir" "$engine_target_dir" "$engine_backend"
-    if [[ "$engine_backend" == "nvidia" ]]; then
-      copy_bundle_nvidia_runtime_assets "$input_dir" "$engine_target_dir"
+    if [[ "$engine_backend" == nvidia* ]]; then
+      copy_bundle_nvidia_runtime_assets "$input_dir" "$engine_target_dir" "$runtime_stage_dir"
     fi
   fi
 
@@ -434,7 +452,8 @@ build_installer() {
   local engine_source_dir="${5:-$STANDARD_ENGINE_PLATFORM_DIR}"
   local engine_target_dir="${6:-$STANDARD_ENGINE_PLATFORM_DIR}"
   local engine_backend="${7:-}"
-  local upgrade_uuid="${8:-$WINDOWS_UPGRADE_UUID}"
+  local runtime_stage_dir="${8:-}"
+  local upgrade_uuid="${9:-$WINDOWS_UPGRADE_UUID}"
   local input_dir="$DIST_DIR/input-$flavor"
   local installer_dir="$DIST_DIR/installer-$flavor"
 
@@ -442,8 +461,8 @@ build_installer() {
   copy_common_inputs "$input_dir"
   if [[ "$include_katago" == "true" ]]; then
     copy_bundle_engine_assets "$input_dir" "$engine_source_dir" "$engine_target_dir" "$engine_backend"
-    if [[ "$engine_backend" == "nvidia" ]]; then
-      copy_bundle_nvidia_runtime_assets "$input_dir" "$engine_target_dir"
+    if [[ "$engine_backend" == nvidia* ]]; then
+      copy_bundle_nvidia_runtime_assets "$input_dir" "$engine_target_dir" "$runtime_stage_dir"
     fi
   fi
 
@@ -475,7 +494,9 @@ write_windows_install_note() {
   local has_with_katago="$1"
   local has_opencl_katago="$2"
   local has_nvidia_katago="$3"
-  local has_no_engine_installer="$4"
+  local has_nvidia50_cuda_katago="$4"
+  local has_nvidia50_trt_katago="$5"
+  local has_no_engine_installer="$6"
   local note_file="$META_DIR/${DATE_TAG}-${ARCH_TAG}-install.txt"
 
   cat >"$note_file" <<EOF
@@ -507,9 +528,27 @@ EOF
   if [[ "$has_nvidia_katago" == "true" ]]; then
     cat >>"$note_file" <<EOF
 - ${DATE_TAG}-${NVIDIA_ARCH_TAG}.installer.exe
-  Only for PCs with an NVIDIA graphics card. This bundle uses the official CUDA KataGo build for higher analysis speed.
+  Stable NVIDIA package for RTX 20/30/40 series and other CUDA 12.1 compatible PCs.
 - ${DATE_TAG}-${NVIDIA_ARCH_TAG}.portable.zip
   NVIDIA-only portable build. Unzip it and open ${NVIDIA_APP_NAME}.exe.
+EOF
+  fi
+
+  if [[ "$has_nvidia50_cuda_katago" == "true" ]]; then
+    cat >>"$note_file" <<EOF
+- ${DATE_TAG}-${NVIDIA50_CUDA_ARCH_TAG}.installer.exe
+  RTX 50 series CUDA package. Choose this first for RTX 5070/5080/5090.
+- ${DATE_TAG}-${NVIDIA50_CUDA_ARCH_TAG}.portable.zip
+  RTX 50 CUDA portable build. Unzip it and open ${NVIDIA50_CUDA_APP_NAME}.exe.
+EOF
+  fi
+
+  if [[ "$has_nvidia50_trt_katago" == "true" ]]; then
+    cat >>"$note_file" <<EOF
+- ${DATE_TAG}-${NVIDIA50_TRT_ARCH_TAG}.installer.exe
+  Experimental RTX 50 TensorRT package for users willing to test higher peak performance.
+- ${DATE_TAG}-${NVIDIA50_TRT_ARCH_TAG}.portable.zip
+  Experimental RTX 50 TensorRT portable build. Unzip it and open ${NVIDIA50_TRT_APP_NAME}.exe.
 EOF
   fi
 
@@ -564,10 +603,29 @@ EOF
 
   if [[ "$has_nvidia_katago" == "true" ]]; then
     cat >>"$note_file" <<'EOF'
-- The NVIDIA assets include the official KataGo CUDA 12.1 Windows build.
+- The NVIDIA assets include the official KataGo CUDA 12.1 Windows build and remain the stable choice for RTX 20/30/40 series users.
 - The NVIDIA assets also include the required official NVIDIA runtime files, so first launch should work offline on supported NVIDIA PCs.
 - If those NVIDIA runtime files are missing later, reinstall the NVIDIA package instead of downloading extra files at startup.
-- Only choose the NVIDIA package if your PC has an NVIDIA GPU. If you are not sure, use the regular with-katago installer instead.
+EOF
+  fi
+
+  if [[ "$has_nvidia50_cuda_katago" == "true" ]]; then
+    cat >>"$note_file" <<'EOF'
+- The NVIDIA 50 CUDA assets include the official KataGo CUDA 12.8 / cuDNN 9.8 Windows build for Blackwell RTX 50 series GPUs.
+- RTX 5070/5080/5090 users should try the NVIDIA 50 CUDA package first.
+EOF
+  fi
+
+  if [[ "$has_nvidia50_trt_katago" == "true" ]]; then
+    cat >>"$note_file" <<'EOF'
+- The NVIDIA 50 TensorRT assets include the official KataGo TensorRT 10.9 / CUDA 12.8 Windows build and are experimental.
+- Use the TensorRT package only if you are willing to test and report NVIDIA driver, KataGo stderr, and Smart Optimize results.
+EOF
+  fi
+
+  if [[ "$has_nvidia_katago" == "true" || "$has_nvidia50_cuda_katago" == "true" || "$has_nvidia50_trt_katago" == "true" ]]; then
+    cat >>"$note_file" <<'EOF'
+- Only choose an NVIDIA package if your PC has an NVIDIA GPU. If you are not sure, use the regular with-katago installer instead.
 EOF
   fi
 
@@ -604,6 +662,7 @@ build_release_variant() {
   local engine_backend="$7"
   local release_basename="$8"
   local upgrade_uuid="$9"
+  local runtime_stage_dir="${10:-}"
 
   local app_root
   local installer_path
@@ -617,7 +676,8 @@ build_release_variant() {
     "$app_description" \
     "$engine_source_dir" \
     "$engine_target_dir" \
-    "$engine_backend")"
+    "$engine_backend" \
+    "$runtime_stage_dir")"
   create_portable_zip "$release_basename" "$app_root"
   installer_path="$(build_installer \
     "$flavor" \
@@ -627,6 +687,7 @@ build_release_variant() {
     "$engine_source_dir" \
     "$engine_target_dir" \
     "$engine_backend" \
+    "$runtime_stage_dir" \
     "$upgrade_uuid")"
   final_installer="$RELEASE_DIR/${DATE_TAG}-${release_basename}.installer.exe"
   cp "$installer_path" "$final_installer"
@@ -639,6 +700,8 @@ build_no_engine_installer="true"
 has_with_katago_assets="false"
 has_opencl_katago_assets="false"
 has_nvidia_katago_assets="false"
+has_nvidia50_cuda_katago_assets="false"
+has_nvidia50_trt_katago_assets="false"
 
 prepare_bundled_readboard_assets
 
@@ -676,7 +739,7 @@ fi
 
 if has_bundled_katago "$NVIDIA_ENGINE_PLATFORM_DIR"; then
   has_nvidia_katago_assets="true"
-  prepare_bundled_nvidia_runtime_assets
+  prepare_bundled_nvidia_runtime_assets "cuda12.1-cudnn8" "$NVIDIA_RUNTIME_STAGE_DIR"
   build_release_variant \
     "nvidia" \
     "true" \
@@ -686,9 +749,46 @@ if has_bundled_katago "$NVIDIA_ENGINE_PLATFORM_DIR"; then
     "$STANDARD_ENGINE_PLATFORM_DIR" \
     "nvidia" \
     "$NVIDIA_ARCH_TAG" \
-    "$WINDOWS_UPGRADE_UUID_NVIDIA"
+    "$WINDOWS_UPGRADE_UUID_NVIDIA" \
+    "$NVIDIA_RUNTIME_STAGE_DIR"
 else
   has_nvidia_katago_assets="false"
+fi
+
+if has_bundled_katago "$NVIDIA50_CUDA_ENGINE_PLATFORM_DIR"; then
+  has_nvidia50_cuda_katago_assets="true"
+  prepare_bundled_nvidia_runtime_assets "cuda12.8-cudnn9" "$NVIDIA50_CUDA_RUNTIME_STAGE_DIR"
+  build_release_variant \
+    "nvidia50.cuda" \
+    "true" \
+    "$NVIDIA50_CUDA_APP_NAME" \
+    "$NVIDIA50_CUDA_APP_DESCRIPTION" \
+    "$NVIDIA50_CUDA_ENGINE_PLATFORM_DIR" \
+    "$STANDARD_ENGINE_PLATFORM_DIR" \
+    "nvidia50-cuda" \
+    "$NVIDIA50_CUDA_ARCH_TAG" \
+    "$WINDOWS_UPGRADE_UUID_NVIDIA50_CUDA" \
+    "$NVIDIA50_CUDA_RUNTIME_STAGE_DIR"
+else
+  has_nvidia50_cuda_katago_assets="false"
+fi
+
+if has_bundled_katago "$NVIDIA50_TRT_ENGINE_PLATFORM_DIR"; then
+  has_nvidia50_trt_katago_assets="true"
+  prepare_bundled_nvidia_runtime_assets "trt10.9-cuda12.8" "$NVIDIA50_TRT_RUNTIME_STAGE_DIR"
+  build_release_variant \
+    "nvidia50.trt" \
+    "true" \
+    "$NVIDIA50_TRT_APP_NAME" \
+    "$NVIDIA50_TRT_APP_DESCRIPTION" \
+    "$NVIDIA50_TRT_ENGINE_PLATFORM_DIR" \
+    "$STANDARD_ENGINE_PLATFORM_DIR" \
+    "nvidia50-trt" \
+    "$NVIDIA50_TRT_ARCH_TAG" \
+    "$WINDOWS_UPGRADE_UUID_NVIDIA50_TRT" \
+    "$NVIDIA50_TRT_RUNTIME_STAGE_DIR"
+else
+  has_nvidia50_trt_katago_assets="false"
 fi
 
 build_release_variant \
@@ -708,6 +808,8 @@ write_windows_install_note \
   "$has_with_katago_assets" \
   "$has_opencl_katago_assets" \
   "$has_nvidia_katago_assets" \
+  "$has_nvidia50_cuda_katago_assets" \
+  "$has_nvidia50_trt_katago_assets" \
   "$build_no_engine_installer"
 write_sha256_file "$checksum_file" "${artifacts[@]}" "$install_note"
 
@@ -718,6 +820,8 @@ echo "Windows installer version: $WINDOWS_APP_VERSION"
 echo "Windows upgrade UUID: $WINDOWS_UPGRADE_UUID"
 echo "Windows OpenCL upgrade UUID: $WINDOWS_UPGRADE_UUID_OPENCL"
 echo "Windows NVIDIA upgrade UUID: $WINDOWS_UPGRADE_UUID_NVIDIA"
+echo "Windows NVIDIA 50 CUDA upgrade UUID: $WINDOWS_UPGRADE_UUID_NVIDIA50_CUDA"
+echo "Windows NVIDIA 50 TensorRT upgrade UUID: $WINDOWS_UPGRADE_UUID_NVIDIA50_TRT"
 echo
 echo "Maintainer metadata:"
 ls -lh "$install_note" "$checksum_file"

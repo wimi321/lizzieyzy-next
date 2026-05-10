@@ -10,13 +10,14 @@ This document answers three practical questions:
 
 This page describes the public release layout of the maintained `LizzieYzy Next` fork, not the older historical `lizzieyzy` release layout.
 
-- The maintained release page now centers on 11 primary user-facing assets
+- The maintained release page now centers on 15 primary user-facing assets
 - On Windows, the default recommendation is now `portable.zip`
 - Most regular users should start with `windows64.opencl.portable.zip`
 - If OpenCL behaves poorly, switch to `windows64.with-katago.portable.zip`
-- If you have an NVIDIA GPU and want more speed, switch to `windows64.nvidia.portable.zip`
+- If you have an RTX 20/30/40 NVIDIA GPU and want more speed, switch to `windows64.nvidia.portable.zip`
+- RTX 5070/5080/5090 users should try `windows64.nvidia50.cuda.portable.zip` first; `windows64.nvidia50.trt.portable.zip` is experimental
 
-## The 11 Primary Public Release Assets
+## The 15 Primary Public Release Assets
 
 | Package type | Typical filename | Best for |
 | --- | --- | --- |
@@ -26,6 +27,10 @@ This page describes the public release layout of the maintained `LizzieYzy Next`
 | Windows x64 CPU fallback installer | `<date>-windows64.with-katago.installer.exe` | CPU fallback with installer flow |
 | Windows x64 NVIDIA portable | `<date>-windows64.nvidia.portable.zip` | NVIDIA GPU users who want higher analysis speed without an installer |
 | Windows x64 NVIDIA installer | `<date>-windows64.nvidia.installer.exe` | NVIDIA GPU users who prefer an installer |
+| Windows x64 RTX 50 CUDA portable | `<date>-windows64.nvidia50.cuda.portable.zip` | First choice for RTX 5070/5080/5090 users |
+| Windows x64 RTX 50 CUDA installer | `<date>-windows64.nvidia50.cuda.installer.exe` | RTX 5070/5080/5090 users who prefer an installer |
+| Windows x64 RTX 50 TensorRT experimental portable | `<date>-windows64.nvidia50.trt.portable.zip` | RTX 50 users willing to test TensorRT performance and share logs |
+| Windows x64 RTX 50 TensorRT experimental installer | `<date>-windows64.nvidia50.trt.installer.exe` | RTX 50 users willing to test TensorRT and preferring an installer |
 | Windows x64 no-engine portable | `<date>-windows64.without.engine.portable.zip` | Custom KataGo setup |
 | Windows x64 no-engine installer | `<date>-windows64.without.engine.installer.exe` | Users who want installer flow with their own engine |
 | macOS Apple Silicon bundle | `<date>-mac-apple-silicon.with-katago.dmg` | M-series Macs |
@@ -35,7 +40,7 @@ This page describes the public release layout of the maintained `LizzieYzy Next`
 Notes:
 
 - `<date>` is the release date, for example `2026-03-21`.
-- The maintained public release page now keeps these 11 user-facing assets as the main list.
+- The maintained public release page now keeps these 15 user-facing assets as the main list.
 - Windows x64 is portable-first, with matching installers kept as optional alternatives.
 - Older tags may still show compatibility zips, but those are now historical layouts.
 
@@ -49,6 +54,10 @@ Notes:
 | `windows64.with-katago.installer.exe` | Bundled | Bundled | Bundled | Install, then launch from Start Menu or desktop |
 | `windows64.nvidia.portable.zip` | Bundled | Bundled | Bundled | Unzip and run `LizzieYzy Next NVIDIA.exe` |
 | `windows64.nvidia.installer.exe` | Bundled | Bundled | Bundled | Install, then launch `LizzieYzy Next NVIDIA` |
+| `windows64.nvidia50.cuda.portable.zip` | Bundled | Bundled | Bundled | Unzip and run `LizzieYzy Next NVIDIA 50 CUDA.exe` |
+| `windows64.nvidia50.cuda.installer.exe` | Bundled | Bundled | Bundled | Install, then launch `LizzieYzy Next NVIDIA 50 CUDA` |
+| `windows64.nvidia50.trt.portable.zip` | Bundled | Bundled | Bundled | Unzip and run `LizzieYzy Next NVIDIA 50 TensorRT.exe` |
+| `windows64.nvidia50.trt.installer.exe` | Bundled | Bundled | Bundled | Install, then launch `LizzieYzy Next NVIDIA 50 TensorRT` |
 | `windows64.without.engine.portable.zip` | Bundled | Not bundled | Not bundled | Unzip and run `LizzieYzy Next.exe` |
 | `windows64.without.engine.installer.exe` | Bundled | Not bundled | Not bundled | Install, then launch from Start Menu or desktop |
 | `mac-apple-silicon.with-katago.dmg` | App runtime | Bundled | Bundled | Drag to Applications |
@@ -60,7 +69,8 @@ Notes:
 If you just want the shortest path:
 
 - Windows: choose `windows64.opencl.portable.zip`
-- Windows with an NVIDIA GPU: choose `windows64.nvidia.portable.zip`
+- Windows with an RTX 20/30/40 NVIDIA GPU: choose `windows64.nvidia.portable.zip`
+- Windows with RTX 5070/5080/5090: choose `windows64.nvidia50.cuda.portable.zip` first
 - macOS: choose the correct `with-katago.dmg` for your chip
 - Linux: choose `linux64.with-katago.zip`
 
@@ -106,9 +116,9 @@ Paths:
 From the new maintained releases onward:
 
 - the main Windows x64 package is `portable.zip`
-- Windows x64 now exposes OpenCL, CPU fallback, and NVIDIA variants in both portable and installer forms
+- Windows x64 now exposes OpenCL, CPU fallback, NVIDIA, NVIDIA 50 CUDA, and NVIDIA 50 TensorRT variants in both portable and installer forms
 - the Windows x64 no-engine option now has both an installer and a portable `.zip`
-- the public release page keeps the 11 primary user-facing assets above as the main list
+- the public release page keeps the 15 primary user-facing assets above as the main list
 - older compatibility zips now stay in historical tags instead of the main recommendation area
 
 ## Related Docs

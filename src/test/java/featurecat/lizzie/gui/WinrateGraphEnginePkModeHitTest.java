@@ -1,6 +1,7 @@
 package featurecat.lizzie.gui;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -31,6 +32,9 @@ class WinrateGraphEnginePkModeHitTest {
   private static final int BOARD_AREA = BOARD_SIZE * BOARD_SIZE;
   private static final int RENDER_WIDTH = 260;
   private static final int RENDER_HEIGHT = 140;
+  private static final Color CUSTOM_WINRATE_COLOR = new Color(20, 210, 95);
+  private static final Color CUSTOM_MISS_COLOR = new Color(220, 90, 30);
+  private static final Color CUSTOM_BLUNDER_COLOR = new Color(180, 30, 220, 255);
 
   @Test
   void engineGameClickAndDragUseRenderedDotPixel() throws Exception {
@@ -261,6 +265,116 @@ class WinrateGraphEnginePkModeHitTest {
           fixture.target,
           fixture.board.getHistory().getCurrentHistoryNode(),
           "engine-game left click on graph scrub pixel should navigate by winrate graph.");
+    } finally {
+      env.close();
+    }
+  }
+
+  @Test
+  void customWinrateColorPaintsMainGraphLineAndDot() throws Exception {
+    TestEnvironment env = TestEnvironment.open();
+    try {
+      Lizzie.config.winrateLineColor = CUSTOM_WINRATE_COLOR;
+      RenderFixture fixture = modeZeroFixture();
+      fixture.board.isPkBoard = false;
+      EngineManager.isEngineGame = false;
+
+      RenderLayers layers = renderLayers(fixture.graph);
+      int[] dot = renderedModeZeroDotPixel(fixture.graph, fixture.target, fixture.targetWinrate);
+
+      assertColorNear(layers.winrate, dot, CUSTOM_WINRATE_COLOR, 3);
+    } finally {
+      env.close();
+    }
+  }
+
+  @Test
+  void customWinrateColorPaintsEngineGameGraph() throws Exception {
+    TestEnvironment env = TestEnvironment.open();
+    try {
+      Lizzie.config.winrateLineColor = CUSTOM_WINRATE_COLOR;
+      RenderFixture fixture = modeZeroFixture();
+      fixture.board.isPkBoard = false;
+      EngineManager.isEngineGame = true;
+
+      RenderLayers layers = renderLayers(fixture.graph);
+      int[] dot = renderedModeZeroDotPixel(fixture.graph, fixture.target, fixture.targetWinrate);
+
+      assertColorNear(layers.winrate, dot, CUSTOM_WINRATE_COLOR, 3);
+    } finally {
+      env.close();
+    }
+  }
+
+  @Test
+  void customMissColorPaintsModeOneWhiteLineAndDot() throws Exception {
+    TestEnvironment env = TestEnvironment.open();
+    try {
+      Lizzie.config.winrateMissLineColor = CUSTOM_MISS_COLOR;
+      RenderFixture fixture = modeOneFixture();
+      fixture.board.isPkBoard = false;
+      EngineManager.isEngineGame = false;
+
+      RenderLayers layers = renderLayers(fixture.graph);
+      int[] dot =
+          renderedModeOneWhiteDotPixel(fixture.graph, fixture.target, fixture.whiteDotWinrate);
+
+      assertColorNear(layers.winrate, dot, CUSTOM_MISS_COLOR, 3);
+    } finally {
+      env.close();
+    }
+  }
+
+  @Test
+  void showBlunderBarFalseLeavesBlunderLayerEmpty() throws Exception {
+    TestEnvironment env = TestEnvironment.open();
+    try {
+      Lizzie.config.showBlunderBar = false;
+      RenderFixture fixture = modeZeroFixture();
+      fixture.board.isPkBoard = false;
+      EngineManager.isEngineGame = false;
+
+      RenderLayers layers = renderLayers(fixture.graph);
+
+      assertFalse(hasOpaquePixel(layers.blunder), "blunder layer should stay empty when disabled.");
+    } finally {
+      env.close();
+    }
+  }
+
+  @Test
+  void customBlunderColorAndMinimumWidthPaintMainGraphBars() throws Exception {
+    TestEnvironment env = TestEnvironment.open();
+    try {
+      Lizzie.config.showBlunderBar = true;
+      Lizzie.config.blunderBarColor = CUSTOM_BLUNDER_COLOR;
+      Lizzie.config.minimumBlunderBarWidth = 9;
+      RenderFixture fixture = modeZeroFixture();
+      fixture.board.isPkBoard = false;
+      EngineManager.isEngineGame = false;
+
+      RenderLayers layers = renderLayers(fixture.graph);
+      int paintedWidth = widestColorRun(layers.blunder, CUSTOM_BLUNDER_COLOR);
+
+      assertTrue(paintedWidth >= 10, "main graph blunder bar should honor minimum width.");
+    } finally {
+      env.close();
+    }
+  }
+
+  @Test
+  void customBlunderColorPaintsEngineGameBars() throws Exception {
+    TestEnvironment env = TestEnvironment.open();
+    try {
+      Lizzie.config.showBlunderBar = true;
+      Lizzie.config.blunderBarColor = CUSTOM_BLUNDER_COLOR;
+      RenderFixture fixture = modeZeroFixture();
+      fixture.board.isPkBoard = false;
+      EngineManager.isEngineGame = true;
+
+      RenderLayers layers = renderLayers(fixture.graph);
+
+      assertColorPresent(layers.blunder, CUSTOM_BLUNDER_COLOR);
     } finally {
       env.close();
     }
@@ -584,6 +698,10 @@ class WinrateGraphEnginePkModeHitTest {
   }
 
   private static BufferedImage renderGraphLayer(WinrateGraph graph) {
+    return renderLayers(graph).winrate;
+  }
+
+  private static RenderLayers renderLayers(WinrateGraph graph) {
     BufferedImage winrateLayer =
         new BufferedImage(RENDER_WIDTH, RENDER_HEIGHT, BufferedImage.TYPE_INT_ARGB);
     BufferedImage blunderLayer =
@@ -596,12 +714,73 @@ class WinrateGraphEnginePkModeHitTest {
     try {
       graph.draw(
           winrateGraphics, blunderGraphics, backgroundGraphics, 0, 0, RENDER_WIDTH, RENDER_HEIGHT);
-      return winrateLayer;
+      return new RenderLayers(winrateLayer, blunderLayer, backgroundLayer);
     } finally {
       winrateGraphics.dispose();
       blunderGraphics.dispose();
       backgroundGraphics.dispose();
     }
+  }
+
+  private static void assertColorNear(
+      BufferedImage image, int[] center, Color expected, int radius) {
+    for (int y = Math.max(0, center[1] - radius);
+        y <= Math.min(image.getHeight() - 1, center[1] + radius);
+        y++) {
+      for (int x = Math.max(0, center[0] - radius);
+          x <= Math.min(image.getWidth() - 1, center[0] + radius);
+          x++) {
+        if (sameRgb(new Color(image.getRGB(x, y), true), expected)) {
+          return;
+        }
+      }
+    }
+    throw new AssertionError("expected color near point: " + expected);
+  }
+
+  private static void assertColorPresent(BufferedImage image, Color expected) {
+    for (int y = 0; y < image.getHeight(); y++) {
+      for (int x = 0; x < image.getWidth(); x++) {
+        if (sameRgb(new Color(image.getRGB(x, y), true), expected)) {
+          return;
+        }
+      }
+    }
+    throw new AssertionError("expected color in image: " + expected);
+  }
+
+  private static boolean hasOpaquePixel(BufferedImage image) {
+    for (int y = 0; y < image.getHeight(); y++) {
+      for (int x = 0; x < image.getWidth(); x++) {
+        if (new Color(image.getRGB(x, y), true).getAlpha() > 0) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  private static int widestColorRun(BufferedImage image, Color expected) {
+    int widest = 0;
+    for (int y = 0; y < image.getHeight(); y++) {
+      int current = 0;
+      for (int x = 0; x < image.getWidth(); x++) {
+        if (sameRgb(new Color(image.getRGB(x, y), true), expected)) {
+          current++;
+          widest = Math.max(widest, current);
+        } else {
+          current = 0;
+        }
+      }
+    }
+    return widest;
+  }
+
+  private static boolean sameRgb(Color actual, Color expected) {
+    return actual.getAlpha() > 0
+        && actual.getRed() == expected.getRed()
+        && actual.getGreen() == expected.getGreen()
+        && actual.getBlue() == expected.getBlue();
   }
 
   private static int graphCenterX(int[] params, int moveNumber) {
@@ -829,6 +1008,18 @@ class WinrateGraphEnginePkModeHitTest {
       this.renderFixture = renderFixture;
       this.snapshotBoundary = snapshotBoundary;
       this.preGapMove = preGapMove;
+    }
+  }
+
+  private static final class RenderLayers {
+    private final BufferedImage winrate;
+    private final BufferedImage blunder;
+    private final BufferedImage background;
+
+    private RenderLayers(BufferedImage winrate, BufferedImage blunder, BufferedImage background) {
+      this.winrate = winrate;
+      this.blunder = blunder;
+      this.background = background;
     }
   }
 

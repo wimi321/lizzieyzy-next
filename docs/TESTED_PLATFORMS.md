@@ -14,7 +14,7 @@
 - `Build verified`：资产命名、内容结构、工作流和公开 release 已验证，但还缺少真实机器反馈
 - `Needs report`：目前仍缺少足够反馈
 
-当前主推荐列表覆盖 11 个用户向资产；历史兼容包不再放进主推荐区。
+当前主推荐列表覆盖 15 个用户向资产；历史兼容包不再放进主推荐区。
 
 ## 当前状态
 
@@ -26,6 +26,10 @@
 | `windows64.with-katago.installer.exe` | Windows x64 | `Build verified` | CPU 兜底安装器工作流和公开 release 资产已验证 | 面向想安装的 CPU 兜底用户 |
 | `windows64.nvidia.portable.zip` | Windows x64 + NVIDIA | `Build verified` | NVIDIA CUDA 便携包已纳入正式发布矩阵 | 面向不想安装的 NVIDIA 用户 |
 | `windows64.nvidia.installer.exe` | Windows x64 + NVIDIA | `Build verified` | NVIDIA CUDA 整合安装器已纳入正式发布矩阵 | 需要真实 NVIDIA Windows 反馈 |
+| `windows64.nvidia50.cuda.portable.zip` | Windows x64 + RTX 50 | `Build verified` | CUDA 12.8/cuDNN 9 便携包已纳入发布矩阵 | RTX 5070/5080/5090 用户优先反馈 |
+| `windows64.nvidia50.cuda.installer.exe` | Windows x64 + RTX 50 | `Build verified` | CUDA 12.8/cuDNN 9 安装器已纳入发布矩阵 | RTX 5070/5080/5090 用户优先反馈 |
+| `windows64.nvidia50.trt.portable.zip` | Windows x64 + RTX 50 TensorRT | `Build verified` | TensorRT 10.9/CUDA 12.8 试验便携包已纳入发布矩阵 | 需要 50 系列用户反馈测速和日志 |
+| `windows64.nvidia50.trt.installer.exe` | Windows x64 + RTX 50 TensorRT | `Build verified` | TensorRT 10.9/CUDA 12.8 试验安装器已纳入发布矩阵 | 需要 50 系列用户反馈测速和日志 |
 | `windows64.without.engine.portable.zip` | Windows x64 | `Build verified` | 无引擎便携包已纳入正式发布矩阵 | 面向进阶用户 |
 | `windows64.without.engine.installer.exe` | Windows x64 | `Build verified` | 无引擎安装器已纳入正式发布矩阵 | 面向想安装但自己配引擎的用户 |
 | `mac-apple-silicon.with-katago.dmg` | macOS Apple Silicon | `Maintainer tested` | 安装、启动、界面打开、野狐昵称抓谱入口可见 | 当前最完整的实机验证链路 |

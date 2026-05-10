@@ -18,7 +18,7 @@ permissions:
 jobs:
   build:
     runs-on: windows-latest
-    timeout-minutes: 180
+    timeout-minutes: 240
 
     steps:
       - name: Checkout
@@ -65,7 +65,7 @@ jobs:
           PREFERRED_MODEL_NAME="$MODEL_NAME" MODEL_SOURCE="$MODEL_SOURCE" ./scripts/prepare_bundled_katago.sh
 
       - name: Build Windows installer and portable package
-        timeout-minutes: 120
+        timeout-minutes: 180
         shell: bash
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -91,14 +91,15 @@ jobs:
           grep -q "Release display version: ${{ inputs.release_tag }}" "$note_file"
           grep -q "Smart Optimize" "$note_file"
           grep -q "first launch should work offline" "$note_file"
-          grep -q "qiyi71w/readboard v3.0.1" "$note_file"
+          grep -q "qiyi71w/readboard v3.0.5" "$note_file"
+          grep -q "RTX 5070/5080/5090" "$note_file"
           test -f "dist/windows/input-with-katago/engines/katago/windows-x64/katago.exe"
           test -f "dist/windows/input-with-katago/PROJECT_INFO.txt"
           test -f "dist/windows/input-with-katago/readboard/readboard.exe"
           test -f "dist/windows/input-with-katago/readboard/lizzieyzy-next-readboard-manifest.txt"
-          grep -qx "release-tag=v3.0.1" "dist/windows/input-with-katago/readboard/lizzieyzy-next-readboard-manifest.txt"
-          grep -qx "asset-name=readboard-github-release-v3.0.1.zip" "dist/windows/input-with-katago/readboard/lizzieyzy-next-readboard-manifest.txt"
-          grep -qx "sha256=b3c971c4192de96b6da9403ad6e70442a5f0e44b207627544238acb3123f6133" "dist/windows/input-with-katago/readboard/lizzieyzy-next-readboard-manifest.txt"
+          grep -qx "release-tag=v3.0.5" "dist/windows/input-with-katago/readboard/lizzieyzy-next-readboard-manifest.txt"
+          grep -qx "asset-name=readboard-github-release-v3.0.5.zip" "dist/windows/input-with-katago/readboard/lizzieyzy-next-readboard-manifest.txt"
+          grep -qx "sha256=160e399b06e7d19bd61dc5be1d6ef827b88afc6fca88f0d91a7fdb103a34dde1" "dist/windows/input-with-katago/readboard/lizzieyzy-next-readboard-manifest.txt"
           grep -Eq '^Windows bundle: katago-v[0-9.]+-eigen-windows-x64\.zip$' "dist/windows/input-with-katago/engines/katago/VERSION.txt"
           test -f "dist/windows/input-opencl/engines/katago/windows-x64/katago.exe"
           test -f "dist/windows/input-opencl/PROJECT_INFO.txt"
@@ -141,6 +142,56 @@ jobs:
           test -f "dist/windows/app-image-nvidia/LizzieYzy Next NVIDIA/app/engines/katago/windows-x64/cudnn64_8.dll"
           test -f "dist/windows/app-image-nvidia/LizzieYzy Next NVIDIA/app/engines/katago/windows-x64/libz.dll"
           find "dist/windows/app-image-nvidia/LizzieYzy Next NVIDIA/app/engines/katago/windows-x64" -maxdepth 1 -type f -name 'nvJitLink*.dll' | grep -q .
+          test -f "dist/windows/app-image-nvidia50.cuda/LizzieYzy Next NVIDIA 50 CUDA/LizzieYzy Next NVIDIA 50 CUDA.exe"
+          test -f "dist/windows/app-image-nvidia50.cuda/LizzieYzy Next NVIDIA 50 CUDA/app/PROJECT_INFO.txt"
+          grep -q "java-options=-Dlizzie.next.version=${{ inputs.release_tag }}" "dist/windows/app-image-nvidia50.cuda/LizzieYzy Next NVIDIA 50 CUDA/app/LizzieYzy Next NVIDIA 50 CUDA.cfg"
+          test -f "dist/windows/app-image-nvidia50.cuda/LizzieYzy Next NVIDIA 50 CUDA/app/readboard/readboard.exe"
+          test -f "dist/windows/app-image-nvidia50.cuda/LizzieYzy Next NVIDIA 50 CUDA/runtime/bin/java.exe"
+          test -f "dist/windows/input-nvidia50.cuda/engines/katago/windows-x64/katago.exe"
+          test -f "dist/windows/input-nvidia50.cuda/PROJECT_INFO.txt"
+          test -f "dist/windows/input-nvidia50.cuda/readboard/readboard.exe"
+          test -f "dist/windows/input-nvidia50.cuda/readboard/lizzieyzy-next-readboard-manifest.txt"
+          test -f "dist/windows/input-nvidia50.cuda/engines/katago/windows-x64/cudart64_12.dll"
+          test -f "dist/windows/input-nvidia50.cuda/engines/katago/windows-x64/cublas64_12.dll"
+          test -f "dist/windows/input-nvidia50.cuda/engines/katago/windows-x64/cublasLt64_12.dll"
+          test -f "dist/windows/input-nvidia50.cuda/engines/katago/windows-x64/cudnn64_9.dll"
+          test -f "dist/windows/input-nvidia50.cuda/engines/katago/windows-x64/libz.dll"
+          test -f "dist/windows/input-nvidia50.cuda/engines/katago/windows-x64/lizzieyzy-next-nvidia-runtime-manifest.txt"
+          grep -q "Profile: cuda12.8-cudnn9" "dist/windows/input-nvidia50.cuda/engines/katago/windows-x64/lizzieyzy-next-nvidia-runtime-manifest.txt"
+          find "dist/windows/input-nvidia50.cuda/engines/katago/windows-x64" -maxdepth 1 -type f -name 'nvJitLink*.dll' | grep -q .
+          grep -qx "nvidia50-cuda" "dist/windows/input-nvidia50.cuda/engines/katago/windows-x64/lizzieyzy-next-engine-backend.txt"
+          test -f "dist/windows/app-image-nvidia50.cuda/LizzieYzy Next NVIDIA 50 CUDA/app/engines/katago/windows-x64/cudart64_12.dll"
+          test -f "dist/windows/app-image-nvidia50.cuda/LizzieYzy Next NVIDIA 50 CUDA/app/engines/katago/windows-x64/cublas64_12.dll"
+          test -f "dist/windows/app-image-nvidia50.cuda/LizzieYzy Next NVIDIA 50 CUDA/app/engines/katago/windows-x64/cublasLt64_12.dll"
+          test -f "dist/windows/app-image-nvidia50.cuda/LizzieYzy Next NVIDIA 50 CUDA/app/engines/katago/windows-x64/cudnn64_9.dll"
+          test -f "dist/windows/app-image-nvidia50.cuda/LizzieYzy Next NVIDIA 50 CUDA/app/engines/katago/windows-x64/libz.dll"
+          find "dist/windows/app-image-nvidia50.cuda/LizzieYzy Next NVIDIA 50 CUDA/app/engines/katago/windows-x64" -maxdepth 1 -type f -name 'nvJitLink*.dll' | grep -q .
+          test -f "dist/windows/app-image-nvidia50.trt/LizzieYzy Next NVIDIA 50 TensorRT/LizzieYzy Next NVIDIA 50 TensorRT.exe"
+          test -f "dist/windows/app-image-nvidia50.trt/LizzieYzy Next NVIDIA 50 TensorRT/app/PROJECT_INFO.txt"
+          grep -q "java-options=-Dlizzie.next.version=${{ inputs.release_tag }}" "dist/windows/app-image-nvidia50.trt/LizzieYzy Next NVIDIA 50 TensorRT/app/LizzieYzy Next NVIDIA 50 TensorRT.cfg"
+          test -f "dist/windows/app-image-nvidia50.trt/LizzieYzy Next NVIDIA 50 TensorRT/app/readboard/readboard.exe"
+          test -f "dist/windows/app-image-nvidia50.trt/LizzieYzy Next NVIDIA 50 TensorRT/runtime/bin/java.exe"
+          test -f "dist/windows/input-nvidia50.trt/engines/katago/windows-x64/katago.exe"
+          test -f "dist/windows/input-nvidia50.trt/PROJECT_INFO.txt"
+          test -f "dist/windows/input-nvidia50.trt/readboard/readboard.exe"
+          test -f "dist/windows/input-nvidia50.trt/readboard/lizzieyzy-next-readboard-manifest.txt"
+          test -f "dist/windows/input-nvidia50.trt/engines/katago/windows-x64/cudart64_12.dll"
+          test -f "dist/windows/input-nvidia50.trt/engines/katago/windows-x64/cublas64_12.dll"
+          test -f "dist/windows/input-nvidia50.trt/engines/katago/windows-x64/cublasLt64_12.dll"
+          test -f "dist/windows/input-nvidia50.trt/engines/katago/windows-x64/cudnn64_9.dll"
+          test -f "dist/windows/input-nvidia50.trt/engines/katago/windows-x64/libz.dll"
+          test -f "dist/windows/input-nvidia50.trt/engines/katago/windows-x64/lizzieyzy-next-nvidia-runtime-manifest.txt"
+          grep -q "Profile: trt10.9-cuda12.8" "dist/windows/input-nvidia50.trt/engines/katago/windows-x64/lizzieyzy-next-nvidia-runtime-manifest.txt"
+          find "dist/windows/input-nvidia50.trt/engines/katago/windows-x64" -maxdepth 1 -type f -name 'nvJitLink*.dll' | grep -q .
+          find "dist/windows/input-nvidia50.trt/engines/katago/windows-x64" -maxdepth 1 -type f -name 'nvinfer*.dll' | grep -q .
+          grep -qx "nvidia50-trt" "dist/windows/input-nvidia50.trt/engines/katago/windows-x64/lizzieyzy-next-engine-backend.txt"
+          test -f "dist/windows/app-image-nvidia50.trt/LizzieYzy Next NVIDIA 50 TensorRT/app/engines/katago/windows-x64/cudart64_12.dll"
+          test -f "dist/windows/app-image-nvidia50.trt/LizzieYzy Next NVIDIA 50 TensorRT/app/engines/katago/windows-x64/cublas64_12.dll"
+          test -f "dist/windows/app-image-nvidia50.trt/LizzieYzy Next NVIDIA 50 TensorRT/app/engines/katago/windows-x64/cublasLt64_12.dll"
+          test -f "dist/windows/app-image-nvidia50.trt/LizzieYzy Next NVIDIA 50 TensorRT/app/engines/katago/windows-x64/cudnn64_9.dll"
+          test -f "dist/windows/app-image-nvidia50.trt/LizzieYzy Next NVIDIA 50 TensorRT/app/engines/katago/windows-x64/libz.dll"
+          find "dist/windows/app-image-nvidia50.trt/LizzieYzy Next NVIDIA 50 TensorRT/app/engines/katago/windows-x64" -maxdepth 1 -type f -name 'nvJitLink*.dll' | grep -q .
+          find "dist/windows/app-image-nvidia50.trt/LizzieYzy Next NVIDIA 50 TensorRT/app/engines/katago/windows-x64" -maxdepth 1 -type f -name 'nvinfer*.dll' | grep -q .
           test -f "dist/windows/input-without.engine/PROJECT_INFO.txt"
           test -f "dist/windows/input-without.engine/readboard/readboard.exe"
           test -f "dist/windows/input-without.engine/readboard/lizzieyzy-next-readboard-manifest.txt"
@@ -152,6 +203,8 @@ jobs:
             "dist/windows/app-image-with-katago/LizzieYzy Next/app/LizzieYzy Next.cfg" \
             "dist/windows/app-image-opencl/LizzieYzy Next OpenCL/app/LizzieYzy Next OpenCL.cfg" \
             "dist/windows/app-image-nvidia/LizzieYzy Next NVIDIA/app/LizzieYzy Next NVIDIA.cfg" \
+            "dist/windows/app-image-nvidia50.cuda/LizzieYzy Next NVIDIA 50 CUDA/app/LizzieYzy Next NVIDIA 50 CUDA.cfg" \
+            "dist/windows/app-image-nvidia50.trt/LizzieYzy Next NVIDIA 50 TensorRT/app/LizzieYzy Next NVIDIA 50 TensorRT.cfg" \
             "dist/windows/app-image-without.engine/LizzieYzy Next/app/LizzieYzy Next.cfg"; do
             if grep -qE 'sun\.java2d\.uiScale=1\.0|sun\.java2d\.uiScale\.enabled=false' "$app_cfg"; then
               echo "Windows package must not force Java UI scaling: $app_cfg"
@@ -162,10 +215,14 @@ jobs:
             "dist/windows/input-with-katago/readboard/readboard.exe" \
             "dist/windows/input-opencl/readboard/readboard.exe" \
             "dist/windows/input-nvidia/readboard/readboard.exe" \
+            "dist/windows/input-nvidia50.cuda/readboard/readboard.exe" \
+            "dist/windows/input-nvidia50.trt/readboard/readboard.exe" \
             "dist/windows/input-without.engine/readboard/readboard.exe" \
             "dist/windows/app-image-with-katago/LizzieYzy Next/app/readboard/readboard.exe" \
             "dist/windows/app-image-opencl/LizzieYzy Next OpenCL/app/readboard/readboard.exe" \
             "dist/windows/app-image-nvidia/LizzieYzy Next NVIDIA/app/readboard/readboard.exe" \
+            "dist/windows/app-image-nvidia50.cuda/LizzieYzy Next NVIDIA 50 CUDA/app/readboard/readboard.exe" \
+            "dist/windows/app-image-nvidia50.trt/LizzieYzy Next NVIDIA 50 TensorRT/app/readboard/readboard.exe" \
             "dist/windows/app-image-without.engine/LizzieYzy Next/app/readboard/readboard.exe"; do
             grep -a -q 'level="asInvoker"' "$readboard_exe"
             if grep -a -q 'level="requireAdministrator"' "$readboard_exe"; then
