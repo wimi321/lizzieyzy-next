@@ -22,7 +22,6 @@ ASSET_SPECS = [
     ('windows_nvidia_portable', 'windows64.nvidia.portable.zip', 'Windows 64 位，英伟达显卡，免安装', 'Windows x64, NVIDIA GPU, no installer'),
     ('windows_nvidia50_cuda_installer', 'windows64.nvidia50.cuda.installer.exe', 'Windows 64 位，RTX 50 CUDA 版', 'Windows x64, RTX 50 CUDA'),
     ('windows_nvidia50_cuda_portable', 'windows64.nvidia50.cuda.portable.zip', 'Windows 64 位，RTX 50 CUDA 版，免安装', 'Windows x64, RTX 50 CUDA, no installer'),
-    ('windows_nvidia50_trt_installer', 'windows64.nvidia50.trt.installer.exe', 'Windows 64 位，RTX 50 TensorRT 试验版', 'Windows x64, RTX 50 TensorRT experimental'),
     ('windows_nvidia50_trt_portable', 'windows64.nvidia50.trt.portable.zip', 'Windows 64 位，RTX 50 TensorRT 试验版，免安装', 'Windows x64, RTX 50 TensorRT experimental, no installer'),
     ('windows_no_engine_installer', 'windows64.without.engine.installer.exe', 'Windows 64 位，想自己配引擎，也想安装器', 'Windows x64, your own engine with installer'),
     ('windows_no_engine_portable', 'windows64.without.engine.portable.zip', 'Windows 64 位，想自己配引擎', 'Windows x64, your own engine'),
@@ -272,37 +271,31 @@ def add_nvidia50_download_rows(
             'Windows 64 位，RTX 50 CUDA 版，5070/5080/5090 优先，免安装',
             'Windows 64 位，RTX 50 CUDA 版，5070/5080/5090 优先，想安装',
             'Windows 64 位，RTX 50 TensorRT 试验版，免安装',
-            'Windows 64 位，RTX 50 TensorRT 试验版，想安装',
         ),
         '繁體中文': (
             'Windows 64 位，RTX 50 CUDA 版，5070/5080/5090 優先，免安裝',
             'Windows 64 位，RTX 50 CUDA 版，5070/5080/5090 優先，想安裝',
             'Windows 64 位，RTX 50 TensorRT 試驗版，免安裝',
-            'Windows 64 位，RTX 50 TensorRT 試驗版，想安裝',
         ),
         'English': (
             'Windows 64-bit, RTX 50 CUDA, recommended for 5070/5080/5090, no install',
             'Windows 64-bit, RTX 50 CUDA, recommended for 5070/5080/5090, installer',
             'Windows 64-bit, RTX 50 TensorRT experimental, no install',
-            'Windows 64-bit, RTX 50 TensorRT experimental, installer',
         ),
         '日本語': (
             'Windows 64-bit、RTX 50 CUDA、5070/5080/5090 推奨、インストール不要',
             'Windows 64-bit、RTX 50 CUDA、5070/5080/5090 推奨、インストーラ',
             'Windows 64-bit、RTX 50 TensorRT 試験版、インストール不要',
-            'Windows 64-bit、RTX 50 TensorRT 試験版、インストーラ',
         ),
         '한국어': (
             'Windows 64-bit, RTX 50 CUDA, 5070/5080/5090 권장, 무설치',
             'Windows 64-bit, RTX 50 CUDA, 5070/5080/5090 권장, 설치형',
             'Windows 64-bit, RTX 50 TensorRT 실험판, 무설치',
-            'Windows 64-bit, RTX 50 TensorRT 실험판, 설치형',
         ),
         'ภาษาไทย': (
             'Windows 64-bit, RTX 50 CUDA, แนะนำสำหรับ 5070/5080/5090, ไม่ต้องติดตั้ง',
             'Windows 64-bit, RTX 50 CUDA, แนะนำสำหรับ 5070/5080/5090, แบบติดตั้ง',
             'Windows 64-bit, RTX 50 TensorRT รุ่นทดลอง, ไม่ต้องติดตั้ง',
-            'Windows 64-bit, RTX 50 TensorRT รุ่นทดลอง, แบบติดตั้ง',
         ),
     }
     before_note_by_language = {
@@ -327,7 +320,6 @@ def add_nvidia50_download_rows(
             (labels[0], localized_assets['windows_nvidia50_cuda_portable']),
             (labels[1], localized_assets['windows_nvidia50_cuda_installer']),
             (labels[2], localized_assets['windows_nvidia50_trt_portable']),
-            (labels[3], localized_assets['windows_nvidia50_trt_installer']),
         ]
         insert_at = min(6, len(rows))
         for index, row in enumerate(rows):
