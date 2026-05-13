@@ -17,6 +17,7 @@ import featurecat.lizzie.analysis.GameInfo;
 import featurecat.lizzie.analysis.KataEstimate;
 import featurecat.lizzie.analysis.Leelaz;
 import featurecat.lizzie.analysis.MoveData;
+import featurecat.lizzie.analysis.PlayerStrengthEstimator;
 import featurecat.lizzie.analysis.ReadBoard;
 import featurecat.lizzie.analysis.ReadBoardUpdateInstaller;
 import featurecat.lizzie.analysis.ReadBoardUpdateRequest;
@@ -12676,6 +12677,112 @@ public class LizzieFrame extends JFrame {
   public void flashAnalyzeSettings() {
     AnalysisSettings analysisSettings = new AnalysisSettings(false, false);
     analysisSettings.setVisible(true);
+  }
+
+  public void showPlayerStrengthEstimate() {
+    if (Lizzie.board == null || Lizzie.board.getHistory() == null) {
+      Utils.showMsg(Lizzie.resourceBundle.getString("PlayerStrengthEstimate.needMoreData"), this);
+      return;
+    }
+    PlayerStrengthEstimator.Report report =
+        PlayerStrengthEstimator.estimate(Lizzie.board.getHistory().getStart());
+    Utils.showHtmlMessageModal(
+        Lizzie.resourceBundle.getString("PlayerStrengthEstimate.title"),
+        buildPlayerStrengthEstimateHtml(report),
+        this);
+  }
+
+  private String buildPlayerStrengthEstimateHtml(PlayerStrengthEstimator.Report report) {
+    StringBuilder html = new StringBuilder();
+    html.append("<html><body style='width:520px'>");
+    html.append("<h2>")
+        .append(Lizzie.resourceBundle.getString("PlayerStrengthEstimate.title"))
+        .append("</h2>");
+    if (!report.hasEnoughData()) {
+      html.append("<p><b>")
+          .append(Lizzie.resourceBundle.getString("PlayerStrengthEstimate.needMoreData"))
+          .append("</b></p>");
+    }
+    html.append("<table border='1' cellspacing='0' cellpadding='5'>");
+    html.append("<tr><th>")
+        .append(Lizzie.resourceBundle.getString("PlayerStrengthEstimate.side"))
+        .append("</th><th>")
+        .append(Lizzie.resourceBundle.getString("PlayerStrengthEstimate.estimate"))
+        .append("</th><th>")
+        .append(Lizzie.resourceBundle.getString("PlayerStrengthEstimate.score"))
+        .append("</th><th>")
+        .append(Lizzie.resourceBundle.getString("PlayerStrengthEstimate.confidence"))
+        .append("</th><th>")
+        .append(Lizzie.resourceBundle.getString("PlayerStrengthEstimate.moves"))
+        .append("</th><th>")
+        .append(Lizzie.resourceBundle.getString("PlayerStrengthEstimate.firstChoice"))
+        .append("</th><th>")
+        .append(Lizzie.resourceBundle.getString("PlayerStrengthEstimate.goodMoveRate"))
+        .append("</th><th>")
+        .append(Lizzie.resourceBundle.getString("PlayerStrengthEstimate.difficulty"))
+        .append("</th><th>")
+        .append(Lizzie.resourceBundle.getString("PlayerStrengthEstimate.weightedScoreLoss"))
+        .append("</th><th>")
+        .append(Lizzie.resourceBundle.getString("PlayerStrengthEstimate.avgScoreLoss"))
+        .append("</th><th>")
+        .append(Lizzie.resourceBundle.getString("PlayerStrengthEstimate.medianScoreLoss"))
+        .append("</th><th>")
+        .append(Lizzie.resourceBundle.getString("PlayerStrengthEstimate.avgWinrateLoss"))
+        .append("</th><th>")
+        .append(Lizzie.resourceBundle.getString("PlayerStrengthEstimate.mistakeRate"))
+        .append("</th></tr>");
+    appendPlayerStrengthRow(
+        html, Lizzie.resourceBundle.getString("PlayerStrengthEstimate.overall"), report.overall);
+    appendPlayerStrengthRow(html, Lizzie.resourceBundle.getString("Menu.Black"), report.black);
+    appendPlayerStrengthRow(html, Lizzie.resourceBundle.getString("Menu.White"), report.white);
+    html.append("</table>");
+    html.append("<p>")
+        .append(Lizzie.resourceBundle.getString("PlayerStrengthEstimate.note"))
+        .append("</p>");
+    html.append("</body></html>");
+    return html.toString();
+  }
+
+  private void appendPlayerStrengthRow(
+      StringBuilder html, String side, PlayerStrengthEstimator.SideReport report) {
+    html.append("<tr><td>")
+        .append(side)
+        .append("</td><td>")
+        .append(report.strengthBand)
+        .append("</td><td>")
+        .append(report.qualityScoreText())
+        .append("</td><td>")
+        .append(playerStrengthConfidenceText(report.confidence))
+        .append("</td><td>")
+        .append(report.sampleCount)
+        .append("</td><td>")
+        .append(report.percentText(report.firstChoiceRate))
+        .append("</td><td>")
+        .append(report.percentText(report.goodMoveRate))
+        .append("</td><td>")
+        .append(report.difficultyText())
+        .append("</td><td>")
+        .append(report.weightedScoreLossText())
+        .append("</td><td>")
+        .append(report.averageScoreLossText())
+        .append("</td><td>")
+        .append(report.medianScoreLossText())
+        .append("</td><td>")
+        .append(report.averageWinrateLossText())
+        .append("</td><td>")
+        .append(report.percentText(report.mistakeRate))
+        .append("</td></tr>");
+  }
+
+  private String playerStrengthConfidenceText(PlayerStrengthEstimator.Confidence confidence) {
+    switch (confidence) {
+      case HIGH:
+        return Lizzie.resourceBundle.getString("PlayerStrengthEstimate.confidence.high");
+      case MEDIUM:
+        return Lizzie.resourceBundle.getString("PlayerStrengthEstimate.confidence.medium");
+      default:
+        return Lizzie.resourceBundle.getString("PlayerStrengthEstimate.confidence.low");
+    }
   }
 
   public static void redo(int movesToAdvance) {
