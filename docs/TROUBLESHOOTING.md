@@ -12,7 +12,7 @@
 
 - 安装器版：重新运行 `windows64.with-katago.installer.exe`
 - NVIDIA 极速版：RTX 20/30/40 系列确认你下载的是 `windows64.nvidia.installer.exe` 或 `windows64.nvidia.portable.zip`
-- RTX 50 系列：优先确认你下载的是 `windows64.nvidia50.cuda.installer.exe` 或 `windows64.nvidia50.cuda.portable.zip`；TensorRT 版是试验包
+- RTX 50 系列：优先确认你下载的是 `windows64.nvidia50.cuda.installer.exe` 或 `windows64.nvidia50.cuda.portable.zip`；TensorRT 实验加速需要在软件内 `KataGo 一键设置` 手动安装
 - 便携版：确认你启动的是 `LizzieYzy Next.exe`
 - 不要再从旧的 `.bat` 路径排查当前主发布版
 

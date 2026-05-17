@@ -58,21 +58,6 @@ for path in "$RELEASE_DIR"/*; do
 done
 shopt -u nullglob
 
-if [[ "$PLATFORM" == "windows" ]]; then
-  trt_parts=()
-  shopt -s nullglob
-  for path in "$RELEASE_DIR/${DATE_TAG}-windows64.nvidia50.trt.portable.zip.part"[0-9][0-9]; do
-    [[ -f "$path" ]] || continue
-    trt_parts+=("$(basename "$path")")
-  done
-  shopt -u nullglob
-  if [[ "${#trt_parts[@]}" -lt 2 ]]; then
-    echo "Missing split RTX 50 TensorRT portable assets"
-    exit 1
-  fi
-  expected+=("${trt_parts[@]}")
-fi
-
 if [[ "${#actual[@]}" -eq 0 ]]; then
   echo "No release assets found in $RELEASE_DIR"
   exit 1

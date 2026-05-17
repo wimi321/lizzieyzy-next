@@ -23,11 +23,6 @@ CUDA_12_1_MANIFEST_URL = "https://developer.download.nvidia.com/compute/cuda/red
 CUDA_12_8_MANIFEST_URL = "https://developer.download.nvidia.com/compute/cuda/redist/redistrib_12.8.0.json"
 CUDNN_8_MANIFEST_URL = "https://developer.download.nvidia.com/compute/cudnn/redist/redistrib_8.9.7.29.json"
 CUDNN_9_MANIFEST_URL = "https://developer.download.nvidia.com/compute/cudnn/redist/redistrib_9.8.0.json"
-TENSORRT_10_9_URL = (
-    "https://developer.download.nvidia.com/compute/machine-learning/tensorrt/10.9.0/zip/"
-    "TensorRT-10.9.0.34.Windows.win10.cuda-12.8.zip"
-)
-TENSORRT_10_9_SIZE_BYTES = 1845842538
 CUDA_12_1_SPECS = (
     ("CUDA Runtime", CUDA_12_1_MANIFEST_URL, "cuda_cudart", "windows-x86_64"),
     ("CUDA cuBLAS", CUDA_12_1_MANIFEST_URL, "libcublas", "windows-x86_64"),
@@ -50,27 +45,6 @@ RUNTIME_PROFILES = {
         "manifest_specs": CUDA_12_8_SPECS
         + (("NVIDIA cuDNN", CUDNN_9_MANIFEST_URL, "cudnn", "windows-x86_64/cuda12"),),
         "direct_specs": (),
-    },
-    "trt10.9-cuda12.8": {
-        "description": "CUDA 12.8 + cuDNN 9 + TensorRT 10.9 runtime for RTX 50 TensorRT packages",
-        "manifest_specs": CUDA_12_8_SPECS
-        + (("NVIDIA cuDNN", CUDNN_9_MANIFEST_URL, "cudnn", "windows-x86_64/cuda12"),),
-        "direct_specs": (
-            {
-                "display_name": "NVIDIA TensorRT",
-                "key": "tensorrt",
-                "version": "10.9.0.34",
-                "url": TENSORRT_10_9_URL,
-                "sha256_env": "TENSORRT_10_9_WINDOWS_SHA256",
-                "size_bytes": TENSORRT_10_9_SIZE_BYTES,
-                "dll_patterns": (
-                    "nvinfer*.dll",
-                    "nvonnxparser*.dll",
-                    "onnx_proto*.dll",
-                    "myelin*.dll",
-                ),
-            },
-        ),
     },
 }
 DLL_SUFFIX = ".dll"

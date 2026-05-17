@@ -39,13 +39,15 @@
 - Windows 64 位：`nvidia.installer.exe`
 - Windows 64 位：`nvidia50.cuda.portable.zip`
 - Windows 64 位：`nvidia50.cuda.installer.exe`
-- Windows 64 位：`nvidia50.trt.portable.zip`
-- Windows 64 位：`nvidia50.trt.installer.exe`
 - Windows 64 位：`without.engine.portable.zip`
 - Windows 64 位：`without.engine.installer.exe`
 - macOS Apple Silicon：`.dmg`
 - macOS Intel：`.dmg`
 - Linux 64 位：`with-katago.zip`
+- Linux 64 位：`opencl.zip`
+- Linux 64 位：`nvidia.zip`
+
+RTX 50 TensorRT 实验加速不再进入公开资产矩阵。需要测试的用户先下载 `nvidia50.cuda` 包，再在软件内 `KataGo 一键设置` 中显式安装。
 
 历史兼容包只有在明确需要时才通过额外开关构建，不再进入主 release 页面。
 

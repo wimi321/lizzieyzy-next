@@ -184,6 +184,18 @@ public final class KataGoAutoSetupHelper {
           weightPath == null ? activeWeightPath : weightPath.toAbsolutePath().normalize(),
           new ArrayList<>(dedup));
     }
+
+    public SetupSnapshot withEnginePath(Path enginePath) {
+      return new SetupSnapshot(
+          workingDir,
+          appRoot,
+          enginePath == null ? null : enginePath.toAbsolutePath().normalize(),
+          gtpConfigPath,
+          analysisConfigPath,
+          estimateConfigPath,
+          activeWeightPath,
+          weightCandidates);
+    }
   }
 
   public static final class RemoteWeightInfo {
@@ -587,6 +599,11 @@ public final class KataGoAutoSetupHelper {
 
   public static SetupResult applyAutoSetup(SetupSnapshot snapshot, boolean makeDefault)
       throws IOException {
+    return applyEngineProfile(snapshot, AUTO_SETUP_ENGINE_NAME, makeDefault);
+  }
+
+  public static SetupResult applyEngineProfile(
+      SetupSnapshot snapshot, String engineName, boolean makeDefault) throws IOException {
     if (snapshot == null) {
       snapshot = inspectLocalSetup();
     }
@@ -629,7 +646,9 @@ public final class KataGoAutoSetupHelper {
             + quoteCommandPath(snapshot.workingDir, estimateConfig);
 
     ArrayList<EngineData> engines = Utils.getEngineData();
-    int engineIndex = findAutoSetupEngineIndex(engines);
+    String resolvedEngineName =
+        Utils.isBlank(engineName) ? AUTO_SETUP_ENGINE_NAME : engineName.trim();
+    int engineIndex = findManagedEngineIndex(engines, resolvedEngineName);
     EngineData engineData;
     if (engineIndex >= 0) {
       engineData = engines.get(engineIndex);
@@ -648,7 +667,7 @@ public final class KataGoAutoSetupHelper {
     }
 
     engineData.index = engineIndex;
-    engineData.name = AUTO_SETUP_ENGINE_NAME;
+    engineData.name = resolvedEngineName;
     engineData.commands = engineCommand;
     engineData.preload = false;
     engineData.width = 19;
@@ -691,7 +710,7 @@ public final class KataGoAutoSetupHelper {
         snapshot.enginePath.toAbsolutePath().normalize().toString());
     Lizzie.config.uiConfig.put("katago-auto-setup-updated-at", System.currentTimeMillis());
     Lizzie.config.save();
-    return new SetupResult(snapshot, engineIndex, AUTO_SETUP_ENGINE_NAME);
+    return new SetupResult(snapshot, engineIndex, resolvedEngineName);
   }
 
   public static String getAutoSetupEngineName() {
@@ -707,12 +726,20 @@ public final class KataGoAutoSetupHelper {
   }
 
   private static int findAutoSetupEngineIndex(ArrayList<EngineData> engines) {
+    return findManagedEngineIndex(engines, AUTO_SETUP_ENGINE_NAME);
+  }
+
+  private static int findManagedEngineIndex(ArrayList<EngineData> engines, String engineName) {
+    boolean autoSetupProfile = AUTO_SETUP_ENGINE_NAME.equals(engineName);
     // First preference: an existing auto-setup engine entry.
     for (int i = 0; i < engines.size(); i++) {
       EngineData engineData = engines.get(i);
-      if (AUTO_SETUP_ENGINE_NAME.equals(engineData.name)) {
+      if (engineName.equals(engineData.name)) {
         return i;
       }
+    }
+    if (!autoSetupProfile) {
+      return -1;
     }
     // Second preference: reuse the bundled entry (shares the same binary/weight) so we don't
     // end up with two near-identical KataGo engines after first-run auto setup.

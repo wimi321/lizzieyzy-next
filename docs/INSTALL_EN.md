@@ -29,13 +29,13 @@ This installation guide is for the actively maintained `LizzieYzy Next` fork, wh
 | Windows x64 | `<date>-windows64.nvidia.installer.exe` | Yes | Yes | NVIDIA GPU users who prefer an installer |
 | Windows x64 | `<date>-windows64.nvidia50.cuda.portable.zip` | Yes | Yes | First choice for RTX 5070/5080/5090 users, no installer |
 | Windows x64 | `<date>-windows64.nvidia50.cuda.installer.exe` | Yes | Yes | First choice for RTX 5070/5080/5090 users who prefer an installer |
-| Windows x64 | `<date>-windows64.nvidia50.trt.portable.zip` | Yes | Yes | Experimental RTX 50 TensorRT build for users willing to share logs |
-| Windows x64 | `<date>-windows64.nvidia50.trt.installer.exe` | Yes | Yes | Experimental RTX 50 TensorRT build with installer flow |
 | Windows x64 | `<date>-windows64.without.engine.portable.zip` | Yes | No | Custom engine setup without installation |
 | Windows x64 | `<date>-windows64.without.engine.installer.exe` | Yes | No | Installer flow with your own engine |
 | macOS Apple Silicon | `<date>-mac-apple-silicon.with-katago.dmg` | App runtime | Yes | M-series Macs |
 | macOS Intel | `<date>-mac-intel.with-katago.dmg` | App runtime | Yes | Intel Macs |
 | Linux x64 | `<date>-linux64.with-katago.zip` | Yes | Yes | Linux desktop users |
+| Linux x64 | `<date>-linux64.opencl.zip` | Yes | Yes | Linux users with AMD/Intel GPUs |
+| Linux x64 | `<date>-linux64.nvidia.zip` | Yes | Yes | Linux users with NVIDIA GPUs |
 
 Quick rule:
 
@@ -43,12 +43,13 @@ Quick rule:
 - choose `windows64.with-katago.portable.zip` if OpenCL behaves badly on your PC
 - choose `windows64.nvidia.portable.zip` if your PC has an RTX 20/30/40 NVIDIA GPU and you want faster KataGo analysis
 - choose `windows64.nvidia50.cuda.portable.zip` first for RTX 5070/5080/5090
+- for RTX 5070/5080/5090 TensorRT testing, start with the CUDA package and install TensorRT experimental acceleration manually from `KataGo Auto Setup`
 - choose `without.engine.portable.zip` or `without.engine.installer.exe` on Windows if you plan to manage the engine yourself
 - on Windows, regular users should start with the portable build and only switch to the installer if they want that flow
 
 ### Legacy tag note
 
-Some older tags still show transitional zip names or compatibility packages, but the current maintained release now centers on 15 primary assets: 12 Windows, 2 macOS, and 1 Linux package.
+Some older tags still show transitional zip names or compatibility packages, but the current maintained release now centers on 15 primary assets: 10 Windows, 2 macOS, and 3 Linux packages. TensorRT experimental acceleration is no longer published as a GitHub Release asset.
 
 ## Windows
 
@@ -96,7 +97,7 @@ If you prefer the installer flow:
 
 This bundle ships with the official KataGo CUDA Windows build. If you want to tune speed further, open `KataGo Auto Setup` once and run `Smart Optimize` to apply a benchmark-based thread setting automatically. If you are not sure whether your PC has an NVIDIA GPU, use the regular `windows64.opencl.portable.zip` instead.
 
-### Windows x64 RTX 50 CUDA / TensorRT builds
+### Windows x64 RTX 50 CUDA and on-demand TensorRT
 
 If your GPU is an RTX 5070, RTX 5080, or RTX 5090:
 
@@ -104,7 +105,7 @@ If your GPU is an RTX 5070, RTX 5080, or RTX 5090:
 2. Extract it and run `LizzieYzy Next NVIDIA 50 CUDA.exe`.
 3. If you prefer an installer, use `windows64.nvidia50.cuda.installer.exe`.
 
-`windows64.nvidia50.trt.portable.zip` and `windows64.nvidia50.trt.installer.exe` are experimental TensorRT packages. They are for users willing to test higher peak performance and report `nvidia-smi`, KataGo stderr, and Smart Optimize results.
+TensorRT experimental acceleration is no longer shipped as a huge standalone package. RTX 50 users who want to test higher peak performance should launch the CUDA package, open `KataGo Auto Setup`, and click `Install TensorRT acceleration`. The app downloads, verifies, and configures files from official KataGo / NVIDIA sources only; users who do not click it will not download TensorRT.
 
 ### Windows x64 no-engine build
 

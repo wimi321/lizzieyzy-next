@@ -12,7 +12,7 @@ Check these first:
 
 - Installer build: rerun `windows64.with-katago.installer.exe`
 - NVIDIA bundle: on RTX 20/30/40 series, confirm whether you downloaded `windows64.nvidia.installer.exe` or `windows64.nvidia.portable.zip`
-- RTX 50 series: first confirm whether you downloaded `windows64.nvidia50.cuda.installer.exe` or `windows64.nvidia50.cuda.portable.zip`; the TensorRT build is experimental
+- RTX 50 series: first confirm whether you downloaded `windows64.nvidia50.cuda.installer.exe` or `windows64.nvidia50.cuda.portable.zip`; TensorRT experimental acceleration is installed manually from `KataGo Auto Setup` inside the app
 - Portable build: make sure you are launching `LizzieYzy Next.exe`
 - The current public release should not require `.bat` launchers for the main Windows path
 

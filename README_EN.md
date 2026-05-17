@@ -43,7 +43,7 @@
 > If you only want the shortest possible answer, remember these 7 points:
 > - Most Windows users should go to [Releases](https://github.com/wimi321/lizzieyzy-next/releases) and download `*windows64.opencl.portable.zip`
 > - If your PC has an RTX 20/30/40 NVIDIA GPU and you want more speed, download `*windows64.nvidia.portable.zip`
-> - RTX 5070/5080/5090 users should try `*windows64.nvidia50.cuda.portable.zip` first; the TensorRT build is experimental
+> - RTX 5070/5080/5090 users should try `*windows64.nvidia50.cuda.portable.zip` first; install optional TensorRT experimental acceleration from the in-app KataGo Auto Setup only if needed
 > - If OpenCL behaves badly on your PC, switch to `*windows64.with-katago.portable.zip`
 > - The app now supports Fox nickname input directly, so most users no longer need the account number first
 > - The main bundles include KataGo `v1.16.4` and the official recommended `zhizi` weight `kata1-zhizi-b28c512nbt-muonfd2.bin.gz`
@@ -94,8 +94,7 @@ All downloads are on [Releases](https://github.com/wimi321/lizzieyzy-next/releas
 | Windows, NVIDIA GPU, installer option | `*windows64.nvidia.installer.exe` |
 | Windows, RTX 5070/5080/5090, CUDA build, no installer | `*windows64.nvidia50.cuda.portable.zip` |
 | Windows, RTX 5070/5080/5090, CUDA installer | `*windows64.nvidia50.cuda.installer.exe` |
-| Windows, RTX 50 TensorRT experimental, no installer | `*windows64.nvidia50.trt.portable.zip` |
-| Windows, RTX 50 TensorRT experimental installer | `*windows64.nvidia50.trt.installer.exe` |
+| Windows, RTX 50, optional TensorRT experimental acceleration | Download `*windows64.nvidia50.cuda.portable.zip` first, then install TensorRT from `KataGo Auto Setup` |
 | Windows, bring your own engine, no installer | `*windows64.without.engine.portable.zip` |
 | Windows, bring your own engine, installer option | `*windows64.without.engine.installer.exe` |
 | macOS Apple Silicon | `*mac-apple-silicon.with-katago.dmg` |
@@ -107,6 +106,7 @@ Quick rule:
 - Windows: start with `*windows64.opencl.portable.zip`
 - Windows + RTX 20/30/40 NVIDIA GPU: start with `*windows64.nvidia.portable.zip`
 - Windows + RTX 5070/5080/5090: start with `*windows64.nvidia50.cuda.portable.zip`
+- Windows + RTX 5070/5080/5090 and TensorRT testing: do not look for a separate release asset; install it on demand from KataGo Auto Setup after launching the CUDA package
 - OpenCL unstable: switch to `*windows64.with-katago.portable.zip`
 - Mac: choose Apple Silicon or Intel first
 - Linux: choose `*linux64.with-katago.zip`

@@ -60,6 +60,7 @@ public class KataGoAutoSetupDialog extends JDialog {
   private List<RemoteWeightInfo> remoteWeightInfos = Collections.emptyList();
   private volatile DownloadSession activeDownloadSession;
   private volatile Thread activeWorkerThread;
+  private long progressStartedAtMillis;
 
   private final JLabel lblEngineValue = new JFontLabel();
   private final JLabel lblWeightValue = new JFontLabel();
@@ -82,6 +83,7 @@ public class KataGoAutoSetupDialog extends JDialog {
   private final JFontButton btnImportWeight = new JFontButton();
   private final JFontButton btnApplyWeight = new JFontButton();
   private final JFontButton btnInstallNvidiaRuntime = new JFontButton();
+  private final JFontButton btnInstallTensorRt = new JFontButton();
   private final JFontButton btnOptimizePerformance = new JFontButton();
   private final JFontButton btnStopDownload = new JFontButton();
   private final JFontButton btnClose = new JFontButton();
@@ -199,8 +201,10 @@ public class KataGoAutoSetupDialog extends JDialog {
     btnImportWeight.setText(text("AutoSetup.importWeight"));
     btnApplyWeight.setText(text("AutoSetup.applyWeight"));
     btnInstallNvidiaRuntime.setText(text("AutoSetup.installNvidiaRuntime"));
+    btnInstallTensorRt.setText(text("AutoSetup.installTensorRt"));
     btnOptimizePerformance.setText(text("AutoSetup.optimizePerformance"));
     btnStopDownload.setText(text("AutoSetup.stopDownload"));
+    btnStopDownload.setEnabled(false);
     btnClose.setText(text("AutoSetup.close"));
 
     btnRefresh.addActionListener(e -> refreshState());
@@ -209,6 +213,7 @@ public class KataGoAutoSetupDialog extends JDialog {
     btnImportWeight.addActionListener(e -> importCustomWeight());
     btnApplyWeight.addActionListener(e -> applySelectedWeight());
     btnInstallNvidiaRuntime.addActionListener(e -> startNvidiaRuntimeInstall());
+    btnInstallTensorRt.addActionListener(e -> startTensorRtInstall());
     btnOptimizePerformance.addActionListener(e -> startPerformanceBenchmark());
     btnStopDownload.addActionListener(e -> stopActiveDownload());
     btnClose.addActionListener(e -> closeOrCancelActiveTask());
@@ -219,6 +224,7 @@ public class KataGoAutoSetupDialog extends JDialog {
     buttonPanel.add(btnImportWeight);
     buttonPanel.add(btnApplyWeight);
     buttonPanel.add(btnOptimizePerformance);
+    buttonPanel.add(btnInstallTensorRt);
     buttonPanel.add(btnStopDownload);
     buttonPanel.add(btnAutoSetup);
     buttonPanel.add(btnClose);
@@ -390,12 +396,33 @@ public class KataGoAutoSetupDialog extends JDialog {
       lblNvidiaRuntimeValue.setToolTipText(null);
       lblNvidiaRuntimeValue.setForeground(Color.DARK_GRAY);
       btnInstallNvidiaRuntime.setEnabled(false);
+      updateTensorRtInfo();
       return;
     }
     lblNvidiaRuntimeValue.setText(status.detailText);
     lblNvidiaRuntimeValue.setToolTipText(status.detailText);
     lblNvidiaRuntimeValue.setForeground(status.ready ? OK_COLOR : WARN_COLOR);
     btnInstallNvidiaRuntime.setEnabled(activeDownloadSession == null && !status.ready);
+    updateTensorRtInfo();
+  }
+
+  private void updateTensorRtInfo() {
+    KataGoRuntimeHelper.TensorRtInstallStatus status =
+        snapshot == null ? null : KataGoRuntimeHelper.inspectTensorRtInstall(snapshot);
+    if (status == null) {
+      btnInstallTensorRt.setText(text("AutoSetup.installTensorRt"));
+      btnInstallTensorRt.setToolTipText(null);
+      btnInstallTensorRt.setEnabled(false);
+      return;
+    }
+    btnInstallTensorRt.setText(
+        status.installed ? text("AutoSetup.tensorRtReady") : text("AutoSetup.installTensorRt"));
+    btnInstallTensorRt.setToolTipText(status.detailText);
+    btnInstallTensorRt.setEnabled(
+        activeDownloadSession == null
+            && activeWorkerThread == null
+            && status.applicable
+            && !status.installed);
   }
 
   private void updateBenchmarkInfo() {
@@ -459,6 +486,7 @@ public class KataGoAutoSetupDialog extends JDialog {
       cmbRemoteWeights.setSelectedItem(preferred);
     }
     updateSelectedRemoteWeightInfo();
+    btnStopDownload.setEnabled(activeDownloadSession != null);
   }
 
   private void autoSetupOrDownload() {
@@ -622,6 +650,66 @@ public class KataGoAutoSetupDialog extends JDialog {
     } catch (IOException e) {
       onBackgroundError(e);
     }
+  }
+
+  private void startTensorRtInstall() {
+    if (snapshot == null) {
+      snapshot = KataGoAutoSetupHelper.inspectLocalSetup();
+    }
+    KataGoRuntimeHelper.TensorRtInstallStatus status =
+        KataGoRuntimeHelper.inspectTensorRtInstall(snapshot);
+    if (!status.applicable) {
+      Utils.showMsg(status.detailText, this);
+      return;
+    }
+    if (status.installed) {
+      Utils.showMsg(text("AutoSetup.tensorRtAlreadyReady"), this);
+      return;
+    }
+    int result =
+        JOptionPane.showConfirmDialog(
+            this,
+            String.format(
+                text("AutoSetup.tensorRtConfirmMessage"), formatSize(status.downloadBytes)),
+            text("AutoSetup.tensorRtConfirmTitle"),
+            JOptionPane.OK_CANCEL_OPTION,
+            JOptionPane.WARNING_MESSAGE);
+    if (result != JOptionPane.OK_OPTION) {
+      return;
+    }
+
+    final DownloadSession session = new DownloadSession();
+    activeDownloadSession = session;
+    btnStopDownload.setText(text("AutoSetup.stopDownload"));
+    setBusy(true, text("AutoSetup.tensorRtPreparing"), 0, status.downloadBytes);
+    Thread worker =
+        new Thread(
+            () -> {
+              try {
+                SetupSnapshot currentSnapshot = snapshot;
+                SetupResult setupResult =
+                    KataGoRuntimeHelper.downloadAndInstallTensorRt(
+                        currentSnapshot,
+                        (statusText, downloadedBytes, totalBytes) ->
+                            SwingUtilities.invokeLater(
+                                () -> setBusy(true, statusText, downloadedBytes, totalBytes)),
+                        session);
+                SwingUtilities.invokeLater(
+                    () -> {
+                      setBusy(false, text("AutoSetup.tensorRtInstallDone"), 0, 0);
+                      onSetupApplied(setupResult, text("AutoSetup.tensorRtInstallDoneMessage"));
+                    });
+              } catch (DownloadCancelledException e) {
+                SwingUtilities.invokeLater(() -> onDownloadCancelled());
+              } catch (IOException e) {
+                SwingUtilities.invokeLater(() -> onBackgroundError(e));
+              } finally {
+                clearActiveDownload(session, Thread.currentThread());
+              }
+            },
+            "katago-install-tensorrt");
+    activeWorkerThread = worker;
+    worker.start();
   }
 
   private void startPerformanceBenchmark() {
@@ -791,6 +879,7 @@ public class KataGoAutoSetupDialog extends JDialog {
     cmbLocalWeights.setEnabled(!busy && cmbLocalWeights.getItemCount() > 0);
     cmbRemoteWeights.setEnabled(!busy && cmbRemoteWeights.getItemCount() > 0);
     btnInstallNvidiaRuntime.setEnabled(!busy && canInstallNvidiaRuntime());
+    btnInstallTensorRt.setEnabled(!busy && canInstallTensorRt());
     btnOptimizePerformance.setEnabled(!busy && canRunBenchmark());
     btnStopDownload.setEnabled(busy && activeDownloadSession != null);
     btnClose.setEnabled(true);
@@ -798,11 +887,15 @@ public class KataGoAutoSetupDialog extends JDialog {
     progressPanel.setVisible(busy);
     progressBar.setIndeterminate(busy && totalBytes <= 0);
     if (!busy) {
+      progressStartedAtMillis = 0L;
       progressBar.setIndeterminate(false);
       progressBar.setValue(0);
       progressBar.putClientProperty(BENCHMARK_PROGRESS_KEY, Integer.valueOf(0));
       progressBar.setString("");
     } else if (totalBytes > 0) {
+      if (downloadedBytes > 0L && progressStartedAtMillis <= 0L) {
+        progressStartedAtMillis = System.currentTimeMillis();
+      }
       progressBar.setMaximum(1000);
       int progressValue = (int) Math.min(1000, (downloadedBytes * 1000L) / totalBytes);
       if (isBenchmarkPermilleProgress(statusText, downloadedBytes, totalBytes)) {
@@ -821,8 +914,14 @@ public class KataGoAutoSetupDialog extends JDialog {
         progressBar.setString(percent + "%");
       } else {
         long percent = Math.min(100, (downloadedBytes * 100L) / totalBytes);
+        String etaText = formatEta(downloadedBytes, totalBytes);
         progressBar.setString(
-            percent + "%  " + formatSize(downloadedBytes) + " / " + formatSize(totalBytes));
+            percent
+                + "%  "
+                + formatSize(downloadedBytes)
+                + " / "
+                + formatSize(totalBytes)
+                + etaText);
       }
     } else if (downloadedBytes > 0) {
       progressBar.setValue(0);
@@ -858,6 +957,13 @@ public class KataGoAutoSetupDialog extends JDialog {
     KataGoRuntimeHelper.NvidiaRuntimeStatus status =
         KataGoRuntimeHelper.inspectNvidiaRuntime(snapshot);
     return status.applicable && !status.ready;
+  }
+
+  private boolean canInstallTensorRt() {
+    if (snapshot == null) {
+      return false;
+    }
+    return KataGoRuntimeHelper.canInstallTensorRt(snapshot);
   }
 
   private boolean canRunBenchmark() {
@@ -930,6 +1036,31 @@ public class KataGoAutoSetupDialog extends JDialog {
     return String.format("%.1f MB", mb);
   }
 
+  private String formatEta(long downloadedBytes, long totalBytes) {
+    if (progressStartedAtMillis <= 0L || downloadedBytes <= 0L || downloadedBytes >= totalBytes) {
+      return "";
+    }
+    long elapsedMillis = Math.max(1000L, System.currentTimeMillis() - progressStartedAtMillis);
+    long bytesPerSecond = Math.max(1L, (downloadedBytes * 1000L) / elapsedMillis);
+    long remainingMillis = Math.max(0L, ((totalBytes - downloadedBytes) * 1000L) / bytesPerSecond);
+    return "  ETA " + formatDuration(remainingMillis);
+  }
+
+  private String formatDuration(long millis) {
+    long seconds = Math.max(0L, millis / 1000L);
+    long minutes = seconds / 60L;
+    long remainingSeconds = seconds % 60L;
+    if (minutes >= 60L) {
+      long hours = minutes / 60L;
+      long remainingMinutes = minutes % 60L;
+      return hours + "h " + remainingMinutes + "m";
+    }
+    if (minutes > 0L) {
+      return minutes + "m " + remainingSeconds + "s";
+    }
+    return remainingSeconds + "s";
+  }
+
   private String formatRemoteChoice(RemoteWeightInfo info) {
     if (info == null) {
       return text("AutoSetup.remoteUnavailable");
@@ -976,6 +1107,7 @@ public class KataGoAutoSetupDialog extends JDialog {
       lblRemoteDetailValue.setToolTipText(null);
       lblRemoteDetailValue.setForeground(ERROR_COLOR);
       btnDownloadWeight.setEnabled(false);
+      btnStopDownload.setEnabled(false);
       return;
     }
     StringBuilder detail = new StringBuilder();

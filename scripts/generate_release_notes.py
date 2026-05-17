@@ -22,8 +22,6 @@ ASSET_SPECS = [
     ('windows_nvidia_portable', 'windows64.nvidia.portable.zip', 'Windows 64 位，英伟达显卡，免安装', 'Windows x64, NVIDIA GPU, no installer'),
     ('windows_nvidia50_cuda_installer', 'windows64.nvidia50.cuda.installer.exe', 'Windows 64 位，RTX 50 CUDA 版', 'Windows x64, RTX 50 CUDA'),
     ('windows_nvidia50_cuda_portable', 'windows64.nvidia50.cuda.portable.zip', 'Windows 64 位，RTX 50 CUDA 版，免安装', 'Windows x64, RTX 50 CUDA, no installer'),
-    ('windows_nvidia50_trt_part01', 'windows64.nvidia50.trt.portable.zip.part01', 'Windows 64 位，RTX 50 TensorRT 试验版，免安装，第 1 部分', 'Windows x64, RTX 50 TensorRT experimental, no installer, part 1'),
-    ('windows_nvidia50_trt_part02', 'windows64.nvidia50.trt.portable.zip.part02', 'Windows 64 位，RTX 50 TensorRT 试验版，免安装，第 2 部分', 'Windows x64, RTX 50 TensorRT experimental, no installer, part 2'),
     ('windows_no_engine_installer', 'windows64.without.engine.installer.exe', 'Windows 64 位，想自己配引擎，也想安装器', 'Windows x64, your own engine with installer'),
     ('windows_no_engine_portable', 'windows64.without.engine.portable.zip', 'Windows 64 位，想自己配引擎', 'Windows x64, your own engine'),
     ('mac_arm64', 'mac-apple-silicon.with-katago.dmg', 'macOS Apple Silicon', 'macOS Apple Silicon'),
@@ -56,7 +54,6 @@ def load_bundle_metadata() -> dict[str, str]:
         'windows_opencl_bundle': 'Unknown',
         'windows_nvidia_bundle': 'Unknown',
         'windows_nvidia50_cuda_bundle': 'Unknown',
-        'windows_nvidia50_trt_bundle': 'Unknown',
         'linux_bundle': 'Unknown',
         'linux_opencl_bundle': 'Unknown',
         'linux_nvidia_bundle': 'Unknown',
@@ -78,8 +75,6 @@ def load_bundle_metadata() -> dict[str, str]:
                 metadata['windows_nvidia_bundle'] = value
             elif key == 'windows nvidia 50 cuda bundle':
                 metadata['windows_nvidia50_cuda_bundle'] = value
-            elif key == 'windows nvidia 50 tensorrt bundle':
-                metadata['windows_nvidia50_trt_bundle'] = value
             elif key == 'linux bundle':
                 metadata['linux_bundle'] = value
             elif key == 'linux opencl bundle':
@@ -97,7 +92,6 @@ def load_bundle_metadata() -> dict[str, str]:
             'windows_opencl_bundle': r'WINDOWS_OPENCL_ASSET="\$\{WINDOWS_OPENCL_ASSET:-([^"]+)\}"',
             'windows_nvidia_bundle': r'WINDOWS_NVIDIA_ASSET="\$\{WINDOWS_NVIDIA_ASSET:-([^"]+)\}"',
             'windows_nvidia50_cuda_bundle': r'WINDOWS_NVIDIA50_CUDA_ASSET="\$\{WINDOWS_NVIDIA50_CUDA_ASSET:-([^"]+)\}"',
-            'windows_nvidia50_trt_bundle': r'WINDOWS_NVIDIA50_TRT_ASSET="\$\{WINDOWS_NVIDIA50_TRT_ASSET:-([^"]+)\}"',
             'linux_bundle': r'LINUX_ASSET="\$\{LINUX_ASSET:-([^"]+)\}"',
             'linux_opencl_bundle': r'LINUX_OPENCL_ASSET="\$\{LINUX_OPENCL_ASSET:-([^"]+)\}"',
             'linux_nvidia_bundle': r'LINUX_NVIDIA_ASSET="\$\{LINUX_NVIDIA_ASSET:-([^"]+)\}"',
@@ -118,7 +112,6 @@ def load_bundle_metadata() -> dict[str, str]:
             'windows_opencl_bundle',
             'windows_nvidia_bundle',
             'windows_nvidia50_cuda_bundle',
-            'windows_nvidia50_trt_bundle',
             'linux_bundle',
             'linux_opencl_bundle',
             'linux_nvidia_bundle',
@@ -132,7 +125,6 @@ def load_bundle_metadata() -> dict[str, str]:
         metadata['windows_opencl_bundle'] = metadata['windows_opencl_bundle'].replace('${KATAGO_TAG}', katago_version)
         metadata['windows_nvidia_bundle'] = metadata['windows_nvidia_bundle'].replace('${KATAGO_TAG}', katago_version)
         metadata['windows_nvidia50_cuda_bundle'] = metadata['windows_nvidia50_cuda_bundle'].replace('${KATAGO_TAG}', katago_version)
-        metadata['windows_nvidia50_trt_bundle'] = metadata['windows_nvidia50_trt_bundle'].replace('${KATAGO_TAG}', katago_version)
         metadata['linux_bundle'] = metadata['linux_bundle'].replace('${KATAGO_TAG}', katago_version)
         metadata['linux_opencl_bundle'] = metadata['linux_opencl_bundle'].replace('${KATAGO_TAG}', katago_version)
         metadata['linux_nvidia_bundle'] = metadata['linux_nvidia_bundle'].replace('${KATAGO_TAG}', katago_version)
@@ -148,10 +140,6 @@ def load_bundle_metadata() -> dict[str, str]:
         if metadata['windows_nvidia50_cuda_bundle'] == 'Unknown':
             metadata['windows_nvidia50_cuda_bundle'] = (
                 f'katago-{katago_version}-cuda12.8-cudnn9.8.0-windows-x64.zip'
-            )
-        if metadata['windows_nvidia50_trt_bundle'] == 'Unknown':
-            metadata['windows_nvidia50_trt_bundle'] = (
-                f'katago-{katago_version}-trt10.9.0-cuda12.8-windows-x64.zip'
             )
         if metadata['linux_bundle'] == 'Unknown':
             metadata['linux_bundle'] = f'katago-{katago_version}-eigen-linux-x64.zip'
@@ -271,47 +259,35 @@ def add_nvidia50_download_rows(
         '中文': (
             'Windows 64 位，RTX 50 CUDA 版，5070/5080/5090 优先，免安装',
             'Windows 64 位，RTX 50 CUDA 版，5070/5080/5090 优先，想安装',
-            'Windows 64 位，RTX 50 TensorRT 试验版，免安装，第 1 部分',
-            'Windows 64 位，RTX 50 TensorRT 试验版，免安装，第 2 部分',
         ),
         '繁體中文': (
             'Windows 64 位，RTX 50 CUDA 版，5070/5080/5090 優先，免安裝',
             'Windows 64 位，RTX 50 CUDA 版，5070/5080/5090 優先，想安裝',
-            'Windows 64 位，RTX 50 TensorRT 試驗版，免安裝，第 1 部分',
-            'Windows 64 位，RTX 50 TensorRT 試驗版，免安裝，第 2 部分',
         ),
         'English': (
             'Windows 64-bit, RTX 50 CUDA, recommended for 5070/5080/5090, no install',
             'Windows 64-bit, RTX 50 CUDA, recommended for 5070/5080/5090, installer',
-            'Windows 64-bit, RTX 50 TensorRT experimental, no install, part 1',
-            'Windows 64-bit, RTX 50 TensorRT experimental, no install, part 2',
         ),
         '日本語': (
             'Windows 64-bit、RTX 50 CUDA、5070/5080/5090 推奨、インストール不要',
             'Windows 64-bit、RTX 50 CUDA、5070/5080/5090 推奨、インストーラ',
-            'Windows 64-bit、RTX 50 TensorRT 試験版、インストール不要、part 1',
-            'Windows 64-bit、RTX 50 TensorRT 試験版、インストール不要、part 2',
         ),
         '한국어': (
             'Windows 64-bit, RTX 50 CUDA, 5070/5080/5090 권장, 무설치',
             'Windows 64-bit, RTX 50 CUDA, 5070/5080/5090 권장, 설치형',
-            'Windows 64-bit, RTX 50 TensorRT 실험판, 무설치, part 1',
-            'Windows 64-bit, RTX 50 TensorRT 실험판, 무설치, part 2',
         ),
         'ภาษาไทย': (
             'Windows 64-bit, RTX 50 CUDA, แนะนำสำหรับ 5070/5080/5090, ไม่ต้องติดตั้ง',
             'Windows 64-bit, RTX 50 CUDA, แนะนำสำหรับ 5070/5080/5090, แบบติดตั้ง',
-            'Windows 64-bit, RTX 50 TensorRT รุ่นทดลอง, ไม่ต้องติดตั้ง, part 1',
-            'Windows 64-bit, RTX 50 TensorRT รุ่นทดลอง, ไม่ต้องติดตั้ง, part 2',
         ),
     }
     before_note_by_language = {
-        '中文': 'RTX 5070/5080/5090 用户优先下载 RTX 50 CUDA 版；TensorRT 版是试验包，适合愿意反馈测速和日志的用户。',
-        '繁體中文': 'RTX 5070/5080/5090 使用者優先下載 RTX 50 CUDA 版；TensorRT 版是試驗包，適合願意回報測速和日誌的使用者。',
-        'English': 'RTX 5070/5080/5090 users should try the RTX 50 CUDA build first; the TensorRT build is experimental for users willing to report benchmark results and logs.',
-        '日本語': 'RTX 5070/5080/5090 ユーザーは RTX 50 CUDA 版を優先してください。TensorRT 版は、ベンチマーク結果とログを共有できる方向けの試験版です。',
-        '한국어': 'RTX 5070/5080/5090 사용자는 RTX 50 CUDA 버전을 먼저 권장합니다. TensorRT 버전은 벤치마크와 로그 피드백을 줄 수 있는 사용자를 위한 실험판입니다.',
-        'ภาษาไทย': 'ผู้ใช้ RTX 5070/5080/5090 ควรลอง RTX 50 CUDA ก่อน ส่วน TensorRT เป็นรุ่นทดลองสำหรับผู้ที่ยินดีส่งผล benchmark และ log กลับมา',
+        '中文': 'RTX 5070/5080/5090 用户优先下载 RTX 50 CUDA 版；TensorRT 实验加速不再作为巨大发布包提供，需要时可在软件内“一键设置”中手动安装。',
+        '繁體中文': 'RTX 5070/5080/5090 使用者優先下載 RTX 50 CUDA 版；TensorRT 實驗加速不再作為巨大發布包提供，需要時可在軟體內「一鍵設定」手動安裝。',
+        'English': 'RTX 5070/5080/5090 users should try the RTX 50 CUDA build first; optional TensorRT experimental acceleration is now installed explicitly from the in-app KataGo Auto Setup.',
+        '日本語': 'RTX 5070/5080/5090 ユーザーは RTX 50 CUDA 版を優先してください。任意の TensorRT 試験加速は、アプリ内の KataGo 自動設定から明示的にインストールします。',
+        '한국어': 'RTX 5070/5080/5090 사용자는 RTX 50 CUDA 버전을 먼저 권장합니다. 선택형 TensorRT 실험 가속은 앱 안의 KataGo 자동 설정에서 명시적으로 설치합니다.',
+        'ภาษาไทย': 'ผู้ใช้ RTX 5070/5080/5090 ควรลอง RTX 50 CUDA ก่อน ส่วน TensorRT แบบทดลองจะติดตั้งเองจาก KataGo Auto Setup ในแอปเมื่อต้องการ',
     }
     for section in sections:
         language = str(section['language'])
@@ -326,8 +302,6 @@ def add_nvidia50_download_rows(
         additions = [
             (labels[0], localized_assets['windows_nvidia50_cuda_portable']),
             (labels[1], localized_assets['windows_nvidia50_cuda_installer']),
-            (labels[2], localized_assets['windows_nvidia50_trt_part01']),
-            (labels[3], localized_assets['windows_nvidia50_trt_part02']),
         ]
         insert_at = min(6, len(rows))
         for index, row in enumerate(rows):
@@ -1527,10 +1501,11 @@ def build_release_notes(asset_map: dict[str, str | None], bundle: dict[str, str]
             'updates': {
                 'heading': '本版主要更新',
                 'items': [
-                    'KataGo 人机对弈的“AI 每手用时”现在按固定秒数执行，不再因为 KataGo 时间管理而提前秒下；本机实测设置 4 秒时约 4.03 秒落子。',
-                    '引擎设置里的自动加载方式（默认引擎、最后退出的引擎、手动选择、无引擎）和贴目现在会保存，重启后不再被内置 KataGo 默认项覆盖。',
-                    '合并 qiyi71w 的 PR #17：新增 Web 端试下模式与引擎跟随分析。感谢 qiyi71w 持续优化和贡献。',
-                    '发布前已重新跑全量测试、打包和本机启动冒烟；当前 GitHub 开放 PR 已清空。',
+                    'Windows RTX 50 TensorRT 不再作为巨型 release 包和分卷包发布；RTX 50 用户默认下载 CUDA 包，TensorRT 实验加速改为在软件内“一键设置”按需安装。',
+                    'TensorRT 按需安装会从 KataGo / NVIDIA 官方源下载，带确定进度、体积提示、取消、校验和失败不改当前引擎配置。',
+                    'Apple Silicon 启动自动测速现在尊重“启动时自动测速”开关；用户关闭测速窗口后，会记住当前引擎和权重组合，下次启动不再反复弹窗。',
+                    'KataGo 一键设置窗口补齐 UI 细节：TensorRT 按钮只在 Windows NVIDIA / RTX 50 场景可用，空闲时“停止下载”不会误亮。',
+                    '发布前已重新跑全量测试、打包、release notes 结构检查和本机真实启动 UI 冒烟。',
                 ],
             },
             'before': {
@@ -1594,10 +1569,11 @@ def build_release_notes(asset_map: dict[str, str | None], bundle: dict[str, str]
             'updates': {
                 'heading': '本版主要更新',
                 'items': [
-                    'KataGo 人機對弈的「AI 每手用時」現在會按固定秒數執行，不再因 KataGo 時間管理而提前秒下；本機實測設定 4 秒時約 4.03 秒落子。',
-                    '引擎設定裡的自動載入方式（預設引擎、最後退出的引擎、手動選擇、無引擎）和貼目現在會儲存，重啟後不再被內建 KataGo 預設項覆蓋。',
-                    '合併 qiyi71w 的 PR #17：新增 Web 端試下模式與引擎跟隨分析。感謝 qiyi71w 持續最佳化與貢獻。',
-                    '發布前已重新跑完整測試、打包和本機啟動冒煙；目前 GitHub 開放 PR 已清空。',
+                    'Windows RTX 50 TensorRT 不再作為巨大 release 包和分卷包發布；RTX 50 使用者預設下載 CUDA 包，TensorRT 實驗加速改為在軟體內「一鍵設定」按需安裝。',
+                    'TensorRT 按需安裝會從 KataGo / NVIDIA 官方來源下載，具備確定進度、體積提示、取消、校驗，以及失敗不改目前引擎設定。',
+                    'Apple Silicon 啟動自動測速現在尊重「啟動時自動測速」開關；使用者關閉測速視窗後，會記住目前引擎和權重組合，下次啟動不再反覆彈窗。',
+                    'KataGo 一鍵設定視窗補齊 UI 細節：TensorRT 按鈕只在 Windows NVIDIA / RTX 50 場景可用，空閒時「停止下載」不會誤亮。',
+                    '發布前已重新跑完整測試、打包、release notes 結構檢查和本機真實啟動 UI 冒煙。',
                 ],
             },
             'before': {
@@ -1661,10 +1637,11 @@ def build_release_notes(asset_map: dict[str, str | None], bundle: dict[str, str]
             'updates': {
                 'heading': 'Release Highlights',
                 'items': [
-                    'KataGo human-vs-AI games now honor the fixed “AI seconds per move” setting instead of moving early because of KataGo time management; a local 4-second smoke test moved in about 4.03 seconds.',
-                    'Engine Settings now persist auto-load mode (default engine, last engine, manual choice, no engine) and komi across restart instead of being overwritten by bundled KataGo defaults.',
-                    'Merged qiyi71w’s PR #17: Web trial mode plus engine-following analysis. Thank you qiyi71w for the continued improvements and contributions.',
-                    'Before release, full tests, packaging, and a local launch smoke test were rerun; there are no open GitHub PRs at publish time.',
+                    'Windows RTX 50 TensorRT is no longer shipped as a huge release package or split archive; RTX 50 users should download the CUDA build first and install TensorRT experimental acceleration on demand from in-app KataGo Auto Setup.',
+                    'The on-demand TensorRT installer downloads from official KataGo / NVIDIA sources with determinate progress, size disclosure, cancellation, validation, and no engine-profile changes on failure.',
+                    'Apple Silicon startup auto-benchmark now respects the startup benchmark preference; closing the benchmark window remembers the current engine and weight combination so it will not nag again on the next launch.',
+                    'KataGo Auto Setup UI polish: the TensorRT button is only enabled for Windows NVIDIA / RTX 50 scenarios, and Stop Download no longer appears active while idle.',
+                    'Before release, full tests, packaging, release-notes structure checks, and a real local launch UI smoke test were rerun.',
                 ],
             },
             'before': {
@@ -1728,10 +1705,11 @@ def build_release_notes(asset_map: dict[str, str | None], bundle: dict[str, str]
             'updates': {
                 'heading': '主な更新',
                 'items': [
-                    'KataGo との人間対 AI 対局で、「AI の 1 手あたり秒数」が固定秒数として効くようになりました。KataGo の時間管理で早打ちする問題を避け、ローカル 4 秒テストでは約 4.03 秒で着手しました。',
-                    'エンジン設定の自動読み込み方式（既定エンジン、最後に終了したエンジン、手動選択、エンジンなし）とコミが再起動後も保持され、同梱 KataGo の既定値で上書きされなくなりました。',
-                    'qiyi71w さんの PR #17 をマージしました。Web 端末の試し打ちモードと、表示局面に追従するエンジン分析が追加されています。継続的な改善と貢献に感謝します。',
-                    'リリース前に full test、package、ローカル起動 smoke test を再実行しました。公開時点で GitHub の open PR はありません。',
+                    'Windows RTX 50 TensorRT は巨大な release パッケージや分割アーカイブとして同梱しない方針に変更しました。RTX 50 ユーザーはまず CUDA 版を使い、TensorRT 試験加速はアプリ内の KataGo 自動設定から必要時にインストールします。',
+                    'TensorRT のオンデマンドインストールは KataGo / NVIDIA 公式ソースから取得し、確定進捗、容量表示、キャンセル、検証、失敗時に現在のエンジン設定を変更しない動作を備えています。',
+                    'Apple Silicon の起動時自動ベンチマークは設定スイッチを尊重します。ベンチマーク画面を閉じると現在のエンジンと重みの組み合わせを記憶し、次回起動で繰り返し表示しません。',
+                    'KataGo 自動設定 UI を調整しました。TensorRT ボタンは Windows NVIDIA / RTX 50 条件でのみ有効になり、待機中に Stop Download が有効表示される問題も修正しました。',
+                    'リリース前に full test、package、release notes 構造チェック、実機ローカル起動 UI smoke test を再実行しました。',
                 ],
             },
             'before': {
@@ -1795,10 +1773,11 @@ def build_release_notes(asset_map: dict[str, str | None], bundle: dict[str, str]
             'updates': {
                 'heading': '주요 업데이트',
                 'items': [
-                    'KataGo 인간 대 AI 대국에서 “AI 한 수당 시간” 설정이 고정 초 단위로 적용됩니다. KataGo 시간 관리 때문에 너무 빨리 두던 문제를 피했으며, 로컬 4초 smoke test 에서는 약 4.03초에 착수했습니다.',
-                    '엔진 설정의 자동 로드 방식(기본 엔진, 마지막 종료 엔진, 수동 선택, 엔진 없음)과 덤이 재시작 후에도 유지되며, 내장 KataGo 기본값으로 덮어써지지 않습니다.',
-                    'qiyi71w 의 PR #17 을 병합했습니다. Web 시험수 모드와 현재 표시 국면을 따라가는 엔진 분석이 추가되었습니다. 지속적인 개선과 기여에 감사드립니다.',
-                    '릴리스 전에 full test, package, 로컬 실행 smoke test 를 다시 수행했습니다. 공개 시점의 GitHub open PR 은 없습니다.',
+                    'Windows RTX 50 TensorRT 는 더 이상 거대한 release 패키지나 분할 압축 파일로 제공하지 않습니다. RTX 50 사용자는 CUDA 빌드를 먼저 받고, TensorRT 실험 가속은 앱 안의 KataGo 자동 설정에서 필요할 때 설치합니다.',
+                    'TensorRT 온디맨드 설치는 KataGo / NVIDIA 공식 소스에서 다운로드하며, 확정 진행률, 용량 안내, 취소, 검증, 실패 시 현재 엔진 설정을 바꾸지 않는 동작을 제공합니다.',
+                    'Apple Silicon 시작 자동 벤치마크는 이제 시작 시 자동 벤치마크 설정을 따릅니다. 사용자가 벤치마크 창을 닫으면 현재 엔진과 가중치 조합을 기억해 다음 실행 때 반복해서 뜨지 않습니다.',
+                    'KataGo 자동 설정 UI 를 다듬었습니다. TensorRT 버튼은 Windows NVIDIA / RTX 50 조건에서만 활성화되고, 대기 중 Stop Download 버튼이 활성화되어 보이던 문제도 수정했습니다.',
+                    '릴리스 전에 full test, package, release notes 구조 검사, 실제 로컬 실행 UI smoke test 를 다시 수행했습니다.',
                 ],
             },
             'before': {
@@ -1862,10 +1841,11 @@ def build_release_notes(asset_map: dict[str, str | None], bundle: dict[str, str]
             'updates': {
                 'heading': 'ไฮไลต์ของเวอร์ชันนี้',
                 'items': [
-                    'โหมดคนเล่นกับ KataGo จะทำตามค่า “เวลา AI ต่อหนึ่งตา” แบบคงที่แล้ว ไม่เดินเร็วเกินไปจาก time management ของ KataGo; ทดสอบในเครื่องที่ 4 วินาทีแล้วเดินประมาณ 4.03 วินาที',
-                    'Engine Settings จะจำโหมดโหลดอัตโนมัติ (default engine, last engine, manual choice, no engine) และ komi หลังรีสตาร์ต ไม่ถูกค่า default ของ KataGo ที่มากับโปรแกรมทับอีก',
-                    'รวม PR #17 ของ qiyi71w แล้ว: เพิ่ม Web trial mode และการวิเคราะห์ที่ engine ติดตามตำแหน่งที่แสดงอยู่ ขอบคุณ qiyi71w สำหรับการปรับปรุงและการร่วมพัฒนาอย่างต่อเนื่อง',
-                    'ก่อนปล่อยเวอร์ชันนี้ ได้รัน full test, package และ local launch smoke test ซ้ำแล้ว และตอนเผยแพร่ไม่มี GitHub PR ที่เปิดค้างอยู่',
+                    'Windows RTX 50 TensorRT จะไม่ถูกปล่อยเป็นแพ็กเกจ release ขนาดใหญ่หรือไฟล์แยก part อีกต่อไป ผู้ใช้ RTX 50 ควรดาวน์โหลด CUDA build ก่อน แล้วติดตั้ง TensorRT แบบทดลองจาก KataGo Auto Setup ในแอปเมื่อต้องการ',
+                    'ตัวติดตั้ง TensorRT แบบ on-demand จะดาวน์โหลดจากแหล่งทางการของ KataGo / NVIDIA พร้อม progress แบบชัดเจน, แจ้งขนาดไฟล์, ยกเลิกได้, ตรวจสอบไฟล์ และถ้าล้มเหลวจะไม่เปลี่ยนค่า engine ปัจจุบัน',
+                    'Apple Silicon startup auto-benchmark จะเคารพตัวเลือก startup benchmark แล้ว ถ้าผู้ใช้ปิดหน้าต่าง benchmark โปรแกรมจะจำ engine และ weight ชุดปัจจุบันไว้ และไม่เด้งซ้ำในการเปิดครั้งถัดไป',
+                    'ปรับ UI ของ KataGo Auto Setup: ปุ่ม TensorRT จะเปิดใช้เฉพาะ Windows NVIDIA / RTX 50 และปุ่ม Stop Download จะไม่ active ตอนที่ไม่มีงานกำลังทำ',
+                    'ก่อนปล่อยเวอร์ชันนี้ ได้รัน full test, package, ตรวจโครงสร้าง release notes และทดสอบเปิดแอปจริงบนเครื่อง local แล้ว',
                 ],
             },
             'before': {

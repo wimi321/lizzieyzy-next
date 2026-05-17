@@ -30,8 +30,6 @@ NVIDIA_APP_NAME="LizzieYzy Next NVIDIA"
 NVIDIA_APP_DESCRIPTION="Maintained LizzieYzy build with bundled NVIDIA CUDA KataGo"
 NVIDIA50_CUDA_APP_NAME="LizzieYzy Next NVIDIA 50 CUDA"
 NVIDIA50_CUDA_APP_DESCRIPTION="Maintained LizzieYzy build with bundled RTX 50 CUDA KataGo"
-NVIDIA50_TRT_APP_NAME="LizzieYzy Next NVIDIA 50 TensorRT"
-NVIDIA50_TRT_APP_DESCRIPTION="Maintained LizzieYzy build with bundled RTX 50 TensorRT KataGo"
 MAIN_JAR="$(basename "$JAR_PATH")"
 ICON_PATH="$ROOT_DIR/packaging/icons/app-icon.ico"
 ARCH_TAG="windows64"
@@ -39,27 +37,20 @@ STANDARD_ENGINE_PLATFORM_DIR="windows-x64"
 OPENCL_ENGINE_PLATFORM_DIR="${WINDOWS_OPENCL_ENGINE_PLATFORM_DIR:-windows-x64-opencl}"
 NVIDIA_ENGINE_PLATFORM_DIR="${WINDOWS_NVIDIA_ENGINE_PLATFORM_DIR:-windows-x64-nvidia}"
 NVIDIA50_CUDA_ENGINE_PLATFORM_DIR="${WINDOWS_NVIDIA50_CUDA_ENGINE_PLATFORM_DIR:-windows-x64-nvidia50-cuda}"
-NVIDIA50_TRT_ENGINE_PLATFORM_DIR="${WINDOWS_NVIDIA50_TRT_ENGINE_PLATFORM_DIR:-windows-x64-nvidia50-trt}"
 OPENCL_ARCH_TAG="${ARCH_TAG}.opencl"
 NVIDIA_ARCH_TAG="${ARCH_TAG}.nvidia"
 NVIDIA50_CUDA_ARCH_TAG="${ARCH_TAG}.nvidia50.cuda"
-NVIDIA50_TRT_ARCH_TAG="${ARCH_TAG}.nvidia50.trt"
-BUILD_NVIDIA50_TRT_INSTALLER="${WINDOWS_BUILD_NVIDIA50_TRT_INSTALLER:-false}"
-SPLIT_LARGE_RELEASE_ASSETS="${WINDOWS_SPLIT_LARGE_RELEASE_ASSETS:-true}"
 MAX_RELEASE_ASSET_BYTES="${WINDOWS_RELEASE_ASSET_MAX_BYTES:-2000000000}"
-RELEASE_SPLIT_SIZE="${WINDOWS_RELEASE_SPLIT_SIZE:-1900M}"
 DIST_DIR="$ROOT_DIR/dist/windows"
 RELEASE_DIR="$ROOT_DIR/dist/release"
 META_DIR="$ROOT_DIR/dist/release-meta"
 WINDOWS_UPGRADE_UUID_NVIDIA="${WINDOWS_UPGRADE_UUID_NVIDIA:-14a4599e-6d5b-4b86-9895-7748266f0c25}"
 WINDOWS_UPGRADE_UUID_NVIDIA50_CUDA="${WINDOWS_UPGRADE_UUID_NVIDIA50_CUDA:-8339893c-59d8-4bb0-9cde-e54d6bb969f5}"
-WINDOWS_UPGRADE_UUID_NVIDIA50_TRT="${WINDOWS_UPGRADE_UUID_NVIDIA50_TRT:-d7d66f6f-3a05-4662-b5b8-0677b87a1a43}"
 WINDOWS_UPGRADE_UUID_OPENCL="${WINDOWS_UPGRADE_UUID_OPENCL:-0ec8b17f-06b0-4f6a-9246-cf61953743cf}"
 ENGINE_BACKEND_MARKER_NAME="lizzieyzy-next-engine-backend.txt"
 NVIDIA_RUNTIME_PREPARE_SCRIPT="$ROOT_DIR/scripts/prepare_bundled_nvidia_runtime.py"
 NVIDIA_RUNTIME_STAGE_DIR="$DIST_DIR/nvidia-runtime/cuda12.1-cudnn8"
 NVIDIA50_CUDA_RUNTIME_STAGE_DIR="$DIST_DIR/nvidia-runtime/cuda12.8-cudnn9"
-NVIDIA50_TRT_RUNTIME_STAGE_DIR="$DIST_DIR/nvidia-runtime/trt10.9-cuda12.8"
 JCEF_BUNDLE_PREPARE_SCRIPT="$ROOT_DIR/scripts/prepare_bundled_jcef.py"
 JCEF_BUNDLE_STAGE_DIR="$DIST_DIR/jcef-bundle"
 JCEF_PLATFORM="${WINDOWS_JCEF_PLATFORM:-windows-amd64}"
@@ -533,8 +524,7 @@ write_windows_install_note() {
   local has_opencl_katago="$2"
   local has_nvidia_katago="$3"
   local has_nvidia50_cuda_katago="$4"
-  local has_nvidia50_trt_katago="$5"
-  local has_no_engine_installer="$6"
+  local has_no_engine_installer="$5"
   local note_file="$META_DIR/${DATE_TAG}-${ARCH_TAG}-install.txt"
 
   cat >"$note_file" <<EOF
@@ -578,28 +568,8 @@ EOF
   RTX 50 series CUDA package. Choose this first for RTX 5070/5080/5090.
 - ${DATE_TAG}-${NVIDIA50_CUDA_ARCH_TAG}.portable.zip
   RTX 50 CUDA portable build. Unzip it and open ${NVIDIA50_CUDA_APP_NAME}.exe.
+  Optional TensorRT experimental acceleration is installed inside KataGo Auto Setup after launch, not shipped as a release asset.
 EOF
-  fi
-
-  if [[ "$has_nvidia50_trt_katago" == "true" ]]; then
-    if [[ "$SPLIT_LARGE_RELEASE_ASSETS" == "true" ]]; then
-      cat >>"$note_file" <<EOF
-- ${DATE_TAG}-${NVIDIA50_TRT_ARCH_TAG}.portable.zip.part01 / part02
-  Experimental RTX 50 TensorRT portable build split into parts for GitHub's release asset size limit. Download every part, then recombine with:
-  copy /b ${DATE_TAG}-${NVIDIA50_TRT_ARCH_TAG}.portable.zip.part01+${DATE_TAG}-${NVIDIA50_TRT_ARCH_TAG}.portable.zip.part02 ${DATE_TAG}-${NVIDIA50_TRT_ARCH_TAG}.portable.zip
-EOF
-    else
-      cat >>"$note_file" <<EOF
-- ${DATE_TAG}-${NVIDIA50_TRT_ARCH_TAG}.portable.zip
-  Experimental RTX 50 TensorRT portable build. Unzip it and open ${NVIDIA50_TRT_APP_NAME}.exe.
-EOF
-    fi
-    if [[ "$BUILD_NVIDIA50_TRT_INSTALLER" == "true" ]]; then
-      cat >>"$note_file" <<EOF
-- ${DATE_TAG}-${NVIDIA50_TRT_ARCH_TAG}.installer.exe
-  Experimental RTX 50 TensorRT installer. This is disabled by default because the TensorRT runtime makes the MSI/EXE build very large.
-EOF
-    fi
   fi
 
   cat >>"$note_file" <<EOF
@@ -664,17 +634,11 @@ EOF
     cat >>"$note_file" <<'EOF'
 - The NVIDIA 50 CUDA assets include the official KataGo CUDA 12.8 / cuDNN 9.8 Windows build for Blackwell RTX 50 series GPUs.
 - RTX 5070/5080/5090 users should try the NVIDIA 50 CUDA package first.
+- TensorRT experimental acceleration is available as an explicit in-app install from KataGo Auto Setup for RTX 50 users who want to test it.
 EOF
   fi
 
-  if [[ "$has_nvidia50_trt_katago" == "true" ]]; then
-    cat >>"$note_file" <<'EOF'
-- The NVIDIA 50 TensorRT assets include the official KataGo TensorRT 10.9 / CUDA 12.8 Windows build and are experimental.
-- Use the TensorRT package only if you are willing to test and report NVIDIA driver, KataGo stderr, and Smart Optimize results.
-EOF
-  fi
-
-  if [[ "$has_nvidia_katago" == "true" || "$has_nvidia50_cuda_katago" == "true" || "$has_nvidia50_trt_katago" == "true" ]]; then
+  if [[ "$has_nvidia_katago" == "true" || "$has_nvidia50_cuda_katago" == "true" ]]; then
     cat >>"$note_file" <<'EOF'
 - Only choose an NVIDIA package if your PC has an NVIDIA GPU. If you are not sure, use the regular with-katago installer instead.
 EOF
@@ -703,46 +667,22 @@ create_portable_zip() {
   log_step "Finished Windows portable zip: $(basename "$portable_zip")"
 }
 
-split_large_release_artifacts() {
-  if [[ "$SPLIT_LARGE_RELEASE_ASSETS" != "true" ]]; then
-    return 0
-  fi
-
-  local next_artifacts=()
+assert_release_artifacts_within_limit() {
   local artifact
   for artifact in "${artifacts[@]}"; do
     if [[ ! -f "$artifact" ]]; then
-      next_artifacts+=("$artifact")
       continue
     fi
 
     local size
     size="$(stat -c '%s' "$artifact")"
     if (( size <= MAX_RELEASE_ASSET_BYTES )); then
-      next_artifacts+=("$artifact")
       continue
     fi
 
-    log_step "Splitting oversized release asset: $(basename "$artifact") (${size} bytes)"
-    rm -f "$artifact".part[0-9][0-9]
-    split -b "$RELEASE_SPLIT_SIZE" -d -a 2 --numeric-suffixes=1 "$artifact" "$artifact.part"
-    rm -f "$artifact"
-
-    shopt -s nullglob
-    local parts=("$artifact".part[0-9][0-9])
-    shopt -u nullglob
-    if (( ${#parts[@]} < 2 )); then
-      echo "Expected multiple split parts for oversized asset: $artifact" >&2
-      return 1
-    fi
-
-    local part
-    for part in "${parts[@]}"; do
-      next_artifacts+=("$part")
-    done
+    echo "Release asset exceeds GitHub's 2 GiB limit and must be slimmed instead of split: $artifact (${size} bytes)" >&2
+    return 1
   done
-
-  artifacts=("${next_artifacts[@]}")
 }
 
 build_release_variant() {
@@ -804,7 +744,6 @@ has_with_katago_assets="false"
 has_opencl_katago_assets="false"
 has_nvidia_katago_assets="false"
 has_nvidia50_cuda_katago_assets="false"
-has_nvidia50_trt_katago_assets="false"
 
 prepare_bundled_readboard_assets
 prepare_bundled_jcef_assets
@@ -877,25 +816,6 @@ else
   has_nvidia50_cuda_katago_assets="false"
 fi
 
-if has_bundled_katago "$NVIDIA50_TRT_ENGINE_PLATFORM_DIR"; then
-  has_nvidia50_trt_katago_assets="true"
-  prepare_bundled_nvidia_runtime_assets "trt10.9-cuda12.8" "$NVIDIA50_TRT_RUNTIME_STAGE_DIR"
-  build_release_variant \
-    "nvidia50.trt" \
-    "true" \
-    "$NVIDIA50_TRT_APP_NAME" \
-    "$NVIDIA50_TRT_APP_DESCRIPTION" \
-    "$NVIDIA50_TRT_ENGINE_PLATFORM_DIR" \
-    "$STANDARD_ENGINE_PLATFORM_DIR" \
-    "nvidia50-trt" \
-    "$NVIDIA50_TRT_ARCH_TAG" \
-    "$WINDOWS_UPGRADE_UUID_NVIDIA50_TRT" \
-    "$NVIDIA50_TRT_RUNTIME_STAGE_DIR" \
-    "$BUILD_NVIDIA50_TRT_INSTALLER"
-else
-  has_nvidia50_trt_katago_assets="false"
-fi
-
 build_release_variant \
   "without.engine" \
   "false" \
@@ -907,7 +827,7 @@ build_release_variant \
   "${ARCH_TAG}.without.engine" \
   "$WINDOWS_UPGRADE_UUID"
 
-split_large_release_artifacts
+assert_release_artifacts_within_limit
 
 install_note="$META_DIR/${DATE_TAG}-${ARCH_TAG}-install.txt"
 checksum_file="$META_DIR/${DATE_TAG}-${ARCH_TAG}-sha256.txt"
@@ -916,7 +836,6 @@ write_windows_install_note \
   "$has_opencl_katago_assets" \
   "$has_nvidia_katago_assets" \
   "$has_nvidia50_cuda_katago_assets" \
-  "$has_nvidia50_trt_katago_assets" \
   "$build_no_engine_installer"
 write_sha256_file "$checksum_file" "${artifacts[@]}" "$install_note"
 
@@ -928,7 +847,6 @@ echo "Windows upgrade UUID: $WINDOWS_UPGRADE_UUID"
 echo "Windows OpenCL upgrade UUID: $WINDOWS_UPGRADE_UUID_OPENCL"
 echo "Windows NVIDIA upgrade UUID: $WINDOWS_UPGRADE_UUID_NVIDIA"
 echo "Windows NVIDIA 50 CUDA upgrade UUID: $WINDOWS_UPGRADE_UUID_NVIDIA50_CUDA"
-echo "Windows NVIDIA 50 TensorRT upgrade UUID: $WINDOWS_UPGRADE_UUID_NVIDIA50_TRT"
 echo
 echo "Maintainer metadata:"
 ls -lh "$install_note" "$checksum_file"

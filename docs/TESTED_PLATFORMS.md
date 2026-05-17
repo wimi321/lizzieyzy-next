@@ -28,13 +28,15 @@
 | `windows64.nvidia.installer.exe` | Windows x64 + NVIDIA | `Build verified` | NVIDIA CUDA 整合安装器已纳入正式发布矩阵 | 需要真实 NVIDIA Windows 反馈 |
 | `windows64.nvidia50.cuda.portable.zip` | Windows x64 + RTX 50 | `Build verified` | CUDA 12.8/cuDNN 9 便携包已纳入发布矩阵 | RTX 5070/5080/5090 用户优先反馈 |
 | `windows64.nvidia50.cuda.installer.exe` | Windows x64 + RTX 50 | `Build verified` | CUDA 12.8/cuDNN 9 安装器已纳入发布矩阵 | RTX 5070/5080/5090 用户优先反馈 |
-| `windows64.nvidia50.trt.portable.zip` | Windows x64 + RTX 50 TensorRT | `Build verified` | TensorRT 10.9/CUDA 12.8 试验便携包已纳入发布矩阵 | 需要 50 系列用户反馈测速和日志 |
-| `windows64.nvidia50.trt.installer.exe` | Windows x64 + RTX 50 TensorRT | `Build verified` | TensorRT 10.9/CUDA 12.8 试验安装器已纳入发布矩阵 | 需要 50 系列用户反馈测速和日志 |
 | `windows64.without.engine.portable.zip` | Windows x64 | `Build verified` | 无引擎便携包已纳入正式发布矩阵 | 面向进阶用户 |
 | `windows64.without.engine.installer.exe` | Windows x64 | `Build verified` | 无引擎安装器已纳入正式发布矩阵 | 面向想安装但自己配引擎的用户 |
 | `mac-apple-silicon.with-katago.dmg` | macOS Apple Silicon | `Maintainer tested` | 安装、启动、界面打开、野狐昵称抓谱入口可见 | 当前最完整的实机验证链路 |
 | `mac-intel.with-katago.dmg` | macOS Intel | `Build verified` | 已纳入独立发布流程 | 需要真实 Intel Mac 反馈 |
 | `linux64.with-katago.zip` | Linux x64 | `Build verified` | 整合包继续提供 | 需要真实 Linux 桌面反馈 |
+| `linux64.opencl.zip` | Linux x64 + OpenCL | `Build verified` | OpenCL 包继续提供 | 需要真实 Linux OpenCL 反馈 |
+| `linux64.nvidia.zip` | Linux x64 + NVIDIA | `Build verified` | NVIDIA CUDA 包继续提供 | 需要真实 Linux NVIDIA 反馈 |
+
+说明：RTX 50 TensorRT 实验加速现在是软件内按需安装功能，不再作为 GitHub Release 包验证。
 
 ## 我们重点关心什么
 

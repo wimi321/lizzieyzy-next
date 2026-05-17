@@ -15,7 +15,7 @@ This page describes the public release layout of the maintained `LizzieYzy Next`
 - Most regular users should start with `windows64.opencl.portable.zip`
 - If OpenCL behaves poorly, switch to `windows64.with-katago.portable.zip`
 - If you have an RTX 20/30/40 NVIDIA GPU and want more speed, switch to `windows64.nvidia.portable.zip`
-- RTX 5070/5080/5090 users should try `windows64.nvidia50.cuda.portable.zip` first; `windows64.nvidia50.trt.portable.zip` is experimental
+- RTX 5070/5080/5090 users should try `windows64.nvidia50.cuda.portable.zip` first; optional TensorRT experimental acceleration is installed on demand from inside the app
 
 ## The 15 Primary Public Release Assets
 
@@ -29,13 +29,13 @@ This page describes the public release layout of the maintained `LizzieYzy Next`
 | Windows x64 NVIDIA installer | `<date>-windows64.nvidia.installer.exe` | NVIDIA GPU users who prefer an installer |
 | Windows x64 RTX 50 CUDA portable | `<date>-windows64.nvidia50.cuda.portable.zip` | First choice for RTX 5070/5080/5090 users |
 | Windows x64 RTX 50 CUDA installer | `<date>-windows64.nvidia50.cuda.installer.exe` | RTX 5070/5080/5090 users who prefer an installer |
-| Windows x64 RTX 50 TensorRT experimental portable | `<date>-windows64.nvidia50.trt.portable.zip` | RTX 50 users willing to test TensorRT performance and share logs |
-| Windows x64 RTX 50 TensorRT experimental installer | `<date>-windows64.nvidia50.trt.installer.exe` | RTX 50 users willing to test TensorRT and preferring an installer |
 | Windows x64 no-engine portable | `<date>-windows64.without.engine.portable.zip` | Custom KataGo setup |
 | Windows x64 no-engine installer | `<date>-windows64.without.engine.installer.exe` | Users who want installer flow with their own engine |
 | macOS Apple Silicon bundle | `<date>-mac-apple-silicon.with-katago.dmg` | M-series Macs |
 | macOS Intel bundle | `<date>-mac-intel.with-katago.dmg` | Intel Macs |
 | Linux x64 bundle | `<date>-linux64.with-katago.zip` | Linux desktop users |
+| Linux x64 OpenCL bundle | `<date>-linux64.opencl.zip` | Linux users with AMD/Intel GPUs |
+| Linux x64 NVIDIA CUDA bundle | `<date>-linux64.nvidia.zip` | Linux users with NVIDIA GPUs |
 
 Notes:
 
@@ -56,13 +56,13 @@ Notes:
 | `windows64.nvidia.installer.exe` | Bundled | Bundled | Bundled | Install, then launch `LizzieYzy Next NVIDIA` |
 | `windows64.nvidia50.cuda.portable.zip` | Bundled | Bundled | Bundled | Unzip and run `LizzieYzy Next NVIDIA 50 CUDA.exe` |
 | `windows64.nvidia50.cuda.installer.exe` | Bundled | Bundled | Bundled | Install, then launch `LizzieYzy Next NVIDIA 50 CUDA` |
-| `windows64.nvidia50.trt.portable.zip` | Bundled | Bundled | Bundled | Unzip and run `LizzieYzy Next NVIDIA 50 TensorRT.exe` |
-| `windows64.nvidia50.trt.installer.exe` | Bundled | Bundled | Bundled | Install, then launch `LizzieYzy Next NVIDIA 50 TensorRT` |
 | `windows64.without.engine.portable.zip` | Bundled | Not bundled | Not bundled | Unzip and run `LizzieYzy Next.exe` |
 | `windows64.without.engine.installer.exe` | Bundled | Not bundled | Not bundled | Install, then launch from Start Menu or desktop |
 | `mac-apple-silicon.with-katago.dmg` | App runtime | Bundled | Bundled | Drag to Applications |
 | `mac-intel.with-katago.dmg` | App runtime | Bundled | Bundled | Drag to Applications |
 | `linux64.with-katago.zip` | Bundled | Bundled | Bundled | Run `start-linux64.sh` |
+| `linux64.opencl.zip` | Bundled | Bundled | Bundled | Run `start-linux64.sh` |
+| `linux64.nvidia.zip` | Bundled | Bundled | Bundled | Run `start-linux64.sh` |
 
 ## Simple Download Advice
 
@@ -97,6 +97,7 @@ Current bundled defaults:
 
 - KataGo version: `v1.16.4`
 - Default weight: `kata1-zhizi-b28c512nbt-muonfd2.bin.gz`
+- RTX 50 TensorRT experimental acceleration: no longer published as a GitHub Release package; install it on demand from `KataGo Auto Setup` inside the app
 
 Paths:
 
@@ -116,9 +117,9 @@ Paths:
 From the new maintained releases onward:
 
 - the main Windows x64 package is `portable.zip`
-- Windows x64 now exposes OpenCL, CPU fallback, NVIDIA, NVIDIA 50 CUDA, and NVIDIA 50 TensorRT variants in both portable and installer forms
+- Windows x64 now exposes OpenCL, CPU fallback, NVIDIA, and NVIDIA 50 CUDA variants in both portable and installer forms
 - the Windows x64 no-engine option now has both an installer and a portable `.zip`
-- the public release page keeps the 15 primary user-facing assets above as the main list
+- the public release page keeps the 15 primary user-facing assets above as the main list; TensorRT experimental acceleration is an in-app on-demand install, not a release asset
 - older compatibility zips now stay in historical tags instead of the main recommendation area
 
 ## Related Docs

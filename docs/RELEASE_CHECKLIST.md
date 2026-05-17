@@ -11,7 +11,7 @@
 - 野狐棋谱同步仍然可用，而且明确写成“野狐昵称”
 - 普通 Windows 包支持“智能优化”的信息要写清楚
 - NVIDIA Windows 包“首次自动准备官方运行库”的信息要写清楚
-- RTX 50 系列用户要能明确看到 CUDA 12.8 包和 TensorRT 试验包的区别
+- RTX 50 系列用户要能明确看到 CUDA 12.8 包是默认下载项，TensorRT 实验加速是软件内按需安装项
 - README、安装文档、发布页文案、真实资产名保持一致
 - 软件内“关于”、主窗口标题、安装包启动参数、GitHub release 标题必须显示同一个 release tag，不能停在 `1.0.0`，也不要再把 `1.0.0-` 作为公开 tag 前缀
 - 程序窗口图标、安装包图标、README 展示图标不要混成两套
@@ -28,8 +28,6 @@
 - `windows64.nvidia.installer.exe`
 - `windows64.nvidia50.cuda.portable.zip`
 - `windows64.nvidia50.cuda.installer.exe`
-- `windows64.nvidia50.trt.portable.zip`
-- `windows64.nvidia50.trt.installer.exe`
 - `windows64.without.engine.portable.zip`
 - `windows64.without.engine.installer.exe`
 - `windows64-install.txt`
@@ -76,7 +74,7 @@ GitHub Actions：
 - `README.md` 和 `README_EN.md` 的包名与计划上传的文件完全一致
 - 安装文档里的 Windows 主路径仍然是 `portable.zip`
 - 如果提供 NVIDIA 极速包，要同时核对 `nvidia.installer.exe` 和 `nvidia.portable.zip`
-- 如果提供 RTX 50 包，要同时核对 `nvidia50.cuda.*` 和 `nvidia50.trt.*`，并在发布说明里把 TensorRT 标成试验包
+- 如果提供 RTX 50 包，要核对 `nvidia50.cuda.*`，并在发布说明里写清 TensorRT 只从软件内按需安装，不再作为 release asset
 - 如果提供 OpenCL 包，要同时核对 `opencl.installer.exe` 和 `opencl.portable.zip`
 - 如果提供 Windows 无引擎包，要同时核对 `without.engine.installer.exe` 和 `without.engine.portable.zip`
 - 界面里仍然写的是 `野狐棋谱（输入野狐昵称获取）`
@@ -122,7 +120,7 @@ python3 scripts/generate_app_icons.py
 - 默认模型：`kata1-zhizi-b28c512nbt-muonfd2.bin.gz`
 - Windows NVIDIA 包：官方 `cuda12.1-cudnn8.9.7` 构建
 - Windows RTX 50 CUDA 包：官方 `cuda12.8-cudnn9.8.0` 构建
-- Windows RTX 50 TensorRT 试验包：官方 `trt10.9.0-cuda12.8` 构建
+- Windows RTX 50 TensorRT：不打入 release 包；由软件内 `KataGo 一键设置` 显式下载安装官方 `trt10.9.0-cuda12.8` 构建和所需运行库
 
 ### 5. 构建 Windows 安装器和便携包
 
