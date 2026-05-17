@@ -344,6 +344,374 @@ def render_language_section(section: dict[str, object]) -> str:
     return '\n'.join(lines).rstrip()
 
 
+def standard_download_rows(labels: list[str], localized_assets: dict[str, str]) -> list[tuple[str, str]]:
+    asset_order = [
+        'windows_opencl_portable',
+        'windows_opencl_installer',
+        'windows_portable',
+        'windows_installer',
+        'windows_nvidia_portable',
+        'windows_nvidia_installer',
+        'windows_no_engine_portable',
+        'windows_no_engine_installer',
+        'mac_arm64',
+        'mac_amd64',
+        'linux64',
+        'linux64_opencl',
+        'linux64_nvidia',
+    ]
+    return list(zip(labels, (localized_assets[key] for key in asset_order)))
+
+
+STANDARD_DOWNLOAD_LABELS = {
+    'zh': [
+        'Windows 64 位，OpenCL 版，推荐更快，免安装',
+        'Windows 64 位，OpenCL 版，想安装',
+        'Windows 64 位，CPU 兼容版，免安装',
+        'Windows 64 位，CPU 兼容版，想安装',
+        'Windows 64 位，NVIDIA 显卡，免安装',
+        'Windows 64 位，NVIDIA 显卡，想安装',
+        'Windows 64 位，想自己配引擎',
+        'Windows 64 位，想自己配引擎，也想安装器',
+        'macOS Apple Silicon',
+        'macOS Intel',
+        'Linux 64 位，CPU 兼容版',
+        'Linux 64 位，OpenCL 版，AMD/Intel GPU',
+        'Linux 64 位，NVIDIA CUDA 版',
+    ],
+    'zh_hant': [
+        'Windows 64 位，OpenCL 版，推薦更快，免安裝',
+        'Windows 64 位，OpenCL 版，想安裝',
+        'Windows 64 位，CPU 相容版，免安裝',
+        'Windows 64 位，CPU 相容版，想安裝',
+        'Windows 64 位，NVIDIA 顯示卡，免安裝',
+        'Windows 64 位，NVIDIA 顯示卡，想安裝',
+        'Windows 64 位，想自己配引擎',
+        'Windows 64 位，想自己配引擎，也想安裝器',
+        'macOS Apple Silicon',
+        'macOS Intel',
+        'Linux 64 位，CPU 相容版',
+        'Linux 64 位，OpenCL 版，AMD/Intel GPU',
+        'Linux 64 位，NVIDIA CUDA 版',
+    ],
+    'en': [
+        'Windows 64-bit, OpenCL, recommended and faster, no install',
+        'Windows 64-bit, OpenCL, installer',
+        'Windows 64-bit, CPU compatible build, no install',
+        'Windows 64-bit, CPU compatible build, installer',
+        'Windows 64-bit, NVIDIA GPU, no install',
+        'Windows 64-bit, NVIDIA GPU, installer',
+        'Windows 64-bit, configure your own engine',
+        'Windows 64-bit, configure your own engine, installer',
+        'macOS Apple Silicon',
+        'macOS Intel',
+        'Linux 64-bit, CPU compatible build',
+        'Linux 64-bit, OpenCL for AMD/Intel GPU',
+        'Linux 64-bit, NVIDIA CUDA',
+    ],
+    'ja': [
+        'Windows 64-bit、OpenCL 推奨高速版、インストール不要',
+        'Windows 64-bit、OpenCL 版、インストーラ',
+        'Windows 64-bit、CPU 互換版、インストール不要',
+        'Windows 64-bit、CPU 互換版、インストーラ',
+        'Windows 64-bit、NVIDIA GPU、インストール不要',
+        'Windows 64-bit、NVIDIA GPU、インストーラ',
+        'Windows 64-bit、自分でエンジンを設定したい場合',
+        'Windows 64-bit、自分でエンジンを設定したい場合、インストーラ',
+        'macOS Apple Silicon',
+        'macOS Intel',
+        'Linux 64-bit、CPU 互換版',
+        'Linux 64-bit、OpenCL、AMD/Intel GPU',
+        'Linux 64-bit、NVIDIA CUDA',
+    ],
+    'ko': [
+        'Windows 64-bit, OpenCL 추천 고속판, 무설치',
+        'Windows 64-bit, OpenCL, 설치형',
+        'Windows 64-bit, CPU 호환 빌드, 무설치',
+        'Windows 64-bit, CPU 호환 빌드, 설치형',
+        'Windows 64-bit, NVIDIA GPU, 무설치',
+        'Windows 64-bit, NVIDIA GPU, 설치형',
+        'Windows 64-bit, 직접 엔진 설정',
+        'Windows 64-bit, 직접 엔진 설정, 설치형',
+        'macOS Apple Silicon',
+        'macOS Intel',
+        'Linux 64-bit, CPU 호환 빌드',
+        'Linux 64-bit, OpenCL, AMD/Intel GPU',
+        'Linux 64-bit, NVIDIA CUDA',
+    ],
+    'th': [
+        'Windows 64-bit, OpenCL, แนะนำและเร็วกว่า, ไม่ต้องติดตั้ง',
+        'Windows 64-bit, OpenCL, แบบติดตั้ง',
+        'Windows 64-bit, CPU compatible build, ไม่ต้องติดตั้ง',
+        'Windows 64-bit, CPU compatible build, แบบติดตั้ง',
+        'Windows 64-bit, การ์ดจอ NVIDIA, ไม่ต้องติดตั้ง',
+        'Windows 64-bit, การ์ดจอ NVIDIA, แบบติดตั้ง',
+        'Windows 64-bit, ต้องการตั้งค่า engine เอง',
+        'Windows 64-bit, ต้องการตั้งค่า engine เองและอยากใช้ installer',
+        'macOS Apple Silicon',
+        'macOS Intel',
+        'Linux 64-bit, CPU compatible build',
+        'Linux 64-bit, OpenCL สำหรับ AMD/Intel GPU',
+        'Linux 64-bit, NVIDIA CUDA',
+    ],
+}
+
+
+def build_next_2026_05_17_2_notes(
+    asset_map: dict[str, str | None],
+    bundle: dict[str, str],
+    repo: str,
+    release_tag: str | None,
+) -> str:
+    assets_cn = {
+        key: format_asset(asset_map[key], repo, release_tag)
+        for key in asset_map
+    }
+    assets = {
+        key: format_asset_en(asset_map[key], repo, release_tag)
+        for key in asset_map
+    }
+    katago_version = bundle['katago_version']
+    model_source = bundle['model_source']
+    sections: list[dict[str, object]] = [
+        {
+            'language': '中文',
+            'intro': '这一版是“4段纪念版”。2026 年 5 月 17 日，女儿参加围棋升段赛，正式晋升围棋业余 4 段；这版用来记录这个很值得开心的日子。本次重点不再重复上一版的大功能介绍，而是把 KataGo 一键设置窗口重新整理成更清楚、更稳的 C 方案分栏界面。',
+            'updates': {
+                'heading': '本版主要更新',
+                'items': [
+                    'KataGo 一键设置改为左侧分区、右侧详情的专家模式：总览、权重、加速、测速各自独立，按钮不再堆在一个区域里。',
+                    '智能测速进度集中到底部状态区显示，保留当前步骤和百分比，不再让进度文字在窗口里重复或挤出内容。',
+                    '取消智能测速后会恢复按钮可用状态，用户可以继续重试、关闭窗口或调整其他设置。',
+                    '本地真实启动应用检查了总览、权重、加速、测速分区，以及测速启动和取消流程。',
+                    '发布页和软件内显示版本同步使用本次 release tag，并在发布页标注纪念版名称。',
+                ],
+            },
+            'before': {
+                'heading': '下载前先看这几句',
+                'items': [
+                    f'Windows 普通用户优先下载 {assets_cn["windows_opencl_portable"]}，这是 **OpenCL 版（推荐，免安装）**。',
+                    f'如果 OpenCL 在你的电脑上不稳定，再改用 {assets_cn["windows_portable"]}。',
+                    f'如果你的电脑是 **NVIDIA 显卡**，优先下载 {assets_cn["windows_nvidia_portable"]}。',
+                    f'主推荐整合包已内置 KataGo `{katago_version}` 和默认权重 `{model_source}`。',
+                    '如果你更喜欢安装流程，再选同系列的 `installer.exe`。',
+                ],
+            },
+            'download': {
+                'heading': '下载建议',
+                'headers': ('你的电脑', '直接下载这个'),
+                'rows': standard_download_rows(STANDARD_DOWNLOAD_LABELS['zh'], assets_cn),
+            },
+            'why': {
+                'heading': '这一版为什么值得更新',
+                'items': [
+                    '一键设置的信息架构更清楚，新用户先看总览，老用户也能快速去权重、加速或测速区。',
+                    '测速进度不再撑乱窗口，取消后也不会留下按钮灰掉的尴尬状态。',
+                    '这是一个小而确定的 UI 质量提升版，适合替换上一版继续测试。',
+                ],
+            },
+            'contact': {'heading': '交流', 'items': ['QQ 群：`299419120`']},
+        },
+        {
+            'language': '繁體中文',
+            'intro': '這一版是「4 段紀念版」。2026 年 5 月 17 日，女兒參加圍棋升段賽，正式晉升圍棋業餘 4 段；這版用來記錄這個很值得開心的日子。本次重點不再重複上一版的大功能介紹，而是把 KataGo 一鍵設定視窗整理成更清楚、更穩定的 C 方案分欄介面。',
+            'updates': {
+                'heading': '本版主要更新',
+                'items': [
+                    'KataGo 一鍵設定改為左側分區、右側詳情的專家模式：總覽、權重、加速、測速各自獨立，按鈕不再堆在同一區域。',
+                    '智慧測速進度集中到底部狀態區顯示，保留目前步驟和百分比，不再讓進度文字在視窗裡重複或擠出內容。',
+                    '取消智慧測速後會恢復按鈕可用狀態，使用者可以繼續重試、關閉視窗或調整其他設定。',
+                    '本機真實啟動應用檢查了總覽、權重、加速、測速分區，以及測速啟動和取消流程。',
+                    '發布頁和軟體內顯示版本同步使用本次 release tag，並在發布頁標註紀念版名稱。',
+                ],
+            },
+            'before': {
+                'heading': '下載前先看這幾句',
+                'items': [
+                    f'Windows 一般使用者優先下載 {assets_cn["windows_opencl_portable"]}，這是 **OpenCL 版（推薦，免安裝）**。',
+                    f'如果 OpenCL 在你的電腦上不穩定，再改用 {assets_cn["windows_portable"]}。',
+                    f'如果你的電腦是 **NVIDIA 顯示卡**，優先下載 {assets_cn["windows_nvidia_portable"]}。',
+                    f'主推薦整合包已內建 KataGo `{katago_version}` 和預設權重 `{model_source}`。',
+                    '如果你更喜歡安裝流程，再選同系列的 `installer.exe`。',
+                ],
+            },
+            'download': {
+                'heading': '下載建議',
+                'headers': ('你的電腦', '直接下載這個'),
+                'rows': standard_download_rows(STANDARD_DOWNLOAD_LABELS['zh_hant'], assets_cn),
+            },
+            'why': {
+                'heading': '這一版為什麼值得更新',
+                'items': [
+                    '一鍵設定的資訊架構更清楚，新使用者先看總覽，進階使用者也能快速切到權重、加速或測速區。',
+                    '測速進度不再撐亂視窗，取消後也不會留下按鈕灰掉的狀態。',
+                    '這是一個小而確定的 UI 品質提升版，適合替換上一版繼續測試。',
+                ],
+            },
+            'contact': {'heading': '交流', 'items': ['QQ 群：`299419120`']},
+        },
+        {
+            'language': 'English',
+            'intro': 'This is the “4-dan commemorative build”. On May 17, 2026, my daughter competed in a Go promotion tournament and was promoted to amateur 4-dan; this release records that happy day. Instead of repeating the previous large feature notes, it focuses on the C-style redesign of the KataGo Auto Setup dialog.',
+            'updates': {
+                'heading': 'Release Highlights',
+                'items': [
+                    'KataGo Auto Setup now uses an expert split layout: Overview, Weights, Acceleration, and Benchmark each have their own panel and actions.',
+                    'Smart benchmark progress is consolidated into the bottom status area with the current step and percentage, avoiding duplicated progress text and layout overflow.',
+                    'Cancelling Smart Benchmark restores idle controls so users can retry, close the dialog, or adjust other settings immediately.',
+                    'A real local launch smoke test covered the Overview, Weights, Acceleration, Benchmark sections plus benchmark start and cancellation.',
+                    'The in-app display version uses this release tag, and the release page carries the commemorative name.',
+                ],
+            },
+            'before': {
+                'heading': 'Read Before Downloading',
+                'items': [
+                    f'Most Windows users should download {assets["windows_opencl_portable"]}, the **recommended no-install OpenCL build**.',
+                    f'If OpenCL is unreliable on your PC, use {assets["windows_portable"]} instead.',
+                    f'If your PC has an **NVIDIA GPU**, try {assets["windows_nvidia_portable"]} first.',
+                    f'The recommended bundles include KataGo `{katago_version}` and the default weight `{model_source}`.',
+                    'If you prefer an installer, choose the matching `installer.exe` package.',
+                ],
+            },
+            'download': {
+                'heading': 'Download Guide',
+                'headers': ('Your computer', 'Download this file'),
+                'rows': standard_download_rows(STANDARD_DOWNLOAD_LABELS['en'], assets),
+            },
+            'why': {
+                'heading': 'Why This Release Is Worth Updating',
+                'items': [
+                    'The one-click setup flow has clearer information architecture for both first-time and advanced users.',
+                    'Benchmark progress no longer disturbs the layout, and cancelling does not leave the dialog in a disabled-looking state.',
+                    'This is a small but concrete UI-quality release suitable for replacing the previous build during testing.',
+                ],
+            },
+            'contact': {'heading': 'Contact', 'items': ['QQ group: `299419120`']},
+        },
+        {
+            'language': '日本語',
+            'intro': 'このリリースは「4 段記念版」です。2026 年 5 月 17 日、娘が囲碁の昇段大会に参加し、アマ 4 段へ昇段しました。このうれしい日を記録するリリースです。前回の大きな機能説明を繰り返すのではなく、KataGo 自動設定ダイアログを C 案の分割レイアウトへ整理することに集中しました。',
+            'updates': {
+                'heading': '主な更新',
+                'items': [
+                    'KataGo 自動設定をエキスパート向けの分割レイアウトに変更しました。概要、重み、加速、ベンチマークがそれぞれ独立したパネルになります。',
+                    'Smart Benchmark の進捗は下部ステータス領域に集約し、現在のステップとパーセントを表示します。重複表示やレイアウト崩れを避けました。',
+                    'Smart Benchmark をキャンセルした後、ボタンが待機状態に戻り、再試行・終了・設定変更がすぐできます。',
+                    'ローカルで実際にアプリを起動し、概要、重み、加速、ベンチマークの各セクションと、ベンチマーク開始・キャンセルを確認しました。',
+                    'アプリ内表示バージョンは今回の release tag を使い、リリースページにも記念版名を記載します。',
+                ],
+            },
+            'before': {
+                'heading': 'ダウンロード前に',
+                'items': [
+                    f'多くの Windows ユーザーは {assets["windows_opencl_portable"]} を選ぶのがおすすめです。これは **推奨 OpenCL 版、インストール不要** です。',
+                    f'OpenCL が不安定な場合は {assets["windows_portable"]} を使ってください。',
+                    f'**NVIDIA GPU** 搭載 PC では {assets["windows_nvidia_portable"]} を優先してください。',
+                    f'推奨バンドルには KataGo `{katago_version}` と既定の重み `{model_source}` が含まれています。',
+                    'インストーラ形式がよい場合は、同じ系列の `installer.exe` を選んでください。',
+                ],
+            },
+            'download': {
+                'heading': 'ダウンロード案内',
+                'headers': ('お使いの環境', 'ダウンロードするファイル'),
+                'rows': standard_download_rows(STANDARD_DOWNLOAD_LABELS['ja'], assets),
+            },
+            'why': {
+                'heading': 'このリリースを更新する理由',
+                'items': [
+                    '一键設定の情報構造が分かりやすくなり、初回ユーザーも上級ユーザーも迷いにくくなりました。',
+                    'ベンチマーク進捗がレイアウトを崩さず、キャンセル後も無効状態のように見えません。',
+                    '前回ビルドの置き換えに適した、小さく確実な UI 品質改善版です。',
+                ],
+            },
+            'contact': {'heading': '連絡先', 'items': ['QQ グループ: `299419120`']},
+        },
+        {
+            'language': '한국어',
+            'intro': '이번 릴리스는 “4단 기념판”입니다. 2026년 5월 17일, 딸이 바둑 승단전에 참가해 아마 4단으로 승단했습니다. 이 기쁜 날을 기록하기 위한 릴리스입니다. 이전 릴리스의 큰 기능 설명을 반복하기보다 KataGo 자동 설정 창을 C안 분할 레이아웃으로 정리하는 데 집중했습니다.',
+            'updates': {
+                'heading': '주요 업데이트',
+                'items': [
+                    'KataGo 자동 설정을 전문가형 분할 레이아웃으로 바꿨습니다. Overview, Weights, Acceleration, Benchmark 가 각각 독립 패널과 동작을 갖습니다.',
+                    'Smart Benchmark 진행률은 하단 상태 영역에 모아 현재 단계와 퍼센트를 보여 주며, 진행 문구 중복과 레이아웃 밀림을 줄였습니다.',
+                    'Smart Benchmark 를 취소하면 대기 상태 버튼이 복구되어 바로 재시도, 닫기, 다른 설정 변경을 할 수 있습니다.',
+                    '로컬에서 실제 앱을 실행해 Overview, Weights, Acceleration, Benchmark 섹션과 benchmark 시작/취소 흐름을 확인했습니다.',
+                    '앱 내 표시 버전은 이번 release tag 를 사용하고, 릴리스 페이지에는 기념판 이름을 표시합니다.',
+                ],
+            },
+            'before': {
+                'heading': '다운로드 전 확인',
+                'items': [
+                    f'대부분의 Windows 사용자는 {assets["windows_opencl_portable"]} 를 먼저 받으면 됩니다. 이는 **추천 OpenCL 무설치 빌드** 입니다.',
+                    f'OpenCL 이 PC에서 불안정하면 {assets["windows_portable"]} 를 대신 사용하세요.',
+                    f'**NVIDIA GPU** 가 있다면 {assets["windows_nvidia_portable"]} 를 우선 사용해 보세요.',
+                    f'추천 번들에는 KataGo `{katago_version}` 와 기본 가중치 `{model_source}` 가 포함되어 있습니다.',
+                    '설치형 흐름을 원한다면 같은 계열의 `installer.exe` 를 고르세요.',
+                ],
+            },
+            'download': {
+                'heading': '다운로드 안내',
+                'headers': ('내 컴퓨터', '다운로드할 파일'),
+                'rows': standard_download_rows(STANDARD_DOWNLOAD_LABELS['ko'], assets),
+            },
+            'why': {
+                'heading': '이번 릴리스를 업데이트할 이유',
+                'items': [
+                    '원클릭 설정의 정보 구조가 더 명확해져 처음 쓰는 사용자와 고급 사용자 모두 이동하기 쉬워졌습니다.',
+                    '벤치마크 진행률이 창 레이아웃을 밀어내지 않고, 취소 후에도 버튼이 비활성처럼 남지 않습니다.',
+                    '이전 빌드를 대체해 테스트하기 좋은 작지만 확실한 UI 품질 개선판입니다.',
+                ],
+            },
+            'contact': {'heading': '연락처', 'items': ['QQ 그룹: `299419120`']},
+        },
+        {
+            'language': 'ภาษาไทย',
+            'intro': 'รีลีสนี้คือ “เวอร์ชันที่ระลึก 4 ดั้ง” วันที่ 17 พฤษภาคม 2026 ลูกสาวเข้าร่วมการแข่งขันเลื่อนระดับหมากล้อมและเลื่อนเป็นสมัครเล่น 4 ดั้งอย่างเป็นทางการ จึงใช้รีลีสนี้บันทึกวันที่น่าดีใจนี้ไว้ รอบนี้ไม่ซ้ำรายละเอียดใหญ่จากเวอร์ชันก่อน แต่โฟกัสที่การจัดหน้าต่าง KataGo Auto Setup ใหม่ตามแบบ C ให้ชัดและนิ่งขึ้น',
+            'updates': {
+                'heading': 'ไฮไลต์ของเวอร์ชันนี้',
+                'items': [
+                    'KataGo Auto Setup เปลี่ยนเป็น layout แบบ expert แยกซ้าย/ขวา: Overview, Weights, Acceleration และ Benchmark มี panel และปุ่มของตัวเอง',
+                    'Smart Benchmark progress ถูกรวมไว้ที่แถบสถานะด้านล่าง แสดงขั้นตอนปัจจุบันและเปอร์เซ็นต์ ลดข้อความซ้ำและปัญหาดัน layout',
+                    'เมื่อยกเลิก Smart Benchmark ปุ่มต่าง ๆ จะกลับสู่สถานะพร้อมใช้งาน ผู้ใช้ retry, ปิดหน้าต่าง หรือปรับค่าอื่นต่อได้ทันที',
+                    'ทดสอบเปิดแอปจริงบนเครื่อง local แล้ว ตรวจทั้ง Overview, Weights, Acceleration, Benchmark รวมถึงเริ่มและยกเลิก benchmark',
+                    'เวอร์ชันที่แสดงในแอปใช้ release tag รอบนี้ และหน้า release ระบุชื่อเวอร์ชันที่ระลึก',
+                ],
+            },
+            'before': {
+                'heading': 'ก่อนดาวน์โหลด ดูตรงนี้ก่อน',
+                'items': [
+                    f'ผู้ใช้ Windows ส่วนใหญ่แนะนำให้ดาวน์โหลด {assets["windows_opencl_portable"]} ซึ่งเป็น **OpenCL รุ่นแนะนำ แบบไม่ต้องติดตั้ง**',
+                    f'ถ้า OpenCL ไม่เสถียรบนเครื่องของคุณ ให้ใช้ {assets["windows_portable"]} แทน',
+                    f'ถ้ามี **NVIDIA GPU** แนะนำให้ลอง {assets["windows_nvidia_portable"]} ก่อน',
+                    f'แพ็กเกจหลักมี KataGo `{katago_version}` และน้ำหนักเริ่มต้น `{model_source}` มาให้แล้ว',
+                    'ถ้าต้องการแบบติดตั้ง ให้เลือกไฟล์ `installer.exe` ในชุดเดียวกัน',
+                ],
+            },
+            'download': {
+                'heading': 'แนะนำการดาวน์โหลด',
+                'headers': ('เครื่องของคุณ', 'ดาวน์โหลดไฟล์นี้'),
+                'rows': standard_download_rows(STANDARD_DOWNLOAD_LABELS['th'], assets),
+            },
+            'why': {
+                'heading': 'ทำไมเวอร์ชันนี้ควรอัปเดต',
+                'items': [
+                    'โครงสร้างข้อมูลของ one-click setup ชัดขึ้น ผู้ใช้ใหม่ดู Overview ก่อน ส่วนผู้ใช้ขั้นสูงไปที่ Weights, Acceleration หรือ Benchmark ได้เร็ว',
+                    'progress ของ benchmark ไม่ดัน layout และหลังยกเลิกจะไม่เหลือปุ่มที่ดูเหมือนถูก disable ค้าง',
+                    'เป็นรีลีสปรับคุณภาพ UI ขนาดเล็กแต่ชัดเจน เหมาะสำหรับแทนที่ build ก่อนหน้าเพื่อทดสอบต่อ',
+                ],
+            },
+            'contact': {'heading': 'ติดต่อ', 'items': ['QQ group: `299419120`']},
+        },
+    ]
+
+    add_nvidia50_download_rows(sections, assets_cn, assets)
+    validate_release_sections(sections)
+    heading = f'# LizzieYzy Next {release_tag} 4段纪念版' if release_tag else '# LizzieYzy Next 4段纪念版'
+    return heading + '\n\n' + '\n\n---\n\n'.join(
+        render_language_section(section) for section in sections
+    ) + '\n'
+
+
 def build_next_2026_05_03_1_notes(
     asset_map: dict[str, str | None],
     repo: str,
@@ -1478,6 +1846,8 @@ def build_release_notes(asset_map: dict[str, str | None], bundle: dict[str, str]
         return build_next_2026_05_04_1_notes(asset_map, repo, release_tag)
     if release_tag == 'next-2026-05-06.1':
         return build_next_2026_05_06_1_notes(asset_map, repo, release_tag)
+    if release_tag == 'next-2026-05-17.2':
+        return build_next_2026_05_17_2_notes(asset_map, bundle, repo, release_tag)
 
     assets_cn = {
         key: format_asset(asset_map[key], repo, release_tag)

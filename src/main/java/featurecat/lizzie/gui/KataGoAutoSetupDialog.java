@@ -11,15 +11,18 @@ import featurecat.lizzie.util.KataGoAutoSetupHelper.SetupSnapshot;
 import featurecat.lizzie.util.KataGoRuntimeHelper;
 import featurecat.lizzie.util.Utils;
 import java.awt.BorderLayout;
+import java.awt.CardLayout;
 import java.awt.Color;
 import java.awt.Component;
 import java.awt.Container;
+import java.awt.Cursor;
 import java.awt.Dimension;
+import java.awt.FlowLayout;
+import java.awt.Font;
 import java.awt.GraphicsConfiguration;
 import java.awt.GraphicsEnvironment;
 import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
-import java.awt.GridLayout;
 import java.awt.Insets;
 import java.awt.Rectangle;
 import java.awt.Window;
@@ -41,20 +44,33 @@ import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.JProgressBar;
 import javax.swing.JScrollPane;
+import javax.swing.ListSelectionModel;
+import javax.swing.SwingConstants;
 import javax.swing.SwingUtilities;
 import javax.swing.filechooser.FileNameExtensionFilter;
 
 public class KataGoAutoSetupDialog extends JDialog {
-  private static final Color OK_COLOR = new Color(0, 120, 64);
-  private static final Color WARN_COLOR = new Color(190, 105, 0);
-  private static final Color ERROR_COLOR = new Color(170, 42, 42);
-  private static final Color INFO_BG = new Color(248, 249, 251);
-  private static final Color INFO_BORDER = new Color(224, 228, 234);
+  private static final Color OK_COLOR = new Color(28, 121, 82);
+  private static final Color WARN_COLOR = new Color(184, 110, 27);
+  private static final Color ERROR_COLOR = new Color(172, 56, 56);
+  private static final Color APP_BG = new Color(244, 241, 233);
+  private static final Color CARD_BG = new Color(255, 253, 247);
+  private static final Color INFO_BG = new Color(249, 247, 240);
+  private static final Color INFO_BORDER = new Color(224, 218, 205);
+  private static final Color SIDEBAR_BG = new Color(36, 52, 55);
+  private static final Color SIDEBAR_SELECTED_BG = new Color(55, 83, 82);
+  private static final Color SIDEBAR_TEXT = new Color(236, 241, 232);
+  private static final Color TEXT_PRIMARY = new Color(35, 39, 36);
+  private static final Color TEXT_SECONDARY = new Color(101, 106, 100);
   private static final String BENCHMARK_PROGRESS_KEY = "lizzie.benchmark.dialog.progress";
-  private static final int MAX_INFO_TEXT_LENGTH = 112;
-  private static final int DIALOG_WIDTH = 700;
-  private static final int DIALOG_HEIGHT = 500;
-  private static final int VALUE_COLUMN_WIDTH = 440;
+  private static final int MAX_INFO_TEXT_LENGTH = 104;
+  private static final int DIALOG_WIDTH = 820;
+  private static final int DIALOG_HEIGHT = 580;
+  private static final int VALUE_COLUMN_WIDTH = 390;
+  private static final String CARD_OVERVIEW = "overview";
+  private static final String CARD_WEIGHTS = "weights";
+  private static final String CARD_ACCELERATION = "acceleration";
+  private static final String CARD_BENCHMARK = "benchmark";
 
   private SetupSnapshot snapshot;
   private List<RemoteWeightInfo> remoteWeightInfos = Collections.emptyList();
@@ -71,8 +87,12 @@ public class KataGoAutoSetupDialog extends JDialog {
   private final JLabel lblRemoteDetailValue = new JFontLabel();
   private final JLabel lblLocalWeightDetailValue = new JFontLabel();
   private final JLabel lblStatus = new JFontLabel();
+  private final JList<String> sectionNav = new JList<String>();
+  private final CardLayout detailCardLayout = new CardLayout();
+  private final JPanel detailCards = new JPanel(detailCardLayout);
   private final JPanel progressPanel = new JPanel(new BorderLayout(0, 6));
   private final JLabel progressStatusLabel = new JFontLabel();
+  private final JLabel progressTitleLabel = new JFontLabel();
   private final JFontComboBox<RemoteWeightInfo> cmbRemoteWeights =
       new JFontComboBox<RemoteWeightInfo>();
   private final JFontComboBox<Path> cmbLocalWeights = new JFontComboBox<Path>();
@@ -93,7 +113,7 @@ public class KataGoAutoSetupDialog extends JDialog {
     setModal(false);
     setTitle(text("AutoSetup.title"));
     setSize(DIALOG_WIDTH, DIALOG_HEIGHT);
-    setMinimumSize(new Dimension(640, 460));
+    setMinimumSize(new Dimension(760, 520));
     setDefaultCloseOperation(DO_NOTHING_ON_CLOSE);
     setAlwaysOnTop(owner instanceof LizzieFrame && ((LizzieFrame) owner).isAlwaysOnTop());
     placeOnOwnerScreen(owner);
@@ -104,30 +124,12 @@ public class KataGoAutoSetupDialog extends JDialog {
           }
         });
 
-    JPanel content = new JPanel(new BorderLayout(0, 12));
-    content.setBorder(BorderFactory.createEmptyBorder(14, 16, 14, 16));
+    configureButtons();
+
+    JPanel content = new JPanel(new BorderLayout(0, 0));
+    content.setBackground(APP_BG);
     setContentPane(content);
 
-    JFontLabel description =
-        new JFontLabel("<html>" + text("AutoSetup.description").replace("\n", "<br>") + "</html>");
-    content.add(description, BorderLayout.NORTH);
-
-    JPanel infoPanel = new JPanel(new GridBagLayout());
-    JScrollPane infoScrollPane = new JScrollPane(infoPanel);
-    infoScrollPane.setBorder(null);
-    infoScrollPane.getViewport().setOpaque(false);
-    infoScrollPane.setOpaque(false);
-    content.add(infoScrollPane, BorderLayout.CENTER);
-
-    GridBagConstraints gbc = new GridBagConstraints();
-    gbc.gridx = 0;
-    gbc.gridy = 0;
-    gbc.anchor = GridBagConstraints.NORTHWEST;
-    gbc.insets = new Insets(0, 0, 8, 10);
-
-    addInfoRow(infoPanel, gbc, text("AutoSetup.localEngine"), lblEngineValue);
-    addInfoRow(infoPanel, gbc, text("AutoSetup.localWeight"), lblWeightValue);
-    addInfoRow(infoPanel, gbc, text("AutoSetup.localWeightModel"), lblWeightModelValue);
     cmbLocalWeights.setMaximumRowCount(12);
     cmbLocalWeights.setRenderer(
         new DefaultListCellRenderer() {
@@ -145,12 +147,6 @@ public class KataGoAutoSetupDialog extends JDialog {
           }
         });
     cmbLocalWeights.addActionListener(e -> updateSelectedLocalWeightInfo());
-    addComponentRow(infoPanel, gbc, text("AutoSetup.localWeights"), cmbLocalWeights);
-    addInfoRow(
-        infoPanel, gbc, text("AutoSetup.selectedLocalWeightInfo"), lblLocalWeightDetailValue);
-    addInfoRow(infoPanel, gbc, text("AutoSetup.localConfig"), lblConfigValue);
-    addInfoRow(infoPanel, gbc, text("AutoSetup.nvidiaRuntime"), lblNvidiaRuntimeValue);
-    addInfoRow(infoPanel, gbc, text("AutoSetup.performance"), lblBenchmarkValue);
 
     cmbRemoteWeights.setMaximumRowCount(18);
     cmbRemoteWeights.setRenderer(
@@ -169,65 +165,28 @@ public class KataGoAutoSetupDialog extends JDialog {
           }
         });
     cmbRemoteWeights.addActionListener(e -> updateSelectedRemoteWeightInfo());
-    addComponentRow(infoPanel, gbc, text("AutoSetup.officialWeights"), cmbRemoteWeights);
-    addInfoRow(infoPanel, gbc, text("AutoSetup.selectedWeightInfo"), lblRemoteDetailValue);
-    addInfoRow(infoPanel, gbc, text("AutoSetup.currentStatus"), lblStatus);
 
-    JPanel bottomPanel = new JPanel(new BorderLayout(0, 10));
-    content.add(bottomPanel, BorderLayout.SOUTH);
+    content.add(createHeaderPanel(), BorderLayout.NORTH);
 
-    progressPanel.setOpaque(true);
-    progressPanel.setBackground(new Color(255, 248, 232));
-    progressPanel.setBorder(
-        BorderFactory.createCompoundBorder(
-            BorderFactory.createLineBorder(new Color(230, 190, 122)),
-            BorderFactory.createEmptyBorder(8, 10, 8, 10)));
-    progressPanel.setVisible(false);
-    progressStatusLabel.setForeground(WARN_COLOR);
-    progressStatusLabel.setText("");
-    progressBar.setStringPainted(true);
-    progressBar.setPreferredSize(new Dimension(10, 24));
-    progressBar.setMinimumSize(new Dimension(10, 22));
-    progressPanel.add(progressStatusLabel, BorderLayout.NORTH);
-    progressPanel.add(progressBar, BorderLayout.CENTER);
-    bottomPanel.add(progressPanel, BorderLayout.NORTH);
+    JPanel body = new JPanel(new BorderLayout(14, 0));
+    body.setOpaque(false);
+    body.setBorder(BorderFactory.createEmptyBorder(12, 16, 12, 16));
+    body.add(createSidebarPanel(), BorderLayout.WEST);
 
-    JPanel buttonPanel = new JPanel(new GridLayout(0, 3, 8, 8));
-    bottomPanel.add(buttonPanel, BorderLayout.SOUTH);
+    detailCards.setOpaque(false);
+    detailCards.add(createOverviewSection(), CARD_OVERVIEW);
+    detailCards.add(createWeightsSection(), CARD_WEIGHTS);
+    detailCards.add(createAccelerationSection(), CARD_ACCELERATION);
+    detailCards.add(createBenchmarkSection(), CARD_BENCHMARK);
+    JScrollPane detailScrollPane = new JScrollPane(detailCards);
+    detailScrollPane.setBorder(null);
+    detailScrollPane.getViewport().setOpaque(false);
+    detailScrollPane.setOpaque(false);
+    body.add(detailScrollPane, BorderLayout.CENTER);
+    content.add(body, BorderLayout.CENTER);
 
-    btnRefresh.setText(text("AutoSetup.refresh"));
-    btnAutoSetup.setText(text("AutoSetup.autoSetup"));
-    btnDownloadWeight.setText(text("AutoSetup.downloadWeight"));
-    btnImportWeight.setText(text("AutoSetup.importWeight"));
-    btnApplyWeight.setText(text("AutoSetup.applyWeight"));
-    btnInstallNvidiaRuntime.setText(text("AutoSetup.installNvidiaRuntime"));
-    btnInstallTensorRt.setText(text("AutoSetup.installTensorRt"));
-    btnOptimizePerformance.setText(text("AutoSetup.optimizePerformance"));
-    btnStopDownload.setText(text("AutoSetup.stopDownload"));
-    btnStopDownload.setEnabled(false);
-    btnClose.setText(text("AutoSetup.close"));
-
-    btnRefresh.addActionListener(e -> refreshState());
-    btnAutoSetup.addActionListener(e -> autoSetupOrDownload());
-    btnDownloadWeight.addActionListener(e -> startRecommendedWeightDownload(false));
-    btnImportWeight.addActionListener(e -> importCustomWeight());
-    btnApplyWeight.addActionListener(e -> applySelectedWeight());
-    btnInstallNvidiaRuntime.addActionListener(e -> startNvidiaRuntimeInstall());
-    btnInstallTensorRt.addActionListener(e -> startTensorRtInstall());
-    btnOptimizePerformance.addActionListener(e -> startPerformanceBenchmark());
-    btnStopDownload.addActionListener(e -> stopActiveDownload());
-    btnClose.addActionListener(e -> closeOrCancelActiveTask());
-
-    buttonPanel.add(btnRefresh);
-    buttonPanel.add(btnInstallNvidiaRuntime);
-    buttonPanel.add(btnDownloadWeight);
-    buttonPanel.add(btnImportWeight);
-    buttonPanel.add(btnApplyWeight);
-    buttonPanel.add(btnOptimizePerformance);
-    buttonPanel.add(btnInstallTensorRt);
-    buttonPanel.add(btnStopDownload);
-    buttonPanel.add(btnAutoSetup);
-    buttonPanel.add(btnClose);
+    content.add(createFooterPanel(), BorderLayout.SOUTH);
+    wireActions();
 
     refreshState();
   }
@@ -240,6 +199,316 @@ public class KataGoAutoSetupDialog extends JDialog {
 
   public void startRecommendedWeightDownload() {
     startRecommendedWeightDownload(false);
+  }
+
+  private void configureButtons() {
+    btnRefresh.setText(text("AutoSetup.refresh"));
+    btnAutoSetup.setText(text("AutoSetup.autoSetup"));
+    btnDownloadWeight.setText(text("AutoSetup.downloadWeight"));
+    btnImportWeight.setText(text("AutoSetup.importWeight"));
+    btnApplyWeight.setText(text("AutoSetup.applyWeight"));
+    btnInstallNvidiaRuntime.setText(text("AutoSetup.installNvidiaRuntime"));
+    btnInstallTensorRt.setText(text("AutoSetup.installTensorRt"));
+    btnOptimizePerformance.setText(text("AutoSetup.optimizePerformance"));
+    btnStopDownload.setText(text("AutoSetup.stopDownload"));
+    btnStopDownload.setEnabled(false);
+    btnClose.setText(text("AutoSetup.close"));
+
+    styleButton(btnAutoSetup, true);
+    styleButton(btnDownloadWeight, true);
+    styleButton(btnOptimizePerformance, true);
+    styleButton(btnRefresh, false);
+    styleButton(btnImportWeight, false);
+    styleButton(btnApplyWeight, false);
+    styleButton(btnInstallNvidiaRuntime, false);
+    styleButton(btnInstallTensorRt, false);
+    styleButton(btnStopDownload, false);
+    styleButton(btnClose, false);
+  }
+
+  private void wireActions() {
+    btnRefresh.addActionListener(e -> refreshState());
+    btnAutoSetup.addActionListener(e -> autoSetupOrDownload());
+    btnDownloadWeight.addActionListener(e -> startRecommendedWeightDownload(false));
+    btnImportWeight.addActionListener(e -> importCustomWeight());
+    btnApplyWeight.addActionListener(e -> applySelectedWeight());
+    btnInstallNvidiaRuntime.addActionListener(e -> startNvidiaRuntimeInstall());
+    btnInstallTensorRt.addActionListener(e -> startTensorRtInstall());
+    btnOptimizePerformance.addActionListener(e -> startPerformanceBenchmark());
+    btnStopDownload.addActionListener(e -> stopActiveDownload());
+    btnClose.addActionListener(e -> closeOrCancelActiveTask());
+  }
+
+  private void styleButton(JFontButton button, boolean primary) {
+    if (primary) {
+      AppleStyleSupport.markPrimary(button);
+    }
+    button.setFocusPainted(false);
+    button.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+    button.setMargin(new Insets(0, 12, 0, 12));
+    AppleStyleSupport.installButtonStyle(button);
+    Dimension preferred = button.getPreferredSize();
+    button.setPreferredSize(new Dimension(Math.max(preferred.width, primary ? 112 : 96), 36));
+  }
+
+  private JPanel createHeaderPanel() {
+    JPanel header = new JPanel(new BorderLayout(12, 4));
+    header.setBackground(SIDEBAR_BG);
+    header.setBorder(BorderFactory.createEmptyBorder(14, 18, 14, 18));
+
+    JFontLabel title = new JFontLabel(text("AutoSetup.title"));
+    title.setForeground(Color.WHITE);
+    title.setFont(title.getFont().deriveFont(Font.BOLD, title.getFont().getSize2D() + 5f));
+
+    JFontLabel subtitle =
+        new JFontLabel(
+            "<html>"
+                + text("AutoSetup.expertHeader")
+                + "<br>"
+                + text("AutoSetup.expertSubtitle")
+                + "</html>");
+    subtitle.setForeground(new Color(207, 218, 205));
+
+    JPanel titleBlock = new JPanel(new BorderLayout(0, 4));
+    titleBlock.setOpaque(false);
+    titleBlock.add(title, BorderLayout.NORTH);
+    titleBlock.add(subtitle, BorderLayout.CENTER);
+    header.add(titleBlock, BorderLayout.CENTER);
+
+    JFontLabel modeBadge = new JFontLabel(text("AutoSetup.expertMode"));
+    modeBadge.setHorizontalAlignment(SwingConstants.CENTER);
+    modeBadge.setForeground(SIDEBAR_TEXT);
+    modeBadge.setBorder(
+        BorderFactory.createCompoundBorder(
+            BorderFactory.createLineBorder(new Color(103, 130, 121)),
+            BorderFactory.createEmptyBorder(6, 12, 6, 12)));
+    header.add(modeBadge, BorderLayout.EAST);
+    return header;
+  }
+
+  private JPanel createSidebarPanel() {
+    JPanel sidebar = new JPanel(new BorderLayout(0, 12));
+    sidebar.setPreferredSize(new Dimension(150, 10));
+    sidebar.setBackground(SIDEBAR_BG);
+    sidebar.setBorder(BorderFactory.createEmptyBorder(14, 12, 14, 12));
+
+    JFontLabel sidebarTitle = new JFontLabel(text("AutoSetup.sidebarTitle"));
+    sidebarTitle.setForeground(SIDEBAR_TEXT);
+    sidebarTitle.setFont(sidebarTitle.getFont().deriveFont(Font.BOLD));
+    sidebar.add(sidebarTitle, BorderLayout.NORTH);
+
+    sectionNav.setListData(
+        new String[] {
+          text("AutoSetup.navOverview"),
+          text("AutoSetup.navWeights"),
+          text("AutoSetup.navAcceleration"),
+          text("AutoSetup.navBenchmark")
+        });
+    sectionNav.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+    sectionNav.setSelectedIndex(0);
+    sectionNav.setFixedCellHeight(40);
+    sectionNav.setBackground(SIDEBAR_BG);
+    sectionNav.setForeground(SIDEBAR_TEXT);
+    sectionNav.setBorder(null);
+    sectionNav.setCellRenderer(
+        new DefaultListCellRenderer() {
+          @Override
+          public Component getListCellRendererComponent(
+              JList<?> list, Object value, int index, boolean isSelected, boolean cellHasFocus) {
+            JLabel label =
+                (JLabel)
+                    super.getListCellRendererComponent(
+                        list, value, index, isSelected, cellHasFocus);
+            label.setOpaque(true);
+            label.setBorder(BorderFactory.createEmptyBorder(8, 10, 8, 10));
+            label.setForeground(SIDEBAR_TEXT);
+            label.setBackground(isSelected ? SIDEBAR_SELECTED_BG : SIDEBAR_BG);
+            label.setFont(label.getFont().deriveFont(isSelected ? Font.BOLD : Font.PLAIN));
+            return label;
+          }
+        });
+    sectionNav.addListSelectionListener(
+        e -> {
+          if (e.getValueIsAdjusting()) {
+            return;
+          }
+          switch (sectionNav.getSelectedIndex()) {
+            case 1:
+              detailCardLayout.show(detailCards, CARD_WEIGHTS);
+              break;
+            case 2:
+              detailCardLayout.show(detailCards, CARD_ACCELERATION);
+              break;
+            case 3:
+              detailCardLayout.show(detailCards, CARD_BENCHMARK);
+              break;
+            default:
+              detailCardLayout.show(detailCards, CARD_OVERVIEW);
+              break;
+          }
+        });
+    sidebar.add(sectionNav, BorderLayout.CENTER);
+
+    JFontLabel note = new JFontLabel("<html>" + text("AutoSetup.sidebarHint") + "</html>");
+    note.setForeground(new Color(193, 203, 194));
+    sidebar.add(note, BorderLayout.SOUTH);
+    return sidebar;
+  }
+
+  private JPanel createOverviewSection() {
+    JPanel rows = createRowsPanel();
+    GridBagConstraints gbc = createRowConstraints();
+    addInfoRow(rows, gbc, text("AutoSetup.localEngine"), lblEngineValue);
+    addInfoRow(rows, gbc, text("AutoSetup.localWeight"), lblWeightValue);
+    addInfoRow(rows, gbc, text("AutoSetup.localWeightModel"), lblWeightModelValue);
+    addInfoRow(rows, gbc, text("AutoSetup.localConfig"), lblConfigValue);
+
+    JPanel actions = createActionBar(FlowLayout.RIGHT, btnRefresh, btnAutoSetup);
+    return createSectionCard(
+        text("AutoSetup.overviewTitle"), text("AutoSetup.overviewSubtitle"), rows, actions);
+  }
+
+  private JPanel createWeightsSection() {
+    JPanel rows = createRowsPanel();
+    GridBagConstraints gbc = createRowConstraints();
+    addComponentRow(rows, gbc, text("AutoSetup.localWeights"), cmbLocalWeights);
+    addInfoRow(rows, gbc, text("AutoSetup.selectedLocalWeightInfo"), lblLocalWeightDetailValue);
+    addComponentRow(rows, gbc, text("AutoSetup.officialWeights"), cmbRemoteWeights);
+    addInfoRow(rows, gbc, text("AutoSetup.selectedWeightInfo"), lblRemoteDetailValue);
+
+    JPanel actions =
+        createActionBar(FlowLayout.RIGHT, btnImportWeight, btnApplyWeight, btnDownloadWeight);
+    return createSectionCard(
+        text("AutoSetup.weightsTitle"), text("AutoSetup.weightsSubtitle"), rows, actions);
+  }
+
+  private JPanel createAccelerationSection() {
+    JPanel rows = createRowsPanel();
+    GridBagConstraints gbc = createRowConstraints();
+    addInfoRow(rows, gbc, text("AutoSetup.nvidiaRuntime"), lblNvidiaRuntimeValue);
+
+    JFontLabel tensorRtHint =
+        new JFontLabel("<html>" + text("AutoSetup.accelerationTensorRtHint") + "</html>");
+    tensorRtHint.setForeground(TEXT_SECONDARY);
+    addComponentRow(rows, gbc, text("AutoSetup.installTensorRt"), tensorRtHint);
+
+    JPanel actions = createActionBar(FlowLayout.RIGHT, btnInstallNvidiaRuntime, btnInstallTensorRt);
+    return createSectionCard(
+        text("AutoSetup.accelerationTitle"), text("AutoSetup.accelerationSubtitle"), rows, actions);
+  }
+
+  private JPanel createBenchmarkSection() {
+    JPanel rows = createRowsPanel();
+    GridBagConstraints gbc = createRowConstraints();
+    addInfoRow(rows, gbc, text("AutoSetup.performance"), lblBenchmarkValue);
+
+    JFontLabel benchmarkHint =
+        new JFontLabel("<html>" + text("AutoSetup.benchmarkHint") + "</html>");
+    benchmarkHint.setForeground(TEXT_SECONDARY);
+    addComponentRow(rows, gbc, text("AutoSetup.benchmarkRecommended"), benchmarkHint);
+
+    JPanel actions = createActionBar(FlowLayout.RIGHT, btnOptimizePerformance);
+    return createSectionCard(
+        text("AutoSetup.benchmarkTitle"), text("AutoSetup.benchmarkSubtitle"), rows, actions);
+  }
+
+  private JPanel createFooterPanel() {
+    JPanel footer = new JPanel(new BorderLayout(0, 10));
+    footer.setOpaque(true);
+    footer.setBackground(APP_BG);
+    footer.setBorder(BorderFactory.createEmptyBorder(0, 16, 14, 16));
+
+    progressPanel.setOpaque(true);
+    progressPanel.setBackground(new Color(255, 249, 235));
+    progressPanel.setBorder(
+        BorderFactory.createCompoundBorder(
+            BorderFactory.createLineBorder(new Color(228, 194, 127)),
+            BorderFactory.createEmptyBorder(8, 10, 8, 10)));
+    progressPanel.setVisible(false);
+    progressTitleLabel.setText(text("AutoSetup.progressTitle"));
+    progressTitleLabel.setForeground(TEXT_PRIMARY);
+    progressTitleLabel.setFont(progressTitleLabel.getFont().deriveFont(Font.BOLD));
+    progressStatusLabel.setForeground(WARN_COLOR);
+    progressStatusLabel.setText("");
+    progressBar.setStringPainted(true);
+    progressBar.setPreferredSize(new Dimension(10, 24));
+    progressBar.setMinimumSize(new Dimension(10, 22));
+    JPanel progressHeader = new JPanel(new BorderLayout(10, 0));
+    progressHeader.setOpaque(false);
+    progressHeader.add(progressTitleLabel, BorderLayout.WEST);
+    progressHeader.add(progressStatusLabel, BorderLayout.CENTER);
+    progressPanel.add(progressHeader, BorderLayout.NORTH);
+    progressPanel.add(progressBar, BorderLayout.CENTER);
+    footer.add(progressPanel, BorderLayout.NORTH);
+
+    JPanel statusBar = new JPanel(new BorderLayout(12, 0));
+    statusBar.setOpaque(false);
+    lblStatus.setOpaque(true);
+    lblStatus.setBackground(CARD_BG);
+    lblStatus.setBorder(
+        BorderFactory.createCompoundBorder(
+            BorderFactory.createLineBorder(INFO_BORDER),
+            BorderFactory.createEmptyBorder(7, 10, 7, 10)));
+    statusBar.add(lblStatus, BorderLayout.CENTER);
+    statusBar.add(createActionBar(FlowLayout.RIGHT, btnStopDownload, btnClose), BorderLayout.EAST);
+    footer.add(statusBar, BorderLayout.SOUTH);
+    return footer;
+  }
+
+  private JPanel createSectionCard(
+      String title, String subtitle, JComponent content, JComponent actions) {
+    JPanel card = new JPanel(new BorderLayout(0, 14));
+    card.setOpaque(true);
+    card.setBackground(CARD_BG);
+    card.setBorder(
+        BorderFactory.createCompoundBorder(
+            BorderFactory.createLineBorder(new Color(224, 217, 203)),
+            BorderFactory.createEmptyBorder(16, 16, 16, 16)));
+
+    JPanel heading = new JPanel(new BorderLayout(0, 4));
+    heading.setOpaque(false);
+    JFontLabel titleLabel = new JFontLabel(title);
+    titleLabel.setForeground(TEXT_PRIMARY);
+    titleLabel.setFont(
+        titleLabel.getFont().deriveFont(Font.BOLD, titleLabel.getFont().getSize2D() + 2f));
+    JFontLabel subtitleLabel = new JFontLabel(subtitle);
+    subtitleLabel.setForeground(TEXT_SECONDARY);
+    heading.add(titleLabel, BorderLayout.NORTH);
+    heading.add(subtitleLabel, BorderLayout.CENTER);
+    card.add(heading, BorderLayout.NORTH);
+
+    JPanel contentWrap = new JPanel(new BorderLayout());
+    contentWrap.setOpaque(false);
+    contentWrap.add(content, BorderLayout.NORTH);
+    card.add(contentWrap, BorderLayout.CENTER);
+    if (actions != null) {
+      card.add(actions, BorderLayout.SOUTH);
+    }
+    return card;
+  }
+
+  private JPanel createRowsPanel() {
+    JPanel rows = new JPanel(new GridBagLayout());
+    rows.setOpaque(false);
+    return rows;
+  }
+
+  private GridBagConstraints createRowConstraints() {
+    GridBagConstraints gbc = new GridBagConstraints();
+    gbc.gridx = 0;
+    gbc.gridy = 0;
+    gbc.anchor = GridBagConstraints.NORTHWEST;
+    gbc.insets = new Insets(0, 0, 10, 10);
+    return gbc;
+  }
+
+  private JPanel createActionBar(int alignment, JComponent... actions) {
+    JPanel actionBar = new JPanel(new FlowLayout(alignment, 8, 0));
+    actionBar.setOpaque(false);
+    for (JComponent action : actions) {
+      actionBar.add(action);
+    }
+    return actionBar;
   }
 
   private void addInfoRow(JPanel panel, GridBagConstraints gbc, String title, JLabel valueLabel) {
@@ -1194,12 +1463,36 @@ public class KataGoAutoSetupDialog extends JDialog {
   }
 
   private void clearActiveDownload(DownloadSession session, Thread workerThread) {
+    boolean stateChanged = false;
     if (activeDownloadSession == session) {
       activeDownloadSession = null;
+      stateChanged = true;
     }
     if (activeWorkerThread == workerThread) {
       activeWorkerThread = null;
+      stateChanged = true;
     }
+    if (stateChanged) {
+      SwingUtilities.invokeLater(this::refreshIdleControls);
+    }
+  }
+
+  private void refreshIdleControls() {
+    if (activeDownloadSession != null || activeWorkerThread != null) {
+      return;
+    }
+    btnRefresh.setEnabled(true);
+    btnAutoSetup.setEnabled(true);
+    btnDownloadWeight.setEnabled(getSelectedRemoteWeight() != null);
+    btnImportWeight.setEnabled(true);
+    btnApplyWeight.setEnabled(getSelectedLocalWeight() != null);
+    cmbLocalWeights.setEnabled(cmbLocalWeights.getItemCount() > 0);
+    cmbRemoteWeights.setEnabled(cmbRemoteWeights.getItemCount() > 0);
+    btnInstallNvidiaRuntime.setEnabled(canInstallNvidiaRuntime());
+    btnInstallTensorRt.setEnabled(canInstallTensorRt());
+    btnOptimizePerformance.setEnabled(canRunBenchmark());
+    btnStopDownload.setEnabled(false);
+    btnClose.setEnabled(true);
   }
 
   private String text(String key) {
