@@ -296,6 +296,61 @@ class BoardNodeKindHistoryPipelineTest {
   }
 
   @Test
+  void normalHandicapRootSetupDefaultsToWhiteToPlayAndKeepsFixedStones() throws Exception {
+    TestEnvironment env = TestEnvironment.open();
+    try {
+      String sgf = "(;SZ[3]HA[2]AB[aa]AB[ca];W[ba];B[bb])";
+      BoardHistoryList history = SGFParser.parseSgf(sgf, false);
+
+      BoardHistoryNode root = history.getStart();
+      BoardHistoryNode whiteMove = root.next().orElseThrow();
+      BoardHistoryNode blackMove = whiteMove.next().orElseThrow();
+
+      assertFalse(
+          root.getData().blackToPlay,
+          "normal handicap SGF with HA and root AB stones should start with White to play.");
+      assertEquals(Stone.BLACK, root.getData().stones[Board.getIndex(0, 0)]);
+      assertEquals(Stone.BLACK, root.getData().stones[Board.getIndex(2, 0)]);
+      assertEquals(
+          Stone.BLACK,
+          whiteMove.getData().stones[Board.getIndex(0, 0)],
+          "fixed handicap stones should still be present after White's first move.");
+      assertEquals(
+          Stone.BLACK,
+          whiteMove.getData().stones[Board.getIndex(2, 0)],
+          "fixed handicap stones should not reappear later as phantom moves.");
+      assertEquals(Stone.WHITE, whiteMove.getData().stones[Board.getIndex(1, 0)]);
+      assertEquals(Stone.BLACK, blackMove.getData().stones[Board.getIndex(1, 1)]);
+    } finally {
+      env.close();
+    }
+  }
+
+  @Test
+  void liveLoadNormalHandicapRootSetupKeepsWhiteToPlayAndFixedStones() throws Exception {
+    TestEnvironment env = TestEnvironment.open();
+    try {
+      String sgf = "(;SZ[3]HA[2]AB[aa]AB[ca];W[ba];B[bb])";
+
+      assertTrue(SGFParser.loadFromString(sgf), "loadFromString should parse normal handicap SGF.");
+
+      BoardHistoryList history = Lizzie.board.getHistory();
+      BoardHistoryNode root = history.getStart();
+      BoardHistoryNode whiteMove = root.next().orElseThrow();
+      assertFalse(
+          root.getData().blackToPlay,
+          "live SGF loading should leave normal handicap games ready for White.");
+      assertEquals(Stone.BLACK, root.getData().stones[Board.getIndex(0, 0)]);
+      assertEquals(Stone.BLACK, root.getData().stones[Board.getIndex(2, 0)]);
+      assertEquals(Stone.BLACK, whiteMove.getData().stones[Board.getIndex(0, 0)]);
+      assertEquals(Stone.BLACK, whiteMove.getData().stones[Board.getIndex(2, 0)]);
+      assertEquals(Stone.WHITE, whiteMove.getData().stones[Board.getIndex(1, 0)]);
+    } finally {
+      env.close();
+    }
+  }
+
+  @Test
   void preFirstMoveStandaloneSetupNodeStaysIndependentSnapshot() throws Exception {
     TestEnvironment env = TestEnvironment.open();
     try {

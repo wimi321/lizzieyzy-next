@@ -3314,7 +3314,7 @@ public class SGFParser {
       return;
     }
     if (hasRootSetupStoneProperties(rootData)) {
-      rootData.blackToPlay = true;
+      rootData.blackToPlay = !isHandicapRootSetup(history, rootData);
     }
   }
 
@@ -3323,6 +3323,29 @@ public class SGFParser {
     return properties.containsKey("AB")
         || properties.containsKey("AW")
         || properties.containsKey("AE");
+  }
+
+  private static boolean isHandicapRootSetup(BoardHistoryList history, BoardData rootData) {
+    if (rootData == null || !rootData.getProperties().containsKey("AB")) {
+      return false;
+    }
+    int handicap =
+        history == null || history.getGameInfo() == null ? 0 : history.getGameInfo().getHandicap();
+    if (handicap <= 0) {
+      handicap = parseHandicapProperty(rootData.getProperty("HA"));
+    }
+    return handicap >= 2;
+  }
+
+  private static int parseHandicapProperty(String rawHandicap) {
+    if (Utils.isBlank(rawHandicap)) {
+      return 0;
+    }
+    try {
+      return Integer.parseInt(rawHandicap.trim());
+    } catch (NumberFormatException ignored) {
+      return 0;
+    }
   }
 
   private static void appendSetupSnapshot(

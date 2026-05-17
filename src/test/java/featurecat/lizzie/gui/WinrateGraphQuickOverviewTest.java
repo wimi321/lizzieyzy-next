@@ -102,6 +102,17 @@ class WinrateGraphQuickOverviewTest {
     }
   }
 
+  @Test
+  void blunderBarHeightScalesWithMistakeSeverity() {
+    int tiny = WinrateGraph.resolveBlunderBarHeight(120, 0.2, 0.1);
+    int medium = WinrateGraph.resolveBlunderBarHeight(120, 8.0, 1.5);
+    int large = WinrateGraph.resolveBlunderBarHeight(120, 28.0, 10.0);
+
+    assertTrue(medium > tiny, "visible mistake bars should not all use the same flat height.");
+    assertTrue(large > medium, "larger winrate/score losses should draw taller bars.");
+    assertTrue(large <= 40, "bars should stay inside the lower graph band.");
+  }
+
   private static List<?> buildQuickOverviewMoves(WinrateGraph graph, BoardHistoryNode node)
       throws Exception {
     Method method =

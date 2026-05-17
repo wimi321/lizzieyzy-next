@@ -197,7 +197,7 @@ public class WinrateGraph {
       return;
     }
     gBlunder.setColor(getBlunderColor(winrateDrop, scoreDrop));
-    int barHeight = Math.min(15, Math.max(6, graphHeight / 12));
+    int barHeight = resolveBlunderBarHeight(graphHeight, winrateDrop, scoreDrop);
     int leftIndex = Math.min(fromMoveIndex, toMoveIndex);
     int rightIndex = Math.max(fromMoveIndex, toMoveIndex);
     int rectStart = graphX + leftIndex * graphWidth / numMoves;
@@ -205,6 +205,21 @@ public class WinrateGraph {
     int rectWidth =
         Math.max(Math.max(1, Lizzie.config.minimumBlunderBarWidth), rectEnd - rectStart);
     gBlunder.fillRect(rectStart, blunderBottom - barHeight, rectWidth + 1, barHeight);
+  }
+
+  static int resolveBlunderBarHeight(int graphHeight, double winrateDrop, double scoreDrop) {
+    int usableHeight = Math.max(1, graphHeight);
+    int maxHeight = Math.max(4, usableHeight / 3);
+    int minHeight = Math.max(2, Math.min(6, maxHeight));
+    double winrateSeverity = Math.abs(winrateDrop) / 30.0;
+    double scoreSeverity = Math.abs(scoreDrop) / 12.0;
+    double severity = Math.max(winrateSeverity, scoreSeverity);
+    if (severity <= 0.01) {
+      return Math.max(1, Math.min(3, usableHeight / 24));
+    }
+    double easedSeverity = Math.sqrt(Math.min(1.0, severity));
+    int height = (int) Math.round(minHeight + (maxHeight - minHeight) * easedSeverity);
+    return clamp(height, 1, maxHeight);
   }
 
   static Color resolveGraphBackgroundColor(Color panelColor, boolean appleStyle) {
