@@ -3345,6 +3345,16 @@ public class Menu extends JMenuBar {
           }
         });
 
+    final JFontMenuItem playerStrengthEstimate =
+        new JFontMenuItem(resourceBundle.getString("Menu.playerStrengthEstimate"));
+    analyzeMenu.add(playerStrengthEstimate);
+    playerStrengthEstimate.addActionListener(
+        new ActionListener() {
+          public void actionPerformed(ActionEvent e) {
+            Lizzie.frame.showPlayerStrengthEstimate();
+          }
+        });
+
     analyzeMenu.addSeparator();
     final JFontMenuItem showHeatmap =
         new JFontMenuItem(resourceBundle.getString("Menu.showHeatmap")); // ("纯网络(H)");
