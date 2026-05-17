@@ -577,6 +577,10 @@ public final class KataGoAutoSetupHelper {
     return resolveWeightDisplayName(weightPath, null, null);
   }
 
+  public static String resolveWeightDisplayName(String modelName) {
+    return toWeightDisplayName(modelName);
+  }
+
   private static String resolveWeightDisplayName(Path weightPath, Path workingDir, Path appRoot) {
     if (weightPath == null) {
       return "";
@@ -1010,7 +1014,7 @@ public final class KataGoAutoSetupHelper {
     List<String> selected = new ArrayList<>();
     for (String token : tokens) {
       String trimmed = token.trim();
-      if (!trimmed.isEmpty()) {
+      if (isMeaningfulWeightSuffixToken(trimmed)) {
         selected.add(trimmed);
       }
       if (selected.size() >= 2) {
@@ -1018,6 +1022,20 @@ public final class KataGoAutoSetupHelper {
       }
     }
     return String.join(" ", selected);
+  }
+
+  private static boolean isMeaningfulWeightSuffixToken(String token) {
+    if (token == null || token.trim().isEmpty()) {
+      return false;
+    }
+    String normalized = token.trim().toLowerCase(Locale.ROOT);
+    if (normalized.matches("[sd][0-9a-f]+")) {
+      return false;
+    }
+    if (normalized.matches("[a-z]{1,3}[0-9a-fx]{4,}")) {
+      return false;
+    }
+    return normalized.matches(".*[a-z].*");
   }
 
   private static String stripWeightFileExtension(String modelName) {

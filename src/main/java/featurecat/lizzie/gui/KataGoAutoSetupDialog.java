@@ -19,6 +19,7 @@ import java.awt.Cursor;
 import java.awt.Dimension;
 import java.awt.FlowLayout;
 import java.awt.Font;
+import java.awt.FontMetrics;
 import java.awt.GraphicsConfiguration;
 import java.awt.GraphicsEnvironment;
 import java.awt.GridBagConstraints;
@@ -32,6 +33,7 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.util.Collections;
 import java.util.List;
+import java.util.Locale;
 import javax.swing.BorderFactory;
 import javax.swing.DefaultComboBoxModel;
 import javax.swing.DefaultListCellRenderer;
@@ -44,6 +46,7 @@ import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.JProgressBar;
 import javax.swing.JScrollPane;
+import javax.swing.JTextArea;
 import javax.swing.ListSelectionModel;
 import javax.swing.SwingConstants;
 import javax.swing.SwingUtilities;
@@ -63,6 +66,7 @@ public class KataGoAutoSetupDialog extends JDialog {
   private static final Color TEXT_PRIMARY = new Color(35, 39, 36);
   private static final Color TEXT_SECONDARY = new Color(101, 106, 100);
   private static final String BENCHMARK_PROGRESS_KEY = "lizzie.benchmark.dialog.progress";
+  private static final String WRAPPING_TEXT_KEY = "lizzie.autosetup.wrappingText";
   private static final int MAX_INFO_TEXT_LENGTH = 104;
   private static final int DIALOG_WIDTH = 820;
   private static final int DIALOG_HEIGHT = 580;
@@ -176,8 +180,8 @@ public class KataGoAutoSetupDialog extends JDialog {
     detailCards.setOpaque(false);
     detailCards.add(createOverviewSection(), CARD_OVERVIEW);
     detailCards.add(createWeightsSection(), CARD_WEIGHTS);
-    detailCards.add(createAccelerationSection(), CARD_ACCELERATION);
     detailCards.add(createBenchmarkSection(), CARD_BENCHMARK);
+    detailCards.add(createAccelerationSection(), CARD_ACCELERATION);
     JScrollPane detailScrollPane = new JScrollPane(detailCards);
     detailScrollPane.setBorder(null);
     detailScrollPane.getViewport().setOpaque(false);
@@ -288,7 +292,7 @@ public class KataGoAutoSetupDialog extends JDialog {
 
   private JPanel createSidebarPanel() {
     JPanel sidebar = new JPanel(new BorderLayout(0, 12));
-    sidebar.setPreferredSize(new Dimension(150, 10));
+    sidebar.setPreferredSize(new Dimension(180, 10));
     sidebar.setBackground(SIDEBAR_BG);
     sidebar.setBorder(BorderFactory.createEmptyBorder(14, 12, 14, 12));
 
@@ -301,8 +305,8 @@ public class KataGoAutoSetupDialog extends JDialog {
         new String[] {
           text("AutoSetup.navOverview"),
           text("AutoSetup.navWeights"),
-          text("AutoSetup.navAcceleration"),
-          text("AutoSetup.navBenchmark")
+          text("AutoSetup.navBenchmark"),
+          text("AutoSetup.navAcceleration")
         });
     sectionNav.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
     sectionNav.setSelectedIndex(0);
@@ -337,10 +341,10 @@ public class KataGoAutoSetupDialog extends JDialog {
               detailCardLayout.show(detailCards, CARD_WEIGHTS);
               break;
             case 2:
-              detailCardLayout.show(detailCards, CARD_ACCELERATION);
+              detailCardLayout.show(detailCards, CARD_BENCHMARK);
               break;
             case 3:
-              detailCardLayout.show(detailCards, CARD_BENCHMARK);
+              detailCardLayout.show(detailCards, CARD_ACCELERATION);
               break;
             default:
               detailCardLayout.show(detailCards, CARD_OVERVIEW);
@@ -371,15 +375,21 @@ public class KataGoAutoSetupDialog extends JDialog {
   private JPanel createWeightsSection() {
     JPanel rows = createRowsPanel();
     GridBagConstraints gbc = createRowConstraints();
-    addComponentRow(rows, gbc, text("AutoSetup.localWeights"), cmbLocalWeights);
-    addInfoRow(rows, gbc, text("AutoSetup.selectedLocalWeightInfo"), lblLocalWeightDetailValue);
-    addComponentRow(rows, gbc, text("AutoSetup.officialWeights"), cmbRemoteWeights);
+    addComponentRow(
+        rows,
+        gbc,
+        text("AutoSetup.officialWeights"),
+        createInlineActionRow(cmbRemoteWeights, btnDownloadWeight));
     addInfoRow(rows, gbc, text("AutoSetup.selectedWeightInfo"), lblRemoteDetailValue);
+    addComponentRow(
+        rows,
+        gbc,
+        text("AutoSetup.localWeights"),
+        createInlineActionRow(cmbLocalWeights, btnApplyWeight, btnImportWeight));
+    addInfoRow(rows, gbc, text("AutoSetup.selectedLocalWeightInfo"), lblLocalWeightDetailValue);
 
-    JPanel actions =
-        createActionBar(FlowLayout.RIGHT, btnImportWeight, btnApplyWeight, btnDownloadWeight);
     return createSectionCard(
-        text("AutoSetup.weightsTitle"), text("AutoSetup.weightsSubtitle"), rows, actions);
+        text("AutoSetup.weightsTitle"), text("AutoSetup.weightsSubtitle"), rows, null);
   }
 
   private JPanel createAccelerationSection() {
@@ -387,9 +397,7 @@ public class KataGoAutoSetupDialog extends JDialog {
     GridBagConstraints gbc = createRowConstraints();
     addInfoRow(rows, gbc, text("AutoSetup.nvidiaRuntime"), lblNvidiaRuntimeValue);
 
-    JFontLabel tensorRtHint =
-        new JFontLabel("<html>" + text("AutoSetup.accelerationTensorRtHint") + "</html>");
-    tensorRtHint.setForeground(TEXT_SECONDARY);
+    JTextArea tensorRtHint = createHintText(text("AutoSetup.accelerationTensorRtHint"));
     addComponentRow(rows, gbc, text("AutoSetup.installTensorRt"), tensorRtHint);
 
     JPanel actions = createActionBar(FlowLayout.RIGHT, btnInstallNvidiaRuntime, btnInstallTensorRt);
@@ -402,10 +410,8 @@ public class KataGoAutoSetupDialog extends JDialog {
     GridBagConstraints gbc = createRowConstraints();
     addInfoRow(rows, gbc, text("AutoSetup.performance"), lblBenchmarkValue);
 
-    JFontLabel benchmarkHint =
-        new JFontLabel("<html>" + text("AutoSetup.benchmarkHint") + "</html>");
-    benchmarkHint.setForeground(TEXT_SECONDARY);
-    addComponentRow(rows, gbc, text("AutoSetup.benchmarkRecommended"), benchmarkHint);
+    JTextArea benchmarkHint = createHintText(text("AutoSetup.benchmarkHint"));
+    addComponentRow(rows, gbc, text("AutoSetup.benchmarkAbout"), benchmarkHint);
 
     JPanel actions = createActionBar(FlowLayout.RIGHT, btnOptimizePerformance);
     return createSectionCard(
@@ -511,6 +517,28 @@ public class KataGoAutoSetupDialog extends JDialog {
     return actionBar;
   }
 
+  private JPanel createInlineActionRow(JComponent mainComponent, JComponent... actions) {
+    JPanel row = new JPanel(new BorderLayout(8, 0));
+    row.setOpaque(false);
+    row.add(mainComponent, BorderLayout.CENTER);
+    row.add(createActionBar(FlowLayout.RIGHT, actions), BorderLayout.EAST);
+    return row;
+  }
+
+  private JTextArea createHintText(String message) {
+    JTextArea textArea = new JTextArea(message == null ? "" : message);
+    textArea.setEditable(false);
+    textArea.setFocusable(false);
+    textArea.setOpaque(false);
+    textArea.setLineWrap(true);
+    textArea.setWrapStyleWord(true);
+    textArea.setForeground(TEXT_SECONDARY);
+    textArea.setFont(new JFontLabel().getFont());
+    textArea.setBorder(BorderFactory.createEmptyBorder(2, 0, 2, 0));
+    textArea.putClientProperty(WRAPPING_TEXT_KEY, Boolean.TRUE);
+    return textArea;
+  }
+
   private void addInfoRow(JPanel panel, GridBagConstraints gbc, String title, JLabel valueLabel) {
     styleInfoLabel(valueLabel);
     addComponentRow(panel, gbc, title, valueLabel);
@@ -538,8 +566,51 @@ public class KataGoAutoSetupDialog extends JDialog {
   private void constrainValueComponent(JComponent valueComponent) {
     Dimension preferred = valueComponent.getPreferredSize();
     int height = Math.max(preferred.height, 32);
+    if (Boolean.TRUE.equals(valueComponent.getClientProperty(WRAPPING_TEXT_KEY))
+        && valueComponent instanceof JTextArea) {
+      height =
+          Math.max(
+              height,
+              estimateWrappedTextHeight(
+                  ((JTextArea) valueComponent).getText(),
+                  valueComponent.getFontMetrics(valueComponent.getFont()),
+                  VALUE_COLUMN_WIDTH));
+    }
     valueComponent.setPreferredSize(new Dimension(VALUE_COLUMN_WIDTH, height));
     valueComponent.setMinimumSize(new Dimension(260, height));
+  }
+
+  private int estimateWrappedTextHeight(String text, FontMetrics metrics, int width) {
+    if (metrics == null) {
+      return 64;
+    }
+    int availableWidth = Math.max(120, width - 4);
+    int lineCount = 0;
+    String[] paragraphs = (text == null ? "" : text).split("\\R", -1);
+    for (String paragraph : paragraphs) {
+      lineCount += Math.max(1, estimateWrappedLineCount(paragraph, metrics, availableWidth));
+    }
+    return lineCount * metrics.getHeight() + 8;
+  }
+
+  private int estimateWrappedLineCount(String text, FontMetrics metrics, int availableWidth) {
+    if (text == null || text.trim().isEmpty()) {
+      return 1;
+    }
+    int lines = 1;
+    int lineWidth = 0;
+    for (int offset = 0; offset < text.length(); ) {
+      int codePoint = text.codePointAt(offset);
+      offset += Character.charCount(codePoint);
+      int charWidth = Math.max(1, metrics.charWidth(codePoint));
+      if (lineWidth > 0 && lineWidth + charWidth > availableWidth) {
+        lines += 1;
+        lineWidth = charWidth;
+      } else {
+        lineWidth += charWidth;
+      }
+    }
+    return lines;
   }
 
   public void ensureVisibleOnScreen() {
@@ -1142,7 +1213,7 @@ public class KataGoAutoSetupDialog extends JDialog {
     progressStatusLabel.setForeground(busy ? WARN_COLOR : Color.DARK_GRAY);
     btnRefresh.setEnabled(!busy);
     btnAutoSetup.setEnabled(!busy);
-    btnDownloadWeight.setEnabled(!busy && getSelectedRemoteWeight() != null);
+    btnDownloadWeight.setEnabled(!busy && canDownloadSelectedRemoteWeight());
     btnImportWeight.setEnabled(!busy);
     btnApplyWeight.setEnabled(!busy && getSelectedLocalWeight() != null);
     cmbLocalWeights.setEnabled(!busy && cmbLocalWeights.getItemCount() > 0);
@@ -1334,7 +1405,25 @@ public class KataGoAutoSetupDialog extends JDialog {
     if (info == null) {
       return text("AutoSetup.remoteUnavailable");
     }
-    return info.typeLabel + "  |  " + info.modelName;
+    StringBuilder label = new StringBuilder();
+    label.append(formatRemoteModelName(info));
+    String releaseDate = formatRemoteReleaseDate(info);
+    if (!releaseDate.isEmpty()) {
+      label.append("  |  ").append(releaseDate);
+    }
+    if (info.recommended) {
+      label.append("  |  ").append(text("AutoSetup.recommendedStrongest"));
+    }
+    if (info.latest) {
+      label.append("  |  ").append(text("AutoSetup.recommendedLatest"));
+    }
+    if (isDownloadedRemoteWeight(info)) {
+      label.append("  |  ").append(text("AutoSetup.downloaded"));
+    }
+    if (matchesCurrentWeight(info)) {
+      label.append("  |  ").append(text("AutoSetup.currentlyUsingShort"));
+    }
+    return label.toString();
   }
 
   private String formatLocalWeightChoice(Path weightPath) {
@@ -1375,26 +1464,35 @@ public class KataGoAutoSetupDialog extends JDialog {
       lblRemoteDetailValue.setText(text("AutoSetup.remoteUnavailable"));
       lblRemoteDetailValue.setToolTipText(null);
       lblRemoteDetailValue.setForeground(ERROR_COLOR);
+      btnDownloadWeight.setText(text("AutoSetup.downloadWeight"));
       btnDownloadWeight.setEnabled(false);
       btnStopDownload.setEnabled(false);
       return;
     }
+    boolean downloaded = isDownloadedRemoteWeight(info);
+    boolean current = matchesCurrentWeight(info);
     StringBuilder detail = new StringBuilder();
-    detail.append(info.fileName());
-    if (info.uploadedAt != null && !info.uploadedAt.trim().isEmpty()) {
-      detail.append("  |  ").append(info.uploadedAt.trim());
+    detail.append(formatRemoteModelName(info)).append("  |  ").append(info.fileName());
+    String releaseDate = formatRemoteReleaseDate(info);
+    if (!releaseDate.isEmpty()) {
+      detail.append("  |  ").append(releaseDate);
     }
     if (info.eloRating != null && !info.eloRating.trim().isEmpty()) {
       detail.append("  |  ").append(info.eloRating.trim());
     }
-    if (matchesCurrentWeight(info)) {
+    if (downloaded) {
+      detail.append("  |  ").append(text("AutoSetup.downloaded"));
+    }
+    if (current) {
       detail.append("  |  ").append(text("AutoSetup.currentlyUsing"));
     }
     String detailText = detail.toString();
     lblRemoteDetailValue.setText(compactInfoText(detailText));
     lblRemoteDetailValue.setToolTipText(detailText + " | " + info.downloadUrl);
-    lblRemoteDetailValue.setForeground(matchesCurrentWeight(info) ? OK_COLOR : Color.DARK_GRAY);
-    btnDownloadWeight.setEnabled(activeDownloadSession == null && activeWorkerThread == null);
+    lblRemoteDetailValue.setForeground(current || downloaded ? OK_COLOR : Color.DARK_GRAY);
+    btnDownloadWeight.setText(
+        downloaded ? text("AutoSetup.downloaded") : text("AutoSetup.downloadWeight"));
+    btnDownloadWeight.setEnabled(canDownloadSelectedRemoteWeight());
   }
 
   private RemoteWeightInfo getSelectedRemoteWeight() {
@@ -1437,6 +1535,61 @@ public class KataGoAutoSetupDialog extends JDialog {
 
   private boolean matchesCurrentWeight(RemoteWeightInfo info) {
     return matchesModelName(info, KataGoAutoSetupHelper.resolveActiveWeightModelName(snapshot));
+  }
+
+  private boolean canDownloadSelectedRemoteWeight() {
+    RemoteWeightInfo info = getSelectedRemoteWeight();
+    return info != null
+        && !isDownloadedRemoteWeight(info)
+        && activeDownloadSession == null
+        && activeWorkerThread == null;
+  }
+
+  private boolean isDownloadedRemoteWeight(RemoteWeightInfo info) {
+    if (info == null) {
+      return false;
+    }
+    if (matchesCurrentWeight(info)) {
+      return true;
+    }
+    if (snapshot == null || snapshot.weightCandidates == null) {
+      return false;
+    }
+    String remoteFileName = normalizeWeightName(info.fileName());
+    for (Path candidate : snapshot.weightCandidates) {
+      if (candidate == null || candidate.getFileName() == null) {
+        continue;
+      }
+      String candidateFileName = normalizeWeightName(candidate.getFileName().toString());
+      if (candidateFileName.equals(remoteFileName)) {
+        return true;
+      }
+      String displayName = KataGoAutoSetupHelper.resolveWeightDisplayName(candidate);
+      if (matchesModelName(info, displayName)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private String normalizeWeightName(String value) {
+    return value == null ? "" : value.trim().toLowerCase(Locale.ROOT);
+  }
+
+  private String formatRemoteModelName(RemoteWeightInfo info) {
+    if (info == null) {
+      return "";
+    }
+    String displayName = KataGoAutoSetupHelper.resolveWeightDisplayName(info.modelName);
+    return displayName == null || displayName.trim().isEmpty() ? info.modelName : displayName;
+  }
+
+  private String formatRemoteReleaseDate(RemoteWeightInfo info) {
+    if (info == null || info.uploadedAt == null) {
+      return "";
+    }
+    String value = info.uploadedAt.trim();
+    return value.length() >= 10 ? value.substring(0, 10) : value;
   }
 
   private boolean matchesModelName(RemoteWeightInfo info, String modelName) {

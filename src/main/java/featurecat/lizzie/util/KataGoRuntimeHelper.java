@@ -152,6 +152,9 @@ public final class KataGoRuntimeHelper {
   private static final int BENCHMARK_POSITIONS = 6;
   private static final int BENCHMARK_MIN_TIME_SECONDS = 5;
   private static final int BENCHMARK_MAX_TIME_SECONDS = 15;
+  private static final int BENCHMARK_PRE_POSITION_PROGRESS_CAP = 90;
+  private static final int BENCHMARK_FINALIZING_PROGRESS = 880;
+  private static final int BENCHMARK_PROGRESS_VISIBLE_CAP = 995;
   private static final int APPLE_AUTO_OPTIMIZE_VERSION = 3;
   private static final int APPLE_AUTO_OPTIMIZE_DELAY_MILLIS = 8000;
   private static final int APPLE_AUTO_OPTIMIZE_READY_TIMEOUT_MILLIS = 45000;
@@ -825,13 +828,14 @@ public final class KataGoRuntimeHelper {
     BenchmarkProgressTracker progressTracker = new BenchmarkProgressTracker();
     AtomicLong benchmarkStartedAt = new AtomicLong(System.currentTimeMillis());
     AtomicLong lastProgressAt = new AtomicLong(benchmarkStartedAt.get());
-    AtomicInteger lastProgressPermille = new AtomicInteger(0);
+    AtomicInteger lastProgressPermille = new AtomicInteger(BENCHMARK_PRE_POSITION_PROGRESS_CAP);
     Thread cancellationWatcher = startBenchmarkCancellationWatcher(process, activeSession);
     Thread progressHeartbeat =
         startBenchmarkProgressHeartbeat(
             process,
             listener,
             activeSession,
+            progressTracker,
             benchmarkStartedAt,
             lastProgressAt,
             lastProgressPermille);
@@ -939,6 +943,7 @@ public final class KataGoRuntimeHelper {
       Process process,
       ProgressListener listener,
       DownloadSession session,
+      BenchmarkProgressTracker progressTracker,
       AtomicLong benchmarkStartedAt,
       AtomicLong lastProgressAt,
       AtomicInteger lastProgressPermille) {
@@ -955,16 +960,18 @@ public final class KataGoRuntimeHelper {
                   }
                   long now = System.currentTimeMillis();
                   long sinceLastProgress = now - lastProgressAt.get();
-                  if (sinceLastProgress >= 1200L) {
+                  if (sinceLastProgress >= 1200L
+                      && (progressTracker == null
+                          || !progressTracker.hasObservedPositionProgress())) {
                     int syntheticPermille =
-                        estimateSyntheticBenchmarkPermille(
-                            now - benchmarkStartedAt.get(),
-                            sinceLastProgress,
-                            lastProgressPermille.get());
-                    int displayPermille = Math.max(lastProgressPermille.get(), syntheticPermille);
+                        estimatePrePositionBenchmarkPermille(
+                            now - benchmarkStartedAt.get(), lastProgressPermille.get());
+                    int displayPermille =
+                        advanceAtomicBenchmarkProgress(lastProgressPermille, syntheticPermille);
                     notifyProgress(
                         listener,
-                        formatBenchmarkHeartbeatStatus(now - benchmarkStartedAt.get()),
+                        formatBenchmarkHeartbeatStatus(
+                            now - benchmarkStartedAt.get(), displayPermille),
                         displayPermille,
                         1000L);
                   }
@@ -1057,14 +1064,32 @@ public final class KataGoRuntimeHelper {
     if (!shouldDisplayBenchmarkStatusLine(trimmed)) {
       return lastPublishedStatus == null ? "" : lastPublishedStatus;
     }
-    notifyProgress(listener, trimStatusForUi(trimmed), progressValue, 1000L);
+    int displayProgress =
+        lastProgressPermille == null
+            ? progressValue
+            : advanceAtomicBenchmarkProgress(lastProgressPermille, progressValue);
+    notifyProgress(listener, trimStatusForUi(trimmed), displayProgress, 1000L);
     if (lastProgressAt != null) {
       lastProgressAt.set(System.currentTimeMillis());
     }
-    if (lastProgressPermille != null) {
-      lastProgressPermille.set(progressValue);
-    }
     return trimmed;
+  }
+
+  private static int advanceAtomicBenchmarkProgress(
+      AtomicInteger progressPermille, int candidatePermille) {
+    int candidate = Math.max(0, Math.min(BENCHMARK_PROGRESS_VISIBLE_CAP, candidatePermille));
+    if (progressPermille == null) {
+      return candidate;
+    }
+    while (true) {
+      int current = progressPermille.get();
+      if (candidate <= current) {
+        return current;
+      }
+      if (progressPermille.compareAndSet(current, candidate)) {
+        return candidate;
+      }
+    }
   }
 
   private static boolean shouldDisplayBenchmarkStatusLine(String rawStatus) {
@@ -1292,10 +1317,12 @@ public final class KataGoRuntimeHelper {
                 DownloadSession session = new DownloadSession();
                 notice =
                     showBenchmarkNotice(
-                        "正在进行 Apple Silicon 智能测速优化",
+                        "正在进行 Apple Silicon 智能提升算棋速度",
                         "正在后台按 KataGo 官方 benchmark 自动测试最合适的线程数。<br/>"
-                            + "测速期间会暂停当前分析，完成后会自动恢复。<br/>"
-                            + "你可以继续使用主窗口；如果暂时不想测速，关闭这个窗口即可停止本次测速。",
+                            + "通常需要 2-10 分钟；电脑较慢、模型较大时可能更久。<br/>"
+                            + "完成后会保存更适合这台电脑的 KataGo 线程设置。<br/>"
+                            + "优化期间会暂停当前分析，完成后会自动恢复。<br/>"
+                            + "你可以继续使用主窗口；如果暂时不想优化，关闭这个窗口即可停止本次优化。",
                         session);
                 final JDialog progressNotice = notice;
                 if (session.isCancelled()) return;
@@ -1481,7 +1508,7 @@ public final class KataGoRuntimeHelper {
   private static void updateBenchmarkNoticeComponents(
       Component component, String statusText, int progressValue) {
     String displayStatus =
-        statusText == null || statusText.trim().isEmpty() ? "测速中..." : statusText;
+        statusText == null || statusText.trim().isEmpty() ? "优化中..." : statusText;
     if (component instanceof JLabel
         && Boolean.TRUE.equals(
             ((JLabel) component).getClientProperty("lizzie.benchmark.notice.status"))) {
@@ -1513,12 +1540,13 @@ public final class KataGoRuntimeHelper {
     }
   }
 
-  private static final class BenchmarkProgressTracker {
+  static final class BenchmarkProgressTracker {
     private static final int MODEL_LOAD_PROGRESS = 30;
     private static final int THREAD_LIST_PROGRESS = 80;
-    private static final int SEARCH_PROGRESS_START = 80;
-    private static final int SEARCH_PROGRESS_SPAN = 900;
+    private static final int SEARCH_PROGRESS_START = 100;
+    private static final int SEARCH_PROGRESS_SPAN = 870;
     private static final int SUMMARY_PROGRESS = 990;
+    private static final int FALLBACK_EXPECTED_THREAD_COUNT = 12;
 
     private final Map<Integer, Integer> completedPositionsByThread =
         new HashMap<Integer, Integer>();
@@ -1526,6 +1554,7 @@ public final class KataGoRuntimeHelper {
     private int observedThreadCount = 0;
     private int positionsPerThread = 0;
     private int lastPermille = 0;
+    private volatile boolean observedPositionProgress = false;
 
     int update(String rawStatus) {
       String status = rawStatus == null ? "" : rawStatus.trim();
@@ -1539,9 +1568,9 @@ public final class KataGoRuntimeHelper {
       Matcher possibleThreadsMatcher = BENCHMARK_POSSIBLE_THREADS_PATTERN.matcher(status);
       if (possibleThreadsMatcher.find()) {
         int possibleThreadCount = countIntegers(possibleThreadsMatcher.group(1));
-        expectedTestedThreadCount =
-            Math.max(
-                expectedTestedThreadCount, estimateOfficialAutoTuneProbeCount(possibleThreadCount));
+        if (possibleThreadCount > 0) {
+          expectedTestedThreadCount = Math.max(expectedTestedThreadCount, possibleThreadCount);
+        }
         return advanceTo(THREAD_LIST_PROGRESS);
       }
 
@@ -1553,6 +1582,7 @@ public final class KataGoRuntimeHelper {
         if (threadCount <= 0 || total <= 0) {
           return lastPermille;
         }
+        observedPositionProgress = true;
         if (!completedPositionsByThread.containsKey(threadCount)) {
           observedThreadCount += 1;
         }
@@ -1563,7 +1593,7 @@ public final class KataGoRuntimeHelper {
           completedPositionsByThread.put(threadCount, clampedCompleted);
         }
         if (expectedTestedThreadCount <= 0) {
-          expectedTestedThreadCount = 6;
+          expectedTestedThreadCount = FALLBACK_EXPECTED_THREAD_COUNT;
         }
         expectedTestedThreadCount =
             Math.max(expectedTestedThreadCount, Math.max(1, observedThreadCount));
@@ -1590,6 +1620,10 @@ public final class KataGoRuntimeHelper {
       return lastPermille;
     }
 
+    boolean hasObservedPositionProgress() {
+      return observedPositionProgress;
+    }
+
     private int advanceTo(int permille) {
       lastPermille = Math.max(lastPermille, Math.max(0, Math.min(1000, permille)));
       return lastPermille;
@@ -1605,44 +1639,6 @@ public final class KataGoRuntimeHelper {
         count += 1;
       }
       return count;
-    }
-
-    private static int estimateOfficialAutoTuneProbeCount(int possibleThreadCount) {
-      if (possibleThreadCount <= 0) {
-        return 6;
-      }
-      if (possibleThreadCount > 64) {
-        return Math.max(6, (int) Math.ceil(Math.log(possibleThreadCount) / Math.log(1.5)));
-      }
-      boolean[] seen = new boolean[possibleThreadCount];
-      return Math.max(1, estimateTernaryProbeCount(0, possibleThreadCount - 1, seen, 0));
-    }
-
-    private static int estimateTernaryProbeCount(
-        int start, int end, boolean[] seen, int seenCount) {
-      if (start > end) {
-        return seenCount;
-      }
-      int firstMid = start + (end - start) / 3;
-      int secondMid = end - (end - start) / 3;
-      boolean firstWasSeen = seen[firstMid];
-      boolean secondWasSeen = seen[secondMid];
-      int nextSeenCount = seenCount;
-      if (!firstWasSeen) {
-        seen[firstMid] = true;
-        nextSeenCount += 1;
-      }
-      if (secondMid != firstMid && !secondWasSeen) {
-        seen[secondMid] = true;
-        nextSeenCount += 1;
-      }
-      int leftCount = estimateTernaryProbeCount(start, secondMid - 1, seen, nextSeenCount);
-      int rightCount = estimateTernaryProbeCount(firstMid + 1, end, seen, nextSeenCount);
-      seen[firstMid] = firstWasSeen;
-      if (secondMid != firstMid) {
-        seen[secondMid] = secondWasSeen;
-      }
-      return Math.max(leftCount, rightCount);
     }
   }
 
@@ -1693,13 +1689,14 @@ public final class KataGoRuntimeHelper {
               final javax.swing.JDialog notice =
                   Lizzie.frame != null && Lizzie.frame.isShowing()
                       ? showBenchmarkNotice(
-                          "KataGo 智能测速",
-                          "首次启动正在进行一次 KataGo 智能测速优化，<br/>"
+                          "KataGo 智能提升算棋速度",
+                          "首次启动正在进行一次 KataGo 智能提升算棋速度，<br/>"
                               + "用于自动选出最适合你这台电脑的线程数，<br/>"
                               + "完成后分析速度会更稳定、更快。<br/><br/>"
-                              + "这是 KataGo 官方 benchmark 流程，可能需要数分钟，请稍候，<br/>"
+                              + "这是 KataGo 官方 benchmark 流程，通常需要 2-10 分钟；<br/>"
+                              + "电脑较慢、模型较大时可能更久，请稍候，<br/>"
                               + "期间分析会被暂停，完成后会自动恢复。<br/>"
-                              + "如果暂时不想测速，可以关闭这个窗口停止测速。",
+                              + "如果暂时不想优化，可以关闭这个窗口停止优化。",
                           benchmarkSession)
                       : null;
 
@@ -2965,7 +2962,15 @@ public final class KataGoRuntimeHelper {
       int synthetic = 300 + (int) (((elapsed - 30000L) * 580L) / 270000L);
       return Math.max(last, Math.max(synthetic, smoothSilentBenchmarkProgress(last, silent)));
     }
-    return Math.max(last, Math.max(880, smoothSilentBenchmarkProgress(last, silent)));
+    return Math.max(
+        last, Math.max(BENCHMARK_FINALIZING_PROGRESS, smoothSilentBenchmarkProgress(last, silent)));
+  }
+
+  static int estimatePrePositionBenchmarkPermille(long elapsedMillis, int lastProgressPermille) {
+    int synthetic = estimateSyntheticBenchmarkPermille(elapsedMillis, 0L, lastProgressPermille);
+    return Math.max(
+        0,
+        Math.min(BENCHMARK_PRE_POSITION_PROGRESS_CAP, Math.max(lastProgressPermille, synthetic)));
   }
 
   static int smoothSilentBenchmarkProgress(int lastProgressPermille, long sinceLastProgressMillis) {
@@ -2974,15 +2979,31 @@ public final class KataGoRuntimeHelper {
       return last;
     }
     long extraSeconds = Math.max(0L, (sinceLastProgressMillis - 2500L) / 1000L);
-    int ceiling = last >= 970 ? 985 : 970;
-    int smoothed = last + (int) Math.min(ceiling - last, extraSeconds * 8L);
+    int ceiling;
+    long stepPermille;
+    if (last >= 985) {
+      ceiling = BENCHMARK_PROGRESS_VISIBLE_CAP;
+      stepPermille = 2L;
+    } else if (last >= 970) {
+      ceiling = 985;
+      stepPermille = 4L;
+    } else {
+      ceiling = 970;
+      stepPermille = 10L;
+    }
+    int smoothed = last + (int) Math.min(ceiling - last, extraSeconds * stepPermille);
     return Math.max(last, Math.min(ceiling, smoothed));
   }
 
-  private static String formatBenchmarkHeartbeatStatus(long elapsedMillis) {
+  private static String formatBenchmarkHeartbeatStatus(long elapsedMillis, int displayPermille) {
     long elapsed = Math.max(0L, elapsedMillis);
     if (elapsed <= 8000L) {
       return resource("AutoSetup.benchmarkLoadingModel", "Loading KataGo model...")
+          + "  "
+          + formatDuration(elapsed);
+    }
+    if (displayPermille >= BENCHMARK_FINALIZING_PROGRESS) {
+      return resource("AutoSetup.benchmarkFinalizing", "KataGo is summarizing benchmark results...")
           + "  "
           + formatDuration(elapsed);
     }
@@ -3037,7 +3058,8 @@ public final class KataGoRuntimeHelper {
   public static String formatBenchmarkResult(BenchmarkResult result) {
     if (result == null || result.recommendedThreads <= 0) {
       return resource(
-          "AutoSetup.benchmarkMissing", "No benchmark result yet. Run Smart Optimize once.");
+          "AutoSetup.benchmarkMissing",
+          "No speed boost result yet. Run Smart reading speed boost once.");
     }
     StringBuilder builder = new StringBuilder();
     builder

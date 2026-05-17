@@ -1848,6 +1848,8 @@ def build_release_notes(asset_map: dict[str, str | None], bundle: dict[str, str]
         return build_next_2026_05_06_1_notes(asset_map, repo, release_tag)
     if release_tag == 'next-2026-05-17.2':
         return build_next_2026_05_17_2_notes(asset_map, bundle, repo, release_tag)
+    if release_tag == 'next-2026-05-18.1':
+        return build_next_2026_05_18_1_notes(asset_map, bundle, repo, release_tag)
 
     assets_cn = {
         key: format_asset(asset_map[key], repo, release_tag)
@@ -2275,6 +2277,254 @@ def build_release_notes(asset_map: dict[str, str | None], bundle: dict[str, str]
     validate_release_sections(sections)
 
     return release_heading(release_tag) + '\n\n' + '\n\n---\n\n'.join(
+        render_language_section(section) for section in sections
+    ) + '\n'
+
+
+def build_next_2026_05_18_1_notes(
+    asset_map: dict[str, str | None],
+    bundle: dict[str, str],
+    repo: str,
+    release_tag: str | None,
+) -> str:
+    assets_cn = {key: format_asset(asset_map[key], repo, release_tag) for key in asset_map}
+    assets = {key: format_asset_en(asset_map[key], repo, release_tag) for key in asset_map}
+    katago_version = bundle['katago_version']
+    model_source = bundle['model_source']
+    sections: list[dict[str, object]] = [
+        {
+            'language': '中文',
+            'intro': '这是“4段纪念版”的一键设置体验修正版。重点根据真实测试反馈继续打磨 KataGo 一键设置：智能提升算棋速度的进度更稳，权重管理更容易理解，按钮和分区命名也更贴近普通用户。',
+            'updates': {
+                'heading': '本版主要更新',
+                'items': [
+                    '智能提升算棋速度继续使用 KataGo 官方 benchmark，但进度条改为按“已完成的测试局面”推进，不再在第 4 项测试时乱跳或长时间停在 88%。',
+                    '一键设置左侧顺序调整为“总览、权重、智能提升算棋速度、英伟达显卡提速组件”，把更常用的速度提升入口放到前面。',
+                    '把“测速/智能测速优化/加速组件”等容易让用户紧张的说法，统一改为“智能提升算棋速度”和“英伟达显卡提速组件”。',
+                    '权重管理继续优化：可下载官方权重显示模型简称、发布日期、已下载/正在使用等重点信息；已下载权重和下载按钮位置更清楚。',
+                    '发布前已跑全量测试、重新打包，并本机真实启动应用检查一键设置界面和 Apple Silicon 智能提升流程。',
+                ],
+            },
+            'before': {
+                'heading': '下载前先看这几句',
+                'items': [
+                    f'Windows 普通用户优先下载 {assets_cn["windows_opencl_portable"]}，这是 **OpenCL 版（推荐，免安装）**。',
+                    f'如果 OpenCL 在你的电脑上不稳定，再改用 {assets_cn["windows_portable"]}。',
+                    f'如果你的电脑是 **英伟达显卡**，优先下载 {assets_cn["windows_nvidia_portable"]}。',
+                    f'主推荐整合包已内置 KataGo `{katago_version}` 和默认权重 `{model_source}`。',
+                    '如果你更喜欢安装流程，再选同系列的 `installer.exe`。',
+                ],
+            },
+            'download': {
+                'heading': '下载建议',
+                'headers': ('你的电脑', '直接下载这个'),
+                'rows': standard_download_rows(STANDARD_DOWNLOAD_LABELS['zh'], assets_cn),
+            },
+            'why': {
+                'heading': '这一版为什么值得更新',
+                'items': [
+                    '第一次打开或手动提升算棋速度时，进度条更像真实任务进度，不会给人“卡住了”的感觉。',
+                    '新用户能更快看懂权重下载、已下载权重、智能提升和英伟达组件分别是做什么的。',
+                    '这是一个针对一键设置高频入口的小版本修复，建议替换上一版继续测试。',
+                ],
+            },
+            'contact': {'heading': '交流', 'items': ['QQ 群：`299419120`']},
+        },
+        {
+            'language': '繁體中文',
+            'intro': '這是「4 段紀念版」的一鍵設定體驗修正版。重點依照真實測試回饋繼續打磨 KataGo 一鍵設定：智慧提升算棋速度的進度更穩，權重管理更容易理解，按鈕和分區命名也更貼近一般使用者。',
+            'updates': {
+                'heading': '本版主要更新',
+                'items': [
+                    '智慧提升算棋速度繼續使用 KataGo 官方 benchmark，但進度條改為依照「已完成的測試局面」推進，不再在第 4 項測試時亂跳或長時間停在 88%。',
+                    '一鍵設定左側順序調整為「總覽、權重、智慧提升算棋速度、NVIDIA 顯示卡提速元件」，把更常用的速度提升入口放到前面。',
+                    '把「測速/智慧測速最佳化/加速元件」等容易讓使用者緊張的說法，統一改為「智慧提升算棋速度」和「NVIDIA 顯示卡提速元件」。',
+                    '權重管理繼續最佳化：可下載官方權重顯示模型簡稱、發布日期、已下載/正在使用等重點資訊；已下載權重和下載按鈕位置更清楚。',
+                    '發布前已跑完整測試、重新打包，並在本機真實啟動應用檢查一鍵設定介面和 Apple Silicon 智慧提升流程。',
+                ],
+            },
+            'before': {
+                'heading': '下載前先看這幾句',
+                'items': [
+                    f'Windows 一般使用者優先下載 {assets_cn["windows_opencl_portable"]}，這是 **OpenCL 版（推薦，免安裝）**。',
+                    f'如果 OpenCL 在你的電腦上不穩定，再改用 {assets_cn["windows_portable"]}。',
+                    f'如果你的電腦是 **NVIDIA 顯示卡**，優先下載 {assets_cn["windows_nvidia_portable"]}。',
+                    f'主推薦整合包已內建 KataGo `{katago_version}` 和預設權重 `{model_source}`。',
+                    '如果你更喜歡安裝流程，再選同系列的 `installer.exe`。',
+                ],
+            },
+            'download': {
+                'heading': '下載建議',
+                'headers': ('你的電腦', '直接下載這個'),
+                'rows': standard_download_rows(STANDARD_DOWNLOAD_LABELS['zh_hant'], assets_cn),
+            },
+            'why': {
+                'heading': '這一版為什麼值得更新',
+                'items': [
+                    '第一次開啟或手動提升算棋速度時，進度條更接近真實任務進度，不會讓人覺得卡住。',
+                    '新使用者能更快看懂權重下載、已下載權重、智慧提升和 NVIDIA 元件分別是做什麼的。',
+                    '這是針對一鍵設定高頻入口的小版本修復，建議替換上一版繼續測試。',
+                ],
+            },
+            'contact': {'heading': '交流', 'items': ['QQ 群：`299419120`']},
+        },
+        {
+            'language': 'English',
+            'intro': 'This is a one-click setup polish update for the “4-dan commemorative build”. It focuses on the real feedback from testing: steadier Smart Reading Speed Boost progress, clearer weight management, and friendlier names for the benchmark and NVIDIA component areas.',
+            'updates': {
+                'heading': 'Release Highlights',
+                'items': [
+                    'Smart Reading Speed Boost still uses the official KataGo benchmark, but the progress bar now advances by completed benchmark positions instead of time guesses, so the fourth test phase no longer jumps around or appears stuck at 88%.',
+                    'KataGo Auto Setup now orders the sidebar as Overview, Weights, Smart Reading Speed Boost, and NVIDIA GPU Speed Components, putting the more common speed-improvement action first.',
+                    'User-facing wording was softened from benchmark/optimization/acceleration jargon to Smart Reading Speed Boost and NVIDIA GPU Speed Components.',
+                    'Weight management is clearer: downloadable official weights show the model short name, release date, downloaded/current markers, and the download action sits next to the official-weight selector.',
+                    'Before release, full tests, packaging, and a real local app launch were rerun, including the Auto Setup UI and Apple Silicon speed-boost flow.',
+                ],
+            },
+            'before': {
+                'heading': 'Read Before Downloading',
+                'items': [
+                    f'Most Windows users should download {assets["windows_opencl_portable"]}, the **recommended no-install OpenCL build**.',
+                    f'If OpenCL is unreliable on your PC, use {assets["windows_portable"]} instead.',
+                    f'If your PC has an **NVIDIA GPU**, try {assets["windows_nvidia_portable"]} first.',
+                    f'The recommended bundles include KataGo `{katago_version}` and the default weight `{model_source}`.',
+                    'If you prefer an installer, choose the matching `installer.exe` package.',
+                ],
+            },
+            'download': {
+                'heading': 'Download Guide',
+                'headers': ('Your computer', 'Download this file'),
+                'rows': standard_download_rows(STANDARD_DOWNLOAD_LABELS['en'], assets),
+            },
+            'why': {
+                'heading': 'Why This Release Is Worth Updating',
+                'items': [
+                    'First launch and manual speed boosting now feel more like real task progress rather than a frozen dialog.',
+                    'New users can understand downloaded weights, official downloadable weights, smart speed boosting, and NVIDIA components faster.',
+                    'This is a focused quality update for the high-traffic KataGo Auto Setup flow, suitable for replacing the previous build.',
+                ],
+            },
+            'contact': {'heading': 'Contact', 'items': ['QQ group: `299419120`']},
+        },
+        {
+            'language': '日本語',
+            'intro': 'これは「4 段記念版」の一括設定体験を整える更新です。実際のテストフィードバックをもとに、Smart Reading Speed Boost の進捗を安定させ、重み管理を分かりやすくし、benchmark や NVIDIA 関連の表示名を一般ユーザー向けに整理しました。',
+            'updates': {
+                'heading': '主な更新',
+                'items': [
+                    'Smart Reading Speed Boost は公式 KataGo benchmark を使い続けますが、進捗バーは時間推定ではなく完了したテスト局面に合わせて進みます。第 4 テストで跳ねたり 88% 付近で止まって見える問題を減らしました。',
+                    'KataGo 自動設定のサイドバー順を Overview、Weights、Smart Reading Speed Boost、NVIDIA GPU Speed Components に変更し、よく使う速度改善を前に出しました。',
+                    'benchmark/optimization/acceleration という硬い表現を、Smart Reading Speed Boost と NVIDIA GPU Speed Components に整理しました。',
+                    '重み管理を改善し、ダウンロード可能な公式重みにモデル短縮名、公開日、ダウンロード済み/使用中の印を表示し、ダウンロード操作も公式重み選択の近くに置きました。',
+                    'リリース前に full test、package、実機ローカル起動を再実行し、自動設定 UI と Apple Silicon 速度改善フローを確認しました。',
+                ],
+            },
+            'before': {
+                'heading': 'ダウンロード前に',
+                'items': [
+                    f'多くの Windows ユーザーは {assets["windows_opencl_portable"]} を選ぶのがおすすめです。これは **推奨 OpenCL 版、インストール不要** です。',
+                    f'OpenCL が不安定な場合は {assets["windows_portable"]} を使ってください。',
+                    f'**NVIDIA GPU** 搭載 PC では {assets["windows_nvidia_portable"]} を優先してください。',
+                    f'推奨バンドルには KataGo `{katago_version}` と既定の重み `{model_source}` が含まれています。',
+                    'インストーラ形式がよい場合は、同じ系列の `installer.exe` を選んでください。',
+                ],
+            },
+            'download': {
+                'heading': 'ダウンロード案内',
+                'headers': ('お使いの環境', 'ダウンロードするファイル'),
+                'rows': standard_download_rows(STANDARD_DOWNLOAD_LABELS['ja'], assets),
+            },
+            'why': {
+                'heading': 'このリリースを更新する理由',
+                'items': [
+                    '初回起動や手動の速度改善で、固まった画面ではなく実際に進んでいる処理として感じやすくなりました。',
+                    '新規ユーザーが、ダウンロード済み重み、公式重み、速度改善、NVIDIA 部品の役割を理解しやすくなりました。',
+                    '利用頻度の高い KataGo 自動設定に絞った品質改善版で、前回ビルドの置き換えに向いています。',
+                ],
+            },
+            'contact': {'heading': '連絡先', 'items': ['QQ グループ: `299419120`']},
+        },
+        {
+            'language': '한국어',
+            'intro': '이번 버전은 “4단 기념판”의 원클릭 설정 경험을 다듬은 업데이트입니다. 실제 테스트 피드백을 바탕으로 Smart Reading Speed Boost 진행률을 안정화하고, 가중치 관리와 NVIDIA 관련 영역 이름을 일반 사용자에게 더 이해하기 쉽게 정리했습니다.',
+            'updates': {
+                'heading': '주요 업데이트',
+                'items': [
+                    'Smart Reading Speed Boost 는 공식 KataGo benchmark 를 계속 사용하지만, 진행률은 시간 추정이 아니라 완료된 테스트 포지션 기준으로 움직입니다. 네 번째 테스트에서 튀거나 88% 에서 멈춘 것처럼 보이는 문제를 줄였습니다.',
+                    'KataGo 자동 설정 사이드바 순서를 Overview, Weights, Smart Reading Speed Boost, NVIDIA GPU Speed Components 로 바꿔 더 자주 쓰는 속도 개선 항목을 앞에 두었습니다.',
+                    'benchmark/optimization/acceleration 처럼 딱딱한 표현을 Smart Reading Speed Boost 와 NVIDIA GPU Speed Components 로 정리했습니다.',
+                    '가중치 관리가 더 명확해졌습니다. 다운로드 가능한 공식 가중치는 모델 짧은 이름, 공개일, 다운로드됨/사용 중 표시를 보여 주고, 다운로드 버튼도 공식 가중치 선택 옆에 배치했습니다.',
+                    '릴리스 전에 full test, package, 실제 로컬 앱 실행을 다시 수행했고, 자동 설정 UI 와 Apple Silicon speed-boost 흐름을 확인했습니다.',
+                ],
+            },
+            'before': {
+                'heading': '다운로드 전 확인',
+                'items': [
+                    f'대부분의 Windows 사용자는 {assets["windows_opencl_portable"]} 를 먼저 받으면 됩니다. 이는 **추천 OpenCL 무설치 빌드** 입니다.',
+                    f'OpenCL 이 PC에서 불안정하면 {assets["windows_portable"]} 를 대신 사용하세요.',
+                    f'**NVIDIA GPU** 가 있다면 {assets["windows_nvidia_portable"]} 를 우선 사용해 보세요.',
+                    f'추천 번들에는 KataGo `{katago_version}` 와 기본 가중치 `{model_source}` 가 포함되어 있습니다.',
+                    '설치형 흐름을 원한다면 같은 계열의 `installer.exe` 를 고르세요.',
+                ],
+            },
+            'download': {
+                'heading': '다운로드 안내',
+                'headers': ('내 컴퓨터', '다운로드할 파일'),
+                'rows': standard_download_rows(STANDARD_DOWNLOAD_LABELS['ko'], assets),
+            },
+            'why': {
+                'heading': '이번 릴리스를 업데이트할 이유',
+                'items': [
+                    '첫 실행이나 수동 속도 개선이 멈춘 창처럼 보이지 않고 실제 작업이 진행되는 느낌에 가까워졌습니다.',
+                    '새 사용자가 다운로드된 가중치, 공식 다운로드 가중치, 속도 개선, NVIDIA 구성 요소의 역할을 더 빨리 이해할 수 있습니다.',
+                    '사용 빈도가 높은 KataGo 자동 설정 흐름에 집중한 품질 개선판으로, 이전 빌드를 대체해 테스트하기 좋습니다.',
+                ],
+            },
+            'contact': {'heading': '연락처', 'items': ['QQ 그룹: `299419120`']},
+        },
+        {
+            'language': 'ภาษาไทย',
+            'intro': 'นี่คืออัปเดตปรับประสบการณ์ One-click setup สำหรับ “เวอร์ชันที่ระลึก 4 ดั้ง” โดยเน้น feedback จากการทดสอบจริง: progress ของ Smart Reading Speed Boost นิ่งขึ้น, จัดการ weight เข้าใจง่ายขึ้น, และชื่อหมวด benchmark / NVIDIA เป็นมิตรกับผู้ใช้ทั่วไปมากขึ้น',
+            'updates': {
+                'heading': 'ไฮไลต์ของเวอร์ชันนี้',
+                'items': [
+                    'Smart Reading Speed Boost ยังใช้ benchmark ทางการของ KataGo แต่ progress bar จะเดินตามจำนวน position ที่ทดสอบเสร็จแล้ว ไม่ใช้การเดาเวลา ทำให้ช่วงทดสอบที่ 4 ไม่กระโดดไปมาและไม่เหมือนค้างที่ 88%',
+                    'KataGo Auto Setup จัด sidebar ใหม่เป็น Overview, Weights, Smart Reading Speed Boost, NVIDIA GPU Speed Components โดยวางฟังก์ชันเพิ่มความเร็วที่ใช้บ่อยไว้ก่อน',
+                    'ปรับคำที่ผู้ใช้เห็นจาก benchmark/optimization/acceleration ให้เป็น Smart Reading Speed Boost และ NVIDIA GPU Speed Components ที่เข้าใจง่ายกว่า',
+                    'Weight management ชัดขึ้น: รายการ weight ทางการที่ดาวน์โหลดได้จะแสดงชื่อรุ่นแบบสั้น วันที่เผยแพร่ สถานะ downloaded/current และปุ่ม download อยู่ใกล้ตัวเลือก official weight',
+                    'ก่อน release ได้รัน full test, package และเปิดแอปจริงบนเครื่อง local เพื่อตรวจ Auto Setup UI กับ Apple Silicon speed-boost flow แล้ว',
+                ],
+            },
+            'before': {
+                'heading': 'ก่อนดาวน์โหลด ดูตรงนี้ก่อน',
+                'items': [
+                    f'ผู้ใช้ Windows ส่วนใหญ่แนะนำให้ดาวน์โหลด {assets["windows_opencl_portable"]} ซึ่งเป็น **OpenCL รุ่นแนะนำ แบบไม่ต้องติดตั้ง**',
+                    f'ถ้า OpenCL ทำงานไม่ดีบนเครื่องของคุณ ให้เปลี่ยนไปใช้ {assets["windows_portable"]}',
+                    f'ถ้าเครื่องของคุณมี **การ์ดจอ NVIDIA** แนะนำให้ใช้ {assets["windows_nvidia_portable"]}',
+                    f'แพ็กเกจหลักมี KataGo `{katago_version}` และ weight เริ่มต้น `{model_source}` มาให้แล้ว',
+                    'ถ้าชอบขั้นตอนแบบติดตั้ง ให้เลือกไฟล์ `installer.exe` ในชุดเดียวกัน',
+                ],
+            },
+            'download': {
+                'heading': 'แนะนำการดาวน์โหลด',
+                'headers': ('เครื่องของคุณ', 'ดาวน์โหลดไฟล์นี้'),
+                'rows': standard_download_rows(STANDARD_DOWNLOAD_LABELS['th'], assets),
+            },
+            'why': {
+                'heading': 'ทำไมเวอร์ชันนี้ควรอัปเดต',
+                'items': [
+                    'การเปิดครั้งแรกหรือการเพิ่มความเร็วแบบ manual จะดูเหมือนงานที่กำลังเดินจริง ไม่ใช่หน้าต่างที่ค้างอยู่',
+                    'ผู้ใช้ใหม่จะเข้าใจ downloaded weights, official downloadable weights, smart speed boost และ NVIDIA components ได้เร็วขึ้น',
+                    'เป็นอัปเดตคุณภาพที่โฟกัส flow KataGo Auto Setup ซึ่งใช้งานบ่อย เหมาะสำหรับแทนที่ build ก่อนหน้า',
+                ],
+            },
+            'contact': {'heading': 'ติดต่อ', 'items': ['QQ group: `299419120`']},
+        },
+    ]
+    add_nvidia50_download_rows(sections, assets_cn, assets)
+    validate_release_sections(sections)
+    heading = f'# LizzieYzy Next {release_tag} 4段纪念版更新' if release_tag else '# LizzieYzy Next 4段纪念版更新'
+    return heading + '\n\n' + '\n\n---\n\n'.join(
         render_language_section(section) for section in sections
     ) + '\n'
 

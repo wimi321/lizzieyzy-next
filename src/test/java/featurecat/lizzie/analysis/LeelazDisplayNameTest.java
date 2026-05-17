@@ -29,12 +29,11 @@ class LeelazDisplayNameTest {
   }
 
   @Test
-  void downloadedOfficialWeightKeepsFamilyAndRunMarkers() {
+  void downloadedOfficialWeightHidesInternalTrainingHashes() {
     String command =
         "\"/tmp/katago\" gtp -model \"/tmp/weights/kata1-b28c512nbt-s12763923712-d5805955894.bin.gz\""
             + " -config \"/tmp/gtp.cfg\"";
 
-    assertEquals(
-        "28B s12763923712 d5805955894", Leelaz.friendlyEngineName("KataGo Auto Setup", command));
+    assertEquals("28B", Leelaz.friendlyEngineName("KataGo Auto Setup", command));
   }
 }

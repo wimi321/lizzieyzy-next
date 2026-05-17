@@ -456,8 +456,63 @@ public class KataGoRuntimeHelperTest {
   void benchmarkHeartbeatSmoothsLateSilentProgress() {
     int smoothed = KataGoRuntimeHelper.smoothSilentBenchmarkProgress(880, 12000L);
 
-    assertTrue(smoothed > 880, "Silent official benchmark output should still feel alive.");
+    assertTrue(smoothed >= 940, "Silent official benchmark output should still feel alive.");
     assertTrue(smoothed <= 970, "Heartbeat should leave room for the real final summary.");
+  }
+
+  @Test
+  void benchmarkHeartbeatCarriesSyntheticProgressPastEightyEightPercent() {
+    int firstSynthetic =
+        KataGoRuntimeHelper.estimateSyntheticBenchmarkPermille(300_000L, 260_000L, 80);
+    int secondSynthetic =
+        KataGoRuntimeHelper.estimateSyntheticBenchmarkPermille(301_000L, 261_000L, firstSynthetic);
+    int thirdSynthetic =
+        KataGoRuntimeHelper.estimateSyntheticBenchmarkPermille(302_000L, 262_000L, secondSynthetic);
+
+    assertEquals(880, firstSynthetic, "Five-minute fallback should reach the finalizing phase.");
+    assertTrue(
+        secondSynthetic >= 970,
+        "The first heartbeat after 88% should keep advancing instead of staying stuck.");
+    assertTrue(thirdSynthetic >= 985, "Long finalization should advance toward 99%.");
+    assertTrue(thirdSynthetic < 1000, "Only the real benchmark completion may show 100%.");
+  }
+
+  @Test
+  void benchmarkPrePositionHeartbeatDoesNotJumpAheadOfRealPositions() {
+    assertEquals(
+        90,
+        KataGoRuntimeHelper.estimatePrePositionBenchmarkPermille(300_000L, 90),
+        "Before KataGo reports position progress, the heartbeat should stay at the loading cap.");
+    assertEquals(
+        90,
+        KataGoRuntimeHelper.estimatePrePositionBenchmarkPermille(30_000L, 80),
+        "The heartbeat may reach the loading cap, but must not fake search progress.");
+  }
+
+  @Test
+  void benchmarkProgressAdvancesByCompletedPositions() {
+    KataGoRuntimeHelper.BenchmarkProgressTracker tracker =
+        new KataGoRuntimeHelper.BenchmarkProgressTracker();
+
+    assertEquals(30, tracker.update("Loading model and initializing"));
+    assertEquals(80, tracker.update("Possible numbers of threads to test: 1 2 4 8"));
+
+    int first = tracker.update("numSearchThreads = 4: 1/6 positions");
+    int second = tracker.update("numSearchThreads = 4: 2/6 positions");
+    int third = tracker.update("numSearchThreads = 4: 3/6 positions");
+    int fourth = tracker.update("numSearchThreads = 4: 4/6 positions");
+    int duplicate = tracker.update("numSearchThreads = 4: 4/6 positions");
+
+    assertTrue(tracker.hasObservedPositionProgress());
+    assertTrue(first > 90, "The first completed position should move past the loading cap.");
+    assertTrue(fourth < 300, "Thread 4 progress should not jump near completion.");
+    assertTrue(
+        Math.abs((second - first) - (third - second)) <= 1,
+        "Each completed position should add a stable amount of progress.");
+    assertTrue(
+        Math.abs((third - second) - (fourth - third)) <= 1,
+        "Progress should advance by completed benchmark positions, not by elapsed time.");
+    assertEquals(fourth, duplicate, "Repeating the same KataGo status line must not add progress.");
   }
 
   @Test
