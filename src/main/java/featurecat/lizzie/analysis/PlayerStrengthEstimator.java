@@ -16,8 +16,8 @@ public final class PlayerStrengthEstimator {
   private static final double WINRATE_TO_SCORE_LOSS = 6.0;
   private static final int ADDITIONAL_MOVE_ORDER = 999;
   private static final double MIN_DIFFICULTY_WEIGHT = 0.05;
-  private static final double KATRAIN_ACCURACY_BASE = 0.75;
-  private static final double RANK_SCORE_LOSS_SCALE = 2.5;
+  private static final double KATRAIN_ACCURACY_BASE = 0.80;
+  private static final double RANK_SCORE_LOSS_SCALE = 3.8;
   private static final int STRONG_KYU_LEVEL = 4;
   private static final int LOW_DAN_LEVEL = 6;
   private static final int MID_DAN_LEVEL = 7;
@@ -56,19 +56,19 @@ public final class PlayerStrengthEstimator {
     "12d AI"
   };
   private static final LevelThreshold[] QUALITY_LEVELS = {
-    new LevelThreshold(96.0, 13),
-    new LevelThreshold(92.0, 12),
-    new LevelThreshold(88.0, 11),
-    new LevelThreshold(84.0, 10),
-    new LevelThreshold(80.0, 9),
-    new LevelThreshold(76.0, 8),
-    new LevelThreshold(72.0, 7),
-    new LevelThreshold(63.0, 6),
-    new LevelThreshold(55.0, 5),
-    new LevelThreshold(51.0, 4),
-    new LevelThreshold(46.0, 3),
-    new LevelThreshold(36.0, 2),
-    new LevelThreshold(24.0, 1)
+    new LevelThreshold(94.0, 13),
+    new LevelThreshold(88.0, 12),
+    new LevelThreshold(82.0, 11),
+    new LevelThreshold(77.0, 10),
+    new LevelThreshold(72.0, 9),
+    new LevelThreshold(68.0, 8),
+    new LevelThreshold(63.0, 7),
+    new LevelThreshold(57.0, 6),
+    new LevelThreshold(51.0, 5),
+    new LevelThreshold(44.0, 4),
+    new LevelThreshold(36.0, 3),
+    new LevelThreshold(28.0, 2),
+    new LevelThreshold(18.0, 1)
   };
   private static final LevelThreshold[] FIRST_CHOICE_CAPS = {
     new LevelThreshold(0.62, 13),
@@ -124,20 +124,6 @@ public final class PlayerStrengthEstimator {
     new LevelThreshold(4.60, 4),
     new LevelThreshold(6.50, 3),
     new LevelThreshold(9.00, 2)
-  };
-  private static final LevelThreshold[] WEIGHTED_LOSS_CAPS = {
-    new LevelThreshold(0.35, 13),
-    new LevelThreshold(3.20, 12),
-    new LevelThreshold(4.00, 11),
-    new LevelThreshold(5.00, 10),
-    new LevelThreshold(6.20, 9),
-    new LevelThreshold(7.00, 8),
-    new LevelThreshold(7.50, 7),
-    new LevelThreshold(9.50, 6),
-    new LevelThreshold(12.50, 5),
-    new LevelThreshold(16.50, 4),
-    new LevelThreshold(22.00, 3),
-    new LevelThreshold(30.00, 2)
   };
 
   private PlayerStrengthEstimator() {}
@@ -739,20 +725,20 @@ public final class PlayerStrengthEstimator {
         double mistakeRate,
         double averageDifficulty) {
       double robustPointLoss =
-          0.50 * positive(weightedPointLoss)
-              + 0.30 * positive(averagePointLoss)
+          0.45 * positive(weightedPointLoss)
+              + 0.35 * positive(averagePointLoss)
               + 0.20 * positive(medianPointLoss);
       double lossScore =
           100.0 * Math.pow(KATRAIN_ACCURACY_BASE, robustPointLoss / RANK_SCORE_LOSS_SCALE);
-      double goodMoveScore = 100.0 * clamp(goodMoveRate, 0.0, 1.0);
-      double mistakeScore = 100.0 * (1.0 - clamp(mistakeRate / 0.18, 0.0, 1.0));
-      double firstChoiceScore = 100.0 * clamp((firstChoiceRate - 0.20) / 0.45, 0.0, 1.0);
-      double difficultyBonus = clamp((averageDifficulty - 20.0) / 60.0, 0.0, 1.0) * 6.0;
+      double goodMoveScore = 100.0 * clamp((goodMoveRate - 0.36) / 0.59, 0.0, 1.0);
+      double mistakeScore = 100.0 * (1.0 - clamp(mistakeRate / 0.36, 0.0, 1.0));
+      double firstChoiceScore = 100.0 * clamp((firstChoiceRate - 0.18) / 0.49, 0.0, 1.0);
+      double difficultyBonus = clamp((averageDifficulty - 22.0) / 58.0, 0.0, 1.0) * 5.0;
       return clamp(
-          0.48 * lossScore
-              + 0.27 * goodMoveScore
-              + 0.15 * mistakeScore
-              + 0.07 * firstChoiceScore
+          0.22 * lossScore
+              + 0.29 * goodMoveScore
+              + 0.23 * mistakeScore
+              + 0.23 * firstChoiceScore
               + difficultyBonus,
           0.0,
           100.0);
@@ -822,7 +808,6 @@ public final class PlayerStrengthEstimator {
     cap = Math.min(cap, capByGoodMoveRate(goodMoveRate));
     cap = Math.min(cap, capByMistakeRate(mistakeRate));
     cap = Math.min(cap, capByMedianLoss(medianPointLoss));
-    cap = Math.min(cap, capByWeightedLoss(weightedPointLoss));
     cap = Math.min(cap, evidenceCapLevel(weightedPointLoss, firstChoiceRate, goodMoveRate));
     return cap;
   }
@@ -868,10 +853,6 @@ public final class PlayerStrengthEstimator {
 
   private static int capByMedianLoss(double medianPointLoss) {
     return levelAtMost(medianPointLoss, MEDIAN_LOSS_CAPS, 1);
-  }
-
-  private static int capByWeightedLoss(double weightedPointLoss) {
-    return levelAtMost(weightedPointLoss, WEIGHTED_LOSS_CAPS, 1);
   }
 
   private static int levelAtLeast(double value, LevelThreshold[] thresholds, int fallbackLevel) {
