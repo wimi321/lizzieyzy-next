@@ -16,8 +16,23 @@ public final class PlayerStrengthEstimator {
   private static final double WINRATE_TO_SCORE_LOSS = 6.0;
   private static final int ADDITIONAL_MOVE_ORDER = 999;
   private static final double MIN_DIFFICULTY_WEIGHT = 0.05;
-  private static final double KATRAIN_ACCURACY_BASE = 0.80;
-  private static final double RANK_SCORE_LOSS_SCALE = 3.8;
+  // Generated from the clean-set Huber regression report documented in
+  // docs/PLAYER_STRENGTH_CALIBRATION.md.
+  private static final double REGRESSION_INTERCEPT = -41.7367695041;
+  private static final double REGRESSION_FIRST_CHOICE_WEIGHT = 1.3491578799;
+  private static final double REGRESSION_GOOD_MOVE_WEIGHT = 14.7836392271;
+  private static final double REGRESSION_MATCH_WEIGHT = 8.8821937547;
+  private static final double REGRESSION_NON_MISTAKE_WEIGHT = 16.1300737525;
+  private static final double REGRESSION_NON_BLUNDER_WEIGHT = 8.9019792251;
+  private static final double REGRESSION_WEIGHTED_LOSS_WEIGHT = -21.2338173555;
+  private static final double REGRESSION_AVERAGE_LOSS_WEIGHT = 16.7874212747;
+  private static final double REGRESSION_MEDIAN_LOSS_WEIGHT = 2.6216291730;
+  private static final double REGRESSION_P75_LOSS_WEIGHT = -0.3683802411;
+  private static final double REGRESSION_P90_LOSS_WEIGHT = 1.1648053972;
+  private static final double REGRESSION_DIFFICULTY_WEIGHT = 13.1144562488;
+  private static final double REGRESSION_FIRST_CHOICE_DIFFICULTY_WEIGHT = -10.6037172036;
+  private static final double REGRESSION_GOOD_MOVE_DIFFICULTY_WEIGHT = 1.7609995811;
+  private static final double REGRESSION_MATCH_DIFFICULTY_WEIGHT = -2.8472903619;
   private static final int STRONG_KYU_LEVEL = 4;
   private static final int LOW_DAN_LEVEL = 6;
   private static final int MID_DAN_LEVEL = 7;
@@ -54,21 +69,6 @@ public final class PlayerStrengthEstimator {
     "10d\u804c\u4e1a",
     "11d\u4e00\u7ebf\u804c\u4e1a",
     "12d AI"
-  };
-  private static final LevelThreshold[] QUALITY_LEVELS = {
-    new LevelThreshold(94.0, 13),
-    new LevelThreshold(88.0, 12),
-    new LevelThreshold(82.0, 11),
-    new LevelThreshold(77.0, 10),
-    new LevelThreshold(72.0, 9),
-    new LevelThreshold(68.0, 8),
-    new LevelThreshold(63.0, 7),
-    new LevelThreshold(57.0, 6),
-    new LevelThreshold(51.0, 5),
-    new LevelThreshold(44.0, 4),
-    new LevelThreshold(36.0, 3),
-    new LevelThreshold(28.0, 2),
-    new LevelThreshold(18.0, 1)
   };
   private static final LevelThreshold[] FIRST_CHOICE_CAPS = {
     new LevelThreshold(0.62, 13),
@@ -177,6 +177,7 @@ public final class PlayerStrengthEstimator {
         playedCandidate.rank == 0 || playedCoordinate(current).equalsIgnoreCase(topMove(previous));
     return new Sample(
         current.lastMoveColor,
+        current.moveNumber,
         positive(lossEstimate.winrateLoss),
         lossEstimate.scoreLoss.map(PlayerStrengthEstimator::positive),
         firstChoice,
@@ -405,6 +406,18 @@ public final class PlayerStrengthEstimator {
     return Math.max(min, Math.min(max, value));
   }
 
+  public static SideReport summarizeSamples(List<Sample> samples) {
+    Accumulator accumulator = new Accumulator();
+    if (samples != null) {
+      for (Sample sample : samples) {
+        if (sample != null) {
+          accumulator.add(sample);
+        }
+      }
+    }
+    return accumulator.toReport();
+  }
+
   public static final class Report {
     public final SideReport black;
     public final SideReport white;
@@ -435,6 +448,7 @@ public final class PlayerStrengthEstimator {
     public final double medianScoreLoss;
     public final double weightedScoreLoss;
     public final double averageScoreEquivalentLoss;
+    public final double matchRate;
     public final double firstChoiceRate;
     public final double goodMoveRate;
     public final double badMoveRate;
@@ -454,6 +468,7 @@ public final class PlayerStrengthEstimator {
         double medianScoreLoss,
         double weightedScoreLoss,
         double averageScoreEquivalentLoss,
+        double matchRate,
         double firstChoiceRate,
         double goodMoveRate,
         double badMoveRate,
@@ -471,6 +486,7 @@ public final class PlayerStrengthEstimator {
       this.medianScoreLoss = medianScoreLoss;
       this.weightedScoreLoss = weightedScoreLoss;
       this.averageScoreEquivalentLoss = averageScoreEquivalentLoss;
+      this.matchRate = matchRate;
       this.firstChoiceRate = firstChoiceRate;
       this.goodMoveRate = goodMoveRate;
       this.badMoveRate = badMoveRate;
@@ -512,6 +528,14 @@ public final class PlayerStrengthEstimator {
       return String.format(Locale.US, "%.1f", weightedScoreLoss);
     }
 
+    public String averageScoreEquivalentLossText() {
+      return String.format(Locale.US, "%.1f", averageScoreEquivalentLoss);
+    }
+
+    public String matchRateText() {
+      return percentText(matchRate);
+    }
+
     public String percentText(double value) {
       return String.format(Locale.US, "%.0f%%", value * 100.0);
     }
@@ -535,17 +559,18 @@ public final class PlayerStrengthEstimator {
     MISTAKE,
     BLUNDER;
 
-    private boolean isGoodMove() {
+    public boolean isGoodMove() {
       return this == EXCELLENT || this == GREAT || this == GOOD;
     }
 
-    private boolean isMistake() {
+    public boolean isMistake() {
       return this == MISTAKE || this == BLUNDER;
     }
   }
 
   public static final class Sample {
     public final Stone color;
+    public final int moveNumber;
     public final double winrateLoss;
     public final Optional<Double> scoreLoss;
     public final boolean firstChoice;
@@ -557,6 +582,7 @@ public final class PlayerStrengthEstimator {
 
     private Sample(
         Stone color,
+        int moveNumber,
         double winrateLoss,
         Optional<Double> scoreLoss,
         boolean firstChoice,
@@ -566,6 +592,7 @@ public final class PlayerStrengthEstimator {
         double complexity,
         double adjustedWeight) {
       this.color = color;
+      this.moveNumber = moveNumber;
       this.winrateLoss = winrateLoss;
       this.scoreLoss = scoreLoss;
       this.firstChoice = firstChoice;
@@ -611,6 +638,7 @@ public final class PlayerStrengthEstimator {
             0.0,
             0.0,
             0.0,
+            0.0,
             "-",
             Confidence.LOW,
             new ArrayList<>());
@@ -623,6 +651,7 @@ public final class PlayerStrengthEstimator {
       double weightSum = 0.0;
       double complexitySum = 0.0;
       List<Double> scoreLosses = new ArrayList<>();
+      List<Double> scoreEquivalentLosses = new ArrayList<>();
       int firstChoices = 0;
       int goodMoves = 0;
       int badMoves = 0;
@@ -633,6 +662,7 @@ public final class PlayerStrengthEstimator {
         winrateLossSum += winrateLoss;
         double scoreEquivalentLoss = positive(sample.scoreEquivalentLoss);
         scoreEquivalentLossSum += positive(scoreEquivalentLoss);
+        scoreEquivalentLosses.add(scoreEquivalentLoss);
         weightedPointLossSum += scoreEquivalentLoss * sample.adjustedWeight;
         weightSum += sample.adjustedWeight;
         if (sample.scoreLoss.isPresent()) {
@@ -662,6 +692,8 @@ public final class PlayerStrengthEstimator {
       double averageScoreLoss = scoreSampleCount == 0 ? 0.0 : scoreLossSum / scoreSampleCount;
       double medianScoreLoss = scoreSampleCount == 0 ? 0.0 : median(scoreLosses);
       double averageScoreEquivalentLoss = scoreEquivalentLossSum / sampleCount;
+      double p75ScoreEquivalentLoss = percentile(scoreEquivalentLosses, 0.75);
+      double p90ScoreEquivalentLoss = percentile(scoreEquivalentLosses, 0.90);
       double weightedPointLoss =
           weightSum == 0.0 ? averageScoreEquivalentLoss : weightedPointLossSum / weightSum;
       double firstChoiceRate = (double) firstChoices / sampleCount;
@@ -669,15 +701,20 @@ public final class PlayerStrengthEstimator {
       double badMoveRate = (double) badMoves / sampleCount;
       double mistakeRate = (double) mistakes / sampleCount;
       double blunderRate = (double) blunders / sampleCount;
+      double matchRate = matchRate(firstChoiceRate, goodMoveRate, mistakeRate);
       double averageDifficulty = complexitySum * 100.0 / sampleCount;
       double qualityScore =
           qualityScore(
               weightedPointLoss,
               averageScoreEquivalentLoss,
               scoreSampleCount == 0 ? averageScoreEquivalentLoss : medianScoreLoss,
+              p75ScoreEquivalentLoss,
+              p90ScoreEquivalentLoss,
               firstChoiceRate,
               goodMoveRate,
               mistakeRate,
+              blunderRate,
+              matchRate,
               averageDifficulty);
 
       return new SideReport(
@@ -689,6 +726,7 @@ public final class PlayerStrengthEstimator {
           medianScoreLoss,
           weightedPointLoss,
           averageScoreEquivalentLoss,
+          matchRate,
           firstChoiceRate,
           goodMoveRate,
           badMoveRate,
@@ -698,10 +736,13 @@ public final class PlayerStrengthEstimator {
           strengthBand(
               qualityScore,
               weightedPointLoss,
+              averageScoreEquivalentLoss,
               scoreSampleCount == 0 ? averageScoreEquivalentLoss : medianScoreLoss,
+              p90ScoreEquivalentLoss,
               firstChoiceRate,
               goodMoveRate,
               mistakeRate,
+              matchRate,
               averageDifficulty),
           confidence(sampleCount, scoreSampleCount),
           new ArrayList<>(samples));
@@ -716,32 +757,56 @@ public final class PlayerStrengthEstimator {
       return (values.get(middle - 1) + values.get(middle)) / 2.0;
     }
 
+    private static double percentile(List<Double> values, double fraction) {
+      if (values.isEmpty()) {
+        return 0.0;
+      }
+      Collections.sort(values);
+      if (values.size() == 1) {
+        return values.get(0);
+      }
+      double position = fraction * (values.size() - 1);
+      int lower = (int) Math.floor(position);
+      int upper = (int) Math.ceil(position);
+      if (lower == upper) {
+        return values.get(lower);
+      }
+      double weight = position - lower;
+      return values.get(lower) * (1.0 - weight) + values.get(upper) * weight;
+    }
+
+    private static double matchRate(
+        double firstChoiceRate, double goodMoveRate, double mistakeRate) {
+      return clamp(
+          0.45 * firstChoiceRate + 0.45 * goodMoveRate + 0.10 * (1.0 - mistakeRate), 0.0, 1.0);
+    }
+
     private static double qualityScore(
         double weightedPointLoss,
         double averagePointLoss,
         double medianPointLoss,
+        double p75PointLoss,
+        double p90PointLoss,
         double firstChoiceRate,
         double goodMoveRate,
         double mistakeRate,
+        double blunderRate,
+        double matchRate,
         double averageDifficulty) {
-      double robustPointLoss =
-          0.45 * positive(weightedPointLoss)
-              + 0.35 * positive(averagePointLoss)
-              + 0.20 * positive(medianPointLoss);
-      double lossScore =
-          100.0 * Math.pow(KATRAIN_ACCURACY_BASE, robustPointLoss / RANK_SCORE_LOSS_SCALE);
-      double goodMoveScore = 100.0 * clamp((goodMoveRate - 0.36) / 0.59, 0.0, 1.0);
-      double mistakeScore = 100.0 * (1.0 - clamp(mistakeRate / 0.36, 0.0, 1.0));
-      double firstChoiceScore = 100.0 * clamp((firstChoiceRate - 0.18) / 0.49, 0.0, 1.0);
-      double difficultyBonus = clamp((averageDifficulty - 22.0) / 58.0, 0.0, 1.0) * 5.0;
-      return clamp(
-          0.22 * lossScore
-              + 0.29 * goodMoveScore
-              + 0.23 * mistakeScore
-              + 0.23 * firstChoiceScore
-              + difficultyBonus,
-          0.0,
-          100.0);
+      double rankValue =
+          regressedRankValue(
+              weightedPointLoss,
+              averagePointLoss,
+              medianPointLoss,
+              p75PointLoss,
+              p90PointLoss,
+              firstChoiceRate,
+              goodMoveRate,
+              mistakeRate,
+              blunderRate,
+              matchRate,
+              averageDifficulty);
+      return rankValueToQualityScore(rankValue);
     }
 
     private Confidence confidence(int sampleCount, int scoreSampleCount) {
@@ -758,30 +823,145 @@ public final class PlayerStrengthEstimator {
   private static String strengthBand(
       double qualityScore,
       double weightedPointLoss,
+      double averagePointLoss,
       double medianPointLoss,
+      double p90PointLoss,
       double firstChoiceRate,
       double goodMoveRate,
       double mistakeRate,
+      double matchRate,
       double averageDifficulty) {
     int baseLevel =
         Math.max(
             baseLevel(qualityScore),
-            eliteEvidenceLevel(weightedPointLoss, firstChoiceRate, goodMoveRate, mistakeRate));
+            eliteEvidenceLevel(
+                weightedPointLoss, firstChoiceRate, goodMoveRate, mistakeRate, matchRate));
     int level =
         Math.min(
             baseLevel,
             metricCapLevel(
-                weightedPointLoss, medianPointLoss, firstChoiceRate, goodMoveRate, mistakeRate));
+                weightedPointLoss,
+                medianPointLoss,
+                firstChoiceRate,
+                goodMoveRate,
+                mistakeRate,
+                matchRate));
+    level =
+        Math.min(
+            level,
+            tailLossCap(
+                weightedPointLoss, averagePointLoss, medianPointLoss, p90PointLoss, matchRate));
     level = evidenceAdjustedLevel(level, firstChoiceRate, goodMoveRate, averageDifficulty);
     return STRENGTH_BANDS[level];
   }
 
   private static int baseLevel(double qualityScore) {
-    return levelAtLeast(qualityScore, QUALITY_LEVELS, 0);
+    return levelFromRankValue(-18.0 + clamp(qualityScore, 0.0, 100.0) * 30.0 / 100.0);
+  }
+
+  private static double regressedRankValue(
+      double weightedPointLoss,
+      double averagePointLoss,
+      double medianPointLoss,
+      double p75PointLoss,
+      double p90PointLoss,
+      double firstChoiceRate,
+      double goodMoveRate,
+      double mistakeRate,
+      double blunderRate,
+      double matchRate,
+      double averageDifficulty) {
+    double firstChoice = clamp(firstChoiceRate, 0.0, 1.0);
+    double goodMove = clamp(goodMoveRate, 0.0, 1.0);
+    double nonMistake = 1.0 - clamp(mistakeRate, 0.0, 1.0);
+    double nonBlunder = 1.0 - clamp(blunderRate, 0.0, 1.0);
+    double match = clamp(matchRate, 0.0, 1.0);
+    double weightedLossFit = 1.0 / (1.0 + clamp(positive(weightedPointLoss), 0.0, 50.0));
+    double medianLossFit = 1.0 / (1.0 + clamp(positive(medianPointLoss), 0.0, 50.0));
+    double averageLossFit = 1.0 / (1.0 + clamp(positive(averagePointLoss), 0.0, 50.0));
+    double p75LossFit = 1.0 / (1.0 + clamp(positive(p75PointLoss), 0.0, 50.0));
+    double p90LossFit = 1.0 / (1.0 + clamp(positive(p90PointLoss), 0.0, 80.0));
+    double difficulty = clamp((averageDifficulty - 25.0) / 35.0, 0.0, 1.0);
+
+    return clamp(
+        REGRESSION_INTERCEPT
+            + REGRESSION_FIRST_CHOICE_WEIGHT * firstChoice
+            + REGRESSION_GOOD_MOVE_WEIGHT * goodMove
+            + REGRESSION_MATCH_WEIGHT * match
+            + REGRESSION_NON_MISTAKE_WEIGHT * nonMistake
+            + REGRESSION_NON_BLUNDER_WEIGHT * nonBlunder
+            + REGRESSION_WEIGHTED_LOSS_WEIGHT * weightedLossFit
+            + REGRESSION_MEDIAN_LOSS_WEIGHT * medianLossFit
+            + REGRESSION_AVERAGE_LOSS_WEIGHT * averageLossFit
+            + REGRESSION_P75_LOSS_WEIGHT * p75LossFit
+            + REGRESSION_P90_LOSS_WEIGHT * p90LossFit
+            + REGRESSION_DIFFICULTY_WEIGHT * difficulty
+            + REGRESSION_FIRST_CHOICE_DIFFICULTY_WEIGHT * firstChoice * difficulty
+            + REGRESSION_GOOD_MOVE_DIFFICULTY_WEIGHT * goodMove * difficulty
+            + REGRESSION_MATCH_DIFFICULTY_WEIGHT * match * difficulty,
+        -18.0,
+        12.0);
+  }
+
+  private static double rankValueToQualityScore(double rankValue) {
+    return clamp((rankValue + 18.0) * 100.0 / 30.0, 0.0, 100.0);
+  }
+
+  private static int levelFromRankValue(double rankValue) {
+    if (rankValue >= 11.5) {
+      return 13;
+    }
+    if (rankValue >= 10.5) {
+      return 12;
+    }
+    if (rankValue >= 9.5) {
+      return 11;
+    }
+    if (rankValue >= 8.5) {
+      return 10;
+    }
+    if (rankValue >= 7.5) {
+      return 9;
+    }
+    if (rankValue >= 6.5) {
+      return 8;
+    }
+    if (rankValue >= 4.5) {
+      return 7;
+    }
+    if (rankValue >= 2.5) {
+      return 6;
+    }
+    if (rankValue >= 0.0) {
+      return 5;
+    }
+    if (rankValue >= -2.75) {
+      return 4;
+    }
+    if (rankValue >= -6.0) {
+      return 3;
+    }
+    if (rankValue >= -10.5) {
+      return 2;
+    }
+    if (rankValue >= -15.5) {
+      return 1;
+    }
+    return 0;
   }
 
   private static int eliteEvidenceLevel(
-      double weightedPointLoss, double firstChoiceRate, double goodMoveRate, double mistakeRate) {
+      double weightedPointLoss,
+      double firstChoiceRate,
+      double goodMoveRate,
+      double mistakeRate,
+      double matchRate) {
+    if (firstChoiceRate >= 0.95
+        && goodMoveRate >= 0.96
+        && mistakeRate <= 0.01
+        && weightedPointLoss <= 1.00) {
+      return 13;
+    }
     if (firstChoiceRate >= TOP_PRO_FIRST_CHOICE_RATE
         && goodMoveRate >= TOP_PRO_GOOD_MOVE_RATE
         && mistakeRate <= TOP_PRO_MISTAKE_RATE
@@ -794,7 +974,33 @@ public final class PlayerStrengthEstimator {
         && weightedPointLoss <= PRO_WEIGHTED_LOSS) {
       return 11;
     }
+    if (firstChoiceRate >= 0.44
+        && goodMoveRate >= 0.78
+        && matchRate >= 0.62
+        && mistakeRate <= 0.03
+        && weightedPointLoss <= 2.00) {
+      return 10;
+    }
     return 0;
+  }
+
+  private static int tailLossCap(
+      double weightedPointLoss,
+      double averagePointLoss,
+      double medianPointLoss,
+      double p90PointLoss,
+      double matchRate) {
+    int cap = 13;
+    if (p90PointLoss > 8.0 && averagePointLoss > 2.8 && matchRate < 0.55) {
+      cap = Math.min(cap, MID_DAN_LEVEL);
+    }
+    if (p90PointLoss > 5.5 && medianPointLoss > 1.0 && matchRate < 0.50) {
+      cap = Math.min(cap, LOW_DAN_LEVEL);
+    }
+    if (weightedPointLoss > 4.8 && averagePointLoss > 3.0 && matchRate < 0.45) {
+      cap = Math.min(cap, STRONG_KYU_LEVEL);
+    }
+    return cap;
   }
 
   private static int metricCapLevel(
@@ -802,10 +1008,12 @@ public final class PlayerStrengthEstimator {
       double medianPointLoss,
       double firstChoiceRate,
       double goodMoveRate,
-      double mistakeRate) {
+      double mistakeRate,
+      double matchRate) {
     int cap = 13;
     cap = Math.min(cap, capByFirstChoice(firstChoiceRate));
     cap = Math.min(cap, capByGoodMoveRate(goodMoveRate));
+    cap = Math.min(cap, capByMatchRate(matchRate));
     cap = Math.min(cap, capByMistakeRate(mistakeRate));
     cap = Math.min(cap, capByMedianLoss(medianPointLoss));
     cap = Math.min(cap, evidenceCapLevel(weightedPointLoss, firstChoiceRate, goodMoveRate));
@@ -845,6 +1053,25 @@ public final class PlayerStrengthEstimator {
 
   private static int capByGoodMoveRate(double goodMoveRate) {
     return levelAtLeast(goodMoveRate, GOOD_MOVE_CAPS, 1);
+  }
+
+  private static int capByMatchRate(double matchRate) {
+    return levelAtLeast(
+        matchRate,
+        new LevelThreshold[] {
+          new LevelThreshold(0.80, 13),
+          new LevelThreshold(0.70, 12),
+          new LevelThreshold(0.62, 11),
+          new LevelThreshold(0.58, 10),
+          new LevelThreshold(0.54, 9),
+          new LevelThreshold(0.49, 8),
+          new LevelThreshold(0.43, 7),
+          new LevelThreshold(0.37, 6),
+          new LevelThreshold(0.30, 5),
+          new LevelThreshold(0.22, 4),
+          new LevelThreshold(0.14, 3)
+        },
+        2);
   }
 
   private static int capByMistakeRate(double mistakeRate) {

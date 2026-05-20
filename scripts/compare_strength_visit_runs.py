@@ -17,6 +17,7 @@ METRICS = [
     "quality_score",
     "first_choice_rate",
     "good_move_rate",
+    "match_rate",
     "mistake_rate",
     "weighted_point_loss",
     "average_score_loss",

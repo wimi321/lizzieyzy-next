@@ -12686,10 +12686,49 @@ public class LizzieFrame extends JFrame {
     }
     PlayerStrengthEstimator.Report report =
         PlayerStrengthEstimator.estimate(Lizzie.board.getHistory().getStart());
-    Utils.showHtmlMessageModal(
-        Lizzie.resourceBundle.getString("PlayerStrengthEstimate.title"),
-        buildPlayerStrengthEstimateHtml(report),
-        this);
+    String title = Lizzie.resourceBundle.getString("PlayerStrengthEstimate.title");
+    JDialog dialog = new JDialog(this, title, true);
+    dialog.setDefaultCloseOperation(WindowConstants.DISPOSE_ON_CLOSE);
+    dialog.getContentPane().setLayout(new BorderLayout());
+
+    JTabbedPane tabbedPane = new JTabbedPane(JTabbedPane.TOP);
+    tabbedPane.setFont(new Font(Config.sysDefaultFontName, Font.PLAIN, Config.frameFontSize));
+    tabbedPane.addTab(
+        Lizzie.resourceBundle.getString("PlayerStrengthEstimate.tab.assessment"),
+        buildPlayerStrengthAssessmentPanel(report));
+    tabbedPane.addTab(
+        Lizzie.resourceBundle.getString("PlayerStrengthEstimate.tab.match"),
+        buildPlayerStrengthMatchPanel(report));
+    dialog.getContentPane().add(tabbedPane, BorderLayout.CENTER);
+    dialog.setMinimumSize(new Dimension(720, 220));
+    Lizzie.setFrameSize(dialog, 860, 230);
+    dialog.setLocationRelativeTo(this);
+    dialog.setVisible(true);
+  }
+
+  private JComponent buildPlayerStrengthAssessmentPanel(PlayerStrengthEstimator.Report report) {
+    JEditorPane htmlPane = new JEditorPane();
+    htmlPane.setContentType("text/html");
+    htmlPane.putClientProperty(JEditorPane.HONOR_DISPLAY_PROPERTIES, Boolean.TRUE);
+    htmlPane.setEditable(false);
+    htmlPane.setOpaque(false);
+    htmlPane.setFont(new Font(Config.sysDefaultFontName, Font.PLAIN, Config.frameFontSize));
+    htmlPane.setText(buildPlayerStrengthEstimateHtml(report));
+    htmlPane.setCaretPosition(0);
+
+    JScrollPane scrollPane = new JScrollPane(htmlPane);
+    scrollPane.setBorder(new EmptyBorder(10, 10, 10, 10));
+    scrollPane.getViewport().setOpaque(false);
+    scrollPane.setOpaque(false);
+    return scrollPane;
+  }
+
+  private JComponent buildPlayerStrengthMatchPanel(PlayerStrengthEstimator.Report report) {
+    JPanel panel = new JPanel(new BorderLayout());
+    panel.setBorder(new EmptyBorder(6, 6, 6, 6));
+    panel.setBackground(new Color(46, 55, 70));
+    panel.add(new PlayerStrengthMatchChart(report), BorderLayout.CENTER);
+    return panel;
   }
 
   private String buildPlayerStrengthEstimateHtml(PlayerStrengthEstimator.Report report) {
@@ -12782,6 +12821,555 @@ public class LizzieFrame extends JFrame {
         return Lizzie.resourceBundle.getString("PlayerStrengthEstimate.confidence.medium");
       default:
         return Lizzie.resourceBundle.getString("PlayerStrengthEstimate.confidence.low");
+    }
+  }
+
+  private static double playerStrengthClamp(double value, double min, double max) {
+    return Math.max(min, Math.min(max, value));
+  }
+
+  private static double playerStrengthAiLikelihood(PlayerStrengthEstimator.SideReport report) {
+    if (report == null || !report.hasSamples()) {
+      return 0.0;
+    }
+    double matchSignal = playerStrengthClamp((report.matchRate - 0.72) / 0.22, 0.0, 1.0);
+    double firstChoiceSignal =
+        playerStrengthClamp((report.firstChoiceRate - 0.50) / 0.18, 0.0, 1.0);
+    double lossSignal = playerStrengthClamp((3.2 - report.weightedScoreLoss) / 3.2, 0.0, 1.0);
+    double mistakeSignal = 1.0 - playerStrengthClamp(report.mistakeRate / 0.05, 0.0, 1.0);
+    return playerStrengthClamp(
+        0.35 * matchSignal + 0.30 * firstChoiceSignal + 0.25 * lossSignal + 0.10 * mistakeSignal,
+        0.0,
+        1.0);
+  }
+
+  private static final class PlayerStrengthMatchChart extends JPanel {
+    private static final long serialVersionUID = 1L;
+    private static final Color BACKGROUND = new Color(46, 55, 70);
+    private static final Color BLACK_PANEL = new Color(89, 73, 83);
+    private static final Color WHITE_PANEL = new Color(72, 86, 112);
+    private static final Color TRACK = new Color(62, 68, 82);
+    private static final Color GRID = new Color(139, 146, 158);
+    private static final Color TEXT = new Color(245, 247, 250);
+    private static final Color MUTED_TEXT = new Color(212, 216, 222);
+    private static final Color BLACK_FIRST = new Color(255, 85, 91);
+    private static final Color BLACK_GOOD = new Color(255, 115, 118);
+    private static final Color WHITE_FIRST = new Color(93, 160, 252);
+    private static final Color WHITE_GOOD = new Color(118, 176, 255);
+    private static final Color RANK = new Color(106, 224, 55);
+    private static final Color RANK_TEXT = new Color(33, 46, 26);
+    private static final Color AI_INTERVAL = new Color(246, 210, 38);
+
+    private final transient PlayerStrengthEstimator.Report report;
+    private transient String hoverRankText;
+    private transient Point hoverPoint;
+
+    private PlayerStrengthMatchChart(PlayerStrengthEstimator.Report report) {
+      this.report = report;
+      setBackground(BACKGROUND);
+      setPreferredSize(new Dimension(800, 150));
+      setMinimumSize(new Dimension(640, 135));
+      setToolTipText("");
+      ToolTipManager.sharedInstance().registerComponent(this);
+      MouseAdapter hoverListener =
+          new MouseAdapter() {
+            @Override
+            public void mouseMoved(MouseEvent event) {
+              updateHoverRank(event.getPoint());
+            }
+
+            @Override
+            public void mouseExited(MouseEvent event) {
+              updateHoverRank(null);
+            }
+          };
+      addMouseMotionListener(hoverListener);
+      addMouseListener(hoverListener);
+    }
+
+    @Override
+    public String getToolTipText(MouseEvent event) {
+      if (event == null) {
+        return null;
+      }
+      return rankTooltipAt(event.getPoint());
+    }
+
+    @Override
+    protected void paintComponent(Graphics g) {
+      super.paintComponent(g);
+      Graphics2D g2 = (Graphics2D) g.create();
+      g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+      g2.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
+
+      int width = getWidth();
+      int height = getHeight();
+      int margin = 10;
+      int sideLabelWidth = 48;
+      int statsWidth = 140;
+      int chartX = margin + sideLabelWidth;
+      int chartWidth = Math.max(120, width - chartX - statsWidth - margin);
+      int maxMove = maxMove(report);
+      int top = 8;
+      int axisHeight = 18;
+      int sectionGap = 3;
+      int sectionHeight = Math.max(54, (height - top - axisHeight - sectionGap) / 2);
+
+      drawSide(g2, report.black, true, chartX, top, chartWidth, sectionHeight, maxMove);
+      drawSide(
+          g2,
+          report.white,
+          false,
+          chartX,
+          top + sectionHeight + sectionGap,
+          chartWidth,
+          sectionHeight,
+          maxMove);
+      drawAxis(g2, chartX, top + sectionHeight * 2 + sectionGap + 14, chartWidth, maxMove);
+      drawHoverRankTooltip(g2);
+      g2.dispose();
+    }
+
+    private void drawSide(
+        Graphics2D g2,
+        PlayerStrengthEstimator.SideReport sideReport,
+        boolean black,
+        int chartX,
+        int top,
+        int chartWidth,
+        int sectionHeight,
+        int maxMove) {
+      int statsX = chartX + chartWidth + 36;
+      int firstY = top + 16;
+      int goodY = top + 33;
+      int rankY = top + 25;
+      int aiY = top + sectionHeight - 15;
+      int laneHeight = 7;
+      int blockWidth = Math.max(3, Math.min(8, chartWidth / Math.max(maxMove, 1)));
+
+      g2.setColor(black ? BLACK_PANEL : WHITE_PANEL);
+      g2.fillRect(chartX - 12, top, chartWidth + 12 + 130, sectionHeight);
+
+      drawMoveGrid(g2, chartX, top, chartWidth, sectionHeight, maxMove);
+      g2.setFont(new Font(Config.sysDefaultFontName, Font.BOLD, Config.frameFontSize + 1));
+      g2.setColor(TEXT);
+      drawStoneMarker(g2, black, chartX + chartWidth + 8, firstY - 18, 22);
+
+      g2.setColor(TRACK);
+      g2.fillRect(chartX, firstY, chartWidth, laneHeight);
+      g2.fillRect(chartX, goodY, chartWidth, laneHeight);
+
+      List<PlayerStrengthEstimator.Sample> samples = new ArrayList<>(sideReport.samples);
+      samples.sort(Comparator.comparingInt(sample -> sample.moveNumber));
+      for (PlayerStrengthEstimator.Sample sample : samples) {
+        int x = moveToX(sample.moveNumber, chartX, chartWidth, maxMove);
+        if (sample.firstChoice) {
+          g2.setColor(black ? BLACK_FIRST : WHITE_FIRST);
+          g2.fillRect(x, firstY, blockWidth, laneHeight);
+        }
+        if (sample.category.isGoodMove()) {
+          g2.setColor(black ? BLACK_GOOD : WHITE_GOOD);
+          g2.fillRect(x, goodY, blockWidth, laneHeight);
+        }
+      }
+
+      drawRankWindows(g2, sideReport, chartX, rankY, chartWidth, maxMove);
+      drawAiIntervals(g2, sideReport, chartX, aiY, chartWidth, maxMove);
+
+      g2.setFont(new Font(Config.sysDefaultFontName, Font.PLAIN, Config.frameFontSize));
+      g2.setColor(TEXT);
+      drawStat(
+          g2,
+          statsX,
+          firstY + laneHeight,
+          Lizzie.resourceBundle.getString("PlayerStrengthEstimate.match.firstChoice"),
+          percentText(sideReport.firstChoiceRate));
+      drawStat(
+          g2,
+          statsX,
+          goodY + laneHeight,
+          Lizzie.resourceBundle.getString("PlayerStrengthEstimate.match.goodMove"),
+          percentText(sideReport.goodMoveRate));
+      drawStat(
+          g2,
+          statsX,
+          aiY + laneHeight + 2,
+          Lizzie.resourceBundle.getString("PlayerStrengthEstimate.match.aiLike"),
+          percentText(playerStrengthAiLikelihood(sideReport)));
+      g2.setColor(MUTED_TEXT);
+      g2.drawString(
+          Lizzie.resourceBundle.getString("PlayerStrengthEstimate.match.firstChoice"),
+          chartX
+              - 2
+              - g2.getFontMetrics()
+                  .stringWidth(
+                      Lizzie.resourceBundle.getString("PlayerStrengthEstimate.match.firstChoice")),
+          firstY + laneHeight);
+      g2.drawString(
+          Lizzie.resourceBundle.getString("PlayerStrengthEstimate.match.goodMove"),
+          chartX
+              - 2
+              - g2.getFontMetrics()
+                  .stringWidth(
+                      Lizzie.resourceBundle.getString("PlayerStrengthEstimate.match.goodMove")),
+          goodY + laneHeight);
+    }
+
+    private void drawMoveGrid(
+        Graphics2D g2, int chartX, int top, int chartWidth, int sectionHeight, int maxMove) {
+      g2.setColor(new Color(255, 255, 255, 35));
+      int tickStep = axisTickStep(maxMove, chartWidth);
+      for (int move = 1; move <= maxMove; move += tickStep) {
+        int x = moveToX(move, chartX, chartWidth, maxMove);
+        g2.drawLine(x, top, x, top + sectionHeight);
+      }
+      g2.setColor(new Color(255, 255, 255, 60));
+      g2.drawLine(chartX, top + sectionHeight - 1, chartX + chartWidth, top + sectionHeight - 1);
+    }
+
+    private void drawRankWindows(
+        Graphics2D g2,
+        PlayerStrengthEstimator.SideReport sideReport,
+        int chartX,
+        int y,
+        int chartWidth,
+        int maxMove) {
+      g2.setFont(
+          new Font(Config.sysDefaultFontName, Font.BOLD, Math.max(10, Config.frameFontSize)));
+      for (MatchWindow window : performanceSegments(sideReport)) {
+        if (!shouldDisplayRankWindow(window, sideReport)) {
+          continue;
+        }
+        Rectangle bounds = rankWindowBounds(window, chartX, y, chartWidth, maxMove);
+        String label = strengthLabel(window.report.strengthBand);
+        g2.setColor(RANK);
+        g2.fillRoundRect(bounds.x, bounds.y, bounds.width, bounds.height, 4, 4);
+        if (hoverPoint != null) {
+          Rectangle hitBounds = new Rectangle(bounds);
+          hitBounds.grow(6, 10);
+          if (hitBounds.contains(hoverPoint)) {
+            g2.setColor(new Color(255, 255, 255, 220));
+            g2.drawRoundRect(bounds.x - 1, bounds.y - 1, bounds.width + 1, bounds.height + 1, 5, 5);
+          }
+        }
+        if (bounds.width >= g2.getFontMetrics().stringWidth(label) + 6) {
+          g2.setColor(RANK_TEXT);
+          drawCenteredString(g2, label, bounds.x, bounds.x + bounds.width, y + 12);
+        }
+      }
+    }
+
+    private void drawAiIntervals(
+        Graphics2D g2,
+        PlayerStrengthEstimator.SideReport sideReport,
+        int chartX,
+        int y,
+        int chartWidth,
+        int maxMove) {
+      boolean hasSuspectInterval = false;
+      g2.setColor(AI_INTERVAL);
+      g2.drawRect(chartX, y, chartWidth, 15);
+      for (MatchWindow window : performanceSegments(sideReport)) {
+        if (window.report.sampleCount < minimumSegmentSamples(sideReport)
+            || playerStrengthAiLikelihood(window.report) < 0.70) {
+          continue;
+        }
+        hasSuspectInterval = true;
+        int x1 = moveToX(window.firstMove, chartX, chartWidth, maxMove);
+        int x2 = moveToX(window.lastMove + 1, chartX, chartWidth, maxMove);
+        g2.fillRect(x1 + 1, y + 1, Math.max(4, x2 - x1 - 2), 13);
+      }
+      if (!hasSuspectInterval) {
+        String text = Lizzie.resourceBundle.getString("PlayerStrengthEstimate.match.noAiInterval");
+        g2.setFont(
+            new Font(Config.sysDefaultFontName, Font.BOLD, Math.max(10, Config.frameFontSize)));
+        g2.setColor(TEXT);
+        drawCenteredString(g2, text, chartX, chartX + chartWidth, y + 12);
+      }
+    }
+
+    private void drawAxis(Graphics2D g2, int chartX, int y, int chartWidth, int maxMove) {
+      g2.setFont(new Font(Config.sysDefaultFontName, Font.PLAIN, Config.frameFontSize));
+      g2.setColor(GRID);
+      g2.drawLine(chartX, y - 10, chartX + chartWidth, y - 10);
+      int tickStep = axisTickStep(maxMove, chartWidth);
+      for (int move = 1; move <= maxMove; move += tickStep) {
+        int x = moveToX(move, chartX, chartWidth, maxMove);
+        g2.drawLine(x, y - 14, x, y - 8);
+        String label = String.valueOf(move);
+        g2.drawString(label, x - g2.getFontMetrics().stringWidth(label) / 2, y + 5);
+      }
+      int endX = moveToX(maxMove, chartX, chartWidth, maxMove);
+      String endLabel = String.valueOf(maxMove);
+      if (maxMove > 1 && (maxMove - 1) % tickStep != 0) {
+        g2.drawString(endLabel, endX - g2.getFontMetrics().stringWidth(endLabel) / 2, y + 5);
+      }
+    }
+
+    private int maxMove(PlayerStrengthEstimator.Report report) {
+      int maxMove = 1;
+      for (PlayerStrengthEstimator.Sample sample : report.overall.samples) {
+        maxMove = Math.max(maxMove, sample.moveNumber);
+      }
+      return maxMove;
+    }
+
+    private int moveToX(int moveNumber, int chartX, int chartWidth, int maxMove) {
+      if (maxMove <= 1) {
+        return chartX;
+      }
+      double position = playerStrengthClamp((moveNumber - 1.0) / (maxMove - 1.0), 0.0, 1.0);
+      return chartX + (int) Math.round(position * Math.max(0, chartWidth - 1));
+    }
+
+    private Rectangle rankWindowBounds(
+        MatchWindow window, int chartX, int y, int chartWidth, int maxMove) {
+      int x1 = moveToX(window.firstMove, chartX, chartWidth, maxMove);
+      int x2 = moveToX(window.lastMove + 1, chartX, chartWidth, maxMove);
+      return new Rectangle(x1 + 1, y, Math.max(20, x2 - x1 - 2), 15);
+    }
+
+    private String rankTooltipAt(Point point) {
+      int width = getWidth();
+      int height = getHeight();
+      int margin = 10;
+      int sideLabelWidth = 48;
+      int statsWidth = 140;
+      int chartX = margin + sideLabelWidth;
+      int chartWidth = Math.max(120, width - chartX - statsWidth - margin);
+      int maxMove = maxMove(report);
+      int top = 8;
+      int axisHeight = 18;
+      int sectionGap = 3;
+      int sectionHeight = Math.max(54, (height - top - axisHeight - sectionGap) / 2);
+
+      String blackTooltip =
+          rankTooltipAtSide(point, report.black, true, chartX, top, chartWidth, maxMove);
+      if (blackTooltip != null) {
+        return blackTooltip;
+      }
+      return rankTooltipAtSide(
+          point,
+          report.white,
+          false,
+          chartX,
+          top + sectionHeight + sectionGap,
+          chartWidth,
+          maxMove);
+    }
+
+    private String rankTooltipAtSide(
+        Point point,
+        PlayerStrengthEstimator.SideReport sideReport,
+        boolean black,
+        int chartX,
+        int top,
+        int chartWidth,
+        int maxMove) {
+      int rankY = top + 25;
+      for (MatchWindow window : performanceSegments(sideReport)) {
+        if (!shouldDisplayRankWindow(window, sideReport)) {
+          continue;
+        }
+        Rectangle hitBounds = rankWindowBounds(window, chartX, rankY, chartWidth, maxMove);
+        hitBounds.grow(6, 10);
+        if (!hitBounds.contains(point)) {
+          continue;
+        }
+        String sideName =
+            black
+                ? Lizzie.resourceBundle.getString("Menu.Black")
+                : Lizzie.resourceBundle.getString("Menu.White");
+        return String.format(
+            Lizzie.resourceBundle.getString("PlayerStrengthEstimate.match.rankTooltip"),
+            sideName,
+            window.firstMove,
+            window.lastMove,
+            strengthLabel(window.report.strengthBand));
+      }
+      return null;
+    }
+
+    private void updateHoverRank(Point point) {
+      String text = point == null ? null : rankTooltipAt(point);
+      if (Objects.equals(hoverRankText, text)
+          && ((hoverPoint == null && point == null)
+              || (hoverPoint != null && hoverPoint.equals(point)))) {
+        return;
+      }
+      hoverRankText = text;
+      hoverPoint = point == null ? null : new Point(point);
+      setCursor(
+          text == null
+              ? Cursor.getDefaultCursor()
+              : Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+      repaint();
+    }
+
+    private void drawHoverRankTooltip(Graphics2D g2) {
+      if (hoverRankText == null || hoverRankText.isEmpty() || hoverPoint == null) {
+        return;
+      }
+      g2.setFont(
+          new Font(Config.sysDefaultFontName, Font.BOLD, Math.max(11, Config.frameFontSize)));
+      FontMetrics metrics = g2.getFontMetrics();
+      int paddingX = 9;
+      int paddingY = 5;
+      int boxWidth = metrics.stringWidth(hoverRankText) + paddingX * 2;
+      int boxHeight = metrics.getHeight() + paddingY * 2;
+      int x = Math.min(Math.max(10, hoverPoint.x + 12), Math.max(10, getWidth() - boxWidth - 10));
+      int y = hoverPoint.y - boxHeight - 10;
+      if (y < 8) {
+        y = Math.min(getHeight() - boxHeight - 8, hoverPoint.y + 14);
+      }
+
+      g2.setColor(new Color(28, 34, 44, 238));
+      g2.fillRoundRect(x, y, boxWidth, boxHeight, 8, 8);
+      g2.setColor(new Color(255, 255, 255, 180));
+      g2.drawRoundRect(x, y, boxWidth, boxHeight, 8, 8);
+      g2.setColor(TEXT);
+      g2.drawString(hoverRankText, x + paddingX, y + paddingY + metrics.getAscent());
+    }
+
+    private List<MatchWindow> performanceSegments(PlayerStrengthEstimator.SideReport sideReport) {
+      List<PlayerStrengthEstimator.Sample> samples = new ArrayList<>(sideReport.samples);
+      samples.sort(Comparator.comparingInt(sample -> sample.moveNumber));
+      if (samples.isEmpty()) {
+        return Collections.emptyList();
+      }
+
+      List<MatchWindow> segments = new ArrayList<>();
+      int segmentSamples = adaptiveSegmentSamples(sideReport);
+      int start = 0;
+      while (start < samples.size()) {
+        int end = Math.min(samples.size(), start + segmentSamples);
+        if (samples.size() - end > 0 && samples.size() - end < minimumSegmentSamples(sideReport)) {
+          end = samples.size();
+        }
+        addPerformanceSegment(segments, samples.subList(start, end));
+        start = end;
+      }
+      return segments;
+    }
+
+    private boolean shouldDisplayRankWindow(
+        MatchWindow window, PlayerStrengthEstimator.SideReport sideReport) {
+      return window.report.sampleCount >= minimumSegmentSamples(sideReport)
+          && highestDanLevel(window.report.strengthBand) >= 7;
+    }
+
+    private int highestDanLevel(String strengthBand) {
+      if (strengthBand == null) {
+        return -1;
+      }
+      String band = strengthBand.trim();
+      int dIndex = band.indexOf('d');
+      if (dIndex <= 0) {
+        return -1;
+      }
+      int start = dIndex - 1;
+      while (start >= 0 && Character.isDigit(band.charAt(start))) {
+        start--;
+      }
+      if (start == dIndex - 1) {
+        return -1;
+      }
+      try {
+        return Integer.parseInt(band.substring(start + 1, dIndex));
+      } catch (NumberFormatException ignored) {
+        return -1;
+      }
+    }
+
+    private void addPerformanceSegment(
+        List<MatchWindow> segments, List<PlayerStrengthEstimator.Sample> samples) {
+      if (samples.isEmpty()) {
+        return;
+      }
+      int firstMove = samples.get(0).moveNumber;
+      int lastMove = samples.get(samples.size() - 1).moveNumber;
+      segments.add(
+          new MatchWindow(firstMove, lastMove, PlayerStrengthEstimator.summarizeSamples(samples)));
+    }
+
+    private int adaptiveSegmentSamples(PlayerStrengthEstimator.SideReport report) {
+      int sampleCount = Math.max(1, report.sampleCount);
+      int minimum = minimumSegmentSamples(report);
+      if (sampleCount <= minimum * 2) {
+        return sampleCount;
+      }
+      int targetSegments = Math.max(2, Math.min(9, (int) Math.round(Math.sqrt(sampleCount))));
+      return Math.max(minimum, (int) Math.ceil((double) sampleCount / targetSegments));
+    }
+
+    private int minimumSegmentSamples(PlayerStrengthEstimator.SideReport report) {
+      if (report.sampleCount < 16) {
+        return 3;
+      }
+      if (report.sampleCount < 40) {
+        return 4;
+      }
+      return 5;
+    }
+
+    private int axisTickStep(int maxMove, int chartWidth) {
+      int targetTicks = Math.max(3, chartWidth / 90);
+      double roughStep = Math.max(1.0, (double) Math.max(1, maxMove - 1) / targetTicks);
+      int magnitude = 1;
+      while (magnitude * 10 < roughStep) {
+        magnitude *= 10;
+      }
+      int[] factors = {1, 2, 5, 10};
+      for (int factor : factors) {
+        int step = factor * magnitude;
+        if (step >= roughStep) {
+          return step;
+        }
+      }
+      return magnitude * 10;
+    }
+
+    private String strengthLabel(String strengthBand) {
+      if (strengthBand == null || strengthBand.trim().isEmpty()) {
+        return "-";
+      }
+      return strengthBand.replace("\u804c\u4e1a", "").replace("\u4e00\u7ebf", "");
+    }
+
+    private String percentText(double value) {
+      return String.format(Locale.US, "%.1f%%", value * 100.0);
+    }
+
+    private void drawStoneMarker(Graphics2D g2, boolean black, int x, int y, int size) {
+      Paint oldPaint = g2.getPaint();
+      g2.setColor(black ? new Color(20, 22, 26) : new Color(244, 244, 236));
+      g2.fillOval(x, y, size, size);
+      g2.setColor(black ? new Color(255, 255, 255, 95) : new Color(30, 34, 42, 170));
+      g2.drawOval(x, y, size, size);
+      g2.setColor(black ? new Color(255, 255, 255, 45) : new Color(255, 255, 255, 180));
+      g2.fillOval(x + 3, y + 3, Math.max(3, size / 3), Math.max(3, size / 3));
+      g2.setPaint(oldPaint);
+    }
+
+    private void drawStat(Graphics2D g2, int x, int y, String label, String value) {
+      g2.drawString(label + " " + value, x, y);
+    }
+
+    private void drawCenteredString(Graphics2D g2, String text, int x1, int x2, int y) {
+      int width = g2.getFontMetrics().stringWidth(text);
+      g2.drawString(text, x1 + Math.max(0, (x2 - x1 - width) / 2), y);
+    }
+
+    private static final class MatchWindow {
+      private final int firstMove;
+      private final int lastMove;
+      private final PlayerStrengthEstimator.SideReport report;
+
+      private MatchWindow(int firstMove, int lastMove, PlayerStrengthEstimator.SideReport report) {
+        this.firstMove = firstMove;
+        this.lastMove = lastMove;
+        this.report = report;
+      }
     }
   }
 

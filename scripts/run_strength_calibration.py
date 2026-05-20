@@ -56,10 +56,10 @@ RANK_GROUP_ORDER = [
 ]
 
 RANK_BUCKET_ORDER = [
-    "14-18k",
-    "9-13k",
-    "4-8k",
-    "1-3k",
+    "16-18k",
+    "11-15k",
+    "6-10k",
+    "1-5k",
     "1d",
     "2d",
     "3d",
@@ -71,10 +71,16 @@ RANK_BUCKET_ORDER = [
     "9d",
 ]
 
+AI_NAME_MARKERS = ["让子"]
+AI_RANK_TEXT = "12d-AI"
+AI_RANK_VALUE = 12
+DEFAULT_EXCLUDED_PLAYER_MARKERS = ["随机2536", "实之", "艾池繁123"]
+
 SUMMARY_METRICS = [
     ("quality_score", "score"),
     ("first_choice_rate", "top1"),
     ("good_move_rate", "good"),
+    ("match_rate", "match"),
     ("average_difficulty", "difficulty"),
     ("weighted_point_loss", "weighted_loss"),
     ("average_point_loss", "average_loss"),
@@ -126,16 +132,18 @@ class Rank:
 
     @property
     def bucket(self) -> str:
+        if self.value >= 10:
+            return AI_RANK_TEXT
         if self.value > 0:
             return f"{self.value}d"
         k = -self.value
-        if k >= 14:
-            return "14-18k"
-        if k >= 9:
-            return "9-13k"
-        if k >= 4:
-            return "4-8k"
-        return "1-3k"
+        if k >= 16:
+            return "16-18k"
+        if k >= 11:
+            return "11-15k"
+        if k >= 6:
+            return "6-10k"
+        return "1-5k"
 
 
 @dataclass
@@ -144,6 +152,8 @@ class SelectedGame:
     manifest: dict[str, Any]
     black_uid: str
     white_uid: str
+    black_name: str
+    white_name: str
     black_rank: Rank
     white_rank: Rank
 
@@ -178,12 +188,23 @@ def parse_args() -> argparse.Namespace:
         "--target-kyu-group-games",
         type=int,
         default=8,
-        help="Minimum selected games touching each kyu bucket: 14-18k, 9-13k, 4-8k, 1-3k",
+        help="Minimum selected games touching each kyu bucket: 16-18k, 11-15k, 6-10k, 1-5k",
     )
     parser.add_argument(
         "--disable-rank-bucket-quotas",
         action="store_true",
         help="Disable exact dan and five-kyu-group quotas; keep only broad rank balancing",
+    )
+    parser.add_argument(
+        "--stop-after-rank-bucket-quotas",
+        action="store_true",
+        help="Stop crawling as soon as all exact dan and kyu-group quotas are satisfied.",
+    )
+    parser.add_argument(
+        "--exclude-player-marker",
+        action="append",
+        default=list(DEFAULT_EXCLUDED_PLAYER_MARKERS),
+        help="Skip games where either player name contains this marker. Repeatable.",
     )
     parser.add_argument("--min-moves", type=int, default=100, help="Skip short games")
     parser.add_argument("--board-size", type=int, default=19, help="Only keep this SGF board size")
@@ -214,6 +235,16 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Append evaluation results and skip completed SGFs already present in evaluation.jsonl",
     )
+    parser.add_argument(
+        "--reuse-sgf-analysis",
+        action="store_true",
+        help="Prefer saved LZ/LZOP analysis in SGF files before requesting KataGo",
+    )
+    parser.add_argument(
+        "--sgf-analysis-only",
+        action="store_true",
+        help="Only use saved LZ/LZOP analysis in SGF files and do not start KataGo",
+    )
     parser.add_argument("--katago", default=None, help="Path to katago executable")
     parser.add_argument("--model", default=None, help="Path to KataGo model")
     parser.add_argument("--config", default=None, help="Path to KataGo analysis config")
@@ -225,7 +256,14 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def normalize_rank(text: str | None) -> Rank | None:
+def is_ai_player_name(name: Any) -> bool:
+    raw = str(name or "")
+    return any(marker in raw for marker in AI_NAME_MARKERS)
+
+
+def normalize_rank(text: str | None, player_name: Any = None) -> Rank | None:
+    if is_ai_player_name(player_name):
+        return Rank(AI_RANK_TEXT, AI_RANK_VALUE)
     if not text:
         return None
     raw = str(text).strip()
@@ -252,6 +290,24 @@ def rank_from_game_field(value: Any) -> Rank | None:
     return normalize_rank(rank)
 
 
+def player_name(game: dict[str, Any], color: str) -> str:
+    return str(game.get(f"{color}nick") or game.get(f"{color}enname") or "").strip()
+
+
+def player_display_key(game: dict[str, Any], color: str, fallback_uid: str) -> str:
+    return player_name(game, color) or fallback_uid
+
+
+def game_has_excluded_player(game: dict[str, Any], markers: list[str]) -> bool:
+    names = [player_name(game, "black"), player_name(game, "white")]
+    return any(marker and marker in name for marker in markers for name in names)
+
+
+def rank_from_game(game: dict[str, Any], color: str) -> Rank | None:
+    rank = fox.fox_rank(game.get(f"{color}dan"))
+    return normalize_rank(rank, player_name(game, color))
+
+
 def player_uid(game: dict[str, Any], color: str) -> str | None:
     uid = str(game.get(f"{color}uid") or "").strip()
     if not uid or uid == "0":
@@ -260,8 +316,8 @@ def player_uid(game: dict[str, Any], color: str) -> str | None:
 
 
 def game_ranks(game: dict[str, Any]) -> tuple[Rank, Rank] | None:
-    black_rank = rank_from_game_field(game.get("blackdan"))
-    white_rank = rank_from_game_field(game.get("whitedan"))
+    black_rank = rank_from_game(game, "black")
+    white_rank = rank_from_game(game, "white")
     if black_rank is None or white_rank is None:
         return None
     return black_rank, white_rank
@@ -276,6 +332,8 @@ def should_skip_game(game: dict[str, Any], args: argparse.Namespace) -> str | No
         return "short"
     if not args.include_handicap and str(game.get("handicap") or "0") not in {"0", ""}:
         return "handicap"
+    if game_has_excluded_player(game, args.exclude_player_marker):
+        return "excluded_player"
     if player_uid(game, "black") is None or player_uid(game, "white") is None:
         return "missing_uid"
     if game_ranks(game) is None:
@@ -317,6 +375,8 @@ def rank_buckets(black_rank: Rank, white_rank: Rank) -> list[str]:
 
 
 def bucket_target(bucket: str, args: argparse.Namespace) -> int:
+    if bucket not in RANK_BUCKET_ORDER:
+        return 0
     if bucket.endswith("d"):
         return max(args.target_dan_games, 0)
     return max(args.target_kyu_group_games, 0)
@@ -337,7 +397,7 @@ def wants_rank_bucket(
     if args.disable_rank_bucket_quotas:
         return False
     return any(
-        bucket_counts[bucket] < bucket_target(bucket, args)
+        bucket in RANK_BUCKET_ORDER and bucket_counts[bucket] < bucket_target(bucket, args)
         for bucket in rank_buckets(black_rank, white_rank)
     )
 
@@ -386,12 +446,19 @@ def crawl_games(args: argparse.Namespace) -> tuple[list[SelectedGame], dict[str,
     seen_users: set[str] = set()
     seen_games: set[str] = set()
     sampled_by_user: Counter[str] = Counter()
+    sampled_by_name: Counter[str] = Counter()
     group_counts: Counter[str] = Counter()
     bucket_counts: Counter[str] = Counter()
     skip_counts: Counter[str] = Counter()
     inspected_games = 0
+    stop_after_quotas = False
 
-    while queue and len(seen_users) < args.max_users and len(selected) < args.target_games:
+    while (
+        queue
+        and len(seen_users) < args.max_users
+        and len(selected) < args.target_games
+        and not stop_after_quotas
+    ):
         user = queue.popleft()
         uid = user["uid"]
         nickname = user["nickname"]
@@ -447,12 +514,20 @@ def crawl_games(args: argparse.Namespace) -> tuple[list[SelectedGame], dict[str,
             black_rank, white_rank = game_ranks(game)  # type: ignore[misc]
             assert black_rank is not None and white_rank is not None
             assert black_uid is not None and white_uid is not None
+            black_name = player_display_key(game, "black", black_uid)
+            white_name = player_display_key(game, "white", white_uid)
 
             if sampled_by_user[black_uid] >= args.max_games_per_user:
                 skip_counts["black_user_quota"] += 1
                 continue
             if sampled_by_user[white_uid] >= args.max_games_per_user:
                 skip_counts["white_user_quota"] += 1
+                continue
+            if sampled_by_name[black_name] >= args.max_games_per_user:
+                skip_counts["black_name_quota"] += 1
+                continue
+            if sampled_by_name[white_name] >= args.max_games_per_user:
+                skip_counts["white_name_quota"] += 1
                 continue
             if not wants_game_for_calibration(
                 black_rank, white_rank, group_counts, bucket_counts, args
@@ -482,12 +557,16 @@ def crawl_games(args: argparse.Namespace) -> tuple[list[SelectedGame], dict[str,
                     manifest=manifest,
                     black_uid=black_uid,
                     white_uid=white_uid,
+                    black_name=black_name,
+                    white_name=white_name,
                     black_rank=black_rank,
                     white_rank=white_rank,
                 )
             )
             sampled_by_user[black_uid] += 1
             sampled_by_user[white_uid] += 1
+            sampled_by_name[black_name] += 1
+            sampled_by_name[white_name] += 1
             group_counts[black_rank.group] += 1
             group_counts[white_rank.group] += 1
             for bucket in rank_buckets(black_rank, white_rank):
@@ -499,6 +578,12 @@ def crawl_games(args: argparse.Namespace) -> tuple[list[SelectedGame], dict[str,
                 f"buckets={','.join(rank_buckets(black_rank, white_rank))}"
             )
             time.sleep(args.sleep)
+            if args.stop_after_rank_bucket_quotas and rank_bucket_quotas_complete(
+                bucket_counts, args
+            ):
+                print("[crawl] rank bucket quotas satisfied; stopping early")
+                stop_after_quotas = True
+                break
             if len(selected) >= args.target_games:
                 break
 
@@ -512,6 +597,9 @@ def crawl_games(args: argparse.Namespace) -> tuple[list[SelectedGame], dict[str,
         "selected_games": len(selected),
         "selected_sides": len(selected) * 2,
         "unique_sampled_users": len(sampled_by_user),
+        "unique_sampled_names": len(sampled_by_name),
+        "sampled_user_max_games": max(sampled_by_user.values(), default=0),
+        "sampled_name_max_games": max(sampled_by_name.values(), default=0),
         "inspected_users": len(seen_users),
         "inspected_games": inspected_games,
         "rank_group_sides": dict(group_counts),
@@ -519,9 +607,25 @@ def crawl_games(args: argparse.Namespace) -> tuple[list[SelectedGame], dict[str,
         "skip_counts": dict(skip_counts),
         "manifest": str(manifest_path),
     }
+    if (
+        crawl_summary["sampled_user_max_games"] > args.max_games_per_user
+        or crawl_summary["sampled_name_max_games"] > args.max_games_per_user
+    ):
+        raise RuntimeError(
+            "sample diversity quota failed: "
+            f"uid max={crawl_summary['sampled_user_max_games']}, "
+            f"name max={crawl_summary['sampled_name_max_games']}, "
+            f"limit={args.max_games_per_user}"
+        )
     (out_dir / "crawl_summary.json").write_text(
         json.dumps(crawl_summary, ensure_ascii=False, indent=2),
         encoding="utf-8",
+    )
+    print(
+        "[crawl] sample quota max: "
+        f"uid={crawl_summary['sampled_user_max_games']}, "
+        f"name={crawl_summary['sampled_name_max_games']}, "
+        f"limit={args.max_games_per_user}"
     )
     return selected, crawl_summary
 
@@ -561,6 +665,10 @@ def evaluate_games(args: argparse.Namespace, games: list[SelectedGame]) -> int:
         cmd.extend(["--config", args.config])
     if args.resume_jsonl:
         cmd.append("--resume-jsonl")
+    if args.reuse_sgf_analysis:
+        cmd.append("--reuse-sgf-analysis")
+    if args.sgf_analysis_only:
+        cmd.append("--sgf-analysis-only")
 
     print("[eval] " + " ".join(cmd))
     completed = subprocess.run(cmd, cwd=Path(__file__).resolve().parents[1])
@@ -568,7 +676,17 @@ def evaluate_games(args: argparse.Namespace, games: list[SelectedGame]) -> int:
 
 
 def actual_rank_from_row(row: dict[str, Any]) -> Rank | None:
-    return normalize_rank(row.get("fox_rank"))
+    if row_has_excluded_player(row):
+        return None
+    return normalize_rank(row.get("fox_rank"), row.get("player"))
+
+
+def row_has_excluded_player(row: dict[str, Any]) -> bool:
+    player = str(row.get("player") or "")
+    path = str(row.get("path") or row.get("sgf") or "")
+    return any(
+        marker in player or marker in path for marker in DEFAULT_EXCLUDED_PLAYER_MARKERS
+    )
 
 
 def estimate_value(row: dict[str, Any]) -> float | None:
@@ -585,10 +703,13 @@ def current_strength_band(row: dict[str, Any]) -> str | None:
         return evaluator.strength_band(
             current_quality_score(row),
             float(row["weighted_point_loss"]),
+            float(row.get("average_score_equivalent_loss") or row.get("average_score_loss") or 0.0),
             float(row.get("median_score_loss") or row.get("average_score_loss") or 0.0),
+            float(row.get("p90_score_equivalent_loss") or row.get("median_score_loss") or 0.0),
             float(row["first_choice_rate"]),
             float(row["good_move_rate"]),
             float(row["mistake_rate"]),
+            current_match_rate(row),
             float(row["average_difficulty"]),
         )
     except (KeyError, TypeError, ValueError):
@@ -598,12 +719,26 @@ def current_strength_band(row: dict[str, Any]) -> str | None:
 def current_quality_score(row: dict[str, Any]) -> float:
     return evaluator.quality_score(
         float(row["weighted_point_loss"]),
-        float(row.get("average_score_loss") or row.get("average_point_loss") or 0.0),
+        float(row.get("average_score_equivalent_loss") or row.get("average_score_loss") or row.get("average_point_loss") or 0.0),
         float(row.get("median_score_loss") or row.get("average_score_loss") or 0.0),
+        float(row.get("p75_score_equivalent_loss") or row.get("median_score_loss") or row.get("average_score_loss") or 0.0),
+        float(row.get("p90_score_equivalent_loss") or row.get("median_score_loss") or row.get("average_score_loss") or 0.0),
         float(row["first_choice_rate"]),
         float(row["good_move_rate"]),
         float(row["mistake_rate"]),
+        float(row.get("blunder_rate") or 0.0),
+        current_match_rate(row),
         float(row["average_difficulty"]),
+    )
+
+
+def current_match_rate(row: dict[str, Any]) -> float:
+    if row.get("match_rate") not in (None, ""):
+        return float(row["match_rate"])
+    return evaluator.match_rate(
+        float(row["first_choice_rate"]),
+        float(row["good_move_rate"]),
+        float(row["mistake_rate"]),
     )
 
 
@@ -763,6 +898,7 @@ def write_summary(args: argparse.Namespace, crawl_summary: dict[str, Any]) -> No
     for row in rows:
         try:
             if int(row.get("samples") or 0) > 0:
+                row["match_rate"] = round(current_match_rate(row), 4)
                 row["quality_score"] = round(current_quality_score(row), 1)
         except (KeyError, TypeError, ValueError):
             pass
