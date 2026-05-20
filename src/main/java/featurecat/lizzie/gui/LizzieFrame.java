@@ -12700,8 +12700,8 @@ public class LizzieFrame extends JFrame {
         Lizzie.resourceBundle.getString("PlayerStrengthEstimate.tab.match"),
         buildPlayerStrengthMatchPanel(report));
     dialog.getContentPane().add(tabbedPane, BorderLayout.CENTER);
-    dialog.setMinimumSize(new Dimension(720, 320));
-    Lizzie.setFrameSize(dialog, 860, 350);
+    dialog.setMinimumSize(new Dimension(720, 360));
+    Lizzie.setFrameSize(dialog, 860, 390);
     dialog.setLocationRelativeTo(this);
     dialog.setVisible(true);
   }
