@@ -1873,11 +1873,11 @@ def build_release_notes(asset_map: dict[str, str | None], bundle: dict[str, str]
             'updates': {
                 'heading': '本版主要更新',
                 'items': [
-                    'Windows RTX 50 TensorRT 不再作为巨型 release 包和分卷包发布；RTX 50 用户默认下载 CUDA 包，TensorRT 实验加速改为在软件内“一键设置”按需安装。',
-                    'TensorRT 按需安装会从 KataGo / NVIDIA 官方源下载，带确定进度、体积提示、取消、校验和失败不改当前引擎配置。',
-                    'Apple Silicon 启动自动测速现在尊重“启动时自动测速”开关；用户关闭测速窗口后，会记住当前引擎和权重组合，下次启动不再反复弹窗。',
-                    'KataGo 一键设置窗口补齐 UI 细节：TensorRT 按钮只在 Windows NVIDIA / RTX 50 场景可用，空闲时“停止下载”不会误亮。',
-                    '发布前已重新跑全量测试、打包、release notes 结构检查和本机真实启动 UI 冒烟。',
+                    '合并 @semanym 贡献的“吻合度”页面，扩大棋谱样本数量，并继续校准评估算法。',
+                    '更换新的落子音效，保留原有声音开关和资源路径，用户不用重新配置。',
+                    '修复让子棋 SGF 在引擎开启时座子未同步给引擎的问题，避免 AI 把座子点当作空点分析。',
+                    '调整“吻合度”棋力分段边界：低样本不再过度判弱，稳健业余样本也不会被抬得过高。',
+                    '发布前已重新跑全量测试、打包、四平台 release workflow，并完成本机真实启动 UI 冒烟。',
                 ],
             },
             'before': {
@@ -1941,11 +1941,11 @@ def build_release_notes(asset_map: dict[str, str | None], bundle: dict[str, str]
             'updates': {
                 'heading': '本版主要更新',
                 'items': [
-                    'Windows RTX 50 TensorRT 不再作為巨大 release 包和分卷包發布；RTX 50 使用者預設下載 CUDA 包，TensorRT 實驗加速改為在軟體內「一鍵設定」按需安裝。',
-                    'TensorRT 按需安裝會從 KataGo / NVIDIA 官方來源下載，具備確定進度、體積提示、取消、校驗，以及失敗不改目前引擎設定。',
-                    'Apple Silicon 啟動自動測速現在尊重「啟動時自動測速」開關；使用者關閉測速視窗後，會記住目前引擎和權重組合，下次啟動不再反覆彈窗。',
-                    'KataGo 一鍵設定視窗補齊 UI 細節：TensorRT 按鈕只在 Windows NVIDIA / RTX 50 場景可用，空閒時「停止下載」不會誤亮。',
-                    '發布前已重新跑完整測試、打包、release notes 結構檢查和本機真實啟動 UI 冒煙。',
+                    '合併 @semanym 貢獻的「吻合度」頁面，擴大棋譜樣本數量，並繼續校準評估演算法。',
+                    '更換新的落子音效，保留原有聲音開關和資源路徑，使用者不用重新設定。',
+                    '修復讓子棋 SGF 在引擎開啟時座子未同步給引擎的問題，避免 AI 把座子點當作空點分析。',
+                    '調整「吻合度」棋力分段邊界：低樣本不再過度判弱，穩健業餘樣本也不會被抬得過高。',
+                    '發布前已重新跑完整測試、打包、四平台 release workflow，並完成本機真實啟動 UI 冒煙。',
                 ],
             },
             'before': {
@@ -2009,11 +2009,11 @@ def build_release_notes(asset_map: dict[str, str | None], bundle: dict[str, str]
             'updates': {
                 'heading': 'Release Highlights',
                 'items': [
-                    'Windows RTX 50 TensorRT is no longer shipped as a huge release package or split archive; RTX 50 users should download the CUDA build first and install TensorRT experimental acceleration on demand from in-app KataGo Auto Setup.',
-                    'The on-demand TensorRT installer downloads from official KataGo / NVIDIA sources with determinate progress, size disclosure, cancellation, validation, and no engine-profile changes on failure.',
-                    'Apple Silicon startup auto-benchmark now respects the startup benchmark preference; closing the benchmark window remembers the current engine and weight combination so it will not nag again on the next launch.',
-                    'KataGo Auto Setup UI polish: the TensorRT button is only enabled for Windows NVIDIA / RTX 50 scenarios, and Stop Download no longer appears active while idle.',
-                    'Before release, full tests, packaging, release-notes structure checks, and a real local launch UI smoke test were rerun.',
+                    'Merged @semanym’s contributed “match rate” page, with a larger game sample set and continued calibration of the strength estimator.',
+                    'Replaced the move sound while keeping the existing sound setting and resource path, so users do not need to reconfigure anything.',
+                    'Fixed handicap SGF loading while an engine is running: root handicap stones are now synchronized to the engine, so AI will not analyze them as empty points.',
+                    'Adjusted match-rate strength-band boundaries so tiny samples are not judged too harshly and solid amateur profiles are not promoted too aggressively.',
+                    'Before release, full tests, packaging, all four platform release workflows, and a real local launch UI smoke test were rerun.',
                 ],
             },
             'before': {
@@ -2077,11 +2077,11 @@ def build_release_notes(asset_map: dict[str, str | None], bundle: dict[str, str]
             'updates': {
                 'heading': '主な更新',
                 'items': [
-                    'Windows RTX 50 TensorRT は巨大な release パッケージや分割アーカイブとして同梱しない方針に変更しました。RTX 50 ユーザーはまず CUDA 版を使い、TensorRT 試験加速はアプリ内の KataGo 自動設定から必要時にインストールします。',
-                    'TensorRT のオンデマンドインストールは KataGo / NVIDIA 公式ソースから取得し、確定進捗、容量表示、キャンセル、検証、失敗時に現在のエンジン設定を変更しない動作を備えています。',
-                    'Apple Silicon の起動時自動ベンチマークは設定スイッチを尊重します。ベンチマーク画面を閉じると現在のエンジンと重みの組み合わせを記憶し、次回起動で繰り返し表示しません。',
-                    'KataGo 自動設定 UI を調整しました。TensorRT ボタンは Windows NVIDIA / RTX 50 条件でのみ有効になり、待機中に Stop Download が有効表示される問題も修正しました。',
-                    'リリース前に full test、package、release notes 構造チェック、実機ローカル起動 UI smoke test を再実行しました。',
+                    '@semanym さんが貢献した「吻合度」ページをマージしました。棋譜サンプル数を増やし、強さ推定アルゴリズムも引き続き調整しています。',
+                    '新しい着手音に差し替えました。既存の音声設定とリソースパスはそのままなので、再設定は不要です。',
+                    'エンジン起動中に置き石 SGF を読み込むと、ルートの置き石がエンジンに同期されない問題を修正しました。AI が置き石を空点として解析しないようになります。',
+                    '吻合度の棋力帯境界を調整し、少数サンプルを過度に弱く判定せず、安定したアマチュア棋譜も過度に上振れしないようにしました。',
+                    'リリース前に full test、package、4 プラットフォームの release workflow、実機ローカル起動 UI smoke test を再実行しました。',
                 ],
             },
             'before': {
@@ -2145,11 +2145,11 @@ def build_release_notes(asset_map: dict[str, str | None], bundle: dict[str, str]
             'updates': {
                 'heading': '주요 업데이트',
                 'items': [
-                    'Windows RTX 50 TensorRT 는 더 이상 거대한 release 패키지나 분할 압축 파일로 제공하지 않습니다. RTX 50 사용자는 CUDA 빌드를 먼저 받고, TensorRT 실험 가속은 앱 안의 KataGo 자동 설정에서 필요할 때 설치합니다.',
-                    'TensorRT 온디맨드 설치는 KataGo / NVIDIA 공식 소스에서 다운로드하며, 확정 진행률, 용량 안내, 취소, 검증, 실패 시 현재 엔진 설정을 바꾸지 않는 동작을 제공합니다.',
-                    'Apple Silicon 시작 자동 벤치마크는 이제 시작 시 자동 벤치마크 설정을 따릅니다. 사용자가 벤치마크 창을 닫으면 현재 엔진과 가중치 조합을 기억해 다음 실행 때 반복해서 뜨지 않습니다.',
-                    'KataGo 자동 설정 UI 를 다듬었습니다. TensorRT 버튼은 Windows NVIDIA / RTX 50 조건에서만 활성화되고, 대기 중 Stop Download 버튼이 활성화되어 보이던 문제도 수정했습니다.',
-                    '릴리스 전에 full test, package, release notes 구조 검사, 실제 로컬 실행 UI smoke test 를 다시 수행했습니다.',
+                    '@semanym 님이 기여한 “일치도” 페이지를 병합했습니다. 기보 샘플 수를 늘리고 강도 추정 알고리즘도 계속 보정했습니다.',
+                    '새 착수음을 적용했습니다. 기존 소리 설정과 리소스 경로는 유지되므로 사용자가 다시 설정할 필요가 없습니다.',
+                    '엔진이 켜진 상태에서 접바둑 SGF 를 불러올 때 루트의 접바둑 돌이 엔진에 동기화되지 않던 문제를 수정했습니다. AI 가 접바둑 돌 자리를 빈 점으로 분석하지 않습니다.',
+                    '일치도 강도 구간 경계를 조정해, 작은 샘플을 지나치게 약하게 판단하지 않고 안정적인 아마추어 기보도 과하게 올려 잡지 않도록 했습니다.',
+                    '릴리스 전에 full test, package, 4개 플랫폼 release workflow, 실제 로컬 실행 UI smoke test 를 다시 수행했습니다.',
                 ],
             },
             'before': {
@@ -2213,11 +2213,11 @@ def build_release_notes(asset_map: dict[str, str | None], bundle: dict[str, str]
             'updates': {
                 'heading': 'ไฮไลต์ของเวอร์ชันนี้',
                 'items': [
-                    'Windows RTX 50 TensorRT จะไม่ถูกปล่อยเป็นแพ็กเกจ release ขนาดใหญ่หรือไฟล์แยก part อีกต่อไป ผู้ใช้ RTX 50 ควรดาวน์โหลด CUDA build ก่อน แล้วติดตั้ง TensorRT แบบทดลองจาก KataGo Auto Setup ในแอปเมื่อต้องการ',
-                    'ตัวติดตั้ง TensorRT แบบ on-demand จะดาวน์โหลดจากแหล่งทางการของ KataGo / NVIDIA พร้อม progress แบบชัดเจน, แจ้งขนาดไฟล์, ยกเลิกได้, ตรวจสอบไฟล์ และถ้าล้มเหลวจะไม่เปลี่ยนค่า engine ปัจจุบัน',
-                    'Apple Silicon startup auto-benchmark จะเคารพตัวเลือก startup benchmark แล้ว ถ้าผู้ใช้ปิดหน้าต่าง benchmark โปรแกรมจะจำ engine และ weight ชุดปัจจุบันไว้ และไม่เด้งซ้ำในการเปิดครั้งถัดไป',
-                    'ปรับ UI ของ KataGo Auto Setup: ปุ่ม TensorRT จะเปิดใช้เฉพาะ Windows NVIDIA / RTX 50 และปุ่ม Stop Download จะไม่ active ตอนที่ไม่มีงานกำลังทำ',
-                    'ก่อนปล่อยเวอร์ชันนี้ ได้รัน full test, package, ตรวจโครงสร้าง release notes และทดสอบเปิดแอปจริงบนเครื่อง local แล้ว',
+                    'รวม PR หน้า “match rate” จาก @semanym แล้ว พร้อมเพิ่มจำนวนตัวอย่างเกมและปรับ calibration ของตัวประเมินระดับฝีมือต่อ',
+                    'เปลี่ยนเสียงวางหมากใหม่ โดยยังใช้ตัวเลือกเสียงและ path เดิม ผู้ใช้จึงไม่ต้องตั้งค่าใหม่',
+                    'แก้ปัญหาโหลด SGF เกมต่อหมากขณะ engine เปิดอยู่แล้วหมากต่อไม่ถูก sync ไปยัง engine ทำให้ AI จะไม่วิเคราะห์จุดหมากต่อเหมือนเป็นจุดว่าง',
+                    'ปรับขอบเขตระดับฝีมือของ match rate เพื่อไม่ตัดสิน sample น้อยให้ต่ำเกินไป และไม่ยกโปรไฟล์ amateur ที่นิ่งให้สูงเกินจริง',
+                    'ก่อนปล่อยเวอร์ชันนี้ ได้รัน full test, package, release workflow ครบ 4 แพลตฟอร์ม และทดสอบเปิดแอปจริงบนเครื่อง local แล้ว',
                 ],
             },
             'before': {
