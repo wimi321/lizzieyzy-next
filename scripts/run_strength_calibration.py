@@ -12,6 +12,7 @@ import argparse
 import csv
 import json
 import math
+import re
 import statistics
 import subprocess
 import sys
@@ -54,10 +55,32 @@ RANK_GROUP_ORDER = [
     "high_dan",
 ]
 
+RANK_BUCKET_ORDER = [
+    "16-18k",
+    "11-15k",
+    "6-10k",
+    "1-5k",
+    "1d",
+    "2d",
+    "3d",
+    "4d",
+    "5d",
+    "6d",
+    "7d",
+    "8d",
+    "9d",
+]
+
+AI_NAME_MARKERS = ["让子"]
+AI_RANK_TEXT = "12d-AI"
+AI_RANK_VALUE = 12
+DEFAULT_EXCLUDED_PLAYER_MARKERS = ["随机2536", "实之", "艾池繁123"]
+
 SUMMARY_METRICS = [
     ("quality_score", "score"),
     ("first_choice_rate", "top1"),
     ("good_move_rate", "good"),
+    ("match_rate", "match"),
     ("average_difficulty", "difficulty"),
     ("weighted_point_loss", "weighted_loss"),
     ("average_point_loss", "average_loss"),
@@ -107,6 +130,21 @@ class Rank:
             return "mid_dan"
         return "high_dan"
 
+    @property
+    def bucket(self) -> str:
+        if self.value >= 10:
+            return AI_RANK_TEXT
+        if self.value > 0:
+            return f"{self.value}d"
+        k = -self.value
+        if k >= 16:
+            return "16-18k"
+        if k >= 11:
+            return "11-15k"
+        if k >= 6:
+            return "6-10k"
+        return "1-5k"
+
 
 @dataclass
 class SelectedGame:
@@ -114,6 +152,8 @@ class SelectedGame:
     manifest: dict[str, Any]
     black_uid: str
     white_uid: str
+    black_name: str
+    white_name: str
     black_rank: Rank
     white_rank: Rank
 
@@ -124,12 +164,12 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("seeds", nargs="*", default=DEFAULT_SEEDS, help="Fox uid or nickname seeds")
     parser.add_argument("--out", default="target/strength-calibration-diverse", help="Output directory")
-    parser.add_argument("--target-games", type=int, default=16, help="Number of SGFs to evaluate")
-    parser.add_argument("--max-users", type=int, default=120, help="Maximum Fox users to inspect")
+    parser.add_argument("--target-games", type=int, default=240, help="Number of SGFs to evaluate")
+    parser.add_argument("--max-users", type=int, default=2400, help="Maximum Fox users to inspect")
     parser.add_argument(
         "--max-games-per-user",
         type=int,
-        default=1,
+        default=3,
         help="Maximum sampled games any uid may appear in",
     )
     parser.add_argument(
@@ -138,7 +178,36 @@ def parse_args() -> argparse.Namespace:
         default=6,
         help="Soft target for sides in each rank group before accepting extra sides",
     )
-    parser.add_argument("--min-moves", type=int, default=80, help="Skip short games")
+    parser.add_argument(
+        "--target-dan-games",
+        type=int,
+        default=8,
+        help="Minimum selected games touching each exact dan bucket from 1d to 9d",
+    )
+    parser.add_argument(
+        "--target-kyu-group-games",
+        type=int,
+        default=8,
+        help="Minimum selected games touching each kyu bucket: 16-18k, 11-15k, 6-10k, 1-5k",
+    )
+    parser.add_argument(
+        "--disable-rank-bucket-quotas",
+        action="store_true",
+        help="Disable exact dan and five-kyu-group quotas; keep only broad rank balancing",
+    )
+    parser.add_argument(
+        "--stop-after-rank-bucket-quotas",
+        action="store_true",
+        help="Stop crawling as soon as all exact dan and kyu-group quotas are satisfied.",
+    )
+    parser.add_argument(
+        "--exclude-player-marker",
+        action="append",
+        default=list(DEFAULT_EXCLUDED_PLAYER_MARKERS),
+        help="Skip games where either player name contains this marker. Repeatable.",
+    )
+    parser.add_argument("--min-moves", type=int, default=100, help="Skip short games")
+    parser.add_argument("--board-size", type=int, default=19, help="Only keep this SGF board size")
     parser.add_argument("--sleep", type=float, default=0.15, help="Delay between Fox requests")
     parser.add_argument("--include-handicap", action="store_true", help="Include handicap games")
     parser.add_argument("--crawl-only", action="store_true", help="Only fetch SGFs; do not run KataGo")
@@ -147,8 +216,35 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Rebuild summary files from an existing evaluation.jsonl in --out",
     )
-    parser.add_argument("--max-moves", type=int, default=120, help="Move cap for each game during evaluation")
-    parser.add_argument("--max-visits", type=int, default=24, help="KataGo visits per move")
+    parser.add_argument("--max-moves", type=int, default=200, help="Move cap for each game during evaluation")
+    parser.add_argument("--max-visits", type=int, default=64, help="KataGo visits per move")
+    parser.add_argument(
+        "--batch-positions",
+        type=int,
+        default=96,
+        help="Position requests queued per KataGo process before waiting for responses",
+    )
+    parser.add_argument(
+        "--parallel-engines",
+        type=int,
+        default=1,
+        help="Number of KataGo analysis processes for local calibration evaluation",
+    )
+    parser.add_argument(
+        "--resume-jsonl",
+        action="store_true",
+        help="Append evaluation results and skip completed SGFs already present in evaluation.jsonl",
+    )
+    parser.add_argument(
+        "--reuse-sgf-analysis",
+        action="store_true",
+        help="Prefer saved LZ/LZOP analysis in SGF files before requesting KataGo",
+    )
+    parser.add_argument(
+        "--sgf-analysis-only",
+        action="store_true",
+        help="Only use saved LZ/LZOP analysis in SGF files and do not start KataGo",
+    )
     parser.add_argument("--katago", default=None, help="Path to katago executable")
     parser.add_argument("--model", default=None, help="Path to KataGo model")
     parser.add_argument("--config", default=None, help="Path to KataGo analysis config")
@@ -160,7 +256,14 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def normalize_rank(text: str | None) -> Rank | None:
+def is_ai_player_name(name: Any) -> bool:
+    raw = str(name or "")
+    return any(marker in raw for marker in AI_NAME_MARKERS)
+
+
+def normalize_rank(text: str | None, player_name: Any = None) -> Rank | None:
+    if is_ai_player_name(player_name):
+        return Rank(AI_RANK_TEXT, AI_RANK_VALUE)
     if not text:
         return None
     raw = str(text).strip()
@@ -187,6 +290,24 @@ def rank_from_game_field(value: Any) -> Rank | None:
     return normalize_rank(rank)
 
 
+def player_name(game: dict[str, Any], color: str) -> str:
+    return str(game.get(f"{color}nick") or game.get(f"{color}enname") or "").strip()
+
+
+def player_display_key(game: dict[str, Any], color: str, fallback_uid: str) -> str:
+    return player_name(game, color) or fallback_uid
+
+
+def game_has_excluded_player(game: dict[str, Any], markers: list[str]) -> bool:
+    names = [player_name(game, "black"), player_name(game, "white")]
+    return any(marker and marker in name for marker in markers for name in names)
+
+
+def rank_from_game(game: dict[str, Any], color: str) -> Rank | None:
+    rank = fox.fox_rank(game.get(f"{color}dan"))
+    return normalize_rank(rank, player_name(game, color))
+
+
 def player_uid(game: dict[str, Any], color: str) -> str | None:
     uid = str(game.get(f"{color}uid") or "").strip()
     if not uid or uid == "0":
@@ -195,8 +316,8 @@ def player_uid(game: dict[str, Any], color: str) -> str | None:
 
 
 def game_ranks(game: dict[str, Any]) -> tuple[Rank, Rank] | None:
-    black_rank = rank_from_game_field(game.get("blackdan"))
-    white_rank = rank_from_game_field(game.get("whitedan"))
+    black_rank = rank_from_game(game, "black")
+    white_rank = rank_from_game(game, "white")
     if black_rank is None or white_rank is None:
         return None
     return black_rank, white_rank
@@ -211,11 +332,23 @@ def should_skip_game(game: dict[str, Any], args: argparse.Namespace) -> str | No
         return "short"
     if not args.include_handicap and str(game.get("handicap") or "0") not in {"0", ""}:
         return "handicap"
+    if game_has_excluded_player(game, args.exclude_player_marker):
+        return "excluded_player"
     if player_uid(game, "black") is None or player_uid(game, "white") is None:
         return "missing_uid"
     if game_ranks(game) is None:
         return "invalid_rank"
     return None
+
+
+def sgf_board_size(sgf: str) -> int:
+    match = re.search(r"SZ\[(\d+)", sgf)
+    if not match:
+        return 19
+    try:
+        return int(match.group(1))
+    except ValueError:
+        return 19
 
 
 def wants_rank_group(
@@ -231,6 +364,56 @@ def wants_rank_group(
         return True
     current_min = min(group_counts[group] for group in RANK_GROUP_ORDER)
     return all(group_counts[group] == current_min for group in groups)
+
+
+def rank_buckets(black_rank: Rank, white_rank: Rank) -> list[str]:
+    buckets: list[str] = []
+    for rank in (black_rank, white_rank):
+        if rank.bucket not in buckets:
+            buckets.append(rank.bucket)
+    return buckets
+
+
+def bucket_target(bucket: str, args: argparse.Namespace) -> int:
+    if bucket not in RANK_BUCKET_ORDER:
+        return 0
+    if bucket.endswith("d"):
+        return max(args.target_dan_games, 0)
+    return max(args.target_kyu_group_games, 0)
+
+
+def rank_bucket_quotas_complete(bucket_counts: Counter[str], args: argparse.Namespace) -> bool:
+    if args.disable_rank_bucket_quotas:
+        return True
+    return all(bucket_counts[bucket] >= bucket_target(bucket, args) for bucket in RANK_BUCKET_ORDER)
+
+
+def wants_rank_bucket(
+    black_rank: Rank,
+    white_rank: Rank,
+    bucket_counts: Counter[str],
+    args: argparse.Namespace,
+) -> bool:
+    if args.disable_rank_bucket_quotas:
+        return False
+    return any(
+        bucket in RANK_BUCKET_ORDER and bucket_counts[bucket] < bucket_target(bucket, args)
+        for bucket in rank_buckets(black_rank, white_rank)
+    )
+
+
+def wants_game_for_calibration(
+    black_rank: Rank,
+    white_rank: Rank,
+    group_counts: Counter[str],
+    bucket_counts: Counter[str],
+    args: argparse.Namespace,
+) -> bool:
+    if wants_rank_bucket(black_rank, white_rank, bucket_counts, args):
+        return True
+    if not rank_bucket_quotas_complete(bucket_counts, args):
+        return False
+    return wants_rank_group(black_rank, white_rank, group_counts, args)
 
 
 def clear_previous_sgfs(sgf_dir: Path) -> None:
@@ -263,11 +446,19 @@ def crawl_games(args: argparse.Namespace) -> tuple[list[SelectedGame], dict[str,
     seen_users: set[str] = set()
     seen_games: set[str] = set()
     sampled_by_user: Counter[str] = Counter()
+    sampled_by_name: Counter[str] = Counter()
     group_counts: Counter[str] = Counter()
+    bucket_counts: Counter[str] = Counter()
     skip_counts: Counter[str] = Counter()
     inspected_games = 0
+    stop_after_quotas = False
 
-    while queue and len(seen_users) < args.max_users and len(selected) < args.target_games:
+    while (
+        queue
+        and len(seen_users) < args.max_users
+        and len(selected) < args.target_games
+        and not stop_after_quotas
+    ):
         user = queue.popleft()
         uid = user["uid"]
         nickname = user["nickname"]
@@ -323,6 +514,8 @@ def crawl_games(args: argparse.Namespace) -> tuple[list[SelectedGame], dict[str,
             black_rank, white_rank = game_ranks(game)  # type: ignore[misc]
             assert black_rank is not None and white_rank is not None
             assert black_uid is not None and white_uid is not None
+            black_name = player_display_key(game, "black", black_uid)
+            white_name = player_display_key(game, "white", white_uid)
 
             if sampled_by_user[black_uid] >= args.max_games_per_user:
                 skip_counts["black_user_quota"] += 1
@@ -330,8 +523,16 @@ def crawl_games(args: argparse.Namespace) -> tuple[list[SelectedGame], dict[str,
             if sampled_by_user[white_uid] >= args.max_games_per_user:
                 skip_counts["white_user_quota"] += 1
                 continue
-            if not wants_rank_group(black_rank, white_rank, group_counts, args):
-                skip_counts["rank_group_filled"] += 1
+            if sampled_by_name[black_name] >= args.max_games_per_user:
+                skip_counts["black_name_quota"] += 1
+                continue
+            if sampled_by_name[white_name] >= args.max_games_per_user:
+                skip_counts["white_name_quota"] += 1
+                continue
+            if not wants_game_for_calibration(
+                black_rank, white_rank, group_counts, bucket_counts, args
+            ):
+                skip_counts["rank_bucket_filled"] += 1
                 continue
 
             try:
@@ -343,6 +544,9 @@ def crawl_games(args: argparse.Namespace) -> tuple[list[SelectedGame], dict[str,
             if not sgf.strip():
                 skip_counts["empty_sgf"] += 1
                 continue
+            if args.board_size > 0 and sgf_board_size(sgf) != args.board_size:
+                skip_counts["board_size"] += 1
+                continue
             filename = fox.sample_filename(game, chessid)
             path = sgf_dir / filename
             path.write_text(sgf, encoding="utf-8")
@@ -353,20 +557,33 @@ def crawl_games(args: argparse.Namespace) -> tuple[list[SelectedGame], dict[str,
                     manifest=manifest,
                     black_uid=black_uid,
                     white_uid=white_uid,
+                    black_name=black_name,
+                    white_name=white_name,
                     black_rank=black_rank,
                     white_rank=white_rank,
                 )
             )
             sampled_by_user[black_uid] += 1
             sampled_by_user[white_uid] += 1
+            sampled_by_name[black_name] += 1
+            sampled_by_name[white_name] += 1
             group_counts[black_rank.group] += 1
             group_counts[white_rank.group] += 1
+            for bucket in rank_buckets(black_rank, white_rank):
+                bucket_counts[bucket] += 1
             print(
                 "[pick] "
                 f"{len(selected):02d}/{args.target_games} {path.name} "
-                f"B={black_rank.text} W={white_rank.text}"
+                f"B={black_rank.text} W={white_rank.text} "
+                f"buckets={','.join(rank_buckets(black_rank, white_rank))}"
             )
             time.sleep(args.sleep)
+            if args.stop_after_rank_bucket_quotas and rank_bucket_quotas_complete(
+                bucket_counts, args
+            ):
+                print("[crawl] rank bucket quotas satisfied; stopping early")
+                stop_after_quotas = True
+                break
             if len(selected) >= args.target_games:
                 break
 
@@ -380,15 +597,35 @@ def crawl_games(args: argparse.Namespace) -> tuple[list[SelectedGame], dict[str,
         "selected_games": len(selected),
         "selected_sides": len(selected) * 2,
         "unique_sampled_users": len(sampled_by_user),
+        "unique_sampled_names": len(sampled_by_name),
+        "sampled_user_max_games": max(sampled_by_user.values(), default=0),
+        "sampled_name_max_games": max(sampled_by_name.values(), default=0),
         "inspected_users": len(seen_users),
         "inspected_games": inspected_games,
         "rank_group_sides": dict(group_counts),
+        "rank_bucket_games": dict(bucket_counts),
         "skip_counts": dict(skip_counts),
         "manifest": str(manifest_path),
     }
+    if (
+        crawl_summary["sampled_user_max_games"] > args.max_games_per_user
+        or crawl_summary["sampled_name_max_games"] > args.max_games_per_user
+    ):
+        raise RuntimeError(
+            "sample diversity quota failed: "
+            f"uid max={crawl_summary['sampled_user_max_games']}, "
+            f"name max={crawl_summary['sampled_name_max_games']}, "
+            f"limit={args.max_games_per_user}"
+        )
     (out_dir / "crawl_summary.json").write_text(
         json.dumps(crawl_summary, ensure_ascii=False, indent=2),
         encoding="utf-8",
+    )
+    print(
+        "[crawl] sample quota max: "
+        f"uid={crawl_summary['sampled_user_max_games']}, "
+        f"name={crawl_summary['sampled_name_max_games']}, "
+        f"limit={args.max_games_per_user}"
     )
     return selected, crawl_summary
 
@@ -409,6 +646,14 @@ def evaluate_games(args: argparse.Namespace, games: list[SelectedGame]) -> int:
         str(args.max_moves),
         "--max-visits",
         str(args.max_visits),
+        "--min-moves",
+        str(args.min_moves),
+        "--board-size",
+        str(args.board_size),
+        "--batch-positions",
+        str(args.batch_positions),
+        "--parallel-engines",
+        str(args.parallel_engines),
         "--jsonl",
         str(jsonl_path),
     ]
@@ -418,6 +663,12 @@ def evaluate_games(args: argparse.Namespace, games: list[SelectedGame]) -> int:
         cmd.extend(["--model", args.model])
     if args.config:
         cmd.extend(["--config", args.config])
+    if args.resume_jsonl:
+        cmd.append("--resume-jsonl")
+    if args.reuse_sgf_analysis:
+        cmd.append("--reuse-sgf-analysis")
+    if args.sgf_analysis_only:
+        cmd.append("--sgf-analysis-only")
 
     print("[eval] " + " ".join(cmd))
     completed = subprocess.run(cmd, cwd=Path(__file__).resolve().parents[1])
@@ -425,7 +676,17 @@ def evaluate_games(args: argparse.Namespace, games: list[SelectedGame]) -> int:
 
 
 def actual_rank_from_row(row: dict[str, Any]) -> Rank | None:
-    return normalize_rank(row.get("fox_rank"))
+    if row_has_excluded_player(row):
+        return None
+    return normalize_rank(row.get("fox_rank"), row.get("player"))
+
+
+def row_has_excluded_player(row: dict[str, Any]) -> bool:
+    player = str(row.get("player") or "")
+    path = str(row.get("path") or row.get("sgf") or "")
+    return any(
+        marker in player or marker in path for marker in DEFAULT_EXCLUDED_PLAYER_MARKERS
+    )
 
 
 def estimate_value(row: dict[str, Any]) -> float | None:
@@ -440,16 +701,45 @@ def current_strength_band(row: dict[str, Any]) -> str | None:
         if int(row.get("samples") or 0) <= 0:
             return str(row.get("strength") or row.get("strength_band") or "")
         return evaluator.strength_band(
-            float(row["quality_score"]),
+            current_quality_score(row),
             float(row["weighted_point_loss"]),
+            float(row.get("average_score_equivalent_loss") or row.get("average_score_loss") or 0.0),
             float(row.get("median_score_loss") or row.get("average_score_loss") or 0.0),
+            float(row.get("p90_score_equivalent_loss") or row.get("median_score_loss") or 0.0),
             float(row["first_choice_rate"]),
             float(row["good_move_rate"]),
             float(row["mistake_rate"]),
+            current_match_rate(row),
             float(row["average_difficulty"]),
         )
     except (KeyError, TypeError, ValueError):
         return str(row.get("strength") or row.get("strength_band") or "")
+
+
+def current_quality_score(row: dict[str, Any]) -> float:
+    return evaluator.quality_score(
+        float(row["weighted_point_loss"]),
+        float(row.get("average_score_equivalent_loss") or row.get("average_score_loss") or row.get("average_point_loss") or 0.0),
+        float(row.get("median_score_loss") or row.get("average_score_loss") or 0.0),
+        float(row.get("p75_score_equivalent_loss") or row.get("median_score_loss") or row.get("average_score_loss") or 0.0),
+        float(row.get("p90_score_equivalent_loss") or row.get("median_score_loss") or row.get("average_score_loss") or 0.0),
+        float(row["first_choice_rate"]),
+        float(row["good_move_rate"]),
+        float(row["mistake_rate"]),
+        float(row.get("blunder_rate") or 0.0),
+        current_match_rate(row),
+        float(row["average_difficulty"]),
+    )
+
+
+def current_match_rate(row: dict[str, Any]) -> float:
+    if row.get("match_rate") not in (None, ""):
+        return float(row["match_rate"])
+    return evaluator.match_rate(
+        float(row["first_choice_rate"]),
+        float(row["good_move_rate"]),
+        float(row["mistake_rate"]),
+    )
 
 
 def estimate_group(value: float) -> str:
@@ -504,6 +794,40 @@ def metric_stats(values: list[float]) -> dict[str, Any]:
         "q75": percentile(values, 0.75),
         "mean": statistics.fmean(values),
     }
+
+
+def pearson_correlation(left: list[float], right: list[float]) -> float:
+    if len(left) < 2 or len(left) != len(right):
+        return 0.0
+    left_mean = statistics.fmean(left)
+    right_mean = statistics.fmean(right)
+    numerator = sum((x - left_mean) * (y - right_mean) for x, y in zip(left, right))
+    left_denominator = math.sqrt(sum((x - left_mean) ** 2 for x in left))
+    right_denominator = math.sqrt(sum((y - right_mean) ** 2 for y in right))
+    if left_denominator == 0.0 or right_denominator == 0.0:
+        return 0.0
+    return numerator / (left_denominator * right_denominator)
+
+
+def ranks(values: list[float]) -> list[float]:
+    indexed = sorted(enumerate(values), key=lambda item: item[1])
+    result = [0.0] * len(values)
+    index = 0
+    while index < len(indexed):
+        end = index + 1
+        while end < len(indexed) and indexed[end][1] == indexed[index][1]:
+            end += 1
+        average_rank = (index + end + 1) / 2.0
+        for inner in range(index, end):
+            result[indexed[inner][0]] = average_rank
+        index = end
+    return result
+
+
+def spearman_correlation(left: list[float], right: list[float]) -> float:
+    if len(left) < 2 or len(left) != len(right):
+        return 0.0
+    return pearson_correlation(ranks(left), ranks(right))
 
 
 def is_noisy_candidate(row: dict[str, Any]) -> bool:
@@ -572,6 +896,12 @@ def write_summary(args: argparse.Namespace, crawl_summary: dict[str, Any]) -> No
     trusted_severe_over = 0
 
     for row in rows:
+        try:
+            if int(row.get("samples") or 0) > 0:
+                row["match_rate"] = round(current_match_rate(row), 4)
+                row["quality_score"] = round(current_quality_score(row), 1)
+        except (KeyError, TypeError, ValueError):
+            pass
         row["strength"] = current_strength_band(row)
         actual = actual_rank_from_row(row)
         estimated = estimate_value(row)
@@ -587,6 +917,7 @@ def write_summary(args: argparse.Namespace, crawl_summary: dict[str, Any]) -> No
         row["average_point_loss"] = row.get("average_point_loss") or row.get(
             "average_score_loss"
         )
+        row["actual_rank_value"] = actual.value
         row["actual_group"] = actual_group
         row["estimated_group"] = estimated_group
         row["numeric_error"] = error
@@ -648,6 +979,37 @@ def write_summary(args: argparse.Namespace, crawl_summary: dict[str, Any]) -> No
         writer.writeheader()
         writer.writerows(distribution_rows)
 
+    correlation_rows: list[dict[str, Any]] = []
+    actual_values = [
+        float(row["actual_rank_value"])
+        for row in evaluated
+        if row.get("actual_rank_value") is not None
+    ]
+    for key, label in SUMMARY_METRICS:
+        metric_values = [
+            float(row.get(key) or 0.0)
+            for row in evaluated
+            if row.get("actual_rank_value") is not None
+        ]
+        correlation_rows.append(
+            {
+                "metric": label,
+                "pearson_with_rank": round(pearson_correlation(metric_values, actual_values), 4),
+                "spearman_with_rank": round(
+                    spearman_correlation(metric_values, actual_values), 4
+                ),
+            }
+        )
+
+    correlation_path = out_dir / "metric_correlations.csv"
+    with correlation_path.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(
+            handle,
+            fieldnames=["metric", "pearson_with_rank", "spearman_with_rank"],
+        )
+        writer.writeheader()
+        writer.writerows(correlation_rows)
+
     confusion_path = out_dir / "broad_group_confusion.csv"
     with confusion_path.open("w", encoding="utf-8", newline="") as handle:
         writer = csv.DictWriter(
@@ -681,6 +1043,7 @@ def write_summary(args: argparse.Namespace, crawl_summary: dict[str, Any]) -> No
             "score",
             "confidence",
             "samples",
+            "actual_rank_value",
             "actual_group",
             "estimated_group",
             "numeric_error",
@@ -720,6 +1083,7 @@ def write_summary(args: argparse.Namespace, crawl_summary: dict[str, Any]) -> No
         "actual_group_counts": dict(group_counts),
         "estimated_group_counts": dict(estimate_counts),
         "metric_distribution_csv": str(distribution_path),
+        "metric_correlations_csv": str(correlation_path),
         "broad_group_confusion_csv": str(confusion_path),
         "crawl": crawl_summary,
     }
@@ -730,36 +1094,40 @@ def write_summary(args: argparse.Namespace, crawl_summary: dict[str, Any]) -> No
 
     worst = evaluated[:12]
     md_lines = [
-        "# Player strength calibration summary",
+        "# 棋力评测校准摘要",
         "",
-        f"- Games selected: {crawl_summary.get('selected_games', 0)}",
-        f"- Unique sampled users: {crawl_summary.get('unique_sampled_users', 0)}",
-        f"- Sides evaluated: {len(evaluated)}",
-        f"- Exact broad rank-group match: {exact_group}/{len(evaluated)} ({pct(exact_group, len(evaluated))})",
-        f"- Within one broad rank group: {within_one_group}/{len(evaluated)} ({pct(within_one_group, len(evaluated))})",
-        f"- Kyu displayed rank estimated as dan: {kyu_as_dan}/{len(evaluated)} ({pct(kyu_as_dan, len(evaluated))})",
-        f"- Severe overestimates (estimated - displayed >= 4 ranks): {severe_over}/{len(evaluated)} ({pct(severe_over, len(evaluated))})",
-        f"- Noisy-game candidates: {noisy}/{len(evaluated)} ({pct(noisy, len(evaluated))})",
-        f"- Rank-mismatch candidates: {mismatch_candidates}/{len(evaluated)} ({pct(mismatch_candidates, len(evaluated))})",
-        f"- Normal calibration rows: {trusted_evaluated}/{len(evaluated)} ({pct(trusted_evaluated, len(evaluated))})",
-        f"- Normal exact broad rank-group match: {trusted_exact_group}/{trusted_evaluated} ({pct(trusted_exact_group, trusted_evaluated)})",
-        f"- Normal within one broad rank group: {trusted_within_one_group}/{trusted_evaluated} ({pct(trusted_within_one_group, trusted_evaluated)})",
-        f"- Normal kyu displayed rank estimated as dan: {trusted_kyu_as_dan}/{trusted_evaluated} ({pct(trusted_kyu_as_dan, trusted_evaluated)})",
-        f"- Normal severe overestimates: {trusted_severe_over}/{trusted_evaluated} ({pct(trusted_severe_over, trusted_evaluated)})",
-        f"- Median signed rank error: {median_error:.2f}",
-        f"- Mean absolute rank error: {mean_abs_error:.2f}",
+        f"- 已选棋谱：{crawl_summary.get('selected_games', 0)}",
+        f"- 去重后采样用户：{crawl_summary.get('unique_sampled_users', 0)}",
+        f"- 已评测方数：{len(evaluated)}",
+        f"- 大段位组完全命中：{exact_group}/{len(evaluated)} ({pct(exact_group, len(evaluated))})",
+        f"- 大段位组误差不超过一组：{within_one_group}/{len(evaluated)} ({pct(within_one_group, len(evaluated))})",
+        f"- 级位显示段位化：{kyu_as_dan}/{len(evaluated)} ({pct(kyu_as_dan, len(evaluated))})",
+        f"- 严重高估（评估 - 显示 >= 4 级/段）：{severe_over}/{len(evaluated)} ({pct(severe_over, len(evaluated))})",
+        f"- 噪声候选：{noisy}/{len(evaluated)} ({pct(noisy, len(evaluated))})",
+        f"- 段位不匹配候选：{mismatch_candidates}/{len(evaluated)} ({pct(mismatch_candidates, len(evaluated))})",
+        f"- 普通校准行：{trusted_evaluated}/{len(evaluated)} ({pct(trusted_evaluated, len(evaluated))})",
+        f"- 普通行大段位组完全命中：{trusted_exact_group}/{trusted_evaluated} ({pct(trusted_exact_group, trusted_evaluated)})",
+        f"- 普通行大段位组误差不超过一组：{trusted_within_one_group}/{trusted_evaluated} ({pct(trusted_within_one_group, trusted_evaluated)})",
+        f"- 普通行级位显示段位化：{trusted_kyu_as_dan}/{trusted_evaluated} ({pct(trusted_kyu_as_dan, trusted_evaluated)})",
+        f"- 普通行严重高估：{trusted_severe_over}/{trusted_evaluated} ({pct(trusted_severe_over, trusted_evaluated)})",
+        f"- 段级位有符号误差中位数：{median_error:.2f}",
+        f"- 平均绝对段级位误差：{mean_abs_error:.2f}",
         "",
-        "## Actual group counts",
+        "## 实际大段位组分布",
         "",
     ]
     for group in RANK_GROUP_ORDER:
         md_lines.append(f"- {group}: {group_counts[group]}")
-    md_lines.extend(["", "## Estimated group counts", ""])
+    md_lines.extend(["", "## 评估大段位组分布", ""])
     for group in RANK_GROUP_ORDER:
         md_lines.append(f"- {group}: {estimate_counts[group]}")
-    md_lines.extend(["", "## Metric medians by actual group", ""])
+    md_lines.extend(["", "## 采样段位桶分布", ""])
+    rank_bucket_counts = crawl_summary.get("rank_bucket_games", {})
+    for bucket in RANK_BUCKET_ORDER:
+        md_lines.append(f"- {bucket}: {rank_bucket_counts.get(bucket, 0)}")
+    md_lines.extend(["", "## 各实际大段位组指标中位数", ""])
     md_lines.append(
-        "| Actual group | n | Score | Top1 | Good | Difficulty | Weighted loss | Avg loss | Mistakes |"
+        "| 实际组 | n | 评分 | 一选率 | 好手率 | 难度 | 加权目损 | 平均目损 | 失误率 |"
     )
     md_lines.append("| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |")
     for group in RANK_GROUP_ORDER:
@@ -785,20 +1153,35 @@ def write_summary(args: argparse.Namespace, crawl_summary: dict[str, Any]) -> No
             )
             + " |"
         )
-    md_lines.extend(["", "## Largest overestimates", ""])
+    md_lines.extend(["", "## 指标与显示段位相关性", ""])
+    md_lines.append("| 指标 | Pearson | Spearman |")
+    md_lines.append("| --- | ---: | ---: |")
+    for row in correlation_rows:
+        md_lines.append(
+            "| "
+            + " | ".join(
+                [
+                    str(row["metric"]),
+                    f"{float(row['pearson_with_rank']):.3f}",
+                    f"{float(row['spearman_with_rank']):.3f}",
+                ]
+            )
+            + " |"
+        )
+    md_lines.extend(["", "## 最大高估样本", ""])
     if not worst:
-        md_lines.append("- No evaluated rows.")
+        md_lines.append("- 没有可评测行。")
     else:
         md_lines.append(
-            "| SGF | Side | Fox rank | Estimate | Error | Good | First | Weighted loss | Mistakes | Flags |"
+            "| SGF | 方 | 野狐段位 | 评估 | 误差 | 好手率 | 一选率 | 加权目损 | 失误率 | 标记 |"
         )
         md_lines.append("| --- | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | --- |")
         for row in worst:
             flags: list[str] = []
             if row.get("noisy_candidate"):
-                flags.append("noisy")
+                flags.append("噪声")
             if row.get("rank_mismatch_candidate"):
-                flags.append("rank-mismatch")
+                flags.append("段位不匹配")
             md_lines.append(
                 "| "
                 + " | ".join(
@@ -820,17 +1203,18 @@ def write_summary(args: argparse.Namespace, crawl_summary: dict[str, Any]) -> No
     md_lines.extend(
         [
             "",
-            "## Notes",
+            "## 说明",
             "",
-            "- `noisy` means the game had too few analysed moves, very high mistake rate, or very large loss metrics.",
-            "- `rank-mismatch` means the displayed Fox rank is kyu but the analysed moves look consistently dan-level in this single game. Treat it as a review target, not an automatic discard.",
-            "- The script limits sampled games per uid, so a single underrated or overrated account cannot dominate the calibration set.",
+            "- `噪声` 表示该盘可分析手数太少、失误率过高，或目损指标极大。",
+            "- `段位不匹配` 表示显示野狐级位，但这一盘的招法质量稳定接近段位；它是复核目标，不是自动丢弃。",
+            "- 脚本会限制每个 uid 的采样盘数，避免单个明显低估或高估账号主导校准集。",
         ]
     )
     (out_dir / "summary.md").write_text("\n".join(md_lines) + "\n", encoding="utf-8")
     print(f"[summary] wrote {out_dir / 'summary.md'}")
     print(f"[summary] wrote {csv_path}")
     print(f"[summary] wrote {distribution_path}")
+    print(f"[summary] wrote {correlation_path}")
     print(f"[summary] wrote {confusion_path}")
 
 

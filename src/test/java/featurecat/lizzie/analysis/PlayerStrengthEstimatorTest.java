@@ -210,7 +210,7 @@ class PlayerStrengthEstimatorTest {
     assertEquals(0.46, report.overall.firstChoiceRate, 0.01);
     assertEquals(0.79, report.overall.goodMoveRate, 0.01);
     assertEquals(0.02, report.overall.mistakeRate, 0.01);
-    assertEquals("8d", report.overall.strengthBand);
+    assertEquals("9d", report.overall.strengthBand);
   }
 
   @Test
@@ -270,7 +270,7 @@ class PlayerStrengthEstimatorTest {
     assertEquals(0.43, report.overall.firstChoiceRate, 0.01);
     assertEquals(0.72, report.overall.goodMoveRate, 0.01);
     assertEquals(0.11, report.overall.mistakeRate, 0.01);
-    assertEquals("3-4d", report.overall.strengthBand);
+    assertEquals("5-6d", report.overall.strengthBand);
   }
 
   @Test

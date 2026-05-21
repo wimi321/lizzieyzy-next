@@ -9,16 +9,28 @@ the external test data does not become a deterministic unit-test fixture.
 from __future__ import annotations
 
 import argparse
+import atexit
+import concurrent.futures
 import glob
 import json
 import math
+import multiprocessing
+import queue
 import re
 import statistics
 import subprocess
 import sys
+import threading
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable
+
+
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
 
 DEFAULT_KATAGO = (
@@ -32,8 +44,24 @@ DEFAULT_CONFIG = (
 WINRATE_TO_SCORE_LOSS = 6.0
 ADDITIONAL_MOVE_ORDER = 999
 MIN_DIFFICULTY_WEIGHT = 0.05
-KATRAIN_ACCURACY_BASE = 0.75
-RANK_SCORE_LOSS_SCALE = 2.5
+KATRAIN_ACCURACY_BASE = 0.80
+RANK_SCORE_LOSS_SCALE = 3.8
+REGRESSION_INTERCEPT = -41.7367695041
+REGRESSION_FIRST_CHOICE_WEIGHT = 1.3491578799
+REGRESSION_GOOD_MOVE_WEIGHT = 14.7836392271
+REGRESSION_MATCH_WEIGHT = 8.8821937547
+REGRESSION_NON_MISTAKE_WEIGHT = 16.1300737525
+REGRESSION_NON_BLUNDER_WEIGHT = 8.9019792251
+REGRESSION_WEIGHTED_LOSS_WEIGHT = -21.2338173555
+REGRESSION_AVERAGE_LOSS_WEIGHT = 16.7874212747
+REGRESSION_MEDIAN_LOSS_WEIGHT = 2.6216291730
+REGRESSION_P75_LOSS_WEIGHT = -0.3683802411
+REGRESSION_P90_LOSS_WEIGHT = 1.1648053972
+REGRESSION_DIFFICULTY_WEIGHT = 13.1144562488
+REGRESSION_FIRST_CHOICE_DIFFICULTY_WEIGHT = -10.6037172036
+REGRESSION_GOOD_MOVE_DIFFICULTY_WEIGHT = 1.7609995811
+REGRESSION_MATCH_DIFFICULTY_WEIGHT = -2.8472903619
+DEFAULT_KATAGO_RESPONSE_TIMEOUT_SECONDS = 600
 
 EXCELLENT_SCORE_LOSS = 0.2
 GREAT_SCORE_LOSS = 0.6
@@ -58,6 +86,14 @@ STRENGTH_BANDS = [
     "12d-AI",
 ]
 
+_WORKER_KATAGO: KataGoProcess | None = None
+_WORKER_SETTINGS: dict[str, Any] = {}
+_WORKER_PROGRESS_QUEUE: Any = None
+
+
+class KataGoTimeoutError(RuntimeError):
+    """KataGo analysis stdout stopped returning responses within the watchdog timeout."""
+
 
 @dataclass
 class Game:
@@ -70,6 +106,7 @@ class Game:
     komi: float
     handicap: int
     moves: list[tuple[str, str]]
+    saved_analyses: list[dict[str, Any] | None]
 
 
 @dataclass
@@ -86,8 +123,11 @@ class Sample:
 
 
 class KataGoProcess:
-    def __init__(self, katago: Path, model: Path, config: Path) -> None:
+    def __init__(
+        self, katago: Path, model: Path, config: Path, response_timeout_seconds: float
+    ) -> None:
         self._next_id = 0
+        self._response_timeout_seconds = max(float(response_timeout_seconds), 30.0)
         args = [
             str(katago),
             "analysis",
@@ -108,15 +148,35 @@ class KataGoProcess:
             errors="replace",
             bufsize=1,
         )
+        self._stdout_queue: queue.Queue[str | None] = queue.Queue()
+        self._stdout_thread = threading.Thread(target=self._read_stdout, daemon=True)
+        self._stdout_thread.start()
+
+    def _read_stdout(self) -> None:
+        if not self._process.stdout:
+            self._stdout_queue.put(None)
+            return
+        try:
+            for line in self._process.stdout:
+                self._stdout_queue.put(line)
+        finally:
+            self._stdout_queue.put(None)
 
     def close(self) -> None:
         if self._process.stdin:
-            self._process.stdin.close()
+            try:
+                self._process.stdin.close()
+            except OSError:
+                pass
         try:
             self._process.wait(timeout=20)
         except subprocess.TimeoutExpired:
             self._process.terminate()
-            self._process.wait(timeout=10)
+            try:
+                self._process.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                self._process.kill()
+                self._process.wait(timeout=10)
 
     def analyze(
         self,
@@ -127,9 +187,87 @@ class KataGoProcess:
         size: int,
         max_visits: int,
     ) -> dict[str, Any]:
-        request_id = str(self._next_id)
-        self._next_id += 1
-        request = {
+        return self.analyze_many(
+            [moves],
+            rules=rules,
+            komi=komi,
+            size=size,
+            max_visits=max_visits,
+            batch_positions=1,
+        )[0]
+
+    def analyze_many(
+        self,
+        positions: list[list[tuple[str, str]]],
+        *,
+        rules: str,
+        komi: float,
+        size: int,
+        max_visits: int,
+        batch_positions: int,
+        progress_callback: Any | None = None,
+    ) -> list[dict[str, Any]]:
+        if not self._process.stdin or not self._process.stdout:
+            raise RuntimeError("KataGo process is not running")
+
+        responses: list[dict[str, Any]] = []
+        batch_size = max(batch_positions, 1)
+        for start in range(0, len(positions), batch_size):
+            chunk = positions[start : start + batch_size]
+            if progress_callback:
+                progress_callback(start, len(positions), min(start + len(chunk), len(positions)))
+            pending: dict[str, int] = {}
+            chunk_responses: list[dict[str, Any] | None] = [None] * len(chunk)
+            for index, moves in enumerate(chunk):
+                request_id = str(self._next_id)
+                self._next_id += 1
+                pending[request_id] = index
+                request = self._request(
+                    request_id,
+                    moves,
+                    rules=rules,
+                    komi=komi,
+                    size=size,
+                    max_visits=max_visits,
+                )
+                self._process.stdin.write(json.dumps(request, separators=(",", ":")) + "\n")
+            self._process.stdin.flush()
+
+            while pending:
+                try:
+                    line = self._stdout_queue.get(timeout=self._response_timeout_seconds)
+                except queue.Empty as exc:
+                    raise KataGoTimeoutError(
+                        "KataGo did not return analysis within "
+                        f"{self._response_timeout_seconds:.0f}s; pending ids: "
+                        + ",".join(sorted(pending))
+                    ) from exc
+                if line is None:
+                    raise RuntimeError("KataGo exited before returning analysis")
+                line = line.strip()
+                if not line or not line.startswith("{"):
+                    continue
+                response = json.loads(line)
+                response_id = str(response.get("id"))
+                if response_id not in pending:
+                    continue
+                chunk_responses[pending.pop(response_id)] = response
+            responses.extend(response for response in chunk_responses if response is not None)
+            if progress_callback:
+                progress_callback(min(start + len(chunk), len(positions)), len(positions), None)
+        return responses
+
+    def _request(
+        self,
+        request_id: str,
+        moves: list[tuple[str, str]],
+        *,
+        rules: str,
+        komi: float,
+        size: int,
+        max_visits: int,
+    ) -> dict[str, Any]:
+        return {
             "id": request_id,
             "moves": [[color, move] for color, move in moves],
             "rules": rules,
@@ -142,47 +280,104 @@ class KataGoProcess:
             "includeMovesOwnership": False,
             "overrideSettings": {"reportAnalysisWinratesAs": "SIDETOMOVE"},
         }
-        if not self._process.stdin or not self._process.stdout:
-            raise RuntimeError("KataGo process is not running")
-        self._process.stdin.write(json.dumps(request, separators=(",", ":")) + "\n")
-        self._process.stdin.flush()
-
-        while True:
-            line = self._process.stdout.readline()
-            if line == "":
-                raise RuntimeError("KataGo exited before returning analysis")
-            line = line.strip()
-            if not line or not line.startswith("{"):
-                continue
-            response = json.loads(line)
-            if str(response.get("id")) == request_id:
-                return response
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("sgfs", nargs="+", help="SGF paths or glob patterns.")
+    parser.add_argument("sgfs", nargs="*", help="SGF paths or glob patterns.")
+    parser.add_argument(
+        "--paths-from-jsonl",
+        action="append",
+        default=[],
+        help="Add unique SGF paths from previous evaluation JSONL rows.",
+    )
     parser.add_argument("--player", help="Only print sides whose player name contains this text.")
     parser.add_argument("--max-games", type=int, default=3, help="Maximum SGF files to analyze.")
+    parser.add_argument("--min-moves", type=int, default=0, help="Skip games shorter than this.")
+    parser.add_argument("--board-size", type=int, default=19, help="Only analyze this board size.")
+    parser.add_argument(
+        "--dedupe-chessid",
+        action="store_true",
+        help="Skip duplicate Fox chess ids when the same SGF exists in multiple cache folders.",
+    )
     parser.add_argument("--max-moves", type=int, default=140, help="Maximum moves per game.")
     parser.add_argument("--max-visits", type=int, default=32, help="KataGo visits per position.")
+    parser.add_argument(
+        "--batch-positions",
+        type=int,
+        default=96,
+        help="Position requests to queue before waiting for KataGo responses. Use 1 for serial mode.",
+    )
+    parser.add_argument(
+        "--parallel-engines",
+        type=int,
+        default=1,
+        help="Number of KataGo analysis processes to run in parallel.",
+    )
+    parser.add_argument(
+        "--progress-interval",
+        type=float,
+        default=30.0,
+        help="Seconds between progress updates while waiting for parallel games.",
+    )
+    parser.add_argument(
+        "--katago-response-timeout",
+        type=float,
+        default=DEFAULT_KATAGO_RESPONSE_TIMEOUT_SECONDS,
+        help=(
+            "Seconds to wait for a KataGo response before restarting that worker and retrying "
+            "the current game. This guards against live-but-stalled analysis processes."
+        ),
+    )
     parser.add_argument("--rules", default="Chinese", help="KataGo rules string.")
     parser.add_argument("--include-handicap", action="store_true", help="Analyze handicap games too.")
     parser.add_argument("--katago", default=DEFAULT_KATAGO, help="Path to katago.exe.")
     parser.add_argument("--model", default=DEFAULT_MODEL, help="Path to model .bin.gz.")
     parser.add_argument("--config", default=DEFAULT_CONFIG, help="Path to KataGo analysis config.")
     parser.add_argument("--jsonl", help="Optional JSONL output path.")
+    parser.add_argument(
+        "--reuse-sgf-analysis",
+        action="store_true",
+        help="Use saved Lizzie/LizzieYzy LZ/LZOP SGF analysis before requesting KataGo.",
+    )
+    parser.add_argument(
+        "--sgf-analysis-only",
+        action="store_true",
+        help="Only use saved LZ/LZOP SGF analysis and do not start KataGo for missing positions.",
+    )
+    parser.add_argument(
+        "--resume-jsonl",
+        action="store_true",
+        help="Append to --jsonl and skip SGF files that already have both sides recorded.",
+    )
     args = parser.parse_args()
+    if args.sgf_analysis_only:
+        args.reuse_sgf_analysis = True
 
-    games = load_games(args.sgfs)
-    if not args.include_handicap:
-        games = [game for game in games if game.handicap <= 0]
+    patterns = list(args.sgfs)
+    for jsonl_path in args.paths_from_jsonl:
+        patterns.extend(paths_from_jsonl(Path(jsonl_path)))
+    if not patterns:
+        print("No SGF files or --paths-from-jsonl inputs were provided.", file=sys.stderr)
+        return 1
+    games = load_games(patterns)
+    games = filter_games(
+        games,
+        include_handicap=args.include_handicap,
+        min_moves=args.min_moves,
+        board_size=args.board_size,
+        dedupe_chessid=args.dedupe_chessid,
+    )
     if args.player:
         games = [
             game
             for game in games
             if args.player in game.black_name or args.player in game.white_name
         ]
+    completed_games: set[str] = set()
+    if args.resume_jsonl and args.jsonl:
+        completed_games = completed_game_keys(Path(args.jsonl))
+        games = [game for game in games if game_key(game.path) not in completed_games]
     games = games[: max(args.max_games, 0)]
     if not games:
         print("No SGF files matched the requested filters.", file=sys.stderr)
@@ -192,31 +387,399 @@ def main() -> int:
     if args.jsonl:
         jsonl_path = Path(args.jsonl)
         jsonl_path.parent.mkdir(parents=True, exist_ok=True)
-        jsonl_file = jsonl_path.open("w", encoding="utf-8")
+        mode = "a" if args.resume_jsonl else "w"
+        jsonl_file = jsonl_path.open(mode, encoding="utf-8")
 
-    katago = KataGoProcess(Path(args.katago), Path(args.model), Path(args.config))
     try:
-        for index, game in enumerate(games, start=1):
-            print(f"[{index}/{len(games)}] {game.path.name}")
-            results = evaluate_game(katago, game, args.rules, args.max_visits, args.max_moves)
-            for row in results:
-                if args.player and args.player not in str(row["player"]):
-                    continue
-                print(format_row(row))
-                if jsonl_file:
-                    jsonl_file.write(json.dumps(row, ensure_ascii=False) + "\n")
-                    jsonl_file.flush()
+        if args.sgf_analysis_only:
+            evaluate_games_sgf_analysis_only(args, games, jsonl_file)
+        elif args.parallel_engines <= 1:
+            evaluate_games_serial(args, games, jsonl_file)
+        else:
+            evaluate_games_parallel(args, games, jsonl_file)
     finally:
-        katago.close()
         if jsonl_file:
             jsonl_file.close()
     return 0
 
 
+def evaluate_games_sgf_analysis_only(
+    args: argparse.Namespace, games: list[Game], jsonl_file: Any
+) -> None:
+    for index, game in enumerate(games, start=1):
+        print(f"[{index}/{len(games)}] {game.path.name} (saved SGF analysis)")
+        results = evaluate_game(
+            None,
+            game,
+            args.rules,
+            args.max_visits,
+            args.max_moves,
+            args.batch_positions,
+            reuse_sgf_analysis=True,
+            sgf_analysis_only=True,
+        )
+        write_results(results, args.player, jsonl_file)
+
+
+def evaluate_games_serial(args: argparse.Namespace, games: list[Game], jsonl_file: Any) -> None:
+    katago = KataGoProcess(
+        Path(args.katago),
+        Path(args.model),
+        Path(args.config),
+        float(args.katago_response_timeout),
+    )
+    try:
+        for index, game in enumerate(games, start=1):
+            print(f"[{index}/{len(games)}] {game.path.name}")
+            results = evaluate_game(
+                katago,
+                game,
+                args.rules,
+                args.max_visits,
+                args.max_moves,
+                args.batch_positions,
+                reuse_sgf_analysis=args.reuse_sgf_analysis,
+            )
+            write_results(results, args.player, jsonl_file)
+    finally:
+        katago.close()
+
+
+def evaluate_games_parallel(args: argparse.Namespace, games: list[Game], jsonl_file: Any) -> None:
+    workers = min(max(args.parallel_engines, 1), len(games))
+    print(f"[parallel] using {workers} KataGo analysis processes", flush=True)
+    with multiprocessing.Manager() as manager:
+        evaluate_games_parallel_with_progress(args, games, jsonl_file, workers, manager.Queue())
+
+
+def evaluate_games_parallel_with_progress(
+    args: argparse.Namespace, games: list[Game], jsonl_file: Any, workers: int, progress_queue: Any
+) -> None:
+    init_args = (
+        args.katago,
+        args.model,
+        args.config,
+        args.rules,
+        args.max_visits,
+        args.max_moves,
+        args.batch_positions,
+        args.reuse_sgf_analysis,
+        args.katago_response_timeout,
+        progress_queue,
+    )
+    total = len(games)
+    position_totals = {
+        index: min(len(game.moves), args.max_moves) + 1
+        for index, game in enumerate(games, start=1)
+    }
+    completed = 0
+    completed_units = 0
+    active_progress: dict[int, dict[str, Any]] = {}
+    started_at = time.monotonic()
+    progress_interval = max(float(args.progress_interval), 1.0)
+    with concurrent.futures.ProcessPoolExecutor(
+        max_workers=workers,
+        initializer=init_worker,
+        initargs=init_args,
+    ) as executor:
+        futures = {
+            executor.submit(worker_evaluate_game, (index, game)): (index, game)
+            for index, game in enumerate(games, start=1)
+        }
+        pending = set(futures)
+        print_progress(
+            completed,
+            total,
+            workers,
+            started_at,
+            active_progress,
+            completed_units,
+            position_totals,
+        )
+        while pending:
+            done, pending = concurrent.futures.wait(
+                pending,
+                timeout=progress_interval,
+                return_when=concurrent.futures.FIRST_COMPLETED,
+            )
+            drain_progress_queue(progress_queue, active_progress)
+            if not done:
+                print_progress(
+                    completed,
+                    total,
+                    workers,
+                    started_at,
+                    active_progress,
+                    completed_units,
+                    position_totals,
+                )
+                continue
+            for future in done:
+                index, game = futures[future]
+                results = future.result()
+                completed += 1
+                completed_units += position_totals.get(index, 0)
+                active_progress.pop(index, None)
+                print(f"[{completed}/{total} done] {index}: {game.path.name}", flush=True)
+                write_results(results, args.player, jsonl_file)
+            drain_progress_queue(progress_queue, active_progress)
+            print_progress(
+                completed,
+                total,
+                workers,
+                started_at,
+                active_progress,
+                completed_units,
+                position_totals,
+            )
+
+
+def drain_progress_queue(progress_queue: Any, active_progress: dict[int, dict[str, Any]]) -> None:
+    while True:
+        try:
+            message = progress_queue.get_nowait()
+        except queue.Empty:
+            return
+        if not isinstance(message, dict):
+            continue
+        index = int(message.get("index", 0) or 0)
+        if index > 0:
+            active_progress[index] = message
+
+
+def print_progress(
+    completed: int,
+    total: int,
+    workers: int,
+    started_at: float,
+    active_progress: dict[int, dict[str, Any]],
+    completed_units: int,
+    position_totals: dict[int, int],
+) -> None:
+    total_units = sum(position_totals.values())
+    active_units = sum(
+        min(
+            max(
+                int(progress.get("done_positions", 0) or 0),
+                int(progress.get("active_positions", 0) or 0),
+            ),
+            position_totals.get(index, 0),
+        )
+        for index, progress in active_progress.items()
+    )
+    done_units = min(total_units, completed_units + active_units)
+    remaining = max(0, total - completed)
+    running = min(max(workers, 0), remaining)
+    queued = max(0, remaining - running)
+    print(
+        "[progress] "
+        f"{progress_percent(done_units, total_units)} {progress_bar(done_units, total_units)} "
+        f"games {completed}/{total} done, positions {done_units}/{total_units}, "
+        f"running~{running}, queued~{queued}, elapsed {format_elapsed(time.monotonic() - started_at)}"
+        f"{active_progress_text(active_progress)}",
+        flush=True,
+    )
+
+
+def active_progress_text(active_progress: dict[int, dict[str, Any]], limit: int = 6) -> str:
+    if not active_progress:
+        return ""
+    parts = []
+    for index in sorted(active_progress)[:limit]:
+        progress = active_progress[index]
+        total_moves = max(0, int(progress.get("total_moves", 0) or 0))
+        done_positions = max(0, int(progress.get("done_positions", 0) or 0))
+        active_positions = int(progress.get("active_positions", 0) or 0)
+        done_moves = min(total_moves, max(0, done_positions - 1))
+        active_moves = min(total_moves, max(0, active_positions - 1))
+        name = Path(str(progress.get("name", ""))).name
+        if active_moves > done_moves:
+            move_text = f"move {done_moves + 1}-{active_moves}/{total_moves}"
+        else:
+            move_text = f"move {done_moves}/{total_moves}"
+        parts.append(f"game {index} {move_text} {name}")
+    if len(active_progress) > limit:
+        parts.append(f"+{len(active_progress) - limit} more")
+    return " | " + "; ".join(parts)
+
+
+def progress_bar(completed: int, total: int, width: int = 28) -> str:
+    if total <= 0:
+        return "[" + "-" * width + "]"
+    filled = max(0, min(width, int(round(width * completed / total))))
+    return "[" + "#" * filled + "-" * (width - filled) + "]"
+
+
+def progress_percent(completed: int, total: int) -> str:
+    if total <= 0:
+        return "0.0%"
+    return f"{100.0 * completed / total:5.1f}%"
+
+
+def format_elapsed(seconds: float) -> str:
+    seconds = max(0, int(seconds))
+    hours, remainder = divmod(seconds, 3600)
+    minutes, seconds = divmod(remainder, 60)
+    if hours:
+        return f"{hours}h{minutes:02d}m{seconds:02d}s"
+    return f"{minutes}m{seconds:02d}s"
+
+
+def init_worker(
+    katago: str,
+    model: str,
+    config: str,
+    rules: str,
+    max_visits: int,
+    max_moves: int,
+    batch_positions: int,
+    reuse_sgf_analysis: bool,
+    katago_response_timeout: float,
+    progress_queue: Any = None,
+) -> None:
+    global _WORKER_KATAGO, _WORKER_SETTINGS, _WORKER_PROGRESS_QUEUE
+    _WORKER_KATAGO = KataGoProcess(
+        Path(katago), Path(model), Path(config), katago_response_timeout
+    )
+    _WORKER_PROGRESS_QUEUE = progress_queue
+    _WORKER_SETTINGS = {
+        "katago": katago,
+        "model": model,
+        "config": config,
+        "rules": rules,
+        "max_visits": max_visits,
+        "max_moves": max_moves,
+        "batch_positions": batch_positions,
+        "reuse_sgf_analysis": reuse_sgf_analysis,
+        "katago_response_timeout": katago_response_timeout,
+    }
+    atexit.register(close_worker)
+
+
+def close_worker() -> None:
+    global _WORKER_KATAGO
+    if _WORKER_KATAGO is not None:
+        _WORKER_KATAGO.close()
+        _WORKER_KATAGO = None
+
+
+def restart_worker_katago() -> None:
+    global _WORKER_KATAGO
+    if _WORKER_KATAGO is not None:
+        _WORKER_KATAGO.close()
+    _WORKER_KATAGO = KataGoProcess(
+        Path(str(_WORKER_SETTINGS["katago"])),
+        Path(str(_WORKER_SETTINGS["model"])),
+        Path(str(_WORKER_SETTINGS["config"])),
+        float(_WORKER_SETTINGS["katago_response_timeout"]),
+    )
+
+
+def worker_evaluate_game(item: tuple[int, Game]) -> list[dict[str, Any]]:
+    if _WORKER_KATAGO is None:
+        raise RuntimeError("KataGo worker was not initialized")
+    index, game = item
+    if _WORKER_PROGRESS_QUEUE is not None:
+        max_moves = int(_WORKER_SETTINGS["max_moves"])
+        _WORKER_PROGRESS_QUEUE.put(
+            {
+                "index": index,
+                "name": str(game.path.name),
+                "done_positions": 0,
+                "total_positions": min(len(game.moves), max_moves) + 1,
+                "total_moves": min(len(game.moves), max_moves),
+            }
+        )
+    try:
+        return evaluate_game(
+            _WORKER_KATAGO,
+            game,
+            str(_WORKER_SETTINGS["rules"]),
+            int(_WORKER_SETTINGS["max_visits"]),
+            int(_WORKER_SETTINGS["max_moves"]),
+            int(_WORKER_SETTINGS["batch_positions"]),
+            progress_index=index,
+            reuse_sgf_analysis=bool(_WORKER_SETTINGS.get("reuse_sgf_analysis")),
+        )
+    except KataGoTimeoutError as exc:
+        print(
+            f"[warn] KataGo timeout on {game.path.name}: {exc}; "
+            "restarting this worker and retrying the game in serial query mode.",
+            file=sys.stderr,
+            flush=True,
+        )
+        restart_worker_katago()
+        return evaluate_game(
+            _WORKER_KATAGO,
+            game,
+            str(_WORKER_SETTINGS["rules"]),
+            int(_WORKER_SETTINGS["max_visits"]),
+            int(_WORKER_SETTINGS["max_moves"]),
+            1,
+            progress_index=index,
+            reuse_sgf_analysis=bool(_WORKER_SETTINGS.get("reuse_sgf_analysis")),
+        )
+
+
+def write_results(results: list[dict[str, Any]], player: str | None, jsonl_file: Any) -> None:
+    for row in results:
+        if player and player not in str(row["player"]):
+            continue
+        print(format_row(row))
+        if jsonl_file:
+            jsonl_file.write(json.dumps(row, ensure_ascii=False) + "\n")
+            jsonl_file.flush()
+
+
+def paths_from_jsonl(jsonl_path: Path) -> list[str]:
+    paths: list[str] = []
+    seen: set[str] = set()
+    if not jsonl_path.exists():
+        return paths
+    with jsonl_path.open(encoding="utf-8", errors="replace") as handle:
+        for line in handle:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                row = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            path = str(row.get("path") or "")
+            if path and path not in seen:
+                seen.add(path)
+                paths.append(path)
+    return paths
+
+
+def completed_game_keys(jsonl_path: Path) -> set[str]:
+    if not jsonl_path.exists():
+        return set()
+    sides_by_game: dict[str, set[str]] = {}
+    with jsonl_path.open(encoding="utf-8", errors="replace") as handle:
+        for line in handle:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                row = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            key = game_key(Path(str(row.get("path") or "")))
+            side = str(row.get("side") or "")
+            if key and side in {"B", "W"}:
+                sides_by_game.setdefault(key, set()).add(side)
+    return {key for key, sides in sides_by_game.items() if {"B", "W"}.issubset(sides)}
+
+
+def game_key(path: Path) -> str:
+    return chess_id_from_path(path)
+
+
 def load_games(patterns: Iterable[str]) -> list[Game]:
     paths: list[Path] = []
     for pattern in patterns:
-        matches = glob.glob(pattern)
+        matches = glob.glob(pattern, recursive=True)
         if matches:
             paths.extend(Path(match) for match in matches)
         else:
@@ -230,36 +793,278 @@ def load_games(patterns: Iterable[str]) -> list[Game]:
     return games
 
 
+def filter_games(
+    games: list[Game],
+    *,
+    include_handicap: bool,
+    min_moves: int,
+    board_size: int,
+    dedupe_chessid: bool,
+) -> list[Game]:
+    filtered: list[Game] = []
+    seen_ids: set[str] = set()
+    for game in games:
+        if not include_handicap and game.handicap > 0:
+            continue
+        if board_size > 0 and game.size != board_size:
+            continue
+        if len(game.moves) < min_moves:
+            continue
+        if dedupe_chessid:
+            chessid = chess_id_from_path(game.path)
+            if chessid in seen_ids:
+                continue
+            seen_ids.add(chessid)
+        filtered.append(game)
+    return filtered
+
+
+def chess_id_from_path(path: Path) -> str:
+    match = re.search(r"_(\d{12,})\.sgf$", path.name)
+    if match:
+        return match.group(1)
+    return str(path.resolve())
+
+
 def parse_sgf(path: Path) -> Game:
-    text = path.read_text(encoding="utf-8", errors="replace")
-    props = first_props(text)
-    size = int(float(props.get("SZ", "19") or 19))
+    text = read_sgf_text(path)
+    nodes = parse_sgf_mainline_nodes(text)
+    root_props = nodes[0] if nodes else {}
+    size = int(float(first_prop(root_props, "SZ", "19") or 19))
     moves = []
-    for color, point in re.findall(r";\s*([BW])\[((?:\\.|[^\]])*)\]", text):
-        moves.append((color, sgf_point_to_gtp(point, size)))
+    saved_analyses: list[dict[str, Any] | None] = [
+        saved_analysis_from_node(root_props)
+    ]
+    for node in nodes[1:]:
+        color = "B" if "B" in node else "W" if "W" in node else ""
+        if color:
+            moves.append((color, sgf_point_to_gtp(first_prop(node, color), size)))
+            saved_analyses.append(saved_analysis_from_node(node))
     return Game(
         path=path,
-        black_name=props.get("PB", ""),
-        white_name=props.get("PW", ""),
-        black_rank=props.get("BR", ""),
-        white_rank=props.get("WR", ""),
+        black_name=first_prop(root_props, "PB"),
+        white_name=first_prop(root_props, "PW"),
+        black_rank=first_prop(root_props, "BR"),
+        white_rank=first_prop(root_props, "WR"),
         size=size,
-        komi=parse_komi(props.get("KM", "")),
-        handicap=int(float(props.get("HA", "0") or 0)),
+        komi=parse_komi(first_prop(root_props, "KM")),
+        handicap=int(float(first_prop(root_props, "HA", "0") or 0)),
         moves=moves,
+        saved_analyses=saved_analyses,
     )
 
 
-def first_props(text: str) -> dict[str, str]:
-    root_end = len(text)
-    move_match = re.search(r";\s*[BW]\[", text)
-    if move_match:
-        root_end = move_match.start()
-    root = text[:root_end]
-    return {
-        key: value.replace(r"\]", "]").replace(r"\\", "\\")
-        for key, value in re.findall(r"([A-Z]+)\[((?:\\.|[^\]])*)\]", root)
+def read_sgf_text(path: Path) -> str:
+    data = path.read_bytes()
+    for encoding in ("utf-8-sig", "utf-8", "gb18030", "gbk"):
+        try:
+            return data.decode(encoding)
+        except UnicodeDecodeError:
+            continue
+    return data.decode("utf-8", errors="replace")
+
+
+def parse_sgf_mainline_nodes(text: str) -> list[dict[str, list[str]]]:
+    start = text.find("(")
+    if start < 0:
+        return parse_sgf_sequence(text, 0, len(text))[0]
+    nodes, _ = parse_sgf_game_tree(text, start)
+    return nodes
+
+
+def parse_sgf_game_tree(text: str, index: int) -> tuple[list[dict[str, list[str]]], int]:
+    if index >= len(text) or text[index] != "(":
+        return [], index
+    index += 1
+    nodes: list[dict[str, list[str]]] = []
+    took_child = False
+    while index < len(text):
+        index = skip_sgf_space(text, index)
+        if index >= len(text):
+            break
+        char = text[index]
+        if char == ";":
+            node, index = parse_sgf_node(text, index)
+            nodes.append(node)
+        elif char == "(":
+            child_nodes, index = parse_sgf_game_tree(text, index)
+            if not took_child:
+                nodes.extend(child_nodes)
+                took_child = True
+        elif char == ")":
+            return nodes, index + 1
+        else:
+            index += 1
+    return nodes, index
+
+
+def parse_sgf_sequence(
+    text: str, index: int, end: int
+) -> tuple[list[dict[str, list[str]]], int]:
+    nodes: list[dict[str, list[str]]] = []
+    while index < end:
+        index = skip_sgf_space(text, index)
+        if index >= end:
+            break
+        if text[index] != ";":
+            index += 1
+            continue
+        node, index = parse_sgf_node(text, index)
+        nodes.append(node)
+    return nodes, index
+
+
+def parse_sgf_node(text: str, index: int) -> tuple[dict[str, list[str]], int]:
+    index += 1
+    props: dict[str, list[str]] = {}
+    while index < len(text):
+        index = skip_sgf_space(text, index)
+        if index >= len(text) or text[index] in ";()":
+            break
+        if not text[index].isalpha():
+            index += 1
+            continue
+        tag_start = index
+        while index < len(text) and text[index].isalpha():
+            index += 1
+        tag = text[tag_start:index].upper()
+        values: list[str] = []
+        index = skip_sgf_space(text, index)
+        while index < len(text) and text[index] == "[":
+            value, index = parse_sgf_prop_value(text, index)
+            values.append(value)
+            index = skip_sgf_space(text, index)
+        if values:
+            props.setdefault(tag, []).extend(values)
+    return props, index
+
+
+def parse_sgf_prop_value(text: str, index: int) -> tuple[str, int]:
+    index += 1
+    chars: list[str] = []
+    while index < len(text):
+        char = text[index]
+        if char == "\\" and index + 1 < len(text):
+            chars.append(text[index + 1])
+            index += 2
+            continue
+        if char == "]":
+            return "".join(chars), index + 1
+        chars.append(char)
+        index += 1
+    return "".join(chars), index
+
+
+def skip_sgf_space(text: str, index: int) -> int:
+    while index < len(text) and text[index].isspace():
+        index += 1
+    return index
+
+
+def first_prop(props: dict[str, list[str]], tag: str, default: str = "") -> str:
+    values = props.get(tag.upper()) or []
+    return values[0] if values else default
+
+
+def saved_analysis_from_node(props: dict[str, list[str]]) -> dict[str, Any] | None:
+    for tag in ("LZ", "LZOP"):
+        payload = first_prop(props, tag)
+        if payload:
+            return parse_saved_analysis_payload(payload)
+    return None
+
+
+def parse_saved_analysis_payload(payload: str) -> dict[str, Any] | None:
+    lines = [line.strip() for line in payload.splitlines() if line.strip()]
+    if not lines:
+        return None
+    header = lines[0].split()
+    if len(header) < 3:
+        return None
+    root_info: dict[str, Any] = {
+        "winrate": clamp((100.0 - number(header[1])) / 100.0, 0.0, 1.0),
     }
+    if len(header) >= 4:
+        root_info["scoreMean"] = number(header[3])
+    if len(header) >= 5:
+        root_info["scoreStdev"] = number(header[4])
+    move_infos = parse_saved_move_infos(" ".join(lines[1:]))
+    return {
+        "rootInfo": root_info,
+        "moveInfos": move_infos,
+        "sgfAnalysis": True,
+        "sgfEngine": header[0],
+        "sgfPlayouts": parse_count_token(header[2]),
+    }
+
+
+def parse_saved_move_infos(raw: str) -> list[dict[str, Any]]:
+    if not raw:
+        return []
+    analysis_line = raw.split(" ownership", 1)[0].strip()
+    move_infos: list[dict[str, Any]] = []
+    for order, variation in enumerate(re.split(r"\s+info\s+", analysis_line)):
+        parsed = parse_saved_move_info(variation, order)
+        if parsed:
+            move_infos.append(parsed)
+    return move_infos
+
+
+def parse_saved_move_info(raw: str, order: int) -> dict[str, Any] | None:
+    tokens = raw.strip().split()
+    if not tokens:
+        return None
+    result: dict[str, Any] = {"order": order}
+    index = 0
+    while index < len(tokens):
+        key = tokens[index]
+        if key == "pv":
+            result["pv"] = tokens[index + 1 :]
+            break
+        if index + 1 >= len(tokens):
+            break
+        value = tokens[index + 1]
+        if key == "move":
+            result["move"] = value
+        elif key == "visits":
+            result["visits"] = parse_count_token(value)
+        elif key == "winrate":
+            result["winrate"] = normalize_saved_rate(number(value))
+        elif key == "prior":
+            result["prior"] = normalize_saved_rate(number(value))
+        elif key in {"scoreMean", "scoreLead"}:
+            result[key] = number(value)
+        index += 2
+    return result if result.get("move") else None
+
+
+def normalize_saved_rate(value: float) -> float:
+    if abs(value) > 100.0:
+        return value / 10000.0
+    if abs(value) > 1.0:
+        return value / 100.0
+    return value
+
+
+def parse_count_token(raw: str) -> int:
+    text = str(raw or "").strip().lower().replace(",", "")
+    multiplier = 1.0
+    if text.endswith("m"):
+        multiplier = 1_000_000.0
+        text = text[:-1]
+    elif text.endswith("k"):
+        multiplier = 1_000.0
+        text = text[:-1]
+    try:
+        return max(0, int(round(float(text) * multiplier)))
+    except ValueError:
+        digits = re.sub(r"[^0-9.]", "", text)
+        if not digits:
+            return 0
+        try:
+            return max(0, int(round(float(digits) * multiplier)))
+        except ValueError:
+            return 0
 
 
 def parse_komi(raw: str) -> float:
@@ -286,37 +1091,103 @@ def sgf_point_to_gtp(point: str, size: int) -> str:
 
 
 def evaluate_game(
-    katago: KataGoProcess, game: Game, rules: str, max_visits: int, max_moves: int
+    katago: KataGoProcess | None,
+    game: Game,
+    rules: str,
+    max_visits: int,
+    max_moves: int,
+    batch_positions: int,
+    progress_index: int | None = None,
+    reuse_sgf_analysis: bool = False,
+    sgf_analysis_only: bool = False,
 ) -> list[dict[str, Any]]:
     moves = game.moves[: min(len(game.moves), max_moves)]
-    analyses = []
-    for turn in range(len(moves) + 1):
-        analyses.append(
-            katago.analyze(
-                moves[:turn],
-                rules=rules,
-                komi=game.komi,
-                size=game.size,
-                max_visits=max_visits,
-            )
+
+    def report_progress(
+        done_positions: int, total_positions: int, active_positions: int | None = None
+    ) -> None:
+        if _WORKER_PROGRESS_QUEUE is None or progress_index is None:
+            return
+        _WORKER_PROGRESS_QUEUE.put(
+            {
+                "index": progress_index,
+                "name": str(game.path.name),
+                "done_positions": done_positions,
+                "active_positions": active_positions,
+                "total_positions": total_positions,
+                "total_moves": len(moves),
+            }
         )
+
+    analyses: list[dict[str, Any] | None] = [None] * (len(moves) + 1)
+    saved_positions = 0
+    if reuse_sgf_analysis:
+        for index, analysis in enumerate(game.saved_analyses[: len(analyses)]):
+            if has_saved_analysis(analysis):
+                analyses[index] = analysis
+                saved_positions += 1
+
+    missing_indices = [index for index, analysis in enumerate(analyses) if analysis is None]
+    katago_positions = 0
+    if missing_indices and not sgf_analysis_only:
+        if katago is None:
+            raise RuntimeError("KataGo is required for positions missing saved SGF analysis")
+        fresh_analyses = katago.analyze_many(
+            [moves[:turn] for turn in missing_indices],
+            rules=rules,
+            komi=game.komi,
+            size=game.size,
+            max_visits=max_visits,
+            batch_positions=batch_positions,
+            progress_callback=report_progress,
+        )
+        for index, analysis in zip(missing_indices, fresh_analyses):
+            analyses[index] = analysis
+        katago_positions = len(fresh_analyses)
+    elif not missing_indices:
+        report_progress(len(analyses), len(analyses), None)
 
     samples = {"B": [], "W": []}
     for index, (color, move) in enumerate(moves):
         previous = analyses[index]
         current = analyses[index + 1]
+        if previous is None:
+            continue
         sample = sample_move(color, move, previous, current)
         if sample:
             samples[color].append(sample)
 
+    analysis_source = "sgf" if sgf_analysis_only else "katago"
+    if saved_positions and katago_positions:
+        analysis_source = "mixed"
+    elif saved_positions:
+        analysis_source = "sgf"
     return [
-        side_report(game, "B", samples["B"], len(moves), max_visits),
-        side_report(game, "W", samples["W"], len(moves), max_visits),
+        side_report(
+            game,
+            "B",
+            samples["B"],
+            len(moves),
+            max_visits,
+            analysis_source,
+            saved_positions,
+            katago_positions,
+        ),
+        side_report(
+            game,
+            "W",
+            samples["W"],
+            len(moves),
+            max_visits,
+            analysis_source,
+            saved_positions,
+            katago_positions,
+        ),
     ]
 
 
 def sample_move(
-    color: str, played: str, previous: dict[str, Any], current: dict[str, Any]
+    color: str, played: str, previous: dict[str, Any], current: dict[str, Any] | None
 ) -> Sample | None:
     move_infos = sorted(previous.get("moveInfos") or [], key=lambda move: move.get("order", 0))
     if not move_infos:
@@ -327,6 +1198,8 @@ def sample_move(
         score_loss = number(top.get("scoreMean")) - number(actual.get("scoreMean"))
         winrate_loss = 100.0 * (number(top.get("winrate")) - number(actual.get("winrate")))
     else:
+        if current is None:
+            return None
         score_loss = fallback_score_loss(previous, current)
         winrate_loss = fallback_winrate_loss(previous, current)
     score_equivalent_loss = positive(
@@ -348,6 +1221,10 @@ def sample_move(
             1.0,
         ),
     )
+
+
+def has_saved_analysis(analysis: dict[str, Any] | None) -> bool:
+    return bool(analysis and (analysis.get("moveInfos") or analysis.get("rootInfo")))
 
 
 def find_actual(move_infos: list[dict[str, Any]], played: str) -> tuple[int, dict[str, Any] | None]:
@@ -407,7 +1284,14 @@ def complexity(move_infos: list[dict[str, Any]]) -> float:
 
 
 def side_report(
-    game: Game, color: str, samples: list[Sample], analyzed_moves: int, max_visits: int
+    game: Game,
+    color: str,
+    samples: list[Sample],
+    analyzed_moves: int,
+    max_visits: int,
+    analysis_source: str = "katago",
+    sgf_analysis_positions: int = 0,
+    katago_analysis_positions: int = 0,
 ) -> dict[str, Any]:
     player = game.black_name if color == "B" else game.white_name
     fox_rank = game.black_rank if color == "B" else game.white_rank
@@ -420,6 +1304,9 @@ def side_report(
             "analyzed_moves": analyzed_moves,
             "samples": 0,
             "max_visits": max_visits,
+            "analysis_source": analysis_source,
+            "sgf_analysis_positions": sgf_analysis_positions,
+            "katago_analysis_positions": katago_analysis_positions,
             "strength_band": "-",
         }
 
@@ -427,30 +1314,43 @@ def side_report(
     average_winrate_loss = statistics.fmean(sample.winrate_loss for sample in samples)
     average_score_loss = statistics.fmean(score_losses) if score_losses else 0.0
     median_score_loss = statistics.median(score_losses) if score_losses else 0.0
+    equivalent_losses = [sample.score_equivalent_loss for sample in samples]
     average_score_equivalent_loss = statistics.fmean(
-        sample.score_equivalent_loss for sample in samples
+        equivalent_losses
     )
+    p75_score_equivalent_loss = percentile(equivalent_losses, 0.75)
+    p90_score_equivalent_loss = percentile(equivalent_losses, 0.90)
     weighted_point_loss = weighted_loss(samples, average_score_equivalent_loss)
     first_choice_rate = rate(samples, lambda sample: sample.first_choice)
     good_move_rate = rate(samples, lambda sample: sample.category in {"excellent", "great", "good"})
+    bad_move_rate = rate(samples, lambda sample: sample.category in {"inaccuracy", "mistake", "blunder"})
     mistake_rate = rate(samples, lambda sample: sample.category in {"mistake", "blunder"})
+    blunder_rate = rate(samples, lambda sample: sample.category == "blunder")
+    match_rate_value = match_rate(first_choice_rate, good_move_rate, mistake_rate)
     average_difficulty = 100.0 * statistics.fmean(sample.complexity for sample in samples)
     quality_score_value = quality_score(
         weighted_point_loss,
         average_score_equivalent_loss,
         median_score_loss if score_losses else average_score_equivalent_loss,
+        p75_score_equivalent_loss,
+        p90_score_equivalent_loss,
         first_choice_rate,
         good_move_rate,
         mistake_rate,
+        blunder_rate,
+        match_rate_value,
         average_difficulty,
     )
     band = strength_band(
         quality_score_value,
         weighted_point_loss,
+        average_score_equivalent_loss,
         median_score_loss if score_losses else average_score_equivalent_loss,
+        p90_score_equivalent_loss,
         first_choice_rate,
         good_move_rate,
         mistake_rate,
+        match_rate_value,
         average_difficulty,
     )
     return {
@@ -461,16 +1361,25 @@ def side_report(
         "analyzed_moves": analyzed_moves,
         "samples": len(samples),
         "max_visits": max_visits,
+        "analysis_source": analysis_source,
+        "sgf_analysis_positions": sgf_analysis_positions,
+        "katago_analysis_positions": katago_analysis_positions,
         "strength_band": band,
         "quality_score": round(quality_score_value, 1),
         "first_choice_rate": round(first_choice_rate, 4),
         "good_move_rate": round(good_move_rate, 4),
+        "match_rate": round(match_rate_value, 4),
+        "bad_move_rate": round(bad_move_rate, 4),
         "average_difficulty": round(average_difficulty, 1),
         "weighted_point_loss": round(weighted_point_loss, 3),
         "average_score_loss": round(average_score_loss, 3),
+        "average_score_equivalent_loss": round(average_score_equivalent_loss, 3),
         "median_score_loss": round(median_score_loss, 3),
+        "p75_score_equivalent_loss": round(p75_score_equivalent_loss, 3),
+        "p90_score_equivalent_loss": round(p90_score_equivalent_loss, 3),
         "average_winrate_loss": round(average_winrate_loss, 3),
         "mistake_rate": round(mistake_rate, 4),
+        "blunder_rate": round(blunder_rate, 4),
     }
 
 
@@ -483,6 +1392,21 @@ def weighted_loss(samples: list[Sample], fallback: float) -> float:
 
 def rate(samples: list[Sample], predicate: Any) -> float:
     return sum(1 for sample in samples if predicate(sample)) / len(samples)
+
+
+def percentile(values: list[float], fraction: float) -> float:
+    if not values:
+        return 0.0
+    sorted_values = sorted(values)
+    if len(sorted_values) == 1:
+        return sorted_values[0]
+    position = fraction * (len(sorted_values) - 1)
+    lower = math.floor(position)
+    upper = math.ceil(position)
+    if lower == upper:
+        return sorted_values[lower]
+    weight = position - lower
+    return sorted_values[lower] * (1.0 - weight) + sorted_values[upper] * weight
 
 
 def categorize(score_equivalent_loss: float) -> str:
@@ -504,82 +1428,154 @@ def quality_score(
     weighted_point_loss: float,
     average_point_loss: float,
     median_point_loss: float,
+    p75_point_loss: float,
+    p90_point_loss: float,
     first_choice_rate: float,
     good_move_rate: float,
     mistake_rate: float,
+    blunder_rate: float,
+    match_rate_value: float,
     average_difficulty: float,
 ) -> float:
-    robust_point_loss = (
-        0.50 * positive(weighted_point_loss)
-        + 0.30 * positive(average_point_loss)
-        + 0.20 * positive(median_point_loss)
+    rank_value = regressed_rank_value(
+        weighted_point_loss,
+        average_point_loss,
+        median_point_loss,
+        p75_point_loss,
+        p90_point_loss,
+        first_choice_rate,
+        good_move_rate,
+        mistake_rate,
+        blunder_rate,
+        match_rate_value,
+        average_difficulty,
     )
-    loss_score = 100.0 * math.pow(KATRAIN_ACCURACY_BASE, robust_point_loss / RANK_SCORE_LOSS_SCALE)
-    good_move_score = 100.0 * clamp(good_move_rate, 0.0, 1.0)
-    mistake_score = 100.0 * (1.0 - clamp(mistake_rate / 0.18, 0.0, 1.0))
-    first_choice_score = 100.0 * clamp((first_choice_rate - 0.20) / 0.45, 0.0, 1.0)
-    difficulty_bonus = clamp((average_difficulty - 20.0) / 60.0, 0.0, 1.0) * 6.0
+    return rank_value_to_quality_score(rank_value)
+
+
+def regressed_rank_value(
+    weighted_point_loss: float,
+    average_point_loss: float,
+    median_point_loss: float,
+    p75_point_loss: float,
+    p90_point_loss: float,
+    first_choice_rate: float,
+    good_move_rate: float,
+    mistake_rate: float,
+    blunder_rate: float,
+    match_rate_value: float,
+    average_difficulty: float,
+) -> float:
+    first_choice = clamp(first_choice_rate, 0.0, 1.0)
+    good_move = clamp(good_move_rate, 0.0, 1.0)
+    non_mistake = 1.0 - clamp(mistake_rate, 0.0, 1.0)
+    non_blunder = 1.0 - clamp(blunder_rate, 0.0, 1.0)
+    match = clamp(match_rate_value, 0.0, 1.0)
+    weighted_loss_fit = 1.0 / (1.0 + clamp(positive(weighted_point_loss), 0.0, 50.0))
+    median_loss_fit = 1.0 / (1.0 + clamp(positive(median_point_loss), 0.0, 50.0))
+    average_loss_fit = 1.0 / (1.0 + clamp(positive(average_point_loss), 0.0, 50.0))
+    p75_loss_fit = 1.0 / (1.0 + clamp(positive(p75_point_loss), 0.0, 50.0))
+    p90_loss_fit = 1.0 / (1.0 + clamp(positive(p90_point_loss), 0.0, 80.0))
+    difficulty = clamp((average_difficulty - 25.0) / 35.0, 0.0, 1.0)
     return clamp(
-        0.48 * loss_score
-        + 0.27 * good_move_score
-        + 0.15 * mistake_score
-        + 0.07 * first_choice_score
-        + difficulty_bonus,
-        0.0,
-        100.0,
+        REGRESSION_INTERCEPT
+        + REGRESSION_FIRST_CHOICE_WEIGHT * first_choice
+        + REGRESSION_GOOD_MOVE_WEIGHT * good_move
+        + REGRESSION_MATCH_WEIGHT * match
+        + REGRESSION_NON_MISTAKE_WEIGHT * non_mistake
+        + REGRESSION_NON_BLUNDER_WEIGHT * non_blunder
+        + REGRESSION_WEIGHTED_LOSS_WEIGHT * weighted_loss_fit
+        + REGRESSION_MEDIAN_LOSS_WEIGHT * median_loss_fit
+        + REGRESSION_AVERAGE_LOSS_WEIGHT * average_loss_fit
+        + REGRESSION_P75_LOSS_WEIGHT * p75_loss_fit
+        + REGRESSION_P90_LOSS_WEIGHT * p90_loss_fit
+        + REGRESSION_DIFFICULTY_WEIGHT * difficulty
+        + REGRESSION_FIRST_CHOICE_DIFFICULTY_WEIGHT * first_choice * difficulty
+        + REGRESSION_GOOD_MOVE_DIFFICULTY_WEIGHT * good_move * difficulty
+        + REGRESSION_MATCH_DIFFICULTY_WEIGHT * match * difficulty,
+        -18.0,
+        12.0,
     )
+
+
+def rank_value_to_quality_score(rank_value: float) -> float:
+    return clamp((rank_value + 18.0) * 100.0 / 30.0, 0.0, 100.0)
 
 
 def strength_band(
     quality_score_value: float,
     weighted_point_loss: float,
+    average_point_loss: float,
     median_point_loss: float,
+    p90_point_loss: float,
     first_choice_rate: float,
     good_move_rate: float,
     mistake_rate: float,
+    match_rate_value: float,
     average_difficulty: float,
 ) -> str:
-    base = max(
+    level = max(
         base_level(quality_score_value),
         elite_evidence_level(
             weighted_point_loss,
             first_choice_rate,
             good_move_rate,
             mistake_rate,
+            match_rate_value,
         ),
     )
     level = min(
-        base,
+        level,
         metric_cap_level(
             weighted_point_loss,
             median_point_loss,
             first_choice_rate,
             good_move_rate,
             mistake_rate,
+            match_rate_value,
+        ),
+    )
+    level = min(
+        level,
+        tail_loss_cap(
+            weighted_point_loss,
+            average_point_loss,
+            median_point_loss,
+            p90_point_loss,
+            match_rate_value,
         ),
     )
     level = evidence_adjusted_level(level, first_choice_rate, good_move_rate, average_difficulty)
     return STRENGTH_BANDS[level]
 
 
+def match_rate(first_choice_rate: float, good_move_rate: float, mistake_rate: float) -> float:
+    return clamp(
+        0.45 * first_choice_rate + 0.45 * good_move_rate + 0.10 * (1.0 - mistake_rate),
+        0.0,
+        1.0,
+    )
+
+
 def base_level(score: float) -> int:
+    rank_value = -18.0 + clamp(score, 0.0, 100.0) * 30.0 / 100.0
     thresholds = [
-        (96.0, 13),
-        (92.0, 12),
-        (88.0, 11),
-        (84.0, 10),
-        (80.0, 9),
-        (76.0, 8),
-        (72.0, 7),
-        (63.0, 6),
-        (55.0, 5),
-        (51.0, 4),
-        (46.0, 3),
-        (36.0, 2),
-        (24.0, 1),
+        (11.5, 13),
+        (10.5, 12),
+        (9.5, 11),
+        (8.5, 10),
+        (7.5, 9),
+        (6.5, 8),
+        (4.5, 7),
+        (2.5, 6),
+        (0.0, 5),
+        (-2.75, 4),
+        (-6.0, 3),
+        (-10.5, 2),
+        (-15.5, 1),
     ]
     for threshold, level in thresholds:
-        if score >= threshold:
+        if rank_value >= threshold:
             return level
     return 0
 
@@ -589,7 +1585,15 @@ def elite_evidence_level(
     first_choice_rate: float,
     good_move_rate: float,
     mistake_rate: float,
+    match_rate_value: float,
 ) -> int:
+    if (
+        first_choice_rate >= 0.95
+        and good_move_rate >= 0.96
+        and mistake_rate <= 0.01
+        and weighted_point_loss <= 1.00
+    ):
+        return 13
     if (
         first_choice_rate >= 0.50
         and good_move_rate >= 0.86
@@ -604,7 +1608,32 @@ def elite_evidence_level(
         and weighted_point_loss <= 3.00
     ):
         return 11
+    if (
+        first_choice_rate >= 0.44
+        and good_move_rate >= 0.78
+        and match_rate_value >= 0.62
+        and mistake_rate <= 0.03
+        and weighted_point_loss <= 2.00
+    ):
+        return 10
     return 0
+
+
+def tail_loss_cap(
+    weighted_point_loss: float,
+    average_point_loss: float,
+    median_point_loss: float,
+    p90_point_loss: float,
+    match_rate_value: float,
+) -> int:
+    cap_level = 13
+    if p90_point_loss > 8.0 and average_point_loss > 2.8 and match_rate_value < 0.55:
+        cap_level = min(cap_level, 7)
+    if p90_point_loss > 5.5 and median_point_loss > 1.0 and match_rate_value < 0.50:
+        cap_level = min(cap_level, 6)
+    if weighted_point_loss > 4.8 and average_point_loss > 3.0 and match_rate_value < 0.45:
+        cap_level = min(cap_level, 4)
+    return cap_level
 
 
 def metric_cap_level(
@@ -613,13 +1642,14 @@ def metric_cap_level(
     first_choice_rate: float,
     good_move_rate: float,
     mistake_rate: float,
+    match_rate_value: float,
 ) -> int:
     return min(
         cap_by_first_choice(first_choice_rate),
         cap_by_good_move_rate(good_move_rate),
+        cap_by_match_rate(match_rate_value),
         cap_by_mistake_rate(mistake_rate),
         cap_by_median_loss(median_point_loss),
-        cap_by_weighted_loss(weighted_point_loss),
         cap_by_evidence(weighted_point_loss, first_choice_rate, good_move_rate),
     )
 
@@ -664,6 +1694,10 @@ def cap_by_good_move_rate(value: float) -> int:
     return cap(value, [(0.96, 13), (0.88, 12), (0.82, 11), (0.78, 10), (0.74, 9), (0.68, 8), (0.62, 7), (0.56, 6), (0.50, 5), (0.42, 4), (0.32, 3), (0.22, 2)], 1)
 
 
+def cap_by_match_rate(value: float) -> int:
+    return cap(value, [(0.80, 13), (0.70, 12), (0.62, 11), (0.58, 10), (0.54, 9), (0.49, 8), (0.43, 7), (0.37, 6), (0.30, 5), (0.22, 4), (0.14, 3)], 2)
+
+
 def cap_by_mistake_rate(value: float) -> int:
     for threshold, level in [
         (0.005, 13),
@@ -704,26 +1738,6 @@ def cap_by_median_loss(value: float) -> int:
     return 1
 
 
-def cap_by_weighted_loss(value: float) -> int:
-    for threshold, level in [
-        (0.35, 13),
-        (3.20, 12),
-        (4.00, 11),
-        (5.00, 10),
-        (6.20, 9),
-        (7.00, 8),
-        (7.50, 7),
-        (9.50, 6),
-        (12.50, 5),
-        (16.50, 4),
-        (22.00, 3),
-        (30.00, 2),
-    ]:
-        if value <= threshold:
-            return level
-    return 1
-
-
 def cap(value: float, thresholds: list[tuple[float, int]], fallback: int) -> int:
     for threshold, level in thresholds:
         if value >= threshold:
@@ -737,6 +1751,7 @@ def format_row(row: dict[str, Any]) -> str:
     return (
         f"  {row['side']} {row['player']} Fox={row.get('fox_rank') or '-'} "
         f"=> {row['strength_band']} score={row['quality_score']:.1f} "
+        f"source={row.get('analysis_source', 'katago')} "
         f"samples={row['samples']} top1={row['first_choice_rate']:.0%} "
         f"good={row['good_move_rate']:.0%} diff={row['average_difficulty']:.0f} "
         f"weightedLoss={row['weighted_point_loss']:.2f} "
