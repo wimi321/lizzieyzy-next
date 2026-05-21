@@ -734,6 +734,7 @@ public final class PlayerStrengthEstimator {
           blunderRate,
           averageDifficulty,
           strengthBand(
+              sampleCount,
               qualityScore,
               weightedPointLoss,
               averageScoreEquivalentLoss,
@@ -821,6 +822,7 @@ public final class PlayerStrengthEstimator {
   }
 
   private static String strengthBand(
+      int sampleCount,
       double qualityScore,
       double weightedPointLoss,
       double averagePointLoss,
@@ -852,6 +854,7 @@ public final class PlayerStrengthEstimator {
             tailLossCap(
                 weightedPointLoss, averagePointLoss, medianPointLoss, p90PointLoss, matchRate));
     level = evidenceAdjustedLevel(level, firstChoiceRate, goodMoveRate, averageDifficulty);
+    level = lowConfidenceAdjustedLevel(level, sampleCount, weightedPointLoss);
     return STRENGTH_BANDS[level];
   }
 
@@ -1032,6 +1035,9 @@ public final class PlayerStrengthEstimator {
     if (weightedPointLoss > 7.50 && firstChoiceRate < 0.26) {
       cap = Math.min(cap, STRONG_KYU_LEVEL);
     }
+    if (weightedPointLoss >= 2.90 && firstChoiceRate < 0.34 && goodMoveRate < 0.78) {
+      cap = Math.min(cap, LOW_DAN_LEVEL);
+    }
     return cap;
   }
 
@@ -1045,6 +1051,14 @@ public final class PlayerStrengthEstimator {
       adjusted = Math.min(adjusted, MID_DAN_LEVEL);
     }
     return adjusted;
+  }
+
+  private static int lowConfidenceAdjustedLevel(
+      int level, int sampleCount, double weightedPointLoss) {
+    if (sampleCount < MIN_REPORT_SAMPLES && level == 0 && weightedPointLoss <= MISTAKE_SCORE_LOSS) {
+      return 1;
+    }
+    return level;
   }
 
   private static int capByFirstChoice(double firstChoiceRate) {

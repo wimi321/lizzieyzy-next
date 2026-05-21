@@ -351,6 +351,16 @@ class BoardNodeKindHistoryPipelineTest {
   }
 
   @Test
+  void liveLoadNormalHandicapRootSetupSyncsPrimaryEngineAtRoot() throws Exception {
+    assertLiveLoadHandicapSetupSyncsPrimaryEngine(false);
+  }
+
+  @Test
+  void liveLoadNormalHandicapRootSetupSyncsPrimaryEngineAtLastMove() throws Exception {
+    assertLiveLoadHandicapSetupSyncsPrimaryEngine(true);
+  }
+
+  @Test
   void preFirstMoveStandaloneSetupNodeStaysIndependentSnapshot() throws Exception {
     TestEnvironment env = TestEnvironment.open();
     try {
@@ -4057,6 +4067,45 @@ class BoardNodeKindHistoryPipelineTest {
     return (T) UnsafeHolder.UNSAFE.allocateInstance(type);
   }
 
+  private static void setStarted(Leelaz engine, boolean started) throws Exception {
+    Field startedField = Leelaz.class.getDeclaredField("started");
+    startedField.setAccessible(true);
+    startedField.setBoolean(engine, started);
+  }
+
+  private static void assertLiveLoadHandicapSetupSyncsPrimaryEngine(boolean loadSgfLast)
+      throws Exception {
+    TestEnvironment env = TestEnvironment.open();
+    try {
+      RuleAwareFakeLeelaz engine = allocate(RuleAwareFakeLeelaz.class);
+      engine.isLoaded = true;
+      setStarted(engine, true);
+      Lizzie.leelaz = engine;
+      Lizzie.config.loadSgfLast = loadSgfLast;
+      EngineManager.isEmpty = false;
+      String sgf = "(;SZ[3]HA[2]AB[aa]AB[ca];W[ba];B[bb])";
+
+      assertTrue(SGFParser.loadFromString(sgf), "loadFromString should parse handicap SGF.");
+
+      assertTrue(
+          engine.recordedCommands().contains("clear_board"),
+          "loading a live SGF should reset and restore the running engine position.");
+      assertTrue(
+          engine.recordedCommands().stream().anyMatch(command -> command.startsWith("loadsgf ")),
+          "root handicap stones should be restored through a setup snapshot SGF.");
+      assertArrayEquals(
+          Lizzie.board.getHistory().getData().stones,
+          engine.copyStones(),
+          "running engine should see the same fixed handicap stones as the UI board.");
+      assertEquals(
+          Lizzie.board.getHistory().getData().blackToPlay,
+          engine.isBlackToPlay(),
+          "running engine should keep the same side-to-play as the loaded SGF.");
+    } finally {
+      env.close();
+    }
+  }
+
   private static final class TestEnvironment implements AutoCloseable {
     private final int previousBoardWidth;
     private final int previousBoardHeight;
@@ -4065,6 +4114,7 @@ class BoardNodeKindHistoryPipelineTest {
     private final WinrateGraph previousWinrateGraph;
     private final Leelaz previousLeelaz;
     private final Config previousConfig;
+    private final boolean previousEngineEmpty;
 
     private TestEnvironment(
         int previousBoardWidth,
@@ -4073,7 +4123,8 @@ class BoardNodeKindHistoryPipelineTest {
         LizzieFrame previousFrame,
         WinrateGraph previousWinrateGraph,
         Leelaz previousLeelaz,
-        Config previousConfig) {
+        Config previousConfig,
+        boolean previousEngineEmpty) {
       this.previousBoardWidth = previousBoardWidth;
       this.previousBoardHeight = previousBoardHeight;
       this.previousBoard = previousBoard;
@@ -4081,6 +4132,7 @@ class BoardNodeKindHistoryPipelineTest {
       this.previousWinrateGraph = previousWinrateGraph;
       this.previousLeelaz = previousLeelaz;
       this.previousConfig = previousConfig;
+      this.previousEngineEmpty = previousEngineEmpty;
     }
 
     private static TestEnvironment open() throws Exception {
@@ -4091,6 +4143,7 @@ class BoardNodeKindHistoryPipelineTest {
       WinrateGraph previousWinrateGraph = LizzieFrame.winrateGraph;
       Leelaz previousLeelaz = Lizzie.leelaz;
       Config previousConfig = Lizzie.config;
+      boolean previousEngineEmpty = EngineManager.isEmpty;
 
       Board.boardWidth = BOARD_SIZE;
       Board.boardHeight = BOARD_SIZE;
@@ -4117,7 +4170,8 @@ class BoardNodeKindHistoryPipelineTest {
           previousFrame,
           previousWinrateGraph,
           previousLeelaz,
-          previousConfig);
+          previousConfig,
+          previousEngineEmpty);
     }
 
     @Override
@@ -4130,6 +4184,7 @@ class BoardNodeKindHistoryPipelineTest {
       LizzieFrame.winrateGraph = previousWinrateGraph;
       Lizzie.leelaz = previousLeelaz;
       Lizzie.config = previousConfig;
+      EngineManager.isEmpty = previousEngineEmpty;
     }
   }
 

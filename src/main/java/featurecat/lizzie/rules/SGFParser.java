@@ -71,23 +71,13 @@ public class SGFParser {
 
     boolean returnValue = parse(value);
     Lizzie.board.isLoadingFile = false;
-    if (Lizzie.board.hasStartStone) {
-      int lenth2 = Lizzie.board.startStonelist.size();
-      for (int i = 0; i < lenth2; i++) {
-        Movelist move = Lizzie.board.startStonelist.get(lenth2 - 1 - i);
-        String color = move.isblack ? "b" : "w";
-        if (!move.ispass) {
-          Lizzie.leelaz.sendCommand(
-              "play " + color + " " + Board.convertCoordinatesToName(move.x, move.y));
-        }
-      }
-    }
     SwingUtilities.invokeLater(
         new Runnable() {
           public void run() {
             if (Lizzie.config.loadSgfLast)
               while (Lizzie.board.nextMove(false))
                 ;
+            if (returnValue) syncPrimaryEngineAfterSgfLoad();
             Lizzie.board.clearAfterMove();
             if (isExtraMode2
                 && !Lizzie.config.isDoubleEngineMode()
@@ -118,17 +108,7 @@ public class SGFParser {
     if (Lizzie.config.loadSgfLast)
       while (Lizzie.board.nextMove(false))
         ;
-    if (Lizzie.board.hasStartStone) {
-      int lenth2 = Lizzie.board.startStonelist.size();
-      for (int i = 0; i < lenth2; i++) {
-        Movelist move = Lizzie.board.startStonelist.get(lenth2 - 1 - i);
-        String color = move.isblack ? "b" : "w";
-        if (!move.ispass) {
-          Lizzie.leelaz.sendCommand(
-              "play " + color + " " + Board.convertCoordinatesToName(move.x, move.y));
-        }
-      }
-    }
+    if (result) syncPrimaryEngineAfterSgfLoad();
     Lizzie.board.isLoadingFile = false;
     if (isExtraMode2 && !Lizzie.config.isDoubleEngineMode() && !Lizzie.config.isAutoAna) {
       int ret =
@@ -142,6 +122,12 @@ public class SGFParser {
       }
     }
     return result;
+  }
+
+  private static void syncPrimaryEngineAfterSgfLoad() {
+    if (Lizzie.board != null) {
+      Lizzie.board.resendCurrentPositionToPrimaryEngine();
+    }
   }
 
   public static boolean loadFromStringforedit(String sgfString) {
