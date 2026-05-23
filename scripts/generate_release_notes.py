@@ -1867,16 +1867,16 @@ def build_release_notes(asset_map: dict[str, str | None], bundle: dict[str, str]
             'language': '中文',
             'intro': (
                 '这是当前仍在维护的 `lizzieyzy` 维护版，也是一个面向普通用户的 `KataGo 围棋复盘 GUI`。'
-                '这一版继续把最常用的链路做实：野狐棋谱重新能抓、Windows 免安装包更好选、KataGo 更容易开箱即用。'
-                '下载安装后，直接输入 **野狐昵称**，就能继续抓最近公开棋谱、分析和复盘。'
+                '这一版继续补齐常用棋谱来源：在野狐棋谱旁新增 **腾讯棋谱** 入口，Windows 免安装包和 KataGo 开箱体验继续保持。'
+                '下载安装后，可以输入 **野狐昵称** 抓野狐公开棋谱，也可以在腾讯棋谱中输入 **腾讯昵称或数字 UID** 搜索公开棋谱、分析和复盘。'
             ),
             'updates': {
                 'heading': '本版主要更新',
                 'items': [
-                    '合并 @semanym 贡献的“吻合度”页面，扩大棋谱样本数量，并继续校准评估算法。',
-                    '更换新的落子音效，保留原有声音开关和资源路径，用户不用重新配置。',
-                    '修复让子棋 SGF 在引擎开启时座子未同步给引擎的问题，避免 AI 把座子点当作空点分析。',
-                    '调整“吻合度”棋力分段边界：低样本不再过度判弱，稳健业余样本也不会被抬得过高。',
+                    '新增“腾讯棋谱”入口，放在野狐棋谱旁边，方便直接搜索腾讯围棋公开棋谱。',
+                    '支持腾讯昵称或数字 UID 搜索棋谱列表，并展示对局时间、黑白双方、段位、胜负结果和手数。',
+                    '支持双击棋谱行或点击“打开”下载腾讯棋谱详情，加载到主棋盘继续分析复盘。',
+                    '腾讯棋谱搜索和下载都走后台线程，搜索/下载阶段有明确提示，失败时会恢复窗口操作并显示错误。',
                     '发布前已重新跑全量测试、打包、四平台 release workflow，并完成本机真实启动 UI 冒烟。',
                 ],
             },
@@ -1887,7 +1887,7 @@ def build_release_notes(asset_map: dict[str, str | None], bundle: dict[str, str]
                     f'如果 OpenCL 在你的电脑上跑得不好，再改用 {assets_cn["windows_portable"]}。',
                     f'如果你的电脑是 **英伟达显卡**，优先下载 {assets_cn["windows_nvidia_portable"]}。',
                     '如果你更喜欢安装流程，再选同系列的 `installer.exe`。',
-                    '抓谱时直接输入 **野狐昵称**，程序会自动匹配账号并获取最近公开棋谱。',
+                    '野狐棋谱和腾讯棋谱现在是两个入口：野狐输入野狐昵称，腾讯输入腾讯昵称或数字 UID。',
                     f'主推荐整合包已内置 KataGo `{katago_version}` 和默认权重 `{model_source}`。',
                     'Windows OpenCL 版也支持 **智能优化**，可以自动写入更合适的线程设置。',
                     'Windows 现在把 OpenCL 版放到推荐位，优先照顾更快的分析速度。',
@@ -1917,8 +1917,8 @@ def build_release_notes(asset_map: dict[str, str | None], bundle: dict[str, str]
             'why': {
                 'heading': '这一版为什么值得先看',
                 'items': [
-                    '原版已经失效的野狐抓谱链路，现在重新可用。',
-                    '现在直接输入“野狐昵称”，程序会自动找到账号再抓最近公开棋谱。',
+                    '野狐抓谱链路继续可用，并新增腾讯棋谱入口，常见公开棋谱来源更完整。',
+                    '腾讯棋谱支持昵称/数字 UID 搜索、列表分页、双击或“打开”直接加载到主棋盘。',
                     'Windows 现在把 `.portable.zip` 放到推荐位，解压后更符合多数用户习惯。',
                     'Windows 现在同时提供 OpenCL 版和 CPU 版，下载时更容易按“速度优先”还是“兼容优先”来选。',
                     'Windows OpenCL 版现在放到推荐位，优先照顾更快的分析速度。',
@@ -1935,16 +1935,16 @@ def build_release_notes(asset_map: dict[str, str | None], bundle: dict[str, str]
             'language': '繁體中文',
             'intro': (
                 '這是目前仍在維護的 `lizzieyzy` 維護版，也是一個面向一般使用者的 `KataGo 圍棋復盤 GUI`。'
-                '這一版繼續把最常用的流程做紮實：野狐棋譜重新能抓、Windows 免安裝包更好選、KataGo 更容易開箱即用。'
-                '下載安裝後，直接輸入 **野狐暱稱**，就能繼續抓最近公開棋譜、分析和復盤。'
+                '這一版繼續補齊常用棋譜來源：在野狐棋譜旁新增 **騰訊棋譜** 入口，Windows 免安裝包和 KataGo 開箱體驗繼續保持。'
+                '下載安裝後，可以輸入 **野狐暱稱** 抓野狐公開棋譜，也可以在騰訊棋譜中輸入 **騰訊暱稱或數字 UID** 搜尋公開棋譜、分析和復盤。'
             ),
             'updates': {
                 'heading': '本版主要更新',
                 'items': [
-                    '合併 @semanym 貢獻的「吻合度」頁面，擴大棋譜樣本數量，並繼續校準評估演算法。',
-                    '更換新的落子音效，保留原有聲音開關和資源路徑，使用者不用重新設定。',
-                    '修復讓子棋 SGF 在引擎開啟時座子未同步給引擎的問題，避免 AI 把座子點當作空點分析。',
-                    '調整「吻合度」棋力分段邊界：低樣本不再過度判弱，穩健業餘樣本也不會被抬得過高。',
+                    '新增「騰訊棋譜」入口，放在野狐棋譜旁邊，方便直接搜尋騰訊圍棋公開棋譜。',
+                    '支援騰訊暱稱或數字 UID 搜尋棋譜列表，並顯示對局時間、黑白雙方、段位、勝負結果和手數。',
+                    '支援雙擊棋譜列或點擊「開啟」下載騰訊棋譜詳情，載入到主棋盤繼續分析復盤。',
+                    '騰訊棋譜搜尋和下載都走背景執行緒，搜尋/下載階段有明確提示，失敗時會恢復視窗操作並顯示錯誤。',
                     '發布前已重新跑完整測試、打包、四平台 release workflow，並完成本機真實啟動 UI 冒煙。',
                 ],
             },
@@ -1955,7 +1955,7 @@ def build_release_notes(asset_map: dict[str, str | None], bundle: dict[str, str]
                     f'如果 OpenCL 在你的電腦上跑得不好，再改用 {assets_cn["windows_portable"]}。',
                     f'如果你的電腦是 **NVIDIA 顯示卡**，優先下載 {assets_cn["windows_nvidia_portable"]}。',
                     '如果你更喜歡安裝流程，再選同系列的 `installer.exe`。',
-                    '抓譜時直接輸入 **野狐暱稱**，程式會自動匹配帳號並取得最近公開棋譜。',
+                    '野狐棋譜和騰訊棋譜現在是兩個入口：野狐輸入野狐暱稱，騰訊輸入騰訊暱稱或數字 UID。',
                     f'主推薦整合包已內建 KataGo `{katago_version}` 和預設權重 `{model_source}`。',
                     'Windows OpenCL 版也支援 **智慧最佳化**，可以自動寫入更合適的執行緒設定。',
                     'Windows 現在把 OpenCL 版放到推薦位，優先照顧更快的分析速度。',
@@ -1985,8 +1985,8 @@ def build_release_notes(asset_map: dict[str, str | None], bundle: dict[str, str]
             'why': {
                 'heading': '這一版為什麼值得先看',
                 'items': [
-                    '原版已經失效的野狐抓譜流程，現在重新可用。',
-                    '現在直接輸入「野狐暱稱」，程式會自動找到帳號再抓最近公開棋譜。',
+                    '野狐抓譜流程繼續可用，並新增騰訊棋譜入口，常見公開棋譜來源更完整。',
+                    '騰訊棋譜支援暱稱/數字 UID 搜尋、列表分頁、雙擊或「開啟」直接載入到主棋盤。',
                     'Windows 現在把 `.portable.zip` 放到推薦位，解壓後更符合多數使用者習慣。',
                     'Windows 現在同時提供 OpenCL 版和 CPU 版，下載時更容易按「速度優先」還是「相容優先」來選。',
                     'Windows OpenCL 版現在放到推薦位，優先照顧更快的分析速度。',
@@ -2003,16 +2003,16 @@ def build_release_notes(asset_map: dict[str, str | None], bundle: dict[str, str]
             'language': 'English',
             'intro': (
                 'This is the actively maintained `LizzieYzy` fork and a practical `KataGo review GUI` for normal users. '
-                'Fox game fetching works again, portable Windows downloads are easier to choose, and first launch needs less manual setup. '
-                'After installing, enter a **Fox nickname** to fetch recent public games for analysis and review.'
+                'This release adds a **Tencent kifu** entry next to Fox kifu, while keeping the Windows portable packages and KataGo first-run experience straightforward. '
+                'After installing, enter a **Fox nickname** for Fox games, or use a **Tencent nickname / numeric UID** to search public Tencent Weiqi games for analysis and review.'
             ),
             'updates': {
                 'heading': 'Release Highlights',
                 'items': [
-                    'Merged @semanym’s contributed “match rate” page, with a larger game sample set and continued calibration of the strength estimator.',
-                    'Replaced the move sound while keeping the existing sound setting and resource path, so users do not need to reconfigure anything.',
-                    'Fixed handicap SGF loading while an engine is running: root handicap stones are now synchronized to the engine, so AI will not analyze them as empty points.',
-                    'Adjusted match-rate strength-band boundaries so tiny samples are not judged too harshly and solid amateur profiles are not promoted too aggressively.',
+                    'Added a Tencent kifu entry next to Fox kifu for searching public Tencent Weiqi games directly from the app.',
+                    'Tencent kifu search supports nickname or numeric UID input, and shows game time, black/white players, ranks, result, and move count.',
+                    'Double-clicking a row or pressing Open downloads the Tencent kifu detail and loads it into the main board for analysis.',
+                    'Tencent search and download now run in background workers with clear progress feedback, restored controls on failure, and explicit error messages.',
                     'Before release, full tests, packaging, all four platform release workflows, and a real local launch UI smoke test were rerun.',
                 ],
             },
@@ -2023,7 +2023,7 @@ def build_release_notes(asset_map: dict[str, str | None], bundle: dict[str, str]
                     f'If OpenCL is unreliable on your PC, use {assets["windows_portable"]} instead.',
                     f'If your PC has an **NVIDIA GPU**, try {assets["windows_nvidia_portable"]} first.',
                     'If you prefer an installer, choose the matching `installer.exe` package.',
-                    'Fox game fetching starts from a **Fox nickname** and resolves the matching account automatically.',
+                    'Fox kifu and Tencent kifu are separate entries: use a Fox nickname for Fox, and a Tencent nickname or numeric UID for Tencent.',
                     f'The recommended bundles include KataGo `{katago_version}` and the default weight `{model_source}`.',
                     'The Windows OpenCL build also supports **Smart Optimize** to save a better thread setting automatically.',
                     'The OpenCL Windows bundle is now the main recommended Windows choice for better analysis speed.',
@@ -2053,8 +2053,8 @@ def build_release_notes(asset_map: dict[str, str | None], bundle: dict[str, str]
             'why': {
                 'heading': 'Why This Release Is Worth Trying',
                 'items': [
-                    'The Fox game-fetching flow that had broken in the original app is usable again.',
-                    'You can enter a Fox nickname directly, and the app resolves the matching account before fetching recent public games.',
+                    'Fox fetching remains available, and Tencent kifu support adds another common public game source.',
+                    'Tencent kifu supports nickname/UID search, paged lists, and direct loading by double-clicking or pressing Open.',
                     "Windows `.portable.zip` packages are now emphasized because they fit most users' no-install workflow better.",
                     'Windows now offers both OpenCL and CPU builds, making it easier to choose speed-first or compatibility-first.',
                     'The OpenCL build is the recommended Windows package for faster analysis.',
@@ -2071,16 +2071,16 @@ def build_release_notes(asset_map: dict[str, str | None], bundle: dict[str, str]
             'language': '日本語',
             'intro': (
                 'このリリースは、現在も保守されている `lizzieyzy` の保守版であり、一般ユーザー向けの `KataGo 復盤 GUI` です。'
-                '野狐棋譜取得が再び使えるようになり、Windows の portable パッケージを選びやすくし、KataGo の初期セットアップもより簡単にしました。'
-                'インストール後、**野狐ニックネーム** を入力すれば、最近の公開棋譜を取得して分析・復盤できます。'
+                'このリリースでは野狐棋譜の隣に **Tencent 棋譜** 入口を追加し、Windows portable パッケージと KataGo の初期セットアップも引き続き使いやすく保っています。'
+                'インストール後、野狐は **野狐ニックネーム**、Tencent は **Tencent ニックネームまたは数字 UID** で公開棋譜を検索し、分析・復盤できます。'
             ),
             'updates': {
                 'heading': '主な更新',
                 'items': [
-                    '@semanym さんが貢献した「吻合度」ページをマージしました。棋譜サンプル数を増やし、強さ推定アルゴリズムも引き続き調整しています。',
-                    '新しい着手音に差し替えました。既存の音声設定とリソースパスはそのままなので、再設定は不要です。',
-                    'エンジン起動中に置き石 SGF を読み込むと、ルートの置き石がエンジンに同期されない問題を修正しました。AI が置き石を空点として解析しないようになります。',
-                    '吻合度の棋力帯境界を調整し、少数サンプルを過度に弱く判定せず、安定したアマチュア棋譜も過度に上振れしないようにしました。',
+                    '野狐棋譜の隣に Tencent 棋譜入口を追加し、Tencent Weiqi の公開棋譜をアプリ内から直接検索できるようにしました。',
+                    'Tencent ニックネームまたは数字 UID による棋譜一覧検索に対応し、対局時間、黒白双方、段位、勝敗、手数を表示します。',
+                    '棋譜行のダブルクリックまたは「開く」ボタンで Tencent 棋譜詳細を取得し、メイン碁盤に読み込んで分析できます。',
+                    'Tencent 棋譜の検索とダウンロードは background worker で実行し、進捗表示、失敗時の操作復帰、明確なエラー表示を行います。',
                     'リリース前に full test、package、4 プラットフォームの release workflow、実機ローカル起動 UI smoke test を再実行しました。',
                 ],
             },
@@ -2091,7 +2091,7 @@ def build_release_notes(asset_map: dict[str, str | None], bundle: dict[str, str]
                     f'OpenCL との相性が悪い場合は {assets["windows_portable"]} を使ってください。',
                     f'**NVIDIA GPU** 搭載 PC では {assets["windows_nvidia_portable"]} を優先してください。',
                     'インストーラ形式がよい場合は、同じ系列の `installer.exe` を選んでください。',
-                    '棋譜取得では **野狐ニックネーム** を入力します。アプリが一致するアカウントを自動で探します。',
+                    '野狐棋譜と Tencent 棋譜は別々の入口です。野狐は野狐ニックネーム、Tencent は Tencent ニックネームまたは数字 UID を入力します。',
                     f'推奨バンドルには KataGo `{katago_version}` と既定の重み `{model_source}` が含まれています。',
                     'Windows OpenCL 版も **Smart Optimize** に対応し、より適切なスレッド設定を自動保存できます。',
                     'Windows では OpenCL 版を推奨にし、より速い分析速度を優先しました。',
@@ -2121,8 +2121,8 @@ def build_release_notes(asset_map: dict[str, str | None], bundle: dict[str, str]
             'why': {
                 'heading': 'このリリースを試す理由',
                 'items': [
-                    '元版で使えなくなっていた野狐棋譜取得フローが再び利用できます。',
-                    '野狐ニックネームを直接入力すれば、アプリがアカウントを探して最近の公開棋譜を取得します。',
+                    '野狐棋譜取得は引き続き利用でき、Tencent 棋譜対応により公開棋譜ソースがさらに増えました。',
+                    'Tencent 棋譜はニックネーム/UID 検索、ページ付き一覧、ダブルクリックまたは「開く」による直接読み込みに対応します。',
                     'Windows では `.portable.zip` を推奨し、展開してすぐ使う一般的な利用方法に合わせました。',
                     'Windows では OpenCL 版と CPU 版を用意し、速度優先か互換優先かを選びやすくしました。',
                     'OpenCL 版は Windows の推奨パッケージで、より速い分析速度を狙えます。',
@@ -2139,16 +2139,16 @@ def build_release_notes(asset_map: dict[str, str | None], bundle: dict[str, str]
             'language': '한국어',
             'intro': (
                 '이 릴리스는 지금도 유지보수 중인 `lizzieyzy` 유지보수판이자, 일반 사용자를 위한 `KataGo 복기 GUI` 입니다. '
-                'Fox 공개 기보 가져오기를 다시 사용할 수 있게 했고, Windows portable 패키지를 더 쉽게 고를 수 있게 했으며, KataGo 첫 실행 설정도 더 간단하게 정리했습니다. '
-                '설치 후 **Fox 닉네임** 을 입력하면 최근 공개 기보를 가져와 분석하고 복기할 수 있습니다.'
+                '이번 릴리스는 Fox 기보 옆에 **Tencent 기보** 입구를 추가하고, Windows portable 패키지와 KataGo 첫 실행 경험도 계속 단순하게 유지합니다. '
+                '설치 후 Fox 는 **Fox 닉네임**, Tencent 는 **Tencent 닉네임 또는 숫자 UID** 로 공개 기보를 검색해 분석하고 복기할 수 있습니다.'
             ),
             'updates': {
                 'heading': '주요 업데이트',
                 'items': [
-                    '@semanym 님이 기여한 “일치도” 페이지를 병합했습니다. 기보 샘플 수를 늘리고 강도 추정 알고리즘도 계속 보정했습니다.',
-                    '새 착수음을 적용했습니다. 기존 소리 설정과 리소스 경로는 유지되므로 사용자가 다시 설정할 필요가 없습니다.',
-                    '엔진이 켜진 상태에서 접바둑 SGF 를 불러올 때 루트의 접바둑 돌이 엔진에 동기화되지 않던 문제를 수정했습니다. AI 가 접바둑 돌 자리를 빈 점으로 분석하지 않습니다.',
-                    '일치도 강도 구간 경계를 조정해, 작은 샘플을 지나치게 약하게 판단하지 않고 안정적인 아마추어 기보도 과하게 올려 잡지 않도록 했습니다.',
+                    'Fox 기보 옆에 Tencent 기보 입구를 추가해 Tencent Weiqi 공개 기보를 앱 안에서 바로 검색할 수 있게 했습니다.',
+                    'Tencent 닉네임 또는 숫자 UID 로 기보 목록을 검색하고, 대국 시간, 흑/백 대국자, 단급, 결과, 수순 수를 표시합니다.',
+                    '기보 행을 더블클릭하거나 Open 을 누르면 Tencent 기보 상세를 내려받아 메인 보드에 불러와 분석할 수 있습니다.',
+                    'Tencent 기보 검색과 다운로드는 background worker 로 실행되며, 진행 표시, 실패 시 조작 복구, 명확한 오류 메시지를 제공합니다.',
                     '릴리스 전에 full test, package, 4개 플랫폼 release workflow, 실제 로컬 실행 UI smoke test 를 다시 수행했습니다.',
                 ],
             },
@@ -2159,7 +2159,7 @@ def build_release_notes(asset_map: dict[str, str | None], bundle: dict[str, str]
                     f'OpenCL 이 PC에서 불안정하면 {assets["windows_portable"]} 를 대신 사용하세요.',
                     f'**NVIDIA GPU** 가 있다면 {assets["windows_nvidia_portable"]} 를 우선 사용해 보세요.',
                     '설치형 흐름을 원한다면 같은 계열의 `installer.exe` 를 고르세요.',
-                    '기보를 가져올 때는 **Fox 닉네임** 을 입력하면 앱이 맞는 계정을 자동으로 찾아 줍니다.',
+                    'Fox 기보와 Tencent 기보는 별도 입구입니다. Fox 는 Fox 닉네임, Tencent 는 Tencent 닉네임 또는 숫자 UID 를 입력하세요.',
                     f'추천 번들에는 KataGo `{katago_version}` 와 기본 가중치 `{model_source}` 가 포함되어 있습니다.',
                     'Windows OpenCL 빌드도 **Smart Optimize** 를 지원해 더 적절한 스레드 설정을 자동 저장할 수 있습니다.',
                     'Windows에서는 더 빠른 분석 속도를 위해 OpenCL 빌드를 추천으로 올렸습니다.',
@@ -2189,8 +2189,8 @@ def build_release_notes(asset_map: dict[str, str | None], bundle: dict[str, str]
             'why': {
                 'heading': '이번 릴리스를 먼저 볼 이유',
                 'items': [
-                    '원본에서 사용할 수 없던 Fox 기보 가져오기 흐름이 다시 동작합니다.',
-                    'Fox 닉네임을 직접 입력하면 앱이 계정을 찾고 최근 공개 기보를 가져옵니다.',
+                    'Fox 기보 가져오기는 계속 사용할 수 있고, Tencent 기보 지원으로 공개 기보 소스가 하나 더 늘었습니다.',
+                    'Tencent 기보는 닉네임/UID 검색, 페이지 목록, 더블클릭 또는 Open 으로 직접 불러오기를 지원합니다.',
                     'Windows `.portable.zip` 패키지를 추천으로 두어 압축 해제 후 바로 쓰는 일반적인 흐름에 맞췄습니다.',
                     'Windows 에서는 OpenCL 과 CPU 빌드를 모두 제공해 속도 우선 또는 호환 우선을 쉽게 선택할 수 있습니다.',
                     'OpenCL 빌드는 더 빠른 분석 속도를 위한 Windows 추천 패키지입니다.',
@@ -2207,16 +2207,16 @@ def build_release_notes(asset_map: dict[str, str | None], bundle: dict[str, str]
             'language': 'ภาษาไทย',
             'intro': (
                 'รีลีสนี้คือ fork `lizzieyzy` ที่ยังดูแลต่อเนื่อง และเป็น `KataGo review GUI` สำหรับผู้ใช้ทั่วไป '
-                'เวอร์ชันนี้ทำให้เส้นทางที่ใช้บ่อยแน่นขึ้น: ดึงเกมจาก Fox ได้อีกครั้ง, แพ็กเกจ Windows แบบ portable เลือกง่ายขึ้น, และ KataGo พร้อมใช้งานมากขึ้น '
-                'หลังดาวน์โหลดและติดตั้ง เพียงกรอก **ชื่อเล่น Fox** ก็สามารถดึงเกมสาธารณะล่าสุด วิเคราะห์ และทบทวนเกมได้ต่อทันที'
+                'เวอร์ชันนี้เพิ่มปุ่ม **Tencent kifu** ข้างปุ่ม Fox kifu พร้อมคงประสบการณ์ Windows portable และ KataGo ให้ใช้งานง่ายเหมือนเดิม '
+                'หลังดาวน์โหลดและติดตั้ง ใช้ **ชื่อเล่น Fox** สำหรับ Fox หรือใช้ **ชื่อเล่น Tencent / UID ตัวเลข** เพื่อค้นหาเกมสาธารณะของ Tencent Weiqi มาวิเคราะห์และทบทวนได้'
             ),
             'updates': {
                 'heading': 'ไฮไลต์ของเวอร์ชันนี้',
                 'items': [
-                    'รวม PR หน้า “match rate” จาก @semanym แล้ว พร้อมเพิ่มจำนวนตัวอย่างเกมและปรับ calibration ของตัวประเมินระดับฝีมือต่อ',
-                    'เปลี่ยนเสียงวางหมากใหม่ โดยยังใช้ตัวเลือกเสียงและ path เดิม ผู้ใช้จึงไม่ต้องตั้งค่าใหม่',
-                    'แก้ปัญหาโหลด SGF เกมต่อหมากขณะ engine เปิดอยู่แล้วหมากต่อไม่ถูก sync ไปยัง engine ทำให้ AI จะไม่วิเคราะห์จุดหมากต่อเหมือนเป็นจุดว่าง',
-                    'ปรับขอบเขตระดับฝีมือของ match rate เพื่อไม่ตัดสิน sample น้อยให้ต่ำเกินไป และไม่ยกโปรไฟล์ amateur ที่นิ่งให้สูงเกินจริง',
+                    'เพิ่มปุ่ม Tencent kifu ข้าง Fox kifu เพื่อค้นหาเกมสาธารณะของ Tencent Weiqi ได้จากในแอปโดยตรง',
+                    'รองรับการค้นหารายการเกมด้วยชื่อเล่น Tencent หรือ UID ตัวเลข และแสดงเวลาแข่ง ผู้เล่นดำ/ขาว ระดับ ผลแพ้ชนะ และจำนวนหมาก',
+                    'ดับเบิลคลิกแถวเกมหรือกด Open เพื่อดาวน์โหลดรายละเอียด Tencent kifu แล้วโหลดเข้า board หลักเพื่อวิเคราะห์',
+                    'การค้นหาและดาวน์โหลด Tencent kifu ทำงานใน background worker พร้อม feedback ความคืบหน้า คืนค่าปุ่มเมื่อเกิดข้อผิดพลาด และแสดง error ชัดเจน',
                     'ก่อนปล่อยเวอร์ชันนี้ ได้รัน full test, package, release workflow ครบ 4 แพลตฟอร์ม และทดสอบเปิดแอปจริงบนเครื่อง local แล้ว',
                 ],
             },
@@ -2227,7 +2227,7 @@ def build_release_notes(asset_map: dict[str, str | None], bundle: dict[str, str]
                     f'ถ้า OpenCL ทำงานไม่ดีบนเครื่องของคุณ ให้เปลี่ยนไปใช้ {assets["windows_portable"]}',
                     f'ถ้าเครื่องของคุณมี **การ์ดจอ NVIDIA** แนะนำให้ใช้ {assets["windows_nvidia_portable"]}',
                     'ถ้าชอบขั้นตอนแบบติดตั้ง ให้เลือกไฟล์ `installer.exe` ในชุดเดียวกัน',
-                    'เวลาดึงเกม ให้กรอก **ชื่อเล่น Fox** โปรแกรมจะจับคู่บัญชีและดึงเกมสาธารณะล่าสุดให้อัตโนมัติ',
+                    'Fox kifu และ Tencent kifu เป็นคนละปุ่ม: Fox ใช้ชื่อเล่น Fox ส่วน Tencent ใช้ชื่อเล่น Tencent หรือ UID ตัวเลข',
                     f'แพ็กเกจหลักมี KataGo `{katago_version}` และน้ำหนักเริ่มต้น `{model_source}` มาให้แล้ว',
                     'Windows OpenCL build รองรับ **Smart Optimize** เพื่อเขียนค่าจำนวนเธรดที่เหมาะสมกว่าโดยอัตโนมัติ',
                     'Windows ตอนนี้แนะนำ OpenCL build เป็นตัวหลัก เพื่อให้ได้ความเร็ววิเคราะห์ที่ดีกว่า',
@@ -2257,8 +2257,8 @@ def build_release_notes(asset_map: dict[str, str | None], bundle: dict[str, str]
             'why': {
                 'heading': 'ทำไมเวอร์ชันนี้ควรลองก่อน',
                 'items': [
-                    'เส้นทางดึงเกมจาก Fox ที่เคยใช้ไม่ได้ในต้นฉบับ ตอนนี้กลับมาใช้ได้อีกครั้ง',
-                    'ตอนนี้ใส่ “ชื่อเล่น Fox” ได้โดยตรง โปรแกรมจะหาบัญชีแล้วดึงเกมสาธารณะล่าสุดให้',
+                    'การดึงเกมจาก Fox ยังใช้ได้ต่อไป และเพิ่ม Tencent kifu เป็นแหล่งเกมสาธารณะอีกทางหนึ่ง',
+                    'Tencent kifu รองรับค้นหาด้วยชื่อเล่น/UID, รายการแบบแบ่งหน้า, และโหลดเข้ากระดานด้วยการดับเบิลคลิกหรือกด Open',
                     'Windows ให้ความสำคัญกับ `.portable.zip` มากขึ้น แตกไฟล์แล้วใช้ได้ เหมาะกับผู้ใช้ส่วนใหญ่',
                     'Windows มีทั้ง OpenCL และ CPU build ให้เลือกตาม “ความเร็ว” หรือ “ความเข้ากันได้”',
                     'Windows OpenCL build เป็นตัวแนะนำหลัก เพื่อความเร็ววิเคราะห์ที่ดีกว่า',
