@@ -218,6 +218,9 @@ public final class KataGoRuntimeHelper {
     public final Path runtimeDir;
     public final long downloadBytes;
     public final String detailText;
+    public final NvidiaGpuDetector.DetectionResult gpuDetection;
+    public final NvidiaGpuDetector.TensorRtRecommendation gpuRecommendation;
+    public final String gpuRecommendationText;
 
     private TensorRtInstallStatus(
         boolean applicable,
@@ -225,13 +228,22 @@ public final class KataGoRuntimeHelper {
         Path enginePath,
         Path runtimeDir,
         long downloadBytes,
-        String detailText) {
+        String detailText,
+        NvidiaGpuDetector.DetectionResult gpuDetection,
+        NvidiaGpuDetector.TensorRtRecommendation gpuRecommendation,
+        String gpuRecommendationText) {
       this.applicable = applicable;
       this.installed = installed;
       this.enginePath = enginePath;
       this.runtimeDir = runtimeDir;
       this.downloadBytes = downloadBytes;
       this.detailText = detailText;
+      this.gpuDetection = gpuDetection;
+      this.gpuRecommendation =
+          gpuRecommendation == null
+              ? NvidiaGpuDetector.TensorRtRecommendation.UNKNOWN
+              : gpuRecommendation;
+      this.gpuRecommendationText = gpuRecommendationText == null ? "" : gpuRecommendationText;
     }
   }
 
@@ -602,6 +614,11 @@ public final class KataGoRuntimeHelper {
   }
 
   public static TensorRtInstallStatus inspectTensorRtInstall(SetupSnapshot snapshot) {
+    return inspectTensorRtInstall(snapshot, null);
+  }
+
+  public static TensorRtInstallStatus inspectTensorRtInstall(
+      SetupSnapshot snapshot, NvidiaGpuDetector.DetectionResult gpuDetection) {
     TensorRtInstallSpec spec = buildTensorRtInstallSpec(snapshot);
     if (!isWindowsPlatform()) {
       return new TensorRtInstallStatus(
@@ -612,7 +629,10 @@ public final class KataGoRuntimeHelper {
           spec.totalDownloadBytes,
           resource(
               "AutoSetup.tensorRtNotApplicable",
-              "TensorRT acceleration is only available on Windows NVIDIA packages."));
+              "TensorRT acceleration is only available on Windows NVIDIA packages."),
+          null,
+          NvidiaGpuDetector.TensorRtRecommendation.UNKNOWN,
+          "");
     }
     if (!isTensorRtSourceProfileAllowed(snapshot)) {
       return new TensorRtInstallStatus(
@@ -624,11 +644,14 @@ public final class KataGoRuntimeHelper {
           resource(
               "AutoSetup.tensorRtNeedNvidia",
               "TensorRT can be installed from Windows NVIDIA packages. Recommended for RTX 20/30/40/50. "
-                  + "GTX 10 series and older NVIDIA GPUs should use CUDA/OpenCL."));
+                  + "GTX 10 series and older NVIDIA GPUs should use CUDA/OpenCL."),
+          null,
+          NvidiaGpuDetector.TensorRtRecommendation.UNKNOWN,
+          "");
     }
     boolean engineInstalled = Files.isRegularFile(spec.targetEnginePath);
     boolean runtimeReady = inspectNvidiaRuntime(spec.targetEnginePath).ready;
-    String recommendation = tensorRtRecommendationText();
+    String recommendation = tensorRtRecommendationText(gpuDetection);
     String detail =
         engineInstalled && runtimeReady
             ? resource("AutoSetup.tensorRtReady", "TensorRT acceleration is installed.")
@@ -643,7 +666,12 @@ public final class KataGoRuntimeHelper {
         spec.targetEnginePath,
         getNvidiaRuntimeDir(),
         spec.totalDownloadBytes,
-        detail);
+        detail,
+        gpuDetection,
+        gpuDetection == null
+            ? NvidiaGpuDetector.TensorRtRecommendation.UNKNOWN
+            : gpuDetection.recommendation,
+        recommendation);
   }
 
   public static boolean canInstallTensorRt(SetupSnapshot snapshot) {
@@ -2455,7 +2483,10 @@ public final class KataGoRuntimeHelper {
         || NVIDIA50_TRT_BACKEND.equalsIgnoreCase(backend);
   }
 
-  private static String tensorRtRecommendationText() {
+  private static String tensorRtRecommendationText(NvidiaGpuDetector.DetectionResult gpuDetection) {
+    if (gpuDetection != null && !Utils.isBlank(gpuDetection.detailText)) {
+      return gpuDetection.detailText;
+    }
     return resource(
         "AutoSetup.tensorRtGpuHint",
         "Recommended for RTX 20/30/40/50 NVIDIA GPUs. "

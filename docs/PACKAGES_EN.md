@@ -17,6 +17,7 @@ This page describes the public release layout of the maintained `LizzieYzy Next`
 - If you have an RTX 20/30/40 NVIDIA GPU and want more speed, switch to `windows64.nvidia.portable.zip`
 - RTX 5070/5080/5090 users should try `windows64.nvidia50.cuda.portable.zip` first; TensorRT acceleration is installed on demand from inside the app
 - TensorRT is no longer a giant release package; RTX 20/30/40/50 users can install it from `KataGo Auto Setup`, while GTX 10 series and older cards should prefer CUDA/OpenCL
+- `KataGo Auto Setup` detects the local NVIDIA GPU / Compute Capability and shows recommended, try, not recommended, or unknown status before TensorRT install
 
 ## The 15 Primary Public Release Assets
 
@@ -100,6 +101,7 @@ Current bundled defaults:
 - Default weight: `kata1-zhizi-b28c512nbt-muonfd2.bin.gz`
 - TensorRT acceleration: no longer published as a giant GitHub Release package; RTX 20/30/40/50 users can install it on demand from `KataGo Auto Setup` inside the app
 - RTX 50 users should still start with the `windows64.nvidia50.cuda` package, with TensorRT as an on-demand acceleration path for the newer architecture
+- The TensorRT install UI uses `nvidia-smi` to detect the local NVIDIA GPU, with a lightweight model-name fallback when Compute Capability is unavailable
 
 Paths:
 

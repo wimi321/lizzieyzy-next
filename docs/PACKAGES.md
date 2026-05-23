@@ -17,6 +17,7 @@
 - RTX 20/30/40 系列 NVIDIA 显卡并且更在意速度时改用 `windows64.nvidia.portable.zip`
 - RTX 5070/5080/5090 优先试 `windows64.nvidia50.cuda.portable.zip`，TensorRT 加速改为软件内按需安装
 - TensorRT 不再做成巨大发布包；RTX 20/30/40/50 用户可在软件内 `KataGo 一键设置` 按需安装，GTX 10 系及更老显卡优先 CUDA/OpenCL
+- `KataGo 一键设置` 会检测本机 NVIDIA GPU / Compute Capability，并在安装 TensorRT 前显示推荐、可尝试、不推荐或未知状态
 
 如果你只想先看图再决定，先看这里：
 
@@ -106,6 +107,7 @@
 - 默认权重：`kata1-zhizi-b28c512nbt-muonfd2.bin.gz`
 - TensorRT 加速：不再作为 GitHub Release 巨大发布包发布；RTX 20/30/40/50 用户需要时在软件内 `KataGo 一键设置` 中按需安装
 - RTX 50 仍优先使用 `windows64.nvidia50.cuda` 主包，TensorRT 作为新架构按需加速项
+- TensorRT 安装界面会用 `nvidia-smi` 检测本机 NVIDIA GPU，并在无法读取 Compute Capability 时使用轻量型号映射作为 fallback
 
 路径说明：
 
