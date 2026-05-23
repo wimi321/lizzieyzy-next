@@ -732,14 +732,22 @@ public class TencentKifuDownload extends JFrame {
   }
 
   private String formatRank(int rawRank) {
+    return formatTencentRank(
+        rawRank, text("TencentKifuDownload.rank.dan"), text("TencentKifuDownload.rank.kyu"));
+  }
+
+  static String formatTencentRank(int rawRank, String danSuffix, String kyuSuffix) {
     if (rawRank <= 0) {
       return "";
     }
+    if (rawRank >= 100) {
+      return "P" + (rawRank - 99) + danSuffix;
+    }
     int rank = rawRank - 17;
     if (rank > 0) {
-      return rank + text("TencentKifuDownload.rank.dan");
+      return rank + danSuffix;
     }
-    return (Math.abs(rank) + 1) + text("TencentKifuDownload.rank.kyu");
+    return (Math.abs(rank) + 1) + kyuSuffix;
   }
 
   private String buildResultText(JSONObject jsonObject) {
