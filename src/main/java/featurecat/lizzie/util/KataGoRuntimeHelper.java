@@ -68,9 +68,11 @@ public final class KataGoRuntimeHelper {
           + "(KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36";
   private static final String NVIDIA_ENGINE_DIR = "windows-x64-nvidia";
   private static final String NVIDIA50_CUDA_ENGINE_DIR = "windows-x64-nvidia50-cuda";
+  private static final String NVIDIA_TRT_ENGINE_DIR = "windows-x64-nvidia-tensorrt";
   private static final String NVIDIA50_TRT_ENGINE_DIR = "windows-x64-nvidia50-trt";
   private static final String NVIDIA_BACKEND = "nvidia";
   private static final String NVIDIA50_CUDA_BACKEND = "nvidia50-cuda";
+  private static final String NVIDIA_TRT_BACKEND = "nvidia-tensorrt";
   private static final String NVIDIA50_TRT_BACKEND = "nvidia50-trt";
   private static final String ENGINE_BACKEND_MARKER_NAME = "lizzieyzy-next-engine-backend.txt";
   private static final String NVIDIA_RUNTIME_ROOT = "nvidia-runtime";
@@ -83,7 +85,7 @@ public final class KataGoRuntimeHelper {
       "https://developer.download.nvidia.com/compute/cuda/redist/redistrib_12.8.0.json";
   private static final String CUDNN_9_MANIFEST_URL =
       "https://developer.download.nvidia.com/compute/cudnn/redist/redistrib_9.8.0.json";
-  private static final String TENSORRT_ENGINE_NAME = "KataGo TensorRT RTX 50 Experimental";
+  private static final String TENSORRT_ENGINE_NAME = "KataGo TensorRT";
   private static final String TENSORRT_KATAGO_URL_PROPERTY = "lizzie.tensorrt.katago.url";
   private static final String TENSORRT_KATAGO_SHA256_PROPERTY = "lizzie.tensorrt.katago.sha256";
   private static final String TENSORRT_KATAGO_SIZE_PROPERTY = "lizzie.tensorrt.katago.size";
@@ -434,8 +436,11 @@ public final class KataGoRuntimeHelper {
     }
     String normalized = enginePath.toAbsolutePath().normalize().toString().replace('\\', '/');
     String normalizedLower = normalized.toLowerCase(Locale.ROOT);
+    if (normalizedLower.contains("/" + NVIDIA_TRT_ENGINE_DIR + "/")) {
+      return NVIDIA_TRT_BACKEND;
+    }
     if (normalizedLower.contains("/" + NVIDIA50_TRT_ENGINE_DIR + "/")) {
-      return NVIDIA50_TRT_BACKEND;
+      return NVIDIA_TRT_BACKEND;
     }
     if (normalizedLower.contains("/" + NVIDIA50_CUDA_ENGINE_DIR + "/")) {
       return NVIDIA50_CUDA_BACKEND;
@@ -454,8 +459,8 @@ public final class KataGoRuntimeHelper {
     try {
       String backend = Files.readString(markerPath, StandardCharsets.UTF_8).trim();
       String backendLower = backend.toLowerCase(Locale.ROOT);
-      if (NVIDIA50_TRT_BACKEND.equals(backendLower)) {
-        return NVIDIA50_TRT_BACKEND;
+      if (NVIDIA_TRT_BACKEND.equals(backendLower) || NVIDIA50_TRT_BACKEND.equals(backendLower)) {
+        return NVIDIA_TRT_BACKEND;
       }
       if (NVIDIA50_CUDA_BACKEND.equals(backendLower)) {
         return NVIDIA50_CUDA_BACKEND;
@@ -618,19 +623,20 @@ public final class KataGoRuntimeHelper {
           spec.totalDownloadBytes,
           resource(
               "AutoSetup.tensorRtNeedNvidia",
-              "TensorRT is recommended only for Windows NVIDIA / RTX 50 packages."));
+              "TensorRT can be installed from Windows NVIDIA packages. Recommended for RTX 20/30/40/50. "
+                  + "GTX 10 series and older NVIDIA GPUs should use CUDA/OpenCL."));
     }
     boolean engineInstalled = Files.isRegularFile(spec.targetEnginePath);
     boolean runtimeReady = inspectNvidiaRuntime(spec.targetEnginePath).ready;
+    String recommendation = tensorRtRecommendationText();
     String detail =
         engineInstalled && runtimeReady
             ? resource("AutoSetup.tensorRtReady", "TensorRT acceleration is installed.")
             : String.format(
                 Locale.ROOT,
-                resource(
-                    "AutoSetup.tensorRtAvailable",
-                    "Optional TensorRT download: about %s. RTX 50 users can install it here."),
-                formatBytes(spec.totalDownloadBytes));
+                resource("AutoSetup.tensorRtAvailable", "Optional TensorRT download: about %s. %s"),
+                formatBytes(spec.totalDownloadBytes),
+                recommendation);
     return new TensorRtInstallStatus(
         true,
         engineInstalled && runtimeReady,
@@ -661,7 +667,8 @@ public final class KataGoRuntimeHelper {
       throw new IOException(
           resource(
               "AutoSetup.tensorRtNeedNvidia",
-              "TensorRT is recommended only for Windows NVIDIA / RTX 50 packages."));
+              "TensorRT can be installed from Windows NVIDIA packages. Recommended for RTX 20/30/40/50. "
+                  + "GTX 10 series and older NVIDIA GPUs should use CUDA/OpenCL."));
     }
     if (snapshot.gtpConfigPath == null || !Files.isRegularFile(snapshot.gtpConfigPath)) {
       throw new IOException(
@@ -2305,7 +2312,7 @@ public final class KataGoRuntimeHelper {
   }
 
   private static List<List<String>> requiredRuntimeDllGroups(String backend) {
-    if (NVIDIA50_TRT_BACKEND.equalsIgnoreCase(backend)) {
+    if (isTensorRtBackend(backend)) {
       return REQUIRED_NVIDIA_TRT10_9_RUNTIME_DLL_GROUPS;
     }
     if (NVIDIA50_CUDA_BACKEND.equalsIgnoreCase(backend)) {
@@ -2367,9 +2374,7 @@ public final class KataGoRuntimeHelper {
   private static String buildMissingRuntimeMessage(NvidiaRuntimeStatus status) {
     StringBuilder builder =
         new StringBuilder(
-            status != null
-                    && NVIDIA50_TRT_BACKEND.equalsIgnoreCase(
-                        resolveNvidiaBackend(status.enginePath))
+            status != null && isTensorRtBackend(resolveNvidiaBackend(status.enginePath))
                 ? resource(
                     "AutoSetup.tensorRtRuntimeMissing",
                     "TensorRT runtime is not installed. Open KataGo Auto Setup and install TensorRT acceleration.")
@@ -2407,8 +2412,15 @@ public final class KataGoRuntimeHelper {
                 .normalize()
                 .resolve("runtime");
     Path targetEngineDir =
-        runtimeRoot.resolve("engines").resolve("katago").resolve(NVIDIA50_TRT_ENGINE_DIR);
+        runtimeRoot.resolve("engines").resolve("katago").resolve(NVIDIA_TRT_ENGINE_DIR);
     Path targetEnginePath = targetEngineDir.resolve("katago.exe");
+    Path legacyEngineDir =
+        runtimeRoot.resolve("engines").resolve("katago").resolve(NVIDIA50_TRT_ENGINE_DIR);
+    Path legacyEnginePath = legacyEngineDir.resolve("katago.exe");
+    if (!Files.isRegularFile(targetEnginePath) && Files.isRegularFile(legacyEnginePath)) {
+      targetEngineDir = legacyEngineDir;
+      targetEnginePath = legacyEnginePath;
+    }
     long katagoSize =
         resolveLongProperty(TENSORRT_KATAGO_SIZE_PROPERTY, TENSORRT_KATAGO_SIZE_BYTES);
     long total =
@@ -2435,7 +2447,19 @@ public final class KataGoRuntimeHelper {
     String backend = resolveNvidiaBackend(snapshot.enginePath);
     return NVIDIA_BACKEND.equals(backend)
         || NVIDIA50_CUDA_BACKEND.equals(backend)
-        || NVIDIA50_TRT_BACKEND.equals(backend);
+        || isTensorRtBackend(backend);
+  }
+
+  private static boolean isTensorRtBackend(String backend) {
+    return NVIDIA_TRT_BACKEND.equalsIgnoreCase(backend)
+        || NVIDIA50_TRT_BACKEND.equalsIgnoreCase(backend);
+  }
+
+  private static String tensorRtRecommendationText() {
+    return resource(
+        "AutoSetup.tensorRtGpuHint",
+        "Recommended for RTX 20/30/40/50 NVIDIA GPUs. "
+            + "GTX 10 series and older NVIDIA GPUs should use CUDA/OpenCL.");
   }
 
   private static long resolveLongProperty(String key, long fallback) {
@@ -2492,7 +2516,7 @@ public final class KataGoRuntimeHelper {
       session.throwIfCancelled();
       Files.write(
           stagingDir.resolve(ENGINE_BACKEND_MARKER_NAME),
-          (NVIDIA50_TRT_BACKEND + "\n").getBytes(StandardCharsets.UTF_8));
+          (NVIDIA_TRT_BACKEND + "\n").getBytes(StandardCharsets.UTF_8));
       if (!Files.isRegularFile(stagingDir.resolve("katago.exe"))) {
         throw new IOException("KataGo TensorRT package did not contain katago.exe");
       }

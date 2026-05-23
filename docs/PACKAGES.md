@@ -15,7 +15,8 @@
 - 大多数普通用户先下 `windows64.opencl.portable.zip`
 - OpenCL 表现不好时改用 `windows64.with-katago.portable.zip`
 - RTX 20/30/40 系列 NVIDIA 显卡并且更在意速度时改用 `windows64.nvidia.portable.zip`
-- RTX 5070/5080/5090 优先试 `windows64.nvidia50.cuda.portable.zip`，TensorRT 实验加速改为软件内按需安装
+- RTX 5070/5080/5090 优先试 `windows64.nvidia50.cuda.portable.zip`，TensorRT 加速改为软件内按需安装
+- TensorRT 不再做成巨大发布包；RTX 20/30/40/50 用户可在软件内 `KataGo 一键设置` 按需安装，GTX 10 系及更老显卡优先 CUDA/OpenCL
 
 如果你只想先看图再决定，先看这里：
 
@@ -103,7 +104,8 @@
 
 - KataGo 版本：`v1.16.4`
 - 默认权重：`kata1-zhizi-b28c512nbt-muonfd2.bin.gz`
-- RTX 50 TensorRT 实验加速：不再作为 GitHub Release 包发布；需要时在软件内 `KataGo 一键设置` 中按需安装
+- TensorRT 加速：不再作为 GitHub Release 巨大发布包发布；RTX 20/30/40/50 用户需要时在软件内 `KataGo 一键设置` 中按需安装
+- RTX 50 仍优先使用 `windows64.nvidia50.cuda` 主包，TensorRT 作为新架构按需加速项
 
 路径说明：
 
@@ -125,7 +127,7 @@
 - Windows 64 位主推荐资产是 `portable.zip`
 - Windows 64 位同时提供 `opencl`、`with-katago`、`nvidia`、`nvidia50.cuda` 四条内置引擎线的安装器和便携包
 - Windows 64 位无引擎包同时提供安装器和 `.portable.zip`
-- 当前公开 release 主列表固定为 15 个用户向主资产；TensorRT 实验加速属于软件内按需安装项，不占发布资产
+- 当前公开 release 主列表固定为 15 个用户向主资产；TensorRT 加速属于软件内按需安装项，不占发布资产
 - 旧的兼容 zip 只作为历史 tag 说明保留，不再放进主推荐区
 
 ## 相关文档

@@ -282,12 +282,12 @@ def add_nvidia50_download_rows(
         ),
     }
     before_note_by_language = {
-        '中文': 'RTX 5070/5080/5090 用户优先下载 RTX 50 CUDA 版；TensorRT 实验加速不再作为巨大发布包提供，需要时可在软件内“一键设置”中手动安装。',
-        '繁體中文': 'RTX 5070/5080/5090 使用者優先下載 RTX 50 CUDA 版；TensorRT 實驗加速不再作為巨大發布包提供，需要時可在軟體內「一鍵設定」手動安裝。',
-        'English': 'RTX 5070/5080/5090 users should try the RTX 50 CUDA build first; optional TensorRT experimental acceleration is now installed explicitly from the in-app KataGo Auto Setup.',
-        '日本語': 'RTX 5070/5080/5090 ユーザーは RTX 50 CUDA 版を優先してください。任意の TensorRT 試験加速は、アプリ内の KataGo 自動設定から明示的にインストールします。',
-        '한국어': 'RTX 5070/5080/5090 사용자는 RTX 50 CUDA 버전을 먼저 권장합니다. 선택형 TensorRT 실험 가속은 앱 안의 KataGo 자동 설정에서 명시적으로 설치합니다.',
-        'ภาษาไทย': 'ผู้ใช้ RTX 5070/5080/5090 ควรลอง RTX 50 CUDA ก่อน ส่วน TensorRT แบบทดลองจะติดตั้งเองจาก KataGo Auto Setup ในแอปเมื่อต้องการ',
+        '中文': 'RTX 5070/5080/5090 用户优先下载 RTX 50 CUDA 版；RTX 20/30/40/50 用户需要 TensorRT 时可在软件内“一键设置”按需安装，GTX 10 系及更老显卡优先 CUDA/OpenCL。',
+        '繁體中文': 'RTX 5070/5080/5090 使用者優先下載 RTX 50 CUDA 版；RTX 20/30/40/50 使用者需要 TensorRT 時可在軟體內「一鍵設定」按需安裝，GTX 10 系及更舊顯卡優先 CUDA/OpenCL。',
+        'English': 'RTX 5070/5080/5090 users should try the RTX 50 CUDA build first; RTX 20/30/40/50 users can install TensorRT on demand from the in-app KataGo Auto Setup, while GTX 10 series and older cards should prefer CUDA/OpenCL.',
+        '日本語': 'RTX 5070/5080/5090 ユーザーは RTX 50 CUDA 版を優先してください。RTX 20/30/40/50 ユーザーはアプリ内の KataGo 自動設定から TensorRT を必要時にインストールできます。GTX 10 系以前は CUDA/OpenCL を推奨します。',
+        '한국어': 'RTX 5070/5080/5090 사용자는 RTX 50 CUDA 버전을 먼저 권장합니다. RTX 20/30/40/50 사용자는 앱 안의 KataGo 자동 설정에서 TensorRT를 필요할 때 설치할 수 있고, GTX 10 시리즈 및 이전 카드는 CUDA/OpenCL을 권장합니다.',
+        'ภาษาไทย': 'ผู้ใช้ RTX 5070/5080/5090 ควรลอง RTX 50 CUDA ก่อน ผู้ใช้ RTX 20/30/40/50 สามารถติดตั้ง TensorRT จาก KataGo Auto Setup ในแอปเมื่อต้องการ ส่วน GTX 10 series และรุ่นเก่าควรใช้ CUDA/OpenCL',
     }
     for section in sections:
         language = str(section['language'])

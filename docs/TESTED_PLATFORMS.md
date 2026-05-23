@@ -36,7 +36,7 @@
 | `linux64.opencl.zip` | Linux x64 + OpenCL | `Build verified` | OpenCL 包继续提供 | 需要真实 Linux OpenCL 反馈 |
 | `linux64.nvidia.zip` | Linux x64 + NVIDIA | `Build verified` | NVIDIA CUDA 包继续提供 | 需要真实 Linux NVIDIA 反馈 |
 
-说明：RTX 50 TensorRT 实验加速现在是软件内按需安装功能，不再作为 GitHub Release 包验证。
+说明：TensorRT 加速现在是软件内按需安装功能，不再作为 GitHub Release 包验证；RTX 20/30/40/50 用户可按需安装，RTX 50 仍优先验证 CUDA 主包。
 
 ## 我们重点关心什么
 

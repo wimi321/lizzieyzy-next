@@ -270,11 +270,40 @@ public class KataGoRuntimeHelperTest {
                         runtimeWorkDirectory
                             .resolve("engines")
                             .resolve("katago")
-                            .resolve("windows-x64-nvidia50-trt")),
+                            .resolve("windows-x64-nvidia-tensorrt")),
                     normalize(spec.targetEngineDir));
                 assertEquals(
                     normalize(spec.targetEngineDir.resolve("katago.exe")),
                     normalize(spec.targetEnginePath));
+              });
+        });
+  }
+
+  @Test
+  void tensorRtInstallSpecKeepsExistingLegacyTargetCompatible() throws Exception {
+    withOsName(
+        WINDOWS_OS_NAME,
+        () -> {
+          Path tempRoot = Files.createTempDirectory("katago-helper-tensorrt-legacy-spec");
+          Path runtimeWorkDirectory = Files.createDirectories(tempRoot.resolve("runtime-root"));
+          Path legacyEnginePath =
+              touch(
+                  runtimeWorkDirectory
+                      .resolve("engines")
+                      .resolve("katago")
+                      .resolve("windows-x64-nvidia50-trt")
+                      .resolve("katago.exe"));
+          SetupSnapshot snapshot = createNvidia50Snapshot(tempRoot);
+
+          withConfig(
+              runtimeWorkDirectory,
+              () -> {
+                KataGoRuntimeHelper.TensorRtInstallSpec spec =
+                    KataGoRuntimeHelper.buildTensorRtInstallSpec(snapshot);
+
+                assertEquals(
+                    normalize(legacyEnginePath.getParent()), normalize(spec.targetEngineDir));
+                assertEquals(normalize(legacyEnginePath), normalize(spec.targetEnginePath));
               });
         });
   }
@@ -304,13 +333,13 @@ public class KataGoRuntimeHelperTest {
                             runtimeWorkDirectory
                                 .resolve("engines")
                                 .resolve("katago")
-                                .resolve("windows-x64-nvidia50-trt");
+                                .resolve("windows-x64-nvidia-tensorrt");
 
-                        assertEquals("KataGo TensorRT RTX 50 Experimental", result.engineName);
+                        assertEquals("KataGo TensorRT", result.engineName);
                         assertTrue(Files.isRegularFile(targetDir.resolve("katago.exe")));
                         assertTrue(Files.isRegularFile(targetDir.resolve("libz.dll")));
                         assertEquals(
-                            "nvidia50-trt",
+                            "nvidia-tensorrt",
                             Files.readString(targetDir.resolve("lizzieyzy-next-engine-backend.txt"))
                                 .trim());
                         List<EngineData> engines = Utils.getEngineData();
@@ -318,10 +347,10 @@ public class KataGoRuntimeHelperTest {
                             engines.stream()
                                 .anyMatch(
                                     engine ->
-                                        "KataGo TensorRT RTX 50 Experimental".equals(engine.name)
+                                        "KataGo TensorRT".equals(engine.name)
                                             && engine.isDefault
                                             && engine.commands.contains(
-                                                "windows-x64-nvidia50-trt")));
+                                                "windows-x64-nvidia-tensorrt")));
                       }));
         });
   }
@@ -355,12 +384,10 @@ public class KataGoRuntimeHelperTest {
                                 runtimeWorkDirectory
                                     .resolve("engines")
                                     .resolve("katago")
-                                    .resolve("windows-x64-nvidia50-trt")));
+                                    .resolve("windows-x64-nvidia-tensorrt")));
                         assertFalse(
                             Utils.getEngineData().stream()
-                                .anyMatch(
-                                    engine ->
-                                        "KataGo TensorRT RTX 50 Experimental".equals(engine.name)));
+                                .anyMatch(engine -> "KataGo TensorRT".equals(engine.name)));
                       }));
         });
   }

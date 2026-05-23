@@ -15,7 +15,8 @@
 - Windows 用户先下载 `<date>-windows64.opencl.portable.zip`
 - 如果 OpenCL 在你的电脑上表现不好，就改用 `<date>-windows64.with-katago.portable.zip`
 - 如果你的电脑是 RTX 20/30/40 系列 NVIDIA 显卡，想更快分析，就下载 `<date>-windows64.nvidia.portable.zip`
-- 如果你的电脑是 RTX 5070/5080/5090，优先下载 `<date>-windows64.nvidia50.cuda.portable.zip`；TensorRT 实验加速改为软件内按需安装
+- 如果你的电脑是 RTX 5070/5080/5090，优先下载 `<date>-windows64.nvidia50.cuda.portable.zip`；TensorRT 加速改为软件内按需安装
+- RTX 20/30/40/50 用户可在软件内按需安装 TensorRT；GTX 10 系及更老 NVIDIA 显卡优先 CUDA/OpenCL
 - 抓野狐棋谱时直接输入“野狐昵称”，程序会自动找到账号并抓最近公开棋谱
 - 主推荐整合包已内置 KataGo，第一次启动会优先自动完成配置
 - Windows 普通整合包也支持“智能优化”，测速后会自动保存更合适的线程设置
@@ -42,7 +43,7 @@
 | Windows 64 位，NVIDIA 显卡 | `<date>-windows64.nvidia.installer.exe` | 想保留安装流程的 NVIDIA 版 |
 | Windows 64 位，RTX 50 CUDA | `<date>-windows64.nvidia50.cuda.portable.zip` | RTX 5070/5080/5090 首选，免安装 |
 | Windows 64 位，RTX 50 CUDA | `<date>-windows64.nvidia50.cuda.installer.exe` | RTX 5070/5080/5090 首选，安装器 |
-| Windows 64 位，RTX 50 TensorRT 实验加速 | 先下载 `<date>-windows64.nvidia50.cuda.portable.zip` | 打开后在 `KataGo 一键设置` 里按需安装 |
+| Windows 64 位，RTX 20/30/40/50 TensorRT 加速 | 先下载对应 NVIDIA 包，RTX 50 用 `<date>-windows64.nvidia50.cuda.portable.zip` | 打开后在 `KataGo 一键设置` 里按需安装 |
 | Windows 64 位 | `<date>-windows64.without.engine.portable.zip` | 想自己决定分析引擎时再选 |
 | Windows 64 位 | `<date>-windows64.without.engine.installer.exe` | 想保留安装流程，但自己决定分析引擎 |
 | macOS Apple Silicon | `<date>-mac-apple-silicon.with-katago.dmg` | M1 / M2 / M3 / M4 等机器 |
@@ -74,7 +75,7 @@
 - Windows x64 NVIDIA installer alternative: choose `<date>-windows64.nvidia.installer.exe`
 - Windows x64 with RTX 5070/5080/5090: choose `<date>-windows64.nvidia50.cuda.portable.zip`
 - Windows x64 RTX 50 CUDA installer: choose `<date>-windows64.nvidia50.cuda.installer.exe`
-- Windows x64 RTX 50 TensorRT experimental: start with `<date>-windows64.nvidia50.cuda.portable.zip`, then install TensorRT from KataGo Auto Setup
+- Windows x64 RTX 20/30/40/50 TensorRT: start with the matching NVIDIA package, then install TensorRT from KataGo Auto Setup
 - Windows x64 custom engine: choose `<date>-windows64.without.engine.portable.zip`
 - Windows x64 custom engine installer: choose `<date>-windows64.without.engine.installer.exe`
 - macOS Apple Silicon: choose `<date>-mac-apple-silicon.with-katago.dmg`

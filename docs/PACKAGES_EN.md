@@ -15,7 +15,8 @@ This page describes the public release layout of the maintained `LizzieYzy Next`
 - Most regular users should start with `windows64.opencl.portable.zip`
 - If OpenCL behaves poorly, switch to `windows64.with-katago.portable.zip`
 - If you have an RTX 20/30/40 NVIDIA GPU and want more speed, switch to `windows64.nvidia.portable.zip`
-- RTX 5070/5080/5090 users should try `windows64.nvidia50.cuda.portable.zip` first; optional TensorRT experimental acceleration is installed on demand from inside the app
+- RTX 5070/5080/5090 users should try `windows64.nvidia50.cuda.portable.zip` first; TensorRT acceleration is installed on demand from inside the app
+- TensorRT is no longer a giant release package; RTX 20/30/40/50 users can install it from `KataGo Auto Setup`, while GTX 10 series and older cards should prefer CUDA/OpenCL
 
 ## The 15 Primary Public Release Assets
 
@@ -97,7 +98,8 @@ Current bundled defaults:
 
 - KataGo version: `v1.16.4`
 - Default weight: `kata1-zhizi-b28c512nbt-muonfd2.bin.gz`
-- RTX 50 TensorRT experimental acceleration: no longer published as a GitHub Release package; install it on demand from `KataGo Auto Setup` inside the app
+- TensorRT acceleration: no longer published as a giant GitHub Release package; RTX 20/30/40/50 users can install it on demand from `KataGo Auto Setup` inside the app
+- RTX 50 users should still start with the `windows64.nvidia50.cuda` package, with TensorRT as an on-demand acceleration path for the newer architecture
 
 Paths:
 
@@ -119,7 +121,7 @@ From the new maintained releases onward:
 - the main Windows x64 package is `portable.zip`
 - Windows x64 now exposes OpenCL, CPU fallback, NVIDIA, and NVIDIA 50 CUDA variants in both portable and installer forms
 - the Windows x64 no-engine option now has both an installer and a portable `.zip`
-- the public release page keeps the 15 primary user-facing assets above as the main list; TensorRT experimental acceleration is an in-app on-demand install, not a release asset
+- the public release page keeps the 15 primary user-facing assets above as the main list; TensorRT acceleration is an in-app on-demand install, not a release asset
 - older compatibility zips now stay in historical tags instead of the main recommendation area
 
 ## Related Docs

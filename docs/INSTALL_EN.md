@@ -43,13 +43,14 @@ Quick rule:
 - choose `windows64.with-katago.portable.zip` if OpenCL behaves badly on your PC
 - choose `windows64.nvidia.portable.zip` if your PC has an RTX 20/30/40 NVIDIA GPU and you want faster KataGo analysis
 - choose `windows64.nvidia50.cuda.portable.zip` first for RTX 5070/5080/5090
-- for RTX 5070/5080/5090 TensorRT testing, start with the CUDA package and install TensorRT experimental acceleration manually from `KataGo Auto Setup`
+- for RTX 20/30/40/50 TensorRT testing, start with the matching NVIDIA/CUDA package and install TensorRT acceleration manually from `KataGo Auto Setup`
+- GTX 10 series and older NVIDIA cards should prefer CUDA/OpenCL instead of TensorRT
 - choose `without.engine.portable.zip` or `without.engine.installer.exe` on Windows if you plan to manage the engine yourself
 - on Windows, regular users should start with the portable build and only switch to the installer if they want that flow
 
 ### Legacy tag note
 
-Some older tags still show transitional zip names or compatibility packages, but the current maintained release now centers on 15 primary assets: 10 Windows, 2 macOS, and 3 Linux packages. TensorRT experimental acceleration is no longer published as a GitHub Release asset.
+Some older tags still show transitional zip names or compatibility packages, but the current maintained release now centers on 15 primary assets: 10 Windows, 2 macOS, and 3 Linux packages. TensorRT acceleration is no longer published as a GitHub Release asset; it is installed on demand inside the app.
 
 ## Windows
 
@@ -105,7 +106,7 @@ If your GPU is an RTX 5070, RTX 5080, or RTX 5090:
 2. Extract it and run `LizzieYzy Next NVIDIA 50 CUDA.exe`.
 3. If you prefer an installer, use `windows64.nvidia50.cuda.installer.exe`.
 
-TensorRT experimental acceleration is no longer shipped as a huge standalone package. RTX 50 users who want to test higher peak performance should launch the CUDA package, open `KataGo Auto Setup`, and click `Install TensorRT acceleration`. The app downloads, verifies, and configures files from official KataGo / NVIDIA sources only; users who do not click it will not download TensorRT.
+TensorRT acceleration is no longer shipped as a huge standalone package. RTX 20/30/40/50 users can launch the matching NVIDIA/CUDA package, open `KataGo Auto Setup`, and click `Install TensorRT acceleration`. RTX 50 is the newer architecture and remains the key experimental acceleration path; GTX 10 series and older cards should prefer CUDA/OpenCL. The app downloads, verifies, and configures files from official KataGo / NVIDIA sources only; users who do not click it will not download TensorRT.
 
 ### Windows x64 no-engine build
 

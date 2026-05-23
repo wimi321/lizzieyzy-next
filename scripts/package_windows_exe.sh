@@ -568,7 +568,7 @@ EOF
   RTX 50 series CUDA package. Choose this first for RTX 5070/5080/5090.
 - ${DATE_TAG}-${NVIDIA50_CUDA_ARCH_TAG}.portable.zip
   RTX 50 CUDA portable build. Unzip it and open ${NVIDIA50_CUDA_APP_NAME}.exe.
-  Optional TensorRT experimental acceleration is installed inside KataGo Auto Setup after launch, not shipped as a release asset.
+  Optional TensorRT acceleration for modern NVIDIA GPUs is installed inside KataGo Auto Setup after launch, not shipped as a release asset.
 EOF
   fi
 
@@ -626,6 +626,7 @@ EOF
     cat >>"$note_file" <<'EOF'
 - The NVIDIA assets include the official KataGo CUDA 12.1 Windows build and remain the stable choice for RTX 20/30/40 series users.
 - The NVIDIA assets also include the required official NVIDIA runtime files, so first launch should work offline on supported NVIDIA PCs.
+- TensorRT acceleration can be installed explicitly inside KataGo Auto Setup for RTX 20/30/40/50 users; GTX 10 series and older NVIDIA GPUs should use CUDA/OpenCL instead.
 - If those NVIDIA runtime files are missing later, reinstall the NVIDIA package instead of downloading extra files at startup.
 EOF
   fi
@@ -634,7 +635,8 @@ EOF
     cat >>"$note_file" <<'EOF'
 - The NVIDIA 50 CUDA assets include the official KataGo CUDA 12.8 / cuDNN 9.8 Windows build for Blackwell RTX 50 series GPUs.
 - RTX 5070/5080/5090 users should try the NVIDIA 50 CUDA package first.
-- TensorRT experimental acceleration is available as an explicit in-app install from KataGo Auto Setup for RTX 50 users who want to test it.
+- TensorRT acceleration is available as an explicit in-app install from KataGo Auto Setup for RTX 20/30/40/50 users who want to test it.
+- GTX 10 series and older NVIDIA GPUs should use CUDA/OpenCL instead of TensorRT.
 EOF
   fi
 

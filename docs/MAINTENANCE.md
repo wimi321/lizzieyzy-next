@@ -47,7 +47,7 @@
 - Linux 64 位：`opencl.zip`
 - Linux 64 位：`nvidia.zip`
 
-RTX 50 TensorRT 实验加速不再进入公开资产矩阵。需要测试的用户先下载 `nvidia50.cuda` 包，再在软件内 `KataGo 一键设置` 中显式安装。
+TensorRT 加速不再进入公开资产矩阵。RTX 20/30/40/50 用户需要时在软件内 `KataGo 一键设置` 中显式安装；RTX 50 仍优先下载 `nvidia50.cuda` 包，GTX 10 系及更老显卡优先 CUDA/OpenCL。
 
 历史兼容包只有在明确需要时才通过额外开关构建，不再进入主 release 页面。
 
