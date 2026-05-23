@@ -60,6 +60,7 @@ public class Menu extends JMenuBar {
   JFontMenuItem restartCurrentEngine;
   JFontMenuItem shutdownOtherEngine;
   JFontMenuItem minPlayoutsForNextMove;
+  private TencentKifuDownload tencentKifuDownload;
 
   public static JFontMenuItem[] engine2 = new JFontMenuItem[21];
   public static JFontMenu engineMenu2;
@@ -4088,6 +4089,17 @@ public class Menu extends JMenuBar {
           }
         });
 
+    final JFontMenuItem tencentKifu =
+        new JFontMenuItem(resourceBundle.getString("Menu.tencentKifu"));
+    live.add(tencentKifu);
+
+    tencentKifu.addActionListener(
+        new ActionListener() {
+          public void actionPerformed(ActionEvent e) {
+            openTencentKifu();
+          }
+        });
+
     final JFontMenuItem readBoardJava =
         new JFontMenuItem(resourceBundle.getString("Menu.readBoardJava")); // ("棋盘同步工具");
     live.add(readBoardJava);
@@ -6541,6 +6553,13 @@ public class Menu extends JMenuBar {
     }
   }
 
+  private void openTencentKifu() {
+    if (tencentKifuDownload == null || !tencentKifuDownload.isDisplayable()) {
+      tencentKifuDownload = new TencentKifuDownload();
+    }
+    tencentKifuDownload.presentWindow();
+  }
+
   private void persistUiSettings() {
     try {
       Lizzie.config.save();
@@ -8006,6 +8025,23 @@ public class Menu extends JMenuBar {
             }
           });
 
+      JFontButton btnTencentKifu =
+          new JFontButton(resourceBundle.getString("Menu.tencentKifuButton"));
+      btnTencentKifu.setFocusable(false);
+      btnTencentKifu.setMargin(new Insets(0, 10, 0, 10));
+      AppleStyleSupport.markPrimary(btnTencentKifu);
+      btnTencentKifu.setPreferredSize(
+          new Dimension(
+              Lizzie.config.isChinese ? Config.menuHeight * 4 : Config.menuHeight * 7,
+              Config.menuHeight));
+      btnTencentKifu.setToolTipText(resourceBundle.getString("Menu.tencentKifu"));
+      btnTencentKifu.addActionListener(
+          new ActionListener() {
+            public void actionPerformed(ActionEvent e) {
+              openTencentKifu();
+            }
+          });
+
       JPopupMenu flashAnalyzePopup = new JPopupMenu();
       JFontMenuItem flashAnalyzeAllGame =
           new JFontMenuItem(resourceBundle.getString("Menu.flashAnalyzeAllGame")); // "闪电分析(全局)");
@@ -8376,6 +8412,7 @@ public class Menu extends JMenuBar {
       Lizzie.frame.topPanel.leftArea.add(btnOpen);
       Lizzie.frame.topPanel.leftArea.add(btnSave);
       Lizzie.frame.topPanel.leftArea.add(btnFoxKifu);
+      Lizzie.frame.topPanel.leftArea.add(btnTencentKifu);
 
       Lizzie.frame.topPanel.centerArea.add(btnAutoSetup);
       Lizzie.frame.topPanel.centerArea.add(btnFlashAnalyze);
