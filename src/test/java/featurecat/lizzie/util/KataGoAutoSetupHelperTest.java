@@ -7,8 +7,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import featurecat.lizzie.Config;
 import featurecat.lizzie.ConfigTestHelper;
 import featurecat.lizzie.Lizzie;
+import featurecat.lizzie.gui.EngineData;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import org.junit.jupiter.api.Test;
 
 public class KataGoAutoSetupHelperTest {
@@ -45,6 +47,102 @@ public class KataGoAutoSetupHelperTest {
               "old.bin.gz", Lizzie.config.uiConfig.optString("katago-preferred-weight-path"));
           assertFalse(imported.equals(source.toAbsolutePath().normalize()));
         });
+  }
+
+  @Test
+  void startupRepairDoesNotRewriteTensorRtProfileToCuda() throws Exception {
+    Path tempRoot = Files.createTempDirectory("katago-tensorrt-repair");
+    Path cudaEngine =
+        touch(
+            tempRoot
+                .resolve("engines")
+                .resolve("katago")
+                .resolve("windows-x64")
+                .resolve("katago.exe"));
+    Path tensorRtEngine =
+        touch(
+            tempRoot
+                .resolve("runtime")
+                .resolve("engines")
+                .resolve("katago")
+                .resolve("windows-x64-nvidia-tensorrt")
+                .resolve("katago.exe"));
+    Path configDir =
+        Files.createDirectories(tempRoot.resolve("engines").resolve("katago").resolve("configs"));
+    Path gtpConfig = touch(configDir.resolve("gtp.cfg"));
+    Path analysisConfig = touch(configDir.resolve("analysis.cfg"));
+    Path estimateConfig = touch(configDir.resolve("estimate.cfg"));
+    Path weight = touch(tempRoot.resolve("weights").resolve("default.bin.gz"));
+
+    withUserDirAndConfig(
+        tempRoot,
+        () -> {
+          ArrayList<EngineData> engines = new ArrayList<>();
+          engines.add(engineData("KataGo Bundled", cudaEngine, gtpConfig, weight, false));
+          engines.add(engineData("KataGo TensorRT", tensorRtEngine, gtpConfig, weight, true));
+          Utils.saveEngineSettings(engines);
+          Lizzie.config.uiConfig.put("default-engine", 1);
+          Lizzie.config.uiConfig.put(
+              "analysis-engine-command",
+              quote(tensorRtEngine)
+                  + " analysis -model "
+                  + quote(weight)
+                  + " -config "
+                  + quote(analysisConfig)
+                  + " -quit-without-waiting");
+          Lizzie.config.uiConfig.put(
+              "estimate-command",
+              quote(tensorRtEngine)
+                  + " gtp -model "
+                  + quote(weight)
+                  + " -config "
+                  + quote(estimateConfig));
+
+          assertFalse(KataGoAutoSetupHelper.repairBrokenBundledCommandsIfNeeded());
+          assertFalse(KataGoAutoSetupHelper.repairBrokenStartupEngineIfNeeded());
+
+          ArrayList<EngineData> repairedEngines = Utils.getEngineData();
+          assertEquals("KataGo TensorRT", repairedEngines.get(1).name);
+          assertTrue(repairedEngines.get(1).isDefault);
+          assertTrue(repairedEngines.get(1).commands.contains("windows-x64-nvidia-tensorrt"));
+          assertEquals(1, Lizzie.config.uiConfig.optInt("default-engine"));
+          assertTrue(
+              Lizzie.config
+                  .uiConfig
+                  .optString("analysis-engine-command")
+                  .contains("windows-x64-nvidia-tensorrt"));
+        });
+  }
+
+  private static EngineData engineData(
+      String name, Path enginePath, Path configPath, Path weightPath, boolean isDefault) {
+    EngineData data = new EngineData();
+    data.name = name;
+    data.commands =
+        quote(enginePath) + " gtp -model " + quote(weightPath) + " -config " + quote(configPath);
+    data.preload = false;
+    data.komi = 7.5F;
+    data.width = 19;
+    data.height = 19;
+    data.isDefault = isDefault;
+    data.useJavaSSH = false;
+    data.ip = "";
+    data.port = "";
+    data.userName = "";
+    data.password = "";
+    data.useKeyGen = false;
+    data.keyGenPath = "";
+    data.initialCommand = "";
+    return data;
+  }
+
+  private static Path touch(Path path) throws Exception {
+    Files.createDirectories(path.getParent());
+    return Files.write(path, new byte[0]).toAbsolutePath().normalize();
+  }
+
+  private static String quote(Path path) {
+    return "\"" + path.toAbsolutePath().normalize().toString() + "\"";
   }
 
   private static void withUserDirAndConfig(Path userDir, ThrowingRunnable action) throws Exception {

@@ -5,6 +5,7 @@ import featurecat.lizzie.Lizzie;
 import featurecat.lizzie.analysis.AnalysisEngine;
 import featurecat.lizzie.analysis.EngineManager;
 import featurecat.lizzie.analysis.Leelaz;
+import featurecat.lizzie.gui.EngineData;
 import featurecat.lizzie.util.KataGoAutoSetupHelper.DownloadCancelledException;
 import featurecat.lizzie.util.KataGoAutoSetupHelper.DownloadSession;
 import featurecat.lizzie.util.KataGoAutoSetupHelper.ProgressListener;
@@ -28,12 +29,16 @@ import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URI;
 import java.net.URLConnection;
+import java.nio.channels.FileChannel;
+import java.nio.channels.FileLock;
+import java.nio.channels.OverlappingFileLockException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
+import java.nio.file.StandardOpenOption;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.text.SimpleDateFormat;
@@ -93,6 +98,7 @@ public final class KataGoRuntimeHelper {
   private static final String TENSORRT_SKIP_RUNTIME_FOR_TESTS_PROPERTY =
       "lizzie.tensorrt.skipRuntimePackagesForTests";
   private static final String TENSORRT_KATAGO_VERSION = "v1.16.4";
+  private static final String TENSORRT_INSTALL_LOCK_NAME = "tensorrt-install.lock";
   private static final String TENSORRT_KATAGO_ASSET =
       "katago-v1.16.4-trt10.9.0-cuda12.8-windows-x64.zip";
   private static final String TENSORRT_KATAGO_URL =
@@ -213,7 +219,9 @@ public final class KataGoRuntimeHelper {
 
   public static final class TensorRtInstallStatus {
     public final boolean applicable;
+    public final boolean downloaded;
     public final boolean installed;
+    public final boolean active;
     public final Path enginePath;
     public final Path runtimeDir;
     public final long downloadBytes;
@@ -221,13 +229,17 @@ public final class KataGoRuntimeHelper {
 
     private TensorRtInstallStatus(
         boolean applicable,
+        boolean downloaded,
         boolean installed,
+        boolean active,
         Path enginePath,
         Path runtimeDir,
         long downloadBytes,
         String detailText) {
       this.applicable = applicable;
+      this.downloaded = downloaded;
       this.installed = installed;
+      this.active = active;
       this.enginePath = enginePath;
       this.runtimeDir = runtimeDir;
       this.downloadBytes = downloadBytes;
@@ -562,13 +574,15 @@ public final class KataGoRuntimeHelper {
     List<List<String>> requiredDllGroups = requiredRuntimeDllGroups(backend);
     List<String> missing = collectMissingRuntimeGroups(searchDirs, requiredDllGroups);
     Path readyDir = findDirectoryContainingRequiredDlls(searchDirs, requiredDllGroups);
-    boolean ready = readyDir != null;
+    boolean ready = missing.isEmpty();
     String detailText;
     if (ready) {
       detailText =
           resource("AutoSetup.nvidiaRuntimeReady", "Ready")
               + "  |  "
-              + readyDir.toAbsolutePath().normalize();
+              + (readyDir != null
+                  ? readyDir.toAbsolutePath().normalize()
+                  : formatRuntimeSearchDirs(searchDirs));
     } else {
       detailText =
           resource(
@@ -607,6 +621,8 @@ public final class KataGoRuntimeHelper {
       return new TensorRtInstallStatus(
           false,
           false,
+          false,
+          false,
           spec.targetEnginePath,
           getNvidiaRuntimeDir(),
           spec.totalDownloadBytes,
@@ -616,6 +632,8 @@ public final class KataGoRuntimeHelper {
     }
     if (!isTensorRtSourceProfileAllowed(snapshot)) {
       return new TensorRtInstallStatus(
+          false,
+          false,
           false,
           false,
           spec.targetEnginePath,
@@ -628,10 +646,15 @@ public final class KataGoRuntimeHelper {
     }
     boolean engineInstalled = Files.isRegularFile(spec.targetEnginePath);
     boolean runtimeReady = inspectNvidiaRuntime(spec.targetEnginePath).ready;
+    boolean active = isTensorRtEngineActive(snapshot, spec);
     String recommendation = tensorRtRecommendationText();
     String detail =
         engineInstalled && runtimeReady
-            ? resource("AutoSetup.tensorRtReady", "TensorRT acceleration is installed.")
+            ? active
+                ? resource("AutoSetup.tensorRtEnabled", "TensorRT acceleration is enabled.")
+                : resource(
+                    "AutoSetup.tensorRtInstalledNotSelected",
+                    "TensorRT acceleration is installed. Click Enable TensorRT acceleration to use it.")
             : String.format(
                 Locale.ROOT,
                 resource("AutoSetup.tensorRtAvailable", "Optional TensorRT download: about %s. %s"),
@@ -639,7 +662,9 @@ public final class KataGoRuntimeHelper {
                 recommendation);
     return new TensorRtInstallStatus(
         true,
+        engineInstalled,
         engineInstalled && runtimeReady,
+        engineInstalled && runtimeReady && active,
         spec.targetEnginePath,
         getNvidiaRuntimeDir(),
         spec.totalDownloadBytes,
@@ -648,7 +673,18 @@ public final class KataGoRuntimeHelper {
 
   public static boolean canInstallTensorRt(SetupSnapshot snapshot) {
     TensorRtInstallStatus status = inspectTensorRtInstall(snapshot);
-    return status.applicable && !status.installed;
+    return status.applicable && (!status.installed || !status.active);
+  }
+
+  public static boolean canSwitchBackToCuda(SetupSnapshot snapshot) {
+    if (snapshot == null
+        || !snapshot.hasEngine()
+        || !snapshot.hasConfigs()
+        || !snapshot.hasWeight()) {
+      return false;
+    }
+    TensorRtInstallStatus status = inspectTensorRtInstall(snapshot);
+    return status.applicable && status.active;
   }
 
   public static SetupResult downloadAndInstallTensorRt(
@@ -679,16 +715,108 @@ public final class KataGoRuntimeHelper {
           resource("AutoSetup.missingWeight", "No local KataGo weight file was found."));
     }
 
-    DownloadSession activeSession = session != null ? session : new DownloadSession();
     TensorRtInstallSpec spec = buildTensorRtInstallSpec(snapshot);
+    DownloadSession activeSession = session != null ? session : new DownloadSession();
+    Path runtimeDir = getNvidiaRuntimeDir();
+    Files.createDirectories(runtimeDir);
+    try (FileChannel lockChannel =
+            FileChannel.open(
+                runtimeDir.resolve(TENSORRT_INSTALL_LOCK_NAME),
+                StandardOpenOption.CREATE,
+                StandardOpenOption.WRITE);
+        FileLock installLock = lockChannel.tryLock()) {
+      if (installLock == null) {
+        throw new IOException(tensorRtInstallAlreadyRunningMessage());
+      }
+      return downloadAndInstallTensorRtLocked(snapshot, listener, activeSession, spec, runtimeDir);
+    } catch (OverlappingFileLockException e) {
+      throw new IOException(tensorRtInstallAlreadyRunningMessage(), e);
+    }
+  }
+
+  public static SetupResult applyInstalledTensorRt(SetupSnapshot snapshot) throws IOException {
+    if (snapshot == null) {
+      snapshot = KataGoAutoSetupHelper.inspectLocalSetup();
+    }
+    if (!isWindowsPlatform()) {
+      throw new IOException(
+          resource(
+              "AutoSetup.tensorRtNotApplicable",
+              "TensorRT acceleration is only available on Windows NVIDIA packages."));
+    }
+    if (!isTensorRtSourceProfileAllowed(snapshot)) {
+      throw new IOException(
+          resource(
+              "AutoSetup.tensorRtNeedNvidia",
+              "TensorRT can be installed from Windows NVIDIA packages. Recommended for RTX 20/30/40/50. "
+                  + "GTX 10 series and older NVIDIA GPUs should use CUDA/OpenCL."));
+    }
+    if (snapshot.gtpConfigPath == null || !Files.isRegularFile(snapshot.gtpConfigPath)) {
+      throw new IOException(
+          resource("AutoSetup.missingConfig", "No KataGo config file was found."));
+    }
+    if (!snapshot.hasWeight()) {
+      throw new IOException(
+          resource("AutoSetup.missingWeight", "No local KataGo weight file was found."));
+    }
+    TensorRtInstallSpec spec = buildTensorRtInstallSpec(snapshot);
+    if (!Files.isRegularFile(spec.targetEnginePath)
+        || !inspectNvidiaRuntime(spec.targetEnginePath).ready) {
+      throw new IOException(
+          resource(
+              "AutoSetup.tensorRtRuntimeMissing",
+              "TensorRT runtime is not installed. Open KataGo Auto Setup and install TensorRT acceleration, or switch back to CUDA/OpenCL."));
+    }
+    return applyTensorRtEngineProfile(snapshot, spec);
+  }
+
+  public static SetupResult applyBundledCudaProfile(SetupSnapshot snapshot) throws IOException {
+    if (snapshot == null) {
+      snapshot = KataGoAutoSetupHelper.inspectLocalSetup();
+    }
+    if (!snapshot.hasEngine()) {
+      throw new IOException(
+          resource("AutoSetup.missingEngine", "No local KataGo binary was found."));
+    }
+    if (snapshot.gtpConfigPath == null || !Files.isRegularFile(snapshot.gtpConfigPath)) {
+      throw new IOException(
+          resource("AutoSetup.missingConfig", "No KataGo config file was found."));
+    }
+    if (!snapshot.hasWeight()) {
+      throw new IOException(
+          resource("AutoSetup.missingWeight", "No local KataGo weight file was found."));
+    }
+    if (isWindowsPlatform() && isNvidiaBundledPath(snapshot.enginePath)) {
+      ensureBundledRuntimeReady(snapshot.enginePath, null);
+    }
+    return KataGoAutoSetupHelper.applyAutoSetup(
+        snapshot.withActiveWeight(snapshot.activeWeightPath), true);
+  }
+
+  private static SetupResult downloadAndInstallTensorRtLocked(
+      SetupSnapshot snapshot,
+      ProgressListener listener,
+      DownloadSession activeSession,
+      TensorRtInstallSpec spec,
+      Path runtimeDir)
+      throws IOException {
     activeSession.throwIfCancelled();
+    if (Files.isRegularFile(spec.targetEnginePath)
+        && inspectNvidiaRuntime(spec.targetEnginePath).ready) {
+      notifyProgress(
+          listener,
+          resource("AutoSetup.tensorRtReady", "TensorRT acceleration is installed."),
+          spec.totalDownloadBytes,
+          spec.totalDownloadBytes);
+      return applyTensorRtEngineProfile(snapshot, spec);
+    }
     notifyProgress(
         listener,
         resource("AutoSetup.tensorRtPreparing", "Preparing TensorRT download..."),
         0L,
         spec.totalDownloadBytes);
 
-    Path cacheDir = getNvidiaRuntimeDir().resolve("downloads");
+    Path cacheDir = runtimeDir.resolve("downloads");
     Files.createDirectories(cacheDir);
     RuntimePackageSpec katagoPackage =
         new RuntimePackageSpec(
@@ -711,7 +839,6 @@ public final class KataGoRuntimeHelper {
             spec.totalDownloadBytes);
     completedBytes += Math.max(0L, katagoPackage.sizeBytes);
 
-    Path runtimeDir = getNvidiaRuntimeDir();
     Path licenseDir = runtimeDir.resolve("licenses").resolve("nvidia-runtime");
     if (!Boolean.getBoolean(TENSORRT_SKIP_RUNTIME_FOR_TESTS_PROPERTY)) {
       for (RuntimePackageSpec runtimePackage : runtimePackages) {
@@ -746,15 +873,25 @@ public final class KataGoRuntimeHelper {
     installTensorRtKataGoArchive(katagoArchive, spec.targetEngineDir, activeSession);
     activeSession.throwIfCancelled();
 
-    SetupSnapshot tensorRtSnapshot = snapshot.withEnginePath(spec.targetEnginePath);
-    SetupResult result =
-        KataGoAutoSetupHelper.applyEngineProfile(tensorRtSnapshot, TENSORRT_ENGINE_NAME, true);
+    SetupResult result = applyTensorRtEngineProfile(snapshot, spec);
     notifyProgress(
         listener,
         resource("AutoSetup.tensorRtInstallDone", "TensorRT acceleration installed."),
         spec.totalDownloadBytes,
         spec.totalDownloadBytes);
     return result;
+  }
+
+  private static SetupResult applyTensorRtEngineProfile(
+      SetupSnapshot snapshot, TensorRtInstallSpec spec) throws IOException {
+    SetupSnapshot tensorRtSnapshot = snapshot.withEnginePath(spec.targetEnginePath);
+    return KataGoAutoSetupHelper.applyEngineProfile(tensorRtSnapshot, TENSORRT_ENGINE_NAME, true);
+  }
+
+  private static String tensorRtInstallAlreadyRunningMessage() {
+    return resource(
+        "AutoSetup.tensorRtInstallAlreadyRunning",
+        "TensorRT installation is already running in another LizzieYzy Next window. Please wait for it to finish.");
   }
 
   public static BenchmarkResult getStoredBenchmarkResult() {
@@ -2278,6 +2415,86 @@ public final class KataGoRuntimeHelper {
       }
     }
     return new ArrayList<Path>(paths);
+  }
+
+  private static String formatRuntimeSearchDirs(List<Path> searchDirs) {
+    if (searchDirs == null || searchDirs.isEmpty()) {
+      return "";
+    }
+    List<String> displayPaths = new ArrayList<String>();
+    for (Path dir : searchDirs) {
+      if (dir == null) {
+        continue;
+      }
+      displayPaths.add(dir.toAbsolutePath().normalize().toString());
+      if (displayPaths.size() >= 2) {
+        break;
+      }
+    }
+    return String.join(" ; ", displayPaths);
+  }
+
+  private static boolean pathEquals(Path left, Path right) {
+    if (left == null || right == null) {
+      return false;
+    }
+    return left.toAbsolutePath().normalize().equals(right.toAbsolutePath().normalize());
+  }
+
+  private static boolean isTensorRtEngineActive(SetupSnapshot snapshot, TensorRtInstallSpec spec) {
+    if (spec == null || spec.targetEnginePath == null) {
+      return false;
+    }
+    if (pathEquals(snapshot == null ? null : snapshot.enginePath, spec.targetEnginePath)) {
+      return true;
+    }
+    return pathEquals(resolveConfiguredActiveEnginePath(), spec.targetEnginePath);
+  }
+
+  private static Path resolveConfiguredActiveEnginePath() {
+    if (Lizzie.config == null || Lizzie.config.uiConfig == null) {
+      return null;
+    }
+    try {
+      ArrayList<EngineData> engines = Utils.getEngineData();
+      int defaultEngine = Lizzie.config.uiConfig.optInt("default-engine", -1);
+      Path defaultEnginePath = resolveEngineDataPath(engines, defaultEngine);
+      if (defaultEnginePath != null) {
+        return defaultEnginePath;
+      }
+      if (engines != null) {
+        for (EngineData engineData : engines) {
+          if (engineData != null && engineData.isDefault) {
+            Path enginePath = resolveEngineDataPath(engineData);
+            if (enginePath != null) {
+              return enginePath;
+            }
+          }
+        }
+      }
+      String rememberedPath =
+          Lizzie.config.uiConfig.optString("katago-auto-setup-engine-path", "").trim();
+      if (!rememberedPath.isEmpty()) {
+        return Paths.get(rememberedPath).toAbsolutePath().normalize();
+      }
+    } catch (Exception e) {
+      return null;
+    }
+    return null;
+  }
+
+  private static Path resolveEngineDataPath(ArrayList<EngineData> engines, int index) {
+    if (engines == null || index < 0 || index >= engines.size()) {
+      return null;
+    }
+    return resolveEngineDataPath(engines.get(index));
+  }
+
+  private static Path resolveEngineDataPath(EngineData engineData) {
+    if (engineData == null || engineData.commands == null || engineData.commands.trim().isEmpty()) {
+      return null;
+    }
+    return resolveCommandExecutable(Utils.splitCommand(engineData.commands));
   }
 
   private static boolean hasFile(List<Path> searchDirs, String fileName) {

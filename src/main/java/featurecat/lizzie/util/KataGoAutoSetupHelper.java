@@ -35,6 +35,7 @@ import org.jdesktop.swingx.util.OS;
 
 public final class KataGoAutoSetupHelper {
   private static final String AUTO_SETUP_ENGINE_NAME = "KataGo Auto Setup";
+  private static final String TENSORRT_ENGINE_NAME = "KataGo TensorRT";
   private static final String USER_AGENT =
       "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
           + "(KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36";
@@ -1393,6 +1394,9 @@ public final class KataGoAutoSetupHelper {
     if (command == null || command.trim().isEmpty()) {
       return false;
     }
+    if (isTensorRtManagedCommand(name, command)) {
+      return false;
+    }
     boolean bundledLike =
         AUTO_SETUP_ENGINE_NAME.equals(name)
             || "KataGo Bundled".equals(name)
@@ -1437,6 +1441,9 @@ public final class KataGoAutoSetupHelper {
       return false;
     }
     String command = startupEngine.commands == null ? "" : startupEngine.commands.trim();
+    if (isTensorRtManagedCommand(startupEngine.name, command)) {
+      return false;
+    }
     if (command.isEmpty()) {
       return true;
     }
@@ -1538,8 +1545,19 @@ public final class KataGoAutoSetupHelper {
     if (!Config.isBundledKataGoCommand(command)) {
       return false;
     }
+    if (isTensorRtManagedCommand("", command)) {
+      return false;
+    }
     return isCommandBrokenOrOutdated(
         command, expectedEnginePath, expectedConfigPath, expectedWeightPath);
+  }
+
+  private static boolean isTensorRtManagedCommand(String name, String command) {
+    if (TENSORRT_ENGINE_NAME.equals(name)) {
+      return true;
+    }
+    String normalized = command == null ? "" : command.toLowerCase(Locale.ROOT).replace('\\', '/');
+    return normalized.contains("nvidia-tensorrt") || normalized.contains("nvidia50-tensorrt");
   }
 
   private static boolean isCommandBrokenOrOutdated(

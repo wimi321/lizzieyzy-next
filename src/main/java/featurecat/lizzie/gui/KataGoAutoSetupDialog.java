@@ -71,6 +71,7 @@ public class KataGoAutoSetupDialog extends JDialog {
   private static final int DIALOG_WIDTH = 820;
   private static final int DIALOG_HEIGHT = 580;
   private static final int VALUE_COLUMN_WIDTH = 390;
+  private static final long ERROR_POPUP_DEDUP_MILLIS = 5000L;
   private static final String CARD_OVERVIEW = "overview";
   private static final String CARD_WEIGHTS = "weights";
   private static final String CARD_ACCELERATION = "acceleration";
@@ -81,12 +82,16 @@ public class KataGoAutoSetupDialog extends JDialog {
   private volatile DownloadSession activeDownloadSession;
   private volatile Thread activeWorkerThread;
   private long progressStartedAtMillis;
+  private String lastBackgroundErrorMessage = "";
+  private long lastBackgroundErrorMillis = 0L;
 
   private final JLabel lblEngineValue = new JFontLabel();
   private final JLabel lblWeightValue = new JFontLabel();
   private final JLabel lblWeightModelValue = new JFontLabel();
   private final JLabel lblConfigValue = new JFontLabel();
   private final JLabel lblNvidiaRuntimeValue = new JFontLabel();
+  private final JLabel lblTensorRtDownloadValue = new JFontLabel();
+  private final JLabel lblTensorRtConfigValue = new JFontLabel();
   private final JLabel lblBenchmarkValue = new JFontLabel();
   private final JLabel lblRemoteDetailValue = new JFontLabel();
   private final JLabel lblLocalWeightDetailValue = new JFontLabel();
@@ -108,6 +113,7 @@ public class KataGoAutoSetupDialog extends JDialog {
   private final JFontButton btnApplyWeight = new JFontButton();
   private final JFontButton btnInstallNvidiaRuntime = new JFontButton();
   private final JFontButton btnInstallTensorRt = new JFontButton();
+  private final JFontButton btnSwitchBackCuda = new JFontButton();
   private final JFontButton btnOptimizePerformance = new JFontButton();
   private final JFontButton btnStopDownload = new JFontButton();
   private final JFontButton btnClose = new JFontButton();
@@ -213,6 +219,7 @@ public class KataGoAutoSetupDialog extends JDialog {
     btnApplyWeight.setText(text("AutoSetup.applyWeight"));
     btnInstallNvidiaRuntime.setText(text("AutoSetup.installNvidiaRuntime"));
     btnInstallTensorRt.setText(text("AutoSetup.installTensorRt"));
+    btnSwitchBackCuda.setText(text("AutoSetup.switchBackCuda"));
     btnOptimizePerformance.setText(text("AutoSetup.optimizePerformance"));
     btnStopDownload.setText(text("AutoSetup.stopDownload"));
     btnStopDownload.setEnabled(false);
@@ -226,6 +233,7 @@ public class KataGoAutoSetupDialog extends JDialog {
     styleButton(btnApplyWeight, false);
     styleButton(btnInstallNvidiaRuntime, false);
     styleButton(btnInstallTensorRt, false);
+    styleButton(btnSwitchBackCuda, false);
     styleButton(btnStopDownload, false);
     styleButton(btnClose, false);
   }
@@ -238,6 +246,7 @@ public class KataGoAutoSetupDialog extends JDialog {
     btnApplyWeight.addActionListener(e -> applySelectedWeight());
     btnInstallNvidiaRuntime.addActionListener(e -> startNvidiaRuntimeInstall());
     btnInstallTensorRt.addActionListener(e -> startTensorRtInstall());
+    btnSwitchBackCuda.addActionListener(e -> switchBackToCuda());
     btnOptimizePerformance.addActionListener(e -> startPerformanceBenchmark());
     btnStopDownload.addActionListener(e -> stopActiveDownload());
     btnClose.addActionListener(e -> closeOrCancelActiveTask());
@@ -396,11 +405,15 @@ public class KataGoAutoSetupDialog extends JDialog {
     JPanel rows = createRowsPanel();
     GridBagConstraints gbc = createRowConstraints();
     addInfoRow(rows, gbc, text("AutoSetup.nvidiaRuntime"), lblNvidiaRuntimeValue);
+    addInfoRow(rows, gbc, text("AutoSetup.tensorRtDownloadStatus"), lblTensorRtDownloadValue);
+    addInfoRow(rows, gbc, text("AutoSetup.tensorRtConfigStatus"), lblTensorRtConfigValue);
 
     JTextArea tensorRtHint = createHintText(text("AutoSetup.accelerationTensorRtHint"));
     addComponentRow(rows, gbc, text("AutoSetup.installTensorRt"), tensorRtHint);
 
-    JPanel actions = createActionBar(FlowLayout.RIGHT, btnInstallNvidiaRuntime, btnInstallTensorRt);
+    JPanel actions =
+        createActionBar(
+            FlowLayout.RIGHT, btnInstallNvidiaRuntime, btnInstallTensorRt, btnSwitchBackCuda);
     return createSectionCard(
         text("AutoSetup.accelerationTitle"), text("AutoSetup.accelerationSubtitle"), rows, actions);
   }
@@ -750,19 +763,67 @@ public class KataGoAutoSetupDialog extends JDialog {
     KataGoRuntimeHelper.TensorRtInstallStatus status =
         snapshot == null ? null : KataGoRuntimeHelper.inspectTensorRtInstall(snapshot);
     if (status == null) {
+      setTensorRtLabel(lblTensorRtDownloadValue, text("AutoSetup.notFound"), Color.DARK_GRAY, null);
+      setTensorRtLabel(lblTensorRtConfigValue, text("AutoSetup.notFound"), Color.DARK_GRAY, null);
       btnInstallTensorRt.setText(text("AutoSetup.installTensorRt"));
       btnInstallTensorRt.setToolTipText(null);
       btnInstallTensorRt.setEnabled(false);
+      btnSwitchBackCuda.setToolTipText(null);
+      btnSwitchBackCuda.setEnabled(false);
       return;
     }
-    btnInstallTensorRt.setText(
-        status.installed ? text("AutoSetup.tensorRtReady") : text("AutoSetup.installTensorRt"));
+    if (!status.applicable) {
+      setTensorRtLabel(
+          lblTensorRtDownloadValue, status.detailText, Color.DARK_GRAY, status.detailText);
+      setTensorRtLabel(
+          lblTensorRtConfigValue, status.detailText, Color.DARK_GRAY, status.detailText);
+      btnInstallTensorRt.setText(text("AutoSetup.installTensorRt"));
+      btnInstallTensorRt.setToolTipText(status.detailText);
+      btnInstallTensorRt.setEnabled(false);
+      btnSwitchBackCuda.setToolTipText(text("AutoSetup.switchBackCudaTooltip"));
+      btnSwitchBackCuda.setEnabled(false);
+      return;
+    }
+    setTensorRtLabel(
+        lblTensorRtDownloadValue,
+        status.downloaded
+            ? text("AutoSetup.tensorRtDownloaded")
+            : text("AutoSetup.tensorRtNotDownloaded"),
+        status.downloaded ? OK_COLOR : WARN_COLOR,
+        status.detailText);
+    setTensorRtLabel(
+        lblTensorRtConfigValue,
+        status.active
+            ? text("AutoSetup.tensorRtConfigured")
+            : text("AutoSetup.tensorRtNotConfigured"),
+        status.active ? OK_COLOR : (status.downloaded ? WARN_COLOR : Color.DARK_GRAY),
+        status.detailText);
+    if (status.installed && status.active) {
+      btnInstallTensorRt.setText(text("AutoSetup.tensorRtEnabled"));
+    } else if (status.installed) {
+      btnInstallTensorRt.setText(text("AutoSetup.enableTensorRt"));
+    } else {
+      btnInstallTensorRt.setText(text("AutoSetup.installTensorRt"));
+    }
     btnInstallTensorRt.setToolTipText(status.detailText);
     btnInstallTensorRt.setEnabled(
         activeDownloadSession == null
             && activeWorkerThread == null
             && status.applicable
-            && !status.installed);
+            && (!status.installed || !status.active));
+    btnSwitchBackCuda.setToolTipText(text("AutoSetup.switchBackCudaTooltip"));
+    btnSwitchBackCuda.setEnabled(
+        activeDownloadSession == null
+            && activeWorkerThread == null
+            && status.applicable
+            && status.active
+            && canSwitchBackToCuda());
+  }
+
+  private void setTensorRtLabel(JLabel label, String value, Color color, String tooltip) {
+    label.setText(value);
+    label.setForeground(color);
+    label.setToolTipText(tooltip);
   }
 
   private void updateBenchmarkInfo() {
@@ -993,6 +1054,10 @@ public class KataGoAutoSetupDialog extends JDialog {
   }
 
   private void startTensorRtInstall() {
+    if (hasActiveBackgroundTask()) {
+      showBackgroundTaskAlreadyRunningNotice();
+      return;
+    }
     if (snapshot == null) {
       snapshot = KataGoAutoSetupHelper.inspectLocalSetup();
     }
@@ -1002,8 +1067,14 @@ public class KataGoAutoSetupDialog extends JDialog {
       Utils.showMsg(status.detailText, this);
       return;
     }
+    if (status.installed && status.active) {
+      lblStatus.setText(status.detailText);
+      lblStatus.setForeground(OK_COLOR);
+      updateTensorRtInfo();
+      return;
+    }
     if (status.installed) {
-      Utils.showMsg(text("AutoSetup.tensorRtAlreadyReady"), this);
+      applyInstalledTensorRt();
       return;
     }
     int result =
@@ -1037,12 +1108,18 @@ public class KataGoAutoSetupDialog extends JDialog {
                 SwingUtilities.invokeLater(
                     () -> {
                       setBusy(false, text("AutoSetup.tensorRtInstallDone"), 0, 0);
-                      onSetupApplied(setupResult, text("AutoSetup.tensorRtInstallDoneMessage"));
+                      onSetupApplied(
+                          setupResult, text("AutoSetup.tensorRtInstallDoneMessage"), false);
                     });
               } catch (DownloadCancelledException e) {
                 SwingUtilities.invokeLater(() -> onDownloadCancelled());
               } catch (IOException e) {
-                SwingUtilities.invokeLater(() -> onBackgroundError(e));
+                SwingUtilities.invokeLater(
+                    () -> {
+                      if (!recoverInstalledTensorRtAfterError(e)) {
+                        onBackgroundError(e);
+                      }
+                    });
               } finally {
                 clearActiveDownload(session, Thread.currentThread());
               }
@@ -1050,6 +1127,60 @@ public class KataGoAutoSetupDialog extends JDialog {
             "katago-install-tensorrt");
     activeWorkerThread = worker;
     worker.start();
+  }
+
+  private void applyInstalledTensorRt() {
+    try {
+      SetupResult setupResult = KataGoRuntimeHelper.applyInstalledTensorRt(snapshot);
+      setBusy(false, text("AutoSetup.tensorRtInstallDone"), 0, 0);
+      onSetupApplied(setupResult, text("AutoSetup.tensorRtInstallDoneMessage"), false);
+    } catch (IOException e) {
+      onBackgroundError(e);
+    }
+  }
+
+  private boolean recoverInstalledTensorRtAfterError(IOException originalError) {
+    try {
+      SetupSnapshot currentSnapshot = KataGoAutoSetupHelper.inspectLocalSetup();
+      KataGoRuntimeHelper.TensorRtInstallStatus currentStatus =
+          KataGoRuntimeHelper.inspectTensorRtInstall(currentSnapshot);
+      if (!currentStatus.installed) {
+        return false;
+      }
+      snapshot = currentSnapshot;
+      SetupResult setupResult = KataGoRuntimeHelper.applyInstalledTensorRt(snapshot);
+      setBusy(false, text("AutoSetup.tensorRtInstallDone"), 0, 0);
+      onSetupApplied(setupResult, text("AutoSetup.tensorRtInstallDoneMessage"), false);
+      return true;
+    } catch (IOException recoveryError) {
+      originalError.addSuppressed(recoveryError);
+      return false;
+    }
+  }
+
+  private void switchBackToCuda() {
+    if (hasActiveBackgroundTask()) {
+      showBackgroundTaskAlreadyRunningNotice();
+      return;
+    }
+    if (snapshot == null) {
+      snapshot = KataGoAutoSetupHelper.inspectLocalSetup();
+    }
+    KataGoRuntimeHelper.TensorRtInstallStatus status =
+        KataGoRuntimeHelper.inspectTensorRtInstall(snapshot);
+    if (!status.active) {
+      lblStatus.setText(text("AutoSetup.cudaAlreadyActive"));
+      lblStatus.setForeground(OK_COLOR);
+      updateTensorRtInfo();
+      return;
+    }
+    try {
+      SetupResult setupResult = KataGoRuntimeHelper.applyBundledCudaProfile(snapshot);
+      setBusy(false, text("AutoSetup.cudaSwitchDone"), 0, 0);
+      onSetupApplied(setupResult, text("AutoSetup.cudaSwitchDoneMessage"), false);
+    } catch (IOException e) {
+      onBackgroundError(e);
+    }
   }
 
   private void startPerformanceBenchmark() {
@@ -1146,17 +1277,32 @@ public class KataGoAutoSetupDialog extends JDialog {
   }
 
   private void onSetupApplied(SetupResult result, String message) {
+    onSetupApplied(result, message, true);
+  }
+
+  private void onSetupApplied(SetupResult result, String message, boolean showSuccessPopup) {
     snapshot = KataGoAutoSetupHelper.inspectLocalSetup();
     renderSnapshot();
     selectRemoteWeightByModelName(KataGoAutoSetupHelper.resolveActiveWeightModelName(snapshot));
     updateSelectedRemoteWeightInfo();
-    reloadRunningEngine(result.engineIndex);
-    Utils.showMsg(message + "\n" + result.snapshot.activeWeightPath, this);
+    String reloadWarning = reloadRunningEngine(result.engineIndex);
+    if (reloadWarning == null || reloadWarning.trim().isEmpty()) {
+      lblStatus.setText(message);
+      lblStatus.setForeground(OK_COLOR);
+      if (showSuccessPopup) {
+        Utils.showMsg(message + "\n" + result.snapshot.activeWeightPath, this);
+      }
+    } else {
+      lblStatus.setText(reloadWarning);
+      lblStatus.setForeground(WARN_COLOR);
+      Utils.showMsg(
+          message + "\n" + result.snapshot.activeWeightPath + "\n\n" + reloadWarning, this);
+    }
   }
 
-  private void reloadRunningEngine(int engineIndex) {
+  private String reloadRunningEngine(int engineIndex) {
     if (Lizzie.engineManager == null) {
-      return;
+      return null;
     }
     try {
       Lizzie.engineManager.updateEngines();
@@ -1167,15 +1313,22 @@ public class KataGoAutoSetupDialog extends JDialog {
       if (Lizzie.frame != null) {
         Lizzie.frame.refresh();
       }
+      return null;
     } catch (Exception e) {
-      Utils.showMsg(text("AutoSetup.reloadFailed") + "\n" + e.getMessage(), this);
+      return text("AutoSetup.reloadFailed") + "\n" + e.getMessage();
     }
   }
 
   private void onBackgroundError(Exception e) {
     setBusy(false, text("AutoSetup.failed"), 0, 0);
     renderSnapshot();
-    Utils.showMsg(text("AutoSetup.failed") + "\n" + e.getMessage(), this);
+    String detail = e == null || e.getMessage() == null ? "" : e.getMessage();
+    String message = text("AutoSetup.failed") + "\n" + detail;
+    lblStatus.setText(detail.trim().isEmpty() ? text("AutoSetup.failed") : detail);
+    lblStatus.setForeground(ERROR_COLOR);
+    if (shouldShowBackgroundErrorPopup(detail)) {
+      Utils.showMsg(message, this);
+    }
   }
 
   private void onDownloadCancelled() {
@@ -1220,6 +1373,7 @@ public class KataGoAutoSetupDialog extends JDialog {
     cmbRemoteWeights.setEnabled(!busy && cmbRemoteWeights.getItemCount() > 0);
     btnInstallNvidiaRuntime.setEnabled(!busy && canInstallNvidiaRuntime());
     btnInstallTensorRt.setEnabled(!busy && canInstallTensorRt());
+    btnSwitchBackCuda.setEnabled(!busy && canSwitchBackToCuda());
     btnOptimizePerformance.setEnabled(!busy && canRunBenchmark());
     btnStopDownload.setEnabled(busy && activeDownloadSession != null);
     btnClose.setEnabled(true);
@@ -1304,6 +1458,38 @@ public class KataGoAutoSetupDialog extends JDialog {
       return false;
     }
     return KataGoRuntimeHelper.canInstallTensorRt(snapshot);
+  }
+
+  private boolean canSwitchBackToCuda() {
+    if (snapshot == null) {
+      return false;
+    }
+    return KataGoRuntimeHelper.canSwitchBackToCuda(snapshot);
+  }
+
+  private boolean hasActiveBackgroundTask() {
+    return activeDownloadSession != null || activeWorkerThread != null;
+  }
+
+  private void showBackgroundTaskAlreadyRunningNotice() {
+    String message = text("AutoSetup.taskAlreadyRunning");
+    lblStatus.setText(message);
+    lblStatus.setForeground(WARN_COLOR);
+  }
+
+  private boolean shouldShowBackgroundErrorPopup(String detail) {
+    String normalized = detail == null ? "" : detail.trim();
+    if (normalized.equals(text("AutoSetup.tensorRtInstallAlreadyRunning"))) {
+      return false;
+    }
+    long now = System.currentTimeMillis();
+    if (normalized.equals(lastBackgroundErrorMessage)
+        && now - lastBackgroundErrorMillis < ERROR_POPUP_DEDUP_MILLIS) {
+      return false;
+    }
+    lastBackgroundErrorMessage = normalized;
+    lastBackgroundErrorMillis = now;
+    return true;
   }
 
   private boolean canRunBenchmark() {
@@ -1643,6 +1829,7 @@ public class KataGoAutoSetupDialog extends JDialog {
     cmbRemoteWeights.setEnabled(cmbRemoteWeights.getItemCount() > 0);
     btnInstallNvidiaRuntime.setEnabled(canInstallNvidiaRuntime());
     btnInstallTensorRt.setEnabled(canInstallTensorRt());
+    btnSwitchBackCuda.setEnabled(canSwitchBackToCuda());
     btnOptimizePerformance.setEnabled(canRunBenchmark());
     btnStopDownload.setEnabled(false);
     btnClose.setEnabled(true);

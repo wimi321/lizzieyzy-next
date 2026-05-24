@@ -36,4 +36,13 @@ class LeelazDisplayNameTest {
 
     assertEquals("28B", Leelaz.friendlyEngineName("KataGo Auto Setup", command));
   }
+
+  @Test
+  void tensorRtBackendNameDoesNotReplaceWeightDisplayName() {
+    String command =
+        "\"/tmp/katago\" gtp -model \"/tmp/weights/kata1-zhizi-b28c512nbt-muonfd2.bin.gz\""
+            + " -config \"/tmp/gtp.cfg\"";
+
+    assertEquals("zhizi 28B muonfd2", Leelaz.friendlyEngineName("KataGo TensorRT", command));
+  }
 }

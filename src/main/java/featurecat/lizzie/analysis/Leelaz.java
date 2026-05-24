@@ -324,9 +324,9 @@ public class Leelaz {
   }
 
   /**
-   * If the stored engine name is a generic placeholder ("KataGo Bundled", "KataGo Auto Setup"),
-   * derive a friendlier name from the weight file referenced in the engine command. Otherwise keep
-   * the user-assigned name.
+   * If the stored engine name is a generic placeholder ("KataGo Bundled", "KataGo Auto Setup",
+   * "KataGo TensorRT"), derive a friendlier name from the weight file referenced in the engine
+   * command. Otherwise keep the user-assigned name.
    */
   public static String friendlyEngineName(String rawName, String command) {
     return deriveDisplayName(rawName, command);
@@ -337,7 +337,8 @@ public class Leelaz {
     boolean placeholder =
         name.isEmpty()
             || name.equalsIgnoreCase("KataGo Bundled")
-            || name.equalsIgnoreCase("KataGo Auto Setup");
+            || name.equalsIgnoreCase("KataGo Auto Setup")
+            || name.equalsIgnoreCase("KataGo TensorRT");
     if (!placeholder) return name;
     String shortWeight = extractWeightShortName(command);
     if (shortWeight != null && !shortWeight.isEmpty()) return shortWeight;

@@ -15,8 +15,11 @@ import featurecat.lizzie.util.KataGoAutoSetupHelper.SetupResult;
 import featurecat.lizzie.util.KataGoAutoSetupHelper.SetupSnapshot;
 import java.io.IOException;
 import java.lang.reflect.Constructor;
+import java.nio.channels.FileChannel;
+import java.nio.channels.FileLock;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.security.MessageDigest;
 import java.util.Arrays;
 import java.util.List;
@@ -352,6 +355,208 @@ public class KataGoRuntimeHelperTest {
                                             && engine.commands.contains(
                                                 "windows-x64-nvidia-tensorrt")));
                       }));
+        });
+  }
+
+  @Test
+  void tensorRtInstallRefusesConcurrentInstallerBeforeMutatingProfile() throws Exception {
+    withOsName(
+        WINDOWS_OS_NAME,
+        () -> {
+          Path tempRoot = Files.createTempDirectory("katago-helper-tensorrt-lock");
+          Path runtimeWorkDirectory = Files.createDirectories(tempRoot.resolve("runtime-root"));
+          SetupSnapshot snapshot = createNvidia50Snapshot(tempRoot);
+          Path fixtureZip =
+              createTensorRtFixtureZip(tempRoot.resolve("fixture").resolve("katago-trt.zip"));
+
+          withTensorRtFixtureProperties(
+              fixtureZip.toUri().toString(),
+              sha256(fixtureZip),
+              Files.size(fixtureZip),
+              () ->
+                  withConfig(
+                      runtimeWorkDirectory,
+                      () -> {
+                        Path runtimeDir =
+                            Files.createDirectories(runtimeWorkDirectory.resolve("nvidia-runtime"));
+                        Path lockPath = runtimeDir.resolve("tensorrt-install.lock");
+                        try (FileChannel lockChannel =
+                                FileChannel.open(
+                                    lockPath, StandardOpenOption.CREATE, StandardOpenOption.WRITE);
+                            FileLock ignored = lockChannel.lock()) {
+                          IOException error =
+                              assertThrows(
+                                  IOException.class,
+                                  () ->
+                                      KataGoRuntimeHelper.downloadAndInstallTensorRt(
+                                          snapshot, null, new DownloadSession()));
+                          String errorMessage = error.getMessage();
+
+                          assertTrue(
+                              errorMessage.contains("TensorRT")
+                                  && (errorMessage.toLowerCase(Locale.ROOT).contains("running")
+                                      || errorMessage.contains("运行")),
+                              "Concurrent TensorRT installs should report one quiet running-task message.");
+                          assertFalse(
+                              Utils.getEngineData().stream()
+                                  .anyMatch(engine -> "KataGo TensorRT".equals(engine.name)));
+                        }
+                      }));
+        });
+  }
+
+  @Test
+  void applyInstalledTensorRtSwitchesProfileWithoutRedownloading() throws Exception {
+    withOsName(
+        WINDOWS_OS_NAME,
+        () -> {
+          Path tempRoot = Files.createTempDirectory("katago-helper-tensorrt-apply-installed");
+          Path runtimeWorkDirectory = Files.createDirectories(tempRoot.resolve("runtime-root"));
+          SetupSnapshot snapshot = createNvidia50Snapshot(tempRoot);
+
+          withConfig(
+              runtimeWorkDirectory,
+              () -> {
+                Path targetDir =
+                    runtimeWorkDirectory
+                        .resolve("engines")
+                        .resolve("katago")
+                        .resolve("windows-x64-nvidia-tensorrt");
+                Path runtimeDir = runtimeWorkDirectory.resolve("nvidia-runtime");
+                touch(targetDir.resolve("katago.exe"));
+                touch(targetDir.resolve("libz.dll"));
+                touchCommonCuda12Dlls(runtimeDir);
+                touch(runtimeDir.resolve("cudnn64_9.dll"));
+                touch(runtimeDir.resolve("nvinfer_10.dll"));
+                touch(runtimeDir.resolve("nvinfer_plugin_10.dll"));
+                Files.writeString(
+                    targetDir.resolve("lizzieyzy-next-engine-backend.txt"), "nvidia-tensorrt\n");
+
+                KataGoRuntimeHelper.NvidiaRuntimeStatus runtimeStatus =
+                    KataGoRuntimeHelper.inspectNvidiaRuntime(targetDir.resolve("katago.exe"));
+                assertTrue(
+                    runtimeStatus.ready,
+                    "TensorRT runtime should be accepted when launch PATH dirs satisfy dependencies.");
+                KataGoRuntimeHelper.TensorRtInstallStatus installStatus =
+                    KataGoRuntimeHelper.inspectTensorRtInstall(snapshot);
+                assertTrue(installStatus.installed);
+                assertFalse(installStatus.active);
+                assertTrue(
+                    KataGoRuntimeHelper.canInstallTensorRt(snapshot),
+                    "Installed but inactive TensorRT should leave the button actionable.");
+
+                SetupResult result = KataGoRuntimeHelper.applyInstalledTensorRt(snapshot);
+
+                assertEquals("KataGo TensorRT", result.engineName);
+                assertEquals(
+                    normalize(targetDir.resolve("katago.exe")),
+                    normalize(result.snapshot.enginePath));
+                KataGoRuntimeHelper.TensorRtInstallStatus activeStatus =
+                    KataGoRuntimeHelper.inspectTensorRtInstall(result.snapshot);
+                assertTrue(activeStatus.installed);
+                assertTrue(activeStatus.active);
+                assertFalse(
+                    KataGoRuntimeHelper.canInstallTensorRt(result.snapshot),
+                    "The TensorRT button should be disabled only after TensorRT is active.");
+                KataGoRuntimeHelper.TensorRtInstallStatus refreshedStatus =
+                    KataGoRuntimeHelper.inspectTensorRtInstall(snapshot);
+                assertTrue(
+                    refreshedStatus.active,
+                    "TensorRT should stay active when the dialog refresh finds the original CUDA package first.");
+                assertFalse(KataGoRuntimeHelper.canInstallTensorRt(snapshot));
+                assertTrue(
+                    Utils.getEngineData().stream()
+                        .anyMatch(
+                            engine ->
+                                "KataGo TensorRT".equals(engine.name)
+                                    && engine.isDefault
+                                    && engine.commands.contains("windows-x64-nvidia-tensorrt")));
+              });
+        });
+  }
+
+  @Test
+  void tensorRtStatusSeparatesDownloadedFromConfigured() throws Exception {
+    withOsName(
+        WINDOWS_OS_NAME,
+        () -> {
+          Path tempRoot = Files.createTempDirectory("katago-helper-tensorrt-status");
+          Path runtimeWorkDirectory = Files.createDirectories(tempRoot.resolve("runtime-root"));
+          SetupSnapshot snapshot = createNvidia50Snapshot(tempRoot);
+
+          withConfig(
+              runtimeWorkDirectory,
+              () -> {
+                Path targetDir =
+                    runtimeWorkDirectory
+                        .resolve("engines")
+                        .resolve("katago")
+                        .resolve("windows-x64-nvidia-tensorrt");
+                touch(targetDir.resolve("katago.exe"));
+                touch(targetDir.resolve("libz.dll"));
+                Files.writeString(
+                    targetDir.resolve("lizzieyzy-next-engine-backend.txt"), "nvidia-tensorrt\n");
+
+                KataGoRuntimeHelper.TensorRtInstallStatus status =
+                    KataGoRuntimeHelper.inspectTensorRtInstall(snapshot);
+
+                assertTrue(status.downloaded);
+                assertFalse(status.installed, "Missing TensorRT runtime should not be ready.");
+                assertFalse(status.active);
+                assertTrue(KataGoRuntimeHelper.canInstallTensorRt(snapshot));
+              });
+        });
+  }
+
+  @Test
+  void switchBackToCudaKeepsTensorRtDownloadedButNotConfigured() throws Exception {
+    withOsName(
+        WINDOWS_OS_NAME,
+        () -> {
+          Path tempRoot = Files.createTempDirectory("katago-helper-tensorrt-back-to-cuda");
+          Path runtimeWorkDirectory = Files.createDirectories(tempRoot.resolve("runtime-root"));
+          SetupSnapshot snapshot = createNvidia50Snapshot(tempRoot);
+
+          withConfig(
+              runtimeWorkDirectory,
+              () -> {
+                Path targetDir =
+                    runtimeWorkDirectory
+                        .resolve("engines")
+                        .resolve("katago")
+                        .resolve("windows-x64-nvidia-tensorrt");
+                Path runtimeDir = runtimeWorkDirectory.resolve("nvidia-runtime");
+                touch(targetDir.resolve("katago.exe"));
+                touch(targetDir.resolve("libz.dll"));
+                touchRequiredCuda12_8Dlls(runtimeDir);
+                touch(runtimeDir.resolve("nvinfer_10.dll"));
+                touch(runtimeDir.resolve("nvinfer_plugin_10.dll"));
+                Files.writeString(
+                    targetDir.resolve("lizzieyzy-next-engine-backend.txt"), "nvidia-tensorrt\n");
+
+                SetupResult tensorRtResult = KataGoRuntimeHelper.applyInstalledTensorRt(snapshot);
+                assertEquals("KataGo TensorRT", tensorRtResult.engineName);
+                assertTrue(KataGoRuntimeHelper.canSwitchBackToCuda(snapshot));
+
+                SetupResult cudaResult = KataGoRuntimeHelper.applyBundledCudaProfile(snapshot);
+
+                assertEquals("KataGo Auto Setup", cudaResult.engineName);
+                assertEquals(
+                    normalize(snapshot.enginePath), normalize(cudaResult.snapshot.enginePath));
+                KataGoRuntimeHelper.TensorRtInstallStatus status =
+                    KataGoRuntimeHelper.inspectTensorRtInstall(snapshot);
+                assertTrue(status.downloaded);
+                assertTrue(status.installed);
+                assertFalse(status.active);
+                assertFalse(KataGoRuntimeHelper.canSwitchBackToCuda(snapshot));
+                assertTrue(
+                    Utils.getEngineData().stream()
+                        .anyMatch(
+                            engine ->
+                                "KataGo Auto Setup".equals(engine.name)
+                                    && engine.isDefault
+                                    && engine.commands.contains("windows-x64-nvidia50-cuda")));
+              });
         });
   }
 
