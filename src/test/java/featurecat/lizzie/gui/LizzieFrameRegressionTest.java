@@ -19,6 +19,7 @@ import java.util.Optional;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import javax.swing.JPanel;
 import javax.swing.SwingUtilities;
 import org.junit.jupiter.api.Test;
 
@@ -177,6 +178,46 @@ class LizzieFrameRegressionTest {
     }
   }
 
+  @Test
+  void autoQuickAnalyzeCanBeDisabledForLoadedGame() throws Exception {
+    TestEnvironment env = TestEnvironment.open();
+    try {
+      Lizzie.config = configWithAutoQuickAnalyze(false);
+      Lizzie.board = boardWith(historyWithUnanalyzedMove());
+      LizzieFrame frame = allocate(LizzieFrame.class);
+
+      assertFalse(
+          invokeShouldAutoQuickAnalyze(frame),
+          "disabled auto quick analyze should not start the fast winrate graph refresh.");
+    } finally {
+      env.close();
+    }
+  }
+
+  @Test
+  void finishKifuLoadDoesNotRefreshAgainBeforeHidingOverlay() throws Exception {
+    TestEnvironment env = TestEnvironment.open();
+    try {
+      FinishTrackingFrame frame = allocate(FinishTrackingFrame.class);
+      frame.refreshCount = new AtomicInteger();
+      JPanel glassPane = new JPanel();
+      glassPane.setVisible(true);
+      setField(frame, "kifuLoadGlassPane", glassPane);
+      setField(frame, "kifuLoadVisibleSince", System.currentTimeMillis() - 1000);
+      CountDownLatch finished = new CountDownLatch(1);
+
+      SwingUtilities.invokeAndWait(() -> frame.finishKifuLoad(finished::countDown));
+
+      assertTrue(finished.await(2, TimeUnit.SECONDS), "kifu load overlay should always finish.");
+      drainEdt();
+      assertFalse(glassPane.isVisible(), "finish should hide the kifu load overlay.");
+      assertEquals(0, frame.refreshCount.get(), "finish should not repeat heavy board refresh.");
+    } finally {
+      drainEdt();
+      env.close();
+    }
+  }
+
   private static TrackingFrame newTrackingFrame() throws Exception {
     TrackingFrame frame = allocate(TrackingFrame.class);
     initReadBoardRestartLock(frame);
@@ -236,6 +277,12 @@ class LizzieFrameRegressionTest {
     history.add(moveData(new int[] {0, 0}, Stone.BLACK, false, 1, 1));
     history.add(dummyPassData(Stone.WHITE, true, 2));
     history.add(moveData(new int[] {1, 1}, Stone.WHITE, false, 3, 1));
+    return history;
+  }
+
+  private static BoardHistoryList historyWithUnanalyzedMove() {
+    BoardHistoryList history = new BoardHistoryList(BoardData.empty(BOARD_SIZE, BOARD_SIZE));
+    history.add(moveData(new int[] {0, 0}, Stone.BLACK, false, 1, 0));
     return history;
   }
 
@@ -313,8 +360,12 @@ class LizzieFrameRegressionTest {
   }
 
   private static Config configWithAutoQuickAnalyze() throws Exception {
+    return configWithAutoQuickAnalyze(true);
+  }
+
+  private static Config configWithAutoQuickAnalyze(boolean enabled) throws Exception {
     Config config = allocate(Config.class);
-    config.autoQuickAnalyzeOnLoad = true;
+    config.autoQuickAnalyzeOnLoad = enabled;
     return config;
   }
 
@@ -455,6 +506,16 @@ class LizzieFrameRegressionTest {
         Thread.currentThread().interrupt();
         throw new IllegalStateException("Interrupted while waiting for shutdown gate", ex);
       }
+    }
+  }
+
+  private static final class FinishTrackingFrame extends LizzieFrame {
+    private AtomicInteger refreshCount;
+
+    @Override
+    public void refresh() {
+      refreshCount.incrementAndGet();
+      throw new AssertionError("finishKifuLoad must not depend on a second refresh.");
     }
   }
 

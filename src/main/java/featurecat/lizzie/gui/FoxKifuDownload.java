@@ -526,26 +526,18 @@ public class FoxKifuDownload extends JFrame {
     showProgressNotice(
         Lizzie.frame.kifuLoadText(
             "KifuLoad.refreshing", "正在刷新胜率曲线…", "Refreshing winrate graph..."));
-    SwingUtilities.invokeLater(
+    KifuLoadFinisher.finishAfterRefresh(
         new Runnable() {
           public void run() {
-            Lizzie.frame.refresh();
-            if (Lizzie.frame.mainPanel != null
-                && Lizzie.frame.mainPanel.getWidth() > 0
-                && Lizzie.frame.mainPanel.getHeight() > 0) {
-              Lizzie.frame.mainPanel.paintImmediately(
-                  0, 0, Lizzie.frame.mainPanel.getWidth(), Lizzie.frame.mainPanel.getHeight());
+            if (Lizzie.frame.mainPanel != null) {
+              Lizzie.frame.mainPanel.repaint();
             }
-            javax.swing.Timer finishTimer =
-                new javax.swing.Timer(
-                    120,
-                    new ActionListener() {
-                      public void actionPerformed(ActionEvent e) {
-                        completeFoxKifuLoad();
-                      }
-                    });
-            finishTimer.setRepeats(false);
-            finishTimer.start();
+            Lizzie.frame.repaint();
+          }
+        },
+        new Runnable() {
+          public void run() {
+            completeFoxKifuLoad();
           }
         });
   }

@@ -246,6 +246,7 @@ public class ConfigDialog2 extends JDialog {
   private JRadioButton rdbtnZen;
   private JCheckBox chkShowVarMove;
   private JCheckBox chkSgfLoadLast;
+  private JCheckBox chkAutoQuickAnalyzeOnLoad;
   private JCheckBox chkAutoLoadEstimate;
   private JCheckBox chkTrackingEnginePreload;
   private JTextField txtTrackingEngineMaxVisits;
@@ -1477,6 +1478,15 @@ public class ConfigDialog2 extends JDialog {
     chkSgfLoadLast.setBounds(837, 668, 26, 23);
     uiTab.add(chkSgfLoadLast);
 
+    JLabel lblAutoQuickAnalyzeOnLoad =
+        new JLabel(resourceBundle.getString("LizzieConfig.lblAutoQuickAnalyzeOnLoad"));
+    lblAutoQuickAnalyzeOnLoad.setBounds(608, 701, 223, 15);
+    uiTab.add(lblAutoQuickAnalyzeOnLoad);
+
+    chkAutoQuickAnalyzeOnLoad = new JCheckBox();
+    chkAutoQuickAnalyzeOnLoad.setBounds(837, 698, 26, 23);
+    uiTab.add(chkAutoQuickAnalyzeOnLoad);
+
     lblLoadEstimate =
         new JLabel(
             resourceBundle.getString(
@@ -2022,6 +2032,7 @@ public class ConfigDialog2 extends JDialog {
     if (Lizzie.config.loadSgfLast) {
       chkSgfLoadLast.setSelected(true);
     }
+    chkAutoQuickAnalyzeOnLoad.setSelected(Lizzie.config.autoQuickAnalyzeOnLoad);
     if (Lizzie.config.advanceTimeSettings) txtMaxGameThinkingTime.setEnabled(false);
     else txtAdvanceTime.setEditable(false);
     if (Lizzie.config.noCapture) chkNoCapture.setSelected(true);
@@ -3935,6 +3946,9 @@ public class ConfigDialog2 extends JDialog {
       }
       Lizzie.config.loadSgfLast = chkSgfLoadLast.isSelected();
       Lizzie.config.uiConfig.put("load-sgf-last", Lizzie.config.loadSgfLast);
+      Lizzie.config.autoQuickAnalyzeOnLoad = chkAutoQuickAnalyzeOnLoad.isSelected();
+      Lizzie.config.uiConfig.put(
+          "auto-quick-analyze-on-load", Lizzie.config.autoQuickAnalyzeOnLoad);
       Lizzie.config.showVarMove = chkShowVarMove.isSelected();
       Lizzie.config.uiConfig.put("show-var-move", Lizzie.config.showVarMove);
       Lizzie.config.newMoveNumberInBranch = rdoBranchMoveOne.isSelected();

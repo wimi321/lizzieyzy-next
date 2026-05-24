@@ -3862,7 +3862,6 @@ public class LizzieFrame extends JFrame {
     Runnable finish =
         new Runnable() {
           public void run() {
-            refresh();
             if (kifuLoadFinishTimer != null) {
               kifuLoadFinishTimer.stop();
             }
