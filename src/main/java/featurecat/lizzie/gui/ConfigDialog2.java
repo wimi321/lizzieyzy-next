@@ -1480,11 +1480,11 @@ public class ConfigDialog2 extends JDialog {
 
     JLabel lblAutoQuickAnalyzeOnLoad =
         new JLabel(resourceBundle.getString("LizzieConfig.lblAutoQuickAnalyzeOnLoad"));
-    lblAutoQuickAnalyzeOnLoad.setBounds(608, 701, 223, 15);
+    lblAutoQuickAnalyzeOnLoad.setBounds(312, 758, 223, 15);
     uiTab.add(lblAutoQuickAnalyzeOnLoad);
 
     chkAutoQuickAnalyzeOnLoad = new JCheckBox();
-    chkAutoQuickAnalyzeOnLoad.setBounds(837, 698, 26, 23);
+    chkAutoQuickAnalyzeOnLoad.setBounds(532, 758, 26, 23);
     uiTab.add(chkAutoQuickAnalyzeOnLoad);
 
     lblLoadEstimate =

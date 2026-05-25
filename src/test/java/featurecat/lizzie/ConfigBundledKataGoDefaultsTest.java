@@ -78,6 +78,26 @@ public class ConfigBundledKataGoDefaultsTest {
     assertEquals(7.5, engines.getJSONObject(0).getDouble("komi"));
   }
 
+  @Test
+  void testConfigsWriteOnlyInsideTestWorkDirectory() throws Exception {
+    Path tempRoot = Files.createTempDirectory("lizzie-config-test-dir");
+    Config config = ConfigTestHelper.createForTests(tempRoot);
+    config.uiConfig = new JSONObject();
+    config.config = new JSONObject().put("ui", config.uiConfig);
+    config.saveBoard = new JSONObject().put("save", new JSONObject());
+    Files.createDirectories(tempRoot.resolve("save"));
+
+    assertTrue(Path.of(config.getConfigFilePath()).startsWith(tempRoot));
+    assertTrue(Path.of(config.getPersistFilePath()).startsWith(tempRoot));
+
+    config.uiConfig.put("config-test-marker", true);
+    config.save();
+    config.saveTempBoard();
+
+    assertTrue(Files.exists(tempRoot.resolve("config.txt")));
+    assertTrue(Files.exists(tempRoot.resolve("save").resolve("save")));
+  }
+
   private static void applyBundledKataGoDefaults(Config config) throws Exception {
     Method method = Config.class.getDeclaredMethod("applyBundledKataGoDefaults");
     method.setAccessible(true);

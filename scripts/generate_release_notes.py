@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 from __future__ import annotations
 
 import argparse
@@ -1839,6 +1840,273 @@ def build_next_2026_05_06_1_notes(
     ) + '\n'
 
 
+def build_next_2026_05_26_1_notes(
+    asset_map: dict[str, str | None],
+    bundle: dict[str, str],
+    repo: str,
+    release_tag: str | None,
+) -> str:
+    assets_cn = {key: format_asset(asset_map[key], repo, release_tag) for key in asset_map}
+    assets = {key: format_asset_en(asset_map[key], repo, release_tag) for key in asset_map}
+    katago_version = bundle['katago_version']
+    model_source = bundle['model_source']
+
+    localized_sections = [
+        {
+            'language': '中文',
+            'labels': 'zh',
+            'intro': (
+                '这一版是 TensorRT 与棋谱加载稳定性复测版。重点不是换一个“模型名字”，而是把 TensorRT 作为后端加速路径处理好：'
+                '用户看到的权重/模型显示名继续保留真实权重，例如 `zhizi 28B muonfd2`，不会被盖成 `KataGo TensorRT`。'
+            ),
+            'updates_heading': '本版主要更新',
+            'updates': [
+                '修复“加载棋谱后快速刷新胜率曲线”设置项在综合设置里和原有选项重叠的问题，位置已移到更合适的空位。',
+                '保留棋谱加载后的快速胜率曲线功能默认开启；不想自动刷新时，可在设置里关闭。',
+                '修复测试配置对象会把临时 TensorRT/CUDA 路径写进真实用户配置的风险，测试写入现在只会落到测试工作目录。',
+                '重新从本机卸载 TensorRT 已安装目录后，按应用自己的 TensorRT 安装路径重新解压、启用并验证。',
+                '重新运行 KataGo 官方 benchmark，TensorRT 路径完成测速并写回推荐线程数。',
+                '继续确认 TensorRT 是后端/加速方式，不覆盖用户看到的真实权重/模型显示名。',
+            ],
+            'before_heading': '下载前先看这几句',
+            'before': [
+                f'主推荐整合包继续内置 KataGo `{katago_version}` 和默认权重 `{model_source}`。',
+                'Windows 普通用户优先下载 OpenCL 免安装版；NVIDIA 用户可下载 NVIDIA/RTX 50 CUDA 版，再在软件内按需启用 TensorRT。',
+                'TensorRT 不是新的权重名；如果你使用 zhizi 28B muonfd2，界面应该继续显示这个模型/权重身份。',
+                '如果打开旧棋谱时不想立刻刷新快速胜率曲线，可以到综合设置里关闭“加载棋谱后快速刷新胜率曲线”。',
+                '本次发布前做了全量单元测试、JDK 17 真机启动烟测、TensorRT 卸载后重装、TensorRT 官方 benchmark 复测。',
+            ],
+            'download_heading': '下载建议',
+            'download_headers': ('你的电脑', '直接下载这个'),
+            'why_heading': '这一版为什么值得更新',
+            'why': [
+                '棋谱加载后卡在刷新胜率曲线的关键路径已由回归测试覆盖，避免再让 UI 被重复刷新拖住。',
+                '新增设置项现在不再挤占原有界面，综合设置页可读性恢复正常。',
+                'TensorRT 安装链路经过“本机无已安装 TensorRT”的真实状态验证，不只是单元测试模拟。',
+                '官方 benchmark 已在 TensorRT 引擎上跑完，推荐线程数会写入配置，后续启动直接使用。',
+                '测试隔离修复后，本地测试不会再污染 `C:\\Users\\Public\\Documents\\LizzieYzyNext\\config.txt` 这类真实用户配置。',
+            ],
+            'contact_heading': '交流',
+            'contact': ['QQ 群：`299419120`'],
+        },
+        {
+            'language': '繁體中文',
+            'labels': 'zh_hant',
+            'intro': (
+                '這一版是 TensorRT 與棋譜載入穩定性複測版。重點不是換一個「模型名稱」，而是把 TensorRT 當作後端加速路徑處理好：'
+                '使用者看到的權重/模型顯示名會保留真實權重，例如 `zhizi 28B muonfd2`，不會被蓋成 `KataGo TensorRT`。'
+            ),
+            'updates_heading': '本版主要更新',
+            'updates': [
+                '修復「載入棋譜後快速刷新勝率曲線」設定項在綜合設定裡與原有選項重疊的問題，位置已移到更合適的空位。',
+                '保留棋譜載入後的快速勝率曲線功能預設開啟；不想自動刷新時，可在設定裡關閉。',
+                '修復測試設定物件可能把臨時 TensorRT/CUDA 路徑寫進真實使用者設定的風險，測試寫入現在只會落到測試工作目錄。',
+                '重新從本機卸載 TensorRT 已安裝目錄後，按應用程式自己的 TensorRT 安裝路徑重新解壓、啟用並驗證。',
+                '重新執行 KataGo 官方 benchmark，TensorRT 路徑完成測速並寫回推薦執行緒數。',
+                '繼續確認 TensorRT 是後端/加速方式，不覆蓋使用者看到的真實權重/模型顯示名。',
+            ],
+            'before_heading': '下載前先看這幾句',
+            'before': [
+                f'主推薦整合包繼續內建 KataGo `{katago_version}` 和預設權重 `{model_source}`。',
+                'Windows 一般使用者優先下載 OpenCL 免安裝版；NVIDIA 使用者可下載 NVIDIA/RTX 50 CUDA 版，再在軟體內按需啟用 TensorRT。',
+                'TensorRT 不是新的權重名稱；如果你使用 zhizi 28B muonfd2，介面應該繼續顯示這個模型/權重身份。',
+                '如果開啟舊棋譜時不想立刻刷新快速勝率曲線，可以到綜合設定裡關閉「載入棋譜後快速刷新勝率曲線」。',
+                '本次發布前做了完整單元測試、JDK 17 真機啟動煙測、TensorRT 卸載後重裝、TensorRT 官方 benchmark 複測。',
+            ],
+            'download_heading': '下載建議',
+            'download_headers': ('你的電腦', '直接下載這個'),
+            'why_heading': '這一版為什麼值得更新',
+            'why': [
+                '棋譜載入後卡在刷新勝率曲線的關鍵路徑已由回歸測試覆蓋，避免 UI 再被重複刷新拖住。',
+                '新增設定項現在不再擠占原有介面，綜合設定頁可讀性恢復正常。',
+                'TensorRT 安裝鏈路經過「本機沒有已安裝 TensorRT」的真實狀態驗證，不只是單元測試模擬。',
+                '官方 benchmark 已在 TensorRT 引擎上跑完，推薦執行緒數會寫入設定，後續啟動直接使用。',
+                '測試隔離修復後，本機測試不會再污染 `C:\\Users\\Public\\Documents\\LizzieYzyNext\\config.txt` 這類真實使用者設定。',
+            ],
+            'contact_heading': '交流',
+            'contact': ['QQ 群：`299419120`'],
+        },
+        {
+            'language': 'English',
+            'labels': 'en',
+            'intro': (
+                'This is a TensorRT and kifu-load stability retest release. TensorRT is treated as an acceleration backend, '
+                'not as the user-visible model name: real weight/model labels such as `zhizi 28B muonfd2` stay visible instead of being replaced by `KataGo TensorRT`.'
+            ),
+            'updates_heading': 'Release Highlights',
+            'updates': [
+                'Moved the new “quick winrate curve refresh after loading kifu” setting so it no longer overlaps existing controls in General Settings.',
+                'The quick winrate curve after loading kifu remains enabled by default; users who do not want it can turn it off in settings.',
+                'Fixed test configuration isolation so temporary TensorRT/CUDA paths cannot be written into the real user config.',
+                'Uninstalled the local TensorRT runtime directories, then reinstalled and enabled TensorRT through the app path on the real machine.',
+                'Reran the official KataGo benchmark on the TensorRT engine and saved the recommended thread count.',
+                'Reconfirmed that TensorRT is backend acceleration and does not overwrite the real user-visible weight/model name.',
+            ],
+            'before_heading': 'Read Before Downloading',
+            'before': [
+                f'The recommended bundles continue to include KataGo `{katago_version}` and the default weight `{model_source}`.',
+                'Most Windows users should start with the no-install OpenCL build; NVIDIA users can use the NVIDIA / RTX 50 CUDA builds and enable TensorRT on demand inside the app.',
+                'TensorRT is not a new weight name. If you use zhizi 28B muonfd2, the UI should keep showing that model/weight identity.',
+                'If you do not want old kifu files to refresh the quick winrate curve immediately after loading, disable the option in General Settings.',
+                'Before release, I reran the full unit suite, a JDK 17 real launch smoke test, TensorRT uninstall-and-reinstall, and the official TensorRT benchmark.',
+            ],
+            'download_heading': 'Download Guide',
+            'download_headers': ('Your computer', 'Download this file'),
+            'why_heading': 'Why Update',
+            'why': [
+                'The kifu-load path that could stall at winrate curve refresh is now covered by regression tests.',
+                'The new setting no longer crowds the settings UI, so the General Settings tab is readable again.',
+                'The TensorRT install path was verified from a real “not installed” machine state, not only through mocked tests.',
+                'The official benchmark completed on TensorRT and saved the recommended thread count for later launches.',
+                'Test isolation now prevents local tests from polluting real user files such as `C:\\Users\\Public\\Documents\\LizzieYzyNext\\config.txt`.',
+            ],
+            'contact_heading': 'Contact',
+            'contact': ['QQ group: `299419120`'],
+        },
+        {
+            'language': '日本語',
+            'labels': 'ja',
+            'intro': (
+                'このリリースは TensorRT と棋譜読み込み安定性の再テスト版です。TensorRT はユーザーに見えるモデル名ではなく、'
+                'あくまで高速化バックエンドとして扱います。`zhizi 28B muonfd2` のような実際の重み/モデル名は `KataGo TensorRT` に置き換えられません。'
+            ),
+            'updates_heading': '主な更新',
+            'updates': [
+                '「棋譜読み込み後に勝率曲線を高速更新」設定の位置を移動し、総合設定内の既存項目と重ならないようにしました。',
+                '棋譜読み込み後の高速勝率曲線は既定で有効のままです。不要な場合は設定で無効化できます。',
+                'テスト設定の隔離を修正し、一時的な TensorRT/CUDA パスが実ユーザー設定へ書き込まれないようにしました。',
+                'ローカル TensorRT のインストール済みディレクトリを外した状態から、アプリの手順で再インストール、適用、検証しました。',
+                'TensorRT エンジンで KataGo 公式 benchmark を再実行し、推奨スレッド数を書き戻しました。',
+                'TensorRT はバックエンド高速化であり、実際の重み/モデル表示名を上書きしないことを再確認しました。',
+            ],
+            'before_heading': 'ダウンロード前に',
+            'before': [
+                f'推奨バンドルには引き続き KataGo `{katago_version}` と既定の重み `{model_source}` が含まれます。',
+                'Windows の多くのユーザーは OpenCL のインストール不要版から始めてください。NVIDIA ユーザーは NVIDIA / RTX 50 CUDA 版を使い、アプリ内で必要時に TensorRT を有効化できます。',
+                'TensorRT は新しい重み名ではありません。zhizi 28B muonfd2 を使っている場合、UI はそのモデル/重み名を表示し続けるべきです。',
+                '古い棋譜を開いた直後に高速勝率曲線を更新したくない場合は、総合設定でこのオプションを無効化してください。',
+                'リリース前に full unit test、JDK 17 実起動 smoke、TensorRT uninstall/reinstall、公式 TensorRT benchmark を再実行しました。',
+            ],
+            'download_heading': 'ダウンロード案内',
+            'download_headers': ('お使いの環境', 'ダウンロードするファイル'),
+            'why_heading': '更新する理由',
+            'why': [
+                '棋譜読み込み後に勝率曲線更新で止まる可能性があった経路を regression test でカバーしました。',
+                '新しい設定項目が既存 UI を圧迫しなくなり、総合設定タブが読みやすくなりました。',
+                'TensorRT インストール経路は、実際に「未インストール」状態から検証しました。',
+                '公式 benchmark は TensorRT 上で完了し、推奨スレッド数が次回起動用に保存されます。',
+                'テスト隔離により、`C:\\Users\\Public\\Documents\\LizzieYzyNext\\config.txt` のような実ユーザー設定をローカルテストが汚さなくなりました。',
+            ],
+            'contact_heading': '連絡先',
+            'contact': ['QQ グループ: `299419120`'],
+        },
+        {
+            'language': '한국어',
+            'labels': 'ko',
+            'intro': (
+                '이번 릴리스는 TensorRT 와 기보 로딩 안정성을 다시 검증한 버전입니다. TensorRT 는 사용자에게 보이는 모델명이 아니라 '
+                '가속 백엔드로만 취급합니다. `zhizi 28B muonfd2` 같은 실제 가중치/모델 표시는 `KataGo TensorRT` 로 덮어쓰지 않습니다.'
+            ),
+            'updates_heading': '주요 업데이트',
+            'updates': [
+                '“기보 로딩 후 빠른 승률 곡선 새로고침” 설정 위치를 옮겨 General Settings 의 기존 항목과 겹치지 않게 했습니다.',
+                '기보 로딩 후 빠른 승률 곡선은 기본값으로 계속 켜져 있습니다. 원하지 않으면 설정에서 끌 수 있습니다.',
+                '테스트 설정 격리를 고쳐 임시 TensorRT/CUDA 경로가 실제 사용자 설정에 쓰이지 않게 했습니다.',
+                '로컬 TensorRT 설치 디렉터리를 제거한 상태에서 앱 경로로 TensorRT 를 다시 설치, 적용, 검증했습니다.',
+                'TensorRT 엔진에서 KataGo 공식 benchmark 를 다시 실행하고 추천 스레드 수를 저장했습니다.',
+                'TensorRT 는 백엔드 가속이며 실제 사용자 표시용 가중치/모델 이름을 덮어쓰지 않는다는 점을 다시 확인했습니다.',
+            ],
+            'before_heading': '다운로드 전 확인',
+            'before': [
+                f'추천 번들은 계속 KataGo `{katago_version}` 와 기본 가중치 `{model_source}` 를 포함합니다.',
+                '대부분의 Windows 사용자는 OpenCL 무설치 빌드부터 쓰면 됩니다. NVIDIA 사용자는 NVIDIA / RTX 50 CUDA 빌드를 사용하고 앱 안에서 필요할 때 TensorRT 를 켤 수 있습니다.',
+                'TensorRT 는 새로운 가중치 이름이 아닙니다. zhizi 28B muonfd2 를 사용하면 UI 는 그 모델/가중치 정체성을 계속 보여야 합니다.',
+                '오래된 기보를 열 때 빠른 승률 곡선을 즉시 새로고침하고 싶지 않다면 General Settings 에서 옵션을 끄세요.',
+                '릴리스 전 full unit test, JDK 17 실제 실행 smoke, TensorRT uninstall/reinstall, 공식 TensorRT benchmark 를 다시 수행했습니다.',
+            ],
+            'download_heading': '다운로드 안내',
+            'download_headers': ('내 컴퓨터', '다운로드할 파일'),
+            'why_heading': '업데이트할 이유',
+            'why': [
+                '기보 로딩 후 승률 곡선 새로고침에서 멈출 수 있던 경로를 regression test 로 덮었습니다.',
+                '새 설정 항목이 더 이상 설정 UI 를 밀어내지 않아 General Settings 탭이 다시 읽기 쉬워졌습니다.',
+                'TensorRT 설치 경로는 실제 “설치되지 않음” 상태에서 검증했습니다.',
+                '공식 benchmark 가 TensorRT 에서 완료되었고 추천 스레드 수가 이후 실행을 위해 저장됩니다.',
+                '테스트 격리 수정으로 로컬 테스트가 `C:\\Users\\Public\\Documents\\LizzieYzyNext\\config.txt` 같은 실제 사용자 파일을 오염시키지 않습니다.',
+            ],
+            'contact_heading': '연락처',
+            'contact': ['QQ 그룹: `299419120`'],
+        },
+        {
+            'language': 'ภาษาไทย',
+            'labels': 'th',
+            'intro': (
+                'รีลีสนี้เป็นรอบทดสอบซ้ำเรื่อง TensorRT และความเสถียรตอนโหลด kifu โดย TensorRT ถูกใช้เป็น backend เร่งความเร็ว '
+                'ไม่ใช่ชื่อโมเดลที่ผู้ใช้เห็น ชื่อ weight/model จริงเช่น `zhizi 28B muonfd2` จะยังแสดงตามเดิม ไม่ถูกแทนด้วย `KataGo TensorRT`'
+            ),
+            'updates_heading': 'ไฮไลต์ของเวอร์ชันนี้',
+            'updates': [
+                'ย้ายตำแหน่งตัวเลือก “รีเฟรชกราฟ winrate อย่างรวดเร็วหลังโหลด kifu” เพื่อไม่ให้ทับกับตัวเลือกเดิมใน General Settings',
+                'ฟังก์ชันกราฟ winrate หลังโหลด kifu ยังเปิดเป็นค่าเริ่มต้น ผู้ใช้ที่ไม่ต้องการสามารถปิดได้ใน Settings',
+                'แก้การแยก config ของ test เพื่อไม่ให้ path ชั่วคราวของ TensorRT/CUDA ถูกเขียนเข้า config จริงของผู้ใช้',
+                'ถอน TensorRT ที่ติดตั้งไว้ในเครื่องออกก่อน แล้วติดตั้งและเปิดใช้ใหม่ผ่านเส้นทางของแอปจริง',
+                'รัน KataGo official benchmark บน TensorRT engine อีกครั้ง และบันทึกจำนวน thread ที่แนะนำ',
+                'ยืนยันซ้ำว่า TensorRT เป็น backend acceleration และไม่เขียนทับชื่อ weight/model จริงที่ผู้ใช้เห็น',
+            ],
+            'before_heading': 'ก่อนดาวน์โหลด ดูตรงนี้ก่อน',
+            'before': [
+                f'แพ็กเกจแนะนำยังรวม KataGo `{katago_version}` และ weight เริ่มต้น `{model_source}` ไว้ให้แล้ว',
+                'ผู้ใช้ Windows ส่วนใหญ่เริ่มจาก OpenCL แบบไม่ต้องติดตั้งได้ ส่วนผู้ใช้ NVIDIA ใช้ NVIDIA / RTX 50 CUDA build แล้วเปิด TensorRT ในแอปเมื่อต้องการ',
+                'TensorRT ไม่ใช่ชื่อ weight ใหม่ ถ้าคุณใช้ zhizi 28B muonfd2 หน้าจอควรยังแสดงตัวตนของ model/weight นั้น',
+                'ถ้าไม่ต้องการให้ kifu เก่ารีเฟรชกราฟ winrate ทันทีหลังโหลด ให้ปิดตัวเลือกนี้ใน General Settings',
+                'ก่อนปล่อยเวอร์ชันนี้ ได้รัน full unit test, JDK 17 launch smoke บนเครื่องจริง, TensorRT uninstall/reinstall และ official TensorRT benchmark แล้ว',
+            ],
+            'download_heading': 'แนะนำการดาวน์โหลด',
+            'download_headers': ('เครื่องของคุณ', 'ดาวน์โหลดไฟล์นี้'),
+            'why_heading': 'ทำไมควรอัปเดต',
+            'why': [
+                'เส้นทางโหลด kifu ที่อาจค้างตอนรีเฟรชกราฟ winrate มี regression test ครอบคลุมแล้ว',
+                'ตัวเลือกใหม่ไม่เบียด UI เดิม ทำให้แท็บ General Settings อ่านง่ายขึ้น',
+                'เส้นทางติดตั้ง TensorRT ถูกตรวจจากสถานะจริงที่ “ยังไม่ได้ติดตั้ง” ไม่ใช่แค่ mock test',
+                'official benchmark ทำงานสำเร็จบน TensorRT และบันทึก thread ที่แนะนำไว้ใช้ตอนเปิดครั้งต่อไป',
+                'การแยก test config ช่วยป้องกันไม่ให้ local test ทำให้ไฟล์จริงอย่าง `C:\\Users\\Public\\Documents\\LizzieYzyNext\\config.txt` ปนเปื้อน',
+            ],
+            'contact_heading': 'ติดต่อ',
+            'contact': ['QQ group: `299419120`'],
+        },
+    ]
+
+    sections: list[dict[str, object]] = []
+    for block in localized_sections:
+        language = str(block['language'])
+        labels_key = str(block['labels'])
+        localized_assets = assets_cn if language in ('中文', '繁體中文') else assets
+        sections.append(
+            {
+                'language': language,
+                'intro': block['intro'],
+                'updates': {'heading': block['updates_heading'], 'items': block['updates']},
+                'before': {'heading': block['before_heading'], 'items': block['before']},
+                'download': {
+                    'heading': block['download_heading'],
+                    'headers': block['download_headers'],
+                    'rows': standard_download_rows(
+                        STANDARD_DOWNLOAD_LABELS[labels_key],
+                        localized_assets,
+                    ),
+                },
+                'why': {'heading': block['why_heading'], 'items': block['why']},
+                'contact': {'heading': block['contact_heading'], 'items': block['contact']},
+            }
+        )
+
+    add_nvidia50_download_rows(sections, assets_cn, assets)
+    validate_release_sections(sections)
+    return release_heading(release_tag) + '\n\n' + '\n\n---\n\n'.join(
+        render_language_section(section) for section in sections
+    ) + '\n'
+
+
 def build_release_notes(asset_map: dict[str, str | None], bundle: dict[str, str], repo: str, release_tag: str | None) -> str:
     if release_tag == 'next-2026-05-03.1':
         return build_next_2026_05_03_1_notes(asset_map, repo, release_tag)
@@ -1850,6 +2118,8 @@ def build_release_notes(asset_map: dict[str, str | None], bundle: dict[str, str]
         return build_next_2026_05_17_2_notes(asset_map, bundle, repo, release_tag)
     if release_tag == 'next-2026-05-18.1':
         return build_next_2026_05_18_1_notes(asset_map, bundle, repo, release_tag)
+    if release_tag == 'next-2026-05-26.1':
+        return build_next_2026_05_26_1_notes(asset_map, bundle, repo, release_tag)
 
     assets_cn = {
         key: format_asset(asset_map[key], repo, release_tag)

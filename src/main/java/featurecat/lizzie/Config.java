@@ -1387,6 +1387,10 @@ public class Config {
   private Config(File runtimeWorkDirectory) {
     this.runtimeWorkDirectoryOverride =
         Objects.requireNonNull(runtimeWorkDirectory, "runtimeWorkDirectory").getAbsoluteFile();
+    this.configFilename = this.runtimeWorkDirectoryOverride + File.separator + "config.txt";
+    this.persistFilename = this.runtimeWorkDirectoryOverride + File.separator + "persist";
+    this.saveBoardFilename =
+        this.runtimeWorkDirectoryOverride + File.separator + "save" + File.separator + "save";
   }
 
   public Config() throws IOException {
