@@ -1789,6 +1789,10 @@ public class Leelaz {
     if (!Lizzie.config.showPonderLimitedTips) return;
     if (!showStopTips) return;
     showStopTips = false;
+    SwingUtilities.invokeLater(this::showStopPonderTipsOnEdt);
+  }
+
+  private void showStopPonderTipsOnEdt() {
     Box box = Box.createVerticalBox();
     JFontLabel label = new JFontLabel(Lizzie.resourceBundle.getString("leelaz.stopByLimit"));
     label.setAlignmentX(Component.LEFT_ALIGNMENT);
@@ -1807,12 +1811,38 @@ public class Leelaz {
     JDialog dialog =
         optionPane.createDialog(
             Lizzie.frame, Lizzie.resourceBundle.getString("leelaz.stopByLimitTitle"));
+    AtomicBoolean preferenceSaved = new AtomicBoolean(false);
+    dialog.setModal(false);
+    dialog.setAlwaysOnTop(true);
+    dialog.setAutoRequestFocus(false);
+    dialog.setDefaultCloseOperation(javax.swing.WindowConstants.DISPOSE_ON_CLOSE);
+    optionPane.addPropertyChangeListener(
+        event -> {
+          if (!dialog.isVisible() || event.getSource() != optionPane) return;
+          String propertyName = event.getPropertyName();
+          if (JOptionPane.VALUE_PROPERTY.equals(propertyName)
+              || JOptionPane.INPUT_VALUE_PROPERTY.equals(propertyName)) {
+            saveStopPonderTipsPreference(disableCheckBox, preferenceSaved);
+            dialog.dispose();
+          }
+        });
+    dialog.addWindowListener(
+        new java.awt.event.WindowAdapter() {
+          @Override
+          public void windowClosed(java.awt.event.WindowEvent e) {
+            saveStopPonderTipsPreference(disableCheckBox, preferenceSaved);
+          }
+        });
     dialog.setVisible(true);
+  }
+
+  private void saveStopPonderTipsPreference(
+      JFontCheckBox disableCheckBox, AtomicBoolean preferenceSaved) {
+    if (!preferenceSaved.compareAndSet(false, true)) return;
     if (disableCheckBox.isSelected()) {
       Lizzie.config.showPonderLimitedTips = false;
       Lizzie.config.uiConfig.put("show-ponder-limited-tips", Lizzie.config.showPonderLimitedTips);
     }
-    dialog.dispose();
   }
 
   private void notifyAutoPlay(boolean playImmediately) {
