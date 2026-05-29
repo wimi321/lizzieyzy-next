@@ -9,6 +9,7 @@ import featurecat.lizzie.analysis.EngineManager;
 import featurecat.lizzie.analysis.GameInfo;
 import featurecat.lizzie.analysis.Leelaz;
 import featurecat.lizzie.analysis.MoveData;
+import featurecat.lizzie.analysis.ReadBoard;
 import featurecat.lizzie.gui.LizzieFrame;
 import featurecat.lizzie.gui.ScoreResult;
 import featurecat.lizzie.util.KataGoRuntimeHelper;
@@ -1780,6 +1781,58 @@ public class Board {
 
   public void place(
       int x, int y, Stone color, boolean newBranch, boolean forSync, boolean forManual) {
+    boolean shouldLogLocalMovePlace = shouldLogLocalMovePlace(forSync);
+    if (shouldSuppressLocalPlaceAfterFailedReadBoardSync(x, y, color, forSync)) {
+      if (shouldLogLocalMovePlace) {
+        logLocalMovePlace(
+            "place suppressed after failed readboard sync x="
+                + x
+                + " y="
+                + y
+                + " color="
+                + color
+                + " newBranch="
+                + newBranch
+                + " forManual="
+                + forManual
+                + " "
+                + localMovePlaceState(forSync));
+      }
+      return;
+    }
+    if (shouldSuppressLocalPlaceWhileReadBoardPending(x, y, color, forSync)) {
+      if (shouldLogLocalMovePlace) {
+        logLocalMovePlace(
+            "place suppressed while readboard local move pending x="
+                + x
+                + " y="
+                + y
+                + " color="
+                + color
+                + " newBranch="
+                + newBranch
+                + " forManual="
+                + forManual
+                + " "
+                + localMovePlaceState(forSync));
+      }
+      return;
+    }
+    if (shouldLogLocalMovePlace) {
+      logLocalMovePlace(
+          "place enter x="
+              + x
+              + " y="
+              + y
+              + " color="
+              + color
+              + " newBranch="
+              + newBranch
+              + " forManual="
+              + forManual
+              + " "
+              + localMovePlaceState(forSync));
+    }
     boolean noCheckSuiKo = false;
     LizzieFrame.boardRenderer.removedrawmovestone();
     Lizzie.frame.suggestionclick = LizzieFrame.outOfBoundCoordinate;
@@ -1791,8 +1844,26 @@ public class Board {
       Lizzie.frame.isCounting = false;
     }
     synchronized (this) {
-      if (!isValid(x, y) || (history.getStones()[getIndex(x, y)] != Stone.EMPTY && !newBranch))
+      boolean valid = isValid(x, y);
+      boolean occupied = valid && history.getStones()[getIndex(x, y)] != Stone.EMPTY;
+      if (!valid || (occupied && !newBranch)) {
+        if (shouldLogLocalMovePlace) {
+          logLocalMovePlace(
+              "place return invalid-or-occupied valid="
+                  + valid
+                  + " occupied="
+                  + occupied
+                  + " x="
+                  + x
+                  + " y="
+                  + y
+                  + " color="
+                  + color
+                  + " "
+                  + localMovePlaceState(forSync));
+        }
         return;
+      }
       updateWinrate();
       if (EngineManager.isEngineGame) SGFParser.appendTime();
       // modifyStart();
@@ -1827,6 +1898,17 @@ public class Board {
           Lizzie.leelaz.playMove(color, convertCoordinatesToName(x, y));
           // modifyEnd(false);
           clearAfterMove();
+          if (shouldLogLocalMovePlace) {
+            logLocalMovePlace(
+                "place return urlSgf-syncBoard-variation x="
+                    + x
+                    + " y="
+                    + y
+                    + " color="
+                    + color
+                    + " "
+                    + localMovePlaceState(forSync));
+          }
           return;
           // Lizzie.leelaz.playMove(color, convertCoordinatesToName(x, y));
         }
@@ -1861,6 +1943,17 @@ public class Board {
         }
         //  modifyEnd(false);
         clearAfterMove();
+        if (shouldLogLocalMovePlace) {
+          logLocalMovePlace(
+              "place return history-next x="
+                  + x
+                  + " y="
+                  + y
+                  + " color="
+                  + color
+                  + " "
+                  + localMovePlaceState(forSync));
+        }
         Lizzie.frame.refresh();
         return;
       }
@@ -1923,15 +2016,48 @@ public class Board {
       if (!noCheckSuiKo) {
         if (history.violatesKoRule(newState)) {
           // modifyEnd();
+          if (shouldLogLocalMovePlace) {
+            logLocalMovePlace(
+                "place return ko-rule x="
+                    + x
+                    + " y="
+                    + y
+                    + " color="
+                    + color
+                    + " "
+                    + localMovePlaceState(forSync));
+          }
           return;
         }
         if (Lizzie.leelaz.canSuicidal) {
           if (isSuicidal == 1) {
             //   modifyEnd();
+            if (shouldLogLocalMovePlace) {
+              logLocalMovePlace(
+                  "place return suicide-canSuicidal x="
+                      + x
+                      + " y="
+                      + y
+                      + " color="
+                      + color
+                      + " "
+                      + localMovePlaceState(forSync));
+            }
             return;
           }
         } else if (isSuicidal > 0) {
           //   modifyEnd();
+          if (shouldLogLocalMovePlace) {
+            logLocalMovePlace(
+                "place return suicide x="
+                    + x
+                    + " y="
+                    + y
+                    + " color="
+                    + color
+                    + " "
+                    + localMovePlaceState(forSync));
+          }
           return;
         }
       }
@@ -1998,20 +2124,108 @@ public class Board {
           && !isEngineFollowTrialActive()) {
         Lizzie.leelaz.playMove(color, convertCoordinatesToName(x, y), true, color.isWhite());
       }
-      if (!forSync
-          && Lizzie.frame.bothSync
-          && Lizzie.frame.readBoard != null
-          && Lizzie.frame.readBoard.process != null
-          && Lizzie.frame.readBoard.process.isAlive()) {
-        Lizzie.frame.readBoard.sendCommand("place " + x + " " + y);
-      }
       history.addOrGoto(newState, newBranch);
+      if (shouldLogLocalMovePlace) {
+        logLocalMovePlace(
+            "place history addOrGoto done x="
+                + x
+                + " y="
+                + y
+                + " color="
+                + color
+                + " "
+                + localMovePlaceState(forSync));
+      }
+      ReadBoard readBoard = Lizzie.frame.readBoard;
+      boolean pendingReadBoardLocalMove =
+          readBoard != null && readBoard.isPendingLocalMoveAwaitingReadBoard();
+      boolean canSendReadBoardPlace =
+          !forSync
+              && Lizzie.frame.bothSync
+              && readBoard != null
+              && readBoard.process != null
+              && readBoard.process.isAlive()
+              && !pendingReadBoardLocalMove;
+      if (shouldLogLocalMovePlace) {
+        logLocalMovePlace(
+            "place readboard-gate canSend="
+                + canSendReadBoardPlace
+                + " pendingReadBoardLocalMove="
+                + pendingReadBoardLocalMove
+                + " x="
+                + x
+                + " y="
+                + y
+                + " color="
+                + color
+                + " "
+                + localMovePlaceState(forSync));
+      }
+      if (canSendReadBoardPlace) {
+        logLocalMovePlace("place send readboard command=place " + x + " " + y);
+        readBoard.sendCommand("place " + x + " " + y);
+      }
       updateIsBest();
       if (Lizzie.frame != null) Lizzie.frame.onMainEnginePonder();
       if (needGenmove) Lizzie.leelaz.genmove((color.isWhite() ? "B" : "W"));
       //   modifyEnd(false);
       if (Lizzie.config.playSound) Utils.playVoiceFile();
       if (!forSync) Lizzie.frame.refresh();
+    }
+  }
+
+  private boolean shouldSuppressLocalPlaceAfterFailedReadBoardSync(
+      int x, int y, Stone color, boolean forSync) {
+    return !forSync
+        && Lizzie.frame != null
+        && Lizzie.frame.bothSync
+        && Lizzie.frame.readBoard != null
+        && Lizzie.frame.readBoard.shouldSuppressLocalPlaceAfterFailedSync(x, y, color);
+  }
+
+  private boolean shouldSuppressLocalPlaceWhileReadBoardPending(
+      int x, int y, Stone color, boolean forSync) {
+    return !forSync
+        && Lizzie.frame != null
+        && Lizzie.frame.bothSync
+        && Lizzie.frame.readBoard != null
+        && Lizzie.frame.readBoard.isPendingLocalMoveAwaitingReadBoard();
+  }
+
+  private boolean shouldLogLocalMovePlace(boolean forSync) {
+    return !forSync && Lizzie.frame != null && Lizzie.frame.bothSync;
+  }
+
+  private void logLocalMovePlace(String message) {
+    ReadBoard.localMoveSyncDebug("Board " + message);
+  }
+
+  private String localMovePlaceState(boolean forSync) {
+    try {
+      boolean readBoardAlive =
+          Lizzie.frame != null
+              && Lizzie.frame.readBoard != null
+              && Lizzie.frame.readBoard.process != null
+              && Lizzie.frame.readBoard.process.isAlive();
+      BoardHistoryNode current = history.getCurrentHistoryNode();
+      BoardHistoryNode mainEnd = history.getMainEnd();
+      return "state{forSync="
+          + forSync
+          + ",bothSync="
+          + (Lizzie.frame != null && Lizzie.frame.bothSync)
+          + ",syncBoard="
+          + (Lizzie.frame != null && Lizzie.frame.syncBoard)
+          + ",readBoardAlive="
+          + readBoardAlive
+          + ",currentMove="
+          + (current != null ? current.getData().moveNumber : -1)
+          + ",mainEndMove="
+          + (mainEnd != null ? mainEnd.getData().moveNumber : -1)
+          + ",currentIsMainEnd="
+          + (current != null && current == mainEnd)
+          + "}";
+    } catch (Exception ex) {
+      return "state{unavailable=" + ex.getClass().getSimpleName() + "}";
     }
   }
 
