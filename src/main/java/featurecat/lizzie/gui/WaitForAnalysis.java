@@ -13,7 +13,7 @@ public class WaitForAnalysis extends JDialog {
   private JLabel lblAnalsisProgress;
 
   public WaitForAnalysis() {
-    this.setModal(true);
+    this.setModal(false);
     setResizable(false);
     this.setAlwaysOnTop(Lizzie.frame.isAlwaysOnTop());
     setDefaultCloseOperation(JDialog.DO_NOTHING_ON_CLOSE);
@@ -34,19 +34,17 @@ public class WaitForAnalysis extends JDialog {
     //    lblNotice.setBounds(10, 30, 289, 15);
     //    getContentPane().add(lblNotice);
 
-    JButton btnSettings =
-        new JButton(Lizzie.resourceBundle.getString("WaitForAnalysis.btnSettings")); // ("设置");
-    btnSettings.setFocusable(false);
-    btnSettings.setMargin(new Insets(0, 0, 0, 0));
-    btnSettings.addActionListener(
+    JButton btnGtpConsole = new JButton("GTP控制台");
+    btnGtpConsole.setFocusable(false);
+    btnGtpConsole.addActionListener(
         new ActionListener() {
           public void actionPerformed(ActionEvent e) {
-            AnalysisSettings analysisSettings = new AnalysisSettings(true, false);
-            analysisSettings.setVisible(true);
+            Lizzie.frame.toggleGtpConsole();
           }
         });
-    btnSettings.setBounds(225, 29, 73, 22);
-    getContentPane().add(btnSettings);
+    btnGtpConsole.setMargin(new Insets(0, 0, 0, 0));
+    btnGtpConsole.setBounds(225, 29, 73, 22);
+    getContentPane().add(btnGtpConsole);
 
     JButton btnHide =
         new JButton(Lizzie.resourceBundle.getString("WaitForAnalysis.btnHide")); // ("隐藏界面");
@@ -77,7 +75,20 @@ public class WaitForAnalysis extends JDialog {
     getContentPane().add(btnCancel);
   }
 
+  public void setLoadingProgress() {
+    if (!javax.swing.SwingUtilities.isEventDispatchThread()) {
+      javax.swing.SwingUtilities.invokeLater(this::setLoadingProgress);
+      return;
+    }
+    lblAnalsisProgress.setText(
+        Lizzie.resourceBundle.getString("WaitForAnalysis.lblAnalsisProgress"));
+  }
+
   public void setProgress(int curMove, int allMove) {
+    if (!javax.swing.SwingUtilities.isEventDispatchThread()) {
+      javax.swing.SwingUtilities.invokeLater(() -> setProgress(curMove, allMove));
+      return;
+    }
     if (curMove == allMove) {
       setDefaultCloseOperation(JDialog.HIDE_ON_CLOSE);
       lblAnalsisProgress.setText(

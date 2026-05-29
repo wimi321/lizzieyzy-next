@@ -3,26 +3,60 @@ package featurecat.lizzie.gui;
 import featurecat.lizzie.Config;
 import featurecat.lizzie.Lizzie;
 import featurecat.lizzie.gui.LizzieFrame.HtmlKit;
+import featurecat.lizzie.util.AnalysisEngineCommandHelper;
 import featurecat.lizzie.util.Utils;
 import java.awt.Desktop;
 import java.awt.Font;
 import java.awt.Insets;
+import java.awt.Rectangle;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
+import java.util.ArrayList;
 import javax.swing.ButtonGroup;
 import javax.swing.JButton;
 import javax.swing.JDialog;
 import javax.swing.JEditorPane;
 import javax.swing.JLabel;
+import javax.swing.JOptionPane;
 import javax.swing.JRadioButton;
 import javax.swing.JTextField;
 import javax.swing.JTextPane;
+import javax.swing.SwingUtilities;
 import javax.swing.event.HyperlinkEvent;
 import javax.swing.event.HyperlinkListener;
 import javax.swing.text.html.HTMLDocument;
 import javax.swing.text.html.StyleSheet;
 
 public class AnalysisSettings extends JDialog {
+  public enum Context {
+    NORMAL,
+    BATCH
+  }
+
+  enum FontScale {
+    SMALL,
+    MIDDLE,
+    LARGE
+  }
+
+  static final class EngineCommandToolbarBounds {
+    final Rectangle generate;
+    final Rectangle savedEngine;
+    final Rectangle remoteEngine;
+    final Rectangle remoteSettings;
+
+    private EngineCommandToolbarBounds(
+        Rectangle generate,
+        Rectangle savedEngine,
+        Rectangle remoteEngine,
+        Rectangle remoteSettings) {
+      this.generate = generate;
+      this.savedEngine = savedEngine;
+      this.remoteEngine = remoteEngine;
+      this.remoteSettings = remoteSettings;
+    }
+  }
+
   private JTextField txtMaxVisits;
   private JRadioButton rdoUseCurrentRules;
   private JRadioButton rdoUseSpecificRules;
@@ -32,10 +66,21 @@ public class AnalysisSettings extends JDialog {
   private JFontCheckBox chkAutoExit;
   private JDialog dialog = this;
   private JFontCheckBox chkUseJavaSSH;
+  private final Context context;
+  private String originalEngineCommand = "";
+  private boolean engineCommandExplicitlyChanged = false;
 
   public AnalysisSettings(boolean isDuringAnalyze, boolean fromError) {
+    this(
+        isDuringAnalyze,
+        fromError,
+        Lizzie.frame != null && Lizzie.frame.isBatchAnalysisMode ? Context.BATCH : Context.NORMAL);
+  }
+
+  public AnalysisSettings(boolean isDuringAnalyze, boolean fromError, Context context) {
+    this.context = context == null ? Context.NORMAL : context;
     this.setModal(true);
-    this.setAlwaysOnTop(Lizzie.frame.isAlwaysOnTop());
+    this.setAlwaysOnTop(Lizzie.frame != null && Lizzie.frame.isAlwaysOnTop());
     setResizable(false);
     setTitle(Lizzie.resourceBundle.getString("AnalysisSettings.title")); // ("闪电分析设置");
     // setSize(609, 367);
@@ -198,10 +243,12 @@ public class AnalysisSettings extends JDialog {
     contentPane.add(lblHint2);
 
     txtMaxVisits.setText(
-        (Lizzie.frame.isBatchAnalysisMode
+        (this.context == Context.BATCH
             ? String.valueOf(Lizzie.config.batchAnalysisPlayouts)
             : String.valueOf(Lizzie.config.analysisMaxVisits)));
-    engineCmd.setText(Lizzie.config.analysisEngineCommand);
+    DisplayCommand displayCommand = resolveAnalysisEngineCommandForDisplay();
+    originalEngineCommand = displayCommand.command;
+    engineCmd.setText(originalEngineCommand);
 
     if (Lizzie.config.analysisUseCurrentRules) rdoUseCurrentRules.setSelected(true);
     else rdoUseSpecificRules.setSelected(true);
@@ -220,17 +267,28 @@ public class AnalysisSettings extends JDialog {
             String el = getEngineLine.getEngineLine(dialog, true, true, false, false);
             if (!el.isEmpty()) {
               engineCmd.setText(el);
+              engineCommandExplicitlyChanged = true;
             }
           }
         });
     btnGenerate.setMargin(new Insets(0, 0, 0, 0));
-    btnGenerate.setBounds(
-        Lizzie.config.isFrameFontSmall() ? 93 : (Lizzie.config.isFrameFontMiddle() ? 110 : 140),
-        1,
-        Lizzie.config.isFrameFontSmall() ? 80 : (Lizzie.config.isFrameFontMiddle() ? 95 : 110),
-        23);
+    EngineCommandToolbarBounds toolbarBounds = engineCommandToolbarBounds(currentFontScale());
+    btnGenerate.setBounds(toolbarBounds.generate);
     btnGenerate.setFocusable(false);
     contentPane.add(btnGenerate);
+
+    JButton btnSavedEngine =
+        new JFontButton(Lizzie.resourceBundle.getString("NewAnaGameDialog.chooseEngine"));
+    btnSavedEngine.addActionListener(
+        new ActionListener() {
+          public void actionPerformed(ActionEvent e) {
+            chooseSavedEngineCommand();
+          }
+        });
+    btnSavedEngine.setMargin(new Insets(0, 0, 0, 0));
+    btnSavedEngine.setBounds(toolbarBounds.savedEngine);
+    btnSavedEngine.setFocusable(false);
+    contentPane.add(btnSavedEngine);
 
     chkUseJavaSSH =
         new JFontCheckBox(Lizzie.resourceBundle.getString("MoreEngines.chkRemoteEngine"));
@@ -256,20 +314,124 @@ public class AnalysisSettings extends JDialog {
     chkUseJavaSSH.setSelected(Utils.getAnalysisEngineRemoteEngineData().useJavaSSH);
     setRemoteEngine.setEnabled(chkUseJavaSSH.isSelected());
 
-    chkUseJavaSSH.setBounds(
-        Lizzie.config.isFrameFontSmall() ? 200 : (Lizzie.config.isFrameFontMiddle() ? 230 : 260),
-        1,
-        Lizzie.config.isFrameFontSmall() ? 80 : (Lizzie.config.isFrameFontMiddle() ? 90 : 110),
-        22);
-    setRemoteEngine.setBounds(
-        Lizzie.config.isFrameFontSmall() ? 280 : (Lizzie.config.isFrameFontMiddle() ? 320 : 370),
-        1,
-        Lizzie.config.isFrameFontSmall() ? 80 : (Lizzie.config.isFrameFontMiddle() ? 80 : 80),
-        23);
+    chkUseJavaSSH.setBounds(toolbarBounds.remoteEngine);
+    setRemoteEngine.setBounds(toolbarBounds.remoteSettings);
 
     contentPane.add(chkUseJavaSSH);
     contentPane.add(setRemoteEngine);
     setLocationRelativeTo(Lizzie.frame != null ? Lizzie.frame : null);
+    if (!displayCommand.message.isEmpty()) {
+      String message = displayCommand.message;
+      SwingUtilities.invokeLater(() -> Utils.showMsg(message));
+    }
+  }
+
+  private static FontScale currentFontScale() {
+    if (Lizzie.config.isFrameFontSmall()) {
+      return FontScale.SMALL;
+    }
+    if (Lizzie.config.isFrameFontMiddle()) {
+      return FontScale.MIDDLE;
+    }
+    return FontScale.LARGE;
+  }
+
+  static EngineCommandToolbarBounds engineCommandToolbarBounds(FontScale fontScale) {
+    switch (fontScale) {
+      case SMALL:
+        return new EngineCommandToolbarBounds(
+            new Rectangle(93, 1, 68, 23),
+            new Rectangle(165, 1, 66, 23),
+            new Rectangle(238, 1, 80, 22),
+            new Rectangle(321, 1, 74, 23));
+      case MIDDLE:
+        return new EngineCommandToolbarBounds(
+            new Rectangle(110, 1, 78, 23),
+            new Rectangle(193, 1, 82, 23),
+            new Rectangle(283, 1, 90, 22),
+            new Rectangle(378, 1, 78, 23));
+      case LARGE:
+      default:
+        return new EngineCommandToolbarBounds(
+            new Rectangle(120, 1, 92, 23),
+            new Rectangle(218, 1, 98, 23),
+            new Rectangle(324, 1, 110, 22),
+            new Rectangle(442, 1, 94, 23));
+    }
+  }
+
+  private DisplayCommand resolveAnalysisEngineCommandForDisplay() {
+    if (!Lizzie.config.analysisEngineCommandCustomized) {
+      AnalysisEngineCommandHelper.Result result =
+          AnalysisEngineCommandHelper.fromDefaultEngine(Utils.getEngineData());
+      if (result.isSuccess()) {
+        return new DisplayCommand(
+            result.getCommand(), result.generatedConfig() ? result.getMessage() : "");
+      }
+    }
+    return new DisplayCommand(Lizzie.config.analysisEngineCommand, "");
+  }
+
+  private void chooseSavedEngineCommand() {
+    ArrayList<EngineData> engines = Utils.getEngineData();
+    if (engines.isEmpty()) {
+      Utils.showMsg("没有已保存的引擎。");
+      return;
+    }
+    SavedEngineChoice[] choices = new SavedEngineChoice[engines.size()];
+    for (int i = 0; i < engines.size(); i++) {
+      choices[i] = new SavedEngineChoice(engines.get(i), i + 1);
+    }
+    SavedEngineChoice selected =
+        (SavedEngineChoice)
+            JOptionPane.showInputDialog(
+                dialog,
+                Lizzie.resourceBundle.getString("NewAnaGameDialog.chooseEngine"),
+                Lizzie.resourceBundle.getString("NewAnaGameDialog.chooseEngine"),
+                JOptionPane.PLAIN_MESSAGE,
+                null,
+                choices,
+                choices[0]);
+    if (selected == null) {
+      return;
+    }
+    AnalysisEngineCommandHelper.Result result =
+        AnalysisEngineCommandHelper.fromSavedEngine(selected.engine);
+    if (!result.isSuccess()) {
+      Utils.showMsg(result.getMessage());
+      return;
+    }
+    engineCmd.setText(result.getCommand());
+    engineCommandExplicitlyChanged = true;
+    if (result.generatedConfig()) {
+      Utils.showMsg(result.getMessage());
+    }
+  }
+
+  private static final class DisplayCommand {
+    final String command;
+    final String message;
+
+    private DisplayCommand(String command, String message) {
+      this.command = command;
+      this.message = message;
+    }
+  }
+
+  private static final class SavedEngineChoice {
+    final EngineData engine;
+    final String displayName;
+
+    private SavedEngineChoice(EngineData engine, int index) {
+      this.engine = engine;
+      this.displayName =
+          engine.name == null || engine.name.trim().isEmpty() ? "Engine " + index : engine.name;
+    }
+
+    @Override
+    public String toString() {
+      return displayName;
+    }
   }
 
   private class LinkLabel extends JTextPane {
@@ -326,11 +488,18 @@ public class AnalysisSettings extends JDialog {
   }
 
   public void saveConfig() {
+    String previousCommand = Lizzie.config.analysisEngineCommand;
     RemoteEngineData remoteEngineData = Utils.getAnalysisEngineRemoteEngineData();
     remoteEngineData.useJavaSSH = chkUseJavaSSH.isSelected();
     Utils.saveAnalysisEngineRemoteEngineData(remoteEngineData);
-    Lizzie.config.analysisEngineCommand = engineCmd.getText().trim();
-    if (Lizzie.frame.isBatchAnalysisMode) {
+    String newCommand = engineCmd.getText().trim();
+    Lizzie.config.analysisEngineCommand = newCommand;
+    if (engineCommandExplicitlyChanged || !newCommand.equals(originalEngineCommand)) {
+      Lizzie.config.analysisEngineCommandCustomized = true;
+    }
+    Lizzie.config.uiConfig.put(
+        "analysis-engine-command-customized", Lizzie.config.analysisEngineCommandCustomized);
+    if (context == Context.BATCH) {
       Lizzie.config.batchAnalysisPlayouts =
           Utils.parseTextToInt(txtMaxVisits, Lizzie.config.batchAnalysisPlayouts);
       Lizzie.config.uiConfig.put("batch-analysis-playouts", Lizzie.config.batchAnalysisPlayouts);
@@ -353,5 +522,11 @@ public class AnalysisSettings extends JDialog {
     Lizzie.config.uiConfig.put("analysis-always-override", Lizzie.config.analysisAlwaysOverride);
     Lizzie.config.uiConfig.put("analysis-use-current-rules", Lizzie.config.analysisUseCurrentRules);
     Lizzie.config.uiConfig.put("analysis-engine-command", Lizzie.config.analysisEngineCommand);
+    if (!previousCommand.equals(Lizzie.config.analysisEngineCommand)
+        && Lizzie.frame != null
+        && Lizzie.frame.analysisEngine != null
+        && !Lizzie.frame.analysisEngine.isAnalysisInProgress()) {
+      Lizzie.frame.destroyAnalysisEngine();
+    }
   }
 }

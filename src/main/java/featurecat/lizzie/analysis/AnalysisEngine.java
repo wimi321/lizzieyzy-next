@@ -12,6 +12,7 @@ import featurecat.lizzie.rules.BoardHistoryNode;
 import featurecat.lizzie.rules.Movelist;
 import featurecat.lizzie.rules.SGFParser;
 import featurecat.lizzie.rules.Stone;
+import featurecat.lizzie.util.AnalysisEngineCommandHelper;
 import featurecat.lizzie.util.CommandLaunchHelper;
 import featurecat.lizzie.util.KataGoRuntimeHelper;
 import featurecat.lizzie.util.Utils;
@@ -74,7 +75,7 @@ public class AnalysisEngine {
             : Lizzie.config.analysisMaxVisits + 1;
     engineCommand =
         KataGoRuntimeHelper.optimizeAnalysisEngineCommand(
-            Lizzie.config.analysisEngineCommand, maxVisits, Lizzie.frame.isBatchAnalysisMode);
+            resolveConfiguredAnalysisEngineCommand(), maxVisits, Lizzie.frame.isBatchAnalysisMode);
     this.isPreLoad = isPreLoad;
     RemoteEngineData remoteData = Utils.getAnalysisEngineRemoteEngineData();
     this.useJavaSSH = remoteData.useJavaSSH;
@@ -86,6 +87,21 @@ public class AnalysisEngine {
     this.keyGenPath = remoteData.keyGenPath;
 
     startEngine(engineCommand);
+  }
+
+  private static String resolveConfiguredAnalysisEngineCommand() {
+    if (!Lizzie.config.analysisEngineCommandCustomized) {
+      AnalysisEngineCommandHelper.Result result =
+          AnalysisEngineCommandHelper.fromDefaultEngine(Utils.getEngineData());
+      if (result.isSuccess()) {
+        Lizzie.config.analysisEngineCommand = result.getCommand();
+        Lizzie.config.uiConfig.put("analysis-engine-command", Lizzie.config.analysisEngineCommand);
+        if (result.generatedConfig()) {
+          javax.swing.SwingUtilities.invokeLater(() -> Utils.showMsg(result.getMessage()));
+        }
+      }
+    }
+    return Lizzie.config.analysisEngineCommand;
   }
 
   public void startEngine(String engineCommand) {
@@ -155,6 +171,10 @@ public class AnalysisEngine {
   }
 
   private void showErrMsg(String errMsg) {
+    if (!javax.swing.SwingUtilities.isEventDispatchThread()) {
+      javax.swing.SwingUtilities.invokeLater(() -> showErrMsg(errMsg));
+      return;
+    }
     if (isPreLoad) return;
     if (waitFrame != null) waitFrame.setVisible(false);
     tryToDignostic(errMsg);
@@ -315,7 +335,7 @@ public class AnalysisEngine {
     if (globalID <= 0) globalID = 1;
     resultCount = 0;
     silentProgress = !showProgressDialog;
-    waitFrame = null;
+    if (!showProgressDialog) waitFrame = null;
     if (Lizzie.leelaz.isPondering()) {
       Lizzie.leelaz.togglePonder();
       shouldRePonder = true;
@@ -333,17 +353,7 @@ public class AnalysisEngine {
           stack.push(cur.getVariations().get(i));
       }
     }
-    if (analyzeMap.size() > 0) {
-      Lizzie.frame.requestProblemListRefresh();
-      if (showProgressDialog) {
-        waitFrame = new WaitForAnalysis();
-        if (Lizzie.config.analysisEnginePreLoad) waitFrame.setProgress(0, analyzeMap.size());
-        waitFrame.setLocationRelativeTo(Lizzie.frame != null ? Lizzie.frame : null);
-        waitFrame.setVisible(true);
-      }
-    } else if (Lizzie.frame.isBatchAnalysisMode) {
-      Lizzie.frame.flashAutoAnaSaveAndLoad();
-    }
+    showRequestProgressOrContinueBatch(showProgressDialog);
   }
 
   public void startRequest(int startMove, int endMove) {
@@ -356,7 +366,7 @@ public class AnalysisEngine {
     if (globalID <= 0) globalID = 1;
     resultCount = 0;
     silentProgress = !showProgressDialog;
-    waitFrame = null;
+    if (!showProgressDialog) waitFrame = null;
     if (Lizzie.leelaz.isPondering()) {
       Lizzie.leelaz.togglePonder();
       shouldRePonder = true;
@@ -370,13 +380,17 @@ public class AnalysisEngine {
       node = nextHistoryActionNode(node);
       moveNum++;
     }
+    showRequestProgressOrContinueBatch(showProgressDialog);
+  }
+
+  private void showRequestProgressOrContinueBatch(boolean showProgressDialog) {
     if (analyzeMap.size() > 0) {
       Lizzie.frame.requestProblemListRefresh();
       if (showProgressDialog) {
-        waitFrame = new WaitForAnalysis();
-        if (Lizzie.config.analysisEnginePreLoad) waitFrame.setProgress(0, analyzeMap.size());
+        if (waitFrame == null) waitFrame = new WaitForAnalysis();
+        waitFrame.setProgress(0, analyzeMap.size());
         waitFrame.setLocationRelativeTo(Lizzie.frame != null ? Lizzie.frame : null);
-        waitFrame.setVisible(true);
+        if (!waitFrame.isVisible()) waitFrame.setVisible(true);
       }
     } else if (Lizzie.frame.isBatchAnalysisMode) {
       Lizzie.frame.flashAutoAnaSaveAndLoad();
@@ -430,9 +444,10 @@ public class AnalysisEngine {
     JSONObject overrideSettings = new JSONObject();
     overrideSettings.put("reportAnalysisWinratesAs", "SIDETOMOVE");
     request.put("overrideSettings", overrideSettings);
-    sendCommand(request.toString());
-    analyzeMap.put(globalID, analyzeNode);
-    globalID++;
+    if (sendCommand(request.toString())) {
+      analyzeMap.put(globalID, analyzeNode);
+      globalID++;
+    }
   }
 
   private static BoardHistoryNode firstHistoryActionNode(BoardHistoryNode node) {
@@ -602,16 +617,22 @@ public class AnalysisEngine {
     process.destroy();
   }
 
-  public void sendCommand(String command) {
+  public boolean sendCommand(String command) {
     try {
       outputStream.write((command + "\n").getBytes());
       outputStream.flush();
+      return true;
     } catch (Exception e) {
       e.printStackTrace();
+      return false;
     }
   }
 
   public synchronized boolean isAnalysisInProgress() {
     return analyzeMap.size() > 0 && resultCount < analyzeMap.size();
+  }
+
+  public boolean isLoaded() {
+    return isLoaded;
   }
 }

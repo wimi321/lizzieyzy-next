@@ -3,6 +3,7 @@ package featurecat.lizzie;
 import featurecat.lizzie.analysis.EngineManager;
 import featurecat.lizzie.gui.LizzieFrame;
 import featurecat.lizzie.theme.Theme;
+import featurecat.lizzie.util.AnalysisEngineCommandHelper;
 import featurecat.lizzie.util.Utils;
 import java.awt.Color;
 import java.awt.Frame;
@@ -705,6 +706,7 @@ public class Config {
       ui.put("autoload-empty", false);
       ui.put("default-engine", bundledIndex);
       ui.put("analysis-engine-command", bundledConfig.analysisCommand);
+      ui.put("analysis-engine-command-customized", false);
       ui.put("estimate-command", bundledConfig.estimateCommand);
     }
   }
@@ -924,8 +926,8 @@ public class Config {
   public boolean useFreeHandicap = true;
   public String currentKataGoRules = "";
 
-  public String analysisEngineCommand =
-      "katago analysis -model model.bin.gz -config analysis.cfg -quit-without-waiting";
+  public String analysisEngineCommand = AnalysisEngineCommandHelper.DEFAULT_ANALYSIS_COMMAND;
+  public boolean analysisEngineCommandCustomized = false;
   public int analysisMaxVisits = 1;
   public int analysisStartMove = -1;
   public int analysisEndMove = -1;
@@ -1693,8 +1695,12 @@ public class Config {
 
     analysisEngineCommand =
         uiConfig.optString(
-            "analysis-engine-command",
-            "katago analysis -model model.bin.gz -config analysis.cfg -quit-without-waiting");
+            "analysis-engine-command", AnalysisEngineCommandHelper.DEFAULT_ANALYSIS_COMMAND);
+    analysisEngineCommandCustomized =
+        AnalysisEngineCommandHelper.isAnalysisCommandCustomized(
+            uiConfig.has("analysis-engine-command-customized"),
+            uiConfig.optBoolean("analysis-engine-command-customized", false),
+            analysisEngineCommand);
     analysisMaxVisits = uiConfig.optInt("analysis-max-visits", 1);
     analysisStartMove = uiConfig.optInt("analysis-start-move", -1);
     analysisEndMove = uiConfig.optInt("analysis-end-move", -1);
