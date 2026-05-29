@@ -375,7 +375,7 @@ public class AnalysisSettings extends JDialog {
   private void chooseSavedEngineCommand() {
     ArrayList<EngineData> engines = Utils.getEngineData();
     if (engines.isEmpty()) {
-      Utils.showMsg("没有已保存的引擎。");
+      Utils.showMsg(Lizzie.resourceBundle.getString("AnalysisSettings.noSavedEngines"));
       return;
     }
     SavedEngineChoice[] choices = new SavedEngineChoice[engines.size()];

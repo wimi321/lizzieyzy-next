@@ -67,6 +67,7 @@ public class AnalysisEngine {
   private boolean shouldRePonder = false;
   private boolean isLoaded = false;
   private boolean silentProgress = false;
+  private boolean requestDispatchFailed = false;
 
   public AnalysisEngine(boolean isPreLoad) throws IOException {
     int maxVisits =
@@ -334,6 +335,7 @@ public class AnalysisEngine {
     analyzeMap.clear();
     if (globalID <= 0) globalID = 1;
     resultCount = 0;
+    requestDispatchFailed = false;
     silentProgress = !showProgressDialog;
     if (!showProgressDialog) waitFrame = null;
     if (Lizzie.leelaz.isPondering()) {
@@ -346,7 +348,7 @@ public class AnalysisEngine {
     while (!stack.isEmpty()) {
       BoardHistoryNode cur = stack.pop();
       if (shouldAnalyzeBranchNode(cur)) {
-        sendRequest(cur);
+        if (!sendRequest(cur)) break;
       }
       if (cur.numberOfChildren() >= 1) {
         for (int i = cur.numberOfChildren() - 1; i >= 0; i--)
@@ -365,6 +367,7 @@ public class AnalysisEngine {
     analyzeMap.clear();
     if (globalID <= 0) globalID = 1;
     resultCount = 0;
+    requestDispatchFailed = false;
     silentProgress = !showProgressDialog;
     if (!showProgressDialog) waitFrame = null;
     if (Lizzie.leelaz.isPondering()) {
@@ -375,7 +378,7 @@ public class AnalysisEngine {
     int moveNum = 1;
     while (node != null) {
       if (shouldAnalyzeTurn(moveNum, startMove, endMove)) {
-        sendRequest(node);
+        if (!sendRequest(node)) break;
       }
       node = nextHistoryActionNode(node);
       moveNum++;
@@ -384,7 +387,9 @@ public class AnalysisEngine {
   }
 
   private void showRequestProgressOrContinueBatch(boolean showProgressDialog) {
-    if (analyzeMap.size() > 0) {
+    if (requestDispatchFailed) {
+      finishFailedRequestDispatch(showProgressDialog);
+    } else if (analyzeMap.size() > 0) {
       Lizzie.frame.requestProblemListRefresh();
       if (showProgressDialog) {
         if (waitFrame == null) waitFrame = new WaitForAnalysis();
@@ -397,7 +402,23 @@ public class AnalysisEngine {
     }
   }
 
-  public void sendRequest(BoardHistoryNode analyzeNode) {
+  private void finishFailedRequestDispatch(boolean showProgressDialog) {
+    analyzeMap.clear();
+    resultCount = 0;
+    if (shouldRePonder && !Lizzie.leelaz.isPondering()) Lizzie.leelaz.togglePonder();
+    if (Lizzie.frame.isBatchAnalysisMode) Lizzie.frame.isBatchAnalysisMode = false;
+    if (waitFrame != null || showProgressDialog) {
+      javax.swing.SwingUtilities.invokeLater(
+          () -> {
+            if (waitFrame != null) waitFrame.setVisible(false);
+            if (showProgressDialog) {
+              Utils.showMsg(resourceBundle.getString("AnalysisEngine.requestDispatchFailed"));
+            }
+          });
+    }
+  }
+
+  public boolean sendRequest(BoardHistoryNode analyzeNode) {
     JSONObject request = new JSONObject();
     int maxVisits =
         Lizzie.frame.isBatchAnalysisMode
@@ -447,7 +468,10 @@ public class AnalysisEngine {
     if (sendCommand(request.toString())) {
       analyzeMap.put(globalID, analyzeNode);
       globalID++;
+      return true;
     }
+    requestDispatchFailed = true;
+    return false;
   }
 
   private static BoardHistoryNode firstHistoryActionNode(BoardHistoryNode node) {

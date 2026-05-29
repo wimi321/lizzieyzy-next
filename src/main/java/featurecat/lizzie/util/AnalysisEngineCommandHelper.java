@@ -1,13 +1,16 @@
 package featurecat.lizzie.util;
 
+import featurecat.lizzie.Lizzie;
 import featurecat.lizzie.gui.EngineData;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.text.MessageFormat;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.MissingResourceException;
 
 public final class AnalysisEngineCommandHelper {
   static final String TEMPLATE_RESOURCE = "katago/analysis_example.cfg";
@@ -18,24 +21,24 @@ public final class AnalysisEngineCommandHelper {
 
   public static Result fromSavedEngine(EngineData engineData) {
     if (engineData == null) {
-      return Result.failure("未选择引擎。");
+      return Result.failure(message("AnalysisEngineCommandHelper.noEngineSelected"));
     }
     if (engineData.useJavaSSH) {
-      return Result.failure("暂不支持从远程引擎生成闪电分析命令。");
+      return Result.failure(message("AnalysisEngineCommandHelper.remoteUnsupported"));
     }
     List<String> command = Utils.splitCommand(engineData.commands);
     if (command.isEmpty()) {
-      return Result.failure("引擎命令为空。");
+      return Result.failure(message("AnalysisEngineCommandHelper.emptyCommand"));
     }
 
     int gtpIndex = findToken(command, "gtp");
     if (gtpIndex < 0) {
-      return Result.failure("引擎命令中没有独立的 gtp 子命令。");
+      return Result.failure(message("AnalysisEngineCommandHelper.missingGtp"));
     }
 
     int configIndex = findConfigValueIndex(command);
     if (configIndex < 0) {
-      return Result.failure("引擎命令中没有 -config 或 --config 参数。");
+      return Result.failure(message("AnalysisEngineCommandHelper.missingConfig"));
     }
 
     List<String> analysisCommand = new ArrayList<String>(command);
@@ -47,7 +50,8 @@ public final class AnalysisEngineCommandHelper {
         copyTemplate(analysisConfig);
         generated = true;
       } catch (IOException e) {
-        return Result.failure("无法生成 analysis.cfg：" + e.getLocalizedMessage());
+        return Result.failure(
+            message("AnalysisEngineCommandHelper.generateConfigFailed", e.getLocalizedMessage()));
       }
     }
     analysisCommand.set(configIndex, analysisConfig.toString());
@@ -55,20 +59,23 @@ public final class AnalysisEngineCommandHelper {
       analysisCommand.add("-quit-without-waiting");
     }
 
-    String message = generated ? "缺少 analysis.cfg，已自动生成：" + analysisConfig : "已生成闪电分析命令。";
+    String message =
+        generated
+            ? message("AnalysisEngineCommandHelper.generatedConfig", analysisConfig)
+            : message("AnalysisEngineCommandHelper.generatedCommand");
     return Result.success(buildCommandLine(analysisCommand), message, generated, analysisConfig);
   }
 
   public static Result fromDefaultEngine(List<EngineData> engines) {
     if (engines == null || engines.isEmpty()) {
-      return Result.failure("没有已保存的默认引擎。");
+      return Result.failure(message("AnalysisEngineCommandHelper.noDefaultEngine"));
     }
     for (EngineData engine : engines) {
       if (engine != null && engine.isDefault) {
         return fromSavedEngine(engine);
       }
     }
-    return Result.failure("没有已保存的默认引擎。");
+    return Result.failure(message("AnalysisEngineCommandHelper.noDefaultEngine"));
   }
 
   public static boolean isAnalysisCommandCustomized(
@@ -126,9 +133,48 @@ public final class AnalysisEngineCommandHelper {
     try (InputStream input =
         AnalysisEngineCommandHelper.class.getClassLoader().getResourceAsStream(TEMPLATE_RESOURCE)) {
       if (input == null) {
-        throw new IOException("缺少内置模板 " + TEMPLATE_RESOURCE);
+        throw new IOException(
+            message("AnalysisEngineCommandHelper.missingTemplate", TEMPLATE_RESOURCE));
       }
       Files.copy(input, analysisConfig);
+    }
+  }
+
+  private static String message(String key, Object... args) {
+    String pattern = fallbackMessage(key);
+    try {
+      if (Lizzie.resourceBundle != null && Lizzie.resourceBundle.containsKey(key)) {
+        pattern = Lizzie.resourceBundle.getString(key);
+      }
+    } catch (MissingResourceException | ExceptionInInitializerError ignored) {
+    }
+    return MessageFormat.format(pattern, args);
+  }
+
+  private static String fallbackMessage(String key) {
+    switch (key) {
+      case "AnalysisEngineCommandHelper.noEngineSelected":
+        return "未选择引擎。";
+      case "AnalysisEngineCommandHelper.remoteUnsupported":
+        return "暂不支持从远程引擎生成闪电分析命令。";
+      case "AnalysisEngineCommandHelper.emptyCommand":
+        return "引擎命令为空。";
+      case "AnalysisEngineCommandHelper.missingGtp":
+        return "引擎命令中没有独立的 gtp 子命令。";
+      case "AnalysisEngineCommandHelper.missingConfig":
+        return "引擎命令中没有 -config 或 --config 参数。";
+      case "AnalysisEngineCommandHelper.generateConfigFailed":
+        return "无法生成 analysis.cfg：{0}";
+      case "AnalysisEngineCommandHelper.generatedConfig":
+        return "缺少 analysis.cfg，已自动生成：{0}";
+      case "AnalysisEngineCommandHelper.generatedCommand":
+        return "已生成闪电分析命令。";
+      case "AnalysisEngineCommandHelper.noDefaultEngine":
+        return "没有已保存的默认引擎。";
+      case "AnalysisEngineCommandHelper.missingTemplate":
+        return "缺少内置模板 {0}";
+      default:
+        return key;
     }
   }
 
