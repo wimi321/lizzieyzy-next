@@ -2372,6 +2372,33 @@ def build_next_2026_05_30_1_notes(
     ) + '\n'
 
 
+def build_next_2026_05_30_2_notes(
+    asset_map: dict[str, str | None],
+    bundle: dict[str, str],
+    repo: str,
+    release_tag: str | None,
+) -> str:
+    notes = build_next_2026_05_30_1_notes(asset_map, bundle, repo, release_tag)
+    replacements = {
+        '2026-05-30 预览版': '2026-05-30 正式复测版',
+        '这一版为什么值得先测': '这一版为什么可以放心更新',
+        '2026-05-30 預覽版': '2026-05-30 正式複測版',
+        '這一版為什麼值得先測': '這一版為什麼可以放心更新',
+        '2026-05-30 preview build': '2026-05-30 stable retest release',
+        'Why This Preview Is Worth Testing': 'Why This Release Is Ready',
+        'This preview merges community fixes': 'This release merges community fixes',
+        '2026-05-30 プレビュー版': '2026-05-30 正式リテスト版',
+        'このプレビューを試す理由': 'このリリースで更新する理由',
+        '2026-05-30 프리뷰 빌드': '2026-05-30 정식 재검증 릴리스',
+        '이 프리뷰를 테스트할 이유': '이 릴리스를 업데이트할 이유',
+        'build preview วันที่ 2026-05-30': 'stable retest release วันที่ 2026-05-30',
+        'ทำไม preview นี้น่าลอง': 'ทำไม release นี้พร้อมใช้งาน',
+    }
+    for old, new in replacements.items():
+        notes = notes.replace(old, new)
+    return notes
+
+
 def build_release_notes(asset_map: dict[str, str | None], bundle: dict[str, str], repo: str, release_tag: str | None) -> str:
     if release_tag == 'next-2026-05-03.1':
         return build_next_2026_05_03_1_notes(asset_map, repo, release_tag)
@@ -2387,6 +2414,8 @@ def build_release_notes(asset_map: dict[str, str | None], bundle: dict[str, str]
         return build_next_2026_05_26_1_notes(asset_map, bundle, repo, release_tag)
     if release_tag == 'next-2026-05-30.1':
         return build_next_2026_05_30_1_notes(asset_map, bundle, repo, release_tag)
+    if release_tag == 'next-2026-05-30.2':
+        return build_next_2026_05_30_2_notes(asset_map, bundle, repo, release_tag)
 
     assets_cn = {
         key: format_asset(asset_map[key], repo, release_tag)
