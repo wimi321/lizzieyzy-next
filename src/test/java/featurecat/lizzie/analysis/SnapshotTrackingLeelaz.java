@@ -22,6 +22,8 @@ class SnapshotTrackingLeelaz extends Leelaz {
   int ponderCount;
   int togglePonderCount;
   int nameCmdCount;
+  int genmoveCount;
+  String lastGenmoveColor;
   List<String> playedMoves;
   List<String> sentCommands;
   private Stone[] stones;
@@ -39,6 +41,8 @@ class SnapshotTrackingLeelaz extends Leelaz {
     leelaz.ponderCount = 0;
     leelaz.togglePonderCount = 0;
     leelaz.nameCmdCount = 0;
+    leelaz.genmoveCount = 0;
+    leelaz.lastGenmoveColor = null;
     leelaz.playedMoves = new ArrayList<>();
     leelaz.sentCommands = new ArrayList<>();
     leelaz.started = true;
@@ -71,7 +75,14 @@ class SnapshotTrackingLeelaz extends Leelaz {
 
   @Override
   public void ponder() {
+    Pondering();
     ponderCount++;
+  }
+
+  @Override
+  public void genmove(String color) {
+    genmoveCount++;
+    lastGenmoveColor = color;
   }
 
   @Override

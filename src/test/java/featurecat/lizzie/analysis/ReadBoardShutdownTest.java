@@ -1,5 +1,6 @@
 package featurecat.lizzie.analysis;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
@@ -80,6 +81,85 @@ class ReadBoardShutdownTest {
       assertTrue(
           outputStream.writtenText().contains("quit"),
           "shutdown should send quit before releasing resources.");
+    } finally {
+      Lizzie.frame = previousFrame;
+    }
+  }
+
+  @Test
+  void shutdownAfterProcessEndDoesNotWriteQuitToClosedPipe() throws Exception {
+    LizzieFrame previousFrame = Lizzie.frame;
+    try {
+      ReadBoard readBoard = allocate(ReadBoard.class);
+      LizzieFrame frame = allocate(LizzieFrame.class);
+      TrackingInputStreamReader inputStream =
+          new TrackingInputStreamReader(new ByteArrayInputStream(new byte[0]));
+      TrackingBufferedOutputStream outputStream = new TrackingBufferedOutputStream();
+      ScheduledExecutorService executor = Executors.newSingleThreadScheduledExecutor();
+
+      frame.syncBoard = true;
+      frame.bothSync = true;
+      frame.readBoard = readBoard;
+      Lizzie.frame = frame;
+
+      setField(readBoard, "conflictTracker", new SyncConflictTracker());
+      setField(readBoard, "historyJumpTracker", new SyncHistoryJumpTracker());
+      setField(readBoard, "localNavigationTracker", new SyncLocalNavigationTracker());
+      setField(readBoard, "tempcount", new ArrayList<Integer>());
+      setField(readBoard, "usePipe", true);
+      setField(readBoard, "inputStream", inputStream);
+      setField(readBoard, "outputStream", outputStream);
+      setField(readBoard, "executor", executor);
+
+      readBoard.shutdownAfterProcessEnd();
+
+      assertFalse(frame.syncBoard, "process-ended shutdown should clear syncBoard state.");
+      assertFalse(frame.bothSync, "process-ended shutdown should clear bothSync state.");
+      assertNull(frame.readBoard, "process-ended shutdown should detach the closed ReadBoard.");
+      assertTrue(outputStream.closeCalled, "process-ended shutdown should close hosted stdin.");
+      assertTrue(
+          inputStream.closeCalled, "process-ended shutdown should close hosted stdout reader.");
+      assertFalse(
+          outputStream.writtenText().contains("quit"),
+          "process-ended shutdown should not write quit to a readboard pipe that already ended.");
+    } finally {
+      Lizzie.frame = previousFrame;
+    }
+  }
+
+  @Test
+  void shutdownOnlyWritesQuitOnceWhenCalledRepeatedly() throws Exception {
+    LizzieFrame previousFrame = Lizzie.frame;
+    try {
+      ReadBoard readBoard = allocate(ReadBoard.class);
+      LizzieFrame frame = allocate(LizzieFrame.class);
+      TrackingInputStreamReader inputStream =
+          new TrackingInputStreamReader(new ByteArrayInputStream(new byte[0]));
+      TrackingBufferedOutputStream outputStream = new TrackingBufferedOutputStream();
+      ScheduledExecutorService executor = Executors.newSingleThreadScheduledExecutor();
+
+      frame.readBoard = readBoard;
+      Lizzie.frame = frame;
+
+      setField(readBoard, "conflictTracker", new SyncConflictTracker());
+      setField(readBoard, "historyJumpTracker", new SyncHistoryJumpTracker());
+      setField(readBoard, "localNavigationTracker", new SyncLocalNavigationTracker());
+      setField(readBoard, "tempcount", new ArrayList<Integer>());
+      setField(readBoard, "usePipe", true);
+      setField(readBoard, "inputStream", inputStream);
+      setField(readBoard, "outputStream", outputStream);
+      setField(readBoard, "executor", executor);
+
+      readBoard.shutdown();
+      String firstShutdownWrite = outputStream.writtenText();
+      readBoard.shutdown();
+
+      assertTrue(
+          firstShutdownWrite.contains("quit"), "normal shutdown should ask readboard to quit.");
+      assertEquals(
+          firstShutdownWrite,
+          outputStream.writtenText(),
+          "repeated shutdown should not write another quit command.");
     } finally {
       Lizzie.frame = previousFrame;
     }

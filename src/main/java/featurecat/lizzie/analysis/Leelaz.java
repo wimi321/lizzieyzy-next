@@ -1379,6 +1379,10 @@ public class Leelaz {
         }
       }
     }
+    boolean handledInfoLine = false;
+    boolean notifyAutoPKAfterInfo = false;
+    boolean notifyAutoPlayAfterInfo = false;
+    int autoAnalyzeAfterInfo = 0;
     synchronized (this) {
       if (line.startsWith("info")) {
         boolean upToDate = isResponseUpToDate();
@@ -1428,15 +1432,15 @@ public class Leelaz {
             YikeSyncDebugLog.log("Leelaz parseLine bestMoves size=" + this.bestMoves.size());
           }
           if (!this.bestMoves.isEmpty()) {
-            notifyAutoPK(false);
-            notifyAutoPlay(false);
+            notifyAutoPKAfterInfo = true;
+            notifyAutoPlayAfterInfo = true;
             if (Lizzie.config.isAutoAna) {
               if (Lizzie.frame.isAutoAnalyzingDiffNode) {
-                nofityDiffAna();
+                autoAnalyzeAfterInfo = 1;
               } else if (Lizzie.config.analyzeAllBranch) {
-                notifyAutoAnaAllBranch();
+                autoAnalyzeAfterInfo = 2;
               } else {
-                notifyAutoAna();
+                autoAnalyzeAfterInfo = 3;
               }
             }
           }
@@ -1477,7 +1481,7 @@ public class Leelaz {
           if (Lizzie.config.isAutoAna)
             Lizzie.board.getHistory().getCurrentHistoryNode().getData().tryToClearBestMoves();
         }
-        return;
+        handledInfoLine = true;
       } else {
         if (Lizzie.gtpConsole.isVisible() || Lizzie.config.alwaysGtp || !this.isLoaded)
           Lizzie.gtpConsole.addLine(line + "\n");
@@ -1766,6 +1770,26 @@ public class Leelaz {
         }
       }
       parseHeatMap(line);
+    }
+    if (handledInfoLine) {
+      runPostInfoActions(notifyAutoPKAfterInfo, notifyAutoPlayAfterInfo, autoAnalyzeAfterInfo);
+    }
+  }
+
+  private void runPostInfoActions(
+      boolean notifyAutoPKAfterInfo, boolean notifyAutoPlayAfterInfo, int autoAnalyzeAfterInfo) {
+    if (notifyAutoPKAfterInfo) {
+      notifyAutoPK(false);
+    }
+    if (notifyAutoPlayAfterInfo) {
+      notifyAutoPlay(false);
+    }
+    if (autoAnalyzeAfterInfo == 1) {
+      nofityDiffAna();
+    } else if (autoAnalyzeAfterInfo == 2) {
+      notifyAutoAnaAllBranch();
+    } else if (autoAnalyzeAfterInfo == 3) {
+      notifyAutoAna();
     }
   }
 
