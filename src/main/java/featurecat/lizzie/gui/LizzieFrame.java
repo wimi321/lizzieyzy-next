@@ -2653,18 +2653,8 @@ public class LizzieFrame extends JFrame {
   //  }
 
   public boolean openRightClickMenu(int x, int y) {
-    if (Lizzie.frame.clickOrder != -1) {
-      Lizzie.frame.clickOrder = -1;
-      boardRenderer.startNormalBoard();
-      Lizzie.frame.suggestionclick = LizzieFrame.outOfBoundCoordinate;
-      Lizzie.frame.mouseOverCoordinate = LizzieFrame.outOfBoundCoordinate;
-      boardRenderer.clearBranch();
-      if (Lizzie.config.isDoubleEngineMode()) {
-        boardRenderer2.startNormalBoard();
-        boardRenderer2.clearBranch();
-      }
-      Lizzie.frame.selectedorder = -1;
-      Lizzie.frame.currentRow = -1;
+    if (clickOrder != -1) {
+      clearSuggestionTablePreview();
       return true;
     }
     if (!Lizzie.config.showRightMenu && !isMouseOverSuggestions()) {
@@ -7236,12 +7226,15 @@ public class LizzieFrame extends JFrame {
         }
       }
     }
-    if (clickOrder != -1) {
-      return false;
-    }
     // mouseOverCoordinate = outOfBoundCoordinate;
     Optional<int[]> coords = boardRenderer.convertScreenToCoordinates(x, y);
     boolean inBoard = coords.isPresent();
+    if (clickOrder != -1) {
+      if (!inBoard) {
+        return false;
+      }
+      clearSuggestionTablePreview();
+    }
     if (inBoard) {
       int[] curCoords = coords.get();
       Lizzie.board.clearPressStoneInfo(curCoords);
@@ -7351,13 +7344,29 @@ public class LizzieFrame extends JFrame {
   public void clearMoved() {
     isReplayVariation = false;
     Lizzie.frame.isMouseOver = false;
+    clearBoardBranchPreview();
+    boardRenderer.notShowingBranch();
+    if (Lizzie.config.isDoubleEngineMode()) {
+      boardRenderer2.notShowingBranch();
+    }
+  }
+
+  void clearSuggestionTablePreview() {
+    clickOrder = -1;
+    selectedorder = -1;
+    currentRow = -1;
+    suggestionclick = outOfBoundCoordinate;
+    mouseOverCoordinate = outOfBoundCoordinate;
+    isMouseOver = false;
+    clearBoardBranchPreview();
+  }
+
+  private void clearBoardBranchPreview() {
     boardRenderer.startNormalBoard();
     boardRenderer.clearBranch();
-    boardRenderer.notShowingBranch();
     if (Lizzie.config.isDoubleEngineMode()) {
       boardRenderer2.startNormalBoard();
       boardRenderer2.clearBranch();
-      boardRenderer2.notShowingBranch();
     }
   }
 
@@ -10680,25 +10689,18 @@ public class LizzieFrame extends JFrame {
   private void handleTableClick(int row, int col) {
     LizzieFrame.boardRenderer.startNormalBoard();
     if (listTable.getValueAt(row, 1).toString().startsWith("pass")) return;
+    int[] coords = Board.convertNameToCoordinates(listTable.getValueAt(row, 1).toString());
     if (clickOrder != -1
         && selectedorder >= 0
-        && Board.convertNameToCoordinates(listTable.getValueAt(row, 1).toString())[0]
-            == Lizzie.frame.suggestionclick[0]
-        && Board.convertNameToCoordinates(listTable.getValueAt(row, 1).toString())[1]
-            == Lizzie.frame.suggestionclick[1]) {
-      Lizzie.frame.suggestionclick = LizzieFrame.outOfBoundCoordinate;
-      Lizzie.frame.mouseOverCoordinate = LizzieFrame.outOfBoundCoordinate;
-      LizzieFrame.boardRenderer.clearBranch();
-      selectedorder = -1;
-      clickOrder = -1;
-      currentRow = -1;
+        && coords[0] == Lizzie.frame.suggestionclick[0]
+        && coords[1] == Lizzie.frame.suggestionclick[1]) {
+      clearSuggestionTablePreview();
       isMouseOver = true;
       Lizzie.frame.refresh();
     } else {
       clickOrder = row;
       selectedorder = row;
       currentRow = row;
-      int[] coords = Board.convertNameToCoordinates(listTable.getValueAt(row, 1).toString());
       Lizzie.frame.mouseOverCoordinate = coords;
       isMouseOver = true;
       Lizzie.frame.suggestionclick = coords;
