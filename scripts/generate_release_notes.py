@@ -2107,6 +2107,271 @@ def build_next_2026_05_26_1_notes(
     ) + '\n'
 
 
+def build_next_2026_05_30_1_notes(
+    asset_map: dict[str, str | None],
+    bundle: dict[str, str],
+    repo: str,
+    release_tag: str | None,
+) -> str:
+    assets_cn = {
+        key: format_asset(asset_map[key], repo, release_tag)
+        for key in asset_map
+    }
+    assets = {
+        key: format_asset_en(asset_map[key], repo, release_tag)
+        for key in asset_map
+    }
+    katago_version = bundle['katago_version']
+    model_source = bundle['model_source']
+    localized_sections: list[dict[str, object]] = [
+        {
+            'language': '中文',
+            'labels': 'zh',
+            'intro': (
+                '这是 `LizzieYzy Next` 的 2026-05-30 预览版，重点合并社区 PR 并修复同步、分析与预览交互。'
+                '特别感谢 @semanym 与 @qiyi71w 的持续贡献：这一版补强了 ReadBoard 落子失败后的恢复、批量闪电分析设置、'
+                '候选点表预览清理，以及 TensorRT 一键设置的 NVIDIA GPU 检测。'
+            ),
+            'updates_heading': '本版主要更新',
+            'updates': [
+                '合并 PR #34：修复 ReadBoard 错点/漏点后本地引擎与远端棋盘不同步的问题。',
+                'Windows 发布包内置 readboard 固定升级到 `qiyi71w/readboard v3.0.6`，匹配新的同步恢复协议。',
+                '合并 PR #33：完善批量闪电分析设置与启动体验，让批量分析入口更稳。',
+                '合并 PR #35：修复候选点表预览状态泄漏，鼠标回到棋盘候选点或点击变化图节点时会清理旧 PV 预览。',
+                '合并 PR #31：KataGo 一键设置新增 NVIDIA GPU / Compute Capability 检测，TensorRT 仍为软件内按需安装，不进入巨大 release 包。',
+                '继续保留 Windows 免安装包自包含数据目录，解压即用，配置和 TensorRT 下载数据优先留在解压目录内。',
+            ],
+            'before_heading': '下载前先看这几句',
+            'before': [
+                f'Windows 普通用户优先下载 {assets_cn["windows_opencl_portable"]}，这是 **OpenCL 版（推荐，免安装）**。',
+                f'如果 OpenCL 在你的电脑上不稳定，再改用 {assets_cn["windows_portable"]}。',
+                f'如果你的电脑是 **NVIDIA 显卡**，优先下载 {assets_cn["windows_nvidia_portable"]}；RTX 5070/5080/5090 可优先试 RTX 50 CUDA 版。',
+                'TensorRT 不再作为巨大 GitHub Release 包发布；需要时到软件内 `KataGo 一键设置` 按需安装。',
+                f'整合包继续内置 KataGo `{katago_version}` 和默认权重 `{model_source}`。',
+            ],
+            'download_heading': '下载建议',
+            'download_headers': ('你的电脑', '直接下载这个'),
+            'why_heading': '这一版为什么值得先测',
+            'why': [
+                'ReadBoard 同步恢复、候选点预览、批量分析和 TensorRT 推荐逻辑都属于高频真实使用路径。',
+                '本版感谢并合并社区贡献，同时补上发布包依赖版本，避免“代码修了但包里工具没跟上”。',
+                '发布前已跑全量测试、专项测试、打包，并在本机真实启动应用做 UI 冒烟。',
+            ],
+            'contact_heading': '交流',
+            'contact': ['QQ 群：`299419120`'],
+        },
+        {
+            'language': '繁體中文',
+            'labels': 'zh_hant',
+            'intro': (
+                '這是 `LizzieYzy Next` 的 2026-05-30 預覽版，重點是合併社群 PR 並修復同步、分析與預覽互動。'
+                '特別感謝 @semanym 與 @qiyi71w 的持續貢獻：這一版補強 ReadBoard 落子失敗後的恢復、批量閃電分析設定、'
+                '候選點表預覽清理，以及 TensorRT 一鍵設定的 NVIDIA GPU 偵測。'
+            ),
+            'updates_heading': '本版主要更新',
+            'updates': [
+                '合併 PR #34：修復 ReadBoard 錯點/漏點後本地引擎與遠端棋盤不同步的問題。',
+                'Windows 發布包內建 readboard 固定升級到 `qiyi71w/readboard v3.0.6`，匹配新的同步恢復協議。',
+                '合併 PR #33：完善批量閃電分析設定與啟動體驗，讓批量分析入口更穩。',
+                '合併 PR #35：修復候選點表預覽狀態洩漏，滑鼠回到棋盤候選點或點擊變化圖節點時會清理舊 PV 預覽。',
+                '合併 PR #31：KataGo 一鍵設定新增 NVIDIA GPU / Compute Capability 偵測，TensorRT 仍為軟體內按需安裝，不進入巨大 release 包。',
+                'Windows 免安裝包繼續保持自包含資料目錄，解壓即用，設定和 TensorRT 下載資料優先留在解壓目錄內。',
+            ],
+            'before_heading': '下載前先看這幾句',
+            'before': [
+                f'Windows 一般使用者優先下載 {assets_cn["windows_opencl_portable"]}，這是 **OpenCL 版（推薦，免安裝）**。',
+                f'如果 OpenCL 在你的電腦上不穩定，再改用 {assets_cn["windows_portable"]}。',
+                f'如果你的電腦是 **NVIDIA 顯示卡**，優先下載 {assets_cn["windows_nvidia_portable"]}；RTX 5070/5080/5090 可優先試 RTX 50 CUDA 版。',
+                'TensorRT 不再作為巨大 GitHub Release 包發布；需要時到軟體內 `KataGo 一鍵設定` 按需安裝。',
+                f'整合包繼續內建 KataGo `{katago_version}` 和預設權重 `{model_source}`。',
+            ],
+            'download_heading': '下載建議',
+            'download_headers': ('你的電腦', '直接下載這個'),
+            'why_heading': '這一版為什麼值得先測',
+            'why': [
+                'ReadBoard 同步恢復、候選點預覽、批量分析和 TensorRT 推薦邏輯都屬於高頻真實使用路徑。',
+                '本版感謝並合併社群貢獻，同時補上發布包依賴版本，避免「程式修了但包裡工具沒跟上」。',
+                '發布前已跑完整測試、專項測試、打包，並在本機真實啟動應用做 UI 冒煙。',
+            ],
+            'contact_heading': '交流',
+            'contact': ['QQ 群：`299419120`'],
+        },
+        {
+            'language': 'English',
+            'labels': 'en',
+            'intro': (
+                'This is the 2026-05-30 preview build of `LizzieYzy Next`, focused on community PRs and sync, analysis, and preview stability. '
+                'Special thanks to @semanym and @qiyi71w for the continued work: this release improves ReadBoard recovery after failed local moves, '
+                'batch lightning analysis settings, candidate-table preview cleanup, and NVIDIA GPU detection for TensorRT auto setup.'
+            ),
+            'updates_heading': 'Release Highlights',
+            'updates': [
+                'Merged PR #34: fixes ReadBoard desync after wrong/missed local placements.',
+                'Pinned the bundled Windows readboard to `qiyi71w/readboard v3.0.6`, matching the new sync recovery protocol.',
+                'Merged PR #33: improves batch lightning analysis settings and startup experience.',
+                'Merged PR #35: clears stale candidate-table PV preview when returning to board candidates or clicking variation-tree nodes.',
+                'Merged PR #31: adds NVIDIA GPU / Compute Capability detection to KataGo Auto Setup while keeping TensorRT as an optional in-app install, not a huge release asset.',
+                'Keeps Windows portable builds self-contained, with config and TensorRT download data staying inside the extracted folder first.',
+            ],
+            'before_heading': 'Read Before Downloading',
+            'before': [
+                f'Most Windows users should download {assets["windows_opencl_portable"]}, the **recommended no-install OpenCL build**.',
+                f'If OpenCL is unreliable on your PC, use {assets["windows_portable"]} instead.',
+                f'If your PC has an **NVIDIA GPU**, try {assets["windows_nvidia_portable"]}; RTX 5070/5080/5090 users can try the RTX 50 CUDA build first.',
+                'TensorRT is no longer shipped as a giant GitHub Release package; install it on demand from the in-app `KataGo Auto Setup` when needed.',
+                f'The bundled packages continue to include KataGo `{katago_version}` and default weight `{model_source}`.',
+            ],
+            'download_heading': 'Download Guide',
+            'download_headers': ('Your computer', 'Download this file'),
+            'why_heading': 'Why This Preview Is Worth Testing',
+            'why': [
+                'ReadBoard recovery, candidate previews, batch analysis, and TensorRT recommendations are all frequent real-world paths.',
+                'This preview merges community fixes and updates the packaged dependency version so the release assets match the code.',
+                'Before publishing, full tests, targeted tests, packaging, and a real local UI launch smoke test were rerun.',
+            ],
+            'contact_heading': 'Contact',
+            'contact': ['QQ group: `299419120`'],
+        },
+        {
+            'language': '日本語',
+            'labels': 'ja',
+            'intro': (
+                'これは `LizzieYzy Next` の 2026-05-30 プレビュー版です。コミュニティ PR を取り込み、同期・分析・プレビュー操作の安定性を高めました。'
+                '@semanym さんと @qiyi71w さんの継続的な貢献に感謝します。この版では ReadBoard の失敗手後の復旧、'
+                'batch lightning analysis 設定、候補手表のプレビュー解除、TensorRT 自動設定向け NVIDIA GPU 検出を改善しています。'
+            ),
+            'updates_heading': '主な更新',
+            'updates': [
+                'PR #34 をマージ：ReadBoard で誤クリック/漏れた着手の後にローカルエンジンと遠隔碁盤がずれる問題を修正。',
+                'Windows 同梱 readboard を `qiyi71w/readboard v3.0.6` に固定し、新しい同期復旧プロトコルに合わせました。',
+                'PR #33 をマージ：batch lightning analysis の設定と開始体験を改善。',
+                'PR #35 をマージ：候補手表の古い PV プレビューが残る問題を修正。',
+                'PR #31 をマージ：KataGo 自動設定に NVIDIA GPU / Compute Capability 検出を追加。TensorRT は巨大な release asset ではなく、アプリ内の任意インストールのままです。',
+                'Windows portable build は引き続き自己完結型で、設定と TensorRT ダウンロードデータは展開フォルダ内を優先します。',
+            ],
+            'before_heading': 'ダウンロード前に',
+            'before': [
+                f'多くの Windows ユーザーには {assets["windows_opencl_portable"]}、つまり **OpenCL 推奨・インストール不要版** をおすすめします。',
+                f'OpenCL が不安定な場合は {assets["windows_portable"]} を使ってください。',
+                f'**NVIDIA GPU** 搭載 PC では {assets["windows_nvidia_portable"]} を試してください。RTX 5070/5080/5090 は RTX 50 CUDA 版も候補です。',
+                'TensorRT は巨大な GitHub Release パッケージとして配布しません。必要な場合はアプリ内の `KataGo 自動設定` から任意でインストールしてください。',
+                f'同梱パッケージには KataGo `{katago_version}` と既定の重み `{model_source}` が含まれます。',
+            ],
+            'download_heading': 'ダウンロード案内',
+            'download_headers': ('環境', 'ダウンロードするファイル'),
+            'why_heading': 'このプレビューを試す理由',
+            'why': [
+                'ReadBoard 復旧、候補手プレビュー、batch analysis、TensorRT 推奨は、どれも実使用でよく通る経路です。',
+                'コミュニティ修正を取り込み、同梱依存のバージョンもコードに合わせました。',
+                '公開前に full test、targeted test、package、実機ローカル UI 起動 smoke を再実行しました。',
+            ],
+            'contact_heading': '連絡先',
+            'contact': ['QQ グループ：`299419120`'],
+        },
+        {
+            'language': '한국어',
+            'labels': 'ko',
+            'intro': (
+                '`LizzieYzy Next` 2026-05-30 프리뷰 빌드입니다. 커뮤니티 PR 을 반영하고 동기화, 분석, 미리보기 상호작용 안정성을 개선했습니다. '
+                '@semanym 님과 @qiyi71w 님의 지속적인 기여에 감사드립니다. 이번 릴리스는 ReadBoard 실패 착수 복구, '
+                'batch lightning analysis 설정, 후보수 표 미리보기 정리, TensorRT 자동 설정용 NVIDIA GPU 감지를 보강합니다.'
+            ),
+            'updates_heading': '주요 변경',
+            'updates': [
+                'PR #34 병합: ReadBoard 오착/누락 후 로컬 엔진과 원격 바둑판이 어긋나는 문제를 수정했습니다.',
+                'Windows 내장 readboard 를 `qiyi71w/readboard v3.0.6` 으로 고정해 새 동기화 복구 프로토콜과 맞췄습니다.',
+                'PR #33 병합: batch lightning analysis 설정과 시작 경험을 개선했습니다.',
+                'PR #35 병합: 후보수 표의 오래된 PV 미리보기 상태가 남는 문제를 정리했습니다.',
+                'PR #31 병합: KataGo Auto Setup 에 NVIDIA GPU / Compute Capability 감지를 추가했습니다. TensorRT 는 거대한 release asset 이 아니라 앱 안에서 선택 설치합니다.',
+                'Windows portable build 는 계속 self-contained 방식이며 설정과 TensorRT 다운로드 데이터는 우선 압축 해제 폴더 안에 둡니다.',
+            ],
+            'before_heading': '다운로드 전 안내',
+            'before': [
+                f'대부분의 Windows 사용자는 {assets["windows_opencl_portable"]}, 즉 **OpenCL 권장 무설치 빌드** 를 받으면 됩니다.',
+                f'OpenCL 이 불안정하면 {assets["windows_portable"]} 를 사용하세요.',
+                f'**NVIDIA GPU** PC 라면 {assets["windows_nvidia_portable"]} 를 먼저 시도하세요. RTX 5070/5080/5090 은 RTX 50 CUDA 빌드도 우선 후보입니다.',
+                'TensorRT 는 더 이상 거대한 GitHub Release 패키지로 배포하지 않습니다. 필요할 때 앱 안의 `KataGo Auto Setup` 에서 설치하세요.',
+                f'번들 패키지는 KataGo `{katago_version}` 와 기본 weight `{model_source}` 를 계속 포함합니다.',
+            ],
+            'download_heading': '다운로드 안내',
+            'download_headers': ('사용 환경', '받을 파일'),
+            'why_heading': '이 프리뷰를 테스트할 이유',
+            'why': [
+                'ReadBoard 복구, 후보수 미리보기, batch analysis, TensorRT 추천은 실제 사용에서 자주 거치는 경로입니다.',
+                '커뮤니티 수정과 패키지 의존성 버전을 함께 맞춰 코드와 릴리스 자산의 괴리를 줄였습니다.',
+                '공개 전 full test, targeted test, package, 실제 로컬 UI 실행 smoke 를 다시 수행했습니다.',
+            ],
+            'contact_heading': '연락',
+            'contact': ['QQ 그룹: `299419120`'],
+        },
+        {
+            'language': 'ภาษาไทย',
+            'labels': 'th',
+            'intro': (
+                'นี่คือ build preview วันที่ 2026-05-30 ของ `LizzieYzy Next` เน้นรวม PR จากชุมชนและปรับความเสถียรของ sync, analysis, และ preview interaction '
+                'ขอบคุณ @semanym และ @qiyi71w สำหรับการช่วยพัฒนาอย่างต่อเนื่อง รุ่นนี้ปรับปรุงการกู้คืน ReadBoard หลังวางหมากพลาด, '
+                'batch lightning analysis settings, การล้าง preview ในตาราง candidate, และการตรวจ NVIDIA GPU สำหรับ TensorRT auto setup'
+            ),
+            'updates_heading': 'สิ่งที่อัปเดต',
+            'updates': [
+                'Merge PR #34: แก้ ReadBoard desync หลังคลิกผิดหรือหมากจากเครื่องมือ sync ตกหล่น',
+                'Windows bundle pin readboard เป็น `qiyi71w/readboard v3.0.6` เพื่อให้ตรงกับ sync recovery protocol ใหม่',
+                'Merge PR #33: ปรับ batch lightning analysis settings และประสบการณ์ตอนเริ่มทำงาน',
+                'Merge PR #35: ล้าง PV preview เก่าจาก candidate table เมื่อกลับไป hover บนกระดานหรือคลิก variation tree',
+                'Merge PR #31: เพิ่ม NVIDIA GPU / Compute Capability detection ใน KataGo Auto Setup โดย TensorRT ยังเป็นการติดตั้งในแอปแบบ on-demand ไม่ใช่ release asset ขนาดใหญ่',
+                'Windows portable build ยังเป็น self-contained โดย config และข้อมูลดาวน์โหลด TensorRT จะอยู่ในโฟลเดอร์ที่แตกไฟล์ก่อน',
+            ],
+            'before_heading': 'อ่านก่อนดาวน์โหลด',
+            'before': [
+                f'ผู้ใช้ Windows ส่วนใหญ่ควรดาวน์โหลด {assets["windows_opencl_portable"]} ซึ่งเป็น **OpenCL build แบบไม่ต้องติดตั้งที่แนะนำ**',
+                f'ถ้า OpenCL ไม่เสถียรบนเครื่องของคุณ ให้ใช้ {assets["windows_portable"]}',
+                f'ถ้าเครื่องมี **NVIDIA GPU** ให้ลอง {assets["windows_nvidia_portable"]}; ผู้ใช้ RTX 5070/5080/5090 อาจลอง RTX 50 CUDA build ก่อน',
+                'TensorRT จะไม่ถูกปล่อยเป็น GitHub Release package ขนาดใหญ่อีกต่อไป เมื่อต้องการให้ติดตั้งจาก `KataGo Auto Setup` ในแอป',
+                f'Bundle ยังรวม KataGo `{katago_version}` และ default weight `{model_source}` ไว้ให้',
+            ],
+            'download_heading': 'คำแนะนำการดาวน์โหลด',
+            'download_headers': ('เครื่องของคุณ', 'ไฟล์ที่ควรดาวน์โหลด'),
+            'why_heading': 'ทำไม preview นี้น่าลอง',
+            'why': [
+                'ReadBoard recovery, candidate preview, batch analysis, และ TensorRT recommendation เป็น flow ที่ผู้ใช้เจอบ่อยจริง',
+                'รุ่นนี้รวม community fixes และอัปเดต dependency ที่อยู่ใน package ให้ตรงกับ code',
+                'ก่อน publish ได้รัน full test, targeted test, package และ real local UI launch smoke แล้ว',
+            ],
+            'contact_heading': 'ติดต่อ',
+            'contact': ['QQ group: `299419120`'],
+        },
+    ]
+    sections: list[dict[str, object]] = []
+    for block in localized_sections:
+        language = str(block['language'])
+        labels_key = str(block['labels'])
+        localized_assets = assets_cn if language in ('中文', '繁體中文') else assets
+        sections.append(
+            {
+                'language': language,
+                'intro': block['intro'],
+                'updates': {'heading': block['updates_heading'], 'items': block['updates']},
+                'before': {'heading': block['before_heading'], 'items': block['before']},
+                'download': {
+                    'heading': block['download_heading'],
+                    'headers': block['download_headers'],
+                    'rows': standard_download_rows(
+                        STANDARD_DOWNLOAD_LABELS[labels_key],
+                        localized_assets,
+                    ),
+                },
+                'why': {'heading': block['why_heading'], 'items': block['why']},
+                'contact': {'heading': block['contact_heading'], 'items': block['contact']},
+            }
+        )
+
+    add_nvidia50_download_rows(sections, assets_cn, assets)
+    validate_release_sections(sections)
+    return release_heading(release_tag) + '\n\n' + '\n\n---\n\n'.join(
+        render_language_section(section) for section in sections
+    ) + '\n'
+
+
 def build_release_notes(asset_map: dict[str, str | None], bundle: dict[str, str], repo: str, release_tag: str | None) -> str:
     if release_tag == 'next-2026-05-03.1':
         return build_next_2026_05_03_1_notes(asset_map, repo, release_tag)
@@ -2120,6 +2385,8 @@ def build_release_notes(asset_map: dict[str, str | None], bundle: dict[str, str]
         return build_next_2026_05_18_1_notes(asset_map, bundle, repo, release_tag)
     if release_tag == 'next-2026-05-26.1':
         return build_next_2026_05_26_1_notes(asset_map, bundle, repo, release_tag)
+    if release_tag == 'next-2026-05-30.1':
+        return build_next_2026_05_30_1_notes(asset_map, bundle, repo, release_tag)
 
     assets_cn = {
         key: format_asset(asset_map[key], repo, release_tag)
