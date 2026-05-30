@@ -205,13 +205,10 @@ class ReadBoardSyncDecisionTest {
           harness.board.placeForSyncCount,
           "fox move-number rebuild should replace the position statically instead of replaying history.");
       assertStaticSnapshotRootWithoutMarker(harness.board, target, 57, false);
-      assertEquals(
-          1,
-          harness.leelaz.sentCommands.size(),
-          "markerless snapshot rebuild should use one loadsgf.");
-      assertTrue(
-          harness.leelaz.sentCommands.get(0).startsWith("loadsgf "),
-          "markerless snapshot rebuild should restore the static board exactly.");
+      assertLoadSgfCommandCount(
+          harness.leelaz, 1, "markerless snapshot rebuild should use one loadsgf.");
+      assertHasLoadSgfCommand(
+          harness.leelaz, "markerless snapshot rebuild should restore the static board exactly.");
       assertTrue(
           harness.leelaz.playedMoves.isEmpty(),
           "exact snapshot restore should avoid replaying static stones as play commands.");
@@ -232,13 +229,10 @@ class ReadBoardSyncDecisionTest {
       harness.sync(snapshot(target, Optional.empty(), Stone.EMPTY));
 
       assertStaticSnapshotRootWithoutMarker(harness.board, target, 58, true);
-      assertEquals(
-          1,
-          harness.leelaz.sentCommands.size(),
-          "markerless snapshot rebuild should use one loadsgf.");
-      assertTrue(
-          harness.leelaz.sentCommands.get(0).startsWith("loadsgf "),
-          "markerless snapshot rebuild should restore the static board exactly.");
+      assertLoadSgfCommandCount(
+          harness.leelaz, 1, "markerless snapshot rebuild should use one loadsgf.");
+      assertHasLoadSgfCommand(
+          harness.leelaz, "markerless snapshot rebuild should restore the static board exactly.");
       assertTrue(
           harness.leelaz.playedMoves.isEmpty(),
           "exact snapshot restore should avoid replaying ordinary static stones as play commands.");
@@ -268,11 +262,9 @@ class ReadBoardSyncDecisionTest {
           harness.board.placeForSyncCount,
           "jumping to a remote fox move number should rebuild statically instead of stepping through missing history.");
       assertStaticSnapshotRootWithoutMarker(harness.board, target, 58, true);
-      assertEquals(
-          1, harness.leelaz.sentCommands.size(), "midgame jump rebuild should use one loadsgf.");
-      assertTrue(
-          harness.leelaz.sentCommands.get(0).startsWith("loadsgf "),
-          "midgame jump rebuild should land the target snapshot exactly.");
+      assertLoadSgfCommandCount(harness.leelaz, 1, "midgame jump rebuild should use one loadsgf.");
+      assertHasLoadSgfCommand(
+          harness.leelaz, "midgame jump rebuild should land the target snapshot exactly.");
       assertTrue(
           harness.leelaz.playedMoves.isEmpty(),
           "exact snapshot restore should avoid replaying the rebuilt static stones.");
@@ -1207,12 +1199,12 @@ class ReadBoardSyncDecisionTest {
           snapshotCodes,
           classifier.summarizeDelta(initial, snapshotCodes));
 
-      assertEquals(1, harness.leelaz.clearCount, "static rebuild should clear the engine board.");
-      assertEquals(
-          1, harness.leelaz.sentCommands.size(), "ordinary static rebuild should use one loadsgf.");
-      assertTrue(
-          harness.leelaz.sentCommands.get(0).startsWith("loadsgf "),
-          "ordinary static rebuild should restore the static board exactly.");
+      assertClearBoardCommandCount(
+          harness.leelaz, 1, "static rebuild should clear the engine board.");
+      assertLoadSgfCommandCount(
+          harness.leelaz, 1, "ordinary static rebuild should use one loadsgf.");
+      assertHasLoadSgfCommand(
+          harness.leelaz, "ordinary static rebuild should restore the static board exactly.");
       assertTrue(
           harness.leelaz.playedMoves.isEmpty(),
           "ordinary static rebuild should avoid replaying the snapshot stones as play commands.");
@@ -1239,17 +1231,15 @@ class ReadBoardSyncDecisionTest {
       harness.sync(snapshot(target, Optional.empty(), Stone.EMPTY));
 
       assertStaticSnapshotRootWithoutMarker(harness.board, target, 58, true);
-      assertEquals(1, harness.leelaz.clearCount, "snapshot rebuild should still clear the engine.");
+      assertClearBoardCommandCount(
+          harness.leelaz, 1, "snapshot rebuild should still clear the engine.");
       assertTrue(
           harness.leelaz.playedMoves.isEmpty(),
           "dead snapshot restore should avoid replaying static stones as play commands.");
-      assertEquals(
-          1,
-          harness.leelaz.sentCommands.size(),
-          "dead snapshot restore should use one exact loadsgf command.");
-      assertTrue(
-          harness.leelaz.sentCommands.get(0).startsWith("loadsgf "),
-          "dead snapshot restore should rebuild the static board through loadsgf.");
+      assertLoadSgfCommandCount(
+          harness.leelaz, 1, "dead snapshot restore should use one exact loadsgf command.");
+      assertHasLoadSgfCommand(
+          harness.leelaz, "dead snapshot restore should rebuild the static board through loadsgf.");
       assertTempFileEventuallyDeleted(
           harness.leelaz.lastLoadedSgf(),
           "exact snapshot restore should clean up the temporary SGF file.");
@@ -1566,9 +1556,9 @@ class ReadBoardSyncDecisionTest {
 
       harness.sync(snapshot(target, Optional.empty(), Stone.EMPTY));
 
-      assertEquals(
+      assertClearBoardCommandCount(
+          harness.leelaz,
           1,
-          harness.leelaz.clearCount,
           "the repeated conflicting frame should trigger one static engine rebuild.");
       assertArrayEquals(
           target,
@@ -1685,8 +1675,8 @@ class ReadBoardSyncDecisionTest {
               matchedNode.getData().lastMove,
               matchedNode.getData().lastMoveColor));
 
-      assertEquals(
-          1, harness.leelaz.clearCount, "repeated rollback frames should force one rebuild.");
+      assertClearBoardCommandCount(
+          harness.leelaz, 1, "repeated rollback frames should force one rebuild.");
       assertEquals(
           0,
           harness.board.placeForSyncCount,
@@ -2306,6 +2296,40 @@ class ReadBoardSyncDecisionTest {
       Thread.sleep(50L);
     }
     assertFalse(Files.exists(path), message);
+  }
+
+  private static void assertClearBoardCommandCount(
+      SnapshotTrackingLeelaz leelaz, int expected, String message) {
+    assertEquals(expected, countCommands(leelaz, "clear_board"), message);
+  }
+
+  private static void assertLoadSgfCommandCount(
+      SnapshotTrackingLeelaz leelaz, int expected, String message) {
+    assertEquals(expected, countCommandsStartingWith(leelaz, "loadsgf "), message);
+  }
+
+  private static void assertHasLoadSgfCommand(SnapshotTrackingLeelaz leelaz, String message) {
+    assertTrue(countCommandsStartingWith(leelaz, "loadsgf ") > 0, message);
+  }
+
+  private static int countCommands(SnapshotTrackingLeelaz leelaz, String expectedCommand) {
+    int count = 0;
+    for (String command : leelaz.sentCommands) {
+      if (expectedCommand.equals(command)) {
+        count++;
+      }
+    }
+    return count;
+  }
+
+  private static int countCommandsStartingWith(SnapshotTrackingLeelaz leelaz, String prefix) {
+    int count = 0;
+    for (String command : leelaz.sentCommands) {
+      if (command.startsWith(prefix)) {
+        count++;
+      }
+    }
+    return count;
   }
 
   private static BoardData createFixtureData(
