@@ -2,6 +2,8 @@ package featurecat.lizzie.gui;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import featurecat.lizzie.Config;
@@ -186,8 +188,8 @@ class MoveOnlyUiGateTest {
       assertEquals(-1, frame.clickOrder);
       assertEquals(-1, frame.selectedorder);
       assertEquals(-1, frame.currentRow);
-      assertEquals(LizzieFrame.outOfBoundCoordinate, frame.suggestionclick);
-      assertEquals(LizzieFrame.outOfBoundCoordinate, frame.mouseOverCoordinate);
+      assertSame(LizzieFrame.outOfBoundCoordinate, frame.suggestionclick);
+      assertSame(LizzieFrame.outOfBoundCoordinate, frame.mouseOverCoordinate);
       assertFalse(frame.isMouseOver);
     } finally {
       env.close();
@@ -214,17 +216,14 @@ class MoveOnlyUiGateTest {
 
     renderer.clearBranch();
 
+    Object emptyImage = getField(BoardRenderer.class, null, "emptyImage");
     assertFalse(renderer.isShowingBranch());
     assertFalse(((Optional<?>) getField(BoardRenderer.class, renderer, "branchOpt")).isPresent());
     assertFalse(
         ((Optional<?>) getField(BoardRenderer.class, renderer, "variationOpt")).isPresent());
-    assertEquals(
-        1,
-        ((BufferedImage) getField(BoardRenderer.class, renderer, "branchStonesImage")).getWidth());
-    assertEquals(
-        1,
-        ((BufferedImage) getField(BoardRenderer.class, renderer, "branchStonesShadowImage"))
-            .getWidth());
+    assertNull(getField(BoardRenderer.class, renderer, "mouseOverTemp"));
+    assertSame(emptyImage, getField(BoardRenderer.class, renderer, "branchStonesImage"));
+    assertSame(emptyImage, getField(BoardRenderer.class, renderer, "branchStonesShadowImage"));
   }
 
   @Test
