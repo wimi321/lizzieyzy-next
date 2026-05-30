@@ -12642,30 +12642,93 @@ public class LizzieFrame extends JFrame {
       Lizzie.config.analysisRecentIsPartGame = isAllGame;
       Lizzie.config.analysisRecentIsAllBranches = isAllBranches;
     }
-    if (analysisEngine == null
+    if (needsNewFlashAnalysisEngine()) {
+      startFlashAnalyzeGameWithNewEngine(isAllGame, isAllBranches, silentAnalyze);
+    } else {
+      startFlashAnalyzeRequestsInBackground(
+          analysisEngine, isAllGame, isAllBranches, silentAnalyze);
+    }
+  }
+
+  private boolean needsNewFlashAnalysisEngine() {
+    return analysisEngine == null
         || analysisEngine.useJavaSSH && analysisEngine.javaSSHClosed
         || (!analysisEngine.useJavaSSH
-            && (analysisEngine.process == null || !analysisEngine.process.isAlive()))) {
-      try {
-        analysisEngine = new AnalysisEngine(false);
-        if (isAllBranches) analysisEngine.startRequestAllBranches(!silentAnalyze);
-        else
-          analysisEngine.startRequest(
-              isAllGame ? -1 : Lizzie.config.analysisStartMove,
-              isAllGame ? -1 : Lizzie.config.analysisEndMove,
-              !silentAnalyze);
-      } catch (IOException e) {
-        // TODO Auto-generated catch block
-        e.printStackTrace();
-      }
-    } else {
-      if (isAllBranches) analysisEngine.startRequestAllBranches(!silentAnalyze);
-      else
-        analysisEngine.startRequest(
-            isAllGame ? -1 : Lizzie.config.analysisStartMove,
-            isAllGame ? -1 : Lizzie.config.analysisEndMove,
-            !silentAnalyze);
+            && (analysisEngine.process == null || !analysisEngine.process.isAlive()));
+  }
+
+  private void startFlashAnalyzeGameWithNewEngine(
+      boolean isAllGame, boolean isAllBranches, boolean silentAnalyze) {
+    WaitForAnalysis loadingFrame = null;
+    if (!silentAnalyze) {
+      loadingFrame = createFlashAnalysisLoadingFrame();
     }
+    WaitForAnalysis waitFrame = loadingFrame;
+    Thread starter =
+        new Thread(
+            () -> {
+              try {
+                AnalysisEngine newAnalysisEngine = new AnalysisEngine(false);
+                newAnalysisEngine.waitFrame = waitFrame;
+                SwingUtilities.invokeLater(
+                    () -> {
+                      analysisEngine = newAnalysisEngine;
+                      if (!newAnalysisEngine.isLoaded()) {
+                        if (waitFrame != null) waitFrame.setVisible(false);
+                      } else {
+                        startFlashAnalyzeRequestsInBackground(
+                            newAnalysisEngine, isAllGame, isAllBranches, silentAnalyze);
+                      }
+                    });
+              } catch (IOException e) {
+                e.printStackTrace();
+                SwingUtilities.invokeLater(
+                    () -> {
+                      if (waitFrame != null) waitFrame.setVisible(false);
+                      Utils.showMsg(
+                          Lizzie.resourceBundle.getString("Leelaz.engineFailed")
+                              + ": "
+                              + e.getLocalizedMessage());
+                    });
+              }
+            },
+            "flash-analysis-engine-starter");
+    starter.setDaemon(true);
+    starter.start();
+    if (waitFrame != null) {
+      waitFrame.setVisible(true);
+    }
+  }
+
+  private void startFlashAnalyzeRequestsInBackground(
+      AnalysisEngine targetEngine,
+      boolean isAllGame,
+      boolean isAllBranches,
+      boolean silentAnalyze) {
+    if (!silentAnalyze && targetEngine.waitFrame == null) {
+      targetEngine.waitFrame = createFlashAnalysisLoadingFrame();
+      targetEngine.waitFrame.setVisible(true);
+    }
+    Thread requestSender =
+        new Thread(
+            () -> {
+              if (isAllBranches) targetEngine.startRequestAllBranches(!silentAnalyze);
+              else
+                targetEngine.startRequest(
+                    isAllGame ? -1 : Lizzie.config.analysisStartMove,
+                    isAllGame ? -1 : Lizzie.config.analysisEndMove,
+                    !silentAnalyze);
+            },
+            "flash-analysis-request-sender");
+    requestSender.setDaemon(true);
+    requestSender.start();
+  }
+
+  private WaitForAnalysis createFlashAnalysisLoadingFrame() {
+    WaitForAnalysis loadingFrame = new WaitForAnalysis();
+    loadingFrame.setLoadingProgress();
+    loadingFrame.setLocationRelativeTo(this);
+    return loadingFrame;
   }
 
   public void flashAnalyzePart() {

@@ -11,9 +11,10 @@ import javax.swing.SwingConstants;
 
 public class WaitForAnalysis extends JDialog {
   private JLabel lblAnalsisProgress;
+  private boolean disabledOwnerFrame;
 
   public WaitForAnalysis() {
-    this.setModal(true);
+    this.setModal(false);
     setResizable(false);
     this.setAlwaysOnTop(Lizzie.frame.isAlwaysOnTop());
     setDefaultCloseOperation(JDialog.DO_NOTHING_ON_CLOSE);
@@ -34,19 +35,18 @@ public class WaitForAnalysis extends JDialog {
     //    lblNotice.setBounds(10, 30, 289, 15);
     //    getContentPane().add(lblNotice);
 
-    JButton btnSettings =
-        new JButton(Lizzie.resourceBundle.getString("WaitForAnalysis.btnSettings")); // ("设置");
-    btnSettings.setFocusable(false);
-    btnSettings.setMargin(new Insets(0, 0, 0, 0));
-    btnSettings.addActionListener(
+    JButton btnGtpConsole =
+        new JButton(Lizzie.resourceBundle.getString("WaitForAnalysis.btnGtpConsole"));
+    btnGtpConsole.setFocusable(false);
+    btnGtpConsole.addActionListener(
         new ActionListener() {
           public void actionPerformed(ActionEvent e) {
-            AnalysisSettings analysisSettings = new AnalysisSettings(true, false);
-            analysisSettings.setVisible(true);
+            Lizzie.frame.toggleGtpConsole();
           }
         });
-    btnSettings.setBounds(225, 29, 73, 22);
-    getContentPane().add(btnSettings);
+    btnGtpConsole.setMargin(new Insets(0, 0, 0, 0));
+    btnGtpConsole.setBounds(225, 29, 73, 22);
+    getContentPane().add(btnGtpConsole);
 
     JButton btnHide =
         new JButton(Lizzie.resourceBundle.getString("WaitForAnalysis.btnHide")); // ("隐藏界面");
@@ -77,7 +77,50 @@ public class WaitForAnalysis extends JDialog {
     getContentPane().add(btnCancel);
   }
 
+  @Override
+  public void setVisible(boolean visible) {
+    if (visible) {
+      disableOwnerFrame();
+    } else {
+      restoreOwnerFrame();
+    }
+    super.setVisible(visible);
+  }
+
+  @Override
+  public void dispose() {
+    restoreOwnerFrame();
+    super.dispose();
+  }
+
+  private void disableOwnerFrame() {
+    if (!disabledOwnerFrame && Lizzie.frame != null && Lizzie.frame.isEnabled()) {
+      Lizzie.frame.setEnabled(false);
+      disabledOwnerFrame = true;
+    }
+  }
+
+  private void restoreOwnerFrame() {
+    if (disabledOwnerFrame && Lizzie.frame != null) {
+      Lizzie.frame.setEnabled(true);
+      disabledOwnerFrame = false;
+    }
+  }
+
+  public void setLoadingProgress() {
+    if (!javax.swing.SwingUtilities.isEventDispatchThread()) {
+      javax.swing.SwingUtilities.invokeLater(this::setLoadingProgress);
+      return;
+    }
+    lblAnalsisProgress.setText(
+        Lizzie.resourceBundle.getString("WaitForAnalysis.lblAnalsisProgress"));
+  }
+
   public void setProgress(int curMove, int allMove) {
+    if (!javax.swing.SwingUtilities.isEventDispatchThread()) {
+      javax.swing.SwingUtilities.invokeLater(() -> setProgress(curMove, allMove));
+      return;
+    }
     if (curMove == allMove) {
       setDefaultCloseOperation(JDialog.HIDE_ON_CLOSE);
       lblAnalsisProgress.setText(
@@ -85,29 +128,14 @@ public class WaitForAnalysis extends JDialog {
       setTitle(Lizzie.resourceBundle.getString("AnalysisEngine.analyzeComplete"));
       if (Lizzie.frame.isBatchAnalysisMode) {
         setVisible(false);
-        new Thread() {
-          public void run() {
-            try {
-              Thread.sleep(300);
-            } catch (InterruptedException e) {
-              // TODO Auto-generated catch block
-              e.printStackTrace();
-            }
-            Lizzie.frame.flashAutoAnaSaveAndLoad();
-          }
-        }.start();
+        javax.swing.Timer batchTimer =
+            new javax.swing.Timer(300, e -> Lizzie.frame.flashAutoAnaSaveAndLoad());
+        batchTimer.setRepeats(false);
+        batchTimer.start();
       } else {
-        new Thread() {
-          public void run() {
-            try {
-              Thread.sleep(1000);
-            } catch (InterruptedException e) {
-              // TODO Auto-generated catch block
-              e.printStackTrace();
-            }
-            setVisible(false);
-          }
-        }.start();
+        javax.swing.Timer closeTimer = new javax.swing.Timer(1000, e -> setVisible(false));
+        closeTimer.setRepeats(false);
+        closeTimer.start();
       }
     } else {
       lblAnalsisProgress.setText(

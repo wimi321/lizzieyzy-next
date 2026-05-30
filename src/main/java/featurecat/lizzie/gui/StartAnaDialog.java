@@ -262,14 +262,33 @@ public class StartAnaDialog extends JDialog {
 
     int center = GridBagConstraints.CENTER;
     int both = GridBagConstraints.BOTH;
+    if (isAnalysisMode) {
+      JFontButton settingsButton = new JFontButton();
+      settingsButton.setText(Lizzie.resourceBundle.getString("WaitForAnalysis.btnSettings"));
+      settingsButton.addActionListener(e -> openFlashAnalysisSettings());
+      buttonBar.add(
+          settingsButton,
+          new GridBagConstraints(1, 0, 1, 1, 0.0, 0.0, center, both, new Insets(0, 0, 0, 0), 0, 0));
+    }
     buttonBar.add(
         okButton,
-        new GridBagConstraints(1, 0, 1, 1, 0.0, 0.0, center, both, new Insets(0, 0, 0, 0), 0, 0));
+        new GridBagConstraints(
+            isAnalysisMode ? 2 : 1, 0, 1, 1, 0.0, 0.0, center, both, new Insets(0, 0, 0, 0), 0, 0));
     buttonBar.add(
         stopButton,
-        new GridBagConstraints(2, 0, 1, 1, 0.0, 0.0, center, both, new Insets(0, 0, 0, 0), 0, 0));
+        new GridBagConstraints(
+            isAnalysisMode ? 3 : 2, 0, 1, 1, 0.0, 0.0, center, both, new Insets(0, 0, 0, 0), 0, 0));
 
     dialogPane.add(buttonBar, BorderLayout.SOUTH);
+  }
+
+  private void openFlashAnalysisSettings() {
+    AnalysisSettings analysisSettings =
+        new AnalysisSettings(false, false, AnalysisSettings.Context.BATCH);
+    analysisSettings.setVisible(true);
+    if (txtAnalysisPlayouts != null) {
+      txtAnalysisPlayouts.setText(String.valueOf(Lizzie.config.batchAnalysisPlayouts));
+    }
   }
 
   public void stop() {

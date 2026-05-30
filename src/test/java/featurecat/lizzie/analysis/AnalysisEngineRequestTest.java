@@ -106,6 +106,43 @@ class AnalysisEngineRequestTest {
   }
 
   @Test
+  void failedSendRequestDoesNotLeavePendingAnalysis() throws Exception {
+    try (TestEnvironment env = TestEnvironment.open()) {
+      BoardHistoryList history = new BoardHistoryList(BoardData.empty(BOARD_SIZE, BOARD_SIZE));
+      history.add(
+          moveNode(stones(placement(0, 0, Stone.BLACK)), new int[] {0, 0}, Stone.BLACK, false, 1));
+      boardWithHistory(history);
+      TrackingAnalysisEngine engine = TrackingAnalysisEngine.create();
+      engine.failSends = true;
+
+      engine.sendRequest(history.getCurrentHistoryNode());
+
+      assertEquals(0, engine.pendingRequestCount());
+      assertFalse(engine.isAnalysisInProgress());
+    }
+  }
+
+  @Test
+  void failedBatchRequestDoesNotAdvanceToNextFile() throws Exception {
+    try (TestEnvironment env = TestEnvironment.open()) {
+      BoardHistoryList history = new BoardHistoryList(BoardData.empty(BOARD_SIZE, BOARD_SIZE));
+      history.add(
+          moveNode(stones(placement(0, 0, Stone.BLACK)), new int[] {0, 0}, Stone.BLACK, false, 1));
+      boardWithHistory(history);
+      TrackingLizzieFrame frame = (TrackingLizzieFrame) Lizzie.frame;
+      frame.isBatchAnalysisMode = true;
+      TrackingAnalysisEngine engine = TrackingAnalysisEngine.create();
+      engine.failSends = true;
+
+      engine.startRequest(1, -1, false);
+
+      assertEquals(0, frame.flashAutoAnaSaveAndLoadCalls);
+      assertEquals(0, engine.pendingRequestCount());
+      assertFalse(engine.isAnalysisInProgress());
+    }
+  }
+
+  @Test
   void startRequestCountsOnlyMoveAndPassNodesWhenSelectingRange() throws Exception {
     try (TestEnvironment env = TestEnvironment.open()) {
       BoardHistoryList history = new BoardHistoryList(BoardData.empty(BOARD_SIZE, BOARD_SIZE));
@@ -717,13 +754,17 @@ class AnalysisEngineRequestTest {
   }
 
   private static final class TrackingLizzieFrame extends LizzieFrame {
+    private int flashAutoAnaSaveAndLoadCalls;
+
     private TrackingLizzieFrame() {}
 
     @Override
     public void requestProblemListRefresh() {}
 
     @Override
-    public void flashAutoAnaSaveAndLoad() {}
+    public void flashAutoAnaSaveAndLoad() {
+      flashAutoAnaSaveAndLoadCalls++;
+    }
 
     @Override
     public void clearKataEstimate() {}
@@ -731,6 +772,7 @@ class AnalysisEngineRequestTest {
 
   private static final class TrackingAnalysisEngine extends AnalysisEngine {
     private List<String> sentCommands;
+    private boolean failSends;
 
     private TrackingAnalysisEngine() throws IOException {
       super(true);
@@ -750,8 +792,12 @@ class AnalysisEngineRequestTest {
     }
 
     @Override
-    public void sendCommand(String command) {
+    public boolean sendCommand(String command) {
+      if (failSends) {
+        return false;
+      }
       sentCommands.add(command);
+      return true;
     }
 
     private JSONObject singleRequest() {
@@ -761,6 +807,12 @@ class AnalysisEngineRequestTest {
 
     private int requestCount() {
       return sentCommands.size();
+    }
+
+    private int pendingRequestCount() throws Exception {
+      Field field = AnalysisEngine.class.getDeclaredField("analyzeMap");
+      field.setAccessible(true);
+      return ((java.util.Map<?, ?>) field.get(this)).size();
     }
   }
 
