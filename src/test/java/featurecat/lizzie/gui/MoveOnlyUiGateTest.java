@@ -139,6 +139,95 @@ class MoveOnlyUiGateTest {
   }
 
   @Test
+  void suggestionTablePreviewClearsWhenMouseReturnsToBoardCandidate() throws Exception {
+    TestEnvironment env = TestEnvironment.open();
+    try {
+      TrackingLizzieFrame frame = configuredFrame();
+      Lizzie.frame = frame;
+      Lizzie.board = boardWith(historyForCurrentNode(currentData()));
+      LizzieFrame.boardRenderer = new CoordinateBoardRenderer(new int[] {0, 1});
+      frame.clickOrder = 0;
+      frame.selectedorder = 0;
+      frame.currentRow = 0;
+      frame.suggestionclick = new int[] {1, 0};
+      frame.mouseOverCoordinate = LizzieFrame.outOfBoundCoordinate;
+      frame.isMouseOver = false;
+
+      frame.onMouseMoved(0, 0);
+
+      assertEquals(-1, frame.clickOrder, "board hover should exit table-preview lock.");
+      assertEquals(-1, frame.selectedorder, "board hover should clear selected suggestion row.");
+      assertEquals(-1, frame.currentRow, "board hover should clear current suggestion row.");
+      assertTrue(frame.isMouseOver, "board hover should activate the hovered candidate preview.");
+      assertEquals(
+          0, frame.mouseOverCoordinate[0], "hovered candidate x should replace old preview.");
+      assertEquals(
+          1, frame.mouseOverCoordinate[1], "hovered candidate y should replace old preview.");
+    } finally {
+      env.close();
+    }
+  }
+
+  @Test
+  void clearSuggestionTablePreviewClearsLockedSuggestionState() throws Exception {
+    TestEnvironment env = TestEnvironment.open();
+    try {
+      TrackingLizzieFrame frame = configuredFrame();
+      Lizzie.frame = frame;
+      frame.clickOrder = 2;
+      frame.selectedorder = 2;
+      frame.currentRow = 2;
+      frame.suggestionclick = new int[] {1, 1};
+      frame.mouseOverCoordinate = new int[] {1, 1};
+      frame.isMouseOver = true;
+
+      frame.clearSuggestionTablePreview();
+
+      assertEquals(-1, frame.clickOrder);
+      assertEquals(-1, frame.selectedorder);
+      assertEquals(-1, frame.currentRow);
+      assertEquals(LizzieFrame.outOfBoundCoordinate, frame.suggestionclick);
+      assertEquals(LizzieFrame.outOfBoundCoordinate, frame.mouseOverCoordinate);
+      assertFalse(frame.isMouseOver);
+    } finally {
+      env.close();
+    }
+  }
+
+  @Test
+  void boardRendererClearBranchDropsStaleBranchState() throws Exception {
+    BoardRenderer renderer = new BoardRenderer(false);
+    setField(BoardRenderer.class, renderer, "isShowingBranch", true);
+    setField(BoardRenderer.class, renderer, "branchOpt", Optional.of(new Object()));
+    setField(BoardRenderer.class, renderer, "variationOpt", Optional.of(List.of("A1")));
+    setField(BoardRenderer.class, renderer, "mouseOverTemp", bestMove(0, 1));
+    setField(
+        BoardRenderer.class,
+        renderer,
+        "branchStonesImage",
+        new BufferedImage(3, 3, BufferedImage.TYPE_INT_ARGB));
+    setField(
+        BoardRenderer.class,
+        renderer,
+        "branchStonesShadowImage",
+        new BufferedImage(3, 3, BufferedImage.TYPE_INT_ARGB));
+
+    renderer.clearBranch();
+
+    assertFalse(renderer.isShowingBranch());
+    assertFalse(((Optional<?>) getField(BoardRenderer.class, renderer, "branchOpt")).isPresent());
+    assertFalse(
+        ((Optional<?>) getField(BoardRenderer.class, renderer, "variationOpt")).isPresent());
+    assertEquals(
+        1,
+        ((BufferedImage) getField(BoardRenderer.class, renderer, "branchStonesImage")).getWidth());
+    assertEquals(
+        1,
+        ((BufferedImage) getField(BoardRenderer.class, renderer, "branchStonesShadowImage"))
+            .getWidth());
+  }
+
+  @Test
   void independentMainBoardBlunderHoverIgnoresSnapshotMarker() throws Exception {
     TestEnvironment env = TestEnvironment.open();
     try {
@@ -262,6 +351,19 @@ class MoveOnlyUiGateTest {
     Field field = target.getClass().getDeclaredField(name);
     field.setAccessible(true);
     field.setInt(target, value);
+  }
+
+  private static void setField(Class<?> owner, Object target, String name, Object value)
+      throws Exception {
+    Field field = owner.getDeclaredField(name);
+    field.setAccessible(true);
+    field.set(target, value);
+  }
+
+  private static Object getField(Class<?> owner, Object target, String name) throws Exception {
+    Field field = owner.getDeclaredField(name);
+    field.setAccessible(true);
+    return field.get(target);
   }
 
   private static BoardHistoryList historyWithNext(BoardData current, BoardData next) {

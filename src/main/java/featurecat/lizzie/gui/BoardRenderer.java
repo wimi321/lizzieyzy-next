@@ -4658,6 +4658,11 @@ public class BoardRenderer {
 
   public void clearBranch() {
     isShowingBranch = false;
+    branchOpt = Optional.empty();
+    variationOpt = Optional.empty();
+    mouseOverTemp = null;
+    branchStonesImage = emptyImage;
+    branchStonesShadowImage = emptyImage;
   }
 
   public boolean isInside(int x1, int y1) {

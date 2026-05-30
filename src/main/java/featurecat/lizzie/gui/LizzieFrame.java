@@ -2654,17 +2654,7 @@ public class LizzieFrame extends JFrame {
 
   public boolean openRightClickMenu(int x, int y) {
     if (Lizzie.frame.clickOrder != -1) {
-      Lizzie.frame.clickOrder = -1;
-      boardRenderer.startNormalBoard();
-      Lizzie.frame.suggestionclick = LizzieFrame.outOfBoundCoordinate;
-      Lizzie.frame.mouseOverCoordinate = LizzieFrame.outOfBoundCoordinate;
-      boardRenderer.clearBranch();
-      if (Lizzie.config.isDoubleEngineMode()) {
-        boardRenderer2.startNormalBoard();
-        boardRenderer2.clearBranch();
-      }
-      Lizzie.frame.selectedorder = -1;
-      Lizzie.frame.currentRow = -1;
+      clearSuggestionTablePreview();
       return true;
     }
     if (!Lizzie.config.showRightMenu && !isMouseOverSuggestions()) {
@@ -7236,11 +7226,14 @@ public class LizzieFrame extends JFrame {
         }
       }
     }
-    if (clickOrder != -1) {
-      return false;
-    }
     // mouseOverCoordinate = outOfBoundCoordinate;
     Optional<int[]> coords = boardRenderer.convertScreenToCoordinates(x, y);
+    if (clickOrder != -1) {
+      if (!coords.isPresent()) {
+        return false;
+      }
+      clearSuggestionTablePreview();
+    }
     boolean inBoard = coords.isPresent();
     if (inBoard) {
       int[] curCoords = coords.get();
@@ -7358,6 +7351,21 @@ public class LizzieFrame extends JFrame {
       boardRenderer2.startNormalBoard();
       boardRenderer2.clearBranch();
       boardRenderer2.notShowingBranch();
+    }
+  }
+
+  void clearSuggestionTablePreview() {
+    clickOrder = -1;
+    selectedorder = -1;
+    currentRow = -1;
+    suggestionclick = outOfBoundCoordinate;
+    mouseOverCoordinate = outOfBoundCoordinate;
+    isMouseOver = false;
+    boardRenderer.startNormalBoard();
+    boardRenderer.clearBranch();
+    if (Lizzie.config.isDoubleEngineMode()) {
+      boardRenderer2.startNormalBoard();
+      boardRenderer2.clearBranch();
     }
   }
 
