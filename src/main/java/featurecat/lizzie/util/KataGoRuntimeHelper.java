@@ -81,6 +81,8 @@ public final class KataGoRuntimeHelper {
   private static final String NVIDIA50_TRT_BACKEND = "nvidia50-trt";
   private static final String ENGINE_BACKEND_MARKER_NAME = "lizzieyzy-next-engine-backend.txt";
   private static final String NVIDIA_RUNTIME_ROOT = "nvidia-runtime";
+  private static final String NVIDIA_DOWNLOAD_HOST_COM = "developer.download.nvidia.com";
+  private static final String NVIDIA_DOWNLOAD_HOST_CN = "developer.download.nvidia.cn";
   private static final String BUNDLED_HOME_DATA_DIR = "katago-home";
   private static final String CUDA_MANIFEST_URL =
       "https://developer.download.nvidia.com/compute/cuda/redist/redistrib_12.1.1.json";
@@ -117,6 +119,10 @@ public final class KataGoRuntimeHelper {
   private static final long CUDA_12_8_NVJITLINK_SIZE_BYTES = 257312022L;
   private static final long CUDNN_9_SIZE_BYTES = 675349654L;
   private static final long TENSORRT_RUNTIME_SIZE_BYTES = 1845842538L;
+  private static final int TENSORRT_MIRROR_PROBE_BYTES = 512 * 1024;
+  private static final int TENSORRT_MIRROR_PROBE_CONNECT_TIMEOUT_MILLIS = 6000;
+  private static final int TENSORRT_MIRROR_PROBE_READ_TIMEOUT_MILLIS = 6000;
+  private static final int TENSORRT_MIRROR_PROBE_MAX_MILLIS = 8000;
   private static final Pattern BENCHMARK_RECOMMENDED_PATTERN =
       Pattern.compile("numSearchThreads\\s*=\\s*(\\d+):.*\\(recommended\\)");
   private static final Pattern BENCHMARK_CURRENT_PATTERN =
@@ -338,6 +344,28 @@ public final class KataGoRuntimeHelper {
     private String fileName() {
       int slash = url.lastIndexOf('/');
       return slash >= 0 ? url.substring(slash + 1) : key + ".zip";
+    }
+  }
+
+  static final class NvidiaMirrorProbeResult {
+    final String host;
+    final long bytesRead;
+    final long elapsedMillis;
+    final String errorMessage;
+
+    NvidiaMirrorProbeResult(String host, long bytesRead, long elapsedMillis, String errorMessage) {
+      this.host = host;
+      this.bytesRead = Math.max(0L, bytesRead);
+      this.elapsedMillis = Math.max(1L, elapsedMillis);
+      this.errorMessage = errorMessage;
+    }
+
+    boolean isUsable() {
+      return bytesRead > 0L && Utils.isBlank(errorMessage);
+    }
+
+    long bytesPerSecond() {
+      return isUsable() ? (bytesRead * 1000L) / elapsedMillis : 0L;
     }
   }
 
@@ -854,7 +882,9 @@ public final class KataGoRuntimeHelper {
             spec.katagoSha256,
             spec.katagoSizeBytes,
             "katago-tensorrt");
-    List<RuntimePackageSpec> runtimePackages = resolveTensorRtRuntimePackages();
+    String nvidiaDownloadHost =
+        chooseTensorRtNvidiaDownloadHost(activeSession, listener, spec.totalDownloadBytes);
+    List<RuntimePackageSpec> runtimePackages = resolveTensorRtRuntimePackages(nvidiaDownloadHost);
     long completedBytes = 0L;
 
     Path katagoArchive =
@@ -2838,39 +2868,161 @@ public final class KataGoRuntimeHelper {
     return packages;
   }
 
-  private static List<RuntimePackageSpec> resolveTensorRtRuntimePackages() throws IOException {
+  private static String chooseTensorRtNvidiaDownloadHost(
+      DownloadSession session, ProgressListener listener, long totalBytes) throws IOException {
+    if (Boolean.getBoolean(TENSORRT_SKIP_RUNTIME_FOR_TESTS_PROPERTY)) {
+      return NVIDIA_DOWNLOAD_HOST_COM;
+    }
+    notifyProgress(
+        listener,
+        resource("AutoSetup.tensorRtTestingMirrors", "Testing NVIDIA download mirrors..."),
+        0L,
+        totalBytes);
+    session.throwIfCancelled();
+    NvidiaMirrorProbeResult cnResult =
+        probeNvidiaDownloadMirror(NVIDIA_DOWNLOAD_HOST_CN, TENSORRT_RUNTIME_URL, session);
+    session.throwIfCancelled();
+    NvidiaMirrorProbeResult comResult =
+        probeNvidiaDownloadMirror(NVIDIA_DOWNLOAD_HOST_COM, TENSORRT_RUNTIME_URL, session);
+    session.throwIfCancelled();
+    return selectNvidiaDownloadHostFromProbes(cnResult, comResult);
+  }
+
+  private static NvidiaMirrorProbeResult probeNvidiaDownloadMirror(
+      String host, String url, DownloadSession session) throws IOException {
+    String probeUrl = mirrorNvidiaDownloadUrl(url, host);
+    HttpURLConnection conn = null;
+    long startedAt = System.nanoTime();
+    long bytesRead = 0L;
+    try {
+      conn = (HttpURLConnection) URI.create(probeUrl).toURL().openConnection();
+      session.attach(conn);
+      session.throwIfCancelled();
+      conn.setInstanceFollowRedirects(true);
+      conn.setRequestMethod("GET");
+      conn.setConnectTimeout(TENSORRT_MIRROR_PROBE_CONNECT_TIMEOUT_MILLIS);
+      conn.setReadTimeout(TENSORRT_MIRROR_PROBE_READ_TIMEOUT_MILLIS);
+      conn.setRequestProperty("User-Agent", USER_AGENT);
+      conn.setRequestProperty("Range", "bytes=0-" + (TENSORRT_MIRROR_PROBE_BYTES - 1));
+      int responseCode = conn.getResponseCode();
+      if (responseCode < 200 || responseCode >= 400) {
+        return failedNvidiaMirrorProbeResult(host, startedAt, "HTTP " + responseCode);
+      }
+      byte[] buffer = new byte[8192];
+      try (InputStream input = conn.getInputStream()) {
+        int read;
+        while (bytesRead < TENSORRT_MIRROR_PROBE_BYTES && (read = input.read(buffer)) >= 0) {
+          session.throwIfCancelled();
+          int accepted = (int) Math.min(read, (long) TENSORRT_MIRROR_PROBE_BYTES - bytesRead);
+          bytesRead += accepted;
+          if (elapsedMillisSince(startedAt) >= TENSORRT_MIRROR_PROBE_MAX_MILLIS) {
+            break;
+          }
+        }
+      }
+      return new NvidiaMirrorProbeResult(host, bytesRead, elapsedMillisSince(startedAt), null);
+    } catch (IOException e) {
+      if (session.isCancelled() || e instanceof DownloadCancelledException) {
+        throw e;
+      }
+      if (bytesRead > 0L) {
+        return new NvidiaMirrorProbeResult(host, bytesRead, elapsedMillisSince(startedAt), null);
+      }
+      return failedNvidiaMirrorProbeResult(host, startedAt, e.getClass().getSimpleName());
+    } finally {
+      if (conn != null) {
+        conn.disconnect();
+      }
+      session.clear();
+    }
+  }
+
+  private static NvidiaMirrorProbeResult failedNvidiaMirrorProbeResult(
+      String host, long startedAt, String errorMessage) {
+    return new NvidiaMirrorProbeResult(host, 0L, elapsedMillisSince(startedAt), errorMessage);
+  }
+
+  private static long elapsedMillisSince(long startedAtNanos) {
+    return Math.max(1L, (System.nanoTime() - startedAtNanos) / 1_000_000L);
+  }
+
+  static String selectNvidiaDownloadHostFromProbes(
+      NvidiaMirrorProbeResult cnResult, NvidiaMirrorProbeResult comResult) {
+    boolean cnUsable = cnResult != null && cnResult.isUsable();
+    boolean comUsable = comResult != null && comResult.isUsable();
+    if (cnUsable && comUsable) {
+      long cnWeightedSpeed = cnResult.bytesRead * comResult.elapsedMillis;
+      long comWeightedSpeed = comResult.bytesRead * cnResult.elapsedMillis;
+      return cnWeightedSpeed >= comWeightedSpeed
+          ? NVIDIA_DOWNLOAD_HOST_CN
+          : NVIDIA_DOWNLOAD_HOST_COM;
+    }
+    if (cnUsable) {
+      return NVIDIA_DOWNLOAD_HOST_CN;
+    }
+    if (comUsable) {
+      return NVIDIA_DOWNLOAD_HOST_COM;
+    }
+    return NVIDIA_DOWNLOAD_HOST_COM;
+  }
+
+  static String mirrorNvidiaDownloadUrl(String url, String host) {
+    if (Utils.isBlank(url) || Utils.isBlank(host)) {
+      return url;
+    }
+    URI uri;
+    try {
+      uri = URI.create(url);
+    } catch (IllegalArgumentException e) {
+      return url;
+    }
+    String currentHost = uri.getHost();
+    if (!NVIDIA_DOWNLOAD_HOST_COM.equalsIgnoreCase(currentHost)
+        && !NVIDIA_DOWNLOAD_HOST_CN.equalsIgnoreCase(currentHost)) {
+      return url;
+    }
+    try {
+      return new URI(
+              uri.getScheme(),
+              uri.getUserInfo(),
+              host,
+              uri.getPort(),
+              uri.getPath(),
+              uri.getQuery(),
+              uri.getFragment())
+          .toString();
+    } catch (Exception e) {
+      return url;
+    }
+  }
+
+  private static List<RuntimePackageSpec> resolveTensorRtRuntimePackages(String nvidiaDownloadHost)
+      throws IOException {
     if (Boolean.getBoolean(TENSORRT_SKIP_RUNTIME_FOR_TESTS_PROPERTY)) {
       return new ArrayList<RuntimePackageSpec>();
     }
+    String cudaManifestUrl = mirrorNvidiaDownloadUrl(CUDA_12_8_MANIFEST_URL, nvidiaDownloadHost);
+    String cudnnManifestUrl = mirrorNvidiaDownloadUrl(CUDNN_9_MANIFEST_URL, nvidiaDownloadHost);
     List<RuntimePackageSpec> packages = new ArrayList<RuntimePackageSpec>();
-    JSONObject cudaManifest = new JSONObject(httpGet(CUDA_12_8_MANIFEST_URL));
-    JSONObject cudnnManifest = new JSONObject(httpGet(CUDNN_9_MANIFEST_URL));
+    JSONObject cudaManifest = new JSONObject(httpGet(cudaManifestUrl));
+    JSONObject cudnnManifest = new JSONObject(httpGet(cudnnManifestUrl));
     packages.add(
         readPackageSpec(
-            cudaManifest, CUDA_12_8_MANIFEST_URL, "cuda_cudart", "windows-x86_64", "CUDA Runtime"));
+            cudaManifest, cudaManifestUrl, "cuda_cudart", "windows-x86_64", "CUDA Runtime"));
     packages.add(
         readPackageSpec(
-            cudaManifest, CUDA_12_8_MANIFEST_URL, "libcublas", "windows-x86_64", "CUDA cuBLAS"));
+            cudaManifest, cudaManifestUrl, "libcublas", "windows-x86_64", "CUDA cuBLAS"));
     packages.add(
         readPackageSpec(
-            cudaManifest,
-            CUDA_12_8_MANIFEST_URL,
-            "libnvjitlink",
-            "windows-x86_64",
-            "CUDA nvJitLink"));
+            cudaManifest, cudaManifestUrl, "libnvjitlink", "windows-x86_64", "CUDA nvJitLink"));
     packages.add(
         readNestedPackageSpec(
-            cudnnManifest,
-            CUDNN_9_MANIFEST_URL,
-            "cudnn",
-            "windows-x86_64",
-            "cuda12",
-            "NVIDIA cuDNN"));
+            cudnnManifest, cudnnManifestUrl, "cudnn", "windows-x86_64", "cuda12", "NVIDIA cuDNN"));
     packages.add(
         new RuntimePackageSpec(
             "NVIDIA TensorRT",
             "10.9.0.34",
-            TENSORRT_RUNTIME_URL,
+            mirrorNvidiaDownloadUrl(TENSORRT_RUNTIME_URL, nvidiaDownloadHost),
             System.getProperty(TENSORRT_RUNTIME_SHA256_PROPERTY, ""),
             TENSORRT_RUNTIME_SIZE_BYTES,
             "tensorrt"));

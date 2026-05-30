@@ -2399,6 +2399,267 @@ def build_next_2026_05_30_2_notes(
     return notes
 
 
+def build_next_2026_05_31_1_notes(
+    asset_map: dict[str, str | None],
+    bundle: dict[str, str],
+    repo: str,
+    release_tag: str | None,
+) -> str:
+    assets_cn = {key: format_asset(asset_map[key], repo, release_tag) for key in asset_map}
+    assets = {key: format_asset_en(asset_map[key], repo, release_tag) for key in asset_map}
+    katago_version = bundle['katago_version']
+    model_source = bundle['model_source']
+
+    localized_sections = [
+        {
+            'language': '中文',
+            'labels': 'zh',
+            'intro': (
+                '这是 TensorRT 下载体验修复版。TensorRT 仍然是应用内按需安装的 NVIDIA 后端加速方式；'
+                '本版重点解决国内下载 NVIDIA TensorRT/CUDA/cuDNN 运行库时速度不稳定的问题。'
+            ),
+            'updates_heading': '本版主要更新',
+            'updates': [
+                '安装 TensorRT 前会自动对 `developer.download.nvidia.cn` 和 `developer.download.nvidia.com` 做小分段测速，再选择当前网络更快的官方 NVIDIA 下载源。',
+                '测速只读取 TensorRT 官方运行库前 512 KiB 的 Range 数据，时间短、流量小，不会提前下载完整 1.8GB 大包。',
+                '测速胜出的域名会统一用于 CUDA 12.8、cuDNN 9 和 TensorRT 10.9 运行库下载；KataGo TensorRT 本体仍按原来的 GitHub 官方发布包下载。',
+                '任意一侧测速失败时会自动降级到可用的一侧；两侧都失败时保守回到 `.com`，避免安装流程卡死。',
+                '下载前新增“正在测速 NVIDIA 下载源...”进度提示，不要求用户理解代理、TUN 或 DIRECT 规则。',
+                '继续保留 SHA-256 / 文件大小校验，测速只决定下载域名，不降低包完整性检查标准。',
+            ],
+            'before_heading': '下载前先看这几句',
+            'before': [
+                f'主推荐整合包继续内置 KataGo `{katago_version}` 和默认权重 `{model_source}`。',
+                'Windows 普通用户优先下载 OpenCL 免安装版；NVIDIA 用户可下载 NVIDIA/RTX 50 CUDA 版，再在软件内按需安装 TensorRT。',
+                'TensorRT 不会作为巨大的 GitHub release asset 直接打包进安装包，仍然在一键设置中按需下载。',
+                '如果你的网络里 `.cn` 更快，安装器会自动选 `.cn`；如果 `.com` 更快，也会自动选 `.com`。',
+                '这版不要求用户手动配置 Clash、TUN 或代理规则，程序按实际下载速度自己判断。',
+            ],
+            'download_heading': '下载建议',
+            'download_headers': ('你的电脑', '直接下载这个'),
+            'why_heading': '这一版为什么值得更新',
+            'why': [
+                '国内用户点击安装 TensorRT 时，不再固定走单一 NVIDIA 下载域名，遇到慢源会自动换到更快的官方源。',
+                '测速发生在真正下载大运行库之前，能避免用户等了很久才发现当前域名很慢。',
+                '这次修改只影响 NVIDIA 官方运行库下载源选择，不改变模型名、权重显示、TensorRT 后端启用逻辑。',
+                '发布前已重新跑 TensorRT 相关单元测试、全量单元测试和 Maven package。',
+            ],
+            'contact_heading': '交流',
+            'contact': ['QQ 群：`299419120`'],
+        },
+        {
+            'language': '繁體中文',
+            'labels': 'zh_hant',
+            'intro': (
+                '這是 TensorRT 下載體驗修正版。TensorRT 仍然是應用程式內按需安裝的 NVIDIA 後端加速方式；'
+                '本版重點改善下載 NVIDIA TensorRT/CUDA/cuDNN 執行庫時速度不穩的問題。'
+            ),
+            'updates_heading': '本版主要更新',
+            'updates': [
+                '安裝 TensorRT 前會自動對 `developer.download.nvidia.cn` 和 `developer.download.nvidia.com` 做小分段測速，再選擇目前網路更快的官方 NVIDIA 下載源。',
+                '測速只讀取 TensorRT 官方執行庫前 512 KiB 的 Range 資料，時間短、流量小，不會提前下載完整 1.8GB 大包。',
+                '測速勝出的網域會統一用於 CUDA 12.8、cuDNN 9 和 TensorRT 10.9 執行庫下載；KataGo TensorRT 本體仍按原 GitHub 官方發布包下載。',
+                '任一側測速失敗時會自動降級到可用的一側；兩側都失敗時保守回到 `.com`，避免安裝流程卡住。',
+                '下載前新增「正在測速 NVIDIA 下載源...」進度提示，不要求使用者理解代理、TUN 或 DIRECT 規則。',
+                '繼續保留 SHA-256 / 檔案大小校驗，測速只決定下載網域，不降低完整性檢查標準。',
+            ],
+            'before_heading': '下載前先看這幾句',
+            'before': [
+                f'主推薦整合包繼續內建 KataGo `{katago_version}` 和預設權重 `{model_source}`。',
+                'Windows 一般使用者優先下載 OpenCL 免安裝版；NVIDIA 使用者可下載 NVIDIA/RTX 50 CUDA 版，再在軟體內按需安裝 TensorRT。',
+                'TensorRT 不會作為巨大的 GitHub release asset 直接打包進安裝包，仍然在一鍵設定中按需下載。',
+                '如果你的網路裡 `.cn` 更快，安裝器會自動選 `.cn`；如果 `.com` 更快，也會自動選 `.com`。',
+                '這版不要求使用者手動配置 Clash、TUN 或代理規則，程式會按實際下載速度自行判斷。',
+            ],
+            'download_heading': '下載建議',
+            'download_headers': ('你的電腦', '直接下載這個'),
+            'why_heading': '這一版為什麼值得更新',
+            'why': [
+                '下載 TensorRT 時不再固定走單一 NVIDIA 下載網域，遇到慢源會自動換到更快的官方源。',
+                '測速發生在真正下載大型執行庫之前，能避免等很久才發現目前網域很慢。',
+                '這次修改只影響 NVIDIA 官方執行庫下載源選擇，不改變模型名、權重顯示、TensorRT 後端啟用邏輯。',
+                '發布前已重新跑 TensorRT 相關單元測試、完整單元測試和 Maven package。',
+            ],
+            'contact_heading': '交流',
+            'contact': ['QQ 群：`299419120`'],
+        },
+        {
+            'language': 'English',
+            'labels': 'en',
+            'intro': (
+                'This is a TensorRT download-experience fix. TensorRT remains an optional in-app NVIDIA backend acceleration path; '
+                'this build improves the reliability of downloading the NVIDIA TensorRT/CUDA/cuDNN runtime packages.'
+            ),
+            'updates_heading': 'Release Highlights',
+            'updates': [
+                'Before installing TensorRT, the app now probes both `developer.download.nvidia.cn` and `developer.download.nvidia.com`, then chooses the faster official NVIDIA download host for the current network.',
+                'The probe reads only the first 512 KiB of the official TensorRT runtime via an HTTP Range request, so it is quick and does not pre-download the full 1.8GB package.',
+                'The winning host is reused for CUDA 12.8, cuDNN 9, and TensorRT 10.9 runtime downloads; the KataGo TensorRT binary still comes from its original GitHub release asset.',
+                'If one host fails, the installer falls back to the working host; if both fail, it conservatively falls back to `.com` instead of stalling.',
+                'A new “Testing NVIDIA download mirrors...” progress message appears before the large runtime downloads begin.',
+                'SHA-256 and size checks remain in place: the probe only chooses the host and does not weaken package integrity verification.',
+            ],
+            'before_heading': 'Read Before Downloading',
+            'before': [
+                f'The recommended bundles continue to include KataGo `{katago_version}` and the default weight `{model_source}`.',
+                'Most Windows users should start with the no-install OpenCL build; NVIDIA users can use the NVIDIA / RTX 50 CUDA builds and install TensorRT on demand inside the app.',
+                'TensorRT is not bundled as a giant GitHub release asset; it is still downloaded only when requested from KataGo Auto Setup.',
+                'If `.cn` is faster on your network, the installer chooses `.cn`; if `.com` is faster, it chooses `.com`.',
+                'Users do not need to configure Clash, TUN, proxy, or DIRECT rules for this release path.',
+            ],
+            'download_heading': 'Download Guide',
+            'download_headers': ('Your computer', 'Download this file'),
+            'why_heading': 'Why Update',
+            'why': [
+                'TensorRT installation no longer depends on one fixed NVIDIA download host, so slow routes can be avoided automatically.',
+                'The speed choice happens before the large runtime downloads, reducing the chance of waiting a long time on a bad host.',
+                'The change only affects NVIDIA runtime download host selection; model names, weight display, and TensorRT backend activation are unchanged.',
+                'Before release, TensorRT-focused tests, the full unit suite, and Maven package were rerun.',
+            ],
+            'contact_heading': 'Contact',
+            'contact': ['QQ group: `299419120`'],
+        },
+        {
+            'language': '日本語',
+            'labels': 'ja',
+            'intro': (
+                'これは TensorRT ダウンロード体験の修正版です。TensorRT は引き続きアプリ内で任意インストールする NVIDIA 高速化バックエンドであり、'
+                '本リリースでは NVIDIA TensorRT/CUDA/cuDNN ランタイムのダウンロード安定性を改善しました。'
+            ),
+            'updates_heading': '主な更新',
+            'updates': [
+                'TensorRT インストール前に `developer.download.nvidia.cn` と `developer.download.nvidia.com` の小さな分割ダウンロードを測定し、現在のネットワークで速い公式 NVIDIA ホストを選びます。',
+                '測定は公式 TensorRT ランタイム先頭 512 KiB だけを HTTP Range で読み取るため短時間で終わり、1.8GB 全体を事前ダウンロードしません。',
+                '選ばれたホストは CUDA 12.8、cuDNN 9、TensorRT 10.9 ランタイムのダウンロードに使われます。KataGo TensorRT 本体は従来どおり GitHub release asset から取得します。',
+                '片方のホストが失敗した場合は動作する側へ自動フォールバックし、両方失敗した場合は保守的に `.com` へ戻します。',
+                '大きなランタイムをダウンロードする前に “Testing NVIDIA download mirrors...” の進捗メッセージを表示します。',
+                'SHA-256 とサイズ検証は継続します。測定はホスト選択だけで、パッケージ完全性チェックは弱めません。',
+            ],
+            'before_heading': 'ダウンロード前に',
+            'before': [
+                f'推奨バンドルには引き続き KataGo `{katago_version}` と既定の重み `{model_source}` が含まれます。',
+                'Windows の多くのユーザーは OpenCL のインストール不要版から始めてください。NVIDIA ユーザーは NVIDIA / RTX 50 CUDA 版を使い、アプリ内で必要時に TensorRT をインストールできます。',
+                'TensorRT は巨大な GitHub release asset として同梱されず、KataGo 自動設定から必要時にだけダウンロードします。',
+                'あなたのネットワークで `.cn` が速ければ `.cn`、`.com` が速ければ `.com` を自動で選びます。',
+                'このリリースでは Clash、TUN、proxy、DIRECT ルールの手動設定は不要です。',
+            ],
+            'download_heading': 'ダウンロード案内',
+            'download_headers': ('お使いの環境', 'ダウンロードするファイル'),
+            'why_heading': '更新する理由',
+            'why': [
+                'TensorRT インストールが単一の NVIDIA ダウンロードホストに固定されず、遅い経路を自動で避けられます。',
+                '大きなランタイムを落とす前に速度を選ぶため、遅いホストで長時間待つ可能性を減らします。',
+                '変更対象は NVIDIA ランタイムのホスト選択のみで、モデル名、重み表示、TensorRT バックエンド有効化の挙動は変わりません。',
+                'リリース前に TensorRT 関連テスト、full unit suite、Maven package を再実行しました。',
+            ],
+            'contact_heading': '連絡先',
+            'contact': ['QQ グループ: `299419120`'],
+        },
+        {
+            'language': '한국어',
+            'labels': 'ko',
+            'intro': (
+                '이번 버전은 TensorRT 다운로드 경험을 고친 릴리스입니다. TensorRT 는 계속 앱 안에서 선택 설치하는 NVIDIA 백엔드 가속 경로이며, '
+                '이번 빌드는 NVIDIA TensorRT/CUDA/cuDNN 런타임 다운로드 안정성을 개선합니다.'
+            ),
+            'updates_heading': '주요 업데이트',
+            'updates': [
+                'TensorRT 설치 전에 `developer.download.nvidia.cn` 과 `developer.download.nvidia.com` 을 작은 Range 다운로드로 측정하고, 현재 네트워크에서 더 빠른 공식 NVIDIA 다운로드 호스트를 선택합니다.',
+                '측정은 공식 TensorRT 런타임의 처음 512 KiB 만 읽으므로 빠르게 끝나며, 1.8GB 전체 패키지를 미리 다운로드하지 않습니다.',
+                '선택된 호스트는 CUDA 12.8, cuDNN 9, TensorRT 10.9 런타임 다운로드에 함께 사용됩니다. KataGo TensorRT 본체는 기존 GitHub release asset 에서 받습니다.',
+                '한쪽 호스트가 실패하면 동작하는 쪽으로 자동 전환하고, 둘 다 실패하면 보수적으로 `.com` 으로 돌아가 설치 흐름이 멈추지 않게 합니다.',
+                '대형 런타임 다운로드 전에 “Testing NVIDIA download mirrors...” 진행 메시지를 표시합니다.',
+                'SHA-256 과 파일 크기 검증은 그대로 유지됩니다. 측정은 호스트 선택만 담당하며 패키지 무결성 기준은 낮추지 않습니다.',
+            ],
+            'before_heading': '다운로드 전 확인',
+            'before': [
+                f'추천 번들은 계속 KataGo `{katago_version}` 와 기본 가중치 `{model_source}` 를 포함합니다.',
+                '대부분의 Windows 사용자는 OpenCL 무설치 빌드부터 쓰면 됩니다. NVIDIA 사용자는 NVIDIA / RTX 50 CUDA 빌드에서 앱 안의 TensorRT 설치를 사용할 수 있습니다.',
+                'TensorRT 는 거대한 GitHub release asset 으로 포함되지 않고, KataGo 자동 설정에서 요청할 때만 다운로드됩니다.',
+                '내 네트워크에서 `.cn` 이 빠르면 `.cn`, `.com` 이 빠르면 `.com` 을 자동으로 선택합니다.',
+                '이 릴리스 경로에서는 Clash, TUN, proxy, DIRECT 규칙을 사용자가 직접 설정할 필요가 없습니다.',
+            ],
+            'download_heading': '다운로드 안내',
+            'download_headers': ('내 컴퓨터', '다운로드할 파일'),
+            'why_heading': '업데이트할 이유',
+            'why': [
+                'TensorRT 설치가 하나의 NVIDIA 다운로드 호스트에 고정되지 않아 느린 경로를 자동으로 피할 수 있습니다.',
+                '대형 런타임을 받기 전에 속도를 선택하므로 느린 호스트에서 오래 기다릴 가능성을 줄입니다.',
+                '이번 변경은 NVIDIA 런타임 다운로드 호스트 선택에만 영향을 주며, 모델명, 가중치 표시, TensorRT 백엔드 활성화는 바뀌지 않습니다.',
+                '릴리스 전에 TensorRT 관련 테스트, 전체 단위 테스트, Maven package 를 다시 수행했습니다.',
+            ],
+            'contact_heading': '연락처',
+            'contact': ['QQ 그룹: `299419120`'],
+        },
+        {
+            'language': 'ภาษาไทย',
+            'labels': 'th',
+            'intro': (
+                'รีลีสนี้แก้ประสบการณ์ดาวน์โหลด TensorRT โดย TensorRT ยังเป็น backend เร่งความเร็วของ NVIDIA ที่ติดตั้งจากในแอปเมื่อผู้ใช้ต้องการ '
+                'รุ่นนี้ปรับให้การดาวน์โหลด NVIDIA TensorRT/CUDA/cuDNN runtime เสถียรกว่าเดิม'
+            ),
+            'updates_heading': 'ไฮไลต์ของเวอร์ชันนี้',
+            'updates': [
+                'ก่อนติดตั้ง TensorRT แอปจะ probe ทั้ง `developer.download.nvidia.cn` และ `developer.download.nvidia.com` แล้วเลือก host ทางการของ NVIDIA ที่เร็วกว่าในเครือข่ายปัจจุบัน',
+                'การ probe อ่านแค่ 512 KiB แรกของ TensorRT runtime ทางการผ่าน HTTP Range จึงเร็วและไม่ดาวน์โหลดแพ็กเกจเต็ม 1.8GB ล่วงหน้า',
+                'host ที่ชนะจะถูกใช้กับ CUDA 12.8, cuDNN 9 และ TensorRT 10.9 runtime ส่วน KataGo TensorRT binary ยังดาวน์โหลดจาก GitHub release asset เดิม',
+                'ถ้า host ฝั่งหนึ่งล้มเหลว จะ fallback ไปอีกฝั่งที่ใช้ได้ ถ้าล้มเหลวทั้งคู่จะกลับไปใช้ `.com` แบบปลอดภัยเพื่อไม่ให้ขั้นตอนติดตั้งค้าง',
+                'เพิ่มข้อความ progress “Testing NVIDIA download mirrors...” ก่อนเริ่มดาวน์โหลด runtime ขนาดใหญ่',
+                'ยังคงตรวจ SHA-256 และขนาดไฟล์เหมือนเดิม การ probe ใช้เลือก host เท่านั้น ไม่ลดมาตรฐาน integrity check',
+            ],
+            'before_heading': 'ก่อนดาวน์โหลด ดูตรงนี้ก่อน',
+            'before': [
+                f'แพ็กเกจแนะนำยังรวม KataGo `{katago_version}` และ weight เริ่มต้น `{model_source}` ไว้ให้แล้ว',
+                'ผู้ใช้ Windows ส่วนใหญ่เริ่มจาก OpenCL แบบไม่ต้องติดตั้งได้ ส่วนผู้ใช้ NVIDIA ใช้ NVIDIA / RTX 50 CUDA build แล้วติดตั้ง TensorRT จากในแอปเมื่อต้องการ',
+                'TensorRT ไม่ได้ถูกแนบเป็น GitHub release asset ขนาดใหญ่ แต่จะดาวน์โหลดเมื่อเรียกจาก KataGo Auto Setup เท่านั้น',
+                'ถ้า `.cn` เร็วกว่าในเครือข่ายของคุณ ตัวติดตั้งจะเลือก `.cn`; ถ้า `.com` เร็วกว่า ก็จะเลือก `.com`',
+                'ผู้ใช้ไม่ต้องตั้งค่า Clash, TUN, proxy หรือ DIRECT rule เองสำหรับเส้นทาง release นี้',
+            ],
+            'download_heading': 'แนะนำการดาวน์โหลด',
+            'download_headers': ('เครื่องของคุณ', 'ดาวน์โหลดไฟล์นี้'),
+            'why_heading': 'ทำไมควรอัปเดต',
+            'why': [
+                'การติดตั้ง TensorRT ไม่ผูกกับ NVIDIA download host เดียวอีกต่อไป จึงหลีกเลี่ยง route ที่ช้าได้อัตโนมัติ',
+                'แอปเลือก host ก่อนดาวน์โหลด runtime ขนาดใหญ่ ลดโอกาสรอนานบน host ที่ช้า',
+                'การเปลี่ยนแปลงนี้มีผลเฉพาะการเลือก host สำหรับ NVIDIA runtime ไม่กระทบชื่อโมเดล การแสดง weight หรือการเปิดใช้ TensorRT backend',
+                'ก่อน release ได้รัน TensorRT-focused tests, full unit suite และ Maven package อีกครั้ง',
+            ],
+            'contact_heading': 'ติดต่อ',
+            'contact': ['QQ group: `299419120`'],
+        },
+    ]
+
+    sections: list[dict[str, object]] = []
+    for block in localized_sections:
+        language = str(block['language'])
+        labels_key = str(block['labels'])
+        localized_assets = assets_cn if language in ('中文', '繁體中文') else assets
+        sections.append(
+            {
+                'language': language,
+                'intro': block['intro'],
+                'updates': {'heading': block['updates_heading'], 'items': block['updates']},
+                'before': {'heading': block['before_heading'], 'items': block['before']},
+                'download': {
+                    'heading': block['download_heading'],
+                    'headers': block['download_headers'],
+                    'rows': standard_download_rows(
+                        STANDARD_DOWNLOAD_LABELS[labels_key],
+                        localized_assets,
+                    ),
+                },
+                'why': {'heading': block['why_heading'], 'items': block['why']},
+                'contact': {'heading': block['contact_heading'], 'items': block['contact']},
+            }
+        )
+
+    add_nvidia50_download_rows(sections, assets_cn, assets)
+    validate_release_sections(sections)
+    return release_heading(release_tag) + '\n\n' + '\n\n---\n\n'.join(
+        render_language_section(section) for section in sections
+    ) + '\n'
+
+
 def build_release_notes(asset_map: dict[str, str | None], bundle: dict[str, str], repo: str, release_tag: str | None) -> str:
     if release_tag == 'next-2026-05-03.1':
         return build_next_2026_05_03_1_notes(asset_map, repo, release_tag)
@@ -2416,6 +2677,8 @@ def build_release_notes(asset_map: dict[str, str | None], bundle: dict[str, str]
         return build_next_2026_05_30_1_notes(asset_map, bundle, repo, release_tag)
     if release_tag == 'next-2026-05-30.2':
         return build_next_2026_05_30_2_notes(asset_map, bundle, repo, release_tag)
+    if release_tag == 'next-2026-05-31.1':
+        return build_next_2026_05_31_1_notes(asset_map, bundle, repo, release_tag)
 
     assets_cn = {
         key: format_asset(asset_map[key], repo, release_tag)

@@ -283,6 +283,48 @@ public class KataGoRuntimeHelperTest {
   }
 
   @Test
+  void tensorRtNvidiaMirrorSelectionPrefersFastestUsableHost() {
+    KataGoRuntimeHelper.NvidiaMirrorProbeResult cnResult =
+        new KataGoRuntimeHelper.NvidiaMirrorProbeResult(
+            "developer.download.nvidia.cn", 512_000L, 1200L, null);
+    KataGoRuntimeHelper.NvidiaMirrorProbeResult comResult =
+        new KataGoRuntimeHelper.NvidiaMirrorProbeResult(
+            "developer.download.nvidia.com", 512_000L, 300L, null);
+
+    assertEquals(
+        "developer.download.nvidia.com",
+        KataGoRuntimeHelper.selectNvidiaDownloadHostFromProbes(cnResult, comResult));
+  }
+
+  @Test
+  void tensorRtNvidiaMirrorSelectionFallsBackToWorkingHost() {
+    KataGoRuntimeHelper.NvidiaMirrorProbeResult cnResult =
+        new KataGoRuntimeHelper.NvidiaMirrorProbeResult(
+            "developer.download.nvidia.cn", 0L, 6000L, "timeout");
+    KataGoRuntimeHelper.NvidiaMirrorProbeResult comResult =
+        new KataGoRuntimeHelper.NvidiaMirrorProbeResult(
+            "developer.download.nvidia.com", 256_000L, 500L, null);
+
+    assertEquals(
+        "developer.download.nvidia.com",
+        KataGoRuntimeHelper.selectNvidiaDownloadHostFromProbes(cnResult, comResult));
+  }
+
+  @Test
+  void tensorRtNvidiaMirrorUrlRewriteOnlyTouchesNvidiaDownloadHosts() {
+    assertEquals(
+        "https://developer.download.nvidia.cn/compute/cuda/redist/redistrib_12.8.0.json",
+        KataGoRuntimeHelper.mirrorNvidiaDownloadUrl(
+            "https://developer.download.nvidia.com/compute/cuda/redist/redistrib_12.8.0.json",
+            "developer.download.nvidia.cn"));
+    assertEquals(
+        "https://example.com/compute/cuda/redist/redistrib_12.8.0.json",
+        KataGoRuntimeHelper.mirrorNvidiaDownloadUrl(
+            "https://example.com/compute/cuda/redist/redistrib_12.8.0.json",
+            "developer.download.nvidia.cn"));
+  }
+
+  @Test
   void tensorRtInstallSpecKeepsExistingLegacyTargetCompatible() throws Exception {
     withOsName(
         WINDOWS_OS_NAME,
