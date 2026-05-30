@@ -627,6 +627,7 @@ EOF
 - The NVIDIA assets include the official KataGo CUDA 12.1 Windows build and remain the stable choice for RTX 20/30/40 series users.
 - The NVIDIA assets also include the required official NVIDIA runtime files, so first launch should work offline on supported NVIDIA PCs.
 - TensorRT acceleration can be installed explicitly inside KataGo Auto Setup for RTX 20/30/40/50 users; GTX 10 series and older NVIDIA GPUs should use CUDA/OpenCL instead.
+- KataGo Auto Setup detects the local NVIDIA GPU and Compute Capability before recommending TensorRT.
 - If those NVIDIA runtime files are missing later, reinstall the NVIDIA package instead of downloading extra files at startup.
 EOF
   fi
@@ -636,6 +637,7 @@ EOF
 - The NVIDIA 50 CUDA assets include the official KataGo CUDA 12.8 / cuDNN 9.8 Windows build for Blackwell RTX 50 series GPUs.
 - RTX 5070/5080/5090 users should try the NVIDIA 50 CUDA package first.
 - TensorRT acceleration is available as an explicit in-app install from KataGo Auto Setup for RTX 20/30/40/50 users who want to test it.
+- KataGo Auto Setup detects the local NVIDIA GPU and Compute Capability before recommending TensorRT.
 - GTX 10 series and older NVIDIA GPUs should use CUDA/OpenCL instead of TensorRT.
 EOF
   fi

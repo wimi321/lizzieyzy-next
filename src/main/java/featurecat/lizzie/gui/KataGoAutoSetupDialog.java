@@ -9,6 +9,7 @@ import featurecat.lizzie.util.KataGoAutoSetupHelper.RemoteWeightInfo;
 import featurecat.lizzie.util.KataGoAutoSetupHelper.SetupResult;
 import featurecat.lizzie.util.KataGoAutoSetupHelper.SetupSnapshot;
 import featurecat.lizzie.util.KataGoRuntimeHelper;
+import featurecat.lizzie.util.NvidiaGpuDetector;
 import featurecat.lizzie.util.Utils;
 import java.awt.BorderLayout;
 import java.awt.CardLayout;
@@ -32,6 +33,7 @@ import java.awt.event.WindowEvent;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.Collections;
+import java.util.IllegalFormatException;
 import java.util.List;
 import java.util.Locale;
 import javax.swing.BorderFactory;
@@ -68,6 +70,7 @@ public class KataGoAutoSetupDialog extends JDialog {
   private static final String BENCHMARK_PROGRESS_KEY = "lizzie.benchmark.dialog.progress";
   private static final String WRAPPING_TEXT_KEY = "lizzie.autosetup.wrappingText";
   private static final int MAX_INFO_TEXT_LENGTH = 104;
+  private static final int GPU_INFO_TEXT_LENGTH = 132;
   private static final int DIALOG_WIDTH = 820;
   private static final int DIALOG_HEIGHT = 580;
   private static final int VALUE_COLUMN_WIDTH = 390;
@@ -81,6 +84,8 @@ public class KataGoAutoSetupDialog extends JDialog {
   private List<RemoteWeightInfo> remoteWeightInfos = Collections.emptyList();
   private volatile DownloadSession activeDownloadSession;
   private volatile Thread activeWorkerThread;
+  private volatile NvidiaGpuDetector.DetectionResult nvidiaGpuDetection;
+  private volatile boolean nvidiaGpuDetectionRunning;
   private long progressStartedAtMillis;
   private String lastBackgroundErrorMessage = "";
   private long lastBackgroundErrorMillis = 0L;
@@ -90,6 +95,7 @@ public class KataGoAutoSetupDialog extends JDialog {
   private final JLabel lblWeightModelValue = new JFontLabel();
   private final JLabel lblConfigValue = new JFontLabel();
   private final JLabel lblNvidiaRuntimeValue = new JFontLabel();
+  private final JLabel lblNvidiaGpuValue = new JFontLabel();
   private final JLabel lblTensorRtDownloadValue = new JFontLabel();
   private final JLabel lblTensorRtConfigValue = new JFontLabel();
   private final JLabel lblBenchmarkValue = new JFontLabel();
@@ -202,6 +208,9 @@ public class KataGoAutoSetupDialog extends JDialog {
   }
 
   public void refreshState() {
+    if (!nvidiaGpuDetectionRunning) {
+      nvidiaGpuDetection = null;
+    }
     snapshot = KataGoAutoSetupHelper.inspectLocalSetup();
     renderSnapshot();
     loadRemoteWeightInfo();
@@ -405,6 +414,7 @@ public class KataGoAutoSetupDialog extends JDialog {
     JPanel rows = createRowsPanel();
     GridBagConstraints gbc = createRowConstraints();
     addInfoRow(rows, gbc, text("AutoSetup.nvidiaRuntime"), lblNvidiaRuntimeValue);
+    addInfoRow(rows, gbc, text("AutoSetup.nvidiaGpu"), lblNvidiaGpuValue);
     addInfoRow(rows, gbc, text("AutoSetup.tensorRtDownloadStatus"), lblTensorRtDownloadValue);
     addInfoRow(rows, gbc, text("AutoSetup.tensorRtConfigStatus"), lblTensorRtConfigValue);
 
@@ -761,7 +771,9 @@ public class KataGoAutoSetupDialog extends JDialog {
 
   private void updateTensorRtInfo() {
     KataGoRuntimeHelper.TensorRtInstallStatus status =
-        snapshot == null ? null : KataGoRuntimeHelper.inspectTensorRtInstall(snapshot);
+        snapshot == null
+            ? null
+            : KataGoRuntimeHelper.inspectTensorRtInstall(snapshot, nvidiaGpuDetection);
     if (status == null) {
       setTensorRtLabel(lblTensorRtDownloadValue, text("AutoSetup.notFound"), Color.DARK_GRAY, null);
       setTensorRtLabel(lblTensorRtConfigValue, text("AutoSetup.notFound"), Color.DARK_GRAY, null);
@@ -770,20 +782,23 @@ public class KataGoAutoSetupDialog extends JDialog {
       btnInstallTensorRt.setEnabled(false);
       btnSwitchBackCuda.setToolTipText(null);
       btnSwitchBackCuda.setEnabled(false);
+      updateNvidiaGpuInfo(null);
       return;
     }
+    updateNvidiaGpuInfo(status);
     if (!status.applicable) {
       setTensorRtLabel(
           lblTensorRtDownloadValue, status.detailText, Color.DARK_GRAY, status.detailText);
       setTensorRtLabel(
           lblTensorRtConfigValue, status.detailText, Color.DARK_GRAY, status.detailText);
       btnInstallTensorRt.setText(text("AutoSetup.installTensorRt"));
-      btnInstallTensorRt.setToolTipText(status.detailText);
+      btnInstallTensorRt.setToolTipText(tensorRtButtonTooltip(status));
       btnInstallTensorRt.setEnabled(false);
       btnSwitchBackCuda.setToolTipText(text("AutoSetup.switchBackCudaTooltip"));
       btnSwitchBackCuda.setEnabled(false);
       return;
     }
+    maybeStartNvidiaGpuDetection(status);
     setTensorRtLabel(
         lblTensorRtDownloadValue,
         status.downloaded
@@ -803,9 +818,9 @@ public class KataGoAutoSetupDialog extends JDialog {
     } else if (status.installed) {
       btnInstallTensorRt.setText(text("AutoSetup.enableTensorRt"));
     } else {
-      btnInstallTensorRt.setText(text("AutoSetup.installTensorRt"));
+      btnInstallTensorRt.setText(tensorRtInstallButtonText(status));
     }
-    btnInstallTensorRt.setToolTipText(status.detailText);
+    btnInstallTensorRt.setToolTipText(tensorRtButtonTooltip(status));
     btnInstallTensorRt.setEnabled(
         activeDownloadSession == null
             && activeWorkerThread == null
@@ -824,6 +839,91 @@ public class KataGoAutoSetupDialog extends JDialog {
     label.setText(value);
     label.setForeground(color);
     label.setToolTipText(tooltip);
+  }
+
+  private void maybeStartNvidiaGpuDetection(KataGoRuntimeHelper.TensorRtInstallStatus status) {
+    if (status == null
+        || !status.applicable
+        || nvidiaGpuDetection != null
+        || nvidiaGpuDetectionRunning) {
+      return;
+    }
+    nvidiaGpuDetectionRunning = true;
+    updateNvidiaGpuInfo(status);
+    Thread worker =
+        new Thread(
+            () -> {
+              NvidiaGpuDetector.DetectionResult result = NvidiaGpuDetector.detectBestGpu();
+              SwingUtilities.invokeLater(
+                  () -> {
+                    nvidiaGpuDetection = result;
+                    nvidiaGpuDetectionRunning = false;
+                    updateTensorRtInfo();
+                  });
+            },
+            "katago-nvidia-gpu-detection");
+    worker.setDaemon(true);
+    worker.start();
+  }
+
+  private void updateNvidiaGpuInfo(KataGoRuntimeHelper.TensorRtInstallStatus status) {
+    if (nvidiaGpuDetectionRunning) {
+      lblNvidiaGpuValue.setText(text("AutoSetup.gpuDetecting"));
+      lblNvidiaGpuValue.setToolTipText(null);
+      lblNvidiaGpuValue.setForeground(TEXT_SECONDARY);
+      return;
+    }
+    if (status == null || status.gpuDetection == null) {
+      lblNvidiaGpuValue.setText(text("AutoSetup.gpuDetectNotFound"));
+      lblNvidiaGpuValue.setToolTipText(null);
+      lblNvidiaGpuValue.setForeground(Color.DARK_GRAY);
+      return;
+    }
+    String summary = status.gpuDetection.summaryText;
+    lblNvidiaGpuValue.setText(compactInfoText(summary, GPU_INFO_TEXT_LENGTH));
+    lblNvidiaGpuValue.setToolTipText(summary);
+    lblNvidiaGpuValue.setForeground(tensorRtGpuStatusColor(status.gpuRecommendation));
+  }
+
+  private Color tensorRtGpuStatusColor(NvidiaGpuDetector.TensorRtRecommendation recommendation) {
+    if (recommendation == NvidiaGpuDetector.TensorRtRecommendation.RECOMMENDED) {
+      return OK_COLOR;
+    }
+    if (recommendation == NvidiaGpuDetector.TensorRtRecommendation.ALLOWED) {
+      return WARN_COLOR;
+    }
+    if (recommendation == NvidiaGpuDetector.TensorRtRecommendation.NOT_RECOMMENDED) {
+      return ERROR_COLOR;
+    }
+    return Color.DARK_GRAY;
+  }
+
+  private String tensorRtInstallButtonText(KataGoRuntimeHelper.TensorRtInstallStatus status) {
+    if (status == null || nvidiaGpuDetectionRunning) {
+      return text("AutoSetup.installTensorRt");
+    }
+    if (status.gpuRecommendation == NvidiaGpuDetector.TensorRtRecommendation.NOT_RECOMMENDED) {
+      return text("AutoSetup.installTensorRtAdvanced");
+    }
+    if (status.gpuRecommendation == NvidiaGpuDetector.TensorRtRecommendation.UNKNOWN) {
+      return text("AutoSetup.installTensorRtManual");
+    }
+    return text("AutoSetup.installTensorRt");
+  }
+
+  private String tensorRtButtonTooltip(KataGoRuntimeHelper.TensorRtInstallStatus status) {
+    if (status == null) {
+      return null;
+    }
+    String tooltip = status.detailText == null ? "" : status.detailText;
+    if (!Utils.isBlank(status.gpuRecommendationText)
+        && !tooltip.contains(status.gpuRecommendationText)) {
+      tooltip =
+          tooltip.isEmpty()
+              ? status.gpuRecommendationText
+              : tooltip + " | " + status.gpuRecommendationText;
+    }
+    return tooltip.isEmpty() ? null : tooltip;
   }
 
   private void updateBenchmarkInfo() {
@@ -1062,7 +1162,7 @@ public class KataGoAutoSetupDialog extends JDialog {
       snapshot = KataGoAutoSetupHelper.inspectLocalSetup();
     }
     KataGoRuntimeHelper.TensorRtInstallStatus status =
-        KataGoRuntimeHelper.inspectTensorRtInstall(snapshot);
+        KataGoRuntimeHelper.inspectTensorRtInstall(snapshot, nvidiaGpuDetection);
     if (!status.applicable) {
       Utils.showMsg(status.detailText, this);
       return;
@@ -1080,8 +1180,7 @@ public class KataGoAutoSetupDialog extends JDialog {
     int result =
         JOptionPane.showConfirmDialog(
             this,
-            String.format(
-                text("AutoSetup.tensorRtConfirmMessage"), formatSize(status.downloadBytes)),
+            formatTensorRtConfirmMessage(status),
             text("AutoSetup.tensorRtConfirmTitle"),
             JOptionPane.OK_CANCEL_OPTION,
             JOptionPane.WARNING_MESSAGE);
@@ -1181,6 +1280,24 @@ public class KataGoAutoSetupDialog extends JDialog {
     } catch (IOException e) {
       onBackgroundError(e);
     }
+  }
+
+  private String formatTensorRtConfirmMessage(KataGoRuntimeHelper.TensorRtInstallStatus status) {
+    String sizeText = status == null ? "0 MB" : formatSize(status.downloadBytes);
+    String recommendation =
+        status == null || Utils.isBlank(status.gpuRecommendationText)
+            ? text("AutoSetup.tensorRtGpuHint")
+            : status.gpuRecommendationText;
+    String message;
+    try {
+      message = String.format(text("AutoSetup.tensorRtConfirmMessage"), sizeText, recommendation);
+    } catch (IllegalFormatException e) {
+      message = String.format(text("AutoSetup.tensorRtConfirmMessage"), sizeText);
+    }
+    if (!Utils.isBlank(recommendation) && !message.contains(recommendation)) {
+      message = message + "\n\n" + recommendation;
+    }
+    return message;
   }
 
   private void startPerformanceBenchmark() {
@@ -1636,11 +1753,15 @@ public class KataGoAutoSetupDialog extends JDialog {
   }
 
   private String compactInfoText(String value) {
-    if (value == null || value.length() <= MAX_INFO_TEXT_LENGTH) {
+    return compactInfoText(value, MAX_INFO_TEXT_LENGTH);
+  }
+
+  private String compactInfoText(String value, int maxLength) {
+    if (value == null || value.length() <= maxLength) {
       return value;
     }
-    int head = Math.max(32, MAX_INFO_TEXT_LENGTH / 2 - 6);
-    int tail = Math.max(36, MAX_INFO_TEXT_LENGTH - head - 5);
+    int head = Math.max(32, maxLength / 2 - 6);
+    int tail = Math.max(36, maxLength - head - 5);
     return value.substring(0, head) + " ... " + value.substring(value.length() - tail);
   }
 

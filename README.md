@@ -40,11 +40,12 @@
 > 欢迎交流使用问题、反馈 bug、分享使用体验，或者讨论接下来最想加的功能。
 
 > [!IMPORTANT]
-> 如果你只想先下对版本，先记住这 8 句：
+> 如果你只想先下对版本，先记住这 9 句：
 > - Windows 大多数用户：到 [Releases](https://github.com/wimi321/lizzieyzy-next/releases) 下载 `*windows64.opencl.portable.zip`
 > - RTX 20/30/40 NVIDIA 显卡并且想更快：下载 `*windows64.nvidia.portable.zip`
 > - RTX 5070/5080/5090：优先下载 `*windows64.nvidia50.cuda.portable.zip`，需要 TensorRT 时再到软件内“一键设置”按需安装
 > - TensorRT 不只给 RTX 50：RTX 20/30/40/50 NVIDIA 显卡都可以在软件内按需安装；GTX 10 系及更老显卡优先 CUDA/OpenCL
+> - `KataGo 一键设置` 会检测 NVIDIA GPU 和 Compute Capability，自动提示是否推荐 TensorRT；检测失败也可以手动继续
 > - 如果 OpenCL 在你的电脑上不稳定：下载 `*windows64.with-katago.portable.zip`
 > - 现在支持直接输入野狐昵称抓最近公开棋谱，不需要先查账号数字
 > - 主推荐整合包已内置 KataGo `v1.16.4` 和官方推荐 `zhizi` 权重 `kata1-zhizi-b28c512nbt-muonfd2.bin.gz`
@@ -109,7 +110,7 @@ Windows `portable.zip` 是真正的免安装模式：配置、日志、保存棋
 - Windows：先下 `*windows64.opencl.portable.zip`
 - Windows + RTX 20/30/40 NVIDIA 显卡：先下 `*windows64.nvidia.portable.zip`
 - Windows + RTX 5070/5080/5090：先下 `*windows64.nvidia50.cuda.portable.zip`
-- Windows + RTX 20/30/40/50 想试 TensorRT：不要找单独发布包，先下对应 NVIDIA/CUDA 包，再在软件内“一键设置”按需安装
+- Windows + RTX 20/30/40/50 想试 TensorRT：不要找单独发布包，先下对应 NVIDIA/CUDA 包，再在软件内“一键设置”按需安装；软件会检测 GPU 和 Compute Capability 后给出推荐
 - GTX 10 系及更老 NVIDIA 显卡：优先 CUDA/OpenCL，不作为 TensorRT 推荐对象
 - OpenCL 不稳定：改下 `*windows64.with-katago.portable.zip`
 - Mac：先分清 Apple Silicon 还是 Intel
