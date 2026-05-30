@@ -1156,6 +1156,9 @@ public final class KataGoAutoSetupHelper {
   }
 
   private static Path currentWorkingDir() {
+    if (Lizzie.config != null) {
+      return Lizzie.config.getWorkDirectory().toPath().toAbsolutePath().normalize();
+    }
     return Paths.get(System.getProperty("user.dir", ".")).toAbsolutePath().normalize();
   }
 

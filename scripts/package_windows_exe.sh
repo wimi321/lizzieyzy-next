@@ -664,6 +664,10 @@ create_portable_zip() {
   native_root="$(to_native_path "$app_image_root")"
   native_zip="$(to_native_path "$portable_zip")"
   log_step "Creating Windows portable zip: $(basename "$portable_zip")"
+  printf '%s\n' \
+    "LizzieYzy Next portable package. Keep this file so settings, logs, downloaded weights, and TensorRT stay inside this folder." \
+    >"$app_image_root/.lizzie-portable"
+  mkdir -p "$app_image_root/user-data"
   powershell.exe -NoProfile -Command \
     "Compress-Archive -Path '$native_root' -DestinationPath '$native_zip' -Force"
   log_step "Finished Windows portable zip: $(basename "$portable_zip")"

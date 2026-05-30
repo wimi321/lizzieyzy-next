@@ -49,6 +49,7 @@
 - `<date>` 代表发布日期，例如 `2026-03-21`。
 - 当前维护版公开 release 主列表只保留这 15 个用户向主资产。
 - Windows 64 位现在优先推荐免安装包，安装器作为可选路径保留。
+- Windows 免安装包会在解压目录内启用便携模式，配置、日志、保存棋谱、下载权重和软件内安装的 TensorRT 文件都随这个文件夹保存，主要位于 `user-data/`。
 - 旧 tag 里如果还看到兼容 zip 或历史包，那属于历史发布格式。
 
 ## 每个包里内置了什么
@@ -111,6 +112,7 @@
 
 - Windows / Linux 权重：`Lizzieyzy/weights/default.bin.gz`
 - macOS 权重：`LizzieYzy Next.app/Contents/app/weights/default.bin.gz`
+- Windows 免安装包的用户下载权重和 TensorRT：解压目录内的 `user-data/`，删除整个文件夹即可同时清理配置和大体积加速文件
 
 ## 当前内置同步工具信息
 

@@ -102,6 +102,8 @@
 | macOS Intel | `*mac-intel.with-katago.dmg` |
 | Linux | `*linux64.with-katago.zip` |
 
+Windows `portable.zip` 是真正的免安装模式：配置、日志、保存棋谱、下载权重和软件内安装的 TensorRT 加速文件都会保存在解压出来的同一个文件夹里，主要位置是 `user-data/`。如果想彻底清理这个免安装版，删除整个解压文件夹即可；如果想保留设置，升级前把旧文件夹里的 `user-data/` 复制到新文件夹。
+
 如果你懒得分辨：
 
 - Windows：先下 `*windows64.opencl.portable.zip`

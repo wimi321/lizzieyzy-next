@@ -13,6 +13,25 @@ import org.junit.jupiter.api.Test;
 
 public class ConfigBundledKataGoDefaultsTest {
   @Test
+  void windowsPortableMarkerKeepsMutableDataInsideExtractedFolder() throws Exception {
+    Path tempRoot = Files.createTempDirectory("lizzie-portable-root");
+    Path portableRoot = Files.createDirectories(tempRoot.resolve("LizzieYzy Next 围棋"));
+    Files.writeString(portableRoot.resolve(".lizzie-portable"), "portable");
+    Files.createDirectories(portableRoot.resolve("app"));
+    Files.writeString(portableRoot.resolve("config.txt"), "{\"legacy\":true}");
+
+    Path foundRoot =
+        Config.findWindowsPortablePackageRootForTests(portableRoot.resolve("app")).orElseThrow();
+    Path workDir = Config.prepareWindowsPortableWorkDirForTests(foundRoot);
+
+    assertEquals(portableRoot.toAbsolutePath().normalize(), foundRoot);
+    assertEquals(portableRoot.resolve("user-data").toAbsolutePath().normalize(), workDir);
+    assertTrue(Files.exists(workDir.resolve("save")));
+    assertTrue(Files.exists(workDir.resolve("config.txt")));
+    assertFalse(workDir.equals(portableRoot));
+  }
+
+  @Test
   void existingBundledEngineKeepsUserStartupModeAndKomiOnRestart() throws Exception {
     Path tempRoot = Files.createTempDirectory("lizzie-bundled-katago-existing");
     createBundledKataGoAssets(tempRoot);

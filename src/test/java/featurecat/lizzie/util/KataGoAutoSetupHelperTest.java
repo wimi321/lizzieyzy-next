@@ -50,6 +50,36 @@ public class KataGoAutoSetupHelperTest {
   }
 
   @Test
+  void inspectLocalSetupUsesConfiguredWorkDirectoryInsteadOfProcessDirectory() throws Exception {
+    Path tempRoot = Files.createTempDirectory("katago-configured-workdir");
+    Path workDir = Files.createDirectories(tempRoot.resolve("portable").resolve("user-data"));
+    Path processDir = Files.createDirectories(tempRoot.resolve("outside-process-dir"));
+    Path engine =
+        touch(
+            workDir
+                .resolve("engines")
+                .resolve("katago")
+                .resolve(detectTestPlatformDir())
+                .resolve(testKataGoBinaryName()));
+    Path configs =
+        Files.createDirectories(workDir.resolve("engines").resolve("katago").resolve("configs"));
+    Path gtpConfig = touch(configs.resolve("gtp.cfg"));
+    Path weight = touch(workDir.resolve("weights").resolve("default.bin.gz"));
+
+    withProcessDirAndConfig(
+        processDir,
+        workDir,
+        () -> {
+          KataGoAutoSetupHelper.SetupSnapshot snapshot = KataGoAutoSetupHelper.inspectLocalSetup();
+
+          assertEquals(workDir.toAbsolutePath().normalize(), snapshot.workingDir);
+          assertEquals(engine, snapshot.enginePath);
+          assertEquals(gtpConfig, snapshot.gtpConfigPath);
+          assertEquals(weight, snapshot.activeWeightPath);
+        });
+  }
+
+  @Test
   void startupRepairDoesNotRewriteTensorRtProfileToCuda() throws Exception {
     Path tempRoot = Files.createTempDirectory("katago-tensorrt-repair");
     Path cudaEngine =
@@ -145,12 +175,37 @@ public class KataGoAutoSetupHelperTest {
     return "\"" + path.toAbsolutePath().normalize().toString() + "\"";
   }
 
+  private static String detectTestPlatformDir() {
+    String osName = System.getProperty("os.name", "").toLowerCase();
+    String arch = System.getProperty("os.arch", "").toLowerCase();
+    boolean isArm = arch.contains("aarch64") || arch.contains("arm64");
+    boolean is64 = arch.contains("64");
+    if (osName.contains("win")) {
+      return is64 ? "windows-x64" : "windows-x86";
+    }
+    if (osName.contains("mac") || osName.contains("darwin")) {
+      return isArm ? "macos-arm64" : "macos-amd64";
+    }
+    return is64 ? "linux-x64" : "linux-x86";
+  }
+
+  private static String testKataGoBinaryName() {
+    return System.getProperty("os.name", "").toLowerCase().contains("win")
+        ? "katago.exe"
+        : "katago";
+  }
+
   private static void withUserDirAndConfig(Path userDir, ThrowingRunnable action) throws Exception {
+    withProcessDirAndConfig(userDir, userDir, action);
+  }
+
+  private static void withProcessDirAndConfig(
+      Path processDir, Path configDir, ThrowingRunnable action) throws Exception {
     String previousUserDir = System.getProperty("user.dir");
     Config previousConfig = Lizzie.config;
     try {
-      System.setProperty("user.dir", userDir.toString());
-      Lizzie.config = ConfigTestHelper.createForTests(userDir);
+      System.setProperty("user.dir", processDir.toString());
+      Lizzie.config = ConfigTestHelper.createForTests(configDir);
       Lizzie.config.config = new org.json.JSONObject();
       Lizzie.config.leelazConfig = new org.json.JSONObject();
       Lizzie.config.uiConfig = new org.json.JSONObject();

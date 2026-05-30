@@ -140,6 +140,9 @@ public class Config {
   private static final String USER_WORK_DIR_NAME = ".lizzieyzy-next";
   private static final String LEGACY_USER_WORK_DIR_NAME = ".lizzieyzy-next-foxuid";
   private static final String WINDOWS_SHARED_WORK_DIR_NAME = "LizzieYzyNext";
+  private static final String WINDOWS_PORTABLE_MARKER_NAME = ".lizzie-portable";
+  private static final String WINDOWS_PORTABLE_WORK_DIR_NAME = "user-data";
+  private static final String WORK_DIR_PROPERTY = "lizzie.work.dir";
   private static final String HIDE_SUBBOARD_DEFAULT_MIGRATION_KEY =
       "migrated-hide-subboard-default-v1";
   private static final String RESTORE_SUBBOARD_DEFAULT_MIGRATION_KEY =
@@ -258,7 +261,27 @@ public class Config {
   }
 
   private static String resolveWorkDir() {
+    try {
+      Path explicitWorkDir = resolveExplicitWorkDir();
+      if (explicitWorkDir != null) {
+        return explicitWorkDir.toString();
+      }
+    } catch (Exception e) {
+      e.printStackTrace();
+    }
+
     if (OS.isWindows()) {
+      try {
+        Optional<Path> portableRoot = findWindowsPortablePackageRoot();
+        if (portableRoot.isPresent()) {
+          Path portableWorkDir = prepareWindowsPortableWorkDir(portableRoot.get());
+          if (portableWorkDir != null) {
+            return portableWorkDir.toString();
+          }
+        }
+      } catch (Exception e) {
+        e.printStackTrace();
+      }
       try {
         Path cwd = Path.of(System.getProperty("user.dir")).toAbsolutePath().normalize();
         if (shouldUsePortableWindowsWorkDir(cwd)) {
@@ -293,6 +316,16 @@ public class Config {
       e.printStackTrace();
       return System.getProperty("user.home");
     }
+  }
+
+  private static Path resolveExplicitWorkDir() throws IOException {
+    String configured = System.getProperty(WORK_DIR_PROPERTY, "").trim();
+    if (configured.isEmpty()) {
+      return null;
+    }
+    Path path = Path.of(configured).toAbsolutePath().normalize();
+    Files.createDirectories(path.resolve("save"));
+    return path;
   }
 
   public static Path resolveWritableFallbackDir() throws IOException {
@@ -376,6 +409,72 @@ public class Config {
     } catch (Exception e) {
       e.printStackTrace();
     }
+  }
+
+  static Optional<Path> findWindowsPortablePackageRootForTests(Path seedPath) {
+    if (seedPath == null) {
+      return Optional.empty();
+    }
+    return findWindowsPortablePackageRoot(Collections.singleton(seedPath));
+  }
+
+  static Path prepareWindowsPortableWorkDirForTests(Path portableRoot) throws IOException {
+    return prepareWindowsPortableWorkDir(portableRoot);
+  }
+
+  private static Optional<Path> findWindowsPortablePackageRoot() {
+    LinkedHashSet<Path> seedPaths = new LinkedHashSet<>();
+    try {
+      File codeSource =
+          new File(Config.class.getProtectionDomain().getCodeSource().getLocation().toURI());
+      seedPaths.add((codeSource.isFile() ? codeSource.toPath().getParent() : codeSource.toPath()));
+    } catch (Exception e) {
+      e.printStackTrace();
+    }
+    try {
+      seedPaths.add(Path.of("").toAbsolutePath().normalize());
+    } catch (Exception e) {
+      e.printStackTrace();
+    }
+    try {
+      seedPaths.add(Path.of(System.getProperty("user.dir")).toAbsolutePath().normalize());
+    } catch (Exception e) {
+      e.printStackTrace();
+    }
+    return findWindowsPortablePackageRoot(seedPaths);
+  }
+
+  private static Optional<Path> findWindowsPortablePackageRoot(Collection<Path> seedPaths) {
+    if (seedPaths == null) {
+      return Optional.empty();
+    }
+    for (Path seedPath : seedPaths) {
+      if (seedPath == null) {
+        continue;
+      }
+      Path current = seedPath.toAbsolutePath().normalize();
+      for (int depth = 0; current != null && depth < 8; depth++) {
+        if (Files.isRegularFile(current.resolve(WINDOWS_PORTABLE_MARKER_NAME))) {
+          return Optional.of(current);
+        }
+        current = current.getParent();
+      }
+    }
+    return Optional.empty();
+  }
+
+  private static Path prepareWindowsPortableWorkDir(Path portableRoot) throws IOException {
+    if (portableRoot == null || !Files.isDirectory(portableRoot)) {
+      return null;
+    }
+    Path workDir =
+        portableRoot.resolve(WINDOWS_PORTABLE_WORK_DIR_NAME).toAbsolutePath().normalize();
+    Files.createDirectories(workDir.resolve("save"));
+    if (!Files.isWritable(workDir)) {
+      return null;
+    }
+    migrateWorkDirIfNeeded(workDir, portableRoot);
+    return workDir;
   }
 
   private static boolean shouldUsePortableWindowsWorkDir(Path cwd) {
@@ -3089,12 +3188,28 @@ public class Config {
     return new File(configFilename).getAbsolutePath();
   }
 
+  public File getWorkDirectory() {
+    File workDir = runtimeWorkDirectoryOverride;
+    if (workDir == null) {
+      workDir = new File(WORK_DIR).getAbsoluteFile();
+    }
+    return ensureWorkDirectory(workDir);
+  }
+
   public File getRuntimeWorkDirectory() {
     File runtimeDir = runtimeWorkDirectoryOverride;
     if (runtimeDir == null) {
       runtimeDir = new File(WORK_DIR, RUNTIME_WORK_DIR).getAbsoluteFile();
     }
     return ensureRuntimeWorkDirectory(runtimeDir);
+  }
+
+  private File ensureWorkDirectory(File workDir) {
+    if (!workDir.exists()) {
+      workDir.mkdirs();
+    }
+    new File(workDir, "save").mkdirs();
+    return workDir;
   }
 
   private File ensureRuntimeWorkDirectory(File runtimeDir) {
