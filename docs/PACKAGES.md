@@ -16,8 +16,9 @@
 - OpenCL 表现不好时改用 `windows64.with-katago.portable.zip`
 - RTX 20/30/40 系列 NVIDIA 显卡并且更在意速度时改用 `windows64.nvidia.portable.zip`
 - RTX 5070/5080/5090 优先试 `windows64.nvidia50.cuda.portable.zip`，TensorRT 加速改为软件内按需安装
-- TensorRT 不再做成巨大发布包；RTX 20/30/40/50 用户可在软件内 `KataGo 一键设置` 按需安装，GTX 10 系及更老显卡优先 CUDA/OpenCL
+- TensorRT 普通用户路径仍是软件内 `KataGo 一键设置` 按需安装，支持断点续传；RTX 20/30/40/50 用户可尝试，GTX 10 系及更老显卡优先 CUDA/OpenCL
 - `KataGo 一键设置` 会检测本机 NVIDIA GPU / Compute Capability，并在安装 TensorRT 前显示推荐、可尝试、不推荐或未知状态
+- Release 可附带高级可选 TensorRT 预装分卷包，但它不是默认推荐下载；必须下载全部 `.7z.00N` 并用 7-Zip 从 `.001` 解压
 
 如果你只想先看图再决定，先看这里：
 
@@ -37,6 +38,7 @@
 | Windows 64 位 NVIDIA 极速安装器 | `<date>-windows64.nvidia.installer.exe` | 有 NVIDIA 显卡，想保留安装流程 |
 | Windows 64 位 RTX 50 CUDA 免安装包 | `<date>-windows64.nvidia50.cuda.portable.zip` | RTX 5070/5080/5090 用户首选 |
 | Windows 64 位 RTX 50 CUDA 安装器 | `<date>-windows64.nvidia50.cuda.installer.exe` | RTX 5070/5080/5090 用户，想保留安装流程 |
+| Windows 64 位 TensorRT 高级可选分卷包 | `<date>-windows64.nvidia.tensorrt.portable.7z.001` 等全部分卷 | 熟悉 7-Zip、想离线测试 TensorRT 的 RTX 20/30/40/50 用户 |
 | Windows 64 位无引擎便携包 | `<date>-windows64.without.engine.portable.zip` | 想自己配置分析引擎 |
 | Windows 64 位无引擎安装器 | `<date>-windows64.without.engine.installer.exe` | 想保留安装流程，但自己配置分析引擎 |
 | macOS Apple Silicon 整合包 | `<date>-mac-apple-silicon.with-katago.dmg` | M 系列 Mac |
@@ -49,6 +51,7 @@
 
 - `<date>` 代表发布日期，例如 `2026-03-21`。
 - 当前维护版公开 release 主列表只保留这 15 个用户向主资产。
+- TensorRT 分卷包是高级可选资产，不计入普通用户主推荐路径；只下载 `.7z.001` 没用，必须下载全部 `.7z.00N`。
 - Windows 64 位现在优先推荐免安装包，安装器作为可选路径保留。
 - Windows 免安装包会在解压目录内启用便携模式，配置、日志、保存棋谱、下载权重和软件内安装的 TensorRT 文件都随这个文件夹保存，主要位于 `user-data/`。
 - 旧 tag 里如果还看到兼容 zip 或历史包，那属于历史发布格式。
@@ -106,7 +109,7 @@
 
 - KataGo 版本：`v1.16.4`
 - 默认权重：`kata1-zhizi-b28c512nbt-muonfd2.bin.gz`
-- TensorRT 加速：不再作为 GitHub Release 巨大发布包发布；RTX 20/30/40/50 用户需要时在软件内 `KataGo 一键设置` 中按需安装
+- TensorRT 加速：普通用户在软件内 `KataGo 一键设置` 中按需安装，支持断点续传；Release 上的 TensorRT 分卷包只作为高级可选离线路径
 - RTX 50 仍优先使用 `windows64.nvidia50.cuda` 主包，TensorRT 作为新架构按需加速项
 - TensorRT 安装界面会用 `nvidia-smi` 检测本机 NVIDIA GPU，并在无法读取 Compute Capability 时使用轻量型号映射作为 fallback
 
@@ -131,7 +134,7 @@
 - Windows 64 位主推荐资产是 `portable.zip`
 - Windows 64 位同时提供 `opencl`、`with-katago`、`nvidia`、`nvidia50.cuda` 四条内置引擎线的安装器和便携包
 - Windows 64 位无引擎包同时提供安装器和 `.portable.zip`
-- 当前公开 release 主列表固定为 15 个用户向主资产；TensorRT 加速属于软件内按需安装项，不占发布资产
+- 当前公开 release 主列表固定为 15 个普通用户向主资产；TensorRT 分卷包如出现在 Release 中，定位为高级可选资产，不替代软件内断点续传安装
 - 旧的兼容 zip 只作为历史 tag 说明保留，不再放进主推荐区
 
 ## 相关文档

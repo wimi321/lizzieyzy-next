@@ -31,6 +31,7 @@ ASSET_SPECS = [
     ('linux64_opencl', 'linux64.opencl.zip', 'Linux 64 位，OpenCL 版', 'Linux x64, OpenCL'),
     ('linux64_nvidia', 'linux64.nvidia.zip', 'Linux 64 位，NVIDIA CUDA 版', 'Linux x64, NVIDIA CUDA'),
 ]
+TENSORRT_SPLIT_README_SUFFIX = 'windows64.nvidia.tensorrt.portable.README.txt'
 
 RELEASE_LANGUAGES = ('中文', '繁體中文', 'English', '日本語', '한국어', 'ภาษาไทย')
 SECTION_KEYS = ('updates', 'before', 'download', 'why', 'contact')
@@ -240,9 +241,13 @@ def validate_release_sections(sections: list[dict[str, object]]) -> None:
 
             if key == 'download':
                 rows = block.get('rows')
-                if not isinstance(rows, list) or len(rows) != expected_download_rows:
+                if not isinstance(rows, list) or len(rows) not in (
+                    expected_download_rows,
+                    expected_download_rows + 1,
+                ):
                     raise SystemExit(
                         f'{language} download table must contain {expected_download_rows} rows'
+                        f' or {expected_download_rows + 1} rows with optional TensorRT split guidance'
                     )
                 continue
 
@@ -310,6 +315,54 @@ def add_nvidia50_download_rows(
                 insert_at = index + 1
                 break
         rows[insert_at:insert_at] = additions
+        before = section['before']
+        assert isinstance(before, dict)
+        before_items = before['items']
+        assert isinstance(before_items, list)
+        note = before_note_by_language.get(language, before_note_by_language['English'])
+        if note not in before_items:
+            before_items.append(note)
+
+
+def add_tensorrt_split_download_row(
+    sections: list[dict[str, object]],
+    assets_cn: dict[str, str],
+    assets: dict[str, str],
+    asset_map: dict[str, str | None],
+) -> None:
+    if not asset_map.get('windows_tensorrt_split_readme'):
+        return
+    labels_by_language = {
+        '中文': '高级可选：TensorRT 预装分卷包说明（需下载全部 .7z.00N）',
+        '繁體中文': '進階可選：TensorRT 預裝分卷包說明（需下載全部 .7z.00N）',
+        'English': 'Advanced optional TensorRT split package guide; download every .7z.00N part',
+        '日本語': '上級者向け任意：TensorRT 分割パッケージ案内（.7z.00N を全て取得）',
+        '한국어': '고급 선택: TensorRT 분할 패키지 안내(.7z.00N 전체 다운로드 필요)',
+        'ภาษาไทย': 'ตัวเลือกขั้นสูง: คู่มือ TensorRT split package ต้องดาวน์โหลด .7z.00N ครบทุกไฟล์',
+    }
+    before_note_by_language = {
+        '中文': '高级可选 TensorRT 分卷包只适合熟悉 7-Zip 的 RTX 20/30/40/50 用户；普通用户继续下载 NVIDIA/CUDA 包后在软件内一键安装，支持断点续传。分卷包必须下载全部 `.7z.00N`，只下 `.001` 没用。',
+        '繁體中文': '進階可選 TensorRT 分卷包只適合熟悉 7-Zip 的 RTX 20/30/40/50 使用者；一般使用者請先下載 NVIDIA/CUDA 包，再在軟體內一鍵安裝，支援斷點續傳。分卷包必須下載全部 `.7z.00N`，只下 `.001` 沒有用。',
+        'English': 'The advanced optional TensorRT split package is only for RTX 20/30/40/50 users who are comfortable with 7-Zip. Most users should keep using the normal NVIDIA/CUDA package plus the in-app resumable TensorRT installer. You must download every `.7z.00N` part; `.001` alone is useless.',
+        '日本語': '上級者向けの TensorRT 分割パッケージは、7-Zip に慣れた RTX 20/30/40/50 ユーザー向けです。通常は NVIDIA/CUDA パッケージを使い、アプリ内の再開対応 TensorRT インストーラを利用してください。`.7z.00N` を全てダウンロードする必要があり、`.001` だけでは使えません。',
+        '한국어': '고급 선택 TensorRT 분할 패키지는 7-Zip 에 익숙한 RTX 20/30/40/50 사용자용입니다. 대부분의 사용자는 일반 NVIDIA/CUDA 패키지와 앱 안의 이어받기 지원 TensorRT 설치를 쓰면 됩니다. `.7z.00N` 전체를 받아야 하며 `.001` 만 받으면 사용할 수 없습니다.',
+        'ภาษาไทย': 'TensorRT split package แบบตัวเลือกขั้นสูงเหมาะกับผู้ใช้ RTX 20/30/40/50 ที่คุ้นกับ 7-Zip เท่านั้น ผู้ใช้ทั่วไปควรใช้ NVIDIA/CUDA package ปกติแล้วติดตั้ง TensorRT ในแอปซึ่งรองรับ resume ต้องดาวน์โหลด `.7z.00N` ครบทุกไฟล์ ไฟล์ `.001` อย่างเดียวใช้ไม่ได้',
+    }
+    for section in sections:
+        language = str(section['language'])
+        localized_assets = assets_cn if language in ('中文', '繁體中文') else assets
+        download = section['download']
+        assert isinstance(download, dict)
+        rows = download['rows']
+        assert isinstance(rows, list)
+        readme_asset = localized_assets['windows_tensorrt_split_readme']
+        if not any('tensorrt.portable.README' in str(row[1]) for row in rows if isinstance(row, tuple)):
+            insert_at = min(8, len(rows))
+            rows.insert(
+                insert_at,
+                (labels_by_language.get(language, labels_by_language['English']), readme_asset),
+            )
+
         before = section['before']
         assert isinstance(before, dict)
         before_items = before['items']
@@ -706,6 +759,7 @@ def build_next_2026_05_17_2_notes(
     ]
 
     add_nvidia50_download_rows(sections, assets_cn, assets)
+    add_tensorrt_split_download_row(sections, assets_cn, assets, asset_map)
     validate_release_sections(sections)
     heading = f'# LizzieYzy Next {release_tag} 4段纪念版' if release_tag else '# LizzieYzy Next 4段纪念版'
     return heading + '\n\n' + '\n\n---\n\n'.join(
@@ -1096,6 +1150,7 @@ def build_next_2026_05_03_1_notes(
     ]
 
     add_nvidia50_download_rows(sections, assets_cn, assets)
+    add_tensorrt_split_download_row(sections, assets_cn, assets, asset_map)
     validate_release_sections(sections)
 
     return release_heading(release_tag) + '\n\n' + '\n\n---\n\n'.join(
@@ -1474,6 +1529,7 @@ def build_next_2026_05_04_1_notes(
         )
 
     add_nvidia50_download_rows(sections, assets_cn, assets)
+    add_tensorrt_split_download_row(sections, assets_cn, assets, asset_map)
     validate_release_sections(sections)
 
     return release_heading(release_tag) + '\n\n' + '\n\n---\n\n'.join(
@@ -3372,6 +3428,7 @@ def build_release_notes(asset_map: dict[str, str | None], bundle: dict[str, str]
     ]
 
     add_nvidia50_download_rows(sections, assets_cn, assets)
+    add_tensorrt_split_download_row(sections, assets_cn, assets, asset_map)
     validate_release_sections(sections)
 
     return release_heading(release_tag) + '\n\n' + '\n\n---\n\n'.join(
@@ -3638,6 +3695,11 @@ def main() -> int:
         key: pick_asset(asset_names, suffix, args.date_tag)
         for key, suffix, _cn, _en in ASSET_SPECS
     }
+    asset_map['windows_tensorrt_split_readme'] = pick_asset(
+        asset_names,
+        TENSORRT_SPLIT_README_SUFFIX,
+        args.date_tag,
+    )
     bundle = load_bundle_metadata()
     notes = build_release_notes(asset_map, bundle, args.repo, args.release_tag)
 

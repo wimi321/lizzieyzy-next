@@ -30,6 +30,27 @@ case "$PLATFORM" in
       "${DATE_TAG}-windows64.without.engine.installer.exe"
       "${DATE_TAG}-windows64.without.engine.portable.zip"
     )
+    trt_prefix="${DATE_TAG}-windows64.nvidia.tensorrt.portable.7z"
+    trt_readme="${DATE_TAG}-windows64.nvidia.tensorrt.portable.README.txt"
+    trt_manifest="${DATE_TAG}-windows64.nvidia.tensorrt.portable.manifest.json"
+    trt_checksum="${DATE_TAG}-windows64.nvidia.tensorrt.portable.sha256.txt"
+    shopt -s nullglob
+    trt_parts=("$RELEASE_DIR/${trt_prefix}".[0-9][0-9][0-9])
+    shopt -u nullglob
+    if [[ "${#trt_parts[@]}" -eq 0 ]]; then
+      echo "Missing advanced optional TensorRT split package: ${trt_prefix}.001"
+      exit 1
+    fi
+    for index in "${!trt_parts[@]}"; do
+      expected_part="$(printf '%s.%03d' "$trt_prefix" "$((index + 1))")"
+      if [[ "$(basename "${trt_parts[$index]}")" != "$expected_part" ]]; then
+        echo "TensorRT split volumes must be contiguous from .001"
+        printf 'Expected: %s\nActual:   %s\n' "$expected_part" "$(basename "${trt_parts[$index]}")"
+        exit 1
+      fi
+      expected+=("$(basename "${trt_parts[$index]}")")
+    done
+    expected+=("$trt_readme" "$trt_manifest" "$trt_checksum")
     ;;
   mac-arm64)
     expected=("${DATE_TAG}-mac-apple-silicon.with-katago.dmg")
@@ -66,8 +87,10 @@ fi
 for name in "${actual[@]}"; do
   case "$name" in
     *.txt|*.sha256|*.sha256.txt|*.md)
-      echo "Unexpected helper file in public release set: $name"
-      exit 1
+      if [[ "$PLATFORM" != "windows" ]] || [[ "$name" != "${DATE_TAG}-windows64.nvidia.tensorrt.portable.README.txt" && "$name" != "${DATE_TAG}-windows64.nvidia.tensorrt.portable.sha256.txt" ]]; then
+        echo "Unexpected helper file in public release set: $name"
+        exit 1
+      fi
       ;;
   esac
 done

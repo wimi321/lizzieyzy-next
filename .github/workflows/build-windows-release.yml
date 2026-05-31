@@ -18,7 +18,7 @@ permissions:
 jobs:
   build:
     runs-on: windows-latest
-    timeout-minutes: 240
+    timeout-minutes: 360
 
     steps:
       - name: Checkout
@@ -47,6 +47,7 @@ jobs:
         shell: powershell
         run: |
           choco install wixtoolset --no-progress -y
+          choco install 7zip --no-progress -y
 
       - name: Build shaded jar
         shell: bash
@@ -65,7 +66,7 @@ jobs:
           PREFERRED_MODEL_NAME="$MODEL_NAME" MODEL_SOURCE="$MODEL_SOURCE" ./scripts/prepare_bundled_katago.sh
 
       - name: Build Windows installer and portable package
-        timeout-minutes: 180
+        timeout-minutes: 300
         shell: bash
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -178,6 +179,12 @@ jobs:
           test -f "dist/windows/app-image-nvidia50.cuda/LizzieYzy Next NVIDIA 50 CUDA/app/engines/katago/windows-x64/cudnn64_9.dll"
           test -f "dist/windows/app-image-nvidia50.cuda/LizzieYzy Next NVIDIA 50 CUDA/app/engines/katago/windows-x64/libz.dll"
           find "dist/windows/app-image-nvidia50.cuda/LizzieYzy Next NVIDIA 50 CUDA/app/engines/katago/windows-x64" -maxdepth 1 -type f -name 'nvJitLink*.dll' | grep -q .
+          test -f "dist/release/${{ inputs.date_tag }}-windows64.nvidia.tensorrt.portable.7z.001"
+          test -f "dist/release/${{ inputs.date_tag }}-windows64.nvidia.tensorrt.portable.README.txt"
+          test -f "dist/release/${{ inputs.date_tag }}-windows64.nvidia.tensorrt.portable.manifest.json"
+          test -f "dist/release/${{ inputs.date_tag }}-windows64.nvidia.tensorrt.portable.sha256.txt"
+          grep -q "Advanced optional TensorRT split package" "dist/release/${{ inputs.date_tag }}-windows64.nvidia.tensorrt.portable.README.txt"
+          grep -q '"engineBackend": "nvidia-tensorrt"' "dist/release/${{ inputs.date_tag }}-windows64.nvidia.tensorrt.portable.manifest.json"
           test -f "dist/windows/input-without.engine/PROJECT_INFO.txt"
           test -f "dist/windows/input-without.engine/readboard/readboard.exe"
           test -f "dist/windows/input-without.engine/readboard/lizzieyzy-next-readboard-manifest.txt"
@@ -245,6 +252,10 @@ jobs:
           gh release upload "${{ inputs.release_tag }}" \
             dist/release/*windows64*.installer.exe \
             dist/release/*windows64*.portable.zip \
+            dist/release/*windows64.nvidia.tensorrt.portable.7z.* \
+            dist/release/*windows64.nvidia.tensorrt.portable.README.txt \
+            dist/release/*windows64.nvidia.tensorrt.portable.manifest.json \
+            dist/release/*windows64.nvidia.tensorrt.portable.sha256.txt \
             --repo "${{ github.repository }}" \
             --clobber
 

@@ -30,6 +30,8 @@ NVIDIA_APP_NAME="LizzieYzy Next NVIDIA"
 NVIDIA_APP_DESCRIPTION="Maintained LizzieYzy build with bundled NVIDIA CUDA KataGo"
 NVIDIA50_CUDA_APP_NAME="LizzieYzy Next NVIDIA 50 CUDA"
 NVIDIA50_CUDA_APP_DESCRIPTION="Maintained LizzieYzy build with bundled RTX 50 CUDA KataGo"
+NVIDIA_TRT_APP_NAME="LizzieYzy Next NVIDIA TensorRT"
+NVIDIA_TRT_APP_DESCRIPTION="Maintained LizzieYzy build with optional bundled TensorRT acceleration"
 MAIN_JAR="$(basename "$JAR_PATH")"
 ICON_PATH="$ROOT_DIR/packaging/icons/app-icon.ico"
 ARCH_TAG="windows64"
@@ -37,10 +39,13 @@ STANDARD_ENGINE_PLATFORM_DIR="windows-x64"
 OPENCL_ENGINE_PLATFORM_DIR="${WINDOWS_OPENCL_ENGINE_PLATFORM_DIR:-windows-x64-opencl}"
 NVIDIA_ENGINE_PLATFORM_DIR="${WINDOWS_NVIDIA_ENGINE_PLATFORM_DIR:-windows-x64-nvidia}"
 NVIDIA50_CUDA_ENGINE_PLATFORM_DIR="${WINDOWS_NVIDIA50_CUDA_ENGINE_PLATFORM_DIR:-windows-x64-nvidia50-cuda}"
+NVIDIA_TRT_ENGINE_PLATFORM_DIR="${WINDOWS_NVIDIA_TRT_ENGINE_PLATFORM_DIR:-windows-x64-nvidia-tensorrt}"
 OPENCL_ARCH_TAG="${ARCH_TAG}.opencl"
 NVIDIA_ARCH_TAG="${ARCH_TAG}.nvidia"
 NVIDIA50_CUDA_ARCH_TAG="${ARCH_TAG}.nvidia50.cuda"
+NVIDIA_TRT_ARCH_TAG="${ARCH_TAG}.nvidia.tensorrt"
 MAX_RELEASE_ASSET_BYTES="${WINDOWS_RELEASE_ASSET_MAX_BYTES:-2000000000}"
+TENSORRT_SPLIT_VOLUME_SIZE="${WINDOWS_TENSORRT_SPLIT_VOLUME_SIZE:-1800m}"
 DIST_DIR="$ROOT_DIR/dist/windows"
 RELEASE_DIR="$ROOT_DIR/dist/release"
 META_DIR="$ROOT_DIR/dist/release-meta"
@@ -51,6 +56,12 @@ ENGINE_BACKEND_MARKER_NAME="lizzieyzy-next-engine-backend.txt"
 NVIDIA_RUNTIME_PREPARE_SCRIPT="$ROOT_DIR/scripts/prepare_bundled_nvidia_runtime.py"
 NVIDIA_RUNTIME_STAGE_DIR="$DIST_DIR/nvidia-runtime/cuda12.1-cudnn8"
 NVIDIA50_CUDA_RUNTIME_STAGE_DIR="$DIST_DIR/nvidia-runtime/cuda12.8-cudnn9"
+NVIDIA_TRT_RUNTIME_STAGE_DIR="$DIST_DIR/nvidia-runtime/cuda12.8-cudnn9-tensorrt"
+TENSORRT_KATAGO_TAG="${TENSORRT_KATAGO_TAG:-v1.16.4}"
+TENSORRT_KATAGO_ASSET="${TENSORRT_KATAGO_ASSET:-katago-${TENSORRT_KATAGO_TAG}-trt10.9.0-cuda12.8-windows-x64.zip}"
+TENSORRT_KATAGO_SHA256="${TENSORRT_KATAGO_SHA256:-1dea0b507c6331c9a7cf4f0ed2eeee5384b880d60f1db7fe876506daee55830f}"
+TENSORRT_KATAGO_URL="${TENSORRT_KATAGO_URL:-https://github.com/lightvector/KataGo/releases/download/${TENSORRT_KATAGO_TAG}/${TENSORRT_KATAGO_ASSET}}"
+TENSORRT_KATAGO_CACHE_DIR="$ROOT_DIR/.cache/katago/tensorrt"
 JCEF_BUNDLE_PREPARE_SCRIPT="$ROOT_DIR/scripts/prepare_bundled_jcef.py"
 JCEF_BUNDLE_STAGE_DIR="$DIST_DIR/jcef-bundle"
 JCEF_PLATFORM="${WINDOWS_JCEF_PLATFORM:-windows-amd64}"
@@ -82,6 +93,32 @@ resolve_python_bin() {
     return 0
   fi
   echo "Python not found. Install Python 3 to prepare the Windows NVIDIA runtime."
+  exit 1
+}
+
+resolve_7z_bin() {
+  if command -v 7z >/dev/null 2>&1; then
+    command -v 7z
+    return 0
+  fi
+  if command -v 7z.exe >/dev/null 2>&1; then
+    command -v 7z.exe
+    return 0
+  fi
+
+  local candidate
+  for candidate in \
+    "/c/Program Files/7-Zip/7z.exe" \
+    "/c/ProgramData/chocolatey/bin/7z.exe" \
+    "C:/Program Files/7-Zip/7z.exe" \
+    "C:/ProgramData/chocolatey/bin/7z.exe"; do
+    if [[ -x "$candidate" ]]; then
+      printf '%s\n' "$candidate"
+      return 0
+    fi
+  done
+
+  echo "7-Zip command not found. Install 7-Zip to build the optional TensorRT split package." >&2
   exit 1
 }
 
@@ -419,6 +456,113 @@ copy_bundle_nvidia_runtime_assets() {
   fi
 }
 
+prepare_bundled_tensorrt_engine_assets() {
+  resolve_python_bin
+  local output_dir="$ROOT_DIR/engines/katago/$NVIDIA_TRT_ENGINE_PLATFORM_DIR"
+  log_step "Preparing optional TensorRT KataGo engine [$TENSORRT_KATAGO_ASSET]"
+  "$PYTHON_BIN" - \
+    "$TENSORRT_KATAGO_URL" \
+    "$TENSORRT_KATAGO_CACHE_DIR" \
+    "$output_dir" \
+    "$TENSORRT_KATAGO_ASSET" \
+    "$TENSORRT_KATAGO_SHA256" <<'PY'
+import hashlib
+import os
+import shutil
+import ssl
+import sys
+import tempfile
+import urllib.request
+import zipfile
+
+url, cache_dir, output_dir, asset_name, expected_sha256 = sys.argv[1:6]
+expected_sha256 = expected_sha256.lower().replace("sha256:", "")
+archive_path = os.path.join(cache_dir, asset_name)
+part_path = archive_path + ".part"
+
+def file_sha256(path):
+    digest = hashlib.sha256()
+    with open(path, "rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+def download_with_resume():
+    os.makedirs(cache_dir, exist_ok=True)
+    if os.path.exists(archive_path) and file_sha256(archive_path) == expected_sha256:
+        print(f"Using cached TensorRT KataGo archive: {archive_path}")
+        return
+    if os.path.exists(archive_path):
+        os.remove(archive_path)
+
+    resume_from = os.path.getsize(part_path) if os.path.exists(part_path) else 0
+    context = ssl.create_default_context()
+    while True:
+        headers = {"User-Agent": "LizzieYzy-Next-Packager"}
+        if resume_from:
+            headers["Range"] = f"bytes={resume_from}-"
+            print(f"Resuming {asset_name} from {resume_from} bytes")
+        else:
+            print(f"Downloading {asset_name}")
+        request = urllib.request.Request(url, headers=headers)
+        with urllib.request.urlopen(request, timeout=120, context=context) as response:
+            if resume_from and getattr(response, "status", None) == 200:
+                os.remove(part_path)
+                resume_from = 0
+                continue
+            mode = "ab" if resume_from and getattr(response, "status", None) == 206 else "wb"
+            with open(part_path, mode) as out:
+                shutil.copyfileobj(response, out)
+        break
+    os.replace(part_path, archive_path)
+
+    actual_sha256 = file_sha256(archive_path)
+    if actual_sha256 != expected_sha256:
+        os.remove(archive_path)
+        raise SystemExit(
+            f"TensorRT KataGo checksum mismatch: expected {expected_sha256}, got {actual_sha256}"
+        )
+
+def find_katago_root(root):
+    candidates = []
+    for current, _dirs, files in os.walk(root):
+        lower_files = {name.lower() for name in files}
+        if "katago.exe" in lower_files:
+            candidates.append((len(current), current))
+    if not candidates:
+        raise SystemExit("TensorRT KataGo archive did not contain katago.exe")
+    candidates.sort()
+    return candidates[0][1]
+
+def copy_engine_files(source, target):
+    if os.path.exists(target):
+        shutil.rmtree(target)
+    os.makedirs(target, exist_ok=True)
+    copied = []
+    for name in os.listdir(source):
+        lower = name.lower()
+        source_path = os.path.join(source, name)
+        if not os.path.isfile(source_path):
+            continue
+        if lower == "katago.exe" or lower.endswith(".dll") or lower == "cacert.pem":
+            shutil.copy2(source_path, os.path.join(target, name))
+            copied.append(name)
+    if "katago.exe" not in {name.lower() for name in copied}:
+        raise SystemExit("Prepared TensorRT engine is missing katago.exe")
+
+download_with_resume()
+temp_dir = tempfile.mkdtemp(prefix="katago-tensorrt-", dir=cache_dir)
+try:
+    with zipfile.ZipFile(archive_path) as archive:
+        archive.extractall(temp_dir)
+    copy_engine_files(find_katago_root(temp_dir), output_dir)
+finally:
+    shutil.rmtree(temp_dir, ignore_errors=True)
+
+print(f"Prepared optional TensorRT KataGo engine in: {output_dir}")
+PY
+}
+
 to_native_path() {
   local path="$1"
   if command -v cygpath >/dev/null 2>&1; then
@@ -525,6 +669,7 @@ write_windows_install_note() {
   local has_nvidia_katago="$3"
   local has_nvidia50_cuda_katago="$4"
   local has_no_engine_installer="$5"
+  local has_tensorrt_split="$6"
   local note_file="$META_DIR/${DATE_TAG}-${ARCH_TAG}-install.txt"
 
   cat >"$note_file" <<EOF
@@ -568,7 +713,17 @@ EOF
   RTX 50 series CUDA package. Choose this first for RTX 5070/5080/5090.
 - ${DATE_TAG}-${NVIDIA50_CUDA_ARCH_TAG}.portable.zip
   RTX 50 CUDA portable build. Unzip it and open ${NVIDIA50_CUDA_APP_NAME}.exe.
-  Optional TensorRT acceleration for modern NVIDIA GPUs is installed inside KataGo Auto Setup after launch, not shipped as a release asset.
+  Optional TensorRT acceleration for modern NVIDIA GPUs is normally installed inside KataGo Auto Setup after launch.
+EOF
+  fi
+
+  if [[ "$has_tensorrt_split" == "true" ]]; then
+    cat >>"$note_file" <<EOF
+- ${DATE_TAG}-${NVIDIA_TRT_ARCH_TAG}.portable.7z.001, .002, ...
+  Advanced optional TensorRT split package. Download every .7z.00N volume, install 7-Zip, then extract from .7z.001.
+  If you are not sure, do not choose this package; use the normal NVIDIA/CUDA package and the in-app TensorRT installer with resume support instead.
+- ${DATE_TAG}-${NVIDIA_TRT_ARCH_TAG}.portable.README.txt
+  Read this first before using the advanced optional TensorRT split package.
 EOF
   fi
 
@@ -627,6 +782,7 @@ EOF
 - The NVIDIA assets include the official KataGo CUDA 12.1 Windows build and remain the stable choice for RTX 20/30/40 series users.
 - The NVIDIA assets also include the required official NVIDIA runtime files, so first launch should work offline on supported NVIDIA PCs.
 - TensorRT acceleration can be installed explicitly inside KataGo Auto Setup for RTX 20/30/40/50 users; GTX 10 series and older NVIDIA GPUs should use CUDA/OpenCL instead.
+- The in-app TensorRT installer supports resume; this is the default path for most users.
 - KataGo Auto Setup detects the local NVIDIA GPU and Compute Capability before recommending TensorRT.
 - If those NVIDIA runtime files are missing later, reinstall the NVIDIA package instead of downloading extra files at startup.
 EOF
@@ -637,8 +793,16 @@ EOF
 - The NVIDIA 50 CUDA assets include the official KataGo CUDA 12.8 / cuDNN 9.8 Windows build for Blackwell RTX 50 series GPUs.
 - RTX 5070/5080/5090 users should try the NVIDIA 50 CUDA package first.
 - TensorRT acceleration is available as an explicit in-app install from KataGo Auto Setup for RTX 20/30/40/50 users who want to test it.
+- The in-app TensorRT installer supports resume; this is the default path for most users.
 - KataGo Auto Setup detects the local NVIDIA GPU and Compute Capability before recommending TensorRT.
 - GTX 10 series and older NVIDIA GPUs should use CUDA/OpenCL instead of TensorRT.
+EOF
+  fi
+
+  if [[ "$has_tensorrt_split" == "true" ]]; then
+    cat >>"$note_file" <<'EOF'
+- The advanced optional TensorRT split package is for users who already know how to extract multi-volume 7z archives.
+- It is not the default recommended package. Download all .7z.00N volumes before extracting; downloading only .7z.001 is not enough.
 EOF
   fi
 
@@ -673,6 +837,156 @@ create_portable_zip() {
   powershell.exe -NoProfile -Command \
     "Compress-Archive -Path '$native_root' -DestinationPath '$native_zip' -Force"
   log_step "Finished Windows portable zip: $(basename "$portable_zip")"
+}
+
+write_tensorrt_split_readme() {
+  local readme_file="$1"
+  cat >"$readme_file" <<EOF
+高级可选：TensorRT 预装分卷包
+================================
+
+这个分卷包只适合熟悉 7-Zip 的 RTX 20/30/40/50 用户，尤其是想离线测试 TensorRT 的用户。
+不确定怎么选的普通用户，请下载普通 NVIDIA/CUDA 包，然后在软件内「KataGo 一键设置」安装 TensorRT；软件内安装支持断点续传。
+
+解压方法：
+1. 下载本次 release 里的全部 ${DATE_TAG}-${NVIDIA_TRT_ARCH_TAG}.portable.7z.00N 文件。
+2. 只下载 .7z.001 没有用，必须把 .001、.002、.003 等所有分卷放在同一个文件夹。
+3. 安装 7-Zip。
+4. 右键 ${DATE_TAG}-${NVIDIA_TRT_ARCH_TAG}.portable.7z.001，选择 7-Zip 解压。
+5. 解压后打开 ${NVIDIA_TRT_APP_NAME}.exe。
+
+注意：
+- 这个包不是普通用户的默认推荐下载。
+- GTX 10 系及更老 NVIDIA 显卡不推荐 TensorRT，建议 CUDA/OpenCL。
+- TensorRT 首次启动可能会生成优化缓存，耗时较长；如果失败，可以回退普通 NVIDIA/CUDA 或 OpenCL 包。
+
+Advanced optional TensorRT split package
+========================================
+
+This package is only for RTX 20/30/40/50 users who are comfortable with 7-Zip and want an offline TensorRT test path.
+Most users should download the regular NVIDIA/CUDA package and install TensorRT from KataGo Auto Setup inside the app; the in-app installer supports resume.
+
+How to extract:
+1. Download every ${DATE_TAG}-${NVIDIA_TRT_ARCH_TAG}.portable.7z.00N file from this release.
+2. Downloading only .7z.001 is not enough. Put all .001, .002, .003, ... volumes in the same folder.
+3. Install 7-Zip.
+4. Right-click ${DATE_TAG}-${NVIDIA_TRT_ARCH_TAG}.portable.7z.001 and extract with 7-Zip.
+5. Launch ${NVIDIA_TRT_APP_NAME}.exe.
+EOF
+}
+
+write_tensorrt_split_manifest() {
+  local manifest_file="$1"
+  shift
+  resolve_python_bin
+  "$PYTHON_BIN" - \
+    "$manifest_file" \
+    "$DATE_TAG" \
+    "$APP_DISPLAY_VERSION" \
+    "$TENSORRT_SPLIT_VOLUME_SIZE" \
+    "$NVIDIA_TRT_ARCH_TAG" \
+    "$NVIDIA_TRT_ENGINE_PLATFORM_DIR" \
+    "$TENSORRT_KATAGO_ASSET" \
+    "$TENSORRT_KATAGO_SHA256" \
+    "$@" <<'PY'
+import hashlib
+import json
+import pathlib
+import sys
+
+(
+    manifest_file,
+    date_tag,
+    app_display_version,
+    volume_size,
+    arch_tag,
+    engine_dir,
+    katago_asset,
+    katago_sha256,
+    *part_paths,
+) = sys.argv[1:]
+
+def sha256(path: pathlib.Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+parts = []
+for raw_path in part_paths:
+    path = pathlib.Path(raw_path)
+    parts.append(
+        {
+            "name": path.name,
+            "sizeBytes": path.stat().st_size,
+            "sha256": sha256(path),
+        }
+    )
+
+payload = {
+    "dateTag": date_tag,
+    "releaseDisplayVersion": app_display_version,
+    "assetKind": "advanced-optional-tensorrt-split-package",
+    "archivePrefix": f"{date_tag}-{arch_tag}.portable.7z",
+    "volumeSize": volume_size,
+    "extractWith": "7-Zip",
+    "engineBackend": "nvidia-tensorrt",
+    "engineDirectory": engine_dir,
+    "katagoAsset": katago_asset,
+    "katagoSha256": katago_sha256,
+    "parts": parts,
+    "userGuidance": [
+        "Download all .7z.00N parts before extracting.",
+        "Most users should use the in-app TensorRT installer with resume support instead.",
+        "GTX 10 series and older NVIDIA GPUs should prefer CUDA/OpenCL.",
+    ],
+}
+pathlib.Path(manifest_file).write_text(
+    json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
+    encoding="utf-8",
+)
+PY
+}
+
+create_tensorrt_split_package() {
+  local app_image_root="$1"
+  local archive_base="$RELEASE_DIR/${DATE_TAG}-${NVIDIA_TRT_ARCH_TAG}.portable"
+  local readme_file="$RELEASE_DIR/${DATE_TAG}-${NVIDIA_TRT_ARCH_TAG}.portable.README.txt"
+  local manifest_file="$RELEASE_DIR/${DATE_TAG}-${NVIDIA_TRT_ARCH_TAG}.portable.manifest.json"
+  local checksum_file="$RELEASE_DIR/${DATE_TAG}-${NVIDIA_TRT_ARCH_TAG}.portable.sha256.txt"
+  local seven_zip
+  local native_root
+  local native_archive
+  local split_parts=()
+
+  seven_zip="$(resolve_7z_bin)"
+  native_root="$(to_native_path "$app_image_root")"
+  native_archive="$(to_native_path "$archive_base.7z")"
+
+  printf '%s\n' \
+    "LizzieYzy Next advanced optional TensorRT split package. Keep this file so settings, logs, downloaded weights, and TensorRT stay inside this folder." \
+    >"$app_image_root/.lizzie-portable"
+  mkdir -p "$app_image_root/user-data"
+
+  rm -f "$archive_base.7z" "$archive_base.7z".* "$readme_file" "$manifest_file" "$checksum_file"
+  log_step "Creating optional TensorRT 7z split package: $(basename "$archive_base").7z.001"
+  "$seven_zip" a -t7z -mx=3 -v"$TENSORRT_SPLIT_VOLUME_SIZE" "$native_archive" "$native_root"
+
+  shopt -s nullglob
+  split_parts=("$archive_base.7z".[0-9][0-9][0-9])
+  shopt -u nullglob
+  if (( ${#split_parts[@]} == 0 )) || [[ "$(basename "${split_parts[0]}")" != "$(basename "$archive_base").7z.001" ]]; then
+    echo "TensorRT split package was not produced correctly: $archive_base.7z.001" >&2
+    return 1
+  fi
+
+  write_tensorrt_split_readme "$readme_file"
+  write_tensorrt_split_manifest "$manifest_file" "${split_parts[@]}"
+  write_sha256_file "$checksum_file" "${split_parts[@]}" "$readme_file" "$manifest_file"
+
+  artifacts+=("${split_parts[@]}" "$readme_file" "$manifest_file" "$checksum_file")
+  log_step "Finished optional TensorRT split package with ${#split_parts[@]} volume(s)"
 }
 
 assert_release_artifacts_within_limit() {
@@ -746,12 +1060,30 @@ build_release_variant() {
   log_step "Finished Windows release variant: $release_basename"
 }
 
+build_release_tensorrt_split_variant() {
+  local app_root
+
+  log_step "Starting optional Windows TensorRT split variant: $NVIDIA_TRT_ARCH_TAG"
+  app_root="$(build_app_image \
+    "nvidia.tensorrt" \
+    "true" \
+    "$NVIDIA_TRT_APP_NAME" \
+    "$NVIDIA_TRT_APP_DESCRIPTION" \
+    "$NVIDIA_TRT_ENGINE_PLATFORM_DIR" \
+    "$STANDARD_ENGINE_PLATFORM_DIR" \
+    "nvidia-tensorrt" \
+    "$NVIDIA_TRT_RUNTIME_STAGE_DIR")"
+  create_tensorrt_split_package "$app_root"
+  log_step "Finished optional Windows TensorRT split variant: $NVIDIA_TRT_ARCH_TAG"
+}
+
 artifacts=()
 build_no_engine_installer="true"
 has_with_katago_assets="false"
 has_opencl_katago_assets="false"
 has_nvidia_katago_assets="false"
 has_nvidia50_cuda_katago_assets="false"
+has_tensorrt_split_assets="false"
 
 prepare_bundled_readboard_assets
 prepare_bundled_jcef_assets
@@ -824,6 +1156,17 @@ else
   has_nvidia50_cuda_katago_assets="false"
 fi
 
+if [[ "${WINDOWS_BUILD_TENSORRT_SPLIT:-true}" == "true" ]] \
+  && [[ -f "$ROOT_DIR/weights/default.bin.gz" ]] \
+  && [[ "$has_nvidia_katago_assets" == "true" || "$has_nvidia50_cuda_katago_assets" == "true" ]]; then
+  has_tensorrt_split_assets="true"
+  prepare_bundled_tensorrt_engine_assets
+  prepare_bundled_nvidia_runtime_assets "cuda12.8-cudnn9-tensorrt" "$NVIDIA_TRT_RUNTIME_STAGE_DIR"
+  build_release_tensorrt_split_variant
+else
+  has_tensorrt_split_assets="false"
+fi
+
 build_release_variant \
   "without.engine" \
   "false" \
@@ -844,7 +1187,8 @@ write_windows_install_note \
   "$has_opencl_katago_assets" \
   "$has_nvidia_katago_assets" \
   "$has_nvidia50_cuda_katago_assets" \
-  "$build_no_engine_installer"
+  "$build_no_engine_installer" \
+  "$has_tensorrt_split_assets"
 write_sha256_file "$checksum_file" "${artifacts[@]}" "$install_note"
 
 echo "Artifacts:"

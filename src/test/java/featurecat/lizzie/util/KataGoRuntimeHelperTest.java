@@ -5,6 +5,8 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.sun.net.httpserver.HttpExchange;
+import com.sun.net.httpserver.HttpServer;
 import featurecat.lizzie.Config;
 import featurecat.lizzie.ConfigTestHelper;
 import featurecat.lizzie.Lizzie;
@@ -14,7 +16,9 @@ import featurecat.lizzie.util.KataGoAutoSetupHelper.DownloadSession;
 import featurecat.lizzie.util.KataGoAutoSetupHelper.SetupResult;
 import featurecat.lizzie.util.KataGoAutoSetupHelper.SetupSnapshot;
 import java.io.IOException;
+import java.io.OutputStream;
 import java.lang.reflect.Constructor;
+import java.net.InetSocketAddress;
 import java.nio.channels.FileChannel;
 import java.nio.channels.FileLock;
 import java.nio.file.Files;
@@ -24,6 +28,10 @@ import java.security.MessageDigest;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 import org.json.JSONObject;
@@ -398,6 +406,60 @@ public class KataGoRuntimeHelperTest {
                                                 "windows-x64-nvidia-tensorrt")));
                       }));
         });
+  }
+
+  @Test
+  void tensorRtInstallResumesInterruptedDownloadPartFile() throws Exception {
+    Path tempRoot = Files.createTempDirectory("katago-helper-tensorrt-resume");
+    Path runtimeWorkDirectory = Files.createDirectories(tempRoot.resolve("runtime-root"));
+    SetupSnapshot snapshot = createNvidia50Snapshot(tempRoot);
+    Path fixtureZip =
+        createTensorRtFixtureZip(tempRoot.resolve("fixture").resolve("katago-trt.zip"));
+    byte[] fixtureBytes = Files.readAllBytes(fixtureZip);
+    int firstChunkSize = Math.max(1, fixtureBytes.length / 2);
+
+    try (ResumableFixtureServer server =
+        ResumableFixtureServer.start(fixtureBytes, firstChunkSize)) {
+      withOsName(
+          WINDOWS_OS_NAME,
+          () ->
+              withTensorRtFixtureProperties(
+                  server.url(),
+                  sha256(fixtureZip),
+                  fixtureBytes.length,
+                  () ->
+                      withConfig(
+                          runtimeWorkDirectory,
+                          () -> {
+                            Path partialArchive =
+                                runtimeWorkDirectory
+                                    .resolve("nvidia-runtime")
+                                    .resolve("downloads")
+                                    .resolve("katago-trt.zip.part");
+                            assertThrows(
+                                IOException.class,
+                                () ->
+                                    KataGoRuntimeHelper.downloadAndInstallTensorRt(
+                                        snapshot, null, new DownloadSession()));
+                            assertTrue(
+                                Files.isRegularFile(partialArchive),
+                                "Interrupted TensorRT downloads should keep the .part file.");
+                            assertEquals(firstChunkSize, Files.size(partialArchive));
+
+                            SetupResult result =
+                                KataGoRuntimeHelper.downloadAndInstallTensorRt(
+                                    snapshot, null, new DownloadSession());
+
+                            assertEquals("KataGo TensorRT", result.engineName);
+                            assertEquals(
+                                "bytes=" + firstChunkSize + "-",
+                                server.lastRangeHeader(),
+                                "The second attempt should resume from the partial byte count.");
+                            assertFalse(
+                                Files.exists(partialArchive),
+                                "Successful resume should promote the .part file into the cache.");
+                          })));
+    }
   }
 
   @Test
@@ -1001,6 +1063,90 @@ public class KataGoRuntimeHelperTest {
     output.putNextEntry(new ZipEntry(name));
     output.write(content.getBytes(java.nio.charset.StandardCharsets.UTF_8));
     output.closeEntry();
+  }
+
+  private static final class ResumableFixtureServer implements AutoCloseable {
+    private final HttpServer server;
+    private final ExecutorService executor;
+    private final AtomicInteger requests = new AtomicInteger();
+    private final AtomicReference<String> lastRangeHeader = new AtomicReference<>("");
+
+    private ResumableFixtureServer(HttpServer server, ExecutorService executor) {
+      this.server = server;
+      this.executor = executor;
+    }
+
+    private static ResumableFixtureServer start(byte[] bytes, int firstChunkSize)
+        throws IOException {
+      HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+      ExecutorService executor = Executors.newSingleThreadExecutor();
+      ResumableFixtureServer fixture = new ResumableFixtureServer(server, executor);
+      server.createContext(
+          "/katago-trt.zip", exchange -> fixture.handle(exchange, bytes, firstChunkSize));
+      server.setExecutor(executor);
+      server.start();
+      return fixture;
+    }
+
+    private String url() {
+      return "http://127.0.0.1:" + server.getAddress().getPort() + "/katago-trt.zip";
+    }
+
+    private String lastRangeHeader() {
+      return lastRangeHeader.get();
+    }
+
+    private void handle(HttpExchange exchange, byte[] bytes, int firstChunkSize)
+        throws IOException {
+      int requestNumber = requests.incrementAndGet();
+      String rangeHeader = exchange.getRequestHeaders().getFirst("Range");
+      if (rangeHeader != null) {
+        lastRangeHeader.set(rangeHeader);
+      }
+      if (requestNumber == 1) {
+        exchange.sendResponseHeaders(200, firstChunkSize);
+        try (OutputStream body = exchange.getResponseBody()) {
+          body.write(bytes, 0, firstChunkSize);
+        } catch (IOException ignored) {
+          // The client should keep this short .part file and resume it on the next attempt.
+        }
+        return;
+      }
+
+      int start = parseRangeStart(rangeHeader);
+      if (start < 0 || start >= bytes.length) {
+        exchange.sendResponseHeaders(416, -1);
+        exchange.close();
+        return;
+      }
+      exchange.getResponseHeaders().set("Accept-Ranges", "bytes");
+      exchange
+          .getResponseHeaders()
+          .set("Content-Range", "bytes " + start + "-" + (bytes.length - 1) + "/" + bytes.length);
+      exchange.sendResponseHeaders(206, bytes.length - start);
+      try (OutputStream body = exchange.getResponseBody()) {
+        body.write(bytes, start, bytes.length - start);
+      }
+    }
+
+    private static int parseRangeStart(String rangeHeader) {
+      if (rangeHeader == null || !rangeHeader.startsWith("bytes=")) {
+        return 0;
+      }
+      int dash = rangeHeader.indexOf('-');
+      String start = dash > 0 ? rangeHeader.substring("bytes=".length(), dash) : "";
+      try {
+        return Integer.parseInt(start);
+      } catch (NumberFormatException e) {
+        return -1;
+      }
+    }
+
+    @Override
+    public void close() {
+      server.stop(0);
+      executor.shutdownNow();
+    }
   }
 
   private static void withTensorRtFixtureProperties(

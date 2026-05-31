@@ -40,12 +40,13 @@
 > 欢迎交流使用问题、反馈 bug、分享使用体验，或者讨论接下来最想加的功能。
 
 > [!IMPORTANT]
-> 如果你只想先下对版本，先记住这 9 句：
+> 如果你只想先下对版本，先记住这 10 句：
 > - Windows 大多数用户：到 [Releases](https://github.com/wimi321/lizzieyzy-next/releases) 下载 `*windows64.opencl.portable.zip`
 > - RTX 20/30/40 NVIDIA 显卡并且想更快：下载 `*windows64.nvidia.portable.zip`
 > - RTX 5070/5080/5090：优先下载 `*windows64.nvidia50.cuda.portable.zip`，需要 TensorRT 时再到软件内“一键设置”按需安装
 > - TensorRT 不只给 RTX 50：RTX 20/30/40/50 NVIDIA 显卡都可以在软件内按需安装；GTX 10 系及更老显卡优先 CUDA/OpenCL
 > - `KataGo 一键设置` 会检测 NVIDIA GPU 和 Compute Capability，自动提示是否推荐 TensorRT；检测失败也可以手动继续
+> - Release 里的 `*windows64.nvidia.tensorrt.portable.7z.001` 是高级可选分卷包，必须下载全部 `.7z.00N` 并用 7-Zip 解压；普通用户不要优先选它
 > - 如果 OpenCL 在你的电脑上不稳定：下载 `*windows64.with-katago.portable.zip`
 > - 现在支持直接输入野狐昵称抓最近公开棋谱，不需要先查账号数字
 > - 主推荐整合包已内置 KataGo `v1.16.4` 和官方推荐 `zhizi` 权重 `kata1-zhizi-b28c512nbt-muonfd2.bin.gz`
@@ -97,6 +98,7 @@
 | Windows，RTX 5070/5080/5090，CUDA 版，免安装 | `*windows64.nvidia50.cuda.portable.zip` |
 | Windows，RTX 5070/5080/5090，CUDA 版，想安装 | `*windows64.nvidia50.cuda.installer.exe` |
 | Windows，RTX 20/30/40/50，想测试 TensorRT 加速 | 先下载对应 NVIDIA 包（RTX 50 用 `*windows64.nvidia50.cuda.portable.zip`），打开后在 `KataGo 一键设置` 里安装 |
+| Windows，高级用户，想离线测试 TensorRT 预装包 | `*windows64.nvidia.tensorrt.portable.7z.001` 起的全部分卷，先看同名 `README.txt` |
 | Windows，自己配引擎，免安装 | `*windows64.without.engine.portable.zip` |
 | Windows，自己配引擎，想安装 | `*windows64.without.engine.installer.exe` |
 | macOS Apple Silicon | `*mac-apple-silicon.with-katago.dmg` |
@@ -110,7 +112,8 @@ Windows `portable.zip` 是真正的免安装模式：配置、日志、保存棋
 - Windows：先下 `*windows64.opencl.portable.zip`
 - Windows + RTX 20/30/40 NVIDIA 显卡：先下 `*windows64.nvidia.portable.zip`
 - Windows + RTX 5070/5080/5090：先下 `*windows64.nvidia50.cuda.portable.zip`
-- Windows + RTX 20/30/40/50 想试 TensorRT：不要找单独发布包，先下对应 NVIDIA/CUDA 包，再在软件内“一键设置”按需安装；软件会检测 GPU 和 Compute Capability 后给出推荐
+- Windows + RTX 20/30/40/50 想试 TensorRT：普通用户先下对应 NVIDIA/CUDA 包，再在软件内“一键设置”按需安装；软件会检测 GPU 和 Compute Capability 后给出推荐，下载支持断点续传
+- Windows + 熟悉 7-Zip 的高级用户：可以下载 `*windows64.nvidia.tensorrt.portable.7z.001/.002/...` 高级可选分卷包，必须下载全部分卷后从 `.001` 解压；只下载 `.001` 没用
 - GTX 10 系及更老 NVIDIA 显卡：优先 CUDA/OpenCL，不作为 TensorRT 推荐对象
 - OpenCL 不稳定：改下 `*windows64.with-katago.portable.zip`
 - Mac：先分清 Apple Silicon 还是 Intel

@@ -71,6 +71,7 @@ public final class KataGoRuntimeHelper {
   private static final String USER_AGENT =
       "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
           + "(KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36";
+  private static final int HTTP_RANGE_NOT_SATISFIABLE = 416;
   private static final String NVIDIA_ENGINE_DIR = "windows-x64-nvidia";
   private static final String NVIDIA50_CUDA_ENGINE_DIR = "windows-x64-nvidia50-cuda";
   private static final String NVIDIA_TRT_ENGINE_DIR = "windows-x64-nvidia-tensorrt";
@@ -366,6 +367,18 @@ public final class KataGoRuntimeHelper {
 
     long bytesPerSecond() {
       return isUsable() ? (bytesRead * 1000L) / elapsedMillis : 0L;
+    }
+  }
+
+  private static final class IncompleteRuntimePackageDownloadException extends IOException {
+    private IncompleteRuntimePackageDownloadException(String message) {
+      super(message);
+    }
+  }
+
+  private static final class CorruptRuntimePackageDownloadException extends IOException {
+    private CorruptRuntimePackageDownloadException(String message) {
+      super(message);
     }
   }
 
@@ -3100,95 +3113,243 @@ public final class KataGoRuntimeHelper {
   private static void downloadRuntimePackage(
       RuntimePackageSpec spec, Path archivePath, DownloadSession session, ProgressListener listener)
       throws IOException {
-    if (Files.isRegularFile(archivePath)) {
-      boolean cacheValid =
-          !Utils.isBlank(spec.sha256)
-              ? spec.sha256.equalsIgnoreCase(sha256(archivePath))
-              : spec.sizeBytes <= 0 || Files.size(archivePath) == spec.sizeBytes;
-      if (cacheValid) {
-        if (listener != null) {
-          listener.onProgress(spec.displayName, spec.sizeBytes, spec.sizeBytes);
-        }
-        return;
-      }
+    if (isRuntimePackageFileValid(spec, archivePath)) {
+      notifyRuntimePackageComplete(spec, listener);
+      return;
     }
 
     Files.createDirectories(archivePath.getParent());
     Path tempPath = archivePath.resolveSibling(archivePath.getFileName().toString() + ".part");
-    Files.deleteIfExists(tempPath);
-    URLConnection conn = null;
-    HttpURLConnection httpConn = null;
-    try {
-      conn = URI.create(spec.url).toURL().openConnection();
-      if (conn instanceof HttpURLConnection) {
-        httpConn = (HttpURLConnection) conn;
-        session.attach(httpConn);
-      }
-      session.throwIfCancelled();
-      conn.setConnectTimeout(15000);
-      conn.setReadTimeout(30000);
-      conn.setRequestProperty("User-Agent", USER_AGENT);
-      if (httpConn != null) {
-        httpConn.setInstanceFollowRedirects(true);
-        httpConn.setRequestMethod("GET");
-        int responseCode = httpConn.getResponseCode();
-        if (responseCode < 200 || responseCode >= 400) {
-          throw new IOException("HTTP " + responseCode + " from " + spec.url);
+    if (promoteCompletedRuntimePackagePartial(spec, tempPath, archivePath, listener)) {
+      return;
+    }
+
+    long resumeBytes = runtimePackagePartialSize(spec, tempPath);
+    boolean retriedWithoutRange = false;
+
+    while (true) {
+      URLConnection conn = null;
+      HttpURLConnection httpConn = null;
+      try {
+        session.throwIfCancelled();
+        long existingBytes = resumeBytes;
+        boolean appendToPartial = existingBytes > 0;
+        conn = URI.create(spec.url).toURL().openConnection();
+        conn.setConnectTimeout(15000);
+        conn.setReadTimeout(30000);
+        conn.setRequestProperty("User-Agent", USER_AGENT);
+        conn.setRequestProperty("Accept", "application/octet-stream,*/*");
+        if (conn instanceof HttpURLConnection) {
+          httpConn = (HttpURLConnection) conn;
+          session.attach(httpConn);
+          httpConn.setInstanceFollowRedirects(true);
+          httpConn.setRequestMethod("GET");
+          if (appendToPartial) {
+            httpConn.setRequestProperty("Range", "bytes=" + existingBytes + "-");
+          }
+          int responseCode = httpConn.getResponseCode();
+          if (appendToPartial) {
+            if (responseCode == HttpURLConnection.HTTP_PARTIAL) {
+              // Server accepted the Range request. Keep the existing .part bytes.
+            } else if (responseCode == HttpURLConnection.HTTP_OK) {
+              Files.deleteIfExists(tempPath);
+              existingBytes = 0L;
+              appendToPartial = false;
+            } else if (responseCode == HTTP_RANGE_NOT_SATISFIABLE) {
+              if (promoteCompletedRuntimePackagePartial(spec, tempPath, archivePath, listener)) {
+                return;
+              }
+              Files.deleteIfExists(tempPath);
+              if (!retriedWithoutRange) {
+                resumeBytes = 0L;
+                retriedWithoutRange = true;
+                continue;
+              }
+              throw new IOException("HTTP " + responseCode + " from " + spec.url);
+            } else if (responseCode < 200 || responseCode >= 400) {
+              throw new IOException("HTTP " + responseCode + " from " + spec.url);
+            } else {
+              Files.deleteIfExists(tempPath);
+              existingBytes = 0L;
+              appendToPartial = false;
+            }
+          } else if (responseCode < 200 || responseCode >= 400) {
+            throw new IOException("HTTP " + responseCode + " from " + spec.url);
+          }
+        } else if (appendToPartial) {
+          Files.deleteIfExists(tempPath);
+          existingBytes = 0L;
+          appendToPartial = false;
         }
-      }
-      long totalBytes =
-          conn.getContentLengthLong() > 0 ? conn.getContentLengthLong() : spec.sizeBytes;
-      MessageDigest digest = createSha256Digest();
-      try (InputStream raw = conn.getInputStream();
-          BufferedInputStream input = new BufferedInputStream(raw);
-          OutputStream output = Files.newOutputStream(tempPath)) {
-        byte[] buffer = new byte[8192];
-        long downloaded = 0L;
-        int read;
-        long lastReport = 0L;
-        while ((read = input.read(buffer)) >= 0) {
-          session.throwIfCancelled();
-          output.write(buffer, 0, read);
-          digest.update(buffer, 0, read);
-          downloaded += read;
-          long now = System.currentTimeMillis();
-          if (listener != null && (now - lastReport > 120 || downloaded == totalBytes)) {
-            listener.onProgress(spec.displayName, downloaded, totalBytes);
-            lastReport = now;
+
+        long totalBytes =
+            resolveRuntimePackageTotalBytes(
+                spec, existingBytes, conn.getContentLengthLong(), appendToPartial);
+        String progressText = runtimePackageProgressText(spec, existingBytes);
+        if (listener != null && existingBytes > 0) {
+          listener.onProgress(progressText, existingBytes, totalBytes);
+        }
+        StandardOpenOption[] openOptions =
+            appendToPartial
+                ? new StandardOpenOption[] {StandardOpenOption.CREATE, StandardOpenOption.APPEND}
+                : new StandardOpenOption[] {
+                  StandardOpenOption.CREATE,
+                  StandardOpenOption.TRUNCATE_EXISTING,
+                  StandardOpenOption.WRITE
+                };
+        try (InputStream raw = conn.getInputStream();
+            BufferedInputStream input = new BufferedInputStream(raw);
+            OutputStream output = Files.newOutputStream(tempPath, openOptions)) {
+          byte[] buffer = new byte[256 * 1024];
+          long downloaded = existingBytes;
+          int read;
+          long lastReport = 0L;
+          while ((read = input.read(buffer)) >= 0) {
+            session.throwIfCancelled();
+            output.write(buffer, 0, read);
+            downloaded += read;
+            long now = System.currentTimeMillis();
+            if (listener != null && (now - lastReport > 120 || downloaded == totalBytes)) {
+              listener.onProgress(progressText, downloaded, totalBytes);
+              lastReport = now;
+            }
           }
         }
+
+        session.throwIfCancelled();
+        validateRuntimePackageDownload(spec, tempPath);
+        moveRuntimePackageIntoCache(tempPath, archivePath);
+        notifyRuntimePackageComplete(spec, listener);
+        return;
+      } catch (IOException e) {
+        if (e instanceof CorruptRuntimePackageDownloadException) {
+          Files.deleteIfExists(tempPath);
+        }
+        if (session.isCancelled() && !(e instanceof DownloadCancelledException)) {
+          throw new DownloadCancelledException(
+              resource("AutoSetup.downloadCancelled", "Download cancelled."));
+        }
+        throw e;
+      } finally {
+        if (httpConn != null) {
+          httpConn.disconnect();
+        }
+        session.clear();
       }
-      session.throwIfCancelled();
-      String actualSha256 = toHex(digest.digest());
-      if (!Utils.isBlank(spec.sha256) && !spec.sha256.equalsIgnoreCase(actualSha256)) {
-        throw new IOException("SHA-256 mismatch for " + spec.displayName);
-      }
-      if (Utils.isBlank(spec.sha256)
-          && spec.sizeBytes > 0
-          && Files.size(tempPath) != spec.sizeBytes) {
-        throw new IOException("Size mismatch for " + spec.displayName);
-      }
-      try {
-        Files.move(
-            tempPath,
-            archivePath,
-            StandardCopyOption.REPLACE_EXISTING,
-            StandardCopyOption.ATOMIC_MOVE);
-      } catch (AtomicMoveNotSupportedException e) {
-        Files.move(tempPath, archivePath, StandardCopyOption.REPLACE_EXISTING);
-      }
-    } catch (IOException e) {
+    }
+  }
+
+  private static boolean isRuntimePackageFileValid(RuntimePackageSpec spec, Path path)
+      throws IOException {
+    if (!Files.isRegularFile(path)) {
+      return false;
+    }
+    long size = Files.size(path);
+    if (spec.sizeBytes > 0 && size != spec.sizeBytes) {
+      return false;
+    }
+    return Utils.isBlank(spec.sha256) || spec.sha256.equalsIgnoreCase(sha256(path));
+  }
+
+  private static boolean promoteCompletedRuntimePackagePartial(
+      RuntimePackageSpec spec, Path tempPath, Path archivePath, ProgressListener listener)
+      throws IOException {
+    if (!Files.isRegularFile(tempPath)) {
+      return false;
+    }
+    long size = Files.size(tempPath);
+    if (size <= 0) {
       Files.deleteIfExists(tempPath);
-      if (session.isCancelled() && !(e instanceof DownloadCancelledException)) {
-        throw new DownloadCancelledException(
-            resource("AutoSetup.downloadCancelled", "Download cancelled."));
+      return false;
+    }
+    if (hasRuntimePackageIntegritySpec(spec) && isRuntimePackageFileValid(spec, tempPath)) {
+      moveRuntimePackageIntoCache(tempPath, archivePath);
+      notifyRuntimePackageComplete(spec, listener);
+      return true;
+    }
+    if (spec.sizeBytes > 0 && size >= spec.sizeBytes) {
+      Files.deleteIfExists(tempPath);
+    }
+    return false;
+  }
+
+  private static boolean hasRuntimePackageIntegritySpec(RuntimePackageSpec spec) {
+    return spec.sizeBytes > 0 || !Utils.isBlank(spec.sha256);
+  }
+
+  private static long runtimePackagePartialSize(RuntimePackageSpec spec, Path tempPath)
+      throws IOException {
+    if (!Files.isRegularFile(tempPath)) {
+      return 0L;
+    }
+    long size = Files.size(tempPath);
+    if (size <= 0 || (spec.sizeBytes > 0 && size >= spec.sizeBytes)) {
+      Files.deleteIfExists(tempPath);
+      return 0L;
+    }
+    return size;
+  }
+
+  private static long resolveRuntimePackageTotalBytes(
+      RuntimePackageSpec spec, long existingBytes, long responseBytes, boolean appendToPartial) {
+    if (spec.sizeBytes > 0) {
+      return spec.sizeBytes;
+    }
+    if (responseBytes > 0) {
+      return appendToPartial ? existingBytes + responseBytes : responseBytes;
+    }
+    return -1L;
+  }
+
+  private static String runtimePackageProgressText(RuntimePackageSpec spec, long existingBytes) {
+    if (existingBytes <= 0) {
+      return spec.displayName;
+    }
+    return String.format(resource("AutoSetup.downloadResuming", "%s (resuming)"), spec.displayName);
+  }
+
+  private static void validateRuntimePackageDownload(RuntimePackageSpec spec, Path tempPath)
+      throws IOException {
+    long actualSize = Files.size(tempPath);
+    if (spec.sizeBytes > 0) {
+      if (actualSize < spec.sizeBytes) {
+        throw new IncompleteRuntimePackageDownloadException(
+            "Incomplete download for "
+                + spec.displayName
+                + ": "
+                + actualSize
+                + " of "
+                + spec.sizeBytes
+                + " bytes");
       }
-      throw e;
-    } finally {
-      if (httpConn != null) {
-        httpConn.disconnect();
+      if (actualSize > spec.sizeBytes) {
+        throw new CorruptRuntimePackageDownloadException(
+            "Size mismatch for " + spec.displayName + ": " + actualSize + " bytes");
       }
-      session.clear();
+    }
+    if (!Utils.isBlank(spec.sha256) && !spec.sha256.equalsIgnoreCase(sha256(tempPath))) {
+      throw new CorruptRuntimePackageDownloadException("SHA-256 mismatch for " + spec.displayName);
+    }
+  }
+
+  private static void moveRuntimePackageIntoCache(Path tempPath, Path archivePath)
+      throws IOException {
+    try {
+      Files.move(
+          tempPath,
+          archivePath,
+          StandardCopyOption.REPLACE_EXISTING,
+          StandardCopyOption.ATOMIC_MOVE);
+    } catch (AtomicMoveNotSupportedException e) {
+      Files.move(tempPath, archivePath, StandardCopyOption.REPLACE_EXISTING);
+    }
+  }
+
+  private static void notifyRuntimePackageComplete(
+      RuntimePackageSpec spec, ProgressListener listener) {
+    if (listener != null) {
+      long totalBytes = Math.max(0L, spec.sizeBytes);
+      listener.onProgress(spec.displayName, totalBytes, totalBytes);
     }
   }
 
