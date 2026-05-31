@@ -3,6 +3,7 @@ package featurecat.lizzie.analysis;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import org.junit.jupiter.api.Test;
@@ -131,5 +132,84 @@ class SyncDiagnosticsRecorderTest {
     assertTrue(before.toSummaryText().contains("session-before"));
     assertTrue(before.toSummaryText().contains("result: HOLD"));
     assertNotSame(before, recorder.snapshot());
+  }
+
+  @Test
+  void exportSnapshotIncludesRecentProtocolDecisionAndYikeEvents() {
+    SyncDiagnosticsRecorder recorder = new SyncDiagnosticsRecorder();
+    SyncDecisionTrace trace =
+        SyncDecisionTrace.builder("HOLD", "conflict_hold").timestampMillis(100L).build();
+    YikeSessionDiagnosticsSnapshot yike =
+        YikeSessionDiagnosticsSnapshot.builder()
+            .currentSessionKey("live-room:186538")
+            .summary("session event")
+            .build();
+
+    recorder.recordProtocolEvent(SyncProtocolDiagnosticEvent.of(10L, "syncPlatform yike", "test"));
+    recorder.updateLatestDecision(trace);
+    recorder.updateYikeSession(yike);
+
+    SyncDiagnosticsExportSnapshot snapshot = recorder.exportSnapshot();
+
+    assertEquals(1, snapshot.getRecentProtocolEvents().size());
+    assertSame(trace, snapshot.getRecentDecisionTraces().get(0));
+    assertSame(yike, snapshot.getRecentYikeEvents().get(0));
+  }
+
+  @Test
+  void decisionTraceBufferKeepsOnlyNewestValuesWhenCapacityIsExceeded() {
+    SyncDiagnosticsRecorder recorder = new SyncDiagnosticsRecorder();
+    int eventCount = SyncDiagnosticsRecorder.DECISION_TRACE_CAPACITY + 3;
+
+    for (int i = 0; i < eventCount; i++) {
+      recorder.updateLatestDecision(
+          SyncDecisionTrace.builder("HOLD", "conflict_hold").timestampMillis(i).build());
+    }
+
+    SyncDiagnosticsExportSnapshot snapshot = recorder.exportSnapshot();
+
+    assertEquals(
+        SyncDiagnosticsRecorder.DECISION_TRACE_CAPACITY, snapshot.getRecentDecisionTraces().size());
+    assertEquals(3L, snapshot.getRecentDecisionTraces().get(0).getTimestampMillis());
+    assertEquals(
+        eventCount - 1L,
+        snapshot
+            .getRecentDecisionTraces()
+            .get(snapshot.getRecentDecisionTraces().size() - 1)
+            .getTimestampMillis());
+  }
+
+  @Test
+  void clearForTestsClearsLatestAndRecentBuffers() {
+    SyncDiagnosticsRecorder recorder = new SyncDiagnosticsRecorder();
+    recorder.recordProtocolEvent(SyncProtocolDiagnosticEvent.of(10L, "sync", "test"));
+    recorder.updateLatestDecision(SyncDecisionTrace.builder("HOLD", "conflict_hold").build());
+    recorder.updateYikeSession(
+        YikeSessionDiagnosticsSnapshot.builder().currentSessionKey("live-room:1").build());
+
+    recorder.clearForTests();
+
+    SyncDiagnosticsExportSnapshot export = recorder.exportSnapshot();
+    assertTrue(export.getRecentProtocolEvents().isEmpty());
+    assertTrue(export.getRecentDecisionTraces().isEmpty());
+    assertTrue(export.getRecentYikeEvents().isEmpty());
+    assertTrue(recorder.snapshot().getLatestDecisionTrace().isEmpty());
+  }
+
+  @Test
+  void clearDefaultForTestsClearsSingletonBuffersAcrossPackages() {
+    SyncDiagnosticsRecorder recorder = SyncDiagnosticsRecorder.getDefault();
+    recorder.recordProtocolEvent(SyncProtocolDiagnosticEvent.of(10L, "sync", "test"));
+    recorder.updateLatestDecision(SyncDecisionTrace.builder("HOLD", "conflict_hold").build());
+    recorder.updateYikeSession(
+        YikeSessionDiagnosticsSnapshot.builder().currentSessionKey("live-room:1").build());
+
+    SyncDiagnosticsRecorder.clearDefaultForTests();
+
+    SyncDiagnosticsExportSnapshot export = recorder.exportSnapshot();
+    assertTrue(export.getRecentProtocolEvents().isEmpty());
+    assertTrue(export.getRecentDecisionTraces().isEmpty());
+    assertTrue(export.getRecentYikeEvents().isEmpty());
+    assertTrue(recorder.snapshot().getLatestDecisionTrace().isEmpty());
   }
 }

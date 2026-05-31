@@ -2661,10 +2661,7 @@ class ReadBoardSyncDecisionTest {
   }
 
   private static void resetDefaultDiagnosticsRecorder() {
-    SyncDiagnosticsRecorder recorder = SyncDiagnosticsRecorder.getDefault();
-    recorder.updateSync(null);
-    recorder.updateYikeSession(null);
-    recorder.updateLatestDecision(null);
+    SyncDiagnosticsRecorder.clearDefaultForTests();
   }
 
   private static Object getField(Object target, String name) throws Exception {

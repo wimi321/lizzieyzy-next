@@ -28,12 +28,12 @@ class OnlineDialogYikeSessionStateTest {
 
   @BeforeEach
   void resetDiagnosticsBeforeTest() {
-    SyncDiagnosticsRecorder.getDefault().updateYikeSession(null);
+    SyncDiagnosticsRecorder.clearDefaultForTests();
   }
 
   @AfterEach
   void resetDiagnosticsAfterTest() {
-    SyncDiagnosticsRecorder.getDefault().updateYikeSession(null);
+    SyncDiagnosticsRecorder.clearDefaultForTests();
   }
 
   @Test
