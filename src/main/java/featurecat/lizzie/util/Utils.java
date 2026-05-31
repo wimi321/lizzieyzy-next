@@ -154,7 +154,9 @@ public class Utils {
     String resolvedValue = currentValue;
     if (force
         || (!hasValidValue
-            && (shouldInitializeAutoLoad || Lizzie.config.autoLoadKataEngineThreads))) {
+            && (shouldInitializeAutoLoad
+                || Lizzie.config.autoLoadKataEngineThreads
+                || Lizzie.config.chkKataEngineThreads))) {
       resolvedValue = resolveKataGoThreadsValue(currentValue);
     }
 
@@ -196,6 +198,23 @@ public class Utils {
       return trimmed;
     }
     return String.valueOf(getRecommendedKataGoThreads());
+  }
+
+  public static String resolveKataGoThreadsForEngineLoad() {
+    if (Lizzie.config == null
+        || (!Lizzie.config.chkKataEngineThreads && !Lizzie.config.autoLoadKataEngineThreads)) {
+      return "";
+    }
+    String currentValue =
+        Lizzie.config.txtKataEngineThreads == null ? "" : Lizzie.config.txtKataEngineThreads.trim();
+    String resolvedValue = resolveKataGoThreadsValue(currentValue);
+    if (!resolvedValue.equals(currentValue)) {
+      Lizzie.config.txtKataEngineThreads = resolvedValue;
+      if (Lizzie.config.uiConfig != null) {
+        Lizzie.config.uiConfig.put("txt-kata-engine-threads", resolvedValue);
+      }
+    }
+    return resolvedValue;
   }
 
   public static void persistConfigQuietly() {

@@ -4849,9 +4849,8 @@ public class Leelaz {
     if (Lizzie.config.autoLoadKataEnginePDA && !isKataGoPda) {
       setPda(Lizzie.config.autoLoadTxtKataEnginePDA);
     }
-    if (Lizzie.config.autoLoadKataEngineThreads)
-      Lizzie.leelaz.sendCommand(
-          "kata-set-param numSearchThreads " + Lizzie.config.txtKataEngineThreads);
+    String kataGoThreads = Utils.resolveKataGoThreadsForEngineLoad();
+    if (!kataGoThreads.isEmpty()) sendCommand("kata-set-param numSearchThreads " + kataGoThreads);
     if (Lizzie.config.autoLoadKataEngineWRN) {
       try {
         this.wrn = Double.parseDouble(Lizzie.config.autoLoadTxtKataEngineWRN);
