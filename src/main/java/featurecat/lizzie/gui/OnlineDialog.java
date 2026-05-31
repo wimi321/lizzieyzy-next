@@ -1,6 +1,8 @@
 package featurecat.lizzie.gui;
 
 import featurecat.lizzie.Lizzie;
+import featurecat.lizzie.analysis.SyncDiagnosticsRecorder;
+import featurecat.lizzie.analysis.YikeSessionDiagnosticsSnapshot;
 import featurecat.lizzie.rules.Board;
 import featurecat.lizzie.rules.BoardData;
 import featurecat.lizzie.rules.BoardHistoryList;
@@ -107,6 +109,9 @@ public class OnlineDialog extends JDialog {
   private YikeSessionState activeYikeSession = YikeSessionState.empty();
   private YikeSessionState pendingYikeSession = YikeSessionState.empty();
   private long lastYikeSyncApplyAtMillis = 0L;
+  private String lastYikeGeometryClearReason = "none";
+  private String lastYikeSessionSwitchReason = "none";
+  private String lastYikeDebugEventSummary = "none";
   private int yikeLiveSessionId = 0;
   private long userId = -1000000;
   private long roomId = 0;
@@ -473,12 +478,14 @@ public class OnlineDialog extends JDialog {
     String sessionKey = yikeSessionKey(sourceUrl);
     if (Utils.isBlank(sessionKey)) {
       pendingYikeSession = YikeSessionState.empty();
+      publishYikeSessionSwitchDiagnostics("begin-pending-cleared");
       return;
     }
     if (activeYikeSession.matches(sessionKey) || pendingYikeSession.matches(sessionKey)) {
       return;
     }
     pendingYikeSession = YikeSessionState.pending(sessionKey);
+    publishYikeDiagnostics("begin-pending-session");
   }
 
   private void markYikeSyncReady(String sessionKey, int resolvedBoardSize) {
@@ -487,17 +494,22 @@ public class OnlineDialog extends JDialog {
     }
     if (pendingYikeSession.matches(sessionKey)) {
       pendingYikeSession = pendingYikeSession.withResolvedBoardSize(resolvedBoardSize);
-      promotePendingYikeSessionIfReady();
+      if (!promotePendingYikeSessionIfReady()) {
+        publishYikeDiagnostics("sync-ready");
+      }
       return;
     }
     if (activeYikeSession.matches(sessionKey)) {
       activeYikeSession = activeYikeSession.withResolvedBoardSize(resolvedBoardSize);
       applyActiveYikeSessionState();
+      publishYikeDiagnostics("active-sync-ready");
       return;
     }
     pendingYikeSession =
         YikeSessionState.pending(sessionKey).withResolvedBoardSize(resolvedBoardSize);
-    promotePendingYikeSessionIfReady();
+    if (!promotePendingYikeSessionIfReady()) {
+      publishYikeDiagnostics("sync-ready-new-pending");
+    }
   }
 
   private void markYikeGeometryReady(String sessionKey, YikeGeometrySnapshot geometry) {
@@ -506,25 +518,32 @@ public class OnlineDialog extends JDialog {
     }
     if (pendingYikeSession.matches(sessionKey)) {
       pendingYikeSession = pendingYikeSession.withGeometry(geometry);
-      promotePendingYikeSessionIfReady();
+      if (!promotePendingYikeSessionIfReady()) {
+        publishYikeDiagnostics("geometry-ready");
+      }
       return;
     }
     if (activeYikeSession.matches(sessionKey)) {
       activeYikeSession = activeYikeSession.withGeometry(geometry);
       applyActiveYikeSessionState();
+      publishYikeDiagnostics("active-geometry-ready");
       return;
     }
     pendingYikeSession = YikeSessionState.pending(sessionKey).withGeometry(geometry);
-    promotePendingYikeSessionIfReady();
+    if (!promotePendingYikeSessionIfReady()) {
+      publishYikeDiagnostics("geometry-ready-new-pending");
+    }
   }
 
-  private void promotePendingYikeSessionIfReady() {
+  private boolean promotePendingYikeSessionIfReady() {
     if (!shouldPromotePendingSession(activeYikeSession, pendingYikeSession)) {
-      return;
+      return false;
     }
     activeYikeSession = pendingYikeSession;
     pendingYikeSession = YikeSessionState.empty();
     applyActiveYikeSessionState();
+    publishYikeSessionSwitchDiagnostics("pending-promoted");
+    return true;
   }
 
   private void applyActiveYikeSessionState() {
@@ -549,6 +568,7 @@ public class OnlineDialog extends JDialog {
     pendingYikeSession = YikeSessionState.empty();
     lastYikeGeometry = null;
     clearYikeGeometryToReadBoard();
+    publishYikeGeometryClearDiagnostics("placement-geometry-invalidated");
   }
 
   private void resetYikeSessions() {
@@ -557,6 +577,69 @@ public class OnlineDialog extends JDialog {
     lastYikeGeometry = null;
     hasResolvedYikeBoardSize = false;
     lastYikeSyncApplyAtMillis = 0L;
+    publishYikeClearAndSessionSwitchDiagnostics("sessions-reset");
+  }
+
+  private void publishYikeDiagnostics(String reason) {
+    SyncDiagnosticsRecorder.getDefault().updateYikeSession(buildYikeDiagnosticsSnapshot(reason));
+  }
+
+  private void publishYikeGeometryClearDiagnostics(String reason) {
+    lastYikeGeometryClearReason = yikeDiagnosticsReason(reason);
+    publishYikeDiagnostics(reason);
+  }
+
+  private void publishYikeSessionSwitchDiagnostics(String reason) {
+    lastYikeSessionSwitchReason = yikeDiagnosticsReason(reason);
+    publishYikeDiagnostics(reason);
+  }
+
+  private void publishYikeClearAndSessionSwitchDiagnostics(String reason) {
+    String safeReason = yikeDiagnosticsReason(reason);
+    lastYikeGeometryClearReason = safeReason;
+    lastYikeSessionSwitchReason = safeReason;
+    publishYikeDiagnostics(safeReason);
+  }
+
+  private YikeSessionDiagnosticsSnapshot buildYikeDiagnosticsSnapshot(String reason) {
+    String routeKind = yikeRouteKind(currentYikeSourceUrl());
+    YikeSessionState active =
+        activeYikeSession == null ? YikeSessionState.empty() : activeYikeSession;
+    YikeSessionState pending =
+        pendingYikeSession == null ? YikeSessionState.empty() : pendingYikeSession;
+    boolean effectiveGeometryReady =
+        active.hasSessionKey() && active.geometryReady && lastYikeGeometry != null;
+    String effectiveGeometrySessionKey = effectiveGeometryReady ? active.sessionKey : "";
+    return YikeSessionDiagnosticsSnapshot.builder()
+        .listenerEnabled(!isStoped)
+        .currentRouteKind(routeKind)
+        .currentSessionKey(currentYikeSessionKey())
+        .activeSessionKey(active.sessionKey)
+        .activeSyncReady(active.syncReady)
+        .activeGeometryReady(active.geometryReady)
+        .activeBoardSize(active.resolvedBoardSize)
+        .pendingSessionKey(pending.sessionKey)
+        .pendingSyncReady(pending.syncReady)
+        .pendingGeometryReady(pending.geometryReady)
+        .pendingBoardSize(pending.resolvedBoardSize)
+        .effectiveGeometrySessionKey(effectiveGeometrySessionKey)
+        .effectiveGeometryReady(effectiveGeometryReady)
+        .placementGeometryAllowed(isBoardYikeRouteKind(routeKind) && effectiveGeometryReady)
+        .lastGeometryClearReason(lastYikeGeometryClearReason)
+        .lastSessionSwitchReason(lastYikeSessionSwitchReason)
+        .lastYikeDebugEventSummary(lastYikeDebugEventSummary)
+        .timestampMillis(System.currentTimeMillis())
+        .source("OnlineDialog")
+        .summary(lastYikeDebugEventSummary)
+        .build();
+  }
+
+  private static String yikeDiagnosticsReason(String reason) {
+    if (Utils.isBlank(reason)) {
+      return "unknown";
+    }
+    String safe = reason.trim().replaceAll("[^A-Za-z0-9_.:-]+", "-");
+    return safe.length() <= 80 ? safe : safe.substring(0, 80);
   }
 
   private String currentBrowserYikeUrl() {
