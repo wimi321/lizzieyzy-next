@@ -11,10 +11,11 @@ final class SyncDiagnosticsExportSanitizer {
   private static final Pattern YIKE_LIVE_URL =
       Pattern.compile("https?://(?:www\\.)?yikeweiqi\\.com/live/(\\d+)\\b[^\\s,;]*");
   private static final Pattern RAW_URL = Pattern.compile("https?://[^\\s,;]+");
-  private static final Pattern SGF_PAYLOAD =
-      Pattern.compile("(?i)(?:\\b(?:sgf\\s*=\\s*|loadsgf\\s+))?\\(;GM[^\\r\\n]*?\\)");
+  private static final Pattern SGF_PAYLOAD = Pattern.compile("\\(;[^\\r\\n]*?\\)");
   private static final Pattern TOKEN_PARAMETER =
       Pattern.compile("(?i)\\b(?:roomToken|authToken|token)\\s*=\\s*[^\\s&;,]+");
+  private static final Pattern YIKE_ROOM_PARAMETER =
+      Pattern.compile("(?i)\\b(?:room|roomId|id)\\s*=\\s*(\\d+)\\b");
   private static final Pattern WINDOWS_USER_PATH =
       Pattern.compile("(?i)\\b([A-Z]):\\\\Users\\\\[^\\\\\\s,;]+(?:\\\\[^\\s,;]*)*");
   private static final Pattern WINDOWS_ABSOLUTE_PATH =
@@ -54,11 +55,12 @@ final class SyncDiagnosticsExportSanitizer {
   }
 
   String text(String value) {
-    String safe = normalize(value, "none");
+    String safe = unescapeDiagnosticSeparators(normalize(value, "none"));
     safe = SGF_PAYLOAD.matcher(safe).replaceAll("<redacted-sgf>");
     safe = replaceYikeUrls(safe);
     safe = RAW_URL.matcher(safe).replaceAll("<redacted-url>");
     safe = TOKEN_PARAMETER.matcher(safe).replaceAll("<redacted-token>");
+    safe = replaceYikeRoomParameters(safe);
     safe = replaceSessionKeys(safe);
     safe = replacePaths(safe);
     safe = TOKEN_TEXT.matcher(safe).replaceAll("<redacted-token>");
@@ -76,6 +78,20 @@ final class SyncDiagnosticsExportSanitizer {
     while (matcher.find()) {
       matcher.appendReplacement(
           out, Matcher.quoteReplacement(sessionAlias("live-room:" + matcher.group(1))));
+    }
+    matcher.appendTail(out);
+    return out.toString();
+  }
+
+  private String replaceYikeRoomParameters(String value) {
+    Matcher matcher = YIKE_ROOM_PARAMETER.matcher(value);
+    StringBuffer out = new StringBuffer();
+    while (matcher.find()) {
+      String replacement =
+          matcher
+              .group(0)
+              .replace(matcher.group(1), sessionAlias("live-room:" + matcher.group(1)));
+      matcher.appendReplacement(out, Matcher.quoteReplacement(replacement));
     }
     matcher.appendTail(out);
     return out.toString();
@@ -141,6 +157,16 @@ final class SyncDiagnosticsExportSanitizer {
     int separator = sessionKey.indexOf(':');
     String route = separator > 0 ? sessionKey.substring(0, separator) : "none";
     return normalize(route, "none");
+  }
+
+  private static String unescapeDiagnosticSeparators(String value) {
+    return value
+        .replace("\\/", "/")
+        .replace("\\u003d", "=")
+        .replace("\\u003D", "=")
+        .replace("\\u0026", "&")
+        .replace("\\u003f", "?")
+        .replace("\\u003F", "?");
   }
 
   private static String normalize(String value, String fallback) {
