@@ -47,9 +47,22 @@ class SyncDiagnosticsExporterTest {
     for (String raw :
         List.of(
             "(;GM[1]SZ[19])",
+            "(;GM[1]FF[4]SZ[19];B[pd])",
+            "(;GM[1]FF[4];W[dd])",
+            "(;GM",
+            "B[pd]",
+            "W[dd]",
             "secret-room-token",
+            "roomToken",
+            "token=abc123",
+            "authToken",
+            "abc123",
             "live-room:186538",
+            "186538",
+            "https://",
             "https://www.yikeweiqi.com/live/186538",
+            "https://www.yikeweiqi.com/live/186538?roomToken=abc123&foo=bar",
+            "foo=bar",
             "User Secret Room Title",
             "C:\\Users\\alice\\Lizzie",
             "/mnt/c/Users/alice/Lizzie",
@@ -70,7 +83,9 @@ class SyncDiagnosticsExporterTest {
             "home\\\\alice",
             "/Users/alice",
             "/home/alice",
-            "/mnt/c/Users/alice")) {
+            "/mnt/c/Users/alice",
+            "C:\\\\Users\\\\alice",
+            "abc123")) {
       assertFalse(allText.contains(leaked), leaked);
     }
 
@@ -115,8 +130,9 @@ class SyncDiagnosticsExporterTest {
             .hasLastResolvedSnapshotNode(true)
             .syncAnalysisEpoch(7L)
             .pendingRemoteContextSummary(
-                "sgf=(;GM[1]SZ[19]) token=secret-room-token path=C:\\Users\\alice\\Lizzie")
-            .lastResolvedSnapshotSummary("url=https://www.yikeweiqi.com/live/186538")
+                "sgf=(;GM[1]SZ[19]) sgf=(;GM[1]FF[4]SZ[19];B[pd]) token=secret-room-token token=abc123 path=C:\\Users\\alice\\Lizzie")
+            .lastResolvedSnapshotSummary(
+                "url=https://www.yikeweiqi.com/live/186538?roomToken=abc123&foo=bar")
             .lastProtocolLineSummary("window=User Secret Room Title")
             .lastProtocolTimestampMillis(110L)
             .timestampMillis(100L)
@@ -140,8 +156,8 @@ class SyncDiagnosticsExporterTest {
             .effectiveGeometryReady(true)
             .placementGeometryAllowed(true)
             .lastGeometryClearReason("User Secret Room Title")
-            .lastSessionSwitchReason("https://www.yikeweiqi.com/live/186538")
-            .lastYikeDebugEventSummary("token=secret-room-token")
+            .lastSessionSwitchReason("https://www.yikeweiqi.com/live/186538?roomToken=abc123")
+            .lastYikeDebugEventSummary("token=secret-room-token authToken=abc123")
             .timestampMillis(120L)
             .source("test")
             .summary("session live-room:186538")
@@ -179,7 +195,9 @@ class SyncDiagnosticsExporterTest {
             SyncProtocolDiagnosticEvent.of(140L, "raw /Users/alice/Lizzie", "test"),
             SyncProtocolDiagnosticEvent.of(141L, "C:\\secret\\file.zip", "test"),
             SyncProtocolDiagnosticEvent.of(142L, "/var/tmp/alice/lizzie", "test"),
-            SyncProtocolDiagnosticEvent.of(143L, "relative/parent/file.sgf", "test")),
+            SyncProtocolDiagnosticEvent.of(143L, "relative/parent/file.sgf", "test"),
+            SyncProtocolDiagnosticEvent.of(
+                144L, "loadsgf (;GM[1]FF[4];W[dd]) roomToken=abc123", "test")),
         List.of(decision),
         List.of(yike),
         SyncDiagnosticsEnvironment.of(

@@ -9,7 +9,12 @@ final class SyncDiagnosticsExportSanitizer {
   private static final Pattern SESSION_KEY =
       Pattern.compile("\\b([A-Za-z][A-Za-z0-9-]*):(\\d+)\\b");
   private static final Pattern YIKE_LIVE_URL =
-      Pattern.compile("https?://(?:www\\.)?yikeweiqi\\.com/live/(\\d+)\\b");
+      Pattern.compile("https?://(?:www\\.)?yikeweiqi\\.com/live/(\\d+)\\b[^\\s,;]*");
+  private static final Pattern RAW_URL = Pattern.compile("https?://[^\\s,;]+");
+  private static final Pattern SGF_PAYLOAD =
+      Pattern.compile("(?i)(?:\\b(?:sgf\\s*=\\s*|loadsgf\\s+))?\\(;GM[^\\r\\n]*?\\)");
+  private static final Pattern TOKEN_PARAMETER =
+      Pattern.compile("(?i)\\b(?:roomToken|authToken|token)\\s*=\\s*[^\\s&;,]+");
   private static final Pattern WINDOWS_USER_PATH =
       Pattern.compile("(?i)\\b([A-Z]):\\\\Users\\\\[^\\\\\\s,;]+(?:\\\\[^\\s,;]*)*");
   private static final Pattern WINDOWS_ABSOLUTE_PATH =
@@ -50,12 +55,14 @@ final class SyncDiagnosticsExportSanitizer {
 
   String text(String value) {
     String safe = normalize(value, "none");
+    safe = SGF_PAYLOAD.matcher(safe).replaceAll("<redacted-sgf>");
     safe = replaceYikeUrls(safe);
+    safe = RAW_URL.matcher(safe).replaceAll("<redacted-url>");
+    safe = TOKEN_PARAMETER.matcher(safe).replaceAll("<redacted-token>");
     safe = replaceSessionKeys(safe);
     safe = replacePaths(safe);
     safe = TOKEN_TEXT.matcher(safe).replaceAll("<redacted-token>");
     safe = SECRET_TEXT.matcher(safe).replaceAll("<redacted-secret>");
-    safe = safe.replace("(;GM[1]SZ[19])", "<redacted-sgf>");
     return safe;
   }
 
