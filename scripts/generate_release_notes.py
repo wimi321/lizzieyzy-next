@@ -2660,6 +2660,267 @@ def build_next_2026_05_31_1_notes(
     ) + '\n'
 
 
+def build_next_2026_05_31_2_notes(
+    asset_map: dict[str, str | None],
+    bundle: dict[str, str],
+    repo: str,
+    release_tag: str | None,
+) -> str:
+    assets_cn = {key: format_asset(asset_map[key], repo, release_tag) for key in asset_map}
+    assets = {key: format_asset_en(asset_map[key], repo, release_tag) for key in asset_map}
+    katago_version = bundle['katago_version']
+    model_source = bundle['model_source']
+
+    localized_sections = [
+        {
+            'language': '中文',
+            'labels': 'zh',
+            'intro': (
+                '这是 KataGo 线程数与换权重修复版。上一版已经修好 TensorRT 官方下载源测速；'
+                '这一版重点补上更换权重后线程数设置没有重新应用的问题，让设置面板里的 numSearchThreads 和实际启动的引擎保持一致。'
+            ),
+            'updates_heading': '本版主要更新',
+            'updates': [
+                '修复“设置了 KataGo 搜索线程数后，更换权重/重载引擎后无法继续按新线程数生效”的问题。启用线程数设置后，重启后的 KataGo 会重新收到 `kata-set-param numSearchThreads`。',
+                '手动启用线程数但没有勾“自动加载”时，现在换权重触发的引擎重启也会正确应用该线程数，不再只依赖自动加载开关。',
+                '线程数为空或异常但设置已启用时，会按当前推荐值解析并写回配置，避免重载后发送空参数。',
+                '修复预加载/双引擎场景中线程数命令可能发给全局主引擎的问题；现在命令会发给正在初始化的那个 KataGo 实例。',
+                'TensorRT 仍然只是 NVIDIA 后端加速方式，不会覆盖用户看到的权重/模型名；上一版的 `.cn` / `.com` 官方下载源测速逻辑继续保留。',
+                '新增线程数重载回归测试，覆盖手动线程数、自动加载线程数和非当前引擎初始化三条关键路径。',
+            ],
+            'before_heading': '下载前先看这几句',
+            'before': [
+                f'主推荐整合包继续内置 KataGo `{katago_version}` 和默认权重 `{model_source}`。',
+                '如果你改过“搜索线程数 numSearchThreads”，并且经常在 KataGo 一键设置里切换权重，建议更新这一版。',
+                'Windows 普通用户优先下载 OpenCL 免安装版；NVIDIA 用户可下载 NVIDIA/RTX 50 CUDA 版，再在软件内按需安装 TensorRT。',
+                'TensorRT 不作为巨大 release asset 直接打包，仍然在一键设置中按需安装；本版继续自动选择更快的 NVIDIA 官方下载域名。',
+                '这一版不改变默认权重名、模型名显示或 TensorRT 启用入口，只修复线程数应用和引擎实例命令发送。'
+            ],
+            'download_heading': '下载建议',
+            'download_headers': ('你的电脑', '直接下载这个'),
+            'why_heading': '这一版为什么值得更新',
+            'why': [
+                '换权重会重启 KataGo；旧版在没有勾自动加载时，线程数设置可能留在界面里但没有真正下发给新引擎。',
+                '修复后，无论是手动线程数还是测速推荐线程数，重载后的引擎都会按设置重新同步。',
+                '预加载和双引擎用户也更稳，线程数命令不会误发到另一个引擎实例。',
+                '发布前已跑新增线程数回归测试、KataGo/TensorRT 相关测试、全量单元测试和 Maven package。'
+            ],
+            'contact_heading': '交流',
+            'contact': ['QQ 群：`299419120`'],
+        },
+        {
+            'language': '繁體中文',
+            'labels': 'zh_hant',
+            'intro': (
+                '這是 KataGo 執行緒數與切換權重修正版。上一版已修好 TensorRT 官方下載源測速；'
+                '這一版重點補上切換權重後執行緒數設定沒有重新套用的問題，讓設定面板中的 numSearchThreads 和實際啟動的引擎保持一致。'
+            ),
+            'updates_heading': '本版主要更新',
+            'updates': [
+                '修復「設定 KataGo 搜尋執行緒數後，切換權重/重載引擎後無法繼續按新執行緒數生效」的問題。啟用執行緒數設定後，重啟的 KataGo 會重新收到 `kata-set-param numSearchThreads`。',
+                '手動啟用執行緒數但沒有勾「自動載入」時，現在切換權重觸發的引擎重啟也會正確套用該執行緒數，不再只依賴自動載入開關。',
+                '執行緒數為空或異常但設定已啟用時，會按目前推薦值解析並寫回設定，避免重載後送出空參數。',
+                '修復預載/雙引擎場景中執行緒數命令可能送到全域主引擎的問題；現在命令會送給正在初始化的那個 KataGo 實例。',
+                'TensorRT 仍然只是 NVIDIA 後端加速方式，不會覆蓋使用者看到的權重/模型名；上一版的 `.cn` / `.com` 官方下載源測速邏輯繼續保留。',
+                '新增執行緒數重載回歸測試，覆蓋手動執行緒數、自動載入執行緒數和非目前引擎初始化三條關鍵路徑。',
+            ],
+            'before_heading': '下載前先看這幾句',
+            'before': [
+                f'主推薦整合包繼續內建 KataGo `{katago_version}` 和預設權重 `{model_source}`。',
+                '如果你改過「搜尋執行緒數 numSearchThreads」，並且常在 KataGo 一鍵設定中切換權重，建議更新這一版。',
+                'Windows 一般使用者優先下載 OpenCL 免安裝版；NVIDIA 使用者可下載 NVIDIA/RTX 50 CUDA 版，再在軟體內按需安裝 TensorRT。',
+                'TensorRT 不作為巨大 release asset 直接打包，仍然在一鍵設定中按需安裝；本版繼續自動選擇更快的 NVIDIA 官方下載網域。',
+                '這一版不改變預設權重名、模型名顯示或 TensorRT 啟用入口，只修復執行緒數套用和引擎實例命令送出。',
+            ],
+            'download_heading': '下載建議',
+            'download_headers': ('你的電腦', '直接下載這個'),
+            'why_heading': '這一版為什麼值得更新',
+            'why': [
+                '切換權重會重啟 KataGo；舊版在沒有勾自動載入時，執行緒數設定可能留在介面裡但沒有真正下發給新引擎。',
+                '修復後，無論是手動執行緒數還是測速推薦執行緒數，重載後的引擎都會按設定重新同步。',
+                '預載和雙引擎使用者也更穩，執行緒數命令不會誤送到另一個引擎實例。',
+                '發布前已跑新增執行緒數回歸測試、KataGo/TensorRT 相關測試、完整單元測試和 Maven package。',
+            ],
+            'contact_heading': '交流',
+            'contact': ['QQ 群：`299419120`'],
+        },
+        {
+            'language': 'English',
+            'labels': 'en',
+            'intro': (
+                'This release fixes KataGo thread settings after weight changes. The previous build improved TensorRT official mirror probing; '
+                'this build makes sure the `numSearchThreads` value shown in settings is also applied to the engine that starts after a weight reload.'
+            ),
+            'updates_heading': 'Release Highlights',
+            'updates': [
+                'Fixed a bug where changing KataGo weights or reloading the engine could leave a previously configured search thread count unapplied. When thread control is enabled, the restarted KataGo now receives `kata-set-param numSearchThreads` again.',
+                'Manual thread settings now apply after a weight-triggered restart even when the separate auto-load checkbox is off.',
+                'If the thread field is empty or invalid while thread control is enabled, the app resolves the recommended value and writes it back before sending it to KataGo.',
+                'Fixed preloaded and dual-engine cases where the thread command could be sent to the global primary engine instead of the KataGo instance currently being initialized.',
+                'TensorRT remains an NVIDIA backend acceleration path and does not replace the visible weight/model name; the previous `.cn` / `.com` official mirror probe remains in place.',
+                'Added regression tests for manual thread settings, auto-loaded thread settings, and non-current engine initialization.',
+            ],
+            'before_heading': 'Read Before Downloading',
+            'before': [
+                f'The recommended bundles continue to include KataGo `{katago_version}` and the default weight `{model_source}`.',
+                'If you changed `numSearchThreads` and often switch weights in KataGo Auto Setup, this is the build to update to.',
+                'Most Windows users should start with the no-install OpenCL build; NVIDIA users can use the NVIDIA / RTX 50 CUDA builds and install TensorRT on demand inside the app.',
+                'TensorRT is still installed on demand from KataGo Auto Setup rather than bundled as a giant release asset; this build keeps automatic NVIDIA official host selection.',
+                'This release does not change default weight names, model display names, or the TensorRT enablement entry point; it fixes thread synchronization and command targeting.',
+            ],
+            'download_heading': 'Download Guide',
+            'download_headers': ('Your computer', 'Download this file'),
+            'why_heading': 'Why Update',
+            'why': [
+                'Changing weights restarts KataGo; older builds could keep the thread value visible in settings without actually applying it to the new engine when auto-load was off.',
+                'After this fix, both manual thread counts and benchmark-recommended thread counts are synchronized to the reloaded engine.',
+                'Preload and dual-engine setups are safer because the thread command is sent to the correct engine instance.',
+                'Before release, the new thread regression tests, KataGo/TensorRT-focused tests, the full unit suite, and Maven package were rerun.',
+            ],
+            'contact_heading': 'Contact',
+            'contact': ['QQ group: `299419120`'],
+        },
+        {
+            'language': '日本語',
+            'labels': 'ja',
+            'intro': (
+                'これは KataGo のスレッド数設定と重み切り替えに関する修正版です。前回のビルドでは TensorRT 公式ミラー測定を改善しました。'
+                'このビルドでは、設定画面に表示される `numSearchThreads` が重み切り替え後に起動するエンジンへ確実に反映されるようにしました。'
+            ),
+            'updates_heading': '主な更新',
+            'updates': [
+                'KataGo の重みを切り替えた後、またはエンジンを再読み込みした後、設定済みの検索スレッド数が反映されないことがある問題を修正しました。スレッド設定が有効な場合、再起動した KataGo へ `kata-set-param numSearchThreads` を再送します。',
+                '手動のスレッド設定は、別の自動読み込みチェックがオフでも、重み切り替えによる再起動後に適用されます。',
+                'スレッド欄が空または不正な値でも設定が有効な場合、推奨値に解決してから設定へ書き戻し、KataGo に送ります。',
+                'プリロードや dual-engine 環境で、スレッド命令が現在初期化中の KataGo ではなく global primary engine に送られる可能性を修正しました。',
+                'TensorRT は引き続き NVIDIA バックエンド高速化経路であり、表示される重み/モデル名を置き換えません。前回追加した `.cn` / `.com` 公式ミラー測定も維持します。',
+                '手動スレッド設定、自動読み込みスレッド設定、現在の主エンジンではない初期化経路をカバーする回帰テストを追加しました。',
+            ],
+            'before_heading': 'ダウンロード前に',
+            'before': [
+                f'推奨バンドルには引き続き KataGo `{katago_version}` と既定の重み `{model_source}` が含まれます。',
+                '`numSearchThreads` を変更し、KataGo 自動設定でよく重みを切り替える場合は、このビルドへの更新をおすすめします。',
+                'Windows の多くのユーザーは OpenCL のインストール不要版から始めてください。NVIDIA ユーザーは NVIDIA / RTX 50 CUDA 版を使い、アプリ内で必要時に TensorRT をインストールできます。',
+                'TensorRT は巨大な release asset として同梱されず、KataGo 自動設定から必要時にだけインストールします。このビルドでも速い NVIDIA 公式ホストを自動選択します。',
+                'このリリースは既定の重み名、モデル表示名、TensorRT 有効化入口を変更せず、スレッド同期とコマンド送信先だけを修正します。',
+            ],
+            'download_heading': 'ダウンロード案内',
+            'download_headers': ('お使いの環境', 'ダウンロードするファイル'),
+            'why_heading': '更新する理由',
+            'why': [
+                '重みを切り替えると KataGo は再起動します。旧ビルドでは自動読み込みがオフの場合、設定画面にスレッド数が残っていても新しいエンジンに反映されないことがありました。',
+                '修正後は、手動スレッド数も benchmark 推奨スレッド数も、再読み込み後のエンジンに同期されます。',
+                'プリロードや dual-engine の構成でも、スレッド命令が正しいエンジンインスタンスへ送られるためより安定します。',
+                'リリース前に新しいスレッド回帰テスト、KataGo/TensorRT 関連テスト、full unit suite、Maven package を再実行しました。',
+            ],
+            'contact_heading': '連絡先',
+            'contact': ['QQ グループ: `299419120`'],
+        },
+        {
+            'language': '한국어',
+            'labels': 'ko',
+            'intro': (
+                '이번 버전은 KataGo 스레드 수 설정과 가중치 전환 문제를 고친 릴리스입니다. 이전 빌드는 TensorRT 공식 미러 측정을 개선했고, '
+                '이번 빌드는 설정 화면의 `numSearchThreads` 값이 가중치 전환 후 시작되는 엔진에도 실제로 적용되도록 했습니다.'
+            ),
+            'updates_heading': '주요 업데이트',
+            'updates': [
+                'KataGo 가중치를 바꾸거나 엔진을 다시 로드한 뒤, 기존에 설정한 검색 스레드 수가 적용되지 않을 수 있던 문제를 수정했습니다. 스레드 제어가 켜져 있으면 재시작한 KataGo 에 `kata-set-param numSearchThreads` 를 다시 보냅니다.',
+                '별도의 자동 로드 체크박스가 꺼져 있어도, 수동 스레드 설정은 가중치 전환으로 인한 재시작 후 적용됩니다.',
+                '스레드 입력값이 비어 있거나 잘못되어도 스레드 제어가 켜져 있으면 추천값으로 해석해 설정에 다시 저장한 뒤 KataGo 에 보냅니다.',
+                '프리로드/듀얼 엔진 환경에서 스레드 명령이 현재 초기화 중인 KataGo 대신 전역 주 엔진으로 갈 수 있던 문제를 수정했습니다.',
+                'TensorRT 는 계속 NVIDIA 백엔드 가속 경로이며, 사용자에게 보이는 가중치/모델명을 바꾸지 않습니다. 이전 `.cn` / `.com` 공식 미러 측정도 유지됩니다.',
+                '수동 스레드 설정, 자동 로드 스레드 설정, 현재 주 엔진이 아닌 초기화 경로를 검증하는 회귀 테스트를 추가했습니다.',
+            ],
+            'before_heading': '다운로드 전 확인',
+            'before': [
+                f'추천 번들은 계속 KataGo `{katago_version}` 와 기본 가중치 `{model_source}` 를 포함합니다.',
+                '`numSearchThreads` 를 바꾸고 KataGo 자동 설정에서 가중치를 자주 전환한다면 이 빌드로 업데이트하는 것을 권장합니다.',
+                '대부분의 Windows 사용자는 OpenCL 무설치 빌드부터 쓰면 됩니다. NVIDIA 사용자는 NVIDIA / RTX 50 CUDA 빌드에서 앱 안의 TensorRT 설치를 사용할 수 있습니다.',
+                'TensorRT 는 거대한 release asset 으로 포함되지 않고 KataGo 자동 설정에서 요청할 때만 설치됩니다. 이 빌드도 더 빠른 NVIDIA 공식 호스트를 자동 선택합니다.',
+                '이번 릴리스는 기본 가중치 이름, 모델 표시 이름, TensorRT 활성화 진입점을 바꾸지 않고 스레드 동기화와 명령 대상만 수정합니다.',
+            ],
+            'download_heading': '다운로드 안내',
+            'download_headers': ('내 컴퓨터', '다운로드할 파일'),
+            'why_heading': '업데이트할 이유',
+            'why': [
+                '가중치를 바꾸면 KataGo 가 재시작됩니다. 이전 빌드는 자동 로드가 꺼져 있을 때 설정 화면의 스레드 값이 실제 새 엔진에 적용되지 않을 수 있었습니다.',
+                '수정 후에는 수동 스레드 수와 benchmark 추천 스레드 수가 모두 재로드된 엔진에 다시 동기화됩니다.',
+                '프리로드와 듀얼 엔진 구성에서도 스레드 명령이 올바른 엔진 인스턴스로 보내져 더 안정적입니다.',
+                '릴리스 전에 신규 스레드 회귀 테스트, KataGo/TensorRT 관련 테스트, 전체 단위 테스트, Maven package 를 다시 수행했습니다.',
+            ],
+            'contact_heading': '연락처',
+            'contact': ['QQ 그룹: `299419120`'],
+        },
+        {
+            'language': 'ภาษาไทย',
+            'labels': 'th',
+            'intro': (
+                'รีลีสนี้แก้ปัญหาค่า thread ของ KataGo หลังเปลี่ยน weight โดย build ก่อนหน้าได้ปรับการ probe mirror ทางการของ TensorRT แล้ว '
+                'ส่วน build นี้ทำให้ค่า `numSearchThreads` ที่เห็นใน settings ถูกนำไปใช้กับ engine ที่เริ่มใหม่หลัง reload weight จริง ๆ'
+            ),
+            'updates_heading': 'ไฮไลต์ของเวอร์ชันนี้',
+            'updates': [
+                'แก้บั๊กที่หลังเปลี่ยน weight ของ KataGo หรือ reload engine แล้ว ค่า search thread ที่เคยตั้งไว้อาจไม่ถูกใช้ เมื่อเปิดใช้ thread control แล้ว KataGo ที่ restart จะได้รับ `kata-set-param numSearchThreads` อีกครั้ง',
+                'ค่า thread แบบ manual จะถูกใช้หลัง restart จากการเปลี่ยน weight แม้ checkbox auto-load แยกต่างหากจะปิดอยู่',
+                'ถ้าช่อง thread ว่างหรือไม่ถูกต้อง แต่ thread control เปิดอยู่ แอปจะ resolve เป็นค่าที่แนะนำและเขียนกลับลง config ก่อนส่งให้ KataGo',
+                'แก้กรณี preload / dual-engine ที่คำสั่ง thread อาจถูกส่งไปยัง global primary engine แทน KataGo instance ที่กำลัง initialize อยู่',
+                'TensorRT ยังเป็นทางเลือก acceleration backend ของ NVIDIA และไม่แทนที่ชื่อ weight/model ที่ผู้ใช้เห็น logic probe `.cn` / `.com` จากเวอร์ชันก่อนยังคงอยู่',
+                'เพิ่ม regression tests สำหรับ manual thread settings, auto-loaded thread settings และการ initialize engine ที่ไม่ใช่ current primary engine',
+            ],
+            'before_heading': 'ก่อนดาวน์โหลด ดูตรงนี้ก่อน',
+            'before': [
+                f'แพ็กเกจแนะนำยังรวม KataGo `{katago_version}` และ weight เริ่มต้น `{model_source}` ไว้ให้แล้ว',
+                'ถ้าคุณเคยเปลี่ยน `numSearchThreads` และสลับ weight บ่อยใน KataGo Auto Setup แนะนำให้อัปเดตเป็น build นี้',
+                'ผู้ใช้ Windows ส่วนใหญ่เริ่มจาก OpenCL แบบไม่ต้องติดตั้งได้ ส่วนผู้ใช้ NVIDIA ใช้ NVIDIA / RTX 50 CUDA build แล้วติดตั้ง TensorRT จากในแอปเมื่อต้องการ',
+                'TensorRT ยังไม่ได้ถูกแนบเป็น release asset ขนาดใหญ่ แต่ติดตั้งเมื่อเรียกจาก KataGo Auto Setup เท่านั้น และ build นี้ยังเลือก NVIDIA official host ที่เร็วกว่าโดยอัตโนมัติ',
+                'รีลีสนี้ไม่เปลี่ยนชื่อ weight เริ่มต้น ชื่อ model ที่แสดง หรือทางเข้าเปิดใช้ TensorRT แต่แก้การ sync thread และ target ของคำสั่ง',
+            ],
+            'download_heading': 'แนะนำการดาวน์โหลด',
+            'download_headers': ('เครื่องของคุณ', 'ดาวน์โหลดไฟล์นี้'),
+            'why_heading': 'ทำไมควรอัปเดต',
+            'why': [
+                'การเปลี่ยน weight จะ restart KataGo ใน build เก่า ถ้า auto-load ปิดอยู่ ค่า thread อาจยังแสดงใน settings แต่ไม่ได้ถูกใช้กับ engine ใหม่',
+                'หลังแก้แล้ว ทั้งค่า thread manual และค่า thread ที่ benchmark แนะนำจะ sync ไปยัง engine ที่ reload แล้ว',
+                'setup แบบ preload และ dual-engine ปลอดภัยขึ้น เพราะคำสั่ง thread ถูกส่งไปยัง engine instance ที่ถูกต้อง',
+                'ก่อน release ได้รัน thread regression tests ใหม่, KataGo/TensorRT-focused tests, full unit suite และ Maven package อีกครั้ง',
+            ],
+            'contact_heading': 'ติดต่อ',
+            'contact': ['QQ group: `299419120`'],
+        },
+    ]
+
+    sections: list[dict[str, object]] = []
+    for block in localized_sections:
+        language = str(block['language'])
+        labels_key = str(block['labels'])
+        localized_assets = assets_cn if language in ('中文', '繁體中文') else assets
+        sections.append(
+            {
+                'language': language,
+                'intro': block['intro'],
+                'updates': {'heading': block['updates_heading'], 'items': block['updates']},
+                'before': {'heading': block['before_heading'], 'items': block['before']},
+                'download': {
+                    'heading': block['download_heading'],
+                    'headers': block['download_headers'],
+                    'rows': standard_download_rows(
+                        STANDARD_DOWNLOAD_LABELS[labels_key],
+                        localized_assets,
+                    ),
+                },
+                'why': {'heading': block['why_heading'], 'items': block['why']},
+                'contact': {'heading': block['contact_heading'], 'items': block['contact']},
+            }
+        )
+
+    add_nvidia50_download_rows(sections, assets_cn, assets)
+    validate_release_sections(sections)
+    return release_heading(release_tag) + '\n\n' + '\n\n---\n\n'.join(
+        render_language_section(section) for section in sections
+    ) + '\n'
+
+
 def build_release_notes(asset_map: dict[str, str | None], bundle: dict[str, str], repo: str, release_tag: str | None) -> str:
     if release_tag == 'next-2026-05-03.1':
         return build_next_2026_05_03_1_notes(asset_map, repo, release_tag)
@@ -2679,6 +2940,8 @@ def build_release_notes(asset_map: dict[str, str | None], bundle: dict[str, str]
         return build_next_2026_05_30_2_notes(asset_map, bundle, repo, release_tag)
     if release_tag == 'next-2026-05-31.1':
         return build_next_2026_05_31_1_notes(asset_map, bundle, repo, release_tag)
+    if release_tag == 'next-2026-05-31.2':
+        return build_next_2026_05_31_2_notes(asset_map, bundle, repo, release_tag)
 
     assets_cn = {
         key: format_asset(asset_map[key], repo, release_tag)
