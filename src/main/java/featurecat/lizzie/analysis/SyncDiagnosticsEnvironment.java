@@ -67,7 +67,7 @@ public final class SyncDiagnosticsEnvironment {
     }
     if (normalized.matches("^//wsl\\.localhost/[^/]+/home/[^/]+(/.*)?$")) {
       String[] parts = normalized.split("/");
-      return "\\\\wsl.localhost\\" + parts[2] + "\\home\\<user>";
+      return "\\\\wsl.localhost\\" + parts[3] + "\\home\\<user>";
     }
     if (normalized.matches("^/home/[^/]+(/.*)?$")) {
       return "/home/<user>";

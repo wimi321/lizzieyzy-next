@@ -27,4 +27,20 @@ class SyncDiagnosticsEventBufferTest {
     assertThrows(UnsupportedOperationException.class, () -> snapshot.add("two"));
     assertEquals(List.of("one"), buffer.snapshot());
   }
+
+  @Test
+  void environmentSanitizesKnownUserPathsAndDeniesUnknownAbsolutePaths() {
+    assertEquals(
+        "C:\\Users\\<user>", SyncDiagnosticsEnvironment.sanitizePath("C:\\Users\\alice\\Lizzie"));
+    assertEquals(
+        "/mnt/c/Users/<user>",
+        SyncDiagnosticsEnvironment.sanitizePath("/mnt/c/Users/alice/Lizzie"));
+    assertEquals(
+        "\\\\wsl.localhost\\Ubuntu\\home\\<user>",
+        SyncDiagnosticsEnvironment.sanitizePath("\\\\wsl.localhost\\Ubuntu\\home\\alice\\dev"));
+    assertEquals("/home/<user>", SyncDiagnosticsEnvironment.sanitizePath("/home/alice/dev"));
+    assertEquals("/Users/<user>", SyncDiagnosticsEnvironment.sanitizePath("/Users/alice/dev"));
+    assertEquals("<redacted-path>", SyncDiagnosticsEnvironment.sanitizePath("/var/log/lizzie"));
+    assertEquals("file.sgf", SyncDiagnosticsEnvironment.sanitizePath("relative/parent/file.sgf"));
+  }
 }
