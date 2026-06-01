@@ -427,14 +427,19 @@ Assert aliases like `live-room#1` can appear. Also assert known user paths conta
 
 - [ ] **Step 4: Write failing default output directory test**
 
-Temporarily set `user.home` and restore it in `finally`:
+Temporarily set `user.dir` and `user.home`, then restore both in `finally`:
 
 ```java
 String originalHome = System.getProperty("user.home");
+String originalUserDir = System.getProperty("user.dir");
+Path appDir = tempDir.resolve("lizzieyzy-next");
 try {
-  System.setProperty("user.home", tempDir.toString());
+  Files.createDirectories(appDir);
+  Files.createFile(appDir.resolve("pom.xml"));
+  System.setProperty("user.home", tempDir.resolve("home").toString());
+  System.setProperty("user.dir", appDir.toString());
   assertEquals(
-      tempDir.resolve(".lizzie-yzy").resolve("sync-diagnostics"),
+      appDir.resolve("sync-diagnostics"),
       SyncDiagnosticsExporter.defaultOutputDirectory());
 } finally {
   if (originalHome == null) {
@@ -442,10 +447,15 @@ try {
   } else {
     System.setProperty("user.home", originalHome);
   }
+  if (originalUserDir == null) {
+    System.clearProperty("user.dir");
+  } else {
+    System.setProperty("user.dir", originalUserDir);
+  }
 }
 ```
 
-This test locks that the default does not use `target/` or the process working directory.
+This test locks that the default uses the application directory, not `target/` or the user's home directory.
 
 - [ ] **Step 5: Run tests to verify they fail**
 
@@ -505,8 +515,10 @@ public static Path defaultOutputDirectory()
 Use:
 
 ```java
-Paths.get(System.getProperty("user.home", "."), ".lizzie-yzy", "sync-diagnostics")
+defaultApplicationDirectory().resolve("sync-diagnostics")
 ```
+
+Resolve the application directory from `user.dir` first, then the code source. Treat a directory named `lizzieyzy-next` or a repo root with `pom.xml` and `src/main/java/featurecat/lizzie` as the application directory. If neither path resolves, fall back to the process working directory.
 
 `export(SyncDiagnosticsExportSnapshot snapshot)`:
 

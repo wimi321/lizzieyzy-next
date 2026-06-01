@@ -1,10 +1,12 @@
 package featurecat.lizzie.analysis;
 
 import java.io.IOException;
+import java.net.URISyntaxException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.security.CodeSource;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
@@ -24,7 +26,7 @@ public final class SyncDiagnosticsExporter {
   }
 
   public static Path defaultOutputDirectory() {
-    return Paths.get(System.getProperty("user.home", "."), ".lizzie-yzy", "sync-diagnostics");
+    return defaultApplicationDirectory().resolve("sync-diagnostics");
   }
 
   public Path export(SyncDiagnosticsExportSnapshot snapshot) throws IOException {
@@ -57,6 +59,54 @@ public final class SyncDiagnosticsExporter {
     out.putNextEntry(new ZipEntry(name));
     out.write(text.getBytes(StandardCharsets.UTF_8));
     out.closeEntry();
+  }
+
+  private static Path defaultApplicationDirectory() {
+    Path workingDirectory =
+        Paths.get(System.getProperty("user.dir", ".")).toAbsolutePath().normalize();
+    Path root = findLizzieDirectory(workingDirectory);
+    if (root != null) {
+      return root;
+    }
+    Path codeSource = codeSourceDirectory();
+    root = findLizzieDirectory(codeSource);
+    if (root != null) {
+      return root;
+    }
+    return workingDirectory;
+  }
+
+  private static Path findLizzieDirectory(Path seed) {
+    Path current = seed;
+    for (int depth = 0; current != null && depth < 8; depth++) {
+      if (isLizzieDirectory(current)) {
+        return current;
+      }
+      current = current.getParent();
+    }
+    return null;
+  }
+
+  private static boolean isLizzieDirectory(Path path) {
+    Path fileName = path.getFileName();
+    if (fileName != null && "lizzieyzy-next".equalsIgnoreCase(fileName.toString())) {
+      return true;
+    }
+    return Files.isRegularFile(path.resolve("pom.xml"))
+        && Files.isDirectory(path.resolve("src/main/java/featurecat/lizzie"));
+  }
+
+  private static Path codeSourceDirectory() {
+    try {
+      CodeSource source = SyncDiagnosticsExporter.class.getProtectionDomain().getCodeSource();
+      if (source == null || source.getLocation() == null) {
+        return null;
+      }
+      Path location = Paths.get(source.getLocation().toURI()).toAbsolutePath().normalize();
+      return Files.isRegularFile(location) ? location.getParent() : location;
+    } catch (URISyntaxException | SecurityException e) {
+      return null;
+    }
   }
 
   private static String renderSummary(

@@ -142,19 +142,28 @@ class SyncDiagnosticsExporterTest {
   }
 
   @Test
-  void defaultOutputDirectoryUsesUserHomeApplicationDiagnosticsDirectory() {
+  void defaultOutputDirectoryUsesApplicationDirectory() throws IOException {
     String originalUserHome = System.getProperty("user.home");
+    String originalUserDir = System.getProperty("user.dir");
+    Path appDir = tempDir.resolve("lizzieyzy-next");
     try {
-      System.setProperty("user.home", tempDir.toString());
+      Files.createDirectories(appDir);
+      Files.createFile(appDir.resolve("pom.xml"));
+      System.setProperty("user.home", tempDir.resolve("home").toString());
+      System.setProperty("user.dir", appDir.toString());
 
       assertEquals(
-          tempDir.resolve(".lizzie-yzy").resolve("sync-diagnostics"),
-          SyncDiagnosticsExporter.defaultOutputDirectory());
+          appDir.resolve("sync-diagnostics"), SyncDiagnosticsExporter.defaultOutputDirectory());
     } finally {
       if (originalUserHome == null) {
         System.clearProperty("user.home");
       } else {
         System.setProperty("user.home", originalUserHome);
+      }
+      if (originalUserDir == null) {
+        System.clearProperty("user.dir");
+      } else {
+        System.setProperty("user.dir", originalUserDir);
       }
     }
   }
