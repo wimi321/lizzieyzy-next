@@ -65,8 +65,12 @@ class SyncDiagnosticsExporterTest {
             "authToken",
             "abc123",
             "live-room:186538",
+            "live-room\\u003a186538",
             "186538",
             "https://",
+            "https\\u003a",
+            "https\\u003a\\u002f\\u002fwww.yikeweiqi.com\\u002flive\\u002f186538\\u003froomToken\\u003dabc123\\u0026foo\\u003dbar",
+            "www.yikeweiqi.com",
             "https:\\/\\/www.yikeweiqi.com\\/live\\/186538\\u003froomToken\\u003dabc123\\u0026foo\\u003dbar",
             "https://www.yikeweiqi.com/live/186538",
             "https://www.yikeweiqi.com/live/186538?roomToken=abc123&foo=bar",
@@ -74,6 +78,7 @@ class SyncDiagnosticsExporterTest {
             "foo=bar",
             "User Secret Room Title",
             "C:\\Users\\alice\\Lizzie",
+            "C:\\\\Users\\\\alice\\\\Lizzie",
             "/mnt/c/Users/alice/Lizzie",
             "\\\\wsl.localhost\\Ubuntu\\home\\alice\\dev",
             "/Users/alice/Lizzie",
@@ -93,6 +98,7 @@ class SyncDiagnosticsExporterTest {
             "/Users/alice",
             "/home/alice",
             "/mnt/c/Users/alice",
+            "C:\\u005cUsers\\u005calice\\u005cLizzie",
             "C:\\\\Users\\\\alice",
             "abc123")) {
       assertFalse(allText.contains(leaked), leaked);
@@ -139,9 +145,9 @@ class SyncDiagnosticsExporterTest {
             .hasLastResolvedSnapshotNode(true)
             .syncAnalysisEpoch(7L)
             .pendingRemoteContextSummary(
-                "sgf=(;GM[1]SZ[19]) sgf=(;GM[1]FF[4]SZ[19];B[pd]) sgf=(;FF[4]SZ[19];B[pd]) token=secret-room-token token=abc123 path=C:\\Users\\alice\\Lizzie")
+                "sgf=(;GM[1]SZ[19]) sgf=(;GM[1]FF[4]SZ[19];B[pd]) sgf=(;FF[4]SZ[19];B[pd]) token=secret-room-token token=abc123 path=C:\\Users\\alice\\Lizzie escapedPath=C:\\\\Users\\\\alice\\\\Lizzie unicodePath=C:\\u005cUsers\\u005calice\\u005cLizzie")
             .lastResolvedSnapshotSummary(
-                "url=https://www.yikeweiqi.com/live/186538?roomToken=abc123&foo=bar escaped=https:\\/\\/www.yikeweiqi.com\\/live\\/186538\\u003froomToken\\u003dabc123\\u0026foo\\u003dbar")
+                "session=live-room\\u003a186538 url=https://www.yikeweiqi.com/live/186538?roomToken=abc123&foo=bar escaped=https:\\/\\/www.yikeweiqi.com\\/live\\/186538\\u003froomToken\\u003dabc123\\u0026foo\\u003dbar unicodeUrl=https\\u003a\\u002f\\u002fwww.yikeweiqi.com\\u002flive\\u002f186538\\u003froomToken\\u003dabc123\\u0026foo\\u003dbar")
             .lastProtocolLineSummary("window=User Secret Room Title")
             .lastProtocolTimestampMillis(110L)
             .timestampMillis(100L)

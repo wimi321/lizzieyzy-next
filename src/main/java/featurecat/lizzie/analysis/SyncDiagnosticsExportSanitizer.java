@@ -160,13 +160,56 @@ final class SyncDiagnosticsExportSanitizer {
   }
 
   private static String unescapeDiagnosticSeparators(String value) {
-    return value
+    String safe =
+        value
         .replace("\\/", "/")
+        .replace("\\u003a", ":")
+        .replace("\\u003A", ":")
+        .replace("\\u002f", "/")
+        .replace("\\u002F", "/")
+        .replace("\\u005c", "\\")
+        .replace("\\u005C", "\\")
         .replace("\\u003d", "=")
         .replace("\\u003D", "=")
         .replace("\\u0026", "&")
         .replace("\\u003f", "?")
         .replace("\\u003F", "?");
+    return unescapeWindowsPathSeparators(safe);
+  }
+
+  private static String unescapeWindowsPathSeparators(String value) {
+    StringBuilder out = new StringBuilder(value.length());
+    boolean inWindowsDrivePath = false;
+    for (int i = 0; i < value.length(); i++) {
+      char current = value.charAt(i);
+      if (isWindowsDriveStart(value, i)) {
+        inWindowsDrivePath = true;
+        out.append(current);
+        continue;
+      }
+      if (inWindowsDrivePath
+          && current == '\\'
+          && i + 1 < value.length()
+          && value.charAt(i + 1) == '\\') {
+        out.append('\\');
+        i++;
+        continue;
+      }
+      out.append(current);
+      if (inWindowsDrivePath
+          && (Character.isWhitespace(current) || current == ',' || current == ';')) {
+        inWindowsDrivePath = false;
+      }
+    }
+    return out.toString();
+  }
+
+  private static boolean isWindowsDriveStart(String value, int index) {
+    return index + 2 < value.length()
+        && Character.isLetter(value.charAt(index))
+        && value.charAt(index + 1) == ':'
+        && value.charAt(index + 2) == '\\'
+        && (index == 0 || !Character.isLetterOrDigit(value.charAt(index - 1)));
   }
 
   private static String normalize(String value, String fallback) {
