@@ -1310,8 +1310,11 @@ public class ReadBoard {
   private void recordProtocolLine(String line) {
     lastProtocolLineSummary = summarizeProtocolLine(line);
     lastProtocolTimestampMillis = System.currentTimeMillis();
-    publishReadBoardDiagnosticsSnapshot(
-        SyncDiagnosticsRecorder.getDefault().snapshot().getLatestDecisionTrace());
+    SyncDiagnosticsRecorder recorder = SyncDiagnosticsRecorder.getDefault();
+    recorder.recordProtocolEvent(
+        SyncProtocolDiagnosticEvent.of(
+            lastProtocolTimestampMillis, lastProtocolLineSummary, "ReadBoard"));
+    publishReadBoardDiagnosticsSnapshot(recorder.snapshot().getLatestDecisionTrace());
   }
 
   private String summarizeProtocolLine(String line) {

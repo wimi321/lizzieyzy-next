@@ -2021,6 +2021,14 @@ class ReadBoardSyncDecisionTest {
       assertEquals("roomToken <redacted>", snapshot.getLastProtocolLineSummary());
       assertFalse(snapshot.getLastProtocolLineSummary().contains("secret-room-token"));
 
+      SyncDiagnosticsExportSnapshot export =
+          SyncDiagnosticsRecorder.getDefault().exportSnapshot();
+      List<SyncProtocolDiagnosticEvent> events = export.getRecentProtocolEvents();
+      assertTrue(
+          events.stream().anyMatch(event -> "roomToken <redacted>".equals(event.getSummary())));
+      assertTrue(
+          events.stream().noneMatch(event -> event.getSummary().contains("secret-room-token")));
+
       harness.readBoard.parseLine("liveTitle Very Long Secret Room Title 1234567890");
       snapshot = SyncDiagnosticsRecorder.getDefault().snapshot().getSyncSnapshot();
       assertEquals("liveTitle <redacted>", snapshot.getLastProtocolLineSummary());
@@ -2033,6 +2041,11 @@ class ReadBoardSyncDecisionTest {
       harness.readBoard.parseLine("syncPlatform yike");
       snapshot = SyncDiagnosticsRecorder.getDefault().snapshot().getSyncSnapshot();
       assertEquals("syncPlatform yike", snapshot.getLastProtocolLineSummary());
+
+      export = SyncDiagnosticsRecorder.getDefault().exportSnapshot();
+      events = export.getRecentProtocolEvents();
+      assertTrue(
+          events.stream().anyMatch(event -> "syncPlatform yike".equals(event.getSummary())));
     }
   }
 
