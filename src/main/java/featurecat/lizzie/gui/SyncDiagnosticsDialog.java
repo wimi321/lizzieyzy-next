@@ -112,7 +112,7 @@ public class SyncDiagnosticsDialog extends JDialog {
           new SyncDiagnosticsExporter(SyncDiagnosticsExporter.defaultOutputDirectory())
               .export(SyncDiagnosticsRecorder.getDefault().exportSnapshot());
       refreshSummary();
-      appendStatus(text("SyncDiagnostics.exportSuccess", "Exported to:") + " " + zip);
+      appendStatus(exportSuccessStatus(text("SyncDiagnostics.exportSuccess", "Exported to:"), zip));
     } catch (IOException | RuntimeException ex) {
       appendStatus(
           text("SyncDiagnostics.exportFailure", "Export failed:")
@@ -127,6 +127,25 @@ public class SyncDiagnosticsDialog extends JDialog {
 
   private static String sanitizeFailureMessage(String message) {
     return SyncDiagnosticsEnvironment.sanitizePath(message);
+  }
+
+  static String exportSuccessStatus(String label, Path zip) {
+    return label + " " + sanitizeExportPath(zip);
+  }
+
+  private static String sanitizeExportPath(Path zip) {
+    if (zip == null) {
+      return "unknown";
+    }
+    String sanitized = SyncDiagnosticsEnvironment.sanitizePath(zip.toString());
+    Path fileName = zip.getFileName();
+    if (fileName == null
+        || fileName.toString().isEmpty()
+        || sanitized.endsWith(fileName.toString())) {
+      return sanitized;
+    }
+    String separator = sanitized.contains("\\") ? "\\" : "/";
+    return sanitized + separator + fileName;
   }
 
   private String text(String key, String fallback) {
