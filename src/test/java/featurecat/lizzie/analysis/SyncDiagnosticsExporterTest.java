@@ -66,8 +66,14 @@ class SyncDiagnosticsExporterTest {
             "roomToken abc123",
             "roomToken: abc123",
             "roomToken\\u003a abc123",
+            "roomToken\\u0020abc123",
             "token abc123",
+            "token\\u0020abc123",
             "authToken: abc123",
+            "authToken\\u0020abc123",
+            "room 186538",
+            "roomId 186538",
+            "id 186538",
             "room\\u003d186538",
             "roomId\\u003d186538",
             "id\\u003d186538",
@@ -90,11 +96,14 @@ class SyncDiagnosticsExporterTest {
             "C:\\Users\\alice\\Lizzie",
             "C:\\\\Users\\\\alice\\\\Lizzie",
             "C:\\Users\\Alice Smith\\Lizzie",
+            "C:\\Users\\Alice Smith\\My Docs\\game.sgf",
             "/mnt/c/Users/alice/Lizzie",
             "\\\\wsl.localhost\\Ubuntu\\home\\alice\\dev",
             "/Users/alice/Lizzie",
             "/Users/Alice Smith/Lizzie",
+            "/Users/Alice Smith/My Docs/game.sgf",
             "/home/Alice Smith/dev",
+            "/home/Alice Smith/My Docs/game.sgf",
             "C:\\secret\\file.zip",
             "/var/tmp/alice/lizzie",
             "relative/parent/file.sgf")) {
@@ -115,6 +124,9 @@ class SyncDiagnosticsExporterTest {
             "C:\\\\Users\\\\alice",
             "Alice Smith",
             "Smith",
+            "My Docs",
+            "Docs\\game.sgf",
+            "Docs/game.sgf",
             "abc123")) {
       assertFalse(allText.contains(leaked), leaked);
     }
@@ -160,7 +172,7 @@ class SyncDiagnosticsExporterTest {
             .hasLastResolvedSnapshotNode(true)
             .syncAnalysisEpoch(7L)
             .pendingRemoteContextSummary(
-                "sgf=(;GM[1]SZ[19]) sgf=(;GM[1]FF[4]SZ[19];B[pd]) sgf=(;GM[1]\n;B[pd]) sgf=(;FF[4]SZ[19];B[pd]) token=secret-room-token token=abc123 path=C:\\Users\\alice\\Lizzie escapedPath=C:\\\\Users\\\\alice\\\\Lizzie unicodePath=C:\\u005cUsers\\u005calice\\u005cLizzie spacedWin=C:\\Users\\Alice Smith\\Lizzie spacedMac=/Users/Alice Smith/Lizzie spacedHome=/home/Alice Smith/dev")
+                "sgf=(;GM[1]SZ[19]) sgf=(;GM[1]FF[4]SZ[19];B[pd]) sgf=(;GM[1]\n;B[pd]) sgf=(;FF[4]SZ[19];B[pd]) token=secret-room-token token=abc123 path=C:\\Users\\alice\\Lizzie escapedPath=C:\\\\Users\\\\alice\\\\Lizzie unicodePath=C:\\u005cUsers\\u005calice\\u005cLizzie spacedWin=C:\\Users\\Alice Smith\\Lizzie deepWin=C:\\Users\\Alice Smith\\My Docs\\game.sgf spacedMac=/Users/Alice Smith/Lizzie deepMac=/Users/Alice Smith/My Docs/game.sgf spacedHome=/home/Alice Smith/dev deepHome=/home/Alice Smith/My Docs/game.sgf")
             .lastResolvedSnapshotSummary(
                 "session=live-room\\u003a186538 url=https://www.yikeweiqi.com/live/186538?roomToken=abc123&foo=bar escaped=https:\\/\\/www.yikeweiqi.com\\/live\\/186538\\u003froomToken\\u003dabc123\\u0026foo\\u003dbar unicodeUrl=https\\u003a\\u002f\\u002fwww.yikeweiqi.com\\u002flive\\u002f186538\\u003froomToken\\u003dabc123\\u0026foo\\u003dbar")
             .lastProtocolLineSummary("window=User Secret Room Title")
@@ -188,7 +200,7 @@ class SyncDiagnosticsExporterTest {
             .lastGeometryClearReason("User Secret Room Title")
             .lastSessionSwitchReason("https://www.yikeweiqi.com/live/186538?roomToken=abc123")
             .lastYikeDebugEventSummary(
-                "token=secret-room-token authToken=abc123 roomToken\\u003dabc123 token\\u003dabc123 authToken\\u003dabc123 roomToken abc123 roomToken: abc123 roomToken\\u003a abc123 token abc123 authToken: abc123 room\\u003d186538 roomId\\u003d186538 id\\u003d186538")
+                "token=secret-room-token authToken=abc123 roomToken\\u003dabc123 token\\u003dabc123 authToken\\u003dabc123 roomToken abc123 roomToken: abc123 roomToken\\u003a abc123 roomToken\\u0020abc123 token abc123 token\\u0020abc123 authToken: abc123 authToken\\u0020abc123 room 186538 roomId 186538 id 186538 room\\u003d186538 roomId\\u003d186538 id\\u003d186538")
             .timestampMillis(120L)
             .source("test")
             .summary("session live-room:186538")

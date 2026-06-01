@@ -16,20 +16,20 @@ final class SyncDiagnosticsExportSanitizer {
       Pattern.compile(
           "(?i)\\b(?:roomToken|authToken|token)\\b(?:\\s*[=:]\\s*|\\s+)[^\\s&;,]+");
   private static final Pattern YIKE_ROOM_PARAMETER =
-      Pattern.compile("(?i)\\b(?:room|roomId|id)\\s*=\\s*(\\d+)\\b");
+      Pattern.compile("(?i)\\b(?:room|roomId|id)\\b(?:\\s*[=:]\\s*|\\s+)(\\d+)\\b");
   private static final Pattern WINDOWS_USER_PATH =
-      Pattern.compile("(?i)\\b([A-Z]):\\\\Users\\\\[^\\\\\\r\\n,;]+(?:\\\\[^\\s,;]*)*");
+      Pattern.compile("(?i)\\b([A-Z]):\\\\Users\\\\[^\\r\\n,;]+");
   private static final Pattern WINDOWS_ABSOLUTE_PATH =
       Pattern.compile("(?i)\\b[A-Z]:\\\\(?!Users\\\\)[^\\s,;]+");
   private static final Pattern WSL_UNC_USER_PATH =
       Pattern.compile(
-          "\\\\\\\\wsl\\.localhost\\\\([^\\\\\\s]+)\\\\home\\\\[^\\\\\\r\\n,;]+(?:\\\\[^\\s,;]*)*");
+          "\\\\\\\\wsl\\.localhost\\\\([^\\\\\\s]+)\\\\home\\\\[^\\r\\n,;]+");
   private static final Pattern WSL_MOUNT_USER_PATH =
-      Pattern.compile("/mnt/([A-Za-z])/Users/[^/\\r\\n,;]+(?:/[^\\s,;]*)*");
+      Pattern.compile("/mnt/([A-Za-z])/Users/[^\\r\\n,;]+");
   private static final Pattern POSIX_HOME_PATH =
-      Pattern.compile("/home/[^/\\r\\n,;]+(?:/[^\\s,;]*)*");
+      Pattern.compile("/home/[^\\r\\n,;]+");
   private static final Pattern MAC_USER_PATH =
-      Pattern.compile("/Users/[^/\\r\\n,;]+(?:/[^\\s,;]*)*");
+      Pattern.compile("/Users/[^\\r\\n,;]+");
   private static final Pattern POSIX_ABSOLUTE_PATH =
       Pattern.compile(
           "(?<![A-Za-z0-9_.<>-])/(?!mnt/[A-Za-z]/Users/|home/|Users/)[^\\s,;]+(?:/[^\\s,;]*)*");
@@ -172,6 +172,9 @@ final class SyncDiagnosticsExportSanitizer {
         .replace("\\u002F", "/")
         .replace("\\u005c", "\\")
         .replace("\\u005C", "\\")
+        .replace("\\u0020", " ")
+        .replace("\\u0009", " ")
+        .replace("\\t", " ")
         .replace("\\u003d", "=")
         .replace("\\u003D", "=")
         .replace("\\u0026", "&")
