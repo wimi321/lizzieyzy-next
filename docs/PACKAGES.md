@@ -18,6 +18,7 @@
 - RTX 5070/5080/5090 优先试 `windows64.nvidia50.cuda.portable.zip`，TensorRT 加速改为软件内按需安装
 - TensorRT 普通用户路径仍是软件内 `KataGo 一键设置` 按需安装，支持断点续传；RTX 20/30/40/50 用户可尝试，GTX 10 系及更老显卡优先 CUDA/OpenCL
 - `KataGo 一键设置` 会检测本机 NVIDIA GPU / Compute Capability，并在安装 TensorRT 前显示推荐、可尝试、不推荐或未知状态
+- TensorRT 一键安装成功后会自动清理完整下载包缓存；首次运行产生的 CUDA/TensorRT 缓存会尽量写入软件自己的 `runtime/`，减少 C 盘额外占用
 - Release 可附带高级可选 TensorRT 预装分卷包，但它不是默认推荐下载；必须下载全部 `.7z.00N` 并用 7-Zip 从 `.001` 解压
 
 如果你只想先看图再决定，先看这里：
@@ -112,12 +113,14 @@
 - TensorRT 加速：普通用户在软件内 `KataGo 一键设置` 中按需安装，支持断点续传；Release 上的 TensorRT 分卷包只作为高级可选离线路径
 - RTX 50 仍优先使用 `windows64.nvidia50.cuda` 主包，TensorRT 作为新架构按需加速项
 - TensorRT 安装界面会用 `nvidia-smi` 检测本机 NVIDIA GPU，并在无法读取 Compute Capability 时使用轻量型号映射作为 fallback
+- TensorRT 一键安装完成后会自动删除完整下载包；如果旧版本曾留下缓存，可在 `KataGo 一键设置` 里使用“清理 TensorRT 缓存”
 
 路径说明：
 
 - Windows / Linux 权重：`Lizzieyzy/weights/default.bin.gz`
 - macOS 权重：`LizzieYzy Next.app/Contents/app/weights/default.bin.gz`
-- Windows 免安装包的用户下载权重和 TensorRT：解压目录内的 `user-data/`，删除整个文件夹即可同时清理配置和大体积加速文件
+- Windows 免安装包的用户下载权重和 TensorRT：解压目录内的 `user-data/`；TensorRT 下载缓存、CUDA/TensorRT 运行缓存会尽量保存在 `user-data/runtime/`
+- Windows 安装器版本为了避免写入 `Program Files`，运行数据可能位于 `C:\Users\Public\Documents\LizzieYzyNext` 或 `C:\ProgramData\LizzieYzyNext`；如果非常在意 C 盘空间，优先使用免安装包并解压到非 C 盘
 
 ## 当前内置同步工具信息
 

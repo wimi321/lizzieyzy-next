@@ -82,6 +82,10 @@ public final class KataGoRuntimeHelper {
   private static final String NVIDIA50_TRT_BACKEND = "nvidia50-trt";
   private static final String ENGINE_BACKEND_MARKER_NAME = "lizzieyzy-next-engine-backend.txt";
   private static final String NVIDIA_RUNTIME_ROOT = "nvidia-runtime";
+  private static final String NVIDIA_RUNTIME_DOWNLOAD_CACHE_DIR = "downloads";
+  private static final String NVIDIA_RUNTIME_CACHE_DIR = "cache";
+  private static final String NVIDIA_CUDA_CACHE_DIR = "cuda";
+  private static final String NVIDIA_TENSORRT_TEMP_DIR = "temp";
   private static final String NVIDIA_DOWNLOAD_HOST_COM = "developer.download.nvidia.com";
   private static final String NVIDIA_DOWNLOAD_HOST_CN = "developer.download.nvidia.cn";
   private static final String BUNDLED_HOME_DATA_DIR = "katago-home";
@@ -571,6 +575,7 @@ public final class KataGoRuntimeHelper {
       if (Files.isDirectory(runtimeDir)) {
         prependPath(processBuilder, runtimeDir);
       }
+      configureNvidiaRuntimeCacheEnvironment(processBuilder, enginePath, runtimeDir);
     }
   }
 
@@ -885,8 +890,9 @@ public final class KataGoRuntimeHelper {
         0L,
         spec.totalDownloadBytes);
 
-    Path cacheDir = runtimeDir.resolve("downloads");
+    Path cacheDir = runtimeDir.resolve(NVIDIA_RUNTIME_DOWNLOAD_CACHE_DIR);
     Files.createDirectories(cacheDir);
+    List<Path> completedArchives = new ArrayList<Path>();
     RuntimePackageSpec katagoPackage =
         new RuntimePackageSpec(
             "KataGo TensorRT",
@@ -908,6 +914,7 @@ public final class KataGoRuntimeHelper {
             listener,
             completedBytes,
             spec.totalDownloadBytes);
+    completedArchives.add(katagoArchive);
     completedBytes += Math.max(0L, katagoPackage.sizeBytes);
 
     Path licenseDir = runtimeDir.resolve("licenses").resolve("nvidia-runtime");
@@ -921,6 +928,7 @@ public final class KataGoRuntimeHelper {
                 listener,
                 completedBytes,
                 spec.totalDownloadBytes);
+        completedArchives.add(archivePath);
         completedBytes += Math.max(0L, runtimePackage.sizeBytes);
         activeSession.throwIfCancelled();
         notifyProgress(
@@ -945,6 +953,12 @@ public final class KataGoRuntimeHelper {
     activeSession.throwIfCancelled();
 
     SetupResult result = applyTensorRtEngineProfile(snapshot, spec);
+    notifyProgress(
+        listener,
+        resource("AutoSetup.tensorRtCleaningCache", "Cleaning TensorRT download cache..."),
+        spec.totalDownloadBytes,
+        spec.totalDownloadBytes);
+    cleanupCompletedTensorRtDownloadArchives(cacheDir, completedArchives);
     notifyProgress(
         listener,
         resource("AutoSetup.tensorRtInstallDone", "TensorRT acceleration installed."),
@@ -2117,6 +2131,29 @@ public final class KataGoRuntimeHelper {
     processBuilder.environment().put("PATH", rebuilt.toString());
   }
 
+  private static void configureNvidiaRuntimeCacheEnvironment(
+      ProcessBuilder processBuilder, Path enginePath, Path runtimeDir) {
+    if (processBuilder == null || runtimeDir == null) {
+      return;
+    }
+    String backend = resolveNvidiaBackend(enginePath);
+    if (backend == null) {
+      return;
+    }
+    try {
+      Path cacheRoot = Files.createDirectories(runtimeDir.resolve(NVIDIA_RUNTIME_CACHE_DIR));
+      Path cudaCache = Files.createDirectories(cacheRoot.resolve(NVIDIA_CUDA_CACHE_DIR));
+      processBuilder.environment().put("CUDA_CACHE_PATH", cudaCache.toString());
+      if (isTensorRtBackend(backend)) {
+        Path tempCache = Files.createDirectories(cacheRoot.resolve(NVIDIA_TENSORRT_TEMP_DIR));
+        processBuilder.environment().put("TEMP", tempCache.toString());
+        processBuilder.environment().put("TMP", tempCache.toString());
+      }
+    } catch (IOException e) {
+      e.printStackTrace();
+    }
+  }
+
   private static boolean shouldUseAppleSiliconAnalysisProfile(String engineCommand) {
     if (!isAppleSiliconHost()) {
       return false;
@@ -2689,6 +2726,19 @@ public final class KataGoRuntimeHelper {
         .normalize()
         .resolve("runtime")
         .resolve(NVIDIA_RUNTIME_ROOT);
+  }
+
+  public static long tensorRtDownloadCacheBytes() {
+    try {
+      return directorySize(getNvidiaRuntimeDir().resolve(NVIDIA_RUNTIME_DOWNLOAD_CACHE_DIR));
+    } catch (IOException e) {
+      return 0L;
+    }
+  }
+
+  public static long cleanupTensorRtDownloadCache() throws IOException {
+    return deleteDownloadCacheContents(
+        getNvidiaRuntimeDir().resolve(NVIDIA_RUNTIME_DOWNLOAD_CACHE_DIR), true);
   }
 
   static TensorRtInstallSpec buildTensorRtInstallSpec(SetupSnapshot snapshot) {
@@ -3351,6 +3401,84 @@ public final class KataGoRuntimeHelper {
       long totalBytes = Math.max(0L, spec.sizeBytes);
       listener.onProgress(spec.displayName, totalBytes, totalBytes);
     }
+  }
+
+  private static void cleanupCompletedTensorRtDownloadArchives(
+      Path cacheDir, List<Path> completedArchives) {
+    if (cacheDir == null || completedArchives == null || completedArchives.isEmpty()) {
+      return;
+    }
+    Path normalizedCacheDir = cacheDir.toAbsolutePath().normalize();
+    for (Path archive : completedArchives) {
+      if (archive == null) {
+        continue;
+      }
+      try {
+        Path normalizedArchive = archive.toAbsolutePath().normalize();
+        if (normalizedArchive.startsWith(normalizedCacheDir) && Files.isRegularFile(archive)) {
+          Files.deleteIfExists(archive);
+        }
+      } catch (IOException e) {
+        e.printStackTrace();
+      }
+    }
+    try {
+      Files.deleteIfExists(cacheDir);
+    } catch (IOException ignored) {
+    }
+  }
+
+  private static long directorySize(Path directory) throws IOException {
+    if (directory == null || !Files.exists(directory)) {
+      return 0L;
+    }
+    AtomicLong total = new AtomicLong();
+    try (Stream<Path> stream = Files.walk(directory)) {
+      stream
+          .filter(Files::isRegularFile)
+          .forEach(
+              path -> {
+                try {
+                  total.addAndGet(Files.size(path));
+                } catch (IOException ignored) {
+                }
+              });
+    }
+    return total.get();
+  }
+
+  private static long deleteDownloadCacheContents(Path cacheDir, boolean includePartialFiles)
+      throws IOException {
+    if (cacheDir == null || !Files.exists(cacheDir)) {
+      return 0L;
+    }
+    List<Path> paths = new ArrayList<Path>();
+    try (Stream<Path> stream = Files.walk(cacheDir)) {
+      stream.forEach(paths::add);
+    }
+    paths.sort(Comparator.reverseOrder());
+    long freedBytes = 0L;
+    for (Path path : paths) {
+      if (path.equals(cacheDir)) {
+        continue;
+      }
+      if (Files.isDirectory(path)) {
+        Files.deleteIfExists(path);
+        continue;
+      }
+      String fileName = path.getFileName() == null ? "" : path.getFileName().toString();
+      if (!includePartialFiles && fileName.endsWith(".part")) {
+        continue;
+      }
+      long size = Files.isRegularFile(path) ? Files.size(path) : 0L;
+      Files.deleteIfExists(path);
+      freedBytes += size;
+    }
+    try {
+      Files.deleteIfExists(cacheDir);
+    } catch (IOException ignored) {
+    }
+    return freedBytes;
   }
 
   private static void extractRuntimePackage(

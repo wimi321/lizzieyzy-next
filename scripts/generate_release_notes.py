@@ -2977,6 +2977,290 @@ def build_next_2026_05_31_2_notes(
     ) + '\n'
 
 
+def build_next_2026_06_01_1_notes(
+    asset_map: dict[str, str | None],
+    bundle: dict[str, str],
+    repo: str,
+    release_tag: str | None,
+) -> str:
+    assets_cn = {key: format_asset(asset_map[key], repo, release_tag) for key in asset_map}
+    assets = {key: format_asset_en(asset_map[key], repo, release_tag) for key in asset_map}
+    katago_version = bundle['katago_version']
+    model_source = bundle['model_source']
+    sections: list[dict[str, object]] = [
+        {
+            'language': '中文',
+            'intro': (
+                '这是一次面向 Windows NVIDIA / TensorRT 用户的空间占用修复版。'
+                '重点解决软件内一键安装 TensorRT 后，下载缓存继续占用 C 盘或运行目录空间的问题。'
+                'TensorRT 仍然不作为巨大主包强制分发，普通用户继续通过 KataGo 一键设置按需安装。'
+            ),
+            'updates': {
+                'heading': '本版主要更新',
+                'items': [
+                    'TensorRT 一键安装成功后会自动清理完整下载包缓存，避免安装包和已解压运行库重复占用数 GB 空间。',
+                    'KataGo 一键设置新增“清理 TensorRT 缓存”按钮，可清理旧版本留下的下载缓存；已安装的 TensorRT 运行库和引擎不会被删除。',
+                    '启动内置 NVIDIA / TensorRT KataGo 时，会尽量把 CUDA 缓存和 TensorRT 临时文件固定到软件自己的 `runtime/nvidia-runtime/cache`。',
+                    '继续保留断点续传：下载失败或用户停止时 `.part` 会留下；完整安装成功后才清理完整安装包。',
+                    'README 和发布包说明补充了免安装包、安装器版本、C 盘占用和 TensorRT 缓存路径的说明。',
+                    '发布前已跑 TensorRT 缓存回归测试、完整单元测试、Maven package，并通过 GitHub release workflow 重新构建发布资产。',
+                ],
+            },
+            'before': {
+                'heading': '下载前先看这几句',
+                'items': [
+                    f'Windows 普通用户优先下载 {assets_cn["windows_opencl_portable"]}，这是 **OpenCL 版（推荐，免安装）**。',
+                    f'如果你的电脑是 **NVIDIA 显卡**，优先下载 {assets_cn["windows_nvidia_portable"]}；RTX 5070/5080/5090 用户优先下载 RTX 50 CUDA 包。',
+                    '想测试 TensorRT 的 RTX 20/30/40/50 用户，先下载对应 NVIDIA/CUDA 包，再在软件内一键安装 TensorRT。',
+                    '已经安装过 TensorRT 的用户，如果旧版本留下了大体积下载缓存，可以打开 KataGo 一键设置，点击“清理 TensorRT 缓存”。',
+                    f'主推荐整合包已内置 KataGo `{katago_version}` 和默认权重 `{model_source}`。',
+                    '如果非常在意 C 盘空间，Windows 用户优先使用免安装包并解压到非 C 盘。',
+                ],
+            },
+            'download': {
+                'heading': '下载建议',
+                'headers': ('你的电脑', '直接下载这个'),
+                'rows': standard_download_rows(STANDARD_DOWNLOAD_LABELS['zh'], assets_cn),
+            },
+            'why': {
+                'heading': '这一版为什么值得更新',
+                'items': [
+                    'TensorRT 官方运行库本身很大，这一版至少避免“安装包缓存 + 已解压文件”双份长期占用。',
+                    '旧版本已经占用空间的用户，不需要手动找目录，软件内就能清理下载缓存。',
+                    '免安装包继续把配置、权重、TRT 和运行缓存尽量放在解压目录内，更适合放到非 C 盘使用。',
+                ],
+            },
+            'contact': {'heading': '交流', 'items': ['QQ 群：`299419120`']},
+        },
+        {
+            'language': '繁體中文',
+            'intro': (
+                '這是針對 Windows NVIDIA / TensorRT 使用者的空間占用修正版。'
+                '重點處理軟體內一鍵安裝 TensorRT 後，下載快取仍持續占用 C 槽或執行目錄空間的問題。'
+                'TensorRT 仍不作為巨大主包強制發佈，一般使用者繼續透過 KataGo 一鍵設定按需安裝。'
+            ),
+            'updates': {
+                'heading': '本版主要更新',
+                'items': [
+                    'TensorRT 一鍵安裝成功後會自動清理完整下載包快取，避免安裝包與已解壓執行庫重複占用數 GB 空間。',
+                    'KataGo 一鍵設定新增「清理 TensorRT 快取」按鈕，可清理舊版本留下的下載快取；已安裝的 TensorRT 執行庫和引擎不會被刪除。',
+                    '啟動內建 NVIDIA / TensorRT KataGo 時，會盡量把 CUDA 快取和 TensorRT 暫存檔固定到軟體自己的 `runtime/nvidia-runtime/cache`。',
+                    '繼續保留斷點續傳：下載失敗或使用者停止時 `.part` 會留下；完整安裝成功後才清理完整安裝包。',
+                    'README 和發布包說明補充了免安裝包、安裝器版本、C 槽占用和 TensorRT 快取路徑的說明。',
+                    '發布前已跑 TensorRT 快取回歸測試、完整單元測試、Maven package，並通過 GitHub release workflow 重新建置發布資產。',
+                ],
+            },
+            'before': {
+                'heading': '下載前先看這幾句',
+                'items': [
+                    f'Windows 一般使用者優先下載 {assets_cn["windows_opencl_portable"]}，這是 **OpenCL 版（推薦，免安裝）**。',
+                    f'如果你的電腦是 **NVIDIA 顯示卡**，優先下載 {assets_cn["windows_nvidia_portable"]}；RTX 5070/5080/5090 使用者優先下載 RTX 50 CUDA 包。',
+                    '想測試 TensorRT 的 RTX 20/30/40/50 使用者，先下載對應 NVIDIA/CUDA 包，再在軟體內一鍵安裝 TensorRT。',
+                    '已經安裝過 TensorRT 的使用者，如果舊版本留下大體積下載快取，可以開啟 KataGo 一鍵設定，點擊「清理 TensorRT 快取」。',
+                    f'主推薦整合包已內建 KataGo `{katago_version}` 和預設權重 `{model_source}`。',
+                    '如果非常在意 C 槽空間，Windows 使用者優先使用免安裝包並解壓到非 C 槽。',
+                ],
+            },
+            'download': {
+                'heading': '下載建議',
+                'headers': ('你的電腦', '直接下載這個'),
+                'rows': standard_download_rows(STANDARD_DOWNLOAD_LABELS['zh_hant'], assets_cn),
+            },
+            'why': {
+                'heading': '這一版為什麼值得更新',
+                'items': [
+                    'TensorRT 官方執行庫本身很大，這一版至少避免「安裝包快取 + 已解壓檔案」雙份長期占用。',
+                    '舊版本已經占用空間的使用者，不需要手動找目錄，軟體內就能清理下載快取。',
+                    '免安裝包繼續把設定、權重、TRT 和執行快取盡量放在解壓目錄內，更適合放到非 C 槽使用。',
+                ],
+            },
+            'contact': {'heading': '交流', 'items': ['QQ 群：`299419120`']},
+        },
+        {
+            'language': 'English',
+            'intro': (
+                'This release focuses on Windows NVIDIA / TensorRT disk usage. '
+                'It fixes the case where in-app TensorRT installation could leave large download archives on the C drive or in the runtime folder after setup. '
+                'TensorRT remains an optional in-app install instead of a forced giant default package.'
+            ),
+            'updates': {
+                'heading': 'Release Highlights',
+                'items': [
+                    'Successful TensorRT installs now remove completed installer archives, avoiding long-term double storage of archives plus extracted runtime files.',
+                    'KataGo Auto Setup now includes a Clean TensorRT cache action for old leftover download caches; installed TensorRT runtime files and engines are kept.',
+                    'Bundled NVIDIA / TensorRT KataGo launches now try to keep CUDA cache and TensorRT temporary files under `runtime/nvidia-runtime/cache`.',
+                    'Resume support is preserved: interrupted downloads keep `.part` files, and completed archives are cleaned only after a successful install.',
+                    'README and package docs now explain portable mode, installer runtime locations, C-drive usage, and TensorRT cache paths.',
+                    'Before release, TensorRT cache regression tests, the full unit suite, Maven package, and GitHub release workflows were rerun.',
+                ],
+            },
+            'before': {
+                'heading': 'Read Before Downloading',
+                'items': [
+                    f'Most Windows users should download {assets["windows_opencl_portable"]}, the **recommended no-install OpenCL build**.',
+                    f'If your PC has an **NVIDIA GPU**, start with {assets["windows_nvidia_portable"]}; RTX 5070/5080/5090 users should start with the RTX 50 CUDA package.',
+                    'RTX 20/30/40/50 users who want TensorRT should download the matching NVIDIA/CUDA package first, then install TensorRT from inside the app.',
+                    'If an older build already left a large TensorRT download cache, open KataGo Auto Setup and press Clean TensorRT cache.',
+                    f'The recommended bundles include KataGo `{katago_version}` and the default weight `{model_source}`.',
+                    'If C-drive space matters, prefer the Windows portable package and extract it to a non-C drive.',
+                ],
+            },
+            'download': {
+                'heading': 'Download Guide',
+                'headers': ('Your computer', 'Download this file'),
+                'rows': standard_download_rows(STANDARD_DOWNLOAD_LABELS['en'], assets),
+            },
+            'why': {
+                'heading': 'Why This Release Is Worth Updating',
+                'items': [
+                    'The official TensorRT runtime is large; this release avoids keeping both completed installer archives and extracted files indefinitely.',
+                    'Users with existing cache bloat can clean it from the app instead of hunting through Windows folders.',
+                    'Portable packages continue to keep settings, weights, TRT, and runtime caches inside the extracted folder where possible.',
+                ],
+            },
+            'contact': {'heading': 'Contact', 'items': ['QQ group: `299419120`']},
+        },
+        {
+            'language': '日本語',
+            'intro': (
+                'このリリースは Windows NVIDIA / TensorRT ユーザー向けのディスク使用量修正版です。'
+                'アプリ内 TensorRT インストール後、大きなダウンロードアーカイブが C ドライブや runtime フォルダーに残る問題を改善します。'
+                'TensorRT は引き続き巨大な既定パッケージではなく、アプリ内の任意インストールです。'
+            ),
+            'updates': {
+                'heading': '主な更新',
+                'items': [
+                    'TensorRT インストール成功後、完了済みインストーラーアーカイブを自動削除し、アーカイブと展開済み実行ファイルの二重占有を減らしました。',
+                    'KataGo 自動設定に Clean TensorRT cache 操作を追加し、旧バージョンのダウンロードキャッシュを削除できます。インストール済み runtime と engine は残ります。',
+                    '内蔵 NVIDIA / TensorRT KataGo 起動時、CUDA cache と TensorRT 一時ファイルを `runtime/nvidia-runtime/cache` に寄せるようにしました。',
+                    'レジューム対応は維持します。中断時は `.part` を残し、成功後にだけ完了済みアーカイブを清理します。',
+                    'README と package docs に portable mode、installer の runtime 位置、C ドライブ使用、TensorRT cache path の説明を追加しました。',
+                    'リリース前に TensorRT cache regression tests、full unit suite、Maven package、GitHub release workflow を再実行しました。',
+                ],
+            },
+            'before': {
+                'heading': 'ダウンロード前に',
+                'items': [
+                    f'多くの Windows ユーザーは {assets["windows_opencl_portable"]} を選ぶのがおすすめです。これは **推奨 OpenCL 版、インストール不要** です。',
+                    f'**NVIDIA GPU** 搭載 PC では {assets["windows_nvidia_portable"]} を優先してください。RTX 5070/5080/5090 は RTX 50 CUDA パッケージから始めてください。',
+                    'TensorRT を試したい RTX 20/30/40/50 ユーザーは、先に対応する NVIDIA/CUDA パッケージをダウンロードし、アプリ内で TensorRT をインストールしてください。',
+                    '旧ビルドで大きな TensorRT download cache が残っている場合は、KataGo 自動設定で Clean TensorRT cache を押してください。',
+                    f'推奨バンドルには KataGo `{katago_version}` と既定の重み `{model_source}` が含まれています。',
+                    'C ドライブ容量を重視する場合、Windows portable package を非 C ドライブへ展開するのがおすすめです。',
+                ],
+            },
+            'download': {
+                'heading': 'ダウンロード案内',
+                'headers': ('お使いの環境', 'ダウンロードするファイル'),
+                'rows': standard_download_rows(STANDARD_DOWNLOAD_LABELS['ja'], assets),
+            },
+            'why': {
+                'heading': 'このリリースを更新する理由',
+                'items': [
+                    '公式 TensorRT runtime は大きいため、完了済みアーカイブと展開済みファイルを長期間二重に持たないようにしました。',
+                    '既に cache が膨らんでいるユーザーも、Windows フォルダーを探さずアプリ内で清理できます。',
+                    'Portable package は引き続き、設定、重み、TRT、runtime cache を可能な限り展開先フォルダー内に保持します。',
+                ],
+            },
+            'contact': {'heading': '連絡先', 'items': ['QQ グループ: `299419120`']},
+        },
+        {
+            'language': '한국어',
+            'intro': (
+                '이번 릴리스는 Windows NVIDIA / TensorRT 사용자의 디스크 사용량을 줄이는 수정판입니다. '
+                '앱 안에서 TensorRT 를 설치한 뒤 큰 다운로드 archive 가 C 드라이브나 runtime 폴더에 남는 문제를 개선했습니다. '
+                'TensorRT 는 계속 거대한 기본 패키지가 아니라 앱 안에서 선택 설치하는 방식입니다.'
+            ),
+            'updates': {
+                'heading': '주요 업데이트',
+                'items': [
+                    'TensorRT 설치가 성공하면 완료된 installer archive 를 자동 삭제해 archive 와 압축 해제된 runtime 파일이 장기간 중복 저장되는 문제를 줄였습니다.',
+                    'KataGo 자동 설정에 Clean TensorRT cache 동작을 추가했습니다. 예전 버전의 다운로드 cache 를 지워도 설치된 TensorRT runtime 과 engine 은 유지됩니다.',
+                    '내장 NVIDIA / TensorRT KataGo 실행 시 CUDA cache 와 TensorRT temporary file 을 `runtime/nvidia-runtime/cache` 아래로 모으도록 했습니다.',
+                    '이어받기는 유지됩니다. 중단된 다운로드는 `.part` 를 남기고, 설치가 완전히 성공한 뒤에만 완료된 archive 를 정리합니다.',
+                    'README 와 package docs 에 portable mode, installer runtime 위치, C 드라이브 사용량, TensorRT cache path 설명을 보강했습니다.',
+                    '릴리스 전에 TensorRT cache regression tests, full unit suite, Maven package, GitHub release workflow 를 다시 실행했습니다.',
+                ],
+            },
+            'before': {
+                'heading': '다운로드 전 확인',
+                'items': [
+                    f'대부분의 Windows 사용자는 {assets["windows_opencl_portable"]} 를 먼저 받으면 됩니다. 이는 **추천 OpenCL 무설치 빌드** 입니다.',
+                    f'**NVIDIA GPU** 가 있다면 {assets["windows_nvidia_portable"]} 를 우선 사용하세요. RTX 5070/5080/5090 사용자는 RTX 50 CUDA 패키지부터 시작하세요.',
+                    'TensorRT 를 테스트하려는 RTX 20/30/40/50 사용자는 먼저 해당 NVIDIA/CUDA 패키지를 받은 뒤 앱 안에서 TensorRT 를 설치하세요.',
+                    '이전 빌드가 큰 TensorRT download cache 를 남겼다면 KataGo 자동 설정에서 Clean TensorRT cache 를 누르세요.',
+                    f'추천 번들에는 KataGo `{katago_version}` 와 기본 가중치 `{model_source}` 가 포함되어 있습니다.',
+                    'C 드라이브 공간이 중요하다면 Windows portable package 를 C 드라이브가 아닌 곳에 압축 해제하는 것이 좋습니다.',
+                ],
+            },
+            'download': {
+                'heading': '다운로드 안내',
+                'headers': ('내 컴퓨터', '다운로드할 파일'),
+                'rows': standard_download_rows(STANDARD_DOWNLOAD_LABELS['ko'], assets),
+            },
+            'why': {
+                'heading': '이번 릴리스를 업데이트할 이유',
+                'items': [
+                    '공식 TensorRT runtime 은 크기 때문에, 완료된 archive 와 압축 해제 파일을 계속 이중 보관하지 않도록 했습니다.',
+                    '이미 cache 가 커진 사용자도 Windows 폴더를 직접 찾지 않고 앱 안에서 정리할 수 있습니다.',
+                    'Portable package 는 설정, 가중치, TRT, runtime cache 를 가능한 한 압축 해제한 폴더 안에 유지합니다.',
+                ],
+            },
+            'contact': {'heading': '연락처', 'items': ['QQ 그룹: `299419120`']},
+        },
+        {
+            'language': 'ภาษาไทย',
+            'intro': (
+                'รีลีสนี้เน้นลดการใช้พื้นที่ของผู้ใช้ Windows NVIDIA / TensorRT '
+                'แก้กรณีที่ติดตั้ง TensorRT จากในแอปแล้ว archive ดาวน์โหลดขนาดใหญ่ยังค้างอยู่ในไดรฟ์ C หรือ runtime folder '
+                'TensorRT ยังคงเป็นการติดตั้งแบบเลือกเองในแอป ไม่ใช่แพ็กเกจหลักขนาดใหญ่ที่บังคับทุกคนดาวน์โหลด'
+            ),
+            'updates': {
+                'heading': 'ไฮไลต์ของเวอร์ชันนี้',
+                'items': [
+                    'เมื่อติดตั้ง TensorRT สำเร็จแล้ว แอปจะลบ installer archive ที่ดาวน์โหลดครบแล้ว ลดการเก็บซ้ำระหว่าง archive และ runtime ที่แตกไฟล์แล้ว',
+                    'KataGo Auto Setup เพิ่มปุ่ม Clean TensorRT cache สำหรับล้าง download cache จากเวอร์ชันเก่า โดยไม่ลบ TensorRT runtime และ engine ที่ติดตั้งแล้ว',
+                    'เมื่อเปิด bundled NVIDIA / TensorRT KataGo แอปจะพยายามเก็บ CUDA cache และไฟล์ชั่วคราวของ TensorRT ไว้ใต้ `runtime/nvidia-runtime/cache`',
+                    'ยังรองรับ resume เหมือนเดิม: download ที่หยุดกลางทางจะเก็บ `.part` ไว้ และจะลบ archive เต็มเมื่อ install สำเร็จแล้วเท่านั้น',
+                    'README และ package docs เพิ่มคำอธิบาย portable mode, ตำแหน่ง runtime ของ installer, การใช้พื้นที่ไดรฟ์ C และ TensorRT cache path',
+                    'ก่อน release ได้รัน TensorRT cache regression tests, full unit suite, Maven package และ GitHub release workflow อีกครั้ง',
+                ],
+            },
+            'before': {
+                'heading': 'ก่อนดาวน์โหลด ดูตรงนี้ก่อน',
+                'items': [
+                    f'ผู้ใช้ Windows ส่วนใหญ่แนะนำให้ดาวน์โหลด {assets["windows_opencl_portable"]} ซึ่งเป็น **OpenCL รุ่นแนะนำ แบบไม่ต้องติดตั้ง**',
+                    f'ถ้าเครื่องมี **NVIDIA GPU** ให้เริ่มจาก {assets["windows_nvidia_portable"]}; ผู้ใช้ RTX 5070/5080/5090 ให้เริ่มจากแพ็กเกจ RTX 50 CUDA',
+                    'ผู้ใช้ RTX 20/30/40/50 ที่อยากลอง TensorRT ให้ดาวน์โหลดแพ็กเกจ NVIDIA/CUDA ที่ตรงก่อน แล้วติดตั้ง TensorRT จากในแอป',
+                    'ถ้า build เก่าเหลือ TensorRT download cache ขนาดใหญ่ ให้เปิด KataGo Auto Setup แล้วกด Clean TensorRT cache',
+                    f'แพ็กเกจหลักมี KataGo `{katago_version}` และ weight เริ่มต้น `{model_source}` มาให้แล้ว',
+                    'ถ้าพื้นที่ไดรฟ์ C สำคัญ แนะนำใช้ Windows portable package และแตกไฟล์ไปยังไดรฟ์อื่น',
+                ],
+            },
+            'download': {
+                'heading': 'แนะนำการดาวน์โหลด',
+                'headers': ('เครื่องของคุณ', 'ดาวน์โหลดไฟล์นี้'),
+                'rows': standard_download_rows(STANDARD_DOWNLOAD_LABELS['th'], assets),
+            },
+            'why': {
+                'heading': 'ทำไมเวอร์ชันนี้ควรอัปเดต',
+                'items': [
+                    'TensorRT runtime ทางการมีขนาดใหญ่ รีลีสนี้ช่วยไม่ให้เก็บ archive ที่ดาวน์โหลดครบแล้วและไฟล์ที่แตกแล้วซ้ำกันนาน ๆ',
+                    'ผู้ใช้ที่มี cache ใหญ่จากเวอร์ชันเก่าสามารถล้างจากในแอปได้ ไม่ต้องค้นหาโฟลเดอร์ Windows เอง',
+                    'Portable package ยังคงพยายามเก็บ settings, weights, TRT และ runtime cache ไว้ในโฟลเดอร์ที่แตกไฟล์เท่าที่ทำได้',
+                ],
+            },
+            'contact': {'heading': 'ติดต่อ', 'items': ['QQ group: `299419120`']},
+        },
+    ]
+    add_nvidia50_download_rows(sections, assets_cn, assets)
+    add_tensorrt_split_download_row(sections, assets_cn, assets, asset_map)
+    validate_release_sections(sections)
+    return release_heading(release_tag) + '\n\n' + '\n\n---\n\n'.join(
+        render_language_section(section) for section in sections
+    ) + '\n'
+
+
 def build_release_notes(asset_map: dict[str, str | None], bundle: dict[str, str], repo: str, release_tag: str | None) -> str:
     if release_tag == 'next-2026-05-03.1':
         return build_next_2026_05_03_1_notes(asset_map, repo, release_tag)
@@ -2998,6 +3282,8 @@ def build_release_notes(asset_map: dict[str, str | None], bundle: dict[str, str]
         return build_next_2026_05_31_1_notes(asset_map, bundle, repo, release_tag)
     if release_tag == 'next-2026-05-31.2':
         return build_next_2026_05_31_2_notes(asset_map, bundle, repo, release_tag)
+    if release_tag == 'next-2026-06-01.1':
+        return build_next_2026_06_01_1_notes(asset_map, bundle, repo, release_tag)
 
     assets_cn = {
         key: format_asset(asset_map[key], repo, release_tag)

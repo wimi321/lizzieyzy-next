@@ -167,6 +167,48 @@ public class KataGoRuntimeHelperTest {
   }
 
   @Test
+  void tensorRtLaunchKeepsCudaAndTempCachesInsideRuntimeDirectory() throws Exception {
+    withOsName(
+        WINDOWS_OS_NAME,
+        () -> {
+          Path tempRoot = Files.createTempDirectory("katago-helper-tensorrt-cache-env");
+          Path enginePath =
+              touch(
+                  tempRoot
+                      .resolve("engines")
+                      .resolve("katago")
+                      .resolve("windows-x64-nvidia-tensorrt")
+                      .resolve("katago.exe"));
+          Path originalDirectory = Files.createDirectories(tempRoot.resolve("working-dir"));
+          Path runtimeWorkDirectory = Files.createDirectories(tempRoot.resolve("runtime-root"));
+          Path runtimeDir = Files.createDirectories(runtimeWorkDirectory.resolve("nvidia-runtime"));
+          String originalPath = String.join(PATH_SEPARATOR, Arrays.asList("alpha", "beta"));
+          ProcessBuilder processBuilder = createProcessBuilder(originalDirectory, originalPath);
+
+          withConfig(
+              runtimeWorkDirectory,
+              () -> KataGoRuntimeHelper.configureBundledProcessBuilder(processBuilder, enginePath));
+
+          Path expectedCudaCache = runtimeDir.resolve("cache").resolve("cuda");
+          Path expectedTempCache = runtimeDir.resolve("cache").resolve("temp");
+          assertEquals(
+              normalize(expectedCudaCache),
+              normalize(Path.of(processBuilder.environment().get("CUDA_CACHE_PATH"))),
+              "Bundled TensorRT should keep CUDA cache under the app runtime directory.");
+          assertEquals(
+              normalize(expectedTempCache),
+              normalize(Path.of(processBuilder.environment().get("TEMP"))),
+              "Bundled TensorRT should keep temp files under the app runtime directory.");
+          assertEquals(
+              normalize(expectedTempCache),
+              normalize(Path.of(processBuilder.environment().get("TMP"))),
+              "Bundled TensorRT should keep temp files under the app runtime directory.");
+          assertTrue(Files.isDirectory(expectedCudaCache));
+          assertTrue(Files.isDirectory(expectedTempCache));
+        });
+  }
+
+  @Test
   void nvidia50CudaRuntimeAcceptsCudnn9() throws Exception {
     withOsName(
         WINDOWS_OS_NAME,
@@ -404,6 +446,13 @@ public class KataGoRuntimeHelperTest {
                                             && engine.isDefault
                                             && engine.commands.contains(
                                                 "windows-x64-nvidia-tensorrt")));
+                        assertFalse(
+                            Files.exists(
+                                runtimeWorkDirectory
+                                    .resolve("nvidia-runtime")
+                                    .resolve("downloads")
+                                    .resolve("katago-trt.zip")),
+                            "Successful TensorRT installs should remove the completed installer archive.");
                       }));
         });
   }
@@ -458,8 +507,35 @@ public class KataGoRuntimeHelperTest {
                             assertFalse(
                                 Files.exists(partialArchive),
                                 "Successful resume should promote the .part file into the cache.");
+                            assertFalse(
+                                Files.exists(partialArchive.resolveSibling("katago-trt.zip")),
+                                "Successful TensorRT installs should clean the completed archive after setup.");
                           })));
     }
+  }
+
+  @Test
+  void manualTensorRtCacheCleanupDeletesStaleArchivesAndParts() throws Exception {
+    Path tempRoot = Files.createTempDirectory("katago-helper-tensorrt-cache-cleanup");
+    Path runtimeWorkDirectory = Files.createDirectories(tempRoot.resolve("runtime-root"));
+
+    withConfig(
+        runtimeWorkDirectory,
+        () -> {
+          Path downloads =
+              Files.createDirectories(
+                  runtimeWorkDirectory.resolve("nvidia-runtime").resolve("downloads"));
+          Path archive = Files.write(downloads.resolve("runtime.zip"), new byte[] {1, 2, 3});
+          Path partial = Files.write(downloads.resolve("runtime.zip.part"), new byte[] {4, 5});
+
+          assertEquals(5L, KataGoRuntimeHelper.tensorRtDownloadCacheBytes());
+          long freedBytes = KataGoRuntimeHelper.cleanupTensorRtDownloadCache();
+
+          assertEquals(5L, freedBytes);
+          assertFalse(Files.exists(archive));
+          assertFalse(Files.exists(partial));
+          assertEquals(0L, KataGoRuntimeHelper.tensorRtDownloadCacheBytes());
+        });
   }
 
   @Test

@@ -120,6 +120,7 @@ public class KataGoAutoSetupDialog extends JDialog {
   private final JFontButton btnInstallNvidiaRuntime = new JFontButton();
   private final JFontButton btnInstallTensorRt = new JFontButton();
   private final JFontButton btnSwitchBackCuda = new JFontButton();
+  private final JFontButton btnCleanTensorRtCache = new JFontButton();
   private final JFontButton btnOptimizePerformance = new JFontButton();
   private final JFontButton btnStopDownload = new JFontButton();
   private final JFontButton btnClose = new JFontButton();
@@ -229,6 +230,7 @@ public class KataGoAutoSetupDialog extends JDialog {
     btnInstallNvidiaRuntime.setText(text("AutoSetup.installNvidiaRuntime"));
     btnInstallTensorRt.setText(text("AutoSetup.installTensorRt"));
     btnSwitchBackCuda.setText(text("AutoSetup.switchBackCuda"));
+    btnCleanTensorRtCache.setText(text("AutoSetup.cleanTensorRtCache"));
     btnOptimizePerformance.setText(text("AutoSetup.optimizePerformance"));
     btnStopDownload.setText(text("AutoSetup.stopDownload"));
     btnStopDownload.setEnabled(false);
@@ -243,6 +245,7 @@ public class KataGoAutoSetupDialog extends JDialog {
     styleButton(btnInstallNvidiaRuntime, false);
     styleButton(btnInstallTensorRt, false);
     styleButton(btnSwitchBackCuda, false);
+    styleButton(btnCleanTensorRtCache, false);
     styleButton(btnStopDownload, false);
     styleButton(btnClose, false);
   }
@@ -256,6 +259,7 @@ public class KataGoAutoSetupDialog extends JDialog {
     btnInstallNvidiaRuntime.addActionListener(e -> startNvidiaRuntimeInstall());
     btnInstallTensorRt.addActionListener(e -> startTensorRtInstall());
     btnSwitchBackCuda.addActionListener(e -> switchBackToCuda());
+    btnCleanTensorRtCache.addActionListener(e -> cleanTensorRtCache());
     btnOptimizePerformance.addActionListener(e -> startPerformanceBenchmark());
     btnStopDownload.addActionListener(e -> stopActiveDownload());
     btnClose.addActionListener(e -> closeOrCancelActiveTask());
@@ -423,7 +427,11 @@ public class KataGoAutoSetupDialog extends JDialog {
 
     JPanel actions =
         createActionBar(
-            FlowLayout.RIGHT, btnInstallNvidiaRuntime, btnInstallTensorRt, btnSwitchBackCuda);
+            FlowLayout.RIGHT,
+            btnInstallNvidiaRuntime,
+            btnInstallTensorRt,
+            btnSwitchBackCuda,
+            btnCleanTensorRtCache);
     return createSectionCard(
         text("AutoSetup.accelerationTitle"), text("AutoSetup.accelerationSubtitle"), rows, actions);
   }
@@ -782,6 +790,7 @@ public class KataGoAutoSetupDialog extends JDialog {
       btnInstallTensorRt.setEnabled(false);
       btnSwitchBackCuda.setToolTipText(null);
       btnSwitchBackCuda.setEnabled(false);
+      updateTensorRtCacheButton();
       updateNvidiaGpuInfo(null);
       return;
     }
@@ -796,6 +805,7 @@ public class KataGoAutoSetupDialog extends JDialog {
       btnInstallTensorRt.setEnabled(false);
       btnSwitchBackCuda.setToolTipText(text("AutoSetup.switchBackCudaTooltip"));
       btnSwitchBackCuda.setEnabled(false);
+      updateTensorRtCacheButton();
       return;
     }
     maybeStartNvidiaGpuDetection(status);
@@ -833,6 +843,17 @@ public class KataGoAutoSetupDialog extends JDialog {
             && status.applicable
             && status.active
             && canSwitchBackToCuda());
+    updateTensorRtCacheButton();
+  }
+
+  private void updateTensorRtCacheButton() {
+    long cacheBytes = KataGoRuntimeHelper.tensorRtDownloadCacheBytes();
+    btnCleanTensorRtCache.setEnabled(
+        activeDownloadSession == null && activeWorkerThread == null && cacheBytes > 0L);
+    btnCleanTensorRtCache.setToolTipText(
+        cacheBytes > 0L
+            ? String.format(text("AutoSetup.cleanTensorRtCacheTooltip"), formatSize(cacheBytes))
+            : text("AutoSetup.cleanTensorRtCacheEmpty"));
   }
 
   private void setTensorRtLabel(JLabel label, String value, Color color, String tooltip) {
@@ -1282,6 +1303,41 @@ public class KataGoAutoSetupDialog extends JDialog {
     }
   }
 
+  private void cleanTensorRtCache() {
+    if (hasActiveBackgroundTask()) {
+      showBackgroundTaskAlreadyRunningNotice();
+      return;
+    }
+    long cacheBytes = KataGoRuntimeHelper.tensorRtDownloadCacheBytes();
+    if (cacheBytes <= 0L) {
+      lblStatus.setText(text("AutoSetup.cleanTensorRtCacheEmpty"));
+      lblStatus.setForeground(OK_COLOR);
+      updateTensorRtInfo();
+      return;
+    }
+    int result =
+        JOptionPane.showConfirmDialog(
+            this,
+            String.format(text("AutoSetup.cleanTensorRtCacheConfirm"), formatSize(cacheBytes)),
+            text("AutoSetup.cleanTensorRtCache"),
+            JOptionPane.OK_CANCEL_OPTION,
+            JOptionPane.QUESTION_MESSAGE);
+    if (result != JOptionPane.OK_OPTION) {
+      return;
+    }
+    try {
+      long freedBytes = KataGoRuntimeHelper.cleanupTensorRtDownloadCache();
+      String message =
+          String.format(text("AutoSetup.cleanTensorRtCacheDone"), formatSize(freedBytes));
+      lblStatus.setText(message);
+      lblStatus.setForeground(OK_COLOR);
+      updateTensorRtInfo();
+      Utils.showMsg(message, this);
+    } catch (IOException e) {
+      onBackgroundError(e);
+    }
+  }
+
   private String formatTensorRtConfirmMessage(KataGoRuntimeHelper.TensorRtInstallStatus status) {
     String sizeText = status == null ? "0 MB" : formatSize(status.downloadBytes);
     String recommendation =
@@ -1491,6 +1547,8 @@ public class KataGoAutoSetupDialog extends JDialog {
     btnInstallNvidiaRuntime.setEnabled(!busy && canInstallNvidiaRuntime());
     btnInstallTensorRt.setEnabled(!busy && canInstallTensorRt());
     btnSwitchBackCuda.setEnabled(!busy && canSwitchBackToCuda());
+    btnCleanTensorRtCache.setEnabled(
+        !busy && KataGoRuntimeHelper.tensorRtDownloadCacheBytes() > 0L);
     btnOptimizePerformance.setEnabled(!busy && canRunBenchmark());
     btnStopDownload.setEnabled(busy && activeDownloadSession != null);
     btnClose.setEnabled(true);
@@ -1671,6 +1729,10 @@ public class KataGoAutoSetupDialog extends JDialog {
   private String formatSize(long bytes) {
     if (bytes <= 0) {
       return "0 MB";
+    }
+    double gb = bytes / 1024.0 / 1024.0 / 1024.0;
+    if (gb >= 1.0) {
+      return String.format("%.1f GB", gb);
     }
     double mb = bytes / 1024.0 / 1024.0;
     if (mb >= 100) {
@@ -1951,6 +2013,7 @@ public class KataGoAutoSetupDialog extends JDialog {
     btnInstallNvidiaRuntime.setEnabled(canInstallNvidiaRuntime());
     btnInstallTensorRt.setEnabled(canInstallTensorRt());
     btnSwitchBackCuda.setEnabled(canSwitchBackToCuda());
+    updateTensorRtCacheButton();
     btnOptimizePerformance.setEnabled(canRunBenchmark());
     btnStopDownload.setEnabled(false);
     btnClose.setEnabled(true);
