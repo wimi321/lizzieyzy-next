@@ -61,6 +61,9 @@ class SyncDiagnosticsExporterTest {
             "roomToken\\u003dabc123",
             "token\\u003dabc123",
             "authToken\\u003dabc123",
+            "room\\u003d186538",
+            "roomId\\u003d186538",
+            "id\\u003d186538",
             "token=abc123",
             "authToken",
             "abc123",
@@ -173,7 +176,7 @@ class SyncDiagnosticsExporterTest {
             .lastGeometryClearReason("User Secret Room Title")
             .lastSessionSwitchReason("https://www.yikeweiqi.com/live/186538?roomToken=abc123")
             .lastYikeDebugEventSummary(
-                "token=secret-room-token authToken=abc123 roomToken\\u003dabc123 token\\u003dabc123 authToken\\u003dabc123")
+                "token=secret-room-token authToken=abc123 roomToken\\u003dabc123 token\\u003dabc123 authToken\\u003dabc123 room\\u003d186538 roomId\\u003d186538 id\\u003d186538")
             .timestampMillis(120L)
             .source("test")
             .summary("session live-room:186538")
