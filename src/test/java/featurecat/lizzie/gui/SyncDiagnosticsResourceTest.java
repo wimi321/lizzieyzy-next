@@ -15,6 +15,9 @@ class SyncDiagnosticsResourceTest {
     assertEquals("Sync diagnostics", bundle.getString("SyncDiagnostics.title"));
     assertEquals("Refresh", bundle.getString("SyncDiagnostics.refresh"));
     assertEquals("Copy summary", bundle.getString("SyncDiagnostics.copy"));
+    assertEquals("Export package", bundle.getString("SyncDiagnostics.export"));
+    assertEquals("Exported to:", bundle.getString("SyncDiagnostics.exportSuccess"));
+    assertEquals("Export failed:", bundle.getString("SyncDiagnostics.exportFailure"));
     assertEquals("Close", bundle.getString("SyncDiagnostics.close"));
   }
 
@@ -27,6 +30,9 @@ class SyncDiagnosticsResourceTest {
     assertEquals("同步诊断", bundle.getString("SyncDiagnostics.title"));
     assertEquals("刷新", bundle.getString("SyncDiagnostics.refresh"));
     assertEquals("复制诊断摘要", bundle.getString("SyncDiagnostics.copy"));
+    assertEquals("导出诊断包", bundle.getString("SyncDiagnostics.export"));
+    assertEquals("已导出到：", bundle.getString("SyncDiagnostics.exportSuccess"));
+    assertEquals("导出失败：", bundle.getString("SyncDiagnostics.exportFailure"));
     assertEquals("关闭", bundle.getString("SyncDiagnostics.close"));
   }
 }

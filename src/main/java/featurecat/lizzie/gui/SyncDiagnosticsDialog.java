@@ -1,6 +1,8 @@
 package featurecat.lizzie.gui;
 
 import featurecat.lizzie.Lizzie;
+import featurecat.lizzie.analysis.SyncDiagnosticsEnvironment;
+import featurecat.lizzie.analysis.SyncDiagnosticsExporter;
 import featurecat.lizzie.analysis.SyncDiagnosticsRecorder;
 import java.awt.BorderLayout;
 import java.awt.FlowLayout;
@@ -10,6 +12,9 @@ import java.awt.Window;
 import java.awt.datatransfer.StringSelection;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
+import java.io.IOException;
+import java.lang.reflect.Method;
+import java.nio.file.Path;
 import java.util.MissingResourceException;
 import java.util.ResourceBundle;
 import javax.swing.BorderFactory;
@@ -43,9 +48,11 @@ public class SyncDiagnosticsDialog extends JDialog {
     JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 6));
     JButton refreshButton = new JButton(text("SyncDiagnostics.refresh", "Refresh"));
     JButton copyButton = new JButton(text("SyncDiagnostics.copy", "Copy summary"));
+    JButton exportButton = new JButton(text("SyncDiagnostics.export", "Export package"));
     JButton closeButton = new JButton(text("SyncDiagnostics.close", "Close"));
     buttonPanel.add(refreshButton);
     buttonPanel.add(copyButton);
+    buttonPanel.add(exportButton);
     buttonPanel.add(closeButton);
 
     refreshButton.addActionListener(
@@ -60,6 +67,13 @@ public class SyncDiagnosticsDialog extends JDialog {
           @Override
           public void actionPerformed(ActionEvent e) {
             copySummary();
+          }
+        });
+    exportButton.addActionListener(
+        new ActionListener() {
+          @Override
+          public void actionPerformed(ActionEvent e) {
+            exportDiagnosticsPackage();
           }
         });
     closeButton.addActionListener(
@@ -91,6 +105,36 @@ public class SyncDiagnosticsDialog extends JDialog {
     Toolkit.getDefaultToolkit()
         .getSystemClipboard()
         .setContents(new StringSelection(summary), null);
+  }
+
+  private void exportDiagnosticsPackage() {
+    try {
+      Path zip =
+          new SyncDiagnosticsExporter(SyncDiagnosticsExporter.defaultOutputDirectory())
+              .export(SyncDiagnosticsRecorder.getDefault().exportSnapshot());
+      refreshSummary();
+      appendStatus(text("SyncDiagnostics.exportSuccess", "Exported to:") + " " + zip);
+    } catch (IOException | RuntimeException ex) {
+      appendStatus(
+          text("SyncDiagnostics.exportFailure", "Export failed:")
+              + " "
+              + sanitizeFailureMessage(ex.getMessage()));
+    }
+  }
+
+  private void appendStatus(String status) {
+    summaryTextArea.append("\n\n" + status);
+  }
+
+  private static String sanitizeFailureMessage(String message) {
+    try {
+      Method sanitizePath =
+          SyncDiagnosticsEnvironment.class.getDeclaredMethod("sanitizePath", String.class);
+      sanitizePath.setAccessible(true);
+      return (String) sanitizePath.invoke(null, message);
+    } catch (ReflectiveOperationException | SecurityException ignored) {
+      return "<redacted-path>";
+    }
   }
 
   private String text(String key, String fallback) {
