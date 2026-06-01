@@ -2300,13 +2300,7 @@ public class WinrateGraph {
   }
 
   private boolean hasPrimaryAnalysisPayload(BoardData data) {
-    return data != null
-        && (data.getPlayouts() > 0
-            || data.analysisHeaderSlots > 0
-            || !Utils.isBlank(data.engineName)
-            || (data.bestMoves != null && !data.bestMoves.isEmpty())
-            || data.isKataData
-            || (data.estimateArray != null && !data.estimateArray.isEmpty()));
+    return data != null && data.hasPrimaryAnalysisPayload();
   }
 
   private int quickOverviewHitMinX(QuickOverviewLayout layout) {

@@ -3,6 +3,7 @@ package featurecat.lizzie.analysis;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import featurecat.lizzie.Config;
@@ -102,6 +103,58 @@ class AnalysisEngineRequestTest {
           0,
           engine.requestCount(),
           "snapshot-root-only history should not emit batch requests from startRequest.");
+    }
+  }
+
+  @Test
+  void startRequestMissingMainlineAnalyzesOnlyUnanalyzedMainlineMoves() throws Exception {
+    try (TestEnvironment env = TestEnvironment.open()) {
+      BoardHistoryList history = new BoardHistoryList(BoardData.empty(BOARD_SIZE, BOARD_SIZE));
+      BoardData analyzed =
+          moveNode(stones(placement(0, 0, Stone.BLACK)), new int[] {0, 0}, Stone.BLACK, false, 1);
+      analyzed.setPlayouts(120);
+      analyzed.engineName = "cached-analysis";
+      history.add(analyzed);
+      history.add(
+          moveNode(
+              stones(placement(0, 0, Stone.BLACK), placement(1, 0, Stone.WHITE)),
+              new int[] {1, 0},
+              Stone.WHITE,
+              true,
+              2));
+      boardWithHistory(history);
+      TrackingAnalysisEngine engine = TrackingAnalysisEngine.create();
+
+      int requested = engine.startRequestMissingMainline(false);
+
+      assertEquals(1, requested);
+      assertEquals(1, engine.requestCount());
+      JSONObject request = engine.singleRequest();
+      assertEquals(
+          List.of(List.of("B", "A3"), List.of("W", "B3")),
+          request.getJSONArray("moves").toList(),
+          "Yike curve completion should request only the missing current mainline node.");
+      assertEquals(List.of(2), request.getJSONArray("analyzeTurns").toList());
+    }
+  }
+
+  @Test
+  void startRequestMissingMainlineReportsDispatchFailure() throws Exception {
+    try (TestEnvironment env = TestEnvironment.open()) {
+      BoardHistoryList history = new BoardHistoryList(BoardData.empty(BOARD_SIZE, BOARD_SIZE));
+      history.add(
+          moveNode(stones(placement(0, 0, Stone.BLACK)), new int[] {0, 0}, Stone.BLACK, false, 1));
+      boardWithHistory(history);
+      TrackingAnalysisEngine engine = TrackingAnalysisEngine.create();
+      engine.failSends = true;
+      engine.setCompletionCallback(() -> {});
+
+      int requested = engine.startRequestMissingMainline(false);
+
+      assertEquals(-1, requested);
+      assertEquals(0, engine.pendingRequestCount());
+      assertFalse(engine.isAnalysisInProgress());
+      assertNull(engine.completionCallback());
     }
   }
 
@@ -813,6 +866,12 @@ class AnalysisEngineRequestTest {
       Field field = AnalysisEngine.class.getDeclaredField("analyzeMap");
       field.setAccessible(true);
       return ((java.util.Map<?, ?>) field.get(this)).size();
+    }
+
+    private Runnable completionCallback() throws Exception {
+      Field field = AnalysisEngine.class.getDeclaredField("completionCallback");
+      field.setAccessible(true);
+      return (Runnable) field.get(this);
     }
   }
 
