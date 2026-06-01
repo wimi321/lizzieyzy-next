@@ -942,6 +942,7 @@ public class MoreEngines extends JPanel {
       if (!this.txtKomi
           .getText()
           .equals((new StringBuilder(String.valueOf(engDt.komi))).toString())) isChanged = true;
+      if (this.chkDefault.isSelected() != engDt.isDefault) isChanged = true;
       if (this.chkRemoteEngine.isSelected() != engDt.useJavaSSH) isChanged = true;
       if (this.chkRemoteEngine.isSelected()) {
         if (!this.txtIP.getText().equals(engDt.ip)) isChanged = true;

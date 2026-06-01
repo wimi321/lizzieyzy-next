@@ -655,6 +655,7 @@ public final class KataGoAutoSetupHelper {
         Utils.isBlank(engineName) ? AUTO_SETUP_ENGINE_NAME : engineName.trim();
     int engineIndex = findManagedEngineIndex(engines, resolvedEngineName);
     EngineData engineData;
+    boolean createdEngine = engineIndex < 0;
     if (engineIndex >= 0) {
       engineData = engines.get(engineIndex);
     } else {
@@ -674,10 +675,10 @@ public final class KataGoAutoSetupHelper {
     engineData.index = engineIndex;
     engineData.name = resolvedEngineName;
     engineData.commands = engineCommand;
-    engineData.preload = false;
-    engineData.width = 19;
-    engineData.height = 19;
-    engineData.komi = 7.5F;
+    engineData.preload = createdEngine ? false : engineData.preload;
+    engineData.width = normalizeBoardSize(createdEngine ? 19 : engineData.width);
+    engineData.height = normalizeBoardSize(createdEngine ? 19 : engineData.height);
+    engineData.komi = normalizeKomi(createdEngine ? 7.5F : engineData.komi);
     engineData.isDefault = makeDefault || engineData.isDefault;
     engineData.useJavaSSH = false;
     engineData.ip = "";
@@ -686,7 +687,7 @@ public final class KataGoAutoSetupHelper {
     engineData.password = "";
     engineData.useKeyGen = false;
     engineData.keyGenPath = "";
-    engineData.initialCommand = "";
+    engineData.initialCommand = createdEngine ? "" : safeString(engineData.initialCommand);
 
     Utils.saveEngineSettings(engines);
     rememberPreferredWeight(snapshot.activeWeightPath);
@@ -716,6 +717,18 @@ public final class KataGoAutoSetupHelper {
     Lizzie.config.uiConfig.put("katago-auto-setup-updated-at", System.currentTimeMillis());
     Lizzie.config.save();
     return new SetupResult(snapshot, engineIndex, resolvedEngineName);
+  }
+
+  private static int normalizeBoardSize(int size) {
+    return size > 0 ? size : 19;
+  }
+
+  private static float normalizeKomi(float komi) {
+    return Float.isFinite(komi) ? komi : 7.5F;
+  }
+
+  private static String safeString(String value) {
+    return value == null ? "" : value;
   }
 
   public static String getAutoSetupEngineName() {

@@ -144,6 +144,51 @@ public class KataGoAutoSetupHelperTest {
         });
   }
 
+  @Test
+  void autoSetupRefreshPreservesUserEngineKomiAndSettings() throws Exception {
+    Path tempRoot = Files.createTempDirectory("katago-preserve-engine-settings");
+    Path engine =
+        touch(
+            tempRoot
+                .resolve("engines")
+                .resolve("katago")
+                .resolve(detectTestPlatformDir())
+                .resolve(testKataGoBinaryName()));
+    Path configDir =
+        Files.createDirectories(tempRoot.resolve("engines").resolve("katago").resolve("configs"));
+    Path gtpConfig = touch(configDir.resolve("gtp.cfg"));
+    touch(configDir.resolve("analysis.cfg"));
+    touch(configDir.resolve("estimate.cfg"));
+    Path weight = touch(tempRoot.resolve("weights").resolve("default.bin.gz"));
+
+    withUserDirAndConfig(
+        tempRoot,
+        () -> {
+          ArrayList<EngineData> engines = new ArrayList<>();
+          EngineData autoSetupEngine =
+              engineData(
+                  KataGoAutoSetupHelper.getAutoSetupEngineName(), engine, gtpConfig, weight, false);
+          autoSetupEngine.komi = 6.5F;
+          autoSetupEngine.preload = true;
+          autoSetupEngine.width = 13;
+          autoSetupEngine.height = 13;
+          autoSetupEngine.initialCommand = "kata-set-rules chinese";
+          engines.add(autoSetupEngine);
+          Utils.saveEngineSettings(engines);
+
+          KataGoAutoSetupHelper.applyAutoSetup(KataGoAutoSetupHelper.inspectLocalSetup(), false);
+
+          ArrayList<EngineData> refreshedEngines = Utils.getEngineData();
+          EngineData refreshed = refreshedEngines.get(0);
+          assertEquals(6.5F, refreshed.komi);
+          assertTrue(refreshed.preload);
+          assertEquals(13, refreshed.width);
+          assertEquals(13, refreshed.height);
+          assertEquals("kata-set-rules chinese", refreshed.initialCommand);
+          assertFalse(refreshed.isDefault);
+        });
+  }
+
   private static EngineData engineData(
       String name, Path enginePath, Path configPath, Path weightPath, boolean isDefault) {
     EngineData data = new EngineData();
