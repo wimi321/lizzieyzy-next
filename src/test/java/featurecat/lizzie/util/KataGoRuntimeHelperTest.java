@@ -312,9 +312,9 @@ public class KataGoRuntimeHelperTest {
                     KataGoRuntimeHelper.buildTensorRtInstallSpec(snapshot);
 
                 assertTrue(
-                    spec.katagoUrl.endsWith("/katago-v1.16.4-trt10.9.0-cuda12.8-windows-x64.zip"));
+                    spec.katagoUrl.endsWith("/katago-v1.16.5-trt10.9.0-cuda12.8-windows-x64.zip"));
                 assertEquals(
-                    "1dea0b507c6331c9a7cf4f0ed2eeee5384b880d60f1db7fe876506daee55830f",
+                    "954227e5696eed4c1ad80da6a1d48eb1de5ecdb741f849d1b956b8b64093d2f5",
                     spec.katagoSha256);
                 assertEquals(5, spec.runtimePackageCount);
                 assertTrue(spec.totalDownloadBytes > 3_000_000_000L);

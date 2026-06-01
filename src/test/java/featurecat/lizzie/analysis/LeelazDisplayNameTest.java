@@ -17,7 +17,7 @@ class LeelazDisplayNameTest {
     Path weightPath = Files.createFile(weightsDir.resolve("default.bin.gz"));
     Files.write(
         enginesDir.resolve("VERSION.txt"),
-        ("KataGo version: v1.16.4\nModel source: kata1-zhizi-b28c512nbt-muonfd2.bin.gz\n")
+        ("KataGo version: v1.16.5\nModel source: kata1-zhizi-b28c512nbt-muonfd2.bin.gz\n")
             .getBytes(StandardCharsets.UTF_8));
 
     String command =

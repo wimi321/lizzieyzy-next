@@ -3261,6 +3261,224 @@ def build_next_2026_06_01_1_notes(
     ) + '\n'
 
 
+def build_next_2026_06_01_2_notes(
+    asset_map: dict[str, str | None],
+    bundle: dict[str, str],
+    repo: str,
+    release_tag: str | None,
+) -> str:
+    assets_cn = {key: format_asset(asset_map[key], repo, release_tag) for key in asset_map}
+    assets = {key: format_asset_en(asset_map[key], repo, release_tag) for key in asset_map}
+    katago_version = bundle['katago_version']
+    model_source = bundle['model_source']
+    content = [
+        {
+            'language': '中文',
+            'labels': 'zh',
+            'intro': '这一版是 KataGo 官方 `v1.16.5` 引擎跟进版，重点吸收 Windows、CUDA/TensorRT、分析引擎和 SGF 解析相关稳定性修复。',
+            'updates_heading': '本版主要更新',
+            'updates': [
+                '内置 Windows / Linux KataGo 默认升级到官方 `v1.16.5`。',
+                '软件内 TensorRT 一键安装使用 `katago-v1.16.5-trt10.9.0-cuda12.8-windows-x64.zip`，并更新官方 SHA256 校验。',
+                'Windows 高级可选 TensorRT 分卷包也同步使用 KataGo `v1.16.5` TensorRT 引擎。',
+                '继续保留上一版的 TensorRT 断点续传、安装后自动清理下载缓存、运行缓存尽量放入软件 runtime 目录。',
+                '文档中的内置 KataGo 版本说明同步更新为 `v1.16.5`。',
+            ],
+            'before_heading': '下载前先看这几句',
+            'before': [
+                f'主推荐整合包已内置 KataGo `{katago_version}` 和默认权重 `{model_source}`。',
+                '这次不改变默认权重；重点是跟进官方引擎 bugfix 和兼容性修复。',
+                'RTX 20/30/40/50 用户仍建议先下载 NVIDIA/CUDA 包，再在软件内按需安装 TensorRT。',
+                'GTX 10 系及更老 NVIDIA 显卡继续优先 CUDA/OpenCL，不作为 TensorRT 推荐对象。',
+            ],
+            'download_heading': '下载建议',
+            'download_headers': ('你的电脑', '直接下载这个'),
+            'why_heading': '这一版为什么值得更新',
+            'why': [
+                'KataGo `v1.16.5` 修复了 Windows 线程队列、分析引擎 `clear_cache` 崩溃、SGF 解析栈溢出等用户可感知稳定性问题。',
+                '官方修复了 Windows TensorRT `nvinfer_10` 检测，对我们的一键 TensorRT 路径更友好。',
+                '官方同时改进了 CUDA / TensorRT / Metal 构建兼容性，为后续 macOS Metal 深度优化打基础。',
+            ],
+            'contact_heading': '交流',
+            'contact': ['QQ 群：`299419120`'],
+        },
+        {
+            'language': '繁體中文',
+            'labels': 'zh_hant',
+            'intro': '這一版是 KataGo 官方 `v1.16.5` 引擎跟進版，重點吸收 Windows、CUDA/TensorRT、分析引擎與 SGF 解析相關穩定性修復。',
+            'updates_heading': '本版主要更新',
+            'updates': [
+                '內建 Windows / Linux KataGo 預設升級到官方 `v1.16.5`。',
+                '軟體內 TensorRT 一鍵安裝改用 `katago-v1.16.5-trt10.9.0-cuda12.8-windows-x64.zip`，並更新官方 SHA256 校驗。',
+                'Windows 進階可選 TensorRT 分卷包也同步使用 KataGo `v1.16.5` TensorRT 引擎。',
+                '保留上一版的 TensorRT 斷點續傳、安裝後自動清理下載快取、執行快取盡量放入軟體 runtime 目錄。',
+                '文件中的內建 KataGo 版本說明同步更新為 `v1.16.5`。',
+            ],
+            'before_heading': '下載前先看這幾句',
+            'before': [
+                f'主推薦整合包已內建 KataGo `{katago_version}` 和預設權重 `{model_source}`。',
+                '這次不改變預設權重；重點是跟進官方引擎 bugfix 與相容性修復。',
+                'RTX 20/30/40/50 使用者仍建議先下載 NVIDIA/CUDA 包，再在軟體內按需安裝 TensorRT。',
+                'GTX 10 系及更舊 NVIDIA 顯卡繼續優先 CUDA/OpenCL，不作為 TensorRT 推薦對象。',
+            ],
+            'download_heading': '下載建議',
+            'download_headers': ('你的電腦', '直接下載這個'),
+            'why_heading': '這一版為什麼值得更新',
+            'why': [
+                'KataGo `v1.16.5` 修復了 Windows 執行緒佇列、分析引擎 `clear_cache` 崩潰、SGF 解析堆疊溢出等使用者可感知穩定性問題。',
+                '官方修復了 Windows TensorRT `nvinfer_10` 偵測，對我們的一鍵 TensorRT 路徑更友善。',
+                '官方也改善 CUDA / TensorRT / Metal 建構相容性，為後續 macOS Metal 深度優化打基礎。',
+            ],
+            'contact_heading': '交流',
+            'contact': ['QQ 群：`299419120`'],
+        },
+        {
+            'language': 'English',
+            'labels': 'en',
+            'intro': 'This release tracks the official KataGo `v1.16.5` engine, mainly for Windows, CUDA/TensorRT, analysis-engine, and SGF parsing stability fixes.',
+            'updates_heading': 'Release Highlights',
+            'updates': [
+                'Bundled Windows / Linux KataGo defaults now use official `v1.16.5`.',
+                'The in-app TensorRT installer now uses `katago-v1.16.5-trt10.9.0-cuda12.8-windows-x64.zip` with the updated SHA256 check.',
+                'The advanced optional Windows TensorRT split package also uses the KataGo `v1.16.5` TensorRT engine.',
+                'Keeps the previous resumable TensorRT downloads, post-install download-cache cleanup, and app-local runtime cache paths.',
+                'Documentation now lists the bundled KataGo version as `v1.16.5`.',
+            ],
+            'before_heading': 'Read Before Downloading',
+            'before': [
+                f'The recommended bundles include KataGo `{katago_version}` and the default weight `{model_source}`.',
+                'This does not change the default weight; the focus is official engine bugfixes and compatibility fixes.',
+                'RTX 20/30/40/50 users should still start with the NVIDIA/CUDA package, then install TensorRT on demand inside the app.',
+                'GTX 10 series and older NVIDIA cards should keep preferring CUDA/OpenCL instead of TensorRT.',
+            ],
+            'download_heading': 'Download Guide',
+            'download_headers': ('Your computer', 'Download this file'),
+            'why_heading': 'Why Update',
+            'why': [
+                'KataGo `v1.16.5` fixes user-facing stability issues around Windows thread queues, analysis-engine `clear_cache`, and SGF parser stack overflow.',
+                'The official Windows TensorRT `nvinfer_10` detection fix helps our one-click TensorRT path.',
+                'CUDA / TensorRT / Metal build compatibility improvements give us a better base for later macOS Metal work.',
+            ],
+            'contact_heading': 'Contact',
+            'contact': ['QQ group: `299419120`'],
+        },
+        {
+            'language': '日本語',
+            'labels': 'ja',
+            'intro': 'このリリースは KataGo 公式 `v1.16.5` エンジン追従版です。Windows、CUDA/TensorRT、分析エンジン、SGF 解析の安定性修正を取り込みます。',
+            'updates_heading': '主な更新',
+            'updates': [
+                '同梱 Windows / Linux KataGo の既定を公式 `v1.16.5` に更新しました。',
+                'アプリ内 TensorRT インストーラは `katago-v1.16.5-trt10.9.0-cuda12.8-windows-x64.zip` と新しい SHA256 検証を使います。',
+                'Windows 上級者向け TensorRT 分割パッケージも KataGo `v1.16.5` TensorRT エンジンに同期しました。',
+                '前版の TensorRT 再開対応ダウンロード、インストール後のキャッシュ削除、アプリ内 runtime キャッシュ配置は維持します。',
+                'ドキュメント上の同梱 KataGo バージョンも `v1.16.5` に更新しました。',
+            ],
+            'before_heading': 'ダウンロード前に',
+            'before': [
+                f'推奨バンドルには KataGo `{katago_version}` と既定の重み `{model_source}` が含まれます。',
+                '既定の重みは変わりません。今回は公式エンジンの bugfix と互換性修正が中心です。',
+                'RTX 20/30/40/50 ユーザーは NVIDIA/CUDA パッケージから始め、必要時にアプリ内で TensorRT を入れてください。',
+                'GTX 10 系以前の NVIDIA カードは TensorRT ではなく CUDA/OpenCL を推奨します。',
+            ],
+            'download_heading': 'ダウンロード案内',
+            'download_headers': ('お使いの環境', 'ダウンロードするファイル'),
+            'why_heading': '更新する理由',
+            'why': [
+                'KataGo `v1.16.5` は Windows の thread queue、analysis engine の `clear_cache`、SGF parser stack overflow などの安定性問題を修正します。',
+                '公式の Windows TensorRT `nvinfer_10` 検出修正は、こちらのワンクリック TensorRT 経路にも有利です。',
+                'CUDA / TensorRT / Metal の build 互換性改善により、今後の macOS Metal 最適化の土台も良くなります。',
+            ],
+            'contact_heading': '連絡先',
+            'contact': ['QQ グループ: `299419120`'],
+        },
+        {
+            'language': '한국어',
+            'labels': 'ko',
+            'intro': '이번 릴리스는 공식 KataGo `v1.16.5` 엔진 반영판입니다. Windows, CUDA/TensorRT, 분석 엔진, SGF 파싱 안정성 수정을 중심으로 가져왔습니다.',
+            'updates_heading': '주요 업데이트',
+            'updates': [
+                '내장 Windows / Linux KataGo 기본 버전을 공식 `v1.16.5` 로 올렸습니다.',
+                '앱 안의 TensorRT 설치는 `katago-v1.16.5-trt10.9.0-cuda12.8-windows-x64.zip` 과 새 SHA256 검증을 사용합니다.',
+                'Windows 고급 선택 TensorRT 분할 패키지도 KataGo `v1.16.5` TensorRT 엔진을 사용합니다.',
+                '이전 버전의 이어받기 지원 TensorRT 다운로드, 설치 후 다운로드 캐시 정리, 앱 runtime 캐시 경로는 유지합니다.',
+                '문서의 내장 KataGo 버전 설명도 `v1.16.5` 로 갱신했습니다.',
+            ],
+            'before_heading': '다운로드 전 확인',
+            'before': [
+                f'권장 번들에는 KataGo `{katago_version}` 와 기본 weight `{model_source}` 가 포함됩니다.',
+                '기본 weight 는 바뀌지 않습니다. 이번 초점은 공식 엔진 bugfix 와 호환성 수정입니다.',
+                'RTX 20/30/40/50 사용자는 NVIDIA/CUDA 패키지로 시작한 뒤 앱 안에서 TensorRT 를 필요할 때 설치하세요.',
+                'GTX 10 시리즈 및 이전 NVIDIA 카드는 TensorRT 보다 CUDA/OpenCL 을 권장합니다.',
+            ],
+            'download_heading': '다운로드 안내',
+            'download_headers': ('사용 환경', '다운로드할 파일'),
+            'why_heading': '업데이트할 이유',
+            'why': [
+                'KataGo `v1.16.5` 는 Windows thread queue, analysis engine `clear_cache`, SGF parser stack overflow 등 안정성 문제를 수정합니다.',
+                '공식 Windows TensorRT `nvinfer_10` 감지 수정은 우리의 원클릭 TensorRT 경로에도 도움이 됩니다.',
+                'CUDA / TensorRT / Metal build 호환성 개선은 이후 macOS Metal 최적화의 기반이 됩니다.',
+            ],
+            'contact_heading': '연락',
+            'contact': ['QQ group: `299419120`'],
+        },
+        {
+            'language': 'ภาษาไทย',
+            'labels': 'th',
+            'intro': 'รุ่นนี้อัปเดตตาม KataGo official `v1.16.5` โดยเน้นความเสถียรของ Windows, CUDA/TensorRT, analysis engine และ SGF parser',
+            'updates_heading': 'อัปเดตหลัก',
+            'updates': [
+                'KataGo ที่มากับแพ็กเกจ Windows / Linux เปลี่ยนเป็น official `v1.16.5`',
+                'ตัวติดตั้ง TensorRT ในแอปใช้ `katago-v1.16.5-trt10.9.0-cuda12.8-windows-x64.zip` พร้อม SHA256 ใหม่',
+                'แพ็กเกจ TensorRT split สำหรับผู้ใช้ขั้นสูงบน Windows ใช้ KataGo `v1.16.5` TensorRT engine เช่นกัน',
+                'ยังคงรองรับ TensorRT resume download, ล้าง download cache หลังติดตั้ง และเก็บ runtime cache ในโฟลเดอร์ของแอปให้มากที่สุด',
+                'เอกสารอัปเดตเวอร์ชัน KataGo ที่มากับแพ็กเกจเป็น `v1.16.5`',
+            ],
+            'before_heading': 'ก่อนดาวน์โหลด',
+            'before': [
+                f'แพ็กเกจแนะนำมี KataGo `{katago_version}` และ weight เริ่มต้น `{model_source}`',
+                'รุ่นนี้ไม่ได้เปลี่ยน default weight จุดสำคัญคือ bugfix และ compatibility fixes ของ engine official',
+                'ผู้ใช้ RTX 20/30/40/50 ควรเริ่มจาก NVIDIA/CUDA package แล้วติดตั้ง TensorRT ในแอปเมื่อต้องการ',
+                'GTX 10 series และ NVIDIA รุ่นเก่ากว่า แนะนำ CUDA/OpenCL มากกว่า TensorRT',
+            ],
+            'download_heading': 'แนะนำการดาวน์โหลด',
+            'download_headers': ('เครื่องของคุณ', 'ดาวน์โหลดไฟล์นี้'),
+            'why_heading': 'ทำไมควรอัปเดต',
+            'why': [
+                'KataGo `v1.16.5` แก้ปัญหา stability ที่ผู้ใช้เจอได้ เช่น Windows thread queue, analysis engine `clear_cache`, และ SGF parser stack overflow',
+                'การแก้ `nvinfer_10` detection บน Windows TensorRT จาก official ช่วยเส้นทางติดตั้ง TensorRT ในแอปของเรา',
+                'การปรับ CUDA / TensorRT / Metal build compatibility เป็นฐานที่ดีสำหรับงาน macOS Metal ต่อไป',
+            ],
+            'contact_heading': 'ติดต่อ',
+            'contact': ['QQ group: `299419120`'],
+        },
+    ]
+    sections: list[dict[str, object]] = []
+    for block in content:
+        localized_assets = assets_cn if block['language'] in ('中文', '繁體中文') else assets
+        sections.append(
+            {
+                'language': block['language'],
+                'intro': block['intro'],
+                'updates': {'heading': block['updates_heading'], 'items': block['updates']},
+                'before': {'heading': block['before_heading'], 'items': block['before']},
+                'download': {
+                    'heading': block['download_heading'],
+                    'headers': block['download_headers'],
+                    'rows': standard_download_rows(STANDARD_DOWNLOAD_LABELS[block['labels']], localized_assets),
+                },
+                'why': {'heading': block['why_heading'], 'items': block['why']},
+                'contact': {'heading': block['contact_heading'], 'items': block['contact']},
+            }
+        )
+    add_nvidia50_download_rows(sections, assets_cn, assets)
+    add_tensorrt_split_download_row(sections, assets_cn, assets, asset_map)
+    validate_release_sections(sections)
+    return release_heading(release_tag) + '\n\n' + '\n\n---\n\n'.join(
+        render_language_section(section) for section in sections
+    ) + '\n'
+
+
 def build_release_notes(asset_map: dict[str, str | None], bundle: dict[str, str], repo: str, release_tag: str | None) -> str:
     if release_tag == 'next-2026-05-03.1':
         return build_next_2026_05_03_1_notes(asset_map, repo, release_tag)
@@ -3284,6 +3502,8 @@ def build_release_notes(asset_map: dict[str, str | None], bundle: dict[str, str]
         return build_next_2026_05_31_2_notes(asset_map, bundle, repo, release_tag)
     if release_tag == 'next-2026-06-01.1':
         return build_next_2026_06_01_1_notes(asset_map, bundle, repo, release_tag)
+    if release_tag == 'next-2026-06-01.2':
+        return build_next_2026_06_01_2_notes(asset_map, bundle, repo, release_tag)
 
     assets_cn = {
         key: format_asset(asset_map[key], repo, release_tag)

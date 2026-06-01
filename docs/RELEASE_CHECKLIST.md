@@ -116,7 +116,7 @@ python3 scripts/generate_app_icons.py
 
 当前默认：
 
-- KataGo 版本：`v1.16.4`
+- KataGo 版本：`v1.16.5`
 - 默认模型：`kata1-zhizi-b28c512nbt-muonfd2.bin.gz`
 - Windows NVIDIA 包：官方 `cuda12.1-cudnn8.9.7` 构建
 - Windows RTX 50 CUDA 包：官方 `cuda12.8-cudnn9.8.0` 构建

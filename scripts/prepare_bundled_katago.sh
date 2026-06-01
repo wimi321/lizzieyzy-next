@@ -3,7 +3,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CACHE_DIR="${CACHE_DIR:-$ROOT_DIR/.cache/katago}"
-KATAGO_TAG="${KATAGO_TAG:-v1.16.4}"
+KATAGO_TAG="${KATAGO_TAG:-v1.16.5}"
 KATAGO_RELEASE_BASE="https://github.com/lightvector/KataGo/releases/download/${KATAGO_TAG}"
 # The regular Windows bundle prioritizes compatibility for mixed consumer hardware.
 WINDOWS_ASSET="${WINDOWS_ASSET:-katago-${KATAGO_TAG}-eigen-windows-x64.zip}"

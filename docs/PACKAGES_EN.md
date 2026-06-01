@@ -97,7 +97,7 @@ Installers still exist, but they are now secondary to the portable flow.
 
 Current bundled defaults:
 
-- KataGo version: `v1.16.4`
+- KataGo version: `v1.16.5`
 - Default weight: `kata1-zhizi-b28c512nbt-muonfd2.bin.gz`
 - TensorRT acceleration: no longer published as a giant GitHub Release package; RTX 20/30/40/50 users can install it on demand from `KataGo Auto Setup` inside the app
 - RTX 50 users should still start with the `windows64.nvidia50.cuda` package, with TensorRT as an on-demand acceleration path for the newer architecture

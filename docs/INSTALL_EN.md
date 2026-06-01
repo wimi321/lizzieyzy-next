@@ -197,7 +197,7 @@ Notes:
 
 Current bundled defaults:
 
-- KataGo version: `v1.16.4`
+- KataGo version: `v1.16.5`
 - Weight: `kata1-zhizi-b28c512nbt-muonfd2.bin.gz`
 
 ## Need More Help

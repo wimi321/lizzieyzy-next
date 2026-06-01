@@ -203,7 +203,7 @@ chmod +x start-linux64.sh
 
 当前默认内置信息：
 
-- KataGo 版本：`v1.16.4`
+- KataGo 版本：`v1.16.5`
 - 默认权重：`kata1-zhizi-b28c512nbt-muonfd2.bin.gz`
 
 ## 需要更多说明

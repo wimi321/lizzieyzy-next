@@ -104,18 +104,18 @@ public final class KataGoRuntimeHelper {
   private static final String TENSORRT_RUNTIME_SHA256_PROPERTY = "lizzie.tensorrt.runtime.sha256";
   private static final String TENSORRT_SKIP_RUNTIME_FOR_TESTS_PROPERTY =
       "lizzie.tensorrt.skipRuntimePackagesForTests";
-  private static final String TENSORRT_KATAGO_VERSION = "v1.16.4";
+  private static final String TENSORRT_KATAGO_VERSION = "v1.16.5";
   private static final String TENSORRT_INSTALL_LOCK_NAME = "tensorrt-install.lock";
   private static final String TENSORRT_KATAGO_ASSET =
-      "katago-v1.16.4-trt10.9.0-cuda12.8-windows-x64.zip";
+      "katago-v1.16.5-trt10.9.0-cuda12.8-windows-x64.zip";
   private static final String TENSORRT_KATAGO_URL =
       "https://github.com/lightvector/KataGo/releases/download/"
           + TENSORRT_KATAGO_VERSION
           + "/"
           + TENSORRT_KATAGO_ASSET;
   private static final String TENSORRT_KATAGO_SHA256 =
-      "1dea0b507c6331c9a7cf4f0ed2eeee5384b880d60f1db7fe876506daee55830f";
-  private static final long TENSORRT_KATAGO_SIZE_BYTES = 4693569L;
+      "954227e5696eed4c1ad80da6a1d48eb1de5ecdb741f849d1b956b8b64093d2f5";
+  private static final long TENSORRT_KATAGO_SIZE_BYTES = 4745653L;
   private static final String TENSORRT_RUNTIME_URL =
       "https://developer.download.nvidia.com/compute/machine-learning/tensorrt/10.9.0/zip/"
           + "TensorRT-10.9.0.34.Windows.win10.cuda-12.8.zip";

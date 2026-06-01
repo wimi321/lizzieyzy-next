@@ -108,7 +108,7 @@
 
 当前整合包默认使用：
 
-- KataGo 版本：`v1.16.4`
+- KataGo 版本：`v1.16.5`
 - 默认权重：`kata1-zhizi-b28c512nbt-muonfd2.bin.gz`
 - TensorRT 加速：普通用户在软件内 `KataGo 一键设置` 中按需安装，支持断点续传；Release 上的 TensorRT 分卷包只作为高级可选离线路径
 - RTX 50 仍优先使用 `windows64.nvidia50.cuda` 主包，TensorRT 作为新架构按需加速项
