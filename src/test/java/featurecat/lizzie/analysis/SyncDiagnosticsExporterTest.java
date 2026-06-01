@@ -49,7 +49,9 @@ class SyncDiagnosticsExporterTest {
             "(;GM[1]SZ[19])",
             "(;GM[1]FF[4]SZ[19];B[pd])",
             "(;GM[1]FF[4];W[dd])",
+            "(;GM[1]\n;B[pd])",
             "(;FF[4]SZ[19];B[pd])",
+            "(;FF[4]\n;W[dd])",
             "(;B[pd];W[dd])",
             "(;GM",
             "(;FF",
@@ -61,6 +63,11 @@ class SyncDiagnosticsExporterTest {
             "roomToken\\u003dabc123",
             "token\\u003dabc123",
             "authToken\\u003dabc123",
+            "roomToken abc123",
+            "roomToken: abc123",
+            "roomToken\\u003a abc123",
+            "token abc123",
+            "authToken: abc123",
             "room\\u003d186538",
             "roomId\\u003d186538",
             "id\\u003d186538",
@@ -82,9 +89,12 @@ class SyncDiagnosticsExporterTest {
             "User Secret Room Title",
             "C:\\Users\\alice\\Lizzie",
             "C:\\\\Users\\\\alice\\\\Lizzie",
+            "C:\\Users\\Alice Smith\\Lizzie",
             "/mnt/c/Users/alice/Lizzie",
             "\\\\wsl.localhost\\Ubuntu\\home\\alice\\dev",
             "/Users/alice/Lizzie",
+            "/Users/Alice Smith/Lizzie",
+            "/home/Alice Smith/dev",
             "C:\\secret\\file.zip",
             "/var/tmp/alice/lizzie",
             "relative/parent/file.sgf")) {
@@ -103,6 +113,8 @@ class SyncDiagnosticsExporterTest {
             "/mnt/c/Users/alice",
             "C:\\u005cUsers\\u005calice\\u005cLizzie",
             "C:\\\\Users\\\\alice",
+            "Alice Smith",
+            "Smith",
             "abc123")) {
       assertFalse(allText.contains(leaked), leaked);
     }
@@ -148,7 +160,7 @@ class SyncDiagnosticsExporterTest {
             .hasLastResolvedSnapshotNode(true)
             .syncAnalysisEpoch(7L)
             .pendingRemoteContextSummary(
-                "sgf=(;GM[1]SZ[19]) sgf=(;GM[1]FF[4]SZ[19];B[pd]) sgf=(;FF[4]SZ[19];B[pd]) token=secret-room-token token=abc123 path=C:\\Users\\alice\\Lizzie escapedPath=C:\\\\Users\\\\alice\\\\Lizzie unicodePath=C:\\u005cUsers\\u005calice\\u005cLizzie")
+                "sgf=(;GM[1]SZ[19]) sgf=(;GM[1]FF[4]SZ[19];B[pd]) sgf=(;GM[1]\n;B[pd]) sgf=(;FF[4]SZ[19];B[pd]) token=secret-room-token token=abc123 path=C:\\Users\\alice\\Lizzie escapedPath=C:\\\\Users\\\\alice\\\\Lizzie unicodePath=C:\\u005cUsers\\u005calice\\u005cLizzie spacedWin=C:\\Users\\Alice Smith\\Lizzie spacedMac=/Users/Alice Smith/Lizzie spacedHome=/home/Alice Smith/dev")
             .lastResolvedSnapshotSummary(
                 "session=live-room\\u003a186538 url=https://www.yikeweiqi.com/live/186538?roomToken=abc123&foo=bar escaped=https:\\/\\/www.yikeweiqi.com\\/live\\/186538\\u003froomToken\\u003dabc123\\u0026foo\\u003dbar unicodeUrl=https\\u003a\\u002f\\u002fwww.yikeweiqi.com\\u002flive\\u002f186538\\u003froomToken\\u003dabc123\\u0026foo\\u003dbar")
             .lastProtocolLineSummary("window=User Secret Room Title")
@@ -176,7 +188,7 @@ class SyncDiagnosticsExporterTest {
             .lastGeometryClearReason("User Secret Room Title")
             .lastSessionSwitchReason("https://www.yikeweiqi.com/live/186538?roomToken=abc123")
             .lastYikeDebugEventSummary(
-                "token=secret-room-token authToken=abc123 roomToken\\u003dabc123 token\\u003dabc123 authToken\\u003dabc123 room\\u003d186538 roomId\\u003d186538 id\\u003d186538")
+                "token=secret-room-token authToken=abc123 roomToken\\u003dabc123 token\\u003dabc123 authToken\\u003dabc123 roomToken abc123 roomToken: abc123 roomToken\\u003a abc123 token abc123 authToken: abc123 room\\u003d186538 roomId\\u003d186538 id\\u003d186538")
             .timestampMillis(120L)
             .source("test")
             .summary("session live-room:186538")
@@ -217,7 +229,7 @@ class SyncDiagnosticsExporterTest {
             SyncProtocolDiagnosticEvent.of(143L, "relative/parent/file.sgf", "test"),
             SyncProtocolDiagnosticEvent.of(
                 144L,
-                "loadsgf (;GM[1]FF[4];W[dd]) loadsgf (;B[pd];W[dd]) roomToken=abc123 room=186538 roomId=186538 id=186538",
+                "loadsgf (;GM[1]FF[4];W[dd]) loadsgf (;FF[4]\n;W[dd]) loadsgf (;B[pd];W[dd]) roomToken=abc123 room=186538 roomId=186538 id=186538",
                 "test")),
         List.of(decision),
         List.of(yike),
