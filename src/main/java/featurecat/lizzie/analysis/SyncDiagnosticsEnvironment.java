@@ -51,7 +51,7 @@ public final class SyncDiagnosticsEnvironment {
         appVersion, javaVersion, osName, osVersion, osArch, userDirSanitized, timestampMillis);
   }
 
-  static String sanitizePath(String path) {
+  public static String sanitizePath(String path) {
     if (path == null || path.trim().isEmpty()) {
       return "unknown";
     }

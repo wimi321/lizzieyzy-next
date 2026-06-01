@@ -13,7 +13,6 @@ import java.awt.datatransfer.StringSelection;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.io.IOException;
-import java.lang.reflect.Method;
 import java.nio.file.Path;
 import java.util.MissingResourceException;
 import java.util.ResourceBundle;
@@ -127,14 +126,7 @@ public class SyncDiagnosticsDialog extends JDialog {
   }
 
   private static String sanitizeFailureMessage(String message) {
-    try {
-      Method sanitizePath =
-          SyncDiagnosticsEnvironment.class.getDeclaredMethod("sanitizePath", String.class);
-      sanitizePath.setAccessible(true);
-      return (String) sanitizePath.invoke(null, message);
-    } catch (ReflectiveOperationException | SecurityException ignored) {
-      return "<redacted-path>";
-    }
+    return SyncDiagnosticsEnvironment.sanitizePath(message);
   }
 
   private String text(String key, String fallback) {
