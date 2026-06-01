@@ -13,8 +13,7 @@ final class SyncDiagnosticsExportSanitizer {
   private static final Pattern RAW_URL = Pattern.compile("https?://[^\\s,;]+");
   private static final Pattern SGF_PAYLOAD = Pattern.compile("\\(;.*?\\)", Pattern.DOTALL);
   private static final Pattern TOKEN_PARAMETER =
-      Pattern.compile(
-          "(?i)\\b(?:roomToken|authToken|token)\\b(?:\\s*[=:]\\s*|\\s+)[^\\s&;,]+");
+      Pattern.compile("(?i)\\b(?:roomToken|authToken|token)\\b(?:\\s*[=:]\\s*|\\s+)[^\\s&;,]+");
   private static final Pattern YIKE_ROOM_PARAMETER =
       Pattern.compile("(?i)\\b(?:room|roomId|id)\\b(?:\\s*[=:]\\s*|\\s+)(\\d+)\\b");
   private static final Pattern WINDOWS_USER_PATH =
@@ -22,14 +21,11 @@ final class SyncDiagnosticsExportSanitizer {
   private static final Pattern WINDOWS_ABSOLUTE_PATH =
       Pattern.compile("(?i)\\b[A-Z]:\\\\(?!Users\\\\)[^\\s,;]+");
   private static final Pattern WSL_UNC_USER_PATH =
-      Pattern.compile(
-          "\\\\\\\\wsl\\.localhost\\\\([^\\\\\\s]+)\\\\home\\\\[^\\r\\n,;]+");
+      Pattern.compile("\\\\\\\\wsl\\.localhost\\\\([^\\\\\\s]+)\\\\home\\\\[^\\r\\n,;]+");
   private static final Pattern WSL_MOUNT_USER_PATH =
       Pattern.compile("/mnt/([A-Za-z])/Users/[^\\r\\n,;]+");
-  private static final Pattern POSIX_HOME_PATH =
-      Pattern.compile("/home/[^\\r\\n,;]+");
-  private static final Pattern MAC_USER_PATH =
-      Pattern.compile("/Users/[^\\r\\n,;]+");
+  private static final Pattern POSIX_HOME_PATH = Pattern.compile("/home/[^\\r\\n,;]+");
+  private static final Pattern MAC_USER_PATH = Pattern.compile("/Users/[^\\r\\n,;]+");
   private static final Pattern POSIX_ABSOLUTE_PATH =
       Pattern.compile(
           "(?<![A-Za-z0-9_.<>-])/(?!mnt/[A-Za-z]/Users/|home/|Users/)[^\\s,;]+(?:/[^\\s,;]*)*");
@@ -91,9 +87,7 @@ final class SyncDiagnosticsExportSanitizer {
     StringBuffer out = new StringBuffer();
     while (matcher.find()) {
       String replacement =
-          matcher
-              .group(0)
-              .replace(matcher.group(1), sessionAlias("live-room:" + matcher.group(1)));
+          matcher.group(0).replace(matcher.group(1), sessionAlias("live-room:" + matcher.group(1)));
       matcher.appendReplacement(out, Matcher.quoteReplacement(replacement));
     }
     matcher.appendTail(out);
@@ -165,21 +159,21 @@ final class SyncDiagnosticsExportSanitizer {
   private static String unescapeDiagnosticSeparators(String value) {
     String safe =
         value
-        .replace("\\/", "/")
-        .replace("\\u003a", ":")
-        .replace("\\u003A", ":")
-        .replace("\\u002f", "/")
-        .replace("\\u002F", "/")
-        .replace("\\u005c", "\\")
-        .replace("\\u005C", "\\")
-        .replace("\\u0020", " ")
-        .replace("\\u0009", " ")
-        .replace("\\t", " ")
-        .replace("\\u003d", "=")
-        .replace("\\u003D", "=")
-        .replace("\\u0026", "&")
-        .replace("\\u003f", "?")
-        .replace("\\u003F", "?");
+            .replace("\\/", "/")
+            .replace("\\u003a", ":")
+            .replace("\\u003A", ":")
+            .replace("\\u002f", "/")
+            .replace("\\u002F", "/")
+            .replace("\\u005c", "\\")
+            .replace("\\u005C", "\\")
+            .replace("\\u0020", " ")
+            .replace("\\u0009", " ")
+            .replace("\\t", " ")
+            .replace("\\u003d", "=")
+            .replace("\\u003D", "=")
+            .replace("\\u0026", "&")
+            .replace("\\u003f", "?")
+            .replace("\\u003F", "?");
     return unescapeWindowsPathSeparators(safe);
   }
 
