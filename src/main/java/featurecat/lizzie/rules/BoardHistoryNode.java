@@ -250,6 +250,18 @@ public class BoardHistoryNode {
     return data;
   }
 
+  public void copyAnalysisPayloadFrom(BoardHistoryNode source) {
+    if (source == null) return;
+    data.copyAnalysisPayloadFrom(source.data);
+    analyzed = source.analyzed;
+    diffAnalyzed = source.diffAnalyzed;
+    isBest = source.isBest;
+    nodeInfo = copyNodeInfo(source.nodeInfo);
+    nodeInfoMain = copyNodeInfo(source.nodeInfoMain);
+    nodeInfo2 = copyNodeInfo(source.nodeInfo2);
+    nodeInfoMain2 = copyNodeInfo(source.nodeInfoMain2);
+  }
+
   /**
    * @return variations for display
    */
@@ -790,6 +802,28 @@ public class BoardHistoryNode {
       clone.add(copy);
     }
     return clone;
+  }
+
+  private static NodeInfo copyNodeInfo(NodeInfo source) {
+    NodeInfo copy = new NodeInfo();
+    if (source == null) {
+      return copy;
+    }
+    copy.analyzed = source.analyzed;
+    copy.analyzedMatchValue = source.analyzedMatchValue;
+    copy.coords = source.coords == null ? null : source.coords.clone();
+    copy.moveNum = source.moveNum;
+    copy.isBlack = source.isBlack;
+    copy.winrate = source.winrate;
+    copy.diffWinrate = source.diffWinrate;
+    copy.playouts = source.playouts;
+    copy.previousPlayouts = source.previousPlayouts;
+    copy.scoreMeanDiff = source.scoreMeanDiff;
+    copy.scoreLead = source.scoreLead;
+    copy.isMatchAi = source.isMatchAi;
+    copy.percentsMatch = source.percentsMatch;
+    copy.isBest = source.isBest;
+    return copy;
   }
 
   private static boolean sameLastMove(Optional<int[]> leftMove, Optional<int[]> rightMove) {

@@ -250,6 +250,10 @@ public class LizzieFrame extends JFrame {
   private javax.swing.Timer kifuLoadFinishTimer;
   private long kifuLoadVisibleSince;
   private volatile int kifuMovelistRefreshGeneration = 0;
+  private static final int YIKE_CURVE_COMPLETION_DELAY_MS = 1200;
+  private static final int YIKE_CURVE_COMPLETION_BUSY_RETRY_MS = 3000;
+  private javax.swing.Timer yikeCurveCompletionTimer;
+  private String pendingYikeCurveCompletionUrl = "";
 
   /** Web 试下模式下的渲染节点覆盖。null 表示无 override，渲染端读 Board.history 当前节点。 */
   private volatile featurecat.lizzie.rules.BoardHistoryNode displayNodeOverride;
@@ -9591,6 +9595,167 @@ public class LizzieFrame extends JFrame {
             }
           }
         });
+  }
+
+  public void scheduleYikeLiveCurveCompletion(String sourceUrl) {
+    if (!SwingUtilities.isEventDispatchThread()) {
+      SwingUtilities.invokeLater(() -> scheduleYikeLiveCurveCompletion(sourceUrl));
+      return;
+    }
+    if (Lizzie.config == null || !Lizzie.config.autoQuickAnalyzeOnLoad) {
+      return;
+    }
+    pendingYikeCurveCompletionUrl = sourceUrl == null ? "" : sourceUrl;
+    if (yikeCurveCompletionTimer == null) {
+      yikeCurveCompletionTimer =
+          new javax.swing.Timer(
+              YIKE_CURVE_COMPLETION_DELAY_MS, e -> runScheduledYikeCurveCompletion(false));
+      yikeCurveCompletionTimer.setRepeats(false);
+    } else {
+      yikeCurveCompletionTimer.setInitialDelay(YIKE_CURVE_COMPLETION_DELAY_MS);
+      yikeCurveCompletionTimer.setDelay(YIKE_CURVE_COMPLETION_DELAY_MS);
+    }
+    yikeCurveCompletionTimer.restart();
+  }
+
+  public void cancelYikeLiveCurveCompletion() {
+    if (!SwingUtilities.isEventDispatchThread()) {
+      SwingUtilities.invokeLater(this::cancelYikeLiveCurveCompletion);
+      return;
+    }
+    pendingYikeCurveCompletionUrl = "";
+    if (yikeCurveCompletionTimer != null) {
+      yikeCurveCompletionTimer.stop();
+    }
+  }
+
+  private void runScheduledYikeCurveCompletion(boolean fromBusyRetry) {
+    if (Lizzie.config == null || !Lizzie.config.autoQuickAnalyzeOnLoad) {
+      return;
+    }
+    String statusUrl = pendingYikeCurveCompletionUrl;
+    int missingMoves = countMissingMainlineAnalysisNodes();
+    if (missingMoves <= 0) {
+      if (fromBusyRetry) {
+        updateYikeLiveSyncStatus(
+            statusUrl, text("YikeLiveDialog.curveUpToDate", "Graph is up to date."));
+      }
+      return;
+    }
+    if (!canStartYikeCurveCompletion()) {
+      return;
+    }
+    if (analysisEngine != null && analysisEngine.isAnalysisInProgress()) {
+      updateYikeLiveSyncStatus(
+          statusUrl,
+          text("YikeLiveDialog.curveWaiting", "Completing graph when analysis is idle..."));
+      restartYikeCurveCompletion(YIKE_CURVE_COMPLETION_BUSY_RETRY_MS);
+      return;
+    }
+    updateYikeLiveSyncStatus(
+        statusUrl,
+        String.format(
+            Locale.ROOT,
+            text("YikeLiveDialog.curveCompleting", "Completing winrate/score graph (%d moves)..."),
+            missingMoves));
+    if (needsNewFlashAnalysisEngine()) {
+      startYikeCurveCompletionWithNewEngine(statusUrl);
+    } else {
+      startYikeCurveCompletionRequests(analysisEngine, statusUrl);
+    }
+  }
+
+  private void restartYikeCurveCompletion(int delayMillis) {
+    if (yikeCurveCompletionTimer == null) {
+      yikeCurveCompletionTimer =
+          new javax.swing.Timer(delayMillis, e -> runScheduledYikeCurveCompletion(true));
+      yikeCurveCompletionTimer.setRepeats(false);
+    } else {
+      yikeCurveCompletionTimer.setInitialDelay(delayMillis);
+      yikeCurveCompletionTimer.setDelay(delayMillis);
+    }
+    yikeCurveCompletionTimer.restart();
+  }
+
+  private boolean canStartYikeCurveCompletion() {
+    return Lizzie.leelaz != null
+        && !EngineManager.isEmpty
+        && !EngineManager.isEngineGame()
+        && !isPlayingAgainstLeelaz
+        && !isAnaPlayingAgainstLeelaz
+        && Lizzie.board != null
+        && Lizzie.board.getHistory() != null;
+  }
+
+  private void startYikeCurveCompletionWithNewEngine(String statusUrl) {
+    Thread starter =
+        new Thread(
+            () -> {
+              try {
+                AnalysisEngine newAnalysisEngine = new AnalysisEngine(false);
+                SwingUtilities.invokeLater(
+                    () -> {
+                      analysisEngine = newAnalysisEngine;
+                      if (!newAnalysisEngine.isLoaded()) {
+                        updateYikeLiveSyncStatus(
+                            statusUrl,
+                            text("YikeLiveDialog.curveFailed", "Failed to start graph completion"));
+                        return;
+                      }
+                      startYikeCurveCompletionRequests(newAnalysisEngine, statusUrl);
+                    });
+              } catch (IOException e) {
+                SwingUtilities.invokeLater(
+                    () ->
+                        updateYikeLiveSyncStatus(
+                            statusUrl,
+                            text("YikeLiveDialog.curveFailed", "Failed to start graph completion")
+                                + ": "
+                                + e.getLocalizedMessage()));
+              }
+            },
+            "yike-curve-analysis-engine-starter");
+    starter.setDaemon(true);
+    starter.start();
+  }
+
+  private void startYikeCurveCompletionRequests(AnalysisEngine targetEngine, String statusUrl) {
+    if (targetEngine == null || !targetEngine.isLoaded()) {
+      updateYikeLiveSyncStatus(
+          statusUrl, text("YikeLiveDialog.curveFailed", "Failed to start graph completion"));
+      return;
+    }
+    targetEngine.setCompletionCallback(
+        () ->
+            updateYikeLiveSyncStatus(
+                statusUrl, text("YikeLiveDialog.curveUpdated", "Graph updated.")));
+    int requestCount = targetEngine.startRequestMissingMainline(false);
+    if (requestCount < 0) {
+      targetEngine.setCompletionCallback(null);
+      updateYikeLiveSyncStatus(
+          statusUrl, text("YikeLiveDialog.curveFailed", "Failed to start graph completion"));
+      return;
+    }
+    if (requestCount <= 0) {
+      targetEngine.setCompletionCallback(null);
+      updateYikeLiveSyncStatus(
+          statusUrl, text("YikeLiveDialog.curveUpToDate", "Graph is up to date."));
+    }
+  }
+
+  private int countMissingMainlineAnalysisNodes() {
+    if (Lizzie.board == null || Lizzie.board.getHistory() == null) {
+      return 0;
+    }
+    return OnlineDialog.countMissingYikeCurveNodes(Lizzie.board.getHistory());
+  }
+
+  private String text(String key, String fallback) {
+    try {
+      return Lizzie.resourceBundle.getString(key);
+    } catch (MissingResourceException e) {
+      return fallback;
+    }
   }
 
   public void openYikeLiveWeb() {

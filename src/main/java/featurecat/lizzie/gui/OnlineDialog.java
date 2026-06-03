@@ -811,6 +811,84 @@ public class OnlineDialog extends JDialog {
     return type == YikeUrlInfo.TYPE_NEW_LIVE_ROOM || type == YikeUrlInfo.TYPE_UNITE_ROOM;
   }
 
+  static int preserveYikeMainlineAnalysis(BoardHistoryList existing, BoardHistoryList incoming) {
+    if (existing == null || incoming == null) {
+      return 0;
+    }
+    BoardHistoryNode existingNode = existing.getCurrentHistoryNode();
+    BoardHistoryNode incomingNode = incoming.getCurrentHistoryNode();
+    if (existingNode == null || incomingNode == null) {
+      return 0;
+    }
+    while (existingNode.previous().isPresent()) existingNode = existingNode.previous().get();
+    while (incomingNode.previous().isPresent()) incomingNode = incomingNode.previous().get();
+
+    int preserved = 0;
+    while (existingNode != null
+        && incomingNode != null
+        && isSameYikeMainlineNode(existingNode, incomingNode)) {
+      if (shouldCopyYikeAnalysisPayload(existingNode.getData(), incomingNode.getData())) {
+        incomingNode.copyAnalysisPayloadFrom(existingNode);
+        preserved++;
+      }
+      existingNode = existingNode.next(true).orElse(null);
+      incomingNode = incomingNode.next(true).orElse(null);
+    }
+    return preserved;
+  }
+
+  static int countMissingYikeCurveNodes(BoardHistoryList history) {
+    if (history == null || history.getCurrentHistoryNode() == null) {
+      return 0;
+    }
+    int count = 0;
+    BoardHistoryNode node = history.getCurrentHistoryNode();
+    while (node.previous().isPresent()) node = node.previous().get();
+    while (node.next().isPresent()) {
+      node = node.next().get();
+      BoardData data = node.getData();
+      if (isYikeCurveAnalysisNode(data) && !data.hasPrimaryAnalysisPayload()) {
+        count++;
+      }
+    }
+    return count;
+  }
+
+  private static boolean shouldCopyYikeAnalysisPayload(BoardData existing, BoardData incoming) {
+    if (existing == null || incoming == null || !existing.hasAnyAnalysisPayload()) {
+      return false;
+    }
+    if (!incoming.hasAnyAnalysisPayload()) {
+      return true;
+    }
+    return existing.getPlayouts() > incoming.getPlayouts()
+        || existing.getPlayouts2() > incoming.getPlayouts2();
+  }
+
+  private static boolean isSameYikeMainlineNode(
+      BoardHistoryNode existingNode, BoardHistoryNode incomingNode) {
+    BoardData existing = existingNode.getData();
+    BoardData incoming = incomingNode.getData();
+    return existing.getNodeKind() == incoming.getNodeKind()
+        && existing.moveNumber == incoming.moveNumber
+        && existing.blackToPlay == incoming.blackToPlay
+        && existing.lastMoveColor == incoming.lastMoveColor
+        && existing.dummy == incoming.dummy
+        && sameYikeMove(existing.lastMove, incoming.lastMove)
+        && Arrays.equals(existing.stones, incoming.stones);
+  }
+
+  private static boolean sameYikeMove(Optional<int[]> left, Optional<int[]> right) {
+    if (left.isPresent() != right.isPresent()) {
+      return false;
+    }
+    return !left.isPresent() || Arrays.equals(left.get(), right.get());
+  }
+
+  private static boolean isYikeCurveAnalysisNode(BoardData data) {
+    return data != null && (data.isMoveNode() || (data.isPassNode() && !data.dummy));
+  }
+
   @SuppressWarnings("deprecation")
   public void parseSgf(String data, String format, int num, boolean decode, boolean first) {
     YikeSyncDebugLog.log(
@@ -887,13 +965,18 @@ public class OnlineDialog extends JDialog {
       YikeSyncDebugLog.log("OnlineDialog.parseSgf parsing sgf len=" + sgf.length());
       BoardHistoryList liveNode = SGFParser.parseSgf(sgf, first);
       if (liveNode != null) {
+        int preservedAnalysis =
+            preserveYikeMainlineAnalysis(
+                Lizzie.board == null ? null : Lizzie.board.getHistory(), liveNode);
         YikeSyncDebugLog.log(
             "OnlineDialog.parseSgf liveNode move="
                 + liveNode.getMoveNumber()
                 + " boardWidth="
                 + Board.boardWidth
                 + " replace="
-                + shouldReplaceYikeMainline());
+                + shouldReplaceYikeMainline()
+                + " preservedAnalysis="
+                + preservedAnalysis);
         boardSize = Board.boardWidth;
         onYikeBoardSizeResolved();
         blackPlayer = liveNode.getGameInfo().getPlayerBlack();
@@ -988,6 +1071,7 @@ public class OnlineDialog extends JDialog {
         if (first) {
           Lizzie.frame.refresh();
         }
+        scheduleYikeCurveCompletionIfNeeded();
       } else {
         YikeSyncDebugLog.log("OnlineDialog.parseSgf SGFParser returned null");
         updateYikeSyncStatus(
@@ -1030,6 +1114,7 @@ public class OnlineDialog extends JDialog {
         YikeSyncDebugLog.log(
             "OnlineDialog.replaceYikeMainline appended while exploring currentMove="
                 + Lizzie.board.getHistory().getMoveNumber());
+        scheduleYikeCurveCompletionIfNeeded();
         return;
       }
       preserveUserBranchesOnto(liveNode);
@@ -1068,6 +1153,7 @@ public class OnlineDialog extends JDialog {
     YikeSyncDebugLog.log(
         "OnlineDialog.replaceYikeMainline done currentMove="
             + Lizzie.board.getHistory().getMoveNumber());
+    scheduleYikeCurveCompletionIfNeeded();
   }
 
   private void syncYikeAnalysisEngineToCurrentHistory(
@@ -1087,6 +1173,12 @@ public class OnlineDialog extends JDialog {
       updateYikeSyncStatus(
           currentYikeSourceUrl(),
           text("YikeLiveDialog.syncFailed", "Yike sync failed.") + ": " + e.getMessage());
+    }
+  }
+
+  private void scheduleYikeCurveCompletionIfNeeded() {
+    if (isYikeSyncType() && Lizzie.frame != null) {
+      Lizzie.frame.scheduleYikeLiveCurveCompletion(currentYikeSourceUrl());
     }
   }
 
@@ -3015,6 +3107,8 @@ public class OnlineDialog extends JDialog {
         Lizzie.leelaz.komi(komi);
       }
       Lizzie.board.getHistory().getGameInfo().setHandicap(handicap);
+      int preservedAnalysis = preserveYikeMainlineAnalysis(Lizzie.board.getHistory(), history);
+      yikeDebugLog("initData preservedAnalysis=" + preservedAnalysis);
       int diffMove = Lizzie.board.getHistory().sync(history);
       sendYikeContextToReadBoard();
       if (diffMove >= 0) {
@@ -3051,6 +3145,7 @@ public class OnlineDialog extends JDialog {
     Lizzie.board.getHistory().getGameInfo().setPlayerBlack(blackPlayer);
     Lizzie.board.getHistory().getGameInfo().setPlayerWhite(whitePlayer);
     Lizzie.frame.renderVarTree(0, 0, false, true);
+    scheduleYikeCurveCompletionIfNeeded();
   }
 
   private void channel() {
@@ -3116,12 +3211,15 @@ public class OnlineDialog extends JDialog {
     int previousBoardHeight = Board.boardHeight;
     while (history.previous().isPresent())
       ;
+    int preservedAnalysis = preserveYikeMainlineAnalysis(Lizzie.board.getHistory(), history);
+    yikeDebugLog("sync preservedAnalysis=" + preservedAnalysis);
     int diffMove = Lizzie.board.getHistory().sync(history);
     if (diffMove >= 0) {
       syncYikeAnalysisEngineToCurrentHistory(
           previousPosition, previousBoardWidth, previousBoardHeight);
     }
     sendYikeContextToReadBoard();
+    scheduleYikeCurveCompletionIfNeeded();
   }
 
   public void handleYikeGeometryProbe(String payload) {
@@ -4164,6 +4262,9 @@ public class OnlineDialog extends JDialog {
   }
 
   public void stopSync() {
+    if (Lizzie.frame != null) {
+      Lizzie.frame.cancelYikeLiveCurveCompletion();
+    }
     LizzieFrame.urlSgf = false;
     Lizzie.frame.setCommentPaneOrArea(true);
     isStoped = true;

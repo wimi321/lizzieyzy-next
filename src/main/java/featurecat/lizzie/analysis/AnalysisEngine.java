@@ -68,6 +68,7 @@ public class AnalysisEngine {
   private boolean isLoaded = false;
   private boolean silentProgress = false;
   private boolean requestDispatchFailed = false;
+  private Runnable completionCallback;
 
   public AnalysisEngine(boolean isPreLoad) throws IOException {
     int maxVisits =
@@ -316,6 +317,7 @@ public class AnalysisEngine {
       Lizzie.config.enableLizzieCache = oriEnableLizzieCache;
     if (shouldRePonder && !Lizzie.leelaz.isPondering()) Lizzie.leelaz.togglePonder();
     Lizzie.frame.renderVarTree(0, 0, false, false);
+    runCompletionCallback();
   }
 
   public void normalQuit() {
@@ -332,16 +334,7 @@ public class AnalysisEngine {
 
   public void startRequestAllBranches(boolean showProgressDialog) {
     if (!isLoaded) return;
-    analyzeMap.clear();
-    if (globalID <= 0) globalID = 1;
-    resultCount = 0;
-    requestDispatchFailed = false;
-    silentProgress = !showProgressDialog;
-    if (!showProgressDialog) waitFrame = null;
-    if (Lizzie.leelaz.isPondering()) {
-      Lizzie.leelaz.togglePonder();
-      shouldRePonder = true;
-    } else shouldRePonder = false;
+    prepareRequestState(showProgressDialog);
     BoardHistoryNode node = Lizzie.board.getHistory().getStart();
     Stack<BoardHistoryNode> stack = new Stack<>();
     stack.push(node);
@@ -364,16 +357,7 @@ public class AnalysisEngine {
 
   public void startRequest(int startMove, int endMove, boolean showProgressDialog) {
     if (!isLoaded) return;
-    analyzeMap.clear();
-    if (globalID <= 0) globalID = 1;
-    resultCount = 0;
-    requestDispatchFailed = false;
-    silentProgress = !showProgressDialog;
-    if (!showProgressDialog) waitFrame = null;
-    if (Lizzie.leelaz.isPondering()) {
-      Lizzie.leelaz.togglePonder();
-      shouldRePonder = true;
-    } else shouldRePonder = false;
+    prepareRequestState(showProgressDialog);
     BoardHistoryNode node = firstHistoryActionNode(Lizzie.board.getHistory().getStart());
     int moveNum = 1;
     while (node != null) {
@@ -384,6 +368,41 @@ public class AnalysisEngine {
       moveNum++;
     }
     showRequestProgressOrContinueBatch(showProgressDialog);
+  }
+
+  public int startRequestMissingMainline(boolean showProgressDialog) {
+    if (!isLoaded) return 0;
+    prepareRequestState(showProgressDialog);
+    BoardHistoryNode node = firstHistoryActionNode(Lizzie.board.getHistory().getStart());
+    while (node != null) {
+      if (!node.getData().hasPrimaryAnalysisPayload()) {
+        if (!sendRequest(node)) break;
+      }
+      node = nextHistoryActionNode(node);
+    }
+    int requestCount = analyzeMap.size();
+    boolean dispatchFailed = requestDispatchFailed;
+    showRequestProgressOrContinueBatch(showProgressDialog);
+    if (dispatchFailed) {
+      return -1;
+    }
+    if (requestCount == 0 && shouldRePonder && !Lizzie.leelaz.isPondering()) {
+      Lizzie.leelaz.togglePonder();
+    }
+    return requestCount;
+  }
+
+  private void prepareRequestState(boolean showProgressDialog) {
+    analyzeMap.clear();
+    if (globalID <= 0) globalID = 1;
+    resultCount = 0;
+    requestDispatchFailed = false;
+    silentProgress = !showProgressDialog;
+    if (!showProgressDialog) waitFrame = null;
+    if (Lizzie.leelaz.isPondering()) {
+      Lizzie.leelaz.togglePonder();
+      shouldRePonder = true;
+    } else shouldRePonder = false;
   }
 
   private void showRequestProgressOrContinueBatch(boolean showProgressDialog) {
@@ -405,6 +424,8 @@ public class AnalysisEngine {
   private void finishFailedRequestDispatch(boolean showProgressDialog) {
     analyzeMap.clear();
     resultCount = 0;
+    completionCallback = null;
+    requestDispatchFailed = false;
     if (shouldRePonder && !Lizzie.leelaz.isPondering()) Lizzie.leelaz.togglePonder();
     if (Lizzie.frame.isBatchAnalysisMode) Lizzie.frame.isBatchAnalysisMode = false;
     if (waitFrame != null || showProgressDialog) {
@@ -654,6 +675,18 @@ public class AnalysisEngine {
 
   public synchronized boolean isAnalysisInProgress() {
     return analyzeMap.size() > 0 && resultCount < analyzeMap.size();
+  }
+
+  public void setCompletionCallback(Runnable completionCallback) {
+    this.completionCallback = completionCallback;
+  }
+
+  private void runCompletionCallback() {
+    Runnable callback = completionCallback;
+    completionCallback = null;
+    if (callback != null) {
+      javax.swing.SwingUtilities.invokeLater(callback);
+    }
   }
 
   public boolean isLoaded() {
