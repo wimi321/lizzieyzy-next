@@ -227,6 +227,32 @@ class MoveOnlyUiGateTest {
   }
 
   @Test
+  void boardRendererDrawBranchClearsStaleBranchStateWhenHoverHasNoVariation() throws Exception {
+    TestEnvironment env = TestEnvironment.open();
+    try {
+      Lizzie.config.showBranch = true;
+      TrackingLizzieFrame frame = configuredFrame();
+      frame.mouseOverCoordinate = new int[] {0, 1};
+      Lizzie.frame = frame;
+      Lizzie.board = boardWith(historyForCurrentNode(currentData()));
+      BoardRenderer renderer = new BoardRenderer(false);
+      setField(BoardRenderer.class, renderer, "isShowingBranch", true);
+      setField(BoardRenderer.class, renderer, "branchOpt", Optional.of(new Object()));
+
+      invokeDrawBranch(renderer);
+
+      assertFalse(
+          renderer.isShowingBranch(),
+          "a hover candidate without a drawable variation should not keep stale branch state.");
+      assertFalse(
+          ((Optional<?>) getField(BoardRenderer.class, renderer, "branchOpt")).isPresent(),
+          "stale branch data should stay cleared when drawBranch exits before rendering.");
+    } finally {
+      env.close();
+    }
+  }
+
+  @Test
   void independentMainBoardBlunderHoverIgnoresSnapshotMarker() throws Exception {
     TestEnvironment env = TestEnvironment.open();
     try {
@@ -305,6 +331,12 @@ class MoveOnlyUiGateTest {
         IndependentMainBoard.class.getDeclaredMethod("isNextMoveBlunderTarget", int[].class);
     method.setAccessible(true);
     return (boolean) method.invoke(board, (Object) coords);
+  }
+
+  private static void invokeDrawBranch(BoardRenderer renderer) throws Exception {
+    Method method = BoardRenderer.class.getDeclaredMethod("drawBranch");
+    method.setAccessible(true);
+    method.invoke(renderer);
   }
 
   private static FloatBoardRenderer configuredFloatRenderer() throws Exception {

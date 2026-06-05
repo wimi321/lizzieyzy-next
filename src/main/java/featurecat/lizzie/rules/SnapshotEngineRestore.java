@@ -34,7 +34,7 @@ public final class SnapshotEngineRestore {
     if (snapshotData == null || !snapshotData.isSnapshotNode()) {
       return null;
     }
-    Path sgfFile = writeSnapshotSgf(snapshotData);
+    Path sgfFile = writeSnapshotSgf(engine, snapshotData);
     RestoreLifecycle lifecycle = new RestoreLifecycle(sgfFile);
     try {
       engine.loadSgf(sgfFile, lifecycle::onLoadSgfConsumed);
@@ -70,10 +70,10 @@ public final class SnapshotEngineRestore {
     return snapshot;
   }
 
-  private static Path writeSnapshotSgf(BoardData snapshotData) {
+  private static Path writeSnapshotSgf(Leelaz engine, BoardData snapshotData) {
     try {
       Path sgfFile = Files.createTempFile("lizzie-snapshot-", ".sgf");
-      String sgf = buildSnapshotSgf(snapshotData);
+      String sgf = buildSnapshotSgf(engine, snapshotData);
       Files.writeString(sgfFile, sgf);
       if (featurecat.lizzie.analysis.TrialDiag.ENABLED) {
         System.out.println("[trial-sgf] " + sgf);
@@ -110,17 +110,16 @@ public final class SnapshotEngineRestore {
     return thread;
   }
 
-  private static String buildSnapshotSgf(BoardData snapshotData) {
+  private static String buildSnapshotSgf(Leelaz engine, BoardData snapshotData) {
     int[] boardSize = resolveSnapshotBoardSize(snapshotData);
     int boardWidth = boardSize[0];
     int boardHeight = boardSize[1];
     StringBuilder builder = new StringBuilder();
     builder.append("(;FF[4]GM[1]CA[UTF-8]");
     builder.append("SZ[").append(formatBoardSizeTag(boardWidth, boardHeight)).append(']');
-    // 写入 KM 字段：KataGo loadsgf 会按 SGF 的 KM 重置 komi。漏写让 KataGo 进程内的 komi 退回 SGF 默认值
-    // 而不是 lizzie 启动时已经 GTP `komi X` 设的值。优先用 snapshotData.komi（引擎分析过的节点会填）；
-    // 否则读 Lizzie.board.history.gameInfo.komi；测试场景下两者都拿不到时跳过 KM 字段。
-    Double komi = resolveKomi(snapshotData);
+    // KataGo loadsgf will adopt the SGF KM value. Use the current engine komi first so
+    // loading a kifu cannot overwrite the user's configured engine komi with SGF defaults.
+    Double komi = resolveKomi(engine, snapshotData);
     if (komi != null) {
       builder.append("KM[").append(formatKomi(komi)).append(']');
     }
@@ -135,8 +134,9 @@ public final class SnapshotEngineRestore {
     return String.format(java.util.Locale.US, "%.1f", komi);
   }
 
-  /** 取 komi 写入 SGF：snapshotData 自身 → Lizzie 全局历史 → 都拿不到时返回 null（跳过 KM 字段）。 */
-  private static Double resolveKomi(BoardData snapshotData) {
+  /** 取 komi 写入 SGF：当前引擎 → snapshotData 自身 → Lizzie 全局历史。 */
+  private static Double resolveKomi(Leelaz engine, BoardData snapshotData) {
+    if (engine != null && !Float.isNaN(engine.komi)) return (double) engine.komi;
     if (snapshotData.komi != -999) return snapshotData.komi;
     Board board = featurecat.lizzie.Lizzie.board;
     if (board == null) return null;

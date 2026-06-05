@@ -2281,6 +2281,7 @@ public class Leelaz {
 
   public void komi(double komi) {
     synchronized (this) {
+      this.komi = (float) komi;
       sendCommand("komi " + (komi == 0.0 ? "0" : komi));
       Lizzie.board.getHistory().getGameInfo().setKomi(komi);
       //  Lizzie.board.getHistory().getGameInfo().changeKomi();
@@ -2291,6 +2292,7 @@ public class Leelaz {
 
   public void komiNoMenu(double komi) {
     synchronized (this) {
+      this.komi = (float) komi;
       sendCommand("komi " + (komi == 0.0 ? "0" : komi));
       Lizzie.board.getHistory().getGameInfo().setKomiNoMenu(komi);
       //  Lizzie.board.getHistory().getGameInfo().changeKomi();

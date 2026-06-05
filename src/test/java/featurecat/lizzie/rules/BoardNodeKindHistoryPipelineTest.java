@@ -16,6 +16,7 @@ import featurecat.lizzie.analysis.EngineManager;
 import featurecat.lizzie.analysis.Leelaz;
 import featurecat.lizzie.analysis.MoveData;
 import featurecat.lizzie.gui.LizzieFrame;
+import featurecat.lizzie.gui.Menu;
 import featurecat.lizzie.gui.WinrateGraph;
 import java.io.IOException;
 import java.lang.reflect.Field;
@@ -872,6 +873,44 @@ class BoardNodeKindHistoryPipelineTest {
           liveRoot.isChanged, "detached parse should keep live best-move state flags untouched.");
       assertEquals(7.5, detached.getGameInfo().getKomi(), 0.0001);
     } finally {
+      env.close();
+    }
+  }
+
+  @Test
+  void loadFromStringWithKomiDoesNotOverwriteCurrentEngineKomi() throws Exception {
+    TestEnvironment env = TestEnvironment.open();
+    int previousCurrentEngineNo = EngineManager.currentEngineNo;
+    try {
+      Lizzie.config.readKomi = true;
+      EngineManager.currentEngineNo = 0;
+      EngineManager.isEmpty = false;
+      TrackingLeelaz leelaz = (TrackingLeelaz) Lizzie.leelaz;
+      leelaz.komi = 6.5f;
+      leelaz.orikomi = 6.5f;
+      leelaz.isLoaded = true;
+      setStarted(leelaz, true);
+
+      assertTrue(SGFParser.loadFromString("(;SZ[3]KM[7.5];B[aa])"));
+
+      assertFalse(
+          leelaz.recordedCommands().contains("komi 7.5"),
+          "loading SGF KM should not send a komi command that overwrites the current engine.");
+      assertEquals(
+          6.5,
+          leelaz.komi,
+          0.0001,
+          "current engine komi field should keep the engine/default komi after loading SGF.");
+      assertEquals(
+          7.5,
+          Lizzie.board.getHistory().getGameInfo().getKomi(),
+          0.0001,
+          "SGF KM should still be visible as loaded game information.");
+      assertFalse(
+          Lizzie.board.getHistory().getGameInfo().changedKomi,
+          "loaded SGF KM should not be treated as a manual engine-komi change.");
+    } finally {
+      EngineManager.currentEngineNo = previousCurrentEngineNo;
       env.close();
     }
   }
@@ -4111,6 +4150,7 @@ class BoardNodeKindHistoryPipelineTest {
     private final int previousBoardHeight;
     private final Board previousBoard;
     private final LizzieFrame previousFrame;
+    private final Menu previousMenu;
     private final WinrateGraph previousWinrateGraph;
     private final Leelaz previousLeelaz;
     private final Config previousConfig;
@@ -4121,6 +4161,7 @@ class BoardNodeKindHistoryPipelineTest {
         int previousBoardHeight,
         Board previousBoard,
         LizzieFrame previousFrame,
+        Menu previousMenu,
         WinrateGraph previousWinrateGraph,
         Leelaz previousLeelaz,
         Config previousConfig,
@@ -4129,6 +4170,7 @@ class BoardNodeKindHistoryPipelineTest {
       this.previousBoardHeight = previousBoardHeight;
       this.previousBoard = previousBoard;
       this.previousFrame = previousFrame;
+      this.previousMenu = previousMenu;
       this.previousWinrateGraph = previousWinrateGraph;
       this.previousLeelaz = previousLeelaz;
       this.previousConfig = previousConfig;
@@ -4140,6 +4182,7 @@ class BoardNodeKindHistoryPipelineTest {
       int previousBoardHeight = Board.boardHeight;
       Board previousBoard = Lizzie.board;
       LizzieFrame previousFrame = Lizzie.frame;
+      Menu previousMenu = LizzieFrame.menu;
       WinrateGraph previousWinrateGraph = LizzieFrame.winrateGraph;
       Leelaz previousLeelaz = Lizzie.leelaz;
       Config previousConfig = Lizzie.config;
@@ -4156,6 +4199,8 @@ class BoardNodeKindHistoryPipelineTest {
       board.setHistory(new BoardHistoryList(BoardData.empty(BOARD_SIZE, BOARD_SIZE)));
       Lizzie.board = board;
       Lizzie.frame = allocate(TrackingFrame.class);
+      LizzieFrame.menu = allocate(Menu.class);
+      LizzieFrame.menu.txtKomi = new javax.swing.JTextField();
       Lizzie.leelaz = allocate(TrackingLeelaz.class);
       Config config = allocate(Config.class);
       config.newMoveNumberInBranch = false;
@@ -4168,6 +4213,7 @@ class BoardNodeKindHistoryPipelineTest {
           previousBoardHeight,
           previousBoard,
           previousFrame,
+          previousMenu,
           previousWinrateGraph,
           previousLeelaz,
           previousConfig,
@@ -4181,6 +4227,7 @@ class BoardNodeKindHistoryPipelineTest {
       Zobrist.init();
       Lizzie.board = previousBoard;
       Lizzie.frame = previousFrame;
+      LizzieFrame.menu = previousMenu;
       LizzieFrame.winrateGraph = previousWinrateGraph;
       Lizzie.leelaz = previousLeelaz;
       Lizzie.config = previousConfig;

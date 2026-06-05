@@ -205,10 +205,8 @@ public class BoardRenderer {
       if (!Lizzie.frame.isInScoreMode) drawBranch();
       else isShowingBranch = false;
 
-      if (!isShowingBranch) {
-        featurecat.lizzie.rules.BoardHistoryNode displayNode = Lizzie.frame.getDisplayNode();
-        drawStones(displayNode.getData(), displayNode.getData().stones);
-      }
+      featurecat.lizzie.rules.BoardHistoryNode displayNode = Lizzie.frame.getDisplayNode();
+      drawStones(displayNode.getData(), displayNode.getData().stones);
       drawEstimate();
       renderImages(g);
 
@@ -1486,6 +1484,7 @@ public class BoardRenderer {
   /** Draw the 'ghost stones' which show a variationOpt Leelaz is thinking about */
   private void drawBranch() {
     branchOpt = Optional.empty();
+    isShowingBranch = false;
     // calculate best moves and branch
     if (this.boardIndex == 1) {
       bestMoves = Lizzie.frame.getDisplayNode().getData().bestMoves2;

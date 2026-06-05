@@ -1045,7 +1045,6 @@ public class OnlineDialog extends JDialog {
           Lizzie.board.getHistory().getGameInfo().setPlayerWhite(whitePlayer);
           if (Lizzie.config.readKomi) {
             Lizzie.board.getHistory().getGameInfo().setKomi(komi);
-            Lizzie.leelaz.komi(komi);
           }
           firstTime = false;
         }
@@ -1125,7 +1124,6 @@ public class OnlineDialog extends JDialog {
     Lizzie.board.getHistory().getGameInfo().setHandicap(handicap);
     if (Lizzie.config.readKomi) {
       Lizzie.board.getHistory().getGameInfo().setKomi(komi);
-      Lizzie.leelaz.komi(komi);
     }
     Lizzie.frame.setPlayers(whitePlayer, blackPlayer);
     if (live != null
@@ -1934,7 +1932,6 @@ public class OnlineDialog extends JDialog {
             }
             if (Lizzie.config.readKomi) {
               Lizzie.board.getHistory().getGameInfo().setKomi(komi);
-              Lizzie.leelaz.komi(komi);
             }
           } else {
             break;
@@ -3104,7 +3101,6 @@ public class OnlineDialog extends JDialog {
       int handicap = info.optInt("handicap", history.getGameInfo().getHandicap());
       if (Lizzie.config.readKomi) {
         Lizzie.board.getHistory().getGameInfo().setKomi(komi);
-        Lizzie.leelaz.komi(komi);
       }
       Lizzie.board.getHistory().getGameInfo().setHandicap(handicap);
       int preservedAnalysis = preserveYikeMainlineAnalysis(Lizzie.board.getHistory(), history);
