@@ -3479,6 +3479,238 @@ def build_next_2026_06_01_2_notes(
     ) + '\n'
 
 
+def build_next_2026_06_06_1_notes(
+    asset_map: dict[str, str | None],
+    bundle: dict[str, str],
+    repo: str,
+    release_tag: str | None,
+) -> str:
+    assets_cn = {key: format_asset(asset_map[key], repo, release_tag) for key in asset_map}
+    assets = {key: format_asset_en(asset_map[key], repo, release_tag) for key in asset_map}
+    katago_version = bundle['katago_version']
+    model_source = bundle['model_source']
+    content = [
+        {
+            'language': '中文',
+            'labels': 'zh',
+            'intro': '这是一个面向真实使用反馈的稳定性修复版。重点修复两个会直接影响复盘体验的问题：加载棋谱后当前引擎贴目不再被棋谱默认 `KM[7.5]` 覆盖；鼠标连续悬停同一个候选选点时，棋盘上的棋子不再短暂消失。',
+            'updates_heading': '本版主要更新',
+            'updates': [
+                '修复加载 SGF、GIB、在线棋谱后，当前引擎贴目被棋谱 `KM[7.5]` 覆盖的问题。',
+                '棋谱里的贴目仍会保留在棋谱信息里显示，但不会再擅自改掉用户当前引擎的贴目设置。',
+                '修复鼠标连续停在同一个候选选点时，主棋盘棋子可能短暂消失的渲染问题。',
+                '改进 KataGo 临时局面恢复逻辑，snapshot SGF 会使用当前引擎贴目，避免 `loadsgf` 间接重置贴目。',
+                '发布前已通过全量测试、打包、本机启动冒烟和四个平台 release workflow。',
+            ],
+            'before_heading': '下载前先看这几句',
+            'before': [
+                f'Windows 普通用户优先下载 {{windows_opencl_portable}}，这是 **OpenCL 版（推荐，免安装）**。',
+                f'如果 OpenCL 在你的电脑上不稳定，再改用 {{windows_portable}}。',
+                f'如果你的电脑是 **英伟达显卡**，优先下载 {{windows_nvidia_portable}}。',
+                f'主推荐整合包已内置 KataGo `{katago_version}` 和默认权重 `{model_source}`。',
+                '如果你更喜欢安装流程，再选同系列的 `installer.exe`。',
+            ],
+            'download_heading': '下载建议',
+            'download_headers': ('你的电脑', '直接下载这个'),
+            'why_heading': '这一版为什么值得更新',
+            'why': [
+                '加载棋谱后，用户在引擎设置里选择的贴目会继续生效，不会被棋谱默认值悄悄改掉。',
+                '候选点预览更稳定，连续看同一个选点时棋盘不会出现棋子消失这种明显干扰。',
+                '这版是针对复盘和分析基础体验的稳定性修复，建议替换上一版继续使用。',
+            ],
+            'contact_heading': '交流',
+            'contact': ['QQ 群：`299419120`'],
+        },
+        {
+            'language': '繁體中文',
+            'labels': 'zh_hant',
+            'intro': '這是一個面向真實使用回饋的穩定性修復版。重點修復兩個會直接影響復盤體驗的問題：載入棋譜後目前引擎貼目不再被棋譜預設 `KM[7.5]` 覆蓋；滑鼠連續停在同一個候選點時，棋盤上的棋子不再短暫消失。',
+            'updates_heading': '本版主要更新',
+            'updates': [
+                '修復載入 SGF、GIB、線上棋譜後，目前引擎貼目被棋譜 `KM[7.5]` 覆蓋的問題。',
+                '棋譜裡的貼目仍會保留在棋譜資訊中顯示，但不會再擅自改掉使用者目前引擎的貼目設定。',
+                '修復滑鼠連續停在同一個候選點時，主棋盤棋子可能短暫消失的渲染問題。',
+                '改進 KataGo 臨時局面恢復邏輯，snapshot SGF 會使用目前引擎貼目，避免 `loadsgf` 間接重置貼目。',
+                '發布前已通過完整測試、打包、本機啟動冒煙和四個平台 release workflow。',
+            ],
+            'before_heading': '下載前先看這幾句',
+            'before': [
+                f'Windows 一般使用者優先下載 {{windows_opencl_portable}}，這是 **OpenCL 版（推薦，免安裝）**。',
+                f'如果 OpenCL 在你的電腦上不穩定，再改用 {{windows_portable}}。',
+                f'如果你的電腦是 **NVIDIA 顯示卡**，優先下載 {{windows_nvidia_portable}}。',
+                f'主推薦整合包已內建 KataGo `{katago_version}` 和預設權重 `{model_source}`。',
+                '如果你更喜歡安裝流程，再選同系列的 `installer.exe`。',
+            ],
+            'download_heading': '下載建議',
+            'download_headers': ('你的電腦', '直接下載這個'),
+            'why_heading': '這一版為什麼值得更新',
+            'why': [
+                '載入棋譜後，使用者在引擎設定裡選擇的貼目會繼續生效，不會被棋譜預設值悄悄改掉。',
+                '候選點預覽更穩定，連續看同一個選點時棋盤不會出現棋子消失這種明顯干擾。',
+                '這版是針對復盤和分析基礎體驗的穩定性修復，建議替換上一版繼續使用。',
+            ],
+            'contact_heading': '交流',
+            'contact': ['QQ 群：`299419120`'],
+        },
+        {
+            'language': 'English',
+            'labels': 'en',
+            'intro': 'This is a stability-focused update based on real user feedback. It fixes two issues that directly affected review quality: loading a kifu no longer overwrites the current engine komi with the game file `KM[7.5]`, and repeatedly hovering the same candidate move no longer makes board stones briefly disappear.',
+            'updates_heading': 'Release Highlights',
+            'updates': [
+                'Fixed SGF, GIB, and online kifu loading so game-file `KM[7.5]` no longer overwrites the current engine komi.',
+                'The kifu komi is still preserved in game information for display, but it no longer silently changes the user’s active engine setting.',
+                'Fixed a board rendering issue where stones could briefly disappear when hovering the same candidate move repeatedly.',
+                'Improved KataGo temporary position restore so snapshot SGF uses the current engine komi and does not indirectly reset komi through `loadsgf`.',
+                'Before release, full tests, packaging, a local launch smoke test, and all four platform release workflows passed.',
+            ],
+            'before_heading': 'Read Before Downloading',
+            'before': [
+                f'Most Windows users should download {{windows_opencl_portable}}, the **recommended no-install OpenCL build**.',
+                f'If OpenCL is unreliable on your PC, use {{windows_portable}} instead.',
+                f'If your PC has an **NVIDIA GPU**, try {{windows_nvidia_portable}} first.',
+                f'The recommended bundles include KataGo `{katago_version}` and the default weight `{model_source}`.',
+                'If you prefer an installer, choose the matching `installer.exe` package.',
+            ],
+            'download_heading': 'Download Guide',
+            'download_headers': ('Your computer', 'Download this file'),
+            'why_heading': 'Why Update',
+            'why': [
+                'After loading a kifu, the komi chosen in engine settings stays active instead of being silently replaced by the game-file default.',
+                'Candidate-move preview is more stable, and reviewing the same suggestion repeatedly no longer causes visible board flicker or missing stones.',
+                'This is a focused stability update for core review and analysis behavior, recommended over the previous build.',
+            ],
+            'contact_heading': 'Contact',
+            'contact': ['QQ group: `299419120`'],
+        },
+        {
+            'language': '日本語',
+            'labels': 'ja',
+            'intro': 'これは実際の利用フィードバックに基づく安定性修正版です。復盤体験に直接影響する 2 点を修正しました。棋譜を読み込んでも現在のエンジンコミが棋譜の `KM[7.5]` で上書きされず、同じ候補手に連続してマウスを置いても盤上の石が一時的に消えません。',
+            'updates_heading': '主な更新',
+            'updates': [
+                'SGF、GIB、オンライン棋譜の読み込みで、棋譜の `KM[7.5]` が現在のエンジンコミを上書きする問題を修正しました。',
+                '棋譜内のコミは棋譜情報として表示されますが、ユーザーが使っているエンジン設定を勝手に変更しません。',
+                '同じ候補手にマウスを連続して置いたとき、メイン盤の石が一時的に消えることがある描画問題を修正しました。',
+                'KataGo の一時局面復元を改善し、snapshot SGF は現在のエンジンコミを使うため、`loadsgf` 経由でコミがリセットされにくくなりました。',
+                'リリース前に full test、package、ローカル起動 smoke test、4 プラットフォームの release workflow がすべて通過しました。',
+            ],
+            'before_heading': 'ダウンロード前に',
+            'before': [
+                f'多くの Windows ユーザーは {{windows_opencl_portable}} を選ぶのがおすすめです。これは **推奨 OpenCL 版、インストール不要** です。',
+                f'OpenCL が不安定な場合は {{windows_portable}} を使ってください。',
+                f'**NVIDIA GPU** 搭載 PC では {{windows_nvidia_portable}} を優先してください。',
+                f'推奨バンドルには KataGo `{katago_version}` と既定の重み `{model_source}` が含まれています。',
+                'インストーラ形式がよい場合は、同じ系列の `installer.exe` を選んでください。',
+            ],
+            'download_heading': 'ダウンロード案内',
+            'download_headers': ('お使いの環境', 'ダウンロードするファイル'),
+            'why_heading': '更新する理由',
+            'why': [
+                '棋譜を読み込んだ後も、エンジン設定で選んだコミがそのまま有効で、棋譜の既定値に置き換わりません。',
+                '候補手プレビューが安定し、同じ候補手を繰り返し見ても盤上の石が消えるような表示乱れが起きにくくなりました。',
+                '復盤と分析の基本動作を直す安定性更新なので、前回ビルドからの更新をおすすめします。',
+            ],
+            'contact_heading': '連絡先',
+            'contact': ['QQ グループ: `299419120`'],
+        },
+        {
+            'language': '한국어',
+            'labels': 'ko',
+            'intro': '이번 버전은 실제 사용자 피드백을 바탕으로 한 안정성 수정판입니다. 복기 경험에 직접 영향을 주는 두 문제를 고쳤습니다. 기보를 불러와도 현재 엔진 덤이 기보의 `KM[7.5]` 로 덮어써지지 않고, 같은 후보수에 마우스를 반복해서 올려도 보드의 돌이 잠깐 사라지지 않습니다.',
+            'updates_heading': '주요 업데이트',
+            'updates': [
+                'SGF, GIB, 온라인 기보를 불러올 때 기보의 `KM[7.5]` 가 현재 엔진 덤을 덮어쓰는 문제를 수정했습니다.',
+                '기보 안의 덤은 게임 정보 표시용으로 유지되지만, 사용자의 현재 엔진 설정을 조용히 바꾸지 않습니다.',
+                '같은 후보수에 마우스를 반복해서 올릴 때 메인 보드의 돌이 잠깐 사라질 수 있던 렌더링 문제를 수정했습니다.',
+                'KataGo 임시 포지션 복원 로직을 개선해 snapshot SGF 가 현재 엔진 덤을 사용하고, `loadsgf` 를 통해 덤이 간접적으로 리셋되지 않도록 했습니다.',
+                '릴리스 전에 full test, package, 로컬 실행 smoke test, 4개 플랫폼 release workflow 가 모두 통과했습니다.',
+            ],
+            'before_heading': '다운로드 전 확인',
+            'before': [
+                f'대부분의 Windows 사용자는 {{windows_opencl_portable}} 를 먼저 받으면 됩니다. 이는 **추천 OpenCL 무설치 빌드** 입니다.',
+                f'OpenCL 이 PC에서 불안정하면 {{windows_portable}} 를 대신 사용하세요.',
+                f'**NVIDIA GPU** 가 있다면 {{windows_nvidia_portable}} 를 우선 사용해 보세요.',
+                f'추천 번들에는 KataGo `{katago_version}` 와 기본 가중치 `{model_source}` 가 포함되어 있습니다.',
+                '설치형 흐름을 원한다면 같은 계열의 `installer.exe` 를 고르세요.',
+            ],
+            'download_heading': '다운로드 안내',
+            'download_headers': ('내 컴퓨터', '다운로드할 파일'),
+            'why_heading': '업데이트할 이유',
+            'why': [
+                '기보를 불러온 뒤에도 엔진 설정에서 선택한 덤이 그대로 유지되고, 기보 기본값으로 조용히 바뀌지 않습니다.',
+                '후보수 미리보기가 더 안정적이며, 같은 후보수를 반복해서 볼 때 돌이 사라지는 듯한 표시 문제가 줄었습니다.',
+                '복기와 분석의 기본 동작을 고친 안정성 업데이트라서 이전 빌드보다 권장합니다.',
+            ],
+            'contact_heading': '연락',
+            'contact': ['QQ 그룹: `299419120`'],
+        },
+        {
+            'language': 'ภาษาไทย',
+            'labels': 'th',
+            'intro': 'รีลีสนี้เป็นรุ่นแก้ความเสถียรจาก feedback การใช้งานจริง โดยแก้สองปัญหาที่กระทบการรีวิวเกมโดยตรง: โหลด kifu แล้วค่า komi ของ engine ปัจจุบันจะไม่ถูก `KM[7.5]` ในไฟล์ทับ และเมื่อ hover candidate move เดิมซ้ำ ๆ หินบนกระดานจะไม่หายไปชั่วคราว',
+            'updates_heading': 'อัปเดตหลัก',
+            'updates': [
+                'แก้ปัญหาโหลด SGF, GIB และ kifu ออนไลน์แล้ว `KM[7.5]` ในไฟล์ไปทับค่า komi ของ engine ปัจจุบัน',
+                'ค่า komi ใน kifu ยังแสดงในข้อมูลเกมตามเดิม แต่จะไม่เปลี่ยนค่าที่ผู้ใช้ตั้งไว้ใน engine อย่างเงียบ ๆ',
+                'แก้ปัญหา render ที่ทำให้หินบนกระดานหลักอาจหายไปชั่วคราวเมื่อ hover candidate move เดิมซ้ำ ๆ',
+                'ปรับปรุงการ restore ตำแหน่งชั่วคราวของ KataGo ให้ snapshot SGF ใช้ komi ของ engine ปัจจุบัน ลดการ reset ผ่าน `loadsgf`',
+                'ก่อน release ได้ผ่าน full test, package, local launch smoke test และ release workflow ครบทั้ง 4 platform',
+            ],
+            'before_heading': 'ก่อนดาวน์โหลด',
+            'before': [
+                f'ผู้ใช้ Windows ส่วนใหญ่แนะนำให้ดาวน์โหลด {{windows_opencl_portable}} ซึ่งเป็น **OpenCL รุ่นแนะนำ แบบไม่ต้องติดตั้ง**',
+                f'ถ้า OpenCL ไม่เสถียรบนเครื่องของคุณ ให้ใช้ {{windows_portable}} แทน',
+                f'ถ้ามี **NVIDIA GPU** แนะนำให้ลอง {{windows_nvidia_portable}} ก่อน',
+                f'แพ็กเกจหลักมี KataGo `{katago_version}` และน้ำหนักเริ่มต้น `{model_source}` มาให้แล้ว',
+                'ถ้าต้องการแบบติดตั้ง ให้เลือกไฟล์ `installer.exe` ในชุดเดียวกัน',
+            ],
+            'download_heading': 'แนะนำการดาวน์โหลด',
+            'download_headers': ('เครื่องของคุณ', 'ดาวน์โหลดไฟล์นี้'),
+            'why_heading': 'ทำไมควรอัปเดต',
+            'why': [
+                'หลังโหลด kifu ค่า komi ที่เลือกใน engine settings จะยังคงอยู่ ไม่ถูกค่า default ในไฟล์เปลี่ยนเอง',
+                'การ preview candidate move เสถียรขึ้น และการดูคำแนะนำเดิมซ้ำ ๆ จะไม่ทำให้เห็นหินหายหรือกระพริบอย่างรบกวน',
+                'เป็นรุ่นแก้เสถียรภาพของ flow รีวิวและวิเคราะห์หลัก จึงแนะนำให้อัปเดตจาก build ก่อนหน้า',
+            ],
+            'contact_heading': 'ติดต่อ',
+            'contact': ['QQ group: `299419120`'],
+        },
+    ]
+    sections: list[dict[str, object]] = []
+    for block in content:
+        localized_assets = assets_cn if block['language'] in ('中文', '繁體中文') else assets
+        before_items = [
+            item.format(
+                windows_opencl_portable=localized_assets['windows_opencl_portable'],
+                windows_portable=localized_assets['windows_portable'],
+                windows_nvidia_portable=localized_assets['windows_nvidia_portable'],
+            )
+            for item in block['before']
+        ]
+        sections.append(
+            {
+                'language': block['language'],
+                'intro': block['intro'],
+                'updates': {'heading': block['updates_heading'], 'items': block['updates']},
+                'before': {'heading': block['before_heading'], 'items': before_items},
+                'download': {
+                    'heading': block['download_heading'],
+                    'headers': block['download_headers'],
+                    'rows': standard_download_rows(STANDARD_DOWNLOAD_LABELS[block['labels']], localized_assets),
+                },
+                'why': {'heading': block['why_heading'], 'items': block['why']},
+                'contact': {'heading': block['contact_heading'], 'items': block['contact']},
+            }
+        )
+    add_nvidia50_download_rows(sections, assets_cn, assets)
+    add_tensorrt_split_download_row(sections, assets_cn, assets, asset_map)
+    validate_release_sections(sections)
+    return release_heading(release_tag) + '\n\n' + '\n\n---\n\n'.join(
+        render_language_section(section) for section in sections
+    ) + '\n'
+
+
 def build_release_notes(asset_map: dict[str, str | None], bundle: dict[str, str], repo: str, release_tag: str | None) -> str:
     if release_tag == 'next-2026-05-03.1':
         return build_next_2026_05_03_1_notes(asset_map, repo, release_tag)
@@ -3504,6 +3736,8 @@ def build_release_notes(asset_map: dict[str, str | None], bundle: dict[str, str]
         return build_next_2026_06_01_1_notes(asset_map, bundle, repo, release_tag)
     if release_tag == 'next-2026-06-01.2':
         return build_next_2026_06_01_2_notes(asset_map, bundle, repo, release_tag)
+    if release_tag == 'next-2026-06-06.1':
+        return build_next_2026_06_06_1_notes(asset_map, bundle, repo, release_tag)
 
     assets_cn = {
         key: format_asset(asset_map[key], repo, release_tag)
