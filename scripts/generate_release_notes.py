@@ -3723,6 +3723,251 @@ def build_next_2026_06_06_1_notes(
     ) + '\n'
 
 
+def build_next_2026_06_08_1_notes(
+    asset_map: dict[str, str | None],
+    bundle: dict[str, str],
+    repo: str,
+    release_tag: str | None,
+) -> str:
+    assets_cn = {key: format_asset(asset_map[key], repo, release_tag) for key in asset_map}
+    assets = {key: format_asset_en(asset_map[key], repo, release_tag) for key in asset_map}
+    katago_version = bundle['katago_version']
+    model_source = bundle['model_source']
+    content = [
+        {
+            'language': '中文',
+            'labels': 'zh',
+            'intro': '这是棋力评估体验预览版。重点把“棋力评估 / 吻合度”从偏工程化的详细表格，改成普通棋友更容易看懂的卡片式展示；详细数据仍然保留，方便需要完整指标的用户继续查看。',
+            'updates_heading': '本版主要更新',
+            'updates': [
+                '重做“棋力评估”弹窗，主界面改成现代卡片式布局，不再像旧版指标表格那样拥挤。',
+                '“测评”页只展示黑棋和白棋表现，不再在主视图显示合计棋力，避免误导普通用户。',
+                '棋力区间改成人能看懂的中文格式，例如 `业余1级-2级`、`业余1段-2段`。',
+                '“吻合度”页改成黑白双方卡片、走势曲线和建议复查区间，只提示复盘重点，不做作弊结论。',
+                '每个页面右上角保留“详细数据”，点击后仍可打开旧版完整指标表和详细图表。',
+                '分析工具栏新增短按钮“棋力评估”，放在腾讯棋谱旁边，日常复盘更容易找到。',
+            ],
+            'before_heading': '下载前先看这几句',
+            'before': [
+                '这是 pre-release 预览版，适合想先体验新版棋力评估 UI 的用户。',
+                f'主推荐整合包继续内置 KataGo `{katago_version}` 和默认权重 `{model_source}`。',
+                f'Windows 普通用户优先下载 {{windows_opencl_portable}}，这是 **OpenCL 版（推荐，免安装）**。',
+                f'如果 OpenCL 在你的电脑上不稳定，再改用 {{windows_portable}}。',
+                f'如果你的电脑是 **英伟达显卡**，优先下载 {{windows_nvidia_portable}}。',
+            ],
+            'download_heading': '下载建议',
+            'download_headers': ('你的电脑', '直接下载这个'),
+            'why_heading': '这一版为什么值得试用',
+            'why': [
+                '普通用户打开棋力评估后，先看到的是黑棋和白棋表现卡片，而不是一大堆看不懂的表格。',
+                '业余级、业余段的显示更符合中文围棋用户习惯，减少 `1-2k` 这类英文缩写带来的理解成本。',
+                '吻合度页面更适合复盘：突出双方数据、走势和建议复查区间，不制造过度判断。',
+                '这次只优化展示和入口，不改变棋力评估算法，旧版详细数据也没有被删除。',
+            ],
+            'contact_heading': '交流',
+            'contact': ['QQ 群：`299419120`'],
+        },
+        {
+            'language': '繁體中文',
+            'labels': 'zh_hant',
+            'intro': '這是棋力評估體驗預覽版。重點把「棋力評估 / 吻合度」從偏工程化的詳細表格，改成一般棋友更容易看懂的卡片式展示；詳細資料仍然保留，方便需要完整指標的使用者繼續查看。',
+            'updates_heading': '本版主要更新',
+            'updates': [
+                '重做「棋力評估」視窗，主介面改成現代卡片式布局，不再像舊版指標表格那樣擁擠。',
+                '「測評」頁只展示黑棋和白棋表現，不再在主視圖顯示合計棋力，避免誤導一般使用者。',
+                '棋力區間改成人能看懂的中文格式，例如 `業餘1級-2級`、`業餘1段-2段`。',
+                '「吻合度」頁改成黑白雙方卡片、走勢曲線和建議複查區間，只提示復盤重點，不做作弊結論。',
+                '每個頁面右上角保留「詳細資料」，點擊後仍可開啟舊版完整指標表和詳細圖表。',
+                '分析工具列新增短按鈕「棋力評估」，放在騰訊棋譜旁邊，日常復盤更容易找到。',
+            ],
+            'before_heading': '下載前先看這幾句',
+            'before': [
+                '這是 pre-release 預覽版，適合想先體驗新版棋力評估 UI 的使用者。',
+                f'主推薦整合包繼續內建 KataGo `{katago_version}` 和預設權重 `{model_source}`。',
+                f'Windows 一般使用者優先下載 {{windows_opencl_portable}}，這是 **OpenCL 版（推薦，免安裝）**。',
+                f'如果 OpenCL 在你的電腦上不穩定，再改用 {{windows_portable}}。',
+                f'如果你的電腦是 **NVIDIA 顯示卡**，優先下載 {{windows_nvidia_portable}}。',
+            ],
+            'download_heading': '下載建議',
+            'download_headers': ('你的電腦', '直接下載這個'),
+            'why_heading': '這一版為什麼值得試用',
+            'why': [
+                '一般使用者打開棋力評估後，先看到的是黑棋和白棋表現卡片，而不是一大堆看不懂的表格。',
+                '業餘級、業餘段的顯示更符合中文圍棋使用者習慣，減少 `1-2k` 這類英文縮寫帶來的理解成本。',
+                '吻合度頁面更適合復盤：突出雙方資料、走勢和建議複查區間，不製造過度判斷。',
+                '這次只優化展示和入口，不改變棋力評估演算法，舊版詳細資料也沒有被刪除。',
+            ],
+            'contact_heading': '交流',
+            'contact': ['QQ 群：`299419120`'],
+        },
+        {
+            'language': 'English',
+            'labels': 'en',
+            'intro': 'This is a preview build for the player strength UI. The Strength / Match views have been redesigned from dense engineering-style tables into clearer cards for everyday reviewers, while the full detailed data remains available for advanced users.',
+            'updates_heading': 'Release Highlights',
+            'updates': [
+                'Redesigned the Player Strength dialog with a modern card-based main view instead of the crowded legacy metrics table.',
+                'The Assessment page now focuses on Black and White only; the combined strength summary is no longer shown in the main view.',
+                'Rank ranges are displayed in friendlier localized wording, such as amateur kyu and amateur dan ranges.',
+                'The Match page now shows Black/White cards, a trend chart, and suggested review intervals without making cheating conclusions.',
+                'Each page keeps a Detail Data entry in the top-right corner, opening the previous full metrics table or detailed chart.',
+                'Added a short Strength button next to the Tencent Kifu entry on the analysis toolbar.',
+            ],
+            'before_heading': 'Read Before Downloading',
+            'before': [
+                'This is a pre-release preview for users who want to try the new Player Strength UI early.',
+                f'The recommended bundles continue to include KataGo `{katago_version}` and the default weight `{model_source}`.',
+                f'Most Windows users should download {{windows_opencl_portable}}, the **recommended no-install OpenCL build**.',
+                f'If OpenCL is unreliable on your PC, use {{windows_portable}} instead.',
+                f'If your PC has an **NVIDIA GPU**, try {{windows_nvidia_portable}} first.',
+            ],
+            'download_heading': 'Download Guide',
+            'download_headers': ('Your computer', 'Download this file'),
+            'why_heading': 'Why Try This Build',
+            'why': [
+                'The first view now explains Black and White performance directly instead of starting with a hard-to-read metrics table.',
+                'Localized amateur kyu/dan wording is easier for Chinese Go users to understand than raw `1-2k` style labels.',
+                'The Match view is better suited for review: it highlights both players, trend, and suggested intervals without overclaiming.',
+                'This release changes presentation and entry points only; the strength estimation algorithm and legacy detail view remain available.',
+            ],
+            'contact_heading': 'Contact',
+            'contact': ['QQ group: `299419120`'],
+        },
+        {
+            'language': '日本語',
+            'labels': 'ja',
+            'intro': 'これは棋力評価 UI のプレビュー版です。「棋力評価 / 一致度」を、開発者向けの細かい表から、普段の復盤で見やすいカード形式に刷新しました。詳細データは従来どおり残しています。',
+            'updates_heading': '主な更新',
+            'updates': [
+                '「棋力評価」ダイアログを刷新し、旧来の詰まった指標表ではなく、カード形式のメイン画面にしました。',
+                '「評価」ページは黒番と白番の表示に絞り、メイン画面では合計棋力を表示しないようにしました。',
+                '棋力レンジは、級位・段位として読みやすい表現にしました。',
+                '「一致度」ページは黒白のカード、推移グラフ、見直し候補区間を表示し、不正判定のような結論は出しません。',
+                '各ページ右上に「詳細データ」を残し、従来の詳細指標表や詳細グラフを開けます。',
+                '分析ツールバーの Tencent 棋譜の横に、短い「棋力評価」ボタンを追加しました。',
+            ],
+            'before_heading': 'ダウンロード前に',
+            'before': [
+                'これは新しい棋力評価 UI を先に試したいユーザー向けの pre-release です。',
+                f'推奨バンドルには KataGo `{katago_version}` と既定の重み `{model_source}` が含まれています。',
+                f'多くの Windows ユーザーは {{windows_opencl_portable}} を選ぶのがおすすめです。これは **推奨 OpenCL 版、インストール不要** です。',
+                f'OpenCL が不安定な場合は {{windows_portable}} を使ってください。',
+                f'**NVIDIA GPU** 搭載 PC では {{windows_nvidia_portable}} を優先してください。',
+            ],
+            'download_heading': 'ダウンロード案内',
+            'download_headers': ('お使いの環境', 'ダウンロードするファイル'),
+            'why_heading': 'このビルドを試す理由',
+            'why': [
+                '棋力評価を開いたとき、まず黒番と白番のパフォーマンスが見え、難しい表から読み解く必要がありません。',
+                '級位・段位の表示により、`1-2k` のような略記より直感的に理解できます。',
+                '一致度ページは復盤向けに、双方のデータ、推移、見直し候補区間を示し、過度な判断を避けます。',
+                '今回は表示と入口の改善だけで、棋力評価アルゴリズムや従来の詳細画面は変更していません。',
+            ],
+            'contact_heading': '連絡先',
+            'contact': ['QQ グループ: `299419120`'],
+        },
+        {
+            'language': '한국어',
+            'labels': 'ko',
+            'intro': '이번 버전은 기력 평가 UI 프리뷰 빌드입니다. Strength / Match 화면을 촘촘한 엔지니어링식 표에서 일반 복기 사용자가 보기 쉬운 카드형 화면으로 바꾸었고, 전체 상세 데이터는 그대로 남겼습니다.',
+            'updates_heading': '주요 업데이트',
+            'updates': [
+                'Player Strength 창을 현대적인 카드형 메인 화면으로 다시 만들었습니다. 이전처럼 지표 표가 빽빽하게 보이지 않습니다.',
+                'Assessment 페이지는 흑과 백의 성과만 보여 주며, 메인 화면에서 합산 기력은 표시하지 않습니다.',
+                '기력 구간은 아마 급/단 범위처럼 더 이해하기 쉬운 표현으로 표시합니다.',
+                'Match 페이지는 흑/백 카드, 추세 그래프, 복기 추천 구간을 보여 주며 부정행위 결론을 내리지 않습니다.',
+                '각 페이지 오른쪽 위에 Detail Data 진입점을 남겨 기존 전체 지표 표와 상세 그래프를 열 수 있습니다.',
+                '분석 툴바의 Tencent 기보 옆에 짧은 Strength 버튼을 추가했습니다.',
+            ],
+            'before_heading': '다운로드 전 확인',
+            'before': [
+                '새 Player Strength UI 를 먼저 써 보고 싶은 사용자를 위한 pre-release 프리뷰입니다.',
+                f'추천 번들에는 KataGo `{katago_version}` 와 기본 가중치 `{model_source}` 가 포함되어 있습니다.',
+                f'대부분의 Windows 사용자는 {{windows_opencl_portable}} 를 먼저 받으면 됩니다. 이는 **추천 OpenCL 무설치 빌드** 입니다.',
+                f'OpenCL 이 PC에서 불안정하면 {{windows_portable}} 를 대신 사용하세요.',
+                f'**NVIDIA GPU** 가 있다면 {{windows_nvidia_portable}} 를 우선 사용해 보세요.',
+            ],
+            'download_heading': '다운로드 안내',
+            'download_headers': ('내 컴퓨터', '다운로드할 파일'),
+            'why_heading': '이 빌드를 써 볼 이유',
+            'why': [
+                '기력 평가를 열면 어려운 표가 아니라 흑과 백의 성과 카드부터 볼 수 있습니다.',
+                '아마 급/단 표시가 `1-2k` 같은 축약 표기보다 이해하기 쉽습니다.',
+                'Match 화면은 복기에 맞게 양쪽 데이터, 추세, 추천 확인 구간을 보여 주고 과도한 판단은 피합니다.',
+                '이번 변경은 표시와 진입점만 바꾸며, 기력 평가 알고리즘과 기존 상세 화면은 그대로 유지합니다.',
+            ],
+            'contact_heading': '연락',
+            'contact': ['QQ 그룹: `299419120`'],
+        },
+        {
+            'language': 'ภาษาไทย',
+            'labels': 'th',
+            'intro': 'รีลีสนี้เป็น preview ของ UI ประเมินฝีมือผู้เล่น โดยเปลี่ยน Strength / Match จากตารางละเอียดแบบวิศวกรรมให้เป็นการ์ดที่อ่านง่ายขึ้นสำหรับการรีวิวเกมทั่วไป และยังคงหน้า detailed data เดิมไว้สำหรับผู้ใช้ขั้นสูง',
+            'updates_heading': 'อัปเดตหลัก',
+            'updates': [
+                'ปรับหน้าต่าง Player Strength ใหม่เป็นหน้าหลักแบบ card layout แทนตาราง metric เดิมที่แน่นเกินไป',
+                'หน้า Assessment แสดงเฉพาะฝั่งดำและขาว ไม่แสดง combined strength ในหน้าหลัก',
+                'ช่วงระดับฝีมือแสดงด้วยคำที่เข้าใจง่ายขึ้น เช่น amateur kyu / amateur dan range',
+                'หน้า Match แสดงการ์ดดำ/ขาว กราฟแนวโน้ม และช่วงที่แนะนำให้กลับไปตรวจ โดยไม่สรุปว่าโกง',
+                'แต่ละหน้ามีปุ่ม Detail Data มุมขวาบน เพื่อเปิดตาราง metric หรือกราฟละเอียดแบบเดิม',
+                'เพิ่มปุ่ม Strength แบบสั้นใน toolbar ถัดจาก Tencent Kifu',
+            ],
+            'before_heading': 'ก่อนดาวน์โหลด',
+            'before': [
+                'นี่เป็น pre-release สำหรับผู้ใช้ที่ต้องการลอง UI ประเมินฝีมือแบบใหม่ก่อน',
+                f'แพ็กเกจหลักมี KataGo `{katago_version}` และน้ำหนักเริ่มต้น `{model_source}` มาให้แล้ว',
+                f'ผู้ใช้ Windows ส่วนใหญ่แนะนำให้ดาวน์โหลด {{windows_opencl_portable}} ซึ่งเป็น **OpenCL รุ่นแนะนำ แบบไม่ต้องติดตั้ง**',
+                f'ถ้า OpenCL ไม่เสถียรบนเครื่องของคุณ ให้ใช้ {{windows_portable}} แทน',
+                f'ถ้ามี **NVIDIA GPU** แนะนำให้ลอง {{windows_nvidia_portable}} ก่อน',
+            ],
+            'download_heading': 'แนะนำการดาวน์โหลด',
+            'download_headers': ('เครื่องของคุณ', 'ดาวน์โหลดไฟล์นี้'),
+            'why_heading': 'ทำไมควรลอง build นี้',
+            'why': [
+                'เมื่อเปิดการประเมินฝีมือ จะเห็นการ์ดผลงานของดำและขาวก่อน ไม่ต้องเริ่มจากตารางที่อ่านยาก',
+                'การแสดงระดับแบบ amateur kyu/dan เข้าใจง่ายกว่า label แบบ `1-2k`',
+                'หน้า Match เหมาะกับการรีวิวมากขึ้น เพราะเน้นข้อมูลสองฝั่ง แนวโน้ม และช่วงที่ควรตรวจ ไม่ตัดสินเกินจริง',
+                'รุ่นนี้ปรับเฉพาะการแสดงผลและตำแหน่งปุ่ม ไม่เปลี่ยนอัลกอริทึมประเมินฝีมือ และยังเก็บ detail view เดิมไว้',
+            ],
+            'contact_heading': 'ติดต่อ',
+            'contact': ['QQ group: `299419120`'],
+        },
+    ]
+
+    sections: list[dict[str, object]] = []
+    for block in content:
+        localized_assets = assets_cn if block['language'] in ('中文', '繁體中文') else assets
+        before_items = [
+            item.format(
+                windows_opencl_portable=localized_assets['windows_opencl_portable'],
+                windows_portable=localized_assets['windows_portable'],
+                windows_nvidia_portable=localized_assets['windows_nvidia_portable'],
+            )
+            for item in block['before']
+        ]
+        sections.append(
+            {
+                'language': block['language'],
+                'intro': block['intro'],
+                'updates': {'heading': block['updates_heading'], 'items': block['updates']},
+                'before': {'heading': block['before_heading'], 'items': before_items},
+                'download': {
+                    'heading': block['download_heading'],
+                    'headers': block['download_headers'],
+                    'rows': standard_download_rows(STANDARD_DOWNLOAD_LABELS[block['labels']], localized_assets),
+                },
+                'why': {'heading': block['why_heading'], 'items': block['why']},
+                'contact': {'heading': block['contact_heading'], 'items': block['contact']},
+            }
+        )
+    add_nvidia50_download_rows(sections, assets_cn, assets)
+    add_tensorrt_split_download_row(sections, assets_cn, assets, asset_map)
+    validate_release_sections(sections)
+    return release_heading(release_tag) + '\n\n' + '\n\n---\n\n'.join(
+        render_language_section(section) for section in sections
+    ) + '\n'
+
+
 def build_release_notes(asset_map: dict[str, str | None], bundle: dict[str, str], repo: str, release_tag: str | None) -> str:
     if release_tag == 'next-2026-05-03.1':
         return build_next_2026_05_03_1_notes(asset_map, repo, release_tag)
@@ -3750,6 +3995,8 @@ def build_release_notes(asset_map: dict[str, str | None], bundle: dict[str, str]
         return build_next_2026_06_01_2_notes(asset_map, bundle, repo, release_tag)
     if release_tag == 'next-2026-06-06.1':
         return build_next_2026_06_06_1_notes(asset_map, bundle, repo, release_tag)
+    if release_tag == 'next-2026-06-08.1':
+        return build_next_2026_06_08_1_notes(asset_map, bundle, repo, release_tag)
 
     assets_cn = {
         key: format_asset(asset_map[key], repo, release_tag)

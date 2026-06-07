@@ -8042,6 +8042,26 @@ public class Menu extends JMenuBar {
             }
           });
 
+      JFontButton btnPlayerStrengthEstimate =
+          new JFontButton(resourceBundle.getString("Menu.playerStrengthEstimateButton"));
+      btnPlayerStrengthEstimate.setFocusable(false);
+      btnPlayerStrengthEstimate.setMargin(new Insets(0, 10, 0, 10));
+      AppleStyleSupport.markPrimary(btnPlayerStrengthEstimate);
+      btnPlayerStrengthEstimate.setPreferredSize(
+          new Dimension(
+              Math.max(
+                  Lizzie.config.isChinese ? Config.menuHeight * 4 : Config.menuHeight * 6,
+                  btnPlayerStrengthEstimate.getPreferredSize().width + 12),
+              Config.menuHeight));
+      btnPlayerStrengthEstimate.setToolTipText(
+          resourceBundle.getString("Menu.playerStrengthEstimate"));
+      btnPlayerStrengthEstimate.addActionListener(
+          new ActionListener() {
+            public void actionPerformed(ActionEvent e) {
+              Lizzie.frame.showPlayerStrengthEstimate();
+            }
+          });
+
       JPopupMenu flashAnalyzePopup = new JPopupMenu();
       JFontMenuItem flashAnalyzeAllGame =
           new JFontMenuItem(resourceBundle.getString("Menu.flashAnalyzeAllGame")); // "闪电分析(全局)");
@@ -8413,6 +8433,7 @@ public class Menu extends JMenuBar {
       Lizzie.frame.topPanel.leftArea.add(btnSave);
       Lizzie.frame.topPanel.leftArea.add(btnFoxKifu);
       Lizzie.frame.topPanel.leftArea.add(btnTencentKifu);
+      Lizzie.frame.topPanel.leftArea.add(btnPlayerStrengthEstimate);
 
       Lizzie.frame.topPanel.centerArea.add(btnAutoSetup);
       Lizzie.frame.topPanel.centerArea.add(btnFlashAnalyze);
