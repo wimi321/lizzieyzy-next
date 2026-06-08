@@ -3997,6 +3997,8 @@ def build_release_notes(asset_map: dict[str, str | None], bundle: dict[str, str]
         return build_next_2026_06_06_1_notes(asset_map, bundle, repo, release_tag)
     if release_tag == 'next-2026-06-08.1':
         return build_next_2026_06_08_1_notes(asset_map, bundle, repo, release_tag)
+    if release_tag == 'next-2026-06-09.1':
+        return build_next_2026_06_09_1_notes(asset_map, bundle, repo, release_tag)
 
     assets_cn = {
         key: format_asset(asset_map[key], repo, release_tag)
@@ -4670,6 +4672,260 @@ def build_next_2026_05_18_1_notes(
                     'การเปิดครั้งแรกหรือการเพิ่มความเร็วแบบ manual จะดูเหมือนงานที่กำลังเดินจริง ไม่ใช่หน้าต่างที่ค้างอยู่',
                     'ผู้ใช้ใหม่จะเข้าใจ downloaded weights, official downloadable weights, smart speed boost และ NVIDIA components ได้เร็วขึ้น',
                     'เป็นอัปเดตคุณภาพที่โฟกัส flow KataGo Auto Setup ซึ่งใช้งานบ่อย เหมาะสำหรับแทนที่ build ก่อนหน้า',
+                ],
+            },
+            'contact': {'heading': 'ติดต่อ', 'items': ['QQ group: `299419120`']},
+        },
+    ]
+    add_nvidia50_download_rows(sections, assets_cn, assets)
+    validate_release_sections(sections)
+    heading = f'# LizzieYzy Next {release_tag} 4段纪念版更新' if release_tag else '# LizzieYzy Next 4段纪念版更新'
+    return heading + '\n\n' + '\n\n---\n\n'.join(
+        render_language_section(section) for section in sections
+    ) + '\n'
+
+
+def build_next_2026_06_09_1_notes(
+    asset_map: dict[str, str | None],
+    bundle: dict[str, str],
+    repo: str,
+    release_tag: str | None,
+) -> str:
+    assets_cn = {key: format_asset(asset_map[key], repo, release_tag) for key in asset_map}
+    assets = {key: format_asset_en(asset_map[key], repo, release_tag) for key in asset_map}
+    katago_version = bundle['katago_version']
+    model_source = bundle['model_source']
+    sections: list[dict[str, object]] = [
+        {
+            'language': '中文',
+            'intro': '这是“4段纪念版”的棋力评估界面修正版。重点把“测评”和“吻合度”做成更适合普通用户阅读的卡片式界面，并修复真实测试中发现的遮挡、刻度和图标显示问题。',
+            'updates': {
+                'heading': '本版主要更新',
+                'items': [
+                    '重做“棋力评估”主界面，只保留黑棋和白棋表现，默认不再显示普通用户看不懂的合计棋力。',
+                    '“吻合度”改为原始横条风格的选点命中图：上层显示 AI 一选，下层显示好手，鼠标移动到命中点可查看具体手数和损失信息。',
+                    '修复黑棋/白棋统计文字被图表遮挡的问题，右侧概率和说明现在会绘制在上层。',
+                    '修复底部手数刻度显示不全和尾部 `151 154` 这类重复拥挤的问题，尾手会自动替代过近刻度。',
+                    '修复“详细数据”和说明条里的叹号图标裁切问题，并重绘顶部围棋图标，避免左侧出现异常边缘。',
+                    '发布前已重新跑棋力评估回归测试、打包验证，并完成本机真实启动 UI 复测。',
+                ],
+            },
+            'before': {
+                'heading': '下载前先看这几句',
+                'items': [
+                    f'Windows 普通用户优先下载 {assets_cn["windows_opencl_portable"]}，这是 **OpenCL 版（推荐，免安装）**。',
+                    f'如果 OpenCL 在你的电脑上不稳定，再改用 {assets_cn["windows_portable"]}。',
+                    f'如果你的电脑是 **英伟达显卡**，优先下载 {assets_cn["windows_nvidia_portable"]}。',
+                    f'主推荐整合包已内置 KataGo `{katago_version}` 和默认权重 `{model_source}`。',
+                    '如果你更喜欢安装流程，再选同系列的 `installer.exe`。',
+                ],
+            },
+            'download': {
+                'heading': '下载建议',
+                'headers': ('你的电脑', '直接下载这个'),
+                'rows': standard_download_rows(STANDARD_DOWNLOAD_LABELS['zh'], assets_cn),
+            },
+            'why': {
+                'heading': '这一版为什么值得更新',
+                'items': [
+                    '棋力评估不再像调试表格，更接近用户能直接看懂的复盘结果页。',
+                    '吻合度页面能一眼看到哪些手命中 AI 一选、哪些手属于好手，少了看不懂的趋势噪音。',
+                    '这是一个针对高频查看页面的视觉和可读性修复，建议替换上一版继续测试。',
+                ],
+            },
+            'contact': {'heading': '交流', 'items': ['QQ 群：`299419120`']},
+        },
+        {
+            'language': '繁體中文',
+            'intro': '這是「4 段紀念版」的棋力評估介面修正版。重點把「測評」和「吻合度」做成更適合一般使用者閱讀的卡片式介面，並修復真實測試中發現的遮擋、刻度和圖示顯示問題。',
+            'updates': {
+                'heading': '本版主要更新',
+                'items': [
+                    '重做「棋力評估」主介面，只保留黑棋和白棋表現，預設不再顯示一般使用者看不懂的合計棋力。',
+                    '「吻合度」改為原始橫條風格的選點命中圖：上層顯示 AI 一選，下層顯示好手，滑鼠移到命中點可查看具體手數和損失資訊。',
+                    '修復黑棋/白棋統計文字被圖表遮擋的問題，右側機率和說明現在會繪製在上層。',
+                    '修復底部手數刻度顯示不全和尾部 `151 154` 這類重複擁擠問題，尾手會自動替代過近刻度。',
+                    '修復「詳細資料」和說明條裡的驚嘆號圖示裁切問題，並重繪頂部圍棋圖示，避免左側出現異常邊緣。',
+                    '發布前已重新跑棋力評估回歸測試、打包驗證，並完成本機真實啟動 UI 複測。',
+                ],
+            },
+            'before': {
+                'heading': '下載前先看這幾句',
+                'items': [
+                    f'Windows 一般使用者優先下載 {assets_cn["windows_opencl_portable"]}，這是 **OpenCL 版（推薦，免安裝）**。',
+                    f'如果 OpenCL 在你的電腦上不穩定，再改用 {assets_cn["windows_portable"]}。',
+                    f'如果你的電腦是 **NVIDIA 顯示卡**，優先下載 {assets_cn["windows_nvidia_portable"]}。',
+                    f'主推薦整合包已內建 KataGo `{katago_version}` 和預設權重 `{model_source}`。',
+                    '如果你更喜歡安裝流程，再選同系列的 `installer.exe`。',
+                ],
+            },
+            'download': {
+                'heading': '下載建議',
+                'headers': ('你的電腦', '直接下載這個'),
+                'rows': standard_download_rows(STANDARD_DOWNLOAD_LABELS['zh_hant'], assets_cn),
+            },
+            'why': {
+                'heading': '這一版為什麼值得更新',
+                'items': [
+                    '棋力評估不再像除錯表格，更接近使用者能直接看懂的復盤結果頁。',
+                    '吻合度頁面能一眼看到哪些手命中 AI 一選、哪些手屬於好手，少了看不懂的趨勢噪音。',
+                    '這是針對高頻查看頁面的視覺和可讀性修復，建議替換上一版繼續測試。',
+                ],
+            },
+            'contact': {'heading': '交流', 'items': ['QQ 群：`299419120`']},
+        },
+        {
+            'language': 'English',
+            'intro': 'This is a player-strength estimate UI polish update for the “4-dan commemorative build”. It turns Assessment and Match Rate into a clearer card-based view and fixes the overlap, axis-label, and icon clipping issues found during real UI testing.',
+            'updates': {
+                'heading': 'Release Highlights',
+                'items': [
+                    'Redesigned the Player Strength Estimate dashboard around Black and White performance only, hiding the confusing combined-strength summary from the default view.',
+                    'Match Rate now uses an original-style hit map: the upper lane shows AI first-choice hits, the lower lane shows good moves, and hovering over a hit reveals the move number and loss details.',
+                    'Fixed Black/White stat labels being covered by the chart; the right-side percentages and descriptions are now painted above the graph layer.',
+                    'Fixed clipped bottom move-number labels and crowded tail labels such as `151 154`; the final move now replaces nearby ticks when needed.',
+                    'Fixed clipped exclamation icons in Detail Data and note strips, and redrew the header Go-stone mark to avoid odd left-edge artifacts.',
+                    'Before release, the player-strength regression tests, packaging build, and real local UI launch checks were rerun.',
+                ],
+            },
+            'before': {
+                'heading': 'Read Before Downloading',
+                'items': [
+                    f'Most Windows users should download {assets["windows_opencl_portable"]}, the **recommended no-install OpenCL build**.',
+                    f'If OpenCL is unreliable on your PC, use {assets["windows_portable"]} instead.',
+                    f'If your PC has an **NVIDIA GPU**, try {assets["windows_nvidia_portable"]} first.',
+                    f'The recommended bundles include KataGo `{katago_version}` and the default weight `{model_source}`.',
+                    'If you prefer an installer, choose the matching `installer.exe` package.',
+                ],
+            },
+            'download': {
+                'heading': 'Download Guide',
+                'headers': ('Your computer', 'Download this file'),
+                'rows': standard_download_rows(STANDARD_DOWNLOAD_LABELS['en'], assets),
+            },
+            'why': {
+                'heading': 'Why This Release Is Worth Updating',
+                'items': [
+                    'Player Strength Estimate now feels like a readable review result page instead of a debug table.',
+                    'The Match Rate page makes first-choice hits and good moves visible at a glance without an unreadable trend chart.',
+                    'This is a focused visual and readability fix for a high-traffic analysis view, suitable for replacing the previous build.',
+                ],
+            },
+            'contact': {'heading': 'Contact', 'items': ['QQ group: `299419120`']},
+        },
+        {
+            'language': '日本語',
+            'intro': 'これは「4 段記念版」の棋力評価 UI を整える更新です。Assessment と Match Rate を読みやすいカード型画面にし、実際の UI テストで見つかった重なり、軸ラベル、アイコンの欠けを修正しました。',
+            'updates': {
+                'heading': '主な更新',
+                'items': [
+                    '棋力評価ダッシュボードを黒番と白番の成績中心に再設計し、既定表示では分かりにくい合計棋力を出さないようにしました。',
+                    'Match Rate は元の横バー風の命中図に変更しました。上段は AI 一選、下段は好手を示し、命中点にマウスを置くと手数と損失情報を確認できます。',
+                    '黒番/白番の統計文字がグラフに隠れる問題を修正し、右側の割合と説明をグラフ層の上に描画するようにしました。',
+                    '下部の手数目盛りが欠ける問題と、末尾の `151 154` のような詰まりを修正しました。終局手は近すぎる目盛りを置き換えます。',
+                    'Detail Data と説明欄の感嘆符アイコンが欠ける問題を修正し、ヘッダーの碁石マークも描き直して左端の異常表示をなくしました。',
+                    'リリース前に棋力評価回帰テスト、package、ローカル実起動 UI チェックを再実行しました。',
+                ],
+            },
+            'before': {
+                'heading': 'ダウンロード前に',
+                'items': [
+                    f'多くの Windows ユーザーは {assets["windows_opencl_portable"]} を選ぶのがおすすめです。これは **推奨 OpenCL 版、インストール不要** です。',
+                    f'OpenCL が不安定な場合は {assets["windows_portable"]} を使ってください。',
+                    f'**NVIDIA GPU** 搭載 PC では {assets["windows_nvidia_portable"]} を優先してください。',
+                    f'推奨バンドルには KataGo `{katago_version}` と既定の重み `{model_source}` が含まれています。',
+                    'インストーラ形式がよい場合は、同じ系列の `installer.exe` を選んでください。',
+                ],
+            },
+            'download': {
+                'heading': 'ダウンロード案内',
+                'headers': ('お使いの環境', 'ダウンロードするファイル'),
+                'rows': standard_download_rows(STANDARD_DOWNLOAD_LABELS['ja'], assets),
+            },
+            'why': {
+                'heading': 'このリリースを更新する理由',
+                'items': [
+                    '棋力評価がデバッグ表ではなく、読みやすい検討結果ページに近づきました。',
+                    'Match Rate では、AI 一選に当たった手と好手がひと目で分かり、読みにくいトレンド図を見る必要が減りました。',
+                    'よく使う分析画面の見た目と可読性を改善した更新で、前回ビルドの置き換えに向いています。',
+                ],
+            },
+            'contact': {'heading': '連絡先', 'items': ['QQ グループ: `299419120`']},
+        },
+        {
+            'language': '한국어',
+            'intro': '이번 버전은 “4단 기념판”의 기력 평가 UI 를 다듬은 업데이트입니다. Assessment 와 Match Rate 를 더 읽기 쉬운 카드형 화면으로 바꾸고, 실제 UI 테스트에서 발견된 겹침, 축 라벨, 아이콘 잘림 문제를 수정했습니다.',
+            'updates': {
+                'heading': '주요 업데이트',
+                'items': [
+                    '기력 평가 대시보드를 흑/백 성과 중심으로 다시 구성했고, 기본 화면에서는 일반 사용자가 이해하기 어려운 합계 기력을 숨겼습니다.',
+                    'Match Rate 는 원래 방식에 가까운 가로 막대형 명중 지도로 바뀌었습니다. 위쪽 줄은 AI 1순위, 아래쪽 줄은 좋은 수를 표시하며, 마우스를 올리면 수순과 손실 정보를 볼 수 있습니다.',
+                    '흑/백 통계 문구가 차트에 가려지는 문제를 수정해 오른쪽 확률과 설명이 그래프 위 레이어에 표시되도록 했습니다.',
+                    '아래쪽 수순 눈금이 잘리는 문제와 `151 154` 처럼 끝부분이 빽빽하게 겹치는 문제를 수정했습니다. 마지막 수는 가까운 눈금을 자동으로 대체합니다.',
+                    'Detail Data 와 안내 줄의 느낌표 아이콘 잘림을 수정했고, 헤더의 바둑돌 표시도 다시 그려 왼쪽 가장자리 이상 표시를 없앴습니다.',
+                    '릴리스 전에 기력 평가 회귀 테스트, package, 실제 로컬 UI 실행 확인을 다시 수행했습니다.',
+                ],
+            },
+            'before': {
+                'heading': '다운로드 전 확인',
+                'items': [
+                    f'대부분의 Windows 사용자는 {assets["windows_opencl_portable"]} 를 먼저 받으면 됩니다. 이는 **추천 OpenCL 무설치 빌드** 입니다.',
+                    f'OpenCL 이 PC에서 불안정하면 {assets["windows_portable"]} 를 대신 사용하세요.',
+                    f'**NVIDIA GPU** 가 있다면 {assets["windows_nvidia_portable"]} 를 우선 사용해 보세요.',
+                    f'추천 번들에는 KataGo `{katago_version}` 와 기본 가중치 `{model_source}` 가 포함되어 있습니다.',
+                    '설치형 흐름을 원한다면 같은 계열의 `installer.exe` 를 고르세요.',
+                ],
+            },
+            'download': {
+                'heading': '다운로드 안내',
+                'headers': ('내 컴퓨터', '다운로드할 파일'),
+                'rows': standard_download_rows(STANDARD_DOWNLOAD_LABELS['ko'], assets),
+            },
+            'why': {
+                'heading': '이번 릴리스를 업데이트할 이유',
+                'items': [
+                    '기력 평가가 디버그 표가 아니라 읽기 쉬운 복기 결과 페이지에 더 가까워졌습니다.',
+                    'Match Rate 페이지에서 AI 1순위와 좋은 수를 한눈에 볼 수 있어 읽기 어려운 추세 그래프를 볼 필요가 줄었습니다.',
+                    '자주 보는 분석 화면의 시각과 가독성을 개선한 버전으로, 이전 빌드를 대체해 테스트하기 좋습니다.',
+                ],
+            },
+            'contact': {'heading': '연락처', 'items': ['QQ 그룹: `299419120`']},
+        },
+        {
+            'language': 'ภาษาไทย',
+            'intro': 'นี่คืออัปเดตปรับ UI Player Strength Estimate สำหรับ “เวอร์ชันที่ระลึก 4 ดั้ง” โดยเปลี่ยนหน้า Assessment และ Match Rate เป็นแบบการ์ดที่อ่านง่ายขึ้น พร้อมแก้ปัญหาข้อความซ้อน label แกนล่าง และไอคอนถูกตัดจากการทดสอบ UI จริง',
+            'updates': {
+                'heading': 'ไฮไลต์ของเวอร์ชันนี้',
+                'items': [
+                    'ออกแบบหน้า Player Strength Estimate ใหม่โดยเน้นผลงานของ Black และ White เท่านั้น และซ่อนค่ารวมที่ผู้ใช้ทั่วไปเข้าใจยากจากหน้าหลัก',
+                    'Match Rate เปลี่ยนเป็น hit map แบบแถบแนวนอนคล้ายของเดิม: แถวบนแสดง AI first choice แถวล่างแสดง good move และเมื่อชี้เมาส์จะเห็น move number กับ loss details',
+                    'แก้ปัญหาข้อความสถิติของ Black/White ถูกกราฟบัง โดยให้เปอร์เซ็นต์และคำอธิบายด้านขวาวาดอยู่บน layer ด้านบน',
+                    'แก้ label เลข move ด้านล่างที่แสดงไม่ครบ และแก้กรณีท้ายกระดานแน่นเกินไปเช่น `151 154` โดยให้ move สุดท้ายแทน tick ที่อยู่ใกล้เกินไป',
+                    'แก้ไอคอนเครื่องหมายตกใจใน Detail Data และ note strip ที่ถูกตัด พร้อมวาด Go-stone mark ด้านหัวใหม่เพื่อลด artifact ด้านซ้าย',
+                    'ก่อน release ได้รัน player-strength regression tests, package build และเปิด UI จริงบนเครื่อง local เพื่อตรวจซ้ำแล้ว',
+                ],
+            },
+            'before': {
+                'heading': 'ก่อนดาวน์โหลด ดูตรงนี้ก่อน',
+                'items': [
+                    f'ผู้ใช้ Windows ส่วนใหญ่แนะนำให้ดาวน์โหลด {assets["windows_opencl_portable"]} ซึ่งเป็น **OpenCL รุ่นแนะนำ แบบไม่ต้องติดตั้ง**',
+                    f'ถ้า OpenCL ทำงานไม่ดีบนเครื่องของคุณ ให้เปลี่ยนไปใช้ {assets["windows_portable"]}',
+                    f'ถ้าเครื่องของคุณมี **การ์ดจอ NVIDIA** แนะนำให้ใช้ {assets["windows_nvidia_portable"]}',
+                    f'แพ็กเกจหลักมี KataGo `{katago_version}` และ weight เริ่มต้น `{model_source}` มาให้แล้ว',
+                    'ถ้าชอบขั้นตอนแบบติดตั้ง ให้เลือกไฟล์ `installer.exe` ในชุดเดียวกัน',
+                ],
+            },
+            'download': {
+                'heading': 'แนะนำการดาวน์โหลด',
+                'headers': ('เครื่องของคุณ', 'ดาวน์โหลดไฟล์นี้'),
+                'rows': standard_download_rows(STANDARD_DOWNLOAD_LABELS['th'], assets),
+            },
+            'why': {
+                'heading': 'ทำไมเวอร์ชันนี้ควรอัปเดต',
+                'items': [
+                    'Player Strength Estimate ดูเหมือนหน้าสรุปผลรีวิวที่อ่านง่ายขึ้น ไม่ใช่ตาราง debug',
+                    'หน้า Match Rate ทำให้เห็นได้ทันทีว่า move ไหนตรง AI first choice และ move ไหนเป็น good move โดยไม่ต้องดูกราฟ trend ที่อ่านยาก',
+                    'เป็นอัปเดตด้านภาพและการอ่านสำหรับหน้าวิเคราะห์ที่ใช้บ่อย เหมาะสำหรับแทนที่ build ก่อนหน้า',
                 ],
             },
             'contact': {'heading': 'ติดต่อ', 'items': ['QQ group: `299419120`']},
