@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import featurecat.lizzie.Config;
 import featurecat.lizzie.Lizzie;
+import featurecat.lizzie.analysis.PlayerStrengthEstimator;
 import featurecat.lizzie.analysis.ReadBoard;
 import featurecat.lizzie.rules.Board;
 import featurecat.lizzie.rules.BoardData;
@@ -26,6 +27,50 @@ import org.junit.jupiter.api.Test;
 class LizzieFrameRegressionTest {
   private static final int BOARD_SIZE = 2;
   private static final int BOARD_AREA = BOARD_SIZE * BOARD_SIZE;
+
+  @Test
+  void playerStrengthRankReferenceKeepsKyuResultsInKyuBand() throws Exception {
+    Method rankLevel = LizzieFrame.class.getDeclaredMethod("playerStrengthRankLevel", String.class);
+    rankLevel.setAccessible(true);
+
+    assertEquals(1, rankLevel.invoke(null, "1-2k"));
+    assertEquals(1, rankLevel.invoke(null, "11-15k"));
+    assertEquals(5, rankLevel.invoke(null, "1d"));
+    assertEquals(7, rankLevel.invoke(null, "2-3d"));
+    assertEquals(8, rankLevel.invoke(null, "4d"));
+    assertEquals(10, rankLevel.invoke(null, "10d\u804c\u4e1a"));
+  }
+
+  @Test
+  void playerStrengthHitMapExposesMoveTooltip() throws Exception {
+    Class<?> panelClass =
+        Class.forName("featurecat.lizzie.gui.LizzieFrame$PlayerStrengthMoveHitMapPanel");
+    java.lang.reflect.Constructor<?> constructor =
+        panelClass.getDeclaredConstructor(PlayerStrengthEstimator.Report.class);
+    constructor.setAccessible(true);
+    javax.swing.JComponent panel =
+        (javax.swing.JComponent) constructor.newInstance(playerStrengthReportWithSamples());
+    panel.setSize(900, 300);
+
+    java.awt.image.BufferedImage image =
+        new java.awt.image.BufferedImage(900, 300, java.awt.image.BufferedImage.TYPE_INT_ARGB);
+    panel.paint(image.createGraphics());
+
+    java.awt.event.MouseEvent event =
+        new java.awt.event.MouseEvent(
+            panel,
+            java.awt.event.MouseEvent.MOUSE_MOVED,
+            System.currentTimeMillis(),
+            0,
+            86,
+            106,
+            0,
+            false);
+    String tooltip = panel.getToolTipText(event);
+
+    assertTrue(tooltip.contains("1"), "tooltip should include the move number.");
+    assertTrue(tooltip.contains("AI"), "tooltip should include AI choice details.");
+  }
 
   @Test
   void openReadBoardJavaRestartsExistingReadBoardOnEdt() throws Exception {
@@ -232,6 +277,114 @@ class LizzieFrameRegressionTest {
     frame.nativeCreateCount = new AtomicInteger();
     frame.replacementReadBoard = fakeReadBoard();
     return frame;
+  }
+
+  private static PlayerStrengthEstimator.Report playerStrengthReportWithSamples() throws Exception {
+    PlayerStrengthEstimator.Sample blackSample =
+        playerStrengthSample(
+            Stone.BLACK,
+            1,
+            1.2,
+            Optional.of(0.4),
+            true,
+            0,
+            PlayerStrengthEstimator.MoveCategory.EXCELLENT);
+    PlayerStrengthEstimator.Sample whiteSample =
+        playerStrengthSample(
+            Stone.WHITE,
+            2,
+            3.4,
+            Optional.of(1.1),
+            false,
+            1,
+            PlayerStrengthEstimator.MoveCategory.GOOD);
+    PlayerStrengthEstimator.SideReport blackReport =
+        playerStrengthSideReport(java.util.List.of(blackSample), 1.0, 1.0);
+    PlayerStrengthEstimator.SideReport whiteReport =
+        playerStrengthSideReport(java.util.List.of(whiteSample), 0.0, 1.0);
+    PlayerStrengthEstimator.SideReport overallReport =
+        playerStrengthSideReport(java.util.List.of(blackSample, whiteSample), 0.5, 1.0);
+
+    java.lang.reflect.Constructor<PlayerStrengthEstimator.Report> constructor =
+        PlayerStrengthEstimator.Report.class.getDeclaredConstructor(
+            PlayerStrengthEstimator.SideReport.class,
+            PlayerStrengthEstimator.SideReport.class,
+            PlayerStrengthEstimator.SideReport.class);
+    constructor.setAccessible(true);
+    return constructor.newInstance(blackReport, whiteReport, overallReport);
+  }
+
+  private static PlayerStrengthEstimator.Sample playerStrengthSample(
+      Stone color,
+      int moveNumber,
+      double winrateLoss,
+      Optional<Double> scoreLoss,
+      boolean firstChoice,
+      int aiRank,
+      PlayerStrengthEstimator.MoveCategory category)
+      throws Exception {
+    java.lang.reflect.Constructor<PlayerStrengthEstimator.Sample> constructor =
+        PlayerStrengthEstimator.Sample.class.getDeclaredConstructor(
+            Stone.class,
+            int.class,
+            double.class,
+            Optional.class,
+            boolean.class,
+            int.class,
+            PlayerStrengthEstimator.MoveCategory.class,
+            double.class,
+            double.class,
+            double.class);
+    constructor.setAccessible(true);
+    return constructor.newInstance(
+        color, moveNumber, winrateLoss, scoreLoss, firstChoice, aiRank, category, 1.0, 35.0, 1.0);
+  }
+
+  private static PlayerStrengthEstimator.SideReport playerStrengthSideReport(
+      java.util.List<PlayerStrengthEstimator.Sample> samples,
+      double firstChoiceRate,
+      double goodMoveRate)
+      throws Exception {
+    java.lang.reflect.Constructor<PlayerStrengthEstimator.SideReport> constructor =
+        PlayerStrengthEstimator.SideReport.class.getDeclaredConstructor(
+            int.class,
+            int.class,
+            double.class,
+            double.class,
+            double.class,
+            double.class,
+            double.class,
+            double.class,
+            double.class,
+            double.class,
+            double.class,
+            double.class,
+            double.class,
+            double.class,
+            double.class,
+            String.class,
+            PlayerStrengthEstimator.Confidence.class,
+            java.util.List.class);
+    constructor.setAccessible(true);
+    return constructor.newInstance(
+        samples.size(),
+        samples.size(),
+        82.0,
+        1.5,
+        0.8,
+        0.8,
+        1.2,
+        1.2,
+        goodMoveRate,
+        firstChoiceRate,
+        goodMoveRate,
+        0.0,
+        0.0,
+        0.0,
+        35.0,
+        "1d",
+        PlayerStrengthEstimator.Confidence.HIGH,
+        samples);
   }
 
   private static void assertConsecutiveRestartIsCoalesced(TrackingFrame frame, Runnable trigger)
