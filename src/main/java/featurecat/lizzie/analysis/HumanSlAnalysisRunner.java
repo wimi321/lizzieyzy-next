@@ -34,9 +34,6 @@ import org.json.JSONObject;
 public class HumanSlAnalysisRunner implements AutoCloseable {
   private static final String GTP_COLUMNS = "ABCDEFGHJKLMNOPQRSTUVWXYZ";
   private static final int HUMAN_LIKE_PLAY_VISITS = 64;
-  private static final double MOVE_TEMPERATURE_EARLY = 0.85;
-  private static final double MOVE_TEMPERATURE_FINAL = 0.70;
-  private static final double MOVE_TEMPERATURE_HALFLIFE = 80.0;
 
   private final List<String> commandParts;
   private final ProcessStarter processStarter;
@@ -135,30 +132,15 @@ public class HumanSlAnalysisRunner implements AutoCloseable {
               Board.boardHeight,
               positionNode.getData().stones,
               ThreadLocalRandom.current().nextDouble(),
-              allowPass,
-              moveTemperature(positionNode)));
+              allowPass));
     } catch (TimeoutException | IOException e) {
       return Optional.empty();
     }
   }
 
-  /**
-   * Temperature for "majority vote" imitation of a rank: dampens the long tail of moves a typical
-   * player at that level would rarely choose. Follows KataGo's chosenMoveTemperature schedule,
-   * decaying from {@value #MOVE_TEMPERATURE_EARLY} toward {@value #MOVE_TEMPERATURE_FINAL}.
-   */
-  private static double moveTemperature(BoardHistoryNode positionNode) {
-    int moveNumber =
-        positionNode == null || positionNode.getData() == null
-            ? 0
-            : Math.max(0, positionNode.getData().moveNumber);
-    double decay = Math.pow(0.5, moveNumber / MOVE_TEMPERATURE_HALFLIFE);
-    return MOVE_TEMPERATURE_FINAL + (MOVE_TEMPERATURE_EARLY - MOVE_TEMPERATURE_FINAL) * decay;
-  }
-
   static String samplePolicyMove(
       Object policy, int boardWidth, int boardHeight, double randomValue, boolean allowPass) {
-    return samplePolicyMove(policy, boardWidth, boardHeight, null, randomValue, allowPass, 1.0);
+    return samplePolicyMove(policy, boardWidth, boardHeight, null, randomValue, allowPass);
   }
 
   static String samplePolicyMove(
@@ -168,24 +150,13 @@ public class HumanSlAnalysisRunner implements AutoCloseable {
       Stone[] stones,
       double randomValue,
       boolean allowPass) {
-    return samplePolicyMove(policy, boardWidth, boardHeight, stones, randomValue, allowPass, 1.0);
-  }
-
-  static String samplePolicyMove(
-      Object policy,
-      int boardWidth,
-      int boardHeight,
-      Stone[] stones,
-      double randomValue,
-      boolean allowPass,
-      double temperature) {
     List<PolicyMove> moves = policyMoves(policy, boardWidth, boardHeight, stones, allowPass);
     if (moves.isEmpty()) {
       return argmaxPolicyMove(policy, boardWidth, boardHeight);
     }
     double total = 0.0;
     for (PolicyMove move : moves) {
-      total += temperedProbability(move.probability, temperature);
+      total += move.probability;
     }
     if (total <= 0.0 || Double.isNaN(total)) {
       return moves.get(0).move;
@@ -193,22 +164,12 @@ public class HumanSlAnalysisRunner implements AutoCloseable {
     double target = Math.max(0.0, Math.min(0.999999999999, randomValue)) * total;
     double cumulative = 0.0;
     for (PolicyMove move : moves) {
-      cumulative += temperedProbability(move.probability, temperature);
+      cumulative += move.probability;
       if (target < cumulative) {
         return move.move;
       }
     }
     return moves.get(moves.size() - 1).move;
-  }
-
-  private static double temperedProbability(double probability, double temperature) {
-    if (temperature <= 0.0) {
-      return probability;
-    }
-    if (temperature == 1.0) {
-      return probability;
-    }
-    return Math.pow(probability, 1.0 / temperature);
   }
 
   static String argmaxPolicyMove(Object policy, int boardWidth, int boardHeight) {

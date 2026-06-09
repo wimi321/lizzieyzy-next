@@ -85,30 +85,6 @@ class HumanSlAnalysisRunnerTest {
   }
 
   @Test
-  void samplePolicyMove_lowTemperatureBiasesTowardMajorityMove() throws Exception {
-    try (TestEnvironment env = TestEnvironment.open()) {
-      JSONArray pairPolicy =
-          new JSONArray()
-              .put(new JSONArray().put("A3").put(0.25))
-              .put(new JSONArray().put("B2").put(0.75));
-      // Full temperature: cumulative A3 mass is 0.25, so randomValue 0.30 lands on B2.
-      assertEquals(
-          "B2",
-          HumanSlAnalysisRunner.samplePolicyMove(
-              pairPolicy, BOARD_SIZE, BOARD_SIZE, null, 0.30, false, 1.0));
-      // Temperature 0.7 sharpens toward the majority move B2, shrinking A3's share below 0.30.
-      assertEquals(
-          "B2",
-          HumanSlAnalysisRunner.samplePolicyMove(
-              pairPolicy, BOARD_SIZE, BOARD_SIZE, null, 0.20, false, 0.7));
-      assertEquals(
-          "A3",
-          HumanSlAnalysisRunner.samplePolicyMove(
-              pairPolicy, BOARD_SIZE, BOARD_SIZE, null, 0.05, false, 0.7));
-    }
-  }
-
-  @Test
   void samplePolicyMove_numericPolicyUsesKatagoRowMajorOrderAndFiltersOccupiedPoints()
       throws Exception {
     try (TestEnvironment env = TestEnvironment.open()) {
