@@ -207,6 +207,7 @@ public class LizzieFrame extends JFrame {
   private long showControlTime;
   public boolean isPlayingAgainstLeelaz = false;
   public boolean isAnaPlayingAgainstLeelaz = false;
+  public HumanSlGameController humanSlGame = null;
   public boolean playerIsBlack = true;
   public static boolean canGoAfterload = true;
   public int winRateGridLines = 3;
@@ -3973,6 +3974,7 @@ public class LizzieFrame extends JFrame {
     if (showFeedback) {
       beginKifuLoad(initialMessage);
     }
+    endHumanSlGameIfActive();
     boolean oriReadKomi = Lizzie.config.readKomi;
     try {
       if (showFeedback) {
@@ -4110,6 +4112,7 @@ public class LizzieFrame extends JFrame {
       Utils.showMsg(Lizzie.resourceBundle.getString("LizzieFrame.openFileFailed.inGame"));
       return;
     }
+    endHumanSlGameIfActive();
     boolean oriSound = Lizzie.config.playSound;
     canGoAfterload = false;
     Lizzie.config.playSound = false;
@@ -6849,6 +6852,20 @@ public class LizzieFrame extends JFrame {
   public void onClicked(int x, int y) {
     if (isTrialActive()) {
       showTrialBlockedHint();
+      return;
+    }
+    if (humanSlGame != null && !humanSlGame.isFinished()) {
+      Optional<int[]> humanSlCoords;
+      if (Lizzie.config.isThinkingMode()) {
+        humanSlCoords = boardRenderer2.convertScreenToCoordinates(x, y);
+        if (!humanSlCoords.isPresent())
+          humanSlCoords = boardRenderer.convertScreenToCoordinates(x, y);
+      } else {
+        humanSlCoords = boardRenderer.convertScreenToCoordinates(x, y);
+      }
+      if (humanSlCoords.isPresent()) {
+        humanSlGame.onBoardClicked(humanSlCoords.get()[0], humanSlCoords.get()[1]);
+      }
       return;
     }
     // Check for board click
@@ -9924,6 +9941,36 @@ public class LizzieFrame extends JFrame {
         };
     Thread thread = new Thread(runnable);
     thread.start();
+  }
+
+  public void endHumanSlGameIfActive() {
+    if (humanSlGame != null && !humanSlGame.isFinished()) {
+      humanSlGame.abort();
+    }
+  }
+
+  public void startHumanSlGameDialog() {
+    if (Lizzie.frame.isContributing) {
+      Utils.showMsg(
+          Lizzie.resourceBundle.getString("Contribute.tips.contributingAndStartAnotherLizzieYzy"));
+      return;
+    }
+    if (humanSlGame != null && !humanSlGame.isFinished()) {
+      humanSlGame.showControlPanel();
+      return;
+    }
+    if (EngineManager.isEngineGame
+        || Lizzie.frame.isPlayingAgainstLeelaz
+        || Lizzie.frame.isAnaPlayingAgainstLeelaz) {
+      Utils.showMsg(Lizzie.resourceBundle.getString("LizzieFrame.engineGameStopFirstHint"));
+      return;
+    }
+    if (Lizzie.leelaz != null && Lizzie.leelaz.isPondering()) {
+      Lizzie.leelaz.togglePonder();
+    }
+    NewHumanSlGameDialog dialog = new NewHumanSlGameDialog(this);
+    dialog.setVisible(true);
+    dialog.dispose();
   }
 
   public void startEngineGameDialog() {

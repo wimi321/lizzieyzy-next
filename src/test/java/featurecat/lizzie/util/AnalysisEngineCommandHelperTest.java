@@ -45,7 +45,8 @@ class AnalysisEngineCommandHelperTest {
     assertTrue(
         Files.readString(analysisConfig, StandardCharsets.UTF_8)
             .contains("Config for KataGo C++ Analysis engine"));
-    assertTrue(result.getMessage().contains("缺少 analysis.cfg，已自动生成"));
+    assertTrue(result.getMessage().contains("analysis.cfg"));
+    assertTrue(result.getMessage().contains(analysisConfig.toString()));
   }
 
   @Test
@@ -85,7 +86,7 @@ class AnalysisEngineCommandHelperTest {
     AnalysisEngineCommandHelper.Result result = AnalysisEngineCommandHelper.fromSavedEngine(engine);
 
     assertFalse(result.isSuccess());
-    assertTrue(result.getMessage().contains("远程"));
+    assertTrue(result.getMessage().toLowerCase(java.util.Locale.ROOT).contains("remote"));
   }
 
   @Test
