@@ -9,12 +9,17 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
+import java.util.OptionalDouble;
 
 /** Estimates a player's practical strength from already cached main-line analysis. */
 public final class PlayerStrengthEstimator {
   private static final int MIN_REPORT_SAMPLES = 6;
   private static final double WINRATE_TO_SCORE_LOSS = 6.0;
   private static final int ADDITIONAL_MOVE_ORDER = 999;
+  private static final int AI_RANK_CAP = 10;
+  private static final int OPENING_MOVE_LIMIT = 60;
+  private static final int MIDDLEGAME_MOVE_LIMIT = 160;
+  private static final double XGBOOST_SELECTED_SIGMA = 1.386;
   private static final double MIN_DIFFICULTY_WEIGHT = 0.05;
   // Generated from the clean-set Huber regression report documented in
   // docs/PLAYER_STRENGTH_CALIBRATION.md.
@@ -128,9 +133,24 @@ public final class PlayerStrengthEstimator {
 
   private PlayerStrengthEstimator() {}
 
+  private static volatile StrengthModel activeModel = StrengthModel.GP_CORE4;
+
+  public static StrengthModel activeModel() {
+    return activeModel;
+  }
+
+  public static void setActiveModel(StrengthModel model) {
+    activeModel = model == null ? StrengthModel.GP_CORE4 : model;
+  }
+
   public static Report estimate(BoardHistoryNode start) {
+    return estimate(start, activeModel());
+  }
+
+  public static Report estimate(BoardHistoryNode start, StrengthModel model) {
+    StrengthModel selectedModel = model == null ? StrengthModel.GP_CORE4 : model;
     if (start == null) {
-      return Report.empty();
+      return Report.empty(selectedModel);
     }
 
     Accumulator black = new Accumulator();
@@ -151,10 +171,10 @@ public final class PlayerStrengthEstimator {
       next = current.next(true);
     }
 
-    SideReport blackReport = black.toReport();
-    SideReport whiteReport = white.toReport();
-    SideReport overallReport = Accumulator.merge(black, white).toReport();
-    return new Report(blackReport, whiteReport, overallReport);
+    SideReport blackReport = black.toReport(selectedModel);
+    SideReport whiteReport = white.toReport(selectedModel);
+    SideReport overallReport = Accumulator.merge(black, white).toReport(selectedModel);
+    return new Report(blackReport, whiteReport, overallReport, selectedModel);
   }
 
   private static Sample sample(BoardData previous, BoardData current) {
@@ -181,7 +201,7 @@ public final class PlayerStrengthEstimator {
         positive(lossEstimate.winrateLoss),
         lossEstimate.scoreLoss.map(PlayerStrengthEstimator::positive),
         firstChoice,
-        playedCandidate.rank,
+        playedCandidate.rank >= 0 ? playedCandidate.rank : ADDITIONAL_MOVE_ORDER,
         categorize(scoreEquivalentLoss),
         scoreEquivalentLoss,
         complexity,
@@ -407,6 +427,10 @@ public final class PlayerStrengthEstimator {
   }
 
   public static SideReport summarizeSamples(List<Sample> samples) {
+    return summarizeSamples(samples, activeModel());
+  }
+
+  public static SideReport summarizeSamples(List<Sample> samples, StrengthModel model) {
     Accumulator accumulator = new Accumulator();
     if (samples != null) {
       for (Sample sample : samples) {
@@ -415,23 +439,46 @@ public final class PlayerStrengthEstimator {
         }
       }
     }
-    return accumulator.toReport();
+    return accumulator.toReport(model == null ? StrengthModel.GP_CORE4 : model);
+  }
+
+  public enum StrengthModel {
+    GP_CORE4("GP core4"),
+    XGBOOST_TOP16("XGBoost top16"),
+    HUBER_LINEAR("Huber linear");
+
+    private final String displayName;
+
+    StrengthModel(String displayName) {
+      this.displayName = displayName;
+    }
+
+    public String displayName() {
+      return displayName;
+    }
+
+    @Override
+    public String toString() {
+      return displayName;
+    }
   }
 
   public static final class Report {
     public final SideReport black;
     public final SideReport white;
     public final SideReport overall;
+    public final StrengthModel model;
 
-    private Report(SideReport black, SideReport white, SideReport overall) {
+    private Report(SideReport black, SideReport white, SideReport overall, StrengthModel model) {
       this.black = black;
       this.white = white;
       this.overall = overall;
+      this.model = model;
     }
 
-    private static Report empty() {
-      SideReport empty = new Accumulator().toReport();
-      return new Report(empty, empty, empty);
+    private static Report empty(StrengthModel model) {
+      SideReport empty = new Accumulator().toReport(model);
+      return new Report(empty, empty, empty, model);
     }
 
     public boolean hasEnoughData() {
@@ -442,6 +489,9 @@ public final class PlayerStrengthEstimator {
   public static final class SideReport {
     public final int sampleCount;
     public final int scoreSampleCount;
+    public final StrengthModel model;
+    public final double rankValue;
+    public final double predictionSigma;
     public final double qualityScore;
     public final double averageWinrateLoss;
     public final double averageScoreLoss;
@@ -462,6 +512,9 @@ public final class PlayerStrengthEstimator {
     private SideReport(
         int sampleCount,
         int scoreSampleCount,
+        StrengthModel model,
+        double rankValue,
+        double predictionSigma,
         double qualityScore,
         double averageWinrateLoss,
         double averageScoreLoss,
@@ -480,6 +533,9 @@ public final class PlayerStrengthEstimator {
         List<Sample> samples) {
       this.sampleCount = sampleCount;
       this.scoreSampleCount = scoreSampleCount;
+      this.model = model;
+      this.rankValue = rankValue;
+      this.predictionSigma = predictionSigma;
       this.qualityScore = qualityScore;
       this.averageWinrateLoss = averageWinrateLoss;
       this.averageScoreLoss = averageScoreLoss;
@@ -504,6 +560,17 @@ public final class PlayerStrengthEstimator {
 
     public String qualityScoreText() {
       return String.format(Locale.US, "%.0f", qualityScore);
+    }
+
+    public String rankValueText() {
+      return String.format(Locale.US, "%.1f", rankValue);
+    }
+
+    public String predictionSigmaText() {
+      if (!Double.isFinite(predictionSigma) || predictionSigma <= 0.0) {
+        return "-";
+      }
+      return String.format(Locale.US, "%.1f", predictionSigma);
     }
 
     public String averageWinrateLossText() {
@@ -620,12 +687,16 @@ public final class PlayerStrengthEstimator {
       return merged;
     }
 
-    private SideReport toReport() {
+    private SideReport toReport(StrengthModel model) {
+      StrengthModel selectedModel = model == null ? StrengthModel.GP_CORE4 : model;
       int sampleCount = samples.size();
       if (sampleCount == 0) {
         return new SideReport(
             0,
             0,
+            selectedModel,
+            0.0,
+            Double.NaN,
             0.0,
             0.0,
             0.0,
@@ -652,11 +723,15 @@ public final class PlayerStrengthEstimator {
       double complexitySum = 0.0;
       List<Double> scoreLosses = new ArrayList<>();
       List<Double> scoreEquivalentLosses = new ArrayList<>();
+      List<Sample> openingSamples = new ArrayList<>();
+      List<Sample> middlegameSamples = new ArrayList<>();
       int firstChoices = 0;
+      int top5Moves = 0;
       int goodMoves = 0;
       int badMoves = 0;
       int mistakes = 0;
       int blunders = 0;
+      double aiRankSum = 0.0;
       for (Sample sample : samples) {
         double winrateLoss = positive(sample.winrateLoss);
         winrateLossSum += winrateLoss;
@@ -673,6 +748,9 @@ public final class PlayerStrengthEstimator {
         if (sample.firstChoice) {
           firstChoices++;
         }
+        if (sample.aiRank < 5) {
+          top5Moves++;
+        }
         if (sample.category.isGoodMove()) {
           goodMoves++;
         } else {
@@ -684,6 +762,12 @@ public final class PlayerStrengthEstimator {
         if (sample.category == MoveCategory.BLUNDER) {
           blunders++;
         }
+        if (sample.moveNumber <= OPENING_MOVE_LIMIT) {
+          openingSamples.add(sample);
+        } else if (sample.moveNumber <= MIDDLEGAME_MOVE_LIMIT) {
+          middlegameSamples.add(sample);
+        }
+        aiRankSum += cappedAiRank(sample);
         complexitySum += sample.complexity;
       }
 
@@ -697,29 +781,45 @@ public final class PlayerStrengthEstimator {
       double weightedPointLoss =
           weightSum == 0.0 ? averageScoreEquivalentLoss : weightedPointLossSum / weightSum;
       double firstChoiceRate = (double) firstChoices / sampleCount;
+      double top5Rate = (double) top5Moves / sampleCount;
       double goodMoveRate = (double) goodMoves / sampleCount;
       double badMoveRate = (double) badMoves / sampleCount;
       double mistakeRate = (double) mistakes / sampleCount;
       double blunderRate = (double) blunders / sampleCount;
       double matchRate = matchRate(firstChoiceRate, goodMoveRate, mistakeRate);
       double averageDifficulty = complexitySum * 100.0 / sampleCount;
-      double qualityScore =
-          qualityScore(
+      double medianPointLossForModel =
+          scoreSampleCount == 0 ? averageScoreEquivalentLoss : medianScoreLoss;
+      double averageAiRank = aiRankSum / sampleCount;
+      double openingWeightedLoss = weightedLoss(openingSamples, weightedPointLoss);
+      double middlegameWeightedLoss = weightedLoss(middlegameSamples, weightedPointLoss);
+      RankPrediction prediction =
+          rankPrediction(
+              selectedModel,
               weightedPointLoss,
               averageScoreEquivalentLoss,
-              scoreSampleCount == 0 ? averageScoreEquivalentLoss : medianScoreLoss,
+              medianPointLossForModel,
               p75ScoreEquivalentLoss,
               p90ScoreEquivalentLoss,
+              max(scoreEquivalentLosses),
+              openingWeightedLoss,
+              middlegameWeightedLoss,
               firstChoiceRate,
+              top5Rate,
+              averageAiRank,
               goodMoveRate,
               mistakeRate,
               blunderRate,
               matchRate,
               averageDifficulty);
+      double qualityScore = rankValueToQualityScore(prediction.rankValue);
 
       return new SideReport(
           sampleCount,
           scoreSampleCount,
+          selectedModel,
+          prediction.rankValue,
+          prediction.sigma,
           qualityScore,
           averageWinrateLoss,
           averageScoreLoss,
@@ -738,7 +838,7 @@ public final class PlayerStrengthEstimator {
               qualityScore,
               weightedPointLoss,
               averageScoreEquivalentLoss,
-              scoreSampleCount == 0 ? averageScoreEquivalentLoss : medianScoreLoss,
+              medianPointLossForModel,
               p90ScoreEquivalentLoss,
               firstChoiceRate,
               goodMoveRate,
@@ -776,25 +876,106 @@ public final class PlayerStrengthEstimator {
       return values.get(lower) * (1.0 - weight) + values.get(upper) * weight;
     }
 
+    private static double max(List<Double> values) {
+      if (values.isEmpty()) {
+        return 0.0;
+      }
+      double maximum = 0.0;
+      for (double value : values) {
+        maximum = Math.max(maximum, value);
+      }
+      return maximum;
+    }
+
+    private static double weightedLoss(List<Sample> samples, double fallback) {
+      if (samples == null || samples.isEmpty()) {
+        return fallback;
+      }
+      double weightedLossSum = 0.0;
+      double weightSum = 0.0;
+      for (Sample sample : samples) {
+        weightedLossSum += sample.scoreEquivalentLoss * sample.adjustedWeight;
+        weightSum += sample.adjustedWeight;
+      }
+      return weightSum == 0.0 ? fallback : weightedLossSum / weightSum;
+    }
+
+    private static double cappedAiRank(Sample sample) {
+      if (sample.aiRank >= ADDITIONAL_MOVE_ORDER) {
+        return AI_RANK_CAP;
+      }
+      return Math.min(sample.aiRank + 1.0, AI_RANK_CAP);
+    }
+
     private static double matchRate(
         double firstChoiceRate, double goodMoveRate, double mistakeRate) {
       return clamp(
           0.45 * firstChoiceRate + 0.45 * goodMoveRate + 0.10 * (1.0 - mistakeRate), 0.0, 1.0);
     }
 
-    private static double qualityScore(
+    private static RankPrediction rankPrediction(
+        StrengthModel model,
         double weightedPointLoss,
         double averagePointLoss,
         double medianPointLoss,
         double p75PointLoss,
         double p90PointLoss,
+        double maxPointLoss,
+        double openingWeightedLoss,
+        double middlegameWeightedLoss,
         double firstChoiceRate,
+        double top5Rate,
+        double averageAiRank,
         double goodMoveRate,
         double mistakeRate,
         double blunderRate,
         double matchRate,
         double averageDifficulty) {
-      double rankValue =
+      if (model == StrengthModel.GP_CORE4) {
+        Optional<GaussianProcessStrengthModel.Prediction> gpPrediction =
+            GaussianProcessStrengthModel.predictRankValue(
+                GaussianProcessStrengthModel.Features.core4(
+                    clamp(goodMoveRate, 0.0, 1.0),
+                    clamp(firstChoiceRate, 0.0, 1.0),
+                    positive(averagePointLoss),
+                    positive(averageDifficulty)));
+        if (gpPrediction.isPresent()) {
+          GaussianProcessStrengthModel.Prediction prediction = gpPrediction.get();
+          return new RankPrediction(
+              HighEndStrengthCalibrator.calibrate(
+                  prediction.rankValue,
+                  goodMoveRate,
+                  firstChoiceRate,
+                  averagePointLoss,
+                  averageDifficulty),
+              prediction.sigma);
+        }
+      }
+
+      if (model == StrengthModel.XGBOOST_TOP16 || model == StrengthModel.GP_CORE4) {
+        OptionalDouble xgboostPrediction =
+            xgboostTop16Prediction(
+                weightedPointLoss,
+                averagePointLoss,
+                medianPointLoss,
+                p75PointLoss,
+                p90PointLoss,
+                maxPointLoss,
+                openingWeightedLoss,
+                middlegameWeightedLoss,
+                firstChoiceRate,
+                top5Rate,
+                averageAiRank,
+                goodMoveRate,
+                mistakeRate,
+                matchRate,
+                averageDifficulty);
+        if (xgboostPrediction.isPresent()) {
+          return new RankPrediction(xgboostPrediction.getAsDouble(), XGBOOST_SELECTED_SIGMA);
+        }
+      }
+
+      return new RankPrediction(
           regressedRankValue(
               weightedPointLoss,
               averagePointLoss,
@@ -806,8 +987,49 @@ public final class PlayerStrengthEstimator {
               mistakeRate,
               blunderRate,
               matchRate,
-              averageDifficulty);
-      return rankValueToQualityScore(rankValue);
+              averageDifficulty),
+          Double.NaN);
+    }
+
+    private static OptionalDouble xgboostTop16Prediction(
+        double weightedPointLoss,
+        double averagePointLoss,
+        double medianPointLoss,
+        double p75PointLoss,
+        double p90PointLoss,
+        double maxPointLoss,
+        double openingWeightedLoss,
+        double middlegameWeightedLoss,
+        double firstChoiceRate,
+        double top5Rate,
+        double averageAiRank,
+        double goodMoveRate,
+        double mistakeRate,
+        double matchRate,
+        double averageDifficulty) {
+      double difficulty = clamp((averageDifficulty - 25.0) / 35.0, 0.0, 1.0);
+      return XGBoostStrengthModel.predictRankValue(
+          XGBoostStrengthModel.Features.selectedTop16(
+              lossFit(weightedPointLoss, 50.0),
+              clamp(goodMoveRate, 0.0, 1.0),
+              lossFit(averagePointLoss, 50.0),
+              lossFit(medianPointLoss, 50.0),
+              clamp(top5Rate, 0.0, 1.0),
+              lossFit(openingWeightedLoss, 50.0),
+              lossFit(middlegameWeightedLoss, 50.0),
+              1.0 / (1.0 + clamp(averageAiRank, 0.0, 10.0)),
+              lossFit(p75PointLoss, 50.0),
+              lossFit(maxPointLoss, 120.0),
+              clamp(matchRate, 0.0, 1.0),
+              lossFit(p90PointLoss, 80.0),
+              clamp(firstChoiceRate, 0.0, 1.0),
+              1.0 - clamp(mistakeRate, 0.0, 1.0),
+              clamp(top5Rate, 0.0, 1.0) * difficulty,
+              clamp(goodMoveRate, 0.0, 1.0) * difficulty));
+    }
+
+    private static double lossFit(double loss, double cap) {
+      return 1.0 / (1.0 + clamp(positive(loss), 0.0, cap));
     }
 
     private Confidence confidence(int sampleCount, int scoreSampleCount) {
@@ -1121,6 +1343,16 @@ public final class PlayerStrengthEstimator {
     private LevelThreshold(double value, int level) {
       this.value = value;
       this.level = level;
+    }
+  }
+
+  private static final class RankPrediction {
+    private final double rankValue;
+    private final double sigma;
+
+    private RankPrediction(double rankValue, double sigma) {
+      this.rankValue = rankValue;
+      this.sigma = sigma;
     }
   }
 
