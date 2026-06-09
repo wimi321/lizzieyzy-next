@@ -13,6 +13,7 @@ import java.time.Duration;
 import java.util.Optional;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeoutException;
 import javax.swing.SwingUtilities;
 import org.json.JSONArray;
@@ -27,6 +28,8 @@ import org.json.JSONObject;
 public final class HumanSlGameController {
   private static final int AI_MOVE_RETRIES = 3;
   private static final Duration WARMUP_TIMEOUT = Duration.ofSeconds(180);
+  private static final long MIN_MOVE_DELAY_MILLIS = 800L;
+  private static final long MAX_MOVE_DELAY_MILLIS = 4000L;
 
   private final HumanSlAnalysisRunner runner;
   private final String profile;
@@ -189,6 +192,7 @@ public final class HumanSlGameController {
     }
     aiExecutor.execute(
         () -> {
+          long startedAt = System.currentTimeMillis();
           BoardHistoryNode positionNode = Lizzie.board.getHistory().getCurrentHistoryNode();
           Optional<String> move = Optional.empty();
           for (int attempt = 0; attempt < AI_MOVE_RETRIES && !finished; attempt++) {
@@ -197,9 +201,35 @@ public final class HumanSlGameController {
               break;
             }
           }
+          waitMinimumThinkTime(startedAt);
           Optional<String> resolved = move;
           SwingUtilities.invokeLater(() -> applyAiMove(resolved));
         });
+  }
+
+  /**
+   * Keeps the AI from snapping a move down instantly. Raw policy play returns in milliseconds,
+   * which feels unnatural, so we pad short responses up to a small randomized delay similar to
+   * KataGo's delayMoveScale/delayMoveMax pacing.
+   */
+  private void waitMinimumThinkTime(long startedAt) {
+    if (finished) {
+      return;
+    }
+    long target =
+        MIN_MOVE_DELAY_MILLIS
+            + (long)
+                (ThreadLocalRandom.current().nextDouble()
+                    * (MAX_MOVE_DELAY_MILLIS - MIN_MOVE_DELAY_MILLIS));
+    long remaining = target - (System.currentTimeMillis() - startedAt);
+    if (remaining <= 0L) {
+      return;
+    }
+    try {
+      Thread.sleep(remaining);
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+    }
   }
 
   private void applyAiMove(Optional<String> move) {

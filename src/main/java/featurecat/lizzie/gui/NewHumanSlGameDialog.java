@@ -152,6 +152,10 @@ public final class NewHumanSlGameDialog extends JDialog {
     cancelled = true;
     dispose();
     Window frame = Lizzie.frame;
+    boolean wasPondering = Lizzie.leelaz != null && Lizzie.leelaz.isPondering();
+    if (wasPondering) {
+      Lizzie.leelaz.togglePonder();
+    }
     DownloadProgressDialog progressDialog = new DownloadProgressDialog(frame);
     KataGoAutoSetupHelper.DownloadSession downloadSession =
         new KataGoAutoSetupHelper.DownloadSession();
@@ -169,12 +173,14 @@ public final class NewHumanSlGameDialog extends JDialog {
                 SwingUtilities.invokeLater(
                     () -> {
                       progressDialog.dispose();
+                      restorePondering(wasPondering);
                       Utils.showMsg(resourceBundle.getString("HumanSlGame.downloadCompletePrompt"));
                     });
               } catch (IOException e) {
                 SwingUtilities.invokeLater(
                     () -> {
                       progressDialog.dispose();
+                      restorePondering(wasPondering);
                       Utils.showMsg(e.getLocalizedMessage());
                     });
               }
@@ -183,6 +189,12 @@ public final class NewHumanSlGameDialog extends JDialog {
     progressDialog.setDownloadSession(downloadSession);
     worker.start();
     progressDialog.setVisible(true);
+  }
+
+  private void restorePondering(boolean wasPondering) {
+    if (wasPondering && Lizzie.leelaz != null && !Lizzie.leelaz.isPondering()) {
+      Lizzie.leelaz.togglePonder();
+    }
   }
 
   private void startConfiguredGame(Path modelPath) {
