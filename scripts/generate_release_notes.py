@@ -3999,6 +3999,8 @@ def build_release_notes(asset_map: dict[str, str | None], bundle: dict[str, str]
         return build_next_2026_06_08_1_notes(asset_map, bundle, repo, release_tag)
     if release_tag == 'next-2026-06-09.1':
         return build_next_2026_06_09_1_notes(asset_map, bundle, repo, release_tag)
+    if release_tag == 'next-2026-06-10.1':
+        return build_next_2026_06_10_1_notes(asset_map, bundle, repo, release_tag)
 
     assets_cn = {
         key: format_asset(asset_map[key], repo, release_tag)
@@ -4935,6 +4937,240 @@ def build_next_2026_06_09_1_notes(
     validate_release_sections(sections)
     heading = f'# LizzieYzy Next {release_tag} 更新' if release_tag else '# LizzieYzy Next 更新'
     return heading + '\n\n' + '\n\n---\n\n'.join(
+        render_language_section(section) for section in sections
+    ) + '\n'
+
+
+def build_next_2026_06_10_1_notes(
+    asset_map: dict[str, str | None],
+    bundle: dict[str, str],
+    repo: str,
+    release_tag: str | None,
+) -> str:
+    assets_cn = {key: format_asset(asset_map[key], repo, release_tag) for key in asset_map}
+    assets = {key: format_asset_en(asset_map[key], repo, release_tag) for key in asset_map}
+    katago_version = bundle['katago_version']
+    model_source = bundle['model_source']
+    blocks = [
+        {
+            'language': '中文',
+            'labels': 'zh',
+            'assets': assets_cn,
+            'intro': '这是棋力评估模型升级版。重点合并 @huhanyu 贡献的 PR #39：新增 GP core4 默认模型、XGBoost top16 对照模型和可复现校准数据，让“棋力评估”不只好看，也更有数据支撑。',
+            'updates_heading': '本版主要更新',
+            'updates': [
+                '合并 PR #39，接入 GP/XGBoost 棋力模型和校准数据集，感谢 @huhanyu 的高质量贡献。',
+                '默认棋力模型升级为 GP core4，用更多真实样本校准高段和职业区间的估计。',
+                '加入 XGBoost top16 作为可选对照模型，同时保留 Huber linear 作为回退/调试模型。',
+                '棋力评估界面增加模型选择提示，分段统计和命中图会严格跟随当前选择的模型。',
+                '补充模型加载、校准器、XGBoost、棋力评估和 UI 回归测试，发布前完成全量测试与打包验证。',
+            ],
+            'before_heading': '下载前先看这几句',
+            'before': [
+                f'Windows 普通用户优先下载 {assets_cn["windows_opencl_portable"]}，这是 **OpenCL 版（推荐，免安装）**。',
+                f'如果 OpenCL 在你的电脑上不稳定，再改用 {assets_cn["windows_portable"]}。',
+                f'如果你的电脑是 **英伟达显卡**，优先下载 {assets_cn["windows_nvidia_portable"]}。',
+                f'主推荐整合包已内置 KataGo `{katago_version}` 和默认权重 `{model_source}`。',
+                '如果你更喜欢安装流程，再选同系列的 `installer.exe`。',
+            ],
+            'download_heading': '下载建议',
+            'download_headers': ('你的电脑', '直接下载这个'),
+            'why_heading': '这一版为什么值得更新',
+            'why': [
+                '棋力评估从“展示优化”继续向“模型可信度”推进，默认结果更适合长期使用和复盘对比。',
+                '高级用户可以切换 GP / XGBoost / Huber 观察差异，普通用户保持默认 GP core4 即可。',
+                '这版延续上一版的棋力评估 UI，同时把底层估计模型和测试覆盖一起补强。',
+            ],
+            'contact_heading': '交流',
+            'contact': ['QQ 群：`299419120`'],
+        },
+        {
+            'language': '繁體中文',
+            'labels': 'zh_hant',
+            'assets': assets_cn,
+            'intro': '這是棋力評估模型升級版。重點合併 @huhanyu 貢獻的 PR #39：新增 GP core4 預設模型、XGBoost top16 對照模型和可復現校準資料，讓「棋力評估」不只好看，也更有資料支撐。',
+            'updates_heading': '本版主要更新',
+            'updates': [
+                '合併 PR #39，接入 GP/XGBoost 棋力模型和校準資料集，感謝 @huhanyu 的高品質貢獻。',
+                '預設棋力模型升級為 GP core4，用更多真實樣本校準高段和職業區間的估計。',
+                '加入 XGBoost top16 作為可選對照模型，同時保留 Huber linear 作為回退/除錯模型。',
+                '棋力評估介面增加模型選擇提示，分段統計和命中圖會嚴格跟隨目前選擇的模型。',
+                '補充模型載入、校準器、XGBoost、棋力評估和 UI 回歸測試，發布前完成全量測試與打包驗證。',
+            ],
+            'before_heading': '下載前先看這幾句',
+            'before': [
+                f'Windows 一般使用者優先下載 {assets_cn["windows_opencl_portable"]}，這是 **OpenCL 版（推薦，免安裝）**。',
+                f'如果 OpenCL 在你的電腦上不穩定，再改用 {assets_cn["windows_portable"]}。',
+                f'如果你的電腦是 **NVIDIA 顯示卡**，優先下載 {assets_cn["windows_nvidia_portable"]}。',
+                f'主推薦整合包已內建 KataGo `{katago_version}` 和預設權重 `{model_source}`。',
+                '如果你更喜歡安裝流程，再選同系列的 `installer.exe`。',
+            ],
+            'download_heading': '下載建議',
+            'download_headers': ('你的電腦', '直接下載這個'),
+            'why_heading': '這一版為什麼值得更新',
+            'why': [
+                '棋力評估從「展示優化」繼續向「模型可信度」推進，預設結果更適合長期使用和復盤對比。',
+                '進階使用者可以切換 GP / XGBoost / Huber 觀察差異，一般使用者保持預設 GP core4 即可。',
+                '這版延續上一版的棋力評估 UI，同時把底層估計模型和測試覆蓋一起補強。',
+            ],
+            'contact_heading': '交流',
+            'contact': ['QQ 群：`299419120`'],
+        },
+        {
+            'language': 'English',
+            'labels': 'en',
+            'assets': assets,
+            'intro': 'This release upgrades the Player Strength Estimate model. It merges PR #39 from @huhanyu, adding the GP core4 default model, an XGBoost top16 comparison model, and reproducible calibration data so the polished UI is backed by stronger data.',
+            'updates_heading': 'Release Highlights',
+            'updates': [
+                'Merged PR #39 with GP/XGBoost player-strength models and calibration datasets. Thanks to @huhanyu for the high-quality contribution.',
+                'The default strength model is now GP core4, calibrated with more real samples for high-dan and professional ranges.',
+                'Added XGBoost top16 as an optional comparison model while keeping Huber linear as a fallback/debug model.',
+                'The Player Strength Estimate UI now localizes the model selector hint, and segment summaries / hit maps follow the selected model consistently.',
+                'Added model-loading, calibrator, XGBoost, player-strength, and UI regression coverage; full tests and packaging were rerun before release.',
+            ],
+            'before_heading': 'Read Before Downloading',
+            'before': [
+                f'Most Windows users should download {assets["windows_opencl_portable"]}, the **recommended no-install OpenCL build**.',
+                f'If OpenCL is unreliable on your PC, use {assets["windows_portable"]} instead.',
+                f'If your PC has an **NVIDIA GPU**, try {assets["windows_nvidia_portable"]} first.',
+                f'The recommended bundles include KataGo `{katago_version}` and the default weight `{model_source}`.',
+                'If you prefer an installer, choose the matching `installer.exe` package.',
+            ],
+            'download_heading': 'Download Guide',
+            'download_headers': ('Your computer', 'Download this file'),
+            'why_heading': 'Why This Release Is Worth Updating',
+            'why': [
+                'Player Strength Estimate moves beyond visual polish toward more trustworthy model-backed results.',
+                'Advanced users can compare GP, XGBoost, and Huber; most users can simply keep the default GP core4 model.',
+                'This keeps the previous readable UI while strengthening the underlying estimation model and test coverage.',
+            ],
+            'contact_heading': 'Contact',
+            'contact': ['QQ group: `299419120`'],
+        },
+        {
+            'language': '日本語',
+            'labels': 'ja',
+            'assets': assets,
+            'intro': 'これは棋力評価モデルのアップグレード版です。@huhanyu さんの PR #39 をマージし、既定の GP core4 モデル、比較用の XGBoost top16 モデル、再現可能な校正データを追加しました。',
+            'updates_heading': '主な更新',
+            'updates': [
+                'PR #39 をマージし、GP/XGBoost 棋力モデルと校正データセットを導入しました。@huhanyu さんの高品質な貢献に感謝します。',
+                '既定の棋力モデルを GP core4 に変更し、より多くの実データで高段・プロ帯の推定を校正しました。',
+                '比較用モデルとして XGBoost top16 を追加し、Huber linear はフォールバック/デバッグ用として残しています。',
+                '棋力評価 UI のモデル選択ヒントをローカライズし、区間集計と命中図が選択中のモデルに一貫して従うようにしました。',
+                'モデル読み込み、校正器、XGBoost、棋力評価、UI 回帰テストを追加し、リリース前に全体テストと package を再実行しました。',
+            ],
+            'before_heading': 'ダウンロード前に',
+            'before': [
+                f'多くの Windows ユーザーは {assets["windows_opencl_portable"]} を選ぶのがおすすめです。これは **推奨 OpenCL 版、インストール不要** です。',
+                f'OpenCL が不安定な場合は {assets["windows_portable"]} を使ってください。',
+                f'**NVIDIA GPU** 搭載 PC では {assets["windows_nvidia_portable"]} を優先してください。',
+                f'推奨バンドルには KataGo `{katago_version}` と既定の重み `{model_source}` が含まれています。',
+                'インストーラ形式がよい場合は、同じ系列の `installer.exe` を選んでください。',
+            ],
+            'download_heading': 'ダウンロード案内',
+            'download_headers': ('お使いの環境', 'ダウンロードするファイル'),
+            'why_heading': 'このリリースを更新する理由',
+            'why': [
+                '棋力評価は見た目の改善だけでなく、モデルに基づくより信頼しやすい結果へ進みました。',
+                '上級ユーザーは GP / XGBoost / Huber を比較でき、通常は既定の GP core4 のままで使えます。',
+                '前回の読みやすい UI を維持しながら、推定モデルとテスト範囲を強化しています。',
+            ],
+            'contact_heading': '連絡先',
+            'contact': ['QQ グループ: `299419120`'],
+        },
+        {
+            'language': '한국어',
+            'labels': 'ko',
+            'assets': assets,
+            'intro': '이번 버전은 기력 평가 모델 업그레이드입니다. @huhanyu 님의 PR #39 를 병합해 기본 GP core4 모델, 비교용 XGBoost top16 모델, 재현 가능한 보정 데이터를 추가했습니다.',
+            'updates_heading': '주요 업데이트',
+            'updates': [
+                'PR #39 를 병합해 GP/XGBoost 기력 모델과 보정 데이터셋을 도입했습니다. 좋은 기여를 해 준 @huhanyu 님께 감사드립니다.',
+                '기본 기력 모델을 GP core4 로 업그레이드했고, 더 많은 실제 샘플로 고단/프로 구간 추정을 보정했습니다.',
+                '선택 비교 모델로 XGBoost top16 을 추가했고, Huber linear 는 fallback/debug 모델로 유지했습니다.',
+                '기력 평가 UI 의 모델 선택 안내를 현지화했고, 구간 통계와 명중도 화면이 선택된 모델을 일관되게 따르도록 했습니다.',
+                '모델 로딩, 보정기, XGBoost, 기력 평가, UI 회귀 테스트를 보강했으며 릴리스 전 전체 테스트와 package 를 다시 수행했습니다.',
+            ],
+            'before_heading': '다운로드 전 확인',
+            'before': [
+                f'대부분의 Windows 사용자는 {assets["windows_opencl_portable"]} 를 먼저 받으면 됩니다. 이는 **추천 OpenCL 무설치 빌드** 입니다.',
+                f'OpenCL 이 PC에서 불안정하면 {assets["windows_portable"]} 를 대신 사용하세요.',
+                f'**NVIDIA GPU** 가 있다면 {assets["windows_nvidia_portable"]} 를 우선 사용해 보세요.',
+                f'추천 번들에는 KataGo `{katago_version}` 와 기본 가중치 `{model_source}` 가 포함되어 있습니다.',
+                '설치형 흐름을 원한다면 같은 계열의 `installer.exe` 를 고르세요.',
+            ],
+            'download_heading': '다운로드 안내',
+            'download_headers': ('내 컴퓨터', '다운로드할 파일'),
+            'why_heading': '이번 릴리스를 업데이트할 이유',
+            'why': [
+                '기력 평가는 시각 개선을 넘어 모델 기반의 더 신뢰할 수 있는 결과로 나아갔습니다.',
+                '고급 사용자는 GP / XGBoost / Huber 를 비교할 수 있고, 일반 사용자는 기본 GP core4 를 그대로 쓰면 됩니다.',
+                '이전 버전의 읽기 쉬운 UI 를 유지하면서 내부 추정 모델과 테스트 커버리지를 강화했습니다.',
+            ],
+            'contact_heading': '연락처',
+            'contact': ['QQ 그룹: `299419120`'],
+        },
+        {
+            'language': 'ภาษาไทย',
+            'labels': 'th',
+            'assets': assets,
+            'intro': 'เวอร์ชันนี้อัปเกรดโมเดล Player Strength Estimate โดย merge PR #39 จาก @huhanyu เพิ่ม GP core4 เป็นค่าเริ่มต้น, XGBoost top16 สำหรับเปรียบเทียบ และข้อมูล calibration ที่ทำซ้ำได้',
+            'updates_heading': 'ไฮไลต์ของเวอร์ชันนี้',
+            'updates': [
+                'Merge PR #39 เพิ่ม GP/XGBoost player-strength models และ calibration datasets ขอบคุณ @huhanyu สำหรับ contribution คุณภาพสูง',
+                'โมเดลเริ่มต้นเปลี่ยนเป็น GP core4 ซึ่งปรับเทียบด้วย sample จริงมากขึ้นสำหรับช่วง high-dan และ professional',
+                'เพิ่ม XGBoost top16 เป็นโมเดลเปรียบเทียบ และยังคง Huber linear ไว้เป็น fallback/debug model',
+                'UI Player Strength Estimate มีคำอธิบาย model selector และ segment summary / hit map จะใช้โมเดลที่เลือกอย่างสอดคล้องกัน',
+                'เพิ่ม coverage สำหรับ model loading, calibrator, XGBoost, player-strength และ UI regression พร้อมรัน full tests และ packaging ก่อน release',
+            ],
+            'before_heading': 'ก่อนดาวน์โหลด ดูตรงนี้ก่อน',
+            'before': [
+                f'ผู้ใช้ Windows ส่วนใหญ่แนะนำให้ดาวน์โหลด {assets["windows_opencl_portable"]} ซึ่งเป็น **OpenCL รุ่นแนะนำ แบบไม่ต้องติดตั้ง**',
+                f'ถ้า OpenCL ทำงานไม่ดีบนเครื่องของคุณ ให้เปลี่ยนไปใช้ {assets["windows_portable"]}',
+                f'ถ้าเครื่องของคุณมี **การ์ดจอ NVIDIA** แนะนำให้ใช้ {assets["windows_nvidia_portable"]}',
+                f'แพ็กเกจหลักมี KataGo `{katago_version}` และ weight เริ่มต้น `{model_source}` มาให้แล้ว',
+                'ถ้าชอบขั้นตอนแบบติดตั้ง ให้เลือกไฟล์ `installer.exe` ในชุดเดียวกัน',
+            ],
+            'download_heading': 'คำแนะนำการดาวน์โหลด',
+            'download_headers': ('คอมพิวเตอร์ของคุณ', 'ไฟล์ที่ควรดาวน์โหลด'),
+            'why_heading': 'ทำไมเวอร์ชันนี้น่าอัปเดต',
+            'why': [
+                'Player Strength Estimate ไม่ได้ดีขึ้นแค่หน้าตา แต่มีโมเดลและข้อมูล calibration รองรับมากขึ้น',
+                'ผู้ใช้ขั้นสูงสามารถเปรียบเทียบ GP / XGBoost / Huber ได้ ส่วนผู้ใช้ทั่วไปใช้ GP core4 ค่าเริ่มต้นได้เลย',
+                'ยังคง UI ที่อ่านง่ายจากเวอร์ชันก่อน พร้อมเสริมโมเดลและ test coverage ด้านใน',
+            ],
+            'contact_heading': 'ติดต่อ',
+            'contact': ['กลุ่ม QQ: `299419120`'],
+        },
+    ]
+    sections: list[dict[str, object]] = []
+    for block in blocks:
+        labels_key = str(block['labels'])
+        localized_assets = block['assets']
+        sections.append(
+            {
+                'language': block['language'],
+                'intro': block['intro'],
+                'updates': {'heading': block['updates_heading'], 'items': block['updates']},
+                'before': {'heading': block['before_heading'], 'items': block['before']},
+                'download': {
+                    'heading': block['download_heading'],
+                    'headers': block['download_headers'],
+                    'rows': standard_download_rows(
+                        STANDARD_DOWNLOAD_LABELS[labels_key],
+                        localized_assets,
+                    ),
+                },
+                'why': {'heading': block['why_heading'], 'items': block['why']},
+                'contact': {'heading': block['contact_heading'], 'items': block['contact']},
+            }
+        )
+    add_nvidia50_download_rows(sections, assets_cn, assets)
+    add_tensorrt_split_download_row(sections, assets_cn, assets, asset_map)
+    validate_release_sections(sections)
+    return release_heading(release_tag) + '\n\n' + '\n\n---\n\n'.join(
         render_language_section(section) for section in sections
     ) + '\n'
 
