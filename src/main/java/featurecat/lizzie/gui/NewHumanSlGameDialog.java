@@ -154,7 +154,10 @@ public final class NewHumanSlGameDialog extends JDialog {
     Window frame = Lizzie.frame;
     boolean wasPondering = Lizzie.leelaz != null && Lizzie.leelaz.isPondering();
     if (wasPondering) {
-      Lizzie.leelaz.togglePonder();
+      // Force-stop the live analysis engine. Do NOT use togglePonder(): while a search is
+      // underway (underPonder==true) it restarts analysis instead of stopping it.
+      Lizzie.leelaz.notPondering();
+      Lizzie.leelaz.nameCmd();
     }
     DownloadProgressDialog progressDialog = new DownloadProgressDialog(frame);
     KataGoAutoSetupHelper.DownloadSession downloadSession =
@@ -193,7 +196,7 @@ public final class NewHumanSlGameDialog extends JDialog {
 
   private void restorePondering(boolean wasPondering) {
     if (wasPondering && Lizzie.leelaz != null && !Lizzie.leelaz.isPondering()) {
-      Lizzie.leelaz.togglePonder();
+      Lizzie.leelaz.ponder();
     }
   }
 
