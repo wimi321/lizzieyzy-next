@@ -309,9 +309,11 @@ class LizzieFrameRegressionTest {
         PlayerStrengthEstimator.Report.class.getDeclaredConstructor(
             PlayerStrengthEstimator.SideReport.class,
             PlayerStrengthEstimator.SideReport.class,
-            PlayerStrengthEstimator.SideReport.class);
+            PlayerStrengthEstimator.SideReport.class,
+            PlayerStrengthEstimator.StrengthModel.class);
     constructor.setAccessible(true);
-    return constructor.newInstance(blackReport, whiteReport, overallReport);
+    return constructor.newInstance(
+        blackReport, whiteReport, overallReport, PlayerStrengthEstimator.StrengthModel.GP_CORE4);
   }
 
   private static PlayerStrengthEstimator.Sample playerStrengthSample(
@@ -349,6 +351,9 @@ class LizzieFrameRegressionTest {
         PlayerStrengthEstimator.SideReport.class.getDeclaredConstructor(
             int.class,
             int.class,
+            PlayerStrengthEstimator.StrengthModel.class,
+            double.class,
+            double.class,
             double.class,
             double.class,
             double.class,
@@ -369,6 +374,9 @@ class LizzieFrameRegressionTest {
     return constructor.newInstance(
         samples.size(),
         samples.size(),
+        PlayerStrengthEstimator.StrengthModel.GP_CORE4,
+        1.0,
+        0.5,
         82.0,
         1.5,
         0.8,

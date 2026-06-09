@@ -13006,12 +13006,48 @@ public class LizzieFrame extends JFrame {
     header.add(titleBlock, BorderLayout.WEST);
     JPanel actionPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 0, 6));
     actionPanel.setOpaque(false);
+    actionPanel.add(
+        createPlayerStrengthModelCombo(
+            report.model,
+            () -> {
+              owner.dispose();
+              SwingUtilities.invokeLater(this::showPlayerStrengthEstimate);
+            }));
+    actionPanel.add(Box.createHorizontalStrut(10));
     actionPanel.add(detailButton);
     header.add(actionPanel, BorderLayout.EAST);
 
     root.add(header, BorderLayout.NORTH);
     root.add(cards, BorderLayout.CENTER);
     return root;
+  }
+
+  private JComboBox<PlayerStrengthEstimator.StrengthModel> createPlayerStrengthModelCombo(
+      PlayerStrengthEstimator.StrengthModel selectedModel, Runnable refreshAction) {
+    JComboBox<PlayerStrengthEstimator.StrengthModel> combo =
+        new JComboBox<>(PlayerStrengthEstimator.StrengthModel.values());
+    combo.setSelectedItem(
+        selectedModel == null ? PlayerStrengthEstimator.StrengthModel.GP_CORE4 : selectedModel);
+    combo.setFocusable(false);
+    combo.setFont(new Font(Config.sysDefaultFontName, Font.PLAIN, Config.frameFontSize + 1));
+    combo.setToolTipText(
+        Lizzie.resourceBundle.getString("PlayerStrengthEstimate.model.tooltip"));
+    combo
+        .getAccessibleContext()
+        .setAccessibleName(Lizzie.resourceBundle.getString("PlayerStrengthEstimate.model"));
+    combo.addActionListener(
+        e -> {
+          Object selected = combo.getSelectedItem();
+          if (selected instanceof PlayerStrengthEstimator.StrengthModel) {
+            PlayerStrengthEstimator.StrengthModel model =
+                (PlayerStrengthEstimator.StrengthModel) selected;
+            if (model != PlayerStrengthEstimator.activeModel()) {
+              PlayerStrengthEstimator.setActiveModel(model);
+              refreshAction.run();
+            }
+          }
+        });
+    return combo;
   }
 
   private JButton createPlayerStrengthDetailButton(Runnable action) {
@@ -13184,7 +13220,7 @@ public class LizzieFrame extends JFrame {
     html.append("<tr><td>")
         .append(side)
         .append("</td><td>")
-        .append(report.strengthBand)
+        .append(playerStrengthEstimateText(report))
         .append("</td><td>")
         .append(report.qualityScoreText())
         .append("</td><td>")
@@ -13270,6 +13306,39 @@ public class LizzieFrame extends JFrame {
       return playerStrengthRankRangeText(band.substring(0, dIndex), "dan", chinese);
     }
     return band;
+  }
+
+  private static String playerStrengthEstimateText(PlayerStrengthEstimator.SideReport report) {
+    if (report == null || !report.hasSamples()) {
+      return "-";
+    }
+    return playerStrengthRankValueText(report.rankValue);
+  }
+
+  private static String playerStrengthRankValueText(PlayerStrengthEstimator.SideReport report) {
+    if (report == null || !report.hasSamples()) {
+      return "-";
+    }
+    return playerStrengthRankValueText(report.rankValue);
+  }
+
+  private static String playerStrengthRankValueText(double rankValue) {
+    boolean chinese = Lizzie.config != null && Lizzie.config.isChinese;
+    double value = Math.max(-18.0, Math.min(12.0, rankValue));
+    if (value >= 12.0) {
+      return String.format(
+          Locale.US, "%.1f %s", value, chinese ? "\u534a\u795e/AI" : "semi-god/AI");
+    }
+    if (value >= 11.0) {
+      return String.format(
+          Locale.US, "%.1f %s", value, chinese ? "\u4e00\u7ebf\u804c\u4e1a" : "top pro");
+    }
+    if (value >= 10.0) {
+      return String.format(Locale.US, "%.1f %s", value, chinese ? "\u804c\u4e1a" : "pro");
+    }
+    return chinese
+        ? String.format(Locale.US, "%.1f\u6bb5", Math.max(1.0, value))
+        : String.format(Locale.US, "Fox %.1f dan", Math.max(1.0, value));
   }
 
   private static String playerStrengthRankRangeText(String raw, String type, boolean chinese) {
@@ -13367,7 +13436,9 @@ public class LizzieFrame extends JFrame {
       int lastMove = segmentSamplesList.get(segmentSamplesList.size() - 1).moveNumber;
       segments.add(
           new PlayerStrengthSegment(
-              firstMove, lastMove, PlayerStrengthEstimator.summarizeSamples(segmentSamplesList)));
+              firstMove,
+              lastMove,
+              PlayerStrengthEstimator.summarizeSamples(segmentSamplesList, sideReport.model)));
       start = end;
     }
     return segments;
@@ -13831,7 +13902,7 @@ public class LizzieFrame extends JFrame {
           Config.frameFontSize + 6);
       playerStrengthDrawFittedText(
           g2,
-          playerStrengthDisplayRank(report.strengthBand),
+          playerStrengthEstimateText(report),
           118,
           122,
           contentRight - 118,
@@ -13934,18 +14005,19 @@ public class LizzieFrame extends JFrame {
 
     private void drawRankLadder(Graphics2D g2, int x, int y, int width, int height) {
       String[] labels = {
-        Lizzie.resourceBundle.getString("PlayerStrengthEstimate.rank.pro"),
-        Lizzie.resourceBundle.getString("PlayerStrengthEstimate.rank.highDan"),
-        Lizzie.resourceBundle.getString("PlayerStrengthEstimate.rank.midDan"),
-        Lizzie.resourceBundle.getString("PlayerStrengthEstimate.rank.lowDan"),
-        Lizzie.resourceBundle.getString("PlayerStrengthEstimate.rank.kyu")
+        Lizzie.resourceBundle.getString("PlayerStrengthEstimate.rank.scale.ai"),
+        Lizzie.resourceBundle.getString("PlayerStrengthEstimate.rank.scale.topPro"),
+        Lizzie.resourceBundle.getString("PlayerStrengthEstimate.rank.scale.pro"),
+        Lizzie.resourceBundle.getString("PlayerStrengthEstimate.rank.scale.fox")
       };
-      int level = playerStrengthRankLevel(report.strengthBand);
-      int selected = level >= 10 ? 0 : level >= 8 ? 1 : level >= 6 ? 2 : level >= 4 ? 3 : 4;
+      int selected =
+          report.rankValue >= 12.0
+              ? 0
+              : report.rankValue >= 11.0 ? 1 : report.rankValue >= 10.0 ? 2 : 3;
       int rowHeight = Math.max(26, height / labels.length);
       playerStrengthDrawFittedText(
           g2,
-          Lizzie.resourceBundle.getString("PlayerStrengthEstimate.rank.reference"),
+          Lizzie.resourceBundle.getString("PlayerStrengthEstimate.rank.scale"),
           x,
           y - 13,
           width,
@@ -14809,7 +14881,7 @@ public class LizzieFrame extends JFrame {
           continue;
         }
         Rectangle bounds = rankWindowBounds(window, chartX, y, chartWidth, maxMove);
-        String label = strengthLabel(window.report.strengthBand);
+        String label = strengthLabel(window.report);
         g2.setColor(RANK);
         g2.fillRoundRect(bounds.x, bounds.y, bounds.width, bounds.height, 4, 4);
         if (hoverPoint != null) {
@@ -14953,7 +15025,7 @@ public class LizzieFrame extends JFrame {
             sideName,
             window.firstMove,
             window.lastMove,
-            strengthLabel(window.report.strengthBand));
+            strengthLabel(window.report));
       }
       return null;
     }
@@ -15014,7 +15086,7 @@ public class LizzieFrame extends JFrame {
         if (samples.size() - end > 0 && samples.size() - end < minimumSegmentSamples(sideReport)) {
           end = samples.size();
         }
-        addPerformanceSegment(segments, samples.subList(start, end));
+        addPerformanceSegment(segments, samples.subList(start, end), sideReport);
         start = end;
       }
       return segments;
@@ -15050,14 +15122,19 @@ public class LizzieFrame extends JFrame {
     }
 
     private void addPerformanceSegment(
-        List<MatchWindow> segments, List<PlayerStrengthEstimator.Sample> samples) {
+        List<MatchWindow> segments,
+        List<PlayerStrengthEstimator.Sample> samples,
+        PlayerStrengthEstimator.SideReport sideReport) {
       if (samples.isEmpty()) {
         return;
       }
       int firstMove = samples.get(0).moveNumber;
       int lastMove = samples.get(samples.size() - 1).moveNumber;
       segments.add(
-          new MatchWindow(firstMove, lastMove, PlayerStrengthEstimator.summarizeSamples(samples)));
+          new MatchWindow(
+              firstMove,
+              lastMove,
+              PlayerStrengthEstimator.summarizeSamples(samples, sideReport.model)));
     }
 
     private int adaptiveSegmentSamples(PlayerStrengthEstimator.SideReport report) {
@@ -15097,11 +15174,11 @@ public class LizzieFrame extends JFrame {
       return magnitude * 10;
     }
 
-    private String strengthLabel(String strengthBand) {
-      if (strengthBand == null || strengthBand.trim().isEmpty()) {
+    private String strengthLabel(PlayerStrengthEstimator.SideReport report) {
+      if (report == null || !report.hasSamples()) {
         return "-";
       }
-      return playerStrengthDisplayRank(strengthBand);
+      return playerStrengthRankValueText(report);
     }
 
     private String percentText(double value) {

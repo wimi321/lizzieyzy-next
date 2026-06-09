@@ -19,19 +19,23 @@ class PlayerStrengthEstimatorTest {
 
   private int previousBoardWidth;
   private int previousBoardHeight;
+  private PlayerStrengthEstimator.StrengthModel previousStrengthModel;
 
   @BeforeEach
   void setUp() {
     previousBoardWidth = Board.boardWidth;
     previousBoardHeight = Board.boardHeight;
+    previousStrengthModel = PlayerStrengthEstimator.activeModel();
     Board.boardWidth = BOARD_SIZE;
     Board.boardHeight = BOARD_SIZE;
+    PlayerStrengthEstimator.setActiveModel(PlayerStrengthEstimator.StrengthModel.HUBER_LINEAR);
   }
 
   @AfterEach
   void tearDown() {
     Board.boardWidth = previousBoardWidth;
     Board.boardHeight = previousBoardHeight;
+    PlayerStrengthEstimator.setActiveModel(previousStrengthModel);
   }
 
   @Test
