@@ -4698,7 +4698,7 @@ def build_next_2026_06_09_1_notes(
     sections: list[dict[str, object]] = [
         {
             'language': '中文',
-            'intro': '这是“4段纪念版”的棋力评估界面修正版。重点把“测评”和“吻合度”做成更适合普通用户阅读的卡片式界面，并修复真实测试中发现的遮挡、刻度和图标显示问题。',
+            'intro': '这是棋力评估界面修正版。重点把“测评”和“吻合度”做成更适合普通用户阅读的卡片式界面，并修复真实测试中发现的遮挡、刻度和图标显示问题。',
             'updates': {
                 'heading': '本版主要更新',
                 'items': [
@@ -4737,7 +4737,7 @@ def build_next_2026_06_09_1_notes(
         },
         {
             'language': '繁體中文',
-            'intro': '這是「4 段紀念版」的棋力評估介面修正版。重點把「測評」和「吻合度」做成更適合一般使用者閱讀的卡片式介面，並修復真實測試中發現的遮擋、刻度和圖示顯示問題。',
+            'intro': '這是棋力評估介面修正版。重點把「測評」和「吻合度」做成更適合一般使用者閱讀的卡片式介面，並修復真實測試中發現的遮擋、刻度和圖示顯示問題。',
             'updates': {
                 'heading': '本版主要更新',
                 'items': [
@@ -4776,7 +4776,7 @@ def build_next_2026_06_09_1_notes(
         },
         {
             'language': 'English',
-            'intro': 'This is a player-strength estimate UI polish update for the “4-dan commemorative build”. It turns Assessment and Match Rate into a clearer card-based view and fixes the overlap, axis-label, and icon clipping issues found during real UI testing.',
+            'intro': 'This is a player-strength estimate UI polish update. It turns Assessment and Match Rate into a clearer card-based view and fixes the overlap, axis-label, and icon clipping issues found during real UI testing.',
             'updates': {
                 'heading': 'Release Highlights',
                 'items': [
@@ -4815,7 +4815,7 @@ def build_next_2026_06_09_1_notes(
         },
         {
             'language': '日本語',
-            'intro': 'これは「4 段記念版」の棋力評価 UI を整える更新です。Assessment と Match Rate を読みやすいカード型画面にし、実際の UI テストで見つかった重なり、軸ラベル、アイコンの欠けを修正しました。',
+            'intro': 'これは棋力評価 UI を整える更新です。Assessment と Match Rate を読みやすいカード型画面にし、実際の UI テストで見つかった重なり、軸ラベル、アイコンの欠けを修正しました。',
             'updates': {
                 'heading': '主な更新',
                 'items': [
@@ -4854,7 +4854,7 @@ def build_next_2026_06_09_1_notes(
         },
         {
             'language': '한국어',
-            'intro': '이번 버전은 “4단 기념판”의 기력 평가 UI 를 다듬은 업데이트입니다. Assessment 와 Match Rate 를 더 읽기 쉬운 카드형 화면으로 바꾸고, 실제 UI 테스트에서 발견된 겹침, 축 라벨, 아이콘 잘림 문제를 수정했습니다.',
+            'intro': '이번 버전은 기력 평가 UI 를 다듬은 업데이트입니다. Assessment 와 Match Rate 를 더 읽기 쉬운 카드형 화면으로 바꾸고, 실제 UI 테스트에서 발견된 겹침, 축 라벨, 아이콘 잘림 문제를 수정했습니다.',
             'updates': {
                 'heading': '주요 업데이트',
                 'items': [
@@ -4893,7 +4893,7 @@ def build_next_2026_06_09_1_notes(
         },
         {
             'language': 'ภาษาไทย',
-            'intro': 'นี่คืออัปเดตปรับ UI Player Strength Estimate สำหรับ “เวอร์ชันที่ระลึก 4 ดั้ง” โดยเปลี่ยนหน้า Assessment และ Match Rate เป็นแบบการ์ดที่อ่านง่ายขึ้น พร้อมแก้ปัญหาข้อความซ้อน label แกนล่าง และไอคอนถูกตัดจากการทดสอบ UI จริง',
+            'intro': 'นี่คืออัปเดตปรับ UI Player Strength Estimate โดยเปลี่ยนหน้า Assessment และ Match Rate เป็นแบบการ์ดที่อ่านง่ายขึ้น พร้อมแก้ปัญหาข้อความซ้อน label แกนล่าง และไอคอนถูกตัดจากการทดสอบ UI จริง',
             'updates': {
                 'heading': 'ไฮไลต์ของเวอร์ชันนี้',
                 'items': [
@@ -4933,7 +4933,7 @@ def build_next_2026_06_09_1_notes(
     ]
     add_nvidia50_download_rows(sections, assets_cn, assets)
     validate_release_sections(sections)
-    heading = f'# LizzieYzy Next {release_tag} 4段纪念版更新' if release_tag else '# LizzieYzy Next 4段纪念版更新'
+    heading = f'# LizzieYzy Next {release_tag} 更新' if release_tag else '# LizzieYzy Next 更新'
     return heading + '\n\n' + '\n\n---\n\n'.join(
         render_language_section(section) for section in sections
     ) + '\n'
