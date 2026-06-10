@@ -101,6 +101,7 @@ public class KataGoAutoSetupDialog extends JDialog {
   private final JLabel lblBenchmarkValue = new JFontLabel();
   private final JLabel lblRemoteDetailValue = new JFontLabel();
   private final JLabel lblLocalWeightDetailValue = new JFontLabel();
+  private final JLabel lblHumanSlModelValue = new JFontLabel();
   private final JLabel lblStatus = new JFontLabel();
   private final JList<String> sectionNav = new JList<String>();
   private final CardLayout detailCardLayout = new CardLayout();
@@ -117,6 +118,8 @@ public class KataGoAutoSetupDialog extends JDialog {
   private final JFontButton btnDownloadWeight = new JFontButton();
   private final JFontButton btnImportWeight = new JFontButton();
   private final JFontButton btnApplyWeight = new JFontButton();
+  private final JFontButton btnDownloadHumanSlModel = new JFontButton();
+  private final JFontButton btnImportHumanSlModel = new JFontButton();
   private final JFontButton btnInstallNvidiaRuntime = new JFontButton();
   private final JFontButton btnInstallTensorRt = new JFontButton();
   private final JFontButton btnSwitchBackCuda = new JFontButton();
@@ -227,6 +230,8 @@ public class KataGoAutoSetupDialog extends JDialog {
     btnDownloadWeight.setText(text("AutoSetup.downloadWeight"));
     btnImportWeight.setText(text("AutoSetup.importWeight"));
     btnApplyWeight.setText(text("AutoSetup.applyWeight"));
+    btnDownloadHumanSlModel.setText(text("AutoSetup.downloadHumanSlModel"));
+    btnImportHumanSlModel.setText(text("AutoSetup.importHumanSlModel"));
     btnInstallNvidiaRuntime.setText(text("AutoSetup.installNvidiaRuntime"));
     btnInstallTensorRt.setText(text("AutoSetup.installTensorRt"));
     btnSwitchBackCuda.setText(text("AutoSetup.switchBackCuda"));
@@ -242,6 +247,8 @@ public class KataGoAutoSetupDialog extends JDialog {
     styleButton(btnRefresh, false);
     styleButton(btnImportWeight, false);
     styleButton(btnApplyWeight, false);
+    styleButton(btnDownloadHumanSlModel, false);
+    styleButton(btnImportHumanSlModel, false);
     styleButton(btnInstallNvidiaRuntime, false);
     styleButton(btnInstallTensorRt, false);
     styleButton(btnSwitchBackCuda, false);
@@ -256,6 +263,8 @@ public class KataGoAutoSetupDialog extends JDialog {
     btnDownloadWeight.addActionListener(e -> startRecommendedWeightDownload(false));
     btnImportWeight.addActionListener(e -> importCustomWeight());
     btnApplyWeight.addActionListener(e -> applySelectedWeight());
+    btnDownloadHumanSlModel.addActionListener(e -> startHumanSlModelDownload());
+    btnImportHumanSlModel.addActionListener(e -> importHumanSlModel());
     btnInstallNvidiaRuntime.addActionListener(e -> startNvidiaRuntimeInstall());
     btnInstallTensorRt.addActionListener(e -> startTensorRtInstall());
     btnSwitchBackCuda.addActionListener(e -> switchBackToCuda());
@@ -409,6 +418,12 @@ public class KataGoAutoSetupDialog extends JDialog {
         text("AutoSetup.localWeights"),
         createInlineActionRow(cmbLocalWeights, btnApplyWeight, btnImportWeight));
     addInfoRow(rows, gbc, text("AutoSetup.selectedLocalWeightInfo"), lblLocalWeightDetailValue);
+    addComponentRow(
+        rows,
+        gbc,
+        text("AutoSetup.humanSlModel"),
+        createInlineActionRow(
+            lblHumanSlModelValue, btnDownloadHumanSlModel, btnImportHumanSlModel));
 
     return createSectionCard(
         text("AutoSetup.weightsTitle"), text("AutoSetup.weightsSubtitle"), rows, null);
@@ -677,6 +692,7 @@ public class KataGoAutoSetupDialog extends JDialog {
     setInfoValue(lblWeightValue, snapshot.hasWeight(), formatWeight(snapshot));
     setInfoValue(lblWeightModelValue, snapshot.hasWeight(), formatWeightModel(snapshot));
     renderLocalWeights();
+    renderHumanSlModel();
     setInfoValue(lblConfigValue, snapshot.hasConfigs(), formatConfig(snapshot));
     updateNvidiaRuntimeInfo();
     updateBenchmarkInfo();
@@ -744,6 +760,27 @@ public class KataGoAutoSetupDialog extends JDialog {
       selectLocalWeight(snapshot.activeWeightPath);
     }
     updateSelectedLocalWeightInfo();
+  }
+
+  private void renderHumanSlModel() {
+    KataGoAutoSetupHelper.HumanSlModelStatus status = KataGoAutoSetupHelper.inspectHumanSlModel();
+    if (status.isInstalled()) {
+      String value =
+          status.modelPath.getFileName() + "  |  " + status.modelPath.toAbsolutePath().normalize();
+      lblHumanSlModelValue.setText(compactInfoText(value));
+      lblHumanSlModelValue.setToolTipText(value);
+      lblHumanSlModelValue.setForeground(OK_COLOR);
+      btnDownloadHumanSlModel.setText(text("AutoSetup.humanSlModelDownloaded"));
+      btnDownloadHumanSlModel.setEnabled(false);
+    } else {
+      lblHumanSlModelValue.setText(text("AutoSetup.humanSlModelMissing"));
+      lblHumanSlModelValue.setToolTipText(null);
+      lblHumanSlModelValue.setForeground(WARN_COLOR);
+      btnDownloadHumanSlModel.setText(text("AutoSetup.downloadHumanSlModel"));
+      btnDownloadHumanSlModel.setEnabled(
+          activeDownloadSession == null && activeWorkerThread == null);
+    }
+    btnImportHumanSlModel.setEnabled(activeDownloadSession == null && activeWorkerThread == null);
   }
 
   private String formatConfig(SetupSnapshot state) {
@@ -1083,6 +1120,93 @@ public class KataGoAutoSetupDialog extends JDialog {
               }
             },
             "katago-import-weight");
+    activeWorkerThread = worker;
+    worker.start();
+  }
+
+  private void importHumanSlModel() {
+    JFileChooser chooser = new JFileChooser();
+    chooser.setDialogTitle(text("AutoSetup.importHumanSlModelTitle"));
+    chooser.setFileFilter(
+        new FileNameExtensionFilter(text("AutoSetup.importHumanSlModelFilter"), "gz"));
+    if (chooser.showOpenDialog(this) != JFileChooser.APPROVE_OPTION) {
+      return;
+    }
+    final Path source = chooser.getSelectedFile().toPath();
+    if (!isSupportedWeightFileName(source)) {
+      Utils.showMsg(text("AutoSetup.importHumanSlModelInvalid"), this);
+      return;
+    }
+    setBusy(true, text("AutoSetup.importingHumanSlModel"), 0, -1);
+    Thread worker =
+        new Thread(
+            () -> {
+              try {
+                Path importedModel = KataGoAutoSetupHelper.importHumanSlModel(source);
+                SwingUtilities.invokeLater(
+                    () -> {
+                      activeWorkerThread = null;
+                      setBusy(false, text("AutoSetup.importHumanSlModelDone"), 0, 0);
+                      snapshot = KataGoAutoSetupHelper.inspectLocalSetup();
+                      renderSnapshot();
+                      Utils.showMsg(
+                          text("AutoSetup.importHumanSlModelDoneMessage") + "\n" + importedModel,
+                          this);
+                    });
+              } catch (IOException e) {
+                SwingUtilities.invokeLater(
+                    () -> {
+                      activeWorkerThread = null;
+                      onBackgroundError(e);
+                    });
+              }
+            },
+            "katago-import-humansl-model");
+    activeWorkerThread = worker;
+    worker.start();
+  }
+
+  private void startHumanSlModelDownload() {
+    final DownloadSession session = new DownloadSession();
+    activeDownloadSession = session;
+    setBusy(true, text("AutoSetup.downloadingHumanSlModel"), 0, -1);
+    Thread worker =
+        new Thread(
+            () -> {
+              try {
+                Path downloadedModel =
+                    KataGoAutoSetupHelper.downloadHumanSlModel(
+                        (statusText, downloadedBytes, totalBytes) ->
+                            SwingUtilities.invokeLater(
+                                () ->
+                                    setBusy(
+                                        true,
+                                        text("AutoSetup.downloadingHumanSlModel")
+                                            + " "
+                                            + statusText,
+                                        downloadedBytes,
+                                        totalBytes)),
+                        session);
+                SwingUtilities.invokeLater(
+                    () -> {
+                      setBusy(false, text("AutoSetup.humanSlModelDownloadDone"), 0, 0);
+                      snapshot = KataGoAutoSetupHelper.inspectLocalSetup();
+                      renderSnapshot();
+                      Utils.showMsg(
+                          text("AutoSetup.humanSlModelDownloadDoneMessage")
+                              + "\n"
+                              + downloadedModel,
+                          this);
+                    });
+              } catch (DownloadCancelledException e) {
+                SwingUtilities.invokeLater(() -> onDownloadCancelled());
+              } catch (IOException e) {
+                SwingUtilities.invokeLater(() -> onBackgroundError(e));
+              } finally {
+                clearActiveDownload(session, Thread.currentThread());
+              }
+            },
+            "katago-download-humansl-model");
     activeWorkerThread = worker;
     worker.start();
   }
@@ -1542,6 +1666,8 @@ public class KataGoAutoSetupDialog extends JDialog {
     btnDownloadWeight.setEnabled(!busy && canDownloadSelectedRemoteWeight());
     btnImportWeight.setEnabled(!busy);
     btnApplyWeight.setEnabled(!busy && getSelectedLocalWeight() != null);
+    btnDownloadHumanSlModel.setEnabled(!busy && canDownloadHumanSlModel());
+    btnImportHumanSlModel.setEnabled(!busy);
     cmbLocalWeights.setEnabled(!busy && cmbLocalWeights.getItemCount() > 0);
     cmbRemoteWeights.setEnabled(!busy && cmbRemoteWeights.getItemCount() > 0);
     btnInstallNvidiaRuntime.setEnabled(!busy && canInstallNvidiaRuntime());
@@ -1672,6 +1798,12 @@ public class KataGoAutoSetupDialog extends JDialog {
         && snapshot.hasEngine()
         && snapshot.hasConfigs()
         && snapshot.hasWeight();
+  }
+
+  private boolean canDownloadHumanSlModel() {
+    return !KataGoAutoSetupHelper.inspectHumanSlModel().isInstalled()
+        && activeDownloadSession == null
+        && activeWorkerThread == null;
   }
 
   private boolean isBenchmarkPermilleProgress(
@@ -2008,6 +2140,8 @@ public class KataGoAutoSetupDialog extends JDialog {
     btnDownloadWeight.setEnabled(getSelectedRemoteWeight() != null);
     btnImportWeight.setEnabled(true);
     btnApplyWeight.setEnabled(getSelectedLocalWeight() != null);
+    btnDownloadHumanSlModel.setEnabled(canDownloadHumanSlModel());
+    btnImportHumanSlModel.setEnabled(true);
     cmbLocalWeights.setEnabled(cmbLocalWeights.getItemCount() > 0);
     cmbRemoteWeights.setEnabled(cmbRemoteWeights.getItemCount() > 0);
     btnInstallNvidiaRuntime.setEnabled(canInstallNvidiaRuntime());
