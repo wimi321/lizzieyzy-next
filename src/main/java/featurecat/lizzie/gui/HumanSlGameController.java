@@ -415,7 +415,8 @@ public final class HumanSlGameController {
       Lizzie.frame.clearKataEstimate();
     }
     if (Lizzie.leelaz != null && Lizzie.leelaz.isPondering()) {
-      Lizzie.leelaz.togglePonder();
+      Lizzie.leelaz.notPondering();
+      Lizzie.leelaz.nameCmd();
     }
   }
 
@@ -430,7 +431,7 @@ public final class HumanSlGameController {
       Lizzie.frame.isShowingHeatmap = showingHeatmapBefore;
     }
     if (ponderingBefore && Lizzie.leelaz != null && !Lizzie.leelaz.isPondering()) {
-      Lizzie.leelaz.togglePonder();
+      Lizzie.leelaz.ponder();
     }
   }
 

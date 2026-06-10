@@ -3,6 +3,7 @@ package featurecat.lizzie.gui;
 import featurecat.lizzie.Lizzie;
 import featurecat.lizzie.analysis.HumanSlAnalysisRunner;
 import featurecat.lizzie.util.KataGoAutoSetupHelper;
+import featurecat.lizzie.util.KataGoAutoSetupHelper.DownloadCancelledException;
 import featurecat.lizzie.util.Utils;
 import java.awt.BorderLayout;
 import java.awt.Dimension;
@@ -150,7 +151,7 @@ public final class NewHumanSlGameDialog extends JDialog {
       return;
     }
     cancelled = true;
-    dispose();
+    setVisible(false);
     Window frame = Lizzie.frame;
     boolean wasPondering = Lizzie.leelaz != null && Lizzie.leelaz.isPondering();
     if (wasPondering) {
@@ -166,18 +167,30 @@ public final class NewHumanSlGameDialog extends JDialog {
         new Thread(
             () -> {
               try {
-                KataGoAutoSetupHelper.downloadHumanSlModel(
-                    (statusText, downloadedBytes, totalBytes) ->
-                        SwingUtilities.invokeLater(
-                            () ->
-                                progressDialog.updateProgress(
-                                    statusText, downloadedBytes, totalBytes)),
-                    downloadSession);
+                final Path downloadedModel =
+                    KataGoAutoSetupHelper.downloadHumanSlModel(
+                        (statusText, downloadedBytes, totalBytes) ->
+                            SwingUtilities.invokeLater(
+                                () ->
+                                    progressDialog.updateProgress(
+                                        statusText, downloadedBytes, totalBytes)),
+                        downloadSession);
+                SwingUtilities.invokeLater(
+                    () -> {
+                      progressDialog.dispose();
+                      Utils.showMsg(resourceBundle.getString("HumanSlGame.downloadCompletePrompt"));
+                      if (!startConfiguredGame(downloadedModel)) {
+                        restorePondering(wasPondering);
+                      }
+                      dispose();
+                    });
+              } catch (DownloadCancelledException e) {
                 SwingUtilities.invokeLater(
                     () -> {
                       progressDialog.dispose();
                       restorePondering(wasPondering);
-                      Utils.showMsg(resourceBundle.getString("HumanSlGame.downloadCompletePrompt"));
+                      Utils.showMsg(e.getLocalizedMessage());
+                      dispose();
                     });
               } catch (IOException e) {
                 SwingUtilities.invokeLater(
@@ -185,6 +198,7 @@ public final class NewHumanSlGameDialog extends JDialog {
                       progressDialog.dispose();
                       restorePondering(wasPondering);
                       Utils.showMsg(e.getLocalizedMessage());
+                      dispose();
                     });
               }
             },
@@ -200,11 +214,11 @@ public final class NewHumanSlGameDialog extends JDialog {
     }
   }
 
-  private void startConfiguredGame(Path modelPath) {
+  private boolean startConfiguredGame(Path modelPath) {
     String command = resolveAnalysisCommand();
     if (command.trim().isEmpty()) {
       Utils.showMsg(resourceBundle.getString("HumanSlGame.error.noEngine"));
-      return;
+      return false;
     }
     HumanSlAnalysisRunner runner = new HumanSlAnalysisRunner(command, modelPath);
     if (!runner.start()) {
@@ -216,7 +230,7 @@ public final class NewHumanSlGameDialog extends JDialog {
         runner.close();
       } catch (Exception ignored) {
       }
-      return;
+      return false;
     }
 
     String profile = RANK_PROFILES[Math.max(0, rankBox.getSelectedIndex())];
@@ -235,6 +249,7 @@ public final class NewHumanSlGameDialog extends JDialog {
     cancelled = false;
     setVisible(false);
     controller.start();
+    return true;
   }
 
   private String resolveAnalysisCommand() {

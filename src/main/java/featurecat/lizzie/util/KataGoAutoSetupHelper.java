@@ -19,6 +19,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -74,6 +76,12 @@ public final class KataGoAutoSetupHelper {
   public static final String HUMAN_SL_MODEL_FILE_NAME = "b18c384nbt-humanv0.bin.gz";
   public static final String HUMAN_SL_MODEL_DOWNLOAD_URL =
       "https://media.katagotraining.org/uploaded/networks/models_extra/" + HUMAN_SL_MODEL_FILE_NAME;
+  public static final long HUMAN_SL_MODEL_SIZE_BYTES = 99066230L;
+  public static final String HUMAN_SL_MODEL_SHA256 =
+      "637746e44f0efe00ad1245a50aa9bbf0716efe364c43965ead97bd6835d84ab5";
+  private static final String HUMAN_SL_MODEL_URL_PROPERTY = "lizzie.humansl.model.url";
+  private static final String HUMAN_SL_MODEL_SHA256_PROPERTY = "lizzie.humansl.model.sha256";
+  private static final String HUMAN_SL_MODEL_SIZE_PROPERTY = "lizzie.humansl.model.size";
   private static final String HUMAN_SL_MODEL_CONFIG_KEY = "katago-human-sl-model-path";
   private static final String HUMAN_SL_MODEL_DIR_NAME = "human-sl-models";
 
@@ -261,14 +269,7 @@ public final class KataGoAutoSetupHelper {
     }
 
     public boolean isInstalled() {
-      if (modelPath == null || !Files.isRegularFile(modelPath)) {
-        return false;
-      }
-      try {
-        return Files.size(modelPath) > 1024L * 1024L;
-      } catch (IOException e) {
-        return false;
-      }
+      return isValidHumanSlModelFile(modelPath);
     }
   }
 
@@ -476,18 +477,19 @@ public final class KataGoAutoSetupHelper {
     activeSession.throwIfCancelled();
 
     Path target = modelsDir.resolve(HUMAN_SL_MODEL_FILE_NAME);
-    if (Files.isRegularFile(target) && Files.size(target) > 1024L * 1024L) {
+    if (isValidHumanSlModelFile(target)) {
       rememberHumanSlModel(target);
       if (listener != null) {
         listener.onProgress(HUMAN_SL_MODEL_FILE_NAME, Files.size(target), Files.size(target));
       }
       return target;
     }
+    Files.deleteIfExists(target);
 
     Path temp = modelsDir.resolve(HUMAN_SL_MODEL_FILE_NAME + ".part");
     HttpURLConnection conn = null;
     try {
-      conn = (HttpURLConnection) URI.create(HUMAN_SL_MODEL_DOWNLOAD_URL).toURL().openConnection();
+      conn = (HttpURLConnection) URI.create(humanSlModelDownloadUrl()).toURL().openConnection();
       activeSession.attach(conn);
       activeSession.throwIfCancelled();
       conn.setInstanceFollowRedirects(true);
@@ -498,14 +500,18 @@ public final class KataGoAutoSetupHelper {
       conn.setRequestProperty("Accept", "application/octet-stream,*/*");
       int code = conn.getResponseCode();
       if (code < 200 || code >= 400) {
-        throw new IOException("HTTP " + code + " from " + HUMAN_SL_MODEL_DOWNLOAD_URL);
+        throw new IOException("HTTP " + code + " from " + humanSlModelDownloadUrl());
       }
       long totalBytes = conn.getContentLengthLong();
+      long expectedBytes = humanSlModelSizeBytes();
+      if (totalBytes <= 0L && expectedBytes > 0L) {
+        totalBytes = expectedBytes;
+      }
+      long downloaded = 0L;
       try (InputStream raw = conn.getInputStream();
           BufferedInputStream input = new BufferedInputStream(raw);
           OutputStream output = Files.newOutputStream(temp)) {
         byte[] buffer = new byte[8192];
-        long downloaded = 0L;
         int read;
         long lastReportTime = 0L;
         while (true) {
@@ -525,6 +531,11 @@ public final class KataGoAutoSetupHelper {
         }
       }
       activeSession.throwIfCancelled();
+      if (totalBytes > 0L && downloaded != totalBytes) {
+        throw new IOException(
+            resource("AutoSetup.humanSlModelIncomplete", "HumanSL model download is incomplete."));
+      }
+      verifyOfficialHumanSlModel(temp);
       try {
         Files.move(
             temp, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
@@ -1499,6 +1510,81 @@ public final class KataGoAutoSetupHelper {
     }
     String fileName = path.getFileName().toString().toLowerCase(Locale.ROOT);
     return fileName.endsWith(".bin.gz") || fileName.endsWith(".txt.gz");
+  }
+
+  private static boolean isValidHumanSlModelFile(Path path) {
+    if (path == null || !Files.isRegularFile(path) || !isSupportedHumanSlModelFile(path)) {
+      return false;
+    }
+    try {
+      if (isOfficialHumanSlModelPath(path)) {
+        verifyOfficialHumanSlModel(path);
+        return true;
+      }
+      return Files.size(path) > 1024L * 1024L;
+    } catch (IOException e) {
+      return false;
+    }
+  }
+
+  private static boolean isOfficialHumanSlModelPath(Path path) {
+    return path != null
+        && path.getFileName() != null
+        && HUMAN_SL_MODEL_FILE_NAME.equalsIgnoreCase(path.getFileName().toString());
+  }
+
+  private static void verifyOfficialHumanSlModel(Path path) throws IOException {
+    long expectedSize = humanSlModelSizeBytes();
+    if (expectedSize > 0L && Files.size(path) != expectedSize) {
+      throw new IOException(
+          resource("AutoSetup.humanSlModelIncomplete", "HumanSL model download is incomplete."));
+    }
+    String expectedSha = humanSlModelSha256();
+    if (!expectedSha.isEmpty() && !expectedSha.equalsIgnoreCase(sha256(path))) {
+      throw new IOException(
+          resource(
+              "AutoSetup.humanSlModelChecksumFailed",
+              "HumanSL model checksum failed. Please download again."));
+    }
+  }
+
+  private static String humanSlModelDownloadUrl() {
+    String value = System.getProperty(HUMAN_SL_MODEL_URL_PROPERTY, "").trim();
+    return value.isEmpty() ? HUMAN_SL_MODEL_DOWNLOAD_URL : value;
+  }
+
+  private static String humanSlModelSha256() {
+    String value = System.getProperty(HUMAN_SL_MODEL_SHA256_PROPERTY, "").trim();
+    return value.isEmpty() ? HUMAN_SL_MODEL_SHA256 : value;
+  }
+
+  private static long humanSlModelSizeBytes() {
+    String value = System.getProperty(HUMAN_SL_MODEL_SIZE_PROPERTY, "").trim();
+    if (!value.isEmpty()) {
+      try {
+        return Long.parseLong(value);
+      } catch (NumberFormatException ignored) {
+      }
+    }
+    return HUMAN_SL_MODEL_SIZE_BYTES;
+  }
+
+  private static String sha256(Path path) throws IOException {
+    try (InputStream input = Files.newInputStream(path)) {
+      MessageDigest digest = MessageDigest.getInstance("SHA-256");
+      byte[] buffer = new byte[8192];
+      int read;
+      while ((read = input.read(buffer)) >= 0) {
+        digest.update(buffer, 0, read);
+      }
+      StringBuilder builder = new StringBuilder();
+      for (byte value : digest.digest()) {
+        builder.append(String.format(Locale.ROOT, "%02x", value & 0xff));
+      }
+      return builder.toString();
+    } catch (NoSuchAlgorithmException e) {
+      throw new IOException("SHA-256 is unavailable.", e);
+    }
   }
 
   private static Path uniqueWeightTarget(Path weightsDir, String fileName) {

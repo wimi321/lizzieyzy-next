@@ -9965,9 +9965,6 @@ public class LizzieFrame extends JFrame {
       Utils.showMsg(Lizzie.resourceBundle.getString("LizzieFrame.engineGameStopFirstHint"));
       return;
     }
-    if (Lizzie.leelaz != null && Lizzie.leelaz.isPondering()) {
-      Lizzie.leelaz.togglePonder();
-    }
     NewHumanSlGameDialog dialog = new NewHumanSlGameDialog(this);
     dialog.setVisible(true);
     dialog.dispose();

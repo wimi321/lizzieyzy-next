@@ -86,7 +86,8 @@ class AnalysisEngineCommandHelperTest {
     AnalysisEngineCommandHelper.Result result = AnalysisEngineCommandHelper.fromSavedEngine(engine);
 
     assertFalse(result.isSuccess());
-    assertTrue(result.getMessage().toLowerCase(java.util.Locale.ROOT).contains("remote"));
+    String message = result.getMessage().toLowerCase(java.util.Locale.ROOT);
+    assertTrue(message.contains("remote") || message.contains("远程"));
   }
 
   @Test
