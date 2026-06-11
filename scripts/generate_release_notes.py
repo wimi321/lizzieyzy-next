@@ -4001,6 +4001,8 @@ def build_release_notes(asset_map: dict[str, str | None], bundle: dict[str, str]
         return build_next_2026_06_09_1_notes(asset_map, bundle, repo, release_tag)
     if release_tag == 'next-2026-06-10.1':
         return build_next_2026_06_10_1_notes(asset_map, bundle, repo, release_tag)
+    if release_tag == 'next-2026-06-11.1':
+        return build_next_2026_06_11_1_notes(asset_map, bundle, repo, release_tag)
 
     assets_cn = {
         key: format_asset(asset_map[key], repo, release_tag)
@@ -5162,6 +5164,251 @@ def build_next_2026_06_10_1_notes(
                         STANDARD_DOWNLOAD_LABELS[labels_key],
                         localized_assets,
                     ),
+                },
+                'why': {'heading': block['why_heading'], 'items': block['why']},
+                'contact': {'heading': block['contact_heading'], 'items': block['contact']},
+            }
+        )
+    add_nvidia50_download_rows(sections, assets_cn, assets)
+    add_tensorrt_split_download_row(sections, assets_cn, assets, asset_map)
+    validate_release_sections(sections)
+    return release_heading(release_tag) + '\n\n' + '\n\n---\n\n'.join(
+        render_language_section(section) for section in sections
+    ) + '\n'
+
+
+def build_next_2026_06_11_1_notes(
+    asset_map: dict[str, str | None],
+    bundle: dict[str, str],
+    repo: str,
+    release_tag: str | None,
+) -> str:
+    assets_cn = {key: format_asset(asset_map[key], repo, release_tag) for key in asset_map}
+    assets = {key: format_asset_en(asset_map[key], repo, release_tag) for key in asset_map}
+    katago_version = bundle['katago_version']
+    model_source = bundle['model_source']
+    content = [
+        {
+            'language': '中文',
+            'labels': 'zh',
+            'intro': '这是一次界面观感和分析时渲染性能的维护版。Apple 玻璃风格和 LizzieYzy 经典风格都做了统一打磨；引擎持续分析时的全窗口绘制、胜率图和分支预览也改成复用缓冲，减少大图像反复分配带来的卡顿和内存压力。',
+            'updates_heading': '本版主要更新',
+            'updates': [
+                '优化 Apple 玻璃风格：顶部/底部工具条改成统一的半透明平面材质，按钮静止态更安静，主次层级更清楚。',
+                '优化 LizzieYzy 经典风格：浅色工具条、白色按钮、柔和描边和页签下划线统一为现代桌面应用观感，不再是旧 Swing 灰色工具堆。',
+                '问题手侧栏新增更明确的黑/白状态、棋子标识、导航箭头、严重问题手强调和卡片式空状态。',
+                '分析输出频繁刷新时，主窗口绘制缓冲、胜率图三层缓冲、主棋盘/小棋盘分支图像都改为复用，明显减少每秒临时内存分配。',
+                'Windows/Linux 下启动时开启 Swing 文字抗锯齿，经典界面和弹窗文字更顺滑。',
+                '本次不改变 KataGo 分析逻辑、问题手判定规则或棋盘背景规则，只改视觉表现和渲染性能。',
+            ],
+            'before_heading': '下载前先看这几句',
+            'before': [
+                f'主推荐整合包继续内置 KataGo `{katago_version}` 和默认权重 `{model_source}`。',
+                f'Windows 普通用户优先下载 {{windows_opencl_portable}}，这是 **OpenCL 版（推荐，免安装）**。',
+                f'如果 OpenCL 在你的电脑上不稳定，再改用 {{windows_portable}}。',
+                f'如果你的电脑是 **英伟达显卡**，优先下载 {{windows_nvidia_portable}}。',
+                '如果你之前关闭了 Apple 风格，这一版的经典风格也已经同步优化，可以直接继续使用当前配置。',
+            ],
+            'download_heading': '下载建议',
+            'download_headers': ('你的电脑', '直接下载这个'),
+            'why_heading': '这一版为什么值得更新',
+            'why': [
+                '复盘时界面更像一个统一的现代桌面产品，而不是多代控件拼在一起。',
+                '经典风格这次也被认真打磨：常用浅色模式用户能直接看到工具条、按钮和侧栏页签的升级。',
+                '长时间分析、候选手刷新和分支预览时，临时大图像分配更少，整体更稳。',
+                '所有优化都围绕显示层完成，不会改变你的引擎设置、分析结果或既有复盘习惯。',
+            ],
+            'contact_heading': '交流',
+            'contact': ['QQ 群：`299419120`'],
+        },
+        {
+            'language': '繁體中文',
+            'labels': 'zh_hant',
+            'intro': '這是一次介面觀感和分析時渲染效能的維護版。Apple 玻璃風格和 LizzieYzy 經典風格都做了統一打磨；引擎持續分析時的全視窗繪製、勝率圖和分支預覽也改成重用緩衝，減少大型影像反覆分配造成的卡頓和記憶體壓力。',
+            'updates_heading': '本版主要更新',
+            'updates': [
+                '優化 Apple 玻璃風格：頂部/底部工具列改成統一的半透明平面材質，按鈕靜止態更安靜，主次層級更清楚。',
+                '優化 LizzieYzy 經典風格：淺色工具列、白色按鈕、柔和描邊和頁籤底線統一為現代桌面應用觀感，不再像舊 Swing 灰色工具堆。',
+                '問題手側欄新增更明確的黑/白狀態、棋子標識、導覽箭頭、嚴重問題手強調和卡片式空狀態。',
+                '分析輸出頻繁刷新時，主視窗繪製緩衝、勝率圖三層緩衝、主棋盤/小棋盤分支影像都改為重用，明顯減少每秒臨時記憶體分配。',
+                'Windows/Linux 下啟動時開啟 Swing 文字抗鋸齒，經典介面和對話框文字更順滑。',
+                '本次不改變 KataGo 分析邏輯、問題手判定規則或棋盤背景規則，只改視覺表現和渲染效能。',
+            ],
+            'before_heading': '下載前先看這幾句',
+            'before': [
+                f'主推薦整合包繼續內建 KataGo `{katago_version}` 和預設權重 `{model_source}`。',
+                f'Windows 一般使用者優先下載 {{windows_opencl_portable}}，這是 **OpenCL 版（推薦，免安裝）**。',
+                f'如果 OpenCL 在你的電腦上不穩定，再改用 {{windows_portable}}。',
+                f'如果你的電腦是 **NVIDIA 顯示卡**，優先下載 {{windows_nvidia_portable}}。',
+                '如果你之前關閉了 Apple 風格，這一版的經典風格也已經同步優化，可以直接繼續使用目前設定。',
+            ],
+            'download_heading': '下載建議',
+            'download_headers': ('你的電腦', '直接下載這個'),
+            'why_heading': '這一版為什麼值得更新',
+            'why': [
+                '復盤時介面更像一個統一的現代桌面產品，而不是多代控制項拼在一起。',
+                '經典風格這次也被認真打磨：常用淺色模式使用者能直接看到工具列、按鈕和側欄頁籤的升級。',
+                '長時間分析、候選手刷新和分支預覽時，臨時大型影像分配更少，整體更穩。',
+                '所有優化都圍繞顯示層完成，不會改變你的引擎設定、分析結果或既有復盤習慣。',
+            ],
+            'contact_heading': '交流',
+            'contact': ['QQ 群：`299419120`'],
+        },
+        {
+            'language': 'English',
+            'labels': 'en',
+            'intro': 'This maintenance release focuses on UI polish and rendering performance during live analysis. Both the Apple glass style and the LizzieYzy classic style have been refined, while the main window, winrate graph, and branch preview rendering now reuse image buffers to reduce large temporary allocations.',
+            'updates_heading': 'Release Highlights',
+            'updates': [
+                'Refined the Apple glass style with one flatter translucent toolbar material, quieter resting buttons, and clearer visual hierarchy.',
+                'Refined the LizzieYzy classic style with a modern light toolbar, white buttons, softer borders, and active tab underlines instead of legacy Swing grey.',
+                'Improved the problem-move sidebar with clearer Black/White state, stone markers, navigation arrows, severe-move emphasis, and a card-style empty state.',
+                'Reduced repaint-time allocations by reusing the full-window paint buffer, the three winrate graph layers, and branch preview images on the main and sub boards.',
+                'Enabled Swing text antialiasing on startup for smoother Windows/Linux classic UI and dialog text.',
+                'KataGo analysis logic, problem-move rules, and custom-board-background behavior are unchanged; this release only touches presentation and rendering performance.',
+            ],
+            'before_heading': 'Read Before Downloading',
+            'before': [
+                f'The recommended bundles continue to include KataGo `{katago_version}` and the default weight `{model_source}`.',
+                f'Most Windows users should download {{windows_opencl_portable}}, the **recommended no-install OpenCL build**.',
+                f'If OpenCL is unreliable on your PC, use {{windows_portable}} instead.',
+                f'If your PC has an **NVIDIA GPU**, try {{windows_nvidia_portable}} first.',
+                'If you keep Apple style disabled, this build also upgrades the classic style, so you can keep your current preference.',
+            ],
+            'download_heading': 'Download Guide',
+            'download_headers': ('Your computer', 'Download this file'),
+            'why_heading': 'Why Update',
+            'why': [
+                'The review screen now feels more like one coherent modern desktop product rather than several generations of controls stitched together.',
+                'Classic-style users get visible upgrades too: the toolbar, buttons, and sidebar tabs are cleaner and more deliberate.',
+                'Long live-analysis sessions create fewer large temporary images during candidate refreshes and branch previews.',
+                'The changes stay in the display layer and do not alter your engine settings, analysis results, or review workflow.',
+            ],
+            'contact_heading': 'Contact',
+            'contact': ['QQ group: `299419120`'],
+        },
+        {
+            'language': '日本語',
+            'labels': 'ja',
+            'intro': 'このリリースは UI の仕上げと、ライブ解析中の描画性能を中心にしたメンテナンス版です。Apple ガラス風スタイルと LizzieYzy クラシックスタイルの両方を整え、メインウィンドウ、勝率グラフ、分岐プレビューでは画像バッファを再利用して大きな一時割り当てを減らしました。',
+            'updates_heading': '主な更新',
+            'updates': [
+                'Apple ガラス風スタイルを、よりフラットな半透明ツールバー、静かな通常状態のボタン、分かりやすい階層感に調整しました。',
+                'LizzieYzy クラシックスタイルを、現代的な明るいツールバー、白いボタン、柔らかい境界線、アクティブタブ下線で整理しました。',
+                '問題手サイドバーに、黒/白の状態表示、石マーカー、ナビゲーション矢印、重大な問題手の強調、カード型の空状態を追加しました。',
+                'メインウィンドウの描画バッファ、勝率グラフ 3 層、メイン盤/サブ盤の分岐プレビュー画像を再利用し、再描画時の割り当てを減らしました。',
+                'Windows/Linux でも Swing の文字アンチエイリアスを起動時に有効化し、クラシック UI とダイアログの文字を滑らかにしました。',
+                'KataGo 解析ロジック、問題手ルール、カスタム盤背景の仕様は変更していません。表示と描画性能のみの更新です。',
+            ],
+            'before_heading': 'ダウンロード前に',
+            'before': [
+                f'推奨バンドルには KataGo `{katago_version}` と既定の重み `{model_source}` が含まれています。',
+                f'多くの Windows ユーザーは {{windows_opencl_portable}} を選ぶのがおすすめです。これは **推奨 OpenCL 版、インストール不要** です。',
+                f'OpenCL が不安定な場合は {{windows_portable}} を使ってください。',
+                f'**NVIDIA GPU** 搭載 PC では {{windows_nvidia_portable}} を優先してください。',
+                'Apple スタイルを無効にしている場合でも、このビルドではクラシックスタイルも改善されています。',
+            ],
+            'download_heading': 'ダウンロード案内',
+            'download_headers': ('お使いの環境', 'ダウンロードするファイル'),
+            'why_heading': '更新する理由',
+            'why': [
+                '復盤画面が、複数世代の部品を寄せ集めた印象ではなく、ひとつの現代的なデスクトップ製品としてまとまりました。',
+                'クラシックスタイル利用者にも、ツールバー、ボタン、サイドバータブの見た目がはっきり改善されます。',
+                '長時間のライブ解析、候補手更新、分岐プレビューで、大きな一時画像の生成が少なくなります。',
+                '変更は表示層に限られ、エンジン設定、解析結果、復盤の流れはそのままです。',
+            ],
+            'contact_heading': '連絡先',
+            'contact': ['QQ グループ: `299419120`'],
+        },
+        {
+            'language': '한국어',
+            'labels': 'ko',
+            'intro': '이번 릴리스는 UI 다듬기와 라이브 분석 중 렌더링 성능을 중심으로 한 유지보수 버전입니다. Apple glass 스타일과 LizzieYzy classic 스타일을 모두 정리했고, 메인 창, 승률 그래프, 분기 미리보기는 이미지 버퍼를 재사용해 큰 임시 할당을 줄였습니다.',
+            'updates_heading': '주요 업데이트',
+            'updates': [
+                'Apple glass 스타일을 더 평평한 반투명 툴바, 조용한 기본 버튼 상태, 더 명확한 시각적 계층으로 다듬었습니다.',
+                'LizzieYzy classic 스타일은 현대적인 밝은 툴바, 흰색 버튼, 부드러운 테두리, 활성 탭 밑줄로 정리했습니다.',
+                '문제수 사이드바에 흑/백 상태, 돌 표시, 이동 화살표, 큰 문제수 강조, 카드형 빈 상태를 더했습니다.',
+                '전체 창 페인트 버퍼, 승률 그래프 3개 레이어, 메인/서브 보드 분기 미리보기 이미지를 재사용해 재그리기 중 할당을 줄였습니다.',
+                'Windows/Linux 에서도 시작 시 Swing 텍스트 안티앨리어싱을 켜서 classic UI 와 대화상자 글자가 더 부드럽게 보입니다.',
+                'KataGo 분석 로직, 문제수 판정 규칙, 커스텀 보드 배경 동작은 바꾸지 않았습니다. 표시와 렌더링 성능만 개선했습니다.',
+            ],
+            'before_heading': '다운로드 전 확인',
+            'before': [
+                f'추천 번들에는 KataGo `{katago_version}` 와 기본 가중치 `{model_source}` 가 포함되어 있습니다.',
+                f'대부분의 Windows 사용자는 {{windows_opencl_portable}} 를 먼저 받으면 됩니다. 이는 **추천 OpenCL 무설치 빌드** 입니다.',
+                f'OpenCL 이 PC에서 불안정하면 {{windows_portable}} 를 대신 사용하세요.',
+                f'**NVIDIA GPU** 가 있다면 {{windows_nvidia_portable}} 를 우선 사용해 보세요.',
+                'Apple 스타일을 꺼 두고 사용하더라도 이번 빌드에서는 classic 스타일도 함께 개선되었습니다.',
+            ],
+            'download_heading': '다운로드 안내',
+            'download_headers': ('내 컴퓨터', '다운로드할 파일'),
+            'why_heading': '업데이트할 이유',
+            'why': [
+                '복기 화면이 여러 세대의 컨트롤을 이어 붙인 느낌보다 하나의 현대적인 데스크톱 제품처럼 보입니다.',
+                'classic 스타일 사용자도 툴바, 버튼, 사이드바 탭의 개선을 바로 볼 수 있습니다.',
+                '긴 라이브 분석, 후보수 갱신, 분기 미리보기 중 큰 임시 이미지 생성이 줄어듭니다.',
+                '변경은 표시 레이어에 머물며 엔진 설정, 분석 결과, 복기 흐름은 그대로 유지됩니다.',
+            ],
+            'contact_heading': '연락',
+            'contact': ['QQ 그룹: `299419120`'],
+        },
+        {
+            'language': 'ภาษาไทย',
+            'labels': 'th',
+            'intro': 'รีลีสนี้เป็น maintenance build ที่เน้นปรับ UI และประสิทธิภาพการ render ระหว่าง live analysis ทั้ง Apple glass style และ LizzieYzy classic style ถูกขัดเกลาใหม่ ส่วน main window, winrate graph และ branch preview ใช้ image buffer ซ้ำเพื่อลดการสร้างภาพขนาดใหญ่ชั่วคราว',
+            'updates_heading': 'อัปเดตหลัก',
+            'updates': [
+                'ปรับ Apple glass style ให้เป็น toolbar โปร่งแสงแบบ flat มากขึ้น ปุ่มตอน idle สงบขึ้น และลำดับชั้นของ UI ชัดขึ้น',
+                'ปรับ LizzieYzy classic style เป็น toolbar สีอ่อนสมัยใหม่ ปุ่มสีขาว เส้นขอบนุ่มขึ้น และ active tab underline แทนกลิ่น Swing สีเทาเดิม',
+                'ปรับ problem-move sidebar ให้เห็นสถานะดำ/ขาวชัดขึ้น มี stone marker, navigation arrow, การเน้นปัญหารุนแรง และ empty state แบบ card',
+                'ลด allocation ตอน repaint โดยใช้ full-window paint buffer, winrate graph layers และ branch preview images ซ้ำบน main/sub board',
+                'เปิด Swing text antialiasing ตอนเริ่มโปรแกรม เพื่อให้ตัวอักษรบน Windows/Linux classic UI และ dialog นุ่มขึ้น',
+                'ไม่ได้เปลี่ยน logic วิเคราะห์ KataGo, กฎ problem-move หรือพฤติกรรม custom board background; รุ่นนี้แตะเฉพาะ presentation และ render performance',
+            ],
+            'before_heading': 'ก่อนดาวน์โหลด',
+            'before': [
+                f'แพ็กเกจหลักมี KataGo `{katago_version}` และน้ำหนักเริ่มต้น `{model_source}` มาให้แล้ว',
+                f'ผู้ใช้ Windows ส่วนใหญ่แนะนำให้ดาวน์โหลด {{windows_opencl_portable}} ซึ่งเป็น **OpenCL รุ่นแนะนำ แบบไม่ต้องติดตั้ง**',
+                f'ถ้า OpenCL ไม่เสถียรบนเครื่องของคุณ ให้ใช้ {{windows_portable}} แทน',
+                f'ถ้ามี **NVIDIA GPU** แนะนำให้ลอง {{windows_nvidia_portable}} ก่อน',
+                'ถ้าคุณปิด Apple style ไว้ รุ่นนี้ก็ปรับ classic style แล้วเช่นกัน จึงใช้ setting เดิมต่อได้เลย',
+            ],
+            'download_heading': 'แนะนำการดาวน์โหลด',
+            'download_headers': ('เครื่องของคุณ', 'ดาวน์โหลดไฟล์นี้'),
+            'why_heading': 'ทำไมควรอัปเดต',
+            'why': [
+                'หน้าจอรีวิวเกมดูเป็น desktop product สมัยใหม่ที่เป็นหนึ่งเดียวมากขึ้น ไม่เหมือนเอา control หลายยุคมาต่อกัน',
+                'ผู้ใช้ classic style จะเห็นการอัปเกรดของ toolbar, buttons และ sidebar tabs ได้ชัดเจน',
+                'live analysis นาน ๆ, candidate refresh และ branch preview จะสร้างภาพขนาดใหญ่ชั่วคราวน้อยลง',
+                'การเปลี่ยนแปลงอยู่ที่ display layer ไม่เปลี่ยน engine settings, analysis results หรือ workflow การรีวิวของคุณ',
+            ],
+            'contact_heading': 'ติดต่อ',
+            'contact': ['QQ group: `299419120`'],
+        },
+    ]
+
+    sections: list[dict[str, object]] = []
+    for block in content:
+        localized_assets = assets_cn if block['language'] in ('中文', '繁體中文') else assets
+        before_items = [
+            item.format(
+                windows_opencl_portable=localized_assets['windows_opencl_portable'],
+                windows_portable=localized_assets['windows_portable'],
+                windows_nvidia_portable=localized_assets['windows_nvidia_portable'],
+            )
+            for item in block['before']
+        ]
+        sections.append(
+            {
+                'language': block['language'],
+                'intro': block['intro'],
+                'updates': {'heading': block['updates_heading'], 'items': block['updates']},
+                'before': {'heading': block['before_heading'], 'items': before_items},
+                'download': {
+                    'heading': block['download_heading'],
+                    'headers': block['download_headers'],
+                    'rows': standard_download_rows(STANDARD_DOWNLOAD_LABELS[block['labels']], localized_assets),
                 },
                 'why': {'heading': block['why_heading'], 'items': block['why']},
                 'contact': {'heading': block['contact_heading'], 'items': block['contact']},

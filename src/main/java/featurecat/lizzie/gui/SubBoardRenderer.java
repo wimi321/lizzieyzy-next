@@ -74,6 +74,28 @@ public class SubBoardRenderer {
 
   private BufferedImage branchStonesImage = emptyImage;
   //  private BufferedImage branchStonesShadowImage;
+  // Reusable buffers for drawBranch, which runs on every engine update and otherwise
+  // allocates a board-sized ARGB image each time. acquire always returns the buffer
+  // NOT currently published in branchStonesImage, so the displayed image is never
+  // cleared or drawn into (drawBranch has early returns that skip publishing).
+  private BufferedImage branchStoneBufferA;
+  private BufferedImage branchStoneBufferB;
+
+  private BufferedImage acquireBranchStoneBuffer(int width, int height) {
+    boolean intoA = branchStonesImage != branchStoneBufferA || branchStoneBufferA == null;
+    BufferedImage buffer = intoA ? branchStoneBufferA : branchStoneBufferB;
+    if (buffer == null || buffer.getWidth() != width || buffer.getHeight() != height) {
+      buffer = new BufferedImage(width, height, TYPE_INT_ARGB);
+      if (intoA) branchStoneBufferA = buffer;
+      else branchStoneBufferB = buffer;
+    } else {
+      Graphics2D g = buffer.createGraphics();
+      g.setComposite(AlphaComposite.Clear);
+      g.fillRect(0, 0, width, height);
+      g.dispose();
+    }
+    return buffer;
+  }
 
   public Optional<List<String>> variationOpt;
 
@@ -787,7 +809,7 @@ public class SubBoardRenderer {
   /** Draw the 'ghost stones' which show a variationOpt Leelaz is thinking about */
   private void drawBranch() {
     showingBranch = false;
-    BufferedImage newImage = new BufferedImage(boardWidth, boardHeight, TYPE_INT_ARGB);
+    BufferedImage newImage = acquireBranchStoneBuffer(boardWidth, boardHeight);
     // branchStonesImage = new BufferedImage(boardWidth, boardHeight, TYPE_INT_ARGB);
     // branchStonesShadowImage = new BufferedImage(boardWidth, boardHeight, TYPE_INT_ARGB);
     branchOpt = Optional.empty();

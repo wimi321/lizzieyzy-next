@@ -174,7 +174,7 @@ public class SidebarPanel extends JPanel {
             Math.max(panelW, panelH) * 0.9f,
             new float[] {0.0f, 0.35f, 1.0f},
             new Color[] {
-              withAlpha(accent, 120), new Color(255, 255, 255, 18), new Color(0, 0, 0, 0)
+              withAlpha(accent, 44), new Color(255, 255, 255, 8), new Color(0, 0, 0, 0)
             });
     g2.setPaint(accentGlow);
     g2.fillRoundRect(panelX, panelY, panelW, panelH, cornerRadius, cornerRadius);
@@ -194,25 +194,10 @@ public class SidebarPanel extends JPanel {
     g2.setPaint(bodyFill);
     g2.fillRoundRect(panelX, panelY, panelW, panelH, cornerRadius, cornerRadius);
 
-    LinearGradientPaint highlight =
-        new LinearGradientPaint(
-            panelX,
-            panelY,
-            panelX,
-            panelY + Math.max(1, panelH / 2),
-            new float[] {0.0f, 0.45f, 1.0f},
-            new Color[] {
-              withAlpha(glassPanelHighlightColor(), 132),
-              withAlpha(accent, 46),
-              new Color(255, 255, 255, 0)
-            });
-    g2.setPaint(highlight);
-    g2.drawRoundRect(panelX, panelY, panelW - 1, panelH - 1, cornerRadius, cornerRadius);
-
     g2.setPaint(withAlpha(glassPanelBorderColor(), 72));
     g2.drawRoundRect(panelX, panelY, panelW - 1, panelH - 1, cornerRadius, cornerRadius);
 
-    g2.setPaint(new Color(255, 255, 255, 22));
+    g2.setPaint(new Color(255, 255, 255, 14));
     g2.drawRoundRect(
         panelX + 1, panelY + 1, panelW - 3, panelH - 3, cornerRadius - 2, cornerRadius - 2);
 

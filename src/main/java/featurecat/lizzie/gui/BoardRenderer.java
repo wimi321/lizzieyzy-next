@@ -109,6 +109,34 @@ public class BoardRenderer {
 
   private BufferedImage branchStonesImage = emptyImage;
   private BufferedImage branchStonesShadowImage;
+  // Reusable buffer pairs (stones + shadow) for branch rendering, which otherwise
+  // allocates two board-sized ARGB images on every engine update. acquire always
+  // returns the pair NOT currently published in branchStonesImage, so the displayed
+  // images are never cleared or drawn into.
+  private BufferedImage[] branchStoneBuffersA;
+  private BufferedImage[] branchStoneBuffersB;
+
+  private BufferedImage[] acquireBranchStoneBuffers(int width, int height) {
+    boolean intoA = branchStoneBuffersA == null || branchStonesImage != branchStoneBuffersA[0];
+    BufferedImage[] pair = intoA ? branchStoneBuffersA : branchStoneBuffersB;
+    if (pair == null || pair[0].getWidth() != width || pair[0].getHeight() != height) {
+      pair =
+          new BufferedImage[] {
+            new BufferedImage(width, height, TYPE_INT_ARGB),
+            new BufferedImage(width, height, TYPE_INT_ARGB)
+          };
+      if (intoA) branchStoneBuffersA = pair;
+      else branchStoneBuffersB = pair;
+    } else {
+      for (BufferedImage img : pair) {
+        Graphics2D g = img.createGraphics();
+        g.setComposite(AlphaComposite.Clear);
+        g.fillRect(0, 0, width, height);
+        g.dispose();
+      }
+    }
+    return pair;
+  }
 
   // private boolean lastInScoreMode = false;
 
@@ -1409,9 +1437,9 @@ public class BoardRenderer {
             null,
             true,
             data);
-    BufferedImage tempBranchStonesImage = new BufferedImage(boardWidth, boardHeight, TYPE_INT_ARGB);
-    BufferedImage tempBranchStonesShadowImage =
-        new BufferedImage(boardWidth, boardHeight, TYPE_INT_ARGB);
+    BufferedImage[] branchBuffers = acquireBranchStoneBuffers(boardWidth, boardHeight);
+    BufferedImage tempBranchStonesImage = branchBuffers[0];
+    BufferedImage tempBranchStonesShadowImage = branchBuffers[1];
 
     Graphics2D g = (Graphics2D) tempBranchStonesImage.getGraphics();
     g.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
@@ -1650,9 +1678,9 @@ public class BoardRenderer {
     } else changedSize = false;
     cachedVariation = variation;
     cachedDisplayedBranchLengthFroBranch = displayedBranchLength;
-    BufferedImage tempBranchStonesImage = new BufferedImage(boardWidth, boardHeight, TYPE_INT_ARGB);
-    BufferedImage tempBranchStonesShadowImage =
-        new BufferedImage(boardWidth, boardHeight, TYPE_INT_ARGB);
+    BufferedImage[] branchBuffers = acquireBranchStoneBuffers(boardWidth, boardHeight);
+    BufferedImage tempBranchStonesImage = branchBuffers[0];
+    BufferedImage tempBranchStonesShadowImage = branchBuffers[1];
 
     Graphics2D g = (Graphics2D) tempBranchStonesImage.getGraphics();
     g.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);

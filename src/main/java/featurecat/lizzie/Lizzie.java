@@ -79,6 +79,15 @@ public class Lizzie {
   /** Launches the game window, and runs the game. */
   public static void main(String[] args) throws IOException {
     mainArgs = args;
+    // Must be set before any AWT/Swing class initializes. macOS always antialiases
+    // text; on Windows/Linux these flags are what keep Swing text from rendering
+    // jagged under the cross-platform look and feel.
+    if (System.getProperty("awt.useSystemAAFontSettings") == null) {
+      System.setProperty("awt.useSystemAAFontSettings", "on");
+    }
+    if (System.getProperty("swing.aatext") == null) {
+      System.setProperty("swing.aatext", "true");
+    }
     ensureWritableWorkingDir();
     config = new Config();
     Utils.applyMaintainedDefaultSettings();

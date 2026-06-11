@@ -209,26 +209,22 @@ public class BlunderListPanel extends JPanel implements Scrollable {
     String text =
         currentSnapshot != null && currentSnapshot.analysisRunning ? "⏳ 正在整理问题手..." : "当前无问题手";
     FontMetrics fm = g2.getFontMetrics();
-    if (Lizzie.config.isAppleStyle) {
-      int boxW = Math.min(getWidth() - 24, 220);
-      int boxH = 86;
-      int boxX = Math.max(12, (getWidth() - boxW) / 2);
-      int boxY = Math.max(12, (getHeight() - boxH) / 2 - 12);
-      g2.setColor(new Color(255, 255, 255, 14));
-      g2.fillRoundRect(boxX, boxY, boxW, boxH, 18, 18);
-      g2.setColor(new Color(255, 255, 255, 24));
-      g2.drawRoundRect(boxX, boxY, boxW - 1, boxH - 1, 18, 18);
-      g2.setColor(TEXT_PRIMARY);
-      g2.drawString(text, boxX + (boxW - fm.stringWidth(text)) / 2, boxY + 34);
-      g2.setColor(TEXT_SECONDARY);
-      String sub = "全盘分析后，这里会列出掉胜率较多的问题手";
-      g2.setFont(new Font(Lizzie.config.uiFontName, Font.PLAIN, 12));
-      FontMetrics subFm = g2.getFontMetrics();
-      g2.drawString(sub, boxX + (boxW - subFm.stringWidth(sub)) / 2, boxY + 58);
-    } else {
-      g2.setColor(TEXT_SECONDARY);
-      g2.drawString(text, (getWidth() - fm.stringWidth(text)) / 2, getHeight() / 2);
-    }
+    // Both styles use a dark sidebar surface, so the boxed empty state works for both.
+    int boxW = Math.min(getWidth() - 24, 220);
+    int boxH = 86;
+    int boxX = Math.max(12, (getWidth() - boxW) / 2);
+    int boxY = Math.max(12, (getHeight() - boxH) / 2 - 12);
+    g2.setColor(new Color(255, 255, 255, 14));
+    g2.fillRoundRect(boxX, boxY, boxW, boxH, 18, 18);
+    g2.setColor(new Color(255, 255, 255, 24));
+    g2.drawRoundRect(boxX, boxY, boxW - 1, boxH - 1, 18, 18);
+    g2.setColor(TEXT_PRIMARY);
+    g2.drawString(text, boxX + (boxW - fm.stringWidth(text)) / 2, boxY + 34);
+    g2.setColor(TEXT_SECONDARY);
+    String sub = "全盘分析后，这里会列出掉胜率较多的问题手";
+    g2.setFont(new Font(Lizzie.config.uiFontName, Font.PLAIN, 12));
+    FontMetrics subFm = g2.getFontMetrics();
+    g2.drawString(sub, boxX + (boxW - subFm.stringWidth(sub)) / 2, boxY + 58);
     g2.dispose();
   }
 
@@ -245,6 +241,10 @@ public class BlunderListPanel extends JPanel implements Scrollable {
 
   private void drawColumn(
       Graphics2D g2, List<ProblemMoveEntry> entries, int startX, int startY, int colWidth) {
+    Font moveFont = new Font(Lizzie.config.uiFontName, Font.BOLD, 14);
+    Font detailFont = new Font(Lizzie.config.uiFontName, Font.PLAIN, 12);
+    Font severeDetailFont = new Font(Lizzie.config.uiFontName, Font.BOLD, 12);
+    Font chevronFont = new Font(Lizzie.config.uiFontName, Font.BOLD, 18);
     for (int i = 0; i < entries.size(); i++) {
       ProblemMoveEntry entry = entries.get(i);
       int y = startY + i * CARD_HEIGHT;
@@ -267,6 +267,19 @@ public class BlunderListPanel extends JPanel implements Scrollable {
           g2.setColor(new Color(34, 36, 40));
         }
         g2.fillRoundRect(x, y, w, h, 8, 8);
+        if (isSelected) {
+          g2.setColor(withAlpha(glassAccentColor(), 160));
+          g2.drawRoundRect(x, y, w - 1, h - 1, 8, 8);
+        } else if (isHovered) {
+          g2.setColor(new Color(255, 255, 255, 46));
+          g2.drawRoundRect(x, y, w - 1, h - 1, 8, 8);
+        }
+        if (isSevere && !isSelected && !isHovered) {
+          g2.setColor(new Color(239, 68, 68, 28));
+          g2.fillRoundRect(x, y, w, h, 8, 8);
+          g2.setColor(new Color(239, 68, 68, 80));
+          g2.drawRoundRect(x, y, w - 1, h - 1, 8, 8);
+        }
       } else {
         // Apple style background
         int cardCornerRadius = cardCornerRadius();
@@ -329,29 +342,52 @@ public class BlunderListPanel extends JPanel implements Scrollable {
         g2.fillRoundRect(x + 1, y + 4, 3, h - 8, 3, 3);
       }
 
-      // Text: #手数 坐标
-      g2.setFont(new Font(Lizzie.config.uiFontName, Font.BOLD, 14));
+      // Stone glyph + move number: the stone makes black/white ownership readable per
+      // card, independent of the side filter.
+      int stoneSize = 12;
+      int stoneX = x + 12;
+      int stoneY = y + 22 - stoneSize + 1;
+      if (entry.isBlack) {
+        g2.setColor(new Color(18, 20, 24));
+        g2.fillOval(stoneX, stoneY, stoneSize, stoneSize);
+        g2.setColor(new Color(255, 255, 255, 160));
+        g2.drawOval(stoneX, stoneY, stoneSize, stoneSize);
+      } else {
+        g2.setColor(new Color(246, 248, 250));
+        g2.fillOval(stoneX, stoneY, stoneSize, stoneSize);
+        g2.setColor(new Color(0, 0, 0, 130));
+        g2.drawOval(stoneX, stoneY, stoneSize, stoneSize);
+      }
+      g2.setFont(moveFont);
       g2.setColor(TEXT_PRIMARY);
       String moveText = "#" + entry.moveNumber + "  " + entry.coords;
-      g2.drawString(moveText, x + 12, y + 22);
+      g2.drawString(moveText, stoneX + stoneSize + 7, y + 22);
 
       // Text: Loss
-      g2.setFont(new Font(Lizzie.config.uiFontName, Font.PLAIN, 12));
+      g2.setFont(isSevere ? severeDetailFont : detailFont);
       Color severityColor = getSeverityColor(entry.severityTier);
       g2.setColor(severityColor);
       String lossText = "🔻 " + String.format("%.1f%%", entry.winrateLossAbs);
       g2.drawString(lossText, x + 12, y + 40);
 
       // Text: Playouts
+      g2.setFont(detailFont);
       g2.setColor(TEXT_SECONDARY);
-      FontMetrics fm = g2.getFontMetrics();
       String playoutText =
           "| "
               + (entry.playouts > 1000
                   ? String.format("%.1fk", entry.playouts / 1000.0)
                   : entry.playouts);
-      int lossWidth = fm.stringWidth(lossText);
+      int lossWidth =
+          g2.getFontMetrics(isSevere ? severeDetailFont : detailFont).stringWidth(lossText);
       g2.drawString(playoutText, x + 12 + lossWidth + 5, y + 40);
+
+      // Navigation chevron: these cards jump to the position, so give them an
+      // explicit affordance like a list row.
+      g2.setFont(chevronFont);
+      g2.setColor(
+          isSelected || isHovered ? new Color(255, 255, 255, 230) : new Color(255, 255, 255, 96));
+      g2.drawString("›", x + w - 18, y + h / 2 + 6);
 
       // Thermal dot
       Color dotColor = null;
@@ -362,7 +398,7 @@ public class BlunderListPanel extends JPanel implements Scrollable {
       if (dotColor != null) {
         g2.setColor(dotColor);
         int dotSize = isSevere ? 10 : 8;
-        g2.fillOval(x + w - 18, y + (h - dotSize) / 2, dotSize, dotSize);
+        g2.fillOval(x + w - 36, y + (h - dotSize) / 2, dotSize, dotSize);
       }
     }
   }

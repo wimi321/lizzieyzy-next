@@ -4237,12 +4237,35 @@ public class LizzieFrame extends JFrame {
   private BufferedImage cachedVarImage2;
   private BufferedImage cachedBackground;
   private BufferedImage cachedWinrateImage;
+  // Reusable full-window paint buffers. paintMianPanel used to allocate a fresh
+  // window-sized ARGB image on every repaint (several per second while the engine
+  // ponders), creating tens of MB/s of garbage. acquire always returns the buffer
+  // NOT currently published in `cachedImage`, so the on-screen image (also read by
+  // screenshot/web-board helpers) is never drawn into.
+  private BufferedImage paintBufferA;
+  private BufferedImage paintBufferB;
   public int varBigX;
   public int varBigY;
   private BufferedImage cachedVariationTreeBigImage;
   public Paint backgroundPaint;
   private int cachedBackgroundWidth = 0, cachedBackgroundHeight = 0;
   public boolean redrawBackgroundAnyway = false;
+
+  private BufferedImage acquirePaintBuffer(int width, int height) {
+    boolean intoA = cachedImage != paintBufferA || paintBufferA == null;
+    BufferedImage buffer = intoA ? paintBufferA : paintBufferB;
+    if (buffer == null || buffer.getWidth() != width || buffer.getHeight() != height) {
+      buffer = new BufferedImage(width, height, TYPE_INT_ARGB);
+      if (intoA) paintBufferA = buffer;
+      else paintBufferB = buffer;
+    } else {
+      Graphics2D g = buffer.createGraphics();
+      g.setComposite(AlphaComposite.Clear);
+      g.fillRect(0, 0, width, height);
+      g.dispose();
+    }
+    return buffer;
+  }
 
   /**
    * Draws the game board and interface
@@ -4265,7 +4288,7 @@ public class LizzieFrame extends JFrame {
         backgroundG = Optional.of(createBackground(width, height));
       }
       if (!showControls) {
-        BufferedImage cachedImage = new BufferedImage(width, height, TYPE_INT_ARGB);
+        BufferedImage cachedImage = acquirePaintBuffer(width, height);
         Graphics2D g = (Graphics2D) cachedImage.getGraphics();
         // g.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
         if (Lizzie.config.isFourSubMode()) {
@@ -6741,6 +6764,22 @@ public class LizzieFrame extends JFrame {
     g.setFont(font);
   }
 
+  // Reusable layers for the winrate pane; recreated only when the pane size changes.
+  private BufferedImage winrateLayer;
+  private BufferedImage winrateBackgroundLayer;
+  private BufferedImage winrateBlunderLayer;
+
+  private BufferedImage clearedWinrateLayer(BufferedImage layer, int w, int h) {
+    if (layer == null || layer.getWidth() != w || layer.getHeight() != h) {
+      return new BufferedImage(w, h, TYPE_INT_ARGB);
+    }
+    Graphics2D g = layer.createGraphics();
+    g.setComposite(AlphaComposite.Clear);
+    g.fillRect(0, 0, w, h);
+    g.dispose();
+    return layer;
+  }
+
   private void drawWinratePane(int x, int y, int w, int h) {
     if (w < 10 || h < 10) {
       cachedWinrateImage = new BufferedImage(1, 1, TYPE_INT_ARGB);
@@ -6752,9 +6791,12 @@ public class LizzieFrame extends JFrame {
         || refreshWinratePane
         || !refreshFromInfo
         || (System.currentTimeMillis() - winratePaneTime) >= 200) {
-      BufferedImage cachedWinrateImage = new BufferedImage(w, h, TYPE_INT_ARGB);
-      BufferedImage cachedWinrateBackgroundImage = new BufferedImage(w, h, TYPE_INT_ARGB);
-      BufferedImage cachedWinrateBlunderImage = new BufferedImage(w, h, TYPE_INT_ARGB);
+      winrateLayer = clearedWinrateLayer(winrateLayer, w, h);
+      winrateBackgroundLayer = clearedWinrateLayer(winrateBackgroundLayer, w, h);
+      winrateBlunderLayer = clearedWinrateLayer(winrateBlunderLayer, w, h);
+      BufferedImage cachedWinrateImage = winrateLayer;
+      BufferedImage cachedWinrateBackgroundImage = winrateBackgroundLayer;
+      BufferedImage cachedWinrateBlunderImage = winrateBlunderLayer;
       Graphics2D g = (Graphics2D) cachedWinrateImage.getGraphics();
       Graphics2D gBlunder = (Graphics2D) cachedWinrateBlunderImage.getGraphics();
       Graphics2D gBackground = (Graphics2D) cachedWinrateBackgroundImage.getGraphics();
