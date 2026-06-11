@@ -191,6 +191,43 @@ verify_required_entitlements() {
   done
 }
 
+submit_for_notarization_with_retry() {
+  local signed_dmg="$1"
+  local notary_json="$2"
+  local attempt
+  local exit_code
+  local stderr_file="${notary_json}.stderr"
+
+  for attempt in 1 2 3; do
+    rm -f "$notary_json" "$stderr_file"
+    set +e
+    xcrun notarytool submit "$signed_dmg" \
+      --apple-id "${APPLE_ID}" \
+      --password "${APPLE_APP_PASSWORD}" \
+      --team-id "${APPLE_TEAM_ID}" \
+      --wait \
+      --output-format json >"$notary_json" 2>"$stderr_file"
+    exit_code=$?
+    set -e
+
+    if [[ "$exit_code" -eq 0 ]]; then
+      cat "$notary_json"
+      rm -f "$stderr_file"
+      return 0
+    fi
+
+    echo "notarytool submit failed on attempt $attempt/3 for $signed_dmg" >&2
+    [[ ! -s "$notary_json" ]] || cat "$notary_json" >&2
+    [[ ! -s "$stderr_file" ]] || cat "$stderr_file" >&2
+
+    if [[ "$attempt" -lt 3 ]]; then
+      sleep "$((attempt * 30))"
+    fi
+  done
+
+  return "$exit_code"
+}
+
 case "$mac_arch" in
   mac-arm64)
     dmg_pattern="*mac-apple-silicon*.dmg"
@@ -295,13 +332,7 @@ PY
 
   echo "Submitting $signed_dmg for notarization..."
   notary_json="$work_dir/notary-submit.json"
-  xcrun notarytool submit "$signed_dmg" \
-    --apple-id "${APPLE_ID}" \
-    --password "${APPLE_APP_PASSWORD}" \
-    --team-id "${APPLE_TEAM_ID}" \
-    --wait \
-    --output-format json >"$notary_json"
-  cat "$notary_json"
+  submit_for_notarization_with_retry "$signed_dmg" "$notary_json"
   submission_id="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("id",""))' "$notary_json")"
   notary_status="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("status",""))' "$notary_json")"
   if [[ "$notary_status" != "Accepted" ]]; then
