@@ -152,6 +152,7 @@ public class Leelaz {
   public boolean autoAnalysed = false;
   private static final long BUNDLED_ENGINE_START_TIMEOUT_MS = 90000L;
   private static final long NVIDIA_ENGINE_START_TIMEOUT_MS = 180000L;
+  private static final long FIRST_OPENCL_TUNING_START_TIMEOUT_MS = 600000L;
   private static final long LOAD_SGF_SEND_FAILURE_CLEANUP_TIMEOUT_MILLIS = 1000L;
   private static final long LOAD_SGF_PENDING_RESPONSE_GRACE_TIMEOUT_MILLIS = 3000L;
   private static final long LOAD_SGF_NO_RESPONSE_EXTRA_TIMEOUT_MILLIS = 2000L;
@@ -4759,8 +4760,12 @@ public class Leelaz {
       return;
     }
     final boolean nvidiaBundled = KataGoRuntimeHelper.isNvidiaBundledPath(engineExecutable);
+    final boolean firstOpenCLTuning =
+        !nvidiaBundled && KataGoRuntimeHelper.needsFirstOpenCLTuning(engineExecutable);
     final long timeoutMillis =
-        nvidiaBundled ? NVIDIA_ENGINE_START_TIMEOUT_MS : BUNDLED_ENGINE_START_TIMEOUT_MS;
+        firstOpenCLTuning
+            ? FIRST_OPENCL_TUNING_START_TIMEOUT_MS
+            : (nvidiaBundled ? NVIDIA_ENGINE_START_TIMEOUT_MS : BUNDLED_ENGINE_START_TIMEOUT_MS);
     Thread watchdog =
         new Thread(
             () -> {
@@ -4771,6 +4776,13 @@ public class Leelaz {
                 }
                 if (process != null && !process.isAlive()) {
                   break;
+                }
+                // OpenCL autotuning can take several minutes; keep waiting while it runs.
+                if (isTuning) {
+                  deadline =
+                      Math.max(
+                          deadline,
+                          System.currentTimeMillis() + FIRST_OPENCL_TUNING_START_TIMEOUT_MS);
                 }
                 try {
                   Thread.sleep(250L);
