@@ -4003,6 +4003,8 @@ def build_release_notes(asset_map: dict[str, str | None], bundle: dict[str, str]
         return build_next_2026_06_10_1_notes(asset_map, bundle, repo, release_tag)
     if release_tag == 'next-2026-06-11.1':
         return build_next_2026_06_11_1_notes(asset_map, bundle, repo, release_tag)
+    if release_tag == 'next-2026-06-11.2':
+        return build_next_2026_06_11_2_notes(asset_map, bundle, repo, release_tag)
 
     assets_cn = {
         key: format_asset(asset_map[key], repo, release_tag)
@@ -5382,6 +5384,251 @@ def build_next_2026_06_11_1_notes(
                 'ผู้ใช้ classic style จะเห็นการอัปเกรดของ toolbar, buttons และ sidebar tabs ได้ชัดเจน',
                 'live analysis นาน ๆ, candidate refresh และ branch preview จะสร้างภาพขนาดใหญ่ชั่วคราวน้อยลง',
                 'การเปลี่ยนแปลงอยู่ที่ display layer ไม่เปลี่ยน engine settings, analysis results หรือ workflow การรีวิวของคุณ',
+            ],
+            'contact_heading': 'ติดต่อ',
+            'contact': ['QQ group: `299419120`'],
+        },
+    ]
+
+    sections: list[dict[str, object]] = []
+    for block in content:
+        localized_assets = assets_cn if block['language'] in ('中文', '繁體中文') else assets
+        before_items = [
+            item.format(
+                windows_opencl_portable=localized_assets['windows_opencl_portable'],
+                windows_portable=localized_assets['windows_portable'],
+                windows_nvidia_portable=localized_assets['windows_nvidia_portable'],
+            )
+            for item in block['before']
+        ]
+        sections.append(
+            {
+                'language': block['language'],
+                'intro': block['intro'],
+                'updates': {'heading': block['updates_heading'], 'items': block['updates']},
+                'before': {'heading': block['before_heading'], 'items': before_items},
+                'download': {
+                    'heading': block['download_heading'],
+                    'headers': block['download_headers'],
+                    'rows': standard_download_rows(STANDARD_DOWNLOAD_LABELS[block['labels']], localized_assets),
+                },
+                'why': {'heading': block['why_heading'], 'items': block['why']},
+                'contact': {'heading': block['contact_heading'], 'items': block['contact']},
+            }
+        )
+    add_nvidia50_download_rows(sections, assets_cn, assets)
+    add_tensorrt_split_download_row(sections, assets_cn, assets, asset_map)
+    validate_release_sections(sections)
+    return release_heading(release_tag) + '\n\n' + '\n\n---\n\n'.join(
+        render_language_section(section) for section in sections
+    ) + '\n'
+
+
+def build_next_2026_06_11_2_notes(
+    asset_map: dict[str, str | None],
+    bundle: dict[str, str],
+    repo: str,
+    release_tag: str | None,
+) -> str:
+    assets_cn = {key: format_asset(asset_map[key], repo, release_tag) for key in asset_map}
+    assets = {key: format_asset_en(asset_map[key], repo, release_tag) for key in asset_map}
+    katago_version = bundle['katago_version']
+    model_source = bundle['model_source']
+    content = [
+        {
+            'language': '中文',
+            'labels': 'zh',
+            'intro': '这是一次发布前质量收口版，重点修复野狐棋谱加载后的自动胜率曲线、macOS 安装包拖拽体验，以及默认界面的胜率图观感。加载野狐棋谱后不再需要先按空格，程序会自动启动静默快速分析来补出胜率曲线。',
+            'updates_heading': '本版主要更新',
+            'updates': [
+                '修复野狐棋谱加载后不自动生成胜率曲线的问题：主引擎还没开始 ponder 时，也会自动启动静默快速分析。',
+                '默认关闭胜率图里的柱状失误条，让新用户第一眼看到的是更干净的胜率曲线；旧默认配置会一次性迁移，之后用户手动开启会被保留。',
+                'macOS DMG 改成标准拖拽安装布局：打开安装包后可以把 LizzieYzy Next 拖到 Applications。',
+                'macOS 签名公证上传增加重试，降低 Apple notary 临时 503 导致 Intel/Apple Silicon 包失败的概率。',
+                '保留上一版 Apple 风格和 LizzieYzy 经典风格的视觉打磨，以及主窗口、胜率图、分支预览的缓冲复用性能优化。',
+                '本次不改变 KataGo 分析逻辑、问题手判定规则或用户已有的手动引擎配置。',
+            ],
+            'before_heading': '下载前先看这几句',
+            'before': [
+                f'主推荐整合包继续内置 KataGo `{katago_version}` 和默认权重 `{model_source}`。',
+                f'Windows 普通用户优先下载 {{windows_opencl_portable}}，这是 **OpenCL 版（推荐，免安装）**。',
+                f'如果 OpenCL 在你的电脑上不稳定，再改用 {{windows_portable}}。',
+                f'如果你的电脑是 **英伟达显卡**，优先下载 {{windows_nvidia_portable}}。',
+                '如果你主要下载野狐棋谱复盘，建议更新到这一版；加载后会自动补胜率曲线。',
+            ],
+            'download_heading': '下载建议',
+            'download_headers': ('你的电脑', '直接下载这个'),
+            'why_heading': '这一版为什么值得更新',
+            'why': [
+                '野狐棋谱加载后的体验更顺：打开棋谱后胜率曲线会自己生成，不需要记住再按一次空格。',
+                '胜率图默认更清爽，柱状失误条不再抢占第一视觉焦点。',
+                'macOS 用户拿到的是更符合 macOS 习惯的 DMG 安装包，拖到 Applications 的窗口会出现。',
+                '发布前重新跑了聚焦回归测试、全量 Maven 测试、DMG 布局验证和四平台 release workflow。',
+            ],
+            'contact_heading': '交流',
+            'contact': ['QQ 群：`299419120`'],
+        },
+        {
+            'language': '繁體中文',
+            'labels': 'zh_hant',
+            'intro': '這是一次發布前品質收口版，重點修復野狐棋譜載入後的自動勝率曲線、macOS 安裝包拖曳體驗，以及預設介面的勝率圖觀感。載入野狐棋譜後不再需要先按空白鍵，程式會自動啟動靜默快速分析來補出勝率曲線。',
+            'updates_heading': '本版主要更新',
+            'updates': [
+                '修復野狐棋譜載入後不自動生成勝率曲線的問題：主引擎尚未開始 ponder 時，也會自動啟動靜默快速分析。',
+                '預設關閉勝率圖裡的柱狀失誤條，讓新使用者第一眼看到更乾淨的勝率曲線；舊預設設定會一次性遷移，之後手動開啟會被保留。',
+                'macOS DMG 改成標準拖曳安裝版面：打開安裝包後可以把 LizzieYzy Next 拖到 Applications。',
+                'macOS 簽名公證上傳增加重試，降低 Apple notary 暫時 503 造成 Intel/Apple Silicon 包失敗的機率。',
+                '保留上一版 Apple 風格和 LizzieYzy 經典風格的視覺打磨，以及主視窗、勝率圖、分支預覽的緩衝重用效能優化。',
+                '本次不改變 KataGo 分析邏輯、問題手判定規則或使用者既有的手動引擎設定。',
+            ],
+            'before_heading': '下載前先看這幾句',
+            'before': [
+                f'主推薦整合包繼續內建 KataGo `{katago_version}` 和預設權重 `{model_source}`。',
+                f'Windows 一般使用者優先下載 {{windows_opencl_portable}}，這是 **OpenCL 版（推薦，免安裝）**。',
+                f'如果 OpenCL 在你的電腦上不穩定，再改用 {{windows_portable}}。',
+                f'如果你的電腦是 **NVIDIA 顯示卡**，優先下載 {{windows_nvidia_portable}}。',
+                '如果你主要下載野狐棋譜復盤，建議更新到這一版；載入後會自動補勝率曲線。',
+            ],
+            'download_heading': '下載建議',
+            'download_headers': ('你的電腦', '直接下載這個'),
+            'why_heading': '這一版為什麼值得更新',
+            'why': [
+                '野狐棋譜載入後的體驗更順：打開棋譜後勝率曲線會自己生成，不需要記住再按一次空白鍵。',
+                '勝率圖預設更清爽，柱狀失誤條不再搶佔第一視覺焦點。',
+                'macOS 使用者拿到的是更符合 macOS 習慣的 DMG 安裝包，拖到 Applications 的視窗會出現。',
+                '發布前重新跑了聚焦回歸測試、完整 Maven 測試、DMG 版面驗證和四平台 release workflow。',
+            ],
+            'contact_heading': '交流',
+            'contact': ['QQ 群：`299419120`'],
+        },
+        {
+            'language': 'English',
+            'labels': 'en',
+            'intro': 'This release tightens the final user-facing details before publishing: Fox kifu loads now generate the winrate graph automatically, the macOS package uses the standard drag-to-Applications DMG layout, and the default winrate graph is cleaner. After loading a Fox record, you no longer need to press Space first; LizzieYzy starts a silent quick analysis pass to fill the curve.',
+            'updates_heading': 'Release Highlights',
+            'updates': [
+                'Fixed Fox kifu loading so the winrate graph is generated automatically even before the primary engine starts pondering.',
+                'Turned the blunder bar off by default for a cleaner first winrate graph; old default-derived configs migrate once, and explicit later user changes are preserved.',
+                'Changed macOS DMGs to the standard drag-install layout with the app and an Applications target.',
+                'Added retry handling around macOS notarization uploads to reduce failures from temporary Apple notary 503 responses.',
+                'Kept the previous Apple style, LizzieYzy classic style, and rendering-buffer performance polish from the UI/performance release.',
+                'KataGo analysis logic, problem-move rules, and manually configured engines are unchanged.',
+            ],
+            'before_heading': 'Read Before Downloading',
+            'before': [
+                f'The recommended bundles continue to include KataGo `{katago_version}` and the default weight `{model_source}`.',
+                f'Most Windows users should download {{windows_opencl_portable}}, the **recommended no-install OpenCL build**.',
+                f'If OpenCL is unreliable on your PC, use {{windows_portable}} instead.',
+                f'If your PC has an **NVIDIA GPU**, try {{windows_nvidia_portable}} first.',
+                'If your review flow often starts from downloaded Fox records, this is the build to use.',
+            ],
+            'download_heading': 'Download Guide',
+            'download_headers': ('Your computer', 'Download this file'),
+            'why_heading': 'Why Update',
+            'why': [
+                'Fox records now feel direct: load the game and the winrate curve starts filling without a Space-key workaround.',
+                'The default graph is calmer, with the blunder bars no longer dominating the first view.',
+                'macOS users get the expected drag-to-Applications install window.',
+                'Before release, targeted regressions, the full Maven test suite, DMG layout validation, and all four platform release workflows were rerun.',
+            ],
+            'contact_heading': 'Contact',
+            'contact': ['QQ group: `299419120`'],
+        },
+        {
+            'language': '日本語',
+            'labels': 'ja',
+            'intro': 'このリリースは公開前の最終品質調整です。Fox 棋譜の読み込み後に勝率グラフが自動生成され、macOS パッケージは標準的な Applications へのドラッグ形式になり、既定の勝率グラフもよりすっきりしました。Fox 棋譜を読み込んだ後、先に Space を押す必要はありません。',
+            'updates_heading': '主な更新',
+            'updates': [
+                'Fox 棋譜の読み込み後、メインエンジンがまだ ponder を始めていなくても、静かなクイック解析で勝率グラフを自動生成します。',
+                '勝率グラフの blunder bar を既定でオフにし、最初の表示をよりきれいにしました。古い既定値は一度だけ移行し、その後の手動変更は保持されます。',
+                'macOS DMG を標準のドラッグインストール形式に変更し、アプリを Applications にドラッグできます。',
+                'Apple notary の一時的な 503 に備えて、macOS 公証アップロードにリトライを追加しました。',
+                '前回の Apple style、LizzieYzy classic style、描画バッファ再利用の性能改善はそのまま含まれます。',
+                'KataGo 解析ロジック、問題手ルール、手動設定したエンジンは変更していません。',
+            ],
+            'before_heading': 'ダウンロード前に',
+            'before': [
+                f'推奨バンドルには KataGo `{katago_version}` と既定の重み `{model_source}` が含まれています。',
+                f'多くの Windows ユーザーは {{windows_opencl_portable}} を選ぶのがおすすめです。これは **推奨 OpenCL 版、インストール不要** です。',
+                f'OpenCL が不安定な場合は {{windows_portable}} を使ってください。',
+                f'**NVIDIA GPU** 搭載 PC では {{windows_nvidia_portable}} を優先してください。',
+                'ダウンロードした Fox 棋譜から復盤を始めることが多い場合は、このビルドがおすすめです。',
+            ],
+            'download_heading': 'ダウンロード案内',
+            'download_headers': ('お使いの環境', 'ダウンロードするファイル'),
+            'why_heading': '更新する理由',
+            'why': [
+                'Fox 棋譜を開くと、Space キーの回避操作なしで勝率曲線が生成されます。',
+                '既定のグラフ表示がより落ち着き、blunder bar が最初の視線を奪わなくなりました。',
+                'macOS では期待どおり Applications へドラッグするインストール画面が出ます。',
+                'リリース前に targeted regression、full Maven test、DMG layout validation、4 プラットフォームの release workflow を再実行しました。',
+            ],
+            'contact_heading': '連絡先',
+            'contact': ['QQ グループ: `299419120`'],
+        },
+        {
+            'language': '한국어',
+            'labels': 'ko',
+            'intro': '이번 릴리스는 공개 전 마지막 품질 정리 버전입니다. Fox 기보를 불러온 뒤 승률 그래프가 자동으로 생성되고, macOS 패키지는 표준 drag-to-Applications DMG 형태가 되었으며, 기본 승률 그래프도 더 깔끔해졌습니다. Fox 기보를 연 뒤 먼저 Space 를 누를 필요가 없습니다.',
+            'updates_heading': '주요 업데이트',
+            'updates': [
+                'Fox 기보 로딩 후 메인 엔진이 아직 ponder 를 시작하지 않았더라도 silent quick analysis 로 승률 그래프를 자동 생성합니다.',
+                '기본 승률 그래프에서 blunder bar 를 꺼서 첫 화면을 더 깔끔하게 만들었습니다. 예전 기본값은 한 번만 migrate 되고, 이후 사용자가 직접 켠 설정은 유지됩니다.',
+                'macOS DMG 를 표준 drag-install 레이아웃으로 바꿔 앱을 Applications 로 끌어 놓을 수 있습니다.',
+                'Apple notary 의 일시적인 503 응답에 대비해 macOS notarization 업로드에 retry 를 추가했습니다.',
+                '이전 Apple style, LizzieYzy classic style, rendering buffer 성능 개선은 그대로 포함됩니다.',
+                'KataGo 분석 로직, 문제수 규칙, 수동 엔진 설정은 변경하지 않았습니다.',
+            ],
+            'before_heading': '다운로드 전 확인',
+            'before': [
+                f'추천 번들에는 KataGo `{katago_version}` 와 기본 가중치 `{model_source}` 가 포함되어 있습니다.',
+                f'대부분의 Windows 사용자는 {{windows_opencl_portable}} 를 먼저 받으면 됩니다. 이는 **추천 OpenCL 무설치 빌드** 입니다.',
+                f'OpenCL 이 PC에서 불안정하면 {{windows_portable}} 를 대신 사용하세요.',
+                f'**NVIDIA GPU** 가 있다면 {{windows_nvidia_portable}} 를 우선 사용해 보세요.',
+                '다운로드한 Fox 기보로 복기를 자주 시작한다면 이 빌드를 권장합니다.',
+            ],
+            'download_heading': '다운로드 안내',
+            'download_headers': ('내 컴퓨터', '다운로드할 파일'),
+            'why_heading': '업데이트할 이유',
+            'why': [
+                'Fox 기보를 열면 Space 키 우회 없이 승률 곡선이 자동으로 채워집니다.',
+                '기본 그래프가 더 차분해지고 blunder bar 가 첫 시선을 차지하지 않습니다.',
+                'macOS 에서는 기대한 대로 Applications 로 드래그하는 설치 창이 표시됩니다.',
+                '릴리스 전에 targeted regression, full Maven test, DMG layout validation, 4개 플랫폼 release workflow 를 다시 실행했습니다.',
+            ],
+            'contact_heading': '연락',
+            'contact': ['QQ 그룹: `299419120`'],
+        },
+        {
+            'language': 'ภาษาไทย',
+            'labels': 'th',
+            'intro': 'รีลีสนี้เป็นการเก็บคุณภาพรอบสุดท้ายก่อนเผยแพร่: เมื่อโหลด Fox kifu แล้ว winrate graph จะถูกสร้างอัตโนมัติ, แพ็กเกจ macOS ใช้ DMG แบบลากไป Applications และกราฟเริ่มต้นดูสะอาดขึ้น ไม่ต้องกด Space ก่อนหลังโหลด Fox record',
+            'updates_heading': 'อัปเดตหลัก',
+            'updates': [
+                'แก้ Fox kifu load ให้สร้าง winrate graph อัตโนมัติ แม้ primary engine ยังไม่ได้เริ่ม ponder',
+                'ปิด blunder bar เป็นค่าเริ่มต้นเพื่อให้กราฟแรกดูสะอาดขึ้น; config เก่าที่เป็นค่า default จะ migrate ครั้งเดียว และถ้าผู้ใช้เปิดเองภายหลังจะคงไว้',
+                'เปลี่ยน macOS DMG เป็น layout ติดตั้งมาตรฐานที่ลากแอปไป Applications ได้',
+                'เพิ่ม retry ให้ macOS notarization upload เพื่อลดความล้มเหลวจาก Apple notary 503 ชั่วคราว',
+                'ยังรวม polish ของ Apple style, LizzieYzy classic style และ rendering-buffer performance จากรุ่นก่อน',
+                'ไม่ได้เปลี่ยน logic วิเคราะห์ KataGo, กฎ problem-move หรือ engine ที่ผู้ใช้ตั้งเอง',
+            ],
+            'before_heading': 'ก่อนดาวน์โหลด',
+            'before': [
+                f'แพ็กเกจหลักมี KataGo `{katago_version}` และน้ำหนักเริ่มต้น `{model_source}` มาให้แล้ว',
+                f'ผู้ใช้ Windows ส่วนใหญ่แนะนำให้ดาวน์โหลด {{windows_opencl_portable}} ซึ่งเป็น **OpenCL รุ่นแนะนำ แบบไม่ต้องติดตั้ง**',
+                f'ถ้า OpenCL ไม่เสถียรบนเครื่องของคุณ ให้ใช้ {{windows_portable}} แทน',
+                f'ถ้ามี **NVIDIA GPU** แนะนำให้ลอง {{windows_nvidia_portable}} ก่อน',
+                'ถ้าคุณมักเริ่มรีวิวจาก Fox records ที่ดาวน์โหลดมา รุ่นนี้เหมาะที่สุด',
+            ],
+            'download_heading': 'แนะนำการดาวน์โหลด',
+            'download_headers': ('เครื่องของคุณ', 'ดาวน์โหลดไฟล์นี้'),
+            'why_heading': 'ทำไมควรอัปเดต',
+            'why': [
+                'เปิด Fox kifu แล้ว winrate curve จะเริ่มเติมเอง ไม่ต้องกด Space เพื่อแก้ทาง',
+                'กราฟเริ่มต้นนิ่งและสะอาดขึ้น เพราะ blunder bar ไม่แย่งสายตา',
+                'ผู้ใช้ macOS จะเห็นหน้าต่างติดตั้งแบบลากไป Applications ตามที่คุ้นเคย',
+                'ก่อน release ได้รัน targeted regressions, full Maven tests, DMG layout validation และ release workflow ครบ 4 แพลตฟอร์มแล้ว',
             ],
             'contact_heading': 'ติดต่อ',
             'contact': ['QQ group: `299419120`'],
