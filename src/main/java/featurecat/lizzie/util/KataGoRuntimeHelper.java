@@ -2223,6 +2223,39 @@ public final class KataGoRuntimeHelper {
         .normalize();
   }
 
+  /**
+   * Returns true when the bundled engine still needs a one-time OpenCL autotuning pass, i.e. no
+   * cached tuning parameters exist yet. The first OpenCL tuning can take a few minutes, so callers
+   * should grant a longer startup budget in that case.
+   */
+  public static boolean needsFirstOpenCLTuning(Path enginePath) {
+    if (!isWindowsPlatform()) {
+      return false;
+    }
+    if (enginePath == null
+        || !Config.isBundledKataGoCommand(enginePath.toAbsolutePath().normalize().toString())) {
+      return false;
+    }
+    // NVIDIA TensorRT/CUDA packages do not rely on the OpenCL tuning cache.
+    if (resolveNvidiaBackend(enginePath) != null) {
+      return false;
+    }
+    Path homeDataDir = getBundledHomeDataDir();
+    if (homeDataDir == null) {
+      return false;
+    }
+    Path tuningDir = homeDataDir.resolve("opencltuning");
+    if (!Files.isDirectory(tuningDir)) {
+      return true;
+    }
+    try (Stream<Path> entries = Files.list(tuningDir)) {
+      return entries.noneMatch(
+          p -> p.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(".txt"));
+    } catch (IOException e) {
+      return true;
+    }
+  }
+
   private static void appendOverrideConfig(List<String> command, String keyValue) {
     if (command == null || keyValue == null || keyValue.trim().isEmpty()) {
       return;
