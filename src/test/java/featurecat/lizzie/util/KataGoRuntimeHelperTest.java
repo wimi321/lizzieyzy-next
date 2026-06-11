@@ -96,6 +96,64 @@ public class KataGoRuntimeHelperTest {
   }
 
   @Test
+  void bundledOpenclEngineNeedsFirstTuningUntilCacheExists() throws Exception {
+    withOsName(
+        WINDOWS_OS_NAME,
+        () -> {
+          Path tempRoot = Files.createTempDirectory("katago-helper-opencl-tuning");
+          Path enginePath =
+              touch(
+                  tempRoot
+                      .resolve("engines")
+                      .resolve("katago")
+                      .resolve("windows-x64-opencl")
+                      .resolve("katago.exe"));
+          Path runtimeWorkDirectory = Files.createDirectories(tempRoot.resolve("runtime-root"));
+
+          withConfig(
+              runtimeWorkDirectory,
+              () -> {
+                assertTrue(
+                    KataGoRuntimeHelper.needsFirstOpenCLTuning(enginePath),
+                    "Bundled OpenCL should get the longer startup budget before tuning exists.");
+
+                Path tuningDir =
+                    Files.createDirectories(
+                        runtimeWorkDirectory.resolve("katago-home/opencltuning"));
+                touch(tuningDir.resolve("tune11_gpu0.txt"));
+
+                assertFalse(
+                    KataGoRuntimeHelper.needsFirstOpenCLTuning(enginePath),
+                    "Existing OpenCL tuning cache should restore the normal startup timeout.");
+              });
+        });
+  }
+
+  @Test
+  void bundledNvidiaEngineDoesNotNeedOpenclTuningBudget() throws Exception {
+    withOsName(
+        WINDOWS_OS_NAME,
+        () -> {
+          Path tempRoot = Files.createTempDirectory("katago-helper-nvidia-no-opencl-tuning");
+          Path enginePath =
+              touch(
+                  tempRoot
+                      .resolve("engines")
+                      .resolve("katago")
+                      .resolve("windows-x64-nvidia")
+                      .resolve("katago.exe"));
+          Path runtimeWorkDirectory = Files.createDirectories(tempRoot.resolve("runtime-root"));
+
+          withConfig(
+              runtimeWorkDirectory,
+              () ->
+                  assertFalse(
+                      KataGoRuntimeHelper.needsFirstOpenCLTuning(enginePath),
+                      "Bundled NVIDIA engines should not use the OpenCL tuning watchdog budget."));
+        });
+  }
+
+  @Test
   void bundledNvidiaEnginePrependsRuntimePath() throws Exception {
     withOsName(
         WINDOWS_OS_NAME,
