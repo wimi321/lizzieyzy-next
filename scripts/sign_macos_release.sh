@@ -19,7 +19,9 @@ set -euo pipefail
 
 release_dir="${1:-dist/release}"
 mac_arch="${2:-mac-arm64}"
-entitlements_path="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/packaging/macos-entitlements.plist"
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+entitlements_path="$ROOT_DIR/packaging/macos-entitlements.plist"
+drag_dmg_script="$ROOT_DIR/scripts/create_macos_drag_dmg.sh"
 
 if [[ -z "${APPLE_CERT_P12:-}" || -z "${APPLE_TEAM_ID:-}" ]]; then
   echo "Apple Developer credentials not configured; skipping sign/notarize."
@@ -33,6 +35,11 @@ fi
 
 if [[ ! -f "$entitlements_path" ]]; then
   echo "Missing macOS entitlements file: $entitlements_path" >&2
+  exit 1
+fi
+
+if [[ ! -x "$drag_dmg_script" ]]; then
+  echo "Missing executable DMG layout helper: $drag_dmg_script" >&2
   exit 1
 fi
 
@@ -104,17 +111,15 @@ create_dmg_with_retry() {
 
   rm -f "$output_dmg"
   for attempt in 1 2 3 4 5; do
-    if hdiutil create -volname "$volume_name" \
-                      -srcfolder "$source_folder" -ov -format UDZO "$output_dmg" >/dev/null; then
+    if "$drag_dmg_script" "$volume_name" "$source_folder" "$output_dmg"; then
       return 0
     fi
     rm -f "$output_dmg"
-    echo "hdiutil create failed for $output_dmg; retrying in ${attempt}s..." >&2
+    echo "DMG creation failed for $output_dmg; retrying in ${attempt}s..." >&2
     sleep "$attempt"
   done
 
-  hdiutil create -volname "$volume_name" \
-                 -srcfolder "$source_folder" -ov -format UDZO "$output_dmg" >/dev/null
+  "$drag_dmg_script" "$volume_name" "$source_folder" "$output_dmg"
 }
 
 sign_embedded_jar_natives() {

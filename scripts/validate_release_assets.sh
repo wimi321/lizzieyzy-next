@@ -4,6 +4,7 @@ set -euo pipefail
 PLATFORM="${1:-}"
 RELEASE_DIR="${2:-dist/release}"
 DATE_TAG="${3:-}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 if [[ -z "$PLATFORM" || -z "$DATE_TAG" ]]; then
   echo "Usage: $0 <windows|mac-arm64|mac-amd64|linux> [release_dir] <date_tag>"
@@ -124,6 +125,16 @@ for name in "${actual[@]}"; do
     exit 1
   fi
 done
+
+case "$PLATFORM" in
+  mac-arm64|mac-amd64)
+    if command -v hdiutil >/dev/null 2>&1; then
+      "$SCRIPT_DIR/validate_macos_dmg_layout.sh" "$RELEASE_DIR/${expected[0]}"
+    else
+      echo "Skipping macOS DMG layout validation because hdiutil is unavailable."
+    fi
+    ;;
+esac
 
 echo "Validated public release assets for $PLATFORM:"
 printf '  %s\n' "${actual[@]}"
