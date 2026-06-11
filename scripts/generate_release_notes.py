@@ -4036,6 +4036,8 @@ def build_release_notes(asset_map: dict[str, str | None], bundle: dict[str, str]
         return build_next_2026_06_11_1_notes(asset_map, bundle, repo, release_tag)
     if release_tag == 'next-2026-06-11.2':
         return build_next_2026_06_11_2_notes(asset_map, bundle, repo, release_tag)
+    if release_tag == 'next-2026-06-12.1':
+        return build_next_2026_06_12_1_notes(asset_map, bundle, repo, release_tag)
 
     assets_cn = {
         key: format_asset(asset_map[key], repo, release_tag)
@@ -5687,6 +5689,247 @@ def build_next_2026_06_11_2_notes(
                     'heading': block['download_heading'],
                     'headers': block['download_headers'],
                     'rows': standard_download_rows(STANDARD_DOWNLOAD_LABELS[block['labels']], localized_assets),
+                },
+                'why': {'heading': block['why_heading'], 'items': block['why']},
+                'contact': {'heading': block['contact_heading'], 'items': block['contact']},
+            }
+        )
+    add_nvidia50_download_rows(sections, assets_cn, assets)
+    add_tensorrt_split_download_row(sections, assets_cn, assets, asset_map)
+    validate_release_sections(sections)
+    return release_heading(release_tag) + '\n\n' + '\n\n---\n\n'.join(
+        render_language_section(section) for section in sections
+    ) + '\n'
+
+
+def build_next_2026_06_12_1_notes(
+    asset_map: dict[str, str | None],
+    bundle: dict[str, str],
+    repo: str,
+    release_tag: str | None,
+) -> str:
+    assets_cn = {key: format_asset(asset_map[key], repo, release_tag) for key in asset_map}
+    assets = {key: format_asset_en(asset_map[key], repo, release_tag) for key in asset_map}
+    katago_version = bundle['katago_version']
+    model_source = bundle['model_source']
+    content = [
+        {
+            'language': '中文',
+            'labels': 'zh',
+            'intro': '这是一次 PR 质量收口版。感谢 @semanym 提交 #41 和 #42：一个修复野狐让子棋开局连续黑棋被丢失的问题，一个修复 Windows OpenCL 首次自动调优耗时较长时被误判为引擎异常关闭的问题。',
+            'updates_heading': '本版主要更新',
+            'updates': [
+                '合并 #41：野狐把让子棋编码成开局连续 `B[]`，现在会在归一化前识别并还原为正确的 `HA[n]` / `AB[...]` 根节点 setup，棋盘和引擎都能看到让子。',
+                '合并 #42：Windows 内置 OpenCL 引擎第一次启动需要 autotuning 且可能超过 90 秒，现在缺少 tuning 缓存时会给首次调优更长启动预算。',
+                '当引擎已经进入 tuning 状态时，看门狗会继续顺延 deadline，避免调优进行中被强杀。',
+                '补充 OpenCL 首次调优判断回归测试，覆盖无缓存需要长预算、已有 `.txt` tuning 缓存恢复正常预算、NVIDIA 包不误用 OpenCL 预算。',
+                '保留上一版野狐棋谱自动胜率曲线、默认隐藏柱状失误条、macOS 拖拽安装 DMG 和 TensorRT 分卷下载说明。',
+            ],
+            'before_heading': '下载前先看这几句',
+            'before': [
+                f'主推荐整合包继续内置 KataGo `{katago_version}` 和默认权重 `{model_source}`。',
+                f'Windows 普通用户优先下载 {{windows_opencl_portable}}，这是 **OpenCL 版（推荐，免安装）**。',
+                f'如果你是第一次启动 OpenCL 版，首次调优现在会有更充足的等待时间；后续已有缓存后仍会走正常快速启动判断。',
+                f'如果你的电脑是 **英伟达显卡**，优先下载 {{windows_nvidia_portable}}；RTX 50 用户可选 RTX 50 CUDA 行。',
+                '如果你经常下载野狐让子棋复盘，建议更新到这一版，避免开局让子丢失。',
+            ],
+            'download_heading': '下载建议',
+            'download_headers': ('你的电脑', '直接下载这个'),
+            'why_heading': '这一版为什么值得更新',
+            'why': [
+                '野狐让子棋不再被归一化逻辑误伤，开局让子会正确进入棋盘和引擎。',
+                'Windows OpenCL 首次启动更耐心，不会因为一次性 autotuning 比较慢就弹出“引擎异常关闭”。',
+                '感谢 @semanym 对真实用户场景的定位和 PR 贡献；这次发布也保留了对应回归测试。',
+                '发布前重新跑了 PR 相关测试、完整 Maven 测试和本地 package。',
+            ],
+            'contact_heading': '交流',
+            'contact': ['QQ 群：`299419120`'],
+        },
+        {
+            'language': '繁體中文',
+            'labels': 'zh_hant',
+            'intro': '這是一次 PR 品質收口版。感謝 @semanym 提交 #41 和 #42：一個修復野狐讓子棋開局連續黑棋被丟失的問題，一個修復 Windows OpenCL 首次自動調優耗時較長時被誤判為引擎異常關閉的問題。',
+            'updates_heading': '本版主要更新',
+            'updates': [
+                '合併 #41：野狐把讓子棋編碼成開局連續 `B[]`，現在會在正規化前識別並還原為正確的 `HA[n]` / `AB[...]` 根節點 setup，棋盤和引擎都能看到讓子。',
+                '合併 #42：Windows 內建 OpenCL 引擎第一次啟動需要 autotuning 且可能超過 90 秒，現在缺少 tuning 快取時會給首次調優更長啟動預算。',
+                '當引擎已經進入 tuning 狀態時，看門狗會繼續延長 deadline，避免調優進行中被強制關閉。',
+                '補充 OpenCL 首次調優判斷回歸測試，覆蓋無快取需要長預算、已有 `.txt` tuning 快取恢復正常預算、NVIDIA 包不誤用 OpenCL 預算。',
+                '保留上一版野狐棋譜自動勝率曲線、預設隱藏柱狀失誤條、macOS 拖曳安裝 DMG 和 TensorRT 分卷下載說明。',
+            ],
+            'before_heading': '下載前先看這幾句',
+            'before': [
+                f'主推薦整合包繼續內建 KataGo `{katago_version}` 和預設權重 `{model_source}`。',
+                f'Windows 一般使用者優先下載 {{windows_opencl_portable}}，這是 **OpenCL 版（推薦，免安裝）**。',
+                f'如果你是第一次啟動 OpenCL 版，首次調優現在會有更充足的等待時間；之後已有快取後仍會走正常快速啟動判斷。',
+                f'如果你的電腦是 **NVIDIA 顯示卡**，優先下載 {{windows_nvidia_portable}}；RTX 50 使用者可選 RTX 50 CUDA 行。',
+                '如果你經常下載野狐讓子棋復盤，建議更新到這一版，避免開局讓子丟失。',
+            ],
+            'download_heading': '下載建議',
+            'download_headers': ('你的電腦', '直接下載這個'),
+            'why_heading': '這一版為什麼值得更新',
+            'why': [
+                '野狐讓子棋不再被正規化邏輯誤傷，開局讓子會正確進入棋盤和引擎。',
+                'Windows OpenCL 首次啟動更有耐心，不會因為一次性 autotuning 比較慢就彈出「引擎異常關閉」。',
+                '感謝 @semanym 對真實使用者場景的定位和 PR 貢獻；這次發布也保留了對應回歸測試。',
+                '發布前重新跑了 PR 相關測試、完整 Maven 測試和本地 package。',
+            ],
+            'contact_heading': '交流',
+            'contact': ['QQ 群：`299419120`'],
+        },
+        {
+            'language': 'English',
+            'labels': 'en',
+            'intro': 'This PR polish release ships two fixes from @semanym. PR #41 fixes Fox handicap games where leading consecutive black moves were dropped, and PR #42 fixes first-run Windows OpenCL autotuning being mistaken for an engine startup failure.',
+            'updates_heading': 'Release Highlights',
+            'updates': [
+                'Merged #41: Fox handicap records encoded as leading consecutive `B[]` moves are now promoted to proper `HA[n]` / `AB[...]` root setup before strict move normalization, so both the board and engine keep the handicap stones.',
+                'Merged #42: the bundled Windows OpenCL engine now gets a longer first-start budget when the OpenCL tuning cache is missing.',
+                'The startup watchdog keeps extending its deadline while tuning is actually in progress, avoiding a forced kill during autotuning.',
+                'Added regression tests for the first OpenCL tuning detector: missing cache uses the longer budget, existing `.txt` tuning cache restores the normal budget, and NVIDIA bundles do not take the OpenCL path.',
+                'The previous Fox auto-winrate-curve fix, default-hidden blunder bar, drag-to-Applications macOS DMG, and TensorRT split download guidance remain included.',
+            ],
+            'before_heading': 'Read Before Downloading',
+            'before': [
+                f'The recommended bundles continue to include KataGo `{katago_version}` and the default weight `{model_source}`.',
+                f'Most Windows users should download {{windows_opencl_portable}}, the **recommended no-install OpenCL build**.',
+                f'If this is your first OpenCL launch, the initial tuning pass now has a longer wait budget; later launches with cache still use the normal fast startup watchdog.',
+                f'If your PC has an **NVIDIA GPU**, try {{windows_nvidia_portable}} first; RTX 50 users can use the RTX 50 CUDA row.',
+                'If you review downloaded Fox handicap records, this build avoids missing opening handicap stones.',
+            ],
+            'download_heading': 'Download Guide',
+            'download_headers': ('Your computer', 'Download this file'),
+            'why_heading': 'Why Update',
+            'why': [
+                'Fox handicap records are no longer damaged by strict alternation normalization; the handicap stones reach both the board and engine.',
+                'Windows OpenCL first launch is more patient and should not show an engine-crash dialog just because one-time autotuning is slow.',
+                'Thanks to @semanym for the real-world diagnosis and PRs; this release keeps regression coverage around those cases.',
+                'Before release, the PR-focused tests, full Maven suite, and local package build were rerun.',
+            ],
+            'contact_heading': 'Contact',
+            'contact': ['QQ group: `299419120`'],
+        },
+        {
+            'language': '日本語',
+            'labels': 'ja',
+            'intro': 'このリリースは PR 品質調整版です。@semanym による #41 と #42 を取り込みました。#41 は Fox の置き碁で先頭の連続黒石が失われる問題を修正し、#42 は Windows OpenCL 初回自動調整がエンジン起動失敗と誤判定される問題を修正します。',
+            'updates_heading': '主な更新',
+            'updates': [
+                '#41 をマージ: Fox の置き碁で先頭の連続 `B[]` を、厳密な交互手順の正規化前に `HA[n]` / `AB[...]` のルート setup として復元します。',
+                '#42 をマージ: Windows 内蔵 OpenCL エンジンで tuning cache がない初回起動時に、より長い起動予算を与えます。',
+                'エンジンが tuning 中である場合、startup watchdog は deadline を延長し、autotuning 中の強制終了を避けます。',
+                'OpenCL 初回 tuning 判定の回帰テストを追加しました。cache なし、`.txt` cache あり、NVIDIA bundle の除外を確認します。',
+                '前回の Fox 勝率曲線自動生成、既定 blunder bar 非表示、macOS drag-to-Applications DMG、TensorRT 分割ダウンロード案内も引き続き含みます。',
+            ],
+            'before_heading': 'ダウンロード前に',
+            'before': [
+                f'推奨バンドルには KataGo `{katago_version}` と既定の重み `{model_source}` が含まれています。',
+                f'多くの Windows ユーザーは {{windows_opencl_portable}} を選ぶのがおすすめです。これは **推奨 OpenCL 版、インストール不要** です。',
+                f'OpenCL 版の初回起動では、最初の tuning により長い待機時間を使います。cache 作成後は通常の高速な起動判定に戻ります。',
+                f'**NVIDIA GPU** 搭載 PC では {{windows_nvidia_portable}} を優先してください。RTX 50 ユーザーは RTX 50 CUDA 行を選べます。',
+                'Fox の置き碁棋譜をよく復盤する場合、このビルドで開局の置き石欠落を避けられます。',
+            ],
+            'download_heading': 'ダウンロード案内',
+            'download_headers': ('お使いの環境', 'ダウンロードするファイル'),
+            'why_heading': '更新する理由',
+            'why': [
+                'Fox の置き碁が厳密な交互手順の正規化で壊れず、置き石が棋盤とエンジンに正しく渡ります。',
+                'Windows OpenCL 初回起動で、一度だけの autotuning が遅いだけでエンジン異常終了ダイアログが出にくくなります。',
+                '実際の利用環境に基づく診断と PR を提供した @semanym に感謝します。このケースの回帰テストも残しています。',
+                'リリース前に PR focused tests、full Maven suite、local package build を再実行しました。',
+            ],
+            'contact_heading': '連絡先',
+            'contact': ['QQ グループ: `299419120`'],
+        },
+        {
+            'language': '한국어',
+            'labels': 'ko',
+            'intro': '이번 릴리스는 PR 품질 정리 버전입니다. @semanym 이 제출한 #41 과 #42 를 포함합니다. #41 은 Fox 접바둑에서 앞부분의 연속 흑돌이 사라지는 문제를 고치고, #42 는 Windows OpenCL 첫 autotuning 이 엔진 시작 실패로 오판되는 문제를 고칩니다.',
+            'updates_heading': '주요 업데이트',
+            'updates': [
+                '#41 병합: Fox 접바둑의 선두 연속 `B[]` 를 엄격한 교대 수순 정규화 전에 `HA[n]` / `AB[...]` 루트 setup 으로 복원합니다.',
+                '#42 병합: Windows 번들 OpenCL 엔진에서 tuning cache 가 없는 첫 실행 시 더 긴 시작 예산을 줍니다.',
+                '엔진이 실제로 tuning 중이면 startup watchdog 이 deadline 을 계속 연장해 autotuning 중 강제 종료를 피합니다.',
+                'OpenCL 첫 tuning 판단 회귀 테스트를 추가했습니다. cache 없음, `.txt` cache 있음, NVIDIA bundle 제외를 확인합니다.',
+                '이전 Fox 자동 승률 곡선, 기본 blunder bar 숨김, macOS drag-to-Applications DMG, TensorRT split 다운로드 안내도 그대로 포함됩니다.',
+            ],
+            'before_heading': '다운로드 전 확인',
+            'before': [
+                f'추천 번들에는 KataGo `{katago_version}` 와 기본 가중치 `{model_source}` 가 포함되어 있습니다.',
+                f'대부분의 Windows 사용자는 {{windows_opencl_portable}} 를 먼저 받으면 됩니다. 이는 **추천 OpenCL 무설치 빌드** 입니다.',
+                f'OpenCL 첫 실행이라면 초기 tuning 에 더 긴 대기 시간이 주어집니다. cache 가 생긴 뒤에는 정상적인 빠른 시작 감시로 돌아갑니다.',
+                f'**NVIDIA GPU** 가 있다면 {{windows_nvidia_portable}} 를 우선 사용해 보세요. RTX 50 사용자는 RTX 50 CUDA 항목을 선택할 수 있습니다.',
+                '다운로드한 Fox 접바둑 기보를 자주 복기한다면 이 빌드가 초반 접바둑 돌 누락을 피합니다.',
+            ],
+            'download_heading': '다운로드 안내',
+            'download_headers': ('내 컴퓨터', '다운로드할 파일'),
+            'why_heading': '업데이트할 이유',
+            'why': [
+                'Fox 접바둑이 엄격한 교대 수순 정규화로 손상되지 않고, 접바둑 돌이 보드와 엔진에 올바르게 전달됩니다.',
+                'Windows OpenCL 첫 실행에서 일회성 autotuning 이 느리다는 이유만으로 엔진 크래시 대화상자가 뜰 가능성이 줄었습니다.',
+                '실제 사용자 환경을 진단하고 PR 을 제출한 @semanym 에게 감사합니다. 이번 릴리스는 해당 회귀 테스트도 포함합니다.',
+                '릴리스 전에 PR focused tests, full Maven suite, local package build 를 다시 실행했습니다.',
+            ],
+            'contact_heading': '연락',
+            'contact': ['QQ 그룹: `299419120`'],
+        },
+        {
+            'language': 'ภาษาไทย',
+            'labels': 'th',
+            'intro': 'รีลีสนี้เป็น PR polish build พร้อมขอบคุณ @semanym สำหรับ #41 และ #42: #41 แก้ Fox handicap games ที่หมากดำต่อเนื่องตอนต้นหายไป และ #42 แก้ Windows OpenCL autotuning ครั้งแรกที่ถูกมองว่า engine startup fail',
+            'updates_heading': 'อัปเดตหลัก',
+            'updates': [
+                'รวม #41: Fox handicap records ที่ขึ้นต้นด้วย `B[]` ต่อเนื่องจะถูกแปลงเป็น root setup `HA[n]` / `AB[...]` ก่อน strict move normalization เพื่อให้ board และ engine เห็น handicap stones ครบ',
+                'รวม #42: bundled Windows OpenCL engine จะได้ startup budget นานขึ้นเมื่อยังไม่มี OpenCL tuning cache',
+                'ถ้า engine อยู่ใน tuning จริง startup watchdog จะขยาย deadline ต่อ เพื่อไม่ kill process ระหว่าง autotuning',
+                'เพิ่ม regression tests สำหรับ first OpenCL tuning detector: ไม่มี cache ใช้ budget ยาว, มี `.txt` tuning cache แล้วกลับสู่ budget ปกติ, และ NVIDIA bundles ไม่เข้า OpenCL path',
+                'ยังรวม Fox auto-winrate-curve fix, default-hidden blunder bar, macOS DMG แบบลากไป Applications และ TensorRT split download guidance จากรุ่นก่อน',
+            ],
+            'before_heading': 'ก่อนดาวน์โหลด',
+            'before': [
+                f'แพ็กเกจหลักมี KataGo `{katago_version}` และน้ำหนักเริ่มต้น `{model_source}` มาให้แล้ว',
+                f'ผู้ใช้ Windows ส่วนใหญ่แนะนำให้ดาวน์โหลด {{windows_opencl_portable}} ซึ่งเป็น **OpenCL รุ่นแนะนำ แบบไม่ต้องติดตั้ง**',
+                f'ถ้าเปิด OpenCL ครั้งแรก initial tuning จะมีเวลารอนานขึ้น หลังมี cache แล้วจะกลับไปใช้ startup watchdog ปกติ',
+                f'ถ้ามี **NVIDIA GPU** แนะนำให้ลอง {{windows_nvidia_portable}} ก่อน; ผู้ใช้ RTX 50 เลือกแถว RTX 50 CUDA ได้',
+                'ถ้าคุณรีวิว Fox handicap records ที่ดาวน์โหลดมา รุ่นนี้ช่วยกันไม่ให้ handicap stones ตอนต้นหาย',
+            ],
+            'download_heading': 'แนะนำการดาวน์โหลด',
+            'download_headers': ('เครื่องของคุณ', 'ดาวน์โหลดไฟล์นี้'),
+            'why_heading': 'ทำไมควรอัปเดต',
+            'why': [
+                'Fox handicap records จะไม่ถูก strict alternation normalization ทำให้เสียอีกต่อไป และ handicap stones จะถูกส่งถึงทั้ง board และ engine',
+                'Windows OpenCL first launch รอ autotuning ได้นานขึ้น จึงไม่ควรขึ้น dialog engine crash เพียงเพราะ one-time autotuning ช้า',
+                'ขอบคุณ @semanym สำหรับการวิเคราะห์เคสจริงและ PR; release นี้มี regression coverage สำหรับเคสเหล่านี้ด้วย',
+                'ก่อน release ได้รัน PR-focused tests, full Maven suite และ local package build ใหม่แล้ว',
+            ],
+            'contact_heading': 'ติดต่อ',
+            'contact': ['QQ group: `299419120`'],
+        },
+    ]
+
+    sections: list[dict[str, object]] = []
+    for block in content:
+        localized_assets = assets_cn if block['language'] in ('中文', '繁體中文') else assets
+        before_items = [
+            item.format(
+                windows_opencl_portable=localized_assets['windows_opencl_portable'],
+                windows_nvidia_portable=localized_assets['windows_nvidia_portable'],
+            )
+            for item in block['before']
+        ]
+        sections.append(
+            {
+                'language': block['language'],
+                'intro': block['intro'],
+                'updates': {'heading': block['updates_heading'], 'items': block['updates']},
+                'before': {'heading': block['before_heading'], 'items': before_items},
+                'download': {
+                    'heading': block['download_heading'],
+                    'headers': block['download_headers'],
+                    'rows': standard_download_rows(
+                        STANDARD_DOWNLOAD_LABELS[block['labels']],
+                        localized_assets,
+                    ),
                 },
                 'why': {'heading': block['why_heading'], 'items': block['why']},
                 'contact': {'heading': block['contact_heading'], 'items': block['contact']},
