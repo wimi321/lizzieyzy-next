@@ -30,7 +30,7 @@ public class Config {
   public boolean showWinrateGraph = true;
   public boolean largeWinrateGraph = false;
   public boolean showWinrateOverview = false;
-  public boolean showBlunderBar = true;
+  public boolean showBlunderBar = false;
   public boolean showMoveAllInBranch = false;
   // public boolean weightedBlunderBarHeight = false;
   // public boolean dynamicWinrateGraphWidth = true;
@@ -148,6 +148,8 @@ public class Config {
       "migrated-hide-subboard-default-v1";
   private static final String RESTORE_SUBBOARD_DEFAULT_MIGRATION_KEY =
       "restored-show-subboard-default-v2";
+  private static final String HIDE_BLUNDER_BAR_DEFAULT_MIGRATION_KEY =
+      "migrated-hide-blunder-bar-default-v1";
   private static final String WORK_DIR = resolveWorkDir();
   private static final String RUNTIME_WORK_DIR = "runtime";
   private static final String BUNDLED_ENGINE_NAME = "KataGo Bundled";
@@ -1531,6 +1533,7 @@ public class Config {
     persistedUi = persisted.getJSONObject("ui-persist");
 
     restoreSubBoardDefaultOnce();
+    hideBlunderBarDefaultOnce();
 
     fastCommandsWidth = persistedUi.optInt("fast-commands-width", 500);
     fastCommandsHeight = persistedUi.optInt("fast-commands-height", 500);
@@ -1553,7 +1556,7 @@ public class Config {
     showWinrateGraph = uiConfig.getBoolean("show-winrate-graph");
     largeWinrateGraph = uiConfig.optBoolean("large-winrate-graph", false);
     showWinrateOverview = uiConfig.optBoolean("show-winrate-overview", false);
-    showBlunderBar = uiConfig.optBoolean("show-blunder-bar", true);
+    showBlunderBar = uiConfig.optBoolean("show-blunder-bar", false);
     showMoveAllInBranch = uiConfig.optBoolean("show-moveall-inbranch", false);
     // weightedBlunderBarHeight = uiConfig.optBoolean("weighted-blunder-bar-height", false);
     // dynamicWinrateGraphWidth = uiConfig.optBoolean("dynamic-winrate-graph-width", true);
@@ -2106,6 +2109,23 @@ public class Config {
     uiConfig.put("show-subboard", true);
     uiConfig.put("hide-subboard-from-large-winrate", false);
     uiConfig.put(RESTORE_SUBBOARD_DEFAULT_MIGRATION_KEY, true);
+    try {
+      save();
+    } catch (IOException e) {
+      e.printStackTrace();
+    }
+  }
+
+  private void hideBlunderBarDefaultOnce() {
+    if (uiConfig.optBoolean(HIDE_BLUNDER_BAR_DEFAULT_MIGRATION_KEY, false)) {
+      return;
+    }
+    if (!uiConfig.optBoolean("show-blunder-bar", false)) {
+      uiConfig.put(HIDE_BLUNDER_BAR_DEFAULT_MIGRATION_KEY, true);
+      return;
+    }
+    uiConfig.put("show-blunder-bar", false);
+    uiConfig.put(HIDE_BLUNDER_BAR_DEFAULT_MIGRATION_KEY, true);
     try {
       save();
     } catch (IOException e) {
@@ -2706,7 +2726,7 @@ public class Config {
     ui.put("large-winrate-graph", false);
     ui.put("show-winrate-overview", false);
     ui.put("winrate-stroke-width", 1.7);
-    ui.put("show-blunder-bar", true);
+    ui.put("show-blunder-bar", false);
     ui.put("auto-quick-analyze-on-load", true);
     ui.put("minimum-blunder-bar-width", 1);
     ui.put("weighted-blunder-bar-height", false);

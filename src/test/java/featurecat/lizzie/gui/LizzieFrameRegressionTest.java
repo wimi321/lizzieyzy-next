@@ -7,6 +7,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import featurecat.lizzie.Config;
 import featurecat.lizzie.Lizzie;
+import featurecat.lizzie.analysis.EngineManager;
+import featurecat.lizzie.analysis.Leelaz;
 import featurecat.lizzie.analysis.PlayerStrengthEstimator;
 import featurecat.lizzie.analysis.ReadBoard;
 import featurecat.lizzie.rules.Board;
@@ -234,6 +236,31 @@ class LizzieFrameRegressionTest {
       assertFalse(
           invokeShouldAutoQuickAnalyze(frame),
           "disabled auto quick analyze should not start the fast winrate graph refresh.");
+    } finally {
+      env.close();
+    }
+  }
+
+  @Test
+  void foxKifuLoadStartsSilentQuickAnalyzeBeforePrimaryEngineIsReady() throws Exception {
+    TestEnvironment env = TestEnvironment.open();
+    try {
+      Lizzie.config = configWithAutoQuickAnalyze();
+      Lizzie.board = boardWith(historyWithUnanalyzedMove());
+      Lizzie.leelaz = null;
+      EngineManager.isEmpty = true;
+      EngineManager.isEngineGame = false;
+      EngineManager.isPreEngineGame = false;
+      AnalysisResumeTrackingFrame frame = allocate(AnalysisResumeTrackingFrame.class);
+
+      assertTrue(
+          frame.ensureAnalysisResumedAfterLoad(),
+          "loaded Fox records should start the silent winrate refresh even before Space starts ponder.");
+      assertEquals(1, frame.flashAnalyzeGameCount);
+      assertTrue(frame.lastIsAllGame);
+      assertFalse(frame.lastIsAllBranches);
+      assertTrue(frame.lastSilentAnalyze);
+      assertEquals(0, frame.refreshCount, "auto quick analyze should not fall back to ponder refresh.");
     } finally {
       env.close();
     }
@@ -565,24 +592,44 @@ class LizzieFrameRegressionTest {
     private final Config previousConfig;
     private final Board previousBoard;
     private final LizzieFrame previousFrame;
+    private final Leelaz previousLeelaz;
+    private final boolean previousEngineEmpty;
+    private final boolean previousEngineGame;
+    private final boolean previousPreEngineGame;
 
     private TestEnvironment(
         int previousBoardWidth,
         int previousBoardHeight,
         Config previousConfig,
         Board previousBoard,
-        LizzieFrame previousFrame) {
+        LizzieFrame previousFrame,
+        Leelaz previousLeelaz,
+        boolean previousEngineEmpty,
+        boolean previousEngineGame,
+        boolean previousPreEngineGame) {
       this.previousBoardWidth = previousBoardWidth;
       this.previousBoardHeight = previousBoardHeight;
       this.previousConfig = previousConfig;
       this.previousBoard = previousBoard;
       this.previousFrame = previousFrame;
+      this.previousLeelaz = previousLeelaz;
+      this.previousEngineEmpty = previousEngineEmpty;
+      this.previousEngineGame = previousEngineGame;
+      this.previousPreEngineGame = previousPreEngineGame;
     }
 
     private static TestEnvironment open() {
       TestEnvironment env =
           new TestEnvironment(
-              Board.boardWidth, Board.boardHeight, Lizzie.config, Lizzie.board, Lizzie.frame);
+              Board.boardWidth,
+              Board.boardHeight,
+              Lizzie.config,
+              Lizzie.board,
+              Lizzie.frame,
+              Lizzie.leelaz,
+              EngineManager.isEmpty,
+              EngineManager.isEngineGame,
+              EngineManager.isPreEngineGame);
       Board.boardWidth = BOARD_SIZE;
       Board.boardHeight = BOARD_SIZE;
       Zobrist.init();
@@ -597,6 +644,10 @@ class LizzieFrameRegressionTest {
       Lizzie.config = previousConfig;
       Lizzie.board = previousBoard;
       Lizzie.frame = previousFrame;
+      Lizzie.leelaz = previousLeelaz;
+      EngineManager.isEmpty = previousEngineEmpty;
+      EngineManager.isEngineGame = previousEngineGame;
+      EngineManager.isPreEngineGame = previousPreEngineGame;
     }
   }
 
@@ -677,6 +728,27 @@ class LizzieFrameRegressionTest {
     public void refresh() {
       refreshCount.incrementAndGet();
       throw new AssertionError("finishKifuLoad must not depend on a second refresh.");
+    }
+  }
+
+  private static final class AnalysisResumeTrackingFrame extends LizzieFrame {
+    private int flashAnalyzeGameCount;
+    private int refreshCount;
+    private boolean lastIsAllGame;
+    private boolean lastIsAllBranches;
+    private boolean lastSilentAnalyze;
+
+    @Override
+    public void flashAnalyzeGame(boolean isAllGame, boolean isAllBranches, boolean silentAnalyze) {
+      flashAnalyzeGameCount++;
+      lastIsAllGame = isAllGame;
+      lastIsAllBranches = isAllBranches;
+      lastSilentAnalyze = silentAnalyze;
+    }
+
+    @Override
+    public void refresh() {
+      refreshCount++;
     }
   }
 

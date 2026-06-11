@@ -15984,9 +15984,7 @@ public class LizzieFrame extends JFrame {
   }
 
   public boolean ensureAnalysisResumedAfterLoad() {
-    if (Lizzie.leelaz == null
-        || EngineManager.isEmpty
-        || EngineManager.isEngineGame()
+    if (EngineManager.isEngineGame()
         || isPlayingAgainstLeelaz
         || isAnaPlayingAgainstLeelaz) {
       return false;
@@ -15994,6 +15992,9 @@ public class LizzieFrame extends JFrame {
     if (shouldAutoQuickAnalyzeLoadedGame()) {
       flashAnalyzeGame(true, false, true);
       return true;
+    }
+    if (Lizzie.leelaz == null || EngineManager.isEmpty) {
+      return false;
     }
     Lizzie.leelaz.ponder();
     refresh();
@@ -16014,6 +16015,9 @@ public class LizzieFrame extends JFrame {
   }
 
   private boolean shouldAutoQuickAnalyzeLoadedGame() {
+    if (Lizzie.config == null || Lizzie.board == null || Lizzie.board.getHistory() == null) {
+      return false;
+    }
     if (!Lizzie.config.autoQuickAnalyzeOnLoad || isBatchAna || isEnginePKSgfStart || isTrying) {
       return false;
     }
