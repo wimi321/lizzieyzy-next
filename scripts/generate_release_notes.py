@@ -32,6 +32,15 @@ ASSET_SPECS = [
     ('linux64_nvidia', 'linux64.nvidia.zip', 'Linux 64 位，NVIDIA CUDA 版', 'Linux x64, NVIDIA CUDA'),
 ]
 TENSORRT_SPLIT_README_SUFFIX = 'windows64.nvidia.tensorrt.portable.README.txt'
+TENSORRT_SPLIT_PART_PATTERN = r'windows64\.nvidia\.tensorrt\.portable\.7z\.\d+$'
+TENSORRT_SPLIT_MANIFEST_SUFFIX = 'windows64.nvidia.tensorrt.portable.manifest.json'
+TENSORRT_SPLIT_SHA256_SUFFIX = 'windows64.nvidia.tensorrt.portable.sha256.txt'
+TENSORRT_SPLIT_ASSET_KEYS = (
+    'windows_tensorrt_split_readme',
+    'windows_tensorrt_split_parts',
+    'windows_tensorrt_split_sha256',
+    'windows_tensorrt_split_manifest',
+)
 
 RELEASE_LANGUAGES = ('中文', '繁體中文', 'English', '日本語', '한국어', 'ภาษาไทย')
 SECTION_KEYS = ('updates', 'before', 'download', 'why', 'contact')
@@ -188,13 +197,27 @@ def pick_asset(asset_names: list[str], suffix: str, date_tag: str | None) -> str
     return sorted(matches)[-1] if matches else None
 
 
+def pick_assets_matching(asset_names: list[str], pattern: str, date_tag: str | None) -> list[str]:
+    regex = re.compile(pattern)
+    matches = [name for name in asset_names if regex.search(name)]
+    if date_tag:
+        dated = [name for name in matches if name.startswith(f'{date_tag}-')]
+        if dated:
+            matches = dated
+    return sorted(matches)
+
+
 def release_asset_url(repo: str, release_tag: str | None, asset_name: str) -> str | None:
     if not release_tag:
         return None
     return f'https://github.com/{repo}/releases/download/{quote(release_tag)}/{quote(asset_name)}'
 
 
-def format_asset(asset_name: str | None, repo: str, release_tag: str | None) -> str:
+def format_asset(asset_name: str | list[str] | None, repo: str, release_tag: str | None) -> str:
+    if isinstance(asset_name, list):
+        if not asset_name:
+            return '暂未包含在本次发布中'
+        return '<br>'.join(format_asset(name, repo, release_tag) for name in asset_name)
     if not asset_name:
         return '暂未包含在本次发布中'
     url = release_asset_url(repo, release_tag, asset_name)
@@ -203,7 +226,11 @@ def format_asset(asset_name: str | None, repo: str, release_tag: str | None) -> 
     return f'[`{asset_name}`]({url})'
 
 
-def format_asset_en(asset_name: str | None, repo: str, release_tag: str | None) -> str:
+def format_asset_en(asset_name: str | list[str] | None, repo: str, release_tag: str | None) -> str:
+    if isinstance(asset_name, list):
+        if not asset_name:
+            return 'Not included in this release'
+        return '<br>'.join(format_asset_en(name, repo, release_tag) for name in asset_name)
     if not asset_name:
         return 'Not included in this release'
     url = release_asset_url(repo, release_tag, asset_name)
@@ -330,7 +357,7 @@ def add_tensorrt_split_download_row(
     assets: dict[str, str],
     asset_map: dict[str, str | None],
 ) -> None:
-    if not asset_map.get('windows_tensorrt_split_readme'):
+    if not any(asset_map.get(key) for key in TENSORRT_SPLIT_ASSET_KEYS):
         return
     labels_by_language = {
         '中文': '高级可选：TensorRT 预装分卷包说明（需下载全部 .7z.00N）',
@@ -355,12 +382,16 @@ def add_tensorrt_split_download_row(
         assert isinstance(download, dict)
         rows = download['rows']
         assert isinstance(rows, list)
-        readme_asset = localized_assets['windows_tensorrt_split_readme']
+        split_assets = '<br>'.join(
+            localized_assets[key]
+            for key in TENSORRT_SPLIT_ASSET_KEYS
+            if asset_map.get(key)
+        )
         if not any('tensorrt.portable.README' in str(row[1]) for row in rows if isinstance(row, tuple)):
             insert_at = min(8, len(rows))
             rows.insert(
                 insert_at,
-                (labels_by_language.get(language, labels_by_language['English']), readme_asset),
+                (labels_by_language.get(language, labels_by_language['English']), split_assets),
             )
 
         before = section['before']
@@ -5683,6 +5714,21 @@ def main() -> int:
     asset_map['windows_tensorrt_split_readme'] = pick_asset(
         asset_names,
         TENSORRT_SPLIT_README_SUFFIX,
+        args.date_tag,
+    )
+    asset_map['windows_tensorrt_split_parts'] = pick_assets_matching(
+        asset_names,
+        TENSORRT_SPLIT_PART_PATTERN,
+        args.date_tag,
+    )
+    asset_map['windows_tensorrt_split_sha256'] = pick_asset(
+        asset_names,
+        TENSORRT_SPLIT_SHA256_SUFFIX,
+        args.date_tag,
+    )
+    asset_map['windows_tensorrt_split_manifest'] = pick_asset(
+        asset_names,
+        TENSORRT_SPLIT_MANIFEST_SUFFIX,
         args.date_tag,
     )
     bundle = load_bundle_metadata()
