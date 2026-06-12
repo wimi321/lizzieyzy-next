@@ -5,7 +5,7 @@ import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-final class SyncDiagnosticsExportSanitizer {
+public final class SyncDiagnosticsExportSanitizer {
   private static final Pattern SESSION_KEY =
       Pattern.compile("\\b([A-Za-z][A-Za-z0-9-]*):(\\d+)\\b");
   private static final Pattern YIKE_LIVE_URL =
@@ -38,7 +38,7 @@ final class SyncDiagnosticsExportSanitizer {
   private final Map<String, String> sessionAliases = new LinkedHashMap<>();
   private final Map<String, Integer> routeCounts = new LinkedHashMap<>();
 
-  String sessionAlias(String sessionKey) {
+  public String sessionAlias(String sessionKey) {
     String value = normalize(sessionKey, "none");
     if ("none".equals(value)) {
       return "none";
@@ -53,7 +53,7 @@ final class SyncDiagnosticsExportSanitizer {
         });
   }
 
-  String text(String value) {
+  public String text(String value) {
     String safe = unescapeDiagnosticSeparators(normalize(value, "none"));
     safe = SGF_PAYLOAD.matcher(safe).replaceAll("<redacted-sgf>");
     safe = replaceYikeUrls(safe);
@@ -67,7 +67,7 @@ final class SyncDiagnosticsExportSanitizer {
     return safe;
   }
 
-  String path(String value) {
+  public String path(String value) {
     return SyncDiagnosticsEnvironment.sanitizePath(value);
   }
 

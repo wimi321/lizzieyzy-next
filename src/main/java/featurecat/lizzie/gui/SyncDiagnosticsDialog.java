@@ -3,6 +3,7 @@ package featurecat.lizzie.gui;
 import featurecat.lizzie.Lizzie;
 import featurecat.lizzie.analysis.SyncDecisionTrace;
 import featurecat.lizzie.analysis.SyncDiagnosticsEnvironment;
+import featurecat.lizzie.analysis.SyncDiagnosticsExportSanitizer;
 import featurecat.lizzie.analysis.SyncDiagnosticsExporter;
 import featurecat.lizzie.analysis.SyncDiagnosticsRecorder;
 import featurecat.lizzie.analysis.SyncDiagnosticsReport;
@@ -196,24 +197,27 @@ public class SyncDiagnosticsDialog extends JDialog {
     SyncDiagnosticsSnapshot sync = value.getSyncSnapshot();
     YikeSessionDiagnosticsSnapshot yike = value.getYikeSnapshot();
     SyncDecisionTrace decision = value.getLatestDecisionTrace();
+    SyncDiagnosticsExportSanitizer sanitizer = new SyncDiagnosticsExportSanitizer();
     return new SectionTexts(
-        overviewText(value),
-        readBoardText(sync),
-        yike.toSummaryText(),
-        decision.toSummaryText(),
-        analysisText(sync, decision),
-        value.toSummaryText());
+        overviewText(value, sanitizer),
+        readBoardText(sync, sanitizer),
+        yikeText(yike, sanitizer),
+        latestDecisionText(decision, sanitizer),
+        analysisText(sync, decision, sanitizer),
+        sanitizer.text(value.toSummaryText()));
   }
 
-  private static String overviewText(SyncDiagnosticsReport report) {
+  private static String overviewText(
+      SyncDiagnosticsReport report, SyncDiagnosticsExportSanitizer sanitizer) {
     return "capturedAtMillis: "
         + report.getCapturedAtMillis()
         + '\n'
         + "source: "
-        + report.getSource();
+        + sanitizer.text(report.getSource());
   }
 
-  private static String readBoardText(SyncDiagnosticsSnapshot sync) {
+  private static String readBoardText(
+      SyncDiagnosticsSnapshot sync, SyncDiagnosticsExportSanitizer sanitizer) {
     StringBuilder text = new StringBuilder();
     text.append("attached: ").append(sync.isReadBoardAttached()).append('\n');
     text.append("connected: ").append(sync.isReadBoardConnected()).append('\n');
@@ -222,34 +226,103 @@ public class SyncDiagnosticsDialog extends JDialog {
     text.append("syncing: ").append(sync.isSyncing()).append('\n');
     text.append("awaitingFirstSyncFrame: ").append(sync.isAwaitingFirstSyncFrame()).append('\n');
     text.append("pendingRemoteContext: ")
-        .append(sync.getPendingRemoteContextSummary())
+        .append(sanitizer.text(sync.getPendingRemoteContextSummary()))
         .append('\n');
-    text.append("lastProtocolLine: ").append(sync.getLastProtocolLineSummary()).append('\n');
+    text.append("lastProtocolLine: ")
+        .append(sanitizer.text(sync.getLastProtocolLineSummary()))
+        .append('\n');
     text.append("lastProtocolTimestampMillis: ")
         .append(sync.getLastProtocolTimestampMillis())
         .append('\n');
-    text.append("source: ").append(sync.getSource()).append('\n');
+    text.append("source: ").append(sanitizer.text(sync.getSource())).append('\n');
     text.append("timestampMillis: ").append(sync.getTimestampMillis()).append('\n');
-    text.append("summary: ").append(sync.getSummary());
+    text.append("summary: ").append(sanitizer.text(sync.getSummary()));
     return text.toString();
   }
 
-  private static String analysisText(SyncDiagnosticsSnapshot sync, SyncDecisionTrace decision) {
+  private static String yikeText(
+      YikeSessionDiagnosticsSnapshot yike, SyncDiagnosticsExportSanitizer sanitizer) {
+    StringBuilder text = new StringBuilder();
+    text.append("yike:\n");
+    text.append("  listenerEnabled: ")
+        .append(readinessText(yike.getListenerEnabled()))
+        .append('\n');
+    text.append("  currentRouteKind: ")
+        .append(sanitizer.text(yike.getCurrentRouteKind()))
+        .append('\n');
+    text.append("  currentSession: ")
+        .append(sanitizer.sessionAlias(yike.getCurrentSessionKey()))
+        .append('\n');
+    text.append("  active: ")
+        .append(sanitizer.sessionAlias(yike.getActiveSessionKey()))
+        .append(" syncReady=")
+        .append(readinessText(yike.getActiveSyncReady()))
+        .append(" geometryReady=")
+        .append(readinessText(yike.getActiveGeometryReady()))
+        .append(" boardSize=")
+        .append(yike.getActiveBoardSize())
+        .append('\n');
+    text.append("  pending: ")
+        .append(sanitizer.sessionAlias(yike.getPendingSessionKey()))
+        .append(" syncReady=")
+        .append(readinessText(yike.getPendingSyncReady()))
+        .append(" geometryReady=")
+        .append(readinessText(yike.getPendingGeometryReady()))
+        .append(" boardSize=")
+        .append(yike.getPendingBoardSize())
+        .append('\n');
+    text.append("  effectiveGeometry: ")
+        .append(sanitizer.sessionAlias(yike.getEffectiveGeometrySessionKey()))
+        .append(" ready=")
+        .append(readinessText(yike.getEffectiveGeometryReady()))
+        .append('\n');
+    text.append("  placementGeometryAllowed: ")
+        .append(readinessText(yike.getPlacementGeometryAllowed()))
+        .append('\n');
+    text.append("  lastGeometryClearReason: ")
+        .append(sanitizer.text(yike.getLastGeometryClearReason()))
+        .append('\n');
+    text.append("  lastSessionSwitchReason: ")
+        .append(sanitizer.text(yike.getLastSessionSwitchReason()))
+        .append('\n');
+    text.append("  lastYikeDebugEventSummary: ")
+        .append(sanitizer.text(yike.getLastYikeDebugEventSummary()))
+        .append('\n');
+    text.append("  source: ").append(sanitizer.text(yike.getSource())).append('\n');
+    text.append("  timestampMillis: ").append(yike.getTimestampMillis()).append('\n');
+    text.append("  summary: ").append(sanitizer.text(yike.getSummary()));
+    return text.toString();
+  }
+
+  private static String latestDecisionText(
+      SyncDecisionTrace decision, SyncDiagnosticsExportSanitizer sanitizer) {
+    return sanitizer.text(decision.toSummaryText());
+  }
+
+  private static String analysisText(
+      SyncDiagnosticsSnapshot sync,
+      SyncDecisionTrace decision,
+      SyncDiagnosticsExportSanitizer sanitizer) {
     StringBuilder text = new StringBuilder();
     text.append("hasResumeState: ").append(sync.hasResumeState()).append('\n');
     text.append("hasLastResolvedSnapshotNode: ")
         .append(sync.hasLastResolvedSnapshotNode())
         .append('\n');
     text.append("lastResolvedSnapshot: ")
-        .append(sync.getLastResolvedSnapshotSummary())
+        .append(sanitizer.text(sync.getLastResolvedSnapshotSummary()))
         .append('\n');
     text.append("syncAnalysisEpoch: ").append(sync.getSyncAnalysisEpoch()).append('\n');
     text.append("shouldResumeAnalysis: ").append(decision.shouldResumeAnalysis()).append('\n');
     text.append("resolvedSnapshotMoveNumber: ")
         .append(decision.getResolvedSnapshotMoveNumber())
         .append('\n');
-    text.append("resolvedSnapshotKind: ").append(decision.getResolvedSnapshotKind());
+    text.append("resolvedSnapshotKind: ")
+        .append(sanitizer.text(decision.getResolvedSnapshotKind()));
     return text.toString();
+  }
+
+  private static String readinessText(Boolean value) {
+    return value == null ? "unknown" : value.toString();
   }
 
   private static JTextArea createSectionTextArea(int rows) {

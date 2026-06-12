@@ -163,7 +163,7 @@ class SyncDiagnosticsDialogTest {
             .lastProtocolLineSummary("readBoardUpdateReady captured")
             .lastProtocolTimestampMillis(1780303912000L)
             .source("readboard")
-            .summary("readboard ready")
+            .summary("readboard ready in /Users/Alice Smith/Lizzie")
             .timestampMillis(1780303912400L)
             .latestDecisionTrace(decision)
             .build();
@@ -171,8 +171,8 @@ class SyncDiagnosticsDialogTest {
         YikeSessionDiagnosticsSnapshot.builder()
             .listenerEnabled(true)
             .currentRouteKind("live-room")
-            .currentSessionKey("live-room:1")
-            .activeSessionKey("live-room:1")
+            .currentSessionKey("live-room:186538")
+            .activeSessionKey("live-room:186538")
             .activeSyncReady(true)
             .activeGeometryReady(false)
             .activeBoardSize(19)
@@ -180,14 +180,15 @@ class SyncDiagnosticsDialogTest {
             .pendingSyncReady(null)
             .pendingGeometryReady(null)
             .pendingBoardSize(0)
-            .effectiveGeometrySessionKey("live-room:1")
+            .effectiveGeometrySessionKey("live-room:186538")
             .effectiveGeometryReady(false)
             .placementGeometryAllowed(false)
             .lastGeometryClearReason("room_changed")
-            .lastSessionSwitchReason("none")
-            .lastYikeDebugEventSummary("geometry waiting")
+            .lastSessionSwitchReason("https://www.yikeweiqi.com/live/186538?roomToken=abc123")
+            .lastYikeDebugEventSummary(
+                "geometry waiting for https://www.yikeweiqi.com/live/186538?roomToken=abc123")
             .source("online-dialog")
-            .summary("yike waiting for geometry")
+            .summary("yike waiting for live-room:186538")
             .timestampMillis(1780303912300L)
             .build();
     SyncDiagnosticsReport report =
@@ -204,8 +205,8 @@ class SyncDiagnosticsDialogTest {
     assertTrue(sections.overview.contains("capturedAtMillis: 1780303912500"));
     assertTrue(sections.readBoard.contains("attached: true"));
     assertTrue(sections.readBoard.contains("lastProtocolLine: readBoardUpdateReady captured"));
-    assertFalse(sections.readBoard.contains("active: live-room:1"));
-    assertTrue(sections.yike.contains("active: live-room:1"));
+    assertFalse(sections.readBoard.contains("active: live-room:186538"));
+    assertTrue(sections.yike.contains("active: live-room#1"));
     assertTrue(sections.yike.contains("placementGeometryAllowed: false"));
     assertTrue(sections.latestDecision.contains("result: FORCE_REBUILD"));
     assertTrue(sections.latestDecision.contains("reason: first_sync_force_rebuild"));
@@ -215,6 +216,22 @@ class SyncDiagnosticsDialogTest {
     assertTrue(sections.copySummary.contains("Sync Diagnostics"));
     assertTrue(sections.copySummary.contains("Latest decision"));
     assertTrue(sections.copySummary.contains("readBoardUpdateReady captured"));
+    String copiedAndVisible =
+        String.join(
+            "\n",
+            sections.overview,
+            sections.readBoard,
+            sections.yike,
+            sections.latestDecision,
+            sections.analysis,
+            sections.copySummary);
+    assertTrue(copiedAndVisible.contains("live-room#1"));
+    assertFalse(copiedAndVisible.contains("live-room:186538"));
+    assertFalse(copiedAndVisible.contains("186538"));
+    assertFalse(copiedAndVisible.contains("abc123"));
+    assertFalse(copiedAndVisible.contains("roomToken"));
+    assertFalse(copiedAndVisible.contains("https://"));
+    assertFalse(copiedAndVisible.contains("Alice Smith"));
   }
 
   private static void assertSection(

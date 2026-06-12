@@ -1,5 +1,6 @@
 package featurecat.lizzie.analysis;
 
+import featurecat.lizzie.Config;
 import java.io.IOException;
 import java.net.URISyntaxException;
 import java.nio.charset.StandardCharsets;
@@ -26,7 +27,15 @@ public final class SyncDiagnosticsExporter {
   }
 
   public static Path defaultOutputDirectory() {
-    return defaultApplicationDirectory().resolve("sync-diagnostics");
+    return defaultOutputDirectory(defaultWorkDirectory(), defaultApplicationDirectory());
+  }
+
+  static Path defaultOutputDirectory(Path workDirectory, Path applicationDirectory) {
+    Path base = workDirectory != null ? workDirectory : applicationDirectory;
+    if (base == null) {
+      base = Paths.get(System.getProperty("user.dir", ".")).toAbsolutePath().normalize();
+    }
+    return base.resolve("sync-diagnostics");
   }
 
   public Path export(SyncDiagnosticsExportSnapshot snapshot) throws IOException {
@@ -59,6 +68,14 @@ public final class SyncDiagnosticsExporter {
     out.putNextEntry(new ZipEntry(name));
     out.write(text.getBytes(StandardCharsets.UTF_8));
     out.closeEntry();
+  }
+
+  private static Path defaultWorkDirectory() {
+    try {
+      return Config.resolvedWorkDirPath();
+    } catch (RuntimeException | LinkageError e) {
+      return null;
+    }
   }
 
   private static Path defaultApplicationDirectory() {
