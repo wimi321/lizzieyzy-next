@@ -30,6 +30,8 @@ case "$PLATFORM" in
       "${DATE_TAG}-windows64.with-katago.portable.zip"
       "${DATE_TAG}-windows64.without.engine.installer.exe"
       "${DATE_TAG}-windows64.without.engine.portable.zip"
+      "${DATE_TAG}-windows64.core-update.zip"
+      "lizzieyzy-next-update-manifest.json"
     )
     trt_prefix="${DATE_TAG}-windows64.nvidia.tensorrt.portable.7z"
     trt_readme="${DATE_TAG}-windows64.nvidia.tensorrt.portable.README.txt"
@@ -127,6 +129,39 @@ for name in "${actual[@]}"; do
 done
 
 case "$PLATFORM" in
+  windows)
+    PYTHON_BIN="python3"
+    if ! command -v "$PYTHON_BIN" >/dev/null 2>&1; then
+      PYTHON_BIN="python"
+    fi
+    "$PYTHON_BIN" - "$RELEASE_DIR" "$DATE_TAG" <<'PY'
+import hashlib
+import json
+import pathlib
+import re
+import sys
+
+release_dir = pathlib.Path(sys.argv[1])
+date_tag = sys.argv[2]
+manifest = json.loads((release_dir / "lizzieyzy-next-update-manifest.json").read_text(encoding="utf-8"))
+assert manifest["schemaVersion"] == 1
+assert manifest["releaseTag"].startswith("next-")
+components = manifest["components"]
+assert components, "manifest must include components"
+core = next(item for item in components if item["id"] == "core")
+expected_asset = f"{date_tag}-windows64.core-update.zip"
+assert core["assetName"] == expected_asset
+assert core["platform"] == "windows"
+assert core["flavor"] == "all"
+assert core["installAction"] == "replace-core"
+assert core["defaultSelectedIfChanged"] is True
+core_path = release_dir / expected_asset
+assert core_path.is_file()
+assert core["sizeBytes"] == core_path.stat().st_size
+assert re.fullmatch(r"[0-9a-fA-F]{64}", core["sha256"])
+assert core["sha256"].lower() == hashlib.sha256(core_path.read_bytes()).hexdigest()
+PY
+    ;;
   mac-arm64|mac-amd64)
     if command -v hdiutil >/dev/null 2>&1; then
       "$SCRIPT_DIR/validate_macos_dmg_layout.sh" "$RELEASE_DIR/${expected[0]}"

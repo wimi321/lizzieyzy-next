@@ -17,6 +17,7 @@ import featurecat.lizzie.gui.Message;
 import featurecat.lizzie.gui.web.WebBoardManager;
 import featurecat.lizzie.rules.Board;
 import featurecat.lizzie.rules.BoardHistoryNode;
+import featurecat.lizzie.update.WindowsUpdateController;
 import featurecat.lizzie.util.KataGoAutoSetupHelper;
 import featurecat.lizzie.util.KataGoAutoSetupHelper.SetupSnapshot;
 import featurecat.lizzie.util.KataGoRuntimeHelper;
@@ -207,6 +208,7 @@ public class Lizzie {
     }
     if (Lizzie.config.autoReplayBranch) frame.autoReplayBranch();
     scheduleBoardSyncSmokeProbe();
+    WindowsUpdateController.scheduleAutomaticCheck();
   }
 
   private static void scheduleBoardSyncSmokeProbe() {
@@ -534,13 +536,6 @@ public class Lizzie {
             KataGoRuntimeHelper.startFirstRunBenchmarkAsync();
           }
         });
-    //    if (config.autoCheckVersion) {
-    //      String date = new SimpleDateFormat("yyyyMMdd").format(new Date());
-    //      if (!config.autoCheckDate.equals(date)) {
-    //        SocketCheckVersion socketCheckVersion = new SocketCheckVersion();
-    //        socketCheckVersion.SocketCheckVersion(true);
-    //      }
-    //    }
   }
 
   public static void setLookAndFeel() {

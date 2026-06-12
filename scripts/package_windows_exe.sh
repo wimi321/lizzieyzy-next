@@ -75,6 +75,8 @@ READBOARD_RELEASE_API="${READBOARD_RELEASE_API:-https://api.github.com/repos/${R
 READBOARD_CACHE_DIR="$ROOT_DIR/.cache/readboard"
 READBOARD_STAGE_DIR="$DIST_DIR/readboard"
 PYTHON_BIN=""
+INSTALLED_UPDATE_MANIFEST_NAME="lizzieyzy-next-installed-manifest.json"
+UPDATE_MANIFEST_NAME="lizzieyzy-next-update-manifest.json"
 
 log_step() {
   printf '\n[%s] %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$*" >&2
@@ -399,6 +401,36 @@ copy_common_inputs() {
   copy_bundled_jcef_assets "$input_dir"
 }
 
+write_installed_update_manifest() {
+  local input_dir="$1"
+  local flavor="$2"
+  resolve_python_bin
+  "$PYTHON_BIN" - \
+    "$input_dir/$INSTALLED_UPDATE_MANIFEST_NAME" \
+    "$APP_DISPLAY_VERSION" \
+    "$flavor" <<'PY'
+import json
+import pathlib
+import sys
+
+output, release_tag, flavor = sys.argv[1:]
+payload = {
+    "schemaVersion": 1,
+    "releaseTag": release_tag,
+    "platform": "windows",
+    "flavor": flavor,
+    "components": [
+        {
+            "id": "core",
+            "version": release_tag,
+            "sha256": "",
+        }
+    ],
+}
+pathlib.Path(output).write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+PY
+}
+
 copy_bundle_engine_assets() {
   local input_dir="$1"
   local engine_source_dir="${2:-$STANDARD_ENGINE_PLATFORM_DIR}"
@@ -592,6 +624,7 @@ build_app_image() {
       copy_bundle_nvidia_runtime_assets "$input_dir" "$engine_target_dir" "$runtime_stage_dir"
     fi
   fi
+  write_installed_update_manifest "$input_dir" "$flavor"
 
   log_step "Building Windows app image: $app_name [$flavor]"
   jpackage \
@@ -638,6 +671,7 @@ build_installer() {
       copy_bundle_nvidia_runtime_assets "$input_dir" "$engine_target_dir" "$runtime_stage_dir"
     fi
   fi
+  write_installed_update_manifest "$input_dir" "$flavor"
 
   log_step "Building Windows installer: $app_name [$flavor]"
   jpackage \
@@ -989,6 +1023,89 @@ create_tensorrt_split_package() {
   log_step "Finished optional TensorRT split package with ${#split_parts[@]} volume(s)"
 }
 
+create_core_update_asset() {
+  local core_dir="$DIST_DIR/core-update"
+  local core_zip="$RELEASE_DIR/${DATE_TAG}-${ARCH_TAG}.core-update.zip"
+  local native_core_dir
+  local native_core_zip
+
+  rm -rf "$core_dir" "$core_zip"
+  mkdir -p "$core_dir"
+  cp "$JAR_PATH" "$core_dir/lizzieyzy-next-core.jar"
+  cat >"$core_dir/README.txt" <<EOF
+LizzieYzy Next lightweight core update
+=====================================
+
+Release: $APP_DISPLAY_VERSION
+Date: $DATE_TAG
+
+This package updates the LizzieYzy Next application core only.
+KataGo engines, weights, JCEF, readboard, Java runtime, settings, saves, and user-data are preserved unless a future update manifest explicitly lists a changed resource component.
+EOF
+
+  native_core_dir="$(to_native_path "$core_dir")"
+  native_core_zip="$(to_native_path "$core_zip")"
+  log_step "Creating Windows lightweight core update: $(basename "$core_zip")"
+  powershell.exe -NoProfile -Command \
+    "Compress-Archive -Path '$native_core_dir\\*' -DestinationPath '$native_core_zip' -Force"
+  artifacts+=("$core_zip")
+}
+
+write_update_manifest() {
+  local manifest_file="$RELEASE_DIR/$UPDATE_MANIFEST_NAME"
+  local core_zip="$RELEASE_DIR/${DATE_TAG}-${ARCH_TAG}.core-update.zip"
+  local repo="${GITHUB_REPOSITORY:-wimi321/lizzieyzy-next}"
+  local core_sha
+  local core_size
+
+  if [[ ! -f "$core_zip" ]]; then
+    echo "Core update asset missing: $core_zip" >&2
+    return 1
+  fi
+  core_sha="$(release_sha256 "$core_zip")"
+  core_size="$(stat -c '%s' "$core_zip")"
+  resolve_python_bin
+  "$PYTHON_BIN" - \
+    "$manifest_file" \
+    "$repo" \
+    "$APP_DISPLAY_VERSION" \
+    "$DATE_TAG" \
+    "$(basename "$core_zip")" \
+    "$core_size" \
+    "$core_sha" <<'PY'
+import json
+import pathlib
+import sys
+
+manifest_file, repo, release_tag, date_tag, core_asset, core_size, core_sha = sys.argv[1:]
+download_base = f"https://github.com/{repo}/releases/download/{release_tag}"
+payload = {
+    "schemaVersion": 1,
+    "releaseTag": release_tag,
+    "publishedAt": f"{date_tag}T00:00:00Z",
+    "notesUrl": f"https://github.com/{repo}/releases/tag/{release_tag}",
+    "minUpdaterVersion": "1",
+    "components": [
+        {
+            "id": "core",
+            "platform": "windows",
+            "flavor": "all",
+            "version": release_tag,
+            "assetName": core_asset,
+            "downloadUrl": f"{download_base}/{core_asset}",
+            "sizeBytes": int(core_size),
+            "sha256": core_sha,
+            "installAction": "replace-core",
+            "defaultSelectedIfChanged": True,
+            "mirrorUrls": [],
+        }
+    ],
+}
+pathlib.Path(manifest_file).write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+PY
+  artifacts+=("$manifest_file")
+}
+
 assert_release_artifacts_within_limit() {
   local artifact
   for artifact in "${artifacts[@]}"; do
@@ -1177,6 +1294,9 @@ build_release_variant \
   "" \
   "${ARCH_TAG}.without.engine" \
   "$WINDOWS_UPGRADE_UUID"
+
+create_core_update_asset
+write_update_manifest
 
 assert_release_artifacts_within_limit
 

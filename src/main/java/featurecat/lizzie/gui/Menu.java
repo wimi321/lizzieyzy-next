@@ -8,6 +8,7 @@ import featurecat.lizzie.analysis.GameInfo;
 import featurecat.lizzie.analysis.Leelaz;
 import featurecat.lizzie.theme.MorandiPalette;
 import featurecat.lizzie.theme.Theme;
+import featurecat.lizzie.update.WindowsUpdateController;
 import featurecat.lizzie.util.Utils;
 import java.awt.Color;
 import java.awt.Component;
@@ -5132,6 +5133,10 @@ public class Menu extends JMenuBar {
             Lizzie.frame.openConfigDialog2(2);
           }
         });
+
+    final JFontMenuItem checkUpdate = new JFontMenuItem("检查更新");
+    helpMenu.add(checkUpdate);
+    checkUpdate.addActionListener(e -> WindowsUpdateController.checkForUpdate(Lizzie.frame, false));
 
     helpMenu.addSeparator();
     final JFontMenuItem clearUserData = new JFontMenuItem("清除所有个人数据");

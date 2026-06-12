@@ -425,6 +425,10 @@ public class Config {
     return prepareWindowsPortableWorkDir(portableRoot);
   }
 
+  public static Path resolvedWorkDirPath() {
+    return Path.of(WORK_DIR).toAbsolutePath().normalize();
+  }
+
   private static Optional<Path> findWindowsPortablePackageRoot() {
     LinkedHashSet<Path> seedPaths = new LinkedHashSet<>();
     try {
