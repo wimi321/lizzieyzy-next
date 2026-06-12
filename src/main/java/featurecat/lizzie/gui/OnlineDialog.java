@@ -1,6 +1,7 @@
 package featurecat.lizzie.gui;
 
 import featurecat.lizzie.Lizzie;
+import featurecat.lizzie.analysis.GameInfo;
 import featurecat.lizzie.analysis.SyncDiagnosticsRecorder;
 import featurecat.lizzie.analysis.YikeSessionDiagnosticsSnapshot;
 import featurecat.lizzie.rules.Board;
@@ -242,6 +243,16 @@ public class OnlineDialog extends JDialog {
 
     boolean matches(String otherSessionKey) {
       return !Utils.isBlank(otherSessionKey) && otherSessionKey.equals(sessionKey);
+    }
+  }
+
+  static final class LiveKomi {
+    final double value;
+    final boolean manuallyChanged;
+
+    private LiveKomi(double value, boolean manuallyChanged) {
+      this.value = value;
+      this.manuallyChanged = manuallyChanged;
     }
   }
 
@@ -882,6 +893,30 @@ public class OnlineDialog extends JDialog {
     return !stopped && urlSgf && currentType == expectedType && activeSessionId == requestSessionId;
   }
 
+  static LiveKomi resolveLiveKomi(GameInfo currentGameInfo, double remoteKomi) {
+    if (currentGameInfo != null && currentGameInfo.changedKomi) {
+      return new LiveKomi(currentGameInfo.getKomi(), true);
+    }
+    return new LiveKomi(remoteKomi, false);
+  }
+
+  private static void applyLiveKomi(GameInfo targetGameInfo, LiveKomi liveKomi) {
+    if (targetGameInfo == null || liveKomi == null) {
+      return;
+    }
+    targetGameInfo.setKomi(liveKomi.value);
+    if (liveKomi.manuallyChanged) {
+      targetGameInfo.changeKomi();
+    }
+  }
+
+  private static GameInfo currentLiveGameInfo() {
+    if (Lizzie.board == null || Lizzie.board.getHistory() == null) {
+      return null;
+    }
+    return Lizzie.board.getHistory().getGameInfo();
+  }
+
   private boolean shouldSyncYikeMainlineOnly() {
     return type == YikeUrlInfo.TYPE_OLD_LIVE_ROOM
         || type == YikeUrlInfo.TYPE_OLD_LIVE_BOARD
@@ -1082,11 +1117,12 @@ public class OnlineDialog extends JDialog {
                   live.optString("whiteName"),
                   whitePlayer);
         }
+        LiveKomi liveKomi = resolveLiveKomi(currentLiveGameInfo(), komi);
         if (shouldReplaceYikeMainline()) {
           replaceYikeMainline(
               liveNode,
               live,
-              komi,
+              liveKomi,
               handicap,
               previousPosition,
               previousBoardWidth,
@@ -1127,7 +1163,7 @@ public class OnlineDialog extends JDialog {
           Lizzie.board.getHistory().getGameInfo().setPlayerBlack(blackPlayer);
           Lizzie.board.getHistory().getGameInfo().setPlayerWhite(whitePlayer);
           if (Lizzie.config.readKomi) {
-            Lizzie.board.getHistory().getGameInfo().setKomi(komi);
+            applyLiveKomi(Lizzie.board.getHistory().getGameInfo(), liveKomi);
           }
           firstTime = false;
         }
@@ -1172,7 +1208,7 @@ public class OnlineDialog extends JDialog {
   private void replaceYikeMainline(
       BoardHistoryList liveNode,
       JSONObject live,
-      double komi,
+      LiveKomi liveKomi,
       int handicap,
       BoardData previousPosition,
       int previousBoardWidth,
@@ -1206,7 +1242,7 @@ public class OnlineDialog extends JDialog {
     Lizzie.board.getHistory().getGameInfo().setPlayerWhite(whitePlayer);
     Lizzie.board.getHistory().getGameInfo().setHandicap(handicap);
     if (Lizzie.config.readKomi) {
-      Lizzie.board.getHistory().getGameInfo().setKomi(komi);
+      applyLiveKomi(Lizzie.board.getHistory().getGameInfo(), liveKomi);
     }
     Lizzie.frame.setPlayers(whitePlayer, blackPlayer);
     if (live != null
@@ -2014,7 +2050,9 @@ public class OnlineDialog extends JDialog {
               komi = ((double) a5 / 100);
             }
             if (Lizzie.config.readKomi) {
-              Lizzie.board.getHistory().getGameInfo().setKomi(komi);
+              applyLiveKomi(
+                  Lizzie.board.getHistory().getGameInfo(),
+                  resolveLiveKomi(currentLiveGameInfo(), komi));
             }
           } else {
             break;
@@ -3166,6 +3204,7 @@ public class OnlineDialog extends JDialog {
     int size = info.optInt("boardSize", 19);
     boardSize = size;
     onYikeBoardSizeResolved();
+    GameInfo preSyncGameInfo = currentLiveGameInfo();
     Lizzie.board.reopen(boardSize, boardSize);
     history = new BoardHistoryList(BoardData.empty(size, size)); // TODO boardSize
     blackPlayer = info.optString("blackName");
@@ -3183,7 +3222,8 @@ public class OnlineDialog extends JDialog {
       double komi = info.optDouble("komi", history.getGameInfo().getKomi());
       int handicap = info.optInt("handicap", history.getGameInfo().getHandicap());
       if (Lizzie.config.readKomi) {
-        Lizzie.board.getHistory().getGameInfo().setKomi(komi);
+        applyLiveKomi(
+            Lizzie.board.getHistory().getGameInfo(), resolveLiveKomi(preSyncGameInfo, komi));
       }
       Lizzie.board.getHistory().getGameInfo().setHandicap(handicap);
       int preservedAnalysis = preserveYikeMainlineAnalysis(Lizzie.board.getHistory(), history);

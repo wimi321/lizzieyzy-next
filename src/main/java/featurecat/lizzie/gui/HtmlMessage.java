@@ -4,7 +4,10 @@ import featurecat.lizzie.Config;
 import featurecat.lizzie.gui.LizzieFrame.HtmlKit;
 import java.awt.Desktop;
 import java.awt.Font;
+import java.awt.Toolkit;
 import java.awt.Window;
+import java.awt.event.WindowAdapter;
+import java.awt.event.WindowEvent;
 import java.io.IOException;
 import javax.imageio.ImageIO;
 import javax.swing.JDialog;
@@ -21,6 +24,18 @@ public class HtmlMessage extends JDialog {
   public HtmlMessage(String title, String content, Window owner) {
     super(owner);
     this.setResizable(false);
+    setDefaultCloseOperation(DISPOSE_ON_CLOSE);
+    addWindowListener(
+        new WindowAdapter() {
+          @Override
+          public void windowClosed(WindowEvent e) {
+            if (owner != null) {
+              owner.invalidate();
+              owner.repaint();
+            }
+            Toolkit.getDefaultToolkit().sync();
+          }
+        });
     // setType(Type.POPUP);
     setTitle(title);
     setAlwaysOnTop(true);

@@ -1065,26 +1065,9 @@ public class FloatBoardRenderer {
       double winrateDiff,
       double scoreDiff,
       boolean isLastMove) {
-    float radiusF = 0.1f;
-    if (winrateDiff <= Lizzie.config.winLossThreshold5
-        || scoreDiff <= Lizzie.config.scoreLossThreshold5) {
-      g.setColor(new Color(155, 25, 150));
-      radiusF = 0.19f;
-    } else if (winrateDiff <= Lizzie.config.winLossThreshold4
-        || scoreDiff <= Lizzie.config.scoreLossThreshold4) {
-      g.setColor(new Color(208, 16, 19));
-      radiusF = 0.1675f;
-    } else if (winrateDiff <= Lizzie.config.winLossThreshold3
-        || scoreDiff <= Lizzie.config.scoreLossThreshold3) {
-      g.setColor(new Color(200, 140, 50));
-      radiusF = 0.145f;
-    } else if (winrateDiff <= Lizzie.config.winLossThreshold2
-        || scoreDiff <= Lizzie.config.scoreLossThreshold2) {
-      g.setColor(new Color(180, 180, 0));
-      radiusF = 0.1225f;
-    } else if (winrateDiff <= Lizzie.config.winLossThreshold1
-        || scoreDiff <= Lizzie.config.scoreLossThreshold1) g.setColor(new Color(140, 202, 34));
-    else g.setColor(new Color(0, 180, 0));
+    double severity = moveRankMarkSeverity(winrateDiff, scoreDiff);
+    float radiusF = (float) (0.1 + Math.min(1.0, severity / 6.0) * 0.09);
+    g.setColor(moveRankMarkColor(severity));
 
     if (isLastMove) {
       switch (Lizzie.config.stoneIndicatorType) {
@@ -1100,6 +1083,74 @@ public class FloatBoardRenderer {
       int radius = (int) Math.round(squareWidth * radiusF);
       fillCircle(g, markX, markY, radius);
     }
+  }
+
+  static double moveRankMarkSeverity(double winrateDiff, double scoreDiff) {
+    double winrateSeverity =
+        moveRankMetricSeverity(
+            winrateDiff,
+            Lizzie.config.winLossThreshold1,
+            Lizzie.config.winLossThreshold2,
+            Lizzie.config.winLossThreshold3,
+            Lizzie.config.winLossThreshold4,
+            Lizzie.config.winLossThreshold5);
+    double scoreSeverity =
+        moveRankMetricSeverity(
+            scoreDiff,
+            Lizzie.config.scoreLossThreshold1,
+            Lizzie.config.scoreLossThreshold2,
+            Lizzie.config.scoreLossThreshold3,
+            Lizzie.config.scoreLossThreshold4,
+            Lizzie.config.scoreLossThreshold5);
+    return Math.max(winrateSeverity, scoreSeverity);
+  }
+
+  static Color moveRankMarkColor(double severity) {
+    Color[] stops = {
+      new Color(31, 157, 92),
+      new Color(121, 184, 74),
+      new Color(215, 176, 61),
+      new Color(232, 132, 58),
+      new Color(221, 75, 58),
+      new Color(180, 38, 78),
+      new Color(122, 26, 138)
+    };
+    double clamped = Math.max(0, Math.min(stops.length - 1, severity));
+    int lower = (int) Math.floor(clamped);
+    int upper = Math.min(stops.length - 1, lower + 1);
+    double ratio = clamped - lower;
+    return interpolateColor(stops[lower], stops[upper], ratio);
+  }
+
+  private static double moveRankMetricSeverity(
+      double diff,
+      double threshold1,
+      double threshold2,
+      double threshold3,
+      double threshold4,
+      double threshold5) {
+    if (diff > threshold1) {
+      return 0;
+    }
+    double[] thresholds = {threshold1, threshold2, threshold3, threshold4, threshold5};
+    for (int i = 0; i < thresholds.length - 1; i++) {
+      double upper = thresholds[i];
+      double lower = thresholds[i + 1];
+      if (diff > lower) {
+        double span = Math.max(0.0001, upper - lower);
+        return (i + 1) + (upper - diff) / span;
+      }
+    }
+    double extremeSpan = Math.max(1.0, Math.abs(threshold5));
+    return 5 + Math.min(1.0, (threshold5 - diff) / extremeSpan);
+  }
+
+  private static Color interpolateColor(Color start, Color end, double ratio) {
+    int red = (int) Math.round(start.getRed() + (end.getRed() - start.getRed()) * ratio);
+    int green =
+        (int) Math.round(start.getGreen() + (end.getGreen() - start.getGreen()) * ratio);
+    int blue = (int) Math.round(start.getBlue() + (end.getBlue() - start.getBlue()) * ratio);
+    return new Color(red, green, blue);
   }
 
   /** Draw move numbers and/or mark the last played move */

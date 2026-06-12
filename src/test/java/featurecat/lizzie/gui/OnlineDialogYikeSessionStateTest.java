@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import featurecat.lizzie.analysis.GameInfo;
 import featurecat.lizzie.analysis.SyncDiagnosticsRecorder;
 import featurecat.lizzie.analysis.YikeSessionDiagnosticsSnapshot;
 import featurecat.lizzie.rules.Board;
@@ -99,6 +100,29 @@ class OnlineDialogYikeSessionStateTest {
     assertEquals(3, OnlineDialog.normalizeYikeRefreshSeconds(3));
     assertEquals(1, OnlineDialog.normalizeYikeRefreshSeconds(1));
     assertEquals(1, OnlineDialog.normalizeYikeRefreshSeconds(0));
+  }
+
+  @Test
+  void yikeLiveKomiKeepsManualOverrideOnRefresh() {
+    GameInfo current = new GameInfo();
+    current.setKomiNoMenu(7.0);
+    current.changeKomi();
+
+    OnlineDialog.LiveKomi liveKomi = OnlineDialog.resolveLiveKomi(current, 7.5);
+
+    assertEquals(7.0, liveKomi.value, 0.001);
+    assertTrue(liveKomi.manuallyChanged);
+  }
+
+  @Test
+  void yikeLiveKomiUsesRemoteValueBeforeManualOverride() {
+    GameInfo current = new GameInfo();
+    current.setKomiNoMenu(6.5);
+
+    OnlineDialog.LiveKomi liveKomi = OnlineDialog.resolveLiveKomi(current, 7.5);
+
+    assertEquals(7.5, liveKomi.value, 0.001);
+    assertFalse(liveKomi.manuallyChanged);
   }
 
   @Test
