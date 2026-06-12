@@ -1670,10 +1670,12 @@ public class BoardRenderer {
     if (!changedSize) {
       if (Lizzie.config.noRefreshOnMouseMove) {
         if (variation == cachedVariation
-            && displayedBranchLength == cachedDisplayedBranchLengthFroBranch) return;
+            && displayedBranchLength == cachedDisplayedBranchLengthFroBranch
+            && hasRenderedBranchImages()) return;
       } else {
         if (compareVariationListEquals(variation, cachedVariation)
-            && displayedBranchLength == cachedDisplayedBranchLengthFroBranch) return;
+            && displayedBranchLength == cachedDisplayedBranchLengthFroBranch
+            && hasRenderedBranchImages()) return;
       }
     } else changedSize = false;
     cachedVariation = variation;
@@ -1767,6 +1769,15 @@ public class BoardRenderer {
         if (!variation.get(i).equals(variation2.get(i))) return false;
       }
     return true;
+  }
+
+  private boolean hasRenderedBranchImages() {
+    return branchStonesImage != emptyImage && branchStonesShadowImage != emptyImage;
+  }
+
+  private void invalidateBranchImageCache() {
+    cachedVariation = new ArrayList<String>();
+    cachedDisplayedBranchLengthFroBranch = SHOW_RAW_BOARD;
   }
 
   private Optional<MoveData> mouseOveredMove() {
@@ -4690,6 +4701,7 @@ public class BoardRenderer {
     mouseOverTemp = null;
     branchStonesImage = emptyImage;
     branchStonesShadowImage = emptyImage;
+    invalidateBranchImageCache();
   }
 
   public boolean isInside(int x1, int y1) {

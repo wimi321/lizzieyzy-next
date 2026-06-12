@@ -821,10 +821,12 @@ public class FloatBoardRenderer {
 
     if (Lizzie.config.noRefreshOnMouseMove) {
       if (variation == cachedVariation
-          && displayedBranchLength == cachedDisplayedBranchLengthFroBranch) return;
+          && displayedBranchLength == cachedDisplayedBranchLengthFroBranch
+          && hasRenderedBranchImages()) return;
     } else {
       if (compareVariationListEquals(variation, cachedVariation)
-          && displayedBranchLength == cachedDisplayedBranchLengthFroBranch) return;
+          && displayedBranchLength == cachedDisplayedBranchLengthFroBranch
+          && hasRenderedBranchImages()) return;
     }
     cachedVariation = variation;
     cachedDisplayedBranchLengthFroBranch = displayedBranchLength;
@@ -897,6 +899,15 @@ public class FloatBoardRenderer {
         if (!variation.get(i).equals(variation2.get(i))) return false;
       }
     return true;
+  }
+
+  private boolean hasRenderedBranchImages() {
+    return branchStonesImage != emptyImage && branchStonesShadowImage != emptyImage;
+  }
+
+  private void invalidateBranchImageCache() {
+    cachedVariation = new ArrayList<String>();
+    cachedDisplayedBranchLengthFroBranch = SHOW_RAW_BOARD;
   }
 
   private Optional<MoveData> mouseOveredMove() {
@@ -2855,6 +2866,12 @@ public class FloatBoardRenderer {
   public void clearBranch() {
     isShowingBranch = false;
     showingBranch = false;
+    branchOpt = Optional.empty();
+    variationOpt = Optional.empty();
+    mouseOverTemp = null;
+    branchStonesImage = emptyImage;
+    branchStonesShadowImage = emptyImage;
+    invalidateBranchImageCache();
   }
 
   public boolean isInside(int x1, int y1) {
