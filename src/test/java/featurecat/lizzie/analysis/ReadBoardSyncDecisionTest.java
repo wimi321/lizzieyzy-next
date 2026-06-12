@@ -19,6 +19,8 @@ import featurecat.lizzie.rules.BoardNodeKind;
 import featurecat.lizzie.rules.Movelist;
 import featurecat.lizzie.rules.Stone;
 import featurecat.lizzie.rules.Zobrist;
+import java.io.BufferedOutputStream;
+import java.io.ByteArrayOutputStream;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.nio.file.Files;
@@ -42,6 +44,7 @@ class ReadBoardSyncDecisionTest {
   void setUpFixtureBoardSize() {
     previousBoardWidth = Board.boardWidth;
     previousBoardHeight = Board.boardHeight;
+    resetDefaultDiagnosticsRecorder();
     resetFixtureBoardState();
   }
 
@@ -176,6 +179,14 @@ class ReadBoardSyncDecisionTest {
       harness.leelaz.clearCount = 0;
       armFoxMoveNumber(harness.readBoard, 1);
       harness.sync(snapshot(repeatedStones, Optional.empty(), Stone.EMPTY));
+
+      SyncDiagnosticsReport report = SyncDiagnosticsRecorder.getDefault().snapshot();
+      assertEquals("NO_CHANGE", report.getLatestDecisionTrace().getResult());
+      assertEquals(
+          "snapshot_matches_existing_node", report.getLatestDecisionTrace().getReasonCode());
+      assertFalse(
+          report.getSyncSnapshot().isAwaitingFirstSyncFrame(),
+          "NO_CHANGE diagnostics should publish after first-frame state is consumed.");
 
       assertSame(
           mainEnd,
@@ -1543,6 +1554,10 @@ class ReadBoardSyncDecisionTest {
 
       harness.sync(snapshot(target, Optional.empty(), Stone.EMPTY));
 
+      SyncDecisionTrace trace =
+          SyncDiagnosticsRecorder.getDefault().snapshot().getLatestDecisionTrace();
+      assertEquals("HOLD", trace.getResult());
+      assertEquals("conflict_hold", trace.getReasonCode());
       assertSame(
           originalMainEnd,
           harness.board.getHistory().getMainEnd(),
@@ -1792,6 +1807,83 @@ class ReadBoardSyncDecisionTest {
   }
 
   @Test
+  void historyOverwritePublishesDiagnosticsAfterClearingResumeState() throws Exception {
+    try (SyncHarness harness = SyncHarness.create(false, emptyHistory())) {
+      BoardHistoryNode mainEnd =
+          buildHistory(harness.board, placement(0, 0, Stone.BLACK)).nodes.get(0);
+      SyncResumeState resumeState =
+          new SyncResumeState(
+              mainEnd,
+              SyncRemoteContext.forFoxLive(OptionalInt.of(1), "43581号", OptionalInt.of(1), false));
+      setField(harness.readBoard, "resumeState", resumeState);
+      setField(harness.readBoard, "lastResolvedSnapshotNode", mainEnd);
+      harness.readBoard.parseLine("syncPlatform fox");
+
+      SyncDiagnosticsSnapshot staleSnapshot =
+          SyncDiagnosticsRecorder.getDefault().snapshot().getSyncSnapshot();
+      assertTrue(staleSnapshot.hasResumeState(), "fixture should publish existing resume state.");
+      assertTrue(
+          staleSnapshot.hasLastResolvedSnapshotNode(),
+          "fixture should publish existing resolved snapshot node.");
+
+      harness.readBoard.onHistoryOverwritten();
+
+      SyncDiagnosticsSnapshot snapshot =
+          SyncDiagnosticsRecorder.getDefault().snapshot().getSyncSnapshot();
+      assertFalse(
+          snapshot.hasResumeState(), "history overwrite should publish cleared resume state.");
+      assertFalse(
+          snapshot.hasLastResolvedSnapshotNode(),
+          "history overwrite should publish cleared resolved snapshot node.");
+      assertEquals(
+          "none",
+          snapshot.getLastResolvedSnapshotSummary(),
+          "history overwrite should publish an empty resolved-node summary.");
+    }
+  }
+
+  @Test
+  void shutdownPublishesDiagnosticsAfterClearingResumeStateAndReleasingConnection()
+      throws Exception {
+    try (SyncHarness harness = SyncHarness.create(false, emptyHistory())) {
+      BoardHistoryNode mainEnd =
+          buildHistory(harness.board, placement(0, 0, Stone.BLACK)).nodes.get(0);
+      SyncResumeState resumeState =
+          new SyncResumeState(
+              mainEnd,
+              SyncRemoteContext.forFoxLive(OptionalInt.of(1), "43581号", OptionalInt.of(1), false));
+      setField(harness.readBoard, "resumeState", resumeState);
+      setField(harness.readBoard, "lastResolvedSnapshotNode", mainEnd);
+      setField(
+          harness.readBoard, "outputStream", new BufferedOutputStream(new ByteArrayOutputStream()));
+      harness.readBoard.parseLine("syncPlatform fox");
+
+      SyncDiagnosticsSnapshot staleSnapshot =
+          SyncDiagnosticsRecorder.getDefault().snapshot().getSyncSnapshot();
+      assertTrue(staleSnapshot.isReadBoardConnected(), "fixture should publish connected state.");
+      assertTrue(staleSnapshot.hasResumeState(), "fixture should publish existing resume state.");
+      assertTrue(
+          staleSnapshot.hasLastResolvedSnapshotNode(),
+          "fixture should publish existing resolved snapshot node.");
+
+      harness.readBoard.shutdown();
+
+      SyncDiagnosticsSnapshot snapshot =
+          SyncDiagnosticsRecorder.getDefault().snapshot().getSyncSnapshot();
+      assertFalse(
+          snapshot.isReadBoardConnected(), "shutdown should publish released connection state.");
+      assertFalse(snapshot.hasResumeState(), "shutdown should publish cleared resume state.");
+      assertFalse(
+          snapshot.hasLastResolvedSnapshotNode(),
+          "shutdown should publish cleared resolved snapshot node.");
+      assertEquals(
+          "none",
+          snapshot.getLastResolvedSnapshotSummary(),
+          "shutdown should publish an empty resolved-node summary.");
+    }
+  }
+
+  @Test
   void startFirstFoxJumpFrameBypassesHoldAndRebuildsImmediately() throws Exception {
     Stone[] rootStones = stones(placement(0, 0, Stone.BLACK), placement(1, 0, Stone.WHITE));
     Stone[] target =
@@ -1846,6 +1938,17 @@ class ReadBoardSyncDecisionTest {
       harness.readBoard.parseLine("forceRebuild");
       harness.sync(snapshotCodes);
 
+      SyncDecisionTrace trace =
+          SyncDiagnosticsRecorder.getDefault().snapshot().getLatestDecisionTrace();
+      assertEquals("FORCE_REBUILD", trace.getResult());
+      assertEquals("remote_force_rebuild_requested", trace.getReasonCode());
+      assertTrue(
+          SyncDiagnosticsRecorder.getDefault()
+              .snapshot()
+              .getSyncSnapshot()
+              .hasLastResolvedSnapshotNode(),
+          "force rebuild diagnostics should publish the rebuilt resolved snapshot node.");
+
       BoardHistoryNode rebuiltMainEnd = harness.board.getHistory().getMainEnd();
       assertNotSame(
           originalMainEnd,
@@ -1870,6 +1973,157 @@ class ReadBoardSyncDecisionTest {
           0,
           harness.board.placeForSyncCount,
           "steady-state frame after forceRebuild should not replay stones.");
+    }
+  }
+
+  @Test
+  void noChangeAncestorRecoveryPublishesPostDecisionSyncState() throws Exception {
+    Stone[] ancestorStones = stones(placement(1, 1, Stone.BLACK));
+
+    try (SyncHarness harness = SyncHarness.create(false, emptyHistory())) {
+      HistoryPath path =
+          buildHistory(
+              harness.board,
+              placement(1, 1, Stone.BLACK),
+              placement(0, 0, Stone.WHITE),
+              placement(2, 2, Stone.BLACK));
+      BoardHistoryNode ancestorNode = path.nodes.get(0);
+
+      harness.readBoard.parseLine("syncPlatform fox");
+      harness.readBoard.parseLine("roomToken 43581号");
+      harness.readBoard.parseLine("liveTitleMove 1");
+      harness.readBoard.parseLine("foxMoveNumber 1");
+      harness.sync(snapshot(ancestorStones, Optional.empty(), Stone.EMPTY));
+
+      SyncDiagnosticsReport report = SyncDiagnosticsRecorder.getDefault().snapshot();
+      assertEquals("NO_CHANGE", report.getLatestDecisionTrace().getResult());
+      assertEquals(
+          "snapshot_matches_existing_node", report.getLatestDecisionTrace().getReasonCode());
+      assertSame(
+          ancestorNode,
+          harness.board.getHistory().getCurrentHistoryNode(),
+          "ancestor recovery should keep the existing behavior.");
+      assertFalse(
+          report.getSyncSnapshot().isAwaitingFirstSyncFrame(),
+          "NO_CHANGE diagnostics should publish after first-frame state is consumed.");
+      assertTrue(
+          report.getSyncSnapshot().hasLastResolvedSnapshotNode(),
+          "NO_CHANGE diagnostics should publish the resolved snapshot node after it is remembered.");
+    }
+  }
+
+  @Test
+  void protocolLineSummaryDoesNotExposeSensitivePayloads() throws Exception {
+    try (SyncHarness harness = SyncHarness.create(false, emptyHistory())) {
+      harness.readBoard.parseLine("roomToken secret-room-token");
+      SyncDiagnosticsSnapshot snapshot =
+          SyncDiagnosticsRecorder.getDefault().snapshot().getSyncSnapshot();
+      assertEquals("roomToken <redacted>", snapshot.getLastProtocolLineSummary());
+      assertFalse(snapshot.getLastProtocolLineSummary().contains("secret-room-token"));
+
+      SyncDiagnosticsExportSnapshot export = SyncDiagnosticsRecorder.getDefault().exportSnapshot();
+      List<SyncProtocolDiagnosticEvent> events = export.getRecentProtocolEvents();
+      assertTrue(
+          events.stream().anyMatch(event -> "roomToken <redacted>".equals(event.getSummary())));
+      assertTrue(
+          events.stream().noneMatch(event -> event.getSummary().contains("secret-room-token")));
+
+      harness.readBoard.parseLine("liveTitle Very Long Secret Room Title 1234567890");
+      snapshot = SyncDiagnosticsRecorder.getDefault().snapshot().getSyncSnapshot();
+      assertEquals("liveTitle <redacted>", snapshot.getLastProtocolLineSummary());
+      assertFalse(snapshot.getLastProtocolLineSummary().contains("Very Long Secret Room Title"));
+
+      harness.readBoard.parseLine("foxMoveNumber 123");
+      snapshot = SyncDiagnosticsRecorder.getDefault().snapshot().getSyncSnapshot();
+      assertEquals("foxMoveNumber 123", snapshot.getLastProtocolLineSummary());
+
+      harness.readBoard.parseLine("syncPlatform yike");
+      snapshot = SyncDiagnosticsRecorder.getDefault().snapshot().getSyncSnapshot();
+      assertEquals("syncPlatform yike", snapshot.getLastProtocolLineSummary());
+
+      export = SyncDiagnosticsRecorder.getDefault().exportSnapshot();
+      events = export.getRecentProtocolEvents();
+      assertTrue(events.stream().anyMatch(event -> "syncPlatform yike".equals(event.getSummary())));
+    }
+  }
+
+  @Test
+  void protocolLineSummaryRedactsSgfPayloadsAndPathLikeUpdateMetadata() throws Exception {
+    try (SyncHarness harness = SyncHarness.create(false, emptyHistory())) {
+      harness.readBoard.parseLine("sgf (;GM[1]SZ[19])");
+      SyncDiagnosticsSnapshot snapshot =
+          SyncDiagnosticsRecorder.getDefault().snapshot().getSyncSnapshot();
+      assertEquals("sgf <redacted>", snapshot.getLastProtocolLineSummary());
+      assertFalse(snapshot.getLastProtocolLineSummary().contains("(;GM"));
+
+      harness.readBoard.parseLine("loadsgf (;GM[1])");
+      snapshot = SyncDiagnosticsRecorder.getDefault().snapshot().getSyncSnapshot();
+      assertEquals("loadsgf <redacted>", snapshot.getLastProtocolLineSummary());
+      assertFalse(snapshot.getLastProtocolLineSummary().contains("(;GM"));
+
+      harness.readBoard.parseLine("loadSgf (;GM[1])");
+      snapshot = SyncDiagnosticsRecorder.getDefault().snapshot().getSyncSnapshot();
+      assertEquals("loadSgf <redacted>", snapshot.getLastProtocolLineSummary());
+      assertFalse(snapshot.getLastProtocolLineSummary().contains("(;GM"));
+
+      harness.readBoard.parseLine("readboardUpdateReady\t1\tC:\\secret\\file.zip");
+      snapshot = SyncDiagnosticsRecorder.getDefault().snapshot().getSyncSnapshot();
+      assertEquals("readboardUpdateReady <redacted>", snapshot.getLastProtocolLineSummary());
+      assertFalse(snapshot.getLastProtocolLineSummary().contains("C:\\secret\\file.zip"));
+    }
+  }
+
+  @Test
+  void metadataProtocolLinesPublishUpdatedRemoteContextDiagnostics() throws Exception {
+    try (SyncHarness harness = SyncHarness.create(false, emptyHistory())) {
+      harness.readBoard.parseLine("roomToken secret-room-token");
+      SyncDiagnosticsSnapshot snapshot =
+          SyncDiagnosticsRecorder.getDefault().snapshot().getSyncSnapshot();
+      assertTrue(snapshot.getPendingRemoteContextSummary().contains("hasRoomToken=true"));
+      assertFalse(snapshot.getPendingRemoteContextSummary().contains("secret-room-token"));
+
+      harness.readBoard.parseLine("recordTitleFingerprint secret-title-fingerprint");
+      snapshot = SyncDiagnosticsRecorder.getDefault().snapshot().getSyncSnapshot();
+      assertTrue(snapshot.getPendingRemoteContextSummary().contains("hasTitleFingerprint=true"));
+      assertFalse(snapshot.getPendingRemoteContextSummary().contains("secret-title-fingerprint"));
+      assertEquals("recordTitleFingerprint <redacted>", snapshot.getLastProtocolLineSummary());
+      assertFalse(snapshot.getLastProtocolLineSummary().contains("secret-title-fingerprint"));
+
+      harness.readBoard.parseLine("forceRebuild");
+      snapshot = SyncDiagnosticsRecorder.getDefault().snapshot().getSyncSnapshot();
+      assertTrue(snapshot.getPendingRemoteContextSummary().contains("forceRebuild=true"));
+    }
+  }
+
+  @Test
+  void foxMoveNumberPublishesUpdatedRemoteContextDiagnosticsImmediately() throws Exception {
+    try (SyncHarness harness = SyncHarness.create(false, emptyHistory())) {
+      harness.readBoard.parseLine("syncPlatform fox");
+      harness.readBoard.parseLine("foxMoveNumber 123");
+
+      SyncDiagnosticsSnapshot snapshot =
+          SyncDiagnosticsRecorder.getDefault().snapshot().getSyncSnapshot();
+      assertEquals("foxMoveNumber 123", snapshot.getLastProtocolLineSummary());
+      assertTrue(
+          snapshot.getPendingRemoteContextSummary().contains("recoveryMoveNumber=123"),
+          "foxMoveNumber diagnostics should include the updated recovery move number immediately.");
+    }
+  }
+
+  @Test
+  void stateResetProtocolLinesPublishUpdatedRemoteContextDiagnostics() throws Exception {
+    try (SyncHarness harness = SyncHarness.create(false, emptyHistory())) {
+      harness.readBoard.parseLine("roomToken secret-room-token");
+      SyncDiagnosticsSnapshot snapshot =
+          SyncDiagnosticsRecorder.getDefault().snapshot().getSyncSnapshot();
+      assertTrue(snapshot.getPendingRemoteContextSummary().contains("hasRoomToken=true"));
+
+      harness.readBoard.parseLine("start 3 3");
+      snapshot = SyncDiagnosticsRecorder.getDefault().snapshot().getSyncSnapshot();
+
+      assertEquals("start 3 3", snapshot.getLastProtocolLineSummary());
+      assertTrue(snapshot.getPendingRemoteContextSummary().contains("hasRoomToken=false"));
+      assertFalse(snapshot.getPendingRemoteContextSummary().contains("secret-room-token"));
     }
   }
 
@@ -2415,6 +2669,10 @@ class ReadBoardSyncDecisionTest {
     Field field = findField(target.getClass(), name);
     field.setAccessible(true);
     field.set(target, value);
+  }
+
+  private static void resetDefaultDiagnosticsRecorder() {
+    SyncDiagnosticsRecorder.clearDefaultForTests();
   }
 
   private static Object getField(Object target, String name) throws Exception {
