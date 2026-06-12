@@ -2,6 +2,7 @@ package featurecat.lizzie.gui;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -229,6 +230,38 @@ class MoveOnlyUiGateTest {
   }
 
   @Test
+  void floatBoardRendererClearBranchDropsStaleBranchState() throws Exception {
+    FloatBoardRenderer renderer = new FloatBoardRenderer();
+    setField(FloatBoardRenderer.class, renderer, "isShowingBranch", true);
+    setField(FloatBoardRenderer.class, renderer, "showingBranch", true);
+    setField(FloatBoardRenderer.class, renderer, "branchOpt", Optional.of(new Object()));
+    setField(FloatBoardRenderer.class, renderer, "variationOpt", Optional.of(List.of("A1")));
+    setField(FloatBoardRenderer.class, renderer, "mouseOverTemp", bestMove(0, 1));
+    setField(
+        FloatBoardRenderer.class,
+        renderer,
+        "branchStonesImage",
+        new BufferedImage(3, 3, BufferedImage.TYPE_INT_ARGB));
+    setField(
+        FloatBoardRenderer.class,
+        renderer,
+        "branchStonesShadowImage",
+        new BufferedImage(3, 3, BufferedImage.TYPE_INT_ARGB));
+
+    renderer.clearBranch();
+
+    Object emptyImage = getField(FloatBoardRenderer.class, null, "emptyImage");
+    assertFalse(renderer.isShowingBranch());
+    assertFalse(
+        ((Optional<?>) getField(FloatBoardRenderer.class, renderer, "branchOpt")).isPresent());
+    assertFalse(
+        ((Optional<?>) getField(FloatBoardRenderer.class, renderer, "variationOpt")).isPresent());
+    assertNull(getField(FloatBoardRenderer.class, renderer, "mouseOverTemp"));
+    assertSame(emptyImage, getField(FloatBoardRenderer.class, renderer, "branchStonesImage"));
+    assertSame(emptyImage, getField(FloatBoardRenderer.class, renderer, "branchStonesShadowImage"));
+  }
+
+  @Test
   void boardRendererDrawBranchClearsStaleBranchStateWhenHoverHasNoVariation() throws Exception {
     TestEnvironment env = TestEnvironment.open();
     try {
@@ -249,6 +282,54 @@ class MoveOnlyUiGateTest {
       assertFalse(
           ((Optional<?>) getField(BoardRenderer.class, renderer, "branchOpt")).isPresent(),
           "stale branch data should stay cleared when drawBranch exits before rendering.");
+    } finally {
+      env.close();
+    }
+  }
+
+  @Test
+  void boardRendererRedrawsBranchImagesAfterClearingSameHover() throws Exception {
+    TestEnvironment env = TestEnvironment.open();
+    try {
+      Lizzie.config.showBranch = true;
+      Lizzie.config.showSuggestionVariations = true;
+      Lizzie.config.showBlackCandidates = true;
+      Lizzie.config.showWhiteCandidates = true;
+      Lizzie.config.noRefreshOnMouseMove = true;
+      Lizzie.config.usePureStone = true;
+      TrackingLizzieFrame frame = configuredFrame();
+      frame.mouseOverCoordinate = new int[] {0, 1};
+      frame.isMouseOver = true;
+      frame.priorityMoveCoords = new ArrayList<>();
+      Lizzie.frame = frame;
+      BoardData current = currentData();
+      MoveData suggested = current.bestMoves.get(0);
+      suggested.variation = List.of(suggested.coordinate, Board.convertCoordinatesToName(1, 1));
+      Lizzie.board = boardWith(historyForCurrentNode(current));
+      BoardRenderer renderer = configuredBranchRenderer();
+
+      invokeDrawBranch(renderer);
+
+      Object emptyImage = getField(BoardRenderer.class, null, "emptyImage");
+      BufferedImage firstBranchImage =
+          (BufferedImage) getField(BoardRenderer.class, renderer, "branchStonesImage");
+      assertNotSame(emptyImage, firstBranchImage, "first hover should render branch stones.");
+      assertTrue(
+          hasVisiblePaint(firstBranchImage), "first hover branch image should contain stones.");
+
+      renderer.clearBranch();
+      assertSame(emptyImage, getField(BoardRenderer.class, renderer, "branchStonesImage"));
+      frame.mouseOverCoordinate = new int[] {0, 1};
+      frame.isMouseOver = true;
+
+      invokeDrawBranch(renderer);
+
+      BufferedImage secondBranchImage =
+          (BufferedImage) getField(BoardRenderer.class, renderer, "branchStonesImage");
+      assertNotSame(
+          emptyImage, secondBranchImage, "second hover of the same candidate must redraw stones.");
+      assertTrue(
+          hasVisiblePaint(secondBranchImage), "second hover should not publish a blank branch.");
     } finally {
       env.close();
     }
@@ -382,6 +463,20 @@ class MoveOnlyUiGateTest {
 
   private static FloatBoardRenderer configuredFloatRenderer() throws Exception {
     FloatBoardRenderer renderer = new FloatBoardRenderer();
+    setIntField(renderer, "x", 0);
+    setIntField(renderer, "y", 0);
+    setIntField(renderer, "boardWidth", CANVAS_SIZE);
+    setIntField(renderer, "boardHeight", CANVAS_SIZE);
+    setIntField(renderer, "stoneRadius", STONE_RADIUS);
+    setIntField(renderer, "scaledMarginWidth", SCALED_MARGIN);
+    setIntField(renderer, "scaledMarginHeight", SCALED_MARGIN);
+    setIntField(renderer, "squareWidth", SQUARE_SIZE);
+    setIntField(renderer, "squareHeight", SQUARE_SIZE);
+    return renderer;
+  }
+
+  private static BoardRenderer configuredBranchRenderer() throws Exception {
+    BoardRenderer renderer = new BoardRenderer(false);
     setIntField(renderer, "x", 0);
     setIntField(renderer, "y", 0);
     setIntField(renderer, "boardWidth", CANVAS_SIZE);
