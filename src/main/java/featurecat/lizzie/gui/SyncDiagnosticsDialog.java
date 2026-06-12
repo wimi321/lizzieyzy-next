@@ -1,9 +1,13 @@
 package featurecat.lizzie.gui;
 
 import featurecat.lizzie.Lizzie;
+import featurecat.lizzie.analysis.SyncDecisionTrace;
 import featurecat.lizzie.analysis.SyncDiagnosticsEnvironment;
 import featurecat.lizzie.analysis.SyncDiagnosticsExporter;
 import featurecat.lizzie.analysis.SyncDiagnosticsRecorder;
+import featurecat.lizzie.analysis.SyncDiagnosticsReport;
+import featurecat.lizzie.analysis.SyncDiagnosticsSnapshot;
+import featurecat.lizzie.analysis.YikeSessionDiagnosticsSnapshot;
 import java.awt.BorderLayout;
 import java.awt.Color;
 import java.awt.Dimension;
@@ -12,6 +16,7 @@ import java.awt.Font;
 import java.awt.FontMetrics;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
+import java.awt.GridLayout;
 import java.awt.Insets;
 import java.awt.RenderingHints;
 import java.awt.Toolkit;
@@ -44,7 +49,13 @@ public class SyncDiagnosticsDialog extends JDialog {
   private static final int FOOTER_BUTTON_EXTRA_HEIGHT = 6;
 
   private final ResourceBundle resourceBundle = Lizzie.resourceBundle;
-  private final JTextArea summaryTextArea = new JTextArea();
+  private final JTextArea overviewTextArea = createSectionTextArea(2);
+  private final JTextArea readBoardTextArea = createSectionTextArea(9);
+  private final JTextArea yikeTextArea = createSectionTextArea(9);
+  private final JTextArea latestDecisionTextArea = createSectionTextArea(9);
+  private final JTextArea analysisTextArea = createSectionTextArea(6);
+  private final JTextArea statusTextArea = createStatusTextArea();
+  private String copySummaryText = "";
 
   public SyncDiagnosticsDialog(Window owner) {
     super(owner);
@@ -54,10 +65,6 @@ public class SyncDiagnosticsDialog extends JDialog {
       setAlwaysOnTop(Lizzie.frame.isAlwaysOnTop());
     }
     setDefaultCloseOperation(HIDE_ON_CLOSE);
-
-    summaryTextArea.setEditable(false);
-    summaryTextArea.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
-    summaryTextArea.setLineWrap(false);
 
     JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 6));
     JButton refreshButton = new JButton(text("SyncDiagnostics.refresh", "Refresh"));
@@ -102,10 +109,31 @@ public class SyncDiagnosticsDialog extends JDialog {
           }
         });
 
+    JPanel sectionsPanel =
+        createSectionsPanel(
+            readBoardTextArea,
+            yikeTextArea,
+            latestDecisionTextArea,
+            analysisTextArea,
+            text("SyncDiagnostics.section.readBoard", "ReadBoard / sync status"),
+            text("SyncDiagnostics.section.yike", "Yike session / placement geometry"),
+            text("SyncDiagnostics.section.latestDecision", "Latest sync decision"),
+            text("SyncDiagnostics.section.analysis", "Analysis resume / snapshot state"));
+
+    JPanel mainPanel = new JPanel(new BorderLayout(8, 8));
+    mainPanel.add(
+        sectionPanel(text("SyncDiagnostics.section.overview", "Overview"), overviewTextArea),
+        BorderLayout.NORTH);
+    mainPanel.add(sectionsPanel, BorderLayout.CENTER);
+
+    JPanel footerPanel = new JPanel(new BorderLayout(4, 4));
+    footerPanel.add(statusTextArea, BorderLayout.CENTER);
+    footerPanel.add(buttonPanel, BorderLayout.SOUTH);
+
     JPanel content = new JPanel(new BorderLayout(8, 8));
     content.setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
-    content.add(new JScrollPane(summaryTextArea), BorderLayout.CENTER);
-    content.add(buttonPanel, BorderLayout.SOUTH);
+    content.add(new JScrollPane(mainPanel), BorderLayout.CENTER);
+    content.add(footerPanel, BorderLayout.SOUTH);
     setContentPane(content);
 
     refreshSummary();
@@ -114,15 +142,25 @@ public class SyncDiagnosticsDialog extends JDialog {
   }
 
   private void refreshSummary() {
-    summaryTextArea.setText(SyncDiagnosticsRecorder.getDefault().snapshot().toSummaryText());
-    summaryTextArea.setCaretPosition(0);
+    SectionTexts sections = sectionTexts(SyncDiagnosticsRecorder.getDefault().snapshot());
+    copySummaryText = sections.copySummary;
+    overviewTextArea.setText(sections.overview);
+    readBoardTextArea.setText(sections.readBoard);
+    yikeTextArea.setText(sections.yike);
+    latestDecisionTextArea.setText(sections.latestDecision);
+    analysisTextArea.setText(sections.analysis);
+    resetCaret(overviewTextArea);
+    resetCaret(readBoardTextArea);
+    resetCaret(yikeTextArea);
+    resetCaret(latestDecisionTextArea);
+    resetCaret(analysisTextArea);
+    setStatus("");
   }
 
   private void copySummary() {
-    String summary = summaryTextArea.getText();
     Toolkit.getDefaultToolkit()
         .getSystemClipboard()
-        .setContents(new StringSelection(summary), null);
+        .setContents(new StringSelection(copySummaryText), null);
   }
 
   private void exportDiagnosticsPackage() {
@@ -131,17 +169,18 @@ public class SyncDiagnosticsDialog extends JDialog {
           new SyncDiagnosticsExporter(SyncDiagnosticsExporter.defaultOutputDirectory())
               .export(SyncDiagnosticsRecorder.getDefault().exportSnapshot());
       refreshSummary();
-      appendStatus(exportSuccessStatus(text("SyncDiagnostics.exportSuccess", "Exported to:"), zip));
+      setStatus(exportSuccessStatus(text("SyncDiagnostics.exportSuccess", "Exported to:"), zip));
     } catch (IOException | RuntimeException ex) {
-      appendStatus(
+      setStatus(
           text("SyncDiagnostics.exportFailure", "Export failed:")
               + " "
               + sanitizeFailureMessage(ex.getMessage()));
     }
   }
 
-  private void appendStatus(String status) {
-    summaryTextArea.append("\n\n" + status);
+  private void setStatus(String status) {
+    statusTextArea.setText(status == null || status.isEmpty() ? " " : status);
+    resetCaret(statusTextArea);
   }
 
   private static String sanitizeFailureMessage(String message) {
@@ -150,6 +189,111 @@ public class SyncDiagnosticsDialog extends JDialog {
 
   static String exportSuccessStatus(String label, Path zip) {
     return label + " " + displayExportPath(zip);
+  }
+
+  static SectionTexts sectionTexts(SyncDiagnosticsReport report) {
+    SyncDiagnosticsReport value = report == null ? SyncDiagnosticsReport.empty() : report;
+    SyncDiagnosticsSnapshot sync = value.getSyncSnapshot();
+    YikeSessionDiagnosticsSnapshot yike = value.getYikeSnapshot();
+    SyncDecisionTrace decision = value.getLatestDecisionTrace();
+    return new SectionTexts(
+        overviewText(value),
+        readBoardText(sync),
+        yike.toSummaryText(),
+        decision.toSummaryText(),
+        analysisText(sync, decision),
+        value.toSummaryText());
+  }
+
+  private static String overviewText(SyncDiagnosticsReport report) {
+    return "capturedAtMillis: "
+        + report.getCapturedAtMillis()
+        + '\n'
+        + "source: "
+        + report.getSource();
+  }
+
+  private static String readBoardText(SyncDiagnosticsSnapshot sync) {
+    StringBuilder text = new StringBuilder();
+    text.append("attached: ").append(sync.isReadBoardAttached()).append('\n');
+    text.append("connected: ").append(sync.isReadBoardConnected()).append('\n');
+    text.append("javaReadBoard: ").append(sync.isJavaReadBoard()).append('\n');
+    text.append("usePipe: ").append(sync.isUsePipe()).append('\n');
+    text.append("syncing: ").append(sync.isSyncing()).append('\n');
+    text.append("awaitingFirstSyncFrame: ").append(sync.isAwaitingFirstSyncFrame()).append('\n');
+    text.append("pendingRemoteContext: ")
+        .append(sync.getPendingRemoteContextSummary())
+        .append('\n');
+    text.append("lastProtocolLine: ").append(sync.getLastProtocolLineSummary()).append('\n');
+    text.append("lastProtocolTimestampMillis: ")
+        .append(sync.getLastProtocolTimestampMillis())
+        .append('\n');
+    text.append("source: ").append(sync.getSource()).append('\n');
+    text.append("timestampMillis: ").append(sync.getTimestampMillis()).append('\n');
+    text.append("summary: ").append(sync.getSummary());
+    return text.toString();
+  }
+
+  private static String analysisText(SyncDiagnosticsSnapshot sync, SyncDecisionTrace decision) {
+    StringBuilder text = new StringBuilder();
+    text.append("hasResumeState: ").append(sync.hasResumeState()).append('\n');
+    text.append("hasLastResolvedSnapshotNode: ")
+        .append(sync.hasLastResolvedSnapshotNode())
+        .append('\n');
+    text.append("lastResolvedSnapshot: ")
+        .append(sync.getLastResolvedSnapshotSummary())
+        .append('\n');
+    text.append("syncAnalysisEpoch: ").append(sync.getSyncAnalysisEpoch()).append('\n');
+    text.append("shouldResumeAnalysis: ").append(decision.shouldResumeAnalysis()).append('\n');
+    text.append("resolvedSnapshotMoveNumber: ")
+        .append(decision.getResolvedSnapshotMoveNumber())
+        .append('\n');
+    text.append("resolvedSnapshotKind: ").append(decision.getResolvedSnapshotKind());
+    return text.toString();
+  }
+
+  private static JTextArea createSectionTextArea(int rows) {
+    JTextArea area = new JTextArea(rows, 32);
+    area.setEditable(false);
+    area.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
+    area.setLineWrap(true);
+    area.setWrapStyleWord(false);
+    area.setBorder(BorderFactory.createEmptyBorder(2, 4, 2, 4));
+    return area;
+  }
+
+  private static JTextArea createStatusTextArea() {
+    JTextArea area = createSectionTextArea(1);
+    area.setText(" ");
+    return area;
+  }
+
+  private static JPanel sectionPanel(String title, JTextArea textArea) {
+    JPanel panel = new JPanel(new BorderLayout());
+    panel.setBorder(BorderFactory.createTitledBorder(title));
+    panel.add(textArea, BorderLayout.CENTER);
+    return panel;
+  }
+
+  static JPanel createSectionsPanel(
+      JTextArea readBoard,
+      JTextArea yike,
+      JTextArea latestDecision,
+      JTextArea analysis,
+      String readBoardTitle,
+      String yikeTitle,
+      String latestDecisionTitle,
+      String analysisTitle) {
+    JPanel sectionsPanel = new JPanel(new GridLayout(0, 2, 8, 8));
+    sectionsPanel.add(sectionPanel(readBoardTitle, readBoard));
+    sectionsPanel.add(sectionPanel(yikeTitle, yike));
+    sectionsPanel.add(sectionPanel(latestDecisionTitle, latestDecision));
+    sectionsPanel.add(sectionPanel(analysisTitle, analysis));
+    return sectionsPanel;
+  }
+
+  private static void resetCaret(JTextArea textArea) {
+    textArea.setCaretPosition(0);
   }
 
   static void configureFooterButton(JButton button) {
@@ -176,11 +320,7 @@ public class SyncDiagnosticsDialog extends JDialog {
             + margin.left
             + margin.right
             + FOOTER_BUTTON_EXTRA_WIDTH;
-    int height =
-        metrics.getHeight()
-            + margin.top
-            + margin.bottom
-            + FOOTER_BUTTON_EXTRA_HEIGHT;
+    int height = metrics.getHeight() + margin.top + margin.bottom + FOOTER_BUTTON_EXTRA_HEIGHT;
     return new Dimension(Math.max(preferred.width, width), Math.max(preferred.height, height));
   }
 
@@ -243,6 +383,30 @@ public class SyncDiagnosticsDialog extends JDialog {
           Math.round(a.getRed() * inverse + b.getRed() * ratio),
           Math.round(a.getGreen() * inverse + b.getGreen() * ratio),
           Math.round(a.getBlue() * inverse + b.getBlue() * ratio));
+    }
+  }
+
+  static final class SectionTexts {
+    final String overview;
+    final String readBoard;
+    final String yike;
+    final String latestDecision;
+    final String analysis;
+    final String copySummary;
+
+    private SectionTexts(
+        String overview,
+        String readBoard,
+        String yike,
+        String latestDecision,
+        String analysis,
+        String copySummary) {
+      this.overview = overview;
+      this.readBoard = readBoard;
+      this.yike = yike;
+      this.latestDecision = latestDecision;
+      this.analysis = analysis;
+      this.copySummary = copySummary;
     }
   }
 

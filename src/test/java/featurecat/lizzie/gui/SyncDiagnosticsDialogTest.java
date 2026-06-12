@@ -3,11 +3,20 @@ package featurecat.lizzie.gui;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import featurecat.lizzie.analysis.SyncDecisionTrace;
+import featurecat.lizzie.analysis.SyncDiagnosticsReport;
+import featurecat.lizzie.analysis.SyncDiagnosticsSnapshot;
+import featurecat.lizzie.analysis.YikeSessionDiagnosticsSnapshot;
 import java.awt.FontMetrics;
+import java.awt.GridLayout;
 import java.nio.file.Path;
 import javax.swing.JButton;
+import javax.swing.JPanel;
+import javax.swing.JTextArea;
+import javax.swing.border.TitledBorder;
 import javax.swing.plaf.basic.BasicButtonUI;
 import org.junit.jupiter.api.Test;
 
@@ -89,5 +98,132 @@ class SyncDiagnosticsDialogTest {
         metrics.getHeight() + button.getMargin().top + button.getMargin().bottom + 6;
     assertTrue(button.getPreferredSize().width >= requiredWidth);
     assertTrue(button.getPreferredSize().height >= requiredHeight);
+  }
+
+  @Test
+  void sectionsPanelBuildsFourVisibleDiagnosticAreasInTwoColumns() {
+    JTextArea readBoard = new JTextArea();
+    JTextArea yike = new JTextArea();
+    JTextArea latestDecision = new JTextArea();
+    JTextArea analysis = new JTextArea();
+
+    JPanel panel =
+        SyncDiagnosticsDialog.createSectionsPanel(
+            readBoard,
+            yike,
+            latestDecision,
+            analysis,
+            "ReadBoard / sync status",
+            "Yike session / placement geometry",
+            "Latest sync decision",
+            "Analysis resume / snapshot state");
+
+    assertTrue(panel.getLayout() instanceof GridLayout);
+    assertEquals(2, ((GridLayout) panel.getLayout()).getColumns());
+    assertEquals(4, panel.getComponentCount());
+    assertSection(panel, 0, "ReadBoard / sync status", readBoard);
+    assertSection(panel, 1, "Yike session / placement geometry", yike);
+    assertSection(panel, 2, "Latest sync decision", latestDecision);
+    assertSection(panel, 3, "Analysis resume / snapshot state", analysis);
+  }
+
+  @Test
+  void sectionTextsSplitReportIntoVisiblePanelsAndKeepCopySummaryComplete() {
+    SyncDecisionTrace decision =
+        SyncDecisionTrace.builder("FORCE_REBUILD", "first_sync_force_rebuild")
+            .platform("FOX")
+            .windowKind("LIVE_ROOM")
+            .source("ReadBoard.syncBoardStones")
+            .summary("force rebuild summary")
+            .remoteContextFingerprint("platform=FOX, windowKind=LIVE_ROOM")
+            .snapshotHash("05056846")
+            .changedStoneCount(197)
+            .removedStoneCount(0)
+            .recoveryMoveNumber(203)
+            .resolvedSnapshotMoveNumber(-1)
+            .resolvedSnapshotKind("none")
+            .firstSyncFrame(true)
+            .shouldResumeAnalysis(false)
+            .epoch(1)
+            .timestampMillis(1780303912407L)
+            .build();
+    SyncDiagnosticsSnapshot sync =
+        SyncDiagnosticsSnapshot.builder()
+            .readBoardAttached(true)
+            .readBoardConnected(true)
+            .javaReadBoard(true)
+            .usePipe(false)
+            .syncing(false)
+            .awaitingFirstSyncFrame(false)
+            .hasResumeState(true)
+            .hasLastResolvedSnapshotNode(false)
+            .syncAnalysisEpoch(7)
+            .pendingRemoteContextSummary("platform=FOX, windowKind=LIVE_ROOM")
+            .lastResolvedSnapshotSummary("none")
+            .lastProtocolLineSummary("readBoardUpdateReady captured")
+            .lastProtocolTimestampMillis(1780303912000L)
+            .source("readboard")
+            .summary("readboard ready")
+            .timestampMillis(1780303912400L)
+            .latestDecisionTrace(decision)
+            .build();
+    YikeSessionDiagnosticsSnapshot yike =
+        YikeSessionDiagnosticsSnapshot.builder()
+            .listenerEnabled(true)
+            .currentRouteKind("live-room")
+            .currentSessionKey("live-room:1")
+            .activeSessionKey("live-room:1")
+            .activeSyncReady(true)
+            .activeGeometryReady(false)
+            .activeBoardSize(19)
+            .pendingSessionKey("none")
+            .pendingSyncReady(null)
+            .pendingGeometryReady(null)
+            .pendingBoardSize(0)
+            .effectiveGeometrySessionKey("live-room:1")
+            .effectiveGeometryReady(false)
+            .placementGeometryAllowed(false)
+            .lastGeometryClearReason("room_changed")
+            .lastSessionSwitchReason("none")
+            .lastYikeDebugEventSummary("geometry waiting")
+            .source("online-dialog")
+            .summary("yike waiting for geometry")
+            .timestampMillis(1780303912300L)
+            .build();
+    SyncDiagnosticsReport report =
+        SyncDiagnosticsReport.builder()
+            .syncSnapshot(sync)
+            .yikeSnapshot(yike)
+            .latestDecisionTrace(decision)
+            .capturedAtMillis(1780303912500L)
+            .source("test")
+            .build();
+
+    SyncDiagnosticsDialog.SectionTexts sections = SyncDiagnosticsDialog.sectionTexts(report);
+
+    assertTrue(sections.overview.contains("capturedAtMillis: 1780303912500"));
+    assertTrue(sections.readBoard.contains("attached: true"));
+    assertTrue(sections.readBoard.contains("lastProtocolLine: readBoardUpdateReady captured"));
+    assertFalse(sections.readBoard.contains("active: live-room:1"));
+    assertTrue(sections.yike.contains("active: live-room:1"));
+    assertTrue(sections.yike.contains("placementGeometryAllowed: false"));
+    assertTrue(sections.latestDecision.contains("result: FORCE_REBUILD"));
+    assertTrue(sections.latestDecision.contains("reason: first_sync_force_rebuild"));
+    assertTrue(sections.analysis.contains("hasResumeState: true"));
+    assertTrue(sections.analysis.contains("syncAnalysisEpoch: 7"));
+    assertTrue(sections.analysis.contains("shouldResumeAnalysis: false"));
+    assertTrue(sections.copySummary.contains("Sync Diagnostics"));
+    assertTrue(sections.copySummary.contains("Latest decision"));
+    assertTrue(sections.copySummary.contains("readBoardUpdateReady captured"));
+  }
+
+  private static void assertSection(
+      JPanel panel, int index, String expectedTitle, JTextArea expectedTextArea) {
+    assertTrue(panel.getComponent(index) instanceof JPanel);
+    JPanel section = (JPanel) panel.getComponent(index);
+    assertTrue(section.getBorder() instanceof TitledBorder);
+    assertEquals(expectedTitle, ((TitledBorder) section.getBorder()).getTitle());
+    assertEquals(1, section.getComponentCount());
+    assertSame(expectedTextArea, section.getComponent(0));
   }
 }
