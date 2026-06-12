@@ -3,6 +3,7 @@ package featurecat.lizzie.gui;
 import featurecat.lizzie.Config;
 import featurecat.lizzie.Lizzie;
 import java.awt.Font;
+import java.awt.Toolkit;
 import java.awt.Window;
 import java.io.IOException;
 import java.util.ResourceBundle;
@@ -10,6 +11,8 @@ import javax.imageio.ImageIO;
 import javax.swing.BorderFactory;
 import javax.swing.JDialog;
 import javax.swing.JLabel;
+import javax.swing.SwingUtilities;
+import javax.swing.Timer;
 
 public class Message extends JDialog {
   JLabel lblmessage;
@@ -21,6 +24,7 @@ public class Message extends JDialog {
     this.setResizable(false);
     setTitle(resourceBundle.getString("Message.title")); // "消息提醒");
     setAlwaysOnTop(true);
+    setDefaultCloseOperation(DISPOSE_ON_CLOSE);
     //  setLocationByPlatform(true);
     lblmessage = new JLabel("", JLabel.CENTER);
     getContentPane().setBackground(MessageTheme.background());
@@ -36,67 +40,75 @@ public class Message extends JDialog {
   }
 
   public void setMessage(String message) {
-    String regex = "[\u4e00-\u9fa5]";
-    lblmessage.setText(message);
-    setSize((int) (message.replaceAll(regex, "12").length() * (Config.frameFontSize / 1.6)), 80);
-    setLocationRelativeTo(Lizzie.frame != null ? Lizzie.frame : null);
-    setVisible(true);
-    Lizzie.setFrameSize(
-        this, (int) (message.replaceAll(regex, "12").length() * (Config.frameFontSize / 1.6)), 80);
-    this.setModal(true);
-    setVisible(false);
-    setVisible(true);
+    showMessage(message, Lizzie.frame != null ? Lizzie.frame : null, true);
   }
 
   public void setMessageNoModal(String message) {
-    String regex = "[\u4e00-\u9fa5]";
-    lblmessage.setText(message);
-    setSize((int) (message.replaceAll(regex, "12").length() * (Config.frameFontSize / 1.6)), 80);
-    setLocationRelativeTo(Lizzie.frame != null ? Lizzie.frame : null);
-    setVisible(true);
-    Lizzie.setFrameSize(
-        this, (int) (message.replaceAll(regex, "12").length() * (Config.frameFontSize / 1.6)), 80);
-    setVisible(false);
-    setVisible(true);
+    showMessage(message, Lizzie.frame != null ? Lizzie.frame : null, false);
   }
 
   public void setMessageNoModal(String message, int seconds) {
-    String regex = "[\u4e00-\u9fa5]";
-    lblmessage.setText(message);
-    setSize((int) (message.replaceAll(regex, "12").length() * (Config.frameFontSize / 1.6)), 80);
-    setLocationRelativeTo(Lizzie.frame != null ? Lizzie.frame : null);
-    setVisible(true);
-    Lizzie.setFrameSize(
-        this, (int) (message.replaceAll(regex, "12").length() * (Config.frameFontSize / 1.6)), 80);
-    setVisible(false);
-    setVisible(true);
-
-    Runnable runnable =
-        new Runnable() {
-          public void run() {
-            try {
-              Thread.sleep(seconds * 1000);
-              setVisible(false);
-            } catch (InterruptedException e) {
-              // TODO Auto-generated catch block
-              e.printStackTrace();
-            }
-          }
-        };
-    Thread closeTh = new Thread(runnable);
-    closeTh.start();
+    showMessage(message, Lizzie.frame != null ? Lizzie.frame : null, false);
+    Timer closeTimer =
+        new Timer(
+            Math.max(1, seconds) * 1000,
+            e -> {
+              closeAndDispose();
+            });
+    closeTimer.setRepeats(false);
+    closeTimer.start();
   }
 
   public void setMessage(String message, Window owner) {
-    // TODO Auto-generated method stub
+    showMessage(message, owner, true);
+  }
+
+  private void showMessage(String message, Window owner, boolean modal) {
+    Runnable show =
+        () -> {
+          int width = messageWidth(message);
+          setModal(modal);
+          lblmessage.setText(message);
+          setSize(width, 80);
+          Lizzie.setFrameSize(this, width, 80);
+          setLocationRelativeTo(owner);
+          setVisible(true);
+        };
+    runOnEdt(show);
+  }
+
+  private static int messageWidth(String message) {
     String regex = "[\u4e00-\u9fa5]";
-    lblmessage.setText(message);
-    setSize((int) (message.replaceAll(regex, "12").length() * (Config.frameFontSize / 1.6)), 80);
-    setLocationRelativeTo(owner);
-    setVisible(true);
-    Lizzie.setFrameSize(
-        this, (int) (message.replaceAll(regex, "12").length() * (Config.frameFontSize / 1.6)), 80);
-    setVisible(false);
-    setVisible(true);
+    String text = message == null ? "" : message;
+    return Math.max(
+        180, (int) (text.replaceAll(regex, "12").length() * (Config.frameFontSize / 1.6)));
+  }
+
+  private void closeAndDispose() {
+    Runnable close =
+        () -> {
+          Window owner = getOwner();
+          setVisible(false);
+          dispose();
+          Window repaintTarget = owner != null ? owner : Lizzie.frame;
+          if (repaintTarget != null) {
+            repaintTarget.invalidate();
+            repaintTarget.repaint();
+          }
+          Toolkit.getDefaultToolkit().sync();
+        };
+    runOnEdt(close);
+  }
+
+  private static void runOnEdt(Runnable runnable) {
+    if (SwingUtilities.isEventDispatchThread()) {
+      runnable.run();
+      return;
+    }
+    try {
+      SwingUtilities.invokeAndWait(runnable);
+    } catch (Exception ex) {
+      SwingUtilities.invokeLater(runnable);
+    }
   }
 }

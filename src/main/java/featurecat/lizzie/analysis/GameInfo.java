@@ -61,8 +61,12 @@ public class GameInfo {
 
   public void setKomi(double komi) {
     this.komi = komi;
-    LizzieFrame.menu.txtKomi.setText(String.valueOf(komi));
-    if (Lizzie.frame.isInScoreMode) Lizzie.board.showGroupResult();
+    if (LizzieFrame.menu != null && LizzieFrame.menu.txtKomi != null) {
+      LizzieFrame.menu.txtKomi.setText(String.valueOf(komi));
+    }
+    if (Lizzie.frame != null && Lizzie.frame.isInScoreMode && Lizzie.board != null) {
+      Lizzie.board.showGroupResult();
+    }
   }
 
   public void setKomiNoMenu(double komi) {

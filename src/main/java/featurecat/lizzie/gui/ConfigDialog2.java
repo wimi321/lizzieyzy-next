@@ -191,6 +191,7 @@ public class ConfigDialog2 extends JDialog {
   private JCheckBox chkShowSubBoard;
   private JCheckBox chkShowStatus;
   private JCheckBox chkShowCoordinates;
+  private JCheckBox chkHideCommentControlPane;
   private JRadioButton rdoShowMoveNumberNo;
   private JRadioButton rdoShowMoveNumberAll;
   private JRadioButton rdoShowMoveNumberLast;
@@ -783,6 +784,14 @@ public class ConfigDialog2 extends JDialog {
     chkAppendWinrateToComment.setBounds(837, 606, 26, 23);
     uiTab.add(chkAppendWinrateToComment);
 
+    JLabel lblHideCommentControlPane =
+        new JLabel(resourceBundle.getString("LizzieConfig.title.hideCommentControlPane"));
+    lblHideCommentControlPane.setBounds(608, 636, 221, 16);
+    uiTab.add(lblHideCommentControlPane);
+    chkHideCommentControlPane = new JCheckBox("");
+    chkHideCommentControlPane.setBounds(837, 633, 26, 23);
+    uiTab.add(chkHideCommentControlPane);
+
     JLabel lblShowSuggestionMoveOrder =
         new JLabel(
             resourceBundle.getString("LizzieConfig.lblShowSuggestionMoveOrder")); // ("显示选点右上方角标");
@@ -982,6 +991,7 @@ public class ConfigDialog2 extends JDialog {
     chkShowMoveAllInBranch.setSelected(Lizzie.config.showMoveAllInBranch);
     // chkDynamicWinrateGraphWidth.setSelected(Lizzie.config.dynamicWinrateGraphWidth);
     chkAppendWinrateToComment.setSelected(Lizzie.config.appendWinrateToComment);
+    chkHideCommentControlPane.setSelected(Lizzie.config.hideBlunderControlPane);
     chkShowSuggLabel.setSelected(Lizzie.config.showSuggestionOrder);
     chkMaxValueReverseColor.setSelected(Lizzie.config.showSuggestionMaxRed);
     chkShowVairationsOnMouse.setSelected(Lizzie.config.showSuggestionVariations);
@@ -2476,7 +2486,11 @@ public class ConfigDialog2 extends JDialog {
               {"点击复盘", toggleText(chkEnableClickReview, Lizzie.config.enableClickReview)},
               {"拖拽棋子", toggleText(chkEnableDragStone, Lizzie.config.allowDrag)},
               {"显示坐标", toggleText(chkShowCoordinates, Lizzie.config.showCoordinates)},
-              {"评论面板", toggleText(chkShowComment, Lizzie.config.showComment)}
+              {"评论面板", toggleText(chkShowComment, Lizzie.config.showComment)},
+              {
+                "隐藏评论/问题手控制条",
+                toggleText(chkHideCommentControlPane, Lizzie.config.hideBlunderControlPane)
+              }
             });
         addSummaryTip(modernSummaryBody, "<html><b>操作优先</b><br>这里的设置会直接影响鼠标和键盘复盘手感。</html>");
         break;
@@ -3090,6 +3104,7 @@ public class ConfigDialog2 extends JDialog {
         addToggleRow(operation, "启用点击复盘", "点击棋盘时进入更顺手的复盘操作", chkEnableClickReview);
         addToggleRow(operation, "启用拖拽棋子", "允许在棋盘上拖拽调整棋子位置", chkEnableDragStone);
         addToggleRow(operation, "显示评论面板", "展示棋谱评论和分析说明", chkShowComment);
+        addToggleRow(operation, "隐藏评论/问题手控制条", "隐藏评论和问题手区域鼠标悬停时出现的控制条", chkHideCommentControlPane);
         addToggleRow(operation, "显示坐标", "在棋盘边缘显示坐标", chkShowCoordinates);
         addToggleRow(operation, "小棋盘不跟随刷新", "鼠标经过小棋盘时保持当前局部预览", chkNoRefreshSub);
         return operation;
@@ -3168,6 +3183,7 @@ public class ConfigDialog2 extends JDialog {
   private void addToggleRow(JPanel card, String title, String subtitle, JCheckBox toggle) {
     JPanel row = createDesignRow(title, subtitle);
     addDesignRowControl(row, prepareDesignSwitch(toggle));
+    installToggleRowClickTargets(row, toggle);
     card.add(row);
   }
 
@@ -3252,6 +3268,27 @@ public class ConfigDialog2 extends JDialog {
     button.setMinimumSize(new Dimension(54, 30));
     button.setHorizontalAlignment(SwingConstants.RIGHT);
     return button;
+  }
+
+  private void installToggleRowClickTargets(Component component, JCheckBox toggle) {
+    if (component instanceof AbstractButton) {
+      return;
+    }
+    component.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+    component.addMouseListener(
+        new MouseAdapter() {
+          @Override
+          public void mouseClicked(MouseEvent e) {
+            if (SwingUtilities.isLeftMouseButton(e) && toggle.isEnabled()) {
+              toggle.doClick();
+            }
+          }
+        });
+    if (component instanceof java.awt.Container) {
+      for (Component child : ((java.awt.Container) component).getComponents()) {
+        installToggleRowClickTargets(child, toggle);
+      }
+    }
   }
 
   private Component detachComponent(Component component) {
@@ -6058,6 +6095,14 @@ public class ConfigDialog2 extends JDialog {
       Lizzie.config.appendWinrateToComment = chkAppendWinrateToComment.isSelected();
       Lizzie.config.uiConfig.putOpt(
           "append-winrate-to-comment", Lizzie.config.appendWinrateToComment);
+      Lizzie.config.hideBlunderControlPane = chkHideCommentControlPane.isSelected();
+      Lizzie.config.uiConfig.putOpt(
+          "hide-blunder-table-control-pane", Lizzie.config.hideBlunderControlPane);
+      if (Lizzie.config.hideBlunderControlPane
+          && Lizzie.frame != null
+          && Lizzie.frame.commentBlunderControlPane != null) {
+        Lizzie.frame.commentBlunderControlPane.setVisible(false);
+      }
       Lizzie.config.showSuggestionOrder = chkShowSuggLabel.isSelected();
       Lizzie.config.uiConfig.putOpt("show-suggestion-order", Lizzie.config.showSuggestionOrder);
       Lizzie.config.showSuggestionMaxRed = chkMaxValueReverseColor.isSelected();

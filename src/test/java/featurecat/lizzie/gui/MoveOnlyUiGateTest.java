@@ -20,10 +20,12 @@ import java.awt.image.BufferedImage;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.ResourceBundle;
+import java.util.Set;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
 import javax.swing.table.AbstractTableModel;
@@ -310,6 +312,45 @@ class MoveOnlyUiGateTest {
           "float board move-rank marks should still render for real moves.");
     } finally {
       env.close();
+    }
+  }
+
+  @Test
+  void floatBoardMoveRankMarkColorsUseContinuousSeverityShades() throws Exception {
+    Config previousConfig = Lizzie.config;
+    Config config = allocate(Config.class);
+    config.winLossThreshold1 = -1;
+    config.winLossThreshold2 = -3;
+    config.winLossThreshold3 = -6;
+    config.winLossThreshold4 = -12;
+    config.winLossThreshold5 = -24;
+    config.scoreLossThreshold1 = -0.5;
+    config.scoreLossThreshold2 = -1.5;
+    config.scoreLossThreshold3 = -3;
+    config.scoreLossThreshold4 = -6;
+    config.scoreLossThreshold5 = -12;
+    Lizzie.config = config;
+    try {
+      Set<Integer> colors = new HashSet<Integer>();
+      colors.add(
+          FloatBoardRenderer.moveRankMarkColor(FloatBoardRenderer.moveRankMarkSeverity(0, 0))
+              .getRGB());
+      colors.add(
+          FloatBoardRenderer.moveRankMarkColor(FloatBoardRenderer.moveRankMarkSeverity(-1.5, 0))
+              .getRGB());
+      colors.add(
+          FloatBoardRenderer.moveRankMarkColor(FloatBoardRenderer.moveRankMarkSeverity(-5, 0))
+              .getRGB());
+      colors.add(
+          FloatBoardRenderer.moveRankMarkColor(FloatBoardRenderer.moveRankMarkSeverity(-16, 0))
+              .getRGB());
+      colors.add(
+          FloatBoardRenderer.moveRankMarkColor(FloatBoardRenderer.moveRankMarkSeverity(-40, 0))
+              .getRGB());
+
+      assertTrue(colors.size() >= 5, "move rank marks should expose several severity shades.");
+    } finally {
+      Lizzie.config = previousConfig;
     }
   }
 
