@@ -4038,6 +4038,8 @@ def build_release_notes(asset_map: dict[str, str | None], bundle: dict[str, str]
         return build_next_2026_06_11_2_notes(asset_map, bundle, repo, release_tag)
     if release_tag == 'next-2026-06-12.1':
         return build_next_2026_06_12_1_notes(asset_map, bundle, repo, release_tag)
+    if release_tag == 'next-2026-06-12.2':
+        return build_next_2026_06_12_2_notes(asset_map, bundle, repo, release_tag)
 
     assets_cn = {
         key: format_asset(asset_map[key], repo, release_tag)
@@ -5901,6 +5903,247 @@ def build_next_2026_06_12_1_notes(
                 'Windows OpenCL first launch รอ autotuning ได้นานขึ้น จึงไม่ควรขึ้น dialog engine crash เพียงเพราะ one-time autotuning ช้า',
                 'ขอบคุณ @semanym สำหรับการวิเคราะห์เคสจริงและ PR; release นี้มี regression coverage สำหรับเคสเหล่านี้ด้วย',
                 'ก่อน release ได้รัน PR-focused tests, full Maven suite และ local package build ใหม่แล้ว',
+            ],
+            'contact_heading': 'ติดต่อ',
+            'contact': ['QQ group: `299419120`'],
+        },
+    ]
+
+    sections: list[dict[str, object]] = []
+    for block in content:
+        localized_assets = assets_cn if block['language'] in ('中文', '繁體中文') else assets
+        before_items = [
+            item.format(
+                windows_opencl_portable=localized_assets['windows_opencl_portable'],
+                windows_nvidia_portable=localized_assets['windows_nvidia_portable'],
+            )
+            for item in block['before']
+        ]
+        sections.append(
+            {
+                'language': block['language'],
+                'intro': block['intro'],
+                'updates': {'heading': block['updates_heading'], 'items': block['updates']},
+                'before': {'heading': block['before_heading'], 'items': before_items},
+                'download': {
+                    'heading': block['download_heading'],
+                    'headers': block['download_headers'],
+                    'rows': standard_download_rows(
+                        STANDARD_DOWNLOAD_LABELS[block['labels']],
+                        localized_assets,
+                    ),
+                },
+                'why': {'heading': block['why_heading'], 'items': block['why']},
+                'contact': {'heading': block['contact_heading'], 'items': block['contact']},
+            }
+        )
+    add_nvidia50_download_rows(sections, assets_cn, assets)
+    add_tensorrt_split_download_row(sections, assets_cn, assets, asset_map)
+    validate_release_sections(sections)
+    return release_heading(release_tag) + '\n\n' + '\n\n---\n\n'.join(
+        render_language_section(section) for section in sections
+    ) + '\n'
+
+
+def build_next_2026_06_12_2_notes(
+    asset_map: dict[str, str | None],
+    bundle: dict[str, str],
+    repo: str,
+    release_tag: str | None,
+) -> str:
+    assets_cn = {key: format_asset(asset_map[key], repo, release_tag) for key in asset_map}
+    assets = {key: format_asset_en(asset_map[key], repo, release_tag) for key in asset_map}
+    katago_version = bundle['katago_version']
+    model_source = bundle['model_source']
+    content = [
+        {
+            'language': '中文',
+            'labels': 'zh',
+            'intro': '这是一次用户体验与诊断收口版。感谢 @qiyi71w 提交 #43，让同步诊断和导出包可以在真实问题现场更快定位；这一版也合入 Windows 轻量自动更新、直播贴目与 UI 细节修复，以及候选点变化图二次悬停修复。',
+            'updates_heading': '本版主要更新',
+            'updates': [
+                '新增 Windows 轻量自动更新基础能力：软件内“检查更新”改用 GitHub Release manifest，核心更新可单独下载，KataGo、权重、JCEF、readboard 和运行时只有变化时才默认更新。',
+                '合并 #43：新增只读同步诊断面板和脱敏诊断包导出，方便排查 ReadBoard、弈客 session、geometry readiness、同步决策和分析恢复状态。',
+                '直播时手动调到 7.0 的贴目不会在每次刷新后又回到 7.5。',
+                '落子评价标记从粗略三色改为更连续的严重度色阶；评论/问题手控制条新增设置项可隐藏，macOS/Swing 提示框关闭后也减少透明残影。',
+                '修复候选点变化图：第一次移开后再次悬停同一候选点，不会再出现只有变化图数字、棋子图层消失的状态。',
+            ],
+            'before_heading': '下载前先看这几句',
+            'before': [
+                f'主推荐整合包继续内置 KataGo `{katago_version}` 和默认权重 `{model_source}`。',
+                f'Windows 普通用户优先下载 {{windows_opencl_portable}}，这是 **OpenCL 版（推荐，免安装）**。',
+                '这版已经内置自动更新入口；老用户仍需手动安装一次，从后续版本开始才能走轻量更新。',
+                f'如果你的电脑是 **英伟达显卡**，优先下载 {{windows_nvidia_portable}}；RTX 50 用户可选 RTX 50 CUDA 行。',
+                'macOS 包继续使用拖到 Applications 的 DMG 布局，但仍是未签名、未公证包，首次打开请按安装说明处理系统拦截。',
+            ],
+            'download_heading': '下载建议',
+            'download_headers': ('你的电脑', '直接下载这个'),
+            'why_heading': '这一版为什么值得更新',
+            'why': [
+                '直播复盘时贴目、候选点变化图和提示框这些高频细节更稳，少掉会打断思路的小毛刺。',
+                '同步诊断包能把问题现场打包给维护者，排查弈客/ReadBoard 同步问题不用靠零散截图猜。',
+                'Windows 自动更新从这一版开始打底，后续常规更新会更轻，不必每次都下载完整大包。',
+                '发布前已完成本机用户视角启动/悬停复测、macOS DMG 拖拽布局校验、完整 Maven 测试、打包和 GitHub Actions 检查。',
+            ],
+            'contact_heading': '交流',
+            'contact': ['QQ 群：`299419120`'],
+        },
+        {
+            'language': '繁體中文',
+            'labels': 'zh_hant',
+            'intro': '這是一次使用者體驗與診斷收口版。感謝 @qiyi71w 提交 #43，讓同步診斷和匯出包可以在真實問題現場更快定位；這一版也合入 Windows 輕量自動更新、直播貼目與 UI 細節修復，以及候選點變化圖二次懸停修復。',
+            'updates_heading': '本版主要更新',
+            'updates': [
+                '新增 Windows 輕量自動更新基礎能力：軟體內「檢查更新」改用 GitHub Release manifest，核心更新可單獨下載，KataGo、權重、JCEF、readboard 和執行環境只有變化時才預設更新。',
+                '合併 #43：新增唯讀同步診斷面板和脫敏診斷包匯出，方便排查 ReadBoard、弈客 session、geometry readiness、同步決策和分析恢復狀態。',
+                '直播時手動調到 7.0 的貼目不會在每次刷新後又回到 7.5。',
+                '落子評價標記從粗略三色改為更連續的嚴重度色階；評論/問題手控制條新增設定項可隱藏，macOS/Swing 提示框關閉後也減少透明殘影。',
+                '修復候選點變化圖：第一次移開後再次懸停同一候選點，不會再出現只有變化圖數字、棋子圖層消失的狀態。',
+            ],
+            'before_heading': '下載前先看這幾句',
+            'before': [
+                f'主推薦整合包繼續內建 KataGo `{katago_version}` 和預設權重 `{model_source}`。',
+                f'Windows 一般使用者優先下載 {{windows_opencl_portable}}，這是 **OpenCL 版（推薦，免安裝）**。',
+                '這版已經內建自動更新入口；舊使用者仍需手動安裝一次，從後續版本開始才能走輕量更新。',
+                f'如果你的電腦是 **NVIDIA 顯示卡**，優先下載 {{windows_nvidia_portable}}；RTX 50 使用者可選 RTX 50 CUDA 行。',
+                'macOS 包繼續使用拖到 Applications 的 DMG 佈局，但仍是未簽名、未公證包，首次打開請按安裝說明處理系統攔截。',
+            ],
+            'download_heading': '下載建議',
+            'download_headers': ('你的電腦', '直接下載這個'),
+            'why_heading': '這一版為什麼值得更新',
+            'why': [
+                '直播復盤時貼目、候選點變化圖和提示框這些高頻細節更穩，少掉會打斷思路的小毛刺。',
+                '同步診斷包能把問題現場打包給維護者，排查弈客/ReadBoard 同步問題不用靠零散截圖猜。',
+                'Windows 自動更新從這一版開始打底，後續常規更新會更輕，不必每次都下載完整大包。',
+                '發布前已完成本機使用者視角啟動/懸停複測、macOS DMG 拖曳佈局校驗、完整 Maven 測試、打包和 GitHub Actions 檢查。',
+            ],
+            'contact_heading': '交流',
+            'contact': ['QQ 群：`299419120`'],
+        },
+        {
+            'language': 'English',
+            'labels': 'en',
+            'intro': 'This release closes a set of user-experience and diagnostics issues. Thanks to @qiyi71w for PR #43, which adds a read-only sync diagnostics panel and export package for real-world debugging. It also includes the Windows lightweight updater foundation, live-komi/UI fixes, and the second-hover candidate variation fix.',
+            'updates_heading': 'Release Highlights',
+            'updates': [
+                'Added the first Windows lightweight updater path: in-app Check for Updates now reads a GitHub Release manifest, core updates can be downloaded separately, and large resources such as KataGo, weights, JCEF, readboard, and runtime are selected only when they changed.',
+                'Merged #43: a read-only sync diagnostics panel and sanitized export package now help inspect ReadBoard state, Yike session state, geometry readiness, recent sync decisions, and analysis recovery.',
+                'Live komi manually changed to 7.0 no longer snaps back to the remote 7.5 value after every refresh.',
+                'Move-rank markers now use a smoother severity color scale; the comment/problem-move control bar can be hidden from Settings; macOS/Swing prompt disposal was tightened to reduce transparent ghost windows.',
+                'Fixed candidate variation previews so hovering the same candidate again after leaving no longer shows move numbers over a blank branch-stone layer.',
+            ],
+            'before_heading': 'Read Before Downloading',
+            'before': [
+                f'The recommended bundles continue to include KataGo `{katago_version}` and the default weight `{model_source}`.',
+                f'Most Windows users should download {{windows_opencl_portable}}, the **recommended no-install OpenCL build**.',
+                'This build includes the updater bootstrap; existing users still need to install this version manually once, then later releases can use the lightweight update path.',
+                f'If your PC has an **NVIDIA GPU**, try {{windows_nvidia_portable}} first; RTX 50 users can use the RTX 50 CUDA row.',
+                'macOS packages still use the drag-to-Applications DMG layout, but they remain unsigned and not notarized, so the first launch may require the documented macOS security override.',
+            ],
+            'download_heading': 'Download Guide',
+            'download_headers': ('Your computer', 'Download this file'),
+            'why_heading': 'Why Update',
+            'why': [
+                'Live review details such as komi, candidate variation previews, and prompt cleanup are steadier in everyday use.',
+                'The diagnostics export gives maintainers a structured, sanitized view of Yike/ReadBoard sync problems instead of scattered screenshots.',
+                'Windows automatic updates now have their foundation, so future routine updates can become much smaller than full packages.',
+                'Before release, local user-perspective launch and hover retests, macOS DMG drag-layout validation, the full Maven suite, package build, and GitHub Actions checks were completed.',
+            ],
+            'contact_heading': 'Contact',
+            'contact': ['QQ group: `299419120`'],
+        },
+        {
+            'language': '日本語',
+            'labels': 'ja',
+            'intro': 'このリリースは、ユーザー体験と診断まわりの仕上げ版です。実際の同期問題を調べやすくする読み取り専用診断パネルとエクスポートパッケージを追加した #43 の @qiyi71w に感謝します。Windows 軽量自動更新の土台、ライブコミ/UI 修正、候補点変化図の二度目ホバー修正も含みます。',
+            'updates_heading': '主な更新',
+            'updates': [
+                'Windows 軽量自動更新の最初の経路を追加しました。アプリ内の更新確認は GitHub Release manifest を読み、core は単独更新でき、KataGo・重み・JCEF・readboard・runtime などの大きなリソースは変更時だけ既定選択されます。',
+                '#43 をマージ: 読み取り専用の同期診断パネルと sanitized export package により、ReadBoard、Yike session、geometry readiness、最近の同期判断、分析復帰状態を確認しやすくしました。',
+                'ライブ中に手動で 7.0 に変えたコミが、毎手の更新でリモートの 7.5 に戻らないようにしました。',
+                '着手評価マーカーは粗い 3 色ではなく、より連続的な severity color scale を使います。コメント/問題手の control bar は設定から非表示にでき、macOS/Swing のプロンプト終了後の透明残りも減らしました。',
+                '候補点変化図を修正しました。一度離れてから同じ候補点に戻っても、変化図の数字だけが残って石レイヤーが空になる状態を避けます。',
+            ],
+            'before_heading': 'ダウンロード前に',
+            'before': [
+                f'推奨バンドルには KataGo `{katago_version}` と既定の重み `{model_source}` が含まれています。',
+                f'多くの Windows ユーザーは {{windows_opencl_portable}} を選ぶのがおすすめです。これは **推奨 OpenCL 版、インストール不要** です。',
+                'このビルドには updater bootstrap が含まれます。既存ユーザーは今回だけ手動インストールが必要で、以後のリリースから軽量更新を使えます。',
+                f'**NVIDIA GPU** 搭載 PC では {{windows_nvidia_portable}} を優先してください。RTX 50 ユーザーは RTX 50 CUDA 行を選べます。',
+                'macOS package は引き続き drag-to-Applications DMG 形式ですが、未署名・未公証のため、初回起動では手順に沿ったセキュリティ許可が必要になる場合があります。',
+            ],
+            'download_heading': 'ダウンロード案内',
+            'download_headers': ('お使いの環境', 'ダウンロードするファイル'),
+            'why_heading': '更新する理由',
+            'why': [
+                'ライブ検討でよく触れるコミ、候補点変化図、プロンプト終了処理がより安定します。',
+                '診断エクスポートにより、Yike/ReadBoard 同期問題を散発的なスクリーンショットではなく構造化データで共有できます。',
+                'Windows 自動更新の土台が入り、今後の通常更新はフルパッケージより小さくできます。',
+                'リリース前にローカルのユーザー視点起動/ホバー再テスト、macOS DMG drag layout validation、full Maven suite、package build、GitHub Actions checks を完了しました。',
+            ],
+            'contact_heading': '連絡先',
+            'contact': ['QQ グループ: `299419120`'],
+        },
+        {
+            'language': '한국어',
+            'labels': 'ko',
+            'intro': '이번 릴리스는 사용자 경험과 진단 기능을 정리한 버전입니다. 실제 동기화 문제를 더 빨리 분석할 수 있도록 읽기 전용 sync diagnostics panel 과 export package 를 추가한 #43 의 @qiyi71w 에게 감사합니다. Windows lightweight updater 기반, live komi/UI 수정, 후보점 변화도 두 번째 hover 수정도 포함합니다.',
+            'updates_heading': '주요 업데이트',
+            'updates': [
+                'Windows lightweight updater 의 첫 경로를 추가했습니다. 앱 안의 업데이트 확인은 GitHub Release manifest 를 읽고, core 는 따로 업데이트할 수 있으며 KataGo, weights, JCEF, readboard, runtime 같은 큰 리소스는 바뀐 경우에만 기본 선택됩니다.',
+                '#43 병합: 읽기 전용 sync diagnostics panel 과 sanitized export package 로 ReadBoard, Yike session, geometry readiness, 최근 sync decisions, analysis recovery 상태를 확인할 수 있습니다.',
+                '라이브 중 사용자가 komi 를 7.0 으로 바꾼 뒤, 매 수 갱신마다 원격 7.5 값으로 돌아가지 않도록 했습니다.',
+                '착수 평가 마커는 거친 3 색 대신 더 부드러운 severity color scale 을 사용합니다. comment/problem-move control bar 는 설정에서 숨길 수 있고, macOS/Swing prompt 종료 뒤 투명 잔상이 남는 경우도 줄였습니다.',
+                '후보점 변화도를 수정했습니다. 한 번 벗어났다가 같은 후보점에 다시 hover 해도, 숫자만 남고 돌 레이어가 사라지는 상태가 나오지 않습니다.',
+            ],
+            'before_heading': '다운로드 전 확인',
+            'before': [
+                f'추천 번들에는 KataGo `{katago_version}` 와 기본 가중치 `{model_source}` 가 포함되어 있습니다.',
+                f'대부분의 Windows 사용자는 {{windows_opencl_portable}} 를 먼저 받으면 됩니다. 이는 **추천 OpenCL 무설치 빌드** 입니다.',
+                '이 빌드에는 updater bootstrap 이 포함됩니다. 기존 사용자는 이번 버전을 한 번 수동 설치해야 하며, 이후 릴리스부터 lightweight update path 를 사용할 수 있습니다.',
+                f'**NVIDIA GPU** 가 있다면 {{windows_nvidia_portable}} 를 우선 사용해 보세요. RTX 50 사용자는 RTX 50 CUDA 항목을 선택할 수 있습니다.',
+                'macOS package 는 계속 drag-to-Applications DMG layout 을 사용하지만, 아직 unsigned/not notarized 이므로 첫 실행 때 문서의 macOS 보안 허용 절차가 필요할 수 있습니다.',
+            ],
+            'download_heading': '다운로드 안내',
+            'download_headers': ('내 컴퓨터', '다운로드할 파일'),
+            'why_heading': '업데이트할 이유',
+            'why': [
+                '라이브 검토에서 자주 쓰는 komi, 후보점 변화도, prompt cleanup 이 일상 사용에서 더 안정적입니다.',
+                '진단 export 로 Yike/ReadBoard sync 문제를 산발적인 스크린샷이 아니라 구조화되고 sanitized 된 데이터로 전달할 수 있습니다.',
+                'Windows automatic update 기반이 들어가 이후 일반 업데이트는 전체 패키지보다 훨씬 작아질 수 있습니다.',
+                '릴리스 전에 로컬 사용자 관점 launch/hover retest, macOS DMG drag-layout validation, full Maven suite, package build, GitHub Actions checks 를 완료했습니다.',
+            ],
+            'contact_heading': '연락',
+            'contact': ['QQ 그룹: `299419120`'],
+        },
+        {
+            'language': 'ภาษาไทย',
+            'labels': 'th',
+            'intro': 'รีลีสนี้เป็นรอบเก็บรายละเอียด user experience และ diagnostics ขอบคุณ @qiyi71w สำหรับ PR #43 ที่เพิ่ม sync diagnostics panel แบบ read-only และ export package สำหรับ debug เคสจริงได้เร็วขึ้น นอกจากนี้ยังรวม Windows lightweight updater foundation, live komi/UI fixes และ candidate variation second-hover fix',
+            'updates_heading': 'อัปเดตหลัก',
+            'updates': [
+                'เพิ่มทางเดินแรกของ Windows lightweight updater: Check for Updates ในแอปอ่าน GitHub Release manifest, core update ดาวน์โหลดแยกได้ และ resource ใหญ่ เช่น KataGo, weights, JCEF, readboard, runtime จะถูกเลือกอัปเดตเมื่อมีการเปลี่ยนเท่านั้น',
+                'รวม #43: sync diagnostics panel แบบ read-only และ sanitized export package ช่วยตรวจ ReadBoard state, Yike session, geometry readiness, recent sync decisions และ analysis recovery',
+                'เมื่อ live komi ถูกปรับเองเป็น 7.0 จะไม่เด้งกลับเป็นค่า remote 7.5 หลัง refresh ทุกตา',
+                'move-rank markers ใช้ severity color scale ที่นุ่มกว่าเดิม ไม่ใช่ 3 สีหยาบ ๆ; comment/problem-move control bar ซ่อนได้จาก Settings; และ macOS/Swing prompt disposal ลดปัญหา transparent ghost windows',
+                'แก้ candidate variation preview: hover candidate เดิมอีกครั้งหลังย้ายเมาส์ออก จะไม่เหลือแต่เลข variation บน branch-stone layer ว่าง',
+            ],
+            'before_heading': 'ก่อนดาวน์โหลด',
+            'before': [
+                f'แพ็กเกจหลักมี KataGo `{katago_version}` และน้ำหนักเริ่มต้น `{model_source}` มาให้แล้ว',
+                f'ผู้ใช้ Windows ส่วนใหญ่แนะนำให้ดาวน์โหลด {{windows_opencl_portable}} ซึ่งเป็น **OpenCL รุ่นแนะนำ แบบไม่ต้องติดตั้ง**',
+                'รุ่นนี้มี updater bootstrap แล้ว ผู้ใช้เดิมยังต้องติดตั้งด้วยตัวเองหนึ่งครั้ง จากรุ่นถัดไปจึงเริ่มใช้ lightweight update path ได้',
+                f'ถ้ามี **NVIDIA GPU** แนะนำให้ลอง {{windows_nvidia_portable}} ก่อน; ผู้ใช้ RTX 50 เลือกแถว RTX 50 CUDA ได้',
+                'macOS package ยังเป็น DMG แบบลากไป Applications แต่ยัง unsigned/not notarized ดังนั้นครั้งแรกอาจต้องอนุญาตตามขั้นตอน macOS security ในเอกสาร',
+            ],
+            'download_heading': 'แนะนำการดาวน์โหลด',
+            'download_headers': ('เครื่องของคุณ', 'ดาวน์โหลดไฟล์นี้'),
+            'why_heading': 'ทำไมควรอัปเดต',
+            'why': [
+                'รายละเอียดที่ใช้บ่อยในการ live review เช่น komi, candidate variation preview และ prompt cleanup เสถียรกว่าเดิม',
+                'diagnostics export ช่วยส่งข้อมูล Yike/ReadBoard sync แบบ structured และ sanitized ให้ผู้ดูแล ไม่ต้องเดาจาก screenshot กระจัดกระจาย',
+                'Windows automatic updates มี foundation แล้ว ทำให้ routine updates ในอนาคตเล็กกว่า full packages ได้มาก',
+                'ก่อน release ได้ตรวจ local user-perspective launch/hover retest, macOS DMG drag-layout validation, full Maven suite, package build และ GitHub Actions checks',
             ],
             'contact_heading': 'ติดต่อ',
             'contact': ['QQ group: `299419120`'],
