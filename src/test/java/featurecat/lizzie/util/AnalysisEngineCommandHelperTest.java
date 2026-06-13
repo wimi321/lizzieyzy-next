@@ -134,6 +134,52 @@ class AnalysisEngineCommandHelperTest {
   }
 
   @Test
+  void convertsCurrentEngineBeforeDefaultEngineWhenFlashCommandIsNotCustomized()
+      throws Exception {
+    Path currentConfig = tempDir.resolve("current").resolve("gtp.cfg");
+    Path defaultConfig = tempDir.resolve("default-current").resolve("gtp.cfg");
+    Files.createDirectories(currentConfig.getParent());
+    Files.createDirectories(defaultConfig.getParent());
+    ArrayList<EngineData> engines = new ArrayList<>();
+    engines.add(
+        engine("current", "katago gtp -model current.bin.gz -config " + quote(currentConfig)));
+    engines.add(
+        engine("default", "katago gtp -model default.bin.gz -config " + quote(defaultConfig)));
+    engines.get(1).isDefault = true;
+
+    AnalysisEngineCommandHelper.Result result =
+        AnalysisEngineCommandHelper.fromCurrentEngine(engines, 0);
+
+    assertTrue(result.isSuccess(), result.getMessage());
+    List<String> parts = Utils.splitCommand(result.getCommand());
+    assertEquals("current.bin.gz", parts.get(parts.indexOf("-model") + 1));
+    assertEquals(
+        currentConfig.resolveSibling("analysis.cfg").toString(),
+        parts.get(parts.indexOf("-config") + 1));
+  }
+
+  @Test
+  void fallsBackToDefaultEngineWhenNoCurrentEngineIsLoaded() throws Exception {
+    Path defaultConfig = tempDir.resolve("fallback-default").resolve("gtp.cfg");
+    Files.createDirectories(defaultConfig.getParent());
+    ArrayList<EngineData> engines = new ArrayList<>();
+    engines.add(engine("first", "katago gtp -model first.bin.gz -config first.cfg"));
+    engines.add(
+        engine("default", "katago gtp -model default.bin.gz -config " + quote(defaultConfig)));
+    engines.get(1).isDefault = true;
+
+    AnalysisEngineCommandHelper.Result result =
+        AnalysisEngineCommandHelper.fromCurrentEngine(engines, -1);
+
+    assertTrue(result.isSuccess(), result.getMessage());
+    List<String> parts = Utils.splitCommand(result.getCommand());
+    assertEquals("default.bin.gz", parts.get(parts.indexOf("-model") + 1));
+    assertEquals(
+        defaultConfig.resolveSibling("analysis.cfg").toString(),
+        parts.get(parts.indexOf("-config") + 1));
+  }
+
+  @Test
   void detectsLegacyCustomizedAnalysisCommandsConservatively() {
     assertFalse(AnalysisEngineCommandHelper.isLegacyAnalysisCommandCustomized(""));
     assertFalse(

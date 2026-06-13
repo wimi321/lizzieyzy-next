@@ -78,6 +78,13 @@ public final class AnalysisEngineCommandHelper {
     return Result.failure(message("AnalysisEngineCommandHelper.noDefaultEngine"));
   }
 
+  public static Result fromCurrentEngine(List<EngineData> engines, int currentEngineIndex) {
+    if (engines != null && currentEngineIndex >= 0 && currentEngineIndex < engines.size()) {
+      return fromSavedEngine(engines.get(currentEngineIndex));
+    }
+    return fromDefaultEngine(engines);
+  }
+
   public static boolean isAnalysisCommandCustomized(
       boolean hasCustomizedFlag, boolean customizedFlag, String command) {
     if (hasCustomizedFlag) {

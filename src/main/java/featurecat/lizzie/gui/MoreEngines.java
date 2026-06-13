@@ -674,7 +674,7 @@ public class MoreEngines extends JPanel {
             newEng.width = 19;
             engData.add(0, newEng);
             Utils.saveEngineSettings(engData);
-            needUpdateEngine = true;
+            markEngineCatalogChangedAndRefresh();
             handleTableClick(0);
           }
         });
@@ -705,7 +705,7 @@ public class MoreEngines extends JPanel {
                     table.validate();
                     table.updateUI();
                     table.getSelectionModel().clearSelection();
-                    needUpdateEngine = true;
+                    markEngineCatalogChangedAndRefresh();
                     handleTableClick(curIndex);
                   }
                 });
@@ -787,6 +787,7 @@ public class MoreEngines extends JPanel {
             engData.remove(curIndex);
             engData.add(0, enginedt);
             Utils.saveEngineSettings(engData);
+            markEngineCatalogChangedAndRefresh();
             table.validate();
             table.updateUI();
             curIndex = 0;
@@ -801,6 +802,7 @@ public class MoreEngines extends JPanel {
             engData.remove(curIndex);
             engData.add(engData.size(), enginedt);
             Utils.saveEngineSettings(engData);
+            markEngineCatalogChangedAndRefresh();
             table.validate();
             table.updateUI();
             curIndex = engData.size() - 1;
@@ -815,6 +817,7 @@ public class MoreEngines extends JPanel {
             engData.remove(curIndex);
             engData.add(curIndex - 1, enginedt);
             Utils.saveEngineSettings(engData);
+            markEngineCatalogChangedAndRefresh();
             table.validate();
             table.updateUI();
             curIndex--;
@@ -829,6 +832,7 @@ public class MoreEngines extends JPanel {
             engData.remove(curIndex);
             engData.add(curIndex - 5, enginedt);
             Utils.saveEngineSettings(engData);
+            markEngineCatalogChangedAndRefresh();
             table.validate();
             table.updateUI();
             curIndex -= 5;
@@ -843,6 +847,7 @@ public class MoreEngines extends JPanel {
             engData.remove(curIndex);
             engData.add(curIndex + 1, enginedt);
             Utils.saveEngineSettings(engData);
+            markEngineCatalogChangedAndRefresh();
             table.validate();
             table.updateUI();
             curIndex++;
@@ -857,6 +862,7 @@ public class MoreEngines extends JPanel {
             engData.remove(curIndex);
             engData.add(curIndex + 5, enginedt);
             Utils.saveEngineSettings(engData);
+            markEngineCatalogChangedAndRefresh();
             table.validate();
             table.updateUI();
             curIndex += 5;
@@ -1187,6 +1193,24 @@ public class MoreEngines extends JPanel {
       engineData.add(this.curIndex, engineDt);
     }
     Utils.saveEngineSettings(engineData);
+    refreshEngineCatalogIfReady();
+  }
+
+  private static void markEngineCatalogChangedAndRefresh() {
+    needUpdateEngine = true;
+    refreshEngineCatalogIfReady();
+  }
+
+  private static void refreshEngineCatalogIfReady() {
+    if (!needUpdateEngine || Lizzie.engineManager == null) {
+      return;
+    }
+    try {
+      Lizzie.engineManager.refreshEngineCatalog();
+      needUpdateEngine = false;
+    } catch (JSONException | IOException e) {
+      e.printStackTrace();
+    }
   }
 
   public AbstractTableModel getTableModel() {

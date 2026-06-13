@@ -94,7 +94,8 @@ public class AnalysisEngine {
   private static String resolveConfiguredAnalysisEngineCommand() {
     if (!Lizzie.config.analysisEngineCommandCustomized) {
       AnalysisEngineCommandHelper.Result result =
-          AnalysisEngineCommandHelper.fromDefaultEngine(Utils.getEngineData());
+          AnalysisEngineCommandHelper.fromCurrentEngine(
+              Utils.getEngineData(), currentMainEngineIndex());
       if (result.isSuccess()) {
         Lizzie.config.analysisEngineCommand = result.getCommand();
         Lizzie.config.uiConfig.put("analysis-engine-command", Lizzie.config.analysisEngineCommand);
@@ -104,6 +105,13 @@ public class AnalysisEngine {
       }
     }
     return Lizzie.config.analysisEngineCommand;
+  }
+
+  private static int currentMainEngineIndex() {
+    if (Lizzie.leelaz != null && Lizzie.leelaz.currentEngineN() >= 0) {
+      return Lizzie.leelaz.currentEngineN();
+    }
+    return EngineManager.currentEngineNo;
   }
 
   public void startEngine(String engineCommand) {

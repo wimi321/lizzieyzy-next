@@ -2,6 +2,7 @@ package featurecat.lizzie.gui;
 
 import featurecat.lizzie.Config;
 import featurecat.lizzie.Lizzie;
+import featurecat.lizzie.analysis.EngineManager;
 import featurecat.lizzie.gui.LizzieFrame.HtmlKit;
 import featurecat.lizzie.util.AnalysisEngineCommandHelper;
 import featurecat.lizzie.util.Utils;
@@ -363,13 +364,21 @@ public class AnalysisSettings extends JDialog {
   private DisplayCommand resolveAnalysisEngineCommandForDisplay() {
     if (!Lizzie.config.analysisEngineCommandCustomized) {
       AnalysisEngineCommandHelper.Result result =
-          AnalysisEngineCommandHelper.fromDefaultEngine(Utils.getEngineData());
+          AnalysisEngineCommandHelper.fromCurrentEngine(
+              Utils.getEngineData(), currentMainEngineIndex());
       if (result.isSuccess()) {
         return new DisplayCommand(
             result.getCommand(), result.generatedConfig() ? result.getMessage() : "");
       }
     }
     return new DisplayCommand(Lizzie.config.analysisEngineCommand, "");
+  }
+
+  private static int currentMainEngineIndex() {
+    if (Lizzie.leelaz != null && Lizzie.leelaz.currentEngineN() >= 0) {
+      return Lizzie.leelaz.currentEngineN();
+    }
+    return EngineManager.currentEngineNo;
   }
 
   private void chooseSavedEngineCommand() {
