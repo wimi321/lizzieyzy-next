@@ -902,6 +902,7 @@ public class Menu extends JMenuBar {
 
     final JFontCheckBoxMenuItem showCommentConrolPane =
         new JFontCheckBoxMenuItem(resourceBundle.getString("Menu.showCommentConrolPane"));
+    showCommentConrolPane.setToolTipText(resourceBundle.getString("Menu.showCommentConrolPane.tooltip"));
     showCommentConrolPane.addActionListener(
         new ActionListener() {
           @Override
@@ -1071,6 +1072,7 @@ public class Menu extends JMenuBar {
 
     final JFontCheckBoxMenuItem commitPane =
         new JFontCheckBoxMenuItem(resourceBundle.getString("Menu.commitPane")); // ("评论面板(Alt+T)");
+    commitPane.setToolTipText(resourceBundle.getString("Menu.commitPane.tooltip"));
     panel.add(commitPane);
     commitPane.addActionListener(
         new ActionListener() {

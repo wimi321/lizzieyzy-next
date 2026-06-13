@@ -6,7 +6,6 @@ import static java.awt.image.BufferedImage.TYPE_INT_ARGB;
 import static java.lang.Math.max;
 
 import featurecat.lizzie.Config;
-import featurecat.lizzie.ExtraMode;
 import featurecat.lizzie.Lizzie;
 import featurecat.lizzie.gui.LizzieFrame.HtmlKit;
 import featurecat.lizzie.rules.Board;
@@ -573,15 +572,15 @@ public class ConfigDialog2 extends JDialog {
     uiTab.add(chkShowVariationGraph);
 
     JLabel lblShowComment = new JLabel(resourceBundle.getString("LizzieConfig.title.showComment"));
+    lblShowComment.setToolTipText(resourceBundle.getString("LizzieConfig.title.showComment.tooltip"));
     lblShowComment.setBounds(312, 78, 214, 16);
     uiTab.add(lblShowComment);
     chkShowComment = new JCheckBox("");
+    chkShowComment.setToolTipText(resourceBundle.getString("LizzieConfig.title.showComment.tooltip"));
     chkShowComment.addChangeListener(
         new ChangeListener() {
           public void stateChanged(ChangeEvent e) {
-            if (chkShowComment.isSelected() != Lizzie.config.showComment) {
-              Lizzie.config.toggleShowComment();
-            }
+            Lizzie.config.setShowComment(chkShowComment.isSelected());
           }
         });
     chkShowComment.setBounds(532, 76, 57, 23);
@@ -2486,7 +2485,7 @@ public class ConfigDialog2 extends JDialog {
               {"点击复盘", toggleText(chkEnableClickReview, Lizzie.config.enableClickReview)},
               {"拖拽棋子", toggleText(chkEnableDragStone, Lizzie.config.allowDrag)},
               {"显示坐标", toggleText(chkShowCoordinates, Lizzie.config.showCoordinates)},
-              {"评论面板", toggleText(chkShowComment, Lizzie.config.showComment)},
+              {"评论/问题手面板", toggleText(chkShowComment, Lizzie.config.showComment)},
               {
                 "隐藏评论/问题手控制条",
                 toggleText(chkHideCommentControlPane, Lizzie.config.hideBlunderControlPane)
@@ -3103,8 +3102,8 @@ public class ConfigDialog2 extends JDialog {
         addToggleRow(operation, "启用双击找子", "双击棋盘坐标时快速定位对应落子", chkEnableDoubClick);
         addToggleRow(operation, "启用点击复盘", "点击棋盘时进入更顺手的复盘操作", chkEnableClickReview);
         addToggleRow(operation, "启用拖拽棋子", "允许在棋盘上拖拽调整棋子位置", chkEnableDragStone);
-        addToggleRow(operation, "显示评论面板", "展示棋谱评论和分析说明", chkShowComment);
-        addToggleRow(operation, "隐藏评论/问题手控制条", "隐藏评论和问题手区域鼠标悬停时出现的控制条", chkHideCommentControlPane);
+        addToggleRow(operation, "显示评论/问题手面板", "展示棋谱评论、问题手列表和分析说明", chkShowComment);
+        addToggleRow(operation, "隐藏面板顶部控制条", "隐藏评论/问题手面板上方的小按钮和筛选条", chkHideCommentControlPane);
         addToggleRow(operation, "显示坐标", "在棋盘边缘显示坐标", chkShowCoordinates);
         addToggleRow(operation, "小棋盘不跟随刷新", "鼠标经过小棋盘时保持当前局部预览", chkNoRefreshSub);
         return operation;
@@ -6013,21 +6012,11 @@ public class ConfigDialog2 extends JDialog {
       Lizzie.config.showCaptured = chkShowCaptured.isSelected();
       Lizzie.config.showWinrateGraph = chkShowWinrate.isSelected();
       Lizzie.config.showVariationGraph = chkShowVariationGraph.isSelected();
-      Lizzie.config.showComment = chkShowComment.isSelected();
+      boolean requestedShowComment = chkShowComment.isSelected();
       Lizzie.config.showSubBoard = chkShowSubBoard.isSelected();
       Lizzie.config.showStatus = chkShowStatus.isSelected();
       Lizzie.config.showCoordinates = chkShowCoordinates.isSelected();
-      if (!Lizzie.config.isMinMode()
-          && !Lizzie.config.isFloatBoardMode()
-          && (Lizzie.config.showListPane()
-              || Lizzie.config.showCaptured
-              || Lizzie.config.showWinrateGraph
-              || Lizzie.config.showVariationGraph
-              || Lizzie.config.showComment
-              || Lizzie.config.showSubBoard)) {
-        Lizzie.config.extraMode = ExtraMode.Normal;
-        Lizzie.config.uiConfig.put("extra-mode", 0);
-      }
+      Lizzie.config.setShowComment(requestedShowComment);
       int n = chkShowIndependentSubBoard.getSelectedIndex();
       if (n == 0) {
         if (Lizzie.config.isShowingIndependentSub) Lizzie.frame.toggleIndependentSubBoard();

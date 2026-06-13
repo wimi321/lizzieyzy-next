@@ -35,7 +35,7 @@ public class Config {
   // public boolean weightedBlunderBarHeight = false;
   // public boolean dynamicWinrateGraphWidth = true;
   public boolean showVariationGraph = true;
-  public boolean showComment = true;
+  public boolean showComment = false;
   public boolean showRawBoard = false;
   public boolean showBestMovesTemporarily = false;
   public boolean showCaptured = true;
@@ -128,7 +128,7 @@ public class Config {
   public String advanceBlackTimeTxt = "time_settings 120 2 1";
   public String advanceWhiteTimeTxt = "time_settings 120 2 1";
 
-  public ExtraMode extraMode = ExtraMode.Normal;
+  public ExtraMode extraMode = ExtraMode.Four_Sub;
 
   public JSONObject config;
   public JSONObject leelazConfig;
@@ -1565,8 +1565,7 @@ public class Config {
     // weightedBlunderBarHeight = uiConfig.optBoolean("weighted-blunder-bar-height", false);
     // dynamicWinrateGraphWidth = uiConfig.optBoolean("dynamic-winrate-graph-width", true);
     showVariationGraph = uiConfig.getBoolean("show-variation-graph");
-    showComment = uiConfig.optBoolean("show-comment", true);
-    if (extraMode == ExtraMode.Double_Engine) showComment = false;
+    loadPanelModeSettings();
     showCaptured = uiConfig.getBoolean("show-captured");
     // showKataGoScoreMean = uiConfig.optBoolean("show-katago-scoremean", true);
     showKataGoScoreLeadWithKomi = uiConfig.optBoolean("show-katago-score-lead-with-komi", false);
@@ -1751,7 +1750,6 @@ public class Config {
     advanceBlackTimeTxt = uiConfig.optString("advance-black-time-txt", "time_settings 10 2 1");
     advanceWhiteTimeTxt = uiConfig.optString("advance-white-time-txt", "time_settings 10 2 1");
 
-    extraMode = getExtraMode(uiConfig.optInt("extra-mode", 0));
     playSound = uiConfig.optBoolean("play-sound", true);
     notPlaySoundInSync = uiConfig.optBoolean("not-play-sound-insync", true);
     noRefreshOnMouseMove = uiConfig.optBoolean("norefresh-onmouse-move", true);
@@ -2547,16 +2545,23 @@ public class Config {
   }
 
   public void toggleShowComment() {
-    this.showComment = !this.showComment;
+    setShowComment(!this.showComment);
+  }
+
+  public void setShowComment(boolean showComment) {
+    this.showComment = showComment;
     uiConfig.put("show-comment", showComment);
-    if (showComment) Lizzie.frame.setCommentPaneContent();
-    else {
-      Lizzie.frame.commentScrollPane.setVisible(false);
-      Lizzie.frame.blunderContentPane.setVisible(false);
+    if (Lizzie.frame != null) {
+      if (showComment) {
+        Lizzie.frame.setCommentPaneContent();
+      } else {
+        Lizzie.frame.commentScrollPane.setVisible(false);
+        Lizzie.frame.blunderContentPane.setVisible(false);
+      }
+      Lizzie.frame.commentEditPane.setVisible(false);
+      Lizzie.frame.refreshContainer();
+      Lizzie.frame.refresh();
     }
-    Lizzie.frame.commentEditPane.setVisible(false);
-    Lizzie.frame.refreshContainer();
-    Lizzie.frame.refresh();
     if (extraMode == ExtraMode.Min && showComment) toggleExtraMode(0);
   }
 
@@ -2735,7 +2740,8 @@ public class Config {
     ui.put("minimum-blunder-bar-width", 1);
     ui.put("weighted-blunder-bar-height", false);
     // ui.put("dynamic-winrate-graph-width", true);
-    ui.put("show-comment", true);
+    ui.put("show-comment", false);
+    ui.put("extra-mode", getExtraModeValue(ExtraMode.Four_Sub));
     ui.put("comment-font-size", 0);
     ui.put("show-variation-graph", true);
     ui.put("show-captured", true);
@@ -3352,7 +3358,7 @@ public class Config {
   }
 
   public void savePanelConfig() {
-    uiConfig.put("extra-mode", extraMode);
+    uiConfig.put("extra-mode", getExtraModeValue(extraMode));
     uiConfig.put("show-subboard", showSubBoard);
     uiConfig.put("show-winrate-graph", showWinrateGraph);
     uiConfig.put("show-comment", showComment);
@@ -3527,6 +3533,42 @@ public class Config {
       default:
         return ExtraMode.Normal;
     }
+  }
+
+  private ExtraMode readExtraMode(Object rawValue) {
+    if (rawValue instanceof Number) return getExtraMode(((Number) rawValue).intValue());
+    if (rawValue instanceof String) {
+      String text = ((String) rawValue).trim();
+      if (text.isEmpty()) return ExtraMode.Normal;
+      try {
+        return getExtraMode(Integer.parseInt(text));
+      } catch (NumberFormatException ignored) {
+      }
+      switch (text) {
+        case "Normal":
+          return ExtraMode.Normal;
+        case "Four_Sub":
+          return ExtraMode.Four_Sub;
+        case "Double_Engine":
+          return ExtraMode.Double_Engine;
+        case "Thinking":
+          return ExtraMode.Thinking;
+        case "Min":
+          return ExtraMode.Min;
+        case "Float_Board":
+          return ExtraMode.Float_Board;
+        default:
+          return ExtraMode.Normal;
+      }
+    }
+    return ExtraMode.Normal;
+  }
+
+  void loadPanelModeSettings() {
+    extraMode = readExtraMode(uiConfig.opt("extra-mode"));
+    uiConfig.put("extra-mode", getExtraModeValue(extraMode));
+    showComment = uiConfig.optBoolean("show-comment", false);
+    if (extraMode == ExtraMode.Double_Engine) showComment = false;
   }
 
   public boolean isDoubleEngineMode() {

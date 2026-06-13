@@ -87,7 +87,7 @@ public class SetCustomMode extends JDialog {
   private int boardPositionProportion;
   private boolean showFloatMainBoard;
   private boolean showFloatSubBoard;
-  private boolean isFloatMode;
+  private ExtraMode originalExtraMode;
 
   private void saveTempConfig() {
     showSubBoard = Lizzie.config.showSubBoard;
@@ -104,7 +104,7 @@ public class SetCustomMode extends JDialog {
         Lizzie.frame.independentMainBoard != null && Lizzie.frame.independentMainBoard.isVisible();
     showFloatSubBoard =
         Lizzie.frame.independentSubBoard != null && Lizzie.frame.independentSubBoard.isVisible();
-    isFloatMode = Lizzie.config.isFloatBoardMode();
+    originalExtraMode = Lizzie.config.extraMode;
   }
 
   private void restoreTempConfig() {
@@ -118,8 +118,7 @@ public class SetCustomMode extends JDialog {
     Lizzie.config.largeWinrateGraph = showBigWinrate;
     Lizzie.frame.BoardPositionProportion = boardPositionProportion;
     Lizzie.frame.setVarTreeVisible(Lizzie.config.showVariationGraph);
-    if (isFloatMode) Lizzie.config.extraMode = ExtraMode.Float_Board;
-    else Lizzie.config.extraMode = ExtraMode.Normal;
+    Lizzie.config.extraMode = originalExtraMode;
     if (showFloatMainBoard) {
       if (Lizzie.frame.independentMainBoard == null
           || !Lizzie.frame.independentMainBoard.isVisible())
@@ -206,21 +205,19 @@ public class SetCustomMode extends JDialog {
     contentPanel.add(winratePanel);
 
     commentPanel = new JCheckBox();
+    commentPanel.setToolTipText(Lizzie.resourceBundle.getString("SetCustomMode.commentPanel.tooltip"));
     commentPanel.setSelected(Lizzie.config.showComment);
     commentPanel.addActionListener(
         new ActionListener() {
           public void actionPerformed(ActionEvent e) {
-            Lizzie.config.showComment = commentPanel.isSelected();
-            if (Lizzie.config.showComment) Lizzie.frame.setCommentPaneContent();
-            else {
-              Lizzie.frame.commentScrollPane.setVisible(false);
-              Lizzie.frame.blunderContentPane.setVisible(false);
-            }
-            Lizzie.frame.refreshContainer();
-            Lizzie.frame.repaint();
+            Lizzie.config.setShowComment(commentPanel.isSelected());
           }
         });
-    contentPanel.add(new JFontLabel(Lizzie.resourceBundle.getString("SetCustomMode.commentPanel")));
+    JFontLabel commentPanelLabel =
+        new JFontLabel(Lizzie.resourceBundle.getString("SetCustomMode.commentPanel"));
+    commentPanelLabel.setToolTipText(
+        Lizzie.resourceBundle.getString("SetCustomMode.commentPanel.tooltip"));
+    contentPanel.add(commentPanelLabel);
     contentPanel.add(commentPanel);
 
     variationPanel = new JCheckBox();
