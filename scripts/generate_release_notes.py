@@ -1526,7 +1526,6 @@ def build_next_2026_05_04_1_notes(
             'contact': ['QQ group: `299419120`'],
         },
     ]
-
     sections: list[dict[str, object]] = []
     for block in content:
         language = str(block['language'])
@@ -3964,7 +3963,6 @@ def build_next_2026_06_08_1_notes(
             'contact': ['QQ group: `299419120`'],
         },
     ]
-
     sections: list[dict[str, object]] = []
     for block in content:
         localized_assets = assets_cn if block['language'] in ('中文', '繁體中文') else assets
@@ -4044,6 +4042,8 @@ def build_release_notes(asset_map: dict[str, str | None], bundle: dict[str, str]
         return build_next_2026_06_13_1_notes(asset_map, bundle, repo, release_tag)
     if release_tag == 'next-2026-06-13.2':
         return build_next_2026_06_13_1_notes(asset_map, bundle, repo, release_tag)
+    if release_tag == 'next-2026-06-13.3':
+        return build_next_2026_06_13_3_notes(asset_map, bundle, repo, release_tag)
 
     assets_cn = {
         key: format_asset(asset_map[key], repo, release_tag)
@@ -6441,6 +6441,38 @@ def build_next_2026_06_13_1_notes(
     return release_heading(release_tag) + '\n\n' + '\n\n---\n\n'.join(
         render_language_section(section) for section in sections
     ) + '\n'
+
+
+def build_next_2026_06_13_3_notes(
+    asset_map: dict[str, str | None],
+    bundle: dict[str, str],
+    repo: str,
+    release_tag: str | None,
+) -> str:
+    notes = build_next_2026_06_13_1_notes(asset_map, bundle, repo, release_tag)
+    additions = {
+        '- 修复 TensorRT 高级分卷/预装包已解压后，“KataGo 一键设置”仍显示未下载的问题；现在程序目录和 `user-data` 下载目录都会被识别。\n':
+            '- 修复“引擎编辑”里新增、保存或排序引擎后，顶部引擎切换菜单不能立刻显示最新引擎的问题；现在会轻量刷新引擎目录，尽量不打断当前正在运行的分析引擎。\n'
+            '- 闪电分析未自定义命令时改为优先使用当前主引擎；只有当前引擎不可用时才回退默认引擎，避免为了闪电分析重复加载默认引擎。\n',
+        '- 修復 TensorRT 進階分卷/預裝包已解壓後，「KataGo 一鍵設定」仍顯示未下載的問題；現在程式目錄和 `user-data` 下載目錄都會被識別。\n':
+            '- 修復「引擎編輯」裡新增、保存或排序引擎後，頂部引擎切換選單不能立刻顯示最新引擎的問題；現在會輕量刷新引擎目錄，盡量不打斷目前正在運行的分析引擎。\n'
+            '- 閃電分析未自訂命令時改為優先使用目前主引擎；只有目前引擎不可用時才回退預設引擎，避免為了閃電分析重複載入預設引擎。\n',
+        '- Fixed TensorRT split/preinstalled packages showing as not downloaded in KataGo Auto Setup; both the app folder and `user-data` install folder are now detected.\n':
+            '- Fixed the engine editor so newly added, saved, or reordered engines appear in the top engine switch menu immediately. The refresh keeps the current analysis engine running whenever it is safe to do so.\n'
+            '- Flash analysis now prefers the current main engine when no custom flash-analysis command is set, falling back to the default engine only when the current engine is unavailable.\n',
+        '- TensorRT 分割/プリインストール版を展開済みでも KataGo 自動設定で未ダウンロード表示になる問題を修正しました。アプリ本体側と `user-data` 側の両方を検出します。\n':
+            '- エンジン編集でエンジンを追加、保存、並べ替えた後、上部のエンジン切り替えメニューにすぐ反映されない問題を修正しました。可能な限り現在の分析エンジンを止めずに軽量更新します。\n'
+            '- 閃電分析のコマンドをカスタムしていない場合、現在のメインエンジンを優先して使うようにしました。現在のエンジンが使えない場合のみ既定エンジンへ戻ります。\n',
+        '- TensorRT split/preinstalled package 를 압축 해제했는데도 KataGo Auto Setup 에서 not downloaded 로 보이던 문제를 수정했습니다. 앱 폴더와 `user-data` 설치 폴더를 모두 감지합니다.\n':
+            '- 엔진 편집에서 엔진을 추가, 저장, 정렬한 뒤 상단 엔진 전환 메뉴에 바로 보이지 않던 문제를 수정했습니다. 가능한 경우 현재 분석 엔진을 중단하지 않고 가볍게 갱신합니다.\n'
+            '- Flash analysis 명령을 따로 지정하지 않은 경우 기본 엔진 대신 현재 메인 엔진을 우선 사용합니다. 현재 엔진을 사용할 수 없을 때만 default engine 으로 fallback 합니다.\n',
+        '- แก้กรณีแตกไฟล์ TensorRT split/preinstalled package แล้ว KataGo Auto Setup ยังแสดงว่ายังไม่ได้ดาวน์โหลด ตอนนี้ตรวจทั้งโฟลเดอร์แอปและ `user-data`\n':
+            '- แก้ปัญหาเพิ่ม บันทึก หรือจัดลำดับ engine ในหน้า engine editor แล้วเมนูสลับ engine ด้านบนไม่แสดงรายการใหม่ทันที ตอนนี้จะ refresh รายการแบบเบา ๆ และพยายามไม่หยุด engine วิเคราะห์ที่กำลังทำงานอยู่\n'
+            '- Flash analysis จะใช้ main engine ปัจจุบันก่อนเมื่อไม่ได้ตั้ง custom command และจะ fallback ไป default engine เฉพาะเมื่อ engine ปัจจุบันใช้ไม่ได้\n',
+    }
+    for anchor, extra in additions.items():
+        notes = notes.replace(anchor, anchor + extra)
+    return notes
 
 
 def main() -> int:
