@@ -4040,6 +4040,8 @@ def build_release_notes(asset_map: dict[str, str | None], bundle: dict[str, str]
         return build_next_2026_06_12_1_notes(asset_map, bundle, repo, release_tag)
     if release_tag == 'next-2026-06-12.2':
         return build_next_2026_06_12_2_notes(asset_map, bundle, repo, release_tag)
+    if release_tag == 'next-2026-06-13.1':
+        return build_next_2026_06_13_1_notes(asset_map, bundle, repo, release_tag)
 
     assets_cn = {
         key: format_asset(asset_map[key], repo, release_tag)
@@ -6144,6 +6146,253 @@ def build_next_2026_06_12_2_notes(
                 'diagnostics export ช่วยส่งข้อมูล Yike/ReadBoard sync แบบ structured และ sanitized ให้ผู้ดูแล ไม่ต้องเดาจาก screenshot กระจัดกระจาย',
                 'Windows automatic updates มี foundation แล้ว ทำให้ routine updates ในอนาคตเล็กกว่า full packages ได้มาก',
                 'ก่อน release ได้ตรวจ local user-perspective launch/hover retest, macOS DMG drag-layout validation, full Maven suite, package build และ GitHub Actions checks',
+            ],
+            'contact_heading': 'ติดต่อ',
+            'contact': ['QQ group: `299419120`'],
+        },
+    ]
+
+    sections: list[dict[str, object]] = []
+    for block in content:
+        localized_assets = assets_cn if block['language'] in ('中文', '繁體中文') else assets
+        before_items = [
+            item.format(
+                windows_opencl_portable=localized_assets['windows_opencl_portable'],
+                windows_nvidia_portable=localized_assets['windows_nvidia_portable'],
+            )
+            for item in block['before']
+        ]
+        sections.append(
+            {
+                'language': block['language'],
+                'intro': block['intro'],
+                'updates': {'heading': block['updates_heading'], 'items': block['updates']},
+                'before': {'heading': block['before_heading'], 'items': before_items},
+                'download': {
+                    'heading': block['download_heading'],
+                    'headers': block['download_headers'],
+                    'rows': standard_download_rows(
+                        STANDARD_DOWNLOAD_LABELS[block['labels']],
+                        localized_assets,
+                    ),
+                },
+                'why': {'heading': block['why_heading'], 'items': block['why']},
+                'contact': {'heading': block['contact_heading'], 'items': block['contact']},
+            }
+        )
+    add_nvidia50_download_rows(sections, assets_cn, assets)
+    add_tensorrt_split_download_row(sections, assets_cn, assets, asset_map)
+    validate_release_sections(sections)
+    return release_heading(release_tag) + '\n\n' + '\n\n---\n\n'.join(
+        render_language_section(section) for section in sections
+    ) + '\n'
+
+
+def build_next_2026_06_13_1_notes(
+    asset_map: dict[str, str | None],
+    bundle: dict[str, str],
+    repo: str,
+    release_tag: str | None,
+) -> str:
+    assets_cn = {key: format_asset(asset_map[key], repo, release_tag) for key in asset_map}
+    assets = {key: format_asset_en(asset_map[key], repo, release_tag) for key in asset_map}
+    katago_version = bundle['katago_version']
+    model_source = bundle['model_source']
+    content = [
+        {
+            'language': '中文',
+            'labels': 'zh',
+            'intro': '这一版重点修复布局和设置保存体验：新配置默认进入四方图模式，评论/问题手面板默认隐藏；在综合设置里打开或关闭“显示评论/问题手面板”后，保存、重启都应该保持你的选择。',
+            'updates_heading': '本版主要更新',
+            'updates': [
+                '新安装或新建配置默认使用四方图模式，让主棋盘、变化图和分析信息一开始就更清爽。',
+                '评论/问题手面板默认隐藏，减少普通用户初次打开时右侧信息过载。',
+                '修复综合设置里“显示评论/问题手面板”保存后重启失效的问题。',
+                '修复面板配置保存时 `extra-mode` 写成内部枚举，导致四方图模式可能在下次启动回到普通模式的问题；旧的字符串配置也能兼容读取。',
+                '统一菜单、自定义布局和综合设置里的评论/问题手面板开关逻辑，并区分“完整面板”和“面板顶部控制条”的文案。',
+            ],
+            'before_heading': '下载前先看这几句',
+            'before': [
+                f'主推荐整合包继续内置 KataGo `{katago_version}` 和默认权重 `{model_source}`。',
+                f'Windows 普通用户优先下载 {{windows_opencl_portable}}，这是 **OpenCL 版（推荐，免安装）**。',
+                '已有用户会继续尊重你保存过的布局；这次主要改善新配置默认体验和设置保存可靠性。',
+                '如果你想显示评论/问题手面板，到“综合设置 → 显示评论/问题手面板”打开并保存即可，重启后会保持。',
+                f'如果你的电脑是 **英伟达显卡**，优先下载 {{windows_nvidia_portable}}；RTX 50 用户可选 RTX 50 CUDA 行。',
+            ],
+            'download_heading': '下载建议',
+            'download_headers': ('你的电脑', '直接下载这个'),
+            'why_heading': '这一版为什么值得更新',
+            'why': [
+                '首次打开更接近大多数棋友实际使用方式：四方图默认开启，评论/问题手面板不再抢占视线。',
+                '综合设置里的面板开关现在不会“看起来保存了，重启又恢复原样”。',
+                '布局模式保存更稳，四方图、双引擎、小窗和自定义布局之间不再互相误伤。',
+                '新增 `ConfigPanelModeTest` 回归测试，覆盖默认四方图、旧配置兼容、双引擎隐藏面板和保存格式。',
+                '发布前已重新跑完整 Maven 测试、打包、本机真实启动 UI 冒烟，并等待 GitHub Actions 发布工作流通过。',
+            ],
+            'contact_heading': '交流',
+            'contact': ['QQ 群：`299419120`'],
+        },
+        {
+            'language': '繁體中文',
+            'labels': 'zh_hant',
+            'intro': '這一版重點修復版面與設定保存體驗：新配置預設進入四方圖模式，評論/問題手面板預設隱藏；在綜合設定裡打開或關閉「顯示評論/問題手面板」後，保存、重啟都應該保持你的選擇。',
+            'updates_heading': '本版主要更新',
+            'updates': [
+                '新安裝或新建配置預設使用四方圖模式，讓主棋盤、變化圖和分析資訊一開始就更清爽。',
+                '評論/問題手面板預設隱藏，減少普通使用者初次打開時右側資訊過載。',
+                '修復綜合設定裡「顯示評論/問題手面板」保存後重啟失效的問題。',
+                '修復面板配置保存時 `extra-mode` 寫成內部 enum，導致四方圖模式可能在下次啟動回到普通模式的問題；舊的字串配置也能相容讀取。',
+                '統一選單、自訂版面和綜合設定裡的評論/問題手面板開關邏輯，並區分「完整面板」和「面板頂部控制條」的文案。',
+            ],
+            'before_heading': '下載前先看這幾句',
+            'before': [
+                f'主推薦整合包繼續內建 KataGo `{katago_version}` 和預設權重 `{model_source}`。',
+                f'Windows 一般使用者優先下載 {{windows_opencl_portable}}，這是 **OpenCL 版（推薦，免安裝）**。',
+                '已有使用者會繼續尊重你保存過的版面；這次主要改善新配置預設體驗和設定保存可靠性。',
+                '如果你想顯示評論/問題手面板，到「綜合設定 → 顯示評論/問題手面板」打開並保存即可，重啟後會保持。',
+                f'如果你的電腦是 **NVIDIA 顯示卡**，優先下載 {{windows_nvidia_portable}}；RTX 50 使用者可選 RTX 50 CUDA 行。',
+            ],
+            'download_heading': '下載建議',
+            'download_headers': ('你的電腦', '直接下載這個'),
+            'why_heading': '這一版為什麼值得更新',
+            'why': [
+                '首次打開更接近多數棋友實際使用方式：四方圖預設開啟，評論/問題手面板不再搶佔視線。',
+                '綜合設定裡的面板開關現在不會「看起來保存了，重啟又恢復原樣」。',
+                '版面模式保存更穩，四方圖、雙引擎、小窗和自訂版面之間不再互相誤傷。',
+                '新增 `ConfigPanelModeTest` 回歸測試，覆蓋預設四方圖、舊配置相容、雙引擎隱藏面板和保存格式。',
+                '發布前已重新跑完整 Maven 測試、打包、本機真實啟動 UI 冒煙，並等待 GitHub Actions 發布工作流通過。',
+            ],
+            'contact_heading': '交流',
+            'contact': ['QQ 群：`299419120`'],
+        },
+        {
+            'language': 'English',
+            'labels': 'en',
+            'intro': 'This release focuses on layout and settings persistence. New configurations now start in four-sub-board mode with the comment/problem panel hidden by default. When users toggle the comment/problem panel in Settings, that choice should now survive saving and restart.',
+            'updates_heading': 'Release Highlights',
+            'updates': [
+                'New installs and fresh configurations now default to four-sub-board mode for a cleaner first screen.',
+                'The comment/problem panel is hidden by default to reduce right-side information overload for everyday users.',
+                'Fixed the Settings toggle for showing the comment/problem panel so it persists after saving and restarting.',
+                'Fixed `extra-mode` persistence: panel mode is now saved as the numeric value the loader expects, while legacy string values remain readable.',
+                'Unified the comment/problem panel toggle path across menus, custom layout, and Settings, and clarified labels for the full panel versus the small top control strip.',
+            ],
+            'before_heading': 'Read Before Downloading',
+            'before': [
+                f'The recommended bundles continue to include KataGo `{katago_version}` and the default weight `{model_source}`.',
+                f'Most Windows users should download {{windows_opencl_portable}}, the **recommended no-install OpenCL build**.',
+                'Existing users keep their saved layout choices; this release mainly improves fresh defaults and settings persistence.',
+                'To show the comment/problem panel, enable it from Settings and save. The choice should remain after restart.',
+                f'If your PC has an **NVIDIA GPU**, try {{windows_nvidia_portable}} first; RTX 50 users can use the RTX 50 CUDA row.',
+            ],
+            'download_heading': 'Download Guide',
+            'download_headers': ('Your computer', 'Download this file'),
+            'why_heading': 'Why Update',
+            'why': [
+                'The first-run layout is closer to how many Go players review games: four-sub-board mode is on, and the comment/problem panel no longer steals attention.',
+                'The Settings panel toggle no longer looks saved and then silently reverts after restart.',
+                'Panel mode persistence is safer across four-sub-board, dual-engine, minimal, floating-board, and custom-layout flows.',
+                'Added `ConfigPanelModeTest` coverage for default four-sub mode, legacy config compatibility, dual-engine panel hiding, and save format.',
+                'Before release, the full Maven suite, package build, real local launch smoke test, and GitHub Actions release workflows were rerun.',
+            ],
+            'contact_heading': 'Contact',
+            'contact': ['QQ group: `299419120`'],
+        },
+        {
+            'language': '日本語',
+            'labels': 'ja',
+            'intro': 'このリリースは、レイアウトと設定保存の安定化が中心です。新しい設定では四方図モードで起動し、コメント/問題手パネルは既定で非表示になります。設定画面でこのパネルを切り替えた場合、保存後の再起動でも選択が維持されます。',
+            'updates_heading': '主な更新',
+            'updates': [
+                '新規インストールや新しい設定では、最初から四方図モードを使うようにしました。',
+                'コメント/問題手パネルは既定で非表示になり、初回起動時の右側情報量を減らします。',
+                '設定画面の「コメント/問題手パネルを表示」切り替えが、保存・再起動後も維持されるように修正しました。',
+                '`extra-mode` の保存形式を修正しました。読み込み側が期待する数値で保存し、旧式の文字列設定も読み取れます。',
+                'メニュー、カスタムレイアウト、設定画面のコメント/問題手パネル切り替え処理を統一し、完全なパネルと上部コントロールバーの文言を区別しました。',
+            ],
+            'before_heading': 'ダウンロード前に',
+            'before': [
+                f'推奨バンドルには KataGo `{katago_version}` と既定の重み `{model_source}` が含まれています。',
+                f'多くの Windows ユーザーは {{windows_opencl_portable}} を選ぶのがおすすめです。これは **推奨 OpenCL 版、インストール不要** です。',
+                '既存ユーザーの保存済みレイアウトは尊重されます。今回の主な改善は、新規設定の既定値と設定保存の信頼性です。',
+                'コメント/問題手パネルを表示したい場合は、設定で有効にして保存してください。再起動後も維持されます。',
+                f'**NVIDIA GPU** 搭載 PC では {{windows_nvidia_portable}} を優先してください。RTX 50 ユーザーは RTX 50 CUDA 行を選べます。',
+            ],
+            'download_heading': 'ダウンロード案内',
+            'download_headers': ('お使いの環境', 'ダウンロードするファイル'),
+            'why_heading': '更新する理由',
+            'why': [
+                '初回画面が多くの囲碁ユーザーの検討スタイルに近づきます。四方図が既定で有効になり、コメント/問題手パネルは視線を奪いません。',
+                '設定のパネル切り替えが、保存したように見えて再起動で戻る問題を修正しました。',
+                '四方図、二重エンジン、最小表示、フローティング盤、カスタムレイアウト間の保存がより安全になりました。',
+                '既定の四方図、旧設定互換、二重エンジン時のパネル非表示、保存形式を `ConfigPanelModeTest` で回帰テストしています。',
+                'リリース前に full Maven suite、package build、実機ローカル起動 smoke test、GitHub Actions release workflows を再実行しました。',
+            ],
+            'contact_heading': '連絡先',
+            'contact': ['QQ グループ: `299419120`'],
+        },
+        {
+            'language': '한국어',
+            'labels': 'ko',
+            'intro': '이번 릴리스는 레이아웃과 설정 저장 안정화에 집중합니다. 새 설정은 four-sub-board 모드로 시작하고 comment/problem panel 은 기본으로 숨겨집니다. Settings 에서 이 패널을 켜거나 끄면 저장 및 재시작 후에도 선택이 유지됩니다.',
+            'updates_heading': '주요 업데이트',
+            'updates': [
+                '새 설치와 새 설정은 기본적으로 four-sub-board 모드로 시작합니다.',
+                'comment/problem panel 은 기본으로 숨겨져 일반 사용자의 첫 화면 정보 과부하를 줄입니다.',
+                'Settings 의 comment/problem panel 표시 토글이 저장과 재시작 후에도 유지되도록 수정했습니다.',
+                '`extra-mode` 저장 방식을 수정했습니다. loader 가 기대하는 숫자 값으로 저장하고, 기존 문자열 설정도 계속 읽을 수 있습니다.',
+                '메뉴, custom layout, Settings 의 comment/problem panel 토글 경로를 통일하고, 전체 panel 과 상단 control strip 문구를 구분했습니다.',
+            ],
+            'before_heading': '다운로드 전 확인',
+            'before': [
+                f'추천 번들에는 KataGo `{katago_version}` 와 기본 가중치 `{model_source}` 가 포함되어 있습니다.',
+                f'대부분의 Windows 사용자는 {{windows_opencl_portable}} 를 먼저 받으면 됩니다. 이는 **추천 OpenCL 무설치 빌드** 입니다.',
+                '기존 사용자의 저장된 레이아웃은 그대로 존중됩니다. 이번 릴리스는 새 설정 기본값과 설정 저장 신뢰성을 주로 개선합니다.',
+                'comment/problem panel 을 보려면 Settings 에서 켜고 저장하면 됩니다. 재시작 후에도 유지됩니다.',
+                f'**NVIDIA GPU** 가 있다면 {{windows_nvidia_portable}} 를 우선 사용해 보세요. RTX 50 사용자는 RTX 50 CUDA 항목을 선택할 수 있습니다.',
+            ],
+            'download_heading': '다운로드 안내',
+            'download_headers': ('내 컴퓨터', '다운로드할 파일'),
+            'why_heading': '업데이트할 이유',
+            'why': [
+                '첫 실행 화면이 많은 바둑 사용자의 실제 검토 방식에 가까워졌습니다. four-sub-board 는 켜져 있고 comment/problem panel 은 시선을 빼앗지 않습니다.',
+                'Settings panel 토글이 저장된 것처럼 보이다가 재시작 뒤 되돌아가는 문제가 사라졌습니다.',
+                'four-sub-board, dual-engine, minimal, floating-board, custom-layout 흐름 사이의 panel mode 저장이 더 안전해졌습니다.',
+                '기본 four-sub 모드, legacy config 호환, dual-engine panel hiding, save format 을 `ConfigPanelModeTest` 로 회귀 테스트합니다.',
+                '릴리스 전에 full Maven suite, package build, 실제 로컬 실행 smoke test, GitHub Actions release workflows 를 다시 실행했습니다.',
+            ],
+            'contact_heading': '연락',
+            'contact': ['QQ 그룹: `299419120`'],
+        },
+        {
+            'language': 'ภาษาไทย',
+            'labels': 'th',
+            'intro': 'รีลีสนี้เน้นแก้ layout และการจำค่า settings: configuration ใหม่จะเปิดด้วย four-sub-board mode และซ่อน comment/problem panel เป็นค่าเริ่มต้น เมื่อผู้ใช้เปิดหรือปิด panel นี้ใน Settings แล้วบันทึก ค่าเดิมควรอยู่ต่อหลัง restart',
+            'updates_heading': 'อัปเดตหลัก',
+            'updates': [
+                'การติดตั้งใหม่หรือ configuration ใหม่จะเริ่มด้วย four-sub-board mode เพื่อหน้าจอแรกที่สะอาดกว่า',
+                'comment/problem panel ถูกซ่อนเป็นค่าเริ่มต้น ลดข้อมูลฝั่งขวาที่เยอะเกินไปสำหรับผู้ใช้ทั่วไป',
+                'แก้ toggle ใน Settings สำหรับแสดง comment/problem panel ให้จำค่าหลัง save และ restart',
+                'แก้การบันทึก `extra-mode`: ตอนนี้บันทึกเป็นตัวเลขตามที่ loader ต้องการ และยังอ่านค่า string แบบเก่าได้',
+                'รวม logic การ toggle comment/problem panel ระหว่าง menu, custom layout และ Settings พร้อมปรับข้อความให้แยกระหว่าง full panel กับ top control strip',
+            ],
+            'before_heading': 'ก่อนดาวน์โหลด',
+            'before': [
+                f'แพ็กเกจหลักมี KataGo `{katago_version}` และน้ำหนักเริ่มต้น `{model_source}` มาให้แล้ว',
+                f'ผู้ใช้ Windows ส่วนใหญ่แนะนำให้ดาวน์โหลด {{windows_opencl_portable}} ซึ่งเป็น **OpenCL รุ่นแนะนำ แบบไม่ต้องติดตั้ง**',
+                'ผู้ใช้เดิมยังคงใช้ layout ที่เคยบันทึกไว้ รุ่นนี้เน้นปรับค่าเริ่มต้นของ configuration ใหม่และความน่าเชื่อถือของ settings',
+                'ถ้าต้องการแสดง comment/problem panel ให้เปิดใน Settings แล้วบันทึก ค่าเดิมจะอยู่ต่อหลัง restart',
+                f'ถ้ามี **NVIDIA GPU** แนะนำให้ลอง {{windows_nvidia_portable}} ก่อน; ผู้ใช้ RTX 50 เลือกแถว RTX 50 CUDA ได้',
+            ],
+            'download_heading': 'แนะนำการดาวน์โหลด',
+            'download_headers': ('เครื่องของคุณ', 'ดาวน์โหลดไฟล์นี้'),
+            'why_heading': 'ทำไมควรอัปเดต',
+            'why': [
+                'หน้าจอแรกใกล้กับวิธี review ของผู้เล่นโกะมากขึ้น: four-sub-board เปิดอยู่ และ comment/problem panel ไม่แย่งสายตา',
+                'toggle ใน Settings จะไม่เกิดอาการเหมือนบันทึกแล้ว แต่ restart แล้วกลับค่าเดิม',
+                'การจำ panel mode ปลอดภัยขึ้นระหว่าง four-sub-board, dual-engine, minimal, floating-board และ custom-layout',
+                'เพิ่ม `ConfigPanelModeTest` ครอบคลุม default four-sub mode, legacy config compatibility, dual-engine panel hiding และ save format',
+                'ก่อน release ได้รัน full Maven suite, package build, local launch smoke test และ GitHub Actions release workflows ใหม่แล้ว',
             ],
             'contact_heading': 'ติดต่อ',
             'contact': ['QQ group: `299419120`'],
