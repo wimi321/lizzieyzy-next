@@ -747,6 +747,99 @@ public class KataGoRuntimeHelperTest {
   }
 
   @Test
+  void tensorRtSplitPackageAppRootIsDetectedAsDownloadedAndActive() throws Exception {
+    withOsName(
+        WINDOWS_OS_NAME,
+        () -> {
+          Path tempRoot = Files.createTempDirectory("katago-helper-tensorrt-split-active");
+          Path appRoot = Files.createDirectories(tempRoot.resolve("app"));
+          Path workingDir = Files.createDirectories(appRoot.resolve("user-data"));
+          Path runtimeWorkDirectory = Files.createDirectories(workingDir.resolve("runtime"));
+          Path targetDir =
+              appRoot.resolve("engines").resolve("katago").resolve("windows-x64-nvidia-tensorrt");
+          Path enginePath = touch(targetDir.resolve("katago.exe"));
+          touchRequiredCuda12_8Dlls(targetDir);
+          touch(targetDir.resolve("nvinfer_10.dll"));
+          touch(targetDir.resolve("nvinfer_plugin_10.dll"));
+          Files.writeString(
+              targetDir.resolve("lizzieyzy-next-engine-backend.txt"), "nvidia-tensorrt\n");
+          Path configDir =
+              Files.createDirectories(
+                  appRoot.resolve("engines").resolve("katago").resolve("configs"));
+          Path gtpConfigPath = touch(configDir.resolve("gtp.cfg"));
+          Path analysisConfigPath = touch(configDir.resolve("analysis.cfg"));
+          Path estimateConfigPath = touch(configDir.resolve("estimate.cfg"));
+          Path weightPath = touch(appRoot.resolve("weights").resolve("default.bin.gz"));
+          SetupSnapshot snapshot =
+              setupSnapshot(
+                  workingDir,
+                  appRoot,
+                  enginePath,
+                  gtpConfigPath,
+                  analysisConfigPath,
+                  estimateConfigPath,
+                  weightPath);
+
+          withConfig(
+              runtimeWorkDirectory,
+              () -> {
+                KataGoRuntimeHelper.TensorRtInstallStatus status =
+                    KataGoRuntimeHelper.inspectTensorRtInstall(snapshot);
+
+                assertTrue(status.downloaded, "Preinstalled TensorRT package should be downloaded.");
+                assertTrue(status.installed, "Preinstalled TensorRT package should be ready.");
+                assertTrue(status.active, "Running from the TensorRT split package should be active.");
+                assertEquals(normalize(enginePath), normalize(status.enginePath));
+                assertFalse(KataGoRuntimeHelper.canInstallTensorRt(snapshot));
+              });
+        });
+  }
+
+  @Test
+  void tensorRtSplitPackageAppRootCanBeEnabledFromCudaSnapshot() throws Exception {
+    withOsName(
+        WINDOWS_OS_NAME,
+        () -> {
+          Path tempRoot = Files.createTempDirectory("katago-helper-tensorrt-split-enable");
+          Path runtimeWorkDirectory = Files.createDirectories(tempRoot.resolve("runtime-root"));
+          SetupSnapshot snapshot = createNvidia50Snapshot(tempRoot);
+          Path targetDir =
+              snapshot.appRoot
+                  .resolve("engines")
+                  .resolve("katago")
+                  .resolve("windows-x64-nvidia-tensorrt");
+          Path tensorRtEnginePath = touch(targetDir.resolve("katago.exe"));
+          touchRequiredCuda12_8Dlls(targetDir);
+          touch(targetDir.resolve("nvinfer_10.dll"));
+          touch(targetDir.resolve("nvinfer_plugin_10.dll"));
+          Files.writeString(
+              targetDir.resolve("lizzieyzy-next-engine-backend.txt"), "nvidia-tensorrt\n");
+
+          withConfig(
+              runtimeWorkDirectory,
+              () -> {
+                KataGoRuntimeHelper.TensorRtInstallStatus status =
+                    KataGoRuntimeHelper.inspectTensorRtInstall(snapshot);
+
+                assertTrue(status.downloaded);
+                assertTrue(status.installed);
+                assertFalse(status.active);
+                assertTrue(KataGoRuntimeHelper.canInstallTensorRt(snapshot));
+
+                SetupResult result = KataGoRuntimeHelper.applyInstalledTensorRt(snapshot);
+
+                assertEquals("KataGo TensorRT", result.engineName);
+                assertEquals(normalize(tensorRtEnginePath), normalize(result.snapshot.enginePath));
+                KataGoRuntimeHelper.TensorRtInstallStatus activeStatus =
+                    KataGoRuntimeHelper.inspectTensorRtInstall(result.snapshot);
+                assertTrue(activeStatus.downloaded);
+                assertTrue(activeStatus.installed);
+                assertTrue(activeStatus.active);
+              });
+        });
+  }
+
+  @Test
   void switchBackToCudaKeepsTensorRtDownloadedButNotConfigured() throws Exception {
     withOsName(
         WINDOWS_OS_NAME,

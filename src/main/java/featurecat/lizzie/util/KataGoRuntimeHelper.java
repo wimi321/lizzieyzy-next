@@ -713,17 +713,21 @@ public final class KataGoRuntimeHelper {
           NvidiaGpuDetector.TensorRtRecommendation.UNKNOWN,
           "");
     }
-    boolean engineInstalled = Files.isRegularFile(spec.targetEnginePath);
+    boolean engineDownloaded = Files.isRegularFile(spec.targetEnginePath);
     boolean runtimeReady = inspectNvidiaRuntime(spec.targetEnginePath).ready;
     boolean active = isTensorRtEngineActive(snapshot, spec);
     String recommendation = tensorRtRecommendationText(gpuDetection);
     String detail =
-        engineInstalled && runtimeReady
+        engineDownloaded && runtimeReady
             ? active
                 ? resource("AutoSetup.tensorRtEnabled", "TensorRT acceleration is enabled.")
                 : resource(
                     "AutoSetup.tensorRtInstalledNotSelected",
                     "TensorRT acceleration is installed. Click Enable TensorRT acceleration to use it.")
+            : engineDownloaded
+                ? resource(
+                    "AutoSetup.tensorRtDownloadedRuntimeMissing",
+                    "TensorRT engine files are present, but runtime files are incomplete. Click Install TensorRT acceleration to finish setup.")
             : String.format(
                 Locale.ROOT,
                 resource("AutoSetup.tensorRtAvailable", "Optional TensorRT download: about %s. %s"),
@@ -731,9 +735,9 @@ public final class KataGoRuntimeHelper {
                 recommendation);
     return new TensorRtInstallStatus(
         true,
-        engineInstalled,
-        engineInstalled && runtimeReady,
-        engineInstalled && runtimeReady && active,
+        engineDownloaded,
+        engineDownloaded && runtimeReady,
+        engineDownloaded && runtimeReady && active,
         spec.targetEnginePath,
         getNvidiaRuntimeDir(),
         spec.totalDownloadBytes,
@@ -2782,15 +2786,14 @@ public final class KataGoRuntimeHelper {
                 .toAbsolutePath()
                 .normalize()
                 .resolve("runtime");
-    Path targetEngineDir =
-        runtimeRoot.resolve("engines").resolve("katago").resolve(NVIDIA_TRT_ENGINE_DIR);
-    Path targetEnginePath = targetEngineDir.resolve("katago.exe");
-    Path legacyEngineDir =
-        runtimeRoot.resolve("engines").resolve("katago").resolve(NVIDIA50_TRT_ENGINE_DIR);
-    Path legacyEnginePath = legacyEngineDir.resolve("katago.exe");
-    if (!Files.isRegularFile(targetEnginePath) && Files.isRegularFile(legacyEnginePath)) {
-      targetEngineDir = legacyEngineDir;
-      targetEnginePath = legacyEnginePath;
+    Path targetEnginePath = findExistingTensorRtEnginePath(snapshot, runtimeRoot);
+    Path targetEngineDir;
+    if (targetEnginePath != null && targetEnginePath.getParent() != null) {
+      targetEnginePath = targetEnginePath.toAbsolutePath().normalize();
+      targetEngineDir = targetEnginePath.getParent();
+    } else {
+      targetEngineDir = tensorRtEngineDir(runtimeRoot, NVIDIA_TRT_ENGINE_DIR);
+      targetEnginePath = targetEngineDir.resolve("katago.exe");
     }
     long katagoSize =
         resolveLongProperty(TENSORRT_KATAGO_SIZE_PROPERTY, TENSORRT_KATAGO_SIZE_BYTES);
@@ -2809,6 +2812,42 @@ public final class KataGoRuntimeHelper {
         katagoSize,
         total,
         Boolean.getBoolean(TENSORRT_SKIP_RUNTIME_FOR_TESTS_PROPERTY) ? 0 : 5);
+  }
+
+  private static Path findExistingTensorRtEnginePath(SetupSnapshot snapshot, Path runtimeRoot) {
+    LinkedHashSet<Path> candidates = new LinkedHashSet<Path>();
+    if (snapshot != null
+        && snapshot.enginePath != null
+        && isTensorRtBackend(resolveNvidiaBackend(snapshot.enginePath))) {
+      candidates.add(snapshot.enginePath);
+    }
+    addTensorRtEngineCandidates(candidates, runtimeRoot);
+    if (snapshot != null) {
+      addTensorRtEngineCandidates(candidates, snapshot.appRoot);
+      addTensorRtEngineCandidates(candidates, snapshot.workingDir);
+    }
+    for (Path candidate : candidates) {
+      if (candidate != null && Files.isRegularFile(candidate)) {
+        return candidate.toAbsolutePath().normalize();
+      }
+    }
+    return null;
+  }
+
+  private static void addTensorRtEngineCandidates(LinkedHashSet<Path> candidates, Path root) {
+    if (candidates == null || root == null) {
+      return;
+    }
+    candidates.add(tensorRtEngineDir(root, NVIDIA_TRT_ENGINE_DIR).resolve("katago.exe"));
+    candidates.add(tensorRtEngineDir(root, NVIDIA50_TRT_ENGINE_DIR).resolve("katago.exe"));
+  }
+
+  private static Path tensorRtEngineDir(Path root, String engineDirName) {
+    return root.toAbsolutePath()
+        .normalize()
+        .resolve("engines")
+        .resolve("katago")
+        .resolve(engineDirName);
   }
 
   private static boolean isTensorRtSourceProfileAllowed(SetupSnapshot snapshot) {

@@ -4042,6 +4042,8 @@ def build_release_notes(asset_map: dict[str, str | None], bundle: dict[str, str]
         return build_next_2026_06_12_2_notes(asset_map, bundle, repo, release_tag)
     if release_tag == 'next-2026-06-13.1':
         return build_next_2026_06_13_1_notes(asset_map, bundle, repo, release_tag)
+    if release_tag == 'next-2026-06-13.2':
+        return build_next_2026_06_13_1_notes(asset_map, bundle, repo, release_tag)
 
     assets_cn = {
         key: format_asset(asset_map[key], repo, release_tag)
@@ -6210,6 +6212,7 @@ def build_next_2026_06_13_1_notes(
                 '修复综合设置里“显示评论/问题手面板”保存后重启失效的问题。',
                 '修复面板配置保存时 `extra-mode` 写成内部枚举，导致四方图模式可能在下次启动回到普通模式的问题；旧的字符串配置也能兼容读取。',
                 '统一菜单、自定义布局和综合设置里的评论/问题手面板开关逻辑，并区分“完整面板”和“面板顶部控制条”的文案。',
+                '修复 TensorRT 高级分卷/预装包已解压后，“KataGo 一键设置”仍显示未下载的问题；现在程序目录和 `user-data` 下载目录都会被识别。',
             ],
             'before_heading': '下载前先看这几句',
             'before': [
@@ -6243,6 +6246,7 @@ def build_next_2026_06_13_1_notes(
                 '修復綜合設定裡「顯示評論/問題手面板」保存後重啟失效的問題。',
                 '修復面板配置保存時 `extra-mode` 寫成內部 enum，導致四方圖模式可能在下次啟動回到普通模式的問題；舊的字串配置也能相容讀取。',
                 '統一選單、自訂版面和綜合設定裡的評論/問題手面板開關邏輯，並區分「完整面板」和「面板頂部控制條」的文案。',
+                '修復 TensorRT 進階分卷/預裝包已解壓後，「KataGo 一鍵設定」仍顯示未下載的問題；現在程式目錄和 `user-data` 下載目錄都會被識別。',
             ],
             'before_heading': '下載前先看這幾句',
             'before': [
@@ -6276,6 +6280,7 @@ def build_next_2026_06_13_1_notes(
                 'Fixed the Settings toggle for showing the comment/problem panel so it persists after saving and restarting.',
                 'Fixed `extra-mode` persistence: panel mode is now saved as the numeric value the loader expects, while legacy string values remain readable.',
                 'Unified the comment/problem panel toggle path across menus, custom layout, and Settings, and clarified labels for the full panel versus the small top control strip.',
+                'Fixed TensorRT split/preinstalled packages showing as not downloaded in KataGo Auto Setup; both the app folder and `user-data` install folder are now detected.',
             ],
             'before_heading': 'Read Before Downloading',
             'before': [
@@ -6309,6 +6314,7 @@ def build_next_2026_06_13_1_notes(
                 '設定画面の「コメント/問題手パネルを表示」切り替えが、保存・再起動後も維持されるように修正しました。',
                 '`extra-mode` の保存形式を修正しました。読み込み側が期待する数値で保存し、旧式の文字列設定も読み取れます。',
                 'メニュー、カスタムレイアウト、設定画面のコメント/問題手パネル切り替え処理を統一し、完全なパネルと上部コントロールバーの文言を区別しました。',
+                'TensorRT 分割/プリインストール版を展開済みでも KataGo 自動設定で未ダウンロード表示になる問題を修正しました。アプリ本体側と `user-data` 側の両方を検出します。',
             ],
             'before_heading': 'ダウンロード前に',
             'before': [
@@ -6342,6 +6348,7 @@ def build_next_2026_06_13_1_notes(
                 'Settings 의 comment/problem panel 표시 토글이 저장과 재시작 후에도 유지되도록 수정했습니다.',
                 '`extra-mode` 저장 방식을 수정했습니다. loader 가 기대하는 숫자 값으로 저장하고, 기존 문자열 설정도 계속 읽을 수 있습니다.',
                 '메뉴, custom layout, Settings 의 comment/problem panel 토글 경로를 통일하고, 전체 panel 과 상단 control strip 문구를 구분했습니다.',
+                'TensorRT split/preinstalled package 를 압축 해제했는데도 KataGo Auto Setup 에서 not downloaded 로 보이던 문제를 수정했습니다. 앱 폴더와 `user-data` 설치 폴더를 모두 감지합니다.',
             ],
             'before_heading': '다운로드 전 확인',
             'before': [
@@ -6375,6 +6382,7 @@ def build_next_2026_06_13_1_notes(
                 'แก้ toggle ใน Settings สำหรับแสดง comment/problem panel ให้จำค่าหลัง save และ restart',
                 'แก้การบันทึก `extra-mode`: ตอนนี้บันทึกเป็นตัวเลขตามที่ loader ต้องการ และยังอ่านค่า string แบบเก่าได้',
                 'รวม logic การ toggle comment/problem panel ระหว่าง menu, custom layout และ Settings พร้อมปรับข้อความให้แยกระหว่าง full panel กับ top control strip',
+                'แก้กรณีแตกไฟล์ TensorRT split/preinstalled package แล้ว KataGo Auto Setup ยังแสดงว่ายังไม่ได้ดาวน์โหลด ตอนนี้ตรวจทั้งโฟลเดอร์แอปและ `user-data`',
             ],
             'before_heading': 'ก่อนดาวน์โหลด',
             'before': [
