@@ -274,6 +274,11 @@ public class AnalysisEngine {
     int id = Integer.parseInt(result.getString("id"));
     BoardHistoryNode node = analyzeMap.get(id);
     if (node == null) return;
+    if (shouldKeepForegroundAnalysis(node)) {
+      resultCount++;
+      if (resultCount == analyzeMap.size()) setResult();
+      return;
+    }
     List<MoveData> moves = Utils.getBestMovesFromJsonArray(moveInfos, true, true);
     if (result.has("ownership")) {
       JSONArray ownership = result.getJSONArray("ownership");
@@ -308,6 +313,15 @@ public class AnalysisEngine {
       Lizzie.frame.refresh();
     }
     if (resultCount == analyzeMap.size()) setResult();
+  }
+
+  private boolean shouldKeepForegroundAnalysis(BoardHistoryNode node) {
+    return silentProgress
+        && Lizzie.leelaz != null
+        && (Lizzie.leelaz.isPondering() || Lizzie.leelaz.isThinking)
+        && Lizzie.board != null
+        && Lizzie.board.getHistory() != null
+        && node == Lizzie.board.getHistory().getCurrentHistoryNode();
   }
 
   private void setResult() {
@@ -355,7 +369,7 @@ public class AnalysisEngine {
     stack.push(node);
     while (!stack.isEmpty()) {
       BoardHistoryNode cur = stack.pop();
-      if (shouldAnalyzeNode(cur)) {
+      if (shouldAnalyzeBranchNode(cur)) {
         if (!sendRequest(cur)) break;
       }
       if (cur.numberOfChildren() >= 1) {
@@ -416,7 +430,7 @@ public class AnalysisEngine {
     requestDispatchFailed = false;
     silentProgress = !showProgressDialog;
     if (!showProgressDialog) waitFrame = null;
-    if (Lizzie.leelaz.isPondering()) {
+    if (showProgressDialog && Lizzie.leelaz.isPondering()) {
       Lizzie.leelaz.togglePonder();
       shouldRePonder = true;
     } else shouldRePonder = false;
