@@ -4044,6 +4044,8 @@ def build_release_notes(asset_map: dict[str, str | None], bundle: dict[str, str]
         return build_next_2026_06_13_1_notes(asset_map, bundle, repo, release_tag)
     if release_tag == 'next-2026-06-13.3':
         return build_next_2026_06_13_3_notes(asset_map, bundle, repo, release_tag)
+    if release_tag == 'next-2026-06-14.1':
+        return build_next_2026_06_14_1_notes(asset_map, bundle, repo, release_tag)
 
     assets_cn = {
         key: format_asset(asset_map[key], repo, release_tag)
@@ -6469,6 +6471,44 @@ def build_next_2026_06_13_3_notes(
         '- แก้กรณีแตกไฟล์ TensorRT split/preinstalled package แล้ว KataGo Auto Setup ยังแสดงว่ายังไม่ได้ดาวน์โหลด ตอนนี้ตรวจทั้งโฟลเดอร์แอปและ `user-data`\n':
             '- แก้ปัญหาเพิ่ม บันทึก หรือจัดลำดับ engine ในหน้า engine editor แล้วเมนูสลับ engine ด้านบนไม่แสดงรายการใหม่ทันที ตอนนี้จะ refresh รายการแบบเบา ๆ และพยายามไม่หยุด engine วิเคราะห์ที่กำลังทำงานอยู่\n'
             '- Flash analysis จะใช้ main engine ปัจจุบันก่อนเมื่อไม่ได้ตั้ง custom command และจะ fallback ไป default engine เฉพาะเมื่อ engine ปัจจุบันใช้ไม่ได้\n',
+    }
+    for anchor, extra in additions.items():
+        notes = notes.replace(anchor, anchor + extra)
+    return notes
+
+
+def build_next_2026_06_14_1_notes(
+    asset_map: dict[str, str | None],
+    bundle: dict[str, str],
+    repo: str,
+    release_tag: str | None,
+) -> str:
+    notes = build_next_2026_06_13_3_notes(asset_map, bundle, repo, release_tag)
+    additions = {
+        '- 闪电分析未自定义命令时改为优先使用当前主引擎；只有当前引擎不可用时才回退默认引擎，避免为了闪电分析重复加载默认引擎。\n':
+            '- 闪电分析和自动补分析默认保留已有分析结果；继续分析只补缺失节点，只有开启“总是覆盖已有分析结果”时才会重算并覆盖已有数据。\n'
+            '- 棋力评估内置模型更新为 `xgboost20tun`，并支持导入 XGBoost booster 或完整模型包，方便后续模型迭代和对比。\n'
+            '- 发布包引入 jlink 自定义离线 runtime、AppCDS 启动缓存和 JFR/包体审计工具，保持离线可用，同时为后续启动加速和体积瘦身提供数据基础。\n',
+        '- 閃電分析未自訂命令時改為優先使用目前主引擎；只有目前引擎不可用時才回退預設引擎，避免為了閃電分析重複載入預設引擎。\n':
+            '- 閃電分析和自動補分析預設保留已有分析結果；繼續分析只補缺失節點，只有開啟「總是覆蓋已有分析結果」時才會重算並覆蓋已有資料。\n'
+            '- 棋力評估內建模型更新為 `xgboost20tun`，並支援匯入 XGBoost booster 或完整模型包，方便後續模型迭代和對比。\n'
+            '- 發布包引入 jlink 自訂離線 runtime、AppCDS 啟動快取和 JFR/包體審計工具，保持離線可用，同時為後續啟動加速和體積瘦身提供資料基礎。\n',
+        '- Flash analysis now prefers the current main engine when no custom flash-analysis command is set, falling back to the default engine only when the current engine is unavailable.\n':
+            '- Flash analysis and automatic completion now preserve existing analysis by default. Continuing analysis only fills missing nodes unless users explicitly enable “always override existing analysis”.\n'
+            '- The built-in strength-estimation model has been updated to `xgboost20tun`, with support for importing XGBoost boosters or complete model packages for future model iteration and comparison.\n'
+            '- Release packaging now includes jlink custom offline runtimes, AppCDS startup archives, and JFR/package-size audit tooling while keeping the main packages offline-capable.\n',
+        '- 閃電分析のコマンドをカスタムしていない場合、現在のメインエンジンを優先して使うようにしました。現在のエンジンが使えない場合のみ既定エンジンへ戻ります。\n':
+            '- 閃電分析と自動補完分析は、既存の分析結果を既定で保持します。続きから分析する場合は欠けているノードだけを補い、「既存分析を常に上書き」を明示的に有効にした場合のみ再計算して上書きします。\n'
+            '- 棋力推定の内蔵モデルを `xgboost20tun` に更新し、XGBoost booster または完全なモデルパッケージのインポートに対応しました。今後のモデル更新や比較がしやすくなります。\n'
+            '- リリースパッケージに jlink カスタムオフライン runtime、AppCDS 起動アーカイブ、JFR/パッケージサイズ監査ツールを追加しました。メインパッケージは引き続きオフラインで利用できます。\n',
+        '- Flash analysis 명령을 따로 지정하지 않은 경우 기본 엔진 대신 현재 메인 엔진을 우선 사용합니다. 현재 엔진을 사용할 수 없을 때만 default engine 으로 fallback 합니다.\n':
+            '- Flash analysis 와 자동 보완 분석은 기본적으로 기존 분석 결과를 보존합니다. 이어서 분석할 때는 누락된 노드만 채우며, 사용자가 “기존 분석 항상 덮어쓰기”를 명시적으로 켠 경우에만 다시 계산해 덮어씁니다.\n'
+            '- 내장 기력 평가 모델을 `xgboost20tun` 으로 업데이트했고, XGBoost booster 또는 전체 모델 패키지 가져오기를 지원해 이후 모델 개선과 비교가 쉬워졌습니다.\n'
+            '- 릴리스 패키지에 jlink custom offline runtime, AppCDS startup archive, JFR/package-size audit tooling 을 추가했습니다. 기본 패키지는 계속 오프라인에서 사용할 수 있습니다.\n',
+        '- Flash analysis จะใช้ main engine ปัจจุบันก่อนเมื่อไม่ได้ตั้ง custom command และจะ fallback ไป default engine เฉพาะเมื่อ engine ปัจจุบันใช้ไม่ได้\n':
+            '- Flash analysis และ automatic completion จะเก็บผลวิเคราะห์เดิมไว้เป็นค่าเริ่มต้น การวิเคราะห์ต่อจะเติมเฉพาะจุดที่ยังขาด และจะคำนวณทับข้อมูลเดิมเฉพาะเมื่อผู้ใช้เปิด “always override existing analysis” เท่านั้น\n'
+            '- อัปเดตโมเดลประเมินระดับฝีมือในตัวเป็น `xgboost20tun` และรองรับการ import XGBoost booster หรือ model package แบบครบชุด เพื่อให้เปรียบเทียบและอัปเดตโมเดลในอนาคตได้ง่ายขึ้น\n'
+            '- เพิ่ม jlink custom offline runtime, AppCDS startup archive และเครื่องมือ JFR/package-size audit ในกระบวนการ release โดยแพ็กเกจหลักยังใช้งานแบบ offline ได้เหมือนเดิม\n',
     }
     for anchor, extra in additions.items():
         notes = notes.replace(anchor, anchor + extra)
