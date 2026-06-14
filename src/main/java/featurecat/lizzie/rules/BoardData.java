@@ -333,7 +333,18 @@ public class BoardData {
       boolean isFromLeelaz,
       int totalplayouts,
       ArrayList<Double> estimateArray) {
-    if (Lizzie.config.enableLizzieCache
+    tryToSetBestMoves(moves, engName, isFromLeelaz, totalplayouts, estimateArray, false);
+  }
+
+  public void tryToSetBestMoves(
+      List<MoveData> moves,
+      String engName,
+      boolean isFromLeelaz,
+      int totalplayouts,
+      ArrayList<Double> estimateArray,
+      boolean forceOverride) {
+    if (!forceOverride
+        && Lizzie.config.enableLizzieCache
         && !Lizzie.config.isAutoAna
         && !EngineManager.isEngineGame) {
       if (!(totalplayouts > playouts || isChanged || pda != Lizzie.leelaz.pda)) {

@@ -16056,7 +16056,7 @@ public class LizzieFrame extends JFrame {
       node = node.next().get();
       if (!isRealHistoryActionNode(node.getData())) continue;
       mainTrunkMoves++;
-      if (node.getData().getPlayouts() > 0 || node.getData().isKataData) {
+      if (node.getData().hasPrimaryAnalysisPayload()) {
         analyzedMoves++;
       }
     }
