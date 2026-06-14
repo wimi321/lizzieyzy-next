@@ -53,7 +53,13 @@ def log(message: str) -> None:
     print(f"[package-runtime] {message}", file=sys.stderr)
 
 
-def run(command: list[str], *, cwd: Path | None = None, check: bool = True) -> subprocess.CompletedProcess[str]:
+def run(
+    command: list[str],
+    *,
+    cwd: Path | None = None,
+    check: bool = True,
+    timeout: float | None = None,
+) -> subprocess.CompletedProcess[str]:
     log("+ " + " ".join(command))
     return subprocess.run(
         command,
@@ -62,6 +68,7 @@ def run(command: list[str], *, cwd: Path | None = None, check: bool = True) -> s
         text=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
+        timeout=timeout,
     )
 
 
@@ -308,7 +315,14 @@ def generate_app_cds(args: argparse.Namespace) -> int:
     ]
     started = time.time()
     try:
-        result = run(command, check=True)
+        result = run(command, check=True, timeout=args.timeout_seconds)
+    except subprocess.TimeoutExpired:
+        return app_cds_fallback(
+            args,
+            archive,
+            manifest,
+            f"AppCDS warmup timed out after {args.timeout_seconds:g}s",
+        )
     except OSError as exc:
         return app_cds_fallback(args, archive, manifest, f"AppCDS warmup could not execute runtime java: {exc}")
     except subprocess.CalledProcessError as exc:
@@ -606,6 +620,7 @@ def main(argv: list[str]) -> int:
     cds.add_argument("--archive", required=True)
     cds.add_argument("--manifest", default="")
     cds.add_argument("--main-class", default="featurecat.lizzie.tools.CdsWarmup")
+    cds.add_argument("--timeout-seconds", type=float, default=45.0)
     cds.add_argument("--optional", action="store_true")
     cds.set_defaults(func=generate_app_cds)
 
