@@ -216,7 +216,8 @@ class LizzieFrameRegressionTest {
       assertTrue(frame.lastIsAllGame);
       assertFalse(frame.lastIsAllBranches);
       assertTrue(frame.lastSilentAnalyze);
-      assertEquals(0, frame.refreshCount, "auto quick analyze should not fall back to ponder refresh.");
+      assertEquals(
+          0, frame.refreshCount, "auto quick analyze should not fall back to ponder refresh.");
     } finally {
       env.close();
     }
@@ -295,7 +296,10 @@ class LizzieFrameRegressionTest {
             PlayerStrengthEstimator.StrengthModel.class);
     constructor.setAccessible(true);
     return constructor.newInstance(
-        blackReport, whiteReport, overallReport, PlayerStrengthEstimator.StrengthModel.GP_CORE4);
+        blackReport,
+        whiteReport,
+        overallReport,
+        PlayerStrengthEstimator.StrengthModel.XGBOOST20TUN);
   }
 
   private static PlayerStrengthEstimator.Sample playerStrengthSample(
@@ -356,7 +360,7 @@ class LizzieFrameRegressionTest {
     return constructor.newInstance(
         samples.size(),
         samples.size(),
-        PlayerStrengthEstimator.StrengthModel.GP_CORE4,
+        PlayerStrengthEstimator.StrengthModel.XGBOOST20TUN,
         1.0,
         0.5,
         82.0,

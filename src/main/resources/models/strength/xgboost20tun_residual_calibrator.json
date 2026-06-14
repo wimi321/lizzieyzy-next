@@ -1,0 +1,63 @@
+{
+  "schema_version": 2,
+  "method": "gated_affine_teacher_calibration",
+  "rows": 210,
+  "games": 105,
+  "source": "zhangqi_teacher_full29_matrix + v500_m210_manual_delete_xgboost20tun_trainval_booster",
+  "quality_gate_thresholds": {
+    "match_rate": [
+      -1.0,
+      0.0
+    ],
+    "top5_rate": [
+      -1.0,
+      0.0
+    ],
+    "weighted_loss_fit": [
+      -1.0,
+      0.0
+    ]
+  },
+  "base_metrics": {
+    "teacher_mae": 1.2402,
+    "teacher_bias": -1.0518
+  },
+  "calibrated_metrics": {
+    "teacher_cv_mae": 0.8415,
+    "teacher_full_mae": 0.8272,
+    "main_validation_train_mae": 1.4434
+  },
+  "final_spec": {
+    "name": "gated_affine_gate5_9_zhangqi_teacher",
+    "method": "gated_affine",
+    "gate_start": 5.0,
+    "gate_full": 9.0,
+    "correction_min": -3.0,
+    "correction_max": 3.0,
+    "slope": 0.695518,
+    "intercept": 3.676031
+  },
+  "final_calibrator": {
+    "spec": {
+      "name": "gated_affine_gate5_9_zhangqi_teacher",
+      "method": "piecewise_core",
+      "gate_start": 5.0,
+      "gate_full": 9.0,
+      "correction_min": -3.0,
+      "correction_max": 3.0
+    },
+    "feature_order": [
+      "base_prediction"
+    ],
+    "scaler_mean": [
+      0.0
+    ],
+    "scaler_scale": [
+      1.0
+    ],
+    "intercept": 3.676031,
+    "coefficients": [
+      -0.30448200000000003
+    ]
+  }
+}
