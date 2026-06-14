@@ -77,6 +77,9 @@ READBOARD_STAGE_DIR="$DIST_DIR/readboard"
 PYTHON_BIN=""
 INSTALLED_UPDATE_MANIFEST_NAME="lizzieyzy-next-installed-manifest.json"
 UPDATE_MANIFEST_NAME="lizzieyzy-next-update-manifest.json"
+RUNTIME_TOOLS_SCRIPT="$ROOT_DIR/scripts/package_runtime_tools.py"
+CUSTOM_RUNTIME_DIR="$DIST_DIR/custom-runtime/windows-x64"
+JPACKAGE_RUNTIME_ARGS=()
 
 log_step() {
   printf '\n[%s] %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$*" >&2
@@ -333,6 +336,50 @@ copy_bundled_jcef_assets() {
 
 rm -rf "$DIST_DIR"
 mkdir -p "$DIST_DIR" "$RELEASE_DIR" "$META_DIR"
+
+prepare_custom_runtime() {
+  if [[ "${LIZZIE_PACKAGE_OPTIMIZE_RUNTIME:-1}" != "1" ]]; then
+    return 0
+  fi
+  resolve_python_bin
+  "$PYTHON_BIN" "$RUNTIME_TOOLS_SCRIPT" optimize-runtime \
+    --jar "$JAR_PATH" \
+    --output "$CUSTOM_RUNTIME_DIR" \
+    --manifest "$META_DIR/${DATE_TAG}-${ARCH_TAG}-runtime.json" \
+    --platform "$ARCH_TAG" \
+    --optional
+  if [[ -d "$CUSTOM_RUNTIME_DIR" ]]; then
+    JPACKAGE_RUNTIME_ARGS=(--runtime-image "$CUSTOM_RUNTIME_DIR")
+  fi
+}
+
+jpackage_runtime_args() {
+  if (( ${#JPACKAGE_RUNTIME_ARGS[@]} > 0 )); then
+    printf '%s\0' "${JPACKAGE_RUNTIME_ARGS[@]}"
+  else
+    printf '%s\0' --jlink-options "--strip-debug --no-man-pages --no-header-files"
+  fi
+}
+
+generate_app_cds_archive() {
+  local runtime_dir="$1"
+  local app_dir="$2"
+  local archive_path="$3"
+  local manifest_path="$4"
+  if [[ "${LIZZIE_PACKAGE_APPCDS:-1}" != "1" ]]; then
+    return 0
+  fi
+  if [[ ! -d "$runtime_dir" ]]; then
+    return 0
+  fi
+  resolve_python_bin
+  "$PYTHON_BIN" "$RUNTIME_TOOLS_SCRIPT" generate-app-cds \
+    --runtime "$runtime_dir" \
+    --app-dir "$app_dir" \
+    --archive "$archive_path" \
+    --manifest "$manifest_path" \
+    --optional
+}
 
 derive_windows_app_version() {
   local date_tag="$1"
@@ -627,6 +674,10 @@ build_app_image() {
   write_installed_update_manifest "$input_dir" "$flavor"
 
   log_step "Building Windows app image: $app_name [$flavor]"
+  local runtime_args=()
+  while IFS= read -r -d '' arg; do
+    runtime_args+=("$arg")
+  done < <(jpackage_runtime_args)
   jpackage \
     --type app-image \
     --name "$app_name" \
@@ -638,13 +689,20 @@ build_app_image() {
     --vendor "wimi321" \
     --description "$app_description" \
     --icon "$ICON_PATH" \
-    --jlink-options "--strip-debug --no-man-pages --no-header-files" \
+    "${runtime_args[@]}" \
     --java-options "-Xmx4096m" \
+    --java-options "-Xshare:auto" \
+    --java-options '-XX:SharedArchiveFile=$APPDIR/lizzieyzy-next-cds.jsa' \
     --java-options "-Dlizzie.next.version=$APP_DISPLAY_VERSION" >&2
   if [[ ! -f "$app_image_dir/$app_name/runtime/bin/java.exe" ]]; then
     echo "Packaged Windows runtime is missing runtime/bin/java.exe: $app_image_dir/$app_name" >&2
     return 1
   fi
+  generate_app_cds_archive \
+    "$app_image_dir/$app_name/runtime" \
+    "$app_image_dir/$app_name/app" \
+    "$app_image_dir/$app_name/app/lizzieyzy-next-cds.jsa" \
+    "$META_DIR/${DATE_TAG}-${ARCH_TAG}-${flavor}-app-image-appcds.json"
   log_step "Finished Windows app image: $app_name [$flavor]"
 
   printf '%s\n' "$app_image_dir/$app_name"
@@ -672,8 +730,19 @@ build_installer() {
     fi
   fi
   write_installed_update_manifest "$input_dir" "$flavor"
+  if [[ -d "$CUSTOM_RUNTIME_DIR" ]]; then
+    generate_app_cds_archive \
+      "$CUSTOM_RUNTIME_DIR" \
+      "$input_dir" \
+      "$input_dir/lizzieyzy-next-cds.jsa" \
+      "$META_DIR/${DATE_TAG}-${ARCH_TAG}-${flavor}-installer-appcds.json"
+  fi
 
   log_step "Building Windows installer: $app_name [$flavor]"
+  local runtime_args=()
+  while IFS= read -r -d '' arg; do
+    runtime_args+=("$arg")
+  done < <(jpackage_runtime_args)
   jpackage \
     --type exe \
     --name "$app_name" \
@@ -689,8 +758,10 @@ build_installer() {
     --win-menu \
     --win-shortcut \
     --win-upgrade-uuid "$upgrade_uuid" \
-    --jlink-options "--strip-debug --no-man-pages --no-header-files" \
+    "${runtime_args[@]}" \
     --java-options "-Xmx4096m" \
+    --java-options "-Xshare:auto" \
+    --java-options '-XX:SharedArchiveFile=$APPDIR/lizzieyzy-next-cds.jsa' \
     --java-options "-Dlizzie.next.version=$APP_DISPLAY_VERSION" >&2
   log_step "Finished Windows installer: $app_name [$flavor]"
 
@@ -1204,6 +1275,7 @@ has_tensorrt_split_assets="false"
 
 prepare_bundled_readboard_assets
 prepare_bundled_jcef_assets
+prepare_custom_runtime
 
 if has_bundled_katago "$STANDARD_ENGINE_PLATFORM_DIR"; then
   has_with_katago_assets="true"
@@ -1310,6 +1382,14 @@ write_windows_install_note \
   "$build_no_engine_installer" \
   "$has_tensorrt_split_assets"
 write_sha256_file "$checksum_file" "${artifacts[@]}" "$install_note"
+
+resolve_python_bin
+"$PYTHON_BIN" "$RUNTIME_TOOLS_SCRIPT" audit-sizes \
+  --root "$ROOT_DIR" \
+  --output "$META_DIR/${DATE_TAG}-${ARCH_TAG}-package-size-audit.md" \
+  --json-output "$META_DIR/${DATE_TAG}-${ARCH_TAG}-package-size-audit.json" \
+  --release-prefix "$DATE_TAG" \
+  --custom-runtime "$CUSTOM_RUNTIME_DIR"
 
 echo "Artifacts:"
 ls -lh "${artifacts[@]}"

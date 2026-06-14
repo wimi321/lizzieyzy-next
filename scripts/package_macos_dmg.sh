@@ -21,6 +21,25 @@ if ! command -v jpackage >/dev/null 2>&1; then
   exit 1
 fi
 
+PYTHON_BIN=""
+RUNTIME_TOOLS_SCRIPT="$ROOT_DIR/scripts/package_runtime_tools.py"
+
+resolve_python_bin() {
+  if [[ -n "$PYTHON_BIN" ]]; then
+    return 0
+  fi
+  if command -v python3 >/dev/null 2>&1; then
+    PYTHON_BIN="python3"
+    return 0
+  fi
+  if command -v python >/dev/null 2>&1; then
+    PYTHON_BIN="python"
+    return 0
+  fi
+  echo "Python not found. Runtime optimization and audit helpers require Python 3."
+  exit 1
+}
+
 DRAG_DMG_SCRIPT="$ROOT_DIR/scripts/create_macos_drag_dmg.sh"
 if [[ ! -x "$DRAG_DMG_SCRIPT" ]]; then
   echo "Missing executable DMG layout helper: $DRAG_DMG_SCRIPT"
@@ -81,6 +100,38 @@ META_DIR="$ROOT_DIR/dist/release-meta"
 rm -rf "$INPUT_DIR" "$APP_IMAGE_DIR"
 mkdir -p "$INPUT_DIR" "$APP_IMAGE_DIR" "$META_DIR"
 
+CUSTOM_RUNTIME_DIR="$DIST_DIR/custom-runtime/$PUBLIC_ARCH_TAG"
+JPACKAGE_RUNTIME_ARGS=()
+
+prepare_custom_runtime() {
+  if [[ "${LIZZIE_PACKAGE_OPTIMIZE_RUNTIME:-1}" != "1" ]]; then
+    return 0
+  fi
+  resolve_python_bin
+  "$PYTHON_BIN" "$RUNTIME_TOOLS_SCRIPT" optimize-runtime \
+    --jar "$JAR_PATH" \
+    --output "$CUSTOM_RUNTIME_DIR" \
+    --manifest "$META_DIR/${DATE_TAG}-${PUBLIC_ARCH_TAG}-runtime.json" \
+    --platform "$PUBLIC_ARCH_TAG" \
+    --optional
+  if [[ -d "$CUSTOM_RUNTIME_DIR" ]]; then
+    JPACKAGE_RUNTIME_ARGS=(--runtime-image "$CUSTOM_RUNTIME_DIR")
+  fi
+}
+
+generate_app_cds_archive() {
+  if [[ "${LIZZIE_PACKAGE_APPCDS:-1}" != "1" ]]; then
+    return 0
+  fi
+  resolve_python_bin
+  "$PYTHON_BIN" "$RUNTIME_TOOLS_SCRIPT" generate-app-cds \
+    --runtime "$APP_IMAGE_DIR/$APP_NAME.app/Contents/runtime" \
+    --app-dir "$APP_IMAGE_DIR/$APP_NAME.app/Contents/app" \
+    --archive "$APP_IMAGE_DIR/$APP_NAME.app/Contents/app/lizzieyzy-next-cds.jsa" \
+    --manifest "$META_DIR/${DATE_TAG}-${PUBLIC_ARCH_TAG}-appcds.json" \
+    --optional
+}
+
 cp "$JAR_PATH" "$INPUT_DIR/"
 cp README.md README_EN.md README_JA.md README_KO.md LICENSE.txt packaging/PROJECT_INFO.txt "$INPUT_DIR/"
 cp readme_cn.pdf readme_en.pdf "$INPUT_DIR/"
@@ -96,6 +147,8 @@ MAIN_JAR="$(basename "$JAR_PATH")"
 ICON_PATH="$ROOT_DIR/packaging/icons/app-icon.icns"
 IDENTIFIER="com.wimi321.lizzieyzy.next"
 
+prepare_custom_runtime
+
 jpackage \
   --type app-image \
   --name "$APP_NAME" \
@@ -108,8 +161,13 @@ jpackage \
   --description "$APP_DESCRIPTION" \
   --icon "$ICON_PATH" \
   --mac-package-identifier "$IDENTIFIER" \
+  "${JPACKAGE_RUNTIME_ARGS[@]}" \
   --java-options "-Xmx4096m" \
+  --java-options "-Xshare:auto" \
+  --java-options '-XX:SharedArchiveFile=$APPDIR/lizzieyzy-next-cds.jsa' \
   --java-options "-Dlizzie.next.version=$APP_DISPLAY_VERSION"
+
+generate_app_cds_archive
 
 FINAL_DMG="$ROOT_DIR/dist/release/${DATE_TAG}-${PUBLIC_ARCH_TAG}.${PACKAGE_FLAVOR}.dmg"
 INSTALL_NOTE="$META_DIR/${DATE_TAG}-${PUBLIC_ARCH_TAG}-install.txt"
@@ -154,6 +212,14 @@ Notes:
 EOF
 
 write_sha256_file "$SHA256_FILE" "$FINAL_DMG" "$INSTALL_NOTE"
+
+resolve_python_bin
+"$PYTHON_BIN" "$RUNTIME_TOOLS_SCRIPT" audit-sizes \
+  --root "$ROOT_DIR" \
+  --output "$META_DIR/${DATE_TAG}-${PUBLIC_ARCH_TAG}-package-size-audit.md" \
+  --json-output "$META_DIR/${DATE_TAG}-${PUBLIC_ARCH_TAG}-package-size-audit.json" \
+  --release-prefix "$DATE_TAG" \
+  --custom-runtime "$CUSTOM_RUNTIME_DIR"
 
 echo "Artifacts:"
 ls -lh "$FINAL_DMG"
