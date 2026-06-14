@@ -21,6 +21,7 @@ import java.io.Closeable;
 import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.UnsupportedEncodingException;
 import java.net.ServerSocket;
@@ -347,6 +348,7 @@ public class ReadBoard {
     bundledRuntimeRoot()
         .ifPresent(
             directory -> candidates.addAll(javaReadBoardDirectoryCandidatesForBase(directory)));
+    candidates.add(defaultJavaReadBoardExtractionDirectory());
     return new ArrayList<File>(candidates);
   }
 
@@ -383,6 +385,14 @@ public class ReadBoard {
     File runtimeDir = new File(javaHome).getAbsoluteFile();
     File root = runtimeDir.getParentFile();
     return Optional.ofNullable(root);
+  }
+
+  static File defaultJavaReadBoardExtractionDirectory() {
+    File runtimeDirectory =
+        Lizzie.config == null
+            ? new File(new File(System.getProperty("user.home", "."), ".lizzieyzy-next"), "runtime")
+            : Lizzie.config.getRuntimeWorkDirectory();
+    return new File(runtimeDirectory, JAVA_READBOARD_DIRECTORY).getAbsoluteFile();
   }
 
   static File resolveLegacyNativeReadBoardCommand(File readBoardDir, boolean usePipe) {
@@ -482,11 +492,13 @@ public class ReadBoard {
     if (javaReadBoard) {
       File javaReadBoardJar = legacyJavaReadBoardJar(javaReadBoardName);
       if (!javaReadBoardJar.exists()) {
-        Utils.deleteDir(new File(JAVA_READBOARD_DIRECTORY));
-        Utils.copyReadBoardJava(javaReadBoardName);
         javaReadBoardJar =
-            new File(JAVA_READBOARD_DIRECTORY + File.separator + javaReadBoardName)
-                .getAbsoluteFile();
+            extractBundledJavaReadBoard(javaReadBoardName, defaultJavaReadBoardExtractionDirectory());
+      }
+      if (!javaReadBoardJar.exists()) {
+        throw new IOException(
+            "Java board synchronization helper is missing: "
+                + javaReadBoardJar.getAbsolutePath());
       }
       List<String> jvmArgs = new ArrayList<String>();
       jvmArgs.add("-Dsun.java2d.uiScale=1.0");
@@ -605,6 +617,38 @@ public class ReadBoard {
     }
     copyJavaReadBoardSupportFiles(jarDirectory, workingDirectory);
     return workingDirectory;
+  }
+
+  static File extractBundledJavaReadBoard(String javaReadBoardName, File targetDirectory)
+      throws IOException {
+    if (!targetDirectory.exists() && !targetDirectory.mkdirs()) {
+      throw new IOException(
+          "Unable to create Java board synchronization directory: "
+              + targetDirectory.getAbsolutePath());
+    }
+    copyBundledJavaReadBoardResource(javaReadBoardName, targetDirectory, true);
+    for (String fileName : JAVA_READBOARD_SUPPORT_FILES) {
+      copyBundledJavaReadBoardResource(fileName, targetDirectory, false);
+    }
+    return new File(targetDirectory, javaReadBoardName).getAbsoluteFile();
+  }
+
+  private static void copyBundledJavaReadBoardResource(
+      String fileName, File targetDirectory, boolean required) throws IOException {
+    String resourcePath = "/assets/readboard_java/" + fileName;
+    try (InputStream input = ReadBoard.class.getResourceAsStream(resourcePath)) {
+      if (input == null) {
+        if (required) {
+          throw new IOException(
+              "Missing bundled Java board synchronization resource: " + resourcePath);
+        }
+        return;
+      }
+      File target = new File(targetDirectory, fileName);
+      File temp = new File(targetDirectory, fileName + ".part");
+      Files.copy(input, temp.toPath(), StandardCopyOption.REPLACE_EXISTING);
+      Files.move(temp.toPath(), target.toPath(), StandardCopyOption.REPLACE_EXISTING);
+    }
   }
 
   private void copyJavaReadBoardSupportFiles(File sourceDirectory, File targetDirectory) {

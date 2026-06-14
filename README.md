@@ -51,7 +51,7 @@
 > - 如果 OpenCL 在你的电脑上不稳定：下载 `*windows64.with-katago.portable.zip`
 > - 现在支持直接输入野狐昵称抓最近公开棋谱，不需要先查账号数字
 > - 主推荐整合包已内置 KataGo `v1.16.5` 和官方推荐 `zhizi` 权重 `kata1-zhizi-b28c512nbt-muonfd2.bin.gz`
-> - 主发布包已内置 `readboard_java`，多数用户不需要再单独找 readboard 仓库
+> - 主程序已内置 `readboard_java`，首次使用 Java 简易同步时自动释放，多数用户不需要再单独找 readboard 仓库
 
 ## 为什么很多用户会直接选它
 
@@ -78,7 +78,7 @@
 | 快速找问题手 | 提供新版主胜率图和底部热力概览，更容易一眼看出大问题手 |
 | 少折腾配置 | 推荐整合包已内置 KataGo、默认权重和首次自动配置 |
 | 不想安装 | Windows 默认优先推荐 `portable.zip` 免安装包 |
-| 做棋盘同步 | 主发布包已内置 `readboard_java` 简易同步工具 |
+| 做棋盘同步 | 主程序已内置 `readboard_java` 简易同步工具，首次使用自动释放 |
 
 ## 先下载哪个
 
@@ -131,8 +131,8 @@ Windows `portable.zip` 是真正的免安装模式：配置、日志、保存棋
   更容易看出哪里是大恶手，哪里值得先回头看。
 - `Windows 免安装优先`
   普通用户下载更直接，OpenCL / NVIDIA / CPU 三条线也更清楚。
-- `主项目直接内置 readboard_java`
-  多数用户不需要再单独找 readboard 仓库来拼环境。
+- `主程序内置 readboard_java`
+  首次使用 Java 简易同步时自动释放，多数用户不需要再单独找 readboard 仓库来拼环境。
 - `真实发布 + 真实烟测`
   不是只改源码，Windows / macOS / Linux 的发布包和烟测链路也都持续在做。
 
@@ -180,13 +180,13 @@ Windows `portable.zip` 是真正的免安装模式：配置、日志、保存棋
 | 输入方式 | 更依赖先知道账号数字 | 直接输入野狐昵称，程序自动匹配账号 |
 | KataGo 使用门槛 | 常常需要自己补环境或补资源 | 推荐整合包已内置 KataGo 和默认权重 |
 | Windows 下载体验 | 需要用户自己判断更多 | 明确优先推荐 `portable.zip` 免安装包 |
-| 同步工具 | 用户自己拼环境的情况更多 | 主发布包直接带 `readboard_java` |
+| 同步工具 | 用户自己拼环境的情况更多 | 主程序内置 `readboard_java`，首次使用自动释放 |
 
 ## 常见问题
 
 ### 棋盘同步工具还需要单独找 readboard 仓库吗？
 
-多数用户不需要。`LizzieYzy Next` 现在把 `readboard_java` 当成主项目的一部分来交付，主发布包里直接带上了。
+多数用户不需要。`LizzieYzy Next` 现在把 `readboard_java` 当成主项目的一部分内置在主程序里，首次使用 Java 简易同步时会自动释放到用户数据目录。
 
 ### 现在还需要先知道野狐账号数字吗？
 

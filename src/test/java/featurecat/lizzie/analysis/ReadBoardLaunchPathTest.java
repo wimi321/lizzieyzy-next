@@ -145,6 +145,40 @@ class ReadBoardLaunchPathTest {
   }
 
   @Test
+  void defaultJavaReadBoardDirectoryCandidatesIncludesUserRuntimeExtractionDirectory()
+      throws Exception {
+    String userHome = System.getProperty("user.home");
+    try {
+      System.setProperty("user.home", tempDir.toString());
+      String expected =
+          tempDir.resolve(".lizzieyzy-next").resolve("runtime").resolve("readboard_java")
+              .toFile()
+              .getAbsolutePath();
+
+      assertTrue(
+          ReadBoard.defaultJavaReadBoardDirectoryCandidates().stream()
+              .map(java.io.File::getAbsolutePath)
+              .anyMatch(expected::equals));
+    } finally {
+      System.setProperty("user.home", userHome);
+    }
+  }
+
+  @Test
+  void extractBundledJavaReadBoardCopiesHelperToWritableRuntimeDirectory() throws Exception {
+    Path targetDir = tempDir.resolve("runtime").resolve("readboard_java");
+
+    java.io.File jar =
+        ReadBoard.extractBundledJavaReadBoard("readboard-1.6.2-shaded.jar", targetDir.toFile());
+
+    assertTrue(jar.isFile());
+    assertTrue(jar.length() > 10_000_000L);
+    assertTrue(targetDir.resolve("help.docx").toFile().isFile());
+    assertTrue(targetDir.resolve("help_en.docx").toFile().isFile());
+    assertTrue(targetDir.resolve("help_jp.docx").toFile().isFile());
+  }
+
+  @Test
   void buildJavaReadBoardProcessBuilderUsesAbsoluteJarAndJarDirectory() throws Exception {
     Path javaReadBoardDir =
         Files.createDirectories(tempDir.resolve("app").resolve("readboard_java"));

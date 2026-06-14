@@ -440,10 +440,6 @@ copy_common_inputs() {
   cp "$JAR_PATH" "$input_dir/"
   cp README.md README_EN.md README_JA.md README_KO.md LICENSE.txt packaging/PROJECT_INFO.txt "$input_dir/"
   cp readme_cn.pdf readme_en.pdf "$input_dir/"
-  if [[ -d "$ROOT_DIR/src/main/resources/assets/readboard_java" ]]; then
-    mkdir -p "$input_dir/readboard_java"
-    cp -R "$ROOT_DIR/src/main/resources/assets/readboard_java/." "$input_dir/readboard_java/"
-  fi
   copy_bundled_readboard_assets "$input_dir"
   copy_bundled_jcef_assets "$input_dir"
 }
@@ -857,7 +853,7 @@ What is bundled:
 - Windows release assets include a packaged Java runtime via jpackage.
 - Native Windows readboard is included in 'readboard/'.
 - Native Windows readboard is pinned to qiyi71w/readboard ${READBOARD_RELEASE_TAG} (${READBOARD_ASSET_NAME}, SHA256 ${READBOARD_ASSET_SHA256}).
-- The built-in Java readboard helper is also included in 'readboard_java/' for the explicit Java sync entry.
+- The Java readboard helper is embedded in the app jar and is extracted into the user runtime folder on first use.
 - The JCEF browser runtime for Yike web page and Yike hall is included in 'jcef-bundle/' (${JCEF_RELEASE_TAG}, SHA256 ${JCEF_ASSET_SHA256}), so these entries do not download browser components on first use.
 EOF
 

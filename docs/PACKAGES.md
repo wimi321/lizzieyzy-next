@@ -125,10 +125,10 @@
 ## 当前内置同步工具信息
 
 - Windows 发布包现在内置原生 `readboard/readboard.exe` 和依赖文件，正常使用不需要下载外部同步工具
-- `readboard_java` 简易棋盘同步工具仍作为备用方案随包交付
+- `readboard_java` 简易棋盘同步工具仍作为备用方案内置在主程序 jar 中，首次使用 Java 简易同步时会释放到用户 runtime 目录
 - Windows 原生路径：`Lizzieyzy/readboard/`
-- Windows / Linux Java 版路径：`Lizzieyzy/readboard_java/`
-- macOS 包路径：`LizzieYzy Next.app/Contents/app/readboard_java/`
+- Windows / Linux Java 版释放路径：便携版用户目录下的 `user-data/runtime/readboard_java/`
+- macOS Java 版释放路径：用户数据目录下的 `runtime/readboard_java/`
 
 ## 离线包体与启动性能治理
 

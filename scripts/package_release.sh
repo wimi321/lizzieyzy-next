@@ -221,12 +221,8 @@ copy_bundle_runtime_assets() {
 }
 
 copy_desktop_helper_assets() {
-  local app_dir="$1"
-
-  if [[ -d "$ROOT_DIR/src/main/resources/assets/readboard_java" ]]; then
-    mkdir -p "$app_dir/readboard_java"
-    cp -R "$ROOT_DIR/src/main/resources/assets/readboard_java/." "$app_dir/readboard_java/"
-  fi
+  local _app_dir="$1"
+  # Java readboard is embedded in the app jar and extracted into the user runtime folder on demand.
 }
 
 write_linux_install_note() {
@@ -277,7 +273,7 @@ Notes:
 - If your desktop environment does not start the app on double-click, launch it from the terminal first.
 - Fox kifu sync supports entering a Fox nickname directly.
 - If nickname search succeeds, the app also shows the matched nickname and account number in the results.
-- The built-in Java readboard helper is included in Lizzieyzy/readboard_java/.
+- The Java readboard helper is embedded in the app jar and is extracted into the user runtime folder on first use.
 EOF
 }
 
