@@ -2,6 +2,7 @@ package featurecat.lizzie.analysis;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.nio.file.Files;
@@ -130,97 +131,7 @@ class ReadBoardLaunchPathTest {
   }
 
   @Test
-  void resolveJavaReadBoardJarRecognizesJpackageAppLayout() throws Exception {
-    Path appRoot = Files.createDirectories(tempDir.resolve("LizzieYzy Next"));
-    Path javaReadBoardDir =
-        Files.createDirectories(appRoot.resolve("app").resolve("readboard_java"));
-    Path jar = Files.write(javaReadBoardDir.resolve("readboard-1.6.2-shaded.jar"), new byte[] {0});
-
-    assertEquals(
-        jar.toFile().getAbsolutePath(),
-        ReadBoard.resolveJavaReadBoardJar(
-                ReadBoard.javaReadBoardDirectoryCandidatesForBase(appRoot.toFile()),
-                "readboard-1.6.2-shaded.jar")
-            .getAbsolutePath());
-  }
-
-  @Test
-  void defaultJavaReadBoardDirectoryCandidatesIncludesUserRuntimeExtractionDirectory()
-      throws Exception {
-    String userHome = System.getProperty("user.home");
-    try {
-      System.setProperty("user.home", tempDir.toString());
-      String expected =
-          tempDir.resolve(".lizzieyzy-next").resolve("runtime").resolve("readboard_java")
-              .toFile()
-              .getAbsolutePath();
-
-      assertTrue(
-          ReadBoard.defaultJavaReadBoardDirectoryCandidates().stream()
-              .map(java.io.File::getAbsolutePath)
-              .anyMatch(expected::equals));
-    } finally {
-      System.setProperty("user.home", userHome);
-    }
-  }
-
-  @Test
-  void extractBundledJavaReadBoardCopiesHelperToWritableRuntimeDirectory() throws Exception {
-    Path targetDir = tempDir.resolve("runtime").resolve("readboard_java");
-
-    java.io.File jar =
-        ReadBoard.extractBundledJavaReadBoard("readboard-1.6.2-shaded.jar", targetDir.toFile());
-
-    assertTrue(jar.isFile());
-    assertTrue(jar.length() > 10_000_000L);
-    assertTrue(targetDir.resolve("help.docx").toFile().isFile());
-    assertTrue(targetDir.resolve("help_en.docx").toFile().isFile());
-    assertTrue(targetDir.resolve("help_jp.docx").toFile().isFile());
-  }
-
-  @Test
-  void buildJavaReadBoardProcessBuilderUsesAbsoluteJarAndJarDirectory() throws Exception {
-    Path javaReadBoardDir =
-        Files.createDirectories(tempDir.resolve("app").resolve("readboard_java"));
-    Path jar = Files.write(javaReadBoardDir.resolve("readboard-1.6.2-shaded.jar"), new byte[] {0});
-
-    ProcessBuilder processBuilder =
-        ReadBoard.buildJavaReadBoardProcessBuilder(
-            jar.toFile(), Arrays.asList("cn", "false", "14", "19", "19"), Arrays.asList("-Xmx64m"));
-
-    assertEquals("-jar", processBuilder.command().get(2));
-    assertEquals(jar.toFile().getAbsolutePath(), processBuilder.command().get(3));
-    assertEquals(
-        javaReadBoardDir.toFile().getAbsolutePath(), processBuilder.directory().getAbsolutePath());
-    assertTrue(processBuilder.redirectErrorStream());
-  }
-
-  @Test
-  void buildJavaReadBoardProcessBuilderUsesExplicitWorkingDirectory() throws Exception {
-    Path javaReadBoardDir =
-        Files.createDirectories(tempDir.resolve("app").resolve("readboard_java"));
-    Path workingDir = Files.createDirectories(tempDir.resolve("runtime").resolve("readboard_java"));
-    Path jar = Files.write(javaReadBoardDir.resolve("readboard-1.6.2-shaded.jar"), new byte[] {0});
-
-    ProcessBuilder processBuilder =
-        ReadBoard.buildJavaReadBoardProcessBuilder(
-            jar.toFile(),
-            workingDir.toFile(),
-            Arrays.asList("cn", "false", "14", "19", "19"),
-            Arrays.asList("-Xmx64m"));
-
-    assertEquals(jar.toFile().getAbsolutePath(), processBuilder.command().get(3));
-    assertEquals(
-        workingDir.toFile().getAbsolutePath(), processBuilder.directory().getAbsolutePath());
-    assertTrue(processBuilder.redirectErrorStream());
-  }
-
-  @Test
-  void canUseJavaReadBoardWorkingDirectoryRequiresWritableDirectory() throws Exception {
-    Path directory = Files.createDirectories(tempDir.resolve("writable"));
-    Path file = Files.write(tempDir.resolve("not-a-directory"), new byte[] {0});
-
-    assertTrue(ReadBoard.canUseJavaReadBoardWorkingDirectory(directory.toFile()));
-    assertFalse(ReadBoard.canUseJavaReadBoardWorkingDirectory(file.toFile()));
+  void constructorRejectsRetiredJavaReadBoardMode() {
+    assertThrows(UnsupportedOperationException.class, () -> new ReadBoard(true, true));
   }
 }

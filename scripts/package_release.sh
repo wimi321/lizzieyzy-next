@@ -222,7 +222,7 @@ copy_bundle_runtime_assets() {
 
 copy_desktop_helper_assets() {
   local _app_dir="$1"
-  # Java readboard is embedded in the app jar and extracted into the user runtime folder on demand.
+  # The retired Java readboard helper is intentionally not copied into release packages.
 }
 
 write_linux_install_note() {
@@ -273,7 +273,7 @@ Notes:
 - If your desktop environment does not start the app on double-click, launch it from the terminal first.
 - Fox kifu sync supports entering a Fox nickname directly.
 - If nickname search succeeds, the app also shows the matched nickname and account number in the results.
-- The Java readboard helper is embedded in the app jar and is extracted into the user runtime folder on first use.
+- Board sync uses the native readboard tool in Windows release packages; the retired Java helper is not bundled.
 EOF
 }
 

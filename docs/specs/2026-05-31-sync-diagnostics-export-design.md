@@ -181,7 +181,6 @@ environment.txt
 
 - `readBoardAttached`
 - `readBoardConnected`
-- `javaReadBoard`
 - `usePipe`
 - `syncing`
 - `awaitingFirstSyncFrame`

@@ -15,7 +15,7 @@ This installation guide is for the actively maintained `LizzieYzy Next` fork, wh
 - If you are looking for a maintained `LizzieYzy` build that still works, this is the project to check first
 - If you want to enter a `Fox nickname`, fetch games, and review them right away, the maintained fork already supports that flow
 - If you are worried about first-launch setup, the recommended bundles already include KataGo and a default weight
-- If you care about board sync, the Windows release packages now include native `readboard.exe`; the main app jar also embeds the simplified `readboard_java` fallback and extracts it on first use, so you do not need a separate repo first
+- If you care about board sync, the Windows release packages now include native `readboard.exe`; the app keeps a single board-sync entry for that native tool, so you do not need a separate repo first
 
 ## Pick The Right Package
 

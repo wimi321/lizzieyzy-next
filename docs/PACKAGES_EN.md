@@ -111,10 +111,8 @@ Paths:
 ## Bundled Board Sync Helper
 
 - Windows release packages now include native `readboard/readboard.exe` and its dependency files, so normal users do not need to download a separate board sync tool
-- The simplified `readboard_java` helper is embedded in the main app jar and is extracted into the user runtime folder on first use
 - Windows native path: `Lizzieyzy/readboard/`
-- Windows / Linux extracted Java helper path: `user-data/runtime/readboard_java/` in portable mode
-- macOS extracted Java helper path: `runtime/readboard_java/` under the user data folder
+- The app now keeps only the native readboard sync entry and no longer ships or starts the old simplified Java helper
 
 ## How To Read Old Versus New Release Layouts
 

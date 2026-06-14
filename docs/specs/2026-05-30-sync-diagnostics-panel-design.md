@@ -152,7 +152,6 @@ MVP 只做四件事：
 
 - `readBoardAttached`
 - `readBoardConnected`
-- `javaReadBoard`
 - `usePipe`
 - `isSyncing`
 - `pendingRemoteContextSummary`

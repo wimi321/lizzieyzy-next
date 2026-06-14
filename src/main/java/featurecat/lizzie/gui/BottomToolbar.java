@@ -1140,17 +1140,6 @@ public class BottomToolbar extends JPanel {
         });
     yike.add(foxKifu);
 
-    JFontMenuItem syncBoardJava =
-        new JFontMenuItem(
-            Lizzie.resourceBundle.getString("BottomToolbar.syncBoardJava")); // ("棋盘同步");
-    syncBoardJava.addActionListener(
-        new ActionListener() {
-          public void actionPerformed(ActionEvent e) {
-            Lizzie.frame.openReadBoardJava();
-          }
-        });
-    yike.add(syncBoardJava);
-
     JFontMenuItem syncBoard =
         new JFontMenuItem(Lizzie.resourceBundle.getString("BottomToolbar.syncBoard")); // ("棋盘同步");
     syncBoard.addActionListener(

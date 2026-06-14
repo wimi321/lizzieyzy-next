@@ -2332,13 +2332,9 @@ public class LizzieFrame extends JFrame {
     analysisTable.frame.setVisible(false);
   }
 
-  public void openReadBoardJava() {
-    reopenReadBoard(this::createJavaReadBoard);
-  }
-
   public void openBoardSync() {
     if (!isNativeBoardSyncSupported()) {
-      openReadBoardJava();
+      System.err.println("Native board synchronization is only available on Windows.");
       return;
     }
     if (!isNativeReadBoardAvailable()) {
@@ -2400,7 +2396,6 @@ public class LizzieFrame extends JFrame {
       return true;
     } catch (Exception e) {
       e.printStackTrace();
-      showReadBoardLoadFailedMessage();
       return false;
     }
   }
@@ -2410,16 +2405,6 @@ public class LizzieFrame extends JFrame {
     File readBoardExe = new File(readBoardDir, "readboard.exe");
     System.err.println(
         "Native board synchronization tool is missing: " + readBoardExe.getAbsolutePath());
-    showReadBoardLoadFailedMessage();
-  }
-
-  private void showReadBoardLoadFailedMessage() {
-    try {
-      SMessage msg = new SMessage();
-      msg.setMessage(Lizzie.resourceBundle.getString("ReadBoard.loadFailed"), 2);
-    } catch (RuntimeException ex) {
-      System.err.println("Unable to show readboard load failure message: " + ex.getMessage());
-    }
   }
 
   protected void shutdownReadBoard(ReadBoard targetReadBoard) {
@@ -2431,10 +2416,6 @@ public class LizzieFrame extends JFrame {
     } catch (Exception e) {
       e.printStackTrace();
     }
-  }
-
-  protected ReadBoard createJavaReadBoard() throws Exception {
-    return new ReadBoard(true, true);
   }
 
   protected boolean isNativeBoardSyncSupported() {
@@ -16097,9 +16078,9 @@ public class LizzieFrame extends JFrame {
 
   private void openInVisibleFrame() {
     if (OS.isWindows()) {
-      String javaReadBoardName = "invisibleFrame.jar";
-      File javaReadBoard = new File("clockHelper" + File.separator + javaReadBoardName);
-      if (!javaReadBoard.exists()) Utils.copyClockHelper();
+      String clockHelperJarName = "invisibleFrame.jar";
+      File clockHelperJar = new File("clockHelper" + File.separator + clockHelperJarName);
+      if (!clockHelperJar.exists()) Utils.copyClockHelper();
       try {
         String javaCommand = Utils.resolveJavaCommand();
         if (Utils.resolveExistingExecutable(javaCommand) == null
@@ -16107,7 +16088,7 @@ public class LizzieFrame extends JFrame {
           System.out.println("Clock helper skipped: bundled Java runtime was not resolved.");
           return;
         }
-        processClockHelper = Utils.startJavaJar(javaReadBoard, null, null);
+        processClockHelper = Utils.startJavaJar(clockHelperJar, null, null);
       } catch (Exception e) {
         System.out.println("Clock helper skipped: " + e.getLocalizedMessage());
         e.printStackTrace();

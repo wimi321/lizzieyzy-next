@@ -75,46 +75,6 @@ class LizzieFrameRegressionTest {
   }
 
   @Test
-  void openReadBoardJavaRestartsExistingReadBoardOnEdt() throws Exception {
-    TestEnvironment env = TestEnvironment.open();
-    try {
-      TrackingFrame frame = newTrackingFrame();
-      frame.readBoard = fakeReadBoard();
-      frame.allowShutdown.countDown();
-      Lizzie.frame = frame;
-
-      SwingUtilities.invokeAndWait(frame::openReadBoardJava);
-
-      assertTrue(frame.shutdownCalled.await(2, TimeUnit.SECONDS));
-      assertTrue(
-          frame.createCalled.await(2, TimeUnit.SECONDS),
-          "EDT restart should start a replacement ReadBoard.");
-      assertFalse(
-          frame.startedBeforeShutdownCompleted,
-          "replacement ReadBoard should only start after shutdown finishes detaching the old instance.");
-      assertSame(frame.replacementReadBoard, frame.readBoard);
-    } finally {
-      drainEdt();
-      env.close();
-    }
-  }
-
-  @Test
-  void openReadBoardJavaCoalescesConsecutiveRestartsOnEdt() throws Exception {
-    TestEnvironment env = TestEnvironment.open();
-    try {
-      TrackingFrame frame = newTrackingFrame();
-      frame.readBoard = fakeReadBoard();
-      Lizzie.frame = frame;
-
-      assertConsecutiveRestartIsCoalesced(frame, frame::openReadBoardJava);
-    } finally {
-      drainEdt();
-      env.close();
-    }
-  }
-
-  @Test
   void openBoardSyncCoalescesConsecutiveRestartsOnEdt() throws Exception {
     TestEnvironment env = TestEnvironment.open();
     try {
@@ -126,7 +86,6 @@ class LizzieFrameRegressionTest {
 
       assertConsecutiveRestartIsCoalesced(frame, frame::openBoardSync);
       assertEquals(1, frame.nativeCreateCount.get());
-      assertEquals(0, frame.javaCreateCount.get());
     } finally {
       drainEdt();
       env.close();
@@ -134,7 +93,7 @@ class LizzieFrameRegressionTest {
   }
 
   @Test
-  void openBoardSyncFallsBackToJavaWhenNativeSyncUnsupported() throws Exception {
+  void openBoardSyncDoesNotFallbackWhenNativeSyncUnsupported() throws Exception {
     TestEnvironment env = TestEnvironment.open();
     try {
       TrackingFrame frame = newTrackingFrame();
@@ -142,9 +101,8 @@ class LizzieFrameRegressionTest {
 
       SwingUtilities.invokeAndWait(frame::openBoardSync);
 
-      assertTrue(frame.createCalled.await(2, TimeUnit.SECONDS));
       assertEquals(0, frame.nativeCreateCount.get());
-      assertEquals(1, frame.javaCreateCount.get());
+      assertEquals(0, frame.createCount.get());
     } finally {
       drainEdt();
       env.close();
@@ -163,7 +121,6 @@ class LizzieFrameRegressionTest {
       SwingUtilities.invokeAndWait(frame::openBoardSync);
 
       assertEquals(0, frame.nativeCreateCount.get());
-      assertEquals(0, frame.javaCreateCount.get());
       assertEquals(0, frame.createCount.get());
     } finally {
       drainEdt();
@@ -184,7 +141,6 @@ class LizzieFrameRegressionTest {
       SwingUtilities.invokeAndWait(frame::openBoardSync);
 
       assertEquals(0, frame.nativeCreateCount.get());
-      assertEquals(0, frame.javaCreateCount.get());
       assertEquals(0, frame.createCount.get());
       assertTrue(getField(frame, "pendingReadBoardFactory") != null);
     } finally {
@@ -300,7 +256,6 @@ class LizzieFrameRegressionTest {
     frame.allowShutdown = new CountDownLatch(1);
     frame.shutdownCount = new AtomicInteger();
     frame.createCount = new AtomicInteger();
-    frame.javaCreateCount = new AtomicInteger();
     frame.nativeCreateCount = new AtomicInteger();
     frame.replacementReadBoard = fakeReadBoard();
     return frame;
@@ -659,7 +614,6 @@ class LizzieFrameRegressionTest {
     private CountDownLatch allowShutdown;
     private AtomicInteger shutdownCount;
     private AtomicInteger createCount;
-    private AtomicInteger javaCreateCount;
     private AtomicInteger nativeCreateCount;
     private ReadBoard replacementReadBoard;
     private boolean nativeBoardSyncSupported;
@@ -677,12 +631,6 @@ class LizzieFrameRegressionTest {
       await(allowShutdown);
       readBoard = null;
       shutdownCompleted = true;
-    }
-
-    @Override
-    protected ReadBoard createJavaReadBoard() {
-      javaCreateCount.incrementAndGet();
-      return recordCreate();
     }
 
     @Override

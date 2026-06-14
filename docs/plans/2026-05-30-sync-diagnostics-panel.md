@@ -571,7 +571,7 @@ SyncDiagnostics.close=关闭
 
 - [ ] **Step 2: Add the menu item near readboard sync actions**
 
-In `BottomToolbar.java`, add a `JFontMenuItem` after the existing `syncBoard` / `syncBoardJava` items in the Yike popup:
+In `BottomToolbar.java`, add a `JFontMenuItem` after the existing `syncBoard` item in the Yike popup:
 
 ```java
 JFontMenuItem syncDiagnostics =

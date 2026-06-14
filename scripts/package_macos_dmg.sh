@@ -204,7 +204,7 @@ Bundled KataGo paths inside the app bundle:
 Notes:
 - This package is unsigned and not notarized.
 - For Intel/Apple Silicon dual-native support, build once on each architecture.
-- The Java readboard helper is embedded in the app jar and is extracted into the user runtime folder on first use.
+- Board sync uses the native readboard tool in Windows release packages; the retired Java helper is not bundled.
 EOF
 
 write_sha256_file "$SHA256_FILE" "$FINAL_DMG" "$INSTALL_NOTE"

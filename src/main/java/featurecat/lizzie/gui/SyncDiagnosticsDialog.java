@@ -221,7 +221,6 @@ public class SyncDiagnosticsDialog extends JDialog {
     StringBuilder text = new StringBuilder();
     text.append("attached: ").append(sync.isReadBoardAttached()).append('\n');
     text.append("connected: ").append(sync.isReadBoardConnected()).append('\n');
-    text.append("javaReadBoard: ").append(sync.isJavaReadBoard()).append('\n');
     text.append("usePipe: ").append(sync.isUsePipe()).append('\n');
     text.append("syncing: ").append(sync.isSyncing()).append('\n');
     text.append("awaitingFirstSyncFrame: ").append(sync.isAwaitingFirstSyncFrame()).append('\n');

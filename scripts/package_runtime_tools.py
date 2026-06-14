@@ -284,7 +284,7 @@ def generate_app_cds(args: argparse.Namespace) -> int:
     if not java.exists():
         return app_cds_fallback(args, archive, manifest, f"java not found in runtime: {runtime}")
     jars = sorted(path for path in app_dir.glob("*.jar") if path.is_file())
-    for child_name in ("readboard_java", "lib"):
+    for child_name in ("lib",):
         child = app_dir / child_name
         if child.is_dir():
             jars.extend(sorted(path for path in child.glob("*.jar") if path.is_file()))
@@ -444,7 +444,6 @@ def audit_sizes(args: argparse.Namespace) -> int:
         ("shaded jar", root / "target" / "lizzie-yzy2.5.3-shaded.jar"),
         ("plain jar", root / "target" / "lizzie-yzy2.5.3.jar"),
         ("source resources", root / "src" / "main" / "resources"),
-        ("readboard_java resource", root / "src" / "main" / "resources" / "assets" / "readboard_java"),
         ("strength models resource", root / "src" / "main" / "resources" / "models" / "strength"),
         ("ui image resources", root / "src" / "main" / "resources" / "assets" / "ui"),
         ("weights", root / "weights"),

@@ -853,7 +853,7 @@ What is bundled:
 - Windows release assets include a packaged Java runtime via jpackage.
 - Native Windows readboard is included in 'readboard/'.
 - Native Windows readboard is pinned to qiyi71w/readboard ${READBOARD_RELEASE_TAG} (${READBOARD_ASSET_NAME}, SHA256 ${READBOARD_ASSET_SHA256}).
-- The Java readboard helper is embedded in the app jar and is extracted into the user runtime folder on first use.
+- The retired Java readboard helper is not bundled; the app keeps a single native readboard sync entry.
 - The JCEF browser runtime for Yike web page and Yike hall is included in 'jcef-bundle/' (${JCEF_RELEASE_TAG}, SHA256 ${JCEF_ASSET_SHA256}), so these entries do not download browser components on first use.
 EOF
 
