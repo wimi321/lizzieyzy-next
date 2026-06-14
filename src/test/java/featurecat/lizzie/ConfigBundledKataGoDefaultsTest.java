@@ -35,7 +35,7 @@ public class ConfigBundledKataGoDefaultsTest {
   }
 
   @Test
-  void defaultConfigHidesBlunderBarWhileKeepingAutoQuickAnalyzeOnLoad() throws Exception {
+  void defaultConfigHidesBlunderBarAndDisablesAutoQuickAnalyzeOnLoad() throws Exception {
     Path tempRoot = Files.createTempDirectory("lizzie-config-default-ui");
     Config config = ConfigTestHelper.createForTests(tempRoot);
     JSONObject defaultConfig = createDefaultConfig(config);
@@ -43,7 +43,7 @@ public class ConfigBundledKataGoDefaultsTest {
 
     assertFalse(config.showBlunderBar);
     assertFalse(ui.getBoolean("show-blunder-bar"));
-    assertTrue(ui.getBoolean("auto-quick-analyze-on-load"));
+    assertFalse(ui.getBoolean("auto-quick-analyze-on-load"));
   }
 
   @Test
