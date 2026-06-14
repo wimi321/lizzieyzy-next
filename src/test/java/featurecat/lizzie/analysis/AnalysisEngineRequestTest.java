@@ -12,6 +12,7 @@ import featurecat.lizzie.gui.LizzieFrame;
 import featurecat.lizzie.rules.Board;
 import featurecat.lizzie.rules.BoardData;
 import featurecat.lizzie.rules.BoardHistoryList;
+import featurecat.lizzie.rules.BoardHistoryNode;
 import featurecat.lizzie.rules.Movelist;
 import featurecat.lizzie.rules.SGFParser;
 import featurecat.lizzie.rules.Stone;
@@ -135,6 +136,131 @@ class AnalysisEngineRequestTest {
           request.getJSONArray("moves").toList(),
           "Yike curve completion should request only the missing current mainline node.");
       assertEquals(List.of(2), request.getJSONArray("analyzeTurns").toList());
+    }
+  }
+
+  @Test
+  void startRequestMissingMainlineStillSkipsExistingAnalysisWhenOverrideIsEnabled()
+      throws Exception {
+    try (TestEnvironment env = TestEnvironment.open()) {
+      Lizzie.config.analysisAlwaysOverride = true;
+      BoardHistoryList history = new BoardHistoryList(BoardData.empty(BOARD_SIZE, BOARD_SIZE));
+      BoardData analyzed =
+          moveNode(stones(placement(0, 0, Stone.BLACK)), new int[] {0, 0}, Stone.BLACK, false, 1);
+      analyzed.setPlayouts(120);
+      analyzed.engineName = "cached-analysis";
+      history.add(analyzed);
+      history.add(
+          moveNode(
+              stones(placement(0, 0, Stone.BLACK), placement(1, 0, Stone.WHITE)),
+              new int[] {1, 0},
+              Stone.WHITE,
+              true,
+              2));
+      boardWithHistory(history);
+      TrackingAnalysisEngine engine = TrackingAnalysisEngine.create();
+
+      int requested = engine.startRequestMissingMainline(false);
+
+      assertEquals(
+          1,
+          requested,
+          "missing-mainline completion is a preservation path and should not reanalyze cached nodes.");
+      assertEquals(1, engine.requestCount());
+      assertEquals(List.of(2), engine.singleRequest().getJSONArray("analyzeTurns").toList());
+    }
+  }
+
+  @Test
+  void startRequestSkipsExistingAnalysisByDefault() throws Exception {
+    try (TestEnvironment env = TestEnvironment.open()) {
+      BoardHistoryList history = new BoardHistoryList(BoardData.empty(BOARD_SIZE, BOARD_SIZE));
+      BoardData analyzed =
+          moveNode(stones(placement(0, 0, Stone.BLACK)), new int[] {0, 0}, Stone.BLACK, false, 1);
+      analyzed.setPlayouts(120);
+      analyzed.engineName = "cached-analysis";
+      history.add(analyzed);
+      history.add(
+          moveNode(
+              stones(placement(0, 0, Stone.BLACK), placement(1, 0, Stone.WHITE)),
+              new int[] {1, 0},
+              Stone.WHITE,
+              true,
+              2));
+      boardWithHistory(history);
+      TrackingAnalysisEngine engine = TrackingAnalysisEngine.create();
+
+      engine.startRequest(-1, -1, false);
+
+      assertEquals(
+          1,
+          engine.requestCount(),
+          "flash analysis should preserve existing node analysis unless override is enabled.");
+      JSONObject request = engine.singleRequest();
+      assertEquals(
+          List.of(List.of("B", "A3"), List.of("W", "B3")),
+          request.getJSONArray("moves").toList(),
+          "continuing analysis should still send the full move context for the missing node.");
+      assertEquals(List.of(2), request.getJSONArray("analyzeTurns").toList());
+    }
+  }
+
+  @Test
+  void startRequestReanalyzesExistingMovesWhenAlwaysOverrideIsEnabled() throws Exception {
+    try (TestEnvironment env = TestEnvironment.open()) {
+      Lizzie.config.analysisAlwaysOverride = true;
+      BoardHistoryList history = new BoardHistoryList(BoardData.empty(BOARD_SIZE, BOARD_SIZE));
+      BoardData analyzed =
+          moveNode(stones(placement(0, 0, Stone.BLACK)), new int[] {0, 0}, Stone.BLACK, false, 1);
+      analyzed.setPlayouts(120);
+      history.add(analyzed);
+      history.add(
+          moveNode(
+              stones(placement(0, 0, Stone.BLACK), placement(1, 0, Stone.WHITE)),
+              new int[] {1, 0},
+              Stone.WHITE,
+              true,
+              2));
+      boardWithHistory(history);
+      TrackingAnalysisEngine engine = TrackingAnalysisEngine.create();
+
+      engine.startRequest(-1, -1, false);
+
+      assertEquals(
+          2,
+          engine.requestCount(),
+          "explicit override should still allow users to recalculate the whole selected range.");
+      assertEquals(List.of(1), engine.requestAt(0).getJSONArray("analyzeTurns").toList());
+      assertEquals(List.of(2), engine.requestAt(1).getJSONArray("analyzeTurns").toList());
+    }
+  }
+
+  @Test
+  void parseResultHonorsAlwaysOverrideEvenWhenNewVisitsAreLower() throws Exception {
+    try (TestEnvironment env = TestEnvironment.open()) {
+      Lizzie.config.analysisAlwaysOverride = true;
+      Lizzie.config.enableLizzieCache = true;
+      BoardHistoryList history = new BoardHistoryList(BoardData.empty(BOARD_SIZE, BOARD_SIZE));
+      BoardData analyzed =
+          moveNode(stones(placement(0, 0, Stone.BLACK)), new int[] {0, 0}, Stone.BLACK, false, 1);
+      analyzed.setPlayouts(120);
+      analyzed.winrate = 42.0;
+      analyzed.engineName = "cached-analysis";
+      history.add(analyzed);
+      BoardHistoryNode analyzedNode = history.getCurrentHistoryNode();
+      boardWithHistory(history);
+      TrackingAnalysisEngine engine = TrackingAnalysisEngine.create();
+      engine.trackPending(1, analyzedNode);
+      engine.trackPending(2, analyzedNode);
+
+      engine.parseResult(analysisResponse(1, 1, 0.77).toString());
+
+      assertEquals(
+          1,
+          analyzed.getPlayouts(),
+          "always override should bypass cache guards even when the new flash result has fewer visits.");
+      assertEquals(77.0, analyzed.winrate, 0.0001);
+      assertFalse("cached-analysis".equals(analyzed.engineName));
     }
   }
 
@@ -679,6 +805,24 @@ class AnalysisEngineRequestTest {
     return result;
   }
 
+  private static JSONObject analysisResponse(int id, int visits, double winrate) {
+    JSONObject moveInfo = new JSONObject();
+    moveInfo.put("order", 0);
+    moveInfo.put("move", "C3");
+    moveInfo.put("visits", visits);
+    moveInfo.put("winrate", winrate);
+    moveInfo.put("lcb", winrate);
+    moveInfo.put("prior", 0.25);
+    moveInfo.put("scoreLead", 1.5);
+    moveInfo.put("scoreStdev", 0.3);
+    moveInfo.put("pv", new JSONArray().put("C3"));
+
+    JSONObject response = new JSONObject();
+    response.put("id", String.valueOf(id));
+    response.put("moveInfos", new JSONArray().put(moveInfo));
+    return response;
+  }
+
   private static Placement placement(int x, int y, Stone color) {
     return new Placement(x, y, color);
   }
@@ -841,6 +985,7 @@ class AnalysisEngineRequestTest {
       setField(AnalysisEngine.class, engine, "silentProgress", false);
       setField(AnalysisEngine.class, engine, "shouldRePonder", false);
       setField(AnalysisEngine.class, engine, "isLoaded", true);
+      setField(AnalysisEngine.class, engine, "resourceBundle", Lizzie.resourceBundle);
       return engine;
     }
 
@@ -860,6 +1005,17 @@ class AnalysisEngineRequestTest {
 
     private int requestCount() {
       return sentCommands.size();
+    }
+
+    private JSONObject requestAt(int index) {
+      return new JSONObject(sentCommands.get(index));
+    }
+
+    @SuppressWarnings("unchecked")
+    private void trackPending(int id, BoardHistoryNode node) throws Exception {
+      Field field = AnalysisEngine.class.getDeclaredField("analyzeMap");
+      field.setAccessible(true);
+      ((java.util.Map<Integer, BoardHistoryNode>) field.get(this)).put(id, node);
     }
 
     private int pendingRequestCount() throws Exception {

@@ -284,14 +284,18 @@ public class AnalysisEngine {
               resourceBundle.getString("AnalysisEngine.flashAnalyze"),
               false,
               MoveData.getPlayouts(moves),
-              (ArrayList<Double>) (List) list);
-    } else
+              (ArrayList<Double>) (List) list,
+              Lizzie.config.analysisAlwaysOverride);
+    } else {
       node.getData()
           .tryToSetBestMoves(
               moves,
               resourceBundle.getString("AnalysisEngine.flashAnalyze"),
               false,
-              MoveData.getPlayouts(moves));
+              MoveData.getPlayouts(moves),
+              null,
+              Lizzie.config.analysisAlwaysOverride);
+    }
 
     node.getData().comment = SGFParser.formatComment(node);
     Lizzie.board.updateMovelist(node);
@@ -313,16 +317,19 @@ public class AnalysisEngine {
     if (Lizzie.config.analysisAlwaysOverride) {
       Lizzie.config.enableLizzieCache = false;
     }
-    Lizzie.board.setMovelistAll();
-    if (Lizzie.board.getHistory().getCurrentHistoryNode() == Lizzie.board.getHistory().getStart())
-      Lizzie.board.nextMove(true);
-    Lizzie.frame.refresh();
-    Lizzie.frame.requestProblemListRefresh();
-    if (Lizzie.config.analysisAutoQuit && !Lizzie.frame.isBatchAna) {
-      normalQuit();
+    try {
+      Lizzie.board.setMovelistAll();
+      if (Lizzie.board.getHistory().getCurrentHistoryNode() == Lizzie.board.getHistory().getStart())
+        Lizzie.board.nextMove(true);
+      Lizzie.frame.refresh();
+      Lizzie.frame.requestProblemListRefresh();
+      if (Lizzie.config.analysisAutoQuit && !Lizzie.frame.isBatchAna) {
+        normalQuit();
+      }
+    } finally {
+      if (Lizzie.config.analysisAlwaysOverride)
+        Lizzie.config.enableLizzieCache = oriEnableLizzieCache;
     }
-    if (Lizzie.config.analysisAlwaysOverride)
-      Lizzie.config.enableLizzieCache = oriEnableLizzieCache;
     if (shouldRePonder && !Lizzie.leelaz.isPondering()) Lizzie.leelaz.togglePonder();
     Lizzie.frame.renderVarTree(0, 0, false, false);
     runCompletionCallback();
@@ -348,7 +355,7 @@ public class AnalysisEngine {
     stack.push(node);
     while (!stack.isEmpty()) {
       BoardHistoryNode cur = stack.pop();
-      if (shouldAnalyzeBranchNode(cur)) {
+      if (shouldAnalyzeNode(cur)) {
         if (!sendRequest(cur)) break;
       }
       if (cur.numberOfChildren() >= 1) {
@@ -369,7 +376,7 @@ public class AnalysisEngine {
     BoardHistoryNode node = firstHistoryActionNode(Lizzie.board.getHistory().getStart());
     int moveNum = 1;
     while (node != null) {
-      if (shouldAnalyzeTurn(moveNum, startMove, endMove)) {
+      if (shouldAnalyzeTurn(moveNum, startMove, endMove) && shouldAnalyzeNode(node)) {
         if (!sendRequest(node)) break;
       }
       node = nextHistoryActionNode(node);
@@ -383,7 +390,7 @@ public class AnalysisEngine {
     prepareRequestState(showProgressDialog);
     BoardHistoryNode node = firstHistoryActionNode(Lizzie.board.getHistory().getStart());
     while (node != null) {
-      if (!node.getData().hasPrimaryAnalysisPayload()) {
+      if (shouldAnalyzeMissingNode(node)) {
         if (!sendRequest(node)) break;
       }
       node = nextHistoryActionNode(node);
@@ -522,7 +529,7 @@ public class AnalysisEngine {
   }
 
   private static boolean isRealHistoryAction(BoardData data) {
-    return data.isMoveNode() || (data.isPassNode() && !data.dummy);
+    return data != null && (data.isMoveNode() || (data.isPassNode() && !data.dummy));
   }
 
   private static boolean shouldAnalyzeTurn(int moveNum, int startMove, int endMove) {
@@ -660,8 +667,15 @@ public class AnalysisEngine {
     return moveList;
   }
 
-  private static boolean shouldAnalyzeBranchNode(BoardHistoryNode node) {
-    return isRealHistoryAction(node.getData());
+  private static boolean shouldAnalyzeNode(BoardHistoryNode node) {
+    BoardData data = node == null ? null : node.getData();
+    return isRealHistoryAction(data)
+        && (Lizzie.config.analysisAlwaysOverride || !data.hasPrimaryAnalysisPayload());
+  }
+
+  private static boolean shouldAnalyzeMissingNode(BoardHistoryNode node) {
+    BoardData data = node == null ? null : node.getData();
+    return isRealHistoryAction(data) && !data.hasPrimaryAnalysisPayload();
   }
 
   public void shutdown() {
