@@ -198,6 +198,38 @@ class LizzieFrameRegressionTest {
   }
 
   @Test
+  void autoQuickAnalyzeSkipsWhenExistingAnalysisIsBelowTargetVisits() throws Exception {
+    TestEnvironment env = TestEnvironment.open();
+    try {
+      Lizzie.config = configWithAutoQuickAnalyze();
+      Lizzie.board = boardWith(historyWithLowVisitAnalyzedMove());
+      LizzieFrame frame = allocate(LizzieFrame.class);
+
+      assertFalse(
+          invokeShouldAutoQuickAnalyze(frame),
+          "ordinary SGF load should not start auto quick analyze for already analyzed moves.");
+    } finally {
+      env.close();
+    }
+  }
+
+  @Test
+  void autoQuickAnalyzeSkipsWhenExistingAnalysisExists() throws Exception {
+    TestEnvironment env = TestEnvironment.open();
+    try {
+      Lizzie.config = configWithAutoQuickAnalyze();
+      Lizzie.board = boardWith(historyWithTargetVisitAnalyzedMove());
+      LizzieFrame frame = allocate(LizzieFrame.class);
+
+      assertFalse(
+          invokeShouldAutoQuickAnalyze(frame),
+          "auto quick analyze should not restart when all mainline moves already have analysis.");
+    } finally {
+      env.close();
+    }
+  }
+
+  @Test
   void foxKifuLoadStartsSilentQuickAnalyzeBeforePrimaryEngineIsReady() throws Exception {
     TestEnvironment env = TestEnvironment.open();
     try {
@@ -218,6 +250,34 @@ class LizzieFrameRegressionTest {
       assertTrue(frame.lastSilentAnalyze);
       assertEquals(
           0, frame.refreshCount, "auto quick analyze should not fall back to ponder refresh.");
+    } finally {
+      env.close();
+    }
+  }
+
+  @Test
+  void loadedGameStartsSilentQuickAnalyzeForUnanalyzedMovesWhilePrimaryEngineIsAnalyzing()
+      throws Exception {
+    TestEnvironment env = TestEnvironment.open();
+    try {
+      Lizzie.config = configWithAutoQuickAnalyze();
+      Lizzie.board = boardWith(historyWithUnanalyzedMove());
+      TrackingLeelaz leelaz = allocate(TrackingLeelaz.class);
+      leelaz.pondering = true;
+      Lizzie.leelaz = leelaz;
+      EngineManager.isEmpty = false;
+      EngineManager.isEngineGame = false;
+      EngineManager.isPreEngineGame = false;
+      AnalysisResumeTrackingFrame frame = allocate(AnalysisResumeTrackingFrame.class);
+      Lizzie.frame = frame;
+
+      assertTrue(frame.ensureAnalysisResumedAfterLoad());
+      assertEquals(1, frame.flashAnalyzeGameCount);
+      assertTrue(frame.lastIsAllGame);
+      assertFalse(frame.lastIsAllBranches);
+      assertTrue(frame.lastSilentAnalyze);
+      assertEquals(0, frame.refreshCount);
+      assertEquals(0, leelaz.ponderCount);
     } finally {
       env.close();
     }
@@ -414,16 +474,16 @@ class LizzieFrameRegressionTest {
 
   private static BoardHistoryList historyWithAnalyzedMoveThenSnapshotMarker() {
     BoardHistoryList history = new BoardHistoryList(BoardData.empty(BOARD_SIZE, BOARD_SIZE));
-    history.add(moveData(new int[] {0, 0}, Stone.BLACK, false, 1, 1));
+    history.add(moveData(new int[] {0, 0}, Stone.BLACK, false, 1, targetAnalysisVisitsForTest()));
     history.add(snapshotData(new int[] {1, 1}, Stone.WHITE, true, 2));
     return history;
   }
 
   private static BoardHistoryList historyWithAnalyzedMoveThenDummyPass() {
     BoardHistoryList history = new BoardHistoryList(BoardData.empty(BOARD_SIZE, BOARD_SIZE));
-    history.add(moveData(new int[] {0, 0}, Stone.BLACK, false, 1, 1));
+    history.add(moveData(new int[] {0, 0}, Stone.BLACK, false, 1, targetAnalysisVisitsForTest()));
     history.add(dummyPassData(Stone.WHITE, true, 2));
-    history.add(moveData(new int[] {1, 1}, Stone.WHITE, false, 3, 1));
+    history.add(moveData(new int[] {1, 1}, Stone.WHITE, false, 3, targetAnalysisVisitsForTest()));
     return history;
   }
 
@@ -431,6 +491,25 @@ class LizzieFrameRegressionTest {
     BoardHistoryList history = new BoardHistoryList(BoardData.empty(BOARD_SIZE, BOARD_SIZE));
     history.add(moveData(new int[] {0, 0}, Stone.BLACK, false, 1, 0));
     return history;
+  }
+
+  private static BoardHistoryList historyWithLowVisitAnalyzedMove() {
+    BoardHistoryList history = new BoardHistoryList(BoardData.empty(BOARD_SIZE, BOARD_SIZE));
+    history.add(
+        moveData(
+            new int[] {0, 0}, Stone.BLACK, false, 1, targetAnalysisVisitsForTest() - 1));
+    return history;
+  }
+
+  private static BoardHistoryList historyWithTargetVisitAnalyzedMove() {
+    BoardHistoryList history = new BoardHistoryList(BoardData.empty(BOARD_SIZE, BOARD_SIZE));
+    history.add(
+        moveData(new int[] {0, 0}, Stone.BLACK, false, 1, targetAnalysisVisitsForTest()));
+    return history;
+  }
+
+  private static int targetAnalysisVisitsForTest() {
+    return Lizzie.config.analysisMaxVisits + 1;
   }
 
   private static BoardData moveData(
@@ -513,6 +592,7 @@ class LizzieFrameRegressionTest {
   private static Config configWithAutoQuickAnalyze(boolean enabled) throws Exception {
     Config config = allocate(Config.class);
     config.autoQuickAnalyzeOnLoad = enabled;
+    config.analysisMaxVisits = 32;
     return config;
   }
 
@@ -701,6 +781,26 @@ class LizzieFrameRegressionTest {
     @Override
     public void refresh() {
       refreshCount++;
+    }
+  }
+
+  private static final class TrackingLeelaz extends Leelaz {
+    private boolean pondering;
+    private int ponderCount;
+
+    private TrackingLeelaz() throws java.io.IOException {
+      super("");
+    }
+
+    @Override
+    public boolean isPondering() {
+      return pondering;
+    }
+
+    @Override
+    public void ponder() {
+      ponderCount++;
+      pondering = true;
     }
   }
 

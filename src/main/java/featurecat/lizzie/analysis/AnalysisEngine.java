@@ -274,6 +274,11 @@ public class AnalysisEngine {
     int id = Integer.parseInt(result.getString("id"));
     BoardHistoryNode node = analyzeMap.get(id);
     if (node == null) return;
+    if (shouldKeepForegroundAnalysis(node)) {
+      resultCount++;
+      if (resultCount == analyzeMap.size()) setResult();
+      return;
+    }
     List<MoveData> moves = Utils.getBestMovesFromJsonArray(moveInfos, true, true);
     if (result.has("ownership")) {
       JSONArray ownership = result.getJSONArray("ownership");
@@ -308,6 +313,15 @@ public class AnalysisEngine {
       Lizzie.frame.refresh();
     }
     if (resultCount == analyzeMap.size()) setResult();
+  }
+
+  private boolean shouldKeepForegroundAnalysis(BoardHistoryNode node) {
+    return silentProgress
+        && Lizzie.leelaz != null
+        && (Lizzie.leelaz.isPondering() || Lizzie.leelaz.isThinking)
+        && Lizzie.board != null
+        && Lizzie.board.getHistory() != null
+        && node == Lizzie.board.getHistory().getCurrentHistoryNode();
   }
 
   private void setResult() {
@@ -355,7 +369,7 @@ public class AnalysisEngine {
     stack.push(node);
     while (!stack.isEmpty()) {
       BoardHistoryNode cur = stack.pop();
-      if (shouldAnalyzeNode(cur)) {
+      if (shouldAnalyzeBranchNode(cur)) {
         if (!sendRequest(cur)) break;
       }
       if (cur.numberOfChildren() >= 1) {
@@ -373,10 +387,12 @@ public class AnalysisEngine {
   public void startRequest(int startMove, int endMove, boolean showProgressDialog) {
     if (!isLoaded) return;
     prepareRequestState(showProgressDialog);
+    int targetVisits = targetAnalysisVisits();
     BoardHistoryNode node = firstHistoryActionNode(Lizzie.board.getHistory().getStart());
     int moveNum = 1;
     while (node != null) {
-      if (shouldAnalyzeTurn(moveNum, startMove, endMove) && shouldAnalyzeNode(node)) {
+      if (shouldAnalyzeTurn(moveNum, startMove, endMove)
+          && shouldAnalyzeNode(node, targetVisits)) {
         if (!sendRequest(node)) break;
       }
       node = nextHistoryActionNode(node);
@@ -414,7 +430,7 @@ public class AnalysisEngine {
     requestDispatchFailed = false;
     silentProgress = !showProgressDialog;
     if (!showProgressDialog) waitFrame = null;
-    if (Lizzie.leelaz.isPondering()) {
+    if (showProgressDialog && Lizzie.leelaz.isPondering()) {
       Lizzie.leelaz.togglePonder();
       shouldRePonder = true;
     } else shouldRePonder = false;
@@ -456,10 +472,7 @@ public class AnalysisEngine {
 
   public boolean sendRequest(BoardHistoryNode analyzeNode) {
     JSONObject request = new JSONObject();
-    int maxVisits =
-        Lizzie.frame.isBatchAnalysisMode
-            ? Math.max(2, Lizzie.config.batchAnalysisPlayouts)
-            : Lizzie.config.analysisMaxVisits + 1;
+    int maxVisits = targetAnalysisVisits();
     request.put("id", String.valueOf(globalID));
     request.put("maxVisits", maxVisits);
     request.put("includePVVisits", Lizzie.config.showPvVisits);
@@ -667,15 +680,26 @@ public class AnalysisEngine {
     return moveList;
   }
 
-  private static boolean shouldAnalyzeNode(BoardHistoryNode node) {
+  private static boolean shouldAnalyzeBranchNode(BoardHistoryNode node) {
+    BoardData data = node == null ? null : node.getData();
+    return isRealHistoryAction(data) && shouldAnalyzeNode(node, targetAnalysisVisits());
+  }
+
+  private static boolean shouldAnalyzeNode(BoardHistoryNode node, int targetVisits) {
     BoardData data = node == null ? null : node.getData();
     return isRealHistoryAction(data)
-        && (Lizzie.config.analysisAlwaysOverride || !data.hasPrimaryAnalysisPayload());
+        && (Lizzie.config.analysisAlwaysOverride || data.getPlayouts() < targetVisits);
   }
 
   private static boolean shouldAnalyzeMissingNode(BoardHistoryNode node) {
     BoardData data = node == null ? null : node.getData();
     return isRealHistoryAction(data) && !data.hasPrimaryAnalysisPayload();
+  }
+
+  public static int targetAnalysisVisits() {
+    return Lizzie.frame != null && Lizzie.frame.isBatchAnalysisMode
+        ? Math.max(2, Lizzie.config.batchAnalysisPlayouts)
+        : Lizzie.config.analysisMaxVisits + 1;
   }
 
   public void shutdown() {

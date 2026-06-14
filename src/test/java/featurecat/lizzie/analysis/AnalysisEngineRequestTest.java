@@ -172,36 +172,21 @@ class AnalysisEngineRequestTest {
   }
 
   @Test
-  void startRequestSkipsExistingAnalysisByDefault() throws Exception {
+  void startRequestMissingMainlineSkipsLowVisitExistingAnalysis() throws Exception {
     try (TestEnvironment env = TestEnvironment.open()) {
       BoardHistoryList history = new BoardHistoryList(BoardData.empty(BOARD_SIZE, BOARD_SIZE));
-      BoardData analyzed =
+      BoardData lowVisits =
           moveNode(stones(placement(0, 0, Stone.BLACK)), new int[] {0, 0}, Stone.BLACK, false, 1);
-      analyzed.setPlayouts(120);
-      analyzed.engineName = "cached-analysis";
-      history.add(analyzed);
-      history.add(
-          moveNode(
-              stones(placement(0, 0, Stone.BLACK), placement(1, 0, Stone.WHITE)),
-              new int[] {1, 0},
-              Stone.WHITE,
-              true,
-              2));
+      lowVisits.setPlayouts(AnalysisEngine.targetAnalysisVisits() - 1);
+      lowVisits.engineName = "partial-analysis";
+      history.add(lowVisits);
       boardWithHistory(history);
       TrackingAnalysisEngine engine = TrackingAnalysisEngine.create();
 
-      engine.startRequest(-1, -1, false);
+      int requested = engine.startRequestMissingMainline(false);
 
-      assertEquals(
-          1,
-          engine.requestCount(),
-          "flash analysis should preserve existing node analysis unless override is enabled.");
-      JSONObject request = engine.singleRequest();
-      assertEquals(
-          List.of(List.of("B", "A3"), List.of("W", "B3")),
-          request.getJSONArray("moves").toList(),
-          "continuing analysis should still send the full move context for the missing node.");
-      assertEquals(List.of(2), request.getJSONArray("analyzeTurns").toList());
+      assertEquals(0, requested);
+      assertEquals(0, engine.requestCount());
     }
   }
 
@@ -433,6 +418,112 @@ class AnalysisEngineRequestTest {
   }
 
   @Test
+  void startRequestSkipsMovesAtTargetVisitsButContinuesLowerVisits() throws Exception {
+    try (TestEnvironment env = TestEnvironment.open()) {
+      BoardHistoryList history = new BoardHistoryList(BoardData.empty(BOARD_SIZE, BOARD_SIZE));
+      int targetVisits = AnalysisEngine.targetAnalysisVisits();
+      BoardData complete =
+          moveNode(stones(placement(0, 0, Stone.BLACK)), new int[] {0, 0}, Stone.BLACK, false, 1);
+      complete.setPlayouts(targetVisits);
+      history.add(complete);
+      BoardData lowVisits =
+          moveNode(
+              stones(placement(0, 0, Stone.BLACK), placement(1, 0, Stone.WHITE)),
+              new int[] {1, 0},
+              Stone.WHITE,
+              true,
+              2);
+      lowVisits.setPlayouts(targetVisits - 1);
+      history.add(lowVisits);
+      boardWithHistory(history);
+      TrackingAnalysisEngine engine = TrackingAnalysisEngine.create();
+
+      engine.startRequest(-1, -1, false);
+
+      assertEquals(1, engine.requestCount(), "flash analysis should continue partial results.");
+      JSONObject request = engine.singleRequest();
+      assertEquals(
+          List.of(List.of("B", "A3"), List.of("W", "B3")),
+          request.getJSONArray("moves").toList());
+      assertEquals(List.of(2), request.getJSONArray("analyzeTurns").toList());
+      assertEquals(targetVisits, request.getInt("maxVisits"));
+    }
+  }
+
+  @Test
+  void startRequestOverrideReanalyzesMovesAtTargetVisits() throws Exception {
+    try (TestEnvironment env = TestEnvironment.open()) {
+      Lizzie.config.analysisAlwaysOverride = true;
+      BoardHistoryList history = new BoardHistoryList(BoardData.empty(BOARD_SIZE, BOARD_SIZE));
+      BoardData complete =
+          moveNode(stones(placement(0, 0, Stone.BLACK)), new int[] {0, 0}, Stone.BLACK, false, 1);
+      complete.setPlayouts(AnalysisEngine.targetAnalysisVisits());
+      history.add(complete);
+      boardWithHistory(history);
+      TrackingAnalysisEngine engine = TrackingAnalysisEngine.create();
+
+      engine.startRequest(-1, -1, false);
+
+      assertEquals(1, engine.requestCount(), "explicit override should still reanalyze.");
+      JSONObject request = engine.singleRequest();
+      assertEquals(List.of(List.of("B", "A3")), request.getJSONArray("moves").toList());
+      assertEquals(List.of(1), request.getJSONArray("analyzeTurns").toList());
+    }
+  }
+
+  @Test
+  void silentStartRequestDoesNotPauseForegroundPonder() throws Exception {
+    try (TestEnvironment env = TestEnvironment.open()) {
+      BoardHistoryList history = new BoardHistoryList(BoardData.empty(BOARD_SIZE, BOARD_SIZE));
+      history.add(
+          moveNode(stones(placement(0, 0, Stone.BLACK)), new int[] {0, 0}, Stone.BLACK, false, 1));
+      boardWithHistory(history);
+      SnapshotTrackingLeelaz leelaz = SnapshotTrackingLeelaz.create();
+      leelaz.ponder();
+      Lizzie.leelaz = leelaz;
+      TrackingAnalysisEngine engine = TrackingAnalysisEngine.create();
+
+      engine.startRequest(-1, -1, false);
+
+      assertEquals(0, leelaz.togglePonderCount);
+      assertTrue(leelaz.isPondering());
+      assertEquals(1, engine.requestCount());
+    }
+  }
+
+  @Test
+  void startRequestAllBranchesSkipsOnlyBranchNodesAtTargetVisits() throws Exception {
+    try (TestEnvironment env = TestEnvironment.open()) {
+      BoardHistoryList history = new BoardHistoryList(BoardData.empty(BOARD_SIZE, BOARD_SIZE));
+      int targetVisits = AnalysisEngine.targetAnalysisVisits();
+      BoardData complete =
+          moveNode(stones(placement(0, 0, Stone.BLACK)), new int[] {0, 0}, Stone.BLACK, false, 1);
+      complete.setPlayouts(targetVisits);
+      history.add(complete);
+      BoardData lowVisits =
+          moveNode(
+              stones(placement(0, 0, Stone.BLACK), placement(1, 0, Stone.WHITE)),
+              new int[] {1, 0},
+              Stone.WHITE,
+              true,
+              2);
+      lowVisits.setPlayouts(targetVisits - 1);
+      history.add(lowVisits);
+      boardWithHistory(history);
+      TrackingAnalysisEngine engine = TrackingAnalysisEngine.create();
+
+      engine.startRequestAllBranches(false);
+
+      assertEquals(1, engine.requestCount(), "branch flash analysis should continue partial nodes.");
+      JSONObject request = engine.singleRequest();
+      assertEquals(
+          List.of(List.of("B", "A3"), List.of("W", "B3")),
+          request.getJSONArray("moves").toList());
+      assertEquals(List.of(2), request.getJSONArray("analyzeTurns").toList());
+    }
+  }
+
+  @Test
   void startRequestAllBranchesSkipsSnapshotRootOnlyHistory() throws Exception {
     try (TestEnvironment env = TestEnvironment.open()) {
       BoardHistoryList history =
@@ -448,6 +539,67 @@ class AnalysisEngineRequestTest {
           0,
           engine.requestCount(),
           "snapshot-root-only history should not emit branch scan requests.");
+    }
+  }
+
+  @Test
+  void silentParseResultKeepsForegroundCurrentNodeAnalysis() throws Exception {
+    try (TestEnvironment env = TestEnvironment.open()) {
+      BoardHistoryList history = new BoardHistoryList(BoardData.empty(BOARD_SIZE, BOARD_SIZE));
+      BoardData current =
+          moveNode(stones(placement(0, 0, Stone.BLACK)), new int[] {0, 0}, Stone.BLACK, false, 1);
+      current.winrate = 41.0;
+      current.setPlayouts(12);
+      history.add(current);
+      boardWithHistory(history);
+      SnapshotTrackingLeelaz leelaz = SnapshotTrackingLeelaz.create();
+      leelaz.ponder();
+      Lizzie.leelaz = leelaz;
+      TrackingAnalysisEngine engine = TrackingAnalysisEngine.create();
+      engine.startRequest(-1, -1, false);
+
+      engine.parseResult(analysisResult(1, 200, 62.0));
+
+      assertEquals(12, current.getPlayouts());
+      assertEquals(41.0, current.winrate, 0.0001);
+      assertTrue(current.bestMoves.isEmpty());
+      assertFalse(engine.isAnalysisInProgress());
+      waitForMovelistRefreshThreads();
+    }
+  }
+
+  @Test
+  void silentParseResultUpdatesNonCurrentNodesWhileForegroundAnalyzes() throws Exception {
+    try (TestEnvironment env = TestEnvironment.open()) {
+      BoardHistoryList history = new BoardHistoryList(BoardData.empty(BOARD_SIZE, BOARD_SIZE));
+      BoardData current =
+          moveNode(stones(placement(0, 0, Stone.BLACK)), new int[] {0, 0}, Stone.BLACK, false, 1);
+      history.add(current);
+      BoardHistoryNode currentNode = history.getCurrentHistoryNode();
+      BoardData next =
+          moveNode(
+              stones(placement(0, 0, Stone.BLACK), placement(1, 0, Stone.WHITE)),
+              new int[] {1, 0},
+              Stone.WHITE,
+              true,
+              2);
+      next.winrate = 39.0;
+      next.setPlayouts(8);
+      history.add(next);
+      history.setHead(currentNode);
+      boardWithHistory(history);
+      SnapshotTrackingLeelaz leelaz = SnapshotTrackingLeelaz.create();
+      leelaz.ponder();
+      Lizzie.leelaz = leelaz;
+      TrackingAnalysisEngine engine = TrackingAnalysisEngine.create();
+      engine.sendRequest(history.getCurrentHistoryNode().next().get());
+
+      engine.parseResult(analysisResult(1, 200, 62.0));
+
+      assertEquals(200, next.getPlayouts());
+      assertEquals(62.0, next.winrate, 0.0001);
+      assertFalse(next.bestMoves.isEmpty());
+      waitForMovelistRefreshThreads();
     }
   }
 
@@ -821,6 +973,31 @@ class AnalysisEngineRequestTest {
     response.put("id", String.valueOf(id));
     response.put("moveInfos", new JSONArray().put(moveInfo));
     return response;
+  }
+
+  private static String analysisResult(int id, int visits, double winrate) {
+    JSONObject moveInfo = new JSONObject();
+    moveInfo.put("move", "B2");
+    moveInfo.put("visits", visits);
+    moveInfo.put("winrate", winrate / 100.0);
+    moveInfo.put("lcb", winrate / 100.0);
+    moveInfo.put("prior", 0.25);
+    moveInfo.put("scoreLead", 1.5);
+    moveInfo.put("scoreStdev", 0.2);
+    moveInfo.put("order", 0);
+    moveInfo.put("pv", new JSONArray(List.of("B2")));
+    JSONObject result = new JSONObject();
+    result.put("id", String.valueOf(id));
+    result.put("moveInfos", new JSONArray(List.of(moveInfo)));
+    return result.toString();
+  }
+
+  private static void waitForMovelistRefreshThreads() throws InterruptedException {
+    for (Thread thread : Thread.getAllStackTraces().keySet()) {
+      if ("lizzie-movelist-refresh".equals(thread.getName()) && thread.isAlive()) {
+        thread.join(1000);
+      }
+    }
   }
 
   private static Placement placement(int x, int y, Stone color) {
