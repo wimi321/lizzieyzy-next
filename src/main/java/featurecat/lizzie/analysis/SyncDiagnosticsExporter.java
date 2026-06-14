@@ -139,7 +139,6 @@ public final class SyncDiagnosticsExporter {
     text.append('\n').append("ReadBoard").append('\n');
     text.append("  attached: ").append(sync.isReadBoardAttached()).append('\n');
     text.append("  connected: ").append(sync.isReadBoardConnected()).append('\n');
-    text.append("  javaReadBoard: ").append(sync.isJavaReadBoard()).append('\n');
     text.append("  usePipe: ").append(sync.isUsePipe()).append('\n');
     text.append("  syncing: ").append(sync.isSyncing()).append('\n');
     text.append("  awaitingFirstSyncFrame: ").append(sync.isAwaitingFirstSyncFrame()).append('\n');
@@ -229,7 +228,6 @@ public final class SyncDiagnosticsExporter {
     return object(
         SyncDiagnosticsJson.field("readBoardAttached", sync.isReadBoardAttached()),
         SyncDiagnosticsJson.field("readBoardConnected", sync.isReadBoardConnected()),
-        SyncDiagnosticsJson.field("javaReadBoard", sync.isJavaReadBoard()),
         SyncDiagnosticsJson.field("usePipe", sync.isUsePipe()),
         SyncDiagnosticsJson.field("syncing", sync.isSyncing()),
         SyncDiagnosticsJson.field("awaitingFirstSyncFrame", sync.isAwaitingFirstSyncFrame()),

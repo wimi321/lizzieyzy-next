@@ -125,10 +125,39 @@
 ## 当前内置同步工具信息
 
 - Windows 发布包现在内置原生 `readboard/readboard.exe` 和依赖文件，正常使用不需要下载外部同步工具
-- `readboard_java` 简易棋盘同步工具仍作为备用方案随包交付
 - Windows 原生路径：`Lizzieyzy/readboard/`
-- Windows / Linux Java 版路径：`Lizzieyzy/readboard_java/`
-- macOS 包路径：`LizzieYzy Next.app/Contents/app/readboard_java/`
+- 软件内只保留原生 readboard 同步入口，不再交付或启动旧的 Java 简易同步工具
+
+## 离线包体与启动性能治理
+
+当前主发布包仍按“下载后离线可用”设计：JCEF 浏览器运行时、默认权重、KataGo、readboard、Java 运行环境等必要组件继续随包交付，不在首次使用时临时下载。
+
+为了让完整离线包更轻、更快，发布脚本会尽量做三类无感优化：
+
+- 自定义 Java runtime：发布脚本会用 `jlink` 生成专用运行环境，并启用 `--strip-debug`、`--compress=2`、`--no-header-files`、`--no-man-pages`。如果当前构建机不支持 `jlink` 或某个平台出现兼容问题，会自动回退到原运行环境，不影响发包。
+- AppCDS 启动归档：发布脚本会用 `featurecat.lizzie.tools.CdsWarmup` 生成 `lizzieyzy-next-cds.jsa`。启动参数使用 `-Xshare:auto`，如果归档缺失或不可用，JVM 会正常回退启动。
+- 包体审计报告：每次打包会在 `dist/release-meta/` 生成 `*-package-size-audit.md` 和 `*.json`，记录 shaded jar、runtime、JCEF、权重、引擎、readboard、最终 release asset 的大小。报告会写入 GitHub Actions summary，并对异常增大的 jar、custom runtime、接近 GitHub 单资产上限的 release asset 给出 warning；第一阶段只预警，不阻断紧急发版。
+
+维护者本地常用命令：
+
+```bash
+mvn -Dfmt.skip=true -DskipTests package
+python3 scripts/package_runtime_tools.py audit-sizes \
+  --root . \
+  --output dist/release-meta/local-package-size-audit.md
+python3 scripts/package_runtime_tools.py compare-audits \
+  --before dist/release-meta/previous-package-size-audit.json \
+  --after dist/release-meta/current-package-size-audit.json \
+  --output dist/release-meta/package-size-comparison.md
+OUT_DIR=dist/perf SCENARIO=startup DURATION_SECONDS=45 \
+  bash scripts/run_jfr_benchmark.sh
+```
+
+说明：
+
+- JFR 录制只用于本地性能分析，不会打进用户安装包。
+- AppCDS 和自定义 runtime 都是发布层优化，不改变用户功能和配置位置。
+- 第一阶段不激进裁剪 JCEF 内部资源，因为弈客、腾讯棋谱和网页流程需要真实浏览器能力。
 
 ## 新旧发布格式怎么理解
 

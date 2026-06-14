@@ -215,10 +215,22 @@ jobs:
             "dist/windows/app-image-nvidia/LizzieYzy Next NVIDIA/app/LizzieYzy Next NVIDIA.cfg" \
             "dist/windows/app-image-nvidia50.cuda/LizzieYzy Next NVIDIA 50 CUDA/app/LizzieYzy Next NVIDIA 50 CUDA.cfg" \
             "dist/windows/app-image-without.engine/LizzieYzy Next/app/LizzieYzy Next.cfg"; do
+            grep -q -- "java-options=-Xshare:auto" "$app_cfg"
+            grep -q -- "SharedArchiveFile" "$app_cfg"
             if grep -qE 'sun\.java2d\.uiScale=1\.0|sun\.java2d\.uiScale\.enabled=false' "$app_cfg"; then
               echo "Windows package must not force Java UI scaling: $app_cfg"
               exit 1
             fi
+          done
+          test -f "dist/release-meta/${{ inputs.date_tag }}-windows64-runtime.json"
+          grep -q '"optimized": true' "dist/release-meta/${{ inputs.date_tag }}-windows64-runtime.json"
+          for app_dir in \
+            "dist/windows/app-image-with-katago/LizzieYzy Next" \
+            "dist/windows/app-image-opencl/LizzieYzy Next OpenCL" \
+            "dist/windows/app-image-nvidia/LizzieYzy Next NVIDIA" \
+            "dist/windows/app-image-nvidia50.cuda/LizzieYzy Next NVIDIA 50 CUDA" \
+            "dist/windows/app-image-without.engine/LizzieYzy Next"; do
+            test -f "$app_dir/app/lizzieyzy-next-cds.jsa"
           done
           for readboard_exe in \
             "dist/windows/input-with-katago/readboard/readboard.exe" \
@@ -243,6 +255,15 @@ jobs:
         run: |
           $appExe = Join-Path $PWD "dist\windows\app-image-with-katago\LizzieYzy Next\LizzieYzy Next.exe"
           & "$PWD\scripts\windows_smoke_test.ps1" -AppExe $appExe -WaitSeconds 60 -ProbeBoardSync
+
+      - name: Summarize Windows package size audit
+        if: always()
+        shell: bash
+        run: |
+          audit="dist/release-meta/${{ inputs.date_tag }}-windows64-package-size-audit.md"
+          if [[ -f "$audit" ]]; then
+            cat "$audit" >> "$GITHUB_STEP_SUMMARY"
+          fi
 
       - name: Upload assets to release
         shell: bash
@@ -282,6 +303,8 @@ jobs:
           name: windows-release-meta
           path: |
             dist/release-meta/*windows64-*.txt
+            dist/release-meta/*windows64-*.json
+            dist/release-meta/*windows64-*.md
 
       - name: Upload Windows smoke logs
         if: always()

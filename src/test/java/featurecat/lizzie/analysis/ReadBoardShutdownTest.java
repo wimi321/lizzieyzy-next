@@ -166,7 +166,7 @@ class ReadBoardShutdownTest {
   }
 
   @Test
-  void openReadBoardJavaDoesNotBlockEventDispatchThreadWhileRestarting() throws Exception {
+  void openBoardSyncDoesNotBlockEventDispatchThreadWhileRestarting() throws Exception {
     LizzieFrame previousFrame = Lizzie.frame;
     try {
       TrackingLizzieFrame frame = allocate(TrackingLizzieFrame.class);
@@ -179,7 +179,7 @@ class ReadBoardShutdownTest {
       SwingUtilities.invokeAndWait(
           () -> {
             long startNanos = System.nanoTime();
-            frame.openReadBoardJava();
+            frame.openBoardSync();
             elapsedMs.set(TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startNanos));
           });
 
@@ -339,7 +339,17 @@ class ReadBoardShutdownTest {
     }
 
     @Override
-    protected ReadBoard createJavaReadBoard() throws Exception {
+    protected boolean isNativeBoardSyncSupported() {
+      return true;
+    }
+
+    @Override
+    protected boolean isNativeReadBoardAvailable() {
+      return true;
+    }
+
+    @Override
+    protected ReadBoard createNativeReadBoard() throws Exception {
       startedBeforeShutdownCompleted = !shutdownCompleted;
       createdReadBoard = allocate(ReadBoard.class);
       restartSignal.countDown();

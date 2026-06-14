@@ -165,7 +165,6 @@ class SyncDiagnosticsExporterTest {
         SyncDiagnosticsSnapshot.builder()
             .readBoardAttached(true)
             .readBoardConnected(true)
-            .javaReadBoard(true)
             .usePipe(false)
             .syncing(true)
             .awaitingFirstSyncFrame(false)

@@ -20,6 +20,8 @@ ENGINE_BACKEND_MARKER_NAME="lizzieyzy-next-engine-backend.txt"
 LINUX_STANDARD_ENGINE_PLATFORM_DIR="${LINUX_STANDARD_ENGINE_PLATFORM_DIR:-linux-x64}"
 LINUX_OPENCL_ENGINE_PLATFORM_DIR="${LINUX_OPENCL_ENGINE_PLATFORM_DIR:-linux-x64-opencl}"
 LINUX_NVIDIA_ENGINE_PLATFORM_DIR="${LINUX_NVIDIA_ENGINE_PLATFORM_DIR:-linux-x64-nvidia}"
+RUNTIME_TOOLS_SCRIPT="$ROOT_DIR/scripts/package_runtime_tools.py"
+PYTHON_BIN=""
 
 if [[ ! -f "$JAR_PATH" ]]; then
   echo "Jar not found: $JAR_PATH"
@@ -32,6 +34,24 @@ OUT_DIR="dist/release"
 META_DIR="dist/release-meta"
 rm -rf "$STAGE_DIR" "$OUT_DIR" "$META_DIR"
 mkdir -p "$STAGE_DIR" "$OUT_DIR" "$META_DIR"
+CUSTOM_LINUX_RUNTIME_DIR="$ROOT_DIR/dist/custom-runtime/$LINUX_STANDARD_ENGINE_PLATFORM_DIR"
+USE_CUSTOM_LINUX_RUNTIME=0
+
+resolve_python_bin() {
+  if [[ -n "$PYTHON_BIN" ]]; then
+    return 0
+  fi
+  if command -v python3 >/dev/null 2>&1; then
+    PYTHON_BIN="python3"
+    return 0
+  fi
+  if command -v python >/dev/null 2>&1; then
+    PYTHON_BIN="python"
+    return 0
+  fi
+  echo "Python not found. Runtime optimization and audit helpers require Python 3."
+  exit 1
+}
 
 has_default_weight() {
   [[ -f "$ROOT_DIR/weights/default.bin.gz" ]]
@@ -59,8 +79,52 @@ require_bundle_engine_files() {
 
 has_runtime_files() {
   local platform_dir="$1"
+  if [[ "$platform_dir" == "$LINUX_STANDARD_ENGINE_PLATFORM_DIR" ]] \
+    && [[ "$USE_CUSTOM_LINUX_RUNTIME" == "1" ]] \
+    && [[ -d "$CUSTOM_LINUX_RUNTIME_DIR" ]] \
+    && find "$CUSTOM_LINUX_RUNTIME_DIR" -mindepth 1 -print -quit | grep -q .; then
+    return 0
+  fi
   [[ -d "$ROOT_DIR/runtime/$platform_dir" ]] \
     && find "$ROOT_DIR/runtime/$platform_dir" -mindepth 1 -print -quit | grep -q .
+}
+
+prepare_custom_runtime() {
+  if [[ "${LIZZIE_PACKAGE_OPTIMIZE_RUNTIME:-1}" != "1" ]]; then
+    return 0
+  fi
+  resolve_python_bin
+  "$PYTHON_BIN" "$RUNTIME_TOOLS_SCRIPT" optimize-runtime \
+    --jar "$JAR_PATH" \
+    --output "$CUSTOM_LINUX_RUNTIME_DIR" \
+    --manifest "$META_DIR/${DATE_TAG}-linux64-runtime.json" \
+    --fallback-source "$ROOT_DIR/runtime/$LINUX_STANDARD_ENGINE_PLATFORM_DIR" \
+    --platform "$LINUX_STANDARD_ENGINE_PLATFORM_DIR" \
+    --optional
+  if [[ -d "$CUSTOM_LINUX_RUNTIME_DIR" ]] \
+    && find "$CUSTOM_LINUX_RUNTIME_DIR" -mindepth 1 -print -quit | grep -q .; then
+    USE_CUSTOM_LINUX_RUNTIME=1
+  fi
+}
+
+generate_app_cds_archive() {
+  local app_dir="$1"
+  local runtime_platform="$2"
+  local bundle_name="$3"
+  if [[ "${LIZZIE_PACKAGE_APPCDS:-1}" != "1" || -z "$runtime_platform" ]]; then
+    return 0
+  fi
+  local runtime_dir="$app_dir/runtime/$runtime_platform"
+  if [[ ! -d "$runtime_dir" ]]; then
+    return 0
+  fi
+  resolve_python_bin
+  "$PYTHON_BIN" "$RUNTIME_TOOLS_SCRIPT" generate-app-cds \
+    --runtime "$runtime_dir" \
+    --app-dir "$app_dir" \
+    --archive "$app_dir/lizzieyzy-next-cds.jsa" \
+    --manifest "$META_DIR/${DATE_TAG}-${bundle_name}-appcds.json" \
+    --optional
 }
 
 bundle_flavor() {
@@ -149,16 +213,16 @@ copy_bundle_runtime_assets() {
   fi
 
   mkdir -p "$app_dir/runtime"
-  cp -R "$ROOT_DIR/runtime/$platform_dir" "$app_dir/runtime/"
+  if [[ "$platform_dir" == "$LINUX_STANDARD_ENGINE_PLATFORM_DIR" && "$USE_CUSTOM_LINUX_RUNTIME" == "1" ]]; then
+    cp -R "$CUSTOM_LINUX_RUNTIME_DIR" "$app_dir/runtime/"
+  else
+    cp -R "$ROOT_DIR/runtime/$platform_dir" "$app_dir/runtime/"
+  fi
 }
 
 copy_desktop_helper_assets() {
-  local app_dir="$1"
-
-  if [[ -d "$ROOT_DIR/src/main/resources/assets/readboard_java" ]]; then
-    mkdir -p "$app_dir/readboard_java"
-    cp -R "$ROOT_DIR/src/main/resources/assets/readboard_java/." "$app_dir/readboard_java/"
-  fi
+  local _app_dir="$1"
+  # The retired Java readboard helper is intentionally not copied into release packages.
 }
 
 write_linux_install_note() {
@@ -209,7 +273,7 @@ Notes:
 - If your desktop environment does not start the app on double-click, launch it from the terminal first.
 - Fox kifu sync supports entering a Fox nickname directly.
 - If nickname search succeeds, the app also shows the matched nickname and account number in the results.
-- The built-in Java readboard helper is included in Lizzieyzy/readboard_java/.
+- Board sync uses the native readboard tool in Windows release packages; the retired Java helper is not bundled.
 EOF
 }
 
@@ -229,6 +293,7 @@ make_bundle() {
   copy_desktop_helper_assets "$app"
   copy_bundle_engine_assets "$app" "$engine_platforms"
   copy_bundle_runtime_assets "$app" "$runtime_platform"
+  generate_app_cds_archive "$app" "$runtime_platform" "$bundle_name"
 
   cat >"$root/$start_file" <<EOF
 $start_content
@@ -301,7 +366,11 @@ JAVA_CMD=\"java\"
 if [[ -x \"Lizzieyzy/runtime/linux-x64/bin/java\" ]]; then
   JAVA_CMD=\"Lizzieyzy/runtime/linux-x64/bin/java\"
 fi
-\"\$JAVA_CMD\" -Dlizzie.next.version=\"$APP_DISPLAY_VERSION\" -jar \"Lizzieyzy/lizzie-yzy2.5.3-shaded.jar\"" \
+CDS_ARGS=()
+if [[ -f \"Lizzieyzy/lizzieyzy-next-cds.jsa\" ]]; then
+  CDS_ARGS=(-Xshare:auto -XX:SharedArchiveFile=\"Lizzieyzy/lizzieyzy-next-cds.jsa\")
+fi
+\"\$JAVA_CMD\" \"\${CDS_ARGS[@]}\" -Dlizzie.next.version=\"$APP_DISPLAY_VERSION\" -jar \"Lizzieyzy/lizzie-yzy2.5.3-shaded.jar\"" \
     "$bundle_note" \
     "" \
     "$LINUX_STANDARD_ENGINE_PLATFORM_DIR"
@@ -336,6 +405,8 @@ Backend verification:
 - ./Lizzieyzy/engines/katago/$LINUX_STANDARD_ENGINE_PLATFORM_DIR/katago version
 EOF
 }
+
+prepare_custom_runtime
 
 WINDOWS64_FLAVOR="$(bundle_flavor windows-x64)"
 WINDOWS32_FLAVOR="$(bundle_flavor windows-x86)"
@@ -506,6 +577,14 @@ if [[ -f "$LINUX_CPU_ASSET" && -f "$LINUX_OPENCL_ASSET" && -f "$LINUX_NVIDIA_ASS
     "$LINUX_NVIDIA_ASSET" \
     "$LINUX_INSTALL_NOTE"
 fi
+
+resolve_python_bin
+"$PYTHON_BIN" "$RUNTIME_TOOLS_SCRIPT" audit-sizes \
+  --root "$ROOT_DIR" \
+  --output "$META_DIR/${DATE_TAG}-linux64-package-size-audit.md" \
+  --json-output "$META_DIR/${DATE_TAG}-linux64-package-size-audit.json" \
+  --release-prefix "$DATE_TAG" \
+  --custom-runtime "$CUSTOM_LINUX_RUNTIME_DIR"
 
 echo "Built release zips:"
 ls -lh "$OUT_DIR"

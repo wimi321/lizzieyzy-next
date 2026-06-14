@@ -151,7 +151,6 @@ class SyncDiagnosticsDialogTest {
         SyncDiagnosticsSnapshot.builder()
             .readBoardAttached(true)
             .readBoardConnected(true)
-            .javaReadBoard(true)
             .usePipe(false)
             .syncing(false)
             .awaitingFirstSyncFrame(false)

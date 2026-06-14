@@ -69,8 +69,17 @@ jobs:
         run: |
           grep -q -- "java-options=-Dlizzie.next.version=${{ inputs.release_tag }}" \
             "dist/macos/app-image/LizzieYzy Next.app/Contents/app/LizzieYzy Next.cfg"
+          grep -q -- "java-options=-Xshare:auto" \
+            "dist/macos/app-image/LizzieYzy Next.app/Contents/app/LizzieYzy Next.cfg"
+          grep -q -- "SharedArchiveFile" \
+            "dist/macos/app-image/LizzieYzy Next.app/Contents/app/LizzieYzy Next.cfg"
+          test -f "dist/macos/app-image/LizzieYzy Next.app/Contents/app/lizzieyzy-next-cds.jsa"
           grep -q -- "Release display version: ${{ inputs.release_tag }}" \
             "dist/release-meta/${{ inputs.date_tag }}-mac-apple-silicon-install.txt"
+          test -f "dist/release-meta/${{ inputs.date_tag }}-mac-apple-silicon-runtime.json"
+          test -f "dist/release-meta/${{ inputs.date_tag }}-mac-apple-silicon-appcds.json"
+          grep -q '"optimized": true' "dist/release-meta/${{ inputs.date_tag }}-mac-apple-silicon-runtime.json"
+          grep -q '"created": true' "dist/release-meta/${{ inputs.date_tag }}-mac-apple-silicon-appcds.json"
 
       - name: Sign and notarize (if Apple Developer credentials configured)
         env:
@@ -85,12 +94,22 @@ jobs:
       - name: Validate public macOS arm64 assets
         run: bash ./scripts/validate_release_assets.sh mac-arm64 dist/release "${{ inputs.date_tag }}"
 
+      - name: Summarize macOS arm64 package size audit
+        if: always()
+        run: |
+          audit="dist/release-meta/${{ inputs.date_tag }}-mac-apple-silicon-package-size-audit.md"
+          if [[ -f "$audit" ]]; then
+            cat "$audit" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
       - name: Upload workflow artifacts
         uses: actions/upload-artifact@v6
         with:
           name: macos-arm64-with-katago
           path: |
             dist/release/*mac-apple-silicon.with-katago.dmg
+            dist/release-meta/*mac-apple-silicon-*.json
+            dist/release-meta/*mac-apple-silicon-*.md
 
       - name: Upload assets to release
         env:

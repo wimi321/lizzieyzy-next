@@ -1,6 +1,5 @@
 package featurecat.lizzie.analysis;
 
-import featurecat.lizzie.Config;
 import featurecat.lizzie.Lizzie;
 import featurecat.lizzie.gui.FloatBoard;
 import featurecat.lizzie.gui.LizzieFrame;
@@ -26,8 +25,6 @@ import java.io.UnsupportedEncodingException;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.URISyntaxException;
-import java.nio.file.Files;
-import java.nio.file.StandardCopyOption;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
@@ -47,11 +44,6 @@ public class ReadBoard {
   private static final long PROCESS_DESTROY_WAIT_TIMEOUT_MS = 200L;
   private static final String LEGACY_NATIVE_READBOARD_EXE = "readboard.exe";
   private static final String LEGACY_NATIVE_READBOARD_BAT = "readboard.bat";
-  private static final String JAVA_READBOARD_DIRECTORY = "readboard_java";
-  private static final String JAVA_READBOARD_JAR = "readboard-1.6.2-shaded.jar";
-  private static final String[] JAVA_READBOARD_SUPPORT_FILES = {
-    "help.docx", "help_en.docx", "help_jp.docx"
-  };
   private static final int SYNC_ANALYSIS_RESUME_DELAY_MS = 200;
   private static final int STARTUP_OUTPUT_LOG_LIMIT = 8;
   private static final String READBOARD_PLACEMENT_FAILED = "error place failed";
@@ -161,8 +153,6 @@ public class ReadBoard {
   private boolean showInBoard = false;
   private volatile boolean isSyncing = false;
   // private long startTime;
-  private boolean javaReadBoard = false;
-  private String javaReadBoardName = JAVA_READBOARD_JAR;
   private boolean waitSocket = true;
   public boolean lastMovePlayByLizzie = false;
   private SyncRemoteContext pendingRemoteContext = SyncRemoteContext.generic(false);
@@ -276,9 +266,12 @@ public class ReadBoard {
     return new SyncSnapshotDiffChecker(Board.boardWidth);
   }
 
-  public ReadBoard(boolean usePipe, boolean isJavaReadBoard) throws Exception {
+  public ReadBoard(boolean usePipe, boolean retiredSyncMode) throws Exception {
+    if (retiredSyncMode) {
+      throw new UnsupportedOperationException(
+          "Retired board synchronization mode is no longer supported.");
+    }
     this.usePipe = usePipe;
-    this.javaReadBoard = isJavaReadBoard;
     if (s != null && !s.isClosed()) {
       s.close();
     }
@@ -318,45 +311,6 @@ public class ReadBoard {
     candidates.add(new File(new File(absoluteBase, "app"), "readboard"));
     if ("app".equalsIgnoreCase(absoluteBase.getName())) {
       candidates.add(new File(absoluteBase, "readboard"));
-    }
-    return new ArrayList<File>(candidates);
-  }
-
-  static File legacyJavaReadBoardJar(String javaReadBoardName) {
-    return resolveJavaReadBoardJar(defaultJavaReadBoardDirectoryCandidates(), javaReadBoardName);
-  }
-
-  static File resolveJavaReadBoardJar(List<File> candidates, String javaReadBoardName) {
-    for (File candidate : candidates) {
-      File jar = new File(candidate, javaReadBoardName);
-      if (jar.canRead()) {
-        return jar.getAbsoluteFile();
-      }
-    }
-    return new File(JAVA_READBOARD_DIRECTORY + File.separator + javaReadBoardName)
-        .getAbsoluteFile();
-  }
-
-  static List<File> defaultJavaReadBoardDirectoryCandidates() {
-    Set<File> candidates = new LinkedHashSet<File>();
-    candidates.addAll(
-        javaReadBoardDirectoryCandidatesForBase(new File(System.getProperty("user.dir", "."))));
-    codeSourceDirectory()
-        .ifPresent(
-            directory -> candidates.addAll(javaReadBoardDirectoryCandidatesForBase(directory)));
-    bundledRuntimeRoot()
-        .ifPresent(
-            directory -> candidates.addAll(javaReadBoardDirectoryCandidatesForBase(directory)));
-    return new ArrayList<File>(candidates);
-  }
-
-  static List<File> javaReadBoardDirectoryCandidatesForBase(File baseDir) {
-    Set<File> candidates = new LinkedHashSet<File>();
-    File absoluteBase = baseDir.getAbsoluteFile();
-    candidates.add(new File(absoluteBase, JAVA_READBOARD_DIRECTORY));
-    candidates.add(new File(new File(absoluteBase, "app"), JAVA_READBOARD_DIRECTORY));
-    if ("app".equalsIgnoreCase(absoluteBase.getName())) {
-      candidates.add(new File(absoluteBase, JAVA_READBOARD_DIRECTORY));
     }
     return new ArrayList<File>(candidates);
   }
@@ -418,38 +372,6 @@ public class ReadBoard {
     return processBuilder;
   }
 
-  static ProcessBuilder buildJavaReadBoardProcessBuilder(
-      File javaReadBoardJar, List<String> appArgs, List<String> jvmArgs) {
-    return buildJavaReadBoardProcessBuilder(
-        javaReadBoardJar, javaReadBoardJar.getAbsoluteFile().getParentFile(), appArgs, jvmArgs);
-  }
-
-  static ProcessBuilder buildJavaReadBoardProcessBuilder(
-      File javaReadBoardJar, File workingDirectory, List<String> appArgs, List<String> jvmArgs) {
-    File absoluteJar = javaReadBoardJar.getAbsoluteFile();
-    ProcessBuilder processBuilder = Utils.buildJavaJarProcess(absoluteJar, appArgs, jvmArgs);
-    processBuilder.directory(workingDirectory.getAbsoluteFile());
-    processBuilder.redirectErrorStream(true);
-    return processBuilder;
-  }
-
-  static boolean canUseJavaReadBoardWorkingDirectory(File directory) {
-    if (directory == null || !directory.isDirectory()) {
-      return false;
-    }
-    File probe = null;
-    try {
-      probe = File.createTempFile(".lizzie-readboard-write-test", ".tmp", directory);
-      return probe.isFile();
-    } catch (IOException | SecurityException e) {
-      return false;
-    } finally {
-      if (probe != null && probe.exists() && !probe.delete()) {
-        probe.deleteOnExit();
-      }
-    }
-  }
-
   private void createSocketServer() {
     try {
       s = new ServerSocket(0);
@@ -479,100 +401,62 @@ public class ReadBoard {
   }
 
   public void startEngine() throws Exception {
-    if (javaReadBoard) {
-      File javaReadBoardJar = legacyJavaReadBoardJar(javaReadBoardName);
-      if (!javaReadBoardJar.exists()) {
-        Utils.deleteDir(new File(JAVA_READBOARD_DIRECTORY));
-        Utils.copyReadBoardJava(javaReadBoardName);
-        javaReadBoardJar =
-            new File(JAVA_READBOARD_DIRECTORY + File.separator + javaReadBoardName)
-                .getAbsoluteFile();
+    if (!usePipe) {
+      waitSocket = true;
+      noMsg = false;
+      Runnable runnable2 =
+          new Runnable() {
+            public void run() {
+              if (s == null || s.isClosed()) createSocketServer();
+            }
+          };
+      Thread thread2 = new Thread(runnable2);
+      thread2.start();
+      int times = 300;
+      while (waitSocket && times > 0) {
+        Thread.sleep(10);
+        times--;
       }
-      List<String> jvmArgs = new ArrayList<String>();
-      jvmArgs.add("-Dsun.java2d.uiScale=1.0");
-      if (Lizzie.javaVersion >= 17) {
-        jvmArgs.add("--add-opens");
-        jvmArgs.add("java.desktop/sun.awt=ALL-UNNAMED");
-        jvmArgs.add("--add-opens");
-        jvmArgs.add("java.desktop/java.awt=ALL-UNNAMED");
-        jvmArgs.add("--add-opens");
-        jvmArgs.add("java.base/java.lang=ALL-UNNAMED");
-      }
-      List<String> appArgs = new ArrayList<String>();
-      appArgs.add(Lizzie.resourceBundle.getString("ReadBoard.language"));
-      appArgs.add(Lizzie.config.useJavaLooks ? "true" : "false");
-      appArgs.add(String.valueOf((int) Math.round(Config.frameFontSize * Lizzie.javaScaleFactor)));
-      appArgs.add(String.valueOf(Board.boardWidth));
-      appArgs.add(String.valueOf(Board.boardHeight));
-      File workingDirectory = resolveJavaReadBoardWorkingDirectory(javaReadBoardJar);
-      ProcessBuilder processBuilder =
-          buildJavaReadBoardProcessBuilder(javaReadBoardJar, workingDirectory, appArgs, jvmArgs);
-      logJavaReadBoardLaunch(processBuilder, javaReadBoardJar);
-      try {
-        process = processBuilder.start();
-      } catch (Exception e) {
-        logJavaReadBoardStartFailure(processBuilder, e);
-        Utils.showMsg(e.getLocalizedMessage());
-        throw new Exception("Start Java board synchronization failed", e);
-      }
-    } else {
-      if (!usePipe) {
-        waitSocket = true;
-        noMsg = false;
-        Runnable runnable2 =
-            new Runnable() {
-              public void run() {
-                if (s == null || s.isClosed()) createSocketServer();
-              }
-            };
-        Thread thread2 = new Thread(runnable2);
-        thread2.start();
-        int times = 300;
-        while (waitSocket && times > 0) {
-          Thread.sleep(10);
-          times--;
-        }
-      }
-      List<String> commands = new ArrayList<String>();
-      commands.add("yzy");
-      commands.add(
-          !LizzieFrame.toolbar.chkAutoPlayTime.isSelected()
-                  || LizzieFrame.toolbar.txtAutoPlayTime.getText().equals("")
-              ? " "
-              : LizzieFrame.toolbar.txtAutoPlayTime.getText());
-      commands.add(
-          !LizzieFrame.toolbar.chkAutoPlayPlayouts.isSelected()
-                  || LizzieFrame.toolbar.txtAutoPlayPlayouts.getText().equals("")
-              ? " "
-              : LizzieFrame.toolbar.txtAutoPlayPlayouts.getText());
-      commands.add(
-          !LizzieFrame.toolbar.chkAutoPlayFirstPlayouts.isSelected()
-                  || LizzieFrame.toolbar.txtAutoPlayFirstPlayouts.getText().equals("")
-              ? " "
-              : LizzieFrame.toolbar.txtAutoPlayFirstPlayouts.getText());
+    }
+    List<String> commands = new ArrayList<String>();
+    commands.add("yzy");
+    commands.add(
+        !LizzieFrame.toolbar.chkAutoPlayTime.isSelected()
+                || LizzieFrame.toolbar.txtAutoPlayTime.getText().equals("")
+            ? " "
+            : LizzieFrame.toolbar.txtAutoPlayTime.getText());
+    commands.add(
+        !LizzieFrame.toolbar.chkAutoPlayPlayouts.isSelected()
+                || LizzieFrame.toolbar.txtAutoPlayPlayouts.getText().equals("")
+            ? " "
+            : LizzieFrame.toolbar.txtAutoPlayPlayouts.getText());
+    commands.add(
+        !LizzieFrame.toolbar.chkAutoPlayFirstPlayouts.isSelected()
+                || LizzieFrame.toolbar.txtAutoPlayFirstPlayouts.getText().equals("")
+            ? " "
+            : LizzieFrame.toolbar.txtAutoPlayFirstPlayouts.getText());
 
-      if (usePipe) commands.add("0");
-      else commands.add("1");
-      commands.add(Lizzie.resourceBundle.getString("ReadBoard.language"));
-      if (usePipe) commands.add("-1");
-      else commands.add(String.valueOf(port));
-      File nativeReadBoardDirectory = legacyNativeReadBoardDirectory();
-      ProcessBuilder processBuilder =
-          buildLegacyNativeReadBoardProcessBuilder(nativeReadBoardDirectory, usePipe, commands);
-      logNativeReadBoardLaunch(processBuilder);
-      try {
-        process = processBuilder.start();
-      } catch (IOException e) {
-        logNativeReadBoardStartFailure(processBuilder, e);
-        if (!usePipe) {
-          Utils.showMsg(e.getLocalizedMessage());
-          SMessage msg = new SMessage();
-          msg.setMessage(Lizzie.resourceBundle.getString("ReadBoard.loadFailed"), 2);
-          s.close();
-          return;
-        } else {
-          throw new Exception("Start native board synchronization failed", e);
-        }
+    if (usePipe) commands.add("0");
+    else commands.add("1");
+    commands.add(Lizzie.resourceBundle.getString("ReadBoard.language"));
+    if (usePipe) commands.add("-1");
+    else commands.add(String.valueOf(port));
+    File nativeReadBoardDirectory = legacyNativeReadBoardDirectory();
+    ProcessBuilder processBuilder =
+        buildLegacyNativeReadBoardProcessBuilder(nativeReadBoardDirectory, usePipe, commands);
+    logNativeReadBoardLaunch(processBuilder);
+    try {
+      process = processBuilder.start();
+    } catch (IOException e) {
+      logNativeReadBoardStartFailure(processBuilder, e);
+      if (!usePipe) {
+        Utils.showMsg(e.getLocalizedMessage());
+        SMessage msg = new SMessage();
+        msg.setMessage(Lizzie.resourceBundle.getString("ReadBoard.loadFailed"), 2);
+        s.close();
+        return;
+      } else {
+        throw new Exception("Start native board synchronization failed", e);
       }
     }
     if (usePipe) {
@@ -587,56 +471,7 @@ public class ReadBoard {
     outputStream = new BufferedOutputStream(process.getOutputStream());
   }
 
-  private File resolveJavaReadBoardWorkingDirectory(File javaReadBoardJar) {
-    File jarDirectory = javaReadBoardJar.getAbsoluteFile().getParentFile();
-    if (canUseJavaReadBoardWorkingDirectory(jarDirectory)) {
-      return jarDirectory;
-    }
-
-    File runtimeDirectory =
-        Lizzie.config == null
-            ? new File(new File(System.getProperty("user.home", "."), ".lizzieyzy-next"), "runtime")
-            : Lizzie.config.getRuntimeWorkDirectory();
-    File workingDirectory = new File(runtimeDirectory, JAVA_READBOARD_DIRECTORY).getAbsoluteFile();
-    if (!workingDirectory.exists() && !workingDirectory.mkdirs()) {
-      System.err.println(
-          "Unable to create Java board synchronization working directory: "
-              + workingDirectory.getAbsolutePath());
-    }
-    copyJavaReadBoardSupportFiles(jarDirectory, workingDirectory);
-    return workingDirectory;
-  }
-
-  private void copyJavaReadBoardSupportFiles(File sourceDirectory, File targetDirectory) {
-    if (sourceDirectory == null || targetDirectory == null || !targetDirectory.isDirectory()) {
-      return;
-    }
-    for (String fileName : JAVA_READBOARD_SUPPORT_FILES) {
-      File source = new File(sourceDirectory, fileName);
-      File target = new File(targetDirectory, fileName);
-      if (!source.canRead()) {
-        continue;
-      }
-      try {
-        if (!target.exists() || source.length() != target.length()) {
-          Files.copy(source.toPath(), target.toPath(), StandardCopyOption.REPLACE_EXISTING);
-        }
-      } catch (IOException e) {
-        System.err.println(
-            "Unable to copy Java board synchronization support file "
-                + source.getAbsolutePath()
-                + " to "
-                + target.getAbsolutePath()
-                + ": "
-                + e.getMessage());
-      }
-    }
-  }
-
   private void logNativeReadBoardLaunch(ProcessBuilder processBuilder) {
-    if (javaReadBoard) {
-      return;
-    }
     List<String> command = processBuilder.command();
     File workingDirectory = processBuilder.directory();
     System.out.println("Starting native board synchronization tool.");
@@ -650,44 +485,10 @@ public class ReadBoard {
 
   private void logNativeReadBoardStartFailure(
       ProcessBuilder processBuilder, IOException exception) {
-    if (javaReadBoard) {
-      return;
-    }
     System.err.println("Failed to start native board synchronization tool.");
     logNativeReadBoardLaunch(processBuilder);
     System.err.println("  start exception: " + exception.getClass().getName());
     System.err.println("  message: " + exception.getLocalizedMessage());
-  }
-
-  private void logJavaReadBoardLaunch(ProcessBuilder processBuilder, File javaReadBoardJar) {
-    if (!javaReadBoard) {
-      return;
-    }
-    File workingDirectory = processBuilder.directory();
-    System.out.println("Starting Java board synchronization tool.");
-    System.out.println("  jar: " + javaReadBoardJar.getAbsolutePath());
-    System.out.println(
-        "  working directory: "
-            + (workingDirectory == null ? "" : workingDirectory.getAbsolutePath()));
-    System.out.println("  command: " + processBuilder.command());
-  }
-
-  private void logJavaReadBoardStartFailure(ProcessBuilder processBuilder, Exception exception) {
-    if (!javaReadBoard) {
-      return;
-    }
-    System.err.println("Failed to start Java board synchronization tool.");
-    logJavaReadBoardLaunch(processBuilder, javaReadBoardJarFromCommand(processBuilder.command()));
-    System.err.println("  start exception: " + exception.getClass().getName());
-    System.err.println("  message: " + exception.getLocalizedMessage());
-  }
-
-  private File javaReadBoardJarFromCommand(List<String> command) {
-    int jarOptionIndex = command.indexOf("-jar");
-    if (jarOptionIndex < 0 || jarOptionIndex + 1 >= command.size()) {
-      return new File("");
-    }
-    return new File(command.get(jarOptionIndex + 1));
   }
 
   private void logReadBoardOutputLine(String rawLine) {
@@ -696,23 +497,22 @@ public class ReadBoard {
     }
     startupOutputLineCount++;
     String line = rawLine.replace("\r", "\\r").replace("\n", "\\n");
-    System.out.println(
-        (javaReadBoard ? "Java" : "Native") + " board synchronization output: " + line);
+    System.out.println("Native board synchronization output: " + line);
   }
 
   private void logReadBoardExit() {
     Process currentProcess = process;
-    String label = javaReadBoard ? "Java" : "Native";
     if (currentProcess == null) {
-      System.out.println(label + " board synchronization process handle is already cleared.");
+      System.out.println(
+          "Native board synchronization process handle is already cleared.");
       return;
     }
     try {
       if (currentProcess.waitFor(PROCESS_DESTROY_WAIT_TIMEOUT_MS, TimeUnit.MILLISECONDS)) {
         System.out.println(
-            label + " board synchronization process exit code: " + currentProcess.exitValue());
+            "Native board synchronization process exit code: " + currentProcess.exitValue());
       } else {
-        System.out.println(label + " board synchronization stdout closed before process exit.");
+        System.out.println("Native board synchronization stdout closed before process exit.");
       }
     } catch (InterruptedException ex) {
       Thread.currentThread().interrupt();
@@ -735,7 +535,7 @@ public class ReadBoard {
             parseLine(rawLine);
             if (!isLoaded) {
               isLoaded = true;
-              if (!javaReadBoard) checkVersion();
+              checkVersion();
               announceHostedUpdateSupport();
             }
           } catch (Exception ex) {
@@ -1399,12 +1199,11 @@ public class ReadBoard {
 
   private void publishReadBoardDiagnosticsSnapshot(SyncDecisionTrace latestDecisionTrace) {
     SyncDiagnosticsRecorder.getDefault()
-        .updateSync(
-            SyncDiagnosticsSnapshot.builder()
-                .readBoardAttached(Lizzie.frame != null && Lizzie.frame.readBoard == this)
-                .readBoardConnected(isReadBoardConnectedForDiagnostics())
-                .javaReadBoard(javaReadBoard)
-                .usePipe(usePipe)
+            .updateSync(
+                SyncDiagnosticsSnapshot.builder()
+                    .readBoardAttached(Lizzie.frame != null && Lizzie.frame.readBoard == this)
+                    .readBoardConnected(isReadBoardConnectedForDiagnostics())
+                    .usePipe(usePipe)
                 .syncing(isSyncing)
                 .awaitingFirstSyncFrame(awaitingFirstSyncFrame)
                 .hasResumeState(resumeState != null)
@@ -1424,9 +1223,6 @@ public class ReadBoard {
   }
 
   private boolean isReadBoardConnectedForDiagnostics() {
-    if (javaReadBoard) {
-      return socket != null && !socket.isClosed();
-    }
     return outputStream != null;
   }
 
@@ -1508,7 +1304,7 @@ public class ReadBoard {
   }
 
   private void syncBoardStones(boolean isSecondTime) {
-    //    if (!this.javaReadBoard && !isSecondTime) {
+    //    if (!isSecondTime) {
     //      long thisTime = System.currentTimeMillis();
     //      if (thisTime - startSyncTime < Lizzie.config.readBoardArg2 / 2) return;
     //      startSyncTime = thisTime;
@@ -4504,7 +4300,7 @@ public class ReadBoard {
   }
 
   public boolean shouldAnnounceHostedUpdateSupport() {
-    return usePipe && !javaReadBoard;
+    return usePipe;
   }
 
   public void announceHostedUpdateSupport() {

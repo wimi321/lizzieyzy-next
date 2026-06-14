@@ -7,7 +7,6 @@ public final class SyncDiagnosticsSnapshot {
 
   private final boolean readBoardAttached;
   private final boolean readBoardConnected;
-  private final boolean javaReadBoard;
   private final boolean usePipe;
   private final boolean syncing;
   private final boolean awaitingFirstSyncFrame;
@@ -27,7 +26,6 @@ public final class SyncDiagnosticsSnapshot {
   private SyncDiagnosticsSnapshot(Builder builder) {
     this.readBoardAttached = builder.readBoardAttached;
     this.readBoardConnected = builder.readBoardConnected;
-    this.javaReadBoard = builder.javaReadBoard;
     this.usePipe = builder.usePipe;
     this.syncing = builder.syncing;
     this.awaitingFirstSyncFrame = builder.awaitingFirstSyncFrame;
@@ -65,10 +63,6 @@ public final class SyncDiagnosticsSnapshot {
 
   public boolean isReadBoardConnected() {
     return readBoardConnected;
-  }
-
-  public boolean isJavaReadBoard() {
-    return javaReadBoard;
   }
 
   public boolean isUsePipe() {
@@ -136,7 +130,6 @@ public final class SyncDiagnosticsSnapshot {
     text.append("readboard:\n");
     text.append("  attached: ").append(readBoardAttached).append('\n');
     text.append("  connected: ").append(readBoardConnected).append('\n');
-    text.append("  javaReadBoard: ").append(javaReadBoard).append('\n');
     text.append("  usePipe: ").append(usePipe).append('\n');
     text.append("  syncing: ").append(syncing).append('\n');
     text.append("  awaitingFirstSyncFrame: ").append(awaitingFirstSyncFrame).append('\n');
@@ -156,7 +149,6 @@ public final class SyncDiagnosticsSnapshot {
   public static final class Builder {
     private boolean readBoardAttached;
     private boolean readBoardConnected;
-    private boolean javaReadBoard;
     private boolean usePipe;
     private boolean syncing;
     private boolean awaitingFirstSyncFrame;
@@ -180,11 +172,6 @@ public final class SyncDiagnosticsSnapshot {
 
     public Builder readBoardConnected(boolean readBoardConnected) {
       this.readBoardConnected = readBoardConnected;
-      return this;
-    }
-
-    public Builder javaReadBoard(boolean javaReadBoard) {
-      this.javaReadBoard = javaReadBoard;
       return this;
     }
 

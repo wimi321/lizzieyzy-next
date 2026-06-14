@@ -47,34 +47,23 @@ class ReadBoardUpdateProtocolTest {
   void announceHostedUpdateSupportOnlyUsesNativePipeMode() throws Exception {
     ReadBoard nativePipeReadBoard = allocate(ReadBoard.class);
     ReadBoard socketReadBoard = allocate(ReadBoard.class);
-    ReadBoard javaReadBoard = allocate(ReadBoard.class);
 
     TrackingBufferedOutputStream nativePipeOutput = new TrackingBufferedOutputStream();
     TrackingBufferedOutputStream socketOutput = new TrackingBufferedOutputStream();
-    TrackingBufferedOutputStream javaOutput = new TrackingBufferedOutputStream();
 
     setField(nativePipeReadBoard, "usePipe", true);
-    setField(nativePipeReadBoard, "javaReadBoard", false);
     setField(nativePipeReadBoard, "outputStream", nativePipeOutput);
 
     setField(socketReadBoard, "usePipe", false);
-    setField(socketReadBoard, "javaReadBoard", false);
     setField(socketReadBoard, "outputStream", socketOutput);
-
-    setField(javaReadBoard, "usePipe", true);
-    setField(javaReadBoard, "javaReadBoard", true);
-    setField(javaReadBoard, "outputStream", javaOutput);
 
     nativePipeReadBoard.announceHostedUpdateSupport();
     socketReadBoard.announceHostedUpdateSupport();
-    javaReadBoard.announceHostedUpdateSupport();
 
     assertEquals("readboardUpdateSupported\n", nativePipeOutput.writtenText());
     assertEquals("", socketOutput.writtenText());
-    assertEquals("", javaOutput.writtenText());
     assertTrue(nativePipeReadBoard.shouldAnnounceHostedUpdateSupport());
     assertFalse(socketReadBoard.shouldAnnounceHostedUpdateSupport());
-    assertFalse(javaReadBoard.shouldAnnounceHostedUpdateSupport());
   }
 
   @Test
