@@ -2,24 +2,44 @@ package featurecat.lizzie.analysis;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import featurecat.lizzie.Config;
+import featurecat.lizzie.ConfigTestHelper;
+import featurecat.lizzie.Lizzie;
 import featurecat.lizzie.rules.Board;
 import featurecat.lizzie.rules.BoardData;
 import featurecat.lizzie.rules.BoardHistoryList;
 import featurecat.lizzie.rules.Stone;
 import featurecat.lizzie.rules.Zobrist;
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Optional;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
+import org.json.JSONArray;
+import org.json.JSONObject;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 class PlayerStrengthEstimatorTest {
   private static final int BOARD_SIZE = 9;
   private static final int BOARD_AREA = BOARD_SIZE * BOARD_SIZE;
+  private static final String XGBOOST20TUN_BOOSTER_RESOURCE =
+      "/models/strength/xgboost20tun_booster.json";
+  private static final String XGBOOST20TUN_CALIBRATOR_RESOURCE =
+      "/models/strength/xgboost20tun_residual_calibrator.json";
 
   private int previousBoardWidth;
   private int previousBoardHeight;
   private PlayerStrengthEstimator.StrengthModel previousStrengthModel;
+  @TempDir Path tempDir;
 
   @BeforeEach
   void setUp() {
@@ -28,7 +48,7 @@ class PlayerStrengthEstimatorTest {
     previousStrengthModel = PlayerStrengthEstimator.activeModel();
     Board.boardWidth = BOARD_SIZE;
     Board.boardHeight = BOARD_SIZE;
-    PlayerStrengthEstimator.setActiveModel(PlayerStrengthEstimator.StrengthModel.HUBER_LINEAR);
+    PlayerStrengthEstimator.setActiveModel(PlayerStrengthEstimator.StrengthModel.XGBOOST20TUN);
   }
 
   @AfterEach
@@ -36,6 +56,87 @@ class PlayerStrengthEstimatorTest {
     Board.boardWidth = previousBoardWidth;
     Board.boardHeight = previousBoardHeight;
     PlayerStrengthEstimator.setActiveModel(previousStrengthModel);
+  }
+
+  @Test
+  void exposesCurrentAndPreviousBundledTunModels() {
+    boolean foundCurrent = false;
+    boolean foundPrevious = false;
+    for (PlayerStrengthEstimator.StrengthModel model : PlayerStrengthEstimator.selectableModels()) {
+      foundCurrent |= model.equals(PlayerStrengthEstimator.StrengthModel.XGBOOST20TUN);
+      foundPrevious |= model.equals(PlayerStrengthEstimator.StrengthModel.XGBOOST20TUN_PREVIOUS);
+    }
+
+    assertTrue(foundCurrent);
+    assertTrue(foundPrevious);
+  }
+
+  @Test
+  void importsStandaloneBoosterWithSiblingMetadata() throws Exception {
+    try (StrengthModelTestEnvironment env =
+        StrengthModelTestEnvironment.open(tempDir.resolve("standalone-work"))) {
+      Path sourceDir = Files.createDirectories(tempDir.resolve("standalone-source"));
+      Path booster = sourceDir.resolve("custom_booster.json");
+      copyBundledResource(XGBOOST20TUN_BOOSTER_RESOURCE, booster);
+      Files.writeString(
+          sourceDir.resolve("metadata.json"),
+          metadataJson("Custom Tun Model", XGBoostStrengthModel.Features.defaultXGBoost20TunFeatureOrder()));
+
+      PlayerStrengthEstimator.StrengthModel imported =
+          PlayerStrengthEstimator.importStrengthModel(booster);
+
+      assertEquals("Custom Tun Model", imported.displayName());
+      assertEquals(1, modelDirectoryCount(env.modelRoot()));
+      assertTrue(selectableModelsContain(imported));
+    }
+  }
+
+  @Test
+  void importsZipModelBundleWithOptionalCalibrator() throws Exception {
+    try (StrengthModelTestEnvironment env =
+        StrengthModelTestEnvironment.open(tempDir.resolve("zip-work"))) {
+      Path bundle = tempDir.resolve("strength-model.zip");
+      try (ZipOutputStream zip = new ZipOutputStream(Files.newOutputStream(bundle))) {
+        writeZipEntry(zip, "model/booster.json", bundledResourceBytes(XGBOOST20TUN_BOOSTER_RESOURCE));
+        writeZipEntry(
+            zip,
+            "model/metadata.json",
+            metadataJson(
+                    "Zip Tun Model",
+                    XGBoostStrengthModel.Features.defaultXGBoost20TunFeatureOrder())
+                .getBytes());
+        writeZipEntry(
+            zip,
+            "model/calibrator.json",
+            bundledResourceBytes(XGBOOST20TUN_CALIBRATOR_RESOURCE));
+      }
+
+      PlayerStrengthEstimator.StrengthModel imported =
+          PlayerStrengthEstimator.importStrengthModel(bundle);
+
+      assertEquals("Zip Tun Model", imported.displayName());
+      assertEquals(1, modelDirectoryCount(env.modelRoot()));
+      assertTrue(selectableModelsContain(imported));
+    }
+  }
+
+  @Test
+  void failedZipImportRemovesPartialModelDirectory() throws Exception {
+    try (StrengthModelTestEnvironment env =
+        StrengthModelTestEnvironment.open(tempDir.resolve("failed-work"))) {
+      Path bundle = tempDir.resolve("bad-strength-model.zip");
+      try (ZipOutputStream zip = new ZipOutputStream(Files.newOutputStream(bundle))) {
+        writeZipEntry(zip, "booster.json", bundledResourceBytes(XGBOOST20TUN_BOOSTER_RESOURCE));
+        writeZipEntry(
+            zip,
+            "metadata.json",
+            metadataJson("Bad Feature Model", new String[] {"not_a_known_strength_feature"})
+                .getBytes());
+      }
+
+      assertThrows(IOException.class, () -> PlayerStrengthEstimator.importStrengthModel(bundle));
+      assertEquals(0, modelDirectoryCount(env.modelRoot()));
+    }
   }
 
   @Test
@@ -274,7 +375,7 @@ class PlayerStrengthEstimatorTest {
     assertEquals(0.43, report.overall.firstChoiceRate, 0.01);
     assertEquals(0.72, report.overall.goodMoveRate, 0.01);
     assertEquals(0.11, report.overall.mistakeRate, 0.01);
-    assertEquals("5-6d", report.overall.strengthBand);
+    assertEquals("7d", report.overall.strengthBand);
   }
 
   @Test
@@ -506,5 +607,78 @@ class PlayerStrengthEstimatorTest {
     int[] moveNumberList = new int[BOARD_AREA];
     moveNumberList[Board.getIndex(x, y)] = moveNumber;
     return moveNumberList;
+  }
+
+  private static boolean selectableModelsContain(PlayerStrengthEstimator.StrengthModel target) {
+    for (PlayerStrengthEstimator.StrengthModel model : PlayerStrengthEstimator.selectableModels()) {
+      if (model.equals(target)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private static String metadataJson(String displayName, String[] featureOrder) {
+    JSONObject metadata = new JSONObject();
+    metadata.put("model_type", "xgboost_rank_value");
+    metadata.put("display_name", displayName);
+    metadata.put("feature_order", new JSONArray(featureOrder));
+    metadata.put("prediction_sigma", XGBoostStrengthModel.xgboost20TunSigma());
+    return metadata.toString(2);
+  }
+
+  private static void copyBundledResource(String resourcePath, Path target) throws IOException {
+    Files.write(target, bundledResourceBytes(resourcePath));
+  }
+
+  private static byte[] bundledResourceBytes(String resourcePath) throws IOException {
+    try (InputStream stream = PlayerStrengthEstimatorTest.class.getResourceAsStream(resourcePath)) {
+      assertNotNull(stream, "Missing test resource " + resourcePath);
+      return stream.readAllBytes();
+    }
+  }
+
+  private static void writeZipEntry(ZipOutputStream zip, String name, byte[] content)
+      throws IOException {
+    ZipEntry entry = new ZipEntry(name);
+    zip.putNextEntry(entry);
+    zip.write(content);
+    zip.closeEntry();
+  }
+
+  private static long modelDirectoryCount(Path modelRoot) throws IOException {
+    if (!Files.isDirectory(modelRoot)) {
+      return 0;
+    }
+    try (var stream = Files.list(modelRoot)) {
+      return stream.filter(Files::isDirectory).count();
+    }
+  }
+
+  private static final class StrengthModelTestEnvironment implements AutoCloseable {
+    private final Config previousConfig;
+    private final Path modelRoot;
+
+    private StrengthModelTestEnvironment(Config previousConfig, Path modelRoot) {
+      this.previousConfig = previousConfig;
+      this.modelRoot = modelRoot;
+    }
+
+    private static StrengthModelTestEnvironment open(Path workDirectory) throws IOException {
+      Config previousConfig = Lizzie.config;
+      Files.createDirectories(workDirectory);
+      Lizzie.config = ConfigTestHelper.createForTests(workDirectory);
+      return new StrengthModelTestEnvironment(
+          previousConfig, Lizzie.config.getWorkDirectory().toPath().resolve("strength-models"));
+    }
+
+    private Path modelRoot() {
+      return modelRoot;
+    }
+
+    @Override
+    public void close() {
+      Lizzie.config = previousConfig;
+    }
   }
 }
