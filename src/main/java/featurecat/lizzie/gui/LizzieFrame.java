@@ -4114,6 +4114,7 @@ public class LizzieFrame extends JFrame {
     }
     endHumanSlGameIfActive();
     boolean oriSound = Lizzie.config.playSound;
+    boolean originalCanGoAfterload = canGoAfterload;
     canGoAfterload = false;
     Lizzie.config.playSound = false;
     JSONObject filesystem = Lizzie.config.persisted.getJSONObject("filesystem");
@@ -4130,17 +4131,8 @@ public class LizzieFrame extends JFrame {
         loaded = SGFParser.load(file.getPath(), showHint);
       }
       if (!loaded) {
-        Lizzie.config.playSound = oriSound;
-        SwingUtilities.invokeLater(
-            new Runnable() {
-              public void run() {
-                JOptionPane.showConfirmDialog(
-                    Lizzie.frame,
-                    Lizzie.resourceBundle.getString("LizzieFrame.prompt.failedToOpenFile"),
-                    "Error",
-                    JOptionPane.ERROR);
-              }
-            });
+        restoreKifuLoadTemporaryState(oriSound, originalCanGoAfterload);
+        showOpenFileFailedMessageLater();
         return;
       }
 
@@ -4152,17 +4144,8 @@ public class LizzieFrame extends JFrame {
         }
       }
     } catch (IOException err) {
-      Lizzie.config.playSound = oriSound;
-      SwingUtilities.invokeLater(
-          new Runnable() {
-            public void run() {
-              JOptionPane.showConfirmDialog(
-                  Lizzie.frame,
-                  Lizzie.resourceBundle.getString("LizzieFrame.prompt.failedToOpenFile"),
-                  "Error",
-                  JOptionPane.ERROR);
-            }
-          });
+      restoreKifuLoadTemporaryState(oriSound, originalCanGoAfterload);
+      showOpenFileFailedMessageLater();
       return;
     }
     scheduleMovelistRefreshAfterKifuLoad();
@@ -12995,6 +12978,24 @@ public class LizzieFrame extends JFrame {
     requestSender.start();
   }
 
+  private void restoreKifuLoadTemporaryState(boolean originalSound, boolean originalCanGoAfterload) {
+    Lizzie.config.playSound = originalSound;
+    canGoAfterload = originalCanGoAfterload;
+  }
+
+  private void showOpenFileFailedMessageLater() {
+    SwingUtilities.invokeLater(
+        new Runnable() {
+          public void run() {
+            JOptionPane.showMessageDialog(
+                Lizzie.frame,
+                Lizzie.resourceBundle.getString("LizzieFrame.prompt.failedToOpenFile"),
+                "Error",
+                JOptionPane.ERROR_MESSAGE);
+          }
+        });
+  }
+
   private WaitForAnalysis createFlashAnalysisLoadingFrame() {
     WaitForAnalysis loadingFrame = new WaitForAnalysis();
     loadingFrame.setLoadingProgress();
@@ -13048,9 +13049,11 @@ public class LizzieFrame extends JFrame {
         new JLabel(Lizzie.resourceBundle.getString("PlayerStrengthEstimate.subtitle.assessment"));
     subtitle.setForeground(PlayerStrengthDashboardRoot.MUTED_TEXT);
     subtitle.setFont(new Font(Config.sysDefaultFontName, Font.PLAIN, Config.frameFontSize + 1));
+    final boolean[] showingMatchDashboard = {false};
 
     JButton detailButton =
-        createPlayerStrengthDetailButton(() -> showPlayerStrengthDetailDialog(owner, report));
+        createPlayerStrengthDetailButton(
+            () -> showPlayerStrengthDetailDialog(owner, report, showingMatchDashboard[0]));
     JToggleButton assessmentTab =
         createPlayerStrengthTabButton(
             Lizzie.resourceBundle.getString("PlayerStrengthEstimate.tab.assessment"), true);
@@ -13063,12 +13066,14 @@ public class LizzieFrame extends JFrame {
 
     assessmentTab.addActionListener(
         e -> {
+          showingMatchDashboard[0] = false;
           subtitle.setText(
               Lizzie.resourceBundle.getString("PlayerStrengthEstimate.subtitle.assessment"));
           cardLayout.show(cards, "assessment");
         });
     matchTab.addActionListener(
         e -> {
+          showingMatchDashboard[0] = true;
           subtitle.setText(
               Lizzie.resourceBundle.getString("PlayerStrengthEstimate.subtitle.match"));
           cardLayout.show(cards, "match");
@@ -13205,7 +13210,7 @@ public class LizzieFrame extends JFrame {
   }
 
   private void showPlayerStrengthDetailDialog(
-      JDialog owner, PlayerStrengthEstimator.Report report) {
+      JDialog owner, PlayerStrengthEstimator.Report report, boolean matchDetail) {
     String title =
         Lizzie.resourceBundle.getString("PlayerStrengthEstimate.title")
             + " - "
@@ -13213,7 +13218,13 @@ public class LizzieFrame extends JFrame {
     JDialog detailDialog = new JDialog(owner, title, true);
     detailDialog.setDefaultCloseOperation(WindowConstants.DISPOSE_ON_CLOSE);
     detailDialog.getContentPane().setLayout(new BorderLayout());
-    detailDialog.getContentPane().add(buildPlayerStrengthMatchPanel(report), BorderLayout.CENTER);
+    detailDialog
+        .getContentPane()
+        .add(
+            matchDetail
+                ? buildPlayerStrengthMatchPanel(report)
+                : buildPlayerStrengthAssessmentPanel(report),
+            BorderLayout.CENTER);
     detailDialog.setMinimumSize(new Dimension(760, 420));
     Lizzie.setFrameSize(detailDialog, 900, 460);
     detailDialog.setLocationRelativeTo(owner);
@@ -13278,6 +13289,96 @@ public class LizzieFrame extends JFrame {
     panel.setBackground(new Color(46, 55, 70));
     panel.add(new PlayerStrengthMatchChart(report), BorderLayout.CENTER);
     return panel;
+  }
+
+  private JComponent buildPlayerStrengthAssessmentPanel(PlayerStrengthEstimator.Report report) {
+    JPanel panel = new JPanel(new BorderLayout(0, 14));
+    panel.setBorder(new EmptyBorder(18, 18, 18, 18));
+    panel.setBackground(new Color(46, 55, 70));
+
+    JPanel cards = new JPanel(new GridLayout(1, 2, 14, 0));
+    cards.setOpaque(false);
+    cards.add(
+        buildPlayerStrengthAssessmentDetailCard(
+            Lizzie.resourceBundle.getString("Menu.Black"), true, report.black));
+    cards.add(
+        buildPlayerStrengthAssessmentDetailCard(
+            Lizzie.resourceBundle.getString("Menu.White"), false, report.white));
+    panel.add(cards, BorderLayout.CENTER);
+    panel.add(
+        new PlayerStrengthNoteStrip(
+            Lizzie.resourceBundle.getString("PlayerStrengthEstimate.reviewOnlyNote")),
+        BorderLayout.SOUTH);
+    return panel;
+  }
+
+  private JComponent buildPlayerStrengthAssessmentDetailCard(
+      String title, boolean black, PlayerStrengthEstimator.SideReport report) {
+    JPanel card = new JPanel(new BorderLayout(0, 12));
+    card.setBorder(new EmptyBorder(18, 20, 18, 20));
+    card.setBackground(new Color(61, 71, 88));
+
+    JLabel titleLabel = new JLabel(title);
+    titleLabel.setForeground(black ? new Color(235, 239, 246) : new Color(255, 248, 220));
+    titleLabel.setFont(new Font(Config.sysDefaultFontName, Font.BOLD, Config.frameFontSize + 8));
+    card.add(titleLabel, BorderLayout.NORTH);
+
+    JPanel metrics = new JPanel(new GridLayout(0, 2, 10, 9));
+    metrics.setOpaque(false);
+    addPlayerStrengthMetric(
+        metrics,
+        Lizzie.resourceBundle.getString("PlayerStrengthEstimate.match.strength"),
+        playerStrengthDisplayRank(report.strengthBand));
+    addPlayerStrengthMetric(
+        metrics,
+        Lizzie.resourceBundle.getString("PlayerStrengthEstimate.rank.scale"),
+        playerStrengthRankValueText(report));
+    addPlayerStrengthMetric(
+        metrics,
+        Lizzie.resourceBundle.getString("PlayerStrengthEstimate.confidence"),
+        playerStrengthConfidenceText(report.confidence));
+    addPlayerStrengthMetric(
+        metrics,
+        Lizzie.resourceBundle.getString("PlayerStrengthEstimate.moves"),
+        String.valueOf(report.sampleCount));
+    addPlayerStrengthMetric(
+        metrics,
+        Lizzie.resourceBundle.getString("PlayerStrengthEstimate.firstChoice"),
+        playerStrengthPrecisePercentText(report.firstChoiceRate));
+    addPlayerStrengthMetric(
+        metrics,
+        Lizzie.resourceBundle.getString("PlayerStrengthEstimate.goodMoveRate"),
+        playerStrengthPrecisePercentText(report.goodMoveRate));
+    addPlayerStrengthMetric(
+        metrics,
+        Lizzie.resourceBundle.getString("PlayerStrengthEstimate.weightedScoreLoss"),
+        report.weightedScoreLossText());
+    addPlayerStrengthMetric(
+        metrics,
+        Lizzie.resourceBundle.getString("PlayerStrengthEstimate.match.avgScoreLoss"),
+        report.averageScoreLossText());
+    addPlayerStrengthMetric(
+        metrics,
+        Lizzie.resourceBundle.getString("PlayerStrengthEstimate.mistakeRate"),
+        playerStrengthPrecisePercentText(report.mistakeRate));
+    addPlayerStrengthMetric(
+        metrics,
+        Lizzie.resourceBundle.getString("PlayerStrengthEstimate.match.overallMatch"),
+        report.matchRateText());
+
+    card.add(metrics, BorderLayout.CENTER);
+    return card;
+  }
+
+  private void addPlayerStrengthMetric(JPanel panel, String label, String value) {
+    JLabel labelComponent = new JLabel(label);
+    labelComponent.setForeground(PlayerStrengthDashboardRoot.MUTED_TEXT);
+    labelComponent.setFont(new Font(Config.sysDefaultFontName, Font.PLAIN, Config.frameFontSize));
+    JLabel valueComponent = new JLabel(value == null || value.isEmpty() ? "-" : value);
+    valueComponent.setForeground(PlayerStrengthDashboardRoot.TEXT);
+    valueComponent.setFont(new Font(Config.sysDefaultFontName, Font.BOLD, Config.frameFontSize + 1));
+    panel.add(labelComponent);
+    panel.add(valueComponent);
   }
 
   private static String playerStrengthConfidenceText(

@@ -14,7 +14,7 @@ import org.json.JSONTokener;
 
 /** Residual calibrator for the xgboost20tun strength model. */
 final class XGBoost20TunResidualCalibrator {
-  private static final String CALIBRATOR_RESOURCE_PATH =
+  static final String CALIBRATOR_RESOURCE_PATH =
       "/models/strength/xgboost20tun_residual_calibrator.json";
   private static final String CALIBRATOR_PROPERTY = "lizzie.strength.xgboost20tun.calibrator";
   private static final String LEGACY_ZHANGQI_CALIBRATOR_PROPERTY =
@@ -225,8 +225,8 @@ final class XGBoost20TunResidualCalibrator {
       return basePrediction;
     }
     if (name.startsWith("hinge_above_")) {
-      return Math.max(
-          0.0, basePrediction - Double.parseDouble(name.substring("hinge_above_".length())));
+      double threshold = parseDoubleOrNaN(name.substring("hinge_above_".length()));
+      return Double.isFinite(threshold) ? Math.max(0.0, basePrediction - threshold) : Double.NaN;
     }
     if ("match_rate".equals(name)) {
       return features.valueAtFull29Index(7);
@@ -285,6 +285,14 @@ final class XGBoost20TunResidualCalibrator {
       values[index] = array.getDouble(index);
     }
     return values;
+  }
+
+  private static double parseDoubleOrNaN(String value) {
+    try {
+      return Double.parseDouble(value);
+    } catch (NumberFormatException e) {
+      return Double.NaN;
+    }
   }
 
   private static double clamp01(double value) {

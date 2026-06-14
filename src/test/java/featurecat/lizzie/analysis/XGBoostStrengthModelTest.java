@@ -3,10 +3,17 @@ package featurecat.lizzie.analysis;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.OptionalDouble;
+import org.json.JSONArray;
+import org.json.JSONObject;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 class XGBoostStrengthModelTest {
+  @TempDir Path tempDir;
+
   @Test
   void loadsBundledXGBoost20TunModelAndCalibrator() {
     assertTrue(XGBoostStrengthModel.isXGBoost20TunAvailable());
@@ -33,6 +40,33 @@ class XGBoostStrengthModelTest {
 
     assertEquals(4.8, belowGate, 0.0001);
     assertTrue(aboveGate > 7.4);
+  }
+
+  @Test
+  void malformedHingeThresholdInImportedCalibratorDoesNotCrashPrediction() throws Exception {
+    Path calibrator = tempDir.resolve("bad-hinge-calibrator.json");
+    JSONObject root = new JSONObject();
+    JSONObject finalCalibrator = new JSONObject();
+    finalCalibrator.put(
+        "spec",
+        new JSONObject()
+            .put("gate_start", 0.0)
+            .put("gate_full", 1.0)
+            .put("correction_min", -1.0)
+            .put("correction_max", 1.0));
+    finalCalibrator.put("feature_order", new JSONArray().put("hinge_above_not-a-number"));
+    finalCalibrator.put("scaler_mean", new JSONArray().put(0.0));
+    finalCalibrator.put("scaler_scale", new JSONArray().put(1.0));
+    finalCalibrator.put("intercept", 1.0);
+    finalCalibrator.put("coefficients", new JSONArray().put(1.0));
+    root.put("final_calibrator", finalCalibrator);
+    Files.writeString(calibrator, root.toString(2));
+
+    assertTrue(XGBoost20TunResidualCalibrator.isAvailable(calibrator));
+    assertEquals(
+        8.0,
+        XGBoost20TunResidualCalibrator.calibrate(8.0, knownFull29Features(), calibrator),
+        0.0001);
   }
 
   private static XGBoostStrengthModel.Features knownFull29Features() {

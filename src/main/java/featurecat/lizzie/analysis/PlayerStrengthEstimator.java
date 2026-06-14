@@ -13,6 +13,7 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.Enumeration;
 import java.util.List;
 import java.util.Locale;
@@ -498,7 +499,7 @@ public final class PlayerStrengthEstimator {
             "xgboost20tun",
             null,
             null,
-            null,
+            XGBoost20TunResidualCalibrator.CALIBRATOR_RESOURCE_PATH,
             null,
             XGBoostStrengthModel.Features.defaultXGBoost20TunFeatureIndices(),
             XGBoostStrengthModel.xgboost20TunSigma());
@@ -620,30 +621,37 @@ public final class PlayerStrengthEstimator {
               ? stem(sourceBooster.getFileName().toString())
               : spec.displayName;
       Path targetDir = uniqueModelDirectory(root, safeSlug(displayName));
-      Files.createDirectories(targetDir);
+      try {
+        Files.createDirectories(targetDir);
+        Path targetBooster = targetDir.resolve("booster.json");
+        Files.copy(sourceBooster, targetBooster, StandardCopyOption.REPLACE_EXISTING);
+        Files.writeString(targetDir.resolve("display-name.txt"), displayName);
+        if (sourceMetadata == null) {
+          Files.writeString(targetDir.resolve("metadata.json"), spec.toJson().toString(2));
+        } else {
+          Files.copy(
+              sourceMetadata,
+              targetDir.resolve("metadata.json"),
+              StandardCopyOption.REPLACE_EXISTING);
+        }
 
-      Path targetBooster = targetDir.resolve("booster.json");
-      Files.copy(sourceBooster, targetBooster, StandardCopyOption.REPLACE_EXISTING);
-      Files.writeString(targetDir.resolve("display-name.txt"), displayName);
-      if (sourceMetadata == null) {
-        Files.writeString(targetDir.resolve("metadata.json"), spec.toJson().toString(2));
-      } else {
-        Files.copy(
-            sourceMetadata,
-            targetDir.resolve("metadata.json"),
-            StandardCopyOption.REPLACE_EXISTING);
+        Path sourceCalibrator = findSiblingCalibrator(sourceBooster);
+        if (sourceCalibrator != null) {
+          Path targetCalibrator = targetDir.resolve("calibrator.json");
+          Files.copy(sourceCalibrator, targetCalibrator, StandardCopyOption.REPLACE_EXISTING);
+        }
+        StrengthModel imported = fromDirectory(targetDir);
+        if (!isModelAvailable(imported)) {
+          throw new IOException("Imported model did not pass runtime validation.");
+        }
+        return imported;
+      } catch (IOException | RuntimeException e) {
+        deleteRecursivelyQuietly(targetDir);
+        if (e instanceof IOException) {
+          throw (IOException) e;
+        }
+        throw new IOException("Imported model did not pass runtime validation.", e);
       }
-
-      Path sourceCalibrator = findSiblingCalibrator(sourceBooster);
-      if (sourceCalibrator != null) {
-        Path targetCalibrator = targetDir.resolve("calibrator.json");
-        Files.copy(sourceCalibrator, targetCalibrator, StandardCopyOption.REPLACE_EXISTING);
-      }
-      StrengthModel imported = fromDirectory(targetDir);
-      if (!isModelAvailable(imported)) {
-        throw new IOException("Imported model did not pass runtime validation.");
-      }
-      return imported;
     }
 
     private static StrengthModel importZipModel(Path sourceZip) throws IOException {
@@ -651,29 +659,37 @@ public final class PlayerStrengthEstimator {
       Files.createDirectories(root);
       String fallbackDisplayName = stem(sourceZip.getFileName().toString());
       Path targetDir = uniqueModelDirectory(root, safeSlug(fallbackDisplayName));
-      Files.createDirectories(targetDir);
-      try (ZipFile zip = new ZipFile(sourceZip.toFile())) {
-        ZipEntry boosterEntry = findZipEntry(zip, "booster.json", "booster");
-        if (boosterEntry == null) {
-          throw new IOException("Model bundle is missing booster.json.");
+      try {
+        Files.createDirectories(targetDir);
+        try (ZipFile zip = new ZipFile(sourceZip.toFile())) {
+          ZipEntry boosterEntry = findZipEntry(zip, "booster.json", "booster");
+          if (boosterEntry == null) {
+            throw new IOException("Model bundle is missing booster.json.");
+          }
+          ZipEntry metadataEntry = findZipEntry(zip, "metadata.json", "metadata");
+          if (metadataEntry == null) {
+            throw new IOException("Model bundle is missing metadata.json with feature_order.");
+          }
+          ZipEntry calibratorEntry = findZipEntry(zip, "calibrator.json", "calibrator");
+          copyZipEntry(zip, boosterEntry, targetDir.resolve("booster.json"));
+          copyZipEntry(zip, metadataEntry, targetDir.resolve("metadata.json"));
+          if (calibratorEntry != null) {
+            copyZipEntry(zip, calibratorEntry, targetDir.resolve("calibrator.json"));
+          }
         }
-        ZipEntry metadataEntry = findZipEntry(zip, "metadata.json", "metadata");
-        if (metadataEntry == null) {
-          throw new IOException("Model bundle is missing metadata.json with feature_order.");
+        StrengthModel imported = fromDirectory(targetDir);
+        if (imported == null || !isModelAvailable(imported)) {
+          throw new IOException("Imported model bundle did not pass runtime validation.");
         }
-        ZipEntry calibratorEntry = findZipEntry(zip, "calibrator.json", "calibrator");
-        copyZipEntry(zip, boosterEntry, targetDir.resolve("booster.json"));
-        copyZipEntry(zip, metadataEntry, targetDir.resolve("metadata.json"));
-        if (calibratorEntry != null) {
-          copyZipEntry(zip, calibratorEntry, targetDir.resolve("calibrator.json"));
+        Files.writeString(targetDir.resolve("display-name.txt"), imported.displayName());
+        return imported;
+      } catch (IOException | RuntimeException e) {
+        deleteRecursivelyQuietly(targetDir);
+        if (e instanceof IOException) {
+          throw (IOException) e;
         }
+        throw new IOException("Imported model bundle did not pass runtime validation.", e);
       }
-      StrengthModel imported = fromDirectory(targetDir);
-      if (imported == null || !isModelAvailable(imported)) {
-        throw new IOException("Imported model bundle did not pass runtime validation.");
-      }
-      Files.writeString(targetDir.resolve("display-name.txt"), imported.displayName());
-      return imported;
     }
 
     private static StrengthModel fromDirectory(Path directory) {
@@ -858,6 +874,24 @@ public final class PlayerStrengthEstimator {
     private static void copyZipEntry(ZipFile zip, ZipEntry entry, Path target) throws IOException {
       try (InputStream stream = zip.getInputStream(entry)) {
         Files.copy(stream, target, StandardCopyOption.REPLACE_EXISTING);
+      }
+    }
+
+    private static void deleteRecursivelyQuietly(Path directory) {
+      if (directory == null || !Files.exists(directory)) {
+        return;
+      }
+      try (var stream = Files.walk(directory)) {
+        stream
+            .sorted(Comparator.reverseOrder())
+            .forEach(
+                path -> {
+                  try {
+                    Files.deleteIfExists(path);
+                  } catch (IOException ignored) {
+                  }
+                });
+      } catch (IOException ignored) {
       }
     }
 
