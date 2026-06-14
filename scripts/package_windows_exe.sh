@@ -378,7 +378,8 @@ generate_app_cds_archive() {
     --app-dir "$app_dir" \
     --archive "$archive_path" \
     --manifest "$manifest_path" \
-    --optional
+    --optional \
+    >&2
 }
 
 derive_windows_app_version() {
