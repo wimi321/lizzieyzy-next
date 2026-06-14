@@ -2,6 +2,7 @@ package featurecat.lizzie.analysis;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import featurecat.lizzie.rules.Board;
 import featurecat.lizzie.rules.BoardData;
@@ -28,7 +29,7 @@ class PlayerStrengthEstimatorTest {
     previousStrengthModel = PlayerStrengthEstimator.activeModel();
     Board.boardWidth = BOARD_SIZE;
     Board.boardHeight = BOARD_SIZE;
-    PlayerStrengthEstimator.setActiveModel(PlayerStrengthEstimator.StrengthModel.HUBER_LINEAR);
+    PlayerStrengthEstimator.setActiveModel(PlayerStrengthEstimator.StrengthModel.XGBOOST20TUN);
   }
 
   @AfterEach
@@ -36,6 +37,19 @@ class PlayerStrengthEstimatorTest {
     Board.boardWidth = previousBoardWidth;
     Board.boardHeight = previousBoardHeight;
     PlayerStrengthEstimator.setActiveModel(previousStrengthModel);
+  }
+
+  @Test
+  void exposesCurrentAndPreviousBundledTunModels() {
+    boolean foundCurrent = false;
+    boolean foundPrevious = false;
+    for (PlayerStrengthEstimator.StrengthModel model : PlayerStrengthEstimator.selectableModels()) {
+      foundCurrent |= model.equals(PlayerStrengthEstimator.StrengthModel.XGBOOST20TUN);
+      foundPrevious |= model.equals(PlayerStrengthEstimator.StrengthModel.XGBOOST20TUN_PREVIOUS);
+    }
+
+    assertTrue(foundCurrent);
+    assertTrue(foundPrevious);
   }
 
   @Test
@@ -274,7 +288,7 @@ class PlayerStrengthEstimatorTest {
     assertEquals(0.43, report.overall.firstChoiceRate, 0.01);
     assertEquals(0.72, report.overall.goodMoveRate, 0.01);
     assertEquals(0.11, report.overall.mistakeRate, 0.01);
-    assertEquals("5-6d", report.overall.strengthBand);
+    assertEquals("7d", report.overall.strengthBand);
   }
 
   @Test
