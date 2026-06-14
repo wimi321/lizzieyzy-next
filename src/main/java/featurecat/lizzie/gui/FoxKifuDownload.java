@@ -496,7 +496,8 @@ public class FoxKifuDownload extends JFrame {
         String kifu = jsonObject.getString("chess");
         showProgressNotice(
             Lizzie.frame.kifuLoadText("KifuLoad.parsing", "正在解析棋谱…", "Parsing game record..."));
-        boolean loaded = Lizzie.frame.loadSgfString(kifu, 200, false, false, null);
+        boolean loaded =
+            Lizzie.frame.loadSgfString(kifu, 200, Lizzie.config.readKomi, false, null);
         if (loaded) {
           finishFoxKifuLoadAfterMainPaint();
         } else {

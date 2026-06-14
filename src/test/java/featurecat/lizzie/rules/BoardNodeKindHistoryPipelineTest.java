@@ -352,6 +352,22 @@ class BoardNodeKindHistoryPipelineTest {
   }
 
   @Test
+  void liveLoadFoxHandicapGameReadsZeroKomi() throws Exception {
+    TestEnvironment env = TestEnvironment.open();
+    try {
+      Lizzie.config.readKomi = true;
+      String sgf = "(;SZ[3]KM[0]HA[2]AB[aa]AB[ca];W[ba];B[bb])";
+
+      assertTrue(SGFParser.loadFromString(sgf), "loadFromString should parse Fox handicap SGF.");
+
+      BoardHistoryList history = Lizzie.board.getHistory();
+      assertEquals(0.0, history.getGameInfo().getKomi(), 0.001);
+    } finally {
+      env.close();
+    }
+  }
+
+  @Test
   void liveLoadNormalHandicapRootSetupSyncsPrimaryEngineAtRoot() throws Exception {
     assertLiveLoadHandicapSetupSyncsPrimaryEngine(false);
   }
