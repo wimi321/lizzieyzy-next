@@ -6524,6 +6524,74 @@ def build_next_2026_06_16_1_notes(
     release_tag: str | None,
 ) -> str:
     notes = build_next_2026_06_14_1_notes(asset_map, bundle, repo, release_tag)
+    replacements = {
+        '这一版重点修复布局和设置保存体验：新配置默认进入四方图模式，评论/问题手面板默认隐藏；在综合设置里打开或关闭“显示评论/问题手面板”后，保存、重启都应该保持你的选择。':
+            '这一版重点修复布局和设置保存体验：默认启动恢复为普通布局并显示评论/问题手面板；切换到四方图或双引擎布局时会自动隐藏该面板，综合设置里的开关保存、重启都应该保持你的选择。',
+        '- 新安装或新建配置默认使用四方图模式，让主棋盘、变化图和分析信息一开始就更清爽。':
+            '- 默认启动恢复为普通布局，保留原来右侧评论/问题手面板的使用习惯。',
+        '- 评论/问题手面板默认隐藏，减少普通用户初次打开时右侧信息过载。':
+            '- 切换到四方图或双引擎布局时自动隐藏评论/问题手面板，避免棋盘和分析区域被挤乱。',
+        '- 修复面板配置保存时 `extra-mode` 写成内部枚举，导致四方图模式可能在下次启动回到普通模式的问题；旧的字符串配置也能兼容读取。':
+            '- 修复面板配置保存时 `extra-mode` 写成内部枚举，导致布局模式下次启动被错误还原的问题；旧的字符串配置也能兼容读取。',
+        '- 首次打开更接近大多数棋友实际使用方式：四方图默认开启，评论/问题手面板不再抢占视线。':
+            '- 首次打开回到原来的普通布局，老用户熟悉的评论/问题手面板默认显示；需要四方图时再切换，面板会自动收起。',
+        '- 新增 `ConfigPanelModeTest` 回归测试，覆盖默认四方图、旧配置兼容、双引擎隐藏面板和保存格式。':
+            '- 新增 `ConfigPanelModeTest` 回归测试，覆盖默认普通布局、旧配置兼容、双引擎隐藏面板和保存格式。',
+        '這一版重點修復版面與設定保存體驗：新配置預設進入四方圖模式，評論/問題手面板預設隱藏；在綜合設定裡打開或關閉「顯示評論/問題手面板」後，保存、重啟都應該保持你的選擇。':
+            '這一版重點修復版面與設定保存體驗：預設啟動恢復為普通版面並顯示評論/問題手面板；切換到四方圖或雙引擎版面時會自動隱藏該面板，綜合設定裡的開關保存、重啟都應該保持你的選擇。',
+        '- 新安裝或新建配置預設使用四方圖模式，讓主棋盤、變化圖和分析資訊一開始就更清爽。':
+            '- 預設啟動恢復為普通版面，保留原本右側評論/問題手面板的使用習慣。',
+        '- 評論/問題手面板預設隱藏，減少普通使用者初次打開時右側資訊過載。':
+            '- 切換到四方圖或雙引擎版面時自動隱藏評論/問題手面板，避免棋盤和分析區域被擠亂。',
+        '- 修復面板配置保存時 `extra-mode` 寫成內部 enum，導致四方圖模式可能在下次啟動回到普通模式的問題；舊的字串配置也能相容讀取。':
+            '- 修復面板配置保存時 `extra-mode` 寫成內部 enum，導致版面模式下次啟動被錯誤還原的問題；舊的字串配置也能相容讀取。',
+        '- 首次打開更接近多數棋友實際使用方式：四方圖預設開啟，評論/問題手面板不再搶佔視線。':
+            '- 首次打開回到原本的普通版面，老使用者熟悉的評論/問題手面板預設顯示；需要四方圖時再切換，面板會自動收起。',
+        '- 新增 `ConfigPanelModeTest` 回歸測試，覆蓋預設四方圖、舊配置相容、雙引擎隱藏面板和保存格式。':
+            '- 新增 `ConfigPanelModeTest` 回歸測試，覆蓋預設普通版面、舊配置相容、雙引擎隱藏面板和保存格式。',
+        'This release focuses on layout and settings persistence. New configurations now start in four-sub-board mode with the comment/problem panel hidden by default. When users toggle the comment/problem panel in Settings, that choice should now survive saving and restart.':
+            'This release focuses on layout and settings persistence. The default startup layout is back to normal mode with the comment/problem panel visible; four-board and dual-engine layouts automatically hide that panel, and the Settings toggle now survives saving and restart.',
+        '- New installs and fresh configurations now default to four-sub-board mode for a cleaner first screen.':
+            '- The default startup layout is back to normal mode, preserving the familiar right-side comment/problem panel.',
+        '- The comment/problem panel is hidden by default to reduce right-side information overload for everyday users.':
+            '- Four-board and dual-engine layouts automatically hide the comment/problem panel so the board and analysis areas are not crowded.',
+        '- The first-run layout is closer to how many Go players review games: four-sub-board mode is on, and the comment/problem panel no longer steals attention.':
+            '- First launch is back to the classic normal layout, with the familiar comment/problem panel visible by default; switching to four-board mode folds that panel away automatically.',
+        '- Added `ConfigPanelModeTest` coverage for default four-sub mode, legacy config compatibility, dual-engine panel hiding, and save format.':
+            '- Added `ConfigPanelModeTest` coverage for the default normal layout, legacy config compatibility, dual-engine panel hiding, and save format.',
+        'このリリースは、レイアウトと設定保存の安定化が中心です。新しい設定では四方図モードで起動し、コメント/問題手パネルは既定で非表示になります。設定画面でこのパネルを切り替えた場合、保存後の再起動でも選択が維持されます。':
+            'このリリースは、レイアウトと設定保存の安定化が中心です。既定の起動レイアウトを通常モードに戻し、コメント/問題手パネルを表示します。四分割や二重エンジン表示では自動的に隠れ、設定画面での切り替えも保存後の再起動で維持されます。',
+        '- 新規インストールや新しい設定では、最初から四方図モードを使うようにしました。':
+            '- 既定の起動レイアウトを通常モードに戻し、従来の右側コメント/問題手パネルを表示します。',
+        '- コメント/問題手パネルは既定で非表示になり、初回起動時の右側情報量を減らします。':
+            '- 四分割や二重エンジン表示ではコメント/問題手パネルを自動的に隠し、盤面と分析領域が窮屈にならないようにしました。',
+        '- 初回画面が多くの囲碁ユーザーの検討スタイルに近づきます。四方図が既定で有効になり、コメント/問題手パネルは視線を奪いません。':
+            '- 初回画面は従来の通常レイアウトに戻り、慣れたコメント/問題手パネルが既定で表示されます。四分割へ切り替えるとパネルは自動的に畳まれます。',
+        '- 既定の四方図、旧設定互換、二重エンジン時のパネル非表示、保存形式を `ConfigPanelModeTest` で回帰テストしています。':
+            '- 既定の通常レイアウト、旧設定互換、二重エンジン時のパネル非表示、保存形式を `ConfigPanelModeTest` で回帰テストしています。',
+        '이번 릴리스는 레이아웃과 설정 저장 안정화에 집중합니다. 새 설정은 four-sub-board 모드로 시작하고 comment/problem panel 은 기본으로 숨겨집니다. Settings 에서 이 패널을 켜거나 끄면 저장 및 재시작 후에도 선택이 유지됩니다.':
+            '이번 릴리스는 레이아웃과 설정 저장 안정화에 집중합니다. 기본 시작 레이아웃은 일반 모드로 돌아가고 comment/problem panel 은 표시됩니다. four-board 및 dual-engine 레이아웃에서는 자동으로 숨겨지며, Settings 에서 바꾼 값은 저장 및 재시작 후에도 유지됩니다.',
+        '- 새 설치와 새 설정은 기본적으로 four-sub-board 모드로 시작합니다.':
+            '- 기본 시작 레이아웃을 일반 모드로 되돌려 익숙한 오른쪽 comment/problem panel 을 유지합니다.',
+        '- comment/problem panel 은 기본으로 숨겨져 일반 사용자의 첫 화면 정보 과부하를 줄입니다.':
+            '- four-board 및 dual-engine 레이아웃에서는 comment/problem panel 을 자동으로 숨겨 보드와 분석 영역이 밀리지 않게 했습니다.',
+        '- 첫 실행 화면이 많은 바둑 사용자의 실제 검토 방식에 가까워졌습니다. four-sub-board 는 켜져 있고 comment/problem panel 은 시선을 빼앗지 않습니다.':
+            '- 첫 실행 화면은 기존 일반 레이아웃으로 돌아가고 익숙한 comment/problem panel 이 기본 표시됩니다. four-board 로 전환하면 panel 이 자동으로 접힙니다.',
+        '- 기본 four-sub 모드, legacy config 호환, dual-engine panel hiding, save format 을 `ConfigPanelModeTest` 로 회귀 테스트합니다.':
+            '- 기본 일반 레이아웃, legacy config 호환, dual-engine panel hiding, save format 을 `ConfigPanelModeTest` 로 회귀 테스트합니다.',
+        'รีลีสนี้เน้นแก้ layout และการจำค่า settings: configuration ใหม่จะเปิดด้วย four-sub-board mode และซ่อน comment/problem panel เป็นค่าเริ่มต้น เมื่อผู้ใช้เปิดหรือปิด panel นี้ใน Settings แล้วบันทึก ค่าเดิมควรอยู่ต่อหลัง restart':
+            'รีลีสนี้เน้นแก้ layout และการจำค่า settings: ค่าเริ่มต้นกลับเป็น layout ปกติพร้อมแสดง comment/problem panel ส่วน four-board และ dual-engine จะซ่อน panel นี้อัตโนมัติ และค่าที่ผู้ใช้เปลี่ยนใน Settings จะอยู่ต่อหลัง save/restart',
+        '- การติดตั้งใหม่หรือ configuration ใหม่จะเริ่มด้วย four-sub-board mode เพื่อหน้าจอแรกที่สะอาดกว่า':
+            '- ค่าเริ่มต้นกลับเป็น layout ปกติ พร้อม comment/problem panel ด้านขวาที่ผู้ใช้คุ้นเคย',
+        '- comment/problem panel ถูกซ่อนเป็นค่าเริ่มต้น ลดข้อมูลฝั่งขวาที่เยอะเกินไปสำหรับผู้ใช้ทั่วไป':
+            '- four-board และ dual-engine จะซ่อน comment/problem panel อัตโนมัติ เพื่อไม่ให้กระดานและพื้นที่วิเคราะห์แน่นเกินไป',
+        '- หน้าจอแรกใกล้กับวิธี review ของผู้เล่นโกะมากขึ้น: four-sub-board เปิดอยู่ และ comment/problem panel ไม่แย่งสายตา':
+            '- หน้าจอแรกกลับเป็น layout ปกติแบบเดิม และแสดง comment/problem panel ที่ผู้ใช้คุ้นเคย; เมื่อเปลี่ยนเป็น four-board panel จะถูกพับอัตโนมัติ',
+        '- เพิ่ม `ConfigPanelModeTest` ครอบคลุม default four-sub mode, legacy config compatibility, dual-engine panel hiding และ save format':
+            '- เพิ่ม `ConfigPanelModeTest` ครอบคลุม default normal layout, legacy config compatibility, dual-engine panel hiding และ save format',
+    }
+    for old, new in replacements.items():
+        notes = notes.replace(old, new)
     additions = {
         '- 发布包引入 jlink 自定义离线 runtime、AppCDS 启动缓存和 JFR/包体审计工具，保持离线可用，同时为后续启动加速和体积瘦身提供数据基础。\n':
             '- 默认启动布局恢复为普通模式并默认显示评论/问题手面板；切换到四方图或双引擎布局时会自动隐藏该面板，避免四方图被挤乱。\n'
