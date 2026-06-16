@@ -1865,6 +1865,10 @@ public class LizzieFrame extends JFrame {
   }
 
   public void setBlunderControlPane(boolean fromComment, boolean resetPos) {
+    if (!Lizzie.config.showComment) {
+      hideCommentPanel();
+      return;
+    }
     if (Lizzie.config.isShowingBlunderTabel) {
       sidebarPanel.switchTo("BLUNDERS");
     } else {
@@ -1893,6 +1897,10 @@ public class LizzieFrame extends JFrame {
 
   public void setCommentPaneContent() {
     // TODO Auto-generated method stub
+    if (!Lizzie.config.showComment) {
+      hideCommentPanel();
+      return;
+    }
     sidebarPanel.setVisible(Lizzie.config.showComment);
     if (Lizzie.config.isShowingBlunderTabel) {
       sidebarPanel.switchTo("BLUNDERS");
@@ -1903,6 +1911,18 @@ public class LizzieFrame extends JFrame {
       sidebarPanel.switchTo("COMMENTS");
       blunderContentPane.setVisible(false);
       commentScrollPane.setVisible(true);
+    }
+  }
+
+  public void hideCommentPanel() {
+    if (commentScrollPane != null) commentScrollPane.setVisible(false);
+    if (blunderContentPane != null) blunderContentPane.setVisible(false);
+    if (commentEditPane != null) commentEditPane.setVisible(false);
+    if (sidebarPanel != null) {
+      sidebarPanel.setVisible(false);
+      sidebarPanel.setBounds(0, 0, 0, 0);
+      sidebarPanel.revalidate();
+      sidebarPanel.repaint();
     }
   }
 

@@ -1079,6 +1079,7 @@ public class Menu extends JMenuBar {
           @Override
           public void actionPerformed(ActionEvent e) {
             Lizzie.config.toggleShowComment();
+            commitPane.setState(Lizzie.config.showComment);
           }
         });
 
@@ -2682,8 +2683,9 @@ public class Menu extends JMenuBar {
             else subboard.setState(false);
             if (Lizzie.config.showWinrateGraph) winrateGraph.setState(true);
             else winrateGraph.setState(false);
-            if (Lizzie.config.showComment) commitPane.setState(true);
-            else commitPane.setState(false);
+            boolean commentAutoHidden = Lizzie.config.isCommentPanelAutoHiddenByMode();
+            commitPane.setEnabled(!commentAutoHidden);
+            commitPane.setState(!commentAutoHidden && Lizzie.config.showComment);
             if (Lizzie.config.showVariationGraph) variationPane.setState(true);
             else variationPane.setState(false);
             if (Lizzie.config.showCaptured) informationPane.setState(true);
