@@ -157,6 +157,7 @@ public class ConfigDialog2 extends JDialog {
   private final Map<Integer, JComponent> modernSectionAnchors = new HashMap<>();
   private int activeModernNavIndex = 0;
   private JPanel modernSummaryBody;
+  private boolean syncingShowCommentControl = false;
 
   javax.swing.Timer timer;
   // UI Tab
@@ -580,7 +581,10 @@ public class ConfigDialog2 extends JDialog {
     chkShowComment.addChangeListener(
         new ChangeListener() {
           public void stateChanged(ChangeEvent e) {
+            if (syncingShowCommentControl) return;
             Lizzie.config.setShowComment(chkShowComment.isSelected());
+            syncShowCommentControl();
+            populateModernSummaryPanel();
           }
         });
     chkShowComment.setBounds(532, 76, 57, 23);
@@ -974,7 +978,7 @@ public class ConfigDialog2 extends JDialog {
     chkShowCaptured.setSelected(Lizzie.config.showCaptured);
     chkShowWinrate.setSelected(Lizzie.config.showWinrateGraph);
     chkShowVariationGraph.setSelected(Lizzie.config.showVariationGraph);
-    chkShowComment.setSelected(Lizzie.config.showComment);
+    syncShowCommentControl();
     chkShowSubBoard.setSelected(Lizzie.config.showSubBoard);
     chkShowStatus.setSelected(Lizzie.config.showStatus);
     chkShowCoordinates.setSelected(Lizzie.config.showCoordinates);
@@ -3599,6 +3603,25 @@ public class ConfigDialog2 extends JDialog {
     }
   }
 
+  private void syncShowCommentControl() {
+    if (chkShowComment == null) return;
+    boolean autoHiddenByMode = Lizzie.config.isCommentPanelAutoHiddenByMode();
+    String tooltip =
+        autoHiddenByMode
+            ? configText(
+                "LizzieConfig.title.showComment.autoHidden.tooltip",
+                "四方图和双引擎布局会自动隐藏评论/问题手面板。切回普通布局后可以重新打开。")
+            : resourceBundle.getString("LizzieConfig.title.showComment.tooltip");
+    syncingShowCommentControl = true;
+    try {
+      chkShowComment.setSelected(Lizzie.config.showComment);
+      chkShowComment.setEnabled(!autoHiddenByMode);
+      chkShowComment.setToolTipText(tooltip);
+    } finally {
+      syncingShowCommentControl = false;
+    }
+  }
+
   private void modernizeComponentTree(Component component) {
     if (component instanceof JPanel) {
       JPanel panel = (JPanel) component;
@@ -6022,6 +6045,7 @@ public class ConfigDialog2 extends JDialog {
       Lizzie.config.showStatus = chkShowStatus.isSelected();
       Lizzie.config.showCoordinates = chkShowCoordinates.isSelected();
       Lizzie.config.setShowComment(requestedShowComment);
+      syncShowCommentControl();
       int n = chkShowIndependentSubBoard.getSelectedIndex();
       if (n == 0) {
         if (Lizzie.config.isShowingIndependentSub) Lizzie.frame.toggleIndependentSubBoard();

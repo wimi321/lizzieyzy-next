@@ -2398,8 +2398,9 @@ public class Config {
   public void toggleExtraMode(int mode) {
     ExtraMode previousMode = extraMode;
     extraMode = getExtraMode(mode);
-    Lizzie.frame.extraMode(extraMode, previousMode);
     uiConfig.put("extra-mode", getExtraModeValue(extraMode));
+    if (Lizzie.frame != null) Lizzie.frame.extraMode(extraMode, previousMode);
+    applyCommentPanelModePolicy();
   }
 
   public void toggleappendWinrateToComment() {
@@ -2556,8 +2557,7 @@ public class Config {
       if (showComment) {
         Lizzie.frame.setCommentPaneContent();
       } else {
-        Lizzie.frame.commentScrollPane.setVisible(false);
-        Lizzie.frame.blunderContentPane.setVisible(false);
+        Lizzie.frame.hideCommentPanel();
       }
       Lizzie.frame.commentEditPane.setVisible(false);
       Lizzie.frame.refreshContainer();
@@ -3360,6 +3360,7 @@ public class Config {
   }
 
   public void savePanelConfig() {
+    applyCommentPanelModePolicy();
     uiConfig.put("extra-mode", getExtraModeValue(extraMode));
     uiConfig.put("show-subboard", showSubBoard);
     uiConfig.put("show-winrate-graph", showWinrateGraph);
@@ -3574,8 +3575,23 @@ public class Config {
     uiConfig.put("show-comment", showComment);
   }
 
+  private void applyCommentPanelModePolicy() {
+    if (!shouldHideCommentPanel(extraMode)) return;
+    showComment = false;
+    uiConfig.put("show-comment", false);
+    if (Lizzie.frame != null) {
+      Lizzie.frame.hideCommentPanel();
+      Lizzie.frame.refreshContainer();
+      Lizzie.frame.refresh();
+    }
+  }
+
   private boolean shouldHideCommentPanel(ExtraMode mode) {
     return mode == ExtraMode.Four_Sub || mode == ExtraMode.Double_Engine;
+  }
+
+  public boolean isCommentPanelAutoHiddenByMode() {
+    return shouldHideCommentPanel(extraMode);
   }
 
   public boolean isDoubleEngineMode() {

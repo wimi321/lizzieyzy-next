@@ -41,7 +41,52 @@ class ConfigPanelModeTest {
     config.savePanelConfig();
 
     assertEquals(1, config.uiConfig.getInt("extra-mode"));
-    assertTrue(config.uiConfig.getBoolean("show-comment"));
+    assertFalse(config.showComment);
+    assertFalse(config.uiConfig.getBoolean("show-comment"));
+  }
+
+  @Test
+  void switchingToFourSubModeHidesCommentPanelImmediately() throws Exception {
+    LizzieFrame previousFrame = Lizzie.frame;
+    try {
+      Lizzie.frame = null;
+      Config config =
+          ConfigTestHelper.createForTests(Files.createTempDirectory("lizzie-panel-mode-four-now"));
+      config.uiConfig = new JSONObject();
+      config.extraMode = ExtraMode.Normal;
+      config.showComment = true;
+
+      config.toggleExtraMode(1);
+
+      assertEquals(ExtraMode.Four_Sub, config.extraMode);
+      assertEquals(1, config.uiConfig.getInt("extra-mode"));
+      assertFalse(config.showComment);
+      assertFalse(config.uiConfig.getBoolean("show-comment"));
+    } finally {
+      Lizzie.frame = previousFrame;
+    }
+  }
+
+  @Test
+  void switchingToDoubleEngineModeHidesCommentPanelImmediately() throws Exception {
+    LizzieFrame previousFrame = Lizzie.frame;
+    try {
+      Lizzie.frame = null;
+      Config config =
+          ConfigTestHelper.createForTests(Files.createTempDirectory("lizzie-panel-mode-double-now"));
+      config.uiConfig = new JSONObject();
+      config.extraMode = ExtraMode.Normal;
+      config.showComment = true;
+
+      config.toggleExtraMode(2);
+
+      assertEquals(ExtraMode.Double_Engine, config.extraMode);
+      assertEquals(2, config.uiConfig.getInt("extra-mode"));
+      assertFalse(config.showComment);
+      assertFalse(config.uiConfig.getBoolean("show-comment"));
+    } finally {
+      Lizzie.frame = previousFrame;
+    }
   }
 
   @Test

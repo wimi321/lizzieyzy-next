@@ -206,13 +206,14 @@ public class SetCustomMode extends JDialog {
 
     commentPanel = new JCheckBox();
     commentPanel.setToolTipText(Lizzie.resourceBundle.getString("SetCustomMode.commentPanel.tooltip"));
-    commentPanel.setSelected(Lizzie.config.showComment);
     commentPanel.addActionListener(
         new ActionListener() {
           public void actionPerformed(ActionEvent e) {
             Lizzie.config.setShowComment(commentPanel.isSelected());
+            syncCommentPanelControl();
           }
         });
+    syncCommentPanelControl();
     JFontLabel commentPanelLabel =
         new JFontLabel(Lizzie.resourceBundle.getString("SetCustomMode.commentPanel"));
     commentPanelLabel.setToolTipText(
@@ -426,6 +427,17 @@ public class SetCustomMode extends JDialog {
       sldBoardPositionProportion.setEnabled(false);
 
     dialogPane.add(contentPanel, BorderLayout.CENTER);
+  }
+
+  private void syncCommentPanelControl() {
+    if (commentPanel == null) return;
+    boolean autoHiddenByMode = Lizzie.config.isCommentPanelAutoHiddenByMode();
+    commentPanel.setSelected(Lizzie.config.showComment);
+    commentPanel.setEnabled(!autoHiddenByMode);
+    commentPanel.setToolTipText(
+        autoHiddenByMode
+            ? Lizzie.resourceBundle.getString("LizzieConfig.title.showComment.autoHidden.tooltip")
+            : Lizzie.resourceBundle.getString("SetCustomMode.commentPanel.tooltip"));
   }
 
   private void initButtonBar() {
