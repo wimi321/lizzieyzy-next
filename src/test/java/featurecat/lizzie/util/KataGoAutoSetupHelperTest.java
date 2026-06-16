@@ -36,6 +36,10 @@ public class KataGoAutoSetupHelperTest {
         "28B",
         KataGoAutoSetupHelper.resolveWeightDisplayName(
             "kata1-b28c512nbt-s12763923712-d5805955894.bin.gz"));
+    assertEquals(
+        "28B 2026-06",
+        KataGoAutoSetupHelper.resolveWeightDisplayName(
+            "kata1-b28c512nbt-s13255194368-d5935380940.bin.gz"));
   }
 
   @Test

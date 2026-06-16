@@ -4046,6 +4046,8 @@ def build_release_notes(asset_map: dict[str, str | None], bundle: dict[str, str]
         return build_next_2026_06_13_3_notes(asset_map, bundle, repo, release_tag)
     if release_tag == 'next-2026-06-14.1':
         return build_next_2026_06_14_1_notes(asset_map, bundle, repo, release_tag)
+    if release_tag == 'next-2026-06-16.1':
+        return build_next_2026_06_16_1_notes(asset_map, bundle, repo, release_tag)
 
     assets_cn = {
         key: format_asset(asset_map[key], repo, release_tag)
@@ -6509,6 +6511,44 @@ def build_next_2026_06_14_1_notes(
             '- Flash analysis และ automatic completion จะเก็บผลวิเคราะห์เดิมไว้เป็นค่าเริ่มต้น การวิเคราะห์ต่อจะเติมเฉพาะจุดที่ยังขาด และจะคำนวณทับข้อมูลเดิมเฉพาะเมื่อผู้ใช้เปิด “always override existing analysis” เท่านั้น\n'
             '- อัปเดตโมเดลประเมินระดับฝีมือในตัวเป็น `xgboost20tun` และรองรับการ import XGBoost booster หรือ model package แบบครบชุด เพื่อให้เปรียบเทียบและอัปเดตโมเดลในอนาคตได้ง่ายขึ้น\n'
             '- เพิ่ม jlink custom offline runtime, AppCDS startup archive และเครื่องมือ JFR/package-size audit ในกระบวนการ release โดยแพ็กเกจหลักยังใช้งานแบบ offline ได้เหมือนเดิม\n',
+    }
+    for anchor, extra in additions.items():
+        notes = notes.replace(anchor, anchor + extra)
+    return notes
+
+
+def build_next_2026_06_16_1_notes(
+    asset_map: dict[str, str | None],
+    bundle: dict[str, str],
+    repo: str,
+    release_tag: str | None,
+) -> str:
+    notes = build_next_2026_06_14_1_notes(asset_map, bundle, repo, release_tag)
+    additions = {
+        '- 发布包引入 jlink 自定义离线 runtime、AppCDS 启动缓存和 JFR/包体审计工具，保持离线可用，同时为后续启动加速和体积瘦身提供数据基础。\n':
+            '- 默认启动布局恢复为普通模式并默认显示评论/问题手面板；切换到四方图或双引擎布局时会自动隐藏该面板，避免四方图被挤乱。\n'
+            '- 候选点最高值红色/反色高亮默认关闭，并补到“综合设置 -> 引擎与分析”；蓝点上的胜率数字默认不再刺眼变红，感谢 @ray801090 的反馈。\n'
+            '- 核对 KataGo 官网模型后，默认内置继续使用更适合普通用户的 `zhizi 28B muonfd2`；6 月最新 28B 和最强 40B 仍可在一键设置下载列表中选择，不强行塞进默认包。\n',
+        '- 發布包引入 jlink 自訂離線 runtime、AppCDS 啟動快取和 JFR/包體審計工具，保持離線可用，同時為後續啟動加速和體積瘦身提供資料基礎。\n':
+            '- 預設啟動版面恢復為普通模式並預設顯示評論/問題手面板；切換到四方圖或雙引擎版面時會自動隱藏該面板，避免四方圖被擠亂。\n'
+            '- 候選點最高值紅色/反色高亮預設關閉，並補到「綜合設定 -> 引擎與分析」；藍點上的勝率數字預設不再刺眼變紅，感謝 @ray801090 的回饋。\n'
+            '- 核對 KataGo 官網模型後，預設內建繼續使用更適合普通使用者的 `zhizi 28B muonfd2`；6 月最新 28B 和最強 40B 仍可在一鍵設定下載列表中選擇，不強行塞進預設包。\n',
+        '- Release packaging now includes jlink custom offline runtimes, AppCDS startup archives, and JFR/package-size audit tooling while keeping the main packages offline-capable.\n':
+            '- The default startup layout is back to normal mode with the comment/problem panel visible; four-board and dual-engine layouts automatically hide that panel so the board grid stays clean.\n'
+            '- Candidate max-value red/reverse highlighting is now off by default and exposed in Settings -> Engine & Analysis. Blue-point winrate text no longer turns bright red by default. Thanks to @ray801090 for the report.\n'
+            '- After checking the official KataGo model list, the bundled default stays on the more general-user-friendly `zhizi 28B muonfd2`; the June latest 28B and strongest 40B remain selectable from KataGo Auto Setup instead of being forced into the default package.\n',
+        '- リリースパッケージに jlink カスタムオフライン runtime、AppCDS 起動アーカイブ、JFR/パッケージサイズ監査ツールを追加しました。メインパッケージは引き続きオフラインで利用できます。\n':
+            '- 既定の起動レイアウトを通常モードに戻し、コメント/問題手パネルを既定で表示します。四分割や二重エンジン表示では自動的に隠し、盤面が崩れないようにしました。\n'
+            '- 候補手の最高値を赤/反転色で強調する設定を既定でオフにし、設定 -> エンジンと分析 に追加しました。青い候補点の勝率数字は既定で赤くなりません。@ray801090 さんの報告に感謝します。\n'
+            '- KataGo 公式モデル一覧を確認し、既定の同梱モデルは一般ユーザー向けに扱いやすい `zhizi 28B muonfd2` のままにしました。6 月最新 28B と最強 40B は KataGo 自動設定から選択できます。\n',
+        '- 릴리스 패키지에 jlink custom offline runtime, AppCDS startup archive, JFR/package-size audit tooling 을 추가했습니다. 기본 패키지는 계속 오프라인에서 사용할 수 있습니다.\n':
+            '- 기본 시작 레이아웃을 일반 모드로 되돌리고 comment/problem panel 을 기본 표시합니다. four-board 및 dual-engine 레이아웃에서는 자동으로 숨겨 보드가 밀리지 않게 했습니다.\n'
+            '- 후보점 최대값 red/reverse highlight 를 기본 OFF 로 바꾸고 Settings -> Engine & Analysis 에 노출했습니다. 파란 후보점 승률 숫자가 기본으로 빨갛게 변하지 않습니다. 제보해 준 @ray801090 님께 감사드립니다.\n'
+            '- 공식 KataGo 모델 목록을 확인한 결과, 기본 내장 모델은 일반 사용자에게 더 적합한 `zhizi 28B muonfd2` 를 유지합니다. 6월 최신 28B 와 최강 40B 는 KataGo Auto Setup 에서 선택할 수 있습니다.\n',
+        '- เพิ่ม jlink custom offline runtime, AppCDS startup archive และเครื่องมือ JFR/package-size audit ในกระบวนการ release โดยแพ็กเกจหลักยังใช้งานแบบ offline ได้เหมือนเดิม\n':
+            '- เปลี่ยนค่าเริ่มต้นกลับเป็น layout ปกติและแสดง comment/problem panel ตามเดิม ส่วน four-board และ dual-engine จะซ่อน panel นี้อัตโนมัติเพื่อไม่ให้หน้ากระดานแน่นเกินไป\n'
+            '- ปิด red/reverse highlight ของค่าที่มากที่สุดบน candidate point เป็นค่าเริ่มต้น และเพิ่มตัวเลือกไว้ใน Settings -> Engine & Analysis ตัวเลข winrate บนจุดสีน้ำเงินจึงไม่แดงแสบตาโดยปริยาย ขอบคุณ @ray801090 สำหรับ feedback\n'
+            '- ตรวจสอบรายการโมเดล KataGo official แล้ว ค่า default bundled model ยังใช้ `zhizi 28B muonfd2` ที่เหมาะกับผู้ใช้ทั่วไปกว่า ส่วน June latest 28B และ strongest 40B ยังเลือกดาวน์โหลดได้ใน KataGo Auto Setup\n',
     }
     for anchor, extra in additions.items():
         notes = notes.replace(anchor, anchor + extra)

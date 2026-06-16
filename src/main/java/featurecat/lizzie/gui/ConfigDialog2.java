@@ -3094,6 +3094,11 @@ public class ConfigDialog2 extends JDialog {
         addToggleRow(analysis, "显示分支面板", "显示变化图和分支候选点", chkShowVariationGraph);
         addToggleRow(analysis, "显示柱状失误条", "用柱状条突出胜率或目差波动", chkShowBlunderBar);
         addToggleRow(analysis, "鼠标悬停胜率图", "鼠标经过胜率图时显示局面信息", chkShowMouseOverWinrateGraph);
+        addToggleRow(
+            analysis,
+            "候选点最高值红色高亮",
+            "关闭后蓝点上的胜率数字使用普通黑白文字，不再反成红色",
+            chkMaxValueReverseColor);
         addInputRow(analysis, "选点数量上限", "限制主界面推荐选点数量", txtLimitBestMoveNum, "个");
         addInputRow(analysis, "变化图长度上限", "限制推荐变化图的展示长度", txtLimitBranchLength, "手");
         return analysis;

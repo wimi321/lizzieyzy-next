@@ -2014,6 +2014,11 @@ public class KataGoAutoSetupDialog extends JDialog {
       }
     }
     for (RemoteWeightInfo info : remoteWeightInfos) {
+      if (KataGoAutoSetupHelper.isDefaultGeneralUseWeight(info)) {
+        return info;
+      }
+    }
+    for (RemoteWeightInfo info : remoteWeightInfos) {
       if (info.recommended) {
         return info;
       }

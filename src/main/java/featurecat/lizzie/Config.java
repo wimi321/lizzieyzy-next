@@ -35,7 +35,7 @@ public class Config {
   // public boolean weightedBlunderBarHeight = false;
   // public boolean dynamicWinrateGraphWidth = true;
   public boolean showVariationGraph = true;
-  public boolean showComment = false;
+  public boolean showComment = true;
   public boolean showRawBoard = false;
   public boolean showBestMovesTemporarily = false;
   public boolean showCaptured = true;
@@ -57,7 +57,7 @@ public class Config {
   public boolean showKataGoEstimateOnSubbord = true;
   public boolean showKataGoEstimateOnMainbord = true;
   public boolean showSuggestionOrder = true;
-  public boolean showSuggestionMaxRed = true;
+  public boolean showSuggestionMaxRed = false;
   public boolean showStatus = true;
   public boolean isClassicMode = false;
   public boolean isAppleStyle = false;
@@ -128,7 +128,7 @@ public class Config {
   public String advanceBlackTimeTxt = "time_settings 120 2 1";
   public String advanceWhiteTimeTxt = "time_settings 120 2 1";
 
-  public ExtraMode extraMode = ExtraMode.Four_Sub;
+  public ExtraMode extraMode = ExtraMode.Normal;
 
   public JSONObject config;
   public JSONObject leelazConfig;
@@ -1577,7 +1577,7 @@ public class Config {
     showKataGoEstimate = uiConfig.optBoolean("show-katago-estimate", false);
     // scoreMeanWinrateGraphBoard = uiConfig.optBoolean("scoremean-winrategraph-board", false);
     showSuggestionOrder = uiConfig.optBoolean("show-suggestion-order", true);
-    showSuggestionMaxRed = uiConfig.optBoolean("show-suggestion-maxred", true);
+    showSuggestionMaxRed = uiConfig.optBoolean("show-suggestion-maxred", false);
 
     estimateCommand =
         uiConfig.optString(
@@ -2549,6 +2549,7 @@ public class Config {
   }
 
   public void setShowComment(boolean showComment) {
+    if (showComment && shouldHideCommentPanel(extraMode)) showComment = false;
     this.showComment = showComment;
     uiConfig.put("show-comment", showComment);
     if (Lizzie.frame != null) {
@@ -2740,12 +2741,13 @@ public class Config {
     ui.put("minimum-blunder-bar-width", 1);
     ui.put("weighted-blunder-bar-height", false);
     // ui.put("dynamic-winrate-graph-width", true);
-    ui.put("show-comment", false);
-    ui.put("extra-mode", getExtraModeValue(ExtraMode.Four_Sub));
+    ui.put("show-comment", true);
+    ui.put("extra-mode", getExtraModeValue(ExtraMode.Normal));
     ui.put("comment-font-size", 0);
     ui.put("show-variation-graph", true);
     ui.put("show-captured", true);
     ui.put("show-best-moves", true);
+    ui.put("show-suggestion-maxred", false);
     ui.put("show-coordinates", true);
     ui.put("show-next-moves", true);
     ui.put("show-subboard", true);
@@ -3567,8 +3569,13 @@ public class Config {
   void loadPanelModeSettings() {
     extraMode = readExtraMode(uiConfig.opt("extra-mode"));
     uiConfig.put("extra-mode", getExtraModeValue(extraMode));
-    showComment = uiConfig.optBoolean("show-comment", false);
-    if (extraMode == ExtraMode.Double_Engine) showComment = false;
+    showComment = uiConfig.optBoolean("show-comment", true);
+    if (shouldHideCommentPanel(extraMode)) showComment = false;
+    uiConfig.put("show-comment", showComment);
+  }
+
+  private boolean shouldHideCommentPanel(ExtraMode mode) {
+    return mode == ExtraMode.Four_Sub || mode == ExtraMode.Double_Engine;
   }
 
   public boolean isDoubleEngineMode() {

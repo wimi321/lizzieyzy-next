@@ -73,6 +73,10 @@ public final class KataGoAutoSetupHelper {
   private static final List<String> PREFERRED_WEIGHT_FAMILIES =
       Collections.unmodifiableList(Arrays.asList("b28", "b40", "b20", "b15", "b10"));
   private static final String DEFAULT_WEIGHT_FILE_NAME = "default.bin.gz";
+  private static final String DEFAULT_GENERAL_USE_WEIGHT_MODEL = "kata1-zhizi-b28c512nbt-muonfd2";
+  private static final String BUNDLED_2026_06_28B_MODEL =
+      "kata1-b28c512nbt-s13255194368-d5935380940";
+  private static final String BUNDLED_2026_06_28B_DISPLAY_NAME = "28B 2026-06";
   public static final String HUMAN_SL_MODEL_FILE_NAME = "b18c384nbt-humanv0.bin.gz";
   public static final String HUMAN_SL_MODEL_DOWNLOAD_URL =
       "https://media.katagotraining.org/uploaded/networks/models_extra/" + HUMAN_SL_MODEL_FILE_NAME;
@@ -441,12 +445,12 @@ public final class KataGoAutoSetupHelper {
   public static RemoteWeightInfo fetchRecommendedWeight() throws IOException {
     List<RemoteWeightInfo> weights = fetchOfficialWeights();
     for (RemoteWeightInfo info : weights) {
-      if (info.recommended) {
+      if (isDefaultGeneralUseWeight(info)) {
         return info;
       }
     }
     for (RemoteWeightInfo info : weights) {
-      if (info.latest) {
+      if (info.recommended) {
         return info;
       }
     }
@@ -462,6 +466,16 @@ public final class KataGoAutoSetupHelper {
       listener.onProgress(info.modelName, 0, -1);
     }
     return downloadWeight(info, listener);
+  }
+
+  public static boolean isDefaultGeneralUseWeight(RemoteWeightInfo info) {
+    if (info == null) {
+      return false;
+    }
+    return DEFAULT_GENERAL_USE_WEIGHT_MODEL.equalsIgnoreCase(
+            stripWeightFileExtension(info.modelName))
+        || DEFAULT_GENERAL_USE_WEIGHT_MODEL.equalsIgnoreCase(
+            stripWeightFileExtension(info.fileName()));
   }
 
   public static Path downloadHumanSlModel(ProgressListener listener) throws IOException {
@@ -1169,6 +1183,9 @@ public final class KataGoAutoSetupHelper {
     String baseName = stripWeightFileExtension(modelName);
     if (baseName.isEmpty()) {
       return "";
+    }
+    if (BUNDLED_2026_06_28B_MODEL.equalsIgnoreCase(baseName)) {
+      return BUNDLED_2026_06_28B_DISPLAY_NAME;
     }
     Matcher displayMatcher = WEIGHT_MODEL_DISPLAY_PATTERN.matcher(baseName);
     if (displayMatcher.matches()) {
