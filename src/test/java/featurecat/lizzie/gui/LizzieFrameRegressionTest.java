@@ -16,6 +16,7 @@ import featurecat.lizzie.rules.BoardData;
 import featurecat.lizzie.rules.BoardHistoryList;
 import featurecat.lizzie.rules.Stone;
 import featurecat.lizzie.rules.Zobrist;
+import java.awt.Color;
 import java.awt.GraphicsConfiguration;
 import java.awt.GraphicsDevice;
 import java.awt.Rectangle;
@@ -77,6 +78,48 @@ class LizzieFrameRegressionTest {
 
     assertTrue(tooltip.contains("1"), "tooltip should include the move number.");
     assertTrue(tooltip.contains("AI"), "tooltip should include AI choice details.");
+  }
+
+  @Test
+  void playerStrengthDetailPaletteKeepsTextReadable() throws Exception {
+    Class<?> palette =
+        Class.forName("featurecat.lizzie.gui.LizzieFrame$PlayerStrengthDetailPalette");
+    Color card = colorConstant(palette, "CARD");
+    Color cardSoft = colorConstant(palette, "CARD_SOFT");
+    Color backgroundBottom = colorConstant(palette, "BACKGROUND_BOTTOM");
+
+    assertContrastAtLeast("detail text on card", colorConstant(palette, "TEXT"), card, 9.0);
+    assertContrastAtLeast(
+        "detail muted text on card", colorConstant(palette, "MUTED_TEXT"), card, 7.0);
+    assertContrastAtLeast(
+        "detail warm text on soft card", colorConstant(palette, "WARM_TEXT"), cardSoft, 8.0);
+    assertContrastAtLeast(
+        "detail subtle text on dark background",
+        colorConstant(palette, "SUBTLE_TEXT"),
+        backgroundBottom,
+        5.0);
+
+    Class<?> chart = Class.forName("featurecat.lizzie.gui.LizzieFrame$PlayerStrengthMatchChart");
+    assertContrastAtLeast(
+        "match chart grid labels",
+        colorConstant(chart, "GRID"),
+        colorConstant(chart, "BACKGROUND"),
+        3.0);
+  }
+
+  @Test
+  void playerStrengthModelSelectorUsesReadableModelNames() throws Exception {
+    Method displayName =
+        LizzieFrame.class.getDeclaredMethod(
+            "playerStrengthModelDisplayName", PlayerStrengthEstimator.StrengthModel.class);
+    displayName.setAccessible(true);
+
+    assertEquals(
+        "XGBoost 20TUN",
+        displayName.invoke(null, PlayerStrengthEstimator.StrengthModel.XGBOOST20TUN));
+    assertEquals(
+        "XGBoost 20TUN Previous",
+        displayName.invoke(null, PlayerStrengthEstimator.StrengthModel.XGBOOST20TUN_PREVIOUS));
   }
 
   @Test
@@ -403,6 +446,42 @@ class LizzieFrameRegressionTest {
         whiteReport,
         overallReport,
         PlayerStrengthEstimator.StrengthModel.XGBOOST20TUN);
+  }
+
+  private static Color colorConstant(Class<?> owner, String fieldName) throws Exception {
+    Field field = owner.getDeclaredField(fieldName);
+    field.setAccessible(true);
+    return (Color) field.get(null);
+  }
+
+  private static void assertContrastAtLeast(String label, Color foreground, Color background, double min) {
+    double contrast = contrastRatio(foreground, background);
+    assertTrue(
+        contrast >= min,
+        label
+            + " contrast should be >= "
+            + min
+            + " but was "
+            + String.format(java.util.Locale.US, "%.2f", contrast));
+  }
+
+  private static double contrastRatio(Color foreground, Color background) {
+    double lighter =
+        Math.max(relativeLuminance(foreground), relativeLuminance(background));
+    double darker =
+        Math.min(relativeLuminance(foreground), relativeLuminance(background));
+    return (lighter + 0.05) / (darker + 0.05);
+  }
+
+  private static double relativeLuminance(Color color) {
+    return 0.2126 * linearRgb(color.getRed())
+        + 0.7152 * linearRgb(color.getGreen())
+        + 0.0722 * linearRgb(color.getBlue());
+  }
+
+  private static double linearRgb(int channel) {
+    double value = channel / 255.0;
+    return value <= 0.03928 ? value / 12.92 : Math.pow((value + 0.055) / 1.055, 2.4);
   }
 
   private static PlayerStrengthEstimator.Sample playerStrengthSample(

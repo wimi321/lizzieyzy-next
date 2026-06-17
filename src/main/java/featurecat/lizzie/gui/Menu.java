@@ -474,7 +474,6 @@ public class Menu extends JMenuBar {
     viewMenu.add(panel);
 
     final JFontMenu toolBar = new JFontMenu(resourceBundle.getString("Menu.toolbar"));
-    toolBar.setForeground(MorandiPalette.MENU_ITEM_TEXT);
     viewMenu.add(toolBar);
 
     final JFontMenu mainBoardPos =
@@ -519,6 +518,34 @@ public class Menu extends JMenuBar {
           }
         });
     viewMenu.add(coordsMenu);
+
+    final JFontMenu boardStyleMenu =
+        new JFontMenu(resourceBundle.getString("Menu.boardStyle"));
+    final JFontCheckBoxMenuItem boardStyleJapanese =
+        new JFontCheckBoxMenuItem(resourceBundle.getString("Menu.boardStyleJapanese"));
+    final JFontCheckBoxMenuItem boardStyleChineseClassic =
+        new JFontCheckBoxMenuItem(resourceBundle.getString("Menu.boardStyleChineseClassic"));
+    boardStyleJapanese.addActionListener(
+        new ActionListener() {
+          @Override
+          public void actionPerformed(ActionEvent e) {
+            Lizzie.config.setBoardStyle(Config.BOARD_STYLE_JAPANESE);
+            boardStyleJapanese.setState(true);
+            boardStyleChineseClassic.setState(false);
+          }
+        });
+    boardStyleChineseClassic.addActionListener(
+        new ActionListener() {
+          @Override
+          public void actionPerformed(ActionEvent e) {
+            Lizzie.config.setBoardStyle(Config.BOARD_STYLE_CHINESE_CLASSIC);
+            boardStyleJapanese.setState(false);
+            boardStyleChineseClassic.setState(true);
+          }
+        });
+    boardStyleMenu.add(boardStyleJapanese);
+    boardStyleMenu.add(boardStyleChineseClassic);
+    viewMenu.add(boardStyleMenu);
 
     final JFontMenu moveMenu =
         new JFontMenu(resourceBundle.getString("Menu.moveMenu")); // ("手数(M)");
@@ -2721,6 +2748,9 @@ public class Menu extends JMenuBar {
             else independentSubBoard.setSelected(false);
             if (Lizzie.config.showCoordinates) coordsMenu.setState(true);
             else coordsMenu.setState(false);
+            boolean chineseClassicBoard = Lizzie.config.useChineseClassicBoardStyle();
+            boardStyleJapanese.setState(!chineseClassicBoard);
+            boardStyleChineseClassic.setState(chineseClassicBoard);
             switch (Lizzie.config.allowMoveNumber) {
               case 0:
                 noMoveNum.setState(true);

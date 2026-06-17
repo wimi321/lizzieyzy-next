@@ -76,6 +76,8 @@ import javax.imageio.ImageIO;
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
 import javax.swing.filechooser.FileNameExtensionFilter;
+import javax.swing.plaf.basic.BasicComboBoxUI;
+import javax.swing.plaf.basic.ComboPopup;
 import javax.swing.table.AbstractTableModel;
 import javax.swing.table.DefaultTableCellRenderer;
 import javax.swing.table.TableCellRenderer;
@@ -13172,11 +13174,10 @@ public class LizzieFrame extends JFrame {
   private JComboBox<PlayerStrengthEstimator.StrengthModel> createPlayerStrengthModelCombo(
       PlayerStrengthEstimator.StrengthModel selectedModel, Runnable refreshAction) {
     JComboBox<PlayerStrengthEstimator.StrengthModel> combo =
-        new JComboBox<>(PlayerStrengthEstimator.selectableModels());
+        new PlayerStrengthModelCombo(PlayerStrengthEstimator.selectableModels());
     combo.setSelectedItem(
         selectedModel == null ? PlayerStrengthEstimator.StrengthModel.XGBOOST20TUN : selectedModel);
     combo.setFocusable(false);
-    combo.setFont(new Font(Config.sysDefaultFontName, Font.PLAIN, Config.frameFontSize + 1));
     combo.setToolTipText(Lizzie.resourceBundle.getString("PlayerStrengthEstimate.model.tooltip"));
     combo
         .getAccessibleContext()
@@ -13199,7 +13200,7 @@ public class LizzieFrame extends JFrame {
   private JButton createPlayerStrengthImportModelButton(Runnable refreshAction) {
     JButton button =
         new PlayerStrengthDetailButton(
-            Lizzie.resourceBundle.getString("PlayerStrengthEstimate.importModel"));
+            Lizzie.resourceBundle.getString("PlayerStrengthEstimate.importModel"), false);
     button.setToolTipText(
         Lizzie.resourceBundle.getString("PlayerStrengthEstimate.importModel.tooltip"));
     button.addActionListener(
@@ -13235,7 +13236,7 @@ public class LizzieFrame extends JFrame {
   private JButton createPlayerStrengthDetailButton(Runnable action) {
     JButton button =
         new PlayerStrengthDetailButton(
-            Lizzie.resourceBundle.getString("PlayerStrengthEstimate.detailData"));
+            Lizzie.resourceBundle.getString("PlayerStrengthEstimate.detailData"), true);
     button.addActionListener(e -> action.run());
     return button;
   }
@@ -13322,17 +13323,17 @@ public class LizzieFrame extends JFrame {
   }
 
   private JComponent buildPlayerStrengthMatchPanel(PlayerStrengthEstimator.Report report) {
-    JPanel panel = new JPanel(new BorderLayout());
-    panel.setBorder(new EmptyBorder(6, 6, 6, 6));
-    panel.setBackground(new Color(46, 55, 70));
-    panel.add(new PlayerStrengthMatchChart(report), BorderLayout.CENTER);
+    JPanel panel = new PlayerStrengthDetailRoot(new BorderLayout());
+    panel.setBorder(new EmptyBorder(16, 16, 16, 16));
+    PlayerStrengthMatchChart chart = new PlayerStrengthMatchChart(report);
+    chart.setBorder(new EmptyBorder(10, 10, 10, 10));
+    panel.add(chart, BorderLayout.CENTER);
     return panel;
   }
 
   private JComponent buildPlayerStrengthAssessmentPanel(PlayerStrengthEstimator.Report report) {
-    JPanel panel = new JPanel(new BorderLayout(0, 14));
+    JPanel panel = new PlayerStrengthDetailRoot(new BorderLayout(0, 16));
     panel.setBorder(new EmptyBorder(18, 18, 18, 18));
-    panel.setBackground(new Color(46, 55, 70));
 
     JPanel cards = new JPanel(new GridLayout(1, 2, 14, 0));
     cards.setOpaque(false);
@@ -13344,7 +13345,7 @@ public class LizzieFrame extends JFrame {
             Lizzie.resourceBundle.getString("Menu.White"), false, report.white));
     panel.add(cards, BorderLayout.CENTER);
     panel.add(
-        new PlayerStrengthNoteStrip(
+        new PlayerStrengthDetailNoteStrip(
             Lizzie.resourceBundle.getString("PlayerStrengthEstimate.reviewOnlyNote")),
         BorderLayout.SOUTH);
     return panel;
@@ -13352,12 +13353,17 @@ public class LizzieFrame extends JFrame {
 
   private JComponent buildPlayerStrengthAssessmentDetailCard(
       String title, boolean black, PlayerStrengthEstimator.SideReport report) {
-    JPanel card = new JPanel(new BorderLayout(0, 12));
+    JPanel card =
+        new PlayerStrengthDetailCard(
+            black
+                ? PlayerStrengthDetailPalette.BLACK_ACCENT
+                : PlayerStrengthDetailPalette.WHITE_ACCENT);
+    card.setLayout(new BorderLayout(0, 14));
     card.setBorder(new EmptyBorder(18, 20, 18, 20));
-    card.setBackground(new Color(61, 71, 88));
 
     JLabel titleLabel = new JLabel(title);
-    titleLabel.setForeground(black ? new Color(235, 239, 246) : new Color(255, 248, 220));
+    titleLabel.setForeground(
+        black ? PlayerStrengthDetailPalette.TEXT : PlayerStrengthDetailPalette.WARM_TEXT);
     titleLabel.setFont(new Font(Config.sysDefaultFontName, Font.BOLD, Config.frameFontSize + 8));
     card.add(titleLabel, BorderLayout.NORTH);
 
@@ -13410,10 +13416,10 @@ public class LizzieFrame extends JFrame {
 
   private void addPlayerStrengthMetric(JPanel panel, String label, String value) {
     JLabel labelComponent = new JLabel(label);
-    labelComponent.setForeground(PlayerStrengthDashboardRoot.MUTED_TEXT);
+    labelComponent.setForeground(PlayerStrengthDetailPalette.MUTED_TEXT);
     labelComponent.setFont(new Font(Config.sysDefaultFontName, Font.PLAIN, Config.frameFontSize));
     JLabel valueComponent = new JLabel(value == null || value.isEmpty() ? "-" : value);
-    valueComponent.setForeground(PlayerStrengthDashboardRoot.TEXT);
+    valueComponent.setForeground(PlayerStrengthDetailPalette.TEXT);
     valueComponent.setFont(new Font(Config.sysDefaultFontName, Font.BOLD, Config.frameFontSize + 1));
     panel.add(labelComponent);
     panel.add(valueComponent);
@@ -13429,6 +13435,21 @@ public class LizzieFrame extends JFrame {
       default:
         return Lizzie.resourceBundle.getString("PlayerStrengthEstimate.confidence.low");
     }
+  }
+
+  private static String playerStrengthModelDisplayName(
+      PlayerStrengthEstimator.StrengthModel model) {
+    if (model == null) {
+      return "-";
+    }
+    String displayName = model.displayName();
+    if ("xgboost20tun".equalsIgnoreCase(displayName)) {
+      return "XGBoost 20TUN";
+    }
+    if ("xgboost20tun-previous".equalsIgnoreCase(displayName)) {
+      return "XGBoost 20TUN Previous";
+    }
+    return displayName == null || displayName.trim().isEmpty() ? "-" : displayName.trim();
   }
 
   private static double playerStrengthClamp(double value, double min, double max) {
@@ -13961,9 +13982,11 @@ public class LizzieFrame extends JFrame {
 
   private static final class PlayerStrengthDetailButton extends JButton {
     private static final long serialVersionUID = 1L;
+    private final boolean compact;
 
-    private PlayerStrengthDetailButton(String text) {
+    private PlayerStrengthDetailButton(String text, boolean compact) {
       super(text);
+      this.compact = compact;
       setFocusable(false);
       setContentAreaFilled(false);
       setBorderPainted(false);
@@ -13972,7 +13995,7 @@ public class LizzieFrame extends JFrame {
       setForeground(PlayerStrengthDashboardRoot.ACCENT_DARK);
       setFont(new Font(Config.sysDefaultFontName, Font.BOLD, Config.frameFontSize + 1));
       setBorder(new EmptyBorder(0, 0, 0, 0));
-      setPreferredSize(new Dimension(126, 40));
+      setPreferredSize(new Dimension(compact ? 112 : 104, 42));
     }
 
     @Override
@@ -13987,17 +14010,168 @@ public class LizzieFrame extends JFrame {
       g2.fillRoundRect(0, 0, getWidth() - 1, getHeight() - 1, 22, 22);
       g2.setColor(line);
       g2.drawRoundRect(0, 0, getWidth() - 1, getHeight() - 1, 22, 22);
-      playerStrengthDrawInfoBadge(g2, 12, 8, 22, 24, 0.95f);
+      if (compact) {
+        playerStrengthDrawInfoBadge(g2, 12, 9, 22, 24, 0.95f);
+      } else {
+        g2.setColor(new Color(183, 129, 45, 170));
+        g2.fillRoundRect(13, getHeight() / 2 - 7, 18, 14, 8, 8);
+        g2.setColor(new Color(255, 253, 247, 220));
+        g2.drawLine(20, getHeight() / 2 - 3, 24, getHeight() / 2 - 3);
+        g2.drawLine(22, getHeight() / 2 - 5, 22, getHeight() / 2 - 1);
+      }
       playerStrengthDrawFittedText(
           g2,
           getText(),
-          42,
+          compact ? 42 : 40,
           getHeight() / 2 + 5,
-          getWidth() - 52,
+          getWidth() - (compact ? 52 : 48),
           getForeground(),
           Font.BOLD,
           Config.frameFontSize + 1);
       g2.dispose();
+    }
+  }
+
+  private static final class PlayerStrengthModelCombo
+      extends JComboBox<PlayerStrengthEstimator.StrengthModel> {
+    private static final long serialVersionUID = 1L;
+    private transient boolean rollover;
+
+    private PlayerStrengthModelCombo(PlayerStrengthEstimator.StrengthModel[] models) {
+      super(models);
+      setOpaque(false);
+      setBorder(new EmptyBorder(0, 0, 0, 0));
+      setFont(new Font(Config.sysDefaultFontName, Font.BOLD, Config.frameFontSize + 1));
+      setForeground(PlayerStrengthDashboardRoot.TEXT);
+      setPreferredSize(new Dimension(260, 42));
+      setMaximumRowCount(Math.min(8, Math.max(3, models == null ? 3 : models.length)));
+      setRenderer(new PlayerStrengthModelComboRenderer());
+      setUI(new PlayerStrengthModelComboUI());
+      MouseAdapter hoverListener =
+          new MouseAdapter() {
+            @Override
+            public void mouseEntered(MouseEvent e) {
+              rollover = true;
+              repaint();
+            }
+
+            @Override
+            public void mouseExited(MouseEvent e) {
+              rollover = false;
+              repaint();
+            }
+          };
+      addMouseListener(hoverListener);
+    }
+
+    @Override
+    public void updateUI() {
+      super.updateUI();
+      if (getRenderer() instanceof PlayerStrengthModelComboRenderer) {
+        setUI(new PlayerStrengthModelComboUI());
+      }
+    }
+
+    @Override
+    protected void paintComponent(Graphics g) {
+      Graphics2D g2 = (Graphics2D) g.create();
+      g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+      int width = getWidth();
+      int height = getHeight();
+      boolean open = isPopupVisible();
+      Color fill =
+          open || rollover ? new Color(248, 239, 221, 242) : new Color(255, 252, 245, 226);
+      Color line =
+          open || rollover ? new Color(183, 129, 45, 185) : new Color(207, 194, 170, 150);
+      g2.setColor(new Color(120, 82, 35, rollover ? 28 : 16));
+      g2.fillRoundRect(1, 2, width - 2, height - 2, 23, 23);
+      g2.setColor(fill);
+      g2.fillRoundRect(0, 0, width - 1, height - 2, 23, 23);
+      g2.setColor(line);
+      g2.drawRoundRect(0, 0, width - 1, height - 2, 23, 23);
+
+      String label = Lizzie.resourceBundle.getString("PlayerStrengthEstimate.model");
+      String value = selectedModelName();
+      int textX = 16;
+      int labelY = 15;
+      int valueY = 32;
+      g2.setFont(new Font(Config.sysDefaultFontName, Font.PLAIN, Math.max(10, Config.frameFontSize - 1)));
+      g2.setColor(PlayerStrengthDashboardRoot.MUTED_TEXT);
+      g2.drawString(label, textX, labelY);
+      g2.setFont(new Font(Config.sysDefaultFontName, Font.BOLD, Config.frameFontSize + 1));
+      g2.setColor(PlayerStrengthDashboardRoot.TEXT);
+      playerStrengthDrawFittedText(
+          g2,
+          value,
+          textX,
+          valueY,
+          Math.max(40, width - 56),
+          PlayerStrengthDashboardRoot.TEXT,
+          Font.BOLD,
+          Config.frameFontSize + 1);
+
+      int arrowX = width - 28;
+      int arrowY = height / 2 + 2;
+      g2.setColor(PlayerStrengthDashboardRoot.ACCENT_DARK);
+      Polygon arrow = new Polygon();
+      arrow.addPoint(arrowX - 5, arrowY - 3);
+      arrow.addPoint(arrowX + 5, arrowY - 3);
+      arrow.addPoint(arrowX, arrowY + 4);
+      g2.fillPolygon(arrow);
+      g2.dispose();
+    }
+
+    private String selectedModelName() {
+      Object item = getSelectedItem();
+      if (item instanceof PlayerStrengthEstimator.StrengthModel) {
+        return playerStrengthModelDisplayName((PlayerStrengthEstimator.StrengthModel) item);
+      }
+      return item == null ? "-" : item.toString();
+    }
+  }
+
+  private static final class PlayerStrengthModelComboUI extends BasicComboBoxUI {
+    @Override
+    protected JButton createArrowButton() {
+      JButton button = new JButton();
+      button.setBorder(new EmptyBorder(0, 0, 0, 0));
+      button.setContentAreaFilled(false);
+      button.setFocusable(false);
+      button.setOpaque(false);
+      button.setPreferredSize(new Dimension(0, 0));
+      return button;
+    }
+
+    @Override
+    protected ComboPopup createPopup() {
+      javax.swing.plaf.basic.BasicComboPopup popup =
+          new javax.swing.plaf.basic.BasicComboPopup(comboBox);
+      popup.setBorder(BorderFactory.createLineBorder(new Color(197, 158, 91, 190), 1));
+      return popup;
+    }
+  }
+
+  private static final class PlayerStrengthModelComboRenderer extends DefaultListCellRenderer {
+    private static final long serialVersionUID = 1L;
+
+    @Override
+    public Component getListCellRendererComponent(
+        JList<?> list, Object value, int index, boolean isSelected, boolean cellHasFocus) {
+      JLabel label =
+          (JLabel) super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus);
+      String text;
+      if (value instanceof PlayerStrengthEstimator.StrengthModel) {
+        text = playerStrengthModelDisplayName((PlayerStrengthEstimator.StrengthModel) value);
+      } else {
+        text = value == null ? "-" : value.toString();
+      }
+      label.setText(text);
+      label.setOpaque(true);
+      label.setFont(new Font(Config.sysDefaultFontName, Font.BOLD, Config.frameFontSize + 1));
+      label.setBorder(new EmptyBorder(8, 14, 8, 14));
+      label.setBackground(isSelected ? new Color(249, 239, 220) : new Color(255, 252, 245));
+      label.setForeground(PlayerStrengthDashboardRoot.TEXT);
+      return label;
     }
   }
 
@@ -14029,6 +14203,91 @@ public class LizzieFrame extends JFrame {
         int underlineX = (getWidth() - underlineWidth) / 2;
         g2.fillRoundRect(underlineX, getHeight() - 5, underlineWidth, 4, 4, 4);
       }
+      g2.dispose();
+      super.paintComponent(g);
+    }
+  }
+
+  private static final class PlayerStrengthDetailPalette {
+    private static final Color BACKGROUND_TOP = new Color(24, 30, 40);
+    private static final Color BACKGROUND_BOTTOM = new Color(13, 17, 24);
+    private static final Color CARD = new Color(30, 39, 53);
+    private static final Color CARD_SOFT = new Color(39, 49, 65);
+    private static final Color CARD_BORDER = new Color(86, 101, 125);
+    private static final Color TEXT = new Color(248, 250, 252);
+    private static final Color WARM_TEXT = new Color(255, 244, 218);
+    private static final Color MUTED_TEXT = new Color(203, 213, 225);
+    private static final Color SUBTLE_TEXT = new Color(156, 170, 190);
+    private static final Color BLACK_ACCENT = new Color(255, 116, 122);
+    private static final Color BLACK_ACCENT_SOFT = new Color(255, 151, 154);
+    private static final Color WHITE_ACCENT = new Color(118, 180, 255);
+    private static final Color WHITE_ACCENT_SOFT = new Color(153, 204, 255);
+    private static final Color GOLD = new Color(245, 198, 105);
+    private static final Color GREEN = new Color(88, 211, 153);
+    private static final Color TRACK = new Color(48, 58, 76);
+    private static final Color GRID = new Color(116, 132, 158);
+
+    private PlayerStrengthDetailPalette() {}
+  }
+
+  private static final class PlayerStrengthDetailRoot extends JPanel {
+    private static final long serialVersionUID = 1L;
+
+    private PlayerStrengthDetailRoot(LayoutManager layout) {
+      super(layout);
+      setOpaque(false);
+    }
+
+    @Override
+    protected void paintComponent(Graphics g) {
+      Graphics2D g2 = (Graphics2D) g.create();
+      g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+      g2.setPaint(
+          new GradientPaint(
+              0,
+              0,
+              PlayerStrengthDetailPalette.BACKGROUND_TOP,
+              0,
+              Math.max(1, getHeight()),
+              PlayerStrengthDetailPalette.BACKGROUND_BOTTOM));
+      g2.fillRect(0, 0, getWidth(), getHeight());
+      g2.setColor(new Color(255, 255, 255, 14));
+      g2.fillRoundRect(10, 10, Math.max(0, getWidth() - 20), Math.max(0, getHeight() - 20), 28, 28);
+      g2.dispose();
+      super.paintComponent(g);
+    }
+  }
+
+  private static final class PlayerStrengthDetailCard extends JPanel {
+    private static final long serialVersionUID = 1L;
+    private final Color accent;
+
+    private PlayerStrengthDetailCard(Color accent) {
+      this.accent = accent;
+      setOpaque(false);
+    }
+
+    @Override
+    protected void paintComponent(Graphics g) {
+      Graphics2D g2 = (Graphics2D) g.create();
+      g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+      int width = getWidth();
+      int height = getHeight();
+      g2.setPaint(
+          new GradientPaint(
+              0,
+              0,
+              PlayerStrengthDetailPalette.CARD_SOFT,
+              0,
+              Math.max(1, height),
+              PlayerStrengthDetailPalette.CARD));
+      g2.fillRoundRect(0, 0, width - 1, height - 1, 24, 24);
+      g2.setColor(new Color(accent.getRed(), accent.getGreen(), accent.getBlue(), 54));
+      g2.fillRoundRect(1, 1, width - 2, 42, 24, 24);
+      g2.setColor(PlayerStrengthDetailPalette.CARD_BORDER);
+      g2.drawRoundRect(0, 0, width - 1, height - 1, 24, 24);
+      g2.setColor(accent);
+      g2.fillRoundRect(18, 12, 42, 4, 4, 4);
       g2.dispose();
       super.paintComponent(g);
     }
@@ -14856,22 +15115,56 @@ public class LizzieFrame extends JFrame {
     }
   }
 
+  private static final class PlayerStrengthDetailNoteStrip extends JPanel {
+    private static final long serialVersionUID = 1L;
+    private final String text;
+
+    private PlayerStrengthDetailNoteStrip(String text) {
+      this.text = text;
+      setOpaque(false);
+      setPreferredSize(new Dimension(800, 62));
+    }
+
+    @Override
+    protected void paintComponent(Graphics g) {
+      Graphics2D g2 = (Graphics2D) g.create();
+      g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+      int width = getWidth();
+      int height = getHeight();
+      g2.setColor(new Color(34, 43, 58, 232));
+      g2.fillRoundRect(0, 5, width, height - 10, 18, 18);
+      g2.setColor(new Color(100, 116, 139, 180));
+      g2.drawRoundRect(0, 5, width - 1, height - 11, 18, 18);
+      playerStrengthDrawInfoBadge(g2, 18, height / 2 - 14, 28, 28, 0.95f);
+      playerStrengthDrawFittedText(
+          g2,
+          text,
+          58,
+          height / 2 + 6,
+          Math.max(120, width - 78),
+          PlayerStrengthDetailPalette.MUTED_TEXT,
+          Font.PLAIN,
+          Config.frameFontSize + 1);
+      g2.dispose();
+    }
+  }
+
   private static final class PlayerStrengthMatchChart extends JPanel {
     private static final long serialVersionUID = 1L;
-    private static final Color BACKGROUND = new Color(46, 55, 70);
-    private static final Color BLACK_PANEL = new Color(89, 73, 83);
-    private static final Color WHITE_PANEL = new Color(72, 86, 112);
-    private static final Color TRACK = new Color(62, 68, 82);
-    private static final Color GRID = new Color(139, 146, 158);
-    private static final Color TEXT = new Color(245, 247, 250);
-    private static final Color MUTED_TEXT = new Color(212, 216, 222);
-    private static final Color BLACK_FIRST = new Color(255, 85, 91);
-    private static final Color BLACK_GOOD = new Color(255, 115, 118);
-    private static final Color WHITE_FIRST = new Color(93, 160, 252);
-    private static final Color WHITE_GOOD = new Color(118, 176, 255);
-    private static final Color RANK = new Color(106, 224, 55);
-    private static final Color RANK_TEXT = new Color(33, 46, 26);
-    private static final Color AI_INTERVAL = new Color(246, 210, 38);
+    private static final Color BACKGROUND = PlayerStrengthDetailPalette.CARD;
+    private static final Color BLACK_PANEL = new Color(48, 38, 48);
+    private static final Color WHITE_PANEL = new Color(34, 48, 68);
+    private static final Color TRACK = PlayerStrengthDetailPalette.TRACK;
+    private static final Color GRID = PlayerStrengthDetailPalette.GRID;
+    private static final Color TEXT = PlayerStrengthDetailPalette.TEXT;
+    private static final Color MUTED_TEXT = PlayerStrengthDetailPalette.MUTED_TEXT;
+    private static final Color BLACK_FIRST = PlayerStrengthDetailPalette.BLACK_ACCENT;
+    private static final Color BLACK_GOOD = PlayerStrengthDetailPalette.BLACK_ACCENT_SOFT;
+    private static final Color WHITE_FIRST = PlayerStrengthDetailPalette.WHITE_ACCENT;
+    private static final Color WHITE_GOOD = PlayerStrengthDetailPalette.WHITE_ACCENT_SOFT;
+    private static final Color RANK = PlayerStrengthDetailPalette.GREEN;
+    private static final Color RANK_TEXT = new Color(12, 36, 25);
+    private static final Color AI_INTERVAL = PlayerStrengthDetailPalette.GOLD;
 
     private final transient PlayerStrengthEstimator.Report report;
     private transient String hoverRankText;
@@ -14910,13 +15203,24 @@ public class LizzieFrame extends JFrame {
 
     @Override
     protected void paintComponent(Graphics g) {
-      super.paintComponent(g);
       Graphics2D g2 = (Graphics2D) g.create();
       g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
       g2.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
 
       int width = getWidth();
       int height = getHeight();
+      g2.setPaint(
+          new GradientPaint(
+              0,
+              0,
+              PlayerStrengthDetailPalette.CARD_SOFT,
+              0,
+              Math.max(1, height),
+              BACKGROUND));
+      g2.fillRoundRect(0, 0, width - 1, height - 1, 24, 24);
+      g2.setColor(PlayerStrengthDetailPalette.CARD_BORDER);
+      g2.drawRoundRect(0, 0, width - 1, height - 1, 24, 24);
+
       int margin = 10;
       int sideLabelWidth = 48;
       int statsWidth = 140;
@@ -14961,7 +15265,9 @@ public class LizzieFrame extends JFrame {
       int blockWidth = Math.max(3, Math.min(8, chartWidth / Math.max(maxMove, 1)));
 
       g2.setColor(black ? BLACK_PANEL : WHITE_PANEL);
-      g2.fillRect(chartX - 12, top, chartWidth + 12 + 130, sectionHeight);
+      g2.fillRoundRect(chartX - 12, top, chartWidth + 12 + 130, sectionHeight, 16, 16);
+      g2.setColor(new Color(255, 255, 255, 28));
+      g2.drawRoundRect(chartX - 12, top, chartWidth + 12 + 130, sectionHeight, 16, 16);
 
       drawMoveGrid(g2, chartX, top, chartWidth, sectionHeight, maxMove);
       g2.setFont(new Font(Config.sysDefaultFontName, Font.BOLD, Config.frameFontSize + 1));
@@ -15370,7 +15676,16 @@ public class LizzieFrame extends JFrame {
     }
 
     private void drawStat(Graphics2D g2, int x, int y, String label, String value) {
-      g2.drawString(label + " " + value, x, y);
+      Font oldFont = g2.getFont();
+      g2.setFont(new Font(Config.sysDefaultFontName, Font.PLAIN, Config.frameFontSize));
+      g2.setColor(MUTED_TEXT);
+      String labelText = label + " ";
+      g2.drawString(labelText, x, y);
+      int labelWidth = g2.getFontMetrics().stringWidth(labelText);
+      g2.setFont(new Font(Config.sysDefaultFontName, Font.BOLD, Config.frameFontSize + 1));
+      g2.setColor(TEXT);
+      g2.drawString(value, x + labelWidth, y);
+      g2.setFont(oldFont);
     }
 
     private void drawCenteredString(Graphics2D g2, String text, int x1, int x2, int y) {

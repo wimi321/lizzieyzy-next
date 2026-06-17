@@ -19,6 +19,9 @@ import org.jdesktop.swingx.util.OS;
 import org.json.*;
 
 public class Config {
+  public static final String BOARD_STYLE_JAPANESE = "japanese";
+  public static final String BOARD_STYLE_CHINESE_CLASSIC = "chinese-classic";
+
   public String language = "en";
   // public boolean showBorder = false;
   public boolean showMoveNumber = false;
@@ -43,6 +46,7 @@ public class Config {
   //  public boolean showDynamicKomi = false;
   public double replayBranchIntervalSeconds = 0.5;
   public boolean showCoordinates = true;
+  public String boardStyle = BOARD_STYLE_JAPANESE;
   public boolean colorByWinrateInsteadOfVisits = false;
   // public boolean showlcbwinrate = false;
   public boolean playponder = true;
@@ -1766,6 +1770,8 @@ public class Config {
     showStoneHighlight = uiConfig.optBoolean("show-stone-highlight", true);
     showBoardLightGradient = uiConfig.optBoolean("show-board-light-gradient", true);
     showHoverGlow = uiConfig.optBoolean("show-hover-glow", true);
+    boardStyle = normalizeBoardStyle(uiConfig.optString("board-style", BOARD_STYLE_JAPANESE));
+    uiConfig.put("board-style", boardStyle);
 
     showEditbar = uiConfig.optBoolean("show-edit-bar", true);
     showForceMenu = uiConfig.optBoolean("show-force-menu", true);
@@ -2618,6 +2624,64 @@ public class Config {
     uiConfig.put("show-coordinates", showCoordinates);
   }
 
+  public static String normalizeBoardStyle(String style) {
+    if (BOARD_STYLE_CHINESE_CLASSIC.equals(style)) {
+      return BOARD_STYLE_CHINESE_CLASSIC;
+    }
+    return BOARD_STYLE_JAPANESE;
+  }
+
+  public boolean useChineseClassicBoardStyle() {
+    return BOARD_STYLE_CHINESE_CLASSIC.equals(boardStyle);
+  }
+
+  public void setBoardStyle(String style) {
+    String normalizedStyle = normalizeBoardStyle(style);
+    if (normalizedStyle.equals(boardStyle)) {
+      return;
+    }
+    boardStyle = normalizedStyle;
+    if (uiConfig != null) {
+      uiConfig.put("board-style", boardStyle);
+    }
+    refreshBoardStyleRenderers();
+  }
+
+  private void refreshBoardStyleRenderers() {
+    if (Lizzie.frame == null) {
+      return;
+    }
+    if (LizzieFrame.boardRenderer != null) {
+      LizzieFrame.boardRenderer.clearBoardImageCache();
+    }
+    if (LizzieFrame.boardRenderer2 != null) {
+      LizzieFrame.boardRenderer2.clearBoardImageCache();
+    }
+    if (LizzieFrame.subBoardRenderer != null) {
+      LizzieFrame.subBoardRenderer.clearBoardImageCache();
+    }
+    if (Lizzie.frame.subBoardRenderer2 != null) {
+      Lizzie.frame.subBoardRenderer2.clearBoardImageCache();
+    }
+    if (Lizzie.frame.subBoardRenderer3 != null) {
+      Lizzie.frame.subBoardRenderer3.clearBoardImageCache();
+    }
+    if (Lizzie.frame.subBoardRenderer4 != null) {
+      Lizzie.frame.subBoardRenderer4.clearBoardImageCache();
+    }
+    if (Lizzie.frame.independentMainBoard != null) {
+      Lizzie.frame.independentMainBoard.boardRenderer.clearBoardImageCache();
+    }
+    if (Lizzie.frame.independentSubBoard != null) {
+      Lizzie.frame.independentSubBoard.subBoardRenderer.clearBoardImageCache();
+    }
+    if (Lizzie.frame.floatBoard != null) {
+      Lizzie.frame.floatBoard.boardRenderer.clearBoardImageCache();
+    }
+    Lizzie.frame.refresh();
+    Lizzie.frame.repaint();
+  }
+
   public void toggleShowSubBoard() {
     showSubBoard = !showSubBoard;
     Lizzie.frame.refreshContainer();
@@ -2749,6 +2813,7 @@ public class Config {
     ui.put("show-best-moves", true);
     ui.put("show-suggestion-maxred", false);
     ui.put("show-coordinates", true);
+    ui.put("board-style", BOARD_STYLE_JAPANESE);
     ui.put("show-next-moves", true);
     ui.put("show-subboard", true);
     ui.put("large-subboard", false);
