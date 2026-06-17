@@ -40,10 +40,11 @@
 > 欢迎交流使用问题、反馈 bug、分享使用体验，或者讨论接下来最想加的功能。
 
 > [!IMPORTANT]
-> 如果你只想先下对版本，先记住这 10 句：
+> 如果你只想先下对版本，先记住这几句：
 > - Windows 大多数用户：到 [Releases](https://github.com/wimi321/lizzieyzy-next/releases) 下载 `*windows64.opencl.portable.zip`
 > - RTX 20/30/40 NVIDIA 显卡并且想更快：下载 `*windows64.nvidia.portable.zip`
 > - RTX 5070/5080/5090：优先下载 `*windows64.nvidia50.cuda.portable.zip`，需要 TensorRT 时再到软件内“一键设置”按需安装
+> - 已经有 Windows 免安装版：日常升级优先下载 `*windows64.core-update.zip`，关闭软件后解压到旧目录覆盖，只更新主程序
 > - TensorRT 不只给 RTX 50：RTX 20/30/40/50 NVIDIA 显卡都可以在软件内按需安装；GTX 10 系及更老显卡优先 CUDA/OpenCL
 > - `KataGo 一键设置` 会检测 NVIDIA GPU 和 Compute Capability，自动提示是否推荐 TensorRT；检测失败也可以手动继续
 > - TensorRT 一键安装成功后会自动清理下载包缓存；运行缓存尽量写入软件自己的 `user-data/runtime`，减少 C 盘额外占用
@@ -98,6 +99,7 @@
 | Windows，NVIDIA 显卡，想安装 | `*windows64.nvidia.installer.exe` |
 | Windows，RTX 5070/5080/5090，CUDA 版，免安装 | `*windows64.nvidia50.cuda.portable.zip` |
 | Windows，RTX 5070/5080/5090，CUDA 版，想安装 | `*windows64.nvidia50.cuda.installer.exe` |
+| 已经有 Windows 免安装版，日常升级 | `*windows64.core-update.zip`，解压到旧目录覆盖 |
 | Windows，RTX 20/30/40/50，想测试 TensorRT 加速 | 先下载对应 NVIDIA 包（RTX 50 用 `*windows64.nvidia50.cuda.portable.zip`），打开后在 `KataGo 一键设置` 里安装 |
 | Windows，高级用户，想离线测试 TensorRT 预装包 | `*windows64.nvidia.tensorrt.portable.7z.001` 起的全部分卷，先看同名 `README.txt` |
 | Windows，自己配引擎，免安装 | `*windows64.without.engine.portable.zip` |
@@ -108,9 +110,12 @@
 
 Windows `portable.zip` 是真正的免安装模式：配置、日志、保存棋谱、下载权重和软件内安装的 TensorRT 加速文件都会保存在解压出来的同一个文件夹里，主要位置是 `user-data/`。如果想彻底清理这个免安装版，删除整个解压文件夹即可；如果想保留设置，升级前把旧文件夹里的 `user-data/` 复制到新文件夹。
 
+已有 Windows 免安装版时，日常小版本升级不用重新下载完整大包。下载 `*windows64.core-update.zip`，关闭软件，把 zip 里的内容解压到旧的免安装目录覆盖即可。这个小包只替换 `app/lizzie-yzy2.5.3-shaded.jar`，不会重复下载或覆盖 `weights/`、`engines/`、`runtime/`、`jcef-bundle/`、`readboard/`、`user-data/`。如果某次 release 明确写了 KataGo、权重或运行环境升级，再按说明下载完整包或对应资源包。
+
 如果你懒得分辨：
 
 - Windows：先下 `*windows64.opencl.portable.zip`
+- 已经有 Windows 免安装版：先下 `*windows64.core-update.zip` 覆盖旧目录，除非更新说明要求下载完整包
 - Windows + RTX 20/30/40 NVIDIA 显卡：先下 `*windows64.nvidia.portable.zip`
 - Windows + RTX 5070/5080/5090：先下 `*windows64.nvidia50.cuda.portable.zip`
 - Windows + RTX 20/30/40/50 想试 TensorRT：普通用户先下对应 NVIDIA/CUDA 包，再在软件内“一键设置”按需安装；软件会检测 GPU 和 Compute Capability 后给出推荐，下载支持断点续传

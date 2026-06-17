@@ -35,6 +35,7 @@ TENSORRT_SPLIT_README_SUFFIX = 'windows64.nvidia.tensorrt.portable.README.txt'
 TENSORRT_SPLIT_PART_PATTERN = r'windows64\.nvidia\.tensorrt\.portable\.7z\.\d+$'
 TENSORRT_SPLIT_MANIFEST_SUFFIX = 'windows64.nvidia.tensorrt.portable.manifest.json'
 TENSORRT_SPLIT_SHA256_SUFFIX = 'windows64.nvidia.tensorrt.portable.sha256.txt'
+WINDOWS_CORE_UPDATE_SUFFIX = 'windows64.core-update.zip'
 TENSORRT_SPLIT_ASSET_KEYS = (
     'windows_tensorrt_split_readme',
     'windows_tensorrt_split_parts',
@@ -268,13 +269,15 @@ def validate_release_sections(sections: list[dict[str, object]]) -> None:
 
             if key == 'download':
                 rows = block.get('rows')
-                if not isinstance(rows, list) or len(rows) not in (
+                allowed_row_counts = (
                     expected_download_rows,
                     expected_download_rows + 1,
-                ):
+                    expected_download_rows + 2,
+                )
+                if not isinstance(rows, list) or len(rows) not in allowed_row_counts:
                     raise SystemExit(
                         f'{language} download table must contain {expected_download_rows} rows'
-                        f' or {expected_download_rows + 1} rows with optional TensorRT split guidance'
+                        f' plus optional core-update and TensorRT split guidance'
                     )
                 continue
 
@@ -283,11 +286,85 @@ def validate_release_sections(sections: list[dict[str, object]]) -> None:
                 raise SystemExit(f'{language} release notes section "{key}" needs bullet items')
 
 
+def formatted_asset_available(value: str | None) -> bool:
+    if not value:
+        return False
+    return '暂未包含在本次发布中' not in value and 'Not included in this release' not in value
+
+
+def add_windows_core_update_download_row(
+    sections: list[dict[str, object]],
+    assets_cn: dict[str, str],
+    assets: dict[str, str],
+) -> None:
+    labels_by_language = {
+        '中文': '已有 Windows 免安装版，日常升级小包',
+        '繁體中文': '已有 Windows 免安裝版，日常升級小包',
+        'English': 'Existing Windows portable install, small routine update',
+        '日本語': '既存の Windows portable 版向け小型更新',
+        '한국어': '기존 Windows portable 사용자를 위한 소형 업데이트',
+        'ภาษาไทย': 'อัปเดตเล็กสำหรับผู้ใช้ Windows portable เดิม',
+    }
+    before_note_by_language = {
+        '中文': '已经有 Windows 免安装版的老用户，日常升级优先下载 `windows64.core-update.zip`，关闭软件后解压到旧目录覆盖；引擎、权重、TensorRT、设置和棋谱都会保留。',
+        '繁體中文': '已經有 Windows 免安裝版的舊使用者，日常升級優先下載 `windows64.core-update.zip`，關閉軟體後解壓到舊目錄覆蓋；引擎、權重、TensorRT、設定和棋譜都會保留。',
+        'English': 'Existing Windows portable users should prefer `windows64.core-update.zip` for routine updates: close the app, extract it over the old folder, and keep engines, weights, TensorRT, settings, and game records in place.',
+        '日本語': '既存の Windows portable ユーザーは、通常更新では `windows64.core-update.zip` を優先してください。アプリを閉じて既存フォルダへ展開すれば、エンジン、重み、TensorRT、設定、棋譜は保持されます。',
+        '한국어': '기존 Windows portable 사용자는 일반 업데이트에서 `windows64.core-update.zip` 을 우선 사용하세요. 앱을 닫고 기존 폴더에 덮어 풀면 엔진, 가중치, TensorRT, 설정, 기보가 유지됩니다.',
+        'ภาษาไทย': 'ผู้ใช้ Windows portable เดิมควรใช้ `windows64.core-update.zip` สำหรับอัปเดตทั่วไป: ปิดแอปแล้วแตกไฟล์ทับโฟลเดอร์เดิม โดย engine, weight, TensorRT, settings และ game records จะยังอยู่',
+    }
+    update_note_by_language = {
+        '中文': 'Windows 免安装版新增更清晰的小更新路径：`core-update` 只替换主程序，不重复打包引擎、权重、JCEF、readboard、Java runtime 或用户数据。',
+        '繁體中文': 'Windows 免安裝版新增更清楚的小更新路徑：`core-update` 只替換主程式，不重複打包引擎、權重、JCEF、readboard、Java runtime 或使用者資料。',
+        'English': 'Windows portable builds now have a clearer small-update path: `core-update` replaces only the app core and does not rebundle engines, weights, JCEF, readboard, Java runtime, or user data.',
+        '日本語': 'Windows portable 版に分かりやすい小型更新パスを追加しました。`core-update` はアプリ本体だけを置き換え、エンジン、重み、JCEF、readboard、Java runtime、ユーザーデータを再同梱しません。',
+        '한국어': 'Windows portable 빌드에 더 명확한 소형 업데이트 경로를 추가했습니다. `core-update` 는 앱 핵심만 교체하고 엔진, 가중치, JCEF, readboard, Java runtime, 사용자 데이터를 다시 묶지 않습니다.',
+        'ภาษาไทย': 'Windows portable มีทางอัปเดตเล็กที่ชัดเจนขึ้น: `core-update` เปลี่ยนเฉพาะ app core และไม่แพ็ก engine, weight, JCEF, readboard, Java runtime หรือ user data ซ้ำ',
+    }
+    for section in sections:
+        language = str(section['language'])
+        localized_assets = assets_cn if language in ('中文', '繁體中文') else assets
+        core_asset = localized_assets.get('windows_core_update')
+        if not formatted_asset_available(core_asset):
+            continue
+        download = section['download']
+        assert isinstance(download, dict)
+        rows = download['rows']
+        assert isinstance(rows, list)
+        if not any('core-update' in str(row[1]) for row in rows if isinstance(row, tuple)):
+            insert_at = 1
+            for index, row in enumerate(rows):
+                if isinstance(row, tuple) and 'windows64.opencl.portable' in str(row[1]):
+                    insert_at = index + 1
+                    break
+            rows.insert(
+                insert_at,
+                (labels_by_language.get(language, labels_by_language['English']), core_asset),
+            )
+
+        before = section['before']
+        assert isinstance(before, dict)
+        before_items = before['items']
+        assert isinstance(before_items, list)
+        note = before_note_by_language.get(language, before_note_by_language['English'])
+        if note not in before_items:
+            before_items.append(note)
+
+        updates = section['updates']
+        assert isinstance(updates, dict)
+        update_items = updates['items']
+        assert isinstance(update_items, list)
+        update_note = update_note_by_language.get(language, update_note_by_language['English'])
+        if update_note not in update_items:
+            update_items.append(update_note)
+
+
 def add_nvidia50_download_rows(
     sections: list[dict[str, object]],
     assets_cn: dict[str, str],
     assets: dict[str, str],
 ) -> None:
+    add_windows_core_update_download_row(sections, assets_cn, assets)
     labels_by_language = {
         '中文': (
             'Windows 64 位，RTX 50 CUDA 版，5070/5080/5090 优先，免安装',
@@ -6634,6 +6711,11 @@ def main() -> int:
         key: pick_asset(asset_names, suffix, args.date_tag)
         for key, suffix, _cn, _en in ASSET_SPECS
     }
+    asset_map['windows_core_update'] = pick_asset(
+        asset_names,
+        WINDOWS_CORE_UPDATE_SUFFIX,
+        args.date_tag,
+    )
     asset_map['windows_tensorrt_split_readme'] = pick_asset(
         asset_names,
         TENSORRT_SPLIT_README_SUFFIX,

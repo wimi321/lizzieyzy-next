@@ -100,22 +100,26 @@ public final class WindowsUpdateDialog extends JDialog {
   private String updateSummary() {
     StringBuilder text = new StringBuilder();
     text.append("这次会先下载并校验更新文件，然后关闭当前程序，由独立更新器替换文件并重新打开。\n\n");
-    text.append("核心更新: ").append(formatBytes(plan.coreSizeBytes())).append('\n');
-    text.append("大资源更新: ").append(formatBytes(plan.resourceSizeBytes())).append('\n');
+    text.append("本次主程序小更新: ").append(formatBytes(plan.coreSizeBytes())).append('\n');
+    if (plan.resourceSizeBytes() > 0L) {
+      text.append("本次需要更新的大资源: ").append(formatBytes(plan.resourceSizeBytes())).append('\n');
+    } else {
+      text.append("大资源本次无需下载: KataGo、权重、运行环境、同步工具和浏览器组件都会保留。\n");
+    }
     text.append("总下载: ").append(formatBytes(plan.selectedSizeBytes())).append("\n\n");
     text.append("将更新的组件:\n");
     for (WindowsUpdatePlan.Item item : plan.selectedItems()) {
       text.append("- ").append(displayName(item.component)).append("  ");
       text.append(formatBytes(item.component.sizeBytes)).append('\n');
     }
-    text.append("\n未变化的大资源不会重复下载。用户数据、棋谱、设置和下载的模型会保留。");
+    text.append("\n未变化的大资源不会重复下载。用户数据、棋谱、设置、下载权重和 TensorRT 会保留。");
     return text.toString();
   }
 
   private String displayName(UpdateManifest.Component component) {
     switch (component.id) {
       case "core":
-        return "主程序核心";
+        return "主程序小更新";
       case "katago-cpu":
         return "KataGo CPU 引擎";
       case "katago-opencl":
