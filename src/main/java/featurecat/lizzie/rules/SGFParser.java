@@ -2856,7 +2856,15 @@ public class SGFParser {
    */
   public static String propertiesString(Map<String, String> props) {
     StringBuilder sb = new StringBuilder();
-    props.forEach((key, value) -> sb.append(nodeString(key, value)));
+    if (props.containsKey("CA")) {
+      sb.append(nodeString("CA", props.get("CA")));
+    }
+    props.forEach(
+        (key, value) -> {
+          if (!"CA".equals(key)) {
+            sb.append(nodeString(key, value));
+          }
+        });
     return sb.toString();
   }
 

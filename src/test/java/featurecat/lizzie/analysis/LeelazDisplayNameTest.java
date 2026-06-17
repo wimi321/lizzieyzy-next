@@ -45,4 +45,21 @@ class LeelazDisplayNameTest {
 
     assertEquals("zhizi 28B muonfd2", Leelaz.friendlyEngineName("KataGo TensorRT", command));
   }
+
+  @Test
+  void weightDisplayHandlesMultipleSpacesAfterModelFlag() {
+    String command =
+        "\"/tmp/katago\" gtp -model  \"/tmp/weights/kata1-b28c512nbt-s12763923712-d5805955894.bin.gz\""
+            + " -config \"/tmp/gtp.cfg\"";
+
+    assertEquals("28B", Leelaz.friendlyEngineName("KataGo Auto Setup", command));
+  }
+
+  @Test
+  void weightDisplayHandlesEqualsStyleWeightsFlag() {
+    String command =
+        "\"/tmp/leelaz\" --weights=/tmp/weights/kata1-zhizi-b28c512nbt-muonfd2.bin.gz";
+
+    assertEquals("zhizi 28B muonfd2", Leelaz.friendlyEngineName("KataGo Auto Setup", command));
+  }
 }
