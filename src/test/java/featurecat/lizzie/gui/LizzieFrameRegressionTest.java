@@ -17,6 +17,11 @@ import featurecat.lizzie.rules.BoardHistoryList;
 import featurecat.lizzie.rules.Stone;
 import featurecat.lizzie.rules.Zobrist;
 import java.awt.Color;
+import java.awt.GraphicsConfiguration;
+import java.awt.GraphicsDevice;
+import java.awt.Rectangle;
+import java.awt.geom.AffineTransform;
+import java.awt.image.ColorModel;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.Optional;
@@ -350,6 +355,44 @@ class LizzieFrameRegressionTest {
     }
   }
 
+  @Test
+  void graphicsConfigurationScaleChangeRefreshesLayoutOnlyWhenScaleChanges() throws Exception {
+    boolean previousScaled = Config.isScaled;
+    float previousScaleFactor = Lizzie.javaScaleFactor;
+    try {
+      ScaleTrackingFrame frame = allocate(ScaleTrackingFrame.class);
+      setField(frame, "refreshWinratePane", false);
+      Config.isScaled = false;
+      Lizzie.javaScaleFactor = 1.0f;
+
+      invokeUpdateScaleFromGraphicsConfiguration(frame, graphicsConfigurationWithScale(2.0));
+
+      assertTrue(Config.isScaled);
+      assertEquals(2.0f, Lizzie.javaScaleFactor, 0.001f);
+      assertTrue((boolean) getField(frame, "refreshWinratePane"));
+      assertEquals(1, frame.resetLocationCount);
+      assertEquals(1, frame.refreshContainerCount);
+      assertEquals(1, frame.repaintCount);
+
+      invokeUpdateScaleFromGraphicsConfiguration(frame, graphicsConfigurationWithScale(2.0));
+
+      assertEquals(1, frame.resetLocationCount, "unchanged scale should not relayout.");
+      assertEquals(1, frame.refreshContainerCount, "unchanged scale should not refresh containers.");
+      assertEquals(1, frame.repaintCount, "unchanged scale should not repaint.");
+
+      invokeUpdateScaleFromGraphicsConfiguration(frame, graphicsConfigurationWithScale(1.0));
+
+      assertFalse(Config.isScaled);
+      assertEquals(1.0f, Lizzie.javaScaleFactor, 0.001f);
+      assertEquals(2, frame.resetLocationCount);
+      assertEquals(2, frame.refreshContainerCount);
+      assertEquals(2, frame.repaintCount);
+    } finally {
+      Config.isScaled = previousScaled;
+      Lizzie.javaScaleFactor = previousScaleFactor;
+    }
+  }
+
   private static TrackingFrame newTrackingFrame() throws Exception {
     TrackingFrame frame = allocate(TrackingFrame.class);
     initReadBoardRestartLock(frame);
@@ -549,6 +592,19 @@ class LizzieFrameRegressionTest {
     Method method = LizzieFrame.class.getDeclaredMethod("shouldAutoQuickAnalyzeLoadedGame");
     method.setAccessible(true);
     return (boolean) method.invoke(frame);
+  }
+
+  private static void invokeUpdateScaleFromGraphicsConfiguration(
+      LizzieFrame frame, GraphicsConfiguration graphicsConfiguration) throws Exception {
+    Method method =
+        LizzieFrame.class.getDeclaredMethod(
+            "updateScaleFromGraphicsConfiguration", GraphicsConfiguration.class);
+    method.setAccessible(true);
+    method.invoke(frame, graphicsConfiguration);
+  }
+
+  private static GraphicsConfiguration graphicsConfigurationWithScale(double scale) {
+    return new TestGraphicsConfiguration(scale);
   }
 
   private static BoardHistoryList historyWithAnalyzedMoveThenSnapshotMarker() {
@@ -842,6 +898,27 @@ class LizzieFrameRegressionTest {
     }
   }
 
+  private static final class ScaleTrackingFrame extends LizzieFrame {
+    private int resetLocationCount;
+    private int refreshContainerCount;
+    private int repaintCount;
+
+    @Override
+    public void reSetLoc() {
+      resetLocationCount++;
+    }
+
+    @Override
+    public void refreshContainer() {
+      refreshContainerCount++;
+    }
+
+    @Override
+    public void repaint() {
+      repaintCount++;
+    }
+  }
+
   private static final class AnalysisResumeTrackingFrame extends LizzieFrame {
     private int flashAnalyzeGameCount;
     private int refreshCount;
@@ -880,6 +957,44 @@ class LizzieFrameRegressionTest {
     public void ponder() {
       ponderCount++;
       pondering = true;
+    }
+  }
+
+  private static final class TestGraphicsConfiguration extends GraphicsConfiguration {
+    private final double scale;
+
+    private TestGraphicsConfiguration(double scale) {
+      this.scale = scale;
+    }
+
+    @Override
+    public GraphicsDevice getDevice() {
+      return null;
+    }
+
+    @Override
+    public ColorModel getColorModel() {
+      return ColorModel.getRGBdefault();
+    }
+
+    @Override
+    public ColorModel getColorModel(int transparency) {
+      return ColorModel.getRGBdefault();
+    }
+
+    @Override
+    public AffineTransform getDefaultTransform() {
+      return AffineTransform.getScaleInstance(scale, scale);
+    }
+
+    @Override
+    public AffineTransform getNormalizingTransform() {
+      return new AffineTransform();
+    }
+
+    @Override
+    public Rectangle getBounds() {
+      return new Rectangle(0, 0, 1920, 1080);
     }
   }
 
