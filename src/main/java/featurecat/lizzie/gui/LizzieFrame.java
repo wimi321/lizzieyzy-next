@@ -13546,7 +13546,7 @@ public class LizzieFrame extends JFrame {
     if (report == null || !report.hasSamples()) {
       return "-";
     }
-    return playerStrengthRankValueText(report.rankValue);
+    return playerStrengthDisplayRank(report.strengthBand);
   }
 
   private static String playerStrengthRankValueText(PlayerStrengthEstimator.SideReport report) {

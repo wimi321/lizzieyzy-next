@@ -4125,6 +4125,8 @@ def build_release_notes(asset_map: dict[str, str | None], bundle: dict[str, str]
         return build_next_2026_06_14_1_notes(asset_map, bundle, repo, release_tag)
     if release_tag == 'next-2026-06-16.1':
         return build_next_2026_06_16_1_notes(asset_map, bundle, repo, release_tag)
+    if release_tag == 'next-2026-06-18.1':
+        return build_next_2026_06_18_1_notes(asset_map, bundle, repo, release_tag)
 
     assets_cn = {
         key: format_asset(asset_map[key], repo, release_tag)
@@ -6696,6 +6698,66 @@ def build_next_2026_06_16_1_notes(
             '- ตรวจสอบรายการโมเดล KataGo official แล้ว ค่า default bundled model ยังใช้ `zhizi 28B muonfd2` ที่เหมาะกับผู้ใช้ทั่วไปกว่า ส่วน June latest 28B และ strongest 40B ยังเลือกดาวน์โหลดได้ใน KataGo Auto Setup\n',
     }
     for anchor, extra in additions.items():
+        notes = notes.replace(anchor, anchor + extra)
+    return notes
+
+
+def build_next_2026_06_18_1_notes(
+    asset_map: dict[str, str | None],
+    bundle: dict[str, str],
+    repo: str,
+    release_tag: str | None,
+) -> str:
+    notes = build_next_2026_06_16_1_notes(asset_map, bundle, repo, release_tag)
+    additions = {
+        '- Windows 免安装版新增更清晰的小更新路径：`core-update` 只替换主程序，不重复打包引擎、权重、JCEF、readboard、Java runtime 或用户数据。\n':
+            '- 在已有变化图的下一手位置直接落子时，会进入原来的变化分支，不再重复新建一个相同分支。\n'
+            '- 粘贴 SGF 时增加保护和兼容回归测试，避免误覆盖当前棋盘，也让加载后的引擎同步更稳。\n'
+            '- 新增中式棋盘风格，棋盘外侧坐标会按中式显示；同时合入上游 SGF、着手列表和 UI 维护修复。\n'
+            '- 棋力评估主卡改为显示用户能理解的棋力区间，评分规则改成短标签，避免 `1.0段` 这类内部值和省略号误导用户。\n',
+        '- Windows 免安裝版新增更清楚的小更新路徑：`core-update` 只替換主程式，不重複打包引擎、權重、JCEF、readboard、Java runtime 或使用者資料。\n':
+            '- 在已有變化圖的下一手位置直接落子時，會進入原來的變化分支，不再重複新建一個相同分支。\n'
+            '- 貼上 SGF 時增加保護和相容回歸測試，避免誤覆蓋目前棋盤，也讓載入後的引擎同步更穩。\n'
+            '- 新增中式棋盤風格，棋盤外側座標會按中式顯示；同時合入上游 SGF、著手列表和 UI 維護修復。\n'
+            '- 棋力評估主卡改為顯示使用者能理解的棋力區間，評分規則改成短標籤，避免 `1.0段` 這類內部值和省略號誤導使用者。\n',
+        '- Windows portable builds now have a clearer small-update path: `core-update` replaces only the app core and does not rebundle engines, weights, JCEF, readboard, Java runtime, or user data.\n':
+            '- Clicking a move that already exists as the next move of a variation now enters that existing branch instead of creating a duplicate branch.\n'
+            '- SGF paste now has stronger protection and compatibility regression coverage, reducing accidental board replacement and improving engine sync after load.\n'
+            '- Added Chinese classic board style with matching outer coordinates, and folded in upstream SGF, move-list, and UI maintenance fixes.\n'
+            '- Player Strength cards now show user-facing strength bands, and the score-scale labels are shorter so internal values such as `1.0 dan` and clipped ellipses no longer confuse users.\n',
+        '- Windows portable 版に分かりやすい小型更新パスを追加しました。`core-update` はアプリ本体だけを置き換え、エンジン、重み、JCEF、readboard、Java runtime、ユーザーデータを再同梱しません。\n':
+            '- 既存の変化図にある次の一手を盤面でクリックした場合、同じ分岐を重複作成せず、その既存分岐へ入るようにしました。\n'
+            '- SGF 貼り付けに保護と互換性回帰テストを追加し、現在の盤面を誤って置き換えるリスクを減らし、読み込み後のエンジン同期も安定させました。\n'
+            '- 中国式の盤面スタイルを追加し、盤外座標も中国式表示に対応しました。あわせて上流の SGF、着手リスト、UI メンテナンス修正を取り込みました。\n'
+            '- 棋力評価カードはユーザー向けの棋力区間を表示し、スコア尺度ラベルを短くしました。`1.0段` のような内部値や省略表示で迷わないようにしています。\n',
+        '- Windows portable 빌드에 더 명확한 small-update 경로를 추가했습니다. `core-update` 는 앱 core 만 교체하며 engine, weight, JCEF, readboard, Java runtime, user data 를 다시 포함하지 않습니다.\n':
+            '- 이미 존재하는 변화도의 다음 수 위치를 직접 클릭하면 같은 분기를 새로 만들지 않고 기존 변화 분기로 들어갑니다.\n'
+            '- SGF 붙여넣기에 보호 로직과 compatibility regression test 를 추가해 현재 보드가 실수로 교체될 위험을 줄이고, 로드 후 engine sync 도 더 안정적으로 만들었습니다.\n'
+            '- Chinese classic board style 을 추가하고 바깥 좌표도 중국식으로 표시합니다. 또한 upstream SGF, move-list, UI maintenance fix 를 함께 반영했습니다.\n'
+            '- Player Strength 카드는 사용자에게 이해되는 기력 구간을 표시하고 score-scale label 을 짧게 바꿔 `1.0 dan` 같은 내부 값이나 잘린 말줄임표로 혼동하지 않게 했습니다.\n',
+        '- เพิ่มเส้นทางอัปเดตขนาดเล็กที่ชัดเจนขึ้นสำหรับ Windows portable: `core-update` จะเปลี่ยนเฉพาะ app core และไม่ bundle engine, weight, JCEF, readboard, Java runtime หรือ user data ซ้ำ\n':
+            '- เมื่อคลิกจุดเดินที่มีอยู่แล้วเป็นตาถัดไปของ variation โปรแกรมจะเข้า branch เดิมแทนการสร้าง branch ซ้ำ\n'
+            '- เพิ่มการป้องกันและ regression test สำหรับการ paste SGF เพื่อลดความเสี่ยงการแทนที่กระดานปัจจุบันโดยไม่ตั้งใจ และทำให้ engine sync หลังโหลดเสถียรขึ้น\n'
+            '- เพิ่ม Chinese classic board style พร้อม coordinate รอบกระดานแบบจีน และรวม upstream fix ด้าน SGF, move list และ UI maintenance\n'
+            '- การ์ด Player Strength แสดงช่วงระดับที่ผู้ใช้เข้าใจง่ายขึ้น และย่อ label ของ score scale เพื่อไม่ให้ค่า internal อย่าง `1.0 dan` หรือข้อความที่ถูกตัดทำให้สับสน\n',
+    }
+    why_additions = {
+        '- 发布前已重新跑完整 Maven 测试、打包、本机真实启动 UI 冒烟，并等待 GitHub Actions 发布工作流通过。\n':
+            '- 本版继续按“用户实际会点哪里”的方式做了本机启动检查，顺手修掉棋力评估显示里会误导普通用户的内部评分文案。\n',
+        '- 發布前已重新跑完整 Maven 測試、打包、本機真實啟動 UI 冒煙，並等待 GitHub Actions 發布工作流通過。\n':
+            '- 本版繼續按「使用者實際會點哪裡」的方式做了本機啟動檢查，順手修掉棋力評估顯示裡會誤導一般使用者的內部評分文案。\n',
+        '- Before release, the full Maven suite, package build, real local launch smoke test, and GitHub Actions release workflows were rerun.\n':
+            '- This build was checked from a user-flow perspective again, and the Player Strength display wording was cleaned up where internal score values could mislead everyday users.\n',
+        '- リリース前に full Maven suite、package build、実機ローカル起動 smoke test、GitHub Actions release workflows を再実行しました。\n':
+            '- 今回も実際のユーザーフローに近い形でローカル起動確認を行い、棋力評価で内部スコア表示が一般ユーザーを迷わせる箇所を修正しました。\n',
+        '- 릴리스 전 full Maven suite, package build, real local launch smoke test, GitHub Actions release workflows 를 다시 실행했습니다.\n':
+            '- 이번 빌드도 실제 사용자가 누르는 흐름에 가깝게 로컬 실행 점검을 했고, Player Strength 화면에서 내부 점수 표현이 일반 사용자를 혼동시키는 부분을 정리했습니다.\n',
+        '- ก่อน release ได้รัน full Maven suite, package build, real local launch smoke test และ GitHub Actions release workflows ซ้ำแล้ว\n':
+            '- build นี้ตรวจจากมุมมอง user flow อีกครั้ง และปรับข้อความ Player Strength ที่เป็น internal score ไม่ให้ทำให้ผู้ใช้ทั่วไปสับสน\n',
+    }
+    for anchor, extra in additions.items():
+        notes = notes.replace(anchor, anchor + extra)
+    for anchor, extra in why_additions.items():
         notes = notes.replace(anchor, anchor + extra)
     return notes
 
