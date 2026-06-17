@@ -24,6 +24,7 @@ import featurecat.lizzie.analysis.ReadBoardUpdateRequest;
 import featurecat.lizzie.analysis.TrackingEngine;
 import featurecat.lizzie.rules.Board;
 import featurecat.lizzie.rules.BoardData;
+import featurecat.lizzie.rules.BoardHistoryList;
 import featurecat.lizzie.rules.BoardHistoryNode;
 import featurecat.lizzie.rules.EngineCountDown;
 import featurecat.lizzie.rules.GIBParser;
@@ -96,6 +97,13 @@ import org.json.JSONObject;
 /** The window used to display the game. */
 public class LizzieFrame extends JFrame {
   private static final Map<String, BufferedImage> PLAYER_STRENGTH_IMAGE_CACHE = new HashMap<>();
+
+  enum PasteSgfDecision {
+    IGNORE_EMPTY,
+    IGNORE_NOT_SGF,
+    LOAD,
+    CONFIRM_REPLACE
+  }
 
   private String[] commands = {
     Lizzie.resourceBundle.getString("LizzieFrame.commands.keySpace"),
@@ -8278,10 +8286,42 @@ public class LizzieFrame extends JFrame {
                 })
             .orElse("");
 
-    // Load game contents from sgf string
-    if (!sgfContent.isEmpty() && SGFParser.isSGF(sgfContent)) {
+    PasteSgfDecision decision = pasteSgfDecision(sgfContent, currentGameHasPasteRisk());
+    if (decision == PasteSgfDecision.CONFIRM_REPLACE && !confirmPasteSgfReplace()) {
+      return;
+    }
+    if (decision == PasteSgfDecision.LOAD || decision == PasteSgfDecision.CONFIRM_REPLACE) {
       loadSgfString(sgfContent, 200, Lizzie.config.readKomi, true, null);
     }
+  }
+
+  static PasteSgfDecision pasteSgfDecision(String sgfContent, boolean currentGameHasContent) {
+    if (sgfContent == null || sgfContent.trim().isEmpty()) {
+      return PasteSgfDecision.IGNORE_EMPTY;
+    }
+    if (!SGFParser.isSGF(sgfContent)) {
+      return PasteSgfDecision.IGNORE_NOT_SGF;
+    }
+    return currentGameHasContent ? PasteSgfDecision.CONFIRM_REPLACE : PasteSgfDecision.LOAD;
+  }
+
+  private boolean currentGameHasPasteRisk() {
+    if (Lizzie.board == null || Lizzie.board.getHistory() == null) {
+      return false;
+    }
+    BoardHistoryList history = Lizzie.board.getHistory();
+    return !history.isEmptyBoard() || !history.noStoneBoard();
+  }
+
+  private boolean confirmPasteSgfReplace() {
+    int selected =
+        JOptionPane.showConfirmDialog(
+            this,
+            Lizzie.resourceBundle.getString("LizzieFrame.pasteSgfReplaceMessage"),
+            Lizzie.resourceBundle.getString("LizzieFrame.pasteSgfReplaceTitle"),
+            JOptionPane.OK_CANCEL_OPTION,
+            JOptionPane.WARNING_MESSAGE);
+    return selected == JOptionPane.OK_OPTION;
   }
 
   public boolean resetMovelistFrameandAnalysisFrame() {

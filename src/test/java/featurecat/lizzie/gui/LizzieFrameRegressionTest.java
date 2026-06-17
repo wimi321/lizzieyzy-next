@@ -37,6 +37,37 @@ class LizzieFrameRegressionTest {
   private static final int BOARD_AREA = BOARD_SIZE * BOARD_SIZE;
 
   @Test
+  void pasteSgfDecisionIgnoresEmptyClipboard() {
+    assertEquals(
+        LizzieFrame.PasteSgfDecision.IGNORE_EMPTY, LizzieFrame.pasteSgfDecision("", true));
+    assertEquals(
+        LizzieFrame.PasteSgfDecision.IGNORE_EMPTY, LizzieFrame.pasteSgfDecision("   ", true));
+    assertEquals(
+        LizzieFrame.PasteSgfDecision.IGNORE_EMPTY, LizzieFrame.pasteSgfDecision(null, true));
+  }
+
+  @Test
+  void pasteSgfDecisionIgnoresNonSgfClipboardText() {
+    assertEquals(
+        LizzieFrame.PasteSgfDecision.IGNORE_NOT_SGF,
+        LizzieFrame.pasteSgfDecision("not a game record", true));
+  }
+
+  @Test
+  void pasteSgfDecisionLoadsDirectlyWhenCurrentBoardIsEmpty() {
+    assertEquals(
+        LizzieFrame.PasteSgfDecision.LOAD,
+        LizzieFrame.pasteSgfDecision("(;SZ[19];B[pd])", false));
+  }
+
+  @Test
+  void pasteSgfDecisionRequiresConfirmationWhenCurrentBoardHasContent() {
+    assertEquals(
+        LizzieFrame.PasteSgfDecision.CONFIRM_REPLACE,
+        LizzieFrame.pasteSgfDecision("(;SZ[19];B[pd])", true));
+  }
+
+  @Test
   void playerStrengthRankReferenceKeepsKyuResultsInKyuBand() throws Exception {
     Method rankLevel = LizzieFrame.class.getDeclaredMethod("playerStrengthRankLevel", String.class);
     rankLevel.setAccessible(true);
