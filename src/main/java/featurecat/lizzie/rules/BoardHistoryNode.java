@@ -243,6 +243,18 @@ public class BoardHistoryNode {
     return node;
   }
 
+  Optional<BoardHistoryNode> findDirectChildByMoveIdentity(BoardData candidate) {
+    if (candidate == null || !candidate.isHistoryActionNode()) {
+      return Optional.empty();
+    }
+    for (BoardHistoryNode variation : variations) {
+      if (matchesMoveIdentity(variation.getData(), candidate)) {
+        return Optional.of(variation);
+      }
+    }
+    return Optional.empty();
+  }
+
   /**
    * @return data stored on this node
    */
@@ -850,6 +862,19 @@ public class BoardHistoryNode {
   private static boolean matchesVariationIdentity(
       BoardHistoryNode existingChild, BoardData candidate) {
     return matchesVariationIdentity(existingChild, candidate, false, null);
+  }
+
+  private static boolean matchesMoveIdentity(BoardData existing, BoardData candidate) {
+    return existing.isHistoryActionNode()
+        && candidate.isHistoryActionNode()
+        && existing.getNodeKind() == candidate.getNodeKind()
+        && existing.dummy == candidate.dummy
+        && sameLastMove(existing.lastMove, candidate.lastMove)
+        && existing.blackToPlay == candidate.blackToPlay
+        && existing.lastMoveColor == candidate.lastMoveColor
+        && existing.blackCaptures == candidate.blackCaptures
+        && existing.whiteCaptures == candidate.whiteCaptures
+        && Arrays.equals(existing.stones, candidate.stones);
   }
 
   private static boolean matchesVariationIdentity(

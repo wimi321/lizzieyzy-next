@@ -2124,10 +2124,18 @@ public class Board {
           && !isEngineFollowTrialActive()) {
         Lizzie.leelaz.playMove(color, convertCoordinatesToName(x, y), true, color.isWhite());
       }
-      history.addOrGoto(newState, newBranch);
+      boolean usedExistingVariation =
+          !newBranch && !forSync && history.nextByMoveIdentity(newState).isPresent();
+      if (!usedExistingVariation) {
+        history.addOrGoto(newState, newBranch);
+      } else {
+        clearAfterMove();
+      }
       if (shouldLogLocalMovePlace) {
         logLocalMovePlace(
-            "place history addOrGoto done x="
+            (usedExistingVariation
+                    ? "place history existing-variation done x="
+                    : "place history addOrGoto done x=")
                 + x
                 + " y="
                 + y

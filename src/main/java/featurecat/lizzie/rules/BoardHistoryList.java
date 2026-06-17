@@ -107,6 +107,17 @@ public class BoardHistoryList {
     head = head.addOrGoto(data, newBranch, changeMove, tsumego);
   }
 
+  Optional<BoardData> nextByMoveIdentity(BoardData data) {
+    Optional<BoardHistoryNode> n = head.findDirectChildByMoveIdentity(data);
+    if (n.isPresent()) {
+      if (head.hasRemovedStone()) head.clearAndSyncBoard(true);
+      if (Lizzie.leelaz != null) Lizzie.leelaz.clearBestMoves();
+      head = n.get();
+      head.placeExtraStones();
+    }
+    return n.map(BoardHistoryNode::getData);
+  }
+
   /**
    * moves the pointer to the left, returns the data stored there
    *
