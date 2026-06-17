@@ -140,6 +140,7 @@ import json
 import pathlib
 import re
 import sys
+import zipfile
 
 release_dir = pathlib.Path(sys.argv[1])
 date_tag = sys.argv[2]
@@ -160,6 +161,37 @@ assert core_path.is_file()
 assert core["sizeBytes"] == core_path.stat().st_size
 assert re.fullmatch(r"[0-9a-fA-F]{64}", core["sha256"])
 assert core["sha256"].lower() == hashlib.sha256(core_path.read_bytes()).hexdigest()
+with zipfile.ZipFile(core_path) as archive:
+    entries = {
+        name.replace("\\", "/")
+        for name in archive.namelist()
+        if name and not name.endswith("/")
+    }
+assert "lizzieyzy-next-core.jar" in entries
+assert "app/lizzie-yzy2.5.3-shaded.jar" in entries
+assert "README.txt" in entries
+assert "lizzieyzy-next-core-update-manifest.json" in entries
+for entry in entries:
+    normalized = entry.strip("/")
+    first = normalized.split("/", 1)[0]
+    assert first not in {
+        "weights",
+        "engines",
+        "runtime",
+        "jcef-bundle",
+        "readboard",
+        "user-data",
+    }, f"core update must not bundle large/resource path: {entry}"
+    if normalized.startswith("app/"):
+        second = normalized.split("/", 2)[1] if "/" in normalized[4:] else ""
+        assert second not in {
+            "weights",
+            "engines",
+            "runtime",
+            "jcef-bundle",
+            "readboard",
+            "user-data",
+        }, f"core update must not bundle app resource path: {entry}"
 PY
     ;;
   mac-arm64|mac-amd64)

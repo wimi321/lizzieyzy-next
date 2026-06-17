@@ -10,9 +10,10 @@
 
 这份文档讲的是当前维护版 `LizzieYzy Next` 的公开发布格式，不是旧 `lizzieyzy` 的历史发布布局。
 
-- 当前维护版公开主推 15 个用户向主资产
+- 当前维护版公开主推 15 个首次下载主资产，另有 1 个 Windows 免安装小更新包
 - Windows 默认优先推荐 `portable.zip`
 - 大多数普通用户先下 `windows64.opencl.portable.zip`
+- 已有 Windows 免安装版的老用户，日常升级优先下载 `windows64.core-update.zip` 覆盖旧目录
 - OpenCL 表现不好时改用 `windows64.with-katago.portable.zip`
 - RTX 20/30/40 系列 NVIDIA 显卡并且更在意速度时改用 `windows64.nvidia.portable.zip`
 - RTX 5070/5080/5090 优先试 `windows64.nvidia50.cuda.portable.zip`，TensorRT 加速改为软件内按需安装
@@ -39,6 +40,7 @@
 | Windows 64 位 NVIDIA 极速安装器 | `<date>-windows64.nvidia.installer.exe` | 有 NVIDIA 显卡，想保留安装流程 |
 | Windows 64 位 RTX 50 CUDA 免安装包 | `<date>-windows64.nvidia50.cuda.portable.zip` | RTX 5070/5080/5090 用户首选 |
 | Windows 64 位 RTX 50 CUDA 安装器 | `<date>-windows64.nvidia50.cuda.installer.exe` | RTX 5070/5080/5090 用户，想保留安装流程 |
+| Windows 免安装小更新包 | `<date>-windows64.core-update.zip` | 已经有旧版免安装目录，只想日常升级主程序的用户 |
 | Windows 64 位 TensorRT 高级可选分卷包 | `<date>-windows64.nvidia.tensorrt.portable.7z.001` 等全部分卷 | 熟悉 7-Zip、想离线测试 TensorRT 的 RTX 20/30/40/50 用户 |
 | Windows 64 位无引擎便携包 | `<date>-windows64.without.engine.portable.zip` | 想自己配置分析引擎 |
 | Windows 64 位无引擎安装器 | `<date>-windows64.without.engine.installer.exe` | 想保留安装流程，但自己配置分析引擎 |
@@ -51,10 +53,11 @@
 说明：
 
 - `<date>` 代表发布日期，例如 `2026-03-21`。
-- 当前维护版公开 release 主列表只保留这 15 个用户向主资产。
+- 当前维护版公开 release 主列表只保留 15 个首次下载主资产；`windows64.core-update.zip` 是已有免安装用户的日常小更新资产，不是首次下载包。
 - TensorRT 分卷包是高级可选资产，不计入普通用户主推荐路径；只下载 `.7z.001` 没用，必须下载全部 `.7z.00N`。
 - Windows 64 位现在优先推荐免安装包，安装器作为可选路径保留。
 - Windows 免安装包会在解压目录内启用便携模式，配置、日志、保存棋谱、下载权重和软件内安装的 TensorRT 文件都随这个文件夹保存，主要位于 `user-data/`。
+- 已有 Windows 免安装版时，关闭软件后把 `<date>-windows64.core-update.zip` 解压到旧目录覆盖即可；它只替换 `app/lizzie-yzy2.5.3-shaded.jar`，不会覆盖权重、引擎、运行环境、JCEF、readboard、TensorRT 或 `user-data/`。
 - 旧 tag 里如果还看到兼容 zip 或历史包，那属于历史发布格式。
 
 ## 每个包里内置了什么
@@ -69,6 +72,7 @@
 | `windows64.nvidia.installer.exe` | 是 | 是 | 安装后从开始菜单或桌面打开 |
 | `windows64.nvidia50.cuda.portable.zip` | 是 | 是 | 解压后运行 `LizzieYzy Next NVIDIA 50 CUDA.exe` |
 | `windows64.nvidia50.cuda.installer.exe` | 是 | 是 | 安装后从开始菜单或桌面打开 |
+| `windows64.core-update.zip` | 否 | 依赖旧免安装目录 | 解压到旧免安装目录覆盖，用于日常升级主程序 |
 | `windows64.without.engine.portable.zip` | 是 | 否 | 解压后运行 `LizzieYzy Next.exe` |
 | `windows64.without.engine.installer.exe` | 是 | 否 | 安装后从开始菜单或桌面打开 |
 | `mac-apple-silicon.with-katago.dmg` | App 自带 | 是 | 拖到 Applications |
@@ -166,7 +170,7 @@ OUT_DIR=dist/perf SCENARIO=startup DURATION_SECONDS=45 \
 - Windows 64 位主推荐资产是 `portable.zip`
 - Windows 64 位同时提供 `opencl`、`with-katago`、`nvidia`、`nvidia50.cuda` 四条内置引擎线的安装器和便携包
 - Windows 64 位无引擎包同时提供安装器和 `.portable.zip`
-- 当前公开 release 主列表固定为 15 个普通用户向主资产；TensorRT 分卷包如出现在 Release 中，定位为高级可选资产，不替代软件内断点续传安装
+- 当前公开 release 主列表固定为 15 个首次下载主资产；`windows64.core-update.zip` 是已有 Windows 免安装用户的小更新资产；TensorRT 分卷包如出现在 Release 中，定位为高级可选资产，不替代软件内断点续传安装
 - 旧的兼容 zip 只作为历史 tag 说明保留，不再放进主推荐区
 
 ## 相关文档

@@ -780,6 +780,11 @@ Generated on: $DATE_TAG
 Release display version: $APP_DISPLAY_VERSION
 
 How to pick the right file:
+- ${DATE_TAG}-${ARCH_TAG}.core-update.zip
+  Lightweight update for existing Windows portable users. Use it only after you already have a full portable folder.
+  Close the app, extract this zip into the folder that contains LizzieYzy Next*.exe and app/, and allow overwriting app/${MAIN_JAR}.
+  It updates only the application core; engines, weights, Java runtime, JCEF, readboard, TensorRT, settings, saves, and user-data stay in place.
+  New users should still download one of the full portable packages below first.
 EOF
 
   if [[ "$has_with_katago" == "true" ]]; then
@@ -1098,8 +1103,9 @@ create_core_update_asset() {
   local native_core_zip
 
   rm -rf "$core_dir" "$core_zip"
-  mkdir -p "$core_dir"
+  mkdir -p "$core_dir/app"
   cp "$JAR_PATH" "$core_dir/lizzieyzy-next-core.jar"
+  cp "$JAR_PATH" "$core_dir/app/$MAIN_JAR"
   cat >"$core_dir/README.txt" <<EOF
 LizzieYzy Next lightweight core update
 =====================================
@@ -1107,9 +1113,81 @@ LizzieYzy Next lightweight core update
 Release: $APP_DISPLAY_VERSION
 Date: $DATE_TAG
 
-This package updates the LizzieYzy Next application core only.
-KataGo engines, weights, JCEF, readboard, Java runtime, settings, saves, and user-data are preserved unless a future update manifest explicitly lists a changed resource component.
+用途：
+- 已经在使用 Windows 免安装版的老用户，日常升级优先下载这个小更新包。
+- 关闭 LizzieYzy Next 后，把这个 zip 解压到旧的免安装目录里覆盖。
+- 目标目录应该是包含 "LizzieYzy Next*.exe" 和 "app" 文件夹的目录。
+- 解压时允许覆盖 app/$MAIN_JAR。
+- 根目录里的 lizzieyzy-next-core.jar 是软件内自动更新器使用的副本，手动覆盖时可以忽略。
+
+这个包只更新 LizzieYzy Next 主程序核心。
+KataGo 引擎、权重、JCEF、readboard、Java runtime、设置、棋谱、TensorRT 和 user-data 都会保留。
+只有未来更新 manifest 明确列出资源组件时，才需要下载对应的大资源更新。
+
+Manual update:
+- Existing Windows portable users can use this small package for regular updates.
+- Close LizzieYzy Next, then extract this zip into the existing portable app folder.
+- The target folder should contain "LizzieYzy Next*.exe" and an "app" folder.
+- Allow overwriting app/$MAIN_JAR.
+- The root lizzieyzy-next-core.jar is for the in-app updater and can be ignored during manual extraction.
+
+This package updates the application core only.
+KataGo engines, weights, JCEF, readboard, Java runtime, settings, saves, TensorRT, and user-data are preserved unless a future update manifest explicitly lists a changed resource component.
 EOF
+
+  resolve_python_bin
+  "$PYTHON_BIN" - \
+    "$core_dir/lizzieyzy-next-core-update-manifest.json" \
+    "$APP_DISPLAY_VERSION" \
+    "$DATE_TAG" \
+    "$MAIN_JAR" \
+    "$JAR_PATH" <<'PY'
+import hashlib
+import json
+import pathlib
+import sys
+
+output, release_tag, date_tag, main_jar, jar_path = sys.argv[1:]
+jar = pathlib.Path(jar_path)
+digest = hashlib.sha256()
+with jar.open("rb") as handle:
+    for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+        digest.update(chunk)
+
+payload = {
+    "schemaVersion": 1,
+    "kind": "windows-core-update",
+    "releaseTag": release_tag,
+    "dateTag": date_tag,
+    "manualOverlayTarget": "folder containing LizzieYzy Next*.exe and app/",
+    "preserves": [
+        "user-data/",
+        "app/weights/",
+        "app/engines/",
+        "app/jcef-bundle/",
+        "app/readboard/",
+        "runtime/",
+    ],
+    "files": [
+        {
+            "path": "lizzieyzy-next-core.jar",
+            "purpose": "in-app-updater-source",
+            "sizeBytes": jar.stat().st_size,
+            "sha256": digest.hexdigest(),
+        },
+        {
+            "path": f"app/{main_jar}",
+            "purpose": "manual-overlay-target",
+            "sizeBytes": jar.stat().st_size,
+            "sha256": digest.hexdigest(),
+        },
+    ],
+}
+pathlib.Path(output).write_text(
+    json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
+    encoding="utf-8",
+)
+PY
 
   native_core_dir="$(to_native_path "$core_dir")"
   native_core_zip="$(to_native_path "$core_zip")"

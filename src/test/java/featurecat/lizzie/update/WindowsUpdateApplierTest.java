@@ -22,7 +22,10 @@ class WindowsUpdateApplierTest {
   void appliesCoreUpdateAndPreservesUserData() throws Exception {
     Fixture fixture = fixture();
     Path coreZip = tempDir.resolve("core.zip");
-    writeZip(coreZip, entry("lizzieyzy-next-core.jar", "new-core"));
+    writeZip(
+        coreZip,
+        entry("lizzieyzy-next-core.jar", "new-core"),
+        entry("app/lizzie-yzy2.5.3-shaded.jar", "manual-overlay-core"));
     Path request =
         request(
             fixture,
