@@ -1628,8 +1628,45 @@ public class LizzieFrame extends JFrame {
     mainPanel.setVisible(false);
     commentScrollPane.setVisible(false);
     blunderContentPane.setVisible(false);
+    installGraphicsConfigurationScaleListener();
     setVisible(true);
     requestProblemListRefresh();
+  }
+
+  private void installGraphicsConfigurationScaleListener() {
+    addPropertyChangeListener(
+        "graphicsConfiguration",
+        event -> {
+          Object newValue = event.getNewValue();
+          if (newValue instanceof GraphicsConfiguration) {
+            updateScaleFromGraphicsConfiguration((GraphicsConfiguration) newValue);
+          }
+        });
+  }
+
+  private void updateScaleFromGraphicsConfiguration(GraphicsConfiguration graphicsConfiguration) {
+    if (graphicsConfiguration == null) {
+      return;
+    }
+    AffineTransform transform = graphicsConfiguration.getDefaultTransform();
+    double scale = transform == null ? 1.0 : transform.getScaleX();
+    if (!Double.isFinite(scale) || scale <= 0.0) {
+      scale = 1.0;
+    }
+
+    boolean scaled = scale > 1.0;
+    float newScaleFactor = scaled ? (float) scale : 1.0f;
+    if (Config.isScaled == scaled
+        && Math.abs(Lizzie.javaScaleFactor - newScaleFactor) <= 0.001f) {
+      return;
+    }
+
+    Config.isScaled = scaled;
+    Lizzie.javaScaleFactor = newScaleFactor;
+    refreshWinratePane = true;
+    reSetLoc();
+    refreshContainer();
+    repaint();
   }
 
   private void setBlunderSort() {
