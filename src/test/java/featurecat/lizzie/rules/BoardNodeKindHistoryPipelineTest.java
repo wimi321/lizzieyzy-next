@@ -28,8 +28,10 @@ import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.Date;
 import java.util.GregorianCalendar;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Optional;
 import java.util.ResourceBundle;
 import java.util.regex.Matcher;
@@ -39,6 +41,14 @@ import org.junit.jupiter.api.Test;
 class BoardNodeKindHistoryPipelineTest {
   private static final int BOARD_SIZE = 3;
   private static final int BOARD_AREA = BOARD_SIZE * BOARD_SIZE;
+
+  @Test
+  void asCoordinatesParsesExtendedGtpColumnsOnLargeBoards() {
+    Optional<int[]> coord = Board.asCoordinates("BA4", 60);
+
+    assertTrue(coord.isPresent(), "extended GTP coordinates should parse on large boards.");
+    assertArrayEquals(new int[] {50, 56}, coord.get());
+  }
 
   @Test
   void addOrGotoKeepsPassAndSnapshotAsSeparateChildren() throws Exception {
@@ -2726,20 +2736,42 @@ class BoardNodeKindHistoryPipelineTest {
   }
 
   @Test
+  void parseSgfKeepsSemicolonsInsideRootCommentValues() throws Exception {
+    TestEnvironment env = TestEnvironment.open();
+    try {
+      BoardHistoryList parsed = SGFParser.parseSgf("(;SZ[3]C[a;b;c;];B[aa])", false);
+
+      assertEquals("a;b;c;", parsed.getStart().getData().comment);
+    } finally {
+      env.close();
+    }
+  }
+
+  @Test
+  void propertiesStringSerializesCharsetBeforeLocalizedProperties() {
+    Map<String, String> props = new LinkedHashMap<>();
+    props.put("PB", "黑棋");
+    props.put("PW", "白棋");
+    props.put("CA", "UTF-8");
+
+    assertEquals("CA[UTF-8]PB[黑棋]PW[白棋]", SGFParser.propertiesString(props));
+  }
+
+  @Test
   void parseSgfDetachedAnalysisShorthandKPlayoutsKeepLegacyScaleOnRoundTrip() throws Exception {
     TestEnvironment env = TestEnvironment.open();
     try {
       String sgf =
-          "(;SZ[3]LZOP[MainEngine 44.0 1.2k\n"
-              + "move D4 visits 1.2k winrate 5600 prior 5000 pv D4 C4])";
+          "(;SZ[3]LZOP[MainEngine 44.0 1.5k\n"
+              + "move D4 visits 1.5k winrate 5600 prior 5000 pv D4 C4])";
 
       BoardHistoryList parsed = SGFParser.parseSgf(sgf, false);
-      assertEquals(1200, parsed.getStart().getData().getPlayouts());
+      assertEquals(1500, parsed.getStart().getData().getPlayouts());
 
       Lizzie.board.setHistory(parsed);
       String exported = SGFParser.saveToString(false);
       BoardData roundTripRoot = SGFParser.parseSgf(exported, false).getStart().getData();
-      assertEquals(1200, roundTripRoot.getPlayouts());
+      assertEquals(1500, roundTripRoot.getPlayouts());
     } finally {
       env.close();
     }
@@ -2782,9 +2814,9 @@ class BoardNodeKindHistoryPipelineTest {
       Lizzie.board.setHistory(history);
 
       String expected =
-          "(;AB[aa]AW[cc]PL[W]SZ[3]KM[6.5]PW[White]PB[Black]DT[2020-01-02]AP[LizzieYzy Next: "
+          "(;CA[UTF-8]AB[aa]AW[cc]PL[W]SZ[3]KM[6.5]PW[White]PB[Black]DT[2020-01-02]AP[LizzieYzy Next: "
               + Lizzie.nextVersion
-              + "]RE[]CA[UTF-8];B[ba])";
+              + "]RE[];B[ba])";
       String firstSave = SGFParser.saveToString(false);
       assertEquals(expected, firstSave, "root setup should be serialized only once on root.");
       String secondSave = SGFParser.saveToString(false);
