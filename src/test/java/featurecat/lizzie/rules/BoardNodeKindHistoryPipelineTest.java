@@ -2748,6 +2748,53 @@ class BoardNodeKindHistoryPipelineTest {
   }
 
   @Test
+  void parseAndSaveKeepsEscapedBracketInCustomMoveProperties() throws Exception {
+    TestEnvironment env = TestEnvironment.open();
+    try {
+      String sgf = "(;SZ[3];B[aa];W[bb]C[test[\\]]CC[test[\\]])";
+      BoardHistoryList parsed = SGFParser.parseSgf(sgf, false);
+      BoardHistoryNode whiteMove = parsed.getStart().next().orElseThrow().next().orElseThrow();
+
+      assertEquals("test[]", whiteMove.getData().comment);
+      assertEquals("test[\\]", whiteMove.getData().getProperty("CC"));
+
+      Lizzie.board.setHistory(parsed);
+      String exported = SGFParser.saveToString(false);
+      BoardHistoryNode roundTripWhite =
+          SGFParser.parseSgf(exported, false).getStart().next().orElseThrow().next().orElseThrow();
+
+      assertEquals("test[]", roundTripWhite.getData().comment);
+      assertEquals("test[\\]", roundTripWhite.getData().getProperty("CC"));
+    } finally {
+      env.close();
+    }
+  }
+
+  @Test
+  void saveNonStandardBoardPassKeepsSgfPassInsteadOfCoordinate() throws Exception {
+    TestEnvironment env = TestEnvironment.open();
+    try {
+      BoardHistoryList parsed = SGFParser.parseSgf("(;SZ[18];B[];W[aa])", false);
+      assertTrue(parsed.getStart().next().orElseThrow().getData().isPassNode());
+
+      Lizzie.board.setHistory(parsed);
+      String exported = SGFParser.saveToString(false);
+
+      assertTrue(exported.contains(";B[]"), "pass should stay as an empty SGF move value.");
+      assertFalse(exported.contains("B[ss]"), "pass must not be serialized as an off-board point.");
+      assertTrue(
+          SGFParser.parseSgf(exported, false)
+              .getStart()
+              .next()
+              .orElseThrow()
+              .getData()
+              .isPassNode());
+    } finally {
+      env.close();
+    }
+  }
+
+  @Test
   void propertiesStringSerializesCharsetBeforeLocalizedProperties() {
     Map<String, String> props = new LinkedHashMap<>();
     props.put("PB", "黑棋");

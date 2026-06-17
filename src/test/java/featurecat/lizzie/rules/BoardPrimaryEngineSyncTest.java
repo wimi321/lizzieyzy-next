@@ -145,6 +145,36 @@ class BoardPrimaryEngineSyncTest {
     }
   }
 
+  @Test
+  void resendCurrentPositionToPrimaryEngineSendsRectangularBoardSizeWhenEngineIsStale()
+      throws Exception {
+    try (TestHarness harness = TestHarness.open()) {
+      Board.boardWidth = 5;
+      Board.boardHeight = 7;
+      Zobrist.init();
+      Board board = allocate(Board.class);
+      board.startStonelist = new ArrayList<>();
+      board.hasStartStone = false;
+      board.setHistory(new BoardHistoryList(BoardData.empty(5, 7)));
+      Lizzie.board = board;
+
+      Leelaz engine = new Leelaz("");
+      engine.isLoaded = true;
+      engine.width = BOARD_SIZE;
+      engine.height = BOARD_SIZE;
+      setStarted(engine, true);
+      RecordingOutputStream output = new RecordingOutputStream();
+      setOutputStream(engine, output);
+      Lizzie.leelaz = engine;
+
+      assertTrue(board.resendCurrentPositionToPrimaryEngine());
+
+      assertEquals(5, engine.width);
+      assertEquals(7, engine.height);
+      assertEquals(List.of("rectangular_boardsize 5 7", "clear_board"), output.commands());
+    }
+  }
+
   private static BoardData moveNode(
       int x, int y, Stone color, boolean blackToPlay, int moveNumber) {
     Stone[] stones = emptyStones();
@@ -232,6 +262,9 @@ class BoardPrimaryEngineSyncTest {
 
     @Override
     public void refresh() {}
+
+    @Override
+    public void redrawBoardrendererBackground() {}
   }
 
   private static final class SilentGtpConsole extends GtpConsolePane {
