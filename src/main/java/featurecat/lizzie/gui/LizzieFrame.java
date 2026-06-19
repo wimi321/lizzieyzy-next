@@ -499,6 +499,10 @@ public class LizzieFrame extends JFrame {
   public ArrayList<String> priorityMoveCoords = new ArrayList<String>();
 
   public AnalysisEngine analysisEngine;
+  private final java.util.concurrent.atomic.AtomicBoolean quickAnalysisEngineStarting =
+      new java.util.concurrent.atomic.AtomicBoolean(false);
+  private final java.util.List<Runnable> pendingQuickAnalysisCallbacks =
+      new java.util.ArrayList<Runnable>();
   public volatile TrackingEngine trackingEngine;
   public TrackingConsolePane trackingConsolePane;
   public Set<String> trackedCoords = Collections.synchronizedSet(new LinkedHashSet<>());
@@ -4207,12 +4211,12 @@ public class LizzieFrame extends JFrame {
     Lizzie.config.playSound = oriSound;
     fileNameTitle = file.getName();
     updateTitle();
-    scheduleResumeAnalysisAfterLoad(1000);
+    scheduleResumeAnalysisAfterLoad(0);
     refresh();
   }
 
   public void scheduleResumeAnalysisAfterLoad() {
-    scheduleResumeAnalysisAfterLoad(1000);
+    scheduleResumeAnalysisAfterLoad(0);
   }
 
   private void scheduleMovelistRefreshAfterKifuLoad() {
@@ -8291,7 +8295,7 @@ public class LizzieFrame extends JFrame {
       return;
     }
     if (decision == PasteSgfDecision.LOAD || decision == PasteSgfDecision.CONFIRM_REPLACE) {
-      loadSgfString(sgfContent, 200, Lizzie.config.readKomi, true, null);
+      loadSgfString(sgfContent, 0, Lizzie.config.readKomi, true, null);
     }
   }
 
@@ -12976,12 +12980,44 @@ public class LizzieFrame extends JFrame {
       Lizzie.config.analysisRecentIsPartGame = isAllGame;
       Lizzie.config.analysisRecentIsAllBranches = isAllBranches;
     }
+    if (silentAnalyze) {
+      startSilentQuickAnalyzeGame(isAllGame, isAllBranches);
+      return;
+    }
     if (needsNewFlashAnalysisEngine()) {
       startFlashAnalyzeGameWithNewEngine(isAllGame, isAllBranches, silentAnalyze);
     } else {
       startFlashAnalyzeRequestsInBackground(
           analysisEngine, isAllGame, isAllBranches, silentAnalyze);
     }
+  }
+
+  private void startSilentQuickAnalyzeGame(boolean isAllGame, boolean isAllBranches) {
+    stopBusyQuickAnalysisEngineBeforeLoadedKifuAnalysis();
+    Runnable startRequests =
+        new Runnable() {
+          public void run() {
+            if (!isAnalysisEngineReusable(analysisEngine)) {
+              return;
+            }
+            analysisEngine.setKeepAliveAfterCurrentRequest(true);
+            startFlashAnalyzeRequestsInBackground(
+                analysisEngine, isAllGame, isAllBranches, true);
+          }
+        };
+    if (isAnalysisEngineReusable(analysisEngine)) {
+      startRequests.run();
+      return;
+    }
+    ensureQuickAnalysisEngineAsync(startRequests);
+  }
+
+  private void stopBusyQuickAnalysisEngineBeforeLoadedKifuAnalysis() {
+    if (analysisEngine == null || !analysisEngine.isAnalysisInProgress()) {
+      return;
+    }
+    analysisEngine.normalQuit();
+    analysisEngine = null;
   }
 
   private boolean needsNewFlashAnalysisEngine() {
@@ -16392,6 +16428,7 @@ public class LizzieFrame extends JFrame {
     if (foxKifuDownload == null || !foxKifuDownload.isDisplayable()) {
       foxKifuDownload = new FoxKifuDownload();
     }
+    preloadQuickAnalysisEngineForKifuBrowsing();
     foxKifuDownload.presentWindow();
   }
 
@@ -16439,6 +16476,119 @@ public class LizzieFrame extends JFrame {
     Lizzie.leelaz.ponder();
     refresh();
     return true;
+  }
+
+  public void preloadQuickAnalysisEngineForKifuBrowsing() {
+    if (!canWarmQuickAnalysisEngine()) {
+      return;
+    }
+    ensureQuickAnalysisEngineAsync(null);
+  }
+
+  public void scheduleQuickAnalysisEngineWarmupAfterStartup() {
+    if (!SwingUtilities.isEventDispatchThread()) {
+      SwingUtilities.invokeLater(this::scheduleQuickAnalysisEngineWarmupAfterStartup);
+      return;
+    }
+    if (Lizzie.config == null
+        || Lizzie.config.analysisEnginePreLoad
+        || !Lizzie.config.autoQuickAnalyzeOnLoad) {
+      return;
+    }
+    javax.swing.Timer warmupTimer =
+        new javax.swing.Timer(
+            1200,
+            e -> {
+              preloadQuickAnalysisEngineForKifuBrowsing();
+            });
+    warmupTimer.setRepeats(false);
+    warmupTimer.start();
+  }
+
+  private boolean canWarmQuickAnalysisEngine() {
+    return Lizzie.config != null
+        && Lizzie.config.autoQuickAnalyzeOnLoad
+        && !EngineManager.isEngineGame()
+        && !isPlayingAgainstLeelaz
+        && !isAnaPlayingAgainstLeelaz;
+  }
+
+  private void ensureQuickAnalysisEngineAsync(Runnable onReady) {
+    if (isAnalysisEngineReusable(analysisEngine)) {
+      if (onReady != null) {
+        SwingUtilities.invokeLater(onReady);
+      }
+      return;
+    }
+    if (onReady != null) {
+      synchronized (pendingQuickAnalysisCallbacks) {
+        pendingQuickAnalysisCallbacks.add(onReady);
+      }
+    }
+    if (!quickAnalysisEngineStarting.compareAndSet(false, true)) {
+      return;
+    }
+    Thread starter =
+        new Thread(
+            new Runnable() {
+              public void run() {
+                AnalysisEngine newAnalysisEngine = null;
+                try {
+                  newAnalysisEngine = new AnalysisEngine(true);
+                } catch (IOException e) {
+                  e.printStackTrace();
+                }
+                final AnalysisEngine warmedEngine = newAnalysisEngine;
+                SwingUtilities.invokeLater(
+                    new Runnable() {
+                      public void run() {
+                        finishQuickAnalysisEngineWarmup(warmedEngine);
+                      }
+                    });
+              }
+            },
+            "quick-analysis-engine-preloader");
+    starter.setDaemon(true);
+    starter.start();
+  }
+
+  private void finishQuickAnalysisEngineWarmup(AnalysisEngine warmedEngine) {
+    try {
+      if (isAnalysisEngineReusable(warmedEngine)) {
+        if (!isAnalysisEngineReusable(analysisEngine)) {
+          analysisEngine = warmedEngine;
+        } else if (analysisEngine != warmedEngine) {
+          warmedEngine.normalQuit();
+        }
+      }
+      java.util.List<Runnable> callbacks = drainQuickAnalysisCallbacks();
+      if (isAnalysisEngineReusable(analysisEngine)) {
+        for (Runnable callback : callbacks) {
+          callback.run();
+        }
+      }
+    } finally {
+      quickAnalysisEngineStarting.set(false);
+    }
+  }
+
+  private java.util.List<Runnable> drainQuickAnalysisCallbacks() {
+    synchronized (pendingQuickAnalysisCallbacks) {
+      java.util.List<Runnable> callbacks =
+          new java.util.ArrayList<Runnable>(pendingQuickAnalysisCallbacks);
+      pendingQuickAnalysisCallbacks.clear();
+      return callbacks;
+    }
+  }
+
+  private boolean isAnalysisEngineReusable(AnalysisEngine engine) {
+    if (engine == null || !engine.isLoaded()) {
+      return false;
+    }
+    if (engine.useJavaSSH) {
+      return !engine.javaSSHClosed;
+    }
+    return engine.process != null && engine.process.isAlive();
   }
 
   public boolean ensureAnalysisResumedAfterSyncLoad() {

@@ -531,6 +531,8 @@ public class Lizzie {
                 // TODO Auto-generated catch block
                 e.printStackTrace();
               }
+            } else {
+              frame.scheduleQuickAnalysisEngineWarmupAfterStartup();
             }
             KataGoRuntimeHelper.startAppleSiliconAutoOptimizationAsync();
             KataGoRuntimeHelper.startFirstRunBenchmarkAsync();

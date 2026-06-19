@@ -19,6 +19,7 @@ import featurecat.lizzie.rules.Stone;
 import featurecat.lizzie.rules.Zobrist;
 import java.io.IOException;
 import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -246,6 +247,74 @@ class AnalysisEngineRequestTest {
           "always override should bypass cache guards even when the new flash result has fewer visits.");
       assertEquals(77.0, analyzed.winrate, 0.0001);
       assertFalse("cached-analysis".equals(analyzed.engineName));
+    }
+  }
+
+  @Test
+  void completedManualAnalysisStillAutoQuitsWhenConfigured() throws Exception {
+    try (TestEnvironment env = TestEnvironment.open()) {
+      Lizzie.config.analysisAutoQuit = true;
+      BoardHistoryNode node = singleUnanalyzedMoveNode();
+      TrackingAnalysisEngine engine = TrackingAnalysisEngine.create();
+      engine.trackPending(1, node);
+
+      engine.parseResult(analysisResult(1, 200, 62.0));
+
+      assertEquals(1, engine.normalQuitCount);
+      waitForMovelistRefreshThreads();
+    }
+  }
+
+  @Test
+  void completedPreloadedAnalysisKeepsEngineWarm() throws Exception {
+    try (TestEnvironment env = TestEnvironment.open()) {
+      Lizzie.config.analysisAutoQuit = true;
+      BoardHistoryNode node = singleUnanalyzedMoveNode();
+      TrackingAnalysisEngine engine = TrackingAnalysisEngine.create();
+      setField(AnalysisEngine.class, engine, "isPreLoad", true);
+      engine.trackPending(1, node);
+
+      engine.parseResult(analysisResult(1, 200, 62.0));
+
+      assertEquals(0, engine.normalQuitCount);
+      waitForMovelistRefreshThreads();
+    }
+  }
+
+  @Test
+  void completedAutoQuickAnalysisKeepsEngineWarmForNextKifu() throws Exception {
+    try (TestEnvironment env = TestEnvironment.open()) {
+      Lizzie.config.analysisAutoQuit = true;
+      BoardHistoryNode node = singleUnanalyzedMoveNode();
+      TrackingAnalysisEngine engine = TrackingAnalysisEngine.create();
+      engine.setKeepAliveAfterCurrentRequest(true);
+      engine.trackPending(1, node);
+
+      engine.parseResult(analysisResult(1, 200, 62.0));
+
+      assertEquals(0, engine.normalQuitCount);
+      waitForMovelistRefreshThreads();
+    }
+  }
+
+  @Test
+  void loadedKifuQuickAnalysisStopsPreviousQueuedQuickAnalysis() throws Exception {
+    try (TestEnvironment env = TestEnvironment.open()) {
+      Lizzie.config.autoQuickAnalyzeOnLoad = true;
+      BoardHistoryNode node = singleUnanalyzedMoveNode();
+      TrackingAnalysisEngine previousEngine = TrackingAnalysisEngine.create();
+      previousEngine.trackPending(1, node);
+      Lizzie.frame.analysisEngine = previousEngine;
+
+      invokeStopBusyQuickAnalysisEngineBeforeLoadedKifuAnalysis(Lizzie.frame);
+
+      assertEquals(
+          1,
+          previousEngine.normalQuitCount,
+          "opening a new kifu must not leave old whole-game analysis queued first.");
+      assertNull(
+          Lizzie.frame.analysisEngine,
+          "after stopping the busy quick-analysis engine, the next request should use a fresh engine.");
     }
   }
 
@@ -992,6 +1061,14 @@ class AnalysisEngineRequestTest {
     return result.toString();
   }
 
+  private static BoardHistoryNode singleUnanalyzedMoveNode() throws Exception {
+    BoardHistoryList history = new BoardHistoryList(BoardData.empty(BOARD_SIZE, BOARD_SIZE));
+    history.add(
+        moveNode(stones(placement(0, 0, Stone.BLACK)), new int[] {0, 0}, Stone.BLACK, false, 1));
+    boardWithHistory(history);
+    return history.getCurrentHistoryNode();
+  }
+
   private static void waitForMovelistRefreshThreads() throws InterruptedException {
     for (Thread thread : Thread.getAllStackTraces().keySet()) {
       if ("lizzie-movelist-refresh".equals(thread.getName()) && thread.isAlive()) {
@@ -1030,6 +1107,15 @@ class AnalysisEngineRequestTest {
     Field field = owner.getDeclaredField(name);
     field.setAccessible(true);
     field.setInt(target, value);
+  }
+
+  private static void invokeStopBusyQuickAnalysisEngineBeforeLoadedKifuAnalysis(LizzieFrame frame)
+      throws Exception {
+    Method method =
+        LizzieFrame.class.getDeclaredMethod(
+            "stopBusyQuickAnalysisEngineBeforeLoadedKifuAnalysis");
+    method.setAccessible(true);
+    method.invoke(frame);
   }
 
   private static final class Placement {
@@ -1147,6 +1233,7 @@ class AnalysisEngineRequestTest {
   private static final class TrackingAnalysisEngine extends AnalysisEngine {
     private List<String> sentCommands;
     private boolean failSends;
+    private int normalQuitCount;
 
     private TrackingAnalysisEngine() throws IOException {
       super(true);
@@ -1173,6 +1260,11 @@ class AnalysisEngineRequestTest {
       }
       sentCommands.add(command);
       return true;
+    }
+
+    @Override
+    public void normalQuit() {
+      normalQuitCount++;
     }
 
     private JSONObject singleRequest() {
