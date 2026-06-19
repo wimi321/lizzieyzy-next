@@ -27,6 +27,8 @@ import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.io.IOException;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.MissingResourceException;
 import java.util.ResourceBundle;
 import javax.swing.AbstractButton;
@@ -491,21 +493,36 @@ public class SyncDiagnosticsDialog extends JDialog {
     if (zip == null) {
       return null;
     }
-    Path normalized = zip.toAbsolutePath().normalize();
-    int nameCount = normalized.getNameCount();
-    for (int i = 0; i < nameCount; i++) {
-      String name = normalized.getName(i).toString();
+    List<String> segments = normalizedExportPathSegments(zip);
+    for (int i = 0; i < segments.size(); i++) {
+      String name = segments.get(i);
       if ("lizzieyzy-next".equalsIgnoreCase(name)) {
-        return normalized.subpath(i, nameCount).toString();
+        return joinPathSegments(segments, i);
       }
       if ("sync-diagnostics".equalsIgnoreCase(name) && i > 0) {
-        String parentName = normalized.getName(i - 1).toString();
+        String parentName = segments.get(i - 1);
         if (parentName.toLowerCase().startsWith("lizzieyzy-next")) {
-          return normalized.subpath(i - 1, nameCount).toString();
+          return joinPathSegments(segments, i - 1);
         }
       }
     }
     return null;
+  }
+
+  private static List<String> normalizedExportPathSegments(Path zip) {
+    String normalized = zip.toAbsolutePath().normalize().toString().replace('\\', '/');
+    String[] rawSegments = normalized.split("/+");
+    ArrayList<String> segments = new ArrayList<>();
+    for (String segment : rawSegments) {
+      if (!segment.isEmpty()) {
+        segments.add(segment);
+      }
+    }
+    return segments;
+  }
+
+  private static String joinPathSegments(List<String> segments, int start) {
+    return String.join("/", segments.subList(start, segments.size()));
   }
 
   private static String sanitizeExportPath(Path zip) {

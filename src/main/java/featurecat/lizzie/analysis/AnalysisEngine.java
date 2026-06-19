@@ -69,6 +69,7 @@ public class AnalysisEngine {
   private boolean silentProgress = false;
   private boolean requestDispatchFailed = false;
   private Runnable completionCallback;
+  private boolean keepAliveAfterCurrentRequest = false;
 
   public AnalysisEngine(boolean isPreLoad) throws IOException {
     int maxVisits =
@@ -308,11 +309,24 @@ public class AnalysisEngine {
     Lizzie.frame.requestProblemListRefresh();
     if (waitFrame != null) {
       waitFrame.setProgress(resultCount, analyzeMap.size());
-    } else if (silentProgress && (resultCount == 1 || resultCount % 8 == 0)) {
+    } else if (silentProgress && shouldRefreshSilentProgress(resultCount, analyzeMap.size())) {
       Lizzie.board.setMovelistAll();
       Lizzie.frame.refresh();
     }
     if (resultCount == analyzeMap.size()) setResult();
+  }
+
+  private static boolean shouldRefreshSilentProgress(int resultCount, int totalCount) {
+    if (resultCount <= 0) {
+      return false;
+    }
+    if (resultCount <= 12) {
+      return true;
+    }
+    if (resultCount <= 64) {
+      return resultCount % 4 == 0;
+    }
+    return resultCount % 8 == 0 || resultCount == totalCount;
   }
 
   private boolean shouldKeepForegroundAnalysis(BoardHistoryNode node) {
@@ -337,7 +351,9 @@ public class AnalysisEngine {
         Lizzie.board.nextMove(true);
       Lizzie.frame.refresh();
       Lizzie.frame.requestProblemListRefresh();
-      if (Lizzie.config.analysisAutoQuit && !Lizzie.frame.isBatchAna) {
+      boolean shouldKeepAlive = isPreLoad || keepAliveAfterCurrentRequest;
+      keepAliveAfterCurrentRequest = false;
+      if (Lizzie.config.analysisAutoQuit && !Lizzie.frame.isBatchAna && !shouldKeepAlive) {
         normalQuit();
       }
     } finally {
@@ -352,8 +368,9 @@ public class AnalysisEngine {
   public void normalQuit() {
     // TODO Auto-generated method stub
     isNormalEnd = true;
-    if (this.useJavaSSH) this.javaSSH.close();
-    else this.process.destroyForcibly();
+    if (this.useJavaSSH) {
+      if (this.javaSSH != null) this.javaSSH.close();
+    } else if (this.process != null) this.process.destroyForcibly();
     Lizzie.frame.requestProblemListRefresh();
   }
 
@@ -704,8 +721,9 @@ public class AnalysisEngine {
 
   public void shutdown() {
     // isShuttingdown = true;
-    if (useJavaSSH) javaSSH.close();
-    process.destroy();
+    if (useJavaSSH) {
+      if (javaSSH != null) javaSSH.close();
+    } else if (process != null) process.destroy();
   }
 
   public boolean sendCommand(String command) {
@@ -725,6 +743,10 @@ public class AnalysisEngine {
 
   public void setCompletionCallback(Runnable completionCallback) {
     this.completionCallback = completionCallback;
+  }
+
+  public void setKeepAliveAfterCurrentRequest(boolean keepAliveAfterCurrentRequest) {
+    this.keepAliveAfterCurrentRequest = keepAliveAfterCurrentRequest;
   }
 
   private void runCompletionCallback() {

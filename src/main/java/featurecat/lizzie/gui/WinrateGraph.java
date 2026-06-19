@@ -650,16 +650,21 @@ public class WinrateGraph {
       if (mode == 0) {
         boolean canDrawBlunderBar = true;
         while (node.previous().isPresent()) {
-          double wr = node.getData().winrate;
+          BoardData data = node.getData();
+          double wr = data.winrate;
           double score = node.getData().scoreMean;
-          int playouts = node.getData().getPlayouts();
-          if (playouts > 0) {
-            if (wr < 0) {
-              wr = 100 - lastWr;
+          boolean hasAnalysis = hasPrimaryAnalysisPayload(data);
+          Double displayedWinrate = displayedDefaultAnchorWinrate(node, lastWr);
+          if (displayedWinrate != null) {
+            wr = displayedWinrate.doubleValue();
+            if (hasAnalysis) {
+              if (data.winrate < 0) {
+                score = lastScore;
+              } else if (!data.blackToPlay) {
+                score = -score;
+              }
+            } else {
               score = lastScore;
-            } else if (!node.getData().blackToPlay) {
-              wr = 100 - wr;
-              score = -score;
             }
             if (node == curMove) {
               // Draw a vertical line at the current move
@@ -730,7 +735,7 @@ public class WinrateGraph {
             else g.setColor(winrateMissLineColor());
 
             if (lastOkMove > 0 && lastOkMove - movenum < 25) {
-              if (canDrawBlunderBar && Lizzie.config.showBlunderBar) {
+              if (canDrawBlunderBar && Lizzie.config.showBlunderBar && hasAnalysis) {
                 drawBlunderBar(
                     gBlunder,
                     posx,
@@ -768,18 +773,20 @@ public class WinrateGraph {
               g.setStroke(dashed);
               node = graphTraversalEnd(node);
               movenum = node.getData().moveNumber - 1;
-              Double continuationWinrate = displayedGraphWinrate(node, lastWr);
+              Double continuationWinrate = displayedDefaultAnchorWinrate(node, lastWr);
               if (continuationWinrate != null) {
                 lastWr = continuationWinrate;
                 wr = continuationWinrate;
               }
-              lastScore = node.getData().scoreMean;
-              if (!node.getData().blackToPlay) {
+              data = node.getData();
+              hasAnalysis = hasPrimaryAnalysisPayload(data);
+              lastScore = data.scoreMean;
+              if (!data.blackToPlay && hasAnalysis) {
                 lastScore = -lastScore;
               }
               // g.setStroke(new BasicStroke(Lizzie.config.winrateStrokeWidth));
               topOfVariation = Optional.empty();
-              if (node.getData().getPlayouts() == 0) {
+              if (continuationWinrate == null) {
                 lastNodeOk = false;
               }
             }
@@ -787,7 +794,7 @@ public class WinrateGraph {
               if (node == curMove
                   || (curMove.previous().isPresent()
                       && node == curMove.previous().get()
-                      && curMove.getData().getPlayouts() <= 0)) {
+                      && !hasPrimaryAnalysisPayload(curMove.getData()))) {
                 g.setColor(winrateLineColor());
                 g.fillOval(
                     posx + (movenum * width / numMoves) - DOT_RADIUS,
@@ -887,7 +894,7 @@ public class WinrateGraph {
                     moveNumString, moveNum < numMoves / 2 ? x + 3 : x - 16, posy + height - margin);
             }
             if (Lizzie.config.showWinrateLine) {
-              if (node.getData().getPlayouts() > 0) {
+              if (hasPrimaryAnalysisPayload(node.getData())) {
                 mwr = wr;
                 mmovenum = movenum;
               }

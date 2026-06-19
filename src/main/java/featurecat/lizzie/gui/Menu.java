@@ -6599,6 +6599,7 @@ public class Menu extends JMenuBar {
     if (tencentKifuDownload == null || !tencentKifuDownload.isDisplayable()) {
       tencentKifuDownload = new TencentKifuDownload();
     }
+    Lizzie.frame.preloadQuickAnalysisEngineForKifuBrowsing();
     tencentKifuDownload.presentWindow();
   }
 

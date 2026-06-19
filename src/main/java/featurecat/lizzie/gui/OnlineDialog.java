@@ -1069,7 +1069,7 @@ public class OnlineDialog extends JDialog {
         }
       } else {
         sgf = data;
-        Lizzie.frame.loadSgfString(sgf, 200, Lizzie.config.readKomi, false, null);
+        Lizzie.frame.loadSgfString(sgf, 0, Lizzie.config.readKomi, false, null);
         return;
       }
     }
