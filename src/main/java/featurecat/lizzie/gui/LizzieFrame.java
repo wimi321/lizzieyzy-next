@@ -15251,7 +15251,7 @@ public class LizzieFrame extends JFrame {
       MoveRankDefinition.Rank[] ranks = MoveRankDefinition.Rank.values();
       int maxCount = maxRankCount(ranks);
       int groupWidth = Math.max(54, width / ranks.length);
-      int columnGap = Math.max(4, Math.min(10, groupWidth / 12));
+      int columnGap = Math.max(2, Math.min(6, groupWidth / 18));
       int statWidth = Math.max(24, (groupWidth - columnGap - 10) / 2);
       int barWidth = Math.max(14, Math.min(38, statWidth - 6));
       int baseline = y + height;
