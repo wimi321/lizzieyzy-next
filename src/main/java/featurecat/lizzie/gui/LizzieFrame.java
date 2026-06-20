@@ -15251,8 +15251,9 @@ public class LizzieFrame extends JFrame {
       MoveRankDefinition.Rank[] ranks = MoveRankDefinition.Rank.values();
       int maxCount = maxRankCount(ranks);
       int groupWidth = Math.max(54, width / ranks.length);
-      int barWidth = Math.max(14, Math.min(36, groupWidth / 4));
-      int barGap = Math.max(6, barWidth / 3);
+      int columnGap = Math.max(4, Math.min(10, groupWidth / 12));
+      int statWidth = Math.max(24, (groupWidth - columnGap - 10) / 2);
+      int barWidth = Math.max(14, Math.min(38, statWidth - 6));
       int baseline = y + height;
       g2.setFont(
           new Font(Config.sysDefaultFontName, Font.PLAIN, Math.max(10, Config.frameFontSize)));
@@ -15263,23 +15264,22 @@ public class LizzieFrame extends JFrame {
         int whiteCount = report.white.moveRankCount(rank);
         int blackHeight = countHeight(blackCount, maxCount, height);
         int whiteHeight = countHeight(whiteCount, maxCount, height);
-        int blackBarX = centerX - barWidth - barGap / 2;
-        int whiteBarX = centerX + barGap / 2;
-        int blackBarCenter = blackBarX + barWidth / 2;
-        int whiteBarCenter = whiteBarX + barWidth / 2;
+        int blackBarCenter = centerX - statWidth / 2 - columnGap / 2;
+        int whiteBarCenter = centerX + statWidth / 2 + columnGap / 2;
+        int blackBarX = blackBarCenter - barWidth / 2;
+        int whiteBarX = whiteBarCenter - barWidth / 2;
         drawRankBar(g2, blackBarX, baseline, barWidth, blackHeight, BLACK_BAR, null);
         drawRankBar(g2, whiteBarX, baseline, barWidth, whiteHeight, WHITE_BAR, WHITE_BAR_BORDER);
         drawCountLabel(g2, String.valueOf(blackCount), blackBarX, y - 6, barWidth);
         drawCountLabel(g2, String.valueOf(whiteCount), whiteBarX, y - 6, barWidth);
         String label = Lizzie.resourceBundle.getString(rank.nameKey());
         drawRankLabel(g2, label, rank, centerX, baseline + 14, groupWidth - 8);
-        int statWidth = Math.max(24, Math.min(barWidth + 14, groupWidth / 2 - 5));
         drawSideStats(
             g2,
             blackCount,
             report.black.sampleCount,
             blackBarCenter,
-            baseline + 58,
+            baseline + 76,
             statWidth,
             true);
         drawSideStats(
@@ -15287,7 +15287,7 @@ public class LizzieFrame extends JFrame {
             whiteCount,
             report.white.sampleCount,
             whiteBarCenter,
-            baseline + 96,
+            baseline + 76,
             statWidth,
             false);
       }
@@ -15357,7 +15357,7 @@ public class LizzieFrame extends JFrame {
       countText = playerStrengthEllipsize(countText, metrics, Math.max(20, width - 12));
       percentText = playerStrengthEllipsize(percentText, metrics, Math.max(24, width - 12));
       int textWidth = Math.max(metrics.stringWidth(countText), metrics.stringWidth(percentText));
-      int pillWidth = Math.min(width, Math.max(30, textWidth + 14));
+      int pillWidth = width;
       int pillHeight = Math.max(34, metrics.getHeight() * 2 + 5);
       int x = centerX - pillWidth / 2;
       int top = y - pillHeight + 3;
