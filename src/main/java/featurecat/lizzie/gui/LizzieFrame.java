@@ -13468,7 +13468,7 @@ public class LizzieFrame extends JFrame {
     addPlayerStrengthMetric(
         metrics,
         Lizzie.resourceBundle.getString("PlayerStrengthEstimate.goodMoveRate"),
-        playerStrengthPrecisePercentText(report.goodMoveRate));
+        playerStrengthPrecisePercentText(report.moveRankGoodMoveRate));
     addPlayerStrengthMetric(
         metrics,
         Lizzie.resourceBundle.getString("PlayerStrengthEstimate.weightedScoreLoss"),
@@ -14451,8 +14451,8 @@ public class LizzieFrame extends JFrame {
           g2,
           rowY + 64,
           Lizzie.resourceBundle.getString("PlayerStrengthEstimate.goodMoveRate"),
-          playerStrengthPercentText(report.goodMoveRate),
-          report.goodMoveRate,
+          playerStrengthPercentText(report.moveRankGoodMoveRate),
+          report.moveRankGoodMoveRate,
           PlayerStrengthDashboardRoot.ACCENT,
           contentRight);
       drawMetricRow(
@@ -14617,7 +14617,7 @@ public class LizzieFrame extends JFrame {
           metricX + columnGap,
           62,
           Lizzie.resourceBundle.getString("PlayerStrengthEstimate.goodMoveRate"),
-          playerStrengthPercentText(report.goodMoveRate),
+          playerStrengthPercentText(report.moveRankGoodMoveRate),
           statWidth);
       drawTinyStat(
           g2,
@@ -14867,7 +14867,7 @@ public class LizzieFrame extends JFrame {
       int blockWidth = playerStrengthMoveBlockWidth(width, maxMove);
       for (PlayerStrengthEstimator.Sample sample : samples) {
         boolean firstChoice = sample.firstChoice;
-        boolean goodMove = sample.category != null && sample.category.isGoodMove();
+        boolean goodMove = sample.moveRankCategory != null && sample.moveRankCategory.isGoodMove();
         if (!firstChoice && !goodMove) {
           continue;
         }
@@ -14923,7 +14923,7 @@ public class LizzieFrame extends JFrame {
       if (sample.firstChoice) {
         drawTimelineBlock(g2, point.x, firstY, blockWidth, laneHeight, primary, hovered);
       }
-      if (sample.category != null && sample.category.isGoodMove()) {
+      if (sample.moveRankCategory != null && sample.moveRankCategory.isGoodMove()) {
         drawTimelineBlock(g2, point.x, goodY, blockWidth, laneHeight, good, hovered);
       }
       if (hovered) {
@@ -14971,7 +14971,7 @@ public class LizzieFrame extends JFrame {
           textX,
           goodBaseline,
           Lizzie.resourceBundle.getString("PlayerStrengthEstimate.match.goodMove"),
-          playerStrengthPercentText(sideReport.goodMoveRate));
+          playerStrengthPercentText(sideReport.moveRankGoodMoveRate));
     }
 
     private void drawStat(Graphics2D g2, int x, int y, String label, String value) {
@@ -15023,7 +15023,7 @@ public class LizzieFrame extends JFrame {
       String category =
           sample.firstChoice
               ? Lizzie.resourceBundle.getString("PlayerStrengthEstimate.match.firstChoice")
-              : sample.category != null && sample.category.isGoodMove()
+              : sample.moveRankCategory != null && sample.moveRankCategory.isGoodMove()
                   ? Lizzie.resourceBundle.getString("PlayerStrengthEstimate.match.goodMove")
                   : Lizzie.resourceBundle.getString("PlayerStrengthEstimate.match.otherMove");
       String aiChoice =
@@ -15084,7 +15084,7 @@ public class LizzieFrame extends JFrame {
       String detail =
           (sample.firstChoice
                   ? Lizzie.resourceBundle.getString("PlayerStrengthEstimate.match.firstChoice")
-                  : sample.category != null && sample.category.isGoodMove()
+                  : sample.moveRankCategory != null && sample.moveRankCategory.isGoodMove()
                       ? Lizzie.resourceBundle.getString("PlayerStrengthEstimate.match.goodMove")
                       : Lizzie.resourceBundle.getString("PlayerStrengthEstimate.match.otherMove"))
               + "  "
@@ -15362,7 +15362,7 @@ public class LizzieFrame extends JFrame {
           g2.setColor(black ? BLACK_FIRST : WHITE_FIRST);
           g2.fillRect(x, firstY, blockWidth, laneHeight);
         }
-        if (sample.category.isGoodMove()) {
+        if (sample.moveRankCategory.isGoodMove()) {
           g2.setColor(black ? BLACK_GOOD : WHITE_GOOD);
           g2.fillRect(x, goodY, blockWidth, laneHeight);
         }
@@ -15384,7 +15384,7 @@ public class LizzieFrame extends JFrame {
           statsX,
           goodY + laneHeight,
           Lizzie.resourceBundle.getString("PlayerStrengthEstimate.match.goodMove"),
-          percentText(sideReport.goodMoveRate));
+          percentText(sideReport.moveRankGoodMoveRate));
       drawStat(
           g2,
           statsX,

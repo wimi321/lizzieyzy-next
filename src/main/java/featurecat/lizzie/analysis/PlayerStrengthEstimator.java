@@ -55,6 +55,16 @@ public final class PlayerStrengthEstimator {
   private static final double GOOD_SCORE_LOSS = 1.2;
   private static final double INACCURACY_SCORE_LOSS = 4.0;
   private static final double MISTAKE_SCORE_LOSS = 10.0;
+  private static final double DEFAULT_WIN_LOSS_THRESHOLD_1 = -1.0;
+  private static final double DEFAULT_WIN_LOSS_THRESHOLD_2 = -3.0;
+  private static final double DEFAULT_WIN_LOSS_THRESHOLD_3 = -6.0;
+  private static final double DEFAULT_WIN_LOSS_THRESHOLD_4 = -12.0;
+  private static final double DEFAULT_WIN_LOSS_THRESHOLD_5 = -24.0;
+  private static final double DEFAULT_SCORE_LOSS_THRESHOLD_1 = -0.5;
+  private static final double DEFAULT_SCORE_LOSS_THRESHOLD_2 = -1.5;
+  private static final double DEFAULT_SCORE_LOSS_THRESHOLD_3 = -3.0;
+  private static final double DEFAULT_SCORE_LOSS_THRESHOLD_4 = -6.0;
+  private static final double DEFAULT_SCORE_LOSS_THRESHOLD_5 = -12.0;
   private static final String[] STRENGTH_BANDS = {
     "Beginner",
     "11-15k",
@@ -224,6 +234,7 @@ public final class PlayerStrengthEstimator {
         firstChoice,
         playedCandidate.rank >= 0 ? playedCandidate.rank : ADDITIONAL_MOVE_ORDER,
         categorize(scoreEquivalentLoss),
+        categorizeMoveRank(lossEstimate),
         scoreEquivalentLoss,
         complexity,
         adjustedWeight);
@@ -433,6 +444,73 @@ public final class PlayerStrengthEstimator {
       return MoveCategory.MISTAKE;
     }
     return MoveCategory.BLUNDER;
+  }
+
+  private static MoveCategory categorizeMoveRank(LossEstimate lossEstimate) {
+    double winrateLoss = positive(lossEstimate.winrateLoss);
+    Optional<Double> scoreLoss = lossEstimate.scoreLoss.map(PlayerStrengthEstimator::positive);
+    if (reachesMoveRankThreshold(winrateLoss, scoreLoss, 5)) {
+      return MoveCategory.BLUNDER;
+    }
+    if (reachesMoveRankThreshold(winrateLoss, scoreLoss, 4)) {
+      return MoveCategory.MISTAKE;
+    }
+    if (reachesMoveRankThreshold(winrateLoss, scoreLoss, 3)
+        || reachesMoveRankThreshold(winrateLoss, scoreLoss, 2)) {
+      return MoveCategory.INACCURACY;
+    }
+    if (reachesMoveRankThreshold(winrateLoss, scoreLoss, 1)) {
+      return MoveCategory.GREAT;
+    }
+    return MoveCategory.EXCELLENT;
+  }
+
+  private static boolean reachesMoveRankThreshold(
+      double winrateLoss, Optional<Double> scoreLoss, int level) {
+    Config config = Lizzie.config;
+    boolean useWinLoss = config == null || config.useWinLossInMoveRank;
+    boolean useScoreLoss = config == null || config.useScoreLossInMoveRank;
+    boolean reachesWinLoss =
+        useWinLoss && winrateLoss >= Math.abs(moveRankWinLossThreshold(config, level));
+    boolean reachesScoreLoss =
+        useScoreLoss
+            && scoreLoss.isPresent()
+            && scoreLoss.get() >= Math.abs(moveRankScoreLossThreshold(config, level));
+    return reachesWinLoss || reachesScoreLoss;
+  }
+
+  private static double moveRankWinLossThreshold(Config config, int level) {
+    switch (level) {
+      case 1:
+        return config == null ? DEFAULT_WIN_LOSS_THRESHOLD_1 : config.winLossThreshold1;
+      case 2:
+        return config == null ? DEFAULT_WIN_LOSS_THRESHOLD_2 : config.winLossThreshold2;
+      case 3:
+        return config == null ? DEFAULT_WIN_LOSS_THRESHOLD_3 : config.winLossThreshold3;
+      case 4:
+        return config == null ? DEFAULT_WIN_LOSS_THRESHOLD_4 : config.winLossThreshold4;
+      case 5:
+        return config == null ? DEFAULT_WIN_LOSS_THRESHOLD_5 : config.winLossThreshold5;
+      default:
+        throw new IllegalArgumentException("Unsupported move-rank threshold level: " + level);
+    }
+  }
+
+  private static double moveRankScoreLossThreshold(Config config, int level) {
+    switch (level) {
+      case 1:
+        return config == null ? DEFAULT_SCORE_LOSS_THRESHOLD_1 : config.scoreLossThreshold1;
+      case 2:
+        return config == null ? DEFAULT_SCORE_LOSS_THRESHOLD_2 : config.scoreLossThreshold2;
+      case 3:
+        return config == null ? DEFAULT_SCORE_LOSS_THRESHOLD_3 : config.scoreLossThreshold3;
+      case 4:
+        return config == null ? DEFAULT_SCORE_LOSS_THRESHOLD_4 : config.scoreLossThreshold4;
+      case 5:
+        return config == null ? DEFAULT_SCORE_LOSS_THRESHOLD_5 : config.scoreLossThreshold5;
+      default:
+        throw new IllegalArgumentException("Unsupported move-rank threshold level: " + level);
+    }
   }
 
   private static boolean isBlank(String value) {
@@ -1081,6 +1159,7 @@ public final class PlayerStrengthEstimator {
     public final double matchRate;
     public final double firstChoiceRate;
     public final double goodMoveRate;
+    public final double moveRankGoodMoveRate;
     public final double badMoveRate;
     public final double mistakeRate;
     public final double blunderRate;
@@ -1104,6 +1183,7 @@ public final class PlayerStrengthEstimator {
         double matchRate,
         double firstChoiceRate,
         double goodMoveRate,
+        double moveRankGoodMoveRate,
         double badMoveRate,
         double mistakeRate,
         double blunderRate,
@@ -1125,6 +1205,7 @@ public final class PlayerStrengthEstimator {
       this.matchRate = matchRate;
       this.firstChoiceRate = firstChoiceRate;
       this.goodMoveRate = goodMoveRate;
+      this.moveRankGoodMoveRate = moveRankGoodMoveRate;
       this.badMoveRate = badMoveRate;
       this.mistakeRate = mistakeRate;
       this.blunderRate = blunderRate;
@@ -1223,6 +1304,7 @@ public final class PlayerStrengthEstimator {
     public final boolean firstChoice;
     public final int aiRank;
     public final MoveCategory category;
+    public final MoveCategory moveRankCategory;
     public final double scoreEquivalentLoss;
     public final double complexity;
     public final double adjustedWeight;
@@ -1235,6 +1317,7 @@ public final class PlayerStrengthEstimator {
         boolean firstChoice,
         int aiRank,
         MoveCategory category,
+        MoveCategory moveRankCategory,
         double scoreEquivalentLoss,
         double complexity,
         double adjustedWeight) {
@@ -1245,6 +1328,7 @@ public final class PlayerStrengthEstimator {
       this.firstChoice = firstChoice;
       this.aiRank = aiRank;
       this.category = category;
+      this.moveRankCategory = moveRankCategory;
       this.scoreEquivalentLoss = scoreEquivalentLoss;
       this.complexity = complexity;
       this.adjustedWeight = adjustedWeight;
@@ -1290,6 +1374,7 @@ public final class PlayerStrengthEstimator {
             0.0,
             0.0,
             0.0,
+            0.0,
             "-",
             Confidence.LOW,
             new ArrayList<>());
@@ -1311,6 +1396,7 @@ public final class PlayerStrengthEstimator {
       int top5Moves = 0;
       int excellentMoves = 0;
       int goodMoves = 0;
+      int moveRankGoodMoves = 0;
       int badMoves = 0;
       int inaccuracies = 0;
       int mistakes = 0;
@@ -1345,6 +1431,9 @@ public final class PlayerStrengthEstimator {
           goodMoves++;
         } else {
           badMoves++;
+        }
+        if (sample.moveRankCategory.isGoodMove()) {
+          moveRankGoodMoves++;
         }
         if (sample.category == MoveCategory.INACCURACY) {
           inaccuracies++;
@@ -1382,6 +1471,7 @@ public final class PlayerStrengthEstimator {
       double top5Rate = (double) top5Moves / sampleCount;
       double excellentRate = (double) excellentMoves / sampleCount;
       double goodMoveRate = (double) goodMoves / sampleCount;
+      double moveRankGoodMoveRate = (double) moveRankGoodMoves / sampleCount;
       double badMoveRate = (double) badMoves / sampleCount;
       double inaccuracyRate = (double) inaccuracies / sampleCount;
       double mistakeRate = (double) mistakes / sampleCount;
@@ -1442,6 +1532,7 @@ public final class PlayerStrengthEstimator {
           matchRate,
           firstChoiceRate,
           goodMoveRate,
+          moveRankGoodMoveRate,
           badMoveRate,
           mistakeRate,
           blunderRate,
