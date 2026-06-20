@@ -15189,8 +15189,8 @@ public class LizzieFrame extends JFrame {
     private static final Color GRID = new Color(198, 184, 154, 95);
     private static final Color TEXT = PlayerStrengthDashboardRoot.TEXT;
     private static final Color BLACK_BAR = new Color(18, 20, 24);
-    private static final Color WHITE_BAR = new Color(244, 244, 236);
-    private static final Color WHITE_BAR_BORDER = new Color(185, 190, 200);
+    private static final Color WHITE_BAR = Color.WHITE;
+    private static final Color WHITE_BAR_BORDER = new Color(92, 104, 124);
     private final transient PlayerStrengthEstimator.Report report;
 
     private PlayerStrengthPerformanceRankPanel(PlayerStrengthEstimator.Report report) {
@@ -15209,6 +15209,7 @@ public class LizzieFrame extends JFrame {
       int width = getWidth();
       int height = getHeight();
       playerStrengthDrawRoundedCard(g2, 0, 0, width, height);
+      drawSummary(g2, Math.max(260, width - 190), 42);
       playerStrengthDrawText(
           g2,
           Lizzie.resourceBundle.getString("PlayerStrengthEstimate.performance.title"),
@@ -15233,7 +15234,6 @@ public class LizzieFrame extends JFrame {
       int chartHeight = Math.max(110, height - 252);
       drawChartBackground(g2, chartX, chartY, chartWidth, chartHeight);
       drawBars(g2, chartX, chartY, chartWidth, chartHeight);
-      drawSummary(g2, chartX, chartY + chartHeight + 82, chartWidth);
       g2.dispose();
     }
 
@@ -15282,13 +15282,13 @@ public class LizzieFrame extends JFrame {
             whiteCount,
             report.white.sampleCount,
             centerX + barWidth / 2 + 4,
-            baseline + 84,
+            baseline + 96,
             statWidth,
             false);
       }
     }
 
-    private void drawSummary(Graphics2D g2, int x, int y, int width) {
+    private void drawSummary(Graphics2D g2, int x, int y) {
       g2.setFont(new Font(Config.sysDefaultFontName, Font.BOLD, Config.frameFontSize + 1));
       drawLegend(g2, x, y, BLACK_BAR, Lizzie.resourceBundle.getString("Menu.Black"));
       drawLegend(g2, x + 78, y, WHITE_BAR, Lizzie.resourceBundle.getString("Menu.White"));
@@ -15342,29 +15342,33 @@ public class LizzieFrame extends JFrame {
 
     private void drawSideStats(
         Graphics2D g2, int count, int sampleCount, int centerX, int y, int width, boolean black) {
-      String text =
-          String.format(
-              Locale.US,
-              "%d / %.1f%%",
-              count,
-              sampleCount <= 0 ? 0.0 : count * 100.0 / sampleCount);
+      String countText = String.valueOf(count);
+      String percentText =
+          String.format(Locale.US, "%.0f%%", sampleCount <= 0 ? 0.0 : count * 100.0 / sampleCount);
       Font oldFont = g2.getFont();
       g2.setFont(
           new Font(Config.sysDefaultFontName, Font.PLAIN, Math.max(10, Config.frameFontSize - 1)));
       FontMetrics metrics = g2.getFontMetrics();
-      text = playerStrengthEllipsize(text, metrics, Math.max(34, width - 14));
-      int pillWidth = Math.min(width, metrics.stringWidth(text) + 14);
-      int pillHeight = Math.max(18, metrics.getHeight() + 4);
+      countText = playerStrengthEllipsize(countText, metrics, Math.max(20, width - 12));
+      percentText = playerStrengthEllipsize(percentText, metrics, Math.max(24, width - 12));
+      int textWidth = Math.max(metrics.stringWidth(countText), metrics.stringWidth(percentText));
+      int pillWidth = Math.min(width, Math.max(30, textWidth + 14));
+      int pillHeight = Math.max(34, metrics.getHeight() * 2 + 5);
       int x = centerX - pillWidth / 2;
       int top = y - pillHeight + 3;
       Color line = black ? BLACK_BAR : WHITE_BAR_BORDER;
-      Color fill = black ? new Color(18, 20, 24, 22) : new Color(255, 255, 255, 160);
+      Color fill = black ? new Color(18, 20, 24, 22) : WHITE_BAR;
       g2.setColor(fill);
       g2.fillRoundRect(x, top, pillWidth, pillHeight, pillHeight, pillHeight);
       g2.setColor(line);
       g2.drawRoundRect(x, top, pillWidth, pillHeight, pillHeight, pillHeight);
       g2.setColor(PlayerStrengthDashboardRoot.TEXT);
-      g2.drawString(text, centerX - metrics.stringWidth(text) / 2, top + 2 + metrics.getAscent());
+      g2.drawString(
+          countText, centerX - metrics.stringWidth(countText) / 2, top + 2 + metrics.getAscent());
+      g2.drawString(
+          percentText,
+          centerX - metrics.stringWidth(percentText) / 2,
+          top + 3 + metrics.getHeight() + metrics.getAscent());
       g2.setFont(oldFont);
     }
 
