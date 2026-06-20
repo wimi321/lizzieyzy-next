@@ -314,6 +314,7 @@ class PlayerStrengthEstimatorTest {
     assertEquals(56, report.overall.sampleCount);
     assertEquals(0.46, report.overall.firstChoiceRate, 0.01);
     assertEquals(0.79, report.overall.goodMoveRate, 0.01);
+    assertEquals(0.98, report.overall.moveRankGoodMoveRate, 0.01);
     assertEquals(0.02, report.overall.mistakeRate, 0.01);
     assertEquals("9d", report.overall.strengthBand);
   }
@@ -421,6 +422,24 @@ class PlayerStrengthEstimatorTest {
     assertEquals(0, report.black.scoreSampleCount);
     assertEquals(10.0, report.black.averageWinrateLoss, 0.0001);
     assertEquals("-", report.black.averageScoreLossText());
+  }
+
+  @Test
+  void keepsModelGoodMoveRateStableButExcludesHighWinrateLossFromDisplayedGoodMoves() {
+    BoardHistoryList history =
+        new BoardHistoryList(
+            analyzedRoot(
+                true, 70.0, 10.0, candidate("pass", 70.0, 10.0), candidate("A9", 50.0, 9.9)));
+    history.add(analyzedMove(0, 0, Stone.BLACK, false, 1, 30.0, -9.9));
+
+    PlayerStrengthEstimator.Report report = PlayerStrengthEstimator.estimate(history.getStart());
+
+    assertEquals(1, report.black.sampleCount);
+    assertEquals(20.0, report.black.averageWinrateLoss, 0.0001);
+    assertEquals(0.1, report.black.averageScoreLoss, 0.0001);
+    assertEquals(1.0, report.black.goodMoveRate, 0.0001);
+    assertEquals(0.0, report.black.moveRankGoodMoveRate, 0.0001);
+    assertEquals(0.0, report.black.mistakeRate, 0.0001);
   }
 
   @Test
