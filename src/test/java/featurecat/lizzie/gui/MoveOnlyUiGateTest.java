@@ -2,6 +2,7 @@ package featurecat.lizzie.gui;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertIterableEquals;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
@@ -336,6 +337,97 @@ class MoveOnlyUiGateTest {
   }
 
   @Test
+  void boardRendererNoRefreshFreezesHoveredVariationSnapshot() throws Exception {
+    TestEnvironment env = TestEnvironment.open();
+    try {
+      Lizzie.config.showBranch = true;
+      Lizzie.config.showSuggestionVariations = true;
+      Lizzie.config.showBlackCandidates = true;
+      Lizzie.config.showWhiteCandidates = true;
+      Lizzie.config.noRefreshOnMouseMove = true;
+      Lizzie.config.usePureStone = true;
+      TrackingLizzieFrame frame = configuredFrame();
+      frame.mouseOverCoordinate = new int[] {0, 1};
+      frame.isMouseOver = true;
+      frame.priorityMoveCoords = new ArrayList<>();
+      Lizzie.frame = frame;
+      BoardData current = currentData();
+      MoveData suggested = current.bestMoves.get(0);
+      List<String> firstPv =
+          new ArrayList<>(List.of(suggested.coordinate, Board.convertCoordinatesToName(1, 1)));
+      suggested.variation = firstPv;
+      Lizzie.board = boardWith(historyForCurrentNode(current));
+      BoardRenderer renderer = configuredBranchRenderer();
+
+      invokeDrawBranch(renderer);
+
+      Optional<List<String>> firstPreview = boardRendererVariationOpt(renderer);
+      assertTrue(firstPreview.isPresent());
+      assertIterableEquals(firstPv, firstPreview.get());
+      assertNotSame(
+          suggested.variation,
+          firstPreview.get(),
+          "no-refresh hover should keep an immutable preview snapshot, not the live engine list.");
+
+      firstPv.set(1, Board.convertCoordinatesToName(2, 2));
+      firstPv.add(Board.convertCoordinatesToName(1, 2));
+      invokeDrawBranch(renderer);
+
+      Optional<List<String>> secondPreview = boardRendererVariationOpt(renderer);
+      assertTrue(secondPreview.isPresent());
+      assertIterableEquals(
+          List.of(suggested.coordinate, Board.convertCoordinatesToName(1, 1)),
+          secondPreview.get(),
+          "same hovered move should not refresh when no-refresh-on-mouse-move is enabled.");
+    } finally {
+      env.close();
+    }
+  }
+
+  @Test
+  void boardRendererRefreshesHoveredVariationWhenNoRefreshDisabled() throws Exception {
+    TestEnvironment env = TestEnvironment.open();
+    try {
+      Lizzie.config.showBranch = true;
+      Lizzie.config.showSuggestionVariations = true;
+      Lizzie.config.showBlackCandidates = true;
+      Lizzie.config.showWhiteCandidates = true;
+      Lizzie.config.noRefreshOnMouseMove = false;
+      Lizzie.config.usePureStone = true;
+      TrackingLizzieFrame frame = configuredFrame();
+      frame.mouseOverCoordinate = new int[] {0, 1};
+      frame.isMouseOver = true;
+      frame.priorityMoveCoords = new ArrayList<>();
+      Lizzie.frame = frame;
+      BoardData current = currentData();
+      MoveData suggested = current.bestMoves.get(0);
+      suggested.variation =
+          new ArrayList<>(List.of(suggested.coordinate, Board.convertCoordinatesToName(1, 1)));
+      Lizzie.board = boardWith(historyForCurrentNode(current));
+      BoardRenderer renderer = configuredBranchRenderer();
+
+      invokeDrawBranch(renderer);
+
+      suggested.variation =
+          new ArrayList<>(
+              List.of(
+                  suggested.coordinate,
+                  Board.convertCoordinatesToName(2, 2),
+                  Board.convertCoordinatesToName(1, 2)));
+      invokeDrawBranch(renderer);
+
+      Optional<List<String>> preview = boardRendererVariationOpt(renderer);
+      assertTrue(preview.isPresent());
+      assertIterableEquals(
+          suggested.variation,
+          preview.get(),
+          "hover variation should keep refreshing when no-refresh-on-mouse-move is disabled.");
+    } finally {
+      env.close();
+    }
+  }
+
+  @Test
   void independentMainBoardBlunderHoverIgnoresSnapshotMarker() throws Exception {
     TestEnvironment env = TestEnvironment.open();
     try {
@@ -531,6 +623,12 @@ class MoveOnlyUiGateTest {
     Field field = owner.getDeclaredField(name);
     field.setAccessible(true);
     return field.get(target);
+  }
+
+  @SuppressWarnings("unchecked")
+  private static Optional<List<String>> boardRendererVariationOpt(BoardRenderer renderer)
+      throws Exception {
+    return (Optional<List<String>>) getField(BoardRenderer.class, renderer, "variationOpt");
   }
 
   private static BoardHistoryList historyWithNext(BoardData current, BoardData next) {

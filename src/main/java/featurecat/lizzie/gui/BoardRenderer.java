@@ -1508,6 +1508,8 @@ public class BoardRenderer {
 
   /** Draw the 'ghost stones' which show a variationOpt Leelaz is thinking about */
   private void drawBranch() {
+    boolean wasShowingBranch = isShowingBranch;
+    String previousMouseOverCoords = mouseOverCoords;
     branchOpt = Optional.empty();
     isShowingBranch = false;
     // calculate best moves and branch
@@ -1625,9 +1627,9 @@ public class BoardRenderer {
 
     // List<String>
     if (!Lizzie.config.noRefreshOnMouseMove
-        || (!isShowingBranch || !mouseOverCoords.equals(suggestedMove.get().coordinate))) {
-      variation = suggestedMove.get().variation;
-      pvVistis = suggestedMove.get().pvVisits;
+        || (!wasShowingBranch || !previousMouseOverCoords.equals(suggestedMove.get().coordinate))) {
+      variation = branchPreviewList(suggestedMove.get().variation);
+      pvVistis = branchPreviewList(suggestedMove.get().pvVisits);
     }
     if (variation == null) {
       return;
@@ -1770,6 +1772,11 @@ public class BoardRenderer {
 
   private boolean hasRenderedBranchImages() {
     return branchStonesImage != emptyImage && branchStonesShadowImage != emptyImage;
+  }
+
+  private List<String> branchPreviewList(List<String> source) {
+    if (source == null) return null;
+    return Lizzie.config.noRefreshOnMouseMove ? new ArrayList<String>(source) : source;
   }
 
   private void invalidateBranchImageCache() {
