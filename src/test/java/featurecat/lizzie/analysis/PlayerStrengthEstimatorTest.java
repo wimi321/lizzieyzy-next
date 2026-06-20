@@ -80,7 +80,8 @@ class PlayerStrengthEstimatorTest {
       copyBundledResource(XGBOOST20TUN_BOOSTER_RESOURCE, booster);
       Files.writeString(
           sourceDir.resolve("metadata.json"),
-          metadataJson("Custom Tun Model", XGBoostStrengthModel.Features.defaultXGBoost20TunFeatureOrder()));
+          metadataJson(
+              "Custom Tun Model", XGBoostStrengthModel.Features.defaultXGBoost20TunFeatureOrder()));
 
       PlayerStrengthEstimator.StrengthModel imported =
           PlayerStrengthEstimator.importStrengthModel(booster);
@@ -97,7 +98,8 @@ class PlayerStrengthEstimatorTest {
         StrengthModelTestEnvironment.open(tempDir.resolve("zip-work"))) {
       Path bundle = tempDir.resolve("strength-model.zip");
       try (ZipOutputStream zip = new ZipOutputStream(Files.newOutputStream(bundle))) {
-        writeZipEntry(zip, "model/booster.json", bundledResourceBytes(XGBOOST20TUN_BOOSTER_RESOURCE));
+        writeZipEntry(
+            zip, "model/booster.json", bundledResourceBytes(XGBOOST20TUN_BOOSTER_RESOURCE));
         writeZipEntry(
             zip,
             "model/metadata.json",
@@ -106,9 +108,7 @@ class PlayerStrengthEstimatorTest {
                     XGBoostStrengthModel.Features.defaultXGBoost20TunFeatureOrder())
                 .getBytes());
         writeZipEntry(
-            zip,
-            "model/calibrator.json",
-            bundledResourceBytes(XGBOOST20TUN_CALIBRATOR_RESOURCE));
+            zip, "model/calibrator.json", bundledResourceBytes(XGBOOST20TUN_CALIBRATOR_RESOURCE));
       }
 
       PlayerStrengthEstimator.StrengthModel imported =
@@ -439,6 +439,7 @@ class PlayerStrengthEstimatorTest {
     assertEquals(0.1, report.black.averageScoreLoss, 0.0001);
     assertEquals(1.0, report.black.goodMoveRate, 0.0001);
     assertEquals(0.0, report.black.moveRankGoodMoveRate, 0.0001);
+    assertEquals(1, report.black.moveRankCount(MoveRankDefinition.Rank.MISTAKE));
     assertEquals(0.0, report.black.mistakeRate, 0.0001);
   }
 
