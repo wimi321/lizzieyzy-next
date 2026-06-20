@@ -15251,9 +15251,9 @@ public class LizzieFrame extends JFrame {
       MoveRankDefinition.Rank[] ranks = MoveRankDefinition.Rank.values();
       int maxCount = maxRankCount(ranks);
       int groupWidth = Math.max(54, width / ranks.length);
-      int columnGap = Math.max(2, Math.min(6, groupWidth / 18));
-      int statWidth = Math.max(24, (groupWidth - columnGap - 10) / 2);
-      int barWidth = Math.max(14, Math.min(38, statWidth - 6));
+      int columnGap = Math.max(1, Math.min(3, groupWidth / 32));
+      int statWidth = Math.max(30, Math.min(42, (groupWidth - columnGap - 8) / 2));
+      int barWidth = Math.max(16, Math.min(38, statWidth - 4));
       int baseline = y + height;
       g2.setFont(
           new Font(Config.sysDefaultFontName, Font.PLAIN, Math.max(10, Config.frameFontSize)));
@@ -15357,7 +15357,7 @@ public class LizzieFrame extends JFrame {
       countText = playerStrengthEllipsize(countText, metrics, Math.max(20, width - 12));
       percentText = playerStrengthEllipsize(percentText, metrics, Math.max(24, width - 12));
       int textWidth = Math.max(metrics.stringWidth(countText), metrics.stringWidth(percentText));
-      int pillWidth = width;
+      int pillWidth = Math.min(width, Math.max(28, textWidth + 10));
       int pillHeight = Math.max(34, metrics.getHeight() * 2 + 5);
       int x = centerX - pillWidth / 2;
       int top = y - pillHeight + 3;
