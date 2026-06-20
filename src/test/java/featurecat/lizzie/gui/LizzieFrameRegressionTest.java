@@ -533,12 +533,23 @@ class LizzieFrameRegressionTest {
             boolean.class,
             int.class,
             PlayerStrengthEstimator.MoveCategory.class,
+            PlayerStrengthEstimator.MoveCategory.class,
             double.class,
             double.class,
             double.class);
     constructor.setAccessible(true);
     return constructor.newInstance(
-        color, moveNumber, winrateLoss, scoreLoss, firstChoice, aiRank, category, 1.0, 35.0, 1.0);
+        color,
+        moveNumber,
+        winrateLoss,
+        scoreLoss,
+        firstChoice,
+        aiRank,
+        category,
+        category,
+        1.0,
+        35.0,
+        1.0);
   }
 
   private static PlayerStrengthEstimator.SideReport playerStrengthSideReport(
@@ -551,6 +562,7 @@ class LizzieFrameRegressionTest {
             int.class,
             int.class,
             PlayerStrengthEstimator.StrengthModel.class,
+            double.class,
             double.class,
             double.class,
             double.class,
@@ -584,6 +596,7 @@ class LizzieFrameRegressionTest {
         1.2,
         goodMoveRate,
         firstChoiceRate,
+        goodMoveRate,
         goodMoveRate,
         0.0,
         0.0,
