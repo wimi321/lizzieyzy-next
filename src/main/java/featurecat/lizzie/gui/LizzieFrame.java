@@ -15230,7 +15230,7 @@ public class LizzieFrame extends JFrame {
       int chartX = 64;
       int chartY = 102;
       int chartWidth = Math.max(240, width - 128);
-      int chartHeight = Math.max(120, height - 238);
+      int chartHeight = Math.max(110, height - 252);
       drawChartBackground(g2, chartX, chartY, chartWidth, chartHeight);
       drawBars(g2, chartX, chartY, chartWidth, chartHeight);
       drawSummary(g2, chartX, chartY + chartHeight + 82, chartWidth);
@@ -15268,21 +15268,22 @@ public class LizzieFrame extends JFrame {
         drawCountLabel(g2, String.valueOf(whiteCount), centerX + 4, y - 6, barWidth);
         String label = Lizzie.resourceBundle.getString(rank.nameKey());
         drawRankLabel(g2, label, rank, centerX, baseline + 14, groupWidth - 8);
+        int statWidth = Math.max(42, groupWidth / 2 - 7);
         drawSideStats(
             g2,
             blackCount,
             report.black.sampleCount,
-            centerX - groupWidth / 2,
-            centerX + groupWidth / 2,
-            baseline + 43,
+            centerX - barWidth / 2 - 4,
+            baseline + 58,
+            statWidth,
             true);
         drawSideStats(
             g2,
             whiteCount,
             report.white.sampleCount,
-            centerX - groupWidth / 2,
-            centerX + groupWidth / 2,
-            baseline + 63,
+            centerX + barWidth / 2 + 4,
+            baseline + 84,
+            statWidth,
             false);
       }
     }
@@ -15291,15 +15292,6 @@ public class LizzieFrame extends JFrame {
       g2.setFont(new Font(Config.sysDefaultFontName, Font.BOLD, Config.frameFontSize + 1));
       drawLegend(g2, x, y, BLACK_BAR, Lizzie.resourceBundle.getString("Menu.Black"));
       drawLegend(g2, x + 78, y, WHITE_BAR, Lizzie.resourceBundle.getString("Menu.White"));
-      String goodRate =
-          Lizzie.resourceBundle.getString("PlayerStrengthEstimate.goodMoveRate")
-              + " "
-              + String.format(Locale.US, "%.1f%%", report.overall.moveRankGoodMoveRate * 100.0);
-      g2.setColor(PlayerStrengthDashboardRoot.TEXT);
-      g2.drawString(
-          goodRate,
-          Math.max(x + 250, x + width - g2.getFontMetrics().stringWidth(goodRate)),
-          y + 5);
     }
 
     private void drawLegend(Graphics2D g2, int x, int y, Color color, String text) {
@@ -15349,21 +15341,30 @@ public class LizzieFrame extends JFrame {
     }
 
     private void drawSideStats(
-        Graphics2D g2, int count, int sampleCount, int x1, int x2, int y, boolean black) {
+        Graphics2D g2, int count, int sampleCount, int centerX, int y, int width, boolean black) {
       String text =
           String.format(
               Locale.US,
-              "%s %d / %.1f%%",
-              Lizzie.resourceBundle.getString(black ? "Menu.Black" : "Menu.White"),
+              "%d / %.1f%%",
               count,
               sampleCount <= 0 ? 0.0 : count * 100.0 / sampleCount);
-      g2.setColor(black ? BLACK_BAR : PlayerStrengthDashboardRoot.TEXT);
       Font oldFont = g2.getFont();
       g2.setFont(
           new Font(Config.sysDefaultFontName, Font.PLAIN, Math.max(10, Config.frameFontSize - 1)));
       FontMetrics metrics = g2.getFontMetrics();
-      text = playerStrengthEllipsize(text, metrics, Math.max(34, x2 - x1 - 4));
-      drawCenteredString(g2, text, x1, x2, y);
+      text = playerStrengthEllipsize(text, metrics, Math.max(34, width - 14));
+      int pillWidth = Math.min(width, metrics.stringWidth(text) + 14);
+      int pillHeight = Math.max(18, metrics.getHeight() + 4);
+      int x = centerX - pillWidth / 2;
+      int top = y - pillHeight + 3;
+      Color line = black ? BLACK_BAR : WHITE_BAR_BORDER;
+      Color fill = black ? new Color(18, 20, 24, 22) : new Color(255, 255, 255, 160);
+      g2.setColor(fill);
+      g2.fillRoundRect(x, top, pillWidth, pillHeight, pillHeight, pillHeight);
+      g2.setColor(line);
+      g2.drawRoundRect(x, top, pillWidth, pillHeight, pillHeight, pillHeight);
+      g2.setColor(PlayerStrengthDashboardRoot.TEXT);
+      g2.drawString(text, centerX - metrics.stringWidth(text) / 2, top + 2 + metrics.getAscent());
       g2.setFont(oldFont);
     }
 
