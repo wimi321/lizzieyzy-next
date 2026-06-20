@@ -4127,6 +4127,8 @@ def build_release_notes(asset_map: dict[str, str | None], bundle: dict[str, str]
         return build_next_2026_06_16_1_notes(asset_map, bundle, repo, release_tag)
     if release_tag == 'next-2026-06-18.1':
         return build_next_2026_06_18_1_notes(asset_map, bundle, repo, release_tag)
+    if release_tag == 'next-2026-06-20.1':
+        return build_next_2026_06_20_1_notes(asset_map, bundle, repo, release_tag)
 
     assets_cn = {
         key: format_asset(asset_map[key], repo, release_tag)
@@ -6754,6 +6756,60 @@ def build_next_2026_06_18_1_notes(
             '- 이번 빌드도 실제 사용자가 누르는 흐름에 가깝게 로컬 실행 점검을 했고, Player Strength 화면에서 내부 점수 표현이 일반 사용자를 혼동시키는 부분을 정리했습니다.\n',
         '- ก่อน release ได้รัน full Maven suite, package build, real local launch smoke test และ GitHub Actions release workflows ซ้ำแล้ว\n':
             '- build นี้ตรวจจากมุมมอง user flow อีกครั้ง และปรับข้อความ Player Strength ที่เป็น internal score ไม่ให้ทำให้ผู้ใช้ทั่วไปสับสน\n',
+    }
+    for anchor, extra in additions.items():
+        notes = notes.replace(anchor, anchor + extra)
+    for anchor, extra in why_additions.items():
+        notes = notes.replace(anchor, anchor + extra)
+    return notes
+
+
+def build_next_2026_06_20_1_notes(
+    asset_map: dict[str, str | None],
+    bundle: dict[str, str],
+    repo: str,
+    release_tag: str | None,
+) -> str:
+    notes = build_next_2026_06_18_1_notes(asset_map, bundle, repo, release_tag)
+    additions = {
+        '- 棋力评估主卡改为显示用户能理解的棋力区间，评分规则改成短标签，避免 `1.0段` 这类内部值和省略号误导用户。\n':
+            '- 加载野狐、腾讯、共享棋谱和弈客 SGF 后，胜率曲线启动更快；启用自动快速分析时会预热专用 KataGo 分析引擎，连续看谱不用反复等待冷启动。\n'
+            '- 打开新棋谱前会清理旧的快速分析队列，避免上一盘棋的排队任务拖慢当前棋谱；胜率图命中和同步诊断路径也做了回归加固。\n'
+            '- 多语言 README 补充官方网站入口，用户从 GitHub 文档可以更直接找到项目主页。\n',
+        '- 棋力評估主卡改為顯示使用者能理解的棋力區間，評分規則改成短標籤，避免 `1.0段` 這類內部值和省略號誤導使用者。\n':
+            '- 載入野狐、騰訊、共享棋譜和弈客 SGF 後，勝率曲線啟動更快；啟用自動快速分析時會預熱專用 KataGo 分析引擎，連續看譜不用反覆等待冷啟動。\n'
+            '- 開啟新棋譜前會清理舊的快速分析佇列，避免上一盤棋的排隊任務拖慢目前棋譜；勝率圖命中和同步診斷路徑也做了回歸加固。\n'
+            '- 多語言 README 補充官方網站入口，使用者從 GitHub 文件可以更直接找到專案首頁。\n',
+        '- Player Strength cards now show user-facing strength bands, and the score-scale labels are shorter so internal values such as `1.0 dan` and clipped ellipses no longer confuse users.\n':
+            '- Winrate curves now start faster after loading Fox, Tencent, shared-kifu, and Yike SGF records. When automatic quick analysis is enabled, a dedicated KataGo analysis engine is prewarmed so consecutive kifu reviews no longer wait on repeated cold starts.\n'
+            '- Opening a new kifu now clears stale queued quick-analysis work before starting the current game, reducing delays caused by previous reviews. Winrate-graph hit detection and sync-diagnostics path handling were also hardened.\n'
+            '- The multilingual README files now link the official website so users can reach the project homepage more directly from GitHub.\n',
+        '- 棋力評価カードはユーザー向けの棋力区間を表示し、スコア尺度ラベルを短くしました。`1.0段` のような内部値や省略表示で迷わないようにしています。\n':
+            '- 野狐、Tencent、共有棋譜、弈客 SGF を読み込んだ後の勝率曲線の立ち上がりを高速化しました。自動クイック分析が有効な場合は専用 KataGo 分析エンジンを事前に温め、連続レビューで毎回 cold start を待たないようにしています。\n'
+            '- 新しい棋譜を開く前に古いクイック分析キューを整理し、前の棋譜の待ち行列が現在の棋譜を遅らせないようにしました。勝率グラフのヒット判定と同期診断のパス処理も強化しています。\n'
+            '- 多言語 README に公式サイトへのリンクを追加し、GitHub のドキュメントからプロジェクトホームへ直接移動しやすくしました。\n',
+        '- Player Strength 카드는 사용자에게 이해되는 기력 구간을 표시하고 score-scale label 을 짧게 바꿔 `1.0 dan` 같은 내부 값이나 잘린 말줄임표로 혼동하지 않게 했습니다.\n':
+            '- Fox, Tencent, shared kifu, Yike SGF 를 불러온 뒤 승률 곡선이 더 빨리 시작됩니다. 자동 quick analysis 가 켜져 있으면 전용 KataGo analysis engine 을 미리 예열해 연속 기보 리뷰에서 반복 cold start 를 기다리지 않게 했습니다.\n'
+            '- 새 기보를 열기 전에 오래된 quick-analysis queue 를 정리해 이전 기보의 대기 작업이 현재 기보를 늦추지 않게 했습니다. Winrate graph hit detection 과 sync diagnostics path handling 도 더 단단하게 보강했습니다.\n'
+            '- 다국어 README 에 official website 링크를 추가해 GitHub 문서에서 프로젝트 홈페이지로 더 쉽게 이동할 수 있습니다.\n',
+        '- การ์ด Player Strength แสดงช่วงระดับที่ผู้ใช้เข้าใจง่ายขึ้น และย่อ label ของ score scale เพื่อไม่ให้ค่า internal อย่าง `1.0 dan` หรือข้อความที่ถูกตัดทำให้สับสน\n':
+            '- กราฟ winrate เริ่มทำงานเร็วขึ้นหลังโหลด SGF จาก Fox, Tencent, shared kifu และ Yike เมื่อเปิด automatic quick analysis โปรแกรมจะ prewarm KataGo analysis engine เฉพาะไว้ ทำให้การเปิดหลาย kifu ต่อเนื่องไม่ต้องรอ cold start ซ้ำ\n'
+            '- ก่อนเปิด kifu ใหม่ โปรแกรมจะล้าง quick-analysis queue เก่าก่อน เพื่อลดการหน่วงจากงานวิเคราะห์ของเกมก่อนหน้า และยังเสริมความเสถียรของ winrate graph hit detection กับ sync diagnostics path handling\n'
+            '- README หลายภาษาเพิ่มลิงก์ official website เพื่อให้ผู้ใช้จาก GitHub เข้า project homepage ได้ตรงขึ้น\n',
+    }
+    why_additions = {
+        '- 本版继续按“用户实际会点哪里”的方式做了本机启动检查，顺手修掉棋力评估显示里会误导普通用户的内部评分文案。\n':
+            '- 本版重点复测了“下载/打开棋谱后胜率曲线不应让用户等太久”的路径，并保留 GitHub Actions 的 Windows 升级 smoke、macOS/Linux 打包校验和 release notes 真实资产生成。\n',
+        '- 本版繼續按「使用者實際會點哪裡」的方式做了本機啟動檢查，順手修掉棋力評估顯示裡會誤導一般使用者的內部評分文案。\n':
+            '- 本版重點複測了「下載/開啟棋譜後勝率曲線不應讓使用者等太久」的路徑，並保留 GitHub Actions 的 Windows 升級 smoke、macOS/Linux 打包校驗和 release notes 真實資產生成。\n',
+        '- This build was checked from a user-flow perspective again, and the Player Strength display wording was cleaned up where internal score values could mislead everyday users.\n':
+            '- This build focuses on the path where users load or download a kifu and expect the winrate curve to become useful quickly, with GitHub Actions still covering Windows upgrade smoke, macOS/Linux packaging checks, and release notes generated from real uploaded assets.\n',
+        '- 今回も実際のユーザーフローに近い形でローカル起動確認を行い、棋力評価で内部スコア表示が一般ユーザーを迷わせる箇所を修正しました。\n':
+            '- 今回は、棋譜をダウンロードまたは開いた後に勝率曲線を早く使えるようにする経路を重点的に確認しました。GitHub Actions では Windows upgrade smoke、macOS/Linux packaging checks、実際のアップロード済み asset からの release notes 生成も継続しています。\n',
+        '- 이번 빌드도 실제 사용자가 누르는 흐름에 가깝게 로컬 실행 점검을 했고, Player Strength 화면에서 내부 점수 표현이 일반 사용자를 혼동시키는 부분을 정리했습니다.\n':
+            '- 이번 버전은 사용자가 기보를 다운로드하거나 연 뒤 승률 곡선을 빨리 활용할 수 있어야 하는 흐름을 중점 확인했습니다. GitHub Actions 에서는 Windows upgrade smoke, macOS/Linux packaging check, 실제 업로드 asset 기반 release notes 생성도 계속 검증합니다.\n',
+        '- build นี้ตรวจจากมุมมอง user flow อีกครั้ง และปรับข้อความ Player Strength ที่เป็น internal score ไม่ให้ทำให้ผู้ใช้ทั่วไปสับสน\n':
+            '- build นี้เน้นตรวจ flow ที่ผู้ใช้โหลดหรือเปิด kifu แล้วต้องการให้กราฟ winrate ใช้งานได้เร็วขึ้น พร้อมให้ GitHub Actions ตรวจ Windows upgrade smoke, macOS/Linux packaging และสร้าง release notes จาก asset ที่อัปโหลดจริงต่อไป\n',
     }
     for anchor, extra in additions.items():
         notes = notes.replace(anchor, anchor + extra)
