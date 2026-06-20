@@ -15186,10 +15186,8 @@ public class LizzieFrame extends JFrame {
 
   private static final class PlayerStrengthPerformanceRankPanel extends JPanel {
     private static final long serialVersionUID = 1L;
-    private static final Color CHART_BACKGROUND = new Color(44, 51, 65);
-    private static final Color GRID = new Color(255, 255, 255, 36);
-    private static final Color TEXT = new Color(248, 248, 242);
-    private static final Color MUTED = new Color(214, 218, 225);
+    private static final Color GRID = new Color(198, 184, 154, 95);
+    private static final Color TEXT = PlayerStrengthDashboardRoot.TEXT;
     private static final Color BLACK_BAR = new Color(18, 20, 24);
     private static final Color WHITE_BAR = new Color(244, 244, 236);
     private static final Color WHITE_BAR_BORDER = new Color(185, 190, 200);
@@ -15232,16 +15230,14 @@ public class LizzieFrame extends JFrame {
       int chartX = 64;
       int chartY = 102;
       int chartWidth = Math.max(240, width - 128);
-      int chartHeight = Math.max(140, height - 190);
+      int chartHeight = Math.max(120, height - 238);
       drawChartBackground(g2, chartX, chartY, chartWidth, chartHeight);
       drawBars(g2, chartX, chartY, chartWidth, chartHeight);
-      drawSummary(g2, chartX, chartY + chartHeight + 36, chartWidth);
+      drawSummary(g2, chartX, chartY + chartHeight + 82, chartWidth);
       g2.dispose();
     }
 
     private void drawChartBackground(Graphics2D g2, int x, int y, int width, int height) {
-      g2.setColor(CHART_BACKGROUND);
-      g2.fillRoundRect(x - 34, y - 22, width + 68, height + 56, 18, 18);
       g2.setFont(
           new Font(Config.sysDefaultFontName, Font.PLAIN, Math.max(10, Config.frameFontSize)));
       g2.setColor(GRID);
@@ -15270,11 +15266,24 @@ public class LizzieFrame extends JFrame {
         drawRankBar(g2, centerX + 4, baseline, barWidth, whiteHeight, WHITE_BAR, WHITE_BAR_BORDER);
         drawCountLabel(g2, String.valueOf(blackCount), centerX - barWidth - 4, y - 6, barWidth);
         drawCountLabel(g2, String.valueOf(whiteCount), centerX + 4, y - 6, barWidth);
-        g2.setColor(MUTED);
         String label = Lizzie.resourceBundle.getString(rank.nameKey());
-        label = playerStrengthEllipsize(label, g2.getFontMetrics(), groupWidth - 8);
-        drawCenteredString(
-            g2, label, centerX - groupWidth / 2, centerX + groupWidth / 2, baseline + 20);
+        drawRankLabel(g2, label, rank, centerX, baseline + 14, groupWidth - 8);
+        drawSideStats(
+            g2,
+            blackCount,
+            report.black.sampleCount,
+            centerX - groupWidth / 2,
+            centerX + groupWidth / 2,
+            baseline + 43,
+            true);
+        drawSideStats(
+            g2,
+            whiteCount,
+            report.white.sampleCount,
+            centerX - groupWidth / 2,
+            centerX + groupWidth / 2,
+            baseline + 63,
+            false);
       }
     }
 
@@ -15318,6 +15327,44 @@ public class LizzieFrame extends JFrame {
         return 0;
       }
       return Math.max(3, (int) Math.round(chartHeight * count / (double) maxCount));
+    }
+
+    private void drawRankLabel(
+        Graphics2D g2, String text, MoveRankDefinition.Rank rank, int centerX, int y, int width) {
+      Font oldFont = g2.getFont();
+      g2.setFont(
+          new Font(Config.sysDefaultFontName, Font.BOLD, Math.max(10, Config.frameFontSize)));
+      FontMetrics metrics = g2.getFontMetrics();
+      String label = playerStrengthEllipsize(text, metrics, Math.max(32, width - 12));
+      int labelWidth = Math.min(width, metrics.stringWidth(label) + 18);
+      int x = centerX - labelWidth / 2;
+      Color rankColor = rank.color(Lizzie.config.useMorandiColors);
+      g2.setColor(new Color(rankColor.getRed(), rankColor.getGreen(), rankColor.getBlue(), 38));
+      g2.fillRoundRect(x, y, labelWidth, 22, 10, 10);
+      g2.setColor(rankColor);
+      g2.drawRoundRect(x, y, labelWidth, 22, 10, 10);
+      g2.setColor(TEXT);
+      g2.drawString(label, centerX - metrics.stringWidth(label) / 2, y + 16);
+      g2.setFont(oldFont);
+    }
+
+    private void drawSideStats(
+        Graphics2D g2, int count, int sampleCount, int x1, int x2, int y, boolean black) {
+      String text =
+          String.format(
+              Locale.US,
+              "%s %d / %.1f%%",
+              Lizzie.resourceBundle.getString(black ? "Menu.Black" : "Menu.White"),
+              count,
+              sampleCount <= 0 ? 0.0 : count * 100.0 / sampleCount);
+      g2.setColor(black ? BLACK_BAR : PlayerStrengthDashboardRoot.TEXT);
+      Font oldFont = g2.getFont();
+      g2.setFont(
+          new Font(Config.sysDefaultFontName, Font.PLAIN, Math.max(10, Config.frameFontSize - 1)));
+      FontMetrics metrics = g2.getFontMetrics();
+      text = playerStrengthEllipsize(text, metrics, Math.max(34, x2 - x1 - 4));
+      drawCenteredString(g2, text, x1, x2, y);
+      g2.setFont(oldFont);
     }
 
     private void drawRankBar(
