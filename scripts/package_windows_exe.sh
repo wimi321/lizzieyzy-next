@@ -1101,11 +1101,22 @@ create_core_update_asset() {
   local core_zip="$RELEASE_DIR/${DATE_TAG}-${ARCH_TAG}.core-update.zip"
   local native_core_dir
   local native_core_zip
+  local copied_cfg_count=0
 
   rm -rf "$core_dir" "$core_zip"
   mkdir -p "$core_dir/app"
   cp "$JAR_PATH" "$core_dir/lizzieyzy-next-core.jar"
   cp "$JAR_PATH" "$core_dir/app/$MAIN_JAR"
+  shopt -s nullglob
+  for launcher_cfg in "$DIST_DIR"/app-image-*/*/app/*.cfg; do
+    cp "$launcher_cfg" "$core_dir/app/$(basename "$launcher_cfg")"
+    copied_cfg_count=$((copied_cfg_count + 1))
+  done
+  shopt -u nullglob
+  if (( copied_cfg_count == 0 )); then
+    echo "Core update package did not find any Windows launcher .cfg files." >&2
+    return 1
+  fi
   cat >"$core_dir/README.txt" <<EOF
 LizzieYzy Next lightweight core update
 =====================================
@@ -1117,10 +1128,11 @@ Date: $DATE_TAG
 - 已经在使用 Windows 免安装版的老用户，日常升级优先下载这个小更新包。
 - 关闭 LizzieYzy Next 后，把这个 zip 解压到旧的免安装目录里覆盖。
 - 目标目录应该是包含 "LizzieYzy Next*.exe" 和 "app" 文件夹的目录。
-- 解压时允许覆盖 app/$MAIN_JAR。
+- 解压时允许覆盖 app/$MAIN_JAR 和 app/LizzieYzy Next*.cfg。
 - 根目录里的 lizzieyzy-next-core.jar 是软件内自动更新器使用的副本，手动覆盖时可以忽略。
 
-这个包只更新 LizzieYzy Next 主程序核心。
+这个包只更新 LizzieYzy Next 主程序核心和启动器配置。
+启动器配置用于同步标题栏版本号和必要 JVM 参数；不会改变你的引擎、权重或用户数据。
 KataGo 引擎、权重、JCEF、readboard、Java runtime、设置、棋谱、TensorRT 和 user-data 都会保留。
 只有未来更新 manifest 明确列出资源组件时，才需要下载对应的大资源更新。
 
@@ -1128,10 +1140,11 @@ Manual update:
 - Existing Windows portable users can use this small package for regular updates.
 - Close LizzieYzy Next, then extract this zip into the existing portable app folder.
 - The target folder should contain "LizzieYzy Next*.exe" and an "app" folder.
-- Allow overwriting app/$MAIN_JAR.
+- Allow overwriting app/$MAIN_JAR and app/LizzieYzy Next*.cfg.
 - The root lizzieyzy-next-core.jar is for the in-app updater and can be ignored during manual extraction.
 
-This package updates the application core only.
+This package updates the application core and launcher configuration only.
+The launcher configuration keeps the title-bar version and required JVM options in sync.
 KataGo engines, weights, JCEF, readboard, Java runtime, settings, saves, TensorRT, and user-data are preserved unless a future update manifest explicitly lists a changed resource component.
 EOF
 
@@ -1141,18 +1154,49 @@ EOF
     "$APP_DISPLAY_VERSION" \
     "$DATE_TAG" \
     "$MAIN_JAR" \
-    "$JAR_PATH" <<'PY'
+    "$JAR_PATH" \
+    "$core_dir" <<'PY'
 import hashlib
 import json
 import pathlib
 import sys
 
-output, release_tag, date_tag, main_jar, jar_path = sys.argv[1:]
+output, release_tag, date_tag, main_jar, jar_path, core_dir = sys.argv[1:]
 jar = pathlib.Path(jar_path)
-digest = hashlib.sha256()
-with jar.open("rb") as handle:
-    for chunk in iter(lambda: handle.read(1024 * 1024), b""):
-        digest.update(chunk)
+core_root = pathlib.Path(core_dir)
+
+def sha256(path):
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+jar_sha256 = sha256(jar)
+files = [
+    {
+        "path": "lizzieyzy-next-core.jar",
+        "purpose": "in-app-updater-source",
+        "sizeBytes": jar.stat().st_size,
+        "sha256": jar_sha256,
+    },
+    {
+        "path": f"app/{main_jar}",
+        "purpose": "manual-overlay-target",
+        "sizeBytes": jar.stat().st_size,
+        "sha256": jar_sha256,
+    },
+]
+
+for launcher_cfg in sorted((core_root / "app").glob("*.cfg")):
+    files.append(
+        {
+            "path": f"app/{launcher_cfg.name}",
+            "purpose": "launcher-config",
+            "sizeBytes": launcher_cfg.stat().st_size,
+            "sha256": sha256(launcher_cfg),
+        }
+    )
 
 payload = {
     "schemaVersion": 1,
@@ -1168,20 +1212,7 @@ payload = {
         "app/readboard/",
         "runtime/",
     ],
-    "files": [
-        {
-            "path": "lizzieyzy-next-core.jar",
-            "purpose": "in-app-updater-source",
-            "sizeBytes": jar.stat().st_size,
-            "sha256": digest.hexdigest(),
-        },
-        {
-            "path": f"app/{main_jar}",
-            "purpose": "manual-overlay-target",
-            "sizeBytes": jar.stat().st_size,
-            "sha256": digest.hexdigest(),
-        },
-    ],
+    "files": files,
 }
 pathlib.Path(output).write_text(
     json.dumps(payload, ensure_ascii=False, indent=2) + "\n",

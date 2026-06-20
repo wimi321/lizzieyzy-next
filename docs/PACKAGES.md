@@ -13,7 +13,7 @@
 - 当前维护版公开主推 15 个首次下载主资产，另有 1 个 Windows 免安装小更新包
 - Windows 默认优先推荐 `portable.zip`
 - 大多数普通用户先下 `windows64.opencl.portable.zip`
-- 已有 Windows 免安装版的老用户，日常升级优先下载 `windows64.core-update.zip` 覆盖旧目录
+- 已有 Windows 免安装版的老用户，日常升级优先下载 `windows64.core-update.zip` 覆盖旧目录，只更新主程序和启动器配置
 - OpenCL 表现不好时改用 `windows64.with-katago.portable.zip`
 - RTX 20/30/40 系列 NVIDIA 显卡并且更在意速度时改用 `windows64.nvidia.portable.zip`
 - RTX 5070/5080/5090 优先试 `windows64.nvidia50.cuda.portable.zip`，TensorRT 加速改为软件内按需安装
@@ -57,7 +57,7 @@
 - TensorRT 分卷包是高级可选资产，不计入普通用户主推荐路径；只下载 `.7z.001` 没用，必须下载全部 `.7z.00N`。
 - Windows 64 位现在优先推荐免安装包，安装器作为可选路径保留。
 - Windows 免安装包会在解压目录内启用便携模式，配置、日志、保存棋谱、下载权重和软件内安装的 TensorRT 文件都随这个文件夹保存，主要位于 `user-data/`。
-- 已有 Windows 免安装版时，关闭软件后把 `<date>-windows64.core-update.zip` 解压到旧目录覆盖即可；它只替换 `app/lizzie-yzy2.5.3-shaded.jar`，不会覆盖权重、引擎、运行环境、JCEF、readboard、TensorRT 或 `user-data/`。
+- 已有 Windows 免安装版时，关闭软件后把 `<date>-windows64.core-update.zip` 解压到旧目录覆盖即可；它只替换 `app/lizzie-yzy2.5.3-shaded.jar` 和 `app/LizzieYzy Next*.cfg`，用于同步标题栏版本号和必要 JVM 参数，不会覆盖权重、引擎、运行环境、JCEF、readboard、TensorRT 或 `user-data/`。
 - 旧 tag 里如果还看到兼容 zip 或历史包，那属于历史发布格式。
 
 ## 每个包里内置了什么
@@ -72,7 +72,7 @@
 | `windows64.nvidia.installer.exe` | 是 | 是 | 安装后从开始菜单或桌面打开 |
 | `windows64.nvidia50.cuda.portable.zip` | 是 | 是 | 解压后运行 `LizzieYzy Next NVIDIA 50 CUDA.exe` |
 | `windows64.nvidia50.cuda.installer.exe` | 是 | 是 | 安装后从开始菜单或桌面打开 |
-| `windows64.core-update.zip` | 否 | 依赖旧免安装目录 | 解压到旧免安装目录覆盖，用于日常升级主程序 |
+| `windows64.core-update.zip` | 否 | 依赖旧免安装目录 | 解压到旧免安装目录覆盖，用于日常升级主程序和启动器配置 |
 | `windows64.without.engine.portable.zip` | 是 | 否 | 解压后运行 `LizzieYzy Next.exe` |
 | `windows64.without.engine.installer.exe` | 是 | 否 | 安装后从开始菜单或桌面打开 |
 | `mac-apple-silicon.with-katago.dmg` | App 自带 | 是 | 拖到 Applications |

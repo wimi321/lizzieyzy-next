@@ -12,7 +12,9 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
+import java.util.stream.Stream;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 import org.json.JSONArray;
@@ -93,7 +95,30 @@ public final class WindowsUpdateApplier {
       throw new IOException("Core update jar not found: " + newJar);
     }
     replaceFile(newJar, currentJar, backupRoot, appDir, backups);
+    replaceBundledLauncherConfigsIfPresent(extracted, appDir, backupRoot, backups);
+  }
 
+  private static void replaceBundledLauncherConfigsIfPresent(
+      Path extracted, Path appDir, Path backupRoot, List<BackupEntry> backups) throws IOException {
+    Path extractedAppDir = extracted.resolve("app").normalize();
+    if (!Files.isDirectory(extractedAppDir)) {
+      return;
+    }
+    try (Stream<Path> stream = Files.list(extractedAppDir)) {
+      List<Path> configs =
+          stream
+              .filter(Files::isRegularFile)
+              .filter(
+                  path ->
+                      path.getFileName()
+                          .toString()
+                          .toLowerCase(Locale.ROOT)
+                          .endsWith(".cfg"))
+              .toList();
+      for (Path config : configs) {
+        replaceFile(config, appDir.resolve(config.getFileName()), backupRoot, appDir, backups);
+      }
+    }
   }
 
   private static void writeInstalledManifestIfPresent(

@@ -25,7 +25,8 @@ class WindowsUpdateApplierTest {
     writeZip(
         coreZip,
         entry("lizzieyzy-next-core.jar", "new-core"),
-        entry("app/lizzie-yzy2.5.3-shaded.jar", "manual-overlay-core"));
+        entry("app/lizzie-yzy2.5.3-shaded.jar", "manual-overlay-core"),
+        entry("app/LizzieYzy Next OpenCL.cfg", "-Dlizzie.next.version=next-2026-06-21.1"));
     Path request =
         request(
             fixture,
@@ -35,6 +36,9 @@ class WindowsUpdateApplierTest {
     WindowsUpdateApplier.apply(request);
 
     assertEquals("new-core", Files.readString(fixture.currentJar));
+    assertEquals(
+        "-Dlizzie.next.version=next-2026-06-21.1",
+        Files.readString(fixture.appDir.resolve("LizzieYzy Next OpenCL.cfg")));
     assertEquals("user-save", Files.readString(fixture.appRoot.resolve("user-data").resolve("save.txt")));
     assertTrue(Files.isRegularFile(fixture.appDir.resolve(InstalledUpdateState.INSTALLED_MANIFEST_NAME)));
   }
@@ -94,6 +98,7 @@ class WindowsUpdateApplierTest {
     Path userData = Files.createDirectories(appRoot.resolve("user-data"));
     Path currentJar = appDir.resolve("lizzie-yzy2.5.3-shaded.jar");
     Files.writeString(currentJar, "old-core");
+    Files.writeString(appDir.resolve("LizzieYzy Next OpenCL.cfg"), "-Dlizzie.next.version=old");
     Files.writeString(userData.resolve("save.txt"), "user-save");
     Path staging = Files.createDirectories(tempDir.resolve("staging"));
     return new Fixture(appRoot, appDir, currentJar, staging);
