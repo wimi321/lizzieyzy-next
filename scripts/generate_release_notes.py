@@ -359,6 +359,44 @@ def add_windows_core_update_download_row(
             update_items.append(update_note)
 
 
+def remove_windows_core_update_auto_notes(sections: list[dict[str, object]]) -> None:
+    notes_by_language = {
+        '中文': (
+            'Windows 免安装版新增更清晰的小更新路径：`core-update` 只替换主程序，不重复打包引擎、权重、JCEF、readboard、Java runtime 或用户数据。',
+            '已经有 Windows 免安装版的老用户，日常升级优先下载 `windows64.core-update.zip`，关闭软件后解压到旧目录覆盖；引擎、权重、TensorRT、设置和棋谱都会保留。',
+        ),
+        '繁體中文': (
+            'Windows 免安裝版新增更清楚的小更新路徑：`core-update` 只替換主程式，不重複打包引擎、權重、JCEF、readboard、Java runtime 或使用者資料。',
+            '已經有 Windows 免安裝版的舊使用者，日常升級優先下載 `windows64.core-update.zip`，關閉軟體後解壓到舊目錄覆蓋；引擎、權重、TensorRT、設定和棋譜都會保留。',
+        ),
+        'English': (
+            'Windows portable builds now have a clearer small-update path: `core-update` replaces only the app core and does not rebundle engines, weights, JCEF, readboard, Java runtime, or user data.',
+            'Existing Windows portable users should prefer `windows64.core-update.zip` for routine updates: close the app, extract it over the old folder, and keep engines, weights, TensorRT, settings, and game records in place.',
+        ),
+        '日本語': (
+            'Windows portable 版に分かりやすい小型更新パスを追加しました。`core-update` はアプリ本体だけを置き換え、エンジン、重み、JCEF、readboard、Java runtime、ユーザーデータを再同梱しません。',
+            '既存の Windows portable ユーザーは、通常更新では `windows64.core-update.zip` を優先してください。アプリを閉じて既存フォルダへ展開すれば、エンジン、重み、TensorRT、設定、棋譜は保持されます。',
+        ),
+        '한국어': (
+            'Windows portable 빌드에 더 명확한 소형 업데이트 경로를 추가했습니다. `core-update` 는 앱 핵심만 교체하고 엔진, 가중치, JCEF, readboard, Java runtime, 사용자 데이터를 다시 묶지 않습니다.',
+            '기존 Windows portable 사용자는 일반 업데이트에서 `windows64.core-update.zip` 을 우선 사용하세요. 앱을 닫고 기존 폴더에 덮어 풀면 엔진, 가중치, TensorRT, 설정, 기보가 유지됩니다.',
+        ),
+        'ภาษาไทย': (
+            'Windows portable มีทางอัปเดตเล็กที่ชัดเจนขึ้น: `core-update` เปลี่ยนเฉพาะ app core และไม่แพ็ก engine, weight, JCEF, readboard, Java runtime หรือ user data ซ้ำ',
+            'ผู้ใช้ Windows portable เดิมควรใช้ `windows64.core-update.zip` สำหรับอัปเดตทั่วไป: ปิดแอปแล้วแตกไฟล์ทับโฟลเดอร์เดิม โดย engine, weight, TensorRT, settings และ game records จะยังอยู่',
+        ),
+    }
+    for section in sections:
+        language = str(section['language'])
+        update_note, before_note = notes_by_language.get(language, notes_by_language['English'])
+        updates = section['updates']
+        before = section['before']
+        assert isinstance(updates, dict)
+        assert isinstance(before, dict)
+        updates['items'] = [item for item in updates['items'] if item != update_note]
+        before['items'] = [item for item in before['items'] if item != before_note]
+
+
 def add_nvidia50_download_rows(
     sections: list[dict[str, object]],
     assets_cn: dict[str, str],
@@ -4128,7 +4166,7 @@ def build_release_notes(asset_map: dict[str, str | None], bundle: dict[str, str]
     if release_tag == 'next-2026-06-18.1':
         return build_next_2026_06_18_1_notes(asset_map, bundle, repo, release_tag)
     if release_tag == 'next-2026-06-20.1':
-        return build_next_2026_06_20_1_notes(asset_map, bundle, repo, release_tag)
+        return build_next_2026_06_20_1_clean_notes(asset_map, bundle, repo, release_tag)
 
     assets_cn = {
         key: format_asset(asset_map[key], repo, release_tag)
@@ -6816,6 +6854,222 @@ def build_next_2026_06_20_1_notes(
     for anchor, extra in why_additions.items():
         notes = notes.replace(anchor, anchor + extra)
     return notes
+
+
+def build_next_2026_06_20_1_clean_notes(
+    asset_map: dict[str, str | None],
+    bundle: dict[str, str],
+    repo: str,
+    release_tag: str | None,
+) -> str:
+    assets_cn = {key: format_asset(asset_map[key], repo, release_tag) for key in asset_map}
+    assets = {key: format_asset_en(asset_map[key], repo, release_tag) for key in asset_map}
+    katago_version = bundle['katago_version']
+    model_source = bundle['model_source']
+    blocks = [
+        {
+            'language': '中文',
+            'labels': 'zh',
+            'intro': '这一版聚焦棋谱加载后的胜率曲线响应速度。野狐、腾讯、共享棋谱和弈客 SGF 打开后，曲线应该更快进入可用状态，不再把上一盘棋的排队任务带到当前棋谱里。',
+            'updates_heading': '本版主要更新',
+            'updates': [
+                '加载野狐、腾讯、共享棋谱和弈客 SGF 后，胜率曲线启动更快；启用自动快速分析时会预热专用 KataGo 分析引擎，连续看谱减少重复冷启动等待。',
+                '打开新棋谱前会清理旧的快速分析队列，避免上一盘棋的排队任务拖慢当前棋谱。',
+                '加固胜率图命中判断和同步诊断路径处理，减少复杂路径或特殊文件名带来的异常。',
+                '多语言 README 补充官方网站入口，用户从 GitHub 文档可以更直接找到项目主页。',
+            ],
+            'before_heading': '下载前先看这几句',
+            'before': [
+                f'主推荐整合包继续内置 KataGo `{katago_version}` 和默认权重 `{model_source}`。',
+                f'Windows 普通用户优先下载 {assets_cn["windows_opencl_portable"]}，这是 OpenCL 推荐免安装版。',
+                f'NVIDIA 显卡用户可下载 {assets_cn["windows_nvidia_portable"]}；RTX 5070/5080/5090 用户优先看 RTX 50 CUDA 版。',
+                f'已经在用 Windows 免安装版的用户，日常升级优先下载 {assets_cn["windows_core_update"]} 覆盖到旧目录，权重、引擎和用户数据不会重复下载。',
+            ],
+            'download_heading': '下载建议',
+            'download_headers': ('你的电脑', '直接下载这个'),
+            'why_heading': '这一版为什么值得更新',
+            'why': [
+                '如果你经常打开野狐、腾讯、弈客或共享棋谱，这一版能减少等待胜率曲线补齐时的卡顿感。',
+                '这一版只写本次实际变化，不再重复上一版布局、棋力评估和打包体系等旧内容。',
+                '发布流程继续保留 GitHub Actions 打包校验和真实资产生成的 release notes。',
+            ],
+            'contact_heading': '交流',
+            'contact': ['QQ 群：`299419120`'],
+        },
+        {
+            'language': '繁體中文',
+            'labels': 'zh_hant',
+            'intro': '這一版聚焦棋譜載入後的勝率曲線反應速度。野狐、騰訊、共享棋譜和弈客 SGF 打開後，曲線應該更快進入可用狀態，不再把上一盤棋的排隊任務帶到目前棋譜裡。',
+            'updates_heading': '本版主要更新',
+            'updates': [
+                '載入野狐、騰訊、共享棋譜和弈客 SGF 後，勝率曲線啟動更快；啟用自動快速分析時會預熱專用 KataGo 分析引擎，連續看譜可減少重複冷啟動等待。',
+                '開啟新棋譜前會清理舊的快速分析佇列，避免上一盤棋的排隊任務拖慢目前棋譜。',
+                '加固勝率圖命中判斷和同步診斷路徑處理，減少複雜路徑或特殊檔名造成的異常。',
+                '多語言 README 補充官方網站入口，使用者從 GitHub 文件可以更直接找到專案首頁。',
+            ],
+            'before_heading': '下載前先看這幾句',
+            'before': [
+                f'主推薦整合包繼續內建 KataGo `{katago_version}` 和預設權重 `{model_source}`。',
+                f'Windows 一般使用者優先下載 {assets_cn["windows_opencl_portable"]}，這是 OpenCL 推薦免安裝版。',
+                f'NVIDIA 顯示卡使用者可下載 {assets_cn["windows_nvidia_portable"]}；RTX 5070/5080/5090 使用者優先看 RTX 50 CUDA 版。',
+                f'已經在用 Windows 免安裝版的使用者，日常升級優先下載 {assets_cn["windows_core_update"]} 覆蓋到舊目錄，權重、引擎和使用者資料不會重複下載。',
+            ],
+            'download_heading': '下載建議',
+            'download_headers': ('你的電腦', '直接下載這個'),
+            'why_heading': '這一版為什麼值得更新',
+            'why': [
+                '如果你經常打開野狐、騰訊、弈客或共享棋譜，這一版能減少等待勝率曲線補齊時的卡頓感。',
+                '這一版只寫本次實際變化，不再重複上一版版面、棋力評估和打包體系等舊內容。',
+                '發布流程繼續保留 GitHub Actions 打包校驗和真實資產生成的 release notes。',
+            ],
+            'contact_heading': '交流',
+            'contact': ['QQ 群：`299419120`'],
+        },
+        {
+            'language': 'English',
+            'labels': 'en',
+            'intro': 'This release focuses on winrate-curve responsiveness after loading kifu. Fox, Tencent, shared-kifu, and Yike SGF records should become useful faster, without stale quick-analysis work from the previous game slowing down the current one.',
+            'updates_heading': 'Release Highlights',
+            'updates': [
+                'Winrate curves now start faster after loading Fox, Tencent, shared-kifu, and Yike SGF records. When automatic quick analysis is enabled, a dedicated KataGo analysis engine is prewarmed to reduce repeated cold starts during consecutive reviews.',
+                'Opening a new kifu now clears stale queued quick-analysis work before starting the current game.',
+                'Winrate-graph hit detection and sync-diagnostics path handling were hardened for complex paths and special filenames.',
+                'The multilingual README files now link the official website so users can reach the project homepage more directly from GitHub.',
+            ],
+            'before_heading': 'Read Before Downloading',
+            'before': [
+                f'The recommended bundles still include KataGo `{katago_version}` and the default model `{model_source}`.',
+                f'Most Windows users should start with {assets["windows_opencl_portable"]}, the recommended OpenCL portable build.',
+                f'NVIDIA users can choose {assets["windows_nvidia_portable"]}; RTX 5070/5080/5090 users should also consider the RTX 50 CUDA build.',
+                f'Existing Windows portable users can usually upgrade with {assets["windows_core_update"]} by extracting it over the old folder, without redownloading weights, engines, or user data.',
+            ],
+            'download_heading': 'Download Guide',
+            'download_headers': ('Your computer', 'Download this'),
+            'why_heading': 'Why Update',
+            'why': [
+                'If you often open Fox, Tencent, Yike, or shared kifu records, this build reduces the wait before the winrate curve becomes useful.',
+                'These notes describe only this release instead of repeating older layout, strength-estimation, and packaging changes.',
+                'The release flow still uses GitHub Actions packaging checks and release notes generated from real uploaded assets.',
+            ],
+            'contact_heading': 'Contact',
+            'contact': ['QQ group: `299419120`'],
+        },
+        {
+            'language': '日本語',
+            'labels': 'ja',
+            'intro': 'このリリースは、棋譜読み込み後の勝率曲線の反応速度に焦点を当てています。野狐、Tencent、共有棋譜、弈客 SGF を開いた後、前の棋譜のクイック分析キューに引きずられず、より早く曲線が使える状態になります。',
+            'updates_heading': '本版主要更新',
+            'updates': [
+                '野狐、Tencent、共有棋譜、弈客 SGF を読み込んだ後の勝率曲線の立ち上がりを高速化しました。自動クイック分析が有効な場合は専用 KataGo 分析エンジンを事前に温め、連続レビューでの cold start 待ちを減らします。',
+                '新しい棋譜を開く前に古いクイック分析キューを整理し、前の棋譜の待ち行列が現在の棋譜を遅らせないようにしました。',
+                '勝率グラフのヒット判定と同期診断のパス処理を強化し、複雑なパスや特殊なファイル名での例外を減らしました。',
+                '多言語 README に公式サイトへのリンクを追加し、GitHub からプロジェクトホームへ移動しやすくしました。',
+            ],
+            'before_heading': 'ダウンロード前に',
+            'before': [
+                f'推奨バンドルには引き続き KataGo `{katago_version}` と既定モデル `{model_source}` が含まれます。',
+                f'Windows の多くのユーザーは、OpenCL 推奨ポータブル版 {assets["windows_opencl_portable"]} から試してください。',
+                f'NVIDIA ユーザーは {assets["windows_nvidia_portable"]} を選べます。RTX 5070/5080/5090 は RTX 50 CUDA 版も確認してください。',
+                f'既存の Windows portable 版ユーザーは、通常 {assets["windows_core_update"]} を旧フォルダへ上書きするだけで更新でき、重み、エンジン、ユーザーデータを再取得する必要はありません。',
+            ],
+            'download_heading': 'ダウンロード案内',
+            'download_headers': ('環境', 'ダウンロード'),
+            'why_heading': '更新する理由',
+            'why': [
+                '野狐、Tencent、弈客、共有棋譜をよく開く場合、勝率曲線が使えるようになるまでの待ち時間を減らせます。',
+                'この説明は今回の実際の変更だけを書き、過去のレイアウト、棋力評価、パッケージ変更を繰り返しません。',
+                'リリースフローは引き続き GitHub Actions のパッケージ検証と、実アップロード済み asset からの release notes 生成を使います。',
+            ],
+            'contact_heading': '交流',
+            'contact': ['QQ group: `299419120`'],
+        },
+        {
+            'language': '한국어',
+            'labels': 'ko',
+            'intro': '이번 릴리스는 기보를 불러온 뒤 승률 곡선이 더 빨리 쓸 수 있게 되는 데 초점을 맞췄습니다. Fox, Tencent, shared kifu, Yike SGF 를 열 때 이전 기보의 quick-analysis queue 가 현재 기보를 늦추지 않도록 정리합니다.',
+            'updates_heading': '주요 업데이트',
+            'updates': [
+                'Fox, Tencent, shared kifu, Yike SGF 를 불러온 뒤 승률 곡선이 더 빨리 시작됩니다. 자동 quick analysis 가 켜져 있으면 전용 KataGo analysis engine 을 미리 예열해 연속 리뷰에서 반복 cold start 를 줄입니다.',
+                '새 기보를 열기 전에 오래된 quick-analysis queue 를 정리해 이전 기보의 대기 작업이 현재 기보를 늦추지 않게 했습니다.',
+                'Winrate graph hit detection 과 sync diagnostics path handling 을 보강해 복잡한 경로나 특수 파일명에서의 예외 가능성을 줄였습니다.',
+                '다국어 README 에 official website 링크를 추가해 GitHub 문서에서 프로젝트 홈페이지로 더 쉽게 이동할 수 있습니다.',
+            ],
+            'before_heading': '다운로드 전 확인',
+            'before': [
+                f'추천 bundle 은 계속 KataGo `{katago_version}` 와 기본 모델 `{model_source}` 를 포함합니다.',
+                f'대부분의 Windows 사용자는 OpenCL 권장 portable 빌드 {assets["windows_opencl_portable"]} 부터 사용해 보세요.',
+                f'NVIDIA 사용자는 {assets["windows_nvidia_portable"]} 를 선택할 수 있습니다. RTX 5070/5080/5090 사용자는 RTX 50 CUDA 빌드도 확인해 주세요.',
+                f'기존 Windows portable 사용자는 보통 {assets["windows_core_update"]} 를 기존 폴더에 덮어쓰면 되고, weight, engine, user data 를 다시 받을 필요가 없습니다.',
+            ],
+            'download_heading': '다운로드 안내',
+            'download_headers': ('사용 환경', '다운로드'),
+            'why_heading': '업데이트할 이유',
+            'why': [
+                'Fox, Tencent, Yike, shared kifu 를 자주 여는 경우 승률 곡선을 기다리는 시간이 줄어듭니다.',
+                '이번 설명은 이번 릴리스의 실제 변경만 다루며, 이전 layout, strength-estimation, packaging 변경을 반복하지 않습니다.',
+                '릴리스 흐름은 계속 GitHub Actions packaging check 와 실제 업로드 asset 기반 release notes 생성을 사용합니다.',
+            ],
+            'contact_heading': 'Contact',
+            'contact': ['QQ group: `299419120`'],
+        },
+        {
+            'language': 'ภาษาไทย',
+            'labels': 'th',
+            'intro': 'รุ่นนี้เน้นให้กราฟ winrate ตอบสนองเร็วขึ้นหลังโหลด kifu จาก Fox, Tencent, shared kifu และ Yike SGF โดยไม่ให้คิว quick-analysis จากเกมก่อนหน้ามาถ่วงเกมปัจจุบัน',
+            'updates_heading': 'รายการอัปเดตหลัก',
+            'updates': [
+                'กราฟ winrate เริ่มทำงานเร็วขึ้นหลังโหลด SGF จาก Fox, Tencent, shared kifu และ Yike เมื่อเปิด automatic quick analysis โปรแกรมจะ prewarm KataGo analysis engine เฉพาะ เพื่อลดการรอ cold start ซ้ำระหว่างเปิดหลาย kifu ต่อเนื่อง',
+                'ก่อนเปิด kifu ใหม่ โปรแกรมจะล้าง quick-analysis queue เก่า เพื่อลดการหน่วงจากงานวิเคราะห์ของเกมก่อนหน้า',
+                'เสริมความเสถียรของ winrate graph hit detection และ sync diagnostics path handling สำหรับ path ซับซ้อนหรือชื่อไฟล์พิเศษ',
+                'README หลายภาษาเพิ่มลิงก์ official website เพื่อให้ผู้ใช้จาก GitHub เข้า project homepage ได้ตรงขึ้น',
+            ],
+            'before_heading': 'อ่านก่อนดาวน์โหลด',
+            'before': [
+                f'แพ็กเกจแนะนำยังรวม KataGo `{katago_version}` และ model เริ่มต้น `{model_source}`',
+                f'ผู้ใช้ Windows ส่วนใหญ่ควรเริ่มจาก {assets["windows_opencl_portable"]} ซึ่งเป็น OpenCL portable build ที่แนะนำ',
+                f'ผู้ใช้ NVIDIA เลือก {assets["windows_nvidia_portable"]} ได้ ส่วน RTX 5070/5080/5090 ควรดู RTX 50 CUDA build ด้วย',
+                f'ผู้ใช้ Windows portable เดิมมักอัปเดตได้ด้วย {assets["windows_core_update"]} โดยแตกไฟล์ทับโฟลเดอร์เก่า ไม่ต้องดาวน์โหลด weight, engine หรือ user data ใหม่',
+            ],
+            'download_heading': 'คำแนะนำดาวน์โหลด',
+            'download_headers': ('คอมพิวเตอร์ของคุณ', 'ดาวน์โหลดไฟล์นี้'),
+            'why_heading': 'ทำไมควรอัปเดต',
+            'why': [
+                'ถ้าคุณเปิด kifu จาก Fox, Tencent, Yike หรือ shared kifu บ่อย รุ่นนี้ช่วยลดเวลารอจนกราฟ winrate ใช้งานได้',
+                'release notes นี้เขียนเฉพาะสิ่งที่เปลี่ยนในรุ่นนี้ ไม่ซ้ำรายละเอียด layout, strength-estimation และ packaging จากรุ่นก่อน',
+                'กระบวนการ release ยังใช้ GitHub Actions ตรวจ package และสร้าง release notes จาก asset ที่อัปโหลดจริง',
+            ],
+            'contact_heading': 'ติดต่อ',
+            'contact': ['QQ group: `299419120`'],
+        },
+    ]
+    sections: list[dict[str, object]] = []
+    for block in blocks:
+        localized_assets = assets_cn if block['labels'] in ('zh', 'zh_hant') else assets
+        sections.append(
+            {
+                'language': block['language'],
+                'intro': block['intro'],
+                'updates': {'heading': block['updates_heading'], 'items': block['updates']},
+                'before': {'heading': block['before_heading'], 'items': block['before']},
+                'download': {
+                    'heading': block['download_heading'],
+                    'headers': block['download_headers'],
+                    'rows': standard_download_rows(
+                        STANDARD_DOWNLOAD_LABELS[block['labels']],
+                        localized_assets,
+                    ),
+                },
+                'why': {'heading': block['why_heading'], 'items': block['why']},
+                'contact': {'heading': block['contact_heading'], 'items': block['contact']},
+            }
+        )
+    add_nvidia50_download_rows(sections, assets_cn, assets)
+    add_tensorrt_split_download_row(sections, assets_cn, assets, asset_map)
+    remove_windows_core_update_auto_notes(sections)
+    validate_release_sections(sections)
+    return release_heading(release_tag) + '\n\n' + '\n\n---\n\n'.join(
+        render_language_section(section) for section in sections
+    ) + '\n'
 
 
 def main() -> int:
