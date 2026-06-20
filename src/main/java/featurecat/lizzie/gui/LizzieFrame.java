@@ -15190,8 +15190,9 @@ public class LizzieFrame extends JFrame {
     private static final Color GRID = new Color(255, 255, 255, 36);
     private static final Color TEXT = new Color(248, 248, 242);
     private static final Color MUTED = new Color(214, 218, 225);
-    private static final Color BLACK_BAR = new Color(255, 104, 111);
-    private static final Color WHITE_BAR = new Color(116, 178, 255);
+    private static final Color BLACK_BAR = new Color(18, 20, 24);
+    private static final Color WHITE_BAR = new Color(244, 244, 236);
+    private static final Color WHITE_BAR_BORDER = new Color(185, 190, 200);
     private final transient PlayerStrengthEstimator.Report report;
 
     private PlayerStrengthPerformanceRankPanel(PlayerStrengthEstimator.Report report) {
@@ -15263,29 +15264,12 @@ public class LizzieFrame extends JFrame {
         int centerX = x + groupWidth * i + groupWidth / 2;
         int blackCount = report.black.moveRankCount(rank);
         int whiteCount = report.white.moveRankCount(rank);
-        int totalCount = report.overall.moveRankCount(rank);
         int blackHeight = countHeight(blackCount, maxCount, height);
         int whiteHeight = countHeight(whiteCount, maxCount, height);
-        g2.setColor(rank.color(Lizzie.config.useMorandiColors));
-        g2.fillRoundRect(
-            centerX - barWidth / 2,
-            baseline - countHeight(totalCount, maxCount, height),
-            barWidth,
-            countHeight(totalCount, maxCount, height),
-            8,
-            8);
-        g2.setColor(BLACK_BAR);
-        g2.fillRoundRect(
-            centerX - barWidth - 5, baseline - blackHeight, barWidth, blackHeight, 8, 8);
-        g2.setColor(WHITE_BAR);
-        g2.fillRoundRect(centerX + 5, baseline - whiteHeight, barWidth, whiteHeight, 8, 8);
-        g2.setColor(TEXT);
-        drawCenteredString(
-            g2,
-            String.valueOf(totalCount),
-            centerX - groupWidth / 2,
-            centerX + groupWidth / 2,
-            y - 6);
+        drawRankBar(g2, centerX - barWidth - 4, baseline, barWidth, blackHeight, BLACK_BAR, null);
+        drawRankBar(g2, centerX + 4, baseline, barWidth, whiteHeight, WHITE_BAR, WHITE_BAR_BORDER);
+        drawCountLabel(g2, String.valueOf(blackCount), centerX - barWidth - 4, y - 6, barWidth);
+        drawCountLabel(g2, String.valueOf(whiteCount), centerX + 4, y - 6, barWidth);
         g2.setColor(MUTED);
         String label = Lizzie.resourceBundle.getString(rank.nameKey());
         label = playerStrengthEllipsize(label, g2.getFontMetrics(), groupWidth - 8);
@@ -15298,12 +15282,6 @@ public class LizzieFrame extends JFrame {
       g2.setFont(new Font(Config.sysDefaultFontName, Font.BOLD, Config.frameFontSize + 1));
       drawLegend(g2, x, y, BLACK_BAR, Lizzie.resourceBundle.getString("Menu.Black"));
       drawLegend(g2, x + 78, y, WHITE_BAR, Lizzie.resourceBundle.getString("Menu.White"));
-      drawLegend(
-          g2,
-          x + 156,
-          y,
-          MoveRankDefinition.Rank.GOOD.color(Lizzie.config.useMorandiColors),
-          Lizzie.resourceBundle.getString("PlayerStrengthEstimate.performance.total"));
       String goodRate =
           Lizzie.resourceBundle.getString("PlayerStrengthEstimate.goodMoveRate")
               + " "
@@ -15318,6 +15296,10 @@ public class LizzieFrame extends JFrame {
     private void drawLegend(Graphics2D g2, int x, int y, Color color, String text) {
       g2.setColor(color);
       g2.fillRoundRect(x, y - 10, 18, 10, 5, 5);
+      if (WHITE_BAR.equals(color)) {
+        g2.setColor(WHITE_BAR_BORDER);
+        g2.drawRoundRect(x, y - 10, 18, 10, 5, 5);
+      }
       g2.setColor(PlayerStrengthDashboardRoot.TEXT);
       g2.drawString(text, x + 24, y);
     }
@@ -15327,7 +15309,6 @@ public class LizzieFrame extends JFrame {
       for (MoveRankDefinition.Rank rank : ranks) {
         maxCount = Math.max(maxCount, report.black.moveRankCount(rank));
         maxCount = Math.max(maxCount, report.white.moveRankCount(rank));
-        maxCount = Math.max(maxCount, report.overall.moveRankCount(rank));
       }
       return maxCount;
     }
@@ -15337,6 +15318,25 @@ public class LizzieFrame extends JFrame {
         return 0;
       }
       return Math.max(3, (int) Math.round(chartHeight * count / (double) maxCount));
+    }
+
+    private void drawRankBar(
+        Graphics2D g2, int x, int baseline, int width, int height, Color fill, Color border) {
+      if (height <= 0) {
+        return;
+      }
+      g2.setColor(fill);
+      g2.fillRoundRect(x, baseline - height, width, height, 8, 8);
+      if (border != null) {
+        g2.setColor(border);
+        g2.drawRoundRect(x, baseline - height, width, height, 8, 8);
+      }
+    }
+
+    private void drawCountLabel(Graphics2D g2, String text, int x, int y, int width) {
+      g2.setColor(TEXT);
+      int textWidth = g2.getFontMetrics().stringWidth(text);
+      g2.drawString(text, x + Math.max(0, (width - textWidth) / 2), y);
     }
 
     private void drawCenteredString(Graphics2D g2, String text, int x1, int x2, int y) {
