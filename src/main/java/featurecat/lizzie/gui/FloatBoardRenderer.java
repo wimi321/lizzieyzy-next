@@ -784,8 +784,8 @@ public class FloatBoardRenderer {
     // List<String>
     if (!Lizzie.config.noRefreshOnMouseMove
         || (!isShowingBranch || !mouseOverCoords.equals(suggestedMove.get().coordinate))) {
-      variation = suggestedMove.get().variation;
-      pvVistis = suggestedMove.get().pvVisits;
+      variation = branchPreviewList(suggestedMove.get().variation);
+      pvVistis = branchPreviewList(suggestedMove.get().pvVisits);
     }
     if (variation == null) {
       return;
@@ -904,6 +904,11 @@ public class FloatBoardRenderer {
 
   private boolean hasRenderedBranchImages() {
     return branchStonesImage != emptyImage && branchStonesShadowImage != emptyImage;
+  }
+
+  private List<String> branchPreviewList(List<String> source) {
+    if (source == null) return null;
+    return Lizzie.config.noRefreshOnMouseMove ? new ArrayList<String>(source) : source;
   }
 
   private void invalidateBranchImageCache() {
