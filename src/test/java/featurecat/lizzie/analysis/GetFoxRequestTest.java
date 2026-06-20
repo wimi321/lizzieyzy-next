@@ -49,6 +49,8 @@ class GetFoxRequestTest {
     String normalizedPayload = (String) normalizeMethod.invoke(request, payload);
     String normalizedSgf = new JSONObject(normalizedPayload).getString("chess");
 
+    assertTrue(normalizedSgf.contains("KM[0]"), normalizedSgf);
+    assertFalse(normalizedSgf.contains("KM[375]"), normalizedSgf);
     assertTrue(normalizedSgf.contains("HA[4]"), normalizedSgf);
     assertTrue(normalizedSgf.contains("AB[pd][pq][dd][dp]"), normalizedSgf);
     assertFalse(normalizedSgf.contains("HA[0]"), normalizedSgf);
