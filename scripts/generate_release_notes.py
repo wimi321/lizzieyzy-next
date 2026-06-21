@@ -42,6 +42,9 @@ TENSORRT_SPLIT_ASSET_KEYS = (
     'windows_tensorrt_split_sha256',
     'windows_tensorrt_split_manifest',
 )
+TENSORRT_SPLIT_DOWNLOAD_ASSET_KEYS = (
+    'windows_tensorrt_split_parts',
+)
 
 RELEASE_LANGUAGES = ('中文', '繁體中文', 'English', '日本語', '한국어', 'ภาษาไทย')
 SECTION_KEYS = ('updates', 'before', 'download', 'why', 'contact')
@@ -472,7 +475,7 @@ def add_tensorrt_split_download_row(
     assets: dict[str, str],
     asset_map: dict[str, str | None],
 ) -> None:
-    if not any(asset_map.get(key) for key in TENSORRT_SPLIT_ASSET_KEYS):
+    if not any(asset_map.get(key) for key in TENSORRT_SPLIT_DOWNLOAD_ASSET_KEYS):
         return
     labels_by_language = {
         '中文': '高级可选：TensorRT 预装分卷包说明（需下载全部 .7z.00N）',
@@ -499,10 +502,10 @@ def add_tensorrt_split_download_row(
         assert isinstance(rows, list)
         split_assets = '<br>'.join(
             localized_assets[key]
-            for key in TENSORRT_SPLIT_ASSET_KEYS
+            for key in TENSORRT_SPLIT_DOWNLOAD_ASSET_KEYS
             if asset_map.get(key)
         )
-        if not any('tensorrt.portable.README' in str(row[1]) for row in rows if isinstance(row, tuple)):
+        if not any('tensorrt.portable.7z.' in str(row[1]) for row in rows if isinstance(row, tuple)):
             insert_at = min(8, len(rows))
             rows.insert(
                 insert_at,
