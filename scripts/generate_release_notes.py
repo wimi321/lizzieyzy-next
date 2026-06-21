@@ -4172,6 +4172,8 @@ def build_release_notes(asset_map: dict[str, str | None], bundle: dict[str, str]
         return build_next_2026_06_20_1_clean_notes(asset_map, bundle, repo, release_tag)
     if release_tag == 'next-2026-06-21.1':
         return build_next_2026_06_21_1_notes(asset_map, bundle, repo, release_tag)
+    if release_tag == 'next-2026-06-21.2':
+        return build_next_2026_06_21_2_notes(asset_map, bundle, repo, release_tag)
 
     assets_cn = {
         key: format_asset(asset_map[key], repo, release_tag)
@@ -7174,6 +7176,109 @@ def build_next_2026_06_21_1_notes(
             '이번 설명은 이전 릴리스 이후 새로 merge 된 변경에 집중하며, 더 오래된 릴리스 내용은 반복하지 않습니다.',
         'release notes นี้เขียนเฉพาะสิ่งที่เปลี่ยนในรุ่นนี้ ไม่ซ้ำรายละเอียด layout, strength-estimation และ packaging จากรุ่นก่อน':
             'release notes นี้เน้นการเปลี่ยนแปลงที่ merge หลัง release ก่อนหน้า และไม่ซ้ำรายละเอียดของ release ที่เก่ากว่า',
+    }
+    for old, new in replacements.items():
+        notes = notes.replace(old, new)
+    return notes
+
+
+def build_next_2026_06_21_2_notes(
+    asset_map: dict[str, str | None],
+    bundle: dict[str, str],
+    repo: str,
+    release_tag: str | None,
+) -> str:
+    notes = build_next_2026_06_21_1_notes(asset_map, bundle, repo, release_tag)
+    replacements = {
+        '这一版实际包含上一版之后合并的多项用户反馈修复：棋力评估、悬停变化图、Windows 小更新、野狐让子贴目、显示菜单、非 19 路棋盘和 TensorRT 发布链接都做了整理。':
+            '这一版是棋力评估小修复版，重点处理 @semanym 贡献的 PR #77：吻合度页面的命中图和鼠标悬停说明现在会正确区分一选、好手和局面复杂度。',
+        '棋力评估修复好手率显示，统一落子等级定义，并新增、打磨“发挥水准分布图”。':
+            '修复棋力评估“吻合度”页：好手行 hover 不再误用一选/好手状态，一选命中会同时显示在一选行和好手行。',
+        '修复“鼠标悬停显示变化图但不刷新”设置不生效的问题，并整理显示菜单，把布局模式收进子菜单、支持再次点击主菜单收回。':
+            '鼠标悬停提示中的局面复杂度改为 0-100 的用户可读数值，详细数据里的段位标签更紧凑。',
+        'Windows 小更新包会刷新启动器配置，覆盖升级后标题栏和启动入口能同步到新版本。':
+            '补充 `LizzieFrameRegressionTest` 回归测试，覆盖一选/好手命中标签和复杂度显示。',
+        '修复野狐让子棋谱贴目读取与归一化；同时非 19 路棋盘切换引擎/模型不再清空棋局，KataGo 一键设置底部按钮和 TensorRT 分卷链接也做了整理。':
+            '感谢 @semanym 提交并推进这个修复。',
+        '如果你会下 9 路、13 路等非 19 路棋盘，或者经常用棋力评估、野狐棋谱、小更新包和悬停变化图，这一版都值得更新。':
+            '如果你会用棋力评估复盘，这一版能让“吻合度”命中图和鼠标悬停说明更可信、更容易理解。',
+        '这一版只写上一版之后新合并的改动，不再重复更早版本已经介绍过的内容。':
+            '这一版只写上一版之后新合并的 PR #77，不再重复更早版本已经介绍过的内容。',
+
+        '這一版實際包含上一版之後合併的多項使用者回報修復：棋力評估、滑鼠懸停變化圖、Windows 小更新、野狐讓子貼目、顯示選單、非 19 路棋盤和 TensorRT 發布連結都做了整理。':
+            '這一版是棋力評估小修復版，重點處理 @semanym 貢獻的 PR #77：吻合度頁面的命中圖和滑鼠懸停說明現在會正確區分一選、好手和局面複雜度。',
+        '棋力評估修復好手率顯示，統一落子等級定義，並新增、打磨「發揮水準分布圖」。':
+            '修復棋力評估「吻合度」頁：好手列 hover 不再誤用一選/好手狀態，一選命中會同時顯示在一選列和好手列。',
+        '修復「滑鼠懸停顯示變化圖但不刷新」設定不生效的問題，並整理顯示選單，把布局模式收進子選單、支援再次點擊主選單收回。':
+            '滑鼠懸停提示中的局面複雜度改為 0-100 的使用者可讀數值，詳細資料裡的段位標籤更緊湊。',
+        'Windows 小更新包會刷新啟動器設定，覆蓋升級後標題列和啟動入口能同步到新版本。':
+            '補充 `LizzieFrameRegressionTest` 回歸測試，覆蓋一選/好手命中標籤和複雜度顯示。',
+        '修復野狐讓子棋譜貼目讀取與正規化；同時非 19 路棋盤切換引擎/模型不再清空棋局，KataGo 一鍵設定底部按鈕和 TensorRT 分卷連結也做了整理。':
+            '感謝 @semanym 提交並推進這個修復。',
+        '如果你會下 9 路、13 路等非 19 路棋盤，或常用棋力評估、野狐棋譜、小更新包和懸停變化圖，這一版都值得更新。':
+            '如果你會用棋力評估復盤，這一版能讓「吻合度」命中圖和滑鼠懸停說明更可信、更容易理解。',
+        '這一版只寫上一版之後新合併的改動，不再重複更早版本已經介紹過的內容。':
+            '這一版只寫上一版之後新合併的 PR #77，不再重複更早版本已經介紹過的內容。',
+
+        'This release actually includes several user-facing fixes merged after the previous build: strength evaluation, hover variation previews, Windows core updates, Fox handicap komi, display-menu layout, non-19 boards, and TensorRT release links.':
+            'This is a focused strength-evaluation fix release for PR #77 by @semanym: the match chart and hover labels now distinguish first-choice hits, good moves, and position complexity correctly.',
+        'Player strength evaluation now fixes the displayed good-move rate, unifies move-rank definitions, and adds a polished performance-distribution chart.':
+            'The Player Strength “Match” tab no longer mixes first-choice and good-move hover states; first-choice hits are shown consistently in both the first-choice and good-move rows.',
+        'The “hover variation preview without refreshing” option works again, and the Display menu was compacted by moving layout modes into a submenu while allowing the main menu to close on a second click.':
+            'Hover tooltips now show position complexity as a user-readable 0-100 value, and detailed-data rank labels are more compact.',
+        'Windows core updates now refresh launcher configuration so the title bar and launcher entry show the new version after an overwrite upgrade.':
+            '`LizzieFrameRegressionTest` now covers first-choice/good-move hit labels and complexity display regressions.',
+        'Fox handicap SGF komi loading and normalization were fixed; non-19 board engine/model switches no longer clear the game, and KataGo Auto Setup bottom buttons plus TensorRT split links were polished.':
+            'Thanks to @semanym for contributing and driving this fix.',
+        'If you use 9x9, 13x13, strength evaluation, Fox records, core updates, or hover variation previews, this build is worth taking.':
+            'If you use Player Strength evaluation during reviews, this build makes the match chart and hover explanations more trustworthy and easier to read.',
+        'These notes describe the changes newly merged after the previous release, without repeating older release highlights.':
+            'These notes only cover PR #77, newly merged after the previous release, without repeating older release highlights.',
+
+        'このリリースには、前回ビルド後に merged された複数のユーザー向け修正が含まれます。棋力評価、hover variation preview、Windows core update、Fox handicap komi、表示メニュー、19 路以外の盤、TensorRT release links を整理しました。':
+            'このリリースは、@semanym による PR #77 を中心とした棋力評価の小修正版です。吻合度ページの命中図と hover 表示が、一選、好手、局面複雑度を正しく区別するようになりました。',
+        '棋力評価では good move rate の表示を修正し、move-rank 定義を統一し、performance distribution chart を追加・調整しました。':
+            '棋力評価の「吻合度」タブで、good move 行の hover が一選/好手状態を取り違えないよう修正しました。一選命中は一選行と好手行の両方に一貫して表示されます。',
+        '「hover variation preview を表示しても更新しない」設定が再び効くようになり、表示メニューでは layout mode を submenu にまとめ、main menu を再クリックで閉じられるようにしました。':
+            'hover tooltip の局面複雑度を 0-100 の読みやすい値にし、詳細データの段位ラベルもよりコンパクトにしました。',
+        'Windows core update が launcher configuration を更新し、上書き更新後も title bar と launcher entry が新しい version を表示します。':
+            '`LizzieFrameRegressionTest` に、一選/好手命中ラベルと複雑度表示の回帰テストを追加しました。',
+        'Fox handicap SGF の komi 読み込みと normalization を修正しました。19 路以外の盤で engine/model を切り替えても棋局を消さず、KataGo 自動設定の下部ボタンと TensorRT 分割リンクも整理しました。':
+            'この修正を貢献して進めてくれた @semanym に感謝します。',
+        '9 路、13 路、棋力評価、Fox 棋譜、core update、hover variation preview を使う場合、この build は更新する価値があります。':
+            '棋力評価をレビューに使う場合、この build で吻合度の命中図と hover 説明がより信頼しやすく、読みやすくなります。',
+        'この説明は前回リリース後に新しく merged された変更に絞り、より古いリリース内容は繰り返しません。':
+            'この説明は前回リリース後に新しく merged された PR #77 に絞り、より古いリリース内容は繰り返しません。',
+
+        '이번 릴리스에는 이전 빌드 이후 merge 된 여러 사용자 피드백 수정이 포함됩니다. strength evaluation, hover variation preview, Windows core update, Fox handicap komi, display menu, 19줄이 아닌 보드, TensorRT release link 를 정리했습니다.':
+            '이번 릴리스는 @semanym 이 기여한 PR #77 중심의 strength evaluation 소규모 수정 버전입니다. Match chart 와 hover label 이 first-choice hit, good move, position complexity 를 올바르게 구분합니다.',
+        'Player strength evaluation 에서 표시되는 good-move rate 를 수정하고, move-rank 정의를 통일했으며, performance-distribution chart 를 추가하고 다듬었습니다.':
+            'Player Strength “Match” 탭에서 good-move 행 hover 가 first-choice/good-move 상태를 잘못 섞지 않도록 수정했습니다. first-choice hit 는 first-choice 행과 good-move 행 모두에 일관되게 표시됩니다.',
+        '“hover variation preview without refreshing” 옵션이 다시 동작하며, Display menu 는 layout mode 를 submenu 로 정리하고 main menu 를 다시 클릭해 닫을 수 있게 했습니다.':
+            'Hover tooltip 의 position complexity 를 사용자가 읽기 쉬운 0-100 값으로 표시하고, detailed-data rank label 도 더 compact 하게 정리했습니다.',
+        'Windows core update 가 launcher configuration 을 갱신해 overwrite upgrade 뒤 title bar 와 launcher entry 가 새 version 을 표시합니다.':
+            '`LizzieFrameRegressionTest` 가 first-choice/good-move hit label 과 complexity display 회귀를 함께 커버합니다.',
+        'Fox handicap SGF 의 komi loading 과 normalization 을 수정했습니다. 19줄이 아닌 보드에서 engine/model switch 가 대국을 지우지 않고, KataGo Auto Setup 하단 버튼과 TensorRT split link 도 정리했습니다.':
+            '이 수정에 기여하고 진행해 준 @semanym 에게 감사합니다.',
+        '9x9, 13x13, strength evaluation, Fox records, core update, hover variation preview 를 쓰는 사용자에게 업데이트 가치가 큰 build 입니다.':
+            'Player Strength evaluation 을 리뷰에 사용한다면, 이번 build 에서 match chart 와 hover explanation 이 더 믿기 쉽고 읽기 쉬워집니다.',
+        '이번 설명은 이전 릴리스 이후 새로 merge 된 변경에 집중하며, 더 오래된 릴리스 내용은 반복하지 않습니다.':
+            '이번 설명은 이전 릴리스 이후 새로 merge 된 PR #77 에 집중하며, 더 오래된 릴리스 내용은 반복하지 않습니다.',
+
+        'รุ่นนี้รวมการแก้ไขจาก PR หลายรายการหลังรุ่นก่อนหน้า: strength evaluation, hover variation preview, Windows core update, Fox handicap komi, display menu, board ที่ไม่ใช่ 19x19 และลิงก์ TensorRT release':
+            'รุ่นนี้เป็น release แก้ไขเฉพาะส่วน strength evaluation จาก PR #77 ของ @semanym: match chart และ hover label แยก first-choice hit, good move และ position complexity ได้ถูกต้องขึ้น',
+        'Player strength evaluation แก้การแสดง good-move rate, รวมมาตรฐาน move-rank และเพิ่ม performance-distribution chart ที่ดูเรียบร้อยขึ้น':
+            'แท็บ “Match” ใน Player Strength ไม่สลับสถานะ hover ระหว่าง first-choice และ good-move อีกต่อไป โดย first-choice hit จะแสดงสอดคล้องกันทั้งแถว first-choice และ good-move',
+        'ตัวเลือก “hover variation preview without refreshing” กลับมาทำงานถูกต้อง และ Display menu ถูกจัดให้สั้นลงโดยย้าย layout mode ไปไว้ใน submenu พร้อมปิด main menu ได้เมื่อคลิกซ้ำ':
+            'Hover tooltip แสดง position complexity เป็นค่า 0-100 ที่อ่านง่ายขึ้น และ label ระดับใน detailed data กระชับขึ้น',
+        'Windows core update จะ refresh launcher configuration ทำให้ title bar และ launcher entry แสดง version ใหม่หลัง overwrite upgrade':
+            '`LizzieFrameRegressionTest` ครอบคลุม regression ของ first-choice/good-move hit label และ complexity display แล้ว',
+        'แก้การโหลดและ normalize komi ของ Fox handicap SGF; การเปลี่ยน engine/model บน board ที่ไม่ใช่ 19x19 จะไม่ล้างเกม และปรับปุ่มล่างของ KataGo Auto Setup กับลิงก์ TensorRT split ให้เรียบร้อยขึ้น':
+            'ขอบคุณ @semanym ที่ช่วยส่งและผลักดันการแก้ไขนี้',
+        'ถ้าคุณใช้ 9x9, 13x13, strength evaluation, Fox records, core update หรือ hover variation preview รุ่นนี้คุ้มค่าที่จะอัปเดต':
+            'ถ้าคุณใช้ Player Strength evaluation ตอน review เกม รุ่นนี้ทำให้ match chart และ hover explanation น่าเชื่อถือและอ่านง่ายขึ้น',
+        'release notes นี้เน้นการเปลี่ยนแปลงที่ merge หลัง release ก่อนหน้า และไม่ซ้ำรายละเอียดของ release ที่เก่ากว่า':
+            'release notes นี้เน้น PR #77 ที่ merge หลัง release ก่อนหน้า และไม่ซ้ำรายละเอียดของ release ที่เก่ากว่า',
     }
     for old, new in replacements.items():
         notes = notes.replace(old, new)
