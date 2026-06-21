@@ -566,7 +566,7 @@ public class Leelaz {
               sendCommand("list_commands");
               if (!(Lizzie.frame.isPlayingAgainstLeelaz || Lizzie.frame.isAnaPlayingAgainstLeelaz))
                 sendCommand("komi " + komi);
-              boardSize(width, height);
+              boardSizeForEngine(width, height);
               if (initialCommand != null && !initialCommand.equals("")) {
                 String[] initialCommands = initialCommand.trim().split(";");
                 for (String command : initialCommands) {
@@ -594,7 +594,7 @@ public class Leelaz {
               sendCommand("name");
               sendCommand("version");
               sendCommand("list_commands");
-              boardSize(width, height);
+              boardSizeForEngine(width, height);
               if (!(Lizzie.frame.isPlayingAgainstLeelaz || Lizzie.frame.isAnaPlayingAgainstLeelaz))
                 sendCommand("komi " + komi);
               if (initialCommand != null && !initialCommand.equals("")) {
@@ -2267,11 +2267,19 @@ public class Leelaz {
   }
 
   public void boardSize(int width, int height) {
+    boardSize(width, height, true);
+  }
+
+  public void boardSizeForEngine(int width, int height) {
+    boardSize(width, height, false);
+  }
+
+  private void boardSize(int width, int height, boolean reopenMainBoard) {
     if (width != height) sendCommand("rectangular_boardsize " + width + " " + height);
     else sendCommand("boardsize " + width);
     this.width = width;
     this.height = height;
-    Lizzie.board.reopen(width, height);
+    if (reopenMainBoard) Lizzie.board.reopen(width, height);
     if (firstLoad) {
       Lizzie.board.getHistory().getGameInfo().setKomi(komi);
       Lizzie.board.getHistory().getGameInfo();
