@@ -17,6 +17,7 @@ import java.util.ArrayList;
 import java.util.List;
 import javax.swing.JButton;
 import javax.swing.JMenu;
+import javax.swing.JMenuBar;
 import javax.swing.JPanel;
 import javax.swing.JPopupMenu;
 import javax.swing.border.EmptyBorder;
@@ -26,11 +27,14 @@ import javax.swing.event.PopupMenuEvent;
 import javax.swing.event.PopupMenuListener;
 
 public class WindowMenuStrip extends JPanel {
-  private final Menu sourceMenuBar;
+  private static final long SAME_MENU_REOPEN_SUPPRESS_MS = 250L;
+  private final JMenuBar sourceMenuBar;
   private final List<MenuButton> menuButtons = new ArrayList<>();
   private static final String POPUP_LISTENER_KEY = "lizzie.window-menu-strip.popup-listener";
+  private JMenu recentlyHiddenMenu;
+  private long recentlyHiddenAtMillis;
 
-  public WindowMenuStrip(Menu sourceMenuBar) {
+  public WindowMenuStrip(JMenuBar sourceMenuBar) {
     this.sourceMenuBar = sourceMenuBar;
     setLayout(new FlowLayout(FlowLayout.LEFT, 8, 4));
     setOpaque(false);
@@ -133,6 +137,33 @@ public class WindowMenuStrip extends JPanel {
     repaint();
   }
 
+  private void closeMenu(JMenu menu) {
+    if (menu == null || menu.getPopupMenu() == null) {
+      return;
+    }
+    menu.getPopupMenu().setVisible(false);
+    notifyMenuDeselected(menu);
+    repaint();
+  }
+
+  private boolean shouldTreatPressAsCloseRequest(JMenu menu) {
+    if (menu == null || menu.getPopupMenu() == null) {
+      return false;
+    }
+    if (menu.getPopupMenu().isVisible()) {
+      return true;
+    }
+    long elapsed = System.currentTimeMillis() - recentlyHiddenAtMillis;
+    return recentlyHiddenMenu == menu
+        && elapsed >= 0L
+        && elapsed <= SAME_MENU_REOPEN_SUPPRESS_MS;
+  }
+
+  private void rememberPopupHidden(JMenu menu) {
+    recentlyHiddenMenu = menu;
+    recentlyHiddenAtMillis = System.currentTimeMillis();
+  }
+
   private void ensurePopupListener(JMenu menu) {
     if (menu == null || menu.getPopupMenu() == null) {
       return;
@@ -150,12 +181,14 @@ public class WindowMenuStrip extends JPanel {
 
           @Override
           public void popupMenuWillBecomeInvisible(PopupMenuEvent e) {
+            rememberPopupHidden(menu);
             notifyMenuDeselected(menu);
             repaint();
           }
 
           @Override
           public void popupMenuCanceled(PopupMenuEvent e) {
+            rememberPopupHidden(menu);
             notifyMenuDeselected(menu);
             repaint();
           }
@@ -179,6 +212,7 @@ public class WindowMenuStrip extends JPanel {
 
   private final class MenuButton extends JButton {
     private final JMenu menu;
+    private boolean suppressNextAction;
 
     private MenuButton(JMenu menu) {
       super(menu.getText());
@@ -194,9 +228,25 @@ public class WindowMenuStrip extends JPanel {
       setRolloverEnabled(true);
       setMargin(new Insets(0, 0, 0, 0));
       setBorder(new EmptyBorder(5, 10, 5, 10));
-      addActionListener(e -> openMenu(this, true));
+      addActionListener(
+          e -> {
+            if (suppressNextAction) {
+              suppressNextAction = false;
+              return;
+            }
+            openMenu(this, true);
+          });
       addMouseListener(
           new MouseAdapter() {
+            @Override
+            public void mousePressed(MouseEvent e) {
+              if (shouldTreatPressAsCloseRequest(menu)) {
+                suppressNextAction = true;
+                closeMenu(menu);
+                e.consume();
+              }
+            }
+
             @Override
             public void mouseEntered(MouseEvent e) {
               if (hasVisiblePopup() && !menu.getPopupMenu().isVisible()) {

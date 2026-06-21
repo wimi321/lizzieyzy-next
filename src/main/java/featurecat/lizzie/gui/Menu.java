@@ -519,6 +519,8 @@ public class Menu extends JMenuBar {
         });
     viewMenu.add(coordsMenu);
 
+    final JFontMenu appearanceMenu = new JFontMenu(resourceBundle.getString("Menu.appearanceTheme"));
+
     final JFontMenu boardStyleMenu =
         new JFontMenu(resourceBundle.getString("Menu.boardStyle"));
     final JFontCheckBoxMenuItem boardStyleJapanese =
@@ -545,7 +547,7 @@ public class Menu extends JMenuBar {
         });
     boardStyleMenu.add(boardStyleJapanese);
     boardStyleMenu.add(boardStyleChineseClassic);
-    viewMenu.add(boardStyleMenu);
+    appearanceMenu.add(boardStyleMenu);
 
     final JFontMenu moveMenu =
         new JFontMenu(resourceBundle.getString("Menu.moveMenu")); // ("手数(M)");
@@ -659,9 +661,10 @@ public class Menu extends JMenuBar {
     viewMenu.add(deletePersistFile);
     viewMenu.addSeparator();
 
-    final JFontCheckBoxMenuItem toggleAppleStyle = new JFontCheckBoxMenuItem("Apple 风格 UI");
+    final JFontCheckBoxMenuItem toggleAppleStyle =
+        new JFontCheckBoxMenuItem(resourceBundle.getString("Menu.appleStyleUi"));
     final JFontCheckBoxMenuItem toggleClassicColors =
-        new JFontCheckBoxMenuItem("经典配色 (原版 lizzieyzy)");
+        new JFontCheckBoxMenuItem(resourceBundle.getString("Menu.classicColorTheme"));
     toggleAppleStyle.setSelected(Lizzie.config.isAppleStyle);
     toggleAppleStyle.addActionListener(
         e -> {
@@ -676,9 +679,9 @@ public class Menu extends JMenuBar {
           Lizzie.resetLookAndFeel();
           AppleStyleSupport.refreshMainChrome();
           Lizzie.frame.refreshPanelColors();
-          Utils.showMsgNoModal("部分图标颜色需重启应用后生效");
+          Utils.showMsgNoModal(resourceBundle.getString("Menu.restartRequiredForIcons"));
         });
-    viewMenu.add(toggleAppleStyle);
+    appearanceMenu.add(toggleAppleStyle);
 
     toggleClassicColors.setSelected(!Lizzie.config.useMorandiColors);
     toggleClassicColors.addActionListener(
@@ -699,18 +702,24 @@ public class Menu extends JMenuBar {
             LizzieFrame.toolbar.refreshComponentStyles();
             LizzieFrame.toolbar.repaint();
           }
-          Utils.showMsgNoModal("部分图标颜色需重启应用后生效");
+          Utils.showMsgNoModal(resourceBundle.getString("Menu.restartRequiredForIcons"));
         });
-    viewMenu.add(toggleClassicColors);
+    appearanceMenu.add(toggleClassicColors);
 
-    final JFontMenuItem setCustomBoard = new JFontMenuItem("设置自定义棋盘背景...");
+    appearanceMenu.addSeparator();
+
+    final JFontMenuItem setCustomBoard =
+        new JFontMenuItem(resourceBundle.getString("Menu.setCustomBoardBackground"));
     setCustomBoard.addActionListener(
         e -> chooseAndApplyCustomImage(Theme.CUSTOM_BOARD_IMAGE_KEY, true));
-    viewMenu.add(setCustomBoard);
+    appearanceMenu.add(setCustomBoard);
 
-    final JFontMenuItem clearCustomBoard = new JFontMenuItem("恢复默认棋盘背景");
+    final JFontMenuItem clearCustomBoard =
+        new JFontMenuItem(resourceBundle.getString("Menu.clearCustomBoardBackground"));
     clearCustomBoard.addActionListener(e -> clearCustomImage(Theme.CUSTOM_BOARD_IMAGE_KEY, true));
-    viewMenu.add(clearCustomBoard);
+    appearanceMenu.add(clearCustomBoard);
+
+    viewMenu.add(appearanceMenu);
     viewMenu.addSeparator();
 
     final JFontCheckBoxMenuItem noMoveNum =
@@ -1755,10 +1764,14 @@ public class Menu extends JMenuBar {
     viewMenu.add(kataSettings);
     viewMenu.addSeparator();
 
+    final JFontMenu layoutModeMenu =
+        new JFontMenu(resourceBundle.getString("Menu.layoutMode")); // 布局模式
+    viewMenu.add(layoutModeMenu);
+
     final JFontMenuItem defaultView =
         new JFontMenuItem(
             resourceBundle.getString("Menu.defaultView")); // 默认模式(Alt+1) Default mode (Alt+1)
-    viewMenu.add(defaultView);
+    layoutModeMenu.add(defaultView);
     defaultView.addActionListener(
         new ActionListener() {
           @Override
@@ -1769,7 +1782,7 @@ public class Menu extends JMenuBar {
 
     final JFontMenuItem classicView =
         new JFontMenuItem(resourceBundle.getString("Menu.classicView")); // ("经典模式(Alt+2)");
-    viewMenu.add(classicView);
+    layoutModeMenu.add(classicView);
     classicView.addActionListener(
         new ActionListener() {
           @Override
@@ -1779,7 +1792,7 @@ public class Menu extends JMenuBar {
         });
     final JFontMenuItem minView =
         new JFontMenuItem(resourceBundle.getString("Menu.minView")); // ("精简模式(Alt+3)");
-    viewMenu.add(minView);
+    layoutModeMenu.add(minView);
     minView.addActionListener(
         new ActionListener() {
           @Override
@@ -1787,11 +1800,11 @@ public class Menu extends JMenuBar {
             Lizzie.frame.minMode();
           }
         });
-    viewMenu.addSeparator();
+    layoutModeMenu.addSeparator();
 
     final JFontCheckBoxMenuItem extraMode3 =
         new JFontCheckBoxMenuItem(resourceBundle.getString("Menu.extraMode3")); // ("思考模式(Alt+4)");
-    viewMenu.add(extraMode3);
+    layoutModeMenu.add(extraMode3);
 
     extraMode3.addActionListener(
         new ActionListener() {
@@ -1804,7 +1817,7 @@ public class Menu extends JMenuBar {
 
     final JFontCheckBoxMenuItem extraMode1 =
         new JFontCheckBoxMenuItem(resourceBundle.getString("Menu.extraMode1")); // ("四方图模式(Alt+5)");
-    viewMenu.add(extraMode1);
+    layoutModeMenu.add(extraMode1);
 
     extraMode1.addActionListener(
         new ActionListener() {
@@ -1817,7 +1830,7 @@ public class Menu extends JMenuBar {
 
     final JFontCheckBoxMenuItem extraMode2 =
         new JFontCheckBoxMenuItem(resourceBundle.getString("Menu.extraMode2")); // ("双引擎模式(Alt+6)");
-    viewMenu.add(extraMode2);
+    layoutModeMenu.add(extraMode2);
 
     extraMode2.addActionListener(
         new ActionListener() {
