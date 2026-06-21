@@ -460,6 +460,19 @@ public class GetFoxRequest {
       rootProperties.add(
           new SgfProperty("HA", Arrays.asList(String.valueOf(handicapStones.size()))));
       rootProperties.add(new SgfProperty("AB", coordinates));
+      setSingleValueRootProperty(rootProperties, "KM", "0");
+    }
+
+    private void setSingleValueRootProperty(
+        List<SgfProperty> rootProperties, String name, String value) {
+      for (int i = 0; i < rootProperties.size(); i++) {
+        SgfProperty property = rootProperties.get(i);
+        if (name.equals(property.name)) {
+          rootProperties.set(i, new SgfProperty(name, Arrays.asList(value)));
+          return;
+        }
+      }
+      rootProperties.add(new SgfProperty(name, Arrays.asList(value)));
     }
 
     private String buildSgf(List<SgfProperty> rootProperties, List<SgfMove> moves) {
