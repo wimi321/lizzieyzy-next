@@ -190,7 +190,7 @@ public class KataGoAutoSetupDialog extends JDialog {
 
     JPanel body = new JPanel(new BorderLayout(14, 0));
     body.setOpaque(false);
-    body.setBorder(BorderFactory.createEmptyBorder(12, 16, 12, 16));
+    body.setBorder(BorderFactory.createEmptyBorder(10, 14, 10, 14));
     body.add(createSidebarPanel(), BorderLayout.WEST);
 
     detailCards.setOpaque(false);
@@ -200,6 +200,9 @@ public class KataGoAutoSetupDialog extends JDialog {
     detailCards.add(createAccelerationSection(), CARD_ACCELERATION);
     JScrollPane detailScrollPane = new JScrollPane(detailCards);
     detailScrollPane.setBorder(null);
+    detailScrollPane.setHorizontalScrollBarPolicy(JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
+    detailScrollPane.setVerticalScrollBarPolicy(JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED);
+    detailScrollPane.getVerticalScrollBar().setUnitIncrement(14);
     detailScrollPane.getViewport().setOpaque(false);
     detailScrollPane.setOpaque(false);
     body.add(detailScrollPane, BorderLayout.CENTER);
@@ -280,16 +283,16 @@ public class KataGoAutoSetupDialog extends JDialog {
     }
     button.setFocusPainted(false);
     button.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
-    button.setMargin(new Insets(0, 12, 0, 12));
+    button.setMargin(new Insets(0, 10, 0, 10));
     AppleStyleSupport.installButtonStyle(button);
     Dimension preferred = button.getPreferredSize();
-    button.setPreferredSize(new Dimension(Math.max(preferred.width, primary ? 112 : 96), 36));
+    button.setPreferredSize(new Dimension(Math.max(preferred.width, primary ? 106 : 90), 32));
   }
 
   private JPanel createHeaderPanel() {
-    JPanel header = new JPanel(new BorderLayout(12, 4));
+    JPanel header = new JPanel(new BorderLayout(12, 3));
     header.setBackground(SIDEBAR_BG);
-    header.setBorder(BorderFactory.createEmptyBorder(14, 18, 14, 18));
+    header.setBorder(BorderFactory.createEmptyBorder(10, 16, 10, 16));
 
     JFontLabel title = new JFontLabel(text("AutoSetup.title"));
     title.setForeground(Color.WHITE);
@@ -316,7 +319,7 @@ public class KataGoAutoSetupDialog extends JDialog {
     modeBadge.setBorder(
         BorderFactory.createCompoundBorder(
             BorderFactory.createLineBorder(new Color(103, 130, 121)),
-            BorderFactory.createEmptyBorder(6, 12, 6, 12)));
+            BorderFactory.createEmptyBorder(5, 10, 5, 10)));
     header.add(modeBadge, BorderLayout.EAST);
     return header;
   }
@@ -325,7 +328,7 @@ public class KataGoAutoSetupDialog extends JDialog {
     JPanel sidebar = new JPanel(new BorderLayout(0, 12));
     sidebar.setPreferredSize(new Dimension(180, 10));
     sidebar.setBackground(SIDEBAR_BG);
-    sidebar.setBorder(BorderFactory.createEmptyBorder(14, 12, 14, 12));
+    sidebar.setBorder(BorderFactory.createEmptyBorder(12, 12, 12, 12));
 
     JFontLabel sidebarTitle = new JFontLabel(text("AutoSetup.sidebarTitle"));
     sidebarTitle.setForeground(SIDEBAR_TEXT);
@@ -341,7 +344,7 @@ public class KataGoAutoSetupDialog extends JDialog {
         });
     sectionNav.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
     sectionNav.setSelectedIndex(0);
-    sectionNav.setFixedCellHeight(40);
+    sectionNav.setFixedCellHeight(36);
     sectionNav.setBackground(SIDEBAR_BG);
     sectionNav.setForeground(SIDEBAR_TEXT);
     sectionNav.setBorder(null);
@@ -355,7 +358,7 @@ public class KataGoAutoSetupDialog extends JDialog {
                     super.getListCellRendererComponent(
                         list, value, index, isSelected, cellHasFocus);
             label.setOpaque(true);
-            label.setBorder(BorderFactory.createEmptyBorder(8, 10, 8, 10));
+            label.setBorder(BorderFactory.createEmptyBorder(7, 10, 7, 10));
             label.setForeground(SIDEBAR_TEXT);
             label.setBackground(isSelected ? SIDEBAR_SELECTED_BG : SIDEBAR_BG);
             label.setFont(label.getFont().deriveFont(isSelected ? Font.BOLD : Font.PLAIN));
@@ -509,13 +512,13 @@ public class KataGoAutoSetupDialog extends JDialog {
 
   private JPanel createSectionCard(
       String title, String subtitle, JComponent content, JComponent actions) {
-    JPanel card = new JPanel(new BorderLayout(0, 14));
+    JPanel card = new JPanel(new BorderLayout(0, 10));
     card.setOpaque(true);
     card.setBackground(CARD_BG);
     card.setBorder(
         BorderFactory.createCompoundBorder(
             BorderFactory.createLineBorder(new Color(224, 217, 203)),
-            BorderFactory.createEmptyBorder(16, 16, 16, 16)));
+            BorderFactory.createEmptyBorder(12, 14, 12, 14)));
 
     JPanel heading = new JPanel(new BorderLayout(0, 4));
     heading.setOpaque(false);
@@ -529,13 +532,16 @@ public class KataGoAutoSetupDialog extends JDialog {
     heading.add(subtitleLabel, BorderLayout.CENTER);
     card.add(heading, BorderLayout.NORTH);
 
+    JPanel contentStack = new JPanel(new BorderLayout(0, 10));
+    contentStack.setOpaque(false);
+    contentStack.add(content, BorderLayout.NORTH);
+    if (actions != null) {
+      contentStack.add(actions, BorderLayout.CENTER);
+    }
     JPanel contentWrap = new JPanel(new BorderLayout());
     contentWrap.setOpaque(false);
-    contentWrap.add(content, BorderLayout.NORTH);
+    contentWrap.add(contentStack, BorderLayout.NORTH);
     card.add(contentWrap, BorderLayout.CENTER);
-    if (actions != null) {
-      card.add(actions, BorderLayout.SOUTH);
-    }
     return card;
   }
 
@@ -550,12 +556,12 @@ public class KataGoAutoSetupDialog extends JDialog {
     gbc.gridx = 0;
     gbc.gridy = 0;
     gbc.anchor = GridBagConstraints.NORTHWEST;
-    gbc.insets = new Insets(0, 0, 10, 10);
+    gbc.insets = new Insets(0, 0, 7, 10);
     return gbc;
   }
 
   private JPanel createActionBar(int alignment, JComponent... actions) {
-    JPanel actionBar = new JPanel(new FlowLayout(alignment, 8, 0));
+    JPanel actionBar = new JPanel(new FlowLayout(alignment, 6, 0));
     actionBar.setOpaque(false);
     for (JComponent action : actions) {
       actionBar.add(action);
@@ -564,7 +570,7 @@ public class KataGoAutoSetupDialog extends JDialog {
   }
 
   private JPanel createInlineActionRow(JComponent mainComponent, JComponent... actions) {
-    JPanel row = new JPanel(new BorderLayout(8, 0));
+    JPanel row = new JPanel(new BorderLayout(6, 0));
     row.setOpaque(false);
     row.add(mainComponent, BorderLayout.CENTER);
     row.add(createActionBar(FlowLayout.RIGHT, actions), BorderLayout.EAST);
@@ -611,7 +617,7 @@ public class KataGoAutoSetupDialog extends JDialog {
 
   private void constrainValueComponent(JComponent valueComponent) {
     Dimension preferred = valueComponent.getPreferredSize();
-    int height = Math.max(preferred.height, 32);
+    int height = Math.max(preferred.height, 30);
     if (Boolean.TRUE.equals(valueComponent.getClientProperty(WRAPPING_TEXT_KEY))
         && valueComponent instanceof JTextArea) {
       height =
