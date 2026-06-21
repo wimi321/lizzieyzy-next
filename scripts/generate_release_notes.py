@@ -314,12 +314,12 @@ def add_windows_core_update_download_row(
         'ภาษาไทย': 'ผู้ใช้ Windows portable เดิมควรใช้ `windows64.core-update.zip` สำหรับอัปเดตทั่วไป: ปิดแอปแล้วแตกไฟล์ทับโฟลเดอร์เดิม โดย engine, weight, TensorRT, settings และ game records จะยังอยู่',
     }
     update_note_by_language = {
-        '中文': 'Windows 免安装版新增更清晰的小更新路径：`core-update` 只替换主程序，不重复打包引擎、权重、JCEF、readboard、Java runtime 或用户数据。',
-        '繁體中文': 'Windows 免安裝版新增更清楚的小更新路徑：`core-update` 只替換主程式，不重複打包引擎、權重、JCEF、readboard、Java runtime 或使用者資料。',
-        'English': 'Windows portable builds now have a clearer small-update path: `core-update` replaces only the app core and does not rebundle engines, weights, JCEF, readboard, Java runtime, or user data.',
-        '日本語': 'Windows portable 版に分かりやすい小型更新パスを追加しました。`core-update` はアプリ本体だけを置き換え、エンジン、重み、JCEF、readboard、Java runtime、ユーザーデータを再同梱しません。',
-        '한국어': 'Windows portable 빌드에 더 명확한 소형 업데이트 경로를 추가했습니다. `core-update` 는 앱 핵심만 교체하고 엔진, 가중치, JCEF, readboard, Java runtime, 사용자 데이터를 다시 묶지 않습니다.',
-        'ภาษาไทย': 'Windows portable มีทางอัปเดตเล็กที่ชัดเจนขึ้น: `core-update` เปลี่ยนเฉพาะ app core และไม่แพ็ก engine, weight, JCEF, readboard, Java runtime หรือ user data ซ้ำ',
+        '中文': 'Windows 免安装版新增更清晰的小更新路径：`core-update` 只替换主程序和启动器配置，不重复打包引擎、权重、JCEF、readboard、Java runtime 或用户数据。',
+        '繁體中文': 'Windows 免安裝版新增更清楚的小更新路徑：`core-update` 只替換主程式和啟動器設定，不重複打包引擎、權重、JCEF、readboard、Java runtime 或使用者資料。',
+        'English': 'Windows portable builds now have a clearer small-update path: `core-update` replaces only the app core and launcher configuration, without rebundling engines, weights, JCEF, readboard, Java runtime, or user data.',
+        '日本語': 'Windows portable 版に分かりやすい小型更新パスを追加しました。`core-update` はアプリ本体とランチャー設定だけを置き換え、エンジン、重み、JCEF、readboard、Java runtime、ユーザーデータを再同梱しません。',
+        '한국어': 'Windows portable 빌드에 더 명확한 소형 업데이트 경로를 추가했습니다. `core-update` 는 앱 핵심과 launcher configuration 만 교체하고 엔진, 가중치, JCEF, readboard, Java runtime, 사용자 데이터를 다시 묶지 않습니다.',
+        'ภาษาไทย': 'Windows portable มีทางอัปเดตเล็กที่ชัดเจนขึ้น: `core-update` เปลี่ยนเฉพาะ app core และ launcher configuration และไม่แพ็ก engine, weight, JCEF, readboard, Java runtime หรือ user data ซ้ำ',
     }
     for section in sections:
         language = str(section['language'])
@@ -362,27 +362,27 @@ def add_windows_core_update_download_row(
 def remove_windows_core_update_auto_notes(sections: list[dict[str, object]]) -> None:
     notes_by_language = {
         '中文': (
-            'Windows 免安装版新增更清晰的小更新路径：`core-update` 只替换主程序，不重复打包引擎、权重、JCEF、readboard、Java runtime 或用户数据。',
+            'Windows 免安装版新增更清晰的小更新路径：`core-update` 只替换主程序和启动器配置，不重复打包引擎、权重、JCEF、readboard、Java runtime 或用户数据。',
             '已经有 Windows 免安装版的老用户，日常升级优先下载 `windows64.core-update.zip`，关闭软件后解压到旧目录覆盖；引擎、权重、TensorRT、设置和棋谱都会保留。',
         ),
         '繁體中文': (
-            'Windows 免安裝版新增更清楚的小更新路徑：`core-update` 只替換主程式，不重複打包引擎、權重、JCEF、readboard、Java runtime 或使用者資料。',
+            'Windows 免安裝版新增更清楚的小更新路徑：`core-update` 只替換主程式和啟動器設定，不重複打包引擎、權重、JCEF、readboard、Java runtime 或使用者資料。',
             '已經有 Windows 免安裝版的舊使用者，日常升級優先下載 `windows64.core-update.zip`，關閉軟體後解壓到舊目錄覆蓋；引擎、權重、TensorRT、設定和棋譜都會保留。',
         ),
         'English': (
-            'Windows portable builds now have a clearer small-update path: `core-update` replaces only the app core and does not rebundle engines, weights, JCEF, readboard, Java runtime, or user data.',
+            'Windows portable builds now have a clearer small-update path: `core-update` replaces only the app core and launcher configuration, without rebundling engines, weights, JCEF, readboard, Java runtime, or user data.',
             'Existing Windows portable users should prefer `windows64.core-update.zip` for routine updates: close the app, extract it over the old folder, and keep engines, weights, TensorRT, settings, and game records in place.',
         ),
         '日本語': (
-            'Windows portable 版に分かりやすい小型更新パスを追加しました。`core-update` はアプリ本体だけを置き換え、エンジン、重み、JCEF、readboard、Java runtime、ユーザーデータを再同梱しません。',
+            'Windows portable 版に分かりやすい小型更新パスを追加しました。`core-update` はアプリ本体とランチャー設定だけを置き換え、エンジン、重み、JCEF、readboard、Java runtime、ユーザーデータを再同梱しません。',
             '既存の Windows portable ユーザーは、通常更新では `windows64.core-update.zip` を優先してください。アプリを閉じて既存フォルダへ展開すれば、エンジン、重み、TensorRT、設定、棋譜は保持されます。',
         ),
         '한국어': (
-            'Windows portable 빌드에 더 명확한 소형 업데이트 경로를 추가했습니다. `core-update` 는 앱 핵심만 교체하고 엔진, 가중치, JCEF, readboard, Java runtime, 사용자 데이터를 다시 묶지 않습니다.',
+            'Windows portable 빌드에 더 명확한 소형 업데이트 경로를 추가했습니다. `core-update` 는 앱 핵심과 launcher configuration 만 교체하고 엔진, 가중치, JCEF, readboard, Java runtime, 사용자 데이터를 다시 묶지 않습니다.',
             '기존 Windows portable 사용자는 일반 업데이트에서 `windows64.core-update.zip` 을 우선 사용하세요. 앱을 닫고 기존 폴더에 덮어 풀면 엔진, 가중치, TensorRT, 설정, 기보가 유지됩니다.',
         ),
         'ภาษาไทย': (
-            'Windows portable มีทางอัปเดตเล็กที่ชัดเจนขึ้น: `core-update` เปลี่ยนเฉพาะ app core และไม่แพ็ก engine, weight, JCEF, readboard, Java runtime หรือ user data ซ้ำ',
+            'Windows portable มีทางอัปเดตเล็กที่ชัดเจนขึ้น: `core-update` เปลี่ยนเฉพาะ app core และ launcher configuration และไม่แพ็ก engine, weight, JCEF, readboard, Java runtime หรือ user data ซ้ำ',
             'ผู้ใช้ Windows portable เดิมควรใช้ `windows64.core-update.zip` สำหรับอัปเดตทั่วไป: ปิดแอปแล้วแตกไฟล์ทับโฟลเดอร์เดิม โดย engine, weight, TensorRT, settings และ game records จะยังอยู่',
         ),
     }
@@ -6750,32 +6750,32 @@ def build_next_2026_06_18_1_notes(
 ) -> str:
     notes = build_next_2026_06_16_1_notes(asset_map, bundle, repo, release_tag)
     additions = {
-        '- Windows 免安装版新增更清晰的小更新路径：`core-update` 只替换主程序，不重复打包引擎、权重、JCEF、readboard、Java runtime 或用户数据。\n':
+        '- Windows 免安装版新增更清晰的小更新路径：`core-update` 只替换主程序和启动器配置，不重复打包引擎、权重、JCEF、readboard、Java runtime 或用户数据。\n':
             '- 在已有变化图的下一手位置直接落子时，会进入原来的变化分支，不再重复新建一个相同分支。\n'
             '- 粘贴 SGF 时增加保护和兼容回归测试，避免误覆盖当前棋盘，也让加载后的引擎同步更稳。\n'
             '- 新增中式棋盘风格，棋盘外侧坐标会按中式显示；同时合入上游 SGF、着手列表和 UI 维护修复。\n'
             '- 棋力评估主卡改为显示用户能理解的棋力区间，评分规则改成短标签，避免 `1.0段` 这类内部值和省略号误导用户。\n',
-        '- Windows 免安裝版新增更清楚的小更新路徑：`core-update` 只替換主程式，不重複打包引擎、權重、JCEF、readboard、Java runtime 或使用者資料。\n':
+        '- Windows 免安裝版新增更清楚的小更新路徑：`core-update` 只替換主程式和啟動器設定，不重複打包引擎、權重、JCEF、readboard、Java runtime 或使用者資料。\n':
             '- 在已有變化圖的下一手位置直接落子時，會進入原來的變化分支，不再重複新建一個相同分支。\n'
             '- 貼上 SGF 時增加保護和相容回歸測試，避免誤覆蓋目前棋盤，也讓載入後的引擎同步更穩。\n'
             '- 新增中式棋盤風格，棋盤外側座標會按中式顯示；同時合入上游 SGF、著手列表和 UI 維護修復。\n'
             '- 棋力評估主卡改為顯示使用者能理解的棋力區間，評分規則改成短標籤，避免 `1.0段` 這類內部值和省略號誤導使用者。\n',
-        '- Windows portable builds now have a clearer small-update path: `core-update` replaces only the app core and does not rebundle engines, weights, JCEF, readboard, Java runtime, or user data.\n':
+        '- Windows portable builds now have a clearer small-update path: `core-update` replaces only the app core and launcher configuration, without rebundling engines, weights, JCEF, readboard, Java runtime, or user data.\n':
             '- Clicking a move that already exists as the next move of a variation now enters that existing branch instead of creating a duplicate branch.\n'
             '- SGF paste now has stronger protection and compatibility regression coverage, reducing accidental board replacement and improving engine sync after load.\n'
             '- Added Chinese classic board style with matching outer coordinates, and folded in upstream SGF, move-list, and UI maintenance fixes.\n'
             '- Player Strength cards now show user-facing strength bands, and the score-scale labels are shorter so internal values such as `1.0 dan` and clipped ellipses no longer confuse users.\n',
-        '- Windows portable 版に分かりやすい小型更新パスを追加しました。`core-update` はアプリ本体だけを置き換え、エンジン、重み、JCEF、readboard、Java runtime、ユーザーデータを再同梱しません。\n':
+        '- Windows portable 版に分かりやすい小型更新パスを追加しました。`core-update` はアプリ本体とランチャー設定だけを置き換え、エンジン、重み、JCEF、readboard、Java runtime、ユーザーデータを再同梱しません。\n':
             '- 既存の変化図にある次の一手を盤面でクリックした場合、同じ分岐を重複作成せず、その既存分岐へ入るようにしました。\n'
             '- SGF 貼り付けに保護と互換性回帰テストを追加し、現在の盤面を誤って置き換えるリスクを減らし、読み込み後のエンジン同期も安定させました。\n'
             '- 中国式の盤面スタイルを追加し、盤外座標も中国式表示に対応しました。あわせて上流の SGF、着手リスト、UI メンテナンス修正を取り込みました。\n'
             '- 棋力評価カードはユーザー向けの棋力区間を表示し、スコア尺度ラベルを短くしました。`1.0段` のような内部値や省略表示で迷わないようにしています。\n',
-        '- Windows portable 빌드에 더 명확한 small-update 경로를 추가했습니다. `core-update` 는 앱 core 만 교체하며 engine, weight, JCEF, readboard, Java runtime, user data 를 다시 포함하지 않습니다.\n':
+        '- Windows portable 빌드에 더 명확한 small-update 경로를 추가했습니다. `core-update` 는 앱 core 와 launcher configuration 만 교체하며 engine, weight, JCEF, readboard, Java runtime, user data 를 다시 포함하지 않습니다.\n':
             '- 이미 존재하는 변화도의 다음 수 위치를 직접 클릭하면 같은 분기를 새로 만들지 않고 기존 변화 분기로 들어갑니다.\n'
             '- SGF 붙여넣기에 보호 로직과 compatibility regression test 를 추가해 현재 보드가 실수로 교체될 위험을 줄이고, 로드 후 engine sync 도 더 안정적으로 만들었습니다.\n'
             '- Chinese classic board style 을 추가하고 바깥 좌표도 중국식으로 표시합니다. 또한 upstream SGF, move-list, UI maintenance fix 를 함께 반영했습니다.\n'
             '- Player Strength 카드는 사용자에게 이해되는 기력 구간을 표시하고 score-scale label 을 짧게 바꿔 `1.0 dan` 같은 내부 값이나 잘린 말줄임표로 혼동하지 않게 했습니다.\n',
-        '- เพิ่มเส้นทางอัปเดตขนาดเล็กที่ชัดเจนขึ้นสำหรับ Windows portable: `core-update` จะเปลี่ยนเฉพาะ app core และไม่ bundle engine, weight, JCEF, readboard, Java runtime หรือ user data ซ้ำ\n':
+        '- เพิ่มเส้นทางอัปเดตขนาดเล็กที่ชัดเจนขึ้นสำหรับ Windows portable: `core-update` จะเปลี่ยนเฉพาะ app core และ launcher configuration และไม่ bundle engine, weight, JCEF, readboard, Java runtime หรือ user data ซ้ำ\n':
             '- เมื่อคลิกจุดเดินที่มีอยู่แล้วเป็นตาถัดไปของ variation โปรแกรมจะเข้า branch เดิมแทนการสร้าง branch ซ้ำ\n'
             '- เพิ่มการป้องกันและ regression test สำหรับการ paste SGF เพื่อลดความเสี่ยงการแทนที่กระดานปัจจุบันโดยไม่ตั้งใจ และทำให้ engine sync หลังโหลดเสถียรขึ้น\n'
             '- เพิ่ม Chinese classic board style พร้อม coordinate รอบกระดานแบบจีน และรวม upstream fix ด้าน SGF, move list และ UI maintenance\n'
