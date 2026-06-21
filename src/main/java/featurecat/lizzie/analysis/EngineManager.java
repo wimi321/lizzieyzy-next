@@ -2017,7 +2017,7 @@ public class EngineManager {
       }
     } else {
       newEng.canRestoreDymPda = false;
-      newEng.boardSize(newEng.width, newEng.height);
+      newEng.boardSizeForEngine(newEng.width, newEng.height);
       newEng.sendCommand("komi " + newEng.komi);
       // newEng.sendCommand("name");
       //  newEng.isCheckingName = true;
@@ -2217,12 +2217,12 @@ public class EngineManager {
         if (!(isEmptyBoard && changeBoard) || !isMain) {
           newEng.width = Board.boardWidth;
           newEng.height = Board.boardHeight;
-          newEng.boardSize(newEng.width, newEng.height);
+          newEng.boardSizeForEngine(newEng.width, newEng.height);
         }
         if (isEmptyBoard && changeOriBoard && isMain) {
           newEng.width = newEng.oriWidth;
           newEng.height = newEng.oriHeight;
-          newEng.boardSize(newEng.width, newEng.height);
+          newEng.boardSizeForEngine(newEng.width, newEng.height);
         }
         newEng.sendCommand("komi " + newEng.komi);
         newEng.isCheckingName = true;

@@ -716,7 +716,7 @@ public class Board {
       boardHeight = height;
       Zobrist.init();
       clear(false);
-      Lizzie.leelaz.boardSize(boardWidth, boardHeight);
+      Lizzie.leelaz.boardSizeForEngine(boardWidth, boardHeight);
       Lizzie.leelaz.ponder();
       forceRefresh = true;
       forceRefresh2 = true;
@@ -1189,7 +1189,7 @@ public class Board {
       return false;
     }
     if (Lizzie.leelaz.width != boardWidth || Lizzie.leelaz.height != boardHeight) {
-      Lizzie.leelaz.boardSize(boardWidth, boardHeight);
+      Lizzie.leelaz.boardSizeForEngine(boardWidth, boardHeight);
     }
     resendMoveToEngine(Lizzie.leelaz, false);
     return true;
@@ -1253,7 +1253,7 @@ public class Board {
       return false;
     }
     if (Lizzie.leelaz.width != boardWidth || Lizzie.leelaz.height != boardHeight) {
-      Lizzie.leelaz.boardSize(boardWidth, boardHeight);
+      Lizzie.leelaz.boardSizeForEngine(boardWidth, boardHeight);
     }
     if (data.isMoveNode() && data.lastMove.isPresent()) {
       int[] lastMove = data.lastMove.get();
