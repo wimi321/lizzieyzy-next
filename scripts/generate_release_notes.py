@@ -7086,82 +7086,94 @@ def build_next_2026_06_21_1_notes(
     notes = build_next_2026_06_20_1_clean_notes(asset_map, bundle, repo, release_tag)
     replacements = {
         '这一版聚焦棋谱加载后的胜率曲线响应速度。野狐、腾讯、共享棋谱和弈客 SGF 打开后，曲线应该更快进入可用状态，不再把上一盘棋的排队任务带到当前棋谱里。':
-            '这一版聚焦用户刚刚反馈的两个细节：非 19 路棋盘切换引擎/模型时不应被重置，KataGo 一键设置也不应该因为底部按钮位置出现多余滚动条。同时清理了 TensorRT 分卷包在发布页里的下载链接。',
+            '这一版实际包含上一版之后合并的多项用户反馈修复：棋力评估、悬停变化图、Windows 小更新、野狐让子贴目、显示菜单、非 19 路棋盘和 TensorRT 发布链接都做了整理。',
         '加载野狐、腾讯、共享棋谱和弈客 SGF 后，胜率曲线启动更快；启用自动快速分析时会预热专用 KataGo 分析引擎，连续看谱减少重复冷启动等待。':
-            '修复非 19 路棋盘切换引擎或模型时，棋盘被重置回 19 路并清空已有棋子的情况。',
+            '棋力评估修复好手率显示，统一落子等级定义，并新增、打磨“发挥水准分布图”。',
         '打开新棋谱前会清理旧的快速分析队列，避免上一盘棋的排队任务拖慢当前棋谱。':
-            '把引擎内部 `boardsize` 同步和用户可见的棋盘重开逻辑拆开，切换引擎只同步引擎，不再误改当前棋局。',
+            '修复“鼠标悬停显示变化图但不刷新”设置不生效的问题，并整理显示菜单，把布局模式收进子菜单、支持再次点击主菜单收回。',
         '加固胜率图命中判断和同步诊断路径处理，减少复杂路径或特殊文件名带来的异常。':
-            '优化 KataGo 一键设置分页布局，底部按钮更靠近当前内容，常规窗口高度下减少不必要滚动条。',
+            'Windows 小更新包会刷新启动器配置，覆盖升级后标题栏和启动入口能同步到新版本。',
         '多语言 README 补充官方网站入口，用户从 GitHub 文档可以更直接找到项目主页。':
-            '清理 TensorRT 高级分卷包下载说明，普通用户只看到必须下载的 `.7z.00N` 分卷，README、校验和 manifest 继续作为隐藏的辅助资产保留。',
+            '修复野狐让子棋谱贴目读取与归一化；同时非 19 路棋盘切换引擎/模型不再清空棋局，KataGo 一键设置底部按钮和 TensorRT 分卷链接也做了整理。',
         '如果你经常打开野狐、腾讯、弈客或共享棋谱，这一版能减少等待胜率曲线补齐时的卡顿感。':
-            '如果你会下 9 路、13 路或其他非 19 路棋盘，这一版可以避免切换引擎/模型时丢棋局。',
+            '如果你会下 9 路、13 路等非 19 路棋盘，或者经常用棋力评估、野狐棋谱、小更新包和悬停变化图，这一版都值得更新。',
 
         '這一版聚焦棋譜載入後的勝率曲線反應速度。野狐、騰訊、共享棋譜和弈客 SGF 打開後，曲線應該更快進入可用狀態，不再把上一盤棋的排隊任務帶到目前棋譜裡。':
-            '這一版聚焦使用者剛回報的兩個細節：非 19 路棋盤切換引擎/模型時不應被重置，KataGo 一鍵設定也不應該因為底部按鈕位置出現多餘捲動條。同時清理了 TensorRT 分卷包在發布頁裡的下載連結。',
+            '這一版實際包含上一版之後合併的多項使用者回報修復：棋力評估、滑鼠懸停變化圖、Windows 小更新、野狐讓子貼目、顯示選單、非 19 路棋盤和 TensorRT 發布連結都做了整理。',
         '載入野狐、騰訊、共享棋譜和弈客 SGF 後，勝率曲線啟動更快；啟用自動快速分析時會預熱專用 KataGo 分析引擎，連續看譜可減少重複冷啟動等待。':
-            '修復非 19 路棋盤切換引擎或模型時，棋盤被重置回 19 路並清空已有棋子的情況。',
+            '棋力評估修復好手率顯示，統一落子等級定義，並新增、打磨「發揮水準分布圖」。',
         '開啟新棋譜前會清理舊的快速分析佇列，避免上一盤棋的排隊任務拖慢目前棋譜。':
-            '把引擎內部 `boardsize` 同步和使用者可見的棋盤重開邏輯拆開，切換引擎只同步引擎，不再誤改目前棋局。',
+            '修復「滑鼠懸停顯示變化圖但不刷新」設定不生效的問題，並整理顯示選單，把布局模式收進子選單、支援再次點擊主選單收回。',
         '加固勝率圖命中判斷和同步診斷路徑處理，減少複雜路徑或特殊檔名造成的異常。':
-            '優化 KataGo 一鍵設定分頁版面，底部按鈕更靠近目前內容，常規視窗高度下減少不必要捲動條。',
+            'Windows 小更新包會刷新啟動器設定，覆蓋升級後標題列和啟動入口能同步到新版本。',
         '多語言 README 補充官方網站入口，使用者從 GitHub 文件可以更直接找到專案首頁。':
-            '清理 TensorRT 進階分卷包下載說明，一般使用者只看到必須下載的 `.7z.00N` 分卷，README、校驗和 manifest 繼續作為隱藏的輔助資產保留。',
+            '修復野狐讓子棋譜貼目讀取與正規化；同時非 19 路棋盤切換引擎/模型不再清空棋局，KataGo 一鍵設定底部按鈕和 TensorRT 分卷連結也做了整理。',
         '如果你經常打開野狐、騰訊、弈客或共享棋譜，這一版能減少等待勝率曲線補齊時的卡頓感。':
-            '如果你會下 9 路、13 路或其他非 19 路棋盤，這一版可以避免切換引擎/模型時丟棋局。',
+            '如果你會下 9 路、13 路等非 19 路棋盤，或常用棋力評估、野狐棋譜、小更新包和懸停變化圖，這一版都值得更新。',
 
         'This release focuses on winrate-curve responsiveness after loading kifu. Fox, Tencent, shared-kifu, and Yike SGF records should become useful faster, without stale quick-analysis work from the previous game slowing down the current one.':
-            'This release focuses on two fresh user-facing fixes: non-19 boards should no longer reset when switching engines or models, and the KataGo Auto Setup pages should avoid unnecessary bottom scrollbars. It also cleans up the TensorRT split-package download links on the release page.',
+            'This release actually includes several user-facing fixes merged after the previous build: strength evaluation, hover variation previews, Windows core updates, Fox handicap komi, display-menu layout, non-19 boards, and TensorRT release links.',
         'Winrate curves now start faster after loading Fox, Tencent, shared-kifu, and Yike SGF records. When automatic quick analysis is enabled, a dedicated KataGo analysis engine is prewarmed to reduce repeated cold starts during consecutive reviews.':
-            'Switching engines or models no longer resets non-19 boards back to 19x19 or clears the stones already on the board.',
+            'Player strength evaluation now fixes the displayed good-move rate, unifies move-rank definitions, and adds a polished performance-distribution chart.',
         'Opening a new kifu now clears stale queued quick-analysis work before starting the current game.':
-            'Engine-only `boardsize` synchronization is now separated from user-visible board reopening, so engine switches synchronize the engine without mutating the current game.',
+            'The “hover variation preview without refreshing” option works again, and the Display menu was compacted by moving layout modes into a submenu while allowing the main menu to close on a second click.',
         'Winrate-graph hit detection and sync-diagnostics path handling were hardened for complex paths and special filenames.':
-            'KataGo Auto Setup tab layout was polished so bottom action buttons sit closer to the current content and avoid unnecessary scrollbars at normal window sizes.',
+            'Windows core updates now refresh launcher configuration so the title bar and launcher entry show the new version after an overwrite upgrade.',
         'The multilingual README files now link the official website so users can reach the project homepage more directly from GitHub.':
-            'TensorRT split-package release links were cleaned up so users only see the required `.7z.00N` volumes, while README, checksum, and manifest assets remain available for verification.',
+            'Fox handicap SGF komi loading and normalization were fixed; non-19 board engine/model switches no longer clear the game, and KataGo Auto Setup bottom buttons plus TensorRT split links were polished.',
         'If you often open Fox, Tencent, Yike, or shared kifu records, this build reduces the wait before the winrate curve becomes useful.':
-            'If you play 9x9, 13x13, or other non-19 board sizes, this build prevents engine/model switching from losing the current game.',
+            'If you use 9x9, 13x13, strength evaluation, Fox records, core updates, or hover variation previews, this build is worth taking.',
 
         'このリリースは、棋譜読み込み後の勝率曲線の反応速度に焦点を当てています。野狐、Tencent、共有棋譜、弈客 SGF を開いた後、前の棋譜のクイック分析キューに引きずられず、より早く曲線が使える状態になります。':
-            'このリリースは、直近のユーザー報告に基づく 2 つの改善に焦点を当てています。19 路以外の盤でエンジン/モデルを切り替えても盤面をリセットしないこと、KataGo 自動設定ページで不要な下部スクロールバーを出さないことです。あわせて TensorRT 分割パッケージのダウンロードリンクも整理しました。',
+            'このリリースには、前回ビルド後に merged された複数のユーザー向け修正が含まれます。棋力評価、hover variation preview、Windows core update、Fox handicap komi、表示メニュー、19 路以外の盤、TensorRT release links を整理しました。',
         '野狐、Tencent、共有棋譜、弈客 SGF を読み込んだ後の勝率曲線の立ち上がりを高速化しました。自動クイック分析が有効な場合は専用 KataGo 分析エンジンを事前に温め、連続レビューでの cold start 待ちを減らします。':
-            '19 路以外の盤でエンジンやモデルを切り替えたとき、盤面が 19 路に戻って石が消える問題を修正しました。',
+            '棋力評価では good move rate の表示を修正し、move-rank 定義を統一し、performance distribution chart を追加・調整しました。',
         '新しい棋譜を開く前に古いクイック分析キューを整理し、前の棋譜の待ち行列が現在の棋譜を遅らせないようにしました。':
-            'エンジン内部の `boardsize` 同期と、ユーザーに見える盤面再作成を分離し、エンジン切り替えで現在の棋譜を誤って変更しないようにしました。',
+            '「hover variation preview を表示しても更新しない」設定が再び効くようになり、表示メニューでは layout mode を submenu にまとめ、main menu を再クリックで閉じられるようにしました。',
         '勝率グラフのヒット判定と同期診断のパス処理を強化し、複雑なパスや特殊なファイル名での例外を減らしました。':
-            'KataGo 自動設定の各タブで、下部ボタンを内容に近づけ、通常のウィンドウサイズで不要なスクロールバーが出にくいようにしました。',
+            'Windows core update が launcher configuration を更新し、上書き更新後も title bar と launcher entry が新しい version を表示します。',
         '多言語 README に公式サイトへのリンクを追加し、GitHub からプロジェクトホームへ移動しやすくしました。':
-            'TensorRT 分割パッケージの release リンクを整理し、ユーザーには必要な `.7z.00N` 分割ファイルだけを表示し、README、checksum、manifest は検証用 asset として残しました。',
+            'Fox handicap SGF の komi 読み込みと normalization を修正しました。19 路以外の盤で engine/model を切り替えても棋局を消さず、KataGo 自動設定の下部ボタンと TensorRT 分割リンクも整理しました。',
         '野狐、Tencent、弈客、共有棋譜をよく開く場合、勝率曲線が使えるようになるまでの待ち時間を減らせます。':
-            '9 路、13 路など 19 路以外の盤を使う場合、エンジン/モデル切り替えで現在の棋局を失わないための重要な更新です。',
+            '9 路、13 路、棋力評価、Fox 棋譜、core update、hover variation preview を使う場合、この build は更新する価値があります。',
 
         '이번 릴리스는 기보를 불러온 뒤 승률 곡선이 더 빨리 쓸 수 있게 되는 데 초점을 맞췄습니다. Fox, Tencent, shared kifu, Yike SGF 를 열 때 이전 기보의 quick-analysis queue 가 현재 기보를 늦추지 않도록 정리합니다.':
-            '이번 릴리스는 최근 사용자 피드백 두 가지에 초점을 맞췄습니다. 19줄이 아닌 보드에서 engine/model 을 바꿔도 보드가 초기화되지 않아야 하고, KataGo Auto Setup 페이지에는 불필요한 하단 scrollbar 가 보이지 않아야 합니다. TensorRT split package 다운로드 링크도 정리했습니다.',
+            '이번 릴리스에는 이전 빌드 이후 merge 된 여러 사용자 피드백 수정이 포함됩니다. strength evaluation, hover variation preview, Windows core update, Fox handicap komi, display menu, 19줄이 아닌 보드, TensorRT release link 를 정리했습니다.',
         'Fox, Tencent, shared kifu, Yike SGF 를 불러온 뒤 승률 곡선이 더 빨리 시작됩니다. 자동 quick analysis 가 켜져 있으면 전용 KataGo analysis engine 을 미리 예열해 연속 리뷰에서 반복 cold start 를 줄입니다.':
-            '19줄이 아닌 보드에서 engine 또는 model 을 바꿀 때 보드가 19x19 로 돌아가거나 기존 돌이 사라지는 문제를 수정했습니다.',
+            'Player strength evaluation 에서 표시되는 good-move rate 를 수정하고, move-rank 정의를 통일했으며, performance-distribution chart 를 추가하고 다듬었습니다.',
         '새 기보를 열기 전에 오래된 quick-analysis queue 를 정리해 이전 기보의 대기 작업이 현재 기보를 늦추지 않게 했습니다.':
-            'engine 내부 `boardsize` 동기화와 사용자에게 보이는 board reopen 로직을 분리해, engine switch 가 현재 대국을 잘못 바꾸지 않게 했습니다.',
+            '“hover variation preview without refreshing” 옵션이 다시 동작하며, Display menu 는 layout mode 를 submenu 로 정리하고 main menu 를 다시 클릭해 닫을 수 있게 했습니다.',
         'Winrate graph hit detection 과 sync diagnostics path handling 을 보강해 복잡한 경로나 특수 파일명에서의 예외 가능성을 줄였습니다.':
-            'KataGo Auto Setup 탭 레이아웃을 다듬어 하단 action button 이 현재 내용에 더 가까이 붙고 일반 창 크기에서 불필요한 scrollbar 가 줄어들게 했습니다.',
+            'Windows core update 가 launcher configuration 을 갱신해 overwrite upgrade 뒤 title bar 와 launcher entry 가 새 version 을 표시합니다.',
         '다국어 README 에 official website 링크를 추가해 GitHub 문서에서 프로젝트 홈페이지로 더 쉽게 이동할 수 있습니다.':
-            'TensorRT split-package release 링크를 정리해 사용자는 필요한 `.7z.00N` volume 만 보게 하고, README, checksum, manifest 는 검증용 asset 으로 남겼습니다.',
+            'Fox handicap SGF 의 komi loading 과 normalization 을 수정했습니다. 19줄이 아닌 보드에서 engine/model switch 가 대국을 지우지 않고, KataGo Auto Setup 하단 버튼과 TensorRT split link 도 정리했습니다.',
         'Fox, Tencent, Yike, shared kifu 를 자주 여는 경우 승률 곡선을 기다리는 시간이 줄어듭니다.':
-            '9x9, 13x13 등 19줄이 아닌 보드를 자주 쓰는 경우 engine/model switch 로 현재 대국을 잃지 않게 하는 업데이트입니다.',
+            '9x9, 13x13, strength evaluation, Fox records, core update, hover variation preview 를 쓰는 사용자에게 업데이트 가치가 큰 build 입니다.',
 
         'รุ่นนี้เน้นให้กราฟ winrate ตอบสนองเร็วขึ้นหลังโหลด kifu จาก Fox, Tencent, shared kifu และ Yike SGF โดยไม่ให้คิว quick-analysis จากเกมก่อนหน้ามาถ่วงเกมปัจจุบัน':
-            'รุ่นนี้เน้นแก้ปัญหาที่ผู้ใช้เพิ่งแจ้งสองจุด: board ที่ไม่ใช่ 19x19 ไม่ควรถูก reset เมื่อเปลี่ยน engine/model และหน้า KataGo Auto Setup ไม่ควรมี scrollbar ด้านล่างที่ไม่จำเป็น พร้อมจัดลิงก์ดาวน์โหลด TensorRT split package บน release page ให้ชัดขึ้น',
+            'รุ่นนี้รวมการแก้ไขจาก PR หลายรายการหลังรุ่นก่อนหน้า: strength evaluation, hover variation preview, Windows core update, Fox handicap komi, display menu, board ที่ไม่ใช่ 19x19 และลิงก์ TensorRT release',
         'กราฟ winrate เริ่มทำงานเร็วขึ้นหลังโหลด SGF จาก Fox, Tencent, shared kifu และ Yike เมื่อเปิด automatic quick analysis โปรแกรมจะ prewarm KataGo analysis engine เฉพาะ เพื่อลดการรอ cold start ซ้ำระหว่างเปิดหลาย kifu ต่อเนื่อง':
-            'แก้ปัญหาเมื่อเปลี่ยน engine หรือ model บน board ที่ไม่ใช่ 19x19 แล้ว board กลับเป็น 19x19 หรือหมากที่วางไว้หายไป',
+            'Player strength evaluation แก้การแสดง good-move rate, รวมมาตรฐาน move-rank และเพิ่ม performance-distribution chart ที่ดูเรียบร้อยขึ้น',
         'ก่อนเปิด kifu ใหม่ โปรแกรมจะล้าง quick-analysis queue เก่า เพื่อลดการหน่วงจากงานวิเคราะห์ของเกมก่อนหน้า':
-            'แยกการ sync `boardsize` ภายใน engine ออกจากการ reopen board ที่ผู้ใช้เห็น ทำให้การเปลี่ยน engine ไม่ไปแก้เกมปัจจุบันโดยไม่ตั้งใจ',
+            'ตัวเลือก “hover variation preview without refreshing” กลับมาทำงานถูกต้อง และ Display menu ถูกจัดให้สั้นลงโดยย้าย layout mode ไปไว้ใน submenu พร้อมปิด main menu ได้เมื่อคลิกซ้ำ',
         'เสริมความเสถียรของ winrate graph hit detection และ sync diagnostics path handling สำหรับ path ซับซ้อนหรือชื่อไฟล์พิเศษ':
-            'ปรับ layout ของ KataGo Auto Setup ให้ปุ่ม action ด้านล่างอยู่ใกล้เนื้อหาปัจจุบันมากขึ้น และลด scrollbar ที่ไม่จำเป็นในขนาดหน้าต่างปกติ',
+            'Windows core update จะ refresh launcher configuration ทำให้ title bar และ launcher entry แสดง version ใหม่หลัง overwrite upgrade',
         'README หลายภาษาเพิ่มลิงก์ official website เพื่อให้ผู้ใช้จาก GitHub เข้า project homepage ได้ตรงขึ้น':
-            'จัด release links ของ TensorRT split package ใหม่ ให้ผู้ใช้เห็นเฉพาะ volume `.7z.00N` ที่ต้องดาวน์โหลด ส่วน README, checksum และ manifest ยังเก็บไว้เป็น asset สำหรับตรวจสอบ',
+            'แก้การโหลดและ normalize komi ของ Fox handicap SGF; การเปลี่ยน engine/model บน board ที่ไม่ใช่ 19x19 จะไม่ล้างเกม และปรับปุ่มล่างของ KataGo Auto Setup กับลิงก์ TensorRT split ให้เรียบร้อยขึ้น',
         'ถ้าคุณเปิด kifu จาก Fox, Tencent, Yike หรือ shared kifu บ่อย รุ่นนี้ช่วยลดเวลารอจนกราฟ winrate ใช้งานได้':
-            'ถ้าคุณเล่น 9x9, 13x13 หรือ board ขนาดอื่นที่ไม่ใช่ 19x19 รุ่นนี้ช่วยป้องกันไม่ให้การเปลี่ยน engine/model ทำให้เกมปัจจุบันหาย',
+            'ถ้าคุณใช้ 9x9, 13x13, strength evaluation, Fox records, core update หรือ hover variation preview รุ่นนี้คุ้มค่าที่จะอัปเดต',
+        '这一版只写本次实际变化，不再重复上一版布局、棋力评估和打包体系等旧内容。':
+            '这一版只写上一版之后新合并的改动，不再重复更早版本已经介绍过的内容。',
+        '這一版只寫本次實際變化，不再重複上一版版面、棋力評估和打包體系等舊內容。':
+            '這一版只寫上一版之後新合併的改動，不再重複更早版本已經介紹過的內容。',
+        'These notes describe only this release instead of repeating older layout, strength-estimation, and packaging changes.':
+            'These notes describe the changes newly merged after the previous release, without repeating older release highlights.',
+        'この説明は今回の実際の変更だけを書き、過去のレイアウト、棋力評価、パッケージ変更を繰り返しません。':
+            'この説明は前回リリース後に新しく merged された変更に絞り、より古いリリース内容は繰り返しません。',
+        '이번 설명은 이번 릴리스의 실제 변경만 다루며, 이전 layout, strength-estimation, packaging 변경을 반복하지 않습니다.':
+            '이번 설명은 이전 릴리스 이후 새로 merge 된 변경에 집중하며, 더 오래된 릴리스 내용은 반복하지 않습니다.',
+        'release notes นี้เขียนเฉพาะสิ่งที่เปลี่ยนในรุ่นนี้ ไม่ซ้ำรายละเอียด layout, strength-estimation และ packaging จากรุ่นก่อน':
+            'release notes นี้เน้นการเปลี่ยนแปลงที่ merge หลัง release ก่อนหน้า และไม่ซ้ำรายละเอียดของ release ที่เก่ากว่า',
     }
     for old, new in replacements.items():
         notes = notes.replace(old, new)
