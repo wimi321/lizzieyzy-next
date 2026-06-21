@@ -14899,11 +14899,20 @@ public class LizzieFrame extends JFrame {
           continue;
         }
         int blockX = playerStrengthMoveToX(sample.moveNumber, x, width, maxMove);
-        HitPoint hitPoint =
-            createHitPoint(
-                sample, black, blockX, firstY - 7, blockWidth, goodY - firstY + laneHeight + 14);
-        hitPoints.add(hitPoint);
-        drawMoveBlock(g2, hitPoint, firstY, goodY, laneHeight, blockWidth);
+        if (firstChoice) {
+          HitPoint hitPoint =
+              createHitPoint(
+                  sample, black, HitLane.FIRST_CHOICE, blockX, firstY - 7, blockWidth, laneHeight);
+          hitPoints.add(hitPoint);
+          drawMoveBlock(g2, hitPoint, firstY, goodY, laneHeight, blockWidth);
+        }
+        if (goodMove) {
+          HitPoint hitPoint =
+              createHitPoint(
+                  sample, black, HitLane.GOOD_MOVE, blockX, goodY - 7, blockWidth, laneHeight);
+          hitPoints.add(hitPoint);
+          drawMoveBlock(g2, hitPoint, firstY, goodY, laneHeight, blockWidth);
+        }
       }
     }
 
@@ -14936,9 +14945,15 @@ public class LizzieFrame extends JFrame {
     }
 
     private HitPoint createHitPoint(
-        PlayerStrengthEstimator.Sample sample, boolean black, int x, int y, int width, int height) {
-      Rectangle hitBounds = new Rectangle(x - 3, y, Math.max(8, width + 6), height);
-      return new HitPoint(sample, black, x, hitBounds, buildTooltipHtml(sample, black));
+        PlayerStrengthEstimator.Sample sample,
+        boolean black,
+        HitLane lane,
+        int x,
+        int y,
+        int width,
+        int height) {
+      Rectangle hitBounds = new Rectangle(x - 3, y, Math.max(8, width + 6), height + 14);
+      return new HitPoint(sample, black, lane, x, hitBounds, buildTooltipHtml(sample, black, lane));
     }
 
     private void drawMoveBlock(
@@ -14947,10 +14962,10 @@ public class LizzieFrame extends JFrame {
       Color primary = point.black ? MATCH_BLACK_HIT : MATCH_WHITE_HIT;
       Color good = point.black ? MATCH_BLACK_GOOD : MATCH_WHITE_GOOD;
       boolean hovered = isHovered(point);
-      if (sample.firstChoice) {
+      if (point.lane == HitLane.FIRST_CHOICE) {
         drawTimelineBlock(g2, point.x, firstY, blockWidth, laneHeight, primary, hovered);
       }
-      if (sample.moveRankCategory != null && sample.moveRankCategory.isGoodMove()) {
+      if (point.lane == HitLane.GOOD_MOVE) {
         drawTimelineBlock(g2, point.x, goodY, blockWidth, laneHeight, good, hovered);
       }
       if (hovered) {
@@ -15042,17 +15057,14 @@ public class LizzieFrame extends JFrame {
     private boolean isHovered(HitPoint point) {
       return hoveredPoint != null
           && hoveredPoint.sample == point.sample
-          && hoveredPoint.black == point.black;
+          && hoveredPoint.black == point.black
+          && hoveredPoint.lane == point.lane;
     }
 
-    private String buildTooltipHtml(PlayerStrengthEstimator.Sample sample, boolean black) {
+    private String buildTooltipHtml(
+        PlayerStrengthEstimator.Sample sample, boolean black, HitLane lane) {
       String sideName = Lizzie.resourceBundle.getString(black ? "Menu.Black" : "Menu.White");
-      String category =
-          sample.firstChoice
-              ? Lizzie.resourceBundle.getString("PlayerStrengthEstimate.match.firstChoice")
-              : sample.moveRankCategory != null && sample.moveRankCategory.isGoodMove()
-                  ? Lizzie.resourceBundle.getString("PlayerStrengthEstimate.match.goodMove")
-                  : Lizzie.resourceBundle.getString("PlayerStrengthEstimate.match.otherMove");
+      String category = hitLaneSampleLabel(sample, lane);
       String aiChoice =
           sample.aiRank < 0
               ? Lizzie.resourceBundle.getString("PlayerStrengthEstimate.match.tooltipUnknown")
@@ -15090,7 +15102,7 @@ public class LizzieFrame extends JFrame {
           + "<br>"
           + Lizzie.resourceBundle.getString("PlayerStrengthEstimate.match.tooltipComplexity")
           + ": "
-          + String.format(Locale.US, "%.0f", sample.complexity)
+          + playerStrengthSampleComplexityText(sample.complexity)
           + "</html>";
     }
 
@@ -15109,11 +15121,7 @@ public class LizzieFrame extends JFrame {
                   Lizzie.resourceBundle.getString("PlayerStrengthEstimate.match.tooltipMove"),
                   sample.moveNumber);
       String detail =
-          (sample.firstChoice
-                  ? Lizzie.resourceBundle.getString("PlayerStrengthEstimate.match.firstChoice")
-                  : sample.moveRankCategory != null && sample.moveRankCategory.isGoodMove()
-                      ? Lizzie.resourceBundle.getString("PlayerStrengthEstimate.match.goodMove")
-                      : Lizzie.resourceBundle.getString("PlayerStrengthEstimate.match.otherMove"))
+          hitLaneSampleLabel(sample, hoveredPoint.lane)
               + "  "
               + Lizzie.resourceBundle.getString("PlayerStrengthEstimate.match.tooltipWinrateLoss")
               + " "
@@ -15162,9 +15170,31 @@ public class LizzieFrame extends JFrame {
       g2.fillRect(x, y, 14, 8);
     }
 
+    private String hitLaneLabel(HitLane lane) {
+      return lane == HitLane.FIRST_CHOICE
+          ? Lizzie.resourceBundle.getString("PlayerStrengthEstimate.match.firstChoice")
+          : Lizzie.resourceBundle.getString("PlayerStrengthEstimate.match.goodMove");
+    }
+
+    private String hitLaneSampleLabel(PlayerStrengthEstimator.Sample sample, HitLane lane) {
+      return sample.firstChoice
+          ? Lizzie.resourceBundle.getString("PlayerStrengthEstimate.match.firstChoice")
+          : hitLaneLabel(lane);
+    }
+
+    private String playerStrengthSampleComplexityText(double complexity) {
+      return String.format(Locale.US, "%.0f", playerStrengthClamp(complexity, 0.0, 1.0) * 100.0);
+    }
+
+    private enum HitLane {
+      FIRST_CHOICE,
+      GOOD_MOVE
+    }
+
     private static final class HitPoint {
       private final PlayerStrengthEstimator.Sample sample;
       private final boolean black;
+      private final HitLane lane;
       private final int x;
       private final Rectangle hitBounds;
       private final String tooltipHtml;
@@ -15172,11 +15202,13 @@ public class LizzieFrame extends JFrame {
       private HitPoint(
           PlayerStrengthEstimator.Sample sample,
           boolean black,
+          HitLane lane,
           int x,
           Rectangle hitBounds,
           String tooltipHtml) {
         this.sample = sample;
         this.black = black;
+        this.lane = lane;
         this.x = x;
         this.hitBounds = hitBounds;
         this.tooltipHtml = tooltipHtml;
@@ -15682,9 +15714,12 @@ public class LizzieFrame extends JFrame {
             g2.drawRoundRect(bounds.x - 1, bounds.y - 1, bounds.width + 1, bounds.height + 1, 5, 5);
           }
         }
-        if (bounds.width >= g2.getFontMetrics().stringWidth(label) + 6) {
+        if (bounds.width >= 12) {
+          Shape oldClip = g2.getClip();
+          g2.clipRect(bounds.x + 2, bounds.y, Math.max(1, bounds.width - 4), bounds.height);
           g2.setColor(RANK_TEXT);
           drawCenteredString(g2, label, bounds.x, bounds.x + bounds.width, y + 12);
+          g2.setClip(oldClip);
         }
       }
     }
@@ -15968,7 +16003,7 @@ public class LizzieFrame extends JFrame {
       if (report == null || !report.hasSamples()) {
         return "-";
       }
-      return playerStrengthRankValueText(report);
+      return playerStrengthEstimateText(report);
     }
 
     private String percentText(double value) {

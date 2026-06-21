@@ -110,6 +110,39 @@ class LizzieFrameRegressionTest {
 
     assertTrue(tooltip.contains("1"), "tooltip should include the move number.");
     assertTrue(tooltip.contains("AI"), "tooltip should include AI choice details.");
+
+    String firstChoiceGoodMoveTooltip = tooltipContaining(panel, 125, 155, "1.2%", "0.4");
+    String goodMoveTooltip = tooltipContaining(panel, "3.4%", "1.1");
+
+    assertTrue(
+        firstChoiceGoodMoveTooltip != null,
+        "first-choice moves should also expose a tooltip on the good-move row.");
+    assertTrue(
+        firstChoiceGoodMoveTooltip.contains("AI"),
+        "first-choice moves on the good-move row should keep first-choice details.");
+    assertTrue(goodMoveTooltip != null, "good-move row should expose a tooltip.");
+    assertTrue(goodMoveTooltip.contains("3.4%"), "good-move row should use the good move sample.");
+    assertTrue(goodMoveTooltip.contains("1.1"), "good-move row should keep score loss details.");
+    assertTrue(goodMoveTooltip.contains("35"), "sample complexity should use the 0-100 scale.");
+  }
+
+  @Test
+  void playerStrengthRankWindowLabelUsesCompactRankText() throws Exception {
+    Class<?> chartClass =
+        Class.forName("featurecat.lizzie.gui.LizzieFrame$PlayerStrengthMatchChart");
+    java.lang.reflect.Constructor<?> constructor =
+        chartClass.getDeclaredConstructor(PlayerStrengthEstimator.Report.class);
+    constructor.setAccessible(true);
+    Object chart = constructor.newInstance(playerStrengthReportWithSamples());
+    Method strengthLabel =
+        chartClass.getDeclaredMethod("strengthLabel", PlayerStrengthEstimator.SideReport.class);
+    strengthLabel.setAccessible(true);
+
+    String label =
+        String.valueOf(strengthLabel.invoke(chart, playerStrengthReportWithSamples().black));
+
+    assertFalse(label.contains("Fox"), "rank window label should stay compact enough for the bar.");
+    assertTrue(label.contains("1"), "rank window label should still include the rank.");
   }
 
   @Test
@@ -458,7 +491,7 @@ class LizzieFrameRegressionTest {
             Optional.of(1.1),
             false,
             1,
-            PlayerStrengthEstimator.MoveCategory.GOOD);
+            PlayerStrengthEstimator.MoveCategory.GREAT);
     PlayerStrengthEstimator.SideReport blackReport =
         playerStrengthSideReport(java.util.List.of(blackSample), 1.0, 1.0);
     PlayerStrengthEstimator.SideReport whiteReport =
@@ -484,6 +517,43 @@ class LizzieFrameRegressionTest {
     Field field = owner.getDeclaredField(fieldName);
     field.setAccessible(true);
     return (Color) field.get(null);
+  }
+
+  private static String tooltipContaining(javax.swing.JComponent component, String... fragments) {
+    return tooltipContaining(component, 0, component.getHeight(), fragments);
+  }
+
+  private static String tooltipContaining(
+      javax.swing.JComponent component, int minY, int maxY, String... fragments) {
+    for (int y = 0; y < component.getHeight(); y++) {
+      if (y < minY || y >= maxY) {
+        continue;
+      }
+      for (int x = 0; x < component.getWidth(); x++) {
+        java.awt.event.MouseEvent event =
+            new java.awt.event.MouseEvent(
+                component,
+                java.awt.event.MouseEvent.MOUSE_MOVED,
+                System.currentTimeMillis(),
+                0,
+                x,
+                y,
+                0,
+                false);
+        String tooltip = component.getToolTipText(event);
+        if (tooltip == null) {
+          continue;
+        }
+        boolean matches = true;
+        for (String fragment : fragments) {
+          matches &= tooltip.contains(fragment);
+        }
+        if (matches) {
+          return tooltip;
+        }
+      }
+    }
+    return null;
   }
 
   private static void assertContrastAtLeast(String label, Color foreground, Color background, double min) {
@@ -549,7 +619,7 @@ class LizzieFrameRegressionTest {
         category,
         moveRankForCategory(category),
         1.0,
-        35.0,
+        0.35,
         1.0);
   }
 
