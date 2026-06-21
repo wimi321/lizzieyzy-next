@@ -11,6 +11,7 @@ import featurecat.lizzie.Lizzie;
 import featurecat.lizzie.analysis.Branch;
 import featurecat.lizzie.analysis.Leelaz;
 import featurecat.lizzie.analysis.MoveData;
+import featurecat.lizzie.analysis.MoveRankDefinition;
 import featurecat.lizzie.rules.Board;
 import featurecat.lizzie.rules.BoardData;
 import featurecat.lizzie.rules.BoardHistoryNode;
@@ -1103,71 +1104,11 @@ public class FloatBoardRenderer {
   }
 
   static double moveRankMarkSeverity(double winrateDiff, double scoreDiff) {
-    double winrateSeverity =
-        moveRankMetricSeverity(
-            winrateDiff,
-            Lizzie.config.winLossThreshold1,
-            Lizzie.config.winLossThreshold2,
-            Lizzie.config.winLossThreshold3,
-            Lizzie.config.winLossThreshold4,
-            Lizzie.config.winLossThreshold5);
-    double scoreSeverity =
-        moveRankMetricSeverity(
-            scoreDiff,
-            Lizzie.config.scoreLossThreshold1,
-            Lizzie.config.scoreLossThreshold2,
-            Lizzie.config.scoreLossThreshold3,
-            Lizzie.config.scoreLossThreshold4,
-            Lizzie.config.scoreLossThreshold5);
-    return Math.max(winrateSeverity, scoreSeverity);
+    return MoveRankDefinition.severity(winrateDiff, scoreDiff, Lizzie.config);
   }
 
   static Color moveRankMarkColor(double severity) {
-    Color[] stops = {
-      new Color(31, 157, 92),
-      new Color(121, 184, 74),
-      new Color(215, 176, 61),
-      new Color(232, 132, 58),
-      new Color(221, 75, 58),
-      new Color(180, 38, 78),
-      new Color(122, 26, 138)
-    };
-    double clamped = Math.max(0, Math.min(stops.length - 1, severity));
-    int lower = (int) Math.floor(clamped);
-    int upper = Math.min(stops.length - 1, lower + 1);
-    double ratio = clamped - lower;
-    return interpolateColor(stops[lower], stops[upper], ratio);
-  }
-
-  private static double moveRankMetricSeverity(
-      double diff,
-      double threshold1,
-      double threshold2,
-      double threshold3,
-      double threshold4,
-      double threshold5) {
-    if (diff > threshold1) {
-      return 0;
-    }
-    double[] thresholds = {threshold1, threshold2, threshold3, threshold4, threshold5};
-    for (int i = 0; i < thresholds.length - 1; i++) {
-      double upper = thresholds[i];
-      double lower = thresholds[i + 1];
-      if (diff > lower) {
-        double span = Math.max(0.0001, upper - lower);
-        return (i + 1) + (upper - diff) / span;
-      }
-    }
-    double extremeSpan = Math.max(1.0, Math.abs(threshold5));
-    return 5 + Math.min(1.0, (threshold5 - diff) / extremeSpan);
-  }
-
-  private static Color interpolateColor(Color start, Color end, double ratio) {
-    int red = (int) Math.round(start.getRed() + (end.getRed() - start.getRed()) * ratio);
-    int green =
-        (int) Math.round(start.getGreen() + (end.getGreen() - start.getGreen()) * ratio);
-    int blue = (int) Math.round(start.getBlue() + (end.getBlue() - start.getBlue()) * ratio);
-    return new Color(red, green, blue);
+    return MoveRankDefinition.severityColor(severity);
   }
 
   /** Draw move numbers and/or mark the last played move */

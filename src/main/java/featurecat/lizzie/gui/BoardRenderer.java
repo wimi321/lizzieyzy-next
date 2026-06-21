@@ -12,6 +12,7 @@ import featurecat.lizzie.analysis.Branch;
 import featurecat.lizzie.analysis.EngineManager;
 import featurecat.lizzie.analysis.Leelaz;
 import featurecat.lizzie.analysis.MoveData;
+import featurecat.lizzie.analysis.MoveRankDefinition;
 import featurecat.lizzie.analysis.TrackingEngine;
 import featurecat.lizzie.rules.Board;
 import featurecat.lizzie.rules.BoardData;
@@ -21,7 +22,6 @@ import featurecat.lizzie.rules.NodeInfo;
 import featurecat.lizzie.rules.SGFParser;
 import featurecat.lizzie.rules.Stone;
 import featurecat.lizzie.rules.Zobrist;
-import featurecat.lizzie.theme.MorandiPalette;
 import featurecat.lizzie.util.Utils;
 import java.awt.*;
 import java.awt.font.FontRenderContext;
@@ -515,43 +515,10 @@ public class BoardRenderer {
       double scoreDiff,
       boolean isLastMove) {
     float radiusF = 0.1f;
-    if (winrateDiff <= Lizzie.config.winLossThreshold5
-        || scoreDiff <= Lizzie.config.scoreLossThreshold5) {
-      g.setColor(
-          Lizzie.config.useMorandiColors
-              ? MorandiPalette.SUGGESTION_BLUNDER
-              : new Color(155, 25, 150));
-      radiusF = 0.19f;
-    } else if (winrateDiff <= Lizzie.config.winLossThreshold4
-        || scoreDiff <= Lizzie.config.scoreLossThreshold4) {
-      g.setColor(
-          Lizzie.config.useMorandiColors
-              ? MorandiPalette.SUGGESTION_MISTAKE
-              : new Color(208, 16, 19));
-      radiusF = 0.1675f;
-    } else if (winrateDiff <= Lizzie.config.winLossThreshold3
-        || scoreDiff <= Lizzie.config.scoreLossThreshold3) {
-      g.setColor(
-          Lizzie.config.useMorandiColors
-              ? MorandiPalette.SUGGESTION_SLOW
-              : new Color(200, 140, 50));
-      radiusF = 0.145f;
-    } else if (winrateDiff <= Lizzie.config.winLossThreshold2
-        || scoreDiff <= Lizzie.config.scoreLossThreshold2) {
-      g.setColor(
-          Lizzie.config.useMorandiColors
-              ? MorandiPalette.SUGGESTION_CAUTION
-              : new Color(180, 180, 0));
-      radiusF = 0.1225f;
-    } else if (winrateDiff <= Lizzie.config.winLossThreshold1
-        || scoreDiff <= Lizzie.config.scoreLossThreshold1)
-      g.setColor(
-          Lizzie.config.useMorandiColors
-              ? MorandiPalette.SUGGESTION_GOOD
-              : new Color(140, 202, 34));
-    else
-      g.setColor(
-          Lizzie.config.useMorandiColors ? MorandiPalette.SUGGESTION_BEST : new Color(0, 180, 0));
+    MoveRankDefinition.Rank rank =
+        MoveRankDefinition.classifyDiffs(winrateDiff, scoreDiff, Lizzie.config);
+    g.setColor(rank.color(Lizzie.config.useMorandiColors));
+    radiusF = rank.boardMarkRadiusFactor();
 
     if (isLastMove) {
       switch (Lizzie.config.stoneIndicatorType) {

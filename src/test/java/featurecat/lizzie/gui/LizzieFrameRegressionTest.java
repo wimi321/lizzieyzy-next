@@ -9,6 +9,7 @@ import featurecat.lizzie.Config;
 import featurecat.lizzie.Lizzie;
 import featurecat.lizzie.analysis.EngineManager;
 import featurecat.lizzie.analysis.Leelaz;
+import featurecat.lizzie.analysis.MoveRankDefinition;
 import featurecat.lizzie.analysis.PlayerStrengthEstimator;
 import featurecat.lizzie.analysis.ReadBoard;
 import featurecat.lizzie.rules.Board;
@@ -533,7 +534,7 @@ class LizzieFrameRegressionTest {
             boolean.class,
             int.class,
             PlayerStrengthEstimator.MoveCategory.class,
-            PlayerStrengthEstimator.MoveCategory.class,
+            MoveRankDefinition.Rank.class,
             double.class,
             double.class,
             double.class);
@@ -546,10 +547,28 @@ class LizzieFrameRegressionTest {
         firstChoice,
         aiRank,
         category,
-        category,
+        moveRankForCategory(category),
         1.0,
         35.0,
         1.0);
+  }
+
+  private static MoveRankDefinition.Rank moveRankForCategory(
+      PlayerStrengthEstimator.MoveCategory category) {
+    switch (category) {
+      case EXCELLENT:
+        return MoveRankDefinition.Rank.BEST;
+      case GREAT:
+        return MoveRankDefinition.Rank.GOOD;
+      case INACCURACY:
+        return MoveRankDefinition.Rank.INACCURACY;
+      case MISTAKE:
+        return MoveRankDefinition.Rank.MISTAKE;
+      case BLUNDER:
+        return MoveRankDefinition.Rank.BLUNDER;
+      default:
+        return MoveRankDefinition.Rank.NORMAL;
+    }
   }
 
   private static PlayerStrengthEstimator.SideReport playerStrengthSideReport(
@@ -574,6 +593,7 @@ class LizzieFrameRegressionTest {
             double.class,
             double.class,
             double.class,
+            int[].class,
             double.class,
             double.class,
             double.class,
@@ -598,6 +618,7 @@ class LizzieFrameRegressionTest {
         firstChoiceRate,
         goodMoveRate,
         goodMoveRate,
+        moveRankCounts(samples),
         0.0,
         0.0,
         0.0,
@@ -605,6 +626,14 @@ class LizzieFrameRegressionTest {
         "1d",
         PlayerStrengthEstimator.Confidence.HIGH,
         samples);
+  }
+
+  private static int[] moveRankCounts(java.util.List<PlayerStrengthEstimator.Sample> samples) {
+    int[] counts = new int[MoveRankDefinition.Rank.values().length];
+    for (PlayerStrengthEstimator.Sample sample : samples) {
+      counts[sample.moveRankCategory.ordinal()]++;
+    }
+    return counts;
   }
 
   private static void assertConsecutiveRestartIsCoalesced(TrackingFrame frame, Runnable trigger)

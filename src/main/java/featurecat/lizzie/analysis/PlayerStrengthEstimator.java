@@ -55,16 +55,6 @@ public final class PlayerStrengthEstimator {
   private static final double GOOD_SCORE_LOSS = 1.2;
   private static final double INACCURACY_SCORE_LOSS = 4.0;
   private static final double MISTAKE_SCORE_LOSS = 10.0;
-  private static final double DEFAULT_WIN_LOSS_THRESHOLD_1 = -1.0;
-  private static final double DEFAULT_WIN_LOSS_THRESHOLD_2 = -3.0;
-  private static final double DEFAULT_WIN_LOSS_THRESHOLD_3 = -6.0;
-  private static final double DEFAULT_WIN_LOSS_THRESHOLD_4 = -12.0;
-  private static final double DEFAULT_WIN_LOSS_THRESHOLD_5 = -24.0;
-  private static final double DEFAULT_SCORE_LOSS_THRESHOLD_1 = -0.5;
-  private static final double DEFAULT_SCORE_LOSS_THRESHOLD_2 = -1.5;
-  private static final double DEFAULT_SCORE_LOSS_THRESHOLD_3 = -3.0;
-  private static final double DEFAULT_SCORE_LOSS_THRESHOLD_4 = -6.0;
-  private static final double DEFAULT_SCORE_LOSS_THRESHOLD_5 = -12.0;
   private static final String[] STRENGTH_BANDS = {
     "Beginner",
     "11-15k",
@@ -446,71 +436,9 @@ public final class PlayerStrengthEstimator {
     return MoveCategory.BLUNDER;
   }
 
-  private static MoveCategory categorizeMoveRank(LossEstimate lossEstimate) {
-    double winrateLoss = positive(lossEstimate.winrateLoss);
-    Optional<Double> scoreLoss = lossEstimate.scoreLoss.map(PlayerStrengthEstimator::positive);
-    if (reachesMoveRankThreshold(winrateLoss, scoreLoss, 5)) {
-      return MoveCategory.BLUNDER;
-    }
-    if (reachesMoveRankThreshold(winrateLoss, scoreLoss, 4)) {
-      return MoveCategory.MISTAKE;
-    }
-    if (reachesMoveRankThreshold(winrateLoss, scoreLoss, 3)
-        || reachesMoveRankThreshold(winrateLoss, scoreLoss, 2)) {
-      return MoveCategory.INACCURACY;
-    }
-    if (reachesMoveRankThreshold(winrateLoss, scoreLoss, 1)) {
-      return MoveCategory.GREAT;
-    }
-    return MoveCategory.EXCELLENT;
-  }
-
-  private static boolean reachesMoveRankThreshold(
-      double winrateLoss, Optional<Double> scoreLoss, int level) {
-    Config config = Lizzie.config;
-    boolean useWinLoss = config == null || config.useWinLossInMoveRank;
-    boolean useScoreLoss = config == null || config.useScoreLossInMoveRank;
-    boolean reachesWinLoss =
-        useWinLoss && winrateLoss >= Math.abs(moveRankWinLossThreshold(config, level));
-    boolean reachesScoreLoss =
-        useScoreLoss
-            && scoreLoss.isPresent()
-            && scoreLoss.get() >= Math.abs(moveRankScoreLossThreshold(config, level));
-    return reachesWinLoss || reachesScoreLoss;
-  }
-
-  private static double moveRankWinLossThreshold(Config config, int level) {
-    switch (level) {
-      case 1:
-        return config == null ? DEFAULT_WIN_LOSS_THRESHOLD_1 : config.winLossThreshold1;
-      case 2:
-        return config == null ? DEFAULT_WIN_LOSS_THRESHOLD_2 : config.winLossThreshold2;
-      case 3:
-        return config == null ? DEFAULT_WIN_LOSS_THRESHOLD_3 : config.winLossThreshold3;
-      case 4:
-        return config == null ? DEFAULT_WIN_LOSS_THRESHOLD_4 : config.winLossThreshold4;
-      case 5:
-        return config == null ? DEFAULT_WIN_LOSS_THRESHOLD_5 : config.winLossThreshold5;
-      default:
-        throw new IllegalArgumentException("Unsupported move-rank threshold level: " + level);
-    }
-  }
-
-  private static double moveRankScoreLossThreshold(Config config, int level) {
-    switch (level) {
-      case 1:
-        return config == null ? DEFAULT_SCORE_LOSS_THRESHOLD_1 : config.scoreLossThreshold1;
-      case 2:
-        return config == null ? DEFAULT_SCORE_LOSS_THRESHOLD_2 : config.scoreLossThreshold2;
-      case 3:
-        return config == null ? DEFAULT_SCORE_LOSS_THRESHOLD_3 : config.scoreLossThreshold3;
-      case 4:
-        return config == null ? DEFAULT_SCORE_LOSS_THRESHOLD_4 : config.scoreLossThreshold4;
-      case 5:
-        return config == null ? DEFAULT_SCORE_LOSS_THRESHOLD_5 : config.scoreLossThreshold5;
-      default:
-        throw new IllegalArgumentException("Unsupported move-rank threshold level: " + level);
-    }
+  private static MoveRankDefinition.Rank categorizeMoveRank(LossEstimate lossEstimate) {
+    return MoveRankDefinition.classifyLosses(
+        lossEstimate.winrateLoss, lossEstimate.scoreLoss, Lizzie.config);
   }
 
   private static boolean isBlank(String value) {
@@ -1160,6 +1088,7 @@ public final class PlayerStrengthEstimator {
     public final double firstChoiceRate;
     public final double goodMoveRate;
     public final double moveRankGoodMoveRate;
+    public final int[] moveRankCounts;
     public final double badMoveRate;
     public final double mistakeRate;
     public final double blunderRate;
@@ -1184,6 +1113,7 @@ public final class PlayerStrengthEstimator {
         double firstChoiceRate,
         double goodMoveRate,
         double moveRankGoodMoveRate,
+        int[] moveRankCounts,
         double badMoveRate,
         double mistakeRate,
         double blunderRate,
@@ -1206,6 +1136,7 @@ public final class PlayerStrengthEstimator {
       this.firstChoiceRate = firstChoiceRate;
       this.goodMoveRate = goodMoveRate;
       this.moveRankGoodMoveRate = moveRankGoodMoveRate;
+      this.moveRankCounts = moveRankCounts == null ? new int[0] : moveRankCounts.clone();
       this.badMoveRate = badMoveRate;
       this.mistakeRate = mistakeRate;
       this.blunderRate = blunderRate;
@@ -1271,6 +1202,13 @@ public final class PlayerStrengthEstimator {
     public String difficultyText() {
       return String.format(Locale.US, "%.0f", averageDifficulty);
     }
+
+    public int moveRankCount(MoveRankDefinition.Rank rank) {
+      if (rank == null || rank.ordinal() >= moveRankCounts.length) {
+        return 0;
+      }
+      return moveRankCounts[rank.ordinal()];
+    }
   }
 
   public enum Confidence {
@@ -1304,7 +1242,7 @@ public final class PlayerStrengthEstimator {
     public final boolean firstChoice;
     public final int aiRank;
     public final MoveCategory category;
-    public final MoveCategory moveRankCategory;
+    public final MoveRankDefinition.Rank moveRankCategory;
     public final double scoreEquivalentLoss;
     public final double complexity;
     public final double adjustedWeight;
@@ -1317,7 +1255,7 @@ public final class PlayerStrengthEstimator {
         boolean firstChoice,
         int aiRank,
         MoveCategory category,
-        MoveCategory moveRankCategory,
+        MoveRankDefinition.Rank moveRankCategory,
         double scoreEquivalentLoss,
         double complexity,
         double adjustedWeight) {
@@ -1371,6 +1309,7 @@ public final class PlayerStrengthEstimator {
             0.0,
             0.0,
             0.0,
+            new int[MoveRankDefinition.Rank.values().length],
             0.0,
             0.0,
             0.0,
@@ -1397,6 +1336,7 @@ public final class PlayerStrengthEstimator {
       int excellentMoves = 0;
       int goodMoves = 0;
       int moveRankGoodMoves = 0;
+      int[] moveRankCounts = new int[MoveRankDefinition.Rank.values().length];
       int badMoves = 0;
       int inaccuracies = 0;
       int mistakes = 0;
@@ -1432,7 +1372,10 @@ public final class PlayerStrengthEstimator {
         } else {
           badMoves++;
         }
-        if (sample.moveRankCategory.isGoodMove()) {
+        if (sample.moveRankCategory != null) {
+          moveRankCounts[sample.moveRankCategory.ordinal()]++;
+        }
+        if (sample.moveRankCategory != null && sample.moveRankCategory.isGoodMove()) {
           moveRankGoodMoves++;
         }
         if (sample.category == MoveCategory.INACCURACY) {
@@ -1533,6 +1476,7 @@ public final class PlayerStrengthEstimator {
           firstChoiceRate,
           goodMoveRate,
           moveRankGoodMoveRate,
+          moveRankCounts,
           badMoveRate,
           mistakeRate,
           blunderRate,
