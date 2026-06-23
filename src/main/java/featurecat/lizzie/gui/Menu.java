@@ -16,6 +16,7 @@ import java.awt.Desktop;
 import java.awt.Dimension;
 import java.awt.FlowLayout;
 import java.awt.Font;
+import java.awt.FontMetrics;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
 import java.awt.Insets;
@@ -2910,93 +2911,7 @@ public class Menu extends JMenuBar {
         });
     newGame.add(newGenmoveGame);
     setToolTipJMenu(newGenmoveGame);
-    JFontMenuItem newAnalyzeModeGame = new JFontMenuItem(); // ("人机对局(分析模式 N)");
-
-    newAnalyzeModeGame.setLayout(null);
-    if (Lizzie.config.isChinese)
-      newAnalyzeModeGame.setPreferredSize(
-          new Dimension(
-              (Lizzie.config.useJavaLooks ? -31 : 0)
-                  + (Lizzie.config.isFrameFontSmall()
-                      ? 200
-                      : (Lizzie.config.isFrameFontMiddle() ? 250 : 300)),
-              (Lizzie.config.useJavaLooks
-                  ? (Lizzie.config.isFrameFontSmall()
-                      ? 20
-                      : (Lizzie.config.isFrameFontMiddle() ? 25 : 30))
-                  : (Lizzie.config.isFrameFontSmall()
-                      ? 25
-                      : (Lizzie.config.isFrameFontMiddle() ? 27 : 30)))));
-    else
-      newAnalyzeModeGame.setPreferredSize(
-          new Dimension(
-              (Lizzie.config.useJavaLooks ? -31 : 0)
-                  + (Lizzie.config.isFrameFontSmall()
-                      ? 253
-                      : (Lizzie.config.isFrameFontMiddle() ? 310 : 380)),
-              (Lizzie.config.useJavaLooks
-                  ? (Lizzie.config.isFrameFontSmall()
-                      ? 20
-                      : (Lizzie.config.isFrameFontMiddle() ? 25 : 30))
-                  : (Lizzie.config.isFrameFontSmall()
-                      ? 25
-                      : (Lizzie.config.isFrameFontMiddle() ? 27 : 30)))));
-    JFontLabel lblAnalyzeGame = new JFontLabel(resourceBundle.getString("Menu.newAnalyzeModeGame"));
-    lblAnalyzeGame.setBounds(
-        Lizzie.config.useJavaLooks ? 6 : 37,
-        (Lizzie.config.useJavaLooks
-            ? -1
-            : (Lizzie.config.isFrameFontSmall()
-                ? 2
-                : (Lizzie.config.isFrameFontMiddle() ? 1 : -1))),
-        320,
-        Lizzie.config.isFrameFontSmall() ? 20 : (Lizzie.config.isFrameFontMiddle() ? 25 : 30));
-    setToolTipJMenu(newAnalyzeModeGame, lblAnalyzeGame);
-    JButton aboutAnalyzeGame = new JFontButton("?");
-    aboutAnalyzeGame.addActionListener(
-        new ActionListener() {
-          @Override
-          public void actionPerformed(ActionEvent e) {
-            Lizzie.frame.showAnalyzeGenmoveInfo();
-          }
-        });
-    aboutAnalyzeGame.setFocusable(false);
-    aboutAnalyzeGame.setMargin(new Insets(0, 0, 0, 0));
-    if (Lizzie.config.isChinese)
-      aboutAnalyzeGame.setBounds(
-          (Lizzie.config.useJavaLooks ? -31 : 0)
-              + (Lizzie.config.isFrameFontSmall()
-                  ? 177
-                  : (Lizzie.config.isFrameFontMiddle() ? 220 : 270)),
-          (Lizzie.config.useJavaLooks
-              ? 1
-              : (Lizzie.config.isFrameFontSmall()
-                  ? 3
-                  : (Lizzie.config.isFrameFontMiddle() ? 2 : 1))),
-          Config.menuHeight - 2,
-          Config.menuHeight - 2);
-    else
-      aboutAnalyzeGame.setBounds(
-          (Lizzie.config.useJavaLooks ? -31 : 0)
-              + (Lizzie.config.isFrameFontSmall()
-                  ? 230
-                  : (Lizzie.config.isFrameFontMiddle() ? 280 : 350)),
-          (Lizzie.config.useJavaLooks
-              ? 1
-              : (Lizzie.config.isFrameFontSmall()
-                  ? 3
-                  : (Lizzie.config.isFrameFontMiddle() ? 2 : 1))),
-          Config.menuHeight - 2,
-          Config.menuHeight - 2);
-    newAnalyzeModeGame.add(aboutAnalyzeGame);
-    newAnalyzeModeGame.add(lblAnalyzeGame);
-    newAnalyzeModeGame.addActionListener(
-        new ActionListener() {
-          @Override
-          public void actionPerformed(ActionEvent e) {
-            Lizzie.frame.startAnalyzeGameDialog();
-          }
-        });
+    JFontMenuItem newAnalyzeModeGame = createAnalyzeModeGameItem();
     newGame.add(newAnalyzeModeGame);
 
     final JFontMenuItem newEngineGame =
@@ -6714,6 +6629,27 @@ public class Menu extends JMenuBar {
     reCalculateLeelazPonderingIfOutOfLimit();
   }
 
+  private JFontMenuItem createAnalyzeModeGameItem() {
+    InfoMenuItem item =
+        new InfoMenuItem(
+            resourceBundle.getString("Menu.newAnalyzeModeGame"),
+            new Runnable() {
+              @Override
+              public void run() {
+                Lizzie.frame.showAnalyzeGenmoveInfo();
+              }
+            });
+    setToolTipJMenu(item);
+    item.addActionListener(
+        new ActionListener() {
+          @Override
+          public void actionPerformed(ActionEvent e) {
+            Lizzie.frame.startAnalyzeGameDialog();
+          }
+        });
+    return item;
+  }
+
   private void setToolTipJMenu(JMenuItem menu) {
     if (Lizzie.config.isChinese) return;
     menu.setToolTipText(menu.getText());
@@ -7651,96 +7587,9 @@ public class Menu extends JMenuBar {
             public void actionPerformed(ActionEvent e) {
               Lizzie.frame.startEngineGameDialog();
             }
-          });
+      });
       setToolTipJMenu(engineGame);
-      JFontMenuItem analyzeGame = new JFontMenuItem(); // ("人机对局(分析模式 N)");
-
-      analyzeGame.setLayout(null);
-      if (Lizzie.config.isChinese)
-        analyzeGame.setPreferredSize(
-            new Dimension(
-                (Lizzie.config.useJavaLooks ? -31 : 0)
-                    + (Lizzie.config.isFrameFontSmall()
-                        ? 200
-                        : (Lizzie.config.isFrameFontMiddle() ? 250 : 300)),
-                (Lizzie.config.useJavaLooks
-                    ? (Lizzie.config.isFrameFontSmall()
-                        ? 20
-                        : (Lizzie.config.isFrameFontMiddle() ? 25 : 30))
-                    : (Lizzie.config.isFrameFontSmall()
-                        ? 25
-                        : (Lizzie.config.isFrameFontMiddle() ? 27 : 30)))));
-      else
-        analyzeGame.setPreferredSize(
-            new Dimension(
-                (Lizzie.config.useJavaLooks ? -31 : 0)
-                    + (Lizzie.config.isFrameFontSmall()
-                        ? 253
-                        : (Lizzie.config.isFrameFontMiddle() ? 310 : 380)),
-                (Lizzie.config.useJavaLooks
-                    ? (Lizzie.config.isFrameFontSmall()
-                        ? 20
-                        : (Lizzie.config.isFrameFontMiddle() ? 25 : 30))
-                    : (Lizzie.config.isFrameFontSmall()
-                        ? 25
-                        : (Lizzie.config.isFrameFontMiddle() ? 27 : 30)))));
-      JFontLabel lblAnalyzeGame =
-          new JFontLabel(resourceBundle.getString("Menu.newAnalyzeModeGame"));
-      setToolTipJMenu(analyzeGame, lblAnalyzeGame);
-      lblAnalyzeGame.setBounds(
-          Lizzie.config.useJavaLooks ? 6 : 37,
-          (Lizzie.config.useJavaLooks
-              ? -1
-              : (Lizzie.config.isFrameFontSmall()
-                  ? 2
-                  : (Lizzie.config.isFrameFontMiddle() ? 1 : -1))),
-          320,
-          Lizzie.config.isFrameFontSmall() ? 20 : (Lizzie.config.isFrameFontMiddle() ? 25 : 30));
-      JButton aboutAnalyzeGame = new JFontButton("?");
-      aboutAnalyzeGame.addActionListener(
-          new ActionListener() {
-            @Override
-            public void actionPerformed(ActionEvent e) {
-              Lizzie.frame.showAnalyzeGenmoveInfo();
-            }
-          });
-      aboutAnalyzeGame.setFocusable(false);
-      aboutAnalyzeGame.setMargin(new Insets(0, 0, 0, 0));
-      if (Lizzie.config.isChinese)
-        aboutAnalyzeGame.setBounds(
-            (Lizzie.config.useJavaLooks ? -31 : 0)
-                + (Lizzie.config.isFrameFontSmall()
-                    ? 177
-                    : (Lizzie.config.isFrameFontMiddle() ? 220 : 270)),
-            (Lizzie.config.useJavaLooks
-                ? 1
-                : (Lizzie.config.isFrameFontSmall()
-                    ? 3
-                    : (Lizzie.config.isFrameFontMiddle() ? 2 : 1))),
-            Config.menuHeight - 2,
-            Config.menuHeight - 2);
-      else
-        aboutAnalyzeGame.setBounds(
-            (Lizzie.config.useJavaLooks ? -31 : 0)
-                + (Lizzie.config.isFrameFontSmall()
-                    ? 230
-                    : (Lizzie.config.isFrameFontMiddle() ? 280 : 350)),
-            (Lizzie.config.useJavaLooks
-                ? 1
-                : (Lizzie.config.isFrameFontSmall()
-                    ? 3
-                    : (Lizzie.config.isFrameFontMiddle() ? 2 : 1))),
-            Config.menuHeight - 2,
-            Config.menuHeight - 2);
-      analyzeGame.add(aboutAnalyzeGame);
-      analyzeGame.add(lblAnalyzeGame);
-      analyzeGame.addActionListener(
-          new ActionListener() {
-            @Override
-            public void actionPerformed(ActionEvent e) {
-              Lizzie.frame.startAnalyzeGameDialog();
-            }
-          });
+      JFontMenuItem analyzeGame = createAnalyzeModeGameItem();
 
       JFontMenuItem genmoveGame =
           new JFontMenuItem(
@@ -8931,96 +8780,7 @@ public class Menu extends JMenuBar {
             Lizzie.frame.startEngineGameDialog();
           }
         });
-    JFontMenuItem analyzeGame = new JFontMenuItem(); // ("人机对局(分析模式 N)");
-
-    analyzeGame.setLayout(null);
-    if (Lizzie.config.isChinese)
-      analyzeGame.setPreferredSize(
-          new Dimension(
-              (Lizzie.config.useJavaLooks ? -31 : 0)
-                  + (Lizzie.config.isFrameFontSmall()
-                      ? 200
-                      : (Lizzie.config.isFrameFontMiddle() ? 250 : 300)),
-              (Lizzie.config.useJavaLooks
-                  ? (Lizzie.config.isFrameFontSmall()
-                      ? 20
-                      : (Lizzie.config.isFrameFontMiddle() ? 25 : 30))
-                  : (Lizzie.config.isFrameFontSmall()
-                      ? 25
-                      : (Lizzie.config.isFrameFontMiddle() ? 27 : 30)))));
-    else
-      analyzeGame.setPreferredSize(
-          new Dimension(
-              (Lizzie.config.useJavaLooks ? -31 : 0)
-                  + (Lizzie.config.isFrameFontSmall()
-                      ? 253
-                      : (Lizzie.config.isFrameFontMiddle() ? 310 : 380)),
-              (Lizzie.config.useJavaLooks
-                  ? (Lizzie.config.isFrameFontSmall()
-                      ? 20
-                      : (Lizzie.config.isFrameFontMiddle() ? 25 : 30))
-                  : (Lizzie.config.isFrameFontSmall()
-                      ? 25
-                      : (Lizzie.config.isFrameFontMiddle() ? 27 : 30)))));
-    JFontLabel lblAnalyzeGame =
-        new JFontLabel(
-            resourceBundle.getString(
-                "Menu.newAnalyzeModeGame")); // "Custom limit moves:");//自定义限制手数:
-    setToolTipJMenu(analyzeGame, lblAnalyzeGame);
-    lblAnalyzeGame.setBounds(
-        Lizzie.config.useJavaLooks ? 6 : 37,
-        (Lizzie.config.useJavaLooks
-            ? -1
-            : (Lizzie.config.isFrameFontSmall()
-                ? 2
-                : (Lizzie.config.isFrameFontMiddle() ? 1 : -1))),
-        320,
-        Lizzie.config.isFrameFontSmall() ? 20 : (Lizzie.config.isFrameFontMiddle() ? 25 : 30));
-    JButton aboutAnalyzeGame = new JFontButton("?");
-    aboutAnalyzeGame.addActionListener(
-        new ActionListener() {
-          @Override
-          public void actionPerformed(ActionEvent e) {
-            Lizzie.frame.showAnalyzeGenmoveInfo();
-          }
-        });
-    aboutAnalyzeGame.setFocusable(false);
-    aboutAnalyzeGame.setMargin(new Insets(0, 0, 0, 0));
-    if (Lizzie.config.isChinese)
-      aboutAnalyzeGame.setBounds(
-          (Lizzie.config.useJavaLooks ? -31 : 0)
-              + (Lizzie.config.isFrameFontSmall()
-                  ? 177
-                  : (Lizzie.config.isFrameFontMiddle() ? 220 : 270)),
-          (Lizzie.config.useJavaLooks
-              ? 1
-              : (Lizzie.config.isFrameFontSmall()
-                  ? 3
-                  : (Lizzie.config.isFrameFontMiddle() ? 2 : 1))),
-          Config.menuHeight - 2,
-          Config.menuHeight - 2);
-    else
-      aboutAnalyzeGame.setBounds(
-          (Lizzie.config.useJavaLooks ? -31 : 0)
-              + (Lizzie.config.isFrameFontSmall()
-                  ? 230
-                  : (Lizzie.config.isFrameFontMiddle() ? 280 : 350)),
-          (Lizzie.config.useJavaLooks
-              ? 1
-              : (Lizzie.config.isFrameFontSmall()
-                  ? 3
-                  : (Lizzie.config.isFrameFontMiddle() ? 2 : 1))),
-          Config.menuHeight - 2,
-          Config.menuHeight - 2);
-    analyzeGame.add(aboutAnalyzeGame);
-    analyzeGame.add(lblAnalyzeGame);
-    analyzeGame.addActionListener(
-        new ActionListener() {
-          @Override
-          public void actionPerformed(ActionEvent e) {
-            Lizzie.frame.startAnalyzeGameDialog();
-          }
-        });
+    JFontMenuItem analyzeGame = createAnalyzeModeGameItem();
 
     JFontMenuItem genmoveGame =
         new JFontMenuItem(
@@ -10697,5 +10457,80 @@ public class Menu extends JMenuBar {
       if (Lizzie.config.allowMoveNumber == 0 && !EngineManager.isEngineGame)
         btnRankMark.setIcon(Lizzie.config.moveRankMarkLastMove < 0 ? rankMarkOff : rankMarkOn);
       else btnRankMark.setIcon(rankMarkOff);
+  }
+
+  static final class InfoMenuItem extends JFontMenuItem {
+    private static final int INFO_EXTRA_WIDTH = 30;
+    private static final int INFO_RIGHT_PADDING = 9;
+    private static final int INFO_MIN_SIZE = 14;
+    private static final int INFO_MAX_SIZE = 18;
+    private final Runnable infoAction;
+
+    InfoMenuItem(String text, Runnable infoAction) {
+      super(text);
+      this.infoAction = infoAction;
+    }
+
+    @Override
+    public Dimension getPreferredSize() {
+      Dimension size = super.getPreferredSize();
+      return new Dimension(size.width + INFO_EXTRA_WIDTH, size.height);
+    }
+
+    boolean isInfoHit(int x, int y) {
+      int size = infoSize();
+      int left = getWidth() - INFO_RIGHT_PADDING - size;
+      int top = (getHeight() - size) / 2;
+      return x >= left && x <= left + size && y >= top && y <= top + size;
+    }
+
+    @Override
+    protected void processMouseEvent(MouseEvent e) {
+      if (isEnabled()
+          && infoAction != null
+          && isInfoHit(e.getX(), e.getY())
+          && (e.getID() == MouseEvent.MOUSE_PRESSED
+              || e.getID() == MouseEvent.MOUSE_RELEASED
+              || e.getID() == MouseEvent.MOUSE_CLICKED)) {
+        e.consume();
+        getModel().setArmed(false);
+        if (e.getID() == MouseEvent.MOUSE_RELEASED) {
+          infoAction.run();
+          MenuSelectionManager.defaultManager().clearSelectedPath();
+        }
+        return;
+      }
+      super.processMouseEvent(e);
+    }
+
+    @Override
+    protected void paintComponent(Graphics g) {
+      super.paintComponent(g);
+      if (getWidth() <= INFO_EXTRA_WIDTH || getHeight() <= 0) {
+        return;
+      }
+      Graphics2D g2 = (Graphics2D) g.create();
+      int size = infoSize();
+      int left = getWidth() - INFO_RIGHT_PADDING - size;
+      int top = (getHeight() - size) / 2;
+      Color base = isEnabled() ? getForeground() : new Color(120, 130, 145);
+      g2.setColor(new Color(base.getRed(), base.getGreen(), base.getBlue(), 80));
+      g2.fillOval(left, top, size, size);
+      g2.setColor(new Color(base.getRed(), base.getGreen(), base.getBlue(), 170));
+      g2.drawOval(left, top, size - 1, size - 1);
+      Font oldFont = g2.getFont();
+      g2.setFont(getFont().deriveFont(Font.BOLD, Math.max(10f, Config.frameFontSize - 1f)));
+      FontMetrics metrics = g2.getFontMetrics();
+      String mark = "?";
+      int textX = left + (size - metrics.stringWidth(mark)) / 2;
+      int textY = top + (size - metrics.getHeight()) / 2 + metrics.getAscent();
+      g2.drawString(mark, textX, textY);
+      g2.setFont(oldFont);
+      g2.dispose();
+    }
+
+    private int infoSize() {
+      return Math.max(INFO_MIN_SIZE, Math.min(INFO_MAX_SIZE, getHeight() - 8));
+    }
   }
 }
