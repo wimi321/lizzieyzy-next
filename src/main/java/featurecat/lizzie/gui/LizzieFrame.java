@@ -3728,18 +3728,11 @@ public class LizzieFrame extends JFrame {
 
     JSONObject filesystem = Lizzie.config.persisted.getJSONObject("filesystem");
     this.setAlwaysOnTop(false);
-    FileDialog fileDialog =
-        new FileDialog(this, Lizzie.resourceBundle.getString("LizzieFrame.chooseKifu"));
-
-    fileDialog.setLocationRelativeTo(this);
-    fileDialog.setDirectory(filesystem.getString("last-folder"));
-    fileDialog.setFile("*.sgf;*.gib;*.SGF;*.GIB");
-
-    fileDialog.setMultipleMode(false);
-    fileDialog.setMode(0);
-    fileDialog.setVisible(true);
-
-    File[] file = fileDialog.getFiles();
+    File[] file =
+        chooseKifuFiles(
+            Lizzie.resourceBundle.getString("LizzieFrame.chooseKifu"),
+            filesystem.getString("last-folder"),
+            false);
 
     if (file.length > 0) loadFile(file[0], false, true);
     if (file.length > 0) {
@@ -3763,18 +3756,11 @@ public class LizzieFrame extends JFrame {
     enginePkSgfWinLoss = new ArrayList<SgfWinLossList>();
     JSONObject filesystem = Lizzie.config.persisted.getJSONObject("filesystem");
     this.setAlwaysOnTop(false);
-    FileDialog fileDialog =
-        new FileDialog(this, Lizzie.resourceBundle.getString("LizzieFrame.chooseOpeningSgf"));
-
-    fileDialog.setLocationRelativeTo(this);
-    fileDialog.setDirectory(filesystem.getString("last-folder"));
-    fileDialog.setFile("*.sgf;*.gib;*.SGF;*.GIB");
-
-    fileDialog.setMultipleMode(true);
-    fileDialog.setMode(0);
-    fileDialog.setVisible(true);
-
-    File[] files = fileDialog.getFiles();
+    File[] files =
+        chooseKifuFiles(
+            Lizzie.resourceBundle.getString("LizzieFrame.chooseOpeningSgf"),
+            filesystem.getString("last-folder"),
+            true);
 
     if (files.length > 0) {
       isEnginePKSgfStart = true;
@@ -3808,18 +3794,11 @@ public class LizzieFrame extends JFrame {
     JSONObject filesystem = Lizzie.config.persisted.getJSONObject("filesystem");
     // JFrame frame = new JFrame();
     this.setAlwaysOnTop(false);
-    FileDialog fileDialog =
-        new FileDialog(this, Lizzie.resourceBundle.getString("LizzieFrame.chooseKifu"));
-
-    fileDialog.setLocationRelativeTo(this);
-    fileDialog.setDirectory(filesystem.getString("last-folder"));
-    fileDialog.setFile("*.sgf;*.gib;*.SGF;*.GIB");
-
-    fileDialog.setMultipleMode(true);
-    fileDialog.setMode(0);
-    fileDialog.setVisible(true);
-
-    File[] files = fileDialog.getFiles();
+    File[] files =
+        chooseKifuFiles(
+            Lizzie.resourceBundle.getString("LizzieFrame.chooseKifu"),
+            filesystem.getString("last-folder"),
+            true);
     if (files.length > 0) {
       isBatchAna = true;
       BatchAnaNum = 0;
@@ -3846,6 +3825,54 @@ public class LizzieFrame extends JFrame {
       }
     }
     this.setAlwaysOnTop(Lizzie.config.mainsalwaysontop);
+  }
+
+  private File[] chooseKifuFiles(String title, String lastFolder, boolean multiple) {
+    if (shouldUseSwingKifuChooser()) {
+      return chooseKifuFilesWithSwing(title, lastFolder, multiple);
+    }
+    return chooseKifuFilesWithAwt(title, lastFolder, multiple);
+  }
+
+  static boolean shouldUseSwingKifuChooser() {
+    return shouldUseSwingKifuChooser(System.getProperty("os.name"));
+  }
+
+  static boolean shouldUseSwingKifuChooser(String osName) {
+    return osName != null && osName.toLowerCase(Locale.ROOT).contains("linux");
+  }
+
+  private File[] chooseKifuFilesWithAwt(String title, String lastFolder, boolean multiple) {
+    FileDialog fileDialog = new FileDialog(this, title);
+    fileDialog.setLocationRelativeTo(this);
+    fileDialog.setDirectory(lastFolder);
+    fileDialog.setFile("*.sgf;*.gib;*.SGF;*.GIB");
+    fileDialog.setMultipleMode(multiple);
+    fileDialog.setMode(FileDialog.LOAD);
+    fileDialog.setVisible(true);
+    return fileDialog.getFiles();
+  }
+
+  private File[] chooseKifuFilesWithSwing(String title, String lastFolder, boolean multiple) {
+    JFileChooser chooser =
+        lastFolder == null || lastFolder.isEmpty()
+            ? new JFileChooser()
+            : new JFileChooser(lastFolder);
+    chooser.setDialogTitle(title);
+    chooser.setFileSelectionMode(JFileChooser.FILES_ONLY);
+    chooser.setMultiSelectionEnabled(multiple);
+    chooser.setFileFilter(new FileNameExtensionFilter("SGF/GIB (*.sgf, *.gib)", "sgf", "gib"));
+
+    int result = chooser.showOpenDialog(this);
+    if (result != JFileChooser.APPROVE_OPTION) {
+      return new File[0];
+    }
+    if (multiple) {
+      File[] files = chooser.getSelectedFiles();
+      return files == null ? new File[0] : files;
+    }
+    File file = chooser.getSelectedFile();
+    return file == null ? new File[0] : new File[] {file};
   }
 
   public void resumeFile() {
