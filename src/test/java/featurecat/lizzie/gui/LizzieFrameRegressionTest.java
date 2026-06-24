@@ -69,6 +69,19 @@ class LizzieFrameRegressionTest {
   }
 
   @Test
+  void linuxUsesSwingKifuChooserToAvoidNativeDialogMisplacement() {
+    assertTrue(LizzieFrame.shouldUseSwingKifuChooser("Linux"));
+    assertTrue(LizzieFrame.shouldUseSwingKifuChooser("Ubuntu Linux"));
+  }
+
+  @Test
+  void nonLinuxKeepsNativeKifuChooser() {
+    assertFalse(LizzieFrame.shouldUseSwingKifuChooser("Windows 11"));
+    assertFalse(LizzieFrame.shouldUseSwingKifuChooser("Mac OS X"));
+    assertFalse(LizzieFrame.shouldUseSwingKifuChooser(null));
+  }
+
+  @Test
   void playerStrengthRankReferenceKeepsKyuResultsInKyuBand() throws Exception {
     Method rankLevel = LizzieFrame.class.getDeclaredMethod("playerStrengthRankLevel", String.class);
     rankLevel.setAccessible(true);
