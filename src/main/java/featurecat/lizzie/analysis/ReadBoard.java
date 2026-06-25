@@ -3361,6 +3361,9 @@ public class ReadBoard {
     readBoardGmaAutoPlayColor = Stone.EMPTY;
     readBoardGmaTimeSeconds = 0;
     readBoardGmaMaxVisits = 0;
+    if (Lizzie.leelaz != null) {
+      Lizzie.leelaz.restoreReadBoardGmaSearchLimitsIfNeeded();
+    }
   }
 
   private void disableReadBoardGmaPonderIfIdle() {

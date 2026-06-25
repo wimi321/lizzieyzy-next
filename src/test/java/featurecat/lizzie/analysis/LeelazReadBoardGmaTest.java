@@ -13,6 +13,7 @@ import featurecat.lizzie.gui.Menu;
 import java.awt.Window;
 import java.io.OutputStream;
 import java.lang.reflect.Field;
+import java.util.Collection;
 import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -50,7 +51,11 @@ class LeelazReadBoardGmaTest {
       assertEquals(
           List.of(
               "kata-set-param ponderingEnabled true",
-              "kata-genmove_analyze B 10 maxTime 5 maxVisits 1000"),
+              "kata-get-param maxTime",
+              "kata-set-param maxTime 5",
+              "kata-get-param maxVisits",
+              "kata-set-param maxVisits 1000",
+              "kata-genmove_analyze B 10"),
           output.commands());
       assertTrue(engine.isThinking);
     }
@@ -75,6 +80,118 @@ class LeelazReadBoardGmaTest {
     }
   }
 
+  @Test
+  void genmoveAnalyzeForReadBoardRestoresPreviousLimitOverridesWhenLimitsAreZero()
+      throws Exception {
+    try (Harness harness = Harness.open()) {
+      Leelaz engine = new Leelaz("");
+      engine.isKatago = true;
+      Lizzie.leelaz = engine;
+      setStringField(engine, "readBoardGmaOriginalMaxTime", "2");
+      setStringField(engine, "readBoardGmaOriginalMaxVisits", "800");
+      setBooleanField(engine, "readBoardGmaMaxTimeOverridden", true);
+      setBooleanField(engine, "readBoardGmaMaxVisitsOverridden", true);
+      RecordingOutputStream output = new RecordingOutputStream();
+      setOutputStream(engine, output);
+
+      engine.genmoveAnalyzeForReadBoard("W", 0, 0, false);
+
+      assertEquals(
+          List.of(
+              "kata-set-param ponderingEnabled false",
+              "kata-set-param maxTime 2",
+              "kata-set-param maxVisits 800",
+              "kata-genmove_analyze W 10"),
+          output.commands());
+    }
+  }
+
+  @Test
+  void restoreReadBoardGmaSearchLimitsWaitsForOriginalValuesWhenStopHappensEarly()
+      throws Exception {
+    try (Harness harness = Harness.open()) {
+      Leelaz engine = new Leelaz("");
+      engine.isKatago = true;
+      Lizzie.leelaz = engine;
+      RecordingOutputStream output = new RecordingOutputStream();
+      setOutputStream(engine, output);
+
+      engine.genmoveAnalyzeForReadBoard("B", 5, 1000, true);
+      engine.restoreReadBoardGmaSearchLimitsIfNeeded();
+      invokeProcessCommandResponseLine(engine, "=");
+      invokeProcessCommandResponseLine(engine, "= 2");
+      invokeProcessCommandResponseLine(engine, "=");
+      invokeProcessCommandResponseLine(engine, "= 800");
+
+      assertEquals(
+          List.of(
+              "kata-set-param ponderingEnabled true",
+              "kata-get-param maxTime",
+              "kata-set-param maxTime 5",
+              "kata-get-param maxVisits",
+              "kata-set-param maxVisits 1000",
+              "kata-genmove_analyze B 10",
+              "kata-set-param maxTime 2",
+              "kata-set-param maxVisits 800"),
+          output.commands());
+    }
+  }
+
+  @Test
+  void newPositiveReadBoardGmaCancelsEarlyStopRestoreBeforeOriginalValueArrives()
+      throws Exception {
+    try (Harness harness = Harness.open()) {
+      Leelaz engine = new Leelaz("");
+      engine.isKatago = true;
+      Lizzie.leelaz = engine;
+      RecordingOutputStream output = new RecordingOutputStream();
+      setOutputStream(engine, output);
+
+      engine.genmoveAnalyzeForReadBoard("B", 5, 0, true);
+      engine.restoreReadBoardGmaSearchLimitsIfNeeded();
+      engine.genmoveAnalyzeForReadBoard("W", 6, 0, true);
+      invokeProcessCommandResponseLine(engine, "=");
+      invokeProcessCommandResponseLine(engine, "= 2");
+
+      assertEquals(
+          List.of(
+              "kata-set-param ponderingEnabled true",
+              "kata-get-param maxTime",
+              "kata-set-param maxTime 5",
+              "kata-genmove_analyze B 10",
+              "kata-set-param ponderingEnabled true",
+              "kata-set-param maxTime 6",
+              "kata-genmove_analyze W 10"),
+          output.commands());
+    }
+  }
+
+  @Test
+  void readBoardGmaPlayLineRetiresPendingResponseHandler() throws Exception {
+    try (Harness harness = Harness.open()) {
+      Leelaz engine = new Leelaz("");
+      engine.isKatago = true;
+      Lizzie.leelaz = engine;
+      RecordingOutputStream output = new RecordingOutputStream();
+      setOutputStream(engine, output);
+      ReadBoard readBoard = allocate(ReadBoard.class);
+      setBooleanField(readBoard, "readBoardGmaPending", true);
+      setBooleanField(readBoard, "readBoardGmaAutoPlayActive", false);
+      Lizzie.frame.readBoard = readBoard;
+
+      engine.genmoveAnalyzeForReadBoard("B", 5, 0, true);
+      invokeProcessCommandResponseLine(engine, "=");
+      invokeProcessCommandResponseLine(engine, "= 2");
+      invokeProcessCommandResponseLine(engine, "=");
+
+      assertEquals(1, pendingResponseHandlerCount(engine));
+
+      invokeParseLine(engine, "play D4");
+
+      assertEquals(0, pendingResponseHandlerCount(engine));
+    }
+  }
+
   private static void setOutputStream(Leelaz engine, OutputStream stream) throws Exception {
     Field outputField = Leelaz.class.getDeclaredField("outputStream");
     outputField.setAccessible(true);
@@ -86,6 +203,34 @@ class LeelazReadBoardGmaTest {
     Field field = target.getClass().getDeclaredField(fieldName);
     field.setAccessible(true);
     field.setBoolean(target, value);
+  }
+
+  private static void setStringField(Object target, String fieldName, String value)
+      throws Exception {
+    Field field = target.getClass().getDeclaredField(fieldName);
+    field.setAccessible(true);
+    field.set(target, value);
+  }
+
+  private static void invokeProcessCommandResponseLine(Leelaz engine, String line)
+      throws Exception {
+    java.lang.reflect.Method method =
+        Leelaz.class.getDeclaredMethod("processCommandResponseLine", String.class);
+    method.setAccessible(true);
+    method.invoke(engine, line);
+  }
+
+  private static void invokeParseLine(Leelaz engine, String line) throws Exception {
+    java.lang.reflect.Method method = Leelaz.class.getDeclaredMethod("parseLine", String.class);
+    method.setAccessible(true);
+    method.invoke(engine, line);
+  }
+
+  private static int pendingResponseHandlerCount(Leelaz engine) throws Exception {
+    Field field = Leelaz.class.getDeclaredField("pendingResponseHandlers");
+    field.setAccessible(true);
+    Collection<?> handlers = (Collection<?>) field.get(engine);
+    return handlers == null ? 0 : handlers.size();
   }
 
   @SuppressWarnings("unchecked")
