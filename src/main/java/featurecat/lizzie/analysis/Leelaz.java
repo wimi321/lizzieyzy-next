@@ -252,6 +252,7 @@ public class Leelaz {
   public List<String> commandLists = new ArrayList<String>();
   private boolean startGetCommandList = false;
   private boolean endGetCommandList = false;
+  private boolean readBoardGmaUnsupportedPromptShown = false;
   private int currentTotalPlayouts;
   public boolean supportMovesOwnership = false;
 
@@ -546,6 +547,9 @@ public class Leelaz {
     isCheckingVersion = true;
     isCheckingName = true;
     endGetCommandList = false;
+    startGetCommandList = false;
+    commandLists.clear();
+    readBoardGmaUnsupportedPromptShown = false;
     // sendCommand("turnon");
     if (!isSSH) {
       Runnable runnable =
@@ -1591,6 +1595,18 @@ public class Leelaz {
                 + (Lizzie.frame != null && Lizzie.frame.isAnaPlayingAgainstLeelaz)
                 + " engineGame="
                 + EngineManager.isEngineGame());
+        if (!isInputCommand
+            && params.length == 2
+            && Lizzie.frame != null
+            && Lizzie.frame.readBoard != null
+            && Lizzie.frame.readBoard.handleReadBoardGmaEnginePlay(params[1])) {
+          if (shouldStopPonder) {
+            isPondering = false;
+            YikeSyncDebugLog.log("Leelaz marked isPondering=false after ReadBoard GMA play line");
+          }
+          isThinking = false;
+          return;
+        }
         if (isInputCommand) {
           //	getGenmoveInfoPrevious = true;
           Lizzie.board.place(params[1]);
@@ -1662,6 +1678,9 @@ public class Leelaz {
         if (startGetCommandList) {
           startGetCommandList = false;
           endGetCommandList = true;
+          if (Lizzie.frame != null && Lizzie.frame.readBoard != null) {
+            Lizzie.frame.readBoard.onReadBoardGmaCapabilityReady();
+          }
         }
         String[] params = line.trim().split(" ");
         if (params.length == 1) return;
@@ -1872,6 +1891,9 @@ public class Leelaz {
 
   private void notifyAutoPlay(boolean playImmediately) {
     if (this != Lizzie.leelaz) return;
+    if (Lizzie.frame != null
+        && Lizzie.frame.readBoard != null
+        && Lizzie.frame.readBoard.isReadBoardGmaAutoPlayActive()) return;
     if (LizzieFrame.toolbar.isAutoPlay) {
       if ((Lizzie.board.getHistory().isBlacksTurn()
               && LizzieFrame.toolbar.chkAutoPlayBlack.isSelected())
@@ -4075,6 +4097,44 @@ public class Leelaz {
                     ? ("lz-genmove_analyze " + color + " " + getInterval())
                     : ("genmove " + color))));
     sendCommand(command);
+    isThinking = true;
+    LizzieFrame.menu.toggleEngineMenuStatus(false, true);
+  }
+
+  public boolean isReadBoardGmaCapabilityKnown() {
+    return endGetCommandList;
+  }
+
+  public boolean supportsReadBoardGma() {
+    return isKatago
+        && endGetCommandList
+        && commandLists.contains("kata-genmove_analyze")
+        && commandLists.contains("kata-get-param")
+        && commandLists.contains("kata-set-param");
+  }
+
+  public boolean shouldShowReadBoardGmaUnsupportedPrompt() {
+    if (readBoardGmaUnsupportedPromptShown) return false;
+    readBoardGmaUnsupportedPromptShown = true;
+    return true;
+  }
+
+  public void genmoveAnalyzeForReadBoard(
+      String color, int maxTimeSeconds, int maxVisits, boolean ponder) {
+    sendCommandNoLeelaz2("kata-set-param ponderingEnabled " + (ponder ? "true" : "false"));
+    StringBuilder command =
+        new StringBuilder("kata-genmove_analyze ")
+            .append(color)
+            .append(" ")
+            .append(getInterval())
+            .append(addKataTag());
+    if (maxTimeSeconds > 0) {
+      command.append(" maxTime ").append(maxTimeSeconds);
+    }
+    if (maxVisits > 0) {
+      command.append(" maxVisits ").append(maxVisits);
+    }
+    sendCommandNoLeelaz2(command.toString());
     isThinking = true;
     LizzieFrame.menu.toggleEngineMenuStatus(false, true);
   }

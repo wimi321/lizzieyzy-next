@@ -62,6 +62,8 @@ public class ReadBoard {
   private static final String READBOARD_UPDATE_SUPPORTED_COMMAND = "readboardUpdateSupported";
   private static final String YIKE_SYNC_START_COMMAND = "yikeSyncStart";
   private static final String YIKE_SYNC_STOP_COMMAND = "yikeSyncStop";
+  private static final String READBOARD_GMA_TOKEN = "gma";
+  private static final String READBOARD_GMA_UNSUPPORTED_MESSAGE = "该模式仅支持 KataGo";
 
   public static boolean isLegacyNativeReadBoardAvailable() {
     return isLegacyNativeReadBoardAvailable(legacyNativeReadBoardDirectory());
@@ -152,6 +154,11 @@ public class ReadBoard {
   private boolean needGenmove = false;
   private boolean showInBoard = false;
   private volatile boolean isSyncing = false;
+  private boolean readBoardGmaAutoPlayActive = false;
+  private Stone readBoardGmaAutoPlayColor = Stone.EMPTY;
+  private int readBoardGmaTimeSeconds = 0;
+  private int readBoardGmaMaxVisits = 0;
+  private boolean readBoardGmaPending = false;
   // private long startTime;
   private boolean waitSocket = true;
   public boolean lastMovePlayByLizzie = false;
@@ -598,6 +605,7 @@ public class ReadBoard {
           Lizzie.config.readBoardPonder = true;
         } else if (params[1].startsWith("off")) {
           Lizzie.config.readBoardPonder = false;
+          disableReadBoardGmaPonderIfIdle();
         }
       }
     }
@@ -726,7 +734,9 @@ public class ReadBoard {
                 + pendingLocalMoveState());
         releaseFailedLocalMoveObservationIfTimedOut("sync-line");
       }
-      if (isReadBoardAnalysisEngineAvailable() && !Lizzie.leelaz.isPondering()) {
+      if (readBoardGmaAutoPlayActive) {
+        scheduleReadBoardGmaIfNeeded("sync-line");
+      } else if (isReadBoardAnalysisEngineAvailable() && !Lizzie.leelaz.isPondering()) {
         Lizzie.leelaz.togglePonder();
       }
     }
@@ -736,15 +746,18 @@ public class ReadBoard {
         Lizzie.frame.floatBoard.setEditButton();
     }
     if (line.startsWith("noboth")) {
+      clearReadBoardGmaAutoPlay("noboth");
       Lizzie.frame.bothSync = false;
       if (Lizzie.frame.floatBoard != null && Lizzie.frame.floatBoard.isVisible())
         Lizzie.frame.floatBoard.setEditButton();
     }
     if (line.startsWith("stopAutoPlay")) {
+      clearReadBoardGmaAutoPlay("stopAutoPlay");
       LizzieFrame.toolbar.chkAutoPlay.setSelected(false);
       LizzieFrame.toolbar.isAutoPlay = false;
     }
     if (line.startsWith("endsync")) {
+      clearReadBoardGmaAutoPlay("endsync");
       noMsg = true;
       resetActiveSyncStateForReadBoardControlLine();
       clearPendingRemoteContext();
@@ -760,6 +773,7 @@ public class ReadBoard {
       publishCurrentReadBoardDiagnosticsSnapshot();
     }
     if (line.startsWith("stopsync")) {
+      clearReadBoardGmaAutoPlay("stopsync");
       resetActiveSyncStateForReadBoardControlLine();
       clearPendingRemoteContext();
       tempcount = new ArrayList<Integer>();
@@ -790,9 +804,20 @@ public class ReadBoard {
       }
       if (params.length == 3) {
         String[] playParams = params[2].trim().split(" ");
+        if (playParams.length < 3) {
+          return;
+        }
         int playouts = Integer.parseInt(playParams[1]);
         int firstPlayouts = Integer.parseInt(playParams[2]);
         int time = Integer.parseInt(playParams[0]);
+        boolean useGma = isReadBoardGmaPlayMode(playParams);
+        readBoardGmaAutoPlayActive = useGma;
+        readBoardGmaAutoPlayColor = autoPlayColor;
+        readBoardGmaTimeSeconds = Math.max(0, time);
+        readBoardGmaMaxVisits = Math.max(0, playouts);
+        if (!useGma) {
+          readBoardGmaPending = false;
+        }
         if (time > 0) {
           LizzieFrame.toolbar.txtAutoPlayTime.setText(String.valueOf(time));
           LizzieFrame.toolbar.chkAutoPlayTime.setSelected(true);
@@ -830,7 +855,11 @@ public class ReadBoard {
           LizzieFrame.toolbar.isAutoPlay = true;
           Lizzie.frame.clearWRNforGame(false);
         }
-        Lizzie.leelaz.ponder();
+        if (readBoardGmaAutoPlayActive) {
+          scheduleReadBoardGmaIfNeeded("play-line");
+        } else {
+          Lizzie.leelaz.ponder();
+        }
       }
     }
     if (line.startsWith("pass")) {
@@ -850,6 +879,9 @@ public class ReadBoard {
       String[] params = line.trim().split(" ");
       if (params.length == 2) {
         int playouts = Integer.parseInt(params[1]);
+        if (readBoardGmaAutoPlayActive) {
+          readBoardGmaMaxVisits = Math.max(0, playouts);
+        }
         if (playouts > 0) {
           LizzieFrame.toolbar.txtAutoPlayPlayouts.setText(String.valueOf(playouts));
           LizzieFrame.toolbar.chkAutoPlayPlayouts.setSelected(true);
@@ -860,6 +892,9 @@ public class ReadBoard {
       String[] params = line.trim().split(" ");
       if (params.length == 2) {
         int time = Integer.parseInt(params[1]);
+        if (readBoardGmaAutoPlayActive) {
+          readBoardGmaTimeSeconds = Math.max(0, time);
+        }
         if (time > 0) {
           LizzieFrame.toolbar.txtAutoPlayTime.setText(String.valueOf(time));
           LizzieFrame.toolbar.chkAutoPlayTime.setSelected(true);
@@ -872,6 +907,7 @@ public class ReadBoard {
     }
 
     if (line.startsWith("noponder")) {
+      clearReadBoardGmaAutoPlay("noponder");
       if (Lizzie.frame.isPlayingAgainstLeelaz) {
         Lizzie.frame.isPlayingAgainstLeelaz = false;
         Lizzie.leelaz.isThinking = false;
@@ -3296,6 +3332,182 @@ public class ReadBoard {
     return failedLocalMoveRecoveryActive;
   }
 
+  private boolean isReadBoardGmaPlayMode(String[] playParams) {
+    return playParams != null
+        && playParams.length >= 4
+        && READBOARD_GMA_TOKEN.equals(playParams[3].trim());
+  }
+
+  public boolean isReadBoardGmaAutoPlayActive() {
+    return readBoardGmaAutoPlayActive;
+  }
+
+  public void onReadBoardGmaCapabilityReady() {
+    scheduleReadBoardGmaIfNeeded("capability-ready");
+  }
+
+  private void clearReadBoardGmaAutoPlay(String reason) {
+    if (readBoardGmaAutoPlayActive || readBoardGmaPending) {
+      localMoveSyncDebug(
+          "clear ReadBoard GMA autoplay reason="
+              + reason
+              + " active="
+              + readBoardGmaAutoPlayActive
+              + " pending="
+              + readBoardGmaPending);
+    }
+    readBoardGmaAutoPlayActive = false;
+    readBoardGmaPending = false;
+    readBoardGmaAutoPlayColor = Stone.EMPTY;
+    readBoardGmaTimeSeconds = 0;
+    readBoardGmaMaxVisits = 0;
+  }
+
+  private void disableReadBoardGmaPonderIfIdle() {
+    if (!readBoardGmaAutoPlayActive
+        || readBoardGmaPending
+        || Lizzie.leelaz == null
+        || !Lizzie.leelaz.supportsReadBoardGma()) {
+      return;
+    }
+    Lizzie.leelaz.sendCommandNoLeelaz2("kata-set-param ponderingEnabled false");
+    stopPonderingIfActive();
+  }
+
+  private boolean scheduleReadBoardGmaIfNeeded(String reason) {
+    if (!readBoardGmaAutoPlayActive) {
+      return false;
+    }
+    if (readBoardGmaPending) {
+      localMoveSyncDebug("ReadBoard GMA skip pending reason=" + reason);
+      return true;
+    }
+    if (Lizzie.frame == null || Lizzie.board == null || Lizzie.leelaz == null) {
+      localMoveSyncDebug(
+          "ReadBoard GMA skip missing app state reason="
+              + reason
+              + " frame="
+              + (Lizzie.frame != null)
+              + " board="
+              + (Lizzie.board != null)
+              + " engine="
+              + (Lizzie.leelaz != null));
+      return false;
+    }
+    if (!Lizzie.frame.bothSync || EngineManager.isEngineGame()) {
+      showReadBoardGmaUnsupportedOnce();
+      return true;
+    }
+    if (readBoardGmaAutoPlayColor == null || readBoardGmaAutoPlayColor.isEmpty()) {
+      return true;
+    }
+    boolean blacksTurn = Lizzie.board.getHistory().isBlacksTurn();
+    if ((blacksTurn && !readBoardGmaAutoPlayColor.isBlack())
+        || (!blacksTurn && !readBoardGmaAutoPlayColor.isWhite())) {
+      localMoveSyncDebug(
+          "ReadBoard GMA skip opponent turn reason="
+              + reason
+              + " blackToPlay="
+              + blacksTurn
+              + " color="
+              + readBoardGmaAutoPlayColor);
+      return true;
+    }
+    if (!isReadBoardAnalysisEngineAvailable()) {
+      localMoveSyncDebug("ReadBoard GMA skip engine unavailable reason=" + reason);
+      return false;
+    }
+    if (!Lizzie.leelaz.isReadBoardGmaCapabilityKnown()) {
+      localMoveSyncDebug("ReadBoard GMA wait capability handshake reason=" + reason);
+      return true;
+    }
+    if (!Lizzie.leelaz.supportsReadBoardGma()) {
+      showReadBoardGmaUnsupportedOnce();
+      return true;
+    }
+
+    String color = readBoardGmaAutoPlayColor.isBlack() ? "B" : "W";
+    boolean ponder = Lizzie.config != null && Lizzie.config.readBoardPonder;
+    readBoardGmaPending = true;
+    localMoveSyncDebug(
+        "ReadBoard GMA start reason="
+            + reason
+            + " color="
+            + color
+            + " maxTime="
+            + readBoardGmaTimeSeconds
+            + " maxVisits="
+            + readBoardGmaMaxVisits
+            + " ponder="
+            + ponder);
+    Lizzie.leelaz.genmoveAnalyzeForReadBoard(
+        color, readBoardGmaTimeSeconds, readBoardGmaMaxVisits, ponder);
+    return true;
+  }
+
+  private void showReadBoardGmaUnsupportedOnce() {
+    if (Lizzie.leelaz != null && Lizzie.leelaz.shouldShowReadBoardGmaUnsupportedPrompt()) {
+      Utils.showMsg(READBOARD_GMA_UNSUPPORTED_MESSAGE);
+    }
+  }
+
+  public boolean handleReadBoardGmaEnginePlay(String move) {
+    if (!readBoardGmaPending) {
+      return false;
+    }
+    readBoardGmaPending = false;
+    if (!readBoardGmaAutoPlayActive) {
+      localMoveSyncDebug("ReadBoard GMA consume stale play move=" + move);
+      return true;
+    }
+    if (move == null) {
+      return true;
+    }
+    String normalizedMove = move.trim();
+    if (normalizedMove.equalsIgnoreCase("pass")
+        || normalizedMove.toLowerCase(Locale.ROOT).startsWith("resign")
+        || normalizedMove.equalsIgnoreCase("cancelled")) {
+      localMoveSyncDebug("ReadBoard GMA final non-board move=" + normalizedMove);
+      return true;
+    }
+    if (Lizzie.board == null || Lizzie.leelaz == null) {
+      return true;
+    }
+    boolean blacksTurn = Lizzie.board.getHistory().isBlacksTurn();
+    Stone color = readBoardGmaAutoPlayColor;
+    if ((blacksTurn && !color.isBlack()) || (!blacksTurn && !color.isWhite())) {
+      localMoveSyncDebug(
+          "ReadBoard GMA consume stale play due turn mismatch move="
+              + normalizedMove
+              + " blackToPlay="
+              + blacksTurn
+              + " color="
+              + color);
+      return true;
+    }
+    int[] coords = Board.convertNameToCoordinates(normalizedMove);
+    if (coords == null
+        || coords.length < 2
+        || coords[0] < 0
+        || coords[1] < 0
+        || coords[0] >= Board.boardWidth
+        || coords[1] >= Board.boardHeight) {
+      localMoveSyncDebug("ReadBoard GMA final invalid move=" + normalizedMove);
+      return true;
+    }
+    boolean oldInputCommand = Lizzie.leelaz.isInputCommand;
+    try {
+      Lizzie.leelaz.isInputCommand = true;
+      Lizzie.board.place(coords[0], coords[1], color);
+    } finally {
+      Lizzie.leelaz.isInputCommand = oldInputCommand;
+    }
+    if (Lizzie.config != null && !Lizzie.config.readBoardPonder) {
+      Lizzie.leelaz.nameCmdfornoponder();
+    }
+    return true;
+  }
+
   private Stone autoPlayColorFromPlayParams(String[] params) {
     if (params == null || params.length < 2) {
       return Stone.EMPTY;
@@ -3761,6 +3973,12 @@ public class ReadBoard {
       return true;
     }
     if (Lizzie.frame.isAnaPlayingAgainstLeelaz) {
+      if (readBoardGmaAutoPlayActive) {
+        clearFailedLocalMoveSuppression();
+        clearFailedLocalMoveRecovery();
+        scheduleReadBoardGmaIfNeeded(reason + "-failed-local-recovery");
+        return true;
+      }
       if (Lizzie.config != null && !Lizzie.config.readBoardPonder) {
         localMoveSyncDebug(
             "failed local move observed our turn but auto-play analysis skip readBoardPonder=false reason="
@@ -3866,6 +4084,9 @@ public class ReadBoard {
     if (Lizzie.frame == null || !Lizzie.frame.isAnaPlayingAgainstLeelaz) {
       return false;
     }
+    if (readBoardGmaAutoPlayActive) {
+      return scheduleReadBoardGmaIfNeeded(reason + "-resume-auto-play");
+    }
     if (hasFailedLocalMoveStateToPreserve()) {
       if (failedLocalMoveAwaitingRemoteObservation) {
         localMoveSyncDebug(
@@ -3970,6 +4191,10 @@ public class ReadBoard {
               + (Lizzie.board != null)
               + " config="
               + (Lizzie.config != null));
+      return;
+    }
+    if (readBoardGmaAutoPlayActive) {
+      scheduleReadBoardGmaIfNeeded("resume-analysis-after-sync");
       return;
     }
     if (!Lizzie.config.readBoardPonder) {
