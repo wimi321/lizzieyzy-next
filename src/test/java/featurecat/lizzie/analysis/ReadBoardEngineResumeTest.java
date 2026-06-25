@@ -9,6 +9,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import featurecat.lizzie.Config;
 import featurecat.lizzie.Lizzie;
+import featurecat.lizzie.gui.BoardRenderer;
 import featurecat.lizzie.gui.LizzieFrame;
 import featurecat.lizzie.rules.Board;
 import featurecat.lizzie.rules.BoardData;
@@ -16,8 +17,14 @@ import featurecat.lizzie.rules.BoardHistoryList;
 import featurecat.lizzie.rules.BoardHistoryNode;
 import featurecat.lizzie.rules.Stone;
 import featurecat.lizzie.rules.Zobrist;
+import java.io.BufferedOutputStream;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -826,6 +833,47 @@ class ReadBoardEngineResumeTest {
     }
   }
 
+  @Test
+  void gmaFinalMoveReplayingExistingNextNodeStillSendsReadBoardPlace() throws Exception {
+    try (EngineResumeHarness harness =
+        EngineResumeHarness.create(rootHistory(emptyStones(), true))) {
+      harness.frame.bothSync = true;
+      HistoryPath path =
+          buildHistory(
+              harness.board,
+              placement(0, 0, Stone.BLACK),
+              placement(1, 0, Stone.WHITE),
+              placement(0, 1, Stone.BLACK));
+      BoardHistoryNode beforeEngineMove = path.nodes.get(1);
+      BoardHistoryNode existingEngineMove = path.nodes.get(2);
+      harness.board.moveToAnyPosition(beforeEngineMove);
+
+      ByteArrayOutputStream readBoardBytes = new ByteArrayOutputStream();
+      harness.readBoard.process = new AliveProcess();
+      setField(harness.readBoard, "usePipe", true);
+      setField(harness.readBoard, "outputStream", new BufferedOutputStream(readBoardBytes));
+      setField(harness.readBoard, "readBoardGmaPending", true);
+      setField(harness.readBoard, "readBoardGmaAutoPlayActive", true);
+      setField(harness.readBoard, "readBoardGmaAutoPlayColor", Stone.BLACK);
+
+      boolean consumed =
+          harness.readBoard.handleReadBoardGmaEnginePlay(Board.convertCoordinatesToName(0, 1));
+
+      assertTrue(consumed);
+      assertSame(
+          existingEngineMove,
+          harness.board.getHistory().getCurrentHistoryNode(),
+          "GMA final move should replay the existing next node instead of creating a duplicate.");
+      assertTrue(
+          new String(readBoardBytes.toByteArray(), StandardCharsets.UTF_8)
+              .contains("place 0 1\n"),
+          "GMA final move must still click ReadBoard when local history already contains that next move.");
+      assertTrue(
+          harness.leelaz.playedMoves.isEmpty(),
+          "GMA final move comes from KataGo and must not be echoed back as a normal GTP play.");
+    }
+  }
+
   private static HistoryPath buildHistory(TrackingBoard board, Placement... moves) {
     BoardHistoryList history = board.getHistory();
     List<BoardHistoryNode> nodes = new ArrayList<>();
@@ -990,6 +1038,7 @@ class ReadBoardEngineResumeTest {
     private final Board previousBoard;
     private final Leelaz previousLeelaz;
     private final LizzieFrame previousFrame;
+    private final BoardRenderer previousBoardRenderer;
     private final TrackingBoard board;
     private final TrackingFrame frame;
     private final SnapshotTrackingLeelaz leelaz;
@@ -1000,6 +1049,7 @@ class ReadBoardEngineResumeTest {
         Board previousBoard,
         Leelaz previousLeelaz,
         LizzieFrame previousFrame,
+        BoardRenderer previousBoardRenderer,
         TrackingBoard board,
         TrackingFrame frame,
         SnapshotTrackingLeelaz leelaz,
@@ -1008,6 +1058,7 @@ class ReadBoardEngineResumeTest {
       this.previousBoard = previousBoard;
       this.previousLeelaz = previousLeelaz;
       this.previousFrame = previousFrame;
+      this.previousBoardRenderer = previousBoardRenderer;
       this.board = board;
       this.frame = frame;
       this.leelaz = leelaz;
@@ -1019,6 +1070,7 @@ class ReadBoardEngineResumeTest {
       Board previousBoard = Lizzie.board;
       Leelaz previousLeelaz = Lizzie.leelaz;
       LizzieFrame previousFrame = Lizzie.frame;
+      BoardRenderer previousBoardRenderer = LizzieFrame.boardRenderer;
 
       Config config = allocate(Config.class);
       config.alwaysSyncBoardStat = false;
@@ -1040,6 +1092,7 @@ class ReadBoardEngineResumeTest {
       TrackingFrame frame = allocate(TrackingFrame.class);
       frame.initialize(board);
       Lizzie.frame = frame;
+      LizzieFrame.boardRenderer = new BoardRenderer(false);
 
       ReadBoard readBoard = allocate(ReadBoard.class);
       setField(readBoard, "conflictTracker", new SyncConflictTracker());
@@ -1054,6 +1107,7 @@ class ReadBoardEngineResumeTest {
           previousBoard,
           previousLeelaz,
           previousFrame,
+          previousBoardRenderer,
           board,
           frame,
           leelaz,
@@ -1075,6 +1129,7 @@ class ReadBoardEngineResumeTest {
       Lizzie.board = previousBoard;
       Lizzie.leelaz = previousLeelaz;
       Lizzie.frame = previousFrame;
+      LizzieFrame.boardRenderer = previousBoardRenderer;
     }
   }
 
@@ -1204,6 +1259,41 @@ class ReadBoardEngineResumeTest {
       this.x = x;
       this.y = y;
       this.color = color;
+    }
+  }
+
+  private static final class AliveProcess extends Process {
+    @Override
+    public OutputStream getOutputStream() {
+      return OutputStream.nullOutputStream();
+    }
+
+    @Override
+    public InputStream getInputStream() {
+      return new ByteArrayInputStream(new byte[0]);
+    }
+
+    @Override
+    public InputStream getErrorStream() {
+      return new ByteArrayInputStream(new byte[0]);
+    }
+
+    @Override
+    public int waitFor() {
+      return 0;
+    }
+
+    @Override
+    public int exitValue() {
+      return 0;
+    }
+
+    @Override
+    public void destroy() {}
+
+    @Override
+    public boolean isAlive() {
+      return true;
     }
   }
 

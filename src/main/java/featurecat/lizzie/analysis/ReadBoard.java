@@ -3498,7 +3498,7 @@ public class ReadBoard {
     boolean oldInputCommand = Lizzie.leelaz.isInputCommand;
     try {
       Lizzie.leelaz.isInputCommand = true;
-      Lizzie.board.place(coords[0], coords[1], color);
+      Lizzie.board.placeFromReadBoardGma(coords[0], coords[1], color);
     } finally {
       Lizzie.leelaz.isInputCommand = oldInputCommand;
     }

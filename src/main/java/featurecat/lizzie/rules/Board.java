@@ -1769,6 +1769,10 @@ public class Board {
     place(x, y, color, false, false, true);
   }
 
+  public void placeFromReadBoardGma(int x, int y, Stone color) {
+    place(x, y, color, false, false, false, true);
+  }
+
   private void modifyStart() {
     Lizzie.leelaz.modifyStart();
     if (Lizzie.config.isDoubleEngineMode() && Lizzie.leelaz2 != null) Lizzie.leelaz2.modifyStart();
@@ -1781,6 +1785,17 @@ public class Board {
 
   public void place(
       int x, int y, Stone color, boolean newBranch, boolean forSync, boolean forManual) {
+    place(x, y, color, newBranch, forSync, forManual, false);
+  }
+
+  private void place(
+      int x,
+      int y,
+      Stone color,
+      boolean newBranch,
+      boolean forSync,
+      boolean forManual,
+      boolean sendReadBoardPlaceOnHistoryNext) {
     boolean shouldLogLocalMovePlace = shouldLogLocalMovePlace(forSync);
     if (shouldSuppressLocalPlaceAfterFailedReadBoardSync(x, y, color, forSync)) {
       if (shouldLogLocalMovePlace) {
@@ -1936,13 +1951,20 @@ public class Board {
         // should be opposite from the bottom case
         if (Lizzie.frame.isPlayingAgainstLeelaz
             && Lizzie.frame.playerIsBlack != getData().blackToPlay) {
-          Lizzie.leelaz.playMove(color, convertCoordinatesToName(x, y));
-          Lizzie.leelaz.genmove((Lizzie.board.getData().blackToPlay ? "b" : "w"));
-        } else if (!Lizzie.frame.isPlayingAgainstLeelaz && !EngineManager.isEngineGame) {
+          if (!Lizzie.leelaz.isInputCommand) {
+            Lizzie.leelaz.playMove(color, convertCoordinatesToName(x, y));
+            Lizzie.leelaz.genmove((Lizzie.board.getData().blackToPlay ? "b" : "w"));
+          }
+        } else if (!Lizzie.frame.isPlayingAgainstLeelaz
+            && !Lizzie.leelaz.isInputCommand
+            && !EngineManager.isEngineGame) {
           Lizzie.leelaz.playMove(color, convertCoordinatesToName(x, y));
         }
         //  modifyEnd(false);
         clearAfterMove();
+        if (sendReadBoardPlaceOnHistoryNext) {
+          sendReadBoardPlaceIfAllowed(x, y, color, forSync, shouldLogLocalMovePlace);
+        }
         if (shouldLogLocalMovePlace) {
           logLocalMovePlace(
               "place return history-next x="
@@ -2144,41 +2166,47 @@ public class Board {
                 + " "
                 + localMovePlaceState(forSync));
       }
-      ReadBoard readBoard = Lizzie.frame.readBoard;
-      boolean pendingReadBoardLocalMove =
-          readBoard != null && readBoard.isPendingLocalMoveAwaitingReadBoard();
-      boolean canSendReadBoardPlace =
-          !forSync
-              && Lizzie.frame.bothSync
-              && readBoard != null
-              && readBoard.process != null
-              && readBoard.process.isAlive()
-              && !pendingReadBoardLocalMove;
-      if (shouldLogLocalMovePlace) {
-        logLocalMovePlace(
-            "place readboard-gate canSend="
-                + canSendReadBoardPlace
-                + " pendingReadBoardLocalMove="
-                + pendingReadBoardLocalMove
-                + " x="
-                + x
-                + " y="
-                + y
-                + " color="
-                + color
-                + " "
-                + localMovePlaceState(forSync));
-      }
-      if (canSendReadBoardPlace) {
-        logLocalMovePlace("place send readboard command=place " + x + " " + y);
-        readBoard.sendCommand("place " + x + " " + y);
-      }
+      sendReadBoardPlaceIfAllowed(x, y, color, forSync, shouldLogLocalMovePlace);
       updateIsBest();
       if (Lizzie.frame != null) Lizzie.frame.onMainEnginePonder();
       if (needGenmove) Lizzie.leelaz.genmove((color.isWhite() ? "B" : "W"));
       //   modifyEnd(false);
       if (Lizzie.config.playSound) Utils.playVoiceFile();
       if (!forSync) Lizzie.frame.refresh();
+    }
+  }
+
+  private void sendReadBoardPlaceIfAllowed(
+      int x, int y, Stone color, boolean forSync, boolean shouldLogLocalMovePlace) {
+    ReadBoard readBoard = Lizzie.frame != null ? Lizzie.frame.readBoard : null;
+    boolean pendingReadBoardLocalMove =
+        readBoard != null && readBoard.isPendingLocalMoveAwaitingReadBoard();
+    boolean canSendReadBoardPlace =
+        !forSync
+            && Lizzie.frame != null
+            && Lizzie.frame.bothSync
+            && readBoard != null
+            && readBoard.process != null
+            && readBoard.process.isAlive()
+            && !pendingReadBoardLocalMove;
+    if (shouldLogLocalMovePlace) {
+      logLocalMovePlace(
+          "place readboard-gate canSend="
+              + canSendReadBoardPlace
+              + " pendingReadBoardLocalMove="
+              + pendingReadBoardLocalMove
+              + " x="
+              + x
+              + " y="
+              + y
+              + " color="
+              + color
+              + " "
+              + localMovePlaceState(forSync));
+    }
+    if (canSendReadBoardPlace) {
+      logLocalMovePlace("place send readboard command=place " + x + " " + y);
+      readBoard.sendCommand("place " + x + " " + y);
     }
   }
 
