@@ -623,6 +623,14 @@ public class ReadBoard {
         publishCurrentReadBoardDiagnosticsSnapshot();
       }
     }
+    if (line.startsWith("lastMoveSource ")) {
+      pendingRemoteContext =
+          currentPendingRemoteContext()
+              .withLastMoveSource(
+                  ReadBoardLastMoveSource.parse(line.substring("lastMoveSource ".length()).trim()));
+      publishCurrentReadBoardDiagnosticsSnapshot();
+      return;
+    }
     if (line.startsWith("syncPlatform ")) {
       pendingRemoteContext =
           currentPendingRemoteContext()
