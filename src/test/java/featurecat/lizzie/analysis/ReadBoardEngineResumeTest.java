@@ -10,6 +10,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import featurecat.lizzie.Config;
 import featurecat.lizzie.Lizzie;
 import featurecat.lizzie.gui.BoardRenderer;
+import featurecat.lizzie.gui.BottomToolbar;
 import featurecat.lizzie.gui.LizzieFrame;
 import featurecat.lizzie.rules.Board;
 import featurecat.lizzie.rules.BoardData;
@@ -28,6 +29,9 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import javax.swing.JCheckBox;
+import javax.swing.JTextField;
+import org.json.JSONObject;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -834,6 +838,53 @@ class ReadBoardEngineResumeTest {
   }
 
   @Test
+  void readBoardGmaPlayLineWaitsForSyncedBoardBeforeStartingEngineDecision() throws Exception {
+    try (EngineResumeHarness harness =
+        EngineResumeHarness.create(rootHistory(emptyStones(), true))) {
+      harness.frame.bothSync = true;
+      harness.leelaz.enableReadBoardGmaSupport();
+      HistoryPath path = buildHistory(harness.board, placement(0, 0, Stone.BLACK));
+      BoardHistoryNode staleWhiteTurnNode = path.nodes.get(0);
+      harness.board.moveToAnyPosition(staleWhiteTurnNode);
+
+      harness.readBoard.parseLine("play>white>0 0 0 gma");
+
+      assertEquals(
+          0,
+          harness.leelaz.readBoardGmaCount,
+          "play> only arms GMA autoplay; it must not start before the next synced board frame.");
+
+      Stone[] blackToPlayRemoteStones = staleWhiteTurnNode.getData().stones.clone();
+      blackToPlayRemoteStones[stoneIndex(1, 0)] = Stone.WHITE;
+      harness.sync(snapshot(blackToPlayRemoteStones, Optional.of(new int[] {1, 0}), Stone.WHITE));
+
+      assertEquals(
+          0,
+          harness.leelaz.readBoardGmaCount,
+          "after sync, configured white autoplay must wait because the synced board is black to play.");
+    }
+  }
+
+  @Test
+  void readBoardGmaStartsAfterSyncedBoardShowsConfiguredSideToMove() throws Exception {
+    try (EngineResumeHarness harness =
+        EngineResumeHarness.create(rootHistory(emptyStones(), true))) {
+      harness.frame.bothSync = true;
+      harness.leelaz.enableReadBoardGmaSupport();
+
+      harness.readBoard.parseLine("play>white>0 0 0 gma");
+      assertEquals(0, harness.leelaz.readBoardGmaCount);
+
+      Stone[] whiteToPlayRemoteStones = emptyStones();
+      whiteToPlayRemoteStones[stoneIndex(0, 0)] = Stone.BLACK;
+      harness.sync(snapshot(whiteToPlayRemoteStones, Optional.of(new int[] {0, 0}), Stone.BLACK));
+
+      assertEquals(1, harness.leelaz.readBoardGmaCount);
+      assertEquals("W", harness.leelaz.lastReadBoardGmaColor);
+    }
+  }
+
+  @Test
   void gmaFinalMoveReplayingExistingNextNodeStillSendsReadBoardPlace() throws Exception {
     try (EngineResumeHarness harness =
         EngineResumeHarness.create(rootHistory(emptyStones(), true))) {
@@ -865,8 +916,7 @@ class ReadBoardEngineResumeTest {
           harness.board.getHistory().getCurrentHistoryNode(),
           "GMA final move should replay the existing next node instead of creating a duplicate.");
       assertTrue(
-          new String(readBoardBytes.toByteArray(), StandardCharsets.UTF_8)
-              .contains("place 0 1\n"),
+          new String(readBoardBytes.toByteArray(), StandardCharsets.UTF_8).contains("place 0 1\n"),
           "GMA final move must still click ReadBoard when local history already contains that next move.");
       assertTrue(
           harness.leelaz.playedMoves.isEmpty(),
@@ -973,6 +1023,20 @@ class ReadBoardEngineResumeTest {
     field.set(target, value);
   }
 
+  private static BottomToolbar minimalToolbar() throws Exception {
+    BottomToolbar toolbar = allocate(BottomToolbar.class);
+    toolbar.chkAutoPlay = new JCheckBox();
+    toolbar.chkAutoPlayBlack = new JCheckBox();
+    toolbar.chkAutoPlayWhite = new JCheckBox();
+    toolbar.chkAutoPlayTime = new JCheckBox();
+    toolbar.chkAutoPlayPlayouts = new JCheckBox();
+    toolbar.chkAutoPlayFirstPlayouts = new JCheckBox();
+    toolbar.txtAutoPlayTime = new JTextField("0");
+    toolbar.txtAutoPlayPlayouts = new JTextField("0");
+    toolbar.txtAutoPlayFirstPlayouts = new JTextField("0");
+    return toolbar;
+  }
+
   private static boolean getBooleanField(Object target, String name) throws Exception {
     Field field = findField(target.getClass(), name);
     field.setAccessible(true);
@@ -1039,6 +1103,7 @@ class ReadBoardEngineResumeTest {
     private final Leelaz previousLeelaz;
     private final LizzieFrame previousFrame;
     private final BoardRenderer previousBoardRenderer;
+    private final BottomToolbar previousToolbar;
     private final TrackingBoard board;
     private final TrackingFrame frame;
     private final SnapshotTrackingLeelaz leelaz;
@@ -1050,6 +1115,7 @@ class ReadBoardEngineResumeTest {
         Leelaz previousLeelaz,
         LizzieFrame previousFrame,
         BoardRenderer previousBoardRenderer,
+        BottomToolbar previousToolbar,
         TrackingBoard board,
         TrackingFrame frame,
         SnapshotTrackingLeelaz leelaz,
@@ -1059,6 +1125,7 @@ class ReadBoardEngineResumeTest {
       this.previousLeelaz = previousLeelaz;
       this.previousFrame = previousFrame;
       this.previousBoardRenderer = previousBoardRenderer;
+      this.previousToolbar = previousToolbar;
       this.board = board;
       this.frame = frame;
       this.leelaz = leelaz;
@@ -1071,6 +1138,7 @@ class ReadBoardEngineResumeTest {
       Leelaz previousLeelaz = Lizzie.leelaz;
       LizzieFrame previousFrame = Lizzie.frame;
       BoardRenderer previousBoardRenderer = LizzieFrame.boardRenderer;
+      BottomToolbar previousToolbar = LizzieFrame.toolbar;
 
       Config config = allocate(Config.class);
       config.alwaysSyncBoardStat = false;
@@ -1079,6 +1147,7 @@ class ReadBoardEngineResumeTest {
       config.noCapture = false;
       config.readBoardPonder = true;
       config.winrateAlwaysBlack = false;
+      config.leelazConfig = new JSONObject().put("max-game-thinking-time-seconds", 2);
       Lizzie.config = config;
 
       SnapshotTrackingLeelaz leelaz = SnapshotTrackingLeelaz.create();
@@ -1093,6 +1162,7 @@ class ReadBoardEngineResumeTest {
       frame.initialize(board);
       Lizzie.frame = frame;
       LizzieFrame.boardRenderer = new BoardRenderer(false);
+      LizzieFrame.toolbar = minimalToolbar();
 
       ReadBoard readBoard = allocate(ReadBoard.class);
       setField(readBoard, "conflictTracker", new SyncConflictTracker());
@@ -1108,6 +1178,7 @@ class ReadBoardEngineResumeTest {
           previousLeelaz,
           previousFrame,
           previousBoardRenderer,
+          previousToolbar,
           board,
           frame,
           leelaz,
@@ -1130,6 +1201,7 @@ class ReadBoardEngineResumeTest {
       Lizzie.leelaz = previousLeelaz;
       Lizzie.frame = previousFrame;
       LizzieFrame.boardRenderer = previousBoardRenderer;
+      LizzieFrame.toolbar = previousToolbar;
     }
   }
 

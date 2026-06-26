@@ -59,9 +59,10 @@ play>black>5 1000 0 gma
 
 `gma` 激活后，ReadBoard 的自动落子不再通过现有 `ponder()`、`notifyAutoPlay()` 或通用人机对弈调度来驱动。Host 应有一个受同步状态保护的单一入口，用于在稳定局面上判断下一步：
 
-1. 对手回合：不发送 `kata-analyze`；仅在本规格的后台思考条件成立时保留 KataGo 原生 ponder。
-2. 我方回合且没有待决请求：按能力缓存和原始限制发起一次 `kata-genmove_analyze`。
-3. 我方回合且已有待决请求：不重复发命令。
+1. 收到 `play>` 时只登记自动落子配置、棋色和 GMA 参数，不立即发起 `kata-genmove_analyze`。该配置必须等待下一帧 ReadBoard 棋盘数据经过 `end` / `syncBoardStones(...)` / 重建或本地落子确认路径落地后，才可进入调度判断；单独的 `sync` 行也不能提前启动 GMA。
+2. 对手回合：不发送 `kata-analyze`；仅在本规格的后台思考条件成立时保留 KataGo 原生 ponder。
+3. 我方回合且没有待决请求：按能力缓存和原始限制发起一次 `kata-genmove_analyze`。
+4. 我方回合且已有待决请求：不重复发命令。
 
 收到 `play>`、`sync`、快照重建后的延迟恢复、失败落子恢复及其他原本会调用 `ponder()` / `togglePonder()` 的 ReadBoard 入口，都必须在 `gma` 模式改走这个入口或成为 no-op；整局 `gma` 命令记录不得出现 `kata-analyze`。
 

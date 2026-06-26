@@ -23,9 +23,13 @@ class SnapshotTrackingLeelaz extends Leelaz {
   int togglePonderCount;
   int nameCmdCount;
   int genmoveCount;
+  int readBoardGmaCount;
   String lastGenmoveColor;
+  String lastReadBoardGmaColor;
   List<String> playedMoves;
   List<String> sentCommands;
+  private boolean readBoardGmaCapabilityKnown;
+  private boolean readBoardGmaSupported;
   private Stone[] stones;
   private boolean blackToPlay = true;
   private Path lastLoadedSgf;
@@ -42,12 +46,22 @@ class SnapshotTrackingLeelaz extends Leelaz {
     leelaz.togglePonderCount = 0;
     leelaz.nameCmdCount = 0;
     leelaz.genmoveCount = 0;
+    leelaz.readBoardGmaCount = 0;
     leelaz.lastGenmoveColor = null;
+    leelaz.lastReadBoardGmaColor = null;
     leelaz.playedMoves = new ArrayList<>();
     leelaz.sentCommands = new ArrayList<>();
+    leelaz.readBoardGmaCapabilityKnown = false;
+    leelaz.readBoardGmaSupported = false;
     leelaz.started = true;
     leelaz.resetBoardState();
     return leelaz;
+  }
+
+  void enableReadBoardGmaSupport() {
+    readBoardGmaCapabilityKnown = true;
+    readBoardGmaSupported = true;
+    isKatago = true;
   }
 
   @Override
@@ -83,6 +97,34 @@ class SnapshotTrackingLeelaz extends Leelaz {
   public void genmove(String color) {
     genmoveCount++;
     lastGenmoveColor = color;
+  }
+
+  @Override
+  public boolean isReadBoardGmaCapabilityKnown() {
+    return readBoardGmaCapabilityKnown;
+  }
+
+  @Override
+  public boolean supportsReadBoardGma() {
+    return readBoardGmaSupported;
+  }
+
+  @Override
+  public void genmoveAnalyzeForReadBoard(
+      String color, int maxTimeSeconds, int maxVisits, boolean ponder) {
+    readBoardGmaCount++;
+    lastReadBoardGmaColor = color;
+    recordedCommands()
+        .add(
+            "kata-genmove_analyze "
+                + color
+                + " maxTime="
+                + maxTimeSeconds
+                + " maxVisits="
+                + maxVisits
+                + " ponder="
+                + ponder);
+    isThinking = true;
   }
 
   @Override

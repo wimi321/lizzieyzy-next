@@ -159,6 +159,7 @@ public class ReadBoard {
   private int readBoardGmaTimeSeconds = 0;
   private int readBoardGmaMaxVisits = 0;
   private boolean readBoardGmaPending = false;
+  private boolean readBoardGmaAwaitingSyncedBoard = false;
   // private long startTime;
   private boolean waitSocket = true;
   public boolean lastMovePlayByLizzie = false;
@@ -510,8 +511,7 @@ public class ReadBoard {
   private void logReadBoardExit() {
     Process currentProcess = process;
     if (currentProcess == null) {
-      System.out.println(
-          "Native board synchronization process handle is already cleared.");
+      System.out.println("Native board synchronization process handle is already cleared.");
       return;
     }
     try {
@@ -734,9 +734,9 @@ public class ReadBoard {
                 + pendingLocalMoveState());
         releaseFailedLocalMoveObservationIfTimedOut("sync-line");
       }
-      if (readBoardGmaAutoPlayActive) {
-        scheduleReadBoardGmaIfNeeded("sync-line");
-      } else if (isReadBoardAnalysisEngineAvailable() && !Lizzie.leelaz.isPondering()) {
+      if (!readBoardGmaAutoPlayActive
+          && isReadBoardAnalysisEngineAvailable()
+          && !Lizzie.leelaz.isPondering()) {
         Lizzie.leelaz.togglePonder();
       }
     }
@@ -815,8 +815,10 @@ public class ReadBoard {
         readBoardGmaAutoPlayColor = autoPlayColor;
         readBoardGmaTimeSeconds = Math.max(0, time);
         readBoardGmaMaxVisits = Math.max(0, playouts);
+        readBoardGmaAwaitingSyncedBoard = useGma;
         if (!useGma) {
           readBoardGmaPending = false;
+          readBoardGmaAwaitingSyncedBoard = false;
         }
         if (time > 0) {
           LizzieFrame.toolbar.txtAutoPlayTime.setText(String.valueOf(time));
@@ -855,9 +857,7 @@ public class ReadBoard {
           LizzieFrame.toolbar.isAutoPlay = true;
           Lizzie.frame.clearWRNforGame(false);
         }
-        if (readBoardGmaAutoPlayActive) {
-          scheduleReadBoardGmaIfNeeded("play-line");
-        } else {
+        if (!readBoardGmaAutoPlayActive) {
           Lizzie.leelaz.ponder();
         }
       }
@@ -1235,11 +1235,11 @@ public class ReadBoard {
 
   private void publishReadBoardDiagnosticsSnapshot(SyncDecisionTrace latestDecisionTrace) {
     SyncDiagnosticsRecorder.getDefault()
-            .updateSync(
-                SyncDiagnosticsSnapshot.builder()
-                    .readBoardAttached(Lizzie.frame != null && Lizzie.frame.readBoard == this)
-                    .readBoardConnected(isReadBoardConnectedForDiagnostics())
-                    .usePipe(usePipe)
+        .updateSync(
+            SyncDiagnosticsSnapshot.builder()
+                .readBoardAttached(Lizzie.frame != null && Lizzie.frame.readBoard == this)
+                .readBoardConnected(isReadBoardConnectedForDiagnostics())
+                .usePipe(usePipe)
                 .syncing(isSyncing)
                 .awaitingFirstSyncFrame(awaitingFirstSyncFrame)
                 .hasResumeState(resumeState != null)
@@ -3358,6 +3358,7 @@ public class ReadBoard {
     }
     readBoardGmaAutoPlayActive = false;
     readBoardGmaPending = false;
+    readBoardGmaAwaitingSyncedBoard = false;
     readBoardGmaAutoPlayColor = Stone.EMPTY;
     readBoardGmaTimeSeconds = 0;
     readBoardGmaMaxVisits = 0;
@@ -3396,6 +3397,10 @@ public class ReadBoard {
               + " engine="
               + (Lizzie.leelaz != null));
       return false;
+    }
+    if (readBoardGmaAwaitingSyncedBoard) {
+      localMoveSyncDebug("ReadBoard GMA wait synced board reason=" + reason);
+      return true;
     }
     if (!Lizzie.frame.bothSync || EngineManager.isEngineGame()) {
       showReadBoardGmaUnsupportedOnce();
@@ -3863,6 +3868,7 @@ public class ReadBoard {
   }
 
   private boolean continueGameAfterSyncIfNeeded(String reason, BoardHistoryNode targetNode) {
+    markReadBoardGmaSyncedBoard(reason);
     if (resumeFailedLocalMoveAfterSyncIfNeeded(reason, targetNode)) {
       return true;
     }
@@ -3870,6 +3876,13 @@ public class ReadBoard {
       return true;
     }
     return resumeAutoPlayAnalysisAfterSyncIfNeeded(reason, targetNode);
+  }
+
+  private void markReadBoardGmaSyncedBoard(String reason) {
+    if (readBoardGmaAwaitingSyncedBoard) {
+      readBoardGmaAwaitingSyncedBoard = false;
+      localMoveSyncDebug("ReadBoard GMA synced board ready reason=" + reason);
+    }
   }
 
   private boolean resumeFailedLocalMoveAfterSyncIfNeeded(
