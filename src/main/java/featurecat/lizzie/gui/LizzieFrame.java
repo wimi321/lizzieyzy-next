@@ -13637,7 +13637,7 @@ public class LizzieFrame extends JFrame {
     if (report == null || !report.hasSamples()) {
       return "-";
     }
-    return playerStrengthDisplayRank(report.strengthBand);
+    return playerStrengthRankValueText(report);
   }
 
   private static String playerStrengthRankValueText(PlayerStrengthEstimator.SideReport report) {
@@ -16030,7 +16030,7 @@ public class LizzieFrame extends JFrame {
       if (report == null || !report.hasSamples()) {
         return "-";
       }
-      return playerStrengthEstimateText(report);
+      return playerStrengthDisplayRank(report.strengthBand);
     }
 
     private String percentText(double value) {
