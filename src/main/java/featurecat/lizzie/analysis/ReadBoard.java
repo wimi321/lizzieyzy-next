@@ -3577,6 +3577,10 @@ public class ReadBoard {
               + readBoardGmaAutoPlayColor);
       return true;
     }
+    if (readBoardTurnTrust != ReadBoardTurnTrust.TRUSTED) {
+      localMoveSyncDebug("ReadBoard GMA skip untrusted turn reason=" + reason);
+      return false;
+    }
     if (!isReadBoardAnalysisEngineAvailable()) {
       localMoveSyncDebug("ReadBoard GMA skip engine unavailable reason=" + reason);
       return false;

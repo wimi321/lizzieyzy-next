@@ -866,13 +866,14 @@ class ReadBoardEngineResumeTest {
   }
 
   @Test
-  void readBoardGmaStartsAfterSyncedBoardShowsConfiguredSideToMove() throws Exception {
+  void readBoardGmaStartsAfterTrustedFoxCornerMarkerShowsConfiguredSideToMove() throws Exception {
     try (EngineResumeHarness harness =
         EngineResumeHarness.create(rootHistory(emptyStones(), true))) {
       harness.frame.bothSync = true;
       harness.leelaz.enableReadBoardGmaSupport();
 
       harness.readBoard.parseLine("play>white>0 0 0 gma");
+      harness.readBoard.parseLine("lastMoveSource foxCornerFlip");
       assertEquals(0, harness.leelaz.readBoardGmaCount);
 
       Stone[] whiteToPlayRemoteStones = emptyStones();
@@ -881,6 +882,114 @@ class ReadBoardEngineResumeTest {
 
       assertEquals(1, harness.leelaz.readBoardGmaCount);
       assertEquals("W", harness.leelaz.lastReadBoardGmaColor);
+    }
+  }
+
+  @Test
+  void readBoardGmaStartsAfterTrustedRedBlueMarkerShowsConfiguredSideToMove() throws Exception {
+    try (EngineResumeHarness harness =
+        EngineResumeHarness.create(rootHistory(emptyStones(), true))) {
+      harness.frame.bothSync = true;
+      harness.leelaz.enableReadBoardGmaSupport();
+
+      harness.readBoard.parseLine("play>black>0 0 0 gma");
+      harness.readBoard.parseLine("lastMoveSource redBlueMarker");
+
+      Stone[] blackToPlayRemoteStones = emptyStones();
+      blackToPlayRemoteStones[stoneIndex(0, 0)] = Stone.WHITE;
+      harness.sync(snapshot(blackToPlayRemoteStones, Optional.of(new int[] {0, 0}), Stone.WHITE));
+
+      assertEquals(1, harness.leelaz.readBoardGmaCount);
+      assertEquals("B", harness.leelaz.lastReadBoardGmaColor);
+    }
+  }
+
+  @Test
+  void readBoardGmaSkipsUntrustedHeuristicTurnEvenWhenConfiguredSideMatches()
+      throws Exception {
+    try (EngineResumeHarness harness =
+        EngineResumeHarness.create(rootHistory(emptyStones(), true))) {
+      harness.frame.bothSync = true;
+      harness.leelaz.enableReadBoardGmaSupport();
+      harness.board.hasStartStone = true;
+
+      harness.readBoard.parseLine("play>white>0 0 0 gma");
+      harness.readBoard.parseLine("foxMoveNumber 1");
+      harness.readBoard.parseLine("lastMoveSource stoneCount");
+
+      Stone[] whiteToPlayRemoteStones = emptyStones();
+      whiteToPlayRemoteStones[stoneIndex(0, 0)] = Stone.BLACK;
+      harness.sync(snapshot(whiteToPlayRemoteStones, Optional.empty(), Stone.EMPTY));
+
+      assertEquals(0, harness.leelaz.readBoardGmaCount);
+      assertFalse(getBooleanField(harness.readBoard, "readBoardGmaPending"));
+    }
+  }
+
+  @Test
+  void readBoardGmaSkipsMissingLastMoveSourceWhenSetupRiskExists() throws Exception {
+    try (EngineResumeHarness harness =
+        EngineResumeHarness.create(rootHistory(emptyStones(), true))) {
+      harness.frame.bothSync = true;
+      harness.leelaz.enableReadBoardGmaSupport();
+      harness.board.hasStartStone = true;
+
+      harness.readBoard.parseLine("play>white>0 0 0 gma");
+      harness.readBoard.parseLine("foxMoveNumber 1");
+
+      Stone[] whiteToPlayRemoteStones = emptyStones();
+      whiteToPlayRemoteStones[stoneIndex(0, 0)] = Stone.BLACK;
+      harness.sync(snapshot(whiteToPlayRemoteStones, Optional.empty(), Stone.EMPTY));
+
+      assertEquals(0, harness.leelaz.readBoardGmaCount);
+      assertFalse(getBooleanField(harness.readBoard, "readBoardGmaPending"));
+    }
+  }
+
+  @Test
+  void readBoardGmaStartsAfterMarkerlessOrdinaryFoxSyncTrustsTurn() throws Exception {
+    try (EngineResumeHarness harness =
+        EngineResumeHarness.create(rootHistory(emptyStones(), true))) {
+      harness.frame.bothSync = true;
+      harness.leelaz.enableReadBoardGmaSupport();
+
+      harness.readBoard.parseLine("play>white>0 0 0 gma");
+      harness.readBoard.parseLine("syncPlatform fox");
+      harness.readBoard.parseLine("foxMoveNumber 1");
+      harness.readBoard.parseLine("lastMoveSource none");
+
+      Stone[] whiteToPlayRemoteStones = emptyStones();
+      whiteToPlayRemoteStones[stoneIndex(0, 0)] = Stone.BLACK;
+      harness.sync(snapshot(whiteToPlayRemoteStones, Optional.empty(), Stone.EMPTY));
+
+      assertEquals(1, harness.leelaz.readBoardGmaCount);
+      assertEquals("W", harness.leelaz.lastReadBoardGmaColor);
+    }
+  }
+
+  @Test
+  void readBoardGmaStartsWhenSourceOnlyUpdateRefreshesTurnTrust() throws Exception {
+    try (EngineResumeHarness harness =
+        EngineResumeHarness.create(rootHistory(emptyStones(), true))) {
+      harness.frame.bothSync = true;
+      harness.leelaz.enableReadBoardGmaSupport();
+      harness.readBoard.parseLine("play>black>0 0 0 gma");
+
+      Stone[] blackToPlayRemoteStones = emptyStones();
+      blackToPlayRemoteStones[stoneIndex(0, 0)] = Stone.WHITE;
+      int[] snapshot =
+          snapshot(blackToPlayRemoteStones, Optional.of(new int[] {0, 0}), Stone.WHITE);
+
+      harness.readBoard.parseLine("lastMoveSource stoneCount");
+      harness.sync(snapshot);
+      assertEquals(0, harness.leelaz.readBoardGmaCount);
+      assertFalse(getBooleanField(harness.readBoard, "readBoardGmaPending"));
+
+      harness.readBoard.parseLine("lastMoveSource foxCornerFlip");
+      harness.sync(snapshot);
+
+      assertEquals(1, harness.leelaz.readBoardGmaCount);
+      assertEquals("B", harness.leelaz.lastReadBoardGmaColor);
     }
   }
 
