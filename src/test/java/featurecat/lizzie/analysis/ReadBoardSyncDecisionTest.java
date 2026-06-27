@@ -385,6 +385,88 @@ class ReadBoardSyncDecisionTest {
   }
 
   @Test
+  void markerlessOrdinaryFoxFallbackTrustsSingleAdditionWithoutSetupRisk() throws Exception {
+    Stone[] target = stones(placement(0, 0, Stone.BLACK));
+
+    try (SyncHarness harness = SyncHarness.create(false, emptyHistory())) {
+      armFoxMoveNumber(harness.readBoard, 1);
+      harness.readBoard.parseLine("lastMoveSource none");
+      harness.sync(snapshot(target, Optional.empty(), Stone.EMPTY));
+
+      assertTrue(isReadBoardTurnTrusted(harness.readBoard));
+    }
+  }
+
+  @Test
+  void startStoneMakesMarkerlessFoxFallbackUntrusted() throws Exception {
+    Stone[] target = stones(placement(0, 0, Stone.BLACK));
+
+    try (SyncHarness harness = SyncHarness.create(false, emptyHistory())) {
+      harness.board.hasStartStone = true;
+      armFoxMoveNumber(harness.readBoard, 1);
+      harness.readBoard.parseLine("lastMoveSource none");
+      harness.sync(snapshot(target, Optional.empty(), Stone.EMPTY));
+
+      assertFalse(isReadBoardTurnTrusted(harness.readBoard));
+    }
+  }
+
+  @Test
+  void startStoneListMakesMarkerlessFoxFallbackUntrusted() throws Exception {
+    Stone[] target = stones(placement(0, 0, Stone.BLACK));
+
+    try (SyncHarness harness = SyncHarness.create(false, emptyHistory())) {
+      harness.board.startStonelist = new ArrayList<>();
+      Movelist setupMove = new Movelist();
+      setupMove.x = 0;
+      setupMove.y = 0;
+      setupMove.isblack = true;
+      harness.board.startStonelist.add(setupMove);
+      armFoxMoveNumber(harness.readBoard, 1);
+      harness.readBoard.parseLine("lastMoveSource none");
+      harness.sync(snapshot(target, Optional.empty(), Stone.EMPTY));
+
+      assertFalse(isReadBoardTurnTrusted(harness.readBoard));
+    }
+  }
+
+  @Test
+  void setupPropertiesMakeMarkerlessFoxFallbackUntrusted() throws Exception {
+    Stone[] target = stones(placement(0, 0, Stone.BLACK));
+
+    try (SyncHarness harness = SyncHarness.create(false, emptyHistory())) {
+      harness.board.getHistory().getMainEnd().getData().addProperty("AB", "bb");
+      armFoxMoveNumber(harness.readBoard, 1);
+      harness.readBoard.parseLine("lastMoveSource none");
+      harness.sync(snapshot(target, Optional.empty(), Stone.EMPTY));
+
+      assertFalse(isReadBoardTurnTrusted(harness.readBoard));
+    }
+
+    try (SyncHarness harness = SyncHarness.create(false, emptyHistory())) {
+      harness.board.getHistory().getMainEnd().getData().addProperty("PL", "W");
+      armFoxMoveNumber(harness.readBoard, 1);
+      harness.readBoard.parseLine("lastMoveSource none");
+      harness.sync(snapshot(target, Optional.empty(), Stone.EMPTY));
+
+      assertFalse(isReadBoardTurnTrusted(harness.readBoard));
+    }
+  }
+
+  @Test
+  void multipleAdditionsMakeMarkerlessFoxFallbackUntrusted() throws Exception {
+    Stone[] target = stones(placement(0, 0, Stone.BLACK), placement(1, 0, Stone.WHITE));
+
+    try (SyncHarness harness = SyncHarness.create(false, emptyHistory())) {
+      armFoxMoveNumber(harness.readBoard, 2);
+      harness.readBoard.parseLine("lastMoveSource none");
+      harness.sync(snapshot(target, Optional.empty(), Stone.EMPTY));
+
+      assertFalse(isReadBoardTurnTrusted(harness.readBoard));
+    }
+  }
+
+  @Test
   void endClearsPendingSourceButPreservesAcceptedReadBoardTurnTrust() throws Exception {
     Stone[] target = stones(placement(0, 0, Stone.BLACK), placement(1, 0, Stone.WHITE));
 

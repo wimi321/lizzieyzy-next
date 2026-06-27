@@ -1418,7 +1418,7 @@ public class ReadBoard {
       updateFailedLocalMoveSuppressionForSnapshot(currentSnapshotCodes);
       if (acknowledgeLocalMoveIfSnapshotCaughtUp(stones, currentSnapshotCodes)) {
         updateReadBoardTurnTrustFromAcceptedFrame(
-            snapshotDelta, currentRemoteContext.lastMoveSource);
+            node2, snapshotDelta, currentRemoteContext.lastMoveSource, currentFoxMoveNumber);
         finishSyncAfterAcknowledgedLocalMoveSnapshot();
         return;
       }
@@ -1569,7 +1569,10 @@ public class ReadBoard {
           return;
         }
         updateReadBoardTurnTrustFromAcceptedFrame(
-            snapshotDelta, currentRemoteContext.lastMoveSource);
+            recovery.resolvedNode != null ? recovery.resolvedNode : node2,
+            snapshotDelta,
+            currentRemoteContext.lastMoveSource,
+            currentFoxMoveNumber);
         if (recovery.outcome == CompleteSnapshotRecoveryOutcome.NO_CHANGE
             && recovery.resolvedNode != null) {
           if (recovery.resolvedNode != Lizzie.board.getHistory().getCurrentHistoryNode()) {
@@ -1606,7 +1609,10 @@ public class ReadBoard {
           return;
         }
         updateReadBoardTurnTrustFromAcceptedFrame(
-            snapshotDelta, currentRemoteContext.lastMoveSource);
+            currentSyncEndNode,
+            snapshotDelta,
+            currentRemoteContext.lastMoveSource,
+            currentFoxMoveNumber);
         historyJumpTracker.clear();
         applySyncViewState(played, currentNode, currentSyncEndNode);
       }
@@ -1953,12 +1959,13 @@ public class ReadBoard {
     if (rebuildPolicy().shouldRebuildImmediatelyWithoutHistory(syncStartNode)) {
       clearBoardWithoutInvalidatingResumeState(false);
     }
+    updateReadBoardTurnTrustFromAcceptedFrame(
+        syncStartNode, snapshotDelta, lastMoveSource, foxMoveNumber);
     Lizzie.board.hasStartStone = false;
     Lizzie.board.startStonelist = new ArrayList<>();
     setHistoryWithoutInvalidatingResumeState(rebuiltHistory);
     restoreRootStartSetupIfNoOrRootSnapshotAnchor(syncStartNode, preservedRootStartSetup);
     BoardHistoryNode rebuiltNode = rebuiltHistory.getCurrentHistoryNode();
-    updateReadBoardTurnTrustFromAcceptedFrame(snapshotDelta, lastMoveSource);
     if (analysisEngineAvailable) {
       try {
         syncEngineToRebuiltSnapshot(rebuiltNode);
@@ -2263,13 +2270,59 @@ public class ReadBoard {
   }
 
   private void updateReadBoardTurnTrustFromAcceptedFrame(
-      SyncSnapshotClassifier.SnapshotDelta snapshotDelta, ReadBoardLastMoveSource lastMoveSource) {
+      BoardHistoryNode syncStartNode,
+      SyncSnapshotClassifier.SnapshotDelta snapshotDelta,
+      ReadBoardLastMoveSource lastMoveSource,
+      OptionalInt foxMoveNumber) {
     readBoardTurnTrust =
-        snapshotDelta != null
-                && snapshotDelta.hasMarker()
-                && lastMoveSource.isTrustedVisualMarker()
+        snapshotDelta != null && snapshotDelta.hasMarker() && lastMoveSource.isTrustedVisualMarker()
+                || isMarkerlessOrdinaryFoxTurnFallback(
+                    syncStartNode, snapshotDelta, lastMoveSource, foxMoveNumber)
             ? ReadBoardTurnTrust.TRUSTED
             : ReadBoardTurnTrust.UNTRUSTED;
+  }
+
+  private boolean isMarkerlessOrdinaryFoxTurnFallback(
+      BoardHistoryNode syncStartNode,
+      SyncSnapshotClassifier.SnapshotDelta snapshotDelta,
+      ReadBoardLastMoveSource lastMoveSource,
+      OptionalInt foxMoveNumber) {
+    return snapshotDelta != null
+        && !snapshotDelta.hasMarker()
+        && (lastMoveSource == ReadBoardLastMoveSource.NONE
+            || lastMoveSource == ReadBoardLastMoveSource.LEGACY_UNKNOWN)
+        && foxMoveNumber.isPresent()
+        && snapshotDelta.removals() == 0
+        && snapshotDelta.additions() <= 1
+        && !hasSetupOrHandicapTurnRisk(syncStartNode, snapshotDelta);
+  }
+
+  private boolean hasSetupOrHandicapTurnRisk(
+      BoardHistoryNode syncStartNode, SyncSnapshotClassifier.SnapshotDelta snapshotDelta) {
+    if (Lizzie.board.hasStartStone
+        || (Lizzie.board.startStonelist != null && !Lizzie.board.startStonelist.isEmpty())
+        || (snapshotDelta != null
+            && (snapshotDelta.removals() > 0 || snapshotDelta.additions() > 1))) {
+      return true;
+    }
+    BoardHistoryNode node = syncStartNode;
+    while (node != null) {
+      if (node.hasRemovedStone()
+          || (node.extraStones != null && !node.extraStones.isEmpty())
+          || hasSetupOrHandicapProperty(node.getData())) {
+        return true;
+      }
+      node = node.previous().orElse(null);
+    }
+    return false;
+  }
+
+  private boolean hasSetupOrHandicapProperty(BoardData data) {
+    return data.getProperties().containsKey("AB")
+        || data.getProperties().containsKey("AW")
+        || data.getProperties().containsKey("AE")
+        || data.getProperties().containsKey("PL")
+        || data.getProperties().containsKey("HA");
   }
 
   private boolean sameStoneLayout(Stone[] left, Stone[] right) {
