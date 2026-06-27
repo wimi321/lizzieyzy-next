@@ -2294,7 +2294,15 @@ public class ReadBoard {
         && foxMoveNumber.isPresent()
         && snapshotDelta.removals() == 0
         && snapshotDelta.additions() <= 1
+        && (snapshotDelta.additions() == 0
+            || singleAdditionMatchesFoxMoveNumber(snapshotDelta, foxMoveNumber.getAsInt()))
         && !hasSetupOrHandicapTurnRisk(syncStartNode, snapshotDelta);
+  }
+
+  private boolean singleAdditionMatchesFoxMoveNumber(
+      SyncSnapshotClassifier.SnapshotDelta snapshotDelta, int foxMoveNumber) {
+    Stone expectedColor = foxMoveNumber % 2 == 1 ? Stone.BLACK : Stone.WHITE;
+    return snapshotDelta.singleAdditionColor() == expectedColor;
   }
 
   private boolean hasSetupOrHandicapTurnRisk(

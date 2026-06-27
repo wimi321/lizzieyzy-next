@@ -398,6 +398,19 @@ class ReadBoardSyncDecisionTest {
   }
 
   @Test
+  void markerlessWhiteFirstFoxFallbackIsUntrusted() throws Exception {
+    Stone[] target = stones(placement(0, 0, Stone.WHITE));
+
+    try (SyncHarness harness = SyncHarness.create(false, emptyHistory())) {
+      armFoxMoveNumber(harness.readBoard, 1);
+      harness.readBoard.parseLine("lastMoveSource none");
+      harness.sync(snapshot(target, Optional.empty(), Stone.EMPTY));
+
+      assertFalse(isReadBoardTurnTrusted(harness.readBoard));
+    }
+  }
+
+  @Test
   void startStoneMakesMarkerlessFoxFallbackUntrusted() throws Exception {
     Stone[] target = stones(placement(0, 0, Stone.BLACK));
 
