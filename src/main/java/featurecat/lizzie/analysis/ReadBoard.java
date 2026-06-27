@@ -1781,7 +1781,8 @@ public class ReadBoard {
     }
     int moveNumber = remoteContext.recoveryMoveNumber().getAsInt();
     Optional<Boolean> expectedBlackToPlay =
-        expectedBlackToPlayForFoxMetadataChange(currentData, remoteContext, snapshotDelta);
+        expectedBlackToPlayForFoxMetadataChange(
+            syncEndNode, currentData, remoteContext, snapshotDelta);
     if (!expectedBlackToPlay.isPresent()) {
       return currentData.moveNumber != moveNumber;
     }
@@ -1790,6 +1791,7 @@ public class ReadBoard {
   }
 
   private Optional<Boolean> expectedBlackToPlayForFoxMetadataChange(
+      BoardHistoryNode syncEndNode,
       BoardData currentData,
       SyncRemoteContext remoteContext,
       SyncSnapshotClassifier.SnapshotDelta snapshotDelta) {
@@ -1800,7 +1802,11 @@ public class ReadBoard {
     if (snapshotDelta.hasMarker() && remoteContext.lastMoveSource.isTrustedVisualMarker()) {
       return Optional.of(snapshotDelta.markerColor() == Stone.WHITE);
     }
-    if (!snapshotDelta.hasMarker()) {
+    if (isMarkerlessOrdinaryFoxTurnFallback(
+        syncEndNode,
+        snapshotDelta,
+        remoteContext.lastMoveSource,
+        remoteContext.recoveryMoveNumber())) {
       return Optional.of(remoteContext.recoveryMoveNumber().getAsInt() % 2 == 0);
     }
     return Optional.empty();
@@ -2433,7 +2439,8 @@ public class ReadBoard {
     if (snapshotDelta.hasMarker() && lastMoveSource.isTrustedVisualMarker()) {
       return snapshotDelta.markerColor() == Stone.WHITE;
     }
-    if (!snapshotDelta.hasMarker() && foxMoveNumber.isPresent()) {
+    if (isMarkerlessOrdinaryFoxTurnFallback(
+        syncStartNode, snapshotDelta, lastMoveSource, foxMoveNumber)) {
       return foxMoveNumber.getAsInt() % 2 == 0;
     }
     return inferBlackToPlayWithoutMarker(syncStartNode, snapshotStones, snapshotDelta);

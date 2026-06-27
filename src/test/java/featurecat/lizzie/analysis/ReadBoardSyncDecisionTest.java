@@ -205,7 +205,7 @@ class ReadBoardSyncDecisionTest {
   }
 
   @Test
-  void foxMoveNumberOddRebuildKeepsMarkerlessSnapshotAndAddsSingleBookkeepingPassWhenParityNeedsIt()
+  void foxMoveNumberOddRebuildKeepsMarkerlessSnapshotWithoutUsingParityForRiskyTurn()
       throws Exception {
     Stone[] target = stones(placement(0, 0, Stone.BLACK), placement(1, 0, Stone.WHITE));
 
@@ -217,7 +217,7 @@ class ReadBoardSyncDecisionTest {
           0,
           harness.board.placeForSyncCount,
           "fox move-number rebuild should replace the position statically instead of replaying history.");
-      assertStaticSnapshotRootWithoutMarker(harness.board, target, 57, false);
+      assertStaticSnapshotRootWithoutMarker(harness.board, target, 57, true);
       assertLoadSgfCommandCount(
           harness.leelaz, 1, "markerless snapshot rebuild should use one loadsgf.");
       assertHasLoadSgfCommand(
@@ -226,7 +226,7 @@ class ReadBoardSyncDecisionTest {
           harness.leelaz.playedMoves.isEmpty(),
           "exact snapshot restore should avoid replaying static stones as play commands.");
       assertArrayEquals(target, harness.leelaz.copyStones());
-      assertFalse(
+      assertTrue(
           harness.leelaz.isBlackToPlay(),
           "exact snapshot restore should preserve the rebuilt side to play directly.");
     }
@@ -407,7 +407,30 @@ class ReadBoardSyncDecisionTest {
       harness.sync(snapshot(target, Optional.empty(), Stone.EMPTY));
 
       assertFalse(isReadBoardTurnTrusted(harness.readBoard));
+      assertTrue(
+          harness.board.getHistory().getCurrentHistoryNode().getData().blackToPlay,
+          "untrusted markerless white-first fox metadata should not set white to play.");
     }
+  }
+
+  @Test
+  void markerlessWhiteFirstFoxMoveNumberDoesNotOverrideSnapshotSideToPlay() throws Exception {
+    BoardHistoryNode syncStartNode = emptyHistory().getCurrentHistoryNode();
+    Stone[] target = stones(placement(0, 0, Stone.WHITE));
+    SyncSnapshotClassifier.SnapshotDelta snapshotDelta =
+        new SyncSnapshotClassifier(BOARD_SIZE, BOARD_SIZE)
+            .summarizeDelta(syncStartNode.getData().stones, snapshot(target, Optional.empty(), Stone.EMPTY));
+    ReadBoard readBoard = allocate(ReadBoard.class);
+
+    assertTrue(
+        invokeInferSnapshotBlackToPlay(
+            readBoard,
+            syncStartNode,
+            target,
+            snapshotDelta,
+            OptionalInt.of(1),
+            ReadBoardLastMoveSource.NONE),
+        "white-first markerless fox metadata should fall back to the current side to play.");
   }
 
   @Test
@@ -730,7 +753,7 @@ class ReadBoardSyncDecisionTest {
 
       harness.sync(snapshot(target, Optional.empty(), Stone.EMPTY));
 
-      assertStaticSnapshotRootWithoutMarker(harness.board, target, 57, false);
+      assertStaticSnapshotRootWithoutMarker(harness.board, target, 57, true);
       assertTrue(
           harness.leelaz.sentCommands.isEmpty(),
           "board-only rebuild should not send loadsgf when the engine is unavailable.");
@@ -3099,6 +3122,28 @@ class ReadBoardSyncDecisionTest {
             SyncSnapshotClassifier.SnapshotDelta.class);
     method.setAccessible(true);
     return (boolean) method.invoke(readBoard, syncStartNode, snapshotStones, snapshotDelta);
+  }
+
+  private static boolean invokeInferSnapshotBlackToPlay(
+      ReadBoard readBoard,
+      BoardHistoryNode syncStartNode,
+      Stone[] snapshotStones,
+      SyncSnapshotClassifier.SnapshotDelta snapshotDelta,
+      OptionalInt foxMoveNumber,
+      ReadBoardLastMoveSource lastMoveSource)
+      throws Exception {
+    Method method =
+        ReadBoard.class.getDeclaredMethod(
+            "inferSnapshotBlackToPlay",
+            BoardHistoryNode.class,
+            Stone[].class,
+            SyncSnapshotClassifier.SnapshotDelta.class,
+            OptionalInt.class,
+            ReadBoardLastMoveSource.class);
+    method.setAccessible(true);
+    return (boolean)
+        method.invoke(
+            readBoard, syncStartNode, snapshotStones, snapshotDelta, foxMoveNumber, lastMoveSource);
   }
 
   private static final class SyncHarness implements AutoCloseable {

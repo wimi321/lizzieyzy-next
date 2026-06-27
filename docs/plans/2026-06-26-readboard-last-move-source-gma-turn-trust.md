@@ -20,15 +20,15 @@
 
 ## File Structure
 
-- Create `src/main/java/featurecat/lizzie/analysis/ReadBoardLastMoveSource.java`  
+- Create `src/main/java/featurecat/lizzie/analysis/ReadBoardLastMoveSource.java`
   Parses wire tokens and exposes `isTrustedVisualMarker()`.
-- Modify `src/main/java/featurecat/lizzie/analysis/SyncRemoteContext.java`  
+- Modify `src/main/java/featurecat/lizzie/analysis/SyncRemoteContext.java`
   Add per-frame source metadata and `withLastMoveSource(...)`.
-- Modify `src/main/java/featurecat/lizzie/analysis/ReadBoard.java`  
+- Modify `src/main/java/featurecat/lizzie/analysis/ReadBoard.java`
   Parse `lastMoveSource`, clear it with pending frame resets, pass it into snapshot inference, and guard GMA.
-- Modify `docs/SNAPSHOT_NODE_KIND.md`  
+- Modify `docs/SNAPSHOT_NODE_KIND.md`
   Clarify that `foxMoveNumber` is not a handicap side-to-play authority and that visual marker source is separate from heuristic source.
-- Modify `docs/specs/2026-06-24-readboard-gma-engine-decision-design.md`  
+- Modify `docs/specs/2026-06-24-readboard-gma-engine-decision-design.md`
   Add follow-up turn-trust requirement.
 - Tests:
   - `src/test/java/featurecat/lizzie/analysis/ReadBoardFoxMoveNumberParsingTest.java`
