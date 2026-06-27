@@ -2280,8 +2280,13 @@ public class ReadBoard {
       SyncSnapshotClassifier.SnapshotDelta snapshotDelta,
       ReadBoardLastMoveSource lastMoveSource,
       OptionalInt foxMoveNumber) {
+    boolean hasExplicitPlayerOverride =
+        syncStartNode != null && explicitPlayerOverride(syncStartNode.getData()).isPresent();
     readBoardTurnTrust =
-        snapshotDelta != null && snapshotDelta.hasMarker() && lastMoveSource.isTrustedVisualMarker()
+        hasExplicitPlayerOverride
+                || (snapshotDelta != null
+                    && snapshotDelta.hasMarker()
+                    && lastMoveSource.isTrustedVisualMarker())
                 || isMarkerlessOrdinaryFoxTurnFallback(
                     syncStartNode, snapshotDelta, lastMoveSource, foxMoveNumber)
             ? ReadBoardTurnTrust.TRUSTED
