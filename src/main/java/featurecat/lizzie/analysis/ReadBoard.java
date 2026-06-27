@@ -160,6 +160,7 @@ public class ReadBoard {
   private int readBoardGmaMaxVisits = 0;
   private boolean readBoardGmaPending = false;
   private boolean readBoardGmaAwaitingSyncedBoard = false;
+  private ReadBoardTurnTrust readBoardTurnTrust = ReadBoardTurnTrust.UNTRUSTED;
   // private long startTime;
   private boolean waitSocket = true;
   public boolean lastMovePlayByLizzie = false;
@@ -219,6 +220,11 @@ public class ReadBoard {
     SINGLE_MOVE_RECOVERY,
     HOLD,
     FORCE_REBUILD
+  }
+
+  private enum ReadBoardTurnTrust {
+    TRUSTED,
+    UNTRUSTED
   }
 
   private static final class CompleteSnapshotRecoveryDecision {
@@ -755,6 +761,7 @@ public class ReadBoard {
     }
     if (line.startsWith("noboth")) {
       clearReadBoardGmaAutoPlay("noboth");
+      readBoardTurnTrust = ReadBoardTurnTrust.UNTRUSTED;
       Lizzie.frame.bothSync = false;
       if (Lizzie.frame.floatBoard != null && Lizzie.frame.floatBoard.isVisible())
         Lizzie.frame.floatBoard.setEditButton();
@@ -1410,6 +1417,8 @@ public class ReadBoard {
       }
       updateFailedLocalMoveSuppressionForSnapshot(currentSnapshotCodes);
       if (acknowledgeLocalMoveIfSnapshotCaughtUp(stones, currentSnapshotCodes)) {
+        updateReadBoardTurnTrustFromAcceptedFrame(
+            snapshotDelta, currentRemoteContext.lastMoveSource);
         finishSyncAfterAcknowledgedLocalMoveSnapshot();
         return;
       }
@@ -1559,6 +1568,8 @@ public class ReadBoard {
           publishReadBoardDiagnosticsSnapshot(trace);
           return;
         }
+        updateReadBoardTurnTrustFromAcceptedFrame(
+            snapshotDelta, currentRemoteContext.lastMoveSource);
         if (recovery.outcome == CompleteSnapshotRecoveryOutcome.NO_CHANGE
             && recovery.resolvedNode != null) {
           if (recovery.resolvedNode != Lizzie.board.getHistory().getCurrentHistoryNode()) {
@@ -1589,11 +1600,13 @@ public class ReadBoard {
                 ? currentSyncEndNode
                 : resolveLocalNavigationTarget(Lizzie.board.getHistory().getCurrentHistoryNode());
         if (shouldRebuildForFoxMetadataChange(
-            currentSyncEndNode, currentRemoteContext, currentSnapshotCodes)) {
+            currentSyncEndNode, currentRemoteContext, currentSnapshotCodes, snapshotDelta)) {
           rebuildFromSnapshot(
               currentSyncEndNode, currentSnapshotCodes, snapshotDelta, currentFoxMoveNumber);
           return;
         }
+        updateReadBoardTurnTrustFromAcceptedFrame(
+            snapshotDelta, currentRemoteContext.lastMoveSource);
         historyJumpTracker.clear();
         applySyncViewState(played, currentNode, currentSyncEndNode);
       }
@@ -1746,7 +1759,10 @@ public class ReadBoard {
   }
 
   private boolean shouldRebuildForFoxMetadataChange(
-      BoardHistoryNode syncEndNode, SyncRemoteContext remoteContext, int[] snapshotCodes) {
+      BoardHistoryNode syncEndNode,
+      SyncRemoteContext remoteContext,
+      int[] snapshotCodes,
+      SyncSnapshotClassifier.SnapshotDelta snapshotDelta) {
     if (remoteContext == null || !remoteContext.supportsFoxRecovery()) {
       return false;
     }
@@ -1758,8 +1774,30 @@ public class ReadBoard {
       return false;
     }
     int moveNumber = remoteContext.recoveryMoveNumber().getAsInt();
-    boolean expectedBlackToPlay = explicitPlayerOverride(currentData).orElse(moveNumber % 2 == 0);
-    return currentData.moveNumber != moveNumber || currentData.blackToPlay != expectedBlackToPlay;
+    Optional<Boolean> expectedBlackToPlay =
+        expectedBlackToPlayForFoxMetadataChange(currentData, remoteContext, snapshotDelta);
+    if (!expectedBlackToPlay.isPresent()) {
+      return currentData.moveNumber != moveNumber;
+    }
+    return currentData.moveNumber != moveNumber
+        || currentData.blackToPlay != expectedBlackToPlay.get();
+  }
+
+  private Optional<Boolean> expectedBlackToPlayForFoxMetadataChange(
+      BoardData currentData,
+      SyncRemoteContext remoteContext,
+      SyncSnapshotClassifier.SnapshotDelta snapshotDelta) {
+    Optional<Boolean> explicitOverride = explicitPlayerOverride(currentData);
+    if (explicitOverride.isPresent()) {
+      return explicitOverride;
+    }
+    if (snapshotDelta.hasMarker() && remoteContext.lastMoveSource.isTrustedVisualMarker()) {
+      return Optional.of(snapshotDelta.markerColor() == Stone.WHITE);
+    }
+    if (!snapshotDelta.hasMarker()) {
+      return Optional.of(remoteContext.recoveryMoveNumber().getAsInt() % 2 == 0);
+    }
+    return Optional.empty();
   }
 
   private Optional<Boolean> explicitPlayerOverride(BoardData data) {
@@ -1884,6 +1922,7 @@ public class ReadBoard {
       SyncSnapshotClassifier.SnapshotDelta snapshotDelta,
       OptionalInt foxMoveNumber) {
     SyncRemoteContext resolvedRemoteContext = currentPendingRemoteContext().withoutForceRebuild();
+    ReadBoardLastMoveSource lastMoveSource = resolvedRemoteContext.lastMoveSource;
     boolean analysisEngineAvailable = isReadBoardAnalysisEngineAvailable();
     localMoveSyncDebug(
         "rebuildFromSnapshot start engineAvailable="
@@ -1905,7 +1944,12 @@ public class ReadBoard {
     RootStartSetupState preservedRootStartSetup = captureRootStartSetupState();
     BoardHistoryList rebuiltHistory =
         buildSnapshotHistory(
-            previousHistory, syncStartNode, snapshotCodes, snapshotDelta, foxMoveNumber);
+            previousHistory,
+            syncStartNode,
+            snapshotCodes,
+            snapshotDelta,
+            foxMoveNumber,
+            lastMoveSource);
     if (rebuildPolicy().shouldRebuildImmediatelyWithoutHistory(syncStartNode)) {
       clearBoardWithoutInvalidatingResumeState(false);
     }
@@ -1914,6 +1958,7 @@ public class ReadBoard {
     setHistoryWithoutInvalidatingResumeState(rebuiltHistory);
     restoreRootStartSetupIfNoOrRootSnapshotAnchor(syncStartNode, preservedRootStartSetup);
     BoardHistoryNode rebuiltNode = rebuiltHistory.getCurrentHistoryNode();
+    updateReadBoardTurnTrustFromAcceptedFrame(snapshotDelta, lastMoveSource);
     if (analysisEngineAvailable) {
       try {
         syncEngineToRebuiltSnapshot(rebuiltNode);
@@ -1957,8 +2002,25 @@ public class ReadBoard {
       int[] snapshotCodes,
       SyncSnapshotClassifier.SnapshotDelta snapshotDelta,
       OptionalInt foxMoveNumber) {
+    return buildSnapshotHistory(
+        previousHistory,
+        syncStartNode,
+        snapshotCodes,
+        snapshotDelta,
+        foxMoveNumber,
+        currentPendingRemoteContext().lastMoveSource);
+  }
+
+  private BoardHistoryList buildSnapshotHistory(
+      BoardHistoryList previousHistory,
+      BoardHistoryNode syncStartNode,
+      int[] snapshotCodes,
+      SyncSnapshotClassifier.SnapshotDelta snapshotDelta,
+      OptionalInt foxMoveNumber,
+      ReadBoardLastMoveSource lastMoveSource) {
     BoardData snapshotData =
-        buildSnapshotBoardData(syncStartNode, snapshotCodes, snapshotDelta, foxMoveNumber);
+        buildSnapshotBoardData(
+            syncStartNode, snapshotCodes, snapshotDelta, foxMoveNumber, lastMoveSource);
     BoardHistoryList rebuiltHistory = new BoardHistoryList(snapshotData);
     copySnapshotSetupMetadata(syncStartNode, rebuiltHistory.getCurrentHistoryNode());
     rebuiltHistory.setGameInfo(previousHistory.getGameInfo());
@@ -2067,7 +2129,11 @@ public class ReadBoard {
       int[] snapshotCodes,
       SyncSnapshotClassifier.SnapshotDelta snapshotDelta) {
     return buildSnapshotBoardData(
-        syncStartNode, snapshotCodes, snapshotDelta, currentPendingFoxMoveNumber());
+        syncStartNode,
+        snapshotCodes,
+        snapshotDelta,
+        currentPendingFoxMoveNumber(),
+        currentPendingRemoteContext().lastMoveSource);
   }
 
   private BoardData buildSnapshotBoardData(
@@ -2075,9 +2141,24 @@ public class ReadBoard {
       int[] snapshotCodes,
       SyncSnapshotClassifier.SnapshotDelta snapshotDelta,
       OptionalInt foxMoveNumber) {
+    return buildSnapshotBoardData(
+        syncStartNode,
+        snapshotCodes,
+        snapshotDelta,
+        foxMoveNumber,
+        currentPendingRemoteContext().lastMoveSource);
+  }
+
+  private BoardData buildSnapshotBoardData(
+      BoardHistoryNode syncStartNode,
+      int[] snapshotCodes,
+      SyncSnapshotClassifier.SnapshotDelta snapshotDelta,
+      OptionalInt foxMoveNumber,
+      ReadBoardLastMoveSource lastMoveSource) {
     Stone[] snapshotStones = buildSnapshotStones(snapshotCodes);
     SnapshotHistoryState historyState =
-        inferSnapshotHistoryState(syncStartNode, snapshotStones, snapshotDelta, foxMoveNumber);
+        inferSnapshotHistoryState(
+            syncStartNode, snapshotStones, snapshotDelta, foxMoveNumber, lastMoveSource);
     int[] moveNumberList = buildSnapshotMoveNumberList(syncStartNode, snapshotStones, historyState);
     Zobrist zobrist = buildSnapshotZobrist(snapshotStones);
     SnapshotCaptures captures = inferSnapshotCaptures(syncStartNode, snapshotStones);
@@ -2181,6 +2262,16 @@ public class ReadBoard {
     return SnapshotCaptures.from(syncStartData);
   }
 
+  private void updateReadBoardTurnTrustFromAcceptedFrame(
+      SyncSnapshotClassifier.SnapshotDelta snapshotDelta, ReadBoardLastMoveSource lastMoveSource) {
+    readBoardTurnTrust =
+        snapshotDelta != null
+                && snapshotDelta.hasMarker()
+                && lastMoveSource.isTrustedVisualMarker()
+            ? ReadBoardTurnTrust.TRUSTED
+            : ReadBoardTurnTrust.UNTRUSTED;
+  }
+
   private boolean sameStoneLayout(Stone[] left, Stone[] right) {
     if (left.length != right.length) {
       return false;
@@ -2197,11 +2288,13 @@ public class ReadBoard {
       BoardHistoryNode syncStartNode,
       Stone[] snapshotStones,
       SyncSnapshotClassifier.SnapshotDelta snapshotDelta,
-      OptionalInt foxMoveNumber) {
+      OptionalInt foxMoveNumber,
+      ReadBoardLastMoveSource lastMoveSource) {
     int moveNumber =
         inferSnapshotMoveNumber(syncStartNode, snapshotStones, snapshotDelta, foxMoveNumber);
     boolean blackToPlay =
-        inferSnapshotBlackToPlay(syncStartNode, snapshotStones, snapshotDelta, foxMoveNumber);
+        inferSnapshotBlackToPlay(
+            syncStartNode, snapshotStones, snapshotDelta, foxMoveNumber, lastMoveSource);
     if (snapshotDelta.hasMarker()) {
       return SnapshotHistoryState.fromMarker(
           snapshotDelta.markerX(),
@@ -2271,15 +2364,16 @@ public class ReadBoard {
       BoardHistoryNode syncStartNode,
       Stone[] snapshotStones,
       SyncSnapshotClassifier.SnapshotDelta snapshotDelta,
-      OptionalInt foxMoveNumber) {
-    if (foxMoveNumber.isPresent()) {
-      return foxMoveNumber.getAsInt() % 2 == 0;
-    }
+      OptionalInt foxMoveNumber,
+      ReadBoardLastMoveSource lastMoveSource) {
     if (isEmptySnapshot(snapshotStones)) {
       return true;
     }
-    if (snapshotDelta.hasMarker()) {
+    if (snapshotDelta.hasMarker() && lastMoveSource.isTrustedVisualMarker()) {
       return snapshotDelta.markerColor() == Stone.WHITE;
+    }
+    if (!snapshotDelta.hasMarker() && foxMoveNumber.isPresent()) {
+      return foxMoveNumber.getAsInt() % 2 == 0;
     }
     return inferBlackToPlayWithoutMarker(syncStartNode, snapshotStones, snapshotDelta);
   }
@@ -2439,6 +2533,7 @@ public class ReadBoard {
       clearConfirmedLocalMove();
     }
     pendingRemoteContext = SyncRemoteContext.generic(false);
+    readBoardTurnTrust = ReadBoardTurnTrust.UNTRUSTED;
     awaitingFirstSyncFrame = true;
     invalidatePendingSyncAnalysisResume();
   }

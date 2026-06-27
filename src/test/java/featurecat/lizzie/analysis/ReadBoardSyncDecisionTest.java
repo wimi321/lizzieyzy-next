@@ -62,6 +62,7 @@ class ReadBoardSyncDecisionTest {
     int[] lastMove = new int[] {0, 0};
 
     try (SyncHarness harness = SyncHarness.create(true, rootHistory(initial, true))) {
+      harness.readBoard.parseLine("lastMoveSource foxCornerFlip");
       harness.sync(snapshot(target, Optional.of(lastMove), Stone.BLACK));
 
       assertTrue(
@@ -128,6 +129,7 @@ class ReadBoardSyncDecisionTest {
     int[] lastMove = new int[] {2, 2};
 
     try (SyncHarness harness = SyncHarness.create(false, emptyHistory())) {
+      harness.readBoard.parseLine("lastMoveSource foxCornerFlip");
       harness.sync(snapshot(target, Optional.of(lastMove), Stone.BLACK));
 
       assertEquals(
@@ -249,6 +251,178 @@ class ReadBoardSyncDecisionTest {
           "exact snapshot restore should avoid replaying ordinary static stones as play commands.");
       assertArrayEquals(target, harness.leelaz.copyStones());
       assertTrue(harness.leelaz.isBlackToPlay());
+    }
+  }
+
+  @Test
+  void foxCornerFlipMarkerBeatsConflictingFoxMoveNumberParity() throws Exception {
+    Stone[] target = stones(placement(0, 0, Stone.BLACK), placement(1, 0, Stone.WHITE));
+    int[] lastMove = new int[] {0, 0};
+
+    try (SyncHarness harness = SyncHarness.create(false, emptyHistory())) {
+      armFoxMoveNumber(harness.readBoard, 58);
+      harness.readBoard.parseLine("lastMoveSource foxCornerFlip");
+      harness.sync(snapshot(target, Optional.of(lastMove), Stone.BLACK));
+
+      assertStaticSnapshotRoot(harness.board, target, lastMove, Stone.BLACK, 58);
+      assertTrue(isReadBoardTurnTrusted(harness.readBoard));
+      assertFalse(
+          harness.board.getHistory().getMainEnd().getData().blackToPlay,
+          "trusted black marker should mean white to play even when fox parity says black.");
+    }
+  }
+
+  @Test
+  void redBlueMarkerBeatsConflictingFoxMoveNumberParity() throws Exception {
+    Stone[] target = stones(placement(0, 0, Stone.BLACK), placement(1, 0, Stone.WHITE));
+    int[] lastMove = new int[] {1, 0};
+
+    try (SyncHarness harness = SyncHarness.create(false, emptyHistory())) {
+      armFoxMoveNumber(harness.readBoard, 57);
+      harness.readBoard.parseLine("lastMoveSource redBlueMarker");
+      harness.sync(snapshot(target, Optional.of(lastMove), Stone.WHITE));
+
+      assertStaticSnapshotRoot(harness.board, target, lastMove, Stone.WHITE, 57);
+      assertTrue(isReadBoardTurnTrusted(harness.readBoard));
+      assertTrue(
+          harness.board.getHistory().getMainEnd().getData().blackToPlay,
+          "trusted white marker should mean black to play even when fox parity says white.");
+    }
+  }
+
+  @Test
+  void heuristicLastMoveSourceDoesNotBecomeTrustedTurnState() throws Exception {
+    Stone[] target = stones(placement(0, 0, Stone.BLACK), placement(1, 0, Stone.WHITE));
+
+    try (SyncHarness harness = SyncHarness.create(false, emptyHistory())) {
+      armFoxMoveNumber(harness.readBoard, 58);
+      harness.readBoard.parseLine("lastMoveSource stoneCount");
+      harness.sync(snapshot(target, Optional.of(new int[] {0, 0}), Stone.BLACK));
+
+      assertFalse(isReadBoardTurnTrusted(harness.readBoard));
+
+      harness.readBoard.parseLine("lastMoveSource deviation");
+      harness.sync(snapshot(target, Optional.of(new int[] {0, 0}), Stone.BLACK));
+
+      assertFalse(isReadBoardTurnTrusted(harness.readBoard));
+    }
+  }
+
+  @Test
+  void heuristicMarkerWithoutFoxMoveNumberDoesNotDriveSideToPlay() throws Exception {
+    Stone[] target = stones(placement(0, 0, Stone.BLACK), placement(1, 0, Stone.WHITE));
+
+    try (SyncHarness harness = SyncHarness.create(false, emptyHistory())) {
+      harness.readBoard.parseLine("lastMoveSource stoneCount");
+      harness.sync(snapshot(target, Optional.of(new int[] {0, 0}), Stone.BLACK));
+
+      assertTrue(
+          harness.board.getHistory().getMainEnd().getData().blackToPlay,
+          "heuristic black marker without foxMoveNumber should use the existing fallback.");
+      assertFalse(isReadBoardTurnTrusted(harness.readBoard));
+    }
+  }
+
+  @Test
+  void heuristicMarkerWithFoxMoveNumberDoesNotDriveSideToPlayFromParity() throws Exception {
+    Stone[] target = stones(placement(0, 0, Stone.BLACK), placement(1, 0, Stone.WHITE));
+
+    try (SyncHarness harness = SyncHarness.create(false, emptyHistory())) {
+      armFoxMoveNumber(harness.readBoard, 57);
+      harness.readBoard.parseLine("lastMoveSource stoneCount");
+      harness.sync(snapshot(target, Optional.of(new int[] {0, 0}), Stone.BLACK));
+
+      assertTrue(
+          harness.board.getHistory().getMainEnd().getData().blackToPlay,
+          "heuristic marker with foxMoveNumber should use the existing fallback, not parity.");
+      assertFalse(isReadBoardTurnTrusted(harness.readBoard));
+    }
+  }
+
+  @Test
+  void markedLegacyUnknownFrameKeepsOldProtocolSideToPlayFallback() throws Exception {
+    Stone[] target = stones(placement(0, 0, Stone.BLACK), placement(1, 0, Stone.WHITE));
+
+    try (SyncHarness harness = SyncHarness.create(false, emptyHistory())) {
+      armFoxMoveNumber(harness.readBoard, 57);
+      harness.sync(snapshot(target, Optional.of(new int[] {0, 0}), Stone.BLACK));
+
+      assertTrue(
+          harness.board.getHistory().getMainEnd().getData().blackToPlay,
+          "legacy marked frames without lastMoveSource should keep the existing fallback.");
+      assertFalse(isReadBoardTurnTrusted(harness.readBoard));
+    }
+  }
+
+  @Test
+  void acceptedSamePayloadFrameRefreshesTurnTrustFromLastMoveSource() throws Exception {
+    Stone[] target = stones(placement(0, 0, Stone.BLACK), placement(1, 0, Stone.WHITE));
+    int[] lastMove = new int[] {0, 0};
+
+    try (SyncHarness harness = SyncHarness.create(false, emptyHistory())) {
+      armFoxMoveNumber(harness.readBoard, 58);
+      harness.readBoard.parseLine("lastMoveSource stoneCount");
+      harness.sync(snapshot(target, Optional.of(lastMove), Stone.BLACK));
+      assertFalse(isReadBoardTurnTrusted(harness.readBoard));
+
+      harness.readBoard.parseLine("lastMoveSource foxCornerFlip");
+      harness.sync(snapshot(target, Optional.of(lastMove), Stone.BLACK));
+
+      assertTrue(isReadBoardTurnTrusted(harness.readBoard));
+    }
+  }
+
+  @Test
+  void markerlessAcceptedFrameDoesNotTrustStaleVisualMarkerSource() throws Exception {
+    Stone[] target = stones(placement(0, 0, Stone.BLACK), placement(1, 0, Stone.WHITE));
+
+    try (SyncHarness harness = SyncHarness.create(false, emptyHistory())) {
+      harness.readBoard.parseLine("lastMoveSource foxCornerFlip");
+      harness.sync(snapshot(target, Optional.empty(), Stone.EMPTY));
+
+      assertFalse(isReadBoardTurnTrusted(harness.readBoard));
+    }
+  }
+
+  @Test
+  void endClearsPendingSourceButPreservesAcceptedReadBoardTurnTrust() throws Exception {
+    Stone[] target = stones(placement(0, 0, Stone.BLACK), placement(1, 0, Stone.WHITE));
+
+    try (SyncHarness harness = SyncHarness.create(false, emptyHistory())) {
+      armFoxMoveNumber(harness.readBoard, 58);
+      harness.readBoard.parseLine("lastMoveSource foxCornerFlip");
+      setPendingSnapshot(
+          harness.readBoard, snapshot(target, Optional.of(new int[] {0, 0}), Stone.BLACK));
+      harness.readBoard.parseLine("end");
+
+      assertTrue(isReadBoardTurnTrusted(harness.readBoard));
+      assertEquals(
+          ReadBoardLastMoveSource.LEGACY_UNKNOWN,
+          pendingRemoteContext(harness.readBoard).lastMoveSource);
+    }
+  }
+
+  @Test
+  void invalidatingControlsClearReadBoardTurnTrust() throws Exception {
+    Stone[] target = stones(placement(0, 0, Stone.BLACK), placement(1, 0, Stone.WHITE));
+
+    try (SyncHarness harness = SyncHarness.create(false, emptyHistory())) {
+      armFoxMoveNumber(harness.readBoard, 58);
+      harness.readBoard.parseLine("lastMoveSource foxCornerFlip");
+      harness.sync(snapshot(target, Optional.of(new int[] {0, 0}), Stone.BLACK));
+      assertTrue(isReadBoardTurnTrusted(harness.readBoard));
+
+      harness.readBoard.parseLine("stopsync");
+
+      assertFalse(isReadBoardTurnTrusted(harness.readBoard));
+
+      harness.readBoard.parseLine("lastMoveSource foxCornerFlip");
+      harness.sync(snapshot(target, Optional.of(new int[] {0, 0}), Stone.BLACK));
+      assertTrue(isReadBoardTurnTrusted(harness.readBoard));
+
+      harness.readBoard.parseLine("noboth");
+
+      assertFalse(isReadBoardTurnTrusted(harness.readBoard));
     }
   }
 
@@ -928,6 +1102,76 @@ class ReadBoardSyncDecisionTest {
   }
 
   @Test
+  void sameBoardFoxMetadataUsesTrustedVisualMarkerBeforeConflictingParity() throws Exception {
+    Stone[] target = stones(placement(0, 0, Stone.BLACK), placement(1, 0, Stone.WHITE));
+
+    try (SyncHarness harness =
+        SyncHarness.create(
+            false,
+            rootHistory(
+                target,
+                Optional.of(new int[] {0, 0}),
+                Stone.BLACK,
+                false,
+                58,
+                BoardNodeKind.SNAPSHOT))) {
+      BoardHistoryNode originalMainEnd = harness.board.getHistory().getMainEnd();
+      harness.board.resetCounters();
+      harness.frame.refreshCount = 0;
+      harness.leelaz.clearCount = 0;
+
+      armFoxMoveNumber(harness.readBoard, 58);
+      harness.readBoard.parseLine("lastMoveSource foxCornerFlip");
+      harness.sync(snapshot(target, Optional.of(new int[] {0, 0}), Stone.BLACK));
+
+      assertSame(
+          originalMainEnd,
+          harness.board.getHistory().getMainEnd(),
+          "trusted visual marker should prevent fox parity from forcing a same-board rebuild.");
+      assertFalse(
+          harness.board.getHistory().getMainEnd().getData().blackToPlay,
+          "black visual marker means white should play next even when fox parity conflicts.");
+      assertEquals(0, harness.leelaz.clearCount);
+      assertEquals(0, harness.frame.refreshCount);
+    }
+  }
+
+  @Test
+  void sameBoardFoxMetadataDoesNotUseHeuristicMarkerParityAsTurnAuthority() throws Exception {
+    Stone[] target = stones(placement(0, 0, Stone.BLACK), placement(1, 0, Stone.WHITE));
+
+    try (SyncHarness harness =
+        SyncHarness.create(
+            false,
+            rootHistory(
+                target,
+                Optional.of(new int[] {0, 0}),
+                Stone.BLACK,
+                false,
+                58,
+                BoardNodeKind.SNAPSHOT))) {
+      BoardHistoryNode originalMainEnd = harness.board.getHistory().getMainEnd();
+      harness.board.resetCounters();
+      harness.frame.refreshCount = 0;
+      harness.leelaz.clearCount = 0;
+
+      armFoxMoveNumber(harness.readBoard, 58);
+      harness.readBoard.parseLine("lastMoveSource stoneCount");
+      harness.sync(snapshot(target, Optional.of(new int[] {0, 0}), Stone.BLACK));
+
+      assertSame(
+          originalMainEnd,
+          harness.board.getHistory().getMainEnd(),
+          "heuristic marker source should not let fox parity force same-board turn rebuilds.");
+      assertFalse(
+          harness.board.getHistory().getMainEnd().getData().blackToPlay,
+          "heuristic marker path should keep the existing side-to-play fallback, not fox parity.");
+      assertEquals(0, harness.leelaz.clearCount);
+      assertEquals(0, harness.frame.refreshCount);
+    }
+  }
+
+  @Test
   void foxMarkerlessOpeningMoveBecomesRealHistoryInsteadOfSnapshotRebuild() throws Exception {
     Stone[] target = stones(placement(0, 0, Stone.BLACK));
 
@@ -1204,6 +1448,7 @@ class ReadBoardSyncDecisionTest {
       SyncSnapshotClassifier classifier = new SyncSnapshotClassifier(BOARD_SIZE, BOARD_SIZE);
       int[] snapshotCodes = snapshot(target, Optional.of(lastMove), Stone.BLACK);
 
+      harness.readBoard.parseLine("lastMoveSource foxCornerFlip");
       invokeRebuildFromSnapshot(
           harness.readBoard,
           harness.board.getHistory().getCurrentHistoryNode(),
@@ -1552,6 +1797,8 @@ class ReadBoardSyncDecisionTest {
       harness.leelaz.clearCount = 0;
       harness.leelaz.playedMoves = new ArrayList<>();
 
+      setField(harness.readBoard, "readBoardTurnTrust", readBoardTurnTrust("TRUSTED"));
+      harness.readBoard.parseLine("lastMoveSource stoneCount");
       harness.sync(snapshot(target, Optional.empty(), Stone.EMPTY));
 
       SyncDecisionTrace trace =
@@ -1568,6 +1815,9 @@ class ReadBoardSyncDecisionTest {
           "the first conflicting frame should debounce before rebuild.");
       assertEquals(
           0, harness.frame.refreshCount, "holding a transient conflict should not refresh the UI.");
+      assertTrue(
+          isReadBoardTurnTrusted(harness.readBoard),
+          "held conflict observations should not refresh turn trust.");
 
       harness.sync(snapshot(target, Optional.empty(), Stone.EMPTY));
 
@@ -1684,6 +1934,7 @@ class ReadBoardSyncDecisionTest {
       assertEquals(
           0, harness.leelaz.clearCount, "holding a rollback frame should not rebuild immediately.");
 
+      harness.readBoard.parseLine("lastMoveSource foxCornerFlip");
       harness.sync(
           snapshot(
               matchedNode.getData().stones,
@@ -2679,6 +2930,30 @@ class ReadBoardSyncDecisionTest {
     Field field = findField(target.getClass(), name);
     field.setAccessible(true);
     return field.get(target);
+  }
+
+  private static boolean isReadBoardTurnTrusted(ReadBoard readBoard) throws Exception {
+    return "TRUSTED".equals(String.valueOf(getField(readBoard, "readBoardTurnTrust")));
+  }
+
+  private static SyncRemoteContext pendingRemoteContext(ReadBoard readBoard) throws Exception {
+    return (SyncRemoteContext) getField(readBoard, "pendingRemoteContext");
+  }
+
+  private static void setPendingSnapshot(ReadBoard readBoard, int[] snapshotCodes) throws Exception {
+    ArrayList<Integer> counts = new ArrayList<>(snapshotCodes.length);
+    for (int code : snapshotCodes) {
+      counts.add(code);
+    }
+    setField(readBoard, "tempcount", counts);
+  }
+
+  private static Object readBoardTurnTrust(String name) throws Exception {
+    Field field = findField(ReadBoard.class, "readBoardTurnTrust");
+    Class<?> enumType = field.getType();
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    Object value = Enum.valueOf((Class<? extends Enum>) enumType, name);
+    return value;
   }
 
   private static Field findField(Class<?> type, String name) throws NoSuchFieldException {

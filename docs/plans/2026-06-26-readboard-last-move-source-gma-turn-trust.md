@@ -174,7 +174,8 @@ Add frame-lifecycle tests for source-only and held frames:
 - accepted same-payload `NO_CHANGE` frame with `lastMoveSource stoneCount` keeps the turn trust untrusted.
 - accepted same-payload `NO_CHANGE` frame that changes only `lastMoveSource` from `stoneCount` to `foxCornerFlip` refreshes turn trust to trusted without requiring a rebuild.
 - a recovery `HOLD` / stale frame does not refresh turn trust from its pending `lastMoveSource`.
-- `end`, `stopsync`, and `noboth` reset turn trust to untrusted.
+- `end` clears pending frame metadata/source but preserves the latest accepted-board turn trust.
+- `stopsync`, `noboth`, and other invalidating controls reset turn trust to untrusted.
 
 - [ ] **Step 3: Run tests and verify they fail**
 
