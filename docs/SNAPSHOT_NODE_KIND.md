@@ -25,6 +25,9 @@
 - 棋盘同步工具、读盘结果、markerless sync：产出 `SNAPSHOT`。
 - `foxMoveNumber`、marker、手数奇偶：只作为辅助元数据，不负责补造缺失历史。
 - `foxMoveNumber` 只能修正 `SNAPSHOT` 元数据，不能改写已证明的真实 `MOVE/PASS`。
+- `foxMoveNumber` 修正 `SNAPSHOT` moveNumber metadata；在 `side-to-play` 上只作为 markerless 兼容兜底，不能覆盖可信视觉 marker，也不能在让子、setup 或白方首手等风险场景下作为 GMA 权威轮次。
+- ReadBoard `lastMoveSource` 区分真实视觉 marker 与启发式末手；只有真实视觉 marker 可在冲突时优先决定 `side-to-play`。
+- 启发式 `deviation` / `stoneCount` 不能被当成真实 `MOVE/PASS` 或 GMA 权威轮次。
 
 ## 引擎支持矩阵（本轮）
 
