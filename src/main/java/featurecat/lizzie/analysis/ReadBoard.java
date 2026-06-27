@@ -2299,9 +2299,8 @@ public class ReadBoard {
             || lastMoveSource == ReadBoardLastMoveSource.LEGACY_UNKNOWN)
         && foxMoveNumber.isPresent()
         && snapshotDelta.removals() == 0
-        && snapshotDelta.additions() <= 1
-        && (snapshotDelta.additions() == 0
-            || singleAdditionMatchesFoxMoveNumber(snapshotDelta, foxMoveNumber.getAsInt()))
+        && snapshotDelta.additions() == 1
+        && singleAdditionMatchesFoxMoveNumber(snapshotDelta, foxMoveNumber.getAsInt())
         && !hasSetupOrHandicapTurnRisk(syncStartNode, snapshotDelta);
   }
 

@@ -1088,6 +1088,40 @@ class ReadBoardSyncDecisionTest {
   }
 
   @Test
+  void sameBoardMarkerlessFoxMetadataDoesNotOverrideRiskySnapshotSideToPlay()
+      throws Exception {
+    Stone[] target =
+        stones(
+            placement(0, 0, Stone.WHITE),
+            placement(1, 0, Stone.BLACK),
+            placement(2, 2, Stone.WHITE));
+
+    try (SyncHarness harness =
+        SyncHarness.create(
+            false,
+            rootHistory(target, Optional.empty(), Stone.EMPTY, false, 57, BoardNodeKind.SNAPSHOT))) {
+      BoardHistoryNode originalMainEnd = harness.board.getHistory().getMainEnd();
+
+      armFoxMoveNumber(harness.readBoard, 58);
+      harness.readBoard.parseLine("lastMoveSource none");
+      harness.sync(snapshot(target, Optional.empty(), Stone.EMPTY));
+
+      BoardHistoryNode rebuiltMainEnd = harness.board.getHistory().getMainEnd();
+      assertNotSame(
+          originalMainEnd,
+          rebuiltMainEnd,
+          "same-board fox metadata changes should still rebuild the snapshot node.");
+      assertEquals(
+          58,
+          rebuiltMainEnd.getData().moveNumber,
+          "metadata-only rebuild should still apply the rebuilt fox move number.");
+      assertFalse(
+          rebuiltMainEnd.getData().blackToPlay,
+          "markerless metadata-only frames should not use fox parity without stone evidence.");
+    }
+  }
+
+  @Test
   void sameBoardFoxMetadataRebuildHonorsExplicitPlAndMnOnSetupSnapshot() throws Exception {
     Stone[] target =
         stones(
