@@ -985,6 +985,29 @@ class ReadBoardEngineResumeTest {
   }
 
   @Test
+  void readBoardGmaStartsWhenRebuiltSnapshotCopiesExplicitPl() throws Exception {
+    Stone[] anchorStones = stones(placement(0, 0, Stone.BLACK));
+    try (EngineResumeHarness harness =
+        EngineResumeHarness.create(rootHistory(anchorStones, false))) {
+      harness.frame.bothSync = true;
+      harness.leelaz.enableReadBoardGmaSupport();
+      harness.board.getHistory().getCurrentHistoryNode().getData().addProperty("PL", "W");
+      buildHistory(harness.board, placement(1, 0, Stone.WHITE));
+
+      harness.readBoard.parseLine("play>white>0 0 0 gma");
+      harness.readBoard.parseLine("forceRebuild");
+      harness.sync(
+          snapshot(
+              stones(placement(0, 0, Stone.BLACK), placement(2, 0, Stone.WHITE)),
+              Optional.empty(),
+              Stone.EMPTY));
+
+      assertEquals(1, harness.leelaz.readBoardGmaCount);
+      assertEquals("W", harness.leelaz.lastReadBoardGmaColor);
+    }
+  }
+
+  @Test
   void readBoardGmaStartsWhenSourceOnlyUpdateRefreshesTurnTrust() throws Exception {
     try (EngineResumeHarness harness =
         EngineResumeHarness.create(rootHistory(emptyStones(), true))) {

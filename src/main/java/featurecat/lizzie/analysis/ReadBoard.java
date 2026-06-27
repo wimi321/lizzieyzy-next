@@ -1965,13 +1965,13 @@ public class ReadBoard {
     if (rebuildPolicy().shouldRebuildImmediatelyWithoutHistory(syncStartNode)) {
       clearBoardWithoutInvalidatingResumeState(false);
     }
-    updateReadBoardTurnTrustFromAcceptedFrame(
-        syncStartNode, snapshotDelta, lastMoveSource, foxMoveNumber);
     Lizzie.board.hasStartStone = false;
     Lizzie.board.startStonelist = new ArrayList<>();
     setHistoryWithoutInvalidatingResumeState(rebuiltHistory);
     restoreRootStartSetupIfNoOrRootSnapshotAnchor(syncStartNode, preservedRootStartSetup);
     BoardHistoryNode rebuiltNode = rebuiltHistory.getCurrentHistoryNode();
+    updateReadBoardTurnTrustFromAcceptedFrame(
+        rebuiltNode, snapshotDelta, lastMoveSource, foxMoveNumber);
     if (analysisEngineAvailable) {
       try {
         syncEngineToRebuiltSnapshot(rebuiltNode);
