@@ -58,6 +58,7 @@
 - Windows 64 位现在优先推荐免安装包，安装器作为可选路径保留。
 - Windows 免安装包会在解压目录内启用便携模式，配置、日志、保存棋谱、下载权重和软件内安装的 TensorRT 文件都随这个文件夹保存，主要位于 `user-data/`。
 - 已有 Windows 免安装版时，关闭软件后把 `<date>-windows64.core-update.zip` 解压到旧目录覆盖即可；它只替换 `app/lizzie-yzy2.5.3-shaded.jar` 和 `app/LizzieYzy Next*.cfg`，用于同步标题栏版本号和必要 JVM 参数，不会覆盖权重、引擎、运行环境、JCEF、readboard、TensorRT 或 `user-data/`。
+- 远程算力不属于发布包资产：`设置 -> 远程算力中心` 只保存连接配置和可选 token，不把智子云算力、KaTrain/SWHub 自建远程服务或任何云端模型打进安装包。
 - 旧 tag 里如果还看到兼容 zip 或历史包，那属于历史发布格式。
 
 ## 每个包里内置了什么
@@ -125,6 +126,17 @@
 - macOS 权重：`LizzieYzy Next.app/Contents/app/weights/default.bin.gz`
 - Windows 免安装包的用户下载权重和 TensorRT：解压目录内的 `user-data/`；TensorRT 下载缓存、CUDA/TensorRT 运行缓存会尽量保存在 `user-data/runtime/`
 - Windows 安装器版本为了避免写入 `Program Files`，运行数据可能位于 `C:\Users\Public\Documents\LizzieYzyNext` 或 `C:\ProgramData\LizzieYzyNext`；如果非常在意 C 盘空间，优先使用免安装包并解压到非 C 盘
+
+## 远程算力中心
+
+如果本机显卡不够，或者临时想用更强算力，可以在软件内打开 `设置 -> 远程算力中心`：
+
+- `智子云算力`：手机号/邮箱登录后，软件会创建一个虚拟 KataGo 引擎，主引擎、实时分析、AI 对局、引擎对局、KataGo 形势判断和闪电分析都走同一类 GTP 桥接体验。
+- 智子算力套餐在软件内可直接选择：普通用户默认使用 `VIP 包月`，对应 `--gpu-type vip-share`；非 VIP 用户可在高级设置切换到 `按量 1x`，也可以按需选择 `3x/6x/12x/24x` 按调用计费档位。
+- 预设名称里的 `智子28B` 是默认模型，`TensorRT / CUDA` 是云端 KataGo 后端；这不是充值套餐名。高级用户仍可在参数里修改 `kata-name` / `kata-weight`，但普通用户不需要理解这些参数。
+- `使用本机引擎`：随时切回本机已配置的 KataGo，不改变发布包里的离线引擎和权重。
+- `自建远程算力 / 旧版 SSH 兼容`：旧版 SSH 远程引擎仍可通过引擎设置使用；后续自建服务连接码、二维码和 KaTrain/SWHub 风格链接会共用这个入口。
+- 密码只用于登录请求，不写入配置；只有用户勾选“记住登录”时才保存 token。远程算力的额度和费用以对应服务账号为准。
 
 ## 当前内置同步工具信息
 

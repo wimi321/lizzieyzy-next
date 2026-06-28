@@ -4006,7 +4006,8 @@ public class LizzieFrame extends JFrame {
         readKomi,
         resetAnalysisWindows,
         afterFirstPaint,
-        true);
+        true,
+        false);
   }
 
   public boolean loadSgfString(
@@ -4016,7 +4017,31 @@ public class LizzieFrame extends JFrame {
       boolean resetAnalysisWindows,
       Runnable afterLoad) {
     return loadSgfStringInternal(
-        sgfContent, null, resumeDelayMillis, readKomi, resetAnalysisWindows, afterLoad, false);
+        sgfContent,
+        null,
+        resumeDelayMillis,
+        readKomi,
+        resetAnalysisWindows,
+        afterLoad,
+        false,
+        false);
+  }
+
+  public boolean loadDownloadedSgfString(
+      String sgfContent,
+      int resumeDelayMillis,
+      boolean readKomi,
+      boolean resetAnalysisWindows,
+      Runnable afterLoad) {
+    return loadSgfStringInternal(
+        sgfContent,
+        null,
+        resumeDelayMillis,
+        readKomi,
+        resetAnalysisWindows,
+        afterLoad,
+        false,
+        true);
   }
 
   private boolean loadSgfStringInternal(
@@ -4026,7 +4051,8 @@ public class LizzieFrame extends JFrame {
       boolean readKomi,
       boolean resetAnalysisWindows,
       Runnable afterLoad,
-      boolean showFeedback) {
+      boolean showFeedback,
+      boolean forceAutoQuickAnalyzeAfterLoad) {
     if (!SwingUtilities.isEventDispatchThread()) {
       final boolean[] loaded = new boolean[] {false};
       try {
@@ -4041,7 +4067,8 @@ public class LizzieFrame extends JFrame {
                         readKomi,
                         resetAnalysisWindows,
                         afterLoad,
-                        showFeedback);
+                        showFeedback,
+                        forceAutoQuickAnalyzeAfterLoad);
               }
             });
       } catch (Exception e) {
@@ -4070,7 +4097,12 @@ public class LizzieFrame extends JFrame {
         resetMovelistFrameandAnalysisFrame();
       }
       setVisible(true);
-      scheduleResumeAnalysisAfterLoad(resumeDelayMillis);
+      if (forceAutoQuickAnalyzeAfterLoad) {
+        scheduleResumeAnalysisAfterLoad(
+            resumeDelayMillis, this::resumeAnalysisAfterDownloadedKifuLoad);
+      } else {
+        scheduleResumeAnalysisAfterLoad(resumeDelayMillis);
+      }
       refresh();
       if (showFeedback) {
         finishKifuLoad(afterLoad);
@@ -13047,10 +13079,7 @@ public class LizzieFrame extends JFrame {
   }
 
   private boolean needsNewFlashAnalysisEngine() {
-    return analysisEngine == null
-        || analysisEngine.useJavaSSH && analysisEngine.javaSSHClosed
-        || (!analysisEngine.useJavaSSH
-            && (analysisEngine.process == null || !analysisEngine.process.isAlive()));
+    return !isAnalysisEngineReusable(analysisEngine);
   }
 
   private void startFlashAnalyzeGameWithNewEngine(
@@ -16740,6 +16769,12 @@ public class LizzieFrame extends JFrame {
     kataGoAutoSetupDialog.toFront();
   }
 
+  public void openRemoteComputeCenter() {
+    RemoteComputeDialog dialog = new RemoteComputeDialog(this);
+    dialog.setVisible(true);
+    dialog.toFront();
+  }
+
   public void openKataGoWeightDownload() {
     if (kataGoAutoSetupDialog == null || !kataGoAutoSetupDialog.isDisplayable()) {
       kataGoAutoSetupDialog = new KataGoAutoSetupDialog(this);
@@ -16755,6 +16790,10 @@ public class LizzieFrame extends JFrame {
     ensureAnalysisResumedAfterLoad();
   }
 
+  private void resumeAnalysisAfterDownloadedKifuLoad() {
+    ensureAnalysisResumedAfterDownloadedKifuLoad();
+  }
+
   private void resumeAnalysisAfterSyncLoad() {
     ensureAnalysisResumedAfterSyncLoad();
   }
@@ -16765,8 +16804,25 @@ public class LizzieFrame extends JFrame {
     }
     if (shouldAutoQuickAnalyzeLoadedGame()) {
       flashAnalyzeGame(true, false, true);
+      resumeForegroundAnalysisForCurrentPosition();
       return true;
     }
+    return resumeForegroundAnalysisForCurrentPosition();
+  }
+
+  public boolean ensureAnalysisResumedAfterDownloadedKifuLoad() {
+    if (EngineManager.isEngineGame() || isPlayingAgainstLeelaz || isAnaPlayingAgainstLeelaz) {
+      return false;
+    }
+    if (shouldForceAutoQuickAnalyzeDownloadedKifu()) {
+      flashAnalyzeGame(true, false, true);
+      resumeForegroundAnalysisForCurrentPosition();
+      return true;
+    }
+    return ensureAnalysisResumedAfterLoad();
+  }
+
+  private boolean resumeForegroundAnalysisForCurrentPosition() {
     if (Lizzie.leelaz == null || EngineManager.isEmpty) {
       return false;
     }
@@ -16882,10 +16938,13 @@ public class LizzieFrame extends JFrame {
     if (engine == null || !engine.isLoaded()) {
       return false;
     }
+    if (!engine.matchesCurrentAnalysisBackend()) {
+      return false;
+    }
     if (engine.useJavaSSH) {
       return !engine.javaSSHClosed;
     }
-    return engine.process != null && engine.process.isAlive();
+    return engine.isRunning();
   }
 
   public boolean ensureAnalysisResumedAfterSyncLoad() {
@@ -16920,6 +16979,23 @@ public class LizzieFrame extends JFrame {
       }
     }
     return mainTrunkMoves > 0 && analyzedMoves < mainTrunkMoves;
+  }
+
+  private boolean shouldForceAutoQuickAnalyzeDownloadedKifu() {
+    if (Lizzie.config == null || Lizzie.board == null || Lizzie.board.getHistory() == null) {
+      return false;
+    }
+    if (!Lizzie.config.autoQuickAnalyzeOnLoad || isBatchAna || isEnginePKSgfStart || isTrying) {
+      return false;
+    }
+    BoardHistoryNode node = Lizzie.board.getHistory().getStart();
+    while (node.next().isPresent()) {
+      node = node.next().get();
+      if (isRealHistoryActionNode(node.getData())) {
+        return true;
+      }
+    }
+    return false;
   }
 
   private boolean isRealHistoryActionNode(BoardData data) {

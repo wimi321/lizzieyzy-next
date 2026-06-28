@@ -2,6 +2,9 @@ package featurecat.lizzie.analysis;
 
 import featurecat.lizzie.Config;
 import featurecat.lizzie.Lizzie;
+import featurecat.lizzie.analysis.remote.EngineTransport;
+import featurecat.lizzie.analysis.remote.RemoteComputeConfig;
+import featurecat.lizzie.analysis.remote.ZhiziGtpTransport;
 import featurecat.lizzie.gui.BundledEngineStartupDialog;
 import featurecat.lizzie.gui.EngineData;
 import featurecat.lizzie.gui.EngineFailedMessage;
@@ -23,6 +26,7 @@ import java.io.BufferedOutputStream;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.nio.file.Path;
@@ -76,6 +80,7 @@ public class Leelaz {
   private volatile String currentCommandResponseLine = "";
 
   private Process process;
+  private transient EngineTransport remoteTransport;
 
   private BufferedReader inputStream;
   private BufferedOutputStream outputStream;
@@ -245,6 +250,7 @@ public class Leelaz {
   public boolean useKeyGen;
   public String keyGenPath;
   public SSHController javaSSH;
+  public boolean useRemoteCompute = false;
   private boolean stopByLimit = false;
   public boolean stopByPlayouts = false;
   public boolean outOfPlayoutsLimit = false;
@@ -305,6 +311,11 @@ public class Leelaz {
     if (this.engineCommand.toLowerCase().contains("gogui")) {
       this.requireResponseBeforeSend = true;
     }
+    this.useRemoteCompute = RemoteComputeConfig.isZhiziEngineCommand(this.engineCommand);
+    if (this.useRemoteCompute) {
+      this.isSSH = false;
+      this.isKatago = true;
+    }
     if (this.engineCommand.toLowerCase().contains("ssh")
         || engineCommand.toLowerCase().contains("plink")) {
       this.isSSH = true;
@@ -341,6 +352,9 @@ public class Leelaz {
   }
 
   private static String deriveDisplayName(String rawName, String command) {
+    if (RemoteComputeConfig.isZhiziEngineCommand(command)) {
+      return RemoteComputeConfig.displayNameForZhiziArgs(RemoteComputeConfig.load().zhiziArgs);
+    }
     String name = rawName == null ? "" : rawName.trim();
     boolean placeholder =
         name.isEmpty()
@@ -436,7 +450,35 @@ public class Leelaz {
     // Matcher wMatcher = wPattern.matcher(engineCommand);
     currentEnginename = getEngineName(index);
     isDownWithError = false;
-    if (this.useJavaSSH) {
+    this.useRemoteCompute = RemoteComputeConfig.isZhiziEngineCommand(this.engineCommand);
+    if (this.useRemoteCompute) {
+      process = null;
+      this.javaSSHClosed = false;
+      this.isSSH = false;
+      try {
+        this.remoteTransport = ZhiziGtpTransport.fromSavedConfig();
+        this.remoteTransport.start();
+        initializeStreams(
+            this.remoteTransport.stdout(),
+            this.remoteTransport.stdin(),
+            this.remoteTransport.stderr());
+      } catch (IOException e) {
+        isDownWithError = true;
+        rememberRecentLine(recentStderrLines, e.getLocalizedMessage());
+        try {
+          tryToDignostic(
+              Lizzie.resourceBundle.getString("Leelaz.engineFailed")
+                  + ": "
+                  + (e.getLocalizedMessage() == null
+                      ? "智子云算力连接失败"
+                      : e.getLocalizedMessage()),
+              true);
+        } catch (JSONException diagnosticError) {
+          diagnosticError.printStackTrace();
+        }
+        return;
+      }
+    } else if (this.useJavaSSH) {
       process = null;
       this.javaSSH = new SSHController(this, this.ip, this.port);
       boolean loginStatus = false;
@@ -708,6 +750,7 @@ public class Leelaz {
     if (this.useJavaSSH) {
       javaSSH.close();
     } else {
+      if (this.useRemoteCompute && remoteTransport != null) remoteTransport.close();
       executor.shutdown();
       try {
         while (!executor.awaitTermination(1, TimeUnit.SECONDS)) {
@@ -746,6 +789,10 @@ public class Leelaz {
     }
     if (this.useJavaSSH) {
       javaSSH.close();
+    } else if (this.useRemoteCompute) {
+      if (remoteTransport != null) remoteTransport.close();
+      if (executor != null) executor.shutdownNow();
+      if (executorErr != null) executorErr.shutdownNow();
     } else {
       try {
         process.destroyForcibly();
@@ -758,9 +805,13 @@ public class Leelaz {
 
   /** Initializes the input and output streams */
   public void initializeStreams() {
-    inputStream = new BufferedReader(new InputStreamReader(process.getInputStream()));
-    outputStream = createCommandOutputStream(process.getOutputStream());
-    errorStream = new BufferedReader(new InputStreamReader(process.getErrorStream()));
+    initializeStreams(process.getInputStream(), process.getOutputStream(), process.getErrorStream());
+  }
+
+  private void initializeStreams(InputStream stdout, OutputStream stdin, InputStream stderr) {
+    inputStream = new BufferedReader(new InputStreamReader(stdout));
+    outputStream = createCommandOutputStream(stdin);
+    errorStream = new BufferedReader(new InputStreamReader(stderr));
   }
 
   public List<MoveData> parseInfoSai(String line) {
@@ -2839,6 +2890,7 @@ public class Leelaz {
       // process.destroy();
       shutdown();
       if (useJavaSSH) javaSSHClosed = true;
+      if (useRemoteCompute && remoteTransport != null) remoteTransport.close();
       // Do no exit for switching weights
       // System.exit(-1);
     } catch (IOException e) {
@@ -4643,6 +4695,8 @@ public class Leelaz {
     leela0110StopPonder();
     if (this.useJavaSSH) {
       javaSSH.close();
+    } else if (this.useRemoteCompute) {
+      if (remoteTransport != null) remoteTransport.close();
     } else {
       if (process != null) process.destroy();
     }
@@ -5323,7 +5377,10 @@ public class Leelaz {
   }
 
   public boolean isProcessDead() {
-    return Lizzie.leelaz.process != null && !Lizzie.leelaz.process.isAlive();
+    if (useRemoteCompute) {
+      return remoteTransport == null || !remoteTransport.isOpen();
+    }
+    return process != null && !process.isAlive();
   }
 
   public void maybeAjustPDA(BoardHistoryNode node) {

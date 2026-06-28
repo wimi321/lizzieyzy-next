@@ -271,9 +271,9 @@ public class MoveData {
           result.winrate = Double.parseDouble(value) * 100;
           // result.oriwinrate = result.winrate;
         }
-        //        if (key.equals("scoreLead")) {
-        //          result.scoreMean = Double.parseDouble(value);
-        //        }
+        if (key.equals("scoreLead")) {
+          result.scoreMean = Double.parseDouble(value);
+        }
         if (key.equals("scoreMean")) {
           result.scoreMean = Double.parseDouble(value);
         }

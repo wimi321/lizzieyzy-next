@@ -4185,7 +4185,9 @@ public class Board {
   public void updateIsBest(BoardHistoryNode node) {
     if (node.previous().isPresent()
         && node.previous().get().getData().getPlayouts() > 0
-        && node.getData().isMoveNode()) {
+        && node.getData().isMoveNode()
+        && node.previous().get().getData().bestMoves != null
+        && !node.previous().get().getData().bestMoves.isEmpty()) {
       int[] coords = node.getData().lastMove.get();
       try {
         int[] bestCoords =

@@ -376,6 +376,286 @@ class AnalysisEngineRequestTest {
   }
 
   @Test
+  void remoteGtpAnalysisUsesKataAnalyzeCommandsForCurrentPosition() throws Exception {
+    try (TestEnvironment env = TestEnvironment.open()) {
+      BoardHistoryNode node = singleUnanalyzedMoveNode();
+      TrackingAnalysisEngine engine = TrackingAnalysisEngine.create();
+      setField(AnalysisEngine.class, engine, "useRemoteCompute", true);
+
+      engine.sendRequest(node);
+
+      assertTrue(engine.sentCommands.contains("boardsize 3"));
+      assertTrue(engine.sentCommands.contains("komi 7.5"));
+      assertTrue(engine.sentCommands.contains("kata-set-rules chinese"));
+      assertTrue(engine.sentCommands.contains("clear_board"));
+      assertTrue(engine.sentCommands.contains("play B A3"));
+      assertEquals(
+          "kata-analyze W 50",
+          engine.sentCommands.get(engine.sentCommands.size() - 1),
+          "remote compute is a GTP bridge, so flash analysis must use kata-analyze instead of JSON analysis requests.");
+      assertEquals(1, engine.pendingRequestCount());
+    }
+  }
+
+  @Test
+  void remoteGtpInfoLineCompletesAnalysisNodeAndWritesScoreLead() throws Exception {
+    try (TestEnvironment env = TestEnvironment.open()) {
+      BoardHistoryNode node = singleUnanalyzedMoveNode();
+      TrackingAnalysisEngine engine = TrackingAnalysisEngine.create();
+      setField(AnalysisEngine.class, engine, "useRemoteCompute", true);
+      engine.setKeepAliveAfterCurrentRequest(true);
+      engine.sendRequest(node);
+
+      invokeAnalysisEngineParseLine(
+          engine, "info move B2 visits 33 winrate 0.62 scoreLead 1.5 order 0 pv B2");
+      assertEquals(
+          "stop",
+          engine.sentCommands.get(engine.sentCommands.size() - 1),
+          "remote GTP analysis should stop streaming once the target visits are reached.");
+      invokeAnalysisEngineParseLine(engine, "=");
+
+      assertEquals(33, node.getData().getPlayouts());
+      assertEquals(62.0, node.getData().winrate, 0.0001);
+      assertEquals(1.5, node.getData().scoreMean, 0.0001);
+      assertFalse(engine.isAnalysisInProgress());
+      waitForMovelistRefreshThreads();
+    }
+  }
+
+  @Test
+  void remoteGtpMainlineAnalysisAdvancesIncrementallyAfterFirstPosition() throws Exception {
+    try (TestEnvironment env = TestEnvironment.open()) {
+      BoardHistoryList history = new BoardHistoryList(BoardData.empty(BOARD_SIZE, BOARD_SIZE));
+      history.add(
+          moveNode(stones(placement(0, 0, Stone.BLACK)), new int[] {0, 0}, Stone.BLACK, false, 1));
+      history.add(
+          moveNode(
+              stones(placement(0, 0, Stone.BLACK), placement(1, 0, Stone.WHITE)),
+              new int[] {1, 0},
+              Stone.WHITE,
+              true,
+              2));
+      history.add(
+          moveNode(
+              stones(
+                  placement(0, 0, Stone.BLACK),
+                  placement(1, 0, Stone.WHITE),
+                  placement(2, 0, Stone.BLACK)),
+              new int[] {2, 0},
+              Stone.BLACK,
+              false,
+              3));
+      boardWithHistory(history);
+      TrackingAnalysisEngine engine = TrackingAnalysisEngine.create();
+      setField(AnalysisEngine.class, engine, "useRemoteCompute", true);
+      engine.setKeepAliveAfterCurrentRequest(true);
+
+      engine.startRequest(-1, -1, false);
+
+      assertEquals(1, countCommand(engine.sentCommands, "clear_board"));
+      assertTrue(engine.sentCommands.contains("play B A3"));
+      assertEquals("kata-raw-nn 0", lastCommand(engine.sentCommands));
+
+      invokeAnalysisEngineParseLine(
+          engine, "= symmetry 0 whiteWin 0.62 whiteLoss 0.38 whiteLead 1.5");
+
+      assertEquals(
+          1,
+          countCommand(engine.sentCommands, "clear_board"),
+          "remote mainline analysis should keep the board and avoid O(n^2) replay.");
+      assertEquals("kata-raw-nn 0", lastCommand(engine.sentCommands));
+      assertTrue(engine.sentCommands.contains("play W B3"));
+
+      invokeAnalysisEngineParseLine(
+          engine, "= symmetry 0 whiteWin 0.42 whiteLoss 0.58 whiteLead -0.7");
+
+      assertEquals(1, countCommand(engine.sentCommands, "clear_board"));
+      assertEquals("kata-raw-nn 0", lastCommand(engine.sentCommands));
+      assertTrue(engine.sentCommands.contains("play B C3"));
+
+      invokeAnalysisEngineParseLine(
+          engine, "= symmetry 0 whiteWin 0.54 whiteLoss 0.46 whiteLead 0.3");
+
+      assertFalse(engine.isAnalysisInProgress());
+      waitForMovelistRefreshThreads();
+    }
+  }
+
+  @Test
+  void remoteGtpMissingMainlineAnalysisAlsoAdvancesIncrementally() throws Exception {
+    try (TestEnvironment env = TestEnvironment.open()) {
+      BoardHistoryList history = new BoardHistoryList(BoardData.empty(BOARD_SIZE, BOARD_SIZE));
+      BoardData analyzed =
+          moveNode(stones(placement(0, 0, Stone.BLACK)), new int[] {0, 0}, Stone.BLACK, false, 1);
+      analyzed.winrate = 51.0;
+      analyzed.setPlayouts(100);
+      MoveData existingMove = new MoveData();
+      existingMove.coordinate = "B2";
+      existingMove.playouts = 100;
+      existingMove.winrate = 50.0;
+      existingMove.variation = List.of("B2");
+      analyzed.bestMoves = List.of(existingMove);
+      history.add(analyzed);
+      history.add(
+          moveNode(
+              stones(placement(0, 0, Stone.BLACK), placement(1, 0, Stone.WHITE)),
+              new int[] {1, 0},
+              Stone.WHITE,
+              true,
+              2));
+      history.add(
+          moveNode(
+              stones(
+                  placement(0, 0, Stone.BLACK),
+                  placement(1, 0, Stone.WHITE),
+                  placement(2, 0, Stone.BLACK)),
+              new int[] {2, 0},
+              Stone.BLACK,
+              false,
+              3));
+      boardWithHistory(history);
+      TrackingAnalysisEngine engine = TrackingAnalysisEngine.create();
+      setField(AnalysisEngine.class, engine, "useRemoteCompute", true);
+      engine.setKeepAliveAfterCurrentRequest(true);
+
+      int requested = engine.startRequestMissingMainline(false);
+
+      assertEquals(2, requested);
+      assertEquals(1, countCommand(engine.sentCommands, "clear_board"));
+      assertTrue(engine.sentCommands.contains("play B A3"));
+      assertTrue(engine.sentCommands.contains("play W B3"));
+
+      invokeAnalysisEngineParseLine(
+          engine, "= symmetry 0 whiteWin 0.42 whiteLoss 0.58 whiteLead -0.7");
+
+      assertEquals(1, countCommand(engine.sentCommands, "clear_board"));
+      assertEquals("kata-raw-nn 0", lastCommand(engine.sentCommands));
+      assertTrue(engine.sentCommands.contains("play B C3"));
+
+      invokeAnalysisEngineParseLine(
+          engine, "= symmetry 0 whiteWin 0.54 whiteLoss 0.46 whiteLead 0.3");
+
+      assertFalse(engine.isAnalysisInProgress());
+      waitForMovelistRefreshThreads();
+    }
+  }
+
+  @Test
+  void remoteGtpSilentQuickCurveUsesRawNnEvenWhenManualFlashVisitsAreHigh() throws Exception {
+    try (TestEnvironment env = TestEnvironment.open()) {
+      Lizzie.config.analysisMaxVisits = 999;
+      BoardHistoryNode node = singleUnanalyzedMoveNode();
+      TrackingAnalysisEngine engine = TrackingAnalysisEngine.create();
+      setField(AnalysisEngine.class, engine, "useRemoteCompute", true);
+      engine.setKeepAliveAfterCurrentRequest(true);
+
+      engine.startRequest(-1, -1, false);
+
+      assertEquals("kata-raw-nn 0", lastCommand(engine.sentCommands));
+      invokeAnalysisEngineParseLine(
+          engine, "= symmetry 0 whiteWin 0.62 whiteLoss 0.38 whiteLead 1.5");
+
+      assertEquals(
+          "kata-raw-nn 0",
+          lastCommand(engine.sentCommands),
+          "silent remote quick curves should use a one-shot NN eval instead of starting a streaming search.");
+      assertEquals(1, node.getData().getPlayouts());
+      assertEquals(62.0, node.getData().winrate, 0.0001);
+      assertEquals(1.5, node.getData().scoreMean, 0.0001);
+      assertFalse(engine.isAnalysisInProgress());
+      waitForMovelistRefreshThreads();
+    }
+  }
+
+  @Test
+  void remoteGtpSilentQuickCurveFallsBackWhenRawNnIsUnavailable() throws Exception {
+    try (TestEnvironment env = TestEnvironment.open()) {
+      BoardHistoryNode node = singleUnanalyzedMoveNode();
+      TrackingAnalysisEngine engine = TrackingAnalysisEngine.create();
+      setField(AnalysisEngine.class, engine, "useRemoteCompute", true);
+      engine.setKeepAliveAfterCurrentRequest(true);
+
+      engine.startRequest(-1, -1, false);
+
+      assertEquals("kata-raw-nn 0", lastCommand(engine.sentCommands));
+      invokeAnalysisEngineParseLine(engine, "? unknown command");
+
+      assertEquals(
+          "kata-analyze W 1",
+          lastCommand(engine.sentCommands),
+          "remote quick curves must fall back to kata-analyze if the bridge disables kata-raw-nn.");
+
+      invokeAnalysisEngineParseLine(
+          engine, "info move B2 visits 2 winrate 0.62 scoreLead 1.5 order 0 pv B2");
+      assertEquals("stop", lastCommand(engine.sentCommands));
+      invokeAnalysisEngineParseLine(engine, "=");
+
+      assertEquals(2, node.getData().getPlayouts());
+      assertEquals(62.0, node.getData().winrate, 0.0001);
+      assertFalse(engine.isAnalysisInProgress());
+      waitForMovelistRefreshThreads();
+    }
+  }
+
+  @Test
+  void remoteGtpBatchAnalysisDoesNotUseRawNnQuickCurve() throws Exception {
+    try (TestEnvironment env = TestEnvironment.open()) {
+      Lizzie.config.batchAnalysisPlayouts = 64;
+      ((TrackingLizzieFrame) Lizzie.frame).isBatchAnalysisMode = true;
+      BoardHistoryNode node = singleUnanalyzedMoveNode();
+      TrackingAnalysisEngine engine = TrackingAnalysisEngine.create();
+      setField(AnalysisEngine.class, engine, "useRemoteCompute", true);
+      engine.setKeepAliveAfterCurrentRequest(true);
+
+      engine.startRequest(-1, -1, false);
+
+      assertEquals(
+          "kata-analyze W 1",
+          lastCommand(engine.sentCommands),
+          "batch analysis needs real search visits and must not be downgraded to raw NN curve data.");
+      invokeAnalysisEngineParseLine(
+          engine, "info move B2 visits 64 winrate 0.62 scoreLead 1.5 order 0 pv B2");
+      assertEquals("stop", lastCommand(engine.sentCommands));
+      invokeAnalysisEngineParseLine(engine, "=");
+
+      assertEquals(64, node.getData().getPlayouts());
+      assertFalse(engine.isAnalysisInProgress());
+      waitForMovelistRefreshThreads();
+    }
+  }
+
+  @Test
+  void remoteGtpSilentLongGamePrioritizesOverviewBeforeBackfill() throws Exception {
+    try (TestEnvironment env = TestEnvironment.open()) {
+      BoardHistoryList history = new BoardHistoryList(BoardData.empty(BOARD_SIZE, BOARD_SIZE));
+      Stone[] empty = emptyStones();
+      for (int moveNumber = 1; moveNumber <= 25; moveNumber++) {
+        boolean blackMove = moveNumber % 2 == 1;
+        history.add(passNode(empty, blackMove ? Stone.BLACK : Stone.WHITE, !blackMove, moveNumber));
+      }
+      boardWithHistory(history);
+      TrackingAnalysisEngine engine = TrackingAnalysisEngine.create();
+      setField(AnalysisEngine.class, engine, "useRemoteCompute", true);
+      engine.setKeepAliveAfterCurrentRequest(true);
+
+      engine.startRequest(-1, -1, false);
+
+      assertEquals("kata-raw-nn 0", lastCommand(engine.sentCommands));
+      assertEquals(1, countCommandStartingWith(engine.sentCommands, "play "));
+
+      invokeAnalysisEngineParseLine(
+          engine, "= symmetry 0 whiteWin 0.62 whiteLoss 0.38 whiteLead 1.5");
+
+      assertEquals(
+          8,
+          countCommandStartingWith(engine.sentCommands, "play "),
+          "long remote quick curves should jump to sparse overview points first so users see a graph quickly.");
+      assertEquals("kata-raw-nn 0", lastCommand(engine.sentCommands));
+      waitForMovelistRefreshThreads();
+    }
+  }
+
+  @Test
   void startRequestCountsOnlyMoveAndPassNodesWhenSelectingRange() throws Exception {
     try (TestEnvironment env = TestEnvironment.open()) {
       BoardHistoryList history = new BoardHistoryList(BoardData.empty(BOARD_SIZE, BOARD_SIZE));
@@ -1116,6 +1396,36 @@ class AnalysisEngineRequestTest {
             "stopBusyQuickAnalysisEngineBeforeLoadedKifuAnalysis");
     method.setAccessible(true);
     method.invoke(frame);
+  }
+
+  private static void invokeAnalysisEngineParseLine(AnalysisEngine engine, String line) throws Exception {
+    Method method = AnalysisEngine.class.getDeclaredMethod("parseLine", String.class);
+    method.setAccessible(true);
+    method.invoke(engine, line);
+  }
+
+  private static int countCommand(List<String> commands, String expected) {
+    int count = 0;
+    for (String command : commands) {
+      if (expected.equals(command)) {
+        count++;
+      }
+    }
+    return count;
+  }
+
+  private static String lastCommand(List<String> commands) {
+    return commands.get(commands.size() - 1);
+  }
+
+  private static int countCommandStartingWith(List<String> commands, String prefix) {
+    int count = 0;
+    for (String command : commands) {
+      if (command.startsWith(prefix)) {
+        count++;
+      }
+    }
+    return count;
   }
 
   private static final class Placement {

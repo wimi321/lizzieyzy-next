@@ -382,7 +382,52 @@ class LizzieFrameRegressionTest {
   }
 
   @Test
-  void loadedGameStartsSilentQuickAnalyzeForUnanalyzedMovesWhilePrimaryEngineIsAnalyzing()
+  void downloadedKifuForcesSilentQuickAnalyzeEvenWhenSgfContainsAnalysisPayload()
+      throws Exception {
+    TestEnvironment env = TestEnvironment.open();
+    try {
+      Lizzie.config = configWithAutoQuickAnalyze();
+      Lizzie.board = boardWith(historyWithTargetVisitAnalyzedMove());
+      Lizzie.leelaz = null;
+      EngineManager.isEmpty = true;
+      EngineManager.isEngineGame = false;
+      EngineManager.isPreEngineGame = false;
+      AnalysisResumeTrackingFrame frame = allocate(AnalysisResumeTrackingFrame.class);
+
+      assertTrue(
+          frame.ensureAnalysisResumedAfterDownloadedKifuLoad(),
+          "downloaded Fox/Tencent records should build the fast graph even if SGF has stale payload.");
+      assertEquals(1, frame.flashAnalyzeGameCount);
+      assertTrue(frame.lastIsAllGame);
+      assertFalse(frame.lastIsAllBranches);
+      assertTrue(frame.lastSilentAnalyze);
+      assertEquals(0, frame.refreshCount);
+    } finally {
+      env.close();
+    }
+  }
+
+  @Test
+  void downloadedKifuRespectsDisabledAutoQuickAnalyzeSetting() throws Exception {
+    TestEnvironment env = TestEnvironment.open();
+    try {
+      Lizzie.config = configWithAutoQuickAnalyze(false);
+      Lizzie.board = boardWith(historyWithTargetVisitAnalyzedMove());
+      Lizzie.leelaz = null;
+      EngineManager.isEmpty = true;
+      EngineManager.isEngineGame = false;
+      EngineManager.isPreEngineGame = false;
+      AnalysisResumeTrackingFrame frame = allocate(AnalysisResumeTrackingFrame.class);
+
+      assertFalse(frame.ensureAnalysisResumedAfterDownloadedKifuLoad());
+      assertEquals(0, frame.flashAnalyzeGameCount);
+    } finally {
+      env.close();
+    }
+  }
+
+  @Test
+  void loadedGameStartsSilentQuickAnalyzeAndForegroundAnalysisForUnanalyzedMoves()
       throws Exception {
     TestEnvironment env = TestEnvironment.open();
     try {
@@ -402,8 +447,37 @@ class LizzieFrameRegressionTest {
       assertTrue(frame.lastIsAllGame);
       assertFalse(frame.lastIsAllBranches);
       assertTrue(frame.lastSilentAnalyze);
-      assertEquals(0, frame.refreshCount);
-      assertEquals(0, leelaz.ponderCount);
+      assertEquals(1, frame.refreshCount);
+      assertEquals(
+          1,
+          leelaz.ponderCount,
+          "fast curve completion must not replace foreground candidate analysis.");
+    } finally {
+      env.close();
+    }
+  }
+
+  @Test
+  void downloadedKifuStartsSilentQuickAnalyzeAndForegroundAnalysis() throws Exception {
+    TestEnvironment env = TestEnvironment.open();
+    try {
+      Lizzie.config = configWithAutoQuickAnalyze();
+      Lizzie.board = boardWith(historyWithTargetVisitAnalyzedMove());
+      TrackingLeelaz leelaz = allocate(TrackingLeelaz.class);
+      Lizzie.leelaz = leelaz;
+      EngineManager.isEmpty = false;
+      EngineManager.isEngineGame = false;
+      EngineManager.isPreEngineGame = false;
+      AnalysisResumeTrackingFrame frame = allocate(AnalysisResumeTrackingFrame.class);
+      Lizzie.frame = frame;
+
+      assertTrue(frame.ensureAnalysisResumedAfterDownloadedKifuLoad());
+      assertEquals(1, frame.flashAnalyzeGameCount);
+      assertTrue(frame.lastIsAllGame);
+      assertFalse(frame.lastIsAllBranches);
+      assertTrue(frame.lastSilentAnalyze);
+      assertEquals(1, frame.refreshCount);
+      assertEquals(1, leelaz.ponderCount);
     } finally {
       env.close();
     }

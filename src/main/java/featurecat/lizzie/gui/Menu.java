@@ -5142,6 +5142,16 @@ public class Menu extends JMenuBar {
           }
         });
 
+    final JFontMenuItem remoteCompute =
+        new JFontMenuItem(resourceBundle.getString("Menu.remoteCompute"));
+    settings.add(remoteCompute);
+    remoteCompute.addActionListener(
+        new ActionListener() {
+          public void actionPerformed(ActionEvent e) {
+            Lizzie.frame.openRemoteComputeCenter();
+          }
+        });
+
     final JFontMenuItem engineRules =
         new JFontMenuItem(resourceBundle.getString("Menu.engineRules")); // ("实时修改引擎规则(KataGo)(D)");
     settings.add(engineRules);
