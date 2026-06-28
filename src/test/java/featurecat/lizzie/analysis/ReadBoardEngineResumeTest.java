@@ -9,6 +9,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import featurecat.lizzie.Config;
 import featurecat.lizzie.Lizzie;
+import featurecat.lizzie.gui.BoardRenderer;
+import featurecat.lizzie.gui.BottomToolbar;
 import featurecat.lizzie.gui.LizzieFrame;
 import featurecat.lizzie.rules.Board;
 import featurecat.lizzie.rules.BoardData;
@@ -16,11 +18,20 @@ import featurecat.lizzie.rules.BoardHistoryList;
 import featurecat.lizzie.rules.BoardHistoryNode;
 import featurecat.lizzie.rules.Stone;
 import featurecat.lizzie.rules.Zobrist;
+import java.io.BufferedOutputStream;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import javax.swing.JCheckBox;
+import javax.swing.JTextField;
+import org.json.JSONObject;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -664,6 +675,54 @@ class ReadBoardEngineResumeTest {
   }
 
   @Test
+  void gmaPendingDefersSingleMoveRecoveryEngineRestoreUntilOldTerminalPlayIsConsumed()
+      throws Exception {
+    Stone[] beforeCapture =
+        stones(
+            placement(0, 1, Stone.BLACK),
+            placement(1, 0, Stone.BLACK),
+            placement(1, 1, Stone.WHITE),
+            placement(2, 1, Stone.BLACK));
+    Stone[] afterCapture =
+        stones(
+            placement(0, 1, Stone.BLACK),
+            placement(1, 0, Stone.BLACK),
+            placement(2, 1, Stone.BLACK),
+            placement(1, 2, Stone.BLACK));
+
+    try (EngineResumeHarness harness =
+        EngineResumeHarness.create(rootHistory(beforeCapture, true))) {
+      harness.frame.bothSync = true;
+      setField(harness.readBoard, "readBoardGmaPending", true);
+      setField(harness.readBoard, "readBoardGmaAutoPlayActive", true);
+
+      harness.sync(snapshot(afterCapture, Optional.of(new int[] {1, 2}), Stone.BLACK));
+      Stone engineColor =
+          harness.board.getHistory().isBlacksTurn() ? Stone.BLACK : Stone.WHITE;
+      setField(harness.readBoard, "readBoardGmaAutoPlayColor", engineColor);
+
+      assertFalse(
+          harness.leelaz.sentCommands.contains("clear_board"),
+          "single-move recovery restore must be frozen while GMA is still in flight.");
+      assertFalse(
+          harness.leelaz.sentCommands.stream().anyMatch(command -> command.startsWith("loadsgf ")),
+          "single-move recovery must not queue loadsgf behind an in-flight stale GMA request.");
+
+      boolean consumed =
+          harness.readBoard.handleReadBoardGmaEnginePlay(Board.convertCoordinatesToName(0, 0));
+
+      assertTrue(consumed);
+      harness.readBoard.afterReadBoardGmaTerminalResponseConsumed("test-terminal");
+      assertTrue(
+          waitForSentCommand(harness.leelaz, "clear_board"),
+          "consuming old terminal play should release deferred single-move restore.");
+      assertTrue(
+          waitForSentCommandPrefix(harness.leelaz, "loadsgf "),
+          "deferred single-move restore should use the recovered authoritative node.");
+    }
+  }
+
+  @Test
   void syncCommandDoesNotStartPonderWhenEngineIsNotStarted() throws Exception {
     try (EngineResumeHarness harness =
         EngineResumeHarness.create(rootHistory(emptyStones(), true))) {
@@ -826,6 +885,597 @@ class ReadBoardEngineResumeTest {
     }
   }
 
+  @Test
+  void readBoardGmaPlayLineWaitsForSyncedBoardBeforeStartingEngineDecision() throws Exception {
+    try (EngineResumeHarness harness =
+        EngineResumeHarness.create(rootHistory(emptyStones(), true))) {
+      harness.frame.bothSync = true;
+      harness.leelaz.enableReadBoardGmaSupport();
+      HistoryPath path = buildHistory(harness.board, placement(0, 0, Stone.BLACK));
+      BoardHistoryNode staleWhiteTurnNode = path.nodes.get(0);
+      harness.board.moveToAnyPosition(staleWhiteTurnNode);
+
+      harness.readBoard.parseLine("play>white>0 0 0 gma");
+
+      assertEquals(
+          0,
+          harness.leelaz.readBoardGmaCount,
+          "play> only arms GMA autoplay; it must not start before the next synced board frame.");
+
+      Stone[] blackToPlayRemoteStones = staleWhiteTurnNode.getData().stones.clone();
+      blackToPlayRemoteStones[stoneIndex(1, 0)] = Stone.WHITE;
+      harness.sync(snapshot(blackToPlayRemoteStones, Optional.of(new int[] {1, 0}), Stone.WHITE));
+
+      assertEquals(
+          0,
+          harness.leelaz.readBoardGmaCount,
+          "after sync, configured white autoplay must wait because the synced board is black to play.");
+    }
+  }
+
+  @Test
+  void readBoardGmaStartsAfterTrustedFoxCornerMarkerShowsConfiguredSideToMove() throws Exception {
+    try (EngineResumeHarness harness =
+        EngineResumeHarness.create(rootHistory(emptyStones(), true))) {
+      harness.frame.bothSync = true;
+      harness.leelaz.enableReadBoardGmaSupport();
+
+      harness.readBoard.parseLine("play>white>0 0 0 gma");
+      harness.readBoard.parseLine("lastMoveSource foxCornerFlip");
+      assertEquals(0, harness.leelaz.readBoardGmaCount);
+
+      Stone[] whiteToPlayRemoteStones = emptyStones();
+      whiteToPlayRemoteStones[stoneIndex(0, 0)] = Stone.BLACK;
+      harness.sync(snapshot(whiteToPlayRemoteStones, Optional.of(new int[] {0, 0}), Stone.BLACK));
+
+      assertEquals(1, harness.leelaz.readBoardGmaCount);
+      assertEquals("W", harness.leelaz.lastReadBoardGmaColor);
+    }
+  }
+
+  @Test
+  void readBoardGmaStartsAfterTrustedRedBlueMarkerShowsConfiguredSideToMove() throws Exception {
+    try (EngineResumeHarness harness =
+        EngineResumeHarness.create(rootHistory(emptyStones(), true))) {
+      harness.frame.bothSync = true;
+      harness.leelaz.enableReadBoardGmaSupport();
+
+      harness.readBoard.parseLine("play>black>0 0 0 gma");
+      harness.readBoard.parseLine("lastMoveSource redBlueMarker");
+
+      Stone[] blackToPlayRemoteStones = emptyStones();
+      blackToPlayRemoteStones[stoneIndex(0, 0)] = Stone.WHITE;
+      harness.sync(snapshot(blackToPlayRemoteStones, Optional.of(new int[] {0, 0}), Stone.WHITE));
+
+      assertEquals(1, harness.leelaz.readBoardGmaCount);
+      assertEquals("B", harness.leelaz.lastReadBoardGmaColor);
+    }
+  }
+
+  @Test
+  void readBoardGmaSkipsUntrustedHeuristicTurnEvenWhenConfiguredSideMatches()
+      throws Exception {
+    try (EngineResumeHarness harness =
+        EngineResumeHarness.create(rootHistory(emptyStones(), true))) {
+      harness.frame.bothSync = true;
+      harness.leelaz.enableReadBoardGmaSupport();
+      harness.board.hasStartStone = true;
+
+      harness.readBoard.parseLine("play>white>0 0 0 gma");
+      harness.readBoard.parseLine("foxMoveNumber 1");
+      harness.readBoard.parseLine("lastMoveSource stoneCount");
+
+      Stone[] whiteToPlayRemoteStones = emptyStones();
+      whiteToPlayRemoteStones[stoneIndex(0, 0)] = Stone.BLACK;
+      harness.sync(snapshot(whiteToPlayRemoteStones, Optional.empty(), Stone.EMPTY));
+
+      assertEquals(0, harness.leelaz.readBoardGmaCount);
+      assertFalse(getBooleanField(harness.readBoard, "readBoardGmaPending"));
+    }
+  }
+
+  @Test
+  void readBoardGmaSkipsMissingLastMoveSourceWhenSetupRiskExists() throws Exception {
+    try (EngineResumeHarness harness =
+        EngineResumeHarness.create(rootHistory(emptyStones(), true))) {
+      harness.frame.bothSync = true;
+      harness.leelaz.enableReadBoardGmaSupport();
+      harness.board.hasStartStone = true;
+
+      harness.readBoard.parseLine("play>white>0 0 0 gma");
+      harness.readBoard.parseLine("foxMoveNumber 1");
+
+      Stone[] whiteToPlayRemoteStones = emptyStones();
+      whiteToPlayRemoteStones[stoneIndex(0, 0)] = Stone.BLACK;
+      harness.sync(snapshot(whiteToPlayRemoteStones, Optional.empty(), Stone.EMPTY));
+
+      assertEquals(0, harness.leelaz.readBoardGmaCount);
+      assertFalse(getBooleanField(harness.readBoard, "readBoardGmaPending"));
+    }
+  }
+
+  @Test
+  void readBoardGmaStartsForFoxZeroMoveAllBlackSetupAsWhiteTurn() throws Exception {
+    try (EngineResumeHarness harness =
+        EngineResumeHarness.create(rootHistory(emptyStones(), true))) {
+      harness.frame.bothSync = true;
+      harness.leelaz.enableReadBoardGmaSupport();
+
+      harness.readBoard.parseLine("play>white>0 0 0 gma");
+      harness.readBoard.parseLine("syncPlatform fox");
+      harness.readBoard.parseLine("foxMoveNumber 0");
+      harness.readBoard.parseLine("lastMoveSource stoneCount");
+
+      Stone[] handicapSetupStones =
+          stones(
+              placement(0, 0, Stone.BLACK),
+              placement(2, 0, Stone.BLACK),
+              placement(1, 1, Stone.BLACK),
+              placement(0, 2, Stone.BLACK),
+              placement(2, 2, Stone.BLACK));
+      harness.sync(snapshot(handicapSetupStones, Optional.empty(), Stone.EMPTY));
+
+      assertFalse(harness.board.getHistory().isBlacksTurn());
+      assertEquals(1, harness.leelaz.readBoardGmaCount);
+      assertEquals("W", harness.leelaz.lastReadBoardGmaColor);
+    }
+  }
+
+  @Test
+  void readBoardGmaTrustsFoxZeroMoveHandicapSetupAfterForceRebuildFromDirtyLocalHistory()
+      throws Exception {
+    try (EngineResumeHarness harness =
+        EngineResumeHarness.create(rootHistory(emptyStones(), true))) {
+      harness.frame.bothSync = true;
+      harness.leelaz.enableReadBoardGmaSupport();
+      buildHistory(
+          harness.board,
+          placement(0, 0, Stone.BLACK),
+          placement(1, 0, Stone.WHITE),
+          placement(0, 1, Stone.BLACK));
+
+      harness.readBoard.parseLine("play>white>0 0 0 gma");
+      harness.readBoard.parseLine("syncPlatform fox");
+      harness.readBoard.parseLine("foxMoveNumber 0");
+      harness.readBoard.parseLine("lastMoveSource stoneCount");
+      harness.readBoard.parseLine("forceRebuild");
+
+      Stone[] handicapSetupStones =
+          stones(
+              placement(0, 0, Stone.BLACK),
+              placement(2, 0, Stone.BLACK),
+              placement(1, 1, Stone.BLACK),
+              placement(0, 2, Stone.BLACK),
+              placement(2, 2, Stone.BLACK));
+      harness.sync(snapshot(handicapSetupStones, Optional.empty(), Stone.EMPTY));
+
+      assertFalse(harness.board.getHistory().isBlacksTurn());
+      assertEquals(1, harness.leelaz.readBoardGmaCount);
+      assertEquals("W", harness.leelaz.lastReadBoardGmaColor);
+    }
+  }
+
+  @Test
+  void readBoardGmaCorrectsExistingFoxZeroMoveAllBlackSetupSnapshotTurn() throws Exception {
+    Stone[] handicapSetupStones =
+        stones(
+            placement(0, 0, Stone.BLACK),
+            placement(2, 0, Stone.BLACK),
+            placement(1, 1, Stone.BLACK),
+            placement(0, 2, Stone.BLACK),
+            placement(2, 2, Stone.BLACK));
+    try (EngineResumeHarness harness =
+        EngineResumeHarness.create(rootHistory(handicapSetupStones, true))) {
+      harness.frame.bothSync = true;
+      harness.leelaz.enableReadBoardGmaSupport();
+
+      harness.readBoard.parseLine("play>white>0 0 0 gma");
+      harness.readBoard.parseLine("syncPlatform fox");
+      harness.readBoard.parseLine("foxMoveNumber 0");
+      harness.readBoard.parseLine("lastMoveSource stoneCount");
+      harness.sync(snapshot(handicapSetupStones, Optional.empty(), Stone.EMPTY));
+
+      assertFalse(harness.board.getHistory().isBlacksTurn());
+      assertEquals(1, harness.leelaz.readBoardGmaCount);
+      assertEquals("W", harness.leelaz.lastReadBoardGmaColor);
+    }
+  }
+
+  @Test
+  void readBoardGmaTrustsUnchangedExistingSnapshotTurn() throws Exception {
+    Stone[] whiteToPlaySnapshot = stones(placement(0, 0, Stone.BLACK));
+    try (EngineResumeHarness harness =
+        EngineResumeHarness.create(rootHistory(whiteToPlaySnapshot, false))) {
+      harness.frame.bothSync = true;
+      harness.leelaz.enableReadBoardGmaSupport();
+
+      harness.readBoard.parseLine("play>white>0 0 0 gma");
+      harness.sync(snapshot(whiteToPlaySnapshot, Optional.empty(), Stone.EMPTY));
+
+      assertEquals(1, harness.leelaz.readBoardGmaCount);
+      assertEquals("W", harness.leelaz.lastReadBoardGmaColor);
+    }
+  }
+
+  @Test
+  void readBoardGmaStartsAfterReadBoardExchangeOrderOverridesTurnTrust() throws Exception {
+    try (EngineResumeHarness harness =
+        EngineResumeHarness.create(rootHistory(emptyStones(), true))) {
+      harness.frame.bothSync = true;
+      harness.leelaz.canAddPlayer = true;
+      harness.leelaz.enableReadBoardGmaSupport();
+
+      harness.readBoard.parseLine("play>white>0 0 0 gma");
+      harness.readBoard.parseLine("syncPlatform fox");
+      harness.readBoard.parseLine("foxMoveNumber 1");
+      harness.readBoard.parseLine("lastMoveSource stoneCount");
+
+      Stone[] setupStones =
+          stones(placement(0, 0, Stone.BLACK), placement(2, 2, Stone.BLACK));
+      harness.sync(snapshot(setupStones, Optional.empty(), Stone.EMPTY));
+      assertEquals(0, harness.leelaz.readBoardGmaCount);
+
+      harness.readBoard.parseLine("pass");
+
+      assertEquals(1, harness.leelaz.readBoardGmaCount);
+      assertEquals("W", harness.leelaz.lastReadBoardGmaColor);
+    }
+  }
+
+  @Test
+  void readBoardGmaStartsAfterGenericExchangeOrderOverridesTurnTrust() throws Exception {
+    try (EngineResumeHarness harness =
+        EngineResumeHarness.create(rootHistory(emptyStones(), true))) {
+      harness.frame.bothSync = true;
+      harness.leelaz.canAddPlayer = true;
+      harness.leelaz.enableReadBoardGmaSupport();
+
+      harness.readBoard.parseLine("play>white>0 0 0 gma");
+      harness.readBoard.parseLine("lastMoveSource stoneCount");
+
+      Stone[] setupStones =
+          stones(placement(0, 0, Stone.BLACK), placement(2, 2, Stone.BLACK));
+      harness.sync(snapshot(setupStones, Optional.empty(), Stone.EMPTY));
+      assertEquals(0, harness.leelaz.readBoardGmaCount);
+
+      harness.readBoard.parseLine("pass");
+
+      assertEquals(1, harness.leelaz.readBoardGmaCount);
+      assertEquals("W", harness.leelaz.lastReadBoardGmaColor);
+      assertFalse(
+          harness.board.getHistory().getCurrentHistoryNode().getData().isPassNode(),
+          "ReadBoard exchange-order pass must not create a real PASS node.");
+    }
+  }
+
+  @Test
+  void readBoardGmaStartsAfterGenericHeuristicSingleMoveSyncTrustsAcceptedMove()
+      throws Exception {
+    try (EngineResumeHarness harness =
+        EngineResumeHarness.create(rootHistory(emptyStones(), true))) {
+      harness.frame.bothSync = true;
+      harness.leelaz.enableReadBoardGmaSupport();
+
+      harness.readBoard.parseLine("play>white>0 0 0 gma");
+      harness.readBoard.parseLine("lastMoveSource stoneCount");
+
+      Stone[] whiteToPlayRemoteStones = stones(placement(0, 0, Stone.BLACK));
+      harness.sync(snapshot(whiteToPlayRemoteStones, Optional.of(new int[] {0, 0}), Stone.BLACK));
+
+      assertFalse(harness.board.getHistory().isBlacksTurn());
+      assertEquals(1, harness.leelaz.readBoardGmaCount);
+      assertEquals("W", harness.leelaz.lastReadBoardGmaColor);
+    }
+  }
+
+  @Test
+  void readBoardGmaWaitsForFailedPlaceObservationBeforeRestartingEngineDecision()
+      throws Exception {
+    try (EngineResumeHarness harness =
+        EngineResumeHarness.create(rootHistory(emptyStones(), true))) {
+      harness.frame.isAnaPlayingAgainstLeelaz = true;
+      harness.frame.bothSync = true;
+      harness.leelaz.enableReadBoardGmaSupport();
+      harness.readBoard.parseLine("play>white>5 0 0 gma");
+      harness.readBoard.parseLine("lastMoveSource redBlueMarker");
+
+      Stone[] remoteStones = stones(placement(0, 0, Stone.BLACK));
+      harness.sync(snapshot(remoteStones, Optional.of(new int[] {0, 0}), Stone.BLACK));
+      assertEquals(1, harness.leelaz.readBoardGmaCount);
+
+      setField(harness.readBoard, "readBoardGmaPending", false);
+      harness.board.getHistory().place(1, 0, Stone.WHITE, false);
+
+      markPendingLocalMoveAwaitingReadBoard(harness.readBoard);
+      invokePlacementFailed(harness.readBoard);
+
+      assertTrue(getBooleanField(harness.readBoard, "failedLocalMoveAwaitingRemoteObservation"));
+      assertEquals(
+          1,
+          harness.leelaz.readBoardGmaCount,
+          "GMA must not start a second uncancellable engine decision while the failed place is "
+              + "still waiting for remote-board observation.");
+    }
+  }
+
+  @Test
+  void readBoardGmaStartsAfterGenericHandicapSingleMoveSyncTrustsAcceptedMove()
+      throws Exception {
+    Stone[] setupStones = stones(placement(0, 0, Stone.BLACK), placement(2, 0, Stone.BLACK));
+    try (EngineResumeHarness harness =
+        EngineResumeHarness.create(rootHistory(setupStones, false))) {
+      harness.frame.bothSync = true;
+      harness.leelaz.enableReadBoardGmaSupport();
+      buildHistory(harness.board, placement(1, 1, Stone.WHITE));
+
+      harness.readBoard.parseLine("play>white>0 0 0 gma");
+      harness.readBoard.parseLine("lastMoveSource stoneCount");
+
+      Stone[] whiteToPlayRemoteStones =
+          stones(
+              placement(0, 0, Stone.BLACK),
+              placement(2, 0, Stone.BLACK),
+              placement(1, 1, Stone.WHITE),
+              placement(0, 2, Stone.BLACK));
+      harness.sync(snapshot(whiteToPlayRemoteStones, Optional.of(new int[] {0, 2}), Stone.BLACK));
+
+      assertFalse(harness.board.getHistory().isBlacksTurn());
+      assertEquals(1, harness.leelaz.readBoardGmaCount);
+      assertEquals("W", harness.leelaz.lastReadBoardGmaColor);
+    }
+  }
+
+  @Test
+  void readBoardGmaStartsAfterMarkerlessOrdinaryFoxSyncTrustsTurn() throws Exception {
+    try (EngineResumeHarness harness =
+        EngineResumeHarness.create(rootHistory(emptyStones(), true))) {
+      harness.frame.bothSync = true;
+      harness.leelaz.enableReadBoardGmaSupport();
+
+      harness.readBoard.parseLine("play>white>0 0 0 gma");
+      harness.readBoard.parseLine("syncPlatform fox");
+      harness.readBoard.parseLine("foxMoveNumber 1");
+      harness.readBoard.parseLine("lastMoveSource none");
+
+      Stone[] whiteToPlayRemoteStones = emptyStones();
+      whiteToPlayRemoteStones[stoneIndex(0, 0)] = Stone.BLACK;
+      harness.sync(snapshot(whiteToPlayRemoteStones, Optional.empty(), Stone.EMPTY));
+
+      assertEquals(1, harness.leelaz.readBoardGmaCount);
+      assertEquals("W", harness.leelaz.lastReadBoardGmaColor);
+    }
+  }
+
+  @Test
+  void readBoardGmaStartsWhenExplicitPlTrustsSnapshotTurn() throws Exception {
+    Stone[] whiteToPlayStones = stones(placement(0, 0, Stone.BLACK));
+    try (EngineResumeHarness harness =
+        EngineResumeHarness.create(rootHistory(whiteToPlayStones, false))) {
+      harness.frame.bothSync = true;
+      harness.leelaz.enableReadBoardGmaSupport();
+      harness.board.getHistory().getCurrentHistoryNode().getData().addProperty("PL", "W");
+
+      harness.readBoard.parseLine("play>white>0 0 0 gma");
+      harness.sync(snapshot(whiteToPlayStones, Optional.empty(), Stone.EMPTY));
+
+      assertEquals(1, harness.leelaz.readBoardGmaCount);
+      assertEquals("W", harness.leelaz.lastReadBoardGmaColor);
+    }
+  }
+
+  @Test
+  void readBoardGmaStartsWhenRebuiltSnapshotCopiesExplicitPl() throws Exception {
+    Stone[] anchorStones = stones(placement(0, 0, Stone.BLACK));
+    try (EngineResumeHarness harness =
+        EngineResumeHarness.create(rootHistory(anchorStones, false))) {
+      harness.frame.bothSync = true;
+      harness.leelaz.enableReadBoardGmaSupport();
+      harness.board.getHistory().getCurrentHistoryNode().getData().addProperty("PL", "W");
+      buildHistory(harness.board, placement(1, 0, Stone.WHITE));
+
+      harness.readBoard.parseLine("play>white>0 0 0 gma");
+      harness.readBoard.parseLine("forceRebuild");
+      harness.sync(
+          snapshot(
+              stones(placement(0, 0, Stone.BLACK), placement(2, 0, Stone.WHITE)),
+              Optional.empty(),
+              Stone.EMPTY));
+
+      assertEquals(1, harness.leelaz.readBoardGmaCount);
+      assertEquals("W", harness.leelaz.lastReadBoardGmaColor);
+    }
+  }
+
+  @Test
+  void readBoardGmaStartsWhenSourceOnlyUpdateRefreshesTurnTrust() throws Exception {
+    Stone[] blackToPlayRemoteStones = stones(placement(0, 0, Stone.WHITE));
+    try (EngineResumeHarness harness =
+        EngineResumeHarness.create(rootHistory(blackToPlayRemoteStones, true))) {
+      harness.frame.bothSync = true;
+      harness.leelaz.enableReadBoardGmaSupport();
+      harness.readBoard.parseLine("play>black>0 0 0 gma");
+
+      int[] snapshot =
+          snapshot(blackToPlayRemoteStones, Optional.of(new int[] {0, 0}), Stone.WHITE);
+
+      harness.readBoard.parseLine("lastMoveSource stoneCount");
+      harness.sync(snapshot);
+      assertEquals(0, harness.leelaz.readBoardGmaCount);
+      assertFalse(getBooleanField(harness.readBoard, "readBoardGmaPending"));
+
+      harness.readBoard.parseLine("lastMoveSource foxCornerFlip");
+      harness.sync(snapshot);
+
+      assertEquals(1, harness.leelaz.readBoardGmaCount);
+      assertEquals("B", harness.leelaz.lastReadBoardGmaColor);
+    }
+  }
+
+  @Test
+  void readBoardGmaStartsForTrustedEmptyBoardBlackOpening() throws Exception {
+    try (EngineResumeHarness harness =
+        EngineResumeHarness.create(rootHistory(emptyStones(), true))) {
+      harness.frame.bothSync = true;
+      harness.leelaz.enableReadBoardGmaSupport();
+
+      harness.readBoard.parseLine("play>black>0 0 0 gma");
+      harness.sync(snapshot(emptyStones(), Optional.empty(), Stone.EMPTY));
+
+      assertEquals(1, harness.leelaz.readBoardGmaCount);
+      assertEquals("B", harness.leelaz.lastReadBoardGmaColor);
+    }
+  }
+
+  @Test
+  void readBoardGmaSkipsEmptyBoardDefaultTurnWhenSetupRiskExists() throws Exception {
+    try (EngineResumeHarness harness =
+        EngineResumeHarness.create(rootHistory(emptyStones(), true))) {
+      harness.frame.bothSync = true;
+      harness.leelaz.enableReadBoardGmaSupport();
+      harness.board.hasStartStone = true;
+
+      harness.readBoard.parseLine("play>black>0 0 0 gma");
+      harness.sync(snapshot(emptyStones(), Optional.empty(), Stone.EMPTY));
+
+      assertEquals(0, harness.leelaz.readBoardGmaCount);
+      assertFalse(getBooleanField(harness.readBoard, "readBoardGmaPending"));
+    }
+  }
+
+  @Test
+  void gmaFinalMoveReplayingExistingNextNodeStillSendsReadBoardPlace() throws Exception {
+    try (EngineResumeHarness harness =
+        EngineResumeHarness.create(rootHistory(emptyStones(), true))) {
+      harness.frame.bothSync = true;
+      HistoryPath path =
+          buildHistory(
+              harness.board,
+              placement(0, 0, Stone.BLACK),
+              placement(1, 0, Stone.WHITE),
+              placement(0, 1, Stone.BLACK));
+      BoardHistoryNode beforeEngineMove = path.nodes.get(1);
+      BoardHistoryNode existingEngineMove = path.nodes.get(2);
+      harness.board.moveToAnyPosition(beforeEngineMove);
+
+      ByteArrayOutputStream readBoardBytes = new ByteArrayOutputStream();
+      Lizzie.config.readBoardPonder = false;
+      harness.readBoard.process = new AliveProcess();
+      setField(harness.readBoard, "usePipe", true);
+      setField(harness.readBoard, "outputStream", new BufferedOutputStream(readBoardBytes));
+      setField(harness.readBoard, "readBoardGmaPending", true);
+      setField(harness.readBoard, "readBoardGmaAutoPlayActive", true);
+      setField(harness.readBoard, "readBoardGmaAutoPlayColor", Stone.BLACK);
+
+      boolean consumed =
+          harness.readBoard.handleReadBoardGmaEnginePlay(Board.convertCoordinatesToName(0, 1));
+
+      assertTrue(consumed);
+      assertSame(
+          existingEngineMove,
+          harness.board.getHistory().getCurrentHistoryNode(),
+          "GMA final move should replay the existing next node instead of creating a duplicate.");
+      assertTrue(
+          new String(readBoardBytes.toByteArray(), StandardCharsets.UTF_8).contains("place 0 1\n"),
+          "GMA final move must still click ReadBoard when local history already contains that next move.");
+      assertTrue(
+          harness.leelaz.playedMoves.isEmpty(),
+          "GMA final move comes from KataGo and must not be echoed back as a normal GTP play.");
+      assertFalse(
+          harness.leelaz.sentCommands.contains("stop"),
+          "GMA final move must not use the generic no-ponder stop path.");
+    }
+  }
+
+  @Test
+  void gmaFinalNonBoardMoveForcesExactEngineRestore() throws Exception {
+    Stone[] authoritativeStones = stones(placement(0, 0, Stone.BLACK));
+    try (EngineResumeHarness harness =
+        EngineResumeHarness.create(rootHistory(authoritativeStones, false))) {
+      harness.frame.bothSync = true;
+      setField(harness.readBoard, "readBoardGmaPending", true);
+      setField(harness.readBoard, "readBoardGmaAutoPlayActive", true);
+      setField(harness.readBoard, "readBoardGmaAutoPlayColor", Stone.WHITE);
+
+      boolean consumed = harness.readBoard.handleReadBoardGmaEnginePlay("pass");
+
+      assertTrue(consumed);
+      assertFalse(getBooleanField(harness.readBoard, "readBoardGmaPending"));
+      harness.readBoard.afterReadBoardGmaTerminalResponseConsumed("test-terminal");
+      assertTrue(
+          waitForSentCommand(harness.leelaz, "clear_board"),
+          "non-board GMA terminal result must force engine restore.");
+      assertTrue(
+          waitForSentCommandPrefix(harness.leelaz, "loadsgf "),
+          "non-board GMA terminal result must restore the authoritative snapshot exactly.");
+    }
+  }
+
+  @Test
+  void gmaPendingDefersRebuildEngineRestoreUntilOldTerminalPlayIsConsumed() throws Exception {
+    try (EngineResumeHarness harness =
+        EngineResumeHarness.create(rootHistory(emptyStones(), true))) {
+      harness.frame.bothSync = true;
+      setField(harness.readBoard, "readBoardGmaPending", true);
+      setField(harness.readBoard, "readBoardGmaAutoPlayActive", true);
+
+      harness.readBoard.parseLine("forceRebuild");
+      harness.sync(snapshot(stones(placement(0, 0, Stone.BLACK)), Optional.empty(), Stone.EMPTY));
+      Stone engineColor =
+          harness.board.getHistory().isBlacksTurn() ? Stone.BLACK : Stone.WHITE;
+      setField(harness.readBoard, "readBoardGmaAutoPlayColor", engineColor);
+
+      assertFalse(
+          harness.leelaz.sentCommands.contains("clear_board"),
+          "rebuild restore must be frozen while the old GMA request is still in flight.");
+      assertFalse(
+          harness.leelaz.sentCommands.stream().anyMatch(command -> command.startsWith("loadsgf ")),
+          "rebuild restore must not queue loadsgf behind an in-flight stale GMA request.");
+
+      boolean consumed =
+          harness.readBoard.handleReadBoardGmaEnginePlay(Board.convertCoordinatesToName(1, 0));
+
+      assertTrue(consumed);
+      harness.readBoard.afterReadBoardGmaTerminalResponseConsumed("test-terminal");
+      assertTrue(
+          waitForSentCommand(harness.leelaz, "clear_board"),
+          "consuming the old terminal play should release the deferred exact restore.");
+      assertTrue(
+          waitForSentCommandPrefix(harness.leelaz, "loadsgf "),
+          "deferred restore should use the latest authoritative snapshot.");
+    }
+  }
+
+  @Test
+  void gmaRestoreInProgressDefersRebuildEngineRestoreUntilCurrentRestoreFinishes()
+      throws Exception {
+    try (EngineResumeHarness harness =
+        EngineResumeHarness.create(rootHistory(emptyStones(), true))) {
+      harness.frame.bothSync = true;
+      setField(harness.readBoard, "readBoardGmaEngineRestorePending", true);
+      setField(harness.readBoard, "readBoardGmaEngineRestoreInProgress", true);
+
+      harness.readBoard.parseLine("forceRebuild");
+      harness.sync(snapshot(stones(placement(0, 0, Stone.BLACK)), Optional.empty(), Stone.EMPTY));
+
+      assertFalse(
+          harness.leelaz.sentCommands.contains("clear_board"),
+          "rebuild restore must stay frozen while a previous GMA restore is still in progress.");
+      assertFalse(
+          harness.leelaz.sentCommands.stream().anyMatch(command -> command.startsWith("loadsgf ")),
+          "rebuild restore must only update the deferred target while restore is in progress.");
+
+      setField(harness.readBoard, "readBoardGmaEngineRestoreInProgress", false);
+      harness.readBoard.afterReadBoardGmaTerminalResponseConsumed("test-terminal");
+
+      assertTrue(
+          waitForSentCommand(harness.leelaz, "clear_board"),
+          "finishing the current restore should release the deferred rebuild restore.");
+      assertTrue(
+          waitForSentCommandPrefix(harness.leelaz, "loadsgf "),
+          "deferred rebuild restore should use the latest authoritative snapshot.");
+    }
+  }
+
   private static HistoryPath buildHistory(TrackingBoard board, Placement... moves) {
     BoardHistoryList history = board.getHistory();
     List<BoardHistoryNode> nodes = new ArrayList<>();
@@ -925,6 +1575,20 @@ class ReadBoardEngineResumeTest {
     field.set(target, value);
   }
 
+  private static BottomToolbar minimalToolbar() throws Exception {
+    BottomToolbar toolbar = allocate(BottomToolbar.class);
+    toolbar.chkAutoPlay = new JCheckBox();
+    toolbar.chkAutoPlayBlack = new JCheckBox();
+    toolbar.chkAutoPlayWhite = new JCheckBox();
+    toolbar.chkAutoPlayTime = new JCheckBox();
+    toolbar.chkAutoPlayPlayouts = new JCheckBox();
+    toolbar.chkAutoPlayFirstPlayouts = new JCheckBox();
+    toolbar.txtAutoPlayTime = new JTextField("0");
+    toolbar.txtAutoPlayPlayouts = new JTextField("0");
+    toolbar.txtAutoPlayFirstPlayouts = new JTextField("0");
+    return toolbar;
+  }
+
   private static boolean getBooleanField(Object target, String name) throws Exception {
     Field field = findField(target.getClass(), name);
     field.setAccessible(true);
@@ -985,11 +1649,35 @@ class ReadBoardEngineResumeTest {
     method.invoke(readBoard, autoPlayColor);
   }
 
+  private static boolean waitForSentCommand(SnapshotTrackingLeelaz leelaz, String command)
+      throws InterruptedException {
+    return waitForSentCommandPrefix(leelaz, command, true);
+  }
+
+  private static boolean waitForSentCommandPrefix(SnapshotTrackingLeelaz leelaz, String prefix)
+      throws InterruptedException {
+    return waitForSentCommandPrefix(leelaz, prefix, false);
+  }
+
+  private static boolean waitForSentCommandPrefix(
+      SnapshotTrackingLeelaz leelaz, String value, boolean exact) throws InterruptedException {
+    for (int attempt = 0; attempt < 100; attempt++) {
+      if (new ArrayList<>(leelaz.sentCommands).stream()
+          .anyMatch(command -> exact ? command.equals(value) : command.startsWith(value))) {
+        return true;
+      }
+      Thread.sleep(10);
+    }
+    return false;
+  }
+
   private static final class EngineResumeHarness implements AutoCloseable {
     private final Config previousConfig;
     private final Board previousBoard;
     private final Leelaz previousLeelaz;
     private final LizzieFrame previousFrame;
+    private final BoardRenderer previousBoardRenderer;
+    private final BottomToolbar previousToolbar;
     private final TrackingBoard board;
     private final TrackingFrame frame;
     private final SnapshotTrackingLeelaz leelaz;
@@ -1000,6 +1688,8 @@ class ReadBoardEngineResumeTest {
         Board previousBoard,
         Leelaz previousLeelaz,
         LizzieFrame previousFrame,
+        BoardRenderer previousBoardRenderer,
+        BottomToolbar previousToolbar,
         TrackingBoard board,
         TrackingFrame frame,
         SnapshotTrackingLeelaz leelaz,
@@ -1008,6 +1698,8 @@ class ReadBoardEngineResumeTest {
       this.previousBoard = previousBoard;
       this.previousLeelaz = previousLeelaz;
       this.previousFrame = previousFrame;
+      this.previousBoardRenderer = previousBoardRenderer;
+      this.previousToolbar = previousToolbar;
       this.board = board;
       this.frame = frame;
       this.leelaz = leelaz;
@@ -1019,6 +1711,8 @@ class ReadBoardEngineResumeTest {
       Board previousBoard = Lizzie.board;
       Leelaz previousLeelaz = Lizzie.leelaz;
       LizzieFrame previousFrame = Lizzie.frame;
+      BoardRenderer previousBoardRenderer = LizzieFrame.boardRenderer;
+      BottomToolbar previousToolbar = LizzieFrame.toolbar;
 
       Config config = allocate(Config.class);
       config.alwaysSyncBoardStat = false;
@@ -1027,6 +1721,7 @@ class ReadBoardEngineResumeTest {
       config.noCapture = false;
       config.readBoardPonder = true;
       config.winrateAlwaysBlack = false;
+      config.leelazConfig = new JSONObject().put("max-game-thinking-time-seconds", 2);
       Lizzie.config = config;
 
       SnapshotTrackingLeelaz leelaz = SnapshotTrackingLeelaz.create();
@@ -1040,6 +1735,8 @@ class ReadBoardEngineResumeTest {
       TrackingFrame frame = allocate(TrackingFrame.class);
       frame.initialize(board);
       Lizzie.frame = frame;
+      LizzieFrame.boardRenderer = new BoardRenderer(false);
+      LizzieFrame.toolbar = minimalToolbar();
 
       ReadBoard readBoard = allocate(ReadBoard.class);
       setField(readBoard, "conflictTracker", new SyncConflictTracker());
@@ -1054,6 +1751,8 @@ class ReadBoardEngineResumeTest {
           previousBoard,
           previousLeelaz,
           previousFrame,
+          previousBoardRenderer,
+          previousToolbar,
           board,
           frame,
           leelaz,
@@ -1075,6 +1774,8 @@ class ReadBoardEngineResumeTest {
       Lizzie.board = previousBoard;
       Lizzie.leelaz = previousLeelaz;
       Lizzie.frame = previousFrame;
+      LizzieFrame.boardRenderer = previousBoardRenderer;
+      LizzieFrame.toolbar = previousToolbar;
     }
   }
 
@@ -1204,6 +1905,41 @@ class ReadBoardEngineResumeTest {
       this.x = x;
       this.y = y;
       this.color = color;
+    }
+  }
+
+  private static final class AliveProcess extends Process {
+    @Override
+    public OutputStream getOutputStream() {
+      return OutputStream.nullOutputStream();
+    }
+
+    @Override
+    public InputStream getInputStream() {
+      return new ByteArrayInputStream(new byte[0]);
+    }
+
+    @Override
+    public InputStream getErrorStream() {
+      return new ByteArrayInputStream(new byte[0]);
+    }
+
+    @Override
+    public int waitFor() {
+      return 0;
+    }
+
+    @Override
+    public int exitValue() {
+      return 0;
+    }
+
+    @Override
+    public void destroy() {}
+
+    @Override
+    public boolean isAlive() {
+      return true;
     }
   }
 

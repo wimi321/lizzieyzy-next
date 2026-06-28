@@ -263,6 +263,10 @@ final class SyncSnapshotClassifier {
       return additions;
     }
 
+    Stone singleAdditionColor() {
+      return additions == 1 ? moveColor : Stone.EMPTY;
+    }
+
     int removals() {
       return removedBlack + removedWhite;
     }

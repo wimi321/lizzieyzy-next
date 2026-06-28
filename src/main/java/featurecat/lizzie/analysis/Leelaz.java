@@ -252,6 +252,13 @@ public class Leelaz {
   public List<String> commandLists = new ArrayList<String>();
   private boolean startGetCommandList = false;
   private boolean endGetCommandList = false;
+  private boolean readBoardGmaUnsupportedPromptShown = false;
+  private final ReadBoardGmaRuntimeParam readBoardGmaMaxTime =
+      new ReadBoardGmaRuntimeParam("maxTime");
+  private final ReadBoardGmaRuntimeParam readBoardGmaMaxVisits =
+      new ReadBoardGmaRuntimeParam("maxVisits");
+  private final ReadBoardGmaRuntimeParam readBoardGmaPondering =
+      new ReadBoardGmaRuntimeParam("ponderingEnabled");
   private int currentTotalPlayouts;
   public boolean supportMovesOwnership = false;
 
@@ -546,6 +553,10 @@ public class Leelaz {
     isCheckingVersion = true;
     isCheckingName = true;
     endGetCommandList = false;
+    startGetCommandList = false;
+    commandLists.clear();
+    readBoardGmaUnsupportedPromptShown = false;
+    clearReadBoardGmaSearchLimitSnapshots();
     // sendCommand("turnon");
     if (!isSSH) {
       Runnable runnable =
@@ -1195,6 +1206,9 @@ public class Leelaz {
       checkNameAndVersion(params);
     } else if (line.startsWith("?")) {
       isCommandLine = true;
+      if (consumeReadBoardGmaEngineErrorLine(line)) {
+        return;
+      }
       if (line.startsWith("? unacceptable komi")) {
         illegalKomi();
       }
@@ -1591,6 +1605,21 @@ public class Leelaz {
                 + (Lizzie.frame != null && Lizzie.frame.isAnaPlayingAgainstLeelaz)
                 + " engineGame="
                 + EngineManager.isEngineGame());
+        if (!isInputCommand
+            && params.length == 2
+            && Lizzie.frame != null
+            && Lizzie.frame.readBoard != null
+            && Lizzie.frame.readBoard.handleReadBoardGmaEnginePlay(params[1])) {
+          processCommandResponseLine(line);
+          Lizzie.frame.readBoard.afterReadBoardGmaTerminalResponseConsumed("play-terminal");
+          isCommandLine = false;
+          if (shouldStopPonder) {
+            isPondering = false;
+            YikeSyncDebugLog.log("Leelaz marked isPondering=false after ReadBoard GMA play line");
+          }
+          isThinking = false;
+          return;
+        }
         if (isInputCommand) {
           //	getGenmoveInfoPrevious = true;
           Lizzie.board.place(params[1]);
@@ -1662,6 +1691,9 @@ public class Leelaz {
         if (startGetCommandList) {
           startGetCommandList = false;
           endGetCommandList = true;
+          if (Lizzie.frame != null && Lizzie.frame.readBoard != null) {
+            Lizzie.frame.readBoard.onReadBoardGmaCapabilityReady();
+          }
         }
         String[] params = line.trim().split(" ");
         if (params.length == 1) return;
@@ -1766,6 +1798,9 @@ public class Leelaz {
         checkNameAndVersion(params);
       } else if (line.startsWith("?")) {
         isCommandLine = true;
+        if (consumeReadBoardGmaEngineErrorLine(line)) {
+          return;
+        }
         if (line.startsWith("? unacceptable komi")) {
           illegalKomi();
         }
@@ -1792,6 +1827,19 @@ public class Leelaz {
     } else if (autoAnalyzeAfterInfo == 3) {
       notifyAutoAna();
     }
+  }
+
+  private boolean consumeReadBoardGmaEngineErrorLine(String line) {
+    if (Lizzie.frame == null
+        || Lizzie.frame.readBoard == null
+        || !Lizzie.frame.readBoard.handleReadBoardGmaEngineError(line)) {
+      return false;
+    }
+    processCommandResponseLine(line);
+    Lizzie.frame.readBoard.afterReadBoardGmaTerminalResponseConsumed("error-terminal");
+    isThinking = false;
+    isCommandLine = false;
+    return true;
   }
 
   private void illegalKomi() {
@@ -1872,6 +1920,9 @@ public class Leelaz {
 
   private void notifyAutoPlay(boolean playImmediately) {
     if (this != Lizzie.leelaz) return;
+    if (Lizzie.frame != null
+        && Lizzie.frame.readBoard != null
+        && Lizzie.frame.readBoard.isReadBoardGmaAutoPlayActive()) return;
     if (LizzieFrame.toolbar.isAutoPlay) {
       if ((Lizzie.board.getHistory().isBlacksTurn()
               && LizzieFrame.toolbar.chkAutoPlayBlack.isSelected())
@@ -3073,6 +3124,10 @@ public class Leelaz {
   }
 
   public void sendCommandNoLeelaz2(String command) {
+    sendCommandNoLeelaz2(command, null);
+  }
+
+  private void sendCommandNoLeelaz2(String command, Runnable onResponse) {
     if (Lizzie.config.isDoubleEngineMode()) {
       if ((command.startsWith("heat") || command.startsWith("kata-raw"))
           && !this.isKatago
@@ -3120,7 +3175,7 @@ public class Leelaz {
           commandQueue().removeLast();
         }
       }
-      commandQueue().addLast(new QueuedCommand(command, null, null, false));
+      commandQueue().addLast(new QueuedCommand(command, onResponse, null, false));
       trySendCommandFromQueue();
     }
     if (Lizzie.frame.isAutocounting) {
@@ -4077,6 +4132,148 @@ public class Leelaz {
     sendCommand(command);
     isThinking = true;
     LizzieFrame.menu.toggleEngineMenuStatus(false, true);
+  }
+
+  private static final class ReadBoardGmaRuntimeParam {
+    private final String name;
+    private String originalValue = "";
+    private boolean snapshotRequested = false;
+    private boolean overridden = false;
+    private boolean restorePending = false;
+
+    private ReadBoardGmaRuntimeParam(String name) {
+      this.name = name;
+    }
+  }
+
+  public boolean isReadBoardGmaCapabilityKnown() {
+    return endGetCommandList;
+  }
+
+  public boolean supportsReadBoardGma() {
+    return isKatago
+        && endGetCommandList
+        && commandLists.contains("kata-genmove_analyze")
+        && commandLists.contains("kata-get-param")
+        && commandLists.contains("kata-set-param");
+  }
+
+  public boolean shouldShowReadBoardGmaUnsupportedPrompt() {
+    if (readBoardGmaUnsupportedPromptShown) return false;
+    readBoardGmaUnsupportedPromptShown = true;
+    return true;
+  }
+
+  public void genmoveAnalyzeForReadBoard(
+      String color, int maxTimeSeconds, int maxVisits, boolean ponder) {
+    setReadBoardGmaPondering(ponder);
+    prepareReadBoardGmaMaxTime(maxTimeSeconds);
+    prepareReadBoardGmaMaxVisits(maxVisits);
+    StringBuilder command =
+        new StringBuilder("kata-genmove_analyze ")
+            .append(color)
+            .append(" ")
+            .append(getInterval())
+            .append(addKataTag());
+    sendCommandNoLeelaz2(command.toString());
+    isThinking = true;
+    LizzieFrame.menu.toggleEngineMenuStatus(false, true);
+  }
+
+  public void setReadBoardGmaPondering(boolean ponder) {
+    prepareReadBoardGmaRuntimeParam(readBoardGmaPondering, ponder ? "true" : "false");
+  }
+
+  public void restoreReadBoardGmaSearchLimitsIfNeeded() {
+    restoreReadBoardGmaRuntimeParamIfNeeded(readBoardGmaMaxTime);
+    restoreReadBoardGmaRuntimeParamIfNeeded(readBoardGmaMaxVisits);
+  }
+
+  public void restoreReadBoardGmaRuntimeSettingsIfNeeded() {
+    restoreReadBoardGmaRuntimeParamIfNeeded(readBoardGmaPondering);
+    restoreReadBoardGmaSearchLimitsIfNeeded();
+  }
+
+  private void prepareReadBoardGmaMaxTime(int maxTimeSeconds) {
+    if (maxTimeSeconds > 0) {
+      prepareReadBoardGmaRuntimeParam(readBoardGmaMaxTime, String.valueOf(maxTimeSeconds));
+      return;
+    }
+    restoreReadBoardGmaRuntimeParamIfNeeded(readBoardGmaMaxTime);
+  }
+
+  private void prepareReadBoardGmaMaxVisits(int maxVisits) {
+    if (maxVisits > 0) {
+      prepareReadBoardGmaRuntimeParam(readBoardGmaMaxVisits, String.valueOf(maxVisits));
+      return;
+    }
+    restoreReadBoardGmaRuntimeParamIfNeeded(readBoardGmaMaxVisits);
+  }
+
+  private void prepareReadBoardGmaRuntimeParam(ReadBoardGmaRuntimeParam param, String value) {
+    param.restorePending = false;
+    captureReadBoardGmaOriginalParamIfNeeded(param);
+    sendCommandNoLeelaz2("kata-set-param " + param.name + " " + value);
+    param.overridden = true;
+  }
+
+  private void captureReadBoardGmaOriginalParamIfNeeded(ReadBoardGmaRuntimeParam param) {
+    if (param.snapshotRequested) {
+      return;
+    }
+    param.snapshotRequested = true;
+    sendCommandNoLeelaz2(
+        "kata-get-param " + param.name,
+        () -> {
+          String value = parseKataGetParamValue(currentCommandResponseLine());
+          if (!value.isEmpty()) {
+            param.originalValue = value;
+            restorePendingReadBoardGmaRuntimeParamIfNeeded(param);
+          }
+        });
+  }
+
+  private void restoreReadBoardGmaRuntimeParamIfNeeded(ReadBoardGmaRuntimeParam param) {
+    if (!param.overridden) {
+      param.restorePending = false;
+      return;
+    }
+    if (param.originalValue.isEmpty()) {
+      param.restorePending = param.snapshotRequested;
+      return;
+    }
+    sendCommandNoLeelaz2("kata-set-param " + param.name + " " + param.originalValue);
+    clearReadBoardGmaRuntimeParam(param);
+  }
+
+  private void restorePendingReadBoardGmaRuntimeParamIfNeeded(ReadBoardGmaRuntimeParam param) {
+    if (param.restorePending) {
+      restoreReadBoardGmaRuntimeParamIfNeeded(param);
+    }
+  }
+
+  private String parseKataGetParamValue(String line) {
+    if (line == null) {
+      return "";
+    }
+    String trimmed = line.trim();
+    if (!trimmed.startsWith("=")) {
+      return "";
+    }
+    return trimmed.substring(1).trim();
+  }
+
+  private void clearReadBoardGmaSearchLimitSnapshots() {
+    clearReadBoardGmaRuntimeParam(readBoardGmaMaxTime);
+    clearReadBoardGmaRuntimeParam(readBoardGmaMaxVisits);
+    clearReadBoardGmaRuntimeParam(readBoardGmaPondering);
+  }
+
+  private void clearReadBoardGmaRuntimeParam(ReadBoardGmaRuntimeParam param) {
+    param.originalValue = "";
+    param.snapshotRequested = false;
+    param.overridden = false;
+    param.restorePending = false;
   }
 
   private void sendPlayingAgainstHumanTimeLeftBeforeGenmove() {
