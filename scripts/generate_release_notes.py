@@ -4174,6 +4174,8 @@ def build_release_notes(asset_map: dict[str, str | None], bundle: dict[str, str]
         return build_next_2026_06_21_1_notes(asset_map, bundle, repo, release_tag)
     if release_tag == 'next-2026-06-21.2':
         return build_next_2026_06_21_2_notes(asset_map, bundle, repo, release_tag)
+    if release_tag == 'next-2026-06-29.1':
+        return build_next_2026_06_29_1_notes(asset_map, bundle, repo, release_tag)
 
     assets_cn = {
         key: format_asset(asset_map[key], repo, release_tag)
@@ -7279,6 +7281,109 @@ def build_next_2026_06_21_2_notes(
             'ถ้าคุณใช้ Player Strength evaluation ตอน review เกม รุ่นนี้ทำให้ match chart และ hover explanation น่าเชื่อถือและอ่านง่ายขึ้น',
         'release notes นี้เน้นการเปลี่ยนแปลงที่ merge หลัง release ก่อนหน้า และไม่ซ้ำรายละเอียดของ release ที่เก่ากว่า':
             'release notes นี้เน้น PR #77 ที่ merge หลัง release ก่อนหน้า และไม่ซ้ำรายละเอียดของ release ที่เก่ากว่า',
+    }
+    for old, new in replacements.items():
+        notes = notes.replace(old, new)
+    return notes
+
+
+def build_next_2026_06_29_1_notes(
+    asset_map: dict[str, str | None],
+    bundle: dict[str, str],
+    repo: str,
+    release_tag: str | None,
+) -> str:
+    notes = build_next_2026_06_21_2_notes(asset_map, bundle, repo, release_tag)
+    replacements = {
+        '这一版是棋力评估小修复版，重点处理 @semanym 贡献的 PR #77：吻合度页面的命中图和鼠标悬停说明现在会正确区分一选、好手和局面复杂度。':
+            '这一版合并两项新的预览能力：感谢 @qiyi71w 提交 PR #81，ReadBoard 棋盘同步新增可信 GMA 自动落子；同时新增“远程算力中心”，可以登录智子云算力，把云端 KataGo 像本机引擎一样用于分析。',
+        '修复棋力评估“吻合度”页：好手行 hover 不再误用一选/好手状态，一选命中会同时显示在一选行和好手行。':
+            '合并 PR #81：棋盘同步的 `play>... gma` 会使用 KataGo `kata-genmove_analyze` 等待引擎最终决策落子，而不是只取当前一选。',
+        '鼠标悬停提示中的局面复杂度改为 0-100 的用户可读数值，详细数据里的段位标签更紧凑。':
+            'ReadBoard 会根据可信的末手来源和轮次判断启动 GMA，避免启发式来源误判导致错方自动落子，并在 pass、resign、失效请求和点击失败后强制恢复引擎局面。',
+        '补充 `LizzieFrameRegressionTest` 回归测试，覆盖一选/好手命中标签和复杂度显示。':
+            '新增“设置 -> 远程算力中心”：支持智子云算力账号/密码或验证码登录，默认 VIP 包月，也可切换按量档位；主引擎、快速曲线、形势判断等路径统一走远程 GTP 桥接。',
+        '感谢 @semanym 提交并推进这个修复。':
+            '自建算力入口当前只保存连接码，不会伪装成已启用的远程引擎；需要立刻使用远程算力的用户请先使用智子云算力。',
+        '如果你会用棋力评估复盘，这一版能让“吻合度”命中图和鼠标悬停说明更可信、更容易理解。':
+            '如果你经常用 readboard 同步和自动落子，这一版能让“由引擎最终决策落子”的路径更接近真实 KataGo 对局。',
+        '这一版只写上一版之后新合并的 PR #77，不再重复更早版本已经介绍过的内容。':
+            '这一版只写 #81 和 #83 的新增变化，不重复更早版本已经介绍过的内容。',
+
+        '這一版是棋力評估小修復版，重點處理 @semanym 貢獻的 PR #77：吻合度頁面的命中圖和滑鼠懸停說明現在會正確區分一選、好手和局面複雜度。':
+            '這一版合併兩項新的預覽能力：感謝 @qiyi71w 提交 PR #81，ReadBoard 棋盤同步新增可信 GMA 自動落子；同時新增「遠端算力中心」，可以登入智子雲算力，像本機引擎一樣使用雲端 KataGo 分析。',
+        '修復棋力評估「吻合度」頁：好手列 hover 不再誤用一選/好手狀態，一選命中會同時顯示在一選列和好手列。':
+            '合併 PR #81：棋盤同步的 `play>... gma` 會使用 KataGo `kata-genmove_analyze` 等待引擎最終決策落子，而不是只取目前一選。',
+        '滑鼠懸停提示中的局面複雜度改為 0-100 的使用者可讀數值，詳細資料裡的段位標籤更緊湊。':
+            'ReadBoard 會根據可信的末手來源和輪次判斷啟動 GMA，避免啟發式來源誤判導致錯方自動落子，並在 pass、resign、失效請求和點擊失敗後強制恢復引擎局面。',
+        '補充 `LizzieFrameRegressionTest` 回歸測試，覆蓋一選/好手命中標籤和複雜度顯示。':
+            '新增「設定 -> 遠端算力中心」：支援智子雲算力帳號/密碼或驗證碼登入，預設 VIP 包月，也可切換按量檔位；主引擎、快速曲線、形勢判斷等路徑統一走遠端 GTP 橋接。',
+        '感謝 @semanym 提交並推進這個修復。':
+            '自建算力入口目前只保存連接碼，不會偽裝成已啟用的遠端引擎；需要立即使用遠端算力的使用者請先使用智子雲算力。',
+        '如果你會用棋力評估復盤，這一版能讓「吻合度」命中圖和滑鼠懸停說明更可信、更容易理解。':
+            '如果你經常用 readboard 同步和自動落子，這一版能讓「由引擎最終決策落子」的路徑更接近真實 KataGo 對局。',
+        '這一版只寫上一版之後新合併的 PR #77，不再重複更早版本已經介紹過的內容。':
+            '這一版只寫 #81 和 #83 的新增變化，不重複更早版本已經介紹過的內容。',
+
+        'This is a focused strength-evaluation fix release for PR #77 by @semanym: the match chart and hover labels now distinguish first-choice hits, good moves, and position complexity correctly.':
+            'This prerelease combines two new preview capabilities: thanks to @qiyi71w for PR #81, ReadBoard now supports trusted GMA autoplay, and the new Remote Compute Center can log in to Zhizi cloud compute so cloud KataGo works like a local engine.',
+        'The Player Strength “Match” tab no longer mixes first-choice and good-move hover states; first-choice hits are shown consistently in both the first-choice and good-move rows.':
+            'PR #81 is merged: `play>... gma` now waits for KataGo `kata-genmove_analyze` final decisions instead of simply using the current top candidate.',
+        'Hover tooltips now show position complexity as a user-readable 0-100 value, and detailed-data rank labels are more compact.':
+            'ReadBoard starts GMA only from trusted last-move sources and turns, avoiding wrong-side autoplay from heuristic guesses, and it forces engine-state recovery after pass, resign, stale requests, or failed clicks.',
+        '`LizzieFrameRegressionTest` now covers first-choice/good-move hit labels and complexity display regressions.':
+            'A new Settings -> Remote Compute Center supports Zhizi login by password or verification code, defaults to VIP monthly compute, allows metered tiers, and routes main analysis, quick curves, and score judgment through a unified remote GTP bridge.',
+        'Thanks to @semanym for contributing and driving this fix.':
+            'The self-hosted compute entry currently saves connection codes only and does not pretend to be an enabled remote engine; use Zhizi cloud compute first if you need remote compute immediately.',
+        'If you use Player Strength evaluation during reviews, this build makes the match chart and hover explanations more trustworthy and easier to read.':
+            'If you rely on readboard sync and autoplay, this build makes the “let the engine decide the final move” path much closer to a real KataGo game.',
+        'These notes only cover PR #77, newly merged after the previous release, without repeating older release highlights.':
+            'These notes only cover the newly merged #81 and #83 changes, without repeating older release highlights.',
+
+        'このリリースは、@semanym による PR #77 を中心とした棋力評価の小修正版です。吻合度ページの命中図と hover 表示が、一選、好手、局面複雑度を正しく区別するようになりました。':
+            'この prerelease では 2 つの preview 機能を取り込みました。PR #81 を送ってくれた @qiyi71w さんに感謝します。ReadBoard は信頼済み GMA 自動着手に対応し、新しい「リモート計算センター」では智子クラウド計算にログインして、クラウド KataGo をローカルエンジンのように使えます。',
+        '棋力評価の「吻合度」タブで、good move 行の hover が一選/好手状態を取り違えないよう修正しました。一選命中は一選行と好手行の両方に一貫して表示されます。':
+            'PR #81 を merge しました。棋盤同期の `play>... gma` は、現在の一選をそのまま使うのではなく、KataGo `kata-genmove_analyze` の最終決定を待って着手します。',
+        'hover tooltip の局面複雑度を 0-100 の読みやすい値にし、詳細データの段位ラベルもよりコンパクトにしました。':
+            'ReadBoard は信頼できる最終手ソースと手番から GMA 開始を判断し、推測ソースの誤判定による逆側自動着手を避けます。pass、resign、失効リクエスト、クリック失敗後はエンジン局面を強制復旧します。',
+        '`LizzieFrameRegressionTest` に、一選/好手命中ラベルと複雑度表示の回帰テストを追加しました。':
+            '新しい「設定 -> リモート計算センター」では、智子クラウド計算へパスワードまたは確認コードでログインできます。既定は VIP 月額で、従量 tier にも切り替えられ、主解析、quick curve、形勢判断を統一した remote GTP bridge で扱います。',
+        'この修正を貢献して進めてくれた @semanym に感謝します。':
+            '自建リモート計算の入口は現時点では接続コード保存のみで、有効化済み remote engine のようには見せません。すぐ遠隔計算を使う場合は、まず智子クラウド計算を使ってください。',
+        '棋力評価をレビューに使う場合、この build で吻合度の命中図と hover 説明がより信頼しやすく、読みやすくなります。':
+            'readboard 同期と自動着手をよく使う場合、この build では「エンジンの最終決定で着手する」流れがより実際の KataGo 対局に近くなります。',
+        'この説明は前回リリース後に新しく merged された PR #77 に絞り、より古いリリース内容は繰り返しません。':
+            'この説明は新しく merged された #81 と #83 の変更に絞り、より古いリリース内容は繰り返しません。',
+
+        '이번 릴리스는 @semanym 이 기여한 PR #77 중심의 strength evaluation 소규모 수정 버전입니다. Match chart 와 hover label 이 first-choice hit, good move, position complexity 를 올바르게 구분합니다.':
+            '이번 prerelease 는 두 가지 preview 기능을 합쳤습니다. PR #81 을 제출한 @qiyi71w 님께 감사드립니다. ReadBoard 는 신뢰된 GMA 자동 착수를 지원하고, 새 Remote Compute Center 는 Zhizi cloud compute 에 로그인해 cloud KataGo 를 로컬 엔진처럼 사용할 수 있게 합니다.',
+        'Player Strength “Match” 탭에서 good-move 행 hover 가 first-choice/good-move 상태를 잘못 섞지 않도록 수정했습니다. first-choice hit 는 first-choice 행과 good-move 행 모두에 일관되게 표시됩니다.':
+            'PR #81 을 merge 했습니다. board sync 의 `play>... gma` 는 현재 top candidate 를 바로 쓰지 않고 KataGo `kata-genmove_analyze` 의 최종 결정을 기다려 착수합니다.',
+        'Hover tooltip 의 position complexity 를 사용자가 읽기 쉬운 0-100 값으로 표시하고, detailed-data rank label 도 더 compact 하게 정리했습니다.':
+            'ReadBoard 는 신뢰 가능한 last-move source 와 turn 으로 GMA 시작을 판단해 heuristic guess 때문에 반대쪽이 자동 착수하는 일을 피하고, pass, resign, stale request, click 실패 뒤에는 engine state 를 강제로 복구합니다.',
+        '`LizzieFrameRegressionTest` 가 first-choice/good-move hit label 과 complexity display 회귀를 함께 커버합니다.':
+            '새 Settings -> Remote Compute Center 는 Zhizi password 또는 verification code login 을 지원하고, 기본은 VIP monthly compute 이며 metered tier 로도 전환할 수 있습니다. main analysis, quick curve, score judgment 는 unified remote GTP bridge 를 사용합니다.',
+        '이 수정에 기여하고 진행해 준 @semanym 에게 감사합니다.':
+            'Self-hosted compute entry 는 현재 connection code 만 저장하며 enabled remote engine 처럼 보이게 하지 않습니다. 바로 remote compute 가 필요하면 먼저 Zhizi cloud compute 를 사용하세요.',
+        'Player Strength evaluation 을 리뷰에 사용한다면, 이번 build 에서 match chart 와 hover explanation 이 더 믿기 쉽고 읽기 쉬워집니다.':
+            'readboard sync 와 autoplay 를 자주 쓴다면, 이번 build 는 “engine final decision 으로 착수”하는 경로를 실제 KataGo 대국에 더 가깝게 만듭니다.',
+        '이번 설명은 이전 릴리스 이후 새로 merge 된 PR #77 에 집중하며, 더 오래된 릴리스 내용은 반복하지 않습니다.':
+            '이번 설명은 새로 merge 된 #81 과 #83 변경만 다루며, 더 오래된 릴리스 내용은 반복하지 않습니다.',
+
+        'รุ่นนี้เป็น release แก้ไขเฉพาะส่วน strength evaluation จาก PR #77 ของ @semanym: match chart และ hover label แยก first-choice hit, good move และ position complexity ได้ถูกต้องขึ้น':
+            'prerelease นี้รวมความสามารถ preview ใหม่ 2 อย่าง: ขอบคุณ @qiyi71w สำหรับ PR #81 ที่ทำให้ ReadBoard รองรับ trusted GMA autoplay และเพิ่ม Remote Compute Center สำหรับ login เข้า Zhizi cloud compute เพื่อใช้ cloud KataGo เหมือน engine ในเครื่อง',
+        'แท็บ “Match” ใน Player Strength ไม่สลับสถานะ hover ระหว่าง first-choice และ good-move อีกต่อไป โดย first-choice hit จะแสดงสอดคล้องกันทั้งแถว first-choice และ good-move':
+            'merge PR #81 แล้ว: `play>... gma` ใน board sync จะรอ final decision จาก KataGo `kata-genmove_analyze` แทนการใช้ top candidate ปัจจุบันทันที',
+        'Hover tooltip แสดง position complexity เป็นค่า 0-100 ที่อ่านง่ายขึ้น และ label ระดับใน detailed data กระชับขึ้น':
+            'ReadBoard จะเริ่ม GMA จาก last-move source และ turn ที่เชื่อถือได้เท่านั้น ลด autoplay ผิดฝ่ายจาก heuristic guess และบังคับ restore engine state หลัง pass, resign, stale request หรือ click fail',
+        '`LizzieFrameRegressionTest` ครอบคลุม regression ของ first-choice/good-move hit label และ complexity display แล้ว':
+            'เพิ่ม Settings -> Remote Compute Center: รองรับ Zhizi login ด้วย password หรือ verification code, ค่าเริ่มต้นเป็น VIP monthly compute, เปลี่ยนเป็น metered tier ได้ และใช้ remote GTP bridge เดียวกันกับ main analysis, quick curve และ score judgment',
+        'ขอบคุณ @semanym ที่ช่วยส่งและผลักดันการแก้ไขนี้':
+            'ส่วน self-hosted compute ตอนนี้เก็บเฉพาะ connection code และจะไม่แสดงเหมือน remote engine ที่เปิดใช้งานแล้ว หากต้องใช้ remote compute ทันที แนะนำใช้ Zhizi cloud compute ก่อน',
+        'ถ้าคุณใช้ Player Strength evaluation ตอน review เกม รุ่นนี้ทำให้ match chart และ hover explanation น่าเชื่อถือและอ่านง่ายขึ้น':
+            'ถ้าคุณใช้ readboard sync และ autoplay บ่อย รุ่นนี้ทำให้เส้นทาง “ให้ engine ตัดสิน final move” ใกล้เคียงเกม KataGo จริงมากขึ้น',
+        'release notes นี้เน้น PR #77 ที่ merge หลัง release ก่อนหน้า และไม่ซ้ำรายละเอียดของ release ที่เก่ากว่า':
+            'release notes นี้เน้นการเปลี่ยนแปลง #81 และ #83 ที่ merge ใหม่ และไม่ซ้ำรายละเอียดของ release ที่เก่ากว่า',
     }
     for old, new in replacements.items():
         notes = notes.replace(old, new)
