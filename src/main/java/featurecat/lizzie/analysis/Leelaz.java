@@ -253,18 +253,12 @@ public class Leelaz {
   private boolean startGetCommandList = false;
   private boolean endGetCommandList = false;
   private boolean readBoardGmaUnsupportedPromptShown = false;
-  private String readBoardGmaOriginalMaxTime = "";
-  private String readBoardGmaOriginalMaxVisits = "";
-  private boolean readBoardGmaMaxTimeSnapshotRequested = false;
-  private boolean readBoardGmaMaxVisitsSnapshotRequested = false;
-  private boolean readBoardGmaMaxTimeOverridden = false;
-  private boolean readBoardGmaMaxVisitsOverridden = false;
-  private boolean readBoardGmaMaxTimeRestorePending = false;
-  private boolean readBoardGmaMaxVisitsRestorePending = false;
-  private String readBoardGmaOriginalPonderingEnabled = "";
-  private boolean readBoardGmaPonderingSnapshotRequested = false;
-  private boolean readBoardGmaPonderingOverridden = false;
-  private boolean readBoardGmaPonderingRestorePending = false;
+  private final ReadBoardGmaRuntimeParam readBoardGmaMaxTime =
+      new ReadBoardGmaRuntimeParam("maxTime");
+  private final ReadBoardGmaRuntimeParam readBoardGmaMaxVisits =
+      new ReadBoardGmaRuntimeParam("maxVisits");
+  private final ReadBoardGmaRuntimeParam readBoardGmaPondering =
+      new ReadBoardGmaRuntimeParam("ponderingEnabled");
   private int currentTotalPlayouts;
   public boolean supportMovesOwnership = false;
 
@@ -4140,6 +4134,18 @@ public class Leelaz {
     LizzieFrame.menu.toggleEngineMenuStatus(false, true);
   }
 
+  private static final class ReadBoardGmaRuntimeParam {
+    private final String name;
+    private String originalValue = "";
+    private boolean snapshotRequested = false;
+    private boolean overridden = false;
+    private boolean restorePending = false;
+
+    private ReadBoardGmaRuntimeParam(String name) {
+      this.name = name;
+    }
+  }
+
   public boolean isReadBoardGmaCapabilityKnown() {
     return endGetCommandList;
   }
@@ -4175,147 +4181,74 @@ public class Leelaz {
   }
 
   public void setReadBoardGmaPondering(boolean ponder) {
-    readBoardGmaPonderingRestorePending = false;
-    captureReadBoardGmaOriginalPonderingIfNeeded();
-    sendCommandNoLeelaz2("kata-set-param ponderingEnabled " + (ponder ? "true" : "false"));
-    readBoardGmaPonderingOverridden = true;
+    prepareReadBoardGmaRuntimeParam(readBoardGmaPondering, ponder ? "true" : "false");
   }
 
   public void restoreReadBoardGmaSearchLimitsIfNeeded() {
-    restoreReadBoardGmaMaxTimeIfNeeded();
-    restoreReadBoardGmaMaxVisitsIfNeeded();
+    restoreReadBoardGmaRuntimeParamIfNeeded(readBoardGmaMaxTime);
+    restoreReadBoardGmaRuntimeParamIfNeeded(readBoardGmaMaxVisits);
   }
 
   public void restoreReadBoardGmaRuntimeSettingsIfNeeded() {
-    restoreReadBoardGmaPonderingIfNeeded();
+    restoreReadBoardGmaRuntimeParamIfNeeded(readBoardGmaPondering);
     restoreReadBoardGmaSearchLimitsIfNeeded();
   }
 
   private void prepareReadBoardGmaMaxTime(int maxTimeSeconds) {
     if (maxTimeSeconds > 0) {
-      readBoardGmaMaxTimeRestorePending = false;
-      captureReadBoardGmaOriginalMaxTimeIfNeeded();
-      sendCommandNoLeelaz2("kata-set-param maxTime " + maxTimeSeconds);
-      readBoardGmaMaxTimeOverridden = true;
+      prepareReadBoardGmaRuntimeParam(readBoardGmaMaxTime, String.valueOf(maxTimeSeconds));
       return;
     }
-    restoreReadBoardGmaMaxTimeIfNeeded();
+    restoreReadBoardGmaRuntimeParamIfNeeded(readBoardGmaMaxTime);
   }
 
   private void prepareReadBoardGmaMaxVisits(int maxVisits) {
     if (maxVisits > 0) {
-      readBoardGmaMaxVisitsRestorePending = false;
-      captureReadBoardGmaOriginalMaxVisitsIfNeeded();
-      sendCommandNoLeelaz2("kata-set-param maxVisits " + maxVisits);
-      readBoardGmaMaxVisitsOverridden = true;
+      prepareReadBoardGmaRuntimeParam(readBoardGmaMaxVisits, String.valueOf(maxVisits));
       return;
     }
-    restoreReadBoardGmaMaxVisitsIfNeeded();
+    restoreReadBoardGmaRuntimeParamIfNeeded(readBoardGmaMaxVisits);
   }
 
-  private void captureReadBoardGmaOriginalMaxTimeIfNeeded() {
-    if (readBoardGmaMaxTimeSnapshotRequested) {
+  private void prepareReadBoardGmaRuntimeParam(ReadBoardGmaRuntimeParam param, String value) {
+    param.restorePending = false;
+    captureReadBoardGmaOriginalParamIfNeeded(param);
+    sendCommandNoLeelaz2("kata-set-param " + param.name + " " + value);
+    param.overridden = true;
+  }
+
+  private void captureReadBoardGmaOriginalParamIfNeeded(ReadBoardGmaRuntimeParam param) {
+    if (param.snapshotRequested) {
       return;
     }
-    readBoardGmaMaxTimeSnapshotRequested = true;
+    param.snapshotRequested = true;
     sendCommandNoLeelaz2(
-        "kata-get-param maxTime",
+        "kata-get-param " + param.name,
         () -> {
           String value = parseKataGetParamValue(currentCommandResponseLine());
           if (!value.isEmpty()) {
-            readBoardGmaOriginalMaxTime = value;
-            restorePendingReadBoardGmaMaxTimeIfNeeded();
+            param.originalValue = value;
+            restorePendingReadBoardGmaRuntimeParamIfNeeded(param);
           }
         });
   }
 
-  private void captureReadBoardGmaOriginalMaxVisitsIfNeeded() {
-    if (readBoardGmaMaxVisitsSnapshotRequested) {
+  private void restoreReadBoardGmaRuntimeParamIfNeeded(ReadBoardGmaRuntimeParam param) {
+    if (!param.overridden) {
+      param.restorePending = false;
       return;
     }
-    readBoardGmaMaxVisitsSnapshotRequested = true;
-    sendCommandNoLeelaz2(
-        "kata-get-param maxVisits",
-        () -> {
-          String value = parseKataGetParamValue(currentCommandResponseLine());
-          if (!value.isEmpty()) {
-            readBoardGmaOriginalMaxVisits = value;
-            restorePendingReadBoardGmaMaxVisitsIfNeeded();
-          }
-        });
+    if (param.originalValue.isEmpty()) {
+      param.restorePending = param.snapshotRequested;
+      return;
+    }
+    sendCommandNoLeelaz2("kata-set-param " + param.name + " " + param.originalValue);
+    clearReadBoardGmaRuntimeParam(param);
   }
 
-  private void captureReadBoardGmaOriginalPonderingIfNeeded() {
-    if (readBoardGmaPonderingSnapshotRequested) {
-      return;
-    }
-    readBoardGmaPonderingSnapshotRequested = true;
-    sendCommandNoLeelaz2(
-        "kata-get-param ponderingEnabled",
-        () -> {
-          String value = parseKataGetParamValue(currentCommandResponseLine());
-          if (!value.isEmpty()) {
-            readBoardGmaOriginalPonderingEnabled = value;
-            restorePendingReadBoardGmaPonderingIfNeeded();
-          }
-        });
-  }
-
-  private void restoreReadBoardGmaMaxTimeIfNeeded() {
-    if (!readBoardGmaMaxTimeOverridden) {
-      readBoardGmaMaxTimeRestorePending = false;
-      return;
-    }
-    if (readBoardGmaOriginalMaxTime.isEmpty()) {
-      readBoardGmaMaxTimeRestorePending = readBoardGmaMaxTimeSnapshotRequested;
-      return;
-    }
-    sendCommandNoLeelaz2("kata-set-param maxTime " + readBoardGmaOriginalMaxTime);
-    clearReadBoardGmaMaxTimeSnapshot();
-  }
-
-  private void restoreReadBoardGmaMaxVisitsIfNeeded() {
-    if (!readBoardGmaMaxVisitsOverridden) {
-      readBoardGmaMaxVisitsRestorePending = false;
-      return;
-    }
-    if (readBoardGmaOriginalMaxVisits.isEmpty()) {
-      readBoardGmaMaxVisitsRestorePending = readBoardGmaMaxVisitsSnapshotRequested;
-      return;
-    }
-    sendCommandNoLeelaz2("kata-set-param maxVisits " + readBoardGmaOriginalMaxVisits);
-    clearReadBoardGmaMaxVisitsSnapshot();
-  }
-
-  private void restoreReadBoardGmaPonderingIfNeeded() {
-    if (!readBoardGmaPonderingOverridden) {
-      readBoardGmaPonderingRestorePending = false;
-      return;
-    }
-    if (readBoardGmaOriginalPonderingEnabled.isEmpty()) {
-      readBoardGmaPonderingRestorePending = readBoardGmaPonderingSnapshotRequested;
-      return;
-    }
-    sendCommandNoLeelaz2(
-        "kata-set-param ponderingEnabled " + readBoardGmaOriginalPonderingEnabled);
-    clearReadBoardGmaPonderingSnapshot();
-  }
-
-  private void restorePendingReadBoardGmaMaxTimeIfNeeded() {
-    if (readBoardGmaMaxTimeRestorePending) {
-      restoreReadBoardGmaMaxTimeIfNeeded();
-    }
-  }
-
-  private void restorePendingReadBoardGmaMaxVisitsIfNeeded() {
-    if (readBoardGmaMaxVisitsRestorePending) {
-      restoreReadBoardGmaMaxVisitsIfNeeded();
-    }
-  }
-
-  private void restorePendingReadBoardGmaPonderingIfNeeded() {
-    if (readBoardGmaPonderingRestorePending) {
-      restoreReadBoardGmaPonderingIfNeeded();
+  private void restorePendingReadBoardGmaRuntimeParamIfNeeded(ReadBoardGmaRuntimeParam param) {
+    if (param.restorePending) {
+      restoreReadBoardGmaRuntimeParamIfNeeded(param);
     }
   }
 
@@ -4331,30 +4264,16 @@ public class Leelaz {
   }
 
   private void clearReadBoardGmaSearchLimitSnapshots() {
-    clearReadBoardGmaMaxTimeSnapshot();
-    clearReadBoardGmaMaxVisitsSnapshot();
-    clearReadBoardGmaPonderingSnapshot();
+    clearReadBoardGmaRuntimeParam(readBoardGmaMaxTime);
+    clearReadBoardGmaRuntimeParam(readBoardGmaMaxVisits);
+    clearReadBoardGmaRuntimeParam(readBoardGmaPondering);
   }
 
-  private void clearReadBoardGmaMaxTimeSnapshot() {
-    readBoardGmaOriginalMaxTime = "";
-    readBoardGmaMaxTimeSnapshotRequested = false;
-    readBoardGmaMaxTimeOverridden = false;
-    readBoardGmaMaxTimeRestorePending = false;
-  }
-
-  private void clearReadBoardGmaMaxVisitsSnapshot() {
-    readBoardGmaOriginalMaxVisits = "";
-    readBoardGmaMaxVisitsSnapshotRequested = false;
-    readBoardGmaMaxVisitsOverridden = false;
-    readBoardGmaMaxVisitsRestorePending = false;
-  }
-
-  private void clearReadBoardGmaPonderingSnapshot() {
-    readBoardGmaOriginalPonderingEnabled = "";
-    readBoardGmaPonderingSnapshotRequested = false;
-    readBoardGmaPonderingOverridden = false;
-    readBoardGmaPonderingRestorePending = false;
+  private void clearReadBoardGmaRuntimeParam(ReadBoardGmaRuntimeParam param) {
+    param.originalValue = "";
+    param.snapshotRequested = false;
+    param.overridden = false;
+    param.restorePending = false;
   }
 
   private void sendPlayingAgainstHumanTimeLeftBeforeGenmove() {

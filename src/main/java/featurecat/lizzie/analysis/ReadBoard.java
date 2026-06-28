@@ -164,7 +164,7 @@ public class ReadBoard {
   private volatile boolean readBoardGmaEngineRestorePending = false;
   private volatile boolean readBoardGmaEngineRestoreInProgress = false;
   private volatile BoardHistoryNode readBoardGmaDeferredRestoreNode = null;
-  private ReadBoardTurnTrust readBoardTurnTrust = ReadBoardTurnTrust.UNTRUSTED;
+  private boolean readBoardTurnTrusted = false;
   // private long startTime;
   private boolean waitSocket = true;
   public boolean lastMovePlayByLizzie = false;
@@ -224,11 +224,6 @@ public class ReadBoard {
     SINGLE_MOVE_RECOVERY,
     HOLD,
     FORCE_REBUILD
-  }
-
-  private enum ReadBoardTurnTrust {
-    TRUSTED,
-    UNTRUSTED
   }
 
   private static final class CompleteSnapshotRecoveryDecision {
@@ -765,7 +760,7 @@ public class ReadBoard {
     }
     if (line.startsWith("noboth")) {
       clearReadBoardGmaAutoPlay("noboth");
-      readBoardTurnTrust = ReadBoardTurnTrust.UNTRUSTED;
+      readBoardTurnTrusted = false;
       Lizzie.frame.bothSync = false;
       if (Lizzie.frame.floatBoard != null && Lizzie.frame.floatBoard.isVisible())
         Lizzie.frame.floatBoard.setEditButton();
@@ -883,7 +878,7 @@ public class ReadBoard {
     }
     if (line.startsWith("pass")) {
       Lizzie.board.changeNextTurn();
-      readBoardTurnTrust = ReadBoardTurnTrust.TRUSTED;
+      readBoardTurnTrusted = true;
       scheduleReadBoardGmaIfNeeded("readboard-exchange-order");
     }
     if (line.startsWith("firstchanged")) {
@@ -2367,25 +2362,23 @@ public class ReadBoard {
         syncStartNode != null && explicitPlayerOverride(syncStartNode.getData()).isPresent();
     boolean acceptedGenericRealMove =
         acceptedRealMove && (remoteContext == null || !remoteContext.supportsFoxRecovery());
-    readBoardTurnTrust =
+    readBoardTurnTrusted =
         acceptedGenericRealMove
-                || hasExplicitPlayerOverride
-                || (snapshotDelta != null
-                    && snapshotDelta.hasMarker()
-                    && lastMoveSource.isTrustedVisualMarker())
-                || isTrustedUnchangedSnapshotTurn(syncStartNode, snapshotDelta)
-                || isTrustedEmptyBoardDefaultTurn(syncStartNode, snapshotCodes, snapshotDelta)
-                || (snapshotCodes != null
-                    && isTrustedFoxZeroMoveHandicapSetupTurn(
-                        buildSnapshotStones(snapshotCodes),
-                        snapshotDelta,
-                        remoteContext,
-                        lastMoveSource,
-                        foxMoveNumber))
-                || isMarkerlessOrdinaryFoxTurnFallback(
-                    syncStartNode, snapshotDelta, lastMoveSource, foxMoveNumber)
-            ? ReadBoardTurnTrust.TRUSTED
-            : ReadBoardTurnTrust.UNTRUSTED;
+            || hasExplicitPlayerOverride
+            || (snapshotDelta != null
+                && snapshotDelta.hasMarker()
+                && lastMoveSource.isTrustedVisualMarker())
+            || isTrustedUnchangedSnapshotTurn(syncStartNode, snapshotDelta)
+            || isTrustedEmptyBoardDefaultTurn(syncStartNode, snapshotCodes, snapshotDelta)
+            || (snapshotCodes != null
+                && isTrustedFoxZeroMoveHandicapSetupTurn(
+                    buildSnapshotStones(snapshotCodes),
+                    snapshotDelta,
+                    remoteContext,
+                    lastMoveSource,
+                    foxMoveNumber))
+            || isMarkerlessOrdinaryFoxTurnFallback(
+                syncStartNode, snapshotDelta, lastMoveSource, foxMoveNumber);
   }
 
   private boolean isTrustedUnchangedSnapshotTurn(
@@ -2773,7 +2766,7 @@ public class ReadBoard {
       clearConfirmedLocalMove();
     }
     pendingRemoteContext = SyncRemoteContext.generic(false);
-    readBoardTurnTrust = ReadBoardTurnTrust.UNTRUSTED;
+    readBoardTurnTrusted = false;
     awaitingFirstSyncFrame = true;
     invalidatePendingSyncAnalysisResume();
   }
@@ -3901,7 +3894,7 @@ public class ReadBoard {
               + readBoardGmaAutoPlayColor);
       return true;
     }
-    if (readBoardTurnTrust != ReadBoardTurnTrust.TRUSTED) {
+    if (!readBoardTurnTrusted) {
       localMoveSyncDebug("ReadBoard GMA skip untrusted turn reason=" + reason);
       return false;
     }

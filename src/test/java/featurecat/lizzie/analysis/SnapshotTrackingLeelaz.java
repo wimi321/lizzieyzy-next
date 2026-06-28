@@ -53,9 +53,22 @@ class SnapshotTrackingLeelaz extends Leelaz {
     leelaz.sentCommands = new ArrayList<>();
     leelaz.readBoardGmaCapabilityKnown = false;
     leelaz.readBoardGmaSupported = false;
+    initializeReadBoardGmaRuntimeParam(leelaz, "readBoardGmaMaxTime", "maxTime");
+    initializeReadBoardGmaRuntimeParam(leelaz, "readBoardGmaMaxVisits", "maxVisits");
+    initializeReadBoardGmaRuntimeParam(leelaz, "readBoardGmaPondering", "ponderingEnabled");
     leelaz.started = true;
     leelaz.resetBoardState();
     return leelaz;
+  }
+
+  private static void initializeReadBoardGmaRuntimeParam(
+      SnapshotTrackingLeelaz leelaz, String fieldName, String paramName) throws Exception {
+    Field field = Leelaz.class.getDeclaredField(fieldName);
+    field.setAccessible(true);
+    java.lang.reflect.Constructor<?> constructor =
+        field.getType().getDeclaredConstructor(String.class);
+    constructor.setAccessible(true);
+    field.set(leelaz, constructor.newInstance(paramName));
   }
 
   void enableReadBoardGmaSupport() {

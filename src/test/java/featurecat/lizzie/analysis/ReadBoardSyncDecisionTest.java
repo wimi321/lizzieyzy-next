@@ -1950,7 +1950,7 @@ class ReadBoardSyncDecisionTest {
       harness.leelaz.clearCount = 0;
       harness.leelaz.playedMoves = new ArrayList<>();
 
-      setField(harness.readBoard, "readBoardTurnTrust", readBoardTurnTrust("TRUSTED"));
+      setField(harness.readBoard, "readBoardTurnTrusted", true);
       harness.readBoard.parseLine("lastMoveSource stoneCount");
       harness.sync(snapshot(target, Optional.empty(), Stone.EMPTY));
 
@@ -3086,7 +3086,7 @@ class ReadBoardSyncDecisionTest {
   }
 
   private static boolean isReadBoardTurnTrusted(ReadBoard readBoard) throws Exception {
-    return "TRUSTED".equals(String.valueOf(getField(readBoard, "readBoardTurnTrust")));
+    return (boolean) getField(readBoard, "readBoardTurnTrusted");
   }
 
   private static SyncRemoteContext pendingRemoteContext(ReadBoard readBoard) throws Exception {
@@ -3099,14 +3099,6 @@ class ReadBoardSyncDecisionTest {
       counts.add(code);
     }
     setField(readBoard, "tempcount", counts);
-  }
-
-  private static Object readBoardTurnTrust(String name) throws Exception {
-    Field field = findField(ReadBoard.class, "readBoardTurnTrust");
-    Class<?> enumType = field.getType();
-    @SuppressWarnings({"unchecked", "rawtypes"})
-    Object value = Enum.valueOf((Class<? extends Enum>) enumType, name);
-    return value;
   }
 
   private static Field findField(Class<?> type, String name) throws NoSuchFieldException {

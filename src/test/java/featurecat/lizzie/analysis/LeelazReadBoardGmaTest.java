@@ -89,10 +89,8 @@ class LeelazReadBoardGmaTest {
       Leelaz engine = new Leelaz("");
       engine.isKatago = true;
       Lizzie.leelaz = engine;
-      setStringField(engine, "readBoardGmaOriginalMaxTime", "2");
-      setStringField(engine, "readBoardGmaOriginalMaxVisits", "800");
-      setBooleanField(engine, "readBoardGmaMaxTimeOverridden", true);
-      setBooleanField(engine, "readBoardGmaMaxVisitsOverridden", true);
+      setReadBoardGmaParamState(engine, "readBoardGmaMaxTime", "2", true);
+      setReadBoardGmaParamState(engine, "readBoardGmaMaxVisits", "800", true);
       RecordingOutputStream output = new RecordingOutputStream();
       setOutputStream(engine, output);
 
@@ -334,6 +332,16 @@ class LeelazReadBoardGmaTest {
     Field field = target.getClass().getDeclaredField(fieldName);
     field.setAccessible(true);
     field.set(target, value);
+  }
+
+  private static void setReadBoardGmaParamState(
+      Leelaz engine, String paramFieldName, String originalValue, boolean overridden)
+      throws Exception {
+    Field field = Leelaz.class.getDeclaredField(paramFieldName);
+    field.setAccessible(true);
+    Object param = field.get(engine);
+    setStringField(param, "originalValue", originalValue);
+    setBooleanField(param, "overridden", overridden);
   }
 
   private static boolean getBooleanField(Object target, String fieldName) throws Exception {
