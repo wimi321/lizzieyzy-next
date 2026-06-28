@@ -247,6 +247,8 @@ def release_heading(release_tag: str | None) -> str:
     tag = (release_tag or '').strip()
     if not tag:
         return '# LizzieYzy Next'
+    if tag == 'next-2026-06-29.1':
+        return f'# LizzieYzy Next 首冠版 {tag}'
     return f'# LizzieYzy Next {tag}'
 
 
