@@ -7296,7 +7296,7 @@ def build_next_2026_06_29_1_notes(
     notes = build_next_2026_06_21_2_notes(asset_map, bundle, repo, release_tag)
     replacements = {
         '这一版是棋力评估小修复版，重点处理 @semanym 贡献的 PR #77：吻合度页面的命中图和鼠标悬停说明现在会正确区分一选、好手和局面复杂度。':
-            '这一版合并两项新的预览能力：感谢 @qiyi71w 提交 PR #81，ReadBoard 棋盘同步新增可信 GMA 自动落子；同时新增“远程算力中心”，可以登录智子云算力，把云端 KataGo 像本机引擎一样用于分析。',
+            '这一版命名为“首冠版”，纪念开发者女儿首次获得围棋比赛小组冠军。版本同时合并两项新的预览能力：感谢 @qiyi71w 提交 PR #81，ReadBoard 棋盘同步新增可信 GMA 自动落子；同时新增“远程算力中心”，可以登录智子云算力，把云端 KataGo 像本机引擎一样用于分析。',
         '修复棋力评估“吻合度”页：好手行 hover 不再误用一选/好手状态，一选命中会同时显示在一选行和好手行。':
             '合并 PR #81：棋盘同步的 `play>... gma` 会使用 KataGo `kata-genmove_analyze` 等待引擎最终决策落子，而不是只取当前一选。',
         '鼠标悬停提示中的局面复杂度改为 0-100 的用户可读数值，详细数据里的段位标签更紧凑。':
@@ -7311,7 +7311,7 @@ def build_next_2026_06_29_1_notes(
             '这一版只写 #81 和 #83 的新增变化，不重复更早版本已经介绍过的内容。',
 
         '這一版是棋力評估小修復版，重點處理 @semanym 貢獻的 PR #77：吻合度頁面的命中圖和滑鼠懸停說明現在會正確區分一選、好手和局面複雜度。':
-            '這一版合併兩項新的預覽能力：感謝 @qiyi71w 提交 PR #81，ReadBoard 棋盤同步新增可信 GMA 自動落子；同時新增「遠端算力中心」，可以登入智子雲算力，像本機引擎一樣使用雲端 KataGo 分析。',
+            '這一版命名為「首冠版」，紀念開發者女兒首次獲得圍棋比賽小組冠軍。版本同時合併兩項新的預覽能力：感謝 @qiyi71w 提交 PR #81，ReadBoard 棋盤同步新增可信 GMA 自動落子；同時新增「遠端算力中心」，可以登入智子雲算力，像本機引擎一樣使用雲端 KataGo 分析。',
         '修復棋力評估「吻合度」頁：好手列 hover 不再誤用一選/好手狀態，一選命中會同時顯示在一選列和好手列。':
             '合併 PR #81：棋盤同步的 `play>... gma` 會使用 KataGo `kata-genmove_analyze` 等待引擎最終決策落子，而不是只取目前一選。',
         '滑鼠懸停提示中的局面複雜度改為 0-100 的使用者可讀數值，詳細資料裡的段位標籤更緊湊。':
@@ -7326,7 +7326,7 @@ def build_next_2026_06_29_1_notes(
             '這一版只寫 #81 和 #83 的新增變化，不重複更早版本已經介紹過的內容。',
 
         'This is a focused strength-evaluation fix release for PR #77 by @semanym: the match chart and hover labels now distinguish first-choice hits, good moves, and position complexity correctly.':
-            'This prerelease combines two new preview capabilities: thanks to @qiyi71w for PR #81, ReadBoard now supports trusted GMA autoplay, and the new Remote Compute Center can log in to Zhizi cloud compute so cloud KataGo works like a local engine.',
+            'This prerelease is named the First Crown Edition, commemorating the developer’s daughter winning her first group championship in a Go tournament. It also combines two new preview capabilities: thanks to @qiyi71w for PR #81, ReadBoard now supports trusted GMA autoplay, and the new Remote Compute Center can log in to Zhizi cloud compute so cloud KataGo works like a local engine.',
         'The Player Strength “Match” tab no longer mixes first-choice and good-move hover states; first-choice hits are shown consistently in both the first-choice and good-move rows.':
             'PR #81 is merged: `play>... gma` now waits for KataGo `kata-genmove_analyze` final decisions instead of simply using the current top candidate.',
         'Hover tooltips now show position complexity as a user-readable 0-100 value, and detailed-data rank labels are more compact.':
@@ -7341,7 +7341,7 @@ def build_next_2026_06_29_1_notes(
             'These notes only cover the newly merged #81 and #83 changes, without repeating older release highlights.',
 
         'このリリースは、@semanym による PR #77 を中心とした棋力評価の小修正版です。吻合度ページの命中図と hover 表示が、一選、好手、局面複雑度を正しく区別するようになりました。':
-            'この prerelease では 2 つの preview 機能を取り込みました。PR #81 を送ってくれた @qiyi71w さんに感謝します。ReadBoard は信頼済み GMA 自動着手に対応し、新しい「リモート計算センター」では智子クラウド計算にログインして、クラウド KataGo をローカルエンジンのように使えます。',
+            'この prerelease は「首冠版」と名付けました。開発者の娘が囲碁大会で初めてグループ優勝したことを記念する版です。あわせて 2 つの preview 機能を取り込みました。PR #81 を送ってくれた @qiyi71w さんに感謝します。ReadBoard は信頼済み GMA 自動着手に対応し、新しい「リモート計算センター」では智子クラウド計算にログインして、クラウド KataGo をローカルエンジンのように使えます。',
         '棋力評価の「吻合度」タブで、good move 行の hover が一選/好手状態を取り違えないよう修正しました。一選命中は一選行と好手行の両方に一貫して表示されます。':
             'PR #81 を merge しました。棋盤同期の `play>... gma` は、現在の一選をそのまま使うのではなく、KataGo `kata-genmove_analyze` の最終決定を待って着手します。',
         'hover tooltip の局面複雑度を 0-100 の読みやすい値にし、詳細データの段位ラベルもよりコンパクトにしました。':
@@ -7356,7 +7356,7 @@ def build_next_2026_06_29_1_notes(
             'この説明は新しく merged された #81 と #83 の変更に絞り、より古いリリース内容は繰り返しません。',
 
         '이번 릴리스는 @semanym 이 기여한 PR #77 중심의 strength evaluation 소규모 수정 버전입니다. Match chart 와 hover label 이 first-choice hit, good move, position complexity 를 올바르게 구분합니다.':
-            '이번 prerelease 는 두 가지 preview 기능을 합쳤습니다. PR #81 을 제출한 @qiyi71w 님께 감사드립니다. ReadBoard 는 신뢰된 GMA 자동 착수를 지원하고, 새 Remote Compute Center 는 Zhizi cloud compute 에 로그인해 cloud KataGo 를 로컬 엔진처럼 사용할 수 있게 합니다.',
+            '이번 prerelease 는 “첫 우승 기념판”입니다. 개발자의 딸이 바둑 대회에서 처음으로 조별 우승을 한 것을 기념합니다. 또한 두 가지 preview 기능을 합쳤습니다. PR #81 을 제출한 @qiyi71w 님께 감사드립니다. ReadBoard 는 신뢰된 GMA 자동 착수를 지원하고, 새 Remote Compute Center 는 Zhizi cloud compute 에 로그인해 cloud KataGo 를 로컬 엔진처럼 사용할 수 있게 합니다.',
         'Player Strength “Match” 탭에서 good-move 행 hover 가 first-choice/good-move 상태를 잘못 섞지 않도록 수정했습니다. first-choice hit 는 first-choice 행과 good-move 행 모두에 일관되게 표시됩니다.':
             'PR #81 을 merge 했습니다. board sync 의 `play>... gma` 는 현재 top candidate 를 바로 쓰지 않고 KataGo `kata-genmove_analyze` 의 최종 결정을 기다려 착수합니다.',
         'Hover tooltip 의 position complexity 를 사용자가 읽기 쉬운 0-100 값으로 표시하고, detailed-data rank label 도 더 compact 하게 정리했습니다.':
@@ -7371,7 +7371,7 @@ def build_next_2026_06_29_1_notes(
             '이번 설명은 새로 merge 된 #81 과 #83 변경만 다루며, 더 오래된 릴리스 내용은 반복하지 않습니다.',
 
         'รุ่นนี้เป็น release แก้ไขเฉพาะส่วน strength evaluation จาก PR #77 ของ @semanym: match chart และ hover label แยก first-choice hit, good move และ position complexity ได้ถูกต้องขึ้น':
-            'prerelease นี้รวมความสามารถ preview ใหม่ 2 อย่าง: ขอบคุณ @qiyi71w สำหรับ PR #81 ที่ทำให้ ReadBoard รองรับ trusted GMA autoplay และเพิ่ม Remote Compute Center สำหรับ login เข้า Zhizi cloud compute เพื่อใช้ cloud KataGo เหมือน engine ในเครื่อง',
+            'prerelease นี้ใช้ชื่อ First Crown Edition เพื่อฉลองที่ลูกสาวของผู้พัฒนาได้แชมป์กลุ่มครั้งแรกในการแข่งขันโกะ และยังรวมความสามารถ preview ใหม่ 2 อย่าง: ขอบคุณ @qiyi71w สำหรับ PR #81 ที่ทำให้ ReadBoard รองรับ trusted GMA autoplay และเพิ่ม Remote Compute Center สำหรับ login เข้า Zhizi cloud compute เพื่อใช้ cloud KataGo เหมือน engine ในเครื่อง',
         'แท็บ “Match” ใน Player Strength ไม่สลับสถานะ hover ระหว่าง first-choice และ good-move อีกต่อไป โดย first-choice hit จะแสดงสอดคล้องกันทั้งแถว first-choice และ good-move':
             'merge PR #81 แล้ว: `play>... gma` ใน board sync จะรอ final decision จาก KataGo `kata-genmove_analyze` แทนการใช้ top candidate ปัจจุบันทันที',
         'Hover tooltip แสดง position complexity เป็นค่า 0-100 ที่อ่านง่ายขึ้น และ label ระดับใน detailed data กระชับขึ้น':
