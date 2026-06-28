@@ -675,6 +675,54 @@ class ReadBoardEngineResumeTest {
   }
 
   @Test
+  void gmaPendingDefersSingleMoveRecoveryEngineRestoreUntilOldTerminalPlayIsConsumed()
+      throws Exception {
+    Stone[] beforeCapture =
+        stones(
+            placement(0, 1, Stone.BLACK),
+            placement(1, 0, Stone.BLACK),
+            placement(1, 1, Stone.WHITE),
+            placement(2, 1, Stone.BLACK));
+    Stone[] afterCapture =
+        stones(
+            placement(0, 1, Stone.BLACK),
+            placement(1, 0, Stone.BLACK),
+            placement(2, 1, Stone.BLACK),
+            placement(1, 2, Stone.BLACK));
+
+    try (EngineResumeHarness harness =
+        EngineResumeHarness.create(rootHistory(beforeCapture, true))) {
+      harness.frame.bothSync = true;
+      setField(harness.readBoard, "readBoardGmaPending", true);
+      setField(harness.readBoard, "readBoardGmaAutoPlayActive", true);
+
+      harness.sync(snapshot(afterCapture, Optional.of(new int[] {1, 2}), Stone.BLACK));
+      Stone engineColor =
+          harness.board.getHistory().isBlacksTurn() ? Stone.BLACK : Stone.WHITE;
+      setField(harness.readBoard, "readBoardGmaAutoPlayColor", engineColor);
+
+      assertFalse(
+          harness.leelaz.sentCommands.contains("clear_board"),
+          "single-move recovery restore must be frozen while GMA is still in flight.");
+      assertFalse(
+          harness.leelaz.sentCommands.stream().anyMatch(command -> command.startsWith("loadsgf ")),
+          "single-move recovery must not queue loadsgf behind an in-flight stale GMA request.");
+
+      boolean consumed =
+          harness.readBoard.handleReadBoardGmaEnginePlay(Board.convertCoordinatesToName(0, 0));
+
+      assertTrue(consumed);
+      harness.readBoard.afterReadBoardGmaTerminalResponseConsumed("test-terminal");
+      assertTrue(
+          waitForSentCommand(harness.leelaz, "clear_board"),
+          "consuming old terminal play should release deferred single-move restore.");
+      assertTrue(
+          waitForSentCommandPrefix(harness.leelaz, "loadsgf "),
+          "deferred single-move restore should use the recovered authoritative node.");
+    }
+  }
+
+  @Test
   void syncCommandDoesNotStartPonderWhenEngineIsNotStarted() throws Exception {
     try (EngineResumeHarness harness =
         EngineResumeHarness.create(rootHistory(emptyStones(), true))) {
@@ -1310,6 +1358,7 @@ class ReadBoardEngineResumeTest {
       harness.board.moveToAnyPosition(beforeEngineMove);
 
       ByteArrayOutputStream readBoardBytes = new ByteArrayOutputStream();
+      Lizzie.config.readBoardPonder = false;
       harness.readBoard.process = new AliveProcess();
       setField(harness.readBoard, "usePipe", true);
       setField(harness.readBoard, "outputStream", new BufferedOutputStream(readBoardBytes));
@@ -1331,6 +1380,99 @@ class ReadBoardEngineResumeTest {
       assertTrue(
           harness.leelaz.playedMoves.isEmpty(),
           "GMA final move comes from KataGo and must not be echoed back as a normal GTP play.");
+      assertFalse(
+          harness.leelaz.sentCommands.contains("stop"),
+          "GMA final move must not use the generic no-ponder stop path.");
+    }
+  }
+
+  @Test
+  void gmaFinalNonBoardMoveForcesExactEngineRestore() throws Exception {
+    Stone[] authoritativeStones = stones(placement(0, 0, Stone.BLACK));
+    try (EngineResumeHarness harness =
+        EngineResumeHarness.create(rootHistory(authoritativeStones, false))) {
+      harness.frame.bothSync = true;
+      setField(harness.readBoard, "readBoardGmaPending", true);
+      setField(harness.readBoard, "readBoardGmaAutoPlayActive", true);
+      setField(harness.readBoard, "readBoardGmaAutoPlayColor", Stone.WHITE);
+
+      boolean consumed = harness.readBoard.handleReadBoardGmaEnginePlay("pass");
+
+      assertTrue(consumed);
+      assertFalse(getBooleanField(harness.readBoard, "readBoardGmaPending"));
+      harness.readBoard.afterReadBoardGmaTerminalResponseConsumed("test-terminal");
+      assertTrue(
+          waitForSentCommand(harness.leelaz, "clear_board"),
+          "non-board GMA terminal result must force engine restore.");
+      assertTrue(
+          waitForSentCommandPrefix(harness.leelaz, "loadsgf "),
+          "non-board GMA terminal result must restore the authoritative snapshot exactly.");
+    }
+  }
+
+  @Test
+  void gmaPendingDefersRebuildEngineRestoreUntilOldTerminalPlayIsConsumed() throws Exception {
+    try (EngineResumeHarness harness =
+        EngineResumeHarness.create(rootHistory(emptyStones(), true))) {
+      harness.frame.bothSync = true;
+      setField(harness.readBoard, "readBoardGmaPending", true);
+      setField(harness.readBoard, "readBoardGmaAutoPlayActive", true);
+
+      harness.readBoard.parseLine("forceRebuild");
+      harness.sync(snapshot(stones(placement(0, 0, Stone.BLACK)), Optional.empty(), Stone.EMPTY));
+      Stone engineColor =
+          harness.board.getHistory().isBlacksTurn() ? Stone.BLACK : Stone.WHITE;
+      setField(harness.readBoard, "readBoardGmaAutoPlayColor", engineColor);
+
+      assertFalse(
+          harness.leelaz.sentCommands.contains("clear_board"),
+          "rebuild restore must be frozen while the old GMA request is still in flight.");
+      assertFalse(
+          harness.leelaz.sentCommands.stream().anyMatch(command -> command.startsWith("loadsgf ")),
+          "rebuild restore must not queue loadsgf behind an in-flight stale GMA request.");
+
+      boolean consumed =
+          harness.readBoard.handleReadBoardGmaEnginePlay(Board.convertCoordinatesToName(1, 0));
+
+      assertTrue(consumed);
+      harness.readBoard.afterReadBoardGmaTerminalResponseConsumed("test-terminal");
+      assertTrue(
+          waitForSentCommand(harness.leelaz, "clear_board"),
+          "consuming the old terminal play should release the deferred exact restore.");
+      assertTrue(
+          waitForSentCommandPrefix(harness.leelaz, "loadsgf "),
+          "deferred restore should use the latest authoritative snapshot.");
+    }
+  }
+
+  @Test
+  void gmaRestoreInProgressDefersRebuildEngineRestoreUntilCurrentRestoreFinishes()
+      throws Exception {
+    try (EngineResumeHarness harness =
+        EngineResumeHarness.create(rootHistory(emptyStones(), true))) {
+      harness.frame.bothSync = true;
+      setField(harness.readBoard, "readBoardGmaEngineRestorePending", true);
+      setField(harness.readBoard, "readBoardGmaEngineRestoreInProgress", true);
+
+      harness.readBoard.parseLine("forceRebuild");
+      harness.sync(snapshot(stones(placement(0, 0, Stone.BLACK)), Optional.empty(), Stone.EMPTY));
+
+      assertFalse(
+          harness.leelaz.sentCommands.contains("clear_board"),
+          "rebuild restore must stay frozen while a previous GMA restore is still in progress.");
+      assertFalse(
+          harness.leelaz.sentCommands.stream().anyMatch(command -> command.startsWith("loadsgf ")),
+          "rebuild restore must only update the deferred target while restore is in progress.");
+
+      setField(harness.readBoard, "readBoardGmaEngineRestoreInProgress", false);
+      harness.readBoard.afterReadBoardGmaTerminalResponseConsumed("test-terminal");
+
+      assertTrue(
+          waitForSentCommand(harness.leelaz, "clear_board"),
+          "finishing the current restore should release the deferred rebuild restore.");
+      assertTrue(
+          waitForSentCommandPrefix(harness.leelaz, "loadsgf "),
+          "deferred rebuild restore should use the latest authoritative snapshot.");
     }
   }
 
@@ -1505,6 +1647,28 @@ class ReadBoardEngineResumeTest {
             "clearFailedLocalMoveStateIfAutoPlaySideChanged", Stone.class);
     method.setAccessible(true);
     method.invoke(readBoard, autoPlayColor);
+  }
+
+  private static boolean waitForSentCommand(SnapshotTrackingLeelaz leelaz, String command)
+      throws InterruptedException {
+    return waitForSentCommandPrefix(leelaz, command, true);
+  }
+
+  private static boolean waitForSentCommandPrefix(SnapshotTrackingLeelaz leelaz, String prefix)
+      throws InterruptedException {
+    return waitForSentCommandPrefix(leelaz, prefix, false);
+  }
+
+  private static boolean waitForSentCommandPrefix(
+      SnapshotTrackingLeelaz leelaz, String value, boolean exact) throws InterruptedException {
+    for (int attempt = 0; attempt < 100; attempt++) {
+      if (new ArrayList<>(leelaz.sentCommands).stream()
+          .anyMatch(command -> exact ? command.equals(value) : command.startsWith(value))) {
+        return true;
+      }
+      Thread.sleep(10);
+    }
+    return false;
   }
 
   private static final class EngineResumeHarness implements AutoCloseable {

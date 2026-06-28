@@ -261,6 +261,10 @@ public class Leelaz {
   private boolean readBoardGmaMaxVisitsOverridden = false;
   private boolean readBoardGmaMaxTimeRestorePending = false;
   private boolean readBoardGmaMaxVisitsRestorePending = false;
+  private String readBoardGmaOriginalPonderingEnabled = "";
+  private boolean readBoardGmaPonderingSnapshotRequested = false;
+  private boolean readBoardGmaPonderingOverridden = false;
+  private boolean readBoardGmaPonderingRestorePending = false;
   private int currentTotalPlayouts;
   public boolean supportMovesOwnership = false;
 
@@ -1208,6 +1212,9 @@ public class Leelaz {
       checkNameAndVersion(params);
     } else if (line.startsWith("?")) {
       isCommandLine = true;
+      if (consumeReadBoardGmaEngineErrorLine(line)) {
+        return;
+      }
       if (line.startsWith("? unacceptable komi")) {
         illegalKomi();
       }
@@ -1610,6 +1617,8 @@ public class Leelaz {
             && Lizzie.frame.readBoard != null
             && Lizzie.frame.readBoard.handleReadBoardGmaEnginePlay(params[1])) {
           processCommandResponseLine(line);
+          Lizzie.frame.readBoard.afterReadBoardGmaTerminalResponseConsumed("play-terminal");
+          isCommandLine = false;
           if (shouldStopPonder) {
             isPondering = false;
             YikeSyncDebugLog.log("Leelaz marked isPondering=false after ReadBoard GMA play line");
@@ -1795,6 +1804,9 @@ public class Leelaz {
         checkNameAndVersion(params);
       } else if (line.startsWith("?")) {
         isCommandLine = true;
+        if (consumeReadBoardGmaEngineErrorLine(line)) {
+          return;
+        }
         if (line.startsWith("? unacceptable komi")) {
           illegalKomi();
         }
@@ -1821,6 +1833,19 @@ public class Leelaz {
     } else if (autoAnalyzeAfterInfo == 3) {
       notifyAutoAna();
     }
+  }
+
+  private boolean consumeReadBoardGmaEngineErrorLine(String line) {
+    if (Lizzie.frame == null
+        || Lizzie.frame.readBoard == null
+        || !Lizzie.frame.readBoard.handleReadBoardGmaEngineError(line)) {
+      return false;
+    }
+    processCommandResponseLine(line);
+    Lizzie.frame.readBoard.afterReadBoardGmaTerminalResponseConsumed("error-terminal");
+    isThinking = false;
+    isCommandLine = false;
+    return true;
   }
 
   private void illegalKomi() {
@@ -4135,7 +4160,7 @@ public class Leelaz {
 
   public void genmoveAnalyzeForReadBoard(
       String color, int maxTimeSeconds, int maxVisits, boolean ponder) {
-    sendCommandNoLeelaz2("kata-set-param ponderingEnabled " + (ponder ? "true" : "false"));
+    setReadBoardGmaPondering(ponder);
     prepareReadBoardGmaMaxTime(maxTimeSeconds);
     prepareReadBoardGmaMaxVisits(maxVisits);
     StringBuilder command =
@@ -4149,9 +4174,21 @@ public class Leelaz {
     LizzieFrame.menu.toggleEngineMenuStatus(false, true);
   }
 
+  public void setReadBoardGmaPondering(boolean ponder) {
+    readBoardGmaPonderingRestorePending = false;
+    captureReadBoardGmaOriginalPonderingIfNeeded();
+    sendCommandNoLeelaz2("kata-set-param ponderingEnabled " + (ponder ? "true" : "false"));
+    readBoardGmaPonderingOverridden = true;
+  }
+
   public void restoreReadBoardGmaSearchLimitsIfNeeded() {
     restoreReadBoardGmaMaxTimeIfNeeded();
     restoreReadBoardGmaMaxVisitsIfNeeded();
+  }
+
+  public void restoreReadBoardGmaRuntimeSettingsIfNeeded() {
+    restoreReadBoardGmaPonderingIfNeeded();
+    restoreReadBoardGmaSearchLimitsIfNeeded();
   }
 
   private void prepareReadBoardGmaMaxTime(int maxTimeSeconds) {
@@ -4208,6 +4245,22 @@ public class Leelaz {
         });
   }
 
+  private void captureReadBoardGmaOriginalPonderingIfNeeded() {
+    if (readBoardGmaPonderingSnapshotRequested) {
+      return;
+    }
+    readBoardGmaPonderingSnapshotRequested = true;
+    sendCommandNoLeelaz2(
+        "kata-get-param ponderingEnabled",
+        () -> {
+          String value = parseKataGetParamValue(currentCommandResponseLine());
+          if (!value.isEmpty()) {
+            readBoardGmaOriginalPonderingEnabled = value;
+            restorePendingReadBoardGmaPonderingIfNeeded();
+          }
+        });
+  }
+
   private void restoreReadBoardGmaMaxTimeIfNeeded() {
     if (!readBoardGmaMaxTimeOverridden) {
       readBoardGmaMaxTimeRestorePending = false;
@@ -4218,8 +4271,7 @@ public class Leelaz {
       return;
     }
     sendCommandNoLeelaz2("kata-set-param maxTime " + readBoardGmaOriginalMaxTime);
-    readBoardGmaMaxTimeOverridden = false;
-    readBoardGmaMaxTimeRestorePending = false;
+    clearReadBoardGmaMaxTimeSnapshot();
   }
 
   private void restoreReadBoardGmaMaxVisitsIfNeeded() {
@@ -4232,8 +4284,21 @@ public class Leelaz {
       return;
     }
     sendCommandNoLeelaz2("kata-set-param maxVisits " + readBoardGmaOriginalMaxVisits);
-    readBoardGmaMaxVisitsOverridden = false;
-    readBoardGmaMaxVisitsRestorePending = false;
+    clearReadBoardGmaMaxVisitsSnapshot();
+  }
+
+  private void restoreReadBoardGmaPonderingIfNeeded() {
+    if (!readBoardGmaPonderingOverridden) {
+      readBoardGmaPonderingRestorePending = false;
+      return;
+    }
+    if (readBoardGmaOriginalPonderingEnabled.isEmpty()) {
+      readBoardGmaPonderingRestorePending = readBoardGmaPonderingSnapshotRequested;
+      return;
+    }
+    sendCommandNoLeelaz2(
+        "kata-set-param ponderingEnabled " + readBoardGmaOriginalPonderingEnabled);
+    clearReadBoardGmaPonderingSnapshot();
   }
 
   private void restorePendingReadBoardGmaMaxTimeIfNeeded() {
@@ -4245,6 +4310,12 @@ public class Leelaz {
   private void restorePendingReadBoardGmaMaxVisitsIfNeeded() {
     if (readBoardGmaMaxVisitsRestorePending) {
       restoreReadBoardGmaMaxVisitsIfNeeded();
+    }
+  }
+
+  private void restorePendingReadBoardGmaPonderingIfNeeded() {
+    if (readBoardGmaPonderingRestorePending) {
+      restoreReadBoardGmaPonderingIfNeeded();
     }
   }
 
@@ -4260,14 +4331,30 @@ public class Leelaz {
   }
 
   private void clearReadBoardGmaSearchLimitSnapshots() {
+    clearReadBoardGmaMaxTimeSnapshot();
+    clearReadBoardGmaMaxVisitsSnapshot();
+    clearReadBoardGmaPonderingSnapshot();
+  }
+
+  private void clearReadBoardGmaMaxTimeSnapshot() {
     readBoardGmaOriginalMaxTime = "";
-    readBoardGmaOriginalMaxVisits = "";
     readBoardGmaMaxTimeSnapshotRequested = false;
-    readBoardGmaMaxVisitsSnapshotRequested = false;
     readBoardGmaMaxTimeOverridden = false;
-    readBoardGmaMaxVisitsOverridden = false;
     readBoardGmaMaxTimeRestorePending = false;
+  }
+
+  private void clearReadBoardGmaMaxVisitsSnapshot() {
+    readBoardGmaOriginalMaxVisits = "";
+    readBoardGmaMaxVisitsSnapshotRequested = false;
+    readBoardGmaMaxVisitsOverridden = false;
     readBoardGmaMaxVisitsRestorePending = false;
+  }
+
+  private void clearReadBoardGmaPonderingSnapshot() {
+    readBoardGmaOriginalPonderingEnabled = "";
+    readBoardGmaPonderingSnapshotRequested = false;
+    readBoardGmaPonderingOverridden = false;
+    readBoardGmaPonderingRestorePending = false;
   }
 
   private void sendPlayingAgainstHumanTimeLeftBeforeGenmove() {

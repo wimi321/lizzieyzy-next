@@ -159,7 +159,11 @@ public class ReadBoard {
   private int readBoardGmaTimeSeconds = 0;
   private int readBoardGmaMaxVisits = 0;
   private boolean readBoardGmaPending = false;
+  private boolean readBoardGmaPendingLogicallyInvalid = false;
   private boolean readBoardGmaAwaitingSyncedBoard = false;
+  private volatile boolean readBoardGmaEngineRestorePending = false;
+  private volatile boolean readBoardGmaEngineRestoreInProgress = false;
+  private volatile BoardHistoryNode readBoardGmaDeferredRestoreNode = null;
   private ReadBoardTurnTrust readBoardTurnTrust = ReadBoardTurnTrust.UNTRUSTED;
   // private long startTime;
   private boolean waitSocket = true;
@@ -832,8 +836,8 @@ public class ReadBoard {
         readBoardGmaMaxVisits = Math.max(0, playouts);
         readBoardGmaAwaitingSyncedBoard = useGma;
         if (!useGma) {
-          readBoardGmaPending = false;
           readBoardGmaAwaitingSyncedBoard = false;
+          invalidateReadBoardGmaPhysicalRequestIfPending("play-mode-switch");
         }
         if (time > 0) {
           LizzieFrame.toolbar.txtAutoPlayTime.setText(String.valueOf(time));
@@ -2627,6 +2631,13 @@ public class ReadBoard {
   }
 
   private void syncEngineToRebuiltSnapshot(BoardHistoryNode rebuiltNode) {
+    if (deferReadBoardGmaEngineRestoreIfPending("syncEngineToRebuiltSnapshot", rebuiltNode)) {
+      return;
+    }
+    syncEngineToRebuiltSnapshotNow(rebuiltNode);
+  }
+
+  private void syncEngineToRebuiltSnapshotNow(BoardHistoryNode rebuiltNode) {
     if (!isReadBoardAnalysisEngineAvailable()) {
       localMoveSyncDebug(
           "syncEngineToRebuiltSnapshot skip engine unavailable node="
@@ -3688,14 +3699,18 @@ public class ReadBoard {
               + " pending="
               + readBoardGmaPending);
     }
+    boolean pendingPhysicalRequest = readBoardGmaPending;
     readBoardGmaAutoPlayActive = false;
-    readBoardGmaPending = false;
     readBoardGmaAwaitingSyncedBoard = false;
     readBoardGmaAutoPlayColor = Stone.EMPTY;
     readBoardGmaTimeSeconds = 0;
     readBoardGmaMaxVisits = 0;
+    if (pendingPhysicalRequest) {
+      invalidateReadBoardGmaPhysicalRequestIfPending(reason);
+      return;
+    }
     if (Lizzie.leelaz != null) {
-      Lizzie.leelaz.restoreReadBoardGmaSearchLimitsIfNeeded();
+      Lizzie.leelaz.restoreReadBoardGmaRuntimeSettingsIfNeeded();
     }
   }
 
@@ -3706,13 +3721,137 @@ public class ReadBoard {
         || !Lizzie.leelaz.supportsReadBoardGma()) {
       return;
     }
-    Lizzie.leelaz.sendCommandNoLeelaz2("kata-set-param ponderingEnabled false");
+    Lizzie.leelaz.setReadBoardGmaPondering(false);
     stopPonderingIfActive();
+  }
+
+  private void invalidateReadBoardGmaPhysicalRequestIfPending(String reason) {
+    if (!readBoardGmaPending) {
+      if (Lizzie.leelaz != null && !readBoardGmaAutoPlayActive) {
+        Lizzie.leelaz.restoreReadBoardGmaRuntimeSettingsIfNeeded();
+      }
+      return;
+    }
+    readBoardGmaPendingLogicallyInvalid = true;
+    requestReadBoardGmaEngineRestore(reason);
+  }
+
+  private void requestReadBoardGmaEngineRestore(String reason) {
+    BoardHistoryNode currentNode = null;
+    if (Lizzie.board != null && Lizzie.board.getHistory() != null) {
+      currentNode = Lizzie.board.getHistory().getCurrentHistoryNode();
+    }
+    requestReadBoardGmaEngineRestore(reason, currentNode);
+  }
+
+  private void requestReadBoardGmaEngineRestore(String reason, BoardHistoryNode restoreNode) {
+    requestReadBoardGmaEngineRestore(reason, restoreNode, true);
+  }
+
+  private void requestReadBoardGmaEngineRestore(
+      String reason, BoardHistoryNode restoreNode, boolean flushIfReady) {
+    if (restoreNode == null) {
+      if (!readBoardGmaPending && Lizzie.leelaz != null && !readBoardGmaAutoPlayActive) {
+        Lizzie.leelaz.restoreReadBoardGmaRuntimeSettingsIfNeeded();
+      }
+      return;
+    }
+    if (readBoardGmaPending) {
+      readBoardGmaPendingLogicallyInvalid = true;
+    }
+    readBoardGmaEngineRestorePending = true;
+    readBoardGmaDeferredRestoreNode = restoreNode;
+    localMoveSyncDebug(
+        "ReadBoard GMA request engine restore reason="
+            + reason
+            + " pending="
+            + readBoardGmaPending
+            + " node="
+            + historyNodeSummary(restoreNode));
+    if (flushIfReady) {
+      flushReadBoardGmaEngineRestoreIfReady(reason);
+    }
+  }
+
+  private boolean deferReadBoardGmaEngineRestoreIfPending(
+      String reason, BoardHistoryNode restoreNode) {
+    if (!readBoardGmaPending
+        && !readBoardGmaEngineRestorePending
+        && !readBoardGmaEngineRestoreInProgress) {
+      return false;
+    }
+    if (readBoardGmaPending) {
+      readBoardGmaPendingLogicallyInvalid = true;
+    }
+    readBoardGmaEngineRestorePending = true;
+    readBoardGmaDeferredRestoreNode = restoreNode;
+    localMoveSyncDebug(
+        "ReadBoard GMA defer engine restore reason="
+            + reason
+            + " node="
+            + historyNodeSummary(restoreNode));
+    return true;
+  }
+
+  private boolean flushReadBoardGmaEngineRestoreIfReady(String reason) {
+    BoardHistoryNode restoreNode;
+    synchronized (this) {
+      if (!readBoardGmaEngineRestorePending) {
+        return false;
+      }
+      if (readBoardGmaPending || readBoardGmaEngineRestoreInProgress) {
+        return true;
+      }
+      restoreNode = readBoardGmaDeferredRestoreNode;
+      if (restoreNode == null && Lizzie.board != null && Lizzie.board.getHistory() != null) {
+        restoreNode = Lizzie.board.getHistory().getCurrentHistoryNode();
+      }
+      readBoardGmaEngineRestoreInProgress = true;
+    }
+    RuntimeException restoreFailure = null;
+    if (restoreNode != null) {
+      localMoveSyncDebug(
+          "ReadBoard GMA flush engine restore reason="
+              + reason
+              + " node="
+              + historyNodeSummary(restoreNode));
+      try {
+        syncEngineToRebuiltSnapshotNow(restoreNode);
+      } catch (RuntimeException ex) {
+        restoreFailure = ex;
+      }
+    }
+    boolean hasNewerRestoreNode;
+    synchronized (this) {
+      readBoardGmaEngineRestoreInProgress = false;
+      hasNewerRestoreNode =
+          readBoardGmaEngineRestorePending
+              && readBoardGmaDeferredRestoreNode != null
+              && readBoardGmaDeferredRestoreNode != restoreNode;
+      if (!hasNewerRestoreNode) {
+        readBoardGmaEngineRestorePending = false;
+        readBoardGmaDeferredRestoreNode = null;
+      }
+    }
+    if (hasNewerRestoreNode) {
+      return flushReadBoardGmaEngineRestoreIfReady(reason + "-latest");
+    }
+    if (!readBoardGmaAutoPlayActive && Lizzie.leelaz != null) {
+      Lizzie.leelaz.restoreReadBoardGmaRuntimeSettingsIfNeeded();
+    }
+    if (restoreFailure != null) {
+      throw restoreFailure;
+    }
+    return true;
   }
 
   private boolean scheduleReadBoardGmaIfNeeded(String reason) {
     if (!readBoardGmaAutoPlayActive) {
       return false;
+    }
+    if (readBoardGmaEngineRestorePending) {
+      localMoveSyncDebug("ReadBoard GMA skip pending engine restore reason=" + reason);
+      return true;
     }
     if (readBoardGmaPending) {
       localMoveSyncDebug("ReadBoard GMA skip pending reason=" + reason);
@@ -3782,6 +3921,7 @@ public class ReadBoard {
     String color = readBoardGmaAutoPlayColor.isBlack() ? "B" : "W";
     boolean ponder = Lizzie.config != null && Lizzie.config.readBoardPonder;
     readBoardGmaPending = true;
+    readBoardGmaPendingLogicallyInvalid = false;
     localMoveSyncDebug(
         "ReadBoard GMA start reason="
             + reason
@@ -3809,11 +3949,14 @@ public class ReadBoard {
       return false;
     }
     readBoardGmaPending = false;
-    if (!readBoardGmaAutoPlayActive) {
+    boolean staleResult = readBoardGmaPendingLogicallyInvalid || !readBoardGmaAutoPlayActive;
+    readBoardGmaPendingLogicallyInvalid = false;
+    if (staleResult) {
       localMoveSyncDebug("ReadBoard GMA consume stale play move=" + move);
       return true;
     }
     if (move == null) {
+      requestReadBoardGmaEngineRestoreAfterTerminalResult("null-final-play");
       return true;
     }
     String normalizedMove = move.trim();
@@ -3821,9 +3964,11 @@ public class ReadBoard {
         || normalizedMove.toLowerCase(Locale.ROOT).startsWith("resign")
         || normalizedMove.equalsIgnoreCase("cancelled")) {
       localMoveSyncDebug("ReadBoard GMA final non-board move=" + normalizedMove);
+      requestReadBoardGmaEngineRestoreAfterTerminalResult("non-board-final-play");
       return true;
     }
     if (Lizzie.board == null || Lizzie.leelaz == null) {
+      requestReadBoardGmaEngineRestoreAfterTerminalResult("missing-app-state-final-play");
       return true;
     }
     boolean blacksTurn = Lizzie.board.getHistory().isBlacksTurn();
@@ -3836,6 +3981,7 @@ public class ReadBoard {
               + blacksTurn
               + " color="
               + color);
+      requestReadBoardGmaEngineRestoreAfterTerminalResult("turn-mismatch-final-play");
       return true;
     }
     int[] coords = Board.convertNameToCoordinates(normalizedMove);
@@ -3846,6 +3992,7 @@ public class ReadBoard {
         || coords[0] >= Board.boardWidth
         || coords[1] >= Board.boardHeight) {
       localMoveSyncDebug("ReadBoard GMA final invalid move=" + normalizedMove);
+      requestReadBoardGmaEngineRestoreAfterTerminalResult("invalid-final-play");
       return true;
     }
     boolean oldInputCommand = Lizzie.leelaz.isInputCommand;
@@ -3855,10 +4002,50 @@ public class ReadBoard {
     } finally {
       Lizzie.leelaz.isInputCommand = oldInputCommand;
     }
-    if (Lizzie.config != null && !Lizzie.config.readBoardPonder) {
-      Lizzie.leelaz.nameCmdfornoponder();
+    return true;
+  }
+
+  public void afterReadBoardGmaTerminalResponseConsumed(String reason) {
+    if (readBoardGmaEngineRestorePending) {
+      Thread restoreThread =
+          new Thread(
+              () -> flushReadBoardGmaTerminalResponseConsumed(reason),
+              "ReadBoard-GMA-terminal-restore");
+      restoreThread.setDaemon(true);
+      restoreThread.start();
+      return;
+    }
+    flushReadBoardGmaTerminalResponseConsumed(reason);
+  }
+
+  private void flushReadBoardGmaTerminalResponseConsumed(String reason) {
+    if (!flushReadBoardGmaEngineRestoreIfReady(reason)
+        && !readBoardGmaAutoPlayActive
+        && Lizzie.leelaz != null) {
+      Lizzie.leelaz.restoreReadBoardGmaRuntimeSettingsIfNeeded();
+    }
+  }
+
+  public boolean handleReadBoardGmaEngineError(String line) {
+    if (!readBoardGmaPending) {
+      return false;
+    }
+    readBoardGmaPending = false;
+    readBoardGmaPendingLogicallyInvalid = false;
+    localMoveSyncDebug("ReadBoard GMA terminal error line=" + line);
+    if (readBoardGmaAutoPlayActive) {
+      requestReadBoardGmaEngineRestoreAfterTerminalResult("terminal-error");
     }
     return true;
+  }
+
+  private void requestReadBoardGmaEngineRestoreAfterTerminalResult(String reason) {
+    readBoardGmaAwaitingSyncedBoard = true;
+    BoardHistoryNode currentNode = null;
+    if (Lizzie.board != null && Lizzie.board.getHistory() != null) {
+      currentNode = Lizzie.board.getHistory().getCurrentHistoryNode();
+    }
+    requestReadBoardGmaEngineRestore(reason, currentNode, false);
   }
 
   private Stone autoPlayColorFromPlayParams(String[] params) {
@@ -4124,6 +4311,15 @@ public class ReadBoard {
     }
     historyJumpTracker.clear();
     moveToAnyPositionWithoutTracking(syncStartNode);
+    if (readBoardGmaPending
+        || readBoardGmaEngineRestorePending
+        || readBoardGmaEngineRestoreInProgress) {
+      Lizzie.board.getHistory().place(move.x, move.y, move.color, false);
+      BoardHistoryNode resolvedNode = Lizzie.board.getHistory().getMainEnd();
+      rememberResolvedSnapshotNode(resolvedNode);
+      requestReadBoardGmaEngineRestore("single-move-recovery", resolvedNode);
+      return true;
+    }
     Lizzie.board.placeForSync(move.x, move.y, move.color, false);
     {
       EngineFollowController c = Lizzie.engineFollowController;
@@ -4214,6 +4410,15 @@ public class ReadBoard {
 
   private boolean continueGameAfterSyncIfNeeded(String reason, BoardHistoryNode targetNode) {
     markReadBoardGmaSyncedBoard(reason);
+    if (readBoardGmaEngineRestorePending) {
+      if (targetNode != null) {
+        readBoardGmaDeferredRestoreNode = targetNode;
+      }
+      flushReadBoardGmaEngineRestoreIfReady(reason);
+      if (readBoardGmaEngineRestorePending) {
+        return true;
+      }
+    }
     if (resumeFailedLocalMoveAfterSyncIfNeeded(reason, targetNode)) {
       return true;
     }
