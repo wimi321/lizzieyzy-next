@@ -2,6 +2,7 @@ package featurecat.lizzie.analysis;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
+import featurecat.lizzie.analysis.remote.RemoteComputeConfig;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -44,6 +45,13 @@ class LeelazDisplayNameTest {
             + " -config \"/tmp/gtp.cfg\"";
 
     assertEquals("zhizi 28B muonfd2", Leelaz.friendlyEngineName("KataGo TensorRT", command));
+  }
+
+  @Test
+  void remoteComputeNameUsesSavedArgsInsteadOfStaleEngineName() {
+    assertEquals(
+        "智子云算力 VIP包月 · 智子28B · TensorRT",
+        Leelaz.friendlyEngineName("智子云算力 28B TensorRT", RemoteComputeConfig.COMMAND_ZHIZI));
   }
 
   @Test

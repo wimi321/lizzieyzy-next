@@ -2967,7 +2967,7 @@ public class OnlineDialog extends JDialog {
               }
             })
         .on(
-            Socket.EVENT_MESSAGE,
+            "message",
             new Emitter.Listener() {
               @Override
               public void call(Object... args) {
@@ -2983,7 +2983,7 @@ public class OnlineDialog extends JDialog {
               }
             })
         .on(
-            Socket.EVENT_ERROR,
+            "error",
             new Emitter.Listener() {
               @Override
               public void call(Object... args) {
@@ -2991,7 +2991,7 @@ public class OnlineDialog extends JDialog {
               }
             })
         .on(
-            Socket.EVENT_PING,
+            "ping",
             new Emitter.Listener() {
               @Override
               public void call(Object... args) {
@@ -2999,7 +2999,7 @@ public class OnlineDialog extends JDialog {
               }
             })
         .on(
-            Socket.EVENT_PONG,
+            "pong",
             new Emitter.Listener() {
               @Override
               public void call(Object... args) {
@@ -3017,7 +3017,7 @@ public class OnlineDialog extends JDialog {
               }
             })
         .on(
-            Socket.EVENT_CONNECT_TIMEOUT,
+            "connect_timeout",
             new Emitter.Listener() {
               @Override
               public void call(Object... args) {
@@ -3025,7 +3025,7 @@ public class OnlineDialog extends JDialog {
               }
             })
         .on(
-            Socket.EVENT_CONNECTING,
+            "connecting",
             new Emitter.Listener() {
               @Override
               public void call(Object... args) {
@@ -3033,7 +3033,7 @@ public class OnlineDialog extends JDialog {
               }
             })
         .on(
-            Socket.EVENT_RECONNECT,
+            "reconnect",
             new Emitter.Listener() {
               @Override
               public void call(Object... args) {
@@ -3041,7 +3041,7 @@ public class OnlineDialog extends JDialog {
               }
             })
         .on(
-            Socket.EVENT_RECONNECT_ATTEMPT,
+            "reconnect_attempt",
             new Emitter.Listener() {
               @Override
               public void call(Object... args) {
@@ -3049,7 +3049,7 @@ public class OnlineDialog extends JDialog {
               }
             })
         .on(
-            Socket.EVENT_RECONNECT_FAILED,
+            "reconnect_failed",
             new Emitter.Listener() {
               @Override
               public void call(Object... args) {
@@ -3057,7 +3057,7 @@ public class OnlineDialog extends JDialog {
               }
             })
         .on(
-            Socket.EVENT_RECONNECT_ERROR,
+            "reconnect_error",
             new Emitter.Listener() {
               @Override
               public void call(Object... args) {
@@ -3065,7 +3065,7 @@ public class OnlineDialog extends JDialog {
               }
             })
         .on(
-            Socket.EVENT_RECONNECTING,
+            "reconnecting",
             new Emitter.Listener() {
               @Override
               public void call(Object... args) {

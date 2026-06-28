@@ -205,6 +205,22 @@ class BoardPrimaryEngineSyncTest {
     }
   }
 
+  @Test
+  void updateIsBestToleratesCurveOnlyPreviousNodeWithoutBestMoves() throws Exception {
+    try (TestHarness harness = TestHarness.open()) {
+      Board board = allocate(Board.class);
+      BoardHistoryList history = new BoardHistoryList(BoardData.empty(BOARD_SIZE, BOARD_SIZE));
+      history.add(moveNode(0, 0, Stone.BLACK, false, 1));
+      history.add(moveNode(1, 0, Stone.WHITE, true, 2));
+      board.setHistory(history);
+
+      BoardHistoryNode current = history.getCurrentHistoryNode();
+      board.updateIsBest(current);
+
+      assertFalse(current.isBest);
+    }
+  }
+
   private static BoardData moveNode(
       int x, int y, Stone color, boolean blackToPlay, int moveNumber) {
     return moveNode(x, y, color, blackToPlay, moveNumber, BOARD_SIZE, BOARD_SIZE);
