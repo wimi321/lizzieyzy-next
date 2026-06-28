@@ -974,6 +974,40 @@ class ReadBoardEngineResumeTest {
   }
 
   @Test
+  void readBoardGmaTrustsFoxZeroMoveHandicapSetupAfterForceRebuildFromDirtyLocalHistory()
+      throws Exception {
+    try (EngineResumeHarness harness =
+        EngineResumeHarness.create(rootHistory(emptyStones(), true))) {
+      harness.frame.bothSync = true;
+      harness.leelaz.enableReadBoardGmaSupport();
+      buildHistory(
+          harness.board,
+          placement(0, 0, Stone.BLACK),
+          placement(1, 0, Stone.WHITE),
+          placement(0, 1, Stone.BLACK));
+
+      harness.readBoard.parseLine("play>white>0 0 0 gma");
+      harness.readBoard.parseLine("syncPlatform fox");
+      harness.readBoard.parseLine("foxMoveNumber 0");
+      harness.readBoard.parseLine("lastMoveSource stoneCount");
+      harness.readBoard.parseLine("forceRebuild");
+
+      Stone[] handicapSetupStones =
+          stones(
+              placement(0, 0, Stone.BLACK),
+              placement(2, 0, Stone.BLACK),
+              placement(1, 1, Stone.BLACK),
+              placement(0, 2, Stone.BLACK),
+              placement(2, 2, Stone.BLACK));
+      harness.sync(snapshot(handicapSetupStones, Optional.empty(), Stone.EMPTY));
+
+      assertFalse(harness.board.getHistory().isBlacksTurn());
+      assertEquals(1, harness.leelaz.readBoardGmaCount);
+      assertEquals("W", harness.leelaz.lastReadBoardGmaColor);
+    }
+  }
+
+  @Test
   void readBoardGmaCorrectsExistingFoxZeroMoveAllBlackSetupSnapshotTurn() throws Exception {
     Stone[] handicapSetupStones =
         stones(
@@ -1035,6 +1069,109 @@ class ReadBoardEngineResumeTest {
 
       harness.readBoard.parseLine("pass");
 
+      assertEquals(1, harness.leelaz.readBoardGmaCount);
+      assertEquals("W", harness.leelaz.lastReadBoardGmaColor);
+    }
+  }
+
+  @Test
+  void readBoardGmaStartsAfterGenericExchangeOrderOverridesTurnTrust() throws Exception {
+    try (EngineResumeHarness harness =
+        EngineResumeHarness.create(rootHistory(emptyStones(), true))) {
+      harness.frame.bothSync = true;
+      harness.leelaz.canAddPlayer = true;
+      harness.leelaz.enableReadBoardGmaSupport();
+
+      harness.readBoard.parseLine("play>white>0 0 0 gma");
+      harness.readBoard.parseLine("lastMoveSource stoneCount");
+
+      Stone[] setupStones =
+          stones(placement(0, 0, Stone.BLACK), placement(2, 2, Stone.BLACK));
+      harness.sync(snapshot(setupStones, Optional.empty(), Stone.EMPTY));
+      assertEquals(0, harness.leelaz.readBoardGmaCount);
+
+      harness.readBoard.parseLine("pass");
+
+      assertEquals(1, harness.leelaz.readBoardGmaCount);
+      assertEquals("W", harness.leelaz.lastReadBoardGmaColor);
+      assertFalse(
+          harness.board.getHistory().getCurrentHistoryNode().getData().isPassNode(),
+          "ReadBoard exchange-order pass must not create a real PASS node.");
+    }
+  }
+
+  @Test
+  void readBoardGmaStartsAfterGenericHeuristicSingleMoveSyncTrustsAcceptedMove()
+      throws Exception {
+    try (EngineResumeHarness harness =
+        EngineResumeHarness.create(rootHistory(emptyStones(), true))) {
+      harness.frame.bothSync = true;
+      harness.leelaz.enableReadBoardGmaSupport();
+
+      harness.readBoard.parseLine("play>white>0 0 0 gma");
+      harness.readBoard.parseLine("lastMoveSource stoneCount");
+
+      Stone[] whiteToPlayRemoteStones = stones(placement(0, 0, Stone.BLACK));
+      harness.sync(snapshot(whiteToPlayRemoteStones, Optional.of(new int[] {0, 0}), Stone.BLACK));
+
+      assertFalse(harness.board.getHistory().isBlacksTurn());
+      assertEquals(1, harness.leelaz.readBoardGmaCount);
+      assertEquals("W", harness.leelaz.lastReadBoardGmaColor);
+    }
+  }
+
+  @Test
+  void readBoardGmaWaitsForFailedPlaceObservationBeforeRestartingEngineDecision()
+      throws Exception {
+    try (EngineResumeHarness harness =
+        EngineResumeHarness.create(rootHistory(emptyStones(), true))) {
+      harness.frame.isAnaPlayingAgainstLeelaz = true;
+      harness.frame.bothSync = true;
+      harness.leelaz.enableReadBoardGmaSupport();
+      harness.readBoard.parseLine("play>white>5 0 0 gma");
+      harness.readBoard.parseLine("lastMoveSource redBlueMarker");
+
+      Stone[] remoteStones = stones(placement(0, 0, Stone.BLACK));
+      harness.sync(snapshot(remoteStones, Optional.of(new int[] {0, 0}), Stone.BLACK));
+      assertEquals(1, harness.leelaz.readBoardGmaCount);
+
+      setField(harness.readBoard, "readBoardGmaPending", false);
+      harness.board.getHistory().place(1, 0, Stone.WHITE, false);
+
+      markPendingLocalMoveAwaitingReadBoard(harness.readBoard);
+      invokePlacementFailed(harness.readBoard);
+
+      assertTrue(getBooleanField(harness.readBoard, "failedLocalMoveAwaitingRemoteObservation"));
+      assertEquals(
+          1,
+          harness.leelaz.readBoardGmaCount,
+          "GMA must not start a second uncancellable engine decision while the failed place is "
+              + "still waiting for remote-board observation.");
+    }
+  }
+
+  @Test
+  void readBoardGmaStartsAfterGenericHandicapSingleMoveSyncTrustsAcceptedMove()
+      throws Exception {
+    Stone[] setupStones = stones(placement(0, 0, Stone.BLACK), placement(2, 0, Stone.BLACK));
+    try (EngineResumeHarness harness =
+        EngineResumeHarness.create(rootHistory(setupStones, false))) {
+      harness.frame.bothSync = true;
+      harness.leelaz.enableReadBoardGmaSupport();
+      buildHistory(harness.board, placement(1, 1, Stone.WHITE));
+
+      harness.readBoard.parseLine("play>white>0 0 0 gma");
+      harness.readBoard.parseLine("lastMoveSource stoneCount");
+
+      Stone[] whiteToPlayRemoteStones =
+          stones(
+              placement(0, 0, Stone.BLACK),
+              placement(2, 0, Stone.BLACK),
+              placement(1, 1, Stone.WHITE),
+              placement(0, 2, Stone.BLACK));
+      harness.sync(snapshot(whiteToPlayRemoteStones, Optional.of(new int[] {0, 2}), Stone.BLACK));
+
+      assertFalse(harness.board.getHistory().isBlacksTurn());
       assertEquals(1, harness.leelaz.readBoardGmaCount);
       assertEquals("W", harness.leelaz.lastReadBoardGmaColor);
     }
@@ -1103,14 +1240,13 @@ class ReadBoardEngineResumeTest {
 
   @Test
   void readBoardGmaStartsWhenSourceOnlyUpdateRefreshesTurnTrust() throws Exception {
+    Stone[] blackToPlayRemoteStones = stones(placement(0, 0, Stone.WHITE));
     try (EngineResumeHarness harness =
-        EngineResumeHarness.create(rootHistory(emptyStones(), true))) {
+        EngineResumeHarness.create(rootHistory(blackToPlayRemoteStones, true))) {
       harness.frame.bothSync = true;
       harness.leelaz.enableReadBoardGmaSupport();
       harness.readBoard.parseLine("play>black>0 0 0 gma");
 
-      Stone[] blackToPlayRemoteStones = emptyStones();
-      blackToPlayRemoteStones[stoneIndex(0, 0)] = Stone.WHITE;
       int[] snapshot =
           snapshot(blackToPlayRemoteStones, Optional.of(new int[] {0, 0}), Stone.WHITE);
 

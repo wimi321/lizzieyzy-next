@@ -28,7 +28,7 @@
 - `foxMoveNumber` 修正 `SNAPSHOT` moveNumber metadata；在 `side-to-play` 上只作为 markerless 兼容兜底，不能覆盖可信视觉 marker，也不能在让子、setup 或白方首手等风险场景下作为 GMA 权威轮次。
 - Fox `foxMoveNumber 0` 且 markerless 盘面只有多颗黑方 setup 石时，可按让子初始局固定规则把该 `SNAPSHOT` 判为白方落子；这不是用 `stoneCount` / `deviation` 推断末手，也不补造历史。
 - ReadBoard `lastMoveSource` 区分真实视觉 marker 与启发式末手；只有真实视觉 marker 可在冲突时优先决定 `side-to-play`。
-- 启发式 `deviation` / `stoneCount` 不能被当成真实 `MOVE/PASS` 或 GMA 权威轮次。
+- 启发式 `deviation` / `stoneCount` 不能被当成真实 `MOVE/PASS` 或 GMA 权威轮次；若同步主流程已经把某帧接受为一手可证明的真实 `MOVE`，GMA 可信任该真实落子落地后的本地轮次。
 
 ## 引擎支持矩阵（本轮）
 

@@ -64,7 +64,7 @@ play>black>5 1000 0 gma
 3. 我方回合且没有待决请求：按能力缓存和原始限制发起一次 `kata-genmove_analyze`。
 4. 我方回合且已有待决请求：不重复发命令。
 
-`scheduleReadBoardGmaIfNeeded(...)` 只在已同步局面的 side-to-play 可信时启动 GMA。可信来源包括真实视觉 marker、空盘默认黑方开局、ReadBoard“交换顺序”产生的显式手动覆盖、Fox `foxMoveNumber 0` 且全黑多子 setup 的让子初始局默认白方，以及无 setup / handicap 风险的 markerless ordinary `foxMoveNumber` fallback；不可信时跳过本次调度并保留自动落子配置，等待下一帧可信局面再判断。
+`scheduleReadBoardGmaIfNeeded(...)` 只在已同步局面的 side-to-play 可信时启动 GMA。可信来源包括真实视觉 marker、空盘默认黑方开局、ReadBoard“交换顺序”产生的显式手动覆盖、同步主流程已接受并落地的真实单步 `MOVE`、Fox `foxMoveNumber 0` 且全黑多子 setup 的让子初始局默认白方，以及无 setup / handicap 风险的 markerless ordinary `foxMoveNumber` fallback；不可信时跳过本次调度并保留自动落子配置，等待下一帧可信局面再判断。
 
 收到 `play>`、`sync`、快照重建后的延迟恢复、失败落子恢复及其他原本会调用 `ponder()` / `togglePonder()` 的 ReadBoard 入口，都必须在 `gma` 模式改走这个入口或成为 no-op；整局 `gma` 命令记录不得出现 `kata-analyze`。
 

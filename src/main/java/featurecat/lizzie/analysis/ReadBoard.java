@@ -1425,7 +1425,8 @@ public class ReadBoard {
             snapshotDelta,
             currentRemoteContext,
             currentRemoteContext.lastMoveSource,
-            currentFoxMoveNumber);
+            currentFoxMoveNumber,
+            false);
         finishSyncAfterAcknowledgedLocalMoveSnapshot();
         return;
       }
@@ -1581,7 +1582,8 @@ public class ReadBoard {
             snapshotDelta,
             currentRemoteContext,
             currentRemoteContext.lastMoveSource,
-            currentFoxMoveNumber);
+            currentFoxMoveNumber,
+            recovery.outcome == CompleteSnapshotRecoveryOutcome.SINGLE_MOVE_RECOVERY);
         if (recovery.outcome == CompleteSnapshotRecoveryOutcome.NO_CHANGE
             && recovery.resolvedNode != null) {
           if (recovery.resolvedNode != Lizzie.board.getHistory().getCurrentHistoryNode()) {
@@ -1623,7 +1625,8 @@ public class ReadBoard {
             snapshotDelta,
             currentRemoteContext,
             currentRemoteContext.lastMoveSource,
-            currentFoxMoveNumber);
+            currentFoxMoveNumber,
+            played);
         historyJumpTracker.clear();
         applySyncViewState(played, currentNode, currentSyncEndNode);
       }
@@ -1996,7 +1999,8 @@ public class ReadBoard {
         snapshotDelta,
         resolvedRemoteContext,
         lastMoveSource,
-        foxMoveNumber);
+        foxMoveNumber,
+        false);
     if (analysisEngineAvailable) {
       try {
         syncEngineToRebuiltSnapshot(rebuiltNode);
@@ -2353,11 +2357,15 @@ public class ReadBoard {
       SyncSnapshotClassifier.SnapshotDelta snapshotDelta,
       SyncRemoteContext remoteContext,
       ReadBoardLastMoveSource lastMoveSource,
-      OptionalInt foxMoveNumber) {
+      OptionalInt foxMoveNumber,
+      boolean acceptedRealMove) {
     boolean hasExplicitPlayerOverride =
         syncStartNode != null && explicitPlayerOverride(syncStartNode.getData()).isPresent();
+    boolean acceptedGenericRealMove =
+        acceptedRealMove && (remoteContext == null || !remoteContext.supportsFoxRecovery());
     readBoardTurnTrust =
-        hasExplicitPlayerOverride
+        acceptedGenericRealMove
+                || hasExplicitPlayerOverride
                 || (snapshotDelta != null
                     && snapshotDelta.hasMarker()
                     && lastMoveSource.isTrustedVisualMarker())
@@ -2410,7 +2418,6 @@ public class ReadBoard {
         && foxMoveNumber.getAsInt() == 0
         && snapshotDelta != null
         && !snapshotDelta.hasMarker()
-        && snapshotDelta.removals() == 0
         && !lastMoveSource.isTrustedVisualMarker()
         && hasOnlyHandicapBlackSetupStones(snapshotStones);
   }
@@ -3709,6 +3716,15 @@ public class ReadBoard {
     }
     if (readBoardGmaPending) {
       localMoveSyncDebug("ReadBoard GMA skip pending reason=" + reason);
+      return true;
+    }
+    if (failedLocalMoveAwaitingRemoteObservation
+        && !releaseFailedLocalMoveObservationIfTimedOut(reason)) {
+      localMoveSyncDebug(
+          "ReadBoard GMA wait failed-place observation reason="
+              + reason
+              + " "
+              + pendingLocalMoveState());
       return true;
     }
     if (Lizzie.frame == null || Lizzie.board == null || Lizzie.leelaz == null) {

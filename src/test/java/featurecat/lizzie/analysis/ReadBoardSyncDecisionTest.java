@@ -429,6 +429,7 @@ class ReadBoardSyncDecisionTest {
             target,
             snapshotDelta,
             OptionalInt.of(1),
+            SyncRemoteContext.foxUnknown(false).withFoxMoveNumber(OptionalInt.of(1)),
             ReadBoardLastMoveSource.NONE),
         "white-first markerless fox metadata should fall back to the current side to play.");
   }
@@ -3164,6 +3165,7 @@ class ReadBoardSyncDecisionTest {
       Stone[] snapshotStones,
       SyncSnapshotClassifier.SnapshotDelta snapshotDelta,
       OptionalInt foxMoveNumber,
+      SyncRemoteContext remoteContext,
       ReadBoardLastMoveSource lastMoveSource)
       throws Exception {
     Method method =
@@ -3173,11 +3175,18 @@ class ReadBoardSyncDecisionTest {
             Stone[].class,
             SyncSnapshotClassifier.SnapshotDelta.class,
             OptionalInt.class,
+            SyncRemoteContext.class,
             ReadBoardLastMoveSource.class);
     method.setAccessible(true);
     return (boolean)
         method.invoke(
-            readBoard, syncStartNode, snapshotStones, snapshotDelta, foxMoveNumber, lastMoveSource);
+            readBoard,
+            syncStartNode,
+            snapshotStones,
+            snapshotDelta,
+            foxMoveNumber,
+            remoteContext,
+            lastMoveSource);
   }
 
   private static final class SyncHarness implements AutoCloseable {
