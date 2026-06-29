@@ -14466,6 +14466,11 @@ public class LizzieFrame extends JFrame {
       setOpaque(false);
       setPreferredSize(new Dimension(430, 360));
       setMinimumSize(new Dimension(360, 300));
+      setToolTipText(playerStrengthRankScaleTooltip(report));
+      getAccessibleContext()
+          .setAccessibleName(
+              sideName + " " + Lizzie.resourceBundle.getString("PlayerStrengthEstimate.title"));
+      getAccessibleContext().setAccessibleDescription(playerStrengthRankScalePlainText(report));
     }
 
     @Override
@@ -14479,9 +14484,9 @@ public class LizzieFrame extends JFrame {
       playerStrengthDrawRoundedCard(g2, 0, 0, width, height);
 
       playerStrengthDrawGeneratedStone(g2, black, 30, 38, 72, 1.0f);
-      int ladderWidth = Math.max(96, Math.min(112, width / 4));
-      int ladderX = Math.max(292, width - ladderWidth - 28);
-      int contentRight = Math.max(260, ladderX - 24);
+      int scaleWidth = Math.max(136, Math.min(180, width / 3));
+      int scaleX = Math.max(286, width - scaleWidth - 28);
+      int contentRight = Math.max(260, scaleX - 24);
       playerStrengthDrawFittedText(
           g2,
           sideName + Lizzie.resourceBundle.getString("PlayerStrengthEstimate.performanceSuffix"),
@@ -14512,7 +14517,7 @@ public class LizzieFrame extends JFrame {
           Font.PLAIN,
           Config.frameFontSize + 1);
 
-      drawRankLadder(g2, ladderX, 68, ladderWidth, Math.max(178, height - 116));
+      drawRankScalePanel(g2, scaleX, 68, scaleWidth, Math.max(178, height - 116));
       int rowY = 186;
       drawMetricRow(
           g2,
@@ -14594,44 +14599,122 @@ public class LizzieFrame extends JFrame {
       playerStrengthDrawBar(g2, barX, y - 9, barWidth, fraction, color);
     }
 
-    private void drawRankLadder(Graphics2D g2, int x, int y, int width, int height) {
-      String[] labels = {
-        Lizzie.resourceBundle.getString("PlayerStrengthEstimate.rank.scale.ai"),
-        Lizzie.resourceBundle.getString("PlayerStrengthEstimate.rank.scale.topPro"),
-        Lizzie.resourceBundle.getString("PlayerStrengthEstimate.rank.scale.pro"),
-        Lizzie.resourceBundle.getString("PlayerStrengthEstimate.rank.scale.fox")
-      };
+    private void drawRankScalePanel(Graphics2D g2, int x, int y, int width, int height) {
+      String[][] rows = playerStrengthRankScaleRows();
       int selected =
-          report.rankValue >= 12.0
-              ? 0
-              : report.rankValue >= 11.0 ? 1 : report.rankValue >= 10.0 ? 2 : 3;
-      int rowHeight = Math.max(26, height / labels.length);
+          playerStrengthRankScaleSelectedIndex(report == null ? Double.NaN : report.rankValue);
+      int panelY = y;
+      int panelHeight = Math.max(154, height);
       playerStrengthDrawFittedText(
           g2,
           Lizzie.resourceBundle.getString("PlayerStrengthEstimate.rank.scale"),
           x,
-          y - 13,
+          panelY - 13,
           width,
           PlayerStrengthDashboardRoot.MUTED_TEXT,
           Font.PLAIN,
           Math.max(10, Config.frameFontSize - 1));
+      g2.setColor(new Color(252, 249, 241, 176));
+      g2.fillRoundRect(x, panelY, width, panelHeight, 16, 16);
+      g2.setColor(new Color(220, 209, 192));
+      g2.drawRoundRect(x, panelY, width, panelHeight, 16, 16);
       g2.setFont(
           new Font(Config.sysDefaultFontName, Font.PLAIN, Math.max(11, Config.frameFontSize - 1)));
-      for (int i = 0; i < labels.length; i++) {
-        int rowY = y + i * rowHeight;
-        g2.setColor(i == selected ? new Color(235, 222, 199) : new Color(249, 246, 238));
-        g2.fillRoundRect(x, rowY, width, rowHeight - 2, 10, 10);
-        g2.setColor(new Color(220, 209, 192));
-        g2.drawRoundRect(x, rowY, width, rowHeight - 2, 10, 10);
+      int rowHeight = Math.max(34, (panelHeight - 12) / rows.length);
+      int rowTop = panelY + 6;
+      for (int i = 0; i < rows.length; i++) {
+        int rowY = rowTop + i * rowHeight;
+        boolean active = i == selected;
+        if (active) {
+          g2.setColor(new Color(235, 222, 199, 235));
+          g2.fillRoundRect(x + 6, rowY, width - 12, rowHeight - 4, 12, 12);
+        }
         g2.setColor(
-            i == selected
+            active ? PlayerStrengthDashboardRoot.ACCENT_DARK : PlayerStrengthDashboardRoot.MUTED_TEXT);
+        g2.fillOval(x + 13, rowY + rowHeight / 2 - 4, 8, 8);
+        playerStrengthDrawFittedText(
+            g2,
+            rows[i][0],
+            x + 28,
+            rowY + rowHeight / 2 + 5,
+            34,
+            active
                 ? PlayerStrengthDashboardRoot.ACCENT_DARK
-                : PlayerStrengthDashboardRoot.MUTED_TEXT);
-        String label = playerStrengthEllipsize(labels[i], g2.getFontMetrics(), width - 14);
-        int textWidth = g2.getFontMetrics().stringWidth(label);
-        g2.drawString(label, x + Math.max(7, (width - textWidth) / 2), rowY + rowHeight / 2 + 5);
+                : PlayerStrengthDashboardRoot.MUTED_TEXT,
+            Font.BOLD,
+            Math.max(10, Config.frameFontSize - 1));
+        playerStrengthDrawFittedText(
+            g2,
+            rows[i][1],
+            x + 66,
+            rowY + rowHeight / 2 + 5,
+            width - 74,
+            active ? PlayerStrengthDashboardRoot.ACCENT_DARK : PlayerStrengthDashboardRoot.TEXT,
+            Font.PLAIN,
+            Math.max(10, Config.frameFontSize - 1));
       }
     }
+  }
+
+  private static int playerStrengthRankScaleSelectedIndex(double rankValue) {
+    if (!Double.isFinite(rankValue)) {
+      return 3;
+    }
+    if (rankValue >= 12.0) {
+      return 0;
+    }
+    if (rankValue >= 11.0) {
+      return 1;
+    }
+    return rankValue >= 10.0 ? 2 : 3;
+  }
+
+  private static String[][] playerStrengthRankScaleRows() {
+    return new String[][] {
+      {"12+", Lizzie.resourceBundle.getString("PlayerStrengthEstimate.rank.scale.ai")},
+      {"11+", Lizzie.resourceBundle.getString("PlayerStrengthEstimate.rank.scale.topPro")},
+      {"10+", Lizzie.resourceBundle.getString("PlayerStrengthEstimate.rank.scale.pro")},
+      {"<10", Lizzie.resourceBundle.getString("PlayerStrengthEstimate.rank.scale.fox")}
+    };
+  }
+
+  private static String playerStrengthRankScalePlainText(
+      PlayerStrengthEstimator.SideReport report) {
+    StringBuilder builder =
+        new StringBuilder(Lizzie.resourceBundle.getString("PlayerStrengthEstimate.rank.scale"));
+    String current =
+        report == null || !report.hasSamples() ? "-" : playerStrengthRankValueText(report);
+    builder.append(": ").append(current);
+    for (String[] row : playerStrengthRankScaleRows()) {
+      builder.append("; ").append(row[0]).append(" ").append(row[1]);
+    }
+    return builder.toString();
+  }
+
+  private static String playerStrengthRankScaleTooltip(PlayerStrengthEstimator.SideReport report) {
+    StringBuilder builder = new StringBuilder("<html>");
+    builder.append(
+        playerStrengthHtmlEscape(
+            Lizzie.resourceBundle.getString("PlayerStrengthEstimate.rank.scale")));
+    String current =
+        report == null || !report.hasSamples() ? "-" : playerStrengthRankValueText(report);
+    builder.append(": ").append(playerStrengthHtmlEscape(current));
+    for (String[] row : playerStrengthRankScaleRows()) {
+      builder
+          .append("<br>")
+          .append(playerStrengthHtmlEscape(row[0]))
+          .append(" ")
+          .append(playerStrengthHtmlEscape(row[1]));
+    }
+    builder.append("</html>");
+    return builder.toString();
+  }
+
+  private static String playerStrengthHtmlEscape(String value) {
+    if (value == null || value.isEmpty()) {
+      return "";
+    }
+    return value.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
   }
 
   private static final class PlayerStrengthMatchSummaryCard extends JPanel {
