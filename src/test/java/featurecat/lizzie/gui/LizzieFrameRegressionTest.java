@@ -201,6 +201,27 @@ class LizzieFrameRegressionTest {
   }
 
   @Test
+  void playerStrengthAssessmentCardExposesCompleteScoreRuleText() throws Exception {
+    Class<?> cardClass =
+        Class.forName("featurecat.lizzie.gui.LizzieFrame$PlayerStrengthAssessmentCard");
+    java.lang.reflect.Constructor<?> constructor =
+        cardClass.getDeclaredConstructor(
+            String.class, boolean.class, PlayerStrengthEstimator.SideReport.class);
+    constructor.setAccessible(true);
+    javax.swing.JComponent card =
+        (javax.swing.JComponent)
+            constructor.newInstance("黑棋", true, playerStrengthReportWithSamples().black);
+
+    String tooltip = card.getToolTipText();
+
+    assertTrue(tooltip.contains("12+"), "score rule tooltip should show the AI band.");
+    assertTrue(tooltip.contains("11+"), "score rule tooltip should show the top-pro band.");
+    assertTrue(tooltip.contains("10+"), "score rule tooltip should show the pro band.");
+    assertTrue(tooltip.contains("&lt;10"), "score rule tooltip should show the amateur band.");
+    assertFalse(tooltip.contains("..."), "score rule text should not be ellipsized in tooltip.");
+  }
+
+  @Test
   void openBoardSyncCoalescesConsecutiveRestartsOnEdt() throws Exception {
     TestEnvironment env = TestEnvironment.open();
     try {
