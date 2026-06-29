@@ -8,16 +8,17 @@ import com.google.zxing.common.HybridBinarizer;
 import featurecat.lizzie.Lizzie;
 import featurecat.lizzie.analysis.remote.RemoteComputeConfig;
 import featurecat.lizzie.analysis.remote.ZhiziApiClient;
-import featurecat.lizzie.util.Utils;
 import java.awt.BasicStroke;
 import java.awt.BorderLayout;
 import java.awt.CardLayout;
 import java.awt.Color;
 import java.awt.Component;
 import java.awt.Cursor;
+import java.awt.Desktop;
 import java.awt.Dimension;
 import java.awt.FlowLayout;
 import java.awt.Font;
+import java.awt.FontMetrics;
 import java.awt.Frame;
 import java.awt.GradientPaint;
 import java.awt.Graphics;
@@ -27,9 +28,11 @@ import java.awt.GridBagLayout;
 import java.awt.GridLayout;
 import java.awt.Insets;
 import java.awt.RenderingHints;
+import java.awt.Toolkit;
+import java.awt.datatransfer.StringSelection;
 import java.awt.image.BufferedImage;
 import java.io.File;
-import java.util.ArrayList;
+import java.net.URI;
 import javax.imageio.ImageIO;
 import javax.swing.BorderFactory;
 import javax.swing.Box;
@@ -47,11 +50,15 @@ import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.JPasswordField;
 import javax.swing.JTextField;
+import javax.swing.JToggleButton;
 import javax.swing.SwingUtilities;
 import javax.swing.SwingWorker;
 import javax.swing.border.EmptyBorder;
+import javax.swing.event.DocumentEvent;
+import javax.swing.event.DocumentListener;
 
 public class RemoteComputeDialog extends JDialog {
+  private static final String ZHIZI_OFFICIAL_URL = "http://www.zhizigo.cn/";
   private static final Color BG_TOP = new Color(251, 247, 238);
   private static final Color BG_BOTTOM = new Color(240, 248, 243);
   private static final Color CARD = new Color(255, 253, 248);
@@ -76,27 +83,33 @@ public class RemoteComputeDialog extends JDialog {
   private final JPasswordField passwordField = new JPasswordField();
   private final JTextField codeField = new JTextField();
   private final JTextField linkCodeField = new JTextField();
-  private final JCheckBox rememberToken = new JCheckBox("记住登录");
+  private final JCheckBox rememberToken = new MemoryCheckBox("记住登录");
+  private final JToggleButton showPasswordButton = new EyeToggleButton();
+  private final JCheckBox rememberPassword = new MemoryCheckBox("记住密码");
   private final JComboBox<PresetItem> presetBox = new JComboBox<>();
 
   private final JButton passwordLoginButton = segmentButton("密码登录");
   private final JButton codeLoginButton = segmentButton("验证码登录");
   private final JButton sendCodeButton = secondaryButton("发送验证码");
   private final JButton loginButton = primaryButton("登录智子账号");
+  private final JButton zhiziWebsiteButton = secondaryButton("打开智子官网");
   private final JButton useZhiziButton = primaryButton("一键启用智子云算力");
   private final JButton logoutButton = secondaryButton("更换账号");
   private final JButton localFromZhiziButton = secondaryButton("切回本地引擎");
   private final JButton importQrButton = secondaryButton("导入二维码");
-  private final JButton useCustomButton = primaryButton("保存连接码");
+  private final JButton useCustomButton = primaryButton("一键启用自建算力");
   private final JButton localFromCustomButton = secondaryButton("切回本地引擎");
 
   private JPanel loginFormPanel;
   private JPanel loggedInPanel;
   private JPanel passwordRowPanel;
+  private JPanel passwordOptionsPanel;
   private JPanel codeRowPanel;
   private JLabel loggedInAccountLabel;
   private boolean codeLoginMode;
   private String activePage = RemoteComputeConfig.PROVIDER_ZHIZI;
+  private char passwordEchoChar;
+  private boolean busy;
 
   public RemoteComputeDialog(Frame owner) {
     super(owner, "远程算力", false);
@@ -104,6 +117,7 @@ public class RemoteComputeDialog extends JDialog {
     setMinimumSize(new Dimension(1040, 660));
     setPreferredSize(new Dimension(1120, 700));
     setContentPane(buildContent());
+    passwordEchoChar = passwordField.getEchoChar();
     initActions();
     loadState();
     pack();
@@ -132,14 +146,9 @@ public class RemoteComputeDialog extends JDialog {
     JLabel title = new JLabel("远程算力");
     title.setForeground(TEXT);
     title.setFont(title.getFont().deriveFont(Font.BOLD, 36F));
-    JLabel subtitle = new JLabel("只保留最常用动作：启用远程算力，或一键切回本地引擎。");
-    subtitle.setForeground(MUTED);
-    subtitle.setFont(subtitle.getFont().deriveFont(Font.BOLD, 15F));
     titleBox.add(eyebrow);
     titleBox.add(Box.createVerticalStrut(5));
     titleBox.add(title);
-    titleBox.add(Box.createVerticalStrut(6));
-    titleBox.add(subtitle);
     header.add(titleBox, BorderLayout.CENTER);
 
     JPanel tabs = new RoundPanel(22, new Color(255, 253, 248, 230), BORDER);
@@ -177,14 +186,14 @@ public class RemoteComputeDialog extends JDialog {
     loginFormPanel.add(Box.createVerticalStrut(18));
     loginFormPanel.add(fieldRow("账号", accountField, "手机号或邮箱"));
     loginFormPanel.add(Box.createVerticalStrut(12));
-    passwordRowPanel = fieldRow("密码", passwordField, "请输入密码");
+    passwordRowPanel = passwordFieldRow("密码", passwordField, "请输入密码");
     loginFormPanel.add(passwordRowPanel);
     loginFormPanel.add(Box.createVerticalStrut(12));
     codeRowPanel = buildCodeRow();
     loginFormPanel.add(codeRowPanel);
     loginFormPanel.add(Box.createVerticalStrut(12));
-    styleCheckBox(rememberToken);
-    loginFormPanel.add(leftAligned(rememberToken));
+    passwordOptionsPanel = buildRememberOptionsRow();
+    loginFormPanel.add(passwordOptionsPanel);
     loginFormPanel.add(Box.createVerticalStrut(18));
     loginFormPanel.add(fullWidth(loginButton, 54));
     card.add(loginFormPanel);
@@ -210,14 +219,14 @@ public class RemoteComputeDialog extends JDialog {
   }
 
   private JPanel buildZhiziActionCard() {
-    JPanel card = card("一键启用", "普通用户建议保持默认 VIP 包月；不是 VIP 的用户再切到按量。");
+    JPanel card = card("一键启用", "");
     card.add(planPanel());
     card.add(Box.createVerticalStrut(18));
     card.add(fullWidth(useZhiziButton, 58));
     card.add(Box.createVerticalStrut(12));
     card.add(fullWidth(localFromZhiziButton, 50));
     card.add(Box.createVerticalStrut(22));
-    card.add(infoBox("提示", "启用后，主引擎、实时分析、形势判断和快速曲线都会使用智子云算力。"));
+    card.add(buildZhiziWebsiteCard());
     card.add(Box.createVerticalGlue());
     return card;
   }
@@ -240,30 +249,30 @@ public class RemoteComputeDialog extends JDialog {
   }
 
   private JPanel buildCustomConnectCard() {
-    JPanel card = card("自建算力", "适合已经租好 GPU 服务器，或者别人给了你连接码的用户。");
-    card.add(fieldRow("链接码", linkCodeField, "粘贴连接码"));
+    JPanel card = card("自建算力", "粘贴 KaTrain 可用的 ws/wss 链接，或导入二维码。");
+    card.add(fieldRow("链接", linkCodeField, "粘贴 ws:// 或 wss:// 开头的链接"));
     card.add(Box.createVerticalStrut(14));
     JPanel importRow = transparent(new FlowLayout(FlowLayout.LEFT, 10, 0));
     importRow.setAlignmentX(Component.LEFT_ALIGNMENT);
     importRow.add(importQrButton);
-    JLabel hint = new JLabel("支持导入二维码图片，自动读取里面的链接码。");
+    JLabel hint = new JLabel("支持导入二维码图片，自动读取里面的远程链接。");
     hint.setForeground(MUTED);
     hint.setFont(hint.getFont().deriveFont(Font.BOLD, 13F));
     importRow.add(hint);
     card.add(importRow);
     card.add(Box.createVerticalStrut(22));
-    card.add(infoBox("连接码", "把服务端生成的链接码粘贴到这里即可。不要让普通用户填写端口、协议或命令行参数。"));
+    card.add(infoBox("兼容 KaTrain", "可直接粘贴 KaTrain 远程引擎的 KataGo Analysis WebSocket 链接，支持 ws 和 wss。"));
     card.add(Box.createVerticalGlue());
     return card;
   }
 
   private JPanel buildCustomActionCard() {
-    JPanel card = card("保存连接码", "当前版本先保存连接码；后续自建远程运行时接入后，会直接复用这里的入口。");
+    JPanel card = card("一键启用", "");
     card.add(fullWidth(useCustomButton, 58));
     card.add(Box.createVerticalStrut(12));
     card.add(fullWidth(localFromCustomButton, 50));
     card.add(Box.createVerticalStrut(22));
-    card.add(infoBox("说明", "保存连接码不会切换当前引擎；现在需要远程算力时，建议直接使用智子云算力。"));
+    card.add(infoBox("说明", "启用后会把这个链接设为当前引擎；主界面、快速曲线和形势判断都会走自建算力。"));
     card.add(Box.createVerticalGlue());
     return card;
   }
@@ -302,6 +311,18 @@ public class RemoteComputeDialog extends JDialog {
     return row;
   }
 
+  private JPanel buildRememberOptionsRow() {
+    JPanel row = transparent(new FlowLayout(FlowLayout.LEFT, 0, 0));
+    row.setAlignmentX(Component.LEFT_ALIGNMENT);
+    row.setMaximumSize(new Dimension(Integer.MAX_VALUE, 42));
+    rememberPassword.setToolTipText("仅保存在本机配置中。");
+    rememberToken.setToolTipText("保存本次登录 token，下次打开不用重新登录。");
+    row.add(rememberToken);
+    row.add(Box.createHorizontalStrut(10));
+    row.add(rememberPassword);
+    return row;
+  }
+
   private JPanel planPanel() {
     initPresetOptions();
     styleCombo(presetBox);
@@ -316,10 +337,6 @@ public class RemoteComputeDialog extends JDialog {
     panel.add(label);
     panel.add(Box.createVerticalStrut(8));
     panel.add(fullWidth(presetBox, 46));
-    panel.add(Box.createVerticalStrut(12));
-    JLabel note = smallText("默认 VIP 包月；没有 VIP 时可选择按量 1x。");
-    note.setAlignmentX(Component.LEFT_ALIGNMENT);
-    panel.add(note);
     return panel;
   }
 
@@ -338,6 +355,40 @@ public class RemoteComputeDialog extends JDialog {
     return panel;
   }
 
+  private JPanel buildZhiziWebsiteCard() {
+    JPanel panel = new RoundPanel(24, new Color(246, 252, 247), new Color(188, 222, 200));
+    panel.setLayout(new BorderLayout(16, 0));
+    panel.setBorder(new EmptyBorder(18, 18, 18, 18));
+    panel.setAlignmentX(Component.LEFT_ALIGNMENT);
+    panel.add(new WebsiteGlyph(), BorderLayout.WEST);
+
+    JPanel copy = transparent();
+    copy.setLayout(new BoxLayout(copy, BoxLayout.Y_AXIS));
+    copy.setAlignmentX(Component.LEFT_ALIGNMENT);
+    JLabel title = new JLabel("智子官网与充值");
+    title.setForeground(TEXT);
+    title.setFont(title.getFont().deriveFont(Font.BOLD, 18F));
+    title.setAlignmentX(Component.LEFT_ALIGNMENT);
+    copy.add(title);
+    copy.add(Box.createVerticalStrut(6));
+    JLabel body = smallText("<html>充值需前往智子官网下载 App，<br>在智子 App 内完成。</html>");
+    body.setAlignmentX(Component.LEFT_ALIGNMENT);
+    copy.add(body);
+    copy.add(Box.createVerticalStrut(10));
+    JLabel url = new JLabel("www.zhizigo.cn");
+    url.setForeground(GREEN);
+    url.setFont(url.getFont().deriveFont(Font.BOLD, 14F));
+    url.setAlignmentX(Component.LEFT_ALIGNMENT);
+    copy.add(url);
+    panel.add(copy, BorderLayout.CENTER);
+
+    JPanel action = transparent(new BorderLayout());
+    action.setPreferredSize(new Dimension(138, 42));
+    action.add(zhiziWebsiteButton, BorderLayout.CENTER);
+    panel.add(action, BorderLayout.EAST);
+    return panel;
+  }
+
   private void initActions() {
     zhiziTab.addActionListener(e -> showPage(RemoteComputeConfig.PROVIDER_ZHIZI));
     customTab.addActionListener(e -> showPage(RemoteComputeConfig.PROVIDER_CUSTOM));
@@ -351,7 +402,19 @@ public class RemoteComputeDialog extends JDialog {
           codeLoginMode = true;
           updateLoginMode();
         });
+    showPasswordButton.addActionListener(e -> updatePasswordEcho());
+    rememberPassword.addActionListener(
+        e -> {
+          if (!rememberPassword.isSelected()) {
+            clearSavedPasswordPreference();
+          }
+        });
     sendCodeButton.addActionListener(e -> sendCode());
+    zhiziWebsiteButton.addActionListener(e -> openZhiziOfficialWebsite());
+    presetBox.addActionListener(e -> updateZhiziActionButtonState());
+    linkCodeField
+        .getDocument()
+        .addDocumentListener(newChangeListener(this::updateCustomActionButtonState));
     loginButton.addActionListener(
         e -> {
           if (codeLoginMode) {
@@ -384,7 +447,11 @@ public class RemoteComputeDialog extends JDialog {
   private void loadState() {
     RemoteComputeConfig.State state = RemoteComputeConfig.load();
     rememberToken.setSelected(state.rememberZhiziToken);
+    rememberPassword.setSelected(state.rememberZhiziPassword);
     accountField.setText(state.zhiziIdentifier == null ? "" : state.zhiziIdentifier);
+    passwordField.setText(state.rememberZhiziPassword ? state.zhiziPassword : "");
+    showPasswordButton.setSelected(false);
+    updatePasswordEcho();
     linkCodeField.setText(state.customRemoteCode == null ? "" : state.customRemoteCode);
     selectPresetForArgs(state.zhiziArgs);
     showPage(
@@ -393,6 +460,8 @@ public class RemoteComputeDialog extends JDialog {
             : RemoteComputeConfig.PROVIDER_ZHIZI);
     updateLoginMode();
     updateCurrentStatus();
+    updateZhiziActionButtonState();
+    updateCustomActionButtonState();
   }
 
   private void showPage(String page) {
@@ -411,13 +480,20 @@ public class RemoteComputeDialog extends JDialog {
     passwordLoginButton.setSelected(!codeLoginMode);
     codeLoginButton.setSelected(codeLoginMode);
     passwordRowPanel.setVisible(!codeLoginMode);
+    passwordOptionsPanel.setVisible(true);
+    rememberPassword.setVisible(!codeLoginMode);
     codeRowPanel.setVisible(codeLoginMode);
     if (loggedIn) {
       RemoteComputeConfig.State state = RemoteComputeConfig.load();
+      boolean passwordSaved =
+          state.rememberZhiziPassword
+              && state.zhiziPassword != null
+              && !state.zhiziPassword.isEmpty();
       String account =
           state.zhiziIdentifier == null || state.zhiziIdentifier.trim().isEmpty()
-              ? "账号已登录，密码没有保存在本地。"
-              : "账号：" + state.zhiziIdentifier + "，密码没有保存在本地。";
+              ? "账号已登录"
+              : "账号：" + state.zhiziIdentifier;
+      account += passwordSaved ? "，密码已保存在本机。" : "，密码没有保存在本地。";
       loggedInAccountLabel.setText(account);
     }
     revalidate();
@@ -455,7 +531,7 @@ public class RemoteComputeDialog extends JDialog {
     runBackground(
         "正在登录智子云算力...",
         () -> apiClient.login(identifier, password),
-        token -> onZhiziLoggedIn(identifier, token));
+        token -> onZhiziPasswordLoggedIn(identifier, password, token));
   }
 
   private void loginWithCode() {
@@ -471,10 +547,26 @@ public class RemoteComputeDialog extends JDialog {
         token -> onZhiziLoggedIn(identifier, token));
   }
 
+  private void onZhiziPasswordLoggedIn(String identifier, String password, String token) {
+    RemoteComputeConfig.saveZhiziToken(
+        token,
+        rememberToken.isSelected(),
+        currentArgs(),
+        identifier,
+        password,
+        rememberPassword.isSelected());
+    if (!rememberPassword.isSelected()) {
+      passwordField.setText("");
+    }
+    codeField.setText("");
+    updateLoginMode();
+    updateCurrentStatus();
+    updateStatus("登录成功，可以一键启用智子云算力。", true);
+  }
+
   private void onZhiziLoggedIn(String identifier, String token) {
     RemoteComputeConfig.saveZhiziToken(
         token, rememberToken.isSelected(), currentArgs(), identifier);
-    passwordField.setText("");
     codeField.setText("");
     updateLoginMode();
     updateCurrentStatus();
@@ -496,6 +588,29 @@ public class RemoteComputeDialog extends JDialog {
         ignored -> updateStatus("验证码已发送，请查看手机或邮箱。", true));
   }
 
+  private void openZhiziOfficialWebsite() {
+    try {
+      if (!Desktop.isDesktopSupported()
+          || !Desktop.getDesktop().isSupported(Desktop.Action.BROWSE)) {
+        throw new UnsupportedOperationException("系统不支持自动打开浏览器。");
+      }
+      Desktop.getDesktop().browse(URI.create(ZHIZI_OFFICIAL_URL));
+      updateStatus("已打开智子官网，请在官网下载 App 后完成充值。", true);
+    } catch (Exception e) {
+      Toolkit.getDefaultToolkit()
+          .getSystemClipboard()
+          .setContents(new StringSelection(ZHIZI_OFFICIAL_URL), null);
+      updateStatus("未能自动打开浏览器，已复制智子官网链接。", false);
+      JOptionPane.showMessageDialog(
+          this,
+          "未能自动打开浏览器，已复制智子官网链接：\n"
+              + ZHIZI_OFFICIAL_URL
+              + "\n\n请前往官网下载智子 App，并在智子 App 内完成充值。",
+          "智子官网链接已复制",
+          JOptionPane.INFORMATION_MESSAGE);
+    }
+  }
+
   private void useZhiziEngine() {
     RemoteComputeConfig.State state = RemoteComputeConfig.load();
     if (state.zhiziAccountToken.trim().isEmpty()) {
@@ -512,16 +627,16 @@ public class RemoteComputeDialog extends JDialog {
       SwingUtilities.invokeLater(
           () -> {
             Lizzie.engineManager.switchEngine(index, true);
-            warmQuickAnalysisAfterZhiziSwitch();
+            warmQuickAnalysisAfterRemoteSwitch();
           });
     } else {
-      warmQuickAnalysisAfterZhiziSwitch();
+      warmQuickAnalysisAfterRemoteSwitch();
     }
     updateCurrentStatus();
     updateStatus("已启用智子云算力：" + RemoteComputeConfig.displayNameForZhiziArgs(currentArgs()), true);
   }
 
-  private void warmQuickAnalysisAfterZhiziSwitch() {
+  private void warmQuickAnalysisAfterRemoteSwitch() {
     if (Lizzie.frame != null) {
       Lizzie.frame.preloadQuickAnalysisEngineForKifuBrowsing();
     }
@@ -529,9 +644,30 @@ public class RemoteComputeDialog extends JDialog {
 
   private void logout() {
     RemoteComputeConfig.clearZhiziToken();
+    passwordField.setText("");
+    rememberPassword.setSelected(false);
+    showPasswordButton.setSelected(false);
+    updatePasswordEcho();
     updateLoginMode();
     updateCurrentStatus();
     updateStatus("已退出智子云算力登录。", true);
+  }
+
+  private void updatePasswordEcho() {
+    boolean visible = showPasswordButton.isSelected();
+    passwordField.setEchoChar(visible ? (char) 0 : passwordEchoChar);
+    showPasswordButton.setToolTipText(visible ? "隐藏密码" : "显示密码");
+  }
+
+  private void clearSavedPasswordPreference() {
+    RemoteComputeConfig.State state = RemoteComputeConfig.load();
+    if (!state.rememberZhiziPassword
+        && (state.zhiziPassword == null || state.zhiziPassword.isEmpty())) {
+      return;
+    }
+    state.rememberZhiziPassword = false;
+    state.zhiziPassword = "";
+    RemoteComputeConfig.save(state);
   }
 
   private void importQrCode() {
@@ -551,74 +687,135 @@ public class RemoteComputeDialog extends JDialog {
           new BinaryBitmap(new HybridBinarizer(new BufferedImageLuminanceSource(image)));
       Result decoded = new MultiFormatReader().decode(bitmap);
       linkCodeField.setText(decoded.getText());
-      updateStatus("已读取二维码中的连接码。", true);
+      updateStatus("已读取二维码中的远程链接。", true);
     } catch (Exception e) {
-      updateStatus("没有识别到二维码，请复制连接码后手动粘贴。", false);
+      updateStatus("没有识别到二维码，请复制 ws/wss 链接后手动粘贴。", false);
       JOptionPane.showMessageDialog(
           this,
-          "没有识别到二维码，请复制连接码后手动粘贴。\n\n" + e.getLocalizedMessage(),
+          "没有识别到二维码，请复制 ws/wss 链接后手动粘贴。\n\n" + e.getLocalizedMessage(),
           "二维码识别失败",
           JOptionPane.WARNING_MESSAGE);
     }
   }
 
   private void useCustomCompute() {
-    String code = linkCodeField.getText().trim();
+    String code = RemoteComputeConfig.normalizeCustomWebSocketUrl(linkCodeField.getText());
     if (code.isEmpty()) {
-      updateStatus("请先输入连接码，或导入二维码。", false);
+      updateStatus("请先输入 ws:// 或 wss:// 链接，或导入二维码。", false);
+      return;
+    }
+    if (!RemoteComputeConfig.isCustomWebSocketUrl(code)) {
+      updateStatus("自建算力链接需要以 ws:// 或 wss:// 开头。", false);
+      JOptionPane.showMessageDialog(
+          this,
+          "请粘贴 KaTrain 兼容的 ws:// 或 wss:// 远程引擎链接。",
+          "自建算力链接无效",
+          JOptionPane.WARNING_MESSAGE);
       return;
     }
     RemoteComputeConfig.State state = RemoteComputeConfig.load();
-    if (RemoteComputeConfig.PROVIDER_CUSTOM.equals(state.provider)) {
-      state.provider = RemoteComputeConfig.PROVIDER_LOCAL;
-    }
+    state.provider = RemoteComputeConfig.PROVIDER_CUSTOM;
     state.customRemoteCode = code;
     RemoteComputeConfig.save(state);
+    linkCodeField.setText(code);
+    int index = RemoteComputeConfig.createOrUpdateCustomWebSocketEngine(true);
+    if (Lizzie.engineManager != null) {
+      SwingUtilities.invokeLater(
+          () -> {
+            Lizzie.engineManager.switchEngine(index, true);
+            warmQuickAnalysisAfterRemoteSwitch();
+          });
+    } else {
+      warmQuickAnalysisAfterRemoteSwitch();
+    }
     showPage(RemoteComputeConfig.PROVIDER_CUSTOM);
     updateCurrentStatus();
-    updateStatus("已保存自建算力连接码。当前引擎未切换，避免误以为已经连上远程服务。", true);
+    updateStatus("已启用自建算力：" + RemoteComputeConfig.displayNameForCustomWebSocketUrl(code), true);
   }
 
   private void switchToLocalProvider() {
-    RemoteComputeConfig.State state = RemoteComputeConfig.load();
-    state.provider = RemoteComputeConfig.PROVIDER_LOCAL;
-    RemoteComputeConfig.save(state);
-    int localEngineIndex = firstLocalEngineIndex();
+    int localEngineIndex = RemoteComputeConfig.saveLocalProviderAndDefaultEngine();
     if (localEngineIndex >= 0 && Lizzie.engineManager != null) {
       SwingUtilities.invokeLater(() -> Lizzie.engineManager.switchEngine(localEngineIndex, true));
-      updateStatus("已切回本地引擎。", true);
+      updateStatus("已切回本地引擎，下次启动也会继续使用本地引擎。", true);
     } else {
       updateStatus("暂未找到本地引擎，请先在引擎设置里添加本机 KataGo。", false);
     }
     updateCurrentStatus();
   }
 
-  private int firstLocalEngineIndex() {
-    ArrayList<EngineData> engines = Utils.getEngineData();
-    for (int i = 0; i < engines.size(); i++) {
-      EngineData engine = engines.get(i);
-      if (engine == null || engine.commands == null || engine.commands.trim().isEmpty()) {
-        continue;
-      }
-      if (!RemoteComputeConfig.isZhiziEngineCommand(engine.commands)) {
-        return i;
-      }
-    }
-    return -1;
-  }
-
   private void updateCurrentStatus() {
     RemoteComputeConfig.State state = RemoteComputeConfig.load();
     if (RemoteComputeConfig.PROVIDER_ZHIZI.equals(state.provider)) {
-      currentStatusLabel.setText(
-          "当前使用：" + RemoteComputeConfig.displayNameForZhiziArgs(state.zhiziArgs));
+      String fullName = RemoteComputeConfig.displayNameForZhiziArgs(state.zhiziArgs);
+      currentStatusLabel.setText("当前使用：智子云算力");
+      currentStatusLabel.setToolTipText("当前使用：" + fullName);
       statusDot.setColor(GREEN);
     } else if (RemoteComputeConfig.PROVIDER_CUSTOM.equals(state.provider)) {
-      currentStatusLabel.setText("当前使用：本地引擎（自建连接码已保存）");
-      statusDot.setColor(GOLD);
+      String fullName = RemoteComputeConfig.displayNameForCustomWebSocketUrl(state.customRemoteCode);
+      currentStatusLabel.setText("当前使用：自建算力");
+      currentStatusLabel.setToolTipText("当前使用：" + fullName);
+      statusDot.setColor(GREEN);
     } else {
       currentStatusLabel.setText("当前使用：本地引擎");
+      currentStatusLabel.setToolTipText("当前使用：本地引擎");
       statusDot.setColor(GREEN);
+    }
+    updateZhiziActionButtonState();
+    updateCustomActionButtonState();
+  }
+
+  private void updateZhiziActionButtonState() {
+    RemoteComputeConfig.State state = RemoteComputeConfig.load();
+    boolean loggedIn = state.zhiziAccountToken != null && !state.zhiziAccountToken.trim().isEmpty();
+    boolean usingZhizi = RemoteComputeConfig.PROVIDER_ZHIZI.equals(state.provider);
+    boolean sameArgs = currentArgs().equals(state.zhiziArgs);
+    if (!loggedIn) {
+      useZhiziButton.setText("登录后启用智子云算力");
+      useZhiziButton.setToolTipText("请先登录智子账号，再启用云端算力。");
+      useZhiziButton.setEnabled(false);
+    } else if (usingZhizi && sameArgs) {
+      useZhiziButton.setText("已启用智子算力");
+      useZhiziButton.setToolTipText("当前连接方式已经生效；更改连接方式后可重新启用。");
+      useZhiziButton.setEnabled(false);
+    } else if (usingZhizi) {
+      useZhiziButton.setText("更换智子云算力连接方式");
+      useZhiziButton.setToolTipText("将当前引擎切换到新选择的智子连接方式。");
+      useZhiziButton.setEnabled(!busy);
+    } else {
+      useZhiziButton.setText("一键启用智子云算力");
+      useZhiziButton.setToolTipText("把智子云端 KataGo 设置为当前引擎。");
+      useZhiziButton.setEnabled(!busy);
+    }
+  }
+
+  private void updateCustomActionButtonState() {
+    RemoteComputeConfig.State state = RemoteComputeConfig.load();
+    String code = RemoteComputeConfig.normalizeCustomWebSocketUrl(linkCodeField.getText());
+    String savedCode = RemoteComputeConfig.normalizeCustomWebSocketUrl(state.customRemoteCode);
+    boolean validCode = RemoteComputeConfig.isCustomWebSocketUrl(code);
+    boolean usingCustom = RemoteComputeConfig.PROVIDER_CUSTOM.equals(state.provider);
+    boolean sameCode = usingCustom && validCode && code.equals(savedCode);
+    if (code.isEmpty()) {
+      useCustomButton.setText("输入链接后启用自建算力");
+      useCustomButton.setToolTipText("请先粘贴 ws:// 或 wss:// 远程算力链接，或导入二维码。");
+      useCustomButton.setEnabled(false);
+    } else if (!validCode) {
+      useCustomButton.setText(usingCustom ? "输入有效链接后更换自建算力" : "输入有效链接后启用自建算力");
+      useCustomButton.setToolTipText("自建算力链接需要以 ws:// 或 wss:// 开头。");
+      useCustomButton.setEnabled(false);
+    } else if (sameCode) {
+      useCustomButton.setText("已启用自建算力");
+      useCustomButton.setToolTipText("当前自建算力链接已经生效；更改链接后可重新启用。");
+      useCustomButton.setEnabled(false);
+    } else if (usingCustom) {
+      useCustomButton.setText("更换自建算力连接方式");
+      useCustomButton.setToolTipText("将当前引擎切换到新输入的自建算力链接。");
+      useCustomButton.setEnabled(!busy);
+    } else {
+      useCustomButton.setText("一键启用自建算力");
+      useCustomButton.setToolTipText("把这个远程链接设置为当前引擎。");
+      useCustomButton.setEnabled(!busy);
     }
   }
 
@@ -655,22 +852,45 @@ public class RemoteComputeDialog extends JDialog {
   }
 
   private void setBusy(boolean busy) {
+    this.busy = busy;
     accountField.setEnabled(!busy);
     passwordField.setEnabled(!busy);
     codeField.setEnabled(!busy);
     linkCodeField.setEnabled(!busy);
     rememberToken.setEnabled(!busy);
+    showPasswordButton.setEnabled(!busy && !codeLoginMode);
+    rememberPassword.setEnabled(!busy && !codeLoginMode);
     presetBox.setEnabled(!busy);
     passwordLoginButton.setEnabled(!busy);
     codeLoginButton.setEnabled(!busy);
     sendCodeButton.setEnabled(!busy);
+    zhiziWebsiteButton.setEnabled(!busy);
     loginButton.setEnabled(!busy);
-    useZhiziButton.setEnabled(!busy);
+    updateZhiziActionButtonState();
     logoutButton.setEnabled(!busy);
     localFromZhiziButton.setEnabled(!busy);
     importQrButton.setEnabled(!busy);
-    useCustomButton.setEnabled(!busy);
+    updateCustomActionButtonState();
     localFromCustomButton.setEnabled(!busy);
+  }
+
+  private static DocumentListener newChangeListener(Runnable action) {
+    return new DocumentListener() {
+      @Override
+      public void insertUpdate(DocumentEvent e) {
+        action.run();
+      }
+
+      @Override
+      public void removeUpdate(DocumentEvent e) {
+        action.run();
+      }
+
+      @Override
+      public void changedUpdate(DocumentEvent e) {
+        action.run();
+      }
+    };
   }
 
   private JPanel card(String title, String subtitle) {
@@ -682,11 +902,15 @@ public class RemoteComputeDialog extends JDialog {
     titleLabel.setFont(titleLabel.getFont().deriveFont(Font.BOLD, 28F));
     titleLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
     card.add(titleLabel);
-    card.add(Box.createVerticalStrut(8));
-    JLabel subtitleLabel = smallText("<html>" + subtitle + "</html>");
-    subtitleLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
-    card.add(subtitleLabel);
-    card.add(Box.createVerticalStrut(24));
+    if (subtitle != null && !subtitle.trim().isEmpty()) {
+      card.add(Box.createVerticalStrut(8));
+      JLabel subtitleLabel = smallText("<html>" + subtitle + "</html>");
+      subtitleLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
+      card.add(subtitleLabel);
+      card.add(Box.createVerticalStrut(24));
+    } else {
+      card.add(Box.createVerticalStrut(20));
+    }
     return card;
   }
 
@@ -702,6 +926,33 @@ public class RemoteComputeDialog extends JDialog {
     labelView.setPreferredSize(new Dimension(58, 44));
     row.add(labelView, BorderLayout.WEST);
     row.add(field, BorderLayout.CENTER);
+    return row;
+  }
+
+  private JPanel passwordFieldRow(String label, JPasswordField field, String placeholder) {
+    field.putClientProperty("placeholder", placeholder);
+    field.setForeground(TEXT);
+    field.setCaretColor(TEXT);
+    field.setBackground(new Color(255, 255, 252));
+    field.setOpaque(false);
+    field.setBorder(new EmptyBorder(10, 0, 10, 8));
+    field.setFont(field.getFont().deriveFont(Font.BOLD, 14F));
+
+    JPanel inputShell = new RoundPanel(16, new Color(255, 255, 252), BORDER);
+    inputShell.setLayout(new BorderLayout(4, 0));
+    inputShell.setBorder(new EmptyBorder(0, 12, 0, 6));
+    inputShell.add(field, BorderLayout.CENTER);
+    inputShell.add(showPasswordButton, BorderLayout.EAST);
+
+    JPanel row = transparent(new BorderLayout(12, 0));
+    row.setAlignmentX(Component.LEFT_ALIGNMENT);
+    row.setMaximumSize(new Dimension(Integer.MAX_VALUE, 48));
+    JLabel labelView = new JLabel(label);
+    labelView.setForeground(MUTED);
+    labelView.setFont(labelView.getFont().deriveFont(Font.BOLD, 14F));
+    labelView.setPreferredSize(new Dimension(58, 44));
+    row.add(labelView, BorderLayout.WEST);
+    row.add(inputShell, BorderLayout.CENTER);
     return row;
   }
 
@@ -738,13 +989,6 @@ public class RemoteComputeDialog extends JDialog {
         });
   }
 
-  private void styleCheckBox(JCheckBox checkBox) {
-    checkBox.setOpaque(false);
-    checkBox.setForeground(MUTED);
-    checkBox.setFont(checkBox.getFont().deriveFont(Font.BOLD, 13F));
-    checkBox.setFocusPainted(false);
-  }
-
   private JLabel smallText(String text) {
     JLabel label = new JLabel(text);
     label.setForeground(MUTED);
@@ -778,13 +1022,6 @@ public class RemoteComputeDialog extends JDialog {
     wrapper.setAlignmentX(Component.LEFT_ALIGNMENT);
     wrapper.setMaximumSize(new Dimension(Integer.MAX_VALUE, height));
     wrapper.add(component, BorderLayout.CENTER);
-    return wrapper;
-  }
-
-  private Component leftAligned(JComponent component) {
-    JPanel wrapper = transparent(new FlowLayout(FlowLayout.LEFT, 0, 0));
-    wrapper.setAlignmentX(Component.LEFT_ALIGNMENT);
-    wrapper.add(component);
     return wrapper;
   }
 
@@ -941,6 +1178,136 @@ public class RemoteComputeDialog extends JDialog {
       }
       g2.dispose();
       super.paintComponent(g);
+    }
+  }
+
+  private static final class EyeToggleButton extends JToggleButton {
+    EyeToggleButton() {
+      setBorder(new EmptyBorder(0, 0, 0, 0));
+      setBorderPainted(false);
+      setContentAreaFilled(false);
+      setFocusPainted(false);
+      setOpaque(false);
+      setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+      setRolloverEnabled(true);
+      setToolTipText("显示密码");
+    }
+
+    @Override
+    public Dimension getPreferredSize() {
+      return new Dimension(36, 36);
+    }
+
+    @Override
+    protected void paintComponent(Graphics g) {
+      Graphics2D g2 = (Graphics2D) g.create();
+      g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+      boolean active = isSelected();
+      boolean hover = getModel().isRollover();
+      Color accent = active ? GREEN : MUTED;
+      if (hover || active) {
+        Color fill = active ? new Color(222, 242, 229) : new Color(244, 238, 226);
+        g2.setColor(fill);
+        g2.fillRoundRect(3, 3, getWidth() - 6, getHeight() - 6, 16, 16);
+      }
+      int centerX = getWidth() / 2;
+      int centerY = getHeight() / 2;
+      g2.setStroke(new BasicStroke(1.8F, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+      g2.setColor(accent);
+      g2.drawArc(centerX - 12, centerY - 8, 24, 16, 20, 140);
+      g2.drawArc(centerX - 12, centerY - 8, 24, 16, 200, 140);
+      g2.fillOval(centerX - 4, centerY - 4, 8, 8);
+      if (!active) {
+        g2.setStroke(new BasicStroke(2.1F, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+        g2.drawLine(centerX - 11, centerY + 10, centerX + 11, centerY - 10);
+      }
+      g2.dispose();
+    }
+  }
+
+  private static final class MemoryCheckBox extends JCheckBox {
+    MemoryCheckBox(String text) {
+      super(text);
+      setBorder(new EmptyBorder(8, 13, 8, 14));
+      setBorderPainted(false);
+      setContentAreaFilled(false);
+      setFocusPainted(false);
+      setOpaque(false);
+      setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+      setRolloverEnabled(true);
+      setFont(getFont().deriveFont(Font.BOLD, 13F));
+    }
+
+    @Override
+    public Dimension getPreferredSize() {
+      Font font = getFont();
+      int textWidth = getFontMetrics(font).stringWidth(getText());
+      return new Dimension(textWidth + 46, 36);
+    }
+
+    @Override
+    protected void paintComponent(Graphics g) {
+      Graphics2D g2 = (Graphics2D) g.create();
+      g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+      boolean selected = isSelected();
+      boolean hover = getModel().isRollover();
+      Color fill =
+          selected
+              ? new Color(226, 243, 232)
+              : hover ? new Color(249, 245, 236) : new Color(255, 253, 248);
+      Color border = selected ? new Color(140, 191, 159) : BORDER;
+      Color text = isEnabled() ? (selected ? new Color(36, 107, 72) : MUTED) : new Color(166, 157, 142);
+      g2.setColor(fill);
+      g2.fillRoundRect(1, 1, getWidth() - 2, getHeight() - 2, 18, 18);
+      g2.setColor(border);
+      g2.setStroke(new BasicStroke(1.15F));
+      g2.drawRoundRect(1, 1, getWidth() - 2, getHeight() - 2, 18, 18);
+
+      int dotSize = 10;
+      int dotX = 14;
+      int dotY = (getHeight() - dotSize) / 2;
+      if (selected) {
+        g2.setColor(GREEN);
+        g2.fillOval(dotX, dotY, dotSize, dotSize);
+      } else {
+        g2.setColor(new Color(174, 164, 145));
+        g2.drawOval(dotX, dotY, dotSize, dotSize);
+      }
+
+      FontMetrics metrics = g2.getFontMetrics(getFont());
+      int textX = dotX + dotSize + 10;
+      int textY = (getHeight() - metrics.getHeight()) / 2 + metrics.getAscent();
+      g2.setFont(getFont());
+      g2.setColor(text);
+      g2.drawString(getText(), textX, textY);
+      g2.dispose();
+    }
+  }
+
+  private static final class WebsiteGlyph extends JComponent {
+    @Override
+    public Dimension getPreferredSize() {
+      return new Dimension(50, 50);
+    }
+
+    @Override
+    protected void paintComponent(Graphics g) {
+      Graphics2D g2 = (Graphics2D) g.create();
+      g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+      int size = Math.min(getWidth(), getHeight()) - 4;
+      int x = (getWidth() - size) / 2;
+      int y = (getHeight() - size) / 2;
+      g2.setColor(new Color(43, 139, 90, 34));
+      g2.fillOval(x, y, size, size);
+      g2.setColor(GREEN);
+      g2.setStroke(new BasicStroke(2F, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+      g2.drawOval(x + 7, y + 7, size - 14, size - 14);
+      g2.drawArc(x + 14, y + 7, size - 28, size - 14, 90, 180);
+      g2.drawArc(x + 14, y + 7, size - 28, size - 14, -90, 180);
+      g2.drawLine(x + 10, y + size / 2, x + size - 10, y + size / 2);
+      g2.setColor(GOLD);
+      g2.fillOval(x + size - 16, y + 8, 9, 9);
+      g2.dispose();
     }
   }
 

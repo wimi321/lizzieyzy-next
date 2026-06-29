@@ -4,7 +4,6 @@ import featurecat.lizzie.Config;
 import featurecat.lizzie.Lizzie;
 import featurecat.lizzie.analysis.remote.EngineTransport;
 import featurecat.lizzie.analysis.remote.RemoteComputeConfig;
-import featurecat.lizzie.analysis.remote.ZhiziGtpTransport;
 import featurecat.lizzie.gui.AnalysisSettings;
 import featurecat.lizzie.gui.EngineData;
 import featurecat.lizzie.gui.EngineFailedMessage;
@@ -110,7 +109,7 @@ public class AnalysisEngine {
     this.password = remoteData.password;
     this.useKeyGen = remoteData.useKeyGen;
     this.keyGenPath = remoteData.keyGenPath;
-    if (RemoteComputeConfig.isZhiziEngineCommand(engineCommand)) {
+    if (RemoteComputeConfig.isRemoteComputeEngineCommand(engineCommand)) {
       this.useJavaSSH = false;
       this.useRemoteCompute = true;
     }
@@ -123,7 +122,7 @@ public class AnalysisEngine {
     ArrayList<EngineData> engines = Utils.getEngineData();
     if (currentIndex >= 0 && currentIndex < engines.size()) {
       String command = engines.get(currentIndex).commands;
-      if (RemoteComputeConfig.isZhiziEngineCommand(command)) {
+      if (RemoteComputeConfig.isRemoteComputeEngineCommand(command)) {
         return command;
       }
     }
@@ -152,12 +151,12 @@ public class AnalysisEngine {
     CommandLaunchHelper.LaunchSpec launchSpec =
         CommandLaunchHelper.prepare(Utils.splitCommand(engineCommand));
     commands = launchSpec.getCommandParts();
-    this.useRemoteCompute = RemoteComputeConfig.isZhiziEngineCommand(engineCommand);
+    this.useRemoteCompute = RemoteComputeConfig.isRemoteComputeEngineCommand(engineCommand);
     if (this.useRemoteCompute) {
       this.useJavaSSH = false;
       process = null;
       try {
-        remoteTransport = ZhiziGtpTransport.fromSavedConfig();
+        remoteTransport = RemoteComputeConfig.createTransportForCommand(engineCommand);
         remoteTransport.start();
         initializeStreams(remoteTransport.stdout(), remoteTransport.stdin(), remoteTransport.stderr());
         isLoaded = true;
@@ -166,7 +165,7 @@ public class AnalysisEngine {
             resourceBundle.getString("Leelaz.engineFailed")
                 + ": "
                 + (e.getLocalizedMessage() == null
-                    ? "智子云算力连接失败"
+                    ? "远程算力连接失败"
                     : e.getLocalizedMessage()));
         isLoaded = false;
         return;
@@ -1258,7 +1257,7 @@ public class AnalysisEngine {
 
   public boolean matchesCurrentAnalysisBackend() {
     return useRemoteCompute
-        == RemoteComputeConfig.isZhiziEngineCommand(resolveConfiguredAnalysisEngineCommand());
+        == RemoteComputeConfig.isRemoteComputeEngineCommand(resolveConfiguredAnalysisEngineCommand());
   }
 
   public void shutdown() {

@@ -23,6 +23,7 @@ import featurecat.lizzie.analysis.ReadBoard;
 import featurecat.lizzie.analysis.ReadBoardUpdateInstaller;
 import featurecat.lizzie.analysis.ReadBoardUpdateRequest;
 import featurecat.lizzie.analysis.TrackingEngine;
+import featurecat.lizzie.analysis.remote.RemoteComputeConfig;
 import featurecat.lizzie.rules.Board;
 import featurecat.lizzie.rules.BoardData;
 import featurecat.lizzie.rules.BoardHistoryList;
@@ -4678,7 +4679,7 @@ public class LizzieFrame extends JFrame {
                       ? ""
                       : Lizzie.resourceBundle.getString("LizzieFrame.display.space"));
           String ponderingText = Lizzie.resourceBundle.getString("LizzieFrame.display.pondering");
-          weightText = Lizzie.leelaz.oriEnginename;
+          weightText = statusEngineName(Lizzie.leelaz);
           if (weightText.length() > 15) weightText = weightText.substring(0, 10);
           String text1 =
               Lizzie.resourceBundle.getString("LizzieFrame.mainEngine")
@@ -4690,7 +4691,7 @@ public class LizzieFrame extends JFrame {
 
           commentX1 = drawPonderingStateForExtraMode2(g, text1, leftInset, maxSize, 18);
           if (Lizzie.leelaz2 != null) {
-            weightText2 = Lizzie.leelaz2.oriEnginename;
+            weightText2 = statusEngineName(Lizzie.leelaz2);
             String statusKey2 =
                 "LizzieFrame.display." + (Lizzie.leelaz.isPondering() ? "on" : "off");
             String statusText2 = Lizzie.resourceBundle.getString(statusKey2);
@@ -5042,7 +5043,7 @@ public class LizzieFrame extends JFrame {
                 weightText = Lizzie.resourceBundle.getString("LizzieFrame.weightText.contributing");
               if (EngineManager.isEmpty)
                 weightText = Lizzie.resourceBundle.getString("LizzieFrame.noEngineText");
-              else weightText = Lizzie.leelaz.oriEnginename;
+              else weightText = statusEngineName(Lizzie.leelaz);
               String text2 = ponderingText + " " + statusText; // + " " + switchingText;
               drawPonderingState(
                   g, weightText, text2, ponderingX, ponderingY, ponderingY2, ponderingSize);
@@ -5488,7 +5489,7 @@ public class LizzieFrame extends JFrame {
                       Lizzie.resourceBundle.getString("LizzieFrame.weightText.contributing");
                 else if (EngineManager.isEmpty)
                   weightText = Lizzie.resourceBundle.getString("LizzieFrame.noEngineText");
-                else weightText = Lizzie.leelaz.oriEnginename;
+                else weightText = statusEngineName(Lizzie.leelaz);
                 String text2 = ponderingText + " " + statusText; // + " " + switchingText;
                 drawPonderingState(
                     g, weightText, text2, ponderingX, ponderingY, ponderingY2, ponderingSize);
@@ -5699,7 +5700,7 @@ public class LizzieFrame extends JFrame {
                       Lizzie.resourceBundle.getString("LizzieFrame.weightText.contributing");
                 if (EngineManager.isEmpty)
                   weightText = Lizzie.resourceBundle.getString("LizzieFrame.noEngineText");
-                else weightText = Lizzie.leelaz.oriEnginename;
+                else weightText = statusEngineName(Lizzie.leelaz);
                 String text2 = ponderingText + " " + statusText; // + " " + switchingText;
                 drawPonderingState(
                     g, weightText, text2, ponderingX, ponderingY, ponderingY2, ponderingSize);
@@ -5951,6 +5952,14 @@ public class LizzieFrame extends JFrame {
       Graphics2D g, String text1, String text2, int x, int y, int y2, double size) {
     drawPonderingState(g, text1, x, y, size * (Lizzie.config.userKnownX ? 0.7 : 0.6));
     drawPonderingState2(g, text2, x, y2, size * (Lizzie.config.userKnownX ? 0.75 : 0.4));
+  }
+
+  private String statusEngineName(Leelaz engine) {
+    if (engine == null) {
+      return "";
+    }
+    return RemoteComputeConfig.compactDisplayNameForCommand(
+        engine.getEngineCommand(), engine.oriEnginename);
   }
 
   private int drawPonderingStateForExtraMode2(Graphics2D g, String text, int x, int y, int size) {
