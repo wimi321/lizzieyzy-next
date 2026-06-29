@@ -6,12 +6,16 @@ import featurecat.lizzie.gui.EngineData;
 import featurecat.lizzie.rules.Board;
 import featurecat.lizzie.util.Utils;
 import java.io.IOException;
+import java.net.URI;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Base64;
 import org.json.JSONObject;
 
 public final class RemoteComputeConfig {
   public static final String CONFIG_KEY = "remote-compute";
   public static final String COMMAND_ZHIZI = "remote-compute://zhizi";
+  public static final String COMMAND_CUSTOM_WS = "remote-compute://custom-websocket";
   public static final String PROVIDER_LOCAL = "local";
   public static final String PROVIDER_ZHIZI = "zhizi";
   public static final String PROVIDER_CUSTOM = "custom";
@@ -49,6 +53,11 @@ public final class RemoteComputeConfig {
     state.zhiziAccountToken = json.optString("zhizi-account-token", "");
     state.zhiziIdentifier = json.optString("zhizi-identifier", "");
     state.rememberZhiziToken = json.optBoolean("remember-zhizi-token", false);
+    state.rememberZhiziPassword = json.optBoolean("remember-zhizi-password", false);
+    state.zhiziPassword =
+        state.rememberZhiziPassword
+            ? decodeSavedPassword(json.optString("zhizi-password-v1", ""))
+            : "";
     state.zhiziArgs = json.optString("zhizi-args", DEFAULT_ZHIZI_ARGS);
     state.customRemoteCode = json.optString("custom-remote-code", "");
     if (state.zhiziAccountToken.isEmpty() && !sessionZhiziToken.isEmpty()) {
@@ -63,7 +72,12 @@ public final class RemoteComputeConfig {
     json.put("zhizi-args", emptyToDefault(state.zhiziArgs, DEFAULT_ZHIZI_ARGS));
     json.put("zhizi-identifier", state.zhiziIdentifier == null ? "" : state.zhiziIdentifier.trim());
     json.put("remember-zhizi-token", state.rememberZhiziToken);
+    json.put("remember-zhizi-password", state.rememberZhiziPassword);
     json.put("custom-remote-code", state.customRemoteCode == null ? "" : state.customRemoteCode);
+    String savedPassword = state.zhiziPassword == null ? "" : state.zhiziPassword;
+    if (state.rememberZhiziPassword && !savedPassword.isEmpty()) {
+      json.put("zhizi-password-v1", encodeSavedPassword(savedPassword));
+    }
     sessionZhiziToken = state.zhiziAccountToken == null ? "" : state.zhiziAccountToken;
     if (state.rememberZhiziToken && !sessionZhiziToken.isEmpty()) {
       json.put("zhizi-account-token", sessionZhiziToken);
@@ -79,10 +93,26 @@ public final class RemoteComputeConfig {
   public static void saveZhiziToken(
       String token, boolean remember, String args, String identifier) {
     State state = load();
-    state.provider = PROVIDER_ZHIZI;
     state.zhiziAccountToken = token == null ? "" : token;
     state.zhiziIdentifier = identifier == null ? "" : identifier.trim();
     state.rememberZhiziToken = remember;
+    state.zhiziArgs = emptyToDefault(args, DEFAULT_ZHIZI_ARGS);
+    save(state);
+  }
+
+  public static void saveZhiziToken(
+      String token,
+      boolean remember,
+      String args,
+      String identifier,
+      String password,
+      boolean rememberPassword) {
+    State state = load();
+    state.zhiziAccountToken = token == null ? "" : token;
+    state.zhiziIdentifier = identifier == null ? "" : identifier.trim();
+    state.rememberZhiziToken = remember;
+    state.zhiziPassword = rememberPassword ? (password == null ? "" : password) : "";
+    state.rememberZhiziPassword = rememberPassword && !state.zhiziPassword.isEmpty();
     state.zhiziArgs = emptyToDefault(args, DEFAULT_ZHIZI_ARGS);
     save(state);
   }
@@ -91,13 +121,43 @@ public final class RemoteComputeConfig {
     State state = load();
     state.zhiziAccountToken = "";
     state.zhiziIdentifier = "";
+    state.zhiziPassword = "";
     state.rememberZhiziToken = false;
+    state.rememberZhiziPassword = false;
     sessionZhiziToken = "";
     save(state);
   }
 
   public static boolean isZhiziEngineCommand(String command) {
     return command != null && command.trim().startsWith(COMMAND_ZHIZI);
+  }
+
+  public static boolean isCustomWebSocketEngineCommand(String command) {
+    return command != null && command.trim().startsWith(COMMAND_CUSTOM_WS);
+  }
+
+  public static boolean isRemoteComputeEngineCommand(String command) {
+    return isZhiziEngineCommand(command) || isCustomWebSocketEngineCommand(command);
+  }
+
+  public static String compactDisplayNameForCommand(String command, String fallback) {
+    if (isZhiziEngineCommand(command)) {
+      return "智子云算力";
+    }
+    if (isCustomWebSocketEngineCommand(command)) {
+      return "自建算力";
+    }
+    return fallback == null ? "" : fallback.trim();
+  }
+
+  public static EngineTransport createTransportForCommand(String command) throws IOException {
+    if (isZhiziEngineCommand(command)) {
+      return ZhiziGtpTransport.fromSavedConfig();
+    }
+    if (isCustomWebSocketEngineCommand(command)) {
+      return KataGoAnalysisWebSocketTransport.fromSavedConfig();
+    }
+    throw new IOException("未知远程算力引擎。");
   }
 
   public static int createOrUpdateZhiziEngine(boolean setDefault) {
@@ -132,10 +192,86 @@ public final class RemoteComputeConfig {
         engine.isDefault = false;
       }
       data.isDefault = true;
+      rememberLastEngine(index);
     }
     Utils.saveEngineSettings(engines);
     refreshEngineCatalogQuietly();
     return index;
+  }
+
+  public static int createOrUpdateCustomWebSocketEngine(boolean setDefault) {
+    State state = load();
+    String remoteUrl = normalizeCustomWebSocketUrl(state.customRemoteCode);
+    ArrayList<EngineData> engines = Utils.getEngineData();
+    int index = -1;
+    for (int i = 0; i < engines.size(); i++) {
+      if (isCustomWebSocketEngineCommand(engines.get(i).commands)) {
+        index = i;
+        break;
+      }
+    }
+    EngineData data;
+    if (index >= 0) {
+      data = engines.get(index);
+    } else {
+      data = new EngineData();
+      index = engines.size();
+      engines.add(data);
+    }
+    data.index = index;
+    data.commands = COMMAND_CUSTOM_WS;
+    data.name = displayNameForCustomWebSocketUrl(remoteUrl);
+    data.preload = false;
+    data.width = Board.boardWidth > 0 ? Board.boardWidth : 19;
+    data.height = Board.boardHeight > 0 ? Board.boardHeight : 19;
+    data.komi = 7.5F;
+    data.useJavaSSH = false;
+    data.initialCommand = "";
+    if (setDefault) {
+      for (EngineData engine : engines) {
+        engine.isDefault = false;
+      }
+      data.isDefault = true;
+      rememberLastEngine(index);
+    }
+    Utils.saveEngineSettings(engines);
+    refreshEngineCatalogQuietly();
+    return index;
+  }
+
+  public static int saveLocalProviderAndDefaultEngine() {
+    State state = load();
+    state.provider = PROVIDER_LOCAL;
+    save(state);
+
+    ArrayList<EngineData> engines = Utils.getEngineData();
+    int localIndex = firstLocalEngineIndex(engines);
+    for (int i = 0; i < engines.size(); i++) {
+      EngineData engine = engines.get(i);
+      if (engine != null) {
+        engine.isDefault = i == localIndex;
+      }
+    }
+    rememberLastEngine(localIndex);
+    Utils.saveEngineSettings(engines);
+    refreshEngineCatalogQuietly();
+    return localIndex;
+  }
+
+  public static int firstLocalEngineIndex(ArrayList<EngineData> engines) {
+    if (engines == null) {
+      return -1;
+    }
+    for (int i = 0; i < engines.size(); i++) {
+      EngineData engine = engines.get(i);
+      if (engine == null || engine.commands == null || engine.commands.trim().isEmpty()) {
+        continue;
+      }
+      if (!isRemoteComputeEngineCommand(engine.commands)) {
+        return i;
+      }
+    }
+    return -1;
   }
 
   public static String displayNameForZhiziArgs(String args) {
@@ -160,6 +296,70 @@ public final class RemoteComputeConfig {
       }
     }
     return "";
+  }
+
+  public static boolean isCustomWebSocketUrl(String value) {
+    String normalized = normalizeCustomWebSocketUrl(value);
+    if (normalized.isEmpty()) {
+      return false;
+    }
+    try {
+      URI uri = URI.create(normalized);
+      String scheme = uri.getScheme();
+      return ("ws".equalsIgnoreCase(scheme) || "wss".equalsIgnoreCase(scheme))
+          && uri.getHost() != null
+          && !uri.getHost().isBlank();
+    } catch (IllegalArgumentException e) {
+      return false;
+    }
+  }
+
+  public static String normalizeCustomWebSocketUrl(String value) {
+    if (value == null) {
+      return "";
+    }
+    String text = value.trim();
+    if ((text.startsWith("\"") && text.endsWith("\""))
+        || (text.startsWith("'") && text.endsWith("'"))) {
+      text = text.substring(1, text.length() - 1).trim();
+    }
+    int wsIndex = indexOfWebSocketScheme(text);
+    if (wsIndex > 0) {
+      text = text.substring(wsIndex);
+    }
+    if (wsIndex >= 0) {
+      int end = text.length();
+      for (int i = 0; i < text.length(); i++) {
+        char c = text.charAt(i);
+        if (Character.isWhitespace(c) || c == '"' || c == '\'' || c == '<' || c == '>') {
+          end = i;
+          break;
+        }
+      }
+      text = text.substring(0, end);
+    }
+    return text.trim();
+  }
+
+  public static String displayNameForCustomWebSocketUrl(String url) {
+    String normalized = normalizeCustomWebSocketUrl(url);
+    if (normalized.isEmpty()) {
+      return "自建算力";
+    }
+    try {
+      URI uri = URI.create(normalized);
+      String host = uri.getHost();
+      if (host == null || host.isBlank()) {
+        return "自建算力";
+      }
+      StringBuilder label = new StringBuilder("自建算力 · ").append(host);
+      if (uri.getPort() > 0) {
+        label.append(':').append(uri.getPort());
+      }
+      return label.toString();
+    } catch (IllegalArgumentException e) {
+      return "自建算力";
+    }
   }
 
   public static String friendlyZhiziErrorMessage(String message, String args) {
@@ -195,6 +395,40 @@ public final class RemoteComputeConfig {
     return value == null || value.trim().isEmpty() ? fallback : value.trim();
   }
 
+  private static int indexOfWebSocketScheme(String text) {
+    String lower = text.toLowerCase();
+    int ws = lower.indexOf("ws://");
+    int wss = lower.indexOf("wss://");
+    if (ws < 0) {
+      return wss;
+    }
+    if (wss < 0) {
+      return ws;
+    }
+    return Math.min(ws, wss);
+  }
+
+  private static String encodeSavedPassword(String password) {
+    return Base64.getEncoder().encodeToString(password.getBytes(StandardCharsets.UTF_8));
+  }
+
+  private static String decodeSavedPassword(String encoded) {
+    if (encoded == null || encoded.trim().isEmpty()) {
+      return "";
+    }
+    try {
+      return new String(Base64.getDecoder().decode(encoded.trim()), StandardCharsets.UTF_8);
+    } catch (IllegalArgumentException e) {
+      return "";
+    }
+  }
+
+  private static void rememberLastEngine(int index) {
+    if (Lizzie.config != null && Lizzie.config.uiConfig != null) {
+      Lizzie.config.uiConfig.put("last-engine", index);
+    }
+  }
+
   private static void refreshEngineCatalogQuietly() {
     if (Lizzie.engineManager == null) {
       return;
@@ -218,6 +452,8 @@ public final class RemoteComputeConfig {
     public String zhiziAccountToken = "";
     public String zhiziIdentifier = "";
     public boolean rememberZhiziToken;
+    public String zhiziPassword = "";
+    public boolean rememberZhiziPassword;
     public String zhiziArgs = DEFAULT_ZHIZI_ARGS;
     public String customRemoteCode = "";
   }

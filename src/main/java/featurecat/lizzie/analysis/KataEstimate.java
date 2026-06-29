@@ -4,7 +4,6 @@ import featurecat.lizzie.Config;
 import featurecat.lizzie.Lizzie;
 import featurecat.lizzie.analysis.remote.EngineTransport;
 import featurecat.lizzie.analysis.remote.RemoteComputeConfig;
-import featurecat.lizzie.analysis.remote.ZhiziGtpTransport;
 import featurecat.lizzie.gui.EngineFailedMessage;
 import featurecat.lizzie.gui.LizzieFrame;
 import featurecat.lizzie.gui.RemoteEngineData;
@@ -94,7 +93,7 @@ public class KataEstimate {
     if (!Lizzie.config.useZenEstimate
         && Lizzie.leelaz != null
         && Lizzie.leelaz.useRemoteCompute) {
-      engineCommand = RemoteComputeConfig.COMMAND_ZHIZI;
+      engineCommand = Lizzie.leelaz.getEngineCommand();
     }
     this.isPreLoad = isPreLoad;
     RemoteEngineData remoteData = Utils.getEstimateEngineRemoteEngineData();
@@ -105,7 +104,7 @@ public class KataEstimate {
     this.password = remoteData.password;
     this.useKeyGen = remoteData.useKeyGen;
     this.keyGenPath = remoteData.keyGenPath;
-    if (RemoteComputeConfig.isZhiziEngineCommand(engineCommand)) {
+    if (RemoteComputeConfig.isRemoteComputeEngineCommand(engineCommand)) {
       this.useJavaSSH = false;
       this.useRemoteCompute = true;
     }
@@ -119,12 +118,12 @@ public class KataEstimate {
         CommandLaunchHelper.prepare(Utils.splitCommand(engineCommand));
     commands = launchSpec.getCommandParts();
 
-    this.useRemoteCompute = RemoteComputeConfig.isZhiziEngineCommand(engineCommand);
+    this.useRemoteCompute = RemoteComputeConfig.isRemoteComputeEngineCommand(engineCommand);
     if (this.useRemoteCompute) {
       this.useJavaSSH = false;
       process = null;
       try {
-        remoteTransport = ZhiziGtpTransport.fromSavedConfig();
+        remoteTransport = RemoteComputeConfig.createTransportForCommand(engineCommand);
         remoteTransport.start();
         initializeStreams(remoteTransport.stdout(), remoteTransport.stdin(), remoteTransport.stderr());
       } catch (IOException e) {

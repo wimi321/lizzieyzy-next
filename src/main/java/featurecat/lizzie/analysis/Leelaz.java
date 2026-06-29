@@ -4,7 +4,6 @@ import featurecat.lizzie.Config;
 import featurecat.lizzie.Lizzie;
 import featurecat.lizzie.analysis.remote.EngineTransport;
 import featurecat.lizzie.analysis.remote.RemoteComputeConfig;
-import featurecat.lizzie.analysis.remote.ZhiziGtpTransport;
 import featurecat.lizzie.gui.BundledEngineStartupDialog;
 import featurecat.lizzie.gui.EngineData;
 import featurecat.lizzie.gui.EngineFailedMessage;
@@ -311,7 +310,7 @@ public class Leelaz {
     if (this.engineCommand.toLowerCase().contains("gogui")) {
       this.requireResponseBeforeSend = true;
     }
-    this.useRemoteCompute = RemoteComputeConfig.isZhiziEngineCommand(this.engineCommand);
+    this.useRemoteCompute = RemoteComputeConfig.isRemoteComputeEngineCommand(this.engineCommand);
     if (this.useRemoteCompute) {
       this.isSSH = false;
       this.isKatago = true;
@@ -338,7 +337,9 @@ public class Leelaz {
     Pattern p = Pattern.compile(regEx);
     Matcher m = p.matcher(currentEnginename);
     currentEnginename = m.replaceAll(aa).trim();
-    bestMovesEnginename = currentEnginename.replaceAll(" ", "");
+    bestMovesEnginename =
+        RemoteComputeConfig.compactDisplayNameForCommand(data.commands, currentEnginename)
+            .replaceAll(" ", "");
     return currentEnginename;
   }
 
@@ -354,6 +355,10 @@ public class Leelaz {
   private static String deriveDisplayName(String rawName, String command) {
     if (RemoteComputeConfig.isZhiziEngineCommand(command)) {
       return RemoteComputeConfig.displayNameForZhiziArgs(RemoteComputeConfig.load().zhiziArgs);
+    }
+    if (RemoteComputeConfig.isCustomWebSocketEngineCommand(command)) {
+      return RemoteComputeConfig.displayNameForCustomWebSocketUrl(
+          RemoteComputeConfig.load().customRemoteCode);
     }
     String name = rawName == null ? "" : rawName.trim();
     boolean placeholder =
@@ -450,13 +455,13 @@ public class Leelaz {
     // Matcher wMatcher = wPattern.matcher(engineCommand);
     currentEnginename = getEngineName(index);
     isDownWithError = false;
-    this.useRemoteCompute = RemoteComputeConfig.isZhiziEngineCommand(this.engineCommand);
+    this.useRemoteCompute = RemoteComputeConfig.isRemoteComputeEngineCommand(this.engineCommand);
     if (this.useRemoteCompute) {
       process = null;
       this.javaSSHClosed = false;
       this.isSSH = false;
       try {
-        this.remoteTransport = ZhiziGtpTransport.fromSavedConfig();
+        this.remoteTransport = RemoteComputeConfig.createTransportForCommand(this.engineCommand);
         this.remoteTransport.start();
         initializeStreams(
             this.remoteTransport.stdout(),
@@ -470,7 +475,7 @@ public class Leelaz {
               Lizzie.resourceBundle.getString("Leelaz.engineFailed")
                   + ": "
                   + (e.getLocalizedMessage() == null
-                      ? "智子云算力连接失败"
+                      ? "远程算力连接失败"
                       : e.getLocalizedMessage()),
               true);
         } catch (JSONException diagnosticError) {
