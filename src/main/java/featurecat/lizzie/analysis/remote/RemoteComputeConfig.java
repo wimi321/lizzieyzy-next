@@ -318,10 +318,13 @@ public final class RemoteComputeConfig {
     if (value == null) {
       return "";
     }
-    String text = value.trim();
+    String text = normalizeAsciiLikeInput(value.trim());
     if ((text.startsWith("\"") && text.endsWith("\""))
         || (text.startsWith("'") && text.endsWith("'"))) {
       text = text.substring(1, text.length() - 1).trim();
+    }
+    if (text.startsWith("完善://")) {
+      text = "ws://" + text.substring("完善://".length());
     }
     int wsIndex = indexOfWebSocketScheme(text);
     if (wsIndex > 0) {
@@ -339,6 +342,21 @@ public final class RemoteComputeConfig {
       text = text.substring(0, end);
     }
     return text.trim();
+  }
+
+  private static String normalizeAsciiLikeInput(String value) {
+    StringBuilder normalized = new StringBuilder(value.length());
+    for (int i = 0; i < value.length(); i++) {
+      char c = value.charAt(i);
+      if (c == '\u3000') {
+        normalized.append(' ');
+      } else if (c >= '\uFF01' && c <= '\uFF5E') {
+        normalized.append((char) (c - 0xFEE0));
+      } else {
+        normalized.append(c);
+      }
+    }
+    return normalized.toString();
   }
 
   public static String displayNameForCustomWebSocketUrl(String url) {
