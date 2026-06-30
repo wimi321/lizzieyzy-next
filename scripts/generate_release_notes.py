@@ -4180,6 +4180,8 @@ def build_release_notes(asset_map: dict[str, str | None], bundle: dict[str, str]
         return build_next_2026_06_29_1_notes(asset_map, bundle, repo, release_tag)
     if release_tag == 'next-2026-06-30.1':
         return build_next_2026_06_30_1_notes(asset_map, bundle, repo, release_tag)
+    if release_tag == 'next-2026-07-01.1':
+        return build_next_2026_07_01_1_notes(asset_map, bundle, repo, release_tag)
 
     assets_cn = {
         key: format_asset(asset_map[key], repo, release_tag)
@@ -7491,6 +7493,109 @@ def build_next_2026_06_30_1_notes(
             'ถ้าคุณกำลังทดสอบ Zhizi Cloud หรือ self-hosted remote compute รุ่นนี้ทำให้ entry หาเจอง่ายขึ้น สถานะชัดขึ้น และลดการกด enable ซ้ำโดยไม่ตั้งใจ',
         'release notes นี้เน้นการเปลี่ยนแปลง #81 และ #83 ที่ merge ใหม่ และไม่ซ้ำรายละเอียดของ release ที่เก่ากว่า':
             'release notes นี้เน้น Remote Compute interaction changes จาก PR #85 และไม่ซ้ำรายละเอียดของ release เก่ากว่า',
+    }
+    for old, new in replacements.items():
+        notes = notes.replace(old, new)
+    return notes
+
+
+def build_next_2026_07_01_1_notes(
+    asset_map: dict[str, str | None],
+    bundle: dict[str, str],
+    repo: str,
+    release_tag: str | None,
+) -> str:
+    notes = build_next_2026_06_30_1_notes(asset_map, bundle, repo, release_tag)
+    replacements = {
+        '这一版聚焦远程算力入口和配置体验：底部工具栏把重复的野狐棋谱按钮替换为远程算力，保留顶部野狐入口；智子云算力和自建算力也整理成更清楚的一键启用流程。':
+            '这一版聚焦远程算力稳定性和快速胜率曲线：智子云算力/自建算力的重连状态更清楚，快速胜率曲线生成中点击胜率图跳手不会让分析停住，曲线跑完后会更快恢复棋盘上的实时分析。',
+        '底部工具栏现在显示“远程算力”，点击即可打开远程算力中心；顶部“野狐棋谱 / 腾讯棋谱 / 棋力评估”入口保持不变。':
+            '远程算力连接状态更稳：减少不必要的反复重连，断线时保留当前状态并给出更清楚的恢复提示。',
+        '智子云算力登录后会隐藏多余输入状态，支持显示密码、记住密码/登录，并在已启用时禁用重复启用按钮。':
+            '智子云算力和自建算力的启用状态继续收紧，已启用时不会重复触发连接；修改连接方式后才允许重新启用。',
+        '智子配置页增加官网与充值提示，可直接打开 `www.zhizigo.cn`；普通用户默认 VIP 包月，高级用户仍可切换按量档位。':
+            '快速胜率曲线生成过程中，点击胜率图跳到某一手不再中断后台曲线分析。',
+        '自建算力支持粘贴 KaTrain 兼容的 `ws://` / `wss://` 链接，也支持导入二维码；已启用时按钮显示“已启用自建算力”，避免重复点击。':
+            '快速胜率曲线结束后会主动恢复当前局面的棋盘分析，避免用户等很久才看到选点。',
+        '如果你正在测试智子云算力或自建远程算力，这一版入口更容易找、状态更明确，也更不容易误点重复启用。':
+            '如果你使用智子云算力、远程算力或快速胜率曲线，这一版能明显减少“看起来停住了”的感觉。',
+        '这一版只写 PR #85 的远程算力交互变化，不重复更早版本已经介绍过的内容。':
+            '这一版只写 PR #87 的远程算力与快速曲线稳定性变化，不重复更早版本已经介绍过的内容。',
+
+        '這一版聚焦遠端算力入口和設定體驗：底部工具列把重複的野狐棋譜按鈕替換為遠端算力，保留頂部野狐入口；智子雲算力和自建算力也整理成更清楚的一鍵啟用流程。':
+            '這一版聚焦遠端算力穩定性和快速勝率曲線：智子雲算力/自建算力的重連狀態更清楚，快速勝率曲線生成中點擊勝率圖跳手不會讓分析停住，曲線跑完後會更快恢復棋盤上的即時分析。',
+        '底部工具列現在顯示「遠端算力」，點擊即可打開遠端算力中心；頂部「野狐棋譜 / 騰訊棋譜 / 棋力評估」入口保持不變。':
+            '遠端算力連線狀態更穩：減少不必要的反覆重連，斷線時保留目前狀態並給出更清楚的恢復提示。',
+        '智子雲算力登入後會隱藏多餘輸入狀態，支援顯示密碼、記住密碼/登入，並在已啟用時停用重複啟用按鈕。':
+            '智子雲算力和自建算力的啟用狀態繼續收緊，已啟用時不會重複觸發連線；修改連線方式後才允許重新啟用。',
+        '智子設定頁增加官網與儲值提示，可直接打開 `www.zhizigo.cn`；普通使用者預設 VIP 包月，高階使用者仍可切換按量檔位。':
+            '快速勝率曲線生成過程中，點擊勝率圖跳到某一手不再中斷背景曲線分析。',
+        '自建算力支援貼上 KaTrain 相容的 `ws://` / `wss://` 連結，也支援匯入 QR code；已啟用時按鈕顯示「已啟用自建算力」，避免重複點擊。':
+            '快速勝率曲線結束後會主動恢復目前局面的棋盤分析，避免使用者等很久才看到選點。',
+        '如果你正在測試智子雲算力或自建遠端算力，這一版入口更容易找、狀態更明確，也更不容易誤點重複啟用。':
+            '如果你使用智子雲算力、遠端算力或快速勝率曲線，這一版能明顯減少「看起來停住了」的感覺。',
+        '這一版只寫 PR #85 的遠端算力互動變化，不重複更早版本已經介紹過的內容。':
+            '這一版只寫 PR #87 的遠端算力與快速曲線穩定性變化，不重複更早版本已經介紹過的內容。',
+
+        'This prerelease focuses on the Remote Compute entry and setup flow: the duplicated bottom Fox Kifu button is replaced with Remote Compute while the top Fox shortcut remains, and Zhizi Cloud plus self-hosted compute now use clearer one-click enable flows.':
+            'This prerelease focuses on Remote Compute stability and quick winrate curves: Zhizi Cloud and self-hosted reconnect states are clearer, clicking the winrate graph during quick-curve generation no longer stops analysis, and board analysis resumes sooner after the curve finishes.',
+        'The bottom toolbar now shows Remote Compute and opens the Remote Compute Center directly; the top Fox Kifu, Tencent Kifu, and strength-evaluation shortcuts stay in place.':
+            'Remote Compute connection state is more stable, with fewer unnecessary reconnect loops and clearer recovery messages when a session drops.',
+        'After Zhizi Cloud login, redundant account inputs are hidden, password visibility and remember-login/password controls are available, and the enable button is disabled while Zhizi is already active.':
+            'Zhizi Cloud and self-hosted compute keep tighter enabled-state handling: active connections cannot be triggered again unless the connection choice changes.',
+        'The Zhizi page now includes official website and recharge guidance with a direct `www.zhizigo.cn` link; VIP monthly remains the default while metered tiers stay available for advanced users.':
+            'Clicking the winrate graph to jump to a move during quick winrate generation no longer interrupts the background curve analysis.',
+        'Self-hosted compute accepts KaTrain-compatible `ws://` / `wss://` links and QR-code import; once active, the button reads “Self-hosted compute enabled” and cannot be clicked again accidentally.':
+            'When quick winrate generation finishes, the current-board analysis resumes proactively so candidates do not appear only after a long wait.',
+        'If you are testing Zhizi Cloud or self-hosted remote compute, this build makes the entry easier to find, the current state clearer, and repeated accidental enables less likely.':
+            'If you use Zhizi Cloud, remote compute, or quick winrate curves, this build should feel much less like the analysis has silently stalled.',
+        'These notes only cover the Remote Compute interaction changes from PR #85, without repeating older release highlights.':
+            'These notes only cover the Remote Compute and quick-curve stability changes from PR #87, without repeating older release highlights.',
+
+        'この prerelease は Remote Compute の入口と設定体験を整えた版です。下部ツールバーの重複した Fox Kifu ボタンを Remote Compute に置き換え、上部の Fox shortcut は残しました。Zhizi Cloud と self-hosted compute も、より分かりやすい one-click enable flow になりました。':
+            'この prerelease は Remote Compute の安定性と quick winrate curve を改善した版です。Zhizi Cloud / self-hosted の reconnect 状態を分かりやすくし、quick curve 生成中に winrate graph をクリックしても分析が止まらず、curve 完了後は board analysis がより早く再開します。',
+        '下部ツールバーには Remote Compute が表示され、クリックすると Remote Compute Center を直接開きます。上部の Fox Kifu、Tencent Kifu、棋力評価 shortcut はそのままです。':
+            'Remote Compute の connection state をより安定させ、不要な reconnect loop を減らし、切断時の recovery message も分かりやすくしました。',
+        'Zhizi Cloud ログイン後は余分な account 入力を隠し、password visibility と remember-login/password controls を使えます。既に Zhizi が有効な場合、enable button は無効になります。':
+            'Zhizi Cloud と self-hosted compute は enabled state をさらに厳密に扱い、有効化済みの場合は connection choice を変更するまで再度 trigger しません。',
+        'Zhizi ページには公式サイトと recharge guidance を追加し、`www.zhizigo.cn` を直接開けます。既定は VIP monthly のまま、advanced users は metered tiers に切り替えられます。':
+            'quick winrate 生成中に winrate graph をクリックして手を移動しても、background curve analysis が中断されなくなりました。',
+        'Self-hosted compute は KaTrain-compatible な `ws://` / `wss://` links と QR-code import に対応しました。有効化済みの場合、button は「Self-hosted compute enabled」となり、誤って再クリックできません。':
+            'quick winrate 生成が完了すると、現在局面の board analysis を能動的に再開し、candidate 表示を長く待たないようにしました。',
+        'Zhizi Cloud または self-hosted remote compute を試している場合、この build では入口が見つけやすく、現在状態が分かりやすく、誤って何度も enable しにくくなります。':
+            'Zhizi Cloud、remote compute、quick winrate curve を使う場合、この build は「分析が止まったように見える」場面を減らします。',
+        'この説明は PR #85 の Remote Compute interaction changes に絞り、より古い release highlights は繰り返しません。':
+            'この説明は PR #87 の Remote Compute と quick-curve stability changes に絞り、より古い release highlights は繰り返しません。',
+
+        '이번 prerelease 는 Remote Compute entry 와 setup flow 를 정리했습니다. 하단 toolbar 의 중복 Fox Kifu 버튼을 Remote Compute 로 바꾸고 상단 Fox shortcut 은 유지했습니다. Zhizi Cloud 와 self-hosted compute 도 더 명확한 one-click enable flow 를 사용합니다.':
+            '이번 prerelease 는 Remote Compute 안정성과 quick winrate curve 를 개선합니다. Zhizi Cloud / self-hosted reconnect 상태가 더 명확해지고, quick curve 생성 중 winrate graph 를 클릭해도 분석이 멈추지 않으며, curve 완료 뒤 board analysis 가 더 빨리 재개됩니다.',
+        '하단 toolbar 는 이제 Remote Compute 를 표시하고 Remote Compute Center 를 직접 엽니다. 상단 Fox Kifu, Tencent Kifu, strength-evaluation shortcut 은 그대로 유지됩니다.':
+            'Remote Compute connection state 를 더 안정적으로 만들고 불필요한 reconnect loop 를 줄였으며, session 이 끊겼을 때 recovery message 를 더 명확히 했습니다.',
+        'Zhizi Cloud 로그인 뒤에는 불필요한 account input 을 숨기고, password visibility 와 remember-login/password controls 를 제공합니다. Zhizi 가 이미 active 일 때 enable button 은 disabled 상태가 됩니다.':
+            'Zhizi Cloud 와 self-hosted compute 의 enabled-state 처리를 더 엄격하게 하여, connection choice 가 바뀌기 전에는 active connection 을 다시 trigger 하지 않습니다.',
+        'Zhizi page 에 official website 와 recharge guidance 를 추가하고 `www.zhizigo.cn` 링크를 바로 열 수 있게 했습니다. 기본값은 VIP monthly 이며 advanced users 는 metered tiers 로 전환할 수 있습니다.':
+            'quick winrate 생성 중 winrate graph 를 클릭해 특정 수로 이동해도 background curve analysis 가 중단되지 않습니다.',
+        'Self-hosted compute 는 KaTrain-compatible `ws://` / `wss://` links 와 QR-code import 를 지원합니다. 이미 active 이면 button 은 “Self-hosted compute enabled” 로 표시되고 실수로 다시 누를 수 없습니다.':
+            'quick winrate 생성이 끝나면 현재 국면의 board analysis 를 능동적으로 재개해 candidate 표시를 오래 기다리지 않게 했습니다.',
+        'Zhizi Cloud 또는 self-hosted remote compute 를 테스트한다면, 이번 build 는 entry 를 더 찾기 쉽고 current state 를 더 명확하게 보여 주며 반복 enable 실수를 줄입니다.':
+            'Zhizi Cloud, remote compute, quick winrate curve 를 쓴다면 이번 build 는 분석이 조용히 멈춘 것처럼 보이는 상황을 줄입니다.',
+        '이번 설명은 PR #85 의 Remote Compute interaction changes 만 다루며, 더 오래된 release highlights 는 반복하지 않습니다.':
+            '이번 설명은 PR #87 의 Remote Compute 및 quick-curve stability changes 만 다루며, 더 오래된 release highlights 는 반복하지 않습니다.',
+
+        'prerelease นี้ปรับ entry และ setup flow ของ Remote Compute: เปลี่ยนปุ่ม Fox Kifu ที่ซ้ำอยู่ด้านล่างเป็น Remote Compute แต่ยังคง shortcut Fox ด้านบนไว้ และทำให้ Zhizi Cloud กับ self-hosted compute ใช้ one-click enable flow ที่ชัดเจนขึ้น':
+            'prerelease นี้เน้นความเสถียรของ Remote Compute และ quick winrate curve: สถานะ reconnect ของ Zhizi Cloud / self-hosted ชัดขึ้น, การคลิก winrate graph ระหว่างสร้าง quick curve จะไม่หยุด analysis, และหลัง curve เสร็จ board analysis จะกลับมาเร็วขึ้น',
+        'toolbar ด้านล่างตอนนี้แสดง Remote Compute และเปิด Remote Compute Center ได้โดยตรง; shortcut ด้านบนของ Fox Kifu, Tencent Kifu และ strength evaluation ยังคงอยู่':
+            'สถานะ connection ของ Remote Compute เสถียรขึ้น ลด reconnect loop ที่ไม่จำเป็น และแสดง recovery message ชัดขึ้นเมื่อ session หลุด',
+        'หลัง login Zhizi Cloud แล้ว input บัญชีที่ไม่จำเป็นจะถูกซ่อน มีตัวเลือก show password และ remember-login/password และปุ่ม enable จะ disabled เมื่อ Zhizi active อยู่แล้ว':
+            'Zhizi Cloud และ self-hosted compute จัดการ enabled-state เข้มขึ้น: ถ้า connection active อยู่ จะไม่ trigger ซ้ำจนกว่าจะเปลี่ยน connection choice',
+        'หน้า Zhizi เพิ่มคำแนะนำ official website และ recharge พร้อมลิงก์ `www.zhizigo.cn`; ค่าเริ่มต้นยังเป็น VIP monthly และผู้ใช้ขั้นสูงยังเปลี่ยนเป็น metered tiers ได้':
+            'ระหว่าง quick winrate generation การคลิก winrate graph เพื่อข้ามไป move ใด ๆ จะไม่ interrupt background curve analysis อีกต่อไป',
+        'Self-hosted compute รองรับ KaTrain-compatible `ws://` / `wss://` links และ QR-code import; เมื่อ active แล้วปุ่มจะแสดง “Self-hosted compute enabled” และกดซ้ำโดยไม่ตั้งใจไม่ได้':
+            'เมื่อ quick winrate generation เสร็จ ระบบจะ resume board analysis ของตำแหน่งปัจจุบันแบบ proactive เพื่อไม่ให้ต้องรอนานกว่าจะเห็น candidate',
+        'ถ้าคุณกำลังทดสอบ Zhizi Cloud หรือ self-hosted remote compute รุ่นนี้ทำให้ entry หาเจอง่ายขึ้น สถานะชัดขึ้น และลดการกด enable ซ้ำโดยไม่ตั้งใจ':
+            'ถ้าคุณใช้ Zhizi Cloud, remote compute หรือ quick winrate curve รุ่นนี้จะลดความรู้สึกว่า analysis หยุดเงียบ ๆ ไปเอง',
+        'release notes นี้เน้น Remote Compute interaction changes จาก PR #85 และไม่ซ้ำรายละเอียดของ release เก่ากว่า':
+            'release notes นี้เน้น Remote Compute และ quick-curve stability changes จาก PR #87 และไม่ซ้ำรายละเอียดของ release เก่ากว่า',
     }
     for old, new in replacements.items():
         notes = notes.replace(old, new)
