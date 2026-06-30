@@ -480,6 +480,46 @@ class LizzieFrameRegressionTest {
   }
 
   @Test
+  void silentQuickAnalyzeCompletionRestartsForegroundAnalysisForCurrentPosition()
+      throws Exception {
+    TestEnvironment env = TestEnvironment.open();
+    try {
+      Lizzie.config = configWithAutoQuickAnalyze();
+      Lizzie.board = boardWith(historyWithUnanalyzedMove());
+      TrackingLeelaz leelaz = allocate(TrackingLeelaz.class);
+      Lizzie.leelaz = leelaz;
+      EngineManager.isEmpty = false;
+      EngineManager.isEngineGame = false;
+      EngineManager.isPreEngineGame = false;
+      QuickAnalysisResumeFrame frame = allocate(QuickAnalysisResumeFrame.class);
+      QuickAnalysisCompletionEngine engine = allocate(QuickAnalysisCompletionEngine.class);
+      engine.requestStarted = new CountDownLatch(1);
+      frame.analysisEngine = engine;
+      Lizzie.frame = frame;
+
+      frame.flashAnalyzeGame(true, false, true);
+
+      assertTrue(
+          engine.requestStarted.await(2, TimeUnit.SECONDS),
+          "silent quick analysis should dispatch its request in the background.");
+      assertFalse(engine.lastShowProgressDialog);
+      assertTrue(
+          engine.completionCallback != null,
+          "silent quick analysis should resume foreground board analysis after graph completion.");
+
+      SwingUtilities.invokeAndWait(engine.completionCallback);
+
+      assertEquals(
+          1,
+          leelaz.ponderCount,
+          "foreground candidate analysis should restart immediately after fast curve completion.");
+      assertEquals(1, frame.refreshCount);
+    } finally {
+      env.close();
+    }
+  }
+
+  @Test
   void downloadedKifuStartsSilentQuickAnalyzeAndForegroundAnalysis() throws Exception {
     TestEnvironment env = TestEnvironment.open();
     try {
@@ -511,10 +551,12 @@ class LizzieFrameRegressionTest {
     try {
       Lizzie.config = configWithAutoQuickAnalyze();
       Lizzie.board = boardWith(historyWithUnanalyzedMove());
+      TrackingLeelaz leelaz = allocate(TrackingLeelaz.class);
+      Lizzie.leelaz = leelaz;
       EngineManager.isEmpty = false;
       EngineManager.isEngineGame = false;
       EngineManager.isPreEngineGame = false;
-      LizzieFrame frame = allocate(LizzieFrame.class);
+      QuickAnalysisResumeFrame frame = allocate(QuickAnalysisResumeFrame.class);
       NavigationQuickAnalysisEngine engine = allocate(NavigationQuickAnalysisEngine.class);
       frame.analysisEngine = engine;
       Lizzie.frame = frame;
@@ -529,6 +571,16 @@ class LizzieFrameRegressionTest {
           1,
           engine.missingMainlineRequestCount,
           "navigation continuation should fill any remaining fast-curve gaps.");
+      assertTrue(
+          engine.completionCallback != null,
+          "navigation-triggered curve completion should also resume foreground board analysis.");
+
+      SwingUtilities.invokeAndWait(engine.completionCallback);
+
+      assertEquals(
+          1,
+          leelaz.ponderCount,
+          "foreground analysis should restart after navigation-triggered curve completion.");
     } finally {
       env.close();
     }
@@ -1247,10 +1299,65 @@ class LizzieFrameRegressionTest {
     }
   }
 
+  private static final class QuickAnalysisResumeFrame extends LizzieFrame {
+    private int refreshCount;
+
+    @Override
+    public void refresh() {
+      refreshCount++;
+    }
+  }
+
+  private static final class QuickAnalysisCompletionEngine extends AnalysisEngine {
+    private CountDownLatch requestStarted = new CountDownLatch(1);
+    private Runnable completionCallback;
+    private boolean lastShowProgressDialog;
+
+    @SuppressWarnings("unused")
+    private QuickAnalysisCompletionEngine() throws java.io.IOException {
+      super(true);
+    }
+
+    @Override
+    public boolean isLoaded() {
+      return true;
+    }
+
+    @Override
+    public boolean isRunning() {
+      return true;
+    }
+
+    @Override
+    public synchronized boolean isAnalysisInProgress() {
+      return lastShowProgressDialog || requestStarted.getCount() == 0;
+    }
+
+    @Override
+    public boolean matchesCurrentAnalysisBackend() {
+      return true;
+    }
+
+    @Override
+    public void setCompletionCallback(Runnable completionCallback) {
+      this.completionCallback = completionCallback;
+    }
+
+    @Override
+    public void setKeepAliveAfterCurrentRequest(boolean keepAliveAfterCurrentRequest) {}
+
+    @Override
+    public void startRequest(int startMove, int endMove, boolean showProgressDialog) {
+      lastShowProgressDialog = showProgressDialog;
+      requestStarted.countDown();
+    }
+  }
+
   private static final class NavigationQuickAnalysisEngine extends AnalysisEngine {
     private boolean analysisInProgress;
     private int keepAliveCount;
     private int missingMainlineRequestCount;
+    private Runnable completionCallback;
 
     @SuppressWarnings("unused")
     private NavigationQuickAnalysisEngine() throws java.io.IOException {
@@ -1282,6 +1389,11 @@ class LizzieFrameRegressionTest {
       if (keepAliveAfterCurrentRequest) {
         keepAliveCount++;
       }
+    }
+
+    @Override
+    public void setCompletionCallback(Runnable completionCallback) {
+      this.completionCallback = completionCallback;
     }
 
     @Override

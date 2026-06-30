@@ -13072,6 +13072,8 @@ public class LizzieFrame extends JFrame {
               return;
             }
             analysisEngine.setKeepAliveAfterCurrentRequest(true);
+            analysisEngine.setCompletionCallback(
+                LizzieFrame.this::resumeForegroundAnalysisAfterQuickAnalysisComplete);
             startFlashAnalyzeRequestsInBackground(analysisEngine, isAllGame, isAllBranches, true);
           }
         };
@@ -13155,6 +13157,10 @@ public class LizzieFrame extends JFrame {
                     isAllGame ? -1 : Lizzie.config.analysisStartMove,
                     isAllGame ? -1 : Lizzie.config.analysisEndMove,
                     !silentAnalyze);
+              if (silentAnalyze && !targetEngine.isAnalysisInProgress()) {
+                targetEngine.setCompletionCallback(null);
+                resumeForegroundAnalysisAfterQuickAnalysisComplete();
+              }
             },
             "flash-analysis-request-sender");
     requestSender.setDaemon(true);
@@ -17083,9 +17089,15 @@ public class LizzieFrame extends JFrame {
               return;
             }
             analysisEngine.setKeepAliveAfterCurrentRequest(true);
+            analysisEngine.setCompletionCallback(
+                LizzieFrame.this::resumeForegroundAnalysisAfterQuickAnalysisComplete);
             int requestCount = analysisEngine.startRequestMissingMainline(false);
             if (requestCount < 0) {
               analysisEngine.setCompletionCallback(null);
+              resumeForegroundAnalysisAfterQuickAnalysisComplete();
+            } else if (requestCount == 0) {
+              analysisEngine.setCompletionCallback(null);
+              resumeForegroundAnalysisAfterQuickAnalysisComplete();
             }
           }
         };
@@ -17114,6 +17126,17 @@ public class LizzieFrame extends JFrame {
     if (quickAnalysisNavigationResumeTimer != null) {
       quickAnalysisNavigationResumeTimer.stop();
     }
+  }
+
+  void resumeForegroundAnalysisAfterQuickAnalysisComplete() {
+    if (!SwingUtilities.isEventDispatchThread()) {
+      SwingUtilities.invokeLater(this::resumeForegroundAnalysisAfterQuickAnalysisComplete);
+      return;
+    }
+    if (EngineManager.isEngineGame() || isPlayingAgainstLeelaz || isAnaPlayingAgainstLeelaz) {
+      return;
+    }
+    resumeForegroundAnalysisForCurrentPosition();
   }
 
   public boolean ensureAnalysisResumedAfterSyncLoad() {
