@@ -202,7 +202,14 @@ class RemoteComputeConfigTest {
         "wss://example.com/katago?token=abc",
         RemoteComputeConfig.normalizeCustomWebSocketUrl(
             "  二维码内容: wss://example.com/katago?token=abc  "));
+    assertEquals(
+        "ws://127.0.0.1:2718",
+        RemoteComputeConfig.normalizeCustomWebSocketUrl("完善：//127.0.0.1：2718"));
+    assertEquals(
+        "ws://127.0.0.1:2718",
+        RemoteComputeConfig.normalizeCustomWebSocketUrl("ｗｓ：／／127.0.0.1：2718"));
     assertTrue(RemoteComputeConfig.isCustomWebSocketUrl("ws://127.0.0.1:2718"));
+    assertTrue(RemoteComputeConfig.isCustomWebSocketUrl("完善：//127.0.0.1：2718"));
     assertTrue(RemoteComputeConfig.isCustomWebSocketUrl("wss://remote.example.com/katago"));
     assertFalse(RemoteComputeConfig.isCustomWebSocketUrl("http://remote.example.com/katago"));
     assertFalse(RemoteComputeConfig.isCustomWebSocketUrl("remote.example.com/katago"));

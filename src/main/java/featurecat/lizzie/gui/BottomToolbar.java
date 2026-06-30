@@ -606,6 +606,7 @@ public class BottomToolbar extends JPanel {
     share = new JFontButton(Lizzie.resourceBundle.getString("BottomToolbar.share")); // ("分享");
     flashAnalyze = new JFontButton(Lizzie.resourceBundle.getString("BottomToolbar.flashAnalyze"));
     remoteComputeButton = new JFontButton(Lizzie.resourceBundle.getString("Menu.remoteCompute"));
+    AppleStyleSupport.markPrimary(remoteComputeButton);
     downloadWeightButton =
         new JFontButton(Lizzie.resourceBundle.getString("BottomToolbar.downloadWeight"));
     liveButton =
