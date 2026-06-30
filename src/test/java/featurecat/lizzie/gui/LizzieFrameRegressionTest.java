@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import featurecat.lizzie.Config;
 import featurecat.lizzie.Lizzie;
+import featurecat.lizzie.analysis.AnalysisEngine;
 import featurecat.lizzie.analysis.EngineManager;
 import featurecat.lizzie.analysis.Leelaz;
 import featurecat.lizzie.analysis.MoveRankDefinition;
@@ -499,6 +500,61 @@ class LizzieFrameRegressionTest {
       assertTrue(frame.lastSilentAnalyze);
       assertEquals(1, frame.refreshCount);
       assertEquals(1, leelaz.ponderCount);
+    } finally {
+      env.close();
+    }
+  }
+
+  @Test
+  void winrateGraphNavigationContinuesMissingQuickAnalysisWhenEngineIsIdle() throws Exception {
+    TestEnvironment env = TestEnvironment.open();
+    try {
+      Lizzie.config = configWithAutoQuickAnalyze();
+      Lizzie.board = boardWith(historyWithUnanalyzedMove());
+      EngineManager.isEmpty = false;
+      EngineManager.isEngineGame = false;
+      EngineManager.isPreEngineGame = false;
+      LizzieFrame frame = allocate(LizzieFrame.class);
+      NavigationQuickAnalysisEngine engine = allocate(NavigationQuickAnalysisEngine.class);
+      frame.analysisEngine = engine;
+      Lizzie.frame = frame;
+
+      SwingUtilities.invokeAndWait(frame::continueQuickAnalysisAfterHistoryNavigationWhenIdle);
+
+      assertEquals(
+          1,
+          engine.keepAliveCount,
+          "navigation continuation should keep the warmed quick-analysis engine reusable.");
+      assertEquals(
+          1,
+          engine.missingMainlineRequestCount,
+          "navigation continuation should fill any remaining fast-curve gaps.");
+    } finally {
+      env.close();
+    }
+  }
+
+  @Test
+  void winrateGraphNavigationWaitsWhenQuickAnalysisIsStillRunning() throws Exception {
+    TestEnvironment env = TestEnvironment.open();
+    try {
+      Lizzie.config = configWithAutoQuickAnalyze();
+      Lizzie.board = boardWith(historyWithUnanalyzedMove());
+      EngineManager.isEmpty = false;
+      EngineManager.isEngineGame = false;
+      EngineManager.isPreEngineGame = false;
+      LizzieFrame frame = allocate(LizzieFrame.class);
+      NavigationQuickAnalysisEngine engine = allocate(NavigationQuickAnalysisEngine.class);
+      engine.analysisInProgress = true;
+      frame.analysisEngine = engine;
+      Lizzie.frame = frame;
+
+      SwingUtilities.invokeAndWait(frame::continueQuickAnalysisAfterHistoryNavigationWhenIdle);
+
+      assertEquals(
+          0,
+          engine.missingMainlineRequestCount,
+          "navigation continuation must not clear or restart an active quick-analysis queue.");
     } finally {
       env.close();
     }
@@ -1188,6 +1244,50 @@ class LizzieFrameRegressionTest {
     @Override
     public void refresh() {
       refreshCount++;
+    }
+  }
+
+  private static final class NavigationQuickAnalysisEngine extends AnalysisEngine {
+    private boolean analysisInProgress;
+    private int keepAliveCount;
+    private int missingMainlineRequestCount;
+
+    @SuppressWarnings("unused")
+    private NavigationQuickAnalysisEngine() throws java.io.IOException {
+      super(true);
+    }
+
+    @Override
+    public boolean isLoaded() {
+      return true;
+    }
+
+    @Override
+    public boolean isRunning() {
+      return true;
+    }
+
+    @Override
+    public synchronized boolean isAnalysisInProgress() {
+      return analysisInProgress;
+    }
+
+    @Override
+    public boolean matchesCurrentAnalysisBackend() {
+      return true;
+    }
+
+    @Override
+    public void setKeepAliveAfterCurrentRequest(boolean keepAliveAfterCurrentRequest) {
+      if (keepAliveAfterCurrentRequest) {
+        keepAliveCount++;
+      }
+    }
+
+    @Override
+    public int startRequestMissingMainline(boolean showProgressDialog) {
+      missingMainlineRequestCount++;
+      return 1;
     }
   }
 

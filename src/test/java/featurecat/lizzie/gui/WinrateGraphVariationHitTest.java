@@ -1,5 +1,6 @@
 package featurecat.lizzie.gui;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -144,6 +145,10 @@ class WinrateGraphVariationHitTest {
           fixture.mainFuture,
           fixture.board.getHistory().getCurrentHistoryNode(),
           "click should jump from the variation to the visible main-trunk continuation.");
+      assertEquals(
+          1,
+          frame.quickAnalysisContinuationScheduleCount,
+          "clicking the graph during fast curve generation should keep a continuation guard armed.");
     } finally {
       env.close();
     }
@@ -938,11 +943,18 @@ class WinrateGraphVariationHitTest {
   }
 
   private static final class TrackingFrame extends LizzieFrame {
+    private int quickAnalysisContinuationScheduleCount;
+
     @Override
     public void repaint() {}
 
     @Override
     public void refresh() {}
+
+    @Override
+    void scheduleQuickAnalysisContinuationAfterHistoryNavigation() {
+      quickAnalysisContinuationScheduleCount++;
+    }
   }
 
   private static final class TestEnvironment implements AutoCloseable {
