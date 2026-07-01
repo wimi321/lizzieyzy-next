@@ -214,11 +214,12 @@ public final class PlayerStrengthEstimator {
     double scoreEquivalentLoss = positive(lossEstimate.scoreEquivalentLoss());
     double complexity = complexity(previous);
     double adjustedWeight = adjustedWeight(complexity, scoreEquivalentLoss);
-    boolean firstChoice =
-        playedCandidate.rank == 0 || playedCoordinate(current).equalsIgnoreCase(topMove(previous));
+    // Keep AI first-choice strict; the low-loss BEST/GOOD display rank is tracked separately.
+    boolean firstChoice = isTopCandidate(previous, current);
     return new Sample(
         current.lastMoveColor,
         current.moveNumber,
+        playedCoordinate(current),
         positive(lossEstimate.winrateLoss),
         lossEstimate.scoreLoss.map(PlayerStrengthEstimator::positive),
         firstChoice,
@@ -356,6 +357,12 @@ public final class PlayerStrengthEstimator {
     }
     String topMove = previous.bestMoves.get(0).coordinate;
     return isBlank(topMove) ? "" : topMove;
+  }
+
+  private static boolean isTopCandidate(BoardData previous, BoardData current) {
+    String played = playedCoordinate(current);
+    String top = topMove(previous);
+    return !isBlank(played) && !isBlank(top) && played.equalsIgnoreCase(top);
   }
 
   private static double complexity(BoardData data) {
@@ -1237,6 +1244,7 @@ public final class PlayerStrengthEstimator {
   public static final class Sample {
     public final Stone color;
     public final int moveNumber;
+    public final String coordinate;
     public final double winrateLoss;
     public final Optional<Double> scoreLoss;
     public final boolean firstChoice;
@@ -1250,6 +1258,7 @@ public final class PlayerStrengthEstimator {
     private Sample(
         Stone color,
         int moveNumber,
+        String coordinate,
         double winrateLoss,
         Optional<Double> scoreLoss,
         boolean firstChoice,
@@ -1261,6 +1270,7 @@ public final class PlayerStrengthEstimator {
         double adjustedWeight) {
       this.color = color;
       this.moveNumber = moveNumber;
+      this.coordinate = coordinate == null ? "" : coordinate;
       this.winrateLoss = winrateLoss;
       this.scoreLoss = scoreLoss;
       this.firstChoice = firstChoice;

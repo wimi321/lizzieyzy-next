@@ -444,6 +444,26 @@ class PlayerStrengthEstimatorTest {
   }
 
   @Test
+  void keepsFirstChoiceRateStrictWhenSecondCandidateIsDisplayedAsBest() {
+    MoveData topMove = candidate("pass", 70.0, 10.0);
+    MoveData playedMove = candidate("A9", 69.95, 9.95);
+    playedMove.order = 1;
+    BoardHistoryList history =
+        new BoardHistoryList(analyzedRoot(true, 70.0, 10.0, topMove, playedMove));
+    history.add(analyzedMove(0, 0, Stone.BLACK, false, 1, 30.05, -9.95));
+
+    PlayerStrengthEstimator.Report report = PlayerStrengthEstimator.estimate(history.getStart());
+
+    assertEquals(1, report.black.sampleCount);
+    assertEquals(0.0, report.black.firstChoiceRate, 0.0001);
+    assertEquals(1.0, report.black.goodMoveRate, 0.0001);
+    assertEquals(1.0, report.black.moveRankGoodMoveRate, 0.0001);
+    assertEquals(1, report.black.moveRankCount(MoveRankDefinition.Rank.BEST));
+    assertEquals("A9", report.black.samples.get(0).coordinate);
+    assertEquals(1, report.black.samples.get(0).aiRank);
+  }
+
+  @Test
   void reportsInsufficientDataWhenNoAnalyzedMovePairsExist() {
     BoardHistoryList history = new BoardHistoryList(BoardData.empty(BOARD_SIZE, BOARD_SIZE));
     history.add(rawMove(0, 0, Stone.BLACK, false, 1));

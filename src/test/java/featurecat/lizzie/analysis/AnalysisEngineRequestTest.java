@@ -25,6 +25,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.BooleanSupplier;
 import org.json.JSONArray;
 import org.json.JSONObject;
 import org.junit.jupiter.api.Test;
@@ -593,6 +594,77 @@ class AnalysisEngineRequestTest {
       assertEquals(2, node.getData().getPlayouts());
       assertEquals(62.0, node.getData().winrate, 0.0001);
       assertFalse(engine.isAnalysisInProgress());
+      waitForMovelistRefreshThreads();
+    }
+  }
+
+  @Test
+  void remoteGtpSilentQuickCurveFallsBackWhenRawNnReturnsEmptySuccess() throws Exception {
+    try (TestEnvironment env = TestEnvironment.open()) {
+      BoardHistoryNode node = singleUnanalyzedMoveNode();
+      TrackingAnalysisEngine engine = TrackingAnalysisEngine.create();
+      setField(AnalysisEngine.class, engine, "useRemoteCompute", true);
+      engine.setKeepAliveAfterCurrentRequest(true);
+
+      engine.startRequest(-1, -1, false);
+
+      assertEquals("kata-raw-nn 0", lastCommand(engine.sentCommands));
+      invokeAnalysisEngineParseLine(engine, "=");
+      invokeAnalysisEngineParseLine(engine, "");
+
+      assertEquals(
+          "kata-analyze W 1",
+          lastCommand(engine.sentCommands),
+          "an empty raw-nn success must downgrade to streaming analysis instead of stalling.");
+
+      invokeAnalysisEngineParseLine(
+          engine, "info move B2 visits 2 winrate 0.62 scoreLead 1.5 order 0 pv B2");
+      assertEquals("stop", lastCommand(engine.sentCommands));
+      invokeAnalysisEngineParseLine(engine, "=");
+
+      assertEquals(2, node.getData().getPlayouts());
+      assertFalse(engine.isAnalysisInProgress());
+      waitForMovelistRefreshThreads();
+    }
+  }
+
+  @Test
+  void remoteGtpMissingStopAckDoesNotStallQueuedQuickCurve() throws Exception {
+    try (TestEnvironment env = TestEnvironment.open()) {
+      BoardHistoryList history = new BoardHistoryList(BoardData.empty(BOARD_SIZE, BOARD_SIZE));
+      history.add(
+          moveNode(stones(placement(0, 0, Stone.BLACK)), new int[] {0, 0}, Stone.BLACK, false, 1));
+      history.add(
+          moveNode(
+              stones(placement(0, 0, Stone.BLACK), placement(1, 0, Stone.WHITE)),
+              new int[] {1, 0},
+              Stone.WHITE,
+              true,
+              2));
+      boardWithHistory(history);
+      TrackingAnalysisEngine engine = TrackingAnalysisEngine.create();
+      setField(AnalysisEngine.class, engine, "useRemoteCompute", true);
+      setField(AnalysisEngine.class, engine, "remoteGtpRawNnUnsupported", true);
+      engine.setKeepAliveAfterCurrentRequest(true);
+
+      engine.startRequest(-1, -1, false);
+
+      assertEquals("kata-analyze W 1", lastCommand(engine.sentCommands));
+      invokeAnalysisEngineParseLine(
+          engine, "info move B2 visits 2 winrate 0.62 scoreLead 1.5 order 0 pv B2");
+      assertEquals("stop", lastCommand(engine.sentCommands));
+
+      waitUntil(() -> countCommandStartingWith(engine.sentCommands, "kata-analyze ") == 2);
+      assertTrue(
+          engine.sentCommands.contains("play W B3"),
+          "the queued second move should start even when the remote bridge never acknowledges stop.");
+
+      invokeAnalysisEngineParseLine(
+          engine, "info move C2 visits 2 winrate 0.55 scoreLead 0.4 order 0 pv C2");
+
+      assertFalse(
+          engine.isAnalysisInProgress(),
+          "after a bridge proves stop has no ack, later queued nodes should complete without waiting.");
       waitForMovelistRefreshThreads();
     }
   }
@@ -1355,6 +1427,14 @@ class AnalysisEngineRequestTest {
         thread.join(1000);
       }
     }
+  }
+
+  private static void waitUntil(BooleanSupplier condition) throws InterruptedException {
+    long deadline = System.currentTimeMillis() + 2000;
+    while (!condition.getAsBoolean() && System.currentTimeMillis() < deadline) {
+      Thread.sleep(20);
+    }
+    assertTrue(condition.getAsBoolean(), "condition was not met before timeout.");
   }
 
   private static Placement placement(int x, int y, Stone color) {

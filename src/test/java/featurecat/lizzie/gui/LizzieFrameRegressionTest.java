@@ -223,6 +223,32 @@ class LizzieFrameRegressionTest {
   }
 
   @Test
+  void playerStrengthPerformanceDistributionIncludesTopChoiceRow() throws Exception {
+    PlayerStrengthEstimator.Report report = playerStrengthReportWithSamples();
+    Class<?> panelClass =
+        Class.forName("featurecat.lizzie.gui.LizzieFrame$PlayerStrengthPerformanceRankPanel");
+    java.lang.reflect.Constructor<?> constructor =
+        panelClass.getDeclaredConstructor(PlayerStrengthEstimator.Report.class);
+    constructor.setAccessible(true);
+    javax.swing.JComponent panel = (javax.swing.JComponent) constructor.newInstance(report);
+    panel.setSize(900, 452);
+
+    java.awt.image.BufferedImage image =
+        new java.awt.image.BufferedImage(900, 452, java.awt.image.BufferedImage.TYPE_INT_ARGB);
+    panel.paint(image.createGraphics());
+
+    Method rowsMethod =
+        panelClass.getDeclaredMethod(
+            "distributionRows", PlayerStrengthEstimator.SideReport.class);
+    rowsMethod.setAccessible(true);
+    Object[] rows = (Object[]) rowsMethod.invoke(panel, report.black);
+    Field countField = rows[0].getClass().getDeclaredField("count");
+    countField.setAccessible(true);
+
+    assertEquals(1, countField.getInt(rows[0]), "first distribution row should count AI top-choice hits.");
+  }
+
+  @Test
   void openBoardSyncCoalescesConsecutiveRestartsOnEdt() throws Exception {
     TestEnvironment env = TestEnvironment.open();
     try {
@@ -613,6 +639,64 @@ class LizzieFrameRegressionTest {
   }
 
   @Test
+  void postLoadAnalysisResumeIgnoresStaleOlderLoadTask() throws Exception {
+    TestEnvironment env = TestEnvironment.open();
+    try {
+      LizzieFrame frame = allocate(LizzieFrame.class);
+      AtomicInteger firstRunCount = new AtomicInteger();
+      AtomicInteger secondRunCount = new AtomicInteger();
+      CountDownLatch secondRan = new CountDownLatch(1);
+
+      frame.scheduleResumeAnalysisAfterLoad(180, firstRunCount::incrementAndGet);
+      frame.scheduleResumeAnalysisAfterLoad(
+          0,
+          () -> {
+            secondRunCount.incrementAndGet();
+            secondRan.countDown();
+          });
+
+      assertTrue(secondRan.await(2, TimeUnit.SECONDS));
+      Thread.sleep(260);
+      drainEdt();
+
+      assertEquals(0, firstRunCount.get(), "an older delayed kifu-load resume must not run late.");
+      assertEquals(1, secondRunCount.get());
+    } finally {
+      env.close();
+    }
+  }
+
+  @Test
+  void loadedGameQuickAnalysisRetryRestartsWhenInitialDispatchDisappears() throws Exception {
+    TestEnvironment env = TestEnvironment.open();
+    try {
+      Lizzie.config = configWithAutoQuickAnalyze();
+      Lizzie.board = boardWith(historyWithUnanalyzedMove());
+      TrackingLeelaz leelaz = allocate(TrackingLeelaz.class);
+      Lizzie.leelaz = leelaz;
+      EngineManager.isEmpty = false;
+      EngineManager.isEngineGame = false;
+      EngineManager.isPreEngineGame = false;
+      AnalysisResumeTrackingFrame frame = allocate(AnalysisResumeTrackingFrame.class);
+      Lizzie.frame = frame;
+
+      assertTrue(frame.ensureAnalysisResumedAfterLoad());
+      assertEquals(1, frame.flashAnalyzeGameCount);
+
+      invokeRetryLoadedGameQuickAnalysisIfMissing(frame);
+
+      assertEquals(
+          2,
+          frame.flashAnalyzeGameCount,
+          "if the first silent quick-curve dispatch vanishes, the load guard should retry it.");
+      assertEquals(2, leelaz.ponderCount);
+      invokeStopLoadedGameQuickAnalysisRetry(frame);
+    } finally {
+      env.close();
+    }
+  }
+
+  @Test
   void finishKifuLoadDoesNotRefreshAgainBeforeHidingOverlay() throws Exception {
     TestEnvironment env = TestEnvironment.open();
     try {
@@ -815,6 +899,7 @@ class LizzieFrameRegressionTest {
         PlayerStrengthEstimator.Sample.class.getDeclaredConstructor(
             Stone.class,
             int.class,
+            String.class,
             double.class,
             Optional.class,
             boolean.class,
@@ -828,6 +913,7 @@ class LizzieFrameRegressionTest {
     return constructor.newInstance(
         color,
         moveNumber,
+        moveNumber % 2 == 1 ? "A9" : "B9",
         winrateLoss,
         scoreLoss,
         firstChoice,
@@ -951,6 +1037,26 @@ class LizzieFrameRegressionTest {
     Method method = LizzieFrame.class.getDeclaredMethod("shouldAutoQuickAnalyzeLoadedGame");
     method.setAccessible(true);
     return (boolean) method.invoke(frame);
+  }
+
+  private static void invokeRetryLoadedGameQuickAnalysisIfMissing(LizzieFrame frame) throws Exception {
+    Method method = LizzieFrame.class.getDeclaredMethod("retryLoadedGameQuickAnalysisIfMissing");
+    method.setAccessible(true);
+    SwingUtilities.invokeAndWait(() -> invokeReflective(method, frame));
+  }
+
+  private static void invokeStopLoadedGameQuickAnalysisRetry(LizzieFrame frame) throws Exception {
+    Method method = LizzieFrame.class.getDeclaredMethod("stopLoadedGameQuickAnalysisRetry");
+    method.setAccessible(true);
+    SwingUtilities.invokeAndWait(() -> invokeReflective(method, frame));
+  }
+
+  private static void invokeReflective(Method method, Object target) {
+    try {
+      method.invoke(target);
+    } catch (ReflectiveOperationException e) {
+      throw new AssertionError(e);
+    }
   }
 
   private static void invokeUpdateScaleFromGraphicsConfiguration(
