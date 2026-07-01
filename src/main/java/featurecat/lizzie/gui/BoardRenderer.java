@@ -301,6 +301,9 @@ public class BoardRenderer {
               drawLeelazSuggestions(g);
             }
           }
+          if (Lizzie.config.showNextMoves && !isShowingBranch) {
+            drawNextMoveOutlinesOnTop(g);
+          }
         }
         if (isMouseOverNextBlunder) drawNextBlunderFirstMove(g);
         if (Lizzie.config.isShowingMarkupTools) drawStoneMarkup(g);
@@ -3339,7 +3342,6 @@ public class BoardRenderer {
                   int moveX = x + scaledMarginWidth + squareWidth * nextMove[0];
                   int moveY = y + scaledMarginHeight + squareHeight * nextMove[1];
                   if (first) {
-                    boolean hasFillCircle = false;
                     if (Lizzie.config.showNextMoveBlunder
                         && !Lizzie.board.isPkBoard
                         && !Lizzie.frame.isShowingHeatmap
@@ -3396,7 +3398,6 @@ public class BoardRenderer {
                                   -nextMoveData.scoreMean,
                                   false,
                                   thisMoveData.scoreMean);
-                              hasFillCircle = true;
                             } else if (winrateDiff >= 1.5 || scoreDiff >= 1) {
                               g.setColor(new Color(220, 150, 30));
                               drawNextMoveBlunder(
@@ -3408,7 +3409,6 @@ public class BoardRenderer {
                                   -nextMoveData.scoreMean,
                                   false,
                                   thisMoveData.scoreMean);
-                              hasFillCircle = true;
                             } else {
                               g.setColor(new Color(0, 220, 0));
                               drawNextMoveBlunder(
@@ -3420,7 +3420,6 @@ public class BoardRenderer {
                                   -nextMoveData.scoreMean,
                                   true,
                                   thisMoveData.scoreMean);
-                              hasFillCircle = true;
                             }
                           } else {
                             double winrateDiff =
@@ -3430,34 +3429,50 @@ public class BoardRenderer {
                               g.setColor(new Color(220, 80, 30, 85));
                               drawNextMoveBlunder(
                                   g, color, moveX, moveY, 100 - nextMoveData.winrate, false);
-                              hasFillCircle = true;
                             } else if (winrateDiff >= 1) {
                               g.setColor(new Color(220, 150, 30));
                               drawNextMoveBlunder(
                                   g, color, moveX, moveY, 100 - nextMoveData.winrate, false);
-                              hasFillCircle = true;
                             } else // if (winrateDiff <= -2)
                             {
                               g.setColor(new Color(0, 220, 0));
                               drawNextMoveBlunder(
                                   g, color, moveX, moveY, 100 - nextMoveData.winrate, true);
-                              hasFillCircle = true;
                             }
                           }
                         }
                       }
                     }
-                    if (!hasFillCircle) {
-                      g.setStroke(new BasicStroke(Math.max(stoneRadius / 7f, 2f)));
-                      drawCircle(g, moveX, moveY, stoneRadius + 2);
-                    }
-                  } else {
-                    g.setStroke(new BasicStroke(Math.max(stoneRadius / 15f, 1f)));
-                    drawCircle(
-                        g, moveX, moveY, stoneRadius + 2); // Slightly outside best move circle
                   }
                 });
       }
+    }
+  }
+
+  private void drawNextMoveOutlinesOnTop(Graphics2D g) {
+    if (nextCoords == null || nextCoords.isEmpty()) {
+      return;
+    }
+    List<BoardHistoryNode> nexts = new ArrayList<BoardHistoryNode>();
+    for (BoardHistoryNode next : Lizzie.board.getHistory().getNexts()) {
+      if (next.getData().isMoveNode()) {
+        nexts.add(next);
+      }
+    }
+    if (nexts.isEmpty()) {
+      return;
+    }
+    g.setColor(nexts.get(0).getData().lastMoveColor == Stone.BLACK ? Color.BLACK : Color.WHITE);
+    for (int i = 0; i < nextCoords.size(); i++) {
+      int[] nextMove = nextCoords.get(i);
+      int moveX = x + scaledMarginWidth + squareWidth * nextMove[0];
+      int moveY = y + scaledMarginHeight + squareHeight * nextMove[1];
+      drawDashedCircle(
+          g,
+          moveX,
+          moveY,
+          stoneRadius + 2,
+          i == 0 ? Math.max(stoneRadius / 5.5f, 3f) : Math.max(stoneRadius / 11f, 2f));
     }
   }
 
@@ -4232,6 +4247,22 @@ public class BoardRenderer {
   private void drawCircle(Graphics2D g, int centerX, int centerY, int radius) {
     // g.setStroke(new BasicStroke(radius / 11.5f));
     g.drawOval(centerX - radius, centerY - radius, 2 * radius, 2 * radius);
+  }
+
+  private void drawDashedCircle(
+      Graphics2D g, int centerX, int centerY, int radius, float strokeWidth) {
+    Stroke oldStroke = g.getStroke();
+    float safeStrokeWidth = Math.max(strokeWidth, 1f);
+    g.setStroke(
+        new BasicStroke(
+            safeStrokeWidth,
+            BasicStroke.CAP_ROUND,
+            BasicStroke.JOIN_ROUND,
+            0f,
+            new float[] {safeStrokeWidth * 2.2f, safeStrokeWidth * 1.7f},
+            0f));
+    drawCircle(g, centerX, centerY, radius);
+    g.setStroke(oldStroke);
   }
 
   private void drawCircle(Graphics2D g, int centerX, int centerY, int radius, float f) {

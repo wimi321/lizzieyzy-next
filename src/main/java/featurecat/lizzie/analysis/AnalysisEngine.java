@@ -47,6 +47,7 @@ public class AnalysisEngine {
   private static final int REMOTE_GTP_OVERVIEW_STRIDE = 8;
   private static final int REMOTE_GTP_OVERVIEW_THRESHOLD = 24;
   private static final int REMOTE_GTP_RAW_NN_VISITS = 1;
+  private static final long REMOTE_GTP_STOP_ACK_TIMEOUT_MILLIS = 180L;
   public Process process;
   public boolean isNormalEnd = false;
   private final ResourceBundle resourceBundle = Lizzie.resourceBundle;
@@ -91,6 +92,9 @@ public class AnalysisEngine {
   private boolean remoteGtpStopSent;
   private boolean remoteGtpRawNnUnsupported;
   private StringBuilder remoteGtpRawNnResponse;
+  private boolean remoteGtpRawNnSawEmptySuccess;
+  private boolean remoteGtpStopAckOptional;
+  private long remoteGtpStopAckGeneration;
 
   public AnalysisEngine(boolean isPreLoad) throws IOException {
     int maxVisits =
@@ -314,6 +318,7 @@ public class AnalysisEngine {
     }
     process = null;
     shutdown();
+    finishAbortedAnalysis();
     return;
   }
 
@@ -420,6 +425,8 @@ public class AnalysisEngine {
     if (trimmed.isEmpty()) {
       if (remoteGtpRawNnResponse.length() > 0) {
         completeOrFallbackRemoteGtpRawNnJob(job);
+      } else if (remoteGtpRawNnSawEmptySuccess) {
+        fallbackRemoteGtpRawNnJob(job);
       }
       return true;
     }
@@ -428,7 +435,12 @@ public class AnalysisEngine {
       return true;
     }
     String payload = trimmed.startsWith("=") ? trimmed.substring(1).trim() : trimmed;
+    if (trimmed.startsWith("=") && payload.isEmpty()) {
+      remoteGtpRawNnSawEmptySuccess = true;
+      return true;
+    }
     if (!payload.isEmpty()) {
+      remoteGtpRawNnSawEmptySuccess = false;
       if (remoteGtpRawNnResponse.length() > 0) {
         remoteGtpRawNnResponse.append(' ');
       }
@@ -443,6 +455,7 @@ public class AnalysisEngine {
   private void completeOrFallbackRemoteGtpRawNnJob(RemoteGtpAnalyzeJob job) {
     RemoteGtpRawNnResult result = parseRemoteGtpRawNn(remoteGtpRawNnResponse.toString(), job.node);
     remoteGtpRawNnResponse = null;
+    remoteGtpRawNnSawEmptySuccess = false;
     if (result == null) {
       fallbackRemoteGtpRawNnJob(job);
       return;
@@ -495,6 +508,7 @@ public class AnalysisEngine {
       return;
     }
     remoteGtpActiveJob = null;
+    remoteGtpRawNnSawEmptySuccess = false;
     if (!shouldKeepForegroundAnalysis(job.node)) {
       applyRemoteGtpRawNnPayload(job.node, result);
     }
@@ -529,6 +543,7 @@ public class AnalysisEngine {
   private void fallbackRemoteGtpRawNnJob(RemoteGtpAnalyzeJob job) {
     remoteGtpRawNnUnsupported = true;
     remoteGtpRawNnResponse = null;
+    remoteGtpRawNnSawEmptySuccess = false;
     if (remoteGtpActiveJob != job) {
       return;
     }
@@ -563,7 +578,12 @@ public class AnalysisEngine {
       Lizzie.frame.refresh();
     }
     if (sendCommand("stop")) {
-      remoteGtpWaitingForStopAck = true;
+      if (remoteGtpStopAckOptional) {
+        finishRemoteGtpJobAfterStopAck();
+      } else {
+        remoteGtpWaitingForStopAck = true;
+        scheduleRemoteGtpStopAckFallback();
+      }
     } else {
       finishRemoteGtpJobAfterStopAck();
     }
@@ -571,11 +591,38 @@ public class AnalysisEngine {
 
   private void finishRemoteGtpJobAfterStopAck() {
     remoteGtpStopSent = false;
+    remoteGtpWaitingForStopAck = false;
     if (resultCount == analyzeMap.size()) {
       setResult();
       return;
     }
     startNextRemoteGtpJob();
+  }
+
+  private void scheduleRemoteGtpStopAckFallback() {
+    long generation = ++remoteGtpStopAckGeneration;
+    Thread watchdog =
+        new Thread(
+            () -> {
+              try {
+                Thread.sleep(REMOTE_GTP_STOP_ACK_TIMEOUT_MILLIS);
+              } catch (InterruptedException ignored) {
+                Thread.currentThread().interrupt();
+                return;
+              }
+              synchronized (AnalysisEngine.this) {
+                if (!remoteGtpWaitingForStopAck
+                    || !remoteGtpStopSent
+                    || generation != remoteGtpStopAckGeneration) {
+                  return;
+                }
+                remoteGtpStopAckOptional = true;
+                finishRemoteGtpJobAfterStopAck();
+              }
+            },
+            "remote-gtp-stop-ack-watchdog");
+    watchdog.setDaemon(true);
+    watchdog.start();
   }
 
   private void applyAnalysisPayload(
@@ -652,6 +699,21 @@ public class AnalysisEngine {
       if (executorErr != null) executorErr.shutdownNow();
     } else if (this.process != null) this.process.destroyForcibly();
     Lizzie.frame.requestProblemListRefresh();
+  }
+
+  private synchronized void finishAbortedAnalysis() {
+    if (analyzeMap.isEmpty() && completionCallback == null) {
+      return;
+    }
+    analyzeMap.clear();
+    remoteGtpQueue().clear();
+    remoteGtpActiveJob = null;
+    remoteGtpWaitingForStopAck = false;
+    remoteGtpStopSent = false;
+    remoteGtpRawNnResponse = null;
+    remoteGtpRawNnSawEmptySuccess = false;
+    resultCount = 0;
+    runCompletionCallback();
   }
 
   public void startRequestAllBranches() {
@@ -741,6 +803,8 @@ public class AnalysisEngine {
     remoteGtpWaitingForStopAck = false;
     remoteGtpStopSent = false;
     remoteGtpRawNnResponse = null;
+    remoteGtpRawNnSawEmptySuccess = false;
+    remoteGtpStopAckGeneration++;
     if (globalID <= 0) globalID = 1;
     resultCount = 0;
     requestDispatchFailed = false;
@@ -935,6 +999,7 @@ public class AnalysisEngine {
     remoteGtpActiveJob = job;
     remoteGtpStopSent = false;
     remoteGtpRawNnResponse = null;
+    remoteGtpRawNnSawEmptySuccess = false;
     for (String command : job.commands) {
       if (!sendCommand(command)) {
         remoteGtpActiveJob = null;
