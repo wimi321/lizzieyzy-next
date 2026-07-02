@@ -47,6 +47,7 @@ public class BrowserFrame extends JFrame {
   static final String JCEF_BUNDLE_DIRECTORY = "jcef-bundle";
   static final String JCEF_BUNDLE_MANIFEST = "lizzieyzy-next-jcef-manifest.txt";
   private static final String YIKE_BROWSER_SYNC_STOP_COMMAND = "yikeBrowserSyncStop";
+  private static final long YIKE_OBSERVED_URL_FRESH_MILLIS = 30_000L;
   private static final boolean YIKE_GEOMETRY_PROBE_DEBUG =
       Boolean.parseBoolean(System.getProperty("lizzie.yike.geometryProbeDebug.enabled", "false"));
   private final JTextField address_;
@@ -65,6 +66,7 @@ public class BrowserFrame extends JFrame {
   private boolean isYike;
   private volatile boolean yikeBrowserSyncEnabled = false;
   private volatile String lastObservedYikePageUrl = "";
+  private volatile long lastObservedYikePageUrlMillis = 0L;
 
   /**
    * To display a simple browser window, it suffices completely to create an instance of the class
@@ -707,7 +709,24 @@ public class BrowserFrame extends JFrame {
     String observedUrl = lastObservedYikePageUrl;
     String browserUrl = currentBrowserUrlForSync();
     String addressUrl = address_ == null ? "" : address_.getText();
-    return selectYikeCurrentAddress(observedUrl, browserUrl, addressUrl);
+    long now = System.currentTimeMillis();
+    long observedAt = lastObservedYikePageUrlMillis;
+    boolean observedFresh = isYikeObservedPageUrlFresh(now, observedAt);
+    String selected = selectYikeCurrentAddress(observedUrl, browserUrl, addressUrl, observedFresh);
+    YikeSyncDebugLog.log(
+        "BrowserFrame select yike address selected="
+            + selected
+            + " observedFresh="
+            + observedFresh
+            + " observedAgeMs="
+            + (observedAt <= 0 ? -1 : now - observedAt)
+            + " observed="
+            + observedUrl
+            + " browser="
+            + browserUrl
+            + " addressField="
+            + addressUrl);
+    return selected;
   }
 
   public String currentBrowserUrlForSync() {
@@ -724,7 +743,12 @@ public class BrowserFrame extends JFrame {
   }
 
   static String selectYikeCurrentAddress(String observedUrl, String browserUrl, String addressUrl) {
-    if (YikeUrlParser.parse(observedUrl).isPresent()) {
+    return selectYikeCurrentAddress(observedUrl, browserUrl, addressUrl, true);
+  }
+
+  static String selectYikeCurrentAddress(
+      String observedUrl, String browserUrl, String addressUrl, boolean observedFresh) {
+    if (observedFresh && YikeUrlParser.parse(observedUrl).isPresent()) {
       return observedUrl;
     }
     if (YikeUrlParser.parse(browserUrl).isPresent()) {
@@ -733,6 +757,14 @@ public class BrowserFrame extends JFrame {
     if (YikeUrlParser.parse(addressUrl).isPresent()) {
       return addressUrl;
     }
+    if (!observedFresh) {
+      if (!Utils.isBlank(browserUrl)) {
+        return browserUrl;
+      }
+      if (!Utils.isBlank(addressUrl)) {
+        return addressUrl;
+      }
+    }
     if (!Utils.isBlank(observedUrl)) {
       return observedUrl;
     }
@@ -740,6 +772,12 @@ public class BrowserFrame extends JFrame {
       return browserUrl;
     }
     return addressUrl;
+  }
+
+  static boolean isYikeObservedPageUrlFresh(long nowMillis, long observedAtMillis) {
+    return observedAtMillis > 0
+        && nowMillis >= observedAtMillis
+        && nowMillis - observedAtMillis <= YIKE_OBSERVED_URL_FRESH_MILLIS;
   }
 
   private void rememberYikeGeometryPageUrl(String payload) {
@@ -751,6 +789,7 @@ public class BrowserFrame extends JFrame {
       String href = envelope.optString("href", "").trim();
       if (!Utils.isBlank(href)) {
         lastObservedYikePageUrl = href;
+        lastObservedYikePageUrlMillis = System.currentTimeMillis();
         YikeSyncDebugLog.log("BrowserFrame remember yike geometry href=" + href);
       }
     } catch (Exception ignored) {

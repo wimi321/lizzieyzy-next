@@ -104,6 +104,32 @@ class BrowserFrameYikeSyncControlTest {
   }
 
   @Test
+  void staleObservedRoomDoesNotOverrideCurrentBrowserAddress() {
+    assertEquals(
+        "https://home.yikeweiqi.com/#/unite/66372511",
+        BrowserFrame.selectYikeCurrentAddress(
+            "https://home.yikeweiqi.com/#/live/new-room/186602/0/0",
+            "https://home.yikeweiqi.com/#/unite/66372511",
+            "https://home.yikeweiqi.com/#/unite/66372511",
+            false));
+    assertEquals(
+        "https://home.yikeweiqi.com/#/game",
+        BrowserFrame.selectYikeCurrentAddress(
+            "https://home.yikeweiqi.com/#/live/new-room/186602/0/0",
+            "https://home.yikeweiqi.com/#/game",
+            "https://home.yikeweiqi.com/#/game",
+            false));
+  }
+
+  @Test
+  void observedYikePageUrlExpiresAfterThirtySeconds() {
+    assertFalse(BrowserFrame.isYikeObservedPageUrlFresh(2000L, 0L));
+    assertFalse(BrowserFrame.isYikeObservedPageUrlFresh(2000L, 3000L));
+    assertTrue(BrowserFrame.isYikeObservedPageUrlFresh(31_000L, 1000L));
+    assertFalse(BrowserFrame.isYikeObservedPageUrlFresh(31_001L, 1000L));
+  }
+
+  @Test
   void fallsBackToBrowserOrAddressWhenObservedIsNotRoom() {
     assertEquals(
         "https://home.yikeweiqi.com/#/unite/66372511",
