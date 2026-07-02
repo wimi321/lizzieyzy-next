@@ -748,7 +748,7 @@ public class BrowserFrame extends JFrame {
 
   static String selectYikeCurrentAddress(
       String observedUrl, String browserUrl, String addressUrl, boolean observedFresh) {
-    if (observedFresh && YikeUrlParser.parse(observedUrl).isPresent()) {
+    if (observedFresh && shouldAcceptYikeObservedPageUrl(observedUrl, browserUrl, addressUrl)) {
       return observedUrl;
     }
     if (YikeUrlParser.parse(browserUrl).isPresent()) {
@@ -765,7 +765,7 @@ public class BrowserFrame extends JFrame {
         return addressUrl;
       }
     }
-    if (!Utils.isBlank(observedUrl)) {
+    if (shouldAcceptYikeObservedPageUrl(observedUrl, browserUrl, addressUrl)) {
       return observedUrl;
     }
     if (!Utils.isBlank(browserUrl)) {
@@ -780,6 +780,28 @@ public class BrowserFrame extends JFrame {
         && nowMillis - observedAtMillis <= YIKE_OBSERVED_URL_FRESH_MILLIS;
   }
 
+  static boolean shouldAcceptYikeObservedPageUrl(
+      String observedUrl, String browserUrl, String addressUrl) {
+    String observedSessionKey = OnlineDialog.yikeSessionKey(observedUrl);
+    if (Utils.isBlank(observedSessionKey)) {
+      return false;
+    }
+    if (isYikeWaitingPage(browserUrl) || isYikeWaitingPage(addressUrl)) {
+      return false;
+    }
+    String browserSessionKey = OnlineDialog.yikeSessionKey(browserUrl);
+    if (!Utils.isBlank(browserSessionKey) && !observedSessionKey.equals(browserSessionKey)) {
+      return false;
+    }
+    String addressSessionKey = OnlineDialog.yikeSessionKey(addressUrl);
+    return Utils.isBlank(addressSessionKey) || observedSessionKey.equals(addressSessionKey);
+  }
+
+  private static boolean isYikeWaitingPage(String rawUrl) {
+    String pageKind = yikePageKind(rawUrl);
+    return "live-list".equals(pageKind) || "game-lobby".equals(pageKind);
+  }
+
   private void rememberYikeGeometryPageUrl(String payload) {
     if (Utils.isBlank(payload)) {
       return;
@@ -787,10 +809,20 @@ public class BrowserFrame extends JFrame {
     try {
       JSONObject envelope = new JSONObject(payload);
       String href = envelope.optString("href", "").trim();
-      if (!Utils.isBlank(href)) {
+      String browserUrl = currentBrowserUrlForSync();
+      String addressUrl = address_ == null ? "" : address_.getText();
+      if (shouldAcceptYikeObservedPageUrl(href, browserUrl, addressUrl)) {
         lastObservedYikePageUrl = href;
         lastObservedYikePageUrlMillis = System.currentTimeMillis();
         YikeSyncDebugLog.log("BrowserFrame remember yike geometry href=" + href);
+      } else if (!Utils.isBlank(href)) {
+        YikeSyncDebugLog.log(
+            "BrowserFrame reject yike geometry href="
+                + href
+                + " browser="
+                + browserUrl
+                + " addressField="
+                + addressUrl);
       }
     } catch (Exception ignored) {
     }
