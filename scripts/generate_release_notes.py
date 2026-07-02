@@ -7604,7 +7604,7 @@ def build_next_2026_07_01_1_notes(
     return notes
 
 
-def build_next_2026_07_02_1_notes(
+def build_next_2026_07_02_1_prerelease_notes(
     asset_map: dict[str, str | None],
     bundle: dict[str, str],
     repo: str,
@@ -7705,6 +7705,245 @@ def build_next_2026_07_02_1_notes(
     for old, new in replacements.items():
         notes = notes.replace(old, new)
     return notes
+
+
+def build_next_2026_07_02_1_notes(
+    asset_map: dict[str, str | None],
+    bundle: dict[str, str],
+    repo: str,
+    release_tag: str | None,
+) -> str:
+    assets_cn = {key: format_asset(asset_map[key], repo, release_tag) for key in asset_map}
+    assets = {key: format_asset_en(asset_map[key], repo, release_tag) for key in asset_map}
+    katago_version = bundle['katago_version']
+    model_source = bundle['model_source']
+    previous_release = 'next-2026-06-21.2'
+
+    blocks = [
+        {
+            'language': '中文',
+            'labels': 'zh',
+            'intro': f'这一版从 {previous_release} 以来的预览改动整理为正式 release：重点补齐远程算力、棋谱加载后的快速胜率曲线、棋力评估显示、棋盘同步自动落子，以及几处用户反馈的界面细节。',
+            'updates_heading': '本版主要更新',
+            'updates': [
+                '新增并打磨“远程算力中心”：支持智子云算力登录、默认 VIP 包月、自建算力连接码/二维码和 KaTrain 兼容 `ws://` / `wss://` 链接，远程引擎可以用于主分析、快速胜率曲线、形势判断等路径。',
+                '远程算力稳定性继续加强：减少反复重连，已启用时不重复触发连接；`kata-raw-nn` 空返回会降级到 `kata-analyze`，远程 `stop` 无确认也不会卡住后续分析队列。',
+                '加载 SGF、野狐棋谱、腾讯棋谱后，自动快速胜率曲线增加防抖、补发和旧任务隔离；曲线完成或异常结束后会恢复当前局面的棋盘分析。',
+                '棋力评估继续优化：恢复小数/段位显示，修复评分规则面板和一选率统计，让一选只按 AI 首选计算；大棋盘下一手虚线圈保持在候选点上层，更容易分辨。',
+                '感谢 @qiyi71w 的 PR #81：ReadBoard 棋盘同步的可信 GMA 自动落子会等待 KataGo 最终决策，并在 pass、resign、失效请求或点击失败后恢复引擎局面。',
+                '修复 Linux 打开棋谱对话框位置、菜单文字对齐、新对局菜单对齐等界面问题；底部重复野狐入口改为远程算力入口，顶部野狐/腾讯/棋力评估入口保持不变。',
+            ],
+            'before_heading': '下载前先看这几句',
+            'before': [
+                f'主推荐整合包继续内置 KataGo `{katago_version}` 和默认权重 `{model_source}`。',
+                'Windows 普通用户优先下载 {windows_opencl_portable}，这是 OpenCL 推荐免安装版。',
+                'NVIDIA 显卡用户可下载 {windows_nvidia_portable}；RTX 5070/5080/5090 用户优先看 RTX 50 CUDA 版。',
+                '已经在用 Windows 免安装版的用户，日常升级优先下载 {windows_core_update} 覆盖到旧目录，权重、引擎和用户数据不会重复下载。',
+            ],
+            'download_heading': '下载建议',
+            'download_headers': ('你的电脑', '直接下载这个'),
+            'why_heading': '这一版为什么值得更新',
+            'why': [
+                f'这是从上一个正式 release `{previous_release}` 到现在的稳定汇总版，比单个预览版更适合普通用户更新。',
+                '如果你使用远程算力、野狐/腾讯棋谱、快速胜率曲线、棋力评估或 ReadBoard 同步，这一版都能减少卡住、显示不准或入口不好找的问题。',
+                '发布流程继续保留 GitHub Actions 打包校验、真实资产生成 release notes，以及 Windows 小更新 manifest 校验。',
+            ],
+            'contact_heading': '交流',
+            'contact': ['QQ 群：`299419120`'],
+        },
+        {
+            'language': '繁體中文',
+            'labels': 'zh_hant',
+            'intro': f'這一版把 {previous_release} 以來的預覽改動整理為正式 release：重點補齊遠端算力、棋譜載入後的快速勝率曲線、棋力評估顯示、棋盤同步自動落子，以及幾處使用者回報的介面細節。',
+            'updates_heading': '本版主要更新',
+            'updates': [
+                '新增並打磨「遠端算力中心」：支援智子雲算力登入、預設 VIP 包月、自建算力連接碼/QR code 和 KaTrain 相容 `ws://` / `wss://` 連結，遠端引擎可用於主分析、快速勝率曲線、形勢判斷等路徑。',
+                '遠端算力穩定性繼續加強：減少反覆重連，已啟用時不重複觸發連線；`kata-raw-nn` 空返回會降級到 `kata-analyze`，遠端 `stop` 無確認也不會卡住後續分析佇列。',
+                '載入 SGF、野狐棋譜、騰訊棋譜後，自動快速勝率曲線增加防抖、補發和舊任務隔離；曲線完成或異常結束後會恢復目前局面的棋盤分析。',
+                '棋力評估繼續優化：恢復小數/段位顯示，修復評分規則面板和一選率統計，讓一選只按 AI 首選計算；大棋盤下一手虛線圈保持在候選點上層，更容易分辨。',
+                '感謝 @qiyi71w 的 PR #81：ReadBoard 棋盤同步的可信 GMA 自動落子會等待 KataGo 最終決策，並在 pass、resign、失效請求或點擊失敗後恢復引擎局面。',
+                '修復 Linux 開啟棋譜對話框位置、選單文字對齊、新對局選單對齊等介面問題；底部重複野狐入口改為遠端算力入口，頂部野狐/騰訊/棋力評估入口保持不變。',
+            ],
+            'before_heading': '下載前先看這幾句',
+            'before': [
+                f'主推薦整合包繼續內建 KataGo `{katago_version}` 和預設權重 `{model_source}`。',
+                'Windows 一般使用者優先下載 {windows_opencl_portable}，這是 OpenCL 推薦免安裝版。',
+                'NVIDIA 顯示卡使用者可下載 {windows_nvidia_portable}；RTX 5070/5080/5090 使用者優先看 RTX 50 CUDA 版。',
+                '已經在用 Windows 免安裝版的使用者，日常升級優先下載 {windows_core_update} 覆蓋到舊目錄，權重、引擎和使用者資料不會重複下載。',
+            ],
+            'download_heading': '下載建議',
+            'download_headers': ('你的電腦', '直接下載這個'),
+            'why_heading': '這一版為什麼值得更新',
+            'why': [
+                f'這是從上一個正式 release `{previous_release}` 到現在的穩定匯總版，比單個預覽版更適合一般使用者更新。',
+                '如果你使用遠端算力、野狐/騰訊棋譜、快速勝率曲線、棋力評估或 ReadBoard 同步，這一版都能減少卡住、顯示不準或入口不好找的問題。',
+                '發布流程繼續保留 GitHub Actions 打包校驗、真實資產生成 release notes，以及 Windows 小更新 manifest 校驗。',
+            ],
+            'contact_heading': '交流',
+            'contact': ['QQ 群：`299419120`'],
+        },
+        {
+            'language': 'English',
+            'labels': 'en',
+            'intro': f'This release promotes the preview work since {previous_release} into a stable build, focusing on Remote Compute, quick winrate curves after loading kifu, Player Strength display fixes, trusted board-sync autoplay, and several user-reported UI polish items.',
+            'updates_heading': 'Release Highlights',
+            'updates': [
+                'Added and refined the Remote Compute Center: Zhizi Cloud login, VIP monthly as the default, self-hosted connection codes/QR import, and KaTrain-compatible `ws://` / `wss://` links. Remote engines can now serve main analysis, quick winrate curves, score judgment, and related paths.',
+                'Remote Compute stability is stronger: fewer reconnect loops, no repeated enable while already active, empty `kata-raw-nn` responses fall back to `kata-analyze`, and remote `stop` without acknowledgement no longer blocks later analysis work.',
+                'After SGF, Fox, and Tencent kifu loads, automatic quick winrate analysis now has debounce, retry, and stale-job isolation. Current-board analysis resumes after quick curves complete or abort.',
+                'Player Strength evaluation was polished: decimal/rank display is restored, the score-rule panel and strict first-choice counting were fixed, and the main-board next-move dashed outline stays above candidate markers.',
+                'Thanks to @qiyi71w for PR #81: trusted ReadBoard GMA autoplay waits for KataGo final decisions and restores engine state after pass, resign, stale requests, or failed clicks.',
+                'Fixed Linux file-dialog placement, menu text alignment, and new-game menu alignment. The duplicated bottom Fox shortcut is replaced with Remote Compute while top Fox/Tencent/Strength shortcuts remain.',
+            ],
+            'before_heading': 'Read Before Downloading',
+            'before': [
+                f'The recommended bundles still include KataGo `{katago_version}` and the default model `{model_source}`.',
+                'Most Windows users should start with {windows_opencl_portable}, the recommended OpenCL portable build.',
+                'NVIDIA users can choose {windows_nvidia_portable}; RTX 5070/5080/5090 users should also consider the RTX 50 CUDA build.',
+                'Existing Windows portable users can usually upgrade with {windows_core_update} by extracting it over the old folder, without redownloading weights, engines, or user data.',
+            ],
+            'download_heading': 'Download Guide',
+            'download_headers': ('Your computer', 'Download this file'),
+            'why_heading': 'Why Update',
+            'why': [
+                f'This is the stable roll-up from the previous release `{previous_release}`, so it is a better default update target than the individual preview builds.',
+                'If you use Remote Compute, Fox/Tencent records, quick winrate curves, Player Strength evaluation, or ReadBoard sync, this build reduces stalls, confusing display states, and hard-to-find entry points.',
+                'The release flow still uses GitHub Actions package checks, release notes generated from real uploaded assets, and Windows core-update manifest verification.',
+            ],
+            'contact_heading': 'Contact',
+            'contact': ['QQ group: `299419120`'],
+        },
+        {
+            'language': '日本語',
+            'labels': 'ja',
+            'intro': f'このリリースは、{previous_release} 以降の preview 変更を安定版としてまとめたものです。Remote Compute、棋譜読み込み後の quick winrate curve、棋力評価表示、信頼済み棋盤同期自動着手、ユーザー報告の UI 修正を中心にしています。',
+            'updates_heading': '本版主要更新',
+            'updates': [
+                'Remote Compute Center を追加・調整しました。Zhizi Cloud login、既定 VIP monthly、self-hosted connection code / QR import、KaTrain-compatible `ws://` / `wss://` links に対応し、remote engine を main analysis、quick winrate curve、score judgment などで使えます。',
+                'Remote Compute の安定性を強化しました。不要な reconnect loop を減らし、有効化済みの再 trigger を防ぎ、空の `kata-raw-nn` は `kata-analyze` に fallback し、ack のない remote `stop` で後続分析が止まりません。',
+                'SGF、Fox、Tencent kifu 読み込み後の automatic quick winrate analysis に debounce、retry、古い job の隔離を追加しました。quick curve 完了または abort 後は current-board analysis を再開します。',
+                '棋力評価をさらに調整しました。小数/段位表示を戻し、score-rule panel と strict first-choice counting を修正し、大盤の next-move dashed outline は candidate marker の上に表示されます。',
+                'PR #81 の @qiyi71w さんに感謝します。ReadBoard の信頼済み GMA autoplay は KataGo の final decision を待ち、pass、resign、古い request、click failure 後に engine state を復旧します。',
+                'Linux file dialog の位置、menu text alignment、new-game menu alignment を修正しました。下部の重複 Fox shortcut は Remote Compute に置き換え、上部の Fox/Tencent/Strength shortcuts は維持しています。',
+            ],
+            'before_heading': 'ダウンロード前に',
+            'before': [
+                f'推奨バンドルには引き続き KataGo `{katago_version}` と既定モデル `{model_source}` が含まれます。',
+                'Windows の多くのユーザーは、OpenCL 推奨ポータブル版 {windows_opencl_portable} から試してください。',
+                'NVIDIA ユーザーは {windows_nvidia_portable} を選べます。RTX 5070/5080/5090 は RTX 50 CUDA 版も確認してください。',
+                '既存の Windows portable 版ユーザーは、通常 {windows_core_update} を旧フォルダへ上書きするだけで更新でき、重み、エンジン、ユーザーデータを再取得する必要はありません。',
+            ],
+            'download_heading': 'ダウンロード案内',
+            'download_headers': ('お使いの環境', 'ダウンロードするファイル'),
+            'why_heading': '更新する理由',
+            'why': [
+                f'これは前回の正式 release `{previous_release}` 以降の安定版まとめで、個別 preview build より通常更新に向いています。',
+                'Remote Compute、Fox/Tencent 棋譜、quick winrate curve、棋力評価、ReadBoard 同期を使う場合、停止感、分かりにくい表示、入口の見つけにくさが減ります。',
+                'リリースフローは GitHub Actions の package checks、実アップロード済み asset からの release notes 生成、Windows core-update manifest verification を継続しています。',
+            ],
+            'contact_heading': '交流',
+            'contact': ['QQ group: `299419120`'],
+        },
+        {
+            'language': '한국어',
+            'labels': 'ko',
+            'intro': f'이번 릴리스는 {previous_release} 이후 preview 변경을 안정판으로 묶은 버전입니다. Remote Compute, 기보 로드 뒤 quick winrate curve, Player Strength 표시, trusted board-sync autoplay, 사용자 제보 UI 수정을 중심으로 합니다.',
+            'updates_heading': '주요 업데이트',
+            'updates': [
+                'Remote Compute Center 를 추가하고 다듬었습니다. Zhizi Cloud login, 기본 VIP monthly, self-hosted connection code / QR import, KaTrain-compatible `ws://` / `wss://` links 를 지원하며 remote engine 을 main analysis, quick winrate curve, score judgment 등에 사용할 수 있습니다.',
+                'Remote Compute 안정성을 강화했습니다. 불필요한 reconnect loop 를 줄이고, 이미 active 일 때 반복 enable 을 막으며, 빈 `kata-raw-nn` 은 `kata-analyze` 로 fallback 하고 ack 없는 remote `stop` 이 뒤 analysis 를 막지 않습니다.',
+                'SGF, Fox, Tencent kifu 로드 뒤 automatic quick winrate analysis 에 debounce, retry, stale-job isolation 을 추가했습니다. quick curve 완료 또는 abort 후 current-board analysis 를 재개합니다.',
+                'Player Strength evaluation 을 계속 정리했습니다. decimal/rank display 를 복구하고 score-rule panel 과 strict first-choice counting 을 수정했으며, main-board next-move dashed outline 이 candidate marker 위에 표시됩니다.',
+                'PR #81 을 보내 준 @qiyi71w 님께 감사드립니다. trusted ReadBoard GMA autoplay 는 KataGo final decision 을 기다리고 pass, resign, stale request, failed click 뒤 engine state 를 복구합니다.',
+                'Linux file-dialog placement, menu text alignment, new-game menu alignment 를 수정했습니다. 하단 중복 Fox shortcut 은 Remote Compute 로 바꾸고 상단 Fox/Tencent/Strength shortcuts 는 유지했습니다.',
+            ],
+            'before_heading': '다운로드 전 확인',
+            'before': [
+                f'추천 bundle 은 계속 KataGo `{katago_version}` 와 기본 모델 `{model_source}` 를 포함합니다.',
+                '대부분의 Windows 사용자는 OpenCL 권장 portable 빌드 {windows_opencl_portable} 부터 사용해 보세요.',
+                'NVIDIA 사용자는 {windows_nvidia_portable} 를 선택할 수 있습니다. RTX 5070/5080/5090 사용자는 RTX 50 CUDA 빌드도 확인해 주세요.',
+                '기존 Windows portable 사용자는 보통 {windows_core_update} 를 기존 폴더에 덮어쓰면 되고, weight, engine, user data 를 다시 받을 필요가 없습니다.',
+            ],
+            'download_heading': '다운로드 안내',
+            'download_headers': ('내 컴퓨터', '다운로드할 파일'),
+            'why_heading': '업데이트할 이유',
+            'why': [
+                f'이번 버전은 이전 정식 release `{previous_release}` 이후의 안정 roll-up 이므로 개별 preview build 보다 일반 업데이트에 더 적합합니다.',
+                'Remote Compute, Fox/Tencent records, quick winrate curves, Player Strength evaluation, ReadBoard sync 를 쓴다면 멈춘 듯한 상태, 헷갈리는 표시, 찾기 어려운 entry 가 줄어듭니다.',
+                '릴리스 흐름은 GitHub Actions package checks, 실제 업로드 asset 기반 release notes 생성, Windows core-update manifest verification 을 계속 사용합니다.',
+            ],
+            'contact_heading': '연락',
+            'contact': ['QQ 그룹: `299419120`'],
+        },
+        {
+            'language': 'ภาษาไทย',
+            'labels': 'th',
+            'intro': f'release นี้รวมงาน preview หลัง {previous_release} ให้เป็น build เสถียร โดยเน้น Remote Compute, quick winrate curve หลังโหลด kifu, การแสดง Player Strength, trusted board-sync autoplay และ UI polish จาก feedback ผู้ใช้',
+            'updates_heading': 'รายการอัปเดตหลัก',
+            'updates': [
+                'เพิ่มและปรับ Remote Compute Center: รองรับ Zhizi Cloud login, ค่าเริ่มต้น VIP monthly, self-hosted connection code / QR import และลิงก์ KaTrain-compatible `ws://` / `wss://`; remote engine ใช้กับ main analysis, quick winrate curve และ score judgment ได้',
+                'Remote Compute เสถียรขึ้น: ลด reconnect loop, ไม่ enable ซ้ำเมื่อ active อยู่แล้ว, `kata-raw-nn` ที่ว่างจะ fallback เป็น `kata-analyze`, และ remote `stop` ที่ไม่มี acknowledgement จะไม่ block งาน analysis ถัดไป',
+                'หลังโหลด SGF, Fox และ Tencent kifu ระบบ automatic quick winrate analysis มี debounce, retry และ stale-job isolation; เมื่อ quick curve จบหรือ abort จะ resume current-board analysis',
+                'Player Strength evaluation ถูกปรับต่อ: restore decimal/rank display, แก้ score-rule panel และ strict first-choice counting, และ next-move dashed outline บน board หลักจะแสดงเหนือ candidate markers',
+                'ขอบคุณ @qiyi71w สำหรับ PR #81: trusted ReadBoard GMA autoplay จะรอ final decision จาก KataGo และ restore engine state หลัง pass, resign, stale request หรือ failed click',
+                'แก้ Linux file-dialog placement, menu text alignment และ new-game menu alignment; ปุ่ม Fox ที่ซ้ำด้านล่างถูกเปลี่ยนเป็น Remote Compute ส่วน shortcut Fox/Tencent/Strength ด้านบนยังอยู่',
+            ],
+            'before_heading': 'อ่านก่อนดาวน์โหลด',
+            'before': [
+                f'แพ็กเกจแนะนำยังรวม KataGo `{katago_version}` และ model เริ่มต้น `{model_source}`',
+                'ผู้ใช้ Windows ส่วนใหญ่ควรเริ่มจาก {windows_opencl_portable} ซึ่งเป็น OpenCL portable build ที่แนะนำ',
+                'ผู้ใช้ NVIDIA เลือก {windows_nvidia_portable} ได้ ส่วน RTX 5070/5080/5090 ควรดู RTX 50 CUDA build ด้วย',
+                'ผู้ใช้ Windows portable เดิมมักอัปเดตได้ด้วย {windows_core_update} โดยแตกไฟล์ทับโฟลเดอร์เก่า ไม่ต้องดาวน์โหลด weight, engine หรือ user data ใหม่',
+            ],
+            'download_heading': 'คำแนะนำดาวน์โหลด',
+            'download_headers': ('คอมพิวเตอร์ของคุณ', 'ดาวน์โหลดไฟล์นี้'),
+            'why_heading': 'ทำไมควรอัปเดต',
+            'why': [
+                f'นี่คือ stable roll-up หลัง release ก่อนหน้า `{previous_release}` จึงเหมาะเป็นเป้าหมายอัปเดตหลักมากกว่า preview build แยกแต่ละตัว',
+                'ถ้าคุณใช้ Remote Compute, Fox/Tencent records, quick winrate curves, Player Strength evaluation หรือ ReadBoard sync รุ่นนี้ช่วยลดอาการค้าง การแสดงผลชวนสับสน และ entry ที่หาเจอยาก',
+                'กระบวนการ release ยังใช้ GitHub Actions package checks, release notes จาก asset ที่อัปโหลดจริง และ Windows core-update manifest verification',
+            ],
+            'contact_heading': 'ติดต่อ',
+            'contact': ['QQ group: `299419120`'],
+        },
+    ]
+
+    sections: list[dict[str, object]] = []
+    for block in blocks:
+        localized_assets = assets_cn if block['labels'] in ('zh', 'zh_hant') else assets
+        before_items = [
+            item.format(
+                windows_opencl_portable=localized_assets['windows_opencl_portable'],
+                windows_nvidia_portable=localized_assets['windows_nvidia_portable'],
+                windows_core_update=localized_assets['windows_core_update'],
+            )
+            for item in block['before']
+        ]
+        sections.append(
+            {
+                'language': block['language'],
+                'intro': block['intro'],
+                'updates': {'heading': block['updates_heading'], 'items': block['updates']},
+                'before': {'heading': block['before_heading'], 'items': before_items},
+                'download': {
+                    'heading': block['download_heading'],
+                    'headers': block['download_headers'],
+                    'rows': standard_download_rows(
+                        STANDARD_DOWNLOAD_LABELS[block['labels']],
+                        localized_assets,
+                    ),
+                },
+                'why': {'heading': block['why_heading'], 'items': block['why']},
+                'contact': {'heading': block['contact_heading'], 'items': block['contact']},
+            }
+        )
+    add_nvidia50_download_rows(sections, assets_cn, assets)
+    add_tensorrt_split_download_row(sections, assets_cn, assets, asset_map)
+    remove_windows_core_update_auto_notes(sections)
+    validate_release_sections(sections)
+    return release_heading(release_tag) + '\n\n' + '\n\n---\n\n'.join(
+        render_language_section(section) for section in sections
+    ) + '\n'
 
 
 def main() -> int:
