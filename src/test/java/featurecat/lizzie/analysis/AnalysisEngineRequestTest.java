@@ -25,6 +25,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.BooleanSupplier;
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -1631,7 +1632,7 @@ class AnalysisEngineRequestTest {
 
     private static TrackingAnalysisEngine create() throws Exception {
       TrackingAnalysisEngine engine = allocate(TrackingAnalysisEngine.class);
-      engine.sentCommands = new ArrayList<>();
+      engine.sentCommands = new CopyOnWriteArrayList<>();
       setField(
           AnalysisEngine.class, engine, "analyzeMap", new java.util.HashMap<Integer, Object>());
       setIntField(AnalysisEngine.class, engine, "globalID", 1);
