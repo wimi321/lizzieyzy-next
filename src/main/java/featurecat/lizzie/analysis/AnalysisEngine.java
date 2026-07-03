@@ -37,6 +37,8 @@ import java.util.Set;
 import java.util.Stack;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
 import org.jdesktop.swingx.util.OS;
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -48,6 +50,14 @@ public class AnalysisEngine {
   private static final int REMOTE_GTP_OVERVIEW_THRESHOLD = 24;
   private static final int REMOTE_GTP_RAW_NN_VISITS = 1;
   private static final long REMOTE_GTP_STOP_ACK_TIMEOUT_MILLIS = 180L;
+  private static final long REMOTE_GTP_RAW_NN_STALL_TIMEOUT_MILLIS = 8000L;
+  private static final ScheduledExecutorService REMOTE_GTP_WATCHDOG_EXECUTOR =
+      Executors.newSingleThreadScheduledExecutor(
+          runnable -> {
+            Thread thread = new Thread(runnable, "remote-gtp-watchdog");
+            thread.setDaemon(true);
+            return thread;
+          });
   public Process process;
   public boolean isNormalEnd = false;
   private final ResourceBundle resourceBundle = Lizzie.resourceBundle;
@@ -95,6 +105,7 @@ public class AnalysisEngine {
   private boolean remoteGtpRawNnSawEmptySuccess;
   private boolean remoteGtpStopAckOptional;
   private long remoteGtpStopAckGeneration;
+  private ScheduledFuture<?> remoteGtpRawNnStallTask;
 
   public AnalysisEngine(boolean isPreLoad) throws IOException {
     int maxVisits =
@@ -507,6 +518,7 @@ public class AnalysisEngine {
     if (remoteGtpActiveJob != job) {
       return;
     }
+    cancelRemoteGtpRawNnStallFallback();
     remoteGtpActiveJob = null;
     remoteGtpRawNnSawEmptySuccess = false;
     if (!shouldKeepForegroundAnalysis(job.node)) {
@@ -547,6 +559,7 @@ public class AnalysisEngine {
     if (remoteGtpActiveJob != job) {
       return;
     }
+    cancelRemoteGtpRawNnStallFallback();
     remoteGtpActiveJob =
         new RemoteGtpAnalyzeJob(
             job.id,
@@ -560,6 +573,34 @@ public class AnalysisEngine {
       remoteGtpActiveJob = null;
       requestDispatchFailed = true;
     }
+  }
+
+  private void scheduleRemoteGtpRawNnStallFallback(RemoteGtpAnalyzeJob job) {
+    cancelRemoteGtpRawNnStallFallback();
+    remoteGtpRawNnStallTask =
+        REMOTE_GTP_WATCHDOG_EXECUTOR.schedule(
+            () -> {
+              synchronized (AnalysisEngine.this) {
+                handleRemoteGtpRawNnStall(job);
+              }
+            },
+            REMOTE_GTP_RAW_NN_STALL_TIMEOUT_MILLIS,
+            TimeUnit.MILLISECONDS);
+  }
+
+  private void cancelRemoteGtpRawNnStallFallback() {
+    ScheduledFuture<?> task = remoteGtpRawNnStallTask;
+    remoteGtpRawNnStallTask = null;
+    if (task != null) {
+      task.cancel(false);
+    }
+  }
+
+  private void handleRemoteGtpRawNnStall(RemoteGtpAnalyzeJob job) {
+    if (job == null || remoteGtpActiveJob != job || job.mode != RemoteGtpAnalyzeMode.RAW_NN) {
+      return;
+    }
+    fallbackRemoteGtpRawNnJob(job);
   }
 
   private void completeRemoteGtpJob(RemoteGtpAnalyzeJob job, List<MoveData> moves) {
@@ -712,6 +753,7 @@ public class AnalysisEngine {
     remoteGtpStopSent = false;
     remoteGtpRawNnResponse = null;
     remoteGtpRawNnSawEmptySuccess = false;
+    cancelRemoteGtpRawNnStallFallback();
     resultCount = 0;
     runCompletionCallback();
   }
@@ -804,6 +846,7 @@ public class AnalysisEngine {
     remoteGtpStopSent = false;
     remoteGtpRawNnResponse = null;
     remoteGtpRawNnSawEmptySuccess = false;
+    cancelRemoteGtpRawNnStallFallback();
     remoteGtpStopAckGeneration++;
     if (globalID <= 0) globalID = 1;
     resultCount = 0;
@@ -996,6 +1039,7 @@ public class AnalysisEngine {
     if (job == null) {
       return true;
     }
+    job = downgradeRawNnJobIfNeeded(job);
     remoteGtpActiveJob = job;
     remoteGtpStopSent = false;
     remoteGtpRawNnResponse = null;
@@ -1007,7 +1051,27 @@ public class AnalysisEngine {
         return false;
       }
     }
+    if (job.mode == RemoteGtpAnalyzeMode.RAW_NN) {
+      scheduleRemoteGtpRawNnStallFallback(job);
+    }
     return true;
+  }
+
+  private RemoteGtpAnalyzeJob downgradeRawNnJobIfNeeded(RemoteGtpAnalyzeJob job) {
+    if (job == null
+        || job.mode != RemoteGtpAnalyzeMode.RAW_NN
+        || !remoteGtpRawNnUnsupported) {
+      return job;
+    }
+    List<String> commands = new ArrayList<String>(job.commands);
+    String fallbackCommand = buildRemoteGtpAnalyzeCommand(job.node);
+    if (commands.isEmpty()) {
+      commands.add(fallbackCommand);
+    } else {
+      commands.set(commands.size() - 1, fallbackCommand);
+    }
+    return new RemoteGtpAnalyzeJob(
+        job.id, job.node, job.targetVisits, commands, RemoteGtpAnalyzeMode.KATA_ANALYZE);
   }
 
   private List<String> buildRemoteGtpSetupCommands(
