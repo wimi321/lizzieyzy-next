@@ -96,6 +96,39 @@ class ZhiziGtpTransportTest {
   }
 
   @Test
+  void commandStreamRestartsRawNnAfterReconnectWhenNoNewAnalysisWasQueued() throws Exception {
+    FakeEmitter connected = new FakeEmitter(true);
+    ZhiziGtpTransport.SocketCommandOutputStream stream =
+        new ZhiziGtpTransport.SocketCommandOutputStream(connected);
+    send(stream, "kata-raw-nn 0");
+
+    FakeEmitter reconnected = new FakeEmitter(true);
+    stream.bind(reconnected);
+
+    assertEquals(true, stream.resumeLastAnalysisIfIdle());
+    assertEquals(List.of("kata-raw-nn 0\n"), reconnected.commands);
+  }
+
+  @Test
+  void commandStreamQueuedRawNnSuppressesStaleAnalysisResume() throws Exception {
+    FakeEmitter connected = new FakeEmitter(true);
+    ZhiziGtpTransport.SocketCommandOutputStream stream =
+        new ZhiziGtpTransport.SocketCommandOutputStream(connected);
+    send(stream, "kata-analyze B 10");
+
+    FakeEmitter disconnected = new FakeEmitter(false);
+    stream.bind(disconnected);
+    send(stream, "kata-raw-nn 0");
+
+    FakeEmitter reconnected = new FakeEmitter(true);
+    stream.bind(reconnected);
+
+    assertEquals(1, stream.flushQueuedCommands());
+    assertEquals(false, stream.resumeLastAnalysisIfIdle());
+    assertEquals(List.of("kata-raw-nn 0\n"), reconnected.commands);
+  }
+
+  @Test
   void commandStreamDoesNotRestartAnalysisAfterStop() throws Exception {
     FakeEmitter connected = new FakeEmitter(true);
     ZhiziGtpTransport.SocketCommandOutputStream stream =

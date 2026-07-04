@@ -619,6 +619,8 @@ public class ZhiziGtpTransport implements EngineTransport {
       String normalized = firstCommandLine(command).trim();
       return normalized.startsWith("kata-analyze ")
           || normalized.startsWith("kata-analyze_interval ")
+          || normalized.equals("kata-raw-nn")
+          || normalized.startsWith("kata-raw-nn ")
           || normalized.startsWith("lz-analyze ")
           || normalized.startsWith("analyze ");
     }

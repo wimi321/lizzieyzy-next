@@ -629,6 +629,74 @@ class AnalysisEngineRequestTest {
   }
 
   @Test
+  void remoteGtpSilentQuickCurveFallsBackWhenRawNnStaysSilent() throws Exception {
+    try (TestEnvironment env = TestEnvironment.open()) {
+      BoardHistoryNode node = singleUnanalyzedMoveNode();
+      TrackingAnalysisEngine engine = TrackingAnalysisEngine.create();
+      setField(AnalysisEngine.class, engine, "useRemoteCompute", true);
+      engine.setKeepAliveAfterCurrentRequest(true);
+
+      engine.startRequest(-1, -1, false);
+
+      assertEquals("kata-raw-nn 0", lastCommand(engine.sentCommands));
+      invokeRemoteGtpRawNnStall(engine);
+
+      assertEquals(
+          "kata-analyze W 1",
+          lastCommand(engine.sentCommands),
+          "a silent raw-nn request must downgrade instead of holding the quick curve forever.");
+
+      invokeAnalysisEngineParseLine(
+          engine, "info move B2 visits 2 winrate 0.62 scoreLead 1.5 order 0 pv B2");
+      assertEquals("stop", lastCommand(engine.sentCommands));
+      invokeAnalysisEngineParseLine(engine, "=");
+
+      assertEquals(2, node.getData().getPlayouts());
+      assertFalse(engine.isAnalysisInProgress());
+      waitForMovelistRefreshThreads();
+    }
+  }
+
+  @Test
+  void remoteGtpSilentQuickCurveDowngradesQueuedRawNnAfterFallback() throws Exception {
+    try (TestEnvironment env = TestEnvironment.open()) {
+      BoardHistoryList history = new BoardHistoryList(BoardData.empty(BOARD_SIZE, BOARD_SIZE));
+      history.add(
+          moveNode(stones(placement(0, 0, Stone.BLACK)), new int[] {0, 0}, Stone.BLACK, false, 1));
+      history.add(
+          moveNode(
+              stones(placement(0, 0, Stone.BLACK), placement(1, 0, Stone.WHITE)),
+              new int[] {1, 0},
+              Stone.WHITE,
+              true,
+              2));
+      boardWithHistory(history);
+      TrackingAnalysisEngine engine = TrackingAnalysisEngine.create();
+      setField(AnalysisEngine.class, engine, "useRemoteCompute", true);
+      engine.setKeepAliveAfterCurrentRequest(true);
+
+      engine.startRequest(-1, -1, false);
+
+      assertEquals("kata-raw-nn 0", lastCommand(engine.sentCommands));
+      invokeAnalysisEngineParseLine(engine, "? unknown command");
+      assertEquals("kata-analyze W 1", lastCommand(engine.sentCommands));
+
+      invokeAnalysisEngineParseLine(
+          engine, "info move B2 visits 2 winrate 0.62 scoreLead 1.5 order 0 pv B2");
+      assertEquals("stop", lastCommand(engine.sentCommands));
+      invokeAnalysisEngineParseLine(engine, "=");
+
+      assertEquals(
+          1,
+          countCommand(engine.sentCommands, "kata-raw-nn 0"),
+          "after raw-nn is disabled, queued nodes in the same quick-curve pass must not keep using it.");
+      assertTrue(engine.sentCommands.contains("play W B3"));
+      assertEquals("kata-analyze B 1", lastCommand(engine.sentCommands));
+      waitForMovelistRefreshThreads();
+    }
+  }
+
+  @Test
   void remoteGtpMissingStopAckDoesNotStallQueuedQuickCurve() throws Exception {
     try (TestEnvironment env = TestEnvironment.open()) {
       BoardHistoryList history = new BoardHistoryList(BoardData.empty(BOARD_SIZE, BOARD_SIZE));
@@ -1435,6 +1503,16 @@ class AnalysisEngineRequestTest {
       Thread.sleep(20);
     }
     assertTrue(condition.getAsBoolean(), "condition was not met before timeout.");
+  }
+
+  private static void invokeRemoteGtpRawNnStall(AnalysisEngine engine) throws Exception {
+    Field activeJobField = AnalysisEngine.class.getDeclaredField("remoteGtpActiveJob");
+    activeJobField.setAccessible(true);
+    Object activeJob = activeJobField.get(engine);
+    Method method =
+        AnalysisEngine.class.getDeclaredMethod("handleRemoteGtpRawNnStall", activeJob.getClass());
+    method.setAccessible(true);
+    method.invoke(engine, activeJob);
   }
 
   private static Placement placement(int x, int y, Stone color) {
