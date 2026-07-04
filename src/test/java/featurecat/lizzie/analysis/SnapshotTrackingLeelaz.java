@@ -57,6 +57,7 @@ class SnapshotTrackingLeelaz extends Leelaz {
     initializeReadBoardGmaRuntimeParam(leelaz, "readBoardGmaMaxVisits", "maxVisits");
     initializeReadBoardGmaRuntimeParam(leelaz, "readBoardGmaPondering", "ponderingEnabled");
     leelaz.started = true;
+    leelaz.isLoaded = true;
     leelaz.resetBoardState();
     return leelaz;
   }

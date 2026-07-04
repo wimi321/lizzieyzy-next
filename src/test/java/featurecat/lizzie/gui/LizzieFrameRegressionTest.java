@@ -13,9 +13,11 @@ import featurecat.lizzie.analysis.Leelaz;
 import featurecat.lizzie.analysis.MoveRankDefinition;
 import featurecat.lizzie.analysis.PlayerStrengthEstimator;
 import featurecat.lizzie.analysis.ReadBoard;
+import featurecat.lizzie.analysis.TrackingEngine;
 import featurecat.lizzie.rules.Board;
 import featurecat.lizzie.rules.BoardData;
 import featurecat.lizzie.rules.BoardHistoryList;
+import featurecat.lizzie.rules.BoardHistoryNode;
 import featurecat.lizzie.rules.Stone;
 import featurecat.lizzie.rules.Zobrist;
 import java.awt.Color;
@@ -26,7 +28,12 @@ import java.awt.geom.AffineTransform;
 import java.awt.image.ColorModel;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -500,6 +507,98 @@ class LizzieFrameRegressionTest {
           1,
           leelaz.ponderCount,
           "fast curve completion must not replace foreground candidate analysis.");
+    } finally {
+      env.close();
+    }
+  }
+
+  @Test
+  void loadedGameResumeSyncsCurrentKifuBeforeForegroundAnalysis() throws Exception {
+    TestEnvironment env = TestEnvironment.open();
+    try {
+      Lizzie.config = configWithAutoQuickAnalyze(false);
+      Lizzie.board = boardWith(historyWithUnanalyzedMove());
+      TrackingLeelaz leelaz = allocate(TrackingLeelaz.class);
+      Lizzie.leelaz = leelaz;
+      EngineManager.isEmpty = false;
+      EngineManager.isEngineGame = false;
+      EngineManager.isPreEngineGame = false;
+      AnalysisResumeTrackingFrame frame = allocate(AnalysisResumeTrackingFrame.class);
+      Lizzie.frame = frame;
+
+      assertTrue(frame.ensureAnalysisResumedAfterLoad());
+
+      assertEquals(0, frame.flashAnalyzeGameCount);
+      assertEquals(
+          List.of("boardsize 2", "clear_board", "play B A2", "ponder"),
+          leelaz.commands(),
+          "foreground analysis should replay the loaded SGF position before starting ponder.");
+    } finally {
+      env.close();
+    }
+  }
+
+  @Test
+  void manualPonderStartSyncsCurrentKifuBeforeAnalysis() throws Exception {
+    TestEnvironment env = TestEnvironment.open();
+    try {
+      Lizzie.config = configWithAutoQuickAnalyze(false);
+      Lizzie.board = boardWith(historyWithUnanalyzedMove());
+      TrackingLeelaz leelaz = allocate(TrackingLeelaz.class);
+      Lizzie.leelaz = leelaz;
+      EngineManager.isEmpty = false;
+      EngineManager.isEngineGame = false;
+      EngineManager.isPreEngineGame = false;
+      ManualPonderTrackingFrame frame = allocate(ManualPonderTrackingFrame.class);
+      Lizzie.frame = frame;
+
+      frame.togglePonderMannul();
+
+      assertEquals(
+          List.of("boardsize 2", "clear_board", "play B A2", "ponder"),
+          leelaz.commands(),
+          "manual resume should also align the engine to the current SGF before analysis.");
+    } finally {
+      env.close();
+    }
+  }
+
+  @Test
+  void trackingEngineStartupReplaysQueuedPointWithoutOpeningConsole() throws Exception {
+    TestEnvironment env = TestEnvironment.open();
+    try {
+      Lizzie.config = configWithAutoQuickAnalyze(false);
+      Lizzie.board = boardWith(historyWithUnanalyzedMove());
+      TrackingLeelaz leelaz = allocate(TrackingLeelaz.class);
+      leelaz.engineCommand = "katago gtp -model test.bin";
+      Lizzie.leelaz = leelaz;
+      TrackingStartupFrame frame = allocate(TrackingStartupFrame.class);
+      frame.engine = new StartupTrackingEngine();
+      frame.trackedCoords = Collections.synchronizedSet(new LinkedHashSet<>());
+      frame.trackedCoords.add("A1");
+      setField(
+          frame,
+          "trackingEngineStarting",
+          new java.util.concurrent.atomic.AtomicBoolean(false));
+      Lizzie.frame = frame;
+
+      frame.ensureTrackingEngine();
+
+      assertTrue(
+          frame.engine.started.await(2, TimeUnit.SECONDS),
+          "tracking engine should start in the background.");
+      drainEdt();
+      assertTrue(
+          frame.engine.requestSent.await(2, TimeUnit.SECONDS),
+          "queued point should be analyzed after startup.");
+
+      assertEquals(0, frame.engine.consoleAttachCount, "tracking console should stay hidden.");
+      assertEquals(1, frame.engine.requestCount, "queued point should be analyzed after startup.");
+      assertSame(
+          Lizzie.board.getHistory().getCurrentHistoryNode(),
+          frame.engine.lastNode,
+          "tracking analysis should target the current board node.");
+      assertEquals(Set.of("A1"), frame.engine.lastCoords);
     } finally {
       env.close();
     }
@@ -1414,6 +1513,59 @@ class LizzieFrameRegressionTest {
     }
   }
 
+  private static final class ManualPonderTrackingFrame extends LizzieFrame {
+    @Override
+    public boolean stopAiPlayingAndPolicy() {
+      return false;
+    }
+  }
+
+  private static final class TrackingStartupFrame extends LizzieFrame {
+    private StartupTrackingEngine engine;
+
+    @Override
+    protected TrackingEngine createTrackingEngine() {
+      return engine;
+    }
+
+    @Override
+    public void refresh() {}
+  }
+
+  private static final class StartupTrackingEngine extends TrackingEngine {
+    private final CountDownLatch started = new CountDownLatch(1);
+    private final CountDownLatch requestSent = new CountDownLatch(1);
+    private volatile boolean loaded;
+    private int requestCount;
+    private int consoleAttachCount;
+    private BoardHistoryNode lastNode;
+    private Set<String> lastCoords;
+
+    @Override
+    public void startEngine(String engineCommand) {
+      loaded = true;
+      started.countDown();
+    }
+
+    @Override
+    public boolean isLoaded() {
+      return loaded;
+    }
+
+    @Override
+    public void sendTrackingRequest(BoardHistoryNode node, Set<String> trackedCoords) {
+      requestCount++;
+      lastNode = node;
+      lastCoords = new LinkedHashSet<>(trackedCoords);
+      requestSent.countDown();
+    }
+
+    @Override
+    public void setConsolePane(TrackingConsolePane pane) {
+      consoleAttachCount++;
+    }
+  }
+
   private static final class QuickAnalysisCompletionEngine extends AnalysisEngine {
     private CountDownLatch requestStarted = new CountDownLatch(1);
     private Runnable completionCallback;
@@ -1512,9 +1664,27 @@ class LizzieFrameRegressionTest {
   private static final class TrackingLeelaz extends Leelaz {
     private boolean pondering;
     private int ponderCount;
+    private List<String> commands;
 
     private TrackingLeelaz() throws java.io.IOException {
       super("");
+    }
+
+    private List<String> commands() {
+      if (commands == null) {
+        commands = new ArrayList<>();
+      }
+      return commands;
+    }
+
+    @Override
+    public boolean isStarted() {
+      return true;
+    }
+
+    @Override
+    public boolean isLoaded() {
+      return true;
     }
 
     @Override
@@ -1523,9 +1693,25 @@ class LizzieFrameRegressionTest {
     }
 
     @Override
+    public void sendCommand(String command) {
+      commands().add(command);
+    }
+
+    @Override
     public void ponder() {
       ponderCount++;
+      commands().add("ponder");
       pondering = true;
+    }
+
+    @Override
+    public void togglePonder() {
+      if (pondering) {
+        pondering = false;
+        commands().add("stop");
+      } else {
+        ponder();
+      }
     }
   }
 

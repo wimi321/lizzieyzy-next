@@ -202,6 +202,7 @@ public class RightClickMenu extends JPopupMenu {
     ImageIcon iconForward = new ImageIcon();
     ImageIcon iconAddPoint = new ImageIcon();
     ImageIcon iconRemovePoint = new ImageIcon();
+    ImageIcon iconTrackPoint = new ImageIcon();
     ImageIcon iconSearch = new ImageIcon();
     try {
       iconForward.setImage(ImageIO.read(getClass().getResourceAsStream("/assets/right.png")));
@@ -214,6 +215,8 @@ public class RightClickMenu extends JPopupMenu {
       iconSetPoint.setImage(ImageIO.read(getClass().getResourceAsStream("/assets/setpoint.png")));
       iconUppoint.setImage(ImageIO.read(getClass().getResourceAsStream("/assets/uppoint.png")));
       iconAddPoint.setImage(ImageIO.read(getClass().getResourceAsStream("/assets/addpoint.png")));
+      iconTrackPoint.setImage(
+          ImageIO.read(getClass().getResourceAsStream("/assets/trackingpoint.png")));
       iconSearch.setImage(ImageIO.read(getClass().getResourceAsStream("/assets/search.png")));
       iconRemovePoint.setImage(ImageIO.read(getClass().getResourceAsStream("/assets/clear.png")));
     } catch (IOException e1) {
@@ -250,7 +253,9 @@ public class RightClickMenu extends JPopupMenu {
         new JFontMenuItem(resourceBundle.getString("RightClickMenu.cancelavoid")); // ("清除分析与不分析");
     cancelavoid.setIcon(iconRecycle);
     trackPoint = new JFontMenuItem(resourceBundle.getString("RightClickMenu.trackPoint"));
+    trackPoint.setIcon(iconTrackPoint);
     untrackPoint = new JFontMenuItem(resourceBundle.getString("RightClickMenu.untrackPoint"));
+    untrackPoint.setIcon(iconRemovePoint);
     clearAllTracked = new JFontMenuItem(resourceBundle.getString("RightClickMenu.clearAllTracked"));
     clearAllTracked.setIcon(iconRecycle);
     keepTracking =
@@ -488,8 +493,10 @@ public class RightClickMenu extends JPopupMenu {
     if (!Lizzie.board.iscoordsempty(coords[0], coords[1])) return;
     String coordName = Board.convertCoordinatesToName(coords[0], coords[1]);
     Lizzie.frame.trackedCoords.add(coordName);
+    Lizzie.frame.refresh();
     if (!Lizzie.frame.ensureTrackingEngineWithWarning()) {
       Lizzie.frame.trackedCoords.remove(coordName);
+      Lizzie.frame.refresh();
       return;
     }
     Lizzie.frame.triggerTrackingAnalysis();

@@ -10716,7 +10716,15 @@ public class LizzieFrame extends JFrame {
   }
 
   public void togglePonderMannul() {
-    if (!stopAiPlayingAndPolicy()) Lizzie.leelaz.togglePonder();
+    if (stopAiPlayingAndPolicy() || Lizzie.leelaz == null) {
+      return;
+    }
+    if (!Lizzie.leelaz.isPondering()) {
+      if (!syncCurrentPositionToPrimaryEngineForAnalysis()) {
+        return;
+      }
+    }
+    Lizzie.leelaz.togglePonder();
   }
 
   public void drawKataEstimate(Leelaz engine, ArrayList<Double> tempcount) {
@@ -12800,22 +12808,20 @@ public class LizzieFrame extends JFrame {
     boolean threadStarted = false;
     try {
       if (trackingEngine != null && trackingEngine.isLoaded()) return;
+      String engineCmd = Lizzie.leelaz != null ? Lizzie.leelaz.engineCommand : "";
+      if (engineCmd == null || engineCmd.trim().isEmpty()) return;
       TrackingEngine previous = trackingEngine;
-      TrackingEngine engine = new TrackingEngine();
+      TrackingEngine engine = createTrackingEngine();
       synchronized (trackedCoords) {
         trackingEngine = engine;
         lastTrackingPonderNode = null;
       }
       SwingUtilities.invokeLater(
           () -> {
-            if (trackingConsolePane == null || !trackingConsolePane.isDisplayable()) {
-              trackingConsolePane = new TrackingConsolePane();
+            if (trackingConsolePane != null && trackingConsolePane.isDisplayable()) {
+              engine.setConsolePane(trackingConsolePane);
             }
-            engine.setConsolePane(trackingConsolePane);
-            trackingConsolePane.setVisible(true);
           });
-      String engineCmd = Lizzie.leelaz != null ? Lizzie.leelaz.engineCommand : "";
-      if (engineCmd == null || engineCmd.trim().isEmpty()) return;
       threadStarted = true;
       new Thread(
               () -> {
@@ -12829,6 +12835,9 @@ public class LizzieFrame extends JFrame {
                   }
                   if (engine != trackingEngine) return;
                   engine.startEngine(engineCmd);
+                  if (engine == trackingEngine && engine.isLoaded()) {
+                    SwingUtilities.invokeLater(this::triggerTrackingAnalysis);
+                  }
                 } finally {
                   trackingEngineStarting.set(false);
                 }
@@ -12839,13 +12848,14 @@ public class LizzieFrame extends JFrame {
     }
   }
 
+  protected TrackingEngine createTrackingEngine() {
+    return new TrackingEngine();
+  }
+
   public boolean ensureTrackingEngineWithWarning() {
     if (trackingEngine != null && trackingEngine.isLoaded()) return true;
-    if (!Lizzie.config.trackingEngineSkipWarning) {
-      if (!showTrackingEngineWarning()) return false;
-    }
     ensureTrackingEngine();
-    return true;
+    return trackingEngine != null || trackingEngineStarting.get();
   }
 
   private boolean showTrackingEngineWarning() {
@@ -17072,9 +17082,26 @@ public class LizzieFrame extends JFrame {
     if (Lizzie.leelaz == null || EngineManager.isEmpty) {
       return false;
     }
-    Lizzie.leelaz.ponder();
+    if (!syncCurrentPositionToPrimaryEngineForAnalysis()) {
+      return false;
+    }
+    if (!Lizzie.leelaz.isPondering()) {
+      Lizzie.leelaz.ponder();
+    }
     refresh();
     return true;
+  }
+
+  private boolean syncCurrentPositionToPrimaryEngineForAnalysis() {
+    if (Lizzie.board == null) {
+      return false;
+    }
+    try {
+      return Lizzie.board.resendCurrentPositionToPrimaryEngine();
+    } catch (RuntimeException ex) {
+      ex.printStackTrace();
+      return false;
+    }
   }
 
   private void scheduleLoadedGameQuickAnalysisRetry() {
