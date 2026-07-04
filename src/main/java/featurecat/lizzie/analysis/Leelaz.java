@@ -62,6 +62,12 @@ import org.json.JSONObject;
  * www.github.com/gcp/leela-zero
  */
 public class Leelaz {
+  private enum StartupCommandAction {
+    NONE,
+    KATA,
+    LEELA_SAI
+  }
+
   // private static final long MINUTE = 60 * 1000; // number of milliseconds in a minute
   private static final Runnable NO_OP_RESPONSE_HANDLER = () -> {};
   private static final int NO_RESPONSE_COMMAND_ID = -1;
@@ -1259,7 +1265,7 @@ public class Leelaz {
           return;
         }
       }
-      checkNameAndVersion(params);
+      runStartupCommandAction(checkNameAndVersion(params));
     } else if (line.startsWith("?")) {
       isCommandLine = true;
       if (consumeReadBoardGmaEngineErrorLine(line)) {
@@ -1273,8 +1279,9 @@ public class Leelaz {
     }
   }
 
-  private void checkNameAndVersion(String[] params) {
+  private StartupCommandAction checkNameAndVersion(String[] params) {
     // TODO Auto-generated method stub
+    StartupCommandAction startupCommandAction = StartupCommandAction.NONE;
     if (isCheckingName) {
       noAnalyze = false;
       isCheckingName = false;
@@ -1311,30 +1318,11 @@ public class Leelaz {
           isKatagoCustom = true;
           isCheckingPda = true;
           isKataGoPda = true;
-          sendCommand("getpda");
-          sendCommand("getdympdacap");
-          Runnable runnable =
-              new Runnable() {
-                public void run() {
-                  try {
-                    Thread.sleep(5000);
-                  } catch (InterruptedException e) {
-                    // TODO Auto-generated catch block
-                    e.printStackTrace();
-                  }
-                  isCheckingPda = false;
-                }
-              };
-          Thread thread = new Thread(runnable);
-          thread.start();
         }
-        setKataEnginePara();
-        if (Lizzie.config.autoLoadKataRules)
-          sendCommand("kata-set-rules " + Lizzie.config.kataRules);
-        getParameterScadule(true);
         this.isKatago = true;
         if (params[1].startsWith("KataGoCustom")) isKatagoCustom = true;
         this.version = 17;
+        startupCommandAction = StartupCommandAction.KATA;
 
         if (this.currentEngineN == EngineManager.currentEngineNo) {
           Lizzie.config.leelaversion = version;
@@ -1357,7 +1345,7 @@ public class Leelaz {
         closeBundledStartupDialog();
         isTuning = false;
         isKatago = false;
-        setLeelaSaiEnginePara();
+        startupCommandAction = StartupCommandAction.LEELA_SAI;
       }
       if (params[1].toLowerCase().startsWith("katajigo")) {
         this.isKatago = true;
@@ -1413,6 +1401,39 @@ public class Leelaz {
         }
       }
     }
+    return startupCommandAction;
+  }
+
+  private StartupCommandAction mergeStartupCommandAction(
+      StartupCommandAction current, StartupCommandAction next) {
+    return current == StartupCommandAction.NONE ? next : current;
+  }
+
+  private void runStartupCommandAction(StartupCommandAction action) {
+    if (action == StartupCommandAction.KATA) {
+      if (isKataGoPda) {
+        sendCommand("getpda");
+        sendCommand("getdympdacap");
+        Thread thread =
+            new Thread(
+                () -> {
+                  try {
+                    Thread.sleep(5000);
+                  } catch (InterruptedException e) {
+                    e.printStackTrace();
+                  }
+                  isCheckingPda = false;
+                });
+        thread.start();
+      }
+      setKataEnginePara();
+      if (Lizzie.config.autoLoadKataRules) {
+        sendCommand("kata-set-rules " + Lizzie.config.kataRules);
+      }
+      getParameterScadule(true);
+    } else if (action == StartupCommandAction.LEELA_SAI) {
+      setLeelaSaiEnginePara();
+    }
   }
 
   private void checkForGomokuFullBoard(boolean isGenmove) {
@@ -1454,6 +1475,7 @@ public class Leelaz {
     boolean notifyAutoPKAfterInfo = false;
     boolean notifyAutoPlayAfterInfo = false;
     int autoAnalyzeAfterInfo = 0;
+    StartupCommandAction startupCommandAction = StartupCommandAction.NONE;
     synchronized (this) {
       if (line.startsWith("info")) {
         boolean upToDate = isResponseUpToDate();
@@ -1851,7 +1873,8 @@ public class Leelaz {
             isInputCommand = false;
           }
         }
-        checkNameAndVersion(params);
+        startupCommandAction =
+            mergeStartupCommandAction(startupCommandAction, checkNameAndVersion(params));
       } else if (line.startsWith("?")) {
         isCommandLine = true;
         if (consumeReadBoardGmaEngineErrorLine(line)) {
@@ -1863,6 +1886,7 @@ public class Leelaz {
       }
       parseHeatMap(line);
     }
+    runStartupCommandAction(startupCommandAction);
     if (handledInfoLine) {
       runPostInfoActions(notifyAutoPKAfterInfo, notifyAutoPlayAfterInfo, autoAnalyzeAfterInfo);
     }

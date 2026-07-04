@@ -36,6 +36,7 @@ import java.io.OutputStreamWriter;
 import java.net.URISyntaxException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
@@ -417,16 +418,24 @@ public class Utils {
         continue;
       }
       if (!OS.isWindows() || hasExtension) {
-        Path direct = toExistingPath(baseDir.resolve(executable).toString());
-        if (direct != null) {
-          return direct;
+        try {
+          Path direct = toExistingPath(baseDir.resolve(executable).toString());
+          if (direct != null) {
+            return direct;
+          }
+        } catch (InvalidPathException | SecurityException e) {
+          continue;
         }
       }
       if (OS.isWindows()) {
         for (String suffix : suffixes) {
-          Path candidate = toExistingPath(baseDir.resolve(executable + suffix).toString());
-          if (candidate != null) {
-            return candidate;
+          try {
+            Path candidate = toExistingPath(baseDir.resolve(executable + suffix).toString());
+            if (candidate != null) {
+              return candidate;
+            }
+          } catch (InvalidPathException | SecurityException e) {
+            continue;
           }
         }
       }
