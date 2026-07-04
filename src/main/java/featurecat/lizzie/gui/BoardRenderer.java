@@ -34,11 +34,13 @@ import java.awt.image.BufferedImage;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.ResourceBundle;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -3170,8 +3172,57 @@ public class BoardRenderer {
           }
         }
       }
+      drawTrackedPointMarkers(g);
     } catch (Exception e) {
       e.printStackTrace();
+    }
+  }
+
+  private void drawTrackedPointMarkers(Graphics2D g) {
+    if (Lizzie.frame == null || Lizzie.frame.trackedCoords == null) return;
+    Set<String> trackedSnapshot;
+    synchronized (Lizzie.frame.trackedCoords) {
+      if (Lizzie.frame.trackedCoords.isEmpty()) return;
+      trackedSnapshot = new LinkedHashSet<>(Lizzie.frame.trackedCoords);
+    }
+    Stroke oldStroke = g.getStroke();
+    Color oldColor = g.getColor();
+    Composite oldComposite = g.getComposite();
+    Object oldAntialiasing = g.getRenderingHint(KEY_ANTIALIASING);
+    try {
+      g.setRenderingHint(KEY_ANTIALIASING, VALUE_ANTIALIAS_ON);
+      float ringWidth = Math.max(2.2f, squareWidth * 0.055f);
+      float dash = Math.max(4.5f, squareWidth * 0.14f);
+      float gap = Math.max(3.0f, squareWidth * 0.09f);
+      g.setStroke(
+          new BasicStroke(
+              ringWidth,
+              BasicStroke.CAP_ROUND,
+              BasicStroke.JOIN_ROUND,
+              10.0f,
+              new float[] {dash, gap},
+              0.0f));
+      g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 0.92f));
+      g.setColor(new Color(255, 142, 28));
+      int radius = Math.max(stoneRadius + 2, (int) Math.round(squareWidth * 0.48));
+      for (String coordName : trackedSnapshot) {
+        Optional<int[]> coordsOpt = Board.asCoordinates(coordName);
+        if (!coordsOpt.isPresent()) continue;
+        int[] coords = coordsOpt.get();
+        if (coords[0] < 0
+            || coords[0] >= Board.boardWidth
+            || coords[1] < 0
+            || coords[1] >= Board.boardHeight) continue;
+        if (Lizzie.board != null && !Lizzie.board.iscoordsempty(coords[0], coords[1])) continue;
+        int centerX = x + scaledMarginWidth + squareWidth * coords[0];
+        int centerY = y + scaledMarginHeight + squareHeight * coords[1];
+        g.drawOval(centerX - radius, centerY - radius, radius * 2, radius * 2);
+      }
+    } finally {
+      g.setStroke(oldStroke);
+      g.setColor(oldColor);
+      g.setComposite(oldComposite);
+      g.setRenderingHint(KEY_ANTIALIASING, oldAntialiasing);
     }
   }
 
