@@ -9,9 +9,15 @@ public final class YikeSyncDebugLog {
   private static final String LOG_PATH =
       System.getProperty("lizzie.yike.debugLog", "target/yike-sync-debug.log");
   private static final boolean ENABLED =
-      Boolean.parseBoolean(System.getProperty("lizzie.yike.debugLog.enabled", "false"));
+      isEnabledByProperties(
+          System.getProperty("lizzie.yike.debugLog.enabled", "false"),
+          System.getProperty("lizzie.yike.geometryProbeDebug.enabled", "false"));
 
   private YikeSyncDebugLog() {}
+
+  static boolean isEnabledByProperties(String debugLogEnabled, String geometryProbeDebugEnabled) {
+    return Boolean.parseBoolean(debugLogEnabled) || Boolean.parseBoolean(geometryProbeDebugEnabled);
+  }
 
   public static void log(String message) {
     if (!ENABLED) return;

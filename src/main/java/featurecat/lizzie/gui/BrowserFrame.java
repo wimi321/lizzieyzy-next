@@ -47,6 +47,7 @@ public class BrowserFrame extends JFrame {
   static final String JCEF_BUNDLE_DIRECTORY = "jcef-bundle";
   static final String JCEF_BUNDLE_MANIFEST = "lizzieyzy-next-jcef-manifest.txt";
   private static final String YIKE_BROWSER_SYNC_STOP_COMMAND = "yikeBrowserSyncStop";
+  private static final long YIKE_OBSERVED_URL_FRESH_MILLIS = 30_000L;
   private static final boolean YIKE_GEOMETRY_PROBE_DEBUG =
       Boolean.parseBoolean(System.getProperty("lizzie.yike.geometryProbeDebug.enabled", "false"));
   private final JTextField address_;
@@ -65,6 +66,7 @@ public class BrowserFrame extends JFrame {
   private boolean isYike;
   private volatile boolean yikeBrowserSyncEnabled = false;
   private volatile String lastObservedYikePageUrl = "";
+  private volatile long lastObservedYikePageUrlMillis = 0L;
 
   /**
    * To display a simple browser window, it suffices completely to create an instance of the class
@@ -707,7 +709,24 @@ public class BrowserFrame extends JFrame {
     String observedUrl = lastObservedYikePageUrl;
     String browserUrl = currentBrowserUrlForSync();
     String addressUrl = address_ == null ? "" : address_.getText();
-    return selectYikeCurrentAddress(observedUrl, browserUrl, addressUrl);
+    long now = System.currentTimeMillis();
+    long observedAt = lastObservedYikePageUrlMillis;
+    boolean observedFresh = isYikeObservedPageUrlFresh(now, observedAt);
+    String selected = selectYikeCurrentAddress(observedUrl, browserUrl, addressUrl, observedFresh);
+    YikeSyncDebugLog.log(
+        "BrowserFrame select yike address selected="
+            + selected
+            + " observedFresh="
+            + observedFresh
+            + " observedAgeMs="
+            + (observedAt <= 0 ? -1 : now - observedAt)
+            + " observed="
+            + observedUrl
+            + " browser="
+            + browserUrl
+            + " addressField="
+            + addressUrl);
+    return selected;
   }
 
   public String currentBrowserUrlForSync() {
@@ -724,7 +743,12 @@ public class BrowserFrame extends JFrame {
   }
 
   static String selectYikeCurrentAddress(String observedUrl, String browserUrl, String addressUrl) {
-    if (YikeUrlParser.parse(observedUrl).isPresent()) {
+    return selectYikeCurrentAddress(observedUrl, browserUrl, addressUrl, true);
+  }
+
+  static String selectYikeCurrentAddress(
+      String observedUrl, String browserUrl, String addressUrl, boolean observedFresh) {
+    if (observedFresh && shouldAcceptYikeObservedPageUrl(observedUrl, browserUrl, addressUrl)) {
       return observedUrl;
     }
     if (YikeUrlParser.parse(browserUrl).isPresent()) {
@@ -733,13 +757,49 @@ public class BrowserFrame extends JFrame {
     if (YikeUrlParser.parse(addressUrl).isPresent()) {
       return addressUrl;
     }
-    if (!Utils.isBlank(observedUrl)) {
+    if (!observedFresh) {
+      if (!Utils.isBlank(browserUrl)) {
+        return browserUrl;
+      }
+      if (!Utils.isBlank(addressUrl)) {
+        return addressUrl;
+      }
+    }
+    if (shouldAcceptYikeObservedPageUrl(observedUrl, browserUrl, addressUrl)) {
       return observedUrl;
     }
     if (!Utils.isBlank(browserUrl)) {
       return browserUrl;
     }
     return addressUrl;
+  }
+
+  static boolean isYikeObservedPageUrlFresh(long nowMillis, long observedAtMillis) {
+    return observedAtMillis > 0
+        && nowMillis >= observedAtMillis
+        && nowMillis - observedAtMillis <= YIKE_OBSERVED_URL_FRESH_MILLIS;
+  }
+
+  static boolean shouldAcceptYikeObservedPageUrl(
+      String observedUrl, String browserUrl, String addressUrl) {
+    String observedSessionKey = OnlineDialog.yikeSessionKey(observedUrl);
+    if (Utils.isBlank(observedSessionKey)) {
+      return false;
+    }
+    if (isYikeWaitingPage(browserUrl) || isYikeWaitingPage(addressUrl)) {
+      return false;
+    }
+    String browserSessionKey = OnlineDialog.yikeSessionKey(browserUrl);
+    if (!Utils.isBlank(browserSessionKey) && !observedSessionKey.equals(browserSessionKey)) {
+      return false;
+    }
+    String addressSessionKey = OnlineDialog.yikeSessionKey(addressUrl);
+    return Utils.isBlank(addressSessionKey) || observedSessionKey.equals(addressSessionKey);
+  }
+
+  private static boolean isYikeWaitingPage(String rawUrl) {
+    String pageKind = yikePageKind(rawUrl);
+    return "live-list".equals(pageKind) || "game-lobby".equals(pageKind);
   }
 
   private void rememberYikeGeometryPageUrl(String payload) {
@@ -749,9 +809,20 @@ public class BrowserFrame extends JFrame {
     try {
       JSONObject envelope = new JSONObject(payload);
       String href = envelope.optString("href", "").trim();
-      if (!Utils.isBlank(href)) {
+      String browserUrl = currentBrowserUrlForSync();
+      String addressUrl = address_ == null ? "" : address_.getText();
+      if (shouldAcceptYikeObservedPageUrl(href, browserUrl, addressUrl)) {
         lastObservedYikePageUrl = href;
+        lastObservedYikePageUrlMillis = System.currentTimeMillis();
         YikeSyncDebugLog.log("BrowserFrame remember yike geometry href=" + href);
+      } else if (!Utils.isBlank(href)) {
+        YikeSyncDebugLog.log(
+            "BrowserFrame reject yike geometry href="
+                + href
+                + " browser="
+                + browserUrl
+                + " addressField="
+                + addressUrl);
       }
     } catch (Exception ignored) {
     }

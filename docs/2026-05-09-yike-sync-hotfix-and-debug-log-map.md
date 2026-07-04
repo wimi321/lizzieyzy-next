@@ -65,6 +65,8 @@
 -Dlizzie.yike.geometryProbeDebug.enabled=true
 ```
 
+该参数也会同时开启共享同步日志 `target/yike-sync-debug.log`，这样只打开几何探针调试时也能导出当前地址选择、几何探针回传和同步启动路径。
+
 `OnlineDialog` 的额外落盘日志路径支持通过 JVM 参数覆盖（不设置时默认 `target/yike-debug.log`）：
 
 ```text
