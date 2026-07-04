@@ -1805,6 +1805,9 @@ public final class KataGoAutoSetupHelper {
       return false;
     }
     String command = startupEngine.commands == null ? "" : startupEngine.commands.trim();
+    if (command.startsWith("remote-compute://")) {
+      return false;
+    }
     if (isTensorRtManagedCommand(startupEngine.name, command)) {
       return false;
     }
@@ -1823,6 +1826,9 @@ public final class KataGoAutoSetupHelper {
   }
 
   private static boolean isLegacyStartupCommandBroken(String name, String command) {
+    if (command != null && command.trim().startsWith("remote-compute://")) {
+      return false;
+    }
     List<String> commandParts = Utils.splitCommand(command);
     if (commandParts == null || commandParts.isEmpty()) {
       return true;

@@ -2,6 +2,7 @@ package featurecat.lizzie.util;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -333,6 +334,33 @@ public class KataGoAutoSetupHelperTest {
                   .uiConfig
                   .optString("analysis-engine-command")
                   .contains("windows-x64-nvidia-tensorrt"));
+        });
+  }
+
+  @Test
+  void startupRepairLeavesRemoteComputeEngineAlone() throws Exception {
+    Path tempRoot = Files.createTempDirectory("katago-remote-compute-repair");
+
+    withUserDirAndConfig(
+        tempRoot,
+        () -> {
+          ArrayList<EngineData> engines = new ArrayList<>();
+          EngineData remote = new EngineData();
+          remote.index = 0;
+          remote.name = "自建算力 · 127.0.0.1:8765";
+          remote.commands = "remote-compute://custom-websocket";
+          remote.isDefault = true;
+          engines.add(remote);
+          Utils.saveEngineSettings(engines);
+          Lizzie.config.uiConfig.put("default-engine", 0);
+
+          assertNull(Utils.resolveExistingExecutable(remote.commands));
+          assertFalse(KataGoAutoSetupHelper.repairBrokenStartupEngineIfNeeded());
+
+          ArrayList<EngineData> repairedEngines = Utils.getEngineData();
+          assertEquals("remote-compute://custom-websocket", repairedEngines.get(0).commands);
+          assertTrue(repairedEngines.get(0).isDefault);
+          assertEquals(0, Lizzie.config.uiConfig.optInt("default-engine"));
         });
   }
 

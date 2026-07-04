@@ -139,17 +139,18 @@ public class KataGoAnalysisWebSocketTransport implements EngineTransport {
     String lower = line.toLowerCase(Locale.ROOT);
     try {
       if (lower.equals("name")) {
-        writeOk(responseId, "LizzieYzy Next 自建远程 KataGo");
+        writeOk(responseId, "KataGo");
       } else if (lower.equals("protocol_version")) {
         writeOk(responseId, "2");
       } else if (lower.equals("version")) {
-        writeOk(responseId, "remote-websocket");
+        writeOk(responseId, "1.16.4");
       } else if (lower.equals("list_commands")) {
         writeOk(
             responseId,
             "protocol_version\nname\nversion\nlist_commands\nboardsize\nrectangular_boardsize\n"
-                + "komi\nkata-set-rules\nclear_board\nplay\nundo\nkata-analyze\n"
-                + "kata-genmove_analyze\ngenmove\nstop\nquit");
+                + "komi\nkata-get-rules\nkata-get-param\nkata-set-param\nkata-set-rules\n"
+                + "clear_board\nplay\nundo\nkata-analyze\nkata-genmove_analyze\n"
+                + "genmove\nkata-time_settings\ntime_settings\nstop\nquit");
       } else if (lower.startsWith("boardsize ")) {
         int size = parseIntToken(line, 1, DEFAULT_BOARD_SIZE);
         boardWidth = Math.max(1, size);
@@ -164,6 +165,14 @@ public class KataGoAnalysisWebSocketTransport implements EngineTransport {
       } else if (lower.startsWith("komi ")) {
         komi = parseDoubleToken(line, 1, komi);
         writeOk(responseId, "");
+      } else if (lower.startsWith("kata-get-rules")) {
+        writeOk(
+            responseId,
+            "{\"friendlyPassOk\":false,\"hasButton\":false,\"ko\":\"POSITIONAL\","
+                + "\"scoring\":\"AREA\",\"suicide\":true,\"tax\":\"NONE\","
+                + "\"whiteHandicapBonus\":\"0\"}");
+      } else if (lower.startsWith("kata-get-param ")) {
+        writeKnownKataGoParam(responseId, line);
       } else if (lower.startsWith("kata-set-rules ")) {
         rules = token(line, 1, "chinese");
         writeOk(responseId, "");
@@ -222,6 +231,17 @@ public class KataGoAnalysisWebSocketTransport implements EngineTransport {
     int intervalCentisec = Math.max(10, analyzeIntervalCentisec(command, genmove));
     JSONObject query = buildAnalysisQuery(queryId, genmove, ownership, intervalCentisec, player);
     current.sendText(query.toString(), true);
+  }
+
+  private void writeKnownKataGoParam(String responseId, String command) {
+    String param = token(command, 1, "");
+    if ("playoutDoublingAdvantage".equals(param)) {
+      writeOk(responseId, "0.0");
+    } else if ("analysisWideRootNoise".equals(param)) {
+      writeOk(responseId, "0.04");
+    } else {
+      writeOk(responseId, "");
+    }
   }
 
   private JSONObject buildAnalysisQuery(
