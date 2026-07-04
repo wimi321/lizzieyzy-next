@@ -4184,6 +4184,8 @@ def build_release_notes(asset_map: dict[str, str | None], bundle: dict[str, str]
         return build_next_2026_07_01_1_notes(asset_map, bundle, repo, release_tag)
     if release_tag == 'next-2026-07-02.1':
         return build_next_2026_07_02_1_notes(asset_map, bundle, repo, release_tag)
+    if release_tag == 'next-2026-07-05.1':
+        return build_next_2026_07_05_1_notes(asset_map, bundle, repo, release_tag)
 
     assets_cn = {
         key: format_asset(asset_map[key], repo, release_tag)
@@ -7901,6 +7903,239 @@ def build_next_2026_07_02_1_notes(
             'why': [
                 f'นี่คือ stable roll-up หลัง release ก่อนหน้า `{previous_release}` จึงเหมาะเป็นเป้าหมายอัปเดตหลักมากกว่า preview build แยกแต่ละตัว',
                 'ถ้าคุณใช้ Remote Compute, Fox/Tencent records, quick winrate curves, Player Strength evaluation หรือ ReadBoard sync รุ่นนี้ช่วยลดอาการค้าง การแสดงผลชวนสับสน และ entry ที่หาเจอยาก',
+                'กระบวนการ release ยังใช้ GitHub Actions package checks, release notes จาก asset ที่อัปโหลดจริง และ Windows core-update manifest verification',
+            ],
+            'contact_heading': 'ติดต่อ',
+            'contact': ['QQ group: `299419120`'],
+        },
+    ]
+
+    sections: list[dict[str, object]] = []
+    for block in blocks:
+        localized_assets = assets_cn if block['labels'] in ('zh', 'zh_hant') else assets
+        before_items = [
+            item.format(
+                windows_opencl_portable=localized_assets['windows_opencl_portable'],
+                windows_nvidia_portable=localized_assets['windows_nvidia_portable'],
+                windows_core_update=localized_assets['windows_core_update'],
+            )
+            for item in block['before']
+        ]
+        sections.append(
+            {
+                'language': block['language'],
+                'intro': block['intro'],
+                'updates': {'heading': block['updates_heading'], 'items': block['updates']},
+                'before': {'heading': block['before_heading'], 'items': before_items},
+                'download': {
+                    'heading': block['download_heading'],
+                    'headers': block['download_headers'],
+                    'rows': standard_download_rows(
+                        STANDARD_DOWNLOAD_LABELS[block['labels']],
+                        localized_assets,
+                    ),
+                },
+                'why': {'heading': block['why_heading'], 'items': block['why']},
+                'contact': {'heading': block['contact_heading'], 'items': block['contact']},
+            }
+        )
+    add_nvidia50_download_rows(sections, assets_cn, assets)
+    add_tensorrt_split_download_row(sections, assets_cn, assets, asset_map)
+    remove_windows_core_update_auto_notes(sections)
+    validate_release_sections(sections)
+    return release_heading(release_tag) + '\n\n' + '\n\n---\n\n'.join(
+        render_language_section(section) for section in sections
+    ) + '\n'
+
+
+def build_next_2026_07_05_1_notes(
+    asset_map: dict[str, str | None],
+    bundle: dict[str, str],
+    repo: str,
+    release_tag: str | None,
+) -> str:
+    assets_cn = {key: format_asset(asset_map[key], repo, release_tag) for key in asset_map}
+    assets = {key: format_asset_en(asset_map[key], repo, release_tag) for key in asset_map}
+    katago_version = bundle['katago_version']
+    model_source = bundle['model_source']
+    previous_release = 'next-2026-07-02.1'
+
+    blocks = [
+        {
+            'language': '中文',
+            'labels': 'zh',
+            'intro': f'这一版是 {previous_release} 之后的稳定维护更新：重点修复 Windows 自建远程算力连接后不进入分析、弈客同步旧棋盘地址回跳，以及右键追踪分析此点的体验细节。',
+            'updates_heading': '本版主要更新',
+            'updates': [
+                '修复 Windows 自建远程算力：KaTrain 兼容 `ws://` / `wss://` 远程引擎连接后会被识别为 KataGo 兼容引擎，并立即进入 `kata-analyze`，避免“连接成功但棋盘没有分析”。',
+                '远程引擎启动流程更稳：KataGo 启动命令从 `Leelaz` 监控线程中移出，避免锁顺序风险；`remote-compute://` 配置也不会被一键设置当成坏掉的本地可执行文件自动修复。',
+                '弈客直播/同步更安全：旧的棋盘几何探针只有在仍属于当前会话、并且和新棋局匹配时才会复用，减少大厅或等待页把旧棋盘地址抢回来的情况。',
+                '优化“追踪分析此点”：右键菜单增加图标，点击后不再弹出控制台窗口；追踪点会立即显示，后台追踪引擎启动完成后继续分析。',
+                '本轮合并 #91、#92、#93，感谢贡献者和反馈用户帮助我们把远程算力、弈客同步和追踪分析继续打磨稳定。',
+            ],
+            'before_heading': '下载前先看这几句',
+            'before': [
+                f'主推荐整合包继续内置 KataGo `{katago_version}` 和默认权重 `{model_source}`。',
+                'Windows 普通用户优先下载 {windows_opencl_portable}，这是 OpenCL 推荐免安装版。',
+                'NVIDIA 显卡用户可下载 {windows_nvidia_portable}；RTX 5070/5080/5090 用户优先看 RTX 50 CUDA 版。',
+                '已经在用 Windows 免安装版的用户，日常升级优先下载 {windows_core_update} 覆盖到旧目录，权重、引擎和用户数据不会重复下载。',
+            ],
+            'download_heading': '下载建议',
+            'download_headers': ('你的电脑', '直接下载这个'),
+            'why_heading': '这一版为什么值得更新',
+            'why': [
+                f'这是从上一个正式 release `{previous_release}` 到现在的小型稳定修复版，更新内容更聚焦，不再重复旧版本说明。',
+                '如果你使用 Windows 自建远程算力、弈客直播同步，或者经常用右键追踪分析，这一版会明显减少“连上但不分析”“旧棋盘回跳”“点了没反馈”的感觉。',
+                '发布流程继续保留 GitHub Actions 打包校验、真实资产生成 release notes，以及 Windows 小更新 manifest 校验。',
+            ],
+            'contact_heading': '交流',
+            'contact': ['QQ 群：`299419120`'],
+        },
+        {
+            'language': '繁體中文',
+            'labels': 'zh_hant',
+            'intro': f'這一版是 {previous_release} 之後的穩定維護更新：重點修復 Windows 自建遠端算力連上後不進入分析、弈客同步舊棋盤位址回跳，以及右鍵追蹤分析此點的體驗細節。',
+            'updates_heading': '本版主要更新',
+            'updates': [
+                '修復 Windows 自建遠端算力：KaTrain 相容 `ws://` / `wss://` 遠端引擎連線後會被識別為 KataGo 相容引擎，並立即進入 `kata-analyze`，避免「連線成功但棋盤沒有分析」。',
+                '遠端引擎啟動流程更穩：KataGo 啟動命令從 `Leelaz` 監控執行緒中移出，避免鎖順序風險；`remote-compute://` 設定也不會被一鍵設定當成壞掉的本機執行檔自動修復。',
+                '弈客直播/同步更安全：舊的棋盤幾何探針只有在仍屬於目前會話、並且和新棋局匹配時才會復用，減少大廳或等待頁把舊棋盤位址搶回來的情況。',
+                '優化「追蹤分析此點」：右鍵選單增加圖示，點擊後不再彈出控制台視窗；追蹤點會立即顯示，背景追蹤引擎啟動完成後繼續分析。',
+                '本輪合併 #91、#92、#93，感謝貢獻者和回饋使用者幫助我們把遠端算力、弈客同步和追蹤分析繼續打磨穩定。',
+            ],
+            'before_heading': '下載前先看這幾句',
+            'before': [
+                f'主推薦整合包繼續內建 KataGo `{katago_version}` 和預設權重 `{model_source}`。',
+                'Windows 一般使用者優先下載 {windows_opencl_portable}，這是 OpenCL 推薦免安裝版。',
+                'NVIDIA 顯示卡使用者可下載 {windows_nvidia_portable}；RTX 5070/5080/5090 使用者優先看 RTX 50 CUDA 版。',
+                '已經在用 Windows 免安裝版的使用者，日常升級優先下載 {windows_core_update} 覆蓋到舊目錄，權重、引擎和使用者資料不會重複下載。',
+            ],
+            'download_heading': '下載建議',
+            'download_headers': ('你的電腦', '直接下載這個'),
+            'why_heading': '這一版為什麼值得更新',
+            'why': [
+                f'這是從上一個正式 release `{previous_release}` 到現在的小型穩定修復版，更新內容更聚焦，不再重複舊版本說明。',
+                '如果你使用 Windows 自建遠端算力、弈客直播同步，或者經常用右鍵追蹤分析，這一版會明顯減少「連上但不分析」「舊棋盤回跳」「點了沒回饋」的感覺。',
+                '發布流程繼續保留 GitHub Actions 打包校驗、真實資產生成 release notes，以及 Windows 小更新 manifest 校驗。',
+            ],
+            'contact_heading': '交流',
+            'contact': ['QQ 群：`299419120`'],
+        },
+        {
+            'language': 'English',
+            'labels': 'en',
+            'intro': f'This is a focused stable maintenance release after {previous_release}, fixing Windows self-hosted Remote Compute startup, stale Yike board-geometry reuse, and the right-click tracking analysis experience.',
+            'updates_heading': 'Release Highlights',
+            'updates': [
+                'Fixed Windows self-hosted Remote Compute: KaTrain-compatible `ws://` / `wss://` remote engines are now recognized as KataGo-compatible and enter `kata-analyze` immediately, avoiding the “connected but not analyzing” state.',
+                'Remote engine startup is safer: KataGo startup commands were moved out of the `Leelaz` monitor thread to avoid lock-order risk, and `remote-compute://` configs are no longer treated as broken local executables by auto setup.',
+                'Yike live sync is safer: stale board-geometry probes are reused only when they still belong to the current session and match the new game, reducing cases where lobby or waiting pages pull the app back to an old board URL.',
+                'Improved “track analysis here”: the right-click menu now has an icon, no console window pops up, the tracked point appears immediately, and background tracking continues once the engine is ready.',
+                'This cycle merges #91, #92, and #93. Thanks to the contributors and users who helped stabilize Remote Compute, Yike sync, and tracking analysis.',
+            ],
+            'before_heading': 'Read Before Downloading',
+            'before': [
+                f'The recommended bundles still include KataGo `{katago_version}` and the default model `{model_source}`.',
+                'Most Windows users should start with {windows_opencl_portable}, the recommended OpenCL portable build.',
+                'NVIDIA users can choose {windows_nvidia_portable}; RTX 5070/5080/5090 users should also consider the RTX 50 CUDA build.',
+                'Existing Windows portable users can usually upgrade with {windows_core_update} by extracting it over the old folder, without redownloading weights, engines, or user data.',
+            ],
+            'download_heading': 'Download Guide',
+            'download_headers': ('Your computer', 'Download this file'),
+            'why_heading': 'Why Update',
+            'why': [
+                f'This is a small stable fix release since the previous release `{previous_release}`, with focused notes instead of repeating older release content.',
+                'If you use Windows self-hosted Remote Compute, Yike live sync, or right-click tracking analysis, this build reduces “connected but idle”, stale-board jumps, and click-with-no-feedback moments.',
+                'The release flow still uses GitHub Actions package checks, release notes generated from real uploaded assets, and Windows core-update manifest verification.',
+            ],
+            'contact_heading': 'Contact',
+            'contact': ['QQ group: `299419120`'],
+        },
+        {
+            'language': '日本語',
+            'labels': 'ja',
+            'intro': f'このリリースは {previous_release} 以降の小さな安定版メンテナンスです。Windows self-hosted Remote Compute の起動、古い Yike board geometry の再利用、右クリック追跡分析の体験を修正しました。',
+            'updates_heading': '本版主要更新',
+            'updates': [
+                'Windows self-hosted Remote Compute を修正しました。KaTrain-compatible `ws://` / `wss://` remote engine は KataGo-compatible として認識され、すぐ `kata-analyze` に入るため、「接続したが分析しない」状態を避けます。',
+                'Remote engine startup をより安全にしました。KataGo startup commands を `Leelaz` monitor thread から移し、lock-order risk を避けます。`remote-compute://` config も auto setup に壊れた local executable として扱われません。',
+                'Yike live sync をより安全にしました。古い board-geometry probe は現在の session に属し、新しい game と一致する場合だけ再利用され、lobby / waiting page が古い board URL に戻すケースを減らします。',
+                '「この点を追跡分析」を改善しました。右クリックメニューに icon を追加し、console window は出ず、追跡点はすぐ表示され、engine ready 後に background tracking が継続します。',
+                '今回は #91、#92、#93 を merge しました。Remote Compute、Yike sync、tracking analysis の安定化に協力してくれた contributor とユーザーに感謝します。',
+            ],
+            'before_heading': 'ダウンロード前に',
+            'before': [
+                f'推奨バンドルには引き続き KataGo `{katago_version}` と既定モデル `{model_source}` が含まれます。',
+                'Windows の多くのユーザーは、OpenCL 推奨ポータブル版 {windows_opencl_portable} から試してください。',
+                'NVIDIA ユーザーは {windows_nvidia_portable} を選べます。RTX 5070/5080/5090 は RTX 50 CUDA 版も確認してください。',
+                '既存の Windows portable 版ユーザーは、通常 {windows_core_update} を旧フォルダへ上書きするだけで更新でき、重み、エンジン、ユーザーデータを再取得する必要はありません。',
+            ],
+            'download_heading': 'ダウンロード案内',
+            'download_headers': ('お使いの環境', 'ダウンロードするファイル'),
+            'why_heading': '更新する理由',
+            'why': [
+                f'これは前回の正式 release `{previous_release}` 以降の小さな安定版修正で、古い release 内容を繰り返さず今回の変更に絞っています。',
+                'Windows self-hosted Remote Compute、Yike live sync、right-click tracking analysis を使う場合、「接続済みだが分析しない」、古い board への戻り、click feedback 不足が減ります。',
+                'リリースフローは GitHub Actions の package checks、実アップロード済み asset からの release notes 生成、Windows core-update manifest verification を継続しています。',
+            ],
+            'contact_heading': '交流',
+            'contact': ['QQ group: `299419120`'],
+        },
+        {
+            'language': '한국어',
+            'labels': 'ko',
+            'intro': f'이번 버전은 {previous_release} 이후의 focused stable maintenance release 입니다. Windows self-hosted Remote Compute 시작, stale Yike board-geometry reuse, 우클릭 tracking analysis 경험을 수정했습니다.',
+            'updates_heading': '주요 업데이트',
+            'updates': [
+                'Windows self-hosted Remote Compute 를 수정했습니다. KaTrain-compatible `ws://` / `wss://` remote engine 이 KataGo-compatible 로 인식되고 즉시 `kata-analyze` 로 들어가 “연결됐지만 분석하지 않는” 상태를 피합니다.',
+                'Remote engine startup 이 더 안전해졌습니다. KataGo startup commands 를 `Leelaz` monitor thread 밖으로 옮겨 lock-order risk 를 줄였고, `remote-compute://` config 는 auto setup 에서 broken local executable 로 취급되지 않습니다.',
+                'Yike live sync 가 더 안전해졌습니다. stale board-geometry probe 는 현재 session 에 속하고 새 game 과 맞을 때만 재사용되어 lobby/waiting page 가 old board URL 로 되돌리는 상황을 줄입니다.',
+                '“이 점 추적 분석”을 개선했습니다. 우클릭 메뉴에 icon 을 추가했고, console window 가 뜨지 않으며, tracked point 는 즉시 표시되고 engine 준비 후 background tracking 이 이어집니다.',
+                '이번 cycle 은 #91, #92, #93 을 merge 했습니다. Remote Compute, Yike sync, tracking analysis 안정화를 도와준 contributor 와 사용자께 감사드립니다.',
+            ],
+            'before_heading': '다운로드 전 확인',
+            'before': [
+                f'추천 bundle 은 계속 KataGo `{katago_version}` 와 기본 모델 `{model_source}` 를 포함합니다.',
+                '대부분의 Windows 사용자는 OpenCL 권장 portable 빌드 {windows_opencl_portable} 부터 사용해 보세요.',
+                'NVIDIA 사용자는 {windows_nvidia_portable} 를 선택할 수 있습니다. RTX 5070/5080/5090 사용자는 RTX 50 CUDA 빌드도 확인해 주세요.',
+                '기존 Windows portable 사용자는 보통 {windows_core_update} 를 기존 폴더에 덮어쓰면 되고, weight, engine, user data 를 다시 받을 필요가 없습니다.',
+            ],
+            'download_heading': '다운로드 안내',
+            'download_headers': ('내 컴퓨터', '다운로드할 파일'),
+            'why_heading': '업데이트할 이유',
+            'why': [
+                f'이번 버전은 이전 정식 release `{previous_release}` 이후의 작은 stable fix release 이며, 예전 release 내용을 반복하지 않고 이번 변경에 집중했습니다.',
+                'Windows self-hosted Remote Compute, Yike live sync, right-click tracking analysis 를 사용한다면 “연결됐지만 idle”, stale-board jump, click feedback 부족이 줄어듭니다.',
+                '릴리스 흐름은 GitHub Actions package checks, 실제 업로드 asset 기반 release notes 생성, Windows core-update manifest verification 을 계속 사용합니다.',
+            ],
+            'contact_heading': '연락',
+            'contact': ['QQ 그룹: `299419120`'],
+        },
+        {
+            'language': 'ภาษาไทย',
+            'labels': 'th',
+            'intro': f'release นี้เป็น stable maintenance แบบโฟกัสหลัง {previous_release} แก้ Windows self-hosted Remote Compute startup, stale Yike board-geometry reuse และประสบการณ์ right-click tracking analysis',
+            'updates_heading': 'รายการอัปเดตหลัก',
+            'updates': [
+                'แก้ Windows self-hosted Remote Compute: remote engine แบบ KaTrain-compatible `ws://` / `wss://` จะถูกมองเป็น KataGo-compatible และเข้า `kata-analyze` ทันที ลดปัญหา “connected but not analyzing”',
+                'Remote engine startup ปลอดภัยขึ้น: ย้าย KataGo startup commands ออกจาก `Leelaz` monitor thread เพื่อลด lock-order risk และ `remote-compute://` config จะไม่ถูก auto setup มองเป็น local executable ที่เสีย',
+                'Yike live sync ปลอดภัยขึ้น: stale board-geometry probes จะ reuse เฉพาะเมื่อยังเป็น session ปัจจุบันและ match กับ game ใหม่ ลดกรณี lobby/waiting page ดึงกลับไป old board URL',
+                'ปรับ “track analysis here”: right-click menu มี icon, ไม่เปิด console window, tracked point แสดงทันที และ background tracking ทำงานต่อเมื่อ engine พร้อม',
+                'รอบนี้ merge #91, #92 และ #93 ขอบคุณ contributors และ users ที่ช่วยทำให้ Remote Compute, Yike sync และ tracking analysis เสถียรขึ้น',
+            ],
+            'before_heading': 'อ่านก่อนดาวน์โหลด',
+            'before': [
+                f'แพ็กเกจแนะนำยังรวม KataGo `{katago_version}` และ model เริ่มต้น `{model_source}`',
+                'ผู้ใช้ Windows ส่วนใหญ่ควรเริ่มจาก {windows_opencl_portable} ซึ่งเป็น OpenCL portable build ที่แนะนำ',
+                'ผู้ใช้ NVIDIA เลือก {windows_nvidia_portable} ได้ ส่วน RTX 5070/5080/5090 ควรดู RTX 50 CUDA build ด้วย',
+                'ผู้ใช้ Windows portable เดิมมักอัปเดตได้ด้วย {windows_core_update} โดยแตกไฟล์ทับโฟลเดอร์เก่า ไม่ต้องดาวน์โหลด weight, engine หรือ user data ใหม่',
+            ],
+            'download_heading': 'คำแนะนำดาวน์โหลด',
+            'download_headers': ('คอมพิวเตอร์ของคุณ', 'ดาวน์โหลดไฟล์นี้'),
+            'why_heading': 'ทำไมควรอัปเดต',
+            'why': [
+                f'นี่คือ stable fix release ขนาดเล็กหลัง release ก่อนหน้า `{previous_release}` โดยเน้นเฉพาะสิ่งที่เปลี่ยนในรอบนี้ ไม่ซ้ำ release notes เก่า',
+                'ถ้าคุณใช้ Windows self-hosted Remote Compute, Yike live sync หรือ right-click tracking analysis รุ่นนี้ช่วยลดอาการ connected but idle, stale-board jumps และ click-with-no-feedback',
                 'กระบวนการ release ยังใช้ GitHub Actions package checks, release notes จาก asset ที่อัปโหลดจริง และ Windows core-update manifest verification',
             ],
             'contact_heading': 'ติดต่อ',
