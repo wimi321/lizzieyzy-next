@@ -16,6 +16,7 @@ import featurecat.lizzie.analysis.EngineManager;
 import featurecat.lizzie.analysis.Leelaz;
 import featurecat.lizzie.analysis.MoveData;
 import featurecat.lizzie.gui.LizzieFrame;
+import featurecat.lizzie.gui.Menu;
 import featurecat.lizzie.gui.WinrateGraph;
 import java.io.IOException;
 import java.lang.reflect.Field;
@@ -27,8 +28,10 @@ import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.Date;
 import java.util.GregorianCalendar;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Optional;
 import java.util.ResourceBundle;
 import java.util.regex.Matcher;
@@ -38,6 +41,14 @@ import org.junit.jupiter.api.Test;
 class BoardNodeKindHistoryPipelineTest {
   private static final int BOARD_SIZE = 3;
   private static final int BOARD_AREA = BOARD_SIZE * BOARD_SIZE;
+
+  @Test
+  void asCoordinatesParsesExtendedGtpColumnsOnLargeBoards() {
+    Optional<int[]> coord = Board.asCoordinates("BA4", 60);
+
+    assertTrue(coord.isPresent(), "extended GTP coordinates should parse on large boards.");
+    assertArrayEquals(new int[] {50, 56}, coord.get());
+  }
 
   @Test
   void addOrGotoKeepsPassAndSnapshotAsSeparateChildren() throws Exception {
@@ -345,6 +356,22 @@ class BoardNodeKindHistoryPipelineTest {
       assertEquals(Stone.BLACK, whiteMove.getData().stones[Board.getIndex(0, 0)]);
       assertEquals(Stone.BLACK, whiteMove.getData().stones[Board.getIndex(2, 0)]);
       assertEquals(Stone.WHITE, whiteMove.getData().stones[Board.getIndex(1, 0)]);
+    } finally {
+      env.close();
+    }
+  }
+
+  @Test
+  void liveLoadFoxHandicapGameReadsZeroKomi() throws Exception {
+    TestEnvironment env = TestEnvironment.open();
+    try {
+      Lizzie.config.readKomi = true;
+      String sgf = "(;SZ[3]KM[0]HA[2]AB[aa]AB[ca];W[ba];B[bb])";
+
+      assertTrue(SGFParser.loadFromString(sgf), "loadFromString should parse Fox handicap SGF.");
+
+      BoardHistoryList history = Lizzie.board.getHistory();
+      assertEquals(0.0, history.getGameInfo().getKomi(), 0.001);
     } finally {
       env.close();
     }
@@ -872,6 +899,44 @@ class BoardNodeKindHistoryPipelineTest {
           liveRoot.isChanged, "detached parse should keep live best-move state flags untouched.");
       assertEquals(7.5, detached.getGameInfo().getKomi(), 0.0001);
     } finally {
+      env.close();
+    }
+  }
+
+  @Test
+  void loadFromStringWithKomiDoesNotOverwriteCurrentEngineKomi() throws Exception {
+    TestEnvironment env = TestEnvironment.open();
+    int previousCurrentEngineNo = EngineManager.currentEngineNo;
+    try {
+      Lizzie.config.readKomi = true;
+      EngineManager.currentEngineNo = 0;
+      EngineManager.isEmpty = false;
+      TrackingLeelaz leelaz = (TrackingLeelaz) Lizzie.leelaz;
+      leelaz.komi = 6.5f;
+      leelaz.orikomi = 6.5f;
+      leelaz.isLoaded = true;
+      setStarted(leelaz, true);
+
+      assertTrue(SGFParser.loadFromString("(;SZ[3]KM[7.5];B[aa])"));
+
+      assertFalse(
+          leelaz.recordedCommands().contains("komi 7.5"),
+          "loading SGF KM should not send a komi command that overwrites the current engine.");
+      assertEquals(
+          6.5,
+          leelaz.komi,
+          0.0001,
+          "current engine komi field should keep the engine/default komi after loading SGF.");
+      assertEquals(
+          7.5,
+          Lizzie.board.getHistory().getGameInfo().getKomi(),
+          0.0001,
+          "SGF KM should still be visible as loaded game information.");
+      assertFalse(
+          Lizzie.board.getHistory().getGameInfo().changedKomi,
+          "loaded SGF KM should not be treated as a manual engine-komi change.");
+    } finally {
+      EngineManager.currentEngineNo = previousCurrentEngineNo;
       env.close();
     }
   }
@@ -2671,20 +2736,89 @@ class BoardNodeKindHistoryPipelineTest {
   }
 
   @Test
+  void parseSgfKeepsSemicolonsInsideRootCommentValues() throws Exception {
+    TestEnvironment env = TestEnvironment.open();
+    try {
+      BoardHistoryList parsed = SGFParser.parseSgf("(;SZ[3]C[a;b;c;];B[aa])", false);
+
+      assertEquals("a;b;c;", parsed.getStart().getData().comment);
+    } finally {
+      env.close();
+    }
+  }
+
+  @Test
+  void parseAndSaveKeepsEscapedBracketInCustomMoveProperties() throws Exception {
+    TestEnvironment env = TestEnvironment.open();
+    try {
+      String sgf = "(;SZ[3];B[aa];W[bb]C[test[\\]]CC[test[\\]])";
+      BoardHistoryList parsed = SGFParser.parseSgf(sgf, false);
+      BoardHistoryNode whiteMove = parsed.getStart().next().orElseThrow().next().orElseThrow();
+
+      assertEquals("test[]", whiteMove.getData().comment);
+      assertEquals("test[\\]", whiteMove.getData().getProperty("CC"));
+
+      Lizzie.board.setHistory(parsed);
+      String exported = SGFParser.saveToString(false);
+      BoardHistoryNode roundTripWhite =
+          SGFParser.parseSgf(exported, false).getStart().next().orElseThrow().next().orElseThrow();
+
+      assertEquals("test[]", roundTripWhite.getData().comment);
+      assertEquals("test[\\]", roundTripWhite.getData().getProperty("CC"));
+    } finally {
+      env.close();
+    }
+  }
+
+  @Test
+  void saveNonStandardBoardPassKeepsSgfPassInsteadOfCoordinate() throws Exception {
+    TestEnvironment env = TestEnvironment.open();
+    try {
+      BoardHistoryList parsed = SGFParser.parseSgf("(;SZ[18];B[];W[aa])", false);
+      assertTrue(parsed.getStart().next().orElseThrow().getData().isPassNode());
+
+      Lizzie.board.setHistory(parsed);
+      String exported = SGFParser.saveToString(false);
+
+      assertTrue(exported.contains(";B[]"), "pass should stay as an empty SGF move value.");
+      assertFalse(exported.contains("B[ss]"), "pass must not be serialized as an off-board point.");
+      assertTrue(
+          SGFParser.parseSgf(exported, false)
+              .getStart()
+              .next()
+              .orElseThrow()
+              .getData()
+              .isPassNode());
+    } finally {
+      env.close();
+    }
+  }
+
+  @Test
+  void propertiesStringSerializesCharsetBeforeLocalizedProperties() {
+    Map<String, String> props = new LinkedHashMap<>();
+    props.put("PB", "黑棋");
+    props.put("PW", "白棋");
+    props.put("CA", "UTF-8");
+
+    assertEquals("CA[UTF-8]PB[黑棋]PW[白棋]", SGFParser.propertiesString(props));
+  }
+
+  @Test
   void parseSgfDetachedAnalysisShorthandKPlayoutsKeepLegacyScaleOnRoundTrip() throws Exception {
     TestEnvironment env = TestEnvironment.open();
     try {
       String sgf =
-          "(;SZ[3]LZOP[MainEngine 44.0 1.2k\n"
-              + "move D4 visits 1.2k winrate 5600 prior 5000 pv D4 C4])";
+          "(;SZ[3]LZOP[MainEngine 44.0 1.5k\n"
+              + "move D4 visits 1.5k winrate 5600 prior 5000 pv D4 C4])";
 
       BoardHistoryList parsed = SGFParser.parseSgf(sgf, false);
-      assertEquals(1200, parsed.getStart().getData().getPlayouts());
+      assertEquals(1500, parsed.getStart().getData().getPlayouts());
 
       Lizzie.board.setHistory(parsed);
       String exported = SGFParser.saveToString(false);
       BoardData roundTripRoot = SGFParser.parseSgf(exported, false).getStart().getData();
-      assertEquals(1200, roundTripRoot.getPlayouts());
+      assertEquals(1500, roundTripRoot.getPlayouts());
     } finally {
       env.close();
     }
@@ -2727,9 +2861,9 @@ class BoardNodeKindHistoryPipelineTest {
       Lizzie.board.setHistory(history);
 
       String expected =
-          "(;AB[aa]AW[cc]PL[W]SZ[3]KM[6.5]PW[White]PB[Black]DT[2020-01-02]AP[LizzieYzy Next: "
+          "(;CA[UTF-8]AB[aa]AW[cc]PL[W]SZ[3]KM[6.5]PW[White]PB[Black]DT[2020-01-02]AP[LizzieYzy Next: "
               + Lizzie.nextVersion
-              + "]RE[]CA[UTF-8];B[ba])";
+              + "]RE[];B[ba])";
       String firstSave = SGFParser.saveToString(false);
       assertEquals(expected, firstSave, "root setup should be serialized only once on root.");
       String secondSave = SGFParser.saveToString(false);
@@ -4111,6 +4245,7 @@ class BoardNodeKindHistoryPipelineTest {
     private final int previousBoardHeight;
     private final Board previousBoard;
     private final LizzieFrame previousFrame;
+    private final Menu previousMenu;
     private final WinrateGraph previousWinrateGraph;
     private final Leelaz previousLeelaz;
     private final Config previousConfig;
@@ -4121,6 +4256,7 @@ class BoardNodeKindHistoryPipelineTest {
         int previousBoardHeight,
         Board previousBoard,
         LizzieFrame previousFrame,
+        Menu previousMenu,
         WinrateGraph previousWinrateGraph,
         Leelaz previousLeelaz,
         Config previousConfig,
@@ -4129,6 +4265,7 @@ class BoardNodeKindHistoryPipelineTest {
       this.previousBoardHeight = previousBoardHeight;
       this.previousBoard = previousBoard;
       this.previousFrame = previousFrame;
+      this.previousMenu = previousMenu;
       this.previousWinrateGraph = previousWinrateGraph;
       this.previousLeelaz = previousLeelaz;
       this.previousConfig = previousConfig;
@@ -4140,6 +4277,7 @@ class BoardNodeKindHistoryPipelineTest {
       int previousBoardHeight = Board.boardHeight;
       Board previousBoard = Lizzie.board;
       LizzieFrame previousFrame = Lizzie.frame;
+      Menu previousMenu = LizzieFrame.menu;
       WinrateGraph previousWinrateGraph = LizzieFrame.winrateGraph;
       Leelaz previousLeelaz = Lizzie.leelaz;
       Config previousConfig = Lizzie.config;
@@ -4156,6 +4294,8 @@ class BoardNodeKindHistoryPipelineTest {
       board.setHistory(new BoardHistoryList(BoardData.empty(BOARD_SIZE, BOARD_SIZE)));
       Lizzie.board = board;
       Lizzie.frame = allocate(TrackingFrame.class);
+      LizzieFrame.menu = allocate(Menu.class);
+      LizzieFrame.menu.txtKomi = new javax.swing.JTextField();
       Lizzie.leelaz = allocate(TrackingLeelaz.class);
       Config config = allocate(Config.class);
       config.newMoveNumberInBranch = false;
@@ -4168,6 +4308,7 @@ class BoardNodeKindHistoryPipelineTest {
           previousBoardHeight,
           previousBoard,
           previousFrame,
+          previousMenu,
           previousWinrateGraph,
           previousLeelaz,
           previousConfig,
@@ -4181,6 +4322,7 @@ class BoardNodeKindHistoryPipelineTest {
       Zobrist.init();
       Lizzie.board = previousBoard;
       Lizzie.frame = previousFrame;
+      LizzieFrame.menu = previousMenu;
       LizzieFrame.winrateGraph = previousWinrateGraph;
       Lizzie.leelaz = previousLeelaz;
       Lizzie.config = previousConfig;

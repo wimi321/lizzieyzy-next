@@ -9,8 +9,10 @@ import featurecat.lizzie.util.KataGoAutoSetupHelper.RemoteWeightInfo;
 import featurecat.lizzie.util.KataGoAutoSetupHelper.SetupResult;
 import featurecat.lizzie.util.KataGoAutoSetupHelper.SetupSnapshot;
 import featurecat.lizzie.util.KataGoRuntimeHelper;
+import featurecat.lizzie.util.NvidiaGpuDetector;
 import featurecat.lizzie.util.Utils;
 import java.awt.BorderLayout;
+import java.awt.BasicStroke;
 import java.awt.CardLayout;
 import java.awt.Color;
 import java.awt.Component;
@@ -20,23 +22,30 @@ import java.awt.Dimension;
 import java.awt.FlowLayout;
 import java.awt.Font;
 import java.awt.FontMetrics;
+import java.awt.Graphics;
+import java.awt.Graphics2D;
 import java.awt.GraphicsConfiguration;
 import java.awt.GraphicsEnvironment;
 import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
 import java.awt.Insets;
+import java.awt.Polygon;
 import java.awt.Rectangle;
+import java.awt.RenderingHints;
 import java.awt.Window;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
+import java.awt.geom.Arc2D;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.Collections;
+import java.util.IllegalFormatException;
 import java.util.List;
 import java.util.Locale;
 import javax.swing.BorderFactory;
 import javax.swing.DefaultComboBoxModel;
 import javax.swing.DefaultListCellRenderer;
+import javax.swing.Icon;
 import javax.swing.JComponent;
 import javax.swing.JDialog;
 import javax.swing.JFileChooser;
@@ -68,6 +77,7 @@ public class KataGoAutoSetupDialog extends JDialog {
   private static final String BENCHMARK_PROGRESS_KEY = "lizzie.benchmark.dialog.progress";
   private static final String WRAPPING_TEXT_KEY = "lizzie.autosetup.wrappingText";
   private static final int MAX_INFO_TEXT_LENGTH = 104;
+  private static final int GPU_INFO_TEXT_LENGTH = 132;
   private static final int DIALOG_WIDTH = 820;
   private static final int DIALOG_HEIGHT = 580;
   private static final int VALUE_COLUMN_WIDTH = 390;
@@ -81,20 +91,25 @@ public class KataGoAutoSetupDialog extends JDialog {
   private List<RemoteWeightInfo> remoteWeightInfos = Collections.emptyList();
   private volatile DownloadSession activeDownloadSession;
   private volatile Thread activeWorkerThread;
+  private volatile NvidiaGpuDetector.DetectionResult nvidiaGpuDetection;
+  private volatile boolean nvidiaGpuDetectionRunning;
   private long progressStartedAtMillis;
   private String lastBackgroundErrorMessage = "";
   private long lastBackgroundErrorMillis = 0L;
+  private int selectedSetupSectionIndex = 0;
 
   private final JLabel lblEngineValue = new JFontLabel();
   private final JLabel lblWeightValue = new JFontLabel();
   private final JLabel lblWeightModelValue = new JFontLabel();
   private final JLabel lblConfigValue = new JFontLabel();
   private final JLabel lblNvidiaRuntimeValue = new JFontLabel();
+  private final JLabel lblNvidiaGpuValue = new JFontLabel();
   private final JLabel lblTensorRtDownloadValue = new JFontLabel();
   private final JLabel lblTensorRtConfigValue = new JFontLabel();
   private final JLabel lblBenchmarkValue = new JFontLabel();
   private final JLabel lblRemoteDetailValue = new JFontLabel();
   private final JLabel lblLocalWeightDetailValue = new JFontLabel();
+  private final JLabel lblHumanSlModelValue = new JFontLabel();
   private final JLabel lblStatus = new JFontLabel();
   private final JList<String> sectionNav = new JList<String>();
   private final CardLayout detailCardLayout = new CardLayout();
@@ -108,12 +123,16 @@ public class KataGoAutoSetupDialog extends JDialog {
   private final JProgressBar progressBar = new JProgressBar();
   private final JFontButton btnRefresh = new JFontButton();
   private final JFontButton btnAutoSetup = new JFontButton();
+  private final JFontButton btnReloadRemoteWeights = new JFontButton();
   private final JFontButton btnDownloadWeight = new JFontButton();
   private final JFontButton btnImportWeight = new JFontButton();
   private final JFontButton btnApplyWeight = new JFontButton();
+  private final JFontButton btnDownloadHumanSlModel = new JFontButton();
+  private final JFontButton btnImportHumanSlModel = new JFontButton();
   private final JFontButton btnInstallNvidiaRuntime = new JFontButton();
   private final JFontButton btnInstallTensorRt = new JFontButton();
   private final JFontButton btnSwitchBackCuda = new JFontButton();
+  private final JFontButton btnCleanTensorRtCache = new JFontButton();
   private final JFontButton btnOptimizePerformance = new JFontButton();
   private final JFontButton btnStopDownload = new JFontButton();
   private final JFontButton btnClose = new JFontButton();
@@ -180,7 +199,7 @@ public class KataGoAutoSetupDialog extends JDialog {
 
     JPanel body = new JPanel(new BorderLayout(14, 0));
     body.setOpaque(false);
-    body.setBorder(BorderFactory.createEmptyBorder(12, 16, 12, 16));
+    body.setBorder(BorderFactory.createEmptyBorder(10, 14, 10, 14));
     body.add(createSidebarPanel(), BorderLayout.WEST);
 
     detailCards.setOpaque(false);
@@ -190,6 +209,9 @@ public class KataGoAutoSetupDialog extends JDialog {
     detailCards.add(createAccelerationSection(), CARD_ACCELERATION);
     JScrollPane detailScrollPane = new JScrollPane(detailCards);
     detailScrollPane.setBorder(null);
+    detailScrollPane.setHorizontalScrollBarPolicy(JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
+    detailScrollPane.setVerticalScrollBarPolicy(JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED);
+    detailScrollPane.getVerticalScrollBar().setUnitIncrement(14);
     detailScrollPane.getViewport().setOpaque(false);
     detailScrollPane.setOpaque(false);
     body.add(detailScrollPane, BorderLayout.CENTER);
@@ -202,6 +224,9 @@ public class KataGoAutoSetupDialog extends JDialog {
   }
 
   public void refreshState() {
+    if (!nvidiaGpuDetectionRunning) {
+      nvidiaGpuDetection = null;
+    }
     snapshot = KataGoAutoSetupHelper.inspectLocalSetup();
     renderSnapshot();
     loadRemoteWeightInfo();
@@ -214,12 +239,18 @@ public class KataGoAutoSetupDialog extends JDialog {
   private void configureButtons() {
     btnRefresh.setText(text("AutoSetup.refresh"));
     btnAutoSetup.setText(text("AutoSetup.autoSetup"));
+    btnReloadRemoteWeights.setText("");
+    btnReloadRemoteWeights.setIcon(new RefreshIcon());
+    btnReloadRemoteWeights.setToolTipText(text("AutoSetup.refreshOfficialWeights"));
     btnDownloadWeight.setText(text("AutoSetup.downloadWeight"));
     btnImportWeight.setText(text("AutoSetup.importWeight"));
     btnApplyWeight.setText(text("AutoSetup.applyWeight"));
+    btnDownloadHumanSlModel.setText(text("AutoSetup.downloadHumanSlModel"));
+    btnImportHumanSlModel.setText(text("AutoSetup.importHumanSlModel"));
     btnInstallNvidiaRuntime.setText(text("AutoSetup.installNvidiaRuntime"));
     btnInstallTensorRt.setText(text("AutoSetup.installTensorRt"));
     btnSwitchBackCuda.setText(text("AutoSetup.switchBackCuda"));
+    btnCleanTensorRtCache.setText(text("AutoSetup.cleanTensorRtCache"));
     btnOptimizePerformance.setText(text("AutoSetup.optimizePerformance"));
     btnStopDownload.setText(text("AutoSetup.stopDownload"));
     btnStopDownload.setEnabled(false);
@@ -229,11 +260,15 @@ public class KataGoAutoSetupDialog extends JDialog {
     styleButton(btnDownloadWeight, true);
     styleButton(btnOptimizePerformance, true);
     styleButton(btnRefresh, false);
+    styleIconButton(btnReloadRemoteWeights);
     styleButton(btnImportWeight, false);
     styleButton(btnApplyWeight, false);
+    styleButton(btnDownloadHumanSlModel, false);
+    styleButton(btnImportHumanSlModel, false);
     styleButton(btnInstallNvidiaRuntime, false);
     styleButton(btnInstallTensorRt, false);
     styleButton(btnSwitchBackCuda, false);
+    styleButton(btnCleanTensorRtCache, false);
     styleButton(btnStopDownload, false);
     styleButton(btnClose, false);
   }
@@ -241,12 +276,16 @@ public class KataGoAutoSetupDialog extends JDialog {
   private void wireActions() {
     btnRefresh.addActionListener(e -> refreshState());
     btnAutoSetup.addActionListener(e -> autoSetupOrDownload());
+    btnReloadRemoteWeights.addActionListener(e -> reloadRemoteWeightInfo());
     btnDownloadWeight.addActionListener(e -> startRecommendedWeightDownload(false));
     btnImportWeight.addActionListener(e -> importCustomWeight());
     btnApplyWeight.addActionListener(e -> applySelectedWeight());
+    btnDownloadHumanSlModel.addActionListener(e -> startHumanSlModelDownload());
+    btnImportHumanSlModel.addActionListener(e -> importHumanSlModel());
     btnInstallNvidiaRuntime.addActionListener(e -> startNvidiaRuntimeInstall());
     btnInstallTensorRt.addActionListener(e -> startTensorRtInstall());
     btnSwitchBackCuda.addActionListener(e -> switchBackToCuda());
+    btnCleanTensorRtCache.addActionListener(e -> cleanTensorRtCache());
     btnOptimizePerformance.addActionListener(e -> startPerformanceBenchmark());
     btnStopDownload.addActionListener(e -> stopActiveDownload());
     btnClose.addActionListener(e -> closeOrCancelActiveTask());
@@ -258,16 +297,28 @@ public class KataGoAutoSetupDialog extends JDialog {
     }
     button.setFocusPainted(false);
     button.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
-    button.setMargin(new Insets(0, 12, 0, 12));
+    button.setMargin(new Insets(0, 10, 0, 10));
     AppleStyleSupport.installButtonStyle(button);
     Dimension preferred = button.getPreferredSize();
-    button.setPreferredSize(new Dimension(Math.max(preferred.width, primary ? 112 : 96), 36));
+    button.setPreferredSize(new Dimension(Math.max(preferred.width, primary ? 106 : 90), 32));
+  }
+
+  private void styleIconButton(JFontButton button) {
+    button.setFocusPainted(false);
+    button.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+    button.setMargin(new Insets(0, 0, 0, 0));
+    button.setHorizontalAlignment(SwingConstants.CENTER);
+    AppleStyleSupport.installButtonStyle(button);
+    Dimension size = new Dimension(36, 32);
+    button.setPreferredSize(size);
+    button.setMinimumSize(size);
+    button.setMaximumSize(size);
   }
 
   private JPanel createHeaderPanel() {
-    JPanel header = new JPanel(new BorderLayout(12, 4));
+    JPanel header = new JPanel(new BorderLayout(12, 3));
     header.setBackground(SIDEBAR_BG);
-    header.setBorder(BorderFactory.createEmptyBorder(14, 18, 14, 18));
+    header.setBorder(BorderFactory.createEmptyBorder(10, 16, 10, 16));
 
     JFontLabel title = new JFontLabel(text("AutoSetup.title"));
     title.setForeground(Color.WHITE);
@@ -294,7 +345,7 @@ public class KataGoAutoSetupDialog extends JDialog {
     modeBadge.setBorder(
         BorderFactory.createCompoundBorder(
             BorderFactory.createLineBorder(new Color(103, 130, 121)),
-            BorderFactory.createEmptyBorder(6, 12, 6, 12)));
+            BorderFactory.createEmptyBorder(5, 10, 5, 10)));
     header.add(modeBadge, BorderLayout.EAST);
     return header;
   }
@@ -303,7 +354,7 @@ public class KataGoAutoSetupDialog extends JDialog {
     JPanel sidebar = new JPanel(new BorderLayout(0, 12));
     sidebar.setPreferredSize(new Dimension(180, 10));
     sidebar.setBackground(SIDEBAR_BG);
-    sidebar.setBorder(BorderFactory.createEmptyBorder(14, 12, 14, 12));
+    sidebar.setBorder(BorderFactory.createEmptyBorder(12, 12, 12, 12));
 
     JFontLabel sidebarTitle = new JFontLabel(text("AutoSetup.sidebarTitle"));
     sidebarTitle.setForeground(SIDEBAR_TEXT);
@@ -315,11 +366,12 @@ public class KataGoAutoSetupDialog extends JDialog {
           text("AutoSetup.navOverview"),
           text("AutoSetup.navWeights"),
           text("AutoSetup.navBenchmark"),
-          text("AutoSetup.navAcceleration")
+          text("AutoSetup.navAcceleration"),
+          text("Menu.remoteCompute")
         });
     sectionNav.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
     sectionNav.setSelectedIndex(0);
-    sectionNav.setFixedCellHeight(40);
+    sectionNav.setFixedCellHeight(36);
     sectionNav.setBackground(SIDEBAR_BG);
     sectionNav.setForeground(SIDEBAR_TEXT);
     sectionNav.setBorder(null);
@@ -333,7 +385,7 @@ public class KataGoAutoSetupDialog extends JDialog {
                     super.getListCellRendererComponent(
                         list, value, index, isSelected, cellHasFocus);
             label.setOpaque(true);
-            label.setBorder(BorderFactory.createEmptyBorder(8, 10, 8, 10));
+            label.setBorder(BorderFactory.createEmptyBorder(7, 10, 7, 10));
             label.setForeground(SIDEBAR_TEXT);
             label.setBackground(isSelected ? SIDEBAR_SELECTED_BG : SIDEBAR_BG);
             label.setFont(label.getFont().deriveFont(isSelected ? Font.BOLD : Font.PLAIN));
@@ -345,17 +397,29 @@ public class KataGoAutoSetupDialog extends JDialog {
           if (e.getValueIsAdjusting()) {
             return;
           }
-          switch (sectionNav.getSelectedIndex()) {
+          int selectedIndex = sectionNav.getSelectedIndex();
+          switch (selectedIndex) {
             case 1:
+              selectedSetupSectionIndex = selectedIndex;
               detailCardLayout.show(detailCards, CARD_WEIGHTS);
               break;
             case 2:
+              selectedSetupSectionIndex = selectedIndex;
               detailCardLayout.show(detailCards, CARD_BENCHMARK);
               break;
             case 3:
+              selectedSetupSectionIndex = selectedIndex;
               detailCardLayout.show(detailCards, CARD_ACCELERATION);
               break;
+            case 4:
+              SwingUtilities.invokeLater(
+                  () -> {
+                    sectionNav.setSelectedIndex(selectedSetupSectionIndex);
+                    openRemoteComputeCenter();
+                  });
+              break;
             default:
+              selectedSetupSectionIndex = 0;
               detailCardLayout.show(detailCards, CARD_OVERVIEW);
               break;
           }
@@ -381,6 +445,16 @@ public class KataGoAutoSetupDialog extends JDialog {
         text("AutoSetup.overviewTitle"), text("AutoSetup.overviewSubtitle"), rows, actions);
   }
 
+  private void openRemoteComputeCenter() {
+    if (Lizzie.frame != null) {
+      Lizzie.frame.openRemoteComputeCenter();
+      return;
+    }
+    RemoteComputeDialog dialog = new RemoteComputeDialog(JOptionPane.getFrameForComponent(this));
+    dialog.setVisible(true);
+    dialog.toFront();
+  }
+
   private JPanel createWeightsSection() {
     JPanel rows = createRowsPanel();
     GridBagConstraints gbc = createRowConstraints();
@@ -388,7 +462,7 @@ public class KataGoAutoSetupDialog extends JDialog {
         rows,
         gbc,
         text("AutoSetup.officialWeights"),
-        createInlineActionRow(cmbRemoteWeights, btnDownloadWeight));
+        createInlineActionRow(cmbRemoteWeights, btnReloadRemoteWeights, btnDownloadWeight));
     addInfoRow(rows, gbc, text("AutoSetup.selectedWeightInfo"), lblRemoteDetailValue);
     addComponentRow(
         rows,
@@ -396,6 +470,12 @@ public class KataGoAutoSetupDialog extends JDialog {
         text("AutoSetup.localWeights"),
         createInlineActionRow(cmbLocalWeights, btnApplyWeight, btnImportWeight));
     addInfoRow(rows, gbc, text("AutoSetup.selectedLocalWeightInfo"), lblLocalWeightDetailValue);
+    addComponentRow(
+        rows,
+        gbc,
+        text("AutoSetup.humanSlModel"),
+        createInlineActionRow(
+            lblHumanSlModelValue, btnDownloadHumanSlModel, btnImportHumanSlModel));
 
     return createSectionCard(
         text("AutoSetup.weightsTitle"), text("AutoSetup.weightsSubtitle"), rows, null);
@@ -405,6 +485,7 @@ public class KataGoAutoSetupDialog extends JDialog {
     JPanel rows = createRowsPanel();
     GridBagConstraints gbc = createRowConstraints();
     addInfoRow(rows, gbc, text("AutoSetup.nvidiaRuntime"), lblNvidiaRuntimeValue);
+    addInfoRow(rows, gbc, text("AutoSetup.nvidiaGpu"), lblNvidiaGpuValue);
     addInfoRow(rows, gbc, text("AutoSetup.tensorRtDownloadStatus"), lblTensorRtDownloadValue);
     addInfoRow(rows, gbc, text("AutoSetup.tensorRtConfigStatus"), lblTensorRtConfigValue);
 
@@ -413,7 +494,11 @@ public class KataGoAutoSetupDialog extends JDialog {
 
     JPanel actions =
         createActionBar(
-            FlowLayout.RIGHT, btnInstallNvidiaRuntime, btnInstallTensorRt, btnSwitchBackCuda);
+            FlowLayout.RIGHT,
+            btnInstallNvidiaRuntime,
+            btnInstallTensorRt,
+            btnSwitchBackCuda,
+            btnCleanTensorRtCache);
     return createSectionCard(
         text("AutoSetup.accelerationTitle"), text("AutoSetup.accelerationSubtitle"), rows, actions);
   }
@@ -476,13 +561,13 @@ public class KataGoAutoSetupDialog extends JDialog {
 
   private JPanel createSectionCard(
       String title, String subtitle, JComponent content, JComponent actions) {
-    JPanel card = new JPanel(new BorderLayout(0, 14));
+    JPanel card = new JPanel(new BorderLayout(0, 10));
     card.setOpaque(true);
     card.setBackground(CARD_BG);
     card.setBorder(
         BorderFactory.createCompoundBorder(
             BorderFactory.createLineBorder(new Color(224, 217, 203)),
-            BorderFactory.createEmptyBorder(16, 16, 16, 16)));
+            BorderFactory.createEmptyBorder(12, 14, 12, 14)));
 
     JPanel heading = new JPanel(new BorderLayout(0, 4));
     heading.setOpaque(false);
@@ -496,13 +581,16 @@ public class KataGoAutoSetupDialog extends JDialog {
     heading.add(subtitleLabel, BorderLayout.CENTER);
     card.add(heading, BorderLayout.NORTH);
 
+    JPanel contentStack = new JPanel(new BorderLayout(0, 10));
+    contentStack.setOpaque(false);
+    contentStack.add(content, BorderLayout.NORTH);
+    if (actions != null) {
+      contentStack.add(actions, BorderLayout.CENTER);
+    }
     JPanel contentWrap = new JPanel(new BorderLayout());
     contentWrap.setOpaque(false);
-    contentWrap.add(content, BorderLayout.NORTH);
+    contentWrap.add(contentStack, BorderLayout.NORTH);
     card.add(contentWrap, BorderLayout.CENTER);
-    if (actions != null) {
-      card.add(actions, BorderLayout.SOUTH);
-    }
     return card;
   }
 
@@ -517,12 +605,12 @@ public class KataGoAutoSetupDialog extends JDialog {
     gbc.gridx = 0;
     gbc.gridy = 0;
     gbc.anchor = GridBagConstraints.NORTHWEST;
-    gbc.insets = new Insets(0, 0, 10, 10);
+    gbc.insets = new Insets(0, 0, 7, 10);
     return gbc;
   }
 
   private JPanel createActionBar(int alignment, JComponent... actions) {
-    JPanel actionBar = new JPanel(new FlowLayout(alignment, 8, 0));
+    JPanel actionBar = new JPanel(new FlowLayout(alignment, 6, 0));
     actionBar.setOpaque(false);
     for (JComponent action : actions) {
       actionBar.add(action);
@@ -531,7 +619,7 @@ public class KataGoAutoSetupDialog extends JDialog {
   }
 
   private JPanel createInlineActionRow(JComponent mainComponent, JComponent... actions) {
-    JPanel row = new JPanel(new BorderLayout(8, 0));
+    JPanel row = new JPanel(new BorderLayout(6, 0));
     row.setOpaque(false);
     row.add(mainComponent, BorderLayout.CENTER);
     row.add(createActionBar(FlowLayout.RIGHT, actions), BorderLayout.EAST);
@@ -559,18 +647,26 @@ public class KataGoAutoSetupDialog extends JDialog {
 
   private void addComponentRow(
       JPanel panel, GridBagConstraints gbc, String title, JComponent valueComponent) {
+    constrainValueComponent(valueComponent);
+    boolean wrappingText = Boolean.TRUE.equals(valueComponent.getClientProperty(WRAPPING_TEXT_KEY));
+    int rowHeight = Math.max(32, valueComponent.getPreferredSize().height);
+
     GridBagConstraints labelConstraints = (GridBagConstraints) gbc.clone();
     labelConstraints.gridx = 0;
     labelConstraints.weightx = 0;
-    labelConstraints.fill = GridBagConstraints.NONE;
+    labelConstraints.fill = GridBagConstraints.HORIZONTAL;
+    labelConstraints.anchor = wrappingText ? GridBagConstraints.NORTHWEST : GridBagConstraints.WEST;
     JFontLabel titleLabel = new JFontLabel(title);
+    titleLabel.setForeground(TEXT_PRIMARY);
+    titleLabel.setVerticalAlignment(wrappingText ? SwingConstants.TOP : SwingConstants.CENTER);
+    titleLabel.setPreferredSize(new Dimension(132, rowHeight));
+    titleLabel.setMinimumSize(new Dimension(118, Math.min(rowHeight, 32)));
     panel.add(titleLabel, labelConstraints);
 
     GridBagConstraints valueConstraints = (GridBagConstraints) gbc.clone();
     valueConstraints.gridx = 1;
     valueConstraints.weightx = 1;
     valueConstraints.fill = GridBagConstraints.HORIZONTAL;
-    constrainValueComponent(valueComponent);
     panel.add(valueComponent, valueConstraints);
 
     gbc.gridy += 1;
@@ -578,7 +674,7 @@ public class KataGoAutoSetupDialog extends JDialog {
 
   private void constrainValueComponent(JComponent valueComponent) {
     Dimension preferred = valueComponent.getPreferredSize();
-    int height = Math.max(preferred.height, 32);
+    int height = Math.max(preferred.height, 30);
     if (Boolean.TRUE.equals(valueComponent.getClientProperty(WRAPPING_TEXT_KEY))
         && valueComponent instanceof JTextArea) {
       height =
@@ -659,6 +755,7 @@ public class KataGoAutoSetupDialog extends JDialog {
     setInfoValue(lblWeightValue, snapshot.hasWeight(), formatWeight(snapshot));
     setInfoValue(lblWeightModelValue, snapshot.hasWeight(), formatWeightModel(snapshot));
     renderLocalWeights();
+    renderHumanSlModel();
     setInfoValue(lblConfigValue, snapshot.hasConfigs(), formatConfig(snapshot));
     updateNvidiaRuntimeInfo();
     updateBenchmarkInfo();
@@ -728,6 +825,27 @@ public class KataGoAutoSetupDialog extends JDialog {
     updateSelectedLocalWeightInfo();
   }
 
+  private void renderHumanSlModel() {
+    KataGoAutoSetupHelper.HumanSlModelStatus status = KataGoAutoSetupHelper.inspectHumanSlModel();
+    if (status.isInstalled()) {
+      String value =
+          status.modelPath.getFileName() + "  |  " + status.modelPath.toAbsolutePath().normalize();
+      lblHumanSlModelValue.setText(compactInfoText(value));
+      lblHumanSlModelValue.setToolTipText(value);
+      lblHumanSlModelValue.setForeground(OK_COLOR);
+      btnDownloadHumanSlModel.setText(text("AutoSetup.humanSlModelDownloaded"));
+      btnDownloadHumanSlModel.setEnabled(false);
+    } else {
+      lblHumanSlModelValue.setText(text("AutoSetup.humanSlModelMissing"));
+      lblHumanSlModelValue.setToolTipText(null);
+      lblHumanSlModelValue.setForeground(WARN_COLOR);
+      btnDownloadHumanSlModel.setText(text("AutoSetup.downloadHumanSlModel"));
+      btnDownloadHumanSlModel.setEnabled(
+          activeDownloadSession == null && activeWorkerThread == null);
+    }
+    btnImportHumanSlModel.setEnabled(activeDownloadSession == null && activeWorkerThread == null);
+  }
+
   private String formatConfig(SetupSnapshot state) {
     if (state.gtpConfigPath == null) {
       return text("AutoSetup.notFound");
@@ -761,7 +879,9 @@ public class KataGoAutoSetupDialog extends JDialog {
 
   private void updateTensorRtInfo() {
     KataGoRuntimeHelper.TensorRtInstallStatus status =
-        snapshot == null ? null : KataGoRuntimeHelper.inspectTensorRtInstall(snapshot);
+        snapshot == null
+            ? null
+            : KataGoRuntimeHelper.inspectTensorRtInstall(snapshot, nvidiaGpuDetection);
     if (status == null) {
       setTensorRtLabel(lblTensorRtDownloadValue, text("AutoSetup.notFound"), Color.DARK_GRAY, null);
       setTensorRtLabel(lblTensorRtConfigValue, text("AutoSetup.notFound"), Color.DARK_GRAY, null);
@@ -770,20 +890,25 @@ public class KataGoAutoSetupDialog extends JDialog {
       btnInstallTensorRt.setEnabled(false);
       btnSwitchBackCuda.setToolTipText(null);
       btnSwitchBackCuda.setEnabled(false);
+      updateTensorRtCacheButton();
+      updateNvidiaGpuInfo(null);
       return;
     }
+    updateNvidiaGpuInfo(status);
     if (!status.applicable) {
       setTensorRtLabel(
           lblTensorRtDownloadValue, status.detailText, Color.DARK_GRAY, status.detailText);
       setTensorRtLabel(
           lblTensorRtConfigValue, status.detailText, Color.DARK_GRAY, status.detailText);
       btnInstallTensorRt.setText(text("AutoSetup.installTensorRt"));
-      btnInstallTensorRt.setToolTipText(status.detailText);
+      btnInstallTensorRt.setToolTipText(tensorRtButtonTooltip(status));
       btnInstallTensorRt.setEnabled(false);
       btnSwitchBackCuda.setToolTipText(text("AutoSetup.switchBackCudaTooltip"));
       btnSwitchBackCuda.setEnabled(false);
+      updateTensorRtCacheButton();
       return;
     }
+    maybeStartNvidiaGpuDetection(status);
     setTensorRtLabel(
         lblTensorRtDownloadValue,
         status.downloaded
@@ -803,9 +928,9 @@ public class KataGoAutoSetupDialog extends JDialog {
     } else if (status.installed) {
       btnInstallTensorRt.setText(text("AutoSetup.enableTensorRt"));
     } else {
-      btnInstallTensorRt.setText(text("AutoSetup.installTensorRt"));
+      btnInstallTensorRt.setText(tensorRtInstallButtonText(status));
     }
-    btnInstallTensorRt.setToolTipText(status.detailText);
+    btnInstallTensorRt.setToolTipText(tensorRtButtonTooltip(status));
     btnInstallTensorRt.setEnabled(
         activeDownloadSession == null
             && activeWorkerThread == null
@@ -818,12 +943,108 @@ public class KataGoAutoSetupDialog extends JDialog {
             && status.applicable
             && status.active
             && canSwitchBackToCuda());
+    updateTensorRtCacheButton();
+  }
+
+  private void updateTensorRtCacheButton() {
+    long cacheBytes = KataGoRuntimeHelper.tensorRtDownloadCacheBytes();
+    btnCleanTensorRtCache.setEnabled(
+        activeDownloadSession == null && activeWorkerThread == null && cacheBytes > 0L);
+    btnCleanTensorRtCache.setToolTipText(
+        cacheBytes > 0L
+            ? String.format(text("AutoSetup.cleanTensorRtCacheTooltip"), formatSize(cacheBytes))
+            : text("AutoSetup.cleanTensorRtCacheEmpty"));
   }
 
   private void setTensorRtLabel(JLabel label, String value, Color color, String tooltip) {
     label.setText(value);
     label.setForeground(color);
     label.setToolTipText(tooltip);
+  }
+
+  private void maybeStartNvidiaGpuDetection(KataGoRuntimeHelper.TensorRtInstallStatus status) {
+    if (status == null
+        || !status.applicable
+        || nvidiaGpuDetection != null
+        || nvidiaGpuDetectionRunning) {
+      return;
+    }
+    nvidiaGpuDetectionRunning = true;
+    updateNvidiaGpuInfo(status);
+    Thread worker =
+        new Thread(
+            () -> {
+              NvidiaGpuDetector.DetectionResult result = NvidiaGpuDetector.detectBestGpu();
+              SwingUtilities.invokeLater(
+                  () -> {
+                    nvidiaGpuDetection = result;
+                    nvidiaGpuDetectionRunning = false;
+                    updateTensorRtInfo();
+                  });
+            },
+            "katago-nvidia-gpu-detection");
+    worker.setDaemon(true);
+    worker.start();
+  }
+
+  private void updateNvidiaGpuInfo(KataGoRuntimeHelper.TensorRtInstallStatus status) {
+    if (nvidiaGpuDetectionRunning) {
+      lblNvidiaGpuValue.setText(text("AutoSetup.gpuDetecting"));
+      lblNvidiaGpuValue.setToolTipText(null);
+      lblNvidiaGpuValue.setForeground(TEXT_SECONDARY);
+      return;
+    }
+    if (status == null || status.gpuDetection == null) {
+      lblNvidiaGpuValue.setText(text("AutoSetup.gpuDetectNotFound"));
+      lblNvidiaGpuValue.setToolTipText(null);
+      lblNvidiaGpuValue.setForeground(Color.DARK_GRAY);
+      return;
+    }
+    String summary = status.gpuDetection.summaryText;
+    lblNvidiaGpuValue.setText(compactInfoText(summary, GPU_INFO_TEXT_LENGTH));
+    lblNvidiaGpuValue.setToolTipText(summary);
+    lblNvidiaGpuValue.setForeground(tensorRtGpuStatusColor(status.gpuRecommendation));
+  }
+
+  private Color tensorRtGpuStatusColor(NvidiaGpuDetector.TensorRtRecommendation recommendation) {
+    if (recommendation == NvidiaGpuDetector.TensorRtRecommendation.RECOMMENDED) {
+      return OK_COLOR;
+    }
+    if (recommendation == NvidiaGpuDetector.TensorRtRecommendation.ALLOWED) {
+      return WARN_COLOR;
+    }
+    if (recommendation == NvidiaGpuDetector.TensorRtRecommendation.NOT_RECOMMENDED) {
+      return ERROR_COLOR;
+    }
+    return Color.DARK_GRAY;
+  }
+
+  private String tensorRtInstallButtonText(KataGoRuntimeHelper.TensorRtInstallStatus status) {
+    if (status == null || nvidiaGpuDetectionRunning) {
+      return text("AutoSetup.installTensorRt");
+    }
+    if (status.gpuRecommendation == NvidiaGpuDetector.TensorRtRecommendation.NOT_RECOMMENDED) {
+      return text("AutoSetup.installTensorRtAdvanced");
+    }
+    if (status.gpuRecommendation == NvidiaGpuDetector.TensorRtRecommendation.UNKNOWN) {
+      return text("AutoSetup.installTensorRtManual");
+    }
+    return text("AutoSetup.installTensorRt");
+  }
+
+  private String tensorRtButtonTooltip(KataGoRuntimeHelper.TensorRtInstallStatus status) {
+    if (status == null) {
+      return null;
+    }
+    String tooltip = status.detailText == null ? "" : status.detailText;
+    if (!Utils.isBlank(status.gpuRecommendationText)
+        && !tooltip.contains(status.gpuRecommendationText)) {
+      tooltip =
+          tooltip.isEmpty()
+              ? status.gpuRecommendationText
+              : tooltip + " | " + status.gpuRecommendationText;
+    }
+    return tooltip.isEmpty() ? null : tooltip;
   }
 
   private void updateBenchmarkInfo() {
@@ -851,6 +1072,10 @@ public class KataGoAutoSetupDialog extends JDialog {
   }
 
   private void loadRemoteWeightInfo() {
+    btnReloadRemoteWeights.setEnabled(false);
+    lblRemoteDetailValue.setText(text("AutoSetup.loadingRemote"));
+    lblRemoteDetailValue.setToolTipText(null);
+    lblRemoteDetailValue.setForeground(WARN_COLOR);
     new Thread(
             () -> {
               try {
@@ -866,12 +1091,21 @@ public class KataGoAutoSetupDialog extends JDialog {
                       lblRemoteDetailValue.setToolTipText(e.getMessage());
                       lblRemoteDetailValue.setForeground(ERROR_COLOR);
                       btnDownloadWeight.setEnabled(false);
+                      btnReloadRemoteWeights.setEnabled(true);
                       btnStopDownload.setEnabled(false);
                     });
               }
             },
             "katago-remote-weight-info")
         .start();
+  }
+
+  private void reloadRemoteWeightInfo() {
+    if (hasActiveBackgroundTask()) {
+      showBackgroundTaskAlreadyRunningNotice();
+      return;
+    }
+    loadRemoteWeightInfo();
   }
 
   private void showRemoteWeightInfo(List<RemoteWeightInfo> infos) {
@@ -887,6 +1121,7 @@ public class KataGoAutoSetupDialog extends JDialog {
       cmbRemoteWeights.setSelectedItem(preferred);
     }
     updateSelectedRemoteWeightInfo();
+    btnReloadRemoteWeights.setEnabled(true);
     btnStopDownload.setEnabled(activeDownloadSession != null);
   }
 
@@ -962,6 +1197,93 @@ public class KataGoAutoSetupDialog extends JDialog {
               }
             },
             "katago-import-weight");
+    activeWorkerThread = worker;
+    worker.start();
+  }
+
+  private void importHumanSlModel() {
+    JFileChooser chooser = new JFileChooser();
+    chooser.setDialogTitle(text("AutoSetup.importHumanSlModelTitle"));
+    chooser.setFileFilter(
+        new FileNameExtensionFilter(text("AutoSetup.importHumanSlModelFilter"), "gz"));
+    if (chooser.showOpenDialog(this) != JFileChooser.APPROVE_OPTION) {
+      return;
+    }
+    final Path source = chooser.getSelectedFile().toPath();
+    if (!isSupportedWeightFileName(source)) {
+      Utils.showMsg(text("AutoSetup.importHumanSlModelInvalid"), this);
+      return;
+    }
+    setBusy(true, text("AutoSetup.importingHumanSlModel"), 0, -1);
+    Thread worker =
+        new Thread(
+            () -> {
+              try {
+                Path importedModel = KataGoAutoSetupHelper.importHumanSlModel(source);
+                SwingUtilities.invokeLater(
+                    () -> {
+                      activeWorkerThread = null;
+                      setBusy(false, text("AutoSetup.importHumanSlModelDone"), 0, 0);
+                      snapshot = KataGoAutoSetupHelper.inspectLocalSetup();
+                      renderSnapshot();
+                      Utils.showMsg(
+                          text("AutoSetup.importHumanSlModelDoneMessage") + "\n" + importedModel,
+                          this);
+                    });
+              } catch (IOException e) {
+                SwingUtilities.invokeLater(
+                    () -> {
+                      activeWorkerThread = null;
+                      onBackgroundError(e);
+                    });
+              }
+            },
+            "katago-import-humansl-model");
+    activeWorkerThread = worker;
+    worker.start();
+  }
+
+  private void startHumanSlModelDownload() {
+    final DownloadSession session = new DownloadSession();
+    activeDownloadSession = session;
+    setBusy(true, text("AutoSetup.downloadingHumanSlModel"), 0, -1);
+    Thread worker =
+        new Thread(
+            () -> {
+              try {
+                Path downloadedModel =
+                    KataGoAutoSetupHelper.downloadHumanSlModel(
+                        (statusText, downloadedBytes, totalBytes) ->
+                            SwingUtilities.invokeLater(
+                                () ->
+                                    setBusy(
+                                        true,
+                                        text("AutoSetup.downloadingHumanSlModel")
+                                            + " "
+                                            + statusText,
+                                        downloadedBytes,
+                                        totalBytes)),
+                        session);
+                SwingUtilities.invokeLater(
+                    () -> {
+                      setBusy(false, text("AutoSetup.humanSlModelDownloadDone"), 0, 0);
+                      snapshot = KataGoAutoSetupHelper.inspectLocalSetup();
+                      renderSnapshot();
+                      Utils.showMsg(
+                          text("AutoSetup.humanSlModelDownloadDoneMessage")
+                              + "\n"
+                              + downloadedModel,
+                          this);
+                    });
+              } catch (DownloadCancelledException e) {
+                SwingUtilities.invokeLater(() -> onDownloadCancelled());
+              } catch (IOException e) {
+                SwingUtilities.invokeLater(() -> onBackgroundError(e));
+              } finally {
+                clearActiveDownload(session, Thread.currentThread());
+              }
+            },
+            "katago-download-humansl-model");
     activeWorkerThread = worker;
     worker.start();
   }
@@ -1062,7 +1384,7 @@ public class KataGoAutoSetupDialog extends JDialog {
       snapshot = KataGoAutoSetupHelper.inspectLocalSetup();
     }
     KataGoRuntimeHelper.TensorRtInstallStatus status =
-        KataGoRuntimeHelper.inspectTensorRtInstall(snapshot);
+        KataGoRuntimeHelper.inspectTensorRtInstall(snapshot, nvidiaGpuDetection);
     if (!status.applicable) {
       Utils.showMsg(status.detailText, this);
       return;
@@ -1080,8 +1402,7 @@ public class KataGoAutoSetupDialog extends JDialog {
     int result =
         JOptionPane.showConfirmDialog(
             this,
-            String.format(
-                text("AutoSetup.tensorRtConfirmMessage"), formatSize(status.downloadBytes)),
+            formatTensorRtConfirmMessage(status),
             text("AutoSetup.tensorRtConfirmTitle"),
             JOptionPane.OK_CANCEL_OPTION,
             JOptionPane.WARNING_MESSAGE);
@@ -1181,6 +1502,59 @@ public class KataGoAutoSetupDialog extends JDialog {
     } catch (IOException e) {
       onBackgroundError(e);
     }
+  }
+
+  private void cleanTensorRtCache() {
+    if (hasActiveBackgroundTask()) {
+      showBackgroundTaskAlreadyRunningNotice();
+      return;
+    }
+    long cacheBytes = KataGoRuntimeHelper.tensorRtDownloadCacheBytes();
+    if (cacheBytes <= 0L) {
+      lblStatus.setText(text("AutoSetup.cleanTensorRtCacheEmpty"));
+      lblStatus.setForeground(OK_COLOR);
+      updateTensorRtInfo();
+      return;
+    }
+    int result =
+        JOptionPane.showConfirmDialog(
+            this,
+            String.format(text("AutoSetup.cleanTensorRtCacheConfirm"), formatSize(cacheBytes)),
+            text("AutoSetup.cleanTensorRtCache"),
+            JOptionPane.OK_CANCEL_OPTION,
+            JOptionPane.QUESTION_MESSAGE);
+    if (result != JOptionPane.OK_OPTION) {
+      return;
+    }
+    try {
+      long freedBytes = KataGoRuntimeHelper.cleanupTensorRtDownloadCache();
+      String message =
+          String.format(text("AutoSetup.cleanTensorRtCacheDone"), formatSize(freedBytes));
+      lblStatus.setText(message);
+      lblStatus.setForeground(OK_COLOR);
+      updateTensorRtInfo();
+      Utils.showMsg(message, this);
+    } catch (IOException e) {
+      onBackgroundError(e);
+    }
+  }
+
+  private String formatTensorRtConfirmMessage(KataGoRuntimeHelper.TensorRtInstallStatus status) {
+    String sizeText = status == null ? "0 MB" : formatSize(status.downloadBytes);
+    String recommendation =
+        status == null || Utils.isBlank(status.gpuRecommendationText)
+            ? text("AutoSetup.tensorRtGpuHint")
+            : status.gpuRecommendationText;
+    String message;
+    try {
+      message = String.format(text("AutoSetup.tensorRtConfirmMessage"), sizeText, recommendation);
+    } catch (IllegalFormatException e) {
+      message = String.format(text("AutoSetup.tensorRtConfirmMessage"), sizeText);
+    }
+    if (!Utils.isBlank(recommendation) && !message.contains(recommendation)) {
+      message = message + "\n\n" + recommendation;
+    }
+    return message;
   }
 
   private void startPerformanceBenchmark() {
@@ -1366,14 +1740,19 @@ public class KataGoAutoSetupDialog extends JDialog {
     progressStatusLabel.setForeground(busy ? WARN_COLOR : Color.DARK_GRAY);
     btnRefresh.setEnabled(!busy);
     btnAutoSetup.setEnabled(!busy);
+    btnReloadRemoteWeights.setEnabled(!busy);
     btnDownloadWeight.setEnabled(!busy && canDownloadSelectedRemoteWeight());
     btnImportWeight.setEnabled(!busy);
     btnApplyWeight.setEnabled(!busy && getSelectedLocalWeight() != null);
+    btnDownloadHumanSlModel.setEnabled(!busy && canDownloadHumanSlModel());
+    btnImportHumanSlModel.setEnabled(!busy);
     cmbLocalWeights.setEnabled(!busy && cmbLocalWeights.getItemCount() > 0);
     cmbRemoteWeights.setEnabled(!busy && cmbRemoteWeights.getItemCount() > 0);
     btnInstallNvidiaRuntime.setEnabled(!busy && canInstallNvidiaRuntime());
     btnInstallTensorRt.setEnabled(!busy && canInstallTensorRt());
     btnSwitchBackCuda.setEnabled(!busy && canSwitchBackToCuda());
+    btnCleanTensorRtCache.setEnabled(
+        !busy && KataGoRuntimeHelper.tensorRtDownloadCacheBytes() > 0L);
     btnOptimizePerformance.setEnabled(!busy && canRunBenchmark());
     btnStopDownload.setEnabled(busy && activeDownloadSession != null);
     btnClose.setEnabled(true);
@@ -1499,6 +1878,12 @@ public class KataGoAutoSetupDialog extends JDialog {
         && snapshot.hasWeight();
   }
 
+  private boolean canDownloadHumanSlModel() {
+    return !KataGoAutoSetupHelper.inspectHumanSlModel().isInstalled()
+        && activeDownloadSession == null
+        && activeWorkerThread == null;
+  }
+
   private boolean isBenchmarkPermilleProgress(
       String statusText, long downloadedBytes, long totalBytes) {
     return totalBytes == 1000L && downloadedBytes >= 0L && downloadedBytes <= 1000L;
@@ -1554,6 +1939,10 @@ public class KataGoAutoSetupDialog extends JDialog {
   private String formatSize(long bytes) {
     if (bytes <= 0) {
       return "0 MB";
+    }
+    double gb = bytes / 1024.0 / 1024.0 / 1024.0;
+    if (gb >= 1.0) {
+      return String.format("%.1f GB", gb);
     }
     double mb = bytes / 1024.0 / 1024.0;
     if (mb >= 100) {
@@ -1636,11 +2025,15 @@ public class KataGoAutoSetupDialog extends JDialog {
   }
 
   private String compactInfoText(String value) {
-    if (value == null || value.length() <= MAX_INFO_TEXT_LENGTH) {
+    return compactInfoText(value, MAX_INFO_TEXT_LENGTH);
+  }
+
+  private String compactInfoText(String value, int maxLength) {
+    if (value == null || value.length() <= maxLength) {
       return value;
     }
-    int head = Math.max(32, MAX_INFO_TEXT_LENGTH / 2 - 6);
-    int tail = Math.max(36, MAX_INFO_TEXT_LENGTH - head - 5);
+    int head = Math.max(32, maxLength / 2 - 6);
+    int tail = Math.max(36, maxLength - head - 5);
     return value.substring(0, head) + " ... " + value.substring(value.length() - tail);
   }
 
@@ -1696,6 +2089,11 @@ public class KataGoAutoSetupDialog extends JDialog {
         if (matchesModelName(info, currentModel)) {
           return info;
         }
+      }
+    }
+    for (RemoteWeightInfo info : remoteWeightInfos) {
+      if (KataGoAutoSetupHelper.isDefaultGeneralUseWeight(info)) {
+        return info;
       }
     }
     for (RemoteWeightInfo info : remoteWeightInfos) {
@@ -1822,14 +2220,18 @@ public class KataGoAutoSetupDialog extends JDialog {
     }
     btnRefresh.setEnabled(true);
     btnAutoSetup.setEnabled(true);
+    btnReloadRemoteWeights.setEnabled(true);
     btnDownloadWeight.setEnabled(getSelectedRemoteWeight() != null);
     btnImportWeight.setEnabled(true);
     btnApplyWeight.setEnabled(getSelectedLocalWeight() != null);
+    btnDownloadHumanSlModel.setEnabled(canDownloadHumanSlModel());
+    btnImportHumanSlModel.setEnabled(true);
     cmbLocalWeights.setEnabled(cmbLocalWeights.getItemCount() > 0);
     cmbRemoteWeights.setEnabled(cmbRemoteWeights.getItemCount() > 0);
     btnInstallNvidiaRuntime.setEnabled(canInstallNvidiaRuntime());
     btnInstallTensorRt.setEnabled(canInstallTensorRt());
     btnSwitchBackCuda.setEnabled(canSwitchBackToCuda());
+    updateTensorRtCacheButton();
     btnOptimizePerformance.setEnabled(canRunBenchmark());
     btnStopDownload.setEnabled(false);
     btnClose.setEnabled(true);
@@ -1837,5 +2239,38 @@ public class KataGoAutoSetupDialog extends JDialog {
 
   private String text(String key) {
     return Lizzie.resourceBundle.getString(key);
+  }
+
+  private static class RefreshIcon implements Icon {
+    private static final int SIZE = 18;
+
+    @Override
+    public int getIconWidth() {
+      return SIZE;
+    }
+
+    @Override
+    public int getIconHeight() {
+      return SIZE;
+    }
+
+    @Override
+    public void paintIcon(Component component, Graphics graphics, int x, int y) {
+      Graphics2D g2 = (Graphics2D) graphics.create();
+      try {
+        g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+        g2.setStroke(new BasicStroke(2.1f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+        g2.setColor(new Color(52, 90, 88));
+        g2.draw(new Arc2D.Double(x + 3, y + 3, 12, 12, 32, 292, Arc2D.OPEN));
+
+        Polygon arrow = new Polygon();
+        arrow.addPoint(x + 15, y + 2);
+        arrow.addPoint(x + 16, y + 8);
+        arrow.addPoint(x + 10, y + 5);
+        g2.fillPolygon(arrow);
+      } finally {
+        g2.dispose();
+      }
+    }
   }
 }

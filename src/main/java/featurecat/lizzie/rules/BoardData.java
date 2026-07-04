@@ -333,7 +333,18 @@ public class BoardData {
       boolean isFromLeelaz,
       int totalplayouts,
       ArrayList<Double> estimateArray) {
-    if (Lizzie.config.enableLizzieCache
+    tryToSetBestMoves(moves, engName, isFromLeelaz, totalplayouts, estimateArray, false);
+  }
+
+  public void tryToSetBestMoves(
+      List<MoveData> moves,
+      String engName,
+      boolean isFromLeelaz,
+      int totalplayouts,
+      ArrayList<Double> estimateArray,
+      boolean forceOverride) {
+    if (!forceOverride
+        && Lizzie.config.enableLizzieCache
         && !Lizzie.config.isAutoAna
         && !EngineManager.isEngineGame) {
       if (!(totalplayouts > playouts || isChanged || pda != Lizzie.leelaz.pda)) {
@@ -590,16 +601,42 @@ public class BoardData {
 
   public void sync(BoardData data) {
     copyCoreStateFrom(data);
-    copyAnalysisStateFrom(data);
+    copyAnalysisStateFrom(data, true);
     this.properties = copyProperties(data.properties);
+  }
+
+  public void copyAnalysisPayloadFrom(BoardData data) {
+    copyAnalysisStateFrom(data, false);
   }
 
   public BoardData clone() {
     BoardData data = copyCoreData();
     data.copyCoreStateFrom(this);
-    data.copyAnalysisStateFrom(this);
+    data.copyAnalysisStateFrom(this, true);
     data.properties = copyProperties(this.properties);
     return data;
+  }
+
+  public boolean hasPrimaryAnalysisPayload() {
+    return getPlayouts() > 0
+        || analysisHeaderSlots > 0
+        || (engineName != null && !engineName.isEmpty())
+        || (bestMoves != null && !bestMoves.isEmpty())
+        || isKataData
+        || (estimateArray != null && !estimateArray.isEmpty());
+  }
+
+  public boolean hasSecondaryAnalysisPayload() {
+    return getPlayouts2() > 0
+        || analysisHeaderSlots2 > 0
+        || (engineName2 != null && !engineName2.isEmpty())
+        || (bestMoves2 != null && !bestMoves2.isEmpty())
+        || isKataData2
+        || (estimateArray2 != null && !estimateArray2.isEmpty());
+  }
+
+  public boolean hasAnyAnalysisPayload() {
+    return hasPrimaryAnalysisPayload() || hasSecondaryAnalysisPayload();
   }
 
   public boolean isSameCoord(int[] coord) {
@@ -680,7 +717,7 @@ public class BoardData {
     this.whiteCaptures = data.whiteCaptures;
   }
 
-  private void copyAnalysisStateFrom(BoardData data) {
+  private void copyAnalysisStateFrom(BoardData data, boolean includeComment) {
     this.winrate = data.winrate;
     this.winrate2 = data.winrate2;
     this.playouts = data.playouts;
@@ -695,7 +732,9 @@ public class BoardData {
     this.bestMoves2OutOfRange = copyMoveDataList(data.bestMoves2OutOfRange);
     this.isChanged = data.isChanged;
     this.isChanged2 = data.isChanged2;
-    this.comment = data.comment;
+    if (includeComment) {
+      this.comment = data.comment;
+    }
     this.engineName = data.engineName;
     this.engineName2 = data.engineName2;
     this.isSaiData = data.isSaiData;

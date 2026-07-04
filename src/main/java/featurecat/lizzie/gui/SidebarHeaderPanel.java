@@ -135,36 +135,65 @@ public class SidebarHeaderPanel extends JPanel {
     FontMetrics fm = g2.getFontMetrics();
 
     if (!Lizzie.config.isAppleStyle) {
+      // Classic mode: same hit geometry as before (locked by SidebarHeaderPanelHitTest),
+      // but drawn as real tabs — the active label gets an accent underline instead of
+      // relying on text brightness alone.
       int x = CONTROL_X;
       int y = CLASSIC_PRIMARY_BASELINE;
+      Color accent = glassAccentColor();
+
       g2.setColor(showBlunders ? TEXT_NORMAL : TEXT_SELECTED);
       g2.drawString("评论", x, y);
-      g2.setColor(TEXT_NORMAL);
-      g2.drawString("｜", x + CLASSIC_SEPARATOR_OFFSET, y);
       g2.setColor(showBlunders ? TEXT_SELECTED : TEXT_NORMAL);
       g2.drawString("问题手", x + CLASSIC_SECOND_LABEL_OFFSET, y);
 
+      int underlineY = y + 7;
+      g2.setColor(withAlpha(accent, 220));
+      if (showBlunders) {
+        g2.fillRoundRect(
+            x + CLASSIC_SECOND_LABEL_OFFSET, underlineY, fm.stringWidth("问题手"), 3, 3, 3);
+      } else {
+        g2.fillRoundRect(x, underlineY, fm.stringWidth("评论"), 3, 3, 3);
+      }
+
       String pillText = progressLabelFor(currentSnapshot);
       if (!pillText.isEmpty()) {
-        int progressX = getWidth() - fm.stringWidth(pillText) - 10;
+        int textWidth = fm.stringWidth(pillText);
+        int progressX = getWidth() - textWidth - 10;
         int leftEdgeToAvoid =
             showBlunders
                 ? CLASSIC_SIDE_X + CLASSIC_SIDE_LEGACY_WIDTH + 8
                 : CONTROL_X + CLASSIC_PRIMARY_LEGACY_WIDTH + 8;
         if (progressX > leftEdgeToAvoid) {
-          g2.setColor(TEXT_NORMAL);
+          boolean running = currentSnapshot != null && currentSnapshot.analysisRunning;
+          g2.setColor(running ? new Color(255, 184, 77, 40) : new Color(255, 255, 255, 18));
+          g2.fillRoundRect(progressX - 8, y - fm.getAscent() - 1, textWidth + 16, 22, 11, 11);
+          g2.setColor(running ? new Color(255, 213, 153, 64) : new Color(255, 255, 255, 30));
+          g2.drawRoundRect(progressX - 8, y - fm.getAscent() - 1, textWidth + 15, 21, 11, 11);
+          g2.setColor(running ? TEXT_SELECTED : TEXT_NORMAL);
           g2.drawString(pillText, progressX, y);
         }
       }
 
       if (showBlunders) {
         x = CLASSIC_SIDE_X;
-        g2.setColor(sideFilter == ProblemListSideFilter.BLACK ? TEXT_SELECTED : TEXT_NORMAL);
+        boolean blackSelected = sideFilter == ProblemListSideFilter.BLACK;
+        g2.setColor(blackSelected ? TEXT_SELECTED : TEXT_NORMAL);
         g2.drawString("黑棋", x, y);
-        g2.setColor(TEXT_NORMAL);
-        g2.drawString("｜", x + CLASSIC_SEPARATOR_OFFSET, y);
-        g2.setColor(sideFilter == ProblemListSideFilter.WHITE ? TEXT_SELECTED : TEXT_NORMAL);
+        g2.setColor(!blackSelected ? TEXT_SELECTED : TEXT_NORMAL);
         g2.drawString("白棋", x + CLASSIC_SECOND_LABEL_OFFSET, y);
+
+        // Side-colored underline: black bar for 黑棋, bordered white bar for 白棋.
+        if (blackSelected) {
+          g2.setColor(new Color(16, 18, 22));
+          g2.fillRoundRect(x, underlineY, fm.stringWidth("黑棋"), 3, 3, 3);
+          g2.setColor(new Color(255, 255, 255, 170));
+          g2.drawRoundRect(x, underlineY, fm.stringWidth("黑棋") - 1, 2, 3, 3);
+        } else {
+          g2.setColor(new Color(245, 247, 250));
+          g2.fillRoundRect(
+              x + CLASSIC_SECOND_LABEL_OFFSET, underlineY, fm.stringWidth("白棋"), 3, 3, 3);
+        }
       }
       g2.dispose();
       return;
@@ -223,7 +252,8 @@ public class SidebarHeaderPanel extends JPanel {
       }
     }
 
-    // 3. [ 黑 | 白 ]
+    // 3. [ 黑 | 白 ] — the thumb shows the actual side color, so the active side is
+    // readable at a glance without parsing text.
     if (showBlunders) {
       x = APPLE_SIDE_X;
       y = APPLE_SIDE_Y;
@@ -238,20 +268,42 @@ public class SidebarHeaderPanel extends JPanel {
       g2.setColor(new Color(255, 255, 255, 14));
       g2.drawRoundRect(x, y, segW - 1, segH - 1, arc, arc);
 
-      g2.setColor(withAlpha(accent, 118));
-      if (sideFilter == ProblemListSideFilter.BLACK) {
+      boolean blackSelected = sideFilter == ProblemListSideFilter.BLACK;
+      if (blackSelected) {
+        g2.setColor(new Color(12, 14, 18, 240));
         g2.fillRoundRect(x + 2, y + 2, halfW - 2, segH - 4, arc - 2, arc - 2);
+        g2.setColor(withAlpha(accent, 150));
+        g2.drawRoundRect(x + 2, y + 2, halfW - 3, segH - 5, arc - 2, arc - 2);
       } else {
+        g2.setColor(new Color(243, 245, 248, 240));
         g2.fillRoundRect(x + halfW, y + 2, halfW - 2, segH - 4, arc - 2, arc - 2);
+        g2.setColor(withAlpha(accent, 150));
+        g2.drawRoundRect(x + halfW, y + 2, halfW - 3, segH - 5, arc - 2, arc - 2);
       }
 
-      g2.setColor(sideFilter == ProblemListSideFilter.BLACK ? TEXT_SELECTED : TEXT_NORMAL);
-      String b1 = "⚫ 黑棋";
-      g2.drawString(b1, x + (halfW - fm.stringWidth(b1)) / 2, baseline);
+      String b1 = "黑棋";
+      String b2 = "白棋";
+      int dotSize = 8;
+      int dotGap = 5;
 
-      g2.setColor(sideFilter == ProblemListSideFilter.WHITE ? TEXT_SELECTED : TEXT_NORMAL);
-      String b2 = "⚪ 白棋";
-      g2.drawString(b2, x + halfW + (halfW - fm.stringWidth(b2)) / 2, baseline);
+      int seg1Content = dotSize + dotGap + fm.stringWidth(b1);
+      int seg1X = x + (halfW - seg1Content) / 2;
+      int dotY = y + (segH - dotSize) / 2;
+      g2.setColor(blackSelected ? new Color(20, 22, 26) : new Color(35, 38, 44));
+      g2.fillOval(seg1X, dotY, dotSize, dotSize);
+      g2.setColor(new Color(255, 255, 255, blackSelected ? 190 : 90));
+      g2.drawOval(seg1X, dotY, dotSize, dotSize);
+      g2.setColor(blackSelected ? TEXT_SELECTED : TEXT_NORMAL);
+      g2.drawString(b1, seg1X + dotSize + dotGap, baseline);
+
+      int seg2Content = dotSize + dotGap + fm.stringWidth(b2);
+      int seg2X = x + halfW + (halfW - seg2Content) / 2;
+      g2.setColor(new Color(248, 249, 252));
+      g2.fillOval(seg2X, dotY, dotSize, dotSize);
+      g2.setColor(new Color(0, 0, 0, blackSelected ? 70 : 160));
+      g2.drawOval(seg2X, dotY, dotSize, dotSize);
+      g2.setColor(!blackSelected ? new Color(28, 31, 36) : TEXT_NORMAL);
+      g2.drawString(b2, seg2X + dotSize + dotGap, baseline);
     }
 
     g2.dispose();

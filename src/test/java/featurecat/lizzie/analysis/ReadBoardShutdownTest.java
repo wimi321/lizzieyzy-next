@@ -1,5 +1,6 @@
 package featurecat.lizzie.analysis;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
@@ -86,7 +87,86 @@ class ReadBoardShutdownTest {
   }
 
   @Test
-  void openReadBoardJavaDoesNotBlockEventDispatchThreadWhileRestarting() throws Exception {
+  void shutdownAfterProcessEndDoesNotWriteQuitToClosedPipe() throws Exception {
+    LizzieFrame previousFrame = Lizzie.frame;
+    try {
+      ReadBoard readBoard = allocate(ReadBoard.class);
+      LizzieFrame frame = allocate(LizzieFrame.class);
+      TrackingInputStreamReader inputStream =
+          new TrackingInputStreamReader(new ByteArrayInputStream(new byte[0]));
+      TrackingBufferedOutputStream outputStream = new TrackingBufferedOutputStream();
+      ScheduledExecutorService executor = Executors.newSingleThreadScheduledExecutor();
+
+      frame.syncBoard = true;
+      frame.bothSync = true;
+      frame.readBoard = readBoard;
+      Lizzie.frame = frame;
+
+      setField(readBoard, "conflictTracker", new SyncConflictTracker());
+      setField(readBoard, "historyJumpTracker", new SyncHistoryJumpTracker());
+      setField(readBoard, "localNavigationTracker", new SyncLocalNavigationTracker());
+      setField(readBoard, "tempcount", new ArrayList<Integer>());
+      setField(readBoard, "usePipe", true);
+      setField(readBoard, "inputStream", inputStream);
+      setField(readBoard, "outputStream", outputStream);
+      setField(readBoard, "executor", executor);
+
+      readBoard.shutdownAfterProcessEnd();
+
+      assertFalse(frame.syncBoard, "process-ended shutdown should clear syncBoard state.");
+      assertFalse(frame.bothSync, "process-ended shutdown should clear bothSync state.");
+      assertNull(frame.readBoard, "process-ended shutdown should detach the closed ReadBoard.");
+      assertTrue(outputStream.closeCalled, "process-ended shutdown should close hosted stdin.");
+      assertTrue(
+          inputStream.closeCalled, "process-ended shutdown should close hosted stdout reader.");
+      assertFalse(
+          outputStream.writtenText().contains("quit"),
+          "process-ended shutdown should not write quit to a readboard pipe that already ended.");
+    } finally {
+      Lizzie.frame = previousFrame;
+    }
+  }
+
+  @Test
+  void shutdownOnlyWritesQuitOnceWhenCalledRepeatedly() throws Exception {
+    LizzieFrame previousFrame = Lizzie.frame;
+    try {
+      ReadBoard readBoard = allocate(ReadBoard.class);
+      LizzieFrame frame = allocate(LizzieFrame.class);
+      TrackingInputStreamReader inputStream =
+          new TrackingInputStreamReader(new ByteArrayInputStream(new byte[0]));
+      TrackingBufferedOutputStream outputStream = new TrackingBufferedOutputStream();
+      ScheduledExecutorService executor = Executors.newSingleThreadScheduledExecutor();
+
+      frame.readBoard = readBoard;
+      Lizzie.frame = frame;
+
+      setField(readBoard, "conflictTracker", new SyncConflictTracker());
+      setField(readBoard, "historyJumpTracker", new SyncHistoryJumpTracker());
+      setField(readBoard, "localNavigationTracker", new SyncLocalNavigationTracker());
+      setField(readBoard, "tempcount", new ArrayList<Integer>());
+      setField(readBoard, "usePipe", true);
+      setField(readBoard, "inputStream", inputStream);
+      setField(readBoard, "outputStream", outputStream);
+      setField(readBoard, "executor", executor);
+
+      readBoard.shutdown();
+      String firstShutdownWrite = outputStream.writtenText();
+      readBoard.shutdown();
+
+      assertTrue(
+          firstShutdownWrite.contains("quit"), "normal shutdown should ask readboard to quit.");
+      assertEquals(
+          firstShutdownWrite,
+          outputStream.writtenText(),
+          "repeated shutdown should not write another quit command.");
+    } finally {
+      Lizzie.frame = previousFrame;
+    }
+  }
+
+  @Test
+  void openBoardSyncDoesNotBlockEventDispatchThreadWhileRestarting() throws Exception {
     LizzieFrame previousFrame = Lizzie.frame;
     try {
       TrackingLizzieFrame frame = allocate(TrackingLizzieFrame.class);
@@ -99,7 +179,7 @@ class ReadBoardShutdownTest {
       SwingUtilities.invokeAndWait(
           () -> {
             long startNanos = System.nanoTime();
-            frame.openReadBoardJava();
+            frame.openBoardSync();
             elapsedMs.set(TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startNanos));
           });
 
@@ -259,7 +339,17 @@ class ReadBoardShutdownTest {
     }
 
     @Override
-    protected ReadBoard createJavaReadBoard() throws Exception {
+    protected boolean isNativeBoardSyncSupported() {
+      return true;
+    }
+
+    @Override
+    protected boolean isNativeReadBoardAvailable() {
+      return true;
+    }
+
+    @Override
+    protected ReadBoard createNativeReadBoard() throws Exception {
       startedBeforeShutdownCompleted = !shutdownCompleted;
       createdReadBoard = allocate(ReadBoard.class);
       restartSignal.countDown();

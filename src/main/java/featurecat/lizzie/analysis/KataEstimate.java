@@ -2,6 +2,8 @@ package featurecat.lizzie.analysis;
 
 import featurecat.lizzie.Config;
 import featurecat.lizzie.Lizzie;
+import featurecat.lizzie.analysis.remote.EngineTransport;
+import featurecat.lizzie.analysis.remote.RemoteComputeConfig;
 import featurecat.lizzie.gui.EngineFailedMessage;
 import featurecat.lizzie.gui.LizzieFrame;
 import featurecat.lizzie.gui.RemoteEngineData;
@@ -16,7 +18,9 @@ import java.io.BufferedOutputStream;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.io.OutputStream;
 import java.nio.file.Path;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -33,6 +37,7 @@ public class KataEstimate {
   private BufferedReader inputStream;
   private BufferedOutputStream outputStream;
   private BufferedReader errorStream;
+  private transient EngineTransport remoteTransport;
 
   // public boolean gtpConsole;
   private boolean hasResult = false;
@@ -69,6 +74,7 @@ public class KataEstimate {
   public String keyGenPath;
   public EstimateEngineSSHController javaSSH;
   public boolean javaSSHClosed = false;
+  public boolean useRemoteCompute = false;
   public boolean isNormalEnd = false;
   private boolean noGtp = false;
 
@@ -84,6 +90,11 @@ public class KataEstimate {
         Lizzie.config.useZenEstimate
             ? Lizzie.config.zenEstimateCommand
             : Lizzie.config.estimateCommand;
+    if (!Lizzie.config.useZenEstimate
+        && Lizzie.leelaz != null
+        && Lizzie.leelaz.useRemoteCompute) {
+      engineCommand = Lizzie.leelaz.getEngineCommand();
+    }
     this.isPreLoad = isPreLoad;
     RemoteEngineData remoteData = Utils.getEstimateEngineRemoteEngineData();
     this.useJavaSSH = remoteData.useJavaSSH;
@@ -93,6 +104,10 @@ public class KataEstimate {
     this.password = remoteData.password;
     this.useKeyGen = remoteData.useKeyGen;
     this.keyGenPath = remoteData.keyGenPath;
+    if (RemoteComputeConfig.isRemoteComputeEngineCommand(engineCommand)) {
+      this.useJavaSSH = false;
+      this.useRemoteCompute = true;
+    }
     startEngine(engineCommand);
   }
 
@@ -103,7 +118,20 @@ public class KataEstimate {
         CommandLaunchHelper.prepare(Utils.splitCommand(engineCommand));
     commands = launchSpec.getCommandParts();
 
-    if (this.useJavaSSH) {
+    this.useRemoteCompute = RemoteComputeConfig.isRemoteComputeEngineCommand(engineCommand);
+    if (this.useRemoteCompute) {
+      this.useJavaSSH = false;
+      process = null;
+      try {
+        remoteTransport = RemoteComputeConfig.createTransportForCommand(engineCommand);
+        remoteTransport.start();
+        initializeStreams(remoteTransport.stdout(), remoteTransport.stdin(), remoteTransport.stderr());
+      } catch (IOException e) {
+        showErrMsg(e);
+        process = null;
+        return;
+      }
+    } else if (this.useJavaSSH) {
       this.javaSSH = new EstimateEngineSSHController(this, this.ip, this.port, this.isPreLoad);
       boolean loginStatus = false;
       if (this.useKeyGen) {
@@ -190,9 +218,13 @@ public class KataEstimate {
   }
 
   private void initializeStreams() {
-    inputStream = new BufferedReader(new InputStreamReader(process.getInputStream()));
-    outputStream = new BufferedOutputStream(process.getOutputStream());
-    errorStream = new BufferedReader(new InputStreamReader(process.getErrorStream()));
+    initializeStreams(process.getInputStream(), process.getOutputStream(), process.getErrorStream());
+  }
+
+  private void initializeStreams(InputStream stdout, OutputStream stdin, InputStream stderr) {
+    inputStream = new BufferedReader(new InputStreamReader(stdout));
+    outputStream = new BufferedOutputStream(stdin);
+    errorStream = new BufferedReader(new InputStreamReader(stderr));
   }
 
   private void readError() {
@@ -233,12 +265,14 @@ public class KataEstimate {
       // this line will be reached when engine shuts down
       System.out.println("estimate process ended.");
       if (this.useJavaSSH) javaSSHClosed = true;
+      if (this.useRemoteCompute && remoteTransport != null) remoteTransport.close();
       if (!isNormalEnd) tryToDignostic(resourceBundle.getString("KataEstimate.errorHint"));
       shutdown();
       // Do no exit for switching weights
       // System.exit(-1);
     } catch (IOException e) {
       if (this.useJavaSSH) javaSSHClosed = true;
+      if (this.useRemoteCompute && remoteTransport != null) remoteTransport.close();
       showErrMsg(e);
       process = null;
       return;
@@ -496,6 +530,7 @@ public class KataEstimate {
     // isShuttingdown = true;
     isNormalEnd = true;
     if (this.useJavaSSH) this.javaSSH.close();
+    else if (this.useRemoteCompute && remoteTransport != null) remoteTransport.close();
     else if (process != null && process.isAlive()) process.destroy();
   }
 
@@ -654,7 +689,12 @@ public class KataEstimate {
   public void tryToDignostic(String message) {
     EngineFailedMessage engineFailedMessage =
         new EngineFailedMessage(
-            commands, engineCommand, message, !this.useJavaSSH && OS.isWindows(), true, false);
+            commands,
+            engineCommand,
+            message,
+            !this.useJavaSSH && !this.useRemoteCompute && OS.isWindows(),
+            true,
+            false);
     engineFailedMessage.setVisible(true);
   }
 }

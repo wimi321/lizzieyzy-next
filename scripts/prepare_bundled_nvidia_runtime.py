@@ -23,6 +23,11 @@ CUDA_12_1_MANIFEST_URL = "https://developer.download.nvidia.com/compute/cuda/red
 CUDA_12_8_MANIFEST_URL = "https://developer.download.nvidia.com/compute/cuda/redist/redistrib_12.8.0.json"
 CUDNN_8_MANIFEST_URL = "https://developer.download.nvidia.com/compute/cudnn/redist/redistrib_8.9.7.29.json"
 CUDNN_9_MANIFEST_URL = "https://developer.download.nvidia.com/compute/cudnn/redist/redistrib_9.8.0.json"
+TENSORRT_10_9_URL = (
+    "https://developer.download.nvidia.com/compute/machine-learning/tensorrt/10.9.0/zip/"
+    "TensorRT-10.9.0.34.Windows.win10.cuda-12.8.zip"
+)
+TENSORRT_10_9_SIZE_BYTES = 1_845_842_538
 CUDA_12_1_SPECS = (
     ("CUDA Runtime", CUDA_12_1_MANIFEST_URL, "cuda_cudart", "windows-x86_64"),
     ("CUDA cuBLAS", CUDA_12_1_MANIFEST_URL, "libcublas", "windows-x86_64"),
@@ -45,6 +50,22 @@ RUNTIME_PROFILES = {
         "manifest_specs": CUDA_12_8_SPECS
         + (("NVIDIA cuDNN", CUDNN_9_MANIFEST_URL, "cudnn", "windows-x86_64/cuda12"),),
         "direct_specs": (),
+    },
+    "cuda12.8-cudnn9-tensorrt": {
+        "description": "CUDA 12.8 + cuDNN 9 + TensorRT 10.9 runtime for the optional split package",
+        "manifest_specs": CUDA_12_8_SPECS
+        + (("NVIDIA cuDNN", CUDNN_9_MANIFEST_URL, "cudnn", "windows-x86_64/cuda12"),),
+        "direct_specs": (
+            {
+                "display_name": "NVIDIA TensorRT",
+                "key": "tensorrt",
+                "version": "10.9.0.34",
+                "url": TENSORRT_10_9_URL,
+                "sha256_env": "TENSORRT_10_9_SHA256",
+                "size_bytes": TENSORRT_10_9_SIZE_BYTES,
+                "dll_patterns": ("*.dll",),
+            },
+        ),
     },
 }
 DLL_SUFFIX = ".dll"
@@ -83,13 +104,31 @@ def parse_args() -> argparse.Namespace:
 def download_file(url: str, destination: Path) -> None:
     destination.parent.mkdir(parents=True, exist_ok=True)
     temp_path = destination.with_suffix(destination.suffix + ".part")
-    if temp_path.exists():
-        temp_path.unlink()
-    print(f"Downloading {url} -> {destination}", flush=True)
-    request = Request(url, headers={"User-Agent": USER_AGENT})
     context = ssl.create_default_context()
-    with urlopen(request, timeout=60, context=context) as response, temp_path.open("wb") as handle:
-        shutil.copyfileobj(response, handle)
+    resume_from = temp_path.stat().st_size if temp_path.exists() else 0
+
+    while True:
+        headers = {"User-Agent": USER_AGENT}
+        if resume_from > 0:
+            headers["Range"] = f"bytes={resume_from}-"
+            print(
+                f"Resuming {url} -> {destination} from {resume_from} bytes",
+                flush=True,
+            )
+        else:
+            print(f"Downloading {url} -> {destination}", flush=True)
+        request = Request(url, headers=headers)
+        with urlopen(request, timeout=60, context=context) as response:
+            status = getattr(response, "status", None)
+            if resume_from > 0 and status == 200:
+                # Server ignored Range; restart so the archive is not duplicated.
+                temp_path.unlink(missing_ok=True)
+                resume_from = 0
+                continue
+            mode = "ab" if resume_from > 0 and status == 206 else "wb"
+            with temp_path.open(mode) as handle:
+                shutil.copyfileobj(response, handle)
+        break
     temp_path.replace(destination)
 
 

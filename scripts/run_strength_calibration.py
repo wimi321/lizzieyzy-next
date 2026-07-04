@@ -47,19 +47,17 @@ DEFAULT_SEEDS = [
 ]
 
 RANK_GROUP_ORDER = [
-    "low_kyu",
-    "mid_kyu",
-    "high_kyu",
+    "kyu_level",
     "low_dan",
     "mid_dan",
     "high_dan",
+    "professional",
+    "top_professional",
+    "ai",
 ]
 
 RANK_BUCKET_ORDER = [
-    "16-18k",
-    "11-15k",
-    "6-10k",
-    "1-5k",
+    "kyu-level",
     "1d",
     "2d",
     "3d",
@@ -69,22 +67,46 @@ RANK_BUCKET_ORDER = [
     "7d",
     "8d",
     "9d",
+    "10d-professional",
+    "11d-top-professional",
+    "12d-AI",
 ]
 
 AI_NAME_MARKERS = ["让子"]
+KYU_LEVEL_RANK_TEXT = "kyu-level"
+PRO_RANK_TEXT = "10d-professional"
+PRO_RANK_VALUE = 10
+TOP_PRO_RANK_TEXT = "11d-top-professional"
+TOP_PRO_RANK_VALUE = 11
 AI_RANK_TEXT = "12d-AI"
 AI_RANK_VALUE = 12
 DEFAULT_EXCLUDED_PLAYER_MARKERS = ["随机2536", "实之", "艾池繁123"]
+FOX_CRAWL_RANK_GROUPS = [
+    "kyu_level",
+    "low_dan",
+    "mid_dan",
+    "high_dan",
+]
 
 SUMMARY_METRICS = [
     ("quality_score", "score"),
     ("first_choice_rate", "top1"),
+    ("top3_rate", "top3"),
+    ("top5_rate", "top5"),
+    ("average_ai_rank", "avg_ai_rank"),
+    ("excellent_rate", "excellent"),
     ("good_move_rate", "good"),
     ("match_rate", "match"),
     ("average_difficulty", "difficulty"),
     ("weighted_point_loss", "weighted_loss"),
     ("average_point_loss", "average_loss"),
+    ("p95_score_equivalent_loss", "p95_loss"),
+    ("max_score_equivalent_loss", "max_loss"),
+    ("loss_stddev", "loss_stddev"),
     ("mistake_rate", "mistakes"),
+    ("opening_weighted_loss", "opening_loss"),
+    ("middlegame_weighted_loss", "middle_loss"),
+    ("endgame_weighted_loss", "endgame_loss"),
 ]
 
 ESTIMATE_VALUE = {
@@ -117,13 +139,14 @@ class Rank:
 
     @property
     def group(self) -> str:
+        if self.value >= AI_RANK_VALUE:
+            return "ai"
+        if self.value >= TOP_PRO_RANK_VALUE:
+            return "top_professional"
+        if self.value >= PRO_RANK_VALUE:
+            return "professional"
         if self.value < 0:
-            k = -self.value
-            if k >= 10:
-                return "low_kyu"
-            if k >= 4:
-                return "mid_kyu"
-            return "high_kyu"
+            return "kyu_level"
         if self.value <= 3:
             return "low_dan"
         if self.value <= 6:
@@ -132,18 +155,15 @@ class Rank:
 
     @property
     def bucket(self) -> str:
-        if self.value >= 10:
+        if self.value >= AI_RANK_VALUE:
             return AI_RANK_TEXT
+        if self.value >= TOP_PRO_RANK_VALUE:
+            return TOP_PRO_RANK_TEXT
+        if self.value >= PRO_RANK_VALUE:
+            return PRO_RANK_TEXT
         if self.value > 0:
             return f"{self.value}d"
-        k = -self.value
-        if k >= 16:
-            return "16-18k"
-        if k >= 11:
-            return "11-15k"
-        if k >= 6:
-            return "6-10k"
-        return "1-5k"
+        return KYU_LEVEL_RANK_TEXT
 
 
 @dataclass
@@ -187,8 +207,20 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--target-kyu-group-games",
         type=int,
-        default=8,
-        help="Minimum selected games touching each kyu bucket: 16-18k, 11-15k, 6-10k, 1-5k",
+        default=0,
+        help="Minimum selected games touching the broad kyu-level bucket.",
+    )
+    parser.add_argument(
+        "--dan-only",
+        action="store_true",
+        default=True,
+        help="Only select Fox games where both players are 1d or stronger.",
+    )
+    parser.add_argument(
+        "--include-kyu",
+        dest="dan_only",
+        action="store_false",
+        help="Allow kyu players in the Fox calibration crawl.",
     )
     parser.add_argument(
         "--disable-rank-bucket-quotas",
@@ -249,6 +281,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--model", default=None, help="Path to KataGo model")
     parser.add_argument("--config", default=None, help="Path to KataGo analysis config")
     parser.add_argument(
+        "--katago-override-config",
+        default="",
+        help=(
+            "Additional comma-separated KataGo -override-config values forwarded to "
+            "evaluate_strength_samples.py."
+        ),
+    )
+    parser.add_argument(
         "--keep-existing",
         action="store_true",
         help="Do not clear previously fetched SGFs in the output directory",
@@ -270,6 +310,30 @@ def normalize_rank(text: str | None, player_name: Any = None) -> Rank | None:
     if not raw:
         return None
     lowered = raw.lower()
+    compact = re.sub(r"[\s_\-]+", "", lowered)
+    if (
+        compact in {"ai", "12dai", "12danai"}
+        or "12d-ai" in lowered
+        or "12d ai" in lowered
+        or "人工智能" in raw
+    ):
+        return Rank(AI_RANK_TEXT, AI_RANK_VALUE)
+    if (
+        "world champion" in lowered
+        or "worldchampion" in compact
+        or "top professional" in lowered
+        or "toppro" in compact
+        or "一线职业" in raw
+        or "世界冠军" in raw
+    ):
+        return Rank(TOP_PRO_RANK_TEXT, TOP_PRO_RANK_VALUE)
+    if (
+        "professional" in lowered
+        or re.search(r"(^|[^a-z])pro([^a-z]|$)", lowered)
+        or "职业" in raw
+        or re.search(r"\d+\s*p\b", lowered)
+    ):
+        return Rank(PRO_RANK_TEXT, PRO_RANK_VALUE)
     digits = "".join(ch for ch in raw if ch.isdigit())
     if not digits:
         return None
@@ -279,8 +343,18 @@ def normalize_rank(text: str | None, player_name: Any = None) -> Rank | None:
             return Rank(raw, -number)
         return None
     if "d" in lowered or "段" in raw:
+        if number >= AI_RANK_VALUE:
+            return Rank(AI_RANK_TEXT, AI_RANK_VALUE)
+        if number >= TOP_PRO_RANK_VALUE:
+            return Rank(TOP_PRO_RANK_TEXT, TOP_PRO_RANK_VALUE)
+        if number >= PRO_RANK_VALUE:
+            return Rank(PRO_RANK_TEXT, PRO_RANK_VALUE)
         if 1 <= number <= 9:
             return Rank(raw, number)
+        return None
+    if "p" in lowered:
+        if 1 <= number <= 9:
+            return Rank(PRO_RANK_TEXT, PRO_RANK_VALUE)
         return None
     return None
 
@@ -336,8 +410,11 @@ def should_skip_game(game: dict[str, Any], args: argparse.Namespace) -> str | No
         return "excluded_player"
     if player_uid(game, "black") is None or player_uid(game, "white") is None:
         return "missing_uid"
-    if game_ranks(game) is None:
+    ranks = game_ranks(game)
+    if ranks is None:
         return "invalid_rank"
+    if args.dan_only and any(rank.value <= 0 for rank in ranks):
+        return "kyu"
     return None
 
 
@@ -362,8 +439,14 @@ def wants_rank_group(
     groups = [black_rank.group, white_rank.group]
     if any(group_counts[group] < args.target_sides_per_group for group in groups):
         return True
-    current_min = min(group_counts[group] for group in RANK_GROUP_ORDER)
+    current_min = min(group_counts[group] for group in crawl_rank_groups(args))
     return all(group_counts[group] == current_min for group in groups)
+
+
+def crawl_rank_groups(args: argparse.Namespace) -> list[str]:
+    if args.dan_only:
+        return [group for group in FOX_CRAWL_RANK_GROUPS if group != "kyu_level"]
+    return FOX_CRAWL_RANK_GROUPS
 
 
 def rank_buckets(black_rank: Rank, white_rank: Rank) -> list[str]:
@@ -376,6 +459,8 @@ def rank_buckets(black_rank: Rank, white_rank: Rank) -> list[str]:
 
 def bucket_target(bucket: str, args: argparse.Namespace) -> int:
     if bucket not in RANK_BUCKET_ORDER:
+        return 0
+    if bucket in {PRO_RANK_TEXT, TOP_PRO_RANK_TEXT, AI_RANK_TEXT}:
         return 0
     if bucket.endswith("d"):
         return max(args.target_dan_games, 0)
@@ -551,6 +636,16 @@ def crawl_games(args: argparse.Namespace) -> tuple[list[SelectedGame], dict[str,
             path = sgf_dir / filename
             path.write_text(sgf, encoding="utf-8")
             manifest = fox.manifest_entry(user, game, path)
+            manifest.update(
+                {
+                    "filename": path.name,
+                    "source": "fox_dan",
+                    "black_rank": black_rank.text,
+                    "white_rank": white_rank.text,
+                    "black_name": black_name,
+                    "white_name": white_name,
+                }
+            )
             selected.append(
                 SelectedGame(
                     path=path,
@@ -635,6 +730,7 @@ def evaluate_games(args: argparse.Namespace, games: list[SelectedGame]) -> int:
         return 1
     out_dir = Path(args.out)
     jsonl_path = out_dir / "evaluation.jsonl"
+    manifest_path = out_dir / "manifest.jsonl"
     script = Path(__file__).with_name("evaluate_strength_samples.py")
     cmd = [
         sys.executable,
@@ -657,12 +753,16 @@ def evaluate_games(args: argparse.Namespace, games: list[SelectedGame]) -> int:
         "--jsonl",
         str(jsonl_path),
     ]
+    if manifest_path.exists():
+        cmd.extend(["--metadata-jsonl", str(manifest_path)])
     if args.katago:
         cmd.extend(["--katago", args.katago])
     if args.model:
         cmd.extend(["--model", args.model])
     if args.config:
         cmd.extend(["--config", args.config])
+    if args.katago_override_config:
+        cmd.extend(["--katago-override-config", args.katago_override_config])
     if args.resume_jsonl:
         cmd.append("--resume-jsonl")
     if args.reuse_sgf_analysis:
@@ -743,12 +843,14 @@ def current_match_rate(row: dict[str, Any]) -> float:
 
 
 def estimate_group(value: float) -> str:
-    if value < -9.5:
-        return "low_kyu"
-    if value < -3.5:
-        return "mid_kyu"
+    if value >= 11.5:
+        return "ai"
+    if value >= 10.5:
+        return "top_professional"
+    if value >= 9.5:
+        return "professional"
     if value < 1.0:
-        return "high_kyu"
+        return "kyu_level"
     if value <= 3.5:
         return "low_dan"
     if value <= 6.0:
@@ -1037,6 +1139,7 @@ def write_summary(args: argparse.Namespace, crawl_summary: dict[str, Any]) -> No
     with csv_path.open("w", encoding="utf-8", newline="") as handle:
         fieldnames = [
             "sgf",
+            "sample_source",
             "side",
             "fox_rank",
             "strength",
@@ -1048,13 +1151,26 @@ def write_summary(args: argparse.Namespace, crawl_summary: dict[str, Any]) -> No
             "estimated_group",
             "numeric_error",
             "first_choice_rate",
+            "top3_rate",
+            "top5_rate",
+            "outside_top5_rate",
+            "average_ai_rank",
+            "excellent_rate",
+            "great_rate",
             "good_move_rate",
+            "inaccuracy_rate",
             "mistake_rate",
             "average_difficulty",
             "weighted_point_loss",
             "average_point_loss",
             "median_score_loss",
+            "p95_score_equivalent_loss",
+            "max_score_equivalent_loss",
+            "loss_stddev",
             "average_winrate_loss",
+            "opening_weighted_loss",
+            "middlegame_weighted_loss",
+            "endgame_weighted_loss",
             "noisy_candidate",
             "rank_mismatch_candidate",
         ]

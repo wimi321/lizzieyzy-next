@@ -15,6 +15,7 @@ public class SMessage extends JDialog {
   public SMessage() {
     this.setModal(true);
     this.setResizable(false);
+    setDefaultCloseOperation(DISPOSE_ON_CLOSE);
     // setType(Type.POPUP);
     setTitle(Lizzie.resourceBundle.getString("Message.title"));
     setAlwaysOnTop(true);

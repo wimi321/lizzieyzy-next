@@ -19,7 +19,9 @@ set -euo pipefail
 
 release_dir="${1:-dist/release}"
 mac_arch="${2:-mac-arm64}"
-entitlements_path="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/packaging/macos-entitlements.plist"
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+entitlements_path="$ROOT_DIR/packaging/macos-entitlements.plist"
+drag_dmg_script="$ROOT_DIR/scripts/create_macos_drag_dmg.sh"
 
 if [[ -z "${APPLE_CERT_P12:-}" || -z "${APPLE_TEAM_ID:-}" ]]; then
   echo "Apple Developer credentials not configured; skipping sign/notarize."
@@ -33,6 +35,11 @@ fi
 
 if [[ ! -f "$entitlements_path" ]]; then
   echo "Missing macOS entitlements file: $entitlements_path" >&2
+  exit 1
+fi
+
+if [[ ! -x "$drag_dmg_script" ]]; then
+  echo "Missing executable DMG layout helper: $drag_dmg_script" >&2
   exit 1
 fi
 
@@ -104,17 +111,15 @@ create_dmg_with_retry() {
 
   rm -f "$output_dmg"
   for attempt in 1 2 3 4 5; do
-    if hdiutil create -volname "$volume_name" \
-                      -srcfolder "$source_folder" -ov -format UDZO "$output_dmg" >/dev/null; then
+    if "$drag_dmg_script" "$volume_name" "$source_folder" "$output_dmg"; then
       return 0
     fi
     rm -f "$output_dmg"
-    echo "hdiutil create failed for $output_dmg; retrying in ${attempt}s..." >&2
+    echo "DMG creation failed for $output_dmg; retrying in ${attempt}s..." >&2
     sleep "$attempt"
   done
 
-  hdiutil create -volname "$volume_name" \
-                 -srcfolder "$source_folder" -ov -format UDZO "$output_dmg" >/dev/null
+  "$drag_dmg_script" "$volume_name" "$source_folder" "$output_dmg"
 }
 
 sign_embedded_jar_natives() {
@@ -184,6 +189,43 @@ verify_required_entitlements() {
       exit 1
     fi
   done
+}
+
+submit_for_notarization_with_retry() {
+  local signed_dmg="$1"
+  local notary_json="$2"
+  local attempt
+  local exit_code
+  local stderr_file="${notary_json}.stderr"
+
+  for attempt in 1 2 3; do
+    rm -f "$notary_json" "$stderr_file"
+    set +e
+    xcrun notarytool submit "$signed_dmg" \
+      --apple-id "${APPLE_ID}" \
+      --password "${APPLE_APP_PASSWORD}" \
+      --team-id "${APPLE_TEAM_ID}" \
+      --wait \
+      --output-format json >"$notary_json" 2>"$stderr_file"
+    exit_code=$?
+    set -e
+
+    if [[ "$exit_code" -eq 0 ]]; then
+      cat "$notary_json"
+      rm -f "$stderr_file"
+      return 0
+    fi
+
+    echo "notarytool submit failed on attempt $attempt/3 for $signed_dmg" >&2
+    [[ ! -s "$notary_json" ]] || cat "$notary_json" >&2
+    [[ ! -s "$stderr_file" ]] || cat "$stderr_file" >&2
+
+    if [[ "$attempt" -lt 3 ]]; then
+      sleep "$((attempt * 30))"
+    fi
+  done
+
+  return "$exit_code"
 }
 
 case "$mac_arch" in
@@ -290,13 +332,7 @@ PY
 
   echo "Submitting $signed_dmg for notarization..."
   notary_json="$work_dir/notary-submit.json"
-  xcrun notarytool submit "$signed_dmg" \
-    --apple-id "${APPLE_ID}" \
-    --password "${APPLE_APP_PASSWORD}" \
-    --team-id "${APPLE_TEAM_ID}" \
-    --wait \
-    --output-format json >"$notary_json"
-  cat "$notary_json"
+  submit_for_notarization_with_retry "$signed_dmg" "$notary_json"
   submission_id="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("id",""))' "$notary_json")"
   notary_status="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("status",""))' "$notary_json")"
   if [[ "$notary_status" != "Accepted" ]]; then

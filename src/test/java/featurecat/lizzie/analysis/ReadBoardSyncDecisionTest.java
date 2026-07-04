@@ -19,6 +19,8 @@ import featurecat.lizzie.rules.BoardNodeKind;
 import featurecat.lizzie.rules.Movelist;
 import featurecat.lizzie.rules.Stone;
 import featurecat.lizzie.rules.Zobrist;
+import java.io.BufferedOutputStream;
+import java.io.ByteArrayOutputStream;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.nio.file.Files;
@@ -42,6 +44,7 @@ class ReadBoardSyncDecisionTest {
   void setUpFixtureBoardSize() {
     previousBoardWidth = Board.boardWidth;
     previousBoardHeight = Board.boardHeight;
+    resetDefaultDiagnosticsRecorder();
     resetFixtureBoardState();
   }
 
@@ -59,6 +62,7 @@ class ReadBoardSyncDecisionTest {
     int[] lastMove = new int[] {0, 0};
 
     try (SyncHarness harness = SyncHarness.create(true, rootHistory(initial, true))) {
+      harness.readBoard.parseLine("lastMoveSource foxCornerFlip");
       harness.sync(snapshot(target, Optional.of(lastMove), Stone.BLACK));
 
       assertTrue(
@@ -125,6 +129,7 @@ class ReadBoardSyncDecisionTest {
     int[] lastMove = new int[] {2, 2};
 
     try (SyncHarness harness = SyncHarness.create(false, emptyHistory())) {
+      harness.readBoard.parseLine("lastMoveSource foxCornerFlip");
       harness.sync(snapshot(target, Optional.of(lastMove), Stone.BLACK));
 
       assertEquals(
@@ -177,6 +182,14 @@ class ReadBoardSyncDecisionTest {
       armFoxMoveNumber(harness.readBoard, 1);
       harness.sync(snapshot(repeatedStones, Optional.empty(), Stone.EMPTY));
 
+      SyncDiagnosticsReport report = SyncDiagnosticsRecorder.getDefault().snapshot();
+      assertEquals("NO_CHANGE", report.getLatestDecisionTrace().getResult());
+      assertEquals(
+          "snapshot_matches_existing_node", report.getLatestDecisionTrace().getReasonCode());
+      assertFalse(
+          report.getSyncSnapshot().isAwaitingFirstSyncFrame(),
+          "NO_CHANGE diagnostics should publish after first-frame state is consumed.");
+
       assertSame(
           mainEnd,
           harness.board.getHistory().getMainEnd(),
@@ -192,7 +205,7 @@ class ReadBoardSyncDecisionTest {
   }
 
   @Test
-  void foxMoveNumberOddRebuildKeepsMarkerlessSnapshotAndAddsSingleBookkeepingPassWhenParityNeedsIt()
+  void foxMoveNumberOddRebuildKeepsMarkerlessSnapshotWithoutUsingParityForRiskyTurn()
       throws Exception {
     Stone[] target = stones(placement(0, 0, Stone.BLACK), placement(1, 0, Stone.WHITE));
 
@@ -204,19 +217,16 @@ class ReadBoardSyncDecisionTest {
           0,
           harness.board.placeForSyncCount,
           "fox move-number rebuild should replace the position statically instead of replaying history.");
-      assertStaticSnapshotRootWithoutMarker(harness.board, target, 57, false);
-      assertEquals(
-          1,
-          harness.leelaz.sentCommands.size(),
-          "markerless snapshot rebuild should use one loadsgf.");
-      assertTrue(
-          harness.leelaz.sentCommands.get(0).startsWith("loadsgf "),
-          "markerless snapshot rebuild should restore the static board exactly.");
+      assertStaticSnapshotRootWithoutMarker(harness.board, target, 57, true);
+      assertLoadSgfCommandCount(
+          harness.leelaz, 1, "markerless snapshot rebuild should use one loadsgf.");
+      assertHasLoadSgfCommand(
+          harness.leelaz, "markerless snapshot rebuild should restore the static board exactly.");
       assertTrue(
           harness.leelaz.playedMoves.isEmpty(),
           "exact snapshot restore should avoid replaying static stones as play commands.");
       assertArrayEquals(target, harness.leelaz.copyStones());
-      assertFalse(
+      assertTrue(
           harness.leelaz.isBlackToPlay(),
           "exact snapshot restore should preserve the rebuilt side to play directly.");
     }
@@ -232,18 +242,306 @@ class ReadBoardSyncDecisionTest {
       harness.sync(snapshot(target, Optional.empty(), Stone.EMPTY));
 
       assertStaticSnapshotRootWithoutMarker(harness.board, target, 58, true);
-      assertEquals(
-          1,
-          harness.leelaz.sentCommands.size(),
-          "markerless snapshot rebuild should use one loadsgf.");
-      assertTrue(
-          harness.leelaz.sentCommands.get(0).startsWith("loadsgf "),
-          "markerless snapshot rebuild should restore the static board exactly.");
+      assertLoadSgfCommandCount(
+          harness.leelaz, 1, "markerless snapshot rebuild should use one loadsgf.");
+      assertHasLoadSgfCommand(
+          harness.leelaz, "markerless snapshot rebuild should restore the static board exactly.");
       assertTrue(
           harness.leelaz.playedMoves.isEmpty(),
           "exact snapshot restore should avoid replaying ordinary static stones as play commands.");
       assertArrayEquals(target, harness.leelaz.copyStones());
       assertTrue(harness.leelaz.isBlackToPlay());
+    }
+  }
+
+  @Test
+  void foxCornerFlipMarkerBeatsConflictingFoxMoveNumberParity() throws Exception {
+    Stone[] target = stones(placement(0, 0, Stone.BLACK), placement(1, 0, Stone.WHITE));
+    int[] lastMove = new int[] {0, 0};
+
+    try (SyncHarness harness = SyncHarness.create(false, emptyHistory())) {
+      armFoxMoveNumber(harness.readBoard, 58);
+      harness.readBoard.parseLine("lastMoveSource foxCornerFlip");
+      harness.sync(snapshot(target, Optional.of(lastMove), Stone.BLACK));
+
+      assertStaticSnapshotRoot(harness.board, target, lastMove, Stone.BLACK, 58);
+      assertTrue(isReadBoardTurnTrusted(harness.readBoard));
+      assertFalse(
+          harness.board.getHistory().getMainEnd().getData().blackToPlay,
+          "trusted black marker should mean white to play even when fox parity says black.");
+    }
+  }
+
+  @Test
+  void redBlueMarkerBeatsConflictingFoxMoveNumberParity() throws Exception {
+    Stone[] target = stones(placement(0, 0, Stone.BLACK), placement(1, 0, Stone.WHITE));
+    int[] lastMove = new int[] {1, 0};
+
+    try (SyncHarness harness = SyncHarness.create(false, emptyHistory())) {
+      armFoxMoveNumber(harness.readBoard, 57);
+      harness.readBoard.parseLine("lastMoveSource redBlueMarker");
+      harness.sync(snapshot(target, Optional.of(lastMove), Stone.WHITE));
+
+      assertStaticSnapshotRoot(harness.board, target, lastMove, Stone.WHITE, 57);
+      assertTrue(isReadBoardTurnTrusted(harness.readBoard));
+      assertTrue(
+          harness.board.getHistory().getMainEnd().getData().blackToPlay,
+          "trusted white marker should mean black to play even when fox parity says white.");
+    }
+  }
+
+  @Test
+  void heuristicLastMoveSourceDoesNotBecomeTrustedTurnState() throws Exception {
+    Stone[] target = stones(placement(0, 0, Stone.BLACK), placement(1, 0, Stone.WHITE));
+
+    try (SyncHarness harness = SyncHarness.create(false, emptyHistory())) {
+      armFoxMoveNumber(harness.readBoard, 58);
+      harness.readBoard.parseLine("lastMoveSource stoneCount");
+      harness.sync(snapshot(target, Optional.of(new int[] {0, 0}), Stone.BLACK));
+
+      assertFalse(isReadBoardTurnTrusted(harness.readBoard));
+
+      harness.readBoard.parseLine("lastMoveSource deviation");
+      harness.sync(snapshot(target, Optional.of(new int[] {0, 0}), Stone.BLACK));
+
+      assertFalse(isReadBoardTurnTrusted(harness.readBoard));
+    }
+  }
+
+  @Test
+  void heuristicMarkerWithoutFoxMoveNumberDoesNotDriveSideToPlay() throws Exception {
+    Stone[] target = stones(placement(0, 0, Stone.BLACK), placement(1, 0, Stone.WHITE));
+
+    try (SyncHarness harness = SyncHarness.create(false, emptyHistory())) {
+      harness.readBoard.parseLine("lastMoveSource stoneCount");
+      harness.sync(snapshot(target, Optional.of(new int[] {0, 0}), Stone.BLACK));
+
+      assertTrue(
+          harness.board.getHistory().getMainEnd().getData().blackToPlay,
+          "heuristic black marker without foxMoveNumber should use the existing fallback.");
+      assertFalse(isReadBoardTurnTrusted(harness.readBoard));
+    }
+  }
+
+  @Test
+  void heuristicMarkerWithFoxMoveNumberDoesNotDriveSideToPlayFromParity() throws Exception {
+    Stone[] target = stones(placement(0, 0, Stone.BLACK), placement(1, 0, Stone.WHITE));
+
+    try (SyncHarness harness = SyncHarness.create(false, emptyHistory())) {
+      armFoxMoveNumber(harness.readBoard, 57);
+      harness.readBoard.parseLine("lastMoveSource stoneCount");
+      harness.sync(snapshot(target, Optional.of(new int[] {0, 0}), Stone.BLACK));
+
+      assertTrue(
+          harness.board.getHistory().getMainEnd().getData().blackToPlay,
+          "heuristic marker with foxMoveNumber should use the existing fallback, not parity.");
+      assertFalse(isReadBoardTurnTrusted(harness.readBoard));
+    }
+  }
+
+  @Test
+  void markedLegacyUnknownFrameKeepsOldProtocolSideToPlayFallback() throws Exception {
+    Stone[] target = stones(placement(0, 0, Stone.BLACK), placement(1, 0, Stone.WHITE));
+
+    try (SyncHarness harness = SyncHarness.create(false, emptyHistory())) {
+      armFoxMoveNumber(harness.readBoard, 57);
+      harness.sync(snapshot(target, Optional.of(new int[] {0, 0}), Stone.BLACK));
+
+      assertTrue(
+          harness.board.getHistory().getMainEnd().getData().blackToPlay,
+          "legacy marked frames without lastMoveSource should keep the existing fallback.");
+      assertFalse(isReadBoardTurnTrusted(harness.readBoard));
+    }
+  }
+
+  @Test
+  void acceptedSamePayloadFrameRefreshesTurnTrustFromLastMoveSource() throws Exception {
+    Stone[] target = stones(placement(0, 0, Stone.BLACK), placement(1, 0, Stone.WHITE));
+    int[] lastMove = new int[] {0, 0};
+
+    try (SyncHarness harness = SyncHarness.create(false, emptyHistory())) {
+      armFoxMoveNumber(harness.readBoard, 58);
+      harness.readBoard.parseLine("lastMoveSource stoneCount");
+      harness.sync(snapshot(target, Optional.of(lastMove), Stone.BLACK));
+      assertFalse(isReadBoardTurnTrusted(harness.readBoard));
+
+      harness.readBoard.parseLine("lastMoveSource foxCornerFlip");
+      harness.sync(snapshot(target, Optional.of(lastMove), Stone.BLACK));
+
+      assertTrue(isReadBoardTurnTrusted(harness.readBoard));
+    }
+  }
+
+  @Test
+  void markerlessAcceptedFrameDoesNotTrustStaleVisualMarkerSource() throws Exception {
+    Stone[] target = stones(placement(0, 0, Stone.BLACK), placement(1, 0, Stone.WHITE));
+
+    try (SyncHarness harness = SyncHarness.create(false, emptyHistory())) {
+      harness.readBoard.parseLine("lastMoveSource foxCornerFlip");
+      harness.sync(snapshot(target, Optional.empty(), Stone.EMPTY));
+
+      assertFalse(isReadBoardTurnTrusted(harness.readBoard));
+    }
+  }
+
+  @Test
+  void markerlessOrdinaryFoxFallbackTrustsSingleAdditionWithoutSetupRisk() throws Exception {
+    Stone[] target = stones(placement(0, 0, Stone.BLACK));
+
+    try (SyncHarness harness = SyncHarness.create(false, emptyHistory())) {
+      armFoxMoveNumber(harness.readBoard, 1);
+      harness.readBoard.parseLine("lastMoveSource none");
+      harness.sync(snapshot(target, Optional.empty(), Stone.EMPTY));
+
+      assertTrue(isReadBoardTurnTrusted(harness.readBoard));
+    }
+  }
+
+  @Test
+  void markerlessWhiteFirstFoxFallbackIsUntrusted() throws Exception {
+    Stone[] target = stones(placement(0, 0, Stone.WHITE));
+
+    try (SyncHarness harness = SyncHarness.create(false, emptyHistory())) {
+      armFoxMoveNumber(harness.readBoard, 1);
+      harness.readBoard.parseLine("lastMoveSource none");
+      harness.sync(snapshot(target, Optional.empty(), Stone.EMPTY));
+
+      assertFalse(isReadBoardTurnTrusted(harness.readBoard));
+      assertTrue(
+          harness.board.getHistory().getCurrentHistoryNode().getData().blackToPlay,
+          "untrusted markerless white-first fox metadata should not set white to play.");
+    }
+  }
+
+  @Test
+  void markerlessWhiteFirstFoxMoveNumberDoesNotOverrideSnapshotSideToPlay() throws Exception {
+    BoardHistoryNode syncStartNode = emptyHistory().getCurrentHistoryNode();
+    Stone[] target = stones(placement(0, 0, Stone.WHITE));
+    SyncSnapshotClassifier.SnapshotDelta snapshotDelta =
+        new SyncSnapshotClassifier(BOARD_SIZE, BOARD_SIZE)
+            .summarizeDelta(syncStartNode.getData().stones, snapshot(target, Optional.empty(), Stone.EMPTY));
+    ReadBoard readBoard = allocate(ReadBoard.class);
+
+    assertTrue(
+        invokeInferSnapshotBlackToPlay(
+            readBoard,
+            syncStartNode,
+            target,
+            snapshotDelta,
+            OptionalInt.of(1),
+            SyncRemoteContext.foxUnknown(false).withFoxMoveNumber(OptionalInt.of(1)),
+            ReadBoardLastMoveSource.NONE),
+        "white-first markerless fox metadata should fall back to the current side to play.");
+  }
+
+  @Test
+  void startStoneMakesMarkerlessFoxFallbackUntrusted() throws Exception {
+    Stone[] target = stones(placement(0, 0, Stone.BLACK));
+
+    try (SyncHarness harness = SyncHarness.create(false, emptyHistory())) {
+      harness.board.hasStartStone = true;
+      armFoxMoveNumber(harness.readBoard, 1);
+      harness.readBoard.parseLine("lastMoveSource none");
+      harness.sync(snapshot(target, Optional.empty(), Stone.EMPTY));
+
+      assertFalse(isReadBoardTurnTrusted(harness.readBoard));
+    }
+  }
+
+  @Test
+  void startStoneListMakesMarkerlessFoxFallbackUntrusted() throws Exception {
+    Stone[] target = stones(placement(0, 0, Stone.BLACK));
+
+    try (SyncHarness harness = SyncHarness.create(false, emptyHistory())) {
+      harness.board.startStonelist = new ArrayList<>();
+      Movelist setupMove = new Movelist();
+      setupMove.x = 0;
+      setupMove.y = 0;
+      setupMove.isblack = true;
+      harness.board.startStonelist.add(setupMove);
+      armFoxMoveNumber(harness.readBoard, 1);
+      harness.readBoard.parseLine("lastMoveSource none");
+      harness.sync(snapshot(target, Optional.empty(), Stone.EMPTY));
+
+      assertFalse(isReadBoardTurnTrusted(harness.readBoard));
+    }
+  }
+
+  @Test
+  void setupPropertiesMakeMarkerlessFoxFallbackUntrusted() throws Exception {
+    Stone[] target = stones(placement(0, 0, Stone.BLACK));
+
+    try (SyncHarness harness = SyncHarness.create(false, emptyHistory())) {
+      harness.board.getHistory().getMainEnd().getData().addProperty("AB", "bb");
+      armFoxMoveNumber(harness.readBoard, 1);
+      harness.readBoard.parseLine("lastMoveSource none");
+      harness.sync(snapshot(target, Optional.empty(), Stone.EMPTY));
+
+      assertFalse(isReadBoardTurnTrusted(harness.readBoard));
+    }
+
+    try (SyncHarness harness = SyncHarness.create(false, emptyHistory())) {
+      harness.board.getHistory().getMainEnd().getData().addProperty("PL", "W");
+      armFoxMoveNumber(harness.readBoard, 1);
+      harness.readBoard.parseLine("lastMoveSource none");
+      harness.sync(snapshot(target, Optional.empty(), Stone.EMPTY));
+
+      assertFalse(isReadBoardTurnTrusted(harness.readBoard));
+    }
+  }
+
+  @Test
+  void multipleAdditionsMakeMarkerlessFoxFallbackUntrusted() throws Exception {
+    Stone[] target = stones(placement(0, 0, Stone.BLACK), placement(1, 0, Stone.WHITE));
+
+    try (SyncHarness harness = SyncHarness.create(false, emptyHistory())) {
+      armFoxMoveNumber(harness.readBoard, 2);
+      harness.readBoard.parseLine("lastMoveSource none");
+      harness.sync(snapshot(target, Optional.empty(), Stone.EMPTY));
+
+      assertFalse(isReadBoardTurnTrusted(harness.readBoard));
+    }
+  }
+
+  @Test
+  void endClearsPendingSourceButPreservesAcceptedReadBoardTurnTrust() throws Exception {
+    Stone[] target = stones(placement(0, 0, Stone.BLACK), placement(1, 0, Stone.WHITE));
+
+    try (SyncHarness harness = SyncHarness.create(false, emptyHistory())) {
+      armFoxMoveNumber(harness.readBoard, 58);
+      harness.readBoard.parseLine("lastMoveSource foxCornerFlip");
+      setPendingSnapshot(
+          harness.readBoard, snapshot(target, Optional.of(new int[] {0, 0}), Stone.BLACK));
+      harness.readBoard.parseLine("end");
+
+      assertTrue(isReadBoardTurnTrusted(harness.readBoard));
+      assertEquals(
+          ReadBoardLastMoveSource.LEGACY_UNKNOWN,
+          pendingRemoteContext(harness.readBoard).lastMoveSource);
+    }
+  }
+
+  @Test
+  void invalidatingControlsClearReadBoardTurnTrust() throws Exception {
+    Stone[] target = stones(placement(0, 0, Stone.BLACK), placement(1, 0, Stone.WHITE));
+
+    try (SyncHarness harness = SyncHarness.create(false, emptyHistory())) {
+      armFoxMoveNumber(harness.readBoard, 58);
+      harness.readBoard.parseLine("lastMoveSource foxCornerFlip");
+      harness.sync(snapshot(target, Optional.of(new int[] {0, 0}), Stone.BLACK));
+      assertTrue(isReadBoardTurnTrusted(harness.readBoard));
+
+      harness.readBoard.parseLine("stopsync");
+
+      assertFalse(isReadBoardTurnTrusted(harness.readBoard));
+
+      harness.readBoard.parseLine("lastMoveSource foxCornerFlip");
+      harness.sync(snapshot(target, Optional.of(new int[] {0, 0}), Stone.BLACK));
+      assertTrue(isReadBoardTurnTrusted(harness.readBoard));
+
+      harness.readBoard.parseLine("noboth");
+
+      assertFalse(isReadBoardTurnTrusted(harness.readBoard));
     }
   }
 
@@ -268,11 +566,9 @@ class ReadBoardSyncDecisionTest {
           harness.board.placeForSyncCount,
           "jumping to a remote fox move number should rebuild statically instead of stepping through missing history.");
       assertStaticSnapshotRootWithoutMarker(harness.board, target, 58, true);
-      assertEquals(
-          1, harness.leelaz.sentCommands.size(), "midgame jump rebuild should use one loadsgf.");
-      assertTrue(
-          harness.leelaz.sentCommands.get(0).startsWith("loadsgf "),
-          "midgame jump rebuild should land the target snapshot exactly.");
+      assertLoadSgfCommandCount(harness.leelaz, 1, "midgame jump rebuild should use one loadsgf.");
+      assertHasLoadSgfCommand(
+          harness.leelaz, "midgame jump rebuild should land the target snapshot exactly.");
       assertTrue(
           harness.leelaz.playedMoves.isEmpty(),
           "exact snapshot restore should avoid replaying the rebuilt static stones.");
@@ -458,7 +754,7 @@ class ReadBoardSyncDecisionTest {
 
       harness.sync(snapshot(target, Optional.empty(), Stone.EMPTY));
 
-      assertStaticSnapshotRootWithoutMarker(harness.board, target, 57, false);
+      assertStaticSnapshotRootWithoutMarker(harness.board, target, 57, true);
       assertTrue(
           harness.leelaz.sentCommands.isEmpty(),
           "board-only rebuild should not send loadsgf when the engine is unavailable.");
@@ -793,6 +1089,40 @@ class ReadBoardSyncDecisionTest {
   }
 
   @Test
+  void sameBoardMarkerlessFoxMetadataDoesNotOverrideRiskySnapshotSideToPlay()
+      throws Exception {
+    Stone[] target =
+        stones(
+            placement(0, 0, Stone.WHITE),
+            placement(1, 0, Stone.BLACK),
+            placement(2, 2, Stone.WHITE));
+
+    try (SyncHarness harness =
+        SyncHarness.create(
+            false,
+            rootHistory(target, Optional.empty(), Stone.EMPTY, false, 57, BoardNodeKind.SNAPSHOT))) {
+      BoardHistoryNode originalMainEnd = harness.board.getHistory().getMainEnd();
+
+      armFoxMoveNumber(harness.readBoard, 58);
+      harness.readBoard.parseLine("lastMoveSource none");
+      harness.sync(snapshot(target, Optional.empty(), Stone.EMPTY));
+
+      BoardHistoryNode rebuiltMainEnd = harness.board.getHistory().getMainEnd();
+      assertNotSame(
+          originalMainEnd,
+          rebuiltMainEnd,
+          "same-board fox metadata changes should still rebuild the snapshot node.");
+      assertEquals(
+          58,
+          rebuiltMainEnd.getData().moveNumber,
+          "metadata-only rebuild should still apply the rebuilt fox move number.");
+      assertFalse(
+          rebuiltMainEnd.getData().blackToPlay,
+          "markerless metadata-only frames should not use fox parity without stone evidence.");
+    }
+  }
+
+  @Test
   void sameBoardFoxMetadataRebuildHonorsExplicitPlAndMnOnSetupSnapshot() throws Exception {
     Stone[] target =
         stones(
@@ -921,6 +1251,76 @@ class ReadBoardSyncDecisionTest {
       assertEquals(
           0, harness.frame.refreshCount, "identical fox move metadata should not refresh again.");
       assertStaticSnapshotRootWithoutMarker(harness.board, target, 58, true);
+    }
+  }
+
+  @Test
+  void sameBoardFoxMetadataUsesTrustedVisualMarkerBeforeConflictingParity() throws Exception {
+    Stone[] target = stones(placement(0, 0, Stone.BLACK), placement(1, 0, Stone.WHITE));
+
+    try (SyncHarness harness =
+        SyncHarness.create(
+            false,
+            rootHistory(
+                target,
+                Optional.of(new int[] {0, 0}),
+                Stone.BLACK,
+                false,
+                58,
+                BoardNodeKind.SNAPSHOT))) {
+      BoardHistoryNode originalMainEnd = harness.board.getHistory().getMainEnd();
+      harness.board.resetCounters();
+      harness.frame.refreshCount = 0;
+      harness.leelaz.clearCount = 0;
+
+      armFoxMoveNumber(harness.readBoard, 58);
+      harness.readBoard.parseLine("lastMoveSource foxCornerFlip");
+      harness.sync(snapshot(target, Optional.of(new int[] {0, 0}), Stone.BLACK));
+
+      assertSame(
+          originalMainEnd,
+          harness.board.getHistory().getMainEnd(),
+          "trusted visual marker should prevent fox parity from forcing a same-board rebuild.");
+      assertFalse(
+          harness.board.getHistory().getMainEnd().getData().blackToPlay,
+          "black visual marker means white should play next even when fox parity conflicts.");
+      assertEquals(0, harness.leelaz.clearCount);
+      assertEquals(0, harness.frame.refreshCount);
+    }
+  }
+
+  @Test
+  void sameBoardFoxMetadataDoesNotUseHeuristicMarkerParityAsTurnAuthority() throws Exception {
+    Stone[] target = stones(placement(0, 0, Stone.BLACK), placement(1, 0, Stone.WHITE));
+
+    try (SyncHarness harness =
+        SyncHarness.create(
+            false,
+            rootHistory(
+                target,
+                Optional.of(new int[] {0, 0}),
+                Stone.BLACK,
+                false,
+                58,
+                BoardNodeKind.SNAPSHOT))) {
+      BoardHistoryNode originalMainEnd = harness.board.getHistory().getMainEnd();
+      harness.board.resetCounters();
+      harness.frame.refreshCount = 0;
+      harness.leelaz.clearCount = 0;
+
+      armFoxMoveNumber(harness.readBoard, 58);
+      harness.readBoard.parseLine("lastMoveSource stoneCount");
+      harness.sync(snapshot(target, Optional.of(new int[] {0, 0}), Stone.BLACK));
+
+      assertSame(
+          originalMainEnd,
+          harness.board.getHistory().getMainEnd(),
+          "heuristic marker source should not let fox parity force same-board turn rebuilds.");
+      assertFalse(
+          harness.board.getHistory().getMainEnd().getData().blackToPlay,
+          "heuristic marker path should keep the existing side-to-play fallback, not fox parity.");
+      assertEquals(0, harness.leelaz.clearCount);
+      assertEquals(0, harness.frame.refreshCount);
     }
   }
 
@@ -1201,18 +1601,19 @@ class ReadBoardSyncDecisionTest {
       SyncSnapshotClassifier classifier = new SyncSnapshotClassifier(BOARD_SIZE, BOARD_SIZE);
       int[] snapshotCodes = snapshot(target, Optional.of(lastMove), Stone.BLACK);
 
+      harness.readBoard.parseLine("lastMoveSource foxCornerFlip");
       invokeRebuildFromSnapshot(
           harness.readBoard,
           harness.board.getHistory().getCurrentHistoryNode(),
           snapshotCodes,
           classifier.summarizeDelta(initial, snapshotCodes));
 
-      assertEquals(1, harness.leelaz.clearCount, "static rebuild should clear the engine board.");
-      assertEquals(
-          1, harness.leelaz.sentCommands.size(), "ordinary static rebuild should use one loadsgf.");
-      assertTrue(
-          harness.leelaz.sentCommands.get(0).startsWith("loadsgf "),
-          "ordinary static rebuild should restore the static board exactly.");
+      assertClearBoardCommandCount(
+          harness.leelaz, 1, "static rebuild should clear the engine board.");
+      assertLoadSgfCommandCount(
+          harness.leelaz, 1, "ordinary static rebuild should use one loadsgf.");
+      assertHasLoadSgfCommand(
+          harness.leelaz, "ordinary static rebuild should restore the static board exactly.");
       assertTrue(
           harness.leelaz.playedMoves.isEmpty(),
           "ordinary static rebuild should avoid replaying the snapshot stones as play commands.");
@@ -1239,17 +1640,15 @@ class ReadBoardSyncDecisionTest {
       harness.sync(snapshot(target, Optional.empty(), Stone.EMPTY));
 
       assertStaticSnapshotRootWithoutMarker(harness.board, target, 58, true);
-      assertEquals(1, harness.leelaz.clearCount, "snapshot rebuild should still clear the engine.");
+      assertClearBoardCommandCount(
+          harness.leelaz, 1, "snapshot rebuild should still clear the engine.");
       assertTrue(
           harness.leelaz.playedMoves.isEmpty(),
           "dead snapshot restore should avoid replaying static stones as play commands.");
-      assertEquals(
-          1,
-          harness.leelaz.sentCommands.size(),
-          "dead snapshot restore should use one exact loadsgf command.");
-      assertTrue(
-          harness.leelaz.sentCommands.get(0).startsWith("loadsgf "),
-          "dead snapshot restore should rebuild the static board through loadsgf.");
+      assertLoadSgfCommandCount(
+          harness.leelaz, 1, "dead snapshot restore should use one exact loadsgf command.");
+      assertHasLoadSgfCommand(
+          harness.leelaz, "dead snapshot restore should rebuild the static board through loadsgf.");
       assertTempFileEventuallyDeleted(
           harness.leelaz.lastLoadedSgf(),
           "exact snapshot restore should clean up the temporary SGF file.");
@@ -1551,8 +1950,14 @@ class ReadBoardSyncDecisionTest {
       harness.leelaz.clearCount = 0;
       harness.leelaz.playedMoves = new ArrayList<>();
 
+      setField(harness.readBoard, "readBoardTurnTrusted", true);
+      harness.readBoard.parseLine("lastMoveSource stoneCount");
       harness.sync(snapshot(target, Optional.empty(), Stone.EMPTY));
 
+      SyncDecisionTrace trace =
+          SyncDiagnosticsRecorder.getDefault().snapshot().getLatestDecisionTrace();
+      assertEquals("HOLD", trace.getResult());
+      assertEquals("conflict_hold", trace.getReasonCode());
       assertSame(
           originalMainEnd,
           harness.board.getHistory().getMainEnd(),
@@ -1563,12 +1968,15 @@ class ReadBoardSyncDecisionTest {
           "the first conflicting frame should debounce before rebuild.");
       assertEquals(
           0, harness.frame.refreshCount, "holding a transient conflict should not refresh the UI.");
+      assertTrue(
+          isReadBoardTurnTrusted(harness.readBoard),
+          "held conflict observations should not refresh turn trust.");
 
       harness.sync(snapshot(target, Optional.empty(), Stone.EMPTY));
 
-      assertEquals(
+      assertClearBoardCommandCount(
+          harness.leelaz,
           1,
-          harness.leelaz.clearCount,
           "the repeated conflicting frame should trigger one static engine rebuild.");
       assertArrayEquals(
           target,
@@ -1679,14 +2087,15 @@ class ReadBoardSyncDecisionTest {
       assertEquals(
           0, harness.leelaz.clearCount, "holding a rollback frame should not rebuild immediately.");
 
+      harness.readBoard.parseLine("lastMoveSource foxCornerFlip");
       harness.sync(
           snapshot(
               matchedNode.getData().stones,
               matchedNode.getData().lastMove,
               matchedNode.getData().lastMoveColor));
 
-      assertEquals(
-          1, harness.leelaz.clearCount, "repeated rollback frames should force one rebuild.");
+      assertClearBoardCommandCount(
+          harness.leelaz, 1, "repeated rollback frames should force one rebuild.");
       assertEquals(
           0,
           harness.board.placeForSyncCount,
@@ -1802,6 +2211,83 @@ class ReadBoardSyncDecisionTest {
   }
 
   @Test
+  void historyOverwritePublishesDiagnosticsAfterClearingResumeState() throws Exception {
+    try (SyncHarness harness = SyncHarness.create(false, emptyHistory())) {
+      BoardHistoryNode mainEnd =
+          buildHistory(harness.board, placement(0, 0, Stone.BLACK)).nodes.get(0);
+      SyncResumeState resumeState =
+          new SyncResumeState(
+              mainEnd,
+              SyncRemoteContext.forFoxLive(OptionalInt.of(1), "43581号", OptionalInt.of(1), false));
+      setField(harness.readBoard, "resumeState", resumeState);
+      setField(harness.readBoard, "lastResolvedSnapshotNode", mainEnd);
+      harness.readBoard.parseLine("syncPlatform fox");
+
+      SyncDiagnosticsSnapshot staleSnapshot =
+          SyncDiagnosticsRecorder.getDefault().snapshot().getSyncSnapshot();
+      assertTrue(staleSnapshot.hasResumeState(), "fixture should publish existing resume state.");
+      assertTrue(
+          staleSnapshot.hasLastResolvedSnapshotNode(),
+          "fixture should publish existing resolved snapshot node.");
+
+      harness.readBoard.onHistoryOverwritten();
+
+      SyncDiagnosticsSnapshot snapshot =
+          SyncDiagnosticsRecorder.getDefault().snapshot().getSyncSnapshot();
+      assertFalse(
+          snapshot.hasResumeState(), "history overwrite should publish cleared resume state.");
+      assertFalse(
+          snapshot.hasLastResolvedSnapshotNode(),
+          "history overwrite should publish cleared resolved snapshot node.");
+      assertEquals(
+          "none",
+          snapshot.getLastResolvedSnapshotSummary(),
+          "history overwrite should publish an empty resolved-node summary.");
+    }
+  }
+
+  @Test
+  void shutdownPublishesDiagnosticsAfterClearingResumeStateAndReleasingConnection()
+      throws Exception {
+    try (SyncHarness harness = SyncHarness.create(false, emptyHistory())) {
+      BoardHistoryNode mainEnd =
+          buildHistory(harness.board, placement(0, 0, Stone.BLACK)).nodes.get(0);
+      SyncResumeState resumeState =
+          new SyncResumeState(
+              mainEnd,
+              SyncRemoteContext.forFoxLive(OptionalInt.of(1), "43581号", OptionalInt.of(1), false));
+      setField(harness.readBoard, "resumeState", resumeState);
+      setField(harness.readBoard, "lastResolvedSnapshotNode", mainEnd);
+      setField(
+          harness.readBoard, "outputStream", new BufferedOutputStream(new ByteArrayOutputStream()));
+      harness.readBoard.parseLine("syncPlatform fox");
+
+      SyncDiagnosticsSnapshot staleSnapshot =
+          SyncDiagnosticsRecorder.getDefault().snapshot().getSyncSnapshot();
+      assertTrue(staleSnapshot.isReadBoardConnected(), "fixture should publish connected state.");
+      assertTrue(staleSnapshot.hasResumeState(), "fixture should publish existing resume state.");
+      assertTrue(
+          staleSnapshot.hasLastResolvedSnapshotNode(),
+          "fixture should publish existing resolved snapshot node.");
+
+      harness.readBoard.shutdown();
+
+      SyncDiagnosticsSnapshot snapshot =
+          SyncDiagnosticsRecorder.getDefault().snapshot().getSyncSnapshot();
+      assertFalse(
+          snapshot.isReadBoardConnected(), "shutdown should publish released connection state.");
+      assertFalse(snapshot.hasResumeState(), "shutdown should publish cleared resume state.");
+      assertFalse(
+          snapshot.hasLastResolvedSnapshotNode(),
+          "shutdown should publish cleared resolved snapshot node.");
+      assertEquals(
+          "none",
+          snapshot.getLastResolvedSnapshotSummary(),
+          "shutdown should publish an empty resolved-node summary.");
+    }
+  }
+
+  @Test
   void startFirstFoxJumpFrameBypassesHoldAndRebuildsImmediately() throws Exception {
     Stone[] rootStones = stones(placement(0, 0, Stone.BLACK), placement(1, 0, Stone.WHITE));
     Stone[] target =
@@ -1856,6 +2342,17 @@ class ReadBoardSyncDecisionTest {
       harness.readBoard.parseLine("forceRebuild");
       harness.sync(snapshotCodes);
 
+      SyncDecisionTrace trace =
+          SyncDiagnosticsRecorder.getDefault().snapshot().getLatestDecisionTrace();
+      assertEquals("FORCE_REBUILD", trace.getResult());
+      assertEquals("remote_force_rebuild_requested", trace.getReasonCode());
+      assertTrue(
+          SyncDiagnosticsRecorder.getDefault()
+              .snapshot()
+              .getSyncSnapshot()
+              .hasLastResolvedSnapshotNode(),
+          "force rebuild diagnostics should publish the rebuilt resolved snapshot node.");
+
       BoardHistoryNode rebuiltMainEnd = harness.board.getHistory().getMainEnd();
       assertNotSame(
           originalMainEnd,
@@ -1880,6 +2377,157 @@ class ReadBoardSyncDecisionTest {
           0,
           harness.board.placeForSyncCount,
           "steady-state frame after forceRebuild should not replay stones.");
+    }
+  }
+
+  @Test
+  void noChangeAncestorRecoveryPublishesPostDecisionSyncState() throws Exception {
+    Stone[] ancestorStones = stones(placement(1, 1, Stone.BLACK));
+
+    try (SyncHarness harness = SyncHarness.create(false, emptyHistory())) {
+      HistoryPath path =
+          buildHistory(
+              harness.board,
+              placement(1, 1, Stone.BLACK),
+              placement(0, 0, Stone.WHITE),
+              placement(2, 2, Stone.BLACK));
+      BoardHistoryNode ancestorNode = path.nodes.get(0);
+
+      harness.readBoard.parseLine("syncPlatform fox");
+      harness.readBoard.parseLine("roomToken 43581号");
+      harness.readBoard.parseLine("liveTitleMove 1");
+      harness.readBoard.parseLine("foxMoveNumber 1");
+      harness.sync(snapshot(ancestorStones, Optional.empty(), Stone.EMPTY));
+
+      SyncDiagnosticsReport report = SyncDiagnosticsRecorder.getDefault().snapshot();
+      assertEquals("NO_CHANGE", report.getLatestDecisionTrace().getResult());
+      assertEquals(
+          "snapshot_matches_existing_node", report.getLatestDecisionTrace().getReasonCode());
+      assertSame(
+          ancestorNode,
+          harness.board.getHistory().getCurrentHistoryNode(),
+          "ancestor recovery should keep the existing behavior.");
+      assertFalse(
+          report.getSyncSnapshot().isAwaitingFirstSyncFrame(),
+          "NO_CHANGE diagnostics should publish after first-frame state is consumed.");
+      assertTrue(
+          report.getSyncSnapshot().hasLastResolvedSnapshotNode(),
+          "NO_CHANGE diagnostics should publish the resolved snapshot node after it is remembered.");
+    }
+  }
+
+  @Test
+  void protocolLineSummaryDoesNotExposeSensitivePayloads() throws Exception {
+    try (SyncHarness harness = SyncHarness.create(false, emptyHistory())) {
+      harness.readBoard.parseLine("roomToken secret-room-token");
+      SyncDiagnosticsSnapshot snapshot =
+          SyncDiagnosticsRecorder.getDefault().snapshot().getSyncSnapshot();
+      assertEquals("roomToken <redacted>", snapshot.getLastProtocolLineSummary());
+      assertFalse(snapshot.getLastProtocolLineSummary().contains("secret-room-token"));
+
+      SyncDiagnosticsExportSnapshot export = SyncDiagnosticsRecorder.getDefault().exportSnapshot();
+      List<SyncProtocolDiagnosticEvent> events = export.getRecentProtocolEvents();
+      assertTrue(
+          events.stream().anyMatch(event -> "roomToken <redacted>".equals(event.getSummary())));
+      assertTrue(
+          events.stream().noneMatch(event -> event.getSummary().contains("secret-room-token")));
+
+      harness.readBoard.parseLine("liveTitle Very Long Secret Room Title 1234567890");
+      snapshot = SyncDiagnosticsRecorder.getDefault().snapshot().getSyncSnapshot();
+      assertEquals("liveTitle <redacted>", snapshot.getLastProtocolLineSummary());
+      assertFalse(snapshot.getLastProtocolLineSummary().contains("Very Long Secret Room Title"));
+
+      harness.readBoard.parseLine("foxMoveNumber 123");
+      snapshot = SyncDiagnosticsRecorder.getDefault().snapshot().getSyncSnapshot();
+      assertEquals("foxMoveNumber 123", snapshot.getLastProtocolLineSummary());
+
+      harness.readBoard.parseLine("syncPlatform yike");
+      snapshot = SyncDiagnosticsRecorder.getDefault().snapshot().getSyncSnapshot();
+      assertEquals("syncPlatform yike", snapshot.getLastProtocolLineSummary());
+
+      export = SyncDiagnosticsRecorder.getDefault().exportSnapshot();
+      events = export.getRecentProtocolEvents();
+      assertTrue(events.stream().anyMatch(event -> "syncPlatform yike".equals(event.getSummary())));
+    }
+  }
+
+  @Test
+  void protocolLineSummaryRedactsSgfPayloadsAndPathLikeUpdateMetadata() throws Exception {
+    try (SyncHarness harness = SyncHarness.create(false, emptyHistory())) {
+      harness.readBoard.parseLine("sgf (;GM[1]SZ[19])");
+      SyncDiagnosticsSnapshot snapshot =
+          SyncDiagnosticsRecorder.getDefault().snapshot().getSyncSnapshot();
+      assertEquals("sgf <redacted>", snapshot.getLastProtocolLineSummary());
+      assertFalse(snapshot.getLastProtocolLineSummary().contains("(;GM"));
+
+      harness.readBoard.parseLine("loadsgf (;GM[1])");
+      snapshot = SyncDiagnosticsRecorder.getDefault().snapshot().getSyncSnapshot();
+      assertEquals("loadsgf <redacted>", snapshot.getLastProtocolLineSummary());
+      assertFalse(snapshot.getLastProtocolLineSummary().contains("(;GM"));
+
+      harness.readBoard.parseLine("loadSgf (;GM[1])");
+      snapshot = SyncDiagnosticsRecorder.getDefault().snapshot().getSyncSnapshot();
+      assertEquals("loadSgf <redacted>", snapshot.getLastProtocolLineSummary());
+      assertFalse(snapshot.getLastProtocolLineSummary().contains("(;GM"));
+
+      harness.readBoard.parseLine("readboardUpdateReady\t1\tC:\\secret\\file.zip");
+      snapshot = SyncDiagnosticsRecorder.getDefault().snapshot().getSyncSnapshot();
+      assertEquals("readboardUpdateReady <redacted>", snapshot.getLastProtocolLineSummary());
+      assertFalse(snapshot.getLastProtocolLineSummary().contains("C:\\secret\\file.zip"));
+    }
+  }
+
+  @Test
+  void metadataProtocolLinesPublishUpdatedRemoteContextDiagnostics() throws Exception {
+    try (SyncHarness harness = SyncHarness.create(false, emptyHistory())) {
+      harness.readBoard.parseLine("roomToken secret-room-token");
+      SyncDiagnosticsSnapshot snapshot =
+          SyncDiagnosticsRecorder.getDefault().snapshot().getSyncSnapshot();
+      assertTrue(snapshot.getPendingRemoteContextSummary().contains("hasRoomToken=true"));
+      assertFalse(snapshot.getPendingRemoteContextSummary().contains("secret-room-token"));
+
+      harness.readBoard.parseLine("recordTitleFingerprint secret-title-fingerprint");
+      snapshot = SyncDiagnosticsRecorder.getDefault().snapshot().getSyncSnapshot();
+      assertTrue(snapshot.getPendingRemoteContextSummary().contains("hasTitleFingerprint=true"));
+      assertFalse(snapshot.getPendingRemoteContextSummary().contains("secret-title-fingerprint"));
+      assertEquals("recordTitleFingerprint <redacted>", snapshot.getLastProtocolLineSummary());
+      assertFalse(snapshot.getLastProtocolLineSummary().contains("secret-title-fingerprint"));
+
+      harness.readBoard.parseLine("forceRebuild");
+      snapshot = SyncDiagnosticsRecorder.getDefault().snapshot().getSyncSnapshot();
+      assertTrue(snapshot.getPendingRemoteContextSummary().contains("forceRebuild=true"));
+    }
+  }
+
+  @Test
+  void foxMoveNumberPublishesUpdatedRemoteContextDiagnosticsImmediately() throws Exception {
+    try (SyncHarness harness = SyncHarness.create(false, emptyHistory())) {
+      harness.readBoard.parseLine("syncPlatform fox");
+      harness.readBoard.parseLine("foxMoveNumber 123");
+
+      SyncDiagnosticsSnapshot snapshot =
+          SyncDiagnosticsRecorder.getDefault().snapshot().getSyncSnapshot();
+      assertEquals("foxMoveNumber 123", snapshot.getLastProtocolLineSummary());
+      assertTrue(
+          snapshot.getPendingRemoteContextSummary().contains("recoveryMoveNumber=123"),
+          "foxMoveNumber diagnostics should include the updated recovery move number immediately.");
+    }
+  }
+
+  @Test
+  void stateResetProtocolLinesPublishUpdatedRemoteContextDiagnostics() throws Exception {
+    try (SyncHarness harness = SyncHarness.create(false, emptyHistory())) {
+      harness.readBoard.parseLine("roomToken secret-room-token");
+      SyncDiagnosticsSnapshot snapshot =
+          SyncDiagnosticsRecorder.getDefault().snapshot().getSyncSnapshot();
+      assertTrue(snapshot.getPendingRemoteContextSummary().contains("hasRoomToken=true"));
+
+      harness.readBoard.parseLine("start 3 3");
+      snapshot = SyncDiagnosticsRecorder.getDefault().snapshot().getSyncSnapshot();
+
+      assertEquals("start 3 3", snapshot.getLastProtocolLineSummary());
+      assertTrue(snapshot.getPendingRemoteContextSummary().contains("hasRoomToken=false"));
+      assertFalse(snapshot.getPendingRemoteContextSummary().contains("secret-room-token"));
     }
   }
 
@@ -2308,6 +2956,40 @@ class ReadBoardSyncDecisionTest {
     assertFalse(Files.exists(path), message);
   }
 
+  private static void assertClearBoardCommandCount(
+      SnapshotTrackingLeelaz leelaz, int expected, String message) {
+    assertEquals(expected, countCommands(leelaz, "clear_board"), message);
+  }
+
+  private static void assertLoadSgfCommandCount(
+      SnapshotTrackingLeelaz leelaz, int expected, String message) {
+    assertEquals(expected, countCommandsStartingWith(leelaz, "loadsgf "), message);
+  }
+
+  private static void assertHasLoadSgfCommand(SnapshotTrackingLeelaz leelaz, String message) {
+    assertTrue(countCommandsStartingWith(leelaz, "loadsgf ") > 0, message);
+  }
+
+  private static int countCommands(SnapshotTrackingLeelaz leelaz, String expectedCommand) {
+    int count = 0;
+    for (String command : leelaz.sentCommands) {
+      if (expectedCommand.equals(command)) {
+        count++;
+      }
+    }
+    return count;
+  }
+
+  private static int countCommandsStartingWith(SnapshotTrackingLeelaz leelaz, String prefix) {
+    int count = 0;
+    for (String command : leelaz.sentCommands) {
+      if (command.startsWith(prefix)) {
+        count++;
+      }
+    }
+    return count;
+  }
+
   private static BoardData createFixtureData(
       Stone[] stones,
       Optional<int[]> lastMove,
@@ -2393,10 +3075,30 @@ class ReadBoardSyncDecisionTest {
     field.set(target, value);
   }
 
+  private static void resetDefaultDiagnosticsRecorder() {
+    SyncDiagnosticsRecorder.clearDefaultForTests();
+  }
+
   private static Object getField(Object target, String name) throws Exception {
     Field field = findField(target.getClass(), name);
     field.setAccessible(true);
     return field.get(target);
+  }
+
+  private static boolean isReadBoardTurnTrusted(ReadBoard readBoard) throws Exception {
+    return (boolean) getField(readBoard, "readBoardTurnTrusted");
+  }
+
+  private static SyncRemoteContext pendingRemoteContext(ReadBoard readBoard) throws Exception {
+    return (SyncRemoteContext) getField(readBoard, "pendingRemoteContext");
+  }
+
+  private static void setPendingSnapshot(ReadBoard readBoard, int[] snapshotCodes) throws Exception {
+    ArrayList<Integer> counts = new ArrayList<>(snapshotCodes.length);
+    for (int code : snapshotCodes) {
+      counts.add(code);
+    }
+    setField(readBoard, "tempcount", counts);
   }
 
   private static Field findField(Class<?> type, String name) throws NoSuchFieldException {
@@ -2447,6 +3149,36 @@ class ReadBoardSyncDecisionTest {
             SyncSnapshotClassifier.SnapshotDelta.class);
     method.setAccessible(true);
     return (boolean) method.invoke(readBoard, syncStartNode, snapshotStones, snapshotDelta);
+  }
+
+  private static boolean invokeInferSnapshotBlackToPlay(
+      ReadBoard readBoard,
+      BoardHistoryNode syncStartNode,
+      Stone[] snapshotStones,
+      SyncSnapshotClassifier.SnapshotDelta snapshotDelta,
+      OptionalInt foxMoveNumber,
+      SyncRemoteContext remoteContext,
+      ReadBoardLastMoveSource lastMoveSource)
+      throws Exception {
+    Method method =
+        ReadBoard.class.getDeclaredMethod(
+            "inferSnapshotBlackToPlay",
+            BoardHistoryNode.class,
+            Stone[].class,
+            SyncSnapshotClassifier.SnapshotDelta.class,
+            OptionalInt.class,
+            SyncRemoteContext.class,
+            ReadBoardLastMoveSource.class);
+    method.setAccessible(true);
+    return (boolean)
+        method.invoke(
+            readBoard,
+            syncStartNode,
+            snapshotStones,
+            snapshotDelta,
+            foxMoveNumber,
+            remoteContext,
+            lastMoveSource);
   }
 
   private static final class SyncHarness implements AutoCloseable {

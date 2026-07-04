@@ -9,7 +9,6 @@ import java.awt.Component;
 import java.awt.Container;
 import java.awt.Dimension;
 import java.awt.Font;
-import java.awt.GradientPaint;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
 import java.awt.Image;
@@ -337,7 +336,7 @@ public final class AppleStyleSupport {
     menuItem.setBackground(popupSurfaceColor());
     menuItem.setForeground(controlTextColor());
     menuItem.setFocusPainted(false);
-    menuItem.setBorder(new EmptyBorder(4, 8, 4, 8));
+    menuItem.setBorder(new EmptyBorder(5, 10, 5, 10));
   }
 
   public static void styleLabel(JLabel label) {
@@ -404,25 +403,25 @@ public final class AppleStyleSupport {
     Graphics2D g = (Graphics2D) graphics.create();
     g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
     if (isAppleStyleEnabled()) {
-      GradientPaint base = new GradientPaint(0, 0, topStripColor(), 0, height, bottomStripColor());
-      g.setPaint(base);
-      g.fillRoundRect(0, 0, width, height, 18, 18);
-
-      g.setColor(new Color(255, 255, 255, 26));
-      g.fillRoundRect(1, 1, Math.max(0, width - 2), Math.max(0, height / 2), 18, 18);
+      // One flat translucent material for both strips — a single surface reads as one
+      // product; gradients and specular highlights read as bolted-on chrome.
+      g.setColor(top ? topStripColor() : bottomStripColor());
+      g.fillRoundRect(0, 0, width, height, 14, 14);
 
       g.setColor(controlBorderColor());
       g.setStroke(new BasicStroke(1f));
-      g.drawRoundRect(0, 0, width - 1, height - 1, 18, 18);
+      g.drawRoundRect(0, 0, width - 1, height - 1, 14, 14);
 
-      Color edge = top ? new Color(255, 255, 255, 46) : new Color(0, 0, 0, 60);
+      Color edge = top ? new Color(255, 255, 255, 28) : new Color(0, 0, 0, 60);
       g.setColor(edge);
       g.drawLine(0, top ? height - 1 : 0, width, top ? height - 1 : 0);
     } else {
       if (isClassicEnabled()) {
-        g.setColor(new Color(232, 232, 232));
+        // Flat light surface with a single hairline edge — classic mode should read
+        // as a modern light desktop app, not legacy battleship grey.
+        g.setColor(new Color(244, 245, 247));
         g.fillRect(0, 0, width, height);
-        g.setColor(new Color(200, 200, 200));
+        g.setColor(new Color(221, 223, 227));
       } else {
         g.setColor(MorandiPalette.TOOLBAR_BG);
         g.fillRect(0, 0, width, height);
@@ -459,7 +458,7 @@ public final class AppleStyleSupport {
   private static Color buttonFillColor(
       boolean hover, boolean pressed, boolean enabled, String role) {
     if (!enabled) {
-      return isAppleStyleEnabled() ? new Color(255, 255, 255, 16) : new Color(225, 220, 213, 110);
+      return isAppleStyleEnabled() ? new Color(255, 255, 255, 16) : new Color(238, 240, 243, 170);
     }
     boolean classic = isClassicEnabled() && !isAppleStyleEnabled();
     if (ROLE_PRIMARY.equals(role)) {
@@ -479,12 +478,13 @@ public final class AppleStyleSupport {
       return pressed ? new Color(210, 62, 62, 230) : new Color(210, 62, 62, hover ? 210 : 185);
     }
     if (isAppleStyleEnabled()) {
-      return new Color(255, 255, 255, pressed ? 64 : hover ? 44 : 28);
+      return new Color(255, 255, 255, pressed ? 70 : hover ? 48 : 16);
     }
     if (isClassicEnabled()) {
+      // White resting buttons on the light strip, neutral grey interaction states.
       return pressed
-          ? new Color(200, 200, 200)
-          : hover ? new Color(220, 220, 220) : new Color(238, 238, 238);
+          ? new Color(228, 231, 235)
+          : hover ? new Color(240, 242, 245) : Color.WHITE;
     }
     return pressed
         ? MorandiPalette.TOOLBAR_BUTTON_PRESSED
@@ -503,18 +503,18 @@ public final class AppleStyleSupport {
   }
 
   private static Color topStripColor() {
-    if (isAppleStyleEnabled()) return new Color(18, 20, 24, 225);
-    return isClassicEnabled() ? new Color(232, 232, 232) : MorandiPalette.TOOLBAR_BG;
+    if (isAppleStyleEnabled()) return new Color(24, 26, 31, 232);
+    return isClassicEnabled() ? new Color(244, 245, 247) : MorandiPalette.TOOLBAR_BG;
   }
 
   private static Color bottomStripColor() {
-    if (isAppleStyleEnabled()) return new Color(33, 36, 42, 215);
-    return isClassicEnabled() ? new Color(232, 232, 232) : MorandiPalette.TOOLBAR_BG;
+    if (isAppleStyleEnabled()) return new Color(24, 26, 31, 232);
+    return isClassicEnabled() ? new Color(244, 245, 247) : MorandiPalette.TOOLBAR_BG;
   }
 
   private static Color dialogSurfaceColor() {
     if (isAppleStyleEnabled()) return new Color(30, 33, 38);
-    return isClassicEnabled() ? new Color(238, 238, 238) : MorandiPalette.CREAM_WHITE;
+    return isClassicEnabled() ? new Color(246, 247, 249) : MorandiPalette.CREAM_WHITE;
   }
 
   private static Color popupSurfaceColor() {
@@ -524,7 +524,7 @@ public final class AppleStyleSupport {
 
   private static Color popupSelectionColor() {
     if (isAppleStyleEnabled()) return accentFillColor(180);
-    return isClassicEnabled() ? new Color(184, 207, 229) : MorandiPalette.MENU_ITEM_SELECTED;
+    return isClassicEnabled() ? new Color(228, 237, 250) : MorandiPalette.MENU_ITEM_SELECTED;
   }
 
   private static Color fieldBackgroundColor() {
@@ -572,7 +572,7 @@ public final class AppleStyleSupport {
           ? Lizzie.config.theme.glassPanelBorderColor()
           : new Color(255, 255, 255, 40);
     }
-    return isClassicEnabled() ? new Color(180, 180, 180) : MorandiPalette.TOOLBAR_BUTTON_BORDER;
+    return isClassicEnabled() ? new Color(0, 0, 0, 36) : MorandiPalette.TOOLBAR_BUTTON_BORDER;
   }
 
   private static Color accentFillColor(int alpha) {
@@ -597,6 +597,14 @@ public final class AppleStyleSupport {
         : 12;
   }
 
+  private static Color unselectedIconBorderColor() {
+    if (isAppleStyleEnabled()) {
+      // Opaque so the checkbox outline stays visible over the dark glass strips.
+      return new Color(controlBorderColor().getRGB());
+    }
+    return isClassicEnabled() ? new Color(0, 0, 0, 90) : MorandiPalette.TOOLBAR_BUTTON_BORDER;
+  }
+
   private static class ToolbarButtonUI extends BasicButtonUI {
     @Override
     public void paint(Graphics graphics, JComponent component) {
@@ -606,27 +614,18 @@ public final class AppleStyleSupport {
       int width = component.getWidth();
       int height = component.getHeight();
       int arc = controlCornerRadius();
-      g.setColor(
-          buttonFillColor(
-              button.getModel().isRollover(),
-              button.getModel().isArmed() || button.getModel().isPressed(),
-              button.isEnabled(),
-              buttonRole(button)));
+      boolean hover = button.getModel().isRollover();
+      boolean pressed = button.getModel().isArmed() || button.getModel().isPressed();
+      String role = buttonRole(button);
+      g.setColor(buttonFillColor(hover, pressed, button.isEnabled(), role));
       g.fill(new RoundRectangle2D.Float(0.5f, 0.5f, width - 1f, height - 1f, arc, arc));
-      g.setColor(buttonBorderColor(button));
-      g.setStroke(new BasicStroke(1f));
-      g.draw(new RoundRectangle2D.Float(0.5f, 0.5f, width - 1f, height - 1f, arc, arc));
-      if (isAppleStyleEnabled()) {
-        GradientPaint highlight =
-            new GradientPaint(
-                0,
-                1,
-                new Color(255, 255, 255, 46),
-                0,
-                Math.max(2, height / 2),
-                new Color(255, 255, 255, 0));
-        g.setPaint(highlight);
-        g.fillRoundRect(1, 1, Math.max(0, width - 2), Math.max(1, height / 2), arc, arc);
+      // Flat surface: resting buttons stay quiet; the border only appears when the
+      // button is interactive (hover/pressed) or carries an accent role.
+      boolean accented = ROLE_PRIMARY.equals(role) || ROLE_DANGER.equals(role);
+      if (accented || hover || pressed || !isAppleStyleEnabled()) {
+        g.setColor(buttonBorderColor(button));
+        g.setStroke(new BasicStroke(1f));
+        g.draw(new RoundRectangle2D.Float(0.5f, 0.5f, width - 1f, height - 1f, arc, arc));
       }
       g.dispose();
       super.paint(graphics, component);
@@ -653,8 +652,8 @@ public final class AppleStyleSupport {
               ? accentFillColor(enabled ? 215 : 120)
               : (isAppleStyleEnabled()
                   ? new Color(255, 255, 255, enabled ? 20 : 12)
-                  : MorandiPalette.CREAM_WHITE);
-      Color border = selected ? accentBorderColor() : new Color(controlBorderColor().getRGB());
+                  : (isClassicEnabled() ? Color.WHITE : MorandiPalette.CREAM_WHITE));
+      Color border = selected ? accentBorderColor() : unselectedIconBorderColor();
       g.setColor(fill);
       g.fillRoundRect(x, y, size, size, 7, 7);
       g.setColor(border);
@@ -706,8 +705,8 @@ public final class AppleStyleSupport {
               ? accentFillColor(enabled ? 215 : 120)
               : (isAppleStyleEnabled()
                   ? new Color(255, 255, 255, enabled ? 20 : 12)
-                  : MorandiPalette.CREAM_WHITE);
-      Color border = selected ? accentBorderColor() : new Color(controlBorderColor().getRGB());
+                  : (isClassicEnabled() ? Color.WHITE : MorandiPalette.CREAM_WHITE));
+      Color border = selected ? accentBorderColor() : unselectedIconBorderColor();
       g.setColor(fill);
       g.fillOval(x, y, size, size);
       g.setColor(border);

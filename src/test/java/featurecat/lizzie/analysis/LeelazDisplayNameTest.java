@@ -2,6 +2,7 @@ package featurecat.lizzie.analysis;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
+import featurecat.lizzie.analysis.remote.RemoteComputeConfig;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -17,7 +18,7 @@ class LeelazDisplayNameTest {
     Path weightPath = Files.createFile(weightsDir.resolve("default.bin.gz"));
     Files.write(
         enginesDir.resolve("VERSION.txt"),
-        ("KataGo version: v1.16.4\nModel source: kata1-zhizi-b28c512nbt-muonfd2.bin.gz\n")
+        ("KataGo version: v1.16.5\nModel source: kata1-zhizi-b28c512nbt-muonfd2.bin.gz\n")
             .getBytes(StandardCharsets.UTF_8));
 
     String command =
@@ -44,5 +45,29 @@ class LeelazDisplayNameTest {
             + " -config \"/tmp/gtp.cfg\"";
 
     assertEquals("zhizi 28B muonfd2", Leelaz.friendlyEngineName("KataGo TensorRT", command));
+  }
+
+  @Test
+  void remoteComputeNameUsesSavedArgsInsteadOfStaleEngineName() {
+    assertEquals(
+        "智子云算力 VIP包月 · 智子28B · TensorRT",
+        Leelaz.friendlyEngineName("智子云算力 28B TensorRT", RemoteComputeConfig.COMMAND_ZHIZI));
+  }
+
+  @Test
+  void weightDisplayHandlesMultipleSpacesAfterModelFlag() {
+    String command =
+        "\"/tmp/katago\" gtp -model  \"/tmp/weights/kata1-b28c512nbt-s12763923712-d5805955894.bin.gz\""
+            + " -config \"/tmp/gtp.cfg\"";
+
+    assertEquals("28B", Leelaz.friendlyEngineName("KataGo Auto Setup", command));
+  }
+
+  @Test
+  void weightDisplayHandlesEqualsStyleWeightsFlag() {
+    String command =
+        "\"/tmp/leelaz\" --weights=/tmp/weights/kata1-zhizi-b28c512nbt-muonfd2.bin.gz";
+
+    assertEquals("zhizi 28B muonfd2", Leelaz.friendlyEngineName("KataGo Auto Setup", command));
   }
 }

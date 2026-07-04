@@ -71,6 +71,7 @@ public final class KataGoRuntimeHelper {
   private static final String USER_AGENT =
       "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
           + "(KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36";
+  private static final int HTTP_RANGE_NOT_SATISFIABLE = 416;
   private static final String NVIDIA_ENGINE_DIR = "windows-x64-nvidia";
   private static final String NVIDIA50_CUDA_ENGINE_DIR = "windows-x64-nvidia50-cuda";
   private static final String NVIDIA_TRT_ENGINE_DIR = "windows-x64-nvidia-tensorrt";
@@ -81,6 +82,12 @@ public final class KataGoRuntimeHelper {
   private static final String NVIDIA50_TRT_BACKEND = "nvidia50-trt";
   private static final String ENGINE_BACKEND_MARKER_NAME = "lizzieyzy-next-engine-backend.txt";
   private static final String NVIDIA_RUNTIME_ROOT = "nvidia-runtime";
+  private static final String NVIDIA_RUNTIME_DOWNLOAD_CACHE_DIR = "downloads";
+  private static final String NVIDIA_RUNTIME_CACHE_DIR = "cache";
+  private static final String NVIDIA_CUDA_CACHE_DIR = "cuda";
+  private static final String NVIDIA_TENSORRT_TEMP_DIR = "temp";
+  private static final String NVIDIA_DOWNLOAD_HOST_COM = "developer.download.nvidia.com";
+  private static final String NVIDIA_DOWNLOAD_HOST_CN = "developer.download.nvidia.cn";
   private static final String BUNDLED_HOME_DATA_DIR = "katago-home";
   private static final String CUDA_MANIFEST_URL =
       "https://developer.download.nvidia.com/compute/cuda/redist/redistrib_12.1.1.json";
@@ -97,18 +104,18 @@ public final class KataGoRuntimeHelper {
   private static final String TENSORRT_RUNTIME_SHA256_PROPERTY = "lizzie.tensorrt.runtime.sha256";
   private static final String TENSORRT_SKIP_RUNTIME_FOR_TESTS_PROPERTY =
       "lizzie.tensorrt.skipRuntimePackagesForTests";
-  private static final String TENSORRT_KATAGO_VERSION = "v1.16.4";
+  private static final String TENSORRT_KATAGO_VERSION = "v1.16.5";
   private static final String TENSORRT_INSTALL_LOCK_NAME = "tensorrt-install.lock";
   private static final String TENSORRT_KATAGO_ASSET =
-      "katago-v1.16.4-trt10.9.0-cuda12.8-windows-x64.zip";
+      "katago-v1.16.5-trt10.9.0-cuda12.8-windows-x64.zip";
   private static final String TENSORRT_KATAGO_URL =
       "https://github.com/lightvector/KataGo/releases/download/"
           + TENSORRT_KATAGO_VERSION
           + "/"
           + TENSORRT_KATAGO_ASSET;
   private static final String TENSORRT_KATAGO_SHA256 =
-      "1dea0b507c6331c9a7cf4f0ed2eeee5384b880d60f1db7fe876506daee55830f";
-  private static final long TENSORRT_KATAGO_SIZE_BYTES = 4693569L;
+      "954227e5696eed4c1ad80da6a1d48eb1de5ecdb741f849d1b956b8b64093d2f5";
+  private static final long TENSORRT_KATAGO_SIZE_BYTES = 4745653L;
   private static final String TENSORRT_RUNTIME_URL =
       "https://developer.download.nvidia.com/compute/machine-learning/tensorrt/10.9.0/zip/"
           + "TensorRT-10.9.0.34.Windows.win10.cuda-12.8.zip";
@@ -117,6 +124,10 @@ public final class KataGoRuntimeHelper {
   private static final long CUDA_12_8_NVJITLINK_SIZE_BYTES = 257312022L;
   private static final long CUDNN_9_SIZE_BYTES = 675349654L;
   private static final long TENSORRT_RUNTIME_SIZE_BYTES = 1845842538L;
+  private static final int TENSORRT_MIRROR_PROBE_BYTES = 512 * 1024;
+  private static final int TENSORRT_MIRROR_PROBE_CONNECT_TIMEOUT_MILLIS = 6000;
+  private static final int TENSORRT_MIRROR_PROBE_READ_TIMEOUT_MILLIS = 6000;
+  private static final int TENSORRT_MIRROR_PROBE_MAX_MILLIS = 8000;
   private static final Pattern BENCHMARK_RECOMMENDED_PATTERN =
       Pattern.compile("numSearchThreads\\s*=\\s*(\\d+):.*\\(recommended\\)");
   private static final Pattern BENCHMARK_CURRENT_PATTERN =
@@ -226,6 +237,9 @@ public final class KataGoRuntimeHelper {
     public final Path runtimeDir;
     public final long downloadBytes;
     public final String detailText;
+    public final NvidiaGpuDetector.DetectionResult gpuDetection;
+    public final NvidiaGpuDetector.TensorRtRecommendation gpuRecommendation;
+    public final String gpuRecommendationText;
 
     private TensorRtInstallStatus(
         boolean applicable,
@@ -235,7 +249,10 @@ public final class KataGoRuntimeHelper {
         Path enginePath,
         Path runtimeDir,
         long downloadBytes,
-        String detailText) {
+        String detailText,
+        NvidiaGpuDetector.DetectionResult gpuDetection,
+        NvidiaGpuDetector.TensorRtRecommendation gpuRecommendation,
+        String gpuRecommendationText) {
       this.applicable = applicable;
       this.downloaded = downloaded;
       this.installed = installed;
@@ -244,6 +261,12 @@ public final class KataGoRuntimeHelper {
       this.runtimeDir = runtimeDir;
       this.downloadBytes = downloadBytes;
       this.detailText = detailText;
+      this.gpuDetection = gpuDetection;
+      this.gpuRecommendation =
+          gpuRecommendation == null
+              ? NvidiaGpuDetector.TensorRtRecommendation.UNKNOWN
+              : gpuRecommendation;
+      this.gpuRecommendationText = gpuRecommendationText == null ? "" : gpuRecommendationText;
     }
   }
 
@@ -326,6 +349,40 @@ public final class KataGoRuntimeHelper {
     private String fileName() {
       int slash = url.lastIndexOf('/');
       return slash >= 0 ? url.substring(slash + 1) : key + ".zip";
+    }
+  }
+
+  static final class NvidiaMirrorProbeResult {
+    final String host;
+    final long bytesRead;
+    final long elapsedMillis;
+    final String errorMessage;
+
+    NvidiaMirrorProbeResult(String host, long bytesRead, long elapsedMillis, String errorMessage) {
+      this.host = host;
+      this.bytesRead = Math.max(0L, bytesRead);
+      this.elapsedMillis = Math.max(1L, elapsedMillis);
+      this.errorMessage = errorMessage;
+    }
+
+    boolean isUsable() {
+      return bytesRead > 0L && Utils.isBlank(errorMessage);
+    }
+
+    long bytesPerSecond() {
+      return isUsable() ? (bytesRead * 1000L) / elapsedMillis : 0L;
+    }
+  }
+
+  private static final class IncompleteRuntimePackageDownloadException extends IOException {
+    private IncompleteRuntimePackageDownloadException(String message) {
+      super(message);
+    }
+  }
+
+  private static final class CorruptRuntimePackageDownloadException extends IOException {
+    private CorruptRuntimePackageDownloadException(String message) {
+      super(message);
     }
   }
 
@@ -518,6 +575,7 @@ public final class KataGoRuntimeHelper {
       if (Files.isDirectory(runtimeDir)) {
         prependPath(processBuilder, runtimeDir);
       }
+      configureNvidiaRuntimeCacheEnvironment(processBuilder, enginePath, runtimeDir);
     }
   }
 
@@ -616,6 +674,11 @@ public final class KataGoRuntimeHelper {
   }
 
   public static TensorRtInstallStatus inspectTensorRtInstall(SetupSnapshot snapshot) {
+    return inspectTensorRtInstall(snapshot, null);
+  }
+
+  public static TensorRtInstallStatus inspectTensorRtInstall(
+      SetupSnapshot snapshot, NvidiaGpuDetector.DetectionResult gpuDetection) {
     TensorRtInstallSpec spec = buildTensorRtInstallSpec(snapshot);
     if (!isWindowsPlatform()) {
       return new TensorRtInstallStatus(
@@ -628,7 +691,10 @@ public final class KataGoRuntimeHelper {
           spec.totalDownloadBytes,
           resource(
               "AutoSetup.tensorRtNotApplicable",
-              "TensorRT acceleration is only available on Windows NVIDIA packages."));
+              "TensorRT acceleration is only available on Windows NVIDIA packages."),
+          null,
+          NvidiaGpuDetector.TensorRtRecommendation.UNKNOWN,
+          "");
     }
     if (!isTensorRtSourceProfileAllowed(snapshot)) {
       return new TensorRtInstallStatus(
@@ -642,19 +708,26 @@ public final class KataGoRuntimeHelper {
           resource(
               "AutoSetup.tensorRtNeedNvidia",
               "TensorRT can be installed from Windows NVIDIA packages. Recommended for RTX 20/30/40/50. "
-                  + "GTX 10 series and older NVIDIA GPUs should use CUDA/OpenCL."));
+                  + "GTX 10 series and older NVIDIA GPUs should use CUDA/OpenCL."),
+          null,
+          NvidiaGpuDetector.TensorRtRecommendation.UNKNOWN,
+          "");
     }
-    boolean engineInstalled = Files.isRegularFile(spec.targetEnginePath);
+    boolean engineDownloaded = Files.isRegularFile(spec.targetEnginePath);
     boolean runtimeReady = inspectNvidiaRuntime(spec.targetEnginePath).ready;
     boolean active = isTensorRtEngineActive(snapshot, spec);
-    String recommendation = tensorRtRecommendationText();
+    String recommendation = tensorRtRecommendationText(gpuDetection);
     String detail =
-        engineInstalled && runtimeReady
+        engineDownloaded && runtimeReady
             ? active
                 ? resource("AutoSetup.tensorRtEnabled", "TensorRT acceleration is enabled.")
                 : resource(
                     "AutoSetup.tensorRtInstalledNotSelected",
                     "TensorRT acceleration is installed. Click Enable TensorRT acceleration to use it.")
+            : engineDownloaded
+                ? resource(
+                    "AutoSetup.tensorRtDownloadedRuntimeMissing",
+                    "TensorRT engine files are present, but runtime files are incomplete. Click Install TensorRT acceleration to finish setup.")
             : String.format(
                 Locale.ROOT,
                 resource("AutoSetup.tensorRtAvailable", "Optional TensorRT download: about %s. %s"),
@@ -662,13 +735,18 @@ public final class KataGoRuntimeHelper {
                 recommendation);
     return new TensorRtInstallStatus(
         true,
-        engineInstalled,
-        engineInstalled && runtimeReady,
-        engineInstalled && runtimeReady && active,
+        engineDownloaded,
+        engineDownloaded && runtimeReady,
+        engineDownloaded && runtimeReady && active,
         spec.targetEnginePath,
         getNvidiaRuntimeDir(),
         spec.totalDownloadBytes,
-        detail);
+        detail,
+        gpuDetection,
+        gpuDetection == null
+            ? NvidiaGpuDetector.TensorRtRecommendation.UNKNOWN
+            : gpuDetection.recommendation,
+        recommendation);
   }
 
   public static boolean canInstallTensorRt(SetupSnapshot snapshot) {
@@ -816,8 +894,9 @@ public final class KataGoRuntimeHelper {
         0L,
         spec.totalDownloadBytes);
 
-    Path cacheDir = runtimeDir.resolve("downloads");
+    Path cacheDir = runtimeDir.resolve(NVIDIA_RUNTIME_DOWNLOAD_CACHE_DIR);
     Files.createDirectories(cacheDir);
+    List<Path> completedArchives = new ArrayList<Path>();
     RuntimePackageSpec katagoPackage =
         new RuntimePackageSpec(
             "KataGo TensorRT",
@@ -826,7 +905,9 @@ public final class KataGoRuntimeHelper {
             spec.katagoSha256,
             spec.katagoSizeBytes,
             "katago-tensorrt");
-    List<RuntimePackageSpec> runtimePackages = resolveTensorRtRuntimePackages();
+    String nvidiaDownloadHost =
+        chooseTensorRtNvidiaDownloadHost(activeSession, listener, spec.totalDownloadBytes);
+    List<RuntimePackageSpec> runtimePackages = resolveTensorRtRuntimePackages(nvidiaDownloadHost);
     long completedBytes = 0L;
 
     Path katagoArchive =
@@ -837,6 +918,7 @@ public final class KataGoRuntimeHelper {
             listener,
             completedBytes,
             spec.totalDownloadBytes);
+    completedArchives.add(katagoArchive);
     completedBytes += Math.max(0L, katagoPackage.sizeBytes);
 
     Path licenseDir = runtimeDir.resolve("licenses").resolve("nvidia-runtime");
@@ -850,6 +932,7 @@ public final class KataGoRuntimeHelper {
                 listener,
                 completedBytes,
                 spec.totalDownloadBytes);
+        completedArchives.add(archivePath);
         completedBytes += Math.max(0L, runtimePackage.sizeBytes);
         activeSession.throwIfCancelled();
         notifyProgress(
@@ -874,6 +957,12 @@ public final class KataGoRuntimeHelper {
     activeSession.throwIfCancelled();
 
     SetupResult result = applyTensorRtEngineProfile(snapshot, spec);
+    notifyProgress(
+        listener,
+        resource("AutoSetup.tensorRtCleaningCache", "Cleaning TensorRT download cache..."),
+        spec.totalDownloadBytes,
+        spec.totalDownloadBytes);
+    cleanupCompletedTensorRtDownloadArchives(cacheDir, completedArchives);
     notifyProgress(
         listener,
         resource("AutoSetup.tensorRtInstallDone", "TensorRT acceleration installed."),
@@ -2046,6 +2135,29 @@ public final class KataGoRuntimeHelper {
     processBuilder.environment().put("PATH", rebuilt.toString());
   }
 
+  private static void configureNvidiaRuntimeCacheEnvironment(
+      ProcessBuilder processBuilder, Path enginePath, Path runtimeDir) {
+    if (processBuilder == null || runtimeDir == null) {
+      return;
+    }
+    String backend = resolveNvidiaBackend(enginePath);
+    if (backend == null) {
+      return;
+    }
+    try {
+      Path cacheRoot = Files.createDirectories(runtimeDir.resolve(NVIDIA_RUNTIME_CACHE_DIR));
+      Path cudaCache = Files.createDirectories(cacheRoot.resolve(NVIDIA_CUDA_CACHE_DIR));
+      processBuilder.environment().put("CUDA_CACHE_PATH", cudaCache.toString());
+      if (isTensorRtBackend(backend)) {
+        Path tempCache = Files.createDirectories(cacheRoot.resolve(NVIDIA_TENSORRT_TEMP_DIR));
+        processBuilder.environment().put("TEMP", tempCache.toString());
+        processBuilder.environment().put("TMP", tempCache.toString());
+      }
+    } catch (IOException e) {
+      e.printStackTrace();
+    }
+  }
+
   private static boolean shouldUseAppleSiliconAnalysisProfile(String engineCommand) {
     if (!isAppleSiliconHost()) {
       return false;
@@ -2113,6 +2225,39 @@ public final class KataGoRuntimeHelper {
         .resolve(BUNDLED_HOME_DATA_DIR)
         .toAbsolutePath()
         .normalize();
+  }
+
+  /**
+   * Returns true when the bundled engine still needs a one-time OpenCL autotuning pass, i.e. no
+   * cached tuning parameters exist yet. The first OpenCL tuning can take a few minutes, so callers
+   * should grant a longer startup budget in that case.
+   */
+  public static boolean needsFirstOpenCLTuning(Path enginePath) {
+    if (!isWindowsPlatform()) {
+      return false;
+    }
+    if (enginePath == null
+        || !Config.isBundledKataGoCommand(enginePath.toAbsolutePath().normalize().toString())) {
+      return false;
+    }
+    // NVIDIA TensorRT/CUDA packages do not rely on the OpenCL tuning cache.
+    if (resolveNvidiaBackend(enginePath) != null) {
+      return false;
+    }
+    Path homeDataDir = getBundledHomeDataDir();
+    if (homeDataDir == null) {
+      return false;
+    }
+    Path tuningDir = homeDataDir.resolve("opencltuning");
+    if (!Files.isDirectory(tuningDir)) {
+      return true;
+    }
+    try (Stream<Path> entries = Files.list(tuningDir)) {
+      return entries.noneMatch(
+          p -> p.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(".txt"));
+    } catch (IOException e) {
+      return true;
+    }
   }
 
   private static void appendOverrideConfig(List<String> command, String keyValue) {
@@ -2620,6 +2765,19 @@ public final class KataGoRuntimeHelper {
         .resolve(NVIDIA_RUNTIME_ROOT);
   }
 
+  public static long tensorRtDownloadCacheBytes() {
+    try {
+      return directorySize(getNvidiaRuntimeDir().resolve(NVIDIA_RUNTIME_DOWNLOAD_CACHE_DIR));
+    } catch (IOException e) {
+      return 0L;
+    }
+  }
+
+  public static long cleanupTensorRtDownloadCache() throws IOException {
+    return deleteDownloadCacheContents(
+        getNvidiaRuntimeDir().resolve(NVIDIA_RUNTIME_DOWNLOAD_CACHE_DIR), true);
+  }
+
   static TensorRtInstallSpec buildTensorRtInstallSpec(SetupSnapshot snapshot) {
     Path runtimeRoot =
         Lizzie.config != null
@@ -2628,15 +2786,14 @@ public final class KataGoRuntimeHelper {
                 .toAbsolutePath()
                 .normalize()
                 .resolve("runtime");
-    Path targetEngineDir =
-        runtimeRoot.resolve("engines").resolve("katago").resolve(NVIDIA_TRT_ENGINE_DIR);
-    Path targetEnginePath = targetEngineDir.resolve("katago.exe");
-    Path legacyEngineDir =
-        runtimeRoot.resolve("engines").resolve("katago").resolve(NVIDIA50_TRT_ENGINE_DIR);
-    Path legacyEnginePath = legacyEngineDir.resolve("katago.exe");
-    if (!Files.isRegularFile(targetEnginePath) && Files.isRegularFile(legacyEnginePath)) {
-      targetEngineDir = legacyEngineDir;
-      targetEnginePath = legacyEnginePath;
+    Path targetEnginePath = findExistingTensorRtEnginePath(snapshot, runtimeRoot);
+    Path targetEngineDir;
+    if (targetEnginePath != null && targetEnginePath.getParent() != null) {
+      targetEnginePath = targetEnginePath.toAbsolutePath().normalize();
+      targetEngineDir = targetEnginePath.getParent();
+    } else {
+      targetEngineDir = tensorRtEngineDir(runtimeRoot, NVIDIA_TRT_ENGINE_DIR);
+      targetEnginePath = targetEngineDir.resolve("katago.exe");
     }
     long katagoSize =
         resolveLongProperty(TENSORRT_KATAGO_SIZE_PROPERTY, TENSORRT_KATAGO_SIZE_BYTES);
@@ -2657,6 +2814,42 @@ public final class KataGoRuntimeHelper {
         Boolean.getBoolean(TENSORRT_SKIP_RUNTIME_FOR_TESTS_PROPERTY) ? 0 : 5);
   }
 
+  private static Path findExistingTensorRtEnginePath(SetupSnapshot snapshot, Path runtimeRoot) {
+    LinkedHashSet<Path> candidates = new LinkedHashSet<Path>();
+    if (snapshot != null
+        && snapshot.enginePath != null
+        && isTensorRtBackend(resolveNvidiaBackend(snapshot.enginePath))) {
+      candidates.add(snapshot.enginePath);
+    }
+    addTensorRtEngineCandidates(candidates, runtimeRoot);
+    if (snapshot != null) {
+      addTensorRtEngineCandidates(candidates, snapshot.appRoot);
+      addTensorRtEngineCandidates(candidates, snapshot.workingDir);
+    }
+    for (Path candidate : candidates) {
+      if (candidate != null && Files.isRegularFile(candidate)) {
+        return candidate.toAbsolutePath().normalize();
+      }
+    }
+    return null;
+  }
+
+  private static void addTensorRtEngineCandidates(LinkedHashSet<Path> candidates, Path root) {
+    if (candidates == null || root == null) {
+      return;
+    }
+    candidates.add(tensorRtEngineDir(root, NVIDIA_TRT_ENGINE_DIR).resolve("katago.exe"));
+    candidates.add(tensorRtEngineDir(root, NVIDIA50_TRT_ENGINE_DIR).resolve("katago.exe"));
+  }
+
+  private static Path tensorRtEngineDir(Path root, String engineDirName) {
+    return root.toAbsolutePath()
+        .normalize()
+        .resolve("engines")
+        .resolve("katago")
+        .resolve(engineDirName);
+  }
+
   private static boolean isTensorRtSourceProfileAllowed(SetupSnapshot snapshot) {
     if (snapshot == null || snapshot.enginePath == null) {
       return false;
@@ -2672,7 +2865,10 @@ public final class KataGoRuntimeHelper {
         || NVIDIA50_TRT_BACKEND.equalsIgnoreCase(backend);
   }
 
-  private static String tensorRtRecommendationText() {
+  private static String tensorRtRecommendationText(NvidiaGpuDetector.DetectionResult gpuDetection) {
+    if (gpuDetection != null && !Utils.isBlank(gpuDetection.detailText)) {
+      return gpuDetection.detailText;
+    }
     return resource(
         "AutoSetup.tensorRtGpuHint",
         "Recommended for RTX 20/30/40/50 NVIDIA GPUs. "
@@ -2807,39 +3003,161 @@ public final class KataGoRuntimeHelper {
     return packages;
   }
 
-  private static List<RuntimePackageSpec> resolveTensorRtRuntimePackages() throws IOException {
+  private static String chooseTensorRtNvidiaDownloadHost(
+      DownloadSession session, ProgressListener listener, long totalBytes) throws IOException {
+    if (Boolean.getBoolean(TENSORRT_SKIP_RUNTIME_FOR_TESTS_PROPERTY)) {
+      return NVIDIA_DOWNLOAD_HOST_COM;
+    }
+    notifyProgress(
+        listener,
+        resource("AutoSetup.tensorRtTestingMirrors", "Testing NVIDIA download mirrors..."),
+        0L,
+        totalBytes);
+    session.throwIfCancelled();
+    NvidiaMirrorProbeResult cnResult =
+        probeNvidiaDownloadMirror(NVIDIA_DOWNLOAD_HOST_CN, TENSORRT_RUNTIME_URL, session);
+    session.throwIfCancelled();
+    NvidiaMirrorProbeResult comResult =
+        probeNvidiaDownloadMirror(NVIDIA_DOWNLOAD_HOST_COM, TENSORRT_RUNTIME_URL, session);
+    session.throwIfCancelled();
+    return selectNvidiaDownloadHostFromProbes(cnResult, comResult);
+  }
+
+  private static NvidiaMirrorProbeResult probeNvidiaDownloadMirror(
+      String host, String url, DownloadSession session) throws IOException {
+    String probeUrl = mirrorNvidiaDownloadUrl(url, host);
+    HttpURLConnection conn = null;
+    long startedAt = System.nanoTime();
+    long bytesRead = 0L;
+    try {
+      conn = (HttpURLConnection) URI.create(probeUrl).toURL().openConnection();
+      session.attach(conn);
+      session.throwIfCancelled();
+      conn.setInstanceFollowRedirects(true);
+      conn.setRequestMethod("GET");
+      conn.setConnectTimeout(TENSORRT_MIRROR_PROBE_CONNECT_TIMEOUT_MILLIS);
+      conn.setReadTimeout(TENSORRT_MIRROR_PROBE_READ_TIMEOUT_MILLIS);
+      conn.setRequestProperty("User-Agent", USER_AGENT);
+      conn.setRequestProperty("Range", "bytes=0-" + (TENSORRT_MIRROR_PROBE_BYTES - 1));
+      int responseCode = conn.getResponseCode();
+      if (responseCode < 200 || responseCode >= 400) {
+        return failedNvidiaMirrorProbeResult(host, startedAt, "HTTP " + responseCode);
+      }
+      byte[] buffer = new byte[8192];
+      try (InputStream input = conn.getInputStream()) {
+        int read;
+        while (bytesRead < TENSORRT_MIRROR_PROBE_BYTES && (read = input.read(buffer)) >= 0) {
+          session.throwIfCancelled();
+          int accepted = (int) Math.min(read, (long) TENSORRT_MIRROR_PROBE_BYTES - bytesRead);
+          bytesRead += accepted;
+          if (elapsedMillisSince(startedAt) >= TENSORRT_MIRROR_PROBE_MAX_MILLIS) {
+            break;
+          }
+        }
+      }
+      return new NvidiaMirrorProbeResult(host, bytesRead, elapsedMillisSince(startedAt), null);
+    } catch (IOException e) {
+      if (session.isCancelled() || e instanceof DownloadCancelledException) {
+        throw e;
+      }
+      if (bytesRead > 0L) {
+        return new NvidiaMirrorProbeResult(host, bytesRead, elapsedMillisSince(startedAt), null);
+      }
+      return failedNvidiaMirrorProbeResult(host, startedAt, e.getClass().getSimpleName());
+    } finally {
+      if (conn != null) {
+        conn.disconnect();
+      }
+      session.clear();
+    }
+  }
+
+  private static NvidiaMirrorProbeResult failedNvidiaMirrorProbeResult(
+      String host, long startedAt, String errorMessage) {
+    return new NvidiaMirrorProbeResult(host, 0L, elapsedMillisSince(startedAt), errorMessage);
+  }
+
+  private static long elapsedMillisSince(long startedAtNanos) {
+    return Math.max(1L, (System.nanoTime() - startedAtNanos) / 1_000_000L);
+  }
+
+  static String selectNvidiaDownloadHostFromProbes(
+      NvidiaMirrorProbeResult cnResult, NvidiaMirrorProbeResult comResult) {
+    boolean cnUsable = cnResult != null && cnResult.isUsable();
+    boolean comUsable = comResult != null && comResult.isUsable();
+    if (cnUsable && comUsable) {
+      long cnWeightedSpeed = cnResult.bytesRead * comResult.elapsedMillis;
+      long comWeightedSpeed = comResult.bytesRead * cnResult.elapsedMillis;
+      return cnWeightedSpeed >= comWeightedSpeed
+          ? NVIDIA_DOWNLOAD_HOST_CN
+          : NVIDIA_DOWNLOAD_HOST_COM;
+    }
+    if (cnUsable) {
+      return NVIDIA_DOWNLOAD_HOST_CN;
+    }
+    if (comUsable) {
+      return NVIDIA_DOWNLOAD_HOST_COM;
+    }
+    return NVIDIA_DOWNLOAD_HOST_COM;
+  }
+
+  static String mirrorNvidiaDownloadUrl(String url, String host) {
+    if (Utils.isBlank(url) || Utils.isBlank(host)) {
+      return url;
+    }
+    URI uri;
+    try {
+      uri = URI.create(url);
+    } catch (IllegalArgumentException e) {
+      return url;
+    }
+    String currentHost = uri.getHost();
+    if (!NVIDIA_DOWNLOAD_HOST_COM.equalsIgnoreCase(currentHost)
+        && !NVIDIA_DOWNLOAD_HOST_CN.equalsIgnoreCase(currentHost)) {
+      return url;
+    }
+    try {
+      return new URI(
+              uri.getScheme(),
+              uri.getUserInfo(),
+              host,
+              uri.getPort(),
+              uri.getPath(),
+              uri.getQuery(),
+              uri.getFragment())
+          .toString();
+    } catch (Exception e) {
+      return url;
+    }
+  }
+
+  private static List<RuntimePackageSpec> resolveTensorRtRuntimePackages(String nvidiaDownloadHost)
+      throws IOException {
     if (Boolean.getBoolean(TENSORRT_SKIP_RUNTIME_FOR_TESTS_PROPERTY)) {
       return new ArrayList<RuntimePackageSpec>();
     }
+    String cudaManifestUrl = mirrorNvidiaDownloadUrl(CUDA_12_8_MANIFEST_URL, nvidiaDownloadHost);
+    String cudnnManifestUrl = mirrorNvidiaDownloadUrl(CUDNN_9_MANIFEST_URL, nvidiaDownloadHost);
     List<RuntimePackageSpec> packages = new ArrayList<RuntimePackageSpec>();
-    JSONObject cudaManifest = new JSONObject(httpGet(CUDA_12_8_MANIFEST_URL));
-    JSONObject cudnnManifest = new JSONObject(httpGet(CUDNN_9_MANIFEST_URL));
+    JSONObject cudaManifest = new JSONObject(httpGet(cudaManifestUrl));
+    JSONObject cudnnManifest = new JSONObject(httpGet(cudnnManifestUrl));
     packages.add(
         readPackageSpec(
-            cudaManifest, CUDA_12_8_MANIFEST_URL, "cuda_cudart", "windows-x86_64", "CUDA Runtime"));
+            cudaManifest, cudaManifestUrl, "cuda_cudart", "windows-x86_64", "CUDA Runtime"));
     packages.add(
         readPackageSpec(
-            cudaManifest, CUDA_12_8_MANIFEST_URL, "libcublas", "windows-x86_64", "CUDA cuBLAS"));
+            cudaManifest, cudaManifestUrl, "libcublas", "windows-x86_64", "CUDA cuBLAS"));
     packages.add(
         readPackageSpec(
-            cudaManifest,
-            CUDA_12_8_MANIFEST_URL,
-            "libnvjitlink",
-            "windows-x86_64",
-            "CUDA nvJitLink"));
+            cudaManifest, cudaManifestUrl, "libnvjitlink", "windows-x86_64", "CUDA nvJitLink"));
     packages.add(
         readNestedPackageSpec(
-            cudnnManifest,
-            CUDNN_9_MANIFEST_URL,
-            "cudnn",
-            "windows-x86_64",
-            "cuda12",
-            "NVIDIA cuDNN"));
+            cudnnManifest, cudnnManifestUrl, "cudnn", "windows-x86_64", "cuda12", "NVIDIA cuDNN"));
     packages.add(
         new RuntimePackageSpec(
             "NVIDIA TensorRT",
             "10.9.0.34",
-            TENSORRT_RUNTIME_URL,
+            mirrorNvidiaDownloadUrl(TENSORRT_RUNTIME_URL, nvidiaDownloadHost),
             System.getProperty(TENSORRT_RUNTIME_SHA256_PROPERTY, ""),
             TENSORRT_RUNTIME_SIZE_BYTES,
             "tensorrt"));
@@ -2917,96 +3235,322 @@ public final class KataGoRuntimeHelper {
   private static void downloadRuntimePackage(
       RuntimePackageSpec spec, Path archivePath, DownloadSession session, ProgressListener listener)
       throws IOException {
-    if (Files.isRegularFile(archivePath)) {
-      boolean cacheValid =
-          !Utils.isBlank(spec.sha256)
-              ? spec.sha256.equalsIgnoreCase(sha256(archivePath))
-              : spec.sizeBytes <= 0 || Files.size(archivePath) == spec.sizeBytes;
-      if (cacheValid) {
-        if (listener != null) {
-          listener.onProgress(spec.displayName, spec.sizeBytes, spec.sizeBytes);
-        }
-        return;
-      }
+    if (isRuntimePackageFileValid(spec, archivePath)) {
+      notifyRuntimePackageComplete(spec, listener);
+      return;
     }
 
     Files.createDirectories(archivePath.getParent());
     Path tempPath = archivePath.resolveSibling(archivePath.getFileName().toString() + ".part");
-    Files.deleteIfExists(tempPath);
-    URLConnection conn = null;
-    HttpURLConnection httpConn = null;
-    try {
-      conn = URI.create(spec.url).toURL().openConnection();
-      if (conn instanceof HttpURLConnection) {
-        httpConn = (HttpURLConnection) conn;
-        session.attach(httpConn);
-      }
-      session.throwIfCancelled();
-      conn.setConnectTimeout(15000);
-      conn.setReadTimeout(30000);
-      conn.setRequestProperty("User-Agent", USER_AGENT);
-      if (httpConn != null) {
-        httpConn.setInstanceFollowRedirects(true);
-        httpConn.setRequestMethod("GET");
-        int responseCode = httpConn.getResponseCode();
-        if (responseCode < 200 || responseCode >= 400) {
-          throw new IOException("HTTP " + responseCode + " from " + spec.url);
+    if (promoteCompletedRuntimePackagePartial(spec, tempPath, archivePath, listener)) {
+      return;
+    }
+
+    long resumeBytes = runtimePackagePartialSize(spec, tempPath);
+    boolean retriedWithoutRange = false;
+
+    while (true) {
+      URLConnection conn = null;
+      HttpURLConnection httpConn = null;
+      try {
+        session.throwIfCancelled();
+        long existingBytes = resumeBytes;
+        boolean appendToPartial = existingBytes > 0;
+        conn = URI.create(spec.url).toURL().openConnection();
+        conn.setConnectTimeout(15000);
+        conn.setReadTimeout(30000);
+        conn.setRequestProperty("User-Agent", USER_AGENT);
+        conn.setRequestProperty("Accept", "application/octet-stream,*/*");
+        if (conn instanceof HttpURLConnection) {
+          httpConn = (HttpURLConnection) conn;
+          session.attach(httpConn);
+          httpConn.setInstanceFollowRedirects(true);
+          httpConn.setRequestMethod("GET");
+          if (appendToPartial) {
+            httpConn.setRequestProperty("Range", "bytes=" + existingBytes + "-");
+          }
+          int responseCode = httpConn.getResponseCode();
+          if (appendToPartial) {
+            if (responseCode == HttpURLConnection.HTTP_PARTIAL) {
+              // Server accepted the Range request. Keep the existing .part bytes.
+            } else if (responseCode == HttpURLConnection.HTTP_OK) {
+              Files.deleteIfExists(tempPath);
+              existingBytes = 0L;
+              appendToPartial = false;
+            } else if (responseCode == HTTP_RANGE_NOT_SATISFIABLE) {
+              if (promoteCompletedRuntimePackagePartial(spec, tempPath, archivePath, listener)) {
+                return;
+              }
+              Files.deleteIfExists(tempPath);
+              if (!retriedWithoutRange) {
+                resumeBytes = 0L;
+                retriedWithoutRange = true;
+                continue;
+              }
+              throw new IOException("HTTP " + responseCode + " from " + spec.url);
+            } else if (responseCode < 200 || responseCode >= 400) {
+              throw new IOException("HTTP " + responseCode + " from " + spec.url);
+            } else {
+              Files.deleteIfExists(tempPath);
+              existingBytes = 0L;
+              appendToPartial = false;
+            }
+          } else if (responseCode < 200 || responseCode >= 400) {
+            throw new IOException("HTTP " + responseCode + " from " + spec.url);
+          }
+        } else if (appendToPartial) {
+          Files.deleteIfExists(tempPath);
+          existingBytes = 0L;
+          appendToPartial = false;
         }
-      }
-      long totalBytes =
-          conn.getContentLengthLong() > 0 ? conn.getContentLengthLong() : spec.sizeBytes;
-      MessageDigest digest = createSha256Digest();
-      try (InputStream raw = conn.getInputStream();
-          BufferedInputStream input = new BufferedInputStream(raw);
-          OutputStream output = Files.newOutputStream(tempPath)) {
-        byte[] buffer = new byte[8192];
-        long downloaded = 0L;
-        int read;
-        long lastReport = 0L;
-        while ((read = input.read(buffer)) >= 0) {
-          session.throwIfCancelled();
-          output.write(buffer, 0, read);
-          digest.update(buffer, 0, read);
-          downloaded += read;
-          long now = System.currentTimeMillis();
-          if (listener != null && (now - lastReport > 120 || downloaded == totalBytes)) {
-            listener.onProgress(spec.displayName, downloaded, totalBytes);
-            lastReport = now;
+
+        long totalBytes =
+            resolveRuntimePackageTotalBytes(
+                spec, existingBytes, conn.getContentLengthLong(), appendToPartial);
+        String progressText = runtimePackageProgressText(spec, existingBytes);
+        if (listener != null && existingBytes > 0) {
+          listener.onProgress(progressText, existingBytes, totalBytes);
+        }
+        StandardOpenOption[] openOptions =
+            appendToPartial
+                ? new StandardOpenOption[] {StandardOpenOption.CREATE, StandardOpenOption.APPEND}
+                : new StandardOpenOption[] {
+                  StandardOpenOption.CREATE,
+                  StandardOpenOption.TRUNCATE_EXISTING,
+                  StandardOpenOption.WRITE
+                };
+        try (InputStream raw = conn.getInputStream();
+            BufferedInputStream input = new BufferedInputStream(raw);
+            OutputStream output = Files.newOutputStream(tempPath, openOptions)) {
+          byte[] buffer = new byte[256 * 1024];
+          long downloaded = existingBytes;
+          int read;
+          long lastReport = 0L;
+          while ((read = input.read(buffer)) >= 0) {
+            session.throwIfCancelled();
+            output.write(buffer, 0, read);
+            downloaded += read;
+            long now = System.currentTimeMillis();
+            if (listener != null && (now - lastReport > 120 || downloaded == totalBytes)) {
+              listener.onProgress(progressText, downloaded, totalBytes);
+              lastReport = now;
+            }
           }
         }
+
+        session.throwIfCancelled();
+        validateRuntimePackageDownload(spec, tempPath);
+        moveRuntimePackageIntoCache(tempPath, archivePath);
+        notifyRuntimePackageComplete(spec, listener);
+        return;
+      } catch (IOException e) {
+        if (e instanceof CorruptRuntimePackageDownloadException) {
+          Files.deleteIfExists(tempPath);
+        }
+        if (session.isCancelled() && !(e instanceof DownloadCancelledException)) {
+          throw new DownloadCancelledException(
+              resource("AutoSetup.downloadCancelled", "Download cancelled."));
+        }
+        throw e;
+      } finally {
+        if (httpConn != null) {
+          httpConn.disconnect();
+        }
+        session.clear();
       }
-      session.throwIfCancelled();
-      String actualSha256 = toHex(digest.digest());
-      if (!Utils.isBlank(spec.sha256) && !spec.sha256.equalsIgnoreCase(actualSha256)) {
-        throw new IOException("SHA-256 mismatch for " + spec.displayName);
+    }
+  }
+
+  private static boolean isRuntimePackageFileValid(RuntimePackageSpec spec, Path path)
+      throws IOException {
+    if (!Files.isRegularFile(path)) {
+      return false;
+    }
+    long size = Files.size(path);
+    if (spec.sizeBytes > 0 && size != spec.sizeBytes) {
+      return false;
+    }
+    return Utils.isBlank(spec.sha256) || spec.sha256.equalsIgnoreCase(sha256(path));
+  }
+
+  private static boolean promoteCompletedRuntimePackagePartial(
+      RuntimePackageSpec spec, Path tempPath, Path archivePath, ProgressListener listener)
+      throws IOException {
+    if (!Files.isRegularFile(tempPath)) {
+      return false;
+    }
+    long size = Files.size(tempPath);
+    if (size <= 0) {
+      Files.deleteIfExists(tempPath);
+      return false;
+    }
+    if (hasRuntimePackageIntegritySpec(spec) && isRuntimePackageFileValid(spec, tempPath)) {
+      moveRuntimePackageIntoCache(tempPath, archivePath);
+      notifyRuntimePackageComplete(spec, listener);
+      return true;
+    }
+    if (spec.sizeBytes > 0 && size >= spec.sizeBytes) {
+      Files.deleteIfExists(tempPath);
+    }
+    return false;
+  }
+
+  private static boolean hasRuntimePackageIntegritySpec(RuntimePackageSpec spec) {
+    return spec.sizeBytes > 0 || !Utils.isBlank(spec.sha256);
+  }
+
+  private static long runtimePackagePartialSize(RuntimePackageSpec spec, Path tempPath)
+      throws IOException {
+    if (!Files.isRegularFile(tempPath)) {
+      return 0L;
+    }
+    long size = Files.size(tempPath);
+    if (size <= 0 || (spec.sizeBytes > 0 && size >= spec.sizeBytes)) {
+      Files.deleteIfExists(tempPath);
+      return 0L;
+    }
+    return size;
+  }
+
+  private static long resolveRuntimePackageTotalBytes(
+      RuntimePackageSpec spec, long existingBytes, long responseBytes, boolean appendToPartial) {
+    if (spec.sizeBytes > 0) {
+      return spec.sizeBytes;
+    }
+    if (responseBytes > 0) {
+      return appendToPartial ? existingBytes + responseBytes : responseBytes;
+    }
+    return -1L;
+  }
+
+  private static String runtimePackageProgressText(RuntimePackageSpec spec, long existingBytes) {
+    if (existingBytes <= 0) {
+      return spec.displayName;
+    }
+    return String.format(resource("AutoSetup.downloadResuming", "%s (resuming)"), spec.displayName);
+  }
+
+  private static void validateRuntimePackageDownload(RuntimePackageSpec spec, Path tempPath)
+      throws IOException {
+    long actualSize = Files.size(tempPath);
+    if (spec.sizeBytes > 0) {
+      if (actualSize < spec.sizeBytes) {
+        throw new IncompleteRuntimePackageDownloadException(
+            "Incomplete download for "
+                + spec.displayName
+                + ": "
+                + actualSize
+                + " of "
+                + spec.sizeBytes
+                + " bytes");
       }
-      if (Utils.isBlank(spec.sha256)
-          && spec.sizeBytes > 0
-          && Files.size(tempPath) != spec.sizeBytes) {
-        throw new IOException("Size mismatch for " + spec.displayName);
+      if (actualSize > spec.sizeBytes) {
+        throw new CorruptRuntimePackageDownloadException(
+            "Size mismatch for " + spec.displayName + ": " + actualSize + " bytes");
+      }
+    }
+    if (!Utils.isBlank(spec.sha256) && !spec.sha256.equalsIgnoreCase(sha256(tempPath))) {
+      throw new CorruptRuntimePackageDownloadException("SHA-256 mismatch for " + spec.displayName);
+    }
+  }
+
+  private static void moveRuntimePackageIntoCache(Path tempPath, Path archivePath)
+      throws IOException {
+    try {
+      Files.move(
+          tempPath,
+          archivePath,
+          StandardCopyOption.REPLACE_EXISTING,
+          StandardCopyOption.ATOMIC_MOVE);
+    } catch (AtomicMoveNotSupportedException e) {
+      Files.move(tempPath, archivePath, StandardCopyOption.REPLACE_EXISTING);
+    }
+  }
+
+  private static void notifyRuntimePackageComplete(
+      RuntimePackageSpec spec, ProgressListener listener) {
+    if (listener != null) {
+      long totalBytes = Math.max(0L, spec.sizeBytes);
+      listener.onProgress(spec.displayName, totalBytes, totalBytes);
+    }
+  }
+
+  private static void cleanupCompletedTensorRtDownloadArchives(
+      Path cacheDir, List<Path> completedArchives) {
+    if (cacheDir == null || completedArchives == null || completedArchives.isEmpty()) {
+      return;
+    }
+    Path normalizedCacheDir = cacheDir.toAbsolutePath().normalize();
+    for (Path archive : completedArchives) {
+      if (archive == null) {
+        continue;
       }
       try {
-        Files.move(
-            tempPath,
-            archivePath,
-            StandardCopyOption.REPLACE_EXISTING,
-            StandardCopyOption.ATOMIC_MOVE);
-      } catch (AtomicMoveNotSupportedException e) {
-        Files.move(tempPath, archivePath, StandardCopyOption.REPLACE_EXISTING);
+        Path normalizedArchive = archive.toAbsolutePath().normalize();
+        if (normalizedArchive.startsWith(normalizedCacheDir) && Files.isRegularFile(archive)) {
+          Files.deleteIfExists(archive);
+        }
+      } catch (IOException e) {
+        e.printStackTrace();
       }
-    } catch (IOException e) {
-      Files.deleteIfExists(tempPath);
-      if (session.isCancelled() && !(e instanceof DownloadCancelledException)) {
-        throw new DownloadCancelledException(
-            resource("AutoSetup.downloadCancelled", "Download cancelled."));
-      }
-      throw e;
-    } finally {
-      if (httpConn != null) {
-        httpConn.disconnect();
-      }
-      session.clear();
     }
+    try {
+      Files.deleteIfExists(cacheDir);
+    } catch (IOException ignored) {
+    }
+  }
+
+  private static long directorySize(Path directory) throws IOException {
+    if (directory == null || !Files.exists(directory)) {
+      return 0L;
+    }
+    AtomicLong total = new AtomicLong();
+    try (Stream<Path> stream = Files.walk(directory)) {
+      stream
+          .filter(Files::isRegularFile)
+          .forEach(
+              path -> {
+                try {
+                  total.addAndGet(Files.size(path));
+                } catch (IOException ignored) {
+                }
+              });
+    }
+    return total.get();
+  }
+
+  private static long deleteDownloadCacheContents(Path cacheDir, boolean includePartialFiles)
+      throws IOException {
+    if (cacheDir == null || !Files.exists(cacheDir)) {
+      return 0L;
+    }
+    List<Path> paths = new ArrayList<Path>();
+    try (Stream<Path> stream = Files.walk(cacheDir)) {
+      stream.forEach(paths::add);
+    }
+    paths.sort(Comparator.reverseOrder());
+    long freedBytes = 0L;
+    for (Path path : paths) {
+      if (path.equals(cacheDir)) {
+        continue;
+      }
+      if (Files.isDirectory(path)) {
+        Files.deleteIfExists(path);
+        continue;
+      }
+      String fileName = path.getFileName() == null ? "" : path.getFileName().toString();
+      if (!includePartialFiles && fileName.endsWith(".part")) {
+        continue;
+      }
+      long size = Files.isRegularFile(path) ? Files.size(path) : 0L;
+      Files.deleteIfExists(path);
+      freedBytes += size;
+    }
+    try {
+      Files.deleteIfExists(cacheDir);
+    } catch (IOException ignored) {
+    }
+    return freedBytes;
   }
 
   private static void extractRuntimePackage(

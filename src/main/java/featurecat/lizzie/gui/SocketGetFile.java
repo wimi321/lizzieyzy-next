@@ -100,7 +100,7 @@ public class SocketGetFile {
               new Runnable() {
                 public void run() {
                   Lizzie.frame.failKifuLoad(null);
-                  Lizzie.frame.loadSgfString(loadedSgf, 200, Lizzie.config.readKomi, false, null);
+                  Lizzie.frame.loadSgfString(loadedSgf, 0, Lizzie.config.readKomi, false, null);
                 }
               });
         }

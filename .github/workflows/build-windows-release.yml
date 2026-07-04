@@ -18,7 +18,7 @@ permissions:
 jobs:
   build:
     runs-on: windows-latest
-    timeout-minutes: 240
+    timeout-minutes: 360
 
     steps:
       - name: Checkout
@@ -47,6 +47,7 @@ jobs:
         shell: powershell
         run: |
           choco install wixtoolset --no-progress -y
+          choco install 7zip --no-progress -y
 
       - name: Build shaded jar
         shell: bash
@@ -65,7 +66,7 @@ jobs:
           PREFERRED_MODEL_NAME="$MODEL_NAME" MODEL_SOURCE="$MODEL_SOURCE" ./scripts/prepare_bundled_katago.sh
 
       - name: Build Windows installer and portable package
-        timeout-minutes: 180
+        timeout-minutes: 300
         shell: bash
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -91,7 +92,7 @@ jobs:
           grep -q "Release display version: ${{ inputs.release_tag }}" "$note_file"
           grep -q "Smart Optimize" "$note_file"
           grep -q "first launch should work offline" "$note_file"
-          grep -q "qiyi71w/readboard v3.0.5" "$note_file"
+          grep -q "qiyi71w/readboard v3.0.6" "$note_file"
           grep -q "JCEF browser runtime" "$note_file"
           grep -q "RTX 5070/5080/5090" "$note_file"
           test -f "dist/windows/input-with-katago/engines/katago/windows-x64/katago.exe"
@@ -105,9 +106,9 @@ jobs:
           grep -qx "release-tag=jcef-99c2f7a+cef-127.3.1+g6cbb30e+chromium-127.0.6533.100" "dist/windows/input-with-katago/jcef-bundle/lizzieyzy-next-jcef-manifest.txt"
           grep -qx "platform=windows-amd64" "dist/windows/input-with-katago/jcef-bundle/lizzieyzy-next-jcef-manifest.txt"
           grep -qx "sha256=6d0466b9d5a2c4607a8a9eded1b5b9f77ca4514eadb68a1333b19053a462ceac" "dist/windows/input-with-katago/jcef-bundle/lizzieyzy-next-jcef-manifest.txt"
-          grep -qx "release-tag=v3.0.5" "dist/windows/input-with-katago/readboard/lizzieyzy-next-readboard-manifest.txt"
-          grep -qx "asset-name=readboard-github-release-v3.0.5.zip" "dist/windows/input-with-katago/readboard/lizzieyzy-next-readboard-manifest.txt"
-          grep -qx "sha256=160e399b06e7d19bd61dc5be1d6ef827b88afc6fca88f0d91a7fdb103a34dde1" "dist/windows/input-with-katago/readboard/lizzieyzy-next-readboard-manifest.txt"
+          grep -qx "release-tag=v3.0.6" "dist/windows/input-with-katago/readboard/lizzieyzy-next-readboard-manifest.txt"
+          grep -qx "asset-name=readboard-github-release-v3.0.6.zip" "dist/windows/input-with-katago/readboard/lizzieyzy-next-readboard-manifest.txt"
+          grep -qx "sha256=1ba4c265f560cd988be24f4ea0eeb29516883f42ece477bd32b72f8bccf6565d" "dist/windows/input-with-katago/readboard/lizzieyzy-next-readboard-manifest.txt"
           grep -Eq '^Windows bundle: katago-v[0-9.]+-eigen-windows-x64\.zip$' "dist/windows/input-with-katago/engines/katago/VERSION.txt"
           test -f "dist/windows/input-opencl/engines/katago/windows-x64/katago.exe"
           test -f "dist/windows/input-opencl/PROJECT_INFO.txt"
@@ -178,6 +179,12 @@ jobs:
           test -f "dist/windows/app-image-nvidia50.cuda/LizzieYzy Next NVIDIA 50 CUDA/app/engines/katago/windows-x64/cudnn64_9.dll"
           test -f "dist/windows/app-image-nvidia50.cuda/LizzieYzy Next NVIDIA 50 CUDA/app/engines/katago/windows-x64/libz.dll"
           find "dist/windows/app-image-nvidia50.cuda/LizzieYzy Next NVIDIA 50 CUDA/app/engines/katago/windows-x64" -maxdepth 1 -type f -name 'nvJitLink*.dll' | grep -q .
+          test -f "dist/release/${{ inputs.date_tag }}-windows64.nvidia.tensorrt.portable.7z.001"
+          test -f "dist/release/${{ inputs.date_tag }}-windows64.nvidia.tensorrt.portable.README.txt"
+          test -f "dist/release/${{ inputs.date_tag }}-windows64.nvidia.tensorrt.portable.manifest.json"
+          test -f "dist/release/${{ inputs.date_tag }}-windows64.nvidia.tensorrt.portable.sha256.txt"
+          grep -q "Advanced optional TensorRT split package" "dist/release/${{ inputs.date_tag }}-windows64.nvidia.tensorrt.portable.README.txt"
+          grep -q '"engineBackend": "nvidia-tensorrt"' "dist/release/${{ inputs.date_tag }}-windows64.nvidia.tensorrt.portable.manifest.json"
           test -f "dist/windows/input-without.engine/PROJECT_INFO.txt"
           test -f "dist/windows/input-without.engine/readboard/readboard.exe"
           test -f "dist/windows/input-without.engine/readboard/lizzieyzy-next-readboard-manifest.txt"
@@ -208,10 +215,22 @@ jobs:
             "dist/windows/app-image-nvidia/LizzieYzy Next NVIDIA/app/LizzieYzy Next NVIDIA.cfg" \
             "dist/windows/app-image-nvidia50.cuda/LizzieYzy Next NVIDIA 50 CUDA/app/LizzieYzy Next NVIDIA 50 CUDA.cfg" \
             "dist/windows/app-image-without.engine/LizzieYzy Next/app/LizzieYzy Next.cfg"; do
+            grep -q -- "java-options=-Xshare:auto" "$app_cfg"
+            grep -q -- "SharedArchiveFile" "$app_cfg"
             if grep -qE 'sun\.java2d\.uiScale=1\.0|sun\.java2d\.uiScale\.enabled=false' "$app_cfg"; then
               echo "Windows package must not force Java UI scaling: $app_cfg"
               exit 1
             fi
+          done
+          test -f "dist/release-meta/${{ inputs.date_tag }}-windows64-runtime.json"
+          grep -q '"optimized": true' "dist/release-meta/${{ inputs.date_tag }}-windows64-runtime.json"
+          for app_dir in \
+            "dist/windows/app-image-with-katago/LizzieYzy Next" \
+            "dist/windows/app-image-opencl/LizzieYzy Next OpenCL" \
+            "dist/windows/app-image-nvidia/LizzieYzy Next NVIDIA" \
+            "dist/windows/app-image-nvidia50.cuda/LizzieYzy Next NVIDIA 50 CUDA" \
+            "dist/windows/app-image-without.engine/LizzieYzy Next"; do
+            test -f "$app_dir/app/lizzieyzy-next-cds.jsa"
           done
           for readboard_exe in \
             "dist/windows/input-with-katago/readboard/readboard.exe" \
@@ -237,6 +256,15 @@ jobs:
           $appExe = Join-Path $PWD "dist\windows\app-image-with-katago\LizzieYzy Next\LizzieYzy Next.exe"
           & "$PWD\scripts\windows_smoke_test.ps1" -AppExe $appExe -WaitSeconds 60 -ProbeBoardSync
 
+      - name: Summarize Windows package size audit
+        if: always()
+        shell: bash
+        run: |
+          audit="dist/release-meta/${{ inputs.date_tag }}-windows64-package-size-audit.md"
+          if [[ -f "$audit" ]]; then
+            cat "$audit" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
       - name: Upload assets to release
         shell: bash
         env:
@@ -245,6 +273,12 @@ jobs:
           gh release upload "${{ inputs.release_tag }}" \
             dist/release/*windows64*.installer.exe \
             dist/release/*windows64*.portable.zip \
+            dist/release/*windows64.core-update.zip \
+            dist/release/lizzieyzy-next-update-manifest.json \
+            dist/release/*windows64.nvidia.tensorrt.portable.7z.* \
+            dist/release/*windows64.nvidia.tensorrt.portable.README.txt \
+            dist/release/*windows64.nvidia.tensorrt.portable.manifest.json \
+            dist/release/*windows64.nvidia.tensorrt.portable.sha256.txt \
             --repo "${{ github.repository }}" \
             --clobber
 
@@ -269,6 +303,8 @@ jobs:
           name: windows-release-meta
           path: |
             dist/release-meta/*windows64-*.txt
+            dist/release-meta/*windows64-*.json
+            dist/release-meta/*windows64-*.md
 
       - name: Upload Windows smoke logs
         if: always()

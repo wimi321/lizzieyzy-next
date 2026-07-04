@@ -97,7 +97,7 @@ public class BottomToolbar extends JPanel {
   JButton deleteMove;
   JButton share;
   JButton flashAnalyze;
-  JButton foxKifuButton;
+  JButton remoteComputeButton;
   JButton downloadWeightButton;
   JButton moreActionsButton;
   JPopupMenu moreActionsPopup;
@@ -605,7 +605,8 @@ public class BottomToolbar extends JPanel {
         new JFontButton(Lizzie.resourceBundle.getString("BottomToolbar.badMoves")); // ("超级鹰眼");
     share = new JFontButton(Lizzie.resourceBundle.getString("BottomToolbar.share")); // ("分享");
     flashAnalyze = new JFontButton(Lizzie.resourceBundle.getString("BottomToolbar.flashAnalyze"));
-    foxKifuButton = new JFontButton(Lizzie.resourceBundle.getString("Menu.foxKifuButton"));
+    remoteComputeButton = new JFontButton(Lizzie.resourceBundle.getString("Menu.remoteCompute"));
+    AppleStyleSupport.markPrimary(remoteComputeButton);
     downloadWeightButton =
         new JFontButton(Lizzie.resourceBundle.getString("BottomToolbar.downloadWeight"));
     liveButton =
@@ -707,7 +708,7 @@ public class BottomToolbar extends JPanel {
     detail.setBounds(0, 0, 20, 26);
     if (showDetail) leftMove.setBounds(Config.isScaled ? 20 : 19, 0, 20, 26);
     else leftMove.setBounds(0, 0, 20, 26);
-    buttonPane.add(foxKifuButton);
+    buttonPane.add(remoteComputeButton);
     buttonPane.add(downloadWeightButton);
     buttonPane.add(share);
     buttonPane.add(flashAnalyze);
@@ -771,7 +772,7 @@ public class BottomToolbar extends JPanel {
     liveButton.setFocusable(false);
     share.setFocusable(false);
     flashAnalyze.setFocusable(false);
-    foxKifuButton.setFocusable(false);
+    remoteComputeButton.setFocusable(false);
     downloadWeightButton.setFocusable(false);
     rightMove.setFocusable(false);
     leftMove.setFocusable(false);
@@ -785,7 +786,7 @@ public class BottomToolbar extends JPanel {
     deleteMove.setMargin(new Insets(0, 0, 0, 0));
     autoPlay.setMargin(new Insets(0, 0, 0, 0));
     badMoves.setMargin(new Insets(0, 0, 0, 0));
-    foxKifuButton.setMargin(new Insets(0, 0, 0, 0));
+    remoteComputeButton.setMargin(new Insets(0, 0, 0, 0));
     downloadWeightButton.setMargin(new Insets(0, 0, 0, 0));
     firstButton.setMargin(new Insets(0, 0, 0, 0));
     lastButton.setMargin(new Insets(0, 0, 0, 0));
@@ -828,7 +829,7 @@ public class BottomToolbar extends JPanel {
     //    }
     setButtonSize(autoPlay, false);
     setButtonSize(flashAnalyze, false);
-    setButtonSize(foxKifuButton, false);
+    setButtonSize(remoteComputeButton, false);
     setButtonSize(downloadWeightButton, false);
     setButtonSize(deleteMove, true);
     setButtonSize(badMoves, false);
@@ -922,10 +923,10 @@ public class BottomToolbar extends JPanel {
           }
         });
 
-    foxKifuButton.addActionListener(
+    remoteComputeButton.addActionListener(
         new ActionListener() {
           public void actionPerformed(ActionEvent e) {
-            Lizzie.frame.openFoxReq();
+            Lizzie.frame.openRemoteComputeCenter();
           }
         });
 
@@ -1140,17 +1141,6 @@ public class BottomToolbar extends JPanel {
         });
     yike.add(foxKifu);
 
-    JFontMenuItem syncBoardJava =
-        new JFontMenuItem(
-            Lizzie.resourceBundle.getString("BottomToolbar.syncBoardJava")); // ("棋盘同步");
-    syncBoardJava.addActionListener(
-        new ActionListener() {
-          public void actionPerformed(ActionEvent e) {
-            Lizzie.frame.openReadBoardJava();
-          }
-        });
-    yike.add(syncBoardJava);
-
     JFontMenuItem syncBoard =
         new JFontMenuItem(Lizzie.resourceBundle.getString("BottomToolbar.syncBoard")); // ("棋盘同步");
     syncBoard.addActionListener(
@@ -1160,6 +1150,16 @@ public class BottomToolbar extends JPanel {
           }
         });
     if (OS.isWindows()) yike.add(syncBoard);
+
+    JFontMenuItem syncDiagnostics =
+        new JFontMenuItem(Lizzie.resourceBundle.getString("Menu.syncDiagnostics"));
+    syncDiagnostics.addActionListener(
+        new ActionListener() {
+          public void actionPerformed(ActionEvent e) {
+            new SyncDiagnosticsDialog(Lizzie.frame).setVisible(true);
+          }
+        });
+    yike.add(syncDiagnostics);
 
     final JFontMenuItem webBoardToggle =
         new JFontMenuItem(Lizzie.resourceBundle.getString("Menu.webBoardStart"));
@@ -4502,7 +4502,7 @@ public class BottomToolbar extends JPanel {
   }
 
   private void setButtonVisiable() {
-    foxKifuButton.setVisible(true);
+    remoteComputeButton.setVisible(true);
     downloadWeightButton.setVisible(true);
     if (Lizzie.config.liveButton) liveButton.setVisible(true);
     else liveButton.setVisible(false);
@@ -4669,8 +4669,8 @@ public class BottomToolbar extends JPanel {
 
   private int calcButtonLength() {
     int length = 0;
-    if (foxKifuButton.isVisible()) {
-      length = length + foxKifuButton.getWidth() - (Config.isScaled ? 0 : 1);
+    if (remoteComputeButton.isVisible()) {
+      length = length + remoteComputeButton.getWidth() - (Config.isScaled ? 0 : 1);
     }
     if (downloadWeightButton.isVisible()) {
       length = length + downloadWeightButton.getWidth() - (Config.isScaled ? 0 : 1);
@@ -4907,18 +4907,18 @@ public class BottomToolbar extends JPanel {
       w = w - (downloadWeightButton.getWidth() - (Config.isScaled ? 0 : 1));
       downloadWeightButton.setLocation(w, 0);
     }
-    if (foxKifuButton.isVisible()) {
-      w = w - (foxKifuButton.getWidth() - (Config.isScaled ? 0 : 1));
-      foxKifuButton.setLocation(w, 0);
+    if (remoteComputeButton.isVisible()) {
+      w = w - (remoteComputeButton.getWidth() - (Config.isScaled ? 0 : 1));
+      remoteComputeButton.setLocation(w, 0);
     }
 
     return w;
   }
 
   public int setLocationLeft(int w) {
-    if (foxKifuButton.isVisible()) {
-      foxKifuButton.setLocation(w, 0);
-      w = w + foxKifuButton.getWidth() - (Config.isScaled ? 0 : 1);
+    if (remoteComputeButton.isVisible()) {
+      remoteComputeButton.setLocation(w, 0);
+      w = w + remoteComputeButton.getWidth() - (Config.isScaled ? 0 : 1);
     }
     if (downloadWeightButton.isVisible()) {
       downloadWeightButton.setLocation(w, 0);
@@ -5080,7 +5080,7 @@ public class BottomToolbar extends JPanel {
         visibleButtons(
             openfile,
             savefile,
-            foxKifuButton,
+            remoteComputeButton,
             downloadWeightButton,
             kataEstimate,
             heatMap,
@@ -5112,7 +5112,7 @@ public class BottomToolbar extends JPanel {
       boolean reserveOverflow = pass == 1;
       overflowButtons.clear();
       hideButtons(
-          foxKifuButton,
+          remoteComputeButton,
           downloadWeightButton,
           share,
           flashAnalyze,

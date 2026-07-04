@@ -713,6 +713,39 @@ class BoardMovelistExportTest {
   }
 
   @Test
+  void resendMoveToEngineSnapshotRestoreUsesCurrentEngineKomiNotLoadedGameInfoKomi()
+      throws Exception {
+    TestEnvironment env = TestEnvironment.open();
+    Board previousBoard = Lizzie.board;
+    try {
+      Board board = allocate(Board.class);
+      board.startStonelist = new ArrayList<>();
+      board.hasStartStone = false;
+      BoardData snapshot = capturedCenterSnapshotAnchor();
+      snapshot.komi = 7.5;
+      BoardHistoryList history = new BoardHistoryList(snapshot);
+      history.getGameInfo().setKomiNoMenu(7.5);
+      board.setHistory(history);
+      Lizzie.board = board;
+
+      SnapshotSgfAwareFakeLeelaz engine = allocate(SnapshotSgfAwareFakeLeelaz.class);
+      engine.komi = 6.5f;
+      engine.orikomi = 6.5f;
+      board.resendMoveToEngine(engine, false);
+
+      assertTrue(
+          engine.loadedSgf().contains("KM[6.5]"),
+          "snapshot restore should keep the current engine komi in KataGo loadsgf.");
+      assertFalse(
+          engine.loadedSgf().contains("KM[7.5]"),
+          "loaded SGF/game-info komi must not overwrite the current engine komi.");
+    } finally {
+      Lizzie.board = previousBoard;
+      env.close();
+    }
+  }
+
+  @Test
   void restoreMoveNumberLoadEngineRebuildsNearestSnapshotBoundaryBeforeRealPass() throws Exception {
     TestEnvironment env = TestEnvironment.open();
     Board previousBoard = Lizzie.board;

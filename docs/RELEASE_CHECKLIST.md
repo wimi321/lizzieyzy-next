@@ -74,7 +74,7 @@ GitHub Actions：
 - `README.md` 和 `README_EN.md` 的包名与计划上传的文件完全一致
 - 安装文档里的 Windows 主路径仍然是 `portable.zip`
 - 如果提供 NVIDIA 极速包，要同时核对 `nvidia.installer.exe` 和 `nvidia.portable.zip`
-- 如果提供 RTX 50 包，要核对 `nvidia50.cuda.*`，并在发布说明里写清 TensorRT 只从软件内按需安装，不再作为 release asset
+- 如果提供 RTX 50 包，要核对 `nvidia50.cuda.*`，并在发布说明里写清 TensorRT 只从软件内按需安装，不再作为 release asset，安装界面会检测 NVIDIA GPU / Compute Capability
 - 如果提供 OpenCL 包，要同时核对 `opencl.installer.exe` 和 `opencl.portable.zip`
 - 如果提供 Windows 无引擎包，要同时核对 `without.engine.installer.exe` 和 `without.engine.portable.zip`
 - 界面里仍然写的是 `野狐棋谱（输入野狐昵称获取）`
@@ -116,11 +116,11 @@ python3 scripts/generate_app_icons.py
 
 当前默认：
 
-- KataGo 版本：`v1.16.4`
+- KataGo 版本：`v1.16.5`
 - 默认模型：`kata1-zhizi-b28c512nbt-muonfd2.bin.gz`
 - Windows NVIDIA 包：官方 `cuda12.1-cudnn8.9.7` 构建
 - Windows RTX 50 CUDA 包：官方 `cuda12.8-cudnn9.8.0` 构建
-- Windows TensorRT：不打入 release 包；RTX 20/30/40/50 用户由软件内 `KataGo 一键设置` 显式下载安装官方 `trt10.9.0-cuda12.8` 构建和所需运行库，GTX 10 系及更老显卡优先 CUDA/OpenCL
+- Windows TensorRT：不打入 release 包；RTX 20/30/40/50 用户由软件内 `KataGo 一键设置` 显式下载安装官方 `trt10.9.0-cuda12.8` 构建和所需运行库，并通过 NVIDIA GPU / Compute Capability 检测给出推荐状态；GTX 10 系及更老显卡优先 CUDA/OpenCL
 
 ### 5. 构建 Windows 安装器和便携包
 

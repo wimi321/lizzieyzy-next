@@ -5,7 +5,8 @@
 <p align="center">
   <a href="https://github.com/wimi321/lizzieyzy-next/releases"><img src="https://img.shields.io/github/v/release/wimi321/lizzieyzy-next?display_name=tag&label=Release&color=111111" alt="Release"></a>
   <a href="https://github.com/wimi321/lizzieyzy-next/stargazers"><img src="https://img.shields.io/github/stars/wimi321/lizzieyzy-next?style=flat&color=444444" alt="Stars"></a>
-  <a href="https://github.com/wimi321/lizzieyzy-next/releases"><img src="https://img.shields.io/github/downloads/wimi321/lizzieyzy-next/total?label=Downloads&color=666666" alt="Downloads"></a>
+  <a href="https://github.com/wimi321/lizzieyzy-next/releases"><img src="https://img.shields.io/github/downloads/wimi321/lizzieyzy-next/total.svg?label=Downloads&color=666666" alt="Downloads"></a>
+  <a href="https://goagent.top/"><img src="https://img.shields.io/badge/Website-goagent.top-0b6b3a" alt="官方网站"></a>
   <img src="https://img.shields.io/badge/Platforms-Windows%20%7C%20macOS%20%7C%20Linux-888888" alt="Platforms">
 </p>
 
@@ -20,6 +21,8 @@
 </p>
 
 <p align="center">
+  <a href="https://goagent.top/"><strong>官方网站</strong></a>
+  ·
   <a href="https://github.com/wimi321/lizzieyzy-next/releases"><strong>下载发布包</strong></a>
   ·
   <a href="https://pan.baidu.com/s/1wthaL8YwGMxy_u0U7Mabpw?pwd=3i8w"><strong>百度网盘下载</strong></a>
@@ -40,15 +43,19 @@
 > 欢迎交流使用问题、反馈 bug、分享使用体验，或者讨论接下来最想加的功能。
 
 > [!IMPORTANT]
-> 如果你只想先下对版本，先记住这 8 句：
+> 如果你只想先下对版本，先记住这几句：
 > - Windows 大多数用户：到 [Releases](https://github.com/wimi321/lizzieyzy-next/releases) 下载 `*windows64.opencl.portable.zip`
 > - RTX 20/30/40 NVIDIA 显卡并且想更快：下载 `*windows64.nvidia.portable.zip`
 > - RTX 5070/5080/5090：优先下载 `*windows64.nvidia50.cuda.portable.zip`，需要 TensorRT 时再到软件内“一键设置”按需安装
+> - 已经有 Windows 免安装版：日常升级优先下载 `*windows64.core-update.zip`，关闭软件后解压到旧目录覆盖，只更新主程序和启动器配置
 > - TensorRT 不只给 RTX 50：RTX 20/30/40/50 NVIDIA 显卡都可以在软件内按需安装；GTX 10 系及更老显卡优先 CUDA/OpenCL
+> - `KataGo 一键设置` 会检测 NVIDIA GPU 和 Compute Capability，自动提示是否推荐 TensorRT；检测失败也可以手动继续
+> - TensorRT 一键安装成功后会自动清理下载包缓存；运行缓存尽量写入软件自己的 `user-data/runtime`，减少 C 盘额外占用
+> - Release 里的 `*windows64.nvidia.tensorrt.portable.7z.001` 是高级可选分卷包，必须下载全部 `.7z.00N` 并用 7-Zip 解压；普通用户不要优先选它
 > - 如果 OpenCL 在你的电脑上不稳定：下载 `*windows64.with-katago.portable.zip`
 > - 现在支持直接输入野狐昵称抓最近公开棋谱，不需要先查账号数字
-> - 主推荐整合包已内置 KataGo `v1.16.4` 和官方推荐 `zhizi` 权重 `kata1-zhizi-b28c512nbt-muonfd2.bin.gz`
-> - 主发布包已内置 `readboard_java`，多数用户不需要再单独找 readboard 仓库
+> - 主推荐整合包已内置 KataGo `v1.16.5` 和更适合默认使用的 `zhizi` 28B 权重 `kata1-zhizi-b28c512nbt-muonfd2.bin.gz`
+> - Windows 主发布包已内置原生 `readboard.exe`，同步入口只保留这套更强的棋盘同步工具
 
 ## 为什么很多用户会直接选它
 
@@ -75,7 +82,8 @@
 | 快速找问题手 | 提供新版主胜率图和底部热力概览，更容易一眼看出大问题手 |
 | 少折腾配置 | 推荐整合包已内置 KataGo、默认权重和首次自动配置 |
 | 不想安装 | Windows 默认优先推荐 `portable.zip` 免安装包 |
-| 做棋盘同步 | 主发布包已内置 `readboard_java` 简易同步工具 |
+| 做棋盘同步 | Windows 主发布包已内置原生 `readboard.exe`，同步入口更清晰 |
+| 本机算力不够 | `设置 -> 远程算力中心` 可登录智子云算力，创建远程 KataGo 引擎后像本机引擎一样使用 |
 
 ## 先下载哪个
 
@@ -95,19 +103,28 @@
 | Windows，NVIDIA 显卡，想安装 | `*windows64.nvidia.installer.exe` |
 | Windows，RTX 5070/5080/5090，CUDA 版，免安装 | `*windows64.nvidia50.cuda.portable.zip` |
 | Windows，RTX 5070/5080/5090，CUDA 版，想安装 | `*windows64.nvidia50.cuda.installer.exe` |
+| 已经有 Windows 免安装版，日常升级 | `*windows64.core-update.zip`，解压到旧目录覆盖 |
 | Windows，RTX 20/30/40/50，想测试 TensorRT 加速 | 先下载对应 NVIDIA 包（RTX 50 用 `*windows64.nvidia50.cuda.portable.zip`），打开后在 `KataGo 一键设置` 里安装 |
+| Windows，高级用户，想离线测试 TensorRT 预装包 | `*windows64.nvidia.tensorrt.portable.7z.001` 起的全部分卷，先看同名 `README.txt` |
 | Windows，自己配引擎，免安装 | `*windows64.without.engine.portable.zip` |
 | Windows，自己配引擎，想安装 | `*windows64.without.engine.installer.exe` |
 | macOS Apple Silicon | `*mac-apple-silicon.with-katago.dmg` |
 | macOS Intel | `*mac-intel.with-katago.dmg` |
 | Linux | `*linux64.with-katago.zip` |
 
+Windows `portable.zip` 是真正的免安装模式：配置、日志、保存棋谱、下载权重和软件内安装的 TensorRT 加速文件都会保存在解压出来的同一个文件夹里，主要位置是 `user-data/`。如果想彻底清理这个免安装版，删除整个解压文件夹即可；如果想保留设置，升级前把旧文件夹里的 `user-data/` 复制到新文件夹。
+
+已有 Windows 免安装版时，日常小版本升级不用重新下载完整大包。下载 `*windows64.core-update.zip`，关闭软件，把 zip 里的内容解压到旧的免安装目录覆盖即可。这个小包只替换 `app/lizzie-yzy2.5.3-shaded.jar` 和 `app/LizzieYzy Next*.cfg`，用来同步标题栏版本号和必要 JVM 参数；不会重复下载或覆盖 `weights/`、`engines/`、`runtime/`、`jcef-bundle/`、`readboard/`、`user-data/`。如果某次 release 明确写了 KataGo、权重或运行环境升级，再按说明下载完整包或对应资源包。
+
 如果你懒得分辨：
 
 - Windows：先下 `*windows64.opencl.portable.zip`
+- 已经有 Windows 免安装版：先下 `*windows64.core-update.zip` 覆盖旧目录，除非更新说明要求下载完整包
 - Windows + RTX 20/30/40 NVIDIA 显卡：先下 `*windows64.nvidia.portable.zip`
 - Windows + RTX 5070/5080/5090：先下 `*windows64.nvidia50.cuda.portable.zip`
-- Windows + RTX 20/30/40/50 想试 TensorRT：不要找单独发布包，先下对应 NVIDIA/CUDA 包，再在软件内“一键设置”按需安装
+- Windows + RTX 20/30/40/50 想试 TensorRT：普通用户先下对应 NVIDIA/CUDA 包，再在软件内“一键设置”按需安装；软件会检测 GPU 和 Compute Capability 后给出推荐，下载支持断点续传
+- TensorRT 一键安装完成后会自动删除完整下载包，之前留下的下载缓存也可以在一键设置里点“清理 TensorRT 缓存”
+- Windows + 熟悉 7-Zip 的高级用户：可以下载 `*windows64.nvidia.tensorrt.portable.7z.001/.002/...` 高级可选分卷包，必须下载全部分卷后从 `.001` 解压；只下载 `.001` 没用
 - GTX 10 系及更老 NVIDIA 显卡：优先 CUDA/OpenCL，不作为 TensorRT 推荐对象
 - OpenCL 不稳定：改下 `*windows64.with-katago.portable.zip`
 - Mac：先分清 Apple Silicon 还是 Intel
@@ -123,8 +140,10 @@
   更容易看出哪里是大恶手，哪里值得先回头看。
 - `Windows 免安装优先`
   普通用户下载更直接，OpenCL / NVIDIA / CPU 三条线也更清楚。
-- `主项目直接内置 readboard_java`
-  多数用户不需要再单独找 readboard 仓库来拼环境。
+- `只保留原生 readboard 同步工具`
+  Windows 主发布包内置原生 `readboard.exe`，不再让普通用户在多个同步入口之间纠结。
+- `远程算力中心`
+  本机显卡不够时，可以在软件内登录智子云算力，默认使用“VIP 包月”（`--gpu-type vip-share`）远程 KataGo；非 VIP 用户可在高级设置切换到“按量 1x / 3x / 6x”等档位。默认预设使用智子28B模型，TensorRT/CUDA 表示云端引擎后端，不是充值套餐名。密码不保存，只有勾选“记住登录”时才保存 token；断线会自动重连，也可以一键切回本机引擎。
 - `真实发布 + 真实烟测`
   不是只改源码，Windows / macOS / Linux 的发布包和烟测链路也都持续在做。
 
@@ -172,13 +191,13 @@
 | 输入方式 | 更依赖先知道账号数字 | 直接输入野狐昵称，程序自动匹配账号 |
 | KataGo 使用门槛 | 常常需要自己补环境或补资源 | 推荐整合包已内置 KataGo 和默认权重 |
 | Windows 下载体验 | 需要用户自己判断更多 | 明确优先推荐 `portable.zip` 免安装包 |
-| 同步工具 | 用户自己拼环境的情况更多 | 主发布包直接带 `readboard_java` |
+| 同步工具 | 用户自己拼环境的情况更多 | Windows 主发布包内置原生 `readboard.exe` |
 
 ## 常见问题
 
 ### 棋盘同步工具还需要单独找 readboard 仓库吗？
 
-多数用户不需要。`LizzieYzy Next` 现在把 `readboard_java` 当成主项目的一部分来交付，主发布包里直接带上了。
+多数 Windows 用户不需要。`LizzieYzy Next` 的 Windows 主发布包内置原生 `readboard.exe`，软件里只保留这一个棋盘同步入口，避免在多个同步工具之间选错。
 
 ### 现在还需要先知道野狐账号数字吗？
 

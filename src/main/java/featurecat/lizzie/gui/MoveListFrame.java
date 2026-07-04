@@ -1310,10 +1310,17 @@ public class MoveListFrame extends JFrame {
     minTable1.getTableHeader().setReorderingAllowed(false);
     minTable2.getTableHeader().setReorderingAllowed(false);
 
-    TableCellRenderer hr = headerMint1.getDefaultRenderer();
-    ((JLabel) hr).setHorizontalAlignment(JLabel.CENTER);
-    headerMint1.setDefaultRenderer(hr);
-    headerMint2.setDefaultRenderer(hr);
+    TableCellRenderer headerRenderer1 = headerMint1.getDefaultRenderer();
+    if (headerRenderer1 instanceof JLabel) {
+      ((JLabel) headerRenderer1).setHorizontalAlignment(JLabel.CENTER);
+    }
+    headerMint1.setDefaultRenderer(headerRenderer1);
+
+    TableCellRenderer headerRenderer2 = headerMint2.getDefaultRenderer();
+    if (headerRenderer2 instanceof JLabel) {
+      ((JLabel) headerRenderer2).setHorizontalAlignment(JLabel.CENTER);
+    }
+    headerMint2.setDefaultRenderer(headerRenderer2);
 
     checkBlack.setSelected(true);
     checkWhite.setSelected(true);

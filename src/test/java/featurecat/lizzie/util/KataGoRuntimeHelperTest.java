@@ -5,6 +5,8 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.sun.net.httpserver.HttpExchange;
+import com.sun.net.httpserver.HttpServer;
 import featurecat.lizzie.Config;
 import featurecat.lizzie.ConfigTestHelper;
 import featurecat.lizzie.Lizzie;
@@ -14,7 +16,9 @@ import featurecat.lizzie.util.KataGoAutoSetupHelper.DownloadSession;
 import featurecat.lizzie.util.KataGoAutoSetupHelper.SetupResult;
 import featurecat.lizzie.util.KataGoAutoSetupHelper.SetupSnapshot;
 import java.io.IOException;
+import java.io.OutputStream;
 import java.lang.reflect.Constructor;
+import java.net.InetSocketAddress;
 import java.nio.channels.FileChannel;
 import java.nio.channels.FileLock;
 import java.nio.file.Files;
@@ -24,6 +28,10 @@ import java.security.MessageDigest;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 import org.json.JSONObject;
@@ -85,6 +93,64 @@ public class KataGoRuntimeHelperTest {
         normalize(enginePath.getParent()),
         firstPathEntry(processBuilder.environment().get("PATH")),
         "Bundled OpenCL engine should prepend its engine directory.");
+  }
+
+  @Test
+  void bundledOpenclEngineNeedsFirstTuningUntilCacheExists() throws Exception {
+    withOsName(
+        WINDOWS_OS_NAME,
+        () -> {
+          Path tempRoot = Files.createTempDirectory("katago-helper-opencl-tuning");
+          Path enginePath =
+              touch(
+                  tempRoot
+                      .resolve("engines")
+                      .resolve("katago")
+                      .resolve("windows-x64-opencl")
+                      .resolve("katago.exe"));
+          Path runtimeWorkDirectory = Files.createDirectories(tempRoot.resolve("runtime-root"));
+
+          withConfig(
+              runtimeWorkDirectory,
+              () -> {
+                assertTrue(
+                    KataGoRuntimeHelper.needsFirstOpenCLTuning(enginePath),
+                    "Bundled OpenCL should get the longer startup budget before tuning exists.");
+
+                Path tuningDir =
+                    Files.createDirectories(
+                        runtimeWorkDirectory.resolve("katago-home/opencltuning"));
+                touch(tuningDir.resolve("tune11_gpu0.txt"));
+
+                assertFalse(
+                    KataGoRuntimeHelper.needsFirstOpenCLTuning(enginePath),
+                    "Existing OpenCL tuning cache should restore the normal startup timeout.");
+              });
+        });
+  }
+
+  @Test
+  void bundledNvidiaEngineDoesNotNeedOpenclTuningBudget() throws Exception {
+    withOsName(
+        WINDOWS_OS_NAME,
+        () -> {
+          Path tempRoot = Files.createTempDirectory("katago-helper-nvidia-no-opencl-tuning");
+          Path enginePath =
+              touch(
+                  tempRoot
+                      .resolve("engines")
+                      .resolve("katago")
+                      .resolve("windows-x64-nvidia")
+                      .resolve("katago.exe"));
+          Path runtimeWorkDirectory = Files.createDirectories(tempRoot.resolve("runtime-root"));
+
+          withConfig(
+              runtimeWorkDirectory,
+              () ->
+                  assertFalse(
+                      KataGoRuntimeHelper.needsFirstOpenCLTuning(enginePath),
+                      "Bundled NVIDIA engines should not use the OpenCL tuning watchdog budget."));
+        });
   }
 
   @Test
@@ -155,6 +221,48 @@ public class KataGoRuntimeHelperTest {
               normalize(enginePath.getParent()),
               secondPathEntry(processBuilder.environment().get("PATH")),
               "RTX 50 NVIDIA package should keep the engine directory after runtime.");
+        });
+  }
+
+  @Test
+  void tensorRtLaunchKeepsCudaAndTempCachesInsideRuntimeDirectory() throws Exception {
+    withOsName(
+        WINDOWS_OS_NAME,
+        () -> {
+          Path tempRoot = Files.createTempDirectory("katago-helper-tensorrt-cache-env");
+          Path enginePath =
+              touch(
+                  tempRoot
+                      .resolve("engines")
+                      .resolve("katago")
+                      .resolve("windows-x64-nvidia-tensorrt")
+                      .resolve("katago.exe"));
+          Path originalDirectory = Files.createDirectories(tempRoot.resolve("working-dir"));
+          Path runtimeWorkDirectory = Files.createDirectories(tempRoot.resolve("runtime-root"));
+          Path runtimeDir = Files.createDirectories(runtimeWorkDirectory.resolve("nvidia-runtime"));
+          String originalPath = String.join(PATH_SEPARATOR, Arrays.asList("alpha", "beta"));
+          ProcessBuilder processBuilder = createProcessBuilder(originalDirectory, originalPath);
+
+          withConfig(
+              runtimeWorkDirectory,
+              () -> KataGoRuntimeHelper.configureBundledProcessBuilder(processBuilder, enginePath));
+
+          Path expectedCudaCache = runtimeDir.resolve("cache").resolve("cuda");
+          Path expectedTempCache = runtimeDir.resolve("cache").resolve("temp");
+          assertEquals(
+              normalize(expectedCudaCache),
+              normalize(Path.of(processBuilder.environment().get("CUDA_CACHE_PATH"))),
+              "Bundled TensorRT should keep CUDA cache under the app runtime directory.");
+          assertEquals(
+              normalize(expectedTempCache),
+              normalize(Path.of(processBuilder.environment().get("TEMP"))),
+              "Bundled TensorRT should keep temp files under the app runtime directory.");
+          assertEquals(
+              normalize(expectedTempCache),
+              normalize(Path.of(processBuilder.environment().get("TMP"))),
+              "Bundled TensorRT should keep temp files under the app runtime directory.");
+          assertTrue(Files.isDirectory(expectedCudaCache));
+          assertTrue(Files.isDirectory(expectedTempCache));
         });
   }
 
@@ -262,9 +370,9 @@ public class KataGoRuntimeHelperTest {
                     KataGoRuntimeHelper.buildTensorRtInstallSpec(snapshot);
 
                 assertTrue(
-                    spec.katagoUrl.endsWith("/katago-v1.16.4-trt10.9.0-cuda12.8-windows-x64.zip"));
+                    spec.katagoUrl.endsWith("/katago-v1.16.5-trt10.9.0-cuda12.8-windows-x64.zip"));
                 assertEquals(
-                    "1dea0b507c6331c9a7cf4f0ed2eeee5384b880d60f1db7fe876506daee55830f",
+                    "954227e5696eed4c1ad80da6a1d48eb1de5ecdb741f849d1b956b8b64093d2f5",
                     spec.katagoSha256);
                 assertEquals(5, spec.runtimePackageCount);
                 assertTrue(spec.totalDownloadBytes > 3_000_000_000L);
@@ -280,6 +388,48 @@ public class KataGoRuntimeHelperTest {
                     normalize(spec.targetEnginePath));
               });
         });
+  }
+
+  @Test
+  void tensorRtNvidiaMirrorSelectionPrefersFastestUsableHost() {
+    KataGoRuntimeHelper.NvidiaMirrorProbeResult cnResult =
+        new KataGoRuntimeHelper.NvidiaMirrorProbeResult(
+            "developer.download.nvidia.cn", 512_000L, 1200L, null);
+    KataGoRuntimeHelper.NvidiaMirrorProbeResult comResult =
+        new KataGoRuntimeHelper.NvidiaMirrorProbeResult(
+            "developer.download.nvidia.com", 512_000L, 300L, null);
+
+    assertEquals(
+        "developer.download.nvidia.com",
+        KataGoRuntimeHelper.selectNvidiaDownloadHostFromProbes(cnResult, comResult));
+  }
+
+  @Test
+  void tensorRtNvidiaMirrorSelectionFallsBackToWorkingHost() {
+    KataGoRuntimeHelper.NvidiaMirrorProbeResult cnResult =
+        new KataGoRuntimeHelper.NvidiaMirrorProbeResult(
+            "developer.download.nvidia.cn", 0L, 6000L, "timeout");
+    KataGoRuntimeHelper.NvidiaMirrorProbeResult comResult =
+        new KataGoRuntimeHelper.NvidiaMirrorProbeResult(
+            "developer.download.nvidia.com", 256_000L, 500L, null);
+
+    assertEquals(
+        "developer.download.nvidia.com",
+        KataGoRuntimeHelper.selectNvidiaDownloadHostFromProbes(cnResult, comResult));
+  }
+
+  @Test
+  void tensorRtNvidiaMirrorUrlRewriteOnlyTouchesNvidiaDownloadHosts() {
+    assertEquals(
+        "https://developer.download.nvidia.cn/compute/cuda/redist/redistrib_12.8.0.json",
+        KataGoRuntimeHelper.mirrorNvidiaDownloadUrl(
+            "https://developer.download.nvidia.com/compute/cuda/redist/redistrib_12.8.0.json",
+            "developer.download.nvidia.cn"));
+    assertEquals(
+        "https://example.com/compute/cuda/redist/redistrib_12.8.0.json",
+        KataGoRuntimeHelper.mirrorNvidiaDownloadUrl(
+            "https://example.com/compute/cuda/redist/redistrib_12.8.0.json",
+            "developer.download.nvidia.cn"));
   }
 
   @Test
@@ -354,7 +504,95 @@ public class KataGoRuntimeHelperTest {
                                             && engine.isDefault
                                             && engine.commands.contains(
                                                 "windows-x64-nvidia-tensorrt")));
+                        assertFalse(
+                            Files.exists(
+                                runtimeWorkDirectory
+                                    .resolve("nvidia-runtime")
+                                    .resolve("downloads")
+                                    .resolve("katago-trt.zip")),
+                            "Successful TensorRT installs should remove the completed installer archive.");
                       }));
+        });
+  }
+
+  @Test
+  void tensorRtInstallResumesInterruptedDownloadPartFile() throws Exception {
+    Path tempRoot = Files.createTempDirectory("katago-helper-tensorrt-resume");
+    Path runtimeWorkDirectory = Files.createDirectories(tempRoot.resolve("runtime-root"));
+    SetupSnapshot snapshot = createNvidia50Snapshot(tempRoot);
+    Path fixtureZip =
+        createTensorRtFixtureZip(tempRoot.resolve("fixture").resolve("katago-trt.zip"));
+    byte[] fixtureBytes = Files.readAllBytes(fixtureZip);
+    int firstChunkSize = Math.max(1, fixtureBytes.length / 2);
+
+    try (ResumableFixtureServer server =
+        ResumableFixtureServer.start(fixtureBytes, firstChunkSize)) {
+      withOsName(
+          WINDOWS_OS_NAME,
+          () ->
+              withTensorRtFixtureProperties(
+                  server.url(),
+                  sha256(fixtureZip),
+                  fixtureBytes.length,
+                  () ->
+                      withConfig(
+                          runtimeWorkDirectory,
+                          () -> {
+                            Path partialArchive =
+                                runtimeWorkDirectory
+                                    .resolve("nvidia-runtime")
+                                    .resolve("downloads")
+                                    .resolve("katago-trt.zip.part");
+                            assertThrows(
+                                IOException.class,
+                                () ->
+                                    KataGoRuntimeHelper.downloadAndInstallTensorRt(
+                                        snapshot, null, new DownloadSession()));
+                            assertTrue(
+                                Files.isRegularFile(partialArchive),
+                                "Interrupted TensorRT downloads should keep the .part file.");
+                            assertEquals(firstChunkSize, Files.size(partialArchive));
+
+                            SetupResult result =
+                                KataGoRuntimeHelper.downloadAndInstallTensorRt(
+                                    snapshot, null, new DownloadSession());
+
+                            assertEquals("KataGo TensorRT", result.engineName);
+                            assertEquals(
+                                "bytes=" + firstChunkSize + "-",
+                                server.lastRangeHeader(),
+                                "The second attempt should resume from the partial byte count.");
+                            assertFalse(
+                                Files.exists(partialArchive),
+                                "Successful resume should promote the .part file into the cache.");
+                            assertFalse(
+                                Files.exists(partialArchive.resolveSibling("katago-trt.zip")),
+                                "Successful TensorRT installs should clean the completed archive after setup.");
+                          })));
+    }
+  }
+
+  @Test
+  void manualTensorRtCacheCleanupDeletesStaleArchivesAndParts() throws Exception {
+    Path tempRoot = Files.createTempDirectory("katago-helper-tensorrt-cache-cleanup");
+    Path runtimeWorkDirectory = Files.createDirectories(tempRoot.resolve("runtime-root"));
+
+    withConfig(
+        runtimeWorkDirectory,
+        () -> {
+          Path downloads =
+              Files.createDirectories(
+                  runtimeWorkDirectory.resolve("nvidia-runtime").resolve("downloads"));
+          Path archive = Files.write(downloads.resolve("runtime.zip"), new byte[] {1, 2, 3});
+          Path partial = Files.write(downloads.resolve("runtime.zip.part"), new byte[] {4, 5});
+
+          assertEquals(5L, KataGoRuntimeHelper.tensorRtDownloadCacheBytes());
+          long freedBytes = KataGoRuntimeHelper.cleanupTensorRtDownloadCache();
+
+          assertEquals(5L, freedBytes);
+          assertFalse(Files.exists(archive));
+          assertFalse(Files.exists(partial));
+          assertEquals(0L, KataGoRuntimeHelper.tensorRtDownloadCacheBytes());
         });
   }
 
@@ -504,6 +742,99 @@ public class KataGoRuntimeHelperTest {
                 assertFalse(status.installed, "Missing TensorRT runtime should not be ready.");
                 assertFalse(status.active);
                 assertTrue(KataGoRuntimeHelper.canInstallTensorRt(snapshot));
+              });
+        });
+  }
+
+  @Test
+  void tensorRtSplitPackageAppRootIsDetectedAsDownloadedAndActive() throws Exception {
+    withOsName(
+        WINDOWS_OS_NAME,
+        () -> {
+          Path tempRoot = Files.createTempDirectory("katago-helper-tensorrt-split-active");
+          Path appRoot = Files.createDirectories(tempRoot.resolve("app"));
+          Path workingDir = Files.createDirectories(appRoot.resolve("user-data"));
+          Path runtimeWorkDirectory = Files.createDirectories(workingDir.resolve("runtime"));
+          Path targetDir =
+              appRoot.resolve("engines").resolve("katago").resolve("windows-x64-nvidia-tensorrt");
+          Path enginePath = touch(targetDir.resolve("katago.exe"));
+          touchRequiredCuda12_8Dlls(targetDir);
+          touch(targetDir.resolve("nvinfer_10.dll"));
+          touch(targetDir.resolve("nvinfer_plugin_10.dll"));
+          Files.writeString(
+              targetDir.resolve("lizzieyzy-next-engine-backend.txt"), "nvidia-tensorrt\n");
+          Path configDir =
+              Files.createDirectories(
+                  appRoot.resolve("engines").resolve("katago").resolve("configs"));
+          Path gtpConfigPath = touch(configDir.resolve("gtp.cfg"));
+          Path analysisConfigPath = touch(configDir.resolve("analysis.cfg"));
+          Path estimateConfigPath = touch(configDir.resolve("estimate.cfg"));
+          Path weightPath = touch(appRoot.resolve("weights").resolve("default.bin.gz"));
+          SetupSnapshot snapshot =
+              setupSnapshot(
+                  workingDir,
+                  appRoot,
+                  enginePath,
+                  gtpConfigPath,
+                  analysisConfigPath,
+                  estimateConfigPath,
+                  weightPath);
+
+          withConfig(
+              runtimeWorkDirectory,
+              () -> {
+                KataGoRuntimeHelper.TensorRtInstallStatus status =
+                    KataGoRuntimeHelper.inspectTensorRtInstall(snapshot);
+
+                assertTrue(status.downloaded, "Preinstalled TensorRT package should be downloaded.");
+                assertTrue(status.installed, "Preinstalled TensorRT package should be ready.");
+                assertTrue(status.active, "Running from the TensorRT split package should be active.");
+                assertEquals(normalize(enginePath), normalize(status.enginePath));
+                assertFalse(KataGoRuntimeHelper.canInstallTensorRt(snapshot));
+              });
+        });
+  }
+
+  @Test
+  void tensorRtSplitPackageAppRootCanBeEnabledFromCudaSnapshot() throws Exception {
+    withOsName(
+        WINDOWS_OS_NAME,
+        () -> {
+          Path tempRoot = Files.createTempDirectory("katago-helper-tensorrt-split-enable");
+          Path runtimeWorkDirectory = Files.createDirectories(tempRoot.resolve("runtime-root"));
+          SetupSnapshot snapshot = createNvidia50Snapshot(tempRoot);
+          Path targetDir =
+              snapshot.appRoot
+                  .resolve("engines")
+                  .resolve("katago")
+                  .resolve("windows-x64-nvidia-tensorrt");
+          Path tensorRtEnginePath = touch(targetDir.resolve("katago.exe"));
+          touchRequiredCuda12_8Dlls(targetDir);
+          touch(targetDir.resolve("nvinfer_10.dll"));
+          touch(targetDir.resolve("nvinfer_plugin_10.dll"));
+          Files.writeString(
+              targetDir.resolve("lizzieyzy-next-engine-backend.txt"), "nvidia-tensorrt\n");
+
+          withConfig(
+              runtimeWorkDirectory,
+              () -> {
+                KataGoRuntimeHelper.TensorRtInstallStatus status =
+                    KataGoRuntimeHelper.inspectTensorRtInstall(snapshot);
+
+                assertTrue(status.downloaded);
+                assertTrue(status.installed);
+                assertFalse(status.active);
+                assertTrue(KataGoRuntimeHelper.canInstallTensorRt(snapshot));
+
+                SetupResult result = KataGoRuntimeHelper.applyInstalledTensorRt(snapshot);
+
+                assertEquals("KataGo TensorRT", result.engineName);
+                assertEquals(normalize(tensorRtEnginePath), normalize(result.snapshot.enginePath));
+                KataGoRuntimeHelper.TensorRtInstallStatus activeStatus =
+                    KataGoRuntimeHelper.inspectTensorRtInstall(result.snapshot);
+                assertTrue(activeStatus.downloaded);
+                assertTrue(activeStatus.installed);
+                assertTrue(activeStatus.active);
               });
         });
   }
@@ -959,6 +1290,90 @@ public class KataGoRuntimeHelperTest {
     output.putNextEntry(new ZipEntry(name));
     output.write(content.getBytes(java.nio.charset.StandardCharsets.UTF_8));
     output.closeEntry();
+  }
+
+  private static final class ResumableFixtureServer implements AutoCloseable {
+    private final HttpServer server;
+    private final ExecutorService executor;
+    private final AtomicInteger requests = new AtomicInteger();
+    private final AtomicReference<String> lastRangeHeader = new AtomicReference<>("");
+
+    private ResumableFixtureServer(HttpServer server, ExecutorService executor) {
+      this.server = server;
+      this.executor = executor;
+    }
+
+    private static ResumableFixtureServer start(byte[] bytes, int firstChunkSize)
+        throws IOException {
+      HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+      ExecutorService executor = Executors.newSingleThreadExecutor();
+      ResumableFixtureServer fixture = new ResumableFixtureServer(server, executor);
+      server.createContext(
+          "/katago-trt.zip", exchange -> fixture.handle(exchange, bytes, firstChunkSize));
+      server.setExecutor(executor);
+      server.start();
+      return fixture;
+    }
+
+    private String url() {
+      return "http://127.0.0.1:" + server.getAddress().getPort() + "/katago-trt.zip";
+    }
+
+    private String lastRangeHeader() {
+      return lastRangeHeader.get();
+    }
+
+    private void handle(HttpExchange exchange, byte[] bytes, int firstChunkSize)
+        throws IOException {
+      int requestNumber = requests.incrementAndGet();
+      String rangeHeader = exchange.getRequestHeaders().getFirst("Range");
+      if (rangeHeader != null) {
+        lastRangeHeader.set(rangeHeader);
+      }
+      if (requestNumber == 1) {
+        exchange.sendResponseHeaders(200, firstChunkSize);
+        try (OutputStream body = exchange.getResponseBody()) {
+          body.write(bytes, 0, firstChunkSize);
+        } catch (IOException ignored) {
+          // The client should keep this short .part file and resume it on the next attempt.
+        }
+        return;
+      }
+
+      int start = parseRangeStart(rangeHeader);
+      if (start < 0 || start >= bytes.length) {
+        exchange.sendResponseHeaders(416, -1);
+        exchange.close();
+        return;
+      }
+      exchange.getResponseHeaders().set("Accept-Ranges", "bytes");
+      exchange
+          .getResponseHeaders()
+          .set("Content-Range", "bytes " + start + "-" + (bytes.length - 1) + "/" + bytes.length);
+      exchange.sendResponseHeaders(206, bytes.length - start);
+      try (OutputStream body = exchange.getResponseBody()) {
+        body.write(bytes, start, bytes.length - start);
+      }
+    }
+
+    private static int parseRangeStart(String rangeHeader) {
+      if (rangeHeader == null || !rangeHeader.startsWith("bytes=")) {
+        return 0;
+      }
+      int dash = rangeHeader.indexOf('-');
+      String start = dash > 0 ? rangeHeader.substring("bytes=".length(), dash) : "";
+      try {
+        return Integer.parseInt(start);
+      } catch (NumberFormatException e) {
+        return -1;
+      }
+    }
+
+    @Override
+    public void close() {
+      server.stop(0);
+      executor.shutdownNow();
+    }
   }
 
   private static void withTensorRtFixtureProperties(

@@ -3,6 +3,7 @@ package featurecat.lizzie;
 import featurecat.lizzie.analysis.EngineManager;
 import featurecat.lizzie.gui.LizzieFrame;
 import featurecat.lizzie.theme.Theme;
+import featurecat.lizzie.util.AnalysisEngineCommandHelper;
 import featurecat.lizzie.util.Utils;
 import java.awt.Color;
 import java.awt.Frame;
@@ -18,6 +19,9 @@ import org.jdesktop.swingx.util.OS;
 import org.json.*;
 
 public class Config {
+  public static final String BOARD_STYLE_JAPANESE = "japanese";
+  public static final String BOARD_STYLE_CHINESE_CLASSIC = "chinese-classic";
+
   public String language = "en";
   // public boolean showBorder = false;
   public boolean showMoveNumber = false;
@@ -29,7 +33,7 @@ public class Config {
   public boolean showWinrateGraph = true;
   public boolean largeWinrateGraph = false;
   public boolean showWinrateOverview = false;
-  public boolean showBlunderBar = true;
+  public boolean showBlunderBar = false;
   public boolean showMoveAllInBranch = false;
   // public boolean weightedBlunderBarHeight = false;
   // public boolean dynamicWinrateGraphWidth = true;
@@ -42,6 +46,7 @@ public class Config {
   //  public boolean showDynamicKomi = false;
   public double replayBranchIntervalSeconds = 0.5;
   public boolean showCoordinates = true;
+  public String boardStyle = BOARD_STYLE_JAPANESE;
   public boolean colorByWinrateInsteadOfVisits = false;
   // public boolean showlcbwinrate = false;
   public boolean playponder = true;
@@ -56,7 +61,7 @@ public class Config {
   public boolean showKataGoEstimateOnSubbord = true;
   public boolean showKataGoEstimateOnMainbord = true;
   public boolean showSuggestionOrder = true;
-  public boolean showSuggestionMaxRed = true;
+  public boolean showSuggestionMaxRed = false;
   public boolean showStatus = true;
   public boolean isClassicMode = false;
   public boolean isAppleStyle = false;
@@ -140,10 +145,15 @@ public class Config {
   private static final String USER_WORK_DIR_NAME = ".lizzieyzy-next";
   private static final String LEGACY_USER_WORK_DIR_NAME = ".lizzieyzy-next-foxuid";
   private static final String WINDOWS_SHARED_WORK_DIR_NAME = "LizzieYzyNext";
+  private static final String WINDOWS_PORTABLE_MARKER_NAME = ".lizzie-portable";
+  private static final String WINDOWS_PORTABLE_WORK_DIR_NAME = "user-data";
+  private static final String WORK_DIR_PROPERTY = "lizzie.work.dir";
   private static final String HIDE_SUBBOARD_DEFAULT_MIGRATION_KEY =
       "migrated-hide-subboard-default-v1";
   private static final String RESTORE_SUBBOARD_DEFAULT_MIGRATION_KEY =
       "restored-show-subboard-default-v2";
+  private static final String HIDE_BLUNDER_BAR_DEFAULT_MIGRATION_KEY =
+      "migrated-hide-blunder-bar-default-v1";
   private static final String WORK_DIR = resolveWorkDir();
   private static final String RUNTIME_WORK_DIR = "runtime";
   private static final String BUNDLED_ENGINE_NAME = "KataGo Bundled";
@@ -258,7 +268,27 @@ public class Config {
   }
 
   private static String resolveWorkDir() {
+    try {
+      Path explicitWorkDir = resolveExplicitWorkDir();
+      if (explicitWorkDir != null) {
+        return explicitWorkDir.toString();
+      }
+    } catch (Exception e) {
+      e.printStackTrace();
+    }
+
     if (OS.isWindows()) {
+      try {
+        Optional<Path> portableRoot = findWindowsPortablePackageRoot();
+        if (portableRoot.isPresent()) {
+          Path portableWorkDir = prepareWindowsPortableWorkDir(portableRoot.get());
+          if (portableWorkDir != null) {
+            return portableWorkDir.toString();
+          }
+        }
+      } catch (Exception e) {
+        e.printStackTrace();
+      }
       try {
         Path cwd = Path.of(System.getProperty("user.dir")).toAbsolutePath().normalize();
         if (shouldUsePortableWindowsWorkDir(cwd)) {
@@ -293,6 +323,16 @@ public class Config {
       e.printStackTrace();
       return System.getProperty("user.home");
     }
+  }
+
+  private static Path resolveExplicitWorkDir() throws IOException {
+    String configured = System.getProperty(WORK_DIR_PROPERTY, "").trim();
+    if (configured.isEmpty()) {
+      return null;
+    }
+    Path path = Path.of(configured).toAbsolutePath().normalize();
+    Files.createDirectories(path.resolve("save"));
+    return path;
   }
 
   public static Path resolveWritableFallbackDir() throws IOException {
@@ -376,6 +416,76 @@ public class Config {
     } catch (Exception e) {
       e.printStackTrace();
     }
+  }
+
+  static Optional<Path> findWindowsPortablePackageRootForTests(Path seedPath) {
+    if (seedPath == null) {
+      return Optional.empty();
+    }
+    return findWindowsPortablePackageRoot(Collections.singleton(seedPath));
+  }
+
+  static Path prepareWindowsPortableWorkDirForTests(Path portableRoot) throws IOException {
+    return prepareWindowsPortableWorkDir(portableRoot);
+  }
+
+  public static Path resolvedWorkDirPath() {
+    return Path.of(WORK_DIR).toAbsolutePath().normalize();
+  }
+
+  private static Optional<Path> findWindowsPortablePackageRoot() {
+    LinkedHashSet<Path> seedPaths = new LinkedHashSet<>();
+    try {
+      File codeSource =
+          new File(Config.class.getProtectionDomain().getCodeSource().getLocation().toURI());
+      seedPaths.add((codeSource.isFile() ? codeSource.toPath().getParent() : codeSource.toPath()));
+    } catch (Exception e) {
+      e.printStackTrace();
+    }
+    try {
+      seedPaths.add(Path.of("").toAbsolutePath().normalize());
+    } catch (Exception e) {
+      e.printStackTrace();
+    }
+    try {
+      seedPaths.add(Path.of(System.getProperty("user.dir")).toAbsolutePath().normalize());
+    } catch (Exception e) {
+      e.printStackTrace();
+    }
+    return findWindowsPortablePackageRoot(seedPaths);
+  }
+
+  private static Optional<Path> findWindowsPortablePackageRoot(Collection<Path> seedPaths) {
+    if (seedPaths == null) {
+      return Optional.empty();
+    }
+    for (Path seedPath : seedPaths) {
+      if (seedPath == null) {
+        continue;
+      }
+      Path current = seedPath.toAbsolutePath().normalize();
+      for (int depth = 0; current != null && depth < 8; depth++) {
+        if (Files.isRegularFile(current.resolve(WINDOWS_PORTABLE_MARKER_NAME))) {
+          return Optional.of(current);
+        }
+        current = current.getParent();
+      }
+    }
+    return Optional.empty();
+  }
+
+  private static Path prepareWindowsPortableWorkDir(Path portableRoot) throws IOException {
+    if (portableRoot == null || !Files.isDirectory(portableRoot)) {
+      return null;
+    }
+    Path workDir =
+        portableRoot.resolve(WINDOWS_PORTABLE_WORK_DIR_NAME).toAbsolutePath().normalize();
+    Files.createDirectories(workDir.resolve("save"));
+    if (!Files.isWritable(workDir)) {
+      return null;
+    }
+    migrateWorkDirIfNeeded(workDir, portableRoot);
+    return workDir;
   }
 
   private static boolean shouldUsePortableWindowsWorkDir(Path cwd) {
@@ -705,6 +815,7 @@ public class Config {
       ui.put("autoload-empty", false);
       ui.put("default-engine", bundledIndex);
       ui.put("analysis-engine-command", bundledConfig.analysisCommand);
+      ui.put("analysis-engine-command-customized", false);
       ui.put("estimate-command", bundledConfig.estimateCommand);
     }
   }
@@ -924,8 +1035,8 @@ public class Config {
   public boolean useFreeHandicap = true;
   public String currentKataGoRules = "";
 
-  public String analysisEngineCommand =
-      "katago analysis -model model.bin.gz -config analysis.cfg -quit-without-waiting";
+  public String analysisEngineCommand = AnalysisEngineCommandHelper.DEFAULT_ANALYSIS_COMMAND;
+  public boolean analysisEngineCommandCustomized = false;
   public int analysisMaxVisits = 1;
   public int analysisStartMove = -1;
   public int analysisEndMove = -1;
@@ -1430,6 +1541,7 @@ public class Config {
     persistedUi = persisted.getJSONObject("ui-persist");
 
     restoreSubBoardDefaultOnce();
+    hideBlunderBarDefaultOnce();
 
     fastCommandsWidth = persistedUi.optInt("fast-commands-width", 500);
     fastCommandsHeight = persistedUi.optInt("fast-commands-height", 500);
@@ -1452,13 +1564,12 @@ public class Config {
     showWinrateGraph = uiConfig.getBoolean("show-winrate-graph");
     largeWinrateGraph = uiConfig.optBoolean("large-winrate-graph", false);
     showWinrateOverview = uiConfig.optBoolean("show-winrate-overview", false);
-    showBlunderBar = uiConfig.optBoolean("show-blunder-bar", true);
+    showBlunderBar = uiConfig.optBoolean("show-blunder-bar", false);
     showMoveAllInBranch = uiConfig.optBoolean("show-moveall-inbranch", false);
     // weightedBlunderBarHeight = uiConfig.optBoolean("weighted-blunder-bar-height", false);
     // dynamicWinrateGraphWidth = uiConfig.optBoolean("dynamic-winrate-graph-width", true);
     showVariationGraph = uiConfig.getBoolean("show-variation-graph");
-    showComment = uiConfig.optBoolean("show-comment", true);
-    if (extraMode == ExtraMode.Double_Engine) showComment = false;
+    loadPanelModeSettings();
     showCaptured = uiConfig.getBoolean("show-captured");
     // showKataGoScoreMean = uiConfig.optBoolean("show-katago-scoremean", true);
     showKataGoScoreLeadWithKomi = uiConfig.optBoolean("show-katago-score-lead-with-komi", false);
@@ -1470,7 +1581,7 @@ public class Config {
     showKataGoEstimate = uiConfig.optBoolean("show-katago-estimate", false);
     // scoreMeanWinrateGraphBoard = uiConfig.optBoolean("scoremean-winrategraph-board", false);
     showSuggestionOrder = uiConfig.optBoolean("show-suggestion-order", true);
-    showSuggestionMaxRed = uiConfig.optBoolean("show-suggestion-maxred", true);
+    showSuggestionMaxRed = uiConfig.optBoolean("show-suggestion-maxred", false);
 
     estimateCommand =
         uiConfig.optString(
@@ -1643,7 +1754,6 @@ public class Config {
     advanceBlackTimeTxt = uiConfig.optString("advance-black-time-txt", "time_settings 10 2 1");
     advanceWhiteTimeTxt = uiConfig.optString("advance-white-time-txt", "time_settings 10 2 1");
 
-    extraMode = getExtraMode(uiConfig.optInt("extra-mode", 0));
     playSound = uiConfig.optBoolean("play-sound", true);
     notPlaySoundInSync = uiConfig.optBoolean("not-play-sound-insync", true);
     noRefreshOnMouseMove = uiConfig.optBoolean("norefresh-onmouse-move", true);
@@ -1660,6 +1770,8 @@ public class Config {
     showStoneHighlight = uiConfig.optBoolean("show-stone-highlight", true);
     showBoardLightGradient = uiConfig.optBoolean("show-board-light-gradient", true);
     showHoverGlow = uiConfig.optBoolean("show-hover-glow", true);
+    boardStyle = normalizeBoardStyle(uiConfig.optString("board-style", BOARD_STYLE_JAPANESE));
+    uiConfig.put("board-style", boardStyle);
 
     showEditbar = uiConfig.optBoolean("show-edit-bar", true);
     showForceMenu = uiConfig.optBoolean("show-force-menu", true);
@@ -1693,8 +1805,12 @@ public class Config {
 
     analysisEngineCommand =
         uiConfig.optString(
-            "analysis-engine-command",
-            "katago analysis -model model.bin.gz -config analysis.cfg -quit-without-waiting");
+            "analysis-engine-command", AnalysisEngineCommandHelper.DEFAULT_ANALYSIS_COMMAND);
+    analysisEngineCommandCustomized =
+        AnalysisEngineCommandHelper.isAnalysisCommandCustomized(
+            uiConfig.has("analysis-engine-command-customized"),
+            uiConfig.optBoolean("analysis-engine-command-customized", false),
+            analysisEngineCommand);
     analysisMaxVisits = uiConfig.optInt("analysis-max-visits", 1);
     analysisStartMove = uiConfig.optInt("analysis-start-move", -1);
     analysisEndMove = uiConfig.optInt("analysis-end-move", -1);
@@ -2008,6 +2124,23 @@ public class Config {
     }
   }
 
+  private void hideBlunderBarDefaultOnce() {
+    if (uiConfig.optBoolean(HIDE_BLUNDER_BAR_DEFAULT_MIGRATION_KEY, false)) {
+      return;
+    }
+    if (!uiConfig.optBoolean("show-blunder-bar", false)) {
+      uiConfig.put(HIDE_BLUNDER_BAR_DEFAULT_MIGRATION_KEY, true);
+      return;
+    }
+    uiConfig.put("show-blunder-bar", false);
+    uiConfig.put(HIDE_BLUNDER_BAR_DEFAULT_MIGRATION_KEY, true);
+    try {
+      save();
+    } catch (IOException e) {
+      e.printStackTrace();
+    }
+  }
+
   private ArrayList<String> getRecentFilePaths() {
     ArrayList<String> paths = new ArrayList<>();
     JSONArray filePaths = uiConfig.optJSONArray("recent-file-paths");
@@ -2271,8 +2404,9 @@ public class Config {
   public void toggleExtraMode(int mode) {
     ExtraMode previousMode = extraMode;
     extraMode = getExtraMode(mode);
-    Lizzie.frame.extraMode(extraMode, previousMode);
     uiConfig.put("extra-mode", getExtraModeValue(extraMode));
+    if (Lizzie.frame != null) Lizzie.frame.extraMode(extraMode, previousMode);
+    applyCommentPanelModePolicy();
   }
 
   public void toggleappendWinrateToComment() {
@@ -2418,16 +2552,23 @@ public class Config {
   }
 
   public void toggleShowComment() {
-    this.showComment = !this.showComment;
+    setShowComment(!this.showComment);
+  }
+
+  public void setShowComment(boolean showComment) {
+    if (showComment && shouldHideCommentPanel(extraMode)) showComment = false;
+    this.showComment = showComment;
     uiConfig.put("show-comment", showComment);
-    if (showComment) Lizzie.frame.setCommentPaneContent();
-    else {
-      Lizzie.frame.commentScrollPane.setVisible(false);
-      Lizzie.frame.blunderContentPane.setVisible(false);
+    if (Lizzie.frame != null) {
+      if (showComment) {
+        Lizzie.frame.setCommentPaneContent();
+      } else {
+        Lizzie.frame.hideCommentPanel();
+      }
+      Lizzie.frame.commentEditPane.setVisible(false);
+      Lizzie.frame.refreshContainer();
+      Lizzie.frame.refresh();
     }
-    Lizzie.frame.commentEditPane.setVisible(false);
-    Lizzie.frame.refreshContainer();
-    Lizzie.frame.refresh();
     if (extraMode == ExtraMode.Min && showComment) toggleExtraMode(0);
   }
 
@@ -2481,6 +2622,64 @@ public class Config {
   public void toggleCoordinates() {
     showCoordinates = !showCoordinates;
     uiConfig.put("show-coordinates", showCoordinates);
+  }
+
+  public static String normalizeBoardStyle(String style) {
+    if (BOARD_STYLE_CHINESE_CLASSIC.equals(style)) {
+      return BOARD_STYLE_CHINESE_CLASSIC;
+    }
+    return BOARD_STYLE_JAPANESE;
+  }
+
+  public boolean useChineseClassicBoardStyle() {
+    return BOARD_STYLE_CHINESE_CLASSIC.equals(boardStyle);
+  }
+
+  public void setBoardStyle(String style) {
+    String normalizedStyle = normalizeBoardStyle(style);
+    if (normalizedStyle.equals(boardStyle)) {
+      return;
+    }
+    boardStyle = normalizedStyle;
+    if (uiConfig != null) {
+      uiConfig.put("board-style", boardStyle);
+    }
+    refreshBoardStyleRenderers();
+  }
+
+  private void refreshBoardStyleRenderers() {
+    if (Lizzie.frame == null) {
+      return;
+    }
+    if (LizzieFrame.boardRenderer != null) {
+      LizzieFrame.boardRenderer.clearBoardImageCache();
+    }
+    if (LizzieFrame.boardRenderer2 != null) {
+      LizzieFrame.boardRenderer2.clearBoardImageCache();
+    }
+    if (LizzieFrame.subBoardRenderer != null) {
+      LizzieFrame.subBoardRenderer.clearBoardImageCache();
+    }
+    if (Lizzie.frame.subBoardRenderer2 != null) {
+      Lizzie.frame.subBoardRenderer2.clearBoardImageCache();
+    }
+    if (Lizzie.frame.subBoardRenderer3 != null) {
+      Lizzie.frame.subBoardRenderer3.clearBoardImageCache();
+    }
+    if (Lizzie.frame.subBoardRenderer4 != null) {
+      Lizzie.frame.subBoardRenderer4.clearBoardImageCache();
+    }
+    if (Lizzie.frame.independentMainBoard != null) {
+      Lizzie.frame.independentMainBoard.boardRenderer.clearBoardImageCache();
+    }
+    if (Lizzie.frame.independentSubBoard != null) {
+      Lizzie.frame.independentSubBoard.subBoardRenderer.clearBoardImageCache();
+    }
+    if (Lizzie.frame.floatBoard != null) {
+      Lizzie.frame.floatBoard.boardRenderer.clearBoardImageCache();
+    }
+    Lizzie.frame.refresh();
+    Lizzie.frame.repaint();
   }
 
   public void toggleShowSubBoard() {
@@ -2601,17 +2800,20 @@ public class Config {
     ui.put("large-winrate-graph", false);
     ui.put("show-winrate-overview", false);
     ui.put("winrate-stroke-width", 1.7);
-    ui.put("show-blunder-bar", true);
+    ui.put("show-blunder-bar", false);
     ui.put("auto-quick-analyze-on-load", true);
     ui.put("minimum-blunder-bar-width", 1);
     ui.put("weighted-blunder-bar-height", false);
     // ui.put("dynamic-winrate-graph-width", true);
     ui.put("show-comment", true);
+    ui.put("extra-mode", getExtraModeValue(ExtraMode.Normal));
     ui.put("comment-font-size", 0);
     ui.put("show-variation-graph", true);
     ui.put("show-captured", true);
     ui.put("show-best-moves", true);
+    ui.put("show-suggestion-maxred", false);
     ui.put("show-coordinates", true);
+    ui.put("board-style", BOARD_STYLE_JAPANESE);
     ui.put("show-next-moves", true);
     ui.put("show-subboard", true);
     ui.put("large-subboard", false);
@@ -3089,12 +3291,28 @@ public class Config {
     return new File(configFilename).getAbsolutePath();
   }
 
+  public File getWorkDirectory() {
+    File workDir = runtimeWorkDirectoryOverride;
+    if (workDir == null) {
+      workDir = new File(WORK_DIR).getAbsoluteFile();
+    }
+    return ensureWorkDirectory(workDir);
+  }
+
   public File getRuntimeWorkDirectory() {
     File runtimeDir = runtimeWorkDirectoryOverride;
     if (runtimeDir == null) {
       runtimeDir = new File(WORK_DIR, RUNTIME_WORK_DIR).getAbsoluteFile();
     }
     return ensureRuntimeWorkDirectory(runtimeDir);
+  }
+
+  private File ensureWorkDirectory(File workDir) {
+    if (!workDir.exists()) {
+      workDir.mkdirs();
+    }
+    new File(workDir, "save").mkdirs();
+    return workDir;
   }
 
   private File ensureRuntimeWorkDirectory(File runtimeDir) {
@@ -3207,7 +3425,8 @@ public class Config {
   }
 
   public void savePanelConfig() {
-    uiConfig.put("extra-mode", extraMode);
+    applyCommentPanelModePolicy();
+    uiConfig.put("extra-mode", getExtraModeValue(extraMode));
     uiConfig.put("show-subboard", showSubBoard);
     uiConfig.put("show-winrate-graph", showWinrateGraph);
     uiConfig.put("show-comment", showComment);
@@ -3382,6 +3601,62 @@ public class Config {
       default:
         return ExtraMode.Normal;
     }
+  }
+
+  private ExtraMode readExtraMode(Object rawValue) {
+    if (rawValue instanceof Number) return getExtraMode(((Number) rawValue).intValue());
+    if (rawValue instanceof String) {
+      String text = ((String) rawValue).trim();
+      if (text.isEmpty()) return ExtraMode.Normal;
+      try {
+        return getExtraMode(Integer.parseInt(text));
+      } catch (NumberFormatException ignored) {
+      }
+      switch (text) {
+        case "Normal":
+          return ExtraMode.Normal;
+        case "Four_Sub":
+          return ExtraMode.Four_Sub;
+        case "Double_Engine":
+          return ExtraMode.Double_Engine;
+        case "Thinking":
+          return ExtraMode.Thinking;
+        case "Min":
+          return ExtraMode.Min;
+        case "Float_Board":
+          return ExtraMode.Float_Board;
+        default:
+          return ExtraMode.Normal;
+      }
+    }
+    return ExtraMode.Normal;
+  }
+
+  void loadPanelModeSettings() {
+    extraMode = readExtraMode(uiConfig.opt("extra-mode"));
+    uiConfig.put("extra-mode", getExtraModeValue(extraMode));
+    showComment = uiConfig.optBoolean("show-comment", true);
+    if (shouldHideCommentPanel(extraMode)) showComment = false;
+    uiConfig.put("show-comment", showComment);
+  }
+
+  private void applyCommentPanelModePolicy() {
+    if (!shouldHideCommentPanel(extraMode)) return;
+    showComment = false;
+    uiConfig.put("show-comment", false);
+    if (Lizzie.frame != null) {
+      Lizzie.frame.hideCommentPanel();
+      Lizzie.frame.refreshContainer();
+      Lizzie.frame.refresh();
+    }
+  }
+
+  private boolean shouldHideCommentPanel(ExtraMode mode) {
+    return mode == ExtraMode.Four_Sub || mode == ExtraMode.Double_Engine;
+  }
+
+  public boolean isCommentPanelAutoHiddenByMode() {
+    return shouldHideCommentPanel(extraMode);
   }
 
   public boolean isDoubleEngineMode() {

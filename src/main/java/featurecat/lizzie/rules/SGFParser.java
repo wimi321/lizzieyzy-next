@@ -652,10 +652,6 @@ public class SGFParser {
       if (komi.toString().endsWith(".75") || komi.toString().endsWith(".25")) komi = komi * 2;
       if (Math.abs(komi) < Board.boardWidth * Board.boardHeight) {
         Lizzie.board.getHistory().getGameInfo().setKomi(komi);
-        Lizzie.board.getHistory().getGameInfo().changeKomi();
-        if (EngineManager.currentEngineNo >= 0) {
-          Lizzie.leelaz.sendCommand("komi " + komi);
-        }
       }
     }
     Lizzie.frame.setPlayers(whitePlayer, blackPlayer);
@@ -2860,7 +2856,15 @@ public class SGFParser {
    */
   public static String propertiesString(Map<String, String> props) {
     StringBuilder sb = new StringBuilder();
-    props.forEach((key, value) -> sb.append(nodeString(key, value)));
+    if (props.containsKey("CA")) {
+      sb.append(nodeString("CA", props.get("CA")));
+    }
+    props.forEach(
+        (key, value) -> {
+          if (!"CA".equals(key)) {
+            sb.append(nodeString(key, value));
+          }
+        });
     return sb.toString();
   }
 
@@ -4106,8 +4110,6 @@ public class SGFParser {
                   komi = komi * 2;
                 if (Math.abs(komi) < Board.boardWidth * Board.boardHeight) {
                   history.getGameInfo().setKomi(komi);
-                  history.getGameInfo().changeKomi();
-                  Lizzie.leelaz.komi(komi);
                 }
               }
             } catch (NumberFormatException e) {

@@ -12,6 +12,65 @@ import org.json.JSONObject;
 import org.junit.jupiter.api.Test;
 
 public class ConfigBundledKataGoDefaultsTest {
+  private static final String HIDE_BLUNDER_BAR_DEFAULT_MIGRATION_KEY =
+      "migrated-hide-blunder-bar-default-v1";
+
+  @Test
+  void windowsPortableMarkerKeepsMutableDataInsideExtractedFolder() throws Exception {
+    Path tempRoot = Files.createTempDirectory("lizzie-portable-root");
+    Path portableRoot = Files.createDirectories(tempRoot.resolve("LizzieYzy Next 围棋"));
+    Files.writeString(portableRoot.resolve(".lizzie-portable"), "portable");
+    Files.createDirectories(portableRoot.resolve("app"));
+    Files.writeString(portableRoot.resolve("config.txt"), "{\"legacy\":true}");
+
+    Path foundRoot =
+        Config.findWindowsPortablePackageRootForTests(portableRoot.resolve("app")).orElseThrow();
+    Path workDir = Config.prepareWindowsPortableWorkDirForTests(foundRoot);
+
+    assertEquals(portableRoot.toAbsolutePath().normalize(), foundRoot);
+    assertEquals(portableRoot.resolve("user-data").toAbsolutePath().normalize(), workDir);
+    assertTrue(Files.exists(workDir.resolve("save")));
+    assertTrue(Files.exists(workDir.resolve("config.txt")));
+    assertFalse(workDir.equals(portableRoot));
+  }
+
+  @Test
+  void defaultConfigHidesBlunderBarWhileKeepingAutoQuickAnalyzeOnLoad() throws Exception {
+    Path tempRoot = Files.createTempDirectory("lizzie-config-default-ui");
+    Config config = ConfigTestHelper.createForTests(tempRoot);
+    JSONObject defaultConfig = createDefaultConfig(config);
+    JSONObject ui = defaultConfig.getJSONObject("ui");
+
+    assertFalse(config.showBlunderBar);
+    assertFalse(ui.getBoolean("show-blunder-bar"));
+    assertTrue(ui.getBoolean("auto-quick-analyze-on-load"));
+  }
+
+  @Test
+  void oldBlunderBarDefaultMigratesOffOnlyOnce() throws Exception {
+    Path tempRoot = Files.createTempDirectory("lizzie-blunder-bar-migration");
+    Config config = ConfigTestHelper.createForTests(tempRoot);
+    JSONObject ui = new JSONObject();
+    ui.put("show-blunder-bar", true);
+    JSONObject root = new JSONObject();
+    root.put("ui", ui);
+    config.config = root;
+    config.uiConfig = ui;
+
+    hideBlunderBarDefaultOnce(config);
+
+    assertFalse(ui.getBoolean("show-blunder-bar"));
+    assertTrue(ui.getBoolean(HIDE_BLUNDER_BAR_DEFAULT_MIGRATION_KEY));
+    assertTrue(Files.readString(tempRoot.resolve("config.txt")).contains("\"show-blunder-bar\": false"));
+
+    ui.put("show-blunder-bar", true);
+    hideBlunderBarDefaultOnce(config);
+
+    assertTrue(
+        ui.getBoolean("show-blunder-bar"),
+        "after the one-time default migration, explicit user changes should be preserved.");
+  }
+
   @Test
   void existingBundledEngineKeepsUserStartupModeAndKomiOnRestart() throws Exception {
     Path tempRoot = Files.createTempDirectory("lizzie-bundled-katago-existing");
@@ -100,6 +159,18 @@ public class ConfigBundledKataGoDefaultsTest {
 
   private static void applyBundledKataGoDefaults(Config config) throws Exception {
     Method method = Config.class.getDeclaredMethod("applyBundledKataGoDefaults");
+    method.setAccessible(true);
+    method.invoke(config);
+  }
+
+  private static JSONObject createDefaultConfig(Config config) throws Exception {
+    Method method = Config.class.getDeclaredMethod("createDefaultConfig");
+    method.setAccessible(true);
+    return (JSONObject) method.invoke(config);
+  }
+
+  private static void hideBlunderBarDefaultOnce(Config config) throws Exception {
+    Method method = Config.class.getDeclaredMethod("hideBlunderBarDefaultOnce");
     method.setAccessible(true);
     method.invoke(config);
   }

@@ -1,0 +1,294 @@
+package featurecat.lizzie.analysis;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.TreeSet;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipInputStream;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+
+class SyncDiagnosticsExporterTest {
+  @TempDir Path tempDir;
+
+  @Test
+  void exportWritesFixedZipLayout() throws IOException {
+    Path zip = new SyncDiagnosticsExporter(tempDir).export(sensitiveSnapshot());
+
+    assertEquals(
+        Set.of(
+            "environment.txt",
+            "readboard-protocol.log",
+            "recent-decisions.jsonl",
+            "summary.txt",
+            "sync-context.json",
+            "yike-events.jsonl",
+            "yike-session.json"),
+        zipEntries(zip));
+  }
+
+  @Test
+  void exportRedactsSensitiveValuesAcrossWholeZip() throws IOException {
+    Path zip = new SyncDiagnosticsExporter(tempDir).export(sensitiveSnapshot());
+    Map<String, String> entries = unzipTextEntries(zip);
+    String allText = String.join("\n", entries.values());
+
+    for (String raw :
+        List.of(
+            "(;GM[1]SZ[19])",
+            "(;GM[1]FF[4]SZ[19];B[pd])",
+            "(;GM[1]FF[4];W[dd])",
+            "(;GM[1]\n;B[pd])",
+            "(;FF[4]SZ[19];B[pd])",
+            "(;FF[4]\n;W[dd])",
+            "(;B[pd];W[dd])",
+            "(;GM",
+            "(;FF",
+            "(;B",
+            "B[pd]",
+            "W[dd]",
+            "secret-room-token",
+            "roomToken",
+            "roomToken\\u003dabc123",
+            "token\\u003dabc123",
+            "authToken\\u003dabc123",
+            "roomToken abc123",
+            "roomToken: abc123",
+            "roomToken\\u003a abc123",
+            "roomToken\\u0020abc123",
+            "token abc123",
+            "token\\u0020abc123",
+            "authToken: abc123",
+            "authToken\\u0020abc123",
+            "room 186538",
+            "roomId 186538",
+            "id 186538",
+            "room\\u003d186538",
+            "roomId\\u003d186538",
+            "id\\u003d186538",
+            "token=abc123",
+            "authToken",
+            "abc123",
+            "live-room:186538",
+            "live-room\\u003a186538",
+            "186538",
+            "https://",
+            "https\\u003a",
+            "https\\u003a\\u002f\\u002fwww.yikeweiqi.com\\u002flive\\u002f186538\\u003froomToken\\u003dabc123\\u0026foo\\u003dbar",
+            "www.yikeweiqi.com",
+            "https:\\/\\/www.yikeweiqi.com\\/live\\/186538\\u003froomToken\\u003dabc123\\u0026foo\\u003dbar",
+            "https://www.yikeweiqi.com/live/186538",
+            "https://www.yikeweiqi.com/live/186538?roomToken=abc123&foo=bar",
+            "foo\\u003dbar",
+            "foo=bar",
+            "User Secret Room Title",
+            "C:\\Users\\alice\\Lizzie",
+            "C:\\\\Users\\\\alice\\\\Lizzie",
+            "C:\\Users\\Alice Smith\\Lizzie",
+            "C:\\Users\\Alice Smith\\My Docs\\game.sgf",
+            "/mnt/c/Users/alice/Lizzie",
+            "\\\\wsl.localhost\\Ubuntu\\home\\alice\\dev",
+            "/Users/alice/Lizzie",
+            "/Users/Alice Smith/Lizzie",
+            "/Users/Alice Smith/My Docs/game.sgf",
+            "/home/Alice Smith/dev",
+            "/home/Alice Smith/My Docs/game.sgf",
+            "C:\\secret\\file.zip",
+            "/var/tmp/alice/lizzie",
+            "relative/parent/file.sgf")) {
+      assertFalse(allText.contains(raw), raw);
+    }
+
+    for (String leaked :
+        List.of(
+            "alice",
+            "Users\\alice",
+            "Users\\\\alice",
+            "home\\alice",
+            "home\\\\alice",
+            "/Users/alice",
+            "/home/alice",
+            "/mnt/c/Users/alice",
+            "C:\\u005cUsers\\u005calice\\u005cLizzie",
+            "C:\\\\Users\\\\alice",
+            "Alice Smith",
+            "Smith",
+            "My Docs",
+            "Docs\\game.sgf",
+            "Docs/game.sgf",
+            "abc123")) {
+      assertFalse(allText.contains(leaked), leaked);
+    }
+
+    assertTrue(allText.contains("live-room#1"));
+    assertTrue(allText.contains("C:\\Users\\<user>"));
+    assertTrue(allText.contains("/mnt/c/Users/<user>"));
+    assertTrue(allText.contains("\\\\wsl.localhost\\Ubuntu\\home\\<user>"));
+    assertTrue(allText.contains("/Users/<user>"));
+    assertTrue(allText.contains("<redacted-path>"));
+    assertTrue(allText.contains("file.sgf"));
+    assertFalse(allText.contains("relative/parent"));
+  }
+
+  @Test
+  void defaultOutputDirectoryPrefersWorkDirectory() {
+    Path workDir = tempDir.resolve("user-data");
+    Path appDir = tempDir.resolve("lizzieyzy-next");
+
+    assertEquals(
+        workDir.resolve("sync-diagnostics"),
+        SyncDiagnosticsExporter.defaultOutputDirectory(workDir, appDir));
+  }
+
+  @Test
+  void defaultOutputDirectoryFallsBackToApplicationDirectory() {
+    Path appDir = tempDir.resolve("lizzieyzy-next");
+
+    assertEquals(
+        appDir.resolve("sync-diagnostics"),
+        SyncDiagnosticsExporter.defaultOutputDirectory(null, appDir));
+  }
+
+  private static SyncDiagnosticsExportSnapshot sensitiveSnapshot() {
+    SyncDiagnosticsSnapshot sync =
+        SyncDiagnosticsSnapshot.builder()
+            .readBoardAttached(true)
+            .readBoardConnected(true)
+            .usePipe(false)
+            .syncing(true)
+            .awaitingFirstSyncFrame(false)
+            .hasResumeState(true)
+            .hasLastResolvedSnapshotNode(true)
+            .syncAnalysisEpoch(7L)
+            .pendingRemoteContextSummary(
+                "sgf=(;GM[1]SZ[19]) sgf=(;GM[1]FF[4]SZ[19];B[pd]) sgf=(;GM[1]\n;B[pd]) sgf=(;FF[4]SZ[19];B[pd]) token=secret-room-token token=abc123 path=C:\\Users\\alice\\Lizzie escapedPath=C:\\\\Users\\\\alice\\\\Lizzie unicodePath=C:\\u005cUsers\\u005calice\\u005cLizzie spacedWin=C:\\Users\\Alice Smith\\Lizzie deepWin=C:\\Users\\Alice Smith\\My Docs\\game.sgf spacedMac=/Users/Alice Smith/Lizzie deepMac=/Users/Alice Smith/My Docs/game.sgf spacedHome=/home/Alice Smith/dev deepHome=/home/Alice Smith/My Docs/game.sgf")
+            .lastResolvedSnapshotSummary(
+                "session=live-room\\u003a186538 url=https://www.yikeweiqi.com/live/186538?roomToken=abc123&foo=bar escaped=https:\\/\\/www.yikeweiqi.com\\/live\\/186538\\u003froomToken\\u003dabc123\\u0026foo\\u003dbar unicodeUrl=https\\u003a\\u002f\\u002fwww.yikeweiqi.com\\u002flive\\u002f186538\\u003froomToken\\u003dabc123\\u0026foo\\u003dbar")
+            .lastProtocolLineSummary("window=User Secret Room Title")
+            .lastProtocolTimestampMillis(110L)
+            .timestampMillis(100L)
+            .source("test")
+            .summary("/mnt/c/Users/alice/Lizzie")
+            .build();
+    YikeSessionDiagnosticsSnapshot yike =
+        YikeSessionDiagnosticsSnapshot.builder()
+            .listenerEnabled(true)
+            .currentRouteKind("live-room")
+            .currentSessionKey("live-room:186538")
+            .activeSessionKey("live-room:186538")
+            .activeSyncReady(true)
+            .activeGeometryReady(true)
+            .activeBoardSize(19)
+            .pendingSessionKey("live-room:186538")
+            .pendingSyncReady(false)
+            .pendingGeometryReady(false)
+            .pendingBoardSize(19)
+            .effectiveGeometrySessionKey("live-room:186538")
+            .effectiveGeometryReady(true)
+            .placementGeometryAllowed(true)
+            .lastGeometryClearReason("User Secret Room Title")
+            .lastSessionSwitchReason("https://www.yikeweiqi.com/live/186538?roomToken=abc123")
+            .lastYikeDebugEventSummary(
+                "token=secret-room-token authToken=abc123 roomToken\\u003dabc123 token\\u003dabc123 authToken\\u003dabc123 roomToken abc123 roomToken: abc123 roomToken\\u003a abc123 roomToken\\u0020abc123 token abc123 token\\u0020abc123 authToken: abc123 authToken\\u0020abc123 room 186538 roomId 186538 id 186538 room\\u003d186538 roomId\\u003d186538 id\\u003d186538")
+            .timestampMillis(120L)
+            .source("test")
+            .summary("session live-room:186538")
+            .build();
+    SyncDecisionTrace decision =
+        SyncDecisionTrace.builder("HOLD", "conflict_hold")
+            .platform("yike")
+            .windowKind("live-room")
+            .remoteContextFingerprint("route=live-room syncReady=true move=42")
+            .snapshotHash("safe-hash")
+            .changedStoneCount(1)
+            .removedStoneCount(0)
+            .recoveryMoveNumber(42)
+            .resolvedSnapshotMoveNumber(41)
+            .resolvedSnapshotKind("SNAPSHOT")
+            .forceRebuildRequested(false)
+            .firstSyncFrame(false)
+            .shouldResumeAnalysis(true)
+            .timestampMillis(130L)
+            .epoch(7L)
+            .summary("C:\\secret\\file.zip")
+            .source("test")
+            .build();
+
+    return new SyncDiagnosticsExportSnapshot(
+        1767225599000L,
+        SyncDiagnosticsReport.builder()
+            .syncSnapshot(sync)
+            .yikeSnapshot(yike)
+            .latestDecisionTrace(decision)
+            .capturedAtMillis(1767225599000L)
+            .source("test")
+            .build(),
+        List.of(
+            SyncProtocolDiagnosticEvent.of(140L, "raw /Users/alice/Lizzie", "test"),
+            SyncProtocolDiagnosticEvent.of(141L, "C:\\secret\\file.zip", "test"),
+            SyncProtocolDiagnosticEvent.of(142L, "/var/tmp/alice/lizzie", "test"),
+            SyncProtocolDiagnosticEvent.of(143L, "relative/parent/file.sgf", "test"),
+            SyncProtocolDiagnosticEvent.of(
+                144L,
+                "loadsgf (;GM[1]FF[4];W[dd]) loadsgf (;FF[4]\n;W[dd]) loadsgf (;B[pd];W[dd]) roomToken=abc123 room=186538 roomId=186538 id=186538",
+                "test")),
+        List.of(decision),
+        List.of(yike),
+        SyncDiagnosticsEnvironment.of(
+            "test-version",
+            "17",
+            "Linux",
+            "test-os",
+            "x86_64",
+            "\\\\wsl.localhost\\Ubuntu\\home\\alice\\dev",
+            150L));
+  }
+
+  private static Set<String> zipEntries(Path zip) throws IOException {
+    return new TreeSet<>(unzipTextEntries(zip).keySet());
+  }
+
+  private static Map<String, String> unzipTextEntries(Path zip) throws IOException {
+    Map<String, String> entries = new LinkedHashMap<>();
+    try (ZipInputStream input = new ZipInputStream(Files.newInputStream(zip))) {
+      ZipEntry entry;
+      while ((entry = input.getNextEntry()) != null) {
+        if (!entry.isDirectory()) {
+          entries.put(entry.getName(), new String(readEntry(input), StandardCharsets.UTF_8));
+        }
+      }
+    }
+    return entries;
+  }
+
+  private static byte[] readEntry(ZipInputStream input) throws IOException {
+    byte[] buffer = new byte[4096];
+    List<byte[]> chunks = new ArrayList<>();
+    int total = 0;
+    int count;
+    while ((count = input.read(buffer)) != -1) {
+      byte[] chunk = new byte[count];
+      System.arraycopy(buffer, 0, chunk, 0, count);
+      chunks.add(chunk);
+      total += count;
+    }
+    byte[] all = new byte[total];
+    int offset = 0;
+    for (byte[] chunk : chunks) {
+      System.arraycopy(chunk, 0, all, offset, chunk.length);
+      offset += chunk.length;
+    }
+    return all;
+  }
+}

@@ -17,13 +17,16 @@ import featurecat.lizzie.analysis.GameInfo;
 import featurecat.lizzie.analysis.KataEstimate;
 import featurecat.lizzie.analysis.Leelaz;
 import featurecat.lizzie.analysis.MoveData;
+import featurecat.lizzie.analysis.MoveRankDefinition;
 import featurecat.lizzie.analysis.PlayerStrengthEstimator;
 import featurecat.lizzie.analysis.ReadBoard;
 import featurecat.lizzie.analysis.ReadBoardUpdateInstaller;
 import featurecat.lizzie.analysis.ReadBoardUpdateRequest;
 import featurecat.lizzie.analysis.TrackingEngine;
+import featurecat.lizzie.analysis.remote.RemoteComputeConfig;
 import featurecat.lizzie.rules.Board;
 import featurecat.lizzie.rules.BoardData;
+import featurecat.lizzie.rules.BoardHistoryList;
 import featurecat.lizzie.rules.BoardHistoryNode;
 import featurecat.lizzie.rules.EngineCountDown;
 import featurecat.lizzie.rules.GIBParser;
@@ -59,6 +62,7 @@ import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import java.awt.font.TextAttribute;
 import java.awt.geom.AffineTransform;
+import java.awt.geom.Arc2D;
 import java.awt.image.AffineTransformOp;
 import java.awt.image.BufferedImage;
 import java.awt.image.RenderedImage;
@@ -75,6 +79,8 @@ import javax.imageio.ImageIO;
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
 import javax.swing.filechooser.FileNameExtensionFilter;
+import javax.swing.plaf.basic.BasicComboBoxUI;
+import javax.swing.plaf.basic.ComboPopup;
 import javax.swing.table.AbstractTableModel;
 import javax.swing.table.DefaultTableCellRenderer;
 import javax.swing.table.TableCellRenderer;
@@ -92,6 +98,15 @@ import org.json.JSONObject;
 
 /** The window used to display the game. */
 public class LizzieFrame extends JFrame {
+  private static final Map<String, BufferedImage> PLAYER_STRENGTH_IMAGE_CACHE = new HashMap<>();
+
+  enum PasteSgfDecision {
+    IGNORE_EMPTY,
+    IGNORE_NOT_SGF,
+    LOAD,
+    CONFIRM_REPLACE
+  }
+
   private String[] commands = {
     Lizzie.resourceBundle.getString("LizzieFrame.commands.keySpace"),
     Lizzie.resourceBundle.getString("LizzieFrame.commands.keyN"),
@@ -204,6 +219,7 @@ public class LizzieFrame extends JFrame {
   private long showControlTime;
   public boolean isPlayingAgainstLeelaz = false;
   public boolean isAnaPlayingAgainstLeelaz = false;
+  public HumanSlGameController humanSlGame = null;
   public boolean playerIsBlack = true;
   public static boolean canGoAfterload = true;
   public int winRateGridLines = 3;
@@ -250,6 +266,13 @@ public class LizzieFrame extends JFrame {
   private javax.swing.Timer kifuLoadFinishTimer;
   private long kifuLoadVisibleSince;
   private volatile int kifuMovelistRefreshGeneration = 0;
+  private volatile int kifuAnalysisResumeGeneration = 0;
+  private javax.swing.Timer quickAnalysisLoadRetryTimer;
+  private int quickAnalysisLoadRetryCount = 0;
+  private static final int YIKE_CURVE_COMPLETION_DELAY_MS = 1200;
+  private static final int YIKE_CURVE_COMPLETION_BUSY_RETRY_MS = 3000;
+  private javax.swing.Timer yikeCurveCompletionTimer;
+  private String pendingYikeCurveCompletionUrl = "";
 
   /** Web 试下模式下的渲染节点覆盖。null 表示无 override，渲染端读 Board.history 当前节点。 */
   private volatile featurecat.lizzie.rules.BoardHistoryNode displayNodeOverride;
@@ -481,6 +504,11 @@ public class LizzieFrame extends JFrame {
   public ArrayList<String> priorityMoveCoords = new ArrayList<String>();
 
   public AnalysisEngine analysisEngine;
+  private final java.util.concurrent.atomic.AtomicBoolean quickAnalysisEngineStarting =
+      new java.util.concurrent.atomic.AtomicBoolean(false);
+  private final java.util.List<Runnable> pendingQuickAnalysisCallbacks =
+      new java.util.ArrayList<Runnable>();
+  private javax.swing.Timer quickAnalysisNavigationResumeTimer;
   public volatile TrackingEngine trackingEngine;
   public TrackingConsolePane trackingConsolePane;
   public Set<String> trackedCoords = Collections.synchronizedSet(new LinkedHashSet<>());
@@ -1620,8 +1648,44 @@ public class LizzieFrame extends JFrame {
     mainPanel.setVisible(false);
     commentScrollPane.setVisible(false);
     blunderContentPane.setVisible(false);
+    installGraphicsConfigurationScaleListener();
     setVisible(true);
     requestProblemListRefresh();
+  }
+
+  private void installGraphicsConfigurationScaleListener() {
+    addPropertyChangeListener(
+        "graphicsConfiguration",
+        event -> {
+          Object newValue = event.getNewValue();
+          if (newValue instanceof GraphicsConfiguration) {
+            updateScaleFromGraphicsConfiguration((GraphicsConfiguration) newValue);
+          }
+        });
+  }
+
+  private void updateScaleFromGraphicsConfiguration(GraphicsConfiguration graphicsConfiguration) {
+    if (graphicsConfiguration == null) {
+      return;
+    }
+    AffineTransform transform = graphicsConfiguration.getDefaultTransform();
+    double scale = transform == null ? 1.0 : transform.getScaleX();
+    if (!Double.isFinite(scale) || scale <= 0.0) {
+      scale = 1.0;
+    }
+
+    boolean scaled = scale > 1.0;
+    float newScaleFactor = scaled ? (float) scale : 1.0f;
+    if (Config.isScaled == scaled && Math.abs(Lizzie.javaScaleFactor - newScaleFactor) <= 0.001f) {
+      return;
+    }
+
+    Config.isScaled = scaled;
+    Lizzie.javaScaleFactor = newScaleFactor;
+    refreshWinratePane = true;
+    reSetLoc();
+    refreshContainer();
+    repaint();
   }
 
   private void setBlunderSort() {
@@ -1857,6 +1921,10 @@ public class LizzieFrame extends JFrame {
   }
 
   public void setBlunderControlPane(boolean fromComment, boolean resetPos) {
+    if (!Lizzie.config.showComment) {
+      hideCommentPanel();
+      return;
+    }
     if (Lizzie.config.isShowingBlunderTabel) {
       sidebarPanel.switchTo("BLUNDERS");
     } else {
@@ -1885,6 +1953,10 @@ public class LizzieFrame extends JFrame {
 
   public void setCommentPaneContent() {
     // TODO Auto-generated method stub
+    if (!Lizzie.config.showComment) {
+      hideCommentPanel();
+      return;
+    }
     sidebarPanel.setVisible(Lizzie.config.showComment);
     if (Lizzie.config.isShowingBlunderTabel) {
       sidebarPanel.switchTo("BLUNDERS");
@@ -1895,6 +1967,18 @@ public class LizzieFrame extends JFrame {
       sidebarPanel.switchTo("COMMENTS");
       blunderContentPane.setVisible(false);
       commentScrollPane.setVisible(true);
+    }
+  }
+
+  public void hideCommentPanel() {
+    if (commentScrollPane != null) commentScrollPane.setVisible(false);
+    if (blunderContentPane != null) blunderContentPane.setVisible(false);
+    if (commentEditPane != null) commentEditPane.setVisible(false);
+    if (sidebarPanel != null) {
+      sidebarPanel.setVisible(false);
+      sidebarPanel.setBounds(0, 0, 0, 0);
+      sidebarPanel.revalidate();
+      sidebarPanel.repaint();
     }
   }
 
@@ -2324,13 +2408,9 @@ public class LizzieFrame extends JFrame {
     analysisTable.frame.setVisible(false);
   }
 
-  public void openReadBoardJava() {
-    reopenReadBoard(this::createJavaReadBoard);
-  }
-
   public void openBoardSync() {
     if (!isNativeBoardSyncSupported()) {
-      openReadBoardJava();
+      System.err.println("Native board synchronization is only available on Windows.");
       return;
     }
     if (!isNativeReadBoardAvailable()) {
@@ -2392,7 +2472,6 @@ public class LizzieFrame extends JFrame {
       return true;
     } catch (Exception e) {
       e.printStackTrace();
-      showReadBoardLoadFailedMessage();
       return false;
     }
   }
@@ -2402,16 +2481,6 @@ public class LizzieFrame extends JFrame {
     File readBoardExe = new File(readBoardDir, "readboard.exe");
     System.err.println(
         "Native board synchronization tool is missing: " + readBoardExe.getAbsolutePath());
-    showReadBoardLoadFailedMessage();
-  }
-
-  private void showReadBoardLoadFailedMessage() {
-    try {
-      SMessage msg = new SMessage();
-      msg.setMessage(Lizzie.resourceBundle.getString("ReadBoard.loadFailed"), 2);
-    } catch (RuntimeException ex) {
-      System.err.println("Unable to show readboard load failure message: " + ex.getMessage());
-    }
   }
 
   protected void shutdownReadBoard(ReadBoard targetReadBoard) {
@@ -2423,10 +2492,6 @@ public class LizzieFrame extends JFrame {
     } catch (Exception e) {
       e.printStackTrace();
     }
-  }
-
-  protected ReadBoard createJavaReadBoard() throws Exception {
-    return new ReadBoard(true, true);
   }
 
   protected boolean isNativeBoardSyncSupported() {
@@ -3668,18 +3733,11 @@ public class LizzieFrame extends JFrame {
 
     JSONObject filesystem = Lizzie.config.persisted.getJSONObject("filesystem");
     this.setAlwaysOnTop(false);
-    FileDialog fileDialog =
-        new FileDialog(this, Lizzie.resourceBundle.getString("LizzieFrame.chooseKifu"));
-
-    fileDialog.setLocationRelativeTo(this);
-    fileDialog.setDirectory(filesystem.getString("last-folder"));
-    fileDialog.setFile("*.sgf;*.gib;*.SGF;*.GIB");
-
-    fileDialog.setMultipleMode(false);
-    fileDialog.setMode(0);
-    fileDialog.setVisible(true);
-
-    File[] file = fileDialog.getFiles();
+    File[] file =
+        chooseKifuFiles(
+            Lizzie.resourceBundle.getString("LizzieFrame.chooseKifu"),
+            filesystem.getString("last-folder"),
+            false);
 
     if (file.length > 0) loadFile(file[0], false, true);
     if (file.length > 0) {
@@ -3703,18 +3761,11 @@ public class LizzieFrame extends JFrame {
     enginePkSgfWinLoss = new ArrayList<SgfWinLossList>();
     JSONObject filesystem = Lizzie.config.persisted.getJSONObject("filesystem");
     this.setAlwaysOnTop(false);
-    FileDialog fileDialog =
-        new FileDialog(this, Lizzie.resourceBundle.getString("LizzieFrame.chooseOpeningSgf"));
-
-    fileDialog.setLocationRelativeTo(this);
-    fileDialog.setDirectory(filesystem.getString("last-folder"));
-    fileDialog.setFile("*.sgf;*.gib;*.SGF;*.GIB");
-
-    fileDialog.setMultipleMode(true);
-    fileDialog.setMode(0);
-    fileDialog.setVisible(true);
-
-    File[] files = fileDialog.getFiles();
+    File[] files =
+        chooseKifuFiles(
+            Lizzie.resourceBundle.getString("LizzieFrame.chooseOpeningSgf"),
+            filesystem.getString("last-folder"),
+            true);
 
     if (files.length > 0) {
       isEnginePKSgfStart = true;
@@ -3748,18 +3799,11 @@ public class LizzieFrame extends JFrame {
     JSONObject filesystem = Lizzie.config.persisted.getJSONObject("filesystem");
     // JFrame frame = new JFrame();
     this.setAlwaysOnTop(false);
-    FileDialog fileDialog =
-        new FileDialog(this, Lizzie.resourceBundle.getString("LizzieFrame.chooseKifu"));
-
-    fileDialog.setLocationRelativeTo(this);
-    fileDialog.setDirectory(filesystem.getString("last-folder"));
-    fileDialog.setFile("*.sgf;*.gib;*.SGF;*.GIB");
-
-    fileDialog.setMultipleMode(true);
-    fileDialog.setMode(0);
-    fileDialog.setVisible(true);
-
-    File[] files = fileDialog.getFiles();
+    File[] files =
+        chooseKifuFiles(
+            Lizzie.resourceBundle.getString("LizzieFrame.chooseKifu"),
+            filesystem.getString("last-folder"),
+            true);
     if (files.length > 0) {
       isBatchAna = true;
       BatchAnaNum = 0;
@@ -3786,6 +3830,54 @@ public class LizzieFrame extends JFrame {
       }
     }
     this.setAlwaysOnTop(Lizzie.config.mainsalwaysontop);
+  }
+
+  private File[] chooseKifuFiles(String title, String lastFolder, boolean multiple) {
+    if (shouldUseSwingKifuChooser()) {
+      return chooseKifuFilesWithSwing(title, lastFolder, multiple);
+    }
+    return chooseKifuFilesWithAwt(title, lastFolder, multiple);
+  }
+
+  static boolean shouldUseSwingKifuChooser() {
+    return shouldUseSwingKifuChooser(System.getProperty("os.name"));
+  }
+
+  static boolean shouldUseSwingKifuChooser(String osName) {
+    return osName != null && osName.toLowerCase(Locale.ROOT).contains("linux");
+  }
+
+  private File[] chooseKifuFilesWithAwt(String title, String lastFolder, boolean multiple) {
+    FileDialog fileDialog = new FileDialog(this, title);
+    fileDialog.setLocationRelativeTo(this);
+    fileDialog.setDirectory(lastFolder);
+    fileDialog.setFile("*.sgf;*.gib;*.SGF;*.GIB");
+    fileDialog.setMultipleMode(multiple);
+    fileDialog.setMode(FileDialog.LOAD);
+    fileDialog.setVisible(true);
+    return fileDialog.getFiles();
+  }
+
+  private File[] chooseKifuFilesWithSwing(String title, String lastFolder, boolean multiple) {
+    JFileChooser chooser =
+        lastFolder == null || lastFolder.isEmpty()
+            ? new JFileChooser()
+            : new JFileChooser(lastFolder);
+    chooser.setDialogTitle(title);
+    chooser.setFileSelectionMode(JFileChooser.FILES_ONLY);
+    chooser.setMultiSelectionEnabled(multiple);
+    chooser.setFileFilter(new FileNameExtensionFilter("SGF/GIB (*.sgf, *.gib)", "sgf", "gib"));
+
+    int result = chooser.showOpenDialog(this);
+    if (result != JFileChooser.APPROVE_OPTION) {
+      return new File[0];
+    }
+    if (multiple) {
+      File[] files = chooser.getSelectedFiles();
+      return files == null ? new File[0] : files;
+    }
+    File file = chooser.getSelectedFile();
+    return file == null ? new File[0] : new File[] {file};
   }
 
   public void resumeFile() {
@@ -3919,7 +4011,8 @@ public class LizzieFrame extends JFrame {
         readKomi,
         resetAnalysisWindows,
         afterFirstPaint,
-        true);
+        true,
+        false);
   }
 
   public boolean loadSgfString(
@@ -3929,7 +4022,31 @@ public class LizzieFrame extends JFrame {
       boolean resetAnalysisWindows,
       Runnable afterLoad) {
     return loadSgfStringInternal(
-        sgfContent, null, resumeDelayMillis, readKomi, resetAnalysisWindows, afterLoad, false);
+        sgfContent,
+        null,
+        resumeDelayMillis,
+        readKomi,
+        resetAnalysisWindows,
+        afterLoad,
+        false,
+        false);
+  }
+
+  public boolean loadDownloadedSgfString(
+      String sgfContent,
+      int resumeDelayMillis,
+      boolean readKomi,
+      boolean resetAnalysisWindows,
+      Runnable afterLoad) {
+    return loadSgfStringInternal(
+        sgfContent,
+        null,
+        resumeDelayMillis,
+        readKomi,
+        resetAnalysisWindows,
+        afterLoad,
+        false,
+        true);
   }
 
   private boolean loadSgfStringInternal(
@@ -3939,7 +4056,8 @@ public class LizzieFrame extends JFrame {
       boolean readKomi,
       boolean resetAnalysisWindows,
       Runnable afterLoad,
-      boolean showFeedback) {
+      boolean showFeedback,
+      boolean forceAutoQuickAnalyzeAfterLoad) {
     if (!SwingUtilities.isEventDispatchThread()) {
       final boolean[] loaded = new boolean[] {false};
       try {
@@ -3954,7 +4072,8 @@ public class LizzieFrame extends JFrame {
                         readKomi,
                         resetAnalysisWindows,
                         afterLoad,
-                        showFeedback);
+                        showFeedback,
+                        forceAutoQuickAnalyzeAfterLoad);
               }
             });
       } catch (Exception e) {
@@ -3966,6 +4085,7 @@ public class LizzieFrame extends JFrame {
     if (showFeedback) {
       beginKifuLoad(initialMessage);
     }
+    endHumanSlGameIfActive();
     boolean oriReadKomi = Lizzie.config.readKomi;
     try {
       if (showFeedback) {
@@ -3982,7 +4102,12 @@ public class LizzieFrame extends JFrame {
         resetMovelistFrameandAnalysisFrame();
       }
       setVisible(true);
-      scheduleResumeAnalysisAfterLoad(resumeDelayMillis);
+      if (forceAutoQuickAnalyzeAfterLoad) {
+        scheduleResumeAnalysisAfterLoad(
+            resumeDelayMillis, this::resumeAnalysisAfterDownloadedKifuLoad);
+      } else {
+        scheduleResumeAnalysisAfterLoad(resumeDelayMillis);
+      }
       refresh();
       if (showFeedback) {
         finishKifuLoad(afterLoad);
@@ -4103,7 +4228,9 @@ public class LizzieFrame extends JFrame {
       Utils.showMsg(Lizzie.resourceBundle.getString("LizzieFrame.openFileFailed.inGame"));
       return;
     }
+    endHumanSlGameIfActive();
     boolean oriSound = Lizzie.config.playSound;
+    boolean originalCanGoAfterload = canGoAfterload;
     canGoAfterload = false;
     Lizzie.config.playSound = false;
     JSONObject filesystem = Lizzie.config.persisted.getJSONObject("filesystem");
@@ -4113,10 +4240,16 @@ public class LizzieFrame extends JFrame {
     //    }
     try {
       // System.out.println(file.getPath());
+      boolean loaded;
       if (file.getPath().toLowerCase().endsWith(".gib")) {
-        GIBParser.load(file.getPath());
+        loaded = GIBParser.load(file.getPath());
       } else {
-        SGFParser.load(file.getPath(), showHint);
+        loaded = SGFParser.load(file.getPath(), showHint);
+      }
+      if (!loaded) {
+        restoreKifuLoadTemporaryState(oriSound, originalCanGoAfterload);
+        showOpenFileFailedMessageLater();
+        return;
       }
 
       if (!fromTemp) {
@@ -4127,17 +4260,8 @@ public class LizzieFrame extends JFrame {
         }
       }
     } catch (IOException err) {
-      Lizzie.config.playSound = oriSound;
-      SwingUtilities.invokeLater(
-          new Runnable() {
-            public void run() {
-              JOptionPane.showConfirmDialog(
-                  Lizzie.frame,
-                  Lizzie.resourceBundle.getString("LizzieFrame.prompt.failedToOpenFile"),
-                  "Error",
-                  JOptionPane.ERROR);
-            }
-          });
+      restoreKifuLoadTemporaryState(oriSound, originalCanGoAfterload);
+      showOpenFileFailedMessageLater();
       return;
     }
     scheduleMovelistRefreshAfterKifuLoad();
@@ -4151,12 +4275,12 @@ public class LizzieFrame extends JFrame {
     Lizzie.config.playSound = oriSound;
     fileNameTitle = file.getName();
     updateTitle();
-    scheduleResumeAnalysisAfterLoad(1000);
+    scheduleResumeAnalysisAfterLoad(0);
     refresh();
   }
 
   public void scheduleResumeAnalysisAfterLoad() {
-    scheduleResumeAnalysisAfterLoad(1000);
+    scheduleResumeAnalysisAfterLoad(0);
   }
 
   private void scheduleMovelistRefreshAfterKifuLoad() {
@@ -4195,6 +4319,7 @@ public class LizzieFrame extends JFrame {
   }
 
   public void scheduleResumeAnalysisAfterLoad(int delayMillis, Runnable action) {
+    final int generation = ++kifuAnalysisResumeGeneration;
     final int scheduleDelay = Math.max(0, delayMillis);
     canGoAfterload = false;
     Runnable runnable =
@@ -4210,7 +4335,7 @@ public class LizzieFrame extends JFrame {
             SwingUtilities.invokeLater(
                 new Runnable() {
                   public void run() {
-                    if (action != null) {
+                    if (generation == kifuAnalysisResumeGeneration && action != null) {
                       action.run();
                     }
                   }
@@ -4227,12 +4352,35 @@ public class LizzieFrame extends JFrame {
   private BufferedImage cachedVarImage2;
   private BufferedImage cachedBackground;
   private BufferedImage cachedWinrateImage;
+  // Reusable full-window paint buffers. paintMianPanel used to allocate a fresh
+  // window-sized ARGB image on every repaint (several per second while the engine
+  // ponders), creating tens of MB/s of garbage. acquire always returns the buffer
+  // NOT currently published in `cachedImage`, so the on-screen image (also read by
+  // screenshot/web-board helpers) is never drawn into.
+  private BufferedImage paintBufferA;
+  private BufferedImage paintBufferB;
   public int varBigX;
   public int varBigY;
   private BufferedImage cachedVariationTreeBigImage;
   public Paint backgroundPaint;
   private int cachedBackgroundWidth = 0, cachedBackgroundHeight = 0;
   public boolean redrawBackgroundAnyway = false;
+
+  private BufferedImage acquirePaintBuffer(int width, int height) {
+    boolean intoA = cachedImage != paintBufferA || paintBufferA == null;
+    BufferedImage buffer = intoA ? paintBufferA : paintBufferB;
+    if (buffer == null || buffer.getWidth() != width || buffer.getHeight() != height) {
+      buffer = new BufferedImage(width, height, TYPE_INT_ARGB);
+      if (intoA) paintBufferA = buffer;
+      else paintBufferB = buffer;
+    } else {
+      Graphics2D g = buffer.createGraphics();
+      g.setComposite(AlphaComposite.Clear);
+      g.fillRect(0, 0, width, height);
+      g.dispose();
+    }
+    return buffer;
+  }
 
   /**
    * Draws the game board and interface
@@ -4255,7 +4403,7 @@ public class LizzieFrame extends JFrame {
         backgroundG = Optional.of(createBackground(width, height));
       }
       if (!showControls) {
-        BufferedImage cachedImage = new BufferedImage(width, height, TYPE_INT_ARGB);
+        BufferedImage cachedImage = acquirePaintBuffer(width, height);
         Graphics2D g = (Graphics2D) cachedImage.getGraphics();
         // g.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
         if (Lizzie.config.isFourSubMode()) {
@@ -4536,7 +4684,7 @@ public class LizzieFrame extends JFrame {
                       ? ""
                       : Lizzie.resourceBundle.getString("LizzieFrame.display.space"));
           String ponderingText = Lizzie.resourceBundle.getString("LizzieFrame.display.pondering");
-          weightText = Lizzie.leelaz.oriEnginename;
+          weightText = statusEngineName(Lizzie.leelaz);
           if (weightText.length() > 15) weightText = weightText.substring(0, 10);
           String text1 =
               Lizzie.resourceBundle.getString("LizzieFrame.mainEngine")
@@ -4548,7 +4696,7 @@ public class LizzieFrame extends JFrame {
 
           commentX1 = drawPonderingStateForExtraMode2(g, text1, leftInset, maxSize, 18);
           if (Lizzie.leelaz2 != null) {
-            weightText2 = Lizzie.leelaz2.oriEnginename;
+            weightText2 = statusEngineName(Lizzie.leelaz2);
             String statusKey2 =
                 "LizzieFrame.display." + (Lizzie.leelaz.isPondering() ? "on" : "off");
             String statusText2 = Lizzie.resourceBundle.getString(statusKey2);
@@ -4900,7 +5048,7 @@ public class LizzieFrame extends JFrame {
                 weightText = Lizzie.resourceBundle.getString("LizzieFrame.weightText.contributing");
               if (EngineManager.isEmpty)
                 weightText = Lizzie.resourceBundle.getString("LizzieFrame.noEngineText");
-              else weightText = Lizzie.leelaz.oriEnginename;
+              else weightText = statusEngineName(Lizzie.leelaz);
               String text2 = ponderingText + " " + statusText; // + " " + switchingText;
               drawPonderingState(
                   g, weightText, text2, ponderingX, ponderingY, ponderingY2, ponderingSize);
@@ -5346,7 +5494,7 @@ public class LizzieFrame extends JFrame {
                       Lizzie.resourceBundle.getString("LizzieFrame.weightText.contributing");
                 else if (EngineManager.isEmpty)
                   weightText = Lizzie.resourceBundle.getString("LizzieFrame.noEngineText");
-                else weightText = Lizzie.leelaz.oriEnginename;
+                else weightText = statusEngineName(Lizzie.leelaz);
                 String text2 = ponderingText + " " + statusText; // + " " + switchingText;
                 drawPonderingState(
                     g, weightText, text2, ponderingX, ponderingY, ponderingY2, ponderingSize);
@@ -5557,7 +5705,7 @@ public class LizzieFrame extends JFrame {
                       Lizzie.resourceBundle.getString("LizzieFrame.weightText.contributing");
                 if (EngineManager.isEmpty)
                   weightText = Lizzie.resourceBundle.getString("LizzieFrame.noEngineText");
-                else weightText = Lizzie.leelaz.oriEnginename;
+                else weightText = statusEngineName(Lizzie.leelaz);
                 String text2 = ponderingText + " " + statusText; // + " " + switchingText;
                 drawPonderingState(
                     g, weightText, text2, ponderingX, ponderingY, ponderingY2, ponderingSize);
@@ -5809,6 +5957,14 @@ public class LizzieFrame extends JFrame {
       Graphics2D g, String text1, String text2, int x, int y, int y2, double size) {
     drawPonderingState(g, text1, x, y, size * (Lizzie.config.userKnownX ? 0.7 : 0.6));
     drawPonderingState2(g, text2, x, y2, size * (Lizzie.config.userKnownX ? 0.75 : 0.4));
+  }
+
+  private String statusEngineName(Leelaz engine) {
+    if (engine == null) {
+      return "";
+    }
+    return RemoteComputeConfig.compactDisplayNameForCommand(
+        engine.getEngineCommand(), engine.oriEnginename);
   }
 
   private int drawPonderingStateForExtraMode2(Graphics2D g, String text, int x, int y, int size) {
@@ -6731,6 +6887,22 @@ public class LizzieFrame extends JFrame {
     g.setFont(font);
   }
 
+  // Reusable layers for the winrate pane; recreated only when the pane size changes.
+  private BufferedImage winrateLayer;
+  private BufferedImage winrateBackgroundLayer;
+  private BufferedImage winrateBlunderLayer;
+
+  private BufferedImage clearedWinrateLayer(BufferedImage layer, int w, int h) {
+    if (layer == null || layer.getWidth() != w || layer.getHeight() != h) {
+      return new BufferedImage(w, h, TYPE_INT_ARGB);
+    }
+    Graphics2D g = layer.createGraphics();
+    g.setComposite(AlphaComposite.Clear);
+    g.fillRect(0, 0, w, h);
+    g.dispose();
+    return layer;
+  }
+
   private void drawWinratePane(int x, int y, int w, int h) {
     if (w < 10 || h < 10) {
       cachedWinrateImage = new BufferedImage(1, 1, TYPE_INT_ARGB);
@@ -6742,9 +6914,12 @@ public class LizzieFrame extends JFrame {
         || refreshWinratePane
         || !refreshFromInfo
         || (System.currentTimeMillis() - winratePaneTime) >= 200) {
-      BufferedImage cachedWinrateImage = new BufferedImage(w, h, TYPE_INT_ARGB);
-      BufferedImage cachedWinrateBackgroundImage = new BufferedImage(w, h, TYPE_INT_ARGB);
-      BufferedImage cachedWinrateBlunderImage = new BufferedImage(w, h, TYPE_INT_ARGB);
+      winrateLayer = clearedWinrateLayer(winrateLayer, w, h);
+      winrateBackgroundLayer = clearedWinrateLayer(winrateBackgroundLayer, w, h);
+      winrateBlunderLayer = clearedWinrateLayer(winrateBlunderLayer, w, h);
+      BufferedImage cachedWinrateImage = winrateLayer;
+      BufferedImage cachedWinrateBackgroundImage = winrateBackgroundLayer;
+      BufferedImage cachedWinrateBlunderImage = winrateBlunderLayer;
       Graphics2D g = (Graphics2D) cachedWinrateImage.getGraphics();
       Graphics2D gBlunder = (Graphics2D) cachedWinrateBlunderImage.getGraphics();
       Graphics2D gBackground = (Graphics2D) cachedWinrateBackgroundImage.getGraphics();
@@ -6842,6 +7017,20 @@ public class LizzieFrame extends JFrame {
   public void onClicked(int x, int y) {
     if (isTrialActive()) {
       showTrialBlockedHint();
+      return;
+    }
+    if (humanSlGame != null && !humanSlGame.isFinished()) {
+      Optional<int[]> humanSlCoords;
+      if (Lizzie.config.isThinkingMode()) {
+        humanSlCoords = boardRenderer2.convertScreenToCoordinates(x, y);
+        if (!humanSlCoords.isPresent())
+          humanSlCoords = boardRenderer.convertScreenToCoordinates(x, y);
+      } else {
+        humanSlCoords = boardRenderer.convertScreenToCoordinates(x, y);
+      }
+      if (humanSlCoords.isPresent()) {
+        humanSlGame.onBoardClicked(humanSlCoords.get()[0], humanSlCoords.get()[1]);
+      }
       return;
     }
     // Check for board click
@@ -7508,6 +7697,7 @@ public class LizzieFrame extends JFrame {
     if (moved) {
       Lizzie.board.clearAfterMove();
       refresh();
+      scheduleQuickAnalysisContinuationAfterHistoryNavigation();
     }
     return moved;
   }
@@ -7539,6 +7729,7 @@ public class LizzieFrame extends JFrame {
     if (moved) {
       Lizzie.board.clearAfterMove();
       refresh();
+      scheduleQuickAnalysisContinuationAfterHistoryNavigation();
     }
     return moved;
   }
@@ -8174,10 +8365,42 @@ public class LizzieFrame extends JFrame {
                 })
             .orElse("");
 
-    // Load game contents from sgf string
-    if (!sgfContent.isEmpty() && SGFParser.isSGF(sgfContent)) {
-      loadSgfString(sgfContent, 200, Lizzie.config.readKomi, true, null);
+    PasteSgfDecision decision = pasteSgfDecision(sgfContent, currentGameHasPasteRisk());
+    if (decision == PasteSgfDecision.CONFIRM_REPLACE && !confirmPasteSgfReplace()) {
+      return;
     }
+    if (decision == PasteSgfDecision.LOAD || decision == PasteSgfDecision.CONFIRM_REPLACE) {
+      loadSgfString(sgfContent, 0, Lizzie.config.readKomi, true, null);
+    }
+  }
+
+  static PasteSgfDecision pasteSgfDecision(String sgfContent, boolean currentGameHasContent) {
+    if (sgfContent == null || sgfContent.trim().isEmpty()) {
+      return PasteSgfDecision.IGNORE_EMPTY;
+    }
+    if (!SGFParser.isSGF(sgfContent)) {
+      return PasteSgfDecision.IGNORE_NOT_SGF;
+    }
+    return currentGameHasContent ? PasteSgfDecision.CONFIRM_REPLACE : PasteSgfDecision.LOAD;
+  }
+
+  private boolean currentGameHasPasteRisk() {
+    if (Lizzie.board == null || Lizzie.board.getHistory() == null) {
+      return false;
+    }
+    BoardHistoryList history = Lizzie.board.getHistory();
+    return !history.isEmptyBoard() || !history.noStoneBoard();
+  }
+
+  private boolean confirmPasteSgfReplace() {
+    int selected =
+        JOptionPane.showConfirmDialog(
+            this,
+            Lizzie.resourceBundle.getString("LizzieFrame.pasteSgfReplaceMessage"),
+            Lizzie.resourceBundle.getString("LizzieFrame.pasteSgfReplaceTitle"),
+            JOptionPane.OK_CANCEL_OPTION,
+            JOptionPane.WARNING_MESSAGE);
+    return selected == JOptionPane.OK_OPTION;
   }
 
   public boolean resetMovelistFrameandAnalysisFrame() {
@@ -9593,6 +9816,167 @@ public class LizzieFrame extends JFrame {
         });
   }
 
+  public void scheduleYikeLiveCurveCompletion(String sourceUrl) {
+    if (!SwingUtilities.isEventDispatchThread()) {
+      SwingUtilities.invokeLater(() -> scheduleYikeLiveCurveCompletion(sourceUrl));
+      return;
+    }
+    if (Lizzie.config == null || !Lizzie.config.autoQuickAnalyzeOnLoad) {
+      return;
+    }
+    pendingYikeCurveCompletionUrl = sourceUrl == null ? "" : sourceUrl;
+    if (yikeCurveCompletionTimer == null) {
+      yikeCurveCompletionTimer =
+          new javax.swing.Timer(
+              YIKE_CURVE_COMPLETION_DELAY_MS, e -> runScheduledYikeCurveCompletion(false));
+      yikeCurveCompletionTimer.setRepeats(false);
+    } else {
+      yikeCurveCompletionTimer.setInitialDelay(YIKE_CURVE_COMPLETION_DELAY_MS);
+      yikeCurveCompletionTimer.setDelay(YIKE_CURVE_COMPLETION_DELAY_MS);
+    }
+    yikeCurveCompletionTimer.restart();
+  }
+
+  public void cancelYikeLiveCurveCompletion() {
+    if (!SwingUtilities.isEventDispatchThread()) {
+      SwingUtilities.invokeLater(this::cancelYikeLiveCurveCompletion);
+      return;
+    }
+    pendingYikeCurveCompletionUrl = "";
+    if (yikeCurveCompletionTimer != null) {
+      yikeCurveCompletionTimer.stop();
+    }
+  }
+
+  private void runScheduledYikeCurveCompletion(boolean fromBusyRetry) {
+    if (Lizzie.config == null || !Lizzie.config.autoQuickAnalyzeOnLoad) {
+      return;
+    }
+    String statusUrl = pendingYikeCurveCompletionUrl;
+    int missingMoves = countMissingMainlineAnalysisNodes();
+    if (missingMoves <= 0) {
+      if (fromBusyRetry) {
+        updateYikeLiveSyncStatus(
+            statusUrl, text("YikeLiveDialog.curveUpToDate", "Graph is up to date."));
+      }
+      return;
+    }
+    if (!canStartYikeCurveCompletion()) {
+      return;
+    }
+    if (analysisEngine != null && analysisEngine.isAnalysisInProgress()) {
+      updateYikeLiveSyncStatus(
+          statusUrl,
+          text("YikeLiveDialog.curveWaiting", "Completing graph when analysis is idle..."));
+      restartYikeCurveCompletion(YIKE_CURVE_COMPLETION_BUSY_RETRY_MS);
+      return;
+    }
+    updateYikeLiveSyncStatus(
+        statusUrl,
+        String.format(
+            Locale.ROOT,
+            text("YikeLiveDialog.curveCompleting", "Completing winrate/score graph (%d moves)..."),
+            missingMoves));
+    if (needsNewFlashAnalysisEngine()) {
+      startYikeCurveCompletionWithNewEngine(statusUrl);
+    } else {
+      startYikeCurveCompletionRequests(analysisEngine, statusUrl);
+    }
+  }
+
+  private void restartYikeCurveCompletion(int delayMillis) {
+    if (yikeCurveCompletionTimer == null) {
+      yikeCurveCompletionTimer =
+          new javax.swing.Timer(delayMillis, e -> runScheduledYikeCurveCompletion(true));
+      yikeCurveCompletionTimer.setRepeats(false);
+    } else {
+      yikeCurveCompletionTimer.setInitialDelay(delayMillis);
+      yikeCurveCompletionTimer.setDelay(delayMillis);
+    }
+    yikeCurveCompletionTimer.restart();
+  }
+
+  private boolean canStartYikeCurveCompletion() {
+    return Lizzie.leelaz != null
+        && !EngineManager.isEmpty
+        && !EngineManager.isEngineGame()
+        && !isPlayingAgainstLeelaz
+        && !isAnaPlayingAgainstLeelaz
+        && Lizzie.board != null
+        && Lizzie.board.getHistory() != null;
+  }
+
+  private void startYikeCurveCompletionWithNewEngine(String statusUrl) {
+    Thread starter =
+        new Thread(
+            () -> {
+              try {
+                AnalysisEngine newAnalysisEngine = new AnalysisEngine(false);
+                SwingUtilities.invokeLater(
+                    () -> {
+                      analysisEngine = newAnalysisEngine;
+                      if (!newAnalysisEngine.isLoaded()) {
+                        updateYikeLiveSyncStatus(
+                            statusUrl,
+                            text("YikeLiveDialog.curveFailed", "Failed to start graph completion"));
+                        return;
+                      }
+                      startYikeCurveCompletionRequests(newAnalysisEngine, statusUrl);
+                    });
+              } catch (IOException e) {
+                SwingUtilities.invokeLater(
+                    () ->
+                        updateYikeLiveSyncStatus(
+                            statusUrl,
+                            text("YikeLiveDialog.curveFailed", "Failed to start graph completion")
+                                + ": "
+                                + e.getLocalizedMessage()));
+              }
+            },
+            "yike-curve-analysis-engine-starter");
+    starter.setDaemon(true);
+    starter.start();
+  }
+
+  private void startYikeCurveCompletionRequests(AnalysisEngine targetEngine, String statusUrl) {
+    if (targetEngine == null || !targetEngine.isLoaded()) {
+      updateYikeLiveSyncStatus(
+          statusUrl, text("YikeLiveDialog.curveFailed", "Failed to start graph completion"));
+      return;
+    }
+    targetEngine.setCompletionCallback(
+        () ->
+            updateYikeLiveSyncStatus(
+                statusUrl, text("YikeLiveDialog.curveUpdated", "Graph updated.")));
+    int requestCount = targetEngine.startRequestMissingMainline(false);
+    if (requestCount < 0) {
+      targetEngine.setCompletionCallback(null);
+      updateYikeLiveSyncStatus(
+          statusUrl, text("YikeLiveDialog.curveFailed", "Failed to start graph completion"));
+      return;
+    }
+    if (requestCount <= 0) {
+      targetEngine.setCompletionCallback(null);
+      updateYikeLiveSyncStatus(
+          statusUrl, text("YikeLiveDialog.curveUpToDate", "Graph is up to date."));
+    }
+  }
+
+  private int countMissingMainlineAnalysisNodes() {
+    if (Lizzie.board == null || Lizzie.board.getHistory() == null) {
+      return 0;
+    }
+    return OnlineDialog.countMissingYikeCurveNodes(Lizzie.board.getHistory());
+  }
+
+  private String text(String key, String fallback) {
+    try {
+      return Lizzie.resourceBundle.getString(key);
+    } catch (MissingResourceException e) {
+      return fallback;
+    }
+  }
+
   public void openYikeLiveWeb() {
     bowser(
         YikeApiClient.YIKE_LIVE_URL,
@@ -9756,6 +10140,33 @@ public class LizzieFrame extends JFrame {
         };
     Thread thread = new Thread(runnable);
     thread.start();
+  }
+
+  public void endHumanSlGameIfActive() {
+    if (humanSlGame != null && !humanSlGame.isFinished()) {
+      humanSlGame.abort();
+    }
+  }
+
+  public void startHumanSlGameDialog() {
+    if (Lizzie.frame.isContributing) {
+      Utils.showMsg(
+          Lizzie.resourceBundle.getString("Contribute.tips.contributingAndStartAnotherLizzieYzy"));
+      return;
+    }
+    if (humanSlGame != null && !humanSlGame.isFinished()) {
+      humanSlGame.showControlPanel();
+      return;
+    }
+    if (EngineManager.isEngineGame
+        || Lizzie.frame.isPlayingAgainstLeelaz
+        || Lizzie.frame.isAnaPlayingAgainstLeelaz) {
+      Utils.showMsg(Lizzie.resourceBundle.getString("LizzieFrame.engineGameStopFirstHint"));
+      return;
+    }
+    NewHumanSlGameDialog dialog = new NewHumanSlGameDialog(this);
+    dialog.setVisible(true);
+    dialog.dispose();
   }
 
   public void startEngineGameDialog() {
@@ -12644,30 +13055,146 @@ public class LizzieFrame extends JFrame {
       Lizzie.config.analysisRecentIsPartGame = isAllGame;
       Lizzie.config.analysisRecentIsAllBranches = isAllBranches;
     }
-    if (analysisEngine == null
-        || analysisEngine.useJavaSSH && analysisEngine.javaSSHClosed
-        || (!analysisEngine.useJavaSSH
-            && (analysisEngine.process == null || !analysisEngine.process.isAlive()))) {
-      try {
-        analysisEngine = new AnalysisEngine(false);
-        if (isAllBranches) analysisEngine.startRequestAllBranches(!silentAnalyze);
-        else
-          analysisEngine.startRequest(
-              isAllGame ? -1 : Lizzie.config.analysisStartMove,
-              isAllGame ? -1 : Lizzie.config.analysisEndMove,
-              !silentAnalyze);
-      } catch (IOException e) {
-        // TODO Auto-generated catch block
-        e.printStackTrace();
-      }
-    } else {
-      if (isAllBranches) analysisEngine.startRequestAllBranches(!silentAnalyze);
-      else
-        analysisEngine.startRequest(
-            isAllGame ? -1 : Lizzie.config.analysisStartMove,
-            isAllGame ? -1 : Lizzie.config.analysisEndMove,
-            !silentAnalyze);
+    if (silentAnalyze) {
+      startSilentQuickAnalyzeGame(isAllGame, isAllBranches);
+      return;
     }
+    if (needsNewFlashAnalysisEngine()) {
+      startFlashAnalyzeGameWithNewEngine(isAllGame, isAllBranches, silentAnalyze);
+    } else {
+      startFlashAnalyzeRequestsInBackground(
+          analysisEngine, isAllGame, isAllBranches, silentAnalyze);
+    }
+  }
+
+  private void startSilentQuickAnalyzeGame(boolean isAllGame, boolean isAllBranches) {
+    stopBusyQuickAnalysisEngineBeforeLoadedKifuAnalysis();
+    Runnable startRequests =
+        new Runnable() {
+          public void run() {
+            if (!isAnalysisEngineReusable(analysisEngine)) {
+              return;
+            }
+            analysisEngine.setKeepAliveAfterCurrentRequest(true);
+            analysisEngine.setCompletionCallback(
+                LizzieFrame.this::resumeForegroundAnalysisAfterQuickAnalysisComplete);
+            startFlashAnalyzeRequestsInBackground(analysisEngine, isAllGame, isAllBranches, true);
+          }
+        };
+    if (isAnalysisEngineReusable(analysisEngine)) {
+      startRequests.run();
+      return;
+    }
+    ensureQuickAnalysisEngineAsync(startRequests);
+  }
+
+  private void stopBusyQuickAnalysisEngineBeforeLoadedKifuAnalysis() {
+    if (analysisEngine == null || !analysisEngine.isAnalysisInProgress()) {
+      return;
+    }
+    analysisEngine.normalQuit();
+    analysisEngine = null;
+  }
+
+  private boolean needsNewFlashAnalysisEngine() {
+    return !isAnalysisEngineReusable(analysisEngine);
+  }
+
+  private void startFlashAnalyzeGameWithNewEngine(
+      boolean isAllGame, boolean isAllBranches, boolean silentAnalyze) {
+    WaitForAnalysis loadingFrame = null;
+    if (!silentAnalyze) {
+      loadingFrame = createFlashAnalysisLoadingFrame();
+    }
+    WaitForAnalysis waitFrame = loadingFrame;
+    Thread starter =
+        new Thread(
+            () -> {
+              try {
+                AnalysisEngine newAnalysisEngine = new AnalysisEngine(false);
+                newAnalysisEngine.waitFrame = waitFrame;
+                SwingUtilities.invokeLater(
+                    () -> {
+                      analysisEngine = newAnalysisEngine;
+                      if (!newAnalysisEngine.isLoaded()) {
+                        if (waitFrame != null) waitFrame.setVisible(false);
+                      } else {
+                        startFlashAnalyzeRequestsInBackground(
+                            newAnalysisEngine, isAllGame, isAllBranches, silentAnalyze);
+                      }
+                    });
+              } catch (IOException e) {
+                e.printStackTrace();
+                SwingUtilities.invokeLater(
+                    () -> {
+                      if (waitFrame != null) waitFrame.setVisible(false);
+                      Utils.showMsg(
+                          Lizzie.resourceBundle.getString("Leelaz.engineFailed")
+                              + ": "
+                              + e.getLocalizedMessage());
+                    });
+              }
+            },
+            "flash-analysis-engine-starter");
+    starter.setDaemon(true);
+    starter.start();
+    if (waitFrame != null) {
+      waitFrame.setVisible(true);
+    }
+  }
+
+  private void startFlashAnalyzeRequestsInBackground(
+      AnalysisEngine targetEngine,
+      boolean isAllGame,
+      boolean isAllBranches,
+      boolean silentAnalyze) {
+    if (!silentAnalyze && targetEngine.waitFrame == null) {
+      targetEngine.waitFrame = createFlashAnalysisLoadingFrame();
+      targetEngine.waitFrame.setVisible(true);
+    }
+    Thread requestSender =
+        new Thread(
+            () -> {
+              if (isAllBranches) targetEngine.startRequestAllBranches(!silentAnalyze);
+              else
+                targetEngine.startRequest(
+                    isAllGame ? -1 : Lizzie.config.analysisStartMove,
+                    isAllGame ? -1 : Lizzie.config.analysisEndMove,
+                    !silentAnalyze);
+              if (silentAnalyze && !targetEngine.isAnalysisInProgress()) {
+                targetEngine.setCompletionCallback(null);
+                resumeForegroundAnalysisAfterQuickAnalysisComplete();
+              }
+            },
+            "flash-analysis-request-sender");
+    requestSender.setDaemon(true);
+    requestSender.start();
+  }
+
+  private void restoreKifuLoadTemporaryState(
+      boolean originalSound, boolean originalCanGoAfterload) {
+    Lizzie.config.playSound = originalSound;
+    canGoAfterload = originalCanGoAfterload;
+  }
+
+  private void showOpenFileFailedMessageLater() {
+    SwingUtilities.invokeLater(
+        new Runnable() {
+          public void run() {
+            JOptionPane.showMessageDialog(
+                Lizzie.frame,
+                Lizzie.resourceBundle.getString("LizzieFrame.prompt.failedToOpenFile"),
+                "Error",
+                JOptionPane.ERROR_MESSAGE);
+          }
+        });
+  }
+
+  private WaitForAnalysis createFlashAnalysisLoadingFrame() {
+    WaitForAnalysis loadingFrame = new WaitForAnalysis();
+    loadingFrame.setLoadingProgress();
+    loadingFrame.setLocationRelativeTo(this);
+    return loadingFrame;
   }
 
   public void flashAnalyzePart() {
@@ -12691,130 +13218,398 @@ public class LizzieFrame extends JFrame {
     JDialog dialog = new JDialog(this, title, true);
     dialog.setDefaultCloseOperation(WindowConstants.DISPOSE_ON_CLOSE);
     dialog.getContentPane().setLayout(new BorderLayout());
-
-    JTabbedPane tabbedPane = new JTabbedPane(JTabbedPane.TOP);
-    tabbedPane.setFont(new Font(Config.sysDefaultFontName, Font.PLAIN, Config.frameFontSize));
-    tabbedPane.addTab(
-        Lizzie.resourceBundle.getString("PlayerStrengthEstimate.tab.assessment"),
-        buildPlayerStrengthAssessmentPanel(report));
-    tabbedPane.addTab(
-        Lizzie.resourceBundle.getString("PlayerStrengthEstimate.tab.match"),
-        buildPlayerStrengthMatchPanel(report));
-    dialog.getContentPane().add(tabbedPane, BorderLayout.CENTER);
-    dialog.setMinimumSize(new Dimension(720, 360));
-    Lizzie.setFrameSize(dialog, 860, 390);
+    dialog
+        .getContentPane()
+        .add(buildPlayerStrengthDashboardPanel(dialog, report), BorderLayout.CENTER);
+    dialog.setMinimumSize(new Dimension(1040, 700));
+    Lizzie.setFrameSize(dialog, 1120, 760);
     dialog.setLocationRelativeTo(this);
     dialog.setVisible(true);
   }
 
-  private JComponent buildPlayerStrengthAssessmentPanel(PlayerStrengthEstimator.Report report) {
-    JEditorPane htmlPane = new JEditorPane();
-    htmlPane.setContentType("text/html");
-    htmlPane.putClientProperty(JEditorPane.HONOR_DISPLAY_PROPERTIES, Boolean.TRUE);
-    htmlPane.setEditable(false);
-    htmlPane.setOpaque(false);
-    htmlPane.setFont(new Font(Config.sysDefaultFontName, Font.PLAIN, Config.frameFontSize));
-    htmlPane.setText(buildPlayerStrengthEstimateHtml(report));
-    htmlPane.setCaretPosition(0);
+  private JComponent buildPlayerStrengthDashboardPanel(
+      JDialog owner, PlayerStrengthEstimator.Report report) {
+    PlayerStrengthDashboardRoot root = new PlayerStrengthDashboardRoot();
+    root.setLayout(new BorderLayout(0, 18));
+    root.setBorder(new EmptyBorder(24, 30, 26, 30));
 
-    JScrollPane scrollPane = new JScrollPane(htmlPane);
-    scrollPane.setBorder(new EmptyBorder(10, 10, 10, 10));
-    scrollPane.getViewport().setOpaque(false);
-    scrollPane.setOpaque(false);
-    return scrollPane;
+    CardLayout cardLayout = new CardLayout();
+    JPanel cards = new JPanel(cardLayout);
+    cards.setOpaque(false);
+    cards.add(buildPlayerStrengthAssessmentDashboard(report), "assessment");
+    cards.add(buildPlayerStrengthMatchDashboard(report), "match");
+    cards.add(buildPlayerStrengthPerformanceDashboard(report), "performance");
+
+    JLabel subtitle =
+        new JLabel(Lizzie.resourceBundle.getString("PlayerStrengthEstimate.subtitle.assessment"));
+    subtitle.setForeground(PlayerStrengthDashboardRoot.MUTED_TEXT);
+    subtitle.setFont(new Font(Config.sysDefaultFontName, Font.PLAIN, Config.frameFontSize + 1));
+    final String[] currentDashboard = {"assessment"};
+
+    JButton detailButton =
+        createPlayerStrengthDetailButton(
+            () ->
+                showPlayerStrengthDetailDialog(owner, report, "match".equals(currentDashboard[0])));
+    JToggleButton assessmentTab =
+        createPlayerStrengthTabButton(
+            Lizzie.resourceBundle.getString("PlayerStrengthEstimate.tab.assessment"), true);
+    JToggleButton matchTab =
+        createPlayerStrengthTabButton(
+            Lizzie.resourceBundle.getString("PlayerStrengthEstimate.tab.match"), false);
+    JToggleButton performanceTab =
+        createPlayerStrengthTabButton(
+            Lizzie.resourceBundle.getString("PlayerStrengthEstimate.tab.performance"), false);
+    ButtonGroup group = new ButtonGroup();
+    group.add(assessmentTab);
+    group.add(matchTab);
+    group.add(performanceTab);
+
+    assessmentTab.addActionListener(
+        e -> {
+          currentDashboard[0] = "assessment";
+          subtitle.setText(
+              Lizzie.resourceBundle.getString("PlayerStrengthEstimate.subtitle.assessment"));
+          cardLayout.show(cards, "assessment");
+        });
+    matchTab.addActionListener(
+        e -> {
+          currentDashboard[0] = "match";
+          subtitle.setText(
+              Lizzie.resourceBundle.getString("PlayerStrengthEstimate.subtitle.match"));
+          cardLayout.show(cards, "match");
+        });
+    performanceTab.addActionListener(
+        e -> {
+          currentDashboard[0] = "performance";
+          subtitle.setText(
+              Lizzie.resourceBundle.getString("PlayerStrengthEstimate.subtitle.performance"));
+          cardLayout.show(cards, "performance");
+        });
+
+    JPanel titleBlock = new JPanel();
+    titleBlock.setOpaque(false);
+    titleBlock.setLayout(new BoxLayout(titleBlock, BoxLayout.Y_AXIS));
+
+    JPanel titleRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 12, 0));
+    titleRow.setOpaque(false);
+    titleRow.add(new PlayerStrengthHeaderMark());
+    JLabel title = new JLabel(Lizzie.resourceBundle.getString("PlayerStrengthEstimate.title"));
+    title.setForeground(PlayerStrengthDashboardRoot.TEXT);
+    title.setFont(new Font(Config.sysDefaultFontName, Font.BOLD, Config.frameFontSize + 22));
+    titleRow.add(title);
+    titleBlock.add(titleRow);
+    titleBlock.add(Box.createVerticalStrut(6));
+    subtitle.setAlignmentX(Component.LEFT_ALIGNMENT);
+    titleBlock.add(subtitle);
+
+    JPanel tabs = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
+    tabs.setOpaque(false);
+    tabs.add(assessmentTab);
+    tabs.add(Box.createHorizontalStrut(12));
+    tabs.add(matchTab);
+    tabs.add(Box.createHorizontalStrut(12));
+    tabs.add(performanceTab);
+    titleBlock.add(Box.createVerticalStrut(22));
+    titleBlock.add(tabs);
+
+    JPanel header = new JPanel(new BorderLayout());
+    header.setOpaque(false);
+    header.add(titleBlock, BorderLayout.WEST);
+    JPanel actionPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 0, 6));
+    actionPanel.setOpaque(false);
+    actionPanel.add(
+        createPlayerStrengthModelCombo(
+            report.model,
+            () -> {
+              owner.dispose();
+              SwingUtilities.invokeLater(this::showPlayerStrengthEstimate);
+            }));
+    actionPanel.add(Box.createHorizontalStrut(10));
+    actionPanel.add(
+        createPlayerStrengthImportModelButton(
+            () -> {
+              owner.dispose();
+              SwingUtilities.invokeLater(this::showPlayerStrengthEstimate);
+            }));
+    actionPanel.add(Box.createHorizontalStrut(10));
+    actionPanel.add(detailButton);
+    header.add(actionPanel, BorderLayout.EAST);
+
+    root.add(header, BorderLayout.NORTH);
+    root.add(cards, BorderLayout.CENTER);
+    return root;
   }
 
-  private JComponent buildPlayerStrengthMatchPanel(PlayerStrengthEstimator.Report report) {
-    JPanel panel = new JPanel(new BorderLayout());
-    panel.setBorder(new EmptyBorder(6, 6, 6, 6));
-    panel.setBackground(new Color(46, 55, 70));
-    panel.add(new PlayerStrengthMatchChart(report), BorderLayout.CENTER);
+  private JComboBox<PlayerStrengthEstimator.StrengthModel> createPlayerStrengthModelCombo(
+      PlayerStrengthEstimator.StrengthModel selectedModel, Runnable refreshAction) {
+    JComboBox<PlayerStrengthEstimator.StrengthModel> combo =
+        new PlayerStrengthModelCombo(PlayerStrengthEstimator.selectableModels());
+    combo.setSelectedItem(
+        selectedModel == null ? PlayerStrengthEstimator.StrengthModel.XGBOOST20TUN : selectedModel);
+    combo.setFocusable(false);
+    combo.setToolTipText(Lizzie.resourceBundle.getString("PlayerStrengthEstimate.model.tooltip"));
+    combo
+        .getAccessibleContext()
+        .setAccessibleName(Lizzie.resourceBundle.getString("PlayerStrengthEstimate.model"));
+    combo.addActionListener(
+        e -> {
+          Object selected = combo.getSelectedItem();
+          if (selected instanceof PlayerStrengthEstimator.StrengthModel) {
+            PlayerStrengthEstimator.StrengthModel model =
+                (PlayerStrengthEstimator.StrengthModel) selected;
+            if (!model.equals(PlayerStrengthEstimator.activeModel())) {
+              PlayerStrengthEstimator.setActiveModel(model);
+              refreshAction.run();
+            }
+          }
+        });
+    return combo;
+  }
+
+  private JButton createPlayerStrengthImportModelButton(Runnable refreshAction) {
+    JButton button =
+        new PlayerStrengthDetailButton(
+            Lizzie.resourceBundle.getString("PlayerStrengthEstimate.importModel"), false);
+    button.setToolTipText(
+        Lizzie.resourceBundle.getString("PlayerStrengthEstimate.importModel.tooltip"));
+    button.addActionListener(
+        e -> {
+          JFileChooser chooser = new JFileChooser();
+          chooser.setDialogTitle(
+              Lizzie.resourceBundle.getString("PlayerStrengthEstimate.importModel.title"));
+          chooser.setFileFilter(
+              new FileNameExtensionFilter("XGBoost strength model (*.json, *.zip)", "json", "zip"));
+          int result = chooser.showOpenDialog(this);
+          if (result != JFileChooser.APPROVE_OPTION) {
+            return;
+          }
+          try {
+            PlayerStrengthEstimator.StrengthModel model =
+                PlayerStrengthEstimator.importStrengthModel(chooser.getSelectedFile().toPath());
+            PlayerStrengthEstimator.setActiveModel(model);
+            refreshAction.run();
+          } catch (IOException ex) {
+            JOptionPane.showMessageDialog(
+                this,
+                String.format(
+                    Locale.US,
+                    Lizzie.resourceBundle.getString("PlayerStrengthEstimate.importModel.error"),
+                    ex.getMessage()),
+                Lizzie.resourceBundle.getString("PlayerStrengthEstimate.importModel.title"),
+                JOptionPane.ERROR_MESSAGE);
+          }
+        });
+    return button;
+  }
+
+  private JButton createPlayerStrengthDetailButton(Runnable action) {
+    JButton button =
+        new PlayerStrengthDetailButton(
+            Lizzie.resourceBundle.getString("PlayerStrengthEstimate.detailData"), true);
+    button.addActionListener(e -> action.run());
+    return button;
+  }
+
+  private JToggleButton createPlayerStrengthTabButton(String text, boolean selected) {
+    PlayerStrengthTabButton button = new PlayerStrengthTabButton(text);
+    button.setSelected(selected);
+    button.setFont(new Font(Config.sysDefaultFontName, Font.BOLD, Config.frameFontSize + 2));
+    return button;
+  }
+
+  private void showPlayerStrengthDetailDialog(
+      JDialog owner, PlayerStrengthEstimator.Report report, boolean matchDetail) {
+    String title =
+        Lizzie.resourceBundle.getString("PlayerStrengthEstimate.title")
+            + " - "
+            + Lizzie.resourceBundle.getString("PlayerStrengthEstimate.detailData");
+    JDialog detailDialog = new JDialog(owner, title, true);
+    detailDialog.setDefaultCloseOperation(WindowConstants.DISPOSE_ON_CLOSE);
+    detailDialog.getContentPane().setLayout(new BorderLayout());
+    detailDialog
+        .getContentPane()
+        .add(
+            matchDetail
+                ? buildPlayerStrengthMatchPanel(report)
+                : buildPlayerStrengthAssessmentPanel(report),
+            BorderLayout.CENTER);
+    detailDialog.setMinimumSize(new Dimension(760, 420));
+    Lizzie.setFrameSize(detailDialog, 900, 460);
+    detailDialog.setLocationRelativeTo(owner);
+    detailDialog.setVisible(true);
+  }
+
+  private JComponent buildPlayerStrengthAssessmentDashboard(PlayerStrengthEstimator.Report report) {
+    JPanel panel = new JPanel(new BorderLayout(0, 16));
+    panel.setOpaque(false);
+
+    JPanel cards = new JPanel(new GridLayout(1, 2, 20, 0));
+    cards.setOpaque(false);
+    cards.add(
+        new PlayerStrengthAssessmentCard(
+            Lizzie.resourceBundle.getString("Menu.Black"), true, report.black));
+    cards.add(
+        new PlayerStrengthAssessmentCard(
+            Lizzie.resourceBundle.getString("Menu.White"), false, report.white));
+    panel.add(cards, BorderLayout.CENTER);
+
+    String note =
+        report.hasEnoughData()
+            ? Lizzie.resourceBundle.getString("PlayerStrengthEstimate.reviewOnlyNote")
+            : Lizzie.resourceBundle.getString("PlayerStrengthEstimate.needMoreData");
+    panel.add(new PlayerStrengthNoteStrip(note), BorderLayout.SOUTH);
     return panel;
   }
 
-  private String buildPlayerStrengthEstimateHtml(PlayerStrengthEstimator.Report report) {
-    StringBuilder html = new StringBuilder();
-    html.append("<html><body style='width:520px'>");
-    html.append("<h2>")
-        .append(Lizzie.resourceBundle.getString("PlayerStrengthEstimate.title"))
-        .append("</h2>");
-    if (!report.hasEnoughData()) {
-      html.append("<p><b>")
-          .append(Lizzie.resourceBundle.getString("PlayerStrengthEstimate.needMoreData"))
-          .append("</b></p>");
-    }
-    html.append("<table border='1' cellspacing='0' cellpadding='5'>");
-    html.append("<tr><th>")
-        .append(Lizzie.resourceBundle.getString("PlayerStrengthEstimate.side"))
-        .append("</th><th>")
-        .append(Lizzie.resourceBundle.getString("PlayerStrengthEstimate.estimate"))
-        .append("</th><th>")
-        .append(Lizzie.resourceBundle.getString("PlayerStrengthEstimate.score"))
-        .append("</th><th>")
-        .append(Lizzie.resourceBundle.getString("PlayerStrengthEstimate.confidence"))
-        .append("</th><th>")
-        .append(Lizzie.resourceBundle.getString("PlayerStrengthEstimate.moves"))
-        .append("</th><th>")
-        .append(Lizzie.resourceBundle.getString("PlayerStrengthEstimate.firstChoice"))
-        .append("</th><th>")
-        .append(Lizzie.resourceBundle.getString("PlayerStrengthEstimate.goodMoveRate"))
-        .append("</th><th>")
-        .append(Lizzie.resourceBundle.getString("PlayerStrengthEstimate.difficulty"))
-        .append("</th><th>")
-        .append(Lizzie.resourceBundle.getString("PlayerStrengthEstimate.weightedScoreLoss"))
-        .append("</th><th>")
-        .append(Lizzie.resourceBundle.getString("PlayerStrengthEstimate.avgScoreLoss"))
-        .append("</th><th>")
-        .append(Lizzie.resourceBundle.getString("PlayerStrengthEstimate.medianScoreLoss"))
-        .append("</th><th>")
-        .append(Lizzie.resourceBundle.getString("PlayerStrengthEstimate.avgWinrateLoss"))
-        .append("</th><th>")
-        .append(Lizzie.resourceBundle.getString("PlayerStrengthEstimate.mistakeRate"))
-        .append("</th></tr>");
-    appendPlayerStrengthRow(
-        html, Lizzie.resourceBundle.getString("PlayerStrengthEstimate.overall"), report.overall);
-    appendPlayerStrengthRow(html, Lizzie.resourceBundle.getString("Menu.Black"), report.black);
-    appendPlayerStrengthRow(html, Lizzie.resourceBundle.getString("Menu.White"), report.white);
-    html.append("</table>");
-    html.append("<p>")
-        .append(Lizzie.resourceBundle.getString("PlayerStrengthEstimate.note"))
-        .append("</p>");
-    html.append("</body></html>");
-    return html.toString();
+  private JComponent buildPlayerStrengthMatchDashboard(PlayerStrengthEstimator.Report report) {
+    JPanel panel = new JPanel(new BorderLayout(0, 16));
+    panel.setOpaque(false);
+
+    JPanel topCards = new JPanel(new GridLayout(1, 2, 18, 0));
+    topCards.setOpaque(false);
+    topCards.add(
+        new PlayerStrengthMatchSummaryCard(
+            Lizzie.resourceBundle.getString("Menu.Black"), true, report.black));
+    topCards.add(
+        new PlayerStrengthMatchSummaryCard(
+            Lizzie.resourceBundle.getString("Menu.White"), false, report.white));
+    topCards.setPreferredSize(new Dimension(900, 188));
+
+    JPanel lower = new JPanel(new BorderLayout());
+    lower.setOpaque(false);
+    lower.add(new PlayerStrengthMoveHitMapPanel(report), BorderLayout.CENTER);
+
+    JPanel stack = new JPanel(new BorderLayout(0, 16));
+    stack.setOpaque(false);
+    stack.add(topCards, BorderLayout.NORTH);
+    stack.add(lower, BorderLayout.CENTER);
+    panel.add(stack, BorderLayout.CENTER);
+    panel.add(
+        new PlayerStrengthNoteStrip(
+            Lizzie.resourceBundle.getString("PlayerStrengthEstimate.match.reviewNote")),
+        BorderLayout.SOUTH);
+    return panel;
   }
 
-  private void appendPlayerStrengthRow(
-      StringBuilder html, String side, PlayerStrengthEstimator.SideReport report) {
-    html.append("<tr><td>")
-        .append(side)
-        .append("</td><td>")
-        .append(report.strengthBand)
-        .append("</td><td>")
-        .append(report.qualityScoreText())
-        .append("</td><td>")
-        .append(playerStrengthConfidenceText(report.confidence))
-        .append("</td><td>")
-        .append(report.sampleCount)
-        .append("</td><td>")
-        .append(report.percentText(report.firstChoiceRate))
-        .append("</td><td>")
-        .append(report.percentText(report.goodMoveRate))
-        .append("</td><td>")
-        .append(report.difficultyText())
-        .append("</td><td>")
-        .append(report.weightedScoreLossText())
-        .append("</td><td>")
-        .append(report.averageScoreLossText())
-        .append("</td><td>")
-        .append(report.medianScoreLossText())
-        .append("</td><td>")
-        .append(report.averageWinrateLossText())
-        .append("</td><td>")
-        .append(report.percentText(report.mistakeRate))
-        .append("</td></tr>");
+  private JComponent buildPlayerStrengthPerformanceDashboard(
+      PlayerStrengthEstimator.Report report) {
+    JPanel panel = new JPanel(new BorderLayout(0, 16));
+    panel.setOpaque(false);
+
+    panel.add(new PlayerStrengthPerformanceRankPanel(report), BorderLayout.CENTER);
+    panel.add(
+        new PlayerStrengthNoteStrip(
+            Lizzie.resourceBundle.getString("PlayerStrengthEstimate.performance.reviewNote")),
+        BorderLayout.SOUTH);
+    return panel;
   }
 
-  private String playerStrengthConfidenceText(PlayerStrengthEstimator.Confidence confidence) {
+  private JComponent buildPlayerStrengthMatchPanel(PlayerStrengthEstimator.Report report) {
+    JPanel panel = new PlayerStrengthDetailRoot(new BorderLayout());
+    panel.setBorder(new EmptyBorder(16, 16, 16, 16));
+    PlayerStrengthMatchChart chart = new PlayerStrengthMatchChart(report);
+    chart.setBorder(new EmptyBorder(10, 10, 10, 10));
+    panel.add(chart, BorderLayout.CENTER);
+    return panel;
+  }
+
+  private JComponent buildPlayerStrengthAssessmentPanel(PlayerStrengthEstimator.Report report) {
+    JPanel panel = new PlayerStrengthDetailRoot(new BorderLayout(0, 16));
+    panel.setBorder(new EmptyBorder(18, 18, 18, 18));
+
+    JPanel cards = new JPanel(new GridLayout(1, 2, 14, 0));
+    cards.setOpaque(false);
+    cards.add(
+        buildPlayerStrengthAssessmentDetailCard(
+            Lizzie.resourceBundle.getString("Menu.Black"), true, report.black));
+    cards.add(
+        buildPlayerStrengthAssessmentDetailCard(
+            Lizzie.resourceBundle.getString("Menu.White"), false, report.white));
+    panel.add(cards, BorderLayout.CENTER);
+    panel.add(
+        new PlayerStrengthDetailNoteStrip(
+            Lizzie.resourceBundle.getString("PlayerStrengthEstimate.reviewOnlyNote")),
+        BorderLayout.SOUTH);
+    return panel;
+  }
+
+  private JComponent buildPlayerStrengthAssessmentDetailCard(
+      String title, boolean black, PlayerStrengthEstimator.SideReport report) {
+    JPanel card =
+        new PlayerStrengthDetailCard(
+            black
+                ? PlayerStrengthDetailPalette.BLACK_ACCENT
+                : PlayerStrengthDetailPalette.WHITE_ACCENT);
+    card.setLayout(new BorderLayout(0, 14));
+    card.setBorder(new EmptyBorder(18, 20, 18, 20));
+
+    JLabel titleLabel = new JLabel(title);
+    titleLabel.setForeground(
+        black ? PlayerStrengthDetailPalette.TEXT : PlayerStrengthDetailPalette.WARM_TEXT);
+    titleLabel.setFont(new Font(Config.sysDefaultFontName, Font.BOLD, Config.frameFontSize + 8));
+    card.add(titleLabel, BorderLayout.NORTH);
+
+    JPanel metrics = new JPanel(new GridLayout(0, 2, 10, 9));
+    metrics.setOpaque(false);
+    addPlayerStrengthMetric(
+        metrics,
+        Lizzie.resourceBundle.getString("PlayerStrengthEstimate.match.strength"),
+        playerStrengthDisplayRank(report.strengthBand));
+    addPlayerStrengthMetric(
+        metrics,
+        Lizzie.resourceBundle.getString("PlayerStrengthEstimate.rank.scale"),
+        playerStrengthRankValueText(report));
+    addPlayerStrengthMetric(
+        metrics,
+        Lizzie.resourceBundle.getString("PlayerStrengthEstimate.confidence"),
+        playerStrengthConfidenceText(report.confidence));
+    addPlayerStrengthMetric(
+        metrics,
+        Lizzie.resourceBundle.getString("PlayerStrengthEstimate.moves"),
+        String.valueOf(report.sampleCount));
+    addPlayerStrengthMetric(
+        metrics,
+        Lizzie.resourceBundle.getString("PlayerStrengthEstimate.firstChoice"),
+        playerStrengthPrecisePercentText(report.firstChoiceRate));
+    addPlayerStrengthMetric(
+        metrics,
+        Lizzie.resourceBundle.getString("PlayerStrengthEstimate.goodMoveRate"),
+        playerStrengthPrecisePercentText(report.moveRankGoodMoveRate));
+    addPlayerStrengthMetric(
+        metrics,
+        Lizzie.resourceBundle.getString("PlayerStrengthEstimate.weightedScoreLoss"),
+        report.weightedScoreLossText());
+    addPlayerStrengthMetric(
+        metrics,
+        Lizzie.resourceBundle.getString("PlayerStrengthEstimate.match.avgScoreLoss"),
+        report.averageScoreLossText());
+    addPlayerStrengthMetric(
+        metrics,
+        Lizzie.resourceBundle.getString("PlayerStrengthEstimate.mistakeRate"),
+        playerStrengthPrecisePercentText(report.mistakeRate));
+    addPlayerStrengthMetric(
+        metrics,
+        Lizzie.resourceBundle.getString("PlayerStrengthEstimate.match.overallMatch"),
+        report.matchRateText());
+
+    card.add(metrics, BorderLayout.CENTER);
+    return card;
+  }
+
+  private void addPlayerStrengthMetric(JPanel panel, String label, String value) {
+    JLabel labelComponent = new JLabel(label);
+    labelComponent.setForeground(PlayerStrengthDetailPalette.MUTED_TEXT);
+    labelComponent.setFont(new Font(Config.sysDefaultFontName, Font.PLAIN, Config.frameFontSize));
+    JLabel valueComponent = new JLabel(value == null || value.isEmpty() ? "-" : value);
+    valueComponent.setForeground(PlayerStrengthDetailPalette.TEXT);
+    valueComponent.setFont(
+        new Font(Config.sysDefaultFontName, Font.BOLD, Config.frameFontSize + 1));
+    panel.add(labelComponent);
+    panel.add(valueComponent);
+  }
+
+  private static String playerStrengthConfidenceText(
+      PlayerStrengthEstimator.Confidence confidence) {
     switch (confidence) {
       case HIGH:
         return Lizzie.resourceBundle.getString("PlayerStrengthEstimate.confidence.high");
@@ -12823,6 +13618,21 @@ public class LizzieFrame extends JFrame {
       default:
         return Lizzie.resourceBundle.getString("PlayerStrengthEstimate.confidence.low");
     }
+  }
+
+  private static String playerStrengthModelDisplayName(
+      PlayerStrengthEstimator.StrengthModel model) {
+    if (model == null) {
+      return "-";
+    }
+    String displayName = model.displayName();
+    if ("xgboost20tun".equalsIgnoreCase(displayName)) {
+      return "XGBoost 20TUN";
+    }
+    if ("xgboost20tun-previous".equalsIgnoreCase(displayName)) {
+      return "XGBoost 20TUN Previous";
+    }
+    return displayName == null || displayName.trim().isEmpty() ? "-" : displayName.trim();
   }
 
   private static double playerStrengthClamp(double value, double min, double max) {
@@ -12844,22 +13654,2165 @@ public class LizzieFrame extends JFrame {
         1.0);
   }
 
+  private static String playerStrengthDisplayRank(String strengthBand) {
+    if (strengthBand == null || strengthBand.trim().isEmpty() || "-".equals(strengthBand.trim())) {
+      return "-";
+    }
+    String band = strengthBand.trim();
+    boolean chinese = Lizzie.config != null && Lizzie.config.isChinese;
+    if ("Beginner".equalsIgnoreCase(band)) {
+      return chinese
+          ? Lizzie.resourceBundle.getString("PlayerStrengthEstimate.rank.beginner")
+          : "Beginner";
+    }
+    if (band.contains("AI")) {
+      return chinese ? Lizzie.resourceBundle.getString("PlayerStrengthEstimate.rank.ai") : band;
+    }
+    if (band.contains("\u4e00\u7ebf\u804c\u4e1a")) {
+      return chinese ? Lizzie.resourceBundle.getString("PlayerStrengthEstimate.rank.topPro") : band;
+    }
+    if (band.contains("\u804c\u4e1a")) {
+      return chinese ? Lizzie.resourceBundle.getString("PlayerStrengthEstimate.rank.pro") : band;
+    }
+    int kIndex = band.indexOf('k');
+    if (kIndex > 0) {
+      return playerStrengthRankRangeText(band.substring(0, kIndex), "kyu", chinese);
+    }
+    int dIndex = band.indexOf('d');
+    if (dIndex > 0) {
+      return playerStrengthRankRangeText(band.substring(0, dIndex), "dan", chinese);
+    }
+    return band;
+  }
+
+  private static String playerStrengthEstimateText(PlayerStrengthEstimator.SideReport report) {
+    if (report == null || !report.hasSamples()) {
+      return "-";
+    }
+    return playerStrengthRankValueText(report);
+  }
+
+  private static String playerStrengthRankValueText(PlayerStrengthEstimator.SideReport report) {
+    if (report == null || !report.hasSamples()) {
+      return "-";
+    }
+    return playerStrengthRankValueText(report.rankValue);
+  }
+
+  private static String playerStrengthRankValueText(double rankValue) {
+    boolean chinese = Lizzie.config != null && Lizzie.config.isChinese;
+    double value = Math.max(-18.0, Math.min(12.0, rankValue));
+    if (value >= 12.0) {
+      return String.format(
+          Locale.US, "%.1f %s", value, chinese ? "\u534a\u795e/AI" : "semi-god/AI");
+    }
+    if (value >= 11.0) {
+      return String.format(
+          Locale.US, "%.1f %s", value, chinese ? "\u4e00\u7ebf\u804c\u4e1a" : "top pro");
+    }
+    if (value >= 10.0) {
+      return String.format(Locale.US, "%.1f %s", value, chinese ? "\u804c\u4e1a" : "pro");
+    }
+    return chinese
+        ? String.format(Locale.US, "%.1f\u6bb5", Math.max(1.0, value))
+        : String.format(Locale.US, "Fox %.1f dan", Math.max(1.0, value));
+  }
+
+  private static String playerStrengthRankRangeText(String raw, String type, boolean chinese) {
+    String value = raw == null ? "" : raw.trim();
+    if (value.isEmpty()) {
+      return "-";
+    }
+    if (!chinese) {
+      return "dan".equals(type) ? value + " dan" : value + " kyu";
+    }
+    String[] parts = value.split("-");
+    if (parts.length == 2) {
+      String key =
+          "dan".equals(type)
+              ? "PlayerStrengthEstimate.rank.danRange"
+              : "PlayerStrengthEstimate.rank.kyuRange";
+      return String.format(Lizzie.resourceBundle.getString(key), parts[0], parts[1]);
+    }
+    String key =
+        "dan".equals(type)
+            ? "PlayerStrengthEstimate.rank.danSingle"
+            : "PlayerStrengthEstimate.rank.kyuSingle";
+    return String.format(Lizzie.resourceBundle.getString(key), value);
+  }
+
+  private static String playerStrengthPercentText(double value) {
+    return String.format(Locale.US, "%.0f%%", value * 100.0);
+  }
+
+  private static String playerStrengthPrecisePercentText(double value) {
+    return String.format(Locale.US, "%.1f%%", value * 100.0);
+  }
+
+  private static String playerStrengthScoreText(double value) {
+    return String.format(Locale.US, "%.1f", value);
+  }
+
+  private static int playerStrengthMaxMove(PlayerStrengthEstimator.Report report) {
+    int maxMove = 1;
+    if (report == null) {
+      return maxMove;
+    }
+    for (PlayerStrengthEstimator.Sample sample : report.overall.samples) {
+      maxMove = Math.max(maxMove, sample.moveNumber);
+    }
+    return maxMove;
+  }
+
+  private static int playerStrengthMoveToX(int moveNumber, int x, int width, int maxMove) {
+    if (maxMove <= 1) {
+      return x;
+    }
+    double position = playerStrengthClamp((moveNumber - 1.0) / (maxMove - 1.0), 0.0, 1.0);
+    return x + (int) Math.round(position * Math.max(0, width - 1));
+  }
+
+  private static int playerStrengthAxisTickStep(int maxMove, int width) {
+    int desiredTicks = Math.max(3, Math.min(7, width / 58));
+    int rawStep = Math.max(1, (int) Math.ceil(maxMove / (double) desiredTicks));
+    if (rawStep <= 5) {
+      return 5;
+    }
+    if (rawStep <= 10) {
+      return 10;
+    }
+    if (rawStep <= 20) {
+      return 20;
+    }
+    if (rawStep <= 50) {
+      return 50;
+    }
+    return ((rawStep + 49) / 50) * 50;
+  }
+
+  private static List<PlayerStrengthSegment> playerStrengthPerformanceSegments(
+      PlayerStrengthEstimator.SideReport sideReport) {
+    List<PlayerStrengthEstimator.Sample> samples =
+        sideReport == null ? new ArrayList<>() : new ArrayList<>(sideReport.samples);
+    samples.sort(Comparator.comparingInt(sample -> sample.moveNumber));
+    if (samples.isEmpty()) {
+      return Collections.emptyList();
+    }
+
+    List<PlayerStrengthSegment> segments = new ArrayList<>();
+    int segmentSamples = playerStrengthAdaptiveSegmentSamples(sideReport);
+    int start = 0;
+    while (start < samples.size()) {
+      int end = Math.min(samples.size(), start + segmentSamples);
+      if (samples.size() - end > 0
+          && samples.size() - end < playerStrengthMinimumSegmentSamples(sideReport)) {
+        end = samples.size();
+      }
+      List<PlayerStrengthEstimator.Sample> segmentSamplesList = samples.subList(start, end);
+      int firstMove = segmentSamplesList.get(0).moveNumber;
+      int lastMove = segmentSamplesList.get(segmentSamplesList.size() - 1).moveNumber;
+      segments.add(
+          new PlayerStrengthSegment(
+              firstMove,
+              lastMove,
+              PlayerStrengthEstimator.summarizeSamples(segmentSamplesList, sideReport.model)));
+      start = end;
+    }
+    return segments;
+  }
+
+  private static int playerStrengthAdaptiveSegmentSamples(
+      PlayerStrengthEstimator.SideReport report) {
+    int sampleCount = Math.max(1, report == null ? 0 : report.sampleCount);
+    int minimum = playerStrengthMinimumSegmentSamples(report);
+    if (sampleCount <= minimum * 2) {
+      return sampleCount;
+    }
+    int targetSegments = Math.max(2, Math.min(9, (int) Math.round(Math.sqrt(sampleCount))));
+    return Math.max(minimum, (int) Math.ceil((double) sampleCount / targetSegments));
+  }
+
+  private static int playerStrengthMinimumSegmentSamples(
+      PlayerStrengthEstimator.SideReport report) {
+    int sampleCount = report == null ? 0 : report.sampleCount;
+    if (sampleCount < 16) {
+      return 3;
+    }
+    if (sampleCount < 40) {
+      return 4;
+    }
+    return 5;
+  }
+
+  private static int playerStrengthRankLevel(String strengthBand) {
+    if (strengthBand == null) {
+      return 0;
+    }
+    String band = strengthBand.trim();
+    if (band.contains("AI")) {
+      return 12;
+    }
+    if (band.contains("\u4e00\u7ebf\u804c\u4e1a")) {
+      return 11;
+    }
+    if (band.contains("\u804c\u4e1a")) {
+      return 10;
+    }
+    int dIndex = band.indexOf('d');
+    if (dIndex > 0) {
+      return Math.min(9, 4 + playerStrengthHighestNumberBeforeUnit(band.substring(0, dIndex)));
+    }
+    int kIndex = band.indexOf('k');
+    if (kIndex > 0) {
+      return 1;
+    }
+    return 0;
+  }
+
+  private static int playerStrengthHighestNumberBeforeUnit(String raw) {
+    int highest = 0;
+    for (String part : raw.split("-")) {
+      try {
+        highest = Math.max(highest, Integer.parseInt(part.trim()));
+      } catch (NumberFormatException ignored) {
+        // Keep parsing the remaining rank range.
+      }
+    }
+    return highest;
+  }
+
+  private static int playerStrengthLowestNumberBeforeUnit(String raw) {
+    int lowest = Integer.MAX_VALUE;
+    for (String part : raw.split("-")) {
+      try {
+        lowest = Math.min(lowest, Integer.parseInt(part.trim()));
+      } catch (NumberFormatException ignored) {
+        // Keep parsing the remaining rank range.
+      }
+    }
+    return lowest == Integer.MAX_VALUE ? 10 : lowest;
+  }
+
+  private static void playerStrengthDrawRoundedCard(
+      Graphics2D g2, int x, int y, int width, int height) {
+    g2.setColor(new Color(74, 51, 26, 22));
+    g2.fillRoundRect(x + 2, y + 4, width - 4, height - 2, 22, 22);
+    g2.setColor(PlayerStrengthDashboardRoot.CARD);
+    g2.fillRoundRect(x, y, width, height, 22, 22);
+    g2.setColor(new Color(155, 121, 74, 80));
+    g2.drawRoundRect(x, y, width - 1, height - 1, 22, 22);
+  }
+
+  private static BufferedImage playerStrengthImage(String fileName) {
+    String key = "/assets/ui/" + fileName;
+    synchronized (PLAYER_STRENGTH_IMAGE_CACHE) {
+      if (PLAYER_STRENGTH_IMAGE_CACHE.containsKey(key)) {
+        return PLAYER_STRENGTH_IMAGE_CACHE.get(key);
+      }
+      BufferedImage image = null;
+      try (InputStream in = LizzieFrame.class.getResourceAsStream(key)) {
+        if (in != null) {
+          image = ImageIO.read(in);
+        }
+      } catch (IOException ignored) {
+        // Decorative UI images are optional; the custom painting below still works without them.
+      }
+      PLAYER_STRENGTH_IMAGE_CACHE.put(key, image);
+      return image;
+    }
+  }
+
+  private static void playerStrengthDrawImageCover(
+      Graphics2D g2, String fileName, int x, int y, int width, int height, float alpha) {
+    BufferedImage image = playerStrengthImage(fileName);
+    if (image == null || width <= 0 || height <= 0) {
+      return;
+    }
+    double scale = Math.max((double) width / image.getWidth(), (double) height / image.getHeight());
+    int drawWidth = (int) Math.ceil(image.getWidth() * scale);
+    int drawHeight = (int) Math.ceil(image.getHeight() * scale);
+    int drawX = x + (width - drawWidth) / 2;
+    int drawY = y + (height - drawHeight) / 2;
+    playerStrengthDrawImage(g2, image, drawX, drawY, drawWidth, drawHeight, alpha);
+  }
+
+  private static void playerStrengthDrawImageContain(
+      Graphics2D g2, String fileName, int x, int y, int width, int height, float alpha) {
+    BufferedImage image = playerStrengthImage(fileName);
+    if (image == null || width <= 0 || height <= 0) {
+      return;
+    }
+    double scale = Math.min((double) width / image.getWidth(), (double) height / image.getHeight());
+    int drawWidth = (int) Math.round(image.getWidth() * scale);
+    int drawHeight = (int) Math.round(image.getHeight() * scale);
+    int drawX = x + (width - drawWidth) / 2;
+    int drawY = y + (height - drawHeight) / 2;
+    playerStrengthDrawImage(g2, image, drawX, drawY, drawWidth, drawHeight, alpha);
+  }
+
+  private static void playerStrengthDrawImage(
+      Graphics2D g2, BufferedImage image, int x, int y, int width, int height, float alpha) {
+    Composite oldComposite = g2.getComposite();
+    Object oldInterpolation = g2.getRenderingHint(RenderingHints.KEY_INTERPOLATION);
+    g2.setRenderingHint(
+        RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BICUBIC);
+    g2.setComposite(
+        AlphaComposite.getInstance(AlphaComposite.SRC_OVER, playerStrengthClampAlpha(alpha)));
+    g2.drawImage(image, x, y, width, height, null);
+    g2.setComposite(oldComposite);
+    if (oldInterpolation != null) {
+      g2.setRenderingHint(RenderingHints.KEY_INTERPOLATION, oldInterpolation);
+    }
+  }
+
+  private static float playerStrengthClampAlpha(float alpha) {
+    return Math.max(0.0f, Math.min(1.0f, alpha));
+  }
+
+  private static void playerStrengthDrawStone(
+      Graphics2D g2, boolean black, int x, int y, int size) {
+    Paint old = g2.getPaint();
+    g2.setPaint(
+        new GradientPaint(
+            x,
+            y,
+            black ? new Color(18, 19, 21) : new Color(255, 255, 248),
+            x + size,
+            y + size,
+            black ? new Color(74, 75, 75) : new Color(214, 208, 196)));
+    g2.fillOval(x, y, size, size);
+    g2.setColor(black ? new Color(255, 255, 255, 70) : new Color(70, 58, 42, 110));
+    g2.drawOval(x, y, size, size);
+    g2.setColor(new Color(255, 255, 255, black ? 55 : 170));
+    g2.fillOval(x + size / 5, y + size / 6, Math.max(8, size / 3), Math.max(8, size / 3));
+    g2.setPaint(old);
+  }
+
+  private static void playerStrengthDrawGeneratedStone(
+      Graphics2D g2, boolean black, int x, int y, int size, float alpha) {
+    String fileName = black ? "player_strength_black_stone.png" : "player_strength_white_stone.png";
+    if (playerStrengthImage(fileName) != null) {
+      playerStrengthDrawImageContain(g2, fileName, x, y, size, size, alpha);
+      return;
+    }
+    playerStrengthDrawStone(g2, black, x, y, size);
+  }
+
+  private static void playerStrengthDrawInfoBadge(
+      Graphics2D g2, int x, int y, int width, int height, float alpha) {
+    int diameter = Math.max(14, Math.min(width, height) - 2);
+    int drawX = x + (width - diameter) / 2;
+    int drawY = y + (height - diameter) / 2;
+    Composite oldComposite = g2.getComposite();
+    Paint oldPaint = g2.getPaint();
+    Stroke oldStroke = g2.getStroke();
+    Font oldFont = g2.getFont();
+    g2.setComposite(
+        AlphaComposite.getInstance(AlphaComposite.SRC_OVER, playerStrengthClampAlpha(alpha)));
+    g2.setPaint(
+        new GradientPaint(
+            drawX,
+            drawY,
+            new Color(253, 242, 211),
+            drawX + diameter,
+            drawY + diameter,
+            new Color(226, 168, 75)));
+    g2.fillOval(drawX, drawY, diameter, diameter);
+    g2.setStroke(new BasicStroke(1.4f));
+    g2.setColor(new Color(137, 86, 30, 150));
+    g2.drawOval(drawX, drawY, diameter - 1, diameter - 1);
+    g2.setFont(new Font(Config.sysDefaultFontName, Font.BOLD, Math.max(12, diameter / 2 + 2)));
+    g2.setColor(new Color(105, 67, 29));
+    FontMetrics metrics = g2.getFontMetrics();
+    String mark = "!";
+    int textX = drawX + (diameter - metrics.stringWidth(mark)) / 2;
+    int textY = drawY + (diameter - metrics.getHeight()) / 2 + metrics.getAscent();
+    g2.drawString(mark, textX, textY);
+    g2.setFont(oldFont);
+    g2.setStroke(oldStroke);
+    g2.setPaint(oldPaint);
+    g2.setComposite(oldComposite);
+  }
+
+  private static void playerStrengthDrawText(
+      Graphics2D g2, String text, int x, int y, Color color, int style, int size) {
+    g2.setFont(new Font(Config.sysDefaultFontName, style, size));
+    g2.setColor(color);
+    g2.drawString(text, x, y);
+  }
+
+  private static void playerStrengthDrawFittedText(
+      Graphics2D g2, String text, int x, int y, int maxWidth, Color color, int style, int size) {
+    String safeText = text == null ? "" : text;
+    int safeWidth = Math.max(16, maxWidth);
+    int fontSize = Math.max(10, size);
+    Font font = new Font(Config.sysDefaultFontName, style, fontSize);
+    g2.setFont(font);
+    FontMetrics metrics = g2.getFontMetrics();
+    while (fontSize > 10 && metrics.stringWidth(safeText) > safeWidth) {
+      fontSize--;
+      font = new Font(Config.sysDefaultFontName, style, fontSize);
+      g2.setFont(font);
+      metrics = g2.getFontMetrics();
+    }
+    if (metrics.stringWidth(safeText) > safeWidth) {
+      safeText = playerStrengthEllipsize(safeText, metrics, safeWidth);
+    }
+    g2.setColor(color);
+    g2.drawString(safeText, x, y);
+  }
+
+  private static String playerStrengthEllipsize(String text, FontMetrics metrics, int maxWidth) {
+    if (text == null || text.isEmpty() || metrics.stringWidth(text) <= maxWidth) {
+      return text == null ? "" : text;
+    }
+    String ellipsis = "...";
+    int end = text.length();
+    while (end > 0 && metrics.stringWidth(text.substring(0, end) + ellipsis) > maxWidth) {
+      end--;
+    }
+    return end <= 0 ? ellipsis : text.substring(0, end) + ellipsis;
+  }
+
+  private static void playerStrengthDrawBar(
+      Graphics2D g2, int x, int y, int width, double fraction, Color fill) {
+    int height = 8;
+    g2.setColor(new Color(223, 218, 205));
+    g2.fillRoundRect(x, y, width, height, height, height);
+    g2.setColor(fill);
+    g2.fillRoundRect(
+        x,
+        y,
+        (int) Math.round(width * playerStrengthClamp(fraction, 0.0, 1.0)),
+        height,
+        height,
+        height);
+  }
+
+  private static Color playerStrengthMoveRankColor(MoveRankDefinition.Rank rank) {
+    return rank == null
+        ? PlayerStrengthDashboardRoot.MUTED_TEXT
+        : rank.color(Lizzie.config != null && Lizzie.config.useMorandiColors);
+  }
+
+  private static final class PlayerStrengthSegment {
+    private final int firstMove;
+    private final int lastMove;
+    private final PlayerStrengthEstimator.SideReport report;
+
+    private PlayerStrengthSegment(
+        int firstMove, int lastMove, PlayerStrengthEstimator.SideReport report) {
+      this.firstMove = firstMove;
+      this.lastMove = lastMove;
+      this.report = report;
+    }
+  }
+
+  private static final class PlayerStrengthDashboardRoot extends JPanel {
+    private static final long serialVersionUID = 1L;
+    private static final Color BACKGROUND = new Color(248, 243, 233);
+    private static final Color PAPER = new Color(255, 252, 245);
+    private static final Color CARD = new Color(255, 253, 247, 235);
+    private static final Color TEXT = new Color(47, 35, 22);
+    private static final Color MUTED_TEXT = new Color(130, 119, 104);
+    private static final Color ACCENT = new Color(63, 119, 83);
+    private static final Color ACCENT_DARK = new Color(75, 51, 22);
+    private static final Color GOLD = new Color(183, 129, 45);
+    private static final Color LINE = new Color(219, 207, 188);
+
+    @Override
+    protected void paintComponent(Graphics g) {
+      super.paintComponent(g);
+      Graphics2D g2 = (Graphics2D) g.create();
+      g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+      if (playerStrengthImage("player_strength_bg.png") != null) {
+        playerStrengthDrawImageCover(
+            g2, "player_strength_bg.png", 0, 0, getWidth(), getHeight(), 1.0f);
+        g2.setColor(new Color(255, 252, 245, 104));
+        g2.fillRect(0, 0, getWidth(), getHeight());
+      } else {
+        g2.setPaint(new GradientPaint(0, 0, PAPER, 0, getHeight(), BACKGROUND));
+        g2.fillRect(0, 0, getWidth(), getHeight());
+      }
+      g2.setColor(new Color(255, 255, 255, 46));
+      g2.fillRoundRect(18, 18, Math.max(0, getWidth() - 36), Math.max(0, getHeight() - 36), 28, 28);
+      g2.dispose();
+    }
+
+    private PlayerStrengthDashboardRoot() {
+      setOpaque(false);
+    }
+  }
+
+  private static final class PlayerStrengthHeaderMark extends JComponent {
+    private static final long serialVersionUID = 1L;
+
+    private PlayerStrengthHeaderMark() {
+      setPreferredSize(new Dimension(62, 50));
+    }
+
+    @Override
+    protected void paintComponent(Graphics g) {
+      Graphics2D g2 = (Graphics2D) g.create();
+      g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+      int blackSize = 30;
+      int whiteSize = 24;
+      int blackX = 8;
+      int blackY = Math.max(6, (getHeight() - blackSize) / 2);
+      int whiteX = blackX + 22;
+      int whiteY = blackY + 6;
+      g2.setColor(new Color(190, 137, 55, 60));
+      g2.fillRoundRect(4, 5, Math.max(42, getWidth() - 10), Math.max(34, getHeight() - 10), 18, 18);
+      playerStrengthDrawStone(g2, true, blackX, blackY, blackSize);
+      playerStrengthDrawStone(g2, false, whiteX, whiteY, whiteSize);
+      g2.dispose();
+    }
+  }
+
+  private static final class PlayerStrengthDetailButton extends JButton {
+    private static final long serialVersionUID = 1L;
+    private final boolean compact;
+
+    private PlayerStrengthDetailButton(String text, boolean compact) {
+      super(text);
+      this.compact = compact;
+      setFocusable(false);
+      setContentAreaFilled(false);
+      setBorderPainted(false);
+      setOpaque(false);
+      setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+      setForeground(PlayerStrengthDashboardRoot.ACCENT_DARK);
+      setFont(new Font(Config.sysDefaultFontName, Font.BOLD, Config.frameFontSize + 1));
+      setBorder(new EmptyBorder(0, 0, 0, 0));
+      setPreferredSize(new Dimension(compact ? 112 : 104, 42));
+    }
+
+    @Override
+    protected void paintComponent(Graphics g) {
+      Graphics2D g2 = (Graphics2D) g.create();
+      g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+      Color fill =
+          getModel().isRollover() ? new Color(238, 228, 207, 238) : new Color(242, 235, 222, 210);
+      Color line =
+          getModel().isRollover() ? new Color(183, 129, 45, 160) : new Color(207, 194, 170, 130);
+      g2.setColor(fill);
+      g2.fillRoundRect(0, 0, getWidth() - 1, getHeight() - 1, 22, 22);
+      g2.setColor(line);
+      g2.drawRoundRect(0, 0, getWidth() - 1, getHeight() - 1, 22, 22);
+      if (compact) {
+        playerStrengthDrawInfoBadge(g2, 12, 9, 22, 24, 0.95f);
+      } else {
+        g2.setColor(new Color(183, 129, 45, 170));
+        g2.fillRoundRect(13, getHeight() / 2 - 7, 18, 14, 8, 8);
+        g2.setColor(new Color(255, 253, 247, 220));
+        g2.drawLine(20, getHeight() / 2 - 3, 24, getHeight() / 2 - 3);
+        g2.drawLine(22, getHeight() / 2 - 5, 22, getHeight() / 2 - 1);
+      }
+      playerStrengthDrawFittedText(
+          g2,
+          getText(),
+          compact ? 42 : 40,
+          getHeight() / 2 + 5,
+          getWidth() - (compact ? 52 : 48),
+          getForeground(),
+          Font.BOLD,
+          Config.frameFontSize + 1);
+      g2.dispose();
+    }
+  }
+
+  private static final class PlayerStrengthModelCombo
+      extends JComboBox<PlayerStrengthEstimator.StrengthModel> {
+    private static final long serialVersionUID = 1L;
+    private transient boolean rollover;
+
+    private PlayerStrengthModelCombo(PlayerStrengthEstimator.StrengthModel[] models) {
+      super(models);
+      setOpaque(false);
+      setBorder(new EmptyBorder(0, 0, 0, 0));
+      setFont(new Font(Config.sysDefaultFontName, Font.BOLD, Config.frameFontSize + 1));
+      setForeground(PlayerStrengthDashboardRoot.TEXT);
+      setPreferredSize(new Dimension(260, 42));
+      setMaximumRowCount(Math.min(8, Math.max(3, models == null ? 3 : models.length)));
+      setRenderer(new PlayerStrengthModelComboRenderer());
+      setUI(new PlayerStrengthModelComboUI());
+      MouseAdapter hoverListener =
+          new MouseAdapter() {
+            @Override
+            public void mouseEntered(MouseEvent e) {
+              rollover = true;
+              repaint();
+            }
+
+            @Override
+            public void mouseExited(MouseEvent e) {
+              rollover = false;
+              repaint();
+            }
+          };
+      addMouseListener(hoverListener);
+    }
+
+    @Override
+    public void updateUI() {
+      super.updateUI();
+      if (getRenderer() instanceof PlayerStrengthModelComboRenderer) {
+        setUI(new PlayerStrengthModelComboUI());
+      }
+    }
+
+    @Override
+    protected void paintComponent(Graphics g) {
+      Graphics2D g2 = (Graphics2D) g.create();
+      g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+      int width = getWidth();
+      int height = getHeight();
+      boolean open = isPopupVisible();
+      Color fill = open || rollover ? new Color(248, 239, 221, 242) : new Color(255, 252, 245, 226);
+      Color line = open || rollover ? new Color(183, 129, 45, 185) : new Color(207, 194, 170, 150);
+      g2.setColor(new Color(120, 82, 35, rollover ? 28 : 16));
+      g2.fillRoundRect(1, 2, width - 2, height - 2, 23, 23);
+      g2.setColor(fill);
+      g2.fillRoundRect(0, 0, width - 1, height - 2, 23, 23);
+      g2.setColor(line);
+      g2.drawRoundRect(0, 0, width - 1, height - 2, 23, 23);
+
+      String label = Lizzie.resourceBundle.getString("PlayerStrengthEstimate.model");
+      String value = selectedModelName();
+      int textX = 16;
+      int labelY = 15;
+      int valueY = 32;
+      g2.setFont(
+          new Font(Config.sysDefaultFontName, Font.PLAIN, Math.max(10, Config.frameFontSize - 1)));
+      g2.setColor(PlayerStrengthDashboardRoot.MUTED_TEXT);
+      g2.drawString(label, textX, labelY);
+      g2.setFont(new Font(Config.sysDefaultFontName, Font.BOLD, Config.frameFontSize + 1));
+      g2.setColor(PlayerStrengthDashboardRoot.TEXT);
+      playerStrengthDrawFittedText(
+          g2,
+          value,
+          textX,
+          valueY,
+          Math.max(40, width - 56),
+          PlayerStrengthDashboardRoot.TEXT,
+          Font.BOLD,
+          Config.frameFontSize + 1);
+
+      int arrowX = width - 28;
+      int arrowY = height / 2 + 2;
+      g2.setColor(PlayerStrengthDashboardRoot.ACCENT_DARK);
+      Polygon arrow = new Polygon();
+      arrow.addPoint(arrowX - 5, arrowY - 3);
+      arrow.addPoint(arrowX + 5, arrowY - 3);
+      arrow.addPoint(arrowX, arrowY + 4);
+      g2.fillPolygon(arrow);
+      g2.dispose();
+    }
+
+    private String selectedModelName() {
+      Object item = getSelectedItem();
+      if (item instanceof PlayerStrengthEstimator.StrengthModel) {
+        return playerStrengthModelDisplayName((PlayerStrengthEstimator.StrengthModel) item);
+      }
+      return item == null ? "-" : item.toString();
+    }
+  }
+
+  private static final class PlayerStrengthModelComboUI extends BasicComboBoxUI {
+    @Override
+    protected JButton createArrowButton() {
+      JButton button = new JButton();
+      button.setBorder(new EmptyBorder(0, 0, 0, 0));
+      button.setContentAreaFilled(false);
+      button.setFocusable(false);
+      button.setOpaque(false);
+      button.setPreferredSize(new Dimension(0, 0));
+      return button;
+    }
+
+    @Override
+    protected ComboPopup createPopup() {
+      javax.swing.plaf.basic.BasicComboPopup popup =
+          new javax.swing.plaf.basic.BasicComboPopup(comboBox);
+      popup.setBorder(BorderFactory.createLineBorder(new Color(197, 158, 91, 190), 1));
+      return popup;
+    }
+  }
+
+  private static final class PlayerStrengthModelComboRenderer extends DefaultListCellRenderer {
+    private static final long serialVersionUID = 1L;
+
+    @Override
+    public Component getListCellRendererComponent(
+        JList<?> list, Object value, int index, boolean isSelected, boolean cellHasFocus) {
+      JLabel label =
+          (JLabel) super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus);
+      String text;
+      if (value instanceof PlayerStrengthEstimator.StrengthModel) {
+        text = playerStrengthModelDisplayName((PlayerStrengthEstimator.StrengthModel) value);
+      } else {
+        text = value == null ? "-" : value.toString();
+      }
+      label.setText(text);
+      label.setOpaque(true);
+      label.setFont(new Font(Config.sysDefaultFontName, Font.BOLD, Config.frameFontSize + 1));
+      label.setBorder(new EmptyBorder(8, 14, 8, 14));
+      label.setBackground(isSelected ? new Color(249, 239, 220) : new Color(255, 252, 245));
+      label.setForeground(PlayerStrengthDashboardRoot.TEXT);
+      return label;
+    }
+  }
+
+  private static final class PlayerStrengthTabButton extends JToggleButton {
+    private static final long serialVersionUID = 1L;
+
+    private PlayerStrengthTabButton(String text) {
+      super(text);
+      setFocusable(false);
+      setContentAreaFilled(false);
+      setBorder(new EmptyBorder(10, 54, 10, 54));
+      setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+      setForeground(PlayerStrengthDashboardRoot.TEXT);
+    }
+
+    @Override
+    protected void paintComponent(Graphics g) {
+      Graphics2D g2 = (Graphics2D) g.create();
+      g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+      Color fill = isSelected() ? new Color(249, 239, 220) : new Color(248, 245, 238, 170);
+      Color line = isSelected() ? new Color(197, 158, 91) : new Color(204, 194, 177, 150);
+      g2.setColor(fill);
+      g2.fillRoundRect(0, 0, getWidth() - 1, getHeight() - 1, 20, 20);
+      g2.setColor(line);
+      g2.drawRoundRect(0, 0, getWidth() - 1, getHeight() - 1, 20, 20);
+      if (isSelected()) {
+        g2.setColor(PlayerStrengthDashboardRoot.GOLD);
+        int underlineWidth = Math.max(22, getWidth() / 4);
+        int underlineX = (getWidth() - underlineWidth) / 2;
+        g2.fillRoundRect(underlineX, getHeight() - 5, underlineWidth, 4, 4, 4);
+      }
+      g2.dispose();
+      super.paintComponent(g);
+    }
+  }
+
+  private static final class PlayerStrengthDetailPalette {
+    private static final Color BACKGROUND_TOP = new Color(24, 30, 40);
+    private static final Color BACKGROUND_BOTTOM = new Color(13, 17, 24);
+    private static final Color CARD = new Color(30, 39, 53);
+    private static final Color CARD_SOFT = new Color(39, 49, 65);
+    private static final Color CARD_BORDER = new Color(86, 101, 125);
+    private static final Color TEXT = new Color(248, 250, 252);
+    private static final Color WARM_TEXT = new Color(255, 244, 218);
+    private static final Color MUTED_TEXT = new Color(203, 213, 225);
+    private static final Color SUBTLE_TEXT = new Color(156, 170, 190);
+    private static final Color BLACK_ACCENT = new Color(255, 116, 122);
+    private static final Color BLACK_ACCENT_SOFT = new Color(255, 151, 154);
+    private static final Color WHITE_ACCENT = new Color(118, 180, 255);
+    private static final Color WHITE_ACCENT_SOFT = new Color(153, 204, 255);
+    private static final Color GOLD = new Color(245, 198, 105);
+    private static final Color GREEN = new Color(88, 211, 153);
+    private static final Color TRACK = new Color(48, 58, 76);
+    private static final Color GRID = new Color(116, 132, 158);
+
+    private PlayerStrengthDetailPalette() {}
+  }
+
+  private static final class PlayerStrengthDetailRoot extends JPanel {
+    private static final long serialVersionUID = 1L;
+
+    private PlayerStrengthDetailRoot(LayoutManager layout) {
+      super(layout);
+      setOpaque(false);
+    }
+
+    @Override
+    protected void paintComponent(Graphics g) {
+      Graphics2D g2 = (Graphics2D) g.create();
+      g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+      g2.setPaint(
+          new GradientPaint(
+              0,
+              0,
+              PlayerStrengthDetailPalette.BACKGROUND_TOP,
+              0,
+              Math.max(1, getHeight()),
+              PlayerStrengthDetailPalette.BACKGROUND_BOTTOM));
+      g2.fillRect(0, 0, getWidth(), getHeight());
+      g2.setColor(new Color(255, 255, 255, 14));
+      g2.fillRoundRect(10, 10, Math.max(0, getWidth() - 20), Math.max(0, getHeight() - 20), 28, 28);
+      g2.dispose();
+      super.paintComponent(g);
+    }
+  }
+
+  private static final class PlayerStrengthDetailCard extends JPanel {
+    private static final long serialVersionUID = 1L;
+    private final Color accent;
+
+    private PlayerStrengthDetailCard(Color accent) {
+      this.accent = accent;
+      setOpaque(false);
+    }
+
+    @Override
+    protected void paintComponent(Graphics g) {
+      Graphics2D g2 = (Graphics2D) g.create();
+      g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+      int width = getWidth();
+      int height = getHeight();
+      g2.setPaint(
+          new GradientPaint(
+              0,
+              0,
+              PlayerStrengthDetailPalette.CARD_SOFT,
+              0,
+              Math.max(1, height),
+              PlayerStrengthDetailPalette.CARD));
+      g2.fillRoundRect(0, 0, width - 1, height - 1, 24, 24);
+      g2.setColor(new Color(accent.getRed(), accent.getGreen(), accent.getBlue(), 54));
+      g2.fillRoundRect(1, 1, width - 2, 42, 24, 24);
+      g2.setColor(PlayerStrengthDetailPalette.CARD_BORDER);
+      g2.drawRoundRect(0, 0, width - 1, height - 1, 24, 24);
+      g2.setColor(accent);
+      g2.fillRoundRect(18, 12, 42, 4, 4, 4);
+      g2.dispose();
+      super.paintComponent(g);
+    }
+  }
+
+  private static final class PlayerStrengthAssessmentCard extends JPanel {
+    private static final long serialVersionUID = 1L;
+    private final String sideName;
+    private final boolean black;
+    private final transient PlayerStrengthEstimator.SideReport report;
+
+    private PlayerStrengthAssessmentCard(
+        String sideName, boolean black, PlayerStrengthEstimator.SideReport report) {
+      this.sideName = sideName;
+      this.black = black;
+      this.report = report;
+      setOpaque(false);
+      setPreferredSize(new Dimension(430, 360));
+      setMinimumSize(new Dimension(360, 300));
+      setToolTipText(playerStrengthRankScaleTooltip(report));
+      getAccessibleContext()
+          .setAccessibleName(
+              sideName + " " + Lizzie.resourceBundle.getString("PlayerStrengthEstimate.title"));
+      getAccessibleContext().setAccessibleDescription(playerStrengthRankScalePlainText(report));
+    }
+
+    @Override
+    protected void paintComponent(Graphics g) {
+      Graphics2D g2 = (Graphics2D) g.create();
+      g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+      g2.setRenderingHint(
+          RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
+      int width = getWidth();
+      int height = getHeight();
+      playerStrengthDrawRoundedCard(g2, 0, 0, width, height);
+
+      playerStrengthDrawGeneratedStone(g2, black, 30, 38, 72, 1.0f);
+      int scaleWidth = Math.max(136, Math.min(180, width / 3));
+      int scaleX = Math.max(286, width - scaleWidth - 28);
+      int contentRight = Math.max(260, scaleX - 24);
+      playerStrengthDrawFittedText(
+          g2,
+          sideName + Lizzie.resourceBundle.getString("PlayerStrengthEstimate.performanceSuffix"),
+          118,
+          58,
+          contentRight - 118,
+          PlayerStrengthDashboardRoot.TEXT,
+          Font.BOLD,
+          Config.frameFontSize + 6);
+      playerStrengthDrawFittedText(
+          g2,
+          playerStrengthEstimateText(report),
+          118,
+          122,
+          contentRight - 118,
+          black ? PlayerStrengthDashboardRoot.ACCENT_DARK : PlayerStrengthDashboardRoot.GOLD,
+          Font.BOLD,
+          Config.frameFontSize + 15);
+      playerStrengthDrawFittedText(
+          g2,
+          Lizzie.resourceBundle.getString("PlayerStrengthEstimate.confidence")
+              + ": "
+              + playerStrengthConfidenceText(report.confidence),
+          120,
+          154,
+          contentRight - 120,
+          PlayerStrengthDashboardRoot.MUTED_TEXT,
+          Font.PLAIN,
+          Config.frameFontSize + 1);
+
+      drawRankScalePanel(g2, scaleX, 68, scaleWidth, Math.max(178, height - 116));
+      int rowY = 186;
+      drawMetricRow(
+          g2,
+          rowY,
+          Lizzie.resourceBundle.getString("PlayerStrengthEstimate.moves"),
+          String.valueOf(report.sampleCount),
+          playerStrengthClamp(report.sampleCount / 240.0, 0.0, 1.0),
+          PlayerStrengthDashboardRoot.ACCENT,
+          contentRight);
+      drawMetricRow(
+          g2,
+          rowY + 32,
+          Lizzie.resourceBundle.getString("PlayerStrengthEstimate.firstChoice"),
+          playerStrengthPercentText(report.firstChoiceRate),
+          report.firstChoiceRate,
+          PlayerStrengthDashboardRoot.ACCENT,
+          contentRight);
+      drawMetricRow(
+          g2,
+          rowY + 64,
+          Lizzie.resourceBundle.getString("PlayerStrengthEstimate.goodMoveRate"),
+          playerStrengthPercentText(report.moveRankGoodMoveRate),
+          report.moveRankGoodMoveRate,
+          PlayerStrengthDashboardRoot.ACCENT,
+          contentRight);
+      drawMetricRow(
+          g2,
+          rowY + 96,
+          Lizzie.resourceBundle.getString("PlayerStrengthEstimate.avgScoreLoss"),
+          report.averageScoreLossText(),
+          1.0 - playerStrengthClamp(report.averageScoreEquivalentLoss / 8.0, 0.0, 1.0),
+          PlayerStrengthDashboardRoot.GOLD,
+          contentRight);
+      drawMetricRow(
+          g2,
+          rowY + 128,
+          Lizzie.resourceBundle.getString("PlayerStrengthEstimate.weightedScoreLoss"),
+          report.weightedScoreLossText(),
+          1.0 - playerStrengthClamp(report.weightedScoreLoss / 8.0, 0.0, 1.0),
+          PlayerStrengthDashboardRoot.GOLD,
+          contentRight);
+      g2.dispose();
+    }
+
+    private void drawMetricRow(
+        Graphics2D g2,
+        int y,
+        String label,
+        String value,
+        double fraction,
+        Color color,
+        int contentRight) {
+      int labelX = 36;
+      int barWidth = Math.max(74, Math.min(108, contentRight - 238));
+      int barX = Math.max(220, contentRight - barWidth);
+      int valueX = Math.max(164, barX - 76);
+      int labelWidth = Math.max(88, valueX - labelX - 16);
+      int valueWidth = Math.max(42, barX - valueX - 12);
+      g2.setColor(PlayerStrengthDashboardRoot.LINE);
+      g2.drawLine(34, y - 20, contentRight, y - 20);
+      playerStrengthDrawFittedText(
+          g2,
+          label,
+          labelX,
+          y,
+          labelWidth,
+          PlayerStrengthDashboardRoot.TEXT,
+          Font.PLAIN,
+          Config.frameFontSize);
+      playerStrengthDrawFittedText(
+          g2,
+          value,
+          valueX,
+          y,
+          valueWidth,
+          PlayerStrengthDashboardRoot.TEXT,
+          Font.BOLD,
+          Config.frameFontSize + 1);
+      playerStrengthDrawBar(g2, barX, y - 9, barWidth, fraction, color);
+    }
+
+    private void drawRankScalePanel(Graphics2D g2, int x, int y, int width, int height) {
+      String[][] rows = playerStrengthRankScaleRows();
+      int selected =
+          playerStrengthRankScaleSelectedIndex(report == null ? Double.NaN : report.rankValue);
+      int panelY = y;
+      int panelHeight = Math.max(154, height);
+      playerStrengthDrawFittedText(
+          g2,
+          Lizzie.resourceBundle.getString("PlayerStrengthEstimate.rank.scale"),
+          x,
+          panelY - 13,
+          width,
+          PlayerStrengthDashboardRoot.MUTED_TEXT,
+          Font.PLAIN,
+          Math.max(10, Config.frameFontSize - 1));
+      g2.setColor(new Color(252, 249, 241, 176));
+      g2.fillRoundRect(x, panelY, width, panelHeight, 16, 16);
+      g2.setColor(new Color(220, 209, 192));
+      g2.drawRoundRect(x, panelY, width, panelHeight, 16, 16);
+      g2.setFont(
+          new Font(Config.sysDefaultFontName, Font.PLAIN, Math.max(11, Config.frameFontSize - 1)));
+      int rowHeight = Math.max(34, (panelHeight - 12) / rows.length);
+      int rowTop = panelY + 6;
+      for (int i = 0; i < rows.length; i++) {
+        int rowY = rowTop + i * rowHeight;
+        boolean active = i == selected;
+        if (active) {
+          g2.setColor(new Color(235, 222, 199, 235));
+          g2.fillRoundRect(x + 6, rowY, width - 12, rowHeight - 4, 12, 12);
+        }
+        g2.setColor(
+            active ? PlayerStrengthDashboardRoot.ACCENT_DARK : PlayerStrengthDashboardRoot.MUTED_TEXT);
+        g2.fillOval(x + 13, rowY + rowHeight / 2 - 4, 8, 8);
+        playerStrengthDrawFittedText(
+            g2,
+            rows[i][0],
+            x + 28,
+            rowY + rowHeight / 2 + 5,
+            34,
+            active
+                ? PlayerStrengthDashboardRoot.ACCENT_DARK
+                : PlayerStrengthDashboardRoot.MUTED_TEXT,
+            Font.BOLD,
+            Math.max(10, Config.frameFontSize - 1));
+        playerStrengthDrawFittedText(
+            g2,
+            rows[i][1],
+            x + 66,
+            rowY + rowHeight / 2 + 5,
+            width - 74,
+            active ? PlayerStrengthDashboardRoot.ACCENT_DARK : PlayerStrengthDashboardRoot.TEXT,
+            Font.PLAIN,
+            Math.max(10, Config.frameFontSize - 1));
+      }
+    }
+  }
+
+  private static int playerStrengthRankScaleSelectedIndex(double rankValue) {
+    if (!Double.isFinite(rankValue)) {
+      return 3;
+    }
+    if (rankValue >= 12.0) {
+      return 0;
+    }
+    if (rankValue >= 11.0) {
+      return 1;
+    }
+    return rankValue >= 10.0 ? 2 : 3;
+  }
+
+  private static String[][] playerStrengthRankScaleRows() {
+    return new String[][] {
+      {"12+", Lizzie.resourceBundle.getString("PlayerStrengthEstimate.rank.scale.ai")},
+      {"11+", Lizzie.resourceBundle.getString("PlayerStrengthEstimate.rank.scale.topPro")},
+      {"10+", Lizzie.resourceBundle.getString("PlayerStrengthEstimate.rank.scale.pro")},
+      {"<10", Lizzie.resourceBundle.getString("PlayerStrengthEstimate.rank.scale.fox")}
+    };
+  }
+
+  private static String playerStrengthRankScalePlainText(
+      PlayerStrengthEstimator.SideReport report) {
+    StringBuilder builder =
+        new StringBuilder(Lizzie.resourceBundle.getString("PlayerStrengthEstimate.rank.scale"));
+    String current =
+        report == null || !report.hasSamples() ? "-" : playerStrengthRankValueText(report);
+    builder.append(": ").append(current);
+    for (String[] row : playerStrengthRankScaleRows()) {
+      builder.append("; ").append(row[0]).append(" ").append(row[1]);
+    }
+    return builder.toString();
+  }
+
+  private static String playerStrengthRankScaleTooltip(PlayerStrengthEstimator.SideReport report) {
+    StringBuilder builder = new StringBuilder("<html>");
+    builder.append(
+        playerStrengthHtmlEscape(
+            Lizzie.resourceBundle.getString("PlayerStrengthEstimate.rank.scale")));
+    String current =
+        report == null || !report.hasSamples() ? "-" : playerStrengthRankValueText(report);
+    builder.append(": ").append(playerStrengthHtmlEscape(current));
+    for (String[] row : playerStrengthRankScaleRows()) {
+      builder
+          .append("<br>")
+          .append(playerStrengthHtmlEscape(row[0]))
+          .append(" ")
+          .append(playerStrengthHtmlEscape(row[1]));
+    }
+    builder.append("</html>");
+    return builder.toString();
+  }
+
+  private static String playerStrengthHtmlEscape(String value) {
+    if (value == null || value.isEmpty()) {
+      return "";
+    }
+    return value.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
+  }
+
+  private static final class PlayerStrengthMatchSummaryCard extends JPanel {
+    private static final long serialVersionUID = 1L;
+    private final String sideName;
+    private final boolean black;
+    private final transient PlayerStrengthEstimator.SideReport report;
+
+    private PlayerStrengthMatchSummaryCard(
+        String sideName, boolean black, PlayerStrengthEstimator.SideReport report) {
+      this.sideName = sideName;
+      this.black = black;
+      this.report = report;
+      setOpaque(false);
+      setPreferredSize(new Dimension(430, 165));
+    }
+
+    @Override
+    protected void paintComponent(Graphics g) {
+      Graphics2D g2 = (Graphics2D) g.create();
+      g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+      g2.setRenderingHint(
+          RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
+      int width = getWidth();
+      int height = getHeight();
+      playerStrengthDrawRoundedCard(g2, 0, 0, width, height);
+      playerStrengthDrawGeneratedStone(g2, black, 22, 20, 44, 1.0f);
+      playerStrengthDrawText(
+          g2,
+          sideName + Lizzie.resourceBundle.getString("PlayerStrengthEstimate.matchSuffix"),
+          74,
+          50,
+          PlayerStrengthDashboardRoot.TEXT,
+          Font.BOLD,
+          Config.frameFontSize + 5);
+      drawRing(g2, 36, 72, 68, report.matchRate, black);
+      playerStrengthDrawText(
+          g2,
+          playerStrengthPercentText(report.matchRate),
+          118,
+          109,
+          black ? PlayerStrengthDashboardRoot.ACCENT : PlayerStrengthDashboardRoot.GOLD,
+          Font.BOLD,
+          Config.frameFontSize + 14);
+      playerStrengthDrawText(
+          g2,
+          Lizzie.resourceBundle.getString("PlayerStrengthEstimate.match.overallMatch"),
+          120,
+          134,
+          PlayerStrengthDashboardRoot.MUTED_TEXT,
+          Font.PLAIN,
+          Config.frameFontSize);
+
+      int metricX = Math.max(238, width - 250);
+      int columnGap = Math.max(92, Math.min(118, (width - metricX - 34) / 2));
+      int statWidth = Math.max(72, columnGap - 12);
+      drawTinyStat(
+          g2,
+          metricX,
+          62,
+          Lizzie.resourceBundle.getString("PlayerStrengthEstimate.firstChoice"),
+          playerStrengthPercentText(report.firstChoiceRate),
+          statWidth);
+      drawTinyStat(
+          g2,
+          metricX + columnGap,
+          62,
+          Lizzie.resourceBundle.getString("PlayerStrengthEstimate.goodMoveRate"),
+          playerStrengthPercentText(report.moveRankGoodMoveRate),
+          statWidth);
+      drawTinyStat(
+          g2,
+          metricX,
+          122,
+          Lizzie.resourceBundle.getString("PlayerStrengthEstimate.moves"),
+          String.valueOf(report.sampleCount),
+          statWidth);
+      drawTinyStat(
+          g2,
+          metricX + columnGap,
+          122,
+          Lizzie.resourceBundle.getString("PlayerStrengthEstimate.mistakeRate"),
+          playerStrengthPercentText(report.mistakeRate),
+          statWidth);
+      g2.dispose();
+    }
+
+    private void drawRing(Graphics2D g2, int x, int y, int size, double value, boolean black) {
+      Stroke oldStroke = g2.getStroke();
+      g2.setStroke(new BasicStroke(10f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+      g2.setColor(new Color(221, 215, 202));
+      g2.draw(new Arc2D.Double(x, y, size, size, 0, 360, Arc2D.OPEN));
+      g2.setColor(black ? PlayerStrengthDashboardRoot.ACCENT : PlayerStrengthDashboardRoot.GOLD);
+      g2.draw(
+          new Arc2D.Double(
+              x, y, size, size, 90, -360 * playerStrengthClamp(value, 0.0, 1.0), Arc2D.OPEN));
+      g2.setStroke(oldStroke);
+    }
+
+    private void drawTinyStat(Graphics2D g2, int x, int y, String label, String value, int width) {
+      playerStrengthDrawFittedText(
+          g2,
+          label,
+          x,
+          y - 22,
+          width,
+          PlayerStrengthDashboardRoot.MUTED_TEXT,
+          Font.PLAIN,
+          Config.frameFontSize);
+      playerStrengthDrawFittedText(
+          g2,
+          value,
+          x,
+          y + 6,
+          width,
+          PlayerStrengthDashboardRoot.TEXT,
+          Font.BOLD,
+          Config.frameFontSize + 6);
+    }
+  }
+
+  private static final class PlayerStrengthMoveHitMapPanel extends JPanel {
+    private static final long serialVersionUID = 1L;
+    private static final Color MATCH_CHART_BACKGROUND = new Color(44, 51, 65);
+    private static final Color MATCH_BLACK_PANEL = new Color(84, 68, 78);
+    private static final Color MATCH_WHITE_PANEL = new Color(68, 82, 108);
+    private static final Color MATCH_TRACK = new Color(58, 64, 78);
+    private static final Color MATCH_GRID = new Color(255, 255, 255, 38);
+    private static final Color MATCH_AXIS = new Color(120, 130, 146);
+    private static final Color MATCH_TEXT = new Color(248, 248, 242);
+    private static final Color MATCH_MUTED = new Color(214, 218, 225);
+    private static final Color MATCH_BLACK_HIT = new Color(255, 86, 92);
+    private static final Color MATCH_BLACK_GOOD = new Color(255, 122, 124);
+    private static final Color MATCH_WHITE_HIT = new Color(96, 162, 255);
+    private static final Color MATCH_WHITE_GOOD = new Color(126, 184, 255);
+    private final transient PlayerStrengthEstimator.Report report;
+    private final transient List<HitPoint> hitPoints = new ArrayList<>();
+    private transient HitPoint hoveredPoint;
+    private transient Point mousePoint;
+
+    private PlayerStrengthMoveHitMapPanel(PlayerStrengthEstimator.Report report) {
+      this.report = report;
+      setOpaque(false);
+      setPreferredSize(new Dimension(900, 300));
+      setMinimumSize(new Dimension(620, 270));
+      setToolTipText("");
+      ToolTipManager.sharedInstance().registerComponent(this);
+      MouseAdapter hoverListener =
+          new MouseAdapter() {
+            @Override
+            public void mouseMoved(MouseEvent e) {
+              updateHoveredPoint(e.getPoint());
+            }
+
+            @Override
+            public void mouseExited(MouseEvent e) {
+              updateHoveredPoint(null);
+            }
+          };
+      addMouseMotionListener(hoverListener);
+      addMouseListener(hoverListener);
+    }
+
+    @Override
+    public String getToolTipText(MouseEvent event) {
+      HitPoint point = findHitPoint(event.getPoint());
+      return point == null ? null : point.tooltipHtml;
+    }
+
+    @Override
+    protected void paintComponent(Graphics g) {
+      Graphics2D g2 = (Graphics2D) g.create();
+      g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+      g2.setRenderingHint(
+          RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
+      int width = getWidth();
+      int height = getHeight();
+      hitPoints.clear();
+      playerStrengthDrawRoundedCard(g2, 0, 0, width, height);
+      playerStrengthDrawText(
+          g2,
+          Lizzie.resourceBundle.getString("PlayerStrengthEstimate.match.moveMap"),
+          30,
+          40,
+          PlayerStrengthDashboardRoot.TEXT,
+          Font.BOLD,
+          Config.frameFontSize + 4);
+      playerStrengthDrawFittedText(
+          g2,
+          Lizzie.resourceBundle.getString("PlayerStrengthEstimate.match.moveMapHint"),
+          30,
+          62,
+          Math.max(120, width - 60),
+          PlayerStrengthDashboardRoot.MUTED_TEXT,
+          Font.PLAIN,
+          Math.max(10, Config.frameFontSize - 1));
+      drawLegend(g2, Math.max(230, width - 160), 38);
+
+      int chartLeft = 30;
+      int chartTop = 88;
+      int chartTotalWidth = Math.max(220, width - 60);
+      int sideLabelWidth = 54;
+      int statsWidth = Math.max(128, Math.min(156, chartTotalWidth / 4));
+      int chartX = chartLeft + sideLabelWidth;
+      int chartWidth = Math.max(180, chartTotalWidth - sideLabelWidth - statsWidth - 12);
+      int sectionGap = 5;
+      int sectionHeight = Math.max(58, (height - chartTop - 34 - sectionGap) / 2);
+      int maxMove = playerStrengthMaxMove(report);
+      if (!hasSamples(report.black) && !hasSamples(report.white)) {
+        playerStrengthDrawText(
+            g2,
+            Lizzie.resourceBundle.getString("PlayerStrengthEstimate.match.noMoveSamples"),
+            32,
+            120,
+            PlayerStrengthDashboardRoot.MUTED_TEXT,
+            Font.PLAIN,
+            Config.frameFontSize + 2);
+        g2.dispose();
+        return;
+      }
+
+      int blackTop = chartTop;
+      int whiteTop = blackTop + sectionHeight + sectionGap;
+      int panelWidth = chartWidth + statsWidth + 12;
+      int statsX = chartX + chartWidth + 24;
+      g2.setColor(MATCH_CHART_BACKGROUND);
+      g2.fillRoundRect(
+          chartLeft, blackTop - 8, chartTotalWidth, sectionHeight * 2 + sectionGap + 34, 18, 18);
+      drawMoveSection(
+          g2, report.black, chartX, blackTop, chartWidth, panelWidth, sectionHeight, maxMove, true);
+      drawMoveSection(
+          g2,
+          report.white,
+          chartX,
+          whiteTop,
+          chartWidth,
+          panelWidth,
+          sectionHeight,
+          maxMove,
+          false);
+      drawMoveAxis(g2, chartX, whiteTop + sectionHeight + 16, chartWidth, maxMove);
+      drawSectionStats(g2, report.black, statsX, blackTop, sectionHeight, true);
+      drawSectionStats(g2, report.white, statsX, whiteTop, sectionHeight, false);
+      drawHoverTooltip(g2);
+      g2.dispose();
+    }
+
+    private boolean hasSamples(PlayerStrengthEstimator.SideReport sideReport) {
+      return sideReport != null && sideReport.samples != null && !sideReport.samples.isEmpty();
+    }
+
+    private void drawMoveAxis(Graphics2D g2, int x, int y, int width, int maxMove) {
+      g2.setFont(
+          new Font(Config.sysDefaultFontName, Font.PLAIN, Math.max(10, Config.frameFontSize - 1)));
+      g2.setColor(MATCH_AXIS);
+      g2.drawLine(x, y - 10, x + width, y - 10);
+      int step = playerStrengthAxisTickStep(maxMove, width);
+      int endX = playerStrengthMoveToX(maxMove, x, width, maxMove);
+      int lastLabelX = Integer.MIN_VALUE;
+      for (int move = 1; move <= maxMove; move += step) {
+        int tickX = playerStrengthMoveToX(move, x, width, maxMove);
+        if (move != 1 && move != maxMove && endX - tickX < 42) {
+          continue;
+        }
+        g2.drawLine(tickX, y - 14, tickX, y - 7);
+        String label = String.valueOf(move);
+        int labelWidth = g2.getFontMetrics().stringWidth(label);
+        g2.drawString(label, tickX - labelWidth / 2, y + 5);
+        lastLabelX = tickX;
+      }
+      String endLabel = String.valueOf(maxMove);
+      if (maxMove > 1 && endX - lastLabelX >= 42) {
+        g2.drawLine(endX, y - 14, endX, y - 7);
+        g2.drawString(endLabel, endX - g2.getFontMetrics().stringWidth(endLabel) / 2, y + 5);
+      }
+    }
+
+    private void drawMoveSection(
+        Graphics2D g2,
+        PlayerStrengthEstimator.SideReport sideReport,
+        int x,
+        int top,
+        int width,
+        int panelWidth,
+        int height,
+        int maxMove,
+        boolean black) {
+      int panelX = x - 12;
+      g2.setColor(black ? MATCH_BLACK_PANEL : MATCH_WHITE_PANEL);
+      g2.fillRoundRect(panelX, top, panelWidth, height, 8, 8);
+      drawMoveGrid(g2, x, top, width, height, maxMove);
+
+      int laneHeight = Math.max(7, Math.min(9, height / 8));
+      int firstY = top + 18;
+      int goodY = top + Math.max(38, height / 2 + 3);
+      drawTrack(g2, x, firstY, width, laneHeight);
+      drawTrack(g2, x, goodY, width, laneHeight);
+      drawRowLabel(
+          g2,
+          Lizzie.resourceBundle.getString("PlayerStrengthEstimate.match.firstChoice"),
+          x - 12,
+          firstY + laneHeight,
+          true);
+      drawRowLabel(
+          g2,
+          Lizzie.resourceBundle.getString("PlayerStrengthEstimate.match.goodMove"),
+          x - 12,
+          goodY + laneHeight,
+          true);
+      if (!hasSamples(sideReport)) {
+        return;
+      }
+
+      List<PlayerStrengthEstimator.Sample> samples = new ArrayList<>(sideReport.samples);
+      samples.sort(Comparator.comparingInt(sample -> sample.moveNumber));
+      int blockWidth = playerStrengthMoveBlockWidth(width, maxMove);
+      for (PlayerStrengthEstimator.Sample sample : samples) {
+        boolean firstChoice = sample.firstChoice;
+        boolean goodMove = sample.moveRankCategory != null && sample.moveRankCategory.isGoodMove();
+        if (!firstChoice && !goodMove) {
+          continue;
+        }
+        int blockX = playerStrengthMoveToX(sample.moveNumber, x, width, maxMove);
+        if (firstChoice) {
+          HitPoint hitPoint =
+              createHitPoint(
+                  sample, black, HitLane.FIRST_CHOICE, blockX, firstY - 7, blockWidth, laneHeight);
+          hitPoints.add(hitPoint);
+          drawMoveBlock(g2, hitPoint, firstY, goodY, laneHeight, blockWidth);
+        }
+        if (goodMove) {
+          HitPoint hitPoint =
+              createHitPoint(
+                  sample, black, HitLane.GOOD_MOVE, blockX, goodY - 7, blockWidth, laneHeight);
+          hitPoints.add(hitPoint);
+          drawMoveBlock(g2, hitPoint, firstY, goodY, laneHeight, blockWidth);
+        }
+      }
+    }
+
+    private int playerStrengthMoveBlockWidth(int width, int maxMove) {
+      return Math.max(3, Math.min(8, width / Math.max(1, maxMove)));
+    }
+
+    private void drawMoveGrid(Graphics2D g2, int x, int top, int width, int height, int maxMove) {
+      g2.setColor(MATCH_GRID);
+      int step = playerStrengthAxisTickStep(maxMove, width);
+      for (int move = 1; move <= maxMove; move += step) {
+        int tickX = playerStrengthMoveToX(move, x, width, maxMove);
+        g2.drawLine(tickX, top, tickX, top + height);
+      }
+      g2.setColor(new Color(255, 255, 255, 55));
+      g2.drawLine(x, top + height - 1, x + width, top + height - 1);
+    }
+
+    private void drawTrack(Graphics2D g2, int x, int y, int width, int height) {
+      g2.setColor(MATCH_TRACK);
+      g2.fillRect(x, y, width, height);
+    }
+
+    private void drawRowLabel(Graphics2D g2, String text, int rightX, int y, boolean alignRight) {
+      g2.setFont(
+          new Font(Config.sysDefaultFontName, Font.PLAIN, Math.max(10, Config.frameFontSize - 1)));
+      g2.setColor(MATCH_MUTED);
+      int textWidth = g2.getFontMetrics().stringWidth(text);
+      g2.drawString(text, alignRight ? rightX - textWidth : rightX, y);
+    }
+
+    private HitPoint createHitPoint(
+        PlayerStrengthEstimator.Sample sample,
+        boolean black,
+        HitLane lane,
+        int x,
+        int y,
+        int width,
+        int height) {
+      Rectangle hitBounds = new Rectangle(x - 3, y, Math.max(8, width + 6), height + 14);
+      return new HitPoint(sample, black, lane, x, hitBounds, buildTooltipHtml(sample, black, lane));
+    }
+
+    private void drawMoveBlock(
+        Graphics2D g2, HitPoint point, int firstY, int goodY, int laneHeight, int blockWidth) {
+      PlayerStrengthEstimator.Sample sample = point.sample;
+      Color primary = point.black ? MATCH_BLACK_HIT : MATCH_WHITE_HIT;
+      Color good = point.black ? MATCH_BLACK_GOOD : MATCH_WHITE_GOOD;
+      boolean hovered = isHovered(point);
+      if (point.lane == HitLane.FIRST_CHOICE) {
+        drawTimelineBlock(g2, point.x, firstY, blockWidth, laneHeight, primary, hovered);
+      }
+      if (point.lane == HitLane.GOOD_MOVE) {
+        drawTimelineBlock(g2, point.x, goodY, blockWidth, laneHeight, good, hovered);
+      }
+      if (hovered) {
+        g2.setColor(new Color(255, 255, 255, 220));
+        g2.drawRoundRect(
+            point.hitBounds.x,
+            point.hitBounds.y,
+            point.hitBounds.width,
+            point.hitBounds.height,
+            8,
+            8);
+      }
+    }
+
+    private void drawTimelineBlock(
+        Graphics2D g2, int x, int y, int width, int height, Color color, boolean hovered) {
+      g2.setColor(hovered ? color.brighter() : color);
+      g2.fillRect(x, y, Math.max(3, width), height);
+    }
+
+    private void drawSectionStats(
+        Graphics2D g2,
+        PlayerStrengthEstimator.SideReport sideReport,
+        int x,
+        int top,
+        int height,
+        boolean black) {
+      int stoneSize = Math.max(20, Math.min(24, height / 3));
+      int stoneY = top + Math.max(6, (height - stoneSize) / 2);
+      int textX = x + stoneSize + 9;
+      int firstBaseline = top + Math.max(27, height / 2 - 2);
+      int goodBaseline = Math.min(top + height - 9, firstBaseline + 18);
+      playerStrengthDrawGeneratedStone(g2, black, x, stoneY, stoneSize, 0.95f);
+      g2.setFont(
+          new Font(Config.sysDefaultFontName, Font.PLAIN, Math.max(10, Config.frameFontSize)));
+      g2.setColor(MATCH_TEXT);
+      drawStat(
+          g2,
+          textX,
+          firstBaseline,
+          Lizzie.resourceBundle.getString("PlayerStrengthEstimate.match.firstChoice"),
+          playerStrengthPercentText(sideReport.firstChoiceRate));
+      drawStat(
+          g2,
+          textX,
+          goodBaseline,
+          Lizzie.resourceBundle.getString("PlayerStrengthEstimate.match.goodMove"),
+          playerStrengthPercentText(sideReport.moveRankGoodMoveRate));
+    }
+
+    private void drawStat(Graphics2D g2, int x, int y, String label, String value) {
+      g2.drawString(label + " " + value, x, y);
+    }
+
+    private HitPoint findHitPoint(Point point) {
+      if (point == null || hitPoints.isEmpty()) {
+        return null;
+      }
+      HitPoint best = null;
+      double bestDistance = Double.MAX_VALUE;
+      for (HitPoint hitPoint : hitPoints) {
+        if (!hitPoint.hitBounds.contains(point)) {
+          continue;
+        }
+        double distance =
+            point.distanceSq(hitPoint.hitBounds.getCenterX(), hitPoint.hitBounds.getCenterY());
+        if (distance < bestDistance) {
+          bestDistance = distance;
+          best = hitPoint;
+        }
+      }
+      return best;
+    }
+
+    private void updateHoveredPoint(Point point) {
+      HitPoint next = findHitPoint(point);
+      if (hoveredPoint == next && Objects.equals(mousePoint, point)) {
+        return;
+      }
+      hoveredPoint = next;
+      mousePoint = point == null ? null : new Point(point);
+      setCursor(
+          hoveredPoint == null
+              ? Cursor.getDefaultCursor()
+              : Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+      repaint();
+    }
+
+    private boolean isHovered(HitPoint point) {
+      return hoveredPoint != null
+          && hoveredPoint.sample == point.sample
+          && hoveredPoint.black == point.black
+          && hoveredPoint.lane == point.lane;
+    }
+
+    private String buildTooltipHtml(
+        PlayerStrengthEstimator.Sample sample, boolean black, HitLane lane) {
+      String sideName = Lizzie.resourceBundle.getString(black ? "Menu.Black" : "Menu.White");
+      String category = hitLaneSampleLabel(sample, lane);
+      String aiChoice =
+          sample.aiRank < 0
+              ? Lizzie.resourceBundle.getString("PlayerStrengthEstimate.match.tooltipUnknown")
+              : sample.firstChoice
+                  ? Lizzie.resourceBundle.getString("PlayerStrengthEstimate.match.firstChoice")
+                  : String.format(
+                      Locale.US,
+                      Lizzie.resourceBundle.getString("PlayerStrengthEstimate.match.tooltipAiRank"),
+                      sample.aiRank + 1);
+      String scoreLoss =
+          sample.scoreLoss.isPresent()
+              ? String.format(Locale.US, "%.1f", sample.scoreLoss.get())
+              : Lizzie.resourceBundle.getString("PlayerStrengthEstimate.match.tooltipUnknown");
+      return "<html><b>"
+          + sideName
+          + " "
+          + String.format(
+              Locale.US,
+              Lizzie.resourceBundle.getString("PlayerStrengthEstimate.match.tooltipMove"),
+              sample.moveNumber)
+          + "</b><br>"
+          + category
+          + "<br>"
+          + Lizzie.resourceBundle.getString("PlayerStrengthEstimate.match.tooltipAiChoice")
+          + ": "
+          + aiChoice
+          + "<br>"
+          + Lizzie.resourceBundle.getString("PlayerStrengthEstimate.match.tooltipWinrateLoss")
+          + ": "
+          + String.format(Locale.US, "%.1f%%", sample.winrateLoss)
+          + "<br>"
+          + Lizzie.resourceBundle.getString("PlayerStrengthEstimate.match.tooltipScoreLoss")
+          + ": "
+          + scoreLoss
+          + "<br>"
+          + Lizzie.resourceBundle.getString("PlayerStrengthEstimate.match.tooltipComplexity")
+          + ": "
+          + playerStrengthSampleComplexityText(sample.complexity)
+          + "</html>";
+    }
+
+    private void drawHoverTooltip(Graphics2D g2) {
+      if (hoveredPoint == null || mousePoint == null) {
+        return;
+      }
+      PlayerStrengthEstimator.Sample sample = hoveredPoint.sample;
+      String sideName =
+          Lizzie.resourceBundle.getString(hoveredPoint.black ? "Menu.Black" : "Menu.White");
+      String title =
+          sideName
+              + " "
+              + String.format(
+                  Locale.US,
+                  Lizzie.resourceBundle.getString("PlayerStrengthEstimate.match.tooltipMove"),
+                  sample.moveNumber);
+      String detail =
+          hitLaneSampleLabel(sample, hoveredPoint.lane)
+              + "  "
+              + Lizzie.resourceBundle.getString("PlayerStrengthEstimate.match.tooltipWinrateLoss")
+              + " "
+              + String.format(Locale.US, "%.1f%%", sample.winrateLoss);
+      g2.setFont(
+          new Font(Config.sysDefaultFontName, Font.BOLD, Math.max(11, Config.frameFontSize)));
+      FontMetrics titleMetrics = g2.getFontMetrics();
+      g2.setFont(
+          new Font(Config.sysDefaultFontName, Font.PLAIN, Math.max(10, Config.frameFontSize - 1)));
+      FontMetrics detailMetrics = g2.getFontMetrics();
+      int boxWidth =
+          Math.max(titleMetrics.stringWidth(title), detailMetrics.stringWidth(detail)) + 28;
+      int boxHeight = titleMetrics.getHeight() + detailMetrics.getHeight() + 18;
+      int x = Math.min(Math.max(12, mousePoint.x + 16), Math.max(12, getWidth() - boxWidth - 12));
+      int y = mousePoint.y - boxHeight - 14;
+      if (y < 8) {
+        y = Math.min(getHeight() - boxHeight - 8, mousePoint.y + 18);
+      }
+      g2.setColor(new Color(41, 36, 27, 235));
+      g2.fillRoundRect(x, y, boxWidth, boxHeight, 14, 14);
+      g2.setColor(new Color(255, 245, 221, 180));
+      g2.drawRoundRect(x, y, boxWidth, boxHeight, 14, 14);
+      g2.setFont(
+          new Font(Config.sysDefaultFontName, Font.BOLD, Math.max(11, Config.frameFontSize)));
+      g2.setColor(new Color(255, 248, 235));
+      g2.drawString(title, x + 14, y + 14 + titleMetrics.getAscent());
+      g2.setFont(
+          new Font(Config.sysDefaultFontName, Font.PLAIN, Math.max(10, Config.frameFontSize - 1)));
+      g2.setColor(new Color(231, 217, 192));
+      g2.drawString(detail, x + 14, y + 15 + titleMetrics.getHeight() + detailMetrics.getAscent());
+    }
+
+    private void drawLegend(Graphics2D g2, int x, int y) {
+      g2.setFont(
+          new Font(Config.sysDefaultFontName, Font.PLAIN, Math.max(10, Config.frameFontSize - 1)));
+      drawLegendBlock(g2, x, y - 9, MATCH_BLACK_HIT);
+      g2.setColor(PlayerStrengthDashboardRoot.TEXT);
+      g2.drawString(Lizzie.resourceBundle.getString("Menu.Black"), x + 19, y);
+      drawLegendBlock(g2, x + 66, y - 9, MATCH_WHITE_HIT);
+      g2.setColor(PlayerStrengthDashboardRoot.TEXT);
+      g2.drawString(Lizzie.resourceBundle.getString("Menu.White"), x + 85, y);
+    }
+
+    private void drawLegendBlock(Graphics2D g2, int x, int y, Color color) {
+      g2.setColor(color);
+      g2.fillRect(x, y, 14, 8);
+    }
+
+    private String hitLaneLabel(HitLane lane) {
+      return lane == HitLane.FIRST_CHOICE
+          ? Lizzie.resourceBundle.getString("PlayerStrengthEstimate.match.firstChoice")
+          : Lizzie.resourceBundle.getString("PlayerStrengthEstimate.match.goodMove");
+    }
+
+    private String hitLaneSampleLabel(PlayerStrengthEstimator.Sample sample, HitLane lane) {
+      return sample.firstChoice
+          ? Lizzie.resourceBundle.getString("PlayerStrengthEstimate.match.firstChoice")
+          : hitLaneLabel(lane);
+    }
+
+    private String playerStrengthSampleComplexityText(double complexity) {
+      return String.format(Locale.US, "%.0f", playerStrengthClamp(complexity, 0.0, 1.0) * 100.0);
+    }
+
+    private enum HitLane {
+      FIRST_CHOICE,
+      GOOD_MOVE
+    }
+
+    private static final class HitPoint {
+      private final PlayerStrengthEstimator.Sample sample;
+      private final boolean black;
+      private final HitLane lane;
+      private final int x;
+      private final Rectangle hitBounds;
+      private final String tooltipHtml;
+
+      private HitPoint(
+          PlayerStrengthEstimator.Sample sample,
+          boolean black,
+          HitLane lane,
+          int x,
+          Rectangle hitBounds,
+          String tooltipHtml) {
+        this.sample = sample;
+        this.black = black;
+        this.lane = lane;
+        this.x = x;
+        this.hitBounds = hitBounds;
+        this.tooltipHtml = tooltipHtml;
+      }
+    }
+  }
+
+  private static final class PlayerStrengthPerformanceRankPanel extends JPanel {
+    private static final long serialVersionUID = 1L;
+    private static final Color TEXT = PlayerStrengthDashboardRoot.TEXT;
+    private static final Color MUTED = PlayerStrengthDashboardRoot.MUTED_TEXT;
+    private static final Color INNER_CARD = new Color(255, 252, 244, 236);
+    private static final Color INNER_BORDER = new Color(208, 183, 142, 120);
+    private static final Color TRACK = new Color(226, 220, 206, 210);
+    private static final Color TRACK_BORDER = new Color(200, 186, 160, 120);
+    private static final Color FIRST_CHOICE = new Color(21, 136, 67);
+    private static final Color COUNT_TEXT = new Color(73, 59, 41);
+    private static final Color SEPARATOR = new Color(219, 190, 143, 115);
+    private final transient PlayerStrengthEstimator.Report report;
+
+    private PlayerStrengthPerformanceRankPanel(PlayerStrengthEstimator.Report report) {
+      this.report = report;
+      setOpaque(false);
+      setPreferredSize(new Dimension(900, 452));
+      setMinimumSize(new Dimension(640, 338));
+    }
+
+    @Override
+    protected void paintComponent(Graphics g) {
+      Graphics2D g2 = (Graphics2D) g.create();
+      g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+      g2.setRenderingHint(
+          RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
+      int width = getWidth();
+      int height = getHeight();
+      playerStrengthDrawRoundedCard(g2, 0, 0, width, height);
+      playerStrengthDrawText(
+          g2,
+          Lizzie.resourceBundle.getString("PlayerStrengthEstimate.performance.title"),
+          30,
+          42,
+          PlayerStrengthDashboardRoot.TEXT,
+          Font.BOLD,
+          Config.frameFontSize + 5);
+      playerStrengthDrawFittedText(
+          g2,
+          Lizzie.resourceBundle.getString("PlayerStrengthEstimate.performance.hint"),
+          30,
+          66,
+          Math.max(120, width - 60),
+          PlayerStrengthDashboardRoot.MUTED_TEXT,
+          Font.PLAIN,
+          Math.max(10, Config.frameFontSize - 1));
+
+      if (!hasSamples(report.black) && !hasSamples(report.white)) {
+        playerStrengthDrawFittedText(
+            g2,
+            Lizzie.resourceBundle.getString("PlayerStrengthEstimate.performance.noMoveSamples"),
+            30,
+            132,
+            Math.max(120, width - 60),
+            MUTED,
+            Font.PLAIN,
+            Config.frameFontSize + 1);
+        g2.dispose();
+        return;
+      }
+
+      int cardX = 26;
+      int cardY = 92;
+      int cardWidth = Math.max(280, width - 52);
+      int cardHeight = Math.max(214, height - cardY - 24);
+      drawDistributionCard(g2, cardX, cardY, cardWidth, cardHeight);
+      g2.dispose();
+    }
+
+    private boolean hasSamples(PlayerStrengthEstimator.SideReport sideReport) {
+      return sideReport != null && sideReport.sampleCount > 0;
+    }
+
+    private void drawDistributionCard(Graphics2D g2, int x, int y, int width, int height) {
+      g2.setColor(new Color(74, 51, 26, 18));
+      g2.fillRoundRect(x + 2, y + 4, width - 4, height - 2, 18, 18);
+      g2.setColor(INNER_CARD);
+      g2.fillRoundRect(x, y, width, height, 18, 18);
+      g2.setColor(INNER_BORDER);
+      g2.drawRoundRect(x, y, width - 1, height - 1, 18, 18);
+
+      int center = x + width / 2;
+      g2.setStroke(
+          new BasicStroke(
+              1.1f,
+              BasicStroke.CAP_ROUND,
+              BasicStroke.JOIN_ROUND,
+              0f,
+              new float[] {5f, 5f},
+              0f));
+      g2.setColor(SEPARATOR);
+      g2.drawLine(center, y + 34, center, y + height - 28);
+      g2.setStroke(new BasicStroke(1f));
+
+      int gutter = Math.max(24, Math.min(42, width / 24));
+      int sideWidth = Math.max(240, (width - gutter * 3) / 2);
+      int leftX = x + gutter;
+      int rightX = center + gutter;
+      int top = y + 34;
+      drawSideDistribution(
+          g2,
+          Lizzie.resourceBundle.getString("Menu.Black"),
+          true,
+          report.black,
+          leftX,
+          top,
+          sideWidth,
+          height - 58);
+      drawSideDistribution(
+          g2,
+          Lizzie.resourceBundle.getString("Menu.White"),
+          false,
+          report.white,
+          rightX,
+          top,
+          sideWidth,
+          height - 58);
+    }
+
+    private void drawSideDistribution(
+        Graphics2D g2,
+        String sideName,
+        boolean black,
+        PlayerStrengthEstimator.SideReport sideReport,
+        int x,
+        int y,
+        int width,
+        int height) {
+      int stoneSize = Math.max(28, Math.min(38, height / 8));
+      playerStrengthDrawGeneratedStone(g2, black, x, y - 6, stoneSize, 0.96f);
+      playerStrengthDrawFittedText(
+          g2,
+          sideName,
+          x + stoneSize + 14,
+          y + 18,
+          Math.max(80, width - stoneSize - 118),
+          TEXT,
+          Font.BOLD,
+          Config.frameFontSize + 7);
+      drawSamplePill(
+          g2, x + width - 96, y - 4, 96, 28, sideReport == null ? 0 : sideReport.sampleCount);
+
+      int headerY = y + 58;
+      int countX = performanceCountX(x, width);
+      int percentX = performancePercentX(x, width);
+      playerStrengthDrawFittedText(
+          g2,
+          Lizzie.resourceBundle.getString("PlayerStrengthEstimate.performance.count"),
+          countX - 8,
+          headerY,
+          58,
+          MUTED,
+          Font.PLAIN,
+          Math.max(10, Config.frameFontSize - 1));
+      playerStrengthDrawFittedText(
+          g2,
+          Lizzie.resourceBundle.getString("PlayerStrengthEstimate.performance.percent"),
+          percentX,
+          headerY,
+          62,
+          MUTED,
+          Font.PLAIN,
+          Math.max(10, Config.frameFontSize - 1));
+
+      DistributionRow[] rows = distributionRows(sideReport);
+      int rowsTop = headerY + 22;
+      int rowHeight = Math.max(32, Math.min(52, (height - 80) / Math.max(1, rows.length)));
+      for (int i = 0; i < rows.length; i++) {
+        drawDistributionRow(g2, rows[i], x, rowsTop + i * rowHeight, width, rowHeight);
+      }
+    }
+
+    private DistributionRow[] distributionRows(PlayerStrengthEstimator.SideReport sideReport) {
+      MoveRankDefinition.Rank[] ranks = MoveRankDefinition.Rank.values();
+      DistributionRow[] rows = new DistributionRow[ranks.length + 1];
+      int sampleCount = sideReport == null ? 0 : sideReport.sampleCount;
+      rows[0] =
+          new DistributionRow(
+              Lizzie.resourceBundle.getString("PlayerStrengthEstimate.match.firstChoice"),
+              firstChoiceCount(sideReport),
+              sampleCount,
+              FIRST_CHOICE);
+      for (int i = 0; i < ranks.length; i++) {
+        MoveRankDefinition.Rank rank = ranks[i];
+        rows[i + 1] =
+            new DistributionRow(
+                Lizzie.resourceBundle.getString(rank.nameKey()),
+                sideReport == null ? 0 : sideReport.moveRankCount(rank),
+                sampleCount,
+                playerStrengthMoveRankColor(rank));
+      }
+      return rows;
+    }
+
+    private int firstChoiceCount(PlayerStrengthEstimator.SideReport sideReport) {
+      if (sideReport == null || sideReport.samples == null) {
+        return 0;
+      }
+      int count = 0;
+      for (PlayerStrengthEstimator.Sample sample : sideReport.samples) {
+        if (sample.firstChoice) {
+          count++;
+        }
+      }
+      return count;
+    }
+
+    private void drawSamplePill(Graphics2D g2, int x, int y, int width, int height, int sampleCount) {
+      g2.setColor(new Color(246, 238, 219, 220));
+      g2.fillRoundRect(x, y, width, height, height, height);
+      g2.setColor(new Color(205, 180, 139, 130));
+      g2.drawRoundRect(x, y, width - 1, height - 1, height, height);
+      String text =
+          String.format(
+              Locale.US,
+              Lizzie.resourceBundle.getString("PlayerStrengthEstimate.performance.sideMoves"),
+              sampleCount);
+      playerStrengthDrawFittedText(
+          g2,
+          text,
+          x + 10,
+          y + height / 2 + Config.frameFontSize / 2 - 1,
+          width - 20,
+          COUNT_TEXT,
+          Font.BOLD,
+          Math.max(10, Config.frameFontSize - 1));
+    }
+
+    private void drawDistributionRow(
+        Graphics2D g2, DistributionRow row, int x, int y, int width, int height) {
+      int bullet = Math.max(10, Math.min(15, height / 3));
+      int centerY = y + height / 2;
+      int labelX = x + bullet + 18;
+      int countX = performanceCountX(x, width);
+      int percentX = performancePercentX(x, width);
+      int barX = performanceBarX(x, width);
+      int barWidth = Math.max(34, percentX - barX - 10);
+
+      g2.setColor(new Color(row.color.getRed(), row.color.getGreen(), row.color.getBlue(), 34));
+      g2.fillRoundRect(x - 8, y + 3, width + 16, height - 6, 14, 14);
+      g2.setColor(row.color);
+      g2.fillOval(x, centerY - bullet / 2, bullet, bullet);
+      g2.setColor(new Color(255, 255, 255, 110));
+      g2.fillOval(
+          x + bullet / 5,
+          centerY - bullet / 2 + bullet / 6,
+          Math.max(3, bullet / 3),
+          Math.max(3, bullet / 3));
+
+      playerStrengthDrawFittedText(
+          g2,
+          row.label,
+          labelX,
+          centerY + Config.frameFontSize / 2 - 1,
+          Math.max(42, countX - labelX - 14),
+          TEXT,
+          Font.BOLD,
+          Math.max(11, Config.frameFontSize + 1));
+      playerStrengthDrawFittedText(
+          g2,
+          String.valueOf(row.count),
+          countX,
+          centerY + Config.frameFontSize / 2 - 1,
+          44,
+          COUNT_TEXT,
+          Font.BOLD,
+          Math.max(11, Config.frameFontSize));
+      drawProgressTrack(g2, barX, centerY - 6, barWidth, 12, row.fraction(), row.color);
+      playerStrengthDrawFittedText(
+          g2,
+          row.percentText(),
+          percentX,
+          centerY + Config.frameFontSize / 2 - 1,
+          66,
+          COUNT_TEXT,
+          Font.PLAIN,
+          Math.max(10, Config.frameFontSize));
+    }
+
+    private int performanceCountX(int x, int width) {
+      return x + Math.max(112, width * 38 / 100);
+    }
+
+    private int performanceBarX(int x, int width) {
+      return x + Math.max(160, width * 56 / 100);
+    }
+
+    private int performancePercentX(int x, int width) {
+      return x + width - 58;
+    }
+
+    private void drawProgressTrack(
+        Graphics2D g2, int x, int y, int width, int height, double fraction, Color fill) {
+      g2.setColor(TRACK);
+      g2.fillRoundRect(x, y, width, height, height, height);
+      g2.setColor(TRACK_BORDER);
+      g2.drawRoundRect(x, y, width - 1, height - 1, height, height);
+      int fillWidth =
+          fraction <= 0.0
+              ? 0
+              : Math.max(
+                  height,
+                  (int)
+                      Math.round(width * playerStrengthClamp(fraction, 0.0, 1.0)));
+      if (fillWidth > 0) {
+        Paint oldPaint = g2.getPaint();
+        g2.setPaint(
+            new GradientPaint(
+                x,
+                y,
+                new Color(
+                    Math.min(255, fill.getRed() + 22),
+                    Math.min(255, fill.getGreen() + 28),
+                    Math.min(255, fill.getBlue() + 22)),
+                x + fillWidth,
+                y + height,
+                fill));
+        g2.fillRoundRect(x, y, Math.min(width, fillWidth), height, height, height);
+        g2.setPaint(oldPaint);
+      }
+    }
+
+    private static final class DistributionRow {
+      private final String label;
+      private final int count;
+      private final int sampleCount;
+      private final Color color;
+
+      private DistributionRow(String label, int count, int sampleCount, Color color) {
+        this.label = label;
+        this.count = Math.max(0, count);
+        this.sampleCount = Math.max(0, sampleCount);
+        this.color = color == null ? MUTED : color;
+      }
+
+      private double fraction() {
+        return sampleCount <= 0 ? 0.0 : count / (double) sampleCount;
+      }
+
+      private String percentText() {
+        return String.format(Locale.US, "%.1f%%", fraction() * 100.0);
+      }
+    }
+  }
+
+  private static final class PlayerStrengthNoteStrip extends JPanel {
+    private static final long serialVersionUID = 1L;
+    private final String text;
+
+    private PlayerStrengthNoteStrip(String text) {
+      this.text = text;
+      setOpaque(false);
+      setPreferredSize(new Dimension(800, 64));
+    }
+
+    @Override
+    protected void paintComponent(Graphics g) {
+      Graphics2D g2 = (Graphics2D) g.create();
+      g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+      int width = getWidth();
+      int height = getHeight();
+      g2.setColor(new Color(248, 240, 224, 210));
+      g2.fillRoundRect(0, 4, width, height - 8, 18, 18);
+      g2.setColor(new Color(202, 184, 151));
+      g2.drawRoundRect(0, 4, width - 1, height - 9, 18, 18);
+      playerStrengthDrawInfoBadge(g2, 18, height / 2 - 14, 28, 28, 0.95f);
+      playerStrengthDrawFittedText(
+          g2,
+          text,
+          58,
+          height / 2 + 6,
+          Math.max(120, width - 78),
+          PlayerStrengthDashboardRoot.ACCENT_DARK,
+          Font.PLAIN,
+          Config.frameFontSize + 1);
+      g2.dispose();
+    }
+  }
+
+  private static final class PlayerStrengthDetailNoteStrip extends JPanel {
+    private static final long serialVersionUID = 1L;
+    private final String text;
+
+    private PlayerStrengthDetailNoteStrip(String text) {
+      this.text = text;
+      setOpaque(false);
+      setPreferredSize(new Dimension(800, 62));
+    }
+
+    @Override
+    protected void paintComponent(Graphics g) {
+      Graphics2D g2 = (Graphics2D) g.create();
+      g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+      int width = getWidth();
+      int height = getHeight();
+      g2.setColor(new Color(34, 43, 58, 232));
+      g2.fillRoundRect(0, 5, width, height - 10, 18, 18);
+      g2.setColor(new Color(100, 116, 139, 180));
+      g2.drawRoundRect(0, 5, width - 1, height - 11, 18, 18);
+      playerStrengthDrawInfoBadge(g2, 18, height / 2 - 14, 28, 28, 0.95f);
+      playerStrengthDrawFittedText(
+          g2,
+          text,
+          58,
+          height / 2 + 6,
+          Math.max(120, width - 78),
+          PlayerStrengthDetailPalette.MUTED_TEXT,
+          Font.PLAIN,
+          Config.frameFontSize + 1);
+      g2.dispose();
+    }
+  }
+
   private static final class PlayerStrengthMatchChart extends JPanel {
     private static final long serialVersionUID = 1L;
-    private static final Color BACKGROUND = new Color(46, 55, 70);
-    private static final Color BLACK_PANEL = new Color(89, 73, 83);
-    private static final Color WHITE_PANEL = new Color(72, 86, 112);
-    private static final Color TRACK = new Color(62, 68, 82);
-    private static final Color GRID = new Color(139, 146, 158);
-    private static final Color TEXT = new Color(245, 247, 250);
-    private static final Color MUTED_TEXT = new Color(212, 216, 222);
-    private static final Color BLACK_FIRST = new Color(255, 85, 91);
-    private static final Color BLACK_GOOD = new Color(255, 115, 118);
-    private static final Color WHITE_FIRST = new Color(93, 160, 252);
-    private static final Color WHITE_GOOD = new Color(118, 176, 255);
-    private static final Color RANK = new Color(106, 224, 55);
-    private static final Color RANK_TEXT = new Color(33, 46, 26);
-    private static final Color AI_INTERVAL = new Color(246, 210, 38);
+    private static final Color BACKGROUND = PlayerStrengthDetailPalette.CARD;
+    private static final Color BLACK_PANEL = new Color(48, 38, 48);
+    private static final Color WHITE_PANEL = new Color(34, 48, 68);
+    private static final Color TRACK = PlayerStrengthDetailPalette.TRACK;
+    private static final Color GRID = PlayerStrengthDetailPalette.GRID;
+    private static final Color TEXT = PlayerStrengthDetailPalette.TEXT;
+    private static final Color MUTED_TEXT = PlayerStrengthDetailPalette.MUTED_TEXT;
+    private static final Color BLACK_FIRST = PlayerStrengthDetailPalette.BLACK_ACCENT;
+    private static final Color BLACK_GOOD = PlayerStrengthDetailPalette.BLACK_ACCENT_SOFT;
+    private static final Color WHITE_FIRST = PlayerStrengthDetailPalette.WHITE_ACCENT;
+    private static final Color WHITE_GOOD = PlayerStrengthDetailPalette.WHITE_ACCENT_SOFT;
+    private static final Color RANK = PlayerStrengthDetailPalette.GREEN;
+    private static final Color RANK_TEXT = new Color(12, 36, 25);
+    private static final Color AI_INTERVAL = PlayerStrengthDetailPalette.GOLD;
 
     private final transient PlayerStrengthEstimator.Report report;
     private transient String hoverRankText;
@@ -12898,13 +15851,19 @@ public class LizzieFrame extends JFrame {
 
     @Override
     protected void paintComponent(Graphics g) {
-      super.paintComponent(g);
       Graphics2D g2 = (Graphics2D) g.create();
       g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
       g2.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
 
       int width = getWidth();
       int height = getHeight();
+      g2.setPaint(
+          new GradientPaint(
+              0, 0, PlayerStrengthDetailPalette.CARD_SOFT, 0, Math.max(1, height), BACKGROUND));
+      g2.fillRoundRect(0, 0, width - 1, height - 1, 24, 24);
+      g2.setColor(PlayerStrengthDetailPalette.CARD_BORDER);
+      g2.drawRoundRect(0, 0, width - 1, height - 1, 24, 24);
+
       int margin = 10;
       int sideLabelWidth = 48;
       int statsWidth = 140;
@@ -12949,7 +15908,9 @@ public class LizzieFrame extends JFrame {
       int blockWidth = Math.max(3, Math.min(8, chartWidth / Math.max(maxMove, 1)));
 
       g2.setColor(black ? BLACK_PANEL : WHITE_PANEL);
-      g2.fillRect(chartX - 12, top, chartWidth + 12 + 130, sectionHeight);
+      g2.fillRoundRect(chartX - 12, top, chartWidth + 12 + 130, sectionHeight, 16, 16);
+      g2.setColor(new Color(255, 255, 255, 28));
+      g2.drawRoundRect(chartX - 12, top, chartWidth + 12 + 130, sectionHeight, 16, 16);
 
       drawMoveGrid(g2, chartX, top, chartWidth, sectionHeight, maxMove);
       g2.setFont(new Font(Config.sysDefaultFontName, Font.BOLD, Config.frameFontSize + 1));
@@ -12968,7 +15929,7 @@ public class LizzieFrame extends JFrame {
           g2.setColor(black ? BLACK_FIRST : WHITE_FIRST);
           g2.fillRect(x, firstY, blockWidth, laneHeight);
         }
-        if (sample.category.isGoodMove()) {
+        if (sample.moveRankCategory.isGoodMove()) {
           g2.setColor(black ? BLACK_GOOD : WHITE_GOOD);
           g2.fillRect(x, goodY, blockWidth, laneHeight);
         }
@@ -12990,7 +15951,7 @@ public class LizzieFrame extends JFrame {
           statsX,
           goodY + laneHeight,
           Lizzie.resourceBundle.getString("PlayerStrengthEstimate.match.goodMove"),
-          percentText(sideReport.goodMoveRate));
+          percentText(sideReport.moveRankGoodMoveRate));
       drawStat(
           g2,
           statsX,
@@ -13042,7 +16003,7 @@ public class LizzieFrame extends JFrame {
           continue;
         }
         Rectangle bounds = rankWindowBounds(window, chartX, y, chartWidth, maxMove);
-        String label = strengthLabel(window.report.strengthBand);
+        String label = strengthLabel(window.report);
         g2.setColor(RANK);
         g2.fillRoundRect(bounds.x, bounds.y, bounds.width, bounds.height, 4, 4);
         if (hoverPoint != null) {
@@ -13053,9 +16014,12 @@ public class LizzieFrame extends JFrame {
             g2.drawRoundRect(bounds.x - 1, bounds.y - 1, bounds.width + 1, bounds.height + 1, 5, 5);
           }
         }
-        if (bounds.width >= g2.getFontMetrics().stringWidth(label) + 6) {
+        if (bounds.width >= 12) {
+          Shape oldClip = g2.getClip();
+          g2.clipRect(bounds.x + 2, bounds.y, Math.max(1, bounds.width - 4), bounds.height);
           g2.setColor(RANK_TEXT);
           drawCenteredString(g2, label, bounds.x, bounds.x + bounds.width, y + 12);
+          g2.setClip(oldClip);
         }
       }
     }
@@ -13186,7 +16150,7 @@ public class LizzieFrame extends JFrame {
             sideName,
             window.firstMove,
             window.lastMove,
-            strengthLabel(window.report.strengthBand));
+            strengthLabel(window.report));
       }
       return null;
     }
@@ -13247,7 +16211,7 @@ public class LizzieFrame extends JFrame {
         if (samples.size() - end > 0 && samples.size() - end < minimumSegmentSamples(sideReport)) {
           end = samples.size();
         }
-        addPerformanceSegment(segments, samples.subList(start, end));
+        addPerformanceSegment(segments, samples.subList(start, end), sideReport);
         start = end;
       }
       return segments;
@@ -13283,14 +16247,19 @@ public class LizzieFrame extends JFrame {
     }
 
     private void addPerformanceSegment(
-        List<MatchWindow> segments, List<PlayerStrengthEstimator.Sample> samples) {
+        List<MatchWindow> segments,
+        List<PlayerStrengthEstimator.Sample> samples,
+        PlayerStrengthEstimator.SideReport sideReport) {
       if (samples.isEmpty()) {
         return;
       }
       int firstMove = samples.get(0).moveNumber;
       int lastMove = samples.get(samples.size() - 1).moveNumber;
       segments.add(
-          new MatchWindow(firstMove, lastMove, PlayerStrengthEstimator.summarizeSamples(samples)));
+          new MatchWindow(
+              firstMove,
+              lastMove,
+              PlayerStrengthEstimator.summarizeSamples(samples, sideReport.model)));
     }
 
     private int adaptiveSegmentSamples(PlayerStrengthEstimator.SideReport report) {
@@ -13330,11 +16299,11 @@ public class LizzieFrame extends JFrame {
       return magnitude * 10;
     }
 
-    private String strengthLabel(String strengthBand) {
-      if (strengthBand == null || strengthBand.trim().isEmpty()) {
+    private String strengthLabel(PlayerStrengthEstimator.SideReport report) {
+      if (report == null || !report.hasSamples()) {
         return "-";
       }
-      return strengthBand.replace("\u804c\u4e1a", "").replace("\u4e00\u7ebf", "");
+      return playerStrengthDisplayRank(report.strengthBand);
     }
 
     private String percentText(double value) {
@@ -13353,7 +16322,16 @@ public class LizzieFrame extends JFrame {
     }
 
     private void drawStat(Graphics2D g2, int x, int y, String label, String value) {
-      g2.drawString(label + " " + value, x, y);
+      Font oldFont = g2.getFont();
+      g2.setFont(new Font(Config.sysDefaultFontName, Font.PLAIN, Config.frameFontSize));
+      g2.setColor(MUTED_TEXT);
+      String labelText = label + " ";
+      g2.drawString(labelText, x, y);
+      int labelWidth = g2.getFontMetrics().stringWidth(labelText);
+      g2.setFont(new Font(Config.sysDefaultFontName, Font.BOLD, Config.frameFontSize + 1));
+      g2.setColor(TEXT);
+      g2.drawString(value, x + labelWidth, y);
+      g2.setFont(oldFont);
     }
 
     private void drawCenteredString(Graphics2D g2, String text, int x1, int x2, int y) {
@@ -14020,6 +16998,7 @@ public class LizzieFrame extends JFrame {
     if (foxKifuDownload == null || !foxKifuDownload.isDisplayable()) {
       foxKifuDownload = new FoxKifuDownload();
     }
+    preloadQuickAnalysisEngineForKifuBrowsing();
     foxKifuDownload.presentWindow();
   }
 
@@ -14032,6 +17011,12 @@ public class LizzieFrame extends JFrame {
     kataGoAutoSetupDialog.setVisible(true);
     kataGoAutoSetupDialog.ensureVisibleOnScreen();
     kataGoAutoSetupDialog.toFront();
+  }
+
+  public void openRemoteComputeCenter() {
+    RemoteComputeDialog dialog = new RemoteComputeDialog(this);
+    dialog.setVisible(true);
+    dialog.toFront();
   }
 
   public void openKataGoWeightDownload() {
@@ -14049,25 +17034,300 @@ public class LizzieFrame extends JFrame {
     ensureAnalysisResumedAfterLoad();
   }
 
+  private void resumeAnalysisAfterDownloadedKifuLoad() {
+    ensureAnalysisResumedAfterDownloadedKifuLoad();
+  }
+
   private void resumeAnalysisAfterSyncLoad() {
     ensureAnalysisResumedAfterSyncLoad();
   }
 
   public boolean ensureAnalysisResumedAfterLoad() {
-    if (Lizzie.leelaz == null
-        || EngineManager.isEmpty
-        || EngineManager.isEngineGame()
-        || isPlayingAgainstLeelaz
-        || isAnaPlayingAgainstLeelaz) {
+    if (EngineManager.isEngineGame() || isPlayingAgainstLeelaz || isAnaPlayingAgainstLeelaz) {
       return false;
     }
     if (shouldAutoQuickAnalyzeLoadedGame()) {
       flashAnalyzeGame(true, false, true);
+      scheduleLoadedGameQuickAnalysisRetry();
+      resumeForegroundAnalysisForCurrentPosition();
       return true;
+    }
+    stopLoadedGameQuickAnalysisRetry();
+    return resumeForegroundAnalysisForCurrentPosition();
+  }
+
+  public boolean ensureAnalysisResumedAfterDownloadedKifuLoad() {
+    if (EngineManager.isEngineGame() || isPlayingAgainstLeelaz || isAnaPlayingAgainstLeelaz) {
+      return false;
+    }
+    if (shouldForceAutoQuickAnalyzeDownloadedKifu()) {
+      flashAnalyzeGame(true, false, true);
+      resumeForegroundAnalysisForCurrentPosition();
+      return true;
+    }
+    return ensureAnalysisResumedAfterLoad();
+  }
+
+  private boolean resumeForegroundAnalysisForCurrentPosition() {
+    if (Lizzie.leelaz == null || EngineManager.isEmpty) {
+      return false;
     }
     Lizzie.leelaz.ponder();
     refresh();
     return true;
+  }
+
+  private void scheduleLoadedGameQuickAnalysisRetry() {
+    if (!SwingUtilities.isEventDispatchThread()) {
+      SwingUtilities.invokeLater(this::scheduleLoadedGameQuickAnalysisRetry);
+      return;
+    }
+    quickAnalysisLoadRetryCount = 0;
+    if (quickAnalysisLoadRetryTimer == null) {
+      quickAnalysisLoadRetryTimer =
+          new javax.swing.Timer(1800, e -> retryLoadedGameQuickAnalysisIfMissing());
+      quickAnalysisLoadRetryTimer.setRepeats(true);
+    }
+    quickAnalysisLoadRetryTimer.restart();
+  }
+
+  private void retryLoadedGameQuickAnalysisIfMissing() {
+    if (!SwingUtilities.isEventDispatchThread()) {
+      SwingUtilities.invokeLater(this::retryLoadedGameQuickAnalysisIfMissing);
+      return;
+    }
+    if (!shouldAutoQuickAnalyzeLoadedGame()) {
+      stopLoadedGameQuickAnalysisRetry();
+      return;
+    }
+    AnalysisEngine currentEngine = analysisEngine;
+    if (currentEngine != null && currentEngine.isAnalysisInProgress()) {
+      return;
+    }
+    if (++quickAnalysisLoadRetryCount > 3) {
+      stopLoadedGameQuickAnalysisRetry();
+      return;
+    }
+    flashAnalyzeGame(true, false, true);
+    resumeForegroundAnalysisForCurrentPosition();
+  }
+
+  private void stopLoadedGameQuickAnalysisRetry() {
+    quickAnalysisLoadRetryCount = 0;
+    if (quickAnalysisLoadRetryTimer != null) {
+      quickAnalysisLoadRetryTimer.stop();
+    }
+  }
+
+  public void preloadQuickAnalysisEngineForKifuBrowsing() {
+    if (!canWarmQuickAnalysisEngine()) {
+      return;
+    }
+    ensureQuickAnalysisEngineAsync(null);
+  }
+
+  public void scheduleQuickAnalysisEngineWarmupAfterStartup() {
+    if (!SwingUtilities.isEventDispatchThread()) {
+      SwingUtilities.invokeLater(this::scheduleQuickAnalysisEngineWarmupAfterStartup);
+      return;
+    }
+    if (Lizzie.config == null
+        || Lizzie.config.analysisEnginePreLoad
+        || !Lizzie.config.autoQuickAnalyzeOnLoad) {
+      return;
+    }
+    javax.swing.Timer warmupTimer =
+        new javax.swing.Timer(
+            1200,
+            e -> {
+              preloadQuickAnalysisEngineForKifuBrowsing();
+            });
+    warmupTimer.setRepeats(false);
+    warmupTimer.start();
+  }
+
+  private boolean canWarmQuickAnalysisEngine() {
+    return Lizzie.config != null
+        && Lizzie.config.autoQuickAnalyzeOnLoad
+        && !EngineManager.isEngineGame()
+        && !isPlayingAgainstLeelaz
+        && !isAnaPlayingAgainstLeelaz;
+  }
+
+  private void ensureQuickAnalysisEngineAsync(Runnable onReady) {
+    if (isAnalysisEngineReusable(analysisEngine)) {
+      if (onReady != null) {
+        SwingUtilities.invokeLater(onReady);
+      }
+      return;
+    }
+    if (onReady != null) {
+      synchronized (pendingQuickAnalysisCallbacks) {
+        pendingQuickAnalysisCallbacks.add(onReady);
+      }
+    }
+    if (!quickAnalysisEngineStarting.compareAndSet(false, true)) {
+      return;
+    }
+    Thread starter =
+        new Thread(
+            new Runnable() {
+              public void run() {
+                AnalysisEngine newAnalysisEngine = null;
+                try {
+                  newAnalysisEngine = new AnalysisEngine(true);
+                } catch (IOException e) {
+                  e.printStackTrace();
+                }
+                final AnalysisEngine warmedEngine = newAnalysisEngine;
+                SwingUtilities.invokeLater(
+                    new Runnable() {
+                      public void run() {
+                        finishQuickAnalysisEngineWarmup(warmedEngine);
+                      }
+                    });
+              }
+            },
+            "quick-analysis-engine-preloader");
+    starter.setDaemon(true);
+    starter.start();
+  }
+
+  private void finishQuickAnalysisEngineWarmup(AnalysisEngine warmedEngine) {
+    java.util.List<Runnable> callbacks = java.util.Collections.emptyList();
+    try {
+      if (isAnalysisEngineReusable(warmedEngine)) {
+        if (!isAnalysisEngineReusable(analysisEngine)) {
+          analysisEngine = warmedEngine;
+        } else if (analysisEngine != warmedEngine) {
+          warmedEngine.normalQuit();
+        }
+      }
+      callbacks = drainQuickAnalysisCallbacks();
+      if (isAnalysisEngineReusable(analysisEngine)) {
+        for (Runnable callback : callbacks) {
+          callback.run();
+        }
+      }
+    } finally {
+      quickAnalysisEngineStarting.set(false);
+    }
+    if (!callbacks.isEmpty() && !isAnalysisEngineReusable(analysisEngine)) {
+      resumeForegroundAnalysisAfterQuickAnalysisComplete();
+    }
+  }
+
+  private java.util.List<Runnable> drainQuickAnalysisCallbacks() {
+    synchronized (pendingQuickAnalysisCallbacks) {
+      java.util.List<Runnable> callbacks =
+          new java.util.ArrayList<Runnable>(pendingQuickAnalysisCallbacks);
+      pendingQuickAnalysisCallbacks.clear();
+      return callbacks;
+    }
+  }
+
+  private boolean isAnalysisEngineReusable(AnalysisEngine engine) {
+    if (engine == null || !engine.isLoaded()) {
+      return false;
+    }
+    if (!engine.matchesCurrentAnalysisBackend()) {
+      return false;
+    }
+    if (engine.useJavaSSH) {
+      return !engine.javaSSHClosed;
+    }
+    return engine.isRunning();
+  }
+
+  void scheduleQuickAnalysisContinuationAfterHistoryNavigation() {
+    if (!SwingUtilities.isEventDispatchThread()) {
+      SwingUtilities.invokeLater(this::scheduleQuickAnalysisContinuationAfterHistoryNavigation);
+      return;
+    }
+    if (!canContinueQuickAnalysisAfterHistoryNavigation()) {
+      return;
+    }
+    if (quickAnalysisNavigationResumeTimer == null) {
+      quickAnalysisNavigationResumeTimer =
+          new javax.swing.Timer(
+              700, e -> continueQuickAnalysisAfterHistoryNavigationWhenIdle());
+      quickAnalysisNavigationResumeTimer.setRepeats(true);
+    }
+    quickAnalysisNavigationResumeTimer.restart();
+  }
+
+  void continueQuickAnalysisAfterHistoryNavigationWhenIdle() {
+    if (!SwingUtilities.isEventDispatchThread()) {
+      SwingUtilities.invokeLater(this::continueQuickAnalysisAfterHistoryNavigationWhenIdle);
+      return;
+    }
+    if (!canContinueQuickAnalysisAfterHistoryNavigation()) {
+      stopQuickAnalysisNavigationResumeTimer();
+      return;
+    }
+    AnalysisEngine currentEngine = analysisEngine;
+    if (currentEngine != null && currentEngine.isAnalysisInProgress()) {
+      return;
+    }
+    stopQuickAnalysisNavigationResumeTimer();
+    if (!shouldAutoQuickAnalyzeLoadedGame()) {
+      return;
+    }
+    Runnable continueMissingMainline =
+        new Runnable() {
+          public void run() {
+            if (!isAnalysisEngineReusable(analysisEngine)) {
+              return;
+            }
+            analysisEngine.setKeepAliveAfterCurrentRequest(true);
+            analysisEngine.setCompletionCallback(
+                LizzieFrame.this::resumeForegroundAnalysisAfterQuickAnalysisComplete);
+            int requestCount = analysisEngine.startRequestMissingMainline(false);
+            if (requestCount < 0) {
+              analysisEngine.setCompletionCallback(null);
+              resumeForegroundAnalysisAfterQuickAnalysisComplete();
+            } else if (requestCount == 0) {
+              analysisEngine.setCompletionCallback(null);
+              resumeForegroundAnalysisAfterQuickAnalysisComplete();
+            }
+          }
+        };
+    if (isAnalysisEngineReusable(analysisEngine)) {
+      continueMissingMainline.run();
+    } else {
+      ensureQuickAnalysisEngineAsync(continueMissingMainline);
+    }
+  }
+
+  private boolean canContinueQuickAnalysisAfterHistoryNavigation() {
+    return Lizzie.config != null
+        && Lizzie.config.autoQuickAnalyzeOnLoad
+        && !isBatchAna
+        && !isBatchAnalysisMode
+        && !isEnginePKSgfStart
+        && !isTrying
+        && !EngineManager.isEngineGame()
+        && !isPlayingAgainstLeelaz
+        && !isAnaPlayingAgainstLeelaz
+        && Lizzie.board != null
+        && Lizzie.board.getHistory() != null;
+  }
+
+  private void stopQuickAnalysisNavigationResumeTimer() {
+    if (quickAnalysisNavigationResumeTimer != null) {
+      quickAnalysisNavigationResumeTimer.stop();
+    }
+  }
+
+  void resumeForegroundAnalysisAfterQuickAnalysisComplete() {
+    if (!SwingUtilities.isEventDispatchThread()) {
+      SwingUtilities.invokeLater(this::resumeForegroundAnalysisAfterQuickAnalysisComplete);
+      return;
+    }
+    if (EngineManager.isEngineGame() || isPlayingAgainstLeelaz || isAnaPlayingAgainstLeelaz) {
+      return;
+    }
+    resumeForegroundAnalysisForCurrentPosition();
   }
 
   public boolean ensureAnalysisResumedAfterSyncLoad() {
@@ -14084,6 +17344,9 @@ public class LizzieFrame extends JFrame {
   }
 
   private boolean shouldAutoQuickAnalyzeLoadedGame() {
+    if (Lizzie.config == null || Lizzie.board == null || Lizzie.board.getHistory() == null) {
+      return false;
+    }
     if (!Lizzie.config.autoQuickAnalyzeOnLoad || isBatchAna || isEnginePKSgfStart || isTrying) {
       return false;
     }
@@ -14094,11 +17357,28 @@ public class LizzieFrame extends JFrame {
       node = node.next().get();
       if (!isRealHistoryActionNode(node.getData())) continue;
       mainTrunkMoves++;
-      if (node.getData().getPlayouts() > 0 || node.getData().isKataData) {
+      if (node.getData().hasPrimaryAnalysisPayload()) {
         analyzedMoves++;
       }
     }
     return mainTrunkMoves > 0 && analyzedMoves < mainTrunkMoves;
+  }
+
+  private boolean shouldForceAutoQuickAnalyzeDownloadedKifu() {
+    if (Lizzie.config == null || Lizzie.board == null || Lizzie.board.getHistory() == null) {
+      return false;
+    }
+    if (!Lizzie.config.autoQuickAnalyzeOnLoad || isBatchAna || isEnginePKSgfStart || isTrying) {
+      return false;
+    }
+    BoardHistoryNode node = Lizzie.board.getHistory().getStart();
+    while (node.next().isPresent()) {
+      node = node.next().get();
+      if (isRealHistoryActionNode(node.getData())) {
+        return true;
+      }
+    }
+    return false;
   }
 
   private boolean isRealHistoryActionNode(BoardData data) {
@@ -14163,9 +17443,9 @@ public class LizzieFrame extends JFrame {
 
   private void openInVisibleFrame() {
     if (OS.isWindows()) {
-      String javaReadBoardName = "invisibleFrame.jar";
-      File javaReadBoard = new File("clockHelper" + File.separator + javaReadBoardName);
-      if (!javaReadBoard.exists()) Utils.copyClockHelper();
+      String clockHelperJarName = "invisibleFrame.jar";
+      File clockHelperJar = new File("clockHelper" + File.separator + clockHelperJarName);
+      if (!clockHelperJar.exists()) Utils.copyClockHelper();
       try {
         String javaCommand = Utils.resolveJavaCommand();
         if (Utils.resolveExistingExecutable(javaCommand) == null
@@ -14173,7 +17453,7 @@ public class LizzieFrame extends JFrame {
           System.out.println("Clock helper skipped: bundled Java runtime was not resolved.");
           return;
         }
-        processClockHelper = Utils.startJavaJar(javaReadBoard, null, null);
+        processClockHelper = Utils.startJavaJar(clockHelperJar, null, null);
       } catch (Exception e) {
         System.out.println("Clock helper skipped: " + e.getLocalizedMessage());
         e.printStackTrace();

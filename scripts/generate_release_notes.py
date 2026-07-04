@@ -31,6 +31,20 @@ ASSET_SPECS = [
     ('linux64_opencl', 'linux64.opencl.zip', 'Linux 64 位，OpenCL 版', 'Linux x64, OpenCL'),
     ('linux64_nvidia', 'linux64.nvidia.zip', 'Linux 64 位，NVIDIA CUDA 版', 'Linux x64, NVIDIA CUDA'),
 ]
+TENSORRT_SPLIT_README_SUFFIX = 'windows64.nvidia.tensorrt.portable.README.txt'
+TENSORRT_SPLIT_PART_PATTERN = r'windows64\.nvidia\.tensorrt\.portable\.7z\.\d+$'
+TENSORRT_SPLIT_MANIFEST_SUFFIX = 'windows64.nvidia.tensorrt.portable.manifest.json'
+TENSORRT_SPLIT_SHA256_SUFFIX = 'windows64.nvidia.tensorrt.portable.sha256.txt'
+WINDOWS_CORE_UPDATE_SUFFIX = 'windows64.core-update.zip'
+TENSORRT_SPLIT_ASSET_KEYS = (
+    'windows_tensorrt_split_readme',
+    'windows_tensorrt_split_parts',
+    'windows_tensorrt_split_sha256',
+    'windows_tensorrt_split_manifest',
+)
+TENSORRT_SPLIT_DOWNLOAD_ASSET_KEYS = (
+    'windows_tensorrt_split_parts',
+)
 
 RELEASE_LANGUAGES = ('中文', '繁體中文', 'English', '日本語', '한국어', 'ภาษาไทย')
 SECTION_KEYS = ('updates', 'before', 'download', 'why', 'contact')
@@ -187,13 +201,27 @@ def pick_asset(asset_names: list[str], suffix: str, date_tag: str | None) -> str
     return sorted(matches)[-1] if matches else None
 
 
+def pick_assets_matching(asset_names: list[str], pattern: str, date_tag: str | None) -> list[str]:
+    regex = re.compile(pattern)
+    matches = [name for name in asset_names if regex.search(name)]
+    if date_tag:
+        dated = [name for name in matches if name.startswith(f'{date_tag}-')]
+        if dated:
+            matches = dated
+    return sorted(matches)
+
+
 def release_asset_url(repo: str, release_tag: str | None, asset_name: str) -> str | None:
     if not release_tag:
         return None
     return f'https://github.com/{repo}/releases/download/{quote(release_tag)}/{quote(asset_name)}'
 
 
-def format_asset(asset_name: str | None, repo: str, release_tag: str | None) -> str:
+def format_asset(asset_name: str | list[str] | None, repo: str, release_tag: str | None) -> str:
+    if isinstance(asset_name, list):
+        if not asset_name:
+            return '暂未包含在本次发布中'
+        return '<br>'.join(format_asset(name, repo, release_tag) for name in asset_name)
     if not asset_name:
         return '暂未包含在本次发布中'
     url = release_asset_url(repo, release_tag, asset_name)
@@ -202,7 +230,11 @@ def format_asset(asset_name: str | None, repo: str, release_tag: str | None) -> 
     return f'[`{asset_name}`]({url})'
 
 
-def format_asset_en(asset_name: str | None, repo: str, release_tag: str | None) -> str:
+def format_asset_en(asset_name: str | list[str] | None, repo: str, release_tag: str | None) -> str:
+    if isinstance(asset_name, list):
+        if not asset_name:
+            return 'Not included in this release'
+        return '<br>'.join(format_asset_en(name, repo, release_tag) for name in asset_name)
     if not asset_name:
         return 'Not included in this release'
     url = release_asset_url(repo, release_tag, asset_name)
@@ -215,6 +247,8 @@ def release_heading(release_tag: str | None) -> str:
     tag = (release_tag or '').strip()
     if not tag:
         return '# LizzieYzy Next'
+    if tag == 'next-2026-06-29.1':
+        return f'# LizzieYzy Next 首冠版 {tag}'
     return f'# LizzieYzy Next {tag}'
 
 
@@ -240,9 +274,15 @@ def validate_release_sections(sections: list[dict[str, object]]) -> None:
 
             if key == 'download':
                 rows = block.get('rows')
-                if not isinstance(rows, list) or len(rows) != expected_download_rows:
+                allowed_row_counts = (
+                    expected_download_rows,
+                    expected_download_rows + 1,
+                    expected_download_rows + 2,
+                )
+                if not isinstance(rows, list) or len(rows) not in allowed_row_counts:
                     raise SystemExit(
                         f'{language} download table must contain {expected_download_rows} rows'
+                        f' plus optional core-update and TensorRT split guidance'
                     )
                 continue
 
@@ -251,11 +291,123 @@ def validate_release_sections(sections: list[dict[str, object]]) -> None:
                 raise SystemExit(f'{language} release notes section "{key}" needs bullet items')
 
 
+def formatted_asset_available(value: str | None) -> bool:
+    if not value:
+        return False
+    return '暂未包含在本次发布中' not in value and 'Not included in this release' not in value
+
+
+def add_windows_core_update_download_row(
+    sections: list[dict[str, object]],
+    assets_cn: dict[str, str],
+    assets: dict[str, str],
+) -> None:
+    labels_by_language = {
+        '中文': '已有 Windows 免安装版，日常升级小包',
+        '繁體中文': '已有 Windows 免安裝版，日常升級小包',
+        'English': 'Existing Windows portable install, small routine update',
+        '日本語': '既存の Windows portable 版向け小型更新',
+        '한국어': '기존 Windows portable 사용자를 위한 소형 업데이트',
+        'ภาษาไทย': 'อัปเดตเล็กสำหรับผู้ใช้ Windows portable เดิม',
+    }
+    before_note_by_language = {
+        '中文': '已经有 Windows 免安装版的老用户，日常升级优先下载 `windows64.core-update.zip`，关闭软件后解压到旧目录覆盖；引擎、权重、TensorRT、设置和棋谱都会保留。',
+        '繁體中文': '已經有 Windows 免安裝版的舊使用者，日常升級優先下載 `windows64.core-update.zip`，關閉軟體後解壓到舊目錄覆蓋；引擎、權重、TensorRT、設定和棋譜都會保留。',
+        'English': 'Existing Windows portable users should prefer `windows64.core-update.zip` for routine updates: close the app, extract it over the old folder, and keep engines, weights, TensorRT, settings, and game records in place.',
+        '日本語': '既存の Windows portable ユーザーは、通常更新では `windows64.core-update.zip` を優先してください。アプリを閉じて既存フォルダへ展開すれば、エンジン、重み、TensorRT、設定、棋譜は保持されます。',
+        '한국어': '기존 Windows portable 사용자는 일반 업데이트에서 `windows64.core-update.zip` 을 우선 사용하세요. 앱을 닫고 기존 폴더에 덮어 풀면 엔진, 가중치, TensorRT, 설정, 기보가 유지됩니다.',
+        'ภาษาไทย': 'ผู้ใช้ Windows portable เดิมควรใช้ `windows64.core-update.zip` สำหรับอัปเดตทั่วไป: ปิดแอปแล้วแตกไฟล์ทับโฟลเดอร์เดิม โดย engine, weight, TensorRT, settings และ game records จะยังอยู่',
+    }
+    update_note_by_language = {
+        '中文': 'Windows 免安装版新增更清晰的小更新路径：`core-update` 只替换主程序和启动器配置，不重复打包引擎、权重、JCEF、readboard、Java runtime 或用户数据。',
+        '繁體中文': 'Windows 免安裝版新增更清楚的小更新路徑：`core-update` 只替換主程式和啟動器設定，不重複打包引擎、權重、JCEF、readboard、Java runtime 或使用者資料。',
+        'English': 'Windows portable builds now have a clearer small-update path: `core-update` replaces only the app core and launcher configuration, without rebundling engines, weights, JCEF, readboard, Java runtime, or user data.',
+        '日本語': 'Windows portable 版に分かりやすい小型更新パスを追加しました。`core-update` はアプリ本体とランチャー設定だけを置き換え、エンジン、重み、JCEF、readboard、Java runtime、ユーザーデータを再同梱しません。',
+        '한국어': 'Windows portable 빌드에 더 명확한 소형 업데이트 경로를 추가했습니다. `core-update` 는 앱 핵심과 launcher configuration 만 교체하고 엔진, 가중치, JCEF, readboard, Java runtime, 사용자 데이터를 다시 묶지 않습니다.',
+        'ภาษาไทย': 'Windows portable มีทางอัปเดตเล็กที่ชัดเจนขึ้น: `core-update` เปลี่ยนเฉพาะ app core และ launcher configuration และไม่แพ็ก engine, weight, JCEF, readboard, Java runtime หรือ user data ซ้ำ',
+    }
+    for section in sections:
+        language = str(section['language'])
+        localized_assets = assets_cn if language in ('中文', '繁體中文') else assets
+        core_asset = localized_assets.get('windows_core_update')
+        if not formatted_asset_available(core_asset):
+            continue
+        download = section['download']
+        assert isinstance(download, dict)
+        rows = download['rows']
+        assert isinstance(rows, list)
+        if not any('core-update' in str(row[1]) for row in rows if isinstance(row, tuple)):
+            insert_at = 1
+            for index, row in enumerate(rows):
+                if isinstance(row, tuple) and 'windows64.opencl.portable' in str(row[1]):
+                    insert_at = index + 1
+                    break
+            rows.insert(
+                insert_at,
+                (labels_by_language.get(language, labels_by_language['English']), core_asset),
+            )
+
+        before = section['before']
+        assert isinstance(before, dict)
+        before_items = before['items']
+        assert isinstance(before_items, list)
+        note = before_note_by_language.get(language, before_note_by_language['English'])
+        if note not in before_items:
+            before_items.append(note)
+
+        updates = section['updates']
+        assert isinstance(updates, dict)
+        update_items = updates['items']
+        assert isinstance(update_items, list)
+        update_note = update_note_by_language.get(language, update_note_by_language['English'])
+        if update_note not in update_items:
+            update_items.append(update_note)
+
+
+def remove_windows_core_update_auto_notes(sections: list[dict[str, object]]) -> None:
+    notes_by_language = {
+        '中文': (
+            'Windows 免安装版新增更清晰的小更新路径：`core-update` 只替换主程序和启动器配置，不重复打包引擎、权重、JCEF、readboard、Java runtime 或用户数据。',
+            '已经有 Windows 免安装版的老用户，日常升级优先下载 `windows64.core-update.zip`，关闭软件后解压到旧目录覆盖；引擎、权重、TensorRT、设置和棋谱都会保留。',
+        ),
+        '繁體中文': (
+            'Windows 免安裝版新增更清楚的小更新路徑：`core-update` 只替換主程式和啟動器設定，不重複打包引擎、權重、JCEF、readboard、Java runtime 或使用者資料。',
+            '已經有 Windows 免安裝版的舊使用者，日常升級優先下載 `windows64.core-update.zip`，關閉軟體後解壓到舊目錄覆蓋；引擎、權重、TensorRT、設定和棋譜都會保留。',
+        ),
+        'English': (
+            'Windows portable builds now have a clearer small-update path: `core-update` replaces only the app core and launcher configuration, without rebundling engines, weights, JCEF, readboard, Java runtime, or user data.',
+            'Existing Windows portable users should prefer `windows64.core-update.zip` for routine updates: close the app, extract it over the old folder, and keep engines, weights, TensorRT, settings, and game records in place.',
+        ),
+        '日本語': (
+            'Windows portable 版に分かりやすい小型更新パスを追加しました。`core-update` はアプリ本体とランチャー設定だけを置き換え、エンジン、重み、JCEF、readboard、Java runtime、ユーザーデータを再同梱しません。',
+            '既存の Windows portable ユーザーは、通常更新では `windows64.core-update.zip` を優先してください。アプリを閉じて既存フォルダへ展開すれば、エンジン、重み、TensorRT、設定、棋譜は保持されます。',
+        ),
+        '한국어': (
+            'Windows portable 빌드에 더 명확한 소형 업데이트 경로를 추가했습니다. `core-update` 는 앱 핵심과 launcher configuration 만 교체하고 엔진, 가중치, JCEF, readboard, Java runtime, 사용자 데이터를 다시 묶지 않습니다.',
+            '기존 Windows portable 사용자는 일반 업데이트에서 `windows64.core-update.zip` 을 우선 사용하세요. 앱을 닫고 기존 폴더에 덮어 풀면 엔진, 가중치, TensorRT, 설정, 기보가 유지됩니다.',
+        ),
+        'ภาษาไทย': (
+            'Windows portable มีทางอัปเดตเล็กที่ชัดเจนขึ้น: `core-update` เปลี่ยนเฉพาะ app core และ launcher configuration และไม่แพ็ก engine, weight, JCEF, readboard, Java runtime หรือ user data ซ้ำ',
+            'ผู้ใช้ Windows portable เดิมควรใช้ `windows64.core-update.zip` สำหรับอัปเดตทั่วไป: ปิดแอปแล้วแตกไฟล์ทับโฟลเดอร์เดิม โดย engine, weight, TensorRT, settings และ game records จะยังอยู่',
+        ),
+    }
+    for section in sections:
+        language = str(section['language'])
+        update_note, before_note = notes_by_language.get(language, notes_by_language['English'])
+        updates = section['updates']
+        before = section['before']
+        assert isinstance(updates, dict)
+        assert isinstance(before, dict)
+        updates['items'] = [item for item in updates['items'] if item != update_note]
+        before['items'] = [item for item in before['items'] if item != before_note]
+
+
 def add_nvidia50_download_rows(
     sections: list[dict[str, object]],
     assets_cn: dict[str, str],
     assets: dict[str, str],
 ) -> None:
+    add_windows_core_update_download_row(sections, assets_cn, assets)
     labels_by_language = {
         '中文': (
             'Windows 64 位，RTX 50 CUDA 版，5070/5080/5090 优先，免安装',
@@ -310,6 +462,58 @@ def add_nvidia50_download_rows(
                 insert_at = index + 1
                 break
         rows[insert_at:insert_at] = additions
+        before = section['before']
+        assert isinstance(before, dict)
+        before_items = before['items']
+        assert isinstance(before_items, list)
+        note = before_note_by_language.get(language, before_note_by_language['English'])
+        if note not in before_items:
+            before_items.append(note)
+
+
+def add_tensorrt_split_download_row(
+    sections: list[dict[str, object]],
+    assets_cn: dict[str, str],
+    assets: dict[str, str],
+    asset_map: dict[str, str | None],
+) -> None:
+    if not any(asset_map.get(key) for key in TENSORRT_SPLIT_DOWNLOAD_ASSET_KEYS):
+        return
+    labels_by_language = {
+        '中文': '高级可选：TensorRT 预装分卷包说明（需下载全部 .7z.00N）',
+        '繁體中文': '進階可選：TensorRT 預裝分卷包說明（需下載全部 .7z.00N）',
+        'English': 'Advanced optional TensorRT split package guide; download every .7z.00N part',
+        '日本語': '上級者向け任意：TensorRT 分割パッケージ案内（.7z.00N を全て取得）',
+        '한국어': '고급 선택: TensorRT 분할 패키지 안내(.7z.00N 전체 다운로드 필요)',
+        'ภาษาไทย': 'ตัวเลือกขั้นสูง: คู่มือ TensorRT split package ต้องดาวน์โหลด .7z.00N ครบทุกไฟล์',
+    }
+    before_note_by_language = {
+        '中文': '高级可选 TensorRT 分卷包只适合熟悉 7-Zip 的 RTX 20/30/40/50 用户；普通用户继续下载 NVIDIA/CUDA 包后在软件内一键安装，支持断点续传。分卷包必须下载全部 `.7z.00N`，只下 `.001` 没用。',
+        '繁體中文': '進階可選 TensorRT 分卷包只適合熟悉 7-Zip 的 RTX 20/30/40/50 使用者；一般使用者請先下載 NVIDIA/CUDA 包，再在軟體內一鍵安裝，支援斷點續傳。分卷包必須下載全部 `.7z.00N`，只下 `.001` 沒有用。',
+        'English': 'The advanced optional TensorRT split package is only for RTX 20/30/40/50 users who are comfortable with 7-Zip. Most users should keep using the normal NVIDIA/CUDA package plus the in-app resumable TensorRT installer. You must download every `.7z.00N` part; `.001` alone is useless.',
+        '日本語': '上級者向けの TensorRT 分割パッケージは、7-Zip に慣れた RTX 20/30/40/50 ユーザー向けです。通常は NVIDIA/CUDA パッケージを使い、アプリ内の再開対応 TensorRT インストーラを利用してください。`.7z.00N` を全てダウンロードする必要があり、`.001` だけでは使えません。',
+        '한국어': '고급 선택 TensorRT 분할 패키지는 7-Zip 에 익숙한 RTX 20/30/40/50 사용자용입니다. 대부분의 사용자는 일반 NVIDIA/CUDA 패키지와 앱 안의 이어받기 지원 TensorRT 설치를 쓰면 됩니다. `.7z.00N` 전체를 받아야 하며 `.001` 만 받으면 사용할 수 없습니다.',
+        'ภาษาไทย': 'TensorRT split package แบบตัวเลือกขั้นสูงเหมาะกับผู้ใช้ RTX 20/30/40/50 ที่คุ้นกับ 7-Zip เท่านั้น ผู้ใช้ทั่วไปควรใช้ NVIDIA/CUDA package ปกติแล้วติดตั้ง TensorRT ในแอปซึ่งรองรับ resume ต้องดาวน์โหลด `.7z.00N` ครบทุกไฟล์ ไฟล์ `.001` อย่างเดียวใช้ไม่ได้',
+    }
+    for section in sections:
+        language = str(section['language'])
+        localized_assets = assets_cn if language in ('中文', '繁體中文') else assets
+        download = section['download']
+        assert isinstance(download, dict)
+        rows = download['rows']
+        assert isinstance(rows, list)
+        split_assets = '<br>'.join(
+            localized_assets[key]
+            for key in TENSORRT_SPLIT_DOWNLOAD_ASSET_KEYS
+            if asset_map.get(key)
+        )
+        if not any('tensorrt.portable.7z.' in str(row[1]) for row in rows if isinstance(row, tuple)):
+            insert_at = min(8, len(rows))
+            rows.insert(
+                insert_at,
+                (labels_by_language.get(language, labels_by_language['English']), split_assets),
+            )
+
         before = section['before']
         assert isinstance(before, dict)
         before_items = before['items']
@@ -706,6 +910,7 @@ def build_next_2026_05_17_2_notes(
     ]
 
     add_nvidia50_download_rows(sections, assets_cn, assets)
+    add_tensorrt_split_download_row(sections, assets_cn, assets, asset_map)
     validate_release_sections(sections)
     heading = f'# LizzieYzy Next {release_tag} 4段纪念版' if release_tag else '# LizzieYzy Next 4段纪念版'
     return heading + '\n\n' + '\n\n---\n\n'.join(
@@ -1096,6 +1301,7 @@ def build_next_2026_05_03_1_notes(
     ]
 
     add_nvidia50_download_rows(sections, assets_cn, assets)
+    add_tensorrt_split_download_row(sections, assets_cn, assets, asset_map)
     validate_release_sections(sections)
 
     return release_heading(release_tag) + '\n\n' + '\n\n---\n\n'.join(
@@ -1440,7 +1646,6 @@ def build_next_2026_05_04_1_notes(
             'contact': ['QQ group: `299419120`'],
         },
     ]
-
     sections: list[dict[str, object]] = []
     for block in content:
         language = str(block['language'])
@@ -1474,6 +1679,7 @@ def build_next_2026_05_04_1_notes(
         )
 
     add_nvidia50_download_rows(sections, assets_cn, assets)
+    add_tensorrt_split_download_row(sections, assets_cn, assets, asset_map)
     validate_release_sections(sections)
 
     return release_heading(release_tag) + '\n\n' + '\n\n---\n\n'.join(
@@ -2107,6 +2313,1810 @@ def build_next_2026_05_26_1_notes(
     ) + '\n'
 
 
+def build_next_2026_05_30_1_notes(
+    asset_map: dict[str, str | None],
+    bundle: dict[str, str],
+    repo: str,
+    release_tag: str | None,
+) -> str:
+    assets_cn = {
+        key: format_asset(asset_map[key], repo, release_tag)
+        for key in asset_map
+    }
+    assets = {
+        key: format_asset_en(asset_map[key], repo, release_tag)
+        for key in asset_map
+    }
+    katago_version = bundle['katago_version']
+    model_source = bundle['model_source']
+    localized_sections: list[dict[str, object]] = [
+        {
+            'language': '中文',
+            'labels': 'zh',
+            'intro': (
+                '这是 `LizzieYzy Next` 的 2026-05-30 预览版，重点合并社区 PR 并修复同步、分析与预览交互。'
+                '特别感谢 @semanym 与 @qiyi71w 的持续贡献：这一版补强了 ReadBoard 落子失败后的恢复、批量闪电分析设置、'
+                '候选点表预览清理，以及 TensorRT 一键设置的 NVIDIA GPU 检测。'
+            ),
+            'updates_heading': '本版主要更新',
+            'updates': [
+                '合并 PR #34：修复 ReadBoard 错点/漏点后本地引擎与远端棋盘不同步的问题。',
+                'Windows 发布包内置 readboard 固定升级到 `qiyi71w/readboard v3.0.6`，匹配新的同步恢复协议。',
+                '合并 PR #33：完善批量闪电分析设置与启动体验，让批量分析入口更稳。',
+                '合并 PR #35：修复候选点表预览状态泄漏，鼠标回到棋盘候选点或点击变化图节点时会清理旧 PV 预览。',
+                '合并 PR #31：KataGo 一键设置新增 NVIDIA GPU / Compute Capability 检测，TensorRT 仍为软件内按需安装，不进入巨大 release 包。',
+                '继续保留 Windows 免安装包自包含数据目录，解压即用，配置和 TensorRT 下载数据优先留在解压目录内。',
+            ],
+            'before_heading': '下载前先看这几句',
+            'before': [
+                f'Windows 普通用户优先下载 {assets_cn["windows_opencl_portable"]}，这是 **OpenCL 版（推荐，免安装）**。',
+                f'如果 OpenCL 在你的电脑上不稳定，再改用 {assets_cn["windows_portable"]}。',
+                f'如果你的电脑是 **NVIDIA 显卡**，优先下载 {assets_cn["windows_nvidia_portable"]}；RTX 5070/5080/5090 可优先试 RTX 50 CUDA 版。',
+                'TensorRT 不再作为巨大 GitHub Release 包发布；需要时到软件内 `KataGo 一键设置` 按需安装。',
+                f'整合包继续内置 KataGo `{katago_version}` 和默认权重 `{model_source}`。',
+            ],
+            'download_heading': '下载建议',
+            'download_headers': ('你的电脑', '直接下载这个'),
+            'why_heading': '这一版为什么值得先测',
+            'why': [
+                'ReadBoard 同步恢复、候选点预览、批量分析和 TensorRT 推荐逻辑都属于高频真实使用路径。',
+                '本版感谢并合并社区贡献，同时补上发布包依赖版本，避免“代码修了但包里工具没跟上”。',
+                '发布前已跑全量测试、专项测试、打包，并在本机真实启动应用做 UI 冒烟。',
+            ],
+            'contact_heading': '交流',
+            'contact': ['QQ 群：`299419120`'],
+        },
+        {
+            'language': '繁體中文',
+            'labels': 'zh_hant',
+            'intro': (
+                '這是 `LizzieYzy Next` 的 2026-05-30 預覽版，重點是合併社群 PR 並修復同步、分析與預覽互動。'
+                '特別感謝 @semanym 與 @qiyi71w 的持續貢獻：這一版補強 ReadBoard 落子失敗後的恢復、批量閃電分析設定、'
+                '候選點表預覽清理，以及 TensorRT 一鍵設定的 NVIDIA GPU 偵測。'
+            ),
+            'updates_heading': '本版主要更新',
+            'updates': [
+                '合併 PR #34：修復 ReadBoard 錯點/漏點後本地引擎與遠端棋盤不同步的問題。',
+                'Windows 發布包內建 readboard 固定升級到 `qiyi71w/readboard v3.0.6`，匹配新的同步恢復協議。',
+                '合併 PR #33：完善批量閃電分析設定與啟動體驗，讓批量分析入口更穩。',
+                '合併 PR #35：修復候選點表預覽狀態洩漏，滑鼠回到棋盤候選點或點擊變化圖節點時會清理舊 PV 預覽。',
+                '合併 PR #31：KataGo 一鍵設定新增 NVIDIA GPU / Compute Capability 偵測，TensorRT 仍為軟體內按需安裝，不進入巨大 release 包。',
+                'Windows 免安裝包繼續保持自包含資料目錄，解壓即用，設定和 TensorRT 下載資料優先留在解壓目錄內。',
+            ],
+            'before_heading': '下載前先看這幾句',
+            'before': [
+                f'Windows 一般使用者優先下載 {assets_cn["windows_opencl_portable"]}，這是 **OpenCL 版（推薦，免安裝）**。',
+                f'如果 OpenCL 在你的電腦上不穩定，再改用 {assets_cn["windows_portable"]}。',
+                f'如果你的電腦是 **NVIDIA 顯示卡**，優先下載 {assets_cn["windows_nvidia_portable"]}；RTX 5070/5080/5090 可優先試 RTX 50 CUDA 版。',
+                'TensorRT 不再作為巨大 GitHub Release 包發布；需要時到軟體內 `KataGo 一鍵設定` 按需安裝。',
+                f'整合包繼續內建 KataGo `{katago_version}` 和預設權重 `{model_source}`。',
+            ],
+            'download_heading': '下載建議',
+            'download_headers': ('你的電腦', '直接下載這個'),
+            'why_heading': '這一版為什麼值得先測',
+            'why': [
+                'ReadBoard 同步恢復、候選點預覽、批量分析和 TensorRT 推薦邏輯都屬於高頻真實使用路徑。',
+                '本版感謝並合併社群貢獻，同時補上發布包依賴版本，避免「程式修了但包裡工具沒跟上」。',
+                '發布前已跑完整測試、專項測試、打包，並在本機真實啟動應用做 UI 冒煙。',
+            ],
+            'contact_heading': '交流',
+            'contact': ['QQ 群：`299419120`'],
+        },
+        {
+            'language': 'English',
+            'labels': 'en',
+            'intro': (
+                'This is the 2026-05-30 preview build of `LizzieYzy Next`, focused on community PRs and sync, analysis, and preview stability. '
+                'Special thanks to @semanym and @qiyi71w for the continued work: this release improves ReadBoard recovery after failed local moves, '
+                'batch lightning analysis settings, candidate-table preview cleanup, and NVIDIA GPU detection for TensorRT auto setup.'
+            ),
+            'updates_heading': 'Release Highlights',
+            'updates': [
+                'Merged PR #34: fixes ReadBoard desync after wrong/missed local placements.',
+                'Pinned the bundled Windows readboard to `qiyi71w/readboard v3.0.6`, matching the new sync recovery protocol.',
+                'Merged PR #33: improves batch lightning analysis settings and startup experience.',
+                'Merged PR #35: clears stale candidate-table PV preview when returning to board candidates or clicking variation-tree nodes.',
+                'Merged PR #31: adds NVIDIA GPU / Compute Capability detection to KataGo Auto Setup while keeping TensorRT as an optional in-app install, not a huge release asset.',
+                'Keeps Windows portable builds self-contained, with config and TensorRT download data staying inside the extracted folder first.',
+            ],
+            'before_heading': 'Read Before Downloading',
+            'before': [
+                f'Most Windows users should download {assets["windows_opencl_portable"]}, the **recommended no-install OpenCL build**.',
+                f'If OpenCL is unreliable on your PC, use {assets["windows_portable"]} instead.',
+                f'If your PC has an **NVIDIA GPU**, try {assets["windows_nvidia_portable"]}; RTX 5070/5080/5090 users can try the RTX 50 CUDA build first.',
+                'TensorRT is no longer shipped as a giant GitHub Release package; install it on demand from the in-app `KataGo Auto Setup` when needed.',
+                f'The bundled packages continue to include KataGo `{katago_version}` and default weight `{model_source}`.',
+            ],
+            'download_heading': 'Download Guide',
+            'download_headers': ('Your computer', 'Download this file'),
+            'why_heading': 'Why This Preview Is Worth Testing',
+            'why': [
+                'ReadBoard recovery, candidate previews, batch analysis, and TensorRT recommendations are all frequent real-world paths.',
+                'This preview merges community fixes and updates the packaged dependency version so the release assets match the code.',
+                'Before publishing, full tests, targeted tests, packaging, and a real local UI launch smoke test were rerun.',
+            ],
+            'contact_heading': 'Contact',
+            'contact': ['QQ group: `299419120`'],
+        },
+        {
+            'language': '日本語',
+            'labels': 'ja',
+            'intro': (
+                'これは `LizzieYzy Next` の 2026-05-30 プレビュー版です。コミュニティ PR を取り込み、同期・分析・プレビュー操作の安定性を高めました。'
+                '@semanym さんと @qiyi71w さんの継続的な貢献に感謝します。この版では ReadBoard の失敗手後の復旧、'
+                'batch lightning analysis 設定、候補手表のプレビュー解除、TensorRT 自動設定向け NVIDIA GPU 検出を改善しています。'
+            ),
+            'updates_heading': '主な更新',
+            'updates': [
+                'PR #34 をマージ：ReadBoard で誤クリック/漏れた着手の後にローカルエンジンと遠隔碁盤がずれる問題を修正。',
+                'Windows 同梱 readboard を `qiyi71w/readboard v3.0.6` に固定し、新しい同期復旧プロトコルに合わせました。',
+                'PR #33 をマージ：batch lightning analysis の設定と開始体験を改善。',
+                'PR #35 をマージ：候補手表の古い PV プレビューが残る問題を修正。',
+                'PR #31 をマージ：KataGo 自動設定に NVIDIA GPU / Compute Capability 検出を追加。TensorRT は巨大な release asset ではなく、アプリ内の任意インストールのままです。',
+                'Windows portable build は引き続き自己完結型で、設定と TensorRT ダウンロードデータは展開フォルダ内を優先します。',
+            ],
+            'before_heading': 'ダウンロード前に',
+            'before': [
+                f'多くの Windows ユーザーには {assets["windows_opencl_portable"]}、つまり **OpenCL 推奨・インストール不要版** をおすすめします。',
+                f'OpenCL が不安定な場合は {assets["windows_portable"]} を使ってください。',
+                f'**NVIDIA GPU** 搭載 PC では {assets["windows_nvidia_portable"]} を試してください。RTX 5070/5080/5090 は RTX 50 CUDA 版も候補です。',
+                'TensorRT は巨大な GitHub Release パッケージとして配布しません。必要な場合はアプリ内の `KataGo 自動設定` から任意でインストールしてください。',
+                f'同梱パッケージには KataGo `{katago_version}` と既定の重み `{model_source}` が含まれます。',
+            ],
+            'download_heading': 'ダウンロード案内',
+            'download_headers': ('環境', 'ダウンロードするファイル'),
+            'why_heading': 'このプレビューを試す理由',
+            'why': [
+                'ReadBoard 復旧、候補手プレビュー、batch analysis、TensorRT 推奨は、どれも実使用でよく通る経路です。',
+                'コミュニティ修正を取り込み、同梱依存のバージョンもコードに合わせました。',
+                '公開前に full test、targeted test、package、実機ローカル UI 起動 smoke を再実行しました。',
+            ],
+            'contact_heading': '連絡先',
+            'contact': ['QQ グループ：`299419120`'],
+        },
+        {
+            'language': '한국어',
+            'labels': 'ko',
+            'intro': (
+                '`LizzieYzy Next` 2026-05-30 프리뷰 빌드입니다. 커뮤니티 PR 을 반영하고 동기화, 분석, 미리보기 상호작용 안정성을 개선했습니다. '
+                '@semanym 님과 @qiyi71w 님의 지속적인 기여에 감사드립니다. 이번 릴리스는 ReadBoard 실패 착수 복구, '
+                'batch lightning analysis 설정, 후보수 표 미리보기 정리, TensorRT 자동 설정용 NVIDIA GPU 감지를 보강합니다.'
+            ),
+            'updates_heading': '주요 변경',
+            'updates': [
+                'PR #34 병합: ReadBoard 오착/누락 후 로컬 엔진과 원격 바둑판이 어긋나는 문제를 수정했습니다.',
+                'Windows 내장 readboard 를 `qiyi71w/readboard v3.0.6` 으로 고정해 새 동기화 복구 프로토콜과 맞췄습니다.',
+                'PR #33 병합: batch lightning analysis 설정과 시작 경험을 개선했습니다.',
+                'PR #35 병합: 후보수 표의 오래된 PV 미리보기 상태가 남는 문제를 정리했습니다.',
+                'PR #31 병합: KataGo Auto Setup 에 NVIDIA GPU / Compute Capability 감지를 추가했습니다. TensorRT 는 거대한 release asset 이 아니라 앱 안에서 선택 설치합니다.',
+                'Windows portable build 는 계속 self-contained 방식이며 설정과 TensorRT 다운로드 데이터는 우선 압축 해제 폴더 안에 둡니다.',
+            ],
+            'before_heading': '다운로드 전 안내',
+            'before': [
+                f'대부분의 Windows 사용자는 {assets["windows_opencl_portable"]}, 즉 **OpenCL 권장 무설치 빌드** 를 받으면 됩니다.',
+                f'OpenCL 이 불안정하면 {assets["windows_portable"]} 를 사용하세요.',
+                f'**NVIDIA GPU** PC 라면 {assets["windows_nvidia_portable"]} 를 먼저 시도하세요. RTX 5070/5080/5090 은 RTX 50 CUDA 빌드도 우선 후보입니다.',
+                'TensorRT 는 더 이상 거대한 GitHub Release 패키지로 배포하지 않습니다. 필요할 때 앱 안의 `KataGo Auto Setup` 에서 설치하세요.',
+                f'번들 패키지는 KataGo `{katago_version}` 와 기본 weight `{model_source}` 를 계속 포함합니다.',
+            ],
+            'download_heading': '다운로드 안내',
+            'download_headers': ('사용 환경', '받을 파일'),
+            'why_heading': '이 프리뷰를 테스트할 이유',
+            'why': [
+                'ReadBoard 복구, 후보수 미리보기, batch analysis, TensorRT 추천은 실제 사용에서 자주 거치는 경로입니다.',
+                '커뮤니티 수정과 패키지 의존성 버전을 함께 맞춰 코드와 릴리스 자산의 괴리를 줄였습니다.',
+                '공개 전 full test, targeted test, package, 실제 로컬 UI 실행 smoke 를 다시 수행했습니다.',
+            ],
+            'contact_heading': '연락',
+            'contact': ['QQ 그룹: `299419120`'],
+        },
+        {
+            'language': 'ภาษาไทย',
+            'labels': 'th',
+            'intro': (
+                'นี่คือ build preview วันที่ 2026-05-30 ของ `LizzieYzy Next` เน้นรวม PR จากชุมชนและปรับความเสถียรของ sync, analysis, และ preview interaction '
+                'ขอบคุณ @semanym และ @qiyi71w สำหรับการช่วยพัฒนาอย่างต่อเนื่อง รุ่นนี้ปรับปรุงการกู้คืน ReadBoard หลังวางหมากพลาด, '
+                'batch lightning analysis settings, การล้าง preview ในตาราง candidate, และการตรวจ NVIDIA GPU สำหรับ TensorRT auto setup'
+            ),
+            'updates_heading': 'สิ่งที่อัปเดต',
+            'updates': [
+                'Merge PR #34: แก้ ReadBoard desync หลังคลิกผิดหรือหมากจากเครื่องมือ sync ตกหล่น',
+                'Windows bundle pin readboard เป็น `qiyi71w/readboard v3.0.6` เพื่อให้ตรงกับ sync recovery protocol ใหม่',
+                'Merge PR #33: ปรับ batch lightning analysis settings และประสบการณ์ตอนเริ่มทำงาน',
+                'Merge PR #35: ล้าง PV preview เก่าจาก candidate table เมื่อกลับไป hover บนกระดานหรือคลิก variation tree',
+                'Merge PR #31: เพิ่ม NVIDIA GPU / Compute Capability detection ใน KataGo Auto Setup โดย TensorRT ยังเป็นการติดตั้งในแอปแบบ on-demand ไม่ใช่ release asset ขนาดใหญ่',
+                'Windows portable build ยังเป็น self-contained โดย config และข้อมูลดาวน์โหลด TensorRT จะอยู่ในโฟลเดอร์ที่แตกไฟล์ก่อน',
+            ],
+            'before_heading': 'อ่านก่อนดาวน์โหลด',
+            'before': [
+                f'ผู้ใช้ Windows ส่วนใหญ่ควรดาวน์โหลด {assets["windows_opencl_portable"]} ซึ่งเป็น **OpenCL build แบบไม่ต้องติดตั้งที่แนะนำ**',
+                f'ถ้า OpenCL ไม่เสถียรบนเครื่องของคุณ ให้ใช้ {assets["windows_portable"]}',
+                f'ถ้าเครื่องมี **NVIDIA GPU** ให้ลอง {assets["windows_nvidia_portable"]}; ผู้ใช้ RTX 5070/5080/5090 อาจลอง RTX 50 CUDA build ก่อน',
+                'TensorRT จะไม่ถูกปล่อยเป็น GitHub Release package ขนาดใหญ่อีกต่อไป เมื่อต้องการให้ติดตั้งจาก `KataGo Auto Setup` ในแอป',
+                f'Bundle ยังรวม KataGo `{katago_version}` และ default weight `{model_source}` ไว้ให้',
+            ],
+            'download_heading': 'คำแนะนำการดาวน์โหลด',
+            'download_headers': ('เครื่องของคุณ', 'ไฟล์ที่ควรดาวน์โหลด'),
+            'why_heading': 'ทำไม preview นี้น่าลอง',
+            'why': [
+                'ReadBoard recovery, candidate preview, batch analysis, และ TensorRT recommendation เป็น flow ที่ผู้ใช้เจอบ่อยจริง',
+                'รุ่นนี้รวม community fixes และอัปเดต dependency ที่อยู่ใน package ให้ตรงกับ code',
+                'ก่อน publish ได้รัน full test, targeted test, package และ real local UI launch smoke แล้ว',
+            ],
+            'contact_heading': 'ติดต่อ',
+            'contact': ['QQ group: `299419120`'],
+        },
+    ]
+    sections: list[dict[str, object]] = []
+    for block in localized_sections:
+        language = str(block['language'])
+        labels_key = str(block['labels'])
+        localized_assets = assets_cn if language in ('中文', '繁體中文') else assets
+        sections.append(
+            {
+                'language': language,
+                'intro': block['intro'],
+                'updates': {'heading': block['updates_heading'], 'items': block['updates']},
+                'before': {'heading': block['before_heading'], 'items': block['before']},
+                'download': {
+                    'heading': block['download_heading'],
+                    'headers': block['download_headers'],
+                    'rows': standard_download_rows(
+                        STANDARD_DOWNLOAD_LABELS[labels_key],
+                        localized_assets,
+                    ),
+                },
+                'why': {'heading': block['why_heading'], 'items': block['why']},
+                'contact': {'heading': block['contact_heading'], 'items': block['contact']},
+            }
+        )
+
+    add_nvidia50_download_rows(sections, assets_cn, assets)
+    validate_release_sections(sections)
+    return release_heading(release_tag) + '\n\n' + '\n\n---\n\n'.join(
+        render_language_section(section) for section in sections
+    ) + '\n'
+
+
+def build_next_2026_05_30_2_notes(
+    asset_map: dict[str, str | None],
+    bundle: dict[str, str],
+    repo: str,
+    release_tag: str | None,
+) -> str:
+    notes = build_next_2026_05_30_1_notes(asset_map, bundle, repo, release_tag)
+    replacements = {
+        '2026-05-30 预览版': '2026-05-30 正式复测版',
+        '这一版为什么值得先测': '这一版为什么可以放心更新',
+        '2026-05-30 預覽版': '2026-05-30 正式複測版',
+        '這一版為什麼值得先測': '這一版為什麼可以放心更新',
+        '2026-05-30 preview build': '2026-05-30 stable retest release',
+        'Why This Preview Is Worth Testing': 'Why This Release Is Ready',
+        'This preview merges community fixes': 'This release merges community fixes',
+        '2026-05-30 プレビュー版': '2026-05-30 正式リテスト版',
+        'このプレビューを試す理由': 'このリリースで更新する理由',
+        '2026-05-30 프리뷰 빌드': '2026-05-30 정식 재검증 릴리스',
+        '이 프리뷰를 테스트할 이유': '이 릴리스를 업데이트할 이유',
+        'build preview วันที่ 2026-05-30': 'stable retest release วันที่ 2026-05-30',
+        'ทำไม preview นี้น่าลอง': 'ทำไม release นี้พร้อมใช้งาน',
+    }
+    for old, new in replacements.items():
+        notes = notes.replace(old, new)
+    return notes
+
+
+def build_next_2026_05_31_1_notes(
+    asset_map: dict[str, str | None],
+    bundle: dict[str, str],
+    repo: str,
+    release_tag: str | None,
+) -> str:
+    assets_cn = {key: format_asset(asset_map[key], repo, release_tag) for key in asset_map}
+    assets = {key: format_asset_en(asset_map[key], repo, release_tag) for key in asset_map}
+    katago_version = bundle['katago_version']
+    model_source = bundle['model_source']
+
+    localized_sections = [
+        {
+            'language': '中文',
+            'labels': 'zh',
+            'intro': (
+                '这是 TensorRT 下载体验修复版。TensorRT 仍然是应用内按需安装的 NVIDIA 后端加速方式；'
+                '本版重点解决国内下载 NVIDIA TensorRT/CUDA/cuDNN 运行库时速度不稳定的问题。'
+            ),
+            'updates_heading': '本版主要更新',
+            'updates': [
+                '安装 TensorRT 前会自动对 `developer.download.nvidia.cn` 和 `developer.download.nvidia.com` 做小分段测速，再选择当前网络更快的官方 NVIDIA 下载源。',
+                '测速只读取 TensorRT 官方运行库前 512 KiB 的 Range 数据，时间短、流量小，不会提前下载完整 1.8GB 大包。',
+                '测速胜出的域名会统一用于 CUDA 12.8、cuDNN 9 和 TensorRT 10.9 运行库下载；KataGo TensorRT 本体仍按原来的 GitHub 官方发布包下载。',
+                '任意一侧测速失败时会自动降级到可用的一侧；两侧都失败时保守回到 `.com`，避免安装流程卡死。',
+                '下载前新增“正在测速 NVIDIA 下载源...”进度提示，不要求用户理解代理、TUN 或 DIRECT 规则。',
+                '继续保留 SHA-256 / 文件大小校验，测速只决定下载域名，不降低包完整性检查标准。',
+            ],
+            'before_heading': '下载前先看这几句',
+            'before': [
+                f'主推荐整合包继续内置 KataGo `{katago_version}` 和默认权重 `{model_source}`。',
+                'Windows 普通用户优先下载 OpenCL 免安装版；NVIDIA 用户可下载 NVIDIA/RTX 50 CUDA 版，再在软件内按需安装 TensorRT。',
+                'TensorRT 不会作为巨大的 GitHub release asset 直接打包进安装包，仍然在一键设置中按需下载。',
+                '如果你的网络里 `.cn` 更快，安装器会自动选 `.cn`；如果 `.com` 更快，也会自动选 `.com`。',
+                '这版不要求用户手动配置 Clash、TUN 或代理规则，程序按实际下载速度自己判断。',
+            ],
+            'download_heading': '下载建议',
+            'download_headers': ('你的电脑', '直接下载这个'),
+            'why_heading': '这一版为什么值得更新',
+            'why': [
+                '国内用户点击安装 TensorRT 时，不再固定走单一 NVIDIA 下载域名，遇到慢源会自动换到更快的官方源。',
+                '测速发生在真正下载大运行库之前，能避免用户等了很久才发现当前域名很慢。',
+                '这次修改只影响 NVIDIA 官方运行库下载源选择，不改变模型名、权重显示、TensorRT 后端启用逻辑。',
+                '发布前已重新跑 TensorRT 相关单元测试、全量单元测试和 Maven package。',
+            ],
+            'contact_heading': '交流',
+            'contact': ['QQ 群：`299419120`'],
+        },
+        {
+            'language': '繁體中文',
+            'labels': 'zh_hant',
+            'intro': (
+                '這是 TensorRT 下載體驗修正版。TensorRT 仍然是應用程式內按需安裝的 NVIDIA 後端加速方式；'
+                '本版重點改善下載 NVIDIA TensorRT/CUDA/cuDNN 執行庫時速度不穩的問題。'
+            ),
+            'updates_heading': '本版主要更新',
+            'updates': [
+                '安裝 TensorRT 前會自動對 `developer.download.nvidia.cn` 和 `developer.download.nvidia.com` 做小分段測速，再選擇目前網路更快的官方 NVIDIA 下載源。',
+                '測速只讀取 TensorRT 官方執行庫前 512 KiB 的 Range 資料，時間短、流量小，不會提前下載完整 1.8GB 大包。',
+                '測速勝出的網域會統一用於 CUDA 12.8、cuDNN 9 和 TensorRT 10.9 執行庫下載；KataGo TensorRT 本體仍按原 GitHub 官方發布包下載。',
+                '任一側測速失敗時會自動降級到可用的一側；兩側都失敗時保守回到 `.com`，避免安裝流程卡住。',
+                '下載前新增「正在測速 NVIDIA 下載源...」進度提示，不要求使用者理解代理、TUN 或 DIRECT 規則。',
+                '繼續保留 SHA-256 / 檔案大小校驗，測速只決定下載網域，不降低完整性檢查標準。',
+            ],
+            'before_heading': '下載前先看這幾句',
+            'before': [
+                f'主推薦整合包繼續內建 KataGo `{katago_version}` 和預設權重 `{model_source}`。',
+                'Windows 一般使用者優先下載 OpenCL 免安裝版；NVIDIA 使用者可下載 NVIDIA/RTX 50 CUDA 版，再在軟體內按需安裝 TensorRT。',
+                'TensorRT 不會作為巨大的 GitHub release asset 直接打包進安裝包，仍然在一鍵設定中按需下載。',
+                '如果你的網路裡 `.cn` 更快，安裝器會自動選 `.cn`；如果 `.com` 更快，也會自動選 `.com`。',
+                '這版不要求使用者手動配置 Clash、TUN 或代理規則，程式會按實際下載速度自行判斷。',
+            ],
+            'download_heading': '下載建議',
+            'download_headers': ('你的電腦', '直接下載這個'),
+            'why_heading': '這一版為什麼值得更新',
+            'why': [
+                '下載 TensorRT 時不再固定走單一 NVIDIA 下載網域，遇到慢源會自動換到更快的官方源。',
+                '測速發生在真正下載大型執行庫之前，能避免等很久才發現目前網域很慢。',
+                '這次修改只影響 NVIDIA 官方執行庫下載源選擇，不改變模型名、權重顯示、TensorRT 後端啟用邏輯。',
+                '發布前已重新跑 TensorRT 相關單元測試、完整單元測試和 Maven package。',
+            ],
+            'contact_heading': '交流',
+            'contact': ['QQ 群：`299419120`'],
+        },
+        {
+            'language': 'English',
+            'labels': 'en',
+            'intro': (
+                'This is a TensorRT download-experience fix. TensorRT remains an optional in-app NVIDIA backend acceleration path; '
+                'this build improves the reliability of downloading the NVIDIA TensorRT/CUDA/cuDNN runtime packages.'
+            ),
+            'updates_heading': 'Release Highlights',
+            'updates': [
+                'Before installing TensorRT, the app now probes both `developer.download.nvidia.cn` and `developer.download.nvidia.com`, then chooses the faster official NVIDIA download host for the current network.',
+                'The probe reads only the first 512 KiB of the official TensorRT runtime via an HTTP Range request, so it is quick and does not pre-download the full 1.8GB package.',
+                'The winning host is reused for CUDA 12.8, cuDNN 9, and TensorRT 10.9 runtime downloads; the KataGo TensorRT binary still comes from its original GitHub release asset.',
+                'If one host fails, the installer falls back to the working host; if both fail, it conservatively falls back to `.com` instead of stalling.',
+                'A new “Testing NVIDIA download mirrors...” progress message appears before the large runtime downloads begin.',
+                'SHA-256 and size checks remain in place: the probe only chooses the host and does not weaken package integrity verification.',
+            ],
+            'before_heading': 'Read Before Downloading',
+            'before': [
+                f'The recommended bundles continue to include KataGo `{katago_version}` and the default weight `{model_source}`.',
+                'Most Windows users should start with the no-install OpenCL build; NVIDIA users can use the NVIDIA / RTX 50 CUDA builds and install TensorRT on demand inside the app.',
+                'TensorRT is not bundled as a giant GitHub release asset; it is still downloaded only when requested from KataGo Auto Setup.',
+                'If `.cn` is faster on your network, the installer chooses `.cn`; if `.com` is faster, it chooses `.com`.',
+                'Users do not need to configure Clash, TUN, proxy, or DIRECT rules for this release path.',
+            ],
+            'download_heading': 'Download Guide',
+            'download_headers': ('Your computer', 'Download this file'),
+            'why_heading': 'Why Update',
+            'why': [
+                'TensorRT installation no longer depends on one fixed NVIDIA download host, so slow routes can be avoided automatically.',
+                'The speed choice happens before the large runtime downloads, reducing the chance of waiting a long time on a bad host.',
+                'The change only affects NVIDIA runtime download host selection; model names, weight display, and TensorRT backend activation are unchanged.',
+                'Before release, TensorRT-focused tests, the full unit suite, and Maven package were rerun.',
+            ],
+            'contact_heading': 'Contact',
+            'contact': ['QQ group: `299419120`'],
+        },
+        {
+            'language': '日本語',
+            'labels': 'ja',
+            'intro': (
+                'これは TensorRT ダウンロード体験の修正版です。TensorRT は引き続きアプリ内で任意インストールする NVIDIA 高速化バックエンドであり、'
+                '本リリースでは NVIDIA TensorRT/CUDA/cuDNN ランタイムのダウンロード安定性を改善しました。'
+            ),
+            'updates_heading': '主な更新',
+            'updates': [
+                'TensorRT インストール前に `developer.download.nvidia.cn` と `developer.download.nvidia.com` の小さな分割ダウンロードを測定し、現在のネットワークで速い公式 NVIDIA ホストを選びます。',
+                '測定は公式 TensorRT ランタイム先頭 512 KiB だけを HTTP Range で読み取るため短時間で終わり、1.8GB 全体を事前ダウンロードしません。',
+                '選ばれたホストは CUDA 12.8、cuDNN 9、TensorRT 10.9 ランタイムのダウンロードに使われます。KataGo TensorRT 本体は従来どおり GitHub release asset から取得します。',
+                '片方のホストが失敗した場合は動作する側へ自動フォールバックし、両方失敗した場合は保守的に `.com` へ戻します。',
+                '大きなランタイムをダウンロードする前に “Testing NVIDIA download mirrors...” の進捗メッセージを表示します。',
+                'SHA-256 とサイズ検証は継続します。測定はホスト選択だけで、パッケージ完全性チェックは弱めません。',
+            ],
+            'before_heading': 'ダウンロード前に',
+            'before': [
+                f'推奨バンドルには引き続き KataGo `{katago_version}` と既定の重み `{model_source}` が含まれます。',
+                'Windows の多くのユーザーは OpenCL のインストール不要版から始めてください。NVIDIA ユーザーは NVIDIA / RTX 50 CUDA 版を使い、アプリ内で必要時に TensorRT をインストールできます。',
+                'TensorRT は巨大な GitHub release asset として同梱されず、KataGo 自動設定から必要時にだけダウンロードします。',
+                'あなたのネットワークで `.cn` が速ければ `.cn`、`.com` が速ければ `.com` を自動で選びます。',
+                'このリリースでは Clash、TUN、proxy、DIRECT ルールの手動設定は不要です。',
+            ],
+            'download_heading': 'ダウンロード案内',
+            'download_headers': ('お使いの環境', 'ダウンロードするファイル'),
+            'why_heading': '更新する理由',
+            'why': [
+                'TensorRT インストールが単一の NVIDIA ダウンロードホストに固定されず、遅い経路を自動で避けられます。',
+                '大きなランタイムを落とす前に速度を選ぶため、遅いホストで長時間待つ可能性を減らします。',
+                '変更対象は NVIDIA ランタイムのホスト選択のみで、モデル名、重み表示、TensorRT バックエンド有効化の挙動は変わりません。',
+                'リリース前に TensorRT 関連テスト、full unit suite、Maven package を再実行しました。',
+            ],
+            'contact_heading': '連絡先',
+            'contact': ['QQ グループ: `299419120`'],
+        },
+        {
+            'language': '한국어',
+            'labels': 'ko',
+            'intro': (
+                '이번 버전은 TensorRT 다운로드 경험을 고친 릴리스입니다. TensorRT 는 계속 앱 안에서 선택 설치하는 NVIDIA 백엔드 가속 경로이며, '
+                '이번 빌드는 NVIDIA TensorRT/CUDA/cuDNN 런타임 다운로드 안정성을 개선합니다.'
+            ),
+            'updates_heading': '주요 업데이트',
+            'updates': [
+                'TensorRT 설치 전에 `developer.download.nvidia.cn` 과 `developer.download.nvidia.com` 을 작은 Range 다운로드로 측정하고, 현재 네트워크에서 더 빠른 공식 NVIDIA 다운로드 호스트를 선택합니다.',
+                '측정은 공식 TensorRT 런타임의 처음 512 KiB 만 읽으므로 빠르게 끝나며, 1.8GB 전체 패키지를 미리 다운로드하지 않습니다.',
+                '선택된 호스트는 CUDA 12.8, cuDNN 9, TensorRT 10.9 런타임 다운로드에 함께 사용됩니다. KataGo TensorRT 본체는 기존 GitHub release asset 에서 받습니다.',
+                '한쪽 호스트가 실패하면 동작하는 쪽으로 자동 전환하고, 둘 다 실패하면 보수적으로 `.com` 으로 돌아가 설치 흐름이 멈추지 않게 합니다.',
+                '대형 런타임 다운로드 전에 “Testing NVIDIA download mirrors...” 진행 메시지를 표시합니다.',
+                'SHA-256 과 파일 크기 검증은 그대로 유지됩니다. 측정은 호스트 선택만 담당하며 패키지 무결성 기준은 낮추지 않습니다.',
+            ],
+            'before_heading': '다운로드 전 확인',
+            'before': [
+                f'추천 번들은 계속 KataGo `{katago_version}` 와 기본 가중치 `{model_source}` 를 포함합니다.',
+                '대부분의 Windows 사용자는 OpenCL 무설치 빌드부터 쓰면 됩니다. NVIDIA 사용자는 NVIDIA / RTX 50 CUDA 빌드에서 앱 안의 TensorRT 설치를 사용할 수 있습니다.',
+                'TensorRT 는 거대한 GitHub release asset 으로 포함되지 않고, KataGo 자동 설정에서 요청할 때만 다운로드됩니다.',
+                '내 네트워크에서 `.cn` 이 빠르면 `.cn`, `.com` 이 빠르면 `.com` 을 자동으로 선택합니다.',
+                '이 릴리스 경로에서는 Clash, TUN, proxy, DIRECT 규칙을 사용자가 직접 설정할 필요가 없습니다.',
+            ],
+            'download_heading': '다운로드 안내',
+            'download_headers': ('내 컴퓨터', '다운로드할 파일'),
+            'why_heading': '업데이트할 이유',
+            'why': [
+                'TensorRT 설치가 하나의 NVIDIA 다운로드 호스트에 고정되지 않아 느린 경로를 자동으로 피할 수 있습니다.',
+                '대형 런타임을 받기 전에 속도를 선택하므로 느린 호스트에서 오래 기다릴 가능성을 줄입니다.',
+                '이번 변경은 NVIDIA 런타임 다운로드 호스트 선택에만 영향을 주며, 모델명, 가중치 표시, TensorRT 백엔드 활성화는 바뀌지 않습니다.',
+                '릴리스 전에 TensorRT 관련 테스트, 전체 단위 테스트, Maven package 를 다시 수행했습니다.',
+            ],
+            'contact_heading': '연락처',
+            'contact': ['QQ 그룹: `299419120`'],
+        },
+        {
+            'language': 'ภาษาไทย',
+            'labels': 'th',
+            'intro': (
+                'รีลีสนี้แก้ประสบการณ์ดาวน์โหลด TensorRT โดย TensorRT ยังเป็น backend เร่งความเร็วของ NVIDIA ที่ติดตั้งจากในแอปเมื่อผู้ใช้ต้องการ '
+                'รุ่นนี้ปรับให้การดาวน์โหลด NVIDIA TensorRT/CUDA/cuDNN runtime เสถียรกว่าเดิม'
+            ),
+            'updates_heading': 'ไฮไลต์ของเวอร์ชันนี้',
+            'updates': [
+                'ก่อนติดตั้ง TensorRT แอปจะ probe ทั้ง `developer.download.nvidia.cn` และ `developer.download.nvidia.com` แล้วเลือก host ทางการของ NVIDIA ที่เร็วกว่าในเครือข่ายปัจจุบัน',
+                'การ probe อ่านแค่ 512 KiB แรกของ TensorRT runtime ทางการผ่าน HTTP Range จึงเร็วและไม่ดาวน์โหลดแพ็กเกจเต็ม 1.8GB ล่วงหน้า',
+                'host ที่ชนะจะถูกใช้กับ CUDA 12.8, cuDNN 9 และ TensorRT 10.9 runtime ส่วน KataGo TensorRT binary ยังดาวน์โหลดจาก GitHub release asset เดิม',
+                'ถ้า host ฝั่งหนึ่งล้มเหลว จะ fallback ไปอีกฝั่งที่ใช้ได้ ถ้าล้มเหลวทั้งคู่จะกลับไปใช้ `.com` แบบปลอดภัยเพื่อไม่ให้ขั้นตอนติดตั้งค้าง',
+                'เพิ่มข้อความ progress “Testing NVIDIA download mirrors...” ก่อนเริ่มดาวน์โหลด runtime ขนาดใหญ่',
+                'ยังคงตรวจ SHA-256 และขนาดไฟล์เหมือนเดิม การ probe ใช้เลือก host เท่านั้น ไม่ลดมาตรฐาน integrity check',
+            ],
+            'before_heading': 'ก่อนดาวน์โหลด ดูตรงนี้ก่อน',
+            'before': [
+                f'แพ็กเกจแนะนำยังรวม KataGo `{katago_version}` และ weight เริ่มต้น `{model_source}` ไว้ให้แล้ว',
+                'ผู้ใช้ Windows ส่วนใหญ่เริ่มจาก OpenCL แบบไม่ต้องติดตั้งได้ ส่วนผู้ใช้ NVIDIA ใช้ NVIDIA / RTX 50 CUDA build แล้วติดตั้ง TensorRT จากในแอปเมื่อต้องการ',
+                'TensorRT ไม่ได้ถูกแนบเป็น GitHub release asset ขนาดใหญ่ แต่จะดาวน์โหลดเมื่อเรียกจาก KataGo Auto Setup เท่านั้น',
+                'ถ้า `.cn` เร็วกว่าในเครือข่ายของคุณ ตัวติดตั้งจะเลือก `.cn`; ถ้า `.com` เร็วกว่า ก็จะเลือก `.com`',
+                'ผู้ใช้ไม่ต้องตั้งค่า Clash, TUN, proxy หรือ DIRECT rule เองสำหรับเส้นทาง release นี้',
+            ],
+            'download_heading': 'แนะนำการดาวน์โหลด',
+            'download_headers': ('เครื่องของคุณ', 'ดาวน์โหลดไฟล์นี้'),
+            'why_heading': 'ทำไมควรอัปเดต',
+            'why': [
+                'การติดตั้ง TensorRT ไม่ผูกกับ NVIDIA download host เดียวอีกต่อไป จึงหลีกเลี่ยง route ที่ช้าได้อัตโนมัติ',
+                'แอปเลือก host ก่อนดาวน์โหลด runtime ขนาดใหญ่ ลดโอกาสรอนานบน host ที่ช้า',
+                'การเปลี่ยนแปลงนี้มีผลเฉพาะการเลือก host สำหรับ NVIDIA runtime ไม่กระทบชื่อโมเดล การแสดง weight หรือการเปิดใช้ TensorRT backend',
+                'ก่อน release ได้รัน TensorRT-focused tests, full unit suite และ Maven package อีกครั้ง',
+            ],
+            'contact_heading': 'ติดต่อ',
+            'contact': ['QQ group: `299419120`'],
+        },
+    ]
+
+    sections: list[dict[str, object]] = []
+    for block in localized_sections:
+        language = str(block['language'])
+        labels_key = str(block['labels'])
+        localized_assets = assets_cn if language in ('中文', '繁體中文') else assets
+        sections.append(
+            {
+                'language': language,
+                'intro': block['intro'],
+                'updates': {'heading': block['updates_heading'], 'items': block['updates']},
+                'before': {'heading': block['before_heading'], 'items': block['before']},
+                'download': {
+                    'heading': block['download_heading'],
+                    'headers': block['download_headers'],
+                    'rows': standard_download_rows(
+                        STANDARD_DOWNLOAD_LABELS[labels_key],
+                        localized_assets,
+                    ),
+                },
+                'why': {'heading': block['why_heading'], 'items': block['why']},
+                'contact': {'heading': block['contact_heading'], 'items': block['contact']},
+            }
+        )
+
+    add_nvidia50_download_rows(sections, assets_cn, assets)
+    validate_release_sections(sections)
+    return release_heading(release_tag) + '\n\n' + '\n\n---\n\n'.join(
+        render_language_section(section) for section in sections
+    ) + '\n'
+
+
+def build_next_2026_05_31_2_notes(
+    asset_map: dict[str, str | None],
+    bundle: dict[str, str],
+    repo: str,
+    release_tag: str | None,
+) -> str:
+    assets_cn = {key: format_asset(asset_map[key], repo, release_tag) for key in asset_map}
+    assets = {key: format_asset_en(asset_map[key], repo, release_tag) for key in asset_map}
+    katago_version = bundle['katago_version']
+    model_source = bundle['model_source']
+
+    localized_sections = [
+        {
+            'language': '中文',
+            'labels': 'zh',
+            'intro': (
+                '这是 KataGo 线程数与换权重修复版。上一版已经修好 TensorRT 官方下载源测速；'
+                '这一版重点补上更换权重后线程数设置没有重新应用的问题，让设置面板里的 numSearchThreads 和实际启动的引擎保持一致。'
+            ),
+            'updates_heading': '本版主要更新',
+            'updates': [
+                '修复“设置了 KataGo 搜索线程数后，更换权重/重载引擎后无法继续按新线程数生效”的问题。启用线程数设置后，重启后的 KataGo 会重新收到 `kata-set-param numSearchThreads`。',
+                '手动启用线程数但没有勾“自动加载”时，现在换权重触发的引擎重启也会正确应用该线程数，不再只依赖自动加载开关。',
+                '线程数为空或异常但设置已启用时，会按当前推荐值解析并写回配置，避免重载后发送空参数。',
+                '修复预加载/双引擎场景中线程数命令可能发给全局主引擎的问题；现在命令会发给正在初始化的那个 KataGo 实例。',
+                'TensorRT 仍然只是 NVIDIA 后端加速方式，不会覆盖用户看到的权重/模型名；上一版的 `.cn` / `.com` 官方下载源测速逻辑继续保留。',
+                '新增线程数重载回归测试，覆盖手动线程数、自动加载线程数和非当前引擎初始化三条关键路径。',
+            ],
+            'before_heading': '下载前先看这几句',
+            'before': [
+                f'主推荐整合包继续内置 KataGo `{katago_version}` 和默认权重 `{model_source}`。',
+                '如果你改过“搜索线程数 numSearchThreads”，并且经常在 KataGo 一键设置里切换权重，建议更新这一版。',
+                'Windows 普通用户优先下载 OpenCL 免安装版；NVIDIA 用户可下载 NVIDIA/RTX 50 CUDA 版，再在软件内按需安装 TensorRT。',
+                'TensorRT 不作为巨大 release asset 直接打包，仍然在一键设置中按需安装；本版继续自动选择更快的 NVIDIA 官方下载域名。',
+                '这一版不改变默认权重名、模型名显示或 TensorRT 启用入口，只修复线程数应用和引擎实例命令发送。'
+            ],
+            'download_heading': '下载建议',
+            'download_headers': ('你的电脑', '直接下载这个'),
+            'why_heading': '这一版为什么值得更新',
+            'why': [
+                '换权重会重启 KataGo；旧版在没有勾自动加载时，线程数设置可能留在界面里但没有真正下发给新引擎。',
+                '修复后，无论是手动线程数还是测速推荐线程数，重载后的引擎都会按设置重新同步。',
+                '预加载和双引擎用户也更稳，线程数命令不会误发到另一个引擎实例。',
+                '发布前已跑新增线程数回归测试、KataGo/TensorRT 相关测试、全量单元测试和 Maven package。'
+            ],
+            'contact_heading': '交流',
+            'contact': ['QQ 群：`299419120`'],
+        },
+        {
+            'language': '繁體中文',
+            'labels': 'zh_hant',
+            'intro': (
+                '這是 KataGo 執行緒數與切換權重修正版。上一版已修好 TensorRT 官方下載源測速；'
+                '這一版重點補上切換權重後執行緒數設定沒有重新套用的問題，讓設定面板中的 numSearchThreads 和實際啟動的引擎保持一致。'
+            ),
+            'updates_heading': '本版主要更新',
+            'updates': [
+                '修復「設定 KataGo 搜尋執行緒數後，切換權重/重載引擎後無法繼續按新執行緒數生效」的問題。啟用執行緒數設定後，重啟的 KataGo 會重新收到 `kata-set-param numSearchThreads`。',
+                '手動啟用執行緒數但沒有勾「自動載入」時，現在切換權重觸發的引擎重啟也會正確套用該執行緒數，不再只依賴自動載入開關。',
+                '執行緒數為空或異常但設定已啟用時，會按目前推薦值解析並寫回設定，避免重載後送出空參數。',
+                '修復預載/雙引擎場景中執行緒數命令可能送到全域主引擎的問題；現在命令會送給正在初始化的那個 KataGo 實例。',
+                'TensorRT 仍然只是 NVIDIA 後端加速方式，不會覆蓋使用者看到的權重/模型名；上一版的 `.cn` / `.com` 官方下載源測速邏輯繼續保留。',
+                '新增執行緒數重載回歸測試，覆蓋手動執行緒數、自動載入執行緒數和非目前引擎初始化三條關鍵路徑。',
+            ],
+            'before_heading': '下載前先看這幾句',
+            'before': [
+                f'主推薦整合包繼續內建 KataGo `{katago_version}` 和預設權重 `{model_source}`。',
+                '如果你改過「搜尋執行緒數 numSearchThreads」，並且常在 KataGo 一鍵設定中切換權重，建議更新這一版。',
+                'Windows 一般使用者優先下載 OpenCL 免安裝版；NVIDIA 使用者可下載 NVIDIA/RTX 50 CUDA 版，再在軟體內按需安裝 TensorRT。',
+                'TensorRT 不作為巨大 release asset 直接打包，仍然在一鍵設定中按需安裝；本版繼續自動選擇更快的 NVIDIA 官方下載網域。',
+                '這一版不改變預設權重名、模型名顯示或 TensorRT 啟用入口，只修復執行緒數套用和引擎實例命令送出。',
+            ],
+            'download_heading': '下載建議',
+            'download_headers': ('你的電腦', '直接下載這個'),
+            'why_heading': '這一版為什麼值得更新',
+            'why': [
+                '切換權重會重啟 KataGo；舊版在沒有勾自動載入時，執行緒數設定可能留在介面裡但沒有真正下發給新引擎。',
+                '修復後，無論是手動執行緒數還是測速推薦執行緒數，重載後的引擎都會按設定重新同步。',
+                '預載和雙引擎使用者也更穩，執行緒數命令不會誤送到另一個引擎實例。',
+                '發布前已跑新增執行緒數回歸測試、KataGo/TensorRT 相關測試、完整單元測試和 Maven package。',
+            ],
+            'contact_heading': '交流',
+            'contact': ['QQ 群：`299419120`'],
+        },
+        {
+            'language': 'English',
+            'labels': 'en',
+            'intro': (
+                'This release fixes KataGo thread settings after weight changes. The previous build improved TensorRT official mirror probing; '
+                'this build makes sure the `numSearchThreads` value shown in settings is also applied to the engine that starts after a weight reload.'
+            ),
+            'updates_heading': 'Release Highlights',
+            'updates': [
+                'Fixed a bug where changing KataGo weights or reloading the engine could leave a previously configured search thread count unapplied. When thread control is enabled, the restarted KataGo now receives `kata-set-param numSearchThreads` again.',
+                'Manual thread settings now apply after a weight-triggered restart even when the separate auto-load checkbox is off.',
+                'If the thread field is empty or invalid while thread control is enabled, the app resolves the recommended value and writes it back before sending it to KataGo.',
+                'Fixed preloaded and dual-engine cases where the thread command could be sent to the global primary engine instead of the KataGo instance currently being initialized.',
+                'TensorRT remains an NVIDIA backend acceleration path and does not replace the visible weight/model name; the previous `.cn` / `.com` official mirror probe remains in place.',
+                'Added regression tests for manual thread settings, auto-loaded thread settings, and non-current engine initialization.',
+            ],
+            'before_heading': 'Read Before Downloading',
+            'before': [
+                f'The recommended bundles continue to include KataGo `{katago_version}` and the default weight `{model_source}`.',
+                'If you changed `numSearchThreads` and often switch weights in KataGo Auto Setup, this is the build to update to.',
+                'Most Windows users should start with the no-install OpenCL build; NVIDIA users can use the NVIDIA / RTX 50 CUDA builds and install TensorRT on demand inside the app.',
+                'TensorRT is still installed on demand from KataGo Auto Setup rather than bundled as a giant release asset; this build keeps automatic NVIDIA official host selection.',
+                'This release does not change default weight names, model display names, or the TensorRT enablement entry point; it fixes thread synchronization and command targeting.',
+            ],
+            'download_heading': 'Download Guide',
+            'download_headers': ('Your computer', 'Download this file'),
+            'why_heading': 'Why Update',
+            'why': [
+                'Changing weights restarts KataGo; older builds could keep the thread value visible in settings without actually applying it to the new engine when auto-load was off.',
+                'After this fix, both manual thread counts and benchmark-recommended thread counts are synchronized to the reloaded engine.',
+                'Preload and dual-engine setups are safer because the thread command is sent to the correct engine instance.',
+                'Before release, the new thread regression tests, KataGo/TensorRT-focused tests, the full unit suite, and Maven package were rerun.',
+            ],
+            'contact_heading': 'Contact',
+            'contact': ['QQ group: `299419120`'],
+        },
+        {
+            'language': '日本語',
+            'labels': 'ja',
+            'intro': (
+                'これは KataGo のスレッド数設定と重み切り替えに関する修正版です。前回のビルドでは TensorRT 公式ミラー測定を改善しました。'
+                'このビルドでは、設定画面に表示される `numSearchThreads` が重み切り替え後に起動するエンジンへ確実に反映されるようにしました。'
+            ),
+            'updates_heading': '主な更新',
+            'updates': [
+                'KataGo の重みを切り替えた後、またはエンジンを再読み込みした後、設定済みの検索スレッド数が反映されないことがある問題を修正しました。スレッド設定が有効な場合、再起動した KataGo へ `kata-set-param numSearchThreads` を再送します。',
+                '手動のスレッド設定は、別の自動読み込みチェックがオフでも、重み切り替えによる再起動後に適用されます。',
+                'スレッド欄が空または不正な値でも設定が有効な場合、推奨値に解決してから設定へ書き戻し、KataGo に送ります。',
+                'プリロードや dual-engine 環境で、スレッド命令が現在初期化中の KataGo ではなく global primary engine に送られる可能性を修正しました。',
+                'TensorRT は引き続き NVIDIA バックエンド高速化経路であり、表示される重み/モデル名を置き換えません。前回追加した `.cn` / `.com` 公式ミラー測定も維持します。',
+                '手動スレッド設定、自動読み込みスレッド設定、現在の主エンジンではない初期化経路をカバーする回帰テストを追加しました。',
+            ],
+            'before_heading': 'ダウンロード前に',
+            'before': [
+                f'推奨バンドルには引き続き KataGo `{katago_version}` と既定の重み `{model_source}` が含まれます。',
+                '`numSearchThreads` を変更し、KataGo 自動設定でよく重みを切り替える場合は、このビルドへの更新をおすすめします。',
+                'Windows の多くのユーザーは OpenCL のインストール不要版から始めてください。NVIDIA ユーザーは NVIDIA / RTX 50 CUDA 版を使い、アプリ内で必要時に TensorRT をインストールできます。',
+                'TensorRT は巨大な release asset として同梱されず、KataGo 自動設定から必要時にだけインストールします。このビルドでも速い NVIDIA 公式ホストを自動選択します。',
+                'このリリースは既定の重み名、モデル表示名、TensorRT 有効化入口を変更せず、スレッド同期とコマンド送信先だけを修正します。',
+            ],
+            'download_heading': 'ダウンロード案内',
+            'download_headers': ('お使いの環境', 'ダウンロードするファイル'),
+            'why_heading': '更新する理由',
+            'why': [
+                '重みを切り替えると KataGo は再起動します。旧ビルドでは自動読み込みがオフの場合、設定画面にスレッド数が残っていても新しいエンジンに反映されないことがありました。',
+                '修正後は、手動スレッド数も benchmark 推奨スレッド数も、再読み込み後のエンジンに同期されます。',
+                'プリロードや dual-engine の構成でも、スレッド命令が正しいエンジンインスタンスへ送られるためより安定します。',
+                'リリース前に新しいスレッド回帰テスト、KataGo/TensorRT 関連テスト、full unit suite、Maven package を再実行しました。',
+            ],
+            'contact_heading': '連絡先',
+            'contact': ['QQ グループ: `299419120`'],
+        },
+        {
+            'language': '한국어',
+            'labels': 'ko',
+            'intro': (
+                '이번 버전은 KataGo 스레드 수 설정과 가중치 전환 문제를 고친 릴리스입니다. 이전 빌드는 TensorRT 공식 미러 측정을 개선했고, '
+                '이번 빌드는 설정 화면의 `numSearchThreads` 값이 가중치 전환 후 시작되는 엔진에도 실제로 적용되도록 했습니다.'
+            ),
+            'updates_heading': '주요 업데이트',
+            'updates': [
+                'KataGo 가중치를 바꾸거나 엔진을 다시 로드한 뒤, 기존에 설정한 검색 스레드 수가 적용되지 않을 수 있던 문제를 수정했습니다. 스레드 제어가 켜져 있으면 재시작한 KataGo 에 `kata-set-param numSearchThreads` 를 다시 보냅니다.',
+                '별도의 자동 로드 체크박스가 꺼져 있어도, 수동 스레드 설정은 가중치 전환으로 인한 재시작 후 적용됩니다.',
+                '스레드 입력값이 비어 있거나 잘못되어도 스레드 제어가 켜져 있으면 추천값으로 해석해 설정에 다시 저장한 뒤 KataGo 에 보냅니다.',
+                '프리로드/듀얼 엔진 환경에서 스레드 명령이 현재 초기화 중인 KataGo 대신 전역 주 엔진으로 갈 수 있던 문제를 수정했습니다.',
+                'TensorRT 는 계속 NVIDIA 백엔드 가속 경로이며, 사용자에게 보이는 가중치/모델명을 바꾸지 않습니다. 이전 `.cn` / `.com` 공식 미러 측정도 유지됩니다.',
+                '수동 스레드 설정, 자동 로드 스레드 설정, 현재 주 엔진이 아닌 초기화 경로를 검증하는 회귀 테스트를 추가했습니다.',
+            ],
+            'before_heading': '다운로드 전 확인',
+            'before': [
+                f'추천 번들은 계속 KataGo `{katago_version}` 와 기본 가중치 `{model_source}` 를 포함합니다.',
+                '`numSearchThreads` 를 바꾸고 KataGo 자동 설정에서 가중치를 자주 전환한다면 이 빌드로 업데이트하는 것을 권장합니다.',
+                '대부분의 Windows 사용자는 OpenCL 무설치 빌드부터 쓰면 됩니다. NVIDIA 사용자는 NVIDIA / RTX 50 CUDA 빌드에서 앱 안의 TensorRT 설치를 사용할 수 있습니다.',
+                'TensorRT 는 거대한 release asset 으로 포함되지 않고 KataGo 자동 설정에서 요청할 때만 설치됩니다. 이 빌드도 더 빠른 NVIDIA 공식 호스트를 자동 선택합니다.',
+                '이번 릴리스는 기본 가중치 이름, 모델 표시 이름, TensorRT 활성화 진입점을 바꾸지 않고 스레드 동기화와 명령 대상만 수정합니다.',
+            ],
+            'download_heading': '다운로드 안내',
+            'download_headers': ('내 컴퓨터', '다운로드할 파일'),
+            'why_heading': '업데이트할 이유',
+            'why': [
+                '가중치를 바꾸면 KataGo 가 재시작됩니다. 이전 빌드는 자동 로드가 꺼져 있을 때 설정 화면의 스레드 값이 실제 새 엔진에 적용되지 않을 수 있었습니다.',
+                '수정 후에는 수동 스레드 수와 benchmark 추천 스레드 수가 모두 재로드된 엔진에 다시 동기화됩니다.',
+                '프리로드와 듀얼 엔진 구성에서도 스레드 명령이 올바른 엔진 인스턴스로 보내져 더 안정적입니다.',
+                '릴리스 전에 신규 스레드 회귀 테스트, KataGo/TensorRT 관련 테스트, 전체 단위 테스트, Maven package 를 다시 수행했습니다.',
+            ],
+            'contact_heading': '연락처',
+            'contact': ['QQ 그룹: `299419120`'],
+        },
+        {
+            'language': 'ภาษาไทย',
+            'labels': 'th',
+            'intro': (
+                'รีลีสนี้แก้ปัญหาค่า thread ของ KataGo หลังเปลี่ยน weight โดย build ก่อนหน้าได้ปรับการ probe mirror ทางการของ TensorRT แล้ว '
+                'ส่วน build นี้ทำให้ค่า `numSearchThreads` ที่เห็นใน settings ถูกนำไปใช้กับ engine ที่เริ่มใหม่หลัง reload weight จริง ๆ'
+            ),
+            'updates_heading': 'ไฮไลต์ของเวอร์ชันนี้',
+            'updates': [
+                'แก้บั๊กที่หลังเปลี่ยน weight ของ KataGo หรือ reload engine แล้ว ค่า search thread ที่เคยตั้งไว้อาจไม่ถูกใช้ เมื่อเปิดใช้ thread control แล้ว KataGo ที่ restart จะได้รับ `kata-set-param numSearchThreads` อีกครั้ง',
+                'ค่า thread แบบ manual จะถูกใช้หลัง restart จากการเปลี่ยน weight แม้ checkbox auto-load แยกต่างหากจะปิดอยู่',
+                'ถ้าช่อง thread ว่างหรือไม่ถูกต้อง แต่ thread control เปิดอยู่ แอปจะ resolve เป็นค่าที่แนะนำและเขียนกลับลง config ก่อนส่งให้ KataGo',
+                'แก้กรณี preload / dual-engine ที่คำสั่ง thread อาจถูกส่งไปยัง global primary engine แทน KataGo instance ที่กำลัง initialize อยู่',
+                'TensorRT ยังเป็นทางเลือก acceleration backend ของ NVIDIA และไม่แทนที่ชื่อ weight/model ที่ผู้ใช้เห็น logic probe `.cn` / `.com` จากเวอร์ชันก่อนยังคงอยู่',
+                'เพิ่ม regression tests สำหรับ manual thread settings, auto-loaded thread settings และการ initialize engine ที่ไม่ใช่ current primary engine',
+            ],
+            'before_heading': 'ก่อนดาวน์โหลด ดูตรงนี้ก่อน',
+            'before': [
+                f'แพ็กเกจแนะนำยังรวม KataGo `{katago_version}` และ weight เริ่มต้น `{model_source}` ไว้ให้แล้ว',
+                'ถ้าคุณเคยเปลี่ยน `numSearchThreads` และสลับ weight บ่อยใน KataGo Auto Setup แนะนำให้อัปเดตเป็น build นี้',
+                'ผู้ใช้ Windows ส่วนใหญ่เริ่มจาก OpenCL แบบไม่ต้องติดตั้งได้ ส่วนผู้ใช้ NVIDIA ใช้ NVIDIA / RTX 50 CUDA build แล้วติดตั้ง TensorRT จากในแอปเมื่อต้องการ',
+                'TensorRT ยังไม่ได้ถูกแนบเป็น release asset ขนาดใหญ่ แต่ติดตั้งเมื่อเรียกจาก KataGo Auto Setup เท่านั้น และ build นี้ยังเลือก NVIDIA official host ที่เร็วกว่าโดยอัตโนมัติ',
+                'รีลีสนี้ไม่เปลี่ยนชื่อ weight เริ่มต้น ชื่อ model ที่แสดง หรือทางเข้าเปิดใช้ TensorRT แต่แก้การ sync thread และ target ของคำสั่ง',
+            ],
+            'download_heading': 'แนะนำการดาวน์โหลด',
+            'download_headers': ('เครื่องของคุณ', 'ดาวน์โหลดไฟล์นี้'),
+            'why_heading': 'ทำไมควรอัปเดต',
+            'why': [
+                'การเปลี่ยน weight จะ restart KataGo ใน build เก่า ถ้า auto-load ปิดอยู่ ค่า thread อาจยังแสดงใน settings แต่ไม่ได้ถูกใช้กับ engine ใหม่',
+                'หลังแก้แล้ว ทั้งค่า thread manual และค่า thread ที่ benchmark แนะนำจะ sync ไปยัง engine ที่ reload แล้ว',
+                'setup แบบ preload และ dual-engine ปลอดภัยขึ้น เพราะคำสั่ง thread ถูกส่งไปยัง engine instance ที่ถูกต้อง',
+                'ก่อน release ได้รัน thread regression tests ใหม่, KataGo/TensorRT-focused tests, full unit suite และ Maven package อีกครั้ง',
+            ],
+            'contact_heading': 'ติดต่อ',
+            'contact': ['QQ group: `299419120`'],
+        },
+    ]
+
+    sections: list[dict[str, object]] = []
+    for block in localized_sections:
+        language = str(block['language'])
+        labels_key = str(block['labels'])
+        localized_assets = assets_cn if language in ('中文', '繁體中文') else assets
+        sections.append(
+            {
+                'language': language,
+                'intro': block['intro'],
+                'updates': {'heading': block['updates_heading'], 'items': block['updates']},
+                'before': {'heading': block['before_heading'], 'items': block['before']},
+                'download': {
+                    'heading': block['download_heading'],
+                    'headers': block['download_headers'],
+                    'rows': standard_download_rows(
+                        STANDARD_DOWNLOAD_LABELS[labels_key],
+                        localized_assets,
+                    ),
+                },
+                'why': {'heading': block['why_heading'], 'items': block['why']},
+                'contact': {'heading': block['contact_heading'], 'items': block['contact']},
+            }
+        )
+
+    add_nvidia50_download_rows(sections, assets_cn, assets)
+    validate_release_sections(sections)
+    return release_heading(release_tag) + '\n\n' + '\n\n---\n\n'.join(
+        render_language_section(section) for section in sections
+    ) + '\n'
+
+
+def build_next_2026_06_01_1_notes(
+    asset_map: dict[str, str | None],
+    bundle: dict[str, str],
+    repo: str,
+    release_tag: str | None,
+) -> str:
+    assets_cn = {key: format_asset(asset_map[key], repo, release_tag) for key in asset_map}
+    assets = {key: format_asset_en(asset_map[key], repo, release_tag) for key in asset_map}
+    katago_version = bundle['katago_version']
+    model_source = bundle['model_source']
+    sections: list[dict[str, object]] = [
+        {
+            'language': '中文',
+            'intro': (
+                '这是一次面向 Windows NVIDIA / TensorRT 用户的空间占用修复版。'
+                '重点解决软件内一键安装 TensorRT 后，下载缓存继续占用 C 盘或运行目录空间的问题。'
+                'TensorRT 仍然不作为巨大主包强制分发，普通用户继续通过 KataGo 一键设置按需安装。'
+            ),
+            'updates': {
+                'heading': '本版主要更新',
+                'items': [
+                    'TensorRT 一键安装成功后会自动清理完整下载包缓存，避免安装包和已解压运行库重复占用数 GB 空间。',
+                    'KataGo 一键设置新增“清理 TensorRT 缓存”按钮，可清理旧版本留下的下载缓存；已安装的 TensorRT 运行库和引擎不会被删除。',
+                    '启动内置 NVIDIA / TensorRT KataGo 时，会尽量把 CUDA 缓存和 TensorRT 临时文件固定到软件自己的 `runtime/nvidia-runtime/cache`。',
+                    '继续保留断点续传：下载失败或用户停止时 `.part` 会留下；完整安装成功后才清理完整安装包。',
+                    'README 和发布包说明补充了免安装包、安装器版本、C 盘占用和 TensorRT 缓存路径的说明。',
+                    '发布前已跑 TensorRT 缓存回归测试、完整单元测试、Maven package，并通过 GitHub release workflow 重新构建发布资产。',
+                ],
+            },
+            'before': {
+                'heading': '下载前先看这几句',
+                'items': [
+                    f'Windows 普通用户优先下载 {assets_cn["windows_opencl_portable"]}，这是 **OpenCL 版（推荐，免安装）**。',
+                    f'如果你的电脑是 **NVIDIA 显卡**，优先下载 {assets_cn["windows_nvidia_portable"]}；RTX 5070/5080/5090 用户优先下载 RTX 50 CUDA 包。',
+                    '想测试 TensorRT 的 RTX 20/30/40/50 用户，先下载对应 NVIDIA/CUDA 包，再在软件内一键安装 TensorRT。',
+                    '已经安装过 TensorRT 的用户，如果旧版本留下了大体积下载缓存，可以打开 KataGo 一键设置，点击“清理 TensorRT 缓存”。',
+                    f'主推荐整合包已内置 KataGo `{katago_version}` 和默认权重 `{model_source}`。',
+                    '如果非常在意 C 盘空间，Windows 用户优先使用免安装包并解压到非 C 盘。',
+                ],
+            },
+            'download': {
+                'heading': '下载建议',
+                'headers': ('你的电脑', '直接下载这个'),
+                'rows': standard_download_rows(STANDARD_DOWNLOAD_LABELS['zh'], assets_cn),
+            },
+            'why': {
+                'heading': '这一版为什么值得更新',
+                'items': [
+                    'TensorRT 官方运行库本身很大，这一版至少避免“安装包缓存 + 已解压文件”双份长期占用。',
+                    '旧版本已经占用空间的用户，不需要手动找目录，软件内就能清理下载缓存。',
+                    '免安装包继续把配置、权重、TRT 和运行缓存尽量放在解压目录内，更适合放到非 C 盘使用。',
+                ],
+            },
+            'contact': {'heading': '交流', 'items': ['QQ 群：`299419120`']},
+        },
+        {
+            'language': '繁體中文',
+            'intro': (
+                '這是針對 Windows NVIDIA / TensorRT 使用者的空間占用修正版。'
+                '重點處理軟體內一鍵安裝 TensorRT 後，下載快取仍持續占用 C 槽或執行目錄空間的問題。'
+                'TensorRT 仍不作為巨大主包強制發佈，一般使用者繼續透過 KataGo 一鍵設定按需安裝。'
+            ),
+            'updates': {
+                'heading': '本版主要更新',
+                'items': [
+                    'TensorRT 一鍵安裝成功後會自動清理完整下載包快取，避免安裝包與已解壓執行庫重複占用數 GB 空間。',
+                    'KataGo 一鍵設定新增「清理 TensorRT 快取」按鈕，可清理舊版本留下的下載快取；已安裝的 TensorRT 執行庫和引擎不會被刪除。',
+                    '啟動內建 NVIDIA / TensorRT KataGo 時，會盡量把 CUDA 快取和 TensorRT 暫存檔固定到軟體自己的 `runtime/nvidia-runtime/cache`。',
+                    '繼續保留斷點續傳：下載失敗或使用者停止時 `.part` 會留下；完整安裝成功後才清理完整安裝包。',
+                    'README 和發布包說明補充了免安裝包、安裝器版本、C 槽占用和 TensorRT 快取路徑的說明。',
+                    '發布前已跑 TensorRT 快取回歸測試、完整單元測試、Maven package，並通過 GitHub release workflow 重新建置發布資產。',
+                ],
+            },
+            'before': {
+                'heading': '下載前先看這幾句',
+                'items': [
+                    f'Windows 一般使用者優先下載 {assets_cn["windows_opencl_portable"]}，這是 **OpenCL 版（推薦，免安裝）**。',
+                    f'如果你的電腦是 **NVIDIA 顯示卡**，優先下載 {assets_cn["windows_nvidia_portable"]}；RTX 5070/5080/5090 使用者優先下載 RTX 50 CUDA 包。',
+                    '想測試 TensorRT 的 RTX 20/30/40/50 使用者，先下載對應 NVIDIA/CUDA 包，再在軟體內一鍵安裝 TensorRT。',
+                    '已經安裝過 TensorRT 的使用者，如果舊版本留下大體積下載快取，可以開啟 KataGo 一鍵設定，點擊「清理 TensorRT 快取」。',
+                    f'主推薦整合包已內建 KataGo `{katago_version}` 和預設權重 `{model_source}`。',
+                    '如果非常在意 C 槽空間，Windows 使用者優先使用免安裝包並解壓到非 C 槽。',
+                ],
+            },
+            'download': {
+                'heading': '下載建議',
+                'headers': ('你的電腦', '直接下載這個'),
+                'rows': standard_download_rows(STANDARD_DOWNLOAD_LABELS['zh_hant'], assets_cn),
+            },
+            'why': {
+                'heading': '這一版為什麼值得更新',
+                'items': [
+                    'TensorRT 官方執行庫本身很大，這一版至少避免「安裝包快取 + 已解壓檔案」雙份長期占用。',
+                    '舊版本已經占用空間的使用者，不需要手動找目錄，軟體內就能清理下載快取。',
+                    '免安裝包繼續把設定、權重、TRT 和執行快取盡量放在解壓目錄內，更適合放到非 C 槽使用。',
+                ],
+            },
+            'contact': {'heading': '交流', 'items': ['QQ 群：`299419120`']},
+        },
+        {
+            'language': 'English',
+            'intro': (
+                'This release focuses on Windows NVIDIA / TensorRT disk usage. '
+                'It fixes the case where in-app TensorRT installation could leave large download archives on the C drive or in the runtime folder after setup. '
+                'TensorRT remains an optional in-app install instead of a forced giant default package.'
+            ),
+            'updates': {
+                'heading': 'Release Highlights',
+                'items': [
+                    'Successful TensorRT installs now remove completed installer archives, avoiding long-term double storage of archives plus extracted runtime files.',
+                    'KataGo Auto Setup now includes a Clean TensorRT cache action for old leftover download caches; installed TensorRT runtime files and engines are kept.',
+                    'Bundled NVIDIA / TensorRT KataGo launches now try to keep CUDA cache and TensorRT temporary files under `runtime/nvidia-runtime/cache`.',
+                    'Resume support is preserved: interrupted downloads keep `.part` files, and completed archives are cleaned only after a successful install.',
+                    'README and package docs now explain portable mode, installer runtime locations, C-drive usage, and TensorRT cache paths.',
+                    'Before release, TensorRT cache regression tests, the full unit suite, Maven package, and GitHub release workflows were rerun.',
+                ],
+            },
+            'before': {
+                'heading': 'Read Before Downloading',
+                'items': [
+                    f'Most Windows users should download {assets["windows_opencl_portable"]}, the **recommended no-install OpenCL build**.',
+                    f'If your PC has an **NVIDIA GPU**, start with {assets["windows_nvidia_portable"]}; RTX 5070/5080/5090 users should start with the RTX 50 CUDA package.',
+                    'RTX 20/30/40/50 users who want TensorRT should download the matching NVIDIA/CUDA package first, then install TensorRT from inside the app.',
+                    'If an older build already left a large TensorRT download cache, open KataGo Auto Setup and press Clean TensorRT cache.',
+                    f'The recommended bundles include KataGo `{katago_version}` and the default weight `{model_source}`.',
+                    'If C-drive space matters, prefer the Windows portable package and extract it to a non-C drive.',
+                ],
+            },
+            'download': {
+                'heading': 'Download Guide',
+                'headers': ('Your computer', 'Download this file'),
+                'rows': standard_download_rows(STANDARD_DOWNLOAD_LABELS['en'], assets),
+            },
+            'why': {
+                'heading': 'Why This Release Is Worth Updating',
+                'items': [
+                    'The official TensorRT runtime is large; this release avoids keeping both completed installer archives and extracted files indefinitely.',
+                    'Users with existing cache bloat can clean it from the app instead of hunting through Windows folders.',
+                    'Portable packages continue to keep settings, weights, TRT, and runtime caches inside the extracted folder where possible.',
+                ],
+            },
+            'contact': {'heading': 'Contact', 'items': ['QQ group: `299419120`']},
+        },
+        {
+            'language': '日本語',
+            'intro': (
+                'このリリースは Windows NVIDIA / TensorRT ユーザー向けのディスク使用量修正版です。'
+                'アプリ内 TensorRT インストール後、大きなダウンロードアーカイブが C ドライブや runtime フォルダーに残る問題を改善します。'
+                'TensorRT は引き続き巨大な既定パッケージではなく、アプリ内の任意インストールです。'
+            ),
+            'updates': {
+                'heading': '主な更新',
+                'items': [
+                    'TensorRT インストール成功後、完了済みインストーラーアーカイブを自動削除し、アーカイブと展開済み実行ファイルの二重占有を減らしました。',
+                    'KataGo 自動設定に Clean TensorRT cache 操作を追加し、旧バージョンのダウンロードキャッシュを削除できます。インストール済み runtime と engine は残ります。',
+                    '内蔵 NVIDIA / TensorRT KataGo 起動時、CUDA cache と TensorRT 一時ファイルを `runtime/nvidia-runtime/cache` に寄せるようにしました。',
+                    'レジューム対応は維持します。中断時は `.part` を残し、成功後にだけ完了済みアーカイブを清理します。',
+                    'README と package docs に portable mode、installer の runtime 位置、C ドライブ使用、TensorRT cache path の説明を追加しました。',
+                    'リリース前に TensorRT cache regression tests、full unit suite、Maven package、GitHub release workflow を再実行しました。',
+                ],
+            },
+            'before': {
+                'heading': 'ダウンロード前に',
+                'items': [
+                    f'多くの Windows ユーザーは {assets["windows_opencl_portable"]} を選ぶのがおすすめです。これは **推奨 OpenCL 版、インストール不要** です。',
+                    f'**NVIDIA GPU** 搭載 PC では {assets["windows_nvidia_portable"]} を優先してください。RTX 5070/5080/5090 は RTX 50 CUDA パッケージから始めてください。',
+                    'TensorRT を試したい RTX 20/30/40/50 ユーザーは、先に対応する NVIDIA/CUDA パッケージをダウンロードし、アプリ内で TensorRT をインストールしてください。',
+                    '旧ビルドで大きな TensorRT download cache が残っている場合は、KataGo 自動設定で Clean TensorRT cache を押してください。',
+                    f'推奨バンドルには KataGo `{katago_version}` と既定の重み `{model_source}` が含まれています。',
+                    'C ドライブ容量を重視する場合、Windows portable package を非 C ドライブへ展開するのがおすすめです。',
+                ],
+            },
+            'download': {
+                'heading': 'ダウンロード案内',
+                'headers': ('お使いの環境', 'ダウンロードするファイル'),
+                'rows': standard_download_rows(STANDARD_DOWNLOAD_LABELS['ja'], assets),
+            },
+            'why': {
+                'heading': 'このリリースを更新する理由',
+                'items': [
+                    '公式 TensorRT runtime は大きいため、完了済みアーカイブと展開済みファイルを長期間二重に持たないようにしました。',
+                    '既に cache が膨らんでいるユーザーも、Windows フォルダーを探さずアプリ内で清理できます。',
+                    'Portable package は引き続き、設定、重み、TRT、runtime cache を可能な限り展開先フォルダー内に保持します。',
+                ],
+            },
+            'contact': {'heading': '連絡先', 'items': ['QQ グループ: `299419120`']},
+        },
+        {
+            'language': '한국어',
+            'intro': (
+                '이번 릴리스는 Windows NVIDIA / TensorRT 사용자의 디스크 사용량을 줄이는 수정판입니다. '
+                '앱 안에서 TensorRT 를 설치한 뒤 큰 다운로드 archive 가 C 드라이브나 runtime 폴더에 남는 문제를 개선했습니다. '
+                'TensorRT 는 계속 거대한 기본 패키지가 아니라 앱 안에서 선택 설치하는 방식입니다.'
+            ),
+            'updates': {
+                'heading': '주요 업데이트',
+                'items': [
+                    'TensorRT 설치가 성공하면 완료된 installer archive 를 자동 삭제해 archive 와 압축 해제된 runtime 파일이 장기간 중복 저장되는 문제를 줄였습니다.',
+                    'KataGo 자동 설정에 Clean TensorRT cache 동작을 추가했습니다. 예전 버전의 다운로드 cache 를 지워도 설치된 TensorRT runtime 과 engine 은 유지됩니다.',
+                    '내장 NVIDIA / TensorRT KataGo 실행 시 CUDA cache 와 TensorRT temporary file 을 `runtime/nvidia-runtime/cache` 아래로 모으도록 했습니다.',
+                    '이어받기는 유지됩니다. 중단된 다운로드는 `.part` 를 남기고, 설치가 완전히 성공한 뒤에만 완료된 archive 를 정리합니다.',
+                    'README 와 package docs 에 portable mode, installer runtime 위치, C 드라이브 사용량, TensorRT cache path 설명을 보강했습니다.',
+                    '릴리스 전에 TensorRT cache regression tests, full unit suite, Maven package, GitHub release workflow 를 다시 실행했습니다.',
+                ],
+            },
+            'before': {
+                'heading': '다운로드 전 확인',
+                'items': [
+                    f'대부분의 Windows 사용자는 {assets["windows_opencl_portable"]} 를 먼저 받으면 됩니다. 이는 **추천 OpenCL 무설치 빌드** 입니다.',
+                    f'**NVIDIA GPU** 가 있다면 {assets["windows_nvidia_portable"]} 를 우선 사용하세요. RTX 5070/5080/5090 사용자는 RTX 50 CUDA 패키지부터 시작하세요.',
+                    'TensorRT 를 테스트하려는 RTX 20/30/40/50 사용자는 먼저 해당 NVIDIA/CUDA 패키지를 받은 뒤 앱 안에서 TensorRT 를 설치하세요.',
+                    '이전 빌드가 큰 TensorRT download cache 를 남겼다면 KataGo 자동 설정에서 Clean TensorRT cache 를 누르세요.',
+                    f'추천 번들에는 KataGo `{katago_version}` 와 기본 가중치 `{model_source}` 가 포함되어 있습니다.',
+                    'C 드라이브 공간이 중요하다면 Windows portable package 를 C 드라이브가 아닌 곳에 압축 해제하는 것이 좋습니다.',
+                ],
+            },
+            'download': {
+                'heading': '다운로드 안내',
+                'headers': ('내 컴퓨터', '다운로드할 파일'),
+                'rows': standard_download_rows(STANDARD_DOWNLOAD_LABELS['ko'], assets),
+            },
+            'why': {
+                'heading': '이번 릴리스를 업데이트할 이유',
+                'items': [
+                    '공식 TensorRT runtime 은 크기 때문에, 완료된 archive 와 압축 해제 파일을 계속 이중 보관하지 않도록 했습니다.',
+                    '이미 cache 가 커진 사용자도 Windows 폴더를 직접 찾지 않고 앱 안에서 정리할 수 있습니다.',
+                    'Portable package 는 설정, 가중치, TRT, runtime cache 를 가능한 한 압축 해제한 폴더 안에 유지합니다.',
+                ],
+            },
+            'contact': {'heading': '연락처', 'items': ['QQ 그룹: `299419120`']},
+        },
+        {
+            'language': 'ภาษาไทย',
+            'intro': (
+                'รีลีสนี้เน้นลดการใช้พื้นที่ของผู้ใช้ Windows NVIDIA / TensorRT '
+                'แก้กรณีที่ติดตั้ง TensorRT จากในแอปแล้ว archive ดาวน์โหลดขนาดใหญ่ยังค้างอยู่ในไดรฟ์ C หรือ runtime folder '
+                'TensorRT ยังคงเป็นการติดตั้งแบบเลือกเองในแอป ไม่ใช่แพ็กเกจหลักขนาดใหญ่ที่บังคับทุกคนดาวน์โหลด'
+            ),
+            'updates': {
+                'heading': 'ไฮไลต์ของเวอร์ชันนี้',
+                'items': [
+                    'เมื่อติดตั้ง TensorRT สำเร็จแล้ว แอปจะลบ installer archive ที่ดาวน์โหลดครบแล้ว ลดการเก็บซ้ำระหว่าง archive และ runtime ที่แตกไฟล์แล้ว',
+                    'KataGo Auto Setup เพิ่มปุ่ม Clean TensorRT cache สำหรับล้าง download cache จากเวอร์ชันเก่า โดยไม่ลบ TensorRT runtime และ engine ที่ติดตั้งแล้ว',
+                    'เมื่อเปิด bundled NVIDIA / TensorRT KataGo แอปจะพยายามเก็บ CUDA cache และไฟล์ชั่วคราวของ TensorRT ไว้ใต้ `runtime/nvidia-runtime/cache`',
+                    'ยังรองรับ resume เหมือนเดิม: download ที่หยุดกลางทางจะเก็บ `.part` ไว้ และจะลบ archive เต็มเมื่อ install สำเร็จแล้วเท่านั้น',
+                    'README และ package docs เพิ่มคำอธิบาย portable mode, ตำแหน่ง runtime ของ installer, การใช้พื้นที่ไดรฟ์ C และ TensorRT cache path',
+                    'ก่อน release ได้รัน TensorRT cache regression tests, full unit suite, Maven package และ GitHub release workflow อีกครั้ง',
+                ],
+            },
+            'before': {
+                'heading': 'ก่อนดาวน์โหลด ดูตรงนี้ก่อน',
+                'items': [
+                    f'ผู้ใช้ Windows ส่วนใหญ่แนะนำให้ดาวน์โหลด {assets["windows_opencl_portable"]} ซึ่งเป็น **OpenCL รุ่นแนะนำ แบบไม่ต้องติดตั้ง**',
+                    f'ถ้าเครื่องมี **NVIDIA GPU** ให้เริ่มจาก {assets["windows_nvidia_portable"]}; ผู้ใช้ RTX 5070/5080/5090 ให้เริ่มจากแพ็กเกจ RTX 50 CUDA',
+                    'ผู้ใช้ RTX 20/30/40/50 ที่อยากลอง TensorRT ให้ดาวน์โหลดแพ็กเกจ NVIDIA/CUDA ที่ตรงก่อน แล้วติดตั้ง TensorRT จากในแอป',
+                    'ถ้า build เก่าเหลือ TensorRT download cache ขนาดใหญ่ ให้เปิด KataGo Auto Setup แล้วกด Clean TensorRT cache',
+                    f'แพ็กเกจหลักมี KataGo `{katago_version}` และ weight เริ่มต้น `{model_source}` มาให้แล้ว',
+                    'ถ้าพื้นที่ไดรฟ์ C สำคัญ แนะนำใช้ Windows portable package และแตกไฟล์ไปยังไดรฟ์อื่น',
+                ],
+            },
+            'download': {
+                'heading': 'แนะนำการดาวน์โหลด',
+                'headers': ('เครื่องของคุณ', 'ดาวน์โหลดไฟล์นี้'),
+                'rows': standard_download_rows(STANDARD_DOWNLOAD_LABELS['th'], assets),
+            },
+            'why': {
+                'heading': 'ทำไมเวอร์ชันนี้ควรอัปเดต',
+                'items': [
+                    'TensorRT runtime ทางการมีขนาดใหญ่ รีลีสนี้ช่วยไม่ให้เก็บ archive ที่ดาวน์โหลดครบแล้วและไฟล์ที่แตกแล้วซ้ำกันนาน ๆ',
+                    'ผู้ใช้ที่มี cache ใหญ่จากเวอร์ชันเก่าสามารถล้างจากในแอปได้ ไม่ต้องค้นหาโฟลเดอร์ Windows เอง',
+                    'Portable package ยังคงพยายามเก็บ settings, weights, TRT และ runtime cache ไว้ในโฟลเดอร์ที่แตกไฟล์เท่าที่ทำได้',
+                ],
+            },
+            'contact': {'heading': 'ติดต่อ', 'items': ['QQ group: `299419120`']},
+        },
+    ]
+    add_nvidia50_download_rows(sections, assets_cn, assets)
+    add_tensorrt_split_download_row(sections, assets_cn, assets, asset_map)
+    validate_release_sections(sections)
+    return release_heading(release_tag) + '\n\n' + '\n\n---\n\n'.join(
+        render_language_section(section) for section in sections
+    ) + '\n'
+
+
+def build_next_2026_06_01_2_notes(
+    asset_map: dict[str, str | None],
+    bundle: dict[str, str],
+    repo: str,
+    release_tag: str | None,
+) -> str:
+    assets_cn = {key: format_asset(asset_map[key], repo, release_tag) for key in asset_map}
+    assets = {key: format_asset_en(asset_map[key], repo, release_tag) for key in asset_map}
+    katago_version = bundle['katago_version']
+    model_source = bundle['model_source']
+    content = [
+        {
+            'language': '中文',
+            'labels': 'zh',
+            'intro': '这一版是 KataGo 官方 `v1.16.5` 引擎跟进版，重点吸收 Windows、CUDA/TensorRT、分析引擎和 SGF 解析相关稳定性修复。',
+            'updates_heading': '本版主要更新',
+            'updates': [
+                '内置 Windows / Linux KataGo 默认升级到官方 `v1.16.5`。',
+                '软件内 TensorRT 一键安装使用 `katago-v1.16.5-trt10.9.0-cuda12.8-windows-x64.zip`，并更新官方 SHA256 校验。',
+                'Windows 高级可选 TensorRT 分卷包也同步使用 KataGo `v1.16.5` TensorRT 引擎。',
+                '继续保留上一版的 TensorRT 断点续传、安装后自动清理下载缓存、运行缓存尽量放入软件 runtime 目录。',
+                '文档中的内置 KataGo 版本说明同步更新为 `v1.16.5`。',
+            ],
+            'before_heading': '下载前先看这几句',
+            'before': [
+                f'主推荐整合包已内置 KataGo `{katago_version}` 和默认权重 `{model_source}`。',
+                '这次不改变默认权重；重点是跟进官方引擎 bugfix 和兼容性修复。',
+                'RTX 20/30/40/50 用户仍建议先下载 NVIDIA/CUDA 包，再在软件内按需安装 TensorRT。',
+                'GTX 10 系及更老 NVIDIA 显卡继续优先 CUDA/OpenCL，不作为 TensorRT 推荐对象。',
+            ],
+            'download_heading': '下载建议',
+            'download_headers': ('你的电脑', '直接下载这个'),
+            'why_heading': '这一版为什么值得更新',
+            'why': [
+                'KataGo `v1.16.5` 修复了 Windows 线程队列、分析引擎 `clear_cache` 崩溃、SGF 解析栈溢出等用户可感知稳定性问题。',
+                '官方修复了 Windows TensorRT `nvinfer_10` 检测，对我们的一键 TensorRT 路径更友好。',
+                '官方同时改进了 CUDA / TensorRT / Metal 构建兼容性，为后续 macOS Metal 深度优化打基础。',
+            ],
+            'contact_heading': '交流',
+            'contact': ['QQ 群：`299419120`'],
+        },
+        {
+            'language': '繁體中文',
+            'labels': 'zh_hant',
+            'intro': '這一版是 KataGo 官方 `v1.16.5` 引擎跟進版，重點吸收 Windows、CUDA/TensorRT、分析引擎與 SGF 解析相關穩定性修復。',
+            'updates_heading': '本版主要更新',
+            'updates': [
+                '內建 Windows / Linux KataGo 預設升級到官方 `v1.16.5`。',
+                '軟體內 TensorRT 一鍵安裝改用 `katago-v1.16.5-trt10.9.0-cuda12.8-windows-x64.zip`，並更新官方 SHA256 校驗。',
+                'Windows 進階可選 TensorRT 分卷包也同步使用 KataGo `v1.16.5` TensorRT 引擎。',
+                '保留上一版的 TensorRT 斷點續傳、安裝後自動清理下載快取、執行快取盡量放入軟體 runtime 目錄。',
+                '文件中的內建 KataGo 版本說明同步更新為 `v1.16.5`。',
+            ],
+            'before_heading': '下載前先看這幾句',
+            'before': [
+                f'主推薦整合包已內建 KataGo `{katago_version}` 和預設權重 `{model_source}`。',
+                '這次不改變預設權重；重點是跟進官方引擎 bugfix 與相容性修復。',
+                'RTX 20/30/40/50 使用者仍建議先下載 NVIDIA/CUDA 包，再在軟體內按需安裝 TensorRT。',
+                'GTX 10 系及更舊 NVIDIA 顯卡繼續優先 CUDA/OpenCL，不作為 TensorRT 推薦對象。',
+            ],
+            'download_heading': '下載建議',
+            'download_headers': ('你的電腦', '直接下載這個'),
+            'why_heading': '這一版為什麼值得更新',
+            'why': [
+                'KataGo `v1.16.5` 修復了 Windows 執行緒佇列、分析引擎 `clear_cache` 崩潰、SGF 解析堆疊溢出等使用者可感知穩定性問題。',
+                '官方修復了 Windows TensorRT `nvinfer_10` 偵測，對我們的一鍵 TensorRT 路徑更友善。',
+                '官方也改善 CUDA / TensorRT / Metal 建構相容性，為後續 macOS Metal 深度優化打基礎。',
+            ],
+            'contact_heading': '交流',
+            'contact': ['QQ 群：`299419120`'],
+        },
+        {
+            'language': 'English',
+            'labels': 'en',
+            'intro': 'This release tracks the official KataGo `v1.16.5` engine, mainly for Windows, CUDA/TensorRT, analysis-engine, and SGF parsing stability fixes.',
+            'updates_heading': 'Release Highlights',
+            'updates': [
+                'Bundled Windows / Linux KataGo defaults now use official `v1.16.5`.',
+                'The in-app TensorRT installer now uses `katago-v1.16.5-trt10.9.0-cuda12.8-windows-x64.zip` with the updated SHA256 check.',
+                'The advanced optional Windows TensorRT split package also uses the KataGo `v1.16.5` TensorRT engine.',
+                'Keeps the previous resumable TensorRT downloads, post-install download-cache cleanup, and app-local runtime cache paths.',
+                'Documentation now lists the bundled KataGo version as `v1.16.5`.',
+            ],
+            'before_heading': 'Read Before Downloading',
+            'before': [
+                f'The recommended bundles include KataGo `{katago_version}` and the default weight `{model_source}`.',
+                'This does not change the default weight; the focus is official engine bugfixes and compatibility fixes.',
+                'RTX 20/30/40/50 users should still start with the NVIDIA/CUDA package, then install TensorRT on demand inside the app.',
+                'GTX 10 series and older NVIDIA cards should keep preferring CUDA/OpenCL instead of TensorRT.',
+            ],
+            'download_heading': 'Download Guide',
+            'download_headers': ('Your computer', 'Download this file'),
+            'why_heading': 'Why Update',
+            'why': [
+                'KataGo `v1.16.5` fixes user-facing stability issues around Windows thread queues, analysis-engine `clear_cache`, and SGF parser stack overflow.',
+                'The official Windows TensorRT `nvinfer_10` detection fix helps our one-click TensorRT path.',
+                'CUDA / TensorRT / Metal build compatibility improvements give us a better base for later macOS Metal work.',
+            ],
+            'contact_heading': 'Contact',
+            'contact': ['QQ group: `299419120`'],
+        },
+        {
+            'language': '日本語',
+            'labels': 'ja',
+            'intro': 'このリリースは KataGo 公式 `v1.16.5` エンジン追従版です。Windows、CUDA/TensorRT、分析エンジン、SGF 解析の安定性修正を取り込みます。',
+            'updates_heading': '主な更新',
+            'updates': [
+                '同梱 Windows / Linux KataGo の既定を公式 `v1.16.5` に更新しました。',
+                'アプリ内 TensorRT インストーラは `katago-v1.16.5-trt10.9.0-cuda12.8-windows-x64.zip` と新しい SHA256 検証を使います。',
+                'Windows 上級者向け TensorRT 分割パッケージも KataGo `v1.16.5` TensorRT エンジンに同期しました。',
+                '前版の TensorRT 再開対応ダウンロード、インストール後のキャッシュ削除、アプリ内 runtime キャッシュ配置は維持します。',
+                'ドキュメント上の同梱 KataGo バージョンも `v1.16.5` に更新しました。',
+            ],
+            'before_heading': 'ダウンロード前に',
+            'before': [
+                f'推奨バンドルには KataGo `{katago_version}` と既定の重み `{model_source}` が含まれます。',
+                '既定の重みは変わりません。今回は公式エンジンの bugfix と互換性修正が中心です。',
+                'RTX 20/30/40/50 ユーザーは NVIDIA/CUDA パッケージから始め、必要時にアプリ内で TensorRT を入れてください。',
+                'GTX 10 系以前の NVIDIA カードは TensorRT ではなく CUDA/OpenCL を推奨します。',
+            ],
+            'download_heading': 'ダウンロード案内',
+            'download_headers': ('お使いの環境', 'ダウンロードするファイル'),
+            'why_heading': '更新する理由',
+            'why': [
+                'KataGo `v1.16.5` は Windows の thread queue、analysis engine の `clear_cache`、SGF parser stack overflow などの安定性問題を修正します。',
+                '公式の Windows TensorRT `nvinfer_10` 検出修正は、こちらのワンクリック TensorRT 経路にも有利です。',
+                'CUDA / TensorRT / Metal の build 互換性改善により、今後の macOS Metal 最適化の土台も良くなります。',
+            ],
+            'contact_heading': '連絡先',
+            'contact': ['QQ グループ: `299419120`'],
+        },
+        {
+            'language': '한국어',
+            'labels': 'ko',
+            'intro': '이번 릴리스는 공식 KataGo `v1.16.5` 엔진 반영판입니다. Windows, CUDA/TensorRT, 분석 엔진, SGF 파싱 안정성 수정을 중심으로 가져왔습니다.',
+            'updates_heading': '주요 업데이트',
+            'updates': [
+                '내장 Windows / Linux KataGo 기본 버전을 공식 `v1.16.5` 로 올렸습니다.',
+                '앱 안의 TensorRT 설치는 `katago-v1.16.5-trt10.9.0-cuda12.8-windows-x64.zip` 과 새 SHA256 검증을 사용합니다.',
+                'Windows 고급 선택 TensorRT 분할 패키지도 KataGo `v1.16.5` TensorRT 엔진을 사용합니다.',
+                '이전 버전의 이어받기 지원 TensorRT 다운로드, 설치 후 다운로드 캐시 정리, 앱 runtime 캐시 경로는 유지합니다.',
+                '문서의 내장 KataGo 버전 설명도 `v1.16.5` 로 갱신했습니다.',
+            ],
+            'before_heading': '다운로드 전 확인',
+            'before': [
+                f'권장 번들에는 KataGo `{katago_version}` 와 기본 weight `{model_source}` 가 포함됩니다.',
+                '기본 weight 는 바뀌지 않습니다. 이번 초점은 공식 엔진 bugfix 와 호환성 수정입니다.',
+                'RTX 20/30/40/50 사용자는 NVIDIA/CUDA 패키지로 시작한 뒤 앱 안에서 TensorRT 를 필요할 때 설치하세요.',
+                'GTX 10 시리즈 및 이전 NVIDIA 카드는 TensorRT 보다 CUDA/OpenCL 을 권장합니다.',
+            ],
+            'download_heading': '다운로드 안내',
+            'download_headers': ('사용 환경', '다운로드할 파일'),
+            'why_heading': '업데이트할 이유',
+            'why': [
+                'KataGo `v1.16.5` 는 Windows thread queue, analysis engine `clear_cache`, SGF parser stack overflow 등 안정성 문제를 수정합니다.',
+                '공식 Windows TensorRT `nvinfer_10` 감지 수정은 우리의 원클릭 TensorRT 경로에도 도움이 됩니다.',
+                'CUDA / TensorRT / Metal build 호환성 개선은 이후 macOS Metal 최적화의 기반이 됩니다.',
+            ],
+            'contact_heading': '연락',
+            'contact': ['QQ group: `299419120`'],
+        },
+        {
+            'language': 'ภาษาไทย',
+            'labels': 'th',
+            'intro': 'รุ่นนี้อัปเดตตาม KataGo official `v1.16.5` โดยเน้นความเสถียรของ Windows, CUDA/TensorRT, analysis engine และ SGF parser',
+            'updates_heading': 'อัปเดตหลัก',
+            'updates': [
+                'KataGo ที่มากับแพ็กเกจ Windows / Linux เปลี่ยนเป็น official `v1.16.5`',
+                'ตัวติดตั้ง TensorRT ในแอปใช้ `katago-v1.16.5-trt10.9.0-cuda12.8-windows-x64.zip` พร้อม SHA256 ใหม่',
+                'แพ็กเกจ TensorRT split สำหรับผู้ใช้ขั้นสูงบน Windows ใช้ KataGo `v1.16.5` TensorRT engine เช่นกัน',
+                'ยังคงรองรับ TensorRT resume download, ล้าง download cache หลังติดตั้ง และเก็บ runtime cache ในโฟลเดอร์ของแอปให้มากที่สุด',
+                'เอกสารอัปเดตเวอร์ชัน KataGo ที่มากับแพ็กเกจเป็น `v1.16.5`',
+            ],
+            'before_heading': 'ก่อนดาวน์โหลด',
+            'before': [
+                f'แพ็กเกจแนะนำมี KataGo `{katago_version}` และ weight เริ่มต้น `{model_source}`',
+                'รุ่นนี้ไม่ได้เปลี่ยน default weight จุดสำคัญคือ bugfix และ compatibility fixes ของ engine official',
+                'ผู้ใช้ RTX 20/30/40/50 ควรเริ่มจาก NVIDIA/CUDA package แล้วติดตั้ง TensorRT ในแอปเมื่อต้องการ',
+                'GTX 10 series และ NVIDIA รุ่นเก่ากว่า แนะนำ CUDA/OpenCL มากกว่า TensorRT',
+            ],
+            'download_heading': 'แนะนำการดาวน์โหลด',
+            'download_headers': ('เครื่องของคุณ', 'ดาวน์โหลดไฟล์นี้'),
+            'why_heading': 'ทำไมควรอัปเดต',
+            'why': [
+                'KataGo `v1.16.5` แก้ปัญหา stability ที่ผู้ใช้เจอได้ เช่น Windows thread queue, analysis engine `clear_cache`, และ SGF parser stack overflow',
+                'การแก้ `nvinfer_10` detection บน Windows TensorRT จาก official ช่วยเส้นทางติดตั้ง TensorRT ในแอปของเรา',
+                'การปรับ CUDA / TensorRT / Metal build compatibility เป็นฐานที่ดีสำหรับงาน macOS Metal ต่อไป',
+            ],
+            'contact_heading': 'ติดต่อ',
+            'contact': ['QQ group: `299419120`'],
+        },
+    ]
+    sections: list[dict[str, object]] = []
+    for block in content:
+        localized_assets = assets_cn if block['language'] in ('中文', '繁體中文') else assets
+        sections.append(
+            {
+                'language': block['language'],
+                'intro': block['intro'],
+                'updates': {'heading': block['updates_heading'], 'items': block['updates']},
+                'before': {'heading': block['before_heading'], 'items': block['before']},
+                'download': {
+                    'heading': block['download_heading'],
+                    'headers': block['download_headers'],
+                    'rows': standard_download_rows(STANDARD_DOWNLOAD_LABELS[block['labels']], localized_assets),
+                },
+                'why': {'heading': block['why_heading'], 'items': block['why']},
+                'contact': {'heading': block['contact_heading'], 'items': block['contact']},
+            }
+        )
+    add_nvidia50_download_rows(sections, assets_cn, assets)
+    add_tensorrt_split_download_row(sections, assets_cn, assets, asset_map)
+    validate_release_sections(sections)
+    return release_heading(release_tag) + '\n\n' + '\n\n---\n\n'.join(
+        render_language_section(section) for section in sections
+    ) + '\n'
+
+
+def build_next_2026_06_06_1_notes(
+    asset_map: dict[str, str | None],
+    bundle: dict[str, str],
+    repo: str,
+    release_tag: str | None,
+) -> str:
+    assets_cn = {key: format_asset(asset_map[key], repo, release_tag) for key in asset_map}
+    assets = {key: format_asset_en(asset_map[key], repo, release_tag) for key in asset_map}
+    katago_version = bundle['katago_version']
+    model_source = bundle['model_source']
+    content = [
+        {
+            'language': '中文',
+            'labels': 'zh',
+            'intro': '这是一个面向真实使用反馈的稳定性修复版。重点修复两个会直接影响复盘体验的问题：加载棋谱后当前引擎贴目不再被棋谱默认 `KM[7.5]` 覆盖；鼠标连续悬停同一个候选选点时，棋盘上的棋子不再短暂消失。',
+            'updates_heading': '本版主要更新',
+            'updates': [
+                '修复加载 SGF、GIB、在线棋谱后，当前引擎贴目被棋谱 `KM[7.5]` 覆盖的问题。',
+                '棋谱里的贴目仍会保留在棋谱信息里显示，但不会再擅自改掉用户当前引擎的贴目设置。',
+                '修复鼠标连续停在同一个候选选点时，主棋盘棋子可能短暂消失的渲染问题。',
+                '弈客直播同步现在会保留已有分析数据，并在后台补齐主线缺失的胜率和目差曲线。',
+                '改进 KataGo 临时局面恢复逻辑，snapshot SGF 会使用当前引擎贴目，避免 `loadsgf` 间接重置贴目。',
+                '发布前已通过全量测试、打包、本机启动冒烟和四个平台 release workflow。',
+            ],
+            'before_heading': '下载前先看这几句',
+            'before': [
+                f'Windows 普通用户优先下载 {{windows_opencl_portable}}，这是 **OpenCL 版（推荐，免安装）**。',
+                f'如果 OpenCL 在你的电脑上不稳定，再改用 {{windows_portable}}。',
+                f'如果你的电脑是 **英伟达显卡**，优先下载 {{windows_nvidia_portable}}。',
+                f'主推荐整合包已内置 KataGo `{katago_version}` 和默认权重 `{model_source}`。',
+                '如果你更喜欢安装流程，再选同系列的 `installer.exe`。',
+            ],
+            'download_heading': '下载建议',
+            'download_headers': ('你的电脑', '直接下载这个'),
+            'why_heading': '这一版为什么值得更新',
+            'why': [
+                '加载棋谱后，用户在引擎设置里选择的贴目会继续生效，不会被棋谱默认值悄悄改掉。',
+                '候选点预览更稳定，连续看同一个选点时棋盘不会出现棋子消失这种明显干扰。',
+                '弈客直播不再只停留在当前胜率/目差摘要，开启自动快速分析时会逐步补齐全盘曲线。',
+                '这版是针对复盘和分析基础体验的稳定性修复，建议替换上一版继续使用。',
+            ],
+            'contact_heading': '交流',
+            'contact': ['QQ 群：`299419120`'],
+        },
+        {
+            'language': '繁體中文',
+            'labels': 'zh_hant',
+            'intro': '這是一個面向真實使用回饋的穩定性修復版。重點修復兩個會直接影響復盤體驗的問題：載入棋譜後目前引擎貼目不再被棋譜預設 `KM[7.5]` 覆蓋；滑鼠連續停在同一個候選點時，棋盤上的棋子不再短暫消失。',
+            'updates_heading': '本版主要更新',
+            'updates': [
+                '修復載入 SGF、GIB、線上棋譜後，目前引擎貼目被棋譜 `KM[7.5]` 覆蓋的問題。',
+                '棋譜裡的貼目仍會保留在棋譜資訊中顯示，但不會再擅自改掉使用者目前引擎的貼目設定。',
+                '修復滑鼠連續停在同一個候選點時，主棋盤棋子可能短暫消失的渲染問題。',
+                '弈客直播同步現在會保留已有分析資料，並在背景補齊主線缺失的勝率和目差曲線。',
+                '改進 KataGo 臨時局面恢復邏輯，snapshot SGF 會使用目前引擎貼目，避免 `loadsgf` 間接重置貼目。',
+                '發布前已通過完整測試、打包、本機啟動冒煙和四個平台 release workflow。',
+            ],
+            'before_heading': '下載前先看這幾句',
+            'before': [
+                f'Windows 一般使用者優先下載 {{windows_opencl_portable}}，這是 **OpenCL 版（推薦，免安裝）**。',
+                f'如果 OpenCL 在你的電腦上不穩定，再改用 {{windows_portable}}。',
+                f'如果你的電腦是 **NVIDIA 顯示卡**，優先下載 {{windows_nvidia_portable}}。',
+                f'主推薦整合包已內建 KataGo `{katago_version}` 和預設權重 `{model_source}`。',
+                '如果你更喜歡安裝流程，再選同系列的 `installer.exe`。',
+            ],
+            'download_heading': '下載建議',
+            'download_headers': ('你的電腦', '直接下載這個'),
+            'why_heading': '這一版為什麼值得更新',
+            'why': [
+                '載入棋譜後，使用者在引擎設定裡選擇的貼目會繼續生效，不會被棋譜預設值悄悄改掉。',
+                '候選點預覽更穩定，連續看同一個選點時棋盤不會出現棋子消失這種明顯干擾。',
+                '弈客直播不再只停留在目前勝率/目差摘要，開啟自動快速分析時會逐步補齊全盤曲線。',
+                '這版是針對復盤和分析基礎體驗的穩定性修復，建議替換上一版繼續使用。',
+            ],
+            'contact_heading': '交流',
+            'contact': ['QQ 群：`299419120`'],
+        },
+        {
+            'language': 'English',
+            'labels': 'en',
+            'intro': 'This is a stability-focused update based on real user feedback. It fixes two issues that directly affected review quality: loading a kifu no longer overwrites the current engine komi with the game file `KM[7.5]`, and repeatedly hovering the same candidate move no longer makes board stones briefly disappear.',
+            'updates_heading': 'Release Highlights',
+            'updates': [
+                'Fixed SGF, GIB, and online kifu loading so game-file `KM[7.5]` no longer overwrites the current engine komi.',
+                'The kifu komi is still preserved in game information for display, but it no longer silently changes the user’s active engine setting.',
+                'Fixed a board rendering issue where stones could briefly disappear when hovering the same candidate move repeatedly.',
+                'Yike live sync now preserves existing analysis data and completes missing mainline winrate/score curves in the background.',
+                'Improved KataGo temporary position restore so snapshot SGF uses the current engine komi and does not indirectly reset komi through `loadsgf`.',
+                'Before release, full tests, packaging, a local launch smoke test, and all four platform release workflows passed.',
+            ],
+            'before_heading': 'Read Before Downloading',
+            'before': [
+                f'Most Windows users should download {{windows_opencl_portable}}, the **recommended no-install OpenCL build**.',
+                f'If OpenCL is unreliable on your PC, use {{windows_portable}} instead.',
+                f'If your PC has an **NVIDIA GPU**, try {{windows_nvidia_portable}} first.',
+                f'The recommended bundles include KataGo `{katago_version}` and the default weight `{model_source}`.',
+                'If you prefer an installer, choose the matching `installer.exe` package.',
+            ],
+            'download_heading': 'Download Guide',
+            'download_headers': ('Your computer', 'Download this file'),
+            'why_heading': 'Why Update',
+            'why': [
+                'After loading a kifu, the komi chosen in engine settings stays active instead of being silently replaced by the game-file default.',
+                'Candidate-move preview is more stable, and reviewing the same suggestion repeatedly no longer causes visible board flicker or missing stones.',
+                'Yike live games no longer stay limited to the current winrate/score summary; with auto quick analysis enabled, the full-game curves are filled in progressively.',
+                'This is a focused stability update for core review and analysis behavior, recommended over the previous build.',
+            ],
+            'contact_heading': 'Contact',
+            'contact': ['QQ group: `299419120`'],
+        },
+        {
+            'language': '日本語',
+            'labels': 'ja',
+            'intro': 'これは実際の利用フィードバックに基づく安定性修正版です。復盤体験に直接影響する 2 点を修正しました。棋譜を読み込んでも現在のエンジンコミが棋譜の `KM[7.5]` で上書きされず、同じ候補手に連続してマウスを置いても盤上の石が一時的に消えません。',
+            'updates_heading': '主な更新',
+            'updates': [
+                'SGF、GIB、オンライン棋譜の読み込みで、棋譜の `KM[7.5]` が現在のエンジンコミを上書きする問題を修正しました。',
+                '棋譜内のコミは棋譜情報として表示されますが、ユーザーが使っているエンジン設定を勝手に変更しません。',
+                '同じ候補手にマウスを連続して置いたとき、メイン盤の石が一時的に消えることがある描画問題を修正しました。',
+                '弈客ライブ同期では既存の分析データを保持し、不足している主線の勝率/目差曲線をバックグラウンドで補完します。',
+                'KataGo の一時局面復元を改善し、snapshot SGF は現在のエンジンコミを使うため、`loadsgf` 経由でコミがリセットされにくくなりました。',
+                'リリース前に full test、package、ローカル起動 smoke test、4 プラットフォームの release workflow がすべて通過しました。',
+            ],
+            'before_heading': 'ダウンロード前に',
+            'before': [
+                f'多くの Windows ユーザーは {{windows_opencl_portable}} を選ぶのがおすすめです。これは **推奨 OpenCL 版、インストール不要** です。',
+                f'OpenCL が不安定な場合は {{windows_portable}} を使ってください。',
+                f'**NVIDIA GPU** 搭載 PC では {{windows_nvidia_portable}} を優先してください。',
+                f'推奨バンドルには KataGo `{katago_version}` と既定の重み `{model_source}` が含まれています。',
+                'インストーラ形式がよい場合は、同じ系列の `installer.exe` を選んでください。',
+            ],
+            'download_heading': 'ダウンロード案内',
+            'download_headers': ('お使いの環境', 'ダウンロードするファイル'),
+            'why_heading': '更新する理由',
+            'why': [
+                '棋譜を読み込んだ後も、エンジン設定で選んだコミがそのまま有効で、棋譜の既定値に置き換わりません。',
+                '候補手プレビューが安定し、同じ候補手を繰り返し見ても盤上の石が消えるような表示乱れが起きにくくなりました。',
+                '弈客ライブは現在局面の勝率/目差だけでなく、自動クイック分析が有効な場合に全局曲線を段階的に補完します。',
+                '復盤と分析の基本動作を直す安定性更新なので、前回ビルドからの更新をおすすめします。',
+            ],
+            'contact_heading': '連絡先',
+            'contact': ['QQ グループ: `299419120`'],
+        },
+        {
+            'language': '한국어',
+            'labels': 'ko',
+            'intro': '이번 버전은 실제 사용자 피드백을 바탕으로 한 안정성 수정판입니다. 복기 경험에 직접 영향을 주는 두 문제를 고쳤습니다. 기보를 불러와도 현재 엔진 덤이 기보의 `KM[7.5]` 로 덮어써지지 않고, 같은 후보수에 마우스를 반복해서 올려도 보드의 돌이 잠깐 사라지지 않습니다.',
+            'updates_heading': '주요 업데이트',
+            'updates': [
+                'SGF, GIB, 온라인 기보를 불러올 때 기보의 `KM[7.5]` 가 현재 엔진 덤을 덮어쓰는 문제를 수정했습니다.',
+                '기보 안의 덤은 게임 정보 표시용으로 유지되지만, 사용자의 현재 엔진 설정을 조용히 바꾸지 않습니다.',
+                '같은 후보수에 마우스를 반복해서 올릴 때 메인 보드의 돌이 잠깐 사라질 수 있던 렌더링 문제를 수정했습니다.',
+                'Yike live 동기화는 기존 분석 데이터를 보존하고, 메인라인에서 빠진 승률/집 차이 곡선을 백그라운드에서 채웁니다.',
+                'KataGo 임시 포지션 복원 로직을 개선해 snapshot SGF 가 현재 엔진 덤을 사용하고, `loadsgf` 를 통해 덤이 간접적으로 리셋되지 않도록 했습니다.',
+                '릴리스 전에 full test, package, 로컬 실행 smoke test, 4개 플랫폼 release workflow 가 모두 통과했습니다.',
+            ],
+            'before_heading': '다운로드 전 확인',
+            'before': [
+                f'대부분의 Windows 사용자는 {{windows_opencl_portable}} 를 먼저 받으면 됩니다. 이는 **추천 OpenCL 무설치 빌드** 입니다.',
+                f'OpenCL 이 PC에서 불안정하면 {{windows_portable}} 를 대신 사용하세요.',
+                f'**NVIDIA GPU** 가 있다면 {{windows_nvidia_portable}} 를 우선 사용해 보세요.',
+                f'추천 번들에는 KataGo `{katago_version}` 와 기본 가중치 `{model_source}` 가 포함되어 있습니다.',
+                '설치형 흐름을 원한다면 같은 계열의 `installer.exe` 를 고르세요.',
+            ],
+            'download_heading': '다운로드 안내',
+            'download_headers': ('내 컴퓨터', '다운로드할 파일'),
+            'why_heading': '업데이트할 이유',
+            'why': [
+                '기보를 불러온 뒤에도 엔진 설정에서 선택한 덤이 그대로 유지되고, 기보 기본값으로 조용히 바뀌지 않습니다.',
+                '후보수 미리보기가 더 안정적이며, 같은 후보수를 반복해서 볼 때 돌이 사라지는 듯한 표시 문제가 줄었습니다.',
+                'Yike live 는 현재 승률/집 차이 요약에만 머물지 않고, 자동 빠른 분석이 켜져 있으면 전체 곡선을 점진적으로 채웁니다.',
+                '복기와 분석의 기본 동작을 고친 안정성 업데이트라서 이전 빌드보다 권장합니다.',
+            ],
+            'contact_heading': '연락',
+            'contact': ['QQ 그룹: `299419120`'],
+        },
+        {
+            'language': 'ภาษาไทย',
+            'labels': 'th',
+            'intro': 'รีลีสนี้เป็นรุ่นแก้ความเสถียรจาก feedback การใช้งานจริง โดยแก้สองปัญหาที่กระทบการรีวิวเกมโดยตรง: โหลด kifu แล้วค่า komi ของ engine ปัจจุบันจะไม่ถูก `KM[7.5]` ในไฟล์ทับ และเมื่อ hover candidate move เดิมซ้ำ ๆ หินบนกระดานจะไม่หายไปชั่วคราว',
+            'updates_heading': 'อัปเดตหลัก',
+            'updates': [
+                'แก้ปัญหาโหลด SGF, GIB และ kifu ออนไลน์แล้ว `KM[7.5]` ในไฟล์ไปทับค่า komi ของ engine ปัจจุบัน',
+                'ค่า komi ใน kifu ยังแสดงในข้อมูลเกมตามเดิม แต่จะไม่เปลี่ยนค่าที่ผู้ใช้ตั้งไว้ใน engine อย่างเงียบ ๆ',
+                'แก้ปัญหา render ที่ทำให้หินบนกระดานหลักอาจหายไปชั่วคราวเมื่อ hover candidate move เดิมซ้ำ ๆ',
+                'Yike live sync จะเก็บข้อมูลวิเคราะห์ที่มีอยู่ และเติมกราฟ winrate/score ของ mainline ที่ยังขาดอยู่แบบ background',
+                'ปรับปรุงการ restore ตำแหน่งชั่วคราวของ KataGo ให้ snapshot SGF ใช้ komi ของ engine ปัจจุบัน ลดการ reset ผ่าน `loadsgf`',
+                'ก่อน release ได้ผ่าน full test, package, local launch smoke test และ release workflow ครบทั้ง 4 platform',
+            ],
+            'before_heading': 'ก่อนดาวน์โหลด',
+            'before': [
+                f'ผู้ใช้ Windows ส่วนใหญ่แนะนำให้ดาวน์โหลด {{windows_opencl_portable}} ซึ่งเป็น **OpenCL รุ่นแนะนำ แบบไม่ต้องติดตั้ง**',
+                f'ถ้า OpenCL ไม่เสถียรบนเครื่องของคุณ ให้ใช้ {{windows_portable}} แทน',
+                f'ถ้ามี **NVIDIA GPU** แนะนำให้ลอง {{windows_nvidia_portable}} ก่อน',
+                f'แพ็กเกจหลักมี KataGo `{katago_version}` และน้ำหนักเริ่มต้น `{model_source}` มาให้แล้ว',
+                'ถ้าต้องการแบบติดตั้ง ให้เลือกไฟล์ `installer.exe` ในชุดเดียวกัน',
+            ],
+            'download_heading': 'แนะนำการดาวน์โหลด',
+            'download_headers': ('เครื่องของคุณ', 'ดาวน์โหลดไฟล์นี้'),
+            'why_heading': 'ทำไมควรอัปเดต',
+            'why': [
+                'หลังโหลด kifu ค่า komi ที่เลือกใน engine settings จะยังคงอยู่ ไม่ถูกค่า default ในไฟล์เปลี่ยนเอง',
+                'การ preview candidate move เสถียรขึ้น และการดูคำแนะนำเดิมซ้ำ ๆ จะไม่ทำให้เห็นหินหายหรือกระพริบอย่างรบกวน',
+                'Yike live จะไม่แสดงแค่ winrate/score ปัจจุบันเท่านั้น หากเปิด auto quick analysis ระบบจะค่อย ๆ เติมกราฟทั้งเกมให้ครบ',
+                'เป็นรุ่นแก้เสถียรภาพของ flow รีวิวและวิเคราะห์หลัก จึงแนะนำให้อัปเดตจาก build ก่อนหน้า',
+            ],
+            'contact_heading': 'ติดต่อ',
+            'contact': ['QQ group: `299419120`'],
+        },
+    ]
+    sections: list[dict[str, object]] = []
+    for block in content:
+        localized_assets = assets_cn if block['language'] in ('中文', '繁體中文') else assets
+        before_items = [
+            item.format(
+                windows_opencl_portable=localized_assets['windows_opencl_portable'],
+                windows_portable=localized_assets['windows_portable'],
+                windows_nvidia_portable=localized_assets['windows_nvidia_portable'],
+            )
+            for item in block['before']
+        ]
+        sections.append(
+            {
+                'language': block['language'],
+                'intro': block['intro'],
+                'updates': {'heading': block['updates_heading'], 'items': block['updates']},
+                'before': {'heading': block['before_heading'], 'items': before_items},
+                'download': {
+                    'heading': block['download_heading'],
+                    'headers': block['download_headers'],
+                    'rows': standard_download_rows(STANDARD_DOWNLOAD_LABELS[block['labels']], localized_assets),
+                },
+                'why': {'heading': block['why_heading'], 'items': block['why']},
+                'contact': {'heading': block['contact_heading'], 'items': block['contact']},
+            }
+        )
+    add_nvidia50_download_rows(sections, assets_cn, assets)
+    add_tensorrt_split_download_row(sections, assets_cn, assets, asset_map)
+    validate_release_sections(sections)
+    return release_heading(release_tag) + '\n\n' + '\n\n---\n\n'.join(
+        render_language_section(section) for section in sections
+    ) + '\n'
+
+
+def build_next_2026_06_08_1_notes(
+    asset_map: dict[str, str | None],
+    bundle: dict[str, str],
+    repo: str,
+    release_tag: str | None,
+) -> str:
+    assets_cn = {key: format_asset(asset_map[key], repo, release_tag) for key in asset_map}
+    assets = {key: format_asset_en(asset_map[key], repo, release_tag) for key in asset_map}
+    katago_version = bundle['katago_version']
+    model_source = bundle['model_source']
+    content = [
+        {
+            'language': '中文',
+            'labels': 'zh',
+            'intro': '这是棋力评估体验预览版。重点把“棋力评估 / 吻合度”从偏工程化的详细表格，改成普通棋友更容易看懂的卡片式展示；详细数据仍然保留，方便需要完整指标的用户继续查看。',
+            'updates_heading': '本版主要更新',
+            'updates': [
+                '重做“棋力评估”弹窗，主界面改成现代卡片式布局，不再像旧版指标表格那样拥挤。',
+                '“测评”页只展示黑棋和白棋表现，不再在主视图显示合计棋力，避免误导普通用户。',
+                '棋力区间改成人能看懂的中文格式，例如 `业余1级-2级`、`业余1段-2段`。',
+                '“吻合度”页改成黑白双方卡片、走势曲线和建议复查区间，只提示复盘重点，不做作弊结论。',
+                '每个页面右上角保留“详细数据”，点击后仍可打开旧版完整指标表和详细图表。',
+                '分析工具栏新增短按钮“棋力评估”，放在腾讯棋谱旁边，日常复盘更容易找到。',
+            ],
+            'before_heading': '下载前先看这几句',
+            'before': [
+                '这是 pre-release 预览版，适合想先体验新版棋力评估 UI 的用户。',
+                f'主推荐整合包继续内置 KataGo `{katago_version}` 和默认权重 `{model_source}`。',
+                f'Windows 普通用户优先下载 {{windows_opencl_portable}}，这是 **OpenCL 版（推荐，免安装）**。',
+                f'如果 OpenCL 在你的电脑上不稳定，再改用 {{windows_portable}}。',
+                f'如果你的电脑是 **英伟达显卡**，优先下载 {{windows_nvidia_portable}}。',
+            ],
+            'download_heading': '下载建议',
+            'download_headers': ('你的电脑', '直接下载这个'),
+            'why_heading': '这一版为什么值得试用',
+            'why': [
+                '普通用户打开棋力评估后，先看到的是黑棋和白棋表现卡片，而不是一大堆看不懂的表格。',
+                '业余级、业余段的显示更符合中文围棋用户习惯，减少 `1-2k` 这类英文缩写带来的理解成本。',
+                '吻合度页面更适合复盘：突出双方数据、走势和建议复查区间，不制造过度判断。',
+                '这次只优化展示和入口，不改变棋力评估算法，旧版详细数据也没有被删除。',
+            ],
+            'contact_heading': '交流',
+            'contact': ['QQ 群：`299419120`'],
+        },
+        {
+            'language': '繁體中文',
+            'labels': 'zh_hant',
+            'intro': '這是棋力評估體驗預覽版。重點把「棋力評估 / 吻合度」從偏工程化的詳細表格，改成一般棋友更容易看懂的卡片式展示；詳細資料仍然保留，方便需要完整指標的使用者繼續查看。',
+            'updates_heading': '本版主要更新',
+            'updates': [
+                '重做「棋力評估」視窗，主介面改成現代卡片式布局，不再像舊版指標表格那樣擁擠。',
+                '「測評」頁只展示黑棋和白棋表現，不再在主視圖顯示合計棋力，避免誤導一般使用者。',
+                '棋力區間改成人能看懂的中文格式，例如 `業餘1級-2級`、`業餘1段-2段`。',
+                '「吻合度」頁改成黑白雙方卡片、走勢曲線和建議複查區間，只提示復盤重點，不做作弊結論。',
+                '每個頁面右上角保留「詳細資料」，點擊後仍可開啟舊版完整指標表和詳細圖表。',
+                '分析工具列新增短按鈕「棋力評估」，放在騰訊棋譜旁邊，日常復盤更容易找到。',
+            ],
+            'before_heading': '下載前先看這幾句',
+            'before': [
+                '這是 pre-release 預覽版，適合想先體驗新版棋力評估 UI 的使用者。',
+                f'主推薦整合包繼續內建 KataGo `{katago_version}` 和預設權重 `{model_source}`。',
+                f'Windows 一般使用者優先下載 {{windows_opencl_portable}}，這是 **OpenCL 版（推薦，免安裝）**。',
+                f'如果 OpenCL 在你的電腦上不穩定，再改用 {{windows_portable}}。',
+                f'如果你的電腦是 **NVIDIA 顯示卡**，優先下載 {{windows_nvidia_portable}}。',
+            ],
+            'download_heading': '下載建議',
+            'download_headers': ('你的電腦', '直接下載這個'),
+            'why_heading': '這一版為什麼值得試用',
+            'why': [
+                '一般使用者打開棋力評估後，先看到的是黑棋和白棋表現卡片，而不是一大堆看不懂的表格。',
+                '業餘級、業餘段的顯示更符合中文圍棋使用者習慣，減少 `1-2k` 這類英文縮寫帶來的理解成本。',
+                '吻合度頁面更適合復盤：突出雙方資料、走勢和建議複查區間，不製造過度判斷。',
+                '這次只優化展示和入口，不改變棋力評估演算法，舊版詳細資料也沒有被刪除。',
+            ],
+            'contact_heading': '交流',
+            'contact': ['QQ 群：`299419120`'],
+        },
+        {
+            'language': 'English',
+            'labels': 'en',
+            'intro': 'This is a preview build for the player strength UI. The Strength / Match views have been redesigned from dense engineering-style tables into clearer cards for everyday reviewers, while the full detailed data remains available for advanced users.',
+            'updates_heading': 'Release Highlights',
+            'updates': [
+                'Redesigned the Player Strength dialog with a modern card-based main view instead of the crowded legacy metrics table.',
+                'The Assessment page now focuses on Black and White only; the combined strength summary is no longer shown in the main view.',
+                'Rank ranges are displayed in friendlier localized wording, such as amateur kyu and amateur dan ranges.',
+                'The Match page now shows Black/White cards, a trend chart, and suggested review intervals without making cheating conclusions.',
+                'Each page keeps a Detail Data entry in the top-right corner, opening the previous full metrics table or detailed chart.',
+                'Added a short Strength button next to the Tencent Kifu entry on the analysis toolbar.',
+            ],
+            'before_heading': 'Read Before Downloading',
+            'before': [
+                'This is a pre-release preview for users who want to try the new Player Strength UI early.',
+                f'The recommended bundles continue to include KataGo `{katago_version}` and the default weight `{model_source}`.',
+                f'Most Windows users should download {{windows_opencl_portable}}, the **recommended no-install OpenCL build**.',
+                f'If OpenCL is unreliable on your PC, use {{windows_portable}} instead.',
+                f'If your PC has an **NVIDIA GPU**, try {{windows_nvidia_portable}} first.',
+            ],
+            'download_heading': 'Download Guide',
+            'download_headers': ('Your computer', 'Download this file'),
+            'why_heading': 'Why Try This Build',
+            'why': [
+                'The first view now explains Black and White performance directly instead of starting with a hard-to-read metrics table.',
+                'Localized amateur kyu/dan wording is easier for Chinese Go users to understand than raw `1-2k` style labels.',
+                'The Match view is better suited for review: it highlights both players, trend, and suggested intervals without overclaiming.',
+                'This release changes presentation and entry points only; the strength estimation algorithm and legacy detail view remain available.',
+            ],
+            'contact_heading': 'Contact',
+            'contact': ['QQ group: `299419120`'],
+        },
+        {
+            'language': '日本語',
+            'labels': 'ja',
+            'intro': 'これは棋力評価 UI のプレビュー版です。「棋力評価 / 一致度」を、開発者向けの細かい表から、普段の復盤で見やすいカード形式に刷新しました。詳細データは従来どおり残しています。',
+            'updates_heading': '主な更新',
+            'updates': [
+                '「棋力評価」ダイアログを刷新し、旧来の詰まった指標表ではなく、カード形式のメイン画面にしました。',
+                '「評価」ページは黒番と白番の表示に絞り、メイン画面では合計棋力を表示しないようにしました。',
+                '棋力レンジは、級位・段位として読みやすい表現にしました。',
+                '「一致度」ページは黒白のカード、推移グラフ、見直し候補区間を表示し、不正判定のような結論は出しません。',
+                '各ページ右上に「詳細データ」を残し、従来の詳細指標表や詳細グラフを開けます。',
+                '分析ツールバーの Tencent 棋譜の横に、短い「棋力評価」ボタンを追加しました。',
+            ],
+            'before_heading': 'ダウンロード前に',
+            'before': [
+                'これは新しい棋力評価 UI を先に試したいユーザー向けの pre-release です。',
+                f'推奨バンドルには KataGo `{katago_version}` と既定の重み `{model_source}` が含まれています。',
+                f'多くの Windows ユーザーは {{windows_opencl_portable}} を選ぶのがおすすめです。これは **推奨 OpenCL 版、インストール不要** です。',
+                f'OpenCL が不安定な場合は {{windows_portable}} を使ってください。',
+                f'**NVIDIA GPU** 搭載 PC では {{windows_nvidia_portable}} を優先してください。',
+            ],
+            'download_heading': 'ダウンロード案内',
+            'download_headers': ('お使いの環境', 'ダウンロードするファイル'),
+            'why_heading': 'このビルドを試す理由',
+            'why': [
+                '棋力評価を開いたとき、まず黒番と白番のパフォーマンスが見え、難しい表から読み解く必要がありません。',
+                '級位・段位の表示により、`1-2k` のような略記より直感的に理解できます。',
+                '一致度ページは復盤向けに、双方のデータ、推移、見直し候補区間を示し、過度な判断を避けます。',
+                '今回は表示と入口の改善だけで、棋力評価アルゴリズムや従来の詳細画面は変更していません。',
+            ],
+            'contact_heading': '連絡先',
+            'contact': ['QQ グループ: `299419120`'],
+        },
+        {
+            'language': '한국어',
+            'labels': 'ko',
+            'intro': '이번 버전은 기력 평가 UI 프리뷰 빌드입니다. Strength / Match 화면을 촘촘한 엔지니어링식 표에서 일반 복기 사용자가 보기 쉬운 카드형 화면으로 바꾸었고, 전체 상세 데이터는 그대로 남겼습니다.',
+            'updates_heading': '주요 업데이트',
+            'updates': [
+                'Player Strength 창을 현대적인 카드형 메인 화면으로 다시 만들었습니다. 이전처럼 지표 표가 빽빽하게 보이지 않습니다.',
+                'Assessment 페이지는 흑과 백의 성과만 보여 주며, 메인 화면에서 합산 기력은 표시하지 않습니다.',
+                '기력 구간은 아마 급/단 범위처럼 더 이해하기 쉬운 표현으로 표시합니다.',
+                'Match 페이지는 흑/백 카드, 추세 그래프, 복기 추천 구간을 보여 주며 부정행위 결론을 내리지 않습니다.',
+                '각 페이지 오른쪽 위에 Detail Data 진입점을 남겨 기존 전체 지표 표와 상세 그래프를 열 수 있습니다.',
+                '분석 툴바의 Tencent 기보 옆에 짧은 Strength 버튼을 추가했습니다.',
+            ],
+            'before_heading': '다운로드 전 확인',
+            'before': [
+                '새 Player Strength UI 를 먼저 써 보고 싶은 사용자를 위한 pre-release 프리뷰입니다.',
+                f'추천 번들에는 KataGo `{katago_version}` 와 기본 가중치 `{model_source}` 가 포함되어 있습니다.',
+                f'대부분의 Windows 사용자는 {{windows_opencl_portable}} 를 먼저 받으면 됩니다. 이는 **추천 OpenCL 무설치 빌드** 입니다.',
+                f'OpenCL 이 PC에서 불안정하면 {{windows_portable}} 를 대신 사용하세요.',
+                f'**NVIDIA GPU** 가 있다면 {{windows_nvidia_portable}} 를 우선 사용해 보세요.',
+            ],
+            'download_heading': '다운로드 안내',
+            'download_headers': ('내 컴퓨터', '다운로드할 파일'),
+            'why_heading': '이 빌드를 써 볼 이유',
+            'why': [
+                '기력 평가를 열면 어려운 표가 아니라 흑과 백의 성과 카드부터 볼 수 있습니다.',
+                '아마 급/단 표시가 `1-2k` 같은 축약 표기보다 이해하기 쉽습니다.',
+                'Match 화면은 복기에 맞게 양쪽 데이터, 추세, 추천 확인 구간을 보여 주고 과도한 판단은 피합니다.',
+                '이번 변경은 표시와 진입점만 바꾸며, 기력 평가 알고리즘과 기존 상세 화면은 그대로 유지합니다.',
+            ],
+            'contact_heading': '연락',
+            'contact': ['QQ 그룹: `299419120`'],
+        },
+        {
+            'language': 'ภาษาไทย',
+            'labels': 'th',
+            'intro': 'รีลีสนี้เป็น preview ของ UI ประเมินฝีมือผู้เล่น โดยเปลี่ยน Strength / Match จากตารางละเอียดแบบวิศวกรรมให้เป็นการ์ดที่อ่านง่ายขึ้นสำหรับการรีวิวเกมทั่วไป และยังคงหน้า detailed data เดิมไว้สำหรับผู้ใช้ขั้นสูง',
+            'updates_heading': 'อัปเดตหลัก',
+            'updates': [
+                'ปรับหน้าต่าง Player Strength ใหม่เป็นหน้าหลักแบบ card layout แทนตาราง metric เดิมที่แน่นเกินไป',
+                'หน้า Assessment แสดงเฉพาะฝั่งดำและขาว ไม่แสดง combined strength ในหน้าหลัก',
+                'ช่วงระดับฝีมือแสดงด้วยคำที่เข้าใจง่ายขึ้น เช่น amateur kyu / amateur dan range',
+                'หน้า Match แสดงการ์ดดำ/ขาว กราฟแนวโน้ม และช่วงที่แนะนำให้กลับไปตรวจ โดยไม่สรุปว่าโกง',
+                'แต่ละหน้ามีปุ่ม Detail Data มุมขวาบน เพื่อเปิดตาราง metric หรือกราฟละเอียดแบบเดิม',
+                'เพิ่มปุ่ม Strength แบบสั้นใน toolbar ถัดจาก Tencent Kifu',
+            ],
+            'before_heading': 'ก่อนดาวน์โหลด',
+            'before': [
+                'นี่เป็น pre-release สำหรับผู้ใช้ที่ต้องการลอง UI ประเมินฝีมือแบบใหม่ก่อน',
+                f'แพ็กเกจหลักมี KataGo `{katago_version}` และน้ำหนักเริ่มต้น `{model_source}` มาให้แล้ว',
+                f'ผู้ใช้ Windows ส่วนใหญ่แนะนำให้ดาวน์โหลด {{windows_opencl_portable}} ซึ่งเป็น **OpenCL รุ่นแนะนำ แบบไม่ต้องติดตั้ง**',
+                f'ถ้า OpenCL ไม่เสถียรบนเครื่องของคุณ ให้ใช้ {{windows_portable}} แทน',
+                f'ถ้ามี **NVIDIA GPU** แนะนำให้ลอง {{windows_nvidia_portable}} ก่อน',
+            ],
+            'download_heading': 'แนะนำการดาวน์โหลด',
+            'download_headers': ('เครื่องของคุณ', 'ดาวน์โหลดไฟล์นี้'),
+            'why_heading': 'ทำไมควรลอง build นี้',
+            'why': [
+                'เมื่อเปิดการประเมินฝีมือ จะเห็นการ์ดผลงานของดำและขาวก่อน ไม่ต้องเริ่มจากตารางที่อ่านยาก',
+                'การแสดงระดับแบบ amateur kyu/dan เข้าใจง่ายกว่า label แบบ `1-2k`',
+                'หน้า Match เหมาะกับการรีวิวมากขึ้น เพราะเน้นข้อมูลสองฝั่ง แนวโน้ม และช่วงที่ควรตรวจ ไม่ตัดสินเกินจริง',
+                'รุ่นนี้ปรับเฉพาะการแสดงผลและตำแหน่งปุ่ม ไม่เปลี่ยนอัลกอริทึมประเมินฝีมือ และยังเก็บ detail view เดิมไว้',
+            ],
+            'contact_heading': 'ติดต่อ',
+            'contact': ['QQ group: `299419120`'],
+        },
+    ]
+    sections: list[dict[str, object]] = []
+    for block in content:
+        localized_assets = assets_cn if block['language'] in ('中文', '繁體中文') else assets
+        before_items = [
+            item.format(
+                windows_opencl_portable=localized_assets['windows_opencl_portable'],
+                windows_portable=localized_assets['windows_portable'],
+                windows_nvidia_portable=localized_assets['windows_nvidia_portable'],
+            )
+            for item in block['before']
+        ]
+        sections.append(
+            {
+                'language': block['language'],
+                'intro': block['intro'],
+                'updates': {'heading': block['updates_heading'], 'items': block['updates']},
+                'before': {'heading': block['before_heading'], 'items': before_items},
+                'download': {
+                    'heading': block['download_heading'],
+                    'headers': block['download_headers'],
+                    'rows': standard_download_rows(STANDARD_DOWNLOAD_LABELS[block['labels']], localized_assets),
+                },
+                'why': {'heading': block['why_heading'], 'items': block['why']},
+                'contact': {'heading': block['contact_heading'], 'items': block['contact']},
+            }
+        )
+    add_nvidia50_download_rows(sections, assets_cn, assets)
+    add_tensorrt_split_download_row(sections, assets_cn, assets, asset_map)
+    validate_release_sections(sections)
+    return release_heading(release_tag) + '\n\n' + '\n\n---\n\n'.join(
+        render_language_section(section) for section in sections
+    ) + '\n'
+
+
 def build_release_notes(asset_map: dict[str, str | None], bundle: dict[str, str], repo: str, release_tag: str | None) -> str:
     if release_tag == 'next-2026-05-03.1':
         return build_next_2026_05_03_1_notes(asset_map, repo, release_tag)
@@ -2120,6 +4130,60 @@ def build_release_notes(asset_map: dict[str, str | None], bundle: dict[str, str]
         return build_next_2026_05_18_1_notes(asset_map, bundle, repo, release_tag)
     if release_tag == 'next-2026-05-26.1':
         return build_next_2026_05_26_1_notes(asset_map, bundle, repo, release_tag)
+    if release_tag == 'next-2026-05-30.1':
+        return build_next_2026_05_30_1_notes(asset_map, bundle, repo, release_tag)
+    if release_tag == 'next-2026-05-30.2':
+        return build_next_2026_05_30_2_notes(asset_map, bundle, repo, release_tag)
+    if release_tag == 'next-2026-05-31.1':
+        return build_next_2026_05_31_1_notes(asset_map, bundle, repo, release_tag)
+    if release_tag == 'next-2026-05-31.2':
+        return build_next_2026_05_31_2_notes(asset_map, bundle, repo, release_tag)
+    if release_tag == 'next-2026-06-01.1':
+        return build_next_2026_06_01_1_notes(asset_map, bundle, repo, release_tag)
+    if release_tag == 'next-2026-06-01.2':
+        return build_next_2026_06_01_2_notes(asset_map, bundle, repo, release_tag)
+    if release_tag == 'next-2026-06-06.1':
+        return build_next_2026_06_06_1_notes(asset_map, bundle, repo, release_tag)
+    if release_tag == 'next-2026-06-08.1':
+        return build_next_2026_06_08_1_notes(asset_map, bundle, repo, release_tag)
+    if release_tag == 'next-2026-06-09.1':
+        return build_next_2026_06_09_1_notes(asset_map, bundle, repo, release_tag)
+    if release_tag == 'next-2026-06-10.1':
+        return build_next_2026_06_10_1_notes(asset_map, bundle, repo, release_tag)
+    if release_tag == 'next-2026-06-11.1':
+        return build_next_2026_06_11_1_notes(asset_map, bundle, repo, release_tag)
+    if release_tag == 'next-2026-06-11.2':
+        return build_next_2026_06_11_2_notes(asset_map, bundle, repo, release_tag)
+    if release_tag == 'next-2026-06-12.1':
+        return build_next_2026_06_12_1_notes(asset_map, bundle, repo, release_tag)
+    if release_tag == 'next-2026-06-12.2':
+        return build_next_2026_06_12_2_notes(asset_map, bundle, repo, release_tag)
+    if release_tag == 'next-2026-06-13.1':
+        return build_next_2026_06_13_1_notes(asset_map, bundle, repo, release_tag)
+    if release_tag == 'next-2026-06-13.2':
+        return build_next_2026_06_13_1_notes(asset_map, bundle, repo, release_tag)
+    if release_tag == 'next-2026-06-13.3':
+        return build_next_2026_06_13_3_notes(asset_map, bundle, repo, release_tag)
+    if release_tag == 'next-2026-06-14.1':
+        return build_next_2026_06_14_1_notes(asset_map, bundle, repo, release_tag)
+    if release_tag == 'next-2026-06-16.1':
+        return build_next_2026_06_16_1_notes(asset_map, bundle, repo, release_tag)
+    if release_tag == 'next-2026-06-18.1':
+        return build_next_2026_06_18_1_notes(asset_map, bundle, repo, release_tag)
+    if release_tag == 'next-2026-06-20.1':
+        return build_next_2026_06_20_1_clean_notes(asset_map, bundle, repo, release_tag)
+    if release_tag == 'next-2026-06-21.1':
+        return build_next_2026_06_21_1_notes(asset_map, bundle, repo, release_tag)
+    if release_tag == 'next-2026-06-21.2':
+        return build_next_2026_06_21_2_notes(asset_map, bundle, repo, release_tag)
+    if release_tag == 'next-2026-06-29.1':
+        return build_next_2026_06_29_1_notes(asset_map, bundle, repo, release_tag)
+    if release_tag == 'next-2026-06-30.1':
+        return build_next_2026_06_30_1_notes(asset_map, bundle, repo, release_tag)
+    if release_tag == 'next-2026-07-01.1':
+        return build_next_2026_07_01_1_notes(asset_map, bundle, repo, release_tag)
+    if release_tag == 'next-2026-07-02.1':
+        return build_next_2026_07_02_1_notes(asset_map, bundle, repo, release_tag)
 
     assets_cn = {
         key: format_asset(asset_map[key], repo, release_tag)
@@ -2550,6 +4614,7 @@ def build_release_notes(asset_map: dict[str, str | None], bundle: dict[str, str]
     ]
 
     add_nvidia50_download_rows(sections, assets_cn, assets)
+    add_tensorrt_split_download_row(sections, assets_cn, assets, asset_map)
     validate_release_sections(sections)
 
     return release_heading(release_tag) + '\n\n' + '\n\n---\n\n'.join(
@@ -2805,6 +4870,3082 @@ def build_next_2026_05_18_1_notes(
     ) + '\n'
 
 
+def build_next_2026_06_09_1_notes(
+    asset_map: dict[str, str | None],
+    bundle: dict[str, str],
+    repo: str,
+    release_tag: str | None,
+) -> str:
+    assets_cn = {key: format_asset(asset_map[key], repo, release_tag) for key in asset_map}
+    assets = {key: format_asset_en(asset_map[key], repo, release_tag) for key in asset_map}
+    katago_version = bundle['katago_version']
+    model_source = bundle['model_source']
+    sections: list[dict[str, object]] = [
+        {
+            'language': '中文',
+            'intro': '这是棋力评估界面修正版。重点把“测评”和“吻合度”做成更适合普通用户阅读的卡片式界面，并修复真实测试中发现的遮挡、刻度和图标显示问题。',
+            'updates': {
+                'heading': '本版主要更新',
+                'items': [
+                    '重做“棋力评估”主界面，只保留黑棋和白棋表现，默认不再显示普通用户看不懂的合计棋力。',
+                    '“吻合度”改为原始横条风格的选点命中图：上层显示 AI 一选，下层显示好手，鼠标移动到命中点可查看具体手数和损失信息。',
+                    '修复黑棋/白棋统计文字被图表遮挡的问题，右侧概率和说明现在会绘制在上层。',
+                    '修复底部手数刻度显示不全和尾部 `151 154` 这类重复拥挤的问题，尾手会自动替代过近刻度。',
+                    '修复“详细数据”和说明条里的叹号图标裁切问题，并重绘顶部围棋图标，避免左侧出现异常边缘。',
+                    '发布前已重新跑棋力评估回归测试、打包验证，并完成本机真实启动 UI 复测。',
+                ],
+            },
+            'before': {
+                'heading': '下载前先看这几句',
+                'items': [
+                    f'Windows 普通用户优先下载 {assets_cn["windows_opencl_portable"]}，这是 **OpenCL 版（推荐，免安装）**。',
+                    f'如果 OpenCL 在你的电脑上不稳定，再改用 {assets_cn["windows_portable"]}。',
+                    f'如果你的电脑是 **英伟达显卡**，优先下载 {assets_cn["windows_nvidia_portable"]}。',
+                    f'主推荐整合包已内置 KataGo `{katago_version}` 和默认权重 `{model_source}`。',
+                    '如果你更喜欢安装流程，再选同系列的 `installer.exe`。',
+                ],
+            },
+            'download': {
+                'heading': '下载建议',
+                'headers': ('你的电脑', '直接下载这个'),
+                'rows': standard_download_rows(STANDARD_DOWNLOAD_LABELS['zh'], assets_cn),
+            },
+            'why': {
+                'heading': '这一版为什么值得更新',
+                'items': [
+                    '棋力评估不再像调试表格，更接近用户能直接看懂的复盘结果页。',
+                    '吻合度页面能一眼看到哪些手命中 AI 一选、哪些手属于好手，少了看不懂的趋势噪音。',
+                    '这是一个针对高频查看页面的视觉和可读性修复，建议替换上一版继续测试。',
+                ],
+            },
+            'contact': {'heading': '交流', 'items': ['QQ 群：`299419120`']},
+        },
+        {
+            'language': '繁體中文',
+            'intro': '這是棋力評估介面修正版。重點把「測評」和「吻合度」做成更適合一般使用者閱讀的卡片式介面，並修復真實測試中發現的遮擋、刻度和圖示顯示問題。',
+            'updates': {
+                'heading': '本版主要更新',
+                'items': [
+                    '重做「棋力評估」主介面，只保留黑棋和白棋表現，預設不再顯示一般使用者看不懂的合計棋力。',
+                    '「吻合度」改為原始橫條風格的選點命中圖：上層顯示 AI 一選，下層顯示好手，滑鼠移到命中點可查看具體手數和損失資訊。',
+                    '修復黑棋/白棋統計文字被圖表遮擋的問題，右側機率和說明現在會繪製在上層。',
+                    '修復底部手數刻度顯示不全和尾部 `151 154` 這類重複擁擠問題，尾手會自動替代過近刻度。',
+                    '修復「詳細資料」和說明條裡的驚嘆號圖示裁切問題，並重繪頂部圍棋圖示，避免左側出現異常邊緣。',
+                    '發布前已重新跑棋力評估回歸測試、打包驗證，並完成本機真實啟動 UI 複測。',
+                ],
+            },
+            'before': {
+                'heading': '下載前先看這幾句',
+                'items': [
+                    f'Windows 一般使用者優先下載 {assets_cn["windows_opencl_portable"]}，這是 **OpenCL 版（推薦，免安裝）**。',
+                    f'如果 OpenCL 在你的電腦上不穩定，再改用 {assets_cn["windows_portable"]}。',
+                    f'如果你的電腦是 **NVIDIA 顯示卡**，優先下載 {assets_cn["windows_nvidia_portable"]}。',
+                    f'主推薦整合包已內建 KataGo `{katago_version}` 和預設權重 `{model_source}`。',
+                    '如果你更喜歡安裝流程，再選同系列的 `installer.exe`。',
+                ],
+            },
+            'download': {
+                'heading': '下載建議',
+                'headers': ('你的電腦', '直接下載這個'),
+                'rows': standard_download_rows(STANDARD_DOWNLOAD_LABELS['zh_hant'], assets_cn),
+            },
+            'why': {
+                'heading': '這一版為什麼值得更新',
+                'items': [
+                    '棋力評估不再像除錯表格，更接近使用者能直接看懂的復盤結果頁。',
+                    '吻合度頁面能一眼看到哪些手命中 AI 一選、哪些手屬於好手，少了看不懂的趨勢噪音。',
+                    '這是針對高頻查看頁面的視覺和可讀性修復，建議替換上一版繼續測試。',
+                ],
+            },
+            'contact': {'heading': '交流', 'items': ['QQ 群：`299419120`']},
+        },
+        {
+            'language': 'English',
+            'intro': 'This is a player-strength estimate UI polish update. It turns Assessment and Match Rate into a clearer card-based view and fixes the overlap, axis-label, and icon clipping issues found during real UI testing.',
+            'updates': {
+                'heading': 'Release Highlights',
+                'items': [
+                    'Redesigned the Player Strength Estimate dashboard around Black and White performance only, hiding the confusing combined-strength summary from the default view.',
+                    'Match Rate now uses an original-style hit map: the upper lane shows AI first-choice hits, the lower lane shows good moves, and hovering over a hit reveals the move number and loss details.',
+                    'Fixed Black/White stat labels being covered by the chart; the right-side percentages and descriptions are now painted above the graph layer.',
+                    'Fixed clipped bottom move-number labels and crowded tail labels such as `151 154`; the final move now replaces nearby ticks when needed.',
+                    'Fixed clipped exclamation icons in Detail Data and note strips, and redrew the header Go-stone mark to avoid odd left-edge artifacts.',
+                    'Before release, the player-strength regression tests, packaging build, and real local UI launch checks were rerun.',
+                ],
+            },
+            'before': {
+                'heading': 'Read Before Downloading',
+                'items': [
+                    f'Most Windows users should download {assets["windows_opencl_portable"]}, the **recommended no-install OpenCL build**.',
+                    f'If OpenCL is unreliable on your PC, use {assets["windows_portable"]} instead.',
+                    f'If your PC has an **NVIDIA GPU**, try {assets["windows_nvidia_portable"]} first.',
+                    f'The recommended bundles include KataGo `{katago_version}` and the default weight `{model_source}`.',
+                    'If you prefer an installer, choose the matching `installer.exe` package.',
+                ],
+            },
+            'download': {
+                'heading': 'Download Guide',
+                'headers': ('Your computer', 'Download this file'),
+                'rows': standard_download_rows(STANDARD_DOWNLOAD_LABELS['en'], assets),
+            },
+            'why': {
+                'heading': 'Why This Release Is Worth Updating',
+                'items': [
+                    'Player Strength Estimate now feels like a readable review result page instead of a debug table.',
+                    'The Match Rate page makes first-choice hits and good moves visible at a glance without an unreadable trend chart.',
+                    'This is a focused visual and readability fix for a high-traffic analysis view, suitable for replacing the previous build.',
+                ],
+            },
+            'contact': {'heading': 'Contact', 'items': ['QQ group: `299419120`']},
+        },
+        {
+            'language': '日本語',
+            'intro': 'これは棋力評価 UI を整える更新です。Assessment と Match Rate を読みやすいカード型画面にし、実際の UI テストで見つかった重なり、軸ラベル、アイコンの欠けを修正しました。',
+            'updates': {
+                'heading': '主な更新',
+                'items': [
+                    '棋力評価ダッシュボードを黒番と白番の成績中心に再設計し、既定表示では分かりにくい合計棋力を出さないようにしました。',
+                    'Match Rate は元の横バー風の命中図に変更しました。上段は AI 一選、下段は好手を示し、命中点にマウスを置くと手数と損失情報を確認できます。',
+                    '黒番/白番の統計文字がグラフに隠れる問題を修正し、右側の割合と説明をグラフ層の上に描画するようにしました。',
+                    '下部の手数目盛りが欠ける問題と、末尾の `151 154` のような詰まりを修正しました。終局手は近すぎる目盛りを置き換えます。',
+                    'Detail Data と説明欄の感嘆符アイコンが欠ける問題を修正し、ヘッダーの碁石マークも描き直して左端の異常表示をなくしました。',
+                    'リリース前に棋力評価回帰テスト、package、ローカル実起動 UI チェックを再実行しました。',
+                ],
+            },
+            'before': {
+                'heading': 'ダウンロード前に',
+                'items': [
+                    f'多くの Windows ユーザーは {assets["windows_opencl_portable"]} を選ぶのがおすすめです。これは **推奨 OpenCL 版、インストール不要** です。',
+                    f'OpenCL が不安定な場合は {assets["windows_portable"]} を使ってください。',
+                    f'**NVIDIA GPU** 搭載 PC では {assets["windows_nvidia_portable"]} を優先してください。',
+                    f'推奨バンドルには KataGo `{katago_version}` と既定の重み `{model_source}` が含まれています。',
+                    'インストーラ形式がよい場合は、同じ系列の `installer.exe` を選んでください。',
+                ],
+            },
+            'download': {
+                'heading': 'ダウンロード案内',
+                'headers': ('お使いの環境', 'ダウンロードするファイル'),
+                'rows': standard_download_rows(STANDARD_DOWNLOAD_LABELS['ja'], assets),
+            },
+            'why': {
+                'heading': 'このリリースを更新する理由',
+                'items': [
+                    '棋力評価がデバッグ表ではなく、読みやすい検討結果ページに近づきました。',
+                    'Match Rate では、AI 一選に当たった手と好手がひと目で分かり、読みにくいトレンド図を見る必要が減りました。',
+                    'よく使う分析画面の見た目と可読性を改善した更新で、前回ビルドの置き換えに向いています。',
+                ],
+            },
+            'contact': {'heading': '連絡先', 'items': ['QQ グループ: `299419120`']},
+        },
+        {
+            'language': '한국어',
+            'intro': '이번 버전은 기력 평가 UI 를 다듬은 업데이트입니다. Assessment 와 Match Rate 를 더 읽기 쉬운 카드형 화면으로 바꾸고, 실제 UI 테스트에서 발견된 겹침, 축 라벨, 아이콘 잘림 문제를 수정했습니다.',
+            'updates': {
+                'heading': '주요 업데이트',
+                'items': [
+                    '기력 평가 대시보드를 흑/백 성과 중심으로 다시 구성했고, 기본 화면에서는 일반 사용자가 이해하기 어려운 합계 기력을 숨겼습니다.',
+                    'Match Rate 는 원래 방식에 가까운 가로 막대형 명중 지도로 바뀌었습니다. 위쪽 줄은 AI 1순위, 아래쪽 줄은 좋은 수를 표시하며, 마우스를 올리면 수순과 손실 정보를 볼 수 있습니다.',
+                    '흑/백 통계 문구가 차트에 가려지는 문제를 수정해 오른쪽 확률과 설명이 그래프 위 레이어에 표시되도록 했습니다.',
+                    '아래쪽 수순 눈금이 잘리는 문제와 `151 154` 처럼 끝부분이 빽빽하게 겹치는 문제를 수정했습니다. 마지막 수는 가까운 눈금을 자동으로 대체합니다.',
+                    'Detail Data 와 안내 줄의 느낌표 아이콘 잘림을 수정했고, 헤더의 바둑돌 표시도 다시 그려 왼쪽 가장자리 이상 표시를 없앴습니다.',
+                    '릴리스 전에 기력 평가 회귀 테스트, package, 실제 로컬 UI 실행 확인을 다시 수행했습니다.',
+                ],
+            },
+            'before': {
+                'heading': '다운로드 전 확인',
+                'items': [
+                    f'대부분의 Windows 사용자는 {assets["windows_opencl_portable"]} 를 먼저 받으면 됩니다. 이는 **추천 OpenCL 무설치 빌드** 입니다.',
+                    f'OpenCL 이 PC에서 불안정하면 {assets["windows_portable"]} 를 대신 사용하세요.',
+                    f'**NVIDIA GPU** 가 있다면 {assets["windows_nvidia_portable"]} 를 우선 사용해 보세요.',
+                    f'추천 번들에는 KataGo `{katago_version}` 와 기본 가중치 `{model_source}` 가 포함되어 있습니다.',
+                    '설치형 흐름을 원한다면 같은 계열의 `installer.exe` 를 고르세요.',
+                ],
+            },
+            'download': {
+                'heading': '다운로드 안내',
+                'headers': ('내 컴퓨터', '다운로드할 파일'),
+                'rows': standard_download_rows(STANDARD_DOWNLOAD_LABELS['ko'], assets),
+            },
+            'why': {
+                'heading': '이번 릴리스를 업데이트할 이유',
+                'items': [
+                    '기력 평가가 디버그 표가 아니라 읽기 쉬운 복기 결과 페이지에 더 가까워졌습니다.',
+                    'Match Rate 페이지에서 AI 1순위와 좋은 수를 한눈에 볼 수 있어 읽기 어려운 추세 그래프를 볼 필요가 줄었습니다.',
+                    '자주 보는 분석 화면의 시각과 가독성을 개선한 버전으로, 이전 빌드를 대체해 테스트하기 좋습니다.',
+                ],
+            },
+            'contact': {'heading': '연락처', 'items': ['QQ 그룹: `299419120`']},
+        },
+        {
+            'language': 'ภาษาไทย',
+            'intro': 'นี่คืออัปเดตปรับ UI Player Strength Estimate โดยเปลี่ยนหน้า Assessment และ Match Rate เป็นแบบการ์ดที่อ่านง่ายขึ้น พร้อมแก้ปัญหาข้อความซ้อน label แกนล่าง และไอคอนถูกตัดจากการทดสอบ UI จริง',
+            'updates': {
+                'heading': 'ไฮไลต์ของเวอร์ชันนี้',
+                'items': [
+                    'ออกแบบหน้า Player Strength Estimate ใหม่โดยเน้นผลงานของ Black และ White เท่านั้น และซ่อนค่ารวมที่ผู้ใช้ทั่วไปเข้าใจยากจากหน้าหลัก',
+                    'Match Rate เปลี่ยนเป็น hit map แบบแถบแนวนอนคล้ายของเดิม: แถวบนแสดง AI first choice แถวล่างแสดง good move และเมื่อชี้เมาส์จะเห็น move number กับ loss details',
+                    'แก้ปัญหาข้อความสถิติของ Black/White ถูกกราฟบัง โดยให้เปอร์เซ็นต์และคำอธิบายด้านขวาวาดอยู่บน layer ด้านบน',
+                    'แก้ label เลข move ด้านล่างที่แสดงไม่ครบ และแก้กรณีท้ายกระดานแน่นเกินไปเช่น `151 154` โดยให้ move สุดท้ายแทน tick ที่อยู่ใกล้เกินไป',
+                    'แก้ไอคอนเครื่องหมายตกใจใน Detail Data และ note strip ที่ถูกตัด พร้อมวาด Go-stone mark ด้านหัวใหม่เพื่อลด artifact ด้านซ้าย',
+                    'ก่อน release ได้รัน player-strength regression tests, package build และเปิด UI จริงบนเครื่อง local เพื่อตรวจซ้ำแล้ว',
+                ],
+            },
+            'before': {
+                'heading': 'ก่อนดาวน์โหลด ดูตรงนี้ก่อน',
+                'items': [
+                    f'ผู้ใช้ Windows ส่วนใหญ่แนะนำให้ดาวน์โหลด {assets["windows_opencl_portable"]} ซึ่งเป็น **OpenCL รุ่นแนะนำ แบบไม่ต้องติดตั้ง**',
+                    f'ถ้า OpenCL ทำงานไม่ดีบนเครื่องของคุณ ให้เปลี่ยนไปใช้ {assets["windows_portable"]}',
+                    f'ถ้าเครื่องของคุณมี **การ์ดจอ NVIDIA** แนะนำให้ใช้ {assets["windows_nvidia_portable"]}',
+                    f'แพ็กเกจหลักมี KataGo `{katago_version}` และ weight เริ่มต้น `{model_source}` มาให้แล้ว',
+                    'ถ้าชอบขั้นตอนแบบติดตั้ง ให้เลือกไฟล์ `installer.exe` ในชุดเดียวกัน',
+                ],
+            },
+            'download': {
+                'heading': 'แนะนำการดาวน์โหลด',
+                'headers': ('เครื่องของคุณ', 'ดาวน์โหลดไฟล์นี้'),
+                'rows': standard_download_rows(STANDARD_DOWNLOAD_LABELS['th'], assets),
+            },
+            'why': {
+                'heading': 'ทำไมเวอร์ชันนี้ควรอัปเดต',
+                'items': [
+                    'Player Strength Estimate ดูเหมือนหน้าสรุปผลรีวิวที่อ่านง่ายขึ้น ไม่ใช่ตาราง debug',
+                    'หน้า Match Rate ทำให้เห็นได้ทันทีว่า move ไหนตรง AI first choice และ move ไหนเป็น good move โดยไม่ต้องดูกราฟ trend ที่อ่านยาก',
+                    'เป็นอัปเดตด้านภาพและการอ่านสำหรับหน้าวิเคราะห์ที่ใช้บ่อย เหมาะสำหรับแทนที่ build ก่อนหน้า',
+                ],
+            },
+            'contact': {'heading': 'ติดต่อ', 'items': ['QQ group: `299419120`']},
+        },
+    ]
+    add_nvidia50_download_rows(sections, assets_cn, assets)
+    validate_release_sections(sections)
+    heading = f'# LizzieYzy Next {release_tag} 更新' if release_tag else '# LizzieYzy Next 更新'
+    return heading + '\n\n' + '\n\n---\n\n'.join(
+        render_language_section(section) for section in sections
+    ) + '\n'
+
+
+def build_next_2026_06_10_1_notes(
+    asset_map: dict[str, str | None],
+    bundle: dict[str, str],
+    repo: str,
+    release_tag: str | None,
+) -> str:
+    assets_cn = {key: format_asset(asset_map[key], repo, release_tag) for key in asset_map}
+    assets = {key: format_asset_en(asset_map[key], repo, release_tag) for key in asset_map}
+    katago_version = bundle['katago_version']
+    model_source = bundle['model_source']
+    blocks = [
+        {
+            'language': '中文',
+            'labels': 'zh',
+            'assets': assets_cn,
+            'intro': '这是棋力评估模型升级版。重点合并 @huhanyu 贡献的 PR #39：新增 GP core4 默认模型、XGBoost top16 对照模型和可复现校准数据，让“棋力评估”不只好看，也更有数据支撑。',
+            'updates_heading': '本版主要更新',
+            'updates': [
+                '合并 PR #39，接入 GP/XGBoost 棋力模型和校准数据集，感谢 @huhanyu 的高质量贡献。',
+                '默认棋力模型升级为 GP core4，用更多真实样本校准高段和职业区间的估计。',
+                '加入 XGBoost top16 作为可选对照模型，同时保留 Huber linear 作为回退/调试模型。',
+                '棋力评估界面增加模型选择提示，分段统计和命中图会严格跟随当前选择的模型。',
+                '补充模型加载、校准器、XGBoost、棋力评估和 UI 回归测试，发布前完成全量测试与打包验证。',
+            ],
+            'before_heading': '下载前先看这几句',
+            'before': [
+                f'Windows 普通用户优先下载 {assets_cn["windows_opencl_portable"]}，这是 **OpenCL 版（推荐，免安装）**。',
+                f'如果 OpenCL 在你的电脑上不稳定，再改用 {assets_cn["windows_portable"]}。',
+                f'如果你的电脑是 **英伟达显卡**，优先下载 {assets_cn["windows_nvidia_portable"]}。',
+                f'主推荐整合包已内置 KataGo `{katago_version}` 和默认权重 `{model_source}`。',
+                '如果你更喜欢安装流程，再选同系列的 `installer.exe`。',
+            ],
+            'download_heading': '下载建议',
+            'download_headers': ('你的电脑', '直接下载这个'),
+            'why_heading': '这一版为什么值得更新',
+            'why': [
+                '棋力评估从“展示优化”继续向“模型可信度”推进，默认结果更适合长期使用和复盘对比。',
+                '高级用户可以切换 GP / XGBoost / Huber 观察差异，普通用户保持默认 GP core4 即可。',
+                '这版延续上一版的棋力评估 UI，同时把底层估计模型和测试覆盖一起补强。',
+            ],
+            'contact_heading': '交流',
+            'contact': ['QQ 群：`299419120`'],
+        },
+        {
+            'language': '繁體中文',
+            'labels': 'zh_hant',
+            'assets': assets_cn,
+            'intro': '這是棋力評估模型升級版。重點合併 @huhanyu 貢獻的 PR #39：新增 GP core4 預設模型、XGBoost top16 對照模型和可復現校準資料，讓「棋力評估」不只好看，也更有資料支撐。',
+            'updates_heading': '本版主要更新',
+            'updates': [
+                '合併 PR #39，接入 GP/XGBoost 棋力模型和校準資料集，感謝 @huhanyu 的高品質貢獻。',
+                '預設棋力模型升級為 GP core4，用更多真實樣本校準高段和職業區間的估計。',
+                '加入 XGBoost top16 作為可選對照模型，同時保留 Huber linear 作為回退/除錯模型。',
+                '棋力評估介面增加模型選擇提示，分段統計和命中圖會嚴格跟隨目前選擇的模型。',
+                '補充模型載入、校準器、XGBoost、棋力評估和 UI 回歸測試，發布前完成全量測試與打包驗證。',
+            ],
+            'before_heading': '下載前先看這幾句',
+            'before': [
+                f'Windows 一般使用者優先下載 {assets_cn["windows_opencl_portable"]}，這是 **OpenCL 版（推薦，免安裝）**。',
+                f'如果 OpenCL 在你的電腦上不穩定，再改用 {assets_cn["windows_portable"]}。',
+                f'如果你的電腦是 **NVIDIA 顯示卡**，優先下載 {assets_cn["windows_nvidia_portable"]}。',
+                f'主推薦整合包已內建 KataGo `{katago_version}` 和預設權重 `{model_source}`。',
+                '如果你更喜歡安裝流程，再選同系列的 `installer.exe`。',
+            ],
+            'download_heading': '下載建議',
+            'download_headers': ('你的電腦', '直接下載這個'),
+            'why_heading': '這一版為什麼值得更新',
+            'why': [
+                '棋力評估從「展示優化」繼續向「模型可信度」推進，預設結果更適合長期使用和復盤對比。',
+                '進階使用者可以切換 GP / XGBoost / Huber 觀察差異，一般使用者保持預設 GP core4 即可。',
+                '這版延續上一版的棋力評估 UI，同時把底層估計模型和測試覆蓋一起補強。',
+            ],
+            'contact_heading': '交流',
+            'contact': ['QQ 群：`299419120`'],
+        },
+        {
+            'language': 'English',
+            'labels': 'en',
+            'assets': assets,
+            'intro': 'This release upgrades the Player Strength Estimate model. It merges PR #39 from @huhanyu, adding the GP core4 default model, an XGBoost top16 comparison model, and reproducible calibration data so the polished UI is backed by stronger data.',
+            'updates_heading': 'Release Highlights',
+            'updates': [
+                'Merged PR #39 with GP/XGBoost player-strength models and calibration datasets. Thanks to @huhanyu for the high-quality contribution.',
+                'The default strength model is now GP core4, calibrated with more real samples for high-dan and professional ranges.',
+                'Added XGBoost top16 as an optional comparison model while keeping Huber linear as a fallback/debug model.',
+                'The Player Strength Estimate UI now localizes the model selector hint, and segment summaries / hit maps follow the selected model consistently.',
+                'Added model-loading, calibrator, XGBoost, player-strength, and UI regression coverage; full tests and packaging were rerun before release.',
+            ],
+            'before_heading': 'Read Before Downloading',
+            'before': [
+                f'Most Windows users should download {assets["windows_opencl_portable"]}, the **recommended no-install OpenCL build**.',
+                f'If OpenCL is unreliable on your PC, use {assets["windows_portable"]} instead.',
+                f'If your PC has an **NVIDIA GPU**, try {assets["windows_nvidia_portable"]} first.',
+                f'The recommended bundles include KataGo `{katago_version}` and the default weight `{model_source}`.',
+                'If you prefer an installer, choose the matching `installer.exe` package.',
+            ],
+            'download_heading': 'Download Guide',
+            'download_headers': ('Your computer', 'Download this file'),
+            'why_heading': 'Why This Release Is Worth Updating',
+            'why': [
+                'Player Strength Estimate moves beyond visual polish toward more trustworthy model-backed results.',
+                'Advanced users can compare GP, XGBoost, and Huber; most users can simply keep the default GP core4 model.',
+                'This keeps the previous readable UI while strengthening the underlying estimation model and test coverage.',
+            ],
+            'contact_heading': 'Contact',
+            'contact': ['QQ group: `299419120`'],
+        },
+        {
+            'language': '日本語',
+            'labels': 'ja',
+            'assets': assets,
+            'intro': 'これは棋力評価モデルのアップグレード版です。@huhanyu さんの PR #39 をマージし、既定の GP core4 モデル、比較用の XGBoost top16 モデル、再現可能な校正データを追加しました。',
+            'updates_heading': '主な更新',
+            'updates': [
+                'PR #39 をマージし、GP/XGBoost 棋力モデルと校正データセットを導入しました。@huhanyu さんの高品質な貢献に感謝します。',
+                '既定の棋力モデルを GP core4 に変更し、より多くの実データで高段・プロ帯の推定を校正しました。',
+                '比較用モデルとして XGBoost top16 を追加し、Huber linear はフォールバック/デバッグ用として残しています。',
+                '棋力評価 UI のモデル選択ヒントをローカライズし、区間集計と命中図が選択中のモデルに一貫して従うようにしました。',
+                'モデル読み込み、校正器、XGBoost、棋力評価、UI 回帰テストを追加し、リリース前に全体テストと package を再実行しました。',
+            ],
+            'before_heading': 'ダウンロード前に',
+            'before': [
+                f'多くの Windows ユーザーは {assets["windows_opencl_portable"]} を選ぶのがおすすめです。これは **推奨 OpenCL 版、インストール不要** です。',
+                f'OpenCL が不安定な場合は {assets["windows_portable"]} を使ってください。',
+                f'**NVIDIA GPU** 搭載 PC では {assets["windows_nvidia_portable"]} を優先してください。',
+                f'推奨バンドルには KataGo `{katago_version}` と既定の重み `{model_source}` が含まれています。',
+                'インストーラ形式がよい場合は、同じ系列の `installer.exe` を選んでください。',
+            ],
+            'download_heading': 'ダウンロード案内',
+            'download_headers': ('お使いの環境', 'ダウンロードするファイル'),
+            'why_heading': 'このリリースを更新する理由',
+            'why': [
+                '棋力評価は見た目の改善だけでなく、モデルに基づくより信頼しやすい結果へ進みました。',
+                '上級ユーザーは GP / XGBoost / Huber を比較でき、通常は既定の GP core4 のままで使えます。',
+                '前回の読みやすい UI を維持しながら、推定モデルとテスト範囲を強化しています。',
+            ],
+            'contact_heading': '連絡先',
+            'contact': ['QQ グループ: `299419120`'],
+        },
+        {
+            'language': '한국어',
+            'labels': 'ko',
+            'assets': assets,
+            'intro': '이번 버전은 기력 평가 모델 업그레이드입니다. @huhanyu 님의 PR #39 를 병합해 기본 GP core4 모델, 비교용 XGBoost top16 모델, 재현 가능한 보정 데이터를 추가했습니다.',
+            'updates_heading': '주요 업데이트',
+            'updates': [
+                'PR #39 를 병합해 GP/XGBoost 기력 모델과 보정 데이터셋을 도입했습니다. 좋은 기여를 해 준 @huhanyu 님께 감사드립니다.',
+                '기본 기력 모델을 GP core4 로 업그레이드했고, 더 많은 실제 샘플로 고단/프로 구간 추정을 보정했습니다.',
+                '선택 비교 모델로 XGBoost top16 을 추가했고, Huber linear 는 fallback/debug 모델로 유지했습니다.',
+                '기력 평가 UI 의 모델 선택 안내를 현지화했고, 구간 통계와 명중도 화면이 선택된 모델을 일관되게 따르도록 했습니다.',
+                '모델 로딩, 보정기, XGBoost, 기력 평가, UI 회귀 테스트를 보강했으며 릴리스 전 전체 테스트와 package 를 다시 수행했습니다.',
+            ],
+            'before_heading': '다운로드 전 확인',
+            'before': [
+                f'대부분의 Windows 사용자는 {assets["windows_opencl_portable"]} 를 먼저 받으면 됩니다. 이는 **추천 OpenCL 무설치 빌드** 입니다.',
+                f'OpenCL 이 PC에서 불안정하면 {assets["windows_portable"]} 를 대신 사용하세요.',
+                f'**NVIDIA GPU** 가 있다면 {assets["windows_nvidia_portable"]} 를 우선 사용해 보세요.',
+                f'추천 번들에는 KataGo `{katago_version}` 와 기본 가중치 `{model_source}` 가 포함되어 있습니다.',
+                '설치형 흐름을 원한다면 같은 계열의 `installer.exe` 를 고르세요.',
+            ],
+            'download_heading': '다운로드 안내',
+            'download_headers': ('내 컴퓨터', '다운로드할 파일'),
+            'why_heading': '이번 릴리스를 업데이트할 이유',
+            'why': [
+                '기력 평가는 시각 개선을 넘어 모델 기반의 더 신뢰할 수 있는 결과로 나아갔습니다.',
+                '고급 사용자는 GP / XGBoost / Huber 를 비교할 수 있고, 일반 사용자는 기본 GP core4 를 그대로 쓰면 됩니다.',
+                '이전 버전의 읽기 쉬운 UI 를 유지하면서 내부 추정 모델과 테스트 커버리지를 강화했습니다.',
+            ],
+            'contact_heading': '연락처',
+            'contact': ['QQ 그룹: `299419120`'],
+        },
+        {
+            'language': 'ภาษาไทย',
+            'labels': 'th',
+            'assets': assets,
+            'intro': 'เวอร์ชันนี้อัปเกรดโมเดล Player Strength Estimate โดย merge PR #39 จาก @huhanyu เพิ่ม GP core4 เป็นค่าเริ่มต้น, XGBoost top16 สำหรับเปรียบเทียบ และข้อมูล calibration ที่ทำซ้ำได้',
+            'updates_heading': 'ไฮไลต์ของเวอร์ชันนี้',
+            'updates': [
+                'Merge PR #39 เพิ่ม GP/XGBoost player-strength models และ calibration datasets ขอบคุณ @huhanyu สำหรับ contribution คุณภาพสูง',
+                'โมเดลเริ่มต้นเปลี่ยนเป็น GP core4 ซึ่งปรับเทียบด้วย sample จริงมากขึ้นสำหรับช่วง high-dan และ professional',
+                'เพิ่ม XGBoost top16 เป็นโมเดลเปรียบเทียบ และยังคง Huber linear ไว้เป็น fallback/debug model',
+                'UI Player Strength Estimate มีคำอธิบาย model selector และ segment summary / hit map จะใช้โมเดลที่เลือกอย่างสอดคล้องกัน',
+                'เพิ่ม coverage สำหรับ model loading, calibrator, XGBoost, player-strength และ UI regression พร้อมรัน full tests และ packaging ก่อน release',
+            ],
+            'before_heading': 'ก่อนดาวน์โหลด ดูตรงนี้ก่อน',
+            'before': [
+                f'ผู้ใช้ Windows ส่วนใหญ่แนะนำให้ดาวน์โหลด {assets["windows_opencl_portable"]} ซึ่งเป็น **OpenCL รุ่นแนะนำ แบบไม่ต้องติดตั้ง**',
+                f'ถ้า OpenCL ทำงานไม่ดีบนเครื่องของคุณ ให้เปลี่ยนไปใช้ {assets["windows_portable"]}',
+                f'ถ้าเครื่องของคุณมี **การ์ดจอ NVIDIA** แนะนำให้ใช้ {assets["windows_nvidia_portable"]}',
+                f'แพ็กเกจหลักมี KataGo `{katago_version}` และ weight เริ่มต้น `{model_source}` มาให้แล้ว',
+                'ถ้าชอบขั้นตอนแบบติดตั้ง ให้เลือกไฟล์ `installer.exe` ในชุดเดียวกัน',
+            ],
+            'download_heading': 'คำแนะนำการดาวน์โหลด',
+            'download_headers': ('คอมพิวเตอร์ของคุณ', 'ไฟล์ที่ควรดาวน์โหลด'),
+            'why_heading': 'ทำไมเวอร์ชันนี้น่าอัปเดต',
+            'why': [
+                'Player Strength Estimate ไม่ได้ดีขึ้นแค่หน้าตา แต่มีโมเดลและข้อมูล calibration รองรับมากขึ้น',
+                'ผู้ใช้ขั้นสูงสามารถเปรียบเทียบ GP / XGBoost / Huber ได้ ส่วนผู้ใช้ทั่วไปใช้ GP core4 ค่าเริ่มต้นได้เลย',
+                'ยังคง UI ที่อ่านง่ายจากเวอร์ชันก่อน พร้อมเสริมโมเดลและ test coverage ด้านใน',
+            ],
+            'contact_heading': 'ติดต่อ',
+            'contact': ['กลุ่ม QQ: `299419120`'],
+        },
+    ]
+    sections: list[dict[str, object]] = []
+    for block in blocks:
+        labels_key = str(block['labels'])
+        localized_assets = block['assets']
+        sections.append(
+            {
+                'language': block['language'],
+                'intro': block['intro'],
+                'updates': {'heading': block['updates_heading'], 'items': block['updates']},
+                'before': {'heading': block['before_heading'], 'items': block['before']},
+                'download': {
+                    'heading': block['download_heading'],
+                    'headers': block['download_headers'],
+                    'rows': standard_download_rows(
+                        STANDARD_DOWNLOAD_LABELS[labels_key],
+                        localized_assets,
+                    ),
+                },
+                'why': {'heading': block['why_heading'], 'items': block['why']},
+                'contact': {'heading': block['contact_heading'], 'items': block['contact']},
+            }
+        )
+    add_nvidia50_download_rows(sections, assets_cn, assets)
+    add_tensorrt_split_download_row(sections, assets_cn, assets, asset_map)
+    validate_release_sections(sections)
+    return release_heading(release_tag) + '\n\n' + '\n\n---\n\n'.join(
+        render_language_section(section) for section in sections
+    ) + '\n'
+
+
+def build_next_2026_06_11_1_notes(
+    asset_map: dict[str, str | None],
+    bundle: dict[str, str],
+    repo: str,
+    release_tag: str | None,
+) -> str:
+    assets_cn = {key: format_asset(asset_map[key], repo, release_tag) for key in asset_map}
+    assets = {key: format_asset_en(asset_map[key], repo, release_tag) for key in asset_map}
+    katago_version = bundle['katago_version']
+    model_source = bundle['model_source']
+    content = [
+        {
+            'language': '中文',
+            'labels': 'zh',
+            'intro': '这是一次界面观感和分析时渲染性能的维护版。Apple 玻璃风格和 LizzieYzy 经典风格都做了统一打磨；引擎持续分析时的全窗口绘制、胜率图和分支预览也改成复用缓冲，减少大图像反复分配带来的卡顿和内存压力。',
+            'updates_heading': '本版主要更新',
+            'updates': [
+                '优化 Apple 玻璃风格：顶部/底部工具条改成统一的半透明平面材质，按钮静止态更安静，主次层级更清楚。',
+                '优化 LizzieYzy 经典风格：浅色工具条、白色按钮、柔和描边和页签下划线统一为现代桌面应用观感，不再是旧 Swing 灰色工具堆。',
+                '问题手侧栏新增更明确的黑/白状态、棋子标识、导航箭头、严重问题手强调和卡片式空状态。',
+                '分析输出频繁刷新时，主窗口绘制缓冲、胜率图三层缓冲、主棋盘/小棋盘分支图像都改为复用，明显减少每秒临时内存分配。',
+                'Windows/Linux 下启动时开启 Swing 文字抗锯齿，经典界面和弹窗文字更顺滑。',
+                '本次不改变 KataGo 分析逻辑、问题手判定规则或棋盘背景规则，只改视觉表现和渲染性能。',
+            ],
+            'before_heading': '下载前先看这几句',
+            'before': [
+                f'主推荐整合包继续内置 KataGo `{katago_version}` 和默认权重 `{model_source}`。',
+                f'Windows 普通用户优先下载 {{windows_opencl_portable}}，这是 **OpenCL 版（推荐，免安装）**。',
+                f'如果 OpenCL 在你的电脑上不稳定，再改用 {{windows_portable}}。',
+                f'如果你的电脑是 **英伟达显卡**，优先下载 {{windows_nvidia_portable}}。',
+                '如果你之前关闭了 Apple 风格，这一版的经典风格也已经同步优化，可以直接继续使用当前配置。',
+            ],
+            'download_heading': '下载建议',
+            'download_headers': ('你的电脑', '直接下载这个'),
+            'why_heading': '这一版为什么值得更新',
+            'why': [
+                '复盘时界面更像一个统一的现代桌面产品，而不是多代控件拼在一起。',
+                '经典风格这次也被认真打磨：常用浅色模式用户能直接看到工具条、按钮和侧栏页签的升级。',
+                '长时间分析、候选手刷新和分支预览时，临时大图像分配更少，整体更稳。',
+                '所有优化都围绕显示层完成，不会改变你的引擎设置、分析结果或既有复盘习惯。',
+            ],
+            'contact_heading': '交流',
+            'contact': ['QQ 群：`299419120`'],
+        },
+        {
+            'language': '繁體中文',
+            'labels': 'zh_hant',
+            'intro': '這是一次介面觀感和分析時渲染效能的維護版。Apple 玻璃風格和 LizzieYzy 經典風格都做了統一打磨；引擎持續分析時的全視窗繪製、勝率圖和分支預覽也改成重用緩衝，減少大型影像反覆分配造成的卡頓和記憶體壓力。',
+            'updates_heading': '本版主要更新',
+            'updates': [
+                '優化 Apple 玻璃風格：頂部/底部工具列改成統一的半透明平面材質，按鈕靜止態更安靜，主次層級更清楚。',
+                '優化 LizzieYzy 經典風格：淺色工具列、白色按鈕、柔和描邊和頁籤底線統一為現代桌面應用觀感，不再像舊 Swing 灰色工具堆。',
+                '問題手側欄新增更明確的黑/白狀態、棋子標識、導覽箭頭、嚴重問題手強調和卡片式空狀態。',
+                '分析輸出頻繁刷新時，主視窗繪製緩衝、勝率圖三層緩衝、主棋盤/小棋盤分支影像都改為重用，明顯減少每秒臨時記憶體分配。',
+                'Windows/Linux 下啟動時開啟 Swing 文字抗鋸齒，經典介面和對話框文字更順滑。',
+                '本次不改變 KataGo 分析邏輯、問題手判定規則或棋盤背景規則，只改視覺表現和渲染效能。',
+            ],
+            'before_heading': '下載前先看這幾句',
+            'before': [
+                f'主推薦整合包繼續內建 KataGo `{katago_version}` 和預設權重 `{model_source}`。',
+                f'Windows 一般使用者優先下載 {{windows_opencl_portable}}，這是 **OpenCL 版（推薦，免安裝）**。',
+                f'如果 OpenCL 在你的電腦上不穩定，再改用 {{windows_portable}}。',
+                f'如果你的電腦是 **NVIDIA 顯示卡**，優先下載 {{windows_nvidia_portable}}。',
+                '如果你之前關閉了 Apple 風格，這一版的經典風格也已經同步優化，可以直接繼續使用目前設定。',
+            ],
+            'download_heading': '下載建議',
+            'download_headers': ('你的電腦', '直接下載這個'),
+            'why_heading': '這一版為什麼值得更新',
+            'why': [
+                '復盤時介面更像一個統一的現代桌面產品，而不是多代控制項拼在一起。',
+                '經典風格這次也被認真打磨：常用淺色模式使用者能直接看到工具列、按鈕和側欄頁籤的升級。',
+                '長時間分析、候選手刷新和分支預覽時，臨時大型影像分配更少，整體更穩。',
+                '所有優化都圍繞顯示層完成，不會改變你的引擎設定、分析結果或既有復盤習慣。',
+            ],
+            'contact_heading': '交流',
+            'contact': ['QQ 群：`299419120`'],
+        },
+        {
+            'language': 'English',
+            'labels': 'en',
+            'intro': 'This maintenance release focuses on UI polish and rendering performance during live analysis. Both the Apple glass style and the LizzieYzy classic style have been refined, while the main window, winrate graph, and branch preview rendering now reuse image buffers to reduce large temporary allocations.',
+            'updates_heading': 'Release Highlights',
+            'updates': [
+                'Refined the Apple glass style with one flatter translucent toolbar material, quieter resting buttons, and clearer visual hierarchy.',
+                'Refined the LizzieYzy classic style with a modern light toolbar, white buttons, softer borders, and active tab underlines instead of legacy Swing grey.',
+                'Improved the problem-move sidebar with clearer Black/White state, stone markers, navigation arrows, severe-move emphasis, and a card-style empty state.',
+                'Reduced repaint-time allocations by reusing the full-window paint buffer, the three winrate graph layers, and branch preview images on the main and sub boards.',
+                'Enabled Swing text antialiasing on startup for smoother Windows/Linux classic UI and dialog text.',
+                'KataGo analysis logic, problem-move rules, and custom-board-background behavior are unchanged; this release only touches presentation and rendering performance.',
+            ],
+            'before_heading': 'Read Before Downloading',
+            'before': [
+                f'The recommended bundles continue to include KataGo `{katago_version}` and the default weight `{model_source}`.',
+                f'Most Windows users should download {{windows_opencl_portable}}, the **recommended no-install OpenCL build**.',
+                f'If OpenCL is unreliable on your PC, use {{windows_portable}} instead.',
+                f'If your PC has an **NVIDIA GPU**, try {{windows_nvidia_portable}} first.',
+                'If you keep Apple style disabled, this build also upgrades the classic style, so you can keep your current preference.',
+            ],
+            'download_heading': 'Download Guide',
+            'download_headers': ('Your computer', 'Download this file'),
+            'why_heading': 'Why Update',
+            'why': [
+                'The review screen now feels more like one coherent modern desktop product rather than several generations of controls stitched together.',
+                'Classic-style users get visible upgrades too: the toolbar, buttons, and sidebar tabs are cleaner and more deliberate.',
+                'Long live-analysis sessions create fewer large temporary images during candidate refreshes and branch previews.',
+                'The changes stay in the display layer and do not alter your engine settings, analysis results, or review workflow.',
+            ],
+            'contact_heading': 'Contact',
+            'contact': ['QQ group: `299419120`'],
+        },
+        {
+            'language': '日本語',
+            'labels': 'ja',
+            'intro': 'このリリースは UI の仕上げと、ライブ解析中の描画性能を中心にしたメンテナンス版です。Apple ガラス風スタイルと LizzieYzy クラシックスタイルの両方を整え、メインウィンドウ、勝率グラフ、分岐プレビューでは画像バッファを再利用して大きな一時割り当てを減らしました。',
+            'updates_heading': '主な更新',
+            'updates': [
+                'Apple ガラス風スタイルを、よりフラットな半透明ツールバー、静かな通常状態のボタン、分かりやすい階層感に調整しました。',
+                'LizzieYzy クラシックスタイルを、現代的な明るいツールバー、白いボタン、柔らかい境界線、アクティブタブ下線で整理しました。',
+                '問題手サイドバーに、黒/白の状態表示、石マーカー、ナビゲーション矢印、重大な問題手の強調、カード型の空状態を追加しました。',
+                'メインウィンドウの描画バッファ、勝率グラフ 3 層、メイン盤/サブ盤の分岐プレビュー画像を再利用し、再描画時の割り当てを減らしました。',
+                'Windows/Linux でも Swing の文字アンチエイリアスを起動時に有効化し、クラシック UI とダイアログの文字を滑らかにしました。',
+                'KataGo 解析ロジック、問題手ルール、カスタム盤背景の仕様は変更していません。表示と描画性能のみの更新です。',
+            ],
+            'before_heading': 'ダウンロード前に',
+            'before': [
+                f'推奨バンドルには KataGo `{katago_version}` と既定の重み `{model_source}` が含まれています。',
+                f'多くの Windows ユーザーは {{windows_opencl_portable}} を選ぶのがおすすめです。これは **推奨 OpenCL 版、インストール不要** です。',
+                f'OpenCL が不安定な場合は {{windows_portable}} を使ってください。',
+                f'**NVIDIA GPU** 搭載 PC では {{windows_nvidia_portable}} を優先してください。',
+                'Apple スタイルを無効にしている場合でも、このビルドではクラシックスタイルも改善されています。',
+            ],
+            'download_heading': 'ダウンロード案内',
+            'download_headers': ('お使いの環境', 'ダウンロードするファイル'),
+            'why_heading': '更新する理由',
+            'why': [
+                '復盤画面が、複数世代の部品を寄せ集めた印象ではなく、ひとつの現代的なデスクトップ製品としてまとまりました。',
+                'クラシックスタイル利用者にも、ツールバー、ボタン、サイドバータブの見た目がはっきり改善されます。',
+                '長時間のライブ解析、候補手更新、分岐プレビューで、大きな一時画像の生成が少なくなります。',
+                '変更は表示層に限られ、エンジン設定、解析結果、復盤の流れはそのままです。',
+            ],
+            'contact_heading': '連絡先',
+            'contact': ['QQ グループ: `299419120`'],
+        },
+        {
+            'language': '한국어',
+            'labels': 'ko',
+            'intro': '이번 릴리스는 UI 다듬기와 라이브 분석 중 렌더링 성능을 중심으로 한 유지보수 버전입니다. Apple glass 스타일과 LizzieYzy classic 스타일을 모두 정리했고, 메인 창, 승률 그래프, 분기 미리보기는 이미지 버퍼를 재사용해 큰 임시 할당을 줄였습니다.',
+            'updates_heading': '주요 업데이트',
+            'updates': [
+                'Apple glass 스타일을 더 평평한 반투명 툴바, 조용한 기본 버튼 상태, 더 명확한 시각적 계층으로 다듬었습니다.',
+                'LizzieYzy classic 스타일은 현대적인 밝은 툴바, 흰색 버튼, 부드러운 테두리, 활성 탭 밑줄로 정리했습니다.',
+                '문제수 사이드바에 흑/백 상태, 돌 표시, 이동 화살표, 큰 문제수 강조, 카드형 빈 상태를 더했습니다.',
+                '전체 창 페인트 버퍼, 승률 그래프 3개 레이어, 메인/서브 보드 분기 미리보기 이미지를 재사용해 재그리기 중 할당을 줄였습니다.',
+                'Windows/Linux 에서도 시작 시 Swing 텍스트 안티앨리어싱을 켜서 classic UI 와 대화상자 글자가 더 부드럽게 보입니다.',
+                'KataGo 분석 로직, 문제수 판정 규칙, 커스텀 보드 배경 동작은 바꾸지 않았습니다. 표시와 렌더링 성능만 개선했습니다.',
+            ],
+            'before_heading': '다운로드 전 확인',
+            'before': [
+                f'추천 번들에는 KataGo `{katago_version}` 와 기본 가중치 `{model_source}` 가 포함되어 있습니다.',
+                f'대부분의 Windows 사용자는 {{windows_opencl_portable}} 를 먼저 받으면 됩니다. 이는 **추천 OpenCL 무설치 빌드** 입니다.',
+                f'OpenCL 이 PC에서 불안정하면 {{windows_portable}} 를 대신 사용하세요.',
+                f'**NVIDIA GPU** 가 있다면 {{windows_nvidia_portable}} 를 우선 사용해 보세요.',
+                'Apple 스타일을 꺼 두고 사용하더라도 이번 빌드에서는 classic 스타일도 함께 개선되었습니다.',
+            ],
+            'download_heading': '다운로드 안내',
+            'download_headers': ('내 컴퓨터', '다운로드할 파일'),
+            'why_heading': '업데이트할 이유',
+            'why': [
+                '복기 화면이 여러 세대의 컨트롤을 이어 붙인 느낌보다 하나의 현대적인 데스크톱 제품처럼 보입니다.',
+                'classic 스타일 사용자도 툴바, 버튼, 사이드바 탭의 개선을 바로 볼 수 있습니다.',
+                '긴 라이브 분석, 후보수 갱신, 분기 미리보기 중 큰 임시 이미지 생성이 줄어듭니다.',
+                '변경은 표시 레이어에 머물며 엔진 설정, 분석 결과, 복기 흐름은 그대로 유지됩니다.',
+            ],
+            'contact_heading': '연락',
+            'contact': ['QQ 그룹: `299419120`'],
+        },
+        {
+            'language': 'ภาษาไทย',
+            'labels': 'th',
+            'intro': 'รีลีสนี้เป็น maintenance build ที่เน้นปรับ UI และประสิทธิภาพการ render ระหว่าง live analysis ทั้ง Apple glass style และ LizzieYzy classic style ถูกขัดเกลาใหม่ ส่วน main window, winrate graph และ branch preview ใช้ image buffer ซ้ำเพื่อลดการสร้างภาพขนาดใหญ่ชั่วคราว',
+            'updates_heading': 'อัปเดตหลัก',
+            'updates': [
+                'ปรับ Apple glass style ให้เป็น toolbar โปร่งแสงแบบ flat มากขึ้น ปุ่มตอน idle สงบขึ้น และลำดับชั้นของ UI ชัดขึ้น',
+                'ปรับ LizzieYzy classic style เป็น toolbar สีอ่อนสมัยใหม่ ปุ่มสีขาว เส้นขอบนุ่มขึ้น และ active tab underline แทนกลิ่น Swing สีเทาเดิม',
+                'ปรับ problem-move sidebar ให้เห็นสถานะดำ/ขาวชัดขึ้น มี stone marker, navigation arrow, การเน้นปัญหารุนแรง และ empty state แบบ card',
+                'ลด allocation ตอน repaint โดยใช้ full-window paint buffer, winrate graph layers และ branch preview images ซ้ำบน main/sub board',
+                'เปิด Swing text antialiasing ตอนเริ่มโปรแกรม เพื่อให้ตัวอักษรบน Windows/Linux classic UI และ dialog นุ่มขึ้น',
+                'ไม่ได้เปลี่ยน logic วิเคราะห์ KataGo, กฎ problem-move หรือพฤติกรรม custom board background; รุ่นนี้แตะเฉพาะ presentation และ render performance',
+            ],
+            'before_heading': 'ก่อนดาวน์โหลด',
+            'before': [
+                f'แพ็กเกจหลักมี KataGo `{katago_version}` และน้ำหนักเริ่มต้น `{model_source}` มาให้แล้ว',
+                f'ผู้ใช้ Windows ส่วนใหญ่แนะนำให้ดาวน์โหลด {{windows_opencl_portable}} ซึ่งเป็น **OpenCL รุ่นแนะนำ แบบไม่ต้องติดตั้ง**',
+                f'ถ้า OpenCL ไม่เสถียรบนเครื่องของคุณ ให้ใช้ {{windows_portable}} แทน',
+                f'ถ้ามี **NVIDIA GPU** แนะนำให้ลอง {{windows_nvidia_portable}} ก่อน',
+                'ถ้าคุณปิด Apple style ไว้ รุ่นนี้ก็ปรับ classic style แล้วเช่นกัน จึงใช้ setting เดิมต่อได้เลย',
+            ],
+            'download_heading': 'แนะนำการดาวน์โหลด',
+            'download_headers': ('เครื่องของคุณ', 'ดาวน์โหลดไฟล์นี้'),
+            'why_heading': 'ทำไมควรอัปเดต',
+            'why': [
+                'หน้าจอรีวิวเกมดูเป็น desktop product สมัยใหม่ที่เป็นหนึ่งเดียวมากขึ้น ไม่เหมือนเอา control หลายยุคมาต่อกัน',
+                'ผู้ใช้ classic style จะเห็นการอัปเกรดของ toolbar, buttons และ sidebar tabs ได้ชัดเจน',
+                'live analysis นาน ๆ, candidate refresh และ branch preview จะสร้างภาพขนาดใหญ่ชั่วคราวน้อยลง',
+                'การเปลี่ยนแปลงอยู่ที่ display layer ไม่เปลี่ยน engine settings, analysis results หรือ workflow การรีวิวของคุณ',
+            ],
+            'contact_heading': 'ติดต่อ',
+            'contact': ['QQ group: `299419120`'],
+        },
+    ]
+
+    sections: list[dict[str, object]] = []
+    for block in content:
+        localized_assets = assets_cn if block['language'] in ('中文', '繁體中文') else assets
+        before_items = [
+            item.format(
+                windows_opencl_portable=localized_assets['windows_opencl_portable'],
+                windows_portable=localized_assets['windows_portable'],
+                windows_nvidia_portable=localized_assets['windows_nvidia_portable'],
+            )
+            for item in block['before']
+        ]
+        sections.append(
+            {
+                'language': block['language'],
+                'intro': block['intro'],
+                'updates': {'heading': block['updates_heading'], 'items': block['updates']},
+                'before': {'heading': block['before_heading'], 'items': before_items},
+                'download': {
+                    'heading': block['download_heading'],
+                    'headers': block['download_headers'],
+                    'rows': standard_download_rows(STANDARD_DOWNLOAD_LABELS[block['labels']], localized_assets),
+                },
+                'why': {'heading': block['why_heading'], 'items': block['why']},
+                'contact': {'heading': block['contact_heading'], 'items': block['contact']},
+            }
+        )
+    add_nvidia50_download_rows(sections, assets_cn, assets)
+    add_tensorrt_split_download_row(sections, assets_cn, assets, asset_map)
+    validate_release_sections(sections)
+    return release_heading(release_tag) + '\n\n' + '\n\n---\n\n'.join(
+        render_language_section(section) for section in sections
+    ) + '\n'
+
+
+def build_next_2026_06_11_2_notes(
+    asset_map: dict[str, str | None],
+    bundle: dict[str, str],
+    repo: str,
+    release_tag: str | None,
+) -> str:
+    assets_cn = {key: format_asset(asset_map[key], repo, release_tag) for key in asset_map}
+    assets = {key: format_asset_en(asset_map[key], repo, release_tag) for key in asset_map}
+    katago_version = bundle['katago_version']
+    model_source = bundle['model_source']
+    content = [
+        {
+            'language': '中文',
+            'labels': 'zh',
+            'intro': '这是一次发布前质量收口版，重点修复野狐棋谱加载后的自动胜率曲线、macOS 安装包拖拽体验，以及默认界面的胜率图观感。加载野狐棋谱后不再需要先按空格，程序会自动启动静默快速分析来补出胜率曲线。',
+            'updates_heading': '本版主要更新',
+            'updates': [
+                '修复野狐棋谱加载后不自动生成胜率曲线的问题：主引擎还没开始 ponder 时，也会自动启动静默快速分析。',
+                '默认关闭胜率图里的柱状失误条，让新用户第一眼看到的是更干净的胜率曲线；旧默认配置会一次性迁移，之后用户手动开启会被保留。',
+                'macOS DMG 改成标准拖拽安装布局：打开安装包后可以把 LizzieYzy Next 拖到 Applications。',
+                'macOS 签名公证上传增加重试，降低 Apple notary 临时 503 导致 Intel/Apple Silicon 包失败的概率。',
+                '保留上一版 Apple 风格和 LizzieYzy 经典风格的视觉打磨，以及主窗口、胜率图、分支预览的缓冲复用性能优化。',
+                '本次不改变 KataGo 分析逻辑、问题手判定规则或用户已有的手动引擎配置。',
+            ],
+            'before_heading': '下载前先看这几句',
+            'before': [
+                f'主推荐整合包继续内置 KataGo `{katago_version}` 和默认权重 `{model_source}`。',
+                f'Windows 普通用户优先下载 {{windows_opencl_portable}}，这是 **OpenCL 版（推荐，免安装）**。',
+                f'如果 OpenCL 在你的电脑上不稳定，再改用 {{windows_portable}}。',
+                f'如果你的电脑是 **英伟达显卡**，优先下载 {{windows_nvidia_portable}}。',
+                '如果你主要下载野狐棋谱复盘，建议更新到这一版；加载后会自动补胜率曲线。',
+            ],
+            'download_heading': '下载建议',
+            'download_headers': ('你的电脑', '直接下载这个'),
+            'why_heading': '这一版为什么值得更新',
+            'why': [
+                '野狐棋谱加载后的体验更顺：打开棋谱后胜率曲线会自己生成，不需要记住再按一次空格。',
+                '胜率图默认更清爽，柱状失误条不再抢占第一视觉焦点。',
+                'macOS 用户拿到的是更符合 macOS 习惯的 DMG 安装包，拖到 Applications 的窗口会出现。',
+                '发布前重新跑了聚焦回归测试、全量 Maven 测试、DMG 布局验证和四平台 release workflow。',
+            ],
+            'contact_heading': '交流',
+            'contact': ['QQ 群：`299419120`'],
+        },
+        {
+            'language': '繁體中文',
+            'labels': 'zh_hant',
+            'intro': '這是一次發布前品質收口版，重點修復野狐棋譜載入後的自動勝率曲線、macOS 安裝包拖曳體驗，以及預設介面的勝率圖觀感。載入野狐棋譜後不再需要先按空白鍵，程式會自動啟動靜默快速分析來補出勝率曲線。',
+            'updates_heading': '本版主要更新',
+            'updates': [
+                '修復野狐棋譜載入後不自動生成勝率曲線的問題：主引擎尚未開始 ponder 時，也會自動啟動靜默快速分析。',
+                '預設關閉勝率圖裡的柱狀失誤條，讓新使用者第一眼看到更乾淨的勝率曲線；舊預設設定會一次性遷移，之後手動開啟會被保留。',
+                'macOS DMG 改成標準拖曳安裝版面：打開安裝包後可以把 LizzieYzy Next 拖到 Applications。',
+                'macOS 簽名公證上傳增加重試，降低 Apple notary 暫時 503 造成 Intel/Apple Silicon 包失敗的機率。',
+                '保留上一版 Apple 風格和 LizzieYzy 經典風格的視覺打磨，以及主視窗、勝率圖、分支預覽的緩衝重用效能優化。',
+                '本次不改變 KataGo 分析邏輯、問題手判定規則或使用者既有的手動引擎設定。',
+            ],
+            'before_heading': '下載前先看這幾句',
+            'before': [
+                f'主推薦整合包繼續內建 KataGo `{katago_version}` 和預設權重 `{model_source}`。',
+                f'Windows 一般使用者優先下載 {{windows_opencl_portable}}，這是 **OpenCL 版（推薦，免安裝）**。',
+                f'如果 OpenCL 在你的電腦上不穩定，再改用 {{windows_portable}}。',
+                f'如果你的電腦是 **NVIDIA 顯示卡**，優先下載 {{windows_nvidia_portable}}。',
+                '如果你主要下載野狐棋譜復盤，建議更新到這一版；載入後會自動補勝率曲線。',
+            ],
+            'download_heading': '下載建議',
+            'download_headers': ('你的電腦', '直接下載這個'),
+            'why_heading': '這一版為什麼值得更新',
+            'why': [
+                '野狐棋譜載入後的體驗更順：打開棋譜後勝率曲線會自己生成，不需要記住再按一次空白鍵。',
+                '勝率圖預設更清爽，柱狀失誤條不再搶佔第一視覺焦點。',
+                'macOS 使用者拿到的是更符合 macOS 習慣的 DMG 安裝包，拖到 Applications 的視窗會出現。',
+                '發布前重新跑了聚焦回歸測試、完整 Maven 測試、DMG 版面驗證和四平台 release workflow。',
+            ],
+            'contact_heading': '交流',
+            'contact': ['QQ 群：`299419120`'],
+        },
+        {
+            'language': 'English',
+            'labels': 'en',
+            'intro': 'This release tightens the final user-facing details before publishing: Fox kifu loads now generate the winrate graph automatically, the macOS package uses the standard drag-to-Applications DMG layout, and the default winrate graph is cleaner. After loading a Fox record, you no longer need to press Space first; LizzieYzy starts a silent quick analysis pass to fill the curve.',
+            'updates_heading': 'Release Highlights',
+            'updates': [
+                'Fixed Fox kifu loading so the winrate graph is generated automatically even before the primary engine starts pondering.',
+                'Turned the blunder bar off by default for a cleaner first winrate graph; old default-derived configs migrate once, and explicit later user changes are preserved.',
+                'Changed macOS DMGs to the standard drag-install layout with the app and an Applications target.',
+                'Added retry handling around macOS notarization uploads to reduce failures from temporary Apple notary 503 responses.',
+                'Kept the previous Apple style, LizzieYzy classic style, and rendering-buffer performance polish from the UI/performance release.',
+                'KataGo analysis logic, problem-move rules, and manually configured engines are unchanged.',
+            ],
+            'before_heading': 'Read Before Downloading',
+            'before': [
+                f'The recommended bundles continue to include KataGo `{katago_version}` and the default weight `{model_source}`.',
+                f'Most Windows users should download {{windows_opencl_portable}}, the **recommended no-install OpenCL build**.',
+                f'If OpenCL is unreliable on your PC, use {{windows_portable}} instead.',
+                f'If your PC has an **NVIDIA GPU**, try {{windows_nvidia_portable}} first.',
+                'If your review flow often starts from downloaded Fox records, this is the build to use.',
+            ],
+            'download_heading': 'Download Guide',
+            'download_headers': ('Your computer', 'Download this file'),
+            'why_heading': 'Why Update',
+            'why': [
+                'Fox records now feel direct: load the game and the winrate curve starts filling without a Space-key workaround.',
+                'The default graph is calmer, with the blunder bars no longer dominating the first view.',
+                'macOS users get the expected drag-to-Applications install window.',
+                'Before release, targeted regressions, the full Maven test suite, DMG layout validation, and all four platform release workflows were rerun.',
+            ],
+            'contact_heading': 'Contact',
+            'contact': ['QQ group: `299419120`'],
+        },
+        {
+            'language': '日本語',
+            'labels': 'ja',
+            'intro': 'このリリースは公開前の最終品質調整です。Fox 棋譜の読み込み後に勝率グラフが自動生成され、macOS パッケージは標準的な Applications へのドラッグ形式になり、既定の勝率グラフもよりすっきりしました。Fox 棋譜を読み込んだ後、先に Space を押す必要はありません。',
+            'updates_heading': '主な更新',
+            'updates': [
+                'Fox 棋譜の読み込み後、メインエンジンがまだ ponder を始めていなくても、静かなクイック解析で勝率グラフを自動生成します。',
+                '勝率グラフの blunder bar を既定でオフにし、最初の表示をよりきれいにしました。古い既定値は一度だけ移行し、その後の手動変更は保持されます。',
+                'macOS DMG を標準のドラッグインストール形式に変更し、アプリを Applications にドラッグできます。',
+                'Apple notary の一時的な 503 に備えて、macOS 公証アップロードにリトライを追加しました。',
+                '前回の Apple style、LizzieYzy classic style、描画バッファ再利用の性能改善はそのまま含まれます。',
+                'KataGo 解析ロジック、問題手ルール、手動設定したエンジンは変更していません。',
+            ],
+            'before_heading': 'ダウンロード前に',
+            'before': [
+                f'推奨バンドルには KataGo `{katago_version}` と既定の重み `{model_source}` が含まれています。',
+                f'多くの Windows ユーザーは {{windows_opencl_portable}} を選ぶのがおすすめです。これは **推奨 OpenCL 版、インストール不要** です。',
+                f'OpenCL が不安定な場合は {{windows_portable}} を使ってください。',
+                f'**NVIDIA GPU** 搭載 PC では {{windows_nvidia_portable}} を優先してください。',
+                'ダウンロードした Fox 棋譜から復盤を始めることが多い場合は、このビルドがおすすめです。',
+            ],
+            'download_heading': 'ダウンロード案内',
+            'download_headers': ('お使いの環境', 'ダウンロードするファイル'),
+            'why_heading': '更新する理由',
+            'why': [
+                'Fox 棋譜を開くと、Space キーの回避操作なしで勝率曲線が生成されます。',
+                '既定のグラフ表示がより落ち着き、blunder bar が最初の視線を奪わなくなりました。',
+                'macOS では期待どおり Applications へドラッグするインストール画面が出ます。',
+                'リリース前に targeted regression、full Maven test、DMG layout validation、4 プラットフォームの release workflow を再実行しました。',
+            ],
+            'contact_heading': '連絡先',
+            'contact': ['QQ グループ: `299419120`'],
+        },
+        {
+            'language': '한국어',
+            'labels': 'ko',
+            'intro': '이번 릴리스는 공개 전 마지막 품질 정리 버전입니다. Fox 기보를 불러온 뒤 승률 그래프가 자동으로 생성되고, macOS 패키지는 표준 drag-to-Applications DMG 형태가 되었으며, 기본 승률 그래프도 더 깔끔해졌습니다. Fox 기보를 연 뒤 먼저 Space 를 누를 필요가 없습니다.',
+            'updates_heading': '주요 업데이트',
+            'updates': [
+                'Fox 기보 로딩 후 메인 엔진이 아직 ponder 를 시작하지 않았더라도 silent quick analysis 로 승률 그래프를 자동 생성합니다.',
+                '기본 승률 그래프에서 blunder bar 를 꺼서 첫 화면을 더 깔끔하게 만들었습니다. 예전 기본값은 한 번만 migrate 되고, 이후 사용자가 직접 켠 설정은 유지됩니다.',
+                'macOS DMG 를 표준 drag-install 레이아웃으로 바꿔 앱을 Applications 로 끌어 놓을 수 있습니다.',
+                'Apple notary 의 일시적인 503 응답에 대비해 macOS notarization 업로드에 retry 를 추가했습니다.',
+                '이전 Apple style, LizzieYzy classic style, rendering buffer 성능 개선은 그대로 포함됩니다.',
+                'KataGo 분석 로직, 문제수 규칙, 수동 엔진 설정은 변경하지 않았습니다.',
+            ],
+            'before_heading': '다운로드 전 확인',
+            'before': [
+                f'추천 번들에는 KataGo `{katago_version}` 와 기본 가중치 `{model_source}` 가 포함되어 있습니다.',
+                f'대부분의 Windows 사용자는 {{windows_opencl_portable}} 를 먼저 받으면 됩니다. 이는 **추천 OpenCL 무설치 빌드** 입니다.',
+                f'OpenCL 이 PC에서 불안정하면 {{windows_portable}} 를 대신 사용하세요.',
+                f'**NVIDIA GPU** 가 있다면 {{windows_nvidia_portable}} 를 우선 사용해 보세요.',
+                '다운로드한 Fox 기보로 복기를 자주 시작한다면 이 빌드를 권장합니다.',
+            ],
+            'download_heading': '다운로드 안내',
+            'download_headers': ('내 컴퓨터', '다운로드할 파일'),
+            'why_heading': '업데이트할 이유',
+            'why': [
+                'Fox 기보를 열면 Space 키 우회 없이 승률 곡선이 자동으로 채워집니다.',
+                '기본 그래프가 더 차분해지고 blunder bar 가 첫 시선을 차지하지 않습니다.',
+                'macOS 에서는 기대한 대로 Applications 로 드래그하는 설치 창이 표시됩니다.',
+                '릴리스 전에 targeted regression, full Maven test, DMG layout validation, 4개 플랫폼 release workflow 를 다시 실행했습니다.',
+            ],
+            'contact_heading': '연락',
+            'contact': ['QQ 그룹: `299419120`'],
+        },
+        {
+            'language': 'ภาษาไทย',
+            'labels': 'th',
+            'intro': 'รีลีสนี้เป็นการเก็บคุณภาพรอบสุดท้ายก่อนเผยแพร่: เมื่อโหลด Fox kifu แล้ว winrate graph จะถูกสร้างอัตโนมัติ, แพ็กเกจ macOS ใช้ DMG แบบลากไป Applications และกราฟเริ่มต้นดูสะอาดขึ้น ไม่ต้องกด Space ก่อนหลังโหลด Fox record',
+            'updates_heading': 'อัปเดตหลัก',
+            'updates': [
+                'แก้ Fox kifu load ให้สร้าง winrate graph อัตโนมัติ แม้ primary engine ยังไม่ได้เริ่ม ponder',
+                'ปิด blunder bar เป็นค่าเริ่มต้นเพื่อให้กราฟแรกดูสะอาดขึ้น; config เก่าที่เป็นค่า default จะ migrate ครั้งเดียว และถ้าผู้ใช้เปิดเองภายหลังจะคงไว้',
+                'เปลี่ยน macOS DMG เป็น layout ติดตั้งมาตรฐานที่ลากแอปไป Applications ได้',
+                'เพิ่ม retry ให้ macOS notarization upload เพื่อลดความล้มเหลวจาก Apple notary 503 ชั่วคราว',
+                'ยังรวม polish ของ Apple style, LizzieYzy classic style และ rendering-buffer performance จากรุ่นก่อน',
+                'ไม่ได้เปลี่ยน logic วิเคราะห์ KataGo, กฎ problem-move หรือ engine ที่ผู้ใช้ตั้งเอง',
+            ],
+            'before_heading': 'ก่อนดาวน์โหลด',
+            'before': [
+                f'แพ็กเกจหลักมี KataGo `{katago_version}` และน้ำหนักเริ่มต้น `{model_source}` มาให้แล้ว',
+                f'ผู้ใช้ Windows ส่วนใหญ่แนะนำให้ดาวน์โหลด {{windows_opencl_portable}} ซึ่งเป็น **OpenCL รุ่นแนะนำ แบบไม่ต้องติดตั้ง**',
+                f'ถ้า OpenCL ไม่เสถียรบนเครื่องของคุณ ให้ใช้ {{windows_portable}} แทน',
+                f'ถ้ามี **NVIDIA GPU** แนะนำให้ลอง {{windows_nvidia_portable}} ก่อน',
+                'ถ้าคุณมักเริ่มรีวิวจาก Fox records ที่ดาวน์โหลดมา รุ่นนี้เหมาะที่สุด',
+            ],
+            'download_heading': 'แนะนำการดาวน์โหลด',
+            'download_headers': ('เครื่องของคุณ', 'ดาวน์โหลดไฟล์นี้'),
+            'why_heading': 'ทำไมควรอัปเดต',
+            'why': [
+                'เปิด Fox kifu แล้ว winrate curve จะเริ่มเติมเอง ไม่ต้องกด Space เพื่อแก้ทาง',
+                'กราฟเริ่มต้นนิ่งและสะอาดขึ้น เพราะ blunder bar ไม่แย่งสายตา',
+                'ผู้ใช้ macOS จะเห็นหน้าต่างติดตั้งแบบลากไป Applications ตามที่คุ้นเคย',
+                'ก่อน release ได้รัน targeted regressions, full Maven tests, DMG layout validation และ release workflow ครบ 4 แพลตฟอร์มแล้ว',
+            ],
+            'contact_heading': 'ติดต่อ',
+            'contact': ['QQ group: `299419120`'],
+        },
+    ]
+
+    sections: list[dict[str, object]] = []
+    for block in content:
+        localized_assets = assets_cn if block['language'] in ('中文', '繁體中文') else assets
+        before_items = [
+            item.format(
+                windows_opencl_portable=localized_assets['windows_opencl_portable'],
+                windows_portable=localized_assets['windows_portable'],
+                windows_nvidia_portable=localized_assets['windows_nvidia_portable'],
+            )
+            for item in block['before']
+        ]
+        sections.append(
+            {
+                'language': block['language'],
+                'intro': block['intro'],
+                'updates': {'heading': block['updates_heading'], 'items': block['updates']},
+                'before': {'heading': block['before_heading'], 'items': before_items},
+                'download': {
+                    'heading': block['download_heading'],
+                    'headers': block['download_headers'],
+                    'rows': standard_download_rows(STANDARD_DOWNLOAD_LABELS[block['labels']], localized_assets),
+                },
+                'why': {'heading': block['why_heading'], 'items': block['why']},
+                'contact': {'heading': block['contact_heading'], 'items': block['contact']},
+            }
+        )
+    add_nvidia50_download_rows(sections, assets_cn, assets)
+    add_tensorrt_split_download_row(sections, assets_cn, assets, asset_map)
+    validate_release_sections(sections)
+    return release_heading(release_tag) + '\n\n' + '\n\n---\n\n'.join(
+        render_language_section(section) for section in sections
+    ) + '\n'
+
+
+def build_next_2026_06_12_1_notes(
+    asset_map: dict[str, str | None],
+    bundle: dict[str, str],
+    repo: str,
+    release_tag: str | None,
+) -> str:
+    assets_cn = {key: format_asset(asset_map[key], repo, release_tag) for key in asset_map}
+    assets = {key: format_asset_en(asset_map[key], repo, release_tag) for key in asset_map}
+    katago_version = bundle['katago_version']
+    model_source = bundle['model_source']
+    content = [
+        {
+            'language': '中文',
+            'labels': 'zh',
+            'intro': '这是一次 PR 质量收口版。感谢 @semanym 提交 #41 和 #42：一个修复野狐让子棋开局连续黑棋被丢失的问题，一个修复 Windows OpenCL 首次自动调优耗时较长时被误判为引擎异常关闭的问题。',
+            'updates_heading': '本版主要更新',
+            'updates': [
+                '合并 #41：野狐把让子棋编码成开局连续 `B[]`，现在会在归一化前识别并还原为正确的 `HA[n]` / `AB[...]` 根节点 setup，棋盘和引擎都能看到让子。',
+                '合并 #42：Windows 内置 OpenCL 引擎第一次启动需要 autotuning 且可能超过 90 秒，现在缺少 tuning 缓存时会给首次调优更长启动预算。',
+                '当引擎已经进入 tuning 状态时，看门狗会继续顺延 deadline，避免调优进行中被强杀。',
+                '补充 OpenCL 首次调优判断回归测试，覆盖无缓存需要长预算、已有 `.txt` tuning 缓存恢复正常预算、NVIDIA 包不误用 OpenCL 预算。',
+                '保留上一版野狐棋谱自动胜率曲线、默认隐藏柱状失误条、macOS 拖拽安装 DMG 和 TensorRT 分卷下载说明。',
+            ],
+            'before_heading': '下载前先看这几句',
+            'before': [
+                f'主推荐整合包继续内置 KataGo `{katago_version}` 和默认权重 `{model_source}`。',
+                f'Windows 普通用户优先下载 {{windows_opencl_portable}}，这是 **OpenCL 版（推荐，免安装）**。',
+                f'如果你是第一次启动 OpenCL 版，首次调优现在会有更充足的等待时间；后续已有缓存后仍会走正常快速启动判断。',
+                f'如果你的电脑是 **英伟达显卡**，优先下载 {{windows_nvidia_portable}}；RTX 50 用户可选 RTX 50 CUDA 行。',
+                '如果你经常下载野狐让子棋复盘，建议更新到这一版，避免开局让子丢失。',
+            ],
+            'download_heading': '下载建议',
+            'download_headers': ('你的电脑', '直接下载这个'),
+            'why_heading': '这一版为什么值得更新',
+            'why': [
+                '野狐让子棋不再被归一化逻辑误伤，开局让子会正确进入棋盘和引擎。',
+                'Windows OpenCL 首次启动更耐心，不会因为一次性 autotuning 比较慢就弹出“引擎异常关闭”。',
+                '感谢 @semanym 对真实用户场景的定位和 PR 贡献；这次发布也保留了对应回归测试。',
+                '发布前重新跑了 PR 相关测试、完整 Maven 测试和本地 package。',
+            ],
+            'contact_heading': '交流',
+            'contact': ['QQ 群：`299419120`'],
+        },
+        {
+            'language': '繁體中文',
+            'labels': 'zh_hant',
+            'intro': '這是一次 PR 品質收口版。感謝 @semanym 提交 #41 和 #42：一個修復野狐讓子棋開局連續黑棋被丟失的問題，一個修復 Windows OpenCL 首次自動調優耗時較長時被誤判為引擎異常關閉的問題。',
+            'updates_heading': '本版主要更新',
+            'updates': [
+                '合併 #41：野狐把讓子棋編碼成開局連續 `B[]`，現在會在正規化前識別並還原為正確的 `HA[n]` / `AB[...]` 根節點 setup，棋盤和引擎都能看到讓子。',
+                '合併 #42：Windows 內建 OpenCL 引擎第一次啟動需要 autotuning 且可能超過 90 秒，現在缺少 tuning 快取時會給首次調優更長啟動預算。',
+                '當引擎已經進入 tuning 狀態時，看門狗會繼續延長 deadline，避免調優進行中被強制關閉。',
+                '補充 OpenCL 首次調優判斷回歸測試，覆蓋無快取需要長預算、已有 `.txt` tuning 快取恢復正常預算、NVIDIA 包不誤用 OpenCL 預算。',
+                '保留上一版野狐棋譜自動勝率曲線、預設隱藏柱狀失誤條、macOS 拖曳安裝 DMG 和 TensorRT 分卷下載說明。',
+            ],
+            'before_heading': '下載前先看這幾句',
+            'before': [
+                f'主推薦整合包繼續內建 KataGo `{katago_version}` 和預設權重 `{model_source}`。',
+                f'Windows 一般使用者優先下載 {{windows_opencl_portable}}，這是 **OpenCL 版（推薦，免安裝）**。',
+                f'如果你是第一次啟動 OpenCL 版，首次調優現在會有更充足的等待時間；之後已有快取後仍會走正常快速啟動判斷。',
+                f'如果你的電腦是 **NVIDIA 顯示卡**，優先下載 {{windows_nvidia_portable}}；RTX 50 使用者可選 RTX 50 CUDA 行。',
+                '如果你經常下載野狐讓子棋復盤，建議更新到這一版，避免開局讓子丟失。',
+            ],
+            'download_heading': '下載建議',
+            'download_headers': ('你的電腦', '直接下載這個'),
+            'why_heading': '這一版為什麼值得更新',
+            'why': [
+                '野狐讓子棋不再被正規化邏輯誤傷，開局讓子會正確進入棋盤和引擎。',
+                'Windows OpenCL 首次啟動更有耐心，不會因為一次性 autotuning 比較慢就彈出「引擎異常關閉」。',
+                '感謝 @semanym 對真實使用者場景的定位和 PR 貢獻；這次發布也保留了對應回歸測試。',
+                '發布前重新跑了 PR 相關測試、完整 Maven 測試和本地 package。',
+            ],
+            'contact_heading': '交流',
+            'contact': ['QQ 群：`299419120`'],
+        },
+        {
+            'language': 'English',
+            'labels': 'en',
+            'intro': 'This PR polish release ships two fixes from @semanym. PR #41 fixes Fox handicap games where leading consecutive black moves were dropped, and PR #42 fixes first-run Windows OpenCL autotuning being mistaken for an engine startup failure.',
+            'updates_heading': 'Release Highlights',
+            'updates': [
+                'Merged #41: Fox handicap records encoded as leading consecutive `B[]` moves are now promoted to proper `HA[n]` / `AB[...]` root setup before strict move normalization, so both the board and engine keep the handicap stones.',
+                'Merged #42: the bundled Windows OpenCL engine now gets a longer first-start budget when the OpenCL tuning cache is missing.',
+                'The startup watchdog keeps extending its deadline while tuning is actually in progress, avoiding a forced kill during autotuning.',
+                'Added regression tests for the first OpenCL tuning detector: missing cache uses the longer budget, existing `.txt` tuning cache restores the normal budget, and NVIDIA bundles do not take the OpenCL path.',
+                'The previous Fox auto-winrate-curve fix, default-hidden blunder bar, drag-to-Applications macOS DMG, and TensorRT split download guidance remain included.',
+            ],
+            'before_heading': 'Read Before Downloading',
+            'before': [
+                f'The recommended bundles continue to include KataGo `{katago_version}` and the default weight `{model_source}`.',
+                f'Most Windows users should download {{windows_opencl_portable}}, the **recommended no-install OpenCL build**.',
+                f'If this is your first OpenCL launch, the initial tuning pass now has a longer wait budget; later launches with cache still use the normal fast startup watchdog.',
+                f'If your PC has an **NVIDIA GPU**, try {{windows_nvidia_portable}} first; RTX 50 users can use the RTX 50 CUDA row.',
+                'If you review downloaded Fox handicap records, this build avoids missing opening handicap stones.',
+            ],
+            'download_heading': 'Download Guide',
+            'download_headers': ('Your computer', 'Download this file'),
+            'why_heading': 'Why Update',
+            'why': [
+                'Fox handicap records are no longer damaged by strict alternation normalization; the handicap stones reach both the board and engine.',
+                'Windows OpenCL first launch is more patient and should not show an engine-crash dialog just because one-time autotuning is slow.',
+                'Thanks to @semanym for the real-world diagnosis and PRs; this release keeps regression coverage around those cases.',
+                'Before release, the PR-focused tests, full Maven suite, and local package build were rerun.',
+            ],
+            'contact_heading': 'Contact',
+            'contact': ['QQ group: `299419120`'],
+        },
+        {
+            'language': '日本語',
+            'labels': 'ja',
+            'intro': 'このリリースは PR 品質調整版です。@semanym による #41 と #42 を取り込みました。#41 は Fox の置き碁で先頭の連続黒石が失われる問題を修正し、#42 は Windows OpenCL 初回自動調整がエンジン起動失敗と誤判定される問題を修正します。',
+            'updates_heading': '主な更新',
+            'updates': [
+                '#41 をマージ: Fox の置き碁で先頭の連続 `B[]` を、厳密な交互手順の正規化前に `HA[n]` / `AB[...]` のルート setup として復元します。',
+                '#42 をマージ: Windows 内蔵 OpenCL エンジンで tuning cache がない初回起動時に、より長い起動予算を与えます。',
+                'エンジンが tuning 中である場合、startup watchdog は deadline を延長し、autotuning 中の強制終了を避けます。',
+                'OpenCL 初回 tuning 判定の回帰テストを追加しました。cache なし、`.txt` cache あり、NVIDIA bundle の除外を確認します。',
+                '前回の Fox 勝率曲線自動生成、既定 blunder bar 非表示、macOS drag-to-Applications DMG、TensorRT 分割ダウンロード案内も引き続き含みます。',
+            ],
+            'before_heading': 'ダウンロード前に',
+            'before': [
+                f'推奨バンドルには KataGo `{katago_version}` と既定の重み `{model_source}` が含まれています。',
+                f'多くの Windows ユーザーは {{windows_opencl_portable}} を選ぶのがおすすめです。これは **推奨 OpenCL 版、インストール不要** です。',
+                f'OpenCL 版の初回起動では、最初の tuning により長い待機時間を使います。cache 作成後は通常の高速な起動判定に戻ります。',
+                f'**NVIDIA GPU** 搭載 PC では {{windows_nvidia_portable}} を優先してください。RTX 50 ユーザーは RTX 50 CUDA 行を選べます。',
+                'Fox の置き碁棋譜をよく復盤する場合、このビルドで開局の置き石欠落を避けられます。',
+            ],
+            'download_heading': 'ダウンロード案内',
+            'download_headers': ('お使いの環境', 'ダウンロードするファイル'),
+            'why_heading': '更新する理由',
+            'why': [
+                'Fox の置き碁が厳密な交互手順の正規化で壊れず、置き石が棋盤とエンジンに正しく渡ります。',
+                'Windows OpenCL 初回起動で、一度だけの autotuning が遅いだけでエンジン異常終了ダイアログが出にくくなります。',
+                '実際の利用環境に基づく診断と PR を提供した @semanym に感謝します。このケースの回帰テストも残しています。',
+                'リリース前に PR focused tests、full Maven suite、local package build を再実行しました。',
+            ],
+            'contact_heading': '連絡先',
+            'contact': ['QQ グループ: `299419120`'],
+        },
+        {
+            'language': '한국어',
+            'labels': 'ko',
+            'intro': '이번 릴리스는 PR 품질 정리 버전입니다. @semanym 이 제출한 #41 과 #42 를 포함합니다. #41 은 Fox 접바둑에서 앞부분의 연속 흑돌이 사라지는 문제를 고치고, #42 는 Windows OpenCL 첫 autotuning 이 엔진 시작 실패로 오판되는 문제를 고칩니다.',
+            'updates_heading': '주요 업데이트',
+            'updates': [
+                '#41 병합: Fox 접바둑의 선두 연속 `B[]` 를 엄격한 교대 수순 정규화 전에 `HA[n]` / `AB[...]` 루트 setup 으로 복원합니다.',
+                '#42 병합: Windows 번들 OpenCL 엔진에서 tuning cache 가 없는 첫 실행 시 더 긴 시작 예산을 줍니다.',
+                '엔진이 실제로 tuning 중이면 startup watchdog 이 deadline 을 계속 연장해 autotuning 중 강제 종료를 피합니다.',
+                'OpenCL 첫 tuning 판단 회귀 테스트를 추가했습니다. cache 없음, `.txt` cache 있음, NVIDIA bundle 제외를 확인합니다.',
+                '이전 Fox 자동 승률 곡선, 기본 blunder bar 숨김, macOS drag-to-Applications DMG, TensorRT split 다운로드 안내도 그대로 포함됩니다.',
+            ],
+            'before_heading': '다운로드 전 확인',
+            'before': [
+                f'추천 번들에는 KataGo `{katago_version}` 와 기본 가중치 `{model_source}` 가 포함되어 있습니다.',
+                f'대부분의 Windows 사용자는 {{windows_opencl_portable}} 를 먼저 받으면 됩니다. 이는 **추천 OpenCL 무설치 빌드** 입니다.',
+                f'OpenCL 첫 실행이라면 초기 tuning 에 더 긴 대기 시간이 주어집니다. cache 가 생긴 뒤에는 정상적인 빠른 시작 감시로 돌아갑니다.',
+                f'**NVIDIA GPU** 가 있다면 {{windows_nvidia_portable}} 를 우선 사용해 보세요. RTX 50 사용자는 RTX 50 CUDA 항목을 선택할 수 있습니다.',
+                '다운로드한 Fox 접바둑 기보를 자주 복기한다면 이 빌드가 초반 접바둑 돌 누락을 피합니다.',
+            ],
+            'download_heading': '다운로드 안내',
+            'download_headers': ('내 컴퓨터', '다운로드할 파일'),
+            'why_heading': '업데이트할 이유',
+            'why': [
+                'Fox 접바둑이 엄격한 교대 수순 정규화로 손상되지 않고, 접바둑 돌이 보드와 엔진에 올바르게 전달됩니다.',
+                'Windows OpenCL 첫 실행에서 일회성 autotuning 이 느리다는 이유만으로 엔진 크래시 대화상자가 뜰 가능성이 줄었습니다.',
+                '실제 사용자 환경을 진단하고 PR 을 제출한 @semanym 에게 감사합니다. 이번 릴리스는 해당 회귀 테스트도 포함합니다.',
+                '릴리스 전에 PR focused tests, full Maven suite, local package build 를 다시 실행했습니다.',
+            ],
+            'contact_heading': '연락',
+            'contact': ['QQ 그룹: `299419120`'],
+        },
+        {
+            'language': 'ภาษาไทย',
+            'labels': 'th',
+            'intro': 'รีลีสนี้เป็น PR polish build พร้อมขอบคุณ @semanym สำหรับ #41 และ #42: #41 แก้ Fox handicap games ที่หมากดำต่อเนื่องตอนต้นหายไป และ #42 แก้ Windows OpenCL autotuning ครั้งแรกที่ถูกมองว่า engine startup fail',
+            'updates_heading': 'อัปเดตหลัก',
+            'updates': [
+                'รวม #41: Fox handicap records ที่ขึ้นต้นด้วย `B[]` ต่อเนื่องจะถูกแปลงเป็น root setup `HA[n]` / `AB[...]` ก่อน strict move normalization เพื่อให้ board และ engine เห็น handicap stones ครบ',
+                'รวม #42: bundled Windows OpenCL engine จะได้ startup budget นานขึ้นเมื่อยังไม่มี OpenCL tuning cache',
+                'ถ้า engine อยู่ใน tuning จริง startup watchdog จะขยาย deadline ต่อ เพื่อไม่ kill process ระหว่าง autotuning',
+                'เพิ่ม regression tests สำหรับ first OpenCL tuning detector: ไม่มี cache ใช้ budget ยาว, มี `.txt` tuning cache แล้วกลับสู่ budget ปกติ, และ NVIDIA bundles ไม่เข้า OpenCL path',
+                'ยังรวม Fox auto-winrate-curve fix, default-hidden blunder bar, macOS DMG แบบลากไป Applications และ TensorRT split download guidance จากรุ่นก่อน',
+            ],
+            'before_heading': 'ก่อนดาวน์โหลด',
+            'before': [
+                f'แพ็กเกจหลักมี KataGo `{katago_version}` และน้ำหนักเริ่มต้น `{model_source}` มาให้แล้ว',
+                f'ผู้ใช้ Windows ส่วนใหญ่แนะนำให้ดาวน์โหลด {{windows_opencl_portable}} ซึ่งเป็น **OpenCL รุ่นแนะนำ แบบไม่ต้องติดตั้ง**',
+                f'ถ้าเปิด OpenCL ครั้งแรก initial tuning จะมีเวลารอนานขึ้น หลังมี cache แล้วจะกลับไปใช้ startup watchdog ปกติ',
+                f'ถ้ามี **NVIDIA GPU** แนะนำให้ลอง {{windows_nvidia_portable}} ก่อน; ผู้ใช้ RTX 50 เลือกแถว RTX 50 CUDA ได้',
+                'ถ้าคุณรีวิว Fox handicap records ที่ดาวน์โหลดมา รุ่นนี้ช่วยกันไม่ให้ handicap stones ตอนต้นหาย',
+            ],
+            'download_heading': 'แนะนำการดาวน์โหลด',
+            'download_headers': ('เครื่องของคุณ', 'ดาวน์โหลดไฟล์นี้'),
+            'why_heading': 'ทำไมควรอัปเดต',
+            'why': [
+                'Fox handicap records จะไม่ถูก strict alternation normalization ทำให้เสียอีกต่อไป และ handicap stones จะถูกส่งถึงทั้ง board และ engine',
+                'Windows OpenCL first launch รอ autotuning ได้นานขึ้น จึงไม่ควรขึ้น dialog engine crash เพียงเพราะ one-time autotuning ช้า',
+                'ขอบคุณ @semanym สำหรับการวิเคราะห์เคสจริงและ PR; release นี้มี regression coverage สำหรับเคสเหล่านี้ด้วย',
+                'ก่อน release ได้รัน PR-focused tests, full Maven suite และ local package build ใหม่แล้ว',
+            ],
+            'contact_heading': 'ติดต่อ',
+            'contact': ['QQ group: `299419120`'],
+        },
+    ]
+
+    sections: list[dict[str, object]] = []
+    for block in content:
+        localized_assets = assets_cn if block['language'] in ('中文', '繁體中文') else assets
+        before_items = [
+            item.format(
+                windows_opencl_portable=localized_assets['windows_opencl_portable'],
+                windows_nvidia_portable=localized_assets['windows_nvidia_portable'],
+            )
+            for item in block['before']
+        ]
+        sections.append(
+            {
+                'language': block['language'],
+                'intro': block['intro'],
+                'updates': {'heading': block['updates_heading'], 'items': block['updates']},
+                'before': {'heading': block['before_heading'], 'items': before_items},
+                'download': {
+                    'heading': block['download_heading'],
+                    'headers': block['download_headers'],
+                    'rows': standard_download_rows(
+                        STANDARD_DOWNLOAD_LABELS[block['labels']],
+                        localized_assets,
+                    ),
+                },
+                'why': {'heading': block['why_heading'], 'items': block['why']},
+                'contact': {'heading': block['contact_heading'], 'items': block['contact']},
+            }
+        )
+    add_nvidia50_download_rows(sections, assets_cn, assets)
+    add_tensorrt_split_download_row(sections, assets_cn, assets, asset_map)
+    validate_release_sections(sections)
+    return release_heading(release_tag) + '\n\n' + '\n\n---\n\n'.join(
+        render_language_section(section) for section in sections
+    ) + '\n'
+
+
+def build_next_2026_06_12_2_notes(
+    asset_map: dict[str, str | None],
+    bundle: dict[str, str],
+    repo: str,
+    release_tag: str | None,
+) -> str:
+    assets_cn = {key: format_asset(asset_map[key], repo, release_tag) for key in asset_map}
+    assets = {key: format_asset_en(asset_map[key], repo, release_tag) for key in asset_map}
+    katago_version = bundle['katago_version']
+    model_source = bundle['model_source']
+    content = [
+        {
+            'language': '中文',
+            'labels': 'zh',
+            'intro': '这是一次用户体验与诊断收口版。感谢 @qiyi71w 提交 #43，让同步诊断和导出包可以在真实问题现场更快定位；这一版也合入 Windows 轻量自动更新、直播贴目与 UI 细节修复，以及候选点变化图二次悬停修复。',
+            'updates_heading': '本版主要更新',
+            'updates': [
+                '新增 Windows 轻量自动更新基础能力：软件内“检查更新”改用 GitHub Release manifest，核心更新可单独下载，KataGo、权重、JCEF、readboard 和运行时只有变化时才默认更新。',
+                '合并 #43：新增只读同步诊断面板和脱敏诊断包导出，方便排查 ReadBoard、弈客 session、geometry readiness、同步决策和分析恢复状态。',
+                '直播时手动调到 7.0 的贴目不会在每次刷新后又回到 7.5。',
+                '落子评价标记从粗略三色改为更连续的严重度色阶；评论/问题手控制条新增设置项可隐藏，macOS/Swing 提示框关闭后也减少透明残影。',
+                '修复候选点变化图：第一次移开后再次悬停同一候选点，不会再出现只有变化图数字、棋子图层消失的状态。',
+            ],
+            'before_heading': '下载前先看这几句',
+            'before': [
+                f'主推荐整合包继续内置 KataGo `{katago_version}` 和默认权重 `{model_source}`。',
+                f'Windows 普通用户优先下载 {{windows_opencl_portable}}，这是 **OpenCL 版（推荐，免安装）**。',
+                '这版已经内置自动更新入口；老用户仍需手动安装一次，从后续版本开始才能走轻量更新。',
+                f'如果你的电脑是 **英伟达显卡**，优先下载 {{windows_nvidia_portable}}；RTX 50 用户可选 RTX 50 CUDA 行。',
+                'macOS 包继续使用拖到 Applications 的 DMG 布局，但仍是未签名、未公证包，首次打开请按安装说明处理系统拦截。',
+            ],
+            'download_heading': '下载建议',
+            'download_headers': ('你的电脑', '直接下载这个'),
+            'why_heading': '这一版为什么值得更新',
+            'why': [
+                '直播复盘时贴目、候选点变化图和提示框这些高频细节更稳，少掉会打断思路的小毛刺。',
+                '同步诊断包能把问题现场打包给维护者，排查弈客/ReadBoard 同步问题不用靠零散截图猜。',
+                'Windows 自动更新从这一版开始打底，后续常规更新会更轻，不必每次都下载完整大包。',
+                '发布前已完成本机用户视角启动/悬停复测、macOS DMG 拖拽布局校验、完整 Maven 测试、打包和 GitHub Actions 检查。',
+            ],
+            'contact_heading': '交流',
+            'contact': ['QQ 群：`299419120`'],
+        },
+        {
+            'language': '繁體中文',
+            'labels': 'zh_hant',
+            'intro': '這是一次使用者體驗與診斷收口版。感謝 @qiyi71w 提交 #43，讓同步診斷和匯出包可以在真實問題現場更快定位；這一版也合入 Windows 輕量自動更新、直播貼目與 UI 細節修復，以及候選點變化圖二次懸停修復。',
+            'updates_heading': '本版主要更新',
+            'updates': [
+                '新增 Windows 輕量自動更新基礎能力：軟體內「檢查更新」改用 GitHub Release manifest，核心更新可單獨下載，KataGo、權重、JCEF、readboard 和執行環境只有變化時才預設更新。',
+                '合併 #43：新增唯讀同步診斷面板和脫敏診斷包匯出，方便排查 ReadBoard、弈客 session、geometry readiness、同步決策和分析恢復狀態。',
+                '直播時手動調到 7.0 的貼目不會在每次刷新後又回到 7.5。',
+                '落子評價標記從粗略三色改為更連續的嚴重度色階；評論/問題手控制條新增設定項可隱藏，macOS/Swing 提示框關閉後也減少透明殘影。',
+                '修復候選點變化圖：第一次移開後再次懸停同一候選點，不會再出現只有變化圖數字、棋子圖層消失的狀態。',
+            ],
+            'before_heading': '下載前先看這幾句',
+            'before': [
+                f'主推薦整合包繼續內建 KataGo `{katago_version}` 和預設權重 `{model_source}`。',
+                f'Windows 一般使用者優先下載 {{windows_opencl_portable}}，這是 **OpenCL 版（推薦，免安裝）**。',
+                '這版已經內建自動更新入口；舊使用者仍需手動安裝一次，從後續版本開始才能走輕量更新。',
+                f'如果你的電腦是 **NVIDIA 顯示卡**，優先下載 {{windows_nvidia_portable}}；RTX 50 使用者可選 RTX 50 CUDA 行。',
+                'macOS 包繼續使用拖到 Applications 的 DMG 佈局，但仍是未簽名、未公證包，首次打開請按安裝說明處理系統攔截。',
+            ],
+            'download_heading': '下載建議',
+            'download_headers': ('你的電腦', '直接下載這個'),
+            'why_heading': '這一版為什麼值得更新',
+            'why': [
+                '直播復盤時貼目、候選點變化圖和提示框這些高頻細節更穩，少掉會打斷思路的小毛刺。',
+                '同步診斷包能把問題現場打包給維護者，排查弈客/ReadBoard 同步問題不用靠零散截圖猜。',
+                'Windows 自動更新從這一版開始打底，後續常規更新會更輕，不必每次都下載完整大包。',
+                '發布前已完成本機使用者視角啟動/懸停複測、macOS DMG 拖曳佈局校驗、完整 Maven 測試、打包和 GitHub Actions 檢查。',
+            ],
+            'contact_heading': '交流',
+            'contact': ['QQ 群：`299419120`'],
+        },
+        {
+            'language': 'English',
+            'labels': 'en',
+            'intro': 'This release closes a set of user-experience and diagnostics issues. Thanks to @qiyi71w for PR #43, which adds a read-only sync diagnostics panel and export package for real-world debugging. It also includes the Windows lightweight updater foundation, live-komi/UI fixes, and the second-hover candidate variation fix.',
+            'updates_heading': 'Release Highlights',
+            'updates': [
+                'Added the first Windows lightweight updater path: in-app Check for Updates now reads a GitHub Release manifest, core updates can be downloaded separately, and large resources such as KataGo, weights, JCEF, readboard, and runtime are selected only when they changed.',
+                'Merged #43: a read-only sync diagnostics panel and sanitized export package now help inspect ReadBoard state, Yike session state, geometry readiness, recent sync decisions, and analysis recovery.',
+                'Live komi manually changed to 7.0 no longer snaps back to the remote 7.5 value after every refresh.',
+                'Move-rank markers now use a smoother severity color scale; the comment/problem-move control bar can be hidden from Settings; macOS/Swing prompt disposal was tightened to reduce transparent ghost windows.',
+                'Fixed candidate variation previews so hovering the same candidate again after leaving no longer shows move numbers over a blank branch-stone layer.',
+            ],
+            'before_heading': 'Read Before Downloading',
+            'before': [
+                f'The recommended bundles continue to include KataGo `{katago_version}` and the default weight `{model_source}`.',
+                f'Most Windows users should download {{windows_opencl_portable}}, the **recommended no-install OpenCL build**.',
+                'This build includes the updater bootstrap; existing users still need to install this version manually once, then later releases can use the lightweight update path.',
+                f'If your PC has an **NVIDIA GPU**, try {{windows_nvidia_portable}} first; RTX 50 users can use the RTX 50 CUDA row.',
+                'macOS packages still use the drag-to-Applications DMG layout, but they remain unsigned and not notarized, so the first launch may require the documented macOS security override.',
+            ],
+            'download_heading': 'Download Guide',
+            'download_headers': ('Your computer', 'Download this file'),
+            'why_heading': 'Why Update',
+            'why': [
+                'Live review details such as komi, candidate variation previews, and prompt cleanup are steadier in everyday use.',
+                'The diagnostics export gives maintainers a structured, sanitized view of Yike/ReadBoard sync problems instead of scattered screenshots.',
+                'Windows automatic updates now have their foundation, so future routine updates can become much smaller than full packages.',
+                'Before release, local user-perspective launch and hover retests, macOS DMG drag-layout validation, the full Maven suite, package build, and GitHub Actions checks were completed.',
+            ],
+            'contact_heading': 'Contact',
+            'contact': ['QQ group: `299419120`'],
+        },
+        {
+            'language': '日本語',
+            'labels': 'ja',
+            'intro': 'このリリースは、ユーザー体験と診断まわりの仕上げ版です。実際の同期問題を調べやすくする読み取り専用診断パネルとエクスポートパッケージを追加した #43 の @qiyi71w に感謝します。Windows 軽量自動更新の土台、ライブコミ/UI 修正、候補点変化図の二度目ホバー修正も含みます。',
+            'updates_heading': '主な更新',
+            'updates': [
+                'Windows 軽量自動更新の最初の経路を追加しました。アプリ内の更新確認は GitHub Release manifest を読み、core は単独更新でき、KataGo・重み・JCEF・readboard・runtime などの大きなリソースは変更時だけ既定選択されます。',
+                '#43 をマージ: 読み取り専用の同期診断パネルと sanitized export package により、ReadBoard、Yike session、geometry readiness、最近の同期判断、分析復帰状態を確認しやすくしました。',
+                'ライブ中に手動で 7.0 に変えたコミが、毎手の更新でリモートの 7.5 に戻らないようにしました。',
+                '着手評価マーカーは粗い 3 色ではなく、より連続的な severity color scale を使います。コメント/問題手の control bar は設定から非表示にでき、macOS/Swing のプロンプト終了後の透明残りも減らしました。',
+                '候補点変化図を修正しました。一度離れてから同じ候補点に戻っても、変化図の数字だけが残って石レイヤーが空になる状態を避けます。',
+            ],
+            'before_heading': 'ダウンロード前に',
+            'before': [
+                f'推奨バンドルには KataGo `{katago_version}` と既定の重み `{model_source}` が含まれています。',
+                f'多くの Windows ユーザーは {{windows_opencl_portable}} を選ぶのがおすすめです。これは **推奨 OpenCL 版、インストール不要** です。',
+                'このビルドには updater bootstrap が含まれます。既存ユーザーは今回だけ手動インストールが必要で、以後のリリースから軽量更新を使えます。',
+                f'**NVIDIA GPU** 搭載 PC では {{windows_nvidia_portable}} を優先してください。RTX 50 ユーザーは RTX 50 CUDA 行を選べます。',
+                'macOS package は引き続き drag-to-Applications DMG 形式ですが、未署名・未公証のため、初回起動では手順に沿ったセキュリティ許可が必要になる場合があります。',
+            ],
+            'download_heading': 'ダウンロード案内',
+            'download_headers': ('お使いの環境', 'ダウンロードするファイル'),
+            'why_heading': '更新する理由',
+            'why': [
+                'ライブ検討でよく触れるコミ、候補点変化図、プロンプト終了処理がより安定します。',
+                '診断エクスポートにより、Yike/ReadBoard 同期問題を散発的なスクリーンショットではなく構造化データで共有できます。',
+                'Windows 自動更新の土台が入り、今後の通常更新はフルパッケージより小さくできます。',
+                'リリース前にローカルのユーザー視点起動/ホバー再テスト、macOS DMG drag layout validation、full Maven suite、package build、GitHub Actions checks を完了しました。',
+            ],
+            'contact_heading': '連絡先',
+            'contact': ['QQ グループ: `299419120`'],
+        },
+        {
+            'language': '한국어',
+            'labels': 'ko',
+            'intro': '이번 릴리스는 사용자 경험과 진단 기능을 정리한 버전입니다. 실제 동기화 문제를 더 빨리 분석할 수 있도록 읽기 전용 sync diagnostics panel 과 export package 를 추가한 #43 의 @qiyi71w 에게 감사합니다. Windows lightweight updater 기반, live komi/UI 수정, 후보점 변화도 두 번째 hover 수정도 포함합니다.',
+            'updates_heading': '주요 업데이트',
+            'updates': [
+                'Windows lightweight updater 의 첫 경로를 추가했습니다. 앱 안의 업데이트 확인은 GitHub Release manifest 를 읽고, core 는 따로 업데이트할 수 있으며 KataGo, weights, JCEF, readboard, runtime 같은 큰 리소스는 바뀐 경우에만 기본 선택됩니다.',
+                '#43 병합: 읽기 전용 sync diagnostics panel 과 sanitized export package 로 ReadBoard, Yike session, geometry readiness, 최근 sync decisions, analysis recovery 상태를 확인할 수 있습니다.',
+                '라이브 중 사용자가 komi 를 7.0 으로 바꾼 뒤, 매 수 갱신마다 원격 7.5 값으로 돌아가지 않도록 했습니다.',
+                '착수 평가 마커는 거친 3 색 대신 더 부드러운 severity color scale 을 사용합니다. comment/problem-move control bar 는 설정에서 숨길 수 있고, macOS/Swing prompt 종료 뒤 투명 잔상이 남는 경우도 줄였습니다.',
+                '후보점 변화도를 수정했습니다. 한 번 벗어났다가 같은 후보점에 다시 hover 해도, 숫자만 남고 돌 레이어가 사라지는 상태가 나오지 않습니다.',
+            ],
+            'before_heading': '다운로드 전 확인',
+            'before': [
+                f'추천 번들에는 KataGo `{katago_version}` 와 기본 가중치 `{model_source}` 가 포함되어 있습니다.',
+                f'대부분의 Windows 사용자는 {{windows_opencl_portable}} 를 먼저 받으면 됩니다. 이는 **추천 OpenCL 무설치 빌드** 입니다.',
+                '이 빌드에는 updater bootstrap 이 포함됩니다. 기존 사용자는 이번 버전을 한 번 수동 설치해야 하며, 이후 릴리스부터 lightweight update path 를 사용할 수 있습니다.',
+                f'**NVIDIA GPU** 가 있다면 {{windows_nvidia_portable}} 를 우선 사용해 보세요. RTX 50 사용자는 RTX 50 CUDA 항목을 선택할 수 있습니다.',
+                'macOS package 는 계속 drag-to-Applications DMG layout 을 사용하지만, 아직 unsigned/not notarized 이므로 첫 실행 때 문서의 macOS 보안 허용 절차가 필요할 수 있습니다.',
+            ],
+            'download_heading': '다운로드 안내',
+            'download_headers': ('내 컴퓨터', '다운로드할 파일'),
+            'why_heading': '업데이트할 이유',
+            'why': [
+                '라이브 검토에서 자주 쓰는 komi, 후보점 변화도, prompt cleanup 이 일상 사용에서 더 안정적입니다.',
+                '진단 export 로 Yike/ReadBoard sync 문제를 산발적인 스크린샷이 아니라 구조화되고 sanitized 된 데이터로 전달할 수 있습니다.',
+                'Windows automatic update 기반이 들어가 이후 일반 업데이트는 전체 패키지보다 훨씬 작아질 수 있습니다.',
+                '릴리스 전에 로컬 사용자 관점 launch/hover retest, macOS DMG drag-layout validation, full Maven suite, package build, GitHub Actions checks 를 완료했습니다.',
+            ],
+            'contact_heading': '연락',
+            'contact': ['QQ 그룹: `299419120`'],
+        },
+        {
+            'language': 'ภาษาไทย',
+            'labels': 'th',
+            'intro': 'รีลีสนี้เป็นรอบเก็บรายละเอียด user experience และ diagnostics ขอบคุณ @qiyi71w สำหรับ PR #43 ที่เพิ่ม sync diagnostics panel แบบ read-only และ export package สำหรับ debug เคสจริงได้เร็วขึ้น นอกจากนี้ยังรวม Windows lightweight updater foundation, live komi/UI fixes และ candidate variation second-hover fix',
+            'updates_heading': 'อัปเดตหลัก',
+            'updates': [
+                'เพิ่มทางเดินแรกของ Windows lightweight updater: Check for Updates ในแอปอ่าน GitHub Release manifest, core update ดาวน์โหลดแยกได้ และ resource ใหญ่ เช่น KataGo, weights, JCEF, readboard, runtime จะถูกเลือกอัปเดตเมื่อมีการเปลี่ยนเท่านั้น',
+                'รวม #43: sync diagnostics panel แบบ read-only และ sanitized export package ช่วยตรวจ ReadBoard state, Yike session, geometry readiness, recent sync decisions และ analysis recovery',
+                'เมื่อ live komi ถูกปรับเองเป็น 7.0 จะไม่เด้งกลับเป็นค่า remote 7.5 หลัง refresh ทุกตา',
+                'move-rank markers ใช้ severity color scale ที่นุ่มกว่าเดิม ไม่ใช่ 3 สีหยาบ ๆ; comment/problem-move control bar ซ่อนได้จาก Settings; และ macOS/Swing prompt disposal ลดปัญหา transparent ghost windows',
+                'แก้ candidate variation preview: hover candidate เดิมอีกครั้งหลังย้ายเมาส์ออก จะไม่เหลือแต่เลข variation บน branch-stone layer ว่าง',
+            ],
+            'before_heading': 'ก่อนดาวน์โหลด',
+            'before': [
+                f'แพ็กเกจหลักมี KataGo `{katago_version}` และน้ำหนักเริ่มต้น `{model_source}` มาให้แล้ว',
+                f'ผู้ใช้ Windows ส่วนใหญ่แนะนำให้ดาวน์โหลด {{windows_opencl_portable}} ซึ่งเป็น **OpenCL รุ่นแนะนำ แบบไม่ต้องติดตั้ง**',
+                'รุ่นนี้มี updater bootstrap แล้ว ผู้ใช้เดิมยังต้องติดตั้งด้วยตัวเองหนึ่งครั้ง จากรุ่นถัดไปจึงเริ่มใช้ lightweight update path ได้',
+                f'ถ้ามี **NVIDIA GPU** แนะนำให้ลอง {{windows_nvidia_portable}} ก่อน; ผู้ใช้ RTX 50 เลือกแถว RTX 50 CUDA ได้',
+                'macOS package ยังเป็น DMG แบบลากไป Applications แต่ยัง unsigned/not notarized ดังนั้นครั้งแรกอาจต้องอนุญาตตามขั้นตอน macOS security ในเอกสาร',
+            ],
+            'download_heading': 'แนะนำการดาวน์โหลด',
+            'download_headers': ('เครื่องของคุณ', 'ดาวน์โหลดไฟล์นี้'),
+            'why_heading': 'ทำไมควรอัปเดต',
+            'why': [
+                'รายละเอียดที่ใช้บ่อยในการ live review เช่น komi, candidate variation preview และ prompt cleanup เสถียรกว่าเดิม',
+                'diagnostics export ช่วยส่งข้อมูล Yike/ReadBoard sync แบบ structured และ sanitized ให้ผู้ดูแล ไม่ต้องเดาจาก screenshot กระจัดกระจาย',
+                'Windows automatic updates มี foundation แล้ว ทำให้ routine updates ในอนาคตเล็กกว่า full packages ได้มาก',
+                'ก่อน release ได้ตรวจ local user-perspective launch/hover retest, macOS DMG drag-layout validation, full Maven suite, package build และ GitHub Actions checks',
+            ],
+            'contact_heading': 'ติดต่อ',
+            'contact': ['QQ group: `299419120`'],
+        },
+    ]
+
+    sections: list[dict[str, object]] = []
+    for block in content:
+        localized_assets = assets_cn if block['language'] in ('中文', '繁體中文') else assets
+        before_items = [
+            item.format(
+                windows_opencl_portable=localized_assets['windows_opencl_portable'],
+                windows_nvidia_portable=localized_assets['windows_nvidia_portable'],
+            )
+            for item in block['before']
+        ]
+        sections.append(
+            {
+                'language': block['language'],
+                'intro': block['intro'],
+                'updates': {'heading': block['updates_heading'], 'items': block['updates']},
+                'before': {'heading': block['before_heading'], 'items': before_items},
+                'download': {
+                    'heading': block['download_heading'],
+                    'headers': block['download_headers'],
+                    'rows': standard_download_rows(
+                        STANDARD_DOWNLOAD_LABELS[block['labels']],
+                        localized_assets,
+                    ),
+                },
+                'why': {'heading': block['why_heading'], 'items': block['why']},
+                'contact': {'heading': block['contact_heading'], 'items': block['contact']},
+            }
+        )
+    add_nvidia50_download_rows(sections, assets_cn, assets)
+    add_tensorrt_split_download_row(sections, assets_cn, assets, asset_map)
+    validate_release_sections(sections)
+    return release_heading(release_tag) + '\n\n' + '\n\n---\n\n'.join(
+        render_language_section(section) for section in sections
+    ) + '\n'
+
+
+def build_next_2026_06_13_1_notes(
+    asset_map: dict[str, str | None],
+    bundle: dict[str, str],
+    repo: str,
+    release_tag: str | None,
+) -> str:
+    assets_cn = {key: format_asset(asset_map[key], repo, release_tag) for key in asset_map}
+    assets = {key: format_asset_en(asset_map[key], repo, release_tag) for key in asset_map}
+    katago_version = bundle['katago_version']
+    model_source = bundle['model_source']
+    content = [
+        {
+            'language': '中文',
+            'labels': 'zh',
+            'intro': '这一版重点修复布局和设置保存体验：新配置默认进入四方图模式，评论/问题手面板默认隐藏；在综合设置里打开或关闭“显示评论/问题手面板”后，保存、重启都应该保持你的选择。',
+            'updates_heading': '本版主要更新',
+            'updates': [
+                '新安装或新建配置默认使用四方图模式，让主棋盘、变化图和分析信息一开始就更清爽。',
+                '评论/问题手面板默认隐藏，减少普通用户初次打开时右侧信息过载。',
+                '修复综合设置里“显示评论/问题手面板”保存后重启失效的问题。',
+                '修复面板配置保存时 `extra-mode` 写成内部枚举，导致四方图模式可能在下次启动回到普通模式的问题；旧的字符串配置也能兼容读取。',
+                '统一菜单、自定义布局和综合设置里的评论/问题手面板开关逻辑，并区分“完整面板”和“面板顶部控制条”的文案。',
+                '修复 TensorRT 高级分卷/预装包已解压后，“KataGo 一键设置”仍显示未下载的问题；现在程序目录和 `user-data` 下载目录都会被识别。',
+            ],
+            'before_heading': '下载前先看这几句',
+            'before': [
+                f'主推荐整合包继续内置 KataGo `{katago_version}` 和默认权重 `{model_source}`。',
+                f'Windows 普通用户优先下载 {{windows_opencl_portable}}，这是 **OpenCL 版（推荐，免安装）**。',
+                '已有用户会继续尊重你保存过的布局；这次主要改善新配置默认体验和设置保存可靠性。',
+                '如果你想显示评论/问题手面板，到“综合设置 → 显示评论/问题手面板”打开并保存即可，重启后会保持。',
+                f'如果你的电脑是 **英伟达显卡**，优先下载 {{windows_nvidia_portable}}；RTX 50 用户可选 RTX 50 CUDA 行。',
+            ],
+            'download_heading': '下载建议',
+            'download_headers': ('你的电脑', '直接下载这个'),
+            'why_heading': '这一版为什么值得更新',
+            'why': [
+                '首次打开更接近大多数棋友实际使用方式：四方图默认开启，评论/问题手面板不再抢占视线。',
+                '综合设置里的面板开关现在不会“看起来保存了，重启又恢复原样”。',
+                '布局模式保存更稳，四方图、双引擎、小窗和自定义布局之间不再互相误伤。',
+                '新增 `ConfigPanelModeTest` 回归测试，覆盖默认四方图、旧配置兼容、双引擎隐藏面板和保存格式。',
+                '发布前已重新跑完整 Maven 测试、打包、本机真实启动 UI 冒烟，并等待 GitHub Actions 发布工作流通过。',
+            ],
+            'contact_heading': '交流',
+            'contact': ['QQ 群：`299419120`'],
+        },
+        {
+            'language': '繁體中文',
+            'labels': 'zh_hant',
+            'intro': '這一版重點修復版面與設定保存體驗：新配置預設進入四方圖模式，評論/問題手面板預設隱藏；在綜合設定裡打開或關閉「顯示評論/問題手面板」後，保存、重啟都應該保持你的選擇。',
+            'updates_heading': '本版主要更新',
+            'updates': [
+                '新安裝或新建配置預設使用四方圖模式，讓主棋盤、變化圖和分析資訊一開始就更清爽。',
+                '評論/問題手面板預設隱藏，減少普通使用者初次打開時右側資訊過載。',
+                '修復綜合設定裡「顯示評論/問題手面板」保存後重啟失效的問題。',
+                '修復面板配置保存時 `extra-mode` 寫成內部 enum，導致四方圖模式可能在下次啟動回到普通模式的問題；舊的字串配置也能相容讀取。',
+                '統一選單、自訂版面和綜合設定裡的評論/問題手面板開關邏輯，並區分「完整面板」和「面板頂部控制條」的文案。',
+                '修復 TensorRT 進階分卷/預裝包已解壓後，「KataGo 一鍵設定」仍顯示未下載的問題；現在程式目錄和 `user-data` 下載目錄都會被識別。',
+            ],
+            'before_heading': '下載前先看這幾句',
+            'before': [
+                f'主推薦整合包繼續內建 KataGo `{katago_version}` 和預設權重 `{model_source}`。',
+                f'Windows 一般使用者優先下載 {{windows_opencl_portable}}，這是 **OpenCL 版（推薦，免安裝）**。',
+                '已有使用者會繼續尊重你保存過的版面；這次主要改善新配置預設體驗和設定保存可靠性。',
+                '如果你想顯示評論/問題手面板，到「綜合設定 → 顯示評論/問題手面板」打開並保存即可，重啟後會保持。',
+                f'如果你的電腦是 **NVIDIA 顯示卡**，優先下載 {{windows_nvidia_portable}}；RTX 50 使用者可選 RTX 50 CUDA 行。',
+            ],
+            'download_heading': '下載建議',
+            'download_headers': ('你的電腦', '直接下載這個'),
+            'why_heading': '這一版為什麼值得更新',
+            'why': [
+                '首次打開更接近多數棋友實際使用方式：四方圖預設開啟，評論/問題手面板不再搶佔視線。',
+                '綜合設定裡的面板開關現在不會「看起來保存了，重啟又恢復原樣」。',
+                '版面模式保存更穩，四方圖、雙引擎、小窗和自訂版面之間不再互相誤傷。',
+                '新增 `ConfigPanelModeTest` 回歸測試，覆蓋預設四方圖、舊配置相容、雙引擎隱藏面板和保存格式。',
+                '發布前已重新跑完整 Maven 測試、打包、本機真實啟動 UI 冒煙，並等待 GitHub Actions 發布工作流通過。',
+            ],
+            'contact_heading': '交流',
+            'contact': ['QQ 群：`299419120`'],
+        },
+        {
+            'language': 'English',
+            'labels': 'en',
+            'intro': 'This release focuses on layout and settings persistence. New configurations now start in four-sub-board mode with the comment/problem panel hidden by default. When users toggle the comment/problem panel in Settings, that choice should now survive saving and restart.',
+            'updates_heading': 'Release Highlights',
+            'updates': [
+                'New installs and fresh configurations now default to four-sub-board mode for a cleaner first screen.',
+                'The comment/problem panel is hidden by default to reduce right-side information overload for everyday users.',
+                'Fixed the Settings toggle for showing the comment/problem panel so it persists after saving and restarting.',
+                'Fixed `extra-mode` persistence: panel mode is now saved as the numeric value the loader expects, while legacy string values remain readable.',
+                'Unified the comment/problem panel toggle path across menus, custom layout, and Settings, and clarified labels for the full panel versus the small top control strip.',
+                'Fixed TensorRT split/preinstalled packages showing as not downloaded in KataGo Auto Setup; both the app folder and `user-data` install folder are now detected.',
+            ],
+            'before_heading': 'Read Before Downloading',
+            'before': [
+                f'The recommended bundles continue to include KataGo `{katago_version}` and the default weight `{model_source}`.',
+                f'Most Windows users should download {{windows_opencl_portable}}, the **recommended no-install OpenCL build**.',
+                'Existing users keep their saved layout choices; this release mainly improves fresh defaults and settings persistence.',
+                'To show the comment/problem panel, enable it from Settings and save. The choice should remain after restart.',
+                f'If your PC has an **NVIDIA GPU**, try {{windows_nvidia_portable}} first; RTX 50 users can use the RTX 50 CUDA row.',
+            ],
+            'download_heading': 'Download Guide',
+            'download_headers': ('Your computer', 'Download this file'),
+            'why_heading': 'Why Update',
+            'why': [
+                'The first-run layout is closer to how many Go players review games: four-sub-board mode is on, and the comment/problem panel no longer steals attention.',
+                'The Settings panel toggle no longer looks saved and then silently reverts after restart.',
+                'Panel mode persistence is safer across four-sub-board, dual-engine, minimal, floating-board, and custom-layout flows.',
+                'Added `ConfigPanelModeTest` coverage for default four-sub mode, legacy config compatibility, dual-engine panel hiding, and save format.',
+                'Before release, the full Maven suite, package build, real local launch smoke test, and GitHub Actions release workflows were rerun.',
+            ],
+            'contact_heading': 'Contact',
+            'contact': ['QQ group: `299419120`'],
+        },
+        {
+            'language': '日本語',
+            'labels': 'ja',
+            'intro': 'このリリースは、レイアウトと設定保存の安定化が中心です。新しい設定では四方図モードで起動し、コメント/問題手パネルは既定で非表示になります。設定画面でこのパネルを切り替えた場合、保存後の再起動でも選択が維持されます。',
+            'updates_heading': '主な更新',
+            'updates': [
+                '新規インストールや新しい設定では、最初から四方図モードを使うようにしました。',
+                'コメント/問題手パネルは既定で非表示になり、初回起動時の右側情報量を減らします。',
+                '設定画面の「コメント/問題手パネルを表示」切り替えが、保存・再起動後も維持されるように修正しました。',
+                '`extra-mode` の保存形式を修正しました。読み込み側が期待する数値で保存し、旧式の文字列設定も読み取れます。',
+                'メニュー、カスタムレイアウト、設定画面のコメント/問題手パネル切り替え処理を統一し、完全なパネルと上部コントロールバーの文言を区別しました。',
+                'TensorRT 分割/プリインストール版を展開済みでも KataGo 自動設定で未ダウンロード表示になる問題を修正しました。アプリ本体側と `user-data` 側の両方を検出します。',
+            ],
+            'before_heading': 'ダウンロード前に',
+            'before': [
+                f'推奨バンドルには KataGo `{katago_version}` と既定の重み `{model_source}` が含まれています。',
+                f'多くの Windows ユーザーは {{windows_opencl_portable}} を選ぶのがおすすめです。これは **推奨 OpenCL 版、インストール不要** です。',
+                '既存ユーザーの保存済みレイアウトは尊重されます。今回の主な改善は、新規設定の既定値と設定保存の信頼性です。',
+                'コメント/問題手パネルを表示したい場合は、設定で有効にして保存してください。再起動後も維持されます。',
+                f'**NVIDIA GPU** 搭載 PC では {{windows_nvidia_portable}} を優先してください。RTX 50 ユーザーは RTX 50 CUDA 行を選べます。',
+            ],
+            'download_heading': 'ダウンロード案内',
+            'download_headers': ('お使いの環境', 'ダウンロードするファイル'),
+            'why_heading': '更新する理由',
+            'why': [
+                '初回画面が多くの囲碁ユーザーの検討スタイルに近づきます。四方図が既定で有効になり、コメント/問題手パネルは視線を奪いません。',
+                '設定のパネル切り替えが、保存したように見えて再起動で戻る問題を修正しました。',
+                '四方図、二重エンジン、最小表示、フローティング盤、カスタムレイアウト間の保存がより安全になりました。',
+                '既定の四方図、旧設定互換、二重エンジン時のパネル非表示、保存形式を `ConfigPanelModeTest` で回帰テストしています。',
+                'リリース前に full Maven suite、package build、実機ローカル起動 smoke test、GitHub Actions release workflows を再実行しました。',
+            ],
+            'contact_heading': '連絡先',
+            'contact': ['QQ グループ: `299419120`'],
+        },
+        {
+            'language': '한국어',
+            'labels': 'ko',
+            'intro': '이번 릴리스는 레이아웃과 설정 저장 안정화에 집중합니다. 새 설정은 four-sub-board 모드로 시작하고 comment/problem panel 은 기본으로 숨겨집니다. Settings 에서 이 패널을 켜거나 끄면 저장 및 재시작 후에도 선택이 유지됩니다.',
+            'updates_heading': '주요 업데이트',
+            'updates': [
+                '새 설치와 새 설정은 기본적으로 four-sub-board 모드로 시작합니다.',
+                'comment/problem panel 은 기본으로 숨겨져 일반 사용자의 첫 화면 정보 과부하를 줄입니다.',
+                'Settings 의 comment/problem panel 표시 토글이 저장과 재시작 후에도 유지되도록 수정했습니다.',
+                '`extra-mode` 저장 방식을 수정했습니다. loader 가 기대하는 숫자 값으로 저장하고, 기존 문자열 설정도 계속 읽을 수 있습니다.',
+                '메뉴, custom layout, Settings 의 comment/problem panel 토글 경로를 통일하고, 전체 panel 과 상단 control strip 문구를 구분했습니다.',
+                'TensorRT split/preinstalled package 를 압축 해제했는데도 KataGo Auto Setup 에서 not downloaded 로 보이던 문제를 수정했습니다. 앱 폴더와 `user-data` 설치 폴더를 모두 감지합니다.',
+            ],
+            'before_heading': '다운로드 전 확인',
+            'before': [
+                f'추천 번들에는 KataGo `{katago_version}` 와 기본 가중치 `{model_source}` 가 포함되어 있습니다.',
+                f'대부분의 Windows 사용자는 {{windows_opencl_portable}} 를 먼저 받으면 됩니다. 이는 **추천 OpenCL 무설치 빌드** 입니다.',
+                '기존 사용자의 저장된 레이아웃은 그대로 존중됩니다. 이번 릴리스는 새 설정 기본값과 설정 저장 신뢰성을 주로 개선합니다.',
+                'comment/problem panel 을 보려면 Settings 에서 켜고 저장하면 됩니다. 재시작 후에도 유지됩니다.',
+                f'**NVIDIA GPU** 가 있다면 {{windows_nvidia_portable}} 를 우선 사용해 보세요. RTX 50 사용자는 RTX 50 CUDA 항목을 선택할 수 있습니다.',
+            ],
+            'download_heading': '다운로드 안내',
+            'download_headers': ('내 컴퓨터', '다운로드할 파일'),
+            'why_heading': '업데이트할 이유',
+            'why': [
+                '첫 실행 화면이 많은 바둑 사용자의 실제 검토 방식에 가까워졌습니다. four-sub-board 는 켜져 있고 comment/problem panel 은 시선을 빼앗지 않습니다.',
+                'Settings panel 토글이 저장된 것처럼 보이다가 재시작 뒤 되돌아가는 문제가 사라졌습니다.',
+                'four-sub-board, dual-engine, minimal, floating-board, custom-layout 흐름 사이의 panel mode 저장이 더 안전해졌습니다.',
+                '기본 four-sub 모드, legacy config 호환, dual-engine panel hiding, save format 을 `ConfigPanelModeTest` 로 회귀 테스트합니다.',
+                '릴리스 전에 full Maven suite, package build, 실제 로컬 실행 smoke test, GitHub Actions release workflows 를 다시 실행했습니다.',
+            ],
+            'contact_heading': '연락',
+            'contact': ['QQ 그룹: `299419120`'],
+        },
+        {
+            'language': 'ภาษาไทย',
+            'labels': 'th',
+            'intro': 'รีลีสนี้เน้นแก้ layout และการจำค่า settings: configuration ใหม่จะเปิดด้วย four-sub-board mode และซ่อน comment/problem panel เป็นค่าเริ่มต้น เมื่อผู้ใช้เปิดหรือปิด panel นี้ใน Settings แล้วบันทึก ค่าเดิมควรอยู่ต่อหลัง restart',
+            'updates_heading': 'อัปเดตหลัก',
+            'updates': [
+                'การติดตั้งใหม่หรือ configuration ใหม่จะเริ่มด้วย four-sub-board mode เพื่อหน้าจอแรกที่สะอาดกว่า',
+                'comment/problem panel ถูกซ่อนเป็นค่าเริ่มต้น ลดข้อมูลฝั่งขวาที่เยอะเกินไปสำหรับผู้ใช้ทั่วไป',
+                'แก้ toggle ใน Settings สำหรับแสดง comment/problem panel ให้จำค่าหลัง save และ restart',
+                'แก้การบันทึก `extra-mode`: ตอนนี้บันทึกเป็นตัวเลขตามที่ loader ต้องการ และยังอ่านค่า string แบบเก่าได้',
+                'รวม logic การ toggle comment/problem panel ระหว่าง menu, custom layout และ Settings พร้อมปรับข้อความให้แยกระหว่าง full panel กับ top control strip',
+                'แก้กรณีแตกไฟล์ TensorRT split/preinstalled package แล้ว KataGo Auto Setup ยังแสดงว่ายังไม่ได้ดาวน์โหลด ตอนนี้ตรวจทั้งโฟลเดอร์แอปและ `user-data`',
+            ],
+            'before_heading': 'ก่อนดาวน์โหลด',
+            'before': [
+                f'แพ็กเกจหลักมี KataGo `{katago_version}` และน้ำหนักเริ่มต้น `{model_source}` มาให้แล้ว',
+                f'ผู้ใช้ Windows ส่วนใหญ่แนะนำให้ดาวน์โหลด {{windows_opencl_portable}} ซึ่งเป็น **OpenCL รุ่นแนะนำ แบบไม่ต้องติดตั้ง**',
+                'ผู้ใช้เดิมยังคงใช้ layout ที่เคยบันทึกไว้ รุ่นนี้เน้นปรับค่าเริ่มต้นของ configuration ใหม่และความน่าเชื่อถือของ settings',
+                'ถ้าต้องการแสดง comment/problem panel ให้เปิดใน Settings แล้วบันทึก ค่าเดิมจะอยู่ต่อหลัง restart',
+                f'ถ้ามี **NVIDIA GPU** แนะนำให้ลอง {{windows_nvidia_portable}} ก่อน; ผู้ใช้ RTX 50 เลือกแถว RTX 50 CUDA ได้',
+            ],
+            'download_heading': 'แนะนำการดาวน์โหลด',
+            'download_headers': ('เครื่องของคุณ', 'ดาวน์โหลดไฟล์นี้'),
+            'why_heading': 'ทำไมควรอัปเดต',
+            'why': [
+                'หน้าจอแรกใกล้กับวิธี review ของผู้เล่นโกะมากขึ้น: four-sub-board เปิดอยู่ และ comment/problem panel ไม่แย่งสายตา',
+                'toggle ใน Settings จะไม่เกิดอาการเหมือนบันทึกแล้ว แต่ restart แล้วกลับค่าเดิม',
+                'การจำ panel mode ปลอดภัยขึ้นระหว่าง four-sub-board, dual-engine, minimal, floating-board และ custom-layout',
+                'เพิ่ม `ConfigPanelModeTest` ครอบคลุม default four-sub mode, legacy config compatibility, dual-engine panel hiding และ save format',
+                'ก่อน release ได้รัน full Maven suite, package build, local launch smoke test และ GitHub Actions release workflows ใหม่แล้ว',
+            ],
+            'contact_heading': 'ติดต่อ',
+            'contact': ['QQ group: `299419120`'],
+        },
+    ]
+
+    sections: list[dict[str, object]] = []
+    for block in content:
+        localized_assets = assets_cn if block['language'] in ('中文', '繁體中文') else assets
+        before_items = [
+            item.format(
+                windows_opencl_portable=localized_assets['windows_opencl_portable'],
+                windows_nvidia_portable=localized_assets['windows_nvidia_portable'],
+            )
+            for item in block['before']
+        ]
+        sections.append(
+            {
+                'language': block['language'],
+                'intro': block['intro'],
+                'updates': {'heading': block['updates_heading'], 'items': block['updates']},
+                'before': {'heading': block['before_heading'], 'items': before_items},
+                'download': {
+                    'heading': block['download_heading'],
+                    'headers': block['download_headers'],
+                    'rows': standard_download_rows(
+                        STANDARD_DOWNLOAD_LABELS[block['labels']],
+                        localized_assets,
+                    ),
+                },
+                'why': {'heading': block['why_heading'], 'items': block['why']},
+                'contact': {'heading': block['contact_heading'], 'items': block['contact']},
+            }
+        )
+    add_nvidia50_download_rows(sections, assets_cn, assets)
+    add_tensorrt_split_download_row(sections, assets_cn, assets, asset_map)
+    validate_release_sections(sections)
+    return release_heading(release_tag) + '\n\n' + '\n\n---\n\n'.join(
+        render_language_section(section) for section in sections
+    ) + '\n'
+
+
+def build_next_2026_06_13_3_notes(
+    asset_map: dict[str, str | None],
+    bundle: dict[str, str],
+    repo: str,
+    release_tag: str | None,
+) -> str:
+    notes = build_next_2026_06_13_1_notes(asset_map, bundle, repo, release_tag)
+    additions = {
+        '- 修复 TensorRT 高级分卷/预装包已解压后，“KataGo 一键设置”仍显示未下载的问题；现在程序目录和 `user-data` 下载目录都会被识别。\n':
+            '- 修复“引擎编辑”里新增、保存或排序引擎后，顶部引擎切换菜单不能立刻显示最新引擎的问题；现在会轻量刷新引擎目录，尽量不打断当前正在运行的分析引擎。\n'
+            '- 闪电分析未自定义命令时改为优先使用当前主引擎；只有当前引擎不可用时才回退默认引擎，避免为了闪电分析重复加载默认引擎。\n',
+        '- 修復 TensorRT 進階分卷/預裝包已解壓後，「KataGo 一鍵設定」仍顯示未下載的問題；現在程式目錄和 `user-data` 下載目錄都會被識別。\n':
+            '- 修復「引擎編輯」裡新增、保存或排序引擎後，頂部引擎切換選單不能立刻顯示最新引擎的問題；現在會輕量刷新引擎目錄，盡量不打斷目前正在運行的分析引擎。\n'
+            '- 閃電分析未自訂命令時改為優先使用目前主引擎；只有目前引擎不可用時才回退預設引擎，避免為了閃電分析重複載入預設引擎。\n',
+        '- Fixed TensorRT split/preinstalled packages showing as not downloaded in KataGo Auto Setup; both the app folder and `user-data` install folder are now detected.\n':
+            '- Fixed the engine editor so newly added, saved, or reordered engines appear in the top engine switch menu immediately. The refresh keeps the current analysis engine running whenever it is safe to do so.\n'
+            '- Flash analysis now prefers the current main engine when no custom flash-analysis command is set, falling back to the default engine only when the current engine is unavailable.\n',
+        '- TensorRT 分割/プリインストール版を展開済みでも KataGo 自動設定で未ダウンロード表示になる問題を修正しました。アプリ本体側と `user-data` 側の両方を検出します。\n':
+            '- エンジン編集でエンジンを追加、保存、並べ替えた後、上部のエンジン切り替えメニューにすぐ反映されない問題を修正しました。可能な限り現在の分析エンジンを止めずに軽量更新します。\n'
+            '- 閃電分析のコマンドをカスタムしていない場合、現在のメインエンジンを優先して使うようにしました。現在のエンジンが使えない場合のみ既定エンジンへ戻ります。\n',
+        '- TensorRT split/preinstalled package 를 압축 해제했는데도 KataGo Auto Setup 에서 not downloaded 로 보이던 문제를 수정했습니다. 앱 폴더와 `user-data` 설치 폴더를 모두 감지합니다.\n':
+            '- 엔진 편집에서 엔진을 추가, 저장, 정렬한 뒤 상단 엔진 전환 메뉴에 바로 보이지 않던 문제를 수정했습니다. 가능한 경우 현재 분석 엔진을 중단하지 않고 가볍게 갱신합니다.\n'
+            '- Flash analysis 명령을 따로 지정하지 않은 경우 기본 엔진 대신 현재 메인 엔진을 우선 사용합니다. 현재 엔진을 사용할 수 없을 때만 default engine 으로 fallback 합니다.\n',
+        '- แก้กรณีแตกไฟล์ TensorRT split/preinstalled package แล้ว KataGo Auto Setup ยังแสดงว่ายังไม่ได้ดาวน์โหลด ตอนนี้ตรวจทั้งโฟลเดอร์แอปและ `user-data`\n':
+            '- แก้ปัญหาเพิ่ม บันทึก หรือจัดลำดับ engine ในหน้า engine editor แล้วเมนูสลับ engine ด้านบนไม่แสดงรายการใหม่ทันที ตอนนี้จะ refresh รายการแบบเบา ๆ และพยายามไม่หยุด engine วิเคราะห์ที่กำลังทำงานอยู่\n'
+            '- Flash analysis จะใช้ main engine ปัจจุบันก่อนเมื่อไม่ได้ตั้ง custom command และจะ fallback ไป default engine เฉพาะเมื่อ engine ปัจจุบันใช้ไม่ได้\n',
+    }
+    for anchor, extra in additions.items():
+        notes = notes.replace(anchor, anchor + extra)
+    return notes
+
+
+def build_next_2026_06_14_1_notes(
+    asset_map: dict[str, str | None],
+    bundle: dict[str, str],
+    repo: str,
+    release_tag: str | None,
+) -> str:
+    notes = build_next_2026_06_13_3_notes(asset_map, bundle, repo, release_tag)
+    additions = {
+        '- 闪电分析未自定义命令时改为优先使用当前主引擎；只有当前引擎不可用时才回退默认引擎，避免为了闪电分析重复加载默认引擎。\n':
+            '- 闪电分析和自动补分析默认保留已有分析结果；继续分析只补缺失节点，只有开启“总是覆盖已有分析结果”时才会重算并覆盖已有数据。\n'
+            '- 棋力评估内置模型更新为 `xgboost20tun`，并支持导入 XGBoost booster 或完整模型包，方便后续模型迭代和对比。\n'
+            '- 发布包引入 jlink 自定义离线 runtime、AppCDS 启动缓存和 JFR/包体审计工具，保持离线可用，同时为后续启动加速和体积瘦身提供数据基础。\n',
+        '- 閃電分析未自訂命令時改為優先使用目前主引擎；只有目前引擎不可用時才回退預設引擎，避免為了閃電分析重複載入預設引擎。\n':
+            '- 閃電分析和自動補分析預設保留已有分析結果；繼續分析只補缺失節點，只有開啟「總是覆蓋已有分析結果」時才會重算並覆蓋已有資料。\n'
+            '- 棋力評估內建模型更新為 `xgboost20tun`，並支援匯入 XGBoost booster 或完整模型包，方便後續模型迭代和對比。\n'
+            '- 發布包引入 jlink 自訂離線 runtime、AppCDS 啟動快取和 JFR/包體審計工具，保持離線可用，同時為後續啟動加速和體積瘦身提供資料基礎。\n',
+        '- Flash analysis now prefers the current main engine when no custom flash-analysis command is set, falling back to the default engine only when the current engine is unavailable.\n':
+            '- Flash analysis and automatic completion now preserve existing analysis by default. Continuing analysis only fills missing nodes unless users explicitly enable “always override existing analysis”.\n'
+            '- The built-in strength-estimation model has been updated to `xgboost20tun`, with support for importing XGBoost boosters or complete model packages for future model iteration and comparison.\n'
+            '- Release packaging now includes jlink custom offline runtimes, AppCDS startup archives, and JFR/package-size audit tooling while keeping the main packages offline-capable.\n',
+        '- 閃電分析のコマンドをカスタムしていない場合、現在のメインエンジンを優先して使うようにしました。現在のエンジンが使えない場合のみ既定エンジンへ戻ります。\n':
+            '- 閃電分析と自動補完分析は、既存の分析結果を既定で保持します。続きから分析する場合は欠けているノードだけを補い、「既存分析を常に上書き」を明示的に有効にした場合のみ再計算して上書きします。\n'
+            '- 棋力推定の内蔵モデルを `xgboost20tun` に更新し、XGBoost booster または完全なモデルパッケージのインポートに対応しました。今後のモデル更新や比較がしやすくなります。\n'
+            '- リリースパッケージに jlink カスタムオフライン runtime、AppCDS 起動アーカイブ、JFR/パッケージサイズ監査ツールを追加しました。メインパッケージは引き続きオフラインで利用できます。\n',
+        '- Flash analysis 명령을 따로 지정하지 않은 경우 기본 엔진 대신 현재 메인 엔진을 우선 사용합니다. 현재 엔진을 사용할 수 없을 때만 default engine 으로 fallback 합니다.\n':
+            '- Flash analysis 와 자동 보완 분석은 기본적으로 기존 분석 결과를 보존합니다. 이어서 분석할 때는 누락된 노드만 채우며, 사용자가 “기존 분석 항상 덮어쓰기”를 명시적으로 켠 경우에만 다시 계산해 덮어씁니다.\n'
+            '- 내장 기력 평가 모델을 `xgboost20tun` 으로 업데이트했고, XGBoost booster 또는 전체 모델 패키지 가져오기를 지원해 이후 모델 개선과 비교가 쉬워졌습니다.\n'
+            '- 릴리스 패키지에 jlink custom offline runtime, AppCDS startup archive, JFR/package-size audit tooling 을 추가했습니다. 기본 패키지는 계속 오프라인에서 사용할 수 있습니다.\n',
+        '- Flash analysis จะใช้ main engine ปัจจุบันก่อนเมื่อไม่ได้ตั้ง custom command และจะ fallback ไป default engine เฉพาะเมื่อ engine ปัจจุบันใช้ไม่ได้\n':
+            '- Flash analysis และ automatic completion จะเก็บผลวิเคราะห์เดิมไว้เป็นค่าเริ่มต้น การวิเคราะห์ต่อจะเติมเฉพาะจุดที่ยังขาด และจะคำนวณทับข้อมูลเดิมเฉพาะเมื่อผู้ใช้เปิด “always override existing analysis” เท่านั้น\n'
+            '- อัปเดตโมเดลประเมินระดับฝีมือในตัวเป็น `xgboost20tun` และรองรับการ import XGBoost booster หรือ model package แบบครบชุด เพื่อให้เปรียบเทียบและอัปเดตโมเดลในอนาคตได้ง่ายขึ้น\n'
+            '- เพิ่ม jlink custom offline runtime, AppCDS startup archive และเครื่องมือ JFR/package-size audit ในกระบวนการ release โดยแพ็กเกจหลักยังใช้งานแบบ offline ได้เหมือนเดิม\n',
+    }
+    for anchor, extra in additions.items():
+        notes = notes.replace(anchor, anchor + extra)
+    return notes
+
+
+def build_next_2026_06_16_1_notes(
+    asset_map: dict[str, str | None],
+    bundle: dict[str, str],
+    repo: str,
+    release_tag: str | None,
+) -> str:
+    notes = build_next_2026_06_14_1_notes(asset_map, bundle, repo, release_tag)
+    replacements = {
+        '这一版重点修复布局和设置保存体验：新配置默认进入四方图模式，评论/问题手面板默认隐藏；在综合设置里打开或关闭“显示评论/问题手面板”后，保存、重启都应该保持你的选择。':
+            '这一版重点修复布局和设置保存体验：默认启动恢复为普通布局并显示评论/问题手面板；切换到四方图或双引擎布局时会自动隐藏该面板，综合设置里的开关保存、重启都应该保持你的选择。',
+        '- 新安装或新建配置默认使用四方图模式，让主棋盘、变化图和分析信息一开始就更清爽。':
+            '- 默认启动恢复为普通布局，保留原来右侧评论/问题手面板的使用习惯。',
+        '- 评论/问题手面板默认隐藏，减少普通用户初次打开时右侧信息过载。':
+            '- 切换到四方图或双引擎布局时自动隐藏评论/问题手面板，避免棋盘和分析区域被挤乱。',
+        '- 修复面板配置保存时 `extra-mode` 写成内部枚举，导致四方图模式可能在下次启动回到普通模式的问题；旧的字符串配置也能兼容读取。':
+            '- 修复面板配置保存时 `extra-mode` 写成内部枚举，导致布局模式下次启动被错误还原的问题；旧的字符串配置也能兼容读取。',
+        '- 首次打开更接近大多数棋友实际使用方式：四方图默认开启，评论/问题手面板不再抢占视线。':
+            '- 首次打开回到原来的普通布局，老用户熟悉的评论/问题手面板默认显示；需要四方图时再切换，面板会自动收起。',
+        '- 新增 `ConfigPanelModeTest` 回归测试，覆盖默认四方图、旧配置兼容、双引擎隐藏面板和保存格式。':
+            '- 新增 `ConfigPanelModeTest` 回归测试，覆盖默认普通布局、旧配置兼容、双引擎隐藏面板和保存格式。',
+        '這一版重點修復版面與設定保存體驗：新配置預設進入四方圖模式，評論/問題手面板預設隱藏；在綜合設定裡打開或關閉「顯示評論/問題手面板」後，保存、重啟都應該保持你的選擇。':
+            '這一版重點修復版面與設定保存體驗：預設啟動恢復為普通版面並顯示評論/問題手面板；切換到四方圖或雙引擎版面時會自動隱藏該面板，綜合設定裡的開關保存、重啟都應該保持你的選擇。',
+        '- 新安裝或新建配置預設使用四方圖模式，讓主棋盤、變化圖和分析資訊一開始就更清爽。':
+            '- 預設啟動恢復為普通版面，保留原本右側評論/問題手面板的使用習慣。',
+        '- 評論/問題手面板預設隱藏，減少普通使用者初次打開時右側資訊過載。':
+            '- 切換到四方圖或雙引擎版面時自動隱藏評論/問題手面板，避免棋盤和分析區域被擠亂。',
+        '- 修復面板配置保存時 `extra-mode` 寫成內部 enum，導致四方圖模式可能在下次啟動回到普通模式的問題；舊的字串配置也能相容讀取。':
+            '- 修復面板配置保存時 `extra-mode` 寫成內部 enum，導致版面模式下次啟動被錯誤還原的問題；舊的字串配置也能相容讀取。',
+        '- 首次打開更接近多數棋友實際使用方式：四方圖預設開啟，評論/問題手面板不再搶佔視線。':
+            '- 首次打開回到原本的普通版面，老使用者熟悉的評論/問題手面板預設顯示；需要四方圖時再切換，面板會自動收起。',
+        '- 新增 `ConfigPanelModeTest` 回歸測試，覆蓋預設四方圖、舊配置相容、雙引擎隱藏面板和保存格式。':
+            '- 新增 `ConfigPanelModeTest` 回歸測試，覆蓋預設普通版面、舊配置相容、雙引擎隱藏面板和保存格式。',
+        'This release focuses on layout and settings persistence. New configurations now start in four-sub-board mode with the comment/problem panel hidden by default. When users toggle the comment/problem panel in Settings, that choice should now survive saving and restart.':
+            'This release focuses on layout and settings persistence. The default startup layout is back to normal mode with the comment/problem panel visible; four-board and dual-engine layouts automatically hide that panel, and the Settings toggle now survives saving and restart.',
+        '- New installs and fresh configurations now default to four-sub-board mode for a cleaner first screen.':
+            '- The default startup layout is back to normal mode, preserving the familiar right-side comment/problem panel.',
+        '- The comment/problem panel is hidden by default to reduce right-side information overload for everyday users.':
+            '- Four-board and dual-engine layouts automatically hide the comment/problem panel so the board and analysis areas are not crowded.',
+        '- The first-run layout is closer to how many Go players review games: four-sub-board mode is on, and the comment/problem panel no longer steals attention.':
+            '- First launch is back to the classic normal layout, with the familiar comment/problem panel visible by default; switching to four-board mode folds that panel away automatically.',
+        '- Added `ConfigPanelModeTest` coverage for default four-sub mode, legacy config compatibility, dual-engine panel hiding, and save format.':
+            '- Added `ConfigPanelModeTest` coverage for the default normal layout, legacy config compatibility, dual-engine panel hiding, and save format.',
+        'このリリースは、レイアウトと設定保存の安定化が中心です。新しい設定では四方図モードで起動し、コメント/問題手パネルは既定で非表示になります。設定画面でこのパネルを切り替えた場合、保存後の再起動でも選択が維持されます。':
+            'このリリースは、レイアウトと設定保存の安定化が中心です。既定の起動レイアウトを通常モードに戻し、コメント/問題手パネルを表示します。四分割や二重エンジン表示では自動的に隠れ、設定画面での切り替えも保存後の再起動で維持されます。',
+        '- 新規インストールや新しい設定では、最初から四方図モードを使うようにしました。':
+            '- 既定の起動レイアウトを通常モードに戻し、従来の右側コメント/問題手パネルを表示します。',
+        '- コメント/問題手パネルは既定で非表示になり、初回起動時の右側情報量を減らします。':
+            '- 四分割や二重エンジン表示ではコメント/問題手パネルを自動的に隠し、盤面と分析領域が窮屈にならないようにしました。',
+        '- 初回画面が多くの囲碁ユーザーの検討スタイルに近づきます。四方図が既定で有効になり、コメント/問題手パネルは視線を奪いません。':
+            '- 初回画面は従来の通常レイアウトに戻り、慣れたコメント/問題手パネルが既定で表示されます。四分割へ切り替えるとパネルは自動的に畳まれます。',
+        '- 既定の四方図、旧設定互換、二重エンジン時のパネル非表示、保存形式を `ConfigPanelModeTest` で回帰テストしています。':
+            '- 既定の通常レイアウト、旧設定互換、二重エンジン時のパネル非表示、保存形式を `ConfigPanelModeTest` で回帰テストしています。',
+        '이번 릴리스는 레이아웃과 설정 저장 안정화에 집중합니다. 새 설정은 four-sub-board 모드로 시작하고 comment/problem panel 은 기본으로 숨겨집니다. Settings 에서 이 패널을 켜거나 끄면 저장 및 재시작 후에도 선택이 유지됩니다.':
+            '이번 릴리스는 레이아웃과 설정 저장 안정화에 집중합니다. 기본 시작 레이아웃은 일반 모드로 돌아가고 comment/problem panel 은 표시됩니다. four-board 및 dual-engine 레이아웃에서는 자동으로 숨겨지며, Settings 에서 바꾼 값은 저장 및 재시작 후에도 유지됩니다.',
+        '- 새 설치와 새 설정은 기본적으로 four-sub-board 모드로 시작합니다.':
+            '- 기본 시작 레이아웃을 일반 모드로 되돌려 익숙한 오른쪽 comment/problem panel 을 유지합니다.',
+        '- comment/problem panel 은 기본으로 숨겨져 일반 사용자의 첫 화면 정보 과부하를 줄입니다.':
+            '- four-board 및 dual-engine 레이아웃에서는 comment/problem panel 을 자동으로 숨겨 보드와 분석 영역이 밀리지 않게 했습니다.',
+        '- 첫 실행 화면이 많은 바둑 사용자의 실제 검토 방식에 가까워졌습니다. four-sub-board 는 켜져 있고 comment/problem panel 은 시선을 빼앗지 않습니다.':
+            '- 첫 실행 화면은 기존 일반 레이아웃으로 돌아가고 익숙한 comment/problem panel 이 기본 표시됩니다. four-board 로 전환하면 panel 이 자동으로 접힙니다.',
+        '- 기본 four-sub 모드, legacy config 호환, dual-engine panel hiding, save format 을 `ConfigPanelModeTest` 로 회귀 테스트합니다.':
+            '- 기본 일반 레이아웃, legacy config 호환, dual-engine panel hiding, save format 을 `ConfigPanelModeTest` 로 회귀 테스트합니다.',
+        'รีลีสนี้เน้นแก้ layout และการจำค่า settings: configuration ใหม่จะเปิดด้วย four-sub-board mode และซ่อน comment/problem panel เป็นค่าเริ่มต้น เมื่อผู้ใช้เปิดหรือปิด panel นี้ใน Settings แล้วบันทึก ค่าเดิมควรอยู่ต่อหลัง restart':
+            'รีลีสนี้เน้นแก้ layout และการจำค่า settings: ค่าเริ่มต้นกลับเป็น layout ปกติพร้อมแสดง comment/problem panel ส่วน four-board และ dual-engine จะซ่อน panel นี้อัตโนมัติ และค่าที่ผู้ใช้เปลี่ยนใน Settings จะอยู่ต่อหลัง save/restart',
+        '- การติดตั้งใหม่หรือ configuration ใหม่จะเริ่มด้วย four-sub-board mode เพื่อหน้าจอแรกที่สะอาดกว่า':
+            '- ค่าเริ่มต้นกลับเป็น layout ปกติ พร้อม comment/problem panel ด้านขวาที่ผู้ใช้คุ้นเคย',
+        '- comment/problem panel ถูกซ่อนเป็นค่าเริ่มต้น ลดข้อมูลฝั่งขวาที่เยอะเกินไปสำหรับผู้ใช้ทั่วไป':
+            '- four-board และ dual-engine จะซ่อน comment/problem panel อัตโนมัติ เพื่อไม่ให้กระดานและพื้นที่วิเคราะห์แน่นเกินไป',
+        '- หน้าจอแรกใกล้กับวิธี review ของผู้เล่นโกะมากขึ้น: four-sub-board เปิดอยู่ และ comment/problem panel ไม่แย่งสายตา':
+            '- หน้าจอแรกกลับเป็น layout ปกติแบบเดิม และแสดง comment/problem panel ที่ผู้ใช้คุ้นเคย; เมื่อเปลี่ยนเป็น four-board panel จะถูกพับอัตโนมัติ',
+        '- เพิ่ม `ConfigPanelModeTest` ครอบคลุม default four-sub mode, legacy config compatibility, dual-engine panel hiding และ save format':
+            '- เพิ่ม `ConfigPanelModeTest` ครอบคลุม default normal layout, legacy config compatibility, dual-engine panel hiding และ save format',
+    }
+    for old, new in replacements.items():
+        notes = notes.replace(old, new)
+    additions = {
+        '- 发布包引入 jlink 自定义离线 runtime、AppCDS 启动缓存和 JFR/包体审计工具，保持离线可用，同时为后续启动加速和体积瘦身提供数据基础。\n':
+            '- 默认启动布局恢复为普通模式并默认显示评论/问题手面板；切换到四方图或双引擎布局时会自动隐藏该面板，避免四方图被挤乱。\n'
+            '- 候选点最高值红色/反色高亮默认关闭，并补到“综合设置 -> 引擎与分析”；蓝点上的胜率数字默认不再刺眼变红，感谢 @ray801090 的反馈。\n'
+            '- 核对 KataGo 官网模型后，默认内置继续使用更适合普通用户的 `zhizi 28B muonfd2`；6 月最新 28B 和最强 40B 仍可在一键设置下载列表中选择，不强行塞进默认包。\n',
+        '- 發布包引入 jlink 自訂離線 runtime、AppCDS 啟動快取和 JFR/包體審計工具，保持離線可用，同時為後續啟動加速和體積瘦身提供資料基礎。\n':
+            '- 預設啟動版面恢復為普通模式並預設顯示評論/問題手面板；切換到四方圖或雙引擎版面時會自動隱藏該面板，避免四方圖被擠亂。\n'
+            '- 候選點最高值紅色/反色高亮預設關閉，並補到「綜合設定 -> 引擎與分析」；藍點上的勝率數字預設不再刺眼變紅，感謝 @ray801090 的回饋。\n'
+            '- 核對 KataGo 官網模型後，預設內建繼續使用更適合普通使用者的 `zhizi 28B muonfd2`；6 月最新 28B 和最強 40B 仍可在一鍵設定下載列表中選擇，不強行塞進預設包。\n',
+        '- Release packaging now includes jlink custom offline runtimes, AppCDS startup archives, and JFR/package-size audit tooling while keeping the main packages offline-capable.\n':
+            '- The default startup layout is back to normal mode with the comment/problem panel visible; four-board and dual-engine layouts automatically hide that panel so the board grid stays clean.\n'
+            '- Candidate max-value red/reverse highlighting is now off by default and exposed in Settings -> Engine & Analysis. Blue-point winrate text no longer turns bright red by default. Thanks to @ray801090 for the report.\n'
+            '- After checking the official KataGo model list, the bundled default stays on the more general-user-friendly `zhizi 28B muonfd2`; the June latest 28B and strongest 40B remain selectable from KataGo Auto Setup instead of being forced into the default package.\n',
+        '- リリースパッケージに jlink カスタムオフライン runtime、AppCDS 起動アーカイブ、JFR/パッケージサイズ監査ツールを追加しました。メインパッケージは引き続きオフラインで利用できます。\n':
+            '- 既定の起動レイアウトを通常モードに戻し、コメント/問題手パネルを既定で表示します。四分割や二重エンジン表示では自動的に隠し、盤面が崩れないようにしました。\n'
+            '- 候補手の最高値を赤/反転色で強調する設定を既定でオフにし、設定 -> エンジンと分析 に追加しました。青い候補点の勝率数字は既定で赤くなりません。@ray801090 さんの報告に感謝します。\n'
+            '- KataGo 公式モデル一覧を確認し、既定の同梱モデルは一般ユーザー向けに扱いやすい `zhizi 28B muonfd2` のままにしました。6 月最新 28B と最強 40B は KataGo 自動設定から選択できます。\n',
+        '- 릴리스 패키지에 jlink custom offline runtime, AppCDS startup archive, JFR/package-size audit tooling 을 추가했습니다. 기본 패키지는 계속 오프라인에서 사용할 수 있습니다.\n':
+            '- 기본 시작 레이아웃을 일반 모드로 되돌리고 comment/problem panel 을 기본 표시합니다. four-board 및 dual-engine 레이아웃에서는 자동으로 숨겨 보드가 밀리지 않게 했습니다.\n'
+            '- 후보점 최대값 red/reverse highlight 를 기본 OFF 로 바꾸고 Settings -> Engine & Analysis 에 노출했습니다. 파란 후보점 승률 숫자가 기본으로 빨갛게 변하지 않습니다. 제보해 준 @ray801090 님께 감사드립니다.\n'
+            '- 공식 KataGo 모델 목록을 확인한 결과, 기본 내장 모델은 일반 사용자에게 더 적합한 `zhizi 28B muonfd2` 를 유지합니다. 6월 최신 28B 와 최강 40B 는 KataGo Auto Setup 에서 선택할 수 있습니다.\n',
+        '- เพิ่ม jlink custom offline runtime, AppCDS startup archive และเครื่องมือ JFR/package-size audit ในกระบวนการ release โดยแพ็กเกจหลักยังใช้งานแบบ offline ได้เหมือนเดิม\n':
+            '- เปลี่ยนค่าเริ่มต้นกลับเป็น layout ปกติและแสดง comment/problem panel ตามเดิม ส่วน four-board และ dual-engine จะซ่อน panel นี้อัตโนมัติเพื่อไม่ให้หน้ากระดานแน่นเกินไป\n'
+            '- ปิด red/reverse highlight ของค่าที่มากที่สุดบน candidate point เป็นค่าเริ่มต้น และเพิ่มตัวเลือกไว้ใน Settings -> Engine & Analysis ตัวเลข winrate บนจุดสีน้ำเงินจึงไม่แดงแสบตาโดยปริยาย ขอบคุณ @ray801090 สำหรับ feedback\n'
+            '- ตรวจสอบรายการโมเดล KataGo official แล้ว ค่า default bundled model ยังใช้ `zhizi 28B muonfd2` ที่เหมาะกับผู้ใช้ทั่วไปกว่า ส่วน June latest 28B และ strongest 40B ยังเลือกดาวน์โหลดได้ใน KataGo Auto Setup\n',
+    }
+    for anchor, extra in additions.items():
+        notes = notes.replace(anchor, anchor + extra)
+    return notes
+
+
+def build_next_2026_06_18_1_notes(
+    asset_map: dict[str, str | None],
+    bundle: dict[str, str],
+    repo: str,
+    release_tag: str | None,
+) -> str:
+    notes = build_next_2026_06_16_1_notes(asset_map, bundle, repo, release_tag)
+    additions = {
+        '- Windows 免安装版新增更清晰的小更新路径：`core-update` 只替换主程序和启动器配置，不重复打包引擎、权重、JCEF、readboard、Java runtime 或用户数据。\n':
+            '- 在已有变化图的下一手位置直接落子时，会进入原来的变化分支，不再重复新建一个相同分支。\n'
+            '- 粘贴 SGF 时增加保护和兼容回归测试，避免误覆盖当前棋盘，也让加载后的引擎同步更稳。\n'
+            '- 新增中式棋盘风格，棋盘外侧坐标会按中式显示；同时合入上游 SGF、着手列表和 UI 维护修复。\n'
+            '- 棋力评估主卡改为显示用户能理解的棋力区间，评分规则改成短标签，避免 `1.0段` 这类内部值和省略号误导用户。\n',
+        '- Windows 免安裝版新增更清楚的小更新路徑：`core-update` 只替換主程式和啟動器設定，不重複打包引擎、權重、JCEF、readboard、Java runtime 或使用者資料。\n':
+            '- 在已有變化圖的下一手位置直接落子時，會進入原來的變化分支，不再重複新建一個相同分支。\n'
+            '- 貼上 SGF 時增加保護和相容回歸測試，避免誤覆蓋目前棋盤，也讓載入後的引擎同步更穩。\n'
+            '- 新增中式棋盤風格，棋盤外側座標會按中式顯示；同時合入上游 SGF、著手列表和 UI 維護修復。\n'
+            '- 棋力評估主卡改為顯示使用者能理解的棋力區間，評分規則改成短標籤，避免 `1.0段` 這類內部值和省略號誤導使用者。\n',
+        '- Windows portable builds now have a clearer small-update path: `core-update` replaces only the app core and launcher configuration, without rebundling engines, weights, JCEF, readboard, Java runtime, or user data.\n':
+            '- Clicking a move that already exists as the next move of a variation now enters that existing branch instead of creating a duplicate branch.\n'
+            '- SGF paste now has stronger protection and compatibility regression coverage, reducing accidental board replacement and improving engine sync after load.\n'
+            '- Added Chinese classic board style with matching outer coordinates, and folded in upstream SGF, move-list, and UI maintenance fixes.\n'
+            '- Player Strength cards now show user-facing strength bands, and the score-scale labels are shorter so internal values such as `1.0 dan` and clipped ellipses no longer confuse users.\n',
+        '- Windows portable 版に分かりやすい小型更新パスを追加しました。`core-update` はアプリ本体とランチャー設定だけを置き換え、エンジン、重み、JCEF、readboard、Java runtime、ユーザーデータを再同梱しません。\n':
+            '- 既存の変化図にある次の一手を盤面でクリックした場合、同じ分岐を重複作成せず、その既存分岐へ入るようにしました。\n'
+            '- SGF 貼り付けに保護と互換性回帰テストを追加し、現在の盤面を誤って置き換えるリスクを減らし、読み込み後のエンジン同期も安定させました。\n'
+            '- 中国式の盤面スタイルを追加し、盤外座標も中国式表示に対応しました。あわせて上流の SGF、着手リスト、UI メンテナンス修正を取り込みました。\n'
+            '- 棋力評価カードはユーザー向けの棋力区間を表示し、スコア尺度ラベルを短くしました。`1.0段` のような内部値や省略表示で迷わないようにしています。\n',
+        '- Windows portable 빌드에 더 명확한 small-update 경로를 추가했습니다. `core-update` 는 앱 core 와 launcher configuration 만 교체하며 engine, weight, JCEF, readboard, Java runtime, user data 를 다시 포함하지 않습니다.\n':
+            '- 이미 존재하는 변화도의 다음 수 위치를 직접 클릭하면 같은 분기를 새로 만들지 않고 기존 변화 분기로 들어갑니다.\n'
+            '- SGF 붙여넣기에 보호 로직과 compatibility regression test 를 추가해 현재 보드가 실수로 교체될 위험을 줄이고, 로드 후 engine sync 도 더 안정적으로 만들었습니다.\n'
+            '- Chinese classic board style 을 추가하고 바깥 좌표도 중국식으로 표시합니다. 또한 upstream SGF, move-list, UI maintenance fix 를 함께 반영했습니다.\n'
+            '- Player Strength 카드는 사용자에게 이해되는 기력 구간을 표시하고 score-scale label 을 짧게 바꿔 `1.0 dan` 같은 내부 값이나 잘린 말줄임표로 혼동하지 않게 했습니다.\n',
+        '- เพิ่มเส้นทางอัปเดตขนาดเล็กที่ชัดเจนขึ้นสำหรับ Windows portable: `core-update` จะเปลี่ยนเฉพาะ app core และ launcher configuration และไม่ bundle engine, weight, JCEF, readboard, Java runtime หรือ user data ซ้ำ\n':
+            '- เมื่อคลิกจุดเดินที่มีอยู่แล้วเป็นตาถัดไปของ variation โปรแกรมจะเข้า branch เดิมแทนการสร้าง branch ซ้ำ\n'
+            '- เพิ่มการป้องกันและ regression test สำหรับการ paste SGF เพื่อลดความเสี่ยงการแทนที่กระดานปัจจุบันโดยไม่ตั้งใจ และทำให้ engine sync หลังโหลดเสถียรขึ้น\n'
+            '- เพิ่ม Chinese classic board style พร้อม coordinate รอบกระดานแบบจีน และรวม upstream fix ด้าน SGF, move list และ UI maintenance\n'
+            '- การ์ด Player Strength แสดงช่วงระดับที่ผู้ใช้เข้าใจง่ายขึ้น และย่อ label ของ score scale เพื่อไม่ให้ค่า internal อย่าง `1.0 dan` หรือข้อความที่ถูกตัดทำให้สับสน\n',
+    }
+    why_additions = {
+        '- 发布前已重新跑完整 Maven 测试、打包、本机真实启动 UI 冒烟，并等待 GitHub Actions 发布工作流通过。\n':
+            '- 本版继续按“用户实际会点哪里”的方式做了本机启动检查，顺手修掉棋力评估显示里会误导普通用户的内部评分文案。\n',
+        '- 發布前已重新跑完整 Maven 測試、打包、本機真實啟動 UI 冒煙，並等待 GitHub Actions 發布工作流通過。\n':
+            '- 本版繼續按「使用者實際會點哪裡」的方式做了本機啟動檢查，順手修掉棋力評估顯示裡會誤導一般使用者的內部評分文案。\n',
+        '- Before release, the full Maven suite, package build, real local launch smoke test, and GitHub Actions release workflows were rerun.\n':
+            '- This build was checked from a user-flow perspective again, and the Player Strength display wording was cleaned up where internal score values could mislead everyday users.\n',
+        '- リリース前に full Maven suite、package build、実機ローカル起動 smoke test、GitHub Actions release workflows を再実行しました。\n':
+            '- 今回も実際のユーザーフローに近い形でローカル起動確認を行い、棋力評価で内部スコア表示が一般ユーザーを迷わせる箇所を修正しました。\n',
+        '- 릴리스 전 full Maven suite, package build, real local launch smoke test, GitHub Actions release workflows 를 다시 실행했습니다.\n':
+            '- 이번 빌드도 실제 사용자가 누르는 흐름에 가깝게 로컬 실행 점검을 했고, Player Strength 화면에서 내부 점수 표현이 일반 사용자를 혼동시키는 부분을 정리했습니다.\n',
+        '- ก่อน release ได้รัน full Maven suite, package build, real local launch smoke test และ GitHub Actions release workflows ซ้ำแล้ว\n':
+            '- build นี้ตรวจจากมุมมอง user flow อีกครั้ง และปรับข้อความ Player Strength ที่เป็น internal score ไม่ให้ทำให้ผู้ใช้ทั่วไปสับสน\n',
+    }
+    for anchor, extra in additions.items():
+        notes = notes.replace(anchor, anchor + extra)
+    for anchor, extra in why_additions.items():
+        notes = notes.replace(anchor, anchor + extra)
+    return notes
+
+
+def build_next_2026_06_20_1_notes(
+    asset_map: dict[str, str | None],
+    bundle: dict[str, str],
+    repo: str,
+    release_tag: str | None,
+) -> str:
+    notes = build_next_2026_06_18_1_notes(asset_map, bundle, repo, release_tag)
+    additions = {
+        '- 棋力评估主卡改为显示用户能理解的棋力区间，评分规则改成短标签，避免 `1.0段` 这类内部值和省略号误导用户。\n':
+            '- 加载野狐、腾讯、共享棋谱和弈客 SGF 后，胜率曲线启动更快；启用自动快速分析时会预热专用 KataGo 分析引擎，连续看谱不用反复等待冷启动。\n'
+            '- 打开新棋谱前会清理旧的快速分析队列，避免上一盘棋的排队任务拖慢当前棋谱；胜率图命中和同步诊断路径也做了回归加固。\n'
+            '- 多语言 README 补充官方网站入口，用户从 GitHub 文档可以更直接找到项目主页。\n',
+        '- 棋力評估主卡改為顯示使用者能理解的棋力區間，評分規則改成短標籤，避免 `1.0段` 這類內部值和省略號誤導使用者。\n':
+            '- 載入野狐、騰訊、共享棋譜和弈客 SGF 後，勝率曲線啟動更快；啟用自動快速分析時會預熱專用 KataGo 分析引擎，連續看譜不用反覆等待冷啟動。\n'
+            '- 開啟新棋譜前會清理舊的快速分析佇列，避免上一盤棋的排隊任務拖慢目前棋譜；勝率圖命中和同步診斷路徑也做了回歸加固。\n'
+            '- 多語言 README 補充官方網站入口，使用者從 GitHub 文件可以更直接找到專案首頁。\n',
+        '- Player Strength cards now show user-facing strength bands, and the score-scale labels are shorter so internal values such as `1.0 dan` and clipped ellipses no longer confuse users.\n':
+            '- Winrate curves now start faster after loading Fox, Tencent, shared-kifu, and Yike SGF records. When automatic quick analysis is enabled, a dedicated KataGo analysis engine is prewarmed so consecutive kifu reviews no longer wait on repeated cold starts.\n'
+            '- Opening a new kifu now clears stale queued quick-analysis work before starting the current game, reducing delays caused by previous reviews. Winrate-graph hit detection and sync-diagnostics path handling were also hardened.\n'
+            '- The multilingual README files now link the official website so users can reach the project homepage more directly from GitHub.\n',
+        '- 棋力評価カードはユーザー向けの棋力区間を表示し、スコア尺度ラベルを短くしました。`1.0段` のような内部値や省略表示で迷わないようにしています。\n':
+            '- 野狐、Tencent、共有棋譜、弈客 SGF を読み込んだ後の勝率曲線の立ち上がりを高速化しました。自動クイック分析が有効な場合は専用 KataGo 分析エンジンを事前に温め、連続レビューで毎回 cold start を待たないようにしています。\n'
+            '- 新しい棋譜を開く前に古いクイック分析キューを整理し、前の棋譜の待ち行列が現在の棋譜を遅らせないようにしました。勝率グラフのヒット判定と同期診断のパス処理も強化しています。\n'
+            '- 多言語 README に公式サイトへのリンクを追加し、GitHub のドキュメントからプロジェクトホームへ直接移動しやすくしました。\n',
+        '- Player Strength 카드는 사용자에게 이해되는 기력 구간을 표시하고 score-scale label 을 짧게 바꿔 `1.0 dan` 같은 내부 값이나 잘린 말줄임표로 혼동하지 않게 했습니다.\n':
+            '- Fox, Tencent, shared kifu, Yike SGF 를 불러온 뒤 승률 곡선이 더 빨리 시작됩니다. 자동 quick analysis 가 켜져 있으면 전용 KataGo analysis engine 을 미리 예열해 연속 기보 리뷰에서 반복 cold start 를 기다리지 않게 했습니다.\n'
+            '- 새 기보를 열기 전에 오래된 quick-analysis queue 를 정리해 이전 기보의 대기 작업이 현재 기보를 늦추지 않게 했습니다. Winrate graph hit detection 과 sync diagnostics path handling 도 더 단단하게 보강했습니다.\n'
+            '- 다국어 README 에 official website 링크를 추가해 GitHub 문서에서 프로젝트 홈페이지로 더 쉽게 이동할 수 있습니다.\n',
+        '- การ์ด Player Strength แสดงช่วงระดับที่ผู้ใช้เข้าใจง่ายขึ้น และย่อ label ของ score scale เพื่อไม่ให้ค่า internal อย่าง `1.0 dan` หรือข้อความที่ถูกตัดทำให้สับสน\n':
+            '- กราฟ winrate เริ่มทำงานเร็วขึ้นหลังโหลด SGF จาก Fox, Tencent, shared kifu และ Yike เมื่อเปิด automatic quick analysis โปรแกรมจะ prewarm KataGo analysis engine เฉพาะไว้ ทำให้การเปิดหลาย kifu ต่อเนื่องไม่ต้องรอ cold start ซ้ำ\n'
+            '- ก่อนเปิด kifu ใหม่ โปรแกรมจะล้าง quick-analysis queue เก่าก่อน เพื่อลดการหน่วงจากงานวิเคราะห์ของเกมก่อนหน้า และยังเสริมความเสถียรของ winrate graph hit detection กับ sync diagnostics path handling\n'
+            '- README หลายภาษาเพิ่มลิงก์ official website เพื่อให้ผู้ใช้จาก GitHub เข้า project homepage ได้ตรงขึ้น\n',
+    }
+    why_additions = {
+        '- 本版继续按“用户实际会点哪里”的方式做了本机启动检查，顺手修掉棋力评估显示里会误导普通用户的内部评分文案。\n':
+            '- 本版重点复测了“下载/打开棋谱后胜率曲线不应让用户等太久”的路径，并保留 GitHub Actions 的 Windows 升级 smoke、macOS/Linux 打包校验和 release notes 真实资产生成。\n',
+        '- 本版繼續按「使用者實際會點哪裡」的方式做了本機啟動檢查，順手修掉棋力評估顯示裡會誤導一般使用者的內部評分文案。\n':
+            '- 本版重點複測了「下載/開啟棋譜後勝率曲線不應讓使用者等太久」的路徑，並保留 GitHub Actions 的 Windows 升級 smoke、macOS/Linux 打包校驗和 release notes 真實資產生成。\n',
+        '- This build was checked from a user-flow perspective again, and the Player Strength display wording was cleaned up where internal score values could mislead everyday users.\n':
+            '- This build focuses on the path where users load or download a kifu and expect the winrate curve to become useful quickly, with GitHub Actions still covering Windows upgrade smoke, macOS/Linux packaging checks, and release notes generated from real uploaded assets.\n',
+        '- 今回も実際のユーザーフローに近い形でローカル起動確認を行い、棋力評価で内部スコア表示が一般ユーザーを迷わせる箇所を修正しました。\n':
+            '- 今回は、棋譜をダウンロードまたは開いた後に勝率曲線を早く使えるようにする経路を重点的に確認しました。GitHub Actions では Windows upgrade smoke、macOS/Linux packaging checks、実際のアップロード済み asset からの release notes 生成も継続しています。\n',
+        '- 이번 빌드도 실제 사용자가 누르는 흐름에 가깝게 로컬 실행 점검을 했고, Player Strength 화면에서 내부 점수 표현이 일반 사용자를 혼동시키는 부분을 정리했습니다.\n':
+            '- 이번 버전은 사용자가 기보를 다운로드하거나 연 뒤 승률 곡선을 빨리 활용할 수 있어야 하는 흐름을 중점 확인했습니다. GitHub Actions 에서는 Windows upgrade smoke, macOS/Linux packaging check, 실제 업로드 asset 기반 release notes 생성도 계속 검증합니다.\n',
+        '- build นี้ตรวจจากมุมมอง user flow อีกครั้ง และปรับข้อความ Player Strength ที่เป็น internal score ไม่ให้ทำให้ผู้ใช้ทั่วไปสับสน\n':
+            '- build นี้เน้นตรวจ flow ที่ผู้ใช้โหลดหรือเปิด kifu แล้วต้องการให้กราฟ winrate ใช้งานได้เร็วขึ้น พร้อมให้ GitHub Actions ตรวจ Windows upgrade smoke, macOS/Linux packaging และสร้าง release notes จาก asset ที่อัปโหลดจริงต่อไป\n',
+    }
+    for anchor, extra in additions.items():
+        notes = notes.replace(anchor, anchor + extra)
+    for anchor, extra in why_additions.items():
+        notes = notes.replace(anchor, anchor + extra)
+    return notes
+
+
+def build_next_2026_06_20_1_clean_notes(
+    asset_map: dict[str, str | None],
+    bundle: dict[str, str],
+    repo: str,
+    release_tag: str | None,
+) -> str:
+    assets_cn = {key: format_asset(asset_map[key], repo, release_tag) for key in asset_map}
+    assets = {key: format_asset_en(asset_map[key], repo, release_tag) for key in asset_map}
+    katago_version = bundle['katago_version']
+    model_source = bundle['model_source']
+    blocks = [
+        {
+            'language': '中文',
+            'labels': 'zh',
+            'intro': '这一版聚焦棋谱加载后的胜率曲线响应速度。野狐、腾讯、共享棋谱和弈客 SGF 打开后，曲线应该更快进入可用状态，不再把上一盘棋的排队任务带到当前棋谱里。',
+            'updates_heading': '本版主要更新',
+            'updates': [
+                '加载野狐、腾讯、共享棋谱和弈客 SGF 后，胜率曲线启动更快；启用自动快速分析时会预热专用 KataGo 分析引擎，连续看谱减少重复冷启动等待。',
+                '打开新棋谱前会清理旧的快速分析队列，避免上一盘棋的排队任务拖慢当前棋谱。',
+                '加固胜率图命中判断和同步诊断路径处理，减少复杂路径或特殊文件名带来的异常。',
+                '多语言 README 补充官方网站入口，用户从 GitHub 文档可以更直接找到项目主页。',
+            ],
+            'before_heading': '下载前先看这几句',
+            'before': [
+                f'主推荐整合包继续内置 KataGo `{katago_version}` 和默认权重 `{model_source}`。',
+                f'Windows 普通用户优先下载 {assets_cn["windows_opencl_portable"]}，这是 OpenCL 推荐免安装版。',
+                f'NVIDIA 显卡用户可下载 {assets_cn["windows_nvidia_portable"]}；RTX 5070/5080/5090 用户优先看 RTX 50 CUDA 版。',
+                f'已经在用 Windows 免安装版的用户，日常升级优先下载 {assets_cn["windows_core_update"]} 覆盖到旧目录，权重、引擎和用户数据不会重复下载。',
+            ],
+            'download_heading': '下载建议',
+            'download_headers': ('你的电脑', '直接下载这个'),
+            'why_heading': '这一版为什么值得更新',
+            'why': [
+                '如果你经常打开野狐、腾讯、弈客或共享棋谱，这一版能减少等待胜率曲线补齐时的卡顿感。',
+                '这一版只写本次实际变化，不再重复上一版布局、棋力评估和打包体系等旧内容。',
+                '发布流程继续保留 GitHub Actions 打包校验和真实资产生成的 release notes。',
+            ],
+            'contact_heading': '交流',
+            'contact': ['QQ 群：`299419120`'],
+        },
+        {
+            'language': '繁體中文',
+            'labels': 'zh_hant',
+            'intro': '這一版聚焦棋譜載入後的勝率曲線反應速度。野狐、騰訊、共享棋譜和弈客 SGF 打開後，曲線應該更快進入可用狀態，不再把上一盤棋的排隊任務帶到目前棋譜裡。',
+            'updates_heading': '本版主要更新',
+            'updates': [
+                '載入野狐、騰訊、共享棋譜和弈客 SGF 後，勝率曲線啟動更快；啟用自動快速分析時會預熱專用 KataGo 分析引擎，連續看譜可減少重複冷啟動等待。',
+                '開啟新棋譜前會清理舊的快速分析佇列，避免上一盤棋的排隊任務拖慢目前棋譜。',
+                '加固勝率圖命中判斷和同步診斷路徑處理，減少複雜路徑或特殊檔名造成的異常。',
+                '多語言 README 補充官方網站入口，使用者從 GitHub 文件可以更直接找到專案首頁。',
+            ],
+            'before_heading': '下載前先看這幾句',
+            'before': [
+                f'主推薦整合包繼續內建 KataGo `{katago_version}` 和預設權重 `{model_source}`。',
+                f'Windows 一般使用者優先下載 {assets_cn["windows_opencl_portable"]}，這是 OpenCL 推薦免安裝版。',
+                f'NVIDIA 顯示卡使用者可下載 {assets_cn["windows_nvidia_portable"]}；RTX 5070/5080/5090 使用者優先看 RTX 50 CUDA 版。',
+                f'已經在用 Windows 免安裝版的使用者，日常升級優先下載 {assets_cn["windows_core_update"]} 覆蓋到舊目錄，權重、引擎和使用者資料不會重複下載。',
+            ],
+            'download_heading': '下載建議',
+            'download_headers': ('你的電腦', '直接下載這個'),
+            'why_heading': '這一版為什麼值得更新',
+            'why': [
+                '如果你經常打開野狐、騰訊、弈客或共享棋譜，這一版能減少等待勝率曲線補齊時的卡頓感。',
+                '這一版只寫本次實際變化，不再重複上一版版面、棋力評估和打包體系等舊內容。',
+                '發布流程繼續保留 GitHub Actions 打包校驗和真實資產生成的 release notes。',
+            ],
+            'contact_heading': '交流',
+            'contact': ['QQ 群：`299419120`'],
+        },
+        {
+            'language': 'English',
+            'labels': 'en',
+            'intro': 'This release focuses on winrate-curve responsiveness after loading kifu. Fox, Tencent, shared-kifu, and Yike SGF records should become useful faster, without stale quick-analysis work from the previous game slowing down the current one.',
+            'updates_heading': 'Release Highlights',
+            'updates': [
+                'Winrate curves now start faster after loading Fox, Tencent, shared-kifu, and Yike SGF records. When automatic quick analysis is enabled, a dedicated KataGo analysis engine is prewarmed to reduce repeated cold starts during consecutive reviews.',
+                'Opening a new kifu now clears stale queued quick-analysis work before starting the current game.',
+                'Winrate-graph hit detection and sync-diagnostics path handling were hardened for complex paths and special filenames.',
+                'The multilingual README files now link the official website so users can reach the project homepage more directly from GitHub.',
+            ],
+            'before_heading': 'Read Before Downloading',
+            'before': [
+                f'The recommended bundles still include KataGo `{katago_version}` and the default model `{model_source}`.',
+                f'Most Windows users should start with {assets["windows_opencl_portable"]}, the recommended OpenCL portable build.',
+                f'NVIDIA users can choose {assets["windows_nvidia_portable"]}; RTX 5070/5080/5090 users should also consider the RTX 50 CUDA build.',
+                f'Existing Windows portable users can usually upgrade with {assets["windows_core_update"]} by extracting it over the old folder, without redownloading weights, engines, or user data.',
+            ],
+            'download_heading': 'Download Guide',
+            'download_headers': ('Your computer', 'Download this'),
+            'why_heading': 'Why Update',
+            'why': [
+                'If you often open Fox, Tencent, Yike, or shared kifu records, this build reduces the wait before the winrate curve becomes useful.',
+                'These notes describe only this release instead of repeating older layout, strength-estimation, and packaging changes.',
+                'The release flow still uses GitHub Actions packaging checks and release notes generated from real uploaded assets.',
+            ],
+            'contact_heading': 'Contact',
+            'contact': ['QQ group: `299419120`'],
+        },
+        {
+            'language': '日本語',
+            'labels': 'ja',
+            'intro': 'このリリースは、棋譜読み込み後の勝率曲線の反応速度に焦点を当てています。野狐、Tencent、共有棋譜、弈客 SGF を開いた後、前の棋譜のクイック分析キューに引きずられず、より早く曲線が使える状態になります。',
+            'updates_heading': '本版主要更新',
+            'updates': [
+                '野狐、Tencent、共有棋譜、弈客 SGF を読み込んだ後の勝率曲線の立ち上がりを高速化しました。自動クイック分析が有効な場合は専用 KataGo 分析エンジンを事前に温め、連続レビューでの cold start 待ちを減らします。',
+                '新しい棋譜を開く前に古いクイック分析キューを整理し、前の棋譜の待ち行列が現在の棋譜を遅らせないようにしました。',
+                '勝率グラフのヒット判定と同期診断のパス処理を強化し、複雑なパスや特殊なファイル名での例外を減らしました。',
+                '多言語 README に公式サイトへのリンクを追加し、GitHub からプロジェクトホームへ移動しやすくしました。',
+            ],
+            'before_heading': 'ダウンロード前に',
+            'before': [
+                f'推奨バンドルには引き続き KataGo `{katago_version}` と既定モデル `{model_source}` が含まれます。',
+                f'Windows の多くのユーザーは、OpenCL 推奨ポータブル版 {assets["windows_opencl_portable"]} から試してください。',
+                f'NVIDIA ユーザーは {assets["windows_nvidia_portable"]} を選べます。RTX 5070/5080/5090 は RTX 50 CUDA 版も確認してください。',
+                f'既存の Windows portable 版ユーザーは、通常 {assets["windows_core_update"]} を旧フォルダへ上書きするだけで更新でき、重み、エンジン、ユーザーデータを再取得する必要はありません。',
+            ],
+            'download_heading': 'ダウンロード案内',
+            'download_headers': ('環境', 'ダウンロード'),
+            'why_heading': '更新する理由',
+            'why': [
+                '野狐、Tencent、弈客、共有棋譜をよく開く場合、勝率曲線が使えるようになるまでの待ち時間を減らせます。',
+                'この説明は今回の実際の変更だけを書き、過去のレイアウト、棋力評価、パッケージ変更を繰り返しません。',
+                'リリースフローは引き続き GitHub Actions のパッケージ検証と、実アップロード済み asset からの release notes 生成を使います。',
+            ],
+            'contact_heading': '交流',
+            'contact': ['QQ group: `299419120`'],
+        },
+        {
+            'language': '한국어',
+            'labels': 'ko',
+            'intro': '이번 릴리스는 기보를 불러온 뒤 승률 곡선이 더 빨리 쓸 수 있게 되는 데 초점을 맞췄습니다. Fox, Tencent, shared kifu, Yike SGF 를 열 때 이전 기보의 quick-analysis queue 가 현재 기보를 늦추지 않도록 정리합니다.',
+            'updates_heading': '주요 업데이트',
+            'updates': [
+                'Fox, Tencent, shared kifu, Yike SGF 를 불러온 뒤 승률 곡선이 더 빨리 시작됩니다. 자동 quick analysis 가 켜져 있으면 전용 KataGo analysis engine 을 미리 예열해 연속 리뷰에서 반복 cold start 를 줄입니다.',
+                '새 기보를 열기 전에 오래된 quick-analysis queue 를 정리해 이전 기보의 대기 작업이 현재 기보를 늦추지 않게 했습니다.',
+                'Winrate graph hit detection 과 sync diagnostics path handling 을 보강해 복잡한 경로나 특수 파일명에서의 예외 가능성을 줄였습니다.',
+                '다국어 README 에 official website 링크를 추가해 GitHub 문서에서 프로젝트 홈페이지로 더 쉽게 이동할 수 있습니다.',
+            ],
+            'before_heading': '다운로드 전 확인',
+            'before': [
+                f'추천 bundle 은 계속 KataGo `{katago_version}` 와 기본 모델 `{model_source}` 를 포함합니다.',
+                f'대부분의 Windows 사용자는 OpenCL 권장 portable 빌드 {assets["windows_opencl_portable"]} 부터 사용해 보세요.',
+                f'NVIDIA 사용자는 {assets["windows_nvidia_portable"]} 를 선택할 수 있습니다. RTX 5070/5080/5090 사용자는 RTX 50 CUDA 빌드도 확인해 주세요.',
+                f'기존 Windows portable 사용자는 보통 {assets["windows_core_update"]} 를 기존 폴더에 덮어쓰면 되고, weight, engine, user data 를 다시 받을 필요가 없습니다.',
+            ],
+            'download_heading': '다운로드 안내',
+            'download_headers': ('사용 환경', '다운로드'),
+            'why_heading': '업데이트할 이유',
+            'why': [
+                'Fox, Tencent, Yike, shared kifu 를 자주 여는 경우 승률 곡선을 기다리는 시간이 줄어듭니다.',
+                '이번 설명은 이번 릴리스의 실제 변경만 다루며, 이전 layout, strength-estimation, packaging 변경을 반복하지 않습니다.',
+                '릴리스 흐름은 계속 GitHub Actions packaging check 와 실제 업로드 asset 기반 release notes 생성을 사용합니다.',
+            ],
+            'contact_heading': 'Contact',
+            'contact': ['QQ group: `299419120`'],
+        },
+        {
+            'language': 'ภาษาไทย',
+            'labels': 'th',
+            'intro': 'รุ่นนี้เน้นให้กราฟ winrate ตอบสนองเร็วขึ้นหลังโหลด kifu จาก Fox, Tencent, shared kifu และ Yike SGF โดยไม่ให้คิว quick-analysis จากเกมก่อนหน้ามาถ่วงเกมปัจจุบัน',
+            'updates_heading': 'รายการอัปเดตหลัก',
+            'updates': [
+                'กราฟ winrate เริ่มทำงานเร็วขึ้นหลังโหลด SGF จาก Fox, Tencent, shared kifu และ Yike เมื่อเปิด automatic quick analysis โปรแกรมจะ prewarm KataGo analysis engine เฉพาะ เพื่อลดการรอ cold start ซ้ำระหว่างเปิดหลาย kifu ต่อเนื่อง',
+                'ก่อนเปิด kifu ใหม่ โปรแกรมจะล้าง quick-analysis queue เก่า เพื่อลดการหน่วงจากงานวิเคราะห์ของเกมก่อนหน้า',
+                'เสริมความเสถียรของ winrate graph hit detection และ sync diagnostics path handling สำหรับ path ซับซ้อนหรือชื่อไฟล์พิเศษ',
+                'README หลายภาษาเพิ่มลิงก์ official website เพื่อให้ผู้ใช้จาก GitHub เข้า project homepage ได้ตรงขึ้น',
+            ],
+            'before_heading': 'อ่านก่อนดาวน์โหลด',
+            'before': [
+                f'แพ็กเกจแนะนำยังรวม KataGo `{katago_version}` และ model เริ่มต้น `{model_source}`',
+                f'ผู้ใช้ Windows ส่วนใหญ่ควรเริ่มจาก {assets["windows_opencl_portable"]} ซึ่งเป็น OpenCL portable build ที่แนะนำ',
+                f'ผู้ใช้ NVIDIA เลือก {assets["windows_nvidia_portable"]} ได้ ส่วน RTX 5070/5080/5090 ควรดู RTX 50 CUDA build ด้วย',
+                f'ผู้ใช้ Windows portable เดิมมักอัปเดตได้ด้วย {assets["windows_core_update"]} โดยแตกไฟล์ทับโฟลเดอร์เก่า ไม่ต้องดาวน์โหลด weight, engine หรือ user data ใหม่',
+            ],
+            'download_heading': 'คำแนะนำดาวน์โหลด',
+            'download_headers': ('คอมพิวเตอร์ของคุณ', 'ดาวน์โหลดไฟล์นี้'),
+            'why_heading': 'ทำไมควรอัปเดต',
+            'why': [
+                'ถ้าคุณเปิด kifu จาก Fox, Tencent, Yike หรือ shared kifu บ่อย รุ่นนี้ช่วยลดเวลารอจนกราฟ winrate ใช้งานได้',
+                'release notes นี้เขียนเฉพาะสิ่งที่เปลี่ยนในรุ่นนี้ ไม่ซ้ำรายละเอียด layout, strength-estimation และ packaging จากรุ่นก่อน',
+                'กระบวนการ release ยังใช้ GitHub Actions ตรวจ package และสร้าง release notes จาก asset ที่อัปโหลดจริง',
+            ],
+            'contact_heading': 'ติดต่อ',
+            'contact': ['QQ group: `299419120`'],
+        },
+    ]
+    sections: list[dict[str, object]] = []
+    for block in blocks:
+        localized_assets = assets_cn if block['labels'] in ('zh', 'zh_hant') else assets
+        sections.append(
+            {
+                'language': block['language'],
+                'intro': block['intro'],
+                'updates': {'heading': block['updates_heading'], 'items': block['updates']},
+                'before': {'heading': block['before_heading'], 'items': block['before']},
+                'download': {
+                    'heading': block['download_heading'],
+                    'headers': block['download_headers'],
+                    'rows': standard_download_rows(
+                        STANDARD_DOWNLOAD_LABELS[block['labels']],
+                        localized_assets,
+                    ),
+                },
+                'why': {'heading': block['why_heading'], 'items': block['why']},
+                'contact': {'heading': block['contact_heading'], 'items': block['contact']},
+            }
+        )
+    add_nvidia50_download_rows(sections, assets_cn, assets)
+    add_tensorrt_split_download_row(sections, assets_cn, assets, asset_map)
+    remove_windows_core_update_auto_notes(sections)
+    validate_release_sections(sections)
+    return release_heading(release_tag) + '\n\n' + '\n\n---\n\n'.join(
+        render_language_section(section) for section in sections
+    ) + '\n'
+
+
+def build_next_2026_06_21_1_notes(
+    asset_map: dict[str, str | None],
+    bundle: dict[str, str],
+    repo: str,
+    release_tag: str | None,
+) -> str:
+    notes = build_next_2026_06_20_1_clean_notes(asset_map, bundle, repo, release_tag)
+    replacements = {
+        '这一版聚焦棋谱加载后的胜率曲线响应速度。野狐、腾讯、共享棋谱和弈客 SGF 打开后，曲线应该更快进入可用状态，不再把上一盘棋的排队任务带到当前棋谱里。':
+            '这一版实际包含上一版之后合并的多项用户反馈修复：棋力评估、悬停变化图、Windows 小更新、野狐让子贴目、显示菜单、非 19 路棋盘和 TensorRT 发布链接都做了整理。',
+        '加载野狐、腾讯、共享棋谱和弈客 SGF 后，胜率曲线启动更快；启用自动快速分析时会预热专用 KataGo 分析引擎，连续看谱减少重复冷启动等待。':
+            '棋力评估修复好手率显示，统一落子等级定义，并新增、打磨“发挥水准分布图”。',
+        '打开新棋谱前会清理旧的快速分析队列，避免上一盘棋的排队任务拖慢当前棋谱。':
+            '修复“鼠标悬停显示变化图但不刷新”设置不生效的问题，并整理显示菜单，把布局模式收进子菜单、支持再次点击主菜单收回。',
+        '加固胜率图命中判断和同步诊断路径处理，减少复杂路径或特殊文件名带来的异常。':
+            'Windows 小更新包会刷新启动器配置，覆盖升级后标题栏和启动入口能同步到新版本。',
+        '多语言 README 补充官方网站入口，用户从 GitHub 文档可以更直接找到项目主页。':
+            '修复野狐让子棋谱贴目读取与归一化；同时非 19 路棋盘切换引擎/模型不再清空棋局，KataGo 一键设置底部按钮和 TensorRT 分卷链接也做了整理。',
+        '如果你经常打开野狐、腾讯、弈客或共享棋谱，这一版能减少等待胜率曲线补齐时的卡顿感。':
+            '如果你会下 9 路、13 路等非 19 路棋盘，或者经常用棋力评估、野狐棋谱、小更新包和悬停变化图，这一版都值得更新。',
+
+        '這一版聚焦棋譜載入後的勝率曲線反應速度。野狐、騰訊、共享棋譜和弈客 SGF 打開後，曲線應該更快進入可用狀態，不再把上一盤棋的排隊任務帶到目前棋譜裡。':
+            '這一版實際包含上一版之後合併的多項使用者回報修復：棋力評估、滑鼠懸停變化圖、Windows 小更新、野狐讓子貼目、顯示選單、非 19 路棋盤和 TensorRT 發布連結都做了整理。',
+        '載入野狐、騰訊、共享棋譜和弈客 SGF 後，勝率曲線啟動更快；啟用自動快速分析時會預熱專用 KataGo 分析引擎，連續看譜可減少重複冷啟動等待。':
+            '棋力評估修復好手率顯示，統一落子等級定義，並新增、打磨「發揮水準分布圖」。',
+        '開啟新棋譜前會清理舊的快速分析佇列，避免上一盤棋的排隊任務拖慢目前棋譜。':
+            '修復「滑鼠懸停顯示變化圖但不刷新」設定不生效的問題，並整理顯示選單，把布局模式收進子選單、支援再次點擊主選單收回。',
+        '加固勝率圖命中判斷和同步診斷路徑處理，減少複雜路徑或特殊檔名造成的異常。':
+            'Windows 小更新包會刷新啟動器設定，覆蓋升級後標題列和啟動入口能同步到新版本。',
+        '多語言 README 補充官方網站入口，使用者從 GitHub 文件可以更直接找到專案首頁。':
+            '修復野狐讓子棋譜貼目讀取與正規化；同時非 19 路棋盤切換引擎/模型不再清空棋局，KataGo 一鍵設定底部按鈕和 TensorRT 分卷連結也做了整理。',
+        '如果你經常打開野狐、騰訊、弈客或共享棋譜，這一版能減少等待勝率曲線補齊時的卡頓感。':
+            '如果你會下 9 路、13 路等非 19 路棋盤，或常用棋力評估、野狐棋譜、小更新包和懸停變化圖，這一版都值得更新。',
+
+        'This release focuses on winrate-curve responsiveness after loading kifu. Fox, Tencent, shared-kifu, and Yike SGF records should become useful faster, without stale quick-analysis work from the previous game slowing down the current one.':
+            'This release actually includes several user-facing fixes merged after the previous build: strength evaluation, hover variation previews, Windows core updates, Fox handicap komi, display-menu layout, non-19 boards, and TensorRT release links.',
+        'Winrate curves now start faster after loading Fox, Tencent, shared-kifu, and Yike SGF records. When automatic quick analysis is enabled, a dedicated KataGo analysis engine is prewarmed to reduce repeated cold starts during consecutive reviews.':
+            'Player strength evaluation now fixes the displayed good-move rate, unifies move-rank definitions, and adds a polished performance-distribution chart.',
+        'Opening a new kifu now clears stale queued quick-analysis work before starting the current game.':
+            'The “hover variation preview without refreshing” option works again, and the Display menu was compacted by moving layout modes into a submenu while allowing the main menu to close on a second click.',
+        'Winrate-graph hit detection and sync-diagnostics path handling were hardened for complex paths and special filenames.':
+            'Windows core updates now refresh launcher configuration so the title bar and launcher entry show the new version after an overwrite upgrade.',
+        'The multilingual README files now link the official website so users can reach the project homepage more directly from GitHub.':
+            'Fox handicap SGF komi loading and normalization were fixed; non-19 board engine/model switches no longer clear the game, and KataGo Auto Setup bottom buttons plus TensorRT split links were polished.',
+        'If you often open Fox, Tencent, Yike, or shared kifu records, this build reduces the wait before the winrate curve becomes useful.':
+            'If you use 9x9, 13x13, strength evaluation, Fox records, core updates, or hover variation previews, this build is worth taking.',
+
+        'このリリースは、棋譜読み込み後の勝率曲線の反応速度に焦点を当てています。野狐、Tencent、共有棋譜、弈客 SGF を開いた後、前の棋譜のクイック分析キューに引きずられず、より早く曲線が使える状態になります。':
+            'このリリースには、前回ビルド後に merged された複数のユーザー向け修正が含まれます。棋力評価、hover variation preview、Windows core update、Fox handicap komi、表示メニュー、19 路以外の盤、TensorRT release links を整理しました。',
+        '野狐、Tencent、共有棋譜、弈客 SGF を読み込んだ後の勝率曲線の立ち上がりを高速化しました。自動クイック分析が有効な場合は専用 KataGo 分析エンジンを事前に温め、連続レビューでの cold start 待ちを減らします。':
+            '棋力評価では good move rate の表示を修正し、move-rank 定義を統一し、performance distribution chart を追加・調整しました。',
+        '新しい棋譜を開く前に古いクイック分析キューを整理し、前の棋譜の待ち行列が現在の棋譜を遅らせないようにしました。':
+            '「hover variation preview を表示しても更新しない」設定が再び効くようになり、表示メニューでは layout mode を submenu にまとめ、main menu を再クリックで閉じられるようにしました。',
+        '勝率グラフのヒット判定と同期診断のパス処理を強化し、複雑なパスや特殊なファイル名での例外を減らしました。':
+            'Windows core update が launcher configuration を更新し、上書き更新後も title bar と launcher entry が新しい version を表示します。',
+        '多言語 README に公式サイトへのリンクを追加し、GitHub からプロジェクトホームへ移動しやすくしました。':
+            'Fox handicap SGF の komi 読み込みと normalization を修正しました。19 路以外の盤で engine/model を切り替えても棋局を消さず、KataGo 自動設定の下部ボタンと TensorRT 分割リンクも整理しました。',
+        '野狐、Tencent、弈客、共有棋譜をよく開く場合、勝率曲線が使えるようになるまでの待ち時間を減らせます。':
+            '9 路、13 路、棋力評価、Fox 棋譜、core update、hover variation preview を使う場合、この build は更新する価値があります。',
+
+        '이번 릴리스는 기보를 불러온 뒤 승률 곡선이 더 빨리 쓸 수 있게 되는 데 초점을 맞췄습니다. Fox, Tencent, shared kifu, Yike SGF 를 열 때 이전 기보의 quick-analysis queue 가 현재 기보를 늦추지 않도록 정리합니다.':
+            '이번 릴리스에는 이전 빌드 이후 merge 된 여러 사용자 피드백 수정이 포함됩니다. strength evaluation, hover variation preview, Windows core update, Fox handicap komi, display menu, 19줄이 아닌 보드, TensorRT release link 를 정리했습니다.',
+        'Fox, Tencent, shared kifu, Yike SGF 를 불러온 뒤 승률 곡선이 더 빨리 시작됩니다. 자동 quick analysis 가 켜져 있으면 전용 KataGo analysis engine 을 미리 예열해 연속 리뷰에서 반복 cold start 를 줄입니다.':
+            'Player strength evaluation 에서 표시되는 good-move rate 를 수정하고, move-rank 정의를 통일했으며, performance-distribution chart 를 추가하고 다듬었습니다.',
+        '새 기보를 열기 전에 오래된 quick-analysis queue 를 정리해 이전 기보의 대기 작업이 현재 기보를 늦추지 않게 했습니다.':
+            '“hover variation preview without refreshing” 옵션이 다시 동작하며, Display menu 는 layout mode 를 submenu 로 정리하고 main menu 를 다시 클릭해 닫을 수 있게 했습니다.',
+        'Winrate graph hit detection 과 sync diagnostics path handling 을 보강해 복잡한 경로나 특수 파일명에서의 예외 가능성을 줄였습니다.':
+            'Windows core update 가 launcher configuration 을 갱신해 overwrite upgrade 뒤 title bar 와 launcher entry 가 새 version 을 표시합니다.',
+        '다국어 README 에 official website 링크를 추가해 GitHub 문서에서 프로젝트 홈페이지로 더 쉽게 이동할 수 있습니다.':
+            'Fox handicap SGF 의 komi loading 과 normalization 을 수정했습니다. 19줄이 아닌 보드에서 engine/model switch 가 대국을 지우지 않고, KataGo Auto Setup 하단 버튼과 TensorRT split link 도 정리했습니다.',
+        'Fox, Tencent, Yike, shared kifu 를 자주 여는 경우 승률 곡선을 기다리는 시간이 줄어듭니다.':
+            '9x9, 13x13, strength evaluation, Fox records, core update, hover variation preview 를 쓰는 사용자에게 업데이트 가치가 큰 build 입니다.',
+
+        'รุ่นนี้เน้นให้กราฟ winrate ตอบสนองเร็วขึ้นหลังโหลด kifu จาก Fox, Tencent, shared kifu และ Yike SGF โดยไม่ให้คิว quick-analysis จากเกมก่อนหน้ามาถ่วงเกมปัจจุบัน':
+            'รุ่นนี้รวมการแก้ไขจาก PR หลายรายการหลังรุ่นก่อนหน้า: strength evaluation, hover variation preview, Windows core update, Fox handicap komi, display menu, board ที่ไม่ใช่ 19x19 และลิงก์ TensorRT release',
+        'กราฟ winrate เริ่มทำงานเร็วขึ้นหลังโหลด SGF จาก Fox, Tencent, shared kifu และ Yike เมื่อเปิด automatic quick analysis โปรแกรมจะ prewarm KataGo analysis engine เฉพาะ เพื่อลดการรอ cold start ซ้ำระหว่างเปิดหลาย kifu ต่อเนื่อง':
+            'Player strength evaluation แก้การแสดง good-move rate, รวมมาตรฐาน move-rank และเพิ่ม performance-distribution chart ที่ดูเรียบร้อยขึ้น',
+        'ก่อนเปิด kifu ใหม่ โปรแกรมจะล้าง quick-analysis queue เก่า เพื่อลดการหน่วงจากงานวิเคราะห์ของเกมก่อนหน้า':
+            'ตัวเลือก “hover variation preview without refreshing” กลับมาทำงานถูกต้อง และ Display menu ถูกจัดให้สั้นลงโดยย้าย layout mode ไปไว้ใน submenu พร้อมปิด main menu ได้เมื่อคลิกซ้ำ',
+        'เสริมความเสถียรของ winrate graph hit detection และ sync diagnostics path handling สำหรับ path ซับซ้อนหรือชื่อไฟล์พิเศษ':
+            'Windows core update จะ refresh launcher configuration ทำให้ title bar และ launcher entry แสดง version ใหม่หลัง overwrite upgrade',
+        'README หลายภาษาเพิ่มลิงก์ official website เพื่อให้ผู้ใช้จาก GitHub เข้า project homepage ได้ตรงขึ้น':
+            'แก้การโหลดและ normalize komi ของ Fox handicap SGF; การเปลี่ยน engine/model บน board ที่ไม่ใช่ 19x19 จะไม่ล้างเกม และปรับปุ่มล่างของ KataGo Auto Setup กับลิงก์ TensorRT split ให้เรียบร้อยขึ้น',
+        'ถ้าคุณเปิด kifu จาก Fox, Tencent, Yike หรือ shared kifu บ่อย รุ่นนี้ช่วยลดเวลารอจนกราฟ winrate ใช้งานได้':
+            'ถ้าคุณใช้ 9x9, 13x13, strength evaluation, Fox records, core update หรือ hover variation preview รุ่นนี้คุ้มค่าที่จะอัปเดต',
+        '这一版只写本次实际变化，不再重复上一版布局、棋力评估和打包体系等旧内容。':
+            '这一版只写上一版之后新合并的改动，不再重复更早版本已经介绍过的内容。',
+        '這一版只寫本次實際變化，不再重複上一版版面、棋力評估和打包體系等舊內容。':
+            '這一版只寫上一版之後新合併的改動，不再重複更早版本已經介紹過的內容。',
+        'These notes describe only this release instead of repeating older layout, strength-estimation, and packaging changes.':
+            'These notes describe the changes newly merged after the previous release, without repeating older release highlights.',
+        'この説明は今回の実際の変更だけを書き、過去のレイアウト、棋力評価、パッケージ変更を繰り返しません。':
+            'この説明は前回リリース後に新しく merged された変更に絞り、より古いリリース内容は繰り返しません。',
+        '이번 설명은 이번 릴리스의 실제 변경만 다루며, 이전 layout, strength-estimation, packaging 변경을 반복하지 않습니다.':
+            '이번 설명은 이전 릴리스 이후 새로 merge 된 변경에 집중하며, 더 오래된 릴리스 내용은 반복하지 않습니다.',
+        'release notes นี้เขียนเฉพาะสิ่งที่เปลี่ยนในรุ่นนี้ ไม่ซ้ำรายละเอียด layout, strength-estimation และ packaging จากรุ่นก่อน':
+            'release notes นี้เน้นการเปลี่ยนแปลงที่ merge หลัง release ก่อนหน้า และไม่ซ้ำรายละเอียดของ release ที่เก่ากว่า',
+    }
+    for old, new in replacements.items():
+        notes = notes.replace(old, new)
+    return notes
+
+
+def build_next_2026_06_21_2_notes(
+    asset_map: dict[str, str | None],
+    bundle: dict[str, str],
+    repo: str,
+    release_tag: str | None,
+) -> str:
+    notes = build_next_2026_06_21_1_notes(asset_map, bundle, repo, release_tag)
+    replacements = {
+        '这一版实际包含上一版之后合并的多项用户反馈修复：棋力评估、悬停变化图、Windows 小更新、野狐让子贴目、显示菜单、非 19 路棋盘和 TensorRT 发布链接都做了整理。':
+            '这一版是棋力评估小修复版，重点处理 @semanym 贡献的 PR #77：吻合度页面的命中图和鼠标悬停说明现在会正确区分一选、好手和局面复杂度。',
+        '棋力评估修复好手率显示，统一落子等级定义，并新增、打磨“发挥水准分布图”。':
+            '修复棋力评估“吻合度”页：好手行 hover 不再误用一选/好手状态，一选命中会同时显示在一选行和好手行。',
+        '修复“鼠标悬停显示变化图但不刷新”设置不生效的问题，并整理显示菜单，把布局模式收进子菜单、支持再次点击主菜单收回。':
+            '鼠标悬停提示中的局面复杂度改为 0-100 的用户可读数值，详细数据里的段位标签更紧凑。',
+        'Windows 小更新包会刷新启动器配置，覆盖升级后标题栏和启动入口能同步到新版本。':
+            '补充 `LizzieFrameRegressionTest` 回归测试，覆盖一选/好手命中标签和复杂度显示。',
+        '修复野狐让子棋谱贴目读取与归一化；同时非 19 路棋盘切换引擎/模型不再清空棋局，KataGo 一键设置底部按钮和 TensorRT 分卷链接也做了整理。':
+            '感谢 @semanym 提交并推进这个修复。',
+        '如果你会下 9 路、13 路等非 19 路棋盘，或者经常用棋力评估、野狐棋谱、小更新包和悬停变化图，这一版都值得更新。':
+            '如果你会用棋力评估复盘，这一版能让“吻合度”命中图和鼠标悬停说明更可信、更容易理解。',
+        '这一版只写上一版之后新合并的改动，不再重复更早版本已经介绍过的内容。':
+            '这一版只写上一版之后新合并的 PR #77，不再重复更早版本已经介绍过的内容。',
+
+        '這一版實際包含上一版之後合併的多項使用者回報修復：棋力評估、滑鼠懸停變化圖、Windows 小更新、野狐讓子貼目、顯示選單、非 19 路棋盤和 TensorRT 發布連結都做了整理。':
+            '這一版是棋力評估小修復版，重點處理 @semanym 貢獻的 PR #77：吻合度頁面的命中圖和滑鼠懸停說明現在會正確區分一選、好手和局面複雜度。',
+        '棋力評估修復好手率顯示，統一落子等級定義，並新增、打磨「發揮水準分布圖」。':
+            '修復棋力評估「吻合度」頁：好手列 hover 不再誤用一選/好手狀態，一選命中會同時顯示在一選列和好手列。',
+        '修復「滑鼠懸停顯示變化圖但不刷新」設定不生效的問題，並整理顯示選單，把布局模式收進子選單、支援再次點擊主選單收回。':
+            '滑鼠懸停提示中的局面複雜度改為 0-100 的使用者可讀數值，詳細資料裡的段位標籤更緊湊。',
+        'Windows 小更新包會刷新啟動器設定，覆蓋升級後標題列和啟動入口能同步到新版本。':
+            '補充 `LizzieFrameRegressionTest` 回歸測試，覆蓋一選/好手命中標籤和複雜度顯示。',
+        '修復野狐讓子棋譜貼目讀取與正規化；同時非 19 路棋盤切換引擎/模型不再清空棋局，KataGo 一鍵設定底部按鈕和 TensorRT 分卷連結也做了整理。':
+            '感謝 @semanym 提交並推進這個修復。',
+        '如果你會下 9 路、13 路等非 19 路棋盤，或常用棋力評估、野狐棋譜、小更新包和懸停變化圖，這一版都值得更新。':
+            '如果你會用棋力評估復盤，這一版能讓「吻合度」命中圖和滑鼠懸停說明更可信、更容易理解。',
+        '這一版只寫上一版之後新合併的改動，不再重複更早版本已經介紹過的內容。':
+            '這一版只寫上一版之後新合併的 PR #77，不再重複更早版本已經介紹過的內容。',
+
+        'This release actually includes several user-facing fixes merged after the previous build: strength evaluation, hover variation previews, Windows core updates, Fox handicap komi, display-menu layout, non-19 boards, and TensorRT release links.':
+            'This is a focused strength-evaluation fix release for PR #77 by @semanym: the match chart and hover labels now distinguish first-choice hits, good moves, and position complexity correctly.',
+        'Player strength evaluation now fixes the displayed good-move rate, unifies move-rank definitions, and adds a polished performance-distribution chart.':
+            'The Player Strength “Match” tab no longer mixes first-choice and good-move hover states; first-choice hits are shown consistently in both the first-choice and good-move rows.',
+        'The “hover variation preview without refreshing” option works again, and the Display menu was compacted by moving layout modes into a submenu while allowing the main menu to close on a second click.':
+            'Hover tooltips now show position complexity as a user-readable 0-100 value, and detailed-data rank labels are more compact.',
+        'Windows core updates now refresh launcher configuration so the title bar and launcher entry show the new version after an overwrite upgrade.':
+            '`LizzieFrameRegressionTest` now covers first-choice/good-move hit labels and complexity display regressions.',
+        'Fox handicap SGF komi loading and normalization were fixed; non-19 board engine/model switches no longer clear the game, and KataGo Auto Setup bottom buttons plus TensorRT split links were polished.':
+            'Thanks to @semanym for contributing and driving this fix.',
+        'If you use 9x9, 13x13, strength evaluation, Fox records, core updates, or hover variation previews, this build is worth taking.':
+            'If you use Player Strength evaluation during reviews, this build makes the match chart and hover explanations more trustworthy and easier to read.',
+        'These notes describe the changes newly merged after the previous release, without repeating older release highlights.':
+            'These notes only cover PR #77, newly merged after the previous release, without repeating older release highlights.',
+
+        'このリリースには、前回ビルド後に merged された複数のユーザー向け修正が含まれます。棋力評価、hover variation preview、Windows core update、Fox handicap komi、表示メニュー、19 路以外の盤、TensorRT release links を整理しました。':
+            'このリリースは、@semanym による PR #77 を中心とした棋力評価の小修正版です。吻合度ページの命中図と hover 表示が、一選、好手、局面複雑度を正しく区別するようになりました。',
+        '棋力評価では good move rate の表示を修正し、move-rank 定義を統一し、performance distribution chart を追加・調整しました。':
+            '棋力評価の「吻合度」タブで、good move 行の hover が一選/好手状態を取り違えないよう修正しました。一選命中は一選行と好手行の両方に一貫して表示されます。',
+        '「hover variation preview を表示しても更新しない」設定が再び効くようになり、表示メニューでは layout mode を submenu にまとめ、main menu を再クリックで閉じられるようにしました。':
+            'hover tooltip の局面複雑度を 0-100 の読みやすい値にし、詳細データの段位ラベルもよりコンパクトにしました。',
+        'Windows core update が launcher configuration を更新し、上書き更新後も title bar と launcher entry が新しい version を表示します。':
+            '`LizzieFrameRegressionTest` に、一選/好手命中ラベルと複雑度表示の回帰テストを追加しました。',
+        'Fox handicap SGF の komi 読み込みと normalization を修正しました。19 路以外の盤で engine/model を切り替えても棋局を消さず、KataGo 自動設定の下部ボタンと TensorRT 分割リンクも整理しました。':
+            'この修正を貢献して進めてくれた @semanym に感謝します。',
+        '9 路、13 路、棋力評価、Fox 棋譜、core update、hover variation preview を使う場合、この build は更新する価値があります。':
+            '棋力評価をレビューに使う場合、この build で吻合度の命中図と hover 説明がより信頼しやすく、読みやすくなります。',
+        'この説明は前回リリース後に新しく merged された変更に絞り、より古いリリース内容は繰り返しません。':
+            'この説明は前回リリース後に新しく merged された PR #77 に絞り、より古いリリース内容は繰り返しません。',
+
+        '이번 릴리스에는 이전 빌드 이후 merge 된 여러 사용자 피드백 수정이 포함됩니다. strength evaluation, hover variation preview, Windows core update, Fox handicap komi, display menu, 19줄이 아닌 보드, TensorRT release link 를 정리했습니다.':
+            '이번 릴리스는 @semanym 이 기여한 PR #77 중심의 strength evaluation 소규모 수정 버전입니다. Match chart 와 hover label 이 first-choice hit, good move, position complexity 를 올바르게 구분합니다.',
+        'Player strength evaluation 에서 표시되는 good-move rate 를 수정하고, move-rank 정의를 통일했으며, performance-distribution chart 를 추가하고 다듬었습니다.':
+            'Player Strength “Match” 탭에서 good-move 행 hover 가 first-choice/good-move 상태를 잘못 섞지 않도록 수정했습니다. first-choice hit 는 first-choice 행과 good-move 행 모두에 일관되게 표시됩니다.',
+        '“hover variation preview without refreshing” 옵션이 다시 동작하며, Display menu 는 layout mode 를 submenu 로 정리하고 main menu 를 다시 클릭해 닫을 수 있게 했습니다.':
+            'Hover tooltip 의 position complexity 를 사용자가 읽기 쉬운 0-100 값으로 표시하고, detailed-data rank label 도 더 compact 하게 정리했습니다.',
+        'Windows core update 가 launcher configuration 을 갱신해 overwrite upgrade 뒤 title bar 와 launcher entry 가 새 version 을 표시합니다.':
+            '`LizzieFrameRegressionTest` 가 first-choice/good-move hit label 과 complexity display 회귀를 함께 커버합니다.',
+        'Fox handicap SGF 의 komi loading 과 normalization 을 수정했습니다. 19줄이 아닌 보드에서 engine/model switch 가 대국을 지우지 않고, KataGo Auto Setup 하단 버튼과 TensorRT split link 도 정리했습니다.':
+            '이 수정에 기여하고 진행해 준 @semanym 에게 감사합니다.',
+        '9x9, 13x13, strength evaluation, Fox records, core update, hover variation preview 를 쓰는 사용자에게 업데이트 가치가 큰 build 입니다.':
+            'Player Strength evaluation 을 리뷰에 사용한다면, 이번 build 에서 match chart 와 hover explanation 이 더 믿기 쉽고 읽기 쉬워집니다.',
+        '이번 설명은 이전 릴리스 이후 새로 merge 된 변경에 집중하며, 더 오래된 릴리스 내용은 반복하지 않습니다.':
+            '이번 설명은 이전 릴리스 이후 새로 merge 된 PR #77 에 집중하며, 더 오래된 릴리스 내용은 반복하지 않습니다.',
+
+        'รุ่นนี้รวมการแก้ไขจาก PR หลายรายการหลังรุ่นก่อนหน้า: strength evaluation, hover variation preview, Windows core update, Fox handicap komi, display menu, board ที่ไม่ใช่ 19x19 และลิงก์ TensorRT release':
+            'รุ่นนี้เป็น release แก้ไขเฉพาะส่วน strength evaluation จาก PR #77 ของ @semanym: match chart และ hover label แยก first-choice hit, good move และ position complexity ได้ถูกต้องขึ้น',
+        'Player strength evaluation แก้การแสดง good-move rate, รวมมาตรฐาน move-rank และเพิ่ม performance-distribution chart ที่ดูเรียบร้อยขึ้น':
+            'แท็บ “Match” ใน Player Strength ไม่สลับสถานะ hover ระหว่าง first-choice และ good-move อีกต่อไป โดย first-choice hit จะแสดงสอดคล้องกันทั้งแถว first-choice และ good-move',
+        'ตัวเลือก “hover variation preview without refreshing” กลับมาทำงานถูกต้อง และ Display menu ถูกจัดให้สั้นลงโดยย้าย layout mode ไปไว้ใน submenu พร้อมปิด main menu ได้เมื่อคลิกซ้ำ':
+            'Hover tooltip แสดง position complexity เป็นค่า 0-100 ที่อ่านง่ายขึ้น และ label ระดับใน detailed data กระชับขึ้น',
+        'Windows core update จะ refresh launcher configuration ทำให้ title bar และ launcher entry แสดง version ใหม่หลัง overwrite upgrade':
+            '`LizzieFrameRegressionTest` ครอบคลุม regression ของ first-choice/good-move hit label และ complexity display แล้ว',
+        'แก้การโหลดและ normalize komi ของ Fox handicap SGF; การเปลี่ยน engine/model บน board ที่ไม่ใช่ 19x19 จะไม่ล้างเกม และปรับปุ่มล่างของ KataGo Auto Setup กับลิงก์ TensorRT split ให้เรียบร้อยขึ้น':
+            'ขอบคุณ @semanym ที่ช่วยส่งและผลักดันการแก้ไขนี้',
+        'ถ้าคุณใช้ 9x9, 13x13, strength evaluation, Fox records, core update หรือ hover variation preview รุ่นนี้คุ้มค่าที่จะอัปเดต':
+            'ถ้าคุณใช้ Player Strength evaluation ตอน review เกม รุ่นนี้ทำให้ match chart และ hover explanation น่าเชื่อถือและอ่านง่ายขึ้น',
+        'release notes นี้เน้นการเปลี่ยนแปลงที่ merge หลัง release ก่อนหน้า และไม่ซ้ำรายละเอียดของ release ที่เก่ากว่า':
+            'release notes นี้เน้น PR #77 ที่ merge หลัง release ก่อนหน้า และไม่ซ้ำรายละเอียดของ release ที่เก่ากว่า',
+    }
+    for old, new in replacements.items():
+        notes = notes.replace(old, new)
+    return notes
+
+
+def build_next_2026_06_29_1_notes(
+    asset_map: dict[str, str | None],
+    bundle: dict[str, str],
+    repo: str,
+    release_tag: str | None,
+) -> str:
+    notes = build_next_2026_06_21_2_notes(asset_map, bundle, repo, release_tag)
+    replacements = {
+        '这一版是棋力评估小修复版，重点处理 @semanym 贡献的 PR #77：吻合度页面的命中图和鼠标悬停说明现在会正确区分一选、好手和局面复杂度。':
+            '这一版命名为“首冠版”，纪念开发者女儿首次获得围棋比赛小组冠军。版本同时合并两项新的预览能力：感谢 @qiyi71w 提交 PR #81，ReadBoard 棋盘同步新增可信 GMA 自动落子；同时新增“远程算力中心”，可以登录智子云算力，把云端 KataGo 像本机引擎一样用于分析。',
+        '修复棋力评估“吻合度”页：好手行 hover 不再误用一选/好手状态，一选命中会同时显示在一选行和好手行。':
+            '合并 PR #81：棋盘同步的 `play>... gma` 会使用 KataGo `kata-genmove_analyze` 等待引擎最终决策落子，而不是只取当前一选。',
+        '鼠标悬停提示中的局面复杂度改为 0-100 的用户可读数值，详细数据里的段位标签更紧凑。':
+            'ReadBoard 会根据可信的末手来源和轮次判断启动 GMA，避免启发式来源误判导致错方自动落子，并在 pass、resign、失效请求和点击失败后强制恢复引擎局面。',
+        '补充 `LizzieFrameRegressionTest` 回归测试，覆盖一选/好手命中标签和复杂度显示。':
+            '新增“设置 -> 远程算力中心”：支持智子云算力账号/密码或验证码登录，默认 VIP 包月，也可切换按量档位；主引擎、快速曲线、形势判断等路径统一走远程 GTP 桥接。',
+        '感谢 @semanym 提交并推进这个修复。':
+            '自建算力入口当前只保存连接码，不会伪装成已启用的远程引擎；需要立刻使用远程算力的用户请先使用智子云算力。',
+        '如果你会用棋力评估复盘，这一版能让“吻合度”命中图和鼠标悬停说明更可信、更容易理解。':
+            '如果你经常用 readboard 同步和自动落子，这一版能让“由引擎最终决策落子”的路径更接近真实 KataGo 对局。',
+        '这一版只写上一版之后新合并的 PR #77，不再重复更早版本已经介绍过的内容。':
+            '这一版只写 #81 和 #83 的新增变化，不重复更早版本已经介绍过的内容。',
+
+        '這一版是棋力評估小修復版，重點處理 @semanym 貢獻的 PR #77：吻合度頁面的命中圖和滑鼠懸停說明現在會正確區分一選、好手和局面複雜度。':
+            '這一版命名為「首冠版」，紀念開發者女兒首次獲得圍棋比賽小組冠軍。版本同時合併兩項新的預覽能力：感謝 @qiyi71w 提交 PR #81，ReadBoard 棋盤同步新增可信 GMA 自動落子；同時新增「遠端算力中心」，可以登入智子雲算力，像本機引擎一樣使用雲端 KataGo 分析。',
+        '修復棋力評估「吻合度」頁：好手列 hover 不再誤用一選/好手狀態，一選命中會同時顯示在一選列和好手列。':
+            '合併 PR #81：棋盤同步的 `play>... gma` 會使用 KataGo `kata-genmove_analyze` 等待引擎最終決策落子，而不是只取目前一選。',
+        '滑鼠懸停提示中的局面複雜度改為 0-100 的使用者可讀數值，詳細資料裡的段位標籤更緊湊。':
+            'ReadBoard 會根據可信的末手來源和輪次判斷啟動 GMA，避免啟發式來源誤判導致錯方自動落子，並在 pass、resign、失效請求和點擊失敗後強制恢復引擎局面。',
+        '補充 `LizzieFrameRegressionTest` 回歸測試，覆蓋一選/好手命中標籤和複雜度顯示。':
+            '新增「設定 -> 遠端算力中心」：支援智子雲算力帳號/密碼或驗證碼登入，預設 VIP 包月，也可切換按量檔位；主引擎、快速曲線、形勢判斷等路徑統一走遠端 GTP 橋接。',
+        '感謝 @semanym 提交並推進這個修復。':
+            '自建算力入口目前只保存連接碼，不會偽裝成已啟用的遠端引擎；需要立即使用遠端算力的使用者請先使用智子雲算力。',
+        '如果你會用棋力評估復盤，這一版能讓「吻合度」命中圖和滑鼠懸停說明更可信、更容易理解。':
+            '如果你經常用 readboard 同步和自動落子，這一版能讓「由引擎最終決策落子」的路徑更接近真實 KataGo 對局。',
+        '這一版只寫上一版之後新合併的 PR #77，不再重複更早版本已經介紹過的內容。':
+            '這一版只寫 #81 和 #83 的新增變化，不重複更早版本已經介紹過的內容。',
+
+        'This is a focused strength-evaluation fix release for PR #77 by @semanym: the match chart and hover labels now distinguish first-choice hits, good moves, and position complexity correctly.':
+            'This prerelease is named the First Crown Edition, commemorating the developer’s daughter winning her first group championship in a Go tournament. It also combines two new preview capabilities: thanks to @qiyi71w for PR #81, ReadBoard now supports trusted GMA autoplay, and the new Remote Compute Center can log in to Zhizi cloud compute so cloud KataGo works like a local engine.',
+        'The Player Strength “Match” tab no longer mixes first-choice and good-move hover states; first-choice hits are shown consistently in both the first-choice and good-move rows.':
+            'PR #81 is merged: `play>... gma` now waits for KataGo `kata-genmove_analyze` final decisions instead of simply using the current top candidate.',
+        'Hover tooltips now show position complexity as a user-readable 0-100 value, and detailed-data rank labels are more compact.':
+            'ReadBoard starts GMA only from trusted last-move sources and turns, avoiding wrong-side autoplay from heuristic guesses, and it forces engine-state recovery after pass, resign, stale requests, or failed clicks.',
+        '`LizzieFrameRegressionTest` now covers first-choice/good-move hit labels and complexity display regressions.':
+            'A new Settings -> Remote Compute Center supports Zhizi login by password or verification code, defaults to VIP monthly compute, allows metered tiers, and routes main analysis, quick curves, and score judgment through a unified remote GTP bridge.',
+        'Thanks to @semanym for contributing and driving this fix.':
+            'The self-hosted compute entry currently saves connection codes only and does not pretend to be an enabled remote engine; use Zhizi cloud compute first if you need remote compute immediately.',
+        'If you use Player Strength evaluation during reviews, this build makes the match chart and hover explanations more trustworthy and easier to read.':
+            'If you rely on readboard sync and autoplay, this build makes the “let the engine decide the final move” path much closer to a real KataGo game.',
+        'These notes only cover PR #77, newly merged after the previous release, without repeating older release highlights.':
+            'These notes only cover the newly merged #81 and #83 changes, without repeating older release highlights.',
+
+        'このリリースは、@semanym による PR #77 を中心とした棋力評価の小修正版です。吻合度ページの命中図と hover 表示が、一選、好手、局面複雑度を正しく区別するようになりました。':
+            'この prerelease は「首冠版」と名付けました。開発者の娘が囲碁大会で初めてグループ優勝したことを記念する版です。あわせて 2 つの preview 機能を取り込みました。PR #81 を送ってくれた @qiyi71w さんに感謝します。ReadBoard は信頼済み GMA 自動着手に対応し、新しい「リモート計算センター」では智子クラウド計算にログインして、クラウド KataGo をローカルエンジンのように使えます。',
+        '棋力評価の「吻合度」タブで、good move 行の hover が一選/好手状態を取り違えないよう修正しました。一選命中は一選行と好手行の両方に一貫して表示されます。':
+            'PR #81 を merge しました。棋盤同期の `play>... gma` は、現在の一選をそのまま使うのではなく、KataGo `kata-genmove_analyze` の最終決定を待って着手します。',
+        'hover tooltip の局面複雑度を 0-100 の読みやすい値にし、詳細データの段位ラベルもよりコンパクトにしました。':
+            'ReadBoard は信頼できる最終手ソースと手番から GMA 開始を判断し、推測ソースの誤判定による逆側自動着手を避けます。pass、resign、失効リクエスト、クリック失敗後はエンジン局面を強制復旧します。',
+        '`LizzieFrameRegressionTest` に、一選/好手命中ラベルと複雑度表示の回帰テストを追加しました。':
+            '新しい「設定 -> リモート計算センター」では、智子クラウド計算へパスワードまたは確認コードでログインできます。既定は VIP 月額で、従量 tier にも切り替えられ、主解析、quick curve、形勢判断を統一した remote GTP bridge で扱います。',
+        'この修正を貢献して進めてくれた @semanym に感謝します。':
+            '自建リモート計算の入口は現時点では接続コード保存のみで、有効化済み remote engine のようには見せません。すぐ遠隔計算を使う場合は、まず智子クラウド計算を使ってください。',
+        '棋力評価をレビューに使う場合、この build で吻合度の命中図と hover 説明がより信頼しやすく、読みやすくなります。':
+            'readboard 同期と自動着手をよく使う場合、この build では「エンジンの最終決定で着手する」流れがより実際の KataGo 対局に近くなります。',
+        'この説明は前回リリース後に新しく merged された PR #77 に絞り、より古いリリース内容は繰り返しません。':
+            'この説明は新しく merged された #81 と #83 の変更に絞り、より古いリリース内容は繰り返しません。',
+
+        '이번 릴리스는 @semanym 이 기여한 PR #77 중심의 strength evaluation 소규모 수정 버전입니다. Match chart 와 hover label 이 first-choice hit, good move, position complexity 를 올바르게 구분합니다.':
+            '이번 prerelease 는 “첫 우승 기념판”입니다. 개발자의 딸이 바둑 대회에서 처음으로 조별 우승을 한 것을 기념합니다. 또한 두 가지 preview 기능을 합쳤습니다. PR #81 을 제출한 @qiyi71w 님께 감사드립니다. ReadBoard 는 신뢰된 GMA 자동 착수를 지원하고, 새 Remote Compute Center 는 Zhizi cloud compute 에 로그인해 cloud KataGo 를 로컬 엔진처럼 사용할 수 있게 합니다.',
+        'Player Strength “Match” 탭에서 good-move 행 hover 가 first-choice/good-move 상태를 잘못 섞지 않도록 수정했습니다. first-choice hit 는 first-choice 행과 good-move 행 모두에 일관되게 표시됩니다.':
+            'PR #81 을 merge 했습니다. board sync 의 `play>... gma` 는 현재 top candidate 를 바로 쓰지 않고 KataGo `kata-genmove_analyze` 의 최종 결정을 기다려 착수합니다.',
+        'Hover tooltip 의 position complexity 를 사용자가 읽기 쉬운 0-100 값으로 표시하고, detailed-data rank label 도 더 compact 하게 정리했습니다.':
+            'ReadBoard 는 신뢰 가능한 last-move source 와 turn 으로 GMA 시작을 판단해 heuristic guess 때문에 반대쪽이 자동 착수하는 일을 피하고, pass, resign, stale request, click 실패 뒤에는 engine state 를 강제로 복구합니다.',
+        '`LizzieFrameRegressionTest` 가 first-choice/good-move hit label 과 complexity display 회귀를 함께 커버합니다.':
+            '새 Settings -> Remote Compute Center 는 Zhizi password 또는 verification code login 을 지원하고, 기본은 VIP monthly compute 이며 metered tier 로도 전환할 수 있습니다. main analysis, quick curve, score judgment 는 unified remote GTP bridge 를 사용합니다.',
+        '이 수정에 기여하고 진행해 준 @semanym 에게 감사합니다.':
+            'Self-hosted compute entry 는 현재 connection code 만 저장하며 enabled remote engine 처럼 보이게 하지 않습니다. 바로 remote compute 가 필요하면 먼저 Zhizi cloud compute 를 사용하세요.',
+        'Player Strength evaluation 을 리뷰에 사용한다면, 이번 build 에서 match chart 와 hover explanation 이 더 믿기 쉽고 읽기 쉬워집니다.':
+            'readboard sync 와 autoplay 를 자주 쓴다면, 이번 build 는 “engine final decision 으로 착수”하는 경로를 실제 KataGo 대국에 더 가깝게 만듭니다.',
+        '이번 설명은 이전 릴리스 이후 새로 merge 된 PR #77 에 집중하며, 더 오래된 릴리스 내용은 반복하지 않습니다.':
+            '이번 설명은 새로 merge 된 #81 과 #83 변경만 다루며, 더 오래된 릴리스 내용은 반복하지 않습니다.',
+
+        'รุ่นนี้เป็น release แก้ไขเฉพาะส่วน strength evaluation จาก PR #77 ของ @semanym: match chart และ hover label แยก first-choice hit, good move และ position complexity ได้ถูกต้องขึ้น':
+            'prerelease นี้ใช้ชื่อ First Crown Edition เพื่อฉลองที่ลูกสาวของผู้พัฒนาได้แชมป์กลุ่มครั้งแรกในการแข่งขันโกะ และยังรวมความสามารถ preview ใหม่ 2 อย่าง: ขอบคุณ @qiyi71w สำหรับ PR #81 ที่ทำให้ ReadBoard รองรับ trusted GMA autoplay และเพิ่ม Remote Compute Center สำหรับ login เข้า Zhizi cloud compute เพื่อใช้ cloud KataGo เหมือน engine ในเครื่อง',
+        'แท็บ “Match” ใน Player Strength ไม่สลับสถานะ hover ระหว่าง first-choice และ good-move อีกต่อไป โดย first-choice hit จะแสดงสอดคล้องกันทั้งแถว first-choice และ good-move':
+            'merge PR #81 แล้ว: `play>... gma` ใน board sync จะรอ final decision จาก KataGo `kata-genmove_analyze` แทนการใช้ top candidate ปัจจุบันทันที',
+        'Hover tooltip แสดง position complexity เป็นค่า 0-100 ที่อ่านง่ายขึ้น และ label ระดับใน detailed data กระชับขึ้น':
+            'ReadBoard จะเริ่ม GMA จาก last-move source และ turn ที่เชื่อถือได้เท่านั้น ลด autoplay ผิดฝ่ายจาก heuristic guess และบังคับ restore engine state หลัง pass, resign, stale request หรือ click fail',
+        '`LizzieFrameRegressionTest` ครอบคลุม regression ของ first-choice/good-move hit label และ complexity display แล้ว':
+            'เพิ่ม Settings -> Remote Compute Center: รองรับ Zhizi login ด้วย password หรือ verification code, ค่าเริ่มต้นเป็น VIP monthly compute, เปลี่ยนเป็น metered tier ได้ และใช้ remote GTP bridge เดียวกันกับ main analysis, quick curve และ score judgment',
+        'ขอบคุณ @semanym ที่ช่วยส่งและผลักดันการแก้ไขนี้':
+            'ส่วน self-hosted compute ตอนนี้เก็บเฉพาะ connection code และจะไม่แสดงเหมือน remote engine ที่เปิดใช้งานแล้ว หากต้องใช้ remote compute ทันที แนะนำใช้ Zhizi cloud compute ก่อน',
+        'ถ้าคุณใช้ Player Strength evaluation ตอน review เกม รุ่นนี้ทำให้ match chart และ hover explanation น่าเชื่อถือและอ่านง่ายขึ้น':
+            'ถ้าคุณใช้ readboard sync และ autoplay บ่อย รุ่นนี้ทำให้เส้นทาง “ให้ engine ตัดสิน final move” ใกล้เคียงเกม KataGo จริงมากขึ้น',
+        'release notes นี้เน้น PR #77 ที่ merge หลัง release ก่อนหน้า และไม่ซ้ำรายละเอียดของ release ที่เก่ากว่า':
+            'release notes นี้เน้นการเปลี่ยนแปลง #81 และ #83 ที่ merge ใหม่ และไม่ซ้ำรายละเอียดของ release ที่เก่ากว่า',
+    }
+    for old, new in replacements.items():
+        notes = notes.replace(old, new)
+    return notes
+
+
+def build_next_2026_06_30_1_notes(
+    asset_map: dict[str, str | None],
+    bundle: dict[str, str],
+    repo: str,
+    release_tag: str | None,
+) -> str:
+    notes = build_next_2026_06_29_1_notes(asset_map, bundle, repo, release_tag)
+    replacements = {
+        '这一版命名为“首冠版”，纪念开发者女儿首次获得围棋比赛小组冠军。版本同时合并两项新的预览能力：感谢 @qiyi71w 提交 PR #81，ReadBoard 棋盘同步新增可信 GMA 自动落子；同时新增“远程算力中心”，可以登录智子云算力，把云端 KataGo 像本机引擎一样用于分析。':
+            '这一版聚焦远程算力入口和配置体验：底部工具栏把重复的野狐棋谱按钮替换为远程算力，保留顶部野狐入口；智子云算力和自建算力也整理成更清楚的一键启用流程。',
+        '合并 PR #81：棋盘同步的 `play>... gma` 会使用 KataGo `kata-genmove_analyze` 等待引擎最终决策落子，而不是只取当前一选。':
+            '底部工具栏现在显示“远程算力”，点击即可打开远程算力中心；顶部“野狐棋谱 / 腾讯棋谱 / 棋力评估”入口保持不变。',
+        'ReadBoard 会根据可信的末手来源和轮次判断启动 GMA，避免启发式来源误判导致错方自动落子，并在 pass、resign、失效请求和点击失败后强制恢复引擎局面。':
+            '智子云算力登录后会隐藏多余输入状态，支持显示密码、记住密码/登录，并在已启用时禁用重复启用按钮。',
+        '新增“设置 -> 远程算力中心”：支持智子云算力账号/密码或验证码登录，默认 VIP 包月，也可切换按量档位；主引擎、快速曲线、形势判断等路径统一走远程 GTP 桥接。':
+            '智子配置页增加官网与充值提示，可直接打开 `www.zhizigo.cn`；普通用户默认 VIP 包月，高级用户仍可切换按量档位。',
+        '自建算力入口当前只保存连接码，不会伪装成已启用的远程引擎；需要立刻使用远程算力的用户请先使用智子云算力。':
+            '自建算力支持粘贴 KaTrain 兼容的 `ws://` / `wss://` 链接，也支持导入二维码；已启用时按钮显示“已启用自建算力”，避免重复点击。',
+        '如果你经常用 readboard 同步和自动落子，这一版能让“由引擎最终决策落子”的路径更接近真实 KataGo 对局。':
+            '如果你正在测试智子云算力或自建远程算力，这一版入口更容易找、状态更明确，也更不容易误点重复启用。',
+        '这一版只写 #81 和 #83 的新增变化，不重复更早版本已经介绍过的内容。':
+            '这一版只写 PR #85 的远程算力交互变化，不重复更早版本已经介绍过的内容。',
+
+        '這一版命名為「首冠版」，紀念開發者女兒首次獲得圍棋比賽小組冠軍。版本同時合併兩項新的預覽能力：感謝 @qiyi71w 提交 PR #81，ReadBoard 棋盤同步新增可信 GMA 自動落子；同時新增「遠端算力中心」，可以登入智子雲算力，像本機引擎一樣使用雲端 KataGo 分析。':
+            '這一版聚焦遠端算力入口和設定體驗：底部工具列把重複的野狐棋譜按鈕替換為遠端算力，保留頂部野狐入口；智子雲算力和自建算力也整理成更清楚的一鍵啟用流程。',
+        '合併 PR #81：棋盤同步的 `play>... gma` 會使用 KataGo `kata-genmove_analyze` 等待引擎最終決策落子，而不是只取目前一選。':
+            '底部工具列現在顯示「遠端算力」，點擊即可打開遠端算力中心；頂部「野狐棋譜 / 騰訊棋譜 / 棋力評估」入口保持不變。',
+        'ReadBoard 會根據可信的末手來源和輪次判斷啟動 GMA，避免啟發式來源誤判導致錯方自動落子，並在 pass、resign、失效請求和點擊失敗後強制恢復引擎局面。':
+            '智子雲算力登入後會隱藏多餘輸入狀態，支援顯示密碼、記住密碼/登入，並在已啟用時停用重複啟用按鈕。',
+        '新增「設定 -> 遠端算力中心」：支援智子雲算力帳號/密碼或驗證碼登入，預設 VIP 包月，也可切換按量檔位；主引擎、快速曲線、形勢判斷等路徑統一走遠端 GTP 橋接。':
+            '智子設定頁增加官網與儲值提示，可直接打開 `www.zhizigo.cn`；普通使用者預設 VIP 包月，高階使用者仍可切換按量檔位。',
+        '自建算力入口目前只保存連接碼，不會偽裝成已啟用的遠端引擎；需要立即使用遠端算力的使用者請先使用智子雲算力。':
+            '自建算力支援貼上 KaTrain 相容的 `ws://` / `wss://` 連結，也支援匯入 QR code；已啟用時按鈕顯示「已啟用自建算力」，避免重複點擊。',
+        '如果你經常用 readboard 同步和自動落子，這一版能讓「由引擎最終決策落子」的路徑更接近真實 KataGo 對局。':
+            '如果你正在測試智子雲算力或自建遠端算力，這一版入口更容易找、狀態更明確，也更不容易誤點重複啟用。',
+        '這一版只寫 #81 和 #83 的新增變化，不重複更早版本已經介紹過的內容。':
+            '這一版只寫 PR #85 的遠端算力互動變化，不重複更早版本已經介紹過的內容。',
+
+        'This prerelease is named the First Crown Edition, commemorating the developer’s daughter winning her first group championship in a Go tournament. It also combines two new preview capabilities: thanks to @qiyi71w for PR #81, ReadBoard now supports trusted GMA autoplay, and the new Remote Compute Center can log in to Zhizi cloud compute so cloud KataGo works like a local engine.':
+            'This prerelease focuses on the Remote Compute entry and setup flow: the duplicated bottom Fox Kifu button is replaced with Remote Compute while the top Fox shortcut remains, and Zhizi Cloud plus self-hosted compute now use clearer one-click enable flows.',
+        'PR #81 is merged: `play>... gma` now waits for KataGo `kata-genmove_analyze` final decisions instead of simply using the current top candidate.':
+            'The bottom toolbar now shows Remote Compute and opens the Remote Compute Center directly; the top Fox Kifu, Tencent Kifu, and strength-evaluation shortcuts stay in place.',
+        'ReadBoard starts GMA only from trusted last-move sources and turns, avoiding wrong-side autoplay from heuristic guesses, and it forces engine-state recovery after pass, resign, stale requests, or failed clicks.':
+            'After Zhizi Cloud login, redundant account inputs are hidden, password visibility and remember-login/password controls are available, and the enable button is disabled while Zhizi is already active.',
+        'A new Settings -> Remote Compute Center supports Zhizi login by password or verification code, defaults to VIP monthly compute, allows metered tiers, and routes main analysis, quick curves, and score judgment through a unified remote GTP bridge.':
+            'The Zhizi page now includes official website and recharge guidance with a direct `www.zhizigo.cn` link; VIP monthly remains the default while metered tiers stay available for advanced users.',
+        'The self-hosted compute entry currently saves connection codes only and does not pretend to be an enabled remote engine; use Zhizi cloud compute first if you need remote compute immediately.':
+            'Self-hosted compute accepts KaTrain-compatible `ws://` / `wss://` links and QR-code import; once active, the button reads “Self-hosted compute enabled” and cannot be clicked again accidentally.',
+        'If you rely on readboard sync and autoplay, this build makes the “let the engine decide the final move” path much closer to a real KataGo game.':
+            'If you are testing Zhizi Cloud or self-hosted remote compute, this build makes the entry easier to find, the current state clearer, and repeated accidental enables less likely.',
+        'These notes only cover the newly merged #81 and #83 changes, without repeating older release highlights.':
+            'These notes only cover the Remote Compute interaction changes from PR #85, without repeating older release highlights.',
+
+        'この prerelease は「首冠版」と名付けました。開発者の娘が囲碁大会で初めてグループ優勝したことを記念する版です。あわせて 2 つの preview 機能を取り込みました。PR #81 を送ってくれた @qiyi71w さんに感謝します。ReadBoard は信頼済み GMA 自動着手に対応し、新しい「リモート計算センター」では智子クラウド計算にログインして、クラウド KataGo をローカルエンジンのように使えます。':
+            'この prerelease は Remote Compute の入口と設定体験を整えた版です。下部ツールバーの重複した Fox Kifu ボタンを Remote Compute に置き換え、上部の Fox shortcut は残しました。Zhizi Cloud と self-hosted compute も、より分かりやすい one-click enable flow になりました。',
+        'PR #81 を merge しました。棋盤同期の `play>... gma` は、現在の一選をそのまま使うのではなく、KataGo `kata-genmove_analyze` の最終決定を待って着手します。':
+            '下部ツールバーには Remote Compute が表示され、クリックすると Remote Compute Center を直接開きます。上部の Fox Kifu、Tencent Kifu、棋力評価 shortcut はそのままです。',
+        'ReadBoard は信頼できる最終手ソースと手番から GMA 開始を判断し、推測ソースの誤判定による逆側自動着手を避けます。pass、resign、失効リクエスト、クリック失敗後はエンジン局面を強制復旧します。':
+            'Zhizi Cloud ログイン後は余分な account 入力を隠し、password visibility と remember-login/password controls を使えます。既に Zhizi が有効な場合、enable button は無効になります。',
+        '新しい「設定 -> リモート計算センター」では、智子クラウド計算へパスワードまたは確認コードでログインできます。既定は VIP 月額で、従量 tier にも切り替えられ、主解析、quick curve、形勢判断を統一した remote GTP bridge で扱います。':
+            'Zhizi ページには公式サイトと recharge guidance を追加し、`www.zhizigo.cn` を直接開けます。既定は VIP monthly のまま、advanced users は metered tiers に切り替えられます。',
+        '自建リモート計算の入口は現時点では接続コード保存のみで、有効化済み remote engine のようには見せません。すぐ遠隔計算を使う場合は、まず智子クラウド計算を使ってください。':
+            'Self-hosted compute は KaTrain-compatible な `ws://` / `wss://` links と QR-code import に対応しました。有効化済みの場合、button は「Self-hosted compute enabled」となり、誤って再クリックできません。',
+        'readboard 同期と自動着手をよく使う場合、この build では「エンジンの最終決定で着手する」流れがより実際の KataGo 対局に近くなります。':
+            'Zhizi Cloud または self-hosted remote compute を試している場合、この build では入口が見つけやすく、現在状態が分かりやすく、誤って何度も enable しにくくなります。',
+        'この説明は新しく merged された #81 と #83 の変更に絞り、より古いリリース内容は繰り返しません。':
+            'この説明は PR #85 の Remote Compute interaction changes に絞り、より古い release highlights は繰り返しません。',
+
+        '이번 prerelease 는 “첫 우승 기념판”입니다. 개발자의 딸이 바둑 대회에서 처음으로 조별 우승을 한 것을 기념합니다. 또한 두 가지 preview 기능을 합쳤습니다. PR #81 을 제출한 @qiyi71w 님께 감사드립니다. ReadBoard 는 신뢰된 GMA 자동 착수를 지원하고, 새 Remote Compute Center 는 Zhizi cloud compute 에 로그인해 cloud KataGo 를 로컬 엔진처럼 사용할 수 있게 합니다.':
+            '이번 prerelease 는 Remote Compute entry 와 setup flow 를 정리했습니다. 하단 toolbar 의 중복 Fox Kifu 버튼을 Remote Compute 로 바꾸고 상단 Fox shortcut 은 유지했습니다. Zhizi Cloud 와 self-hosted compute 도 더 명확한 one-click enable flow 를 사용합니다.',
+        'PR #81 을 merge 했습니다. board sync 의 `play>... gma` 는 현재 top candidate 를 바로 쓰지 않고 KataGo `kata-genmove_analyze` 의 최종 결정을 기다려 착수합니다.':
+            '하단 toolbar 는 이제 Remote Compute 를 표시하고 Remote Compute Center 를 직접 엽니다. 상단 Fox Kifu, Tencent Kifu, strength-evaluation shortcut 은 그대로 유지됩니다.',
+        'ReadBoard 는 신뢰 가능한 last-move source 와 turn 으로 GMA 시작을 판단해 heuristic guess 때문에 반대쪽이 자동 착수하는 일을 피하고, pass, resign, stale request, click 실패 뒤에는 engine state 를 강제로 복구합니다.':
+            'Zhizi Cloud 로그인 뒤에는 불필요한 account input 을 숨기고, password visibility 와 remember-login/password controls 를 제공합니다. Zhizi 가 이미 active 일 때 enable button 은 disabled 상태가 됩니다.',
+        '새 Settings -> Remote Compute Center 는 Zhizi password 또는 verification code login 을 지원하고, 기본은 VIP monthly compute 이며 metered tier 로도 전환할 수 있습니다. main analysis, quick curve, score judgment 는 unified remote GTP bridge 를 사용합니다.':
+            'Zhizi page 에 official website 와 recharge guidance 를 추가하고 `www.zhizigo.cn` 링크를 바로 열 수 있게 했습니다. 기본값은 VIP monthly 이며 advanced users 는 metered tiers 로 전환할 수 있습니다.',
+        'Self-hosted compute entry 는 현재 connection code 만 저장하며 enabled remote engine 처럼 보이게 하지 않습니다. 바로 remote compute 가 필요하면 먼저 Zhizi cloud compute 를 사용하세요.':
+            'Self-hosted compute 는 KaTrain-compatible `ws://` / `wss://` links 와 QR-code import 를 지원합니다. 이미 active 이면 button 은 “Self-hosted compute enabled” 로 표시되고 실수로 다시 누를 수 없습니다.',
+        'readboard sync 와 autoplay 를 자주 쓴다면, 이번 build 는 “engine final decision 으로 착수”하는 경로를 실제 KataGo 대국에 더 가깝게 만듭니다.':
+            'Zhizi Cloud 또는 self-hosted remote compute 를 테스트한다면, 이번 build 는 entry 를 더 찾기 쉽고 current state 를 더 명확하게 보여 주며 반복 enable 실수를 줄입니다.',
+        '이번 설명은 새로 merge 된 #81 과 #83 변경만 다루며, 더 오래된 릴리스 내용은 반복하지 않습니다.':
+            '이번 설명은 PR #85 의 Remote Compute interaction changes 만 다루며, 더 오래된 release highlights 는 반복하지 않습니다.',
+
+        'prerelease นี้ใช้ชื่อ First Crown Edition เพื่อฉลองที่ลูกสาวของผู้พัฒนาได้แชมป์กลุ่มครั้งแรกในการแข่งขันโกะ และยังรวมความสามารถ preview ใหม่ 2 อย่าง: ขอบคุณ @qiyi71w สำหรับ PR #81 ที่ทำให้ ReadBoard รองรับ trusted GMA autoplay และเพิ่ม Remote Compute Center สำหรับ login เข้า Zhizi cloud compute เพื่อใช้ cloud KataGo เหมือน engine ในเครื่อง':
+            'prerelease นี้ปรับ entry และ setup flow ของ Remote Compute: เปลี่ยนปุ่ม Fox Kifu ที่ซ้ำอยู่ด้านล่างเป็น Remote Compute แต่ยังคง shortcut Fox ด้านบนไว้ และทำให้ Zhizi Cloud กับ self-hosted compute ใช้ one-click enable flow ที่ชัดเจนขึ้น',
+        'merge PR #81 แล้ว: `play>... gma` ใน board sync จะรอ final decision จาก KataGo `kata-genmove_analyze` แทนการใช้ top candidate ปัจจุบันทันที':
+            'toolbar ด้านล่างตอนนี้แสดง Remote Compute และเปิด Remote Compute Center ได้โดยตรง; shortcut ด้านบนของ Fox Kifu, Tencent Kifu และ strength evaluation ยังคงอยู่',
+        'ReadBoard จะเริ่ม GMA จาก last-move source และ turn ที่เชื่อถือได้เท่านั้น ลด autoplay ผิดฝ่ายจาก heuristic guess และบังคับ restore engine state หลัง pass, resign, stale request หรือ click fail':
+            'หลัง login Zhizi Cloud แล้ว input บัญชีที่ไม่จำเป็นจะถูกซ่อน มีตัวเลือก show password และ remember-login/password และปุ่ม enable จะ disabled เมื่อ Zhizi active อยู่แล้ว',
+        'เพิ่ม Settings -> Remote Compute Center: รองรับ Zhizi login ด้วย password หรือ verification code, ค่าเริ่มต้นเป็น VIP monthly compute, เปลี่ยนเป็น metered tier ได้ และใช้ remote GTP bridge เดียวกันกับ main analysis, quick curve และ score judgment':
+            'หน้า Zhizi เพิ่มคำแนะนำ official website และ recharge พร้อมลิงก์ `www.zhizigo.cn`; ค่าเริ่มต้นยังเป็น VIP monthly และผู้ใช้ขั้นสูงยังเปลี่ยนเป็น metered tiers ได้',
+        'ส่วน self-hosted compute ตอนนี้เก็บเฉพาะ connection code และจะไม่แสดงเหมือน remote engine ที่เปิดใช้งานแล้ว หากต้องใช้ remote compute ทันที แนะนำใช้ Zhizi cloud compute ก่อน':
+            'Self-hosted compute รองรับ KaTrain-compatible `ws://` / `wss://` links และ QR-code import; เมื่อ active แล้วปุ่มจะแสดง “Self-hosted compute enabled” และกดซ้ำโดยไม่ตั้งใจไม่ได้',
+        'ถ้าคุณใช้ readboard sync และ autoplay บ่อย รุ่นนี้ทำให้เส้นทาง “ให้ engine ตัดสิน final move” ใกล้เคียงเกม KataGo จริงมากขึ้น':
+            'ถ้าคุณกำลังทดสอบ Zhizi Cloud หรือ self-hosted remote compute รุ่นนี้ทำให้ entry หาเจอง่ายขึ้น สถานะชัดขึ้น และลดการกด enable ซ้ำโดยไม่ตั้งใจ',
+        'release notes นี้เน้นการเปลี่ยนแปลง #81 และ #83 ที่ merge ใหม่ และไม่ซ้ำรายละเอียดของ release ที่เก่ากว่า':
+            'release notes นี้เน้น Remote Compute interaction changes จาก PR #85 และไม่ซ้ำรายละเอียดของ release เก่ากว่า',
+    }
+    for old, new in replacements.items():
+        notes = notes.replace(old, new)
+    return notes
+
+
+def build_next_2026_07_01_1_notes(
+    asset_map: dict[str, str | None],
+    bundle: dict[str, str],
+    repo: str,
+    release_tag: str | None,
+) -> str:
+    notes = build_next_2026_06_30_1_notes(asset_map, bundle, repo, release_tag)
+    replacements = {
+        '这一版聚焦远程算力入口和配置体验：底部工具栏把重复的野狐棋谱按钮替换为远程算力，保留顶部野狐入口；智子云算力和自建算力也整理成更清楚的一键启用流程。':
+            '这一版聚焦远程算力稳定性和快速胜率曲线：智子云算力/自建算力的重连状态更清楚，快速胜率曲线生成中点击胜率图跳手不会让分析停住，曲线跑完后会更快恢复棋盘上的实时分析。',
+        '底部工具栏现在显示“远程算力”，点击即可打开远程算力中心；顶部“野狐棋谱 / 腾讯棋谱 / 棋力评估”入口保持不变。':
+            '远程算力连接状态更稳：减少不必要的反复重连，断线时保留当前状态并给出更清楚的恢复提示。',
+        '智子云算力登录后会隐藏多余输入状态，支持显示密码、记住密码/登录，并在已启用时禁用重复启用按钮。':
+            '智子云算力和自建算力的启用状态继续收紧，已启用时不会重复触发连接；修改连接方式后才允许重新启用。',
+        '智子配置页增加官网与充值提示，可直接打开 `www.zhizigo.cn`；普通用户默认 VIP 包月，高级用户仍可切换按量档位。':
+            '快速胜率曲线生成过程中，点击胜率图跳到某一手不再中断后台曲线分析。',
+        '自建算力支持粘贴 KaTrain 兼容的 `ws://` / `wss://` 链接，也支持导入二维码；已启用时按钮显示“已启用自建算力”，避免重复点击。':
+            '快速胜率曲线结束后会主动恢复当前局面的棋盘分析，避免用户等很久才看到选点。',
+        '如果你正在测试智子云算力或自建远程算力，这一版入口更容易找、状态更明确，也更不容易误点重复启用。':
+            '如果你使用智子云算力、远程算力或快速胜率曲线，这一版能明显减少“看起来停住了”的感觉。',
+        '这一版只写 PR #85 的远程算力交互变化，不重复更早版本已经介绍过的内容。':
+            '这一版只写 PR #87 的远程算力与快速曲线稳定性变化，不重复更早版本已经介绍过的内容。',
+
+        '這一版聚焦遠端算力入口和設定體驗：底部工具列把重複的野狐棋譜按鈕替換為遠端算力，保留頂部野狐入口；智子雲算力和自建算力也整理成更清楚的一鍵啟用流程。':
+            '這一版聚焦遠端算力穩定性和快速勝率曲線：智子雲算力/自建算力的重連狀態更清楚，快速勝率曲線生成中點擊勝率圖跳手不會讓分析停住，曲線跑完後會更快恢復棋盤上的即時分析。',
+        '底部工具列現在顯示「遠端算力」，點擊即可打開遠端算力中心；頂部「野狐棋譜 / 騰訊棋譜 / 棋力評估」入口保持不變。':
+            '遠端算力連線狀態更穩：減少不必要的反覆重連，斷線時保留目前狀態並給出更清楚的恢復提示。',
+        '智子雲算力登入後會隱藏多餘輸入狀態，支援顯示密碼、記住密碼/登入，並在已啟用時停用重複啟用按鈕。':
+            '智子雲算力和自建算力的啟用狀態繼續收緊，已啟用時不會重複觸發連線；修改連線方式後才允許重新啟用。',
+        '智子設定頁增加官網與儲值提示，可直接打開 `www.zhizigo.cn`；普通使用者預設 VIP 包月，高階使用者仍可切換按量檔位。':
+            '快速勝率曲線生成過程中，點擊勝率圖跳到某一手不再中斷背景曲線分析。',
+        '自建算力支援貼上 KaTrain 相容的 `ws://` / `wss://` 連結，也支援匯入 QR code；已啟用時按鈕顯示「已啟用自建算力」，避免重複點擊。':
+            '快速勝率曲線結束後會主動恢復目前局面的棋盤分析，避免使用者等很久才看到選點。',
+        '如果你正在測試智子雲算力或自建遠端算力，這一版入口更容易找、狀態更明確，也更不容易誤點重複啟用。':
+            '如果你使用智子雲算力、遠端算力或快速勝率曲線，這一版能明顯減少「看起來停住了」的感覺。',
+        '這一版只寫 PR #85 的遠端算力互動變化，不重複更早版本已經介紹過的內容。':
+            '這一版只寫 PR #87 的遠端算力與快速曲線穩定性變化，不重複更早版本已經介紹過的內容。',
+
+        'This prerelease focuses on the Remote Compute entry and setup flow: the duplicated bottom Fox Kifu button is replaced with Remote Compute while the top Fox shortcut remains, and Zhizi Cloud plus self-hosted compute now use clearer one-click enable flows.':
+            'This prerelease focuses on Remote Compute stability and quick winrate curves: Zhizi Cloud and self-hosted reconnect states are clearer, clicking the winrate graph during quick-curve generation no longer stops analysis, and board analysis resumes sooner after the curve finishes.',
+        'The bottom toolbar now shows Remote Compute and opens the Remote Compute Center directly; the top Fox Kifu, Tencent Kifu, and strength-evaluation shortcuts stay in place.':
+            'Remote Compute connection state is more stable, with fewer unnecessary reconnect loops and clearer recovery messages when a session drops.',
+        'After Zhizi Cloud login, redundant account inputs are hidden, password visibility and remember-login/password controls are available, and the enable button is disabled while Zhizi is already active.':
+            'Zhizi Cloud and self-hosted compute keep tighter enabled-state handling: active connections cannot be triggered again unless the connection choice changes.',
+        'The Zhizi page now includes official website and recharge guidance with a direct `www.zhizigo.cn` link; VIP monthly remains the default while metered tiers stay available for advanced users.':
+            'Clicking the winrate graph to jump to a move during quick winrate generation no longer interrupts the background curve analysis.',
+        'Self-hosted compute accepts KaTrain-compatible `ws://` / `wss://` links and QR-code import; once active, the button reads “Self-hosted compute enabled” and cannot be clicked again accidentally.':
+            'When quick winrate generation finishes, the current-board analysis resumes proactively so candidates do not appear only after a long wait.',
+        'If you are testing Zhizi Cloud or self-hosted remote compute, this build makes the entry easier to find, the current state clearer, and repeated accidental enables less likely.':
+            'If you use Zhizi Cloud, remote compute, or quick winrate curves, this build should feel much less like the analysis has silently stalled.',
+        'These notes only cover the Remote Compute interaction changes from PR #85, without repeating older release highlights.':
+            'These notes only cover the Remote Compute and quick-curve stability changes from PR #87, without repeating older release highlights.',
+
+        'この prerelease は Remote Compute の入口と設定体験を整えた版です。下部ツールバーの重複した Fox Kifu ボタンを Remote Compute に置き換え、上部の Fox shortcut は残しました。Zhizi Cloud と self-hosted compute も、より分かりやすい one-click enable flow になりました。':
+            'この prerelease は Remote Compute の安定性と quick winrate curve を改善した版です。Zhizi Cloud / self-hosted の reconnect 状態を分かりやすくし、quick curve 生成中に winrate graph をクリックしても分析が止まらず、curve 完了後は board analysis がより早く再開します。',
+        '下部ツールバーには Remote Compute が表示され、クリックすると Remote Compute Center を直接開きます。上部の Fox Kifu、Tencent Kifu、棋力評価 shortcut はそのままです。':
+            'Remote Compute の connection state をより安定させ、不要な reconnect loop を減らし、切断時の recovery message も分かりやすくしました。',
+        'Zhizi Cloud ログイン後は余分な account 入力を隠し、password visibility と remember-login/password controls を使えます。既に Zhizi が有効な場合、enable button は無効になります。':
+            'Zhizi Cloud と self-hosted compute は enabled state をさらに厳密に扱い、有効化済みの場合は connection choice を変更するまで再度 trigger しません。',
+        'Zhizi ページには公式サイトと recharge guidance を追加し、`www.zhizigo.cn` を直接開けます。既定は VIP monthly のまま、advanced users は metered tiers に切り替えられます。':
+            'quick winrate 生成中に winrate graph をクリックして手を移動しても、background curve analysis が中断されなくなりました。',
+        'Self-hosted compute は KaTrain-compatible な `ws://` / `wss://` links と QR-code import に対応しました。有効化済みの場合、button は「Self-hosted compute enabled」となり、誤って再クリックできません。':
+            'quick winrate 生成が完了すると、現在局面の board analysis を能動的に再開し、candidate 表示を長く待たないようにしました。',
+        'Zhizi Cloud または self-hosted remote compute を試している場合、この build では入口が見つけやすく、現在状態が分かりやすく、誤って何度も enable しにくくなります。':
+            'Zhizi Cloud、remote compute、quick winrate curve を使う場合、この build は「分析が止まったように見える」場面を減らします。',
+        'この説明は PR #85 の Remote Compute interaction changes に絞り、より古い release highlights は繰り返しません。':
+            'この説明は PR #87 の Remote Compute と quick-curve stability changes に絞り、より古い release highlights は繰り返しません。',
+
+        '이번 prerelease 는 Remote Compute entry 와 setup flow 를 정리했습니다. 하단 toolbar 의 중복 Fox Kifu 버튼을 Remote Compute 로 바꾸고 상단 Fox shortcut 은 유지했습니다. Zhizi Cloud 와 self-hosted compute 도 더 명확한 one-click enable flow 를 사용합니다.':
+            '이번 prerelease 는 Remote Compute 안정성과 quick winrate curve 를 개선합니다. Zhizi Cloud / self-hosted reconnect 상태가 더 명확해지고, quick curve 생성 중 winrate graph 를 클릭해도 분석이 멈추지 않으며, curve 완료 뒤 board analysis 가 더 빨리 재개됩니다.',
+        '하단 toolbar 는 이제 Remote Compute 를 표시하고 Remote Compute Center 를 직접 엽니다. 상단 Fox Kifu, Tencent Kifu, strength-evaluation shortcut 은 그대로 유지됩니다.':
+            'Remote Compute connection state 를 더 안정적으로 만들고 불필요한 reconnect loop 를 줄였으며, session 이 끊겼을 때 recovery message 를 더 명확히 했습니다.',
+        'Zhizi Cloud 로그인 뒤에는 불필요한 account input 을 숨기고, password visibility 와 remember-login/password controls 를 제공합니다. Zhizi 가 이미 active 일 때 enable button 은 disabled 상태가 됩니다.':
+            'Zhizi Cloud 와 self-hosted compute 의 enabled-state 처리를 더 엄격하게 하여, connection choice 가 바뀌기 전에는 active connection 을 다시 trigger 하지 않습니다.',
+        'Zhizi page 에 official website 와 recharge guidance 를 추가하고 `www.zhizigo.cn` 링크를 바로 열 수 있게 했습니다. 기본값은 VIP monthly 이며 advanced users 는 metered tiers 로 전환할 수 있습니다.':
+            'quick winrate 생성 중 winrate graph 를 클릭해 특정 수로 이동해도 background curve analysis 가 중단되지 않습니다.',
+        'Self-hosted compute 는 KaTrain-compatible `ws://` / `wss://` links 와 QR-code import 를 지원합니다. 이미 active 이면 button 은 “Self-hosted compute enabled” 로 표시되고 실수로 다시 누를 수 없습니다.':
+            'quick winrate 생성이 끝나면 현재 국면의 board analysis 를 능동적으로 재개해 candidate 표시를 오래 기다리지 않게 했습니다.',
+        'Zhizi Cloud 또는 self-hosted remote compute 를 테스트한다면, 이번 build 는 entry 를 더 찾기 쉽고 current state 를 더 명확하게 보여 주며 반복 enable 실수를 줄입니다.':
+            'Zhizi Cloud, remote compute, quick winrate curve 를 쓴다면 이번 build 는 분석이 조용히 멈춘 것처럼 보이는 상황을 줄입니다.',
+        '이번 설명은 PR #85 의 Remote Compute interaction changes 만 다루며, 더 오래된 release highlights 는 반복하지 않습니다.':
+            '이번 설명은 PR #87 의 Remote Compute 및 quick-curve stability changes 만 다루며, 더 오래된 release highlights 는 반복하지 않습니다.',
+
+        'prerelease นี้ปรับ entry และ setup flow ของ Remote Compute: เปลี่ยนปุ่ม Fox Kifu ที่ซ้ำอยู่ด้านล่างเป็น Remote Compute แต่ยังคง shortcut Fox ด้านบนไว้ และทำให้ Zhizi Cloud กับ self-hosted compute ใช้ one-click enable flow ที่ชัดเจนขึ้น':
+            'prerelease นี้เน้นความเสถียรของ Remote Compute และ quick winrate curve: สถานะ reconnect ของ Zhizi Cloud / self-hosted ชัดขึ้น, การคลิก winrate graph ระหว่างสร้าง quick curve จะไม่หยุด analysis, และหลัง curve เสร็จ board analysis จะกลับมาเร็วขึ้น',
+        'toolbar ด้านล่างตอนนี้แสดง Remote Compute และเปิด Remote Compute Center ได้โดยตรง; shortcut ด้านบนของ Fox Kifu, Tencent Kifu และ strength evaluation ยังคงอยู่':
+            'สถานะ connection ของ Remote Compute เสถียรขึ้น ลด reconnect loop ที่ไม่จำเป็น และแสดง recovery message ชัดขึ้นเมื่อ session หลุด',
+        'หลัง login Zhizi Cloud แล้ว input บัญชีที่ไม่จำเป็นจะถูกซ่อน มีตัวเลือก show password และ remember-login/password และปุ่ม enable จะ disabled เมื่อ Zhizi active อยู่แล้ว':
+            'Zhizi Cloud และ self-hosted compute จัดการ enabled-state เข้มขึ้น: ถ้า connection active อยู่ จะไม่ trigger ซ้ำจนกว่าจะเปลี่ยน connection choice',
+        'หน้า Zhizi เพิ่มคำแนะนำ official website และ recharge พร้อมลิงก์ `www.zhizigo.cn`; ค่าเริ่มต้นยังเป็น VIP monthly และผู้ใช้ขั้นสูงยังเปลี่ยนเป็น metered tiers ได้':
+            'ระหว่าง quick winrate generation การคลิก winrate graph เพื่อข้ามไป move ใด ๆ จะไม่ interrupt background curve analysis อีกต่อไป',
+        'Self-hosted compute รองรับ KaTrain-compatible `ws://` / `wss://` links และ QR-code import; เมื่อ active แล้วปุ่มจะแสดง “Self-hosted compute enabled” และกดซ้ำโดยไม่ตั้งใจไม่ได้':
+            'เมื่อ quick winrate generation เสร็จ ระบบจะ resume board analysis ของตำแหน่งปัจจุบันแบบ proactive เพื่อไม่ให้ต้องรอนานกว่าจะเห็น candidate',
+        'ถ้าคุณกำลังทดสอบ Zhizi Cloud หรือ self-hosted remote compute รุ่นนี้ทำให้ entry หาเจอง่ายขึ้น สถานะชัดขึ้น และลดการกด enable ซ้ำโดยไม่ตั้งใจ':
+            'ถ้าคุณใช้ Zhizi Cloud, remote compute หรือ quick winrate curve รุ่นนี้จะลดความรู้สึกว่า analysis หยุดเงียบ ๆ ไปเอง',
+        'release notes นี้เน้น Remote Compute interaction changes จาก PR #85 และไม่ซ้ำรายละเอียดของ release เก่ากว่า':
+            'release notes นี้เน้น Remote Compute และ quick-curve stability changes จาก PR #87 และไม่ซ้ำรายละเอียดของ release เก่ากว่า',
+    }
+    for old, new in replacements.items():
+        notes = notes.replace(old, new)
+    return notes
+
+
+def build_next_2026_07_02_1_prerelease_notes(
+    asset_map: dict[str, str | None],
+    bundle: dict[str, str],
+    repo: str,
+    release_tag: str | None,
+) -> str:
+    notes = build_next_2026_07_01_1_notes(asset_map, bundle, repo, release_tag)
+    replacements = {
+        '这一版聚焦远程算力稳定性和快速胜率曲线：智子云算力/自建算力的重连状态更清楚，快速胜率曲线生成中点击胜率图跳手不会让分析停住，曲线跑完后会更快恢复棋盘上的实时分析。':
+            '这一版聚焦加载棋谱后的快速胜率曲线稳定性：修复加载 SGF、野狐/腾讯棋谱后快速曲线偶发不出的情况，并让远程算力桥接异常时不再卡住后台曲线队列。',
+        '远程算力连接状态更稳：减少不必要的反复重连，断线时保留当前状态并给出更清楚的恢复提示。':
+            '加载棋谱后的自动快速分析增加防抖和补发保护，旧棋谱的延迟恢复不会覆盖新棋谱，第一次静默分析消失时会自动重试。',
+        '智子云算力和自建算力的启用状态继续收紧，已启用时不会重复触发连接；修改连接方式后才允许重新启用。':
+            '远程 `kata-raw-nn` 空返回会自动降级到 `kata-analyze`，远程 `stop` 没有确认也不会让后续节点一直等待。',
+        '快速胜率曲线生成过程中，点击胜率图跳到某一手不再中断后台曲线分析。':
+            '快速曲线完成或异常结束后会恢复当前局面的棋盘分析，减少“曲线有了但选点迟迟不动”的感觉。',
+        '快速胜率曲线结束后会主动恢复当前局面的棋盘分析，避免用户等很久才看到选点。':
+            '棋力评估的一选率改为严格按 AI 首选统计，不再把低损失的“最佳档”误算成一选；大棋盘下一手虚线圈也保持在候选点上层，更容易分辨。',
+        '如果你使用智子云算力、远程算力或快速胜率曲线，这一版能明显减少“看起来停住了”的感觉。':
+            '如果你经常加载棋谱后马上看快速胜率曲线或棋力评估，这一版会更稳定、数据也更容易解释。',
+        '这一版只写 PR #87 的远程算力与快速曲线稳定性变化，不重复更早版本已经介绍过的内容。':
+            '这一版只写 PR #88 的棋谱加载、快速曲线和棋力评估修复，不重复更早版本已经介绍过的内容。',
+
+        '這一版聚焦遠端算力穩定性和快速勝率曲線：智子雲算力/自建算力的重連狀態更清楚，快速勝率曲線生成中點擊勝率圖跳手不會讓分析停住，曲線跑完後會更快恢復棋盤上的即時分析。':
+            '這一版聚焦載入棋譜後的快速勝率曲線穩定性：修復載入 SGF、野狐/騰訊棋譜後快速曲線偶爾不出現的情況，並讓遠端算力橋接異常時不再卡住背景曲線佇列。',
+        '遠端算力連線狀態更穩：減少不必要的反覆重連，斷線時保留目前狀態並給出更清楚的恢復提示。':
+            '載入棋譜後的自動快速分析增加防抖和補發保護，舊棋譜的延遲恢復不會覆蓋新棋譜，第一次靜默分析消失時會自動重試。',
+        '智子雲算力和自建算力的啟用狀態繼續收緊，已啟用時不會重複觸發連線；修改連線方式後才允許重新啟用。':
+            '遠端 `kata-raw-nn` 空返回會自動降級到 `kata-analyze`，遠端 `stop` 沒有確認也不會讓後續節點一直等待。',
+        '快速勝率曲線生成過程中，點擊勝率圖跳到某一手不再中斷背景曲線分析。':
+            '快速曲線完成或異常結束後會恢復目前局面的棋盤分析，減少「曲線有了但選點遲遲不動」的感覺。',
+        '快速勝率曲線結束後會主動恢復目前局面的棋盤分析，避免使用者等很久才看到選點。':
+            '棋力評估的一選率改為嚴格按 AI 首選統計，不再把低損失的「最佳檔」誤算成一選；大棋盤下一手虛線圈也保持在候選點上層，更容易分辨。',
+        '如果你使用智子雲算力、遠端算力或快速勝率曲線，這一版能明顯減少「看起來停住了」的感覺。':
+            '如果你經常載入棋譜後馬上看快速勝率曲線或棋力評估，這一版會更穩定、資料也更容易解讀。',
+        '這一版只寫 PR #87 的遠端算力與快速曲線穩定性變化，不重複更早版本已經介紹過的內容。':
+            '這一版只寫 PR #88 的棋譜載入、快速曲線和棋力評估修復，不重複更早版本已經介紹過的內容。',
+
+        'This prerelease focuses on Remote Compute stability and quick winrate curves: Zhizi Cloud and self-hosted reconnect states are clearer, clicking the winrate graph during quick-curve generation no longer stops analysis, and board analysis resumes sooner after the curve finishes.':
+            'This prerelease focuses on quick winrate stability after loading game records: it fixes intermittent missing quick curves after SGF, Fox, or Tencent kifu loads, and keeps remote-compute bridge edge cases from stalling the background curve queue.',
+        'Remote Compute connection state is more stable, with fewer unnecessary reconnect loops and clearer recovery messages when a session drops.':
+            'Post-load automatic quick analysis now has debounce and retry protection: stale delayed resumes from older records cannot override the latest load, and a vanished first silent analysis dispatch is retried.',
+        'Zhizi Cloud and self-hosted compute keep tighter enabled-state handling: active connections cannot be triggered again unless the connection choice changes.':
+            'An empty remote `kata-raw-nn` success falls back to `kata-analyze`, and a remote `stop` without an acknowledgement no longer leaves later nodes waiting forever.',
+        'Clicking the winrate graph to jump to a move during quick winrate generation no longer interrupts the background curve analysis.':
+            'When quick-curve analysis completes or aborts, current-board candidate analysis resumes so the graph does not appear while board suggestions stay idle.',
+        'When quick winrate generation finishes, the current-board analysis resumes proactively so candidates do not appear only after a long wait.':
+            'Strength evaluation now counts AI first-choice hits strictly instead of treating low-loss “best tier” moves as first choices, and the main-board next-move dashed outline stays above candidate markers.',
+        'If you use Zhizi Cloud, remote compute, or quick winrate curves, this build should feel much less like the analysis has silently stalled.':
+            'If you often load a record and immediately check quick curves or strength evaluation, this build should feel more reliable and easier to interpret.',
+        'These notes only cover the Remote Compute and quick-curve stability changes from PR #87, without repeating older release highlights.':
+            'These notes only cover the kifu-load, quick-curve, and strength-evaluation fixes from PR #88, without repeating older release highlights.',
+
+        'この prerelease は Remote Compute の安定性と quick winrate curve を改善した版です。Zhizi Cloud / self-hosted の reconnect 状態を分かりやすくし、quick curve 生成中に winrate graph をクリックしても分析が止まらず、curve 完了後は board analysis がより早く再開します。':
+            'この prerelease は棋譜読み込み後の quick winrate curve の安定性を改善した版です。SGF、Fox、Tencent kifu の読み込み後に quick curve が出ないことがある問題を修正し、remote compute bridge の異常系でも background curve queue が止まらないようにしました。',
+        'Remote Compute の connection state をより安定させ、不要な reconnect loop を減らし、切断時の recovery message も分かりやすくしました。':
+            '読み込み後の自動 quick analysis に debounce と retry protection を追加しました。古い棋譜の delayed resume が新しい読み込みを上書きせず、最初の silent analysis dispatch が消えた場合は自動 retry します。',
+        'Zhizi Cloud と self-hosted compute は enabled state をさらに厳密に扱い、有効化済みの場合は connection choice を変更するまで再度 trigger しません。':
+            'remote `kata-raw-nn` の空 success は `kata-analyze` に fallback し、remote `stop` の ack が無くても後続 node が待ち続けません。',
+        'quick winrate 生成中に winrate graph をクリックして手を移動しても、background curve analysis が中断されなくなりました。':
+            'quick curve analysis が完了または abort した後、current-board candidate analysis を再開し、graph だけ出て候補手が止まる状態を減らします。',
+        'quick winrate 生成が完了すると、現在局面の board analysis を能動的に再開し、candidate 表示を長く待たないようにしました。':
+            '棋力評価の AI first-choice rate は strict な AI 一選だけを数えるようになり、低損失の “best tier” を一選として数えません。大盤の next-move dashed outline も candidate marker の上に表示します。',
+        'Zhizi Cloud、remote compute、quick winrate curve を使う場合、この build は「分析が止まったように見える」場面を減らします。':
+            '棋譜を読み込んですぐ quick curve や棋力評価を見る人にとって、この build はより安定し、数字も解釈しやすくなります。',
+        'この説明は PR #87 の Remote Compute と quick-curve stability changes に絞り、より古い release highlights は繰り返しません。':
+            'この説明は PR #88 の kifu-load、quick-curve、strength-evaluation fixes に絞り、より古い release highlights は繰り返しません。',
+
+        '이번 prerelease 는 Remote Compute 안정성과 quick winrate curve 를 개선합니다. Zhizi Cloud / self-hosted reconnect 상태가 더 명확해지고, quick curve 생성 중 winrate graph 를 클릭해도 분석이 멈추지 않으며, curve 완료 뒤 board analysis 가 더 빨리 재개됩니다.':
+            '이번 prerelease 는 기보 로드 뒤 quick winrate curve 안정성에 집중합니다. SGF, Fox, Tencent kifu 로드 뒤 quick curve 가 가끔 나오지 않는 문제를 고치고, remote-compute bridge 예외 상황에서도 background curve queue 가 멈추지 않게 했습니다.',
+        'Remote Compute connection state 를 더 안정적으로 만들고 불필요한 reconnect loop 를 줄였으며, session 이 끊겼을 때 recovery message 를 더 명확히 했습니다.':
+            '로드 후 자동 quick analysis 에 debounce 와 retry protection 을 추가했습니다. 오래된 기보의 delayed resume 이 최신 로드를 덮지 않고, 첫 silent analysis dispatch 가 사라지면 자동 retry 합니다.',
+        'Zhizi Cloud 와 self-hosted compute 의 enabled-state 처리를 더 엄격하게 하여, connection choice 가 바뀌기 전에는 active connection 을 다시 trigger 하지 않습니다.':
+            'remote `kata-raw-nn` 이 빈 success 를 반환하면 `kata-analyze` 로 fallback 하고, remote `stop` ack 가 없어도 뒤 node 가 계속 기다리지 않습니다.',
+        'quick winrate 생성 중 winrate graph 를 클릭해 특정 수로 이동해도 background curve analysis 가 중단되지 않습니다.':
+            'quick-curve analysis 가 완료되거나 abort 된 뒤 current-board candidate analysis 를 재개해, graph 는 있는데 board suggestions 가 멈춰 있는 느낌을 줄였습니다.',
+        'quick winrate 생성이 끝나면 현재 국면의 board analysis 를 능동적으로 재개해 candidate 표시를 오래 기다리지 않게 했습니다.':
+            'strength evaluation 은 AI first-choice hit 를 strict 하게 계산해 low-loss “best tier” 를 일선으로 세지 않습니다. 큰 board 의 next-move dashed outline 도 candidate marker 위에 표시됩니다.',
+        'Zhizi Cloud, remote compute, quick winrate curve 를 쓴다면 이번 build 는 분석이 조용히 멈춘 것처럼 보이는 상황을 줄입니다.':
+            '기보를 로드한 직후 quick curve 나 strength evaluation 을 자주 확인한다면, 이번 build 는 더 안정적이고 해석하기 쉽습니다.',
+        '이번 설명은 PR #87 의 Remote Compute 및 quick-curve stability changes 만 다루며, 더 오래된 release highlights 는 반복하지 않습니다.':
+            '이번 설명은 PR #88 의 kifu-load, quick-curve, strength-evaluation fixes 만 다루며, 더 오래된 release highlights 는 반복하지 않습니다.',
+
+        'prerelease นี้เน้นความเสถียรของ Remote Compute และ quick winrate curve: สถานะ reconnect ของ Zhizi Cloud / self-hosted ชัดขึ้น, การคลิก winrate graph ระหว่างสร้าง quick curve จะไม่หยุด analysis, และหลัง curve เสร็จ board analysis จะกลับมาเร็วขึ้น':
+            'prerelease นี้เน้นความเสถียรของ quick winrate หลังโหลด game record: แก้ปัญหา quick curve ไม่ขึ้นเป็นบางครั้งหลังโหลด SGF, Fox หรือ Tencent kifu และไม่ให้ edge case ของ remote-compute bridge ทำให้ background curve queue ค้าง',
+        'สถานะ connection ของ Remote Compute เสถียรขึ้น ลด reconnect loop ที่ไม่จำเป็น และแสดง recovery message ชัดขึ้นเมื่อ session หลุด':
+            'automatic quick analysis หลังโหลดเพิ่ม debounce และ retry protection: delayed resume จาก record เก่าจะไม่ override การโหลดล่าสุด และ silent analysis dispatch ครั้งแรกที่หายไปจะ retry อัตโนมัติ',
+        'Zhizi Cloud และ self-hosted compute จัดการ enabled-state เข้มขึ้น: ถ้า connection active อยู่ จะไม่ trigger ซ้ำจนกว่าจะเปลี่ยน connection choice':
+            'remote `kata-raw-nn` ที่ตอบ success ว่างจะ fallback เป็น `kata-analyze` และ remote `stop` ที่ไม่มี acknowledgement จะไม่ทำให้ node ถัด ๆ ไปรอไม่จบ',
+        'ระหว่าง quick winrate generation การคลิก winrate graph เพื่อข้ามไป move ใด ๆ จะไม่ interrupt background curve analysis อีกต่อไป':
+            'เมื่อ quick-curve analysis จบหรือ abort ระบบจะ resume current-board candidate analysis เพื่อลดอาการ graph มาแล้วแต่ board suggestions ยังนิ่ง',
+        'เมื่อ quick winrate generation เสร็จ ระบบจะ resume board analysis ของตำแหน่งปัจจุบันแบบ proactive เพื่อไม่ให้ต้องรอนานกว่าจะเห็น candidate':
+            'strength evaluation นับ AI first-choice hit แบบ strict ไม่เอา low-loss “best tier” มานับเป็น first choice และ dashed outline ของ next move บน board หลักจะแสดงอยู่เหนือ candidate markers',
+        'ถ้าคุณใช้ Zhizi Cloud, remote compute หรือ quick winrate curve รุ่นนี้จะลดความรู้สึกว่า analysis หยุดเงียบ ๆ ไปเอง':
+            'ถ้าคุณมักโหลด record แล้วดู quick curve หรือ strength evaluation ทันที รุ่นนี้จะเสถียรกว่าและอ่านผลได้ง่ายขึ้น',
+        'release notes นี้เน้น Remote Compute และ quick-curve stability changes จาก PR #87 และไม่ซ้ำรายละเอียดของ release เก่ากว่า':
+            'release notes นี้เน้น kifu-load, quick-curve และ strength-evaluation fixes จาก PR #88 และไม่ซ้ำรายละเอียดของ release เก่ากว่า',
+    }
+    for old, new in replacements.items():
+        notes = notes.replace(old, new)
+    return notes
+
+
+def build_next_2026_07_02_1_notes(
+    asset_map: dict[str, str | None],
+    bundle: dict[str, str],
+    repo: str,
+    release_tag: str | None,
+) -> str:
+    assets_cn = {key: format_asset(asset_map[key], repo, release_tag) for key in asset_map}
+    assets = {key: format_asset_en(asset_map[key], repo, release_tag) for key in asset_map}
+    katago_version = bundle['katago_version']
+    model_source = bundle['model_source']
+    previous_release = 'next-2026-06-21.2'
+
+    blocks = [
+        {
+            'language': '中文',
+            'labels': 'zh',
+            'intro': f'这一版从 {previous_release} 以来的预览改动整理为正式 release：重点补齐远程算力、棋谱加载后的快速胜率曲线、棋力评估显示、棋盘同步自动落子，以及几处用户反馈的界面细节。',
+            'updates_heading': '本版主要更新',
+            'updates': [
+                '新增并打磨“远程算力中心”：支持智子云算力登录、默认 VIP 包月、自建算力连接码/二维码和 KaTrain 兼容 `ws://` / `wss://` 链接，远程引擎可以用于主分析、快速胜率曲线、形势判断等路径。',
+                '远程算力稳定性继续加强：减少反复重连，已启用时不重复触发连接；`kata-raw-nn` 空返回会降级到 `kata-analyze`，远程 `stop` 无确认也不会卡住后续分析队列。',
+                '加载 SGF、野狐棋谱、腾讯棋谱后，自动快速胜率曲线增加防抖、补发和旧任务隔离；曲线完成或异常结束后会恢复当前局面的棋盘分析。',
+                '棋力评估继续优化：恢复小数/段位显示，修复评分规则面板和一选率统计，让一选只按 AI 首选计算；大棋盘下一手虚线圈保持在候选点上层，更容易分辨。',
+                '感谢 @qiyi71w 的 PR #81：ReadBoard 棋盘同步的可信 GMA 自动落子会等待 KataGo 最终决策，并在 pass、resign、失效请求或点击失败后恢复引擎局面。',
+                '修复 Linux 打开棋谱对话框位置、菜单文字对齐、新对局菜单对齐等界面问题；底部重复野狐入口改为远程算力入口，顶部野狐/腾讯/棋力评估入口保持不变。',
+            ],
+            'before_heading': '下载前先看这几句',
+            'before': [
+                f'主推荐整合包继续内置 KataGo `{katago_version}` 和默认权重 `{model_source}`。',
+                'Windows 普通用户优先下载 {windows_opencl_portable}，这是 OpenCL 推荐免安装版。',
+                'NVIDIA 显卡用户可下载 {windows_nvidia_portable}；RTX 5070/5080/5090 用户优先看 RTX 50 CUDA 版。',
+                '已经在用 Windows 免安装版的用户，日常升级优先下载 {windows_core_update} 覆盖到旧目录，权重、引擎和用户数据不会重复下载。',
+            ],
+            'download_heading': '下载建议',
+            'download_headers': ('你的电脑', '直接下载这个'),
+            'why_heading': '这一版为什么值得更新',
+            'why': [
+                f'这是从上一个正式 release `{previous_release}` 到现在的稳定汇总版，比单个预览版更适合普通用户更新。',
+                '如果你使用远程算力、野狐/腾讯棋谱、快速胜率曲线、棋力评估或 ReadBoard 同步，这一版都能减少卡住、显示不准或入口不好找的问题。',
+                '发布流程继续保留 GitHub Actions 打包校验、真实资产生成 release notes，以及 Windows 小更新 manifest 校验。',
+            ],
+            'contact_heading': '交流',
+            'contact': ['QQ 群：`299419120`'],
+        },
+        {
+            'language': '繁體中文',
+            'labels': 'zh_hant',
+            'intro': f'這一版把 {previous_release} 以來的預覽改動整理為正式 release：重點補齊遠端算力、棋譜載入後的快速勝率曲線、棋力評估顯示、棋盤同步自動落子，以及幾處使用者回報的介面細節。',
+            'updates_heading': '本版主要更新',
+            'updates': [
+                '新增並打磨「遠端算力中心」：支援智子雲算力登入、預設 VIP 包月、自建算力連接碼/QR code 和 KaTrain 相容 `ws://` / `wss://` 連結，遠端引擎可用於主分析、快速勝率曲線、形勢判斷等路徑。',
+                '遠端算力穩定性繼續加強：減少反覆重連，已啟用時不重複觸發連線；`kata-raw-nn` 空返回會降級到 `kata-analyze`，遠端 `stop` 無確認也不會卡住後續分析佇列。',
+                '載入 SGF、野狐棋譜、騰訊棋譜後，自動快速勝率曲線增加防抖、補發和舊任務隔離；曲線完成或異常結束後會恢復目前局面的棋盤分析。',
+                '棋力評估繼續優化：恢復小數/段位顯示，修復評分規則面板和一選率統計，讓一選只按 AI 首選計算；大棋盤下一手虛線圈保持在候選點上層，更容易分辨。',
+                '感謝 @qiyi71w 的 PR #81：ReadBoard 棋盤同步的可信 GMA 自動落子會等待 KataGo 最終決策，並在 pass、resign、失效請求或點擊失敗後恢復引擎局面。',
+                '修復 Linux 開啟棋譜對話框位置、選單文字對齊、新對局選單對齊等介面問題；底部重複野狐入口改為遠端算力入口，頂部野狐/騰訊/棋力評估入口保持不變。',
+            ],
+            'before_heading': '下載前先看這幾句',
+            'before': [
+                f'主推薦整合包繼續內建 KataGo `{katago_version}` 和預設權重 `{model_source}`。',
+                'Windows 一般使用者優先下載 {windows_opencl_portable}，這是 OpenCL 推薦免安裝版。',
+                'NVIDIA 顯示卡使用者可下載 {windows_nvidia_portable}；RTX 5070/5080/5090 使用者優先看 RTX 50 CUDA 版。',
+                '已經在用 Windows 免安裝版的使用者，日常升級優先下載 {windows_core_update} 覆蓋到舊目錄，權重、引擎和使用者資料不會重複下載。',
+            ],
+            'download_heading': '下載建議',
+            'download_headers': ('你的電腦', '直接下載這個'),
+            'why_heading': '這一版為什麼值得更新',
+            'why': [
+                f'這是從上一個正式 release `{previous_release}` 到現在的穩定匯總版，比單個預覽版更適合一般使用者更新。',
+                '如果你使用遠端算力、野狐/騰訊棋譜、快速勝率曲線、棋力評估或 ReadBoard 同步，這一版都能減少卡住、顯示不準或入口不好找的問題。',
+                '發布流程繼續保留 GitHub Actions 打包校驗、真實資產生成 release notes，以及 Windows 小更新 manifest 校驗。',
+            ],
+            'contact_heading': '交流',
+            'contact': ['QQ 群：`299419120`'],
+        },
+        {
+            'language': 'English',
+            'labels': 'en',
+            'intro': f'This release promotes the preview work since {previous_release} into a stable build, focusing on Remote Compute, quick winrate curves after loading kifu, Player Strength display fixes, trusted board-sync autoplay, and several user-reported UI polish items.',
+            'updates_heading': 'Release Highlights',
+            'updates': [
+                'Added and refined the Remote Compute Center: Zhizi Cloud login, VIP monthly as the default, self-hosted connection codes/QR import, and KaTrain-compatible `ws://` / `wss://` links. Remote engines can now serve main analysis, quick winrate curves, score judgment, and related paths.',
+                'Remote Compute stability is stronger: fewer reconnect loops, no repeated enable while already active, empty `kata-raw-nn` responses fall back to `kata-analyze`, and remote `stop` without acknowledgement no longer blocks later analysis work.',
+                'After SGF, Fox, and Tencent kifu loads, automatic quick winrate analysis now has debounce, retry, and stale-job isolation. Current-board analysis resumes after quick curves complete or abort.',
+                'Player Strength evaluation was polished: decimal/rank display is restored, the score-rule panel and strict first-choice counting were fixed, and the main-board next-move dashed outline stays above candidate markers.',
+                'Thanks to @qiyi71w for PR #81: trusted ReadBoard GMA autoplay waits for KataGo final decisions and restores engine state after pass, resign, stale requests, or failed clicks.',
+                'Fixed Linux file-dialog placement, menu text alignment, and new-game menu alignment. The duplicated bottom Fox shortcut is replaced with Remote Compute while top Fox/Tencent/Strength shortcuts remain.',
+            ],
+            'before_heading': 'Read Before Downloading',
+            'before': [
+                f'The recommended bundles still include KataGo `{katago_version}` and the default model `{model_source}`.',
+                'Most Windows users should start with {windows_opencl_portable}, the recommended OpenCL portable build.',
+                'NVIDIA users can choose {windows_nvidia_portable}; RTX 5070/5080/5090 users should also consider the RTX 50 CUDA build.',
+                'Existing Windows portable users can usually upgrade with {windows_core_update} by extracting it over the old folder, without redownloading weights, engines, or user data.',
+            ],
+            'download_heading': 'Download Guide',
+            'download_headers': ('Your computer', 'Download this file'),
+            'why_heading': 'Why Update',
+            'why': [
+                f'This is the stable roll-up from the previous release `{previous_release}`, so it is a better default update target than the individual preview builds.',
+                'If you use Remote Compute, Fox/Tencent records, quick winrate curves, Player Strength evaluation, or ReadBoard sync, this build reduces stalls, confusing display states, and hard-to-find entry points.',
+                'The release flow still uses GitHub Actions package checks, release notes generated from real uploaded assets, and Windows core-update manifest verification.',
+            ],
+            'contact_heading': 'Contact',
+            'contact': ['QQ group: `299419120`'],
+        },
+        {
+            'language': '日本語',
+            'labels': 'ja',
+            'intro': f'このリリースは、{previous_release} 以降の preview 変更を安定版としてまとめたものです。Remote Compute、棋譜読み込み後の quick winrate curve、棋力評価表示、信頼済み棋盤同期自動着手、ユーザー報告の UI 修正を中心にしています。',
+            'updates_heading': '本版主要更新',
+            'updates': [
+                'Remote Compute Center を追加・調整しました。Zhizi Cloud login、既定 VIP monthly、self-hosted connection code / QR import、KaTrain-compatible `ws://` / `wss://` links に対応し、remote engine を main analysis、quick winrate curve、score judgment などで使えます。',
+                'Remote Compute の安定性を強化しました。不要な reconnect loop を減らし、有効化済みの再 trigger を防ぎ、空の `kata-raw-nn` は `kata-analyze` に fallback し、ack のない remote `stop` で後続分析が止まりません。',
+                'SGF、Fox、Tencent kifu 読み込み後の automatic quick winrate analysis に debounce、retry、古い job の隔離を追加しました。quick curve 完了または abort 後は current-board analysis を再開します。',
+                '棋力評価をさらに調整しました。小数/段位表示を戻し、score-rule panel と strict first-choice counting を修正し、大盤の next-move dashed outline は candidate marker の上に表示されます。',
+                'PR #81 の @qiyi71w さんに感謝します。ReadBoard の信頼済み GMA autoplay は KataGo の final decision を待ち、pass、resign、古い request、click failure 後に engine state を復旧します。',
+                'Linux file dialog の位置、menu text alignment、new-game menu alignment を修正しました。下部の重複 Fox shortcut は Remote Compute に置き換え、上部の Fox/Tencent/Strength shortcuts は維持しています。',
+            ],
+            'before_heading': 'ダウンロード前に',
+            'before': [
+                f'推奨バンドルには引き続き KataGo `{katago_version}` と既定モデル `{model_source}` が含まれます。',
+                'Windows の多くのユーザーは、OpenCL 推奨ポータブル版 {windows_opencl_portable} から試してください。',
+                'NVIDIA ユーザーは {windows_nvidia_portable} を選べます。RTX 5070/5080/5090 は RTX 50 CUDA 版も確認してください。',
+                '既存の Windows portable 版ユーザーは、通常 {windows_core_update} を旧フォルダへ上書きするだけで更新でき、重み、エンジン、ユーザーデータを再取得する必要はありません。',
+            ],
+            'download_heading': 'ダウンロード案内',
+            'download_headers': ('お使いの環境', 'ダウンロードするファイル'),
+            'why_heading': '更新する理由',
+            'why': [
+                f'これは前回の正式 release `{previous_release}` 以降の安定版まとめで、個別 preview build より通常更新に向いています。',
+                'Remote Compute、Fox/Tencent 棋譜、quick winrate curve、棋力評価、ReadBoard 同期を使う場合、停止感、分かりにくい表示、入口の見つけにくさが減ります。',
+                'リリースフローは GitHub Actions の package checks、実アップロード済み asset からの release notes 生成、Windows core-update manifest verification を継続しています。',
+            ],
+            'contact_heading': '交流',
+            'contact': ['QQ group: `299419120`'],
+        },
+        {
+            'language': '한국어',
+            'labels': 'ko',
+            'intro': f'이번 릴리스는 {previous_release} 이후 preview 변경을 안정판으로 묶은 버전입니다. Remote Compute, 기보 로드 뒤 quick winrate curve, Player Strength 표시, trusted board-sync autoplay, 사용자 제보 UI 수정을 중심으로 합니다.',
+            'updates_heading': '주요 업데이트',
+            'updates': [
+                'Remote Compute Center 를 추가하고 다듬었습니다. Zhizi Cloud login, 기본 VIP monthly, self-hosted connection code / QR import, KaTrain-compatible `ws://` / `wss://` links 를 지원하며 remote engine 을 main analysis, quick winrate curve, score judgment 등에 사용할 수 있습니다.',
+                'Remote Compute 안정성을 강화했습니다. 불필요한 reconnect loop 를 줄이고, 이미 active 일 때 반복 enable 을 막으며, 빈 `kata-raw-nn` 은 `kata-analyze` 로 fallback 하고 ack 없는 remote `stop` 이 뒤 analysis 를 막지 않습니다.',
+                'SGF, Fox, Tencent kifu 로드 뒤 automatic quick winrate analysis 에 debounce, retry, stale-job isolation 을 추가했습니다. quick curve 완료 또는 abort 후 current-board analysis 를 재개합니다.',
+                'Player Strength evaluation 을 계속 정리했습니다. decimal/rank display 를 복구하고 score-rule panel 과 strict first-choice counting 을 수정했으며, main-board next-move dashed outline 이 candidate marker 위에 표시됩니다.',
+                'PR #81 을 보내 준 @qiyi71w 님께 감사드립니다. trusted ReadBoard GMA autoplay 는 KataGo final decision 을 기다리고 pass, resign, stale request, failed click 뒤 engine state 를 복구합니다.',
+                'Linux file-dialog placement, menu text alignment, new-game menu alignment 를 수정했습니다. 하단 중복 Fox shortcut 은 Remote Compute 로 바꾸고 상단 Fox/Tencent/Strength shortcuts 는 유지했습니다.',
+            ],
+            'before_heading': '다운로드 전 확인',
+            'before': [
+                f'추천 bundle 은 계속 KataGo `{katago_version}` 와 기본 모델 `{model_source}` 를 포함합니다.',
+                '대부분의 Windows 사용자는 OpenCL 권장 portable 빌드 {windows_opencl_portable} 부터 사용해 보세요.',
+                'NVIDIA 사용자는 {windows_nvidia_portable} 를 선택할 수 있습니다. RTX 5070/5080/5090 사용자는 RTX 50 CUDA 빌드도 확인해 주세요.',
+                '기존 Windows portable 사용자는 보통 {windows_core_update} 를 기존 폴더에 덮어쓰면 되고, weight, engine, user data 를 다시 받을 필요가 없습니다.',
+            ],
+            'download_heading': '다운로드 안내',
+            'download_headers': ('내 컴퓨터', '다운로드할 파일'),
+            'why_heading': '업데이트할 이유',
+            'why': [
+                f'이번 버전은 이전 정식 release `{previous_release}` 이후의 안정 roll-up 이므로 개별 preview build 보다 일반 업데이트에 더 적합합니다.',
+                'Remote Compute, Fox/Tencent records, quick winrate curves, Player Strength evaluation, ReadBoard sync 를 쓴다면 멈춘 듯한 상태, 헷갈리는 표시, 찾기 어려운 entry 가 줄어듭니다.',
+                '릴리스 흐름은 GitHub Actions package checks, 실제 업로드 asset 기반 release notes 생성, Windows core-update manifest verification 을 계속 사용합니다.',
+            ],
+            'contact_heading': '연락',
+            'contact': ['QQ 그룹: `299419120`'],
+        },
+        {
+            'language': 'ภาษาไทย',
+            'labels': 'th',
+            'intro': f'release นี้รวมงาน preview หลัง {previous_release} ให้เป็น build เสถียร โดยเน้น Remote Compute, quick winrate curve หลังโหลด kifu, การแสดง Player Strength, trusted board-sync autoplay และ UI polish จาก feedback ผู้ใช้',
+            'updates_heading': 'รายการอัปเดตหลัก',
+            'updates': [
+                'เพิ่มและปรับ Remote Compute Center: รองรับ Zhizi Cloud login, ค่าเริ่มต้น VIP monthly, self-hosted connection code / QR import และลิงก์ KaTrain-compatible `ws://` / `wss://`; remote engine ใช้กับ main analysis, quick winrate curve และ score judgment ได้',
+                'Remote Compute เสถียรขึ้น: ลด reconnect loop, ไม่ enable ซ้ำเมื่อ active อยู่แล้ว, `kata-raw-nn` ที่ว่างจะ fallback เป็น `kata-analyze`, และ remote `stop` ที่ไม่มี acknowledgement จะไม่ block งาน analysis ถัดไป',
+                'หลังโหลด SGF, Fox และ Tencent kifu ระบบ automatic quick winrate analysis มี debounce, retry และ stale-job isolation; เมื่อ quick curve จบหรือ abort จะ resume current-board analysis',
+                'Player Strength evaluation ถูกปรับต่อ: restore decimal/rank display, แก้ score-rule panel และ strict first-choice counting, และ next-move dashed outline บน board หลักจะแสดงเหนือ candidate markers',
+                'ขอบคุณ @qiyi71w สำหรับ PR #81: trusted ReadBoard GMA autoplay จะรอ final decision จาก KataGo และ restore engine state หลัง pass, resign, stale request หรือ failed click',
+                'แก้ Linux file-dialog placement, menu text alignment และ new-game menu alignment; ปุ่ม Fox ที่ซ้ำด้านล่างถูกเปลี่ยนเป็น Remote Compute ส่วน shortcut Fox/Tencent/Strength ด้านบนยังอยู่',
+            ],
+            'before_heading': 'อ่านก่อนดาวน์โหลด',
+            'before': [
+                f'แพ็กเกจแนะนำยังรวม KataGo `{katago_version}` และ model เริ่มต้น `{model_source}`',
+                'ผู้ใช้ Windows ส่วนใหญ่ควรเริ่มจาก {windows_opencl_portable} ซึ่งเป็น OpenCL portable build ที่แนะนำ',
+                'ผู้ใช้ NVIDIA เลือก {windows_nvidia_portable} ได้ ส่วน RTX 5070/5080/5090 ควรดู RTX 50 CUDA build ด้วย',
+                'ผู้ใช้ Windows portable เดิมมักอัปเดตได้ด้วย {windows_core_update} โดยแตกไฟล์ทับโฟลเดอร์เก่า ไม่ต้องดาวน์โหลด weight, engine หรือ user data ใหม่',
+            ],
+            'download_heading': 'คำแนะนำดาวน์โหลด',
+            'download_headers': ('คอมพิวเตอร์ของคุณ', 'ดาวน์โหลดไฟล์นี้'),
+            'why_heading': 'ทำไมควรอัปเดต',
+            'why': [
+                f'นี่คือ stable roll-up หลัง release ก่อนหน้า `{previous_release}` จึงเหมาะเป็นเป้าหมายอัปเดตหลักมากกว่า preview build แยกแต่ละตัว',
+                'ถ้าคุณใช้ Remote Compute, Fox/Tencent records, quick winrate curves, Player Strength evaluation หรือ ReadBoard sync รุ่นนี้ช่วยลดอาการค้าง การแสดงผลชวนสับสน และ entry ที่หาเจอยาก',
+                'กระบวนการ release ยังใช้ GitHub Actions package checks, release notes จาก asset ที่อัปโหลดจริง และ Windows core-update manifest verification',
+            ],
+            'contact_heading': 'ติดต่อ',
+            'contact': ['QQ group: `299419120`'],
+        },
+    ]
+
+    sections: list[dict[str, object]] = []
+    for block in blocks:
+        localized_assets = assets_cn if block['labels'] in ('zh', 'zh_hant') else assets
+        before_items = [
+            item.format(
+                windows_opencl_portable=localized_assets['windows_opencl_portable'],
+                windows_nvidia_portable=localized_assets['windows_nvidia_portable'],
+                windows_core_update=localized_assets['windows_core_update'],
+            )
+            for item in block['before']
+        ]
+        sections.append(
+            {
+                'language': block['language'],
+                'intro': block['intro'],
+                'updates': {'heading': block['updates_heading'], 'items': block['updates']},
+                'before': {'heading': block['before_heading'], 'items': before_items},
+                'download': {
+                    'heading': block['download_heading'],
+                    'headers': block['download_headers'],
+                    'rows': standard_download_rows(
+                        STANDARD_DOWNLOAD_LABELS[block['labels']],
+                        localized_assets,
+                    ),
+                },
+                'why': {'heading': block['why_heading'], 'items': block['why']},
+                'contact': {'heading': block['contact_heading'], 'items': block['contact']},
+            }
+        )
+    add_nvidia50_download_rows(sections, assets_cn, assets)
+    add_tensorrt_split_download_row(sections, assets_cn, assets, asset_map)
+    remove_windows_core_update_auto_notes(sections)
+    validate_release_sections(sections)
+    return release_heading(release_tag) + '\n\n' + '\n\n---\n\n'.join(
+        render_language_section(section) for section in sections
+    ) + '\n'
+
+
 def main() -> int:
     args = parse_args()
     if args.from_gh:
@@ -2816,6 +7957,31 @@ def main() -> int:
         key: pick_asset(asset_names, suffix, args.date_tag)
         for key, suffix, _cn, _en in ASSET_SPECS
     }
+    asset_map['windows_core_update'] = pick_asset(
+        asset_names,
+        WINDOWS_CORE_UPDATE_SUFFIX,
+        args.date_tag,
+    )
+    asset_map['windows_tensorrt_split_readme'] = pick_asset(
+        asset_names,
+        TENSORRT_SPLIT_README_SUFFIX,
+        args.date_tag,
+    )
+    asset_map['windows_tensorrt_split_parts'] = pick_assets_matching(
+        asset_names,
+        TENSORRT_SPLIT_PART_PATTERN,
+        args.date_tag,
+    )
+    asset_map['windows_tensorrt_split_sha256'] = pick_asset(
+        asset_names,
+        TENSORRT_SPLIT_SHA256_SUFFIX,
+        args.date_tag,
+    )
+    asset_map['windows_tensorrt_split_manifest'] = pick_asset(
+        asset_names,
+        TENSORRT_SPLIT_MANIFEST_SUFFIX,
+        args.date_tag,
+    )
     bundle = load_bundle_metadata()
     notes = build_release_notes(asset_map, bundle, args.repo, args.release_tag)
 

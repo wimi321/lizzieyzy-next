@@ -145,9 +145,90 @@ class BoardPrimaryEngineSyncTest {
     }
   }
 
+  @Test
+  void resendCurrentPositionToPrimaryEngineSendsRectangularBoardSizeWhenEngineIsStale()
+      throws Exception {
+    try (TestHarness harness = TestHarness.open()) {
+      Board.boardWidth = 5;
+      Board.boardHeight = 7;
+      Zobrist.init();
+      Board board = allocate(Board.class);
+      board.startStonelist = new ArrayList<>();
+      board.hasStartStone = false;
+      board.setHistory(new BoardHistoryList(BoardData.empty(5, 7)));
+      Lizzie.board = board;
+
+      Leelaz engine = new Leelaz("");
+      engine.isLoaded = true;
+      engine.width = BOARD_SIZE;
+      engine.height = BOARD_SIZE;
+      setStarted(engine, true);
+      RecordingOutputStream output = new RecordingOutputStream();
+      setOutputStream(engine, output);
+      Lizzie.leelaz = engine;
+
+      assertTrue(board.resendCurrentPositionToPrimaryEngine());
+
+      assertEquals(5, engine.width);
+      assertEquals(7, engine.height);
+      assertEquals(List.of("rectangular_boardsize 5 7", "clear_board"), output.commands());
+    }
+  }
+
+  @Test
+  void engineBoardSizeSyncDoesNotReopenDisplayedNon19Board() throws Exception {
+    try (TestHarness harness = TestHarness.open()) {
+      Board.boardWidth = 13;
+      Board.boardHeight = 13;
+      Zobrist.init();
+      Board board = allocate(Board.class);
+      board.startStonelist = new ArrayList<>();
+      board.hasStartStone = false;
+      BoardHistoryList history = new BoardHistoryList(BoardData.empty(13, 13));
+      history.add(moveNode(5, 5, Stone.BLACK, false, 1, 13, 13));
+      board.setHistory(history);
+      Lizzie.board = board;
+
+      Leelaz engine = new Leelaz("");
+      RecordingOutputStream output = new RecordingOutputStream();
+      setOutputStream(engine, output);
+      Lizzie.leelaz = engine;
+
+      engine.boardSizeForEngine(19, 19);
+
+      assertEquals(13, Board.boardWidth);
+      assertEquals(13, Board.boardHeight);
+      assertEquals(1, Lizzie.board.getHistory().getData().moveNumber);
+      assertEquals(
+          Stone.BLACK, Lizzie.board.getHistory().getData().stones[Board.getIndex(5, 5)]);
+      assertEquals(List.of("boardsize 19"), output.commands());
+    }
+  }
+
+  @Test
+  void updateIsBestToleratesCurveOnlyPreviousNodeWithoutBestMoves() throws Exception {
+    try (TestHarness harness = TestHarness.open()) {
+      Board board = allocate(Board.class);
+      BoardHistoryList history = new BoardHistoryList(BoardData.empty(BOARD_SIZE, BOARD_SIZE));
+      history.add(moveNode(0, 0, Stone.BLACK, false, 1));
+      history.add(moveNode(1, 0, Stone.WHITE, true, 2));
+      board.setHistory(history);
+
+      BoardHistoryNode current = history.getCurrentHistoryNode();
+      board.updateIsBest(current);
+
+      assertFalse(current.isBest);
+    }
+  }
+
   private static BoardData moveNode(
       int x, int y, Stone color, boolean blackToPlay, int moveNumber) {
-    Stone[] stones = emptyStones();
+    return moveNode(x, y, color, blackToPlay, moveNumber, BOARD_SIZE, BOARD_SIZE);
+  }
+
+  private static BoardData moveNode(
+      int x, int y, Stone color, boolean blackToPlay, int moveNumber, int width, int height) {
+    Stone[] stones = emptyStones(width, height);
     stones[Board.getIndex(x, y)] = color;
     int[] lastMove = new int[] {x, y};
     return BoardData.move(
@@ -157,7 +238,7 @@ class BoardPrimaryEngineSyncTest {
         blackToPlay,
         new Zobrist(),
         moveNumber,
-        moveList(x, y, moveNumber),
+        moveList(x, y, moveNumber, width, height),
         0,
         0,
         50,
@@ -165,14 +246,22 @@ class BoardPrimaryEngineSyncTest {
   }
 
   private static int[] moveList(int x, int y, int moveNumber) {
-    int[] moveNumberList = new int[BOARD_AREA];
+    return moveList(x, y, moveNumber, BOARD_SIZE, BOARD_SIZE);
+  }
+
+  private static int[] moveList(int x, int y, int moveNumber, int width, int height) {
+    int[] moveNumberList = new int[width * height];
     moveNumberList[Board.getIndex(x, y)] = moveNumber;
     return moveNumberList;
   }
 
   private static Stone[] emptyStones() {
-    Stone[] stones = new Stone[BOARD_AREA];
-    for (int index = 0; index < BOARD_AREA; index++) {
+    return emptyStones(BOARD_SIZE, BOARD_SIZE);
+  }
+
+  private static Stone[] emptyStones(int width, int height) {
+    Stone[] stones = new Stone[width * height];
+    for (int index = 0; index < stones.length; index++) {
       stones[index] = Stone.EMPTY;
     }
     return stones;
@@ -232,6 +321,9 @@ class BoardPrimaryEngineSyncTest {
 
     @Override
     public void refresh() {}
+
+    @Override
+    public void redrawBoardrendererBackground() {}
   }
 
   private static final class SilentGtpConsole extends GtpConsolePane {

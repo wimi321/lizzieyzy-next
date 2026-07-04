@@ -11,6 +11,7 @@ import featurecat.lizzie.Lizzie;
 import featurecat.lizzie.analysis.Branch;
 import featurecat.lizzie.analysis.Leelaz;
 import featurecat.lizzie.analysis.MoveData;
+import featurecat.lizzie.analysis.MoveRankDefinition;
 import featurecat.lizzie.rules.Board;
 import featurecat.lizzie.rules.BoardData;
 import featurecat.lizzie.rules.BoardHistoryNode;
@@ -72,6 +73,7 @@ public class FloatBoardRenderer {
   private BufferedImage unImportantSugg = emptyImage;
   private boolean unImportantCleared = false;
   private boolean cachedShowCoords = false;
+  private String cachedBoardStyle = "";
   private BufferedImage cachedBackgroundImage = emptyImage;
   // private BufferedImage importantSugg = emptyImage;
   private ArrayList<BufferedImage> cachedSelectImage = new ArrayList<BufferedImage>();
@@ -783,8 +785,8 @@ public class FloatBoardRenderer {
     // List<String>
     if (!Lizzie.config.noRefreshOnMouseMove
         || (!isShowingBranch || !mouseOverCoords.equals(suggestedMove.get().coordinate))) {
-      variation = suggestedMove.get().variation;
-      pvVistis = suggestedMove.get().pvVisits;
+      variation = branchPreviewList(suggestedMove.get().variation);
+      pvVistis = branchPreviewList(suggestedMove.get().pvVisits);
     }
     if (variation == null) {
       return;
@@ -821,10 +823,12 @@ public class FloatBoardRenderer {
 
     if (Lizzie.config.noRefreshOnMouseMove) {
       if (variation == cachedVariation
-          && displayedBranchLength == cachedDisplayedBranchLengthFroBranch) return;
+          && displayedBranchLength == cachedDisplayedBranchLengthFroBranch
+          && hasRenderedBranchImages()) return;
     } else {
       if (compareVariationListEquals(variation, cachedVariation)
-          && displayedBranchLength == cachedDisplayedBranchLengthFroBranch) return;
+          && displayedBranchLength == cachedDisplayedBranchLengthFroBranch
+          && hasRenderedBranchImages()) return;
     }
     cachedVariation = variation;
     cachedDisplayedBranchLengthFroBranch = displayedBranchLength;
@@ -897,6 +901,20 @@ public class FloatBoardRenderer {
         if (!variation.get(i).equals(variation2.get(i))) return false;
       }
     return true;
+  }
+
+  private boolean hasRenderedBranchImages() {
+    return branchStonesImage != emptyImage && branchStonesShadowImage != emptyImage;
+  }
+
+  private List<String> branchPreviewList(List<String> source) {
+    if (source == null) return null;
+    return Lizzie.config.noRefreshOnMouseMove ? new ArrayList<String>(source) : source;
+  }
+
+  private void invalidateBranchImageCache() {
+    cachedVariation = new ArrayList<String>();
+    cachedDisplayedBranchLengthFroBranch = SHOW_RAW_BOARD;
   }
 
   private Optional<MoveData> mouseOveredMove() {
@@ -1065,26 +1083,9 @@ public class FloatBoardRenderer {
       double winrateDiff,
       double scoreDiff,
       boolean isLastMove) {
-    float radiusF = 0.1f;
-    if (winrateDiff <= Lizzie.config.winLossThreshold5
-        || scoreDiff <= Lizzie.config.scoreLossThreshold5) {
-      g.setColor(new Color(155, 25, 150));
-      radiusF = 0.19f;
-    } else if (winrateDiff <= Lizzie.config.winLossThreshold4
-        || scoreDiff <= Lizzie.config.scoreLossThreshold4) {
-      g.setColor(new Color(208, 16, 19));
-      radiusF = 0.1675f;
-    } else if (winrateDiff <= Lizzie.config.winLossThreshold3
-        || scoreDiff <= Lizzie.config.scoreLossThreshold3) {
-      g.setColor(new Color(200, 140, 50));
-      radiusF = 0.145f;
-    } else if (winrateDiff <= Lizzie.config.winLossThreshold2
-        || scoreDiff <= Lizzie.config.scoreLossThreshold2) {
-      g.setColor(new Color(180, 180, 0));
-      radiusF = 0.1225f;
-    } else if (winrateDiff <= Lizzie.config.winLossThreshold1
-        || scoreDiff <= Lizzie.config.scoreLossThreshold1) g.setColor(new Color(140, 202, 34));
-    else g.setColor(new Color(0, 180, 0));
+    double severity = moveRankMarkSeverity(winrateDiff, scoreDiff);
+    float radiusF = (float) (0.1 + Math.min(1.0, severity / 6.0) * 0.09);
+    g.setColor(moveRankMarkColor(severity));
 
     if (isLastMove) {
       switch (Lizzie.config.stoneIndicatorType) {
@@ -1100,6 +1101,14 @@ public class FloatBoardRenderer {
       int radius = (int) Math.round(squareWidth * radiusF);
       fillCircle(g, markX, markY, radius);
     }
+  }
+
+  static double moveRankMarkSeverity(double winrateDiff, double scoreDiff) {
+    return MoveRankDefinition.severity(winrateDiff, scoreDiff, Lizzie.config);
+  }
+
+  static Color moveRankMarkColor(double severity) {
+    return MoveRankDefinition.severityColor(severity);
   }
 
   /** Draw move numbers and/or mark the last played move */
@@ -2804,6 +2813,12 @@ public class FloatBoardRenderer {
   public void clearBranch() {
     isShowingBranch = false;
     showingBranch = false;
+    branchOpt = Optional.empty();
+    variationOpt = Optional.empty();
+    mouseOverTemp = null;
+    branchStonesImage = emptyImage;
+    branchStonesShadowImage = emptyImage;
+    invalidateBranchImageCache();
   }
 
   public boolean isInside(int x1, int y1) {
@@ -2930,6 +2945,7 @@ public class FloatBoardRenderer {
         || cachedBoardHeight2 != boardHeight
         || changedName
         || cachedShowCoords != showCoordinates()
+        || !cachedBoardStyle.equals(Lizzie.config.boardStyle)
         || Lizzie.board.isForceRefresh()) {
       cachedShadow = null;
       cachedGhostShadow2 = null;
@@ -2938,6 +2954,7 @@ public class FloatBoardRenderer {
       cachedBoardWidth2 = boardWidth;
       cachedBoardHeight2 = boardHeight;
       cachedShowCoords = showCoordinates();
+      cachedBoardStyle = Lizzie.config.boardStyle;
       Lizzie.board.setForceRefresh(false);
 
       cachedBackgroundImage = new BufferedImage(width, height, TYPE_INT_ARGB);
@@ -3001,70 +3018,56 @@ public class FloatBoardRenderer {
       // Draw coordinates if enabled
       if (showCoordinates()) {
         g.setColor(Color.BLACK);
+        boolean chineseClassicCoordinates = Lizzie.config.useChineseClassicBoardStyle();
         for (int i = 0; i < Board.boardWidth; i++) {
-          if (Lizzie.config.useNumCoordsFromTop || Lizzie.config.useNumCoordsFromBottom) {
+          String coordinateLabel =
+              chineseClassicCoordinates
+                  ? BoardStylePainter.chineseClassicCoordinateLabel(i, Board.boardWidth)
+                  : (Lizzie.config.useNumCoordsFromTop || Lizzie.config.useNumCoordsFromBottom)
+                      ? String.valueOf(i + 1)
+                      : Board.asName(i);
+          drawString(
+              g,
+              scaledMarginWidth + squareWidth * i,
+              scaledMarginHeight * 4 / 10,
+              LizzieFrame.uiFont,
+              coordinateLabel,
+              stoneRadius * 4 / 5,
+              stoneRadius);
+          if (!Lizzie.config.showNameInBoard
+              || (Lizzie.board != null
+                      && (Lizzie.board.getHistory().getGameInfo().getPlayerWhite().equals("")
+                          && Lizzie.board.getHistory().getGameInfo().getPlayerBlack().equals("")))
+                  && (!Lizzie.frame.isShowingHeatmap || Lizzie.leelaz.isZen)
+                  && (!Lizzie.frame.isShowingPolicy
+                      || Lizzie.leelaz.isKatago
+                      || Lizzie.leelaz.isZen)) {
             drawString(
                 g,
                 scaledMarginWidth + squareWidth * i,
-                scaledMarginHeight * 4 / 10,
+                -scaledMarginHeight * 4 / 10 + boardHeight,
                 LizzieFrame.uiFont,
-                String.valueOf(i + 1),
+                coordinateLabel,
                 stoneRadius * 4 / 5,
                 stoneRadius);
-            if (!Lizzie.config.showNameInBoard
-                || (Lizzie.board != null
-                        && (Lizzie.board.getHistory().getGameInfo().getPlayerWhite().equals("")
-                            && Lizzie.board.getHistory().getGameInfo().getPlayerBlack().equals("")))
-                    && (!Lizzie.frame.isShowingHeatmap || Lizzie.leelaz.isZen)
-                    && (!Lizzie.frame.isShowingPolicy
-                        || Lizzie.leelaz.isKatago
-                        || Lizzie.leelaz.isZen))
-              drawString(
-                  g,
-                  scaledMarginWidth + squareWidth * i,
-                  -scaledMarginHeight * 4 / 10 + boardHeight,
-                  LizzieFrame.uiFont,
-                  String.valueOf(i + 1),
-                  stoneRadius * 4 / 5,
-                  stoneRadius);
-          } else {
-            drawString(
-                g,
-                scaledMarginWidth + squareWidth * i,
-                scaledMarginHeight * 4 / 10,
-                LizzieFrame.uiFont,
-                Board.asName(i),
-                stoneRadius * 4 / 5,
-                stoneRadius);
-            if (!Lizzie.config.showNameInBoard
-                || (Lizzie.board != null
-                        && (Lizzie.board.getHistory().getGameInfo().getPlayerWhite().equals("")
-                            && Lizzie.board.getHistory().getGameInfo().getPlayerBlack().equals("")))
-                    && (!Lizzie.frame.isShowingHeatmap || Lizzie.leelaz.isZen)
-                    && (!Lizzie.frame.isShowingPolicy
-                        || Lizzie.leelaz.isKatago
-                        || Lizzie.leelaz.isZen))
-              drawString(
-                  g,
-                  scaledMarginWidth + squareWidth * i,
-                  -scaledMarginHeight * 4 / 10 + boardHeight,
-                  LizzieFrame.uiFont,
-                  Board.asName(i),
-                  stoneRadius * 4 / 5,
-                  stoneRadius);
           }
         }
         for (int i = 0; i < Board.boardHeight; i++) {
+          String coordinateLabel =
+              chineseClassicCoordinates
+                  ? BoardStylePainter.chineseClassicCoordinateLabel(i, Board.boardHeight)
+                  : String.valueOf(
+                      +(Board.boardHeight <= 25
+                              && !(Lizzie.config.useNumCoordsFromTop
+                                  || Lizzie.config.useFoxStyleCoords)
+                          ? (Board.boardHeight - i)
+                          : (i + 1)));
           drawString(
               g,
               scaledMarginWidth * 4 / 10,
               scaledMarginHeight + squareHeight * i,
               LizzieFrame.uiFont,
-              String.valueOf(
-                  +(Board.boardHeight <= 25
-                          && !(Lizzie.config.useNumCoordsFromTop || Lizzie.config.useFoxStyleCoords)
-                      ? (Board.boardHeight - i)
-                      : (i + 1))),
+              coordinateLabel,
               stoneRadius * 4 / 5,
               stoneRadius);
           drawString(
@@ -3072,11 +3075,7 @@ public class FloatBoardRenderer {
               -scaledMarginWidth * 4 / 10 + boardWidth,
               scaledMarginHeight + squareHeight * i,
               LizzieFrame.uiFont,
-              String.valueOf(
-                  +(Board.boardHeight <= 25
-                          && !(Lizzie.config.useNumCoordsFromTop || Lizzie.config.useFoxStyleCoords)
-                      ? (Board.boardHeight - i)
-                      : (i + 1))),
+              coordinateLabel,
               stoneRadius * 4 / 5,
               stoneRadius);
         }
@@ -3091,6 +3090,17 @@ public class FloatBoardRenderer {
   }
 
   private void drawStarPoints(Graphics2D g) {
+    if (Lizzie.config.useChineseClassicBoardStyle()) {
+      BoardStylePainter.drawChineseClassicMarkers(
+          g,
+          scaledMarginWidth,
+          scaledMarginHeight,
+          squareWidth,
+          squareHeight,
+          Board.boardWidth,
+          Board.boardHeight);
+      return;
+    }
     if (Board.boardWidth == 19 && Board.boardHeight == 19) {
       drawStarPoints0(3, 3, 6, false, g);
     } else if (Board.boardWidth == 15 && Board.boardHeight == 15) {

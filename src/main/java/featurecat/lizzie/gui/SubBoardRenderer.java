@@ -57,6 +57,7 @@ public class SubBoardRenderer {
   TexturePaint paint;
   private BufferedImage cachedBackgroundImage = emptyImage;
   private boolean cachedBackgroundImageHasCoordinatesEnabled = false;
+  private String cachedBoardStyle = "";
   private int cachedBoardWidth = 0, cachedBoardHeight = 0;
   private BufferedImage cachedStonesImage = emptyImage;
   // private BufferedImage cachedStonesImagedraged = emptyImage;
@@ -74,6 +75,28 @@ public class SubBoardRenderer {
 
   private BufferedImage branchStonesImage = emptyImage;
   //  private BufferedImage branchStonesShadowImage;
+  // Reusable buffers for drawBranch, which runs on every engine update and otherwise
+  // allocates a board-sized ARGB image each time. acquire always returns the buffer
+  // NOT currently published in branchStonesImage, so the displayed image is never
+  // cleared or drawn into (drawBranch has early returns that skip publishing).
+  private BufferedImage branchStoneBufferA;
+  private BufferedImage branchStoneBufferB;
+
+  private BufferedImage acquireBranchStoneBuffer(int width, int height) {
+    boolean intoA = branchStonesImage != branchStoneBufferA || branchStoneBufferA == null;
+    BufferedImage buffer = intoA ? branchStoneBufferA : branchStoneBufferB;
+    if (buffer == null || buffer.getWidth() != width || buffer.getHeight() != height) {
+      buffer = new BufferedImage(width, height, TYPE_INT_ARGB);
+      if (intoA) branchStoneBufferA = buffer;
+      else branchStoneBufferB = buffer;
+    } else {
+      Graphics2D g = buffer.createGraphics();
+      g.setComposite(AlphaComposite.Clear);
+      g.fillRect(0, 0, width, height);
+      g.dispose();
+    }
+    return buffer;
+  }
 
   public Optional<List<String>> variationOpt;
 
@@ -374,10 +397,12 @@ public class SubBoardRenderer {
         //        || cachedX != x
         //        || cachedY != y
         || cachedBackgroundImageHasCoordinatesEnabled != showCoordinates()
+        || !cachedBoardStyle.equals(Lizzie.config.boardStyle)
         || Lizzie.board.isForceRefresh2()) {
 
       cachedBoardWidth = boardWidth;
       cachedBoardHeight = boardHeight;
+      cachedBoardStyle = Lizzie.config.boardStyle;
       Lizzie.board.setForceRefresh2(false);
 
       cachedBackgroundImage = new BufferedImage(width, height, TYPE_INT_ARGB);
@@ -415,13 +440,18 @@ public class SubBoardRenderer {
       // Draw coordinates if enabled
       if (showCoordinates()) {
         g.setColor(Color.BLACK);
+        boolean chineseClassicCoordinates = Lizzie.config.useChineseClassicBoardStyle();
         for (int i = 0; i < Board.boardWidth; i++) {
+          String coordinateLabel =
+              chineseClassicCoordinates
+                  ? BoardStylePainter.chineseClassicCoordinateLabel(i, Board.boardWidth)
+                  : Board.asName(i);
           drawString(
               g,
               scaledMarginWidth + squareWidth * i,
               scaledMarginHeight / 3,
               LizzieFrame.uiFont,
-              Board.asName(i),
+              coordinateLabel,
               stoneRadius * 4 / 5,
               stoneRadius);
           drawString(
@@ -429,17 +459,21 @@ public class SubBoardRenderer {
               scaledMarginWidth + squareWidth * i,
               scaledMarginHeight / 3 + boardHeight,
               LizzieFrame.uiFont,
-              Board.asName(i),
+              coordinateLabel,
               stoneRadius * 4 / 5,
               stoneRadius);
         }
         for (int i = 0; i < Board.boardHeight; i++) {
+          String coordinateLabel =
+              chineseClassicCoordinates
+                  ? BoardStylePainter.chineseClassicCoordinateLabel(i, Board.boardHeight)
+                  : "" + (Board.boardHeight <= 25 ? (Board.boardHeight - i) : (i + 1));
           drawString(
               g,
               scaledMarginWidth / 3,
               scaledMarginHeight + squareHeight * i,
               LizzieFrame.uiFont,
-              "" + (Board.boardHeight <= 25 ? (Board.boardHeight - i) : (i + 1)),
+              coordinateLabel,
               stoneRadius * 4 / 5,
               stoneRadius);
           drawString(
@@ -447,7 +481,7 @@ public class SubBoardRenderer {
               scaledMarginWidth / 3 + boardWidth,
               scaledMarginHeight + squareHeight * i,
               LizzieFrame.uiFont,
-              "" + (Board.boardHeight <= 25 ? (Board.boardHeight - i) : (i + 1)),
+              coordinateLabel,
               stoneRadius * 4 / 5,
               stoneRadius);
         }
@@ -467,6 +501,17 @@ public class SubBoardRenderer {
    * @param g graphics2d object to draw
    */
   private void drawStarPoints(Graphics2D g) {
+    if (Lizzie.config.useChineseClassicBoardStyle()) {
+      BoardStylePainter.drawChineseClassicMarkers(
+          g,
+          scaledMarginWidth,
+          scaledMarginHeight,
+          squareWidth,
+          squareHeight,
+          Board.boardWidth,
+          Board.boardHeight);
+      return;
+    }
     if (Board.boardWidth == 19 && Board.boardHeight == 19) {
       drawStarPoints0(3, 3, 6, false, g);
     } else if (Board.boardWidth == 13 && Board.boardHeight == 13) {
@@ -787,7 +832,7 @@ public class SubBoardRenderer {
   /** Draw the 'ghost stones' which show a variationOpt Leelaz is thinking about */
   private void drawBranch() {
     showingBranch = false;
-    BufferedImage newImage = new BufferedImage(boardWidth, boardHeight, TYPE_INT_ARGB);
+    BufferedImage newImage = acquireBranchStoneBuffer(boardWidth, boardHeight);
     // branchStonesImage = new BufferedImage(boardWidth, boardHeight, TYPE_INT_ARGB);
     // branchStonesShadowImage = new BufferedImage(boardWidth, boardHeight, TYPE_INT_ARGB);
     branchOpt = Optional.empty();

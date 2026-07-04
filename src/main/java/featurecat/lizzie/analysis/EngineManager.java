@@ -1739,6 +1739,127 @@ public class EngineManager {
     isUpdating = false;
   }
 
+  public void refreshEngineCatalog() throws JSONException, IOException {
+    if (engineList == null) {
+      updateEngines();
+      return;
+    }
+    ArrayList<EngineData> engineData = Utils.getEngineData();
+    List<Leelaz> previousEngines = new ArrayList<Leelaz>(engineList);
+    boolean[] matched = new boolean[previousEngines.size()];
+    List<Leelaz> refreshedEngines = new ArrayList<Leelaz>();
+    Leelaz currentMainEngine = Lizzie.leelaz;
+    Leelaz currentSecondaryEngine = Lizzie.leelaz2;
+    int refreshedCurrentEngineNo = -1;
+    int refreshedCurrentEngineNo2 = -1;
+
+    for (int i = 0; i < engineData.size(); i++) {
+      EngineData engineDt = engineData.get(i);
+      int matchIndex = findMatchingEngine(previousEngines, matched, engineDt, i);
+      Leelaz engine =
+          matchIndex >= 0 ? previousEngines.get(matchIndex) : createUnstartedEngine(engineDt);
+      applySavedEngineMetadata(engine, engineDt, i);
+      refreshedEngines.add(engine);
+      if (engine == currentMainEngine) refreshedCurrentEngineNo = i;
+      if (engine == currentSecondaryEngine) refreshedCurrentEngineNo2 = i;
+    }
+
+    if (!isEmpty && currentMainEngine != null && refreshedCurrentEngineNo < 0) {
+      updateEngines();
+      return;
+    }
+
+    engineList = refreshedEngines;
+    if (refreshedCurrentEngineNo >= 0) {
+      currentEngineNo = refreshedCurrentEngineNo;
+      engineNo = refreshedCurrentEngineNo;
+    }
+    currentEngineNo2 = refreshedCurrentEngineNo2;
+    refreshEngineSelectionControls(engineData);
+    LizzieFrame.menu.updateEngineMenu();
+    if (!isEmpty && currentEngineNo >= 0 && currentEngineNo < engineList.size()) {
+      Menu.engineMenu.setText(
+          "[" + (currentEngineNo + 1) + "]: " + engineList.get(currentEngineNo).oriEnginename);
+    }
+  }
+
+  private int findMatchingEngine(
+      List<Leelaz> previousEngines, boolean[] matched, EngineData engineDt, int preferredIndex) {
+    if (preferredIndex >= 0
+        && preferredIndex < previousEngines.size()
+        && !matched[preferredIndex]
+        && isSameEngineProcess(previousEngines.get(preferredIndex), engineDt)) {
+      matched[preferredIndex] = true;
+      return preferredIndex;
+    }
+    for (int i = 0; i < previousEngines.size(); i++) {
+      if (!matched[i] && isSameEngineProcess(previousEngines.get(i), engineDt)) {
+        matched[i] = true;
+        return i;
+      }
+    }
+    return -1;
+  }
+
+  private boolean isSameEngineProcess(Leelaz engine, EngineData engineDt) {
+    return engine != null
+        && engineDt != null
+        && safeEquals(engine.oriEngineCommand, engineDt.commands)
+        && engine.oriWidth == engineDt.width
+        && engine.oriHeight == engineDt.height
+        && engine.useJavaSSH == engineDt.useJavaSSH
+        && safeEquals(engine.ip, engineDt.ip)
+        && safeEquals(engine.port, engineDt.port)
+        && safeEquals(engine.userName, engineDt.userName);
+  }
+
+  private boolean safeEquals(String first, String second) {
+    if (first == null) return second == null;
+    return first.equals(second);
+  }
+
+  private Leelaz createUnstartedEngine(EngineData engineDt) throws JSONException, IOException {
+    Leelaz engine = new Leelaz(engineDt.commands);
+    applySavedEngineMetadata(engine, engineDt, engineDt.index);
+    return engine;
+  }
+
+  private void applySavedEngineMetadata(Leelaz engine, EngineData engineDt, int index) {
+    engine.preload = engineDt.preload;
+    engine.width = engineDt.width;
+    engine.height = engineDt.height;
+    engine.oriWidth = engineDt.width;
+    engine.oriHeight = engineDt.height;
+    engine.komi = engineDt.komi;
+    engine.orikomi = engineDt.komi;
+    engine.useJavaSSH = engineDt.useJavaSSH;
+    engine.ip = engineDt.ip;
+    engine.port = engineDt.port;
+    engine.useKeyGen = engineDt.useKeyGen;
+    engine.keyGenPath = engineDt.keyGenPath;
+    engine.userName = engineDt.userName;
+    engine.password = engineDt.password;
+    engine.initialCommand = engineDt.initialCommand;
+    engine.getEngineName(index);
+  }
+
+  private void refreshEngineSelectionControls(ArrayList<EngineData> engineData) {
+    int j = LizzieFrame.toolbar.enginePkBlack.getItemCount();
+    LizzieFrame.toolbar.removeEngineLis();
+    for (int i = 0; i < j; i++) {
+      LizzieFrame.toolbar.enginePkBlack.removeItemAt(0);
+      LizzieFrame.toolbar.enginePkWhite.removeItemAt(0);
+    }
+    for (int i = 0; i < engineData.size(); i++) {
+      EngineData engineDt = engineData.get(i);
+      LizzieFrame.toolbar.enginePkBlack.addItem("[" + (i + 1) + "]" + engineDt.name);
+      LizzieFrame.toolbar.enginePkWhite.addItem("[" + (i + 1) + "]" + engineDt.name);
+    }
+    LizzieFrame.toolbar.engineBlackToolbar = 0;
+    LizzieFrame.toolbar.engineWhiteToolbar = 0;
+    LizzieFrame.toolbar.addEngineLis();
+  }
+
   public void killAllEngines() {
     // currentEngineNo = -1;
     for (int i = 0; i < engineList.size(); i++) {
@@ -1868,7 +1989,7 @@ public class EngineManager {
    * @param index engine index
    */
   public void startEngineForPk(int index) {
-    if (index > this.engineList.size()) return;
+    if (index < 0 || index >= this.engineList.size()) return;
     // Lizzie.board.saveMoveNumber();
     Leelaz newEng = engineList.get(index);
     // newEng.played = false;
@@ -1896,7 +2017,7 @@ public class EngineManager {
       }
     } else {
       newEng.canRestoreDymPda = false;
-      newEng.boardSize(newEng.width, newEng.height);
+      newEng.boardSizeForEngine(newEng.width, newEng.height);
       newEng.sendCommand("komi " + newEng.komi);
       // newEng.sendCommand("name");
       //  newEng.isCheckingName = true;
@@ -1943,7 +2064,7 @@ public class EngineManager {
   }
 
   public void restartEngineForPk(int index) {
-    if (index > this.engineList.size()) return;
+    if (index < 0 || index >= this.engineList.size()) return;
     // Lizzie.board.saveMoveNumber();
     Leelaz newEng = engineList.get(index);
     newEng.isLoaded = false;
@@ -2024,7 +2145,7 @@ public class EngineManager {
       return;
     }
     if (isEmpty) isEmpty = false;
-    if (index > this.engineList.size()) return;
+    if (index < 0 || index >= this.engineList.size()) return;
     Leelaz newEng = engineList.get(index);
     if (newEng == null) return;
     // newEng.isReadyForGenmoveGame = false;
@@ -2096,12 +2217,12 @@ public class EngineManager {
         if (!(isEmptyBoard && changeBoard) || !isMain) {
           newEng.width = Board.boardWidth;
           newEng.height = Board.boardHeight;
-          newEng.boardSize(newEng.width, newEng.height);
+          newEng.boardSizeForEngine(newEng.width, newEng.height);
         }
         if (isEmptyBoard && changeOriBoard && isMain) {
           newEng.width = newEng.oriWidth;
           newEng.height = newEng.oriHeight;
-          newEng.boardSize(newEng.width, newEng.height);
+          newEng.boardSizeForEngine(newEng.width, newEng.height);
         }
         newEng.sendCommand("komi " + newEng.komi);
         newEng.isCheckingName = true;

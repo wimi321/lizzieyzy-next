@@ -15,7 +15,7 @@
 - 如果你想找 `还能继续用的 lizzieyzy 维护版`，这个项目就是现在应该优先看的版本
 - 如果你想 `输入野狐昵称后直接抓谱再复盘`，当前维护版已经支持
 - 如果你担心第一次启动要自己配很多东西，主推荐整合包已经内置 KataGo 和默认权重
-- 如果你在意棋盘同步工具，Windows 主发布包现在直接带原生 `readboard.exe`，也保留 `readboard_java` 简易版备用，不用再额外找单独仓库
+- 如果你在意棋盘同步工具，Windows 主发布包现在直接带原生 `readboard.exe`，软件内只保留这套同步入口，不用再额外找单独仓库
 
 ## 先选对包
 
@@ -44,6 +44,7 @@
 - RTX 20/30/40 NVIDIA 显卡想跑得更快：选 `windows64.nvidia.portable.zip`
 - RTX 5070/5080/5090：优先选 `windows64.nvidia50.cuda.portable.zip`
 - RTX 20/30/40/50 想试 TensorRT：先选对应 NVIDIA/CUDA 包，打开后在 `KataGo 一键设置` 中手动安装 TensorRT 加速
+- `KataGo 一键设置` 会检测 NVIDIA GPU / Compute Capability，再给出 TensorRT 推荐状态
 - GTX 10 系及更老 NVIDIA 显卡：优先 CUDA/OpenCL，不作为 TensorRT 推荐对象
 - 想自己管引擎：Windows 选 `without.engine.portable.zip`，想安装再选同名 `installer.exe`
 - Windows 普通用户：优先选 `.portable.zip`，想保留安装流程再选同名 `.installer.exe`
@@ -109,7 +110,7 @@ OpenCL 免安装包也能直接打开 `KataGo 一键设置`，点一次“智能
 2. 解压后运行 `LizzieYzy Next NVIDIA 50 CUDA.exe`。
 3. 如果你更喜欢安装流程，改用 `windows64.nvidia50.cuda.installer.exe`。
 
-TensorRT 加速不再单独发布巨大安装包。RTX 20/30/40/50 用户可以先打开对应 NVIDIA/CUDA 包，再进入 `KataGo 一键设置`，点击 `安装 TensorRT 加速`。RTX 50 属于更新架构，是重点实验加速方向；GTX 10 系及更老显卡建议继续使用 CUDA/OpenCL。软件会从 KataGo / NVIDIA 官方源下载、校验并配置 TensorRT；不需要的用户不会被自动下载。
+TensorRT 加速不再单独发布巨大安装包。RTX 20/30/40/50 用户可以先打开对应 NVIDIA/CUDA 包，再进入 `KataGo 一键设置`，点击 `安装 TensorRT 加速`。安装界面会检测本机 NVIDIA GPU / Compute Capability，并显示推荐、可尝试、不推荐或未知状态。RTX 50 属于更新架构，是重点实验加速方向；GTX 10 系及更老显卡建议继续使用 CUDA/OpenCL。软件会从 KataGo / NVIDIA 官方源下载、校验并配置 TensorRT；不需要的用户不会被自动下载。
 
 ### Windows 64 位无引擎包
 
@@ -202,7 +203,7 @@ chmod +x start-linux64.sh
 
 当前默认内置信息：
 
-- KataGo 版本：`v1.16.4`
+- KataGo 版本：`v1.16.5`
 - 默认权重：`kata1-zhizi-b28c512nbt-muonfd2.bin.gz`
 
 ## 需要更多说明

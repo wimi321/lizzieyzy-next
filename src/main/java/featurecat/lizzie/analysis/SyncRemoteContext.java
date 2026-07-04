@@ -26,6 +26,7 @@ final class SyncRemoteContext {
   final OptionalInt recordTotalMove;
   final boolean recordAtEnd;
   final Optional<String> titleFingerprint;
+  final ReadBoardLastMoveSource lastMoveSource;
   final boolean forceRebuild;
 
   private SyncRemoteContext(
@@ -38,6 +39,7 @@ final class SyncRemoteContext {
       OptionalInt recordTotalMove,
       boolean recordAtEnd,
       Optional<String> titleFingerprint,
+      ReadBoardLastMoveSource lastMoveSource,
       boolean forceRebuild) {
     this.platform = platform;
     this.windowKind = windowKind;
@@ -48,6 +50,8 @@ final class SyncRemoteContext {
     this.recordTotalMove = recordTotalMove;
     this.recordAtEnd = recordAtEnd;
     this.titleFingerprint = normalizeText(titleFingerprint);
+    this.lastMoveSource =
+        lastMoveSource == null ? ReadBoardLastMoveSource.LEGACY_UNKNOWN : lastMoveSource;
     this.forceRebuild = forceRebuild;
   }
 
@@ -62,6 +66,7 @@ final class SyncRemoteContext {
         OptionalInt.empty(),
         false,
         Optional.empty(),
+        ReadBoardLastMoveSource.LEGACY_UNKNOWN,
         forceRebuild);
   }
 
@@ -76,6 +81,7 @@ final class SyncRemoteContext {
         OptionalInt.empty(),
         false,
         Optional.empty(),
+        ReadBoardLastMoveSource.LEGACY_UNKNOWN,
         forceRebuild);
   }
 
@@ -94,6 +100,7 @@ final class SyncRemoteContext {
         OptionalInt.empty(),
         false,
         Optional.empty(),
+        ReadBoardLastMoveSource.LEGACY_UNKNOWN,
         forceRebuild);
   }
 
@@ -114,6 +121,7 @@ final class SyncRemoteContext {
         recordTotalMove,
         recordAtEnd,
         Optional.ofNullable(titleFingerprint),
+        ReadBoardLastMoveSource.LEGACY_UNKNOWN,
         forceRebuild);
   }
 
@@ -131,6 +139,7 @@ final class SyncRemoteContext {
         OptionalInt.empty(),
         false,
         Optional.empty(),
+        lastMoveSource,
         forceRebuild);
   }
 
@@ -145,6 +154,22 @@ final class SyncRemoteContext {
         recordTotalMove,
         recordAtEnd,
         titleFingerprint,
+        lastMoveSource,
+        forceRebuild);
+  }
+
+  SyncRemoteContext withLastMoveSource(ReadBoardLastMoveSource nextLastMoveSource) {
+    return new SyncRemoteContext(
+        platform,
+        windowKind,
+        foxMoveNumber,
+        roomToken,
+        liveTitleMove,
+        recordCurrentMove,
+        recordTotalMove,
+        recordAtEnd,
+        titleFingerprint,
+        nextLastMoveSource,
         forceRebuild);
   }
 
@@ -159,6 +184,7 @@ final class SyncRemoteContext {
         OptionalInt.empty(),
         false,
         Optional.empty(),
+        lastMoveSource,
         forceRebuild);
   }
 
@@ -173,6 +199,7 @@ final class SyncRemoteContext {
         OptionalInt.empty(),
         false,
         Optional.empty(),
+        lastMoveSource,
         forceRebuild);
   }
 
@@ -187,6 +214,7 @@ final class SyncRemoteContext {
         recordTotalMove,
         recordAtEnd,
         titleFingerprint,
+        lastMoveSource,
         forceRebuild);
   }
 
@@ -201,6 +229,7 @@ final class SyncRemoteContext {
         nextRecordTotalMove,
         recordAtEnd,
         titleFingerprint,
+        lastMoveSource,
         forceRebuild);
   }
 
@@ -215,6 +244,7 @@ final class SyncRemoteContext {
         recordTotalMove,
         nextRecordAtEnd,
         titleFingerprint,
+        lastMoveSource,
         forceRebuild);
   }
 
@@ -229,6 +259,7 @@ final class SyncRemoteContext {
         recordTotalMove,
         recordAtEnd,
         Optional.ofNullable(nextTitleFingerprint),
+        lastMoveSource,
         forceRebuild);
   }
 
@@ -243,6 +274,7 @@ final class SyncRemoteContext {
         recordTotalMove,
         recordAtEnd,
         titleFingerprint,
+        lastMoveSource,
         nextForceRebuild);
   }
 

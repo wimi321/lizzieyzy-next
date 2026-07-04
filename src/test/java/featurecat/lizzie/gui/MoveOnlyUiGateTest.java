@@ -2,6 +2,8 @@ package featurecat.lizzie.gui;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertIterableEquals;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -20,10 +22,12 @@ import java.awt.image.BufferedImage;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.ResourceBundle;
+import java.util.Set;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
 import javax.swing.table.AbstractTableModel;
@@ -227,6 +231,203 @@ class MoveOnlyUiGateTest {
   }
 
   @Test
+  void floatBoardRendererClearBranchDropsStaleBranchState() throws Exception {
+    FloatBoardRenderer renderer = new FloatBoardRenderer();
+    setField(FloatBoardRenderer.class, renderer, "isShowingBranch", true);
+    setField(FloatBoardRenderer.class, renderer, "showingBranch", true);
+    setField(FloatBoardRenderer.class, renderer, "branchOpt", Optional.of(new Object()));
+    setField(FloatBoardRenderer.class, renderer, "variationOpt", Optional.of(List.of("A1")));
+    setField(FloatBoardRenderer.class, renderer, "mouseOverTemp", bestMove(0, 1));
+    setField(
+        FloatBoardRenderer.class,
+        renderer,
+        "branchStonesImage",
+        new BufferedImage(3, 3, BufferedImage.TYPE_INT_ARGB));
+    setField(
+        FloatBoardRenderer.class,
+        renderer,
+        "branchStonesShadowImage",
+        new BufferedImage(3, 3, BufferedImage.TYPE_INT_ARGB));
+
+    renderer.clearBranch();
+
+    Object emptyImage = getField(FloatBoardRenderer.class, null, "emptyImage");
+    assertFalse(renderer.isShowingBranch());
+    assertFalse(
+        ((Optional<?>) getField(FloatBoardRenderer.class, renderer, "branchOpt")).isPresent());
+    assertFalse(
+        ((Optional<?>) getField(FloatBoardRenderer.class, renderer, "variationOpt")).isPresent());
+    assertNull(getField(FloatBoardRenderer.class, renderer, "mouseOverTemp"));
+    assertSame(emptyImage, getField(FloatBoardRenderer.class, renderer, "branchStonesImage"));
+    assertSame(emptyImage, getField(FloatBoardRenderer.class, renderer, "branchStonesShadowImage"));
+  }
+
+  @Test
+  void boardRendererDrawBranchClearsStaleBranchStateWhenHoverHasNoVariation() throws Exception {
+    TestEnvironment env = TestEnvironment.open();
+    try {
+      Lizzie.config.showBranch = true;
+      TrackingLizzieFrame frame = configuredFrame();
+      frame.mouseOverCoordinate = new int[] {0, 1};
+      Lizzie.frame = frame;
+      Lizzie.board = boardWith(historyForCurrentNode(currentData()));
+      BoardRenderer renderer = new BoardRenderer(false);
+      setField(BoardRenderer.class, renderer, "isShowingBranch", true);
+      setField(BoardRenderer.class, renderer, "branchOpt", Optional.of(new Object()));
+
+      invokeDrawBranch(renderer);
+
+      assertFalse(
+          renderer.isShowingBranch(),
+          "a hover candidate without a drawable variation should not keep stale branch state.");
+      assertFalse(
+          ((Optional<?>) getField(BoardRenderer.class, renderer, "branchOpt")).isPresent(),
+          "stale branch data should stay cleared when drawBranch exits before rendering.");
+    } finally {
+      env.close();
+    }
+  }
+
+  @Test
+  void boardRendererRedrawsBranchImagesAfterClearingSameHover() throws Exception {
+    TestEnvironment env = TestEnvironment.open();
+    try {
+      Lizzie.config.showBranch = true;
+      Lizzie.config.showSuggestionVariations = true;
+      Lizzie.config.showBlackCandidates = true;
+      Lizzie.config.showWhiteCandidates = true;
+      Lizzie.config.noRefreshOnMouseMove = true;
+      Lizzie.config.usePureStone = true;
+      TrackingLizzieFrame frame = configuredFrame();
+      frame.mouseOverCoordinate = new int[] {0, 1};
+      frame.isMouseOver = true;
+      frame.priorityMoveCoords = new ArrayList<>();
+      Lizzie.frame = frame;
+      BoardData current = currentData();
+      MoveData suggested = current.bestMoves.get(0);
+      suggested.variation = List.of(suggested.coordinate, Board.convertCoordinatesToName(1, 1));
+      Lizzie.board = boardWith(historyForCurrentNode(current));
+      BoardRenderer renderer = configuredBranchRenderer();
+
+      invokeDrawBranch(renderer);
+
+      Object emptyImage = getField(BoardRenderer.class, null, "emptyImage");
+      BufferedImage firstBranchImage =
+          (BufferedImage) getField(BoardRenderer.class, renderer, "branchStonesImage");
+      assertNotSame(emptyImage, firstBranchImage, "first hover should render branch stones.");
+      assertTrue(
+          hasVisiblePaint(firstBranchImage), "first hover branch image should contain stones.");
+
+      renderer.clearBranch();
+      assertSame(emptyImage, getField(BoardRenderer.class, renderer, "branchStonesImage"));
+      frame.mouseOverCoordinate = new int[] {0, 1};
+      frame.isMouseOver = true;
+
+      invokeDrawBranch(renderer);
+
+      BufferedImage secondBranchImage =
+          (BufferedImage) getField(BoardRenderer.class, renderer, "branchStonesImage");
+      assertNotSame(
+          emptyImage, secondBranchImage, "second hover of the same candidate must redraw stones.");
+      assertTrue(
+          hasVisiblePaint(secondBranchImage), "second hover should not publish a blank branch.");
+    } finally {
+      env.close();
+    }
+  }
+
+  @Test
+  void boardRendererNoRefreshFreezesHoveredVariationSnapshot() throws Exception {
+    TestEnvironment env = TestEnvironment.open();
+    try {
+      Lizzie.config.showBranch = true;
+      Lizzie.config.showSuggestionVariations = true;
+      Lizzie.config.showBlackCandidates = true;
+      Lizzie.config.showWhiteCandidates = true;
+      Lizzie.config.noRefreshOnMouseMove = true;
+      Lizzie.config.usePureStone = true;
+      TrackingLizzieFrame frame = configuredFrame();
+      frame.mouseOverCoordinate = new int[] {0, 1};
+      frame.isMouseOver = true;
+      frame.priorityMoveCoords = new ArrayList<>();
+      Lizzie.frame = frame;
+      BoardData current = currentData();
+      MoveData suggested = current.bestMoves.get(0);
+      List<String> firstPv =
+          new ArrayList<>(List.of(suggested.coordinate, Board.convertCoordinatesToName(1, 1)));
+      suggested.variation = firstPv;
+      Lizzie.board = boardWith(historyForCurrentNode(current));
+      BoardRenderer renderer = configuredBranchRenderer();
+
+      invokeDrawBranch(renderer);
+
+      Optional<List<String>> firstPreview = boardRendererVariationOpt(renderer);
+      assertTrue(firstPreview.isPresent());
+      assertIterableEquals(firstPv, firstPreview.get());
+      assertNotSame(
+          suggested.variation,
+          firstPreview.get(),
+          "no-refresh hover should keep an immutable preview snapshot, not the live engine list.");
+
+      firstPv.set(1, Board.convertCoordinatesToName(2, 2));
+      firstPv.add(Board.convertCoordinatesToName(1, 2));
+      invokeDrawBranch(renderer);
+
+      Optional<List<String>> secondPreview = boardRendererVariationOpt(renderer);
+      assertTrue(secondPreview.isPresent());
+      assertIterableEquals(
+          List.of(suggested.coordinate, Board.convertCoordinatesToName(1, 1)),
+          secondPreview.get(),
+          "same hovered move should not refresh when no-refresh-on-mouse-move is enabled.");
+    } finally {
+      env.close();
+    }
+  }
+
+  @Test
+  void boardRendererRefreshesHoveredVariationWhenNoRefreshDisabled() throws Exception {
+    TestEnvironment env = TestEnvironment.open();
+    try {
+      Lizzie.config.showBranch = true;
+      Lizzie.config.showSuggestionVariations = true;
+      Lizzie.config.showBlackCandidates = true;
+      Lizzie.config.showWhiteCandidates = true;
+      Lizzie.config.noRefreshOnMouseMove = false;
+      Lizzie.config.usePureStone = true;
+      TrackingLizzieFrame frame = configuredFrame();
+      frame.mouseOverCoordinate = new int[] {0, 1};
+      frame.isMouseOver = true;
+      frame.priorityMoveCoords = new ArrayList<>();
+      Lizzie.frame = frame;
+      BoardData current = currentData();
+      MoveData suggested = current.bestMoves.get(0);
+      suggested.variation =
+          new ArrayList<>(List.of(suggested.coordinate, Board.convertCoordinatesToName(1, 1)));
+      Lizzie.board = boardWith(historyForCurrentNode(current));
+      BoardRenderer renderer = configuredBranchRenderer();
+
+      invokeDrawBranch(renderer);
+
+      suggested.variation =
+          new ArrayList<>(
+              List.of(
+                  suggested.coordinate,
+                  Board.convertCoordinatesToName(2, 2),
+                  Board.convertCoordinatesToName(1, 2)));
+      invokeDrawBranch(renderer);
+
+      Optional<List<String>> preview = boardRendererVariationOpt(renderer);
+      assertTrue(preview.isPresent());
+      assertIterableEquals(
+          suggested.variation,
+          preview.get(),
+          "hover variation should keep refreshing when no-refresh-on-mouse-move is disabled.");
+    } finally {
+      env.close();
+    }
+  }
+
+  @Test
   void independentMainBoardBlunderHoverIgnoresSnapshotMarker() throws Exception {
     TestEnvironment env = TestEnvironment.open();
     try {
@@ -287,6 +488,45 @@ class MoveOnlyUiGateTest {
     }
   }
 
+  @Test
+  void floatBoardMoveRankMarkColorsUseContinuousSeverityShades() throws Exception {
+    Config previousConfig = Lizzie.config;
+    Config config = allocate(Config.class);
+    config.winLossThreshold1 = -1;
+    config.winLossThreshold2 = -3;
+    config.winLossThreshold3 = -6;
+    config.winLossThreshold4 = -12;
+    config.winLossThreshold5 = -24;
+    config.scoreLossThreshold1 = -0.5;
+    config.scoreLossThreshold2 = -1.5;
+    config.scoreLossThreshold3 = -3;
+    config.scoreLossThreshold4 = -6;
+    config.scoreLossThreshold5 = -12;
+    Lizzie.config = config;
+    try {
+      Set<Integer> colors = new HashSet<Integer>();
+      colors.add(
+          FloatBoardRenderer.moveRankMarkColor(FloatBoardRenderer.moveRankMarkSeverity(0, 0))
+              .getRGB());
+      colors.add(
+          FloatBoardRenderer.moveRankMarkColor(FloatBoardRenderer.moveRankMarkSeverity(-1.5, 0))
+              .getRGB());
+      colors.add(
+          FloatBoardRenderer.moveRankMarkColor(FloatBoardRenderer.moveRankMarkSeverity(-5, 0))
+              .getRGB());
+      colors.add(
+          FloatBoardRenderer.moveRankMarkColor(FloatBoardRenderer.moveRankMarkSeverity(-16, 0))
+              .getRGB());
+      colors.add(
+          FloatBoardRenderer.moveRankMarkColor(FloatBoardRenderer.moveRankMarkSeverity(-40, 0))
+              .getRGB());
+
+      assertTrue(colors.size() >= 5, "move rank marks should expose several severity shades.");
+    } finally {
+      Lizzie.config = previousConfig;
+    }
+  }
+
   private static TrackingLizzieFrame configuredFrame() throws Exception {
     TrackingLizzieFrame frame = allocate(TrackingLizzieFrame.class);
     frame.mainPanel = new JPanel();
@@ -307,8 +547,28 @@ class MoveOnlyUiGateTest {
     return (boolean) method.invoke(board, (Object) coords);
   }
 
+  private static void invokeDrawBranch(BoardRenderer renderer) throws Exception {
+    Method method = BoardRenderer.class.getDeclaredMethod("drawBranch");
+    method.setAccessible(true);
+    method.invoke(renderer);
+  }
+
   private static FloatBoardRenderer configuredFloatRenderer() throws Exception {
     FloatBoardRenderer renderer = new FloatBoardRenderer();
+    setIntField(renderer, "x", 0);
+    setIntField(renderer, "y", 0);
+    setIntField(renderer, "boardWidth", CANVAS_SIZE);
+    setIntField(renderer, "boardHeight", CANVAS_SIZE);
+    setIntField(renderer, "stoneRadius", STONE_RADIUS);
+    setIntField(renderer, "scaledMarginWidth", SCALED_MARGIN);
+    setIntField(renderer, "scaledMarginHeight", SCALED_MARGIN);
+    setIntField(renderer, "squareWidth", SQUARE_SIZE);
+    setIntField(renderer, "squareHeight", SQUARE_SIZE);
+    return renderer;
+  }
+
+  private static BoardRenderer configuredBranchRenderer() throws Exception {
+    BoardRenderer renderer = new BoardRenderer(false);
     setIntField(renderer, "x", 0);
     setIntField(renderer, "y", 0);
     setIntField(renderer, "boardWidth", CANVAS_SIZE);
@@ -363,6 +623,12 @@ class MoveOnlyUiGateTest {
     Field field = owner.getDeclaredField(name);
     field.setAccessible(true);
     return field.get(target);
+  }
+
+  @SuppressWarnings("unchecked")
+  private static Optional<List<String>> boardRendererVariationOpt(BoardRenderer renderer)
+      throws Exception {
+    return (Optional<List<String>>) getField(BoardRenderer.class, renderer, "variationOpt");
   }
 
   private static BoardHistoryList historyWithNext(BoardData current, BoardData next) {

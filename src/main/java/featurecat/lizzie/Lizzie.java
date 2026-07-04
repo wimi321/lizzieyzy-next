@@ -17,6 +17,7 @@ import featurecat.lizzie.gui.Message;
 import featurecat.lizzie.gui.web.WebBoardManager;
 import featurecat.lizzie.rules.Board;
 import featurecat.lizzie.rules.BoardHistoryNode;
+import featurecat.lizzie.update.WindowsUpdateController;
 import featurecat.lizzie.util.KataGoAutoSetupHelper;
 import featurecat.lizzie.util.KataGoAutoSetupHelper.SetupSnapshot;
 import featurecat.lizzie.util.KataGoRuntimeHelper;
@@ -79,6 +80,15 @@ public class Lizzie {
   /** Launches the game window, and runs the game. */
   public static void main(String[] args) throws IOException {
     mainArgs = args;
+    // Must be set before any AWT/Swing class initializes. macOS always antialiases
+    // text; on Windows/Linux these flags are what keep Swing text from rendering
+    // jagged under the cross-platform look and feel.
+    if (System.getProperty("awt.useSystemAAFontSettings") == null) {
+      System.setProperty("awt.useSystemAAFontSettings", "on");
+    }
+    if (System.getProperty("swing.aatext") == null) {
+      System.setProperty("swing.aatext", "true");
+    }
     ensureWritableWorkingDir();
     config = new Config();
     Utils.applyMaintainedDefaultSettings();
@@ -198,6 +208,7 @@ public class Lizzie {
     }
     if (Lizzie.config.autoReplayBranch) frame.autoReplayBranch();
     scheduleBoardSyncSmokeProbe();
+    WindowsUpdateController.scheduleAutomaticCheck();
   }
 
   private static void scheduleBoardSyncSmokeProbe() {
@@ -520,18 +531,13 @@ public class Lizzie {
                 // TODO Auto-generated catch block
                 e.printStackTrace();
               }
+            } else {
+              frame.scheduleQuickAnalysisEngineWarmupAfterStartup();
             }
             KataGoRuntimeHelper.startAppleSiliconAutoOptimizationAsync();
             KataGoRuntimeHelper.startFirstRunBenchmarkAsync();
           }
         });
-    //    if (config.autoCheckVersion) {
-    //      String date = new SimpleDateFormat("yyyyMMdd").format(new Date());
-    //      if (!config.autoCheckDate.equals(date)) {
-    //        SocketCheckVersion socketCheckVersion = new SocketCheckVersion();
-    //        socketCheckVersion.SocketCheckVersion(true);
-    //      }
-    //    }
   }
 
   public static void setLookAndFeel() {

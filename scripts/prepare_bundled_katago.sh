@@ -3,7 +3,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CACHE_DIR="${CACHE_DIR:-$ROOT_DIR/.cache/katago}"
-KATAGO_TAG="${KATAGO_TAG:-v1.16.4}"
+KATAGO_TAG="${KATAGO_TAG:-v1.16.5}"
 KATAGO_RELEASE_BASE="https://github.com/lightvector/KataGo/releases/download/${KATAGO_TAG}"
 # The regular Windows bundle prioritizes compatibility for mixed consumer hardware.
 WINDOWS_ASSET="${WINDOWS_ASSET:-katago-${KATAGO_TAG}-eigen-windows-x64.zip}"
@@ -110,16 +110,19 @@ find_model_source() {
 
   local candidates=(
     "${katago_share_dir:+$katago_share_dir/$PREFERRED_MODEL_NAME}"
+    "${katago_share_dir:+$katago_share_dir/kata1-b28c512nbt-s13255194368-d5935380940.bin.gz}"
     "${katago_share_dir:+$katago_share_dir/kata1-zhizi-b28c512nbt-muonfd2.bin.gz}"
     "${katago_share_dir:+$katago_share_dir/kata1-zhizi-b40c768nbt-fdx6c.bin.gz}"
     "${katago_share_dir:+$katago_share_dir/g170-b40c256x2-s5095420928-d1229425124.bin.gz}"
     "${katago_share_dir:+$katago_share_dir/kata1-b18c384nbt-s9996604416-d4316597426.bin.gz}"
     "/usr/local/opt/katago/share/katago/$PREFERRED_MODEL_NAME"
+    "/usr/local/opt/katago/share/katago/kata1-b28c512nbt-s13255194368-d5935380940.bin.gz"
     "/usr/local/opt/katago/share/katago/kata1-zhizi-b28c512nbt-muonfd2.bin.gz"
     "/usr/local/opt/katago/share/katago/kata1-zhizi-b40c768nbt-fdx6c.bin.gz"
     "/usr/local/opt/katago/share/katago/g170-b40c256x2-s5095420928-d1229425124.bin.gz"
     "/usr/local/opt/katago/share/katago/kata1-b18c384nbt-s9996604416-d4316597426.bin.gz"
     "/opt/homebrew/opt/katago/share/katago/$PREFERRED_MODEL_NAME"
+    "/opt/homebrew/opt/katago/share/katago/kata1-b28c512nbt-s13255194368-d5935380940.bin.gz"
     "/opt/homebrew/opt/katago/share/katago/kata1-zhizi-b28c512nbt-muonfd2.bin.gz"
     "/opt/homebrew/opt/katago/share/katago/kata1-zhizi-b40c768nbt-fdx6c.bin.gz"
     "/opt/homebrew/opt/katago/share/katago/g170-b40c256x2-s5095420928-d1229425124.bin.gz"

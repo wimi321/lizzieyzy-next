@@ -1,3 +1,6 @@
+.DS_Store
+dependency-reduced-pom.xml
+
 .tools/
 .cache/
 target/
@@ -12,3 +15,9 @@ save/
 gtp_logs/
 .superpowers/
 jcef-bundle/
+
+# Runtime copies created when launching from the repo root; canonical packaged
+# copies live under src/main/resources/assets/.
+/captureTsumeGo/
+/readboard_java/
+/readboard_boofcv_config.txt

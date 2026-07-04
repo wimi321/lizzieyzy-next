@@ -1,0 +1,289 @@
+{
+  "schema_version": 1,
+  "method": "second-level nested grouped residual calibration",
+  "rows": 210,
+  "games": 105,
+  "core_features": [
+    "match_rate",
+    "first_choice_rate",
+    "top5_rate",
+    "weighted_loss_fit",
+    "difficulty_fit"
+  ],
+  "hinge_knots": [
+    7.0,
+    8.0,
+    9.0,
+    10.0,
+    11.0
+  ],
+  "quality_gate_thresholds": {
+    "match_rate": [
+      0.52,
+      0.6
+    ],
+    "top5_rate": [
+      0.68,
+      0.8
+    ],
+    "weighted_loss_fit": [
+      0.32,
+      0.5
+    ]
+  },
+  "base_metrics": {
+    "all": {
+      "rows": 210,
+      "mae": 0.858844,
+      "rmse": 1.124012,
+      "bias": -0.514182,
+      "p90": 1.929071,
+      "within_1_0": 0.690476
+    },
+    "ge5": {
+      "rows": 203,
+      "mae": 0.835348,
+      "rmse": 1.091041,
+      "bias": -0.577939,
+      "p90": 1.895057,
+      "within_1_0": 0.699507
+    },
+    "ge9": {
+      "rows": 171,
+      "mae": 0.808388,
+      "rmse": 1.055935,
+      "bias": -0.607671,
+      "p90": 1.741808,
+      "within_1_0": 0.707602
+    },
+    "ge10": {
+      "rows": 109,
+      "mae": 0.832707,
+      "rmse": 1.115231,
+      "bias": -0.742708,
+      "p90": 2.073251,
+      "within_1_0": 0.678899
+    },
+    "lt5": {
+      "rows": 7,
+      "mae": 1.540245,
+      "rmse": 1.838852,
+      "bias": 1.334776,
+      "p90": 2.781087,
+      "within_1_0": 0.428571
+    }
+  },
+  "calibrated_metrics": {
+    "all": {
+      "rows": 210,
+      "mae": 0.626438,
+      "rmse": 0.908678,
+      "bias": -0.169886,
+      "p90": 1.451172,
+      "within_1_0": 0.804762
+    },
+    "ge5": {
+      "rows": 203,
+      "mae": 0.594841,
+      "rmse": 0.858528,
+      "bias": -0.221857,
+      "p90": 1.348033,
+      "within_1_0": 0.817734
+    },
+    "ge9": {
+      "rows": 171,
+      "mae": 0.519837,
+      "rmse": 0.750968,
+      "bias": -0.223429,
+      "p90": 1.283016,
+      "within_1_0": 0.847953
+    },
+    "ge10": {
+      "rows": 109,
+      "mae": 0.494801,
+      "rmse": 0.769901,
+      "bias": -0.347283,
+      "p90": 1.307714,
+      "within_1_0": 0.853211
+    },
+    "lt5": {
+      "rows": 7,
+      "mae": 1.542748,
+      "rmse": 1.842775,
+      "bias": 1.337279,
+      "p90": 2.789023,
+      "within_1_0": 0.428571
+    }
+  },
+  "base_to_calibrated_bootstrap": {
+    "all": {
+      "games": 105,
+      "mean_improvement": 0.232406,
+      "ci95_low": 0.170485,
+      "ci95_high": 0.294964,
+      "probability_improvement": 1.0
+    },
+    "ge5": {
+      "games": 102,
+      "mean_improvement": 0.239327,
+      "ci95_low": 0.175315,
+      "ci95_high": 0.300563,
+      "probability_improvement": 1.0
+    },
+    "ge9": {
+      "games": 91,
+      "mean_improvement": 0.280427,
+      "ci95_low": 0.209049,
+      "ci95_high": 0.348648,
+      "probability_improvement": 1.0
+    },
+    "ge10": {
+      "games": 77,
+      "mean_improvement": 0.343358,
+      "ci95_low": 0.258963,
+      "ci95_high": 0.42601,
+      "probability_improvement": 1.0
+    }
+  },
+  "final_spec": {
+    "name": "piecewise_core_g6.5-9_max1_a10",
+    "method": "piecewise_core",
+    "gate_start": 6.5,
+    "gate_full": 9.0,
+    "correction_min": -0.5,
+    "correction_max": 1.0,
+    "alpha": 10.0
+  },
+  "final_cv_score": 1.055492,
+  "final_calibrator": {
+    "spec": {
+      "name": "piecewise_core_g6.5-9_max1_a10",
+      "method": "piecewise_core",
+      "gate_start": 6.5,
+      "gate_full": 9.0,
+      "correction_min": -0.5,
+      "correction_max": 1.0,
+      "alpha": 10.0
+    },
+    "feature_order": [
+      "base_prediction",
+      "hinge_above_7",
+      "hinge_above_8",
+      "hinge_above_9",
+      "hinge_above_10",
+      "hinge_above_11",
+      "match_rate",
+      "first_choice_rate",
+      "top5_rate",
+      "weighted_loss_fit",
+      "difficulty_fit"
+    ],
+    "scaler_mean": [
+      9.156294,
+      2.272438,
+      1.393579,
+      0.649039,
+      0.157531,
+      0.020219,
+      0.64008,
+      0.435464,
+      0.814133,
+      0.411044,
+      0.623401
+    ],
+    "scaler_scale": [
+      1.470572,
+      1.183744,
+      0.987154,
+      0.694507,
+      0.348032,
+      0.129107,
+      0.080536,
+      0.089669,
+      0.085403,
+      0.136546,
+      0.265748
+    ],
+    "intercept": 0.591369,
+    "coefficients": [
+      -0.13708,
+      -0.217202,
+      -0.538984,
+      -0.091142,
+      -0.14194,
+      0.107114,
+      0.456653,
+      -0.203328,
+      0.493744,
+      0.153792,
+      0.172825
+    ]
+  },
+  "outer_folds": [
+    {
+      "outer_fold": 1,
+      "train_games": 83,
+      "test_games": 22,
+      "selected_spec": "piecewise_core_g6.5-9_max1_a10",
+      "inner_score": 1.004407,
+      "outer_rows": 44.0,
+      "outer_mae": 0.771272,
+      "outer_rmse": 1.052703,
+      "outer_bias": -0.150357,
+      "outer_p90": 1.673829,
+      "outer_within_1_0": 0.659091
+    },
+    {
+      "outer_fold": 2,
+      "train_games": 83,
+      "test_games": 22,
+      "selected_spec": "piecewise_core_g6.5-9_max1_a10",
+      "inner_score": 1.104035,
+      "outer_rows": 44.0,
+      "outer_mae": 0.519228,
+      "outer_rmse": 0.716994,
+      "outer_bias": -0.05614,
+      "outer_p90": 0.909895,
+      "outer_within_1_0": 0.909091
+    },
+    {
+      "outer_fold": 3,
+      "train_games": 84,
+      "test_games": 21,
+      "selected_spec": "piecewise_core_g6.5-9_max1_a10",
+      "inner_score": 1.050859,
+      "outer_rows": 42.0,
+      "outer_mae": 0.732496,
+      "outer_rmse": 1.034251,
+      "outer_bias": -0.45534,
+      "outer_p90": 1.603123,
+      "outer_within_1_0": 0.738095
+    },
+    {
+      "outer_fold": 4,
+      "train_games": 85,
+      "test_games": 20,
+      "selected_spec": "piecewise_core_g6.5-9_max1_a10",
+      "inner_score": 1.060757,
+      "outer_rows": 40.0,
+      "outer_mae": 0.560456,
+      "outer_rmse": 0.916883,
+      "outer_bias": -0.130731,
+      "outer_p90": 0.998338,
+      "outer_within_1_0": 0.9
+    },
+    {
+      "outer_fold": 5,
+      "train_games": 85,
+      "test_games": 20,
+      "selected_spec": "piecewise_core_g6.5-9_max1_a3",
+      "inner_score": 1.095988,
+      "outer_rows": 40.0,
+      "outer_mae": 0.539675,
+      "outer_rmse": 0.765886,
+      "outer_bias": -0.055915,
+      "outer_p90": 1.338164,
+      "outer_within_1_0": 0.825
+    }
+  ]
+}

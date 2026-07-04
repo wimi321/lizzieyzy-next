@@ -6,24 +6,30 @@ import static java.awt.image.BufferedImage.TYPE_INT_ARGB;
 import static java.lang.Math.max;
 
 import featurecat.lizzie.Config;
-import featurecat.lizzie.ExtraMode;
 import featurecat.lizzie.Lizzie;
 import featurecat.lizzie.gui.LizzieFrame.HtmlKit;
 import featurecat.lizzie.rules.Board;
 import featurecat.lizzie.theme.Theme;
 import featurecat.lizzie.util.DigitOnlyFilter;
 import featurecat.lizzie.util.Utils;
+import java.awt.AlphaComposite;
 import java.awt.BasicStroke;
 import java.awt.BorderLayout;
 import java.awt.Color;
 import java.awt.Component;
+import java.awt.Cursor;
 import java.awt.Desktop;
+import java.awt.Dimension;
 import java.awt.FlowLayout;
 import java.awt.Font;
 import java.awt.FontFormatException;
+import java.awt.FontMetrics;
+import java.awt.GradientPaint;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
 import java.awt.GraphicsEnvironment;
+import java.awt.GridBagConstraints;
+import java.awt.GridBagLayout;
 import java.awt.Image;
 import java.awt.Insets;
 import java.awt.Paint;
@@ -40,31 +46,37 @@ import java.awt.event.MouseEvent;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import java.awt.geom.Point2D;
+import java.awt.geom.RoundRectangle2D;
 import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.FileFilter;
 import java.io.IOException;
+import java.io.InputStream;
+import java.net.URI;
 import java.nio.file.Path;
 import java.text.NumberFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.MissingResourceException;
 import java.util.ResourceBundle;
 import java.util.Vector;
 import java.util.stream.Collectors;
 import javax.imageio.ImageIO;
+import javax.swing.AbstractButton;
 import javax.swing.AbstractCellEditor;
 import javax.swing.BorderFactory;
 import javax.swing.ButtonGroup;
-import javax.swing.GroupLayout;
-import javax.swing.GroupLayout.Alignment;
+import javax.swing.Icon;
 import javax.swing.ImageIcon;
 import javax.swing.JButton;
 import javax.swing.JCheckBox;
 import javax.swing.JColorChooser;
 import javax.swing.JComboBox;
+import javax.swing.JComponent;
 import javax.swing.JDialog;
 import javax.swing.JEditorPane;
 import javax.swing.JFileChooser;
@@ -81,7 +93,6 @@ import javax.swing.JTabbedPane;
 import javax.swing.JTable;
 import javax.swing.JTextField;
 import javax.swing.JTextPane;
-import javax.swing.LayoutStyle.ComponentPlacement;
 import javax.swing.ListCellRenderer;
 import javax.swing.SpinnerNumberModel;
 import javax.swing.SwingConstants;
@@ -92,18 +103,44 @@ import javax.swing.event.ChangeListener;
 import javax.swing.event.HyperlinkEvent;
 import javax.swing.event.HyperlinkListener;
 import javax.swing.filechooser.FileNameExtensionFilter;
+import javax.swing.plaf.basic.BasicScrollBarUI;
+import javax.swing.plaf.basic.BasicTabbedPaneUI;
 import javax.swing.table.AbstractTableModel;
 import javax.swing.table.TableCellEditor;
 import javax.swing.table.TableCellRenderer;
 import javax.swing.table.TableColumn;
 import javax.swing.text.DocumentFilter;
 import javax.swing.text.InternationalFormatter;
+import javax.swing.text.JTextComponent;
 import javax.swing.text.html.HTMLDocument;
 import javax.swing.text.html.StyleSheet;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
 public class ConfigDialog2 extends JDialog {
+  private static final Color SETTINGS_BG = new Color(247, 241, 229);
+  private static final Color SETTINGS_SURFACE = new Color(255, 252, 245);
+  private static final Color SETTINGS_SURFACE_STRONG = new Color(255, 255, 250);
+  private static final Color SETTINGS_BORDER = new Color(225, 214, 194);
+  private static final Color SETTINGS_TEXT = new Color(38, 48, 43);
+  private static final Color SETTINGS_MUTED = new Color(104, 112, 104);
+  private static final Color SETTINGS_JADE = new Color(45, 123, 91);
+  private static final Color SETTINGS_JADE_DARK = new Color(25, 79, 69);
+  private static final Color SETTINGS_JADE_SOFT = new Color(223, 239, 229);
+  private static final Color SETTINGS_GOLD_SOFT = new Color(239, 219, 170);
+  private static final String CLIENT_HEADER_TEXT = "lizzie.config.headerText";
+  private static final String CLIENT_MUTED_TEXT = "lizzie.config.mutedText";
+  private static final String CLIENT_SECTION_HEADING = "lizzie.config.sectionHeading";
+  private static final String CLIENT_SKIP_TEXT_STYLE = "lizzie.config.skipTextStyle";
+  private static final String CLIENT_DESIGN_ROW_CONTROL_HOST = "lizzie.config.designRowControlHost";
+  private static final int MODERN_NAV_DISPLAY = 0;
+  private static final int MODERN_NAV_KIFU = 1;
+  private static final int MODERN_NAV_ENGINE = 2;
+  private static final int MODERN_NAV_PLAY = 3;
+  private static final int MODERN_NAV_ADVANCED = 4;
+  private static final int MODERN_NAV_THEME = 5;
+  private static final int MODERN_NAV_ABOUT = 6;
+
   private ResourceBundle resourceBundle =
       Lizzie.resourceBundle; // ResourceBundle.getBundle("l10n.DisplayStrings");
 
@@ -116,6 +153,11 @@ public class ConfigDialog2 extends JDialog {
   private PanelWithToolTips themeTab;
   private PanelWithToolTips aboutTab;
   private JButton okButton;
+  private final List<ModernTabComponent> modernNavItems = new ArrayList<>();
+  private final Map<Integer, JComponent> modernSectionAnchors = new HashMap<>();
+  private int activeModernNavIndex = 0;
+  private JPanel modernSummaryBody;
+  private boolean syncingShowCommentControl = false;
 
   javax.swing.Timer timer;
   // UI Tab
@@ -149,6 +191,7 @@ public class ConfigDialog2 extends JDialog {
   private JCheckBox chkShowSubBoard;
   private JCheckBox chkShowStatus;
   private JCheckBox chkShowCoordinates;
+  private JCheckBox chkHideCommentControlPane;
   private JRadioButton rdoShowMoveNumberNo;
   private JRadioButton rdoShowMoveNumberAll;
   private JRadioButton rdoShowMoveNumberLast;
@@ -286,6 +329,8 @@ public class ConfigDialog2 extends JDialog {
 
   private JCheckBox chkUseScoreDiff;
   private JTextField txtPercentScoreDiff;
+  private BufferedImage settingsSidebarDecoration;
+  private static BufferedImage settingsPaperTexture;
 
   public ConfigDialog2() {
     setAlwaysOnTop(Lizzie.frame.isAlwaysOnTop());
@@ -293,17 +338,31 @@ public class ConfigDialog2 extends JDialog {
     setModalityType(ModalityType.APPLICATION_MODAL);
     // setType(Type.POPUP);
     // setBounds(100, 100, 890, 834);
-    Lizzie.setFrameSize(this, 890, 885);
+    Lizzie.setFrameSize(this, 1500, 900);
+    setMinimumSize(new Dimension(1180, 760));
     try {
       setIconImage(ImageIO.read(getClass().getResourceAsStream("/assets/logo.png")));
+      settingsSidebarDecoration = loadUiImage("/assets/ui/settings_sidebar_deco.png");
+      settingsPaperTexture = loadUiImage("/assets/ui/settings_paper_bg.png");
     } catch (IOException e) {
       e.printStackTrace();
     }
-    getContentPane().setLayout(new BorderLayout());
-    JPanel buttonPane = new JPanel();
-    buttonPane.setLayout(new FlowLayout(FlowLayout.RIGHT));
-    getContentPane().add(buttonPane, BorderLayout.SOUTH);
-    okButton = new JButton(resourceBundle.getString("LizzieConfig.button.ok"));
+    JPanel rootPane =
+        new JPanel(new BorderLayout()) {
+          @Override
+          protected void paintComponent(Graphics g) {
+            Graphics2D g2 = (Graphics2D) g.create();
+            g2.setRenderingHint(KEY_ANTIALIASING, VALUE_ANTIALIAS_ON);
+            paintSettingsPaperBackground(g2, getWidth(), getHeight());
+            g2.dispose();
+          }
+        };
+    rootPane.setBackground(SETTINGS_BG);
+    setContentPane(rootPane);
+
+    JPanel buttonPane = createModernFooter();
+    rootPane.add(buttonPane, BorderLayout.SOUTH);
+    okButton = new JButton(configText("ConfigDialog2.modern.save", "保存设置"));
     okButton.addActionListener(
         new ActionListener() {
           public void actionPerformed(ActionEvent e) {
@@ -319,7 +378,7 @@ public class ConfigDialog2 extends JDialog {
         });
     okButton.setActionCommand("OK");
     // okButton.setEnabled(false);
-    buttonPane.add(okButton);
+    stylePrimaryButton(okButton);
     getRootPane().setDefaultButton(okButton);
     JButton cancelButton = new JButton(resourceBundle.getString("LizzieConfig.button.cancel"));
     cancelButton.addActionListener(
@@ -329,121 +388,34 @@ public class ConfigDialog2 extends JDialog {
           }
         });
     cancelButton.setActionCommand("Cancel");
+    styleSecondaryButton(cancelButton);
     buttonPane.add(cancelButton);
-    tabbedPane = new JTabbedPane(JTabbedPane.TOP);
-    getContentPane().add(tabbedPane, BorderLayout.CENTER);
+    buttonPane.add(okButton);
+    tabbedPane = new JTabbedPane(JTabbedPane.LEFT);
+    styleTabbedPane(tabbedPane);
 
     NumberFormat nf = NumberFormat.getIntegerInstance();
     nf.setGroupingUsed(false);
     // Theme Tab
-    themeTab = new PanelWithToolTips();
+    themeTab = new SettingsContentPanel(SettingsContentPanel.Mode.THEME);
 
     themeTab.setLayout(null);
 
     // About Tab
-    aboutTab = new PanelWithToolTips();
-    LinkLabel lblLizzieName =
-        new LinkLabel(
-            "<html><div align=\"center\"><b>LizzieYzy Next "
-                + Lizzie.nextVersion
-                + "</b></div>"
-                + "<div align=\"center\"><font style=\"font-weight:plain;font-size:12;\">基于 lizzieyzy "
-                + Lizzie.lizzieVersion
-                + " · Java "
-                + Lizzie.javaVersionString
-                + "</font></div></html>");
-    lblLizzieName.setFont(new Font(Config.sysDefaultFontName, Font.BOLD, 24));
-    LinkLabel lblLizzieInfo =
-        new LinkLabel(resourceBundle.getString("LizzieConfig.about.lblLizzieInfo"));
-    lblLizzieInfo.setFont(new Font(Config.sysDefaultFontName, Font.PLAIN, 14));
-
-    LinkLabel lblOriginTitle =
-        new LinkLabel(resourceBundle.getString("LizzieConfig.about.lblOriginTitle"));
-    lblOriginTitle.setFont(new Font(Config.sysDefaultFontName, Font.BOLD, 14));
-
-    LinkLabel lblOriginLizzieInfo =
-        new LinkLabel(
-            resourceBundle.getString("LizzieConfig.about.lblOriginLizzieInfo1")
-                + Lizzie.checkVersion
-                + resourceBundle.getString("LizzieConfig.about.lblOriginLizzieInfo2"));
-
-    lblOriginLizzieInfo.setFont(new Font(Config.sysDefaultFontName, Font.PLAIN, 14));
-
-    LinkLabel lblQQGroup =
-        new LinkLabel(
-            "<html><b>项目讨论 QQ 群：299419120</b><br />"
-                + "欢迎交流使用问题、反馈 bug、分享使用体验，或者讨论接下来最想加的功能。</html>");
-    lblQQGroup.setFont(new Font(Config.sysDefaultFontName, Font.PLAIN, 14));
-    // 注释这里
-    GroupLayout gl = new GroupLayout(aboutTab);
-    gl.setHorizontalGroup(
-        gl.createParallelGroup(Alignment.LEADING)
-            .addGroup(
-                gl.createSequentialGroup()
-                    .addGroup(
-                        gl.createParallelGroup(Alignment.LEADING)
-                            .addGroup(
-                                gl.createSequentialGroup()
-                                    .addContainerGap()
-                                    .addComponent(
-                                        lblLizzieInfo,
-                                        GroupLayout.DEFAULT_SIZE,
-                                        628,
-                                        Short.MAX_VALUE))
-                            .addGroup(
-                                gl.createSequentialGroup()
-                                    .addContainerGap()
-                                    .addComponent(lblOriginTitle))
-                            .addGroup(
-                                gl.createSequentialGroup()
-                                    .addContainerGap()
-                                    .addComponent(
-                                        lblOriginLizzieInfo,
-                                        GroupLayout.PREFERRED_SIZE,
-                                        620,
-                                        GroupLayout.PREFERRED_SIZE))
-                            .addGroup(
-                                gl.createSequentialGroup()
-                                    .addContainerGap()
-                                    .addComponent(
-                                        lblQQGroup,
-                                        GroupLayout.PREFERRED_SIZE,
-                                        620,
-                                        GroupLayout.PREFERRED_SIZE))
-                            .addGroup(
-                                gl.createSequentialGroup().addComponent(lblLizzieName).addGap(225)))
-                    .addContainerGap()));
-    gl.setVerticalGroup(
-        gl.createParallelGroup(Alignment.LEADING)
-            .addGroup(
-                gl.createSequentialGroup()
-                    .addGap(18)
-                    .addComponent(lblLizzieName)
-                    .addGap(18)
-                    .addPreferredGap(ComponentPlacement.RELATED)
-                    .addComponent(
-                        lblLizzieInfo, GroupLayout.PREFERRED_SIZE, 183, GroupLayout.PREFERRED_SIZE)
-                    .addPreferredGap(ComponentPlacement.RELATED)
-                    .addComponent(lblOriginTitle)
-                    .addPreferredGap(ComponentPlacement.RELATED)
-                    .addComponent(
-                        lblOriginLizzieInfo,
-                        GroupLayout.PREFERRED_SIZE,
-                        220,
-                        GroupLayout.PREFERRED_SIZE)
-                    .addPreferredGap(ComponentPlacement.RELATED)
-                    .addComponent(
-                        lblQQGroup, GroupLayout.PREFERRED_SIZE, 60, GroupLayout.PREFERRED_SIZE)
-                    .addGap(50)));
-    aboutTab.setLayout(gl);
+    aboutTab = new SettingsContentPanel(SettingsContentPanel.Mode.ABOUT);
+    rebuildAboutTabLikeDesign();
     ButtonGroup group = new ButtonGroup();
     nf.setGroupingUsed(false);
     ButtonGroup showMoveGroup = new ButtonGroup();
 
     ButtonGroup ShowWinratGroup = new ButtonGroup();
 
-    uiTab = new PanelWithToolTips();
-    tabbedPane.addTab(resourceBundle.getString("LizzieConfig.title.ui"), null, uiTab, null);
+    uiTab = new SettingsContentPanel(SettingsContentPanel.Mode.UI);
+    tabbedPane.addTab(
+        configText("ConfigDialog2.modern.nav.display", "棋盘与显示"),
+        null,
+        wrapSettingsPanel(uiTab),
+        configText("ConfigDialog2.modern.nav.displayTip", "界面、棋谱加载、操作与分析"));
     uiTab.setLayout(null);
     // setShowLcbWinrate();
     JLabel lblBoardSize = new JLabel(resourceBundle.getString("LizzieConfig.boardSize"));
@@ -601,15 +573,18 @@ public class ConfigDialog2 extends JDialog {
     uiTab.add(chkShowVariationGraph);
 
     JLabel lblShowComment = new JLabel(resourceBundle.getString("LizzieConfig.title.showComment"));
+    lblShowComment.setToolTipText(resourceBundle.getString("LizzieConfig.title.showComment.tooltip"));
     lblShowComment.setBounds(312, 78, 214, 16);
     uiTab.add(lblShowComment);
     chkShowComment = new JCheckBox("");
+    chkShowComment.setToolTipText(resourceBundle.getString("LizzieConfig.title.showComment.tooltip"));
     chkShowComment.addChangeListener(
         new ChangeListener() {
           public void stateChanged(ChangeEvent e) {
-            if (chkShowComment.isSelected() != Lizzie.config.showComment) {
-              Lizzie.config.toggleShowComment();
-            }
+            if (syncingShowCommentControl) return;
+            Lizzie.config.setShowComment(chkShowComment.isSelected());
+            syncShowCommentControl();
+            populateModernSummaryPanel();
           }
         });
     chkShowComment.setBounds(532, 76, 57, 23);
@@ -812,6 +787,14 @@ public class ConfigDialog2 extends JDialog {
     chkAppendWinrateToComment.setBounds(837, 606, 26, 23);
     uiTab.add(chkAppendWinrateToComment);
 
+    JLabel lblHideCommentControlPane =
+        new JLabel(resourceBundle.getString("LizzieConfig.title.hideCommentControlPane"));
+    lblHideCommentControlPane.setBounds(608, 636, 221, 16);
+    uiTab.add(lblHideCommentControlPane);
+    chkHideCommentControlPane = new JCheckBox("");
+    chkHideCommentControlPane.setBounds(837, 633, 26, 23);
+    uiTab.add(chkHideCommentControlPane);
+
     JLabel lblShowSuggestionMoveOrder =
         new JLabel(
             resourceBundle.getString("LizzieConfig.lblShowSuggestionMoveOrder")); // ("显示选点右上方角标");
@@ -995,7 +978,7 @@ public class ConfigDialog2 extends JDialog {
     chkShowCaptured.setSelected(Lizzie.config.showCaptured);
     chkShowWinrate.setSelected(Lizzie.config.showWinrateGraph);
     chkShowVariationGraph.setSelected(Lizzie.config.showVariationGraph);
-    chkShowComment.setSelected(Lizzie.config.showComment);
+    syncShowCommentControl();
     chkShowSubBoard.setSelected(Lizzie.config.showSubBoard);
     chkShowStatus.setSelected(Lizzie.config.showStatus);
     chkShowCoordinates.setSelected(Lizzie.config.showCoordinates);
@@ -1011,6 +994,7 @@ public class ConfigDialog2 extends JDialog {
     chkShowMoveAllInBranch.setSelected(Lizzie.config.showMoveAllInBranch);
     // chkDynamicWinrateGraphWidth.setSelected(Lizzie.config.dynamicWinrateGraphWidth);
     chkAppendWinrateToComment.setSelected(Lizzie.config.appendWinrateToComment);
+    chkHideCommentControlPane.setSelected(Lizzie.config.hideBlunderControlPane);
     chkShowSuggLabel.setSelected(Lizzie.config.showSuggestionOrder);
     chkMaxValueReverseColor.setSelected(Lizzie.config.showSuggestionMaxRed);
     chkShowVairationsOnMouse.setSelected(Lizzie.config.showSuggestionVariations);
@@ -1028,7 +1012,7 @@ public class ConfigDialog2 extends JDialog {
         new JLabel(
             resourceBundle.getString(
                 "LizzieConfig.lblViewSettings")); // ("界面面板选项:"); // $NON-NLS-1$
-    lblViewSettings.setFont(new Font(Config.sysDefaultFontName, Font.BOLD, 14));
+    styleSectionHeading(lblViewSettings);
     lblViewSettings.setBounds(10, 2, 408, 23);
     uiTab.add(lblViewSettings);
 
@@ -1037,7 +1021,7 @@ public class ConfigDialog2 extends JDialog {
             resourceBundle.getString(
                 "LizzieConfig.lblSuggestionMoveAndWinrateSettings")); // ("选点与胜率图选项:"); //
     // $NON-NLS-1$
-    lblSuggestionMoveAndWinrateSettings.setFont(new Font(Config.sysDefaultFontName, Font.BOLD, 14));
+    styleSectionHeading(lblSuggestionMoveAndWinrateSettings);
     lblSuggestionMoveAndWinrateSettings.setBounds(10, 206, 395, 23);
     uiTab.add(lblSuggestionMoveAndWinrateSettings);
 
@@ -1045,14 +1029,14 @@ public class ConfigDialog2 extends JDialog {
         new JLabel(
             resourceBundle.getString(
                 "LizzieConfig.lblEngineSettings")); // ("其他选项:"); // $NON-NLS-1$
-    lblOtherSettings.setFont(new Font(Config.sysDefaultFontName, Font.BOLD, 14));
+    styleSectionHeading(lblOtherSettings);
     lblOtherSettings.setBounds(10, 421, 492, 23);
     uiTab.add(lblOtherSettings);
 
     JLabel lblEngineSettings =
         new JLabel(
             resourceBundle.getString("LizzieConfig.lblOtherSettings")); // ("引擎选项:"); // $NON-NLS-1$
-    lblEngineSettings.setFont(new Font(Config.sysDefaultFontName, Font.BOLD, 14));
+    styleSectionHeading(lblEngineSettings);
     lblEngineSettings.setBounds(10, 522, 492, 23);
     uiTab.add(lblEngineSettings);
 
@@ -1207,8 +1191,14 @@ public class ConfigDialog2 extends JDialog {
     lblBackgroundPonder.setBounds(10, 500, 122, 16);
     uiTab.add(lblBackgroundPonder);
 
-    tabbedPane.addTab(resourceBundle.getString("LizzieConfig.title.theme"), null, themeTab, null);
-    tabbedPane.addTab(resourceBundle.getString("LizzieConfig.title.about"), null, aboutTab, null);
+    tabbedPane.addTab(
+        configText("ConfigDialog2.modern.nav.theme", "主题外观"),
+        null,
+        wrapSettingsPanel(themeTab),
+        resourceBundle.getString("LizzieConfig.title.theme"));
+    tabbedPane.addTab(
+        resourceBundle.getString("LizzieConfig.title.about"), null, wrapAboutPanel(aboutTab), null);
+    rootPane.add(createModernSettingsBody(tabbedPane), BorderLayout.CENTER);
     // txtMaxAnalyzeTime.setText(String.valueOf(leelazConfig.getInt("max-analyze-time-minutes")));
     txtAnalyzeUpdateInterval.setText(String.valueOf(Lizzie.config.analyzeUpdateIntervalCentisec));
     txtAnalyzeUpdateIntervalSSH.setText(
@@ -2054,6 +2044,10 @@ public class ConfigDialog2 extends JDialog {
     setBoardSize();
     setShowMoveNumber();
     setShowWinrateSide();
+    rebuildDisplayTabLikeDesign();
+    SwingUtilities.invokeLater(() -> rebuildDisplayTabLikeDesign(activeModernNavIndex));
+    syncModernTabSelection();
+    modernizeComponentTree(this);
     setLocationRelativeTo(Lizzie.frame);
     addWindowListener(
         new WindowAdapter() {
@@ -2061,6 +2055,1669 @@ public class ConfigDialog2 extends JDialog {
             if (timer != null) timer.stop();
           }
         });
+  }
+
+  private JPanel createModernHeader() {
+    JPanel header =
+        new JPanel(new BorderLayout(20, 0)) {
+          @Override
+          protected void paintComponent(Graphics g) {
+            Graphics2D g2 = (Graphics2D) g.create();
+            g2.setRenderingHint(KEY_ANTIALIASING, VALUE_ANTIALIAS_ON);
+            paintSettingsPaperBackground(g2, getWidth(), getHeight());
+            g2.setPaint(
+                new GradientPaint(
+                    0,
+                    0,
+                    new Color(255, 252, 245, 180),
+                    getWidth(),
+                    getHeight(),
+                    new Color(239, 232, 213, 145)));
+            g2.fillRoundRect(0, 0, getWidth(), getHeight(), 20, 20);
+            g2.setColor(new Color(173, 188, 176, 24));
+            g2.fillOval(getWidth() / 2 - 120, -58, 320, 118);
+            g2.setColor(new Color(80, 116, 95, 16));
+            g2.drawArc(getWidth() / 2 - 80, 22, 360, 95, 0, 180);
+            g2.dispose();
+          }
+        };
+    header.setOpaque(false);
+    header.setBorder(BorderFactory.createEmptyBorder(12, 6, 16, 0));
+
+    JPanel titlePanel = new JPanel(new BorderLayout(0, 5));
+    titlePanel.setOpaque(false);
+    JLabel title = new JLabel(configText("ConfigDialog2.modern.title", "综合设置"));
+    title.putClientProperty(CLIENT_SKIP_TEXT_STYLE, Boolean.TRUE);
+    title.setForeground(SETTINGS_TEXT);
+    title.setFont(new Font(Config.sysDefaultFontName, Font.BOLD, 28));
+    JLabel subtitle =
+        new JLabel(
+            configText("ConfigDialog2.modern.subtitle", "把棋盘、显示、引擎、棋谱加载和主题集中整理；修改后点击保存设置生效。"));
+    subtitle.putClientProperty(CLIENT_SKIP_TEXT_STYLE, Boolean.TRUE);
+    subtitle.setForeground(SETTINGS_MUTED);
+    subtitle.setFont(new Font(Config.sysDefaultFontName, Font.PLAIN, 13));
+    titlePanel.add(title, BorderLayout.NORTH);
+    titlePanel.add(subtitle, BorderLayout.CENTER);
+    header.add(titlePanel, BorderLayout.CENTER);
+
+    return header;
+  }
+
+  private BufferedImage loadUiImage(String path) throws IOException {
+    try (InputStream stream = getClass().getResourceAsStream(path)) {
+      return stream == null ? null : ImageIO.read(stream);
+    }
+  }
+
+  private JPanel createModernFooter() {
+    JPanel footer =
+        new JPanel(new FlowLayout(FlowLayout.RIGHT, 12, 14)) {
+          @Override
+          protected void paintComponent(Graphics g) {
+            Graphics2D g2 = (Graphics2D) g.create();
+            paintSettingsPaperBackground(g2, getWidth(), getHeight());
+            g2.setColor(new Color(255, 252, 244, 96));
+            g2.fillRect(0, 0, getWidth(), getHeight());
+            g2.setColor(new Color(207, 195, 170, 58));
+            g2.drawLine(24, 0, getWidth() - 24, 0);
+            g2.dispose();
+          }
+        };
+    footer.setOpaque(false);
+    footer.setBorder(
+        BorderFactory.createCompoundBorder(
+            BorderFactory.createEmptyBorder(), BorderFactory.createEmptyBorder(0, 18, 0, 18)));
+    JLabel hint =
+        new JLabel(configText("ConfigDialog2.modern.footerHint", "更改会在保存后应用；部分外观和引擎设置可能需要重启。"));
+    hint.putClientProperty(CLIENT_MUTED_TEXT, Boolean.TRUE);
+    hint.setForeground(SETTINGS_MUTED);
+    hint.setFont(new Font(Config.sysDefaultFontName, Font.PLAIN, 12));
+    footer.add(hint);
+    return footer;
+  }
+
+  private JPanel createModernSettingsBody(JTabbedPane tabs) {
+    JPanel outer = new JPanel(new BorderLayout());
+    outer.setOpaque(false);
+    outer.setBorder(BorderFactory.createEmptyBorder(0, 0, 0, 0));
+
+    outer.add(createModernSidebar(), BorderLayout.WEST);
+
+    JPanel main = new JPanel(new BorderLayout(0, 12));
+    main.setOpaque(false);
+    main.setBorder(BorderFactory.createEmptyBorder(18, 18, 16, 18));
+    main.add(createModernHeader(), BorderLayout.NORTH);
+
+    JPanel lower = new JPanel(new BorderLayout(18, 0));
+    lower.setOpaque(false);
+
+    JPanel card =
+        new JPanel(new BorderLayout()) {
+          @Override
+          protected void paintComponent(Graphics g) {
+            // Keep the main stage transparent so the generated paper background stays continuous.
+            super.paintComponent(g);
+          }
+        };
+    card.setOpaque(false);
+    card.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+    card.add(tabs, BorderLayout.CENTER);
+    lower.add(card, BorderLayout.CENTER);
+    main.add(lower, BorderLayout.CENTER);
+    outer.add(main, BorderLayout.CENTER);
+    tabbedPane.addChangeListener(e -> syncModernTabSelection());
+    syncModernTabSelection();
+    return outer;
+  }
+
+  private void styleTabbedPane(JTabbedPane tabs) {
+    tabs.setOpaque(false);
+    tabs.setBackground(SETTINGS_SURFACE);
+    tabs.setForeground(SETTINGS_TEXT);
+    tabs.setFont(new Font(Config.sysDefaultFontName, Font.BOLD, 14));
+    tabs.setBorder(BorderFactory.createEmptyBorder());
+    tabs.setTabLayoutPolicy(JTabbedPane.SCROLL_TAB_LAYOUT);
+    tabs.setUI(
+        new BasicTabbedPaneUI() {
+          @Override
+          protected void installDefaults() {
+            super.installDefaults();
+            tabAreaInsets = new Insets(0, 0, 0, 0);
+            selectedTabPadInsets = new Insets(0, 0, 0, 0);
+            contentBorderInsets = new Insets(0, 0, 0, 0);
+          }
+
+          @Override
+          protected int calculateTabWidth(int tabPlacement, int tabIndex, FontMetrics metrics) {
+            return 0;
+          }
+
+          @Override
+          protected int calculateTabHeight(int tabPlacement, int tabIndex, int fontHeight) {
+            return 0;
+          }
+
+          @Override
+          protected void paintTabBackground(
+              Graphics g,
+              int tabPlacement,
+              int tabIndex,
+              int x,
+              int y,
+              int w,
+              int h,
+              boolean isSelected) {
+            Graphics2D g2 = (Graphics2D) g.create();
+            g2.setRenderingHint(KEY_ANTIALIASING, VALUE_ANTIALIAS_ON);
+            if (isSelected) {
+              g2.setColor(SETTINGS_JADE_SOFT);
+              g2.fillRoundRect(x + 4, y + 4, w - 8, h - 8, 18, 18);
+              g2.setColor(new Color(45, 123, 91, 55));
+              g2.drawRoundRect(x + 4, y + 4, w - 9, h - 9, 18, 18);
+            }
+            g2.dispose();
+          }
+
+          @Override
+          protected void paintTabBorder(
+              Graphics g,
+              int tabPlacement,
+              int tabIndex,
+              int x,
+              int y,
+              int w,
+              int h,
+              boolean isSelected) {}
+
+          @Override
+          protected void paintFocusIndicator(
+              Graphics g,
+              int tabPlacement,
+              Rectangle[] rects,
+              int tabIndex,
+              Rectangle iconRect,
+              Rectangle textRect,
+              boolean isSelected) {}
+
+          @Override
+          protected void paintContentBorder(Graphics g, int tabPlacement, int selectedIndex) {}
+        });
+  }
+
+  private JPanel createModernSidebar() {
+    JPanel sidebar =
+        new JPanel(new BorderLayout()) {
+          @Override
+          protected void paintComponent(Graphics g) {
+            Graphics2D g2 = (Graphics2D) g.create();
+            g2.setRenderingHint(KEY_ANTIALIASING, VALUE_ANTIALIAS_ON);
+            paintSettingsPaperBackground(g2, getWidth(), getHeight());
+            g2.setPaint(
+                new GradientPaint(
+                    0,
+                    0,
+                    new Color(255, 253, 247, 106),
+                    getWidth(),
+                    getHeight(),
+                    new Color(238, 231, 213, 82)));
+            g2.fillRect(0, 0, getWidth(), getHeight());
+            if (settingsSidebarDecoration != null) {
+              g2.setComposite(AlphaComposite.SrcOver.derive(0.36f));
+              g2.drawImage(
+                  settingsSidebarDecoration, 0, getHeight() - 230, getWidth() - 8, 230, null);
+              g2.setComposite(AlphaComposite.SrcOver);
+            }
+            g2.setColor(new Color(208, 195, 170, 28));
+            g2.drawLine(getWidth() - 1, 28, getWidth() - 1, getHeight() - 28);
+            g2.dispose();
+          }
+        };
+    sidebar.setOpaque(false);
+    sidebar.setPreferredSize(new Dimension(252, 1));
+    sidebar.setBorder(BorderFactory.createEmptyBorder(24, 16, 22, 16));
+
+    JPanel nav = new JPanel();
+    nav.setOpaque(false);
+    nav.setLayout(new javax.swing.BoxLayout(nav, javax.swing.BoxLayout.Y_AXIS));
+    addSidebarNavItem(
+        nav,
+        configText("ConfigDialog2.modern.nav.display", "棋盘与显示"),
+        configText("ConfigDialog2.modern.nav.displayShortSub", "棋盘、胜率"),
+        "board",
+        0,
+        -1);
+    addSidebarNavItem(
+        nav,
+        configText("ConfigDialog2.modern.nav.kifu", "棋谱加载"),
+        configText("ConfigDialog2.modern.nav.kifuSub", "SGF 加载"),
+        "kifu",
+        0,
+        -1);
+    addSidebarNavItem(
+        nav,
+        configText("ConfigDialog2.modern.nav.engine", "引擎与分析"),
+        configText("ConfigDialog2.modern.nav.engineSub", "分析、日志"),
+        "engine",
+        0,
+        -1);
+    addSidebarNavItem(
+        nav,
+        configText("ConfigDialog2.modern.nav.play", "对局与操作"),
+        configText("ConfigDialog2.modern.nav.playSub", "鼠标、提示"),
+        "play",
+        0,
+        -1);
+    addSidebarNavItem(
+        nav,
+        configText("ConfigDialog2.modern.nav.advanced", "高级选项"),
+        configText("ConfigDialog2.modern.nav.advancedSub", "缓存、调试"),
+        "advanced",
+        0,
+        -1);
+    addSidebarNavItem(
+        nav,
+        configText("ConfigDialog2.modern.nav.theme", "主题外观"),
+        configText("ConfigDialog2.modern.nav.themeShortSub", "字体、配色"),
+        "theme",
+        1,
+        0);
+    addSidebarNavItem(
+        nav,
+        configText("ConfigDialog2.modern.nav.about", "关于"),
+        configText("ConfigDialog2.modern.nav.aboutSub", "版本、致谢"),
+        "about",
+        2,
+        0);
+    sidebar.add(nav, BorderLayout.NORTH);
+    return sidebar;
+  }
+
+  private void addSidebarNavItem(
+      JPanel nav, String title, String subtitle, String icon, int targetTabIndex, int scrollY) {
+    ModernTabComponent item = new ModernTabComponent(title, subtitle, icon);
+    item.setAlignmentX(Component.LEFT_ALIGNMENT);
+    item.setMaximumSize(new Dimension(Integer.MAX_VALUE, 66));
+    final int navIndex = modernNavItems.size();
+    item.addMouseListener(
+        new MouseAdapter() {
+          @Override
+          public void mousePressed(MouseEvent e) {
+            selectModernSettingsSection(navIndex, targetTabIndex, scrollY);
+          }
+        });
+    modernNavItems.add(item);
+    nav.add(item);
+    nav.add(javax.swing.Box.createVerticalStrut(6));
+  }
+
+  private void selectModernSettingsSection(int navIndex, int targetTabIndex, int scrollY) {
+    activeModernNavIndex = navIndex;
+    if (targetTabIndex == 0 && navIndex <= MODERN_NAV_ADVANCED) {
+      rebuildDisplayTabLikeDesign(navIndex);
+    }
+    tabbedPane.setSelectedIndex(targetTabIndex);
+    SwingUtilities.invokeLater(
+        () -> {
+          Component selected = tabbedPane.getSelectedComponent();
+          if (selected instanceof JScrollPane) {
+            JScrollPane scrollPane = (JScrollPane) selected;
+            JComponent anchor =
+                scrollY < 0 && targetTabIndex != 0 ? modernSectionAnchors.get(navIndex) : null;
+            if (anchor != null && anchor.getParent() != null) {
+              Component view = scrollPane.getViewport().getView();
+              java.awt.Point target = SwingUtilities.convertPoint(anchor, 0, 0, view);
+              scrollPane.getViewport().setViewPosition(new java.awt.Point(0, max(0, target.y - 6)));
+            } else {
+              scrollPane.getViewport().setViewPosition(new java.awt.Point(0, Math.max(0, scrollY)));
+            }
+          }
+          syncModernTabSelection();
+        });
+  }
+
+  private JPanel createModernSummaryPanel() {
+    JPanel summary =
+        new JPanel(new BorderLayout(0, 12)) {
+          @Override
+          protected void paintComponent(Graphics g) {
+            Graphics2D g2 = (Graphics2D) g.create();
+            g2.setRenderingHint(KEY_ANTIALIASING, VALUE_ANTIALIAS_ON);
+            g2.setColor(new Color(0, 0, 0, 13));
+            g2.fillRoundRect(4, 5, getWidth() - 8, getHeight() - 8, 20, 20);
+            g2.setColor(SETTINGS_SURFACE_STRONG);
+            g2.fillRoundRect(0, 0, getWidth() - 8, getHeight() - 8, 20, 20);
+            g2.setColor(SETTINGS_BORDER);
+            g2.drawRoundRect(0, 0, getWidth() - 9, getHeight() - 9, 20, 20);
+            g2.dispose();
+          }
+        };
+    summary.setOpaque(false);
+    summary.setPreferredSize(new Dimension(320, 1));
+    summary.setBorder(BorderFactory.createEmptyBorder(22, 20, 22, 22));
+
+    modernSummaryBody = new JPanel();
+    modernSummaryBody.setOpaque(false);
+    modernSummaryBody.setLayout(
+        new javax.swing.BoxLayout(modernSummaryBody, javax.swing.BoxLayout.Y_AXIS));
+    summary.add(modernSummaryBody, BorderLayout.NORTH);
+    populateModernSummaryPanel();
+    return summary;
+  }
+
+  private void populateModernSummaryPanel() {
+    if (modernSummaryBody == null) return;
+    modernSummaryBody.removeAll();
+    JPanel titleBlock = new JPanel(new BorderLayout(0, 6));
+    titleBlock.setOpaque(false);
+    titleBlock.setMaximumSize(new Dimension(286, 58));
+    JLabel title = new JLabel(configText("ConfigDialog2.modern.summary.pageTitle", "当前页面摘要"));
+    styleSectionHeading(title);
+    title.setFont(new Font(Config.sysDefaultFontName, Font.BOLD, 18));
+    JLabel section = new JLabel(modernNavTitle(activeModernNavIndex));
+    section.putClientProperty(CLIENT_SKIP_TEXT_STYLE, Boolean.TRUE);
+    section.setOpaque(true);
+    section.setForeground(SETTINGS_JADE_DARK);
+    section.setBackground(SETTINGS_JADE_SOFT);
+    section.setBorder(BorderFactory.createEmptyBorder(4, 9, 4, 9));
+    section.setFont(new Font(Config.sysDefaultFontName, Font.PLAIN, 12));
+    titleBlock.add(title, BorderLayout.NORTH);
+    titleBlock.add(section, BorderLayout.WEST);
+    modernSummaryBody.add(titleBlock);
+    modernSummaryBody.add(javax.swing.Box.createVerticalStrut(14));
+
+    switch (activeModernNavIndex) {
+      case MODERN_NAV_KIFU:
+        addSummaryGroup(
+            modernSummaryBody,
+            configText("ConfigDialog2.modern.summary.afterSgf", "打开 SGF 后行为"),
+            new String[][] {
+              {
+                configText("ConfigDialog2.modern.summary.autoQuickAnalyze", "自动快速分析"),
+                toggleText(chkAutoQuickAnalyzeOnLoad, Lizzie.config.autoQuickAnalyzeOnLoad)
+              },
+              {
+                configText("ConfigDialog2.modern.summary.jumpLast", "跳到最后一手"),
+                toggleText(chkSgfLoadLast, Lizzie.config.loadSgfLast)
+              },
+              {"形势判断引擎", toggleText(chkAutoLoadEstimate, Lizzie.config.loadEstimateEngine)},
+              {
+                configText("ConfigDialog2.modern.summary.readKomi", "读取贴目"),
+                toggleText(chkLoadKomi, Lizzie.config.readKomi)
+              }
+            });
+        addSummaryTip(modernSummaryBody, "<html><b>加载体验</b><br>打开棋谱后会优先保证棋盘可操作，分析曲线随后补齐。</html>");
+        addSummaryAction(
+            modernSummaryBody,
+            "查看分析设置",
+            e -> selectModernSettingsSection(MODERN_NAV_ENGINE, 0, -1));
+        break;
+      case MODERN_NAV_ENGINE:
+        addSummaryGroup(
+            modernSummaryBody,
+            configText("ConfigDialog2.modern.summary.analysis", "分析与胜率曲线"),
+            new String[][] {
+              {
+                configText("ConfigDialog2.modern.summary.winrateGraph", "显示胜率曲线"),
+                toggleText(chkShowWinrate, Lizzie.config.showWinrateGraph)
+              },
+              {"分支面板", toggleText(chkShowVariationGraph, Lizzie.config.showVariationGraph)},
+              {
+                configText("ConfigDialog2.modern.summary.maxSuggestions", "候选点上限"),
+                fieldText(txtLimitBestMoveNum, String.valueOf(Lizzie.config.limitMaxSuggestion))
+              },
+              {
+                "变化图长度",
+                fieldText(txtLimitBranchLength, String.valueOf(Lizzie.config.limitBranchLength))
+              },
+              {
+                configText("ConfigDialog2.modern.summary.mouseHover", "鼠标悬停"),
+                toggleText(chkShowMouseOverWinrateGraph, Lizzie.config.showMouseOverWinrateGraph)
+              }
+            });
+        addSummaryTip(modernSummaryBody, "<html><b>建议</b><br>选点和变化图数量越大，信息越完整；电脑较慢时可适当降低。</html>");
+        addSummaryAction(
+            modernSummaryBody,
+            "查看高级性能",
+            e -> selectModernSettingsSection(MODERN_NAV_ADVANCED, 0, -1));
+        break;
+      case MODERN_NAV_PLAY:
+        addSummaryGroup(
+            modernSummaryBody,
+            "对局与操作",
+            new String[][] {
+              {"双击找子", toggleText(chkEnableDoubClick, Lizzie.config.allowDoubleClick)},
+              {"点击复盘", toggleText(chkEnableClickReview, Lizzie.config.enableClickReview)},
+              {"拖拽棋子", toggleText(chkEnableDragStone, Lizzie.config.allowDrag)},
+              {"显示坐标", toggleText(chkShowCoordinates, Lizzie.config.showCoordinates)},
+              {"评论/问题手面板", toggleText(chkShowComment, Lizzie.config.showComment)},
+              {
+                "隐藏评论/问题手控制条",
+                toggleText(chkHideCommentControlPane, Lizzie.config.hideBlunderControlPane)
+              }
+            });
+        addSummaryTip(modernSummaryBody, "<html><b>操作优先</b><br>这里的设置会直接影响鼠标和键盘复盘手感。</html>");
+        break;
+      case MODERN_NAV_ADVANCED:
+        addSummaryGroup(
+            modernSummaryBody,
+            "高级与性能",
+            new String[][] {
+              {"对局后台计算", toggleText(chkPonder, Lizzie.config.playponder)},
+              {"引擎快速切换", toggleText(chkFastSwtich, Lizzie.config.fastChange)},
+              {"Lizzie 缓存", toggleText(chkLizzieCache, Lizzie.config.enableLizzieCache)},
+              {"空棋盘停止计算", toggleText(chkStopAtEmpty, Lizzie.config.stopAtEmptyBoard)},
+              {
+                "首次启动智能测速",
+                toggleText(chkEnableStartupBenchmark, Lizzie.config.enableStartupBenchmark)
+              }
+            });
+        addSummaryTip(modernSummaryBody, "<html><b>谨慎修改</b><br>这些选项更偏性能和调试，建议一次只改一两项再观察效果。</html>");
+        break;
+      case MODERN_NAV_THEME:
+        addSummaryGroup(
+            modernSummaryBody,
+            "主题外观",
+            new String[][] {
+              {"当前主题", shortSummaryText(comboText(cmbThemes, "默认"), 16)},
+              {"UI 字体", shortSummaryText(comboText(cmbUiFontName, Config.sysDefaultFontName), 16)},
+              {
+                "棋盘材质",
+                textureText(
+                    chkPureBoard, Lizzie.config.uiConfig.optBoolean("use-pure-board", false))
+              },
+              {
+                "棋子材质",
+                textureText(
+                    chkPureStone, Lizzie.config.uiConfig.optBoolean("use-pure-stone", false))
+              },
+              {
+                "棋子阴影",
+                toggleText(
+                    chkShowStoneShaow, Lizzie.config.uiConfig.optBoolean("show-stone-shadow", true))
+              }
+            });
+        addSummaryTip(modernSummaryBody, "<html><b>即时预览</b><br>主题页可以直接看到棋盘效果；保存后主窗口会使用新外观。</html>");
+        addSummaryAction(
+            modernSummaryBody, "回到主题顶部", e -> selectModernSettingsSection(MODERN_NAV_THEME, 1, 0));
+        break;
+      case MODERN_NAV_ABOUT:
+        addSummaryGroup(
+            modernSummaryBody,
+            "项目信息",
+            new String[][] {
+              {"当前版本", shortSummaryText(safeSummaryText(Lizzie.nextVersion, "1.0.0"), 18)},
+              {"基于版本", "lizzieyzy " + safeSummaryText(Lizzie.lizzieVersion, "")},
+              {
+                "Java",
+                safeSummaryText(Lizzie.javaVersionString, System.getProperty("java.version", ""))
+              },
+              {"构建编号", shortSummaryText(safeSummaryText(Lizzie.checkVersion, "-"), 18)}
+            });
+        addSummaryTip(
+            modernSummaryBody,
+            "<html><b>一起打磨</b><br>欢迎通过 Issue 反馈问题，也欢迎继续参与棋谱同步、UI 和发布包优化。</html>");
+        JPanel links = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
+        links.setOpaque(false);
+        links.setMaximumSize(new Dimension(286, 36));
+        links.add(
+            createSummaryActionButton(
+                "GitHub", e -> openExternalUrl("https://github.com/wimi321/lizzieyzy-next")));
+        links.add(
+            createSummaryActionButton(
+                "Release",
+                e -> openExternalUrl("https://github.com/wimi321/lizzieyzy-next/releases")));
+        modernSummaryBody.add(links);
+        break;
+      case MODERN_NAV_DISPLAY:
+      default:
+        addSummaryGroup(
+            modernSummaryBody,
+            configText("ConfigDialog2.modern.summary.display", "界面显示"),
+            new String[][] {
+              {
+                configText("ConfigDialog2.modern.summary.windowAlwaysOnTop", "窗口总在最前"),
+                toggleText(chkAlwaysOnTop, Lizzie.frame != null && Lizzie.frame.isAlwaysOnTop())
+              },
+              {"快速启动", toggleText(chkShowQuickLinks, Lizzie.config.showQuickLinks)},
+              {
+                configText("ConfigDialog2.modern.summary.statusPanel", "状态面板"),
+                toggleText(chkShowStatus, Lizzie.config.showStatus)
+              },
+              {
+                configText("ConfigDialog2.modern.summary.subBoard", "小棋盘"),
+                toggleText(chkShowSubBoard, Lizzie.config.showSubBoard)
+              }
+            });
+        addSummaryTip(modernSummaryBody, "<html><b>小贴士</b><br>这组设置决定主窗口信息密度，建议按屏幕大小选择。</html>");
+        addSummaryAction(
+            modernSummaryBody,
+            configText("ConfigDialog2.modern.summary.themeAppearance", "前往主题外观"),
+            e -> selectModernSettingsSection(MODERN_NAV_THEME, 1, 0));
+        break;
+    }
+
+    modernSummaryBody.revalidate();
+    modernSummaryBody.repaint();
+  }
+
+  private String enabledText(boolean enabled) {
+    return enabled
+        ? configText("ConfigDialog2.modern.summary.enabled", "已启用")
+        : configText("ConfigDialog2.modern.summary.disabled", "已禁用");
+  }
+
+  private String toggleText(JCheckBox toggle, boolean fallback) {
+    return enabledText(toggle == null ? fallback : toggle.isSelected());
+  }
+
+  private String fieldText(JTextField field, String fallback) {
+    if (field == null || field.getText() == null || field.getText().trim().isEmpty()) {
+      return fallback;
+    }
+    return field.getText().trim();
+  }
+
+  private String comboText(JComboBox<?> combo, String fallback) {
+    if (combo == null || combo.getSelectedItem() == null) return fallback;
+    String text = combo.getSelectedItem().toString();
+    return text == null || text.trim().isEmpty() ? fallback : text.trim();
+  }
+
+  private String textureText(JCheckBox pureToggle, boolean fallback) {
+    boolean pure = pureToggle == null ? fallback : pureToggle.isSelected();
+    return pure ? "纯色" : "图片";
+  }
+
+  private String safeSummaryText(String text, String fallback) {
+    return text == null || text.trim().isEmpty() ? fallback : text.trim();
+  }
+
+  private String shortSummaryText(String text, int maxChars) {
+    String value = safeSummaryText(text, "-");
+    if (value.length() <= maxChars) return value;
+    return value.substring(0, Math.max(1, maxChars - 3)) + "...";
+  }
+
+  private String modernNavTitle(int navIndex) {
+    switch (navIndex) {
+      case MODERN_NAV_KIFU:
+        return configText("ConfigDialog2.modern.nav.kifu", "棋谱加载");
+      case MODERN_NAV_ENGINE:
+        return configText("ConfigDialog2.modern.nav.engine", "引擎与分析");
+      case MODERN_NAV_PLAY:
+        return configText("ConfigDialog2.modern.nav.play", "对局与操作");
+      case MODERN_NAV_ADVANCED:
+        return configText("ConfigDialog2.modern.nav.advanced", "高级选项");
+      case MODERN_NAV_THEME:
+        return configText("ConfigDialog2.modern.nav.theme", "主题外观");
+      case MODERN_NAV_ABOUT:
+        return configText("ConfigDialog2.modern.nav.about", "关于");
+      case MODERN_NAV_DISPLAY:
+      default:
+        return configText("ConfigDialog2.modern.nav.display", "棋盘与显示");
+    }
+  }
+
+  private void addSummaryGroup(JPanel body, String title, String[][] rows) {
+    JLabel group = new JLabel(title);
+    group.putClientProperty(CLIENT_SKIP_TEXT_STYLE, Boolean.TRUE);
+    group.setForeground(SETTINGS_TEXT);
+    group.setFont(new Font(Config.sysDefaultFontName, Font.BOLD, 14));
+    body.add(group);
+    body.add(javax.swing.Box.createVerticalStrut(6));
+    for (String[] row : rows) {
+      JPanel line = new JPanel(new BorderLayout());
+      line.setOpaque(false);
+      line.setMaximumSize(new Dimension(286, 28));
+      JLabel key = new JLabel(row[0]);
+      key.putClientProperty(CLIENT_SKIP_TEXT_STYLE, Boolean.TRUE);
+      key.setForeground(SETTINGS_MUTED);
+      key.setFont(new Font(Config.sysDefaultFontName, Font.PLAIN, 12));
+      JLabel value = new JLabel(row[1]);
+      value.putClientProperty(CLIENT_SKIP_TEXT_STYLE, Boolean.TRUE);
+      value.setOpaque(true);
+      value.setForeground(SETTINGS_JADE_DARK);
+      value.setBackground(SETTINGS_JADE_SOFT);
+      value.setBorder(BorderFactory.createEmptyBorder(4, 8, 4, 8));
+      value.setFont(new Font(Config.sysDefaultFontName, Font.PLAIN, 12));
+      line.add(key, BorderLayout.WEST);
+      line.add(value, BorderLayout.EAST);
+      body.add(line);
+    }
+    body.add(javax.swing.Box.createVerticalStrut(12));
+  }
+
+  private void addSummaryTip(JPanel body, String htmlText) {
+    JPanel tip =
+        new JPanel(new BorderLayout(8, 0)) {
+          @Override
+          protected void paintComponent(Graphics g) {
+            Graphics2D g2 = (Graphics2D) g.create();
+            g2.setRenderingHint(KEY_ANTIALIASING, VALUE_ANTIALIAS_ON);
+            g2.setColor(new Color(248, 242, 226));
+            g2.fillRoundRect(0, 0, getWidth(), getHeight(), 16, 16);
+            g2.setColor(new Color(231, 218, 193));
+            g2.drawRoundRect(0, 0, getWidth() - 1, getHeight() - 1, 16, 16);
+            g2.dispose();
+          }
+        };
+    tip.setOpaque(false);
+    tip.setBorder(BorderFactory.createEmptyBorder(12, 12, 12, 12));
+    tip.setMaximumSize(new Dimension(286, 92));
+    JLabel bulb = new JLabel("○");
+    bulb.putClientProperty(CLIENT_SKIP_TEXT_STYLE, Boolean.TRUE);
+    bulb.setForeground(new Color(202, 142, 31));
+    JLabel text = new JLabel(htmlText);
+    text.putClientProperty(CLIENT_SKIP_TEXT_STYLE, Boolean.TRUE);
+    text.setForeground(SETTINGS_MUTED);
+    text.setFont(new Font(Config.sysDefaultFontName, Font.PLAIN, 12));
+    tip.add(bulb, BorderLayout.WEST);
+    tip.add(text, BorderLayout.CENTER);
+    body.add(tip);
+    body.add(javax.swing.Box.createVerticalStrut(16));
+  }
+
+  private void addSummaryAction(JPanel body, String text, ActionListener listener) {
+    JButton button = createSummaryActionButton(text, listener);
+    button.setAlignmentX(Component.LEFT_ALIGNMENT);
+    body.add(button);
+  }
+
+  private JButton createSummaryActionButton(String text, ActionListener listener) {
+    JButton button = new JButton(text);
+    button.addActionListener(listener);
+    styleSecondaryButton(button);
+    button.setMaximumSize(new Dimension(160, 32));
+    return button;
+  }
+
+  private void rebuildAboutTabLikeDesign() {
+    if (aboutTab == null) return;
+    aboutTab.removeAll();
+    aboutTab.setOpaque(true);
+    aboutTab.setBackground(SETTINGS_BG);
+    aboutTab.setLayout(new BorderLayout());
+
+    JPanel content = new JPanel();
+    content.setOpaque(false);
+    content.setLayout(new BorderLayout());
+    content.setBorder(BorderFactory.createEmptyBorder(18, 20, 18, 20));
+    content.add(createUnifiedAboutPanel(), BorderLayout.CENTER);
+
+    aboutTab.add(content, BorderLayout.CENTER);
+    aboutTab.setPreferredSize(new Dimension(900, 620));
+    aboutTab.revalidate();
+    aboutTab.repaint();
+  }
+
+  private JPanel createUnifiedAboutPanel() {
+    JPanel page =
+        new JPanel() {
+          @Override
+          protected void paintComponent(Graphics g) {
+            Graphics2D g2 = (Graphics2D) g.create();
+            g2.setRenderingHint(KEY_ANTIALIASING, VALUE_ANTIALIAS_ON);
+            int w = getWidth();
+            int h = getHeight();
+            g2.setColor(new Color(0, 0, 0, 14));
+            g2.fillRoundRect(5, 7, w - 10, h - 10, 24, 24);
+            g2.setPaint(
+                new GradientPaint(0, 0, new Color(255, 253, 247), w, h, new Color(247, 240, 224)));
+            g2.fillRoundRect(0, 0, w - 8, h - 8, 24, 24);
+            g2.setColor(new Color(223, 237, 225, 140));
+            g2.fillOval(w - 220, -90, 300, 170);
+            g2.setColor(new Color(237, 220, 177, 105));
+            g2.fillOval(-70, h - 120, 220, 150);
+            g2.setColor(SETTINGS_BORDER);
+            g2.drawRoundRect(0, 0, w - 9, h - 9, 24, 24);
+            g2.dispose();
+          }
+        };
+    page.setOpaque(false);
+    page.setLayout(new BorderLayout(0, 18));
+    page.setBorder(BorderFactory.createEmptyBorder(28, 32, 28, 32));
+    page.setAlignmentX(Component.LEFT_ALIGNMENT);
+    page.setPreferredSize(new Dimension(900, 560));
+    page.setMaximumSize(new Dimension(Integer.MAX_VALUE, 560));
+
+    page.add(createUnifiedAboutHero(), BorderLayout.NORTH);
+    JPanel cards = new JPanel(new java.awt.GridLayout(1, 3, 14, 0));
+    cards.setOpaque(false);
+    cards.add(
+        createUserAboutCard(
+            "找棋谱更省心", "支持野狐、腾讯棋谱等常用入口，少复制、少切窗口，打开后直接复盘。", "/assets/ui/about_card_kifu.png"));
+    cards.add(
+        createUserAboutCard(
+            "KataGo 更好上手", "一键设置整理权重、引擎和测速，尽量把复杂配置变成看得懂的流程。", "/assets/ui/about_card_katago.png"));
+    cards.add(
+        createUserAboutCard(
+            "复盘更专注", "保留胜率曲线、候选点和整局快速分析，把重点放在棋局本身。", "/assets/ui/about_card_review.png"));
+    page.add(cards, BorderLayout.CENTER);
+    page.add(createUnifiedAboutCommunity(), BorderLayout.SOUTH);
+    return page;
+  }
+
+  private JPanel createUnifiedAboutHero() {
+    JPanel hero = new JPanel(new BorderLayout(20, 0));
+    hero.setOpaque(false);
+    hero.setMaximumSize(new Dimension(Integer.MAX_VALUE, 132));
+    hero.setAlignmentX(Component.LEFT_ALIGNMENT);
+
+    JPanel copy = new JPanel();
+    copy.setOpaque(false);
+    copy.setLayout(new javax.swing.BoxLayout(copy, javax.swing.BoxLayout.Y_AXIS));
+    JLabel title = new JLabel("LizzieYzy Next");
+    title.putClientProperty(CLIENT_SKIP_TEXT_STYLE, Boolean.TRUE);
+    title.setForeground(SETTINGS_TEXT);
+    title.setFont(new Font(Config.sysDefaultFontName, Font.BOLD, 32));
+    JLabel version = new JLabel("版本 " + Lizzie.nextVersion + " · 面向日常复盘与围棋训练");
+    version.putClientProperty(CLIENT_SKIP_TEXT_STYLE, Boolean.TRUE);
+    version.setForeground(SETTINGS_JADE_DARK);
+    version.setFont(new Font(Config.sysDefaultFontName, Font.PLAIN, 13));
+    JLabel intro = createAboutParagraph("LizzieYzy Next 帮你更方便地找棋谱、看胜率、用 KataGo 复盘，让常用功能尽量开箱即用。");
+    copy.add(title);
+    copy.add(javax.swing.Box.createVerticalStrut(4));
+    copy.add(version);
+    copy.add(javax.swing.Box.createVerticalStrut(12));
+    copy.add(intro);
+
+    JPanel actions = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
+    actions.setOpaque(false);
+    actions.add(createAboutLinkButton("项目主页", "https://github.com/wimi321/lizzieyzy-next"));
+    actions.add(
+        createAboutLinkButton("发布下载", "https://github.com/wimi321/lizzieyzy-next/releases"));
+    actions.add(createAboutLinkButton("问题反馈", "https://github.com/wimi321/lizzieyzy-next/issues"));
+    hero.add(copy, BorderLayout.CENTER);
+    hero.add(actions, BorderLayout.SOUTH);
+    return hero;
+  }
+
+  private JPanel createUserAboutCard(String title, String description, String imagePath) {
+    BufferedImage image = null;
+    try {
+      image = loadUiImage(imagePath);
+    } catch (IOException ignored) {
+    }
+    final BufferedImage cardImage = image;
+    JPanel card =
+        new JPanel(new BorderLayout()) {
+          @Override
+          protected void paintComponent(Graphics g) {
+            Graphics2D g2 = (Graphics2D) g.create();
+            g2.setRenderingHint(KEY_ANTIALIASING, VALUE_ANTIALIAS_ON);
+            g2.setClip(new RoundRectangle2D.Float(0, 0, getWidth(), getHeight(), 18, 18));
+            if (cardImage != null) {
+              paintImageCover(g2, cardImage, 0, 0, getWidth(), getHeight());
+            } else {
+              g2.setColor(new Color(255, 255, 250, 178));
+              g2.fillRoundRect(0, 0, getWidth(), getHeight(), 18, 18);
+            }
+            g2.setPaint(
+                new GradientPaint(
+                    0,
+                    0,
+                    new Color(255, 255, 250, 35),
+                    0,
+                    getHeight(),
+                    new Color(255, 252, 244, 130)));
+            g2.fillRoundRect(0, 0, getWidth(), getHeight(), 18, 18);
+            g2.setClip(null);
+            g2.setColor(new Color(219, 211, 193));
+            g2.drawRoundRect(0, 0, getWidth() - 1, getHeight() - 1, 18, 18);
+            g2.dispose();
+          }
+        };
+    card.setOpaque(false);
+    card.setBorder(BorderFactory.createEmptyBorder(0, 0, 0, 0));
+    JLabel titleLabel = createAboutCardTitle(title);
+    titleLabel.setFont(new Font(Config.sysDefaultFontName, Font.BOLD, 16));
+    titleLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
+    JLabel body = createAboutParagraph(description);
+    body.setFont(new Font(Config.sysDefaultFontName, Font.PLAIN, 13));
+    body.setAlignmentX(Component.LEFT_ALIGNMENT);
+    JPanel copy =
+        new JPanel() {
+          @Override
+          protected void paintComponent(Graphics g) {
+            Graphics2D g2 = (Graphics2D) g.create();
+            g2.setRenderingHint(KEY_ANTIALIASING, VALUE_ANTIALIAS_ON);
+            g2.setColor(new Color(255, 253, 246, 224));
+            g2.fillRoundRect(10, 0, getWidth() - 20, getHeight() - 12, 18, 18);
+            g2.setColor(new Color(255, 255, 255, 128));
+            g2.drawRoundRect(10, 0, getWidth() - 21, getHeight() - 13, 18, 18);
+            g2.dispose();
+          }
+        };
+    copy.setOpaque(false);
+    copy.setLayout(new javax.swing.BoxLayout(copy, javax.swing.BoxLayout.Y_AXIS));
+    copy.setBorder(BorderFactory.createEmptyBorder(16, 24, 24, 24));
+    copy.add(titleLabel);
+    copy.add(javax.swing.Box.createVerticalStrut(8));
+    copy.add(body);
+    card.add(copy, BorderLayout.SOUTH);
+    return card;
+  }
+
+  private static void paintImageCover(
+      Graphics2D g2, Image image, int x, int y, int width, int height) {
+    int imageWidth = image.getWidth(null);
+    int imageHeight = image.getHeight(null);
+    if (imageWidth <= 0 || imageHeight <= 0 || width <= 0 || height <= 0) return;
+    double scale = Math.max(width / (double) imageWidth, height / (double) imageHeight);
+    int drawWidth = (int) Math.ceil(imageWidth * scale);
+    int drawHeight = (int) Math.ceil(imageHeight * scale);
+    int drawX = x + (width - drawWidth) / 2;
+    int drawY = y + (height - drawHeight) / 2;
+    g2.drawImage(image, drawX, drawY, drawWidth, drawHeight, null);
+  }
+
+  private static void paintSettingsPaperBackground(Graphics2D g2, int width, int height) {
+    if (settingsPaperTexture != null) {
+      paintImageCover(g2, settingsPaperTexture, 0, 0, width, height);
+      g2.setColor(new Color(255, 252, 244, 72));
+      g2.fillRect(0, 0, width, height);
+    } else {
+      g2.setColor(SETTINGS_BG);
+      g2.fillRect(0, 0, width, height);
+    }
+  }
+
+  private void addAboutDivider(JPanel body) {
+    body.add(javax.swing.Box.createVerticalStrut(18));
+    JComponent divider =
+        new JComponent() {
+          @Override
+          protected void paintComponent(Graphics g) {
+            Graphics2D g2 = (Graphics2D) g.create();
+            g2.setColor(new Color(226, 216, 196));
+            g2.drawLine(0, 0, getWidth(), 0);
+            g2.setColor(new Color(255, 255, 255, 145));
+            g2.drawLine(0, 1, getWidth(), 1);
+            g2.dispose();
+          }
+        };
+    divider.setMaximumSize(new Dimension(Integer.MAX_VALUE, 2));
+    divider.setPreferredSize(new Dimension(760, 2));
+    divider.setAlignmentX(Component.LEFT_ALIGNMENT);
+    body.add(divider);
+    body.add(javax.swing.Box.createVerticalStrut(16));
+  }
+
+  private void addAboutSectionHeader(JPanel body, String text) {
+    JLabel label = createAboutCardTitle(text);
+    label.setAlignmentX(Component.LEFT_ALIGNMENT);
+    body.add(label);
+    body.add(javax.swing.Box.createVerticalStrut(8));
+  }
+
+  private void addAboutFeatureRow(JPanel body, String title, String description) {
+    JPanel row = new JPanel(new BorderLayout(14, 0));
+    row.setOpaque(false);
+    row.setBorder(BorderFactory.createEmptyBorder(7, 0, 7, 0));
+    row.setMaximumSize(new Dimension(Integer.MAX_VALUE, 46));
+    JLabel marker = new JLabel("●", SwingConstants.CENTER);
+    marker.putClientProperty(CLIENT_SKIP_TEXT_STYLE, Boolean.TRUE);
+    marker.setForeground(SETTINGS_JADE);
+    marker.setFont(new Font(Config.sysDefaultFontName, Font.PLAIN, 9));
+    marker.setPreferredSize(new Dimension(18, 20));
+    JLabel text =
+        new JLabel(
+            "<html><b>"
+                + title
+                + "</b><span style='color:#687068'>　"
+                + description
+                + "</span></html>");
+    text.putClientProperty(CLIENT_SKIP_TEXT_STYLE, Boolean.TRUE);
+    text.setForeground(SETTINGS_TEXT);
+    text.setFont(new Font(Config.sysDefaultFontName, Font.PLAIN, 13));
+    row.add(marker, BorderLayout.WEST);
+    row.add(text, BorderLayout.CENTER);
+    body.add(row);
+  }
+
+  private void addUnifiedAboutMetaRow(JPanel body, String title, JComponent value) {
+    JPanel row = new JPanel(new BorderLayout(12, 0));
+    row.setOpaque(false);
+    row.setBorder(BorderFactory.createEmptyBorder(7, 0, 7, 0));
+    row.setMaximumSize(new Dimension(Integer.MAX_VALUE, 42));
+    JLabel key = new JLabel(title);
+    key.putClientProperty(CLIENT_SKIP_TEXT_STYLE, Boolean.TRUE);
+    key.setForeground(SETTINGS_MUTED);
+    key.setFont(new Font(Config.sysDefaultFontName, Font.PLAIN, 12));
+    value.putClientProperty(CLIENT_SKIP_TEXT_STYLE, Boolean.TRUE);
+    if (value instanceof JLabel) {
+      value.setForeground(SETTINGS_TEXT);
+      value.setFont(new Font(Config.sysDefaultFontName, Font.PLAIN, 13));
+    }
+    row.add(key, BorderLayout.WEST);
+    row.add(value, BorderLayout.EAST);
+    body.add(row);
+  }
+
+  private JPanel createUnifiedAboutCommunity() {
+    JPanel row = new JPanel(new BorderLayout(18, 0));
+    row.setOpaque(false);
+    row.setMaximumSize(new Dimension(Integer.MAX_VALUE, 72));
+    row.setAlignmentX(Component.LEFT_ALIGNMENT);
+    JPanel copy = new JPanel();
+    copy.setOpaque(false);
+    copy.setLayout(new javax.swing.BoxLayout(copy, javax.swing.BoxLayout.Y_AXIS));
+    copy.add(createAboutCardTitle(configText("ConfigDialog2.modern.about.community", "参与交流")));
+    copy.add(javax.swing.Box.createVerticalStrut(6));
+    copy.add(createAboutParagraph("项目讨论 QQ 群：299419120。欢迎反馈 bug、分享使用体验，也欢迎继续参与棋谱同步、UI 和发布包优化。"));
+    JPanel actions = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
+    actions.setOpaque(false);
+    actions.add(createAboutLinkButton("反馈问题", "https://github.com/wimi321/lizzieyzy-next/issues"));
+    actions.add(
+        createAboutLinkButton("查看更新", "https://github.com/wimi321/lizzieyzy-next/releases"));
+    row.add(copy, BorderLayout.CENTER);
+    row.add(actions, BorderLayout.EAST);
+    return row;
+  }
+
+  private JLabel createAboutCardTitle(String text) {
+    JLabel label = new JLabel(text);
+    label.putClientProperty(CLIENT_SKIP_TEXT_STYLE, Boolean.TRUE);
+    label.setForeground(SETTINGS_TEXT);
+    label.setFont(new Font(Config.sysDefaultFontName, Font.BOLD, 17));
+    return label;
+  }
+
+  private JLabel createAboutParagraph(String text) {
+    JLabel label = new JLabel("<html>" + text + "</html>");
+    label.putClientProperty(CLIENT_SKIP_TEXT_STYLE, Boolean.TRUE);
+    label.setForeground(SETTINGS_MUTED);
+    label.setFont(new Font(Config.sysDefaultFontName, Font.PLAIN, 13));
+    return label;
+  }
+
+  private JButton createAboutLinkButton(String text, String url) {
+    JButton button = new JButton(text);
+    button.putClientProperty(CLIENT_SKIP_TEXT_STYLE, Boolean.TRUE);
+    button.setForeground(SETTINGS_JADE_DARK);
+    button.setBackground(new Color(244, 249, 244));
+    button.setBorder(
+        BorderFactory.createCompoundBorder(
+            BorderFactory.createLineBorder(new Color(193, 216, 199)),
+            BorderFactory.createEmptyBorder(5, 10, 5, 10)));
+    button.setFont(new Font(Config.sysDefaultFontName, Font.PLAIN, 12));
+    button.setFocusPainted(false);
+    button.setContentAreaFilled(true);
+    button.addActionListener(e -> openExternalUrl(url));
+    return button;
+  }
+
+  private void openExternalUrl(String url) {
+    if (!Desktop.isDesktopSupported()) return;
+    try {
+      Desktop.getDesktop().browse(URI.create(url));
+    } catch (Exception ignored) {
+    }
+  }
+
+  private void rebuildDisplayTabLikeDesign() {
+    rebuildDisplayTabLikeDesign(MODERN_NAV_DISPLAY);
+  }
+
+  private void rebuildDisplayTabLikeDesign(int navIndex) {
+    if (uiTab == null) return;
+    uiTab.removeAll();
+    uiTab.setOpaque(true);
+    uiTab.setBackground(SETTINGS_BG);
+    uiTab.setLayout(new BorderLayout());
+    uiTab.setBorder(BorderFactory.createEmptyBorder(6, 8, 18, 16));
+    modernSectionAnchors.clear();
+
+    JPanel section = createDisplaySection(navIndex);
+    modernSectionAnchors.put(navIndex, section);
+
+    JPanel content = new JPanel();
+    content.setOpaque(false);
+    content.setLayout(new javax.swing.BoxLayout(content, javax.swing.BoxLayout.Y_AXIS));
+    content.add(section);
+
+    Dimension sectionSize = section.getPreferredSize();
+    uiTab.setPreferredSize(new Dimension(900, sectionSize.height + 28));
+    uiTab.add(content, BorderLayout.NORTH);
+    uiTab.revalidate();
+    uiTab.repaint();
+  }
+
+  private JPanel createDisplaySection(int navIndex) {
+    switch (navIndex) {
+      case MODERN_NAV_KIFU:
+        JPanel sgf = createDesignSettingsCard("打开 SGF 后行为", "设置打开本地棋谱后的默认分析、跳转和读取行为。");
+        addToggleRow(sgf, "打开棋谱后自动快速分析", "SGF 打开后自动进行快速形势分析", chkAutoQuickAnalyzeOnLoad);
+        addToggleRow(sgf, "打开后跳到最后一手", "进入棋谱时自动定位到最后一步", chkSgfLoadLast);
+        addToggleRow(sgf, "自动加载形势判断引擎", "需要时自动加载估算/形势判断引擎", chkAutoLoadEstimate);
+        addToggleRow(sgf, "读取棋谱贴目", "打开棋谱时同步读取 SGF 中的贴目", chkLoadKomi);
+        return sgf;
+      case MODERN_NAV_ENGINE:
+        JPanel analysis = createDesignSettingsCard("分析与胜率曲线", "控制胜率曲线、选点列表和分析数据的显示。");
+        addToggleRow(analysis, "显示胜率曲线", "在主界面展示当前棋局胜率变化", chkShowWinrate);
+        addToggleRow(analysis, "显示分支面板", "显示变化图和分支候选点", chkShowVariationGraph);
+        addToggleRow(analysis, "显示柱状失误条", "用柱状条突出胜率或目差波动", chkShowBlunderBar);
+        addToggleRow(analysis, "鼠标悬停胜率图", "鼠标经过胜率图时显示局面信息", chkShowMouseOverWinrateGraph);
+        addToggleRow(
+            analysis,
+            "候选点最高值红色高亮",
+            "关闭后蓝点上的胜率数字使用普通黑白文字，不再反成红色",
+            chkMaxValueReverseColor);
+        addInputRow(analysis, "选点数量上限", "限制主界面推荐选点数量", txtLimitBestMoveNum, "个");
+        addInputRow(analysis, "变化图长度上限", "限制推荐变化图的展示长度", txtLimitBranchLength, "手");
+        return analysis;
+      case MODERN_NAV_PLAY:
+        JPanel operation = createDesignSettingsCard("对局与操作", "整理棋盘标记、鼠标操作和复盘交互选项。");
+        addToggleRow(operation, "启用双击找子", "双击棋盘坐标时快速定位对应落子", chkEnableDoubClick);
+        addToggleRow(operation, "启用点击复盘", "点击棋盘时进入更顺手的复盘操作", chkEnableClickReview);
+        addToggleRow(operation, "启用拖拽棋子", "允许在棋盘上拖拽调整棋子位置", chkEnableDragStone);
+        addToggleRow(operation, "显示评论/问题手面板", "展示棋谱评论、问题手列表和分析说明", chkShowComment);
+        addToggleRow(operation, "隐藏面板顶部控制条", "隐藏评论/问题手面板上方的小按钮和筛选条", chkHideCommentControlPane);
+        addToggleRow(operation, "显示坐标", "在棋盘边缘显示坐标", chkShowCoordinates);
+        addToggleRow(operation, "小棋盘不跟随刷新", "鼠标经过小棋盘时保持当前局部预览", chkNoRefreshSub);
+        return operation;
+      case MODERN_NAV_ADVANCED:
+        JPanel advanced = createDesignSettingsCard("高级与性能", "调整后台分析、缓存和启动测速等偏高级选项。");
+        addToggleRow(advanced, "对局时后台计算", "人机对局时保持后台分析", chkPonder);
+        addToggleRow(advanced, "启用引擎快速切换", "在多个引擎之间更快切换", chkFastSwtich);
+        addToggleRow(advanced, "启用 Lizzie 缓存", "缓存常用局面与分析状态，减少重复加载", chkLizzieCache);
+        addToggleRow(advanced, "空棋盘停止计算", "空棋盘时自动暂停分析", chkStopAtEmpty);
+        addToggleRow(advanced, "首次启动智能测速", "首次启动时引导运行智能测速优化", chkEnableStartupBenchmark);
+        addToggleRow(advanced, "五子棋无提子规则", "五子棋模式下禁用提子逻辑", chkNoCapture);
+        return advanced;
+      case MODERN_NAV_DISPLAY:
+      default:
+        JPanel startup = createDesignSettingsCard("启动时加载", "控制窗口、快捷入口和启动后常用面板的显示方式。");
+        addToggleRow(startup, "窗口总在最前", "主窗口保持在其他窗口上方", chkAlwaysOnTop);
+        addToggleRow(startup, "显示快速启动", "保留底部常用入口，方便快速访问", chkShowQuickLinks);
+        addToggleRow(startup, "显示状态面板", "在主界面显示分析状态与提示", chkShowStatus);
+        addToggleRow(startup, "显示小棋盘", "展示右侧小棋盘和局部预览", chkShowSubBoard);
+        return startup;
+    }
+  }
+
+  private JPanel createDesignSettingsCard(String title, String subtitle) {
+    JPanel card =
+        new JPanel() {
+          @Override
+          protected void paintComponent(Graphics g) {
+            Graphics2D g2 = (Graphics2D) g.create();
+            g2.setRenderingHint(KEY_ANTIALIASING, VALUE_ANTIALIAS_ON);
+            g2.setColor(new Color(0, 0, 0, 6));
+            g2.fillRoundRect(4, 5, getWidth() - 8, getHeight() - 7, 18, 18);
+            g2.setPaint(
+                new GradientPaint(
+                    0,
+                    0,
+                    new Color(255, 254, 249, 214),
+                    getWidth(),
+                    getHeight(),
+                    new Color(252, 247, 235, 184)));
+            g2.fillRoundRect(0, 0, getWidth() - 6, getHeight() - 8, 18, 18);
+            g2.setColor(new Color(218, 207, 186, 72));
+            g2.drawRoundRect(0, 0, getWidth() - 7, getHeight() - 9, 18, 18);
+            g2.setColor(new Color(196, 226, 207, 116));
+            g2.fillRoundRect(0, 0, 4, getHeight() - 8, 14, 14);
+            g2.dispose();
+          }
+        };
+    card.setOpaque(false);
+    card.setLayout(new javax.swing.BoxLayout(card, javax.swing.BoxLayout.Y_AXIS));
+    card.setBorder(BorderFactory.createEmptyBorder(16, 20, 18, 24));
+    card.setAlignmentX(Component.LEFT_ALIGNMENT);
+    card.setMaximumSize(new Dimension(Integer.MAX_VALUE, 560));
+
+    JPanel header = new JPanel(new BorderLayout(10, 0));
+    header.setOpaque(false);
+    header.setMaximumSize(new Dimension(Integer.MAX_VALUE, 42));
+    JLabel titleLabel = new JLabel(title);
+    titleLabel.putClientProperty(CLIENT_SKIP_TEXT_STYLE, Boolean.TRUE);
+    titleLabel.setForeground(SETTINGS_TEXT);
+    titleLabel.setFont(new Font(Config.sysDefaultFontName, Font.BOLD, 17));
+    JLabel subtitleLabel = new JLabel(subtitle);
+    subtitleLabel.putClientProperty(CLIENT_SKIP_TEXT_STYLE, Boolean.TRUE);
+    subtitleLabel.setForeground(SETTINGS_MUTED);
+    subtitleLabel.setFont(new Font(Config.sysDefaultFontName, Font.PLAIN, 12));
+    JPanel text = new JPanel(new BorderLayout(0, 2));
+    text.setOpaque(false);
+    text.add(titleLabel, BorderLayout.NORTH);
+    text.add(subtitleLabel, BorderLayout.CENTER);
+    header.add(text, BorderLayout.CENTER);
+    card.add(header);
+    card.add(javax.swing.Box.createVerticalStrut(10));
+    return card;
+  }
+
+  private void addToggleRow(JPanel card, String title, String subtitle, JCheckBox toggle) {
+    JPanel row = createDesignRow(title, subtitle);
+    addDesignRowControl(row, prepareDesignSwitch(toggle));
+    installToggleRowClickTargets(row, toggle);
+    card.add(row);
+  }
+
+  private void addInputRow(
+      JPanel card, String title, String subtitle, JTextField field, String suffixText) {
+    JPanel row = createDesignRow(title, subtitle);
+    JPanel input = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
+    input.setOpaque(false);
+    JTextField detached = (JTextField) detachComponent(field);
+    detached.setColumns(5);
+    detached.setPreferredSize(new Dimension(66, 30));
+    JLabel suffix = new JLabel(suffixText);
+    suffix.putClientProperty(CLIENT_SKIP_TEXT_STYLE, Boolean.TRUE);
+    suffix.setForeground(SETTINGS_MUTED);
+    suffix.setFont(new Font(Config.sysDefaultFontName, Font.PLAIN, 12));
+    input.add(detached);
+    input.add(suffix);
+    addDesignRowControl(row, input);
+    card.add(row);
+  }
+
+  private JPanel createDesignRow(String title, String subtitle) {
+    JPanel row = new JPanel(new GridBagLayout());
+    row.setOpaque(false);
+    row.setBorder(BorderFactory.createEmptyBorder(9, 0, 9, 0));
+    row.setMaximumSize(new Dimension(Integer.MAX_VALUE, 58));
+    JPanel text = new JPanel(new BorderLayout(0, 2));
+    text.setOpaque(false);
+    text.setPreferredSize(new Dimension(330, 40));
+    JLabel titleLabel = new JLabel(title);
+    titleLabel.putClientProperty(CLIENT_SKIP_TEXT_STYLE, Boolean.TRUE);
+    titleLabel.setForeground(SETTINGS_TEXT);
+    titleLabel.setFont(new Font(Config.sysDefaultFontName, Font.PLAIN, 14));
+    JLabel subtitleLabel = new JLabel(subtitle);
+    subtitleLabel.putClientProperty(CLIENT_SKIP_TEXT_STYLE, Boolean.TRUE);
+    subtitleLabel.setForeground(SETTINGS_MUTED);
+    subtitleLabel.setFont(new Font(Config.sysDefaultFontName, Font.PLAIN, 12));
+    text.add(titleLabel, BorderLayout.NORTH);
+    text.add(subtitleLabel, BorderLayout.CENTER);
+    GridBagConstraints textConstraints = new GridBagConstraints();
+    textConstraints.gridx = 0;
+    textConstraints.gridy = 0;
+    textConstraints.weightx = 0;
+    textConstraints.fill = GridBagConstraints.VERTICAL;
+    textConstraints.anchor = GridBagConstraints.WEST;
+    textConstraints.insets = new Insets(0, 0, 0, 22);
+    row.add(text, textConstraints);
+
+    JPanel controlHost = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
+    controlHost.setOpaque(false);
+    controlHost.setMinimumSize(new Dimension(0, 1));
+    row.putClientProperty(CLIENT_DESIGN_ROW_CONTROL_HOST, controlHost);
+    GridBagConstraints controlConstraints = new GridBagConstraints();
+    controlConstraints.gridx = 1;
+    controlConstraints.gridy = 0;
+    controlConstraints.weightx = 1;
+    controlConstraints.fill = GridBagConstraints.HORIZONTAL;
+    controlConstraints.anchor = GridBagConstraints.WEST;
+    row.add(controlHost, controlConstraints);
+    return row;
+  }
+
+  private void addDesignRowControl(JPanel row, Component control) {
+    Object host = row.getClientProperty(CLIENT_DESIGN_ROW_CONTROL_HOST);
+    if (host instanceof JPanel) {
+      ((JPanel) host).add(control);
+    } else {
+      row.add(control, BorderLayout.EAST);
+    }
+  }
+
+  private JCheckBox prepareDesignSwitch(JCheckBox toggle) {
+    JCheckBox button = (JCheckBox) detachComponent(toggle);
+    button.setText("");
+    button.setIcon(new SwitchIcon());
+    button.setSelectedIcon(new SwitchIcon());
+    button.setBorder(BorderFactory.createEmptyBorder());
+    button.setOpaque(false);
+    button.setContentAreaFilled(false);
+    button.setFocusPainted(false);
+    button.setPreferredSize(new Dimension(54, 30));
+    button.setMinimumSize(new Dimension(54, 30));
+    button.setHorizontalAlignment(SwingConstants.RIGHT);
+    return button;
+  }
+
+  private void installToggleRowClickTargets(Component component, JCheckBox toggle) {
+    if (component instanceof AbstractButton) {
+      return;
+    }
+    component.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+    component.addMouseListener(
+        new MouseAdapter() {
+          @Override
+          public void mouseClicked(MouseEvent e) {
+            if (SwingUtilities.isLeftMouseButton(e) && toggle.isEnabled()) {
+              toggle.doClick();
+            }
+          }
+        });
+    if (component instanceof java.awt.Container) {
+      for (Component child : ((java.awt.Container) component).getComponents()) {
+        installToggleRowClickTargets(child, toggle);
+      }
+    }
+  }
+
+  private Component detachComponent(Component component) {
+    java.awt.Container parent = component.getParent();
+    if (parent != null) parent.remove(component);
+    return component;
+  }
+
+  private void rebuildThemeTabLikeDesign(
+      JButton btnDeleteTheme,
+      JButton btnAddTheme,
+      JScrollPane pnlScrollBlunderNodes,
+      JButton btnAdd,
+      JButton btnRemove,
+      JButton btnReset) {
+    if (themeTab == null) return;
+    themeTab.removeAll();
+    themeTab.setOpaque(true);
+    themeTab.setBackground(SETTINGS_BG);
+    themeTab.setLayout(new BorderLayout());
+    themeTab.setPreferredSize(new Dimension(835, 880));
+
+    JPanel content = new JPanel();
+    content.setOpaque(true);
+    content.setBackground(SETTINGS_BG);
+    content.setLayout(new javax.swing.BoxLayout(content, javax.swing.BoxLayout.Y_AXIS));
+    content.setBorder(BorderFactory.createEmptyBorder(6, 8, 18, 16));
+
+    JPanel profile = createDesignSettingsCard("主题外观", "选择主题，并实时预览棋盘、棋子和背景效果。");
+    addComponentRow(profile, "当前主题", "切换或管理主题方案", rowOf(cmbThemes, btnAddTheme, btnDeleteTheme));
+    pnlBoardPreview.setPreferredSize(new Dimension(220, 180));
+    pnlBoardPreview.setMinimumSize(new Dimension(220, 180));
+    addLargeComponentRow(profile, "棋盘预览", "检查背景、棋盘和棋子纹理", detachComponent(pnlBoardPreview), 208);
+    content.add(profile);
+    content.add(javax.swing.Box.createVerticalStrut(12));
+
+    JPanel strokes = createDesignSettingsCard("线条与字体", "调整胜率曲线、目数曲线、阴影和界面字体。");
+    addComponentRow(
+        strokes, "胜率曲线宽度", "控制胜率曲线线条粗细", rowOf(spnWinrateStrokeWidth, spnScoreLeadStrokeWidth));
+    addComponentRow(strokes, "柱状失误条最小宽度", "让失误条在不同窗口尺寸下更清晰", spnMinimumBlunderBarWidth);
+    addToggleInputRow(strokes, "棋子阴影大小", "开启后调整棋子阴影强度", chkShowStoneShaow, spnShadowSize);
+    addComponentRow(strokes, "计算量及其他字体", "棋盘外信息与分析面板字体", cmbFontName);
+    addComponentRow(strokes, "UI 字体", "菜单、按钮和设置窗口字体", cmbUiFontName);
+    addComponentRow(strokes, "胜率目数字体", "胜率条和目差显示字体", cmbWinrateFontName);
+    content.add(strokes);
+    content.add(javax.swing.Box.createVerticalStrut(12));
+
+    JPanel assets = createDesignSettingsCard("图片与材质", "配置背景、棋盘、黑子和白子的图片资源。");
+    addAssetRow(
+        assets,
+        "背景图片",
+        chkPureBackground,
+        lblPureBackgroundColor,
+        txtBackgroundPath,
+        btnBackgroundPath);
+    addAssetRow(assets, "棋盘图片", chkPureBoard, lblPureBoardColor, txtBoardPath, btnBoardPath);
+    addAssetRow(assets, "黑子图片", null, null, txtBlackStonePath, btnBlackStonePath);
+    addAssetRow(assets, "白子图片", chkPureStone, null, txtWhiteStonePath, btnWhiteStonePath);
+    addComponentRow(assets, "面板背景模糊程度", "数值越大，背景越柔和", txtBackgroundFilter);
+    content.add(assets);
+    content.add(javax.swing.Box.createVerticalStrut(12));
+
+    JPanel colors = createDesignSettingsCard("颜色与标记", "设置胜率曲线、评论区域和棋子标记。");
+    addColorRow(colors, "胜率曲线颜色", lblWinrateLineColor);
+    addColorRow(colors, "胜率缺失曲线颜色", lblWinrateMissLineColor);
+    addColorRow(colors, "胜率变化条颜色", lblBlunderBarColor);
+    addColorRow(colors, "目数曲线颜色", lblScoreMeanLineColor);
+    addColorRow(colors, "评论背景色", lblCommentBackgroundColor);
+    addColorRow(colors, "评论字体色", lblCommentFontColor);
+    addColorRow(colors, "第一选点颜色", lblBestMoveColor);
+    addComponentRow(colors, "评论字体大小", "调整评论面板字号", txtCommentFontSize);
+    addComponentRow(
+        colors,
+        "棋子标志类型",
+        "选择圆圈、三角、实心或不显示",
+        rowOf(
+            rdoStoneIndicatorCircle,
+            rdoStoneIndicatorDelta,
+            rdoStoneIndicatorSolid,
+            rdoStoneIndicatorNo));
+    addToggleInputRow(
+        colors, "显示评论节点颜色", "开启后使用自定义评论节点颜色", chkShowCommentNodeColor, lblCommentNodeColor);
+    content.add(colors);
+    content.add(javax.swing.Box.createVerticalStrut(12));
+
+    JPanel blunders = createDesignSettingsCard("错误节点", "管理胜率波动阈值和对应颜色。");
+    pnlScrollBlunderNodes.setPreferredSize(new Dimension(440, 116));
+    addLargeComponentRow(
+        blunders,
+        "错误节点规则",
+        "添加、删除或重置阈值",
+        rowOf(pnlScrollBlunderNodes, btnAdd, btnRemove, btnReset),
+        150);
+    addToggleInputRow(
+        blunders, "同时考虑胜率与目数", "目数剧烈波动也标记为错误节点", chkUseScoreDiff, txtPercentScoreDiff);
+    content.add(blunders);
+
+    Dimension contentSize = content.getPreferredSize();
+    themeTab.setPreferredSize(new Dimension(900, contentSize.height + 28));
+    themeTab.add(content, BorderLayout.NORTH);
+    themeTab.revalidate();
+    themeTab.repaint();
+  }
+
+  private JPanel rowOf(Component... components) {
+    JPanel row = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
+    row.setOpaque(false);
+    for (Component component : components) {
+      if (component == null) continue;
+      row.add(detachComponent(component));
+    }
+    return row;
+  }
+
+  private void addComponentRow(JPanel card, String title, String subtitle, Component component) {
+    JPanel row = createDesignRow(title, subtitle);
+    Component detached = detachComponent(component);
+    if (detached instanceof JTextField)
+      ((JTextField) detached).setPreferredSize(new Dimension(220, 30));
+    if (detached instanceof JComboBox)
+      ((JComboBox<?>) detached).setPreferredSize(new Dimension(220, 30));
+    if (detached instanceof JSpinner) ((JSpinner) detached).setPreferredSize(new Dimension(76, 30));
+    addDesignRowControl(row, detached);
+    card.add(row);
+  }
+
+  private void addComponentRow(JPanel card, String title, String subtitle, JPanel componentPanel) {
+    JPanel row = createDesignRow(title, subtitle);
+    addDesignRowControl(row, componentPanel);
+    card.add(row);
+  }
+
+  private void addLargeComponentRow(
+      JPanel card, String title, String subtitle, Component component, int height) {
+    JPanel row = createDesignRow(title, subtitle);
+    row.setMaximumSize(new Dimension(Integer.MAX_VALUE, height));
+    row.setPreferredSize(new Dimension(760, height));
+    addDesignRowControl(row, component);
+    card.add(row);
+  }
+
+  private void addColorRow(JPanel card, String title, ColorLabel colorLabel) {
+    JPanel row =
+        createDesignRow(title, configText("ConfigDialog2.modern.colorRowHint", "点击色块或按钮选择颜色"));
+    addDesignRowControl(row, createColorControl(colorLabel));
+    card.add(row);
+  }
+
+  private JPanel createColorControl(ColorLabel colorLabel) {
+    JPanel controls = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 0));
+    controls.setOpaque(false);
+    ColorLabel swatch = (ColorLabel) detachComponent(colorLabel);
+    swatch.setPreferredSize(new Dimension(74, 28));
+    swatch.setMinimumSize(new Dimension(74, 28));
+    controls.add(swatch);
+    JButton choose = new JButton(configText("ConfigDialog2.modern.chooseColor", "选择"));
+    choose.putClientProperty(CLIENT_SKIP_TEXT_STYLE, Boolean.TRUE);
+    choose.setFont(new Font(Config.sysDefaultFontName, Font.PLAIN, 12));
+    choose.setForeground(SETTINGS_JADE_DARK);
+    choose.setBackground(new Color(248, 250, 244));
+    choose.setFocusPainted(false);
+    choose.setBorder(
+        BorderFactory.createCompoundBorder(
+            BorderFactory.createLineBorder(new Color(195, 214, 194)),
+            BorderFactory.createEmptyBorder(5, 12, 5, 12)));
+    choose.addActionListener(e -> swatch.chooseColor());
+    controls.add(choose);
+    return controls;
+  }
+
+  private void addToggleInputRow(
+      JPanel card, String title, String subtitle, JCheckBox toggle, Component input) {
+    JPanel row = createDesignRow(title, subtitle);
+    JPanel controls = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 0));
+    controls.setOpaque(false);
+    controls.add(prepareDesignSwitch(toggle));
+    controls.add(detachComponent(input));
+    addDesignRowControl(row, controls);
+    card.add(row);
+  }
+
+  private void addAssetRow(
+      JPanel card,
+      String title,
+      JCheckBox pureToggle,
+      ColorLabel colorLabel,
+      JTextField path,
+      JButton browse) {
+    JPanel row = createDesignRow(title, "可使用纯色，也可选择图片资源");
+    JPanel controls = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
+    controls.setOpaque(false);
+    if (pureToggle != null) controls.add(prepareDesignSwitch(pureToggle));
+    if (colorLabel != null) controls.add(detachComponent(colorLabel));
+    JTextField field = (JTextField) detachComponent(path);
+    field.setPreferredSize(new Dimension(300, 30));
+    controls.add(field);
+    controls.add(detachComponent(browse));
+    addDesignRowControl(row, controls);
+    card.add(row);
+  }
+
+  private void syncModernTabSelection() {
+    for (int i = 0; i < modernNavItems.size(); i++) {
+      modernNavItems.get(i).setSelectedTab(i == activeModernNavIndex);
+    }
+  }
+
+  private int defaultModernNavIndexForTab(int tabIndex) {
+    if (tabIndex == 1) return MODERN_NAV_THEME;
+    if (tabIndex == 2) return MODERN_NAV_ABOUT;
+    return MODERN_NAV_DISPLAY;
+  }
+
+  private JScrollPane wrapSettingsPanel(PanelWithToolTips panel) {
+    panel.setOpaque(true);
+    panel.setBackground(SETTINGS_BG);
+    Dimension preferred = panel.getPreferredSize();
+    panel.setPreferredSize(new Dimension(max(900, preferred.width), max(820, preferred.height)));
+    JScrollPane scrollPane = new JScrollPane(panel);
+    scrollPane.setBorder(BorderFactory.createEmptyBorder());
+    scrollPane.getViewport().setBackground(SETTINGS_BG);
+    scrollPane.getViewport().setOpaque(true);
+    scrollPane.setBackground(SETTINGS_BG);
+    scrollPane.setOpaque(true);
+    scrollPane.getVerticalScrollBar().setUnitIncrement(22);
+    scrollPane.getHorizontalScrollBar().setUnitIncrement(22);
+    scrollPane.setHorizontalScrollBarPolicy(JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
+    styleModernScrollBar(scrollPane);
+    return scrollPane;
+  }
+
+  private JPanel wrapAboutPanel(PanelWithToolTips panel) {
+    panel.setOpaque(true);
+    panel.setBackground(SETTINGS_BG);
+    JPanel wrapper = new JPanel(new BorderLayout());
+    wrapper.setOpaque(true);
+    wrapper.setBackground(SETTINGS_BG);
+    wrapper.add(panel, BorderLayout.CENTER);
+    return wrapper;
+  }
+
+  private void styleModernScrollBar(JScrollPane scrollPane) {
+    scrollPane.getVerticalScrollBar().setPreferredSize(new Dimension(10, 0));
+    scrollPane
+        .getVerticalScrollBar()
+        .setUI(
+            new BasicScrollBarUI() {
+              @Override
+              protected void configureScrollBarColors() {
+                thumbColor = new Color(170, 184, 170);
+                trackColor = new Color(244, 239, 226);
+              }
+
+              @Override
+              protected JButton createDecreaseButton(int orientation) {
+                return createEmptyScrollButton();
+              }
+
+              @Override
+              protected JButton createIncreaseButton(int orientation) {
+                return createEmptyScrollButton();
+              }
+
+              @Override
+              protected void paintThumb(
+                  Graphics g, javax.swing.JComponent c, Rectangle thumbBounds) {
+                Graphics2D g2 = (Graphics2D) g.create();
+                g2.setRenderingHint(KEY_ANTIALIASING, VALUE_ANTIALIAS_ON);
+                g2.setColor(new Color(124, 149, 129, 145));
+                g2.fillRoundRect(
+                    thumbBounds.x + 2,
+                    thumbBounds.y + 2,
+                    Math.max(4, thumbBounds.width - 4),
+                    Math.max(18, thumbBounds.height - 4),
+                    8,
+                    8);
+                g2.dispose();
+              }
+
+              @Override
+              protected void paintTrack(
+                  Graphics g, javax.swing.JComponent c, Rectangle trackBounds) {
+                Graphics2D g2 = (Graphics2D) g.create();
+                g2.setColor(new Color(246, 241, 229));
+                g2.fillRect(trackBounds.x, trackBounds.y, trackBounds.width, trackBounds.height);
+                g2.dispose();
+              }
+            });
+  }
+
+  private JButton createEmptyScrollButton() {
+    JButton button = new JButton();
+    button.setPreferredSize(new Dimension(0, 0));
+    button.setMinimumSize(new Dimension(0, 0));
+    button.setMaximumSize(new Dimension(0, 0));
+    return button;
+  }
+
+  private String configText(String key, String fallback) {
+    try {
+      return resourceBundle.getString(key);
+    } catch (MissingResourceException ex) {
+      return fallback;
+    }
+  }
+
+  private void syncShowCommentControl() {
+    if (chkShowComment == null) return;
+    boolean autoHiddenByMode = Lizzie.config.isCommentPanelAutoHiddenByMode();
+    String tooltip =
+        autoHiddenByMode
+            ? configText(
+                "LizzieConfig.title.showComment.autoHidden.tooltip",
+                "四方图和双引擎布局会自动隐藏评论/问题手面板。切回普通布局后可以重新打开。")
+            : resourceBundle.getString("LizzieConfig.title.showComment.tooltip");
+    syncingShowCommentControl = true;
+    try {
+      chkShowComment.setSelected(Lizzie.config.showComment);
+      chkShowComment.setEnabled(!autoHiddenByMode);
+      chkShowComment.setToolTipText(tooltip);
+    } finally {
+      syncingShowCommentControl = false;
+    }
+  }
+
+  private void modernizeComponentTree(Component component) {
+    if (component instanceof JPanel) {
+      JPanel panel = (JPanel) component;
+      if (!(panel instanceof SettingsContentPanel)) panel.setBackground(SETTINGS_BG);
+    }
+    if (component instanceof JLabel) {
+      JLabel label = (JLabel) component;
+      if (label instanceof ColorLabel) return;
+      if (Boolean.TRUE.equals(label.getClientProperty(CLIENT_SKIP_TEXT_STYLE))) return;
+      if (Boolean.TRUE.equals(label.getClientProperty(CLIENT_HEADER_TEXT))) return;
+      if (Boolean.TRUE.equals(label.getClientProperty(CLIENT_MUTED_TEXT))) {
+        label.setForeground(SETTINGS_MUTED);
+        label.setFont(new Font(Config.sysDefaultFontName, Font.PLAIN, 12));
+      } else if (Boolean.TRUE.equals(label.getClientProperty(CLIENT_SECTION_HEADING))) {
+        styleSectionHeading(label);
+      } else {
+        label.setForeground(SETTINGS_TEXT);
+        label.setFont(new Font(Config.sysDefaultFontName, Font.PLAIN, Config.frameFontSize));
+      }
+    }
+    if (component instanceof AbstractButton) {
+      styleAbstractButton((AbstractButton) component);
+    }
+    if (component instanceof JTextComponent) {
+      styleTextComponent((JTextComponent) component);
+    }
+    if (component instanceof JComboBox) {
+      ((JComboBox<?>) component).setBackground(SETTINGS_SURFACE_STRONG);
+      ((JComboBox<?>) component).setForeground(SETTINGS_TEXT);
+      ((JComboBox<?>) component).setFont(new Font(Config.sysDefaultFontName, Font.PLAIN, 13));
+    }
+    if (component instanceof JSpinner) {
+      component.setBackground(SETTINGS_SURFACE_STRONG);
+    }
+    if (component instanceof java.awt.Container) {
+      for (Component child : ((java.awt.Container) component).getComponents()) {
+        modernizeComponentTree(child);
+      }
+    }
+  }
+
+  private void styleAbstractButton(AbstractButton button) {
+    button.setFont(new Font(Config.sysDefaultFontName, Font.PLAIN, 13));
+    button.setForeground(SETTINGS_TEXT);
+    button.setFocusPainted(false);
+    if (button instanceof JCheckBox || button instanceof JRadioButton) {
+      button.setOpaque(false);
+      return;
+    }
+    if (button == okButton) {
+      stylePrimaryButton((JButton) button);
+    } else if (button instanceof JButton) {
+      styleSecondaryButton((JButton) button);
+    }
+  }
+
+  private void styleTextComponent(JTextComponent textComponent) {
+    textComponent.setFont(new Font(Config.sysDefaultFontName, Font.PLAIN, 13));
+    textComponent.setForeground(SETTINGS_TEXT);
+    textComponent.setBackground(SETTINGS_SURFACE_STRONG);
+    textComponent.setBorder(
+        BorderFactory.createCompoundBorder(
+            BorderFactory.createLineBorder(new Color(210, 198, 176)),
+            BorderFactory.createEmptyBorder(6, 10, 6, 10)));
+  }
+
+  private void styleSectionHeading(JLabel label) {
+    label.putClientProperty(CLIENT_SECTION_HEADING, Boolean.TRUE);
+    label.setForeground(SETTINGS_JADE_DARK);
+    label.setFont(new Font(Config.sysDefaultFontName, Font.BOLD, 15));
+  }
+
+  private void stylePrimaryButton(JButton button) {
+    button.setForeground(Color.WHITE);
+    button.setBackground(SETTINGS_JADE);
+    button.setFont(new Font(Config.sysDefaultFontName, Font.BOLD, 14));
+    button.setFocusPainted(false);
+    button.setOpaque(true);
+    button.setContentAreaFilled(true);
+    button.setBorder(
+        BorderFactory.createCompoundBorder(
+            BorderFactory.createLineBorder(SETTINGS_JADE_DARK),
+            BorderFactory.createEmptyBorder(8, 22, 8, 22)));
+  }
+
+  private void styleSecondaryButton(JButton button) {
+    button.setForeground(SETTINGS_TEXT);
+    button.setBackground(SETTINGS_SURFACE_STRONG);
+    button.setFont(new Font(Config.sysDefaultFontName, Font.PLAIN, 13));
+    button.setFocusPainted(false);
+    button.setOpaque(true);
+    button.setContentAreaFilled(true);
+    button.setBorder(
+        BorderFactory.createCompoundBorder(
+            BorderFactory.createLineBorder(SETTINGS_BORDER),
+            BorderFactory.createEmptyBorder(8, 18, 8, 18)));
   }
 
   private void loadThemeTab() {
@@ -2081,6 +3738,7 @@ public class ConfigDialog2 extends JDialog {
     themeList.add(0, resourceBundle.getString("LizzieConfig.title.defaultTheme"));
 
     JLabel lblThemes = new JLabel(resourceBundle.getString("LizzieConfig.title.theme"));
+    styleSectionHeading(lblThemes);
     lblThemes.setBounds(10, 11, 163, 20);
     themeTab.add(lblThemes);
 
@@ -2697,6 +4355,12 @@ public class ConfigDialog2 extends JDialog {
                       ImageIO.read(
                           new File(theme == null ? "" : theme.path + txtBackgroundPath.getText()));
                 }
+                if (backgroundImage == null) {
+                  bsGraphics.setColor(lblPureBackgroundColor.getColor());
+                  bsGraphics.fillRect(0, 0, width, height);
+                  bsGraphics.setPaint(originalPaint);
+                  throw new IOException("Theme background image could not be read");
+                }
                 TexturePaint paint =
                     new TexturePaint(
                         backgroundImage,
@@ -2718,6 +4382,12 @@ public class ConfigDialog2 extends JDialog {
                   boardImage =
                       ImageIO.read(
                           new File(theme == null ? "" : theme.path + txtBoardPath.getText()));
+                }
+                if (boardImage == null) {
+                  bsGraphics.setColor(lblPureBoardColor.getColor());
+                  bsGraphics.fillRect(30, 30, width, height);
+                  bsGraphics.setPaint(originalPaint);
+                  throw new IOException("Theme board image could not be read");
                 }
                 TexturePaint paint =
                     new TexturePaint(
@@ -2795,15 +4465,19 @@ public class ConfigDialog2 extends JDialog {
                   drawStoneSimple(bsGraphics, stoneX, stoneY, true, stoneRadius);
                 } else {
                   Image img = blackStoneImage;
-                  Graphics2D g2 = stoneImage.createGraphics();
-                  g2.setRenderingHint(
-                      RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
-                  g2.setRenderingHint(KEY_ANTIALIASING, VALUE_ANTIALIAS_ON);
-                  g2.drawImage(
-                      img.getScaledInstance(size, size, java.awt.Image.SCALE_SMOOTH), 0, 0, null);
-                  g2.dispose();
-                  bsGraphics.drawImage(
-                      stoneImage, stoneX - stoneRadius, stoneY - stoneRadius, null);
+                  if (img == null) {
+                    drawStoneSimple(bsGraphics, stoneX, stoneY, true, stoneRadius);
+                  } else {
+                    Graphics2D g2 = stoneImage.createGraphics();
+                    g2.setRenderingHint(
+                        RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
+                    g2.setRenderingHint(KEY_ANTIALIASING, VALUE_ANTIALIAS_ON);
+                    g2.drawImage(
+                        img.getScaledInstance(size, size, java.awt.Image.SCALE_SMOOTH), 0, 0, null);
+                    g2.dispose();
+                    bsGraphics.drawImage(
+                        stoneImage, stoneX - stoneRadius, stoneY - stoneRadius, null);
+                  }
                 }
               } catch (IOException e0) {
               }
@@ -2855,15 +4529,19 @@ public class ConfigDialog2 extends JDialog {
                   drawStoneSimple(bsGraphics, stoneX, stoneY, false, stoneRadius);
                 } else {
                   Image img = whiteStoneImage;
-                  Graphics2D g2 = stoneImage.createGraphics();
-                  g2.setRenderingHint(
-                      RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
-                  g2.setRenderingHint(KEY_ANTIALIASING, VALUE_ANTIALIAS_ON);
-                  g2.drawImage(
-                      img.getScaledInstance(size, size, java.awt.Image.SCALE_SMOOTH), 0, 0, null);
-                  g2.dispose();
-                  bsGraphics.drawImage(
-                      stoneImage, stoneX - stoneRadius, stoneY - stoneRadius, null);
+                  if (img == null) {
+                    drawStoneSimple(bsGraphics, stoneX, stoneY, false, stoneRadius);
+                  } else {
+                    Graphics2D g2 = stoneImage.createGraphics();
+                    g2.setRenderingHint(
+                        RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
+                    g2.setRenderingHint(KEY_ANTIALIASING, VALUE_ANTIALIAS_ON);
+                    g2.drawImage(
+                        img.getScaledInstance(size, size, java.awt.Image.SCALE_SMOOTH), 0, 0, null);
+                    g2.dispose();
+                    bsGraphics.drawImage(
+                        stoneImage, stoneX - stoneRadius, stoneY - stoneRadius, null);
+                  }
                 }
               } catch (IOException e0) {
               }
@@ -2872,7 +4550,19 @@ public class ConfigDialog2 extends JDialog {
         };
     pnlBoardPreview.setBounds(530, 11, 200, 200);
     themeTab.add(pnlBoardPreview);
+    rebuildThemeTabLikeDesign(
+        btnDeleteTheme, btnAddTheme, pnlScrollBlunderNodes, btnAdd, btnRemove, btnReset);
     Utils.changeFontRecursive(themeTab, Config.sysDefaultFontName);
+    modernizeComponentTree(themeTab);
+    SwingUtilities.invokeLater(
+        () -> {
+          rebuildThemeTabLikeDesign(
+              btnDeleteTheme, btnAddTheme, pnlScrollBlunderNodes, btnAdd, btnRemove, btnReset);
+          Utils.changeFontRecursive(themeTab, Config.sysDefaultFontName);
+          modernizeComponentTree(themeTab);
+          themeTab.revalidate();
+          themeTab.repaint();
+        });
 
     cmbThemes.setSelectedItem(
         Lizzie.config.uiConfig.optString(
@@ -2986,6 +4676,287 @@ public class ConfigDialog2 extends JDialog {
     }
   }
 
+  private static class SwitchIcon implements Icon {
+    private static final int WIDTH = 46;
+    private static final int HEIGHT = 24;
+
+    @Override
+    public int getIconWidth() {
+      return WIDTH;
+    }
+
+    @Override
+    public int getIconHeight() {
+      return HEIGHT;
+    }
+
+    @Override
+    public void paintIcon(Component c, Graphics g, int x, int y) {
+      boolean selected = c instanceof AbstractButton && ((AbstractButton) c).isSelected();
+      Graphics2D g2 = (Graphics2D) g.create();
+      g2.setRenderingHint(KEY_ANTIALIASING, VALUE_ANTIALIAS_ON);
+      g2.setColor(selected ? SETTINGS_JADE : new Color(197, 190, 179));
+      g2.fillRoundRect(x, y + 2, WIDTH, HEIGHT - 4, HEIGHT, HEIGHT);
+      g2.setColor(new Color(255, 255, 255, 210));
+      int knob = HEIGHT - 8;
+      int knobX = selected ? x + WIDTH - knob - 4 : x + 4;
+      g2.fillOval(knobX, y + 4, knob, knob);
+      g2.setColor(new Color(0, 0, 0, 22));
+      g2.drawRoundRect(x, y + 2, WIDTH - 1, HEIGHT - 5, HEIGHT, HEIGHT);
+      g2.dispose();
+    }
+  }
+
+  private static class ModernTabComponent extends JPanel {
+    private final ModernSidebarIcon iconView;
+    private final JLabel titleLabel;
+    private final JLabel subtitleLabel;
+    private boolean selected;
+
+    private ModernTabComponent(String title, String subtitle, String icon) {
+      super(new BorderLayout(10, 0));
+      setOpaque(false);
+      setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 10));
+      setPreferredSize(new Dimension(220, 62));
+
+      iconView = new ModernSidebarIcon(icon);
+
+      JPanel textPanel = new JPanel(new BorderLayout(0, 2));
+      textPanel.setOpaque(false);
+      titleLabel = new JLabel(title);
+      titleLabel.putClientProperty(CLIENT_SKIP_TEXT_STYLE, Boolean.TRUE);
+      titleLabel.setFont(new Font(Config.sysDefaultFontName, Font.BOLD, 13));
+      subtitleLabel = new JLabel(subtitle);
+      subtitleLabel.putClientProperty(CLIENT_SKIP_TEXT_STYLE, Boolean.TRUE);
+      subtitleLabel.setFont(new Font(Config.sysDefaultFontName, Font.PLAIN, 11));
+      textPanel.add(titleLabel, BorderLayout.NORTH);
+      textPanel.add(subtitleLabel, BorderLayout.CENTER);
+
+      add(iconView, BorderLayout.WEST);
+      add(textPanel, BorderLayout.CENTER);
+      setSelectedTab(false);
+    }
+
+    private void setSelectedTab(boolean selected) {
+      this.selected = selected;
+      Color title = selected ? SETTINGS_JADE_DARK : SETTINGS_TEXT;
+      Color subtitle = selected ? new Color(67, 110, 88) : SETTINGS_MUTED;
+      titleLabel.setForeground(title);
+      subtitleLabel.setForeground(subtitle);
+      iconView.setSelectedIcon(selected);
+      repaint();
+    }
+
+    @Override
+    protected void paintComponent(Graphics g) {
+      Graphics2D g2 = (Graphics2D) g.create();
+      g2.setRenderingHint(KEY_ANTIALIASING, VALUE_ANTIALIAS_ON);
+      if (selected) {
+        g2.setColor(new Color(255, 255, 255, 170));
+        g2.fillRoundRect(1, 3, getWidth() - 2, getHeight() - 6, 20, 20);
+        g2.setColor(new Color(45, 123, 91, 50));
+        g2.drawRoundRect(1, 3, getWidth() - 3, getHeight() - 7, 20, 20);
+        g2.setColor(SETTINGS_JADE);
+        g2.fillRoundRect(2, 17, 4, getHeight() - 34, 8, 8);
+      } else {
+        g2.setColor(new Color(255, 255, 255, 42));
+        g2.fillRoundRect(1, 3, getWidth() - 2, getHeight() - 6, 20, 20);
+      }
+      g2.dispose();
+      super.paintComponent(g);
+    }
+  }
+
+  private static class ModernSidebarIcon extends JComponent {
+    private final String type;
+    private boolean selected;
+
+    private ModernSidebarIcon(String type) {
+      this.type = type;
+      setOpaque(false);
+      setPreferredSize(new Dimension(42, 42));
+      setMinimumSize(new Dimension(42, 42));
+      setMaximumSize(new Dimension(42, 42));
+    }
+
+    private void setSelectedIcon(boolean selected) {
+      this.selected = selected;
+      repaint();
+    }
+
+    @Override
+    protected void paintComponent(Graphics g) {
+      Graphics2D g2 = (Graphics2D) g.create();
+      g2.setRenderingHint(KEY_ANTIALIASING, VALUE_ANTIALIAS_ON);
+      int s = Math.min(getWidth(), getHeight());
+      int x = (getWidth() - s) / 2;
+      int y = (getHeight() - s) / 2;
+
+      if (selected) {
+        g2.setPaint(new GradientPaint(x, y, SETTINGS_JADE, x + s, y + s, new Color(23, 91, 73)));
+        g2.fillRoundRect(x, y, s, s, 15, 15);
+        g2.setColor(new Color(255, 255, 255, 50));
+        g2.fillOval(x + 21, y - 10, 28, 28);
+        g2.setColor(new Color(255, 255, 255, 230));
+      } else {
+        g2.setColor(new Color(255, 253, 247, 185));
+        g2.fillRoundRect(x, y, s, s, 15, 15);
+        g2.setColor(new Color(216, 206, 187));
+        g2.drawRoundRect(x, y, s - 1, s - 1, 15, 15);
+        g2.setColor(new Color(92, 104, 94));
+      }
+
+      g2.setStroke(new BasicStroke(2.1f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+      int cx = x + s / 2;
+      int cy = y + s / 2;
+      switch (type) {
+        case "kifu":
+          drawKifuIcon(g2, x, y);
+          break;
+        case "engine":
+          drawEngineIcon(g2, x, y);
+          break;
+        case "play":
+          drawPlayIcon(g2, cx, cy);
+          break;
+        case "advanced":
+          drawAdvancedIcon(g2, cx, cy);
+          break;
+        case "theme":
+          drawThemeIcon(g2, cx, cy);
+          break;
+        case "about":
+          drawAboutIcon(g2, cx, cy);
+          break;
+        case "board":
+        default:
+          drawBoardIcon(g2, x, y);
+          break;
+      }
+      g2.dispose();
+    }
+
+    private void drawBoardIcon(Graphics2D g2, int x, int y) {
+      int left = x + 12;
+      int top = y + 12;
+      int size = 18;
+      for (int i = 0; i < 3; i++) {
+        int p = i * 9;
+        g2.drawLine(left + p, top, left + p, top + size);
+        g2.drawLine(left, top + p, left + size, top + p);
+      }
+      g2.fillOval(left + 7, top + 7, 5, 5);
+      g2.drawOval(left + 15, top + 15, 6, 6);
+    }
+
+    private void drawKifuIcon(Graphics2D g2, int x, int y) {
+      int left = x + 13;
+      int top = y + 10;
+      g2.drawRoundRect(left, top, 17, 22, 4, 4);
+      g2.drawLine(left + 4, top + 7, left + 13, top + 7);
+      g2.drawLine(left + 4, top + 12, left + 13, top + 12);
+      g2.drawLine(left + 4, top + 17, left + 11, top + 17);
+    }
+
+    private void drawEngineIcon(Graphics2D g2, int x, int y) {
+      int left = x + 12;
+      int top = y + 12;
+      g2.drawRoundRect(left, top, 18, 18, 4, 4);
+      g2.drawLine(left + 5, top + 18, left + 5, top + 23);
+      g2.drawLine(left + 13, top + 18, left + 13, top + 23);
+      g2.drawLine(left + 5, top - 5, left + 5, top);
+      g2.drawLine(left + 13, top - 5, left + 13, top);
+      g2.fillOval(left + 7, top + 7, 4, 4);
+    }
+
+    private void drawPlayIcon(Graphics2D g2, int cx, int cy) {
+      g2.drawOval(cx - 9, cy - 9, 18, 18);
+      g2.fillOval(cx - 3, cy - 3, 6, 6);
+      g2.drawLine(cx + 9, cy + 9, cx + 15, cy + 15);
+    }
+
+    private void drawAdvancedIcon(Graphics2D g2, int cx, int cy) {
+      g2.drawLine(cx, cy - 13, cx, cy + 13);
+      g2.drawLine(cx - 13, cy, cx + 13, cy);
+      g2.drawLine(cx - 8, cy - 8, cx + 8, cy + 8);
+      g2.drawLine(cx + 8, cy - 8, cx - 8, cy + 8);
+      g2.fillOval(cx - 3, cy - 3, 6, 6);
+    }
+
+    private void drawThemeIcon(Graphics2D g2, int cx, int cy) {
+      g2.drawOval(cx - 11, cy - 11, 22, 22);
+      g2.fillArc(cx - 11, cy - 11, 22, 22, 90, 180);
+      g2.drawLine(cx, cy - 10, cx, cy + 10);
+    }
+
+    private void drawAboutIcon(Graphics2D g2, int cx, int cy) {
+      g2.setFont(new Font(Config.sysDefaultFontName, Font.BOLD, 23));
+      FontMetrics metrics = g2.getFontMetrics();
+      String text = "i";
+      g2.drawString(
+          text,
+          cx - metrics.stringWidth(text) / 2,
+          cy + (metrics.getAscent() - metrics.getDescent()) / 2);
+    }
+  }
+
+  private static class SettingsContentPanel extends PanelWithToolTips {
+    private enum Mode {
+      UI,
+      THEME,
+      ABOUT
+    }
+
+    private final Mode mode;
+
+    private SettingsContentPanel(Mode mode) {
+      this.mode = mode;
+      setOpaque(false);
+    }
+
+    @Override
+    protected void paintComponent(Graphics g) {
+      super.paintComponent(g);
+      Graphics2D g2 = (Graphics2D) g.create();
+      g2.setRenderingHint(KEY_ANTIALIASING, VALUE_ANTIALIAS_ON);
+      paintSettingsPaperBackground(g2, getWidth(), getHeight());
+      g2.dispose();
+    }
+
+    private void paintModeCards(Graphics2D g2) {
+      if (mode == Mode.ABOUT) {
+        return;
+      }
+      if (mode == Mode.THEME) {
+        paintCard(g2, 8, 8, 500, 204);
+        paintCard(g2, 520, 8, 220, 204);
+        paintCard(g2, 8, 220, getWidth() - 34, 108);
+        paintCard(g2, 8, 340, getWidth() - 34, 146);
+        paintCard(g2, 8, 494, getWidth() - 34, 150);
+        return;
+      }
+    }
+
+    private void paintCard(Graphics2D g2, int x, int y, int width, int height) {
+      if (width <= 0 || height <= 0) return;
+      g2.setColor(new Color(0, 0, 0, 14));
+      g2.fillRoundRect(x + 3, y + 5, width, height, 18, 18);
+      g2.setColor(SETTINGS_SURFACE_STRONG);
+      g2.fillRoundRect(x, y, width, height, 18, 18);
+      g2.setColor(SETTINGS_BORDER);
+      g2.drawRoundRect(x, y, width, height, 18, 18);
+      g2.setColor(SETTINGS_JADE_SOFT);
+      g2.fillRoundRect(x + 1, y + 1, 5, height - 2, 16, 16);
+      g2.setColor(
+          new Color(
+              SETTINGS_GOLD_SOFT.getRed(),
+              SETTINGS_GOLD_SOFT.getGreen(),
+              SETTINGS_GOLD_SOFT.getBlue(),
+              110));
+      g2.drawLine(x + 18, y + height - 1, x + width - 18, y + height - 1);
+    }
+  }
+
   private class FontComboBoxRenderer<E> extends JLabel implements ListCellRenderer<E> {
     @Override
     public Component getListCellRendererComponent(
@@ -3018,7 +4989,11 @@ public class ConfigDialog2 extends JDialog {
 
     public ColorLabel(JDialog owner, boolean useAplha) {
       super();
-      setOpaque(true);
+      setOpaque(false);
+      setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+      setPreferredSize(new Dimension(74, 28));
+      setMinimumSize(new Dimension(36, 24));
+      setBorder(BorderFactory.createEmptyBorder());
       this.owner = owner;
       this.useAplha = useAplha;
 
@@ -3026,33 +5001,53 @@ public class ConfigDialog2 extends JDialog {
           new MouseAdapter() {
             @Override
             public void mouseClicked(MouseEvent e) {
-              ColorLabel cl = (ColorLabel) e.getSource();
-              if (!isWindows()) {
-                cl.owner.setVisible(false);
-              }
-              Color color =
-                  JColorChooser.showDialog(
-                      (Component) e.getSource(),
-                      Lizzie.resourceBundle.getString("ConfigDialog2.chooseColor"),
-                      cl.getColor());
-              if (color != null) {
-                cl.setColor(color);
-              }
-              if (!isWindows()) {
-                cl.owner.setVisible(true);
-              }
+              ((ColorLabel) e.getSource()).chooseColor();
             }
           });
+    }
+
+    public void chooseColor() {
+      if (!isWindows()) {
+        owner.setVisible(false);
+      }
+      Color color =
+          JColorChooser.showDialog(
+              this, Lizzie.resourceBundle.getString("ConfigDialog2.chooseColor"), getColor());
+      if (color != null) {
+        setColor(color);
+      }
+      if (!isWindows()) {
+        owner.setVisible(true);
+      }
     }
 
     public void setColor(Color c) {
       if (useAplha) curColor = c;
       else curColor = Utils.getNoneAlphaColor(c);
       setBackground(curColor);
+      repaint();
     }
 
     public Color getColor() {
       return curColor;
+    }
+
+    @Override
+    protected void paintComponent(Graphics g) {
+      Graphics2D g2 = (Graphics2D) g.create();
+      g2.setRenderingHint(KEY_ANTIALIASING, VALUE_ANTIALIAS_ON);
+      int w = getWidth();
+      int h = getHeight();
+      g2.setColor(new Color(0, 0, 0, 18));
+      g2.fillRoundRect(1, 2, w - 2, h - 3, 14, 14);
+      Color color = curColor == null ? getBackground() : curColor;
+      g2.setPaint(new GradientPaint(0, 0, color.brighter(), w, h, color.darker()));
+      g2.fillRoundRect(0, 0, w - 2, h - 4, 14, 14);
+      g2.setColor(new Color(255, 255, 255, 145));
+      g2.drawLine(8, 4, Math.max(8, w - 12), 4);
+      g2.setColor(new Color(52, 61, 54, 112));
+      g2.drawRoundRect(0, 0, w - 3, h - 5, 14, 14);
+      g2.dispose();
     }
   }
 
@@ -4045,21 +6040,12 @@ public class ConfigDialog2 extends JDialog {
       Lizzie.config.showCaptured = chkShowCaptured.isSelected();
       Lizzie.config.showWinrateGraph = chkShowWinrate.isSelected();
       Lizzie.config.showVariationGraph = chkShowVariationGraph.isSelected();
-      Lizzie.config.showComment = chkShowComment.isSelected();
+      boolean requestedShowComment = chkShowComment.isSelected();
       Lizzie.config.showSubBoard = chkShowSubBoard.isSelected();
       Lizzie.config.showStatus = chkShowStatus.isSelected();
       Lizzie.config.showCoordinates = chkShowCoordinates.isSelected();
-      if (!Lizzie.config.isMinMode()
-          && !Lizzie.config.isFloatBoardMode()
-          && (Lizzie.config.showListPane()
-              || Lizzie.config.showCaptured
-              || Lizzie.config.showWinrateGraph
-              || Lizzie.config.showVariationGraph
-              || Lizzie.config.showComment
-              || Lizzie.config.showSubBoard)) {
-        Lizzie.config.extraMode = ExtraMode.Normal;
-        Lizzie.config.uiConfig.put("extra-mode", 0);
-      }
+      Lizzie.config.setShowComment(requestedShowComment);
+      syncShowCommentControl();
       int n = chkShowIndependentSubBoard.getSelectedIndex();
       if (n == 0) {
         if (Lizzie.config.isShowingIndependentSub) Lizzie.frame.toggleIndependentSubBoard();
@@ -4127,6 +6113,14 @@ public class ConfigDialog2 extends JDialog {
       Lizzie.config.appendWinrateToComment = chkAppendWinrateToComment.isSelected();
       Lizzie.config.uiConfig.putOpt(
           "append-winrate-to-comment", Lizzie.config.appendWinrateToComment);
+      Lizzie.config.hideBlunderControlPane = chkHideCommentControlPane.isSelected();
+      Lizzie.config.uiConfig.putOpt(
+          "hide-blunder-table-control-pane", Lizzie.config.hideBlunderControlPane);
+      if (Lizzie.config.hideBlunderControlPane
+          && Lizzie.frame != null
+          && Lizzie.frame.commentBlunderControlPane != null) {
+        Lizzie.frame.commentBlunderControlPane.setVisible(false);
+      }
       Lizzie.config.showSuggestionOrder = chkShowSuggLabel.isSelected();
       Lizzie.config.uiConfig.putOpt("show-suggestion-order", Lizzie.config.showSuggestionOrder);
       Lizzie.config.showSuggestionMaxRed = chkMaxValueReverseColor.isSelected();
@@ -4177,6 +6171,8 @@ public class ConfigDialog2 extends JDialog {
 
   public void switchTab(int index) {
     if (index == 1) loadThemeTab();
+    activeModernNavIndex = defaultModernNavIndexForTab(index);
     tabbedPane.setSelectedIndex(index);
+    syncModernTabSelection();
   }
 }

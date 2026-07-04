@@ -393,13 +393,86 @@ public class GetFoxRequest {
       List<SgfMove> mainLineMoves = recoverPreferredMoves(tree, rootMoves);
       String nextColor = mainLineMoves.isEmpty() ? null : mainLineMoves.get(0).color;
       List<SgfMove> rootPrefix = chooseCompatibleRootPrefix(rootMoves, nextColor);
-      List<SgfMove> moves = normalizeMoves(rootPrefix, mainLineMoves);
+
+      List<SgfMove> orderedMoves = new ArrayList<SgfMove>(rootPrefix.size() + mainLineMoves.size());
+      orderedMoves.addAll(rootPrefix);
+      orderedMoves.addAll(mainLineMoves);
+      List<SgfMove> handicapStones = extractLeadingHandicapStones(orderedMoves);
+
+      List<SgfMove> moves;
+      if (!handicapStones.isEmpty()) {
+        applyHandicapStones(rootProperties, handicapStones);
+        moves = appendNormalizedMoves(new ArrayList<SgfMove>(), orderedMoves, null);
+      } else {
+        moves = normalizeMoves(rootPrefix, mainLineMoves);
+      }
 
       if (rootProperties.isEmpty() && moves.isEmpty()) {
         return input;
       }
 
       return buildSgf(rootProperties, moves);
+    }
+
+    /**
+     * Fox encodes handicap stones as a leading run of consecutive {@code B[]} moves rather than as
+     * {@code AB[]} root properties, and its {@code HA[]} field is unreliable. Strict alternation
+     * normalization would collapse that run into a single stone, silently dropping the rest of the
+     * handicap. Detect the leading black run (two or more placed stones) and pull it out so it can
+     * be emitted as proper {@code HA}/{@code AB} root setup. The supplied list is mutated in place
+     * to remove the extracted stones.
+     */
+    private List<SgfMove> extractLeadingHandicapStones(List<SgfMove> moves) {
+      int count = 0;
+      for (SgfMove move : moves) {
+        if (move == null || !"B".equals(move.color) || !isPlacedStone(move.coordinate)) {
+          break;
+        }
+        count++;
+      }
+      if (count < 2) {
+        return new ArrayList<SgfMove>();
+      }
+      List<SgfMove> handicap = new ArrayList<SgfMove>(moves.subList(0, count));
+      moves.subList(0, count).clear();
+      return handicap;
+    }
+
+    private boolean isPlacedStone(String coordinate) {
+      return coordinate != null && coordinate.length() == 2 && !"tt".equals(coordinate);
+    }
+
+    private void applyHandicapStones(
+        List<SgfProperty> rootProperties, List<SgfMove> handicapStones) {
+      List<SgfProperty> filtered = new ArrayList<SgfProperty>(rootProperties.size());
+      for (SgfProperty property : rootProperties) {
+        if (!"HA".equals(property.name) && !"AB".equals(property.name)) {
+          filtered.add(property);
+        }
+      }
+      rootProperties.clear();
+      rootProperties.addAll(filtered);
+
+      List<String> coordinates = new ArrayList<String>(handicapStones.size());
+      for (SgfMove stone : handicapStones) {
+        coordinates.add(stone.coordinate);
+      }
+      rootProperties.add(
+          new SgfProperty("HA", Arrays.asList(String.valueOf(handicapStones.size()))));
+      rootProperties.add(new SgfProperty("AB", coordinates));
+      setSingleValueRootProperty(rootProperties, "KM", "0");
+    }
+
+    private void setSingleValueRootProperty(
+        List<SgfProperty> rootProperties, String name, String value) {
+      for (int i = 0; i < rootProperties.size(); i++) {
+        SgfProperty property = rootProperties.get(i);
+        if (name.equals(property.name)) {
+          rootProperties.set(i, new SgfProperty(name, Arrays.asList(value)));
+          return;
+        }
+      }
+      rootProperties.add(new SgfProperty(name, Arrays.asList(value)));
     }
 
     private String buildSgf(List<SgfProperty> rootProperties, List<SgfMove> moves) {

@@ -68,9 +68,16 @@ jobs:
           for flavor in with-katago opencl nvidia; do
             grep -q -- "-Dlizzie.next.version=\"${{ inputs.release_tag }}\"" \
               "dist/stage/${{ inputs.date_tag }}-linux64.${flavor}/start-linux64.sh"
+            grep -q -- "-Xshare:auto" \
+              "dist/stage/${{ inputs.date_tag }}-linux64.${flavor}/start-linux64.sh"
+            grep -q -- "SharedArchiveFile" \
+              "dist/stage/${{ inputs.date_tag }}-linux64.${flavor}/start-linux64.sh"
+            test -f "dist/stage/${{ inputs.date_tag }}-linux64.${flavor}/Lizzieyzy/lizzieyzy-next-cds.jsa"
           done
           grep -q -- "Release display version: ${{ inputs.release_tag }}" \
             "dist/release-meta/${{ inputs.date_tag }}-linux64-install.txt"
+          test -f "dist/release-meta/${{ inputs.date_tag }}-linux64-runtime.json"
+          grep -q '"optimized": true' "dist/release-meta/${{ inputs.date_tag }}-linux64-runtime.json"
 
       - name: Audit Linux KataGo backends
         run: |
@@ -96,12 +103,22 @@ jobs:
       - name: Validate public Linux assets
         run: bash ./scripts/validate_release_assets.sh linux dist/release "${{ inputs.date_tag }}"
 
+      - name: Summarize Linux package size audit
+        if: always()
+        run: |
+          audit="dist/release-meta/${{ inputs.date_tag }}-linux64-package-size-audit.md"
+          if [[ -f "$audit" ]]; then
+            cat "$audit" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
       - name: Upload workflow artifacts
         uses: actions/upload-artifact@v6
         with:
           name: linux-release
           path: |
             dist/release/*linux64*.zip
+            dist/release-meta/*linux64*.json
+            dist/release-meta/*linux64*.md
 
       - name: Upload assets to release
         env:

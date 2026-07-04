@@ -108,8 +108,6 @@ public class GIBParser {
     }
     if (Lizzie.config.readKomi) {
       Lizzie.board.getHistory().getGameInfo().setKomi(komi);
-      Lizzie.board.getHistory().getGameInfo().changeKomi();
-      Lizzie.leelaz.komi(komi);
     }
     Lizzie.frame.setPlayers(whitePlayer, blackPlayer);
     GameInfo gameInfo = Lizzie.board.getHistory().getGameInfo();
