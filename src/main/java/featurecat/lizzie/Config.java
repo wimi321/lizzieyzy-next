@@ -761,18 +761,30 @@ public class Config {
     JSONObject bundledEngine;
     boolean reusedAutoSetupEntry = false;
     boolean createdBundledEngine = bundledIndex < 0;
+    // Only refresh the managed command when the slot still holds a bundled KataGo command. A user
+    // may repurpose the default slot (usually engine 1) with their own engine while keeping the
+    // default name; in that case the entry still matches by name, but overwriting its command would
+    // silently replace the user's engine with the bundled default on every restart. Preserve any
+    // command that is no longer a bundled KataGo command so custom engines survive restarts.
+    boolean refreshBundledCommand;
     if (bundledIndex >= 0) {
       bundledEngine = engineSettings.getJSONObject(bundledIndex);
       reusedAutoSetupEntry = "KataGo Auto Setup".equals(bundledEngine.optString("name", ""));
+      String existingCommand = bundledEngine.optString("command", "");
+      refreshBundledCommand =
+          existingCommand.trim().isEmpty() || isBundledKataGoCommand(existingCommand);
     } else {
       bundledEngine = new JSONObject();
       engineSettings.put(bundledEngine);
       bundledIndex = engineSettings.length() - 1;
+      refreshBundledCommand = true;
     }
 
-    bundledEngine.put("command", bundledConfig.engineCommand);
-    if (!reusedAutoSetupEntry) {
-      bundledEngine.put("name", BUNDLED_ENGINE_NAME);
+    if (refreshBundledCommand) {
+      bundledEngine.put("command", bundledConfig.engineCommand);
+      if (!reusedAutoSetupEntry) {
+        bundledEngine.put("name", BUNDLED_ENGINE_NAME);
+      }
     }
     if (createdBundledEngine) {
       bundledEngine.put("preload", false);

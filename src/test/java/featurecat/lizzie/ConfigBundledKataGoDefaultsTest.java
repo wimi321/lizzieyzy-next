@@ -110,6 +110,36 @@ public class ConfigBundledKataGoDefaultsTest {
   }
 
   @Test
+  void customCommandInDefaultSlotSurvivesRestart() throws Exception {
+    Path tempRoot = Files.createTempDirectory("lizzie-bundled-katago-custom");
+    createBundledKataGoAssets(tempRoot);
+
+    Config config = ConfigTestHelper.createForTests(tempRoot);
+    JSONObject ui = new JSONObject();
+    ui.put("first-time-load", false);
+    ui.put("default-engine", 0);
+
+    // The user kept the default name in engine 1 but pointed the command at their own engine.
+    String customCommand = "\"/opt/my-katago/katago\" gtp -model \"/opt/my-katago/net.bin.gz\"";
+    JSONObject customEngine = new JSONObject();
+    customEngine.put("name", "KataGo Bundled");
+    customEngine.put("command", customCommand);
+    customEngine.put("isDefault", true);
+
+    JSONObject leelaz = new JSONObject();
+    leelaz.put("engine-settings-list", new JSONArray().put(customEngine));
+    config.config = new JSONObject().put("ui", ui).put("leelaz", leelaz);
+
+    withUserDir(tempRoot, () -> applyBundledKataGoDefaults(config));
+
+    JSONObject storedEngine = leelaz.getJSONArray("engine-settings-list").getJSONObject(0);
+    assertEquals(
+        customCommand,
+        storedEngine.getString("command"),
+        "a custom command in the default slot must not be overwritten by the bundled default.");
+  }
+
+  @Test
   void freshInstallStillSelectsBundledEngineAsDefault() throws Exception {
     Path tempRoot = Files.createTempDirectory("lizzie-bundled-katago-fresh");
     createBundledKataGoAssets(tempRoot);
