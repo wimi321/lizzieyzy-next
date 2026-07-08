@@ -57,6 +57,7 @@
     - `direct` -> `Proxy.NO_PROXY`
     - `manual` with `127.0.0.1:7897` -> HTTP proxy address and port
     - `manual` with blank host, non-numeric port, out-of-range port -> invalid config exception
+    - stored port as a non-numeric JSON string -> invalid config exception, not fallback to `7897`
     - unknown mode -> invalid config exception
     - `ws://host/path` maps to system lookup URI `http://host/path`
     - `wss://host/path` maps to system lookup URI `https://host/path`
@@ -87,13 +88,15 @@
 
       public static void installSystemProxyPropertyFromSavedConfig();
       public static URLConnection openConnection(URL url) throws IOException;
+      public static ProxySelector proxySelector();
       public static HttpClient.Builder configure(HttpClient.Builder builder);
       public static OkHttpClient.Builder configure(OkHttpClient.Builder builder);
       public static void configure(WebSocketClient client);
     }
     ```
   - Internal helpers should keep tests simple:
-    - read from `Lizzie.config.uiConfig.optString/optInt`
+    - read raw values from `Lizzie.config.uiConfig` and validate them
+    - do not use `optInt(..., 7897)` for stored manual port, because that would hide a bad hand-edited config
     - `Proxy proxyForUrl(URL url)`
     - `ProxySelector proxySelector()`
     - `URI systemLookupUriForWebSocket(URI uri)`
@@ -104,7 +107,7 @@
     - `manual`: `url.openConnection(manualProxy)`
     - `system`: `url.openConnection()`
   - `configure(HttpClient.Builder)` behavior:
-    - `direct`: `builder.proxy(ProxySelector.of(null))` is not valid; use a helper `ProxySelector` that always returns `Proxy.NO_PROXY`, or omit proxy only if tests prove Java will not use ambient system proxy.
+    - `direct`: use a helper `ProxySelector` that always returns `Proxy.NO_PROXY`; do not leave the builder on an ambient default selector.
     - `manual`: `builder.proxy(ProxySelector.of(manualSocketAddress))`
     - `system`: `builder.proxy(ProxySelector.getDefault())`
   - `configure(OkHttpClient.Builder)` behavior:
@@ -249,6 +252,12 @@
     ```
   - Preserve callbacks and reconnect behavior.
 
+- [ ] Surface invalid stored proxy config without falling back to direct.
+  - Files: all files touched in this section.
+  - If a caller already catches broad `Exception` and shows/logs the operation failure, no extra catch is needed.
+  - If a caller only catches `IOException` and would let `NetworkProxy.InvalidNetworkProxyConfigException` escape silently, add a narrow catch beside the existing network failure handling.
+  - Do not add per-caller proxy parsing or direct fallback.
+
 - [ ] Verify targeted compile and helper tests.
   - Run:
     ```bash
@@ -290,6 +299,11 @@
     - `new WebSocketClient(` in `OnlineDialog.java` only when the same file also contains `NetworkProxy.configure(client)`
     - local/test-only WebSocket clients if they exist outside `src/main/java`
   - Keep the guard narrow. Do not block the raw socket exception classes unless this test explicitly scans `new Socket(`.
+
+- [ ] Add one cheap update-path assertion required by the spec.
+  - Prefer adding this to `NetworkProxyInventoryTest` instead of creating network mocks.
+  - Assert `src/main/java/featurecat/lizzie/update/WindowsUpdateService.java` contains the expected `NetworkProxy.openConnection(` calls and no direct `.openConnection(` outside helper use.
+  - Do not perform real network requests.
 
 - [ ] Add an optional raw socket inventory assertion if it is cheap.
   - If scanning `new Socket(`, allow only:
