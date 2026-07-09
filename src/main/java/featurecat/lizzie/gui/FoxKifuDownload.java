@@ -292,7 +292,7 @@ public class FoxKifuDownload extends JFrame {
   }
 
   private void maybeGetNextPage() {
-    if (foxReq == null || foxKifuInfos.isEmpty()) return;
+    if (foxReq == null || foxKifuInfos.isEmpty() || isKifuLoading) return;
     if (curTabNumber == tabNumber || tabNumber >= 4 && curTabNumber == tabNumber - 1) {
       String last = foxKifuInfos.get(foxKifuInfos.size() - 1).chessid;
       if (paginationCursor.shouldRequest(last)) {
@@ -444,10 +444,15 @@ public class FoxKifuDownload extends JFrame {
     setGlassPane(progressGlassPane);
   }
 
-  public void receiveResult(String string) {
+  public void receiveResult(GetFoxRequest source, String string) {
     SwingUtilities.invokeLater(
         new Runnable() {
           public void run() {
+            // shutdownNow cannot stop a socket read that already started, so a superseded
+            // request object can still deliver; only the current request may touch dialog state.
+            if (source == null || source != foxReq) {
+              return;
+            }
             handleResult(string);
           }
         });
@@ -457,7 +462,7 @@ public class FoxKifuDownload extends JFrame {
     try {
       JSONObject jsonObject = new JSONObject(string);
       if (jsonObject.optInt("result", 0) != 0) {
-        failCurrentFoxRequest(jsonObject.optString("resultstr", string));
+        failCurrentFoxRequest(jsonObject, jsonObject.optString("resultstr", string));
         return;
       }
       String resolvedUid = jsonObject.optString("fox_uid", "").trim();
@@ -491,11 +496,11 @@ public class FoxKifuDownload extends JFrame {
         }
       }
       if (isFoxPayloadWithoutContent(jsonObject)) {
-        failCurrentFoxRequest(jsonObject.optString("resultstr", string));
+        failCurrentFoxRequest(jsonObject, jsonObject.optString("resultstr", string));
       }
     } catch (Exception e1) {
       e1.printStackTrace();
-      failCurrentFoxRequest(string);
+      failCurrentFoxRequest(null, string);
     }
   }
 
@@ -508,9 +513,19 @@ public class FoxKifuDownload extends JFrame {
     return !jsonObject.has("chesslist") && !jsonObject.has("chess");
   }
 
-  private void failCurrentFoxRequest(String detail) {
-    paginationCursor.revertPendingRequest();
-    advanceToNextPageAfterLoad = false;
+  /**
+   * Only a failure of the page request itself may revert the pagination cursor: an unrelated
+   * failure (e.g. a kifu download) must not resurrect a page request that is still in flight.
+   */
+  static boolean isPageRequestFailure(JSONObject payload) {
+    return payload != null && "uid".equals(payload.optString("fox_action", ""));
+  }
+
+  private void failCurrentFoxRequest(JSONObject payload, String detail) {
+    if (isPageRequestFailure(payload)) {
+      paginationCursor.revertPendingRequest();
+      advanceToNextPageAfterLoad = false;
+    }
     isSearching = false;
     if (isKifuLoading) {
       isKifuLoading = false;

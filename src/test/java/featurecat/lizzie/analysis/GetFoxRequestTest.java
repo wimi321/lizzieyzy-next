@@ -113,6 +113,38 @@ class GetFoxRequestTest {
   }
 
   @Test
+  void errorPayloadsCarryTheFailedAction() throws Exception {
+    RecordingFoxRequest request = new RecordingFoxRequest();
+    Method emitErrorMethod =
+        GetFoxRequest.class.getDeclaredMethod("emitError", String.class, String.class);
+    emitErrorMethod.setAccessible(true);
+
+    emitErrorMethod.invoke(request, "uid", "boom");
+    request.shutdown();
+
+    JSONObject delivered = new JSONObject(request.delivered.get(0));
+    assertEquals(1, delivered.getInt("result"));
+    assertEquals("uid", delivered.getString("fox_action"));
+    assertEquals("boom", delivered.getString("resultstr"));
+  }
+
+  @Test
+  void emptyHttpBodyBecomesTaggedErrorInsteadOfSilentDrop() throws Exception {
+    RecordingFoxRequest request = new RecordingFoxRequest();
+    Method emitOrFailMethod =
+        GetFoxRequest.class.getDeclaredMethod("emitOrFail", String.class, String.class);
+    emitOrFailMethod.setAccessible(true);
+
+    emitOrFailMethod.invoke(request, "uid", "   ");
+    request.shutdown();
+
+    assertEquals(1, request.delivered.size());
+    JSONObject delivered = new JSONObject(request.delivered.get(0));
+    assertEquals(1, delivered.getInt("result"));
+    assertEquals("uid", delivered.getString("fox_action"));
+  }
+
+  @Test
   void mergeRecoveryOnlyRunsWhenPayloadMatchesLiveBoardSize() {
     assertTrue(GetFoxRequest.mergeRecoveryMatchesLiveBoard(Board.boardWidth, Board.boardHeight));
     assertFalse(
