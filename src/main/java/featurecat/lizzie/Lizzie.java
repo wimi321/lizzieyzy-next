@@ -144,7 +144,7 @@ public class Lizzie {
       Config.isScaled = true;
       javaScaleFactor = (float) defaultTransform.getScaleX();
     }
-    String hostName = InetAddress.getLocalHost().getHostName();
+    String hostName = resolveHostNameSafely(config.hostName);
     if (config.firstTimeLoad || !hostName.equals(config.hostName)) {
       if (!config.hostName.equals("")) config.deletePersist(false);
       resetAllHints();
@@ -218,6 +218,24 @@ public class Lizzie {
     if (Lizzie.config.autoReplayBranch) frame.autoReplayBranch();
     scheduleBoardSyncSmokeProbe();
     WindowsUpdateController.scheduleAutomaticCheck();
+  }
+
+  /**
+   * getLocalHost() resolves the machine's own name via DNS; on hosts where that name is unmapped
+   * (common on macOS behind VPNs) it throws or stalls, and that must never prevent startup. Falls
+   * back to the stored host name so a resolver failure is never mistaken for a machine change,
+   * which would wipe persisted state.
+   */
+  static String resolveHostNameSafely(String storedHostName) {
+    try {
+      return InetAddress.getLocalHost().getHostName();
+    } catch (IOException | RuntimeException e) {
+      return hostNameFallback(storedHostName);
+    }
+  }
+
+  static String hostNameFallback(String storedHostName) {
+    return storedHostName == null || storedHostName.isEmpty() ? "unknown-host" : storedHostName;
   }
 
   private static void scheduleBoardSyncSmokeProbe() {
