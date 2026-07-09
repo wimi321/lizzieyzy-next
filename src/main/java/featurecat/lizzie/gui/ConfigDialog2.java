@@ -11,6 +11,7 @@ import featurecat.lizzie.gui.LizzieFrame.HtmlKit;
 import featurecat.lizzie.rules.Board;
 import featurecat.lizzie.theme.Theme;
 import featurecat.lizzie.util.DigitOnlyFilter;
+import featurecat.lizzie.util.NetworkProxy;
 import featurecat.lizzie.util.Utils;
 import java.awt.AlphaComposite;
 import java.awt.BasicStroke;
@@ -140,6 +141,12 @@ public class ConfigDialog2 extends JDialog {
   private static final int MODERN_NAV_ADVANCED = 4;
   private static final int MODERN_NAV_THEME = 5;
   private static final int MODERN_NAV_ABOUT = 6;
+  private static final String[] NETWORK_PROXY_MODE_VALUES = {
+    NetworkProxy.MODE_DIRECT, NetworkProxy.MODE_SYSTEM, NetworkProxy.MODE_MANUAL
+  };
+  private static final String[] NETWORK_PROXY_MODE_LABELS = {
+    "不使用代理", "使用系统代理设置", "手动配置代理"
+  };
 
   private ResourceBundle resourceBundle =
       Lizzie.resourceBundle; // ResourceBundle.getBundle("l10n.DisplayStrings");
@@ -326,6 +333,11 @@ public class ConfigDialog2 extends JDialog {
   private JCheckBox chkPonder;
   private JCheckBox chkStopAtEmpty;
   private JCheckBox chkEnableStartupBenchmark;
+  private JComboBox<String> comboNetworkProxyMode;
+  private JTextField txtNetworkProxyHost;
+  private JTextField txtNetworkProxyPort;
+  private JLabel lblNetworkProxyRestartHint;
+  private String initialNetworkProxyMode = NetworkProxy.MODE_DIRECT;
 
   private JCheckBox chkUseScoreDiff;
   private JTextField txtPercentScoreDiff;
@@ -366,6 +378,9 @@ public class ConfigDialog2 extends JDialog {
     okButton.addActionListener(
         new ActionListener() {
           public void actionPerformed(ActionEvent e) {
+            if (!validateNetworkProxyInputs()) {
+              return;
+            }
             finalizeEditedBlunderColors();
             setVisible(false);
             saveConfig();
@@ -2032,6 +2047,7 @@ public class ConfigDialog2 extends JDialog {
     if (Lizzie.config.enableClickReview) chkEnableClickReview.setSelected(true);
     if (Lizzie.config.noRefreshOnSub) chkNoRefreshSub.setSelected(true);
     if (Lizzie.config.enableLizzieCache) chkLizzieCache.setSelected(true);
+    initNetworkProxyControls();
 
     tabbedPane.addChangeListener(
         new ChangeListener() {
@@ -2509,7 +2525,8 @@ public class ConfigDialog2 extends JDialog {
               {
                 "首次启动智能测速",
                 toggleText(chkEnableStartupBenchmark, Lizzie.config.enableStartupBenchmark)
-              }
+              },
+              {"网络代理", comboText(comboNetworkProxyMode, "不使用代理")}
             });
         addSummaryTip(modernSummaryBody, "<html><b>谨慎修改</b><br>这些选项更偏性能和调试，建议一次只改一两项再观察效果。</html>");
         break;
@@ -3124,6 +3141,7 @@ public class ConfigDialog2 extends JDialog {
         addToggleRow(advanced, "空棋盘停止计算", "空棋盘时自动暂停分析", chkStopAtEmpty);
         addToggleRow(advanced, "首次启动智能测速", "首次启动时引导运行智能测速优化", chkEnableStartupBenchmark);
         addToggleRow(advanced, "五子棋无提子规则", "五子棋模式下禁用提子逻辑", chkNoCapture);
+        addNetworkProxyRows(advanced);
         return advanced;
       case MODERN_NAV_DISPLAY:
       default:
@@ -3211,6 +3229,135 @@ public class ConfigDialog2 extends JDialog {
     input.add(suffix);
     addDesignRowControl(row, input);
     card.add(row);
+  }
+
+  private void initNetworkProxyControls() {
+    JSONObject ui = Lizzie.config.uiConfig;
+    initialNetworkProxyMode =
+        normalizeNetworkProxyMode(ui.optString(NetworkProxy.KEY_PROXY_MODE, NetworkProxy.MODE_DIRECT));
+
+    comboNetworkProxyMode = new JComboBox<>(NETWORK_PROXY_MODE_LABELS);
+    setSelectedNetworkProxyMode(initialNetworkProxyMode);
+    comboNetworkProxyMode.addActionListener(e -> updateNetworkProxyFieldsEnabled());
+
+    txtNetworkProxyHost =
+        new JTextField(ui.optString(NetworkProxy.KEY_PROXY_HOST, "127.0.0.1").trim());
+    Object savedPort = ui.opt(NetworkProxy.KEY_PROXY_PORT);
+    txtNetworkProxyPort = new JTextField(savedPort == null ? "7897" : String.valueOf(savedPort));
+
+    lblNetworkProxyRestartHint = new JLabel("切换系统代理模式后需重启程序才能完全生效。");
+    lblNetworkProxyRestartHint.putClientProperty(CLIENT_SKIP_TEXT_STYLE, Boolean.TRUE);
+    lblNetworkProxyRestartHint.setForeground(SETTINGS_MUTED);
+    lblNetworkProxyRestartHint.setFont(new Font(Config.sysDefaultFontName, Font.PLAIN, 12));
+    updateNetworkProxyFieldsEnabled();
+  }
+
+  private void addNetworkProxyRows(JPanel card) {
+    addComponentRow(card, "网络代理", "控制程序自身 Java 网络请求使用的代理策略", comboNetworkProxyMode);
+
+    JPanel manualProxy = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
+    manualProxy.setOpaque(false);
+    manualProxy.add(proxyFieldLabel("代理主机"));
+    txtNetworkProxyHost.setPreferredSize(new Dimension(150, 30));
+    manualProxy.add(detachComponent(txtNetworkProxyHost));
+    manualProxy.add(proxyFieldLabel("代理端口"));
+    txtNetworkProxyPort.setPreferredSize(new Dimension(70, 30));
+    manualProxy.add(detachComponent(txtNetworkProxyPort));
+    addComponentRow(card, "手动代理地址", "本机代理可填写 127.0.0.1 和 7897", manualProxy);
+
+    addComponentRow(card, "系统代理提示", "系统代理设置由 JVM 启动时读取", lblNetworkProxyRestartHint);
+  }
+
+  private JLabel proxyFieldLabel(String text) {
+    JLabel label = new JLabel(text);
+    label.putClientProperty(CLIENT_SKIP_TEXT_STYLE, Boolean.TRUE);
+    label.setForeground(SETTINGS_MUTED);
+    label.setFont(new Font(Config.sysDefaultFontName, Font.PLAIN, 12));
+    return label;
+  }
+
+  private String selectedNetworkProxyMode() {
+    int index = comboNetworkProxyMode == null ? 0 : comboNetworkProxyMode.getSelectedIndex();
+    if (index < 0 || index >= NETWORK_PROXY_MODE_VALUES.length) {
+      return NetworkProxy.MODE_DIRECT;
+    }
+    return NETWORK_PROXY_MODE_VALUES[index];
+  }
+
+  private void setSelectedNetworkProxyMode(String mode) {
+    for (int i = 0; i < NETWORK_PROXY_MODE_VALUES.length; i++) {
+      if (NETWORK_PROXY_MODE_VALUES[i].equals(mode)) {
+        comboNetworkProxyMode.setSelectedIndex(i);
+        return;
+      }
+    }
+    comboNetworkProxyMode.setSelectedIndex(0);
+  }
+
+  private String normalizeNetworkProxyMode(String mode) {
+    String value = mode == null ? "" : mode.trim();
+    for (String knownMode : NETWORK_PROXY_MODE_VALUES) {
+      if (knownMode.equals(value)) {
+        return knownMode;
+      }
+    }
+    return NetworkProxy.MODE_DIRECT;
+  }
+
+  private void updateNetworkProxyFieldsEnabled() {
+    boolean manualMode = NetworkProxy.MODE_MANUAL.equals(selectedNetworkProxyMode());
+    if (txtNetworkProxyHost != null) {
+      txtNetworkProxyHost.setEnabled(manualMode);
+    }
+    if (txtNetworkProxyPort != null) {
+      txtNetworkProxyPort.setEnabled(manualMode);
+    }
+    if (lblNetworkProxyRestartHint != null) {
+      boolean systemModeInvolved =
+          NetworkProxy.MODE_SYSTEM.equals(initialNetworkProxyMode)
+              || NetworkProxy.MODE_SYSTEM.equals(selectedNetworkProxyMode());
+      lblNetworkProxyRestartHint.setVisible(systemModeInvolved);
+    }
+  }
+
+  private boolean validateNetworkProxyInputs() {
+    if (!NetworkProxy.MODE_MANUAL.equals(selectedNetworkProxyMode())) {
+      return true;
+    }
+    if (txtNetworkProxyHost.getText().trim().isEmpty()) {
+      showNetworkProxyWarning("手动代理主机不能为空。");
+      txtNetworkProxyHost.requestFocusInWindow();
+      return false;
+    }
+    try {
+      parseNetworkProxyPort();
+    } catch (NumberFormatException e) {
+      showNetworkProxyWarning("代理端口必须是 1 到 65535 的整数。");
+      txtNetworkProxyPort.requestFocusInWindow();
+      txtNetworkProxyPort.selectAll();
+      return false;
+    }
+    return true;
+  }
+
+  private void showNetworkProxyWarning(String message) {
+    JOptionPane.showMessageDialog(this, message, "网络代理设置", JOptionPane.WARNING_MESSAGE);
+  }
+
+  private int parseNetworkProxyPort() {
+    int port = Integer.parseInt(txtNetworkProxyPort.getText().trim());
+    if (port < 1 || port > 65535) {
+      throw new NumberFormatException(String.valueOf(port));
+    }
+    return port;
+  }
+
+  private int savedNetworkProxyPort() {
+    try {
+      return parseNetworkProxyPort();
+    } catch (NumberFormatException e) {
+      return 7897;
+    }
   }
 
   private JPanel createDesignRow(String title, String subtitle) {
@@ -5774,6 +5921,10 @@ public class ConfigDialog2 extends JDialog {
   }
 
   private void saveConfig() {
+    Lizzie.config.uiConfig.put(NetworkProxy.KEY_PROXY_MODE, selectedNetworkProxyMode());
+    Lizzie.config.uiConfig.put(
+        NetworkProxy.KEY_PROXY_HOST, txtNetworkProxyHost.getText().trim());
+    Lizzie.config.uiConfig.put(NetworkProxy.KEY_PROXY_PORT, savedNetworkProxyPort());
     Lizzie.config.showScoreAsDiff = chkShowScoreAsLead.isSelected();
     Lizzie.config.uiConfig.put("show-score-as-diff", Lizzie.config.showScoreAsDiff);
     Lizzie.config.logConsoleToFile = chkLogConsoleToFile.isSelected();
