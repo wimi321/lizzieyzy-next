@@ -1,5 +1,6 @@
 package featurecat.lizzie.analysis.remote;
 
+import featurecat.lizzie.util.NetworkProxy;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -51,7 +52,9 @@ public class KataGoAnalysisWebSocketTransport implements EngineTransport {
   private String activeGtpResponseId = "";
 
   public KataGoAnalysisWebSocketTransport(String remoteUrl) throws IOException {
-    this(remoteUrl, HttpClient.newBuilder().connectTimeout(CONNECT_TIMEOUT).build());
+    this(
+        remoteUrl,
+        NetworkProxy.configure(HttpClient.newBuilder()).connectTimeout(CONNECT_TIMEOUT).build());
   }
 
   KataGoAnalysisWebSocketTransport(String remoteUrl, HttpClient httpClient) throws IOException {

@@ -5,7 +5,6 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.UnsupportedEncodingException;
 import java.net.HttpURLConnection;
-import java.net.Proxy;
 import java.net.URI;
 import java.net.URL;
 import java.net.URLConnection;
@@ -38,7 +37,6 @@ public class AjaxHttpRequest {
   private URLConnection connection;
   private String userAgent;
   private String postCharset = DEFAULT_AJAX_CHARSET;
-  private Proxy proxy;
 
   private URL requestURL;
   protected String requestMethod;
@@ -87,9 +85,7 @@ public class AjaxHttpRequest {
       final String password)
       throws IOException {
     this.abort();
-    Proxy proxy = this.proxy;
-    URLConnection c =
-        proxy == null || proxy == Proxy.NO_PROXY ? url.openConnection() : url.openConnection(proxy);
+    URLConnection c = NetworkProxy.openConnection(url);
     synchronized (this) {
       this.connection = c;
       this.async = async;

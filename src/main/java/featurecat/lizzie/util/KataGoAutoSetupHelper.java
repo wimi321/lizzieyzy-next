@@ -503,7 +503,9 @@ public final class KataGoAutoSetupHelper {
     Path temp = modelsDir.resolve(HUMAN_SL_MODEL_FILE_NAME + ".part");
     HttpURLConnection conn = null;
     try {
-      conn = (HttpURLConnection) URI.create(humanSlModelDownloadUrl()).toURL().openConnection();
+      conn =
+          (HttpURLConnection)
+              NetworkProxy.openConnection(URI.create(humanSlModelDownloadUrl()).toURL());
       activeSession.attach(conn);
       activeSession.throwIfCancelled();
       conn.setInstanceFollowRedirects(true);
@@ -598,7 +600,7 @@ public final class KataGoAutoSetupHelper {
     Path temp = weightsDir.resolve(info.fileName() + ".part");
     HttpURLConnection conn = null;
     try {
-      conn = (HttpURLConnection) URI.create(info.downloadUrl).toURL().openConnection();
+      conn = (HttpURLConnection) NetworkProxy.openConnection(URI.create(info.downloadUrl).toURL());
       activeSession.attach(conn);
       activeSession.throwIfCancelled();
       conn.setInstanceFollowRedirects(true);
@@ -1031,7 +1033,7 @@ public final class KataGoAutoSetupHelper {
   private static String httpGet(String url) throws IOException {
     HttpURLConnection conn = null;
     try {
-      conn = (HttpURLConnection) URI.create(url).toURL().openConnection();
+      conn = (HttpURLConnection) NetworkProxy.openConnection(URI.create(url).toURL());
       conn.setInstanceFollowRedirects(true);
       conn.setRequestMethod("GET");
       conn.setConnectTimeout(15000);

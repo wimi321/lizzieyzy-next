@@ -11,6 +11,7 @@ import featurecat.lizzie.rules.BoardHistoryNode;
 import featurecat.lizzie.rules.SGFParser;
 import featurecat.lizzie.rules.Stone;
 import featurecat.lizzie.util.AjaxHttpRequest;
+import featurecat.lizzie.util.NetworkProxy;
 import featurecat.lizzie.util.Utils;
 import featurecat.lizzie.util.YikeSyncDebugLog;
 import io.socket.client.Ack;
@@ -1375,7 +1376,7 @@ public class OnlineDialog extends JDialog {
       public void run() {
         try {
           URL url = URI.create(ajaxUrl).toURL();
-          HttpURLConnection con = (HttpURLConnection) url.openConnection();
+          HttpURLConnection con = (HttpURLConnection) NetworkProxy.openConnection(url);
 
           con.setRequestMethod("GET");
           con.setRequestProperty(
@@ -1703,6 +1704,7 @@ public class OnlineDialog extends JDialog {
           }
         };
 
+    NetworkProxy.configure(client);
     client.connect();
   }
 
