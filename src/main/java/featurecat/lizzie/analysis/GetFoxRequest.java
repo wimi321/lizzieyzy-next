@@ -241,9 +241,8 @@ public class GetFoxRequest {
         if (in == null) {
           throw new IOException("HTTP " + code + " with empty body");
         }
-        try (InputStream input = in;
-            java.util.Scanner scanner = new java.util.Scanner(input, "UTF-8").useDelimiter("\\A")) {
-          return scanner.hasNext() ? scanner.next() : "";
+        try (InputStream input = in) {
+          return readResponseBody(input);
         }
       } catch (IOException e) {
         lastError = e;
@@ -269,6 +268,14 @@ public class GetFoxRequest {
     return URLEncoder.encode(text == null ? "" : text, StandardCharsets.UTF_8);
   }
 
+  /**
+   * Scanner-style reads swallow mid-body IOExceptions and hand a truncated payload back as success;
+   * reading manually keeps body failures inside httpRequest's retry loop.
+   */
+  static String readResponseBody(InputStream input) throws IOException {
+    return new String(input.readAllBytes(), StandardCharsets.UTF_8);
+  }
+
   private static String firstNonEmpty(String... values) {
     if (values == null) {
       return "";
@@ -281,10 +288,30 @@ public class GetFoxRequest {
     return "";
   }
 
+  /**
+   * BoardHistoryList and SGF coordinate conversion size their work from the global Board
+   * dimensions. Fetching runs on the executor thread, so resizing those globals here would race the
+   * EDT and engine threads; merge recovery is therefore limited to payloads that already match the
+   * live board, and other sizes fall back to the windowed/default recovery paths.
+   */
+  static boolean mergeRecoveryMatchesLiveBoard(int width, int height) {
+    return width == Board.boardWidth && height == Board.boardHeight;
+  }
+
   private void emit(String payload) {
-    if (payload != null && !payload.trim().isEmpty()) {
-      foxKifuDownload.receiveResult(payload);
+    if (payload == null || payload.trim().isEmpty()) {
+      return;
     }
+    // shutdownNow cannot interrupt an in-flight socket read, so a payload that finishes after
+    // shutdown belongs to a superseded search and must not reach the dialog.
+    if (executor == null || executor.isShutdown()) {
+      return;
+    }
+    deliver(payload);
+  }
+
+  void deliver(String payload) {
+    foxKifuDownload.receiveResult(payload);
   }
 
   private void emitError(String msg) {
@@ -697,23 +724,17 @@ public class GetFoxRequest {
     }
 
     private List<SgfMove> recoverMergedFoxBranch(SgfTree tree) {
-      int originalWidth = Board.boardWidth;
-      int originalHeight = Board.boardHeight;
+      int[] boardSize = detectBoardSize(tree.nodes.isEmpty() ? null : tree.nodes.get(0).properties);
+      if (!mergeRecoveryMatchesLiveBoard(boardSize[0], boardSize[1])) {
+        return Collections.emptyList();
+      }
       try {
-        int[] boardSize =
-            detectBoardSize(tree.nodes.isEmpty() ? null : tree.nodes.get(0).properties);
-        Board.boardWidth = boardSize[0];
-        Board.boardHeight = boardSize[1];
-
         BoardHistoryList history =
             new BoardHistoryList(BoardData.empty(boardSize[0], boardSize[1]));
         mergeTreeIntoHistory(tree, history, history.getCurrentHistoryNode());
         return extractMainBranch(history);
       } catch (RuntimeException e) {
         return Collections.emptyList();
-      } finally {
-        Board.boardWidth = originalWidth;
-        Board.boardHeight = originalHeight;
       }
     }
 

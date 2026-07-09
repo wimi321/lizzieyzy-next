@@ -60,7 +60,7 @@ public class FoxKifuDownload extends JFrame {
   private final List<RecentFoxSearch> recentSearches = new ArrayList<RecentFoxSearch>();
   private String myUid = "";
   private String currentFoxNickname = "";
-  private String lastCode = "";
+  private final FoxPaginationCursor paginationCursor = new FoxPaginationCursor();
   private int tabNumber = 1;
   private final int numbersPerTab = 25;
   private int curTabNumber = 1;
@@ -295,11 +295,10 @@ public class FoxKifuDownload extends JFrame {
     if (foxReq == null || foxKifuInfos.isEmpty()) return;
     if (curTabNumber == tabNumber || tabNumber >= 4 && curTabNumber == tabNumber - 1) {
       String last = foxKifuInfos.get(foxKifuInfos.size() - 1).chessid;
-      if (!lastCode.equals(last)) {
-        lastCode = last;
+      if (paginationCursor.shouldRequest(last)) {
+        paginationCursor.beginRequest(last);
         advanceToNextPageAfterLoad = curTabNumber == tabNumber;
-        foxReq.sendCommand(
-            "uid " + myUid + " " + foxKifuInfos.get(foxKifuInfos.size() - 1).chessid);
+        foxReq.sendCommand("uid " + myUid + " " + last);
       } else {
         if (curTabNumber == tabNumber) {
           if (isSecondTimeReqEmpty) {
@@ -350,7 +349,7 @@ public class FoxKifuDownload extends JFrame {
     model = null;
     tabNumber = 1;
     curTabNumber = 1;
-    lastCode = "";
+    paginationCursor.reset();
     txtUserName.setText(normalizedUser);
     updateCurrentUserLabel(normalizedUser, null);
     Lizzie.config.lastFoxName = normalizedUser;
@@ -458,22 +457,7 @@ public class FoxKifuDownload extends JFrame {
     try {
       JSONObject jsonObject = new JSONObject(string);
       if (jsonObject.optInt("result", 0) != 0) {
-        isSearching = false;
-        if (isKifuLoading) {
-          isKifuLoading = false;
-          setTableBusy(false);
-          Utils.showMsg(
-              Lizzie.resourceBundle.getString("FoxKifuDownload.getKifuFailed")
-                  + jsonObject.optString("resultstr", string),
-              this);
-          hideProgressNotice();
-          return;
-        }
-        hideProgressNotice();
-        Utils.showMsg(
-            Lizzie.resourceBundle.getString("FoxKifuDownload.getKifuFailed")
-                + jsonObject.optString("resultstr", string),
-            this);
+        failCurrentFoxRequest(jsonObject.optString("resultstr", string));
         return;
       }
       String resolvedUid = jsonObject.optString("fox_uid", "").trim();
@@ -506,21 +490,34 @@ public class FoxKifuDownload extends JFrame {
           hideProgressNotice();
         }
       }
+      if (isFoxPayloadWithoutContent(jsonObject)) {
+        failCurrentFoxRequest(jsonObject.optString("resultstr", string));
+      }
     } catch (Exception e1) {
       e1.printStackTrace();
-      hideProgressNotice();
-      if (isKifuLoading) {
-        isKifuLoading = false;
-        setTableBusy(false);
-        Utils.showMsg(
-            Lizzie.resourceBundle.getString("FoxKifuDownload.getKifuFailed") + string, this);
-        isSearching = false;
-        return;
-      }
-      Utils.showMsg(
-          Lizzie.resourceBundle.getString("FoxKifuDownload.getKifuFailed") + string, this);
-      isSearching = false;
+      failCurrentFoxRequest(string);
     }
+  }
+
+  /**
+   * A success-coded payload that carries neither a game list nor a game record cannot advance any
+   * pending operation; treating it as a no-op would leave the busy overlay and the search/load
+   * gates stuck until the app restarts.
+   */
+  static boolean isFoxPayloadWithoutContent(JSONObject jsonObject) {
+    return !jsonObject.has("chesslist") && !jsonObject.has("chess");
+  }
+
+  private void failCurrentFoxRequest(String detail) {
+    paginationCursor.revertPendingRequest();
+    advanceToNextPageAfterLoad = false;
+    isSearching = false;
+    if (isKifuLoading) {
+      isKifuLoading = false;
+      setTableBusy(false);
+    }
+    hideProgressNotice();
+    Utils.showMsg(Lizzie.resourceBundle.getString("FoxKifuDownload.getKifuFailed") + detail, this);
   }
 
   private void finishFoxKifuLoadAfterMainPaint() {
@@ -581,6 +578,7 @@ public class FoxKifuDownload extends JFrame {
   private void handleChessList(JSONArray jsonArray, String resolvedNickname, String resolvedUid)
       throws JSONException {
     isSearching = false;
+    paginationCursor.commit();
     hideProgressNotice();
     int oldRows = foxKifuInfos.size();
     int previousTabNumber = curTabNumber;
@@ -960,6 +958,41 @@ public class FoxKifuDownload extends JFrame {
       }
     }
     return "";
+  }
+
+  /**
+   * Tracks the last chessid a page request was issued for. The cursor advances optimistically when
+   * the request is sent (so an in-flight page cannot be requested twice) and must be reverted when
+   * that request fails, otherwise the equality check would silently block every retry.
+   */
+  static final class FoxPaginationCursor {
+    private String current = "";
+    private String pendingPrevious;
+
+    boolean shouldRequest(String nextCode) {
+      return !current.equals(nextCode);
+    }
+
+    void beginRequest(String nextCode) {
+      pendingPrevious = current;
+      current = nextCode;
+    }
+
+    void commit() {
+      pendingPrevious = null;
+    }
+
+    void revertPendingRequest() {
+      if (pendingPrevious != null) {
+        current = pendingPrevious;
+        pendingPrevious = null;
+      }
+    }
+
+    void reset() {
+      current = "";
+      pendingPrevious = null;
+    }
   }
 }
 
