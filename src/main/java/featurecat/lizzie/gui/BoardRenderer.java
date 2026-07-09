@@ -672,11 +672,13 @@ public class BoardRenderer {
         boardWidth);
   }
 
+  // Compiled once: drawName calls this for both players on every repaint.
+  private static final Pattern KOREAN_NAME_PATTERN =
+      Pattern.compile(
+          "^[\\u1100-\\u11ff\\uac00-\\ud7af\\u3130–\\u318F\\u3200–\\u32FF\\uA960–\\uA97F\\uD7B0–\\uD7FF\\uFF00–\\uFFEF\\w\\s]+$");
+
   private boolean isKoreanName(String input) {
-    final Pattern p =
-        Pattern.compile(
-            "^[\\u1100-\\u11ff\\uac00-\\ud7af\\u3130–\\u318F\\u3200–\\u32FF\\uA960–\\uA97F\\uD7B0–\\uD7FF\\uFF00–\\uFFEF\\w\\s]+$");
-    Matcher m = p.matcher(input);
+    Matcher m = KOREAN_NAME_PATTERN.matcher(input);
     return m.matches();
   }
 
