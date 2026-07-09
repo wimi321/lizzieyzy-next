@@ -7,6 +7,7 @@ import featurecat.lizzie.util.Utils;
 import java.awt.BorderLayout;
 import java.awt.Color;
 import java.awt.Component;
+import java.awt.Cursor;
 import java.awt.Dimension;
 import java.awt.FlowLayout;
 import java.awt.Font;
@@ -22,6 +23,7 @@ import java.awt.event.KeyAdapter;
 import java.awt.event.KeyEvent;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
+import java.awt.event.MouseMotionAdapter;
 import java.io.IOException;
 import java.text.DecimalFormat;
 import java.text.MessageFormat;
@@ -426,6 +428,11 @@ public class FoxKifuDownload extends JFrame {
     progressGlassPane = new JPanel(new GridBagLayout());
     progressGlassPane.setOpaque(false);
     progressGlassPane.setFocusable(false);
+    // A visible glass pane still lets clicks fall through to the table and pagination buttons
+    // unless it consumes mouse events itself.
+    progressGlassPane.addMouseListener(new MouseAdapter() {});
+    progressGlassPane.addMouseMotionListener(new MouseMotionAdapter() {});
+    progressGlassPane.setCursor(Cursor.getPredefinedCursor(Cursor.WAIT_CURSOR));
 
     JPanel card = new JPanel(new BorderLayout(12, 10));
     card.setBackground(new Color(250, 250, 250));
