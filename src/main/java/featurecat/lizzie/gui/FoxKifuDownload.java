@@ -24,6 +24,7 @@ import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.io.IOException;
 import java.text.DecimalFormat;
+import java.text.MessageFormat;
 import java.util.ArrayList;
 import java.util.List;
 import javax.imageio.ImageIO;
@@ -355,7 +356,13 @@ public class FoxKifuDownload extends JFrame {
     Lizzie.config.lastFoxName = normalizedUser;
     Lizzie.config.uiConfig.put("last-fox-name", Lizzie.config.lastFoxName);
     saveConfigQuietly();
-    showProgressNotice("正在搜索野狐账号 \"" + normalizedUser + "\"，请稍候…");
+    showProgressNotice(
+        MessageFormat.format(
+            Lizzie.frame.kifuLoadText(
+                "KifuLoad.foxSearching",
+                "正在搜索野狐账号 \"{0}\"，请稍候…",
+                "Searching Fox account \"{0}\", please wait..."),
+            normalizedUser));
     foxReq.sendCommand("user_name " + normalizedUser);
   }
 
@@ -433,7 +440,7 @@ public class FoxKifuDownload extends JFrame {
     progressBar = new JProgressBar();
     progressBar.setIndeterminate(true);
     progressBar.setStringPainted(true);
-    progressBar.setString("处理中...");
+    progressBar.setString(Lizzie.frame.kifuLoadText("KifuLoad.processing", "处理中...", "Working..."));
     progressBar.setPreferredSize(new Dimension(360, 22));
     card.add(progressBar, BorderLayout.SOUTH);
 
