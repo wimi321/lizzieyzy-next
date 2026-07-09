@@ -75,6 +75,7 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
+import java.util.regex.Pattern;
 import javax.imageio.ImageIO;
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
@@ -294,6 +295,10 @@ public class LizzieFrame extends JFrame {
   private JPaintTextPane commentTextPane;
   private JLabel commentTextArea;
   private String cachedComment = "";
+  // Raw comment text of the last HTML conversion in setComment; refresh() lands here on
+  // every engine update, so an unchanged comment must skip the O(n) regex conversion.
+  private String cachedRawComment = "";
+  private static final Pattern COMMENT_NEWLINE_PATTERN = Pattern.compile("(\\r\\n)|(\\n)");
   private int commentFontSize;
   private int commentPaneFontSize;
   // private Rectangle commentRect;
@@ -8114,7 +8119,12 @@ public class LizzieFrame extends JFrame {
       }
     }
     if (!isCommentArea) {
-      comment = comment.replaceAll("(\r\n)|(\n)", "<br />").replaceAll(" ", "&nbsp;");
+      if (comment.equals(cachedRawComment)) {
+        return;
+      }
+      cachedRawComment = comment;
+      comment =
+          COMMENT_NEWLINE_PATTERN.matcher(comment).replaceAll("<br />").replace(" ", "&nbsp;");
     }
     try {
       // if (isLoadingEngine) {
