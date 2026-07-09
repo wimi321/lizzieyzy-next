@@ -133,6 +133,19 @@
 			<groupId>com.google.zxing</groupId>
 			<artifactId>javase</artifactId>
 			<version>3.5.3</version>
+			<exclusions>
+				<!-- Only zxing's command-line tools reference JCommander, and jai-imageio is a
+					TIFF ImageIO plugin; the app only decodes QR codes from in-memory images
+					(RemoteComputeDialog), so neither is reachable at runtime. -->
+				<exclusion>
+					<groupId>com.beust</groupId>
+					<artifactId>jcommander</artifactId>
+				</exclusion>
+				<exclusion>
+					<groupId>com.github.jai-imageio</groupId>
+					<artifactId>jai-imageio-core</artifactId>
+				</exclusion>
+			</exclusions>
 		</dependency>
 
 		<dependency>
@@ -146,6 +159,22 @@
 			<groupId>me.friwi</groupId>
 			<artifactId>jcefmaven</artifactId>
 			<version>127.3.1</version>
+			<exclusions>
+				<!-- JOGL is only referenced by JCEF's off-screen-rendering classes
+					(org.cef.browser.CefBrowserOsr / CefRenderer, jdeps-verified). This app always
+					creates windowed browsers (BrowserFrame sets windowless_rendering_enabled=false
+					and createBrowser(..., osr=false)), and CefBrowserFactory/CefClient/CefAppBuilder
+					link and initialize without JOGL on the classpath (verified with -Xverify:all),
+					so these ~13MB of classes plus all-platform natives can never be loaded. -->
+				<exclusion>
+					<groupId>me.friwi</groupId>
+					<artifactId>jogl-all</artifactId>
+				</exclusion>
+				<exclusion>
+					<groupId>me.friwi</groupId>
+					<artifactId>gluegen-rt</artifactId>
+				</exclusion>
+			</exclusions>
 		</dependency>
 
 		<!-- <dependency> <groupId>me.friwi</groupId> <artifactId>jcef-natives-windows-amd64</artifactId> 
