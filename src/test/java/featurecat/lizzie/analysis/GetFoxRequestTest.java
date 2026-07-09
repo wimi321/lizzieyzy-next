@@ -1,9 +1,18 @@
 package featurecat.lizzie.analysis;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import featurecat.lizzie.rules.Board;
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
+import java.io.InputStream;
 import java.lang.reflect.Method;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.List;
 import org.json.JSONObject;
 import org.junit.jupiter.api.Test;
 
@@ -56,5 +65,104 @@ class GetFoxRequestTest {
     assertFalse(normalizedSgf.contains("HA[0]"), normalizedSgf);
     assertTrue(normalizedSgf.contains(";W[qo];B[qp];W[op];B[oq])"), normalizedSgf);
     assertFalse(normalizedSgf.contains(";B[pd];B[pq]"), normalizedSgf);
+  }
+
+  @Test
+  void readResponseBodyReturnsFullUtf8Payload() throws Exception {
+    String payload = "{\"result\":0,\"fox_nickname\":\"野狐昵称\",\"chess\":\"(;GM[1])\"}";
+    byte[] bytes = payload.getBytes(StandardCharsets.UTF_8);
+
+    assertEquals(payload, GetFoxRequest.readResponseBody(new ByteArrayInputStream(bytes)));
+  }
+
+  @Test
+  void readResponseBodyReturnsEmptyStringForEmptyBody() throws Exception {
+    assertEquals("", GetFoxRequest.readResponseBody(new ByteArrayInputStream(new byte[0])));
+  }
+
+  @Test
+  void readResponseBodyPropagatesMidBodyFailureInsteadOfTruncating() {
+    InputStream broken =
+        new InputStream() {
+          private int reads;
+
+          @Override
+          public int read() throws IOException {
+            if (reads++ < 5) {
+              return 'x';
+            }
+            throw new IOException("connection reset mid-body");
+          }
+        };
+
+    assertThrows(IOException.class, () -> GetFoxRequest.readResponseBody(broken));
+  }
+
+  @Test
+  void emitDropsPayloadsAfterShutdown() throws Exception {
+    RecordingFoxRequest request = new RecordingFoxRequest();
+    Method emitMethod = GetFoxRequest.class.getDeclaredMethod("emit", String.class);
+    emitMethod.setAccessible(true);
+
+    emitMethod.invoke(request, "{\"result\":0,\"chesslist\":[]}");
+    assertEquals(1, request.delivered.size());
+
+    request.shutdown();
+    emitMethod.invoke(request, "{\"result\":1,\"resultstr\":\"stale\"}");
+    assertEquals(1, request.delivered.size());
+  }
+
+  @Test
+  void errorPayloadsCarryTheFailedAction() throws Exception {
+    RecordingFoxRequest request = new RecordingFoxRequest();
+    Method emitErrorMethod =
+        GetFoxRequest.class.getDeclaredMethod("emitError", String.class, String.class);
+    emitErrorMethod.setAccessible(true);
+
+    emitErrorMethod.invoke(request, "uid", "boom");
+    request.shutdown();
+
+    JSONObject delivered = new JSONObject(request.delivered.get(0));
+    assertEquals(1, delivered.getInt("result"));
+    assertEquals("uid", delivered.getString("fox_action"));
+    assertEquals("boom", delivered.getString("resultstr"));
+  }
+
+  @Test
+  void emptyHttpBodyBecomesTaggedErrorInsteadOfSilentDrop() throws Exception {
+    RecordingFoxRequest request = new RecordingFoxRequest();
+    Method emitOrFailMethod =
+        GetFoxRequest.class.getDeclaredMethod("emitOrFail", String.class, String.class);
+    emitOrFailMethod.setAccessible(true);
+
+    emitOrFailMethod.invoke(request, "uid", "   ");
+    request.shutdown();
+
+    assertEquals(1, request.delivered.size());
+    JSONObject delivered = new JSONObject(request.delivered.get(0));
+    assertEquals(1, delivered.getInt("result"));
+    assertEquals("uid", delivered.getString("fox_action"));
+  }
+
+  @Test
+  void mergeRecoveryOnlyRunsWhenPayloadMatchesLiveBoardSize() {
+    assertTrue(GetFoxRequest.mergeRecoveryMatchesLiveBoard(Board.boardWidth, Board.boardHeight));
+    assertFalse(
+        GetFoxRequest.mergeRecoveryMatchesLiveBoard(Board.boardWidth + 1, Board.boardHeight));
+    assertFalse(
+        GetFoxRequest.mergeRecoveryMatchesLiveBoard(Board.boardWidth, Board.boardHeight + 1));
+  }
+
+  private static final class RecordingFoxRequest extends GetFoxRequest {
+    final List<String> delivered = new ArrayList<String>();
+
+    RecordingFoxRequest() {
+      super(null);
+    }
+
+    @Override
+    void deliver(String payload) {
+      delivered.add(payload);
+    }
   }
 }
