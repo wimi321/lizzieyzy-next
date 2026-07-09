@@ -2844,6 +2844,9 @@ public class Config {
     ui.put("confirm-exit", false);
     ui.put("resume-previous-game", false);
     ui.put("autosave-interval-seconds", -1);
+    ui.put("network-proxy-mode", "direct");
+    ui.put("network-proxy-host", "127.0.0.1");
+    ui.put("network-proxy-port", 7897);
     ui.put("handicap-instead-of-winrate", false);
     ui.put("board-size", 19);
     ui.put("show-dynamic-komi", false);
