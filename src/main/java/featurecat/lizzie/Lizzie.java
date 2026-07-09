@@ -47,6 +47,13 @@ import org.json.JSONException;
 
 /** Main class. */
 public class Lizzie {
+  static {
+    // ImageIO's disk cache routes every decoded image through a temp file. All reads here are
+    // small classpath/theme images, so decode in memory; on Windows this also keeps antivirus
+    // scanners out of the image loading path.
+    ImageIO.setUseCache(false);
+  }
+
   public static ResourceBundle resourceBundle = ResourceBundle.getBundle("l10n.DisplayStrings");
   public static Config config;
   public static GtpConsolePane gtpConsole;
