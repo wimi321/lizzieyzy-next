@@ -1287,10 +1287,13 @@ public class Utils {
   }
 
   public static void copy(String resource, String newFolderName) throws IOException {
-    InputStream in = Utils.class.getResourceAsStream(resource);
-    Path dist = getDistFile(resource, newFolderName);
-    Files.copy(in, dist);
-    in.close();
+    try (InputStream in = Utils.class.getResourceAsStream(resource)) {
+      if (in == null) {
+        // A bare NPE from Files.copy gives no hint which bundled file is missing.
+        throw new IOException("Missing bundled resource: " + resource);
+      }
+      Files.copy(in, getDistFile(resource, newFolderName));
+    }
   }
 
   public static boolean deleteDir(File dir) {

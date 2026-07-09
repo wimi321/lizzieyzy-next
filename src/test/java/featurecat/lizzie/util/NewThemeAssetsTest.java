@@ -1,6 +1,8 @@
 package featurecat.lizzie.util;
 
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -26,5 +28,13 @@ class NewThemeAssetsTest {
         assertNotNull(in, path + " must exist on the classpath");
       }
     }
+  }
+
+  @Test
+  void copyNamesTheMissingResource() {
+    IOException e =
+        assertThrows(
+            IOException.class, () -> Utils.copy("/assets/no-such-resource.png", "unused"));
+    assertTrue(e.getMessage().contains("/assets/no-such-resource.png"));
   }
 }
