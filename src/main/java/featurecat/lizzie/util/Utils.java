@@ -1315,8 +1315,10 @@ public class Utils {
     try {
       copy("/assets/newtheme/black.png", "theme" + File.separator + themeName);
       copy("/assets/newtheme/white.png", "theme" + File.separator + themeName);
-      copy("/assets/newtheme/board.png", "theme" + File.separator + themeName);
-      copy("/assets/newtheme/background.jpg", "theme" + File.separator + themeName);
+      // board.png and background.jpg are byte-identical to the top-level /assets copies, so the
+      // jar bundles them only once; the copied file names stay board.png / background.jpg.
+      copy("/assets/board.png", "theme" + File.separator + themeName);
+      copy("/assets/background.jpg", "theme" + File.separator + themeName);
       copy("/assets/newtheme/theme.txt", "theme" + File.separator + themeName);
     } catch (IOException e) {
       // TODO Auto-generated catch block
