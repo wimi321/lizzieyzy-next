@@ -8,7 +8,6 @@ import featurecat.lizzie.analysis.KataEstimate;
 import featurecat.lizzie.analysis.Leelaz;
 import featurecat.lizzie.analysis.LeelazEngineCommandSink;
 import featurecat.lizzie.gui.AppleStyleSupport;
-import featurecat.lizzie.gui.AwareScaled;
 import featurecat.lizzie.gui.FirstUseSettings;
 import featurecat.lizzie.gui.GtpConsolePane;
 import featurecat.lizzie.gui.LizzieFrame;
@@ -27,6 +26,7 @@ import java.awt.Font;
 import java.awt.GraphicsEnvironment;
 import java.awt.Image;
 import java.awt.Window;
+import java.awt.geom.AffineTransform;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
@@ -133,8 +133,17 @@ public class Lizzie {
     installApplicationIcon();
     leelaz = new Leelaz("");
     isMultiScreen = GraphicsEnvironment.getLocalGraphicsEnvironment().getScreenDevices().length > 1;
-    AwareScaled awareScaled = new AwareScaled();
-    awareScaled.setVisible(true);
+    // The HiDPI scale must be known synchronously before any window is sized; a paint-based
+    // probe only delivers it after the EDT gets around to painting.
+    AffineTransform defaultTransform =
+        GraphicsEnvironment.getLocalGraphicsEnvironment()
+            .getDefaultScreenDevice()
+            .getDefaultConfiguration()
+            .getDefaultTransform();
+    if (defaultTransform.getScaleX() > 1) {
+      Config.isScaled = true;
+      javaScaleFactor = (float) defaultTransform.getScaleX();
+    }
     String hostName = InetAddress.getLocalHost().getHostName();
     if (config.firstTimeLoad || !hostName.equals(config.hostName)) {
       if (!config.hostName.equals("")) config.deletePersist(false);
