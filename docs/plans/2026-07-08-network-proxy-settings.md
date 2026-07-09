@@ -205,16 +205,16 @@
 
 - [ ] Migrate KataGo and runtime download/probe helpers.
   - Files:
-    - `src/main/java/featurecat/lizzie/analysis/KataGoAutoSetupHelper.java`
-    - `src/main/java/featurecat/lizzie/analysis/KataGoRuntimeHelper.java`
+    - `src/main/java/featurecat/lizzie/util/KataGoAutoSetupHelper.java`
+    - `src/main/java/featurecat/lizzie/util/KataGoRuntimeHelper.java`
   - Replace direct `openConnection()` calls with `NetworkProxy.openConnection(url)`.
   - Preserve existing timeouts, User-Agent, progress callbacks, and file streaming logic.
 
 - [ ] Migrate Fox, Tencent, Yike, and SGF fetch URLConnection callers.
   - Files:
-    - `src/main/java/featurecat/lizzie/rules/GetFoxRequest.java`
-    - `src/main/java/featurecat/lizzie/rules/GetTencentRequest.java`
-    - `src/main/java/featurecat/lizzie/rules/YikeApiClient.java`
+    - `src/main/java/featurecat/lizzie/analysis/GetFoxRequest.java`
+    - `src/main/java/featurecat/lizzie/analysis/GetTencentRequest.java`
+    - `src/main/java/featurecat/lizzie/gui/YikeApiClient.java`
     - `src/main/java/featurecat/lizzie/gui/OnlineDialog.java`
   - Replace `openConnection(Proxy.NO_PROXY)` and direct `url.openConnection()` with `NetworkProxy.openConnection(url)`.
   - Preserve request headers and timeouts.
@@ -271,11 +271,11 @@
     git status --short
     git add \
       src/main/java/featurecat/lizzie/update/WindowsUpdateService.java \
-      src/main/java/featurecat/lizzie/analysis/KataGoAutoSetupHelper.java \
-      src/main/java/featurecat/lizzie/analysis/KataGoRuntimeHelper.java \
-      src/main/java/featurecat/lizzie/rules/GetFoxRequest.java \
-      src/main/java/featurecat/lizzie/rules/GetTencentRequest.java \
-      src/main/java/featurecat/lizzie/rules/YikeApiClient.java \
+      src/main/java/featurecat/lizzie/util/KataGoAutoSetupHelper.java \
+      src/main/java/featurecat/lizzie/util/KataGoRuntimeHelper.java \
+      src/main/java/featurecat/lizzie/analysis/GetFoxRequest.java \
+      src/main/java/featurecat/lizzie/analysis/GetTencentRequest.java \
+      src/main/java/featurecat/lizzie/gui/YikeApiClient.java \
       src/main/java/featurecat/lizzie/gui/OnlineDialog.java \
       src/main/java/featurecat/lizzie/analysis/remote/ZhiziApiClient.java \
       src/main/java/featurecat/lizzie/analysis/remote/KataGoAnalysisWebSocketTransport.java \
