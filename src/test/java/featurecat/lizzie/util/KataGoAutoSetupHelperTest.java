@@ -176,6 +176,57 @@ public class KataGoAutoSetupHelperTest {
   }
 
   @Test
+  void inspectLocalSetupKeepsAppRootWhenWorkingDirHasHumanSlModels() throws Exception {
+    Path tempRoot = Files.createTempDirectory("katago-humansl-app-root-priority");
+    Path appRoot = Files.createDirectories(tempRoot.resolve("app"));
+    Path workDir = Files.createDirectories(appRoot.resolve("user-data"));
+    Path processDir = Files.createDirectories(workDir.resolve("cwd"));
+    Files.createDirectories(workDir.resolve("human-sl-models"));
+    Path engine =
+        touch(
+            appRoot
+                .resolve("engines")
+                .resolve("katago")
+                .resolve(detectTestPlatformDir())
+                .resolve(testKataGoBinaryName()));
+    Path configDir =
+        Files.createDirectories(appRoot.resolve("engines").resolve("katago").resolve("configs"));
+    Path gtpConfig = touch(configDir.resolve("gtp.cfg"));
+    Path analysisConfig = touch(configDir.resolve("analysis.cfg"));
+    Path estimateConfig = touch(configDir.resolve("estimate.cfg"));
+    touch(appRoot.resolve("weights").resolve("default.bin.gz"));
+    Path customWeight = touch(workDir.resolve("weights").resolve("custom.bin.gz"));
+    Path humanSlSource =
+        Files.write(tempRoot.resolve("custom-human.bin.gz"), new byte[2 * 1024 * 1024]);
+
+    withProcessDirAndConfig(
+        processDir,
+        workDir,
+        () -> {
+          Lizzie.config.uiConfig.put("katago-preferred-weight-path", customWeight.toString());
+
+          Path importedModel = KataGoAutoSetupHelper.importHumanSlModel(humanSlSource);
+          KataGoAutoSetupHelper.SetupSnapshot snapshot = KataGoAutoSetupHelper.inspectLocalSetup();
+          KataGoAutoSetupHelper.HumanSlModelStatus humanSlStatus =
+              KataGoAutoSetupHelper.inspectHumanSlModel();
+
+          assertEquals(workDir.toAbsolutePath().normalize(), snapshot.workingDir);
+          assertEquals(appRoot.toAbsolutePath().normalize(), snapshot.appRoot);
+          assertEquals(engine, snapshot.enginePath);
+          assertEquals(gtpConfig, snapshot.gtpConfigPath);
+          assertEquals(analysisConfig, snapshot.analysisConfigPath);
+          assertEquals(estimateConfig, snapshot.estimateConfigPath);
+          assertEquals(customWeight, snapshot.activeWeightPath);
+          assertTrue(importedModel.startsWith(workDir.resolve("human-sl-models")));
+          assertEquals(
+              importedModel.toString(),
+              Lizzie.config.uiConfig.optString("katago-human-sl-model-path"));
+          assertTrue(humanSlStatus.isInstalled());
+          assertEquals(importedModel, humanSlStatus.modelPath);
+        });
+  }
+
+  @Test
   void downloadHumanSlModelVerifiesChecksumAndRemembersPath() throws Exception {
     Path tempRoot = Files.createTempDirectory("katago-humansl-download");
     byte[] modelBytes = repeatedBytes(4096, (byte) 7);

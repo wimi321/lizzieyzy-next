@@ -1389,18 +1389,22 @@ public final class KataGoAutoSetupHelper {
     } catch (URISyntaxException e) {
     }
 
+    Path humanSlOnlyRoot = null;
     for (Path seedPath : seedPaths) {
       Path current = seedPath;
       for (int depth = 0; current != null && depth < 8; depth++) {
-        if ((Files.isDirectory(current.resolve("engines"))
-                && Files.isDirectory(current.resolve("weights")))
-            || Files.isDirectory(current.resolve(HUMAN_SL_MODEL_DIR_NAME))) {
+        if (Files.isDirectory(current.resolve("engines"))
+            && Files.isDirectory(current.resolve("weights"))) {
           return Optional.of(current.toAbsolutePath().normalize());
+        }
+        if (humanSlOnlyRoot == null
+            && Files.isDirectory(current.resolve(HUMAN_SL_MODEL_DIR_NAME))) {
+          humanSlOnlyRoot = current.toAbsolutePath().normalize();
         }
         current = current.getParent();
       }
     }
-    return Optional.empty();
+    return Optional.ofNullable(humanSlOnlyRoot);
   }
 
   private static Path detectEngineBinary(Path workingDir, Path appRoot) {

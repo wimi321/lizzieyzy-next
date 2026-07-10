@@ -11,6 +11,7 @@ import featurecat.lizzie.ConfigTestHelper;
 import featurecat.lizzie.Lizzie;
 import java.io.IOException;
 import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 import java.net.InetSocketAddress;
 import java.net.Proxy;
 import java.net.ProxySelector;
@@ -127,6 +128,7 @@ class NetworkProxyTest {
     Process process =
         new ProcessBuilder(
                 javaExecutable,
+                "--add-opens=java.base/jdk.internal.misc=ALL-UNNAMED",
                 "-cp",
                 classPath,
                 StartupProbe.class.getName(),
@@ -236,6 +238,27 @@ class NetworkProxyTest {
     return (Unsafe) field.get(null);
   }
 
+  private static boolean shouldBeInitialized(Unsafe unsafe, Class<?> target)
+      throws ReflectiveOperationException {
+    Method sunUnsafeMethod = findShouldBeInitialized(Unsafe.class);
+    if (sunUnsafeMethod != null) {
+      return (Boolean) sunUnsafeMethod.invoke(unsafe, target);
+    }
+    Class<?> internalUnsafeClass = Class.forName("jdk.internal.misc.Unsafe");
+    Field field = internalUnsafeClass.getDeclaredField("theUnsafe");
+    field.setAccessible(true);
+    Method internalUnsafeMethod = internalUnsafeClass.getMethod("shouldBeInitialized", Class.class);
+    return (Boolean) internalUnsafeMethod.invoke(field.get(null), target);
+  }
+
+  private static Method findShouldBeInitialized(Class<?> unsafeClass) {
+    try {
+      return unsafeClass.getMethod("shouldBeInitialized", Class.class);
+    } catch (NoSuchMethodException e) {
+      return null;
+    }
+  }
+
   public static final class StartupProbe {
     public static void main(String[] args) throws Exception {
       for (Field field : NetworkProxy.class.getDeclaredFields()) {
@@ -251,7 +274,7 @@ class NetworkProxyTest {
               false,
               NetworkProxy.class.getClassLoader());
       Unsafe unsafe = unsafe();
-      if (!unsafe.shouldBeInitialized(holder)) {
+      if (!shouldBeInitialized(unsafe, holder)) {
         throw new AssertionError("Direct selector holder initialized before startup hook");
       }
 
@@ -262,13 +285,13 @@ class NetworkProxyTest {
       if (!"true".equals(System.getProperty("java.net.useSystemProxies"))) {
         throw new AssertionError("System proxy property was not installed");
       }
-      if (!unsafe.shouldBeInitialized(holder)) {
+      if (!shouldBeInitialized(unsafe, holder)) {
         throw new AssertionError("Startup hook initialized the direct selector holder");
       }
 
       Lizzie.config.uiConfig.put(NetworkProxy.KEY_PROXY_MODE, NetworkProxy.MODE_DIRECT);
       NetworkProxy.proxySelector();
-      if (unsafe.shouldBeInitialized(holder)) {
+      if (shouldBeInitialized(unsafe, holder)) {
         throw new AssertionError("Direct selector holder was not initialized on first use");
       }
     }
