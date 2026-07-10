@@ -62,6 +62,23 @@ class MoveDataParseTest {
   }
 
   @Test
+  void branchLimitKeepsVariationAndPvVisitsCompact() {
+    Lizzie.config.limitBranchLength = 2;
+    try {
+      MoveData move =
+          MoveData.fromInfoKatago(
+              "move Q16 visits 100 winrate 0.5123 pv Q16 D4 Q4 C3 pvVisits 40 30 20 10");
+
+      assertEquals(List.of("Q16", "D4"), move.variation);
+      assertEquals(List.of("40", "30"), move.pvVisits);
+      assertInstanceOf(ArrayList.class, move.variation, "variation must be a compact ArrayList");
+      assertInstanceOf(ArrayList.class, move.pvVisits, "pvVisits must be a compact ArrayList");
+    } finally {
+      Lizzie.config.limitBranchLength = 0;
+    }
+  }
+
+  @Test
   void fromInfoParsesLeelaZeroLine() {
     MoveData move =
         MoveData.fromInfo("move Q16 visits 50 winrate 5123 prior 800 order 0 pv Q16 D4");

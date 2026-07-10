@@ -39,6 +39,9 @@ import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.Locale;
 import java.util.ResourceBundle;
+import java.util.concurrent.Callable;
+import java.util.concurrent.FutureTask;
+import java.util.concurrent.TimeUnit;
 import javax.imageio.ImageIO;
 import javax.swing.*;
 import javax.swing.plaf.FontUIResource;
@@ -69,6 +72,8 @@ public class Lizzie {
   private static final String SMOKE_OPEN_BOARD_SYNC_PROPERTY = "lizzie.smoke.openBoardSync";
   private static final String SMOKE_OPEN_BOARD_SYNC_DELAY_MS_PROPERTY =
       "lizzie.smoke.openBoardSyncDelayMs";
+  private static final String UNKNOWN_HOST_NAME = "unknown-host";
+  private static final long HOST_NAME_LOOKUP_TIMEOUT_MILLIS = 500L;
   public static String nextVersion = resolveNextVersion();
   public static String checkVersion = "230614";
   public static boolean readMode = false;
@@ -151,12 +156,16 @@ public class Lizzie {
       Config.isScaled = true;
       javaScaleFactor = (float) defaultTransform.getScaleX();
     }
-    String hostName = resolveHostNameSafely(config.hostName);
-    if (config.firstTimeLoad || !hostName.equals(config.hostName)) {
-      if (!config.hostName.equals("")) config.deletePersist(false);
-      resetAllHints();
+    String storedHostName = config.hostName == null ? "" : config.hostName;
+    String hostName = resolveHostNameSafely(storedHostName);
+    boolean machineChanged = shouldTreatAsHostChange(storedHostName, hostName);
+    if (isKnownHostName(hostName) && !hostName.equals(storedHostName)) {
       config.hostName = hostName;
-      config.uiConfig.put("host-name", config.hostName);
+      config.uiConfig.put("host-name", hostName);
+    }
+    if (config.firstTimeLoad || machineChanged) {
+      if (machineChanged) config.deletePersist(false);
+      resetAllHints();
       config.isChinese = (resourceBundle.getString("Lizzie.isChinese")).equals("yes");
       if (!completeAutomaticFirstRunSetup()) {
         openFirstUseSettings(true);
@@ -228,21 +237,50 @@ public class Lizzie {
   }
 
   /**
-   * getLocalHost() resolves the machine's own name via DNS; on hosts where that name is unmapped
-   * (common on macOS behind VPNs) it throws or stalls, and that must never prevent startup. Falls
-   * back to the stored host name so a resolver failure is never mistaken for a machine change,
-   * which would wipe persisted state.
+   * Resolves the machine name on a daemon thread with a strict startup deadline. A DNS failure or
+   * stall must never prevent launch or masquerade as a machine change, which would wipe persisted
+   * state.
    */
   static String resolveHostNameSafely(String storedHostName) {
+    return resolveHostNameSafely(
+        storedHostName,
+        () -> InetAddress.getLocalHost().getHostName(),
+        HOST_NAME_LOOKUP_TIMEOUT_MILLIS);
+  }
+
+  static String resolveHostNameSafely(
+      String storedHostName, Callable<String> resolver, long timeoutMillis) {
+    FutureTask<String> lookup = new FutureTask<>(resolver);
+    Thread lookupThread = new Thread(lookup, "lizzie-hostname-lookup");
+    lookupThread.setDaemon(true);
+    lookupThread.start();
     try {
-      return InetAddress.getLocalHost().getHostName();
-    } catch (IOException | RuntimeException e) {
+      String resolved = lookup.get(Math.max(1L, timeoutMillis), TimeUnit.MILLISECONDS);
+      return resolved == null || resolved.trim().isEmpty()
+          ? hostNameFallback(storedHostName)
+          : resolved;
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      lookup.cancel(true);
+      return hostNameFallback(storedHostName);
+    } catch (Exception e) {
+      lookup.cancel(true);
       return hostNameFallback(storedHostName);
     }
   }
 
   static String hostNameFallback(String storedHostName) {
-    return storedHostName == null || storedHostName.isEmpty() ? "unknown-host" : storedHostName;
+    return storedHostName == null || storedHostName.isEmpty() ? UNKNOWN_HOST_NAME : storedHostName;
+  }
+
+  static boolean shouldTreatAsHostChange(String storedHostName, String resolvedHostName) {
+    return isKnownHostName(storedHostName)
+        && isKnownHostName(resolvedHostName)
+        && !storedHostName.equals(resolvedHostName);
+  }
+
+  private static boolean isKnownHostName(String hostName) {
+    return hostName != null && !hostName.isEmpty() && !UNKNOWN_HOST_NAME.equals(hostName);
   }
 
   private static void scheduleBoardSyncSmokeProbe() {

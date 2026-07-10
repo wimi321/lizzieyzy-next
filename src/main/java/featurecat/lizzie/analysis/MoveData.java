@@ -244,7 +244,8 @@ public class MoveData {
                             : otherPos));
         if (result.pvVisits != null) {
           if (result.pvVisits.size() > result.variation.size())
-            result.pvVisits = result.pvVisits.subList(0, result.variation.size());
+            result.pvVisits =
+                new ArrayList<>(result.pvVisits.subList(0, result.variation.size()));
         }
         // result.variation = result.variation.subList(i + 1, data.length);
         break;
