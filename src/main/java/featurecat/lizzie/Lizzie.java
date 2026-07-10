@@ -71,6 +71,9 @@ public class Lizzie {
   private static final String SMOKE_OPEN_BOARD_SYNC_PROPERTY = "lizzie.smoke.openBoardSync";
   private static final String SMOKE_OPEN_BOARD_SYNC_DELAY_MS_PROPERTY =
       "lizzie.smoke.openBoardSyncDelayMs";
+  private static final String SMOKE_OPEN_AUTO_SETUP_PROPERTY = "lizzie.smoke.openAutoSetup";
+  private static final String SMOKE_OPEN_AUTO_SETUP_DELAY_MS_PROPERTY =
+      "lizzie.smoke.openAutoSetupDelayMs";
   private static final String UNKNOWN_HOST_NAME = "unknown-host";
   private static final long HOST_NAME_LOOKUP_TIMEOUT_MILLIS = 500L;
   public static String nextVersion = resolveNextVersion();
@@ -233,6 +236,7 @@ public class Lizzie {
     }
     if (Lizzie.config.autoReplayBranch) frame.autoReplayBranch();
     scheduleBoardSyncSmokeProbe();
+    scheduleAutoSetupSmokeProbe();
     WindowsUpdateController.scheduleAutomaticCheck();
   }
 
@@ -310,6 +314,37 @@ public class Lizzie {
                   });
             },
             "lizzie-board-sync-smoke");
+    smokeThread.setDaemon(true);
+    smokeThread.start();
+  }
+
+  private static void scheduleAutoSetupSmokeProbe() {
+    if (!Boolean.getBoolean(SMOKE_OPEN_AUTO_SETUP_PROPERTY)) {
+      return;
+    }
+
+    int delayMs = Math.max(0, Integer.getInteger(SMOKE_OPEN_AUTO_SETUP_DELAY_MS_PROPERTY, 3000));
+    Thread smokeThread =
+        new Thread(
+            () -> {
+              try {
+                Thread.sleep(delayMs);
+              } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return;
+              }
+
+              SwingUtilities.invokeLater(
+                  () -> {
+                    if (frame == null) {
+                      System.err.println("Auto setup smoke probe skipped: frame unavailable.");
+                      return;
+                    }
+                    System.out.println("Auto setup smoke probe: opening KataGo Auto Setup.");
+                    frame.openKataGoAutoSetup();
+                  });
+            },
+            "lizzie-auto-setup-smoke");
     smokeThread.setDaemon(true);
     smokeThread.start();
   }

@@ -126,7 +126,7 @@ public class KataGoAutoSetupDialog extends JDialog {
   private final JFontButton btnReloadRemoteWeights = new JFontButton();
   private final JFontButton btnDownloadWeight = new JFontButton();
   private final JFontButton btnImportWeight = new JFontButton();
-  private final JFontButton btnApplyWeight = new JFontButton();
+  private final JFontButton btnAddWeight = new JFontButton();
   private final JFontButton btnDownloadHumanSlModel = new JFontButton();
   private final JFontButton btnImportHumanSlModel = new JFontButton();
   private final JFontButton btnInstallNvidiaRuntime = new JFontButton();
@@ -249,7 +249,7 @@ public class KataGoAutoSetupDialog extends JDialog {
     btnReloadRemoteWeights.setToolTipText(text("AutoSetup.refreshOfficialWeights"));
     btnDownloadWeight.setText(text("AutoSetup.downloadWeight"));
     btnImportWeight.setText(text("AutoSetup.importWeight"));
-    btnApplyWeight.setText(text("AutoSetup.applyWeight"));
+    btnAddWeight.setText(text("AutoSetup.addWeight"));
     btnDownloadHumanSlModel.setText(text("AutoSetup.downloadHumanSlModel"));
     btnImportHumanSlModel.setText(text("AutoSetup.importHumanSlModel"));
     btnInstallNvidiaRuntime.setText(text("AutoSetup.installNvidiaRuntime"));
@@ -267,7 +267,7 @@ public class KataGoAutoSetupDialog extends JDialog {
     styleButton(btnRefresh, false);
     styleIconButton(btnReloadRemoteWeights);
     styleButton(btnImportWeight, false);
-    styleButton(btnApplyWeight, false);
+    styleButton(btnAddWeight, false);
     styleButton(btnDownloadHumanSlModel, false);
     styleButton(btnImportHumanSlModel, false);
     styleButton(btnInstallNvidiaRuntime, false);
@@ -284,7 +284,7 @@ public class KataGoAutoSetupDialog extends JDialog {
     btnReloadRemoteWeights.addActionListener(e -> reloadRemoteWeightInfo());
     btnDownloadWeight.addActionListener(e -> startRecommendedWeightDownload(false));
     btnImportWeight.addActionListener(e -> importCustomWeight());
-    btnApplyWeight.addActionListener(e -> applySelectedWeight());
+    btnAddWeight.addActionListener(e -> addSelectedWeightEngine());
     btnDownloadHumanSlModel.addActionListener(e -> startHumanSlModelDownload());
     btnImportHumanSlModel.addActionListener(e -> importHumanSlModel());
     btnInstallNvidiaRuntime.addActionListener(e -> startNvidiaRuntimeInstall());
@@ -479,7 +479,7 @@ public class KataGoAutoSetupDialog extends JDialog {
         rows,
         gbc,
         text("AutoSetup.localWeights"),
-        createInlineActionRow(cmbLocalWeights, btnApplyWeight, btnImportWeight));
+        createInlineActionRow(cmbLocalWeights, btnAddWeight, btnImportWeight));
     addInfoRow(rows, gbc, text("AutoSetup.selectedLocalWeightInfo"), lblLocalWeightDetailValue);
     addComponentRow(
         rows,
@@ -1157,7 +1157,7 @@ public class KataGoAutoSetupDialog extends JDialog {
     startAutoSetup(snapshot.withActiveWeight(selectedWeight));
   }
 
-  private void applySelectedWeight() {
+  private void addSelectedWeightEngine() {
     if (snapshot == null) {
       snapshot = KataGoAutoSetupHelper.inspectLocalSetup();
     }
@@ -1166,7 +1166,7 @@ public class KataGoAutoSetupDialog extends JDialog {
       Utils.showMsg(text("AutoSetup.missingWeight"), this);
       return;
     }
-    startAutoSetup(snapshot.withActiveWeight(selectedWeight));
+    startWeightEngineSetup(snapshot.withActiveWeight(selectedWeight));
   }
 
   private void importCustomWeight() {
@@ -1661,11 +1661,50 @@ public class KataGoAutoSetupDialog extends JDialog {
     worker.start();
   }
 
+  private void startWeightEngineSetup(SetupSnapshot state) {
+    setBusy(true, text("AutoSetup.settingUp"), 0, -1);
+    Thread worker =
+        new Thread(
+            () -> {
+              try {
+                SetupResult result = KataGoAutoSetupHelper.addWeightEngineProfile(state);
+                String messageKey =
+                    result.createdEngine
+                        ? "AutoSetup.weightEngineAddedMessage"
+                        : "AutoSetup.weightEngineUpdatedMessage";
+                SwingUtilities.invokeLater(
+                    () -> {
+                      activeWorkerThread = null;
+                      setBusy(false, text("AutoSetup.setupDone"), 0, 0);
+                      onSetupApplied(
+                          result, text(messageKey) + " " + result.engineName, true, false);
+                    });
+              } catch (IOException e) {
+                SwingUtilities.invokeLater(
+                    () -> {
+                      activeWorkerThread = null;
+                      onBackgroundError(e);
+                    });
+              }
+            },
+            "katago-add-weight-engine");
+    activeWorkerThread = worker;
+    worker.start();
+  }
+
   private void onSetupApplied(SetupResult result, String message) {
     onSetupApplied(result, message, true);
   }
 
   private void onSetupApplied(SetupResult result, String message, boolean showSuccessPopup) {
+    onSetupApplied(result, message, showSuccessPopup, true);
+  }
+
+  private void onSetupApplied(
+      SetupResult result,
+      String message,
+      boolean showSuccessPopup,
+      boolean includeWeightPathInPopup) {
     snapshot = KataGoAutoSetupHelper.inspectLocalSetup();
     renderSnapshot();
     selectRemoteWeightByModelName(KataGoAutoSetupHelper.resolveActiveWeightModelName(snapshot));
@@ -1675,13 +1714,19 @@ public class KataGoAutoSetupDialog extends JDialog {
       lblStatus.setText(message);
       lblStatus.setForeground(OK_COLOR);
       if (showSuccessPopup) {
-        Utils.showMsg(message + "\n" + result.snapshot.activeWeightPath, this);
+        Utils.showMsg(
+            includeWeightPathInPopup ? message + "\n" + result.snapshot.activeWeightPath : message,
+            this);
       }
     } else {
       lblStatus.setText(reloadWarning);
       lblStatus.setForeground(WARN_COLOR);
       Utils.showMsg(
-          message + "\n" + result.snapshot.activeWeightPath + "\n\n" + reloadWarning, this);
+          message
+              + (includeWeightPathInPopup ? "\n" + result.snapshot.activeWeightPath : "")
+              + "\n\n"
+              + reloadWarning,
+          this);
     }
   }
 
@@ -1754,7 +1799,7 @@ public class KataGoAutoSetupDialog extends JDialog {
     btnReloadRemoteWeights.setEnabled(!busy);
     btnDownloadWeight.setEnabled(!busy && canDownloadSelectedRemoteWeight());
     btnImportWeight.setEnabled(!busy);
-    btnApplyWeight.setEnabled(!busy && getSelectedLocalWeight() != null);
+    btnAddWeight.setEnabled(!busy && getSelectedLocalWeight() != null);
     btnDownloadHumanSlModel.setEnabled(!busy && canDownloadHumanSlModel());
     btnImportHumanSlModel.setEnabled(!busy);
     cmbLocalWeights.setEnabled(!busy && cmbLocalWeights.getItemCount() > 0);
@@ -1911,7 +1956,7 @@ public class KataGoAutoSetupDialog extends JDialog {
       lblLocalWeightDetailValue.setText(text("AutoSetup.noLocalWeights"));
       lblLocalWeightDetailValue.setToolTipText(null);
       lblLocalWeightDetailValue.setForeground(ERROR_COLOR);
-      btnApplyWeight.setEnabled(false);
+      btnAddWeight.setEnabled(false);
       return;
     }
     String textValue =
@@ -1929,7 +1974,7 @@ public class KataGoAutoSetupDialog extends JDialog {
                 .normalize()
                 .equals(selectedWeight.toAbsolutePath().normalize());
     lblLocalWeightDetailValue.setForeground(current ? OK_COLOR : Color.DARK_GRAY);
-    btnApplyWeight.setEnabled(
+    btnAddWeight.setEnabled(
         activeDownloadSession == null && activeWorkerThread == null && selectedWeight != null);
   }
 
@@ -2234,7 +2279,7 @@ public class KataGoAutoSetupDialog extends JDialog {
     btnReloadRemoteWeights.setEnabled(true);
     btnDownloadWeight.setEnabled(getSelectedRemoteWeight() != null);
     btnImportWeight.setEnabled(true);
-    btnApplyWeight.setEnabled(getSelectedLocalWeight() != null);
+    btnAddWeight.setEnabled(getSelectedLocalWeight() != null);
     btnDownloadHumanSlModel.setEnabled(canDownloadHumanSlModel());
     btnImportHumanSlModel.setEnabled(true);
     cmbLocalWeights.setEnabled(cmbLocalWeights.getItemCount() > 0);

@@ -10,6 +10,8 @@ APP_VERSION="${2:-1.0.0}"
 JAR_PATH="${3:-target/lizzie-yzy2.5.3-shaded.jar}"
 APP_DISPLAY_VERSION="${LIZZIE_NEXT_VERSION:-${4:-next-dev}}"
 WINDOWS_UPGRADE_UUID="${WINDOWS_UPGRADE_UUID:-c2ef73ec-f99a-4f3d-b950-f52c0186122a}"
+WINDOWS_JAVA_INITIAL_RAM_PERCENTAGE="${WINDOWS_JAVA_INITIAL_RAM_PERCENTAGE:-1.0}"
+WINDOWS_JAVA_MAX_RAM_PERCENTAGE="${WINDOWS_JAVA_MAX_RAM_PERCENTAGE:-50.0}"
 
 if ! command -v jpackage >/dev/null 2>&1; then
   echo "jpackage not found. Please use JDK 14+ with jpackage."
@@ -666,7 +668,8 @@ build_app_image() {
     --description "$app_description" \
     --icon "$ICON_PATH" \
     "${runtime_args[@]}" \
-    --java-options "-Xmx4096m" \
+    --java-options "-XX:InitialRAMPercentage=$WINDOWS_JAVA_INITIAL_RAM_PERCENTAGE" \
+    --java-options "-XX:MaxRAMPercentage=$WINDOWS_JAVA_MAX_RAM_PERCENTAGE" \
     --java-options "-Xshare:auto" \
     --java-options "-Dlizzie.next.version=$APP_DISPLAY_VERSION" >&2
   if [[ ! -f "$app_image_dir/$app_name/runtime/bin/java.exe" ]]; then
@@ -721,7 +724,8 @@ build_installer() {
     --win-shortcut \
     --win-upgrade-uuid "$upgrade_uuid" \
     "${runtime_args[@]}" \
-    --java-options "-Xmx4096m" \
+    --java-options "-XX:InitialRAMPercentage=$WINDOWS_JAVA_INITIAL_RAM_PERCENTAGE" \
+    --java-options "-XX:MaxRAMPercentage=$WINDOWS_JAVA_MAX_RAM_PERCENTAGE" \
     --java-options "-Xshare:auto" \
     --java-options "-Dlizzie.next.version=$APP_DISPLAY_VERSION" >&2
   log_step "Finished Windows installer: $app_name [$flavor]"
