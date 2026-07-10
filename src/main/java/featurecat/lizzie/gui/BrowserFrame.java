@@ -16,6 +16,7 @@ import java.security.CodeSource;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 import java.util.Set;
 import javax.imageio.ImageIO;
@@ -95,6 +96,8 @@ public class BrowserFrame extends JFrame {
     // windowless_rendering_enabled must be set to false if not wanted.
     builder.getCefSettings().windowless_rendering_enabled = JCEF_WINDOWLESS_RENDERING;
     builder.getCefSettings().log_severity = LogSeverity.LOGSEVERITY_DISABLE;
+    builder.getCefSettings().locale =
+        resolveCefLocale(Lizzie.config.useLanguage, Locale.getDefault());
     File cefCache = resolveJcefCacheFolder();
     if (!cefCache.exists()) cefCache.mkdirs();
     builder.getCefSettings().root_cache_path = cefCache.getAbsolutePath();
@@ -499,6 +502,36 @@ public class BrowserFrame extends JFrame {
             setVisible(false);
           }
         });
+  }
+
+  static String resolveCefLocale(int configuredLanguage, Locale systemLocale) {
+    switch (configuredLanguage) {
+      case 1:
+        return "zh-CN";
+      case 2:
+        return "en-US";
+      case 3:
+        return "ko";
+      case 4:
+        return "ja";
+      default:
+        Locale locale = systemLocale == null ? Locale.ENGLISH : systemLocale;
+        if ("zh".equals(locale.getLanguage())) {
+          String country = locale.getCountry();
+          return "TW".equalsIgnoreCase(country)
+                  || "HK".equalsIgnoreCase(country)
+                  || "MO".equalsIgnoreCase(country)
+              ? "zh-TW"
+              : "zh-CN";
+        }
+        if ("ja".equals(locale.getLanguage())) {
+          return "ja";
+        }
+        if ("ko".equals(locale.getLanguage())) {
+          return "ko";
+        }
+        return "en-US";
+    }
   }
 
   private static File resolveJcefBundleFolder() throws IOException {

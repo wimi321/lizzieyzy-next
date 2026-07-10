@@ -1,10 +1,8 @@
 package featurecat.lizzie;
 
-import featurecat.lizzie.analysis.AnalysisEngine;
 import featurecat.lizzie.analysis.EngineCommandSink;
 import featurecat.lizzie.analysis.EngineFollowController;
 import featurecat.lizzie.analysis.EngineManager;
-import featurecat.lizzie.analysis.KataEstimate;
 import featurecat.lizzie.analysis.Leelaz;
 import featurecat.lizzie.analysis.LeelazEngineCommandSink;
 import featurecat.lizzie.gui.AppleStyleSupport;
@@ -550,12 +548,6 @@ public class Lizzie {
             if (config.isShowingIndependentSub) frame.openIndependentSubBoard();
             if (config.isCtrlOpened) frame.openController();
             try {
-              Thread.sleep(60);
-            } catch (InterruptedException e2) {
-              // TODO Auto-generated catch block
-              e2.printStackTrace();
-            }
-            try {
               Lizzie.engineManager = new EngineManager(Lizzie.config, index, loadDefault);
             } catch (Exception e) {
               e.printStackTrace();
@@ -592,19 +584,10 @@ public class Lizzie {
               }
             }
             if (Lizzie.config.loadEstimateEngine) {
-              try {
-                frame.zen = new KataEstimate(true);
-              } catch (IOException e1) {
-                e1.printStackTrace();
-              }
+              frame.preloadEstimateEngineAfterStartup();
             }
             if (Lizzie.config.analysisEnginePreLoad) {
-              try {
-                frame.analysisEngine = new AnalysisEngine(true);
-              } catch (IOException e) {
-                // TODO Auto-generated catch block
-                e.printStackTrace();
-              }
+              frame.preloadConfiguredAnalysisEngineAfterStartup();
             } else {
               frame.scheduleQuickAnalysisEngineWarmupAfterStartup();
             }

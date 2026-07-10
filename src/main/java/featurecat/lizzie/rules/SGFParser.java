@@ -2671,7 +2671,7 @@ public class SGFParser {
       double scoreStdev,
       double pda,
       String bestMoves,
-      ArrayList<Double> estimateArray) {
+      List<Double> estimateArray) {
     StringBuilder header = new StringBuilder();
     header.append(engineName).append(" ").append(curWinrate).append(" ").append(playouts);
     if (kataData) {
@@ -2695,7 +2695,7 @@ public class SGFParser {
   }
 
   private static String formatAnalysisDetailLine(
-      String bestMoves, ArrayList<Double> estimateArray) {
+      String bestMoves, List<Double> estimateArray) {
     StringBuilder detailLine = new StringBuilder();
     if (!Utils.isBlank(bestMoves)) {
       detailLine.append(bestMoves);
@@ -3124,8 +3124,8 @@ public class SGFParser {
     return values == null ? null : new ArrayList<MoveData>(values);
   }
 
-  private static ArrayList<Double> copyEstimateArray(ArrayList<Double> values) {
-    return values == null ? null : new ArrayList<Double>(values);
+  private static List<Double> copyEstimateArray(List<Double> values) {
+    return BoardData.compactEstimateArray(values);
   }
 
   private static void rollbackMoveNodeMnState(BoardHistoryNode moveNode) {
@@ -4467,7 +4467,7 @@ public class SGFParser {
     if (secondaryEngineTag) {
       boolean headerHasKata = target.isKataData2;
       target.bestMoves2 = parsed.bestMoves;
-      target.estimateArray2 = parsed.estimateArray;
+      target.estimateArray2 = BoardData.compactEstimateArray(parsed.estimateArray);
       target.isSaiData2 = target.isSaiData2 || bestMove.isSaiData;
       target.isKataData2 = target.isKataData2 || bestMove.isKataData;
       if (!headerHasKata && bestMove.isKataData) {
@@ -4480,7 +4480,7 @@ public class SGFParser {
     }
     boolean headerHasKata = target.isKataData;
     target.bestMoves = parsed.bestMoves;
-    target.estimateArray = parsed.estimateArray;
+    target.estimateArray = BoardData.compactEstimateArray(parsed.estimateArray);
     target.playoutsChanged = true;
     target.isSaiData = target.isSaiData || bestMove.isSaiData;
     target.isKataData = target.isKataData || bestMove.isKataData;
@@ -4499,9 +4499,9 @@ public class SGFParser {
 
   private static final class ParsedAnalysisInfo {
     private final List<MoveData> bestMoves;
-    private final ArrayList<Double> estimateArray;
+    private final List<Double> estimateArray;
 
-    private ParsedAnalysisInfo(List<MoveData> bestMoves, ArrayList<Double> estimateArray) {
+    private ParsedAnalysisInfo(List<MoveData> bestMoves, List<Double> estimateArray) {
       this.bestMoves = bestMoves;
       this.estimateArray = estimateArray;
     }

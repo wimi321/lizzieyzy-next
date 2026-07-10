@@ -388,8 +388,11 @@ class WinrateGraphSnapshotBoundaryHitTest {
       int[] snapshotPoint = renderedGraphPoint(graph, snapshotBoundary);
       assertNotNull(snapshotPoint, "snapshot boundary should keep a rendered graph anchor.");
 
-      enqueueOnEdt(() -> frame.onMouseDragged(snapshotPoint[0], snapshotPoint[1]));
-      enqueueOnEdt(() -> frame.onMouseDragged(-10, -10));
+      enqueueOnEdt(
+          () -> {
+            frame.onMouseDragged(snapshotPoint[0], snapshotPoint[1]);
+            frame.onMouseDragged(-10, -10);
+          });
       flushEdt();
 
       assertSame(

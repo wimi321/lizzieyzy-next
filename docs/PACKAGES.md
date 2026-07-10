@@ -151,7 +151,8 @@
 为了让完整离线包更轻、更快，发布脚本会尽量做三类无感优化：
 
 - 自定义 Java runtime：发布脚本会用 `jlink` 生成专用运行环境，并启用 `--strip-debug`、`--compress=2`、`--no-header-files`、`--no-man-pages`。如果当前构建机不支持 `jlink` 或某个平台出现兼容问题，会自动回退到原运行环境，不影响发包。
-- AppCDS 启动归档：发布脚本会用 `featurecat.lizzie.tools.CdsWarmup` 生成 `lizzieyzy-next-cds.jsa`。启动参数使用 `-Xshare:auto`，如果归档缺失或不可用，JVM 会正常回退启动。
+- Base CDS 启动共享：`jlink` runtime 构建后会执行 `java -Xshare:dump` 生成可随应用目录移动的基础类归档，启动参数使用 `-Xshare:auto`。不再打包绑定构建路径的 AppCDS；实测该归档在安装或解压到新目录后会因 classpath 不匹配而失效，移除后可避免无效体积和小更新后的归档过期。
+- JCEF 语言资源：Windows 包只保留软件可选语言需要的 Chromium 语言包（简体中文、繁体中文、英语、日语、韩语），浏览器内核、HTTPS、弈客、腾讯棋谱等功能文件完整保留；CEF locale 会按软件语言或系统语言安全回退。
 - 包体审计报告：每次打包会在 `dist/release-meta/` 生成 `*-package-size-audit.md` 和 `*.json`，记录 shaded jar、runtime、JCEF、权重、引擎、readboard、最终 release asset 的大小。报告会写入 GitHub Actions summary，并对异常增大的 jar、custom runtime、接近 GitHub 单资产上限的 release asset 给出 warning；第一阶段只预警，不阻断紧急发版。
 
 维护者本地常用命令：
@@ -172,8 +173,9 @@ OUT_DIR=dist/perf SCENARIO=startup DURATION_SECONDS=45 \
 说明：
 
 - JFR 录制只用于本地性能分析，不会打进用户安装包。
-- AppCDS 和自定义 runtime 都是发布层优化，不改变用户功能和配置位置。
-- 第一阶段不激进裁剪 JCEF 内部资源，因为弈客、腾讯棋谱和网页流程需要真实浏览器能力。
+- JFR 脚本会同时生成 `.analysis.md`、`.analysis.json` 和 `.metrics.json`，记录主要分配热点、采样权重、年轻代/老年代 GC、峰值常驻内存与 jar 大小，便于同场景前后对比。
+- Base CDS 和自定义 runtime 都是发布层优化，不改变用户功能和配置位置。
+- 不激进裁剪 JCEF 浏览器核心资源；仅移除软件不提供的额外 Chromium locale，避免影响弈客、腾讯棋谱和网页流程。
 
 ## 新旧发布格式怎么理解
 

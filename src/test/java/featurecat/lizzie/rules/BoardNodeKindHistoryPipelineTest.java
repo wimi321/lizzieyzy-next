@@ -51,6 +51,19 @@ class BoardNodeKindHistoryPipelineTest {
   }
 
   @Test
+  void asCoordinatesHandlesCanonicalPassNumericAndInvalidValues() {
+    assertArrayEquals(new int[] {3, 15}, Board.asCoordinates(" D4 ", 19).orElseThrow());
+    assertArrayEquals(new int[] {12, 7}, Board.asCoordinates("(12,7)", 19).orElseThrow());
+    assertTrue(Board.asCoordinates("pass", 19).isEmpty());
+    assertTrue(Board.asCoordinates("resign", 19).isEmpty());
+    assertTrue(Board.asCoordinates("I9", 19).isEmpty());
+    assertTrue(Board.asCoordinates("D", 19).isEmpty());
+    assertTrue(Board.asCoordinates("D999999999999999999999", 19).isEmpty());
+    assertTrue(Board.asCoordinates("ZZZZZZZZZZZZZZZZZZ4", 19).isEmpty());
+    assertTrue(Board.asCoordinates("(999999999999999999999,7)", 19).isEmpty());
+  }
+
+  @Test
   void addOrGotoKeepsPassAndSnapshotAsSeparateChildren() throws Exception {
     TestEnvironment env = TestEnvironment.open();
     try {

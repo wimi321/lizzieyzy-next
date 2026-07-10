@@ -54,8 +54,8 @@ public class BoardData {
   public double pda2 = 0;
   public double komi = -999;
   public double wrn = 0;
-  public ArrayList<Double> estimateArray;
-  public ArrayList<Double> estimateArray2;
+  public List<Double> estimateArray;
+  public List<Double> estimateArray2;
   public boolean playoutsChanged;
   public int lastMoveMatchCandidteNo;
   //	public boolean commented=true;
@@ -332,7 +332,7 @@ public class BoardData {
       String engName,
       boolean isFromLeelaz,
       int totalplayouts,
-      ArrayList<Double> estimateArray) {
+      List<Double> estimateArray) {
     tryToSetBestMoves(moves, engName, isFromLeelaz, totalplayouts, estimateArray, false);
   }
 
@@ -341,7 +341,7 @@ public class BoardData {
       String engName,
       boolean isFromLeelaz,
       int totalplayouts,
-      ArrayList<Double> estimateArray,
+      List<Double> estimateArray,
       boolean forceOverride) {
     if (!forceOverride
         && Lizzie.config.enableLizzieCache
@@ -355,7 +355,7 @@ public class BoardData {
     if (totalplayouts < playouts) isChanged = false;
     setPlayouts(totalplayouts);
     playoutsChanged = true;
-    this.estimateArray = estimateArray;
+    this.estimateArray = compactEstimateArray(estimateArray);
     winrate = moves.get(0).winrate;
     if (moves.get(0).isKataData) {
       scoreMean = moves.get(0).scoreMean;
@@ -448,7 +448,7 @@ public class BoardData {
       String engName,
       boolean isFromLeelaz,
       int totalplayouts,
-      ArrayList<Double> estimateArray) {
+      List<Double> estimateArray) {
     if (Lizzie.config.enableLizzieCache && !Lizzie.config.isAutoAna) {
       if (!(totalplayouts > playouts2
           || isChanged2
@@ -458,7 +458,7 @@ public class BoardData {
     }
     if (totalplayouts < playouts2) isChanged2 = false;
     setPlayouts2(totalplayouts);
-    this.estimateArray2 = estimateArray;
+    this.estimateArray2 = compactEstimateArray(estimateArray);
     winrate2 = moves.get(0).winrate;
     if (moves.get(0).isKataData) {
       scoreMean2 = moves.get(0).scoreMean;
@@ -811,8 +811,16 @@ public class BoardData {
     return values == null ? null : values.clone();
   }
 
-  private static ArrayList<Double> copyDoubleList(ArrayList<Double> values) {
-    return values == null ? null : new ArrayList<Double>(values);
+  public static List<Double> compactEstimateArray(List<Double> values) {
+    return CompactDoubleList.copyOf(values);
+  }
+
+  public static List<Double> compactEstimateArray(double[] values, int size) {
+    return CompactDoubleList.copyOf(values, size);
+  }
+
+  private static List<Double> copyDoubleList(List<Double> values) {
+    return compactEstimateArray(values);
   }
 
   private static List<MoveData> copyMoveDataList(List<MoveData> moves) {

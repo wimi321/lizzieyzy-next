@@ -13,6 +13,10 @@ import java.awt.Paint;
 import java.awt.RadialGradientPaint;
 import java.awt.geom.Point2D;
 import java.awt.image.BufferedImage;
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.WeakHashMap;
 
 public class GlassEffectRenderer {
 
@@ -26,6 +30,10 @@ public class GlassEffectRenderer {
   private static float highlightPhase = 0f;
   private static Integer glassBlurRadiusOverride = null;
   private static Integer liquidBlurRadiusOverride = null;
+  private static final int MAX_CACHE_ENTRIES_PER_BACKGROUND = 12;
+  private static final long MAX_CACHE_PIXELS_PER_BACKGROUND = 12_000_000L;
+  private static final Map<BufferedImage, BlurCache> BLUR_CACHE =
+      Collections.synchronizedMap(new WeakHashMap<>());
 
   public static void drawGlassPanel(
       Graphics2D g,
@@ -45,36 +53,8 @@ public class GlassEffectRenderer {
       return;
     }
 
-    int maxDim = 800;
-    float scaleX = 1f, scaleY = 1f;
-    int srcW = vw, srcH = vh;
-    if (vw > maxDim || vh > maxDim) {
-      scaleX = (float) vw / maxDim;
-      scaleY = (float) vh / maxDim;
-      float scale = Math.max(scaleX, scaleY);
-      srcW = Math.max((int) (vw / scale), 1);
-      srcH = Math.max((int) (vh / scale), 1);
-    }
-
-    BufferedImage blurSource;
-    if (srcW != vw || srcH != vh) {
-      BufferedImage subImg = cachedBackground.getSubimage(vx, vy, vw, vh);
-      blurSource = new BufferedImage(srcW, srcH, TYPE_INT_ARGB);
-      Graphics2D sg = blurSource.createGraphics();
-      sg.setRenderingHint(
-          java.awt.RenderingHints.KEY_INTERPOLATION,
-          java.awt.RenderingHints.VALUE_INTERPOLATION_BILINEAR);
-      sg.drawImage(subImg, 0, 0, srcW, srcH, null);
-      sg.dispose();
-    } else {
-      blurSource = cachedBackground.getSubimage(vx, vy, vw, vh);
-    }
-
-    BufferedImage blurred = new BufferedImage(srcW, srcH, TYPE_INT_ARGB);
-
-    GaussianFilter blurFilter =
-        new GaussianFilter(level == GlassLevel.LIQUID ? liquidBlurRadius() : glassBlurRadius());
-    blurFilter.filter(blurSource, blurred);
+    int blurRadius = level == GlassLevel.LIQUID ? liquidBlurRadius() : glassBlurRadius();
+    BufferedImage blurred = blurredRegion(cachedBackground, vx, vy, vw, vh, blurRadius, 800);
 
     g.drawImage(blurred, vx, vy, vw, vh, null);
 
@@ -96,6 +76,103 @@ public class GlassEffectRenderer {
 
     if (level == GlassLevel.LIQUID) {
       drawLiquidEffects(g, vx, vy, vw, vh, cornerRadius);
+    }
+  }
+
+  static BufferedImage blurredRegion(
+      BufferedImage background,
+      int x,
+      int y,
+      int width,
+      int height,
+      int blurRadius,
+      int maximumDimension) {
+    if (background == null
+        || width <= 0
+        || height <= 0
+        || x < background.getMinX()
+        || y < background.getMinY()
+        || x + width > background.getMinX() + background.getWidth()
+        || y + height > background.getMinY() + background.getHeight()) {
+      return null;
+    }
+
+    BlurKey key = new BlurKey(x, y, width, height, blurRadius, maximumDimension);
+    synchronized (BLUR_CACHE) {
+      BlurCache cache = BLUR_CACHE.get(background);
+      if (cache != null) {
+        BufferedImage cached = cache.get(key);
+        if (cached != null) {
+          return cached;
+        }
+      }
+    }
+
+    int sourceWidth = width;
+    int sourceHeight = height;
+    if (maximumDimension > 0 && (width > maximumDimension || height > maximumDimension)) {
+      float scale = Math.max((float) width / maximumDimension, (float) height / maximumDimension);
+      sourceWidth = Math.max((int) (width / scale), 1);
+      sourceHeight = Math.max((int) (height / scale), 1);
+    }
+
+    BufferedImage blurSource = background.getSubimage(x, y, width, height);
+    if (sourceWidth != width || sourceHeight != height) {
+      BufferedImage scaledSource = new BufferedImage(sourceWidth, sourceHeight, TYPE_INT_ARGB);
+      Graphics2D graphics = scaledSource.createGraphics();
+      graphics.setRenderingHint(
+          java.awt.RenderingHints.KEY_INTERPOLATION,
+          java.awt.RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+      graphics.drawImage(blurSource, 0, 0, sourceWidth, sourceHeight, null);
+      graphics.dispose();
+      blurSource = scaledSource;
+    }
+
+    BufferedImage blurred = new BufferedImage(sourceWidth, sourceHeight, TYPE_INT_ARGB);
+    new GaussianFilter(Math.max(0, blurRadius)).filter(blurSource, blurred);
+    synchronized (BLUR_CACHE) {
+      BlurCache cache = BLUR_CACHE.computeIfAbsent(background, ignored -> new BlurCache());
+      BufferedImage existing = cache.get(key);
+      if (existing != null) {
+        return existing;
+      }
+      cache.put(key, blurred);
+    }
+    return blurred;
+  }
+
+  static void clearBlurCacheForTests() {
+    synchronized (BLUR_CACHE) {
+      BLUR_CACHE.clear();
+    }
+  }
+
+  private record BlurKey(
+      int x, int y, int width, int height, int blurRadius, int maximumDimension) {}
+
+  private static final class BlurCache {
+    private final LinkedHashMap<BlurKey, BufferedImage> entries =
+        new LinkedHashMap<>(16, 0.75f, true);
+    private long pixels;
+
+    BufferedImage get(BlurKey key) {
+      return entries.get(key);
+    }
+
+    void put(BlurKey key, BufferedImage image) {
+      BufferedImage previous = entries.put(key, image);
+      if (previous != null) {
+        pixels -= (long) previous.getWidth() * previous.getHeight();
+      }
+      pixels += (long) image.getWidth() * image.getHeight();
+      java.util.Iterator<Map.Entry<BlurKey, BufferedImage>> iterator = entries.entrySet().iterator();
+      while (iterator.hasNext()
+          && (entries.size() > MAX_CACHE_ENTRIES_PER_BACKGROUND
+              || pixels > MAX_CACHE_PIXELS_PER_BACKGROUND)) {
+        BufferedImage evicted = iterator.next().getValue();
+        pixels -= (long) evicted.getWidth() * evicted.getHeight();
+        iterator.remove();
+      }
     }
   }
 

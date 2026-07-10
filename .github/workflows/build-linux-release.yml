@@ -70,14 +70,15 @@ jobs:
               "dist/stage/${{ inputs.date_tag }}-linux64.${flavor}/start-linux64.sh"
             grep -q -- "-Xshare:auto" \
               "dist/stage/${{ inputs.date_tag }}-linux64.${flavor}/start-linux64.sh"
-            grep -q -- "SharedArchiveFile" \
+            ! grep -q -- "SharedArchiveFile" \
               "dist/stage/${{ inputs.date_tag }}-linux64.${flavor}/start-linux64.sh"
-            test -f "dist/stage/${{ inputs.date_tag }}-linux64.${flavor}/Lizzieyzy/lizzieyzy-next-cds.jsa"
+            test ! -f "dist/stage/${{ inputs.date_tag }}-linux64.${flavor}/Lizzieyzy/lizzieyzy-next-cds.jsa"
           done
           grep -q -- "Release display version: ${{ inputs.release_tag }}" \
             "dist/release-meta/${{ inputs.date_tag }}-linux64-install.txt"
           test -f "dist/release-meta/${{ inputs.date_tag }}-linux64-runtime.json"
           grep -q '"optimized": true' "dist/release-meta/${{ inputs.date_tag }}-linux64-runtime.json"
+          grep -q '"created": true' "dist/release-meta/${{ inputs.date_tag }}-linux64-runtime.json"
 
       - name: Audit Linux KataGo backends
         run: |

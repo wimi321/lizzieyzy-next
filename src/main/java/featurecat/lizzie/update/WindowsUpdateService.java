@@ -26,7 +26,6 @@ public final class WindowsUpdateService {
           + "lizzieyzy-next-update-manifest.json";
   public static final String MANIFEST_URL_PROPERTY = "lizzie.update.manifestUrl";
 
-  private static final String CORE_UPDATE_JAR_NAME = "lizzieyzy-next-core.jar";
   private static final int CONNECT_TIMEOUT_MS = 10000;
   private static final int READ_TIMEOUT_MS = 30000;
 
@@ -92,7 +91,7 @@ public final class WindowsUpdateService {
       Path archive = stagingDir.resolve(component.assetName).normalize();
       downloadComponent(component, archive, completedBefore, total, listener);
       completedBefore += component.sizeBytes;
-      requestComponents.put(requestComponent(component, archive));
+      requestComponents.put(requestComponent(component, archive, paths));
     }
 
     JSONObject request = new JSONObject();
@@ -228,14 +227,15 @@ public final class WindowsUpdateService {
     }
   }
 
-  private JSONObject requestComponent(UpdateManifest.Component component, Path archive) {
+  private JSONObject requestComponent(
+      UpdateManifest.Component component, Path archive, WindowsUpdatePaths paths) {
     JSONObject json = new JSONObject();
     json.put("id", component.id);
     json.put("assetName", component.assetName);
     json.put("archivePath", archive.toString());
     json.put("installAction", requestInstallAction(component));
     if ("core".equals(component.id)) {
-      json.put("sourcePath", CORE_UPDATE_JAR_NAME);
+      json.put("sourcePath", "app/" + paths.currentJar.getFileName());
     } else {
       PathMapping mapping = PathMapping.forComponent(component.id);
       json.put("sourcePath", mapping.sourcePath);

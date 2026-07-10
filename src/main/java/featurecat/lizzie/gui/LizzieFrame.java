@@ -261,6 +261,10 @@ public class LizzieFrame extends JFrame {
   private ProblemListSnapshot problemListSnapshot;
   private final List<Consumer<ProblemListSnapshot>> problemListListeners = new ArrayList<>();
   private boolean problemSidebarRefreshPending = false;
+  private final java.util.concurrent.atomic.AtomicBoolean analysisRepaintRequested =
+      new java.util.concurrent.atomic.AtomicBoolean(false);
+  private final SwingRefreshCoalescer analysisRefreshCoalescer =
+      new SwingRefreshCoalescer(33, this::flushAnalysisRefresh);
   private JPanel kifuLoadGlassPane;
   private JLabel kifuLoadMessageLabel;
   private JProgressBar kifuLoadProgressBar;
@@ -304,7 +308,9 @@ public class LizzieFrame extends JFrame {
   // private Rectangle commentRect;
   // private int commentPos = 0;
   //  private boolean redrawCommentForce = false;
-  public KataEstimate zen;
+  public volatile KataEstimate zen;
+  private final java.util.concurrent.atomic.AtomicBoolean estimateEngineStarting =
+      new java.util.concurrent.atomic.AtomicBoolean(false);
   public SetEstimateParam setEstimateParam;
   public ReadBoard readBoard;
   private Object readBoardRestartLock = new Object();
@@ -5952,9 +5958,12 @@ public class LizzieFrame extends JFrame {
       GlassEffectRenderer.drawGlassPanel(
           (Graphics2D) g, cachedBackground, vx, vy, vw, vh, level, 16);
     } else {
-      BufferedImage result = new BufferedImage(vw, vh, TYPE_INT_ARGB);
-      filter20.filter(cachedBackground.getSubimage(vx, vy, vw, vh), result);
-      g.drawImage(result, vx, vy, null);
+      BufferedImage result =
+          GlassEffectRenderer.blurredRegion(
+              cachedBackground, vx, vy, vw, vh, Lizzie.config.backgroundFilter, 0);
+      if (result != null) {
+        g.drawImage(result, vx, vy, null);
+      }
     }
   }
 
@@ -5962,6 +5971,24 @@ public class LizzieFrame extends JFrame {
       Graphics2D g, String text1, String text2, int x, int y, int y2, double size) {
     drawPonderingState(g, text1, x, y, size * (Lizzie.config.userKnownX ? 0.7 : 0.6));
     drawPonderingState2(g, text2, x, y2, size * (Lizzie.config.userKnownX ? 0.75 : 0.4));
+  }
+
+  /** Requests a bounded-rate title and board refresh from an engine output thread. */
+  public void requestAnalysisRefresh() {
+    analysisRepaintRequested.set(true);
+    analysisRefreshCoalescer.request();
+  }
+
+  /** Requests a bounded-rate title update without changing engine-game repaint behavior. */
+  public void requestAnalysisTitleUpdate() {
+    analysisRefreshCoalescer.request();
+  }
+
+  private void flushAnalysisRefresh() {
+    updateTitle();
+    if (analysisRepaintRequested.getAndSet(false)) {
+      refresh(1);
+    }
   }
 
   private String statusEngineName(Leelaz engine) {
@@ -17188,6 +17215,46 @@ public class LizzieFrame extends JFrame {
             });
     warmupTimer.setRepeats(false);
     warmupTimer.start();
+  }
+
+  /** Starts the configured analysis engine without delaying the first interactive frame. */
+  public void preloadConfiguredAnalysisEngineAfterStartup() {
+    ensureQuickAnalysisEngineAsync(null);
+  }
+
+  /** Starts the optional score-estimate engine away from the Swing event thread. */
+  public void preloadEstimateEngineAfterStartup() {
+    if (zen != null || !estimateEngineStarting.compareAndSet(false, true)) {
+      return;
+    }
+    Thread starter =
+        new Thread(
+            () -> {
+              KataEstimate warmedEngine = null;
+              try {
+                warmedEngine = new KataEstimate(true);
+              } catch (IOException e) {
+                e.printStackTrace();
+              }
+              KataEstimate completedEngine = warmedEngine;
+              SwingUtilities.invokeLater(
+                  () -> {
+                    try {
+                      if (zen == null) {
+                        zen = completedEngine;
+                      } else if (completedEngine != null && zen != completedEngine) {
+                        completedEngine.shutdown();
+                      }
+                    } catch (Exception e) {
+                      e.printStackTrace();
+                    } finally {
+                      estimateEngineStarting.set(false);
+                    }
+                  });
+            },
+            "score-estimate-engine-preloader");
+    starter.setDaemon(true);
+    starter.start();
   }
 
   private boolean canWarmQuickAnalysisEngine() {

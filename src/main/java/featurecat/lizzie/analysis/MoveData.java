@@ -1,6 +1,7 @@
 package featurecat.lizzie.analysis;
 
 import featurecat.lizzie.Lizzie;
+import featurecat.lizzie.rules.BoardData;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
@@ -31,7 +32,7 @@ public class MoveData {
   public boolean lastTimeUnlimited;
   public long lastTimeUnlimitedTime;
   public boolean isSymmetry = false;
-  public ArrayList<Double> movesEstimateArray;
+  public List<Double> movesEstimateArray;
 
   public MoveData() {}
 
@@ -195,104 +196,229 @@ public class MoveData {
 
   public static MoveData fromInfoKatago(String line) throws ArrayIndexOutOfBoundsException {
     MoveData result = new MoveData();
-    String[] data = line.trim().split(" ");
-    //    boolean islcb =
-    //        (Lizzie.config.leelaversion >= 17 && Lizzie.config.showlcbwinrate &&
-    // !Lizzie.leelaz.noLcb);
-    // Todo: Proper tag parsing in case gtp protocol is extended(?)/changed
-    for (int i = 0; i < data.length - 1; i++) {
-      String key = data[i];
-      if (key.equals("pv")) {
-        int otherPos = data.length;
-        int ownerShipPos = data.length;
-        for (int s = i + 1; s < data.length; s++) {
-          String subKey = data[s];
-          if (subKey.equals("movesOwnership")) {
-            otherPos = s;
-            ownerShipPos = s;
-            result.movesEstimateArray = new ArrayList<Double>();
-            try {
-              for (int o = ownerShipPos + 1; o < data.length; o++) {
-                double value = Double.parseDouble(data[o]);
-                result.movesEstimateArray.add(value);
-              }
-            } catch (NumberFormatException err) {
-              err.printStackTrace();
-            }
-            break;
-          }
-        }
-
-        for (int s = i + 1; s < data.length; s++) {
-          String subKey = data[s];
-          if (subKey.equals("pvVisits")) {
-            otherPos = s;
-            result.pvVisits =
-                new ArrayList<>(Arrays.asList(data).subList(s + 1, ownerShipPos));
-            break;
-          }
-        }
-        // Read variation to the end of line
-        result.variation =
-            new ArrayList<>(
-                Arrays.asList(data)
-                    .subList(
-                        i + 1,
-                        (Lizzie.config.limitBranchLength > 0
-                                && otherPos - i - 1 > Lizzie.config.limitBranchLength)
-                            ? i + 1 + Lizzie.config.limitBranchLength
-                            : otherPos));
-        if (result.pvVisits != null) {
-          if (result.pvVisits.size() > result.variation.size())
-            result.pvVisits =
-                new ArrayList<>(result.pvVisits.subList(0, result.variation.size()));
-        }
-        // result.variation = result.variation.subList(i + 1, data.length);
+    TokenCursor tokens = new TokenCursor(line);
+    while (tokens.next()) {
+      if (tokens.matches("pv")) {
+        parseKataGoVariation(tokens, result);
         break;
-      } else {
-        String value = data[++i];
-        if (key.equals("order")) {
-          result.order = Integer.parseInt(value);
-        }
-        if (key.equals("move")) {
-          result.coordinate = value;
-        }
-        if (key.equals("visits")) {
-          result.playouts = Integer.parseInt(value);
-        }
-        if (key.equals("lcb")) {
-          // LCB support
-          result.lcb = Double.parseDouble(value) * 100;
-          //          if (islcb) {
-          //            result.winrate = Double.parseDouble(value) * 100;
-          //          }
-        }
-        if (key.equals("prior")) {
-          result.policy = Double.parseDouble(value) * 100;
-        }
-        if (key.equals("winrate")) {
-          // support 0.16 0.15
-          result.winrate = Double.parseDouble(value) * 100;
-          // result.oriwinrate = result.winrate;
-        }
-        if (key.equals("scoreLead")) {
-          result.scoreMean = Double.parseDouble(value);
-        }
-        if (key.equals("scoreMean")) {
-          result.scoreMean = Double.parseDouble(value);
-        }
-        if (key.equals("scoreStdev")) {
-          result.scoreStdev = Double.parseDouble(value);
-        }
-        if (key.equals("isSymmetryOf")) {
-          result.isSymmetry = true;
-        }
+      }
+      int keyStart = tokens.start;
+      int keyEnd = tokens.end;
+      if (!tokens.next()) {
+        break;
+      }
+      if (tokens.matches(line, keyStart, keyEnd, "order")) {
+        result.order = tokens.fastInt();
+      } else if (tokens.matches(line, keyStart, keyEnd, "move")) {
+        result.coordinate = tokens.text();
+      } else if (tokens.matches(line, keyStart, keyEnd, "visits")) {
+        result.playouts = tokens.fastInt();
+      } else if (tokens.matches(line, keyStart, keyEnd, "lcb")) {
+        result.lcb = tokens.fastDouble() * 100;
+      } else if (tokens.matches(line, keyStart, keyEnd, "prior")) {
+        result.policy = tokens.fastDouble() * 100;
+      } else if (tokens.matches(line, keyStart, keyEnd, "winrate")) {
+        result.winrate = tokens.fastDouble() * 100;
+      } else if (tokens.matches(line, keyStart, keyEnd, "scoreLead")
+          || tokens.matches(line, keyStart, keyEnd, "scoreMean")) {
+        result.scoreMean = tokens.fastDouble();
+      } else if (tokens.matches(line, keyStart, keyEnd, "scoreStdev")) {
+        result.scoreStdev = tokens.fastDouble();
+      } else if (tokens.matches(line, keyStart, keyEnd, "isSymmetryOf")) {
+        result.isSymmetry = true;
       }
     }
-    // if (result.winrate < 0) result.winrate = result.oriwinrate;
     result.isKataData = true;
     result.isSaiData = false;
     return result;
+  }
+
+  private static void parseKataGoVariation(TokenCursor tokens, MoveData result) {
+    int branchLimit = Lizzie.config == null ? 0 : Lizzie.config.limitBranchLength;
+    result.variation = new ArrayList<>();
+    int mode = 0;
+    double[] ownership = null;
+    int ownershipSize = 0;
+    while (tokens.next()) {
+      if (tokens.matches("pvVisits")) {
+        mode = 1;
+        result.pvVisits = new ArrayList<>();
+        continue;
+      }
+      if (tokens.matches("movesOwnership")) {
+        mode = 2;
+        ownership = new double[Math.max(1, tokens.remainingTokenCount())];
+        continue;
+      }
+      if (mode == 0) {
+        if (branchLimit <= 0 || result.variation.size() < branchLimit) {
+          result.variation.add(tokens.text());
+        }
+      } else if (mode == 1) {
+        if (result.pvVisits.size() < result.variation.size()) {
+          result.pvVisits.add(tokens.text());
+        }
+      } else {
+        if (ownershipSize == ownership.length) {
+          ownership = Arrays.copyOf(ownership, ownership.length * 2);
+        }
+        try {
+          double ownershipValue = tokens.fastDouble();
+          ownership[ownershipSize++] = ownershipValue;
+        } catch (NumberFormatException ignored) {
+          break;
+        }
+      }
+    }
+    if (ownership != null) {
+      result.movesEstimateArray = BoardData.compactEstimateArray(ownership, ownershipSize);
+    }
+  }
+
+  private static final class TokenCursor {
+    private final String value;
+    private int position;
+    private int start;
+    private int end;
+
+    private TokenCursor(String value) {
+      this.value = value == null ? "" : value;
+    }
+
+    private boolean next() {
+      int length = value.length();
+      while (position < length && value.charAt(position) <= ' ') {
+        position++;
+      }
+      if (position >= length) {
+        return false;
+      }
+      start = position;
+      while (position < length && value.charAt(position) > ' ') {
+        position++;
+      }
+      end = position;
+      return true;
+    }
+
+    private boolean matches(String expected) {
+      return matches(value, start, end, expected);
+    }
+
+    private boolean matches(String source, int tokenStart, int tokenEnd, String expected) {
+      return tokenEnd - tokenStart == expected.length()
+          && source.regionMatches(tokenStart, expected, 0, expected.length());
+    }
+
+    private String text() {
+      return value.substring(start, end);
+    }
+
+    private int remainingTokenCount() {
+      int count = 0;
+      int index = position;
+      while (index < value.length()) {
+        while (index < value.length() && value.charAt(index) <= ' ') {
+          index++;
+        }
+        if (index >= value.length()) {
+          break;
+        }
+        count++;
+        while (index < value.length() && value.charAt(index) > ' ') {
+          index++;
+        }
+      }
+      return count;
+    }
+
+    private int fastInt() {
+      int index = start;
+      boolean negative = false;
+      if (index < end && (value.charAt(index) == '-' || value.charAt(index) == '+')) {
+        negative = value.charAt(index++) == '-';
+      }
+      if (index >= end) {
+        return Integer.parseInt(text());
+      }
+      long result = 0L;
+      long limit = negative ? 2_147_483_648L : Integer.MAX_VALUE;
+      while (index < end) {
+        char current = value.charAt(index++);
+        if (current < '0' || current > '9') {
+          return Integer.parseInt(text());
+        }
+        int digit = current - '0';
+        if (result > (limit - digit) / 10L) {
+          return Integer.parseInt(text());
+        }
+        result = result * 10L + digit;
+      }
+      return negative ? (int) -result : (int) result;
+    }
+
+    private double fastDouble() {
+      int index = start;
+      boolean negative = false;
+      if (index < end && (value.charAt(index) == '-' || value.charAt(index) == '+')) {
+        negative = value.charAt(index++) == '-';
+      }
+      double result = 0.0;
+      boolean digit = false;
+      while (index < end) {
+        char current = value.charAt(index);
+        if (current < '0' || current > '9') {
+          break;
+        }
+        digit = true;
+        result = result * 10.0 + current - '0';
+        index++;
+      }
+      if (index < end && value.charAt(index) == '.') {
+        index++;
+        double place = 0.1;
+        while (index < end) {
+          char current = value.charAt(index);
+          if (current < '0' || current > '9') {
+            break;
+          }
+          digit = true;
+          result += (current - '0') * place;
+          place *= 0.1;
+          index++;
+        }
+      }
+      if (!digit) {
+        return Double.parseDouble(text());
+      }
+      if (index < end && (value.charAt(index) == 'e' || value.charAt(index) == 'E')) {
+        index++;
+        boolean exponentNegative = false;
+        if (index < end && (value.charAt(index) == '-' || value.charAt(index) == '+')) {
+          exponentNegative = value.charAt(index++) == '-';
+        }
+        int exponent = 0;
+        boolean exponentDigit = false;
+        while (index < end) {
+          char current = value.charAt(index);
+          if (current < '0' || current > '9') {
+            break;
+          }
+          exponentDigit = true;
+          if (exponent < 10_000) {
+            exponent = Math.min(10_000, exponent * 10 + current - '0');
+          }
+          index++;
+        }
+        if (!exponentDigit || index != end) {
+          return Double.parseDouble(text());
+        }
+        result *= Math.pow(10.0, exponentNegative ? -exponent : exponent);
+      } else if (index != end) {
+        return Double.parseDouble(text());
+      }
+      return negative ? -result : result;
+    }
   }
 
   public static MoveData fromInfofromfile(String line, List<MoveData> bestMoves)

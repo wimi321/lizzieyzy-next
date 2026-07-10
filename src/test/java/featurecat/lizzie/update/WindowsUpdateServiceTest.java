@@ -68,6 +68,10 @@ class WindowsUpdateServiceTest {
 
       Path archivePath = requestPath.getParent().resolve("2026-06-12-windows64.core-update.zip");
       assertEquals("downloaded archive", Files.readString(archivePath));
+      JSONObject request = new JSONObject(Files.readString(requestPath));
+      assertEquals(
+          "app/lizzie-yzy2.5.3-shaded.jar",
+          request.getJSONArray("components").getJSONObject(0).getString("sourcePath"));
       assertEquals(1, proxy.requests.get());
       assertTrue(proxy.lastRequestLine.contains("http://example.invalid/core.zip"));
     }

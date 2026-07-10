@@ -32,5 +32,23 @@ jobs:
       - name: Verify local markdown links
         run: python3 scripts/check_markdown_links.py
 
+      - name: Verify release packaging helpers
+        run: |
+          python3 -m py_compile \
+            scripts/generate_release_notes.py \
+            scripts/package_runtime_tools.py \
+            scripts/prepare_bundled_jcef.py \
+            scripts/summarize_jfr.py
+          python3 scripts/test_prepare_bundled_jcef.py
+          bash -n \
+            scripts/package_macos_dmg.sh \
+            scripts/package_release.sh \
+            scripts/package_windows_exe.sh \
+            scripts/run_jfr_benchmark.sh \
+            scripts/validate_release_assets.sh
+
+      - name: Run unit tests
+        run: mvn -B -Dfmt.skip=true test
+
       - name: Build shaded jar
         run: mvn -B -DskipTests package
