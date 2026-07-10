@@ -151,6 +151,7 @@
 为了让完整离线包更轻、更快，发布脚本会尽量做三类无感优化：
 
 - 自定义 Java runtime：发布脚本会用 `jlink` 生成专用运行环境，并启用 `--strip-debug`、`--compress=2`、`--no-header-files`、`--no-man-pages`。如果当前构建机不支持 `jlink` 或某个平台出现兼容问题，会自动回退到原运行环境，不影响发包。
+- Windows 启动内存：启动器不再固定申请 `-Xmx4096m`，而是按机器可用内存自适应设置 JVM 上限。这样低内存电脑不会因为无法预留 4 GB 堆而只显示 `Failed to launch JVM`，高内存电脑仍可按需使用更多内存；KataGo 引擎显存和内存仍由独立进程管理。
 - Base CDS 启动共享：`jlink` runtime 构建后会执行 `java -Xshare:dump` 生成可随应用目录移动的基础类归档，启动参数使用 `-Xshare:auto`。不再打包绑定构建路径的 AppCDS；实测该归档在安装或解压到新目录后会因 classpath 不匹配而失效，移除后可避免无效体积和小更新后的归档过期。
 - JCEF 语言资源：Windows 包只保留软件可选语言需要的 Chromium 语言包（简体中文、繁体中文、英语、日语、韩语），浏览器内核、HTTPS、弈客、腾讯棋谱等功能文件完整保留；CEF locale 会按软件语言或系统语言安全回退。
 - 包体审计报告：每次打包会在 `dist/release-meta/` 生成 `*-package-size-audit.md` 和 `*.json`，记录 shaded jar、runtime、JCEF、权重、引擎、readboard、最终 release asset 的大小。报告会写入 GitHub Actions summary，并对异常增大的 jar、custom runtime、接近 GitHub 单资产上限的 release asset 给出 warning；第一阶段只预警，不阻断紧急发版。

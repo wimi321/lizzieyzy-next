@@ -216,6 +216,9 @@ jobs:
             "dist/windows/app-image-nvidia50.cuda/LizzieYzy Next NVIDIA 50 CUDA/app/LizzieYzy Next NVIDIA 50 CUDA.cfg" \
             "dist/windows/app-image-without.engine/LizzieYzy Next/app/LizzieYzy Next.cfg"; do
             grep -q -- "java-options=-Xshare:auto" "$app_cfg"
+            grep -q -- "java-options=-XX:InitialRAMPercentage=1.0" "$app_cfg"
+            grep -q -- "java-options=-XX:MaxRAMPercentage=50.0" "$app_cfg"
+            ! grep -q -- "java-options=-Xmx4096m" "$app_cfg"
             ! grep -q -- "SharedArchiveFile" "$app_cfg"
             if grep -qE 'sun\.java2d\.uiScale=1\.0|sun\.java2d\.uiScale\.enabled=false' "$app_cfg"; then
               echo "Windows package must not force Java UI scaling: $app_cfg"
@@ -232,6 +235,12 @@ jobs:
             "dist/windows/app-image-nvidia50.cuda/LizzieYzy Next NVIDIA 50 CUDA" \
             "dist/windows/app-image-without.engine/LizzieYzy Next"; do
             test ! -f "$app_dir/app/lizzieyzy-next-cds.jsa"
+            test -f "$app_dir/runtime/bin/server/jvm.dll"
+            "$app_dir/runtime/bin/java.exe" \
+              -Xshare:auto \
+              -XX:InitialRAMPercentage=1.0 \
+              -XX:MaxRAMPercentage=50.0 \
+              -version
           done
           for readboard_exe in \
             "dist/windows/input-with-katago/readboard/readboard.exe" \
@@ -251,11 +260,33 @@ jobs:
             fi
           done
 
-      - name: Smoke test bundled Windows app image
+      - name: Smoke test bundled Windows app images
         shell: powershell
         run: |
           $appExe = Join-Path $PWD "dist\windows\app-image-with-katago\LizzieYzy Next\LizzieYzy Next.exe"
           & "$PWD\scripts\windows_smoke_test.ps1" -AppExe $appExe -WaitSeconds 60 -ProbeBoardSync
+          $nvidiaExe = Join-Path $PWD "dist\windows\app-image-nvidia\LizzieYzy Next NVIDIA\LizzieYzy Next NVIDIA.exe"
+          & "$PWD\scripts\windows_smoke_test.ps1" `
+            -AppExe $nvidiaExe `
+            -WaitSeconds 30 `
+            -HealthyProcessSeconds 8 `
+            -PreserveConfig `
+            -LauncherOnly `
+            -OpenAutoSetup
+          $launcherOnlyApps = @(
+            "dist\windows\app-image-opencl\LizzieYzy Next OpenCL\LizzieYzy Next OpenCL.exe",
+            "dist\windows\app-image-nvidia50.cuda\LizzieYzy Next NVIDIA 50 CUDA\LizzieYzy Next NVIDIA 50 CUDA.exe",
+            "dist\windows\app-image-without.engine\LizzieYzy Next\LizzieYzy Next.exe"
+          )
+          foreach ($relativePath in $launcherOnlyApps) {
+            $launcherExe = Join-Path $PWD $relativePath
+            & "$PWD\scripts\windows_smoke_test.ps1" `
+              -AppExe $launcherExe `
+              -WaitSeconds 30 `
+              -HealthyProcessSeconds 8 `
+              -PreserveConfig `
+              -LauncherOnly
+          }
 
       - name: Summarize Windows package size audit
         if: always()

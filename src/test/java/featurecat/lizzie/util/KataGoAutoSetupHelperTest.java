@@ -67,8 +67,7 @@ public class KataGoAutoSetupHelperTest {
   @Test
   void importHumanSlModelCopiesToSeparateDirectoryAndDoesNotChangeActiveWeight() throws Exception {
     Path tempRoot = Files.createTempDirectory("katago-import-humansl");
-    Path source =
-        Files.write(tempRoot.resolve("custom-human.bin.gz"), new byte[2 * 1024 * 1024]);
+    Path source = Files.write(tempRoot.resolve("custom-human.bin.gz"), new byte[2 * 1024 * 1024]);
     Path weight = touch(tempRoot.resolve("weights").resolve("default.bin.gz"));
 
     withUserDirAndConfig(
@@ -228,6 +227,54 @@ public class KataGoAutoSetupHelperTest {
   }
 
   @Test
+  void downloadingHumanSlAfterCustomWeightKeepsCompleteAppRoot() throws Exception {
+    Path tempRoot = Files.createTempDirectory("katago-humansl-download-root-priority");
+    Path appRoot = Files.createDirectories(tempRoot.resolve("app"));
+    Path workDir = Files.createDirectories(appRoot.resolve("user-data"));
+    Path processDir = Files.createDirectories(workDir.resolve("cwd"));
+    Path engine =
+        touch(
+            appRoot
+                .resolve("engines")
+                .resolve("katago")
+                .resolve(detectTestPlatformDir())
+                .resolve(testKataGoBinaryName()));
+    Path configDir =
+        Files.createDirectories(appRoot.resolve("engines").resolve("katago").resolve("configs"));
+    Path gtpConfig = touch(configDir.resolve("gtp.cfg"));
+    touch(configDir.resolve("analysis.cfg"));
+    touch(configDir.resolve("estimate.cfg"));
+    touch(appRoot.resolve("weights").resolve("default.bin.gz"));
+    Path customWeight = touch(workDir.resolve("weights").resolve("custom.bin.gz"));
+    byte[] modelBytes = repeatedBytes(4096, (byte) 11);
+
+    try (FixtureServer server = FixtureServer.start(modelBytes)) {
+      withProcessDirAndConfig(
+          processDir,
+          workDir,
+          () ->
+              withHumanSlDownloadProperties(
+                  server.url(),
+                  sha256(modelBytes),
+                  modelBytes.length,
+                  () -> {
+                    Lizzie.config.uiConfig.put(
+                        "katago-preferred-weight-path", customWeight.toString());
+
+                    Path downloaded = KataGoAutoSetupHelper.downloadHumanSlModel(null);
+                    KataGoAutoSetupHelper.SetupSnapshot snapshot =
+                        KataGoAutoSetupHelper.inspectLocalSetup();
+
+                    assertTrue(downloaded.startsWith(workDir.resolve("human-sl-models")));
+                    assertEquals(appRoot.toAbsolutePath().normalize(), snapshot.appRoot);
+                    assertEquals(engine, snapshot.enginePath);
+                    assertEquals(gtpConfig, snapshot.gtpConfigPath);
+                    assertEquals(customWeight, snapshot.activeWeightPath);
+                  }));
+    }
+  }
+
+  @Test
   void humanSlCandidatesPreferWorkingDirAncestorOverSeparateEngineRoot() throws Exception {
     Path tempRoot = Files.createTempDirectory("katago-humansl-candidate-roots");
     Path portableRoot = Files.createDirectories(tempRoot.resolve("portable"));
@@ -291,7 +338,8 @@ public class KataGoAutoSetupHelperTest {
                   "0000000000000000000000000000000000000000000000000000000000000000",
                   modelBytes.length,
                   () -> {
-                    assertThrows(IOException.class, () -> KataGoAutoSetupHelper.downloadHumanSlModel(null));
+                    assertThrows(
+                        IOException.class, () -> KataGoAutoSetupHelper.downloadHumanSlModel(null));
 
                     Path modelsDir = tempRoot.resolve("human-sl-models");
                     assertFalse(
@@ -482,6 +530,65 @@ public class KataGoAutoSetupHelperTest {
           assertEquals(13, refreshed.height);
           assertEquals("kata-set-rules chinese", refreshed.initialCommand);
           assertFalse(refreshed.isDefault);
+        });
+  }
+
+  @Test
+  void addingDownloadedWeightsKeepsIndependentReusableEngineProfiles() throws Exception {
+    Path tempRoot = Files.createTempDirectory("katago-independent-weight-engines");
+    touch(
+        tempRoot
+            .resolve("engines")
+            .resolve("katago")
+            .resolve(detectTestPlatformDir())
+            .resolve(testKataGoBinaryName()));
+    Path configDir =
+        Files.createDirectories(tempRoot.resolve("engines").resolve("katago").resolve("configs"));
+    touch(configDir.resolve("gtp.cfg"));
+    touch(configDir.resolve("analysis.cfg"));
+    touch(configDir.resolve("estimate.cfg"));
+    Path firstWeight = touch(tempRoot.resolve("weights").resolve("model-a.bin.gz"));
+    Path secondWeight = touch(tempRoot.resolve("weights").resolve("model-b.bin.gz"));
+
+    withUserDirAndConfig(
+        tempRoot,
+        () -> {
+          KataGoAutoSetupHelper.SetupSnapshot snapshot = KataGoAutoSetupHelper.inspectLocalSetup();
+          KataGoAutoSetupHelper.SetupResult initial =
+              KataGoAutoSetupHelper.applyAutoSetup(snapshot.withActiveWeight(firstWeight));
+          KataGoAutoSetupHelper.SetupResult first =
+              KataGoAutoSetupHelper.addWeightEngineProfile(snapshot.withActiveWeight(firstWeight));
+          KataGoAutoSetupHelper.SetupResult second =
+              KataGoAutoSetupHelper.addWeightEngineProfile(snapshot.withActiveWeight(secondWeight));
+          KataGoAutoSetupHelper.SetupResult repeated =
+              KataGoAutoSetupHelper.addWeightEngineProfile(snapshot.withActiveWeight(secondWeight));
+
+          ArrayList<EngineData> engines = Utils.getEngineData();
+          assertEquals(initial.engineIndex, first.engineIndex);
+          assertFalse(first.createdEngine);
+          assertTrue(second.createdEngine);
+          assertFalse(repeated.createdEngine);
+          assertEquals(second.engineIndex, repeated.engineIndex);
+          assertEquals(2, engines.size());
+          assertTrue(engines.get(first.engineIndex).name.startsWith("KataGo · "));
+          assertTrue(engines.get(first.engineIndex).commands.contains(firstWeight.toString()));
+          assertTrue(engines.get(second.engineIndex).commands.contains(secondWeight.toString()));
+          assertFalse(engines.get(first.engineIndex).isDefault);
+          assertTrue(engines.get(second.engineIndex).isDefault);
+          assertEquals(second.engineIndex, Lizzie.config.uiConfig.optInt("default-engine"));
+          assertTrue(
+              Lizzie.config
+                  .uiConfig
+                  .optString("analysis-engine-command")
+                  .contains(secondWeight.toString()));
+
+          KataGoAutoSetupHelper.SetupResult selectedAgain =
+              KataGoAutoSetupHelper.applyAutoSetup(snapshot.withActiveWeight(firstWeight));
+          ArrayList<EngineData> refreshed = Utils.getEngineData();
+          assertEquals(first.engineIndex, selectedAgain.engineIndex);
+          assertEquals(2, refreshed.size());
+          assertTrue(refreshed.get(first.engineIndex).isDefault);
+          assertTrue(refreshed.get(second.engineIndex).commands.contains(secondWeight.toString()));
         });
   }
 

@@ -14,7 +14,11 @@ param(
 
     [switch]$RequireConfig,
 
-    [switch]$ProbeBoardSync
+    [switch]$ProbeBoardSync,
+
+    [switch]$LauncherOnly,
+
+    [switch]$OpenAutoSetup
 )
 
 $ErrorActionPreference = "Stop"
@@ -419,11 +423,19 @@ Get-ChildItem -Path $errorLogs -ErrorAction SilentlyContinue | Remove-Item -Forc
 
 Assert-NoForcedJavaUiScale -AppExe $AppExe
 
-if ($ProbeBoardSync) {
+if ($ProbeBoardSync -or $LauncherOnly) {
     Assert-PackagedJavaRuntimeLauncher -AppExe $AppExe
+}
+
+if ($ProbeBoardSync) {
     Add-AppJavaOption -AppExe $AppExe -JavaOption "-Dlizzie.smoke.openBoardSync=true"
     Add-AppJavaOption -AppExe $AppExe -JavaOption "-Dlizzie.smoke.openBoardSyncDelayMs=5000"
     Invoke-NativeReadBoardPipeProbe -AppExe $AppExe
+}
+
+if ($OpenAutoSetup) {
+    Add-AppJavaOption -AppExe $AppExe -JavaOption "-Dlizzie.smoke.openAutoSetup=true"
+    Add-AppJavaOption -AppExe $AppExe -JavaOption "-Dlizzie.smoke.openAutoSetupDelayMs=2500"
 }
 
 Write-Host "Launching $AppExe"
@@ -441,6 +453,15 @@ try {
         if ($process.HasExited) {
             $exitCode = $process.ExitCode
             throw "Application exited early with code $exitCode"
+        }
+
+        if ($LauncherOnly) {
+            if ((Get-Date) -ge $healthyDeadline) {
+                Write-Host "Launcher-only smoke test passed. The packaged JVM stayed healthy."
+                $passed = $true
+                return
+            }
+            continue
         }
 
         $activeConfigDir = Resolve-ExistingSmokeConfigDir -Candidates $configDirCandidates

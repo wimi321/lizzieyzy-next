@@ -128,7 +128,8 @@ function Invoke-JPackageMsiBuild {
         "--win-per-user-install",
         "--win-upgrade-uuid", $UpgradeUuid,
         "--install-dir", $SmokeInstallDir,
-        "--java-options", "-Xmx4096m"
+        "--java-options", "-XX:InitialRAMPercentage=1.0",
+        "--java-options", "-XX:MaxRAMPercentage=50.0"
     )
 
     & jpackage @arguments
