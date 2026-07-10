@@ -56,6 +56,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -64,6 +65,7 @@ import javax.swing.JButton;
 import javax.swing.JDialog;
 import javax.swing.JFormattedTextField;
 import javax.swing.JLabel;
+import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.JTextField;
 import javax.swing.SwingConstants;
@@ -430,6 +432,9 @@ public class OnlineDialog extends JDialog {
         proc();
       } catch (IOException | URISyntaxException e) {
         e.printStackTrace();
+        if (e instanceof IOException) {
+          showNetworkProxyConfigWarning((IOException) e);
+        }
       }
     } else {
       error(true);
@@ -464,6 +469,17 @@ public class OnlineDialog extends JDialog {
       lblError.setVisible(e);
       setVisible(true);
     }
+  }
+
+  private boolean showNetworkProxyConfigWarning(IOException e) {
+    if (!(e.getCause() instanceof NetworkProxy.InvalidNetworkProxyConfigException)) {
+      return false;
+    }
+    SwingUtilities.invokeLater(
+        () ->
+            JOptionPane.showMessageDialog(
+                this, e.getMessage(), "网络代理设置", JOptionPane.WARNING_MESSAGE));
+    return true;
   }
 
   private boolean isYikeSyncType() {
@@ -1400,6 +1416,7 @@ public class OnlineDialog extends JDialog {
         } catch (IOException e) {
           // TODO Auto-generated catch block
           e.printStackTrace();
+          showNetworkProxyConfigWarning(e);
         }
       }
     }.start();
@@ -1433,10 +1450,14 @@ public class OnlineDialog extends JDialog {
     if (clear) Lizzie.board.clearForOnline();
     ensureOnlineExecutor();
     final int refreshSeconds = normalizeYikeRefreshSeconds(requestRefreshTime);
+    AtomicBoolean invalidProxyConfig = new AtomicBoolean();
     Runnable fetch =
         new Runnable() {
           @Override
           public void run() {
+            if (invalidProxyConfig.get()) {
+              return;
+            }
             if (!shouldAcceptYikeLiveFetchResult(
                 isStoped,
                 LizzieFrame.urlSgf,
@@ -1522,6 +1543,10 @@ public class OnlineDialog extends JDialog {
             } catch (IOException | JSONException e) {
               YikeSyncDebugLog.log("OnlineDialog.reqNewYikeRoom error: " + e.toString());
               e.printStackTrace();
+              if (e instanceof IOException
+                  && showNetworkProxyConfigWarning((IOException) e)) {
+                invalidProxyConfig.set(true);
+              }
               SwingUtilities.invokeLater(
                   new Runnable() {
                     @Override
@@ -1577,6 +1602,9 @@ public class OnlineDialog extends JDialog {
                       ajax.send(params);
                     } catch (IOException e) {
                       e.printStackTrace();
+                      if (showNetworkProxyConfigWarning(e)) {
+                        timer.stop();
+                      }
                     }
                   }
                 }
@@ -1588,6 +1616,7 @@ public class OnlineDialog extends JDialog {
         ajax.send(params);
       } catch (IOException e) {
         e.printStackTrace();
+        showNetworkProxyConfigWarning(e);
       }
     }
   }
@@ -1599,6 +1628,7 @@ public class OnlineDialog extends JDialog {
         refresh("(jQuery1\\(\\\")([^\\\"]+)(?s).*", 2, false, true);
       } catch (IOException e) {
         e.printStackTrace();
+        showNetworkProxyConfigWarning(e);
       }
     }
   }
@@ -1636,8 +1666,11 @@ public class OnlineDialog extends JDialog {
 
                 try {
                   req(true);
-                } catch (URISyntaxException e) {
+                } catch (IOException | URISyntaxException e) {
                   e.printStackTrace();
+                  if (e instanceof IOException) {
+                    showNetworkProxyConfigWarning((IOException) e);
+                  }
                 }
               }
             }
@@ -1649,18 +1682,22 @@ public class OnlineDialog extends JDialog {
       ajax.send(params);
     } catch (IOException e) {
       e.printStackTrace();
+      showNetworkProxyConfigWarning(e);
     }
   }
 
   private void reReq() {
     try {
       req(true);
-    } catch (URISyntaxException e) {
+    } catch (IOException | URISyntaxException e) {
       e.printStackTrace();
+      if (e instanceof IOException) {
+        showNetworkProxyConfigWarning((IOException) e);
+      }
     }
   }
 
-  private void req(boolean clear) throws URISyntaxException {
+  private void req(boolean clear) throws IOException, URISyntaxException {
     seqs = 0;
     URI uri = new URI(new String(type == 3 ? b : b2));
 
@@ -3259,6 +3296,7 @@ public class OnlineDialog extends JDialog {
           refresh("(?s).*?(\\\"Content\\\":\\\")(.+)(\\\",\\\")(?s).*", 2, false, false);
         } catch (IOException e) {
           e.printStackTrace();
+          showNetworkProxyConfigWarning(e);
         }
       }
     }
@@ -4310,6 +4348,9 @@ public class OnlineDialog extends JDialog {
         proc();
       } catch (IOException | URISyntaxException e) {
         e.printStackTrace();
+        if (e instanceof IOException) {
+          showNetworkProxyConfigWarning((IOException) e);
+        }
       }
     } else {
       error(true);
@@ -4449,6 +4490,9 @@ public class OnlineDialog extends JDialog {
       } catch (IOException | URISyntaxException e) {
         yikeDebugLog("applyChangeWeb proc error: " + e.toString());
         e.printStackTrace();
+        if (e instanceof IOException) {
+          showNetworkProxyConfigWarning((IOException) e);
+        }
         reportSyncStatus("同步启动失败: " + e.getMessage());
       } catch (RuntimeException e) {
         yikeDebugLog("applyChangeWeb proc runtime error: " + e.toString());

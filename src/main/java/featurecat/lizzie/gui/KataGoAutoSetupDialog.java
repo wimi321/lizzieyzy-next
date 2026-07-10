@@ -455,7 +455,13 @@ public class KataGoAutoSetupDialog extends JDialog {
       Lizzie.frame.openRemoteComputeCenter();
       return;
     }
-    RemoteComputeDialog dialog = new RemoteComputeDialog(JOptionPane.getFrameForComponent(this));
+    RemoteComputeDialog dialog;
+    try {
+      dialog = new RemoteComputeDialog(JOptionPane.getFrameForComponent(this));
+    } catch (IOException e) {
+      JOptionPane.showMessageDialog(this, e.getMessage(), "网络代理设置", JOptionPane.WARNING_MESSAGE);
+      return;
+    }
     dialog.setVisible(true);
     dialog.toFront();
   }

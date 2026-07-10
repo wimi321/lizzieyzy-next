@@ -36,11 +36,11 @@ Persist the settings under the existing `ui` config object:
 - `network-proxy-host`: manual proxy host, for example `127.0.0.1`.
 - `network-proxy-port`: manual proxy port, for example `7897`.
 
-Default mode should be `direct` to avoid changing existing users' behavior on upgrade.
+Default mode should be `direct`, so first-time users keep the existing direct-network behavior unless they opt into a proxy.
 
 Manual mode validates that host is non-empty and port is in `1..65535`. Invalid manual settings should be rejected when saving the settings dialog instead of silently falling back to direct.
 
-Missing keys from older configs default to `direct`. Unknown mode values or invalid stored manual settings are treated as configuration errors: show a clear settings warning and require the user to save a valid mode before applying proxy changes.
+Missing keys from older configs default to `direct`. Unknown mode values or invalid stored manual settings are treated as configuration errors during actual network operations: show a clear settings warning and require the user to save a valid mode before applying proxy changes.
 
 Network callers must not silently fall back to direct when a saved proxy config is invalid. The helper should throw a small checked or unchecked configuration exception; UI-triggered callers show that message to the user, and background callers log it and surface the normal operation failure.
 
@@ -71,7 +71,7 @@ It should expose only the shapes the codebase needs:
 Mode behavior:
 
 - `direct`: use `Proxy.NO_PROXY` for `URLConnection`, a no-proxy `ProxySelector` for `HttpClient`, and direct mode for OkHttp.
-- `system`: use the JVM default `ProxySelector`. In `Lizzie.main`, immediately after `config = new Config()` and before `Utils.applyMaintainedDefaultSettings()` or any network client creation, set `java.net.useSystemProxies=true` only when the saved mode is `system`. A saved `system` setting is fully supported after restart; runtime switching into or out of `system` is restart-required unless a tested refresh path is added. `direct` and `manual` must use explicit selectors/proxies so they do not accidentally inherit JVM default proxy behavior.
+- `system`: use the JVM default `ProxySelector`. In `Lizzie.main`, immediately after `config = new Config()` and before `Utils.applyMaintainedDefaultSettings()` or any network client creation, read only the raw saved `network-proxy-mode` value and set `java.net.useSystemProxies=true` only when it is `system`. Startup must not validate manual host/port, and unknown or invalid mode values must not terminate startup. A saved `system` setting is fully supported after restart; runtime switching into or out of `system` is restart-required unless a tested refresh path is added. `direct` and `manual` must use explicit selectors/proxies so they do not accidentally inherit JVM default proxy behavior.
 - `manual`: use `new Proxy(Proxy.Type.HTTP, new InetSocketAddress(host, port))` and equivalent selectors/builders.
 
 Java-WebSocket needs an explicit `Proxy` because it does not accept a `ProxySelector`. For `OnlineDialog`, map `direct` to `client.setProxy(Proxy.NO_PROXY)`, `manual` to the manual HTTP proxy, and `system` by converting the client URI from `ws`/`wss` to `http`/`https`, calling the default `ProxySelector.select(...)`, then applying the first usable HTTP proxy or `Proxy.NO_PROXY`.

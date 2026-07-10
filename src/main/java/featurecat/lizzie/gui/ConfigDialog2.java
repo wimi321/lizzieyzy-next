@@ -337,7 +337,7 @@ public class ConfigDialog2 extends JDialog {
   private JTextField txtNetworkProxyHost;
   private JTextField txtNetworkProxyPort;
   private JLabel lblNetworkProxyRestartHint;
-  private String initialNetworkProxyMode = NetworkProxy.MODE_DIRECT;
+  private String initialNetworkProxyMode = NetworkProxy.DEFAULT_MODE;
 
   private JCheckBox chkUseScoreDiff;
   private JTextField txtPercentScoreDiff;
@@ -378,12 +378,9 @@ public class ConfigDialog2 extends JDialog {
     okButton.addActionListener(
         new ActionListener() {
           public void actionPerformed(ActionEvent e) {
-            if (!validateNetworkProxyInputs()) {
-              return;
-            }
             finalizeEditedBlunderColors();
+            if (!saveConfig()) return;
             setVisible(false);
-            saveConfig();
             LizzieFrame.menu.refreshDoubleMoveInfoStatus();
             LizzieFrame.menu.refreshLimitStatus(false);
             Lizzie.frame.resetCommentComponent();
@@ -3183,7 +3180,7 @@ public class ConfigDialog2 extends JDialog {
     card.setLayout(new javax.swing.BoxLayout(card, javax.swing.BoxLayout.Y_AXIS));
     card.setBorder(BorderFactory.createEmptyBorder(16, 20, 18, 24));
     card.setAlignmentX(Component.LEFT_ALIGNMENT);
-    card.setMaximumSize(new Dimension(Integer.MAX_VALUE, 560));
+    card.setMaximumSize(new Dimension(Integer.MAX_VALUE, Integer.MAX_VALUE));
 
     JPanel header = new JPanel(new BorderLayout(10, 0));
     header.setOpaque(false);
@@ -3234,7 +3231,7 @@ public class ConfigDialog2 extends JDialog {
   private void initNetworkProxyControls() {
     JSONObject ui = Lizzie.config.uiConfig;
     initialNetworkProxyMode =
-        normalizeNetworkProxyMode(ui.optString(NetworkProxy.KEY_PROXY_MODE, NetworkProxy.MODE_DIRECT));
+        normalizeNetworkProxyMode(ui.optString(NetworkProxy.KEY_PROXY_MODE, NetworkProxy.DEFAULT_MODE));
 
     comboNetworkProxyMode = new JComboBox<>(NETWORK_PROXY_MODE_LABELS);
     setSelectedNetworkProxyMode(initialNetworkProxyMode);
@@ -3244,6 +3241,7 @@ public class ConfigDialog2 extends JDialog {
         new JTextField(ui.optString(NetworkProxy.KEY_PROXY_HOST, "127.0.0.1").trim());
     Object savedPort = ui.opt(NetworkProxy.KEY_PROXY_PORT);
     txtNetworkProxyPort = new JTextField(savedPort == null ? "7897" : String.valueOf(savedPort));
+    styleNetworkProxyControls();
 
     lblNetworkProxyRestartHint = new JLabel("切换系统代理模式后需重启程序才能完全生效。");
     lblNetworkProxyRestartHint.putClientProperty(CLIENT_SKIP_TEXT_STYLE, Boolean.TRUE);
@@ -3252,8 +3250,33 @@ public class ConfigDialog2 extends JDialog {
     updateNetworkProxyFieldsEnabled();
   }
 
+  private void styleNetworkProxyControls() {
+    styleNetworkProxyControl(comboNetworkProxyMode, 220);
+    styleNetworkProxyControl(txtNetworkProxyHost, 150);
+    styleNetworkProxyControl(txtNetworkProxyPort, 70);
+    txtNetworkProxyHost.setDisabledTextColor(SETTINGS_MUTED);
+    txtNetworkProxyPort.setDisabledTextColor(SETTINGS_MUTED);
+  }
+
+  private void styleNetworkProxyControl(JComponent component, int width) {
+    Dimension size = new Dimension(width, 30);
+    component.setPreferredSize(size);
+    component.setMinimumSize(size);
+    component.setOpaque(true);
+    component.setBackground(SETTINGS_SURFACE_STRONG);
+    component.setForeground(SETTINGS_TEXT);
+    component.setBorder(
+        BorderFactory.createCompoundBorder(
+            BorderFactory.createLineBorder(SETTINGS_BORDER),
+            BorderFactory.createEmptyBorder(4, 8, 4, 8)));
+  }
+
   private void addNetworkProxyRows(JPanel card) {
-    addComponentRow(card, "网络代理", "控制程序自身 Java 网络请求使用的代理策略", comboNetworkProxyMode);
+    JPanel proxyMode = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 0));
+    proxyMode.setOpaque(false);
+    proxyMode.add(detachComponent(comboNetworkProxyMode));
+    proxyMode.add(lblNetworkProxyRestartHint);
+    addComponentRow(card, "网络代理", "控制程序自身 Java 网络请求使用的代理策略", proxyMode);
 
     JPanel manualProxy = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
     manualProxy.setOpaque(false);
@@ -3263,9 +3286,7 @@ public class ConfigDialog2 extends JDialog {
     manualProxy.add(proxyFieldLabel("代理端口"));
     txtNetworkProxyPort.setPreferredSize(new Dimension(70, 30));
     manualProxy.add(detachComponent(txtNetworkProxyPort));
-    addComponentRow(card, "手动代理地址", "本机代理可填写 127.0.0.1 和 7897", manualProxy);
-
-    addComponentRow(card, "系统代理提示", "系统代理设置由 JVM 启动时读取", lblNetworkProxyRestartHint);
+    addComponentRow(card, "手动代理地址", "", manualProxy);
   }
 
   private JLabel proxyFieldLabel(String text) {
@@ -3279,7 +3300,7 @@ public class ConfigDialog2 extends JDialog {
   private String selectedNetworkProxyMode() {
     int index = comboNetworkProxyMode == null ? 0 : comboNetworkProxyMode.getSelectedIndex();
     if (index < 0 || index >= NETWORK_PROXY_MODE_VALUES.length) {
-      return NetworkProxy.MODE_DIRECT;
+      return NetworkProxy.DEFAULT_MODE;
     }
     return NETWORK_PROXY_MODE_VALUES[index];
   }
@@ -3301,7 +3322,7 @@ public class ConfigDialog2 extends JDialog {
         return knownMode;
       }
     }
-    return NetworkProxy.MODE_DIRECT;
+    return NetworkProxy.DEFAULT_MODE;
   }
 
   private void updateNetworkProxyFieldsEnabled() {
@@ -3367,17 +3388,20 @@ public class ConfigDialog2 extends JDialog {
     row.setMaximumSize(new Dimension(Integer.MAX_VALUE, 58));
     JPanel text = new JPanel(new BorderLayout(0, 2));
     text.setOpaque(false);
-    text.setPreferredSize(new Dimension(330, 40));
+    boolean hasSubtitle = subtitle != null && !subtitle.isEmpty();
+    text.setPreferredSize(new Dimension(330, hasSubtitle ? 40 : 24));
     JLabel titleLabel = new JLabel(title);
     titleLabel.putClientProperty(CLIENT_SKIP_TEXT_STYLE, Boolean.TRUE);
     titleLabel.setForeground(SETTINGS_TEXT);
     titleLabel.setFont(new Font(Config.sysDefaultFontName, Font.PLAIN, 14));
-    JLabel subtitleLabel = new JLabel(subtitle);
-    subtitleLabel.putClientProperty(CLIENT_SKIP_TEXT_STYLE, Boolean.TRUE);
-    subtitleLabel.setForeground(SETTINGS_MUTED);
-    subtitleLabel.setFont(new Font(Config.sysDefaultFontName, Font.PLAIN, 12));
-    text.add(titleLabel, BorderLayout.NORTH);
-    text.add(subtitleLabel, BorderLayout.CENTER);
+    text.add(titleLabel, hasSubtitle ? BorderLayout.NORTH : BorderLayout.CENTER);
+    if (hasSubtitle) {
+      JLabel subtitleLabel = new JLabel(subtitle);
+      subtitleLabel.putClientProperty(CLIENT_SKIP_TEXT_STYLE, Boolean.TRUE);
+      subtitleLabel.setForeground(SETTINGS_MUTED);
+      subtitleLabel.setFont(new Font(Config.sysDefaultFontName, Font.PLAIN, 12));
+      text.add(subtitleLabel, BorderLayout.CENTER);
+    }
     GridBagConstraints textConstraints = new GridBagConstraints();
     textConstraints.gridx = 0;
     textConstraints.gridy = 0;
@@ -3389,7 +3413,7 @@ public class ConfigDialog2 extends JDialog {
 
     JPanel controlHost = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
     controlHost.setOpaque(false);
-    controlHost.setMinimumSize(new Dimension(0, 1));
+    controlHost.setMinimumSize(new Dimension(280, 34));
     row.putClientProperty(CLIENT_DESIGN_ROW_CONTROL_HOST, controlHost);
     GridBagConstraints controlConstraints = new GridBagConstraints();
     controlConstraints.gridx = 1;
@@ -4325,7 +4349,7 @@ public class ConfigDialog2 extends JDialog {
     btnReset.addActionListener(
         new ActionListener() {
           public void actionPerformed(ActionEvent e) {
-            saveConfig();
+            if (!saveConfig()) return;
             LizzieFrame.menu.refreshDoubleMoveInfoStatus();
             LizzieFrame.menu.refreshLimitStatus(false);
             Lizzie.frame.resetCommentComponent();
@@ -5920,7 +5944,10 @@ public class ConfigDialog2 extends JDialog {
     if (model != null) model.sortData();
   }
 
-  private void saveConfig() {
+  private boolean saveConfig() {
+    if (!validateNetworkProxyInputs()) {
+      return false;
+    }
     Lizzie.config.uiConfig.put(NetworkProxy.KEY_PROXY_MODE, selectedNetworkProxyMode());
     Lizzie.config.uiConfig.put(
         NetworkProxy.KEY_PROXY_HOST, txtNetworkProxyHost.getText().trim());
@@ -6316,8 +6343,10 @@ public class ConfigDialog2 extends JDialog {
       Lizzie.config.save();
     } catch (IOException e) {
       e.printStackTrace();
+      return false;
     }
     LizzieFrame.menu.updateFastLinks();
+    return true;
   }
 
   public void switchTab(int index) {

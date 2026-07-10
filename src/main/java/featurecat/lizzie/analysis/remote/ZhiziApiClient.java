@@ -17,7 +17,7 @@ public class ZhiziApiClient {
   private final URI baseUri;
   private final HttpClient httpClient;
 
-  public ZhiziApiClient() {
+  public ZhiziApiClient() throws IOException {
     this(
         DEFAULT_BASE_URI,
         NetworkProxy.configure(HttpClient.newBuilder()).connectTimeout(REQUEST_TIMEOUT).build());

@@ -32,6 +32,7 @@ import java.awt.Toolkit;
 import java.awt.datatransfer.StringSelection;
 import java.awt.image.BufferedImage;
 import java.io.File;
+import java.io.IOException;
 import java.net.URI;
 import javax.imageio.ImageIO;
 import javax.swing.BorderFactory;
@@ -70,7 +71,7 @@ public class RemoteComputeDialog extends JDialog {
   private static final Color GOLD = new Color(193, 132, 42);
   private static final Color ERROR = new Color(190, 69, 56);
 
-  private final ZhiziApiClient apiClient = new ZhiziApiClient();
+  private final ZhiziApiClient apiClient;
   private final CardLayout pageLayout = new CardLayout();
   private final JPanel pageCards = transparent(pageLayout);
   private final JButton zhiziTab = tabButton("智子云算力");
@@ -111,8 +112,9 @@ public class RemoteComputeDialog extends JDialog {
   private char passwordEchoChar;
   private boolean busy;
 
-  public RemoteComputeDialog(Frame owner) {
+  public RemoteComputeDialog(Frame owner) throws IOException {
     super(owner, "远程算力", false);
+    apiClient = new ZhiziApiClient();
     setDefaultCloseOperation(DISPOSE_ON_CLOSE);
     setMinimumSize(new Dimension(1040, 660));
     setPreferredSize(new Dimension(1120, 700));
