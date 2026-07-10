@@ -46,6 +46,7 @@ public class BrowserFrame extends JFrame {
       "jcef-99c2f7a+cef-127.3.1+g6cbb30e+chromium-127.0.6533.100";
   static final String JCEF_BUNDLE_DIRECTORY = "jcef-bundle";
   static final String JCEF_BUNDLE_MANIFEST = "lizzieyzy-next-jcef-manifest.txt";
+  static final boolean JCEF_WINDOWLESS_RENDERING = false;
   private static final String YIKE_BROWSER_SYNC_STOP_COMMAND = "yikeBrowserSyncStop";
   private static final long YIKE_OBSERVED_URL_FRESH_MILLIS = 30_000L;
   private static final boolean YIKE_GEOMETRY_PROBE_DEBUG =
@@ -92,7 +93,7 @@ public class BrowserFrame extends JFrame {
     CefAppBuilder builder = new CefAppBuilder();
     builder.setInstallDir(jcefBundle);
     // windowless_rendering_enabled must be set to false if not wanted.
-    builder.getCefSettings().windowless_rendering_enabled = false;
+    builder.getCefSettings().windowless_rendering_enabled = JCEF_WINDOWLESS_RENDERING;
     builder.getCefSettings().log_severity = LogSeverity.LOGSEVERITY_DISABLE;
     File cefCache = resolveJcefCacheFolder();
     if (!cefCache.exists()) cefCache.mkdirs();
@@ -301,7 +302,7 @@ public class BrowserFrame extends JFrame {
     //     by calling the method "getUIComponent()" on the instance of CefBrowser.
     //     The UI component is inherited from a java.awt.Component and therefore
     //     it can be embedded into any AWT UI.
-    browser_ = client_.createBrowser(startURL, false, false);
+    browser_ = client_.createBrowser(startURL, JCEF_WINDOWLESS_RENDERING, false);
     browerUI_ = browser_.getUIComponent();
 
     // (5) For this minimal browser, we need only a text field to enter an URL

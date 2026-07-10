@@ -7,6 +7,7 @@ import featurecat.lizzie.util.Utils;
 import java.awt.BorderLayout;
 import java.awt.Color;
 import java.awt.Component;
+import java.awt.Cursor;
 import java.awt.Dimension;
 import java.awt.FlowLayout;
 import java.awt.Font;
@@ -22,8 +23,10 @@ import java.awt.event.KeyAdapter;
 import java.awt.event.KeyEvent;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
+import java.awt.event.MouseMotionAdapter;
 import java.io.IOException;
 import java.text.DecimalFormat;
+import java.text.MessageFormat;
 import java.util.ArrayList;
 import java.util.List;
 import javax.imageio.ImageIO;
@@ -355,7 +358,13 @@ public class FoxKifuDownload extends JFrame {
     Lizzie.config.lastFoxName = normalizedUser;
     Lizzie.config.uiConfig.put("last-fox-name", Lizzie.config.lastFoxName);
     saveConfigQuietly();
-    showProgressNotice("正在搜索野狐账号 \"" + normalizedUser + "\"，请稍候…");
+    showProgressNotice(
+        MessageFormat.format(
+            Lizzie.frame.kifuLoadText(
+                "KifuLoad.foxSearching",
+                "正在搜索野狐账号 \"{0}\"，请稍候…",
+                "Searching Fox account \"{0}\", please wait..."),
+            normalizedUser));
     foxReq.sendCommand("user_name " + normalizedUser);
   }
 
@@ -419,6 +428,11 @@ public class FoxKifuDownload extends JFrame {
     progressGlassPane = new JPanel(new GridBagLayout());
     progressGlassPane.setOpaque(false);
     progressGlassPane.setFocusable(false);
+    // A visible glass pane still lets clicks fall through to the table and pagination buttons
+    // unless it consumes mouse events itself.
+    progressGlassPane.addMouseListener(new MouseAdapter() {});
+    progressGlassPane.addMouseMotionListener(new MouseMotionAdapter() {});
+    progressGlassPane.setCursor(Cursor.getPredefinedCursor(Cursor.WAIT_CURSOR));
 
     JPanel card = new JPanel(new BorderLayout(12, 10));
     card.setBackground(new Color(250, 250, 250));
@@ -433,7 +447,7 @@ public class FoxKifuDownload extends JFrame {
     progressBar = new JProgressBar();
     progressBar.setIndeterminate(true);
     progressBar.setStringPainted(true);
-    progressBar.setString("处理中...");
+    progressBar.setString(Lizzie.frame.kifuLoadText("KifuLoad.processing", "处理中...", "Working..."));
     progressBar.setPreferredSize(new Dimension(360, 22));
     card.add(progressBar, BorderLayout.SOUTH);
 

@@ -11,8 +11,8 @@ import featurecat.lizzie.util.KataGoAutoSetupHelper.SetupSnapshot;
 import featurecat.lizzie.util.KataGoRuntimeHelper;
 import featurecat.lizzie.util.NvidiaGpuDetector;
 import featurecat.lizzie.util.Utils;
-import java.awt.BorderLayout;
 import java.awt.BasicStroke;
+import java.awt.BorderLayout;
 import java.awt.CardLayout;
 import java.awt.Color;
 import java.awt.Component;
@@ -221,6 +221,11 @@ public class KataGoAutoSetupDialog extends JDialog {
     wireActions();
 
     refreshState();
+  }
+
+  /** Opens the dialog directly on the Weights card (nav index 1 maps to CARD_WEIGHTS). */
+  public void showWeightsSection() {
+    sectionNav.setSelectedIndex(1);
   }
 
   public void refreshState() {

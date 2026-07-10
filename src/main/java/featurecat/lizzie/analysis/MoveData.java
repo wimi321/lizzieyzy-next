@@ -61,14 +61,15 @@ public class MoveData {
       String key = data[i];
       if (key.equals("pv")) {
         // Read variation to the end of line
-        result.variation = new ArrayList<>(Arrays.asList(data));
         result.variation =
-            result.variation.subList(
-                i + 1,
-                (Lizzie.config.limitBranchLength > 0
-                        && data.length - i - 1 > Lizzie.config.limitBranchLength)
-                    ? i + 1 + Lizzie.config.limitBranchLength
-                    : data.length);
+            new ArrayList<>(
+                Arrays.asList(data)
+                    .subList(
+                        i + 1,
+                        (Lizzie.config.limitBranchLength > 0
+                                && data.length - i - 1 > Lizzie.config.limitBranchLength)
+                            ? i + 1 + Lizzie.config.limitBranchLength
+                            : data.length));
         // result.variation = result.variation.subList(i + 1, data.length);
         break;
       } else {
@@ -135,14 +136,15 @@ public class MoveData {
       String key = data[i];
       if (key.equals("pv")) {
         // Read variation to the end of line
-        result.variation = new ArrayList<>(Arrays.asList(data));
         result.variation =
-            result.variation.subList(
-                i + 1,
-                (Lizzie.config.limitBranchLength > 0
-                        && data.length - i - 1 > Lizzie.config.limitBranchLength)
-                    ? i + 1 + Lizzie.config.limitBranchLength
-                    : data.length);
+            new ArrayList<>(
+                Arrays.asList(data)
+                    .subList(
+                        i + 1,
+                        (Lizzie.config.limitBranchLength > 0
+                                && data.length - i - 1 > Lizzie.config.limitBranchLength)
+                            ? i + 1 + Lizzie.config.limitBranchLength
+                            : data.length));
         // result.variation = result.variation.subList(i + 1, data.length);
         break;
       } else {
@@ -225,23 +227,25 @@ public class MoveData {
           String subKey = data[s];
           if (subKey.equals("pvVisits")) {
             otherPos = s;
-            result.pvVisits = new ArrayList<>(Arrays.asList(data));
-            result.pvVisits = result.pvVisits.subList(s + 1, ownerShipPos);
+            result.pvVisits =
+                new ArrayList<>(Arrays.asList(data).subList(s + 1, ownerShipPos));
             break;
           }
         }
         // Read variation to the end of line
-        result.variation = new ArrayList<>(Arrays.asList(data));
         result.variation =
-            result.variation.subList(
-                i + 1,
-                (Lizzie.config.limitBranchLength > 0
-                        && otherPos - i - 1 > Lizzie.config.limitBranchLength)
-                    ? i + 1 + Lizzie.config.limitBranchLength
-                    : otherPos);
+            new ArrayList<>(
+                Arrays.asList(data)
+                    .subList(
+                        i + 1,
+                        (Lizzie.config.limitBranchLength > 0
+                                && otherPos - i - 1 > Lizzie.config.limitBranchLength)
+                            ? i + 1 + Lizzie.config.limitBranchLength
+                            : otherPos));
         if (result.pvVisits != null) {
           if (result.pvVisits.size() > result.variation.size())
-            result.pvVisits = result.pvVisits.subList(0, result.variation.size());
+            result.pvVisits =
+                new ArrayList<>(result.pvVisits.subList(0, result.variation.size()));
         }
         // result.variation = result.variation.subList(i + 1, data.length);
         break;
@@ -311,21 +315,22 @@ public class MoveData {
           String subKey = data[s];
           if (subKey.equals("pvVisits")) {
             pvVisitsPos = s;
-            result.pvVisits = new ArrayList<>(Arrays.asList(data));
-            result.pvVisits = result.pvVisits.subList(s + 1, data.length);
+            result.pvVisits =
+                new ArrayList<>(Arrays.asList(data).subList(s + 1, data.length));
             break;
           }
         }
         // Read variation to the end of line
-        result.variation = new ArrayList<>(Arrays.asList(data));
         int length = pvVisitsPos > -1 ? pvVisitsPos : data.length;
         result.variation =
-            result.variation.subList(
-                i + 1,
-                (Lizzie.config.limitBranchLength > 0
-                        && length - i - 1 > Lizzie.config.limitBranchLength)
-                    ? i + 1 + Lizzie.config.limitBranchLength
-                    : length);
+            new ArrayList<>(
+                Arrays.asList(data)
+                    .subList(
+                        i + 1,
+                        (Lizzie.config.limitBranchLength > 0
+                                && length - i - 1 > Lizzie.config.limitBranchLength)
+                            ? i + 1 + Lizzie.config.limitBranchLength
+                            : length));
         // result.variation = result.variation.subList(i + 1, data.length);
         break;
       } else {

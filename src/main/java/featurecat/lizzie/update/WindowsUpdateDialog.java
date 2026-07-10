@@ -29,14 +29,38 @@ public final class WindowsUpdateDialog extends JDialog {
   private final String ignoreVersionKey;
   private final JProgressBar progressBar = new JProgressBar();
   private final JLabel statusLabel = new JLabel(" ");
-  private final JFontButton updateButton = new JFontButton("立即更新");
-  private final JFontButton laterButton = new JFontButton("稍后提醒");
-  private final JFontButton ignoreButton = new JFontButton("忽略此版本");
-  private final JFontButton releaseButton = new JFontButton("查看 Release");
+  private final JFontButton updateButton =
+      new JFontButton(tr("WindowsUpdate.btnUpdate", "立即更新", "Update now"));
+  private final JFontButton laterButton =
+      new JFontButton(tr("WindowsUpdate.btnLater", "稍后提醒", "Remind me later"));
+  private final JFontButton ignoreButton =
+      new JFontButton(tr("WindowsUpdate.btnIgnore", "忽略此版本", "Skip this version"));
+  private final JFontButton releaseButton =
+      new JFontButton(tr("WindowsUpdate.btnRelease", "查看 Release", "View release"));
+
+  /**
+   * Resource lookup with a built-in bilingual fallback so a missing key can never throw on the
+   * updater path (same contract as LizzieFrame.kifuLoadText).
+   */
+  private static String tr(String key, String chineseText, String englishText) {
+    try {
+      if (Lizzie.resourceBundle != null && Lizzie.resourceBundle.containsKey(key)) {
+        return Lizzie.resourceBundle.getString(key);
+      }
+    } catch (Exception ignored) {
+    }
+    return Lizzie.config != null && Lizzie.config.isChinese ? chineseText : englishText;
+  }
 
   public WindowsUpdateDialog(
-      Component parent, WindowsUpdateService service, WindowsUpdatePlan plan, String ignoreVersionKey) {
-    super(parent == null ? null : SwingUtilities.getWindowAncestor(parent), "发现新版本", ModalityType.MODELESS);
+      Component parent,
+      WindowsUpdateService service,
+      WindowsUpdatePlan plan,
+      String ignoreVersionKey) {
+    super(
+        parent == null ? null : SwingUtilities.getWindowAncestor(parent),
+        tr("WindowsUpdate.title", "发现新版本", "New version available"),
+        ModalityType.MODELESS);
     this.service = service;
     this.plan = plan;
     this.ignoreVersionKey = ignoreVersionKey;
@@ -56,7 +80,9 @@ public final class WindowsUpdateDialog extends JDialog {
         new JLabel(
             "<html><b>LizzieYzy Next "
                 + plan.manifest.releaseTag
-                + "</b><br>当前版本: "
+                + "</b><br>"
+                + tr("WindowsUpdate.currentVersion", "当前版本", "Current version")
+                + ": "
                 + plan.currentVersion
                 + "</html>");
     title.setFont(title.getFont().deriveFont(Font.PLAIN, 15f));
@@ -99,43 +125,75 @@ public final class WindowsUpdateDialog extends JDialog {
 
   private String updateSummary() {
     StringBuilder text = new StringBuilder();
-    text.append("这次会先下载并校验更新文件，然后关闭当前程序，由独立更新器替换文件并重新打开。\n\n");
-    text.append("本次主程序小更新: ").append(formatBytes(plan.coreSizeBytes())).append('\n');
+    text.append(
+            tr(
+                "WindowsUpdate.summary.intro",
+                "这次会先下载并校验更新文件，然后关闭当前程序，由独立更新器替换文件并重新打开。",
+                "The update is downloaded and verified first; the app then closes and a standalone"
+                    + " updater replaces the files and restarts it."))
+        .append("\n\n");
+    text.append(tr("WindowsUpdate.summary.coreSize", "本次主程序小更新", "Core update download") + ": ")
+        .append(formatBytes(plan.coreSizeBytes()))
+        .append('\n');
     if (plan.resourceSizeBytes() > 0L) {
-      text.append("本次需要更新的大资源: ").append(formatBytes(plan.resourceSizeBytes())).append('\n');
+      text.append(
+              tr("WindowsUpdate.summary.resourceSize", "本次需要更新的大资源", "Large resources to update")
+                  + ": ")
+          .append(formatBytes(plan.resourceSizeBytes()))
+          .append('\n');
     } else {
-      text.append("大资源本次无需下载: KataGo、权重、运行环境、同步工具和浏览器组件都会保留。\n");
+      text.append(
+              tr(
+                  "WindowsUpdate.summary.noResource",
+                  "大资源本次无需下载: KataGo、权重、运行环境、同步工具和浏览器组件都会保留。",
+                  "No large resources to download this time: KataGo, weights, the runtime, the sync"
+                      + " tool and the browser component are all kept."))
+          .append('\n');
     }
-    text.append("总下载: ").append(formatBytes(plan.selectedSizeBytes())).append("\n\n");
-    text.append("将更新的组件:\n");
+    text.append(tr("WindowsUpdate.summary.totalDownload", "总下载", "Total download") + ": ")
+        .append(formatBytes(plan.selectedSizeBytes()))
+        .append("\n\n");
+    text.append(tr("WindowsUpdate.summary.components", "将更新的组件:", "Components to update:"))
+        .append('\n');
     for (WindowsUpdatePlan.Item item : plan.selectedItems()) {
       text.append("- ").append(displayName(item.component)).append("  ");
       text.append(formatBytes(item.component.sizeBytes)).append('\n');
     }
-    text.append("\n未变化的大资源不会重复下载。用户数据、棋谱、设置、下载权重和 TensorRT 会保留。");
+    text.append('\n')
+        .append(
+            tr(
+                "WindowsUpdate.summary.preserved",
+                "未变化的大资源不会重复下载。用户数据、棋谱、设置、下载权重和 TensorRT 会保留。",
+                "Unchanged large resources are not downloaded again. User data, game records,"
+                    + " settings, downloaded weights and TensorRT are preserved."));
     return text.toString();
   }
 
   private String displayName(UpdateManifest.Component component) {
     switch (component.id) {
       case "core":
-        return "主程序小更新";
+        return tr("WindowsUpdate.component.core", "主程序小更新", "Core update");
       case "katago-cpu":
-        return "KataGo CPU 引擎";
+        return tr("WindowsUpdate.component.katagoCpu", "KataGo CPU 引擎", "KataGo CPU engine");
       case "katago-opencl":
-        return "KataGo OpenCL 引擎";
+        return tr(
+            "WindowsUpdate.component.katagoOpencl", "KataGo OpenCL 引擎", "KataGo OpenCL engine");
       case "katago-nvidia":
-        return "KataGo NVIDIA 引擎";
+        return tr(
+            "WindowsUpdate.component.katagoNvidia", "KataGo NVIDIA 引擎", "KataGo NVIDIA engine");
       case "katago-nvidia50-cuda":
-        return "KataGo RTX 50 CUDA 引擎";
+        return tr(
+            "WindowsUpdate.component.katagoNvidia50",
+            "KataGo RTX 50 CUDA 引擎",
+            "KataGo RTX 50 CUDA engine");
       case "weight-default":
-        return "默认权重";
+        return tr("WindowsUpdate.component.weightDefault", "默认权重", "Default weights");
       case "readboard":
-        return "棋盘同步工具";
+        return tr("WindowsUpdate.component.readboard", "棋盘同步工具", "Board sync tool");
       case "jcef":
-        return "内置浏览器运行时";
+        return tr("WindowsUpdate.component.jcef", "内置浏览器运行时", "Embedded browser runtime");
       case "java-runtime":
-        return "Java 运行时";
+        return tr("WindowsUpdate.component.javaRuntime", "Java 运行时", "Java runtime");
       default:
         return component.id;
     }
@@ -144,7 +202,7 @@ public final class WindowsUpdateDialog extends JDialog {
   private void startUpdate() {
     setButtonsEnabled(false);
     progressBar.setVisible(true);
-    statusLabel.setText("准备下载...");
+    statusLabel.setText(tr("WindowsUpdate.status.preparing", "准备下载...", "Preparing download..."));
     Thread worker =
         new Thread(
             () -> {
@@ -161,8 +219,10 @@ public final class WindowsUpdateDialog extends JDialog {
                 SwingUtilities.invokeLater(
                     () -> {
                       setButtonsEnabled(true);
-                      statusLabel.setText("更新失败: " + e.getLocalizedMessage());
-                      Utils.showMsg("更新失败: " + e.getLocalizedMessage());
+                      String failed =
+                          tr("WindowsUpdate.status.failed", "更新失败", "Update failed") + ": ";
+                      statusLabel.setText(failed + e.getLocalizedMessage());
+                      Utils.showMsg(failed + e.getLocalizedMessage());
                     });
               }
             },
@@ -180,15 +240,21 @@ public final class WindowsUpdateDialog extends JDialog {
 
   private void applyUpdate(Path requestPath) {
     try {
-      statusLabel.setText("下载完成，正在启动更新器...");
+      statusLabel.setText(
+          tr(
+              "WindowsUpdate.status.launching",
+              "下载完成，正在启动更新器...",
+              "Download complete, launching the updater..."));
       service.launchHelper(requestPath);
       dispose();
       Lizzie.shutdown();
     } catch (IOException e) {
       e.printStackTrace();
       setButtonsEnabled(true);
-      statusLabel.setText("启动更新器失败: " + e.getLocalizedMessage());
-      Utils.showMsg("启动更新器失败: " + e.getLocalizedMessage());
+      String launchFailed =
+          tr("WindowsUpdate.status.launchFailed", "启动更新器失败", "Failed to launch the updater") + ": ";
+      statusLabel.setText(launchFailed + e.getLocalizedMessage());
+      Utils.showMsg(launchFailed + e.getLocalizedMessage());
     }
   }
 
@@ -196,7 +262,13 @@ public final class WindowsUpdateDialog extends JDialog {
     try {
       Desktop.getDesktop().browse(new URI(plan.manifest.notesUrl));
     } catch (Exception e) {
-      Utils.showMsg("无法打开 Release 页面: " + e.getLocalizedMessage());
+      Utils.showMsg(
+          tr(
+                  "WindowsUpdate.status.openReleaseFailed",
+                  "无法打开 Release 页面",
+                  "Could not open the release page")
+              + ": "
+              + e.getLocalizedMessage());
     }
   }
 

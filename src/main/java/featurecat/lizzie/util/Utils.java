@@ -1287,10 +1287,13 @@ public class Utils {
   }
 
   public static void copy(String resource, String newFolderName) throws IOException {
-    InputStream in = Utils.class.getResourceAsStream(resource);
-    Path dist = getDistFile(resource, newFolderName);
-    Files.copy(in, dist);
-    in.close();
+    try (InputStream in = Utils.class.getResourceAsStream(resource)) {
+      if (in == null) {
+        // A bare NPE from Files.copy gives no hint which bundled file is missing.
+        throw new IOException("Missing bundled resource: " + resource);
+      }
+      Files.copy(in, getDistFile(resource, newFolderName));
+    }
   }
 
   public static boolean deleteDir(File dir) {
@@ -1315,8 +1318,10 @@ public class Utils {
     try {
       copy("/assets/newtheme/black.png", "theme" + File.separator + themeName);
       copy("/assets/newtheme/white.png", "theme" + File.separator + themeName);
-      copy("/assets/newtheme/board.png", "theme" + File.separator + themeName);
-      copy("/assets/newtheme/background.jpg", "theme" + File.separator + themeName);
+      // board.png and background.jpg are byte-identical to the top-level /assets copies, so the
+      // jar bundles them only once; the copied file names stay board.png / background.jpg.
+      copy("/assets/board.png", "theme" + File.separator + themeName);
+      copy("/assets/background.jpg", "theme" + File.separator + themeName);
       copy("/assets/newtheme/theme.txt", "theme" + File.separator + themeName);
     } catch (IOException e) {
       // TODO Auto-generated catch block

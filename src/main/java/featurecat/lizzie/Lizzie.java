@@ -8,7 +8,6 @@ import featurecat.lizzie.analysis.KataEstimate;
 import featurecat.lizzie.analysis.Leelaz;
 import featurecat.lizzie.analysis.LeelazEngineCommandSink;
 import featurecat.lizzie.gui.AppleStyleSupport;
-import featurecat.lizzie.gui.AwareScaled;
 import featurecat.lizzie.gui.FirstUseSettings;
 import featurecat.lizzie.gui.GtpConsolePane;
 import featurecat.lizzie.gui.LizzieFrame;
@@ -27,6 +26,7 @@ import java.awt.Font;
 import java.awt.GraphicsEnvironment;
 import java.awt.Image;
 import java.awt.Window;
+import java.awt.geom.AffineTransform;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
@@ -39,6 +39,9 @@ import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.Locale;
 import java.util.ResourceBundle;
+import java.util.concurrent.Callable;
+import java.util.concurrent.FutureTask;
+import java.util.concurrent.TimeUnit;
 import javax.imageio.ImageIO;
 import javax.swing.*;
 import javax.swing.plaf.FontUIResource;
@@ -47,6 +50,13 @@ import org.json.JSONException;
 
 /** Main class. */
 public class Lizzie {
+  static {
+    // ImageIO's disk cache routes every decoded image through a temp file. All reads here are
+    // small classpath/theme images, so decode in memory; on Windows this also keeps antivirus
+    // scanners out of the image loading path.
+    ImageIO.setUseCache(false);
+  }
+
   public static ResourceBundle resourceBundle = ResourceBundle.getBundle("l10n.DisplayStrings");
   public static Config config;
   public static GtpConsolePane gtpConsole;
@@ -62,6 +72,8 @@ public class Lizzie {
   private static final String SMOKE_OPEN_BOARD_SYNC_PROPERTY = "lizzie.smoke.openBoardSync";
   private static final String SMOKE_OPEN_BOARD_SYNC_DELAY_MS_PROPERTY =
       "lizzie.smoke.openBoardSyncDelayMs";
+  private static final String UNKNOWN_HOST_NAME = "unknown-host";
+  private static final long HOST_NAME_LOOKUP_TIMEOUT_MILLIS = 500L;
   public static String nextVersion = resolveNextVersion();
   public static String checkVersion = "230614";
   public static boolean readMode = false;
@@ -133,14 +145,27 @@ public class Lizzie {
     installApplicationIcon();
     leelaz = new Leelaz("");
     isMultiScreen = GraphicsEnvironment.getLocalGraphicsEnvironment().getScreenDevices().length > 1;
-    AwareScaled awareScaled = new AwareScaled();
-    awareScaled.setVisible(true);
-    String hostName = InetAddress.getLocalHost().getHostName();
-    if (config.firstTimeLoad || !hostName.equals(config.hostName)) {
-      if (!config.hostName.equals("")) config.deletePersist(false);
-      resetAllHints();
+    // The HiDPI scale must be known synchronously before any window is sized; a paint-based
+    // probe only delivers it after the EDT gets around to painting.
+    AffineTransform defaultTransform =
+        GraphicsEnvironment.getLocalGraphicsEnvironment()
+            .getDefaultScreenDevice()
+            .getDefaultConfiguration()
+            .getDefaultTransform();
+    if (defaultTransform.getScaleX() > 1) {
+      Config.isScaled = true;
+      javaScaleFactor = (float) defaultTransform.getScaleX();
+    }
+    String storedHostName = config.hostName == null ? "" : config.hostName;
+    String hostName = resolveHostNameSafely(storedHostName);
+    boolean machineChanged = shouldTreatAsHostChange(storedHostName, hostName);
+    if (isKnownHostName(hostName) && !hostName.equals(storedHostName)) {
       config.hostName = hostName;
-      config.uiConfig.put("host-name", config.hostName);
+      config.uiConfig.put("host-name", hostName);
+    }
+    if (config.firstTimeLoad || machineChanged) {
+      if (machineChanged) config.deletePersist(false);
+      resetAllHints();
       config.isChinese = (resourceBundle.getString("Lizzie.isChinese")).equals("yes");
       if (!completeAutomaticFirstRunSetup()) {
         openFirstUseSettings(true);
@@ -209,6 +234,53 @@ public class Lizzie {
     if (Lizzie.config.autoReplayBranch) frame.autoReplayBranch();
     scheduleBoardSyncSmokeProbe();
     WindowsUpdateController.scheduleAutomaticCheck();
+  }
+
+  /**
+   * Resolves the machine name on a daemon thread with a strict startup deadline. A DNS failure or
+   * stall must never prevent launch or masquerade as a machine change, which would wipe persisted
+   * state.
+   */
+  static String resolveHostNameSafely(String storedHostName) {
+    return resolveHostNameSafely(
+        storedHostName,
+        () -> InetAddress.getLocalHost().getHostName(),
+        HOST_NAME_LOOKUP_TIMEOUT_MILLIS);
+  }
+
+  static String resolveHostNameSafely(
+      String storedHostName, Callable<String> resolver, long timeoutMillis) {
+    FutureTask<String> lookup = new FutureTask<>(resolver);
+    Thread lookupThread = new Thread(lookup, "lizzie-hostname-lookup");
+    lookupThread.setDaemon(true);
+    lookupThread.start();
+    try {
+      String resolved = lookup.get(Math.max(1L, timeoutMillis), TimeUnit.MILLISECONDS);
+      return resolved == null || resolved.trim().isEmpty()
+          ? hostNameFallback(storedHostName)
+          : resolved;
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      lookup.cancel(true);
+      return hostNameFallback(storedHostName);
+    } catch (Exception e) {
+      lookup.cancel(true);
+      return hostNameFallback(storedHostName);
+    }
+  }
+
+  static String hostNameFallback(String storedHostName) {
+    return storedHostName == null || storedHostName.isEmpty() ? UNKNOWN_HOST_NAME : storedHostName;
+  }
+
+  static boolean shouldTreatAsHostChange(String storedHostName, String resolvedHostName) {
+    return isKnownHostName(storedHostName)
+        && isKnownHostName(resolvedHostName)
+        && !storedHostName.equals(resolvedHostName);
+  }
+
+  private static boolean isKnownHostName(String hostName) {
+    return hostName != null && !hostName.isEmpty() && !UNKNOWN_HOST_NAME.equals(hostName);
   }
 
   private static void scheduleBoardSyncSmokeProbe() {
