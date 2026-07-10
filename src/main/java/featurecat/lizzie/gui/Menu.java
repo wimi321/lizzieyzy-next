@@ -7695,194 +7695,50 @@ public class Menu extends JMenuBar {
     btnDoubleMenu.setPreferredSize(
         new Dimension((int) btnDoubleMenu.getPreferredSize().getWidth(), Config.menuHeight));
     if (Lizzie.config.showBasicBtn) {
-      rankMarkOn = new ImageIcon();
-      rankMarkOff = new ImageIcon();
-      ImageIcon iconNewFile = new ImageIcon();
-      ImageIcon iconOpen = new ImageIcon();
-      ImageIcon iconSave = new ImageIcon();
-      ImageIcon iconAnalyze = new ImageIcon();
-      ImageIcon iconHawkeye = new ImageIcon();
-      ImageIcon iconSetMain = new ImageIcon();
-      ImageIcon iconBackMain = new ImageIcon();
-      ImageIcon iconChangeTurn = new ImageIcon();
-      ImageIcon iconControlPanel = new ImageIcon();
-      ImageIcon iconMarkup1 = new ImageIcon();
-      ImageIcon iconMarkup2 = new ImageIcon();
-      ImageIcon markupLabel1 = new ImageIcon();
-      ImageIcon markupLabel2 = new ImageIcon();
-      ImageIcon markupLabelNum1 = new ImageIcon();
-      ImageIcon markupLabelNum2 = new ImageIcon();
-      ImageIcon markupCircle1 = new ImageIcon();
-      ImageIcon markupCircle2 = new ImageIcon();
-      ImageIcon markupX1 = new ImageIcon();
-      ImageIcon markupX2 = new ImageIcon();
-      ImageIcon markupSquare1 = new ImageIcon();
-      ImageIcon markupSquare2 = new ImageIcon();
-      ImageIcon markupsanjiao1 = new ImageIcon();
-      ImageIcon markupsanjiao2 = new ImageIcon();
-      ImageIcon eraser1 = new ImageIcon();
-      ImageIcon eraser2 = new ImageIcon();
-      ImageIcon clear = new ImageIcon();
-      ImageIcon drawPaint = new ImageIcon();
-      ImageIcon flash = new ImageIcon();
-      try {
-        iconNewFile.setImage(
-            ImageIO.read(getClass().getResourceAsStream("/assets/newFile.png"))
-                .getScaledInstance(
-                    Config.menuIconSize, Config.menuIconSize, java.awt.Image.SCALE_SMOOTH));
-        flash.setImage(
-            ImageIO.read(getClass().getResourceAsStream("/assets/flash.png"))
-                .getScaledInstance(
-                    Config.menuIconSize, Config.menuIconSize, java.awt.Image.SCALE_SMOOTH));
-        drawPaint.setImage(
-            ImageIO.read(getClass().getResourceAsStream("/assets/paint.png"))
-                .getScaledInstance(
-                    Config.menuIconSize, Config.menuIconSize, java.awt.Image.SCALE_SMOOTH));
-        iconOpen.setImage(
-            ImageIO.read(getClass().getResourceAsStream("/assets/open.png"))
-                .getScaledInstance(
-                    Config.menuIconSize, Config.menuIconSize, java.awt.Image.SCALE_SMOOTH));
-        iconSave.setImage(
-            ImageIO.read(getClass().getResourceAsStream("/assets/save.png"))
-                .getScaledInstance(
-                    Config.menuIconSize, Config.menuIconSize, java.awt.Image.SCALE_SMOOTH));
-        iconAnalyze.setImage(
-            ImageIO.read(getClass().getResourceAsStream("/assets/analyze.png"))
-                .getScaledInstance(
-                    Config.menuIconSize, Config.menuIconSize, java.awt.Image.SCALE_SMOOTH));
-        iconHawkeye.setImage(
-            ImageIO.read(getClass().getResourceAsStream("/assets/hawkeye2.png"))
-                .getScaledInstance(
-                    Config.menuIconSize, Config.menuIconSize, java.awt.Image.SCALE_SMOOTH));
-        iconSetMain.setImage(
-            ImageIO.read(getClass().getResourceAsStream("/assets/setmain.png"))
-                .getScaledInstance(
-                    Config.menuIconSize, Config.menuIconSize, java.awt.Image.SCALE_SMOOTH));
-        iconBackMain.setImage(
-            ImageIO.read(getClass().getResourceAsStream("/assets/backmain.png"))
-                .getScaledInstance(
-                    Config.menuIconSize, Config.menuIconSize, java.awt.Image.SCALE_SMOOTH));
-        iconChangeTurn.setImage(
-            ImageIO.read(getClass().getResourceAsStream("/assets/pass.png"))
-                .getScaledInstance(
-                    Config.menuIconSize, Config.menuIconSize, java.awt.Image.SCALE_SMOOTH));
-        iconControlPanel.setImage(
-            ImageIO.read(getClass().getResourceAsStream("/assets/control.png"))
-                .getScaledInstance(
-                    Config.menuIconSize, Config.menuIconSize, java.awt.Image.SCALE_SMOOTH));
-        iconMarkup1.setImage(
-            ImageIO.read(getClass().getResourceAsStream("/assets/mark1.png"))
-                .getScaledInstance(
-                    Config.menuIconSize, Config.menuIconSize, java.awt.Image.SCALE_SMOOTH));
-        iconMarkup2.setImage(
-            ImageIO.read(getClass().getResourceAsStream("/assets/mark2.png"))
-                .getScaledInstance(
-                    Config.menuIconSize, Config.menuIconSize, java.awt.Image.SCALE_SMOOTH));
-        markupLabel1.setImage(
-            ImageIO.read(getClass().getResourceAsStream("/assets/label.png"))
-                .getScaledInstance(
-                    Config.menuIconSize, Config.menuIconSize, java.awt.Image.SCALE_SMOOTH));
-        markupLabel2.setImage(
-            ImageIO.read(getClass().getResourceAsStream("/assets/label2.png"))
-                .getScaledInstance(
-                    Config.menuIconSize, Config.menuIconSize, java.awt.Image.SCALE_SMOOTH));
-        markupLabelNum1.setImage(
-            ImageIO.read(getClass().getResourceAsStream("/assets/labelnum1.png"))
-                .getScaledInstance(
-                    Config.menuIconSize, Config.menuIconSize, java.awt.Image.SCALE_SMOOTH));
-        markupLabelNum2.setImage(
-            ImageIO.read(getClass().getResourceAsStream("/assets/labelnum2.png"))
-                .getScaledInstance(
-                    Config.menuIconSize, Config.menuIconSize, java.awt.Image.SCALE_SMOOTH));
-        markupX1.setImage(
-            ImageIO.read(getClass().getResourceAsStream("/assets/x.png"))
-                .getScaledInstance(
-                    Config.menuIconSize, Config.menuIconSize, java.awt.Image.SCALE_SMOOTH));
-        markupX2.setImage(
-            ImageIO.read(getClass().getResourceAsStream("/assets/x2.png"))
-                .getScaledInstance(
-                    Config.menuIconSize, Config.menuIconSize, java.awt.Image.SCALE_SMOOTH));
-        markupCircle1.setImage(
-            ImageIO.read(getClass().getResourceAsStream("/assets/circle.png"))
-                .getScaledInstance(
-                    Config.menuIconSize, Config.menuIconSize, java.awt.Image.SCALE_SMOOTH));
-        markupCircle2.setImage(
-            ImageIO.read(getClass().getResourceAsStream("/assets/circle2.png"))
-                .getScaledInstance(
-                    Config.menuIconSize, Config.menuIconSize, java.awt.Image.SCALE_SMOOTH));
-        markupSquare1.setImage(
-            ImageIO.read(getClass().getResourceAsStream("/assets/square.png"))
-                .getScaledInstance(
-                    Config.menuIconSize, Config.menuIconSize, java.awt.Image.SCALE_SMOOTH));
-        markupSquare2.setImage(
-            ImageIO.read(getClass().getResourceAsStream("/assets/square2.png"))
-                .getScaledInstance(
-                    Config.menuIconSize, Config.menuIconSize, java.awt.Image.SCALE_SMOOTH));
-        markupsanjiao1.setImage(
-            ImageIO.read(getClass().getResourceAsStream("/assets/sanjiao.png"))
-                .getScaledInstance(
-                    Config.menuIconSize, Config.menuIconSize, java.awt.Image.SCALE_SMOOTH));
-        markupsanjiao2.setImage(
-            ImageIO.read(getClass().getResourceAsStream("/assets/sanjiao2.png"))
-                .getScaledInstance(
-                    Config.menuIconSize, Config.menuIconSize, java.awt.Image.SCALE_SMOOTH));
-        eraser1.setImage(
-            ImageIO.read(getClass().getResourceAsStream("/assets/eraser.png"))
-                .getScaledInstance(
-                    Config.menuIconSize, Config.menuIconSize, java.awt.Image.SCALE_SMOOTH));
-        eraser2.setImage(
-            ImageIO.read(getClass().getResourceAsStream("/assets/eraser2.png"))
-                .getScaledInstance(
-                    Config.menuIconSize, Config.menuIconSize, java.awt.Image.SCALE_SMOOTH));
-        clear.setImage(
-            ImageIO.read(getClass().getResourceAsStream("/assets/clear.png"))
-                .getScaledInstance(
-                    Config.menuIconSize, Config.menuIconSize, java.awt.Image.SCALE_SMOOTH));
-        rankMarkOn.setImage(
-            ImageIO.read(getClass().getResourceAsStream("/assets/RankMarkOn.png"))
-                .getScaledInstance(
-                    Config.menuIconSize, Config.menuIconSize, java.awt.Image.SCALE_SMOOTH));
-        rankMarkOff.setImage(
-            ImageIO.read(getClass().getResourceAsStream("/assets/RankMarkOff.png"))
-                .getScaledInstance(
-                    Config.menuIconSize, Config.menuIconSize, java.awt.Image.SCALE_SMOOTH));
-      } catch (IOException e) {
-        // TODO Auto-generated catch block
-        e.printStackTrace();
-      }
-      if (AppleStyleSupport.isAppleStyleEnabled()) {
-        int s = Config.menuIconSize;
-        iconNewFile.setImage(AppleStyleSupport.brightenIcon(iconNewFile.getImage(), s));
-        iconOpen.setImage(AppleStyleSupport.brightenIcon(iconOpen.getImage(), s));
-        iconSave.setImage(AppleStyleSupport.brightenIcon(iconSave.getImage(), s));
-        iconAnalyze.setImage(AppleStyleSupport.brightenIcon(iconAnalyze.getImage(), s));
-        iconHawkeye.setImage(AppleStyleSupport.brightenIcon(iconHawkeye.getImage(), s));
-        iconSetMain.setImage(AppleStyleSupport.brightenIcon(iconSetMain.getImage(), s));
-        iconBackMain.setImage(AppleStyleSupport.brightenIcon(iconBackMain.getImage(), s));
-        iconChangeTurn.setImage(AppleStyleSupport.brightenIcon(iconChangeTurn.getImage(), s));
-        iconControlPanel.setImage(AppleStyleSupport.brightenIcon(iconControlPanel.getImage(), s));
-        iconMarkup1.setImage(AppleStyleSupport.brightenIcon(iconMarkup1.getImage(), s));
-        iconMarkup2.setImage(AppleStyleSupport.brightenIcon(iconMarkup2.getImage(), s));
-        markupLabel1.setImage(AppleStyleSupport.brightenIcon(markupLabel1.getImage(), s));
-        markupLabel2.setImage(AppleStyleSupport.brightenIcon(markupLabel2.getImage(), s));
-        markupLabelNum1.setImage(AppleStyleSupport.brightenIcon(markupLabelNum1.getImage(), s));
-        markupLabelNum2.setImage(AppleStyleSupport.brightenIcon(markupLabelNum2.getImage(), s));
-        markupX1.setImage(AppleStyleSupport.brightenIcon(markupX1.getImage(), s));
-        markupX2.setImage(AppleStyleSupport.brightenIcon(markupX2.getImage(), s));
-        markupCircle1.setImage(AppleStyleSupport.brightenIcon(markupCircle1.getImage(), s));
-        markupCircle2.setImage(AppleStyleSupport.brightenIcon(markupCircle2.getImage(), s));
-        markupSquare1.setImage(AppleStyleSupport.brightenIcon(markupSquare1.getImage(), s));
-        markupSquare2.setImage(AppleStyleSupport.brightenIcon(markupSquare2.getImage(), s));
-        markupsanjiao1.setImage(AppleStyleSupport.brightenIcon(markupsanjiao1.getImage(), s));
-        markupsanjiao2.setImage(AppleStyleSupport.brightenIcon(markupsanjiao2.getImage(), s));
-        eraser1.setImage(AppleStyleSupport.brightenIcon(eraser1.getImage(), s));
-        eraser2.setImage(AppleStyleSupport.brightenIcon(eraser2.getImage(), s));
-        clear.setImage(AppleStyleSupport.brightenIcon(clear.getImage(), s));
-        flash.setImage(AppleStyleSupport.brightenIcon(flash.getImage(), s));
-        drawPaint.setImage(AppleStyleSupport.brightenIcon(drawPaint.getImage(), s));
-        rankMarkOn.setImage(AppleStyleSupport.brightenIcon(rankMarkOn.getImage(), s));
-        rankMarkOff.setImage(AppleStyleSupport.brightenIcon(rankMarkOff.getImage(), s));
-      }
+      boolean brightenIcons = AppleStyleSupport.isAppleStyleEnabled();
+      int iconSize = Config.menuIconSize;
+      rankMarkOn = ToolbarIconCache.get("/assets/RankMarkOn.png", iconSize, brightenIcons);
+      rankMarkOff = ToolbarIconCache.get("/assets/RankMarkOff.png", iconSize, brightenIcons);
+      ImageIcon iconNewFile =
+          ToolbarIconCache.get("/assets/newFile.png", iconSize, brightenIcons);
+      ImageIcon iconOpen = ToolbarIconCache.get("/assets/open.png", iconSize, brightenIcons);
+      ImageIcon iconSave = ToolbarIconCache.get("/assets/save.png", iconSize, brightenIcons);
+      ImageIcon iconAnalyze = ToolbarIconCache.get("/assets/analyze.png", iconSize, brightenIcons);
+      ImageIcon iconHawkeye =
+          ToolbarIconCache.get("/assets/hawkeye2.png", iconSize, brightenIcons);
+      ImageIcon iconSetMain = ToolbarIconCache.get("/assets/setmain.png", iconSize, brightenIcons);
+      ImageIcon iconBackMain =
+          ToolbarIconCache.get("/assets/backmain.png", iconSize, brightenIcons);
+      ImageIcon iconChangeTurn = ToolbarIconCache.get("/assets/pass.png", iconSize, brightenIcons);
+      ImageIcon iconControlPanel =
+          ToolbarIconCache.get("/assets/control.png", iconSize, brightenIcons);
+      ImageIcon iconMarkup1 = ToolbarIconCache.get("/assets/mark1.png", iconSize, brightenIcons);
+      ImageIcon iconMarkup2 = ToolbarIconCache.get("/assets/mark2.png", iconSize, brightenIcons);
+      ImageIcon markupLabel1 = ToolbarIconCache.get("/assets/label.png", iconSize, brightenIcons);
+      ImageIcon markupLabel2 = ToolbarIconCache.get("/assets/label2.png", iconSize, brightenIcons);
+      ImageIcon markupLabelNum1 =
+          ToolbarIconCache.get("/assets/labelnum1.png", iconSize, brightenIcons);
+      ImageIcon markupLabelNum2 =
+          ToolbarIconCache.get("/assets/labelnum2.png", iconSize, brightenIcons);
+      ImageIcon markupCircle1 =
+          ToolbarIconCache.get("/assets/circle.png", iconSize, brightenIcons);
+      ImageIcon markupCircle2 =
+          ToolbarIconCache.get("/assets/circle2.png", iconSize, brightenIcons);
+      ImageIcon markupX1 = ToolbarIconCache.get("/assets/x.png", iconSize, brightenIcons);
+      ImageIcon markupX2 = ToolbarIconCache.get("/assets/x2.png", iconSize, brightenIcons);
+      ImageIcon markupSquare1 =
+          ToolbarIconCache.get("/assets/square.png", iconSize, brightenIcons);
+      ImageIcon markupSquare2 =
+          ToolbarIconCache.get("/assets/square2.png", iconSize, brightenIcons);
+      ImageIcon markupsanjiao1 =
+          ToolbarIconCache.get("/assets/sanjiao.png", iconSize, brightenIcons);
+      ImageIcon markupsanjiao2 =
+          ToolbarIconCache.get("/assets/sanjiao2.png", iconSize, brightenIcons);
+      ImageIcon eraser1 = ToolbarIconCache.get("/assets/eraser.png", iconSize, brightenIcons);
+      ImageIcon eraser2 = ToolbarIconCache.get("/assets/eraser2.png", iconSize, brightenIcons);
+      ImageIcon clear = ToolbarIconCache.get("/assets/clear.png", iconSize, brightenIcons);
+      ImageIcon drawPaint = ToolbarIconCache.get("/assets/paint.png", iconSize, brightenIcons);
+      ImageIcon flash = ToolbarIconCache.get("/assets/flash.png", iconSize, brightenIcons);
 
       JFontButton btnNewFile = new JFontButton(iconNewFile);
       btnNewFile.setFocusable(false);

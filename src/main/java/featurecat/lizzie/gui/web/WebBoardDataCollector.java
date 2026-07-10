@@ -303,7 +303,7 @@ public class WebBoardDataCollector {
       double winrate,
       double scoreMean,
       int playouts,
-      ArrayList<Double> estimateArray,
+      List<Double> estimateArray,
       int boardWidth,
       int boardHeight) {
     JSONObject obj = new JSONObject();
@@ -338,7 +338,7 @@ public class WebBoardDataCollector {
       double winrate,
       double scoreMean,
       int playouts,
-      ArrayList<Double> estimateArray) {
+      List<Double> estimateArray) {
     JSONObject obj = new JSONObject();
     obj.put("type", "full_state");
     obj.put("boardWidth", boardWidth);

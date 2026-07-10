@@ -50,8 +50,8 @@ public class FloatBoardRenderer {
   private int scaledMarginHeight, availableHeight, squareHeight;
   public Optional<Branch> branchOpt = Optional.empty();
   private List<MoveData> bestMoves = new ArrayList<MoveData>();
-  private ArrayList<Double> estimateArray;
-  private ArrayList<Double> preEstimateArray;
+  private List<Double> estimateArray;
+  private List<Double> preEstimateArray;
   private boolean estimateBlackToPlay;
   private MoveData mouseOverTemp = new MoveData();
   private BoardHistoryNode mouseOverTempNode;
@@ -505,7 +505,7 @@ public class FloatBoardRenderer {
   }
 
   public void drawKataEstimateByTransparent(
-      ArrayList<Double> estimateList, boolean blackToPlay, boolean fromRawNet) {
+      List<Double> estimateList, boolean blackToPlay, boolean fromRawNet) {
     BufferedImage newEstimateImage = new BufferedImage(boardWidth, boardHeight, TYPE_INT_ARGB);
     Graphics2D g = newEstimateImage.createGraphics();
     boolean showBigSize = shouldShowCountBlockBig();
@@ -593,7 +593,7 @@ public class FloatBoardRenderer {
     }
   }
 
-  public void drawKataEstimateBySize(ArrayList<Double> estimateList, boolean blackToPlay) {
+  public void drawKataEstimateBySize(List<Double> estimateList, boolean blackToPlay) {
     BufferedImage newEstimateImage = new BufferedImage(boardWidth, boardHeight, TYPE_INT_ARGB);
     Graphics2D g = newEstimateImage.createGraphics();
     for (int i = 0; i < estimateList.size(); i++) {
@@ -622,7 +622,7 @@ public class FloatBoardRenderer {
     g.dispose();
   }
 
-  public void drawEstimateImage(ArrayList<Double> tempcount) {
+  public void drawEstimateImage(List<Double> tempcount) {
     estimateImage = new BufferedImage(boardWidth, boardHeight, TYPE_INT_ARGB);
     Graphics2D g = estimateImage.createGraphics();
     for (int i = 0; i < tempcount.size(); i++) {
@@ -750,7 +750,7 @@ public class FloatBoardRenderer {
             && mouseOverTemp.coordinate.equals(suggestedMove.get().coordinate);
     mouseOverTemp = suggestedMove.get();
     if (Lizzie.config.useMovesOwnership) {
-      ArrayList<Double> array = mouseOverTemp.movesEstimateArray;
+      List<Double> array = mouseOverTemp.movesEstimateArray;
       if (array != null) estimateArray = array;
     }
     mouseOverTempNode = Lizzie.board.getHistory().getCurOrMainEnd(editMode);

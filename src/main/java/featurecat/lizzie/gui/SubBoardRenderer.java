@@ -50,8 +50,8 @@ public class SubBoardRenderer {
   private Branch branch;
   // private boolean oldBlackToPlay;
   private List<MoveData> bestMoves;
-  private ArrayList<Double> estimateArray;
-  private ArrayList<Double> preEstimateArray;
+  private List<Double> estimateArray;
+  private List<Double> preEstimateArray;
   public int bestmovesNum = 0;
 
   TexturePaint paint;
@@ -568,7 +568,7 @@ public class SubBoardRenderer {
   }
 
   public void drawKataEstimateByTransparent(
-      ArrayList<Double> estimateList, boolean reverse, boolean fromRawNet) {
+      List<Double> estimateList, boolean reverse, boolean fromRawNet) {
     BufferedImage newEstimateImage = new BufferedImage(boardWidth, boardHeight, TYPE_INT_ARGB);
     Graphics2D g = newEstimateImage.createGraphics();
     boolean blackToPlay = Lizzie.board.getHistory().isBlacksTurn();
@@ -650,7 +650,7 @@ public class SubBoardRenderer {
     }
   }
 
-  public void drawKataEstimateBySize(ArrayList<Double> estimateList, boolean reverse) {
+  public void drawKataEstimateBySize(List<Double> estimateList, boolean reverse) {
     BufferedImage newEstimateImage = new BufferedImage(boardWidth, boardHeight, TYPE_INT_ARGB);
     Graphics2D g = newEstimateImage.createGraphics();
     boolean blackToPlay = Lizzie.board.getHistory().isBlacksTurn();
@@ -885,7 +885,7 @@ public class SubBoardRenderer {
 
     Optional<MoveData> suggestedMove = getBestMove();
     if (Lizzie.config.useMovesOwnership) {
-      ArrayList<Double> array = getEstimateArray();
+      List<Double> array = getEstimateArray();
       if (array != null) estimateArray = array;
     }
     if (!suggestedMove.isPresent()) {
@@ -1014,7 +1014,7 @@ public class SubBoardRenderer {
     return Optional.empty();
   }
 
-  private ArrayList<Double> getEstimateArray() {
+  private List<Double> getEstimateArray() {
     if (!bestMoves.isEmpty()) {
       if (bestMoves.size() < subOrder + 1) return null;
       if (bestMoves.size() < this.bestmovesNum + 1) bestmovesNum = bestMoves.size() - 1;

@@ -65,10 +65,11 @@ public class BoardRenderer {
   private int scaledMarginHeight, availableHeight, squareHeight;
   public Optional<Branch> branchOpt = Optional.empty();
   private List<MoveData> bestMoves = new ArrayList<MoveData>();
+  private final Map<Font, Font[]> kerningFontCache = new HashMap<>();
   private long lastSuggestLogMs = 0;
   private long lastDrawCallLogMs = 0;
-  private ArrayList<Double> estimateArray;
-  private ArrayList<Double> preEstimateArray;
+  private List<Double> estimateArray;
+  private List<Double> preEstimateArray;
   private List<int[]> nextCoords;
   private MoveData mouseOverTemp = new MoveData();
   private BoardHistoryNode mouseOverTempNode;
@@ -92,6 +93,8 @@ public class BoardRenderer {
   boolean needDrawSelectImage = false;
   boolean needDrawSelectImageAll = false;
   private BufferedImage unImportantSugg = emptyImage;
+  private BufferedImage unImportantSuggBufferA;
+  private BufferedImage unImportantSuggBufferB;
   private boolean unImportantCleared = false;
   // private BufferedImage importantSugg = emptyImage;
   // private ArrayList<BufferedImage> cachedSelectImage = new ArrayList<BufferedImage>();
@@ -1170,7 +1173,7 @@ public class BoardRenderer {
   }
 
   public void drawKataEstimateByTransparent(
-      ArrayList<Double> estimateList, boolean reverse, boolean fromRawNet) {
+      List<Double> estimateList, boolean reverse, boolean fromRawNet) {
     BufferedImage newEstimateImage = new BufferedImage(boardWidth, boardHeight, TYPE_INT_ARGB);
     Graphics2D g = newEstimateImage.createGraphics();
     BoardData displayData = Lizzie.frame.getDisplayNode().getData();
@@ -1258,7 +1261,7 @@ public class BoardRenderer {
     }
   }
 
-  public void drawKataEstimateBySize(ArrayList<Double> estimateList, boolean reverse) {
+  public void drawKataEstimateBySize(List<Double> estimateList, boolean reverse) {
     BufferedImage newEstimateImage = new BufferedImage(boardWidth, boardHeight, TYPE_INT_ARGB);
     Graphics2D g = newEstimateImage.createGraphics();
     boolean blackToPlay = Lizzie.frame.getDisplayNode().getData().blackToPlay;
@@ -1289,7 +1292,7 @@ public class BoardRenderer {
     g.dispose();
   }
 
-  public void drawEstimateImage(ArrayList<Double> tempcount) {
+  public void drawEstimateImage(List<Double> tempcount) {
     estimateImage = new BufferedImage(boardWidth, boardHeight, TYPE_INT_ARGB);
     Graphics2D g = estimateImage.createGraphics();
     for (int i = 0; i < tempcount.size(); i++) {
@@ -1550,7 +1553,7 @@ public class BoardRenderer {
             && mouseOverTemp.coordinate.equals(suggestedMove.get().coordinate);
     mouseOverTemp = suggestedMove.get();
     if (Lizzie.config.useMovesOwnership) {
-      ArrayList<Double> array = mouseOverTemp.movesEstimateArray;
+      List<Double> array = mouseOverTemp.movesEstimateArray;
       if (array != null) estimateArray = array;
     }
     mouseOverTempNode = Lizzie.frame.getDisplayNode();
@@ -3256,7 +3259,7 @@ public class BoardRenderer {
 
   public void clearAfterMove() {
     if (!unImportantCleared) {
-      unImportantSugg = new BufferedImage(boardWidth, boardHeight, TYPE_INT_ARGB);
+      unImportantSugg = acquireUnimportantSuggestionBuffer();
       unImportantCleared = true;
     }
     nextMoveX = -2;
@@ -3267,8 +3270,13 @@ public class BoardRenderer {
   }
 
   private void drawLeelazSuggestionsUnimportant() {
-    BufferedImage newUnImportantSugg = new BufferedImage(boardWidth, boardHeight, TYPE_INT_ARGB);
-    hasDrawBackground = new boolean[Board.boardHeight * Board.boardWidth];
+    BufferedImage newUnImportantSugg = acquireUnimportantSuggestionBuffer();
+    int boardArea = Board.boardHeight * Board.boardWidth;
+    if (hasDrawBackground.length != boardArea) {
+      hasDrawBackground = new boolean[boardArea];
+    } else {
+      Arrays.fill(hasDrawBackground, false);
+    }
     Graphics2D g = newUnImportantSugg.createGraphics();
     g.setRenderingHint(KEY_ANTIALIASING, VALUE_ANTIALIAS_ON);
     int minAlpha = 32;
@@ -3373,6 +3381,25 @@ public class BoardRenderer {
     }
     if (!branchOpt.isPresent()) unImportantSugg = newUnImportantSugg;
     g.dispose();
+  }
+
+  private BufferedImage acquireUnimportantSuggestionBuffer() {
+    boolean intoA = unImportantSugg != unImportantSuggBufferA || unImportantSuggBufferA == null;
+    BufferedImage buffer = intoA ? unImportantSuggBufferA : unImportantSuggBufferB;
+    if (buffer == null || buffer.getWidth() != boardWidth || buffer.getHeight() != boardHeight) {
+      buffer = new BufferedImage(boardWidth, boardHeight, TYPE_INT_ARGB);
+      if (intoA) {
+        unImportantSuggBufferA = buffer;
+      } else {
+        unImportantSuggBufferB = buffer;
+      }
+    } else {
+      Graphics2D graphics = buffer.createGraphics();
+      graphics.setComposite(AlphaComposite.Clear);
+      graphics.fillRect(0, 0, boardWidth, boardHeight);
+      graphics.dispose();
+    }
+    return buffer;
   }
 
   private void drawNextMoves(Graphics2D g) {
@@ -4185,10 +4212,12 @@ public class BoardRenderer {
   public void drawTextureImage(
       Graphics2D g, BufferedImage img, int x, int y, int width, int height, boolean createPaint) {
     if (createPaint) {
-      paint = new TexturePaint(img, new Rectangle(0, 0, img.getWidth(), img.getHeight()));
+      if (paint == null || paint.getImage() != img) {
+        paint = new TexturePaint(img, new Rectangle(0, 0, img.getWidth(), img.getHeight()));
+      }
       g.setPaint(paint);
     } else g.setPaint(new TexturePaint(img, new Rectangle(0, 0, img.getWidth(), img.getHeight())));
-    g.fill(new Rectangle(x, y, width, height));
+    g.fillRect(x, y, width, height);
   }
 
   private void drawCoverTextureImage(
@@ -4500,10 +4529,17 @@ public class BoardRenderer {
    * @return a font with kerning enabled
    */
   private Font makeFont(Font fontBase, int style) {
-    Font font = fontBase.deriveFont(style, 100);
-    Map<TextAttribute, Object> atts = new HashMap<>();
-    atts.put(TextAttribute.KERNING, TextAttribute.KERNING_ON);
-    return font.deriveFont(atts);
+    Font[] styles = kerningFontCache.computeIfAbsent(fontBase, ignored -> new Font[4]);
+    int styleIndex = style & 3;
+    Font cached = styles[styleIndex];
+    if (cached == null) {
+      Font font = fontBase.deriveFont(style, 100);
+      Map<TextAttribute, Object> attributes = new HashMap<>();
+      attributes.put(TextAttribute.KERNING, TextAttribute.KERNING_ON);
+      cached = font.deriveFont(attributes);
+      styles[styleIndex] = cached;
+    }
+    return cached;
   }
 
   private int[] calculatePixelMargins(boolean isBigMargin) {
