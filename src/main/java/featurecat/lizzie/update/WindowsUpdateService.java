@@ -1,6 +1,7 @@
 package featurecat.lizzie.update;
 
 import featurecat.lizzie.Lizzie;
+import featurecat.lizzie.util.NetworkProxy;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -51,7 +52,7 @@ public final class WindowsUpdateService {
     String manifestUrl = System.getProperty(MANIFEST_URL_PROPERTY, DEFAULT_MANIFEST_URL);
     HttpURLConnection conn = null;
     try {
-      conn = (HttpURLConnection) URI.create(manifestUrl).toURL().openConnection();
+      conn = (HttpURLConnection) NetworkProxy.openConnection(URI.create(manifestUrl).toURL());
       conn.setConnectTimeout(CONNECT_TIMEOUT_MS);
       conn.setReadTimeout(READ_TIMEOUT_MS);
       conn.setRequestProperty("Accept", "application/json");
@@ -186,7 +187,8 @@ public final class WindowsUpdateService {
     Files.deleteIfExists(part);
     HttpURLConnection conn = null;
     try {
-      conn = (HttpURLConnection) URI.create(component.downloadUrl).toURL().openConnection();
+      conn =
+          (HttpURLConnection) NetworkProxy.openConnection(URI.create(component.downloadUrl).toURL());
       conn.setConnectTimeout(CONNECT_TIMEOUT_MS);
       conn.setReadTimeout(READ_TIMEOUT_MS);
       conn.setRequestProperty("User-Agent", "LizzieYzy-Next-Updater");

@@ -3030,7 +3030,7 @@ public final class KataGoRuntimeHelper {
     long startedAt = System.nanoTime();
     long bytesRead = 0L;
     try {
-      conn = (HttpURLConnection) URI.create(probeUrl).toURL().openConnection();
+      conn = (HttpURLConnection) NetworkProxy.openConnection(URI.create(probeUrl).toURL());
       session.attach(conn);
       session.throwIfCancelled();
       conn.setInstanceFollowRedirects(true);
@@ -3256,7 +3256,7 @@ public final class KataGoRuntimeHelper {
         session.throwIfCancelled();
         long existingBytes = resumeBytes;
         boolean appendToPartial = existingBytes > 0;
-        conn = URI.create(spec.url).toURL().openConnection();
+        conn = NetworkProxy.openConnection(URI.create(spec.url).toURL());
         conn.setConnectTimeout(15000);
         conn.setReadTimeout(30000);
         conn.setRequestProperty("User-Agent", USER_AGENT);
@@ -3621,7 +3621,7 @@ public final class KataGoRuntimeHelper {
   private static String httpGet(String url) throws IOException {
     HttpURLConnection conn = null;
     try {
-      conn = (HttpURLConnection) URI.create(url).toURL().openConnection();
+      conn = (HttpURLConnection) NetworkProxy.openConnection(URI.create(url).toURL());
       conn.setInstanceFollowRedirects(true);
       conn.setRequestMethod("GET");
       conn.setConnectTimeout(15000);

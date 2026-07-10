@@ -4,6 +4,7 @@ import featurecat.lizzie.analysis.EngineManager;
 import featurecat.lizzie.gui.LizzieFrame;
 import featurecat.lizzie.theme.Theme;
 import featurecat.lizzie.util.AnalysisEngineCommandHelper;
+import featurecat.lizzie.util.NetworkProxy;
 import featurecat.lizzie.util.Utils;
 import java.awt.Color;
 import java.awt.Frame;
@@ -2844,6 +2845,9 @@ public class Config {
     ui.put("confirm-exit", false);
     ui.put("resume-previous-game", false);
     ui.put("autosave-interval-seconds", -1);
+    ui.put("network-proxy-mode", NetworkProxy.DEFAULT_MODE);
+    ui.put("network-proxy-host", "127.0.0.1");
+    ui.put("network-proxy-port", 7897);
     ui.put("handicap-instead-of-winrate", false);
     ui.put("board-size", 19);
     ui.put("show-dynamic-komi", false);

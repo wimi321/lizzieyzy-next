@@ -21,6 +21,7 @@ import featurecat.lizzie.util.KataGoAutoSetupHelper;
 import featurecat.lizzie.util.KataGoAutoSetupHelper.SetupSnapshot;
 import featurecat.lizzie.util.KataGoRuntimeHelper;
 import featurecat.lizzie.util.MultiOutputStream;
+import featurecat.lizzie.util.NetworkProxy;
 import featurecat.lizzie.util.Utils;
 import java.awt.Font;
 import java.awt.GraphicsEnvironment;
@@ -103,6 +104,7 @@ public class Lizzie {
     }
     ensureWritableWorkingDir();
     config = new Config();
+    NetworkProxy.installSystemProxyPropertyFromSavedConfig();
     Utils.applyMaintainedDefaultSettings();
     if (config.logConsoleToFile) {
       PrintStream oldPrintStream = System.out;

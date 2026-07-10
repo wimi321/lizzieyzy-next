@@ -1,10 +1,10 @@
 package featurecat.lizzie.analysis;
 
 import featurecat.lizzie.gui.TencentKifuDownload;
+import featurecat.lizzie.util.NetworkProxy;
 import featurecat.lizzie.util.Utils;
 import java.io.IOException;
 import java.io.InputStream;
-import java.net.Proxy;
 import java.net.URI;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
@@ -150,7 +150,7 @@ public class GetTencentRequest {
     for (int attempt = 1; attempt <= HTTP_MAX_RETRIES; attempt++) {
       java.net.HttpURLConnection conn = null;
       try {
-        conn = (java.net.HttpURLConnection) URI.create(url).toURL().openConnection(Proxy.NO_PROXY);
+        conn = (java.net.HttpURLConnection) NetworkProxy.openConnection(URI.create(url).toURL());
         conn.setRequestMethod("GET");
         conn.setConnectTimeout(HTTP_CONNECT_TIMEOUT_MS);
         conn.setReadTimeout(HTTP_READ_TIMEOUT_MS);

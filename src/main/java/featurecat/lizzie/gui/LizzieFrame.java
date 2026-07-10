@@ -17034,7 +17034,13 @@ public class LizzieFrame extends JFrame {
   }
 
   public void openRemoteComputeCenter() {
-    RemoteComputeDialog dialog = new RemoteComputeDialog(this);
+    RemoteComputeDialog dialog;
+    try {
+      dialog = new RemoteComputeDialog(this);
+    } catch (IOException e) {
+      JOptionPane.showMessageDialog(this, e.getMessage(), "网络代理设置", JOptionPane.WARNING_MESSAGE);
+      return;
+    }
     dialog.setVisible(true);
     dialog.toFront();
   }

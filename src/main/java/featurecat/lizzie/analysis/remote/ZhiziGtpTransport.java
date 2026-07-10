@@ -1,5 +1,6 @@
 package featurecat.lizzie.analysis.remote;
 
+import featurecat.lizzie.util.NetworkProxy;
 import io.socket.client.IO;
 import io.socket.client.Manager;
 import io.socket.client.Socket;
@@ -101,7 +102,7 @@ public class ZhiziGtpTransport implements EngineTransport {
               .setReconnectionDelayMax(8000)
               .setTimeout(30000)
               .build();
-      socketHttpClient = new OkHttpClient();
+      socketHttpClient = NetworkProxy.configure(new OkHttpClient.Builder()).build();
       options.callFactory = socketHttpClient;
       options.webSocketFactory = socketHttpClient;
       socket = IO.socket(socketToken.socketIOURL, options);

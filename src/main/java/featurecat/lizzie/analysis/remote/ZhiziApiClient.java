@@ -1,5 +1,6 @@
 package featurecat.lizzie.analysis.remote;
 
+import featurecat.lizzie.util.NetworkProxy;
 import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -16,8 +17,10 @@ public class ZhiziApiClient {
   private final URI baseUri;
   private final HttpClient httpClient;
 
-  public ZhiziApiClient() {
-    this(DEFAULT_BASE_URI, HttpClient.newBuilder().connectTimeout(REQUEST_TIMEOUT).build());
+  public ZhiziApiClient() throws IOException {
+    this(
+        DEFAULT_BASE_URI,
+        NetworkProxy.configure(HttpClient.newBuilder()).connectTimeout(REQUEST_TIMEOUT).build());
   }
 
   public ZhiziApiClient(URI baseUri, HttpClient httpClient) {

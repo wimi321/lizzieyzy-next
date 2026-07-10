@@ -1,12 +1,12 @@
 package featurecat.lizzie.gui;
 
+import featurecat.lizzie.util.NetworkProxy;
 import featurecat.lizzie.util.Utils;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
-import java.net.Proxy;
 import java.net.URI;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
@@ -49,7 +49,7 @@ public class YikeApiClient {
 
   public String fetch(String url) throws IOException {
     HttpURLConnection connection =
-        (HttpURLConnection) URI.create(url).toURL().openConnection(Proxy.NO_PROXY);
+        (HttpURLConnection) NetworkProxy.openConnection(URI.create(url).toURL());
     connection.setConnectTimeout(HTTP_TIMEOUT_MS);
     connection.setReadTimeout(HTTP_TIMEOUT_MS);
     connection.setRequestMethod("GET");
