@@ -71,15 +71,14 @@ jobs:
             "dist/macos/app-image/LizzieYzy Next.app/Contents/app/LizzieYzy Next.cfg"
           grep -q -- "java-options=-Xshare:auto" \
             "dist/macos/app-image/LizzieYzy Next.app/Contents/app/LizzieYzy Next.cfg"
-          grep -q -- "SharedArchiveFile" \
+          ! grep -q -- "SharedArchiveFile" \
             "dist/macos/app-image/LizzieYzy Next.app/Contents/app/LizzieYzy Next.cfg"
-          test -f "dist/macos/app-image/LizzieYzy Next.app/Contents/app/lizzieyzy-next-cds.jsa"
+          test ! -f "dist/macos/app-image/LizzieYzy Next.app/Contents/app/lizzieyzy-next-cds.jsa"
           grep -q -- "Release display version: ${{ inputs.release_tag }}" \
             "dist/release-meta/${{ inputs.date_tag }}-mac-apple-silicon-install.txt"
           test -f "dist/release-meta/${{ inputs.date_tag }}-mac-apple-silicon-runtime.json"
-          test -f "dist/release-meta/${{ inputs.date_tag }}-mac-apple-silicon-appcds.json"
           grep -q '"optimized": true' "dist/release-meta/${{ inputs.date_tag }}-mac-apple-silicon-runtime.json"
-          grep -q '"created": true' "dist/release-meta/${{ inputs.date_tag }}-mac-apple-silicon-appcds.json"
+          grep -q '"created": true' "dist/release-meta/${{ inputs.date_tag }}-mac-apple-silicon-runtime.json"
 
       - name: Sign and notarize (if Apple Developer credentials configured)
         env:

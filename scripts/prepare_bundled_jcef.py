@@ -20,6 +20,7 @@ import zipfile
 JCEF_RELEASE_TAG = "jcef-99c2f7a+cef-127.3.1+g6cbb30e+chromium-127.0.6533.100"
 MAVEN_BASE_URL = "https://repo.maven.apache.org/maven2/me/friwi"
 MANIFEST_NAME = "lizzieyzy-next-jcef-manifest.txt"
+SUPPORTED_WINDOWS_LOCALES = {"en-US.pak", "zh-CN.pak", "zh-TW.pak", "ja.pak", "ko.pak"}
 
 PLATFORM_PACKAGES = {
     "windows-amd64": {
@@ -167,7 +168,38 @@ def validate_bundle(output_dir: Path, platform: str) -> None:
         )
 
 
-def write_manifest(output_dir: Path, platform: str, jar_path: Path, source: str) -> None:
+def trim_optional_locales(output_dir: Path, platform: str) -> dict[str, int]:
+    if platform != "windows-amd64":
+        return {"removedFiles": 0, "removedBytes": 0, "retainedFiles": 0}
+    locales_dir = output_dir / "locales"
+    if not locales_dir.is_dir():
+        return {"removedFiles": 0, "removedBytes": 0, "retainedFiles": 0}
+
+    removed_files = 0
+    removed_bytes = 0
+    retained_files = 0
+    for path in sorted(locales_dir.iterdir()):
+        if not path.is_file() or path.name in SUPPORTED_WINDOWS_LOCALES:
+            if path.is_file():
+                retained_files += 1
+            continue
+        removed_bytes += path.stat().st_size
+        removed_files += 1
+        path.unlink()
+    return {
+        "removedFiles": removed_files,
+        "removedBytes": removed_bytes,
+        "retainedFiles": retained_files,
+    }
+
+
+def write_manifest(
+    output_dir: Path,
+    platform: str,
+    jar_path: Path,
+    source: str,
+    locale_stats: dict[str, int],
+) -> None:
     artifact = PLATFORM_PACKAGES[platform]["artifact"]
     lines = [
         f"release-tag={JCEF_RELEASE_TAG}",
@@ -177,6 +209,9 @@ def write_manifest(output_dir: Path, platform: str, jar_path: Path, source: str)
         f"source={source}",
         f"cached-jar={jar_path}",
         "install-lock=present",
+        "retained-locales=" + ",".join(sorted(SUPPORTED_WINDOWS_LOCALES)),
+        f"removed-locale-files={locale_stats['removedFiles']}",
+        f"removed-locale-bytes={locale_stats['removedBytes']}",
     ]
     (output_dir / MANIFEST_NAME).write_text("\n".join(lines) + "\n", encoding="utf-8")
 
@@ -189,8 +224,9 @@ def main() -> int:
     jar_path, source = resolve_native_jar(args.platform, cache_dir, args.source_jar)
     extract_bundle(jar_path, output_dir)
     (output_dir / "install.lock").touch()
+    locale_stats = trim_optional_locales(output_dir, args.platform)
     validate_bundle(output_dir, args.platform)
-    write_manifest(output_dir, args.platform, jar_path, source)
+    write_manifest(output_dir, args.platform, jar_path, source, locale_stats)
     print(f"Prepared JCEF {JCEF_RELEASE_TAG} [{args.platform}] in {output_dir}")
     return 0
 

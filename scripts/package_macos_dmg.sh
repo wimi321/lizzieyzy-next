@@ -119,19 +119,6 @@ prepare_custom_runtime() {
   fi
 }
 
-generate_app_cds_archive() {
-  if [[ "${LIZZIE_PACKAGE_APPCDS:-1}" != "1" ]]; then
-    return 0
-  fi
-  resolve_python_bin
-  "$PYTHON_BIN" "$RUNTIME_TOOLS_SCRIPT" generate-app-cds \
-    --runtime "$APP_IMAGE_DIR/$APP_NAME.app/Contents/runtime" \
-    --app-dir "$APP_IMAGE_DIR/$APP_NAME.app/Contents/app" \
-    --archive "$APP_IMAGE_DIR/$APP_NAME.app/Contents/app/lizzieyzy-next-cds.jsa" \
-    --manifest "$META_DIR/${DATE_TAG}-${PUBLIC_ARCH_TAG}-appcds.json" \
-    --optional
-}
-
 cp "$JAR_PATH" "$INPUT_DIR/"
 cp README.md README_EN.md README_JA.md README_KO.md LICENSE.txt packaging/PROJECT_INFO.txt "$INPUT_DIR/"
 cp readme_cn.pdf readme_en.pdf "$INPUT_DIR/"
@@ -160,10 +147,7 @@ jpackage \
   "${JPACKAGE_RUNTIME_ARGS[@]}" \
   --java-options "-Xmx4096m" \
   --java-options "-Xshare:auto" \
-  --java-options '-XX:SharedArchiveFile=$APPDIR/lizzieyzy-next-cds.jsa' \
   --java-options "-Dlizzie.next.version=$APP_DISPLAY_VERSION"
-
-generate_app_cds_archive
 
 FINAL_DMG="$ROOT_DIR/dist/release/${DATE_TAG}-${PUBLIC_ARCH_TAG}.${PACKAGE_FLAVOR}.dmg"
 INSTALL_NOTE="$META_DIR/${DATE_TAG}-${PUBLIC_ARCH_TAG}-install.txt"

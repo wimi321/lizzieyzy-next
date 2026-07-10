@@ -1020,7 +1020,7 @@ public class Leelaz {
         } else {
           this.bestMoves = parseInfo(line.substring(5));
         }
-        Lizzie.frame.refresh(1);
+        Lizzie.frame.requestAnalysisRefresh();
       }
       return;
     } else if (Lizzie.gtpConsole.isVisible() || Lizzie.config.alwaysGtp || !this.isLoaded)
@@ -1510,9 +1510,6 @@ public class Leelaz {
           // Clear switching prompt
           // switching = false;
 
-          // Display engine command in the title
-          Lizzie.frame.updateTitle();
-
           // This should not be stale data when the command number match
           if (isKatago) {
             this.bestMoves = parseInfoKatago(line.substring(5));
@@ -1537,8 +1534,11 @@ public class Leelaz {
               }
             }
           }
-          if (!EngineManager.isEngineGame || (!played && this == Lizzie.leelaz))
-            Lizzie.frame.refresh(1);
+          if (!EngineManager.isEngineGame || (!played && this == Lizzie.leelaz)) {
+            Lizzie.frame.requestAnalysisRefresh();
+          } else {
+            Lizzie.frame.requestAnalysisTitleUpdate();
+          }
           // don't follow the maxAnalyzeTime rule if we are in game
           if (!Lizzie.frame.isPlayingAgainstLeelaz
               && !Lizzie.frame.isAnaPlayingAgainstLeelaz
@@ -2612,8 +2612,7 @@ public class Leelaz {
                 .tryToSetBestMoves(bestMoves, bestMovesEnginename, true, currentTotalPlayouts);
         }
         leela0110UpdatePonder();
-        Lizzie.frame.refresh(1);
-        Lizzie.frame.updateTitle();
+        Lizzie.frame.requestAnalysisRefresh();
         if (!this.bestMoves.isEmpty()) {
           notifyAutoPK(false);
           notifyAutoPlay(false);

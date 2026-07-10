@@ -26,8 +26,6 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Stack;
 import java.util.function.BiConsumer;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import javax.swing.*;
@@ -162,39 +160,120 @@ public class Board {
   }
 
   public static Optional<int[]> asCoordinates(String namedCoordinate, int boardHeight) {
-    namedCoordinate = namedCoordinate.trim();
-    if (namedCoordinate.equalsIgnoreCase("pass") || namedCoordinate.equalsIgnoreCase("resign")) {
+    if (namedCoordinate == null) {
       return Optional.empty();
     }
-    // coordinates take the form C16 A19 Q5 K10 etc. I is not used.
-    String reg = "([A-HJ-Z]+)(\\d+)";
-    Pattern p = Pattern.compile(reg);
-    Matcher m = p.matcher(namedCoordinate);
-    if (m.find() && m.groupCount() == 2) {
-      String xCoords = m.group(1);
-      int x =
-          xCoords.length() == 2
-              ? (asDigit(xCoords.substring(0, 1)) + 1) * 25 + asDigit(xCoords.substring(1, 2))
-              : asDigit(xCoords);
-      int y = boardHeight - Integer.parseInt(m.group(2));
-      if (y < 0)
-        for (int i = 1; i < m.group(2).length(); i++) {
-          y = boardHeight - Integer.parseInt(m.group(2).substring(0, m.group(2).length() - i));
-          if (y >= 0) break;
+    int start = 0;
+    int end = namedCoordinate.length();
+    while (start < end && Character.isWhitespace(namedCoordinate.charAt(start))) {
+      start++;
+    }
+    while (end > start && Character.isWhitespace(namedCoordinate.charAt(end - 1))) {
+      end--;
+    }
+    if (regionEqualsIgnoreCase(namedCoordinate, start, end, "pass")
+        || regionEqualsIgnoreCase(namedCoordinate, start, end, "resign")) {
+      return Optional.empty();
+    }
+
+    if (end - start >= 5 && namedCoordinate.charAt(start) == '(' && namedCoordinate.charAt(end - 1) == ')') {
+      int comma = namedCoordinate.indexOf(',', start + 1);
+      if (comma > start + 1 && comma < end - 2) {
+        try {
+          int x = parsePositiveInt(namedCoordinate, start + 1, comma);
+          int y = parsePositiveInt(namedCoordinate, comma + 1, end - 1);
+          return Optional.of(new int[] {x, y});
+        } catch (NumberFormatException ignored) {
+          return Optional.empty();
         }
-      return Optional.of(new int[] {x, y});
-    } else {
-      reg = "\\(([\\d]+),([\\d]+)\\)";
-      p = Pattern.compile(reg);
-      m = p.matcher(namedCoordinate);
-      if (m.find() && m.groupCount() == 2) {
-        int x = Integer.parseInt(m.group(1));
-        int y = Integer.parseInt(m.group(2)); // boardHeight - Integer.parseInt(m.group(2)) - 1;
-        return Optional.of(new int[] {x, y});
-      } else {
+      }
+      return Optional.empty();
+    }
+
+    int letterEnd = start;
+    while (letterEnd < end && isGtpColumnLetter(namedCoordinate.charAt(letterEnd))) {
+      letterEnd++;
+    }
+    if (letterEnd == start || letterEnd == end) {
+      return Optional.empty();
+    }
+    for (int i = letterEnd; i < end; i++) {
+      if (!Character.isDigit(namedCoordinate.charAt(i))) {
         return Optional.empty();
       }
     }
+
+    int x;
+    try {
+      x = parseGtpColumn(namedCoordinate, start, letterEnd);
+    } catch (NumberFormatException ignored) {
+      return Optional.empty();
+    }
+
+    int rowEnd = end;
+    int row;
+    try {
+      row = parsePositiveInt(namedCoordinate, letterEnd, rowEnd);
+      while (row > boardHeight && rowEnd - letterEnd > 1) {
+        rowEnd--;
+        row = parsePositiveInt(namedCoordinate, letterEnd, rowEnd);
+      }
+    } catch (NumberFormatException ignored) {
+      return Optional.empty();
+    }
+    return Optional.of(new int[] {x, boardHeight - row});
+  }
+
+  private static boolean regionEqualsIgnoreCase(
+      String value, int start, int end, String expected) {
+    return end - start == expected.length()
+        && value.regionMatches(true, start, expected, 0, expected.length());
+  }
+
+  private static boolean isGtpColumnLetter(char value) {
+    char upper = Character.toUpperCase(value);
+    return upper >= 'A' && upper <= 'Z' && upper != 'I';
+  }
+
+  private static int gtpColumnDigit(char value) {
+    return alphabet.indexOf(Character.toUpperCase(value));
+  }
+
+  private static int parseGtpColumn(String value, int start, int end) {
+    int length = end - start;
+    if (length == 2) {
+      int first = gtpColumnDigit(value.charAt(start));
+      int second = gtpColumnDigit(value.charAt(start + 1));
+      return Math.addExact(Math.multiplyExact(first + 1, alphabet.length()), second);
+    }
+    int result = 0;
+    for (int i = start; i < end; i++) {
+      int digit = gtpColumnDigit(value.charAt(i));
+      if (result > (Integer.MAX_VALUE - digit) / alphabet.length()) {
+        throw new NumberFormatException("coordinate column overflow");
+      }
+      result = result * alphabet.length() + digit;
+    }
+    return result;
+  }
+
+  private static int parsePositiveInt(String value, int start, int end) {
+    if (start >= end) {
+      throw new NumberFormatException("empty integer");
+    }
+    int result = 0;
+    for (int i = start; i < end; i++) {
+      char digit = value.charAt(i);
+      if (digit < '0' || digit > '9') {
+        throw new NumberFormatException("invalid integer");
+      }
+      int numericDigit = digit - '0';
+      if (result > (Integer.MAX_VALUE - numericDigit) / 10) {
+        throw new NumberFormatException("integer overflow");
+      }
+      result = result * 10 + numericDigit;
+    }
+    return result;
   }
 
   public static int asDigit(String name) {

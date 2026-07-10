@@ -151,11 +151,10 @@ class ScoreResultHandicapHistoryActionTest {
       double komi) {
     try {
       result.setScore(args0, args1, args2, args3, args4, args5, komi);
-    } catch (NullPointerException ignored) {
+    } catch (NullPointerException | java.awt.HeadlessException ignored) {
       // ScoreResult.setScore tail-calls relayoutAfterTextChange() which touches
-      // AWT internals not initialized by Unsafe.allocateInstance. The score text
-      // fields are populated before the AWT call, so the NPE is harmless for
-      // these unit tests.
+      // AWT internals not initialized by Unsafe.allocateInstance or unavailable
+      // on a headless CI host. Score fields are populated before that call.
     }
   }
 

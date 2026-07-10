@@ -361,27 +361,6 @@ jpackage_runtime_args() {
   fi
 }
 
-generate_app_cds_archive() {
-  local runtime_dir="$1"
-  local app_dir="$2"
-  local archive_path="$3"
-  local manifest_path="$4"
-  if [[ "${LIZZIE_PACKAGE_APPCDS:-1}" != "1" ]]; then
-    return 0
-  fi
-  if [[ ! -d "$runtime_dir" ]]; then
-    return 0
-  fi
-  resolve_python_bin
-  "$PYTHON_BIN" "$RUNTIME_TOOLS_SCRIPT" generate-app-cds \
-    --runtime "$runtime_dir" \
-    --app-dir "$app_dir" \
-    --archive "$archive_path" \
-    --manifest "$manifest_path" \
-    --optional \
-    >&2
-}
-
 derive_windows_app_version() {
   local date_tag="$1"
   local build_serial="${WINDOWS_BUILD_SERIAL:-0}"
@@ -689,17 +668,11 @@ build_app_image() {
     "${runtime_args[@]}" \
     --java-options "-Xmx4096m" \
     --java-options "-Xshare:auto" \
-    --java-options '-XX:SharedArchiveFile=$APPDIR/lizzieyzy-next-cds.jsa' \
     --java-options "-Dlizzie.next.version=$APP_DISPLAY_VERSION" >&2
   if [[ ! -f "$app_image_dir/$app_name/runtime/bin/java.exe" ]]; then
     echo "Packaged Windows runtime is missing runtime/bin/java.exe: $app_image_dir/$app_name" >&2
     return 1
   fi
-  generate_app_cds_archive \
-    "$app_image_dir/$app_name/runtime" \
-    "$app_image_dir/$app_name/app" \
-    "$app_image_dir/$app_name/app/lizzieyzy-next-cds.jsa" \
-    "$META_DIR/${DATE_TAG}-${ARCH_TAG}-${flavor}-app-image-appcds.json"
   log_step "Finished Windows app image: $app_name [$flavor]"
 
   printf '%s\n' "$app_image_dir/$app_name"
@@ -727,14 +700,6 @@ build_installer() {
     fi
   fi
   write_installed_update_manifest "$input_dir" "$flavor"
-  if [[ -d "$CUSTOM_RUNTIME_DIR" ]]; then
-    generate_app_cds_archive \
-      "$CUSTOM_RUNTIME_DIR" \
-      "$input_dir" \
-      "$input_dir/lizzieyzy-next-cds.jsa" \
-      "$META_DIR/${DATE_TAG}-${ARCH_TAG}-${flavor}-installer-appcds.json"
-  fi
-
   log_step "Building Windows installer: $app_name [$flavor]"
   local runtime_args=()
   while IFS= read -r -d '' arg; do
@@ -758,7 +723,6 @@ build_installer() {
     "${runtime_args[@]}" \
     --java-options "-Xmx4096m" \
     --java-options "-Xshare:auto" \
-    --java-options '-XX:SharedArchiveFile=$APPDIR/lizzieyzy-next-cds.jsa' \
     --java-options "-Dlizzie.next.version=$APP_DISPLAY_VERSION" >&2
   log_step "Finished Windows installer: $app_name [$flavor]"
 
@@ -1105,7 +1069,6 @@ create_core_update_asset() {
 
   rm -rf "$core_dir" "$core_zip"
   mkdir -p "$core_dir/app"
-  cp "$JAR_PATH" "$core_dir/lizzieyzy-next-core.jar"
   cp "$JAR_PATH" "$core_dir/app/$MAIN_JAR"
   shopt -s nullglob
   for launcher_cfg in "$DIST_DIR"/app-image-*/*/app/*.cfg; do
@@ -1129,7 +1092,6 @@ Date: $DATE_TAG
 - 关闭 LizzieYzy Next 后，把这个 zip 解压到旧的免安装目录里覆盖。
 - 目标目录应该是包含 "LizzieYzy Next*.exe" 和 "app" 文件夹的目录。
 - 解压时允许覆盖 app/$MAIN_JAR 和 app/LizzieYzy Next*.cfg。
-- 根目录里的 lizzieyzy-next-core.jar 是软件内自动更新器使用的副本，手动覆盖时可以忽略。
 
 这个包只更新 LizzieYzy Next 主程序核心和启动器配置。
 启动器配置用于同步标题栏版本号和必要 JVM 参数；不会改变你的引擎、权重或用户数据。
@@ -1141,7 +1103,6 @@ Manual update:
 - Close LizzieYzy Next, then extract this zip into the existing portable app folder.
 - The target folder should contain "LizzieYzy Next*.exe" and an "app" folder.
 - Allow overwriting app/$MAIN_JAR and app/LizzieYzy Next*.cfg.
-- The root lizzieyzy-next-core.jar is for the in-app updater and can be ignored during manual extraction.
 
 This package updates the application core and launcher configuration only.
 The launcher configuration keeps the title-bar version and required JVM options in sync.
@@ -1175,14 +1136,8 @@ def sha256(path):
 jar_sha256 = sha256(jar)
 files = [
     {
-        "path": "lizzieyzy-next-core.jar",
-        "purpose": "in-app-updater-source",
-        "sizeBytes": jar.stat().st_size,
-        "sha256": jar_sha256,
-    },
-    {
         "path": f"app/{main_jar}",
-        "purpose": "manual-overlay-target",
+        "purpose": "in-app-updater-and-manual-overlay-target",
         "sizeBytes": jar.stat().st_size,
         "sha256": jar_sha256,
     },

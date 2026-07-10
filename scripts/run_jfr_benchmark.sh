@@ -22,6 +22,11 @@ timestamp="$(date -u '+%Y%m%dT%H%M%SZ')"
 jfr_file="$OUT_DIR/${timestamp}-${SCENARIO}.jfr"
 log_file="$OUT_DIR/${timestamp}-${SCENARIO}.log"
 summary_file="$OUT_DIR/${timestamp}-${SCENARIO}.summary.txt"
+analysis_file="$OUT_DIR/${timestamp}-${SCENARIO}.analysis.md"
+analysis_json="$OUT_DIR/${timestamp}-${SCENARIO}.analysis.json"
+metrics_json="$OUT_DIR/${timestamp}-${SCENARIO}.metrics.json"
+peak_rss_file="$OUT_DIR/${timestamp}-${SCENARIO}.peak-rss-kib"
+read -r -a extra_java_options <<< "${JAVA_OPTIONS:-}"
 
 cat >"$summary_file" <<EOF
 LizzieYzy Next JFR benchmark
@@ -50,11 +55,25 @@ PY
 )"
 
 "$JAVA_CMD" \
+  "${extra_java_options[@]}" \
   -XX:StartFlightRecording=name="$JFR_NAME",settings=profile,dumponexit=true,filename="$jfr_file" \
   -Dlizzie.next.version="perf-$SCENARIO" \
   -jar "$JAR_PATH" \
   >"$log_file" 2>&1 &
 app_pid=$!
+
+(
+  peak=0
+  while kill -0 "$app_pid" >/dev/null 2>&1; do
+    rss="$(ps -o rss= -p "$app_pid" 2>/dev/null | tr -d ' ' || true)"
+    if [[ "$rss" =~ ^[0-9]+$ ]] && (( rss > peak )); then
+      peak="$rss"
+    fi
+    sleep 0.2
+  done
+  printf '%s\n' "$peak" >"$peak_rss_file"
+) &
+rss_monitor_pid=$!
 
 sleep "$DURATION_SECONDS"
 
@@ -70,6 +89,7 @@ if kill -0 "$app_pid" >/dev/null 2>&1; then
   kill -9 "$app_pid" >/dev/null 2>&1 || true
 fi
 wait "$app_pid" >/dev/null 2>&1 || true
+wait "$rss_monitor_pid" >/dev/null 2>&1 || true
 
 end_ms="$(python3 - <<'PY'
 import time
@@ -91,5 +111,41 @@ PY
   tail -n 40 "$log_file" || true
 } >>"$summary_file"
 
+if command -v jfr >/dev/null 2>&1 && [[ -f "$jfr_file" ]]; then
+  python3 scripts/summarize_jfr.py \
+    --jfr "$jfr_file" \
+    --output "$analysis_file" \
+    --json-output "$analysis_json" || true
+fi
+
+python3 - \
+  "$metrics_json" \
+  "$SCENARIO" \
+  "$DURATION_SECONDS" \
+  "$JAR_PATH" \
+  "$jfr_file" \
+  "$peak_rss_file" \
+  "$((end_ms - start_ms))" <<'PY'
+import json
+import pathlib
+import sys
+
+output, scenario, duration, jar_path, jfr_path, peak_path, elapsed = sys.argv[1:]
+jar = pathlib.Path(jar_path)
+jfr = pathlib.Path(jfr_path)
+peak_file = pathlib.Path(peak_path)
+payload = {
+    "schemaVersion": 1,
+    "scenario": scenario,
+    "durationSeconds": int(duration),
+    "elapsedMilliseconds": int(elapsed),
+    "jarSizeBytes": jar.stat().st_size if jar.exists() else 0,
+    "jfrSizeBytes": jfr.stat().st_size if jfr.exists() else 0,
+    "peakResidentMemoryKiB": int(peak_file.read_text().strip() or 0) if peak_file.exists() else 0,
+}
+pathlib.Path(output).write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+PY
+rm -f "$peak_rss_file"
+
 echo "JFR benchmark artifacts:"
-ls -lh "$jfr_file" "$log_file" "$summary_file" 2>/dev/null || true
+ls -lh "$jfr_file" "$log_file" "$summary_file" "$analysis_file" "$metrics_json" 2>/dev/null || true
