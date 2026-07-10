@@ -1443,8 +1443,15 @@ public class Utils {
   }
 
   public static void changeFontRecursive(Container root, String fontName) {
+    String resolvedFontName =
+        fontName == null || fontName.isBlank() ? Font.DIALOG : fontName;
+    Font inheritedFont = root.getFont();
     for (Component c : root.getComponents()) {
-      c.setFont(new Font(fontName, c.getFont().getStyle(), c.getFont().getSize()));
+      Font currentFont = c.getFont();
+      Font referenceFont = currentFont != null ? currentFont : inheritedFont;
+      int style = referenceFont == null ? Font.PLAIN : referenceFont.getStyle();
+      int size = referenceFont == null ? 12 : Math.max(1, referenceFont.getSize());
+      c.setFont(new Font(resolvedFontName, style, size));
       if (c instanceof Container) {
         changeFontRecursive((Container) c, fontName);
       }
