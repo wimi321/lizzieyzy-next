@@ -107,26 +107,6 @@ prepare_custom_runtime() {
   fi
 }
 
-generate_app_cds_archive() {
-  local app_dir="$1"
-  local runtime_platform="$2"
-  local bundle_name="$3"
-  if [[ "${LIZZIE_PACKAGE_APPCDS:-1}" != "1" || -z "$runtime_platform" ]]; then
-    return 0
-  fi
-  local runtime_dir="$app_dir/runtime/$runtime_platform"
-  if [[ ! -d "$runtime_dir" ]]; then
-    return 0
-  fi
-  resolve_python_bin
-  "$PYTHON_BIN" "$RUNTIME_TOOLS_SCRIPT" generate-app-cds \
-    --runtime "$runtime_dir" \
-    --app-dir "$app_dir" \
-    --archive "$app_dir/lizzieyzy-next-cds.jsa" \
-    --manifest "$META_DIR/${DATE_TAG}-${bundle_name}-appcds.json" \
-    --optional
-}
-
 bundle_flavor() {
   local platform_dir="$1"
   if has_default_weight && has_engine_files "$platform_dir"; then
@@ -293,7 +273,6 @@ make_bundle() {
   copy_desktop_helper_assets "$app"
   copy_bundle_engine_assets "$app" "$engine_platforms"
   copy_bundle_runtime_assets "$app" "$runtime_platform"
-  generate_app_cds_archive "$app" "$runtime_platform" "$bundle_name"
 
   cat >"$root/$start_file" <<EOF
 $start_content
@@ -366,11 +345,7 @@ JAVA_CMD=\"java\"
 if [[ -x \"Lizzieyzy/runtime/linux-x64/bin/java\" ]]; then
   JAVA_CMD=\"Lizzieyzy/runtime/linux-x64/bin/java\"
 fi
-CDS_ARGS=()
-if [[ -f \"Lizzieyzy/lizzieyzy-next-cds.jsa\" ]]; then
-  CDS_ARGS=(-Xshare:auto -XX:SharedArchiveFile=\"Lizzieyzy/lizzieyzy-next-cds.jsa\")
-fi
-\"\$JAVA_CMD\" \"\${CDS_ARGS[@]}\" -Dlizzie.next.version=\"$APP_DISPLAY_VERSION\" -jar \"Lizzieyzy/lizzie-yzy2.5.3-shaded.jar\"" \
+\"\$JAVA_CMD\" -Xshare:auto -Dlizzie.next.version=\"$APP_DISPLAY_VERSION\" -jar \"Lizzieyzy/lizzie-yzy2.5.3-shaded.jar\"" \
     "$bundle_note" \
     "" \
     "$LINUX_STANDARD_ENGINE_PLATFORM_DIR"

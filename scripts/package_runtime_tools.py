@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Release packaging helpers for runtime slimming, AppCDS, and size audits."""
+"""Release packaging helpers for runtime slimming, Base CDS, and size audits."""
 
 from __future__ import annotations
 
@@ -20,19 +20,11 @@ MIB = 1024 * 1024
 
 SAFE_DESKTOP_MODULES = {
     "java.base",
-    "java.compiler",
-    "java.datatransfer",
     "java.desktop",
-    "java.logging",
-    "java.management",
     "java.naming",
     "java.net.http",
     "java.prefs",
-    "java.scripting",
-    "java.security.jgss",
-    "java.security.sasl",
     "java.sql",
-    "java.xml",
     "jdk.charsets",
     "jdk.crypto.ec",
     "jdk.jfr",
@@ -275,94 +267,6 @@ def runtime_fallback(args: argparse.Namespace, output: Path, manifest: Path, rea
     if output.exists():
         shutil.rmtree(output, ignore_errors=True)
     write_json(manifest, payload)
-    return 0 if args.optional else 1
-
-
-def generate_app_cds(args: argparse.Namespace) -> int:
-    runtime = Path(args.runtime).resolve()
-    app_dir = Path(args.app_dir).resolve()
-    archive = Path(args.archive).resolve()
-    manifest = Path(args.manifest).resolve() if args.manifest else archive.with_suffix(".manifest.json")
-    java_name = "java.exe" if os.name == "nt" else "java"
-    java = runtime / "bin" / java_name
-    if not java.exists():
-        matches = sorted(runtime.rglob(f"bin/{java_name}")) if runtime.exists() else []
-        java = matches[0] if matches else java
-    if not java.exists():
-        return app_cds_fallback(args, archive, manifest, f"java not found in runtime: {runtime}")
-    jars = sorted(path for path in app_dir.glob("*.jar") if path.is_file())
-    for child_name in ("lib",):
-        child = app_dir / child_name
-        if child.is_dir():
-            jars.extend(sorted(path for path in child.glob("*.jar") if path.is_file()))
-    if not jars:
-        return app_cds_fallback(args, archive, manifest, f"no jars found under {app_dir}")
-    classpath = os.pathsep.join(str(path) for path in jars)
-    archive.parent.mkdir(parents=True, exist_ok=True)
-    if archive.exists():
-        archive.unlink()
-
-    command = [
-        str(java),
-        "-Xshare:auto",
-        f"-XX:ArchiveClassesAtExit={archive}",
-        "-Xmx4096m",
-        "-Djava.awt.headless=true",
-        "-Dlizzie.packaging.cdsWarmup=true",
-        "-cp",
-        classpath,
-        args.main_class,
-    ]
-    started = time.time()
-    try:
-        result = run(command, check=True, timeout=args.timeout_seconds)
-    except subprocess.TimeoutExpired:
-        return app_cds_fallback(
-            args,
-            archive,
-            manifest,
-            f"AppCDS warmup timed out after {args.timeout_seconds:g}s",
-        )
-    except OSError as exc:
-        return app_cds_fallback(args, archive, manifest, f"AppCDS warmup could not execute runtime java: {exc}")
-    except subprocess.CalledProcessError as exc:
-        reason = "AppCDS warmup failed"
-        if exc.stderr:
-            reason += ": " + exc.stderr.strip().splitlines()[-1]
-        return app_cds_fallback(args, archive, manifest, reason)
-    if not archive.exists() or archive.stat().st_size == 0:
-        return app_cds_fallback(args, archive, manifest, "AppCDS archive was not created")
-
-    write_json(
-        manifest,
-        {
-            "schemaVersion": 1,
-            "created": True,
-            "runtime": str(runtime),
-            "appDir": str(app_dir),
-            "archive": str(archive),
-            "sizeBytes": archive.stat().st_size,
-            "jars": [str(path.relative_to(app_dir)) for path in jars],
-            "durationSeconds": round(time.time() - started, 3),
-            "stdout": result.stdout.strip(),
-        },
-    )
-    print(archive)
-    return 0
-
-
-def app_cds_fallback(args: argparse.Namespace, archive: Path, manifest: Path, reason: str) -> int:
-    log(f"AppCDS archive unavailable: {reason}")
-    if archive.exists():
-        archive.unlink()
-    write_json(
-        manifest,
-        {
-            "schemaVersion": 1,
-            "created": False,
-            "reason": reason,
-        },
-    )
     return 0 if args.optional else 1
 
 
@@ -613,16 +517,6 @@ def main(argv: list[str]) -> int:
     runtime.add_argument("--bind-services", action="store_true")
     runtime.add_argument("--optional", action="store_true")
     runtime.set_defaults(func=optimize_runtime)
-
-    cds = subparsers.add_parser("generate-app-cds")
-    cds.add_argument("--runtime", required=True)
-    cds.add_argument("--app-dir", required=True)
-    cds.add_argument("--archive", required=True)
-    cds.add_argument("--manifest", default="")
-    cds.add_argument("--main-class", default="featurecat.lizzie.tools.CdsWarmup")
-    cds.add_argument("--timeout-seconds", type=float, default=45.0)
-    cds.add_argument("--optional", action="store_true")
-    cds.set_defaults(func=generate_app_cds)
 
     audit = subparsers.add_parser("audit-sizes")
     audit.add_argument("--root", default=".")
