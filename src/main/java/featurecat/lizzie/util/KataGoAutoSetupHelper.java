@@ -1483,11 +1483,19 @@ public final class KataGoAutoSetupHelper {
     }
   }
 
-  private static List<Path> collectHumanSlModelCandidates(Path workingDir, Path appRoot) {
+  static List<Path> collectHumanSlModelCandidates(Path workingDir, Path appRoot) {
     LinkedHashSet<Path> candidates = new LinkedHashSet<>();
-    collectHumanSlModelCandidates(candidates, humanSlModelsDir(workingDir));
-    if (!workingDir.equals(appRoot)) {
-      collectHumanSlModelCandidates(candidates, humanSlModelsDir(appRoot));
+    LinkedHashSet<Path> modelDirectories = new LinkedHashSet<>();
+    Path current = workingDir;
+    for (int depth = 0; current != null && depth < 8; depth++) {
+      modelDirectories.add(humanSlModelsDir(current));
+      current = current.getParent();
+    }
+    if (appRoot != null) {
+      modelDirectories.add(humanSlModelsDir(appRoot));
+    }
+    for (Path modelsDir : modelDirectories) {
+      collectHumanSlModelCandidates(candidates, modelsDir);
     }
     return new ArrayList<>(candidates);
   }

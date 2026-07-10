@@ -18,6 +18,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.util.ArrayList;
+import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -224,6 +225,30 @@ public class KataGoAutoSetupHelperTest {
           assertTrue(humanSlStatus.isInstalled());
           assertEquals(importedModel, humanSlStatus.modelPath);
         });
+  }
+
+  @Test
+  void humanSlCandidatesPreferWorkingDirAncestorOverSeparateEngineRoot() throws Exception {
+    Path tempRoot = Files.createTempDirectory("katago-humansl-candidate-roots");
+    Path portableRoot = Files.createDirectories(tempRoot.resolve("portable"));
+    Path workDir = Files.createDirectories(portableRoot.resolve("user-data"));
+    Path selectedAppRoot = Files.createDirectories(tempRoot.resolve("engine-app"));
+    Path portableModel =
+        touchModel(
+            portableRoot
+                .resolve("human-sl-models")
+                .resolve(KataGoAutoSetupHelper.HUMAN_SL_MODEL_FILE_NAME));
+    Path selectedRootModel =
+        touchModel(
+            selectedAppRoot
+                .resolve("human-sl-models")
+                .resolve(KataGoAutoSetupHelper.HUMAN_SL_MODEL_FILE_NAME));
+
+    List<Path> candidates =
+        KataGoAutoSetupHelper.collectHumanSlModelCandidates(workDir, selectedAppRoot);
+
+    assertEquals(portableModel, candidates.get(0));
+    assertTrue(candidates.contains(selectedRootModel));
   }
 
   @Test
