@@ -35,6 +35,50 @@ class WinrateGraphEnginePkModeHitTest {
   private static final Color CUSTOM_WINRATE_COLOR = new Color(20, 210, 95);
   private static final Color CUSTOM_MISS_COLOR = new Color(220, 90, 30);
   private static final Color CUSTOM_BLUNDER_COLOR = new Color(180, 30, 220, 255);
+  private static final Color CURRENT_MOVE_MARKER_COLOR = new Color(244, 67, 72);
+
+  @Test
+  void currentMoveUsesRedPointWithoutVerticalGuideInDefaultMode() throws Exception {
+    TestEnvironment env = TestEnvironment.open();
+    try {
+      RenderFixture fixture = modeZeroFixture();
+      fixture.board.isPkBoard = false;
+      EngineManager.isEngineGame = false;
+
+      assertCurrentMoveUsesPointOnly(fixture, false);
+    } finally {
+      env.close();
+    }
+  }
+
+  @Test
+  void currentMoveUsesRedPointWithoutVerticalGuideInEngineGame() throws Exception {
+    TestEnvironment env = TestEnvironment.open();
+    try {
+      RenderFixture fixture = modeZeroFixture();
+      fixture.board.isPkBoard = false;
+      EngineManager.isEngineGame = true;
+
+      assertCurrentMoveUsesPointOnly(fixture, false);
+    } finally {
+      env.close();
+    }
+  }
+
+  @Test
+  void pendingCurrentMoveUsesItsOwnColumnWithoutVerticalGuideInDualCurveMode()
+      throws Exception {
+    TestEnvironment env = TestEnvironment.open();
+    try {
+      RenderFixture fixture = modeOneFixture();
+      fixture.board.isPkBoard = false;
+      EngineManager.isEngineGame = false;
+
+      assertCurrentMoveUsesPointOnly(fixture, true);
+    } finally {
+      env.close();
+    }
+  }
 
   @Test
   void engineGameClickAndDragUseRenderedDotPixel() throws Exception {
@@ -533,6 +577,28 @@ class WinrateGraphEnginePkModeHitTest {
         "drag should follow the rendered pixel to the exact target node.");
   }
 
+  private static void assertCurrentMoveUsesPointOnly(
+      RenderFixture fixture, boolean assertCurrentColumn) throws Exception {
+    RenderLayers layers = renderLayers(fixture.graph);
+    int[] marker = renderedCurrentMoveMarkerPoint(fixture.graph, fixture.current);
+
+    assertNotNull(marker, "the current move should have a visible marker point.");
+    assertColorNear(layers.winrate, marker, CURRENT_MOVE_MARKER_COLOR, 2);
+    assertTrue(
+        longestOpaqueRunOutsideMarker(layers.winrate, marker[0], marker[1], 8) < 15,
+        "the current move column should not contain a full-height guide line.");
+    assertSame(
+        fixture.current,
+        fixture.graph.resolveMoveTargetNode(marker[0], marker[1]),
+        "the visible current marker should resolve to the current node.");
+    if (assertCurrentColumn) {
+      assertEquals(
+          graphPointX(fixture.graph, fixture.current.getData().moveNumber),
+          marker[0],
+          "a pending current move should stay on its own move column.");
+    }
+  }
+
   private static RenderFixture modeZeroFixture() throws Exception {
     TrackingBoard board = allocate(TrackingBoard.class);
     board.startStonelist = new ArrayList<>();
@@ -697,6 +763,34 @@ class WinrateGraphEnginePkModeHitTest {
     return (int[]) method.invoke(graph, node);
   }
 
+  @SuppressWarnings("unchecked")
+  private static int[] renderedCurrentMoveMarkerPoint(
+      WinrateGraph graph, BoardHistoryNode currentNode) throws Exception {
+    Method method =
+        WinrateGraph.class.getDeclaredMethod(
+            "currentMoveMarkerPoint", java.util.List.class, BoardHistoryNode.class);
+    method.setAccessible(true);
+    Object point =
+        method.invoke(
+            graph,
+            (java.util.List<Object>) getField(graph, "renderedGraphPoints"),
+            currentNode);
+    if (point == null) {
+      return null;
+    }
+    Field xField = point.getClass().getDeclaredField("x");
+    Field yField = point.getClass().getDeclaredField("y");
+    xField.setAccessible(true);
+    yField.setAccessible(true);
+    return new int[] {xField.getInt(point), yField.getInt(point)};
+  }
+
+  private static int graphPointX(WinrateGraph graph, int moveNumber) throws Exception {
+    Method method = WinrateGraph.class.getDeclaredMethod("graphPointX", int.class);
+    method.setAccessible(true);
+    return (int) method.invoke(graph, moveNumber);
+  }
+
   private static BufferedImage renderGraphLayer(WinrateGraph graph) {
     return renderLayers(graph).winrate;
   }
@@ -736,6 +830,25 @@ class WinrateGraphEnginePkModeHitTest {
       }
     }
     throw new AssertionError("expected color near point: " + expected);
+  }
+
+  private static int longestOpaqueRunOutsideMarker(
+      BufferedImage image, int x, int markerY, int markerClearance) {
+    int longest = 0;
+    int current = 0;
+    for (int y = 0; y < image.getHeight(); y++) {
+      if (Math.abs(y - markerY) <= markerClearance) {
+        current = 0;
+        continue;
+      }
+      if (new Color(image.getRGB(x, y), true).getAlpha() > 0) {
+        current++;
+        longest = Math.max(longest, current);
+      } else {
+        current = 0;
+      }
+    }
+    return longest;
   }
 
   private static void assertColorPresent(BufferedImage image, Color expected) {

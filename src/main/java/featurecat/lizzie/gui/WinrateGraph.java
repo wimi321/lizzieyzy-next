@@ -121,6 +121,10 @@ public class WinrateGraph {
 
   private int DOT_RADIUS = 3;
   private static final int GRAPH_ANCHOR_HIT_HALF_SIZE = 2;
+  private static final int CURRENT_MOVE_MARKER_RADIUS = 4;
+  private static final Color CURRENT_MOVE_MARKER_COLOR = new Color(244, 67, 72);
+  private static final Color CURRENT_MOVE_MARKER_BORDER = new Color(112, 24, 28, 230);
+  private static final Color CURRENT_MOVE_MARKER_HALO = new Color(255, 250, 240, 225);
   private int[] origParams = {0, 0, 0, 0};
   private int[] params = {0, 0, 0, 0, 0};
   public BoardHistoryNode mouseOverNode;
@@ -164,7 +168,35 @@ public class WinrateGraph {
   }
 
   private Color winrateGuideColor(int alpha) {
-    return withAlpha(winrateLineColor(), alpha);
+    return new Color(232, 225, 210, clamp(alpha, 0, 255));
+  }
+
+  private void drawCurrentMoveMarker(Graphics2D g, int centerX, int centerY, int radius) {
+    int markerRadius = Math.max(3, radius);
+    int haloRadius = markerRadius + 2;
+    Paint previousPaint = g.getPaint();
+    Stroke previousStroke = g.getStroke();
+    g.setColor(CURRENT_MOVE_MARKER_HALO);
+    g.fillOval(
+        centerX - haloRadius,
+        centerY - haloRadius,
+        haloRadius * 2,
+        haloRadius * 2);
+    g.setColor(CURRENT_MOVE_MARKER_COLOR);
+    g.fillOval(
+        centerX - markerRadius,
+        centerY - markerRadius,
+        markerRadius * 2,
+        markerRadius * 2);
+    g.setColor(CURRENT_MOVE_MARKER_BORDER);
+    g.setStroke(new BasicStroke(1f));
+    g.drawOval(
+        centerX - markerRadius,
+        centerY - markerRadius,
+        markerRadius * 2,
+        markerRadius * 2);
+    g.setPaint(previousPaint);
+    g.setStroke(previousStroke);
   }
 
   private static Color withAlpha(Color color, int alpha) {
@@ -380,45 +412,6 @@ public class WinrateGraph {
       int saveCurMovenum = 0;
       double saveCurWr = 0;
       if (numMoves < 2) return;
-      Stroke previousStroke = g.getStroke();
-      int x =
-          posx
-              + ((Lizzie.board.getHistory().getCurrentHistoryNode().getData().moveNumber - 1)
-                  * width
-                  / numMoves);
-      g.setStroke(new BasicStroke(2));
-      g.setColor(winrateGuideColor(200));
-      // if (Lizzie.board.getHistory().getCurrentHistoryNode() !=
-      // Lizzie.board.getHistory().getEnd())
-      g.drawLine(x, posy, x, posy + height);
-      g.setStroke(previousStroke);
-      String moveNumString =
-          String.valueOf(Lizzie.board.getHistory().getCurrentHistoryNode().getData().moveNumber);
-      //  int mw = g.getFontMetrics().stringWidth(moveNumString);
-      int margin = strokeRadius;
-      //      int mx = x - posx < width / 2 ? x + margin : x - mw - margin;
-      //      if (node.getData().blackToPlay) {
-      //
-      //      } else {
-      //        g.setColor(Color.BLACK);
-      //      }
-      g.setColor(Color.WHITE);
-      if (Lizzie.board.getHistory().getCurrentHistoryNode() != Lizzie.board.getHistory().getEnd()) {
-        Font f =
-            new Font(Config.sysDefaultFontName, Font.BOLD, largeEnough ? Utils.zoomOut(12) : 12);
-        g.setFont(f);
-        g.setColor(Color.WHITE);
-        int moveNum = Lizzie.board.getHistory().getCurrentHistoryNode().getData().moveNumber;
-        if (moveNum < 10)
-          g.drawString(
-              moveNumString, moveNum < numMoves / 2 ? x + 3 : x - 10, posy + height - margin);
-        else if (Lizzie.board.getHistory().getCurrentHistoryNode().getData().moveNumber > 99)
-          g.drawString(
-              moveNumString, moveNum < numMoves / 2 ? x + 3 : x - 22, posy + height - margin);
-        else
-          g.drawString(
-              moveNumString, moveNum < numMoves / 2 ? x + 3 : x - 16, posy + height - margin);
-      }
       while (node.previous().isPresent() && node.previous().get().previous().isPresent()) {
         BoardHistoryNode twoBackNode = node.previous().get().previous().get();
         int currentMoveIndex = node.getData().moveNumber - 1;
@@ -666,65 +659,6 @@ public class WinrateGraph {
             } else {
               score = lastScore;
             }
-            if (node == curMove) {
-              // Draw a vertical line at the current move
-              Stroke previousStroke = g.getStroke();
-              int x = posx + (movenum * width / numMoves);
-              g.setStroke(new BasicStroke(2));
-              g.setColor(winrateGuideColor(200));
-              g.drawLine(x, posy, x, posy + height);
-              // Show move number
-              String moveNumString = String.valueOf(node.getData().moveNumber);
-              //    int mw = g.getFontMetrics().stringWidth(moveNumString);
-              int margin = strokeRadius;
-              // int mx = x - posx < width / 2 ? x + margin : x - mw - margin;
-              if (!noC) {
-                Font f =
-                    new Font(
-                        Config.sysDefaultFontName, Font.BOLD, largeEnough ? Utils.zoomOut(12) : 12);
-                g.setFont(f);
-                g.setColor(Color.WHITE);
-                int moveNum = node.getData().moveNumber;
-                if (wr < 3) {
-                  int fontHeight = g.getFontMetrics().getAscent() - g.getFontMetrics().getDescent();
-                  if (moveNum < 10)
-                    g.drawString(
-                        moveNumString,
-                        moveNum < numMoves / 2 ? x + 3 : x - 10,
-                        posy + fontHeight - margin);
-                  else if (Lizzie.board.getHistory().getCurrentHistoryNode().getData().moveNumber
-                      > 99)
-                    g.drawString(
-                        moveNumString,
-                        moveNum < numMoves / 2 ? x + 3 : x - 22,
-                        posy + fontHeight - margin);
-                  else
-                    g.drawString(
-                        moveNumString,
-                        moveNum < numMoves / 2 ? x + 3 : x - 16,
-                        posy + fontHeight - margin);
-                } else {
-                  if (moveNum < 10)
-                    g.drawString(
-                        moveNumString,
-                        moveNum < numMoves / 2 ? x + 3 : x - 10,
-                        posy + height - margin);
-                  else if (Lizzie.board.getHistory().getCurrentHistoryNode().getData().moveNumber
-                      > 99)
-                    g.drawString(
-                        moveNumString,
-                        moveNum < numMoves / 2 ? x + 3 : x - 22,
-                        posy + height - margin);
-                  else
-                    g.drawString(
-                        moveNumString,
-                        moveNum < numMoves / 2 ? x + 3 : x - 16,
-                        posy + height - margin);
-                }
-              }
-              g.setStroke(previousStroke);
-            }
-
             // if (Lizzie.frame.isPlayingAgainstLeelaz
             // && Lizzie.frame.playerIsBlack == !node.getData().blackToPlay) {
             // wr = lastWr;
@@ -808,42 +742,6 @@ public class WinrateGraph {
             lastOkMove = lastNodeOk ? movenum : -1;
           } else {
             lastNodeOk = false;
-            if (node == curMove) {
-              // Draw a vertical line at the current move
-              Stroke previousStroke = g.getStroke();
-              int x = posx + (movenum * width / numMoves);
-              g.setStroke(new BasicStroke(2));
-              g.setColor(winrateGuideColor(200));
-              g.drawLine(x, posy, x, posy + height);
-              // Show move number
-              if (!noC) {
-                String moveNumString = "" + node.getData().moveNumber;
-                g.setFont(
-                    new Font(
-                        Config.sysDefaultFontName,
-                        Font.BOLD,
-                        largeEnough ? Utils.zoomOut(12) : 12));
-                g.setColor(Color.WHITE);
-                int moveNum = node.getData().moveNumber;
-                if (moveNum < 10)
-                  g.drawString(
-                      moveNumString,
-                      moveNum < numMoves / 2 ? x + 3 : x - 10,
-                      posy + height - strokeRadius);
-                else if (Lizzie.board.getHistory().getCurrentHistoryNode().getData().moveNumber
-                    > 99)
-                  g.drawString(
-                      moveNumString,
-                      moveNum < numMoves / 2 ? x + 3 : x - 22,
-                      posy + height - strokeRadius);
-                else
-                  g.drawString(
-                      moveNumString,
-                      moveNum < numMoves / 2 ? x + 3 : x - 16,
-                      posy + height - strokeRadius);
-              }
-              g.setStroke(previousStroke);
-            }
           }
 
           if (mouseOverNode != null && node == mouseOverNode) {
@@ -914,51 +812,6 @@ public class WinrateGraph {
           double wr = node.getData().winrate;
           double score = node.getData().scoreMean;
           int playouts = node.getData().getPlayouts();
-          if (node == curMove) {
-            //            if (Lizzie.config.dynamicWinrateGraphWidth
-            //                && node.getData().moveNumber - 1 > this.numMovesOfPlayed) {
-            //              this.numMovesOfPlayed = node.getData().moveNumber - 1;
-            //              numMoves = this.numMovesOfPlayed;
-            //            }
-            // Draw a vertical line at the current move
-            // Stroke previousStroke = g.getStroke();
-            Stroke previousStroke = g.getStroke();
-            int x = posx + (currentMoveIndex * width / numMoves);
-            g.setStroke(new BasicStroke(2));
-            g.setColor(winrateGuideColor(200));
-            if (curMove != Lizzie.board.getHistory().getEnd())
-              g.drawLine(x, posy, x, posy + height);
-
-            // Show move number
-            String moveNumString = "" + node.getData().moveNumber;
-            //   int mw = g.getFontMetrics().stringWidth(moveNumString);
-            int margin = strokeRadius;
-            //       int mx = x - posx < width / 2 ? x + margin : x - mw - margin;
-            //            if (node.getData().blackToPlay) {
-            //              g.setColor(Color.WHITE);
-            //            } else {
-            //              g.setColor(Color.BLACK);
-            //            }
-            if (Lizzie.board.getHistory().getCurrentHistoryNode()
-                != Lizzie.board.getHistory().getEnd()) {
-              Font f =
-                  new Font(
-                      Config.sysDefaultFontName, Font.BOLD, largeEnough ? Utils.zoomOut(12) : 12);
-              g.setFont(f);
-              g.setColor(Color.WHITE);
-              int moveNum = Lizzie.board.getHistory().getCurrentHistoryNode().getData().moveNumber;
-              if (moveNum < 10)
-                g.drawString(
-                    moveNumString, moveNum < numMoves / 2 ? x + 3 : x - 10, posy + height - margin);
-              else if (Lizzie.board.getHistory().getCurrentHistoryNode().getData().moveNumber > 99)
-                g.drawString(
-                    moveNumString, moveNum < numMoves / 2 ? x + 3 : x - 22, posy + height - margin);
-              else
-                g.drawString(
-                    moveNumString, moveNum < numMoves / 2 ? x + 3 : x - 16, posy + height - margin);
-            }
-            g.setStroke(previousStroke);
-          }
           if (playouts > 0) {
             if (wr < 0) {
               wr = 100 - lastWr;
@@ -1578,6 +1431,7 @@ public class WinrateGraph {
     BoardHistoryNode graphBaseNode = curMove;
     List<GraphPoint> renderedAnchors = buildGraphAnchorPoints(graphBaseNode);
     drawGraphAnchors(g, renderedAnchors);
+    drawMainCurrentMoveMarker(g, renderedAnchors, graphBaseNode);
     QuickOverviewLayout quickOverviewLayout =
         drawQuickOverview(g, gBlunder, gBackground, curMove, posx, width, numMoves);
     rememberRenderedPointSources(quickOverviewLayout, renderedAnchors);
@@ -1726,18 +1580,8 @@ public class WinrateGraph {
     QuickOverviewPoint currentPoint = findQuickOverviewPoint(layout.points, curMove);
     QuickOverviewPoint hoverPoint = findQuickOverviewPoint(layout.points, mouseOverNode);
 
-    if (currentPoint != null) {
-      g.setColor(new Color(255, 255, 255, 170));
-      g.drawLine(currentPoint.x, layout.innerY, currentPoint.x, layout.innerY + layout.innerHeight);
-      g.fillOval(
-          currentPoint.x - layout.dotSize / 2,
-          currentPoint.y - layout.dotSize / 2,
-          layout.dotSize,
-          layout.dotSize);
-    }
-
     if (hoverPoint != null) {
-      g.setColor(new Color(61, 204, 255, 230));
+      g.setColor(winrateGuideColor(210));
       g.drawLine(hoverPoint.x, layout.innerY, hoverPoint.x, layout.innerY + layout.innerHeight);
       g.fillOval(
           hoverPoint.x - layout.dotSize / 2,
@@ -1751,6 +1595,13 @@ public class WinrateGraph {
           layout.overviewY,
           layout.innerX,
           layout.innerX + layout.innerWidth);
+    }
+    if (currentPoint != null) {
+      drawCurrentMoveMarker(
+          g,
+          currentPoint.x,
+          currentPoint.y,
+          Math.max(3, layout.dotSize / 2 + 1));
     }
     return layout;
   }
@@ -2105,13 +1956,29 @@ public class WinrateGraph {
     if (params[2] <= 0 || params[3] <= 0 || params[4] <= 0 || currentNode == null) {
       return Collections.emptyList();
     }
+    List<GraphPoint> points;
     if (isEngineOrPkGraphMode()) {
-      return buildEngineGraphAnchorPoints(currentNode);
+      points = buildEngineGraphAnchorPoints(currentNode);
+    } else if (mode == 1) {
+      points = buildDualCurveGraphAnchorPoints(currentNode);
+    } else {
+      points = buildDefaultGraphAnchorPoints(currentNode);
     }
-    if (mode == 1) {
-      return buildDualCurveGraphAnchorPoints(currentNode);
+    return includeCurrentMoveMarkerPoint(points, currentNode);
+  }
+
+  private List<GraphPoint> includeCurrentMoveMarkerPoint(
+      List<GraphPoint> points, BoardHistoryNode currentNode) {
+    if (findGraphPoint(points, currentNode) != null) {
+      return points;
     }
-    return buildDefaultGraphAnchorPoints(currentNode);
+    GraphPoint markerPoint = currentMoveMarkerPoint(points, currentNode);
+    if (markerPoint == null) {
+      return points;
+    }
+    ArrayList<GraphPoint> pointsWithMarker = new ArrayList<>(points);
+    pointsWithMarker.add(markerPoint);
+    return pointsWithMarker;
   }
 
   private List<GraphPoint> buildDefaultGraphAnchorPoints(BoardHistoryNode currentNode) {
@@ -2807,6 +2674,37 @@ public class WinrateGraph {
     if (targetNode == null) return null;
     for (GraphPoint point : points) {
       if (point.node == targetNode) return point;
+    }
+    return null;
+  }
+
+  private void drawMainCurrentMoveMarker(
+      Graphics2D g, List<GraphPoint> points, BoardHistoryNode currentNode) {
+    GraphPoint point = currentMoveMarkerPoint(points, currentNode);
+    if (point != null) {
+      drawCurrentMoveMarker(g, point.x, point.y, CURRENT_MOVE_MARKER_RADIUS);
+    }
+  }
+
+  private GraphPoint currentMoveMarkerPoint(
+      List<GraphPoint> points, BoardHistoryNode currentNode) {
+    GraphPoint exactPoint = findGraphPoint(points, currentNode);
+    if (exactPoint != null) {
+      return exactPoint;
+    }
+    if (currentNode == null || currentNode.getData() == null) {
+      return null;
+    }
+    BoardHistoryNode fallbackNode = currentNode;
+    while (fallbackNode.previous().isPresent()) {
+      fallbackNode = fallbackNode.previous().get();
+      GraphPoint fallbackPoint = findGraphPoint(points, fallbackNode);
+      if (fallbackPoint != null) {
+        return new GraphPoint(
+            currentNode,
+            graphPointX(currentNode.getData().moveNumber),
+            fallbackPoint.y);
+      }
     }
     return null;
   }

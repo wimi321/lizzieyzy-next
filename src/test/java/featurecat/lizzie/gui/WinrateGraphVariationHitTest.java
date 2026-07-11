@@ -34,7 +34,6 @@ class WinrateGraphVariationHitTest {
   private static final int GRAPH_NUM_MOVES = 4;
   private static final int RENDER_WIDTH = 240;
   private static final int RENDER_HEIGHT = 120;
-  private static final double FALLBACK_CURRENT_WINRATE = 50.0;
 
   @Test
   void hoverKeepsVariationCurrentNodeReachable() throws Exception {
@@ -408,7 +407,7 @@ class WinrateGraphVariationHitTest {
   }
 
   @Test
-  void hoverIgnoresRenderedVariationFallbackPixelWhenNoAnchorExists() throws Exception {
+  void hoverIgnoresVariationCurrentColumnWhenWinrateLineIsHidden() throws Exception {
     TestEnvironment env = TestEnvironment.open();
     try {
       VariationFixture fixture = boardWithFallbackVariationCurrent();
@@ -419,8 +418,21 @@ class WinrateGraphVariationHitTest {
       LizzieFrame.winrateGraph = graph;
       Lizzie.config.showWinrateLine = false;
 
+      BufferedImage winrateLayer = renderGraph(graph);
+      int[] graphParams = (int[]) getField(graph, "params");
       int[] point =
-          renderedCurrentDotLeftPixel(graph, fixture.variationCurrent, FALLBACK_CURRENT_WINRATE);
+          new int[] {
+            graphParams[0]
+                + (fixture.variationCurrent.getData().moveNumber - 1)
+                    * graphParams[2]
+                    / graphParams[4],
+            graphParams[1] + graphParams[3] / 2
+          };
+
+      assertEquals(
+          0,
+          new Color(winrateLayer.getRGB(point[0], point[1]), true).getAlpha(),
+          "hiding the winrate line should leave the current column free of marker pixels.");
 
       graph.clearMouseOverNode();
       boolean handled = frame.processMouseMoveOnWinrateGraph(point[0], point[1]);
@@ -614,16 +626,6 @@ class WinrateGraphVariationHitTest {
     method.invoke(graph, new Object[] {null});
   }
 
-  private static int[] renderedCurrentDotLeftPixel(
-      WinrateGraph graph, BoardHistoryNode node, double displayedWinrate) throws Exception {
-    BufferedImage winrateLayer = renderGraph(graph);
-    int[] graphParams = (int[]) getField(graph, "params");
-    int centerX =
-        graphParams[0] + (node.getData().moveNumber - 1) * graphParams[2] / graphParams[4];
-    int centerY = graphParams[1] + graphParams[3] - (int) (displayedWinrate * graphParams[3] / 100);
-    return opaquePixelInsideLeftHalf(winrateLayer, centerX, centerY);
-  }
-
   private static int[] renderedVisiblePixelNearNode(WinrateGraph graph, BoardHistoryNode node)
       throws Exception {
     graph.setMouseOverNode(node);
@@ -744,30 +746,6 @@ class WinrateGraphVariationHitTest {
         start,
         fixture.board.getHistory().getCurrentHistoryNode(),
         label + " pixel should miss drag.");
-  }
-
-  private static int[] opaquePixelInsideLeftHalf(BufferedImage image, int centerX, int centerY) {
-    for (int radius = 0; radius <= 4; radius++) {
-      int up = centerY - radius;
-      if (up >= 0) {
-        for (int x = Math.max(0, centerX - 3); x <= centerX; x++) {
-          Color pixel = new Color(image.getRGB(x, up), true);
-          if (pixel.getAlpha() > 0) {
-            return new int[] {x, up};
-          }
-        }
-      }
-      int down = centerY + radius;
-      if (down < image.getHeight()) {
-        for (int x = Math.max(0, centerX - 3); x <= centerX; x++) {
-          Color pixel = new Color(image.getRGB(x, down), true);
-          if (pixel.getAlpha() > 0) {
-            return new int[] {x, down};
-          }
-        }
-      }
-    }
-    throw new AssertionError("expected the rendered current point to paint an opaque pixel.");
   }
 
   private static int[] foregroundPixelResolvingToNode(
