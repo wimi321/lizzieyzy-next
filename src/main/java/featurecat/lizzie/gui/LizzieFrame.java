@@ -15439,7 +15439,6 @@ public class LizzieFrame extends JFrame {
     private static final Color INNER_BORDER = new Color(208, 183, 142, 120);
     private static final Color TRACK = new Color(226, 220, 206, 210);
     private static final Color TRACK_BORDER = new Color(200, 186, 160, 120);
-    private static final Color FIRST_CHOICE = new Color(21, 136, 67);
     private static final Color COUNT_TEXT = new Color(73, 59, 41);
     private static final Color SEPARATOR = new Color(219, 190, 143, 115);
     private final transient PlayerStrengthEstimator.Report report;
@@ -15605,37 +15604,41 @@ public class LizzieFrame extends JFrame {
 
     private DistributionRow[] distributionRows(PlayerStrengthEstimator.SideReport sideReport) {
       MoveRankDefinition.Rank[] ranks = MoveRankDefinition.Rank.values();
-      DistributionRow[] rows = new DistributionRow[ranks.length + 1];
+      int[] counts = performanceRankCounts(sideReport);
+      DistributionRow[] rows = new DistributionRow[ranks.length];
       int sampleCount = sideReport == null ? 0 : sideReport.sampleCount;
-      rows[0] =
-          new DistributionRow(
-              Lizzie.resourceBundle.getString("PlayerStrengthEstimate.match.firstChoice"),
-              firstChoiceCount(sideReport),
-              sampleCount,
-              FIRST_CHOICE);
       for (int i = 0; i < ranks.length; i++) {
         MoveRankDefinition.Rank rank = ranks[i];
-        rows[i + 1] =
+        rows[i] =
             new DistributionRow(
                 Lizzie.resourceBundle.getString(rank.nameKey()),
-                sideReport == null ? 0 : sideReport.moveRankCount(rank),
+                counts[rank.ordinal()],
                 sampleCount,
                 playerStrengthMoveRankColor(rank));
       }
       return rows;
     }
 
-    private int firstChoiceCount(PlayerStrengthEstimator.SideReport sideReport) {
+    private int[] performanceRankCounts(PlayerStrengthEstimator.SideReport sideReport) {
+      int[] counts = new int[MoveRankDefinition.Rank.values().length];
       if (sideReport == null || sideReport.samples == null) {
-        return 0;
+        return counts;
       }
-      int count = 0;
       for (PlayerStrengthEstimator.Sample sample : sideReport.samples) {
+        if (sample == null) {
+          continue;
+        }
+        MoveRankDefinition.Rank displayRank = sample.moveRankCategory;
         if (sample.firstChoice) {
-          count++;
+          displayRank = MoveRankDefinition.Rank.BEST;
+        } else if (displayRank == MoveRankDefinition.Rank.BEST) {
+          displayRank = MoveRankDefinition.Rank.GOOD;
+        }
+        if (displayRank != null) {
+          counts[displayRank.ordinal()]++;
         }
       }
-      return count;
+      return counts;
     }
 
     private void drawSamplePill(Graphics2D g2, int x, int y, int width, int height, int sampleCount) {

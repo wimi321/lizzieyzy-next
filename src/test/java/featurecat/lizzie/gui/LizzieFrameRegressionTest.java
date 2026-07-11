@@ -230,8 +230,45 @@ class LizzieFrameRegressionTest {
   }
 
   @Test
-  void playerStrengthPerformanceDistributionIncludesTopChoiceRow() throws Exception {
+  void playerStrengthPerformanceDistributionUsesExclusiveTopChoiceRanks() throws Exception {
     PlayerStrengthEstimator.Report report = playerStrengthReportWithSamples();
+    PlayerStrengthEstimator.SideReport sideReport =
+        playerStrengthSideReport(
+            java.util.List.of(
+                playerStrengthSample(
+                    Stone.BLACK,
+                    1,
+                    0.0,
+                    Optional.of(0.0),
+                    true,
+                    0,
+                    PlayerStrengthEstimator.MoveCategory.EXCELLENT),
+                playerStrengthSample(
+                    Stone.BLACK,
+                    3,
+                    0.2,
+                    Optional.of(0.1),
+                    false,
+                    1,
+                    PlayerStrengthEstimator.MoveCategory.EXCELLENT),
+                playerStrengthSample(
+                    Stone.BLACK,
+                    5,
+                    1.0,
+                    Optional.of(0.4),
+                    false,
+                    1,
+                    PlayerStrengthEstimator.MoveCategory.GREAT),
+                playerStrengthSample(
+                    Stone.BLACK,
+                    7,
+                    3.0,
+                    Optional.of(1.0),
+                    false,
+                    2,
+                    PlayerStrengthEstimator.MoveCategory.GOOD)),
+            0.25,
+            0.75);
     Class<?> panelClass =
         Class.forName("featurecat.lizzie.gui.LizzieFrame$PlayerStrengthPerformanceRankPanel");
     java.lang.reflect.Constructor<?> constructor =
@@ -248,11 +285,31 @@ class LizzieFrameRegressionTest {
         panelClass.getDeclaredMethod(
             "distributionRows", PlayerStrengthEstimator.SideReport.class);
     rowsMethod.setAccessible(true);
-    Object[] rows = (Object[]) rowsMethod.invoke(panel, report.black);
+    Object[] rows = (Object[]) rowsMethod.invoke(panel, sideReport);
     Field countField = rows[0].getClass().getDeclaredField("count");
     countField.setAccessible(true);
 
-    assertEquals(1, countField.getInt(rows[0]), "first distribution row should count AI top-choice hits.");
+    int total = 0;
+    int[] counts = new int[rows.length];
+    for (int i = 0; i < rows.length; i++) {
+      counts[i] = countField.getInt(rows[i]);
+      total += counts[i];
+    }
+
+    assertEquals(
+        MoveRankDefinition.Rank.values().length,
+        rows.length,
+        "the overlapping top-choice row should be removed.");
+    assertEquals(1, counts[MoveRankDefinition.Rank.BEST.ordinal()]);
+    assertEquals(
+        2,
+        counts[MoveRankDefinition.Rank.GOOD.ordinal()],
+        "non-top-choice Best moves should join the original Good moves.");
+    assertEquals(1, counts[MoveRankDefinition.Rank.NORMAL.ordinal()]);
+    assertEquals(
+        sideReport.sampleCount,
+        total,
+        "each analyzed move should be counted exactly once.");
   }
 
   @Test
