@@ -1025,7 +1025,8 @@ public class KataGoAutoSetupDialog extends JDialog {
             .replace("\n", "<br>");
     label.setText(INFO_HTML_PREFIX + escaped + INFO_HTML_SUFFIX);
     label.getAccessibleContext().setAccessibleName(plainText);
-    int height = Math.max(30, label.getPreferredSize().height);
+    int twoLineHeight = Math.max(32, label.getFontMetrics(label.getFont()).getHeight() * 2 + 4);
+    int height = Math.max(twoLineHeight, label.getPreferredSize().height);
     label.setPreferredSize(new Dimension(VALUE_COLUMN_WIDTH, height));
     label.setMinimumSize(new Dimension(260, height));
     label.revalidate();
