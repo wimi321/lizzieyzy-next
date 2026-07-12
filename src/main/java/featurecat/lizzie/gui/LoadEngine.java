@@ -279,7 +279,8 @@ public class LoadEngine extends JPanel {
           public void actionPerformed(ActionEvent e) {
             curIndex = table.getSelectedRow();
             if (curIndex < 0) {
-              JOptionPane.showMessageDialog(engjf, "请先选择一个引擎 ");
+              JOptionPane.showMessageDialog(
+                  engjf, resourceBundle.getString("loadEngine.selectPrompt"));
               return;
             }
             engjf.setVisible(false);
@@ -596,6 +597,12 @@ public class LoadEngine extends JPanel {
     final LoadEngine newContentPane = new LoadEngine();
     newContentPane.setOpaque(true); // content panes must be opaque
     engjf.setContentPane(newContentPane);
+    AccessibilitySupport.named(
+        newContentPane.table,
+        Lizzie.resourceBundle.getString("loadEngine.title"),
+        Lizzie.resourceBundle.getString("loadEngine.title"));
+    AccessibilitySupport.applyToTree(newContentPane);
+    AccessibilitySupport.installEscapeAction(engjf.getRootPane(), engjf, () -> System.exit(0));
     engjf.setModal(true);
     // Display the window.
     // jf.setSize(521, 320);

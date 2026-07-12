@@ -514,6 +514,10 @@ public class BrowserFrame extends JFrame {
         return "ko";
       case 4:
         return "ja";
+      case 5:
+        return "zh-TW";
+      case 6:
+        return "th";
       default:
         Locale locale = systemLocale == null ? Locale.ENGLISH : systemLocale;
         if ("zh".equals(locale.getLanguage())) {
@@ -529,6 +533,9 @@ public class BrowserFrame extends JFrame {
         }
         if ("ko".equals(locale.getLanguage())) {
           return "ko";
+        }
+        if ("th".equals(locale.getLanguage())) {
+          return "th";
         }
         return "en-US";
     }

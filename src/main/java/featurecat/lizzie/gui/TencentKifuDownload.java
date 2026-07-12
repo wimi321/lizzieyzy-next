@@ -96,6 +96,8 @@ public class TencentKifuDownload extends JFrame {
     afterGetAction = Lizzie.config.uiConfig.optInt("tencent-after-get", Lizzie.config.foxAfterGet);
     loadRecentSearches();
     buildUi();
+    AccessibilitySupport.applyToTree(getContentPane());
+    AccessibilitySupport.installEscapeToClose(getRootPane(), this);
   }
 
   private void buildUi() {
@@ -106,7 +108,8 @@ public class TencentKifuDownload extends JFrame {
     JPanel searchPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 0));
     northPanel.add(searchPanel, BorderLayout.NORTH);
 
-    searchPanel.add(new JFontLabel(text("TencentKifuDownload.lblUserName")));
+    JLabel lblUserName = new JFontLabel(text("TencentKifuDownload.lblUserName"));
+    searchPanel.add(lblUserName);
 
     txtUserName = new JFontTextField();
     txtUserName.setColumns(12);
@@ -120,6 +123,8 @@ public class TencentKifuDownload extends JFrame {
           }
         });
     searchPanel.add(txtUserName);
+    AccessibilitySupport.labelFor(
+        lblUserName, txtUserName, text("TencentKifuDownload.lblUserName"));
 
     JButton btnSearch = new JFontButton(text("TencentKifuDownload.btnSearch"));
     btnSearch.addActionListener(
@@ -206,6 +211,8 @@ public class TencentKifuDownload extends JFrame {
           }
         });
     table.setDefaultRenderer(Object.class, new TencentKifuCellRenderer());
+    AccessibilitySupport.named(
+        table, text("TencentKifuDownload.title"), text("TencentKifuDownload.title"));
     scrollPane = new JScrollPane(table);
     getContentPane().add(scrollPane, BorderLayout.CENTER);
 
@@ -296,10 +303,7 @@ public class TencentKifuDownload extends JFrame {
     }
     if (isKifuLoading) {
       Utils.showMsg(
-          Lizzie.frame.kifuLoadText(
-              "KifuLoad.wait",
-              "请等待当前棋谱加载完成。",
-              "Please wait for the current game record to finish loading."),
+          Lizzie.frame.kifuLoadText("KifuLoad.wait"),
           this);
       return;
     }
@@ -332,9 +336,7 @@ public class TencentKifuDownload extends JFrame {
     }
     isKifuLoading = true;
     setTableBusy(true);
-    showProgressNotice(
-        Lizzie.frame.kifuLoadText(
-            "KifuLoad.tencentDownloading", "正在下载棋谱…", "Downloading game record..."));
+    showProgressNotice(Lizzie.frame.kifuLoadText("KifuLoad.tencentDownloading"));
     tencentReq.fetchKifu(chessId.trim());
   }
 
@@ -359,8 +361,7 @@ public class TencentKifuDownload extends JFrame {
       }
       if (jsonObject.has("chess")) {
         String kifu = jsonObject.getString("chess");
-        showProgressNotice(
-            Lizzie.frame.kifuLoadText("KifuLoad.parsing", "正在解析棋谱…", "Parsing game record..."));
+        showProgressNotice(Lizzie.frame.kifuLoadText("KifuLoad.parsing"));
         boolean loaded = Lizzie.frame.loadDownloadedSgfString(kifu, 0, false, false, null);
         if (loaded) {
           finishTencentKifuLoadAfterMainPaint();
@@ -548,9 +549,7 @@ public class TencentKifuDownload extends JFrame {
   }
 
   private void finishTencentKifuLoadAfterMainPaint() {
-    showProgressNotice(
-        Lizzie.frame.kifuLoadText(
-            "KifuLoad.refreshing", "正在刷新胜率曲线…", "Refreshing winrate graph..."));
+    showProgressNotice(Lizzie.frame.kifuLoadText("KifuLoad.refreshing"));
     KifuLoadFinisher.finishAfterRefresh(
         new Runnable() {
           public void run() {
@@ -612,8 +611,10 @@ public class TencentKifuDownload extends JFrame {
     Runnable show =
         () -> {
           ensureProgressOverlay();
+          String previousMessage = progressMessageLabel.getText();
           progressMessageLabel.setText(message);
           progressBar.setString(message);
+          AccessibilitySupport.announce(progressMessageLabel, previousMessage, message);
           presentWindow();
           progressGlassPane.setVisible(true);
           progressGlassPane.revalidate();
@@ -661,6 +662,10 @@ public class TencentKifuDownload extends JFrame {
     progressBar.setIndeterminate(true);
     progressBar.setStringPainted(true);
     progressBar.setString(text("TencentKifuDownload.processing"));
+    AccessibilitySupport.progress(
+        progressBar,
+        Lizzie.frame.kifuLoadText("Accessibility.kifuLoadProgress"),
+        Lizzie.frame.kifuLoadText("Accessibility.kifuLoadProgressDescription"));
     progressBar.setPreferredSize(new Dimension(360, 22));
     card.add(progressBar, BorderLayout.SOUTH);
 

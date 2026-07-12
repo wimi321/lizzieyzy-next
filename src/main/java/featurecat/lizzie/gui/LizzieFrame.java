@@ -7,6 +7,7 @@ import static java.lang.Math.min;
 
 import com.jhlabs.image.GaussianFilter;
 import featurecat.lizzie.Config;
+import featurecat.lizzie.EngineStartupStatus;
 import featurecat.lizzie.ExtraMode;
 import featurecat.lizzie.Lizzie;
 import featurecat.lizzie.analysis.AnalysisEngine;
@@ -166,6 +167,7 @@ public class LizzieFrame extends JFrame {
   };
   private String DEFAULT_TITLE = Lizzie.getAppDisplayName();
   private JLayeredPane basePanel;
+  private JFontButton engineStartupStatusButton;
   public static BoardRenderer boardRenderer;
   public static BoardRenderer boardRenderer2;
   public static SubBoardRenderer subBoardRenderer;
@@ -1650,6 +1652,55 @@ public class LizzieFrame extends JFrame {
     } else basePanel.setBackground(Color.GRAY);
     getContentPane().add(basePanel);
     basePanel.setLayout(null);
+    engineStartupStatusButton =
+        new JFontButton() {
+          @Override
+          protected void paintComponent(Graphics graphics) {
+            Graphics2D g2 = (Graphics2D) graphics.create();
+            g2.setRenderingHint(
+                RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            Color background =
+                isEnabled() ? new Color(91, 65, 25, 238) : new Color(34, 48, 64, 232);
+            if (getModel().isRollover() && isEnabled()) {
+              background = new Color(112, 78, 27, 242);
+            }
+            g2.setColor(background);
+            g2.fillRoundRect(0, 0, getWidth() - 1, getHeight() - 1, 12, 12);
+            g2.setColor(isEnabled() ? new Color(224, 177, 83) : new Color(116, 145, 174));
+            g2.drawRoundRect(0, 0, getWidth() - 1, getHeight() - 1, 12, 12);
+            if (isFocusOwner()) {
+              g2.setColor(new Color(255, 216, 132));
+              g2.setStroke(new BasicStroke(2f));
+              g2.drawRoundRect(2, 2, getWidth() - 5, getHeight() - 5, 10, 10);
+            }
+            g2.setFont(getFont());
+            FontMetrics metrics = g2.getFontMetrics();
+            String label = getText() == null ? "" : getText();
+            int x = Math.max(8, (getWidth() - metrics.stringWidth(label)) / 2);
+            int y = (getHeight() - metrics.getHeight()) / 2 + metrics.getAscent();
+            g2.setColor(Color.WHITE);
+            g2.drawString(label, x, y);
+            g2.dispose();
+          }
+        };
+    engineStartupStatusButton.setVisible(false);
+    engineStartupStatusButton.setFocusPainted(true);
+    engineStartupStatusButton.setContentAreaFilled(false);
+    engineStartupStatusButton.setBorderPainted(false);
+    engineStartupStatusButton.setOpaque(false);
+    engineStartupStatusButton.setRolloverEnabled(true);
+    engineStartupStatusButton.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+    engineStartupStatusButton.setMargin(new Insets(3, 10, 3, 10));
+    engineStartupStatusButton.setForeground(Color.WHITE);
+    engineStartupStatusButton.setFont(
+        new Font(Config.sysDefaultFontName, Font.BOLD, Math.max(12, Config.frameFontSize)));
+    engineStartupStatusButton.addActionListener(
+        event -> {
+          if (Lizzie.engineStartupStatus.snapshot().isActionable()) {
+            openKataGoAutoSetup();
+          }
+        });
+    basePanel.add(engineStartupStatusButton, Integer.valueOf(12));
     basePanel.add(commentBlunderControlPane, Integer.valueOf(10));
     basePanel.add(tempGamePanelAll, Integer.valueOf(9));
     basePanel.add(varTreeScrollPane, Integer.valueOf(8));
@@ -1659,6 +1710,32 @@ public class LizzieFrame extends JFrame {
     basePanel.add(topPanel, Integer.valueOf(3));
     basePanel.add(toolbar, Integer.valueOf(2));
     basePanel.add(mainPanel, Integer.valueOf(1));
+    AccessibilitySupport.named(
+        mainPanel,
+        text("Accessibility.mainBoard", "Go board"),
+        text(
+            "Accessibility.mainBoardDescription",
+            "Main board. Use the arrow keys and configured shortcuts to review the game."));
+    AccessibilitySupport.named(
+        listTable,
+        text("Accessibility.candidateTable", "Candidate moves"),
+        text(
+            "Accessibility.candidateTableDescription",
+            "Candidate moves reported by the current analysis engine."));
+    AccessibilitySupport.applyToTree(windowMenuStrip);
+    AccessibilitySupport.applyToTree(topPanel);
+    AccessibilitySupport.applyToTree(sidebarPanel);
+    AccessibilitySupport.applyToTree(toolbar);
+    AccessibilitySupport.installWindowFocusCycling(
+        this,
+        mainPanel,
+        windowMenuStrip,
+        topPanel,
+        mainPanel,
+        sidebarPanel,
+        toolbar,
+        engineStartupStatusButton);
+    Lizzie.engineStartupStatus.addListener(this::updateEngineStartupStatus);
     mainPanel.setVisible(false);
     commentScrollPane.setVisible(false);
     blunderContentPane.setVisible(false);
@@ -1962,7 +2039,11 @@ public class LizzieFrame extends JFrame {
   }
 
   public void showTrialBlockedHint() {
-    Utils.showMsgNoModalForTime("Web 试下进行中，桌面端暂不响应落子（在「同步」菜单可强制结束）", 3);
+    Utils.showMsgNoModalForTime(
+        text(
+            "LizzieFrame.webTrialDesktopBlocked",
+            "Web trial mode is active. Desktop moves are temporarily disabled."),
+        3);
   }
 
   public void setCommentPaneContent() {
@@ -3917,6 +3998,10 @@ public class LizzieFrame extends JFrame {
     return Lizzie.config != null && Lizzie.config.isChinese ? chineseText : englishText;
   }
 
+  public String kifuLoadText(String key) {
+    return kifuLoadText(key, key, key);
+  }
+
   public void beginKifuLoad(String message) {
     runKifuLoadUiUpdate(
         new Runnable() {
@@ -3926,9 +4011,12 @@ public class LizzieFrame extends JFrame {
               kifuLoadFinishTimer.stop();
               kifuLoadFinishTimer = null;
             }
+            String oldMessage = kifuLoadMessageLabel.getText();
             kifuLoadMessageLabel.setText(message);
             kifuLoadProgressBar.setIndeterminate(true);
             kifuLoadProgressBar.setString(message);
+            AccessibilitySupport.named(kifuLoadMessageLabel, message, message);
+            AccessibilitySupport.announce(kifuLoadProgressBar, oldMessage, message);
             kifuLoadGlassPane.setVisible(true);
             kifuLoadVisibleSince = System.currentTimeMillis();
           }
@@ -3940,8 +4028,11 @@ public class LizzieFrame extends JFrame {
         new Runnable() {
           public void run() {
             ensureKifuLoadGlassPane();
+            String oldMessage = kifuLoadMessageLabel.getText();
             kifuLoadMessageLabel.setText(message);
             kifuLoadProgressBar.setString(message);
+            AccessibilitySupport.named(kifuLoadMessageLabel, message, message);
+            AccessibilitySupport.announce(kifuLoadProgressBar, oldMessage, message);
             if (!kifuLoadGlassPane.isVisible()) {
               kifuLoadGlassPane.setVisible(true);
               kifuLoadVisibleSince = System.currentTimeMillis();
@@ -4103,13 +4194,12 @@ public class LizzieFrame extends JFrame {
     boolean oriReadKomi = Lizzie.config.readKomi;
     try {
       if (showFeedback) {
-        updateKifuLoad(kifuLoadText("KifuLoad.parsing", "正在解析棋谱…", "Parsing game record..."));
+        updateKifuLoad(kifuLoadText("KifuLoad.parsing"));
       }
       Lizzie.config.readKomi = readKomi;
       SGFParser.loadFromString(sgfContent);
       if (showFeedback) {
-        updateKifuLoad(
-            kifuLoadText("KifuLoad.refreshing", "正在刷新胜率曲线…", "Refreshing winrate graph..."));
+        updateKifuLoad(kifuLoadText("KifuLoad.refreshing"));
       }
       scheduleMovelistRefreshAfterKifuLoad();
       if (resetAnalysisWindows) {
@@ -4132,9 +4222,7 @@ public class LizzieFrame extends JFrame {
     } catch (Exception e) {
       e.printStackTrace();
       if (showFeedback) {
-        failKifuLoad(
-            kifuLoadText("KifuLoad.failed", "棋谱加载失败：", "Failed to load game record: ")
-                + e.getMessage());
+        failKifuLoad(kifuLoadText("KifuLoad.failed") + e.getMessage());
       } else {
         showKifuLoadError(e);
       }
@@ -4145,9 +4233,7 @@ public class LizzieFrame extends JFrame {
   }
 
   private void showKifuLoadError(Exception e) {
-    String message =
-        kifuLoadText("KifuLoad.failed", "棋谱加载失败：", "Failed to load game record: ")
-            + (e == null ? "" : e.getMessage());
+    String message = kifuLoadText("KifuLoad.failed") + (e == null ? "" : e.getMessage());
     if (SwingUtilities.isEventDispatchThread()) {
       Utils.showMsg(message, Lizzie.frame);
     } else {
@@ -4201,6 +4287,12 @@ public class LizzieFrame extends JFrame {
     kifuLoadProgressBar.setIndeterminate(true);
     kifuLoadProgressBar.setStringPainted(true);
     kifuLoadProgressBar.setPreferredSize(new Dimension(380, 22));
+    AccessibilitySupport.progress(
+        kifuLoadProgressBar,
+        text("Accessibility.kifuLoadProgress", "Game record loading progress"),
+        text(
+            "Accessibility.kifuLoadProgressDescription",
+            "Download, parsing, and first-display progress for the selected game record."));
     card.add(kifuLoadProgressBar, BorderLayout.SOUTH);
 
     GridBagConstraints gbc = new GridBagConstraints();
@@ -6051,6 +6143,9 @@ public class LizzieFrame extends JFrame {
     if (Lizzie.readMode) {
       return;
     }
+    if (hasEngineStartupNotice()) {
+      return;
+    }
 
     int fontSize = (int) (max(mainPanel.getWidth(), mainPanel.getHeight()) * size);
     Font font = new Font(Lizzie.config.fontName, Font.PLAIN, fontSize);
@@ -6096,6 +6191,9 @@ public class LizzieFrame extends JFrame {
 
   private void drawPonderingState2(Graphics2D g, String text, int x, int y, double size) {
     if (Lizzie.readMode) {
+      return;
+    }
+    if (hasEngineStartupNotice()) {
       return;
     }
     int maxWidth = mainPanel.getWidth();
@@ -11016,6 +11114,7 @@ public class LizzieFrame extends JFrame {
                     - toolbarHeight,
                 width,
                 toolbarHeight);
+            layoutEngineStartupStatus(width);
             if (toolbar.showDetail) toolbar.setDetailIcon();
             toolbar.reSetButtonLocation();
             if (tempGamePanelAll.isVisible()) showTempGamePanel();
@@ -13240,6 +13339,56 @@ public class LizzieFrame extends JFrame {
         });
   }
 
+  private void updateEngineStartupStatus(EngineStartupStatus.Snapshot snapshot) {
+    SwingUtilities.invokeLater(
+        () -> {
+          if (engineStartupStatusButton == null) {
+            return;
+          }
+          String oldText = engineStartupStatusButton.getText();
+          if (snapshot.state == EngineStartupStatus.State.READY) {
+            engineStartupStatusButton.setVisible(false);
+            engineStartupStatusButton.setEnabled(false);
+            return;
+          }
+          String message = text(snapshot.messageKey, snapshot.fallback);
+          engineStartupStatusButton.setText(message);
+          engineStartupStatusButton.setEnabled(snapshot.isActionable());
+          engineStartupStatusButton.setToolTipText(
+              snapshot.detail.isBlank()
+                  ? message
+                  : message + " - " + snapshot.detail.replace('\n', ' '));
+          AccessibilitySupport.button(
+              engineStartupStatusButton,
+              message,
+              snapshot.isActionable()
+                  ? text(
+                      "EngineStartup.repairDescription",
+                      "Open AI setup to inspect and repair the engine")
+                  : message);
+          engineStartupStatusButton.setVisible(true);
+          layoutEngineStartupStatus(
+              Math.max(1, getWidth() - getInsets().left - getInsets().right));
+          AccessibilitySupport.announce(engineStartupStatusButton, oldText, message);
+          basePanel.repaint();
+        });
+  }
+
+  private void layoutEngineStartupStatus(int availableWidth) {
+    if (engineStartupStatusButton == null || !engineStartupStatusButton.isVisible()) {
+      return;
+    }
+    Dimension preferred = engineStartupStatusButton.getPreferredSize();
+    int width = Math.min(Math.max(180, preferred.width + 8), Math.max(180, availableWidth - 20));
+    int contentHeight = getHeight() - getInsets().top - getInsets().bottom;
+    int y = Math.max(windowMenuHeight + topPanelHeight + 4, contentHeight - toolbarHeight - 48);
+    engineStartupStatusButton.setBounds(10, y, width, 32);
+  }
+
+  private boolean hasEngineStartupNotice() {
+    return Lizzie.engineStartupStatus.snapshot().state != EngineStartupStatus.State.READY;
+  }
+
   private WaitForAnalysis createFlashAnalysisLoadingFrame() {
     WaitForAnalysis loadingFrame = new WaitForAnalysis();
     loadingFrame.setLoadingProgress();
@@ -13274,6 +13423,8 @@ public class LizzieFrame extends JFrame {
     dialog.setMinimumSize(new Dimension(1040, 700));
     Lizzie.setFrameSize(dialog, 1120, 760);
     dialog.setLocationRelativeTo(this);
+    AccessibilitySupport.applyToTree(dialog.getContentPane());
+    AccessibilitySupport.installEscapeAction(dialog.getRootPane(), dialog, dialog::dispose);
     dialog.setVisible(true);
   }
 
@@ -13396,7 +13547,7 @@ public class LizzieFrame extends JFrame {
         new PlayerStrengthModelCombo(PlayerStrengthEstimator.selectableModels());
     combo.setSelectedItem(
         selectedModel == null ? PlayerStrengthEstimator.StrengthModel.XGBOOST20TUN : selectedModel);
-    combo.setFocusable(false);
+    combo.setFocusable(true);
     combo.setToolTipText(Lizzie.resourceBundle.getString("PlayerStrengthEstimate.model.tooltip"));
     combo
         .getAccessibleContext()
@@ -13486,6 +13637,9 @@ public class LizzieFrame extends JFrame {
     detailDialog.setMinimumSize(new Dimension(760, 420));
     Lizzie.setFrameSize(detailDialog, 900, 460);
     detailDialog.setLocationRelativeTo(owner);
+    AccessibilitySupport.applyToTree(detailDialog.getContentPane());
+    AccessibilitySupport.installEscapeAction(
+        detailDialog.getRootPane(), detailDialog, detailDialog::dispose);
     detailDialog.setVisible(true);
   }
 
@@ -17067,7 +17221,11 @@ public class LizzieFrame extends JFrame {
     try {
       dialog = new RemoteComputeDialog(this);
     } catch (IOException e) {
-      JOptionPane.showMessageDialog(this, e.getMessage(), "网络代理设置", JOptionPane.WARNING_MESSAGE);
+      JOptionPane.showMessageDialog(
+          this,
+          e.getMessage(),
+          text("NetworkProxy.settingsTitle", "Network proxy settings"),
+          JOptionPane.WARNING_MESSAGE);
       return;
     }
     dialog.setVisible(true);

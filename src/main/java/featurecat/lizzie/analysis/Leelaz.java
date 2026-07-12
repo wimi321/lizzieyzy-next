@@ -4,7 +4,6 @@ import featurecat.lizzie.Config;
 import featurecat.lizzie.Lizzie;
 import featurecat.lizzie.analysis.remote.EngineTransport;
 import featurecat.lizzie.analysis.remote.RemoteComputeConfig;
-import featurecat.lizzie.gui.BundledEngineStartupDialog;
 import featurecat.lizzie.gui.EngineData;
 import featurecat.lizzie.gui.EngineFailedMessage;
 import featurecat.lizzie.gui.JFontCheckBox;
@@ -127,7 +126,6 @@ public class Leelaz {
   public boolean started = false;
   public boolean isDownWithError = false;
   public boolean isLoaded = false;
-  private transient BundledEngineStartupDialog bundledStartupDialog;
   private volatile long bundledStartupToken = 0L;
   public boolean isCheckingVersion;
   public boolean isCheckingName;
@@ -545,7 +543,9 @@ public class Leelaz {
                         ? Lizzie.resourceBundle.getString("Leelaz.engineStartNoExceptionMessage")
                         : err),
                 true);
-            LizzieFrame.openMoreEngineDialog();
+            if (!Lizzie.isFirstLaunchSession()) {
+              LizzieFrame.openMoreEngineDialog();
+            }
           } catch (JSONException e1) {
             e1.printStackTrace();
             isDownWithError = true;
@@ -584,7 +584,9 @@ public class Leelaz {
                       ? Lizzie.resourceBundle.getString("Leelaz.engineStartNoExceptionMessage")
                       : err),
               true);
-          LizzieFrame.openMoreEngineDialog();
+          if (!Lizzie.isFirstLaunchSession()) {
+            LizzieFrame.openMoreEngineDialog();
+          }
         } catch (JSONException e1) {
           // TODO Auto-generated catch block
           e1.printStackTrace();
@@ -5118,6 +5120,13 @@ public class Leelaz {
 
   public void tryToDignostic(String message, boolean isModal) {
     closeBundledStartupDialog();
+    if (this == Lizzie.leelaz) {
+      Lizzie.engineStartupStatus.failed(
+          "EngineStartup.failed", "AI failed to start - click to repair", message);
+    }
+    if (Lizzie.isFirstLaunchSession()) {
+      return;
+    }
     if (!Lizzie.config.autoCheckEngineAlive && EngineManager.isEngineGame())
       Lizzie.engineManager.clearEngineGame();
     if (engineFailedMessage != null && engineFailedMessage.isVisible()) return;
@@ -5176,28 +5185,14 @@ public class Leelaz {
     }
     final boolean nvidiaBundled = KataGoRuntimeHelper.isNvidiaBundledPath(engineExecutable);
     final int totalSteps = nvidiaBundled ? 4 : 3;
-    final String statusText = text(statusKey, statusFallback);
-    final String hintText = text(hintKey, hintFallback);
-    SwingUtilities.invokeLater(
-        () -> {
-          if (bundledStartupDialog == null || !bundledStartupDialog.isDisplayable()) {
-            bundledStartupDialog = new BundledEngineStartupDialog(nvidiaBundled);
-          }
-          bundledStartupDialog.updateStage(step, totalSteps, statusText, hintText);
-          if (!bundledStartupDialog.isVisible()) {
-            bundledStartupDialog.setVisible(true);
-          }
-        });
+    String progressFallback = statusFallback + " (" + step + "/" + totalSteps + ")";
+    Lizzie.engineStartupStatus.checking(statusKey, progressFallback);
   }
 
   private void closeBundledStartupDialog() {
-    SwingUtilities.invokeLater(
-        () -> {
-          if (bundledStartupDialog != null) {
-            bundledStartupDialog.closeDialog();
-            bundledStartupDialog = null;
-          }
-        });
+    if (isLoaded && this == Lizzie.leelaz) {
+      Lizzie.markEngineReady();
+    }
   }
 
   private void startBundledStartupWatchdog(long token, Path engineExecutable) {
@@ -5259,7 +5254,9 @@ public class Leelaz {
                     closeBundledStartupDialog();
                     try {
                       tryToDignostic(message, true);
-                      LizzieFrame.openMoreEngineDialog();
+                      if (!Lizzie.isFirstLaunchSession()) {
+                        LizzieFrame.openMoreEngineDialog();
+                      }
                     } catch (JSONException e) {
                       e.printStackTrace();
                     }

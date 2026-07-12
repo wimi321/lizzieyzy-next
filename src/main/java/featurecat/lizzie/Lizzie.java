@@ -6,11 +6,11 @@ import featurecat.lizzie.analysis.EngineManager;
 import featurecat.lizzie.analysis.Leelaz;
 import featurecat.lizzie.analysis.LeelazEngineCommandSink;
 import featurecat.lizzie.gui.AppleStyleSupport;
+import featurecat.lizzie.gui.EngineData;
 import featurecat.lizzie.gui.FirstUseSettings;
 import featurecat.lizzie.gui.GtpConsolePane;
 import featurecat.lizzie.gui.LizzieFrame;
 import featurecat.lizzie.gui.LoadEngine;
-import featurecat.lizzie.gui.Message;
 import featurecat.lizzie.gui.web.WebBoardManager;
 import featurecat.lizzie.rules.Board;
 import featurecat.lizzie.rules.BoardHistoryNode;
@@ -36,6 +36,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.text.SimpleDateFormat;
 import java.util.Date;
+import java.util.List;
 import java.util.Locale;
 import java.util.ResourceBundle;
 import java.util.concurrent.Callable;
@@ -57,6 +58,7 @@ public class Lizzie {
   }
 
   public static ResourceBundle resourceBundle = ResourceBundle.getBundle("l10n.DisplayStrings");
+  public static final EngineStartupStatus engineStartupStatus = new EngineStartupStatus();
   public static Config config;
   public static GtpConsolePane gtpConsole;
   public static LizzieFrame frame;
@@ -88,6 +90,8 @@ public class Lizzie {
   public static boolean isMultiScreen = false;
   public static String javaVersionString = "";
   private static Image applicationIcon;
+  private static boolean firstLaunchSession;
+  private static volatile boolean startupProfileSaveFailed;
   public static Float sysScaleFactor =
       OS.isWindows() ? (java.awt.Toolkit.getDefaultToolkit().getScreenResolution() / 96.0f) : 1.0f;
 
@@ -105,6 +109,8 @@ public class Lizzie {
     }
     ensureWritableWorkingDir();
     config = new Config();
+    firstLaunchSession = config.isNewProfile() || config.firstTimeLoad;
+    resourceBundle = AppLocale.loadBundle(config.useLanguage);
     NetworkProxy.installSystemProxyPropertyFromSavedConfig();
     Utils.applyMaintainedDefaultSettings();
     if (config.logConsoleToFile) {
@@ -170,31 +176,9 @@ public class Lizzie {
       if (machineChanged) config.deletePersist(false);
       resetAllHints();
       config.isChinese = (resourceBundle.getString("Lizzie.isChinese")).equals("yes");
-      if (!completeAutomaticFirstRunSetup()) {
-        openFirstUseSettings(true);
-      }
+      completeAutomaticFirstRunSetup();
     }
-    while (Lizzie.config.needReopenFirstUseSettings) {
-      if (config.useLanguage == 1)
-        resourceBundle = ResourceBundle.getBundle("l10n.DisplayStrings", Locale.CHINA);
-      else if (config.useLanguage == 2)
-        resourceBundle = ResourceBundle.getBundle("l10n.DisplayStrings", Locale.US);
-      else if (config.useLanguage == 3)
-        resourceBundle = ResourceBundle.getBundle("l10n.DisplayStrings", Locale.KOREAN);
-      else if (config.useLanguage == 4)
-        resourceBundle = ResourceBundle.getBundle("l10n.DisplayStrings", Locale.JAPAN);
-      config.isChinese = (resourceBundle.getString("Lizzie.isChinese")).equals("yes");
-      FirstUseSettings firstUseSettings = new FirstUseSettings(true);
-      firstUseSettings.setVisible(true);
-    }
-    if (config.useLanguage == 1)
-      resourceBundle = ResourceBundle.getBundle("l10n.DisplayStrings", Locale.CHINA);
-    else if (config.useLanguage == 2)
-      resourceBundle = ResourceBundle.getBundle("l10n.DisplayStrings", Locale.US);
-    else if (config.useLanguage == 3)
-      resourceBundle = ResourceBundle.getBundle("l10n.DisplayStrings", Locale.KOREAN);
-    else if (config.useLanguage == 4)
-      resourceBundle = ResourceBundle.getBundle("l10n.DisplayStrings", Locale.JAPAN);
+    resourceBundle = AppLocale.loadBundle(config.useLanguage);
     config.isChinese = (resourceBundle.getString("Lizzie.isChinese")).equals("yes");
     if (config.theme.uiFontName() != null) config.uiFontName = config.theme.uiFontName();
     Utils.loadFonts(config.uiFontName, config.fontName, config.winrateFontName);
@@ -211,6 +195,15 @@ public class Lizzie {
             "share-label-3", resourceBundle.getString("ShareFrame.shareLabel3"));
     setLookAndFeel();
     Locale.setDefault(Locale.ENGLISH);
+    boolean noConfiguredEngine = !hasConfiguredEngine();
+    if (!startupProfileSaveFailed
+        && shouldOfferEngineRepair(
+            !noConfiguredEngine, config.uiConfig.optBoolean("autoload-empty", false))) {
+      engineStartupStatus.needsRepair(
+          "EngineStartup.needsRepair",
+          "AI is not ready - click to repair",
+          text("EngineStartup.noBundledEngine", "No complete built-in engine setup was found."));
+    }
     if (Lizzie.config.uiConfig.optBoolean("autoload-default", false)) {
       start(-1, true);
     } else if (Lizzie.config.uiConfig.optBoolean("autoload-last", false)) {
@@ -227,8 +220,15 @@ public class Lizzie {
           return;
         }
       }
-      if (Utils.getEngineData().isEmpty()) {
+      if (noConfiguredEngine) {
         start(-1, false);
+      } else if (firstLaunchSession) {
+        int engineCount = Utils.getEngineData().size();
+        int defaultEngine = config.uiConfig.optInt("default-engine", 0);
+        if (defaultEngine < 0 || defaultEngine >= engineCount) {
+          defaultEngine = 0;
+        }
+        start(defaultEngine, true);
       } else {
         loadEngine = LoadEngine.createDialog();
         loadEngine.setVisible(true);
@@ -490,30 +490,66 @@ public class Lizzie {
     firstUseSettings.setVisible(true);
   }
 
-  private static boolean completeAutomaticFirstRunSetup() {
-    if (hasUsableStartupConfiguration()) {
-      return finalizeAutomaticFirstRunSetup();
-    }
+  public static boolean isFirstLaunchSession() {
+    return firstLaunchSession;
+  }
 
-    tryAutoSetupEngineProfile();
-    if (hasUsableStartupConfiguration()) {
-      return finalizeAutomaticFirstRunSetup();
+  private static String text(String key, String fallback) {
+    try {
+      if (resourceBundle != null && resourceBundle.containsKey(key)) {
+        return resourceBundle.getString(key);
+      }
+    } catch (Exception e) {
     }
-    return false;
+    return fallback;
+  }
+
+  private static void completeAutomaticFirstRunSetup() {
+    boolean ready = hasUsableStartupConfiguration();
+    if (!ready) {
+      tryAutoSetupEngineProfile();
+      ready = hasUsableStartupConfiguration();
+    }
+    startupProfileSaveFailed = !finalizeAutomaticFirstRunSetup();
+    if (startupProfileSaveFailed) {
+      engineStartupStatus.failed(
+          "EngineStartup.profileSaveFailed",
+          "Settings could not be saved - click to repair",
+          text(
+              "EngineStartup.profileSaveFailedDescription",
+              "The new user profile could not be saved. Check folder permissions and free space."));
+    } else if (!ready) {
+      engineStartupStatus.needsRepair(
+          "EngineStartup.needsRepair",
+          "AI is not ready - click to repair",
+          text("EngineStartup.noBundledEngine", "No complete built-in engine setup was found."));
+    }
   }
 
   private static boolean hasUsableStartupConfiguration() {
-    if (config.uiConfig.optBoolean("autoload-default", false)
-        || config.uiConfig.optBoolean("autoload-last", false)
-        || config.uiConfig.optBoolean("autoload-empty", false)) {
+    if (config.uiConfig.optBoolean("autoload-empty", false)) {
       return true;
     }
+    return hasConfiguredEngine();
+  }
+
+  private static boolean hasConfiguredEngine() {
     try {
-      return !Utils.getEngineData().isEmpty();
+      List<EngineData> engines = Utils.getEngineData();
+      for (EngineData engine : engines) {
+        if (engine != null && engine.commands != null && !engine.commands.trim().isEmpty()) {
+          return true;
+        }
+      }
+      return false;
     } catch (Exception e) {
       e.printStackTrace();
       return false;
     }
+  }
+
+  static boolean shouldOfferEngineRepair(boolean hasConfiguredEngine, boolean autoloadEmpty) {
+    return !hasConfiguredEngine && !autoloadEmpty;
   }
 
   private static void tryAutoSetupEngineProfile() {
@@ -571,13 +607,12 @@ public class Lizzie {
               Lizzie.engineManager = new EngineManager(Lizzie.config, index, loadDefault);
             } catch (Exception e) {
               e.printStackTrace();
+              engineStartupStatus.failed(
+                  "EngineStartup.failed",
+                  "AI failed to start - click to repair",
+                  e.getMessage());
               try {
-                Message msg = new Message();
-                msg.setMessage(
-                    resourceBundle.getString("Lizzie.engineFailed") + "\n" + e.getMessage());
-                //  msg.setVisible(true);
                 Lizzie.engineManager = new EngineManager(Lizzie.config, -1, false);
-                //  frame.refresh();
               } catch (JSONException e1) {
                 // TODO Auto-generated catch block
                 e1.printStackTrace();
@@ -625,6 +660,18 @@ public class Lizzie {
             KataGoRuntimeHelper.startFirstRunBenchmarkAsync();
           }
         });
+  }
+
+  public static synchronized void markEngineReady() {
+    if (startupProfileSaveFailed) {
+      try {
+        config.save();
+        startupProfileSaveFailed = false;
+      } catch (IOException e) {
+        return;
+      }
+    }
+    engineStartupStatus.ready();
   }
 
   public static void setLookAndFeel() {
@@ -710,6 +757,7 @@ public class Lizzie {
       LizzieFrame.menu.showPda(Lizzie.leelaz.isKataGoPda);
     }
     if (engine != leelaz) return;
+    markEngineReady();
 
     if (!isEngineGame && !frame.isPlayingAgainstLeelaz) {
       if (Lizzie.config.notStartPondering) {

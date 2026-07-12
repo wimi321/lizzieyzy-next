@@ -220,6 +220,21 @@ public class KataGoAutoSetupDialog extends JDialog {
     content.add(createFooterPanel(), BorderLayout.SOUTH);
     wireActions();
 
+    AccessibilitySupport.progress(
+        progressBar,
+        text("Accessibility.autoSetupProgress"),
+        text("Accessibility.autoSetupProgressDescription"));
+    AccessibilitySupport.named(
+        cmbRemoteWeights,
+        text("Accessibility.downloadableWeights"),
+        text("Accessibility.downloadableWeightsDescription"));
+    AccessibilitySupport.named(
+        cmbLocalWeights,
+        text("Accessibility.downloadedWeights"),
+        text("Accessibility.downloadedWeightsDescription"));
+    AccessibilitySupport.applyToTree(content);
+    AccessibilitySupport.installEscapeAction(getRootPane(), this, this::closeOrCancelActiveTask);
+
     refreshState();
   }
 
@@ -459,7 +474,11 @@ public class KataGoAutoSetupDialog extends JDialog {
     try {
       dialog = new RemoteComputeDialog(JOptionPane.getFrameForComponent(this));
     } catch (IOException e) {
-      JOptionPane.showMessageDialog(this, e.getMessage(), "网络代理设置", JOptionPane.WARNING_MESSAGE);
+      JOptionPane.showMessageDialog(
+          this,
+          e.getMessage(),
+          text("NetworkProxy.settingsTitle"),
+          JOptionPane.WARNING_MESSAGE);
       return;
     }
     dialog.setVisible(true);
@@ -620,12 +639,25 @@ public class KataGoAutoSetupDialog extends JDialog {
     return gbc;
   }
 
-  private JPanel createActionBar(int alignment, JComponent... actions) {
-    JPanel actionBar = new JPanel(new FlowLayout(alignment, 6, 0));
+  static JPanel createActionBar(int alignment, JComponent... actions) {
+    JPanel actionBar = new JPanel(new BorderLayout());
     actionBar.setOpaque(false);
-    for (JComponent action : actions) {
-      actionBar.add(action);
+
+    JPanel actionGrid = new JPanel(new GridBagLayout());
+    actionGrid.setOpaque(false);
+    int columns = actions.length > 2 ? 2 : Math.max(1, actions.length);
+    for (int index = 0; index < actions.length; index++) {
+      GridBagConstraints constraints = new GridBagConstraints();
+      constraints.gridx = index % columns;
+      constraints.gridy = index / columns;
+      constraints.anchor = GridBagConstraints.EAST;
+      constraints.insets =
+          new Insets(constraints.gridy == 0 ? 0 : 6, constraints.gridx == 0 ? 0 : 6, 0, 0);
+      actionGrid.add(actions[index], constraints);
     }
+
+    actionBar.add(
+        actionGrid, alignment == FlowLayout.LEFT ? BorderLayout.LINE_START : BorderLayout.LINE_END);
     return actionBar;
   }
 
@@ -1787,6 +1819,7 @@ public class KataGoAutoSetupDialog extends JDialog {
   }
 
   private void setBusy(boolean busy, String statusText, long downloadedBytes, long totalBytes) {
+    String previousStatus = progressStatusLabel.getText();
     if (statusText == null || statusText.trim().isEmpty()) {
       statusText = busy ? text("AutoSetup.benchmarking") : "";
     }
@@ -1814,6 +1847,7 @@ public class KataGoAutoSetupDialog extends JDialog {
     btnClose.setEnabled(true);
 
     progressPanel.setVisible(busy);
+    AccessibilitySupport.announce(progressStatusLabel, previousStatus, statusText);
     progressBar.setIndeterminate(busy && totalBytes <= 0);
     if (!busy) {
       progressStartedAtMillis = 0L;

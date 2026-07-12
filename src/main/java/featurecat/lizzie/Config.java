@@ -165,6 +165,7 @@ public class Config {
   private String persistFilename = WORK_DIR + File.separator + "persist";
   private String saveBoardFilename = WORK_DIR + File.separator + "save" + File.separator + "save";
   private final File runtimeWorkDirectoryOverride;
+  private final boolean newProfile;
 
   public Theme theme;
   public float winrateStrokeWidth = 1.7f;
@@ -724,8 +725,6 @@ public class Config {
     JSONObject ui = config.getJSONObject("ui");
     JSONObject leelaz = config.getJSONObject("leelaz");
     JSONArray engineSettings = leelaz.optJSONArray("engine-settings-list");
-    boolean hadConfiguredEngine = engineSettings != null && hasConfiguredEngine(engineSettings);
-    boolean firstTimeLoadFlag = ui.optBoolean("first-time-load", true);
     if (engineSettings == null) {
       engineSettings = new JSONArray();
       leelaz.put("engine-settings-list", engineSettings);
@@ -815,7 +814,9 @@ public class Config {
       putIfMissing(bundledEngine, "initialCommand", "");
     }
 
-    boolean shouldPreferBundled = firstTimeLoadFlag || !hadConfiguredEngine;
+    // Existing profiles may deliberately use manual or no-engine startup. Discovering a bundled
+    // engine must never rewrite that choice; only a genuinely new profile receives defaults.
+    boolean shouldPreferBundled = newProfile;
     if (shouldPreferBundled) {
       for (int i = 0; i < engineSettings.length(); i++) {
         JSONObject engineInfo = engineSettings.optJSONObject(i);
@@ -1515,10 +1516,12 @@ public class Config {
     this.persistFilename = this.runtimeWorkDirectoryOverride + File.separator + "persist";
     this.saveBoardFilename =
         this.runtimeWorkDirectoryOverride + File.separator + "save" + File.separator + "save";
+    this.newProfile = !new File(this.configFilename).isFile();
   }
 
   public Config() throws IOException {
     this.runtimeWorkDirectoryOverride = null;
+    this.newProfile = !new File(configFilename).isFile();
     JSONObject defaultConfig = createDefaultConfig();
     JSONObject persistConfig = createPersistConfig();
     JSONObject saveBoardConf = createSaveBoardConfig();
@@ -1552,6 +1555,7 @@ public class Config {
     saveBoardConfig = saveBoard.getJSONObject("save");
     uiConfig = config.getJSONObject("ui");
     persistedUi = persisted.getJSONObject("ui-persist");
+    applyFirstLaunchDefaults(uiConfig, newProfile);
 
     restoreSubBoardDefaultOnce();
     hideBlunderBarDefaultOnce();
@@ -3305,6 +3309,20 @@ public class Config {
 
   public String getConfigFilePath() {
     return new File(configFilename).getAbsolutePath();
+  }
+
+  public boolean isNewProfile() {
+    return newProfile;
+  }
+
+  static void applyFirstLaunchDefaults(JSONObject ui, boolean newProfile) {
+    if (!newProfile || ui == null) {
+      return;
+    }
+    ui.put("use-language", AppLocale.SIMPLIFIED_CHINESE.configValue());
+    // First launch must reach the board without a minutes-long benchmark dialog. Users can run
+    // the same official benchmark explicitly from KataGo Auto Setup when convenient.
+    ui.put("enable-startup-benchmark", false);
   }
 
   public File getWorkDirectory() {

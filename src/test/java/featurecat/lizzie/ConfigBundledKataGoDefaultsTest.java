@@ -74,6 +74,7 @@ public class ConfigBundledKataGoDefaultsTest {
   @Test
   void existingBundledEngineKeepsUserStartupModeAndKomiOnRestart() throws Exception {
     Path tempRoot = Files.createTempDirectory("lizzie-bundled-katago-existing");
+    Files.writeString(tempRoot.resolve("config.txt"), "{}");
     createBundledKataGoAssets(tempRoot);
 
     Config config = ConfigTestHelper.createForTests(tempRoot);
@@ -112,6 +113,7 @@ public class ConfigBundledKataGoDefaultsTest {
   @Test
   void customCommandInDefaultSlotSurvivesRestart() throws Exception {
     Path tempRoot = Files.createTempDirectory("lizzie-bundled-katago-custom");
+    Files.writeString(tempRoot.resolve("config.txt"), "{}");
     createBundledKataGoAssets(tempRoot);
 
     Config config = ConfigTestHelper.createForTests(tempRoot);
@@ -165,6 +167,30 @@ public class ConfigBundledKataGoDefaultsTest {
     assertEquals(0, ui.getInt("default-engine"));
     assertTrue(engines.getJSONObject(0).getBoolean("isDefault"));
     assertEquals(7.5, engines.getJSONObject(0).getDouble("komi"));
+  }
+
+  @Test
+  void existingNoEngineModeIsNotRewrittenWhenBundledAssetsAppear() throws Exception {
+    Path tempRoot = Files.createTempDirectory("lizzie-bundled-katago-no-engine");
+    Files.writeString(tempRoot.resolve("config.txt"), "{}");
+    createBundledKataGoAssets(tempRoot);
+
+    Config config = ConfigTestHelper.createForTests(tempRoot);
+    JSONObject ui = new JSONObject();
+    ui.put("first-time-load", false);
+    ui.put("autoload-default", false);
+    ui.put("autoload-last", false);
+    ui.put("autoload-empty", true);
+
+    JSONObject leelaz = new JSONObject();
+    leelaz.put("engine-settings-list", new JSONArray());
+    config.config = new JSONObject().put("ui", ui).put("leelaz", leelaz);
+
+    withUserDir(tempRoot, () -> applyBundledKataGoDefaults(config));
+
+    assertFalse(ui.getBoolean("autoload-default"));
+    assertFalse(ui.getBoolean("autoload-last"));
+    assertTrue(ui.getBoolean("autoload-empty"));
   }
 
   @Test

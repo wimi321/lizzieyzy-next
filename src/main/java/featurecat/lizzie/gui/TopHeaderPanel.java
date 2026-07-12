@@ -108,6 +108,7 @@ public class TopHeaderPanel extends JPanel {
     if (comp instanceof JPanel) {
       ((JPanel) comp).setOpaque(false);
     }
+    AccessibilitySupport.applyToTree(comp);
   }
 
   private final class GroupPanel extends JPanel {

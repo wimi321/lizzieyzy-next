@@ -1580,7 +1580,7 @@ public class BottomToolbar extends JPanel {
 
     chkAutoAnalyse = new JCheckBox();
     anaPanel.add(chkAutoAnalyse);
-    lblchkAutoAnalyse = new JLabel("自动分析");
+    lblchkAutoAnalyse = new JLabel(text("BottomToolbar.detail.autoAnalyze", "自动分析"));
     chkAutoAnalyse.addActionListener(
         new ActionListener() {
           @Override
@@ -1601,8 +1601,8 @@ public class BottomToolbar extends JPanel {
     anaPanel.add(lblchkAutoAnalyse);
     chkAutoAnalyse.setBounds(1, 1, 20, 18);
     lblchkAutoAnalyse.setBounds(21, 0, 60, 20);
-    chkAnaBlack = new JCheckBox("黑");
-    chkAnaWhite = new JCheckBox("白");
+    chkAnaBlack = new JCheckBox(text("BottomToolbar.detail.black", "黑"));
+    chkAnaWhite = new JCheckBox(text("BottomToolbar.detail.white", "白"));
     chkAnaBlack.setFocusable(false);
     chkAnaWhite.setFocusable(false);
     chkAnaBlack.setSelected(true);
@@ -1627,7 +1627,7 @@ public class BottomToolbar extends JPanel {
     anaPanel.add(chkAnaWhite);
     chkAnaBlack.setBounds(68, 1, 40, 20);
 
-    lblAnaMove = new JLabel("手数:");
+    lblAnaMove = new JLabel(text("BottomToolbar.detail.moveRange", "手数:"));
     lblAnaMove.setBounds(108, 0, 40, 20);
     anaPanel.add(lblAnaMove);
 
@@ -1654,7 +1654,7 @@ public class BottomToolbar extends JPanel {
           }
         });
 
-    lblAnaMoveAnd = new JLabel("到");
+    lblAnaMoveAnd = new JLabel(text("BottomToolbar.detail.to", "到"));
     lblAnaMoveAnd.setBounds(170, 0, 15, 20);
     anaPanel.add(lblAnaMoveAnd);
 
@@ -1679,7 +1679,8 @@ public class BottomToolbar extends JPanel {
             // 获得焦点执行的代码
           }
         });
-    lblAnaFirstPlayouts = new JLabel("首位计算量:");
+    lblAnaFirstPlayouts =
+        new JLabel(text("BottomToolbar.detail.firstPlayouts", "首位计算量:"));
     chkAnaFirstPlayouts = new JCheckBox();
     chkAnaFirstPlayouts.addActionListener(
         new ActionListener() {
@@ -1699,27 +1700,28 @@ public class BottomToolbar extends JPanel {
     anaPanel.add(txtAnaFirstPlayouts);
     txtAnaFirstPlayouts.setBounds(298, 2, 42, 18);
 
-    start = new JButton("开始");
+    start = new JButton(text("BottomToolbar.detail.start", "开始"));
     AppleStyleSupport.markPrimary(start);
     start.addActionListener(
         new ActionListener() {
           public void actionPerformed(ActionEvent e) {
             if (Lizzie.config.isAutoAna) {
-              start.setText("开始");
+              start.setText(text("BottomToolbar.detail.start", "开始"));
               stopAutoAna(true, true);
             } else {
-              start.setText("终止");
+              start.setText(text("BottomToolbar.detail.stop", "终止"));
               startAutoAna();
             }
           }
         });
-    JButton stopGo = new JButton("暂停");
+    JButton stopGo = new JButton(text("BottomToolbar.detail.pause", "暂停"));
     stopGo.addActionListener(
         new ActionListener() {
           public void actionPerformed(ActionEvent e) {
             Lizzie.leelaz.togglePonder();
-            if (Lizzie.leelaz.isPondering()) stopGo.setText("暂停");
-            else stopGo.setText("继续");
+            if (Lizzie.leelaz.isPondering())
+              stopGo.setText(text("BottomToolbar.detail.pause", "暂停"));
+            else stopGo.setText(text("BottomToolbar.detail.continue", "继续"));
           }
         });
     start.setMargin(new Insets(0, 0, 0, 0));
@@ -1735,7 +1737,7 @@ public class BottomToolbar extends JPanel {
     chkAnaAutoSave.setSelected(true);
     anaPanel.add(chkAnaAutoSave);
     chkAnaAutoSave.setBounds(1, 22, 20, 20);
-    lblAnaAutoSave = new JLabel("保存棋谱");
+    lblAnaAutoSave = new JLabel(text("BottomToolbar.detail.saveKifu", "保存棋谱"));
     anaPanel.add(lblAnaAutoSave);
     lblAnaAutoSave.setBounds(21, 22, 50, 20);
     chkAnaAutoSave.addActionListener(
@@ -1757,7 +1759,8 @@ public class BottomToolbar extends JPanel {
             setTxtUnfocuse();
           }
         });
-    lbltxtAnaPlayouts = new JLabel("总计算量:");
+    lbltxtAnaPlayouts =
+        new JLabel(text("BottomToolbar.detail.totalPlayouts", "总计算量:"));
     anaPanel.add(chkAnaPlayouts);
     anaPanel.add(lbltxtAnaPlayouts);
     chkAnaPlayouts.setBounds(104, 22, 20, 20);
@@ -1769,7 +1772,7 @@ public class BottomToolbar extends JPanel {
 
     chkAnaTime = new JCheckBox();
     chkAnaTime.setSelected(true);
-    lbltxtAnaTime = new JLabel("按时间(秒):");
+    lbltxtAnaTime = new JLabel(text("BottomToolbar.detail.byTime", "按时间(秒):"));
 
     chkAnaTime.addActionListener(
         new ActionListener() {
@@ -1790,7 +1793,8 @@ public class BottomToolbar extends JPanel {
     anaPanel.add(txtAnaTime);
     txtAnaTime.setBounds(305, 23, 25, 18);
 
-    JButton analysisTable = new JButton("批量进度表");
+    JButton analysisTable =
+        new JButton(text("BottomToolbar.detail.batchProgress", "批量进度表"));
     analysisTable.addActionListener(
         new ActionListener() {
           public void actionPerformed(ActionEvent e) {
@@ -1837,11 +1841,13 @@ public class BottomToolbar extends JPanel {
             }
           }
         });
-    lblchkShowBlack = new JLabel("显示黑");
-    lblchkShowWhite = new JLabel("显示白");
+    lblchkShowBlack = new JLabel(text("BottomToolbar.detail.showBlack", "显示黑"));
+    lblchkShowWhite = new JLabel(text("BottomToolbar.detail.showWhite", "显示白"));
 
-    JLabel autoMain = new JLabel("自动播放(大)(秒)");
-    JLabel autoSub = new JLabel("自动变化图(毫秒)");
+    JLabel autoMain =
+        new JLabel(text("BottomToolbar.detail.autoMain", "自动播放(大)(秒)"));
+    JLabel autoSub =
+        new JLabel(text("BottomToolbar.detail.autoVariation", "自动变化图(毫秒)"));
     chkAutoMain = new JCheckBox();
     chkAutoSub = new JCheckBox();
     chkAutoMain.addActionListener(
@@ -1905,7 +1911,7 @@ public class BottomToolbar extends JPanel {
     lblchkShowBlack.setBounds(25, 0, 40, 18);
     chkShowWhite.setBounds(5, 22, 20, 18);
     lblchkShowWhite.setBounds(25, 22, 40, 18);
-    lblAutoPlay = new JLabel("自动落子");
+    lblAutoPlay = new JLabel(text("BottomToolbar.detail.autoMove", "自动落子"));
     autoPlayPanel.add(chkAutoPlay);
     autoPlayPanel.add(lblAutoPlay);
     chkAutoPlay.setBounds(60, 1, 20, 18);
@@ -1928,8 +1934,8 @@ public class BottomToolbar extends JPanel {
             setTxtUnfocuse();
           }
         });
-    lblAutoPlayBlack = new JLabel("黑");
-    lblAutoPlayWhite = new JLabel("白");
+    lblAutoPlayBlack = new JLabel(text("BottomToolbar.detail.black", "黑"));
+    lblAutoPlayWhite = new JLabel(text("BottomToolbar.detail.white", "白"));
     autoPlayPanel.add(lblAutoPlayBlack);
     autoPlayPanel.add(lblAutoPlayWhite);
     autoPlayPanel.add(chkAutoPlayBlack);
@@ -1942,7 +1948,7 @@ public class BottomToolbar extends JPanel {
 
     chkAutoPlayTime = new JCheckBox();
     chkAutoPlayTime.setSelected(true);
-    lblAutoPlay = new JLabel("按时间(秒):");
+    lblAutoPlay = new JLabel(text("BottomToolbar.detail.byTime", "按时间(秒):"));
     txtAutoPlayTime = new JTextField();
     chkAutoPlayTime.addActionListener(
         new ActionListener() {
@@ -1960,7 +1966,8 @@ public class BottomToolbar extends JPanel {
     txtAutoPlayTime.setBounds(290, 2, 33, 18);
 
     chkAutoPlayPlayouts = new JCheckBox();
-    lblAutoPlayPlayouts = new JLabel("总计算量:");
+    lblAutoPlayPlayouts =
+        new JLabel(text("BottomToolbar.detail.totalPlayouts", "总计算量:"));
     txtAutoPlayPlayouts = new JTextField();
     chkAutoPlayPlayouts.addActionListener(
         new ActionListener() {
@@ -1978,7 +1985,8 @@ public class BottomToolbar extends JPanel {
     txtAutoPlayPlayouts.setBounds(135, 23, 50, 18);
 
     chkAutoPlayFirstPlayouts = new JCheckBox();
-    lblAutoPlayFirstPlayouts = new JLabel("首位计算量:");
+    lblAutoPlayFirstPlayouts =
+        new JLabel(text("BottomToolbar.detail.firstPlayouts", "首位计算量:"));
     txtAutoPlayFirstPlayouts = new JTextField();
     chkAutoPlayFirstPlayouts.addActionListener(
         new ActionListener() {
@@ -1996,7 +2004,7 @@ public class BottomToolbar extends JPanel {
     txtAutoPlayFirstPlayouts.setBounds(272, 23, 50, 18);
 
     chkenginePk = new JCheckBox();
-    lblenginePk = new JLabel("引擎对战");
+    lblenginePk = new JLabel(text("BottomToolbar.detail.engineMatch", "引擎对战"));
     enginePkPanel.add(chkenginePk);
     enginePkPanel.add(lblenginePk);
 
@@ -2043,7 +2051,7 @@ public class BottomToolbar extends JPanel {
     // }
     // });
 
-    btnEnginePkConfig = new JButton("设置");
+    btnEnginePkConfig = new JButton(text("BottomToolbar.detail.settings", "设置"));
     enginePkPanel.add(btnEnginePkConfig);
     btnEnginePkConfig.setBounds(42, 22, 35, 20);
     btnEnginePkConfig.setMargin(new Insets(0, 0, 0, 0));
@@ -2057,7 +2065,7 @@ public class BottomToolbar extends JPanel {
             engineconfig.setVisible(true);
           }
         });
-    btnEnginePkStop = new JButton("暂停");
+    btnEnginePkStop = new JButton(text("BottomToolbar.detail.pause", "暂停"));
     enginePkPanel.add(btnEnginePkStop);
     btnEnginePkStop.setBounds(76, 22, 35, 20);
     btnEnginePkStop.setMargin(new Insets(0, 0, 0, 0));
@@ -2078,7 +2086,7 @@ public class BottomToolbar extends JPanel {
                   //                  msg.setVisible(true);
                   return;
                 }
-                btnEnginePkStop.setText("暂停");
+                btnEnginePkStop.setText(text("BottomToolbar.detail.pause", "暂停"));
                 isPkStop = false;
                 if (isPkStopGenmoveB) {
                   Lizzie.engineManager
@@ -2111,14 +2119,14 @@ public class BottomToolbar extends JPanel {
                 }
 
               } else {
-                btnEnginePkStop.setText("继续");
+                btnEnginePkStop.setText(text("BottomToolbar.detail.continue", "继续"));
                 isPkStop = true;
                 isPkGenmoveStop = false;
               }
 
             } else {
               if (isPkStop) {
-                btnEnginePkStop.setText("暂停");
+                btnEnginePkStop.setText(text("BottomToolbar.detail.pause", "暂停"));
                 isPkStop = false;
                 if (Lizzie.config.enginePkPonder) {
                   Lizzie.engineManager
@@ -2143,7 +2151,7 @@ public class BottomToolbar extends JPanel {
                   }
                 }
               } else {
-                btnEnginePkStop.setText("继续");
+                btnEnginePkStop.setText(text("BottomToolbar.detail.continue", "继续"));
                 Lizzie.engineManager
                     .engineList
                     .get(EngineManager.engineGameInfo.blackEngineIndex)
@@ -2163,8 +2171,8 @@ public class BottomToolbar extends JPanel {
 
     chkenginePkTime = new JCheckBox();
     chkenginePkTime.setSelected(true);
-    lblenginePkTime = new JLabel("时间(秒) 黑");
-    lblenginePkTimeWhite = new JLabel("白");
+    lblenginePkTime = new JLabel(text("BottomToolbar.detail.timeBlack", "时间(秒) 黑"));
+    lblenginePkTimeWhite = new JLabel(text("BottomToolbar.detail.white", "白"));
     txtenginePkTime = new JTextField();
     txtenginePkTime.setDocument(new IntDocument());
     txtenginePkTime.setText("2");
@@ -2198,7 +2206,7 @@ public class BottomToolbar extends JPanel {
           }
         });
 
-    btnStartPk = new JButton("开始");
+    btnStartPk = new JButton(text("BottomToolbar.detail.start", "开始"));
     AppleStyleSupport.markPrimary(btnStartPk);
     enginePkPanel.add(btnStartPk);
     btnStartPk.setBounds(8, 22, 35, 20);
@@ -2232,7 +2240,7 @@ public class BottomToolbar extends JPanel {
     enginePkBlack = new JComboBox<String>();
     enginePkPanel.add(enginePkBlack);
     enginePkBlack.setBounds(90, 2, 88, 18);
-    lblengineBlack = new JLabel("黑:");
+    lblengineBlack = new JLabel(text("BottomToolbar.detail.blackColon", "黑:"));
     enginePkPanel.add(lblengineBlack);
     lblengineBlack.setBounds(75, 0, 15, 20);
     UI ui = new UI();
@@ -2256,14 +2264,15 @@ public class BottomToolbar extends JPanel {
         Lizzie.config.useMorandiColors ? MorandiPalette.TOOLBAR_TEXT : Color.WHITE);
     ((Popup) ui2.getPopup()).setDisplaySize(200, 200);
 
-    lblengineWhite = new JLabel("白:");
+    lblengineWhite = new JLabel(text("BottomToolbar.detail.whiteColon", "白:"));
     enginePkPanel.add(lblengineWhite);
     lblengineWhite.setBounds(237, 0, 15, 20);
 
     enginePkBlack.setEnabled(false);
     enginePkWhite.setEnabled(false);
 
-    lblenginePkFirstPlayputs = new JLabel("首位计算量  黑:");
+    lblenginePkFirstPlayputs =
+        new JLabel(text("BottomToolbar.detail.firstPlayoutsBlack", "首位计算量  黑:"));
     chkenginePkFirstPlayputs = new JCheckBox();
     txtenginePkFirstPlayputs = new JTextField();
     txtenginePkFirstPlayputs.setDocument(new IntDocument());
@@ -2273,7 +2282,8 @@ public class BottomToolbar extends JPanel {
     chkenginePkFirstPlayputs.setBounds(250, 23, 20, 18);
     lblenginePkFirstPlayputs.setBounds(269, 22, 90, 18);
     txtenginePkFirstPlayputs.setBounds(350, 24, 50, 18);
-    lblenginePkFirstPlayputsWhite = new JLabel("白:");
+    lblenginePkFirstPlayputsWhite =
+        new JLabel(text("BottomToolbar.detail.whiteColon", "白:"));
     txtenginePkFirstPlayputsWhite = new JTextField();
     txtenginePkFirstPlayputsWhite.setDocument(new IntDocument());
     enginePkPanel.add(lblenginePkFirstPlayputsWhite);
@@ -2298,7 +2308,7 @@ public class BottomToolbar extends JPanel {
         });
 
     chkenginePkBatch = new JCheckBox();
-    lblenginePkBatch = new JLabel("多盘:");
+    lblenginePkBatch = new JLabel(text("BottomToolbar.detail.multiGames", "多盘:"));
     txtenginePkBatch = new JTextField();
     txtenginePkBatch.setDocument(new IntDocument());
     enginePkPanel.add(chkenginePkBatch);
@@ -2344,12 +2354,15 @@ public class BottomToolbar extends JPanel {
         });
 
     chkenginePkContinue = new JCheckBox();
-    lblenginePkExchange = new JLabel("续弈");
+    lblenginePkExchange = new JLabel(text("BottomToolbar.detail.continueGame", "续弈"));
     enginePkPanel.add(chkenginePkContinue);
     enginePkPanel.add(lblenginePkExchange);
     chkenginePkContinue.setBounds(545, 23, 20, 18);
     lblenginePkExchange.setBounds(565, 22, 50, 20);
-    chkenginePkContinue.setToolTipText("先摆好一个局面,然后勾选就可以每盘都从这个局面开始对战");
+    chkenginePkContinue.setToolTipText(
+        text(
+            "BottomToolbar.detail.fixedStartHint",
+            "Set up a position first, then enable this to start every game from that position."));
     chkenginePkContinue.addActionListener(
         new ActionListener() {
           @Override
@@ -2358,7 +2371,8 @@ public class BottomToolbar extends JPanel {
           }
         });
 
-    lblenginePkPlayputs = new JLabel("总计算量  黑:");
+    lblenginePkPlayputs =
+        new JLabel(text("BottomToolbar.detail.totalPlayoutsBlack", "总计算量  黑:"));
     chkenginePkPlayouts = new JCheckBox();
     txtenginePkPlayputs = new JTextField();
     txtenginePkPlayputs.setDocument(new IntDocument());
@@ -2369,7 +2383,7 @@ public class BottomToolbar extends JPanel {
     lblenginePkPlayputs.setBounds(375, 0, 70, 18);
     txtenginePkPlayputs.setBounds(445, 2, 50, 18);
 
-    lblenginePkPlayputsWhite = new JLabel("白:");
+    lblenginePkPlayputsWhite = new JLabel(text("BottomToolbar.detail.whiteColon", "白:"));
     txtenginePkPlayputsWhite = new JTextField();
     txtenginePkPlayputsWhite.setDocument(new IntDocument());
     enginePkPanel.add(lblenginePkPlayputsWhite);
@@ -2393,7 +2407,7 @@ public class BottomToolbar extends JPanel {
           }
         });
 
-    btnEngineMannul = new JButton("干预");
+    btnEngineMannul = new JButton(text("BottomToolbar.detail.intervene", "干预"));
 
     btnEngineMannul.setBounds(563, 1, 35, 20);
     btnEngineMannul.setMargin(new Insets(0, 0, 0, 0));
@@ -2612,8 +2626,57 @@ public class BottomToolbar extends JPanel {
     setGenmove();
     if (chkenginePkBatch.isSelected()) txtenginePkBatch.setEnabled(true);
     else txtenginePkBatch.setEnabled(false);
+    configureAccessibility();
     refreshComponentStyles();
     //  setFontSize(Lizzie.config.bottomFontSize);
+  }
+
+  private void configureAccessibility() {
+    AccessibilitySupport.button(
+        firstButton,
+        text("Accessibility.firstMove", "First move"),
+        text("Accessibility.firstMoveDescription", "Go to the first move"));
+    AccessibilitySupport.button(
+        backward10,
+        text("Accessibility.previousTenMoves", "Previous ten moves"),
+        text("Accessibility.previousTenMovesDescription", "Go back ten moves"));
+    AccessibilitySupport.button(
+        backward1,
+        text("Accessibility.previousMove", "Previous move"),
+        text("Accessibility.previousMoveDescription", "Go back one move"));
+    AccessibilitySupport.button(
+        forward1,
+        text("Accessibility.nextMove", "Next move"),
+        text("Accessibility.nextMoveDescription", "Go forward one move"));
+    AccessibilitySupport.button(
+        forward10,
+        text("Accessibility.nextTenMoves", "Next ten moves"),
+        text("Accessibility.nextTenMovesDescription", "Go forward ten moves"));
+    AccessibilitySupport.button(
+        lastButton,
+        text("Accessibility.lastMove", "Last move"),
+        text("Accessibility.lastMoveDescription", "Go to the last move"));
+    AccessibilitySupport.button(
+        detail,
+        text("Accessibility.toolbarDetails", "Toolbar details"),
+        text("Accessibility.toolbarDetailsDescription", "Show or hide detailed toolbar controls"));
+    AccessibilitySupport.button(
+        leftMove,
+        text("Accessibility.toolbarPreviousGroup", "Previous toolbar group"),
+        text("Accessibility.toolbarPreviousGroupDescription", "Show the previous toolbar group"));
+    AccessibilitySupport.button(
+        rightMove,
+        text("Accessibility.toolbarNextGroup", "Next toolbar group"),
+        text("Accessibility.toolbarNextGroupDescription", "Show the next toolbar group"));
+    AccessibilitySupport.named(
+        txtMoveNumber,
+        text("Accessibility.moveNumber", "Move number"),
+        text("Accessibility.moveNumberDescription", "Enter a move number and press Enter to jump"));
+    AccessibilitySupport.applyToTree(this);
+  }
+
+  private String text(String key, String fallback) {
+    return resourceBundle.containsKey(key) ? resourceBundle.getString(key) : fallback;
   }
 
   private void setButtonSize(JButton button, boolean widden) {
@@ -2827,7 +2890,7 @@ public class BottomToolbar extends JPanel {
     Lizzie.config.isAutoAna = false;
     // startAutoAna = false;
     chkAutoAnalyse.setSelected(false);
-    start.setText("开始");
+    start.setText(text("BottomToolbar.detail.start", "开始"));
     if (Lizzie.leelaz.isPondering()) Lizzie.leelaz.togglePonder();
     if (Lizzie.frame.isBatchAna || LizzieFrame.toolbar.chkAnaAutoSave.isSelected()) {
       autoAnaSaveAndLoad();
@@ -3826,8 +3889,8 @@ public class BottomToolbar extends JPanel {
   }
 
   public void resetAutoAna() {
-    chkAnaBlack.setText("黑");
-    chkAnaWhite.setText("白");
+    chkAnaBlack.setText(text("BottomToolbar.detail.black", "黑"));
+    chkAnaWhite.setText(text("BottomToolbar.detail.white", "白"));
     txtFirstAnaMove.setBounds(138, 2, 30, 18);
     txtLastAnaMove.setBounds(185, 2, 30, 18);
     txtAnaFirstPlayouts.setBounds(298, 2, 45, 18);
@@ -3906,7 +3969,7 @@ public class BottomToolbar extends JPanel {
         && Lizzie.frame.Batchfiles != null
         && Lizzie.frame.Batchfiles.size() > 1
         && Lizzie.frame.BatchAnaNum == 0) Lizzie.frame.openAnalysisTable();
-    start.setText("终止");
+    start.setText(text("BottomToolbar.detail.stop", "终止"));
     //   Lizzie.board.canGetBestMoves = true;
   }
 
@@ -4014,9 +4077,9 @@ public class BottomToolbar extends JPanel {
   }
 
   public void enableDisabelForEngineGame(boolean enable) {
-    if (!enable) btnStartPk.setText("终止");
-    else btnStartPk.setText("开始");
-    btnEnginePkStop.setText("暂停");
+    if (!enable) btnStartPk.setText(text("BottomToolbar.detail.stop", "终止"));
+    else btnStartPk.setText(text("BottomToolbar.detail.start", "开始"));
+    btnEnginePkStop.setText(text("BottomToolbar.detail.pause", "暂停"));
     txtenginePkTime.setEnabled(enable);
     txtenginePkTimeWhite.setEnabled(enable);
     txtenginePkPlayputsWhite.setEnabled(enable);
