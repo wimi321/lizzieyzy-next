@@ -31,6 +31,7 @@ public class ZhiziGtpTransport implements EngineTransport {
   private static final Duration READY_TIMEOUT = Duration.ofSeconds(60);
   private static final Duration READY_FALLBACK_AFTER_RECONNECT = Duration.ofSeconds(4);
   private static final Duration RECONNECT_GRACE_PERIOD = Duration.ofSeconds(45);
+  private static final int MAX_START_ATTEMPTS = 3;
 
   private final ZhiziApiClient apiClient;
   private final String accountToken;
@@ -73,6 +74,47 @@ public class ZhiziGtpTransport implements EngineTransport {
 
   @Override
   public void start() throws IOException {
+    IOException lastFailure = null;
+    for (int attempt = 1; attempt <= MAX_START_ATTEMPTS; attempt++) {
+      try {
+        startSession();
+        return;
+      } catch (IOException failure) {
+        lastFailure = failure;
+        disposeSocketSession(false);
+        boolean terminalFailure =
+            Thread.currentThread().isInterrupted()
+                || isFatalStartupFailure(startupFailureText(failure))
+                || attempt >= MAX_START_ATTEMPTS;
+        if (terminalFailure) {
+          close();
+          throw failure;
+        }
+        long retryDelayMillis = startupRetryDelayMillis(attempt);
+        writeStderrLine(
+            "智子云算力本次未准备好，"
+                + Math.max(1L, (retryDelayMillis + 999L) / 1000L)
+                + " 秒后自动重启连接（"
+                + (attempt + 1)
+                + "/"
+                + MAX_START_ATTEMPTS
+                + "）...");
+        try {
+          TimeUnit.MILLISECONDS.sleep(retryDelayMillis);
+        } catch (InterruptedException interrupted) {
+          Thread.currentThread().interrupt();
+          close();
+          throw new IOException("连接智子云算力被中断。", interrupted);
+        }
+      }
+    }
+    close();
+    throw lastFailure == null
+        ? new IOException("智子云算力自动重启后仍未准备好。")
+        : lastFailure;
+  }
+
+  private void startSession() throws IOException {
     if (accountToken.isEmpty()) {
       throw new IOException("请先登录智子云算力。");
     }
@@ -155,7 +197,7 @@ public class ZhiziGtpTransport implements EngineTransport {
       while (!readyLatch.await(250, TimeUnit.MILLISECONDS)) {
         if (errorLatch.getCount() == 0
             && failedBeforeReady.get()
-            && isProbablyFatalStartupError(startupError.get())) {
+            && isFatalStartupFailure(startupError.get())) {
           throw new IOException("智子云算力连接失败，请检查网络、登录状态或账号额度。");
         }
         if (Thread.currentThread().isInterrupted()) {
@@ -164,7 +206,6 @@ public class ZhiziGtpTransport implements EngineTransport {
         }
         if (System.currentTimeMillis() >= deadline) {
           String lastError = startupError.get();
-          close();
           throw new IOException(
               lastError == null || lastError.isBlank()
                   ? "智子云算力连接超时，请稍后重试。"
@@ -176,7 +217,6 @@ public class ZhiziGtpTransport implements EngineTransport {
       throw new IOException("连接智子云算力被中断。", e);
     }
     if (!open.get()) {
-      close();
       throw new IOException("智子云算力超时未准备好。");
     }
   }
@@ -202,12 +242,32 @@ public class ZhiziGtpTransport implements EngineTransport {
     if (closed.get() || current == null) {
       return false;
     }
-    if (open.get() || current.connected() || current.isActive()) {
+    return connectionIsUsable(
+        open.get(),
+        current.connected(),
+        current.isActive(),
+        everReady.get(),
+        lastDisconnectAtMs,
+        System.currentTimeMillis(),
+        RECONNECT_GRACE_PERIOD.toMillis());
+  }
+
+  static boolean connectionIsUsable(
+      boolean ready,
+      boolean connected,
+      boolean active,
+      boolean wasEverReady,
+      long disconnectedAtMillis,
+      long nowMillis,
+      long reconnectGraceMillis) {
+    if (ready || connected) {
       return true;
     }
-    return everReady.get()
-        && lastDisconnectAtMs > 0
-        && System.currentTimeMillis() - lastDisconnectAtMs <= RECONNECT_GRACE_PERIOD.toMillis();
+    if (!wasEverReady) {
+      return active;
+    }
+    return disconnectedAtMillis > 0
+        && Math.max(0L, nowMillis - disconnectedAtMillis) <= reconnectGraceMillis;
   }
 
   @Override
@@ -220,13 +280,25 @@ public class ZhiziGtpTransport implements EngineTransport {
     closed.set(true);
     open.set(false);
     cancelReadyFallback();
+    disposeSocketSession(true);
     stdin.closeForShutdown();
+    reconnectExecutor.shutdownNow();
+    closeQuietly(stdout);
+    closeQuietly(stderr);
+  }
+
+  private void disposeSocketSession(boolean sendQuit) {
+    open.set(false);
+    cancelReadyFallback();
+    stdin.bind(new SocketCommandEmitter(null));
     Socket current = socket;
     socket = null;
     if (current != null) {
       try {
         current.io().reconnection(false);
-        current.emit("stdin", "quit\n");
+        if (sendQuit) {
+          current.emit("stdin", "quit\n");
+        }
       } catch (Exception ignored) {
       }
       current.io().off();
@@ -234,10 +306,9 @@ public class ZhiziGtpTransport implements EngineTransport {
       current.disconnect();
       current.close();
     }
-    reconnectExecutor.shutdownNow();
+    reconnectAttemptCount.set(0);
+    lastDisconnectAtMs = 0L;
     closeSocketHttpClient();
-    closeQuietly(stdout);
-    closeQuietly(stderr);
   }
 
   private void attachReconnectDiagnostics(Socket socket) {
@@ -324,22 +395,66 @@ public class ZhiziGtpTransport implements EngineTransport {
     }
   }
 
-  private boolean isProbablyFatalStartupError(String message) {
+  static boolean isFatalStartupFailure(String message) {
     String normalized = message == null ? "" : message.toLowerCase();
+    boolean workerCapacityProblem =
+        normalized.contains("worker")
+            && (normalized.contains("no worker")
+                || normalized.contains("unavailable")
+                || normalized.contains("busy")
+                || normalized.contains("暂时")
+                || normalized.contains("没有可用")
+                || normalized.contains("无可用"));
+    if (workerCapacityProblem
+        && !normalized.contains("permission")
+        && !normalized.contains("forbidden")
+        && !normalized.contains("unauthorized")
+        && !normalized.contains("未开通")
+        && !normalized.contains("无权限")) {
+      return false;
+    }
     return normalized.contains("401")
         || normalized.contains("403")
         || normalized.contains("unauthorized")
         || normalized.contains("forbidden")
         || normalized.contains("invalid token")
+        || normalized.contains("token invalid")
         || normalized.contains("expired token")
-        || normalized.contains("worker")
+        || normalized.contains("token expired")
         || normalized.contains("quota")
         || normalized.contains("balance")
         || normalized.contains("vip")
+        || normalized.contains("请先登录")
+        || normalized.contains("登录失效")
+        || normalized.contains("登录已过期")
+        || normalized.contains("账号未")
+        || normalized.contains("账号异常")
         || normalized.contains("权限")
         || normalized.contains("额度")
         || normalized.contains("余额")
         || normalized.contains("套餐");
+  }
+
+  static long startupRetryDelayMillis(int completedAttempt) {
+    if (completedAttempt <= 1) {
+      return 1500L;
+    }
+    return completedAttempt == 2 ? 4000L : 10_000L;
+  }
+
+  private static String startupFailureText(Throwable failure) {
+    StringBuilder text = new StringBuilder();
+    Throwable current = failure;
+    while (current != null) {
+      if (current.getMessage() != null && !current.getMessage().isBlank()) {
+        if (text.length() > 0) {
+          text.append(' ');
+        }
+        text.append(current.getMessage());
+      }
+      current = current.getCause();
+    }
+    return text.toString();
   }
 
   private void closeSocketHttpClient() {

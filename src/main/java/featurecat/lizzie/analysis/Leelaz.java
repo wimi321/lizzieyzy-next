@@ -46,6 +46,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import javax.swing.Box;
@@ -81,11 +82,13 @@ public class Leelaz {
   private ArrayDeque<QueuedCommand> cmdQueue;
   private ArrayDeque<PendingResponseHandler> pendingResponseHandlers;
   private final AtomicInteger loadSgfResponseCommandIds = new AtomicInteger(1);
+  private final AtomicInteger exclusiveRemoteResponseCommandIds = new AtomicInteger(800000000);
   private volatile boolean currentCommandResponseError;
   private volatile String currentCommandResponseLine = "";
 
   private Process process;
   private transient EngineTransport remoteTransport;
+  private volatile ExclusiveRemoteGtpSession exclusiveRemoteGtpSession;
 
   private BufferedReader inputStream;
   private BufferedOutputStream outputStream;
@@ -487,7 +490,7 @@ public class Leelaz {
         } catch (JSONException diagnosticError) {
           diagnosticError.printStackTrace();
         }
-        return;
+        throw e;
       }
     } else if (this.useJavaSSH) {
       process = null;
@@ -717,6 +720,9 @@ public class Leelaz {
     if (engineCommand.trim().isEmpty()) {
       return;
     }
+    if (useRemoteCompute && isStarted()) {
+      normalQuit();
+    }
     isLoaded = false;
     canCheckAlive = false;
     startEngine(index);
@@ -731,6 +737,9 @@ public class Leelaz {
                 // TODO Auto-generated catch block
                 e.printStackTrace();
               }
+            }
+            if (thisLeelz != Lizzie.leelaz) {
+              return;
             }
             thisLeelz.restoreClosedEngineBoardState(isPondering);
           }
@@ -762,21 +771,27 @@ public class Leelaz {
       javaSSH.close();
     } else {
       if (this.useRemoteCompute && remoteTransport != null) remoteTransport.close();
-      executor.shutdown();
-      try {
-        while (!executor.awaitTermination(1, TimeUnit.SECONDS)) {
-          executor.shutdownNow();
-        }
-        if (executor.awaitTermination(1, TimeUnit.SECONDS)) {
-          shutdown();
-        }
-      } catch (InterruptedException e) {
-        executor.shutdownNow();
-        Thread.currentThread().interrupt();
-      }
+      shutdownExecutor(executor);
+      shutdownExecutor(executorErr);
+      shutdown();
     }
     started = false;
     isLoaded = false;
+  }
+
+  private void shutdownExecutor(ScheduledExecutorService service) {
+    if (service == null) {
+      return;
+    }
+    service.shutdown();
+    try {
+      if (!service.awaitTermination(1, TimeUnit.SECONDS)) {
+        service.shutdownNow();
+      }
+    } catch (InterruptedException interrupted) {
+      service.shutdownNow();
+      Thread.currentThread().interrupt();
+    }
   }
 
   public void forceQuit() {
@@ -2822,6 +2837,9 @@ public class Leelaz {
       String line = "";
       while ((line = inputStream.readLine()) != null) {
         rememberRecentLine(recentStdoutLines, line);
+        if (dispatchExclusiveRemoteGtpLine(line)) {
+          continue;
+        }
         if (getRcentLine) {
           if (line.startsWith("= {")) {
             recentRulesLine = line;
@@ -2927,6 +2945,7 @@ public class Leelaz {
       // System.exit(-1);
       // read();
     }
+    abortExclusiveRemoteGtpSession();
     if (!isNormalEnd) {
       started = false;
       isDownWithError = true;
@@ -3276,6 +3295,9 @@ public class Leelaz {
     // cmdQueue can be replaced with a mere String variable in this case,
     // but it is kept for future change of our mind.
     synchronized (commandQueue()) {
+      if (exclusiveRemoteGtpSession != null) {
+        return;
+      }
       if (requireResponseBeforeSend && !isResponseUpToPreDate()) {
         return;
       }
@@ -3627,6 +3649,7 @@ public class Leelaz {
 
   private void processCommandResponseLine(String line) {
     boolean matchedPendingHandler = runPendingResponseHandlerForLine(line);
+    activateExclusiveRemoteGtpSessionAfterStop(line);
     if (!matchedPendingHandler && parseResponseCommandId(line) != NO_RESPONSE_COMMAND_ID) {
       return;
     }
@@ -3638,6 +3661,124 @@ public class Leelaz {
       trySendCommandFromQueue();
     } catch (Exception ex) {
       ex.printStackTrace();
+    }
+  }
+
+  public synchronized boolean beginExclusiveRemoteGtpSession(
+      Consumer<String> lineConsumer, Runnable onReady, Runnable onClosed) {
+    if (!useRemoteCompute
+        || !isLoaded()
+        || outputStream == null
+        || lineConsumer == null
+        || exclusiveRemoteGtpSession != null) {
+      return false;
+    }
+    ExclusiveRemoteGtpSession session =
+        new ExclusiveRemoteGtpSession(
+            lineConsumer, onReady, onClosed, exclusiveRemoteResponseCommandIds.getAndIncrement());
+    exclusiveRemoteGtpSession = session;
+    notPondering();
+    if (!writeExclusiveRemoteGtpCommand(session.stopCommandId + " stop")) {
+      exclusiveRemoteGtpSession = null;
+      return false;
+    }
+    return true;
+  }
+
+  public synchronized boolean sendExclusiveRemoteGtpCommand(String command) {
+    ExclusiveRemoteGtpSession session = exclusiveRemoteGtpSession;
+    return session != null
+        && session.active
+        && command != null
+        && !command.trim().isEmpty()
+        && writeExclusiveRemoteGtpCommand(command);
+  }
+
+  public void endExclusiveRemoteGtpSession() {
+    synchronized (this) {
+      exclusiveRemoteGtpSession = null;
+    }
+    try {
+      trySendCommandFromQueue();
+    } catch (RuntimeException ex) {
+      ex.printStackTrace();
+    }
+  }
+
+  private boolean writeExclusiveRemoteGtpCommand(String command) {
+    BufferedOutputStream currentOutputStream = outputStream;
+    if (currentOutputStream == null) {
+      return false;
+    }
+    try {
+      synchronized (currentOutputStream) {
+        currentOutputStream.write((command + "\n").getBytes());
+        currentOutputStream.flush();
+      }
+      return true;
+    } catch (IOException ex) {
+      rememberRecentLine(
+          recentStderrLines,
+          "Failed to send exclusive remote GTP command '" + command + "': " + ex.getMessage());
+      return false;
+    }
+  }
+
+  private boolean dispatchExclusiveRemoteGtpLine(String line) {
+    ExclusiveRemoteGtpSession session = exclusiveRemoteGtpSession;
+    if (session == null) {
+      return false;
+    }
+    String trimmed = line == null ? "" : line.trim();
+    if (!session.active) {
+      if (trimmed.startsWith("info ")) {
+        return true;
+      }
+      if (trimmed.startsWith("?")) {
+        abortExclusiveRemoteGtpSession();
+      }
+      return false;
+    }
+    if (session.skipStopResponseBoundary && trimmed.isEmpty()) {
+      session.skipStopResponseBoundary = false;
+      return true;
+    }
+    session.lineConsumer.accept(line == null ? "" : line);
+    return true;
+  }
+
+  private void activateExclusiveRemoteGtpSessionAfterStop(String line) {
+    Runnable onReady = null;
+    synchronized (this) {
+      ExclusiveRemoteGtpSession session = exclusiveRemoteGtpSession;
+      if (session == null
+          || session.active
+          || line == null
+          || !line.trim().startsWith("=")
+          || parseResponseCommandId(line) != session.stopCommandId) {
+        return;
+      }
+      session.active = true;
+      session.skipStopResponseBoundary = true;
+      onReady = session.onReady;
+    }
+    if (onReady != null) {
+      onReady.run();
+    }
+  }
+
+  private void abortExclusiveRemoteGtpSession() {
+    Runnable onClosed = null;
+    synchronized (this) {
+      ExclusiveRemoteGtpSession session = exclusiveRemoteGtpSession;
+      if (session == null) {
+        return;
+      }
+      exclusiveRemoteGtpSession = null;
+      onClosed = session.onClosed;
+    }
+    if (onClosed != null) {
+      onClosed.run();
     }
   }
 
@@ -3744,6 +3885,23 @@ public class Leelaz {
 
     private void run() {
       handler.run();
+    }
+  }
+
+  private static final class ExclusiveRemoteGtpSession {
+    private final Consumer<String> lineConsumer;
+    private final Runnable onReady;
+    private final Runnable onClosed;
+    private final int stopCommandId;
+    private volatile boolean active;
+    private volatile boolean skipStopResponseBoundary;
+
+    private ExclusiveRemoteGtpSession(
+        Consumer<String> lineConsumer, Runnable onReady, Runnable onClosed, int stopCommandId) {
+      this.lineConsumer = lineConsumer;
+      this.onReady = onReady;
+      this.onClosed = onClosed;
+      this.stopCommandId = stopCommandId;
     }
   }
 

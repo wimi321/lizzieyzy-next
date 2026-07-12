@@ -6,6 +6,7 @@ import com.google.zxing.Result;
 import com.google.zxing.client.j2se.BufferedImageLuminanceSource;
 import com.google.zxing.common.HybridBinarizer;
 import featurecat.lizzie.Lizzie;
+import featurecat.lizzie.analysis.Leelaz;
 import featurecat.lizzie.analysis.remote.RemoteComputeConfig;
 import featurecat.lizzie.analysis.remote.ZhiziApiClient;
 import java.awt.BasicStroke;
@@ -54,6 +55,7 @@ import javax.swing.JTextField;
 import javax.swing.JToggleButton;
 import javax.swing.SwingUtilities;
 import javax.swing.SwingWorker;
+import javax.swing.Timer;
 import javax.swing.border.EmptyBorder;
 import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
@@ -111,6 +113,7 @@ public class RemoteComputeDialog extends JDialog {
   private String activePage = RemoteComputeConfig.PROVIDER_ZHIZI;
   private char passwordEchoChar;
   private boolean busy;
+  private Timer zhiziStartupMonitor;
 
   public RemoteComputeDialog(Frame owner) throws IOException {
     super(owner, "远程算力", false);
@@ -625,17 +628,66 @@ public class RemoteComputeDialog extends JDialog {
     state.rememberZhiziToken = rememberToken.isSelected();
     RemoteComputeConfig.save(state);
     int index = RemoteComputeConfig.createOrUpdateZhiziEngine(true);
+    stopZhiziStartupMonitor();
+    updateStatus("正在启动智子云算力；网络或 worker 暂时不可用时会自动重启连接。", true);
     if (Lizzie.engineManager != null) {
       SwingUtilities.invokeLater(
           () -> {
             Lizzie.engineManager.switchEngine(index, true);
-            warmQuickAnalysisAfterRemoteSwitch();
+            monitorZhiziEngineStartup(index);
           });
     } else {
       warmQuickAnalysisAfterRemoteSwitch();
     }
     updateCurrentStatus();
-    updateStatus("已启用智子云算力：" + RemoteComputeConfig.displayNameForZhiziArgs(currentArgs()), true);
+  }
+
+  private void monitorZhiziEngineStartup(int engineIndex) {
+    stopZhiziStartupMonitor();
+    zhiziStartupMonitor =
+        new Timer(
+            500,
+            event -> {
+              if (Lizzie.engineManager == null
+                  || engineIndex < 0
+                  || engineIndex >= Lizzie.engineManager.engineList.size()) {
+                stopZhiziStartupMonitor();
+                return;
+              }
+              Leelaz engine = Lizzie.engineManager.engineList.get(engineIndex);
+              if (Lizzie.leelaz != engine
+                  || !RemoteComputeConfig.isZhiziEngineCommand(engine.getEngineCommand())) {
+                stopZhiziStartupMonitor();
+                updateCurrentStatus();
+                return;
+              }
+              if (engine.isLoaded()) {
+                stopZhiziStartupMonitor();
+                warmQuickAnalysisAfterRemoteSwitch();
+                updateCurrentStatus();
+                updateStatus(
+                    "智子云算力已连接："
+                        + RemoteComputeConfig.displayNameForZhiziArgs(currentArgs()),
+                    true);
+                return;
+              }
+              if (engine.isDownWithError && !engine.isStarted()) {
+                stopZhiziStartupMonitor();
+                updateCurrentStatus();
+                updateStatus("智子云算力自动重启后仍未加载，请检查登录、套餐或网络。", false);
+                return;
+              }
+              updateZhiziActionButtonState();
+            });
+    zhiziStartupMonitor.setInitialDelay(0);
+    zhiziStartupMonitor.start();
+  }
+
+  private void stopZhiziStartupMonitor() {
+    if (zhiziStartupMonitor != null) {
+      zhiziStartupMonitor.stop();
+      zhiziStartupMonitor = null;
+    }
   }
 
   private void warmQuickAnalysisAfterRemoteSwitch() {
@@ -645,6 +697,7 @@ public class RemoteComputeDialog extends JDialog {
   }
 
   private void logout() {
+    stopZhiziStartupMonitor();
     RemoteComputeConfig.clearZhiziToken();
     passwordField.setText("");
     rememberPassword.setSelected(false);
@@ -736,6 +789,7 @@ public class RemoteComputeDialog extends JDialog {
   }
 
   private void switchToLocalProvider() {
+    stopZhiziStartupMonitor();
     int localEngineIndex = RemoteComputeConfig.saveLocalProviderAndDefaultEngine();
     if (localEngineIndex >= 0 && Lizzie.engineManager != null) {
       SwingUtilities.invokeLater(() -> Lizzie.engineManager.switchEngine(localEngineIndex, true));
@@ -744,6 +798,12 @@ public class RemoteComputeDialog extends JDialog {
       updateStatus("暂未找到本地引擎，请先在引擎设置里添加本机 KataGo。", false);
     }
     updateCurrentStatus();
+  }
+
+  @Override
+  public void dispose() {
+    stopZhiziStartupMonitor();
+    super.dispose();
   }
 
   private void updateCurrentStatus() {
@@ -772,14 +832,25 @@ public class RemoteComputeDialog extends JDialog {
     boolean loggedIn = state.zhiziAccountToken != null && !state.zhiziAccountToken.trim().isEmpty();
     boolean usingZhizi = RemoteComputeConfig.PROVIDER_ZHIZI.equals(state.provider);
     boolean sameArgs = currentArgs().equals(state.zhiziArgs);
+    boolean currentZhizi = isCurrentZhiziEngine();
+    boolean loaded = currentZhizi && Lizzie.leelaz.isLoaded();
+    boolean failed = currentZhizi && Lizzie.leelaz.isDownWithError && !Lizzie.leelaz.isStarted();
     if (!loggedIn) {
       useZhiziButton.setText("登录后启用智子云算力");
       useZhiziButton.setToolTipText("请先登录智子账号，再启用云端算力。");
       useZhiziButton.setEnabled(false);
-    } else if (usingZhizi && sameArgs) {
+    } else if (usingZhizi && sameArgs && loaded) {
       useZhiziButton.setText("已启用智子算力");
       useZhiziButton.setToolTipText("当前连接方式已经生效；更改连接方式后可重新启用。");
       useZhiziButton.setEnabled(false);
+    } else if (usingZhizi && sameArgs && currentZhizi && !failed) {
+      useZhiziButton.setText("正在连接智子云算力");
+      useZhiziButton.setToolTipText("网络或 worker 暂时不可用时会自动重启连接。");
+      useZhiziButton.setEnabled(false);
+    } else if (usingZhizi && sameArgs && failed) {
+      useZhiziButton.setText("重新连接智子云算力");
+      useZhiziButton.setToolTipText("自动重启仍未成功，可在检查账号和网络后重新连接。");
+      useZhiziButton.setEnabled(!busy);
     } else if (usingZhizi) {
       useZhiziButton.setText("更换智子云算力连接方式");
       useZhiziButton.setToolTipText("将当前引擎切换到新选择的智子连接方式。");
@@ -789,6 +860,11 @@ public class RemoteComputeDialog extends JDialog {
       useZhiziButton.setToolTipText("把智子云端 KataGo 设置为当前引擎。");
       useZhiziButton.setEnabled(!busy);
     }
+  }
+
+  private boolean isCurrentZhiziEngine() {
+    return Lizzie.leelaz != null
+        && RemoteComputeConfig.isZhiziEngineCommand(Lizzie.leelaz.getEngineCommand());
   }
 
   private void updateCustomActionButtonState() {

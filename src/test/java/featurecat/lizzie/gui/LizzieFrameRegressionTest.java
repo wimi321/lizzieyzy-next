@@ -90,6 +90,25 @@ class LizzieFrameRegressionTest {
   }
 
   @Test
+  void quickAnalysisWarmupWaitsForRemotePrimaryEngine() {
+    assertEquals(
+        LizzieFrame.QuickAnalysisWarmupAction.START,
+        LizzieFrame.decideQuickAnalysisWarmup(true, false, false, false));
+    assertEquals(
+        LizzieFrame.QuickAnalysisWarmupAction.WAIT_FOR_PRIMARY,
+        LizzieFrame.decideQuickAnalysisWarmup(true, true, false, false));
+    assertEquals(
+        LizzieFrame.QuickAnalysisWarmupAction.START,
+        LizzieFrame.decideQuickAnalysisWarmup(true, true, true, false));
+    assertEquals(
+        LizzieFrame.QuickAnalysisWarmupAction.STOP,
+        LizzieFrame.decideQuickAnalysisWarmup(true, true, false, true));
+    assertEquals(
+        LizzieFrame.QuickAnalysisWarmupAction.STOP,
+        LizzieFrame.decideQuickAnalysisWarmup(false, false, true, false));
+  }
+
+  @Test
   void playerStrengthRankReferenceKeepsKyuResultsInKyuBand() throws Exception {
     Method rankLevel = LizzieFrame.class.getDeclaredMethod("playerStrengthRankLevel", String.class);
     rankLevel.setAccessible(true);
@@ -468,26 +487,37 @@ class LizzieFrameRegressionTest {
   }
 
   @Test
-  void foxKifuLoadStartsSilentQuickAnalyzeBeforePrimaryEngineIsReady() throws Exception {
+  void remoteKifuLoadWaitsForPrimaryEngineBeforeStartingSilentQuickAnalyze() throws Exception {
     TestEnvironment env = TestEnvironment.open();
     try {
       Lizzie.config = configWithAutoQuickAnalyze();
       Lizzie.board = boardWith(historyWithUnanalyzedMove());
-      Lizzie.leelaz = null;
-      EngineManager.isEmpty = true;
+      StartingRemoteLeelaz leelaz = new StartingRemoteLeelaz();
+      Lizzie.leelaz = leelaz;
+      EngineManager.isEmpty = false;
       EngineManager.isEngineGame = false;
       EngineManager.isPreEngineGame = false;
       AnalysisResumeTrackingFrame frame = allocate(AnalysisResumeTrackingFrame.class);
+      Lizzie.frame = frame;
 
       assertTrue(
           frame.ensureAnalysisResumedAfterLoad(),
-          "loaded Fox records should start the silent winrate refresh even before Space starts ponder.");
+          "loaded records should remain scheduled while the remote primary engine connects.");
+      assertEquals(0, frame.flashAnalyzeGameCount);
+
+      invokeRetryLoadedGameQuickAnalysisIfMissing(frame);
+      assertEquals(
+          0,
+          frame.flashAnalyzeGameCount,
+          "quick analysis must not open a competing remote worker before the primary is ready.");
+
+      leelaz.loaded = true;
+      invokeRetryLoadedGameQuickAnalysisIfMissing(frame);
       assertEquals(1, frame.flashAnalyzeGameCount);
       assertTrue(frame.lastIsAllGame);
       assertFalse(frame.lastIsAllBranches);
       assertTrue(frame.lastSilentAnalyze);
-      assertEquals(
-          0, frame.refreshCount, "auto quick analyze should not fall back to ponder refresh.");
+      invokeStopLoadedGameQuickAnalysisRetry(frame);
     } finally {
       env.close();
     }
@@ -1718,12 +1748,12 @@ class LizzieFrameRegressionTest {
     }
   }
 
-  private static final class TrackingLeelaz extends Leelaz {
+  private static class TrackingLeelaz extends Leelaz {
     private boolean pondering;
     private int ponderCount;
     private List<String> commands;
 
-    private TrackingLeelaz() throws java.io.IOException {
+    protected TrackingLeelaz() throws java.io.IOException {
       super("");
     }
 
@@ -1769,6 +1799,19 @@ class LizzieFrameRegressionTest {
       } else {
         ponder();
       }
+    }
+  }
+
+  private static final class StartingRemoteLeelaz extends TrackingLeelaz {
+    private boolean loaded;
+
+    private StartingRemoteLeelaz() throws java.io.IOException {
+      engineCommand = "remote-compute://zhizi";
+    }
+
+    @Override
+    public boolean isLoaded() {
+      return loaded;
     }
   }
 

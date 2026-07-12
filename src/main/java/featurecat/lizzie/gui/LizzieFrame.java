@@ -274,6 +274,9 @@ public class LizzieFrame extends JFrame {
   private volatile int kifuAnalysisResumeGeneration = 0;
   private javax.swing.Timer quickAnalysisLoadRetryTimer;
   private int quickAnalysisLoadRetryCount = 0;
+  private boolean quickAnalysisLoadForceFull;
+  private javax.swing.Timer quickAnalysisWarmupTimer;
+  private boolean quickAnalysisWarmupRequiresAutoAnalyze;
   private static final int YIKE_CURVE_COMPLETION_DELAY_MS = 1200;
   private static final int YIKE_CURVE_COMPLETION_BUSY_RETRY_MS = 3000;
   private javax.swing.Timer yikeCurveCompletionTimer;
@@ -13540,14 +13543,10 @@ public class LizzieFrame extends JFrame {
 
   private JComponent buildPlayerStrengthPerformanceDashboard(
       PlayerStrengthEstimator.Report report) {
-    JPanel panel = new JPanel(new BorderLayout(0, 16));
+    JPanel panel = new JPanel(new BorderLayout());
     panel.setOpaque(false);
 
     panel.add(new PlayerStrengthPerformanceRankPanel(report), BorderLayout.CENTER);
-    panel.add(
-        new PlayerStrengthNoteStrip(
-            Lizzie.resourceBundle.getString("PlayerStrengthEstimate.performance.reviewNote")),
-        BorderLayout.SOUTH);
     return panel;
   }
 
@@ -17104,6 +17103,15 @@ public class LizzieFrame extends JFrame {
       return false;
     }
     if (shouldAutoQuickAnalyzeLoadedGame()) {
+      QuickAnalysisWarmupAction action = currentQuickAnalysisWarmupAction(true);
+      if (action == QuickAnalysisWarmupAction.WAIT_FOR_PRIMARY) {
+        scheduleLoadedGameQuickAnalysisRetry(false);
+        return true;
+      }
+      if (action == QuickAnalysisWarmupAction.STOP) {
+        stopLoadedGameQuickAnalysisRetry();
+        return resumeForegroundAnalysisForCurrentPosition();
+      }
       flashAnalyzeGame(true, false, true);
       scheduleLoadedGameQuickAnalysisRetry();
       resumeForegroundAnalysisForCurrentPosition();
@@ -17118,6 +17126,15 @@ public class LizzieFrame extends JFrame {
       return false;
     }
     if (shouldForceAutoQuickAnalyzeDownloadedKifu()) {
+      QuickAnalysisWarmupAction action = currentQuickAnalysisWarmupAction(true);
+      if (action == QuickAnalysisWarmupAction.WAIT_FOR_PRIMARY) {
+        scheduleLoadedGameQuickAnalysisRetry(true);
+        return true;
+      }
+      if (action == QuickAnalysisWarmupAction.STOP) {
+        stopLoadedGameQuickAnalysisRetry();
+        return resumeForegroundAnalysisForCurrentPosition();
+      }
       flashAnalyzeGame(true, false, true);
       resumeForegroundAnalysisForCurrentPosition();
       return true;
@@ -17152,11 +17169,17 @@ public class LizzieFrame extends JFrame {
   }
 
   private void scheduleLoadedGameQuickAnalysisRetry() {
+    scheduleLoadedGameQuickAnalysisRetry(false);
+  }
+
+  private void scheduleLoadedGameQuickAnalysisRetry(boolean forceFullAnalysis) {
     if (!SwingUtilities.isEventDispatchThread()) {
-      SwingUtilities.invokeLater(this::scheduleLoadedGameQuickAnalysisRetry);
+      SwingUtilities.invokeLater(
+          () -> scheduleLoadedGameQuickAnalysisRetry(forceFullAnalysis));
       return;
     }
     quickAnalysisLoadRetryCount = 0;
+    quickAnalysisLoadForceFull = forceFullAnalysis;
     if (quickAnalysisLoadRetryTimer == null) {
       quickAnalysisLoadRetryTimer =
           new javax.swing.Timer(1800, e -> retryLoadedGameQuickAnalysisIfMissing());
@@ -17170,12 +17193,30 @@ public class LizzieFrame extends JFrame {
       SwingUtilities.invokeLater(this::retryLoadedGameQuickAnalysisIfMissing);
       return;
     }
-    if (!shouldAutoQuickAnalyzeLoadedGame()) {
+    boolean forceFullAnalysis = quickAnalysisLoadForceFull;
+    if (!(forceFullAnalysis
+        ? shouldForceAutoQuickAnalyzeDownloadedKifu()
+        : shouldAutoQuickAnalyzeLoadedGame())) {
       stopLoadedGameQuickAnalysisRetry();
+      return;
+    }
+    QuickAnalysisWarmupAction action = currentQuickAnalysisWarmupAction(true);
+    if (action == QuickAnalysisWarmupAction.WAIT_FOR_PRIMARY) {
+      return;
+    }
+    if (action == QuickAnalysisWarmupAction.STOP) {
+      stopLoadedGameQuickAnalysisRetry();
+      resumeForegroundAnalysisForCurrentPosition();
       return;
     }
     AnalysisEngine currentEngine = analysisEngine;
     if (currentEngine != null && currentEngine.isAnalysisInProgress()) {
+      return;
+    }
+    if (forceFullAnalysis) {
+      stopLoadedGameQuickAnalysisRetry();
+      flashAnalyzeGame(true, false, true);
+      resumeForegroundAnalysisForCurrentPosition();
       return;
     }
     if (++quickAnalysisLoadRetryCount > 3) {
@@ -17188,16 +17229,29 @@ public class LizzieFrame extends JFrame {
 
   private void stopLoadedGameQuickAnalysisRetry() {
     quickAnalysisLoadRetryCount = 0;
+    quickAnalysisLoadForceFull = false;
     if (quickAnalysisLoadRetryTimer != null) {
       quickAnalysisLoadRetryTimer.stop();
     }
   }
 
   public void preloadQuickAnalysisEngineForKifuBrowsing() {
-    if (!canWarmQuickAnalysisEngine()) {
+    if (!SwingUtilities.isEventDispatchThread()) {
+      SwingUtilities.invokeLater(this::preloadQuickAnalysisEngineForKifuBrowsing);
       return;
     }
-    ensureQuickAnalysisEngineAsync(null);
+    switch (currentQuickAnalysisWarmupAction(true)) {
+      case START:
+        stopQuickAnalysisWarmupTimer();
+        ensureQuickAnalysisEngineAsync(null);
+        break;
+      case WAIT_FOR_PRIMARY:
+        scheduleQuickAnalysisWarmupWhenPrimaryReady(0, true);
+        break;
+      case STOP:
+        stopQuickAnalysisWarmupTimer();
+        break;
+    }
   }
 
   public void scheduleQuickAnalysisEngineWarmupAfterStartup() {
@@ -17210,19 +17264,48 @@ public class LizzieFrame extends JFrame {
         || !Lizzie.config.autoQuickAnalyzeOnLoad) {
       return;
     }
-    javax.swing.Timer warmupTimer =
-        new javax.swing.Timer(
-            1200,
-            e -> {
-              preloadQuickAnalysisEngineForKifuBrowsing();
-            });
-    warmupTimer.setRepeats(false);
-    warmupTimer.start();
+    scheduleQuickAnalysisWarmupWhenPrimaryReady(1200, true);
   }
 
   /** Starts the configured analysis engine without delaying the first interactive frame. */
   public void preloadConfiguredAnalysisEngineAfterStartup() {
-    ensureQuickAnalysisEngineAsync(null);
+    if (!SwingUtilities.isEventDispatchThread()) {
+      SwingUtilities.invokeLater(this::preloadConfiguredAnalysisEngineAfterStartup);
+      return;
+    }
+    scheduleQuickAnalysisWarmupWhenPrimaryReady(0, false);
+  }
+
+  private void scheduleQuickAnalysisWarmupWhenPrimaryReady(
+      int initialDelayMillis, boolean requiresAutoAnalyze) {
+    stopQuickAnalysisWarmupTimer();
+    quickAnalysisWarmupRequiresAutoAnalyze = requiresAutoAnalyze;
+    quickAnalysisWarmupTimer =
+        new javax.swing.Timer(1200, e -> tryWarmQuickAnalysisEngineAfterPrimary());
+    quickAnalysisWarmupTimer.setInitialDelay(Math.max(0, initialDelayMillis));
+    quickAnalysisWarmupTimer.setRepeats(true);
+    quickAnalysisWarmupTimer.start();
+  }
+
+  private void tryWarmQuickAnalysisEngineAfterPrimary() {
+    switch (currentQuickAnalysisWarmupAction(quickAnalysisWarmupRequiresAutoAnalyze)) {
+      case START:
+        stopQuickAnalysisWarmupTimer();
+        ensureQuickAnalysisEngineAsync(null);
+        break;
+      case WAIT_FOR_PRIMARY:
+        break;
+      case STOP:
+        stopQuickAnalysisWarmupTimer();
+        break;
+    }
+  }
+
+  private void stopQuickAnalysisWarmupTimer() {
+    if (quickAnalysisWarmupTimer != null) {
+      quickAnalysisWarmupTimer.stop();
+      quickAnalysisWarmupTimer = null;
+    }
   }
 
   /** Starts the optional score-estimate engine away from the Swing event thread. */
@@ -17260,12 +17343,50 @@ public class LizzieFrame extends JFrame {
     starter.start();
   }
 
-  private boolean canWarmQuickAnalysisEngine() {
+  private boolean isQuickAnalysisWarmupContextEligible(boolean requiresAutoAnalyze) {
     return Lizzie.config != null
-        && Lizzie.config.autoQuickAnalyzeOnLoad
+        && (!requiresAutoAnalyze || Lizzie.config.autoQuickAnalyzeOnLoad)
         && !EngineManager.isEngineGame()
         && !isPlayingAgainstLeelaz
         && !isAnaPlayingAgainstLeelaz;
+  }
+
+  private boolean isCurrentPrimaryEngineRemote() {
+    return Lizzie.leelaz != null
+        && RemoteComputeConfig.isRemoteComputeEngineCommand(Lizzie.leelaz.engineCommand());
+  }
+
+  private QuickAnalysisWarmupAction currentQuickAnalysisWarmupAction(
+      boolean requiresAutoAnalyze) {
+    boolean remotePrimary = isCurrentPrimaryEngineRemote();
+    boolean primaryLoaded = !remotePrimary || Lizzie.leelaz.isLoaded();
+    boolean primaryFailed =
+        remotePrimary && Lizzie.leelaz.isDownWithError && !Lizzie.leelaz.isStarted();
+    return decideQuickAnalysisWarmup(
+        isQuickAnalysisWarmupContextEligible(requiresAutoAnalyze),
+        remotePrimary,
+        primaryLoaded,
+        primaryFailed);
+  }
+
+  static QuickAnalysisWarmupAction decideQuickAnalysisWarmup(
+      boolean contextEligible,
+      boolean remotePrimary,
+      boolean primaryLoaded,
+      boolean primaryFailed) {
+    if (!contextEligible || (remotePrimary && primaryFailed)) {
+      return QuickAnalysisWarmupAction.STOP;
+    }
+    if (remotePrimary && !primaryLoaded) {
+      return QuickAnalysisWarmupAction.WAIT_FOR_PRIMARY;
+    }
+    return QuickAnalysisWarmupAction.START;
+  }
+
+  enum QuickAnalysisWarmupAction {
+    START,
+    WAIT_FOR_PRIMARY,
+    STOP
   }
 
   private void ensureQuickAnalysisEngineAsync(Runnable onReady) {

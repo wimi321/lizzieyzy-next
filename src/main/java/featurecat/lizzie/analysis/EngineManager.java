@@ -26,6 +26,8 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Random;
 import java.util.ResourceBundle;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import javax.swing.SwingUtilities;
@@ -33,6 +35,7 @@ import javax.swing.Timer;
 import org.json.JSONException;
 
 public class EngineManager {
+  private static final Set<Leelaz> REMOTE_ENGINES_RESTARTING = ConcurrentHashMap.newKeySet();
   private final ResourceBundle resourceBundle = Lizzie.resourceBundle;
   public static boolean isUpdating = false;
   public List<Leelaz> engineList;
@@ -98,6 +101,7 @@ public class EngineManager {
             } catch (IOException e2) {
               // TODO Auto-generated catch block
               e2.printStackTrace();
+              return;
             }
             while (!e.isLoaded() || e.isCheckingName) {
               try {
@@ -1540,13 +1544,19 @@ public class EngineManager {
   private void checkEngineAlive() {
     if (isEmpty) return;
     if (!isEngineGame && Lizzie.leelaz != null) {
-      if (Lizzie.leelaz.isStarted() && Lizzie.leelaz.canCheckAlive && Lizzie.leelaz.isProcessDead())
-        try {
-          Lizzie.leelaz.restartClosedEngine(currentEngineNo);
-        } catch (IOException e) {
-          // TODO Auto-generated catch block
-          e.printStackTrace();
+      if (Lizzie.leelaz.isStarted()
+          && Lizzie.leelaz.canCheckAlive
+          && Lizzie.leelaz.isProcessDead()) {
+        if (Lizzie.leelaz.useRemoteCompute) {
+          restartRemoteEngineInBackground(Lizzie.leelaz, currentEngineNo);
+        } else {
+          try {
+            Lizzie.leelaz.restartClosedEngine(currentEngineNo);
+          } catch (IOException e) {
+            e.printStackTrace();
+          }
         }
+      }
       if (Lizzie.leelaz.useJavaSSH && Lizzie.leelaz.isLoaded() && Lizzie.leelaz.canCheckAlive) {
         if (Lizzie.leelaz.javaSSHClosed)
           try {
@@ -1678,6 +1688,7 @@ public class EngineManager {
             } catch (IOException e2) {
               // TODO Auto-generated catch block
               e2.printStackTrace();
+              return;
             }
             while (!e.isLoaded() || e.isCheckingName) {
               try {
@@ -1737,6 +1748,34 @@ public class EngineManager {
               + Lizzie.leelaz.oriEnginename);
     }
     isUpdating = false;
+  }
+
+  private void restartRemoteEngineInBackground(Leelaz engine, int index) {
+    if (engine == null || !REMOTE_ENGINES_RESTARTING.add(engine)) {
+      return;
+    }
+    engine.canCheckAlive = false;
+    Thread restartThread =
+        new Thread(
+            () -> {
+              try {
+                if (Lizzie.leelaz != engine
+                    || currentEngineNo != index
+                    || isEmpty
+                    || !engine.isProcessDead()) {
+                  engine.canCheckAlive = true;
+                  return;
+                }
+                engine.restartClosedEngine(index);
+              } catch (IOException failure) {
+                failure.printStackTrace();
+              } finally {
+                REMOTE_ENGINES_RESTARTING.remove(engine);
+              }
+            },
+            "lizzie-remote-engine-restart");
+    restartThread.setDaemon(true);
+    restartThread.start();
   }
 
   public void refreshEngineCatalog() throws JSONException, IOException {
@@ -2014,6 +2053,7 @@ public class EngineManager {
       } catch (IOException e) {
         // TODO Auto-generated catch block
         e.printStackTrace();
+        return;
       }
     } else {
       newEng.canRestoreDymPda = false;
@@ -2078,6 +2118,7 @@ public class EngineManager {
     } catch (IOException e) {
       // TODO Auto-generated catch block
       e.printStackTrace();
+      return;
     }
     // }
     // else {newEng.initializeStreams();}
