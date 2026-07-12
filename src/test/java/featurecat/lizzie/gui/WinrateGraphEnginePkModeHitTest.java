@@ -36,6 +36,40 @@ class WinrateGraphEnginePkModeHitTest {
   private static final Color CUSTOM_MISS_COLOR = new Color(220, 90, 30);
   private static final Color CUSTOM_BLUNDER_COLOR = new Color(180, 30, 220, 255);
   private static final Color CURRENT_MOVE_MARKER_COLOR = new Color(244, 67, 72);
+  private static final Color CURRENT_SCORE_MARKER_COLOR = new Color(46, 204, 113);
+
+  @Test
+  void currentScoreLeadUsesGreenPointOnRenderedScoreCurve() throws Exception {
+    TestEnvironment env = TestEnvironment.open();
+    try {
+      RenderFixture fixture = modeZeroFixture();
+      fixture.board.isPkBoard = false;
+      EngineManager.isEngineGame = false;
+      Lizzie.leelaz.isKatago = true;
+      Lizzie.config.showScoreLeadLine = true;
+      Lizzie.config.scoreMeanLineColor = new Color(220, 70, 190);
+      Lizzie.config.scoreLeadStrokeWidth = 2.0f;
+      fixture.target.getData().setScoreMean(2.0);
+      fixture.current.getData().setScoreMean(4.0);
+
+      RenderLayers layers = renderLayers(fixture.graph);
+      int[] params = (int[]) getField(fixture.graph, "params");
+      double maxScoreLead = (double) getField(fixture.graph, "maxScoreLead");
+      int x = graphPointX(fixture.graph, fixture.current.getData().moveNumber);
+      int y =
+          params[1]
+              + params[3] / 2
+              - (int) (4.0 * params[3] / 2 / Math.max(1.0, maxScoreLead));
+
+      assertColorNear(
+          layers.winrate,
+          new int[] {x, y},
+          CURRENT_SCORE_MARKER_COLOR,
+          2);
+    } finally {
+      env.close();
+    }
+  }
 
   @Test
   void currentMoveUsesRedPointWithoutVerticalGuideInDefaultMode() throws Exception {

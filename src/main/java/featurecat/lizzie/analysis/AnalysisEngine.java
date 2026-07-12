@@ -37,27 +37,19 @@ import java.util.Set;
 import java.util.Stack;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.ScheduledFuture;
-import java.util.concurrent.TimeUnit;
 import org.jdesktop.swingx.util.OS;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
 public class AnalysisEngine {
   private static final int REMOTE_GTP_SILENT_INTERVAL_CENTISEC = 1;
-  private static final int REMOTE_GTP_SILENT_MAX_VISITS = 2;
+  private static final int REMOTE_GTP_SILENT_MAX_VISITS = 16;
   private static final int REMOTE_GTP_OVERVIEW_STRIDE = 8;
   private static final int REMOTE_GTP_OVERVIEW_THRESHOLD = 24;
-  private static final int REMOTE_GTP_RAW_NN_VISITS = 1;
-  private static final long REMOTE_GTP_STOP_ACK_TIMEOUT_MILLIS = 180L;
-  private static final long REMOTE_GTP_RAW_NN_STALL_TIMEOUT_MILLIS = 8000L;
-  private static final ScheduledExecutorService REMOTE_GTP_WATCHDOG_EXECUTOR =
-      Executors.newSingleThreadScheduledExecutor(
-          runnable -> {
-            Thread thread = new Thread(runnable, "remote-gtp-watchdog");
-            thread.setDaemon(true);
-            return thread;
-          });
+  private static final int REMOTE_GTP_STOP_COMMAND_ID_BASE = 810000000;
+  private static final int REMOTE_GTP_ANALYZE_COMMAND_ID_BASE = 820000000;
+  private static final long REMOTE_GTP_STOP_ACK_TIMEOUT_MILLIS = 1200L;
+  private static final long REMOTE_GTP_ANALYZE_STALL_TIMEOUT_MILLIS = 8000L;
   public Process process;
   public boolean isNormalEnd = false;
   private final ResourceBundle resourceBundle = Lizzie.resourceBundle;
@@ -100,12 +92,21 @@ public class AnalysisEngine {
   private RemoteGtpAnalyzeJob remoteGtpActiveJob;
   private boolean remoteGtpWaitingForStopAck;
   private boolean remoteGtpStopSent;
-  private boolean remoteGtpRawNnUnsupported;
-  private StringBuilder remoteGtpRawNnResponse;
-  private boolean remoteGtpRawNnSawEmptySuccess;
-  private boolean remoteGtpStopAckOptional;
+  private int remoteGtpExpectedStopCommandId;
+  private int remoteGtpNextStopCommandId = REMOTE_GTP_STOP_COMMAND_ID_BASE;
+  private int remoteGtpExpectedAnalyzeCommandId;
+  private int remoteGtpNextAnalyzeCommandId = REMOTE_GTP_ANALYZE_COMMAND_ID_BASE;
+  private boolean remoteGtpAnalyzeResponseStarted;
+  private boolean remoteGtpAnalyzeCompletionReceived;
+  private boolean remoteGtpStopAckReceived;
+  private RemoteGtpAnalyzeJob remoteGtpStoppingJob;
+  private List<MoveData> remoteGtpStoppingMoves;
+  private RemoteGtpRootInfo remoteGtpStoppingRootInfo;
   private long remoteGtpStopAckGeneration;
-  private ScheduledFuture<?> remoteGtpRawNnStallTask;
+  private long remoteGtpLastCompletionActivityMillis;
+  private Leelaz sharedRemoteEngine;
+  private boolean sharedRemoteSessionStarting;
+  private boolean sharedRemoteSessionActive;
 
   public AnalysisEngine(boolean isPreLoad) throws IOException {
     int maxVisits =
@@ -129,7 +130,20 @@ public class AnalysisEngine {
       this.useRemoteCompute = true;
     }
 
+    if (this.useRemoteCompute && hasCurrentRemoteEngine()) {
+      sharedRemoteEngine = Lizzie.leelaz;
+      isLoaded = sharedRemoteEngine.isLoaded() && sharedRemoteEngine.isStarted();
+      isNormalEnd = false;
+      return;
+    }
+
     startEngine(engineCommand);
+  }
+
+  private boolean hasCurrentRemoteEngine() {
+    Leelaz primary = Lizzie.leelaz;
+    return primary != null
+        && RemoteComputeConfig.isRemoteComputeEngineCommand(primary.engineCommand());
   }
 
   private static String resolveConfiguredAnalysisEngineCommand() {
@@ -383,38 +397,68 @@ public class AnalysisEngine {
     String trimmed = line == null ? "" : line.trim();
     if (remoteGtpWaitingForStopAck) {
       if (trimmed.isEmpty()) {
+        if (remoteGtpAnalyzeResponseStarted && !remoteGtpAnalyzeCompletionReceived) {
+          remoteGtpLastCompletionActivityMillis = System.currentTimeMillis();
+          remoteGtpAnalyzeCompletionReceived = true;
+          finishRemoteGtpJobIfComplete();
+          if (remoteGtpWaitingForStopAck) {
+            scheduleRemoteGtpStopAckFallback();
+          }
+        }
         return true;
       }
-      if (trimmed.startsWith("=") || trimmed.startsWith("?")) {
-        remoteGtpWaitingForStopAck = false;
-        finishRemoteGtpJobAfterStopAck();
+      if (trimmed.startsWith("info ")) {
+        remoteGtpLastCompletionActivityMillis = System.currentTimeMillis();
+        if (!remoteGtpAnalyzeCompletionReceived) {
+          rememberRemoteGtpStoppingResult(trimmed);
+        }
+        return true;
+      }
+      if (isExpectedRemoteGtpAnalyzeResponse(trimmed)) {
+        remoteGtpLastCompletionActivityMillis = System.currentTimeMillis();
+        remoteGtpAnalyzeResponseStarted = true;
+      } else if (isExpectedRemoteGtpStopResponse(trimmed)) {
+        remoteGtpLastCompletionActivityMillis = System.currentTimeMillis();
+        remoteGtpStopAckReceived = true;
+        finishRemoteGtpJobIfComplete();
       }
       return trimmed.startsWith("info ") || trimmed.startsWith("=") || trimmed.startsWith("?");
     }
     RemoteGtpAnalyzeJob job = remoteGtpActiveJob;
-    if (job != null && job.mode == RemoteGtpAnalyzeMode.RAW_NN) {
-      return handleRemoteGtpRawNnLine(trimmed, job);
-    }
     if (trimmed.isEmpty()) {
+      if (remoteGtpAnalyzeResponseStarted) {
+        requestDispatchFailed = true;
+        finishAbortedAnalysis();
+        return true;
+      }
       return false;
+    }
+    if (isExpectedRemoteGtpAnalyzeResponse(trimmed)) {
+      remoteGtpAnalyzeResponseStarted = true;
+      return true;
     }
     if (job == null || !trimmed.startsWith("info ")) {
       return false;
     }
     List<MoveData> moves = parseRemoteGtpInfo(trimmed);
-    int playouts = MoveData.getPlayouts(moves);
+    RemoteGtpRootInfo rootInfo = parseRemoteGtpRootInfo(trimmed);
+    int playouts = rootInfo != null ? rootInfo.visits : MoveData.getPlayouts(moves);
     if (moves.isEmpty() || playouts <= 0) {
       return true;
     }
     if (playouts < job.targetVisits) {
       return true;
     }
-    completeRemoteGtpJob(job, moves);
+    completeRemoteGtpJob(job, moves, rootInfo);
     return true;
   }
 
   private List<MoveData> parseRemoteGtpInfo(String line) {
     String payload = line.startsWith("info ") ? line.substring("info ".length()) : line;
+    int rootInfoIndex = payload.indexOf(" rootInfo ");
+    if (rootInfoIndex >= 0) {
+      payload = payload.substring(0, rootInfoIndex);
+    }
     List<MoveData> moves = new ArrayList<MoveData>();
     String[] variations = payload.split(" info ");
     for (String variation : variations) {
@@ -429,210 +473,140 @@ public class AnalysisEngine {
     return moves;
   }
 
-  private boolean handleRemoteGtpRawNnLine(String trimmed, RemoteGtpAnalyzeJob job) {
-    if (remoteGtpRawNnResponse == null) {
-      remoteGtpRawNnResponse = new StringBuilder();
-    }
-    if (trimmed.isEmpty()) {
-      if (remoteGtpRawNnResponse.length() > 0) {
-        completeOrFallbackRemoteGtpRawNnJob(job);
-      } else if (remoteGtpRawNnSawEmptySuccess) {
-        fallbackRemoteGtpRawNnJob(job);
-      }
-      return true;
-    }
-    if (trimmed.startsWith("?")) {
-      fallbackRemoteGtpRawNnJob(job);
-      return true;
-    }
-    String payload = trimmed.startsWith("=") ? trimmed.substring(1).trim() : trimmed;
-    if (trimmed.startsWith("=") && payload.isEmpty()) {
-      remoteGtpRawNnSawEmptySuccess = true;
-      return true;
-    }
-    if (!payload.isEmpty()) {
-      remoteGtpRawNnSawEmptySuccess = false;
-      if (remoteGtpRawNnResponse.length() > 0) {
-        remoteGtpRawNnResponse.append(' ');
-      }
-      remoteGtpRawNnResponse.append(payload);
-      if (payload.contains("whiteWin") && payload.contains("whiteLead")) {
-        completeOrFallbackRemoteGtpRawNnJob(job);
-      }
-    }
-    return true;
-  }
-
-  private void completeOrFallbackRemoteGtpRawNnJob(RemoteGtpAnalyzeJob job) {
-    RemoteGtpRawNnResult result = parseRemoteGtpRawNn(remoteGtpRawNnResponse.toString(), job.node);
-    remoteGtpRawNnResponse = null;
-    remoteGtpRawNnSawEmptySuccess = false;
-    if (result == null) {
-      fallbackRemoteGtpRawNnJob(job);
-      return;
-    }
-    completeRemoteGtpRawNnJob(job, result);
-  }
-
-  private RemoteGtpRawNnResult parseRemoteGtpRawNn(String payload, BoardHistoryNode node) {
-    if (payload == null || node == null) {
+  private RemoteGtpRootInfo parseRemoteGtpRootInfo(String line) {
+    if (line == null) {
       return null;
     }
-    String[] tokens = payload.trim().split("\\s+");
-    double whiteWin = Double.NaN;
-    double whiteLoss = Double.NaN;
-    double whiteLead = Double.NaN;
+    int rootInfoIndex = line.indexOf(" rootInfo ");
+    if (rootInfoIndex < 0) {
+      return null;
+    }
+    String[] tokens = line.substring(rootInfoIndex + " rootInfo ".length()).trim().split("\\s+");
+    int visits = -1;
+    double winrate = Double.NaN;
+    double scoreLead = Double.NaN;
     for (int i = 0; i < tokens.length - 1; i++) {
       String key = tokens[i];
       String value = tokens[i + 1];
       try {
-        if ("whiteWin".equals(key)) {
-          whiteWin = Double.parseDouble(value);
+        if ("visits".equals(key)) {
+          visits = Integer.parseInt(value);
           i++;
-        } else if ("whiteLoss".equals(key)) {
-          whiteLoss = Double.parseDouble(value);
+        } else if ("winrate".equals(key)) {
+          winrate = Double.parseDouble(value) * 100.0;
           i++;
-        } else if ("whiteLead".equals(key)) {
-          whiteLead = Double.parseDouble(value);
+        } else if ("scoreLead".equals(key) || "scoreMean".equals(key)) {
+          scoreLead = Double.parseDouble(value);
           i++;
         }
       } catch (NumberFormatException ignored) {
       }
     }
-    if (Double.isNaN(whiteWin) && !Double.isNaN(whiteLoss)) {
-      whiteWin = Math.max(0.0, Math.min(1.0, 1.0 - whiteLoss));
-    }
-    if (Double.isNaN(whiteLoss) && !Double.isNaN(whiteWin)) {
-      whiteLoss = Math.max(0.0, Math.min(1.0, 1.0 - whiteWin));
-    }
-    if (Double.isNaN(whiteWin) || Double.isNaN(whiteLoss) || Double.isNaN(whiteLead)) {
+    if (visits <= 0 || !Double.isFinite(winrate) || !Double.isFinite(scoreLead)) {
       return null;
     }
-    boolean blackToPlay = node.getData().blackToPlay;
-    double winrate = (blackToPlay ? whiteLoss : whiteWin) * 100.0;
-    double scoreLead = blackToPlay ? -whiteLead : whiteLead;
-    return new RemoteGtpRawNnResult(Math.max(0.0, Math.min(100.0, winrate)), scoreLead);
+    return new RemoteGtpRootInfo(
+        visits, Math.max(0.0, Math.min(100.0, winrate)), scoreLead);
   }
 
-  private void completeRemoteGtpRawNnJob(RemoteGtpAnalyzeJob job, RemoteGtpRawNnResult result) {
-    if (remoteGtpActiveJob != job) {
-      return;
-    }
-    cancelRemoteGtpRawNnStallFallback();
-    remoteGtpActiveJob = null;
-    remoteGtpRawNnSawEmptySuccess = false;
-    if (!shouldKeepForegroundAnalysis(job.node)) {
-      applyRemoteGtpRawNnPayload(job.node, result);
-    }
-    resultCount++;
-    Lizzie.frame.requestProblemListRefresh();
-    if (waitFrame != null) {
-      waitFrame.setProgress(resultCount, analyzeMap.size());
-    } else if (silentProgress && shouldRefreshSilentProgress(resultCount, analyzeMap.size())) {
-      Lizzie.board.setMovelistAll();
-      Lizzie.frame.refresh();
-    }
-    if (resultCount == analyzeMap.size()) {
-      setResult();
-      return;
-    }
-    startNextRemoteGtpJob();
-  }
-
-  private void applyRemoteGtpRawNnPayload(BoardHistoryNode node, RemoteGtpRawNnResult result) {
-    BoardData data = node.getData();
-    data.winrate = result.winrate;
-    data.scoreMean = result.scoreLead;
-    data.scoreStdev = 0;
-    data.setPlayouts(Math.max(data.getPlayouts(), REMOTE_GTP_RAW_NN_VISITS));
-    data.isKataData = true;
-    data.engineName = resourceBundle.getString("AnalysisEngine.flashAnalyze");
-    data.komi = Lizzie.board.getHistory().getGameInfo().getKomi();
-    data.comment = SGFParser.formatComment(node);
-    Lizzie.board.updateMovelist(node);
-  }
-
-  private void fallbackRemoteGtpRawNnJob(RemoteGtpAnalyzeJob job) {
-    remoteGtpRawNnUnsupported = true;
-    remoteGtpRawNnResponse = null;
-    remoteGtpRawNnSawEmptySuccess = false;
-    if (remoteGtpActiveJob != job) {
-      return;
-    }
-    cancelRemoteGtpRawNnStallFallback();
-    remoteGtpActiveJob =
-        new RemoteGtpAnalyzeJob(
-            job.id,
-            job.node,
-            Math.max(1, job.targetVisits),
-            List.of(buildRemoteGtpAnalyzeCommand(job.node)),
-            RemoteGtpAnalyzeMode.KATA_ANALYZE);
-    remoteGtpStopSent = false;
-    remoteGtpWaitingForStopAck = false;
-    if (!sendCommand(remoteGtpActiveJob.commands.get(0))) {
-      remoteGtpActiveJob = null;
-      requestDispatchFailed = true;
-    }
-  }
-
-  private void scheduleRemoteGtpRawNnStallFallback(RemoteGtpAnalyzeJob job) {
-    cancelRemoteGtpRawNnStallFallback();
-    remoteGtpRawNnStallTask =
-        REMOTE_GTP_WATCHDOG_EXECUTOR.schedule(
-            () -> {
-              synchronized (AnalysisEngine.this) {
-                handleRemoteGtpRawNnStall(job);
-              }
-            },
-            REMOTE_GTP_RAW_NN_STALL_TIMEOUT_MILLIS,
-            TimeUnit.MILLISECONDS);
-  }
-
-  private void cancelRemoteGtpRawNnStallFallback() {
-    ScheduledFuture<?> task = remoteGtpRawNnStallTask;
-    remoteGtpRawNnStallTask = null;
-    if (task != null) {
-      task.cancel(false);
-    }
-  }
-
-  private void handleRemoteGtpRawNnStall(RemoteGtpAnalyzeJob job) {
-    if (job == null || remoteGtpActiveJob != job || job.mode != RemoteGtpAnalyzeMode.RAW_NN) {
-      return;
-    }
-    fallbackRemoteGtpRawNnJob(job);
-  }
-
-  private void completeRemoteGtpJob(RemoteGtpAnalyzeJob job, List<MoveData> moves) {
+  private void completeRemoteGtpJob(
+      RemoteGtpAnalyzeJob job, List<MoveData> moves, RemoteGtpRootInfo rootInfo) {
     if (remoteGtpStopSent) {
       return;
     }
     remoteGtpStopSent = true;
     remoteGtpActiveJob = null;
-    applyAnalysisPayload(job.node, moves, null);
-    resultCount++;
-    Lizzie.frame.requestProblemListRefresh();
-    if (waitFrame != null) {
-      waitFrame.setProgress(resultCount, analyzeMap.size());
-    } else if (silentProgress && shouldRefreshSilentProgress(resultCount, analyzeMap.size())) {
-      Lizzie.board.setMovelistAll();
-      Lizzie.frame.refresh();
-    }
-    if (sendCommand("stop")) {
-      if (remoteGtpStopAckOptional) {
-        finishRemoteGtpJobAfterStopAck();
-      } else {
-        remoteGtpWaitingForStopAck = true;
+    remoteGtpStoppingJob = job;
+    remoteGtpStoppingMoves = moves;
+    remoteGtpStoppingRootInfo = rootInfo;
+    int stopCommandId = nextRemoteGtpStopCommandId();
+    remoteGtpExpectedStopCommandId = stopCommandId;
+    remoteGtpAnalyzeCompletionReceived = false;
+    remoteGtpStopAckReceived = false;
+    remoteGtpLastCompletionActivityMillis = System.currentTimeMillis();
+    remoteGtpWaitingForStopAck = true;
+    if (sendCommand(stopCommandId + " stop")) {
+      if (remoteGtpWaitingForStopAck) {
         scheduleRemoteGtpStopAckFallback();
       }
     } else {
-      finishRemoteGtpJobAfterStopAck();
+      remoteGtpWaitingForStopAck = false;
+      requestDispatchFailed = true;
+      finishAbortedAnalysis();
+    }
+  }
+
+  private void finishRemoteGtpJobIfComplete() {
+    if (!remoteGtpWaitingForStopAck
+        || !remoteGtpAnalyzeCompletionReceived
+        || !remoteGtpStopAckReceived) {
+      return;
+    }
+    remoteGtpWaitingForStopAck = false;
+    finishRemoteGtpJobAfterStopAck();
+  }
+
+  private boolean isExpectedRemoteGtpStopResponse(String line) {
+    return isExpectedRemoteGtpResponse(line, remoteGtpExpectedStopCommandId);
+  }
+
+  private boolean isExpectedRemoteGtpAnalyzeResponse(String line) {
+    return isExpectedRemoteGtpResponse(line, remoteGtpExpectedAnalyzeCommandId);
+  }
+
+  private static boolean isExpectedRemoteGtpResponse(String line, int commandId) {
+    if (commandId <= 0 || line == null) {
+      return false;
+    }
+    String successPrefix = "=" + commandId;
+    String errorPrefix = "?" + commandId;
+    return line.equals(successPrefix)
+        || line.startsWith(successPrefix + " ")
+        || line.equals(errorPrefix)
+        || line.startsWith(errorPrefix + " ");
+  }
+
+  private int nextRemoteGtpStopCommandId() {
+    if (remoteGtpNextStopCommandId < REMOTE_GTP_STOP_COMMAND_ID_BASE) {
+      remoteGtpNextStopCommandId = REMOTE_GTP_STOP_COMMAND_ID_BASE;
+    }
+    return remoteGtpNextStopCommandId++;
+  }
+
+  private int nextRemoteGtpAnalyzeCommandId() {
+    if (remoteGtpNextAnalyzeCommandId < REMOTE_GTP_ANALYZE_COMMAND_ID_BASE) {
+      remoteGtpNextAnalyzeCommandId = REMOTE_GTP_ANALYZE_COMMAND_ID_BASE;
+    }
+    return remoteGtpNextAnalyzeCommandId++;
+  }
+
+  private void rememberRemoteGtpStoppingResult(String line) {
+    if (remoteGtpStoppingJob == null) {
+      return;
+    }
+    List<MoveData> moves = parseRemoteGtpInfo(line);
+    if (!moves.isEmpty() && MoveData.getPlayouts(moves) > 0) {
+      remoteGtpStoppingMoves = moves;
+    }
+    RemoteGtpRootInfo rootInfo = parseRemoteGtpRootInfo(line);
+    if (rootInfo != null) {
+      remoteGtpStoppingRootInfo = rootInfo;
     }
   }
 
   private void finishRemoteGtpJobAfterStopAck() {
     remoteGtpStopSent = false;
     remoteGtpWaitingForStopAck = false;
+    remoteGtpExpectedStopCommandId = 0;
+    remoteGtpExpectedAnalyzeCommandId = 0;
+    remoteGtpAnalyzeResponseStarted = false;
+    remoteGtpAnalyzeCompletionReceived = false;
+    remoteGtpStopAckReceived = false;
+    if (!commitRemoteGtpStoppingResult()) {
+      requestDispatchFailed = true;
+      finishAbortedAnalysis();
+      return;
+    }
     if (resultCount == analyzeMap.size()) {
       setResult();
       return;
@@ -640,13 +614,51 @@ public class AnalysisEngine {
     startNextRemoteGtpJob();
   }
 
+  private boolean commitRemoteGtpStoppingResult() {
+    RemoteGtpAnalyzeJob job = remoteGtpStoppingJob;
+    List<MoveData> moves = remoteGtpStoppingMoves;
+    RemoteGtpRootInfo rootInfo = remoteGtpStoppingRootInfo;
+    remoteGtpStoppingJob = null;
+    remoteGtpStoppingMoves = null;
+    remoteGtpStoppingRootInfo = null;
+    if (job == null || moves == null || moves.isEmpty()) {
+      return false;
+    }
+    applyAnalysisPayload(job.node, moves, null);
+    if (rootInfo != null) {
+      BoardData data = job.node.getData();
+      data.winrate = rootInfo.winrate;
+      data.scoreMean = rootInfo.scoreLead;
+      data.setPlayouts(rootInfo.visits);
+      data.comment = SGFParser.formatComment(job.node);
+      Lizzie.board.updateMovelist(job.node);
+    }
+    resultCount++;
+    Lizzie.frame.requestProblemListRefresh();
+    if (waitFrame != null) {
+      waitFrame.setProgress(resultCount, analyzeMap.size());
+    } else if (silentProgress && shouldRefreshSilentProgress(resultCount, analyzeMap.size())) {
+      Lizzie.board.setMovelistAll();
+      Lizzie.frame.refresh();
+    }
+    return true;
+  }
+
   private void scheduleRemoteGtpStopAckFallback() {
+    long timeoutMillis =
+        remoteGtpAnalyzeCompletionReceived
+            ? REMOTE_GTP_STOP_ACK_TIMEOUT_MILLIS
+            : REMOTE_GTP_ANALYZE_STALL_TIMEOUT_MILLIS;
+    scheduleRemoteGtpStopAckFallback(timeoutMillis);
+  }
+
+  private void scheduleRemoteGtpStopAckFallback(long delayMillis) {
     long generation = ++remoteGtpStopAckGeneration;
     Thread watchdog =
         new Thread(
             () -> {
               try {
-                Thread.sleep(REMOTE_GTP_STOP_ACK_TIMEOUT_MILLIS);
+                Thread.sleep(Math.max(1L, delayMillis));
               } catch (InterruptedException ignored) {
                 Thread.currentThread().interrupt();
                 return;
@@ -657,8 +669,23 @@ public class AnalysisEngine {
                     || generation != remoteGtpStopAckGeneration) {
                   return;
                 }
-                remoteGtpStopAckOptional = true;
-                finishRemoteGtpJobAfterStopAck();
+                long idleMillis =
+                    System.currentTimeMillis() - remoteGtpLastCompletionActivityMillis;
+                long currentTimeoutMillis =
+                    remoteGtpAnalyzeCompletionReceived
+                        ? REMOTE_GTP_STOP_ACK_TIMEOUT_MILLIS
+                        : REMOTE_GTP_ANALYZE_STALL_TIMEOUT_MILLIS;
+                if (idleMillis < currentTimeoutMillis) {
+                  scheduleRemoteGtpStopAckFallback(currentTimeoutMillis - idleMillis);
+                  return;
+                }
+                if (remoteGtpAnalyzeCompletionReceived) {
+                  remoteGtpStopAckReceived = true;
+                  finishRemoteGtpJobIfComplete();
+                } else {
+                  requestDispatchFailed = true;
+                  finishAbortedAnalysis();
+                }
               }
             },
             "remote-gtp-stop-ack-watchdog");
@@ -724,6 +751,7 @@ public class AnalysisEngine {
       if (Lizzie.config.analysisAlwaysOverride)
         Lizzie.config.enableLizzieCache = oriEnableLizzieCache;
     }
+    releaseSharedRemoteSession();
     if (shouldRePonder && !Lizzie.leelaz.isPondering()) Lizzie.leelaz.togglePonder();
     Lizzie.frame.renderVarTree(0, 0, false, false);
     runCompletionCallback();
@@ -732,6 +760,7 @@ public class AnalysisEngine {
   public void normalQuit() {
     // TODO Auto-generated method stub
     isNormalEnd = true;
+    releaseSharedRemoteSession();
     if (this.useJavaSSH) {
       if (this.javaSSH != null) this.javaSSH.close();
     } else if (this.useRemoteCompute) {
@@ -743,6 +772,7 @@ public class AnalysisEngine {
   }
 
   private synchronized void finishAbortedAnalysis() {
+    releaseSharedRemoteSession();
     if (analyzeMap.isEmpty() && completionCallback == null) {
       return;
     }
@@ -751,9 +781,14 @@ public class AnalysisEngine {
     remoteGtpActiveJob = null;
     remoteGtpWaitingForStopAck = false;
     remoteGtpStopSent = false;
-    remoteGtpRawNnResponse = null;
-    remoteGtpRawNnSawEmptySuccess = false;
-    cancelRemoteGtpRawNnStallFallback();
+    remoteGtpExpectedStopCommandId = 0;
+    remoteGtpExpectedAnalyzeCommandId = 0;
+    remoteGtpAnalyzeResponseStarted = false;
+    remoteGtpAnalyzeCompletionReceived = false;
+    remoteGtpStopAckReceived = false;
+    remoteGtpStoppingJob = null;
+    remoteGtpStoppingMoves = null;
+    remoteGtpStoppingRootInfo = null;
     resultCount = 0;
     runCompletionCallback();
   }
@@ -844,9 +879,14 @@ public class AnalysisEngine {
     remoteGtpActiveJob = null;
     remoteGtpWaitingForStopAck = false;
     remoteGtpStopSent = false;
-    remoteGtpRawNnResponse = null;
-    remoteGtpRawNnSawEmptySuccess = false;
-    cancelRemoteGtpRawNnStallFallback();
+    remoteGtpExpectedStopCommandId = 0;
+    remoteGtpExpectedAnalyzeCommandId = 0;
+    remoteGtpAnalyzeResponseStarted = false;
+    remoteGtpAnalyzeCompletionReceived = false;
+    remoteGtpStopAckReceived = false;
+    remoteGtpStoppingJob = null;
+    remoteGtpStoppingMoves = null;
+    remoteGtpStoppingRootInfo = null;
     remoteGtpStopAckGeneration++;
     if (globalID <= 0) globalID = 1;
     resultCount = 0;
@@ -950,13 +990,11 @@ public class AnalysisEngine {
   }
 
   private boolean sendRemoteGtpRequest(BoardHistoryNode analyzeNode) {
-    RemoteGtpAnalyzeMode mode = remoteGtpAnalyzeModeForCurrentRequest();
     int requestId =
         enqueueRemoteGtpRequest(
             analyzeNode,
             Math.max(1, targetAnalysisVisits()),
-            buildRemoteGtpSetupCommands(analyzeNode, mode),
-            mode);
+            buildRemoteGtpSetupCommands(analyzeNode));
     if (remoteGtpActiveJob == null && !remoteGtpWaitingForStopAck) {
       if (!startNextRemoteGtpJob()) {
         analyzeMap.remove(requestId);
@@ -969,7 +1007,6 @@ public class AnalysisEngine {
 
   private void enqueueRemoteGtpMainlineRequests(
       int targetVisits, RemoteGtpMainlineSelector selector) {
-    RemoteGtpAnalyzeMode mode = remoteGtpAnalyzeModeForCurrentRequest();
     List<BoardHistoryNode> selectedNodes = new ArrayList<BoardHistoryNode>();
     BoardHistoryNode node = firstHistoryActionNode(Lizzie.board.getHistory().getStart());
     int moveNum = 1;
@@ -985,12 +1022,12 @@ public class AnalysisEngine {
     for (BoardHistoryNode selectedNode : orderedNodes) {
       List<String> commands =
           previousQueuedNode == null
-              ? buildRemoteGtpSetupCommands(selectedNode, mode)
-              : buildRemoteGtpIncrementalCommands(previousQueuedNode, selectedNode, mode);
+              ? buildRemoteGtpSetupCommands(selectedNode)
+              : buildRemoteGtpIncrementalCommands(previousQueuedNode, selectedNode);
       if (commands == null) {
-        commands = buildRemoteGtpSetupCommands(selectedNode, mode);
+        commands = buildRemoteGtpSetupCommands(selectedNode);
       }
-      enqueueRemoteGtpRequest(selectedNode, Math.max(1, targetVisits), commands, mode);
+      enqueueRemoteGtpRequest(selectedNode, Math.max(1, targetVisits), commands);
       previousQueuedNode = selectedNode;
     }
     if (!remoteGtpQueue().isEmpty() && !startNextRemoteGtpJob()) {
@@ -1018,16 +1055,13 @@ public class AnalysisEngine {
   }
 
   private int enqueueRemoteGtpRequest(
-      BoardHistoryNode analyzeNode,
-      int targetVisits,
-      List<String> commands,
-      RemoteGtpAnalyzeMode mode) {
+      BoardHistoryNode analyzeNode, int targetVisits, List<String> commands) {
     int requestId = globalID++;
     analyzeMap.put(requestId, analyzeNode);
     remoteGtpQueue()
         .addLast(
             new RemoteGtpAnalyzeJob(
-                requestId, analyzeNode, Math.max(1, targetVisits), commands, mode));
+                requestId, analyzeNode, Math.max(1, targetVisits), commands));
     return requestId;
   }
 
@@ -1035,47 +1069,96 @@ public class AnalysisEngine {
     if (remoteGtpActiveJob != null || remoteGtpWaitingForStopAck) {
       return true;
     }
+    if (sharedRemoteEngine != null && !sharedRemoteSessionActive) {
+      return beginSharedRemoteSession();
+    }
     RemoteGtpAnalyzeJob job = remoteGtpQueue().pollFirst();
     if (job == null) {
       return true;
     }
-    job = downgradeRawNnJobIfNeeded(job);
     remoteGtpActiveJob = job;
     remoteGtpStopSent = false;
-    remoteGtpRawNnResponse = null;
-    remoteGtpRawNnSawEmptySuccess = false;
+    remoteGtpAnalyzeResponseStarted = false;
+    remoteGtpAnalyzeCompletionReceived = false;
+    remoteGtpStopAckReceived = false;
+    int analyzeCommandId = nextRemoteGtpAnalyzeCommandId();
+    remoteGtpExpectedAnalyzeCommandId = analyzeCommandId;
+    boolean analyzeCommandSent = false;
     for (String command : job.commands) {
-      if (!sendCommand(command)) {
+      String commandToSend = command;
+      if (command.startsWith("kata-analyze ")) {
+        if (analyzeCommandSent) {
+          remoteGtpActiveJob = null;
+          remoteGtpExpectedAnalyzeCommandId = 0;
+          requestDispatchFailed = true;
+          return false;
+        }
+        analyzeCommandSent = true;
+        commandToSend = analyzeCommandId + " " + command;
+      }
+      if (!sendCommand(commandToSend)) {
         remoteGtpActiveJob = null;
+        remoteGtpExpectedAnalyzeCommandId = 0;
         requestDispatchFailed = true;
         return false;
       }
     }
-    if (job.mode == RemoteGtpAnalyzeMode.RAW_NN) {
-      scheduleRemoteGtpRawNnStallFallback(job);
+    if (!analyzeCommandSent) {
+      remoteGtpActiveJob = null;
+      remoteGtpExpectedAnalyzeCommandId = 0;
+      requestDispatchFailed = true;
+      return false;
     }
     return true;
   }
 
-  private RemoteGtpAnalyzeJob downgradeRawNnJobIfNeeded(RemoteGtpAnalyzeJob job) {
-    if (job == null
-        || job.mode != RemoteGtpAnalyzeMode.RAW_NN
-        || !remoteGtpRawNnUnsupported) {
-      return job;
+  private boolean beginSharedRemoteSession() {
+    if (sharedRemoteSessionActive || sharedRemoteSessionStarting) {
+      return true;
     }
-    List<String> commands = new ArrayList<String>(job.commands);
-    String fallbackCommand = buildRemoteGtpAnalyzeCommand(job.node);
-    if (commands.isEmpty()) {
-      commands.add(fallbackCommand);
-    } else {
-      commands.set(commands.size() - 1, fallbackCommand);
+    if (sharedRemoteEngine == null || !sharedRemoteEngine.isLoaded() || !sharedRemoteEngine.isStarted()) {
+      return false;
     }
-    return new RemoteGtpAnalyzeJob(
-        job.id, job.node, job.targetVisits, commands, RemoteGtpAnalyzeMode.KATA_ANALYZE);
+    sharedRemoteSessionStarting = true;
+    boolean started =
+        sharedRemoteEngine.beginExclusiveRemoteGtpSession(
+            this::parseLine,
+            () -> {
+              synchronized (AnalysisEngine.this) {
+                if (!sharedRemoteSessionStarting) {
+                  return;
+                }
+                sharedRemoteSessionStarting = false;
+                sharedRemoteSessionActive = true;
+                if (!startNextRemoteGtpJob()) {
+                  requestDispatchFailed = true;
+                  finishAbortedAnalysis();
+                }
+              }
+            },
+            () -> {
+              synchronized (AnalysisEngine.this) {
+                sharedRemoteSessionStarting = false;
+                sharedRemoteSessionActive = false;
+                finishAbortedAnalysis();
+              }
+            });
+    if (!started) {
+      sharedRemoteSessionStarting = false;
+    }
+    return started;
   }
 
-  private List<String> buildRemoteGtpSetupCommands(
-      BoardHistoryNode analyzeNode, RemoteGtpAnalyzeMode mode) {
+  private void releaseSharedRemoteSession() {
+    Leelaz engine = sharedRemoteEngine;
+    sharedRemoteSessionStarting = false;
+    sharedRemoteSessionActive = false;
+    if (engine != null) {
+      engine.endExclusiveRemoteGtpSession();
+    }
+  }
+
+  private List<String> buildRemoteGtpSetupCommands(BoardHistoryNode analyzeNode) {
     List<String> commands = new ArrayList<String>();
     if (Board.boardWidth == Board.boardHeight) {
       commands.add("boardsize " + Board.boardWidth);
@@ -1093,46 +1176,26 @@ public class AnalysisEngine {
     for (String[] move : collectHistoryActions(analyzeNode, snapshotAnchor)) {
       commands.add("play " + move[0] + " " + move[1]);
     }
-    commands.add(buildRemoteGtpAnalysisCommand(analyzeNode, mode));
+    commands.add(buildRemoteGtpAnalyzeCommand(analyzeNode));
     return commands;
   }
 
   private List<String> buildRemoteGtpIncrementalCommands(
-      BoardHistoryNode previousAnalyzedNode,
-      BoardHistoryNode analyzeNode,
-      RemoteGtpAnalyzeMode mode) {
+      BoardHistoryNode previousAnalyzedNode, BoardHistoryNode analyzeNode) {
     List<String> commands = collectRemoteGtpAdvanceCommands(previousAnalyzedNode, analyzeNode);
     if (commands == null) {
       return null;
     }
-    commands.add(buildRemoteGtpAnalysisCommand(analyzeNode, mode));
+    commands.add(buildRemoteGtpAnalyzeCommand(analyzeNode));
     return commands;
-  }
-
-  private String buildRemoteGtpAnalysisCommand(
-      BoardHistoryNode analyzeNode, RemoteGtpAnalyzeMode mode) {
-    if (mode == RemoteGtpAnalyzeMode.RAW_NN) {
-      return "kata-raw-nn 0";
-    }
-    return buildRemoteGtpAnalyzeCommand(analyzeNode);
   }
 
   private String buildRemoteGtpAnalyzeCommand(BoardHistoryNode analyzeNode) {
     String player = analyzeNode.getData().blackToPlay ? "B" : "W";
-    return "kata-analyze " + player + " " + remoteGtpAnalyzeInterval();
-  }
-
-  private RemoteGtpAnalyzeMode remoteGtpAnalyzeModeForCurrentRequest() {
-    return useRemoteGtpRawNnQuickCurve()
-        ? RemoteGtpAnalyzeMode.RAW_NN
-        : RemoteGtpAnalyzeMode.KATA_ANALYZE;
-  }
-
-  private boolean useRemoteGtpRawNnQuickCurve() {
-    return useRemoteCompute
-        && silentProgress
-        && !isBatchAnalysisMode()
-        && !remoteGtpRawNnUnsupported;
+    String command = "kata-analyze " + player + " " + remoteGtpAnalyzeInterval();
+    return silentProgress && !isBatchAnalysisMode()
+        ? command + " maxmoves 1 rootInfo true"
+        : command;
   }
 
   private static boolean isBatchAnalysisMode() {
@@ -1379,7 +1442,7 @@ public class AnalysisEngine {
   private int targetAnalysisVisitsForCurrentRequest(boolean showProgressDialog) {
     int targetVisits = targetAnalysisVisits();
     if (useRemoteCompute && !showProgressDialog && !isBatchAnalysisMode()) {
-      return Math.max(1, Math.min(targetVisits, REMOTE_GTP_SILENT_MAX_VISITS));
+      return REMOTE_GTP_SILENT_MAX_VISITS;
     }
     return targetVisits;
   }
@@ -1391,6 +1454,7 @@ public class AnalysisEngine {
 
   public void shutdown() {
     // isShuttingdown = true;
+    releaseSharedRemoteSession();
     if (useJavaSSH) {
       if (javaSSH != null) javaSSH.close();
     } else if (useRemoteCompute) {
@@ -1406,12 +1470,18 @@ public class AnalysisEngine {
       return !javaSSHClosed;
     }
     if (useRemoteCompute) {
+      if (sharedRemoteEngine != null) {
+        return sharedRemoteEngine.isLoaded() && sharedRemoteEngine.isStarted();
+      }
       return remoteTransport != null && remoteTransport.isOpen();
     }
     return process != null && process.isAlive();
   }
 
   public boolean sendCommand(String command) {
+    if (sharedRemoteEngine != null) {
+      return sharedRemoteEngine.sendExclusiveRemoteGtpCommand(command);
+    }
     try {
       outputStream.write((command + "\n").getBytes());
       outputStream.flush();
@@ -1451,32 +1521,23 @@ public class AnalysisEngine {
     private final BoardHistoryNode node;
     private final int targetVisits;
     private final List<String> commands;
-    private final RemoteGtpAnalyzeMode mode;
 
     private RemoteGtpAnalyzeJob(
-        int id,
-        BoardHistoryNode node,
-        int targetVisits,
-        List<String> commands,
-        RemoteGtpAnalyzeMode mode) {
+        int id, BoardHistoryNode node, int targetVisits, List<String> commands) {
       this.id = id;
       this.node = node;
       this.targetVisits = targetVisits;
       this.commands = commands;
-      this.mode = mode;
     }
   }
 
-  private enum RemoteGtpAnalyzeMode {
-    KATA_ANALYZE,
-    RAW_NN
-  }
-
-  private static final class RemoteGtpRawNnResult {
+  private static final class RemoteGtpRootInfo {
+    private final int visits;
     private final double winrate;
     private final double scoreLead;
 
-    private RemoteGtpRawNnResult(double winrate, double scoreLead) {
+    private RemoteGtpRootInfo(int visits, double winrate, double scoreLead) {
+      this.visits = visits;
       this.winrate = winrate;
       this.scoreLead = scoreLead;
     }

@@ -125,6 +125,9 @@ public class WinrateGraph {
   private static final Color CURRENT_MOVE_MARKER_COLOR = new Color(244, 67, 72);
   private static final Color CURRENT_MOVE_MARKER_BORDER = new Color(112, 24, 28, 230);
   private static final Color CURRENT_MOVE_MARKER_HALO = new Color(255, 250, 240, 225);
+  private static final Color CURRENT_SCORE_MARKER_COLOR = new Color(46, 204, 113);
+  private static final Color CURRENT_SCORE_MARKER_BORDER = new Color(20, 96, 55, 230);
+  private static final Color CURRENT_SCORE_MARKER_HALO = new Color(248, 255, 245, 225);
   private int[] origParams = {0, 0, 0, 0};
   private int[] params = {0, 0, 0, 0, 0};
   public BoardHistoryNode mouseOverNode;
@@ -172,31 +175,70 @@ public class WinrateGraph {
   }
 
   private void drawCurrentMoveMarker(Graphics2D g, int centerX, int centerY, int radius) {
+    drawMetricMarker(
+        g,
+        centerX,
+        centerY,
+        radius,
+        CURRENT_MOVE_MARKER_COLOR,
+        CURRENT_MOVE_MARKER_BORDER,
+        CURRENT_MOVE_MARKER_HALO);
+  }
+
+  private void drawCurrentScoreMarker(Graphics2D g, int centerX, int centerY, int radius) {
+    drawMetricMarker(
+        g,
+        centerX,
+        centerY,
+        radius,
+        CURRENT_SCORE_MARKER_COLOR,
+        CURRENT_SCORE_MARKER_BORDER,
+        CURRENT_SCORE_MARKER_HALO);
+  }
+
+  private void drawMetricMarker(
+      Graphics2D g,
+      int centerX,
+      int centerY,
+      int radius,
+      Color fillColor,
+      Color borderColor,
+      Color haloColor) {
     int markerRadius = Math.max(3, radius);
     int haloRadius = markerRadius + 2;
     Paint previousPaint = g.getPaint();
     Stroke previousStroke = g.getStroke();
-    g.setColor(CURRENT_MOVE_MARKER_HALO);
+    g.setColor(haloColor);
     g.fillOval(
         centerX - haloRadius,
         centerY - haloRadius,
         haloRadius * 2,
         haloRadius * 2);
-    g.setColor(CURRENT_MOVE_MARKER_COLOR);
+    drawMetricMarkerCore(g, centerX, centerY, markerRadius, fillColor, borderColor);
+    g.setPaint(previousPaint);
+    g.setStroke(previousStroke);
+  }
+
+  private void drawMetricMarkerCore(
+      Graphics2D g,
+      int centerX,
+      int centerY,
+      int markerRadius,
+      Color fillColor,
+      Color borderColor) {
+    g.setColor(fillColor);
     g.fillOval(
         centerX - markerRadius,
         centerY - markerRadius,
         markerRadius * 2,
         markerRadius * 2);
-    g.setColor(CURRENT_MOVE_MARKER_BORDER);
+    g.setColor(borderColor);
     g.setStroke(new BasicStroke(1f));
     g.drawOval(
         centerX - markerRadius,
         centerY - markerRadius,
         markerRadius * 2,
         markerRadius * 2);
-    g.setPaint(previousPaint);
-    g.setStroke(previousStroke);
   }
 
   private static Color withAlpha(Color color, int alpha) {
@@ -290,6 +332,7 @@ public class WinrateGraph {
     largeEnough = width > 475 && height > 335;
     clearRenderedPointSources();
     BoardHistoryNode curMove = Lizzie.board.getHistory().getCurrentHistoryNode();
+    BoardHistoryNode requestedCurrentMove = curMove;
     BoardHistoryNode node = curMove;
     // draw background rectangle
     final Paint customBackground =
@@ -408,6 +451,8 @@ public class WinrateGraph {
     double drawCurSoreMean = 0;
     int mScoreMoveNum = -1;
     double drawmSoreMean = 0;
+    int currentScoreMarkerMoveIndex = -1;
+    double currentScoreMarkerMean = 0;
     if (EngineManager.isEngineGame || Lizzie.board.isPkBoard) {
       int saveCurMovenum = 0;
       double saveCurWr = 0;
@@ -1078,6 +1123,10 @@ public class WinrateGraph {
               node = node.previous().get().previous().get();
             movenum = movenum - 2;
           }
+          if (curmovenum >= 0) {
+            currentScoreMarkerMoveIndex = curmovenum;
+            currentScoreMarkerMean = drawcurscoreMean;
+          }
           if (lastscoreMean > -500) {
             // Color lineColor = g.getColor();
             Stroke previousStroke = g.getStroke();
@@ -1186,6 +1235,10 @@ public class WinrateGraph {
               node = node.previous().get().previous().get();
             movenum = movenum - 2;
           }
+          if (curmovenum >= 0) {
+            currentScoreMarkerMoveIndex = curmovenum;
+            currentScoreMarkerMean = drawcurscoreMean;
+          }
           if (lastscoreMean > -500) {
             // Color lineColor = g.getColor();
             Stroke previousStroke = g.getStroke();
@@ -1245,6 +1298,8 @@ public class WinrateGraph {
                     && curMove.getData().getPlayouts() <= 0)) {
               curScoreMoveNum = movenum;
               drawCurSoreMean = curscoreMean;
+              currentScoreMarkerMoveIndex = movenum;
+              currentScoreMarkerMean = curscoreMean;
             }
             if (mouseOverNode != null && node == mouseOverNode) {
               mScoreMoveNum = movenum;
@@ -1428,12 +1483,17 @@ public class WinrateGraph {
     params[2] = width;
     params[3] = height;
     params[4] = numMoves;
-    BoardHistoryNode graphBaseNode = curMove;
+    BoardHistoryNode graphBaseNode = requestedCurrentMove;
     List<GraphPoint> renderedAnchors = buildGraphAnchorPoints(graphBaseNode);
     drawGraphAnchors(g, renderedAnchors);
-    drawMainCurrentMoveMarker(g, renderedAnchors, graphBaseNode);
+    drawMainCurrentMarkers(
+        g,
+        renderedAnchors,
+        graphBaseNode,
+        currentScoreMarkerMoveIndex,
+        currentScoreMarkerMean);
     QuickOverviewLayout quickOverviewLayout =
-        drawQuickOverview(g, gBlunder, gBackground, curMove, posx, width, numMoves);
+        drawQuickOverview(g, gBlunder, gBackground, graphBaseNode, posx, width, numMoves);
     rememberRenderedPointSources(quickOverviewLayout, renderedAnchors);
   }
 
@@ -2678,12 +2738,64 @@ public class WinrateGraph {
     return null;
   }
 
-  private void drawMainCurrentMoveMarker(
-      Graphics2D g, List<GraphPoint> points, BoardHistoryNode currentNode) {
-    GraphPoint point = currentMoveMarkerPoint(points, currentNode);
-    if (point != null) {
-      drawCurrentMoveMarker(g, point.x, point.y, CURRENT_MOVE_MARKER_RADIUS);
+  private void drawMainCurrentMarkers(
+      Graphics2D g,
+      List<GraphPoint> points,
+      BoardHistoryNode currentNode,
+      int scoreMoveIndex,
+      double displayedScoreMean) {
+    GraphPoint movePoint = currentMoveMarkerPoint(points, currentNode);
+    int[] scorePoint = currentScoreMarkerPoint(scoreMoveIndex, displayedScoreMean);
+    if (scorePoint == null) {
+      if (movePoint != null) {
+        drawCurrentMoveMarker(g, movePoint.x, movePoint.y, CURRENT_MOVE_MARKER_RADIUS);
+      }
+      return;
     }
+    if (movePoint == null) {
+      drawCurrentScoreMarker(g, scorePoint[0], scorePoint[1], CURRENT_MOVE_MARKER_RADIUS);
+      return;
+    }
+    int deltaX = movePoint.x - scorePoint[0];
+    int deltaY = movePoint.y - scorePoint[1];
+    int overlapDistance = CURRENT_MOVE_MARKER_RADIUS * 2 + 2;
+    boolean overlapping = deltaX * deltaX + deltaY * deltaY <= overlapDistance * overlapDistance;
+    if (!overlapping) {
+      drawCurrentScoreMarker(g, scorePoint[0], scorePoint[1], CURRENT_MOVE_MARKER_RADIUS);
+      drawCurrentMoveMarker(g, movePoint.x, movePoint.y, CURRENT_MOVE_MARKER_RADIUS);
+      return;
+    }
+
+    drawCurrentScoreMarker(g, scorePoint[0], scorePoint[1], CURRENT_MOVE_MARKER_RADIUS + 3);
+    Paint previousPaint = g.getPaint();
+    Stroke previousStroke = g.getStroke();
+    drawMetricMarkerCore(
+        g,
+        movePoint.x,
+        movePoint.y,
+        Math.max(3, CURRENT_MOVE_MARKER_RADIUS - 1),
+        CURRENT_MOVE_MARKER_COLOR,
+        CURRENT_MOVE_MARKER_BORDER);
+    g.setPaint(previousPaint);
+    g.setStroke(previousStroke);
+  }
+
+  private int[] currentScoreMarkerPoint(int moveIndex, double displayedScoreMean) {
+    if (!Lizzie.config.showScoreLeadLine
+        || moveIndex < 0
+        || params[2] <= 0
+        || params[3] <= 0
+        || params[4] <= 0) {
+      return null;
+    }
+    int x = params[0] + moveIndex * params[2] / params[4];
+    double scoreScale = Math.max(1.0, maxScoreLead);
+    int y =
+        params[1]
+            + params[3] / 2
+            - (int) (convertScoreLead(displayedScoreMean) * params[3] / 2 / scoreScale);
+    y = clamp(y, params[1], params[1] + params[3]);
+    return new int[] {x, y};
   }
 
   private GraphPoint currentMoveMarkerPoint(

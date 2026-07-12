@@ -13,6 +13,53 @@ import org.junit.jupiter.api.Test;
 
 class ZhiziGtpTransportTest {
   @Test
+  void startupFailurePolicyRetriesCapacityAndNetworkErrors() {
+    assertEquals(false, ZhiziGtpTransport.isFatalStartupFailure("no worker available"));
+    assertEquals(false, ZhiziGtpTransport.isFatalStartupFailure("vip-share no worker available"));
+    assertEquals(false, ZhiziGtpTransport.isFatalStartupFailure("connection timed out"));
+    assertEquals(false, ZhiziGtpTransport.isFatalStartupFailure("temporary network failure"));
+  }
+
+  @Test
+  void startupFailurePolicyStopsForAccountAndBillingErrors() {
+    assertEquals(true, ZhiziGtpTransport.isFatalStartupFailure("401 unauthorized"));
+    assertEquals(true, ZhiziGtpTransport.isFatalStartupFailure("VIP 套餐未开通"));
+    assertEquals(true, ZhiziGtpTransport.isFatalStartupFailure("账号余额不足"));
+    assertEquals(true, ZhiziGtpTransport.isFatalStartupFailure("token expired"));
+  }
+
+  @Test
+  void startupRetryUsesBoundedBackoff() {
+    assertEquals(1500L, ZhiziGtpTransport.startupRetryDelayMillis(1));
+    assertEquals(4000L, ZhiziGtpTransport.startupRetryDelayMillis(2));
+    assertEquals(10_000L, ZhiziGtpTransport.startupRetryDelayMillis(3));
+  }
+
+  @Test
+  void connectionHealthAllowsInitialConnectAndShortReconnectGrace() {
+    assertEquals(
+        true,
+        ZhiziGtpTransport.connectionIsUsable(
+            false, false, true, false, 0L, 10_000L, 45_000L));
+    assertEquals(
+        true,
+        ZhiziGtpTransport.connectionIsUsable(
+            false, false, true, true, 10_000L, 40_000L, 45_000L));
+  }
+
+  @Test
+  void connectionHealthExpiresEvenWhenSocketIoStillReportsActive() {
+    assertEquals(
+        false,
+        ZhiziGtpTransport.connectionIsUsable(
+            false, false, true, true, 10_000L, 60_001L, 45_000L));
+    assertEquals(
+        true,
+        ZhiziGtpTransport.connectionIsUsable(
+            false, true, false, true, 10_000L, 60_001L, 45_000L));
+  }
+
+  @Test
   void decodePayloadSupportsStringBytesAndByteBuffer() {
     assertEquals("= name\n", ZhiziGtpTransport.decodePayload("= name\n"));
     assertEquals(

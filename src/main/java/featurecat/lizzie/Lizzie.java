@@ -559,21 +559,6 @@ public class Lizzie {
     webBoardManager.setEngineFollowController(engineFollowController);
     webBoardManager.setDesktopPlayingProbe(
         () -> frame != null && (frame.isPlayingAgainstLeelaz || frame.isAnaPlayingAgainstLeelaz));
-    SwingUtilities.invokeLater(
-        new Thread() {
-          public void run() {
-            if (mainArgs.length == 1) {
-              if (!mainArgs[0].equals("read")) {
-                File file = new File(mainArgs[0]);
-                frame.loadFile(file, true, true);
-                LizzieFrame.curFile = file;
-              }
-            } else if (config.autoResume) {
-              frame.resumeFile();
-            }
-            Lizzie.frame.setMainPanelFocus();
-          }
-        });
     gtpConsole = new GtpConsolePane(frame);
     gtpConsole.setVisible(config.persistedUi.optBoolean("gtp-console-opened", false));
     SwingUtilities.invokeLater(
@@ -601,6 +586,16 @@ public class Lizzie {
                 e1.printStackTrace();
               }
             }
+            if (mainArgs.length == 1) {
+              if (!mainArgs[0].equals("read")) {
+                File file = new File(mainArgs[0]);
+                frame.loadFile(file, true, true);
+                LizzieFrame.curFile = file;
+              }
+            } else if (config.autoResume) {
+              frame.resumeFile();
+            }
+            Lizzie.frame.setMainPanelFocus();
             if (Lizzie.config.saveBoardConfig.optInt("save-auto-game-index2", -1) == -5) {
               Lizzie.config.saveBoardConfig.put("save-auto-game-index1", 1);
               File file = new File("save\\autoGame1.bmp");
