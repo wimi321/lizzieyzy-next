@@ -145,6 +145,7 @@ public class RemoteComputeDialog extends JDialog {
     loadState();
     pack();
     setLocationRelativeTo(owner);
+    LizzieFrame.constrainWindowToAvailableWorkArea(this);
   }
 
   private JPanel buildContent() {
@@ -174,14 +175,27 @@ public class RemoteComputeDialog extends JDialog {
     titleBox.add(title);
     header.add(titleBox, BorderLayout.CENTER);
 
-    JPanel tabs = new RoundPanel(22, new Color(255, 253, 248, 230), BORDER);
-    tabs.setLayout(new GridLayout(1, 2, 8, 0));
-    tabs.setBorder(new EmptyBorder(6, 6, 6, 6));
-    tabs.setPreferredSize(new Dimension(292, 58));
-    tabs.add(zhiziTab);
-    tabs.add(customTab);
+    JPanel tabs = createLocalizedTabGroup(zhiziTab, customTab);
     header.add(tabs, BorderLayout.EAST);
     return header;
+  }
+
+  static JPanel createLocalizedTabGroup(JButton... buttons) {
+    JPanel tabs = new RoundPanel(22, new Color(255, 253, 248, 230), BORDER);
+    tabs.setLayout(new GridBagLayout());
+    tabs.setBorder(new EmptyBorder(6, 6, 6, 6));
+    tabs.setPreferredSize(
+        new Dimension(localizedButtonGroupWidth(292, 8, 12, buttons), 58));
+    for (int index = 0; index < buttons.length; index++) {
+      GridBagConstraints constraints = new GridBagConstraints();
+      constraints.gridx = index;
+      constraints.gridy = 0;
+      constraints.fill = GridBagConstraints.BOTH;
+      constraints.weighty = 1;
+      constraints.insets = new Insets(0, index == 0 ? 0 : 8, 0, 0);
+      tabs.add(buttons[index], constraints);
+    }
+    return tabs;
   }
 
   private JPanel buildZhiziPage() {
@@ -467,7 +481,8 @@ public class RemoteComputeDialog extends JDialog {
     panel.add(copy, BorderLayout.CENTER);
 
     JPanel action = transparent(new BorderLayout());
-    action.setPreferredSize(new Dimension(138, 42));
+    action.setPreferredSize(
+        new Dimension(localizedButtonWidth(zhiziWebsiteButton, 138), 42));
     action.add(zhiziWebsiteButton, BorderLayout.CENTER);
     panel.add(action, BorderLayout.EAST);
     return panel;
@@ -1134,7 +1149,24 @@ public class RemoteComputeDialog extends JDialog {
     statusLabel.setText(message == null ? "" : message);
     statusLabel.setForeground(ok ? new Color(77, 113, 82) : ERROR);
     statusDot.setColor(ok ? GREEN : ERROR);
-    AccessibilitySupport.announce(statusLabel, previous, statusLabel.getText());
+    updateStatusAccessibility(
+        statusLabel,
+        statusDot,
+        text("RemoteCompute.connectionStatus", "Connection status"),
+        text("RemoteCompute.connectionIndicator", "Connection indicator"),
+        previous);
+  }
+
+  static void updateStatusAccessibility(
+      JLabel statusLabel,
+      JComponent statusIndicator,
+      String statusName,
+      String indicatorName,
+      String previous) {
+    String current = statusLabel == null ? "" : statusLabel.getText();
+    AccessibilitySupport.named(statusLabel, statusName, current);
+    AccessibilitySupport.named(statusIndicator, indicatorName, current);
+    AccessibilitySupport.announce(statusLabel, previous, current);
   }
 
   private <T> void runBackground(String message, BackgroundTask<T> task, SuccessHandler<T> success) {
@@ -1373,6 +1405,19 @@ public class RemoteComputeDialog extends JDialog {
     button.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
     button.setFont(button.getFont().deriveFont(Font.BOLD, 13F));
     return button;
+  }
+
+  static int localizedButtonWidth(JButton button, int minimumWidth) {
+    return Math.max(minimumWidth, button.getPreferredSize().width);
+  }
+
+  static int localizedButtonGroupWidth(
+      int minimumWidth, int gap, int horizontalInsets, JButton... buttons) {
+    int width = horizontalInsets + Math.max(0, buttons.length - 1) * gap;
+    for (JButton button : buttons) {
+      width += localizedButtonWidth(button, 0);
+    }
+    return Math.max(minimumWidth, width);
   }
 
   private Component fullWidth(JComponent component, int height) {

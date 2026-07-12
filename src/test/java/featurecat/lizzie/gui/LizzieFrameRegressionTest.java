@@ -249,6 +249,23 @@ class LizzieFrameRegressionTest {
   }
 
   @Test
+  void playerStrengthHeaderButtonExpandsForLocalizedText() throws Exception {
+    Class<?> buttonClass =
+        Class.forName("featurecat.lizzie.gui.LizzieFrame$PlayerStrengthDetailButton");
+    java.lang.reflect.Constructor<?> constructor =
+        buttonClass.getDeclaredConstructor(String.class, boolean.class);
+    constructor.setAccessible(true);
+    String thaiDetailText = "\u0E02\u0E49\u0E2D\u0E21\u0E39\u0E25\u0E42\u0E14\u0E22\u0E25\u0E30\u0E40\u0E2D\u0E35\u0E22\u0E14";
+    javax.swing.JButton button = (javax.swing.JButton) constructor.newInstance(thaiDetailText, true);
+
+    int requiredWidth = 66 + button.getFontMetrics(button.getFont()).stringWidth(thaiDetailText);
+
+    assertTrue(
+        button.getPreferredSize().width >= requiredWidth,
+        "localized action text should not be squeezed into the legacy fixed width");
+  }
+
+  @Test
   void playerStrengthPerformanceDistributionUsesExclusiveTopChoiceRanks() throws Exception {
     PlayerStrengthEstimator.Report report = playerStrengthReportWithSamples();
     PlayerStrengthEstimator.SideReport sideReport =

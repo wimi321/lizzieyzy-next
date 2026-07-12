@@ -850,11 +850,11 @@ public class LizzieFrame extends JFrame {
       if (Lizzie.config.persistedUi.optJSONArray("main-window-position") != null
           && Lizzie.config.persistedUi.optJSONArray("main-window-position").length() == 4) {
         JSONArray pos = Lizzie.config.persistedUi.getJSONArray("main-window-position");
-        this.setBounds(pos.getInt(0), pos.getInt(1), pos.getInt(2), pos.getInt(3));
-        Dimension screensize = Toolkit.getDefaultToolkit().getScreenSize();
-        int width = (int) screensize.getWidth();
-        int height = (int) screensize.getHeight();
-        if (pos.getInt(0) >= width || pos.getInt(1) >= height) this.setLocation(0, 0);
+        Rectangle restoredBounds =
+            fitWindowBounds(
+                new Rectangle(pos.getInt(0), pos.getInt(1), pos.getInt(2), pos.getInt(3)),
+                availableScreenWorkAreas());
+        this.setBounds(restoredBounds);
         hasSetBounds = true;
       }
       if (Lizzie.config.persistedUi.getBoolean("window-maximized"))
@@ -1717,6 +1717,12 @@ public class LizzieFrame extends JFrame {
             "Accessibility.mainBoardDescription",
             "Main board. Use the arrow keys and configured shortcuts to review the game."));
     AccessibilitySupport.named(
+        sidebarPanel,
+        text("Accessibility.sidebar", "Sidebar"),
+        text(
+            "Accessibility.sidebarDescription",
+            "Comments and problem-move sidebar."));
+    AccessibilitySupport.named(
         listTable,
         text("Accessibility.candidateTable", "Candidate moves"),
         text(
@@ -1742,6 +1748,91 @@ public class LizzieFrame extends JFrame {
     installGraphicsConfigurationScaleListener();
     setVisible(true);
     requestProblemListRefresh();
+  }
+
+  static Rectangle fitWindowBounds(Rectangle requested, List<Rectangle> workAreas) {
+    Rectangle normalized =
+        new Rectangle(
+            requested.x,
+            requested.y,
+            Math.max(1, requested.width),
+            Math.max(1, requested.height));
+    if (workAreas == null || workAreas.isEmpty()) {
+      return normalized;
+    }
+
+    Rectangle target = null;
+    long largestIntersection = -1L;
+    double nearestDistance = Double.POSITIVE_INFINITY;
+    double requestedCenterX = normalized.getCenterX();
+    double requestedCenterY = normalized.getCenterY();
+    for (Rectangle candidate : workAreas) {
+      if (candidate == null || candidate.width <= 0 || candidate.height <= 0) {
+        continue;
+      }
+      Rectangle intersection = normalized.intersection(candidate);
+      long intersectionArea =
+          intersection.isEmpty() ? 0L : (long) intersection.width * intersection.height;
+      double deltaX = requestedCenterX - candidate.getCenterX();
+      double deltaY = requestedCenterY - candidate.getCenterY();
+      double distance = deltaX * deltaX + deltaY * deltaY;
+      if (target == null
+          || intersectionArea > largestIntersection
+          || (intersectionArea == largestIntersection && distance < nearestDistance)) {
+        target = candidate;
+        largestIntersection = intersectionArea;
+        nearestDistance = distance;
+      }
+    }
+    if (target == null) {
+      return normalized;
+    }
+
+    int width = Math.min(normalized.width, target.width);
+    int height = Math.min(normalized.height, target.height);
+    int maxX = target.x + target.width - width;
+    int maxY = target.y + target.height - height;
+    int x = Math.max(target.x, Math.min(normalized.x, maxX));
+    int y = Math.max(target.y, Math.min(normalized.y, maxY));
+    return new Rectangle(x, y, width, height);
+  }
+
+  static List<Rectangle> availableScreenWorkAreas() {
+    List<Rectangle> workAreas = new ArrayList<>();
+    try {
+      Toolkit toolkit = Toolkit.getDefaultToolkit();
+      for (GraphicsDevice device :
+          GraphicsEnvironment.getLocalGraphicsEnvironment().getScreenDevices()) {
+        GraphicsConfiguration configuration = device.getDefaultConfiguration();
+        Rectangle bounds = new Rectangle(configuration.getBounds());
+        Insets insets = toolkit.getScreenInsets(configuration);
+        bounds.x += insets.left;
+        bounds.y += insets.top;
+        bounds.width -= insets.left + insets.right;
+        bounds.height -= insets.top + insets.bottom;
+        if (bounds.width > 0 && bounds.height > 0) {
+          workAreas.add(bounds);
+        }
+      }
+    } catch (HeadlessException | SecurityException ignored) {
+    }
+    if (workAreas.isEmpty()) {
+      Dimension size = Toolkit.getDefaultToolkit().getScreenSize();
+      workAreas.add(new Rectangle(0, 0, Math.max(1, size.width), Math.max(1, size.height)));
+    }
+    return workAreas;
+  }
+
+  static Rectangle constrainWindowToAvailableWorkArea(Window window) {
+    Rectangle fitted = fitWindowBounds(window.getBounds(), availableScreenWorkAreas());
+    Dimension minimum = window.getMinimumSize();
+    if (minimum.width > fitted.width || minimum.height > fitted.height) {
+      window.setMinimumSize(
+          new Dimension(
+              Math.min(minimum.width, fitted.width), Math.min(minimum.height, fitted.height)));
+    }
+    window.setBounds(fitted);
+    return fitted;
   }
 
   private void installGraphicsConfigurationScaleListener() {
@@ -13423,6 +13514,7 @@ public class LizzieFrame extends JFrame {
     dialog.setMinimumSize(new Dimension(1040, 700));
     Lizzie.setFrameSize(dialog, 1120, 760);
     dialog.setLocationRelativeTo(this);
+    constrainWindowToAvailableWorkArea(dialog);
     AccessibilitySupport.applyToTree(dialog.getContentPane());
     AccessibilitySupport.installEscapeAction(dialog.getRootPane(), dialog, dialog::dispose);
     dialog.setVisible(true);
@@ -14384,7 +14476,10 @@ public class LizzieFrame extends JFrame {
       setForeground(PlayerStrengthDashboardRoot.ACCENT_DARK);
       setFont(new Font(Config.sysDefaultFontName, Font.BOLD, Config.frameFontSize + 1));
       setBorder(new EmptyBorder(0, 0, 0, 0));
-      setPreferredSize(new Dimension(compact ? 112 : 104, 42));
+      int iconAndPadding = compact ? 66 : 62;
+      int localizedWidth = getFontMetrics(getFont()).stringWidth(text == null ? "" : text);
+      setPreferredSize(
+          new Dimension(Math.max(compact ? 112 : 104, iconAndPadding + localizedWidth), 42));
     }
 
     @Override
@@ -14747,7 +14842,7 @@ public class LizzieFrame extends JFrame {
           Config.frameFontSize + 1);
 
       drawRankScalePanel(g2, scaleX, 68, scaleWidth, Math.max(178, height - 116));
-      int rowY = 186;
+      int rowY = 178;
       drawMetricRow(
           g2,
           rowY,
@@ -14758,7 +14853,7 @@ public class LizzieFrame extends JFrame {
           contentRight);
       drawMetricRow(
           g2,
-          rowY + 32,
+          rowY + 34,
           Lizzie.resourceBundle.getString("PlayerStrengthEstimate.firstChoice"),
           playerStrengthPercentText(report.firstChoiceRate),
           report.firstChoiceRate,
@@ -14766,7 +14861,7 @@ public class LizzieFrame extends JFrame {
           contentRight);
       drawMetricRow(
           g2,
-          rowY + 64,
+          rowY + 68,
           Lizzie.resourceBundle.getString("PlayerStrengthEstimate.goodMoveRate"),
           playerStrengthPercentText(report.moveRankGoodMoveRate),
           report.moveRankGoodMoveRate,
@@ -14774,7 +14869,7 @@ public class LizzieFrame extends JFrame {
           contentRight);
       drawMetricRow(
           g2,
-          rowY + 96,
+          rowY + 102,
           Lizzie.resourceBundle.getString("PlayerStrengthEstimate.avgScoreLoss"),
           report.averageScoreLossText(),
           1.0 - playerStrengthClamp(report.averageScoreEquivalentLoss / 8.0, 0.0, 1.0),
@@ -14782,7 +14877,7 @@ public class LizzieFrame extends JFrame {
           contentRight);
       drawMetricRow(
           g2,
-          rowY + 128,
+          rowY + 136,
           Lizzie.resourceBundle.getString("PlayerStrengthEstimate.weightedScoreLoss"),
           report.weightedScoreLossText(),
           1.0 - playerStrengthClamp(report.weightedScoreLoss / 8.0, 0.0, 1.0),
@@ -14800,18 +14895,19 @@ public class LizzieFrame extends JFrame {
         Color color,
         int contentRight) {
       int labelX = 36;
-      int barWidth = Math.max(74, Math.min(108, contentRight - 238));
-      int barX = Math.max(220, contentRight - barWidth);
-      int valueX = Math.max(164, barX - 76);
-      int labelWidth = Math.max(88, valueX - labelX - 16);
-      int valueWidth = Math.max(42, barX - valueX - 12);
+      int labelWidth = Math.max(120, contentRight - labelX);
+      int valueX = labelX;
+      int valueWidth = 58;
+      int valueY = y + 14;
+      int barX = valueX + valueWidth + 8;
+      int barWidth = Math.max(64, contentRight - barX);
       g2.setColor(PlayerStrengthDashboardRoot.LINE);
-      g2.drawLine(34, y - 20, contentRight, y - 20);
+      g2.drawLine(34, y - 18, contentRight, y - 18);
       playerStrengthDrawFittedText(
           g2,
           label,
           labelX,
-          y,
+          y - 2,
           labelWidth,
           PlayerStrengthDashboardRoot.TEXT,
           Font.PLAIN,
@@ -14820,12 +14916,12 @@ public class LizzieFrame extends JFrame {
           g2,
           value,
           valueX,
-          y,
+          valueY,
           valueWidth,
           PlayerStrengthDashboardRoot.TEXT,
           Font.BOLD,
           Config.frameFontSize + 1);
-      playerStrengthDrawBar(g2, barX, y - 9, barWidth, fraction, color);
+      playerStrengthDrawBar(g2, barX, valueY - 8, barWidth, fraction, color);
     }
 
     private void drawRankScalePanel(Graphics2D g2, int x, int y, int width, int height) {

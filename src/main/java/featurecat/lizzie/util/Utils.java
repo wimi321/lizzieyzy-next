@@ -95,8 +95,8 @@ public class Utils {
 
   public static void loadFonts(String uiFontName, String playoutFontName, String winrateFontName) {
     try {
-      LizzieFrame.uiFont = new Font("SansSerif", Font.TRUETYPE_FONT, 12);
-      LizzieFrame.playoutsFont = new Font("SansSerif", Font.TRUETYPE_FONT, 12);
+      LizzieFrame.uiFont = new Font(Config.sysDefaultFontName, Font.PLAIN, 12);
+      LizzieFrame.playoutsFont = new Font(Config.sysDefaultFontName, Font.PLAIN, 12);
       LizzieFrame.winrateFont =
           Font.createFont(
               Font.TRUETYPE_FONT,

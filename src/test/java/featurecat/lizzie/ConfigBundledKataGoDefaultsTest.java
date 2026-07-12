@@ -122,7 +122,9 @@ public class ConfigBundledKataGoDefaultsTest {
     ui.put("default-engine", 0);
 
     // The user kept the default name in engine 1 but pointed the command at their own engine.
-    String customCommand = "\"/opt/my-katago/katago\" gtp -model \"/opt/my-katago/net.bin.gz\"";
+    String customCommand =
+        "\"/opt/my-katago/katago\" gtp -model \"/opt/my-katago/net.bin.gz\""
+            + " -config \"/opt/package/engines/katago/configs/gtp.cfg\"";
     JSONObject customEngine = new JSONObject();
     customEngine.put("name", "KataGo Bundled");
     customEngine.put("command", customCommand);
@@ -139,6 +141,18 @@ public class ConfigBundledKataGoDefaultsTest {
         customCommand,
         storedEngine.getString("command"),
         "a custom command in the default slot must not be overwritten by the bundled default.");
+  }
+
+  @Test
+  void bundledDetectionOnlyUsesTheExecutableToken() {
+    assertTrue(
+        Config.isBundledKataGoCommand(
+            "\"C:\\app\\engines\\katago\\windows-x64\\katago.exe\" gtp"
+                + " -model \"C:\\app\\weights\\default.bin.gz\""));
+    assertFalse(
+        Config.isBundledKataGoCommand(
+            "\"C:\\custom\\engine.exe\" gtp"
+                + " -config \"C:\\app\\engines\\katago\\configs\\gtp.cfg\""));
   }
 
   @Test

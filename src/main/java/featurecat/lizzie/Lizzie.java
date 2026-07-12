@@ -18,6 +18,7 @@ import featurecat.lizzie.update.WindowsUpdateController;
 import featurecat.lizzie.util.KataGoAutoSetupHelper;
 import featurecat.lizzie.util.KataGoAutoSetupHelper.SetupSnapshot;
 import featurecat.lizzie.util.KataGoRuntimeHelper;
+import featurecat.lizzie.util.LocaleFontSupport;
 import featurecat.lizzie.util.MultiOutputStream;
 import featurecat.lizzie.util.NetworkProxy;
 import featurecat.lizzie.util.Utils;
@@ -180,10 +181,21 @@ public class Lizzie {
     }
     resourceBundle = AppLocale.loadBundle(config.useLanguage);
     config.isChinese = (resourceBundle.getString("Lizzie.isChinese")).equals("yes");
+    Locale appLocale = AppLocale.fromConfigValue(config.useLanguage).locale();
+    if (resourceBundle.containsKey("Lizzie.defaultFontName")) {
+      Config.sysDefaultFontName =
+          LocaleFontSupport.resolveDefaultFontName(
+              resourceBundle.getString("Lizzie.defaultFontName"), appLocale);
+    }
     if (config.theme.uiFontName() != null) config.uiFontName = config.theme.uiFontName();
+    if (config.theme.fontName() != null) config.fontName = config.theme.fontName();
+    config.uiFontName =
+        LocaleFontSupport.resolveConfiguredFontName(
+            config.uiFontName, appLocale, Config.sysDefaultFontName);
+    config.fontName =
+        LocaleFontSupport.resolveConfiguredFontName(
+            config.fontName, appLocale, Config.sysDefaultFontName);
     Utils.loadFonts(config.uiFontName, config.fontName, config.winrateFontName);
-    if (resourceBundle.containsKey("Lizzie.defaultFontName"))
-      Config.sysDefaultFontName = resourceBundle.getString("Lizzie.defaultFontName");
     config.shareLabel1 =
         config.uiConfig.optString(
             "share-label-1", resourceBundle.getString("ShareFrame.shareLabel1"));
@@ -702,6 +714,7 @@ public class Lizzie {
         UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
       }
       AppleStyleSupport.applyUiDefaults();
+      applyOptionPaneLocalization(resourceBundle);
     } catch (IllegalAccessException e) {
       e.printStackTrace();
     } catch (ClassNotFoundException e) {
@@ -723,6 +736,7 @@ public class Lizzie {
         UIManager.setLookAndFeel(lookAndFeel);
       }
       AppleStyleSupport.applyUiDefaults();
+      applyOptionPaneLocalization(resourceBundle);
     } catch (IllegalAccessException e) {
       e.printStackTrace();
     } catch (ClassNotFoundException e) {
@@ -743,6 +757,14 @@ public class Lizzie {
         UIManager.put(key, f);
       }
     }
+  }
+
+  static void applyOptionPaneLocalization(ResourceBundle bundle) {
+    if (bundle == null) return;
+    UIManager.put("OptionPane.okButtonText", bundle.getString("GameInfoDialog.okButton"));
+    UIManager.put("OptionPane.cancelButtonText", bundle.getString("LizzieFrame.cancel"));
+    UIManager.put("OptionPane.yesButtonText", bundle.getString("ConfigDialog2.yes"));
+    UIManager.put("OptionPane.noButtonText", bundle.getString("ConfigDialog2.no"));
   }
 
   public static void initializeAfterVersionCheck(boolean isEngineGame, Leelaz engine) {

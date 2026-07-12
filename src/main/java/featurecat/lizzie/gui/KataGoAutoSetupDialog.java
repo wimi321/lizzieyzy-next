@@ -76,10 +76,12 @@ public class KataGoAutoSetupDialog extends JDialog {
   private static final Color TEXT_SECONDARY = new Color(101, 106, 100);
   private static final String BENCHMARK_PROGRESS_KEY = "lizzie.benchmark.dialog.progress";
   private static final String WRAPPING_TEXT_KEY = "lizzie.autosetup.wrappingText";
+  private static final String INFO_HTML_PREFIX = "<html><div style='width: 360px'>";
+  private static final String INFO_HTML_SUFFIX = "</div></html>";
   private static final int MAX_INFO_TEXT_LENGTH = 104;
   private static final int GPU_INFO_TEXT_LENGTH = 132;
-  private static final int DIALOG_WIDTH = 820;
-  private static final int DIALOG_HEIGHT = 580;
+  private static final int DIALOG_WIDTH = 900;
+  private static final int DIALOG_HEIGHT = 620;
   private static final int VALUE_COLUMN_WIDTH = 390;
   private static final long ERROR_POPUP_DEDUP_MILLIS = 5000L;
   private static final String CARD_OVERVIEW = "overview";
@@ -702,8 +704,9 @@ public class KataGoAutoSetupDialog extends JDialog {
     JFontLabel titleLabel = new JFontLabel(title);
     titleLabel.setForeground(TEXT_PRIMARY);
     titleLabel.setVerticalAlignment(wrappingText ? SwingConstants.TOP : SwingConstants.CENTER);
-    titleLabel.setPreferredSize(new Dimension(132, rowHeight));
-    titleLabel.setMinimumSize(new Dimension(118, Math.min(rowHeight, 32)));
+    int titleWidth = localizedRowLabelWidth(titleLabel);
+    titleLabel.setPreferredSize(new Dimension(titleWidth, rowHeight));
+    titleLabel.setMinimumSize(new Dimension(titleWidth, Math.min(rowHeight, 32)));
     panel.add(titleLabel, labelConstraints);
 
     GridBagConstraints valueConstraints = (GridBagConstraints) gbc.clone();
@@ -713,6 +716,10 @@ public class KataGoAutoSetupDialog extends JDialog {
     panel.add(valueComponent, valueConstraints);
 
     gbc.gridy += 1;
+  }
+
+  static int localizedRowLabelWidth(JLabel label) {
+    return Math.max(132, Math.min(240, label.getPreferredSize().width + 8));
   }
 
   private void constrainValueComponent(JComponent valueComponent) {
@@ -906,14 +913,15 @@ public class KataGoAutoSetupDialog extends JDialog {
     KataGoRuntimeHelper.NvidiaRuntimeStatus status =
         snapshot == null ? null : KataGoRuntimeHelper.inspectNvidiaRuntime(snapshot);
     if (status == null || !status.applicable) {
-      lblNvidiaRuntimeValue.setText(text("AutoSetup.nvidiaRuntimeNotApplicable"));
+      setWrappedInfoText(
+          lblNvidiaRuntimeValue, text("AutoSetup.nvidiaRuntimeNotApplicable"));
       lblNvidiaRuntimeValue.setToolTipText(null);
       lblNvidiaRuntimeValue.setForeground(Color.DARK_GRAY);
       btnInstallNvidiaRuntime.setEnabled(false);
       updateTensorRtInfo();
       return;
     }
-    lblNvidiaRuntimeValue.setText(status.detailText);
+    setWrappedInfoText(lblNvidiaRuntimeValue, status.detailText);
     lblNvidiaRuntimeValue.setToolTipText(status.detailText);
     lblNvidiaRuntimeValue.setForeground(status.ready ? OK_COLOR : WARN_COLOR);
     btnInstallNvidiaRuntime.setEnabled(activeDownloadSession == null && !status.ready);
@@ -939,10 +947,11 @@ public class KataGoAutoSetupDialog extends JDialog {
     }
     updateNvidiaGpuInfo(status);
     if (!status.applicable) {
+      String notApplicable = text("AutoSetup.tensorRtNotApplicable");
       setTensorRtLabel(
-          lblTensorRtDownloadValue, status.detailText, Color.DARK_GRAY, status.detailText);
+          lblTensorRtDownloadValue, notApplicable, Color.DARK_GRAY, status.detailText);
       setTensorRtLabel(
-          lblTensorRtConfigValue, status.detailText, Color.DARK_GRAY, status.detailText);
+          lblTensorRtConfigValue, notApplicable, Color.DARK_GRAY, status.detailText);
       btnInstallTensorRt.setText(text("AutoSetup.installTensorRt"));
       btnInstallTensorRt.setToolTipText(tensorRtButtonTooltip(status));
       btnInstallTensorRt.setEnabled(false);
@@ -1000,9 +1009,26 @@ public class KataGoAutoSetupDialog extends JDialog {
   }
 
   private void setTensorRtLabel(JLabel label, String value, Color color, String tooltip) {
-    label.setText(value);
+    setWrappedInfoText(label, value);
     label.setForeground(color);
     label.setToolTipText(tooltip);
+  }
+
+  static void setWrappedInfoText(JLabel label, String value) {
+    String plainText = value == null ? "" : value;
+    String escaped =
+        plainText
+            .replace("&", "&amp;")
+            .replace("<", "&lt;")
+            .replace(">", "&gt;")
+            .replace("\r\n", "<br>")
+            .replace("\n", "<br>");
+    label.setText(INFO_HTML_PREFIX + escaped + INFO_HTML_SUFFIX);
+    label.getAccessibleContext().setAccessibleName(plainText);
+    int height = Math.max(30, label.getPreferredSize().height);
+    label.setPreferredSize(new Dimension(VALUE_COLUMN_WIDTH, height));
+    label.setMinimumSize(new Dimension(260, height));
+    label.revalidate();
   }
 
   private void maybeStartNvidiaGpuDetection(KataGoRuntimeHelper.TensorRtInstallStatus status) {

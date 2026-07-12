@@ -4,6 +4,7 @@ import featurecat.lizzie.analysis.EngineManager;
 import featurecat.lizzie.gui.LizzieFrame;
 import featurecat.lizzie.theme.Theme;
 import featurecat.lizzie.util.AnalysisEngineCommandHelper;
+import featurecat.lizzie.util.LocaleFontSupport;
 import featurecat.lizzie.util.NetworkProxy;
 import featurecat.lizzie.util.Utils;
 import java.awt.Color;
@@ -632,7 +633,13 @@ public class Config {
     if (command == null) {
       return false;
     }
-    return command.contains("engines/katago") || command.contains("engines\\katago");
+    List<String> commandParts = Utils.splitCommand(command);
+    if (commandParts.isEmpty()) {
+      return false;
+    }
+    String executable = commandParts.get(0).replace('\\', '/').toLowerCase(Locale.ROOT);
+    return executable.contains("/engines/katago/")
+        || executable.startsWith("engines/katago/");
   }
 
   private static boolean hasConfiguredEngine(JSONArray engineSettings) {
@@ -2198,6 +2205,13 @@ public class Config {
     if (theme.fontName() != null) fontName = theme.fontName();
     if (theme.uiFontName() != null) uiFontName = theme.uiFontName();
     if (theme.winrateFontName() != null) winrateFontName = theme.winrateFontName();
+    Locale appLocale = AppLocale.fromConfigValue(useLanguage).locale();
+    fontName =
+        LocaleFontSupport.resolveConfiguredFontName(
+            fontName, appLocale, Config.sysDefaultFontName);
+    uiFontName =
+        LocaleFontSupport.resolveConfiguredFontName(
+            uiFontName, appLocale, Config.sysDefaultFontName);
     if (!first) Utils.loadFonts(uiFontName, fontName, winrateFontName);
     int oriShadowSize = shadowSize;
     boolean oriShowStoneShadow = showStoneShadow;

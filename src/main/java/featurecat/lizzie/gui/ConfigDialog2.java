@@ -2065,6 +2065,7 @@ public class ConfigDialog2 extends JDialog {
           setVisible(false);
         });
     setLocationRelativeTo(Lizzie.frame);
+    LizzieFrame.constrainWindowToAvailableWorkArea(this);
     addWindowListener(
         new WindowAdapter() {
           public void windowClosing(WindowEvent e) {

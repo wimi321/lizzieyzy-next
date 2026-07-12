@@ -1304,6 +1304,7 @@ public class MoreEngines extends JPanel {
     }
     engjf.setAlwaysOnTop(Lizzie.frame.isAlwaysOnTop());
     engjf.setLocationRelativeTo(engjf.getOwner());
+    LizzieFrame.constrainWindowToAvailableWorkArea(engjf);
     return engjf;
   }
 }

@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 import java.util.Locale;
 import java.util.ResourceBundle;
+import javax.swing.UIManager;
 import org.junit.jupiter.api.Test;
 
 class AppLocaleTest {
@@ -27,6 +28,8 @@ class AppLocaleTest {
       assertNotNull(bundle);
       assertNotNull(bundle.getString("Lizzie.isChinese"), locale.name());
       assertNotNull(bundle.getString("EngineStartup.needsRepair"), locale.name());
+      assertNotNull(bundle.getString("Accessibility.sidebar"), locale.name());
+      assertNotNull(bundle.getString("Accessibility.sidebarDescription"), locale.name());
     }
   }
 
@@ -38,5 +41,40 @@ class AppLocaleTest {
         ResourceBundle.getBundle("l10n.DisplayStrings", Locale.forLanguageTag("zh-HK"));
     assertEquals("yes", taiwan.getString("Lizzie.isChinese"));
     assertEquals("yes", hongKong.getString("Lizzie.isChinese"));
+    assertTraditionalCoreUi(taiwan, "\u641C\u5C0B/\u79D2");
+    assertTraditionalCoreUi(hongKong, "\u641C\u7D22/\u79D2");
+  }
+
+  @Test
+  void optionPaneButtonsFollowTheSelectedApplicationLanguage() {
+    String[] uiKeys = {
+      "OptionPane.okButtonText",
+      "OptionPane.cancelButtonText",
+      "OptionPane.yesButtonText",
+      "OptionPane.noButtonText"
+    };
+    Object[] previousValues = new Object[uiKeys.length];
+    for (int i = 0; i < uiKeys.length; i++) {
+      previousValues[i] = UIManager.get(uiKeys[i]);
+    }
+
+    try {
+      Lizzie.applyOptionPaneLocalization(AppLocale.THAI.loadBundle());
+      assertEquals("\u0E15\u0E01\u0E25\u0E07", UIManager.get("OptionPane.okButtonText"));
+      assertEquals("\u0E22\u0E01\u0E40\u0E25\u0E34\u0E01", UIManager.get("OptionPane.cancelButtonText"));
+      assertEquals("\u0E43\u0E0A\u0E48", UIManager.get("OptionPane.yesButtonText"));
+      assertEquals("\u0E44\u0E21\u0E48", UIManager.get("OptionPane.noButtonText"));
+    } finally {
+      for (int i = 0; i < uiKeys.length; i++) {
+        UIManager.put(uiKeys[i], previousValues[i]);
+      }
+    }
+  }
+
+  private static void assertTraditionalCoreUi(ResourceBundle bundle, String expectedSpeedUnit) {
+    assertEquals("\u986F\u793A", bundle.getString("Menu.viewMenu"));
+    assertEquals(expectedSpeedUnit, bundle.getString("LizzieFrame.speedUnit"));
+    assertEquals("\u4E2D\u570B\u898F\u5247", bundle.getString("LizzieFrame.currentRules.chinese"));
+    assertEquals("\u5E8F\u865F", bundle.getString("FoxKifuDownload.column.index"));
   }
 }

@@ -89,6 +89,7 @@ public class FoxKifuDownload extends JFrame {
     }
     setAlwaysOnTop(Lizzie.frame.isAlwaysOnTop());
     setLocationRelativeTo(Lizzie.frame);
+    LizzieFrame.constrainWindowToAvailableWorkArea(this);
 
     foxKifuInfos = new ArrayList<KifuInfo>();
     loadRecentSearches();

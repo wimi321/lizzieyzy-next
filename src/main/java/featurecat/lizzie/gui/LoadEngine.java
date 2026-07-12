@@ -24,6 +24,7 @@ import javax.swing.table.DefaultTableCellRenderer;
 import javax.swing.table.JTableHeader;
 import javax.swing.table.TableCellRenderer;
 import javax.swing.table.TableModel;
+import javax.swing.table.TableColumn;
 
 public class LoadEngine extends JPanel {
   public static Config config;
@@ -83,7 +84,7 @@ public class LoadEngine extends JPanel {
     this.setLayout(null);
     dataModel = getTableModel();
     table = new JTable(dataModel);
-    selectpanel.setLayout(null);
+    selectpanel.setLayout(new BorderLayout(8, 2));
     winrateFont =
         new Font(Config.sysDefaultFontName, Font.PLAIN, Math.max(Config.frameFontSize, 14));
     headFont = new Font(Config.sysDefaultFontName, Font.PLAIN, Math.max(Config.frameFontSize, 13));
@@ -109,37 +110,33 @@ public class LoadEngine extends JPanel {
     tablepanel = new JPanel(new BorderLayout());
     tablepanel.setBounds(0, 0, 895, 429);
     this.add(tablepanel);
-    selectpanel.setBounds(0, 432, 910, 530);
+    selectpanel.setBounds(0, 432, 895, 70);
     this.add(selectpanel);
     scrollpane = new JScrollPane(table);
 
     tablepanel.add(scrollpane);
     table.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
     table.setFillsViewportHeight(true);
-    table
-        .getColumnModel()
-        .getColumn(0)
-        .setPreferredWidth(
-            Lizzie.config.isFrameFontSmall() ? 30 : (Lizzie.config.isFrameFontMiddle() ? 35 : 40));
-    table.getColumnModel().getColumn(1).setPreferredWidth(250);
-    table.getColumnModel().getColumn(2).setPreferredWidth(300);
-    table
-        .getColumnModel()
-        .getColumn(3)
-        .setPreferredWidth(
-            Lizzie.config.isFrameFontSmall() ? 40 : (Lizzie.config.isFrameFontMiddle() ? 40 : 60));
-    table.getColumnModel().getColumn(4).setPreferredWidth(20);
-    table.getColumnModel().getColumn(5).setPreferredWidth(20);
-    table
-        .getColumnModel()
-        .getColumn(6)
-        .setPreferredWidth(
-            Lizzie.config.isFrameFontSmall() ? 30 : (Lizzie.config.isFrameFontMiddle() ? 30 : 40));
-    table
-        .getColumnModel()
-        .getColumn(7)
-        .setPreferredWidth(
-            Lizzie.config.isFrameFontSmall() ? 30 : (Lizzie.config.isFrameFontMiddle() ? 30 : 40));
+    fitColumnsToLocalizedHeaders(
+        table,
+        new int[] {
+          Lizzie.config.isFrameFontSmall()
+              ? 30
+              : (Lizzie.config.isFrameFontMiddle() ? 35 : 40),
+          220,
+          300,
+          Lizzie.config.isFrameFontSmall()
+              ? 48
+              : (Lizzie.config.isFrameFontMiddle() ? 52 : 60),
+          36,
+          36,
+          Lizzie.config.isFrameFontSmall()
+              ? 42
+              : (Lizzie.config.isFrameFontMiddle() ? 46 : 52),
+          Lizzie.config.isFrameFontSmall()
+              ? 48
+              : (Lizzie.config.isFrameFontMiddle() ? 52 : 60)
+        });
     // boolean persisted = Lizzie.config.persistedUi != null;
     // if (persisted
     // && Lizzie.config.persistedUi.optJSONArray("badmoves-list-position") != null
@@ -164,12 +161,12 @@ public class LoadEngine extends JPanel {
     noEngine = new JFontButton(resourceBundle.getString("loadEngine.noEngine")); // ("不加载引擎");
     exit = new JFontButton(resourceBundle.getString("loadEngine.exit")); // ("退出");
 
-    noEngine.setFocusable(false);
-    noEngine.setMargin(new Insets(0, 0, 0, 0));
-    exit.setFocusable(false);
-    exit.setMargin(new Insets(0, 0, 0, 0));
-    ok.setFocusable(false);
-    ok.setMargin(new Insets(0, 0, 0, 0));
+    noEngine.setFocusable(true);
+    noEngine.setMargin(new Insets(3, 14, 3, 14));
+    exit.setFocusable(true);
+    exit.setMargin(new Insets(3, 14, 3, 14));
+    ok.setFocusable(true);
+    ok.setMargin(new Insets(3, 14, 3, 14));
 
     JFontLabel lblchooseStart =
         new JFontLabel(resourceBundle.getString("ChooseMoreEngine.lblchooseStart")); // ("每次启动：");
@@ -182,95 +179,28 @@ public class LoadEngine extends JPanel {
     else if (Lizzie.config.uiConfig.optBoolean("autoload-empty", false)) rdoNone.setSelected(true);
     else rdoMannul.setSelected(true);
 
-    ok.setBounds(
-        Lizzie.config.isFrameFontSmall() ? 600 : (Lizzie.config.isFrameFontMiddle() ? 550 : 480),
-        20,
-        Lizzie.config.isFrameFontSmall() ? 80 : (Lizzie.config.isFrameFontMiddle() ? 110 : 145),
-        Lizzie.config.isFrameFontSmall() ? 22 : (Lizzie.config.isFrameFontMiddle() ? 25 : 28));
-    noEngine.setBounds(
-        Lizzie.config.isFrameFontSmall() ? 700 : (Lizzie.config.isFrameFontMiddle() ? 660 : 625),
-        20,
-        Lizzie.config.isFrameFontSmall() ? 80 : (Lizzie.config.isFrameFontMiddle() ? 110 : 125),
-        Lizzie.config.isFrameFontSmall() ? 22 : (Lizzie.config.isFrameFontMiddle() ? 25 : 28));
-    exit.setBounds(
-        Lizzie.config.isFrameFontSmall() ? 800 : (Lizzie.config.isFrameFontMiddle() ? 770 : 750),
-        20,
-        Lizzie.config.isFrameFontSmall() ? 80 : (Lizzie.config.isFrameFontMiddle() ? 110 : 125),
-        Lizzie.config.isFrameFontSmall() ? 22 : (Lizzie.config.isFrameFontMiddle() ? 25 : 28));
-
-    lblchooseStart.setBounds(5, 0, 120, 20);
-    if (Lizzie.config.isChinese) {
-      rdoDefault.setBounds(
-          Lizzie.config.isFrameFontSmall() ? 60 : (Lizzie.config.isFrameFontMiddle() ? 80 : 100),
-          0,
-          (Lizzie.config.isFrameFontSmall() ? 90 : (Lizzie.config.isFrameFontMiddle() ? 110 : 130)),
-          20);
-      rdoLast.setBounds(
-          (Lizzie.config.isFrameFontSmall()
-              ? 150
-              : (Lizzie.config.isFrameFontMiddle() ? 190 : 230)),
-          0,
-          Lizzie.config.isFrameFontSmall() ? 110 : (Lizzie.config.isFrameFontMiddle() ? 140 : 170),
-          20);
-      rdoMannul.setBounds(
-          (Lizzie.config.isFrameFontSmall()
-              ? 263
-              : (Lizzie.config.isFrameFontMiddle() ? 330 : 400)),
-          0,
-          Lizzie.config.isFrameFontSmall() ? 80 : (Lizzie.config.isFrameFontMiddle() ? 93 : 110),
-          20);
-      rdoNone.setBounds(
-          (Lizzie.config.isFrameFontSmall()
-              ? 340
-              : (Lizzie.config.isFrameFontMiddle() ? 423 : 510)),
-          0,
-          Lizzie.config.isFrameFontSmall() ? 70 : (Lizzie.config.isFrameFontMiddle() ? 90 : 120),
-          20);
-    } else {
-      rdoDefault.setBounds(
-          Lizzie.config.isFrameFontSmall() ? 60 : (Lizzie.config.isFrameFontMiddle() ? 80 : 100),
-          -2,
-          (Lizzie.config.isFrameFontSmall()
-              ? 120
-              : (Lizzie.config.isFrameFontMiddle() ? 140 : 170)),
-          24);
-      rdoLast.setBounds(
-          (Lizzie.config.isFrameFontSmall()
-              ? 180
-              : (Lizzie.config.isFrameFontMiddle() ? 220 : 270)),
-          -2,
-          Lizzie.config.isFrameFontSmall() ? 130 : (Lizzie.config.isFrameFontMiddle() ? 155 : 190),
-          24);
-      rdoMannul.setBounds(
-          (Lizzie.config.isFrameFontSmall()
-              ? 312
-              : (Lizzie.config.isFrameFontMiddle() ? 375 : 460)),
-          0,
-          Lizzie.config.isFrameFontSmall() ? 80 : (Lizzie.config.isFrameFontMiddle() ? 90 : 105),
-          20);
-      rdoNone.setBounds(
-          (Lizzie.config.isFrameFontSmall()
-              ? 392
-              : (Lizzie.config.isFrameFontMiddle() ? 464 : 565)),
-          0,
-          Lizzie.config.isFrameFontSmall() ? 90 : (Lizzie.config.isFrameFontMiddle() ? 110 : 135),
-          20);
-    }
     ButtonGroup startGroup = new ButtonGroup();
     startGroup.add(rdoDefault);
     startGroup.add(rdoLast);
     startGroup.add(rdoMannul);
     startGroup.add(rdoNone);
 
-    selectpanel.add(ok);
-    selectpanel.add(noEngine);
-    selectpanel.add(exit);
+    JPanel startupModePanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 2));
+    startupModePanel.setOpaque(false);
+    startupModePanel.add(lblchooseStart);
+    startupModePanel.add(rdoDefault);
+    startupModePanel.add(rdoLast);
+    startupModePanel.add(rdoMannul);
+    startupModePanel.add(rdoNone);
 
-    selectpanel.add(lblchooseStart);
-    selectpanel.add(rdoDefault);
-    selectpanel.add(rdoLast);
-    selectpanel.add(rdoMannul);
-    selectpanel.add(rdoNone);
+    JPanel actionPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 2));
+    actionPanel.setOpaque(false);
+    actionPanel.add(ok);
+    actionPanel.add(noEngine);
+    actionPanel.add(exit);
+
+    selectpanel.add(startupModePanel, BorderLayout.CENTER);
+    selectpanel.add(actionPanel, BorderLayout.SOUTH);
 
     ok.addActionListener(
         new ActionListener() {
@@ -392,6 +322,25 @@ public class LoadEngine extends JPanel {
             // issorted = !issorted;
           }
         });
+  }
+
+  static void fitColumnsToLocalizedHeaders(JTable target, int[] preferredWidths) {
+    if (target == null || preferredWidths == null) {
+      return;
+    }
+    JTableHeader header = target.getTableHeader();
+    TableCellRenderer renderer = header.getDefaultRenderer();
+    int columnCount = Math.min(target.getColumnCount(), preferredWidths.length);
+    for (int columnIndex = 0; columnIndex < columnCount; columnIndex++) {
+      TableColumn column = target.getColumnModel().getColumn(columnIndex);
+      Component headerComponent =
+          renderer.getTableCellRendererComponent(
+              target, column.getHeaderValue(), false, false, -1, columnIndex);
+      int headerWidth = headerComponent.getPreferredSize().width + 16;
+      int preferredWidth = Math.max(preferredWidths[columnIndex], headerWidth);
+      column.setMinWidth(headerWidth);
+      column.setPreferredWidth(preferredWidth);
+    }
   }
 
   class ColorTableCellRenderer extends DefaultTableCellRenderer {
@@ -615,8 +564,8 @@ public class LoadEngine extends JPanel {
           }
         });
 
-    engjf.setBounds(50, 50, 900, 510);
-    Lizzie.setFrameSize(engjf, 900, 510);
+    engjf.setBounds(50, 50, 900, 540);
+    Lizzie.setFrameSize(engjf, 900, 540);
     engjf.setResizable(false);
     try {
       engjf.setIconImage(ImageIO.read(LoadEngine.class.getResourceAsStream("/assets/logo.png")));
@@ -625,6 +574,7 @@ public class LoadEngine extends JPanel {
     }
     engjf.setAlwaysOnTop(true);
     engjf.setLocationRelativeTo(engjf.getOwner());
+    LizzieFrame.constrainWindowToAvailableWorkArea(engjf);
     // jf.setResizable(false);
     return engjf;
   }

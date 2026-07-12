@@ -91,6 +91,7 @@ public class TencentKifuDownload extends JFrame {
     }
     setAlwaysOnTop(Lizzie.frame.isAlwaysOnTop());
     setLocationRelativeTo(Lizzie.frame);
+    LizzieFrame.constrainWindowToAvailableWorkArea(this);
 
     tencentKifuInfos = new ArrayList<TencentKifuInfo>();
     afterGetAction = Lizzie.config.uiConfig.optInt("tencent-after-get", Lizzie.config.foxAfterGet);

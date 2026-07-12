@@ -27,6 +27,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -543,7 +544,7 @@ public class Leelaz {
                         ? Lizzie.resourceBundle.getString("Leelaz.engineStartNoExceptionMessage")
                         : err),
                 true);
-            if (!Lizzie.isFirstLaunchSession()) {
+            if (shouldOpenInteractiveDiagnostic()) {
               LizzieFrame.openMoreEngineDialog();
             }
           } catch (JSONException e1) {
@@ -584,7 +585,7 @@ public class Leelaz {
                       ? Lizzie.resourceBundle.getString("Leelaz.engineStartNoExceptionMessage")
                       : err),
               true);
-          if (!Lizzie.isFirstLaunchSession()) {
+          if (shouldOpenInteractiveDiagnostic()) {
             LizzieFrame.openMoreEngineDialog();
           }
         } catch (JSONException e1) {
@@ -5120,11 +5121,17 @@ public class Leelaz {
 
   public void tryToDignostic(String message, boolean isModal) {
     closeBundledStartupDialog();
-    if (this == Lizzie.leelaz) {
-      Lizzie.engineStartupStatus.failed(
-          "EngineStartup.failed", "AI failed to start - click to repair", message);
+    boolean primaryEngine = this == Lizzie.leelaz;
+    if (primaryEngine) {
+      if (hasMissingLocalStartupAsset(commands, useRemoteCompute, useJavaSSH)) {
+        Lizzie.engineStartupStatus.needsRepair(
+            "EngineStartup.needsRepair", "AI is not ready - click to repair", message);
+      } else {
+        Lizzie.engineStartupStatus.failed(
+            "EngineStartup.failed", "AI failed to start - click to repair", message);
+      }
     }
-    if (Lizzie.isFirstLaunchSession()) {
+    if (!shouldOpenInteractiveDiagnostic(primaryEngine, Lizzie.isFirstLaunchSession())) {
       return;
     }
     if (!Lizzie.config.autoCheckEngineAlive && EngineManager.isEngineGame())
@@ -5135,6 +5142,43 @@ public class Leelaz {
             commands, engineCommand, message, !useJavaSSH && OS.isWindows(), true, false);
     engineFailedMessage.setModal(isModal);
     engineFailedMessage.setVisible(true);
+  }
+
+  private boolean shouldOpenInteractiveDiagnostic() {
+    return shouldOpenInteractiveDiagnostic(this == Lizzie.leelaz, Lizzie.isFirstLaunchSession());
+  }
+
+  static boolean shouldOpenInteractiveDiagnostic(
+      boolean primaryEngine, boolean firstLaunchSession) {
+    return !primaryEngine && !firstLaunchSession;
+  }
+
+  static boolean hasMissingLocalStartupAsset(
+      List<String> commandParts, boolean remoteCompute, boolean javaSsh) {
+    if (remoteCompute || javaSsh || commandParts == null || commandParts.isEmpty()) {
+      return false;
+    }
+    try {
+      Path executable = KataGoRuntimeHelper.resolveCommandExecutable(commandParts);
+      if (executable != null && executable.isAbsolute() && !Files.isRegularFile(executable)) {
+        return true;
+      }
+      for (int i = 0; i + 1 < commandParts.size(); i++) {
+        String option = commandParts.get(i);
+        if (!"-model".equals(option)
+            && !"--model".equals(option)
+            && !"-config".equals(option)
+            && !"--config".equals(option)) {
+          continue;
+        }
+        Path asset = Path.of(commandParts.get(i + 1));
+        if (asset.isAbsolute() && !Files.isRegularFile(asset)) {
+          return true;
+        }
+      }
+    } catch (Exception ignored) {
+    }
+    return false;
   }
 
   //	public String currentWeight() {
@@ -5254,7 +5298,7 @@ public class Leelaz {
                     closeBundledStartupDialog();
                     try {
                       tryToDignostic(message, true);
-                      if (!Lizzie.isFirstLaunchSession()) {
+                      if (shouldOpenInteractiveDiagnostic()) {
                         LizzieFrame.openMoreEngineDialog();
                       }
                     } catch (JSONException e) {
