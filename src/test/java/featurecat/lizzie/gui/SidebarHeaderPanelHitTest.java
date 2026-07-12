@@ -2,15 +2,32 @@ package featurecat.lizzie.gui;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
+import featurecat.lizzie.AppLocale;
+import featurecat.lizzie.Lizzie;
 import java.awt.Font;
 import java.awt.FontMetrics;
 import java.awt.Graphics2D;
 import java.awt.Point;
 import java.awt.image.BufferedImage;
 import java.util.Collections;
+import java.util.ResourceBundle;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 class SidebarHeaderPanelHitTest {
+  private ResourceBundle previousBundle;
+
+  @BeforeEach
+  void useStableSimplifiedChineseLabels() {
+    previousBundle = Lizzie.resourceBundle;
+    Lizzie.resourceBundle = AppLocale.SIMPLIFIED_CHINESE.loadBundle();
+  }
+
+  @AfterEach
+  void restoreApplicationBundle() {
+    Lizzie.resourceBundle = previousBundle;
+  }
 
   @Test
   void classicProblemTabUsesTheWholeVisibleLabel() {
