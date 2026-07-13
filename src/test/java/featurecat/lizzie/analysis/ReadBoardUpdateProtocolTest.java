@@ -67,6 +67,47 @@ class ReadBoardUpdateProtocolTest {
   }
 
   @Test
+  void nativePipeReadySendsInitialAnalysisStateOnce() throws Exception {
+    Leelaz previousLeelaz = Lizzie.leelaz;
+    try {
+      SnapshotTrackingLeelaz leelaz = SnapshotTrackingLeelaz.create();
+      leelaz.Pondering();
+      Lizzie.leelaz = leelaz;
+      ReadBoard readBoard = allocate(ReadBoard.class);
+      TrackingBufferedOutputStream output = new TrackingBufferedOutputStream();
+      setField(readBoard, "usePipe", true);
+      setField(readBoard, "outputStream", output);
+
+      readBoard.handleReady();
+      readBoard.handleReady();
+
+      assertEquals(
+          "version\nreadboardUpdateSupported\nanalysisState running\n", output.writtenText());
+    } finally {
+      Lizzie.leelaz = previousLeelaz;
+    }
+  }
+
+  @Test
+  void nativePipeReadyReportsPausedWhenEngineIsNotInitialized() throws Exception {
+    Leelaz previousLeelaz = Lizzie.leelaz;
+    try {
+      Lizzie.leelaz = null;
+      ReadBoard readBoard = allocate(ReadBoard.class);
+      TrackingBufferedOutputStream output = new TrackingBufferedOutputStream();
+      setField(readBoard, "usePipe", true);
+      setField(readBoard, "outputStream", output);
+
+      readBoard.handleReady();
+
+      assertEquals(
+          "version\nreadboardUpdateSupported\nanalysisState paused\n", output.writtenText());
+    } finally {
+      Lizzie.leelaz = previousLeelaz;
+    }
+  }
+
+  @Test
   void parseLineRoutesHostedUpdateRequestToFrameHandler() throws Exception {
     LizzieFrame previousFrame = Lizzie.frame;
     try {
