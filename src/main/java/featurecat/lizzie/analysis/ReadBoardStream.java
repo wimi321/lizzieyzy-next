@@ -38,11 +38,7 @@ public class ReadBoardStream extends Thread implements Closeable {
         }
         //  System.out.println(line);
         owner.parseLine(line);
-        if (line.equals("ready"))
-          if (!owner.isLoaded) {
-            owner.isLoaded = true;
-            checkVersion();
-          }
+        if (line.equals("ready")) owner.handleReady();
       }
     } catch (NumberFormatException e) {
       // TODO Auto-generated catch block
@@ -67,10 +63,6 @@ public class ReadBoardStream extends Thread implements Closeable {
       // TODO Auto-generated catch block
       //  e.printStackTrace();
     }
-  }
-
-  public void checkVersion() {
-    sendCommand("version");
   }
 
   @Override

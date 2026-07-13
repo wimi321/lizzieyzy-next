@@ -545,10 +545,8 @@ public class ReadBoard {
             String rawLine = line.toString();
             logReadBoardOutputLine(rawLine);
             parseLine(rawLine);
-            if (!isLoaded) {
-              isLoaded = true;
-              checkVersion();
-              announceHostedUpdateSupport();
+            if ("ready".equals(rawLine.trim())) {
+              handleReady();
             }
           } catch (Exception ex) {
             ex.printStackTrace();
@@ -714,11 +712,14 @@ public class ReadBoard {
       tempcount = new ArrayList<Integer>();
       publishCurrentReadBoardDiagnosticsSnapshot();
     }
-    if (line.startsWith("clear")) {
+    if (line.trim().equals("clear")) {
       resetActiveSyncStateForReadBoardControlLine();
       clearPendingRemoteContext();
       tempcount = new ArrayList<Integer>();
       publishCurrentReadBoardDiagnosticsSnapshot();
+    }
+    if (line.trim().equals("clearBoard")) {
+      runOnEdtAndWait(() -> Lizzie.board.clear(false));
     }
     if (line.startsWith("start")) {
       clearPendingRemoteContext();
@@ -922,7 +923,7 @@ public class ReadBoard {
       }
     }
 
-    if (line.startsWith("noponder")) {
+    if (line.trim().equals("noponder")) {
       clearReadBoardGmaAutoPlay("noponder");
       if (Lizzie.frame.isPlayingAgainstLeelaz) {
         Lizzie.frame.isPlayingAgainstLeelaz = false;
@@ -932,6 +933,16 @@ public class ReadBoard {
         Lizzie.frame.stopAiPlayingAndPolicy();
       }
       stopPonderingIfActive();
+      sendAnalysisState();
+    }
+    if (line.trim().equals("resumeponder")) {
+      runOnEdtAndWait(
+          () -> {
+            if (isReadBoardAnalysisEngineAvailable() && !Lizzie.leelaz.isPondering()) {
+              Lizzie.frame.togglePonderMannul();
+            }
+          });
+      sendAnalysisState();
     }
     if (line.startsWith("noinboard")) {
       if (Lizzie.frame.floatBoard != null && Lizzie.frame.floatBoard.isVisible()) {
@@ -2793,6 +2804,18 @@ public class ReadBoard {
 
   private void clearBoardWithoutInvalidatingResumeState(boolean isEngineGame) {
     runWithSuppressedHistoryOverwriteInvalidation(() -> Lizzie.board.clear(isEngineGame));
+  }
+
+  private void runOnEdtAndWait(Runnable action) {
+    if (SwingUtilities.isEventDispatchThread()) {
+      action.run();
+      return;
+    }
+    try {
+      SwingUtilities.invokeAndWait(action);
+    } catch (Exception e) {
+      throw new IllegalStateException("ReadBoard EDT command failed", e);
+    }
   }
 
   private void setHistoryWithoutInvalidatingResumeState(BoardHistoryList history) {
@@ -5081,6 +5104,21 @@ public class ReadBoard {
 
   public void checkVersion() {
     sendCommand("version");
+  }
+
+  void handleReady() {
+    if (isLoaded) {
+      return;
+    }
+    isLoaded = true;
+    checkVersion();
+    announceHostedUpdateSupport();
+    sendAnalysisState();
+  }
+
+  private void sendAnalysisState() {
+    boolean running = Lizzie.leelaz != null && Lizzie.leelaz.isPondering();
+    sendCommand("analysisState " + (running ? "running" : "paused"));
   }
 
   public boolean shouldAnnounceHostedUpdateSupport() {
