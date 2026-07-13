@@ -19,6 +19,7 @@ import org.junit.jupiter.api.Test;
 class ZhiziApiClientTest {
   private HttpServer server;
   private String lastPath;
+  private String lastMethod;
   private String lastAuthorization;
   private JSONObject lastBody;
 
@@ -84,6 +85,19 @@ class ZhiziApiClientTest {
     assertTrue(lastBody.getString("args").contains("--gpu-type vip-share"));
   }
 
+  @Test
+  void fetchConnectAccountUsesBearerGetAndReturnsTransientCredentials() throws Exception {
+    ZhiziApiClient client = client();
+
+    ZhiziApiClient.ConnectAccount account = client.fetchConnectAccount("account-token");
+
+    assertEquals("GET", lastMethod);
+    assertEquals("/api/cluster/account/connectAccount/fetch", lastPath);
+    assertEquals("Bearer account-token", lastAuthorization);
+    assertEquals("zz-player@example.com", account.username);
+    assertEquals("temporary-password", account.password);
+  }
+
   private ZhiziApiClient client() {
     URI baseUri = URI.create("http://127.0.0.1:" + server.getAddress().getPort());
     return new ZhiziApiClient(baseUri, HttpClient.newHttpClient());
@@ -91,14 +105,17 @@ class ZhiziApiClientTest {
 
   private void handle(HttpExchange exchange) throws IOException {
     lastPath = exchange.getRequestURI().getPath();
+    lastMethod = exchange.getRequestMethod();
     lastAuthorization = exchange.getRequestHeaders().getFirst("Authorization");
-    String request =
-        new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+    String request = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
     lastBody = request.isBlank() ? new JSONObject() : new JSONObject(request);
     JSONObject response = new JSONObject();
     if (lastPath.endsWith("/fetch-socketio-token")) {
       response.put("token", "socket-token");
       response.put("socketIOURL", "https://socket.example");
+    } else if (lastPath.endsWith("/connectAccount/fetch")) {
+      response.put("connectUsername", "zz-player@example.com");
+      response.put("connectPassword", "temporary-password");
     } else {
       response.put("token", "account-token");
     }

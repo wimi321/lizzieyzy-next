@@ -50,8 +50,11 @@ public class ZhiziApiClient {
   public SocketToken fetchSocketioToken(String accountToken, String args)
       throws IOException, InterruptedException {
     JSONObject body = new JSONObject();
-    body.put("args", args == null || args.trim().isEmpty() ? RemoteComputeConfig.DEFAULT_ZHIZI_ARGS : args);
-    JSONObject response = post("/api/cluster/account/fetch-socketio-token", body, accountToken, true);
+    body.put(
+        "args",
+        args == null || args.trim().isEmpty() ? RemoteComputeConfig.DEFAULT_ZHIZI_ARGS : args);
+    JSONObject response =
+        post("/api/cluster/account/fetch-socketio-token", body, accountToken, true);
     String token = response.optString("token", "");
     String socketIOURL = response.optString("socketIOURL", "");
     if (token.isEmpty() || socketIOURL.isEmpty()) {
@@ -60,12 +63,24 @@ public class ZhiziApiClient {
     return new SocketToken(token, socketIOURL);
   }
 
+  public ConnectAccount fetchConnectAccount(String accountToken)
+      throws IOException, InterruptedException {
+    JSONObject response = get("/api/cluster/account/connectAccount/fetch", accountToken, true);
+    String username = response.optString("connectUsername", "").trim();
+    String password = response.optString("connectPassword", "");
+    if (username.isEmpty() || password.isEmpty()) {
+      throw new IOException("Zhizi did not return usable iKataGo connection credentials.");
+    }
+    return new ConnectAccount(username, password);
+  }
+
   private JSONObject post(String path, JSONObject body, String bearerToken)
       throws IOException, InterruptedException {
     return post(path, body, bearerToken, false);
   }
 
-  private JSONObject post(String path, JSONObject body, String bearerToken, boolean retryOnceOnIoFailure)
+  private JSONObject post(
+      String path, JSONObject body, String bearerToken, boolean retryOnceOnIoFailure)
       throws IOException, InterruptedException {
     HttpRequest.Builder builder =
         HttpRequest.newBuilder(baseUri.resolve(path))
@@ -77,7 +92,25 @@ public class ZhiziApiClient {
     if (bearerToken != null && !bearerToken.trim().isEmpty()) {
       builder.header("Authorization", "Bearer " + bearerToken.trim());
     }
-    HttpRequest request = builder.build();
+    return sendJson(builder.build(), retryOnceOnIoFailure);
+  }
+
+  private JSONObject get(String path, String bearerToken, boolean retryOnceOnIoFailure)
+      throws IOException, InterruptedException {
+    HttpRequest.Builder builder =
+        HttpRequest.newBuilder(baseUri.resolve(path))
+            .timeout(REQUEST_TIMEOUT)
+            .header("Accept", "application/json")
+            .version(HttpClient.Version.HTTP_1_1)
+            .GET();
+    if (bearerToken != null && !bearerToken.trim().isEmpty()) {
+      builder.header("Authorization", "Bearer " + bearerToken.trim());
+    }
+    return sendJson(builder.build(), retryOnceOnIoFailure);
+  }
+
+  private JSONObject sendJson(HttpRequest request, boolean retryOnceOnIoFailure)
+      throws IOException, InterruptedException {
     HttpResponse<String> response;
     try {
       response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
@@ -145,6 +178,16 @@ public class ZhiziApiClient {
     public SocketToken(String token, String socketIOURL) {
       this.token = token;
       this.socketIOURL = socketIOURL;
+    }
+  }
+
+  public static final class ConnectAccount {
+    public final String username;
+    public final String password;
+
+    public ConnectAccount(String username, String password) {
+      this.username = username == null ? "" : username;
+      this.password = password == null ? "" : password;
     }
   }
 }

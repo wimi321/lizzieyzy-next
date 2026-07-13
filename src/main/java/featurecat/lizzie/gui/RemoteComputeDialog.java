@@ -9,6 +9,8 @@ import featurecat.lizzie.Lizzie;
 import featurecat.lizzie.analysis.Leelaz;
 import featurecat.lizzie.analysis.remote.RemoteComputeConfig;
 import featurecat.lizzie.analysis.remote.ZhiziApiClient;
+import featurecat.lizzie.analysis.remote.ZhiziEngineCatalog;
+import featurecat.lizzie.analysis.remote.ZhiziServerCatalogClient;
 import java.awt.BasicStroke;
 import java.awt.BorderLayout;
 import java.awt.CardLayout;
@@ -52,6 +54,7 @@ import javax.swing.JList;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.JPasswordField;
+import javax.swing.JTextArea;
 import javax.swing.JTextField;
 import javax.swing.JToggleButton;
 import javax.swing.SwingUtilities;
@@ -75,6 +78,7 @@ public class RemoteComputeDialog extends JDialog {
   private static final Color ERROR = new Color(190, 69, 56);
 
   private final ZhiziApiClient apiClient;
+  private final ZhiziServerCatalogClient catalogClient;
   private final CardLayout pageLayout = new CardLayout();
   private final JPanel pageCards = transparent(pageLayout);
   private final JButton zhiziTab = tabButton(text("RemoteCompute.zhizi", "Zhizi Cloud"));
@@ -95,6 +99,8 @@ public class RemoteComputeDialog extends JDialog {
   private final JCheckBox rememberPassword =
       new MemoryCheckBox(text("RemoteCompute.rememberPassword", "Remember password"));
   private final JComboBox<PresetItem> presetBox = new JComboBox<>();
+  private final JComboBox<WeightItem> weightBox = new JComboBox<>();
+  private final CatalogRefreshButton refreshWeightsButton = new CatalogRefreshButton();
 
   private final JButton passwordLoginButton =
       segmentButton(text("RemoteCompute.passwordLogin", "Password login"));
@@ -129,14 +135,18 @@ public class RemoteComputeDialog extends JDialog {
   private String activePage = RemoteComputeConfig.PROVIDER_ZHIZI;
   private char passwordEchoChar;
   private boolean busy;
+  private boolean refreshingWeights;
+  private boolean updatingWeightOptions;
   private Timer zhiziStartupMonitor;
+  private SwingWorker<ZhiziEngineCatalog, Void> catalogRefreshWorker;
 
   public RemoteComputeDialog(Frame owner) throws IOException {
     super(owner, text("RemoteCompute.title", "Remote Compute"), false);
     apiClient = new ZhiziApiClient();
+    catalogClient = new ZhiziServerCatalogClient();
     setDefaultCloseOperation(DISPOSE_ON_CLOSE);
-    setMinimumSize(new Dimension(1040, 660));
-    setPreferredSize(new Dimension(1120, 700));
+    setMinimumSize(new Dimension(1040, 680));
+    setPreferredSize(new Dimension(1120, 740));
     setContentPane(buildContent());
     AccessibilitySupport.installEscapeToClose(getRootPane(), this);
     passwordEchoChar = passwordField.getEchoChar();
@@ -184,8 +194,7 @@ public class RemoteComputeDialog extends JDialog {
     JPanel tabs = new RoundPanel(22, new Color(255, 253, 248, 230), BORDER);
     tabs.setLayout(new GridBagLayout());
     tabs.setBorder(new EmptyBorder(6, 6, 6, 6));
-    tabs.setPreferredSize(
-        new Dimension(localizedButtonGroupWidth(292, 8, 12, buttons), 58));
+    tabs.setPreferredSize(new Dimension(localizedButtonGroupWidth(292, 8, 12, buttons), 58));
     for (int index = 0; index < buttons.length; index++) {
       GridBagConstraints constraints = new GridBagConstraints();
       constraints.gridx = index;
@@ -252,8 +261,7 @@ public class RemoteComputeDialog extends JDialog {
     loggedInPanel.setLayout(new BoxLayout(loggedInPanel, BoxLayout.Y_AXIS));
     loggedInPanel.setBorder(new EmptyBorder(24, 24, 22, 24));
     loggedInPanel.setAlignmentX(Component.LEFT_ALIGNMENT);
-    JLabel loggedInTitle =
-        new JLabel(text("RemoteCompute.loggedIn", "Account signed in"));
+    JLabel loggedInTitle = new JLabel(text("RemoteCompute.loggedIn", "Account signed in"));
     loggedInTitle.setForeground(GREEN);
     loggedInTitle.setFont(loggedInTitle.getFont().deriveFont(Font.BOLD, 24F));
     loggedInTitle.setAlignmentX(Component.LEFT_ALIGNMENT);
@@ -274,13 +282,13 @@ public class RemoteComputeDialog extends JDialog {
   }
 
   private JPanel buildZhiziActionCard() {
-    JPanel card = card(text("RemoteCompute.oneClickEnable", "One-click enable"), "");
+    JPanel card = compactActionCard(text("RemoteCompute.oneClickEnable", "One-click enable"));
     card.add(planPanel());
-    card.add(Box.createVerticalStrut(18));
-    card.add(fullWidth(useZhiziButton, 58));
+    card.add(Box.createVerticalStrut(14));
+    card.add(fullWidth(useZhiziButton, 54));
+    card.add(Box.createVerticalStrut(10));
+    card.add(fullWidth(localFromZhiziButton, 46));
     card.add(Box.createVerticalStrut(12));
-    card.add(fullWidth(localFromZhiziButton, 50));
-    card.add(Box.createVerticalStrut(22));
     card.add(buildZhiziWebsiteCard());
     card.add(Box.createVerticalGlue());
     return card;
@@ -413,9 +421,10 @@ public class RemoteComputeDialog extends JDialog {
   private JPanel planPanel() {
     initPresetOptions();
     styleCombo(presetBox);
+    styleWeightCombo();
     JPanel panel = new RoundPanel(24, new Color(255, 250, 241), new Color(231, 213, 181));
     panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
-    panel.setBorder(new EmptyBorder(18, 18, 18, 18));
+    panel.setBorder(new EmptyBorder(14, 16, 14, 16));
     panel.setAlignmentX(Component.LEFT_ALIGNMENT);
     JLabel label = new JLabel(text("RemoteCompute.connectionMode", "Connection mode"));
     AccessibilitySupport.labelFor(
@@ -426,8 +435,33 @@ public class RemoteComputeDialog extends JDialog {
     label.setFont(label.getFont().deriveFont(Font.BOLD, 13F));
     label.setAlignmentX(Component.LEFT_ALIGNMENT);
     panel.add(label);
-    panel.add(Box.createVerticalStrut(8));
-    panel.add(fullWidth(presetBox, 46));
+    panel.add(Box.createVerticalStrut(6));
+    panel.add(fullWidth(presetBox, 44));
+    panel.add(Box.createVerticalStrut(12));
+
+    JLabel weightLabel = new JLabel(text("RemoteCompute.weightModel", "Network weight"));
+    AccessibilitySupport.labelFor(
+        weightLabel,
+        weightBox,
+        text(
+            "RemoteCompute.weightModelDescription",
+            "Select a network weight currently offered by Zhizi"));
+    weightLabel.setForeground(MUTED);
+    weightLabel.setFont(weightLabel.getFont().deriveFont(Font.BOLD, 13F));
+    weightLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
+    panel.add(weightLabel);
+    panel.add(Box.createVerticalStrut(6));
+
+    JPanel weightRow = transparent(new BorderLayout(9, 0));
+    weightRow.setAlignmentX(Component.LEFT_ALIGNMENT);
+    weightRow.setMaximumSize(new Dimension(Integer.MAX_VALUE, 44));
+    weightRow.add(weightBox, BorderLayout.CENTER);
+    refreshWeightsButton.setToolTipText(
+        text(
+            "RemoteCompute.refreshWeightsTip",
+            "Refresh the weights currently available from Zhizi"));
+    weightRow.add(refreshWeightsButton, BorderLayout.EAST);
+    panel.add(weightRow);
     return panel;
   }
 
@@ -447,44 +481,65 @@ public class RemoteComputeDialog extends JDialog {
   }
 
   private JPanel buildZhiziWebsiteCard() {
+    return createZhiziWebsiteCard(
+        zhiziWebsiteButton,
+        text("RemoteCompute.websiteAndTopup", "Zhizi website and top-up"),
+        text(
+            "RemoteCompute.topupDescription",
+            "Download the Zhizi app from its website to top up your account."),
+        "www.zhizigo.cn");
+  }
+
+  static JPanel createZhiziWebsiteCard(
+      JButton websiteButton, String titleText, String descriptionText, String urlText) {
     JPanel panel = new RoundPanel(24, new Color(246, 252, 247), new Color(188, 222, 200));
-    panel.setLayout(new BorderLayout(16, 0));
-    panel.setBorder(new EmptyBorder(18, 18, 18, 18));
+    panel.setLayout(new BorderLayout(12, 0));
+    panel.setBorder(new EmptyBorder(12, 14, 12, 14));
     panel.setAlignmentX(Component.LEFT_ALIGNMENT);
     panel.add(new WebsiteGlyph(), BorderLayout.WEST);
 
     JPanel copy = transparent();
     copy.setLayout(new BoxLayout(copy, BoxLayout.Y_AXIS));
     copy.setAlignmentX(Component.LEFT_ALIGNMENT);
-    JLabel title =
-        new JLabel(text("RemoteCompute.websiteAndTopup", "Zhizi website and top-up"));
+    JLabel title = new JLabel(titleText);
     title.setForeground(TEXT);
-    title.setFont(title.getFont().deriveFont(Font.BOLD, 18F));
+    title.setFont(title.getFont().deriveFont(Font.BOLD, 16F));
     title.setAlignmentX(Component.LEFT_ALIGNMENT);
     copy.add(title);
-    copy.add(Box.createVerticalStrut(6));
-    JLabel body =
-        smallText(
-            "<html>"
-                + text(
-                    "RemoteCompute.topupDescription",
-                    "Download the Zhizi app from its website to top up your account.")
-                + "</html>");
+    copy.add(Box.createVerticalStrut(3));
+    JTextArea body = new JTextArea(descriptionText, 2, 20);
+    body.setEditable(false);
+    body.setFocusable(false);
+    body.setOpaque(false);
+    body.setName("zhiziWebsiteDescription");
+    body.setLineWrap(true);
+    body.setWrapStyleWord(true);
+    body.setForeground(MUTED);
+    body.setFont(body.getFont().deriveFont(Font.BOLD, 12.5F));
+    body.setBorder(null);
     body.setAlignmentX(Component.LEFT_ALIGNMENT);
+    body.setMaximumSize(new Dimension(Integer.MAX_VALUE, body.getPreferredSize().height));
     copy.add(body);
-    copy.add(Box.createVerticalStrut(10));
-    JLabel url = new JLabel("www.zhizigo.cn");
+    copy.add(Box.createVerticalStrut(2));
+    JLabel url = new JLabel(urlText);
+    url.setName("zhiziWebsiteUrl");
     url.setForeground(GREEN);
-    url.setFont(url.getFont().deriveFont(Font.BOLD, 14F));
+    url.setFont(url.getFont().deriveFont(Font.BOLD, 12.5F));
     url.setAlignmentX(Component.LEFT_ALIGNMENT);
     copy.add(url);
     panel.add(copy, BorderLayout.CENTER);
 
-    JPanel action = transparent(new BorderLayout());
-    action.setPreferredSize(
-        new Dimension(localizedButtonWidth(zhiziWebsiteButton, 138), 42));
-    action.add(zhiziWebsiteButton, BorderLayout.CENTER);
+    Dimension buttonSize = new Dimension(localizedButtonWidth(websiteButton, 118), 42);
+    websiteButton.setPreferredSize(buttonSize);
+    websiteButton.setMinimumSize(buttonSize);
+    websiteButton.setMaximumSize(buttonSize);
+    JPanel action = transparent(new GridBagLayout());
+    action.setPreferredSize(buttonSize);
+    action.add(websiteButton);
     panel.add(action, BorderLayout.EAST);
+
+    Dimension preferred = panel.getPreferredSize();
+    panel.setMaximumSize(new Dimension(Integer.MAX_VALUE, preferred.height));
     return panel;
   }
 
@@ -511,6 +566,13 @@ public class RemoteComputeDialog extends JDialog {
     sendCodeButton.addActionListener(e -> sendCode());
     zhiziWebsiteButton.addActionListener(e -> openZhiziOfficialWebsite());
     presetBox.addActionListener(e -> updateZhiziActionButtonState());
+    weightBox.addActionListener(
+        e -> {
+          if (!updatingWeightOptions) {
+            updateZhiziActionButtonState();
+          }
+        });
+    refreshWeightsButton.addActionListener(e -> refreshZhiziWeightOptions(true));
     linkCodeField
         .getDocument()
         .addDocumentListener(newChangeListener(this::updateCustomActionButtonState));
@@ -544,12 +606,10 @@ public class RemoteComputeDialog extends JDialog {
             RemoteComputeConfig.ON_DEMAND_1X_ZHIZI_ARGS));
     presetBox.addItem(
         new PresetItem(
-            text("RemoteCompute.plan.3x", "On-demand 3x"),
-            RemoteComputeConfig.FASTER_ZHIZI_ARGS));
+            text("RemoteCompute.plan.3x", "On-demand 3x"), RemoteComputeConfig.FASTER_ZHIZI_ARGS));
     presetBox.addItem(
         new PresetItem(
-            text("RemoteCompute.plan.6x", "On-demand 6x"),
-            RemoteComputeConfig.FASTEST_ZHIZI_ARGS));
+            text("RemoteCompute.plan.6x", "On-demand 6x"), RemoteComputeConfig.FASTEST_ZHIZI_ARGS));
     presetBox.addItem(
         new PresetItem(
             text("RemoteCompute.plan.12x", "On-demand 12x"),
@@ -573,6 +633,8 @@ public class RemoteComputeDialog extends JDialog {
     showPasswordButton.setSelected(false);
     updatePasswordEcho();
     linkCodeField.setText(state.customRemoteCode == null ? "" : state.customRemoteCode);
+    populateWeightOptions(
+        state.zhiziCatalog, RemoteComputeConfig.kataWeightForArgs(state.zhiziArgs));
     selectPresetForArgs(state.zhiziArgs);
     showPage(
         RemoteComputeConfig.PROVIDER_CUSTOM.equals(state.provider)
@@ -582,6 +644,11 @@ public class RemoteComputeDialog extends JDialog {
     updateCurrentStatus();
     updateZhiziActionButtonState();
     updateCustomActionButtonState();
+    updateWeightControlState();
+    if (!state.zhiziAccountToken.trim().isEmpty()
+        && RemoteComputeConfig.shouldRefreshZhiziCatalog(state, System.currentTimeMillis())) {
+      SwingUtilities.invokeLater(() -> refreshZhiziWeightOptions(false));
+    }
   }
 
   private void showPage(String page) {
@@ -619,6 +686,7 @@ public class RemoteComputeDialog extends JDialog {
               : text("RemoteCompute.passwordNotStored", ". Password is not stored locally.");
       loggedInAccountLabel.setText(account);
     }
+    updateWeightControlState();
     revalidate();
     repaint();
   }
@@ -629,7 +697,7 @@ public class RemoteComputeDialog extends JDialog {
 
   private void selectPresetForArgs(String args) {
     for (int i = 0; i < presetBox.getItemCount(); i++) {
-      if (presetBox.getItemAt(i).args.equals(args)) {
+      if (RemoteComputeConfig.sameZhiziPlan(presetBox.getItemAt(i).args, args)) {
         presetBox.setSelectedIndex(i);
         return;
       }
@@ -639,9 +707,129 @@ public class RemoteComputeDialog extends JDialog {
 
   private String currentArgs() {
     Object selected = presetBox.getSelectedItem();
-    return selected instanceof PresetItem
-        ? ((PresetItem) selected).args
-        : RemoteComputeConfig.DEFAULT_ZHIZI_ARGS;
+    String baseArgs =
+        selected instanceof PresetItem
+            ? ((PresetItem) selected).args
+            : RemoteComputeConfig.DEFAULT_ZHIZI_ARGS;
+    return RemoteComputeConfig.withKataWeight(baseArgs, selectedWeightName());
+  }
+
+  private String selectedWeightName() {
+    Object selected = weightBox.getSelectedItem();
+    return selected instanceof WeightItem ? ((WeightItem) selected).name : "28bnbt";
+  }
+
+  private void populateWeightOptions(ZhiziEngineCatalog catalog, String preferredWeight) {
+    ZhiziEngineCatalog safeCatalog = catalog == null ? ZhiziEngineCatalog.fallback() : catalog;
+    String preferred =
+        ZhiziEngineCatalog.isSafeOptionName(preferredWeight)
+            ? preferredWeight.trim()
+            : safeCatalog.defaultWeight();
+    updatingWeightOptions = true;
+    try {
+      weightBox.removeAllItems();
+      if (!safeCatalog.containsWeight(preferred)) {
+        weightBox.addItem(WeightItem.preserved(preferred));
+      }
+      for (ZhiziEngineCatalog.Option option : safeCatalog.weights()) {
+        weightBox.addItem(
+            new WeightItem(
+                option.name(),
+                option.description(),
+                option.name().equals(safeCatalog.defaultWeight()),
+                false));
+      }
+      for (int i = 0; i < weightBox.getItemCount(); i++) {
+        if (weightBox.getItemAt(i).name.equals(preferred)) {
+          weightBox.setSelectedIndex(i);
+          break;
+        }
+      }
+      if (weightBox.getSelectedIndex() < 0 && weightBox.getItemCount() > 0) {
+        weightBox.setSelectedIndex(0);
+      }
+    } finally {
+      updatingWeightOptions = false;
+    }
+    updateWeightControlState();
+    updateZhiziActionButtonState();
+  }
+
+  private void refreshZhiziWeightOptions(boolean userInitiated) {
+    if (refreshingWeights) {
+      return;
+    }
+    RemoteComputeConfig.State state = RemoteComputeConfig.load();
+    String token = state.zhiziAccountToken == null ? "" : state.zhiziAccountToken.trim();
+    if (token.isEmpty()) {
+      if (userInitiated) {
+        updateStatus(
+            text("RemoteCompute.error.loginBeforeRefresh", "Sign in before refreshing weights."),
+            false);
+      }
+      return;
+    }
+    String preferredWeight = selectedWeightName();
+    setWeightRefreshBusy(true);
+    updateStatus(
+        text("RemoteCompute.status.refreshingWeights", "Refreshing the available Zhizi weights..."),
+        true);
+    catalogRefreshWorker =
+        new SwingWorker<ZhiziEngineCatalog, Void>() {
+          @Override
+          protected ZhiziEngineCatalog doInBackground() throws Exception {
+            ZhiziApiClient.ConnectAccount account = apiClient.fetchConnectAccount(token);
+            return catalogClient.fetchCatalog(account);
+          }
+
+          @Override
+          protected void done() {
+            if (isCancelled()) {
+              catalogRefreshWorker = null;
+              setWeightRefreshBusy(false);
+              return;
+            }
+            try {
+              ZhiziEngineCatalog catalog = get();
+              RemoteComputeConfig.saveZhiziCatalog(catalog);
+              populateWeightOptions(catalog, preferredWeight);
+              updateStatus(
+                  format(
+                      "RemoteCompute.status.weightsRefreshed",
+                      "Refreshed {0} weights from Zhizi.",
+                      catalog.weights().size()),
+                  true);
+            } catch (Exception error) {
+              Throwable cause = error.getCause() == null ? error : error.getCause();
+              String detail =
+                  cause.getLocalizedMessage() == null
+                      ? cause.getClass().getSimpleName()
+                      : cause.getLocalizedMessage();
+              updateStatus(
+                  text(
+                      "RemoteCompute.status.weightsRefreshFailed",
+                      "Could not refresh weights. The saved list is still available."),
+                  false);
+              statusLabel.setToolTipText(detail);
+            } finally {
+              catalogRefreshWorker = null;
+              setWeightRefreshBusy(false);
+            }
+          }
+        };
+    catalogRefreshWorker.execute();
+  }
+
+  private void setWeightRefreshBusy(boolean refreshing) {
+    refreshingWeights = refreshing;
+    refreshWeightsButton.setRefreshing(refreshing);
+    updateWeightControlState();
+    updateZhiziActionButtonState();
+  }
+
+  private void updateWeightControlState() {
+    weightBox.setEnabled(!busy && !refreshingWeights && weightBox.getItemCount() > 0);
+    refreshWeightsButton.setEnabled(!busy && !refreshingWeights && isZhiziLoggedIn());
   }
 
   private void loginWithPassword() {
@@ -665,8 +853,7 @@ public class RemoteComputeDialog extends JDialog {
     if (identifier.isEmpty() || code.isEmpty()) {
       updateStatus(
           text(
-              "RemoteCompute.error.accountCodeRequired",
-              "Enter an account and verification code."),
+              "RemoteCompute.error.accountCodeRequired", "Enter an account and verification code."),
           false);
       return;
     }
@@ -693,6 +880,7 @@ public class RemoteComputeDialog extends JDialog {
     updateStatus(
         text("RemoteCompute.status.loginSuccess", "Signed in. Zhizi Cloud is ready to enable."),
         true);
+    refreshZhiziWeightOptions(false);
   }
 
   private void onZhiziLoggedIn(String identifier, String token) {
@@ -704,6 +892,7 @@ public class RemoteComputeDialog extends JDialog {
     updateStatus(
         text("RemoteCompute.status.loginSuccess", "Signed in. Zhizi Cloud is ready to enable."),
         true);
+    refreshZhiziWeightOptions(false);
   }
 
   private void sendCode() {
@@ -764,8 +953,7 @@ public class RemoteComputeDialog extends JDialog {
   private void useZhiziEngine() {
     RemoteComputeConfig.State state = RemoteComputeConfig.load();
     if (state.zhiziAccountToken.trim().isEmpty()) {
-      updateStatus(
-          text("RemoteCompute.error.loginFirst", "Sign in to Zhizi Cloud first."), false);
+      updateStatus(text("RemoteCompute.error.loginFirst", "Sign in to Zhizi Cloud first."), false);
       showPage(RemoteComputeConfig.PROVIDER_ZHIZI);
       return;
     }
@@ -854,6 +1042,7 @@ public class RemoteComputeDialog extends JDialog {
 
   private void logout() {
     stopZhiziStartupMonitor();
+    cancelCatalogRefresh();
     RemoteComputeConfig.clearZhiziToken();
     passwordField.setText("");
     rememberPassword.setSelected(false);
@@ -862,6 +1051,7 @@ public class RemoteComputeDialog extends JDialog {
     updateLoginMode();
     updateCurrentStatus();
     updateStatus(text("RemoteCompute.status.loggedOut", "Signed out of Zhizi Cloud."), true);
+    updateWeightControlState();
   }
 
   private void updatePasswordEcho() {
@@ -905,8 +1095,7 @@ public class RemoteComputeDialog extends JDialog {
           new BinaryBitmap(new HybridBinarizer(new BufferedImageLuminanceSource(image)));
       Result decoded = new MultiFormatReader().decode(bitmap);
       linkCodeField.setText(decoded.getText());
-      updateStatus(
-          text("RemoteCompute.status.qrRead", "Remote link read from the QR code."), true);
+      updateStatus(text("RemoteCompute.status.qrRead", "Remote link read from the QR code."), true);
     } catch (Exception e) {
       String qrFailure =
           text(
@@ -994,7 +1183,19 @@ public class RemoteComputeDialog extends JDialog {
   @Override
   public void dispose() {
     stopZhiziStartupMonitor();
+    cancelCatalogRefresh();
+    refreshWeightsButton.setRefreshing(false);
     super.dispose();
+  }
+
+  private void cancelCatalogRefresh() {
+    if (catalogRefreshWorker != null) {
+      catalogRefreshWorker.cancel(true);
+      catalogRefreshWorker = null;
+    }
+    if (refreshingWeights) {
+      setWeightRefreshBusy(false);
+    }
   }
 
   private void updateCurrentStatus() {
@@ -1007,7 +1208,8 @@ public class RemoteComputeDialog extends JDialog {
           format("RemoteCompute.currentValue", "Currently using: {0}", fullName));
       statusDot.setColor(GREEN);
     } else if (RemoteComputeConfig.PROVIDER_CUSTOM.equals(state.provider)) {
-      String fullName = RemoteComputeConfig.displayNameForCustomWebSocketUrl(state.customRemoteCode);
+      String fullName =
+          RemoteComputeConfig.displayNameForCustomWebSocketUrl(state.customRemoteCode);
       currentStatusLabel.setText(
           text("RemoteCompute.current.custom", "Currently using: Custom compute"));
       currentStatusLabel.setToolTipText(
@@ -1043,8 +1245,7 @@ public class RemoteComputeDialog extends JDialog {
           text("RemoteCompute.action.loginToEnableTip", "Sign in before enabling cloud compute."));
       useZhiziButton.setEnabled(false);
     } else if (usingZhizi && sameArgs && loaded) {
-      useZhiziButton.setText(
-          text("RemoteCompute.action.zhiziEnabled", "Zhizi Cloud enabled"));
+      useZhiziButton.setText(text("RemoteCompute.action.zhiziEnabled", "Zhizi Cloud enabled"));
       useZhiziButton.setToolTipText(
           text(
               "RemoteCompute.action.alreadyEnabledTip",
@@ -1059,13 +1260,12 @@ public class RemoteComputeDialog extends JDialog {
               "The connection retries automatically if the network or worker is unavailable."));
       useZhiziButton.setEnabled(false);
     } else if (usingZhizi && sameArgs && failed) {
-      useZhiziButton.setText(
-          text("RemoteCompute.action.reconnectZhizi", "Reconnect Zhizi Cloud"));
+      useZhiziButton.setText(text("RemoteCompute.action.reconnectZhizi", "Reconnect Zhizi Cloud"));
       useZhiziButton.setToolTipText(
           text(
               "RemoteCompute.action.reconnectTip",
               "Check the account and network, then reconnect."));
-      useZhiziButton.setEnabled(!busy);
+      useZhiziButton.setEnabled(!busy && !refreshingWeights);
     } else if (usingZhizi) {
       useZhiziButton.setText(
           text("RemoteCompute.action.changeZhizi", "Change Zhizi connection mode"));
@@ -1073,14 +1273,14 @@ public class RemoteComputeDialog extends JDialog {
           text(
               "RemoteCompute.action.changeZhiziTip",
               "Switch the current engine to the selected Zhizi mode."));
-      useZhiziButton.setEnabled(!busy);
+      useZhiziButton.setEnabled(!busy && !refreshingWeights);
     } else {
       useZhiziButton.setText(text("RemoteCompute.enableZhizi", "Enable Zhizi Cloud"));
       useZhiziButton.setToolTipText(
           text(
               "RemoteCompute.action.enableZhiziTip",
               "Use Zhizi cloud KataGo as the current engine."));
-      useZhiziButton.setEnabled(!busy);
+      useZhiziButton.setEnabled(!busy && !refreshingWeights);
     }
     AccessibilitySupport.button(
         useZhiziButton, useZhiziButton.getText(), useZhiziButton.getToolTipText());
@@ -1117,8 +1317,7 @@ public class RemoteComputeDialog extends JDialog {
               "The custom compute link must start with ws:// or wss://."));
       useCustomButton.setEnabled(false);
     } else if (sameCode) {
-      useCustomButton.setText(
-          text("RemoteCompute.action.customEnabled", "Custom compute enabled"));
+      useCustomButton.setText(text("RemoteCompute.action.customEnabled", "Custom compute enabled"));
       useCustomButton.setToolTipText(
           text(
               "RemoteCompute.action.alreadyEnabledTip",
@@ -1147,6 +1346,7 @@ public class RemoteComputeDialog extends JDialog {
   private void updateStatus(String message, boolean ok) {
     String previous = statusLabel.getText();
     statusLabel.setText(message == null ? "" : message);
+    statusLabel.setToolTipText(statusLabel.getText());
     statusLabel.setForeground(ok ? new Color(77, 113, 82) : ERROR);
     statusDot.setColor(ok ? GREEN : ERROR);
     updateStatusAccessibility(
@@ -1169,7 +1369,8 @@ public class RemoteComputeDialog extends JDialog {
     AccessibilitySupport.announce(statusLabel, previous, current);
   }
 
-  private <T> void runBackground(String message, BackgroundTask<T> task, SuccessHandler<T> success) {
+  private <T> void runBackground(
+      String message, BackgroundTask<T> task, SuccessHandler<T> success) {
     setBusy(true);
     updateStatus(message, true);
     new SwingWorker<T, Void>() {
@@ -1209,6 +1410,7 @@ public class RemoteComputeDialog extends JDialog {
     showPasswordButton.setEnabled(!busy && !codeLoginMode);
     rememberPassword.setEnabled(!busy && !codeLoginMode);
     presetBox.setEnabled(!busy);
+    updateWeightControlState();
     passwordLoginButton.setEnabled(!busy);
     codeLoginButton.setEnabled(!busy);
     sendCodeButton.setEnabled(!busy);
@@ -1227,7 +1429,8 @@ public class RemoteComputeDialog extends JDialog {
     AccessibilitySupport.button(customTab, customTab.getText(), customTab.getText());
     AccessibilitySupport.button(
         passwordLoginButton, passwordLoginButton.getText(), passwordLoginButton.getText());
-    AccessibilitySupport.button(codeLoginButton, codeLoginButton.getText(), codeLoginButton.getText());
+    AccessibilitySupport.button(
+        codeLoginButton, codeLoginButton.getText(), codeLoginButton.getText());
     AccessibilitySupport.button(sendCodeButton, sendCodeButton.getText(), sendCodeButton.getText());
     AccessibilitySupport.button(loginButton, loginButton.getText(), loginButton.getText());
     AccessibilitySupport.button(
@@ -1237,13 +1440,20 @@ public class RemoteComputeDialog extends JDialog {
     AccessibilitySupport.button(
         localFromZhiziButton, localFromZhiziButton.getText(), localFromZhiziButton.getText());
     AccessibilitySupport.button(importQrButton, importQrButton.getText(), importQrButton.getText());
-    AccessibilitySupport.button(useCustomButton, useCustomButton.getText(), useCustomButton.getText());
+    AccessibilitySupport.button(
+        useCustomButton, useCustomButton.getText(), useCustomButton.getText());
     AccessibilitySupport.button(
         localFromCustomButton, localFromCustomButton.getText(), localFromCustomButton.getText());
     AccessibilitySupport.button(
         showPasswordButton,
         text("RemoteCompute.showPassword", "Show password"),
         text("RemoteCompute.showPassword", "Show password"));
+    AccessibilitySupport.button(
+        refreshWeightsButton,
+        text("RemoteCompute.refreshWeights", "Refresh available weights"),
+        text(
+            "RemoteCompute.refreshWeightsTip",
+            "Refresh the weights currently available from Zhizi"));
     AccessibilitySupport.named(
         rememberToken, rememberToken.getText(), rememberToken.getToolTipText());
     AccessibilitySupport.named(
@@ -1299,6 +1509,19 @@ public class RemoteComputeDialog extends JDialog {
     } else {
       card.add(Box.createVerticalStrut(20));
     }
+    return card;
+  }
+
+  private JPanel compactActionCard(String title) {
+    JPanel card = new RoundPanel(30, CARD, BORDER);
+    card.setLayout(new BoxLayout(card, BoxLayout.Y_AXIS));
+    card.setBorder(new EmptyBorder(20, 30, 20, 30));
+    JLabel titleLabel = new JLabel(title);
+    titleLabel.setForeground(TEXT);
+    titleLabel.setFont(titleLabel.getFont().deriveFont(Font.BOLD, 26F));
+    titleLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
+    card.add(titleLabel);
+    card.add(Box.createVerticalStrut(14));
     return card;
   }
 
@@ -1370,11 +1593,38 @@ public class RemoteComputeDialog extends JDialog {
             Component component =
                 super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus);
             component.setForeground(TEXT);
-            component.setBackground(isSelected ? new Color(228, 241, 232) : new Color(255, 255, 252));
+            component.setBackground(
+                isSelected ? new Color(228, 241, 232) : new Color(255, 255, 252));
             if (component instanceof JComponent) {
               ((JComponent) component).setBorder(new EmptyBorder(8, 10, 8, 10));
             }
             return component;
+          }
+        });
+  }
+
+  private void styleWeightCombo() {
+    styleCombo(weightBox);
+    weightBox.setRenderer(
+        new DefaultListCellRenderer() {
+          @Override
+          public Component getListCellRendererComponent(
+              JList<?> list, Object value, int index, boolean isSelected, boolean cellHasFocus) {
+            JLabel label =
+                (JLabel)
+                    super.getListCellRendererComponent(
+                        list, value, index, isSelected, cellHasFocus);
+            label.setForeground(TEXT);
+            label.setBackground(isSelected ? new Color(228, 241, 232) : new Color(255, 255, 252));
+            label.setBorder(new EmptyBorder(8, 10, 8, 10));
+            if (value instanceof WeightItem) {
+              WeightItem item = (WeightItem) value;
+              label.setText(item.displayLabel());
+              label.setToolTipText(item.tooltip());
+            } else {
+              label.setToolTipText(null);
+            }
+            return label;
           }
         });
   }
@@ -1472,6 +1722,71 @@ public class RemoteComputeDialog extends JDialog {
     @Override
     public String toString() {
       return label;
+    }
+  }
+
+  private static final class WeightItem {
+    final String name;
+    final String description;
+    final boolean defaultOption;
+    final boolean preserved;
+
+    WeightItem(String name, String description, boolean defaultOption, boolean preserved) {
+      this.name = name == null ? "" : name.trim();
+      this.description = description == null ? "" : description.replaceAll("\\s+", " ").trim();
+      this.defaultOption = defaultOption;
+      this.preserved = preserved;
+    }
+
+    static WeightItem preserved(String name) {
+      return new WeightItem(name, "", false, true);
+    }
+
+    String displayLabel() {
+      String readable = RemoteComputeConfig.displayNameForZhiziWeight(name);
+      StringBuilder label = new StringBuilder(readable);
+      if (!readable.equalsIgnoreCase(name)) {
+        label.append(" (").append(name).append(')');
+      }
+      String detail = meaningfulDescription();
+      if (!detail.isEmpty()) {
+        label.append(" · ").append(detail);
+      }
+      if (defaultOption) {
+        label.append(" · ").append(text("RemoteCompute.weightDefault", "Default"));
+      } else if (preserved) {
+        label.append(" · ").append(text("RemoteCompute.weightCurrent", "Current selection"));
+      }
+      return label.toString();
+    }
+
+    String tooltip() {
+      return description.isEmpty() ? displayLabel() : name + " - " + description;
+    }
+
+    @Override
+    public String toString() {
+      return displayLabel();
+    }
+
+    private String meaningfulDescription() {
+      if (description.isEmpty()) {
+        return "";
+      }
+      String lower = description.toLowerCase();
+      String lowerName = name.toLowerCase();
+      if (lower.equals(lowerName)
+          || lower.equals("weight for " + lowerName)
+          || lower.equals(lowerName + " weight")
+          || description.equalsIgnoreCase(name + "权重")) {
+        return "";
+      }
+      if (lower.startsWith(lowerName)) {
+        String remainder =
+            description.substring(name.length()).replaceFirst("^[\\s,，:：()（）-]+", "");
+        return "权重".equals(remainder) ? "" : remainder;
+      }
+      return description;
     }
   }
 
@@ -1642,6 +1957,81 @@ public class RemoteComputeDialog extends JDialog {
     }
   }
 
+  private static final class CatalogRefreshButton extends JButton {
+    private final Timer animationTimer;
+    private int rotation;
+    private boolean refreshing;
+
+    CatalogRefreshButton() {
+      setBorder(new EmptyBorder(0, 0, 0, 0));
+      setBorderPainted(false);
+      setContentAreaFilled(false);
+      setFocusPainted(false);
+      setOpaque(false);
+      setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+      setRolloverEnabled(true);
+      animationTimer =
+          new Timer(
+              75,
+              event -> {
+                rotation = (rotation + 24) % 360;
+                repaint();
+              });
+    }
+
+    void setRefreshing(boolean refreshing) {
+      if (this.refreshing == refreshing) {
+        return;
+      }
+      this.refreshing = refreshing;
+      if (refreshing) {
+        animationTimer.start();
+      } else {
+        animationTimer.stop();
+        rotation = 0;
+      }
+      repaint();
+    }
+
+    @Override
+    public Dimension getPreferredSize() {
+      return new Dimension(46, 46);
+    }
+
+    @Override
+    protected void paintComponent(Graphics g) {
+      Graphics2D g2 = (Graphics2D) g.create();
+      try {
+        g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+        Color fill =
+            getModel().isRollover() && isEnabled()
+                ? new Color(233, 244, 236)
+                : new Color(255, 253, 248);
+        g2.setColor(fill);
+        g2.fillRoundRect(0, 0, getWidth() - 1, getHeight() - 1, 15, 15);
+        g2.setColor(hasFocus() ? GREEN : BORDER);
+        g2.setStroke(new BasicStroke(hasFocus() ? 1.8F : 1.1F));
+        g2.drawRoundRect(0, 0, getWidth() - 1, getHeight() - 1, 15, 15);
+
+        int centerX = getWidth() / 2;
+        int centerY = getHeight() / 2;
+        g2.translate(centerX, centerY);
+        if (refreshing) {
+          g2.rotate(Math.toRadians(rotation));
+        }
+        g2.setColor(isEnabled() ? GREEN : new Color(156, 162, 151));
+        g2.setStroke(new BasicStroke(2.2F, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+        g2.drawArc(-10, -10, 20, 20, 35, refreshing ? 245 : 285);
+        int arrowX = 9;
+        int arrowY = -6;
+        g2.drawLine(arrowX, arrowY, arrowX - 6, arrowY - 1);
+        g2.drawLine(arrowX, arrowY, arrowX - 1, arrowY + 5);
+      } finally {
+        g2.dispose();
+      }
+    }
+  }
+
   private static final class MemoryCheckBox extends JCheckBox {
     MemoryCheckBox(String text) {
       super(text);
@@ -1673,7 +2063,8 @@ public class RemoteComputeDialog extends JDialog {
               ? new Color(226, 243, 232)
               : hover ? new Color(249, 245, 236) : new Color(255, 253, 248);
       Color border = selected ? new Color(140, 191, 159) : BORDER;
-      Color text = isEnabled() ? (selected ? new Color(36, 107, 72) : MUTED) : new Color(166, 157, 142);
+      Color text =
+          isEnabled() ? (selected ? new Color(36, 107, 72) : MUTED) : new Color(166, 157, 142);
       g2.setColor(fill);
       g2.fillRoundRect(1, 1, getWidth() - 2, getHeight() - 2, 18, 18);
       g2.setColor(border);
