@@ -39,7 +39,9 @@ jobs:
             scripts/package_runtime_tools.py \
             scripts/prepare_bundled_jcef.py \
             scripts/summarize_jfr.py \
+            scripts/test_generate_release_notes.py \
             scripts/test_windows_launcher_packaging.py
+          python3 scripts/test_generate_release_notes.py
           python3 scripts/test_prepare_bundled_jcef.py
           python3 scripts/test_windows_launcher_packaging.py
           bash -n \

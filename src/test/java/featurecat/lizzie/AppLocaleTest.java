@@ -46,6 +46,24 @@ class AppLocaleTest {
   }
 
   @Test
+  void mapsSupportedSystemLocalesAndKeepsAStableFallback() {
+    assertEquals(AppLocale.SIMPLIFIED_CHINESE, AppLocale.fromSystemLocale(Locale.CHINA));
+    assertEquals(AppLocale.TRADITIONAL_CHINESE, AppLocale.fromSystemLocale(Locale.TAIWAN));
+    assertEquals(
+        AppLocale.TRADITIONAL_CHINESE,
+        AppLocale.fromSystemLocale(Locale.forLanguageTag("zh-HK")));
+    assertEquals(
+        AppLocale.TRADITIONAL_CHINESE,
+        AppLocale.fromSystemLocale(Locale.forLanguageTag("zh-Hant")));
+    assertEquals(AppLocale.ENGLISH, AppLocale.fromSystemLocale(Locale.UK));
+    assertEquals(AppLocale.JAPANESE, AppLocale.fromSystemLocale(Locale.JAPAN));
+    assertEquals(AppLocale.KOREAN, AppLocale.fromSystemLocale(Locale.KOREA));
+    assertEquals(AppLocale.THAI, AppLocale.fromSystemLocale(Locale.forLanguageTag("th-TH")));
+    assertEquals(AppLocale.SIMPLIFIED_CHINESE, AppLocale.fromSystemLocale(Locale.FRANCE));
+    assertEquals(AppLocale.SIMPLIFIED_CHINESE, AppLocale.fromSystemLocale(null));
+  }
+
+  @Test
   void optionPaneButtonsFollowTheSelectedApplicationLanguage() {
     String[] uiKeys = {
       "OptionPane.okButtonText",

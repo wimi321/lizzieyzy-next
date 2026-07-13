@@ -45,6 +45,37 @@ public enum AppLocale {
     return SYSTEM;
   }
 
+  public static AppLocale fromSystemLocale(Locale systemLocale) {
+    if (systemLocale == null) {
+      return SIMPLIFIED_CHINESE;
+    }
+    String language = systemLocale.getLanguage();
+    if ("zh".equalsIgnoreCase(language)) {
+      String script = systemLocale.getScript();
+      String country = systemLocale.getCountry();
+      if ("Hant".equalsIgnoreCase(script)
+          || "TW".equalsIgnoreCase(country)
+          || "HK".equalsIgnoreCase(country)
+          || "MO".equalsIgnoreCase(country)) {
+        return TRADITIONAL_CHINESE;
+      }
+      return SIMPLIFIED_CHINESE;
+    }
+    if ("en".equalsIgnoreCase(language)) {
+      return ENGLISH;
+    }
+    if ("ja".equalsIgnoreCase(language)) {
+      return JAPANESE;
+    }
+    if ("ko".equalsIgnoreCase(language)) {
+      return KOREAN;
+    }
+    if ("th".equalsIgnoreCase(language)) {
+      return THAI;
+    }
+    return SIMPLIFIED_CHINESE;
+  }
+
   public static ResourceBundle loadBundle(int value) {
     return fromConfigValue(value).loadBundle();
   }

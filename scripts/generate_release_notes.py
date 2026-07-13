@@ -4186,6 +4186,14 @@ def build_release_notes(asset_map: dict[str, str | None], bundle: dict[str, str]
         return build_next_2026_07_02_1_notes(asset_map, bundle, repo, release_tag)
     if release_tag == 'next-2026-07-05.1':
         return build_next_2026_07_05_1_notes(asset_map, bundle, repo, release_tag)
+    if release_tag == 'next-2026-07-13.1':
+        return build_next_2026_07_13_notes(
+            asset_map, bundle, repo, release_tag, use_system_language=False
+        )
+    if release_tag == 'next-2026-07-13.2':
+        return build_next_2026_07_13_notes(
+            asset_map, bundle, repo, release_tag, use_system_language=True
+        )
 
     assets_cn = {
         key: format_asset(asset_map[key], repo, release_tag)
@@ -8151,6 +8159,283 @@ def build_next_2026_07_05_1_notes(
                 windows_opencl_portable=localized_assets['windows_opencl_portable'],
                 windows_nvidia_portable=localized_assets['windows_nvidia_portable'],
                 windows_core_update=localized_assets['windows_core_update'],
+            )
+            for item in block['before']
+        ]
+        sections.append(
+            {
+                'language': block['language'],
+                'intro': block['intro'],
+                'updates': {'heading': block['updates_heading'], 'items': block['updates']},
+                'before': {'heading': block['before_heading'], 'items': before_items},
+                'download': {
+                    'heading': block['download_heading'],
+                    'headers': block['download_headers'],
+                    'rows': standard_download_rows(
+                        STANDARD_DOWNLOAD_LABELS[block['labels']],
+                        localized_assets,
+                    ),
+                },
+                'why': {'heading': block['why_heading'], 'items': block['why']},
+                'contact': {'heading': block['contact_heading'], 'items': block['contact']},
+            }
+        )
+    add_nvidia50_download_rows(sections, assets_cn, assets)
+    add_tensorrt_split_download_row(sections, assets_cn, assets, asset_map)
+    remove_windows_core_update_auto_notes(sections)
+    validate_release_sections(sections)
+    return release_heading(release_tag) + '\n\n' + '\n\n---\n\n'.join(
+        render_language_section(section) for section in sections
+    ) + '\n'
+
+
+def build_next_2026_07_13_notes(
+    asset_map: dict[str, str | None],
+    bundle: dict[str, str],
+    repo: str,
+    release_tag: str | None,
+    use_system_language: bool,
+) -> str:
+    assets_cn = {key: format_asset(asset_map[key], repo, release_tag) for key in asset_map}
+    assets = {key: format_asset_en(asset_map[key], repo, release_tag) for key in asset_map}
+    katago_version = bundle['katago_version']
+    model_source = bundle['model_source']
+    previous_release = 'next-2026-07-05.1'
+    first_launch_updates = {
+        'zh': (
+            '全新用户首次启动直接进入熟悉的主界面，并从六种支持语言中自动匹配电脑的系统语言（不支持时回退简体中文）；不弹语言、引擎、初始化或智能测速窗口，内置引擎完整时自动开始分析，也不会强制进入四方图模式。'
+            if use_system_language
+            else '全新用户首次启动直接进入熟悉的主界面，默认简体中文；不弹语言、引擎、初始化或智能测速窗口，内置引擎完整时自动开始分析，也不会强制进入四方图模式。'
+        ),
+        'zh_hant': (
+            '全新使用者首次啟動會直接進入熟悉的主畫面，並從六種支援語言中自動配對電腦的系統語言（不支援時回退簡體中文）；不跳出語言、引擎、初始化或智慧測速視窗，內建引擎完整時會自動開始分析，也不會強制切到四方圖模式。'
+            if use_system_language
+            else '全新使用者首次啟動會直接進入熟悉的主畫面，預設簡體中文；不跳出語言、引擎、初始化或智慧測速視窗，內建引擎完整時會自動開始分析，也不會強制切到四方圖模式。'
+        ),
+        'en': (
+            'A new profile now opens directly into the familiar main window and selects the matching system language from the six supported languages, falling back to Simplified Chinese when unsupported. No language, engine, initialization, or benchmark dialog interrupts startup; a complete bundled engine analyzes automatically, and four-board mode is not forced.'
+            if use_system_language
+            else 'A new profile now opens directly into the familiar main window in Simplified Chinese. No language, engine, initialization, or benchmark dialog interrupts startup; a complete bundled engine analyzes automatically, and four-board mode is not forced.'
+        ),
+        'ja': (
+            '新しいプロファイルは、対応する 6 言語からシステム言語を自動選択し（未対応の場合は簡体字中国語）、言語・エンジン・初期設定・ベンチマークのダイアログを出さず通常メイン画面へ直接進みます。内蔵エンジンが揃っていれば自動で分析を開始し、4 分割表示も強制しません。'
+            if use_system_language
+            else '新しいプロファイルは簡体字中国語の通常メイン画面へ直接進み、言語・エンジン・初期設定・ベンチマークのダイアログを出しません。内蔵エンジンが揃っていれば自動で分析を開始し、4 分割表示も強制しません。'
+        ),
+        'ko': (
+            '새 프로필은 지원하는 6개 언어 중 시스템 언어를 자동 선택하고(미지원 언어는 간체 중국어로 fallback), 언어, 엔진, 초기 설정, benchmark dialog 없이 일반 메인 화면으로 바로 열립니다. 내장 엔진이 완전하면 분석을 자동 시작하며 4분할 모드를 강제하지 않습니다.'
+            if use_system_language
+            else '새 프로필은 간체 중국어 일반 메인 화면으로 바로 열리고 언어, 엔진, 초기 설정, benchmark dialog 가 나타나지 않습니다. 내장 엔진이 완전하면 분석을 자동 시작하며 4분할 모드를 강제하지 않습니다.'
+        ),
+        'th': (
+            'โปรไฟล์ใหม่จะเลือกภาษาระบบอัตโนมัติจาก 6 ภาษาที่รองรับ (fallback เป็นจีนตัวย่อเมื่อไม่รองรับ) แล้วเข้า main window ปกติทันที โดยไม่มี dialog เลือกภาษา, engine, initialization หรือ benchmark ถ้า bundled engine ครบจะเริ่มวิเคราะห์อัตโนมัติและไม่บังคับโหมด 4 กระดาน'
+            if use_system_language
+            else 'โปรไฟล์ใหม่จะเข้า main window ปกติด้วยภาษาจีนตัวย่อทันที โดยไม่มี dialog เลือกภาษา, engine, initialization หรือ benchmark ถ้า bundled engine ครบจะเริ่มวิเคราะห์อัตโนมัติและไม่บังคับโหมด 4 กระดาน'
+        ),
+    }
+
+    blocks = [
+        {
+            'language': '中文',
+            'labels': 'zh',
+            'intro': f'这一版是 {previous_release} 之后面向普通用户的完整体验更新：首次启动不再弹出设置流程，补齐六语国际化、键盘/读屏无障碍和 Windows 高缩放适配，并继续加固本地与智子云算力分析。',
+            'updates_heading': '本版主要更新',
+            'updates': [
+                first_launch_updates['zh'],
+                '完整支持简体中文、繁體中文、English、日本語、한국어、ไทย和“跟随系统”；修复繁中/泰语在 JCEF 棋谱窗口中的语言映射，并补齐主要菜单、设置与状态文案。',
+                '完善 Windows 100% / 150% / 200% 缩放和键盘/读屏操作：F6 区域导航、Tab 焦点、Enter/Space 激活、Esc 关闭，以及图标按钮、输入框和动态状态的可读名称。',
+                '缺引擎或启动失败时仍先显示主界面，并提供“AI 未就绪 · 点击修复”；默认、上次退出、手动选择和无引擎等启动方式继续尊重老用户配置。',
+                '统一远程算力中文名称为“智子云算力”，修正文案；当用户未保存智子登录令牌时，本次启动会安全使用本地引擎，但不会偷偷改写远程提供商、默认引擎或上次引擎选择。',
+                '继续合入代理设置、快速胜率曲线与分析渲染稳定性、HumanSL/多权重发现、Windows 启动器和可迁移精简包等维护改进。',
+                '本轮核心变更来自 PR #106；发布前已用 Windows 原生 EXE 复测首次启动、本地 OpenCL、智子 VIP TensorRT 切换与重连，并完成全量自动化和四平台打包。',
+            ],
+            'before_heading': '下载前先看这几句',
+            'before': [
+                f'主推荐整合包内置 KataGo `{katago_version}` 和默认权重 `{model_source}`。',
+                'Windows 普通用户优先下载 {windows_opencl_portable}，这是推荐的 OpenCL 免安装版。',
+                'NVIDIA 20/30/40 系用户可下载 {windows_nvidia_portable}；RTX 5070/5080/5090 用户优先选择 RTX 50 CUDA 版，TensorRT 分卷包用于愿意参与性能测试的用户。',
+                '这是 pre-release，请先在副本中升级并保留原来的 `user-data`、权重和棋谱备份。',
+            ],
+            'download_heading': '下载建议',
+            'download_headers': ('你的电脑', '直接下载这个'),
+            'why_heading': '这一版为什么值得测试',
+            'why': [
+                '首次启动、缺引擎修复和老用户配置兼容现在是一条连续流程，不会再用阻塞弹窗打断用户。',
+                '六语、高缩放和读屏支持覆盖了主界面及常用设置，Windows 用户可重点反馈仍有裁切或焦点顺序不自然的窗口。',
+                '智子远程算力与本地引擎切换已经过真实账号长时间分析验证，未保存登录信息的隐私选择也会被保留。',
+            ],
+            'contact_heading': '交流',
+            'contact': ['QQ 群：`299419120`'],
+        },
+        {
+            'language': '繁體中文',
+            'labels': 'zh_hant',
+            'intro': f'這一版是 {previous_release} 之後面向一般使用者的完整體驗更新：首次啟動不再跳出設定流程，補齊六語國際化、鍵盤/讀屏無障礙與 Windows 高縮放支援，並繼續強化本機與智子雲算力分析。',
+            'updates_heading': '本版主要更新',
+            'updates': [
+                first_launch_updates['zh_hant'],
+                '完整支援簡體中文、繁體中文、English、日本語、한국어、ไทย與「跟隨系統」；修正繁中/泰語在 JCEF 棋譜視窗的語言對應，並補齊主要選單、設定與狀態文字。',
+                '完善 Windows 100% / 150% / 200% 縮放與鍵盤/讀屏操作：F6 區域導覽、Tab 焦點、Enter/Space 啟動、Esc 關閉，以及圖示按鈕、輸入框與動態狀態的可讀名稱。',
+                '缺少引擎或啟動失敗時仍先顯示主畫面，並提供「AI 未就緒 · 點擊修復」；預設、上次退出、手動選擇與無引擎等啟動方式繼續尊重舊使用者設定。',
+                '統一遠端算力名稱為「智子雲算力」並修正文案；未儲存智子登入權杖時，本次啟動會安全使用本機引擎，但不會暗中改寫遠端提供者、預設引擎或上次引擎選擇。',
+                '繼續整合代理設定、快速勝率曲線與分析繪製穩定性、HumanSL/多權重探索、Windows 啟動器和可搬移精簡套件等維護改進。',
+                '本輪核心變更來自 PR #106；發布前已用 Windows 原生 EXE 複測首次啟動、本機 OpenCL、智子 VIP TensorRT 切換與重連，並完成全量自動化與四平台打包。',
+            ],
+            'before_heading': '下載前先看這幾句',
+            'before': [
+                f'主推薦整合包內建 KataGo `{katago_version}` 與預設權重 `{model_source}`。',
+                'Windows 一般使用者優先下載 {windows_opencl_portable}，這是建議的 OpenCL 免安裝版。',
+                'NVIDIA 20/30/40 系使用者可下載 {windows_nvidia_portable}；RTX 5070/5080/5090 優先選 RTX 50 CUDA 版，TensorRT 分卷包提供給願意參與效能測試的使用者。',
+                '這是 pre-release，建議先在副本中升級，並保留原本的 `user-data`、權重與棋譜備份。',
+            ],
+            'download_heading': '下載建議',
+            'download_headers': ('你的電腦', '直接下載這個'),
+            'why_heading': '這一版為什麼值得測試',
+            'why': [
+                '首次啟動、缺引擎修復與舊使用者設定相容已成為連續流程，不再以阻塞對話框打斷使用者。',
+                '六語、高縮放與讀屏支援已覆蓋主畫面及常用設定，Windows 使用者可重點回報仍有裁切或焦點順序不自然的視窗。',
+                '智子遠端算力與本機引擎切換已用真實帳號長時間分析驗證，未儲存登入資料的隱私選擇也會保留。',
+            ],
+            'contact_heading': '交流',
+            'contact': ['QQ 群：`299419120`'],
+        },
+        {
+            'language': 'English',
+            'labels': 'en',
+            'intro': f'This is a broad user-experience update after {previous_release}: first launch is now free of setup pop-ups, six-language localization and Windows accessibility/HiDPI support are substantially expanded, and both local and Zhizi Cloud analysis are more resilient.',
+            'updates_heading': 'Release Highlights',
+            'updates': [
+                first_launch_updates['en'],
+                'Added complete Simplified Chinese, Traditional Chinese, English, Japanese, Korean, Thai, and Follow System handling, including corrected Traditional Chinese and Thai locale mapping in JCEF kifu windows.',
+                'Improved Windows 100% / 150% / 200% scaling and keyboard/screen-reader support: F6 region navigation, Tab focus, Enter/Space activation, Esc dismissal, and meaningful accessible names for icon buttons, inputs, and live status updates.',
+                'Missing or failed engines no longer block the main window and expose an “AI not ready · click to repair” action. Existing default, last-used, manual, and no-engine startup choices remain intact.',
+                'Standardized the Chinese product name as “智子云算力” (Zhizi Cloud Compute). When no Zhizi token is stored, startup safely uses a local engine for that session without rewriting the remote provider, default engine, or last-engine preference.',
+                'Also includes proxy configuration, quick-winrate and analysis-rendering stability, HumanSL/multi-weight discovery, Windows launcher hardening, and slimmer relocatable packages merged since the previous release.',
+                'The core work is PR #106. Before publishing, the native Windows EXE was exercised with fresh-profile startup, bundled OpenCL, real Zhizi VIP TensorRT switching/reconnects, the full automated suite, and all four platform packaging workflows.',
+            ],
+            'before_heading': 'Read Before Downloading',
+            'before': [
+                f'The recommended bundles include KataGo `{katago_version}` and the default model `{model_source}`.',
+                'Most Windows users should start with {windows_opencl_portable}, the recommended OpenCL portable build.',
+                'NVIDIA 20/30/40-series users can choose {windows_nvidia_portable}; RTX 5070/5080/5090 users should prefer the RTX 50 CUDA build, while the split TensorRT package is intended for performance testers.',
+                'This is a pre-release. Upgrade a copy first and keep backups of your existing `user-data`, weights, and kifu.',
+            ],
+            'download_heading': 'Download Guide',
+            'download_headers': ('Your computer', 'Download this file'),
+            'why_heading': 'Why Test This Release',
+            'why': [
+                'First launch, missing-engine repair, and existing-user compatibility now form one uninterrupted flow instead of a chain of blocking dialogs.',
+                'Six-language, HiDPI, and screen-reader work covers the main window and common settings; Windows users can help identify any remaining clipped text or awkward focus order.',
+                'Real-account sustained analysis validated switching between Zhizi Remote Compute and a local engine, while the choice not to persist login data remains respected.',
+            ],
+            'contact_heading': 'Contact',
+            'contact': ['QQ group: `299419120`'],
+        },
+        {
+            'language': '日本語',
+            'labels': 'ja',
+            'intro': f'このリリースは {previous_release} 以降の総合的なユーザー体験更新です。初回起動の設定ポップアップをなくし、6 言語対応、Windows のアクセシビリティ/HiDPI、ローカルおよび Zhizi Cloud 分析の安定性を改善しました。',
+            'updates_heading': '主な更新',
+            'updates': [
+                first_launch_updates['ja'],
+                '簡体字中国語、繁体字中国語、英語、日本語、韓国語、タイ語、「システムに従う」を整備し、JCEF 棋譜画面の繁体字中国語/タイ語 locale mapping も修正しました。',
+                'Windows 100% / 150% / 200% scaling と keyboard/screen-reader 対応を改善しました。F6 の領域移動、Tab focus、Enter/Space、Esc、icon button・input・live status の accessible name を含みます。',
+                'エンジン欠落または起動失敗でもメイン画面を妨げず、「AI 未準備・クリックして修復」を表示します。既定、前回使用、手動選択、エンジンなしの設定はそのまま保持されます。',
+                '中国語表記を「智子云算力」に統一しました。Zhizi token を保存していない場合は、その起動だけ local engine を安全に使用し、remote provider、default engine、last-engine 設定は書き換えません。',
+                '前回以降の proxy 設定、quick winrate/analysis rendering、HumanSL・複数 weight 検出、Windows launcher、軽量で移動可能な package の改善も含みます。',
+                '中心となる変更は PR #106 です。公開前に Windows native EXE で fresh profile、local OpenCL、実際の Zhizi VIP TensorRT の切替/再接続、全自動テスト、4 platform packaging を確認しました。',
+            ],
+            'before_heading': 'ダウンロード前に',
+            'before': [
+                f'推奨パッケージには KataGo `{katago_version}` と既定モデル `{model_source}` が含まれます。',
+                'Windows の多くのユーザーは、推奨 OpenCL portable build の {windows_opencl_portable} から試してください。',
+                'NVIDIA 20/30/40 series は {windows_nvidia_portable}、RTX 5070/5080/5090 は RTX 50 CUDA build を推奨します。分割 TensorRT package は performance test 向けです。',
+                'これは pre-release です。まずコピーを更新し、既存の `user-data`、weight、棋譜をバックアップしてください。',
+            ],
+            'download_heading': 'ダウンロード案内',
+            'download_headers': ('お使いの環境', 'ダウンロードするファイル'),
+            'why_heading': 'このリリースを試す理由',
+            'why': [
+                '初回起動、エンジン修復、既存設定の互換性が、blocking dialog のない一つの流れになりました。',
+                '6 言語、HiDPI、screen reader 対応はメイン画面と主要設定をカバーします。残る文字切れや focus order の問題があればぜひお知らせください。',
+                'Zhizi Remote Compute と local engine の切替は実アカウントで継続分析を確認し、login 情報を保存しない選択も維持されます。',
+            ],
+            'contact_heading': '連絡先',
+            'contact': ['QQ group: `299419120`'],
+        },
+        {
+            'language': '한국어',
+            'labels': 'ko',
+            'intro': f'이번 버전은 {previous_release} 이후의 종합 사용자 경험 업데이트입니다. 첫 실행 설정 팝업을 없애고 6개 언어, Windows 접근성/HiDPI, 로컬 및 Zhizi Cloud 분석 안정성을 강화했습니다.',
+            'updates_heading': '주요 업데이트',
+            'updates': [
+                first_launch_updates['ko'],
+                '간체 중국어, 번체 중국어, 영어, 일본어, 한국어, 태국어와 “시스템 설정 따르기”를 완성하고 JCEF 기보 창의 번체 중국어/태국어 locale mapping 을 수정했습니다.',
+                'Windows 100% / 150% / 200% scaling 및 keyboard/screen-reader 지원을 개선했습니다. F6 영역 이동, Tab focus, Enter/Space 실행, Esc 닫기, icon button/input/live status 의 accessible name 을 포함합니다.',
+                '엔진 누락이나 시작 실패가 메인 화면을 막지 않고 “AI 준비 안 됨 · 클릭하여 복구”를 제공합니다. 기본, 마지막 사용, 수동 선택, 엔진 없음 시작 설정은 그대로 유지됩니다.',
+                '중국어 제품명을 “智子云算力”로 통일했습니다. Zhizi token 을 저장하지 않은 경우 해당 session 만 local engine 을 안전하게 사용하며 remote provider, default engine, last-engine 설정을 바꾸지 않습니다.',
+                '이전 release 이후의 proxy 설정, quick winrate/analysis rendering 안정화, HumanSL/다중 weight 탐색, Windows launcher, 경량 relocatable package 개선도 포함합니다.',
+                '핵심 변경은 PR #106 입니다. 배포 전 Windows native EXE 로 fresh profile, local OpenCL, 실제 Zhizi VIP TensorRT 전환/재연결, 전체 자동화 테스트와 4개 플랫폼 packaging 을 확인했습니다.',
+            ],
+            'before_heading': '다운로드 전 확인',
+            'before': [
+                f'추천 bundle 은 KataGo `{katago_version}` 와 기본 모델 `{model_source}` 를 포함합니다.',
+                '대부분의 Windows 사용자는 권장 OpenCL portable build {windows_opencl_portable} 부터 사용해 보세요.',
+                'NVIDIA 20/30/40 series 는 {windows_nvidia_portable}, RTX 5070/5080/5090 은 RTX 50 CUDA build 를 권장합니다. 분할 TensorRT package 는 performance tester 용입니다.',
+                '이 버전은 pre-release 입니다. 먼저 복사본을 업데이트하고 기존 `user-data`, weight, 기보를 백업하세요.',
+            ],
+            'download_heading': '다운로드 안내',
+            'download_headers': ('내 컴퓨터', '다운로드할 파일'),
+            'why_heading': '이 릴리스를 테스트할 이유',
+            'why': [
+                '첫 실행, 엔진 복구, 기존 사용자 설정 호환이 blocking dialog 없는 하나의 흐름이 되었습니다.',
+                '6개 언어, HiDPI, screen reader 작업은 메인 화면과 주요 설정을 포함합니다. 남은 글자 잘림이나 어색한 focus order 를 제보해 주세요.',
+                'Zhizi Remote Compute 와 local engine 전환은 실제 계정의 지속 분석으로 검증했고, login 정보를 저장하지 않는 선택도 존중합니다.',
+            ],
+            'contact_heading': '연락처',
+            'contact': ['QQ 그룹: `299419120`'],
+        },
+        {
+            'language': 'ภาษาไทย',
+            'labels': 'th',
+            'intro': f'release นี้เป็นการปรับประสบการณ์ผู้ใช้ครั้งใหญ่หลัง {previous_release}: การเปิดครั้งแรกไม่มี setup pop-up, เพิ่มความครบถ้วนของ 6 ภาษาและ Windows accessibility/HiDPI พร้อมทำให้ทั้ง local และ Zhizi Cloud analysis เสถียรขึ้น',
+            'updates_heading': 'ไฮไลต์ของเวอร์ชันนี้',
+            'updates': [
+                first_launch_updates['th'],
+                'รองรับภาษาจีนตัวย่อ, จีนตัวเต็ม, English, 日本語, 한국어, ไทย และ “ตามระบบ” อย่างครบถ้วน พร้อมแก้ locale mapping ของจีนตัวเต็ม/ไทยในหน้าต่าง JCEF kifu',
+                'ปรับ Windows scaling 100% / 150% / 200% และ keyboard/screen-reader: ใช้ F6 ย้ายพื้นที่, Tab ย้าย focus, Enter/Space เปิดใช้งาน, Esc ปิด dialog และมี accessible name ที่สื่อความหมายสำหรับ icon button, input และ live status',
+                'เมื่อ engine หายหรือเริ่มไม่สำเร็จ main window ยังเปิดได้และแสดง “AI ยังไม่พร้อม · คลิกเพื่อแก้ไข” โดยคงค่าการเริ่มแบบ default, last-used, manual และ no-engine ของผู้ใช้เดิม',
+                'ปรับชื่อภาษาจีนให้เป็น “智子云算力” อย่างถูกต้อง เมื่อไม่ได้เก็บ Zhizi token โปรแกรมจะใช้ local engine อย่างปลอดภัยเฉพาะ session นั้น โดยไม่แก้ remote provider, default engine หรือ last-engine setting',
+                'รวมการปรับ proxy, quick winrate/analysis rendering, การค้นหา HumanSL/หลาย weight, Windows launcher และ package แบบ relocatable ที่เล็กลงจากการอัปเดตหลัง release ก่อนหน้า',
+                'งานหลักอยู่ใน PR #106 ก่อนเผยแพร่ได้ทดสอบ Windows native EXE กับ fresh profile, local OpenCL, การสลับ/เชื่อมต่อ Zhizi VIP TensorRT จริง, full automated suite และ packaging ทั้ง 4 platform',
+            ],
+            'before_heading': 'ก่อนดาวน์โหลด',
+            'before': [
+                f'แพ็กเกจแนะนำรวม KataGo `{katago_version}` และ model เริ่มต้น `{model_source}`',
+                'ผู้ใช้ Windows ส่วนใหญ่ควรเริ่มจาก {windows_opencl_portable} ซึ่งเป็น OpenCL portable build ที่แนะนำ',
+                'NVIDIA 20/30/40 series ใช้ {windows_nvidia_portable}; RTX 5070/5080/5090 ควรใช้ RTX 50 CUDA build ส่วน TensorRT แบบแยกไฟล์เหมาะกับผู้ร่วมทดสอบประสิทธิภาพ',
+                'นี่คือ pre-release ควรอัปเดตในสำเนาก่อน และสำรอง `user-data`, weight และ kifu เดิมไว้',
+            ],
+            'download_heading': 'คำแนะนำดาวน์โหลด',
+            'download_headers': ('คอมพิวเตอร์ของคุณ', 'ดาวน์โหลดไฟล์นี้'),
+            'why_heading': 'ทำไมควรทดสอบเวอร์ชันนี้',
+            'why': [
+                'first launch, missing-engine repair และการรักษาค่าเดิมของผู้ใช้เป็น flow เดียวที่ไม่มี blocking dialog มาขัดจังหวะ',
+                'งาน 6 ภาษา, HiDPI และ screen reader ครอบคลุม main window และ settings ที่ใช้บ่อย โปรดแจ้งหากยังพบข้อความถูกตัดหรือ focus order ที่ไม่เป็นธรรมชาติบน Windows',
+                'การสลับ Zhizi Remote Compute กับ local engine ผ่านการทดสอบวิเคราะห์ต่อเนื่องด้วยบัญชีจริง และยังเคารพการเลือกไม่บันทึกข้อมูล login',
+            ],
+            'contact_heading': 'ติดต่อ',
+            'contact': ['QQ group: `299419120`'],
+        },
+    ]
+
+    sections: list[dict[str, object]] = []
+    for block in blocks:
+        localized_assets = assets_cn if block['labels'] in ('zh', 'zh_hant') else assets
+        before_items = [
+            item.format(
+                windows_opencl_portable=localized_assets['windows_opencl_portable'],
+                windows_nvidia_portable=localized_assets['windows_nvidia_portable'],
             )
             for item in block['before']
         ]
