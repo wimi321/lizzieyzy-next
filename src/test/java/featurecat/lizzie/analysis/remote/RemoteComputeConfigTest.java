@@ -13,6 +13,7 @@ import featurecat.lizzie.util.Utils;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.List;
 import java.util.ResourceBundle;
 import org.json.JSONObject;
 import org.junit.jupiter.api.Test;
@@ -25,27 +26,82 @@ class RemoteComputeConfigTest {
         () -> {
           assertEquals(
               "智子云算力 VIP 包月 · Zhizi 28B · TensorRT",
-              RemoteComputeConfig.displayNameForZhiziArgs(
-                  RemoteComputeConfig.DEFAULT_ZHIZI_ARGS));
+              RemoteComputeConfig.displayNameForZhiziArgs(RemoteComputeConfig.DEFAULT_ZHIZI_ARGS));
           assertEquals(
               "智子云算力 按量 1x · Zhizi 28B · TensorRT",
               RemoteComputeConfig.displayNameForZhiziArgs(
                   RemoteComputeConfig.ON_DEMAND_1X_ZHIZI_ARGS));
           assertEquals(
               "智子云算力 按量 3x · Zhizi 28B · TensorRT",
-              RemoteComputeConfig.displayNameForZhiziArgs(
-                  RemoteComputeConfig.FASTER_ZHIZI_ARGS));
+              RemoteComputeConfig.displayNameForZhiziArgs(RemoteComputeConfig.FASTER_ZHIZI_ARGS));
           assertEquals(
               "智子云算力 VIP 包月 · Zhizi 28B · TensorRT",
-              RemoteComputeConfig.displayNameForZhiziArgs(
-                  RemoteComputeConfig.VIP_ZHIZI_ARGS));
+              RemoteComputeConfig.displayNameForZhiziArgs(RemoteComputeConfig.VIP_ZHIZI_ARGS));
         });
   }
 
   @Test
   void gpuTypeParserReadsVipShareAndFallsBackForBlankArgs() {
-    assertEquals("vip-share", RemoteComputeConfig.gpuTypeForArgs(RemoteComputeConfig.VIP_ZHIZI_ARGS));
+    assertEquals(
+        "vip-share", RemoteComputeConfig.gpuTypeForArgs(RemoteComputeConfig.VIP_ZHIZI_ARGS));
     assertEquals("vip-share", RemoteComputeConfig.gpuTypeForArgs(""));
+  }
+
+  @Test
+  void weightSelectionChangesOnlyKataWeightAndSupportsNewCatalogModels() {
+    String selected =
+        RemoteComputeConfig.withKataWeight(RemoteComputeConfig.FASTER_ZHIZI_ARGS, "60b");
+
+    assertEquals("60b", RemoteComputeConfig.kataWeightForArgs(selected));
+    assertEquals("3x", RemoteComputeConfig.gpuTypeForArgs(selected));
+    assertTrue(selected.contains("--kata-name katago-TENSORRT"));
+    assertTrue(RemoteComputeConfig.sameZhiziPlan(selected, RemoteComputeConfig.FASTER_ZHIZI_ARGS));
+    assertFalse(
+        RemoteComputeConfig.sameZhiziPlan(selected, RemoteComputeConfig.DEFAULT_ZHIZI_ARGS));
+    assertEquals(
+        "智子云算力 按量 3x · 60B · TensorRT",
+        withBundleResult(
+            AppLocale.SIMPLIFIED_CHINESE.loadBundle(),
+            () -> RemoteComputeConfig.displayNameForZhiziArgs(selected)));
+  }
+
+  @Test
+  void invalidWeightCannotBeInjectedIntoEngineArguments() {
+    String selected =
+        RemoteComputeConfig.withKataWeight(
+            RemoteComputeConfig.ON_DEMAND_1X_ZHIZI_ARGS, "60b --gpu-type 24x");
+
+    assertEquals("28bnbt", RemoteComputeConfig.kataWeightForArgs(selected));
+    assertEquals("1x", RemoteComputeConfig.gpuTypeForArgs(selected));
+  }
+
+  @Test
+  void zhiziCatalogCachePersistsAndExpiresAfterRefreshInterval() throws Exception {
+    withConfig(
+        () -> {
+          ZhiziEngineCatalog catalog =
+              new ZhiziEngineCatalog(
+                  "8.0.1",
+                  "40b",
+                  List.of(
+                      new ZhiziEngineCatalog.Option("28bnbt", "standard"),
+                      new ZhiziEngineCatalog.Option("40b", "large")));
+          RemoteComputeConfig.State state = RemoteComputeConfig.load();
+          state.zhiziCatalog = catalog;
+          state.zhiziCatalogUpdatedAt = 1_000L;
+          RemoteComputeConfig.save(state);
+
+          RemoteComputeConfig.State restored = RemoteComputeConfig.load();
+          assertEquals("40b", restored.zhiziCatalog.defaultWeight());
+          assertEquals(2, restored.zhiziCatalog.weights().size());
+          assertFalse(
+              RemoteComputeConfig.shouldRefreshZhiziCatalog(
+                  restored,
+                  1_000L + RemoteComputeConfig.ZHIZI_CATALOG_REFRESH_INTERVAL_MILLIS - 1L));
+          assertTrue(
+              RemoteComputeConfig.shouldRefreshZhiziCatalog(
+                  restored, 1_000L + RemoteComputeConfig.ZHIZI_CATALOG_REFRESH_INTERVAL_MILLIS));
+        });
   }
 
   @Test
@@ -56,8 +112,7 @@ class RemoteComputeConfigTest {
           assertEquals(
               "智子云算力",
               RemoteComputeConfig.compactDisplayNameForCommand(
-                  RemoteComputeConfig.COMMAND_ZHIZI,
-                  "智子云算力 VIP 包月 · Zhizi 28B · TensorRT"));
+                  RemoteComputeConfig.COMMAND_ZHIZI, "智子云算力 VIP 包月 · Zhizi 28B · TensorRT"));
           assertEquals(
               "自建算力",
               RemoteComputeConfig.compactDisplayNameForCommand(
@@ -124,7 +179,8 @@ class RemoteComputeConfigTest {
           RemoteComputeConfig.State state = RemoteComputeConfig.load();
           assertTrue(state.rememberZhiziPassword);
           assertEquals("secret-password", state.zhiziPassword);
-          JSONObject json = Lizzie.config.leelazConfig.getJSONObject(RemoteComputeConfig.CONFIG_KEY);
+          JSONObject json =
+              Lizzie.config.leelazConfig.getJSONObject(RemoteComputeConfig.CONFIG_KEY);
           assertFalse(json.optString("zhizi-password-v1").contains("secret-password"));
 
           RemoteComputeConfig.saveZhiziToken(
@@ -156,10 +212,7 @@ class RemoteComputeConfigTest {
               true);
 
           RemoteComputeConfig.saveZhiziToken(
-              "code-token",
-              true,
-              RemoteComputeConfig.ON_DEMAND_1X_ZHIZI_ARGS,
-              "user@example.com");
+              "code-token", true, RemoteComputeConfig.ON_DEMAND_1X_ZHIZI_ARGS, "user@example.com");
 
           RemoteComputeConfig.State state = RemoteComputeConfig.load();
           assertEquals("code-token", state.zhiziAccountToken);
@@ -273,8 +326,7 @@ class RemoteComputeConfigTest {
                   state.customRemoteCode = "wss://compute.example.com/katago";
                   RemoteComputeConfig.save(state);
 
-                  int customIndex =
-                      RemoteComputeConfig.createOrUpdateCustomWebSocketEngine(true);
+                  int customIndex = RemoteComputeConfig.createOrUpdateCustomWebSocketEngine(true);
 
                   ArrayList<EngineData> savedEngines = Utils.getEngineData();
                   assertEquals(1, customIndex);
@@ -282,8 +334,7 @@ class RemoteComputeConfigTest {
                       RemoteComputeConfig.COMMAND_CUSTOM_WS,
                       savedEngines.get(customIndex).commands);
                   assertEquals(
-                      "Custom Compute · compute.example.com",
-                      savedEngines.get(customIndex).name);
+                      "Custom Compute · compute.example.com", savedEngines.get(customIndex).name);
                   assertTrue(savedEngines.get(customIndex).isDefault);
                   assertEquals(1, Lizzie.config.uiConfig.optInt("last-engine", -1));
 
@@ -378,6 +429,16 @@ class RemoteComputeConfigTest {
     }
   }
 
+  private static <T> T withBundleResult(ResourceBundle bundle, ResultSupplier<T> supplier) {
+    ResourceBundle previous = Lizzie.resourceBundle;
+    try {
+      Lizzie.resourceBundle = bundle;
+      return supplier.get();
+    } finally {
+      Lizzie.resourceBundle = previous;
+    }
+  }
+
   private static void withConfig(ThrowingRunnable action) throws Exception {
     Config previousConfig = Lizzie.config;
     Path runtimeRoot = Files.createTempDirectory("remote-compute-config");
@@ -397,5 +458,9 @@ class RemoteComputeConfigTest {
 
   private interface ThrowingRunnable {
     void run() throws Exception;
+  }
+
+  private interface ResultSupplier<T> {
+    T get();
   }
 }

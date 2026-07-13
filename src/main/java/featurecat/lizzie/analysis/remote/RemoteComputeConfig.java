@@ -1,7 +1,6 @@
 package featurecat.lizzie.analysis.remote;
 
 import featurecat.lizzie.Lizzie;
-import featurecat.lizzie.analysis.EngineManager;
 import featurecat.lizzie.gui.EngineData;
 import featurecat.lizzie.rules.Board;
 import featurecat.lizzie.util.Utils;
@@ -35,6 +34,7 @@ public final class RemoteComputeConfig {
       "--platform all --engine-type go --gpu-type 24x --kata-name katago-TENSORRT --kata-weight 28bnbt";
   public static final String QUICK_START_ZHIZI_ARGS =
       "--platform all --engine-type go --gpu-type 1x --kata-name katago-CUDA --kata-weight 28bnbt";
+  public static final long ZHIZI_CATALOG_REFRESH_INTERVAL_MILLIS = 6L * 60L * 60L * 1000L;
 
   private static volatile String sessionZhiziToken = "";
 
@@ -59,6 +59,8 @@ public final class RemoteComputeConfig {
             ? decodeSavedPassword(json.optString("zhizi-password-v1", ""))
             : "";
     state.zhiziArgs = json.optString("zhizi-args", DEFAULT_ZHIZI_ARGS);
+    state.zhiziCatalog = loadZhiziCatalog(json.optJSONObject("zhizi-engine-catalog"));
+    state.zhiziCatalogUpdatedAt = json.optLong("zhizi-catalog-updated-at", 0L);
     state.customRemoteCode = json.optString("custom-remote-code", "");
     if (state.zhiziAccountToken.isEmpty() && !sessionZhiziToken.isEmpty()) {
       state.zhiziAccountToken = sessionZhiziToken;
@@ -74,6 +76,10 @@ public final class RemoteComputeConfig {
     json.put("remember-zhizi-token", state.rememberZhiziToken);
     json.put("remember-zhizi-password", state.rememberZhiziPassword);
     json.put("custom-remote-code", state.customRemoteCode == null ? "" : state.customRemoteCode);
+    if (state.zhiziCatalog != null) {
+      json.put("zhizi-engine-catalog", state.zhiziCatalog.toJson());
+    }
+    json.put("zhizi-catalog-updated-at", Math.max(0L, state.zhiziCatalogUpdatedAt));
     String savedPassword = state.zhiziPassword == null ? "" : state.zhiziPassword;
     if (state.rememberZhiziPassword && !savedPassword.isEmpty()) {
       json.put("zhizi-password-v1", encodeSavedPassword(savedPassword));
@@ -126,6 +132,23 @@ public final class RemoteComputeConfig {
     state.rememberZhiziPassword = false;
     sessionZhiziToken = "";
     save(state);
+  }
+
+  public static void saveZhiziCatalog(ZhiziEngineCatalog catalog) {
+    if (catalog == null) {
+      return;
+    }
+    State state = load();
+    state.zhiziCatalog = catalog;
+    state.zhiziCatalogUpdatedAt = System.currentTimeMillis();
+    save(state);
+  }
+
+  public static boolean shouldRefreshZhiziCatalog(State state, long nowMillis) {
+    if (state == null || state.zhiziCatalogUpdatedAt <= 0L) {
+      return true;
+    }
+    return nowMillis - state.zhiziCatalogUpdatedAt >= ZHIZI_CATALOG_REFRESH_INTERVAL_MILLIS;
   }
 
   public static boolean isZhiziEngineCommand(String command) {
@@ -311,10 +334,7 @@ public final class RemoteComputeConfig {
 
   public static String displayNameForZhiziArgs(String args) {
     String normalized = args == null ? "" : args;
-    String model =
-        normalized.contains("18bnbt")
-            ? "Zhizi 18B"
-            : normalized.contains("fdx") ? "FDX" : "Zhizi 28B";
+    String model = displayNameForZhiziWeight(kataWeightForArgs(normalized));
     String backend = normalized.contains("katago-CUDA") ? "CUDA" : "TensorRT";
     String gpuType = gpuTypeForArgs(normalized);
     String billing = localizedPlanName(gpuType, backend);
@@ -328,16 +348,41 @@ public final class RemoteComputeConfig {
   }
 
   public static String gpuTypeForArgs(String args) {
-    if (args == null || args.trim().isEmpty()) {
-      return "vip-share";
+    return optionValueForArgs(args, "--gpu-type", "vip-share");
+  }
+
+  public static String kataWeightForArgs(String args) {
+    return optionValueForArgs(args, "--kata-weight", "28bnbt");
+  }
+
+  public static String withKataWeight(String args, String weight) {
+    String safeWeight =
+        ZhiziEngineCatalog.isSafeOptionName(weight) ? weight.trim() : kataWeightForArgs(args);
+    return withOptionValue(
+        args == null || args.trim().isEmpty() ? DEFAULT_ZHIZI_ARGS : args,
+        "--kata-weight",
+        safeWeight);
+  }
+
+  public static boolean sameZhiziPlan(String first, String second) {
+    return withoutOption(first, "--kata-weight").equals(withoutOption(second, "--kata-weight"));
+  }
+
+  public static String displayNameForZhiziWeight(String weight) {
+    String normalized = weight == null ? "" : weight.trim();
+    if ("28bnbt".equalsIgnoreCase(normalized)) {
+      return "Zhizi 28B";
     }
-    String[] parts = args.trim().split("\\s+");
-    for (int i = 0; i < parts.length - 1; i++) {
-      if ("--gpu-type".equals(parts[i])) {
-        return parts[i + 1].trim();
-      }
+    if ("18bnbt".equalsIgnoreCase(normalized)) {
+      return "Zhizi 18B";
     }
-    return "";
+    if ("fdx".equalsIgnoreCase(normalized)) {
+      return "FDX";
+    }
+    if (normalized.matches("(?i)\\d+b")) {
+      return normalized.toUpperCase();
+    }
+    return normalized.isEmpty() ? "Zhizi 28B" : normalized;
   }
 
   public static boolean isCustomWebSocketUrl(String value) {
@@ -501,6 +546,76 @@ public final class RemoteComputeConfig {
     return value == null || value.trim().isEmpty() ? fallback : value.trim();
   }
 
+  private static ZhiziEngineCatalog loadZhiziCatalog(JSONObject json) {
+    if (json != null) {
+      try {
+        return ZhiziEngineCatalog.fromJson(json);
+      } catch (IOException ignored) {
+        // A corrupt cache must never prevent the remote-compute dialog from opening.
+      }
+    }
+    return ZhiziEngineCatalog.fallback();
+  }
+
+  private static String optionValueForArgs(String args, String option, String fallback) {
+    if (args == null || args.trim().isEmpty()) {
+      return fallback;
+    }
+    String[] parts = args.trim().split("\\s+");
+    for (int i = 0; i < parts.length - 1; i++) {
+      if (option.equals(parts[i])) {
+        return parts[i + 1].trim();
+      }
+    }
+    return fallback;
+  }
+
+  private static String withOptionValue(String args, String option, String value) {
+    String[] parts = args.trim().split("\\s+");
+    StringBuilder result = new StringBuilder();
+    boolean replaced = false;
+    for (int i = 0; i < parts.length; i++) {
+      appendArgument(result, parts[i]);
+      if (option.equals(parts[i])) {
+        if (i + 1 < parts.length) {
+          i++;
+        }
+        appendArgument(result, value);
+        replaced = true;
+      }
+    }
+    if (!replaced) {
+      appendArgument(result, option);
+      appendArgument(result, value);
+    }
+    return result.toString();
+  }
+
+  private static String withoutOption(String args, String option) {
+    if (args == null || args.trim().isEmpty()) {
+      return "";
+    }
+    String[] parts = args.trim().split("\\s+");
+    StringBuilder result = new StringBuilder();
+    for (int i = 0; i < parts.length; i++) {
+      if (option.equals(parts[i])) {
+        if (i + 1 < parts.length) {
+          i++;
+        }
+        continue;
+      }
+      appendArgument(result, parts[i]);
+    }
+    return result.toString();
+  }
+
+  private static void appendArgument(StringBuilder result, String argument) {
+    if (result.length() > 0) {
+      result.append(' ');
+    }
+    result.append(argument);
+  }
+
   private static int indexOfWebSocketScheme(String text) {
     String lower = text.toLowerCase();
     int ws = lower.indexOf("ws://");
@@ -561,6 +676,8 @@ public final class RemoteComputeConfig {
     public String zhiziPassword = "";
     public boolean rememberZhiziPassword;
     public String zhiziArgs = DEFAULT_ZHIZI_ARGS;
+    public ZhiziEngineCatalog zhiziCatalog = ZhiziEngineCatalog.fallback();
+    public long zhiziCatalogUpdatedAt;
     public String customRemoteCode = "";
   }
 
