@@ -17,7 +17,8 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 
 public final class ReadBoardUpdateInstaller {
-  private static final String PACKAGE_PREFIX = "readboard-github-release-";
+  private static final String LEGACY_PACKAGE_PREFIX = "readboard-github-release-";
+  private static final String WEBVIEW2_PACKAGE_PREFIX = "readboard-webview2-";
   private static final String PACKAGE_SUFFIX = ".zip";
   private static final DateTimeFormatter OPERATION_SUFFIX_FORMAT =
       DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss-SSS");
@@ -76,7 +77,7 @@ public final class ReadBoardUpdateInstaller {
     if (!Files.isRegularFile(zipPath)) {
       throw new IOException("ReadBoard update package does not exist.");
     }
-    if (!expectedPackageFileName(request.versionTag()).equals(zipPath.getFileName().toString())) {
+    if (!isExpectedPackageFileName(request.versionTag(), zipPath.getFileName().toString())) {
       throw new IOException(
           "ReadBoard update package filename does not match the requested version.");
     }
@@ -217,8 +218,9 @@ public final class ReadBoardUpdateInstaller {
     return relativePath;
   }
 
-  private static String expectedPackageFileName(String versionTag) {
-    return PACKAGE_PREFIX + versionTag + PACKAGE_SUFFIX;
+  private static boolean isExpectedPackageFileName(String versionTag, String fileName) {
+    return (LEGACY_PACKAGE_PREFIX + versionTag + PACKAGE_SUFFIX).equals(fileName)
+        || (WEBVIEW2_PACKAGE_PREFIX + versionTag + PACKAGE_SUFFIX).equals(fileName);
   }
 
   private static void deleteRecursively(Path directory) throws IOException {

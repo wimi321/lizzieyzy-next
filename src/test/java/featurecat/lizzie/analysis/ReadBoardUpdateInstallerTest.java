@@ -60,6 +60,38 @@ class ReadBoardUpdateInstallerTest {
   }
 
   @Test
+  void validateRequestAcceptsWebView2PackageName() throws Exception {
+    ReadBoardUpdateRequest request =
+        createRequest(
+            "readboard-webview2-",
+            "v3.1.0",
+            Map.of(
+                "readboard.exe", "new-exe",
+                "readboard.dll", "new-dll",
+                "readboard.runtimeconfig.json", "{}",
+                "readboard.deps.json", "{}",
+                "language_cn.txt", "cn"));
+
+    assertDoesNotThrow(() -> installer.validateRequest(request));
+  }
+
+  @Test
+  void validateRequestRejectsUnapprovedZipName() throws Exception {
+    ReadBoardUpdateRequest request =
+        createRequest(
+            "readboard-custom-",
+            "v3.1.0",
+            Map.of(
+                "readboard.exe", "new-exe",
+                "readboard.dll", "new-dll",
+                "readboard.runtimeconfig.json", "{}",
+                "readboard.deps.json", "{}",
+                "language_cn.txt", "cn"));
+
+    assertThrows(IOException.class, () -> installer.validateRequest(request));
+  }
+
+  @Test
   void validateRequestRejectsNestedRequiredFilesBelowInstallRoot() throws Exception {
     ReadBoardUpdateRequest request =
         createRequest(
@@ -127,8 +159,12 @@ class ReadBoardUpdateInstallerTest {
 
   private ReadBoardUpdateRequest createRequest(String versionTag, Map<String, String> entries)
       throws Exception {
-    Path zipPath =
-        createZip(tempDir.resolve("readboard-github-release-" + versionTag + ".zip"), entries);
+    return createRequest("readboard-github-release-", versionTag, entries);
+  }
+
+  private ReadBoardUpdateRequest createRequest(
+      String packagePrefix, String versionTag, Map<String, String> entries) throws Exception {
+    Path zipPath = createZip(tempDir.resolve(packagePrefix + versionTag + ".zip"), entries);
     ReadBoardUpdateRequest request =
         ReadBoardUpdateRequest.tryParse(
             "readboardUpdateReady\t" + versionTag + "\t" + zipPath.toAbsolutePath());

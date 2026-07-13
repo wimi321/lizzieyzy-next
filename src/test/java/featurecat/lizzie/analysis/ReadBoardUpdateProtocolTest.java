@@ -60,7 +60,9 @@ class ReadBoardUpdateProtocolTest {
     nativePipeReadBoard.announceHostedUpdateSupport();
     socketReadBoard.announceHostedUpdateSupport();
 
-    assertEquals("readboardUpdateSupported\n", nativePipeOutput.writtenText());
+    assertEquals(
+        "readboardUpdateSupported\nreadboardUpdatePackageV2Supported\n",
+        nativePipeOutput.writtenText());
     assertEquals("", socketOutput.writtenText());
     assertTrue(nativePipeReadBoard.shouldAnnounceHostedUpdateSupport());
     assertFalse(socketReadBoard.shouldAnnounceHostedUpdateSupport());
@@ -82,7 +84,8 @@ class ReadBoardUpdateProtocolTest {
       readBoard.handleReady();
 
       assertEquals(
-          "version\nreadboardUpdateSupported\nanalysisState running\n", output.writtenText());
+          "version\nreadboardUpdateSupported\nreadboardUpdatePackageV2Supported\nanalysisState running\n",
+          output.writtenText());
     } finally {
       Lizzie.leelaz = previousLeelaz;
     }
@@ -101,7 +104,8 @@ class ReadBoardUpdateProtocolTest {
       readBoard.handleReady();
 
       assertEquals(
-          "version\nreadboardUpdateSupported\nanalysisState paused\n", output.writtenText());
+          "version\nreadboardUpdateSupported\nreadboardUpdatePackageV2Supported\nanalysisState paused\n",
+          output.writtenText());
     } finally {
       Lizzie.leelaz = previousLeelaz;
     }

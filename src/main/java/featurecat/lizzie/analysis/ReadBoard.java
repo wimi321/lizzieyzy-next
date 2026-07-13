@@ -60,6 +60,8 @@ public class ReadBoard {
       System.getProperty("lizzie.localMoveSyncLog", "runtime/readboard-local-move-debug.log");
   private static final long LOCAL_MOVE_SYNC_LOG_MAX_BYTES = 2_000_000L;
   private static final String READBOARD_UPDATE_SUPPORTED_COMMAND = "readboardUpdateSupported";
+  private static final String READBOARD_UPDATE_PACKAGE_V2_SUPPORTED_COMMAND =
+      "readboardUpdatePackageV2Supported";
   private static final String YIKE_SYNC_START_COMMAND = "yikeSyncStart";
   private static final String YIKE_SYNC_STOP_COMMAND = "yikeSyncStop";
   private static final String READBOARD_GMA_TOKEN = "gma";
@@ -5128,6 +5130,7 @@ public class ReadBoard {
   public void announceHostedUpdateSupport() {
     if (shouldAnnounceHostedUpdateSupport()) {
       sendCommand(READBOARD_UPDATE_SUPPORTED_COMMAND);
+      sendCommand(READBOARD_UPDATE_PACKAGE_V2_SUPPORTED_COMMAND);
     }
   }
 
