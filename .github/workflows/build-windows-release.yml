@@ -236,6 +236,10 @@ jobs:
             "dist/windows/app-image-without.engine/LizzieYzy Next"; do
             test ! -f "$app_dir/app/lizzieyzy-next-cds.jsa"
             test -f "$app_dir/runtime/bin/server/jvm.dll"
+            test -f "$app_dir/runtime/bin/jabswitch.exe"
+            test -f "$app_dir/runtime/bin/javaaccessbridge.dll"
+            test -f "$app_dir/runtime/bin/windowsaccessbridge-64.dll"
+            "$app_dir/runtime/bin/java.exe" --list-modules | grep -q '^jdk.accessibility@'
             "$app_dir/runtime/bin/java.exe" \
               -Xshare:auto \
               -XX:InitialRAMPercentage=1.0 \

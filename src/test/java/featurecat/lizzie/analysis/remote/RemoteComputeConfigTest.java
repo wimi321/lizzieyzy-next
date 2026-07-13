@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import featurecat.lizzie.AppLocale;
 import featurecat.lizzie.Config;
 import featurecat.lizzie.ConfigTestHelper;
 import featurecat.lizzie.Lizzie;
@@ -12,24 +13,33 @@ import featurecat.lizzie.util.Utils;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.ResourceBundle;
 import org.json.JSONObject;
 import org.junit.jupiter.api.Test;
 
 class RemoteComputeConfigTest {
   @Test
   void displayNameIncludesZhiziGpuType() {
-    assertEquals(
-        "智子云算力 VIP包月 · 智子28B · TensorRT",
-        RemoteComputeConfig.displayNameForZhiziArgs(RemoteComputeConfig.DEFAULT_ZHIZI_ARGS));
-    assertEquals(
-        "智子云算力 按量1x · 智子28B · TensorRT",
-        RemoteComputeConfig.displayNameForZhiziArgs(RemoteComputeConfig.ON_DEMAND_1X_ZHIZI_ARGS));
-    assertEquals(
-        "智子云算力 按量3x · 智子28B · TensorRT",
-        RemoteComputeConfig.displayNameForZhiziArgs(RemoteComputeConfig.FASTER_ZHIZI_ARGS));
-    assertEquals(
-        "智子云算力 VIP包月 · 智子28B · TensorRT",
-        RemoteComputeConfig.displayNameForZhiziArgs(RemoteComputeConfig.VIP_ZHIZI_ARGS));
+    withResourceBundle(
+        AppLocale.SIMPLIFIED_CHINESE.loadBundle(),
+        () -> {
+          assertEquals(
+              "智子云算力 VIP 包月 · Zhizi 28B · TensorRT",
+              RemoteComputeConfig.displayNameForZhiziArgs(
+                  RemoteComputeConfig.DEFAULT_ZHIZI_ARGS));
+          assertEquals(
+              "智子云算力 按量 1x · Zhizi 28B · TensorRT",
+              RemoteComputeConfig.displayNameForZhiziArgs(
+                  RemoteComputeConfig.ON_DEMAND_1X_ZHIZI_ARGS));
+          assertEquals(
+              "智子云算力 按量 3x · Zhizi 28B · TensorRT",
+              RemoteComputeConfig.displayNameForZhiziArgs(
+                  RemoteComputeConfig.FASTER_ZHIZI_ARGS));
+          assertEquals(
+              "智子云算力 VIP 包月 · Zhizi 28B · TensorRT",
+              RemoteComputeConfig.displayNameForZhiziArgs(
+                  RemoteComputeConfig.VIP_ZHIZI_ARGS));
+        });
   }
 
   @Test
@@ -40,35 +50,63 @@ class RemoteComputeConfigTest {
 
   @Test
   void compactDisplayNameKeepsStatusAreaReadable() {
-    assertEquals(
-        "智子云算力",
-        RemoteComputeConfig.compactDisplayNameForCommand(
-            RemoteComputeConfig.COMMAND_ZHIZI, "智子云算力 VIP包月 · 智子28B · TensorRT"));
-    assertEquals(
-        "自建算力",
-        RemoteComputeConfig.compactDisplayNameForCommand(
-            RemoteComputeConfig.COMMAND_CUSTOM_WS, "自建算力 · compute.example.com"));
-    assertEquals(
-        "Local KataGo",
-        RemoteComputeConfig.compactDisplayNameForCommand(
-            "katago.exe gtp -config default.cfg", "Local KataGo"));
+    withResourceBundle(
+        AppLocale.SIMPLIFIED_CHINESE.loadBundle(),
+        () -> {
+          assertEquals(
+              "智子云算力",
+              RemoteComputeConfig.compactDisplayNameForCommand(
+                  RemoteComputeConfig.COMMAND_ZHIZI,
+                  "智子云算力 VIP 包月 · Zhizi 28B · TensorRT"));
+          assertEquals(
+              "自建算力",
+              RemoteComputeConfig.compactDisplayNameForCommand(
+                  RemoteComputeConfig.COMMAND_CUSTOM_WS, "自建算力 · compute.example.com"));
+          assertEquals(
+              "Local KataGo",
+              RemoteComputeConfig.compactDisplayNameForCommand(
+                  "katago.exe gtp -config default.cfg", "Local KataGo"));
+        });
+  }
+
+  @Test
+  void remoteDisplayNamesFollowThaiLocaleWithoutHanFallbacks() {
+    withResourceBundle(
+        AppLocale.THAI.loadBundle(),
+        () -> {
+          String custom =
+              RemoteComputeConfig.displayNameForCustomWebSocketUrl(
+                  "wss://compute.example.com/katago");
+          String zhizi =
+              RemoteComputeConfig.displayNameForZhiziArgs(
+                  RemoteComputeConfig.ON_DEMAND_1X_ZHIZI_ARGS);
+
+          assertEquals("การคำนวณแบบกำหนดเอง · compute.example.com", custom);
+          assertTrue(zhizi.startsWith("คลาวด์ Zhizi ตามการใช้งาน 1x · Zhizi 28B · "));
+          assertFalse(custom.matches(".*\\p{IsHan}.*"));
+          assertFalse(zhizi.matches(".*\\p{IsHan}.*"));
+        });
   }
 
   @Test
   void vipFailureMessageSuggestsSwitchingToOnDemand() {
-    String message =
-        RemoteComputeConfig.friendlyZhiziErrorMessage(
-            "no worker available", RemoteComputeConfig.DEFAULT_ZHIZI_ARGS);
+    withResourceBundle(
+        AppLocale.ENGLISH.loadBundle(),
+        () -> {
+          String message =
+              RemoteComputeConfig.friendlyZhiziErrorMessage(
+                  "no worker available", RemoteComputeConfig.DEFAULT_ZHIZI_ARGS);
 
-    assertEquals(
-        "no worker available\n\n"
-            + "当前账号可能未开通 VIP 包月，或 VIP 算力暂时没有可用 worker。"
-            + "请在高级设置切换到“按量 1x”，或检查智子账号套餐。",
-        message);
-    assertEquals(
-        "no worker available",
-        RemoteComputeConfig.friendlyZhiziErrorMessage(
-            "no worker available", RemoteComputeConfig.ON_DEMAND_1X_ZHIZI_ARGS));
+          assertEquals(
+              "no worker available\n\n"
+                  + "This account may not have VIP monthly access, or no VIP worker is available. "
+                  + "Switch to On-demand 1x in advanced settings, or check the Zhizi plan.",
+              message);
+          assertEquals(
+              "no worker available",
+              RemoteComputeConfig.friendlyZhiziErrorMessage(
+                  "no worker available", RemoteComputeConfig.ON_DEMAND_1X_ZHIZI_ARGS));
+        });
   }
 
   @Test
@@ -218,37 +256,126 @@ class RemoteComputeConfigTest {
   @Test
   void customWebSocketEngineCanBecomeDefaultAndLocalSwitchSkipsIt() throws Exception {
     withConfig(
+        () ->
+            withResourceBundle(
+                AppLocale.ENGLISH.loadBundle(),
+                () -> {
+                  ArrayList<EngineData> engines = new ArrayList<>();
+                  EngineData local = new EngineData();
+                  local.commands = "katago.exe gtp -config default.cfg";
+                  local.name = "Local KataGo";
+                  local.isDefault = false;
+                  engines.add(local);
+                  Utils.saveEngineSettings(engines);
+
+                  RemoteComputeConfig.State state = RemoteComputeConfig.load();
+                  state.provider = RemoteComputeConfig.PROVIDER_CUSTOM;
+                  state.customRemoteCode = "wss://compute.example.com/katago";
+                  RemoteComputeConfig.save(state);
+
+                  int customIndex =
+                      RemoteComputeConfig.createOrUpdateCustomWebSocketEngine(true);
+
+                  ArrayList<EngineData> savedEngines = Utils.getEngineData();
+                  assertEquals(1, customIndex);
+                  assertEquals(
+                      RemoteComputeConfig.COMMAND_CUSTOM_WS,
+                      savedEngines.get(customIndex).commands);
+                  assertEquals(
+                      "Custom Compute · compute.example.com",
+                      savedEngines.get(customIndex).name);
+                  assertTrue(savedEngines.get(customIndex).isDefault);
+                  assertEquals(1, Lizzie.config.uiConfig.optInt("last-engine", -1));
+
+                  int localIndex = RemoteComputeConfig.saveLocalProviderAndDefaultEngine();
+
+                  savedEngines = Utils.getEngineData();
+                  assertEquals(0, localIndex);
+                  assertTrue(savedEngines.get(0).isDefault);
+                  assertFalse(savedEngines.get(customIndex).isDefault);
+                  assertEquals(0, Lizzie.config.uiConfig.optInt("last-engine", -1));
+                }));
+  }
+
+  @Test
+  void startupWithoutRememberedZhiziLoginUsesLocalEngineForThisSessionOnly() throws Exception {
+    withConfig(
         () -> {
+          RemoteComputeConfig.clearZhiziToken();
           ArrayList<EngineData> engines = new ArrayList<>();
           EngineData local = new EngineData();
+          local.index = 0;
           local.commands = "katago.exe gtp -config default.cfg";
           local.name = "Local KataGo";
           local.isDefault = false;
           engines.add(local);
+
+          EngineData zhizi = new EngineData();
+          zhizi.index = 1;
+          zhizi.commands = RemoteComputeConfig.COMMAND_ZHIZI;
+          zhizi.name = "智子云算力";
+          zhizi.isDefault = true;
+          engines.add(zhizi);
           Utils.saveEngineSettings(engines);
+          Lizzie.config.uiConfig.put("default-engine", 1);
+          Lizzie.config.uiConfig.put("last-engine", 1);
 
           RemoteComputeConfig.State state = RemoteComputeConfig.load();
-          state.provider = RemoteComputeConfig.PROVIDER_CUSTOM;
-          state.customRemoteCode = "wss://compute.example.com/katago";
+          state.provider = RemoteComputeConfig.PROVIDER_ZHIZI;
           RemoteComputeConfig.save(state);
 
-          int customIndex = RemoteComputeConfig.createOrUpdateCustomWebSocketEngine(true);
+          RemoteComputeConfig.StartupSelection defaultSelection =
+              RemoteComputeConfig.resolveStartupSelection(-1, true);
+          RemoteComputeConfig.StartupSelection lastSelection =
+              RemoteComputeConfig.resolveStartupSelection(1, false);
 
-          ArrayList<EngineData> savedEngines = Utils.getEngineData();
-          assertEquals(1, customIndex);
-          assertEquals(RemoteComputeConfig.COMMAND_CUSTOM_WS, savedEngines.get(customIndex).commands);
-          assertEquals("自建算力 · compute.example.com", savedEngines.get(customIndex).name);
-          assertTrue(savedEngines.get(customIndex).isDefault);
+          assertEquals(0, defaultSelection.engineIndex);
+          assertFalse(defaultSelection.loadDefault);
+          assertEquals(0, lastSelection.engineIndex);
+          assertFalse(lastSelection.loadDefault);
+          assertEquals(RemoteComputeConfig.PROVIDER_ZHIZI, RemoteComputeConfig.load().provider);
+          assertEquals(1, Lizzie.config.uiConfig.optInt("default-engine", -1));
           assertEquals(1, Lizzie.config.uiConfig.optInt("last-engine", -1));
-
-          int localIndex = RemoteComputeConfig.saveLocalProviderAndDefaultEngine();
-
-          savedEngines = Utils.getEngineData();
-          assertEquals(0, localIndex);
-          assertTrue(savedEngines.get(0).isDefault);
-          assertFalse(savedEngines.get(customIndex).isDefault);
-          assertEquals(0, Lizzie.config.uiConfig.optInt("last-engine", -1));
+          assertTrue(Utils.getEngineData().get(1).isDefault);
         });
+  }
+
+  @Test
+  void startupKeepsZhiziSelectedWhenRememberedLoginIsAvailable() throws Exception {
+    withConfig(
+        () -> {
+          RemoteComputeConfig.clearZhiziToken();
+          ArrayList<EngineData> engines = new ArrayList<>();
+          EngineData local = new EngineData();
+          local.index = 0;
+          local.commands = "katago.exe gtp -config default.cfg";
+          engines.add(local);
+
+          EngineData zhizi = new EngineData();
+          zhizi.index = 1;
+          zhizi.commands = RemoteComputeConfig.COMMAND_ZHIZI;
+          zhizi.isDefault = true;
+          engines.add(zhizi);
+          Utils.saveEngineSettings(engines);
+
+          RemoteComputeConfig.saveZhiziToken(
+              "remembered-token", true, RemoteComputeConfig.DEFAULT_ZHIZI_ARGS, "user");
+          RemoteComputeConfig.StartupSelection selection =
+              RemoteComputeConfig.resolveStartupSelection(-1, true);
+
+          assertEquals(-1, selection.engineIndex);
+          assertTrue(selection.loadDefault);
+        });
+  }
+
+  private static void withResourceBundle(ResourceBundle bundle, Runnable action) {
+    ResourceBundle previous = Lizzie.resourceBundle;
+    try {
+      Lizzie.resourceBundle = bundle;
+      action.run();
+    } finally {
+      Lizzie.resourceBundle = previous;
+    }
   }
 
   private static void withConfig(ThrowingRunnable action) throws Exception {

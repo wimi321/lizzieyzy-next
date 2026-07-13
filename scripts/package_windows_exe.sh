@@ -359,7 +359,7 @@ jpackage_runtime_args() {
   if (( ${#JPACKAGE_RUNTIME_ARGS[@]} > 0 )); then
     printf '%s\0' "${JPACKAGE_RUNTIME_ARGS[@]}"
   else
-    printf '%s\0' --jlink-options "--strip-debug --no-man-pages --no-header-files"
+    printf '%s\0' --jlink-options "--strip-debug --no-man-pages --no-header-files --add-modules jdk.accessibility"
   fi
 }
 
@@ -676,6 +676,21 @@ build_app_image() {
     echo "Packaged Windows runtime is missing runtime/bin/java.exe: $app_image_dir/$app_name" >&2
     return 1
   fi
+  if ! "$app_image_dir/$app_name/runtime/bin/java.exe" --list-modules \
+    | grep -q '^jdk.accessibility@'; then
+    echo "Packaged Windows runtime is missing the jdk.accessibility module: $app_image_dir/$app_name" >&2
+    return 1
+  fi
+  local accessibility_file=""
+  for accessibility_file in \
+    runtime/bin/jabswitch.exe \
+    runtime/bin/javaaccessbridge.dll \
+    runtime/bin/windowsaccessbridge-64.dll; do
+    if [[ ! -f "$app_image_dir/$app_name/$accessibility_file" ]]; then
+      echo "Packaged Windows runtime is missing $accessibility_file: $app_image_dir/$app_name" >&2
+      return 1
+    fi
+  done
   log_step "Finished Windows app image: $app_name [$flavor]"
 
   printf '%s\n' "$app_image_dir/$app_name"

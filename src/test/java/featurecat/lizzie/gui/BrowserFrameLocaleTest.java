@@ -12,6 +12,8 @@ class BrowserFrameLocaleTest {
     assertEquals("en-US", BrowserFrame.resolveCefLocale(2, Locale.CHINA));
     assertEquals("ko", BrowserFrame.resolveCefLocale(3, Locale.US));
     assertEquals("ja", BrowserFrame.resolveCefLocale(4, Locale.US));
+    assertEquals("zh-TW", BrowserFrame.resolveCefLocale(5, Locale.US));
+    assertEquals("th", BrowserFrame.resolveCefLocale(6, Locale.US));
   }
 
   @Test
@@ -21,6 +23,7 @@ class BrowserFrameLocaleTest {
     assertEquals("zh-CN", BrowserFrame.resolveCefLocale(0, Locale.CHINA));
     assertEquals("ja", BrowserFrame.resolveCefLocale(0, Locale.JAPAN));
     assertEquals("ko", BrowserFrame.resolveCefLocale(0, Locale.KOREA));
+    assertEquals("th", BrowserFrame.resolveCefLocale(0, Locale.forLanguageTag("th-TH")));
     assertEquals("en-US", BrowserFrame.resolveCefLocale(0, Locale.FRANCE));
   }
 }

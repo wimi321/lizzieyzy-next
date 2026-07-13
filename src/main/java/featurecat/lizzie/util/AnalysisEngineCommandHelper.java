@@ -46,6 +46,11 @@ public final class AnalysisEngineCommandHelper {
     Path analysisConfig = siblingAnalysisConfig(Path.of(analysisCommand.get(configIndex)));
     boolean generated = false;
     if (!Files.exists(analysisConfig)) {
+      Path configDirectory = analysisConfig.getParent();
+      if (configDirectory != null && !Files.isDirectory(configDirectory)) {
+        return Result.failure(
+            message("AnalysisEngineCommandHelper.generateConfigFailed", configDirectory));
+      }
       try {
         copyTemplate(analysisConfig);
         generated = true;

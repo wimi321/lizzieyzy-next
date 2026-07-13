@@ -228,6 +228,7 @@ public class WindowMenuStrip extends JPanel {
       setRolloverEnabled(true);
       setMargin(new Insets(0, 0, 0, 0));
       setBorder(new EmptyBorder(5, 10, 5, 10));
+      AccessibilitySupport.button(this, menu.getText(), menu.getText());
       addActionListener(
           e -> {
             if (suppressNextAction) {

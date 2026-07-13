@@ -140,12 +140,46 @@ public final class RemoteComputeConfig {
     return isZhiziEngineCommand(command) || isCustomWebSocketEngineCommand(command);
   }
 
+  /**
+   * Avoids a dead remote engine on startup when the user deliberately did not persist a Zhizi
+   * login. The fallback is session-only: saved provider and default/last-engine choices stay
+   * untouched so signing in can restore the remote engine immediately.
+   */
+  public static StartupSelection resolveStartupSelection(int requestedIndex, boolean loadDefault) {
+    ArrayList<EngineData> engines = Utils.getEngineData();
+    int selectedIndex = requestedIndex;
+    if (selectedIndex < 0 && loadDefault) {
+      for (int i = 0; i < engines.size(); i++) {
+        EngineData engine = engines.get(i);
+        if (engine != null && engine.isDefault) {
+          selectedIndex = i;
+          break;
+        }
+      }
+    }
+    if (selectedIndex < 0 || selectedIndex >= engines.size()) {
+      return new StartupSelection(requestedIndex, loadDefault);
+    }
+
+    EngineData selected = engines.get(selectedIndex);
+    if (selected == null
+        || !isZhiziEngineCommand(selected.commands)
+        || !load().zhiziAccountToken.isBlank()) {
+      return new StartupSelection(requestedIndex, loadDefault);
+    }
+
+    int localIndex = firstLocalEngineIndex(engines);
+    return localIndex >= 0
+        ? new StartupSelection(localIndex, false)
+        : new StartupSelection(requestedIndex, loadDefault);
+  }
+
   public static String compactDisplayNameForCommand(String command, String fallback) {
     if (isZhiziEngineCommand(command)) {
-      return "智子云算力";
+      return localizedText("RemoteCompute.zhizi", "Zhizi Cloud");
     }
     if (isCustomWebSocketEngineCommand(command)) {
-      return "自建算力";
+      return localizedText("RemoteCompute.custom", "Custom Compute");
     }
     return fallback == null ? "" : fallback.trim();
   }
@@ -157,7 +191,8 @@ public final class RemoteComputeConfig {
     if (isCustomWebSocketEngineCommand(command)) {
       return KataGoAnalysisWebSocketTransport.fromSavedConfig();
     }
-    throw new IOException("未知远程算力引擎。");
+    throw new IOException(
+        localizedText("RemoteCompute.error.unknownEngine", "Unknown remote compute engine."));
   }
 
   public static int createOrUpdateZhiziEngine(boolean setDefault) {
@@ -277,12 +312,19 @@ public final class RemoteComputeConfig {
   public static String displayNameForZhiziArgs(String args) {
     String normalized = args == null ? "" : args;
     String model =
-        normalized.contains("18bnbt") ? "智子18B" : normalized.contains("fdx") ? "FDX" : "智子28B";
+        normalized.contains("18bnbt")
+            ? "Zhizi 18B"
+            : normalized.contains("fdx") ? "FDX" : "Zhizi 28B";
     String backend = normalized.contains("katago-CUDA") ? "CUDA" : "TensorRT";
     String gpuType = gpuTypeForArgs(normalized);
-    String billing =
-        gpuType.isEmpty() ? "按量" : "vip-share".equals(gpuType) ? "VIP包月" : "按量" + gpuType;
-    return "智子云算力 " + billing + " · " + model + " · " + backend;
+    String billing = localizedPlanName(gpuType, backend);
+    return localizedText("RemoteCompute.zhizi", "Zhizi Cloud")
+        + " "
+        + billing
+        + " · "
+        + model
+        + " · "
+        + backend;
   }
 
   public static String gpuTypeForArgs(String args) {
@@ -361,33 +403,79 @@ public final class RemoteComputeConfig {
 
   public static String displayNameForCustomWebSocketUrl(String url) {
     String normalized = normalizeCustomWebSocketUrl(url);
+    String customCompute = localizedText("RemoteCompute.custom", "Custom Compute");
     if (normalized.isEmpty()) {
-      return "自建算力";
+      return customCompute;
     }
     try {
       URI uri = URI.create(normalized);
       String host = uri.getHost();
       if (host == null || host.isBlank()) {
-        return "自建算力";
+        return customCompute;
       }
-      StringBuilder label = new StringBuilder("自建算力 · ").append(host);
+      StringBuilder label = new StringBuilder(customCompute).append(" · ").append(host);
       if (uri.getPort() > 0) {
         label.append(':').append(uri.getPort());
       }
       return label.toString();
     } catch (IllegalArgumentException e) {
-      return "自建算力";
+      return customCompute;
     }
   }
 
   public static String friendlyZhiziErrorMessage(String message, String args) {
-    String text = message == null || message.trim().isEmpty() ? "远程算力连接失败。" : message.trim();
+    String text =
+        message == null || message.trim().isEmpty()
+            ? localizedText(
+                "RemoteCompute.error.genericConnection", "Remote compute connection failed.")
+            : message.trim();
     if (!isVipShareArgs(args) || !looksLikeVipAccessProblem(text)) {
       return text;
     }
     return text
-        + "\n\n当前账号可能未开通 VIP 包月，或 VIP 算力暂时没有可用 worker。"
-        + "请在高级设置切换到“按量 1x”，或检查智子账号套餐。";
+        + "\n\n"
+        + localizedText(
+            "RemoteCompute.error.vipHint",
+            "This account may not have VIP monthly access, or no VIP worker is available. "
+                + "Switch to On-demand 1x in advanced settings, or check the Zhizi plan.");
+  }
+
+  static String localizedText(String key, String fallback) {
+    try {
+      if (Lizzie.resourceBundle != null && Lizzie.resourceBundle.containsKey(key)) {
+        String value = Lizzie.resourceBundle.getString(key);
+        if (value != null && !value.isBlank()) {
+          return value;
+        }
+      }
+    } catch (RuntimeException ignored) {
+      // Resource loading must never prevent a remote engine from reporting its status.
+    }
+    return fallback;
+  }
+
+  private static String localizedPlanName(String gpuType, String backend) {
+    if ("vip-share".equals(gpuType)) {
+      return localizedText("RemoteCompute.plan.vipShort", "VIP monthly");
+    }
+    if ("1x".equals(gpuType)) {
+      return "CUDA".equals(backend)
+          ? localizedText("RemoteCompute.plan.1xCuda", "On-demand 1x - CUDA")
+          : localizedText("RemoteCompute.plan.1x", "On-demand 1x");
+    }
+    if ("3x".equals(gpuType)) {
+      return localizedText("RemoteCompute.plan.3x", "On-demand 3x");
+    }
+    if ("6x".equals(gpuType)) {
+      return localizedText("RemoteCompute.plan.6x", "On-demand 6x");
+    }
+    if ("12x".equals(gpuType)) {
+      return localizedText("RemoteCompute.plan.12x", "On-demand 12x");
+    }
+    if ("24x".equals(gpuType)) {
+      return localizedText("RemoteCompute.plan.24x", "On-demand 24x");
+    }
+    return gpuType == null || gpuType.isBlank() ? "On-demand" : "On-demand " + gpuType;
   }
 
   public static boolean isVipShareArgs(String args) {
@@ -474,5 +562,15 @@ public final class RemoteComputeConfig {
     public boolean rememberZhiziPassword;
     public String zhiziArgs = DEFAULT_ZHIZI_ARGS;
     public String customRemoteCode = "";
+  }
+
+  public static final class StartupSelection {
+    public final int engineIndex;
+    public final boolean loadDefault;
+
+    private StartupSelection(int engineIndex, boolean loadDefault) {
+      this.engineIndex = engineIndex;
+      this.loadDefault = loadDefault;
+    }
   }
 }

@@ -50,6 +50,25 @@ class AnalysisEngineCommandHelperTest {
   }
 
   @Test
+  void missingEngineDirectoryDoesNotCreatePartialAnalysisConfigTree() {
+    Path gtpConfig = tempDir.resolve("missing-engine").resolve("configs").resolve("gtp.cfg");
+    Path analysisConfig = gtpConfig.resolveSibling("analysis.cfg");
+    EngineData engine =
+        engine(
+            "Missing KataGo",
+            quote(tempDir.resolve("missing-engine").resolve("katago.exe"))
+                + " gtp -model model.bin.gz -config "
+                + quote(gtpConfig));
+
+    AnalysisEngineCommandHelper.Result result =
+        AnalysisEngineCommandHelper.fromSavedEngine(engine);
+
+    assertFalse(result.isSuccess());
+    assertFalse(Files.exists(analysisConfig));
+    assertFalse(Files.exists(gtpConfig.getParent()));
+  }
+
+  @Test
   void doesNotReplaceGtpInsidePathsAndDoesNotDuplicateQuitFlag() throws Exception {
     Path executable = tempDir.resolve("tools with gtp").resolve("katago.exe");
     Path gtpConfig = tempDir.resolve("katago_configs").resolve("gtp.cfg");

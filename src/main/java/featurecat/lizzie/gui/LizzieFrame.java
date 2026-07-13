@@ -7,6 +7,7 @@ import static java.lang.Math.min;
 
 import com.jhlabs.image.GaussianFilter;
 import featurecat.lizzie.Config;
+import featurecat.lizzie.EngineStartupStatus;
 import featurecat.lizzie.ExtraMode;
 import featurecat.lizzie.Lizzie;
 import featurecat.lizzie.analysis.AnalysisEngine;
@@ -166,6 +167,7 @@ public class LizzieFrame extends JFrame {
   };
   private String DEFAULT_TITLE = Lizzie.getAppDisplayName();
   private JLayeredPane basePanel;
+  private JFontButton engineStartupStatusButton;
   public static BoardRenderer boardRenderer;
   public static BoardRenderer boardRenderer2;
   public static SubBoardRenderer subBoardRenderer;
@@ -848,11 +850,11 @@ public class LizzieFrame extends JFrame {
       if (Lizzie.config.persistedUi.optJSONArray("main-window-position") != null
           && Lizzie.config.persistedUi.optJSONArray("main-window-position").length() == 4) {
         JSONArray pos = Lizzie.config.persistedUi.getJSONArray("main-window-position");
-        this.setBounds(pos.getInt(0), pos.getInt(1), pos.getInt(2), pos.getInt(3));
-        Dimension screensize = Toolkit.getDefaultToolkit().getScreenSize();
-        int width = (int) screensize.getWidth();
-        int height = (int) screensize.getHeight();
-        if (pos.getInt(0) >= width || pos.getInt(1) >= height) this.setLocation(0, 0);
+        Rectangle restoredBounds =
+            fitWindowBounds(
+                new Rectangle(pos.getInt(0), pos.getInt(1), pos.getInt(2), pos.getInt(3)),
+                availableScreenWorkAreas());
+        this.setBounds(restoredBounds);
         hasSetBounds = true;
       }
       if (Lizzie.config.persistedUi.getBoolean("window-maximized"))
@@ -1650,6 +1652,55 @@ public class LizzieFrame extends JFrame {
     } else basePanel.setBackground(Color.GRAY);
     getContentPane().add(basePanel);
     basePanel.setLayout(null);
+    engineStartupStatusButton =
+        new JFontButton() {
+          @Override
+          protected void paintComponent(Graphics graphics) {
+            Graphics2D g2 = (Graphics2D) graphics.create();
+            g2.setRenderingHint(
+                RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            Color background =
+                isEnabled() ? new Color(91, 65, 25, 238) : new Color(34, 48, 64, 232);
+            if (getModel().isRollover() && isEnabled()) {
+              background = new Color(112, 78, 27, 242);
+            }
+            g2.setColor(background);
+            g2.fillRoundRect(0, 0, getWidth() - 1, getHeight() - 1, 12, 12);
+            g2.setColor(isEnabled() ? new Color(224, 177, 83) : new Color(116, 145, 174));
+            g2.drawRoundRect(0, 0, getWidth() - 1, getHeight() - 1, 12, 12);
+            if (isFocusOwner()) {
+              g2.setColor(new Color(255, 216, 132));
+              g2.setStroke(new BasicStroke(2f));
+              g2.drawRoundRect(2, 2, getWidth() - 5, getHeight() - 5, 10, 10);
+            }
+            g2.setFont(getFont());
+            FontMetrics metrics = g2.getFontMetrics();
+            String label = getText() == null ? "" : getText();
+            int x = Math.max(8, (getWidth() - metrics.stringWidth(label)) / 2);
+            int y = (getHeight() - metrics.getHeight()) / 2 + metrics.getAscent();
+            g2.setColor(Color.WHITE);
+            g2.drawString(label, x, y);
+            g2.dispose();
+          }
+        };
+    engineStartupStatusButton.setVisible(false);
+    engineStartupStatusButton.setFocusPainted(true);
+    engineStartupStatusButton.setContentAreaFilled(false);
+    engineStartupStatusButton.setBorderPainted(false);
+    engineStartupStatusButton.setOpaque(false);
+    engineStartupStatusButton.setRolloverEnabled(true);
+    engineStartupStatusButton.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+    engineStartupStatusButton.setMargin(new Insets(3, 10, 3, 10));
+    engineStartupStatusButton.setForeground(Color.WHITE);
+    engineStartupStatusButton.setFont(
+        new Font(Config.sysDefaultFontName, Font.BOLD, Math.max(12, Config.frameFontSize)));
+    engineStartupStatusButton.addActionListener(
+        event -> {
+          if (Lizzie.engineStartupStatus.snapshot().isActionable()) {
+            openKataGoAutoSetup();
+          }
+        });
+    basePanel.add(engineStartupStatusButton, Integer.valueOf(12));
     basePanel.add(commentBlunderControlPane, Integer.valueOf(10));
     basePanel.add(tempGamePanelAll, Integer.valueOf(9));
     basePanel.add(varTreeScrollPane, Integer.valueOf(8));
@@ -1659,12 +1710,129 @@ public class LizzieFrame extends JFrame {
     basePanel.add(topPanel, Integer.valueOf(3));
     basePanel.add(toolbar, Integer.valueOf(2));
     basePanel.add(mainPanel, Integer.valueOf(1));
+    AccessibilitySupport.named(
+        mainPanel,
+        text("Accessibility.mainBoard", "Go board"),
+        text(
+            "Accessibility.mainBoardDescription",
+            "Main board. Use the arrow keys and configured shortcuts to review the game."));
+    AccessibilitySupport.named(
+        sidebarPanel,
+        text("Accessibility.sidebar", "Sidebar"),
+        text(
+            "Accessibility.sidebarDescription",
+            "Comments and problem-move sidebar."));
+    AccessibilitySupport.named(
+        listTable,
+        text("Accessibility.candidateTable", "Candidate moves"),
+        text(
+            "Accessibility.candidateTableDescription",
+            "Candidate moves reported by the current analysis engine."));
+    AccessibilitySupport.applyToTree(windowMenuStrip);
+    AccessibilitySupport.applyToTree(topPanel);
+    AccessibilitySupport.applyToTree(sidebarPanel);
+    AccessibilitySupport.applyToTree(toolbar);
+    AccessibilitySupport.installWindowFocusCycling(
+        this,
+        mainPanel,
+        windowMenuStrip,
+        topPanel,
+        mainPanel,
+        sidebarPanel,
+        toolbar,
+        engineStartupStatusButton);
+    Lizzie.engineStartupStatus.addListener(this::updateEngineStartupStatus);
     mainPanel.setVisible(false);
     commentScrollPane.setVisible(false);
     blunderContentPane.setVisible(false);
     installGraphicsConfigurationScaleListener();
     setVisible(true);
     requestProblemListRefresh();
+  }
+
+  static Rectangle fitWindowBounds(Rectangle requested, List<Rectangle> workAreas) {
+    Rectangle normalized =
+        new Rectangle(
+            requested.x,
+            requested.y,
+            Math.max(1, requested.width),
+            Math.max(1, requested.height));
+    if (workAreas == null || workAreas.isEmpty()) {
+      return normalized;
+    }
+
+    Rectangle target = null;
+    long largestIntersection = -1L;
+    double nearestDistance = Double.POSITIVE_INFINITY;
+    double requestedCenterX = normalized.getCenterX();
+    double requestedCenterY = normalized.getCenterY();
+    for (Rectangle candidate : workAreas) {
+      if (candidate == null || candidate.width <= 0 || candidate.height <= 0) {
+        continue;
+      }
+      Rectangle intersection = normalized.intersection(candidate);
+      long intersectionArea =
+          intersection.isEmpty() ? 0L : (long) intersection.width * intersection.height;
+      double deltaX = requestedCenterX - candidate.getCenterX();
+      double deltaY = requestedCenterY - candidate.getCenterY();
+      double distance = deltaX * deltaX + deltaY * deltaY;
+      if (target == null
+          || intersectionArea > largestIntersection
+          || (intersectionArea == largestIntersection && distance < nearestDistance)) {
+        target = candidate;
+        largestIntersection = intersectionArea;
+        nearestDistance = distance;
+      }
+    }
+    if (target == null) {
+      return normalized;
+    }
+
+    int width = Math.min(normalized.width, target.width);
+    int height = Math.min(normalized.height, target.height);
+    int maxX = target.x + target.width - width;
+    int maxY = target.y + target.height - height;
+    int x = Math.max(target.x, Math.min(normalized.x, maxX));
+    int y = Math.max(target.y, Math.min(normalized.y, maxY));
+    return new Rectangle(x, y, width, height);
+  }
+
+  static List<Rectangle> availableScreenWorkAreas() {
+    List<Rectangle> workAreas = new ArrayList<>();
+    try {
+      Toolkit toolkit = Toolkit.getDefaultToolkit();
+      for (GraphicsDevice device :
+          GraphicsEnvironment.getLocalGraphicsEnvironment().getScreenDevices()) {
+        GraphicsConfiguration configuration = device.getDefaultConfiguration();
+        Rectangle bounds = new Rectangle(configuration.getBounds());
+        Insets insets = toolkit.getScreenInsets(configuration);
+        bounds.x += insets.left;
+        bounds.y += insets.top;
+        bounds.width -= insets.left + insets.right;
+        bounds.height -= insets.top + insets.bottom;
+        if (bounds.width > 0 && bounds.height > 0) {
+          workAreas.add(bounds);
+        }
+      }
+    } catch (HeadlessException | SecurityException ignored) {
+    }
+    if (workAreas.isEmpty()) {
+      Dimension size = Toolkit.getDefaultToolkit().getScreenSize();
+      workAreas.add(new Rectangle(0, 0, Math.max(1, size.width), Math.max(1, size.height)));
+    }
+    return workAreas;
+  }
+
+  static Rectangle constrainWindowToAvailableWorkArea(Window window) {
+    Rectangle fitted = fitWindowBounds(window.getBounds(), availableScreenWorkAreas());
+    Dimension minimum = window.getMinimumSize();
+    if (minimum.width > fitted.width || minimum.height > fitted.height) {
+      window.setMinimumSize(
+          new Dimension(
+              Math.min(minimum.width, fitted.width), Math.min(minimum.height, fitted.height)));
+    }
+    window.setBounds(fitted);
+    return fitted;
   }
 
   private void installGraphicsConfigurationScaleListener() {
@@ -1962,7 +2130,11 @@ public class LizzieFrame extends JFrame {
   }
 
   public void showTrialBlockedHint() {
-    Utils.showMsgNoModalForTime("Web 试下进行中，桌面端暂不响应落子（在「同步」菜单可强制结束）", 3);
+    Utils.showMsgNoModalForTime(
+        text(
+            "LizzieFrame.webTrialDesktopBlocked",
+            "Web trial mode is active. Desktop moves are temporarily disabled."),
+        3);
   }
 
   public void setCommentPaneContent() {
@@ -3917,6 +4089,10 @@ public class LizzieFrame extends JFrame {
     return Lizzie.config != null && Lizzie.config.isChinese ? chineseText : englishText;
   }
 
+  public String kifuLoadText(String key) {
+    return kifuLoadText(key, key, key);
+  }
+
   public void beginKifuLoad(String message) {
     runKifuLoadUiUpdate(
         new Runnable() {
@@ -3926,9 +4102,12 @@ public class LizzieFrame extends JFrame {
               kifuLoadFinishTimer.stop();
               kifuLoadFinishTimer = null;
             }
+            String oldMessage = kifuLoadMessageLabel.getText();
             kifuLoadMessageLabel.setText(message);
             kifuLoadProgressBar.setIndeterminate(true);
             kifuLoadProgressBar.setString(message);
+            AccessibilitySupport.named(kifuLoadMessageLabel, message, message);
+            AccessibilitySupport.announce(kifuLoadProgressBar, oldMessage, message);
             kifuLoadGlassPane.setVisible(true);
             kifuLoadVisibleSince = System.currentTimeMillis();
           }
@@ -3940,8 +4119,11 @@ public class LizzieFrame extends JFrame {
         new Runnable() {
           public void run() {
             ensureKifuLoadGlassPane();
+            String oldMessage = kifuLoadMessageLabel.getText();
             kifuLoadMessageLabel.setText(message);
             kifuLoadProgressBar.setString(message);
+            AccessibilitySupport.named(kifuLoadMessageLabel, message, message);
+            AccessibilitySupport.announce(kifuLoadProgressBar, oldMessage, message);
             if (!kifuLoadGlassPane.isVisible()) {
               kifuLoadGlassPane.setVisible(true);
               kifuLoadVisibleSince = System.currentTimeMillis();
@@ -4103,13 +4285,12 @@ public class LizzieFrame extends JFrame {
     boolean oriReadKomi = Lizzie.config.readKomi;
     try {
       if (showFeedback) {
-        updateKifuLoad(kifuLoadText("KifuLoad.parsing", "正在解析棋谱…", "Parsing game record..."));
+        updateKifuLoad(kifuLoadText("KifuLoad.parsing"));
       }
       Lizzie.config.readKomi = readKomi;
       SGFParser.loadFromString(sgfContent);
       if (showFeedback) {
-        updateKifuLoad(
-            kifuLoadText("KifuLoad.refreshing", "正在刷新胜率曲线…", "Refreshing winrate graph..."));
+        updateKifuLoad(kifuLoadText("KifuLoad.refreshing"));
       }
       scheduleMovelistRefreshAfterKifuLoad();
       if (resetAnalysisWindows) {
@@ -4132,9 +4313,7 @@ public class LizzieFrame extends JFrame {
     } catch (Exception e) {
       e.printStackTrace();
       if (showFeedback) {
-        failKifuLoad(
-            kifuLoadText("KifuLoad.failed", "棋谱加载失败：", "Failed to load game record: ")
-                + e.getMessage());
+        failKifuLoad(kifuLoadText("KifuLoad.failed") + e.getMessage());
       } else {
         showKifuLoadError(e);
       }
@@ -4145,9 +4324,7 @@ public class LizzieFrame extends JFrame {
   }
 
   private void showKifuLoadError(Exception e) {
-    String message =
-        kifuLoadText("KifuLoad.failed", "棋谱加载失败：", "Failed to load game record: ")
-            + (e == null ? "" : e.getMessage());
+    String message = kifuLoadText("KifuLoad.failed") + (e == null ? "" : e.getMessage());
     if (SwingUtilities.isEventDispatchThread()) {
       Utils.showMsg(message, Lizzie.frame);
     } else {
@@ -4201,6 +4378,12 @@ public class LizzieFrame extends JFrame {
     kifuLoadProgressBar.setIndeterminate(true);
     kifuLoadProgressBar.setStringPainted(true);
     kifuLoadProgressBar.setPreferredSize(new Dimension(380, 22));
+    AccessibilitySupport.progress(
+        kifuLoadProgressBar,
+        text("Accessibility.kifuLoadProgress", "Game record loading progress"),
+        text(
+            "Accessibility.kifuLoadProgressDescription",
+            "Download, parsing, and first-display progress for the selected game record."));
     card.add(kifuLoadProgressBar, BorderLayout.SOUTH);
 
     GridBagConstraints gbc = new GridBagConstraints();
@@ -6051,6 +6234,9 @@ public class LizzieFrame extends JFrame {
     if (Lizzie.readMode) {
       return;
     }
+    if (hasEngineStartupNotice()) {
+      return;
+    }
 
     int fontSize = (int) (max(mainPanel.getWidth(), mainPanel.getHeight()) * size);
     Font font = new Font(Lizzie.config.fontName, Font.PLAIN, fontSize);
@@ -6096,6 +6282,9 @@ public class LizzieFrame extends JFrame {
 
   private void drawPonderingState2(Graphics2D g, String text, int x, int y, double size) {
     if (Lizzie.readMode) {
+      return;
+    }
+    if (hasEngineStartupNotice()) {
       return;
     }
     int maxWidth = mainPanel.getWidth();
@@ -11016,6 +11205,7 @@ public class LizzieFrame extends JFrame {
                     - toolbarHeight,
                 width,
                 toolbarHeight);
+            layoutEngineStartupStatus(width);
             if (toolbar.showDetail) toolbar.setDetailIcon();
             toolbar.reSetButtonLocation();
             if (tempGamePanelAll.isVisible()) showTempGamePanel();
@@ -13240,6 +13430,56 @@ public class LizzieFrame extends JFrame {
         });
   }
 
+  private void updateEngineStartupStatus(EngineStartupStatus.Snapshot snapshot) {
+    SwingUtilities.invokeLater(
+        () -> {
+          if (engineStartupStatusButton == null) {
+            return;
+          }
+          String oldText = engineStartupStatusButton.getText();
+          if (snapshot.state == EngineStartupStatus.State.READY) {
+            engineStartupStatusButton.setVisible(false);
+            engineStartupStatusButton.setEnabled(false);
+            return;
+          }
+          String message = text(snapshot.messageKey, snapshot.fallback);
+          engineStartupStatusButton.setText(message);
+          engineStartupStatusButton.setEnabled(snapshot.isActionable());
+          engineStartupStatusButton.setToolTipText(
+              snapshot.detail.isBlank()
+                  ? message
+                  : message + " - " + snapshot.detail.replace('\n', ' '));
+          AccessibilitySupport.button(
+              engineStartupStatusButton,
+              message,
+              snapshot.isActionable()
+                  ? text(
+                      "EngineStartup.repairDescription",
+                      "Open AI setup to inspect and repair the engine")
+                  : message);
+          engineStartupStatusButton.setVisible(true);
+          layoutEngineStartupStatus(
+              Math.max(1, getWidth() - getInsets().left - getInsets().right));
+          AccessibilitySupport.announce(engineStartupStatusButton, oldText, message);
+          basePanel.repaint();
+        });
+  }
+
+  private void layoutEngineStartupStatus(int availableWidth) {
+    if (engineStartupStatusButton == null || !engineStartupStatusButton.isVisible()) {
+      return;
+    }
+    Dimension preferred = engineStartupStatusButton.getPreferredSize();
+    int width = Math.min(Math.max(180, preferred.width + 8), Math.max(180, availableWidth - 20));
+    int contentHeight = getHeight() - getInsets().top - getInsets().bottom;
+    int y = Math.max(windowMenuHeight + topPanelHeight + 4, contentHeight - toolbarHeight - 48);
+    engineStartupStatusButton.setBounds(10, y, width, 32);
+  }
+
+  private boolean hasEngineStartupNotice() {
+    return Lizzie.engineStartupStatus.snapshot().state != EngineStartupStatus.State.READY;
+  }
+
   private WaitForAnalysis createFlashAnalysisLoadingFrame() {
     WaitForAnalysis loadingFrame = new WaitForAnalysis();
     loadingFrame.setLoadingProgress();
@@ -13274,6 +13514,9 @@ public class LizzieFrame extends JFrame {
     dialog.setMinimumSize(new Dimension(1040, 700));
     Lizzie.setFrameSize(dialog, 1120, 760);
     dialog.setLocationRelativeTo(this);
+    constrainWindowToAvailableWorkArea(dialog);
+    AccessibilitySupport.applyToTree(dialog.getContentPane());
+    AccessibilitySupport.installEscapeAction(dialog.getRootPane(), dialog, dialog::dispose);
     dialog.setVisible(true);
   }
 
@@ -13396,7 +13639,7 @@ public class LizzieFrame extends JFrame {
         new PlayerStrengthModelCombo(PlayerStrengthEstimator.selectableModels());
     combo.setSelectedItem(
         selectedModel == null ? PlayerStrengthEstimator.StrengthModel.XGBOOST20TUN : selectedModel);
-    combo.setFocusable(false);
+    combo.setFocusable(true);
     combo.setToolTipText(Lizzie.resourceBundle.getString("PlayerStrengthEstimate.model.tooltip"));
     combo
         .getAccessibleContext()
@@ -13486,6 +13729,9 @@ public class LizzieFrame extends JFrame {
     detailDialog.setMinimumSize(new Dimension(760, 420));
     Lizzie.setFrameSize(detailDialog, 900, 460);
     detailDialog.setLocationRelativeTo(owner);
+    AccessibilitySupport.applyToTree(detailDialog.getContentPane());
+    AccessibilitySupport.installEscapeAction(
+        detailDialog.getRootPane(), detailDialog, detailDialog::dispose);
     detailDialog.setVisible(true);
   }
 
@@ -14230,7 +14476,10 @@ public class LizzieFrame extends JFrame {
       setForeground(PlayerStrengthDashboardRoot.ACCENT_DARK);
       setFont(new Font(Config.sysDefaultFontName, Font.BOLD, Config.frameFontSize + 1));
       setBorder(new EmptyBorder(0, 0, 0, 0));
-      setPreferredSize(new Dimension(compact ? 112 : 104, 42));
+      int iconAndPadding = compact ? 66 : 62;
+      int localizedWidth = getFontMetrics(getFont()).stringWidth(text == null ? "" : text);
+      setPreferredSize(
+          new Dimension(Math.max(compact ? 112 : 104, iconAndPadding + localizedWidth), 42));
     }
 
     @Override
@@ -14593,7 +14842,7 @@ public class LizzieFrame extends JFrame {
           Config.frameFontSize + 1);
 
       drawRankScalePanel(g2, scaleX, 68, scaleWidth, Math.max(178, height - 116));
-      int rowY = 186;
+      int rowY = 178;
       drawMetricRow(
           g2,
           rowY,
@@ -14604,7 +14853,7 @@ public class LizzieFrame extends JFrame {
           contentRight);
       drawMetricRow(
           g2,
-          rowY + 32,
+          rowY + 34,
           Lizzie.resourceBundle.getString("PlayerStrengthEstimate.firstChoice"),
           playerStrengthPercentText(report.firstChoiceRate),
           report.firstChoiceRate,
@@ -14612,7 +14861,7 @@ public class LizzieFrame extends JFrame {
           contentRight);
       drawMetricRow(
           g2,
-          rowY + 64,
+          rowY + 68,
           Lizzie.resourceBundle.getString("PlayerStrengthEstimate.goodMoveRate"),
           playerStrengthPercentText(report.moveRankGoodMoveRate),
           report.moveRankGoodMoveRate,
@@ -14620,7 +14869,7 @@ public class LizzieFrame extends JFrame {
           contentRight);
       drawMetricRow(
           g2,
-          rowY + 96,
+          rowY + 102,
           Lizzie.resourceBundle.getString("PlayerStrengthEstimate.avgScoreLoss"),
           report.averageScoreLossText(),
           1.0 - playerStrengthClamp(report.averageScoreEquivalentLoss / 8.0, 0.0, 1.0),
@@ -14628,7 +14877,7 @@ public class LizzieFrame extends JFrame {
           contentRight);
       drawMetricRow(
           g2,
-          rowY + 128,
+          rowY + 136,
           Lizzie.resourceBundle.getString("PlayerStrengthEstimate.weightedScoreLoss"),
           report.weightedScoreLossText(),
           1.0 - playerStrengthClamp(report.weightedScoreLoss / 8.0, 0.0, 1.0),
@@ -14646,18 +14895,19 @@ public class LizzieFrame extends JFrame {
         Color color,
         int contentRight) {
       int labelX = 36;
-      int barWidth = Math.max(74, Math.min(108, contentRight - 238));
-      int barX = Math.max(220, contentRight - barWidth);
-      int valueX = Math.max(164, barX - 76);
-      int labelWidth = Math.max(88, valueX - labelX - 16);
-      int valueWidth = Math.max(42, barX - valueX - 12);
+      int labelWidth = Math.max(120, contentRight - labelX);
+      int valueX = labelX;
+      int valueWidth = 58;
+      int valueY = y + 14;
+      int barX = valueX + valueWidth + 8;
+      int barWidth = Math.max(64, contentRight - barX);
       g2.setColor(PlayerStrengthDashboardRoot.LINE);
-      g2.drawLine(34, y - 20, contentRight, y - 20);
+      g2.drawLine(34, y - 18, contentRight, y - 18);
       playerStrengthDrawFittedText(
           g2,
           label,
           labelX,
-          y,
+          y - 2,
           labelWidth,
           PlayerStrengthDashboardRoot.TEXT,
           Font.PLAIN,
@@ -14666,12 +14916,12 @@ public class LizzieFrame extends JFrame {
           g2,
           value,
           valueX,
-          y,
+          valueY,
           valueWidth,
           PlayerStrengthDashboardRoot.TEXT,
           Font.BOLD,
           Config.frameFontSize + 1);
-      playerStrengthDrawBar(g2, barX, y - 9, barWidth, fraction, color);
+      playerStrengthDrawBar(g2, barX, valueY - 8, barWidth, fraction, color);
     }
 
     private void drawRankScalePanel(Graphics2D g2, int x, int y, int width, int height) {
@@ -17067,7 +17317,11 @@ public class LizzieFrame extends JFrame {
     try {
       dialog = new RemoteComputeDialog(this);
     } catch (IOException e) {
-      JOptionPane.showMessageDialog(this, e.getMessage(), "网络代理设置", JOptionPane.WARNING_MESSAGE);
+      JOptionPane.showMessageDialog(
+          this,
+          e.getMessage(),
+          text("NetworkProxy.settingsTitle", "Network proxy settings"),
+          JOptionPane.WARNING_MESSAGE);
       return;
     }
     dialog.setVisible(true);

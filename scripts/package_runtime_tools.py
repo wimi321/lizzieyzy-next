@@ -25,6 +25,7 @@ SAFE_DESKTOP_MODULES = {
     "java.net.http",
     "java.prefs",
     "java.sql",
+    "jdk.accessibility",
     "jdk.charsets",
     "jdk.crypto.ec",
     "jdk.jfr",

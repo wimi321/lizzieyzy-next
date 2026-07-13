@@ -4,6 +4,7 @@ import featurecat.lizzie.Lizzie;
 import java.awt.*;
 import java.awt.event.*;
 import java.awt.geom.*;
+import java.text.MessageFormat;
 import javax.swing.*;
 
 public class SidebarHeaderPanel extends JPanel {
@@ -43,7 +44,27 @@ public class SidebarHeaderPanel extends JPanel {
   public SidebarHeaderPanel(SidebarPanel parentPanel) {
     this.parentPanel = parentPanel;
     setOpaque(false);
+    setFocusable(true);
     setPreferredSize(new Dimension(200, preferredHeight(false, Lizzie.config.isAppleStyle)));
+    AccessibilitySupport.named(
+        this,
+        text("SidebarHeader.accessibleName", "Comments and problem moves"),
+        text(
+            "SidebarHeader.accessibleDescription",
+            "Switch between comments and problem moves, then filter by Black or White."));
+    installKeyboardActions();
+    addFocusListener(
+        new FocusAdapter() {
+          @Override
+          public void focusGained(FocusEvent event) {
+            repaint();
+          }
+
+          @Override
+          public void focusLost(FocusEvent event) {
+            repaint();
+          }
+        });
 
     addMouseListener(
         new MouseAdapter() {
@@ -87,8 +108,10 @@ public class SidebarHeaderPanel extends JPanel {
   }
 
   public void updateSnapshot(ProblemListSnapshot snapshot) {
+    String previous = progressLabelFor(this.currentSnapshot);
     this.currentSnapshot = snapshot;
     setToolTipText(progressTooltipFor(snapshot));
+    AccessibilitySupport.announce(this, previous, progressLabelFor(snapshot));
     repaint();
   }
 
@@ -105,12 +128,20 @@ public class SidebarHeaderPanel extends JPanel {
     }
     int analyzedMoves = Math.max(0, Math.min(snapshot.analyzedMoves, snapshot.totalMoves));
     if (snapshot.analysisRunning) {
-      return "评估中 " + analyzedMoves + "/" + snapshot.totalMoves;
+      return format(
+          "SidebarHeader.progress.running",
+          "Evaluating {0}/{1}",
+          analyzedMoves,
+          snapshot.totalMoves);
     }
     if (analyzedMoves >= snapshot.totalMoves) {
-      return "评估完成";
+      return text("SidebarHeader.progress.complete", "Evaluation complete");
     }
-    return "已评估 " + analyzedMoves + "/" + snapshot.totalMoves;
+    return format(
+        "SidebarHeader.progress.partial",
+        "Evaluated {0}/{1}",
+        analyzedMoves,
+        snapshot.totalMoves);
   }
 
   static String progressTooltipFor(ProblemListSnapshot snapshot) {
@@ -118,7 +149,7 @@ public class SidebarHeaderPanel extends JPanel {
     if (label.isEmpty()) {
       return null;
     }
-    return "问题手评估进度：" + label + "。";
+    return format("SidebarHeader.progress.tooltip", "Problem move progress: {0}.", label);
   }
 
   @Override
@@ -141,19 +172,22 @@ public class SidebarHeaderPanel extends JPanel {
       int x = CONTROL_X;
       int y = CLASSIC_PRIMARY_BASELINE;
       Color accent = glassAccentColor();
+      String commentsText = text("SidebarHeader.comments", "Comments");
+      String problemsText = text("SidebarHeader.problems", "Problems");
+      int secondLabelOffset = classicSecondLabelOffset(fm, commentsText);
 
       g2.setColor(showBlunders ? TEXT_NORMAL : TEXT_SELECTED);
-      g2.drawString("评论", x, y);
+      g2.drawString(commentsText, x, y);
       g2.setColor(showBlunders ? TEXT_SELECTED : TEXT_NORMAL);
-      g2.drawString("问题手", x + CLASSIC_SECOND_LABEL_OFFSET, y);
+      g2.drawString(problemsText, x + secondLabelOffset, y);
 
       int underlineY = y + 7;
       g2.setColor(withAlpha(accent, 220));
       if (showBlunders) {
         g2.fillRoundRect(
-            x + CLASSIC_SECOND_LABEL_OFFSET, underlineY, fm.stringWidth("问题手"), 3, 3, 3);
+            x + secondLabelOffset, underlineY, fm.stringWidth(problemsText), 3, 3, 3);
       } else {
-        g2.fillRoundRect(x, underlineY, fm.stringWidth("评论"), 3, 3, 3);
+        g2.fillRoundRect(x, underlineY, fm.stringWidth(commentsText), 3, 3, 3);
       }
 
       String pillText = progressLabelFor(currentSnapshot);
@@ -177,24 +211,28 @@ public class SidebarHeaderPanel extends JPanel {
 
       if (showBlunders) {
         x = CLASSIC_SIDE_X;
+        String blackText = text("SidebarHeader.black", "Black");
+        String whiteText = text("SidebarHeader.white", "White");
+        int sideSecondOffset = classicSecondLabelOffset(fm, blackText);
         boolean blackSelected = sideFilter == ProblemListSideFilter.BLACK;
         g2.setColor(blackSelected ? TEXT_SELECTED : TEXT_NORMAL);
-        g2.drawString("黑棋", x, y);
+        g2.drawString(blackText, x, y);
         g2.setColor(!blackSelected ? TEXT_SELECTED : TEXT_NORMAL);
-        g2.drawString("白棋", x + CLASSIC_SECOND_LABEL_OFFSET, y);
+        g2.drawString(whiteText, x + sideSecondOffset, y);
 
         // Side-colored underline: black bar for 黑棋, bordered white bar for 白棋.
         if (blackSelected) {
           g2.setColor(new Color(16, 18, 22));
-          g2.fillRoundRect(x, underlineY, fm.stringWidth("黑棋"), 3, 3, 3);
+          g2.fillRoundRect(x, underlineY, fm.stringWidth(blackText), 3, 3, 3);
           g2.setColor(new Color(255, 255, 255, 170));
-          g2.drawRoundRect(x, underlineY, fm.stringWidth("黑棋") - 1, 2, 3, 3);
+          g2.drawRoundRect(x, underlineY, fm.stringWidth(blackText) - 1, 2, 3, 3);
         } else {
           g2.setColor(new Color(245, 247, 250));
           g2.fillRoundRect(
-              x + CLASSIC_SECOND_LABEL_OFFSET, underlineY, fm.stringWidth("白棋"), 3, 3, 3);
+              x + sideSecondOffset, underlineY, fm.stringWidth(whiteText), 3, 3, 3);
         }
       }
+      paintKeyboardFocus(g2);
       g2.dispose();
       return;
     }
@@ -223,11 +261,11 @@ public class SidebarHeaderPanel extends JPanel {
     }
 
     g2.setColor(!showBlunders ? TEXT_SELECTED : TEXT_NORMAL);
-    String t1 = "评论";
+    String t1 = text("SidebarHeader.comments", "Comments");
     g2.drawString(t1, x + (halfW - fm.stringWidth(t1)) / 2, baseline);
 
     g2.setColor(showBlunders ? TEXT_SELECTED : TEXT_NORMAL);
-    String t2 = "问题手";
+    String t2 = text("SidebarHeader.problems", "Problems");
     g2.drawString(t2, x + halfW + (halfW - fm.stringWidth(t2)) / 2, baseline);
 
     // 2. Progress pill
@@ -281,8 +319,8 @@ public class SidebarHeaderPanel extends JPanel {
         g2.drawRoundRect(x + halfW, y + 2, halfW - 3, segH - 5, arc - 2, arc - 2);
       }
 
-      String b1 = "黑棋";
-      String b2 = "白棋";
+      String b1 = text("SidebarHeader.black", "Black");
+      String b2 = text("SidebarHeader.white", "White");
       int dotSize = 8;
       int dotGap = 5;
 
@@ -306,6 +344,7 @@ public class SidebarHeaderPanel extends JPanel {
       g2.drawString(b2, seg2X + dotSize + dotGap, baseline);
     }
 
+    paintKeyboardFocus(g2);
     g2.dispose();
   }
 
@@ -315,7 +354,12 @@ public class SidebarHeaderPanel extends JPanel {
           point,
           new Rectangle(CONTROL_X, APPLE_PRIMARY_Y, APPLE_PRIMARY_WIDTH, APPLE_PRIMARY_HEIGHT));
     }
-    return classicTextIndexAt(point, metrics, CLASSIC_PRIMARY_Y, "评论", "问题手");
+    return classicTextIndexAt(
+        point,
+        metrics,
+        CLASSIC_PRIMARY_Y,
+        text("SidebarHeader.comments", "Comments"),
+        text("SidebarHeader.problems", "Problems"));
   }
 
   static int sideSegmentIndexAt(Point point, boolean appleStyle, FontMetrics metrics) {
@@ -323,7 +367,13 @@ public class SidebarHeaderPanel extends JPanel {
       return segmentedIndexAt(
           point, new Rectangle(APPLE_SIDE_X, APPLE_SIDE_Y, APPLE_SIDE_WIDTH, APPLE_SIDE_HEIGHT));
     }
-    return classicTextIndexAt(point, metrics, CLASSIC_PRIMARY_Y, "黑棋", "白棋", CLASSIC_SIDE_X);
+    return classicTextIndexAt(
+        point,
+        metrics,
+        CLASSIC_PRIMARY_Y,
+        text("SidebarHeader.black", "Black"),
+        text("SidebarHeader.white", "White"),
+        CLASSIC_SIDE_X);
   }
 
   private static int classicTextIndexAt(
@@ -336,7 +386,7 @@ public class SidebarHeaderPanel extends JPanel {
     if (classicTextBounds(metrics, firstText, textX, rowY).contains(point)) {
       return FIRST_SEGMENT;
     }
-    if (classicSecondTextBounds(metrics, secondText, rowY, textX).contains(point)) {
+    if (classicSecondTextBounds(metrics, firstText, secondText, rowY, textX).contains(point)) {
       return SECOND_SEGMENT;
     }
     return NO_SEGMENT;
@@ -353,8 +403,8 @@ public class SidebarHeaderPanel extends JPanel {
   }
 
   private static Rectangle classicSecondTextBounds(
-      FontMetrics metrics, String text, int rowY, int firstTextX) {
-    int textX = firstTextX + CLASSIC_SECOND_LABEL_OFFSET;
+      FontMetrics metrics, String firstText, String text, int rowY, int firstTextX) {
+    int textX = firstTextX + classicSecondLabelOffset(metrics, firstText);
     Rectangle textBounds = classicTextBounds(metrics, text, textX, rowY);
     int legacyRight =
         firstTextX
@@ -364,6 +414,10 @@ public class SidebarHeaderPanel extends JPanel {
     int right = Math.max(textBounds.x + textBounds.width, legacyRight);
     textBounds.width = right - textBounds.x;
     return textBounds;
+  }
+
+  private static int classicSecondLabelOffset(FontMetrics metrics, String firstText) {
+    return Math.max(CLASSIC_SECOND_LABEL_OFFSET, metrics.stringWidth(firstText) + 16);
   }
 
   private static int segmentedIndexAt(Point point, Rectangle bounds) {
@@ -379,6 +433,85 @@ public class SidebarHeaderPanel extends JPanel {
             ? Lizzie.config.uiFontName
             : getFont().getName();
     return new Font(fontName, Font.BOLD, 12);
+  }
+
+  private void installKeyboardActions() {
+    getInputMap(WHEN_FOCUSED).put(KeyStroke.getKeyStroke(KeyEvent.VK_LEFT, 0), "comments");
+    getInputMap(WHEN_FOCUSED).put(KeyStroke.getKeyStroke(KeyEvent.VK_RIGHT, 0), "problems");
+    getInputMap(WHEN_FOCUSED).put(KeyStroke.getKeyStroke(KeyEvent.VK_B, 0), "black");
+    getInputMap(WHEN_FOCUSED).put(KeyStroke.getKeyStroke(KeyEvent.VK_W, 0), "white");
+    getInputMap(WHEN_FOCUSED).put(KeyStroke.getKeyStroke(KeyEvent.VK_ENTER, 0), "toggle");
+    getActionMap()
+        .put(
+            "comments",
+            new AbstractAction() {
+              @Override
+              public void actionPerformed(ActionEvent event) {
+                parentPanel.switchTo("COMMENTS");
+                repaint();
+              }
+            });
+    getActionMap()
+        .put(
+            "problems",
+            new AbstractAction() {
+              @Override
+              public void actionPerformed(ActionEvent event) {
+                parentPanel.switchTo("BLUNDERS");
+                repaint();
+              }
+            });
+    getActionMap()
+        .put(
+            "black",
+            new AbstractAction() {
+              @Override
+              public void actionPerformed(ActionEvent event) {
+                Lizzie.frame.setProblemListSideFilter(ProblemListSideFilter.BLACK);
+              }
+            });
+    getActionMap()
+        .put(
+            "white",
+            new AbstractAction() {
+              @Override
+              public void actionPerformed(ActionEvent event) {
+                Lizzie.frame.setProblemListSideFilter(ProblemListSideFilter.WHITE);
+              }
+            });
+    getActionMap()
+        .put(
+            "toggle",
+            new AbstractAction() {
+              @Override
+              public void actionPerformed(ActionEvent event) {
+                parentPanel.switchTo(Lizzie.config.isShowingBlunderTabel ? "COMMENTS" : "BLUNDERS");
+                repaint();
+              }
+            });
+  }
+
+  private void paintKeyboardFocus(Graphics2D graphics) {
+    if (!isFocusOwner()) {
+      return;
+    }
+    graphics.setColor(withAlpha(glassAccentColor(), 230));
+    graphics.setStroke(new BasicStroke(2F));
+    graphics.drawRoundRect(2, 2, Math.max(0, getWidth() - 5), Math.max(0, getHeight() - 5), 10, 10);
+  }
+
+  private static String text(String key, String fallback) {
+    try {
+      if (Lizzie.resourceBundle != null && Lizzie.resourceBundle.containsKey(key)) {
+        return Lizzie.resourceBundle.getString(key);
+      }
+    } catch (Exception error) {
+    }
+    return fallback;
+  }
+
+  private static String format(String key, String fallback, Object... arguments) {
+    return MessageFormat.format(text(key, fallback), arguments);
   }
 
   private Color glassAccentColor() {

@@ -109,14 +109,16 @@ public class AnalysisEngine {
   private boolean sharedRemoteSessionActive;
 
   public AnalysisEngine(boolean isPreLoad) throws IOException {
+    this.isPreLoad = isPreLoad;
     int maxVisits =
         Lizzie.frame.isBatchAnalysisMode
             ? Math.max(2, Lizzie.config.batchAnalysisPlayouts)
             : Lizzie.config.analysisMaxVisits + 1;
     engineCommand =
         KataGoRuntimeHelper.optimizeAnalysisEngineCommand(
-            resolveConfiguredAnalysisEngineCommand(), maxVisits, Lizzie.frame.isBatchAnalysisMode);
-    this.isPreLoad = isPreLoad;
+            resolveConfiguredAnalysisEngineCommand(isPreLoad),
+            maxVisits,
+            Lizzie.frame.isBatchAnalysisMode);
     RemoteEngineData remoteData = Utils.getAnalysisEngineRemoteEngineData();
     this.useJavaSSH = remoteData.useJavaSSH;
     this.ip = remoteData.ip;
@@ -146,7 +148,7 @@ public class AnalysisEngine {
         && RemoteComputeConfig.isRemoteComputeEngineCommand(primary.engineCommand());
   }
 
-  private static String resolveConfiguredAnalysisEngineCommand() {
+  private static String resolveConfiguredAnalysisEngineCommand(boolean isPreLoad) {
     int currentIndex = currentMainEngineIndex();
     ArrayList<EngineData> engines = Utils.getEngineData();
     if (currentIndex >= 0 && currentIndex < engines.size()) {
@@ -161,12 +163,16 @@ public class AnalysisEngine {
       if (result.isSuccess()) {
         Lizzie.config.analysisEngineCommand = result.getCommand();
         Lizzie.config.uiConfig.put("analysis-engine-command", Lizzie.config.analysisEngineCommand);
-        if (result.generatedConfig()) {
+        if (shouldShowGeneratedConfigNotice(isPreLoad, result.generatedConfig())) {
           javax.swing.SwingUtilities.invokeLater(() -> Utils.showMsg(result.getMessage()));
         }
       }
     }
     return Lizzie.config.analysisEngineCommand;
+  }
+
+  static boolean shouldShowGeneratedConfigNotice(boolean isPreLoad, boolean generatedConfig) {
+    return !isPreLoad && generatedConfig;
   }
 
   private static int currentMainEngineIndex() {
@@ -1449,7 +1455,8 @@ public class AnalysisEngine {
 
   public boolean matchesCurrentAnalysisBackend() {
     return useRemoteCompute
-        == RemoteComputeConfig.isRemoteComputeEngineCommand(resolveConfiguredAnalysisEngineCommand());
+        == RemoteComputeConfig.isRemoteComputeEngineCommand(
+            resolveConfiguredAnalysisEngineCommand(true));
   }
 
   public void shutdown() {

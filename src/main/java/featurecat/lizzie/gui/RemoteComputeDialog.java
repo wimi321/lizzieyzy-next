@@ -35,6 +35,7 @@ import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.IOException;
 import java.net.URI;
+import java.text.MessageFormat;
 import javax.imageio.ImageIO;
 import javax.swing.BorderFactory;
 import javax.swing.Box;
@@ -76,32 +77,47 @@ public class RemoteComputeDialog extends JDialog {
   private final ZhiziApiClient apiClient;
   private final CardLayout pageLayout = new CardLayout();
   private final JPanel pageCards = transparent(pageLayout);
-  private final JButton zhiziTab = tabButton("智子云算力");
-  private final JButton customTab = tabButton("自建算力");
-  private final JLabel currentStatusLabel = new JLabel("当前使用：本地引擎");
-  private final JLabel statusLabel = new JLabel("选择一种远程算力方式，需要时也可以随时切回本地引擎。");
+  private final JButton zhiziTab = tabButton(text("RemoteCompute.zhizi", "Zhizi Cloud"));
+  private final JButton customTab = tabButton(text("RemoteCompute.custom", "Custom Compute"));
+  private final JLabel currentStatusLabel =
+      new JLabel(text("RemoteCompute.current.local", "Currently using: Local engine"));
+  private final JLabel statusLabel =
+      new JLabel(text("RemoteCompute.chooseHint", "Choose a remote compute provider."));
   private final StatusDot statusDot = new StatusDot();
 
   private final JTextField accountField = new JTextField();
   private final JPasswordField passwordField = new JPasswordField();
   private final JTextField codeField = new JTextField();
   private final JTextField linkCodeField = new JTextField();
-  private final JCheckBox rememberToken = new MemoryCheckBox("记住登录");
+  private final JCheckBox rememberToken =
+      new MemoryCheckBox(text("RemoteCompute.rememberLogin", "Remember login"));
   private final JToggleButton showPasswordButton = new EyeToggleButton();
-  private final JCheckBox rememberPassword = new MemoryCheckBox("记住密码");
+  private final JCheckBox rememberPassword =
+      new MemoryCheckBox(text("RemoteCompute.rememberPassword", "Remember password"));
   private final JComboBox<PresetItem> presetBox = new JComboBox<>();
 
-  private final JButton passwordLoginButton = segmentButton("密码登录");
-  private final JButton codeLoginButton = segmentButton("验证码登录");
-  private final JButton sendCodeButton = secondaryButton("发送验证码");
-  private final JButton loginButton = primaryButton("登录智子账号");
-  private final JButton zhiziWebsiteButton = secondaryButton("打开智子官网");
-  private final JButton useZhiziButton = primaryButton("一键启用智子云算力");
-  private final JButton logoutButton = secondaryButton("更换账号");
-  private final JButton localFromZhiziButton = secondaryButton("切回本地引擎");
-  private final JButton importQrButton = secondaryButton("导入二维码");
-  private final JButton useCustomButton = primaryButton("一键启用自建算力");
-  private final JButton localFromCustomButton = secondaryButton("切回本地引擎");
+  private final JButton passwordLoginButton =
+      segmentButton(text("RemoteCompute.passwordLogin", "Password login"));
+  private final JButton codeLoginButton =
+      segmentButton(text("RemoteCompute.codeLogin", "Verification code login"));
+  private final JButton sendCodeButton =
+      secondaryButton(text("RemoteCompute.sendCode", "Send code"));
+  private final JButton loginButton =
+      primaryButton(text("RemoteCompute.login", "Sign in to Zhizi"));
+  private final JButton zhiziWebsiteButton =
+      secondaryButton(text("RemoteCompute.openWebsite", "Open Zhizi website"));
+  private final JButton useZhiziButton =
+      primaryButton(text("RemoteCompute.enableZhizi", "Enable Zhizi Cloud"));
+  private final JButton logoutButton =
+      secondaryButton(text("RemoteCompute.changeAccount", "Change account"));
+  private final JButton localFromZhiziButton =
+      secondaryButton(text("RemoteCompute.backToLocal", "Switch to local engine"));
+  private final JButton importQrButton =
+      secondaryButton(text("RemoteCompute.importQr", "Import QR code"));
+  private final JButton useCustomButton =
+      primaryButton(text("RemoteCompute.enableCustom", "Enable custom compute"));
+  private final JButton localFromCustomButton =
+      secondaryButton(text("RemoteCompute.backToLocal", "Switch to local engine"));
 
   private JPanel loginFormPanel;
   private JPanel loggedInPanel;
@@ -116,17 +132,20 @@ public class RemoteComputeDialog extends JDialog {
   private Timer zhiziStartupMonitor;
 
   public RemoteComputeDialog(Frame owner) throws IOException {
-    super(owner, "远程算力", false);
+    super(owner, text("RemoteCompute.title", "Remote Compute"), false);
     apiClient = new ZhiziApiClient();
     setDefaultCloseOperation(DISPOSE_ON_CLOSE);
     setMinimumSize(new Dimension(1040, 660));
     setPreferredSize(new Dimension(1120, 700));
     setContentPane(buildContent());
+    AccessibilitySupport.installEscapeToClose(getRootPane(), this);
     passwordEchoChar = passwordField.getEchoChar();
     initActions();
+    configureAccessibility();
     loadState();
     pack();
     setLocationRelativeTo(owner);
+    LizzieFrame.constrainWindowToAvailableWorkArea(this);
   }
 
   private JPanel buildContent() {
@@ -148,7 +167,7 @@ public class RemoteComputeDialog extends JDialog {
     JLabel eyebrow = new JLabel("REMOTE COMPUTE");
     eyebrow.setForeground(GREEN);
     eyebrow.setFont(eyebrow.getFont().deriveFont(Font.BOLD, 12F));
-    JLabel title = new JLabel("远程算力");
+    JLabel title = new JLabel(text("RemoteCompute.title", "Remote Compute"));
     title.setForeground(TEXT);
     title.setFont(title.getFont().deriveFont(Font.BOLD, 36F));
     titleBox.add(eyebrow);
@@ -156,14 +175,27 @@ public class RemoteComputeDialog extends JDialog {
     titleBox.add(title);
     header.add(titleBox, BorderLayout.CENTER);
 
-    JPanel tabs = new RoundPanel(22, new Color(255, 253, 248, 230), BORDER);
-    tabs.setLayout(new GridLayout(1, 2, 8, 0));
-    tabs.setBorder(new EmptyBorder(6, 6, 6, 6));
-    tabs.setPreferredSize(new Dimension(292, 58));
-    tabs.add(zhiziTab);
-    tabs.add(customTab);
+    JPanel tabs = createLocalizedTabGroup(zhiziTab, customTab);
     header.add(tabs, BorderLayout.EAST);
     return header;
+  }
+
+  static JPanel createLocalizedTabGroup(JButton... buttons) {
+    JPanel tabs = new RoundPanel(22, new Color(255, 253, 248, 230), BORDER);
+    tabs.setLayout(new GridBagLayout());
+    tabs.setBorder(new EmptyBorder(6, 6, 6, 6));
+    tabs.setPreferredSize(
+        new Dimension(localizedButtonGroupWidth(292, 8, 12, buttons), 58));
+    for (int index = 0; index < buttons.length; index++) {
+      GridBagConstraints constraints = new GridBagConstraints();
+      constraints.gridx = index;
+      constraints.gridy = 0;
+      constraints.fill = GridBagConstraints.BOTH;
+      constraints.weighty = 1;
+      constraints.insets = new Insets(0, index == 0 ? 0 : 8, 0, 0);
+      tabs.add(buttons[index], constraints);
+    }
+    return tabs;
   }
 
   private JPanel buildZhiziPage() {
@@ -184,14 +216,27 @@ public class RemoteComputeDialog extends JDialog {
   }
 
   private JPanel buildZhiziLoginCard() {
-    JPanel card = card("智子云算力", "手机号/邮箱登录后，就可以把云端 KataGo 设为当前引擎。");
+    JPanel card =
+        card(
+            text("RemoteCompute.zhizi", "Zhizi Cloud"),
+            text(
+                "RemoteCompute.zhiziDescription",
+                "Sign in with a phone number or email, then use cloud KataGo as the current engine."));
     loginFormPanel = transparent();
     loginFormPanel.setLayout(new BoxLayout(loginFormPanel, BoxLayout.Y_AXIS));
     loginFormPanel.add(buildLoginSegments());
     loginFormPanel.add(Box.createVerticalStrut(18));
-    loginFormPanel.add(fieldRow("账号", accountField, "手机号或邮箱"));
+    loginFormPanel.add(
+        fieldRow(
+            text("RemoteCompute.account", "Account"),
+            accountField,
+            text("RemoteCompute.accountPlaceholder", "Phone number or email")));
     loginFormPanel.add(Box.createVerticalStrut(12));
-    passwordRowPanel = passwordFieldRow("密码", passwordField, "请输入密码");
+    passwordRowPanel =
+        passwordFieldRow(
+            text("RemoteCompute.password", "Password"),
+            passwordField,
+            text("RemoteCompute.passwordPlaceholder", "Enter password"));
     loginFormPanel.add(passwordRowPanel);
     loginFormPanel.add(Box.createVerticalStrut(12));
     codeRowPanel = buildCodeRow();
@@ -207,13 +252,18 @@ public class RemoteComputeDialog extends JDialog {
     loggedInPanel.setLayout(new BoxLayout(loggedInPanel, BoxLayout.Y_AXIS));
     loggedInPanel.setBorder(new EmptyBorder(24, 24, 22, 24));
     loggedInPanel.setAlignmentX(Component.LEFT_ALIGNMENT);
-    JLabel loggedInTitle = new JLabel("账号已登录");
+    JLabel loggedInTitle =
+        new JLabel(text("RemoteCompute.loggedIn", "Account signed in"));
     loggedInTitle.setForeground(GREEN);
     loggedInTitle.setFont(loggedInTitle.getFont().deriveFont(Font.BOLD, 24F));
     loggedInTitle.setAlignmentX(Component.LEFT_ALIGNMENT);
     loggedInPanel.add(loggedInTitle);
     loggedInPanel.add(Box.createVerticalStrut(10));
-    loggedInAccountLabel = smallText("已保存本次登录状态。密码不会保存在本地。");
+    loggedInAccountLabel =
+        smallText(
+            text(
+                "RemoteCompute.loginSavedNoPassword",
+                "This login is saved. The password is not stored locally."));
     loggedInAccountLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
     loggedInPanel.add(loggedInAccountLabel);
     loggedInPanel.add(Box.createVerticalStrut(22));
@@ -224,7 +274,7 @@ public class RemoteComputeDialog extends JDialog {
   }
 
   private JPanel buildZhiziActionCard() {
-    JPanel card = card("一键启用", "");
+    JPanel card = card(text("RemoteCompute.oneClickEnable", "One-click enable"), "");
     card.add(planPanel());
     card.add(Box.createVerticalStrut(18));
     card.add(fullWidth(useZhiziButton, 58));
@@ -254,30 +304,53 @@ public class RemoteComputeDialog extends JDialog {
   }
 
   private JPanel buildCustomConnectCard() {
-    JPanel card = card("自建算力", "粘贴 KaTrain 可用的 ws/wss 链接，或导入二维码。");
-    card.add(fieldRow("链接", linkCodeField, "粘贴 ws:// 或 wss:// 开头的链接"));
+    JPanel card =
+        card(
+            text("RemoteCompute.custom", "Custom Compute"),
+            text(
+                "RemoteCompute.customDescription",
+                "Paste a KaTrain-compatible ws/wss link or import a QR code."));
+    card.add(
+        fieldRow(
+            text("RemoteCompute.link", "Link"),
+            linkCodeField,
+            text("RemoteCompute.linkPlaceholder", "Paste a ws:// or wss:// link")));
     card.add(Box.createVerticalStrut(14));
     JPanel importRow = transparent(new FlowLayout(FlowLayout.LEFT, 10, 0));
     importRow.setAlignmentX(Component.LEFT_ALIGNMENT);
     importRow.add(importQrButton);
-    JLabel hint = new JLabel("支持导入二维码图片，自动读取里面的远程链接。");
+    JLabel hint =
+        new JLabel(
+            text(
+                "RemoteCompute.qrHint",
+                "Import a QR code image to read its remote link automatically."));
     hint.setForeground(MUTED);
     hint.setFont(hint.getFont().deriveFont(Font.BOLD, 13F));
     importRow.add(hint);
     card.add(importRow);
     card.add(Box.createVerticalStrut(22));
-    card.add(infoBox("兼容 KaTrain", "可直接粘贴 KaTrain 远程引擎的 KataGo Analysis WebSocket 链接，支持 ws 和 wss。"));
+    card.add(
+        infoBox(
+            text("RemoteCompute.katrainCompatible", "KaTrain compatible"),
+            text(
+                "RemoteCompute.katrainDescription",
+                "Accepts KaTrain KataGo Analysis WebSocket links over ws or wss.")));
     card.add(Box.createVerticalGlue());
     return card;
   }
 
   private JPanel buildCustomActionCard() {
-    JPanel card = card("一键启用", "");
+    JPanel card = card(text("RemoteCompute.oneClickEnable", "One-click enable"), "");
     card.add(fullWidth(useCustomButton, 58));
     card.add(Box.createVerticalStrut(12));
     card.add(fullWidth(localFromCustomButton, 50));
     card.add(Box.createVerticalStrut(22));
-    card.add(infoBox("说明", "启用后会把这个链接设为当前引擎；主界面、快速曲线和形势判断都会走自建算力。"));
+    card.add(
+        infoBox(
+            text("RemoteCompute.notes", "How it works"),
+            text(
+                "RemoteCompute.customEffect",
+                "The main board, quick graph, and score estimate will use this remote engine.")));
     card.add(Box.createVerticalGlue());
     return card;
   }
@@ -311,7 +384,12 @@ public class RemoteComputeDialog extends JDialog {
     JPanel row = transparent(new BorderLayout(10, 0));
     row.setAlignmentX(Component.LEFT_ALIGNMENT);
     row.setMaximumSize(new Dimension(Integer.MAX_VALUE, 48));
-    row.add(fieldRow("验证码", codeField, "请输入验证码"), BorderLayout.CENTER);
+    row.add(
+        fieldRow(
+            text("RemoteCompute.code", "Verification code"),
+            codeField,
+            text("RemoteCompute.codePlaceholder", "Enter verification code")),
+        BorderLayout.CENTER);
     row.add(sendCodeButton, BorderLayout.EAST);
     return row;
   }
@@ -320,8 +398,12 @@ public class RemoteComputeDialog extends JDialog {
     JPanel row = transparent(new FlowLayout(FlowLayout.LEFT, 0, 0));
     row.setAlignmentX(Component.LEFT_ALIGNMENT);
     row.setMaximumSize(new Dimension(Integer.MAX_VALUE, 42));
-    rememberPassword.setToolTipText("仅保存在本机配置中。");
-    rememberToken.setToolTipText("保存本次登录 token，下次打开不用重新登录。");
+    rememberPassword.setToolTipText(
+        text("RemoteCompute.rememberPasswordTip", "Stored only in the local configuration."));
+    rememberToken.setToolTipText(
+        text(
+            "RemoteCompute.rememberLoginTip",
+            "Save the login token so you do not need to sign in next time."));
     row.add(rememberToken);
     row.add(Box.createHorizontalStrut(10));
     row.add(rememberPassword);
@@ -335,7 +417,11 @@ public class RemoteComputeDialog extends JDialog {
     panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
     panel.setBorder(new EmptyBorder(18, 18, 18, 18));
     panel.setAlignmentX(Component.LEFT_ALIGNMENT);
-    JLabel label = new JLabel("连接方式");
+    JLabel label = new JLabel(text("RemoteCompute.connectionMode", "Connection mode"));
+    AccessibilitySupport.labelFor(
+        label,
+        presetBox,
+        text("RemoteCompute.connectionModeDescription", "Select a Zhizi compute plan"));
     label.setForeground(MUTED);
     label.setFont(label.getFont().deriveFont(Font.BOLD, 13F));
     label.setAlignmentX(Component.LEFT_ALIGNMENT);
@@ -370,13 +456,20 @@ public class RemoteComputeDialog extends JDialog {
     JPanel copy = transparent();
     copy.setLayout(new BoxLayout(copy, BoxLayout.Y_AXIS));
     copy.setAlignmentX(Component.LEFT_ALIGNMENT);
-    JLabel title = new JLabel("智子官网与充值");
+    JLabel title =
+        new JLabel(text("RemoteCompute.websiteAndTopup", "Zhizi website and top-up"));
     title.setForeground(TEXT);
     title.setFont(title.getFont().deriveFont(Font.BOLD, 18F));
     title.setAlignmentX(Component.LEFT_ALIGNMENT);
     copy.add(title);
     copy.add(Box.createVerticalStrut(6));
-    JLabel body = smallText("<html>充值需前往智子官网下载 App，<br>在智子 App 内完成。</html>");
+    JLabel body =
+        smallText(
+            "<html>"
+                + text(
+                    "RemoteCompute.topupDescription",
+                    "Download the Zhizi app from its website to top up your account.")
+                + "</html>");
     body.setAlignmentX(Component.LEFT_ALIGNMENT);
     copy.add(body);
     copy.add(Box.createVerticalStrut(10));
@@ -388,7 +481,8 @@ public class RemoteComputeDialog extends JDialog {
     panel.add(copy, BorderLayout.CENTER);
 
     JPanel action = transparent(new BorderLayout());
-    action.setPreferredSize(new Dimension(138, 42));
+    action.setPreferredSize(
+        new Dimension(localizedButtonWidth(zhiziWebsiteButton, 138), 42));
     action.add(zhiziWebsiteButton, BorderLayout.CENTER);
     panel.add(action, BorderLayout.EAST);
     return panel;
@@ -440,13 +534,34 @@ public class RemoteComputeDialog extends JDialog {
     if (presetBox.getItemCount() > 0) {
       return;
     }
-    presetBox.addItem(new PresetItem("VIP 包月（推荐）", RemoteComputeConfig.DEFAULT_ZHIZI_ARGS));
-    presetBox.addItem(new PresetItem("按量 1x", RemoteComputeConfig.ON_DEMAND_1X_ZHIZI_ARGS));
-    presetBox.addItem(new PresetItem("按量 3x", RemoteComputeConfig.FASTER_ZHIZI_ARGS));
-    presetBox.addItem(new PresetItem("按量 6x", RemoteComputeConfig.FASTEST_ZHIZI_ARGS));
-    presetBox.addItem(new PresetItem("按量 12x", RemoteComputeConfig.TWELVE_X_ZHIZI_ARGS));
-    presetBox.addItem(new PresetItem("按量 24x", RemoteComputeConfig.TWENTY_FOUR_X_ZHIZI_ARGS));
-    presetBox.addItem(new PresetItem("按量 1x · CUDA", RemoteComputeConfig.QUICK_START_ZHIZI_ARGS));
+    presetBox.addItem(
+        new PresetItem(
+            text("RemoteCompute.plan.vip", "VIP monthly (recommended)"),
+            RemoteComputeConfig.DEFAULT_ZHIZI_ARGS));
+    presetBox.addItem(
+        new PresetItem(
+            text("RemoteCompute.plan.1x", "On-demand 1x"),
+            RemoteComputeConfig.ON_DEMAND_1X_ZHIZI_ARGS));
+    presetBox.addItem(
+        new PresetItem(
+            text("RemoteCompute.plan.3x", "On-demand 3x"),
+            RemoteComputeConfig.FASTER_ZHIZI_ARGS));
+    presetBox.addItem(
+        new PresetItem(
+            text("RemoteCompute.plan.6x", "On-demand 6x"),
+            RemoteComputeConfig.FASTEST_ZHIZI_ARGS));
+    presetBox.addItem(
+        new PresetItem(
+            text("RemoteCompute.plan.12x", "On-demand 12x"),
+            RemoteComputeConfig.TWELVE_X_ZHIZI_ARGS));
+    presetBox.addItem(
+        new PresetItem(
+            text("RemoteCompute.plan.24x", "On-demand 24x"),
+            RemoteComputeConfig.TWENTY_FOUR_X_ZHIZI_ARGS));
+    presetBox.addItem(
+        new PresetItem(
+            text("RemoteCompute.plan.1xCuda", "On-demand 1x - CUDA"),
+            RemoteComputeConfig.QUICK_START_ZHIZI_ARGS));
   }
 
   private void loadState() {
@@ -496,9 +611,12 @@ public class RemoteComputeDialog extends JDialog {
               && !state.zhiziPassword.isEmpty();
       String account =
           state.zhiziIdentifier == null || state.zhiziIdentifier.trim().isEmpty()
-              ? "账号已登录"
-              : "账号：" + state.zhiziIdentifier;
-      account += passwordSaved ? "，密码已保存在本机。" : "，密码没有保存在本地。";
+              ? text("RemoteCompute.loggedIn", "Account signed in")
+              : format("RemoteCompute.accountValue", "Account: {0}", state.zhiziIdentifier);
+      account +=
+          passwordSaved
+              ? text("RemoteCompute.passwordStored", ". Password is stored locally.")
+              : text("RemoteCompute.passwordNotStored", ". Password is not stored locally.");
       loggedInAccountLabel.setText(account);
     }
     revalidate();
@@ -530,11 +648,13 @@ public class RemoteComputeDialog extends JDialog {
     String identifier = accountField.getText().trim();
     String password = new String(passwordField.getPassword()).trim();
     if (identifier.isEmpty() || password.isEmpty()) {
-      updateStatus("请输入账号和密码。", false);
+      updateStatus(
+          text("RemoteCompute.error.accountPasswordRequired", "Enter an account and password."),
+          false);
       return;
     }
     runBackground(
-        "正在登录智子云算力...",
+        text("RemoteCompute.status.loggingIn", "Signing in to Zhizi Cloud..."),
         () -> apiClient.login(identifier, password),
         token -> onZhiziPasswordLoggedIn(identifier, password, token));
   }
@@ -543,11 +663,15 @@ public class RemoteComputeDialog extends JDialog {
     String identifier = accountField.getText().trim();
     String code = codeField.getText().trim();
     if (identifier.isEmpty() || code.isEmpty()) {
-      updateStatus("请输入账号和验证码。", false);
+      updateStatus(
+          text(
+              "RemoteCompute.error.accountCodeRequired",
+              "Enter an account and verification code."),
+          false);
       return;
     }
     runBackground(
-        "正在用验证码登录...",
+        text("RemoteCompute.status.codeLogin", "Signing in with verification code..."),
         () -> apiClient.fastLogin(identifier, code),
         token -> onZhiziLoggedIn(identifier, token));
   }
@@ -566,7 +690,9 @@ public class RemoteComputeDialog extends JDialog {
     codeField.setText("");
     updateLoginMode();
     updateCurrentStatus();
-    updateStatus("登录成功，可以一键启用智子云算力。", true);
+    updateStatus(
+        text("RemoteCompute.status.loginSuccess", "Signed in. Zhizi Cloud is ready to enable."),
+        true);
   }
 
   private void onZhiziLoggedIn(String identifier, String token) {
@@ -575,43 +701,62 @@ public class RemoteComputeDialog extends JDialog {
     codeField.setText("");
     updateLoginMode();
     updateCurrentStatus();
-    updateStatus("登录成功，可以一键启用智子云算力。", true);
+    updateStatus(
+        text("RemoteCompute.status.loginSuccess", "Signed in. Zhizi Cloud is ready to enable."),
+        true);
   }
 
   private void sendCode() {
     String identifier = accountField.getText().trim();
     if (identifier.isEmpty()) {
-      updateStatus("请先填写手机号或邮箱。", false);
+      updateStatus(
+          text("RemoteCompute.error.accountRequired", "Enter a phone number or email first."),
+          false);
       return;
     }
     runBackground(
-        "正在发送验证码...",
+        text("RemoteCompute.status.sendingCode", "Sending verification code..."),
         () -> {
           apiClient.sendCode(identifier);
           return "ok";
         },
-        ignored -> updateStatus("验证码已发送，请查看手机或邮箱。", true));
+        ignored ->
+            updateStatus(
+                text(
+                    "RemoteCompute.status.codeSent",
+                    "Verification code sent. Check your phone or email."),
+                true));
   }
 
   private void openZhiziOfficialWebsite() {
     try {
       if (!Desktop.isDesktopSupported()
           || !Desktop.getDesktop().isSupported(Desktop.Action.BROWSE)) {
-        throw new UnsupportedOperationException("系统不支持自动打开浏览器。");
+        throw new UnsupportedOperationException(
+            text("RemoteCompute.error.browserUnsupported", "The system cannot open a browser."));
       }
       Desktop.getDesktop().browse(URI.create(ZHIZI_OFFICIAL_URL));
-      updateStatus("已打开智子官网，请在官网下载 App 后完成充值。", true);
+      updateStatus(
+          text(
+              "RemoteCompute.status.websiteOpened",
+              "Zhizi website opened. Download the app there to top up."),
+          true);
     } catch (Exception e) {
       Toolkit.getDefaultToolkit()
           .getSystemClipboard()
           .setContents(new StringSelection(ZHIZI_OFFICIAL_URL), null);
-      updateStatus("未能自动打开浏览器，已复制智子官网链接。", false);
+      updateStatus(
+          text(
+              "RemoteCompute.status.websiteCopied",
+              "Could not open a browser. The Zhizi website link was copied."),
+          false);
       JOptionPane.showMessageDialog(
           this,
-          "未能自动打开浏览器，已复制智子官网链接：\n"
-              + ZHIZI_OFFICIAL_URL
-              + "\n\n请前往官网下载智子 App，并在智子 App 内完成充值。",
-          "智子官网链接已复制",
+          format(
+              "RemoteCompute.websiteCopiedMessage",
+              "Could not open a browser. The link was copied:\n{0}\n\nDownload the Zhizi app from the website to top up.",
+              ZHIZI_OFFICIAL_URL),
+          text("RemoteCompute.websiteCopiedTitle", "Zhizi link copied"),
           JOptionPane.INFORMATION_MESSAGE);
     }
   }
@@ -619,7 +764,8 @@ public class RemoteComputeDialog extends JDialog {
   private void useZhiziEngine() {
     RemoteComputeConfig.State state = RemoteComputeConfig.load();
     if (state.zhiziAccountToken.trim().isEmpty()) {
-      updateStatus("请先登录智子云算力。", false);
+      updateStatus(
+          text("RemoteCompute.error.loginFirst", "Sign in to Zhizi Cloud first."), false);
       showPage(RemoteComputeConfig.PROVIDER_ZHIZI);
       return;
     }
@@ -629,7 +775,11 @@ public class RemoteComputeDialog extends JDialog {
     RemoteComputeConfig.save(state);
     int index = RemoteComputeConfig.createOrUpdateZhiziEngine(true);
     stopZhiziStartupMonitor();
-    updateStatus("正在启动智子云算力；网络或 worker 暂时不可用时会自动重启连接。", true);
+    updateStatus(
+        text(
+            "RemoteCompute.status.startingZhizi",
+            "Starting Zhizi Cloud. The connection will retry automatically if needed."),
+        true);
     if (Lizzie.engineManager != null) {
       SwingUtilities.invokeLater(
           () -> {
@@ -666,15 +816,21 @@ public class RemoteComputeDialog extends JDialog {
                 warmQuickAnalysisAfterRemoteSwitch();
                 updateCurrentStatus();
                 updateStatus(
-                    "智子云算力已连接："
-                        + RemoteComputeConfig.displayNameForZhiziArgs(currentArgs()),
+                    format(
+                        "RemoteCompute.status.zhiziConnected",
+                        "Zhizi Cloud connected: {0}",
+                        RemoteComputeConfig.displayNameForZhiziArgs(currentArgs())),
                     true);
                 return;
               }
               if (engine.isDownWithError && !engine.isStarted()) {
                 stopZhiziStartupMonitor();
                 updateCurrentStatus();
-                updateStatus("智子云算力自动重启后仍未加载，请检查登录、套餐或网络。", false);
+                updateStatus(
+                    text(
+                        "RemoteCompute.error.zhiziRestartFailed",
+                        "Zhizi Cloud still did not load after retrying. Check the login, plan, and network."),
+                    false);
                 return;
               }
               updateZhiziActionButtonState();
@@ -705,13 +861,18 @@ public class RemoteComputeDialog extends JDialog {
     updatePasswordEcho();
     updateLoginMode();
     updateCurrentStatus();
-    updateStatus("已退出智子云算力登录。", true);
+    updateStatus(text("RemoteCompute.status.loggedOut", "Signed out of Zhizi Cloud."), true);
   }
 
   private void updatePasswordEcho() {
     boolean visible = showPasswordButton.isSelected();
     passwordField.setEchoChar(visible ? (char) 0 : passwordEchoChar);
-    showPasswordButton.setToolTipText(visible ? "隐藏密码" : "显示密码");
+    String passwordAction =
+        visible
+            ? text("RemoteCompute.hidePassword", "Hide password")
+            : text("RemoteCompute.showPassword", "Show password");
+    showPasswordButton.setToolTipText(passwordAction);
+    AccessibilitySupport.button(showPasswordButton, passwordAction, passwordAction);
   }
 
   private void clearSavedPasswordPreference() {
@@ -727,7 +888,8 @@ public class RemoteComputeDialog extends JDialog {
 
   private void importQrCode() {
     JFileChooser chooser = new JFileChooser();
-    chooser.setDialogTitle("选择自建算力二维码图片");
+    chooser.setDialogTitle(
+        text("RemoteCompute.qrChooserTitle", "Choose a custom compute QR code image"));
     int result = chooser.showOpenDialog(this);
     if (result != JFileChooser.APPROVE_OPTION) {
       return;
@@ -736,19 +898,25 @@ public class RemoteComputeDialog extends JDialog {
     try {
       BufferedImage image = ImageIO.read(file);
       if (image == null) {
-        throw new IllegalArgumentException("不是有效图片。");
+        throw new IllegalArgumentException(
+            text("RemoteCompute.error.invalidImage", "The selected file is not a valid image."));
       }
       BinaryBitmap bitmap =
           new BinaryBitmap(new HybridBinarizer(new BufferedImageLuminanceSource(image)));
       Result decoded = new MultiFormatReader().decode(bitmap);
       linkCodeField.setText(decoded.getText());
-      updateStatus("已读取二维码中的远程链接。", true);
+      updateStatus(
+          text("RemoteCompute.status.qrRead", "Remote link read from the QR code."), true);
     } catch (Exception e) {
-      updateStatus("没有识别到二维码，请复制 ws/wss 链接后手动粘贴。", false);
+      String qrFailure =
+          text(
+              "RemoteCompute.error.qrNotRecognized",
+              "No QR code was recognized. Copy and paste the ws/wss link manually.");
+      updateStatus(qrFailure, false);
       JOptionPane.showMessageDialog(
           this,
-          "没有识别到二维码，请复制 ws/wss 链接后手动粘贴。\n\n" + e.getLocalizedMessage(),
-          "二维码识别失败",
+          qrFailure + "\n\n" + e.getLocalizedMessage(),
+          text("RemoteCompute.qrFailedTitle", "QR code recognition failed"),
           JOptionPane.WARNING_MESSAGE);
     }
   }
@@ -756,15 +924,25 @@ public class RemoteComputeDialog extends JDialog {
   private void useCustomCompute() {
     String code = RemoteComputeConfig.normalizeCustomWebSocketUrl(linkCodeField.getText());
     if (code.isEmpty()) {
-      updateStatus("请先输入 ws:// 或 wss:// 链接，或导入二维码。", false);
+      updateStatus(
+          text(
+              "RemoteCompute.error.linkRequired",
+              "Enter a ws:// or wss:// link, or import a QR code."),
+          false);
       return;
     }
     if (!RemoteComputeConfig.isCustomWebSocketUrl(code)) {
-      updateStatus("自建算力链接需要以 ws:// 或 wss:// 开头。", false);
+      updateStatus(
+          text(
+              "RemoteCompute.error.linkScheme",
+              "The custom compute link must start with ws:// or wss://."),
+          false);
       JOptionPane.showMessageDialog(
           this,
-          "请粘贴 KaTrain 兼容的 ws:// 或 wss:// 远程引擎链接。",
-          "自建算力链接无效",
+          text(
+              "RemoteCompute.invalidLinkMessage",
+              "Paste a KaTrain-compatible ws:// or wss:// remote engine link."),
+          text("RemoteCompute.invalidLinkTitle", "Invalid custom compute link"),
           JOptionPane.WARNING_MESSAGE);
       return;
     }
@@ -785,7 +963,12 @@ public class RemoteComputeDialog extends JDialog {
     }
     showPage(RemoteComputeConfig.PROVIDER_CUSTOM);
     updateCurrentStatus();
-    updateStatus("已启用自建算力：" + RemoteComputeConfig.displayNameForCustomWebSocketUrl(code), true);
+    updateStatus(
+        format(
+            "RemoteCompute.status.customEnabled",
+            "Custom compute enabled: {0}",
+            RemoteComputeConfig.displayNameForCustomWebSocketUrl(code)),
+        true);
   }
 
   private void switchToLocalProvider() {
@@ -793,9 +976,17 @@ public class RemoteComputeDialog extends JDialog {
     int localEngineIndex = RemoteComputeConfig.saveLocalProviderAndDefaultEngine();
     if (localEngineIndex >= 0 && Lizzie.engineManager != null) {
       SwingUtilities.invokeLater(() -> Lizzie.engineManager.switchEngine(localEngineIndex, true));
-      updateStatus("已切回本地引擎，下次启动也会继续使用本地引擎。", true);
+      updateStatus(
+          text(
+              "RemoteCompute.status.localEnabled",
+              "Switched to the local engine. It will remain selected next time."),
+          true);
     } else {
-      updateStatus("暂未找到本地引擎，请先在引擎设置里添加本机 KataGo。", false);
+      updateStatus(
+          text(
+              "RemoteCompute.error.localMissing",
+              "No local engine was found. Add a local KataGo engine first."),
+          false);
     }
     updateCurrentStatus();
   }
@@ -810,19 +1001,29 @@ public class RemoteComputeDialog extends JDialog {
     RemoteComputeConfig.State state = RemoteComputeConfig.load();
     if (RemoteComputeConfig.PROVIDER_ZHIZI.equals(state.provider)) {
       String fullName = RemoteComputeConfig.displayNameForZhiziArgs(state.zhiziArgs);
-      currentStatusLabel.setText("当前使用：智子云算力");
-      currentStatusLabel.setToolTipText("当前使用：" + fullName);
+      currentStatusLabel.setText(
+          text("RemoteCompute.current.zhizi", "Currently using: Zhizi Cloud"));
+      currentStatusLabel.setToolTipText(
+          format("RemoteCompute.currentValue", "Currently using: {0}", fullName));
       statusDot.setColor(GREEN);
     } else if (RemoteComputeConfig.PROVIDER_CUSTOM.equals(state.provider)) {
       String fullName = RemoteComputeConfig.displayNameForCustomWebSocketUrl(state.customRemoteCode);
-      currentStatusLabel.setText("当前使用：自建算力");
-      currentStatusLabel.setToolTipText("当前使用：" + fullName);
+      currentStatusLabel.setText(
+          text("RemoteCompute.current.custom", "Currently using: Custom compute"));
+      currentStatusLabel.setToolTipText(
+          format("RemoteCompute.currentValue", "Currently using: {0}", fullName));
       statusDot.setColor(GREEN);
     } else {
-      currentStatusLabel.setText("当前使用：本地引擎");
-      currentStatusLabel.setToolTipText("当前使用：本地引擎");
+      currentStatusLabel.setText(
+          text("RemoteCompute.current.local", "Currently using: Local engine"));
+      currentStatusLabel.setToolTipText(
+          text("RemoteCompute.current.local", "Currently using: Local engine"));
       statusDot.setColor(GREEN);
     }
+    AccessibilitySupport.named(
+        currentStatusLabel,
+        text("RemoteCompute.currentStatus", "Current compute status"),
+        currentStatusLabel.getToolTipText());
     updateZhiziActionButtonState();
     updateCustomActionButtonState();
   }
@@ -836,30 +1037,53 @@ public class RemoteComputeDialog extends JDialog {
     boolean loaded = currentZhizi && Lizzie.leelaz.isLoaded();
     boolean failed = currentZhizi && Lizzie.leelaz.isDownWithError && !Lizzie.leelaz.isStarted();
     if (!loggedIn) {
-      useZhiziButton.setText("登录后启用智子云算力");
-      useZhiziButton.setToolTipText("请先登录智子账号，再启用云端算力。");
+      useZhiziButton.setText(
+          text("RemoteCompute.action.loginToEnable", "Sign in to enable Zhizi Cloud"));
+      useZhiziButton.setToolTipText(
+          text("RemoteCompute.action.loginToEnableTip", "Sign in before enabling cloud compute."));
       useZhiziButton.setEnabled(false);
     } else if (usingZhizi && sameArgs && loaded) {
-      useZhiziButton.setText("已启用智子算力");
-      useZhiziButton.setToolTipText("当前连接方式已经生效；更改连接方式后可重新启用。");
+      useZhiziButton.setText(
+          text("RemoteCompute.action.zhiziEnabled", "Zhizi Cloud enabled"));
+      useZhiziButton.setToolTipText(
+          text(
+              "RemoteCompute.action.alreadyEnabledTip",
+              "This connection is active. Change the mode to enable a different one."));
       useZhiziButton.setEnabled(false);
     } else if (usingZhizi && sameArgs && currentZhizi && !failed) {
-      useZhiziButton.setText("正在连接智子云算力");
-      useZhiziButton.setToolTipText("网络或 worker 暂时不可用时会自动重启连接。");
+      useZhiziButton.setText(
+          text("RemoteCompute.action.connectingZhizi", "Connecting to Zhizi Cloud"));
+      useZhiziButton.setToolTipText(
+          text(
+              "RemoteCompute.action.connectingTip",
+              "The connection retries automatically if the network or worker is unavailable."));
       useZhiziButton.setEnabled(false);
     } else if (usingZhizi && sameArgs && failed) {
-      useZhiziButton.setText("重新连接智子云算力");
-      useZhiziButton.setToolTipText("自动重启仍未成功，可在检查账号和网络后重新连接。");
+      useZhiziButton.setText(
+          text("RemoteCompute.action.reconnectZhizi", "Reconnect Zhizi Cloud"));
+      useZhiziButton.setToolTipText(
+          text(
+              "RemoteCompute.action.reconnectTip",
+              "Check the account and network, then reconnect."));
       useZhiziButton.setEnabled(!busy);
     } else if (usingZhizi) {
-      useZhiziButton.setText("更换智子云算力连接方式");
-      useZhiziButton.setToolTipText("将当前引擎切换到新选择的智子连接方式。");
+      useZhiziButton.setText(
+          text("RemoteCompute.action.changeZhizi", "Change Zhizi connection mode"));
+      useZhiziButton.setToolTipText(
+          text(
+              "RemoteCompute.action.changeZhiziTip",
+              "Switch the current engine to the selected Zhizi mode."));
       useZhiziButton.setEnabled(!busy);
     } else {
-      useZhiziButton.setText("一键启用智子云算力");
-      useZhiziButton.setToolTipText("把智子云端 KataGo 设置为当前引擎。");
+      useZhiziButton.setText(text("RemoteCompute.enableZhizi", "Enable Zhizi Cloud"));
+      useZhiziButton.setToolTipText(
+          text(
+              "RemoteCompute.action.enableZhiziTip",
+              "Use Zhizi cloud KataGo as the current engine."));
       useZhiziButton.setEnabled(!busy);
     }
+    AccessibilitySupport.button(
+        useZhiziButton, useZhiziButton.getText(), useZhiziButton.getToolTipText());
   }
 
   private boolean isCurrentZhiziEngine() {
@@ -875,31 +1099,74 @@ public class RemoteComputeDialog extends JDialog {
     boolean usingCustom = RemoteComputeConfig.PROVIDER_CUSTOM.equals(state.provider);
     boolean sameCode = usingCustom && validCode && code.equals(savedCode);
     if (code.isEmpty()) {
-      useCustomButton.setText("输入链接后启用自建算力");
-      useCustomButton.setToolTipText("请先粘贴 ws:// 或 wss:// 远程算力链接，或导入二维码。");
+      useCustomButton.setText(
+          text("RemoteCompute.action.enterLink", "Enter a link to enable custom compute"));
+      useCustomButton.setToolTipText(
+          text(
+              "RemoteCompute.action.enterLinkTip",
+              "Paste a ws:// or wss:// link, or import a QR code."));
       useCustomButton.setEnabled(false);
     } else if (!validCode) {
-      useCustomButton.setText(usingCustom ? "输入有效链接后更换自建算力" : "输入有效链接后启用自建算力");
-      useCustomButton.setToolTipText("自建算力链接需要以 ws:// 或 wss:// 开头。");
+      useCustomButton.setText(
+          usingCustom
+              ? text("RemoteCompute.action.validLinkToChange", "Enter a valid link to change")
+              : text("RemoteCompute.action.validLinkToEnable", "Enter a valid link to enable"));
+      useCustomButton.setToolTipText(
+          text(
+              "RemoteCompute.error.linkScheme",
+              "The custom compute link must start with ws:// or wss://."));
       useCustomButton.setEnabled(false);
     } else if (sameCode) {
-      useCustomButton.setText("已启用自建算力");
-      useCustomButton.setToolTipText("当前自建算力链接已经生效；更改链接后可重新启用。");
+      useCustomButton.setText(
+          text("RemoteCompute.action.customEnabled", "Custom compute enabled"));
+      useCustomButton.setToolTipText(
+          text(
+              "RemoteCompute.action.alreadyEnabledTip",
+              "This connection is active. Change the mode to enable a different one."));
       useCustomButton.setEnabled(false);
     } else if (usingCustom) {
-      useCustomButton.setText("更换自建算力连接方式");
-      useCustomButton.setToolTipText("将当前引擎切换到新输入的自建算力链接。");
+      useCustomButton.setText(
+          text("RemoteCompute.action.changeCustom", "Change custom compute link"));
+      useCustomButton.setToolTipText(
+          text(
+              "RemoteCompute.action.changeCustomTip",
+              "Switch the current engine to the new custom link."));
       useCustomButton.setEnabled(!busy);
     } else {
-      useCustomButton.setText("一键启用自建算力");
-      useCustomButton.setToolTipText("把这个远程链接设置为当前引擎。");
+      useCustomButton.setText(text("RemoteCompute.enableCustom", "Enable custom compute"));
+      useCustomButton.setToolTipText(
+          text(
+              "RemoteCompute.action.enableCustomTip",
+              "Use this remote link as the current engine."));
       useCustomButton.setEnabled(!busy);
     }
+    AccessibilitySupport.button(
+        useCustomButton, useCustomButton.getText(), useCustomButton.getToolTipText());
   }
 
   private void updateStatus(String message, boolean ok) {
+    String previous = statusLabel.getText();
     statusLabel.setText(message == null ? "" : message);
     statusLabel.setForeground(ok ? new Color(77, 113, 82) : ERROR);
+    statusDot.setColor(ok ? GREEN : ERROR);
+    updateStatusAccessibility(
+        statusLabel,
+        statusDot,
+        text("RemoteCompute.connectionStatus", "Connection status"),
+        text("RemoteCompute.connectionIndicator", "Connection indicator"),
+        previous);
+  }
+
+  static void updateStatusAccessibility(
+      JLabel statusLabel,
+      JComponent statusIndicator,
+      String statusName,
+      String indicatorName,
+      String previous) {
+    String current = statusLabel == null ? "" : statusLabel.getText();
+    AccessibilitySupport.named(statusLabel, statusName, current);
+    AccessibilitySupport.named(statusIndicator, indicatorName, current);
+    AccessibilitySupport.announce(statusLabel, previous, current);
   }
 
   private <T> void runBackground(String message, BackgroundTask<T> task, SuccessHandler<T> success) {
@@ -923,7 +1190,10 @@ public class RemoteComputeDialog extends JDialog {
           message = RemoteComputeConfig.friendlyZhiziErrorMessage(message, currentArgs());
           updateStatus(message, false);
           JOptionPane.showMessageDialog(
-              RemoteComputeDialog.this, message, "远程算力连接失败", JOptionPane.WARNING_MESSAGE);
+              RemoteComputeDialog.this,
+              message,
+              text("RemoteCompute.connectionFailedTitle", "Remote compute connection failed"),
+              JOptionPane.WARNING_MESSAGE);
         }
       }
     }.execute();
@@ -950,6 +1220,46 @@ public class RemoteComputeDialog extends JDialog {
     importQrButton.setEnabled(!busy);
     updateCustomActionButtonState();
     localFromCustomButton.setEnabled(!busy);
+  }
+
+  private void configureAccessibility() {
+    AccessibilitySupport.button(zhiziTab, zhiziTab.getText(), zhiziTab.getText());
+    AccessibilitySupport.button(customTab, customTab.getText(), customTab.getText());
+    AccessibilitySupport.button(
+        passwordLoginButton, passwordLoginButton.getText(), passwordLoginButton.getText());
+    AccessibilitySupport.button(codeLoginButton, codeLoginButton.getText(), codeLoginButton.getText());
+    AccessibilitySupport.button(sendCodeButton, sendCodeButton.getText(), sendCodeButton.getText());
+    AccessibilitySupport.button(loginButton, loginButton.getText(), loginButton.getText());
+    AccessibilitySupport.button(
+        zhiziWebsiteButton, zhiziWebsiteButton.getText(), zhiziWebsiteButton.getText());
+    AccessibilitySupport.button(useZhiziButton, useZhiziButton.getText(), useZhiziButton.getText());
+    AccessibilitySupport.button(logoutButton, logoutButton.getText(), logoutButton.getText());
+    AccessibilitySupport.button(
+        localFromZhiziButton, localFromZhiziButton.getText(), localFromZhiziButton.getText());
+    AccessibilitySupport.button(importQrButton, importQrButton.getText(), importQrButton.getText());
+    AccessibilitySupport.button(useCustomButton, useCustomButton.getText(), useCustomButton.getText());
+    AccessibilitySupport.button(
+        localFromCustomButton, localFromCustomButton.getText(), localFromCustomButton.getText());
+    AccessibilitySupport.button(
+        showPasswordButton,
+        text("RemoteCompute.showPassword", "Show password"),
+        text("RemoteCompute.showPassword", "Show password"));
+    AccessibilitySupport.named(
+        rememberToken, rememberToken.getText(), rememberToken.getToolTipText());
+    AccessibilitySupport.named(
+        rememberPassword, rememberPassword.getText(), rememberPassword.getToolTipText());
+    AccessibilitySupport.named(
+        currentStatusLabel,
+        text("RemoteCompute.currentStatus", "Current compute status"),
+        currentStatusLabel.getText());
+    AccessibilitySupport.named(
+        statusLabel,
+        text("RemoteCompute.connectionStatus", "Connection status"),
+        statusLabel.getText());
+    AccessibilitySupport.named(
+        statusDot,
+        text("RemoteCompute.connectionIndicator", "Connection indicator"),
+        statusLabel.getText());
   }
 
   private static DocumentListener newChangeListener(Runnable action) {
@@ -1002,6 +1312,7 @@ public class RemoteComputeDialog extends JDialog {
     labelView.setForeground(MUTED);
     labelView.setFont(labelView.getFont().deriveFont(Font.BOLD, 14F));
     labelView.setPreferredSize(new Dimension(58, 44));
+    AccessibilitySupport.labelFor(labelView, field, placeholder);
     row.add(labelView, BorderLayout.WEST);
     row.add(field, BorderLayout.CENTER);
     return row;
@@ -1029,6 +1340,7 @@ public class RemoteComputeDialog extends JDialog {
     labelView.setForeground(MUTED);
     labelView.setFont(labelView.getFont().deriveFont(Font.BOLD, 14F));
     labelView.setPreferredSize(new Dimension(58, 44));
+    AccessibilitySupport.labelFor(labelView, field, placeholder);
     row.add(labelView, BorderLayout.WEST);
     row.add(inputShell, BorderLayout.CENTER);
     return row;
@@ -1095,6 +1407,19 @@ public class RemoteComputeDialog extends JDialog {
     return button;
   }
 
+  static int localizedButtonWidth(JButton button, int minimumWidth) {
+    return Math.max(minimumWidth, button.getPreferredSize().width);
+  }
+
+  static int localizedButtonGroupWidth(
+      int minimumWidth, int gap, int horizontalInsets, JButton... buttons) {
+    int width = horizontalInsets + Math.max(0, buttons.length - 1) * gap;
+    for (JButton button : buttons) {
+      width += localizedButtonWidth(button, 0);
+    }
+    return Math.max(minimumWidth, width);
+  }
+
   private Component fullWidth(JComponent component, int height) {
     JPanel wrapper = transparent(new BorderLayout());
     wrapper.setAlignmentX(Component.LEFT_ALIGNMENT);
@@ -1111,6 +1436,20 @@ public class RemoteComputeDialog extends JDialog {
     JPanel panel = new JPanel(layout);
     panel.setOpaque(false);
     return panel;
+  }
+
+  private static String text(String key, String fallback) {
+    try {
+      if (Lizzie.resourceBundle != null && Lizzie.resourceBundle.containsKey(key)) {
+        return Lizzie.resourceBundle.getString(key);
+      }
+    } catch (Exception error) {
+    }
+    return fallback;
+  }
+
+  private static String format(String key, String fallback, Object... arguments) {
+    return MessageFormat.format(text(key, fallback), arguments);
   }
 
   private interface BackgroundTask<T> {
@@ -1238,7 +1577,7 @@ public class RemoteComputeDialog extends JDialog {
       setBorder(new EmptyBorder(10, 16, 10, 16));
       setBorderPainted(false);
       setContentAreaFilled(false);
-      setFocusPainted(false);
+      setFocusPainted(true);
       setOpaque(false);
       setForeground(TEXT);
       setFont(getFont().deriveFont(Font.BOLD, 15F));
@@ -1264,11 +1603,11 @@ public class RemoteComputeDialog extends JDialog {
       setBorder(new EmptyBorder(0, 0, 0, 0));
       setBorderPainted(false);
       setContentAreaFilled(false);
-      setFocusPainted(false);
+      setFocusPainted(true);
       setOpaque(false);
       setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
       setRolloverEnabled(true);
-      setToolTipText("显示密码");
+      setToolTipText(text("RemoteCompute.showPassword", "Show password"));
     }
 
     @Override

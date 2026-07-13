@@ -76,10 +76,12 @@ public class KataGoAutoSetupDialog extends JDialog {
   private static final Color TEXT_SECONDARY = new Color(101, 106, 100);
   private static final String BENCHMARK_PROGRESS_KEY = "lizzie.benchmark.dialog.progress";
   private static final String WRAPPING_TEXT_KEY = "lizzie.autosetup.wrappingText";
+  private static final String INFO_HTML_PREFIX = "<html><div style='width: 360px'>";
+  private static final String INFO_HTML_SUFFIX = "</div></html>";
   private static final int MAX_INFO_TEXT_LENGTH = 104;
   private static final int GPU_INFO_TEXT_LENGTH = 132;
-  private static final int DIALOG_WIDTH = 820;
-  private static final int DIALOG_HEIGHT = 580;
+  private static final int DIALOG_WIDTH = 900;
+  private static final int DIALOG_HEIGHT = 620;
   private static final int VALUE_COLUMN_WIDTH = 390;
   private static final long ERROR_POPUP_DEDUP_MILLIS = 5000L;
   private static final String CARD_OVERVIEW = "overview";
@@ -219,6 +221,21 @@ public class KataGoAutoSetupDialog extends JDialog {
 
     content.add(createFooterPanel(), BorderLayout.SOUTH);
     wireActions();
+
+    AccessibilitySupport.progress(
+        progressBar,
+        text("Accessibility.autoSetupProgress"),
+        text("Accessibility.autoSetupProgressDescription"));
+    AccessibilitySupport.named(
+        cmbRemoteWeights,
+        text("Accessibility.downloadableWeights"),
+        text("Accessibility.downloadableWeightsDescription"));
+    AccessibilitySupport.named(
+        cmbLocalWeights,
+        text("Accessibility.downloadedWeights"),
+        text("Accessibility.downloadedWeightsDescription"));
+    AccessibilitySupport.applyToTree(content);
+    AccessibilitySupport.installEscapeAction(getRootPane(), this, this::closeOrCancelActiveTask);
 
     refreshState();
   }
@@ -459,7 +476,11 @@ public class KataGoAutoSetupDialog extends JDialog {
     try {
       dialog = new RemoteComputeDialog(JOptionPane.getFrameForComponent(this));
     } catch (IOException e) {
-      JOptionPane.showMessageDialog(this, e.getMessage(), "网络代理设置", JOptionPane.WARNING_MESSAGE);
+      JOptionPane.showMessageDialog(
+          this,
+          e.getMessage(),
+          text("NetworkProxy.settingsTitle"),
+          JOptionPane.WARNING_MESSAGE);
       return;
     }
     dialog.setVisible(true);
@@ -620,12 +641,25 @@ public class KataGoAutoSetupDialog extends JDialog {
     return gbc;
   }
 
-  private JPanel createActionBar(int alignment, JComponent... actions) {
-    JPanel actionBar = new JPanel(new FlowLayout(alignment, 6, 0));
+  static JPanel createActionBar(int alignment, JComponent... actions) {
+    JPanel actionBar = new JPanel(new BorderLayout());
     actionBar.setOpaque(false);
-    for (JComponent action : actions) {
-      actionBar.add(action);
+
+    JPanel actionGrid = new JPanel(new GridBagLayout());
+    actionGrid.setOpaque(false);
+    int columns = actions.length > 2 ? 2 : Math.max(1, actions.length);
+    for (int index = 0; index < actions.length; index++) {
+      GridBagConstraints constraints = new GridBagConstraints();
+      constraints.gridx = index % columns;
+      constraints.gridy = index / columns;
+      constraints.anchor = GridBagConstraints.EAST;
+      constraints.insets =
+          new Insets(constraints.gridy == 0 ? 0 : 6, constraints.gridx == 0 ? 0 : 6, 0, 0);
+      actionGrid.add(actions[index], constraints);
     }
+
+    actionBar.add(
+        actionGrid, alignment == FlowLayout.LEFT ? BorderLayout.LINE_START : BorderLayout.LINE_END);
     return actionBar;
   }
 
@@ -670,8 +704,9 @@ public class KataGoAutoSetupDialog extends JDialog {
     JFontLabel titleLabel = new JFontLabel(title);
     titleLabel.setForeground(TEXT_PRIMARY);
     titleLabel.setVerticalAlignment(wrappingText ? SwingConstants.TOP : SwingConstants.CENTER);
-    titleLabel.setPreferredSize(new Dimension(132, rowHeight));
-    titleLabel.setMinimumSize(new Dimension(118, Math.min(rowHeight, 32)));
+    int titleWidth = localizedRowLabelWidth(titleLabel);
+    titleLabel.setPreferredSize(new Dimension(titleWidth, rowHeight));
+    titleLabel.setMinimumSize(new Dimension(titleWidth, Math.min(rowHeight, 32)));
     panel.add(titleLabel, labelConstraints);
 
     GridBagConstraints valueConstraints = (GridBagConstraints) gbc.clone();
@@ -681,6 +716,10 @@ public class KataGoAutoSetupDialog extends JDialog {
     panel.add(valueComponent, valueConstraints);
 
     gbc.gridy += 1;
+  }
+
+  static int localizedRowLabelWidth(JLabel label) {
+    return Math.max(132, Math.min(240, label.getPreferredSize().width + 8));
   }
 
   private void constrainValueComponent(JComponent valueComponent) {
@@ -874,14 +913,15 @@ public class KataGoAutoSetupDialog extends JDialog {
     KataGoRuntimeHelper.NvidiaRuntimeStatus status =
         snapshot == null ? null : KataGoRuntimeHelper.inspectNvidiaRuntime(snapshot);
     if (status == null || !status.applicable) {
-      lblNvidiaRuntimeValue.setText(text("AutoSetup.nvidiaRuntimeNotApplicable"));
+      setWrappedInfoText(
+          lblNvidiaRuntimeValue, text("AutoSetup.nvidiaRuntimeNotApplicable"));
       lblNvidiaRuntimeValue.setToolTipText(null);
       lblNvidiaRuntimeValue.setForeground(Color.DARK_GRAY);
       btnInstallNvidiaRuntime.setEnabled(false);
       updateTensorRtInfo();
       return;
     }
-    lblNvidiaRuntimeValue.setText(status.detailText);
+    setWrappedInfoText(lblNvidiaRuntimeValue, status.detailText);
     lblNvidiaRuntimeValue.setToolTipText(status.detailText);
     lblNvidiaRuntimeValue.setForeground(status.ready ? OK_COLOR : WARN_COLOR);
     btnInstallNvidiaRuntime.setEnabled(activeDownloadSession == null && !status.ready);
@@ -907,10 +947,11 @@ public class KataGoAutoSetupDialog extends JDialog {
     }
     updateNvidiaGpuInfo(status);
     if (!status.applicable) {
+      String notApplicable = text("AutoSetup.tensorRtNotApplicable");
       setTensorRtLabel(
-          lblTensorRtDownloadValue, status.detailText, Color.DARK_GRAY, status.detailText);
+          lblTensorRtDownloadValue, notApplicable, Color.DARK_GRAY, status.detailText);
       setTensorRtLabel(
-          lblTensorRtConfigValue, status.detailText, Color.DARK_GRAY, status.detailText);
+          lblTensorRtConfigValue, notApplicable, Color.DARK_GRAY, status.detailText);
       btnInstallTensorRt.setText(text("AutoSetup.installTensorRt"));
       btnInstallTensorRt.setToolTipText(tensorRtButtonTooltip(status));
       btnInstallTensorRt.setEnabled(false);
@@ -968,9 +1009,27 @@ public class KataGoAutoSetupDialog extends JDialog {
   }
 
   private void setTensorRtLabel(JLabel label, String value, Color color, String tooltip) {
-    label.setText(value);
+    setWrappedInfoText(label, value);
     label.setForeground(color);
     label.setToolTipText(tooltip);
+  }
+
+  static void setWrappedInfoText(JLabel label, String value) {
+    String plainText = value == null ? "" : value;
+    String escaped =
+        plainText
+            .replace("&", "&amp;")
+            .replace("<", "&lt;")
+            .replace(">", "&gt;")
+            .replace("\r\n", "<br>")
+            .replace("\n", "<br>");
+    label.setText(INFO_HTML_PREFIX + escaped + INFO_HTML_SUFFIX);
+    label.getAccessibleContext().setAccessibleName(plainText);
+    int twoLineHeight = Math.max(32, label.getFontMetrics(label.getFont()).getHeight() * 2 + 4);
+    int height = Math.max(twoLineHeight, label.getPreferredSize().height);
+    label.setPreferredSize(new Dimension(VALUE_COLUMN_WIDTH, height));
+    label.setMinimumSize(new Dimension(260, height));
+    label.revalidate();
   }
 
   private void maybeStartNvidiaGpuDetection(KataGoRuntimeHelper.TensorRtInstallStatus status) {
@@ -1787,6 +1846,7 @@ public class KataGoAutoSetupDialog extends JDialog {
   }
 
   private void setBusy(boolean busy, String statusText, long downloadedBytes, long totalBytes) {
+    String previousStatus = progressStatusLabel.getText();
     if (statusText == null || statusText.trim().isEmpty()) {
       statusText = busy ? text("AutoSetup.benchmarking") : "";
     }
@@ -1814,6 +1874,7 @@ public class KataGoAutoSetupDialog extends JDialog {
     btnClose.setEnabled(true);
 
     progressPanel.setVisible(busy);
+    AccessibilitySupport.announce(progressStatusLabel, previousStatus, statusText);
     progressBar.setIndeterminate(busy && totalBytes <= 0);
     if (!busy) {
       progressStartedAtMillis = 0L;

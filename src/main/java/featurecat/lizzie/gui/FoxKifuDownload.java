@@ -89,6 +89,7 @@ public class FoxKifuDownload extends JFrame {
     }
     setAlwaysOnTop(Lizzie.frame.isAlwaysOnTop());
     setLocationRelativeTo(Lizzie.frame);
+    LizzieFrame.constrainWindowToAvailableWorkArea(this);
 
     foxKifuInfos = new ArrayList<KifuInfo>();
     loadRecentSearches();
@@ -116,6 +117,8 @@ public class FoxKifuDownload extends JFrame {
           }
         });
     searchPanel.add(txtUserName);
+    AccessibilitySupport.labelFor(
+        lblUserName, txtUserName, Lizzie.resourceBundle.getString("FoxKifuDownload.lblUserName"));
 
     JButton btnSearch =
         new JFontButton(Lizzie.resourceBundle.getString("FoxKifuDownload.btnSearch"));
@@ -280,6 +283,12 @@ public class FoxKifuDownload extends JFrame {
     lblTab = new JFontLabel("1/1");
     lblTab.setPreferredSize(new Dimension(Config.menuHeight * 3, Config.menuHeight));
     buttonPane.add(lblTab);
+    AccessibilitySupport.named(
+        table,
+        Lizzie.resourceBundle.getString("FoxKifuDownload.title"),
+        Lizzie.resourceBundle.getString("FoxKifuDownload.title"));
+    AccessibilitySupport.applyToTree(getContentPane());
+    AccessibilitySupport.installEscapeToClose(getRootPane(), this);
   }
 
   private void reloadCurrentPage() {
@@ -331,10 +340,7 @@ public class FoxKifuDownload extends JFrame {
     }
     if (isKifuLoading) {
       Utils.showMsg(
-          Lizzie.frame.kifuLoadText(
-              "KifuLoad.wait",
-              "请等待当前棋谱加载完成。",
-              "Please wait for the current game record to finish loading."),
+          Lizzie.frame.kifuLoadText("KifuLoad.wait"),
           this);
       return;
     }
@@ -360,10 +366,7 @@ public class FoxKifuDownload extends JFrame {
     saveConfigQuietly();
     showProgressNotice(
         MessageFormat.format(
-            Lizzie.frame.kifuLoadText(
-                "KifuLoad.foxSearching",
-                "正在搜索野狐账号 \"{0}\"，请稍候…",
-                "Searching Fox account \"{0}\", please wait..."),
+            Lizzie.frame.kifuLoadText("KifuLoad.foxSearching"),
             normalizedUser));
     foxReq.sendCommand("user_name " + normalizedUser);
   }
@@ -377,9 +380,7 @@ public class FoxKifuDownload extends JFrame {
     }
     isKifuLoading = true;
     setTableBusy(true);
-    String message =
-        Lizzie.frame.kifuLoadText(
-            "KifuLoad.foxDownloading", "正在下载棋谱…", "Downloading game record...");
+    String message = Lizzie.frame.kifuLoadText("KifuLoad.foxDownloading");
     showProgressNotice(message);
     foxReq.sendCommand("chessid " + chessid.trim());
   }
@@ -394,8 +395,10 @@ public class FoxKifuDownload extends JFrame {
     Runnable show =
         () -> {
           ensureProgressOverlay();
+          String previousMessage = progressMessageLabel.getText();
           progressMessageLabel.setText(message);
           progressBar.setString(message);
+          AccessibilitySupport.announce(progressMessageLabel, previousMessage, message);
           presentWindow();
           progressGlassPane.setVisible(true);
           progressGlassPane.revalidate();
@@ -447,7 +450,11 @@ public class FoxKifuDownload extends JFrame {
     progressBar = new JProgressBar();
     progressBar.setIndeterminate(true);
     progressBar.setStringPainted(true);
-    progressBar.setString(Lizzie.frame.kifuLoadText("KifuLoad.processing", "处理中...", "Working..."));
+    progressBar.setString(Lizzie.frame.kifuLoadText("KifuLoad.processing"));
+    AccessibilitySupport.progress(
+        progressBar,
+        Lizzie.frame.kifuLoadText("Accessibility.kifuLoadProgress"),
+        Lizzie.frame.kifuLoadText("Accessibility.kifuLoadProgressDescription"));
     progressBar.setPreferredSize(new Dimension(360, 22));
     card.add(progressBar, BorderLayout.SOUTH);
 
@@ -497,8 +504,7 @@ public class FoxKifuDownload extends JFrame {
       }
       if (jsonObject.has("chess")) {
         String kifu = jsonObject.getString("chess");
-        showProgressNotice(
-            Lizzie.frame.kifuLoadText("KifuLoad.parsing", "正在解析棋谱…", "Parsing game record..."));
+        showProgressNotice(Lizzie.frame.kifuLoadText("KifuLoad.parsing"));
         boolean loaded =
             Lizzie.frame.loadDownloadedSgfString(kifu, 0, Lizzie.config.readKomi, false, null);
         if (loaded) {
@@ -550,9 +556,7 @@ public class FoxKifuDownload extends JFrame {
   }
 
   private void finishFoxKifuLoadAfterMainPaint() {
-    showProgressNotice(
-        Lizzie.frame.kifuLoadText(
-            "KifuLoad.refreshing", "正在刷新胜率曲线…", "Refreshing winrate graph..."));
+    showProgressNotice(Lizzie.frame.kifuLoadText("KifuLoad.refreshing"));
     KifuLoadFinisher.finishAfterRefresh(
         new Runnable() {
           public void run() {

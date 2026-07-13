@@ -1,6 +1,7 @@
 package featurecat.lizzie.gui;
 
 import featurecat.lizzie.Config;
+import featurecat.lizzie.AppLocale;
 import featurecat.lizzie.Lizzie;
 import featurecat.lizzie.analysis.EngineManager;
 import featurecat.lizzie.analysis.FastLink;
@@ -5229,68 +5230,34 @@ public class Menu extends JMenuBar {
     final JFontCheckBoxMenuItem languageDefault =
         new JFontCheckBoxMenuItem(resourceBundle.getString("menu.language.default"));
     language.add(languageDefault);
-    languageDefault.addActionListener(
-        new ActionListener() {
-          public void actionPerformed(ActionEvent e) {
-            Lizzie.config.useLanguage = 0;
-            Lizzie.config.uiConfig.put("use-language", Lizzie.config.useLanguage);
-            Utils.showMsg(Lizzie.resourceBundle.getString("Lizzie.hint.restart"));
-          }
-        });
+    languageDefault.addActionListener(event -> selectLanguage(AppLocale.SYSTEM));
 
-    final JFontCheckBoxMenuItem languageZH = new JFontCheckBoxMenuItem("中文");
+    final JFontCheckBoxMenuItem languageZH = new JFontCheckBoxMenuItem("简体中文");
     language.add(languageZH);
-    languageZH.addActionListener(
-        new ActionListener() {
-          public void actionPerformed(ActionEvent e) {
-            Lizzie.config.useLanguage = 1;
-            Lizzie.config.uiConfig.put("use-language", Lizzie.config.useLanguage);
-            Utils.showMsg(
-                ResourceBundle.getBundle("l10n.DisplayStrings", Locale.CHINA)
-                    .getString("Lizzie.hint.restart"));
-          }
-        });
+    languageZH.addActionListener(event -> selectLanguage(AppLocale.SIMPLIFIED_CHINESE));
+
+    final JFontCheckBoxMenuItem languageTW = new JFontCheckBoxMenuItem("繁體中文");
+    language.add(languageTW);
+    languageTW.addActionListener(event -> selectLanguage(AppLocale.TRADITIONAL_CHINESE));
 
     final JFontCheckBoxMenuItem languageEN = new JFontCheckBoxMenuItem("English");
     language.add(languageEN);
-    languageEN.addActionListener(
-        new ActionListener() {
-          public void actionPerformed(ActionEvent e) {
-            Lizzie.config.useLanguage = 2;
-            Lizzie.config.uiConfig.put("use-language", Lizzie.config.useLanguage);
-            Utils.showMsg(
-                ResourceBundle.getBundle("l10n.DisplayStrings", Locale.US)
-                    .getString("Lizzie.hint.restart"));
-          }
-        });
-
-    final JFontCheckBoxMenuItem languageKR = new JFontCheckBoxMenuItem("한국어");
-    languageKR.setFont(new Font("맑은 고딕", Font.PLAIN, Config.frameFontSize));
-    language.add(languageKR);
-    languageKR.addActionListener(
-        new ActionListener() {
-          public void actionPerformed(ActionEvent e) {
-            Lizzie.config.useLanguage = 3;
-            Lizzie.config.uiConfig.put("use-language", Lizzie.config.useLanguage);
-            Utils.showMsg(
-                ResourceBundle.getBundle("l10n.DisplayStrings", Locale.KOREAN)
-                    .getString("Lizzie.hint.restart"));
-          }
-        });
+    languageEN.addActionListener(event -> selectLanguage(AppLocale.ENGLISH));
 
     final JFontCheckBoxMenuItem languageJP = new JFontCheckBoxMenuItem("日本語");
     languageJP.setFont(new Font("Yu Gothic UI", Font.PLAIN, Config.frameFontSize));
     language.add(languageJP);
-    languageJP.addActionListener(
-        new ActionListener() {
-          public void actionPerformed(ActionEvent e) {
-            Lizzie.config.useLanguage = 4;
-            Lizzie.config.uiConfig.put("use-language", Lizzie.config.useLanguage);
-            Utils.showMsg(
-                ResourceBundle.getBundle("l10n.DisplayStrings", Locale.JAPAN)
-                    .getString("Lizzie.hint.restart"));
-          }
-        });
+    languageJP.addActionListener(event -> selectLanguage(AppLocale.JAPANESE));
+
+    final JFontCheckBoxMenuItem languageKR = new JFontCheckBoxMenuItem("한국어");
+    languageKR.setFont(new Font("맑은 고딕", Font.PLAIN, Config.frameFontSize));
+    language.add(languageKR);
+    languageKR.addActionListener(event -> selectLanguage(AppLocale.KOREAN));
+
+    final JFontCheckBoxMenuItem languageTH = new JFontCheckBoxMenuItem("ไทย");
+    languageTH.setFont(new Font("Dialog", Font.PLAIN, Config.frameFontSize));
+    language.add(languageTH);
+    languageTH.addActionListener(event -> selectLanguage(AppLocale.THAI));
 
     final JFontMenu frameFontSize =
         new JFontMenu(resourceBundle.getString("menu.frameFontSize")); // 界面字体大小
@@ -5419,14 +5386,18 @@ public class Menu extends JMenuBar {
             else notPlaySoundInSync.setState(false);
             languageDefault.setState(false);
             languageZH.setState(false);
+            languageTW.setState(false);
             languageEN.setState(false);
             languageKR.setState(false);
             languageJP.setState(false);
+            languageTH.setState(false);
             if (Lizzie.config.useLanguage == 0) languageDefault.setState(true);
             if (Lizzie.config.useLanguage == 1) languageZH.setState(true);
             if (Lizzie.config.useLanguage == 2) languageEN.setState(true);
             if (Lizzie.config.useLanguage == 3) languageKR.setState(true);
             if (Lizzie.config.useLanguage == 4) languageJP.setState(true);
+            if (Lizzie.config.useLanguage == 5) languageTW.setState(true);
+            if (Lizzie.config.useLanguage == 6) languageTH.setState(true);
             if (Lizzie.config.useJavaLooks) {
               frameLooksJava.setState(true);
               frameLooksSystem.setSelected(false);
@@ -5754,6 +5725,10 @@ public class Menu extends JMenuBar {
     txtPDA.setDocument(new DoubleDocument());
     txtPDA.setHorizontalAlignment(JFontTextField.RIGHT);
     txtPDA.setFocusable(true);
+    AccessibilitySupport.labelFor(
+        lblKomiSpinner, txtKomi, resourceBundle.getString("Menu.komi"));
+    AccessibilitySupport.labelFor(
+        lblPDASpinner, txtPDA, resourceBundle.getString("Menu.chkPDA.toolTopText"));
     txtPDA.addKeyListener(
         new KeyAdapter() {
           @Override
@@ -5779,6 +5754,7 @@ public class Menu extends JMenuBar {
     }
     btnKomiUp = new JFontButton(komiUp);
     btnKomiUp.setFocusable(false);
+    btnKomiUp.setToolTipText(resourceBundle.getString("Accessibility.increaseKomi"));
 
     ImageIcon komiDown;
     komiDown = new ImageIcon();
@@ -5790,6 +5766,7 @@ public class Menu extends JMenuBar {
     }
     btnKomiDown = new JFontButton(komiDown);
     btnKomiDown.setFocusable(false);
+    btnKomiDown.setToolTipText(resourceBundle.getString("Accessibility.decreaseKomi"));
 
     btnKomiUp.addActionListener(
         new ActionListener() {
@@ -6019,6 +5996,7 @@ public class Menu extends JMenuBar {
 
     more2 = new JFontButton("...");
     more2.setFocusable(false);
+    more2.setToolTipText(resourceBundle.getString("Accessibility.pdaOptions"));
     more2.addActionListener(
         new ActionListener() {
           public void actionPerformed(ActionEvent e) {
@@ -6541,6 +6519,22 @@ public class Menu extends JMenuBar {
     tencentKifuDownload.presentWindow();
   }
 
+  private void selectLanguage(AppLocale locale) {
+    Lizzie.config.useLanguage = locale.configValue();
+    Lizzie.config.uiConfig.put("use-language", locale.configValue());
+    try {
+      Lizzie.config.save();
+    } catch (IOException error) {
+      error.printStackTrace();
+    }
+    ResourceBundle selectedBundle = locale.loadBundle();
+    String restartMessage =
+        selectedBundle.containsKey("Lizzie.hint.restart")
+            ? selectedBundle.getString("Lizzie.hint.restart")
+            : Lizzie.resourceBundle.getString("Lizzie.hint.restart");
+    Utils.showMsg(restartMessage);
+  }
+
   private void persistUiSettings() {
     try {
       Lizzie.config.save();
@@ -7035,6 +7029,8 @@ public class Menu extends JMenuBar {
     }
     btnDoubleMenu = new JFontButton();
     btnDoubleMenu.setFocusable(false);
+    btnDoubleMenu.setToolTipText(
+        resourceBundle.getString("Accessibility.toolbarDetailsDescription"));
     if (Lizzie.config.showDoubleMenu) btnDoubleMenu.setIcon(iconUp);
     else btnDoubleMenu.setIcon(iconDown);
     btnDoubleMenu.setMargin(new Insets(0, 0, 0, 0));
@@ -7376,6 +7372,8 @@ public class Menu extends JMenuBar {
     selectAllowMore = new JButton(horizonDown);
     selectAllowMore.setMargin(new Insets(0, 0, 0, 0));
     selectAllowMore.setFocusable(false);
+    selectAllowMore.setToolTipText(
+        resourceBundle.getString("Accessibility.allowMoveOptions"));
     selectAllowMore.setPreferredSize(
         new Dimension(
             (Lizzie.config.isFrameFontSmall() ? 12 : (Lizzie.config.isFrameFontMiddle() ? 15 : 18)),
@@ -7533,6 +7531,8 @@ public class Menu extends JMenuBar {
     selectAvoidMore = new JButton(horizonDown);
     selectAvoidMore.setMargin(new Insets(0, 0, 0, 0));
     selectAvoidMore.setFocusable(false);
+    selectAvoidMore.setToolTipText(
+        resourceBundle.getString("Accessibility.avoidMoveOptions"));
     selectAvoidMore.setPreferredSize(
         new Dimension(
             (Lizzie.config.isFrameFontSmall() ? 12 : (Lizzie.config.isFrameFontMiddle() ? 15 : 18)),
@@ -8090,6 +8090,7 @@ public class Menu extends JMenuBar {
       if (Lizzie.frame.markupType == 1) btnMarkupLabel.setIcon(markupLabel2);
       else btnMarkupLabel.setIcon(markupLabel1);
       btnMarkupLabel.setFocusable(false);
+      btnMarkupLabel.setToolTipText(resourceBundle.getString("Accessibility.markupLetter"));
       btnMarkupLabel.setPreferredSize(new Dimension(Config.menuHeight, Config.menuHeight));
       btnMarkupLabel.addActionListener(
           new ActionListener() {
@@ -8104,6 +8105,7 @@ public class Menu extends JMenuBar {
       if (Lizzie.frame.markupType == 7) btnMarkupLabelNum.setIcon(markupLabelNum2);
       else btnMarkupLabelNum.setIcon(markupLabelNum1);
       btnMarkupLabelNum.setFocusable(false);
+      btnMarkupLabelNum.setToolTipText(resourceBundle.getString("Accessibility.markupNumber"));
       btnMarkupLabelNum.setPreferredSize(new Dimension(Config.menuHeight, Config.menuHeight));
       btnMarkupLabelNum.addActionListener(
           new ActionListener() {
@@ -8118,6 +8120,7 @@ public class Menu extends JMenuBar {
       if (Lizzie.frame.markupType == 2) btnMarkupCircle.setIcon(markupCircle2);
       else btnMarkupCircle.setIcon(markupCircle1);
       btnMarkupCircle.setFocusable(false);
+      btnMarkupCircle.setToolTipText(resourceBundle.getString("Accessibility.markupCircle"));
       btnMarkupCircle.setPreferredSize(new Dimension(Config.menuHeight, Config.menuHeight));
       btnMarkupCircle.addActionListener(
           new ActionListener() {
@@ -8132,6 +8135,7 @@ public class Menu extends JMenuBar {
       if (Lizzie.frame.markupType == 3) btnMarkupX.setIcon(markupX2);
       else btnMarkupX.setIcon(markupX1);
       btnMarkupX.setFocusable(false);
+      btnMarkupX.setToolTipText(resourceBundle.getString("Accessibility.markupCross"));
       btnMarkupX.setPreferredSize(new Dimension(Config.menuHeight, Config.menuHeight));
       btnMarkupX.addActionListener(
           new ActionListener() {
@@ -8146,6 +8150,7 @@ public class Menu extends JMenuBar {
       if (Lizzie.frame.markupType == 4) btnMarkupSquare.setIcon(markupSquare2);
       else btnMarkupSquare.setIcon(markupSquare1);
       btnMarkupSquare.setFocusable(false);
+      btnMarkupSquare.setToolTipText(resourceBundle.getString("Accessibility.markupSquare"));
       btnMarkupSquare.setPreferredSize(new Dimension(Config.menuHeight, Config.menuHeight));
       btnMarkupSquare.addActionListener(
           new ActionListener() {
@@ -8160,6 +8165,7 @@ public class Menu extends JMenuBar {
       if (Lizzie.frame.markupType == 5) btnMarkupTri.setIcon(markupsanjiao2);
       else btnMarkupTri.setIcon(markupsanjiao1);
       btnMarkupTri.setFocusable(false);
+      btnMarkupTri.setToolTipText(resourceBundle.getString("Accessibility.markupTriangle"));
       btnMarkupTri.setPreferredSize(new Dimension(Config.menuHeight, Config.menuHeight));
       btnMarkupTri.addActionListener(
           new ActionListener() {
@@ -8174,6 +8180,7 @@ public class Menu extends JMenuBar {
       if (Lizzie.frame.markupType == 6) btnMarkupEraser.setIcon(eraser2);
       else btnMarkupEraser.setIcon(eraser1);
       btnMarkupEraser.setFocusable(false);
+      btnMarkupEraser.setToolTipText(resourceBundle.getString("Accessibility.markupEraser"));
       btnMarkupEraser.setPreferredSize(new Dimension(Config.menuHeight, Config.menuHeight));
       btnMarkupEraser.addActionListener(
           new ActionListener() {
@@ -8420,6 +8427,8 @@ public class Menu extends JMenuBar {
 
       JButton selectAllowMore = new JButton(horizonDown);
       selectAllowMore.setFocusable(false);
+      selectAllowMore.setToolTipText(
+          resourceBundle.getString("Accessibility.allowMoveOptions"));
       selectAllowMore.setPreferredSize(
           new Dimension(
               (Lizzie.config.isFrameFontSmall()
@@ -8585,6 +8594,8 @@ public class Menu extends JMenuBar {
 
       JButton selectAvoidMore = new JButton(horizonDown);
       selectAvoidMore.setFocusable(false);
+      selectAvoidMore.setToolTipText(
+          resourceBundle.getString("Accessibility.avoidMoveOptions"));
       selectAvoidMore.setPreferredSize(
           new Dimension(
               (Lizzie.config.isFrameFontSmall()

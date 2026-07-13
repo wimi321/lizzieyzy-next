@@ -4,7 +4,6 @@ import featurecat.lizzie.Config;
 import featurecat.lizzie.Lizzie;
 import featurecat.lizzie.analysis.remote.EngineTransport;
 import featurecat.lizzie.analysis.remote.RemoteComputeConfig;
-import featurecat.lizzie.gui.BundledEngineStartupDialog;
 import featurecat.lizzie.gui.EngineData;
 import featurecat.lizzie.gui.EngineFailedMessage;
 import featurecat.lizzie.gui.JFontCheckBox;
@@ -28,6 +27,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -127,7 +127,6 @@ public class Leelaz {
   public boolean started = false;
   public boolean isDownWithError = false;
   public boolean isLoaded = false;
-  private transient BundledEngineStartupDialog bundledStartupDialog;
   private volatile long bundledStartupToken = 0L;
   public boolean isCheckingVersion;
   public boolean isCheckingName;
@@ -545,7 +544,9 @@ public class Leelaz {
                         ? Lizzie.resourceBundle.getString("Leelaz.engineStartNoExceptionMessage")
                         : err),
                 true);
-            LizzieFrame.openMoreEngineDialog();
+            if (shouldOpenInteractiveDiagnostic()) {
+              LizzieFrame.openMoreEngineDialog();
+            }
           } catch (JSONException e1) {
             e1.printStackTrace();
             isDownWithError = true;
@@ -584,7 +585,9 @@ public class Leelaz {
                       ? Lizzie.resourceBundle.getString("Leelaz.engineStartNoExceptionMessage")
                       : err),
               true);
-          LizzieFrame.openMoreEngineDialog();
+          if (shouldOpenInteractiveDiagnostic()) {
+            LizzieFrame.openMoreEngineDialog();
+          }
         } catch (JSONException e1) {
           // TODO Auto-generated catch block
           e1.printStackTrace();
@@ -5118,6 +5121,19 @@ public class Leelaz {
 
   public void tryToDignostic(String message, boolean isModal) {
     closeBundledStartupDialog();
+    boolean primaryEngine = this == Lizzie.leelaz;
+    if (primaryEngine) {
+      if (hasMissingLocalStartupAsset(commands, useRemoteCompute, useJavaSSH)) {
+        Lizzie.engineStartupStatus.needsRepair(
+            "EngineStartup.needsRepair", "AI is not ready - click to repair", message);
+      } else {
+        Lizzie.engineStartupStatus.failed(
+            "EngineStartup.failed", "AI failed to start - click to repair", message);
+      }
+    }
+    if (!shouldOpenInteractiveDiagnostic(primaryEngine, Lizzie.isFirstLaunchSession())) {
+      return;
+    }
     if (!Lizzie.config.autoCheckEngineAlive && EngineManager.isEngineGame())
       Lizzie.engineManager.clearEngineGame();
     if (engineFailedMessage != null && engineFailedMessage.isVisible()) return;
@@ -5126,6 +5142,43 @@ public class Leelaz {
             commands, engineCommand, message, !useJavaSSH && OS.isWindows(), true, false);
     engineFailedMessage.setModal(isModal);
     engineFailedMessage.setVisible(true);
+  }
+
+  private boolean shouldOpenInteractiveDiagnostic() {
+    return shouldOpenInteractiveDiagnostic(this == Lizzie.leelaz, Lizzie.isFirstLaunchSession());
+  }
+
+  static boolean shouldOpenInteractiveDiagnostic(
+      boolean primaryEngine, boolean firstLaunchSession) {
+    return !primaryEngine && !firstLaunchSession;
+  }
+
+  static boolean hasMissingLocalStartupAsset(
+      List<String> commandParts, boolean remoteCompute, boolean javaSsh) {
+    if (remoteCompute || javaSsh || commandParts == null || commandParts.isEmpty()) {
+      return false;
+    }
+    try {
+      Path executable = KataGoRuntimeHelper.resolveCommandExecutable(commandParts);
+      if (executable != null && executable.isAbsolute() && !Files.isRegularFile(executable)) {
+        return true;
+      }
+      for (int i = 0; i + 1 < commandParts.size(); i++) {
+        String option = commandParts.get(i);
+        if (!"-model".equals(option)
+            && !"--model".equals(option)
+            && !"-config".equals(option)
+            && !"--config".equals(option)) {
+          continue;
+        }
+        Path asset = Path.of(commandParts.get(i + 1));
+        if (asset.isAbsolute() && !Files.isRegularFile(asset)) {
+          return true;
+        }
+      }
+    } catch (Exception ignored) {
+    }
+    return false;
   }
 
   //	public String currentWeight() {
@@ -5176,28 +5229,14 @@ public class Leelaz {
     }
     final boolean nvidiaBundled = KataGoRuntimeHelper.isNvidiaBundledPath(engineExecutable);
     final int totalSteps = nvidiaBundled ? 4 : 3;
-    final String statusText = text(statusKey, statusFallback);
-    final String hintText = text(hintKey, hintFallback);
-    SwingUtilities.invokeLater(
-        () -> {
-          if (bundledStartupDialog == null || !bundledStartupDialog.isDisplayable()) {
-            bundledStartupDialog = new BundledEngineStartupDialog(nvidiaBundled);
-          }
-          bundledStartupDialog.updateStage(step, totalSteps, statusText, hintText);
-          if (!bundledStartupDialog.isVisible()) {
-            bundledStartupDialog.setVisible(true);
-          }
-        });
+    String progressFallback = statusFallback + " (" + step + "/" + totalSteps + ")";
+    Lizzie.engineStartupStatus.checking(statusKey, progressFallback);
   }
 
   private void closeBundledStartupDialog() {
-    SwingUtilities.invokeLater(
-        () -> {
-          if (bundledStartupDialog != null) {
-            bundledStartupDialog.closeDialog();
-            bundledStartupDialog = null;
-          }
-        });
+    if (isLoaded && this == Lizzie.leelaz) {
+      Lizzie.markEngineReady();
+    }
   }
 
   private void startBundledStartupWatchdog(long token, Path engineExecutable) {
@@ -5259,7 +5298,9 @@ public class Leelaz {
                     closeBundledStartupDialog();
                     try {
                       tryToDignostic(message, true);
-                      LizzieFrame.openMoreEngineDialog();
+                      if (shouldOpenInteractiveDiagnostic()) {
+                        LizzieFrame.openMoreEngineDialog();
+                      }
                     } catch (JSONException e) {
                       e.printStackTrace();
                     }
