@@ -1,5 +1,7 @@
 package featurecat.lizzie.gui;
 
+import static org.junit.jupiter.api.Assertions.assertAll;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -109,6 +111,28 @@ class SnapshotNodeRenderGateTest {
   }
 
   @Test
+  void branchPreviewMoveNumbersIgnoreMainBoardRenumberingFromOne() throws Exception {
+    TestEnvironment env = TestEnvironment.open();
+    try {
+      Board board = boardWithRoot(BoardData.empty(BOARD_SIZE, BOARD_SIZE));
+      Lizzie.board = board;
+      Branch branch = branchWith(sevenMoveBranchPreview());
+
+      BoardRenderer renderer = new BoardRenderer(false);
+      renderer.branchOpt = Optional.of(branch);
+      renderer.setDisplayedBranchLength(branch.length);
+      configureOverlayRenderer(renderer);
+
+      assertAll(
+          "candidate previews should keep their positive local move numbers",
+          () -> assertBranchPreviewMoveNumbersUnchanged(renderer, 1),
+          () -> assertBranchPreviewMoveNumbersUnchanged(renderer, 5));
+    } finally {
+      env.close();
+    }
+  }
+
+  @Test
   void floatBoardBranchSnapshotWithMarkerDrawsNoOverlay() throws Exception {
     TestEnvironment env = TestEnvironment.open();
     try {
@@ -140,6 +164,27 @@ class SnapshotNodeRenderGateTest {
     } finally {
       graphics.dispose();
     }
+  }
+
+  private static void assertBranchPreviewMoveNumbersUnchanged(
+      BoardRenderer renderer, int allowMoveNumber) throws Exception {
+    Lizzie.config.allowMoveNumber = allowMoveNumber;
+    Lizzie.config.showMoveNumberFromOne = false;
+    int[] expected = pixels(renderOverlay(renderer, BoardRenderer.class, "drawMoveNumbers"));
+
+    Lizzie.config.showMoveNumberFromOne = true;
+    int[] actual = pixels(renderOverlay(renderer, BoardRenderer.class, "drawMoveNumbers"));
+
+    assertArrayEquals(
+        expected,
+        actual,
+        "last "
+            + allowMoveNumber
+            + " should not renumber the complete candidate preview sequence");
+  }
+
+  private static int[] pixels(BufferedImage image) {
+    return image.getRGB(0, 0, image.getWidth(), image.getHeight(), null, 0, image.getWidth());
   }
 
   private static boolean hasVisiblePaint(BufferedImage image) {
@@ -204,6 +249,31 @@ class SnapshotNodeRenderGateTest {
     moveNumberList[Board.getIndex(1, 0)] = 2;
     return BoardData.move(
         stones, new int[] {1, 0}, Stone.WHITE, true, new Zobrist(), 2, moveNumberList, 0, 0, 50, 0);
+  }
+
+  private static BoardData sevenMoveBranchPreview() {
+    Stone[] stones = emptyStones();
+    stones[Board.getIndex(0, 0)] = Stone.BLACK;
+    stones[Board.getIndex(1, 0)] = Stone.WHITE;
+    stones[Board.getIndex(0, 1)] = Stone.WHITE;
+    stones[Board.getIndex(1, 1)] = Stone.BLACK;
+    int[] moveNumberList = new int[BOARD_AREA];
+    moveNumberList[Board.getIndex(0, 0)] = 1;
+    moveNumberList[Board.getIndex(1, 0)] = 2;
+    moveNumberList[Board.getIndex(0, 1)] = 6;
+    moveNumberList[Board.getIndex(1, 1)] = 7;
+    return BoardData.move(
+        stones,
+        new int[] {1, 1},
+        Stone.BLACK,
+        false,
+        new Zobrist(),
+        7,
+        moveNumberList,
+        0,
+        0,
+        50,
+        0);
   }
 
   private static Board boardWithRoot(BoardData root) throws Exception {
