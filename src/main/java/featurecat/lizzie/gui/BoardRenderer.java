@@ -2027,6 +2027,7 @@ public class BoardRenderer {
           }
           String moveNumberString = String.valueOf(mvNum);
           if (!showAllinBranch
+              && !branchOpt.isPresent()
               && Lizzie.config.showMoveNumberFromOne
               && Lizzie.config.allowMoveNumber > 0) {
             if (lastMoveNumber > Lizzie.config.allowMoveNumber) {
