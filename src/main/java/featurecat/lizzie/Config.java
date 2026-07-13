@@ -3330,10 +3330,14 @@ public class Config {
   }
 
   static void applyFirstLaunchDefaults(JSONObject ui, boolean newProfile) {
+    applyFirstLaunchDefaults(ui, newProfile, Locale.getDefault());
+  }
+
+  static void applyFirstLaunchDefaults(JSONObject ui, boolean newProfile, Locale systemLocale) {
     if (!newProfile || ui == null) {
       return;
     }
-    ui.put("use-language", AppLocale.SIMPLIFIED_CHINESE.configValue());
+    ui.put("use-language", AppLocale.fromSystemLocale(systemLocale).configValue());
     // First launch must reach the board without a minutes-long benchmark dialog. Users can run
     // the same official benchmark explicitly from KataGo Auto Setup when convenient.
     ui.put("enable-startup-benchmark", false);
