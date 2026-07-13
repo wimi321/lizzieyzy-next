@@ -57,6 +57,26 @@ class LocalizationResourceParityTest {
     }
   }
 
+  @Test
+  void simplifiedChineseRemoteComputeUsesCanonicalZhiziBrandAndNaturalCopy()
+      throws IOException {
+    ResourceFile simplified = read(ROOT.resolve("DisplayStrings_zh_CN.properties"));
+    assertEquals("智子云算力", simplified.values.get("RemoteCompute.zhizi"));
+
+    List<String> forbiddenFragments =
+        List.of("知子", "直子", "-click", "顶部-up", "KaTrain-compatible", "VIP worker");
+    for (Map.Entry<String, String> entry : simplified.values.entrySet()) {
+      if (!entry.getKey().startsWith("RemoteCompute.")) {
+        continue;
+      }
+      for (String fragment : forbiddenFragments) {
+        assertFalse(
+            entry.getValue().contains(fragment),
+            entry.getKey() + " contains an invalid Chinese localization fragment: " + fragment);
+      }
+    }
+  }
+
   private static ResourceFile read(Path path) throws IOException {
     Map<String, String> values = new LinkedHashMap<>();
     List<String> duplicates = new ArrayList<>();

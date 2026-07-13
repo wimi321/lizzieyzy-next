@@ -297,6 +297,77 @@ class RemoteComputeConfigTest {
                 }));
   }
 
+  @Test
+  void startupWithoutRememberedZhiziLoginUsesLocalEngineForThisSessionOnly() throws Exception {
+    withConfig(
+        () -> {
+          RemoteComputeConfig.clearZhiziToken();
+          ArrayList<EngineData> engines = new ArrayList<>();
+          EngineData local = new EngineData();
+          local.index = 0;
+          local.commands = "katago.exe gtp -config default.cfg";
+          local.name = "Local KataGo";
+          local.isDefault = false;
+          engines.add(local);
+
+          EngineData zhizi = new EngineData();
+          zhizi.index = 1;
+          zhizi.commands = RemoteComputeConfig.COMMAND_ZHIZI;
+          zhizi.name = "智子云算力";
+          zhizi.isDefault = true;
+          engines.add(zhizi);
+          Utils.saveEngineSettings(engines);
+          Lizzie.config.uiConfig.put("default-engine", 1);
+          Lizzie.config.uiConfig.put("last-engine", 1);
+
+          RemoteComputeConfig.State state = RemoteComputeConfig.load();
+          state.provider = RemoteComputeConfig.PROVIDER_ZHIZI;
+          RemoteComputeConfig.save(state);
+
+          RemoteComputeConfig.StartupSelection defaultSelection =
+              RemoteComputeConfig.resolveStartupSelection(-1, true);
+          RemoteComputeConfig.StartupSelection lastSelection =
+              RemoteComputeConfig.resolveStartupSelection(1, false);
+
+          assertEquals(0, defaultSelection.engineIndex);
+          assertFalse(defaultSelection.loadDefault);
+          assertEquals(0, lastSelection.engineIndex);
+          assertFalse(lastSelection.loadDefault);
+          assertEquals(RemoteComputeConfig.PROVIDER_ZHIZI, RemoteComputeConfig.load().provider);
+          assertEquals(1, Lizzie.config.uiConfig.optInt("default-engine", -1));
+          assertEquals(1, Lizzie.config.uiConfig.optInt("last-engine", -1));
+          assertTrue(Utils.getEngineData().get(1).isDefault);
+        });
+  }
+
+  @Test
+  void startupKeepsZhiziSelectedWhenRememberedLoginIsAvailable() throws Exception {
+    withConfig(
+        () -> {
+          RemoteComputeConfig.clearZhiziToken();
+          ArrayList<EngineData> engines = new ArrayList<>();
+          EngineData local = new EngineData();
+          local.index = 0;
+          local.commands = "katago.exe gtp -config default.cfg";
+          engines.add(local);
+
+          EngineData zhizi = new EngineData();
+          zhizi.index = 1;
+          zhizi.commands = RemoteComputeConfig.COMMAND_ZHIZI;
+          zhizi.isDefault = true;
+          engines.add(zhizi);
+          Utils.saveEngineSettings(engines);
+
+          RemoteComputeConfig.saveZhiziToken(
+              "remembered-token", true, RemoteComputeConfig.DEFAULT_ZHIZI_ARGS, "user");
+          RemoteComputeConfig.StartupSelection selection =
+              RemoteComputeConfig.resolveStartupSelection(-1, true);
+
+          assertEquals(-1, selection.engineIndex);
+          assertTrue(selection.loadDefault);
+        });
+  }
+
   private static void withResourceBundle(ResourceBundle bundle, Runnable action) {
     ResourceBundle previous = Lizzie.resourceBundle;
     try {

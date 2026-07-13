@@ -140,6 +140,40 @@ public final class RemoteComputeConfig {
     return isZhiziEngineCommand(command) || isCustomWebSocketEngineCommand(command);
   }
 
+  /**
+   * Avoids a dead remote engine on startup when the user deliberately did not persist a Zhizi
+   * login. The fallback is session-only: saved provider and default/last-engine choices stay
+   * untouched so signing in can restore the remote engine immediately.
+   */
+  public static StartupSelection resolveStartupSelection(int requestedIndex, boolean loadDefault) {
+    ArrayList<EngineData> engines = Utils.getEngineData();
+    int selectedIndex = requestedIndex;
+    if (selectedIndex < 0 && loadDefault) {
+      for (int i = 0; i < engines.size(); i++) {
+        EngineData engine = engines.get(i);
+        if (engine != null && engine.isDefault) {
+          selectedIndex = i;
+          break;
+        }
+      }
+    }
+    if (selectedIndex < 0 || selectedIndex >= engines.size()) {
+      return new StartupSelection(requestedIndex, loadDefault);
+    }
+
+    EngineData selected = engines.get(selectedIndex);
+    if (selected == null
+        || !isZhiziEngineCommand(selected.commands)
+        || !load().zhiziAccountToken.isBlank()) {
+      return new StartupSelection(requestedIndex, loadDefault);
+    }
+
+    int localIndex = firstLocalEngineIndex(engines);
+    return localIndex >= 0
+        ? new StartupSelection(localIndex, false)
+        : new StartupSelection(requestedIndex, loadDefault);
+  }
+
   public static String compactDisplayNameForCommand(String command, String fallback) {
     if (isZhiziEngineCommand(command)) {
       return localizedText("RemoteCompute.zhizi", "Zhizi Cloud");
@@ -528,5 +562,15 @@ public final class RemoteComputeConfig {
     public boolean rememberZhiziPassword;
     public String zhiziArgs = DEFAULT_ZHIZI_ARGS;
     public String customRemoteCode = "";
+  }
+
+  public static final class StartupSelection {
+    public final int engineIndex;
+    public final boolean loadDefault;
+
+    private StartupSelection(int engineIndex, boolean loadDefault) {
+      this.engineIndex = engineIndex;
+      this.loadDefault = loadDefault;
+    }
   }
 }

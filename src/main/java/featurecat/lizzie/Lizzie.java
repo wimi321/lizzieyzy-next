@@ -5,6 +5,7 @@ import featurecat.lizzie.analysis.EngineFollowController;
 import featurecat.lizzie.analysis.EngineManager;
 import featurecat.lizzie.analysis.Leelaz;
 import featurecat.lizzie.analysis.LeelazEngineCommandSink;
+import featurecat.lizzie.analysis.remote.RemoteComputeConfig;
 import featurecat.lizzie.gui.AppleStyleSupport;
 import featurecat.lizzie.gui.EngineData;
 import featurecat.lizzie.gui.FirstUseSettings;
@@ -217,10 +218,10 @@ public class Lizzie {
           text("EngineStartup.noBundledEngine", "No complete built-in engine setup was found."));
     }
     if (Lizzie.config.uiConfig.optBoolean("autoload-default", false)) {
-      start(-1, true);
+      startConfiguredEngine(-1, true);
     } else if (Lizzie.config.uiConfig.optBoolean("autoload-last", false)) {
       int lastEngine = Lizzie.config.uiConfig.optInt("last-engine", -1);
-      start(lastEngine, false);
+      startConfiguredEngine(lastEngine, false);
     } else if (Lizzie.config.uiConfig.optBoolean("autoload-empty", false)) {
       start(-1, false);
     } else {
@@ -240,7 +241,7 @@ public class Lizzie {
         if (defaultEngine < 0 || defaultEngine >= engineCount) {
           defaultEngine = 0;
         }
-        start(defaultEngine, true);
+        startConfiguredEngine(defaultEngine, true);
       } else {
         loadEngine = LoadEngine.createDialog();
         loadEngine.setVisible(true);
@@ -757,6 +758,12 @@ public class Lizzie {
         UIManager.put(key, f);
       }
     }
+  }
+
+  private static void startConfiguredEngine(int index, boolean loadDefault) {
+    RemoteComputeConfig.StartupSelection selection =
+        RemoteComputeConfig.resolveStartupSelection(index, loadDefault);
+    start(selection.engineIndex, selection.loadDefault);
   }
 
   static void applyOptionPaneLocalization(ResourceBundle bundle) {
