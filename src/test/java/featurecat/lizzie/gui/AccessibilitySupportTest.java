@@ -2,8 +2,10 @@ package featurecat.lizzie.gui;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import javax.swing.JButton;
+import javax.swing.JCheckBox;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.JProgressBar;
@@ -11,6 +13,19 @@ import javax.swing.JTextField;
 import org.junit.jupiter.api.Test;
 
 class AccessibilitySupportTest {
+  @Test
+  void localizedControlsIncludeRoomForFractionalDpiRounding() {
+    JButton button = new JButton("Open the Zhizi website");
+    JCheckBox checkBox = new JCheckBox("\u0E02\u0E32\u0E27");
+
+    assertTrue(
+        AccessibilitySupport.localizedControlWidth(button, 40)
+            >= button.getPreferredSize().width + 12);
+    assertTrue(
+        AccessibilitySupport.localizedControlWidth(checkBox, 40)
+            >= checkBox.getPreferredSize().width + 12);
+  }
+
   @Test
   void iconButtonsReceiveReadableSemanticsAndTooltip() {
     JButton button = new JButton();

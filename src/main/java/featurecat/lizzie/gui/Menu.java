@@ -9276,8 +9276,10 @@ public class Menu extends JMenuBar {
     if (!chkShowBlack.isPreferredSizeSet())
       chkShowBlack.setPreferredSize(
           new Dimension(
-              (int) chkShowBlack.getPreferredSize().getWidth()
-                  + (Lizzie.config.shouldWidenCheckBox ? 4 : 0),
+              AccessibilitySupport.localizedControlWidth(
+                  chkShowBlack,
+                  (int) chkShowBlack.getPreferredSize().getWidth()
+                      + (Lizzie.config.shouldWidenCheckBox ? 4 : 0)),
               Config.menuHeight - 3));
     if (chkShowWhite == null) {
       chkShowWhite = new JFontCheckBox(resourceBundle.getString("Menu.White"));
@@ -9294,8 +9296,12 @@ public class Menu extends JMenuBar {
     if (!chkShowWhite.isPreferredSizeSet())
       chkShowWhite.setPreferredSize(
           new Dimension(
-              (int) chkShowWhite.getPreferredSize().getWidth()
-                  + (Lizzie.config.shouldWidenCheckBox ? Lizzie.config.isChinese ? 4 : 5 : 0),
+              AccessibilitySupport.localizedControlWidth(
+                  chkShowWhite,
+                  (int) chkShowWhite.getPreferredSize().getWidth()
+                      + (Lizzie.config.shouldWidenCheckBox
+                          ? Lizzie.config.isChinese ? 4 : 5
+                          : 0)),
               Config.menuHeight - 3));
     if (chkAnalyzeBlack == null) {
       chkAnalyzeBlack = new JFontCheckBox(resourceBundle.getString("Menu.Black"));
@@ -9317,8 +9323,10 @@ public class Menu extends JMenuBar {
     if (!chkAnalyzeBlack.isPreferredSizeSet())
       chkAnalyzeBlack.setPreferredSize(
           new Dimension(
-              (int) chkAnalyzeBlack.getPreferredSize().getWidth()
-                  + (Lizzie.config.shouldWidenCheckBox ? 4 : 0),
+              AccessibilitySupport.localizedControlWidth(
+                  chkAnalyzeBlack,
+                  (int) chkAnalyzeBlack.getPreferredSize().getWidth()
+                      + (Lizzie.config.shouldWidenCheckBox ? 4 : 0)),
               Config.menuHeight - 3));
     if (chkAnalyzeWhite == null) {
       chkAnalyzeWhite = new JFontCheckBox(resourceBundle.getString("Menu.White"));
@@ -9340,8 +9348,10 @@ public class Menu extends JMenuBar {
     if (!chkAnalyzeWhite.isPreferredSizeSet())
       chkAnalyzeWhite.setPreferredSize(
           new Dimension(
-              (int) chkAnalyzeWhite.getPreferredSize().getWidth()
-                  + (Lizzie.config.shouldWidenCheckBox ? 4 : 0),
+              AccessibilitySupport.localizedControlWidth(
+                  chkAnalyzeWhite,
+                  (int) chkAnalyzeWhite.getPreferredSize().getWidth()
+                      + (Lizzie.config.shouldWidenCheckBox ? 4 : 0)),
               Config.menuHeight - 3));
     if (chkShowWinrate == null) {
       chkShowWinrate = new JFontCheckBox(resourceBundle.getString("Menu.winrate"));

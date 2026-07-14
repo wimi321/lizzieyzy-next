@@ -85,7 +85,7 @@ public class AnalysisSettings extends JDialog {
     setResizable(false);
     setTitle(Lizzie.resourceBundle.getString("AnalysisSettings.title")); // ("闪电分析设置");
     // setSize(609, 367);
-    Lizzie.setFrameSize(this, 592, 385);
+    Lizzie.setFrameSize(this, 592, 411);
     PanelWithToolTips contentPane = new PanelWithToolTips();
     contentPane.setLayout(null);
     getContentPane().add(contentPane);
@@ -93,46 +93,48 @@ public class AnalysisSettings extends JDialog {
     JLabel lblEngineCmd =
         new JFontLabel(
             Lizzie.resourceBundle.getString("AnalysisSettings.lblEngineCmd")); // ("分析引擎命令:");
-    lblEngineCmd.setBounds(10, 1, 169, 22);
+    lblEngineCmd.setBounds(10, 1, lblEngineCmd.getPreferredSize().width + 2, 22);
     contentPane.add(lblEngineCmd);
 
     engineCmd = new JFontTextArea();
-    engineCmd.setBounds(10, 26, 566, 130);
+    engineCmd.setBounds(10, 52, 566, 130);
     engineCmd.setFont(new Font(Config.sysDefaultFontName, Font.PLAIN, Config.frameFontSize));
     contentPane.add(engineCmd);
+    AccessibilitySupport.labelFor(lblEngineCmd, engineCmd, lblEngineCmd.getText());
 
     JLabel example =
         new JLabel(
             Lizzie.resourceBundle.getString(
                 "AnalysisSettings.example")); // ("例:katago analysis -model model.bin.gz -config
     // analysis.cfg -quit-without-waiting");
-    example.setBounds(10, 158, 567, 20);
+    example.setBounds(10, 184, 567, 20);
     contentPane.add(example);
 
     JLabel lblMaxVisits =
         new JFontLabel(
             Lizzie.resourceBundle.getString("AnalysisSettings.lblMaxVisits")); // ("单步计算量:");
-    lblMaxVisits.setBounds(10, 207, 136, 20);
+    lblMaxVisits.setBounds(10, 233, 136, 20);
     contentPane.add(lblMaxVisits);
 
     txtMaxVisits = new JFontTextField();
     txtMaxVisits.setBounds(
         Lizzie.config.isFrameFontSmall() ? 80 : (Lizzie.config.isFrameFontMiddle() ? 100 : 120),
-        205,
+        231,
         66,
         24);
     contentPane.add(txtMaxVisits);
+    AccessibilitySupport.labelFor(lblMaxVisits, txtMaxVisits, lblMaxVisits.getText());
 
     JLabel lblRules =
         new JFontLabel(Lizzie.resourceBundle.getString("AnalysisSettings.lblRules")); // ("规则:");
-    lblRules.setBounds(10, 232, 54, 20);
+    lblRules.setBounds(10, 258, 54, 20);
     contentPane.add(lblRules);
 
     rdoUseCurrentRules =
         new JFontRadioButton(
             Lizzie.resourceBundle.getString(
                 "AnalysisSettings.rdoUseCurrentRules")); // ("使用当前引擎规则(未指定规则将使用中国规则)");
-    rdoUseCurrentRules.setBounds(59, 231, 510, 23);
+    rdoUseCurrentRules.setBounds(59, 257, 510, 23);
     contentPane.add(rdoUseCurrentRules);
 
     rdoUseSpecificRules =
@@ -140,7 +142,7 @@ public class AnalysisSettings extends JDialog {
             Lizzie.resourceBundle.getString("AnalysisSettings.rdoUseSpecificRules")); // ("使用指定规则");
     rdoUseSpecificRules.setBounds(
         59,
-        256,
+        282,
         Lizzie.config.isFrameFontSmall() ? 131 : (Lizzie.config.isFrameFontMiddle() ? 131 : 150),
         23);
     contentPane.add(rdoUseSpecificRules);
@@ -153,19 +155,19 @@ public class AnalysisSettings extends JDialog {
         new JFontCheckBox(
             Lizzie.resourceBundle.getString(
                 "AnalysisSettings.chkAlwaysOverride")); // ("总是覆盖已有分析结果");
-    chkAlwaysOverride.setBounds(10, 281, 370, 23);
+    chkAlwaysOverride.setBounds(10, 307, 370, 23);
     contentPane.add(chkAlwaysOverride);
 
     chkPreLoad =
         new JFontCheckBox(
             Lizzie.resourceBundle.getString("AnalysisSettings.chkPreLoad")); // ("启动Lizzie时预加载引擎");
-    chkPreLoad.setBounds(10, 306, 304, 23);
+    chkPreLoad.setBounds(10, 332, 304, 23);
     contentPane.add(chkPreLoad);
 
     chkAutoExit =
         new JFontCheckBox(
             Lizzie.resourceBundle.getString("AnalysisSettings.chkAutoExit")); // ("分析完毕后关闭引擎");
-    chkAutoExit.setBounds(10, 331, 304, 23);
+    chkAutoExit.setBounds(10, 357, 304, 23);
     contentPane.add(chkAutoExit);
 
     JButton btnSetRules =
@@ -181,7 +183,7 @@ public class AnalysisSettings extends JDialog {
     btnSetRules.setMargin(new Insets(0, 0, 0, 0));
     btnSetRules.setBounds(
         Lizzie.config.isFrameFontSmall() ? 191 : (Lizzie.config.isFrameFontMiddle() ? 191 : 211),
-        256,
+        282,
         Lizzie.config.isFrameFontSmall() ? 93 : (Lizzie.config.isFrameFontMiddle() ? 105 : 121),
         23);
     contentPane.add(btnSetRules);
@@ -208,7 +210,7 @@ public class AnalysisSettings extends JDialog {
     btnConfirmAndRedo.setMargin(new Insets(0, 0, 0, 0));
     btnConfirmAndRedo.setBounds(
         Lizzie.config.isFrameFontSmall() ? 375 : (Lizzie.config.isFrameFontMiddle() ? 355 : 325),
-        321,
+        347,
         Lizzie.config.isFrameFontSmall() ? 99 : (Lizzie.config.isFrameFontMiddle() ? 120 : 150),
         31);
     btnConfirmAndRedo.setVisible(isDuringAnalyze);
@@ -235,12 +237,12 @@ public class AnalysisSettings extends JDialog {
             }
           }
         });
-    btnConfirm.setBounds(484, 321, 93, 31);
+    btnConfirm.setBounds(484, 347, 93, 31);
     contentPane.add(btnConfirm);
 
     LinkLabel lblHint2 =
         new LinkLabel(Lizzie.resourceBundle.getString("AnalysisSettings.lblHint2"));
-    lblHint2.setBounds(7, 177, 633, 20);
+    lblHint2.setBounds(7, 203, 633, 20);
     contentPane.add(lblHint2);
 
     txtMaxVisits.setText(
@@ -273,8 +275,6 @@ public class AnalysisSettings extends JDialog {
           }
         });
     btnGenerate.setMargin(new Insets(0, 0, 0, 0));
-    EngineCommandToolbarBounds toolbarBounds = engineCommandToolbarBounds(currentFontScale());
-    btnGenerate.setBounds(toolbarBounds.generate);
     btnGenerate.setFocusable(false);
     contentPane.add(btnGenerate);
 
@@ -287,7 +287,6 @@ public class AnalysisSettings extends JDialog {
           }
         });
     btnSavedEngine.setMargin(new Insets(0, 0, 0, 0));
-    btnSavedEngine.setBounds(toolbarBounds.savedEngine);
     btnSavedEngine.setFocusable(false);
     contentPane.add(btnSavedEngine);
 
@@ -315,12 +314,24 @@ public class AnalysisSettings extends JDialog {
     chkUseJavaSSH.setSelected(Utils.getAnalysisEngineRemoteEngineData().useJavaSSH);
     setRemoteEngine.setEnabled(chkUseJavaSSH.isSelected());
 
+    EngineCommandToolbarBounds toolbarBounds =
+        engineCommandToolbarBounds(
+            currentFontScale(),
+            lblEngineCmd.getPreferredSize().width,
+            btnGenerate.getPreferredSize().width,
+            btnSavedEngine.getPreferredSize().width,
+            chkUseJavaSSH.getPreferredSize().width,
+            setRemoteEngine.getPreferredSize().width);
+    btnGenerate.setBounds(toolbarBounds.generate);
+    btnSavedEngine.setBounds(toolbarBounds.savedEngine);
     chkUseJavaSSH.setBounds(toolbarBounds.remoteEngine);
     setRemoteEngine.setBounds(toolbarBounds.remoteSettings);
 
     contentPane.add(chkUseJavaSSH);
     contentPane.add(setRemoteEngine);
     setLocationRelativeTo(Lizzie.frame != null ? Lizzie.frame : null);
+    AccessibilitySupport.applyToTree(this);
+    AccessibilitySupport.installEscapeToClose(getRootPane(), this);
     if (!displayCommand.message.isEmpty()) {
       String message = displayCommand.message;
       SwingUtilities.invokeLater(() -> Utils.showMsg(message));
@@ -338,27 +349,62 @@ public class AnalysisSettings extends JDialog {
   }
 
   static EngineCommandToolbarBounds engineCommandToolbarBounds(FontScale fontScale) {
+    return engineCommandToolbarBounds(fontScale, 0, 0, 0, 0, 0);
+  }
+
+  static EngineCommandToolbarBounds engineCommandToolbarBounds(
+      FontScale fontScale,
+      int labelPreferredWidth,
+      int generatePreferredWidth,
+      int savedEnginePreferredWidth,
+      int remoteEnginePreferredWidth,
+      int remoteSettingsPreferredWidth) {
+    int baseStart;
+    int generateMinimum;
+    int savedEngineMinimum;
+    int remoteEngineMinimum;
+    int remoteSettingsMinimum;
     switch (fontScale) {
       case SMALL:
-        return new EngineCommandToolbarBounds(
-            new Rectangle(93, 1, 68, 23),
-            new Rectangle(165, 1, 66, 23),
-            new Rectangle(238, 1, 80, 22),
-            new Rectangle(321, 1, 74, 23));
+        baseStart = 93;
+        generateMinimum = 68;
+        savedEngineMinimum = 66;
+        remoteEngineMinimum = 80;
+        remoteSettingsMinimum = 74;
+        break;
       case MIDDLE:
-        return new EngineCommandToolbarBounds(
-            new Rectangle(110, 1, 78, 23),
-            new Rectangle(193, 1, 82, 23),
-            new Rectangle(283, 1, 90, 22),
-            new Rectangle(378, 1, 78, 23));
+        baseStart = 110;
+        generateMinimum = 78;
+        savedEngineMinimum = 82;
+        remoteEngineMinimum = 90;
+        remoteSettingsMinimum = 78;
+        break;
       case LARGE:
       default:
-        return new EngineCommandToolbarBounds(
-            new Rectangle(120, 1, 92, 23),
-            new Rectangle(218, 1, 98, 23),
-            new Rectangle(324, 1, 110, 22),
-            new Rectangle(442, 1, 94, 23));
+        baseStart = 120;
+        generateMinimum = 92;
+        savedEngineMinimum = 98;
+        remoteEngineMinimum = 110;
+        remoteSettingsMinimum = 94;
+        break;
     }
+
+    int generateWidth = Math.max(generateMinimum, generatePreferredWidth + 8);
+    int savedEngineWidth = Math.max(savedEngineMinimum, savedEnginePreferredWidth + 8);
+    int remoteEngineWidth = Math.max(remoteEngineMinimum, remoteEnginePreferredWidth + 8);
+    int remoteSettingsWidth = Math.max(remoteSettingsMinimum, remoteSettingsPreferredWidth + 8);
+    int gap = 6;
+    int firstRowWidth = generateWidth + savedEngineWidth + gap;
+    int startX = Math.max(baseStart, 10 + labelPreferredWidth + 8);
+    startX = Math.min(startX, Math.max(10, 576 - firstRowWidth));
+
+    Rectangle generate = new Rectangle(startX, 1, generateWidth, 23);
+    Rectangle savedEngine =
+        new Rectangle(generate.x + generate.width + gap, 1, savedEngineWidth, 23);
+    Rectangle remoteEngine = new Rectangle(10, 27, remoteEngineWidth, 22);
+    Rectangle remoteSettings =
+        new Rectangle(remoteEngine.x + remoteEngine.width + gap, 27, remoteSettingsWidth, 23);
+    return new EngineCommandToolbarBounds(generate, savedEngine, remoteEngine, remoteSettings);
   }
 
   private DisplayCommand resolveAnalysisEngineCommandForDisplay() {

@@ -105,6 +105,8 @@ public class NewGameDialog extends JDialog {
     setAlwaysOnTop(Lizzie.frame.isAlwaysOnTop());
     pack();
     setLocationRelativeTo(getOwner());
+    AccessibilitySupport.applyToTree(this);
+    AccessibilitySupport.installEscapeToClose(getRootPane(), this);
   }
 
   private void initDialogPane(Container contentPane) {
@@ -150,6 +152,7 @@ public class NewGameDialog extends JDialog {
     gbc_engine.gridx = 1;
     gbc_engine.gridy = 0;
     contentPanel.add(engine, gbc_engine);
+    AccessibilitySupport.labelFor(label_6, engine, label_6.getText());
     JFontLabel label = new JFontLabel(resourceBundle.getString("NewGameDialog.chooseBlackWhite"));
     GridBagConstraints gbc_label = new GridBagConstraints();
     gbc_label.fill = GridBagConstraints.BOTH;
@@ -168,6 +171,7 @@ public class NewGameDialog extends JDialog {
     gbc_checkBoxPlayerIsBlack.gridx = 1;
     gbc_checkBoxPlayerIsBlack.gridy = 1;
     contentPanel.add(checkBoxPlayerIsBlack, gbc_checkBoxPlayerIsBlack);
+    AccessibilitySupport.labelFor(label, checkBoxPlayerIsBlack, label.getText());
 
     checkBoxPlayerIsBlack.setSelectedIndex(Lizzie.config.checkPlayBlack ? 0 : 1);
     JFontLabel label_1 = new JFontLabel(resourceBundle.getString("NewGameDialog.ContinuePlay"));
@@ -185,6 +189,7 @@ public class NewGameDialog extends JDialog {
     gbc_checkContinuePlay.gridx = 1;
     gbc_checkContinuePlay.gridy = 2;
     contentPanel.add(checkContinuePlay, gbc_checkContinuePlay);
+    AccessibilitySupport.labelFor(label_1, checkContinuePlay, label_1.getText());
 
     checkContinuePlay.addActionListener(
         new ActionListener() {
@@ -234,6 +239,7 @@ public class NewGameDialog extends JDialog {
     gbc_textFieldHandicap.gridx = 1;
     gbc_textFieldHandicap.gridy = 3;
     contentPanel.add(handicapPanel, gbc_textFieldHandicap);
+    AccessibilitySupport.labelFor(label_3, textFieldHandicap, label_3.getText());
     textFieldHandicap.setSelectedIndex(Lizzie.config.newGameHandicap);
     JFontLabel label_2 = new JFontLabel(resourceBundle.getString("NewGameDialog.Komi"));
     GridBagConstraints gbc_label_2 = new GridBagConstraints();
@@ -250,6 +256,7 @@ public class NewGameDialog extends JDialog {
     gbc_textFieldKomi.gridx = 1;
     gbc_textFieldKomi.gridy = 4;
     contentPanel.add(textFieldKomi, gbc_textFieldKomi);
+    AccessibilitySupport.labelFor(label_2, textFieldKomi, label_2.getText());
     textFieldKomi.setEnabled(true);
     textFieldKomi.setText(String.valueOf(Lizzie.config.newGameKomi));
 
@@ -380,6 +387,18 @@ public class NewGameDialog extends JDialog {
     gbc_myTimePanle.gridx = 1;
     gbc_myTimePanle.gridy = 5;
     contentPanel.add(myTimeSettingsPanel, gbc_myTimePanle);
+    AccessibilitySupport.named(
+        textSaveTime,
+        resourceBundle.getString("Byoyomi.newGame.saveTime"),
+        resourceBundle.getString("Byoyomi.newGame.limitMyTime"));
+    AccessibilitySupport.named(
+        texByoSeconds,
+        resourceBundle.getString("Byoyomi.newGame.byoyomi"),
+        resourceBundle.getString("Byoyomi.newGame.limitMyTime"));
+    AccessibilitySupport.named(
+        texByoTimes,
+        resourceBundle.getString("Byoyomi.newGame.byoyomiTimes"),
+        resourceBundle.getString("Byoyomi.newGame.limitMyTime"));
 
     GridBagConstraints gbc_3 = new GridBagConstraints();
     gbc_3.anchor = GridBagConstraints.WEST;
@@ -403,6 +422,10 @@ public class NewGameDialog extends JDialog {
     gbc_textTime.gridx = 1;
     gbc_textTime.gridy = 6;
     contentPanel.add(textTime, gbc_textTime);
+    AccessibilitySupport.named(
+        textTime,
+        resourceBundle.getString("NewGameDialog.time"),
+        resourceBundle.getString("NewGameDialog.time"));
 
     JPanel advTimeLabelPanel = new JPanel();
     advTimeLabelPanel.setBorder(BorderFactory.createEmptyBorder());
@@ -431,6 +454,10 @@ public class NewGameDialog extends JDialog {
         });
     btnAboutAdvTime.setPreferredSize(new Dimension(Config.menuHeight, Config.menuHeight));
     btnAboutAdvTime.setFocusable(false);
+    AccessibilitySupport.button(
+        btnAboutAdvTime,
+        resourceBundle.getString("AdvanceTimeSettings.title"),
+        resourceBundle.getString("AdvanceTimeSettings.describe"));
     advTimeLabelPanel.add(btnAboutAdvTime);
 
     chkUseAdvTime.addActionListener(
@@ -449,6 +476,10 @@ public class NewGameDialog extends JDialog {
     gbc_txtAdvanceTime.gridx = 1;
     gbc_txtAdvanceTime.gridy = 7;
     contentPanel.add(txtAdvanceTime, gbc_txtAdvanceTime);
+    AccessibilitySupport.named(
+        txtAdvanceTime,
+        resourceBundle.getString("NewGameDialog.lblAdvanceTime"),
+        resourceBundle.getString("NewGameDialog.lblAdvanceTime"));
     txtAdvanceTime.setColumns(13);
     txtAdvanceTime.setText(Lizzie.config.advanceTimeTxt);
 
@@ -489,6 +520,8 @@ public class NewGameDialog extends JDialog {
     txtKataTimeSaveMins.setColumns(3);
     txtKataTimeSaveMins.setDocument(new IntDocument());
     txtKataTimeSaveMins.setText(String.valueOf(Lizzie.config.kataTimeMainTimeMins));
+    AccessibilitySupport.labelFor(
+        lblKataTimeSaveMins, txtKataTimeSaveMins, lblKataTimeSaveMins.getText());
 
     JLabel lblKataTimeByoyomiSecs =
         new JFontLabel(resourceBundle.getString("Byoyomi.newGame.byoyomi"));
@@ -498,6 +531,8 @@ public class NewGameDialog extends JDialog {
     txtKataTimeByoyomiSecs.setColumns(3);
     txtKataTimeByoyomiSecs.setDocument(new IntDocument());
     txtKataTimeByoyomiSecs.setText(String.valueOf(Lizzie.config.kataTimeByoyomiSecs));
+    AccessibilitySupport.labelFor(
+        lblKataTimeByoyomiSecs, txtKataTimeByoyomiSecs, lblKataTimeByoyomiSecs.getText());
 
     JLabel lblKataTimeByoyomiTimes =
         new JFontLabel(resourceBundle.getString("Byoyomi.newGame.byoyomiTimes"));
@@ -507,6 +542,8 @@ public class NewGameDialog extends JDialog {
     txtKataTimeByoyomiTimes.setColumns(3);
     txtKataTimeByoyomiTimes.setDocument(new IntDocument());
     txtKataTimeByoyomiTimes.setText(String.valueOf(Lizzie.config.kataTimeByoyomiTimes));
+    AccessibilitySupport.labelFor(
+        lblKataTimeByoyomiTimes, txtKataTimeByoyomiTimes, lblKataTimeByoyomiTimes.getText());
 
     JLabel lblKataTimeFisherIncrementSecs =
         new JFontLabel(
@@ -518,6 +555,14 @@ public class NewGameDialog extends JDialog {
     txtKataTimeFisherIncrementSecs.setDocument(new IntDocument());
     txtKataTimeFisherIncrementSecs.setText(
         String.valueOf(Lizzie.config.kataTimeFisherIncrementSecs));
+    AccessibilitySupport.labelFor(
+        lblKataTimeFisherIncrementSecs,
+        txtKataTimeFisherIncrementSecs,
+        lblKataTimeFisherIncrementSecs.getText());
+    AccessibilitySupport.named(
+        kataTimeComboBox,
+        resourceBundle.getString("NewGameDialog.kataTime"),
+        resourceBundle.getString("NewGameDialog.kataTime"));
 
     kataTimeComboBox.setSelectedIndex(Lizzie.config.kataTimeType);
     int index = kataTimeComboBox.getSelectedIndex();
@@ -633,6 +678,7 @@ public class NewGameDialog extends JDialog {
     txtKataVisits.setDocument(new IntDocument());
     if (Lizzie.config.kataVisits > 0)
       txtKataVisits.setText(String.valueOf(Lizzie.config.kataVisits));
+    AccessibilitySupport.labelFor(kataVisits, txtKataVisits, kataVisits.getText());
 
     kataPlayouts = new JFontLabel(resourceBundle.getString("NewGameDialog.kataPlayouts"));
     kataSettingPanel.add(kataPlayouts);
@@ -643,6 +689,7 @@ public class NewGameDialog extends JDialog {
     txtKataPlayouts.setDocument(new IntDocument());
     if (Lizzie.config.kataPlayouts > 0)
       txtKataPlayouts.setText(String.valueOf(Lizzie.config.kataPlayouts));
+    AccessibilitySupport.labelFor(kataPlayouts, txtKataPlayouts, kataPlayouts.getText());
 
     lblVersionRequire = new JFontLabel(resourceBundle.getString("NewGameDialog.lblVersionRequire"));
     kataSettingPanel.add(lblVersionRequire);
@@ -679,6 +726,7 @@ public class NewGameDialog extends JDialog {
     gbc_chkNoTime.gridx = 1;
     gbc_chkNoTime.gridy = 10;
     contentPanel.add(chkNoTime, gbc_chkNoTime);
+    AccessibilitySupport.labelFor(label_4, chkNoTime, label_4.getText());
 
     GridBagConstraints gbc_5 = new GridBagConstraints();
     gbc_5.fill = GridBagConstraints.BOTH;
@@ -695,6 +743,7 @@ public class NewGameDialog extends JDialog {
     gbc_chkPonder.gridx = 1;
     gbc_chkPonder.gridy = 11;
     contentPanel.add(chkPonder, gbc_chkPonder);
+    AccessibilitySupport.labelFor(label_5, chkPonder, chkPonder.getText());
 
     GridBagConstraints gbc_6 = new GridBagConstraints();
     gbc_6.fill = GridBagConstraints.BOTH;
@@ -719,6 +768,7 @@ public class NewGameDialog extends JDialog {
     gbc_chkUsePlayMode.gridx = 1;
     gbc_chkUsePlayMode.gridy = 12;
     contentPanel.add(chkUsePlayMode, gbc_chkUsePlayMode);
+    AccessibilitySupport.labelFor(label_7, chkUsePlayMode, chkUsePlayMode.getText());
 
     if (Lizzie.config.advanceTimeSettings) textTime.setEnabled(false);
     else txtAdvanceTime.setEnabled(false);
@@ -743,6 +793,7 @@ public class NewGameDialog extends JDialog {
     gbc_chckbxNewCheckBox.gridx = 1;
     gbc_chckbxNewCheckBox.gridy = 13;
     contentPanel.add(chkShowBlack, gbc_chckbxNewCheckBox);
+    AccessibilitySupport.labelFor(lblShowBlack, chkShowBlack, lblShowBlack.getText());
 
     JFontLabel lblShowWhite =
         new JFontLabel(resourceBundle.getString("NewAnaGameDialog.showWhite"));
@@ -760,6 +811,7 @@ public class NewGameDialog extends JDialog {
     gbc_chckbxNewCheckBox_1.gridx = 1;
     gbc_chckbxNewCheckBox_1.gridy = 14;
     contentPanel.add(chkShowWhite, gbc_chckbxNewCheckBox_1);
+    AccessibilitySupport.labelFor(lblShowWhite, chkShowWhite, lblShowWhite.getText());
     chkShowBlack.setSelected(false);
     chkShowWhite.setSelected(false);
 

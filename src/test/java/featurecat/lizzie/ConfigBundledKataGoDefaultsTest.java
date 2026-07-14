@@ -156,6 +156,22 @@ public class ConfigBundledKataGoDefaultsTest {
   }
 
   @Test
+  void incompleteNearbyBundleDoesNotHideACompletePortableBundle() throws Exception {
+    Path incompleteRoot = Files.createTempDirectory("lizzie-incomplete-bundle");
+    Files.createDirectories(incompleteRoot.resolve("engines"));
+    Files.createDirectories(incompleteRoot.resolve("weights"));
+
+    Method method =
+        Config.class.getDeclaredMethod("hasCompleteBundledKataGoAssets", Path.class);
+    method.setAccessible(true);
+
+    assertFalse((Boolean) method.invoke(null, incompleteRoot));
+
+    createBundledKataGoAssets(incompleteRoot);
+    assertTrue((Boolean) method.invoke(null, incompleteRoot));
+  }
+
+  @Test
   void freshInstallStillSelectsBundledEngineAsDefault() throws Exception {
     Path tempRoot = Files.createTempDirectory("lizzie-bundled-katago-fresh");
     createBundledKataGoAssets(tempRoot);

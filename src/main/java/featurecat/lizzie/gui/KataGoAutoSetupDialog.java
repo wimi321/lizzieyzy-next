@@ -234,6 +234,8 @@ public class KataGoAutoSetupDialog extends JDialog {
         cmbLocalWeights,
         text("Accessibility.downloadedWeights"),
         text("Accessibility.downloadedWeightsDescription"));
+    AccessibilitySupport.named(
+        sectionNav, text("AutoSetup.sidebarTitle"), text("AutoSetup.expertSubtitle"));
     AccessibilitySupport.applyToTree(content);
     AccessibilitySupport.installEscapeAction(getRootPane(), this, this::closeOrCancelActiveTask);
 

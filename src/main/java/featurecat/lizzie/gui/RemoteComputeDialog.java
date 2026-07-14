@@ -1658,7 +1658,7 @@ public class RemoteComputeDialog extends JDialog {
   }
 
   static int localizedButtonWidth(JButton button, int minimumWidth) {
-    return Math.max(minimumWidth, button.getPreferredSize().width);
+    return AccessibilitySupport.localizedControlWidth(button, minimumWidth);
   }
 
   static int localizedButtonGroupWidth(

@@ -33,7 +33,7 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.PrintStream;
-import java.net.InetAddress;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.text.SimpleDateFormat;
@@ -80,6 +80,7 @@ public class Lizzie {
       "lizzie.smoke.openAutoSetupDelayMs";
   private static final String UNKNOWN_HOST_NAME = "unknown-host";
   private static final long HOST_NAME_LOOKUP_TIMEOUT_MILLIS = 500L;
+  private static final long LOCAL_HOST_NAME_COMMAND_TIMEOUT_MILLIS = 250L;
   public static String nextVersion = resolveNextVersion();
   public static String checkVersion = "230614";
   public static boolean readMode = false;
@@ -261,8 +262,65 @@ public class Lizzie {
   static String resolveHostNameSafely(String storedHostName) {
     return resolveHostNameSafely(
         storedHostName,
-        () -> InetAddress.getLocalHost().getHostName(),
+        Lizzie::resolveLocalHostNameWithoutNetwork,
         HOST_NAME_LOOKUP_TIMEOUT_MILLIS);
+  }
+
+  /**
+   * Reads the machine name without DNS or LAN discovery. In particular, {@code
+   * InetAddress.getLocalHost()} can trigger the macOS local-network permission prompt even though
+   * startup only needs a stable local label.
+   */
+  static String resolveLocalHostNameWithoutNetwork() throws IOException {
+    String environmentName =
+        firstNonBlank(System.getenv("COMPUTERNAME"), System.getenv("HOSTNAME"));
+    if (!environmentName.isEmpty()) {
+      return environmentName;
+    }
+
+    if (!System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("win")) {
+      Path hostnameFile = Path.of("/etc/hostname");
+      if (Files.isRegularFile(hostnameFile) && Files.isReadable(hostnameFile)) {
+        String fileName = Files.readString(hostnameFile, StandardCharsets.UTF_8).trim();
+        if (!fileName.isEmpty()) {
+          return fileName;
+        }
+      }
+    }
+    return resolveHostNameFromCommand();
+  }
+
+  static String firstNonBlank(String... candidates) {
+    if (candidates == null) {
+      return "";
+    }
+    for (String candidate : candidates) {
+      if (candidate != null && !candidate.trim().isEmpty()) {
+        return candidate.trim();
+      }
+    }
+    return "";
+  }
+
+  private static String resolveHostNameFromCommand() throws IOException {
+    boolean windows = System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("win");
+    List<String> command = windows ? List.of("hostname") : List.of("/bin/hostname");
+    Process process = new ProcessBuilder(command).redirectErrorStream(true).start();
+    try {
+      if (!process.waitFor(LOCAL_HOST_NAME_COMMAND_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS)) {
+        process.destroyForcibly();
+        return "";
+      }
+      if (process.exitValue() != 0) {
+        return "";
+      }
+      return new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8).trim();
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      return "";
+    } finally {
+      process.destroy();
+    }
   }
 
   static String resolveHostNameSafely(
@@ -293,7 +351,15 @@ public class Lizzie {
   static boolean shouldTreatAsHostChange(String storedHostName, String resolvedHostName) {
     return isKnownHostName(storedHostName)
         && isKnownHostName(resolvedHostName)
-        && !storedHostName.equals(resolvedHostName);
+        && !normalizeHostName(storedHostName).equals(normalizeHostName(resolvedHostName));
+  }
+
+  private static String normalizeHostName(String hostName) {
+    String normalized = hostName == null ? "" : hostName.trim();
+    while (normalized.endsWith(".")) {
+      normalized = normalized.substring(0, normalized.length() - 1);
+    }
+    return normalized.toLowerCase(Locale.ROOT);
   }
 
   private static boolean isKnownHostName(String hostName) {

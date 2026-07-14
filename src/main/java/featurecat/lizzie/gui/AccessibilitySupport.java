@@ -27,6 +27,7 @@ import javax.swing.text.JTextComponent;
 public final class AccessibilitySupport {
   private static final String EXPLICIT_NAME = "lizzie.a11y.explicitName";
   private static final String EXPLICIT_DESCRIPTION = "lizzie.a11y.explicitDescription";
+  private static final int LOCALIZED_CONTROL_WIDTH_PADDING = 12;
 
   private AccessibilitySupport() {}
 
@@ -52,6 +53,14 @@ public final class AccessibilitySupport {
       button.setToolTipText(clean(description).isEmpty() ? clean(name) : clean(description));
     }
     return button;
+  }
+
+  static int localizedControlWidth(AbstractButton button, int minimumWidth) {
+    if (button == null) {
+      return Math.max(0, minimumWidth);
+    }
+    return Math.max(
+        minimumWidth, button.getPreferredSize().width + LOCALIZED_CONTROL_WIDTH_PADDING);
   }
 
   public static void labelFor(JLabel label, JComponent field, String description) {

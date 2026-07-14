@@ -24,6 +24,13 @@ class LizzieHostNameTest {
   }
 
   @Test
+  void localHostCandidatesIgnoreMissingAndBlankValues() {
+    assertEquals("desktop-name", Lizzie.firstNonBlank(null, "  ", " desktop-name "));
+    assertEquals("", Lizzie.firstNonBlank(null, "  "));
+    assertEquals("", Lizzie.firstNonBlank((String[]) null));
+  }
+
+  @Test
   void successfulLookupReturnsResolvedName() {
     assertEquals(
         "resolved-host", Lizzie.resolveHostNameSafely("stored-name", () -> "resolved-host", 100));
@@ -64,6 +71,8 @@ class LizzieHostNameTest {
   void recoveredFirstRunPlaceholderDoesNotLookLikeMachineChange() {
     assertFalse(Lizzie.shouldTreatAsHostChange("unknown-host", "resolved-host"));
     assertFalse(Lizzie.shouldTreatAsHostChange("", "resolved-host"));
+    assertFalse(Lizzie.shouldTreatAsHostChange("MY-DESKTOP", "my-desktop"));
+    assertFalse(Lizzie.shouldTreatAsHostChange("my-desktop.local.", "my-desktop.local"));
     assertTrue(Lizzie.shouldTreatAsHostChange("old-host", "new-host"));
   }
 }

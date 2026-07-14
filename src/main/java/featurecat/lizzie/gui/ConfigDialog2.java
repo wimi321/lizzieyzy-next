@@ -3453,7 +3453,10 @@ public class ConfigDialog2 extends JDialog {
     JPanel row = createDesignRow(title, description);
     JPanel controls = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
     controls.setOpaque(false);
-    if (pureToggle != null) controls.add(prepareDesignSwitch(pureToggle));
+    if (pureToggle != null) {
+      AccessibilitySupport.button(pureToggle, title, description);
+      controls.add(prepareDesignSwitch(pureToggle));
+    }
     if (colorLabel != null) controls.add(detachComponent(colorLabel));
     JTextField field = (JTextField) detachComponent(path);
     AccessibilitySupport.named(field, title, description);
@@ -3471,7 +3474,8 @@ public class ConfigDialog2 extends JDialog {
     } else if (component instanceof JComponent
         && (component instanceof JTextField
             || component instanceof JComboBox
-            || component instanceof JSpinner)) {
+            || component instanceof JSpinner
+            || component instanceof JTable)) {
       AccessibilitySupport.named((JComponent) component, title, subtitle);
     }
     if (component instanceof java.awt.Container) {

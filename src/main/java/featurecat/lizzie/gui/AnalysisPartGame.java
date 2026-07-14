@@ -60,6 +60,7 @@ public class AnalysisPartGame extends JDialog {
         66,
         23);
     getContentPane().add(txtStartMove);
+    AccessibilitySupport.labelFor(lblStartMove, txtStartMove, lblStartMove.getText());
 
     JFontLabel lblEndMove =
         new JFontLabel(Lizzie.resourceBundle.getString("AnalysisPartGame.endMove")); // ("结束手数:");
@@ -77,6 +78,7 @@ public class AnalysisPartGame extends JDialog {
         66,
         23);
     getContentPane().add(txtEndMove);
+    AccessibilitySupport.labelFor(lblEndMove, txtEndMove, lblEndMove.getText());
     txtStartMove.setText(
         Lizzie.config.analysisStartMove > 0 ? String.valueOf(Lizzie.config.analysisStartMove) : "");
     txtEndMove.setText(
@@ -89,5 +91,7 @@ public class AnalysisPartGame extends JDialog {
     lblNotice.setBounds(10, 33, 601, 23);
     getContentPane().add(lblNotice);
     setLocationRelativeTo(Lizzie.frame != null ? Lizzie.frame : null);
+    AccessibilitySupport.applyToTree(this);
+    AccessibilitySupport.installEscapeToClose(getRootPane(), this);
   }
 }

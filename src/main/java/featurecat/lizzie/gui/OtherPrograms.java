@@ -79,6 +79,10 @@ public class OtherPrograms extends JPanel {
     this.setLayout(null);
     dataModel = getTableModel();
     table = new JTable(dataModel);
+    AccessibilitySupport.named(
+        table,
+        resourceBundle.getString("OtherPrograms.title"),
+        resourceBundle.getString("OtherPrograms.engineName"));
     selectpanel.setLayout(null);
     winrateFont =
         new Font(Lizzie.config.uiFontName, Font.PLAIN, Math.max(Config.frameFontSize, 14));
@@ -170,20 +174,30 @@ public class OtherPrograms extends JPanel {
     delete.setFocusable(false);
     delete.setMargin(new Insets(0, 0, 0, 0));
 
-    engineName.setBounds(5, 5, 700, 20);
-    txtName.setBounds(72, 35, 778, 20);
-    lblname.setBounds(5, 35, 45, 20);
-    lblCommand.setBounds(5, 65, 68, 20);
-    scan.setBounds(5, 85, 57, 20);
-    command.setBounds(72, 65, 778, 200);
+    engineName.setBounds(5, 5, 845, 20);
+    int formControlX =
+        Math.max(
+            80,
+            Math.max(
+                    Math.max(lblname.getPreferredSize().width, lblCommand.getPreferredSize().width),
+                    scan.getPreferredSize().width)
+                + 12);
+    int formLabelWidth = formControlX - 10;
+    int formControlWidth = 850 - formControlX;
+    txtName.setBounds(formControlX, 35, formControlWidth, 20);
+    lblname.setBounds(5, 35, formLabelWidth, 20);
+    lblCommand.setBounds(5, 65, formLabelWidth, 20);
+    scan.setBounds(5, 85, formLabelWidth, 20);
+    command.setBounds(formControlX, 65, formControlWidth, 200);
 
-    moveUp.setBounds(450, 270, 40, 22);
-    moveDown.setBounds(500, 270, 40, 22);
-    moveFirst.setBounds(550, 270, 40, 22);
-    save.setBounds(620, 270, 50, 22);
-    cancel.setBounds(680, 270, 50, 22);
-    delete.setBounds(740, 270, 50, 22);
-    exit.setBounds(800, 270, 50, 22);
+    int actionX = 350;
+    actionX = placeButtonInRow(moveUp, actionX, 270, 6, 48);
+    actionX = placeButtonInRow(moveDown, actionX, 270, 6, 48);
+    actionX = placeButtonInRow(moveFirst, actionX, 270, 18, 48);
+    actionX = placeButtonInRow(save, actionX, 270, 6, 54);
+    actionX = placeButtonInRow(cancel, actionX, 270, 6, 54);
+    actionX = placeButtonInRow(delete, actionX, 270, 6, 54);
+    placeButtonInRow(exit, actionX, 270, 0, 54);
     // checkBlacktxt = new JLabel("黑:");
     // checkWhitetxt = new JLabel("白:");
     // JLabel dropwinratechoosertxt = new JLabel("胜率波动筛选:");
@@ -213,6 +227,9 @@ public class OtherPrograms extends JPanel {
     selectpanel.add(moveDown);
     selectpanel.add(delete);
     selectpanel.add(moveFirst);
+    AccessibilitySupport.labelFor(lblname, txtName, lblname.getText());
+    AccessibilitySupport.labelFor(lblCommand, command, lblCommand.getText());
+    AccessibilitySupport.applyToTree(this);
 
     scan.addActionListener(
         new ActionListener() {
@@ -415,6 +432,13 @@ public class OtherPrograms extends JPanel {
             curIndex = curIndex + 1;
           }
         });
+  }
+
+  private static int placeButtonInRow(
+      JButton button, int x, int y, int trailingGap, int minimumWidth) {
+    int width = Math.max(minimumWidth, button.getPreferredSize().width) + 8;
+    button.setBounds(x, y, width, 22);
+    return x + width + trailingGap;
   }
 
   class ColorTableCellRenderer extends DefaultTableCellRenderer {

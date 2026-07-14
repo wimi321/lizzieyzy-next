@@ -96,10 +96,15 @@ if command -v osascript >/dev/null 2>&1; then
 tell application "Finder"
   set dmgRoot to POSIX file "$MOUNT_POINT" as alias
   open dmgRoot
+  delay 1
   set dmgWindow to container window of dmgRoot
   set current view of dmgWindow to icon view
-  set toolbar visible of dmgWindow to false
-  set statusbar visible of dmgWindow to false
+  try
+    set toolbar visible of dmgWindow to false
+  end try
+  try
+    set statusbar visible of dmgWindow to false
+  end try
   set the bounds of dmgWindow to {160, 120, 760, 430}
   set viewOptions to the icon view options of dmgWindow
   set arrangement of viewOptions to not arranged

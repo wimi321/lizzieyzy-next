@@ -15,11 +15,12 @@ import org.junit.jupiter.api.Test;
 
 class RemoteComputeDialogLayoutTest {
   @Test
-  void localizedButtonUsesItsFullPreferredWidth() {
+  void localizedButtonIncludesFractionalDpiSafetyPadding() {
     JButton button = new JButton("Open the Zhizi website for account top-up");
 
-    assertEquals(
-        button.getPreferredSize().width, RemoteComputeDialog.localizedButtonWidth(button, 40));
+    assertTrue(
+        RemoteComputeDialog.localizedButtonWidth(button, 40)
+            >= button.getPreferredSize().width + 12);
   }
 
   @Test
