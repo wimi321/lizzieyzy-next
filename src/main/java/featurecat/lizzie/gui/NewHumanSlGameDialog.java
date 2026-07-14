@@ -256,19 +256,6 @@ public final class NewHumanSlGameDialog extends JDialog {
     if (Lizzie.config == null) {
       return "";
     }
-    if (!Lizzie.config.analysisEngineCommandCustomized) {
-      featurecat.lizzie.util.AnalysisEngineCommandHelper.Result result =
-          featurecat.lizzie.util.AnalysisEngineCommandHelper.fromDefaultEngine(
-              Utils.getEngineData());
-      if (result.isSuccess()) {
-        Lizzie.config.analysisEngineCommand = result.getCommand();
-        if (Lizzie.config.uiConfig != null) {
-          Lizzie.config.uiConfig.put("analysis-engine-command", result.getCommand());
-        }
-        return result.getCommand();
-      }
-      return "";
-    }
     String command = Lizzie.config.analysisEngineCommand;
     return command == null ? "" : command;
   }

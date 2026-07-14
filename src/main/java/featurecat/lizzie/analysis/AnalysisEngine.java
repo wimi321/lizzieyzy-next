@@ -5,7 +5,6 @@ import featurecat.lizzie.Lizzie;
 import featurecat.lizzie.analysis.remote.EngineTransport;
 import featurecat.lizzie.analysis.remote.RemoteComputeConfig;
 import featurecat.lizzie.gui.AnalysisSettings;
-import featurecat.lizzie.gui.EngineData;
 import featurecat.lizzie.gui.EngineFailedMessage;
 import featurecat.lizzie.gui.RemoteEngineData;
 import featurecat.lizzie.gui.WaitForAnalysis;
@@ -15,7 +14,6 @@ import featurecat.lizzie.rules.BoardHistoryNode;
 import featurecat.lizzie.rules.Movelist;
 import featurecat.lizzie.rules.SGFParser;
 import featurecat.lizzie.rules.Stone;
-import featurecat.lizzie.util.AnalysisEngineCommandHelper;
 import featurecat.lizzie.util.CommandLaunchHelper;
 import featurecat.lizzie.util.KataGoRuntimeHelper;
 import featurecat.lizzie.util.Utils;
@@ -104,12 +102,27 @@ public class AnalysisEngine {
   private RemoteGtpRootInfo remoteGtpStoppingRootInfo;
   private long remoteGtpStopAckGeneration;
   private long remoteGtpLastCompletionActivityMillis;
-  private Leelaz sharedRemoteEngine;
-  private boolean sharedRemoteSessionStarting;
-  private boolean sharedRemoteSessionActive;
+  private Leelaz sharedForegroundEngine;
+  private boolean sharedForegroundLeaseStarting;
+  private boolean sharedForegroundLeaseActive;
+  private boolean sharedForegroundLeaseOwned;
+  private Object sharedForegroundLeaseOwner;
+  private Leelaz.ExclusiveGtpLeaseAvailability foregroundLeaseAvailability;
 
   public AnalysisEngine(boolean isPreLoad) throws IOException {
     this.isPreLoad = isPreLoad;
+    if (Lizzie.config.analysisReuseCurrentEngine) {
+      useRemoteCompute = true;
+      sharedForegroundEngine = Lizzie.leelaz;
+      foregroundLeaseAvailability =
+          sharedForegroundEngine == null
+              ? Leelaz.ExclusiveGtpLeaseAvailability.NO_FOREGROUND_ENGINE
+              : sharedForegroundEngine.previewForegroundAnalysisLeaseAvailability();
+      isLoaded = foregroundLeaseAvailability == Leelaz.ExclusiveGtpLeaseAvailability.AVAILABLE;
+      isNormalEnd = false;
+      engineCommand = "";
+      return;
+    }
     int maxVisits =
         Lizzie.frame.isBatchAnalysisMode
             ? Math.max(2, Lizzie.config.batchAnalysisPlayouts)
@@ -132,54 +145,15 @@ public class AnalysisEngine {
       this.useRemoteCompute = true;
     }
 
-    if (this.useRemoteCompute && hasCurrentRemoteEngine()) {
-      sharedRemoteEngine = Lizzie.leelaz;
-      isLoaded = sharedRemoteEngine.isLoaded() && sharedRemoteEngine.isStarted();
-      isNormalEnd = false;
-      return;
-    }
-
     startEngine(engineCommand);
   }
 
-  private boolean hasCurrentRemoteEngine() {
-    Leelaz primary = Lizzie.leelaz;
-    return primary != null
-        && RemoteComputeConfig.isRemoteComputeEngineCommand(primary.engineCommand());
-  }
-
   private static String resolveConfiguredAnalysisEngineCommand(boolean isPreLoad) {
-    int currentIndex = currentMainEngineIndex();
-    ArrayList<EngineData> engines = Utils.getEngineData();
-    if (currentIndex >= 0 && currentIndex < engines.size()) {
-      String command = engines.get(currentIndex).commands;
-      if (RemoteComputeConfig.isRemoteComputeEngineCommand(command)) {
-        return command;
-      }
-    }
-    if (!Lizzie.config.analysisEngineCommandCustomized) {
-      AnalysisEngineCommandHelper.Result result =
-          AnalysisEngineCommandHelper.fromCurrentEngine(engines, currentIndex);
-      if (result.isSuccess()) {
-        Lizzie.config.analysisEngineCommand = result.getCommand();
-        Lizzie.config.uiConfig.put("analysis-engine-command", Lizzie.config.analysisEngineCommand);
-        if (shouldShowGeneratedConfigNotice(isPreLoad, result.generatedConfig())) {
-          javax.swing.SwingUtilities.invokeLater(() -> Utils.showMsg(result.getMessage()));
-        }
-      }
-    }
     return Lizzie.config.analysisEngineCommand;
   }
 
   static boolean shouldShowGeneratedConfigNotice(boolean isPreLoad, boolean generatedConfig) {
     return !isPreLoad && generatedConfig;
-  }
-
-  private static int currentMainEngineIndex() {
-    if (Lizzie.leelaz != null && Lizzie.leelaz.currentEngineN() >= 0) {
-      return Lizzie.leelaz.currentEngineN();
-    }
-    return EngineManager.currentEngineNo;
   }
 
   public void startEngine(String engineCommand) {
@@ -757,7 +731,7 @@ public class AnalysisEngine {
       if (Lizzie.config.analysisAlwaysOverride)
         Lizzie.config.enableLizzieCache = oriEnableLizzieCache;
     }
-    releaseSharedRemoteSession();
+    releaseSharedForegroundLease();
     if (shouldRePonder && !Lizzie.leelaz.isPondering()) Lizzie.leelaz.togglePonder();
     Lizzie.frame.renderVarTree(0, 0, false, false);
     runCompletionCallback();
@@ -766,7 +740,7 @@ public class AnalysisEngine {
   public void normalQuit() {
     // TODO Auto-generated method stub
     isNormalEnd = true;
-    releaseSharedRemoteSession();
+    releaseSharedForegroundLease();
     if (this.useJavaSSH) {
       if (this.javaSSH != null) this.javaSSH.close();
     } else if (this.useRemoteCompute) {
@@ -778,7 +752,7 @@ public class AnalysisEngine {
   }
 
   private synchronized void finishAbortedAnalysis() {
-    releaseSharedRemoteSession();
+    releaseSharedForegroundLease();
     if (analyzeMap.isEmpty() && completionCallback == null) {
       return;
     }
@@ -899,7 +873,9 @@ public class AnalysisEngine {
     requestDispatchFailed = false;
     silentProgress = !showProgressDialog;
     if (!showProgressDialog) waitFrame = null;
-    if (showProgressDialog && Lizzie.leelaz.isPondering()) {
+    if (sharedForegroundEngine == null
+        && showProgressDialog
+        && Lizzie.leelaz.isPondering()) {
       Lizzie.leelaz.togglePonder();
       shouldRePonder = true;
     } else shouldRePonder = false;
@@ -933,7 +909,14 @@ public class AnalysisEngine {
           () -> {
             if (waitFrame != null) waitFrame.setVisible(false);
             if (showProgressDialog) {
-              Utils.showMsg(resourceBundle.getString("AnalysisEngine.requestDispatchFailed"));
+              if (sharedForegroundEngine != null && foregroundLeaseAvailability != null) {
+                Utils.showMsg(
+                    resourceBundle.getString(
+                        "AnalysisSettings.reuseStatus."
+                            + foregroundLeaseAvailability.name().toLowerCase()));
+              } else {
+                Utils.showMsg(resourceBundle.getString("AnalysisEngine.requestDispatchFailed"));
+              }
             }
           });
     }
@@ -1075,8 +1058,8 @@ public class AnalysisEngine {
     if (remoteGtpActiveJob != null || remoteGtpWaitingForStopAck) {
       return true;
     }
-    if (sharedRemoteEngine != null && !sharedRemoteSessionActive) {
-      return beginSharedRemoteSession();
+    if (sharedForegroundEngine != null && !sharedForegroundLeaseActive) {
+      return beginSharedForegroundLease();
     }
     RemoteGtpAnalyzeJob job = remoteGtpQueue().pollFirst();
     if (job == null) {
@@ -1118,24 +1101,28 @@ public class AnalysisEngine {
     return true;
   }
 
-  private boolean beginSharedRemoteSession() {
-    if (sharedRemoteSessionActive || sharedRemoteSessionStarting) {
+  private synchronized boolean beginSharedForegroundLease() {
+    if (sharedForegroundLeaseActive || sharedForegroundLeaseStarting) {
       return true;
     }
-    if (sharedRemoteEngine == null || !sharedRemoteEngine.isLoaded() || !sharedRemoteEngine.isStarted()) {
+    if (sharedForegroundEngine == null || !sharedForegroundEngine.isLoaded() || !sharedForegroundEngine.isStarted()) {
       return false;
     }
-    sharedRemoteSessionStarting = true;
-    boolean started =
-        sharedRemoteEngine.beginExclusiveRemoteGtpSession(
+    sharedForegroundLeaseStarting = true;
+    Object leaseOwner = new Object();
+    sharedForegroundLeaseOwner = leaseOwner;
+    Leelaz.ExclusiveGtpLeaseAvailability availability =
+        sharedForegroundEngine.beginForegroundAnalysisLease(
+            leaseOwner,
             this::parseLine,
             () -> {
               synchronized (AnalysisEngine.this) {
-                if (!sharedRemoteSessionStarting) {
+                if (sharedForegroundLeaseOwner != leaseOwner
+                    || !sharedForegroundLeaseStarting) {
                   return;
                 }
-                sharedRemoteSessionStarting = false;
-                sharedRemoteSessionActive = true;
+                sharedForegroundLeaseStarting = false;
+                sharedForegroundLeaseActive = true;
                 if (!startNextRemoteGtpJob()) {
                   requestDispatchFailed = true;
                   finishAbortedAnalysis();
@@ -1144,23 +1131,37 @@ public class AnalysisEngine {
             },
             () -> {
               synchronized (AnalysisEngine.this) {
-                sharedRemoteSessionStarting = false;
-                sharedRemoteSessionActive = false;
+                if (sharedForegroundLeaseOwner != leaseOwner) {
+                  return;
+                }
+                sharedForegroundLeaseStarting = false;
+                sharedForegroundLeaseActive = false;
+                sharedForegroundLeaseOwned = false;
+                sharedForegroundLeaseOwner = null;
                 finishAbortedAnalysis();
               }
             });
-    if (!started) {
-      sharedRemoteSessionStarting = false;
+    foregroundLeaseAvailability = availability;
+    sharedForegroundLeaseOwned =
+        availability == Leelaz.ExclusiveGtpLeaseAvailability.AVAILABLE
+            && sharedForegroundEngine.hasExclusiveGtpLeaseOwnedBy(leaseOwner);
+    if (availability != Leelaz.ExclusiveGtpLeaseAvailability.AVAILABLE) {
+      sharedForegroundLeaseStarting = false;
+      sharedForegroundLeaseOwner = null;
     }
-    return started;
+    return availability == Leelaz.ExclusiveGtpLeaseAvailability.AVAILABLE;
   }
 
-  private void releaseSharedRemoteSession() {
-    Leelaz engine = sharedRemoteEngine;
-    sharedRemoteSessionStarting = false;
-    sharedRemoteSessionActive = false;
-    if (engine != null) {
-      engine.endExclusiveRemoteGtpSession();
+  private synchronized void releaseSharedForegroundLease() {
+    Leelaz engine = sharedForegroundEngine;
+    boolean owned = sharedForegroundLeaseOwned;
+    Object leaseOwner = sharedForegroundLeaseOwner;
+    sharedForegroundLeaseOwned = false;
+    sharedForegroundLeaseStarting = false;
+    sharedForegroundLeaseActive = false;
+    sharedForegroundLeaseOwner = null;
+    if (engine != null && owned && leaseOwner != null) {
+      engine.endForegroundAnalysisLease(leaseOwner);
     }
   }
 
@@ -1454,6 +1455,12 @@ public class AnalysisEngine {
   }
 
   public boolean matchesCurrentAnalysisBackend() {
+    if (sharedForegroundEngine != null) {
+      return Lizzie.config.analysisReuseCurrentEngine && sharedForegroundEngine == Lizzie.leelaz;
+    }
+    if (Lizzie.config.analysisReuseCurrentEngine) {
+      return false;
+    }
     return useRemoteCompute
         == RemoteComputeConfig.isRemoteComputeEngineCommand(
             resolveConfiguredAnalysisEngineCommand(true));
@@ -1461,7 +1468,7 @@ public class AnalysisEngine {
 
   public void shutdown() {
     // isShuttingdown = true;
-    releaseSharedRemoteSession();
+    releaseSharedForegroundLease();
     if (useJavaSSH) {
       if (javaSSH != null) javaSSH.close();
     } else if (useRemoteCompute) {
@@ -1477,8 +1484,8 @@ public class AnalysisEngine {
       return !javaSSHClosed;
     }
     if (useRemoteCompute) {
-      if (sharedRemoteEngine != null) {
-        return sharedRemoteEngine.isLoaded() && sharedRemoteEngine.isStarted();
+      if (sharedForegroundEngine != null) {
+        return sharedForegroundEngine.isLoaded() && sharedForegroundEngine.isStarted();
       }
       return remoteTransport != null && remoteTransport.isOpen();
     }
@@ -1486,8 +1493,8 @@ public class AnalysisEngine {
   }
 
   public boolean sendCommand(String command) {
-    if (sharedRemoteEngine != null) {
-      return sharedRemoteEngine.sendExclusiveRemoteGtpCommand(command);
+    if (sharedForegroundEngine != null) {
+      return sharedForegroundEngine.sendExclusiveGtpCommand(command);
     }
     try {
       outputStream.write((command + "\n").getBytes());
@@ -1521,6 +1528,10 @@ public class AnalysisEngine {
 
   public boolean isLoaded() {
     return isLoaded;
+  }
+
+  public Leelaz.ExclusiveGtpLeaseAvailability getForegroundLeaseAvailability() {
+    return foregroundLeaseAvailability;
   }
 
   private static final class RemoteGtpAnalyzeJob {

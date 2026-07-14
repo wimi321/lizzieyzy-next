@@ -828,6 +828,14 @@ public class ReadBoard {
         int firstPlayouts = Integer.parseInt(playParams[2]);
         int time = Integer.parseInt(playParams[0]);
         boolean useGma = isReadBoardGmaPlayMode(playParams);
+        if (useGma
+            && Lizzie.leelaz != null
+            && Lizzie.leelaz.hasExclusiveGtpWorkInProgress()) {
+          Utils.showMsg(
+              Lizzie.resourceBundle.getString(
+                  "AnalysisSettings.reuseStatus.existing_lease"));
+          return;
+        }
         readBoardGmaAutoPlayActive = useGma;
         readBoardGmaAutoPlayColor = autoPlayColor;
         readBoardGmaTimeSeconds = Math.max(0, time);

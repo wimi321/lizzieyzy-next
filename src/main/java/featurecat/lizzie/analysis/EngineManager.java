@@ -1203,9 +1203,22 @@ public class EngineManager {
   }
 
   public void startNewEngineGame(boolean firstTime) {
+    Leelaz currentForegroundEngine = Lizzie.leelaz;
+    if (currentForegroundEngine != null) {
+      if (!currentForegroundEngine.beginExclusiveGtpLifecycleTransition()) {
+        showForegroundEngineLeaseInUse();
+        return;
+      }
+      try {
+        isPreEngineGame = true;
+      } finally {
+        currentForegroundEngine.endExclusiveGtpLifecycleTransition();
+      }
+    } else {
+      isPreEngineGame = true;
+    }
     // engineGameInfo
     Lizzie.frame.setResult("");
-    isPreEngineGame = true;
     if (firstTime) {
       killOtherEngines(engineGameInfo.blackEngineIndex, engineGameInfo.whiteEngineIndex);
       Lizzie.leelaz.notPondering();
@@ -1900,23 +1913,35 @@ public class EngineManager {
   }
 
   public void killAllEngines() {
-    // currentEngineNo = -1;
-    for (int i = 0; i < engineList.size(); i++) {
-      if (engineList.get(i).isStarted()) {
-        try {
-          engineList.get(i).forceQuit();
-        } catch (Exception e) {
+    Leelaz currentForegroundEngine = Lizzie.leelaz;
+    if (currentForegroundEngine != null
+        && !currentForegroundEngine.beginExclusiveGtpLifecycleTransition()) {
+      showForegroundEngineLeaseInUse();
+      return;
+    }
+    try {
+      // currentEngineNo = -1;
+      for (int i = 0; i < engineList.size(); i++) {
+        if (engineList.get(i).isStarted()) {
+          try {
+            engineList.get(i).forceQuit();
+          } catch (Exception e) {
+          }
         }
       }
+      currentEngineNo2 = -1;
+      currentEngineNo = -1;
+      Lizzie.leelaz.notPondering();
+      Lizzie.leelaz.isLoaded = true;
+      Menu.engineMenu.setText(resourceBundle.getString("Menu.noEngine"));
+      Lizzie.frame.clearTrackedCoords();
+      Lizzie.frame.destroyTrackingEngine();
+      Lizzie.frame.refresh();
+    } finally {
+      if (currentForegroundEngine != null) {
+        currentForegroundEngine.endExclusiveGtpLifecycleTransition();
+      }
     }
-    currentEngineNo2 = -1;
-    currentEngineNo = -1;
-    Lizzie.leelaz.notPondering();
-    Lizzie.leelaz.isLoaded = true;
-    Menu.engineMenu.setText(resourceBundle.getString("Menu.noEngine"));
-    Lizzie.frame.clearTrackedCoords();
-    Lizzie.frame.destroyTrackingEngine();
-    Lizzie.frame.refresh();
   }
 
   public void forceKillAllEngines() {
@@ -1935,6 +1960,11 @@ public class EngineManager {
   public void reStartEngine() {
     // currentEngineNo = -1;
     if (isEmpty || Lizzie.leelaz == null) return;
+    Leelaz currentForegroundEngine = Lizzie.leelaz;
+    if (!currentForegroundEngine.beginExclusiveGtpLifecycleTransition()) {
+      showForegroundEngineLeaseInUse();
+      return;
+    }
     try {
       //  Lizzie.leelaz.normalQuit();
       Lizzie.leelaz.isNormalEnd = true;
@@ -1946,12 +1976,31 @@ public class EngineManager {
 
     } catch (Exception e) {
     }
-    switchEngine(currentEngineNo > 0 ? currentEngineNo : engineNo, true);
+    try {
+      switchEngineInternal(currentEngineNo > 0 ? currentEngineNo : engineNo, true);
+    } finally {
+      currentForegroundEngine.endExclusiveGtpLifecycleTransition();
+    }
   }
 
   public void reStartEngine(int index) {
     // currentEngineNo = -1;
     if (isEmpty || Lizzie.leelaz == null) return;
+    Leelaz currentForegroundEngine = Lizzie.leelaz;
+    Leelaz targetEngine = engineList.get(index);
+    if (!currentForegroundEngine.beginExclusiveGtpLifecycleTransition()) {
+      showForegroundEngineLeaseInUse();
+      return;
+    }
+    boolean targetReserved = targetEngine == currentForegroundEngine;
+    if (!targetReserved) {
+      targetReserved = targetEngine.beginExclusiveGtpLifecycleTransition();
+      if (!targetReserved) {
+        currentForegroundEngine.endExclusiveGtpLifecycleTransition();
+        showForegroundEngineLeaseInUse();
+        return;
+      }
+    }
     try {
       engineList.get(index).isNormalEnd = true;
       engineList.get(index).shutdown();
@@ -1962,7 +2011,14 @@ public class EngineManager {
 
     } catch (Exception e) {
     }
-    switchEngine(index, true);
+    try {
+      switchEngineInternal(index, true);
+    } finally {
+      if (targetEngine != currentForegroundEngine) {
+        targetEngine.endExclusiveGtpLifecycleTransition();
+      }
+      currentForegroundEngine.endExclusiveGtpLifecycleTransition();
+    }
   }
 
   public void reStartEngine2() {
@@ -2003,16 +2059,28 @@ public class EngineManager {
   }
 
   public void killThisEngines() {
-    if (engineList.get(currentEngineNo).isStarted()) {
-      engineList.get(currentEngineNo).forceQuit();
+    Leelaz currentForegroundEngine = Lizzie.leelaz;
+    if (currentForegroundEngine != null
+        && !currentForegroundEngine.beginExclusiveGtpLifecycleTransition()) {
+      showForegroundEngineLeaseInUse();
+      return;
     }
-    currentEngineNo = -1;
-    isEmpty = true;
-    Lizzie.leelaz.isLoaded = true;
-    Lizzie.leelaz.notPondering();
-    Lizzie.leelaz.clearBestMoves();
-    Lizzie.frame.clearTrackedCoords();
-    Lizzie.frame.destroyTrackingEngine();
+    try {
+      if (engineList.get(currentEngineNo).isStarted()) {
+        engineList.get(currentEngineNo).forceQuit();
+      }
+      currentEngineNo = -1;
+      isEmpty = true;
+      Lizzie.leelaz.isLoaded = true;
+      Lizzie.leelaz.notPondering();
+      Lizzie.leelaz.clearBestMoves();
+      Lizzie.frame.clearTrackedCoords();
+      Lizzie.frame.destroyTrackingEngine();
+    } finally {
+      if (currentForegroundEngine != null) {
+        currentForegroundEngine.endExclusiveGtpLifecycleTransition();
+      }
+    }
   }
 
   public void killThisEngines2() {
@@ -2020,6 +2088,11 @@ public class EngineManager {
     currentEngineNo2 = -1;
     Lizzie.leelaz2.notPondering();
     Lizzie.leelaz2.clearBestMoves();
+  }
+
+  private void showForegroundEngineLeaseInUse() {
+    Utils.showMsg(
+        Lizzie.resourceBundle.getString("AnalysisSettings.reuseStatus.existing_lease"));
   }
 
   /**
@@ -2105,6 +2178,19 @@ public class EngineManager {
 
   public void restartEngineForPk(int index) {
     if (index < 0 || index >= this.engineList.size()) return;
+    Leelaz targetEngine = engineList.get(index);
+    if (!targetEngine.beginExclusiveGtpLifecycleTransition()) {
+      showForegroundEngineLeaseInUse();
+      return;
+    }
+    try {
+      restartEngineForPkInternal(index);
+    } finally {
+      targetEngine.endExclusiveGtpLifecycleTransition();
+    }
+  }
+
+  private void restartEngineForPkInternal(int index) {
     // Lizzie.board.saveMoveNumber();
     Leelaz newEng = engineList.get(index);
     newEng.isLoaded = false;
@@ -2174,6 +2260,38 @@ public class EngineManager {
   }
 
   public void switchEngine(int index, boolean isMain) {
+    Leelaz currentForegroundEngine = Lizzie.leelaz;
+    Leelaz targetEngine =
+        index >= 0 && index < engineList.size() ? engineList.get(index) : null;
+    if (currentForegroundEngine != null
+        && !currentForegroundEngine.beginExclusiveGtpLifecycleTransition()) {
+      showForegroundEngineLeaseInUse();
+      return;
+    }
+    boolean targetReserved = false;
+    if (targetEngine != null && targetEngine != currentForegroundEngine) {
+      targetReserved = targetEngine.beginExclusiveGtpLifecycleTransition();
+      if (!targetReserved) {
+        if (currentForegroundEngine != null) {
+          currentForegroundEngine.endExclusiveGtpLifecycleTransition();
+        }
+        showForegroundEngineLeaseInUse();
+        return;
+      }
+    }
+    try {
+      switchEngineInternal(index, isMain);
+    } finally {
+      if (targetReserved) {
+        targetEngine.endExclusiveGtpLifecycleTransition();
+      }
+      if (currentForegroundEngine != null) {
+        currentForegroundEngine.endExclusiveGtpLifecycleTransition();
+      }
+    }
+  }
+
+  private void switchEngineInternal(int index, boolean isMain) {
     if (Lizzie.frame.isContributing) {
       Utils.showMsg(
           resourceBundle.getString("Contribute.tips.contributingAndStartAnotherLizzieYzy"));

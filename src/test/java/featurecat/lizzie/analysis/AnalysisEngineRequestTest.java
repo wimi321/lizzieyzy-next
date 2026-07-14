@@ -19,6 +19,8 @@ import featurecat.lizzie.rules.SGFParser;
 import featurecat.lizzie.rules.Stone;
 import featurecat.lizzie.rules.Zobrist;
 import java.io.IOException;
+import java.io.BufferedOutputStream;
+import java.io.ByteArrayOutputStream;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
@@ -35,6 +37,38 @@ import org.junit.jupiter.api.Test;
 class AnalysisEngineRequestTest {
   private static final int BOARD_SIZE = 3;
   private static final int BOARD_AREA = BOARD_SIZE * BOARD_SIZE;
+
+  @Test
+  void reuseModeBindsCurrentForegroundKatagoWithoutStartingAProcess() throws Exception {
+    try (TestEnvironment env = TestEnvironment.open()) {
+      Leelaz foreground = reusableForegroundEngine(true);
+      Lizzie.leelaz = foreground;
+      Lizzie.config.analysisReuseCurrentEngine = true;
+
+      AnalysisEngine engine = new AnalysisEngine(false);
+
+      assertTrue(engine.isLoaded());
+      assertNull(engine.process);
+      assertTrue(engine.matchesCurrentAnalysisBackend());
+    }
+  }
+
+  @Test
+  void reuseModeRejectsNonKatagoWithoutFallingBackToDedicatedProcess() throws Exception {
+    try (TestEnvironment env = TestEnvironment.open()) {
+      Leelaz foreground = reusableForegroundEngine(false);
+      Lizzie.leelaz = foreground;
+      Lizzie.config.analysisReuseCurrentEngine = true;
+
+      AnalysisEngine engine = new AnalysisEngine(false);
+
+      assertFalse(engine.isLoaded());
+      assertNull(engine.process);
+      assertEquals(
+          Leelaz.ExclusiveGtpLeaseAvailability.NOT_KATAGO,
+          engine.getForegroundLeaseAvailability());
+    }
+  }
 
   @Test
   void sendRequestExpressesSnapshotRootPositionWithInitialStonesAndPlayer() throws Exception {
@@ -1558,6 +1592,29 @@ class AnalysisEngineRequestTest {
       this.y = y;
       this.color = color;
     }
+  }
+
+  private static Leelaz reusableForegroundEngine(boolean katago) throws Exception {
+    Leelaz engine = new Leelaz("");
+    engine.isLoaded = true;
+    engine.started = true;
+    engine.isKatago = katago;
+    engine.commandLists.addAll(
+        List.of(
+            "stop",
+            "boardsize",
+            "komi",
+            "kata-set-rules",
+            "clear_board",
+            "play",
+            "kata-analyze"));
+    Field output = Leelaz.class.getDeclaredField("outputStream");
+    output.setAccessible(true);
+    output.set(engine, new BufferedOutputStream(new ByteArrayOutputStream()));
+    Field capabilityDiscovery = Leelaz.class.getDeclaredField("endGetCommandList");
+    capabilityDiscovery.setAccessible(true);
+    capabilityDiscovery.set(engine, true);
+    return engine;
   }
 
   private static final class TestEnvironment implements AutoCloseable {

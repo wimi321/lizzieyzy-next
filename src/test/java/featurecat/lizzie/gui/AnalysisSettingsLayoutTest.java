@@ -40,6 +40,23 @@ class AnalysisSettingsLayoutTest {
     assertInsideDialog(bounds.remoteSettings);
   }
 
+  @Test
+  void reuseModeDisablesOnlyDedicatedEngineControls() {
+    AnalysisSettings.ControlState dedicated = AnalysisSettings.controlState(false);
+    AnalysisSettings.ControlState reuse = AnalysisSettings.controlState(true);
+
+    assertTrue(dedicated.commandEnabled);
+    assertTrue(dedicated.preloadEnabled);
+    assertTrue(dedicated.autoExitEnabled);
+    assertFalse(reuse.commandEnabled);
+    assertFalse(reuse.generateEnabled);
+    assertFalse(reuse.savedEngineEnabled);
+    assertFalse(reuse.remoteEngineEnabled);
+    assertFalse(reuse.remoteSettingsEnabled);
+    assertFalse(reuse.preloadEnabled);
+    assertFalse(reuse.autoExitEnabled);
+  }
+
   private static void assertInsideDialog(Rectangle bounds) {
     assertFalse(bounds.x < 0 || bounds.x + bounds.width > 577);
   }

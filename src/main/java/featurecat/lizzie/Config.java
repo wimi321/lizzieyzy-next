@@ -1076,6 +1076,7 @@ public class Config {
   public int analysisEndMove = -1;
   public boolean analysisUseCurrentRules = true;
   public boolean analysisEnginePreLoad = false;
+  public boolean analysisReuseCurrentEngine = false;
   public boolean analysisAlwaysOverride = false;
   public boolean trackingEnginePreload = false;
   public int trackingEngineMaxVisits = 500;
@@ -1853,6 +1854,7 @@ public class Config {
     analysisEndMove = uiConfig.optInt("analysis-end-move", -1);
     analysisUseCurrentRules = uiConfig.optBoolean("analysis-use-current-rules", true);
     analysisEnginePreLoad = uiConfig.optBoolean("analysis-engine-preload", false);
+    analysisReuseCurrentEngine = uiConfig.optBoolean("analysis-reuse-current-engine", false);
     analysisAlwaysOverride = uiConfig.optBoolean("analysis-always-override", false);
     trackingEnginePreload = uiConfig.optBoolean("tracking-engine-preload", false);
     trackingEngineMaxVisits = uiConfig.optInt("tracking-engine-max-visits", 500);

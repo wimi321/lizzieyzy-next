@@ -790,6 +790,15 @@ public class Utils {
   }
 
   public static void saveAnalysisEngineRemoteEngineData(RemoteEngineData remoteEngineData) {
+    updateAnalysisEngineRemoteEngineData(remoteEngineData);
+    try {
+      Lizzie.config.save();
+    } catch (IOException e) {
+      e.printStackTrace();
+    }
+  }
+
+  public static void updateAnalysisEngineRemoteEngineData(RemoteEngineData remoteEngineData) {
     JSONObject remoteEngineInfo = new JSONObject();
     remoteEngineInfo.put("useJavaSSH", remoteEngineData.useJavaSSH);
     remoteEngineInfo.put("ip", remoteEngineData.ip);
@@ -799,11 +808,6 @@ public class Utils {
     remoteEngineInfo.put("useKeyGen", remoteEngineData.useKeyGen);
     remoteEngineInfo.put("keyGenPath", remoteEngineData.keyGenPath);
     Lizzie.config.leelazConfig.put("analysis-engine-ssh-info", remoteEngineInfo);
-    try {
-      Lizzie.config.save();
-    } catch (IOException e) {
-      e.printStackTrace();
-    }
   }
 
   public static ArrayList<EngineData> getEngineData() {
