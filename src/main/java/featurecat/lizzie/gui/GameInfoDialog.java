@@ -87,17 +87,26 @@ public class GameInfoDialog extends JDialog {
     textFieldKomi.setEditable(true);
     textFieldHandicap.setEditable(false);
 
-    contentPanel.add(new JFontLabel(resourceBundle.getString("GameInfoDialog.black"))); // "黑:"));
+    JFontLabel blackLabel = new JFontLabel(resourceBundle.getString("GameInfoDialog.black"));
+    contentPanel.add(blackLabel);
     contentPanel.add(textFieldBlack);
-    contentPanel.add(new JFontLabel(resourceBundle.getString("GameInfoDialog.white"))); // "白:"));
+    JFontLabel whiteLabel = new JFontLabel(resourceBundle.getString("GameInfoDialog.white"));
+    contentPanel.add(whiteLabel);
     contentPanel.add(textFieldWhite);
-    contentPanel.add(new JFontLabel(resourceBundle.getString("GameInfoDialog.komi"))); // "贴目:"));
+    JFontLabel komiLabel = new JFontLabel(resourceBundle.getString("GameInfoDialog.komi"));
+    contentPanel.add(komiLabel);
     contentPanel.add(textFieldKomi);
-    contentPanel.add(
-        new JFontLabel(resourceBundle.getString("GameInfoDialog.handicap"))); // "让子:"));
+    JFontLabel handicapLabel = new JFontLabel(resourceBundle.getString("GameInfoDialog.handicap"));
+    contentPanel.add(handicapLabel);
     contentPanel.add(textFieldHandicap);
+    AccessibilitySupport.labelFor(blackLabel, textFieldBlack, blackLabel.getText());
+    AccessibilitySupport.labelFor(whiteLabel, textFieldWhite, whiteLabel.getText());
+    AccessibilitySupport.labelFor(komiLabel, textFieldKomi, komiLabel.getText());
+    AccessibilitySupport.labelFor(handicapLabel, textFieldHandicap, handicapLabel.getText());
 
     dialogPane.add(contentPanel, BorderLayout.CENTER);
+    AccessibilitySupport.applyToTree(this);
+    AccessibilitySupport.installEscapeToClose(getRootPane(), this);
   }
 
   private void initButtonBar() {

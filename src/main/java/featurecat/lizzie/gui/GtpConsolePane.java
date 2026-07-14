@@ -105,6 +105,12 @@ public class GtpConsolePane extends JDialog {
     lblCommand.setBackground(Color.DARK_GRAY);
     lblCommand.setForeground(Color.WHITE);
     lblCommand.setText("GTP>");
+    AccessibilitySupport.labelFor(
+        lblCommand,
+        txtCommand,
+        resourceBundle.getString("GtpConsolePane.title")
+            + " - "
+            + resourceBundle.getString("GtpConsolePane.send"));
     pnlCommand.setLayout(new BorderLayout(0, 0));
     pnlCommand.add(lblCommand, BorderLayout.WEST);
 
@@ -166,6 +172,9 @@ public class GtpConsolePane extends JDialog {
     scrollPane.setViewportView(console);
     getRootPane().setBorder(BorderFactory.createEmptyBorder());
     txtCommand.addActionListener(e -> postCommand(e));
+    AccessibilitySupport.applyToTree(this);
+    AccessibilitySupport.installEscapeAction(
+        getRootPane(), this, () -> Lizzie.frame.toggleGtpConsole());
     this.addWindowListener(
         new WindowAdapter() {
           public void windowClosing(WindowEvent e) {

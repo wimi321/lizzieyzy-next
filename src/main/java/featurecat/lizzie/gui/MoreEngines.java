@@ -24,6 +24,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.ResourceBundle;
 import javax.imageio.ImageIO;
+import javax.swing.AbstractButton;
 import javax.swing.BorderFactory;
 import javax.swing.ButtonGroup;
 import javax.swing.ImageIcon;
@@ -104,6 +105,10 @@ public class MoreEngines extends JPanel {
     this.headFont = new Font(Config.sysDefaultFontName, 0, Math.max(Config.frameFontSize, 13));
     table.getTableHeader().setFont(this.headFont);
     table.setFont(this.winrateFont);
+    AccessibilitySupport.named(
+        table,
+        this.resourceBundle.getString("MoreEngines.title"),
+        this.resourceBundle.getString("MoreEngines.engineName"));
     table.getTableHeader().setReorderingAllowed(false);
     table.getTableHeader().setResizingAllowed(false);
     TableCellRenderer tcr = new ColorTableCellRenderer();
@@ -259,6 +264,10 @@ public class MoreEngines extends JPanel {
       e.printStackTrace();
     }
     JFontButton btnRemoteEngine = new JFontButton(btnRemoteEngineIcon);
+    AccessibilitySupport.button(
+        btnRemoteEngine,
+        resourceBundle.getString("MoreEngines.aboutRemoteEngineTitle"),
+        resourceBundle.getString("MoreEngines.aboutRemoteEngine"));
     btnRemoteEngine.addActionListener(
         new ActionListener() {
           public void actionPerformed(ActionEvent e) {
@@ -333,244 +342,81 @@ public class MoreEngines extends JPanel {
     this.selectpanel.add(this.txtPassword);
     this.selectpanel.add(this.rdoKeyGen);
     this.selectpanel.add(this.scanKeygen);
+    AccessibilitySupport.labelFor(lblName, txtName, lblName.getText());
+    AccessibilitySupport.labelFor(lblCommand, command, lblCommand.getText());
+    AccessibilitySupport.labelFor(
+        lblInitialCommand, txtInitialCommand, lblInitialCommand.getText());
+    AccessibilitySupport.labelFor(lblWidth, txtWidth, lblWidth.getText());
+    AccessibilitySupport.labelFor(lblHeight, txtHeight, lblHeight.getText());
+    AccessibilitySupport.labelFor(lblKomi, txtKomi, lblKomi.getText());
+    AccessibilitySupport.labelFor(lblIp, txtIP, lblIp.getText());
+    AccessibilitySupport.labelFor(lblPort, txtPort, lblPort.getText());
+    AccessibilitySupport.labelFor(lblUserName, txtUserName, lblUserName.getText());
+    AccessibilitySupport.named(txtPassword, rdoUsePassword.getText(), rdoUsePassword.getText());
     this.engineName.setBounds(5, 3, 700, 24);
-    lblName.setBounds(
-        5,
-        32,
-        Lizzie.config.isFrameFontSmall() ? 45 : (Lizzie.config.isFrameFontMiddle() ? 45 : 60),
-        24);
-    lblCommand.setBounds(
-        5,
-        60,
-        Lizzie.config.isFrameFontSmall() ? 73 : (Lizzie.config.isFrameFontMiddle() ? 73 : 95),
-        24);
-    this.scan.setBounds(
-        5,
-        83,
-        Lizzie.config.isFrameFontSmall() ? 60 : (Lizzie.config.isFrameFontMiddle() ? 75 : 90),
-        24);
-    this.txtName.setBounds(
-        Lizzie.config.isFrameFontSmall() ? 68 : (Lizzie.config.isFrameFontMiddle() ? 85 : 100),
-        35,
-        Lizzie.config.isFrameFontSmall() ? 812 : (Lizzie.config.isFrameFontMiddle() ? 793 : 780),
-        24);
-    this.command.setBounds(
-        Lizzie.config.isFrameFontSmall() ? 68 : (Lizzie.config.isFrameFontMiddle() ? 85 : 100),
-        65,
-        Lizzie.config.isFrameFontSmall() ? 812 : (Lizzie.config.isFrameFontMiddle() ? 793 : 780),
-        170);
-    lblInitialCommand.setBounds(
-        5,
-        240,
-        Lizzie.config.isFrameFontSmall() ? 60 : (Lizzie.config.isFrameFontMiddle() ? 75 : 90),
-        24);
-    this.txtInitialCommand.setBounds(
-        Lizzie.config.isFrameFontSmall() ? 68 : (Lizzie.config.isFrameFontMiddle() ? 85 : 100),
-        240,
-        Lizzie.config.isFrameFontSmall() ? 812 : (Lizzie.config.isFrameFontMiddle() ? 793 : 780),
-        24);
-    this.preload.setBounds(
-        5,
-        270,
-        Lizzie.config.isFrameFontSmall() ? 80 : (Lizzie.config.isFrameFontMiddle() ? 80 : 95),
-        24);
-    this.chkDefault.setBounds(
-        Lizzie.config.isFrameFontSmall() ? 85 : (Lizzie.config.isFrameFontMiddle() ? 85 : 100),
-        270,
-        Lizzie.config.isFrameFontSmall() ? 64 : (Lizzie.config.isFrameFontMiddle() ? 60 : 80),
-        24);
-    lblWidth.setBounds(
-        Lizzie.config.isFrameFontSmall() ? 156 : (Lizzie.config.isFrameFontMiddle() ? 156 : 190),
-        270,
-        30,
-        24);
-    this.txtWidth.setBounds(
-        Lizzie.config.isFrameFontSmall() ? 177 : (Lizzie.config.isFrameFontMiddle() ? 177 : 217),
-        271,
-        Lizzie.config.isFrameFontSmall() ? 30 : (Lizzie.config.isFrameFontMiddle() ? 30 : 40),
-        24);
-    lblHeight.setBounds(
-        Lizzie.config.isFrameFontSmall() ? 213 : (Lizzie.config.isFrameFontMiddle() ? 213 : 265),
-        270,
-        30,
-        24);
-    this.txtHeight.setBounds(
-        Lizzie.config.isFrameFontSmall() ? 234 : (Lizzie.config.isFrameFontMiddle() ? 234 : 294),
-        271,
-        Lizzie.config.isFrameFontSmall() ? 30 : (Lizzie.config.isFrameFontMiddle() ? 30 : 40),
-        24);
-    lblKomi.setBounds(
-        Lizzie.config.isFrameFontSmall() ? 269 : (Lizzie.config.isFrameFontMiddle() ? 269 : 345),
-        270,
-        40,
-        24);
-    this.txtKomi.setBounds(
-        Lizzie.config.isFrameFontSmall() ? 302 : (Lizzie.config.isFrameFontMiddle() ? 302 : 393),
-        271,
-        Lizzie.config.isFrameFontSmall() ? 30 : (Lizzie.config.isFrameFontMiddle() ? 30 : 40),
-        24);
-    this.chkRemoteEngine.setBounds(
-        5,
-        300,
-        Lizzie.config.isFrameFontSmall() ? 75 : (Lizzie.config.isFrameFontMiddle() ? 90 : 105),
-        24);
-    btnRemoteEngine.setBounds(
-        Lizzie.config.isFrameFontSmall() ? 80 : (Lizzie.config.isFrameFontMiddle() ? 100 : 115),
-        301,
-        20,
-        24);
-    lblIp.setBounds(
-        Lizzie.config.isFrameFontSmall() ? 120 : (Lizzie.config.isFrameFontMiddle() ? 140 : 155),
-        300,
-        30,
-        24);
-    this.txtIP.setBounds(
-        Lizzie.config.isFrameFontSmall() ? 137 : (Lizzie.config.isFrameFontMiddle() ? 160 : 185),
-        301,
-        130,
-        24);
-    lblPort.setBounds(
-        Lizzie.config.isFrameFontSmall() ? 280 : (Lizzie.config.isFrameFontMiddle() ? 310 : 327),
-        300,
-        40,
-        24);
-    this.txtPort.setBounds(
-        Lizzie.config.isFrameFontSmall() ? 310 : (Lizzie.config.isFrameFontMiddle() ? 348 : 378),
-        301,
-        50,
-        24);
-    lblUserName.setBounds(
-        Lizzie.config.isFrameFontSmall() ? 368 : (Lizzie.config.isFrameFontMiddle() ? 406 : 436),
-        300,
-        65,
-        24);
-    this.txtUserName.setBounds(
-        Lizzie.config.isFrameFontSmall() ? 418 : (Lizzie.config.isFrameFontMiddle() ? 466 : 512),
-        301,
-        100,
-        24);
-    boolean isMac =
-        !Lizzie.config.useJavaLooks && System.getProperty("os.name").toLowerCase().contains("mac");
-    if (isMac) {
-      this.rdoUsePassword.setBounds(
-          Lizzie.config.isFrameFontSmall() ? 526 : (Lizzie.config.isFrameFontMiddle() ? 573 : 620),
-          300,
-          Lizzie.config.isFrameFontSmall() ? 70 : (Lizzie.config.isFrameFontMiddle() ? 85 : 70),
-          24);
-      this.txtPassword.setBounds(
-          Lizzie.config.isFrameFontSmall() ? 600 : (Lizzie.config.isFrameFontMiddle() ? 660 : 693),
-          301,
-          Lizzie.config.isFrameFontSmall() ? 80 : (Lizzie.config.isFrameFontMiddle() ? 80 : 70),
-          24);
-      this.rdoKeyGen.setBounds(
-          Lizzie.config.isFrameFontSmall() ? 685 : (Lizzie.config.isFrameFontMiddle() ? 750 : 763),
-          300,
-          Lizzie.config.isFrameFontSmall()
-              ? (Lizzie.config.isChinese ? 70 : 95)
-              : (Lizzie.config.isFrameFontMiddle() ? 85 : 70),
-          24);
-      this.scanKeygen.setBounds(
-          Lizzie.config.isFrameFontSmall()
-              ? (Lizzie.config.isChinese ? 755 : 755)
-              : (Lizzie.config.isFrameFontMiddle() ? 840 : 840),
-          300,
-          50,
-          24);
-    } else {
-      this.rdoUsePassword.setBounds(
-          Lizzie.config.isFrameFontSmall() ? 526 : (Lizzie.config.isFrameFontMiddle() ? 573 : 620),
-          300,
-          Lizzie.config.isFrameFontSmall() ? 50 : (Lizzie.config.isFrameFontMiddle() ? 60 : 70),
-          24);
-      this.txtPassword.setBounds(
-          Lizzie.config.isFrameFontSmall() ? 580 : (Lizzie.config.isFrameFontMiddle() ? 635 : 693),
-          301,
-          Lizzie.config.isFrameFontSmall() ? 80 : (Lizzie.config.isFrameFontMiddle() ? 80 : 70),
-          24);
-      this.rdoKeyGen.setBounds(
-          Lizzie.config.isFrameFontSmall() ? 665 : (Lizzie.config.isFrameFontMiddle() ? 725 : 763),
-          300,
-          Lizzie.config.isFrameFontSmall()
-              ? (Lizzie.config.isChinese ? 50 : 70)
-              : (Lizzie.config.isFrameFontMiddle() ? 60 : 70),
-          24);
-      this.scanKeygen.setBounds(
-          Lizzie.config.isFrameFontSmall()
-              ? (Lizzie.config.isChinese ? 715 : 735)
-              : (Lizzie.config.isFrameFontMiddle() ? 790 : 835),
-          300,
-          50,
-          24);
-    }
-    this.moveUp.setBounds(5, 330, 55, 24);
-    this.moveDown.setBounds(60, 330, 55, 24);
-    this.moveUp5.setBounds(115, 330, 55, 24);
-    this.moveDown5.setBounds(170, 330, 55, 24);
-    this.moveFirst.setBounds(225, 330, 55, 24);
-    this.moveLast.setBounds(280, 330, 55, 24);
-    this.add.setBounds(585, 330, 54, 24);
-    this.delete.setBounds(639, 330, 54, 24);
-    this.cancel.setBounds(693, 330, 54, 24);
-    this.save.setBounds(765, 330, 60, 24);
-    this.exit.setBounds(825, 330, 60, 24);
-    lblchooseStart.setBounds(5, 360, 120, 24);
-    if (Lizzie.config.isChinese) {
-      rdoDefault.setBounds(
-          Lizzie.config.isFrameFontSmall() ? 74 : (Lizzie.config.isFrameFontMiddle() ? 100 : 120),
-          360,
-          (Lizzie.config.isFrameFontSmall() ? 76 : (Lizzie.config.isFrameFontMiddle() ? 90 : 110)),
-          24);
-      rdoLast.setBounds(
-          (Lizzie.config.isFrameFontSmall()
-              ? 150
-              : (Lizzie.config.isFrameFontMiddle() ? 190 : 230)),
-          360,
-          Lizzie.config.isFrameFontSmall() ? 110 : (Lizzie.config.isFrameFontMiddle() ? 140 : 170),
-          24);
-      rdoMannul.setBounds(
-          (Lizzie.config.isFrameFontSmall()
-              ? 263
-              : (Lizzie.config.isFrameFontMiddle() ? 330 : 400)),
-          360,
-          Lizzie.config.isFrameFontSmall() ? 80 : (Lizzie.config.isFrameFontMiddle() ? 93 : 110),
-          24);
-      rdoNone.setBounds(
-          (Lizzie.config.isFrameFontSmall()
-              ? 340
-              : (Lizzie.config.isFrameFontMiddle() ? 423 : 510)),
-          360,
-          Lizzie.config.isFrameFontSmall() ? 70 : (Lizzie.config.isFrameFontMiddle() ? 90 : 120),
-          24);
-    } else {
-      rdoDefault.setBounds(
-          Lizzie.config.isFrameFontSmall() ? 70 : (Lizzie.config.isFrameFontMiddle() ? 95 : 115),
-          360,
-          (Lizzie.config.isFrameFontSmall()
-              ? 110
-              : (Lizzie.config.isFrameFontMiddle() ? 125 : 155)),
-          24);
-      rdoLast.setBounds(
-          (Lizzie.config.isFrameFontSmall()
-              ? 180
-              : (Lizzie.config.isFrameFontMiddle() ? 220 : 270)),
-          360,
-          Lizzie.config.isFrameFontSmall() ? 130 : (Lizzie.config.isFrameFontMiddle() ? 155 : 190),
-          24);
-      rdoMannul.setBounds(
-          (Lizzie.config.isFrameFontSmall()
-              ? 312
-              : (Lizzie.config.isFrameFontMiddle() ? 375 : 460)),
-          360,
-          Lizzie.config.isFrameFontSmall() ? 80 : (Lizzie.config.isFrameFontMiddle() ? 90 : 105),
-          24);
-      rdoNone.setBounds(
-          (Lizzie.config.isFrameFontSmall()
-              ? 392
-              : (Lizzie.config.isFrameFontMiddle() ? 464 : 565)),
-          360,
-          Lizzie.config.isFrameFontSmall() ? 90 : (Lizzie.config.isFrameFontMiddle() ? 110 : 135),
-          24);
-    }
+    int formControlX =
+        Math.max(
+            90,
+            Math.max(
+                    Math.max(lblName.getPreferredSize().width, lblCommand.getPreferredSize().width),
+                    Math.max(
+                        lblInitialCommand.getPreferredSize().width, scan.getPreferredSize().width))
+                + 10);
+    int formLabelWidth = formControlX - 10;
+    int formControlWidth = 880 - formControlX;
+    lblName.setBounds(5, 32, formLabelWidth, 24);
+    lblCommand.setBounds(5, 60, formLabelWidth, 24);
+    this.scan.setBounds(5, 83, formLabelWidth, 24);
+    this.txtName.setBounds(formControlX, 35, formControlWidth, 24);
+    this.command.setBounds(formControlX, 65, formControlWidth, 170);
+    lblInitialCommand.setBounds(5, 240, formLabelWidth, 24);
+    this.txtInitialCommand.setBounds(formControlX, 240, formControlWidth, 24);
+    int boardSettingsX = 5;
+    boardSettingsX = placeInRow(preload, boardSettingsX, 270, 4, 0);
+    boardSettingsX = placeInRow(chkDefault, boardSettingsX, 270, 12, 0);
+    boardSettingsX = placeInRow(lblWidth, boardSettingsX, 270, 4, 0);
+    boardSettingsX = placeInRow(txtWidth, boardSettingsX, 270, 12, 40);
+    boardSettingsX = placeInRow(lblHeight, boardSettingsX, 270, 4, 0);
+    boardSettingsX = placeInRow(txtHeight, boardSettingsX, 270, 12, 40);
+    boardSettingsX = placeInRow(lblKomi, boardSettingsX, 270, 4, 0);
+    placeInRow(txtKomi, boardSettingsX, 270, 0, 48);
+    int remoteX = 5;
+    remoteX = placeInRow(chkRemoteEngine, remoteX, 296, 6, 0);
+    remoteX = placeInRow(btnRemoteEngine, remoteX, 296, 8, 24);
+    remoteX = placeInRow(lblIp, remoteX, 296, 4, 0);
+    remoteX = placeInRow(txtIP, remoteX, 296, 8, 150);
+    remoteX = placeInRow(lblPort, remoteX, 296, 4, 0);
+    remoteX = placeInRow(txtPort, remoteX, 296, 8, 58);
+    remoteX = placeInRow(lblUserName, remoteX, 296, 4, 0);
+    placeInRow(txtUserName, remoteX, 296, 0, 150);
+
+    int authX = 5;
+    authX = placeInRow(rdoUsePassword, authX, 324, 4, 0);
+    authX = placeInRow(txtPassword, authX, 324, 14, 150);
+    authX = placeInRow(rdoKeyGen, authX, 324, 4, 0);
+    placeInRow(scanKeygen, authX, 324, 0, 100);
+
+    int orderingX = 5;
+    orderingX = placeInRow(moveUp, orderingX, 354, 2, 55);
+    orderingX = placeInRow(moveDown, orderingX, 354, 2, 55);
+    orderingX = placeInRow(moveUp5, orderingX, 354, 2, 55);
+    orderingX = placeInRow(moveDown5, orderingX, 354, 2, 55);
+    orderingX = placeInRow(moveFirst, orderingX, 354, 2, 55);
+    placeInRow(moveLast, orderingX, 354, 0, 55);
+
+    int actionRight = 885;
+    actionRight = placeFromRight(exit, actionRight, 354, 2, 60);
+    actionRight = placeFromRight(save, actionRight, 354, 18, 60);
+    actionRight = placeFromRight(cancel, actionRight, 354, 2, 54);
+    actionRight = placeFromRight(delete, actionRight, 354, 2, 54);
+    placeFromRight(add, actionRight, 354, 0, 54);
+
+    int startupX = 5;
+    startupX = placeInRow(lblchooseStart, startupX, 382, 6, 0);
+    startupX = placeInRow(rdoDefault, startupX, 382, 4, 0);
+    startupX = placeInRow(rdoLast, startupX, 382, 4, 0);
+    startupX = placeInRow(rdoMannul, startupX, 382, 4, 0);
+    placeInRow(rdoNone, startupX, 382, 0, 0);
     //    this.rdoDefault.setBounds(
     //        Lizzie.config.isFrameFontSmall() ? 70 : (Lizzie.config.isFrameFontMiddle() ? 90 :
     // 110),
@@ -597,7 +443,7 @@ public class MoreEngines extends JPanel {
     JFontButton btnEncrypt =
         new JFontButton(this.resourceBundle.getString("MoreEngines.btnEncrypt"));
     btnEncrypt.setMargin(new Insets(0, 0, 0, 0));
-    btnEncrypt.setBounds(765, 360, 120, 24);
+    btnEncrypt.setBounds(765, 382, 120, 24);
     this.selectpanel.add(btnEncrypt);
     btnEncrypt.addActionListener(
         new ActionListener() {
@@ -617,6 +463,8 @@ public class MoreEngines extends JPanel {
     else rdoMannul.setSelected(true);
 
     setEnable(false);
+    this.selectpanel.setBounds(0, 0, 900, 412);
+    this.tablepanel.setBounds(0, 412, 885, 353);
     this.selectpanel.add(this.engineName);
     this.selectpanel.add(lblName);
     this.selectpanel.add(this.txtName);
@@ -649,6 +497,7 @@ public class MoreEngines extends JPanel {
     this.selectpanel.add(this.rdoMannul);
     this.selectpanel.add(this.rdoNone);
     this.selectpanel.add(this.delete);
+    AccessibilitySupport.applyToTree(this);
     this.scan.addActionListener(
         new ActionListener() {
           public void actionPerformed(ActionEvent e) {
@@ -868,6 +717,33 @@ public class MoreEngines extends JPanel {
             curIndex += 5;
           }
         });
+  }
+
+  private static int placeInRow(
+      Component component, int x, int y, int trailingGap, int minimumWidth) {
+    int preferredWidth =
+        component.getPreferredSize() == null ? 0 : component.getPreferredSize().width;
+    int width = Math.max(minimumWidth, preferredWidth);
+    if (component instanceof AbstractButton) {
+      width += 8;
+    } else if (component instanceof JLabel) {
+      width += 2;
+    }
+    component.setBounds(x, y, width, 24);
+    return x + width + trailingGap;
+  }
+
+  private static int placeFromRight(
+      Component component, int right, int y, int leadingGap, int minimumWidth) {
+    int preferredWidth =
+        component.getPreferredSize() == null ? 0 : component.getPreferredSize().width;
+    int width = Math.max(minimumWidth, preferredWidth);
+    if (component instanceof AbstractButton) {
+      width += 8;
+    }
+    int x = right - width;
+    component.setBounds(x, y, width, 24);
+    return x - leadingGap;
   }
 
   class ColorTableCellRenderer extends DefaultTableCellRenderer {
@@ -1305,6 +1181,7 @@ public class MoreEngines extends JPanel {
     engjf.setAlwaysOnTop(Lizzie.frame.isAlwaysOnTop());
     engjf.setLocationRelativeTo(engjf.getOwner());
     LizzieFrame.constrainWindowToAvailableWorkArea(engjf);
+    AccessibilitySupport.installEscapeToClose(engjf.getRootPane(), engjf);
     return engjf;
   }
 }

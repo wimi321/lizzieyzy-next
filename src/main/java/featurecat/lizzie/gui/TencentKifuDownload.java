@@ -140,7 +140,8 @@ public class TencentKifuDownload extends JFrame {
     lblHint.setForeground(Color.GRAY);
     searchPanel.add(lblHint);
 
-    searchPanel.add(new JFontLabel(text("TencentKifuDownload.lblAfterGet")));
+    JLabel lblAfterGet = new JFontLabel(text("TencentKifuDownload.lblAfterGet"));
+    searchPanel.add(lblAfterGet);
 
     JComboBox<String> cbxAfterGet = new JFontComboBox<String>();
     cbxAfterGet.addItem(text("TencentKifuDownload.cbxAfterGet.min"));
@@ -159,6 +160,8 @@ public class TencentKifuDownload extends JFrame {
           }
         });
     searchPanel.add(cbxAfterGet);
+    AccessibilitySupport.labelFor(
+        lblAfterGet, cbxAfterGet, text("TencentKifuDownload.lblAfterGet"));
 
     JPanel infoPanel = new JPanel(new BorderLayout(0, 6));
     northPanel.add(infoPanel, BorderLayout.CENTER);

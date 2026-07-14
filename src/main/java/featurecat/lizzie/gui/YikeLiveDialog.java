@@ -106,9 +106,11 @@ public class YikeLiveDialog extends JDialog {
 
     JPanel topPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 6));
     topPanel.setBorder(BorderFactory.createEmptyBorder(4, 6, 0, 6));
-    topPanel.add(new JLabel(text("YikeLiveDialog.category", "Category")));
+    JLabel categoryLabel = new JLabel(text("YikeLiveDialog.category", "Category"));
+    topPanel.add(categoryLabel);
     topPanel.add(categoryCombo);
-    topPanel.add(new JLabel(text("YikeLiveDialog.filter", "Filter")));
+    JLabel filterLabel = new JLabel(text("YikeLiveDialog.filter", "Filter"));
+    topPanel.add(filterLabel);
     topPanel.add(filterField);
     topPanel.add(refreshButton);
     topPanel.add(moreButton);
@@ -177,6 +179,17 @@ public class YikeLiveDialog extends JDialog {
                 updateFilter();
               }
             });
+
+    AccessibilitySupport.labelFor(
+        categoryLabel, categoryCombo, text("YikeLiveDialog.category", "Category"));
+    AccessibilitySupport.labelFor(
+        filterLabel, filterField, text("YikeLiveDialog.filter", "Filter"));
+    AccessibilitySupport.named(
+        table,
+        text("YikeLiveDialog.title", "Yike Live Center"),
+        text("YikeLiveDialog.title", "Yike Live Center"));
+    AccessibilitySupport.applyToTree(getContentPane());
+    AccessibilitySupport.installEscapeToClose(getRootPane(), this);
 
     setSize(DEFAULT_WIDTH, DEFAULT_HEIGHT);
     setLocationRelativeTo(owner);

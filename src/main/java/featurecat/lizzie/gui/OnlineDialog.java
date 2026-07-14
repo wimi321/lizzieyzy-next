@@ -332,6 +332,8 @@ public class OnlineDialog extends JDialog {
     txtUrl.setBounds(69, 55, 639, 20);
     buttonPane.add(txtUrl);
     txtUrl.setColumns(10);
+    AccessibilitySupport.labelFor(
+        lblUrl, txtUrl, resourceBundle.getString("OnlineDialog.title.url"));
 
     JLabel lblRefresh = new JLabel(resourceBundle.getString("OnlineDialog.title.refresh"));
     lblRefresh.setBounds(10, 80, 56, 14);
@@ -354,6 +356,8 @@ public class OnlineDialog extends JDialog {
     txtRefreshTime.setText("1");
     buttonPane.add(txtRefreshTime);
     txtRefreshTime.setColumns(10);
+    AccessibilitySupport.labelFor(
+        lblRefresh, txtRefreshTime, resourceBundle.getString("OnlineDialog.title.refresh"));
     JLabel lblPrompt1 = new JLabel(resourceBundle.getString("OnlineDialog.lblPrompt1.text"));
     lblPrompt1.setBounds(10, 6, 398, 14);
     buttonPane.add(lblPrompt1);
@@ -385,6 +389,9 @@ public class OnlineDialog extends JDialog {
     buttonPane.add(lblError);
 
     txtUrl.selectAll();
+
+    AccessibilitySupport.applyToTree(getContentPane());
+    AccessibilitySupport.installEscapeToClose(getRootPane(), this);
 
     setLocationRelativeTo(getOwner());
     paste();

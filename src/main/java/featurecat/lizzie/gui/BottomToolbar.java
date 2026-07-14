@@ -841,7 +841,7 @@ public class BottomToolbar extends JPanel {
     setButtonSize(savefile, true);
     setButtonSize(analyzeList, false);
     setButtonSize(refresh, true);
-    setButtonSize(analyse);
+    setAnalyseButtonSize();
     setButtonSize(tryPlay, true);
     setButtonSize(setMain, false);
     setButtonSize(backMain, false);
@@ -2694,6 +2694,23 @@ public class BottomToolbar extends JPanel {
     button.setSize(d);
     button.setPreferredSize(d);
     button.setMinimumSize(d);
+  }
+
+  private void setAnalyseButtonSize() {
+    int analyseWidth =
+        analyse
+                .getFontMetrics(analyse.getFont())
+                .stringWidth(resourceBundle.getString("BottomToolbar.analyse"))
+            + 38;
+    int pauseWidth =
+        analyse
+                .getFontMetrics(analyse.getFont())
+                .stringWidth(resourceBundle.getString("BottomToolbar.pauseAnalyse"))
+            + 38;
+    Dimension d = new Dimension(Math.max(analyseWidth, pauseWidth), MAIN_BAR_HEIGHT);
+    analyse.setSize(d);
+    analyse.setPreferredSize(d);
+    analyse.setMinimumSize(d);
   }
 
   public void setDetailIcon() {

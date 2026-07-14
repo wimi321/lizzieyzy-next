@@ -154,6 +154,8 @@ public class FoxKifuDownload extends JFrame {
         });
     cbxAfterGet.setSelectedIndex(Lizzie.config.foxAfterGet);
     searchPanel.add(cbxAfterGet);
+    AccessibilitySupport.labelFor(
+        lblAfterGet, cbxAfterGet, Lizzie.resourceBundle.getString("FoxKifuDownload.lblAfterGet"));
 
     JPanel infoPanel = new JPanel(new BorderLayout(0, 6));
     northPanel.add(infoPanel, BorderLayout.CENTER);
