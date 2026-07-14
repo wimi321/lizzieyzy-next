@@ -49,20 +49,24 @@ class LizzieFrameRegressionTest {
   private static final int BOARD_AREA = BOARD_SIZE * BOARD_SIZE;
 
   @Test
-  void loadingStatusFontFitsLongLocalizedTextAndUsesCompositeFont() {
+  void loadingStatusFontFitsAndTruncatesLongLocalizedText() {
     BufferedImage image = new BufferedImage(800, 200, BufferedImage.TYPE_INT_ARGB);
     Graphics2D graphics = image.createGraphics();
     try {
       String thaiStatus =
           "\u0E01\u0E33\u0E25\u0E31\u0E07\u0E40\u0E23\u0E34\u0E48\u0E21\u0E15\u0E49\u0E19\u0E40\u0E04\u0E23\u0E37\u0E48\u0E2D\u0E07\u0E22\u0E19\u0E15\u0E4C\u0E27\u0E34\u0E40\u0E04\u0E23\u0E32\u0E30\u0E2B\u0E4C";
-      Font font = LizzieFrame.fitStatusFont(graphics, thaiStatus, 72, 12, 240);
+      int availableWidth = 80;
+      Font font =
+          LizzieFrame.fitStatusFont(graphics, thaiStatus, 72, 12, availableWidth);
 
       assertTrue(font.getSize() >= 12);
       assertTrue(font.getSize() < 72);
       String displayed =
-          LizzieFrame.truncateStatusText(thaiStatus, graphics.getFontMetrics(font), 240);
+          LizzieFrame.truncateStatusText(
+              thaiStatus, graphics.getFontMetrics(font), availableWidth);
       assertTrue(displayed.endsWith("..."));
-      assertTrue(graphics.getFontMetrics(font).stringWidth(displayed) <= 240);
+      assertTrue(
+          graphics.getFontMetrics(font).stringWidth(displayed) <= availableWidth);
     } finally {
       graphics.dispose();
     }
