@@ -21,10 +21,13 @@ import featurecat.lizzie.rules.BoardHistoryNode;
 import featurecat.lizzie.rules.Stone;
 import featurecat.lizzie.rules.Zobrist;
 import java.awt.Color;
+import java.awt.Font;
 import java.awt.GraphicsConfiguration;
 import java.awt.GraphicsDevice;
+import java.awt.Graphics2D;
 import java.awt.Rectangle;
 import java.awt.geom.AffineTransform;
+import java.awt.image.BufferedImage;
 import java.awt.image.ColorModel;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
@@ -44,6 +47,34 @@ import org.junit.jupiter.api.Test;
 class LizzieFrameRegressionTest {
   private static final int BOARD_SIZE = 2;
   private static final int BOARD_AREA = BOARD_SIZE * BOARD_SIZE;
+
+  @Test
+  void loadingStatusFontFitsLongLocalizedTextAndUsesCompositeFont() {
+    BufferedImage image = new BufferedImage(800, 200, BufferedImage.TYPE_INT_ARGB);
+    Graphics2D graphics = image.createGraphics();
+    try {
+      String thaiStatus =
+          "\u0E01\u0E33\u0E25\u0E31\u0E07\u0E40\u0E23\u0E34\u0E48\u0E21\u0E15\u0E49\u0E19\u0E40\u0E04\u0E23\u0E37\u0E48\u0E2D\u0E07\u0E22\u0E19\u0E15\u0E4C\u0E27\u0E34\u0E40\u0E04\u0E23\u0E32\u0E30\u0E2B\u0E4C";
+      Font font = LizzieFrame.fitStatusFont(graphics, thaiStatus, 72, 12, 240);
+
+      assertTrue(font.getSize() >= 12);
+      assertTrue(font.getSize() < 72);
+      String displayed =
+          LizzieFrame.truncateStatusText(thaiStatus, graphics.getFontMetrics(font), 240);
+      assertTrue(displayed.endsWith("..."));
+      assertTrue(graphics.getFontMetrics(font).stringWidth(displayed) <= 240);
+    } finally {
+      graphics.dispose();
+    }
+  }
+
+  @Test
+  void stackedEngineStatusLinesStaySeparatedAboveBottomToolbar() {
+    int[] tops = LizzieFrame.stackedStatusTextTops(642, 667, 36, 22, 670);
+
+    assertTrue(tops[1] >= tops[0] + 38);
+    assertTrue(tops[1] + 22 <= 670);
+  }
 
   @Test
   void pasteSgfDecisionIgnoresEmptyClipboard() {

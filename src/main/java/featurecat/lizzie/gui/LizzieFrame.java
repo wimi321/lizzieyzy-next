@@ -6155,8 +6155,19 @@ public class LizzieFrame extends JFrame {
 
   private void drawPonderingState(
       Graphics2D g, String text1, String text2, int x, int y, int y2, double size) {
-    drawPonderingState(g, text1, x, y, size * (Lizzie.config.userKnownX ? 0.7 : 0.6));
-    drawPonderingState2(g, text2, x, y2, size * (Lizzie.config.userKnownX ? 0.75 : 0.4));
+    if (Lizzie.readMode || hasEngineStartupNotice()) {
+      return;
+    }
+    double firstSize = size * (Lizzie.config.userKnownX ? 0.7 : 0.6);
+    double secondSize = size * (Lizzie.config.userKnownX ? 0.75 : 0.4);
+    int firstFontSize = ponderingFontSize(firstSize, false);
+    int secondFontSize = ponderingFontSize(secondSize, true);
+    int firstHeight = statusTextHeight(g, text1, x, firstFontSize);
+    int secondHeight = statusTextHeight(g, text2, x, secondFontSize);
+    int bottomLimit = mainPanel.getHeight() - Math.max(0, toolbarHeight) - 4;
+    int[] tops = stackedStatusTextTops(y, y2, firstHeight, secondHeight, bottomLimit);
+    drawStatusText(g, text1, x, tops[0], firstFontSize);
+    drawStatusText(g, text2, x, tops[1], secondFontSize);
   }
 
   /** Requests a bounded-rate title and board refresh from an engine output thread. */
@@ -6189,44 +6200,30 @@ public class LizzieFrame extends JFrame {
     if (Lizzie.readMode) {
       return 0;
     }
-    int fontSize = size;
-    Font font = new Font(Lizzie.config.fontName, Font.PLAIN, fontSize);
+    int splitX = mainPanel.getWidth() / 2;
+    int rightEdge = x < splitX ? splitX : mainPanel.getWidth();
+    int maxWidth = Math.max(1, rightEdge - x - 4);
+    Font font = fitStatusFont(g, text, size, Math.min(size, 10), maxWidth);
     FontMetrics fm = g.getFontMetrics(font);
+    text = truncateStatusText(text, fm, maxWidth);
     int stringWidth = fm.stringWidth(text);
-    // Truncate too long text when display switching prompt
-    //	    if (Lizzie.leelaz != null && Lizzie.leelaz.isLoaded()) {
-    //	      int mainBoardX = boardRenderer.getLocation().x;
-    //	      if (mainPanel.getWidth() > mainPanel.getHeight()
-    //	          && (mainBoardX > x)
-    //	          && stringWidth > (mainBoardX - x)) {
-    //	        text = truncateStringByWidth(text, fm, mainBoardX - x);
-    //	        stringWidth = fm.stringWidth(text);
-    //	      }
-    //	    }
-    //	    // Do nothing when no text
-    //	    if (stringWidth <= 0) {
-    //	      return;
-    //	    }
-    int stringHeight = fm.getAscent() - fm.getDescent();
-    int width = max(stringWidth, 1);
-    int height = max((int) (stringHeight * 1.2), 1);
-
-    // BufferedImage result = new BufferedImage(width, height, TYPE_INT_ARGB);
-    // commenting this out for now... always causing an exception on startup. will
-    // fix in the
-    // upcoming refactoring
-    // filter20.filter(cachedBackground.getSubimage(x, y, result.getWidth(),
-    // result.getHeight()), result);
-    //    g.drawImage(result, x, y, null);
+    if (stringWidth <= 0) {
+      return 0;
+    }
+    int width = Math.min(maxWidth, Math.max(stringWidth, 1));
+    int height = Math.max((int) (fm.getHeight() * 1.2), 1);
+    int drawX = Math.max(0, Math.min(x, mainPanel.getWidth() - width));
+    int bottomLimit = mainPanel.getHeight() - Math.max(0, toolbarHeight) - height - 4;
+    int drawY = Math.max(0, Math.min(y, Math.max(0, bottomLimit)));
 
     g.setColor(new Color(0, 0, 0, 130));
-    g.fillRect(x, y, width, height);
-    g.drawRect(x, y, width, height);
+    g.fillRect(drawX, drawY, width, height);
+    g.drawRect(drawX, drawY, width, height);
 
     g.setColor(Color.white);
     g.setFont(font);
-    g.drawString(
-        text, x + (width - stringWidth) / 2, y + stringHeight + (height - stringHeight) / 2);
+    int baseline = drawY + (height - fm.getHeight()) / 2 + fm.getAscent();
+    g.drawString(text, drawX + (width - stringWidth) / 2, baseline);
     return stringWidth;
   }
 
@@ -6238,46 +6235,8 @@ public class LizzieFrame extends JFrame {
       return;
     }
 
-    int fontSize = (int) (max(mainPanel.getWidth(), mainPanel.getHeight()) * size);
-    Font font = new Font(Lizzie.config.fontName, Font.PLAIN, fontSize);
-    FontMetrics fm = g.getFontMetrics(font);
-    int stringWidth = fm.stringWidth(text);
-    // Truncate too long text when display switching prompt
-    if (!Lizzie.config.isFloatBoardMode()) {
-      if (Lizzie.leelaz != null && Lizzie.leelaz.isLoaded()) {
-        int mainBoardX = boardRenderer.getLocation().x;
-        if (mainPanel.getWidth() > mainPanel.getHeight()
-            && (mainBoardX > x)
-            && stringWidth > (mainBoardX - x)) {
-          text = truncateStringByWidth(text, fm, mainBoardX - x);
-          stringWidth = fm.stringWidth(text);
-        }
-      }
-    }
-    // Do nothing when no text
-    if (stringWidth <= 0) {
-      return;
-    }
-    int stringHeight = fm.getAscent() - fm.getDescent();
-    int width = max(stringWidth, 1);
-    int height = max((int) (stringHeight * 1.2), 1);
-
-    //  BufferedImage result = new BufferedImage(width, height, TYPE_INT_ARGB);
-    // commenting this out for now... always causing an exception on startup. will
-    // fix in the
-    // upcoming refactoring
-    // filter20.filter(cachedBackground.getSubimage(x, y, result.getWidth(),
-    // result.getHeight()), result);
-    // g.drawImage(result, x, y, null);
-
-    g.setColor(new Color(0, 0, 0, 130));
-    g.fillRect(x, y, width, height);
-    g.drawRect(x, y, width, height);
-
-    g.setColor(Color.white);
-    g.setFont(font);
-    g.drawString(
-        text, x + (width - stringWidth) / 2, y + stringHeight + (height - stringHeight) / 2);
+    int fontSize = ponderingFontSize(size, false);
+    drawStatusText(g, text, x, y, fontSize);
   }
 
   private void drawPonderingState2(Graphics2D g, String text, int x, int y, double size) {
@@ -6287,50 +6246,160 @@ public class LizzieFrame extends JFrame {
     if (hasEngineStartupNotice()) {
       return;
     }
+    int fontSize = ponderingFontSize(size, true);
+    drawStatusText(g, text, x, y, fontSize);
+  }
+
+  private int ponderingFontSize(double size, boolean secondary) {
     int maxWidth = mainPanel.getWidth();
     int maxHeight = mainPanel.getHeight();
-    if (maxWidth > maxHeight * 3) maxWidth = maxWidth * 3 / 5;
-    else if (maxWidth > maxHeight * 2) maxWidth = maxHeight * 2;
-    int fontSize = (int) (max(maxWidth, maxHeight) * size);
-    Font font = new Font(Lizzie.config.fontName, Font.PLAIN, fontSize);
-    FontMetrics fm = g.getFontMetrics(font);
-    int stringWidth = fm.stringWidth(text);
-    // Truncate too long text when display switching prompt
-    if (!Lizzie.config.isFloatBoardMode()) {
-      if (Lizzie.leelaz != null && Lizzie.leelaz.isLoaded()) {
-        int mainBoardX = boardRenderer.getLocation().x;
-        if (mainPanel.getWidth() > mainPanel.getHeight()
-            && (mainBoardX > x)
-            && stringWidth > (mainBoardX - x)) {
-          text = truncateStringByWidth(text, fm, mainBoardX - x);
-          stringWidth = fm.stringWidth(text);
-        }
+    if (secondary) {
+      if (maxWidth > maxHeight * 3) maxWidth = maxWidth * 3 / 5;
+      else if (maxWidth > maxHeight * 2) maxWidth = maxHeight * 2;
+    }
+    return Math.max(1, (int) (Math.max(maxWidth, maxHeight) * size));
+  }
+
+  static Font fitStatusFont(
+      Graphics2D graphics, String text, int requestedSize, int minimumSize, int maxWidth) {
+    int safeRequestedSize = Math.max(1, requestedSize);
+    int safeMinimumSize = Math.max(1, Math.min(safeRequestedSize, minimumSize));
+    Font font = createStatusFont(text, safeRequestedSize);
+    if (text == null || text.isEmpty() || maxWidth <= 0) {
+      return font;
+    }
+    int measuredWidth = graphics.getFontMetrics(font).stringWidth(text);
+    if (measuredWidth <= maxWidth) {
+      return font;
+    }
+    int fittedSize =
+        Math.max(
+            safeMinimumSize,
+            Math.min(
+                safeRequestedSize,
+                (int) Math.floor((double) safeRequestedSize * maxWidth / measuredWidth)));
+    font = font.deriveFont((float) fittedSize);
+    while (fittedSize > safeMinimumSize
+        && graphics.getFontMetrics(font).stringWidth(text) > maxWidth) {
+      fittedSize--;
+      font = font.deriveFont((float) fittedSize);
+    }
+    return font;
+  }
+
+  private static Font createStatusFont(String text, int size) {
+    LinkedHashSet<String> candidates = new LinkedHashSet<>();
+    if (Lizzie.config != null && Lizzie.config.fontName != null) {
+      candidates.add(Lizzie.config.fontName);
+    }
+    if (Config.sysDefaultFontName != null) {
+      candidates.add(Config.sysDefaultFontName);
+    }
+    candidates.add(Font.DIALOG);
+    for (String candidateName : candidates) {
+      Font candidate = new Font(candidateName, Font.PLAIN, Math.max(1, size));
+      if (text == null || text.isEmpty() || candidate.canDisplayUpTo(text) < 0) {
+        return candidate;
       }
     }
-    // Do nothing when no text
+    return new Font(Font.DIALOG, Font.PLAIN, Math.max(1, size));
+  }
+
+  private void drawStatusText(
+      Graphics2D graphics, String value, int requestedX, int requestedY, int requestedFontSize) {
+    String text = value == null ? "" : value;
+    int maxWidth = statusTextMaxWidth(requestedX);
+    Font font =
+        fitStatusFont(
+            graphics,
+            text,
+            Math.max(1, requestedFontSize),
+            Math.max(10, Config.frameFontSize),
+            maxWidth);
+    FontMetrics metrics = graphics.getFontMetrics(font);
+    text = truncateStatusText(text, metrics, maxWidth);
+    int stringWidth = metrics.stringWidth(text);
     if (stringWidth <= 0) {
       return;
     }
-    int stringHeight = fm.getAscent() - fm.getDescent();
-    int width = max(stringWidth, 1);
-    int height = max((int) (stringHeight * 1.2), 1);
+    int width = Math.min(maxWidth, Math.max(stringWidth, 1));
+    int height = Math.max((int) (metrics.getHeight() * 1.2), 1);
+    int x = Math.max(0, Math.min(requestedX, mainPanel.getWidth() - width));
+    int bottomLimit = mainPanel.getHeight() - Math.max(0, toolbarHeight) - height - 4;
+    int y = Math.max(0, Math.min(requestedY, Math.max(0, bottomLimit)));
 
-    //  BufferedImage result = new BufferedImage(width, height, TYPE_INT_ARGB);
-    // commenting this out for now... always causing an exception on startup. will
-    // fix in the
-    // upcoming refactoring
-    // filter20.filter(cachedBackground.getSubimage(x, y, result.getWidth(),
-    // result.getHeight()), result);
-    // g.drawImage(result, x, y, null);
+    graphics.setColor(new Color(0, 0, 0, 130));
+    graphics.fillRect(x, y, width, height);
+    graphics.drawRect(x, y, width, height);
 
-    g.setColor(new Color(0, 0, 0, 130));
-    g.fillRect(x, y, width, height);
-    g.drawRect(x, y, width, height);
+    graphics.setColor(Color.white);
+    graphics.setFont(font);
+    int baseline = y + (height - metrics.getHeight()) / 2 + metrics.getAscent();
+    graphics.drawString(text, x + (width - stringWidth) / 2, baseline);
+  }
 
-    g.setColor(Color.white);
-    g.setFont(font);
-    g.drawString(
-        text, x + (width - stringWidth) / 2, y + stringHeight + (height - stringHeight) / 2);
+  private int statusTextHeight(
+      Graphics2D graphics, String text, int x, int requestedFontSize) {
+    Font font =
+        fitStatusFont(
+            graphics,
+            text,
+            Math.max(1, requestedFontSize),
+            Math.max(10, Config.frameFontSize),
+            statusTextMaxWidth(x));
+    return Math.max((int) (graphics.getFontMetrics(font).getHeight() * 1.2), 1);
+  }
+
+  static int[] stackedStatusTextTops(
+      int requestedFirstTop,
+      int requestedSecondTop,
+      int firstHeight,
+      int secondHeight,
+      int bottomLimit) {
+    int firstTop = Math.max(0, requestedFirstTop);
+    int secondTop = Math.max(requestedSecondTop, firstTop + Math.max(0, firstHeight) + 2);
+    int overflow = Math.max(0, secondTop + Math.max(0, secondHeight) - bottomLimit);
+    int shift = Math.min(firstTop, overflow);
+    return new int[] {firstTop - shift, secondTop - shift};
+  }
+
+  private int statusTextMaxWidth(int x) {
+    int availableWidth = mainPanel.getWidth() - Math.max(0, x) - 8;
+    if (!Lizzie.config.isFloatBoardMode()
+        && boardRenderer != null
+        && mainPanel.getWidth() > mainPanel.getHeight()) {
+      int mainBoardX = boardRenderer.getLocation().x;
+      if (mainBoardX > x) {
+        availableWidth = Math.min(availableWidth, mainBoardX - x - 8);
+      }
+    }
+    return Math.max(1, availableWidth);
+  }
+
+  static String truncateStatusText(String text, FontMetrics metrics, int maxWidth) {
+    if (text == null || text.isEmpty() || maxWidth <= 0) {
+      return "";
+    }
+    if (metrics.stringWidth(text) <= maxWidth) {
+      return text;
+    }
+    String ellipsis = "...";
+    int ellipsisWidth = metrics.stringWidth(ellipsis);
+    if (ellipsisWidth > maxWidth) {
+      return "";
+    }
+    int low = 0;
+    int high = text.length();
+    while (low < high) {
+      int middle = (low + high + 1) / 2;
+      if (metrics.stringWidth(text.substring(0, middle)) + ellipsisWidth <= maxWidth) {
+        low = middle;
+      } else {
+        high = middle - 1;
+      }
+    }
+    String prefix = text.substring(0, low).trim();
+    return prefix.isEmpty() ? ellipsis : prefix + ellipsis;
   }
 
   /**
@@ -14468,7 +14537,6 @@ public class LizzieFrame extends JFrame {
     private PlayerStrengthDetailButton(String text, boolean compact) {
       super(text);
       this.compact = compact;
-      setFocusable(false);
       setContentAreaFilled(false);
       setBorderPainted(false);
       setOpaque(false);
@@ -14494,6 +14562,11 @@ public class LizzieFrame extends JFrame {
       g2.fillRoundRect(0, 0, getWidth() - 1, getHeight() - 1, 22, 22);
       g2.setColor(line);
       g2.drawRoundRect(0, 0, getWidth() - 1, getHeight() - 1, 22, 22);
+      if (hasFocus()) {
+        g2.setColor(new Color(120, 82, 26));
+        g2.setStroke(new BasicStroke(2f));
+        g2.drawRoundRect(2, 2, getWidth() - 5, getHeight() - 5, 18, 18);
+      }
       if (compact) {
         playerStrengthDrawInfoBadge(g2, 12, 9, 22, 24, 0.95f);
       } else {
@@ -14663,7 +14736,6 @@ public class LizzieFrame extends JFrame {
 
     private PlayerStrengthTabButton(String text) {
       super(text);
-      setFocusable(false);
       setContentAreaFilled(false);
       setBorder(new EmptyBorder(10, 54, 10, 54));
       setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
@@ -14680,6 +14752,11 @@ public class LizzieFrame extends JFrame {
       g2.fillRoundRect(0, 0, getWidth() - 1, getHeight() - 1, 20, 20);
       g2.setColor(line);
       g2.drawRoundRect(0, 0, getWidth() - 1, getHeight() - 1, 20, 20);
+      if (hasFocus()) {
+        g2.setColor(new Color(120, 82, 26));
+        g2.setStroke(new BasicStroke(2f));
+        g2.drawRoundRect(2, 2, getWidth() - 5, getHeight() - 5, 16, 16);
+      }
       if (isSelected()) {
         g2.setColor(PlayerStrengthDashboardRoot.GOLD);
         int underlineWidth = Math.max(22, getWidth() / 4);

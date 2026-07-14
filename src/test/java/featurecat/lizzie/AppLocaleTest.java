@@ -34,6 +34,41 @@ class AppLocaleTest {
   }
 
   @Test
+  void englishPlayerStrengthHeadingKeepsItsWordBoundary() {
+    assertEquals(
+        " performance",
+        AppLocale.ENGLISH.loadBundle().getString("PlayerStrengthEstimate.performanceSuffix"));
+  }
+
+  @Test
+  void localizedOperationalPromptsUseCurrentMenuNames() {
+    ResourceBundle english = AppLocale.ENGLISH.loadBundle();
+    ResourceBundle korean = AppLocale.KOREAN.loadBundle();
+    ResourceBundle thai = AppLocale.THAI.loadBundle();
+
+    assertEquals(
+        "Click 'Settings > General Settings > Engine & Analysis' to change the limits.",
+        english.getString("leelaz.stopByLimit2"));
+    assertEquals(
+        "\uC81C\uD55C \uC870\uAC74\uC744 \uBCC0\uACBD\uD558\uB824\uBA74 '\uC124\uC815 > \uC77C\uBC18 \uC124\uC815 > \uC5D4\uC9C4 \uBC0F \uBD84\uC11D'\uC744 \uC5EC\uC138\uC694.",
+        korean.getString("leelaz.stopByLimit2"));
+    assertEquals(
+        "\u0E40\u0E1B\u0E34\u0E14 '\u0E01\u0E32\u0E23\u0E15\u0E31\u0E49\u0E07\u0E04\u0E48\u0E32 > \u0E01\u0E32\u0E23\u0E15\u0E31\u0E49\u0E07\u0E04\u0E48\u0E32\u0E17\u0E31\u0E48\u0E27\u0E44\u0E1B > \u0E40\u0E04\u0E23\u0E37\u0E48\u0E2D\u0E07\u0E22\u0E19\u0E15\u0E4C\u0E41\u0E25\u0E30\u0E01\u0E32\u0E23\u0E27\u0E34\u0E40\u0E04\u0E23\u0E32\u0E30\u0E2B\u0E4C' \u0E40\u0E1E\u0E37\u0E48\u0E2D\u0E40\u0E1B\u0E25\u0E35\u0E48\u0E22\u0E19\u0E02\u0E35\u0E14\u0E08\u0E33\u0E01\u0E31\u0E14",
+        thai.getString("leelaz.stopByLimit2"));
+    assertEquals(
+        "\uD55C \uBC88\uC5D0 \uD65C\uC131\uD654", korean.getString("RemoteCompute.oneClickEnable"));
+    assertEquals(
+        "Zhizi \uC6F9\uC0AC\uC774\uD2B8 \uBC0F \uCDA9\uC804",
+        korean.getString("RemoteCompute.websiteAndTopup"));
+    assertEquals(
+        "\u0E40\u0E1B\u0E34\u0E14\u0E43\u0E0A\u0E49\u0E07\u0E32\u0E19\u0E43\u0E19\u0E04\u0E25\u0E34\u0E01\u0E40\u0E14\u0E35\u0E22\u0E27",
+        thai.getString("RemoteCompute.oneClickEnable"));
+    assertEquals(
+        "\u0E40\u0E27\u0E47\u0E1A\u0E44\u0E0B\u0E15\u0E4C Zhizi \u0E41\u0E25\u0E30\u0E01\u0E32\u0E23\u0E40\u0E15\u0E34\u0E21\u0E40\u0E07\u0E34\u0E19",
+        thai.getString("RemoteCompute.websiteAndTopup"));
+  }
+
+  @Test
   void traditionalChineseUsesTaiwanWhileHongKongRemainsCompatible() {
     assertEquals(Locale.TAIWAN, AppLocale.TRADITIONAL_CHINESE.locale());
     ResourceBundle taiwan = AppLocale.TRADITIONAL_CHINESE.loadBundle();

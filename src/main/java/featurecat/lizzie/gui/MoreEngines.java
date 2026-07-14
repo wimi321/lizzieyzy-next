@@ -198,29 +198,17 @@ public class MoreEngines extends JPanel {
     this.moveDown5 = new JFontButton(this.resourceBundle.getString("MoreEngines.moveDown5"));
     this.moveFirst = new JFontButton(this.resourceBundle.getString("MoreEngines.moveFirst"));
     this.moveLast = new JFontButton(this.resourceBundle.getString("MoreEngines.moveLast"));
-    this.moveUp.setFocusable(false);
     this.moveUp.setMargin(new Insets(0, 0, 0, 0));
-    this.moveDown.setFocusable(false);
     this.moveDown.setMargin(new Insets(0, 0, 0, 0));
-    this.moveUp5.setFocusable(false);
     this.moveUp5.setMargin(new Insets(0, 0, 0, 0));
-    this.moveDown5.setFocusable(false);
     this.moveDown5.setMargin(new Insets(0, 0, 0, 0));
-    this.moveFirst.setFocusable(false);
     this.moveFirst.setMargin(new Insets(0, 0, 0, 0));
-    this.moveLast.setFocusable(false);
     this.moveLast.setMargin(new Insets(0, 0, 0, 0));
-    this.scan.setFocusable(false);
     this.scan.setMargin(new Insets(0, 0, 0, 0));
-    this.add.setFocusable(false);
     this.add.setMargin(new Insets(0, 0, 0, 0));
-    this.save.setFocusable(false);
     this.save.setMargin(new Insets(0, 0, 0, 0));
-    this.cancel.setFocusable(false);
     this.cancel.setMargin(new Insets(0, 0, 0, 0));
-    this.exit.setFocusable(false);
     this.exit.setMargin(new Insets(0, 0, 0, 0));
-    this.delete.setFocusable(false);
     this.delete.setMargin(new Insets(0, 0, 0, 0));
     this.chkDefault = new JFontCheckBox(this.resourceBundle.getString("MoreEngines.lbldefault"));
     JFontLabel lblchooseStart =
@@ -290,7 +278,6 @@ public class MoreEngines extends JPanel {
     this.rdoUsePassword =
         new JFontRadioButton(this.resourceBundle.getString("MoreEngines.lblPassword"));
     this.scanKeygen = new JFontButton(this.resourceBundle.getString("MoreEngines.scanKeygen"));
-    this.scanKeygen.setFocusable(false);
     this.scanKeygen.setMargin(new Insets(0, 0, 0, 0));
     this.scanKeygen.addActionListener(
         new ActionListener() {

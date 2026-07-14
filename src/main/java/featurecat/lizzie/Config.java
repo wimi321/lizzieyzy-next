@@ -601,14 +601,27 @@ public class Config {
     for (Path seedPath : seedPaths) {
       Path current = seedPath;
       for (int depth = 0; current != null && depth < 6; depth++) {
-        if (Files.isDirectory(current.resolve(BUNDLED_ENGINE_ROOT))
-            && Files.isDirectory(current.resolve(BUNDLED_WEIGHT_ROOT))) {
+        if (hasCompleteBundledKataGoAssets(current)) {
           return Optional.of(current);
         }
         current = current.getParent();
       }
     }
     return Optional.empty();
+  }
+
+  private static boolean hasCompleteBundledKataGoAssets(Path appRoot) {
+    if (appRoot == null) {
+      return false;
+    }
+    String binaryName = OS.isWindows() ? "katago.exe" : "katago";
+    Path katagoRoot = appRoot.resolve(BUNDLED_ENGINE_ROOT).resolve("katago");
+    return Files.isRegularFile(
+            katagoRoot.resolve(detectBundledPlatformDir()).resolve(binaryName))
+        && Files.isRegularFile(
+            appRoot.resolve(BUNDLED_WEIGHT_ROOT).resolve(BUNDLED_WEIGHT_NAME))
+        && Files.isRegularFile(katagoRoot.resolve("configs").resolve("gtp.cfg"))
+        && Files.isRegularFile(katagoRoot.resolve("configs").resolve("analysis.cfg"));
   }
 
   private static String detectBundledPlatformDir() {
