@@ -155,6 +155,31 @@ class LizzieFrameRegressionTest {
   }
 
   @Test
+  void startNewGameStopsBeforeMutatingStateWhenForegroundEngineIsReserved() throws Exception {
+    LizzieFrame previousFrame = Lizzie.frame;
+    Leelaz previousEngine = Lizzie.leelaz;
+    Leelaz engine = new Leelaz("");
+    Leelaz.ExclusiveGtpLifecycleReservation reservation =
+        engine.beginExclusiveGtpLifecycleReservation();
+    NewGameGateFrame frame = allocate(NewGameGateFrame.class);
+    try {
+      Lizzie.frame = frame;
+      Lizzie.leelaz = engine;
+
+      frame.startNewGame();
+
+      assertEquals(1, frame.conflictCount);
+      assertFalse(frame.stopAiPlayingCalled);
+    } finally {
+      if (reservation != null) {
+        reservation.close();
+      }
+      Lizzie.frame = previousFrame;
+      Lizzie.leelaz = previousEngine;
+    }
+  }
+
+  @Test
   void playerStrengthRankReferenceKeepsKyuResultsInKyuBand() throws Exception {
     Method rankLevel = LizzieFrame.class.getDeclaredMethod("playerStrengthRankLevel", String.class);
     rankLevel.setAccessible(true);
@@ -1875,6 +1900,26 @@ class LizzieFrameRegressionTest {
     @Override
     public boolean isLoaded() {
       return loaded;
+    }
+  }
+
+  private static final class NewGameGateFrame extends LizzieFrame {
+    private int conflictCount;
+    private boolean stopAiPlayingCalled;
+
+    private NewGameGateFrame() {
+      super();
+    }
+
+    @Override
+    protected void showForegroundEngineLeaseConflict() {
+      conflictCount++;
+    }
+
+    @Override
+    public boolean stopAiPlayingAndPolicy() {
+      stopAiPlayingCalled = true;
+      return false;
     }
   }
 

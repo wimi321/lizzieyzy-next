@@ -1,5 +1,6 @@
 package featurecat.lizzie.analysis;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -10,7 +11,11 @@ import featurecat.lizzie.gui.GtpConsolePane;
 import featurecat.lizzie.gui.LizzieFrame;
 import featurecat.lizzie.rules.Board;
 import java.io.BufferedOutputStream;
+import java.io.BufferedReader;
 import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.OutputStream;
+import java.io.StringReader;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.nio.charset.StandardCharsets;
@@ -286,6 +291,7 @@ class LeelazExclusiveRemoteGtpSessionTest {
       waitUntil(() -> completions.get() == 1);
 
       assertEquals(1, engine.ponderCount);
+      assertTrue(engine.lifecycleBusyDuringPonder);
       assertEquals(1, completions.get());
     } finally {
       Lizzie.leelaz = previousEngine;
@@ -295,6 +301,33 @@ class LeelazExclusiveRemoteGtpSessionTest {
       Lizzie.gtpConsole = previousGtpConsole;
       EngineManager.isEngineGame = previousEngineGame;
       EngineManager.isPreEngineGame = previousPreEngineGame;
+    }
+  }
+
+  @Test
+  void foregroundRestoreRepeatsWhenSuppressedBoardCommandInvalidatesFirstAttempt()
+      throws Exception {
+    RestoreHarness harness = RestoreHarness.open(false, false);
+    try {
+      harness.board.currentMarker = 1;
+      assertTrue(
+          harness.engine.endForegroundAnalysisLease(
+              harness.owner, harness.completions::incrementAndGet));
+      assertTrue(dispatch(harness.engine, "=800000001"));
+      assertTrue(dispatch(harness.engine, ""));
+      waitUntil(() -> harness.board.resendCount == 1);
+
+      harness.board.currentMarker = 2;
+      harness.engine.sendCommand("play B D4");
+      completeForegroundRestore(harness.engine);
+      waitUntil(() -> harness.board.resendCount == 2);
+
+      assertEquals(2, harness.board.restoredMarker);
+      assertEquals(0, harness.completions.get());
+      completeForegroundRestore(harness.engine);
+      waitUntil(() -> harness.completions.get() == 1);
+    } finally {
+      harness.close();
     }
   }
 
@@ -461,6 +494,65 @@ class LeelazExclusiveRemoteGtpSessionTest {
   }
 
   @Test
+  void foregroundRestoreWriteFailureRunsFailureCleanupInsteadOfSuccess() throws Exception {
+    RestoreHarness harness = RestoreHarness.open(false, false);
+    AtomicInteger failures = new AtomicInteger();
+    try {
+      assertTrue(
+          harness.engine.endForegroundAnalysisLease(
+              harness.owner, harness.completions::incrementAndGet, failures::incrementAndGet));
+      installFailOnceOutput(harness.engine);
+      Lizzie.frame = null;
+
+      assertTrue(dispatch(harness.engine, "=800000001"));
+      assertTrue(dispatch(harness.engine, ""));
+      waitUntil(() -> harness.board.resendCount == 1 || failures.get() == 1);
+      if (failures.get() == 0) {
+        completeForegroundRestore(harness.engine);
+      }
+      waitUntil(() -> failures.get() == 1 || harness.completions.get() == 1);
+
+      assertFalse(harness.engine.isLoaded());
+      assertEquals(0, harness.completions.get());
+      assertFalse(harness.engine.hasExclusiveGtpWorkInProgress());
+    } finally {
+      harness.close();
+    }
+  }
+
+  @Test
+  void exclusiveLineConsumerFailureCannotEscapeReadCleanup() throws Exception {
+    Leelaz previousEngine = Lizzie.leelaz;
+    Leelaz engine = reusableKatagoEngine(false, false);
+    installOutput(engine);
+    try {
+      Lizzie.leelaz = engine;
+      assertEquals(
+          Leelaz.ExclusiveGtpLeaseAvailability.AVAILABLE,
+          engine.beginForegroundAnalysisLease(
+              new Object(),
+              line -> {
+                throw new IllegalStateException("simulated parser failure");
+              },
+              () -> {},
+              () -> {}));
+      processCommandResponse(engine, "=800000000");
+      assertTrue(dispatch(engine, ""));
+      installInput(engine, "info move D4 visits 1\n");
+      Lizzie.leelaz = null;
+      engine.isNormalEnd = true;
+
+      assertDoesNotThrow(() -> invokeRead(engine));
+
+      assertFalse(engine.hasExclusiveGtpLease());
+      assertFalse(engine.hasExclusiveGtpWorkInProgress());
+      assertFalse(engine.isStarted());
+    } finally {
+      Lizzie.leelaz = previousEngine;
+    }
+  }
+
+  @Test
   void foregroundLeaseDoesNotResumePonderWhenItWasNotPreviouslyPondering() throws Exception {
     RestoreHarness harness = RestoreHarness.open(false, false);
     try {
@@ -565,6 +657,48 @@ class LeelazExclusiveRemoteGtpSessionTest {
     return bytes;
   }
 
+  private static void installFailOnceOutput(Leelaz engine) throws Exception {
+    Field field = Leelaz.class.getDeclaredField("outputStream");
+    field.setAccessible(true);
+    field.set(
+        engine,
+        Leelaz.createCommandOutputStream(
+            new OutputStream() {
+              private final ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+              private boolean failed;
+
+              @Override
+              public void write(int value) throws IOException {
+                if (!failed) {
+                  failed = true;
+                  throw new IOException("simulated restore write failure");
+                }
+                bytes.write(value);
+              }
+
+              @Override
+              public void write(byte[] buffer, int offset, int length) throws IOException {
+                if (!failed) {
+                  failed = true;
+                  throw new IOException("simulated restore write failure");
+                }
+                bytes.write(buffer, offset, length);
+              }
+            }));
+  }
+
+  private static void installInput(Leelaz engine, String input) throws Exception {
+    Field field = Leelaz.class.getDeclaredField("inputStream");
+    field.setAccessible(true);
+    field.set(engine, new BufferedReader(new StringReader(input)));
+  }
+
+  private static void invokeRead(Leelaz engine) throws Exception {
+    Method method = Leelaz.class.getDeclaredMethod("read");
+    method.setAccessible(true);
+    method.invoke(engine);
+  }
+
   private static boolean dispatch(Leelaz engine, String line) throws Exception {
     Method method = Leelaz.class.getDeclaredMethod("dispatchExclusiveGtpLine", String.class);
     method.setAccessible(true);
@@ -628,6 +762,7 @@ class LeelazExclusiveRemoteGtpSessionTest {
 
   private static final class RecordingRestoreLeelaz extends Leelaz {
     private volatile int ponderCount;
+    private volatile boolean lifecycleBusyDuringPonder;
     private volatile long releaseStopTimeoutMillis = 8000L;
 
     private RecordingRestoreLeelaz() throws Exception {
@@ -637,6 +772,7 @@ class LeelazExclusiveRemoteGtpSessionTest {
     @Override
     public void ponder() {
       ponderCount++;
+      lifecycleBusyDuringPonder = hasExclusiveGtpWorkInProgress();
       Pondering();
     }
 

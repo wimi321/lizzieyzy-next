@@ -9,6 +9,8 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.WebSocket;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -20,6 +22,8 @@ import java.util.concurrent.CompletionStage;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
@@ -61,6 +65,14 @@ public class KataGoAnalysisWebSocketTransport implements EngineTransport {
       "{\"friendlyPassOk\":false,\"hasButton\":false,\"ko\":\"POSITIONAL\","
           + "\"scoring\":\"AREA\",\"suicide\":true,\"tax\":\"NONE\","
           + "\"whiteHandicapBonus\":\"0\"}";
+  private static final String SGF_COORD_ALPHABET =
+      "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
+  private static final Pattern SNAPSHOT_SGF_PATTERN =
+      Pattern.compile(
+          "^\\(;FF\\[4\\]GM\\[1\\]CA\\[UTF-8\\]SZ\\[(\\d+(?::\\d+)?)\\]"
+              + "(?:KM\\[([-+]?(?:\\d+(?:\\.\\d*)?|\\.\\d+))\\])?PL\\[([BW])\\]"
+              + "((?:AB\\[[^\\]]+\\])*(?:AW\\[[^\\]]+\\])*)\\)$");
+  private static final Pattern SNAPSHOT_STONE_PATTERN = Pattern.compile("(AB|AW)\\[([^\\]]+)\\]");
 
   private final URI remoteUri;
   private final HttpClient httpClient;
@@ -84,6 +96,7 @@ public class KataGoAnalysisWebSocketTransport implements EngineTransport {
   private String activeQueryId = "";
   private String activeGenmoveColor = "";
   private String activeGtpResponseId = "";
+  private String snapshotInitialPlayer = "";
 
   public KataGoAnalysisWebSocketTransport(String remoteUrl) throws IOException {
     this(
@@ -186,7 +199,8 @@ public class KataGoAnalysisWebSocketTransport implements EngineTransport {
             responseId,
             "protocol_version\nname\nversion\nlist_commands\nboardsize\nrectangular_boardsize\n"
                 + "komi\nkata-get-rules\nkata-get-param\nkata-set-param\nkata-set-rules\n"
-                + "clear_board\nset_position\nplay\nundo\nkata-analyze\nkata-genmove_analyze\n"
+                + "clear_board\nset_position\nloadsgf\nplay\nundo\nkata-analyze\n"
+                + "kata-genmove_analyze\n"
                 + "genmove\nkata-time_settings\ntime_settings\nstop\nquit");
       } else if (lower.startsWith("boardsize ")) {
         int size = parseIntToken(line, 1, DEFAULT_BOARD_SIZE);
@@ -194,12 +208,14 @@ public class KataGoAnalysisWebSocketTransport implements EngineTransport {
         boardHeight = Math.max(1, size);
         initialStones.clear();
         moves.clear();
+        snapshotInitialPlayer = "";
         writeOk(responseId, "");
       } else if (lower.startsWith("rectangular_boardsize ")) {
         boardWidth = Math.max(1, parseIntToken(line, 1, DEFAULT_BOARD_SIZE));
         boardHeight = Math.max(1, parseIntToken(line, 2, DEFAULT_BOARD_SIZE));
         initialStones.clear();
         moves.clear();
+        snapshotInitialPlayer = "";
         writeOk(responseId, "");
       } else if (lower.startsWith("komi ")) {
         komi = parseDoubleToken(line, 1, komi);
@@ -211,17 +227,25 @@ public class KataGoAnalysisWebSocketTransport implements EngineTransport {
       } else if (lower.startsWith("kata-set-rules ")) {
         rules = normalizeRules(line.substring(line.indexOf(' ') + 1).trim());
         writeOk(responseId, "");
-      } else if (lower.startsWith("kata-set-param ") || lower.startsWith("time_")) {
+      } else if (lower.startsWith("kata-set-param ")
+          || lower.startsWith("time_settings ")
+          || lower.startsWith("time_left ")
+          || lower.startsWith("kata-time_settings ")) {
         writeOk(responseId, "");
       } else if (lower.equals("clear_board")) {
         initialStones.clear();
         moves.clear();
+        snapshotInitialPlayer = "";
         writeOk(responseId, "");
       } else if (lower.equals("set_position") || lower.startsWith("set_position ")) {
         List<Move> position = parseSetPosition(line);
         initialStones.clear();
         initialStones.addAll(position);
         moves.clear();
+        snapshotInitialPlayer = "";
+        writeOk(responseId, "");
+      } else if (lower.startsWith("loadsgf ")) {
+        loadSnapshotSgf(line.substring(line.indexOf(' ') + 1).trim());
         writeOk(responseId, "");
       } else if (lower.startsWith("play ")) {
         String color = normalizeColor(token(line, 1, ""));
@@ -251,7 +275,7 @@ public class KataGoAnalysisWebSocketTransport implements EngineTransport {
         writeOk(responseId, "");
         close();
       } else {
-        writeOk(responseId, "");
+        writeError(responseId, "unknown command");
       }
     } catch (Exception e) {
       writeError(
@@ -285,7 +309,7 @@ public class KataGoAnalysisWebSocketTransport implements EngineTransport {
     } else if ("analysisWideRootNoise".equals(param)) {
       writeOk(responseId, "0.04");
     } else {
-      writeOk(responseId, "");
+      writeError(responseId, "unknown parameter");
     }
   }
 
@@ -313,7 +337,11 @@ public class KataGoAnalysisWebSocketTransport implements EngineTransport {
       jsonInitialStones.put(new JSONArray().put(stone.color).put(stone.point));
     }
     query.put("initialStones", jsonInitialStones);
-    query.put("initialPlayer", moves.isEmpty() ? reportWinrateAs : moves.get(0).color);
+    query.put(
+        "initialPlayer",
+        moves.isEmpty()
+            ? (snapshotInitialPlayer.isEmpty() ? reportWinrateAs : snapshotInitialPlayer)
+            : moves.get(0).color);
     JSONArray jsonMoves = new JSONArray();
     for (Move move : moves) {
       jsonMoves.put(new JSONArray().put(move.color).put(move.point));
@@ -381,6 +409,82 @@ public class KataGoAnalysisWebSocketTransport implements EngineTransport {
       throw new IllegalArgumentException("invalid set_position command");
     }
     return position;
+  }
+
+  private void loadSnapshotSgf(String fileName) throws IOException {
+    if (fileName.isEmpty()) {
+      throw new IllegalArgumentException("loadsgf requires a snapshot file");
+    }
+    SnapshotPosition snapshot = parseSnapshotSgf(Files.readString(Path.of(fileName)));
+    boardWidth = snapshot.width;
+    boardHeight = snapshot.height;
+    if (snapshot.komi != null) {
+      komi = snapshot.komi;
+    }
+    initialStones.clear();
+    initialStones.addAll(snapshot.stones);
+    moves.clear();
+    snapshotInitialPlayer = snapshot.player;
+  }
+
+  private SnapshotPosition parseSnapshotSgf(String sgf) {
+    Matcher matcher = SNAPSHOT_SGF_PATTERN.matcher(sgf == null ? "" : sgf.trim());
+    if (!matcher.matches()) {
+      throw new IllegalArgumentException("unsupported loadsgf snapshot");
+    }
+    int[] size = parseSnapshotBoardSize(matcher.group(1));
+    Double snapshotKomi = matcher.group(2) == null ? null : Double.valueOf(matcher.group(2));
+    List<Move> stones = new ArrayList<>();
+    Set<String> occupied = new HashSet<>();
+    Matcher stoneMatcher = SNAPSHOT_STONE_PATTERN.matcher(matcher.group(4));
+    while (stoneMatcher.find()) {
+      String point = snapshotPoint(stoneMatcher.group(2), size[0], size[1]);
+      if (!occupied.add(point)) {
+        throw new IllegalArgumentException("invalid loadsgf snapshot");
+      }
+      stones.add(new Move("AB".equals(stoneMatcher.group(1)) ? "B" : "W", point));
+    }
+    return new SnapshotPosition(size[0], size[1], snapshotKomi, matcher.group(3), stones);
+  }
+
+  private int[] parseSnapshotBoardSize(String value) {
+    String[] dimensions = value.split(":", -1);
+    if (dimensions.length > 2) {
+      throw new IllegalArgumentException("invalid loadsgf board size");
+    }
+    int width = Integer.parseInt(dimensions[0]);
+    int height = dimensions.length == 1 ? width : Integer.parseInt(dimensions[1]);
+    if (width <= 0 || height <= 0) {
+      throw new IllegalArgumentException("invalid loadsgf board size");
+    }
+    return new int[] {width, height};
+  }
+
+  private String snapshotPoint(String value, int width, int height) {
+    int x;
+    int y;
+    if (width >= 52 || height >= 52) {
+      String[] coordinates = value.split("_", -1);
+      if (coordinates.length != 2) {
+        throw new IllegalArgumentException("invalid loadsgf coordinate");
+      }
+      x = Integer.parseInt(coordinates[0]);
+      y = Integer.parseInt(coordinates[1]);
+    } else {
+      if (value.length() != 2) {
+        throw new IllegalArgumentException("invalid loadsgf coordinate");
+      }
+      x = SGF_COORD_ALPHABET.indexOf(value.charAt(0));
+      y = SGF_COORD_ALPHABET.indexOf(value.charAt(1));
+    }
+    if (x < 0 || x >= width || y < 0 || y >= height) {
+      throw new IllegalArgumentException("invalid loadsgf coordinate");
+    }
+    if (width > 25 || height > 25) {
+      return "(" + x + "," + y + ")";
+    }
+    char column = (char) ('A' + x + (x >= 8 ? 1 : 0));
+    return String.valueOf(column) + (height - y);
   }
 
   private boolean containsZeroLibertyGroup(List<Move> position) {
@@ -591,7 +695,8 @@ public class KataGoAnalysisWebSocketTransport implements EngineTransport {
   }
 
   private String nextPlayer() {
-    return moves.size() % 2 == 0 ? "B" : "W";
+    String firstPlayer = snapshotInitialPlayer.isEmpty() ? "B" : snapshotInitialPlayer;
+    return moves.size() % 2 == 0 ? firstPlayer : ("B".equals(firstPlayer) ? "W" : "B");
   }
 
   private String playerToken(String command, boolean genmove) {
@@ -701,6 +806,22 @@ public class KataGoAnalysisWebSocketTransport implements EngineTransport {
         closeable.close();
       }
     } catch (Exception ignored) {
+    }
+  }
+
+  private static final class SnapshotPosition {
+    private final int width;
+    private final int height;
+    private final Double komi;
+    private final String player;
+    private final List<Move> stones;
+
+    private SnapshotPosition(int width, int height, Double komi, String player, List<Move> stones) {
+      this.width = width;
+      this.height = height;
+      this.komi = komi;
+      this.player = player;
+      this.stones = stones;
     }
   }
 

@@ -7,6 +7,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import org.json.JSONArray;
 import org.json.JSONObject;
 import org.junit.jupiter.api.Test;
@@ -61,6 +63,7 @@ class KataGoAnalysisWebSocketTransportTest {
     assertTrue(commands.contains("kata-get-param"));
     assertTrue(commands.contains("kata-get-rules"));
     assertTrue(commands.contains("set_position"));
+    assertTrue(commands.contains("loadsgf"));
 
     assertEquals("= 0.0\n\n", sendGtp(transport, "kata-get-param playoutDoublingAdvantage"));
     assertEquals("= 0.04\n\n", sendGtp(transport, "kata-get-param analysisWideRootNoise"));
@@ -86,6 +89,67 @@ class KataGoAnalysisWebSocketTransportTest {
         java.util.List.of(java.util.List.of("W", "pass")), query.getJSONArray("moves").toList());
     assertEquals(java.util.List.of(1), query.getJSONArray("analyzeTurns").toList());
     assertEquals("W", query.getString("initialPlayer"));
+  }
+
+  @Test
+  void loadSgfRestoresGeneratedSnapshotIntoAnalysisQuery() throws Exception {
+    KataGoAnalysisWebSocketTransport transport =
+        new KataGoAnalysisWebSocketTransport("ws://127.0.0.1:1");
+    Path snapshot = Files.createTempFile("remote-snapshot-", ".sgf");
+    try {
+      Files.writeString(snapshot, "(;FF[4]GM[1]CA[UTF-8]SZ[9:13]KM[6.5]PL[W]AB[aa]AB[bc]AW[cb])");
+
+      assertEquals("=\n\n", sendGtp(transport, "loadsgf " + snapshot));
+
+      JSONObject query = transport.buildAnalysisQuery("test", false, false, 50, "B");
+      assertEquals(9, query.getInt("boardXSize"));
+      assertEquals(13, query.getInt("boardYSize"));
+      assertEquals(6.5, query.getDouble("komi"));
+      assertEquals(
+          java.util.List.of(
+              java.util.List.of("B", "A13"),
+              java.util.List.of("B", "B11"),
+              java.util.List.of("W", "C12")),
+          query.getJSONArray("initialStones").toList());
+      assertEquals(java.util.List.of(), query.getJSONArray("moves").toList());
+      assertEquals("W", query.getString("initialPlayer"));
+    } finally {
+      Files.deleteIfExists(snapshot);
+    }
+  }
+
+  @Test
+  void rejectedLoadSgfLeavesPreviousPositionUntouched() throws Exception {
+    KataGoAnalysisWebSocketTransport transport =
+        new KataGoAnalysisWebSocketTransport("ws://127.0.0.1:1");
+    Path unsupported = Files.createTempFile("remote-unsupported-", ".sgf");
+    try {
+      assertEquals("=\n\n", sendGtp(transport, "set_position B A3"));
+      Files.writeString(unsupported, "(;FF[4]GM[1]CA[UTF-8]SZ[19]PL[B]AB[aa];W[bb])");
+
+      String response = sendGtp(transport, "loadsgf " + unsupported);
+
+      assertTrue(response.startsWith("?"));
+      JSONObject query = transport.buildAnalysisQuery("test", false, false, 50, "W");
+      assertEquals(
+          java.util.List.of(java.util.List.of("B", "A3")),
+          query.getJSONArray("initialStones").toList());
+    } finally {
+      Files.deleteIfExists(unsupported);
+    }
+  }
+
+  @Test
+  void unknownGtpCommandReturnsExplicitErrorWithResponseId() throws Exception {
+    KataGoAnalysisWebSocketTransport transport =
+        new KataGoAnalysisWebSocketTransport("ws://127.0.0.1:1");
+
+    String response = sendGtp(transport, "42 unsupported-command");
+
+    assertTrue(response.startsWith("?42 unknown command"));
+    assertTrue(sendGtp(transport, "time_warp 1").startsWith("? unknown command"));
+    assertTrue(
+        sendGtp(transport, "kata-get-param unsupported").startsWith("? unknown parameter"));
   }
 
   @Test

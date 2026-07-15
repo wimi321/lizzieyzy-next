@@ -3501,6 +3501,20 @@ public class LizzieFrame extends JFrame {
           Lizzie.resourceBundle.getString("Contribute.tips.contributingAndStartAnotherLizzieYzy"));
       return;
     }
+    Leelaz.ExclusiveGtpLifecycleReservation reservation =
+        Lizzie.leelaz == null ? null : Lizzie.leelaz.beginExclusiveGtpLifecycleReservation();
+    if (reservation == null) {
+      showForegroundEngineLeaseConflict();
+      return;
+    }
+    try {
+      startNewGameReserved();
+    } finally {
+      reservation.close();
+    }
+  }
+
+  private void startNewGameReserved() {
     Lizzie.frame.stopAiPlayingAndPolicy();
     boolean isPondering = false;
     if (Lizzie.leelaz.isPondering()) {
@@ -3593,6 +3607,11 @@ public class LizzieFrame extends JFrame {
         };
     Thread syncBoardTh = new Thread(syncBoard);
     syncBoardTh.start();
+  }
+
+  protected void showForegroundEngineLeaseConflict() {
+    Utils.showMsg(
+        Lizzie.resourceBundle.getString("AnalysisSettings.reuseStatus.existing_lease"));
   }
 
   public static void editGameInfo() {

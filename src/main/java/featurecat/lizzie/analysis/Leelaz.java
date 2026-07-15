@@ -2984,7 +2984,7 @@ public class Leelaz {
       if (useRemoteCompute && remoteTransport != null) remoteTransport.close();
       // Do no exit for switching weights
       // System.exit(-1);
-    } catch (IOException e) {
+    } catch (IOException | RuntimeException e) {
       e.printStackTrace();
       //	System.out.println("读出错");
       // System.exit(-1);
@@ -3158,7 +3158,12 @@ public class Leelaz {
           cmdNumber--;
         }
       }
-      targetQueue.addLast(new QueuedCommand(command, onResponse, onSendFailure, failOnSendError));
+      targetQueue.addLast(
+          new QueuedCommand(
+              command,
+              onResponse,
+              onSendFailure,
+              failOnSendError || foregroundRestoreCommandSession.get() != null));
       trySendCommandFromQueue();
     }
     if (Lizzie.frame.isAutocounting) {
@@ -3343,7 +3348,9 @@ public class Leelaz {
           targetQueue.removeLast();
         }
       }
-      targetQueue.addLast(new QueuedCommand(command, onResponse, null, false));
+      targetQueue.addLast(
+          new QueuedCommand(
+              command, onResponse, null, foregroundRestoreCommandSession.get() != null));
       trySendCommandFromQueue();
     }
     if (Lizzie.frame.isAutocounting) {
@@ -3568,9 +3575,14 @@ public class Leelaz {
     return session != null && (session.restoreCompleted || foregroundRestoreSession != session);
   }
 
-  private boolean shouldSuppressNormalCommandForForegroundAnalysis() {
-    return suppressNormalCommandsForForegroundAnalysis
-        && foregroundRestoreCommandSession.get() == null;
+  private synchronized boolean shouldSuppressNormalCommandForForegroundAnalysis() {
+    boolean suppress =
+        suppressNormalCommandsForForegroundAnalysis
+            && foregroundRestoreCommandSession.get() == null;
+    if (suppress && foregroundRestoreInProgress && foregroundRestoreSession != null) {
+      foregroundRestoreSession.restoreInvalidated = true;
+    }
+    return suppress;
   }
 
   private PendingResponseHandler buildPendingResponseHandler(String command, Runnable handler) {
@@ -4134,10 +4146,19 @@ public class Leelaz {
           }
         },
         30000L);
+    startForegroundRestoreAttempt(session);
+  }
+
+  private void startForegroundRestoreAttempt(ExclusiveGtpSession session) {
     Thread restoreThread =
         new Thread(() -> performForegroundRestore(session), "lizzie-foreground-engine-restore");
     restoreThread.setDaemon(true);
-    session.restoreThread = restoreThread;
+    synchronized (this) {
+      if (session == null || session.restoreCompleted || foregroundRestoreSession != session) {
+        return;
+      }
+      session.restoreThread = restoreThread;
+    }
     restoreThread.start();
   }
 
@@ -4214,17 +4235,35 @@ public class Leelaz {
     Thread restoreThread;
     boolean restoreFailed;
     boolean releaseStopFailed;
+    boolean retryRestore;
     synchronized (this) {
       if (session == null || session.restoreCompleted) {
         return;
       }
-      session.restoreCompleted = true;
-      restoreFailed = session.restoreFailed;
-      releaseStopFailed = session.releaseStopFailed;
-      restoreTimeout = session.restoreTimeout;
-      restoreThread = session.restoreThread;
-      foregroundRestoreInProgress = false;
-      foregroundRestoreSession = null;
+      retryRestore = !session.restoreFailed && session.restoreInvalidated;
+      if (retryRestore) {
+        session.restoreInvalidated = false;
+        restoreTimeout = null;
+        restoreThread = null;
+        restoreFailed = false;
+        releaseStopFailed = false;
+      } else {
+        session.restoreCompleted = true;
+        restoreFailed = session.restoreFailed;
+        releaseStopFailed = session.releaseStopFailed;
+        restoreTimeout = session.restoreTimeout;
+        restoreThread = session.restoreThread;
+        if (restoreFailed) {
+          isLoaded = false;
+        }
+        foregroundRestoreInProgress = false;
+        foregroundRestoreSession = null;
+        suppressNormalCommandsForForegroundAnalysis = false;
+      }
+    }
+    if (retryRestore) {
+      startForegroundRestoreAttempt(session);
+      return;
     }
     if (restoreTimeout != null) {
       restoreTimeout.cancel();
@@ -4233,27 +4272,30 @@ public class Leelaz {
       restoreThread.interrupt();
     }
     if (restoreFailed) {
-      resetGtpCommandStateAfterForegroundRestoreFailure();
-      notPondering();
-      isLoaded = false;
-      finishForegroundRestoreLifecycle();
-      suppressNormalCommandsForForegroundAnalysis = false;
+      try {
+        resetGtpCommandStateAfterForegroundRestoreFailure();
+        notPondering();
+      } finally {
+        finishForegroundRestoreLifecycle();
+      }
       runForegroundRestoreFailure(session);
       return;
     }
-    synchronized (commandQueue()) {
-      foregroundRestoreCommandQueue().clear();
-    }
     try {
-      trySendCommandFromQueue();
-    } catch (RuntimeException ex) {
-      ex.printStackTrace();
+      synchronized (commandQueue()) {
+        foregroundRestoreCommandQueue().clear();
+      }
+      try {
+        trySendCommandFromQueue();
+      } catch (RuntimeException ex) {
+        ex.printStackTrace();
+      }
+      if (session.wasPondering && Lizzie.leelaz == this && canResumePonderAfterForegroundLease()) {
+        ponder();
+      }
+    } finally {
+      finishForegroundRestoreLifecycle();
     }
-    suppressNormalCommandsForForegroundAnalysis = false;
-    if (session.wasPondering && Lizzie.leelaz == this && canResumePonderAfterForegroundLease()) {
-      ponder();
-    }
-    finishForegroundRestoreLifecycle();
     if (releaseStopFailed) {
       runForegroundRestoreFailure(session);
     } else {
@@ -4544,6 +4586,7 @@ public class Leelaz {
     private boolean releaseStopFailed;
     private volatile boolean restoreCompleted;
     private boolean restoreFailed;
+    private boolean restoreInvalidated;
     private String originalRules;
     private Runnable afterRestore;
     private Runnable afterRestoreFailure;
@@ -5808,6 +5851,27 @@ public class Leelaz {
 
   public boolean isLoaded() {
     return isLoaded;
+  }
+
+  long engineStartupSynchronizationTimeoutMillis() {
+    if (useRemoteCompute || useJavaSSH) {
+      return 60000L;
+    }
+    if (Config.isBundledKataGoCommand(engineCommand)) {
+      try {
+        Path executable =
+            KataGoRuntimeHelper.resolveCommandExecutable(Utils.splitCommand(engineCommand));
+        if (KataGoRuntimeHelper.isNvidiaBundledPath(executable)) {
+          return NVIDIA_ENGINE_START_TIMEOUT_MS;
+        }
+      } catch (RuntimeException ignored) {
+      }
+    }
+    return BUNDLED_ENGINE_START_TIMEOUT_MS;
+  }
+
+  long engineTuningSynchronizationTimeoutMillis() {
+    return FIRST_OPENCL_TUNING_START_TIMEOUT_MS;
   }
 
   public void tryToDignostic(String message, boolean isModal) {

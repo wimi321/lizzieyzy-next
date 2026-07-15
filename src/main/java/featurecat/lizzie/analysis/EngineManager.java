@@ -2386,14 +2386,6 @@ public class EngineManager {
         Runnable syncBoard =
             new Runnable() {
               public void run() {
-                do {
-                  try {
-                    Thread.sleep(100);
-                  } catch (InterruptedException e) {
-                    // TODO Auto-generated catch block
-                    e.printStackTrace();
-                  }
-                } while (!newEng.isLoaded() || newEng.isCheckingName);
                 newEng.notPondering();
                 Lizzie.board.resendMoveToEngine(newEng, true);
                 if (newEng == Lizzie.leelaz) {
@@ -2419,29 +2411,12 @@ public class EngineManager {
                 }
               }
             };
-        Thread syncBoardTh =
-            new Thread(
-                () -> {
-                  try {
-                    syncBoard.run();
-                  } finally {
-                    if (afterSync != null) afterSync.run();
-                  }
-                });
-        syncBoardTh.start();
+        synchronizeEngineWhenReady(newEng, syncBoard, afterSync);
         syncScheduled = true;
       } else if (Lizzie.leelaz2 != null) {
         Runnable syncBoard =
             new Runnable() {
               public void run() {
-                while (!Lizzie.leelaz2.isLoaded() || Lizzie.leelaz2.isCheckingName) {
-                  try {
-                    Thread.sleep(100);
-                  } catch (InterruptedException e) {
-                    // TODO Auto-generated catch block
-                    e.printStackTrace();
-                  }
-                }
                 EngineManager.currentEngineNo2 = Lizzie.leelaz2.currentEngineN();
                 if (currentEngineNo2 > 20) LizzieFrame.menu.changeEngineIcon2(20, 3);
                 else LizzieFrame.menu.changeEngineIcon2(currentEngineNo2, 3);
@@ -2460,16 +2435,7 @@ public class EngineManager {
                 Lizzie.leelaz2.setResponseUpToDate();
               }
             };
-        Thread syncBoardTh =
-            new Thread(
-                () -> {
-                  try {
-                    syncBoard.run();
-                  } finally {
-                    if (afterSync != null) afterSync.run();
-                  }
-                });
-        syncBoardTh.start();
+        synchronizeEngineWhenReady(newEng, syncBoard, afterSync);
         syncScheduled = true;
       }
     } catch (IOException e) {
@@ -2477,6 +2443,80 @@ public class EngineManager {
     } finally {
       if (!syncScheduled && afterSync != null) afterSync.run();
     }
+  }
+
+  protected void synchronizeEngineWhenReady(
+      Leelaz engine, Runnable synchronization, Runnable afterSync) {
+    Thread synchronizationThread =
+        new Thread(
+            () -> {
+              try {
+                if (!waitForEngineSynchronizationReadiness(engine)) {
+                  engine.isLoaded = false;
+                  showEngineSynchronizationFailure(engine);
+                  return;
+                }
+                synchronization.run();
+              } catch (RuntimeException ex) {
+                engine.isLoaded = false;
+                ex.printStackTrace();
+                showEngineSynchronizationFailure(engine);
+              } finally {
+                if (afterSync != null) {
+                  afterSync.run();
+                }
+              }
+            },
+            "lizzie-engine-switch-synchronization");
+    synchronizationThread.start();
+  }
+
+  private boolean waitForEngineSynchronizationReadiness(Leelaz engine) {
+    if (engine == null) {
+      return false;
+    }
+    long now = System.nanoTime();
+    long deadline =
+        now
+            + TimeUnit.MILLISECONDS.toNanos(
+                Math.max(1L, engineSynchronizationTimeoutMillis(engine)));
+    boolean tuningTimeoutApplied = false;
+    while (true) {
+      if (!engine.isStarted() || engine.isDownWithError || engine.isNormalEnd) {
+        return false;
+      }
+      if (engine.isLoaded() && !engine.isCheckingName) {
+        return true;
+      }
+      now = System.nanoTime();
+      if (!tuningTimeoutApplied && engine.isTuning) {
+        deadline =
+            now
+                + TimeUnit.MILLISECONDS.toNanos(
+                    Math.max(1L, engine.engineTuningSynchronizationTimeoutMillis()));
+        tuningTimeoutApplied = true;
+      }
+      if (now >= deadline) {
+        return false;
+      }
+      long remainingMillis =
+          Math.max(1L, TimeUnit.NANOSECONDS.toMillis(deadline - now));
+      try {
+        Thread.sleep(Math.min(100L, remainingMillis));
+      } catch (InterruptedException ex) {
+        Thread.currentThread().interrupt();
+        return false;
+      }
+    }
+  }
+
+  protected long engineSynchronizationTimeoutMillis(Leelaz engine) {
+    return engine.engineStartupSynchronizationTimeoutMillis();
+  }
+
+  protected void showEngineSynchronizationFailure(Leelaz engine) {
+    SwingUtilities.invokeLater(
+        () -> Utils.showMsg(resourceBundle.getString("Leelaz.engineFailed")));
   }
 
   private EngineLifecycleReservations reserveEngineLifecycle(Leelaz current, Leelaz target) {
