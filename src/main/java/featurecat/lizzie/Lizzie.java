@@ -78,6 +78,9 @@ public class Lizzie {
   private static final String SMOKE_OPEN_AUTO_SETUP_PROPERTY = "lizzie.smoke.openAutoSetup";
   private static final String SMOKE_OPEN_AUTO_SETUP_DELAY_MS_PROPERTY =
       "lizzie.smoke.openAutoSetupDelayMs";
+  private static final String SMOKE_OPEN_YIKE_WEB_PROPERTY = "lizzie.smoke.openYikeWeb";
+  private static final String SMOKE_OPEN_YIKE_WEB_DELAY_MS_PROPERTY =
+      "lizzie.smoke.openYikeWebDelayMs";
   private static final String UNKNOWN_HOST_NAME = "unknown-host";
   private static final long HOST_NAME_LOOKUP_TIMEOUT_MILLIS = 500L;
   private static final long LOCAL_HOST_NAME_COMMAND_TIMEOUT_MILLIS = 250L;
@@ -251,6 +254,7 @@ public class Lizzie {
     if (Lizzie.config.autoReplayBranch) frame.autoReplayBranch();
     scheduleBoardSyncSmokeProbe();
     scheduleAutoSetupSmokeProbe();
+    scheduleYikeWebSmokeProbe();
     WindowsUpdateController.scheduleAutomaticCheck();
   }
 
@@ -424,6 +428,37 @@ public class Lizzie {
                   });
             },
             "lizzie-auto-setup-smoke");
+    smokeThread.setDaemon(true);
+    smokeThread.start();
+  }
+
+  private static void scheduleYikeWebSmokeProbe() {
+    if (!Boolean.getBoolean(SMOKE_OPEN_YIKE_WEB_PROPERTY)) {
+      return;
+    }
+
+    int delayMs = Math.max(0, Integer.getInteger(SMOKE_OPEN_YIKE_WEB_DELAY_MS_PROPERTY, 3000));
+    Thread smokeThread =
+        new Thread(
+            () -> {
+              try {
+                Thread.sleep(delayMs);
+              } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return;
+              }
+
+              SwingUtilities.invokeLater(
+                  () -> {
+                    if (frame == null) {
+                      System.err.println("Yike web smoke probe skipped: frame unavailable.");
+                      return;
+                    }
+                    System.out.println("Yike web smoke probe: opening the built-in Yike page.");
+                    frame.openYikeLiveWeb();
+                  });
+            },
+            "lizzie-yike-web-smoke");
     smokeThread.setDaemon(true);
     smokeThread.start();
   }

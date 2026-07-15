@@ -71,6 +71,13 @@ jobs:
             "dist/macos/app-image/LizzieYzy Next.app/Contents/app/LizzieYzy Next.cfg"
           grep -q -- "java-options=-Xshare:auto" \
             "dist/macos/app-image/LizzieYzy Next.app/Contents/app/LizzieYzy Next.cfg"
+          for option in \
+            "--add-exports=java.desktop/sun.awt=ALL-UNNAMED" \
+            "--add-exports=java.desktop/sun.lwawt=ALL-UNNAMED" \
+            "--add-exports=java.desktop/sun.lwawt.macosx=ALL-UNNAMED"; do
+            grep -Fqx "java-options=$option" \
+              "dist/macos/app-image/LizzieYzy Next.app/Contents/app/LizzieYzy Next.cfg"
+          done
           ! grep -q -- "SharedArchiveFile" \
             "dist/macos/app-image/LizzieYzy Next.app/Contents/app/LizzieYzy Next.cfg"
           test ! -f "dist/macos/app-image/LizzieYzy Next.app/Contents/app/lizzieyzy-next-cds.jsa"
@@ -79,6 +86,17 @@ jobs:
           test -f "dist/release-meta/${{ inputs.date_tag }}-mac-intel-runtime.json"
           grep -q '"optimized": true' "dist/release-meta/${{ inputs.date_tag }}-mac-intel-runtime.json"
           grep -q '"created": true' "dist/release-meta/${{ inputs.date_tag }}-mac-intel-runtime.json"
+          jcef="dist/macos/app-image/LizzieYzy Next.app/Contents/app/jcef-bundle"
+          test -f "$jcef/build_meta.json"
+          test -f "$jcef/install.lock"
+          test -f "$jcef/libjcef.dylib"
+          test -f "$jcef/Chromium Embedded Framework.framework/Chromium Embedded Framework"
+          test -f "$jcef/jcef Helper.app/Contents/MacOS/jcef Helper"
+          grep -qx "release-tag=jcef-99c2f7a+cef-127.3.1+g6cbb30e+chromium-127.0.6533.100" \
+            "$jcef/lizzieyzy-next-jcef-manifest.txt"
+          grep -qx "platform=macosx-amd64" "$jcef/lizzieyzy-next-jcef-manifest.txt"
+          grep -qx "sha256=36ed38af450dff481513c352a92a88aaa73ec34a399edadc7a4a947c7d1ddaed" \
+            "$jcef/lizzieyzy-next-jcef-manifest.txt"
 
       - name: Sign and notarize (if Apple Developer credentials configured)
         env:

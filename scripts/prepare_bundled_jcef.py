@@ -20,7 +20,40 @@ import zipfile
 JCEF_RELEASE_TAG = "jcef-99c2f7a+cef-127.3.1+g6cbb30e+chromium-127.0.6533.100"
 MAVEN_BASE_URL = "https://repo.maven.apache.org/maven2/me/friwi"
 MANIFEST_NAME = "lizzieyzy-next-jcef-manifest.txt"
-SUPPORTED_WINDOWS_LOCALES = {"en-US.pak", "zh-CN.pak", "zh-TW.pak", "ja.pak", "ko.pak"}
+SUPPORTED_WINDOWS_LOCALES = {
+    "en-US.pak",
+    "ja.pak",
+    "ko.pak",
+    "th.pak",
+    "zh-CN.pak",
+    "zh-TW.pak",
+}
+SUPPORTED_MACOS_LOCALES = {
+    "en.lproj",
+    "ja.lproj",
+    "ko.lproj",
+    "th.lproj",
+    "zh_CN.lproj",
+    "zh_TW.lproj",
+}
+
+MACOS_REQUIRED_FILES = [
+    "build_meta.json",
+    "install.lock",
+    "libjcef.dylib",
+    "Chromium Embedded Framework.framework/Chromium Embedded Framework",
+    "Chromium Embedded Framework.framework/Resources/en.lproj/locale.pak",
+    "Chromium Embedded Framework.framework/Resources/ja.lproj/locale.pak",
+    "Chromium Embedded Framework.framework/Resources/ko.lproj/locale.pak",
+    "Chromium Embedded Framework.framework/Resources/th.lproj/locale.pak",
+    "Chromium Embedded Framework.framework/Resources/zh_CN.lproj/locale.pak",
+    "Chromium Embedded Framework.framework/Resources/zh_TW.lproj/locale.pak",
+    "jcef Helper.app/Contents/MacOS/jcef Helper",
+    "jcef Helper (Alerts).app/Contents/MacOS/jcef Helper (Alerts)",
+    "jcef Helper (GPU).app/Contents/MacOS/jcef Helper (GPU)",
+    "jcef Helper (Plugin).app/Contents/MacOS/jcef Helper (Plugin)",
+    "jcef Helper (Renderer).app/Contents/MacOS/jcef Helper (Renderer)",
+]
 
 PLATFORM_PACKAGES = {
     "windows-amd64": {
@@ -36,8 +69,19 @@ PLATFORM_PACKAGES = {
             "icudtl.dat",
             "resources.pak",
             "locales/en-US.pak",
+            "locales/th.pak",
         ],
-    }
+    },
+    "macosx-arm64": {
+        "artifact": "jcef-natives-macosx-arm64",
+        "sha256": "1746a503e38614ea3e4fe7986e22443ab48a3a245ba1f4b17575aaccab5e7994",
+        "required": MACOS_REQUIRED_FILES,
+    },
+    "macosx-amd64": {
+        "artifact": "jcef-natives-macosx-amd64",
+        "sha256": "36ed38af450dff481513c352a92a88aaa73ec34a399edadc7a4a947c7d1ddaed",
+        "required": MACOS_REQUIRED_FILES,
+    },
 }
 
 
@@ -168,24 +212,51 @@ def validate_bundle(output_dir: Path, platform: str) -> None:
         )
 
 
+def supported_locales(platform: str) -> set[str]:
+    if platform == "windows-amd64":
+        return SUPPORTED_WINDOWS_LOCALES
+    if platform.startswith("macosx-"):
+        return SUPPORTED_MACOS_LOCALES
+    return set()
+
+
+def path_size(path: Path) -> int:
+    if path.is_file():
+        return path.stat().st_size
+    return sum(child.stat().st_size for child in path.rglob("*") if child.is_file())
+
+
 def trim_optional_locales(output_dir: Path, platform: str) -> dict[str, int]:
-    if platform != "windows-amd64":
-        return {"removedFiles": 0, "removedBytes": 0, "retainedFiles": 0}
-    locales_dir = output_dir / "locales"
-    if not locales_dir.is_dir():
+    retained = supported_locales(platform)
+    if platform == "windows-amd64":
+        locales_dir = output_dir / "locales"
+        candidates = list(locales_dir.iterdir()) if locales_dir.is_dir() else []
+    elif platform.startswith("macosx-"):
+        locales_dir = output_dir / "Chromium Embedded Framework.framework" / "Resources"
+        candidates = (
+            [path for path in locales_dir.iterdir() if path.name.endswith(".lproj")]
+            if locales_dir.is_dir()
+            else []
+        )
+    else:
+        candidates = []
+
+    if not candidates:
         return {"removedFiles": 0, "removedBytes": 0, "retainedFiles": 0}
 
     removed_files = 0
     removed_bytes = 0
     retained_files = 0
-    for path in sorted(locales_dir.iterdir()):
-        if not path.is_file() or path.name in SUPPORTED_WINDOWS_LOCALES:
-            if path.is_file():
-                retained_files += 1
+    for path in sorted(candidates):
+        if path.name in retained:
+            retained_files += 1
             continue
-        removed_bytes += path.stat().st_size
+        removed_bytes += path_size(path)
         removed_files += 1
-        path.unlink()
+        if path.is_dir():
+            shutil.rmtree(path)
+        else:
+            path.unlink()
     return {
         "removedFiles": removed_files,
         "removedBytes": removed_bytes,
@@ -207,9 +278,9 @@ def write_manifest(
         f"artifact={artifact}",
         f"sha256={PLATFORM_PACKAGES[platform]['sha256']}",
         f"source={source}",
-        f"cached-jar={jar_path}",
+        f"cached-jar={jar_path.name}",
         "install-lock=present",
-        "retained-locales=" + ",".join(sorted(SUPPORTED_WINDOWS_LOCALES)),
+        "retained-locales=" + ",".join(sorted(supported_locales(platform))),
         f"removed-locale-files={locale_stats['removedFiles']}",
         f"removed-locale-bytes={locale_stats['removedBytes']}",
     ]

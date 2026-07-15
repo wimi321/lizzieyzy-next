@@ -169,6 +169,52 @@ sign_embedded_jar_natives() {
   fi
 }
 
+sign_bundled_jcef() {
+  local app_bundle="$1"
+  local jcef_root="$app_bundle/Contents/app/jcef-bundle"
+  local framework="$jcef_root/Chromium Embedded Framework.framework"
+  local helper_app
+
+  if [[ ! -d "$jcef_root" ]]; then
+    echo "Bundled JCEF runtime not found; skipping nested browser signing."
+    return 0
+  fi
+
+  if [[ ! -d "$framework" ]]; then
+    echo "Bundled JCEF framework is missing: $framework" >&2
+    exit 1
+  fi
+
+  echo "Signing bundled JCEF browser runtime"
+  find "$jcef_root" -type f \( -name '*.dylib' -o -name 'libjcef.dylib' \) -print0 |
+    xargs -0 codesign --force --options runtime --timestamp \
+                       --keychain "$keychain" --sign "$sign_identity"
+
+  codesign --force --options runtime --timestamp \
+           --keychain "$keychain" --sign "$sign_identity" \
+           "$framework/Chromium Embedded Framework"
+  codesign --force --options runtime --timestamp \
+           --keychain "$keychain" --sign "$sign_identity" "$framework"
+
+  while IFS= read -r -d '' helper_app; do
+    local helper_executable
+    helper_executable="$helper_app/Contents/MacOS/$(basename "$helper_app" .app)"
+    if [[ ! -x "$helper_executable" ]]; then
+      echo "JCEF helper executable is missing: $helper_executable" >&2
+      exit 1
+    fi
+    codesign --force --options runtime --timestamp \
+             --entitlements "$entitlements_path" \
+             --keychain "$keychain" --sign "$sign_identity" "$helper_executable"
+    codesign --force --options runtime --timestamp \
+             --entitlements "$entitlements_path" \
+             --keychain "$keychain" --sign "$sign_identity" "$helper_app"
+    codesign --verify --deep --strict --verbose=2 "$helper_app"
+  done < <(find "$jcef_root" -maxdepth 1 -type d -name 'jcef Helper*.app' -print0)
+
+  codesign --verify --deep --strict --verbose=2 "$framework"
+}
+
 verify_required_entitlements() {
   local code_path="$1"
   local entitlement_dump
@@ -303,8 +349,16 @@ PY
 
   sign_embedded_jar_natives "$staged_app"
 
-  # Sign every helper binary first so the outer signature is valid.
-  find "$staged_app" -type f \( -name '*.dylib' -o -name 'katago' -o -perm -u+x \) \
+  # Sign every non-JCEF helper binary first so the outer signature is valid.
+  find "$staged_app" -path "$staged_app/Contents/app/jcef-bundle" -prune -o \
+    -type f \( -name '*.dylib' -o -name 'katago' -o -perm -u+x \) -print0 |
+    xargs -0 codesign --force --options runtime --timestamp \
+                   --keychain "$keychain" --sign "$sign_identity" >/dev/null
+
+  sign_bundled_jcef "$staged_app"
+
+  find "$staged_app" -path "$staged_app/Contents/app/jcef-bundle" -prune -o \
+    -type f -name '*.jnilib' \
     -exec codesign --force --options runtime --timestamp \
                    --keychain "$keychain" --sign "$sign_identity" {} + >/dev/null
 
@@ -318,9 +372,11 @@ PY
            --entitlements "$entitlements_path" \
            --keychain "$keychain" --sign "$sign_identity" "$launcher_path"
 
-  codesign --force --deep --options runtime --timestamp \
+  codesign --force --options runtime --timestamp \
            --entitlements "$entitlements_path" \
            --keychain "$keychain" --sign "$sign_identity" "$staged_app"
+
+  codesign --verify --deep --strict --verbose=2 "$staged_app"
 
   verify_required_entitlements "$staged_app"
   verify_required_entitlements "$launcher_path"

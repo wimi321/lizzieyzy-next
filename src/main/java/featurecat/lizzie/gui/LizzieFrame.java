@@ -68,6 +68,7 @@ import java.awt.image.AffineTransformOp;
 import java.awt.image.BufferedImage;
 import java.awt.image.RenderedImage;
 import java.io.*;
+import java.net.URI;
 import java.text.SimpleDateFormat;
 import java.util.*;
 import java.util.List;
@@ -75,6 +76,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 import java.util.regex.Pattern;
 import javax.imageio.ImageIO;
@@ -92,8 +94,6 @@ import javax.swing.table.TableModel;
 import javax.swing.text.html.HTMLDocument;
 import javax.swing.text.html.HTMLEditorKit;
 import javax.swing.text.html.StyleSheet;
-import me.friwi.jcefmaven.CefInitializationException;
-import me.friwi.jcefmaven.UnsupportedPlatformException;
 import org.jdesktop.swingx.util.OS;
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -444,9 +444,10 @@ public class LizzieFrame extends JFrame {
   ArrayList<Movelist> tryMoveList;
   String tryString;
   String titleBeforeTrying;
-  public BrowserFrame browserFrame;
+  public volatile BrowserFrame browserFrame;
   public YikeLiveDialog yikeLiveDialog;
   public BrowserInitializing browserInitializing;
+  private final AtomicBoolean browserStarting = new AtomicBoolean(false);
   //  JFrame frame;
   //  ArrayList<String> urlList;
   //  int urlIndex;
@@ -4067,10 +4068,10 @@ public class LizzieFrame extends JFrame {
   }
 
   public void resumeFile() {
-    File file = new File("save" + File.separator + "autoGame1.sgf");
+    File file = resolveAutoSaveFile(1, "sgf");
     if (file.exists()) loadFile(file, true, true);
     else {
-      File file2 = new File("save" + File.separator + "autoGame2.sgf");
+      File file2 = resolveAutoSaveFile(2, "sgf");
       if (file2.exists()) loadFile(file2, true, true);
     }
     while (Lizzie.board.nextMove(false))
@@ -10297,26 +10298,113 @@ public class LizzieFrame extends JFrame {
   }
 
   public void bowser(String url, String title, boolean isYike) {
-    if (browserFrame == null) {
-      if (!Lizzie.config.browserInitiazed && browserInitializing != null) {
-        browserInitializing.setVisible(true);
-        return;
-      }
-      new Thread() {
-        public void run() {
-          try {
-            browserFrame = new BrowserFrame(url, title, isYike);
-          } catch (UnsupportedPlatformException
-              | CefInitializationException
-              | IOException
-              | InterruptedException e) {
-            // TODO Auto-generated catch block
-            e.printStackTrace();
+    BrowserFrame existingBrowser = browserFrame;
+    if (existingBrowser != null) {
+      existingBrowser.openURL(url, title, isYike);
+      return;
+    }
+
+    if (!browserStarting.compareAndSet(false, true)) {
+      showBrowserInitializing();
+      return;
+    }
+
+    showBrowserInitializing();
+    Thread starter =
+        new Thread(
+            () -> {
+              try {
+                browserFrame = new BrowserFrame(url, title, isYike);
+                hideBrowserInitializing();
+              } catch (Exception | LinkageError failure) {
+                if (failure instanceof InterruptedException) {
+                  Thread.currentThread().interrupt();
+                }
+                failure.printStackTrace();
+                browserStarting.set(false);
+                hideBrowserInitializing();
+                showBrowserStartupFailure(url, title, isYike);
+              } finally {
+                browserStarting.set(false);
+              }
+            },
+            "embedded-browser-starter");
+    starter.setDaemon(true);
+    starter.start();
+  }
+
+  private void showBrowserInitializing() {
+    SwingUtilities.invokeLater(
+        () -> {
+          if (browserInitializing == null || !browserInitializing.isDisplayable()) {
+            browserInitializing = new BrowserInitializing(this);
           }
-        }
-      }.start();
-    } else {
-      browserFrame.openURL(url, title, isYike);
+          browserInitializing.setLocationRelativeTo(this);
+          browserInitializing.setVisible(true);
+          browserInitializing.toFront();
+        });
+  }
+
+  private void hideBrowserInitializing() {
+    SwingUtilities.invokeLater(
+        () -> {
+          if (browserInitializing != null) {
+            browserInitializing.setVisible(false);
+            browserInitializing.dispose();
+            browserInitializing = null;
+          }
+        });
+  }
+
+  private void showBrowserStartupFailure(String url, String title, boolean isYike) {
+    SwingUtilities.invokeLater(
+        () -> {
+          Object[] options = {
+            text("BrowserFrame.retry", "Retry"),
+            text("BrowserFrame.openExternal", "Open in system browser"),
+            text("LizzieFrame.cancel", "Cancel")
+          };
+          int choice =
+              JOptionPane.showOptionDialog(
+                  this,
+                  text(
+                      "BrowserFrame.startFailedMessage",
+                      "The built-in browser could not start. Retry, or open the page in your system browser."),
+                  text("BrowserFrame.startFailedTitle", "Unable to open web page"),
+                  JOptionPane.DEFAULT_OPTION,
+                  JOptionPane.ERROR_MESSAGE,
+                  null,
+                  options,
+                  options[0]);
+          if (choice == 0) {
+            bowser(url, title, isYike);
+          } else if (choice == 1) {
+            openInSystemBrowser(url);
+          }
+        });
+  }
+
+  private void openInSystemBrowser(String url) {
+    try {
+      if (!Desktop.isDesktopSupported()
+          || !Desktop.getDesktop().isSupported(Desktop.Action.BROWSE)) {
+        throw new IOException("Desktop browsing is not supported");
+      }
+      URI target;
+      try {
+        URI candidate = URI.create(url);
+        target = candidate.isAbsolute() ? candidate : new File(url).toURI();
+      } catch (IllegalArgumentException invalidUri) {
+        target = new File(url).toURI();
+      }
+      Desktop.getDesktop().browse(target);
+    } catch (Exception failure) {
+      failure.printStackTrace();
+      JOptionPane.showMessageDialog(
+          this,
+          text("BrowserFrame.externalFailed", "The system browser could not be opened."),
+          text("BrowserFrame.startFailedTitle", "Unable to open web page"),
+          JOptionPane.ERROR_MESSAGE);
     }
   }
 
@@ -12128,10 +12216,11 @@ public class LizzieFrame extends JFrame {
         "save-auto-game-move-list" + index,
         Lizzie.board.moveListToString(Lizzie.board.getmovelistForSaveLoad()));
     if (index == 1) Lizzie.config.saveBoardConfig.put("save-auto-game-index2", -1);
-    File file = new File("save" + File.separator + "autoGame" + index + ".bmp");
+    File imageFile = resolveAutoSaveFile(index, "bmp");
+    File sgfFile = resolveAutoSaveFile(index, "sgf");
     try {
-      SGFParser.save(Lizzie.board, "save" + File.separator + "autoGame" + index + ".sgf", true);
-      ImageIO.write((RenderedImage) saveMainBoardToImageOri(), "bmp", file);
+      SGFParser.save(Lizzie.board, sgfFile.getPath(), true);
+      ImageIO.write((RenderedImage) saveMainBoardToImageOri(), "bmp", imageFile);
     } catch (IOException e1) {
       // TODO Auto-generated catch block
       e1.printStackTrace();
@@ -13374,6 +13463,22 @@ public class LizzieFrame extends JFrame {
       startFlashAnalyzeRequestsInBackground(
           analysisEngine, isAllGame, isAllBranches, silentAnalyze);
     }
+  }
+
+  private File resolveAutoSaveFile(int index, String extension) {
+    File workDirectory =
+        Lizzie.config != null
+            ? Lizzie.config.getWorkDirectory()
+            : new File(System.getProperty("user.dir", "."));
+    return autoSaveFile(workDirectory, index, extension);
+  }
+
+  static File autoSaveFile(File workDirectory, int index, String extension) {
+    File saveDirectory = new File(workDirectory, "save");
+    if (!saveDirectory.isDirectory()) {
+      saveDirectory.mkdirs();
+    }
+    return new File(saveDirectory, "autoGame" + index + "." + extension);
   }
 
   private void startSilentQuickAnalyzeGame(boolean isAllGame, boolean isAllBranches) {

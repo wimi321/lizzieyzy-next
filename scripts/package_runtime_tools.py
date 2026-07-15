@@ -369,6 +369,18 @@ def audit_sizes(args: argparse.Namespace) -> int:
         ("engines", root / "engines"),
         ("runtime", root / "runtime"),
         ("jcef bundle", root / "jcef-bundle"),
+        ("staged macOS JCEF bundle", root / "dist" / "macos" / "jcef-bundle"),
+        (
+            "packaged macOS JCEF bundle",
+            root
+            / "dist"
+            / "macos"
+            / "app-image"
+            / "LizzieYzy Next.app"
+            / "Contents"
+            / "app"
+            / "jcef-bundle",
+        ),
         ("dist release", root / "dist" / "release"),
         ("dist windows", root / "dist" / "windows"),
         ("dist macos", root / "dist" / "macos"),

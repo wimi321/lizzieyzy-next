@@ -29,8 +29,10 @@ import java.awt.Rectangle;
 import java.awt.geom.AffineTransform;
 import java.awt.image.BufferedImage;
 import java.awt.image.ColorModel;
+import java.io.File;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashSet;
@@ -43,10 +45,19 @@ import java.util.concurrent.atomic.AtomicInteger;
 import javax.swing.JPanel;
 import javax.swing.SwingUtilities;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 class LizzieFrameRegressionTest {
   private static final int BOARD_SIZE = 2;
   private static final int BOARD_AREA = BOARD_SIZE * BOARD_SIZE;
+
+  @Test
+  void autoSaveFilesUseConfiguredWorkDirectoryInsteadOfProcessCwd(@TempDir Path workDir) {
+    File autoSave = LizzieFrame.autoSaveFile(workDir.toFile(), 2, "sgf");
+
+    assertEquals(workDir.resolve("save").resolve("autoGame2.sgf").toFile(), autoSave);
+    assertTrue(autoSave.getParentFile().isDirectory());
+  }
 
   @Test
   void loadingStatusFontFitsAndTruncatesLongLocalizedText() {
