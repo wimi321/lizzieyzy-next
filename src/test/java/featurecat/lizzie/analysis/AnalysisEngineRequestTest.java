@@ -393,6 +393,7 @@ class AnalysisEngineRequestTest {
       try {
         assertFalse(dispatchExclusiveLine(foreground, "=" + stopCommandId));
         processCommandResponse(foreground, "=" + stopCommandId);
+        assertTrue(dispatchExclusiveLine(foreground, ""));
       } finally {
         Lizzie.resourceBundle = previousResourceBundle;
       }

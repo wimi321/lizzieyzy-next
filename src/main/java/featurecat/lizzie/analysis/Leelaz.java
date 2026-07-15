@@ -81,6 +81,17 @@ public class Leelaz {
     APPLICATION_EXCLUSIVE_MODE
   }
 
+  public enum ForegroundAnalysisLeaseFailure {
+    INITIAL_STOP_SEND_FAILED,
+    INITIAL_STOP_ERROR_RESPONSE,
+    INITIAL_STOP_TIMEOUT,
+    FINAL_STOP_SEND_FAILED,
+    FINAL_STOP_ERROR_RESPONSE,
+    FINAL_STOP_TIMEOUT,
+    TRANSPORT_CLOSED,
+    RESTORE_FAILED
+  }
+
   private static final List<String> FLASH_ANALYSIS_GTP_COMMANDS =
       List.of(
           "stop",
@@ -108,6 +119,7 @@ public class Leelaz {
   // private static final long MINUTE = 60 * 1000; // number of milliseconds in a minute
   private static final Runnable NO_OP_RESPONSE_HANDLER = () -> {};
   private static final int NO_RESPONSE_COMMAND_ID = -1;
+  private static final long FOREGROUND_INITIAL_STOP_TIMEOUT_MILLIS = 8000L;
   private static final long FOREGROUND_RELEASE_STOP_TIMEOUT_MILLIS = 8000L;
 
   // private long maxAnalyzeTimeMillis; // , maxThinkingTimeMillis;
@@ -3004,6 +3016,8 @@ public class Leelaz {
       interruptedForegroundWork =
           exclusiveGtpSession != null ? exclusiveGtpSession : foregroundRestoreSession;
     }
+    recordForegroundAnalysisLeaseFailure(
+        interruptedForegroundWork, ForegroundAnalysisLeaseFailure.TRANSPORT_CLOSED);
     markForegroundRestoreFailed(interruptedForegroundWork, "engine transport closed");
     abortExclusiveGtpSession();
     completeForegroundRestore(interruptedForegroundWork);
@@ -3803,7 +3817,7 @@ public class Leelaz {
       failForegroundRestore(foregroundRestoreSession, "restore command failed: " + line.trim());
     }
     boolean matchedPendingHandler = runPendingResponseHandlerForLine(line);
-    activateExclusiveGtpSessionAfterStop(line);
+    acknowledgeExclusiveGtpInitialStop(line);
     if (!matchedPendingHandler && parseResponseCommandId(line) != NO_RESPONSE_COMMAND_ID) {
       return;
     }
@@ -3855,12 +3869,16 @@ public class Leelaz {
   private ExclusiveGtpLeaseAvailability startReservedExclusiveGtpSession(
       ExclusiveGtpSession session) {
     notPondering();
+    scheduleForegroundInitialStopTimeout(session);
     if (!writeExclusiveGtpCommand(
         session,
         ExclusiveGtpWritePhase.INITIAL_STOP,
         session.stopCommandId,
         session.stopCommandId + " stop")) {
       synchronized (engineArbitrationLock()) {
+        recordForegroundAnalysisLeaseFailure(
+            session, ForegroundAnalysisLeaseFailure.INITIAL_STOP_SEND_FAILED);
+        session.restoreFailed = true;
         session.closing = true;
       }
       restoreAfterClosedForegroundLease(session);
@@ -3917,7 +3935,15 @@ public class Leelaz {
             });
     return new ForegroundAnalysisLeaseAcquisition(
         availability,
-        availability == ExclusiveGtpLeaseAvailability.AVAILABLE ? lease : null);
+        availability == ExclusiveGtpLeaseAvailability.AVAILABLE ? lease : null,
+        lease);
+  }
+
+  private void recordForegroundAnalysisLeaseFailure(
+      ExclusiveGtpSession session, ForegroundAnalysisLeaseFailure failure) {
+    if (session != null && session.owner instanceof ForegroundAnalysisLease) {
+      ((ForegroundAnalysisLease) session.owner).recordFailure(failure);
+    }
   }
 
   public ExclusiveGtpLeaseAvailability previewForegroundAnalysisLeaseAvailability() {
@@ -4179,16 +4205,19 @@ public class Leelaz {
         session.releaseStopCommandId = releaseStopCommandId;
       }
     }
-    scheduleForegroundReleaseStopTimeout(session);
     if (releaseStopCommandId == 0) {
       return true;
     }
+    scheduleForegroundReleaseStopTimeout(session);
     if (!writeExclusiveGtpCommand(
         session,
         ExclusiveGtpWritePhase.RELEASE_STOP,
         releaseStopCommandId,
         releaseStopCommandId + " stop")) {
-      failForegroundLeaseRelease(session, "failed to send final stop command");
+      failForegroundLeaseRelease(
+          session,
+          ForegroundAnalysisLeaseFailure.FINAL_STOP_SEND_FAILED,
+          "failed to send final stop command");
     }
     return true;
   }
@@ -4197,23 +4226,80 @@ public class Leelaz {
     return FOREGROUND_RELEASE_STOP_TIMEOUT_MILLIS;
   }
 
+  protected long foregroundInitialStopTimeoutMillis() {
+    return FOREGROUND_INITIAL_STOP_TIMEOUT_MILLIS;
+  }
+
+  void executeForegroundReleaseStopTimeout(Runnable timeoutAction) {
+    timeoutAction.run();
+  }
+
+  void beforeForegroundReleaseRestoreAfterBoundary() {}
+
+  private void scheduleForegroundInitialStopTimeout(ExclusiveGtpSession session) {
+    Timer timeout = new Timer("lizzie-foreground-engine-initial-stop-timeout", true);
+    TimerTask timeoutTask =
+        new TimerTask() {
+          @Override
+          public void run() {
+            failForegroundLeaseInitialStop(session, "initial stop response timeout");
+          }
+        };
+    long timeoutMillis = foregroundInitialStopTimeoutMillis();
+    synchronized (engineArbitrationLock()) {
+      if (exclusiveGtpSession != session || session.active || session.closing) {
+        timeout.cancel();
+        return;
+      }
+      session.initialStopTimeout = timeout;
+      timeout.schedule(timeoutTask, timeoutMillis);
+    }
+  }
+
+  private void cancelForegroundInitialStopTimeout(ExclusiveGtpSession session) {
+    Timer timeout;
+    synchronized (engineArbitrationLock()) {
+      timeout = session.initialStopTimeout;
+      session.initialStopTimeout = null;
+    }
+    if (timeout != null) {
+      timeout.cancel();
+    }
+  }
+
+  private void failForegroundLeaseInitialStop(ExclusiveGtpSession session, String detail) {
+    if (!abortExclusiveGtpSession(
+        session, true, ForegroundAnalysisLeaseFailure.INITIAL_STOP_TIMEOUT)) {
+      return;
+    }
+    String message = "Failed to stop foreground engine before flash analysis: " + detail;
+    rememberRecentLine(recentStderrLines, message);
+    System.err.println(message);
+  }
+
   private void scheduleForegroundReleaseStopTimeout(ExclusiveGtpSession session) {
     Timer timeout = new Timer("lizzie-foreground-engine-release-stop-timeout", true);
+    TimerTask timeoutTask =
+        new TimerTask() {
+          @Override
+          public void run() {
+            executeForegroundReleaseStopTimeout(
+                () ->
+                    failForegroundLeaseRelease(
+                        session,
+                        ForegroundAnalysisLeaseFailure.FINAL_STOP_TIMEOUT,
+                        "final stop response timeout"));
+          }
+        };
+    long timeoutMillis = foregroundReleaseStopTimeoutMillis();
     synchronized (engineArbitrationLock()) {
       if (exclusiveGtpSession != session || session.closing || !session.releaseRequested) {
         timeout.cancel();
         return;
       }
       session.releaseStopTimeout = timeout;
+      timeout.schedule(timeoutTask, timeoutMillis);
     }
-    timeout.schedule(
-        new TimerTask() {
-          @Override
-          public void run() {
-            failForegroundLeaseRelease(session, "final stop response timeout");
-          }
-        },
-        foregroundReleaseStopTimeoutMillis());
   }
 
   private void cancelForegroundReleaseStopTimeout(ExclusiveGtpSession session) {
@@ -4227,16 +4313,23 @@ public class Leelaz {
     }
   }
 
-  private void failForegroundLeaseRelease(ExclusiveGtpSession session, String detail) {
+  private void failForegroundLeaseRelease(
+      ExclusiveGtpSession session,
+      ForegroundAnalysisLeaseFailure failureReason,
+      String detail) {
     cancelForegroundReleaseStopTimeout(session);
     synchronized (engineArbitrationLock()) {
       if (session == null
           || exclusiveGtpSession != session
           || session.restoreCompleted
+          || session.restoreStarted
+          || session.closing
           || session.releaseStopFailed) {
         return;
       }
+      recordForegroundAnalysisLeaseFailure(session, failureReason);
       session.releaseStopFailed = true;
+      session.restoreFailed = true;
       session.closing = true;
     }
     String message = "Failed to stop foreground engine before restore: " + detail;
@@ -4246,17 +4339,20 @@ public class Leelaz {
   }
 
   private void restoreAfterClosedForegroundLease(ExclusiveGtpSession session) {
+    cancelForegroundInitialStopTimeout(session);
     cancelForegroundReleaseStopTimeout(session);
-    boolean canRestore =
-        session != null
-            && Lizzie.leelaz == this
-            && Lizzie.board != null
-            && isLoaded()
-            && isStarted();
+    boolean canRestore;
     synchronized (engineArbitrationLock()) {
-      if (session == null || exclusiveGtpSession != session) {
+      if (session == null || exclusiveGtpSession != session || session.restoreStarted) {
         return;
       }
+      session.restoreStarted = true;
+      canRestore =
+          !session.restoreFailed
+              && Lizzie.leelaz == this
+              && Lizzie.board != null
+              && isLoaded()
+              && isStarted();
       exclusiveGtpLifecycleTransition = true;
       exclusiveGtpLifecycleOwner = null;
       exclusiveGtpLifecycleDepth = 0;
@@ -4353,6 +4449,7 @@ public class Leelaz {
       if (session == null || session.restoreCompleted) {
         return false;
       }
+      recordForegroundAnalysisLeaseFailure(session, ForegroundAnalysisLeaseFailure.RESTORE_FAILED);
       session.restoreFailed = true;
     }
     String message = "Failed to restore foreground engine after flash analysis: " + detail;
@@ -4566,31 +4663,44 @@ public class Leelaz {
         return true;
       }
       if (trimmed.startsWith("?") && parseResponseCommandId(trimmed) == session.stopCommandId) {
-        abortExclusiveGtpSession();
+        abortExclusiveGtpSession(
+            session, true, ForegroundAnalysisLeaseFailure.INITIAL_STOP_ERROR_RESPONSE);
+        return true;
+      }
+      if (trimmed.isEmpty() && completeExclusiveGtpInitialStopBoundary(session)) {
         return true;
       }
       return false;
-    }
-    if (session.skipStopResponseBoundary && trimmed.isEmpty()) {
-      session.skipStopResponseBoundary = false;
-      if (session.releaseRequested && session.releaseStopCommandId == 0) {
-        session.closing = true;
-        restoreAfterClosedForegroundLease(session);
-      }
-      return true;
     }
     if (session.releaseRequested) {
       int responseCommandId = parseResponseCommandId(trimmed);
       if (responseCommandId == session.releaseStopCommandId) {
         if (trimmed.startsWith("?")) {
-          failForegroundLeaseRelease(session, "final stop command failed: " + trimmed);
+          failForegroundLeaseRelease(
+              session,
+              ForegroundAnalysisLeaseFailure.FINAL_STOP_ERROR_RESPONSE,
+              "final stop command failed: " + trimmed);
         } else if (trimmed.startsWith("=")) {
-          session.releaseStopAcknowledged = true;
+          synchronized (engineArbitrationLock()) {
+            if (exclusiveGtpSession == session && !session.closing) {
+              session.releaseStopAcknowledged = true;
+            }
+          }
         }
         return true;
       }
-      if (session.releaseStopAcknowledged && trimmed.isEmpty()) {
-        session.closing = true;
+      boolean restore = false;
+      synchronized (engineArbitrationLock()) {
+        if (exclusiveGtpSession == session
+            && !session.closing
+            && session.releaseStopAcknowledged
+            && trimmed.isEmpty()) {
+          session.closing = true;
+          restore = true;
+        }
+      }
+      if (restore) {
+        beforeForegroundReleaseRestoreAfterBoundary();
         restoreAfterClosedForegroundLease(session);
       }
       return true;
@@ -4599,35 +4709,75 @@ public class Leelaz {
     return true;
   }
 
-  private void activateExclusiveGtpSessionAfterStop(String line) {
-    Runnable onReady = null;
+  private void acknowledgeExclusiveGtpInitialStop(String line) {
     synchronized (engineArbitrationLock()) {
       ExclusiveGtpSession session = exclusiveGtpSession;
       if (session == null
           || session.active
+          || session.closing
           || line == null
           || !line.trim().startsWith("=")
           || parseResponseCommandId(line) != session.stopCommandId) {
         return;
       }
+      session.initialStopAcknowledged = true;
+    }
+  }
+
+  private boolean completeExclusiveGtpInitialStopBoundary(ExclusiveGtpSession session) {
+    Runnable onReady = null;
+    boolean restore = false;
+    synchronized (engineArbitrationLock()) {
+      if (session == null
+          || exclusiveGtpSession != session
+          || session.active
+          || session.closing
+          || !session.initialStopAcknowledged) {
+        return false;
+      }
       session.active = true;
-      session.skipStopResponseBoundary = true;
-      if (!session.releaseRequested) {
+      if (session.releaseRequested) {
+        session.closing = true;
+        restore = true;
+      } else {
         onReady = session.onReady;
       }
+    }
+    cancelForegroundInitialStopTimeout(session);
+    if (restore) {
+      restoreAfterClosedForegroundLease(session);
     }
     if (onReady != null) {
       onReady.run();
     }
+    return true;
   }
 
   private void abortExclusiveGtpSession() {
+    abortExclusiveGtpSession(exclusiveGtpSession);
+  }
+
+  private boolean abortExclusiveGtpSession(ExclusiveGtpSession expectedSession) {
+    return abortExclusiveGtpSession(expectedSession, false, null);
+  }
+
+  private boolean abortExclusiveGtpSession(
+      ExclusiveGtpSession expectedSession,
+      boolean onlyBeforeReady,
+      ForegroundAnalysisLeaseFailure failureReason) {
     Runnable onClosed = null;
     ExclusiveGtpSession closedSession = null;
     synchronized (engineArbitrationLock()) {
       ExclusiveGtpSession session = exclusiveGtpSession;
-      if (session == null || session.closing) {
-        return;
+      if (session == null
+          || session != expectedSession
+          || session.closing
+          || (onlyBeforeReady && session.active)) {
+        return false;
+      }
+      if (failureReason != null) {
+        recordForegroundAnalysisLeaseFailure(session, failureReason);
+        session.restoreFailed = true;
       }
       session.closing = true;
       closedSession = session;
@@ -4637,6 +4787,7 @@ public class Leelaz {
     if (onClosed != null) {
       onClosed.run();
     }
+    return true;
   }
 
   private boolean isCurrentCommandResponseError() {
@@ -4752,7 +4903,8 @@ public class Leelaz {
     private final Runnable onClosed;
     private final int stopCommandId;
     private volatile boolean active;
-    private volatile boolean skipStopResponseBoundary;
+    private boolean initialStopAcknowledged;
+    private Timer initialStopTimeout;
     private boolean wasPondering;
     private volatile boolean closing;
     private volatile boolean releaseRequested;
@@ -4762,6 +4914,7 @@ public class Leelaz {
     private volatile boolean restoreCompleted;
     private boolean restoreFailed;
     private volatile boolean restoreInvalidated;
+    private boolean restoreStarted;
     private String originalRules;
     private Runnable afterRestore;
     private Runnable afterRestoreFailure;
@@ -4786,11 +4939,15 @@ public class Leelaz {
   public static final class ForegroundAnalysisLeaseAcquisition {
     private final ExclusiveGtpLeaseAvailability availability;
     private final ForegroundAnalysisLease lease;
+    private final ForegroundAnalysisLease failureSource;
 
     private ForegroundAnalysisLeaseAcquisition(
-        ExclusiveGtpLeaseAvailability availability, ForegroundAnalysisLease lease) {
+        ExclusiveGtpLeaseAvailability availability,
+        ForegroundAnalysisLease lease,
+        ForegroundAnalysisLease failureSource) {
       this.availability = availability;
       this.lease = lease;
+      this.failureSource = failureSource;
     }
 
     public ExclusiveGtpLeaseAvailability availability() {
@@ -4800,10 +4957,16 @@ public class Leelaz {
     public ForegroundAnalysisLease lease() {
       return lease;
     }
+
+    public Optional<ForegroundAnalysisLeaseFailure> failureReason() {
+      return failureSource.failureReason();
+    }
   }
 
   public static final class ForegroundAnalysisLease {
     private final Leelaz engine;
+    private final AtomicReference<ForegroundAnalysisLeaseFailure> failureReason =
+        new AtomicReference<>();
 
     private ForegroundAnalysisLease(Leelaz engine) {
       this.engine = engine;
@@ -4819,6 +4982,14 @@ public class Leelaz {
 
     public boolean release(Runnable afterRestore, Runnable afterRestoreFailure) {
       return engine.endForegroundAnalysisLease(this, afterRestore, afterRestoreFailure);
+    }
+
+    public Optional<ForegroundAnalysisLeaseFailure> failureReason() {
+      return Optional.ofNullable(failureReason.get());
+    }
+
+    private void recordFailure(ForegroundAnalysisLeaseFailure failure) {
+      failureReason.compareAndSet(null, failure);
     }
   }
 
