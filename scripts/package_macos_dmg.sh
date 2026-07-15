@@ -23,6 +23,17 @@ fi
 
 PYTHON_BIN=""
 RUNTIME_TOOLS_SCRIPT="$ROOT_DIR/scripts/package_runtime_tools.py"
+JCEF_BUNDLE_PREPARE_SCRIPT="$ROOT_DIR/scripts/prepare_bundled_jcef.py"
+JCEF_RELEASE_TAG="jcef-99c2f7a+cef-127.3.1+g6cbb30e+chromium-127.0.6533.100"
+JCEF_JAVA_OPTIONS=(
+  "--add-exports=java.desktop/sun.awt=ALL-UNNAMED"
+  "--add-exports=java.desktop/sun.lwawt=ALL-UNNAMED"
+  "--add-exports=java.desktop/sun.lwawt.macosx=ALL-UNNAMED"
+)
+JCEF_JPACKAGE_ARGS=()
+for option in "${JCEF_JAVA_OPTIONS[@]}"; do
+  JCEF_JPACKAGE_ARGS+=(--java-options "$option")
+done
 
 resolve_python_bin() {
   if [[ -n "$PYTHON_BIN" ]]; then
@@ -57,10 +68,14 @@ if [[ "$ARCH" == "arm64" ]]; then
   ARCH_TAG="mac-arm64"
   PUBLIC_ARCH_TAG="mac-apple-silicon"
   ENGINE_PLATFORM_DIR="macos-arm64"
+  JCEF_PLATFORM="macosx-arm64"
+  JCEF_ASSET_SHA256="1746a503e38614ea3e4fe7986e22443ab48a3a245ba1f4b17575aaccab5e7994"
 else
   ARCH_TAG="mac-amd64"
   PUBLIC_ARCH_TAG="mac-intel"
   ENGINE_PLATFORM_DIR="macos-amd64"
+  JCEF_PLATFORM="macosx-amd64"
+  JCEF_ASSET_SHA256="36ed38af450dff481513c352a92a88aaa73ec34a399edadc7a4a947c7d1ddaed"
 fi
 
 has_bundled_katago() {
@@ -93,9 +108,39 @@ copy_bundle_engine_assets() {
   cp "$ROOT_DIR/weights/default.bin.gz" "$INPUT_DIR/weights/default.bin.gz"
 }
 
+prepare_bundled_jcef_assets() {
+  if [[ ! -f "$JCEF_BUNDLE_PREPARE_SCRIPT" ]]; then
+    echo "Missing JCEF prepare script: $JCEF_BUNDLE_PREPARE_SCRIPT"
+    exit 1
+  fi
+  resolve_python_bin
+  "$PYTHON_BIN" "$JCEF_BUNDLE_PREPARE_SCRIPT" \
+    --platform "$JCEF_PLATFORM" \
+    --cache-dir "$ROOT_DIR/.cache/jcef" \
+    --output-dir "$JCEF_BUNDLE_STAGE_DIR"
+}
+
+copy_bundled_jcef_assets() {
+  local manifest="$JCEF_BUNDLE_STAGE_DIR/lizzieyzy-next-jcef-manifest.txt"
+  if [[ ! -f "$JCEF_BUNDLE_STAGE_DIR/build_meta.json" ]] \
+    || [[ ! -f "$JCEF_BUNDLE_STAGE_DIR/install.lock" ]] \
+    || [[ ! -f "$JCEF_BUNDLE_STAGE_DIR/libjcef.dylib" ]] \
+    || [[ ! -f "$JCEF_BUNDLE_STAGE_DIR/Chromium Embedded Framework.framework/Chromium Embedded Framework" ]] \
+    || [[ ! -f "$JCEF_BUNDLE_STAGE_DIR/jcef Helper.app/Contents/MacOS/jcef Helper" ]] \
+    || [[ ! -f "$manifest" ]]; then
+    echo "Prepared macOS JCEF runtime is incomplete: $JCEF_BUNDLE_STAGE_DIR"
+    exit 1
+  fi
+  grep -qx "release-tag=$JCEF_RELEASE_TAG" "$manifest"
+  grep -qx "platform=$JCEF_PLATFORM" "$manifest"
+  grep -qx "sha256=$JCEF_ASSET_SHA256" "$manifest"
+  cp -R "$JCEF_BUNDLE_STAGE_DIR" "$INPUT_DIR/jcef-bundle"
+}
+
 DIST_DIR="$ROOT_DIR/dist/macos"
 INPUT_DIR="$DIST_DIR/input"
 APP_IMAGE_DIR="$DIST_DIR/app-image"
+JCEF_BUNDLE_STAGE_DIR="$DIST_DIR/jcef-bundle"
 META_DIR="$ROOT_DIR/dist/release-meta"
 rm -rf "$INPUT_DIR" "$APP_IMAGE_DIR"
 mkdir -p "$INPUT_DIR" "$APP_IMAGE_DIR" "$META_DIR"
@@ -119,10 +164,13 @@ prepare_custom_runtime() {
   fi
 }
 
+prepare_bundled_jcef_assets
+
 cp "$JAR_PATH" "$INPUT_DIR/"
 cp README.md README_EN.md README_JA.md README_KO.md LICENSE.txt packaging/PROJECT_INFO.txt "$INPUT_DIR/"
 cp readme_cn.pdf readme_en.pdf "$INPUT_DIR/"
 copy_bundle_engine_assets
+copy_bundled_jcef_assets
 
 APP_NAME="LizzieYzy Next"
 APP_DESCRIPTION="Maintained LizzieYzy build with Fox nickname fetch and easier KataGo setup"
@@ -145,9 +193,22 @@ jpackage \
   --icon "$ICON_PATH" \
   --mac-package-identifier "$IDENTIFIER" \
   "${JPACKAGE_RUNTIME_ARGS[@]}" \
+  "${JCEF_JPACKAGE_ARGS[@]}" \
   --java-options "-Xmx4096m" \
   --java-options "-Xshare:auto" \
   --java-options "-Dlizzie.next.version=$APP_DISPLAY_VERSION"
+
+APP_CONFIG="$APP_IMAGE_DIR/$APP_NAME.app/Contents/app/$APP_NAME.cfg"
+if [[ ! -f "$APP_CONFIG" ]]; then
+  echo "Packaged macOS launcher config is missing: $APP_CONFIG"
+  exit 1
+fi
+for option in "${JCEF_JAVA_OPTIONS[@]}"; do
+  if ! grep -Fqx "java-options=$option" "$APP_CONFIG"; then
+    echo "Packaged macOS launcher is missing JCEF option: $option"
+    exit 1
+  fi
+done
 
 FINAL_DMG="$ROOT_DIR/dist/release/${DATE_TAG}-${PUBLIC_ARCH_TAG}.${PACKAGE_FLAVOR}.dmg"
 INSTALL_NOTE="$META_DIR/${DATE_TAG}-${PUBLIC_ARCH_TAG}-install.txt"
@@ -163,6 +224,7 @@ Generated on: $DATE_TAG
 Release display version: $APP_DISPLAY_VERSION
 Main asset: $(basename "$FINAL_DMG")
 Engine: $PACKAGE_NOTE
+Browser: Bundled JCEF $JCEF_RELEASE_TAG ($JCEF_PLATFORM)
 
 Install:
 1. Open $(basename "$FINAL_DMG").
@@ -184,6 +246,10 @@ Bundled KataGo paths inside the app bundle:
 - Engine: LizzieYzy Next.app/Contents/app/engines/katago/$ENGINE_PLATFORM_DIR/katago
 - Weight: LizzieYzy Next.app/Contents/app/weights/default.bin.gz
 - Configs: LizzieYzy Next.app/Contents/app/engines/katago/configs/
+
+Bundled browser runtime:
+- LizzieYzy Next.app/Contents/app/jcef-bundle/
+- Used by the built-in Yike web page and Yike hall; no first-use browser download is required.
 
 Notes:
 - This package is unsigned and not notarized.

@@ -1,5 +1,6 @@
 package featurecat.lizzie.gui;
 
+import featurecat.lizzie.Config;
 import featurecat.lizzie.Lizzie;
 import featurecat.lizzie.util.MultiOutputStream;
 import featurecat.lizzie.util.Utils;
@@ -126,26 +127,8 @@ public class BrowserFrame extends JFrame {
     //     build the CefApp on first run and fetch the instance on all consecutive
     //     runs. This method is thread-safe and will always return a valid app
     //     instance.
-    if (!Lizzie.config.browserInitiazed)
-      Lizzie.frame.browserInitializing = new BrowserInitializing(Lizzie.frame);
-    new Thread() {
-      public void run() {
-        try {
-          Thread.sleep(500);
-          if (!Lizzie.config.browserInitiazed) Lizzie.frame.browserInitializing.setVisible(true);
-          else Lizzie.frame.browserInitializing.dispose();
-        } catch (InterruptedException e) {
-          // TODO Auto-generated catch block
-          e.printStackTrace();
-        }
-      }
-    }.start();
     cefApp_ = builder.build();
     Lizzie.config.browserInitiazed = true;
-    if (Lizzie.frame.browserInitializing != null && Lizzie.frame.browserInitializing.isVisible()) {
-      Lizzie.frame.browserInitializing.setVisible(false);
-      Lizzie.frame.browserInitializing.dispose();
-    }
     if (Lizzie.config.logConsoleToFile) {
       PrintStream oldErrorPrintStream = System.err;
       FileOutputStream bosError =
@@ -541,12 +524,15 @@ public class BrowserFrame extends JFrame {
     }
   }
 
-  private static File resolveJcefBundleFolder() throws IOException {
+  private static File resolveJcefBundleFolder()
+      throws IOException, UnsupportedPlatformException {
     Optional<File> bundledFolder = findBundledJcefFolder(defaultJcefSearchBases());
     if (bundledFolder.isPresent()) {
       return bundledFolder.get();
     }
-    return new File(JCEF_BUNDLE_DIRECTORY).getCanonicalFile();
+    throw new IOException(
+        "Bundled JCEF browser runtime is missing for "
+            + EnumPlatform.getCurrentPlatform().getIdentifier());
   }
 
   static Optional<File> findBundledJcefFolder(List<File> bases) throws IOException {
@@ -628,12 +614,14 @@ public class BrowserFrame extends JFrame {
   }
 
   private static File resolveJcefCacheFolder() throws IOException {
-    String localAppData = System.getenv("LOCALAPPDATA");
-    if (localAppData != null && !localAppData.isBlank()) {
-      return new File(new File(localAppData, "LizzieYzy Next"), "jcef-cache").getCanonicalFile();
+    if (Lizzie.config != null) {
+      return new File(Lizzie.config.getRuntimeWorkDirectory(), "jcef-cache").getCanonicalFile();
     }
-    String userHome = System.getProperty("user.home", ".");
-    return new File(new File(userHome, ".lizzieyzy-next"), "jcef-cache").getCanonicalFile();
+    return Config.resolveWritableFallbackDir()
+        .resolve("runtime")
+        .resolve("jcef-cache")
+        .toFile()
+        .getCanonicalFile();
   }
 
   private static void checkBundleFolder(File bundleDir) throws IOException {

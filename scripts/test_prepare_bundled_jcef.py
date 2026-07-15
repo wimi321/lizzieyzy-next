@@ -19,20 +19,30 @@ SPEC.loader.exec_module(JCEF)
 
 
 class PrepareBundledJcefTest(unittest.TestCase):
-    def create_bundle(self, root: Path, platform: str = "windows-amd64") -> None:
-        for relative_name in JCEF.PLATFORM_PACKAGES["windows-amd64"]["required"]:
+    def create_bundle(
+        self,
+        root: Path,
+        package_platform: str = "windows-amd64",
+        metadata_platform: str | None = None,
+    ) -> None:
+        for relative_name in JCEF.PLATFORM_PACKAGES[package_platform]["required"]:
             path = root / relative_name
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_bytes(b"fixture")
         (root / "build_meta.json").write_text(
-            json.dumps({"release_tag": JCEF.JCEF_RELEASE_TAG, "platform": platform}),
+            json.dumps(
+                {
+                    "release_tag": JCEF.JCEF_RELEASE_TAG,
+                    "platform": metadata_platform or package_platform,
+                }
+            ),
             encoding="utf-8",
         )
 
     def test_validate_bundle_rejects_wrong_platform(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = Path(temporary_directory)
-            self.create_bundle(root, platform="linux-amd64")
+            self.create_bundle(root, metadata_platform="linux-amd64")
 
             with self.assertRaisesRegex(SystemExit, "JCEF platform mismatch"):
                 JCEF.validate_bundle(root, "windows-amd64")
@@ -54,6 +64,51 @@ class PrepareBundledJcefTest(unittest.TestCase):
                 JCEF.SUPPORTED_WINDOWS_LOCALES,
                 {path.name for path in locales.iterdir()},
             )
+
+    def test_macos_locale_trim_keeps_supported_languages_only(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            resources = root / "Chromium Embedded Framework.framework" / "Resources"
+            resources.mkdir(parents=True)
+            for name in JCEF.SUPPORTED_MACOS_LOCALES | {"de.lproj", "fr.lproj"}:
+                locale = resources / name
+                locale.mkdir()
+                (locale / "locale.pak").write_bytes(name.encode("utf-8"))
+
+            stats = JCEF.trim_optional_locales(root, "macosx-arm64")
+
+            self.assertEqual(2, stats["removedFiles"])
+            self.assertEqual(len(b"de.lproj") + len(b"fr.lproj"), stats["removedBytes"])
+            self.assertEqual(len(JCEF.SUPPORTED_MACOS_LOCALES), stats["retainedFiles"])
+            self.assertEqual(
+                JCEF.SUPPORTED_MACOS_LOCALES,
+                {path.name for path in resources.iterdir()},
+            )
+
+    def test_macos_bundles_are_pinned_for_both_chip_families(self) -> None:
+        self.assertEqual(
+            "jcef-natives-macosx-arm64",
+            JCEF.PLATFORM_PACKAGES["macosx-arm64"]["artifact"],
+        )
+        self.assertEqual(
+            "1746a503e38614ea3e4fe7986e22443ab48a3a245ba1f4b17575aaccab5e7994",
+            JCEF.PLATFORM_PACKAGES["macosx-arm64"]["sha256"],
+        )
+        self.assertEqual(
+            "jcef-natives-macosx-amd64",
+            JCEF.PLATFORM_PACKAGES["macosx-amd64"]["artifact"],
+        )
+        self.assertEqual(
+            "36ed38af450dff481513c352a92a88aaa73ec34a399edadc7a4a947c7d1ddaed",
+            JCEF.PLATFORM_PACKAGES["macosx-amd64"]["sha256"],
+        )
+
+    def test_validate_macos_bundle_accepts_required_runtime(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            self.create_bundle(root, package_platform="macosx-arm64")
+
+            JCEF.validate_bundle(root, "macosx-arm64")
 
 
 if __name__ == "__main__":

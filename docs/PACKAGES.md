@@ -154,8 +154,9 @@
 - Windows 自定义 runtime 固定包含 `jdk.accessibility` 和 Java Access Bridge 原生组件，确保 NVDA、Windows 讲述人等辅助技术可以读取 Swing 控件；打包和 CI 会同时校验模块与桥接文件，缺失时拒绝生成发布包。
 - Windows 启动内存：启动器不再固定申请 `-Xmx4096m`，而是按机器可用内存自适应设置 JVM 上限。这样低内存电脑不会因为无法预留 4 GB 堆而只显示 `Failed to launch JVM`，高内存电脑仍可按需使用更多内存；KataGo 引擎显存和内存仍由独立进程管理。
 - Base CDS 启动共享：`jlink` runtime 构建后会执行 `java -Xshare:dump` 生成可随应用目录移动的基础类归档，启动参数使用 `-Xshare:auto`。不再打包绑定构建路径的 AppCDS；实测该归档在安装或解压到新目录后会因 classpath 不匹配而失效，移除后可避免无效体积和小更新后的归档过期。
-- JCEF 语言资源：Windows 包只保留软件可选语言需要的 Chromium 语言包（简体中文、繁体中文、英语、日语、韩语），浏览器内核、HTTPS、弈客、腾讯棋谱等功能文件完整保留；CEF locale 会按软件语言或系统语言安全回退。
-- 包体审计报告：每次打包会在 `dist/release-meta/` 生成 `*-package-size-audit.md` 和 `*.json`，记录 shaded jar、runtime、JCEF、权重、引擎、readboard、最终 release asset 的大小。报告会写入 GitHub Actions summary，并对异常增大的 jar、custom runtime、接近 GitHub 单资产上限的 release asset 给出 warning；第一阶段只预警，不阻断紧急发版。
+- JCEF 浏览器运行时：Windows 和 macOS 发布包都内置与 CPU 架构匹配的 JCEF，弈客网页版、弈客大厅和网页棋谱无需首次启动下载；macOS 打包及签名流程会校验 Chromium framework、`libjcef` 和全部 Helper app，缺失时直接终止发布。
+- JCEF 语言资源：发布包只保留软件六种语言需要的 Chromium 语言包（简体中文、繁体中文、英语、日语、韩语、泰语），浏览器内核、HTTPS、弈客、腾讯棋谱等功能文件完整保留；CEF locale 会按软件语言或系统语言安全回退。
+- 包体审计报告：每次打包会在 `dist/release-meta/` 生成 `*-package-size-audit.md` 和 `*.json`，记录 shaded jar、runtime、平台内置 JCEF、权重、引擎、readboard、最终 release asset 的大小。报告会写入 GitHub Actions summary，并对异常增大的 jar、custom runtime、接近 GitHub 单资产上限的 release asset 给出 warning；第一阶段只预警，不阻断紧急发版。
 
 维护者本地常用命令：
 

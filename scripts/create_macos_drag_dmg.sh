@@ -115,7 +115,6 @@ tell application "Finder"
   set position of item "Applications" of dmgRoot to {430, 150}
   update dmgRoot without registering applications
   delay 1
-  close dmgWindow
 end tell
 OSA
   then
