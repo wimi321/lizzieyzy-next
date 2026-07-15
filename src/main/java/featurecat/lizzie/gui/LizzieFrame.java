@@ -3501,8 +3501,8 @@ public class LizzieFrame extends JFrame {
           Lizzie.resourceBundle.getString("Contribute.tips.contributingAndStartAnotherLizzieYzy"));
       return;
     }
-    Leelaz.ExclusiveGtpLifecycleReservation reservation =
-        Lizzie.leelaz == null ? null : Lizzie.leelaz.beginExclusiveGtpLifecycleReservation();
+    Leelaz.EngineModeReservation reservation =
+        Lizzie.leelaz == null ? null : Lizzie.leelaz.beginEngineModeReservation();
     if (reservation == null) {
       showForegroundEngineLeaseConflict();
       return;
@@ -3521,7 +3521,7 @@ public class LizzieFrame extends JFrame {
       Lizzie.leelaz.togglePonder();
       isPondering = true;
     }
-    NewGameDialog newGameDialog = new NewGameDialog(this);
+    NewGameDialog newGameDialog = createNewGameDialog();
     newGameDialog.setVisible(true);
     boolean playerIsBlack = newGameDialog.playerIsBlack();
     newGameDialog.dispose();
@@ -3607,6 +3607,10 @@ public class LizzieFrame extends JFrame {
         };
     Thread syncBoardTh = new Thread(syncBoard);
     syncBoardTh.start();
+  }
+
+  protected NewGameDialog createNewGameDialog() {
+    return new NewGameDialog(this);
   }
 
   protected void showForegroundEngineLeaseConflict() {
@@ -10618,29 +10622,29 @@ public class LizzieFrame extends JFrame {
           Lizzie.resourceBundle.getString("Contribute.tips.contributingAndStartAnotherLizzieYzy"));
       return;
     }
+    if (Lizzie.leelaz.noAnalyze) {
+      startNewGameReserved();
+      return;
+    }
     boolean isPondering = false;
     if (Lizzie.leelaz.isPondering()) {
       Lizzie.leelaz.togglePonder();
       isPondering = true;
     }
-    if (Lizzie.leelaz.noAnalyze) {
-      startNewGame();
-    } else {
-      Lizzie.frame.stopAiPlayingAndPolicy();
-      // Lizzie.frame.isPlayingAgainstLeelaz = false;
-      // GameInfo gameInfo = Lizzie.board.getHistory().getGameInfo();
-      NewAnaGameDialog newgame = new NewAnaGameDialog(this);
-      // newgame.setGameInfo(gameInfo);
-      newgame.setVisible(true);
-      newgame.dispose();
-      if (newgame.isCancelled()) {
-        if (isPondering) Lizzie.leelaz.togglePonder();
-        Lizzie.frame.isAnaPlayingAgainstLeelaz = false;
-        return;
-      }
-      LizzieFrame.toolbar.isAutoPlay = true;
-      Lizzie.leelaz.isGamePaused = false;
+    Lizzie.frame.stopAiPlayingAndPolicy();
+    // Lizzie.frame.isPlayingAgainstLeelaz = false;
+    // GameInfo gameInfo = Lizzie.board.getHistory().getGameInfo();
+    NewAnaGameDialog newgame = new NewAnaGameDialog(this);
+    // newgame.setGameInfo(gameInfo);
+    newgame.setVisible(true);
+    newgame.dispose();
+    if (newgame.isCancelled()) {
+      if (isPondering) Lizzie.leelaz.togglePonder();
+      Lizzie.frame.isAnaPlayingAgainstLeelaz = false;
+      return;
     }
+    LizzieFrame.toolbar.isAutoPlay = true;
+    Lizzie.leelaz.isGamePaused = false;
   }
 
   public void continueAiPlaying(
@@ -13222,8 +13226,11 @@ public class LizzieFrame extends JFrame {
 
   boolean runWithForegroundEngineModeReservation(Runnable action) {
     Leelaz currentForegroundEngine = Lizzie.leelaz;
-    if (currentForegroundEngine != null
-        && !currentForegroundEngine.beginExclusiveGtpLifecycleTransition()) {
+    Leelaz.EngineModeReservation reservation =
+        currentForegroundEngine == null
+            ? null
+            : currentForegroundEngine.beginEngineModeReservation();
+    if (currentForegroundEngine != null && reservation == null) {
       showForegroundEngineModeReservationConflict();
       return false;
     }
@@ -13231,8 +13238,8 @@ public class LizzieFrame extends JFrame {
       action.run();
       return true;
     } finally {
-      if (currentForegroundEngine != null) {
-        currentForegroundEngine.endExclusiveGtpLifecycleTransition();
+      if (reservation != null) {
+        reservation.close();
       }
     }
   }

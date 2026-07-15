@@ -99,6 +99,12 @@ public class Leelaz {
     LEELA_SAI
   }
 
+  private enum ExclusiveGtpWritePhase {
+    INITIAL_STOP,
+    ACTIVE_COMMAND,
+    RELEASE_STOP
+  }
+
   // private static final long MINUTE = 60 * 1000; // number of milliseconds in a minute
   private static final Runnable NO_OP_RESPONSE_HANDLER = () -> {};
   private static final int NO_RESPONSE_COMMAND_ID = -1;
@@ -112,6 +118,7 @@ public class Leelaz {
   // private boolean isResponse=false;
   private ArrayDeque<QueuedCommand> cmdQueue;
   private ArrayDeque<QueuedCommand> foregroundRestoreQueue;
+  private boolean normalCommandSendInProgress;
   private final ThreadLocal<ExclusiveGtpSession> foregroundRestoreCommandSession =
       new ThreadLocal<>();
   private volatile boolean foregroundRestoreInProgress;
@@ -125,6 +132,7 @@ public class Leelaz {
 
   private Process process;
   private transient EngineTransport remoteTransport;
+  private volatile Object engineArbitrationLock = new Object();
   private volatile ExclusiveGtpSession exclusiveGtpSession;
   private boolean exclusiveGtpLifecycleTransition;
   private Object exclusiveGtpLifecycleOwner;
@@ -2992,7 +3000,7 @@ public class Leelaz {
     }
     started = false;
     ExclusiveGtpSession interruptedForegroundWork;
-    synchronized (this) {
+    synchronized (engineArbitrationLock()) {
       interruptedForegroundWork =
           exclusiveGtpSession != null ? exclusiveGtpSession : foregroundRestoreSession;
     }
@@ -3164,8 +3172,8 @@ public class Leelaz {
               onResponse,
               onSendFailure,
               failOnSendError || foregroundRestoreCommandSession.get() != null));
-      trySendCommandFromQueue();
     }
+    trySendCommandFromQueue();
     if (Lizzie.frame.isAutocounting) {
       Lizzie.frame.zen.sendAndEstimate(command, true);
     }
@@ -3351,8 +3359,8 @@ public class Leelaz {
       targetQueue.addLast(
           new QueuedCommand(
               command, onResponse, null, foregroundRestoreCommandSession.get() != null));
-      trySendCommandFromQueue();
     }
+    trySendCommandFromQueue();
     if (Lizzie.frame.isAutocounting) {
       Lizzie.frame.zen.sendAndEstimate(command, true);
     }
@@ -3370,8 +3378,9 @@ public class Leelaz {
     // possible hang-up by missing response for some reason.
     // cmdQueue can be replaced with a mere String variable in this case,
     // but it is kept for future change of our mind.
+    QueuedCommand queuedCommand;
     synchronized (commandQueue()) {
-      if (exclusiveGtpSession != null) {
+      if (exclusiveGtpSession != null || normalCommandSendInProgress) {
         return;
       }
       ArrayDeque<QueuedCommand> targetQueue =
@@ -3393,17 +3402,39 @@ public class Leelaz {
                     || lastQueuedCommand.startsWith("analyze")
                     || lastQueuedCommand.startsWith("heatmap")))) return;
       }
-      QueuedCommand queuedCommand = targetQueue.removeFirst();
-      String command = queuedCommand.command;
-      if (command.equals("stop-ponder")) command = "stop";
-      try {
-        sendCommandToLeelaz(command, queuedCommand.onResponse, queuedCommand.failOnSendError);
-      } catch (RuntimeException ex) {
-        if (queuedCommand.onSendFailure != null) {
-          queuedCommand.onSendFailure.onSendFailure(ex);
-        }
-        throw ex;
+      queuedCommand = targetQueue.removeFirst();
+      normalCommandSendInProgress = true;
+    }
+    String command = queuedCommand.command;
+    if (command.equals("stop-ponder")) command = "stop";
+    Runnable deferredResponse = null;
+    RuntimeException sendFailure = null;
+    try {
+      deferredResponse =
+          sendCommandToLeelaz(command, queuedCommand.onResponse, queuedCommand.failOnSendError);
+    } catch (RuntimeException ex) {
+      sendFailure = ex;
+    } finally {
+      synchronized (commandQueue()) {
+        normalCommandSendInProgress = false;
       }
+    }
+    if (sendFailure != null) {
+      try {
+        if (queuedCommand.onSendFailure != null) {
+          queuedCommand.onSendFailure.onSendFailure(sendFailure);
+        }
+      } finally {
+        trySendCommandFromQueue();
+      }
+      throw sendFailure;
+    }
+    try {
+      if (deferredResponse != null) {
+        deferredResponse.run();
+      }
+    } finally {
+      trySendCommandFromQueue();
     }
   }
 
@@ -3412,7 +3443,9 @@ public class Leelaz {
    *
    * @param command a GTP command containing no newline characters
    */
-  private void sendCommandToLeelaz(String command, Runnable onResponse, boolean failOnSendError) {
+  private Runnable sendCommandToLeelaz(
+      String command, Runnable onResponse, boolean failOnSendError) {
+    Runnable deferredResponse = null;
     logInterestingCommand(command, "sendCommandToLeelaz");
     if (command.startsWith("fixed_handicap")
         || (isKatago && command.startsWith("place_free_handicap"))) isSettingHandicap = true;
@@ -3426,8 +3459,10 @@ public class Leelaz {
     if (currentOutputStream != null) {
       addPendingResponseHandler(pendingHandler);
       try {
-        currentOutputStream.write((commandLine + "\n").getBytes());
-        currentOutputStream.flush();
+        synchronized (currentOutputStream) {
+          currentOutputStream.write((commandLine + "\n").getBytes());
+          currentOutputStream.flush();
+        }
       } catch (Exception e) {
         boolean pollutedStreamDetected =
             clearBufferedCommandBytesAfterSendFailure(currentOutputStream);
@@ -3446,9 +3481,7 @@ public class Leelaz {
         if (failOnSendError) {
           throw buildCommandSendFailure(commandLine, detail, e);
         }
-        if (onResponse != null) {
-          onResponse.run();
-        }
+        deferredResponse = onResponse;
       }
       if (EngineManager.isEngineGame()) {
         Lizzie.gtpConsole.addCommandForEngineGame(
@@ -3468,14 +3501,13 @@ public class Leelaz {
         retireOutstandingResponseCountOnSendFailure(pendingHandler);
         throw buildCommandSendFailure(commandLine, detail, null);
       }
-      if (onResponse != null) {
-        onResponse.run();
-      }
+      deferredResponse = onResponse;
     }
     if (canSetNotPlayed) {
       canSetNotPlayed = false;
       played = false;
     }
+    return deferredResponse;
   }
 
   private RuntimeException buildCommandSendFailure(String command, String detail, Exception cause) {
@@ -3557,6 +3589,19 @@ public class Leelaz {
     return cmdQueue;
   }
 
+  private Object engineArbitrationLock() {
+    Object lock = engineArbitrationLock;
+    if (lock != null) {
+      return lock;
+    }
+    synchronized (this) {
+      if (engineArbitrationLock == null) {
+        engineArbitrationLock = new Object();
+      }
+      return engineArbitrationLock;
+    }
+  }
+
   private ArrayDeque<QueuedCommand> foregroundRestoreCommandQueue() {
     if (foregroundRestoreQueue == null) {
       foregroundRestoreQueue = new ArrayDeque<QueuedCommand>();
@@ -3575,7 +3620,7 @@ public class Leelaz {
     return session != null && (session.restoreCompleted || foregroundRestoreSession != session);
   }
 
-  private synchronized boolean shouldSuppressNormalCommandForForegroundAnalysis() {
+  private boolean shouldSuppressNormalCommandForForegroundAnalysis() {
     boolean suppress =
         suppressNormalCommandsForForegroundAnalysis
             && foregroundRestoreCommandSession.get() == null;
@@ -3773,19 +3818,28 @@ public class Leelaz {
     }
   }
 
-  public synchronized ExclusiveGtpLeaseAvailability beginExclusiveGtpSession(
+  public ExclusiveGtpLeaseAvailability beginExclusiveGtpSession(
       Consumer<String> lineConsumer, Runnable onReady, Runnable onClosed) {
     return beginExclusiveGtpSession(new Object(), lineConsumer, onReady, onClosed);
   }
 
-  private synchronized ExclusiveGtpLeaseAvailability beginExclusiveGtpSession(
+  private ExclusiveGtpLeaseAvailability beginExclusiveGtpSession(
       Object owner, Consumer<String> lineConsumer, Runnable onReady, Runnable onClosed) {
-    ExclusiveGtpLeaseAvailability availability = intrinsicExclusiveGtpLeaseAvailability();
-    if (availability != ExclusiveGtpLeaseAvailability.AVAILABLE || lineConsumer == null) {
-      return availability == ExclusiveGtpLeaseAvailability.AVAILABLE
-          ? ExclusiveGtpLeaseAvailability.ENGINE_NOT_READY
-          : availability;
+    ExclusiveGtpSession session;
+    synchronized (engineArbitrationLock()) {
+      ExclusiveGtpLeaseAvailability availability = intrinsicExclusiveGtpLeaseAvailability();
+      if (availability != ExclusiveGtpLeaseAvailability.AVAILABLE || lineConsumer == null) {
+        return availability == ExclusiveGtpLeaseAvailability.AVAILABLE
+            ? ExclusiveGtpLeaseAvailability.ENGINE_NOT_READY
+            : availability;
+      }
+      session = reserveExclusiveGtpSession(owner, lineConsumer, onReady, onClosed);
     }
+    return startReservedExclusiveGtpSession(session);
+  }
+
+  private ExclusiveGtpSession reserveExclusiveGtpSession(
+      Object owner, Consumer<String> lineConsumer, Runnable onReady, Runnable onClosed) {
     ExclusiveGtpSession session =
         new ExclusiveGtpSession(
             owner,
@@ -3793,77 +3847,121 @@ public class Leelaz {
             onReady,
             onClosed,
             exclusiveGtpResponseCommandIds.getAndIncrement());
-    exclusiveGtpSession = session;
     session.wasPondering = isPondering();
+    exclusiveGtpSession = session;
+    return session;
+  }
+
+  private ExclusiveGtpLeaseAvailability startReservedExclusiveGtpSession(
+      ExclusiveGtpSession session) {
     notPondering();
-    if (!writeExclusiveGtpCommand(session.stopCommandId + " stop")) {
-      session.closing = true;
+    if (!writeExclusiveGtpCommand(
+        session,
+        ExclusiveGtpWritePhase.INITIAL_STOP,
+        session.stopCommandId,
+        session.stopCommandId + " stop")) {
+      synchronized (engineArbitrationLock()) {
+        session.closing = true;
+      }
       restoreAfterClosedForegroundLease(session);
       return ExclusiveGtpLeaseAvailability.ENGINE_NOT_READY;
     }
     return ExclusiveGtpLeaseAvailability.AVAILABLE;
   }
 
-  public synchronized ExclusiveGtpLeaseAvailability beginForegroundAnalysisLease(
+  public ExclusiveGtpLeaseAvailability beginForegroundAnalysisLease(
       Object owner, Consumer<String> lineConsumer, Runnable onReady, Runnable onClosed) {
-    synchronized (commandQueue()) {
-      ExclusiveGtpLeaseAvailability availability = previewForegroundAnalysisLeaseAvailability();
-      if (availability != ExclusiveGtpLeaseAvailability.AVAILABLE) {
-        return availability;
+    ExclusiveGtpSession session;
+    synchronized (engineArbitrationLock()) {
+      synchronized (commandQueue()) {
+        ExclusiveGtpLeaseAvailability availability = previewForegroundAnalysisLeaseAvailability();
+        if (availability != ExclusiveGtpLeaseAvailability.AVAILABLE) {
+          return availability;
+        }
+        if (normalCommandSendInProgress || !commandQueue().isEmpty() || lineConsumer == null) {
+          return ExclusiveGtpLeaseAvailability.ENGINE_NOT_READY;
+        }
+        suppressNormalCommandsForForegroundAnalysis = true;
+        session = reserveExclusiveGtpSession(owner, lineConsumer, onReady, onClosed);
       }
-      if (!commandQueue().isEmpty()) {
-        return ExclusiveGtpLeaseAvailability.ENGINE_NOT_READY;
-      }
-      suppressNormalCommandsForForegroundAnalysis = true;
-      ExclusiveGtpLeaseAvailability result =
-          beginExclusiveGtpSession(owner, lineConsumer, onReady, onClosed);
-      if (result != ExclusiveGtpLeaseAvailability.AVAILABLE && !foregroundRestoreInProgress) {
-        suppressNormalCommandsForForegroundAnalysis = false;
-      }
-      return result;
     }
+    ExclusiveGtpLeaseAvailability result = startReservedExclusiveGtpSession(session);
+    if (result != ExclusiveGtpLeaseAvailability.AVAILABLE) {
+      synchronized (engineArbitrationLock()) {
+        if (!foregroundRestoreInProgress) {
+          suppressNormalCommandsForForegroundAnalysis = false;
+        }
+      }
+    }
+    return result;
   }
 
-  public synchronized ExclusiveGtpLeaseAvailability previewForegroundAnalysisLeaseAvailability() {
-    if (Lizzie.leelaz == null) {
-      return ExclusiveGtpLeaseAvailability.NO_FOREGROUND_ENGINE;
-    }
-    if (Lizzie.leelaz != this) {
-      return ExclusiveGtpLeaseAvailability.NOT_CURRENT_FOREGROUND_ENGINE;
-    }
-    ExclusiveGtpLeaseAvailability intrinsic = intrinsicExclusiveGtpLeaseAvailability();
-    if (intrinsic != ExclusiveGtpLeaseAvailability.AVAILABLE) {
-      return intrinsic;
-    }
-    if (Lizzie.frame != null
-        && Lizzie.frame.readBoard != null
-        && Lizzie.frame.readBoard.isReadBoardGmaEngineBusy()) {
-      return ExclusiveGtpLeaseAvailability.READBOARD_GMA;
-    }
-    if (EngineManager.isEngineGame()) {
-      return ExclusiveGtpLeaseAvailability.ENGINE_GAME;
-    }
-    if (isThinking || isInputCommand) {
-      return ExclusiveGtpLeaseAvailability.GENMOVE;
-    }
-    if (isCheckingName || isCheckingVersion || isTuning) {
-      return ExclusiveGtpLeaseAvailability.ENGINE_LIFECYCLE;
-    }
-    if (KataGoRuntimeHelper.isBenchmarkEngineSyncSuppressed()) {
-      return ExclusiveGtpLeaseAvailability.ENGINE_LIFECYCLE;
-    }
-    if (Lizzie.frame != null) {
-      if (Lizzie.frame.isPlayingAgainstLeelaz || Lizzie.frame.isAnaPlayingAgainstLeelaz) {
-        return ExclusiveGtpLeaseAvailability.PLAY_MODE;
+  public ForegroundAnalysisLeaseAcquisition acquireForegroundAnalysisLease(
+      Consumer<String> lineConsumer,
+      Consumer<ForegroundAnalysisLease> onReady,
+      Consumer<ForegroundAnalysisLease> onClosed) {
+    ForegroundAnalysisLease lease = new ForegroundAnalysisLease(this);
+    ExclusiveGtpLeaseAvailability availability =
+        beginForegroundAnalysisLease(
+            lease,
+            lineConsumer,
+            () -> {
+              if (onReady != null) {
+                onReady.accept(lease);
+              }
+            },
+            () -> {
+              if (onClosed != null) {
+                onClosed.accept(lease);
+              }
+            });
+    return new ForegroundAnalysisLeaseAcquisition(
+        availability,
+        availability == ExclusiveGtpLeaseAvailability.AVAILABLE ? lease : null);
+  }
+
+  public ExclusiveGtpLeaseAvailability previewForegroundAnalysisLeaseAvailability() {
+    synchronized (engineArbitrationLock()) {
+      if (Lizzie.leelaz == null) {
+        return ExclusiveGtpLeaseAvailability.NO_FOREGROUND_ENGINE;
       }
-      if (Lizzie.frame.humanSlGame != null && !Lizzie.frame.humanSlGame.isFinished()) {
-        return ExclusiveGtpLeaseAvailability.HUMAN_SL_GAME;
+      if (Lizzie.leelaz != this) {
+        return ExclusiveGtpLeaseAvailability.NOT_CURRENT_FOREGROUND_ENGINE;
       }
-      if (Lizzie.frame.isContributing) {
-        return ExclusiveGtpLeaseAvailability.APPLICATION_EXCLUSIVE_MODE;
+      ExclusiveGtpLeaseAvailability intrinsic = intrinsicExclusiveGtpLeaseAvailability();
+      if (intrinsic != ExclusiveGtpLeaseAvailability.AVAILABLE) {
+        return intrinsic;
       }
+      if (Lizzie.frame != null
+          && Lizzie.frame.readBoard != null
+          && Lizzie.frame.readBoard.isReadBoardGmaEngineBusy()) {
+        return ExclusiveGtpLeaseAvailability.READBOARD_GMA;
+      }
+      if (EngineManager.isEngineGame()) {
+        return ExclusiveGtpLeaseAvailability.ENGINE_GAME;
+      }
+      if (isThinking || isInputCommand) {
+        return ExclusiveGtpLeaseAvailability.GENMOVE;
+      }
+      if (isCheckingName || isCheckingVersion || isTuning) {
+        return ExclusiveGtpLeaseAvailability.ENGINE_LIFECYCLE;
+      }
+      if (KataGoRuntimeHelper.isBenchmarkEngineSyncSuppressed()) {
+        return ExclusiveGtpLeaseAvailability.ENGINE_LIFECYCLE;
+      }
+      if (Lizzie.frame != null) {
+        if (Lizzie.frame.isPlayingAgainstLeelaz || Lizzie.frame.isAnaPlayingAgainstLeelaz) {
+          return ExclusiveGtpLeaseAvailability.PLAY_MODE;
+        }
+        if (Lizzie.frame.humanSlGame != null && !Lizzie.frame.humanSlGame.isFinished()) {
+          return ExclusiveGtpLeaseAvailability.HUMAN_SL_GAME;
+        }
+        if (Lizzie.frame.isContributing) {
+          return ExclusiveGtpLeaseAvailability.APPLICATION_EXCLUSIVE_MODE;
+        }
+      }
+      return ExclusiveGtpLeaseAvailability.AVAILABLE;
     }
-    return ExclusiveGtpLeaseAvailability.AVAILABLE;
   }
 
   private ExclusiveGtpLeaseAvailability intrinsicExclusiveGtpLeaseAvailability() {
@@ -3891,29 +3989,34 @@ public class Leelaz {
     return ExclusiveGtpLeaseAvailability.AVAILABLE;
   }
 
-  public synchronized ExclusiveGtpLeaseAvailability previewExclusiveGtpLeaseAvailability() {
-    return intrinsicExclusiveGtpLeaseAvailability();
+  public ExclusiveGtpLeaseAvailability previewExclusiveGtpLeaseAvailability() {
+    synchronized (engineArbitrationLock()) {
+      return intrinsicExclusiveGtpLeaseAvailability();
+    }
   }
 
-  public synchronized boolean sendExclusiveGtpCommand(String command) {
-    ExclusiveGtpSession session = exclusiveGtpSession;
-    return session != null
-        && session.active
-        && command != null
-        && !command.trim().isEmpty()
-        && writeExclusiveGtpCommand(command);
+  public boolean sendExclusiveGtpCommand(String command) {
+    ExclusiveGtpSession session;
+    synchronized (engineArbitrationLock()) {
+      session = exclusiveGtpSession;
+      if (session == null || !session.active || command == null || command.trim().isEmpty()) {
+        return false;
+      }
+    }
+    return writeExclusiveGtpCommand(
+        session, ExclusiveGtpWritePhase.ACTIVE_COMMAND, 0, command);
   }
 
   public void endExclusiveGtpSession() {
     ExclusiveGtpSession session;
-    synchronized (this) {
+    synchronized (engineArbitrationLock()) {
       session = exclusiveGtpSession;
     }
     closeExclusiveGtpSession(session);
   }
 
   private boolean closeExclusiveGtpSession(ExclusiveGtpSession expected) {
-    synchronized (this) {
+    synchronized (engineArbitrationLock()) {
       if (expected == null || exclusiveGtpSession != expected) {
         return false;
       }
@@ -3927,44 +4030,66 @@ public class Leelaz {
     return true;
   }
 
-  public synchronized boolean hasExclusiveGtpLease() {
-    return exclusiveGtpSession != null;
-  }
-
-  public synchronized boolean hasExclusiveGtpWorkInProgress() {
-    return exclusiveGtpSession != null
-        || foregroundRestoreInProgress
-        || exclusiveGtpLifecycleTransition;
-  }
-
-  public synchronized boolean hasExclusiveGtpLeaseOwnedBy(Object owner) {
-    return exclusiveGtpSession != null && exclusiveGtpSession.owner == owner;
-  }
-
-  synchronized boolean setForegroundAnalysisLeaseRestoreRules(Object owner, String rules) {
-    ExclusiveGtpSession session = exclusiveGtpSession;
-    if (session == null
-        || session.owner != owner
-        || !session.active
-        || session.closing
-        || rules == null
-        || rules.trim().isEmpty()) {
-      return false;
+  public boolean hasExclusiveGtpLease() {
+    synchronized (engineArbitrationLock()) {
+      return exclusiveGtpSession != null;
     }
-    session.originalRules = rules.trim();
-    return true;
   }
 
-  public synchronized boolean beginExclusiveGtpLifecycleTransition() {
-    return beginExclusiveGtpLifecycleTransition(Thread.currentThread());
-  }
-
-  public synchronized ExclusiveGtpLifecycleReservation beginExclusiveGtpLifecycleReservation() {
-    Object owner = new Object();
-    if (!beginExclusiveGtpLifecycleTransition(owner)) {
-      return null;
+  public boolean hasExclusiveGtpWorkInProgress() {
+    synchronized (engineArbitrationLock()) {
+      return exclusiveGtpSession != null
+          || foregroundRestoreInProgress
+          || exclusiveGtpLifecycleTransition;
     }
-    return new ExclusiveGtpLifecycleReservation(this, owner);
+  }
+
+  public boolean hasExclusiveGtpLeaseOwnedBy(Object owner) {
+    synchronized (engineArbitrationLock()) {
+      return exclusiveGtpSession != null && exclusiveGtpSession.owner == owner;
+    }
+  }
+
+  boolean setForegroundAnalysisLeaseRestoreRules(Object owner, String rules) {
+    synchronized (engineArbitrationLock()) {
+      ExclusiveGtpSession session = exclusiveGtpSession;
+      if (session == null
+          || session.owner != owner
+          || !session.active
+          || session.closing
+          || rules == null
+          || rules.trim().isEmpty()) {
+        return false;
+      }
+      session.originalRules = rules.trim();
+      return true;
+    }
+  }
+
+  public boolean beginExclusiveGtpLifecycleTransition() {
+    synchronized (engineArbitrationLock()) {
+      return beginExclusiveGtpLifecycleTransition(Thread.currentThread());
+    }
+  }
+
+  public ExclusiveGtpLifecycleReservation beginExclusiveGtpLifecycleReservation() {
+    synchronized (engineArbitrationLock()) {
+      Object owner = new Object();
+      if (!beginExclusiveGtpLifecycleTransition(owner)) {
+        return null;
+      }
+      return new ExclusiveGtpLifecycleReservation(this, owner);
+    }
+  }
+
+  public EngineModeReservation beginEngineModeReservation() {
+    synchronized (engineArbitrationLock()) {
+      Object owner = Thread.currentThread();
+      if (!beginExclusiveGtpLifecycleTransition(owner)) {
+        return null;
+      }
+      return new EngineModeReservation(this, owner);
+    }
   }
 
   private boolean beginExclusiveGtpLifecycleTransition(Object owner) {
@@ -3984,19 +4109,23 @@ public class Leelaz {
     return true;
   }
 
-  public synchronized void endExclusiveGtpLifecycleTransition() {
-    endExclusiveGtpLifecycleTransition(Thread.currentThread());
+  public void endExclusiveGtpLifecycleTransition() {
+    synchronized (engineArbitrationLock()) {
+      endExclusiveGtpLifecycleTransition(Thread.currentThread());
+    }
   }
 
-  private synchronized void endExclusiveGtpLifecycleTransition(Object owner) {
-    if (!exclusiveGtpLifecycleTransition || exclusiveGtpLifecycleOwner != owner) {
-      return;
-    }
-    exclusiveGtpLifecycleDepth--;
-    if (exclusiveGtpLifecycleDepth <= 0) {
-      exclusiveGtpLifecycleTransition = false;
-      exclusiveGtpLifecycleOwner = null;
-      exclusiveGtpLifecycleDepth = 0;
+  private void endExclusiveGtpLifecycleTransition(Object owner) {
+    synchronized (engineArbitrationLock()) {
+      if (!exclusiveGtpLifecycleTransition || exclusiveGtpLifecycleOwner != owner) {
+        return;
+      }
+      exclusiveGtpLifecycleDepth--;
+      if (exclusiveGtpLifecycleDepth <= 0) {
+        exclusiveGtpLifecycleTransition = false;
+        exclusiveGtpLifecycleOwner = null;
+        exclusiveGtpLifecycleDepth = 0;
+      }
     }
   }
 
@@ -4013,11 +4142,13 @@ public class Leelaz {
     return true;
   }
 
-  private synchronized boolean hasConflictingExclusiveGtpWork() {
-    if (exclusiveGtpSession != null || foregroundRestoreInProgress) {
-      return true;
+  private boolean hasConflictingExclusiveGtpWork() {
+    synchronized (engineArbitrationLock()) {
+      if (exclusiveGtpSession != null || foregroundRestoreInProgress) {
+        return true;
+      }
+      return exclusiveGtpLifecycleTransition && exclusiveGtpLifecycleOwner != Thread.currentThread();
     }
-    return exclusiveGtpLifecycleTransition && exclusiveGtpLifecycleOwner != Thread.currentThread();
   }
 
   public void endForegroundAnalysisLease(Object owner) {
@@ -4032,7 +4163,7 @@ public class Leelaz {
       Object owner, Runnable afterRestore, Runnable afterRestoreFailure) {
     ExclusiveGtpSession session;
     int releaseStopCommandId = 0;
-    synchronized (this) {
+    synchronized (engineArbitrationLock()) {
       session = exclusiveGtpSession;
       if (session == null
           || session.owner != owner
@@ -4052,7 +4183,11 @@ public class Leelaz {
     if (releaseStopCommandId == 0) {
       return true;
     }
-    if (!writeExclusiveGtpCommand(releaseStopCommandId + " stop")) {
+    if (!writeExclusiveGtpCommand(
+        session,
+        ExclusiveGtpWritePhase.RELEASE_STOP,
+        releaseStopCommandId,
+        releaseStopCommandId + " stop")) {
       failForegroundLeaseRelease(session, "failed to send final stop command");
     }
     return true;
@@ -4064,7 +4199,7 @@ public class Leelaz {
 
   private void scheduleForegroundReleaseStopTimeout(ExclusiveGtpSession session) {
     Timer timeout = new Timer("lizzie-foreground-engine-release-stop-timeout", true);
-    synchronized (this) {
+    synchronized (engineArbitrationLock()) {
       if (exclusiveGtpSession != session || session.closing || !session.releaseRequested) {
         timeout.cancel();
         return;
@@ -4083,7 +4218,7 @@ public class Leelaz {
 
   private void cancelForegroundReleaseStopTimeout(ExclusiveGtpSession session) {
     Timer timeout;
-    synchronized (this) {
+    synchronized (engineArbitrationLock()) {
       timeout = session.releaseStopTimeout;
       session.releaseStopTimeout = null;
     }
@@ -4094,7 +4229,7 @@ public class Leelaz {
 
   private void failForegroundLeaseRelease(ExclusiveGtpSession session, String detail) {
     cancelForegroundReleaseStopTimeout(session);
-    synchronized (this) {
+    synchronized (engineArbitrationLock()) {
       if (session == null
           || exclusiveGtpSession != session
           || session.restoreCompleted
@@ -4118,7 +4253,7 @@ public class Leelaz {
             && Lizzie.board != null
             && isLoaded()
             && isStarted();
-    synchronized (this) {
+    synchronized (engineArbitrationLock()) {
       if (session == null || exclusiveGtpSession != session) {
         return;
       }
@@ -4153,7 +4288,7 @@ public class Leelaz {
     Thread restoreThread =
         new Thread(() -> performForegroundRestore(session), "lizzie-foreground-engine-restore");
     restoreThread.setDaemon(true);
-    synchronized (this) {
+    synchronized (engineArbitrationLock()) {
       if (session == null || session.restoreCompleted || foregroundRestoreSession != session) {
         return;
       }
@@ -4200,8 +4335,10 @@ public class Leelaz {
     }
   }
 
-  private synchronized boolean isForegroundRestoreCompleted(ExclusiveGtpSession session) {
-    return session == null || session.restoreCompleted;
+  private boolean isForegroundRestoreCompleted(ExclusiveGtpSession session) {
+    synchronized (engineArbitrationLock()) {
+      return session == null || session.restoreCompleted;
+    }
   }
 
   private void failForegroundRestore(ExclusiveGtpSession session, String detail) {
@@ -4212,7 +4349,7 @@ public class Leelaz {
   }
 
   private boolean markForegroundRestoreFailed(ExclusiveGtpSession session, String detail) {
-    synchronized (this) {
+    synchronized (engineArbitrationLock()) {
       if (session == null || session.restoreCompleted) {
         return false;
       }
@@ -4236,7 +4373,7 @@ public class Leelaz {
     boolean restoreFailed;
     boolean releaseStopFailed;
     boolean retryRestore;
-    synchronized (this) {
+    synchronized (engineArbitrationLock()) {
       if (session == null || session.restoreCompleted) {
         return;
       }
@@ -4305,7 +4442,7 @@ public class Leelaz {
 
   private void runForegroundRestoreCompletion(ExclusiveGtpSession session) {
     Runnable completion;
-    synchronized (this) {
+    synchronized (engineArbitrationLock()) {
       completion = session.afterRestore;
       session.afterRestore = null;
       session.afterRestoreFailure = null;
@@ -4317,7 +4454,7 @@ public class Leelaz {
 
   private void runForegroundRestoreFailure(ExclusiveGtpSession session) {
     Runnable failure;
-    synchronized (this) {
+    synchronized (engineArbitrationLock()) {
       failure = session.afterRestoreFailure;
       session.afterRestore = null;
       session.afterRestoreFailure = null;
@@ -4341,10 +4478,12 @@ public class Leelaz {
     }
   }
 
-  private synchronized void finishForegroundRestoreLifecycle() {
-    exclusiveGtpLifecycleTransition = false;
-    exclusiveGtpLifecycleOwner = null;
-    exclusiveGtpLifecycleDepth = 0;
+  private void finishForegroundRestoreLifecycle() {
+    synchronized (engineArbitrationLock()) {
+      exclusiveGtpLifecycleTransition = false;
+      exclusiveGtpLifecycleOwner = null;
+      exclusiveGtpLifecycleDepth = 0;
+    }
   }
 
   private boolean canResumePonderAfterForegroundLease() {
@@ -4361,13 +4500,22 @@ public class Leelaz {
                     || !Lizzie.frame.readBoard.isReadBoardGmaEngineBusy())));
   }
 
-  private boolean writeExclusiveGtpCommand(String command) {
+  private boolean writeExclusiveGtpCommand(
+      ExclusiveGtpSession expectedSession,
+      ExclusiveGtpWritePhase phase,
+      int expectedCommandId,
+      String command) {
     BufferedOutputStream currentOutputStream = outputStream;
     if (currentOutputStream == null) {
       return false;
     }
     try {
       synchronized (currentOutputStream) {
+        synchronized (engineArbitrationLock()) {
+          if (!canWriteExclusiveGtpCommand(expectedSession, phase, expectedCommandId)) {
+            return false;
+          }
+        }
         currentOutputStream.write((command + "\n").getBytes());
         currentOutputStream.flush();
       }
@@ -4377,6 +4525,33 @@ public class Leelaz {
           recentStderrLines,
           "Failed to send exclusive remote GTP command '" + command + "': " + ex.getMessage());
       return false;
+    }
+  }
+
+  private boolean canWriteExclusiveGtpCommand(
+      ExclusiveGtpSession expectedSession,
+      ExclusiveGtpWritePhase phase,
+      int expectedCommandId) {
+    if (exclusiveGtpSession != expectedSession
+        || expectedSession == null
+        || expectedSession.closing
+        || expectedSession.restoreCompleted) {
+      return false;
+    }
+    switch (phase) {
+      case INITIAL_STOP:
+        return !expectedSession.active
+            && !expectedSession.releaseRequested
+            && expectedSession.stopCommandId == expectedCommandId;
+      case ACTIVE_COMMAND:
+        return expectedSession.active && !expectedSession.releaseRequested;
+      case RELEASE_STOP:
+        return expectedSession.active
+            && expectedSession.releaseRequested
+            && !expectedSession.releaseStopFailed
+            && expectedSession.releaseStopCommandId == expectedCommandId;
+      default:
+        return false;
     }
   }
 
@@ -4426,7 +4601,7 @@ public class Leelaz {
 
   private void activateExclusiveGtpSessionAfterStop(String line) {
     Runnable onReady = null;
-    synchronized (this) {
+    synchronized (engineArbitrationLock()) {
       ExclusiveGtpSession session = exclusiveGtpSession;
       if (session == null
           || session.active
@@ -4438,8 +4613,8 @@ public class Leelaz {
       session.active = true;
       session.skipStopResponseBoundary = true;
       if (!session.releaseRequested) {
-      onReady = session.onReady;
-    }
+        onReady = session.onReady;
+      }
     }
     if (onReady != null) {
       onReady.run();
@@ -4449,7 +4624,7 @@ public class Leelaz {
   private void abortExclusiveGtpSession() {
     Runnable onClosed = null;
     ExclusiveGtpSession closedSession = null;
-    synchronized (this) {
+    synchronized (engineArbitrationLock()) {
       ExclusiveGtpSession session = exclusiveGtpSession;
       if (session == null || session.closing) {
         return;
@@ -4579,14 +4754,14 @@ public class Leelaz {
     private volatile boolean active;
     private volatile boolean skipStopResponseBoundary;
     private boolean wasPondering;
-    private boolean closing;
+    private volatile boolean closing;
     private volatile boolean releaseRequested;
     private volatile int releaseStopCommandId;
     private volatile boolean releaseStopAcknowledged;
     private boolean releaseStopFailed;
     private volatile boolean restoreCompleted;
     private boolean restoreFailed;
-    private boolean restoreInvalidated;
+    private volatile boolean restoreInvalidated;
     private String originalRules;
     private Runnable afterRestore;
     private Runnable afterRestoreFailure;
@@ -4608,11 +4783,50 @@ public class Leelaz {
     }
   }
 
-  public static final class ExclusiveGtpLifecycleReservation implements AutoCloseable {
+  public static final class ForegroundAnalysisLeaseAcquisition {
+    private final ExclusiveGtpLeaseAvailability availability;
+    private final ForegroundAnalysisLease lease;
+
+    private ForegroundAnalysisLeaseAcquisition(
+        ExclusiveGtpLeaseAvailability availability, ForegroundAnalysisLease lease) {
+      this.availability = availability;
+      this.lease = lease;
+    }
+
+    public ExclusiveGtpLeaseAvailability availability() {
+      return availability;
+    }
+
+    public ForegroundAnalysisLease lease() {
+      return lease;
+    }
+  }
+
+  public static final class ForegroundAnalysisLease {
+    private final Leelaz engine;
+
+    private ForegroundAnalysisLease(Leelaz engine) {
+      this.engine = engine;
+    }
+
+    public boolean isOwned() {
+      return engine.hasExclusiveGtpLeaseOwnedBy(this);
+    }
+
+    public boolean setRestoreRules(String rules) {
+      return engine.setForegroundAnalysisLeaseRestoreRules(this, rules);
+    }
+
+    public boolean release(Runnable afterRestore, Runnable afterRestoreFailure) {
+      return engine.endForegroundAnalysisLease(this, afterRestore, afterRestoreFailure);
+    }
+  }
+
+  public static class EngineModeReservation implements AutoCloseable {
     private Leelaz engine;
     private final Object owner;
 
-    private ExclusiveGtpLifecycleReservation(Leelaz engine, Object owner) {
+    private EngineModeReservation(Leelaz engine, Object owner) {
       this.engine = engine;
       this.owner = owner;
     }
@@ -4627,6 +4841,12 @@ public class Leelaz {
       if (reservedEngine != null) {
         reservedEngine.endExclusiveGtpLifecycleTransition(owner);
       }
+    }
+  }
+
+  public static final class ExclusiveGtpLifecycleReservation extends EngineModeReservation {
+    private ExclusiveGtpLifecycleReservation(Leelaz engine, Object owner) {
+      super(engine, owner);
     }
   }
 
@@ -6327,20 +6547,21 @@ public class Leelaz {
     return startPonderTime;
   }
 
-  public synchronized void modifyStart() {
-    // TODO Auto-generated method stub
-    this.cmdNumber++;
-    this.modifyNumber++;
+  public void modifyStart() {
+    synchronized (commandQueue()) {
+      this.cmdNumber++;
+      this.modifyNumber++;
+    }
   }
 
-  public synchronized void setModifyEnd() {
-    // TODO Auto-generated method stub
-    cmdNumber -= modifyNumber;
-    modifyNumber = 0;
+  public void setModifyEnd() {
+    synchronized (commandQueue()) {
+      cmdNumber -= modifyNumber;
+      modifyNumber = 0;
+    }
   }
 
-  private synchronized void calculateModifyNumber() {
-    // TODO Auto-generated method stub
+  private void calculateModifyNumber() {
     cmdNumber -= modifyNumber;
     modifyNumber = 0;
   }

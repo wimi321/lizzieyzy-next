@@ -20,8 +20,12 @@ import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.ArrayDeque;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 
 class LeelazExclusiveRemoteGtpSessionTest {
@@ -204,6 +208,588 @@ class LeelazExclusiveRemoteGtpSessionTest {
     assertEquals(
         Leelaz.ExclusiveGtpLeaseAvailability.AVAILABLE,
         engine.previewExclusiveGtpLeaseAvailability());
+  }
+
+  @Test
+  void foregroundLeaseAndEngineModeReservationExposeDistinctPermitTypes() throws Exception {
+    Leelaz previousEngine = Lizzie.leelaz;
+    LizzieFrame previousFrame = Lizzie.frame;
+    boolean previousEngineGame = EngineManager.isEngineGame;
+    boolean previousPreEngineGame = EngineManager.isPreEngineGame;
+    Leelaz engine = reusableKatagoEngine(false, false);
+    installOutput(engine);
+    try {
+      Lizzie.leelaz = engine;
+      Lizzie.frame = null;
+      EngineManager.isEngineGame = false;
+      EngineManager.isPreEngineGame = false;
+
+      Leelaz.ForegroundAnalysisLeaseAcquisition acquisition =
+          engine.acquireForegroundAnalysisLease(line -> {}, lease -> {}, lease -> {});
+
+      assertEquals(Leelaz.ExclusiveGtpLeaseAvailability.AVAILABLE, acquisition.availability());
+      assertTrue(acquisition.lease() != null);
+      assertTrue(acquisition.lease().isOwned());
+      assertEquals(null, engine.beginEngineModeReservation());
+
+      engine.endExclusiveGtpSession();
+      Leelaz.EngineModeReservation reservation = engine.beginEngineModeReservation();
+      assertTrue(reservation != null);
+      assertTrue(engine.hasExclusiveGtpWorkInProgress());
+      reservation.close();
+      assertFalse(engine.hasExclusiveGtpWorkInProgress());
+    } finally {
+      engine.endExclusiveGtpSession();
+      Lizzie.leelaz = previousEngine;
+      Lizzie.frame = previousFrame;
+      EngineManager.isEngineGame = previousEngineGame;
+      EngineManager.isPreEngineGame = previousPreEngineGame;
+    }
+  }
+
+  @Test
+  void engineModeReservationAllowsCommandsFromItsExecutionScope() throws Exception {
+    Leelaz previousEngine = Lizzie.leelaz;
+    Board previousBoard = Lizzie.board;
+    LizzieFrame previousFrame = Lizzie.frame;
+    Config previousConfig = Lizzie.config;
+    GtpConsolePane previousGtpConsole = Lizzie.gtpConsole;
+    Leelaz engine = reusableKatagoEngine(false, false);
+    ByteArrayOutputStream output = installOutput(engine);
+    try {
+      Lizzie.leelaz = engine;
+      Lizzie.board = new Board();
+      Lizzie.frame = allocate(LizzieFrame.class);
+      Lizzie.config = allocate(Config.class);
+      Lizzie.gtpConsole = allocate(SilentGtpConsole.class);
+
+      Leelaz.EngineModeReservation reservation = engine.beginEngineModeReservation();
+      assertTrue(reservation != null);
+      try {
+        engine.komi(6.5);
+      } finally {
+        reservation.close();
+      }
+
+      assertEquals("komi 6.5\n", output.toString(StandardCharsets.UTF_8));
+    } finally {
+      Lizzie.leelaz = previousEngine;
+      Lizzie.board = previousBoard;
+      Lizzie.frame = previousFrame;
+      Lizzie.config = previousConfig;
+      Lizzie.gtpConsole = previousGtpConsole;
+    }
+  }
+
+  @Test
+  void normalCommandAndForegroundLeaseAdmissionCannotDeadlock() throws Exception {
+    Leelaz previousEngine = Lizzie.leelaz;
+    LizzieFrame previousFrame = Lizzie.frame;
+    Config previousConfig = Lizzie.config;
+    GtpConsolePane previousGtpConsole = Lizzie.gtpConsole;
+    boolean previousEngineGame = EngineManager.isEngineGame;
+    boolean previousPreEngineGame = EngineManager.isPreEngineGame;
+    Leelaz engine = reusableKatagoEngine(false, false);
+    ByteArrayOutputStream output = installOutput(engine);
+    Object queue = commandQueue(engine);
+    CountDownLatch queueHeld = new CountDownLatch(1);
+    CountDownLatch sendCommand = new CountDownLatch(1);
+    CountDownLatch commandFinished = new CountDownLatch(1);
+    CountDownLatch leaseFinished = new CountDownLatch(1);
+    CountDownLatch modeFinished = new CountDownLatch(1);
+    AtomicReference<Leelaz.ExclusiveGtpLeaseAvailability> availability =
+        new AtomicReference<>();
+    AtomicReference<Leelaz.EngineModeReservation> modeReservation = new AtomicReference<>();
+    try {
+      Lizzie.leelaz = engine;
+      Lizzie.frame = allocate(LizzieFrame.class);
+      Lizzie.config = allocate(Config.class);
+      Lizzie.gtpConsole = allocate(SilentGtpConsole.class);
+      EngineManager.isEngineGame = false;
+      EngineManager.isPreEngineGame = false;
+
+      Thread commandThread =
+          daemonThread(
+              "overlapping-normal-command",
+              () -> {
+                try {
+                  synchronized (queue) {
+                    queueHeld.countDown();
+                    await(sendCommand);
+                    engine.sendCommand("name");
+                  }
+                } finally {
+                  commandFinished.countDown();
+                }
+              });
+      commandThread.start();
+      assertTrue(queueHeld.await(1, TimeUnit.SECONDS));
+
+      Thread leaseThread =
+          daemonThread(
+              "overlapping-foreground-lease",
+              () -> {
+                availability.set(
+                    engine.beginForegroundAnalysisLease(
+                        new Object(), line -> {}, () -> {}, () -> {}));
+                leaseFinished.countDown();
+              });
+      leaseThread.start();
+      waitForState(leaseThread, Thread.State.BLOCKED);
+
+      Thread modeThread =
+          daemonThread(
+              "overlapping-engine-mode",
+              () -> {
+                modeReservation.set(engine.beginEngineModeReservation());
+                modeFinished.countDown();
+              });
+      modeThread.start();
+      waitForState(modeThread, Thread.State.BLOCKED);
+      sendCommand.countDown();
+
+      assertTrue(
+          commandFinished.await(1, TimeUnit.SECONDS),
+          "normal command admission must not deadlock with foreground lease acquisition");
+      assertTrue(
+          leaseFinished.await(1, TimeUnit.SECONDS),
+          "foreground lease acquisition must not deadlock with normal command admission");
+      assertTrue(
+          modeFinished.await(1, TimeUnit.SECONDS),
+          "engine mode admission must complete after the overlapping lease decision");
+      assertEquals(
+          Leelaz.ExclusiveGtpLeaseAvailability.AVAILABLE,
+          availability.get(),
+          "the lease may start after the accepted command has been sent");
+      assertEquals(null, modeReservation.get(), "only one conflicting permit may be acquired");
+      assertEquals(
+          "name\n800000000 stop\n",
+          output.toString(StandardCharsets.UTF_8),
+          "an accepted command must be sent before foreground analysis takes the stream");
+    } finally {
+      Lizzie.leelaz = previousEngine;
+      Lizzie.frame = previousFrame;
+      Lizzie.config = previousConfig;
+      Lizzie.gtpConsole = previousGtpConsole;
+      EngineManager.isEngineGame = previousEngineGame;
+      EngineManager.isPreEngineGame = previousPreEngineGame;
+    }
+  }
+
+  @Test
+  void normalCommandsRemainSuppressedUntilForegroundLeaseRestoreCompletes() throws Exception {
+    Leelaz previousEngine = Lizzie.leelaz;
+    LizzieFrame previousFrame = Lizzie.frame;
+    Config previousConfig = Lizzie.config;
+    GtpConsolePane previousGtpConsole = Lizzie.gtpConsole;
+    boolean previousEngineGame = EngineManager.isEngineGame;
+    boolean previousPreEngineGame = EngineManager.isPreEngineGame;
+    Leelaz engine = reusableKatagoEngine(false, false);
+    ByteArrayOutputStream output = installOutput(engine);
+    try {
+      Lizzie.leelaz = engine;
+      Lizzie.frame = allocate(LizzieFrame.class);
+      Lizzie.config = allocate(Config.class);
+      Lizzie.gtpConsole = allocate(SilentGtpConsole.class);
+      EngineManager.isEngineGame = false;
+      EngineManager.isPreEngineGame = false;
+      Leelaz.ForegroundAnalysisLeaseAcquisition acquisition =
+          engine.acquireForegroundAnalysisLease(line -> {}, lease -> {}, lease -> {});
+      Leelaz.ForegroundAnalysisLease lease = acquisition.lease();
+      processCommandResponse(engine, "=800000000");
+      assertTrue(dispatch(engine, ""));
+
+      engine.sendCommand("name");
+      assertEquals("800000000 stop\n", output.toString(StandardCharsets.UTF_8));
+
+      Lizzie.leelaz = null;
+      assertTrue(lease.release(() -> {}, () -> {}));
+      assertTrue(dispatch(engine, "=800000001"));
+      assertTrue(dispatch(engine, ""));
+      assertFalse(engine.hasExclusiveGtpWorkInProgress());
+
+      Lizzie.leelaz = engine;
+      engine.sendCommand("name");
+      assertEquals(
+          "800000000 stop\n800000001 stop\nname\n",
+          output.toString(StandardCharsets.UTF_8));
+    } finally {
+      Lizzie.leelaz = previousEngine;
+      Lizzie.frame = previousFrame;
+      Lizzie.config = previousConfig;
+      Lizzie.gtpConsole = previousGtpConsole;
+      EngineManager.isEngineGame = previousEngineGame;
+      EngineManager.isPreEngineGame = previousPreEngineGame;
+    }
+  }
+
+  @Test
+  void sendFailureCallbackCannotDeadlockForegroundLeaseAdmission() throws Exception {
+    Leelaz previousEngine = Lizzie.leelaz;
+    LizzieFrame previousFrame = Lizzie.frame;
+    Config previousConfig = Lizzie.config;
+    GtpConsolePane previousGtpConsole = Lizzie.gtpConsole;
+    boolean previousEngineGame = EngineManager.isEngineGame;
+    boolean previousPreEngineGame = EngineManager.isPreEngineGame;
+    Leelaz engine = reusableKatagoEngine(false, false);
+    BlockingFailOnceOutput failingOutput = new BlockingFailOnceOutput();
+    installOutput(engine, Leelaz.createCommandOutputStream(failingOutput));
+    CountDownLatch commandFinished = new CountDownLatch(1);
+    CountDownLatch leaseFinished = new CountDownLatch(1);
+    AtomicReference<Leelaz.ExclusiveGtpLeaseAvailability> leaseAvailability =
+        new AtomicReference<>();
+    AtomicReference<Leelaz.EngineModeReservation> callbackReservation = new AtomicReference<>();
+    try {
+      Lizzie.leelaz = engine;
+      Lizzie.frame = allocate(LizzieFrame.class);
+      Lizzie.config = allocate(Config.class);
+      Lizzie.gtpConsole = allocate(SilentGtpConsole.class);
+      EngineManager.isEngineGame = false;
+      EngineManager.isPreEngineGame = false;
+
+      Thread commandThread =
+          daemonThread(
+              "failing-normal-command",
+              () -> {
+                try {
+                  invokeSendCommandWithResponse(
+                      engine,
+                      "name",
+                      () -> callbackReservation.set(engine.beginEngineModeReservation()));
+                } finally {
+                  commandFinished.countDown();
+                }
+              });
+      commandThread.start();
+      assertTrue(failingOutput.writeStarted.await(1, TimeUnit.SECONDS));
+
+      Thread leaseThread =
+          daemonThread(
+              "lease-during-send-failure",
+              () -> {
+                leaseAvailability.set(
+                    engine
+                        .acquireForegroundAnalysisLease(line -> {}, lease -> {}, lease -> {})
+                        .availability());
+                leaseFinished.countDown();
+              });
+      leaseThread.start();
+      assertTrue(
+          leaseFinished.await(1, TimeUnit.SECONDS),
+          "lease admission must not wait for blocked transport I/O");
+      assertEquals(
+          Leelaz.ExclusiveGtpLeaseAvailability.ENGINE_NOT_READY, leaseAvailability.get());
+      failingOutput.failWrite.countDown();
+
+      assertTrue(
+          commandFinished.await(1, TimeUnit.SECONDS),
+          "send failure callback must run after command queue admission is released");
+      assertTrue(callbackReservation.get() != null);
+      callbackReservation.get().close();
+    } finally {
+      failingOutput.failWrite.countDown();
+      if (commandFinished.getCount() == 0 && leaseFinished.getCount() == 0) {
+        engine.endExclusiveGtpSession();
+      }
+      Lizzie.leelaz = previousEngine;
+      Lizzie.frame = previousFrame;
+      Lizzie.config = previousConfig;
+      Lizzie.gtpConsole = previousGtpConsole;
+      EngineManager.isEngineGame = previousEngineGame;
+      EngineManager.isPreEngineGame = previousPreEngineGame;
+    }
+  }
+
+  @Test
+  void foregroundLeaseAdmissionDoesNotWaitForBlockedKomiTransport() throws Exception {
+    Leelaz previousEngine = Lizzie.leelaz;
+    Board previousBoard = Lizzie.board;
+    LizzieFrame previousFrame = Lizzie.frame;
+    Config previousConfig = Lizzie.config;
+    GtpConsolePane previousGtpConsole = Lizzie.gtpConsole;
+    boolean previousEngineGame = EngineManager.isEngineGame;
+    boolean previousPreEngineGame = EngineManager.isPreEngineGame;
+    Leelaz engine = reusableKatagoEngine(false, false);
+    BlockingFailOnceOutput failingOutput = new BlockingFailOnceOutput();
+    installOutput(engine, Leelaz.createCommandOutputStream(failingOutput));
+    CountDownLatch commandFinished = new CountDownLatch(1);
+    AtomicReference<Leelaz.ExclusiveGtpLeaseAvailability> leaseAvailability =
+        new AtomicReference<>();
+    try {
+      Lizzie.leelaz = engine;
+      Lizzie.board = new Board();
+      Lizzie.frame = allocate(LizzieFrame.class);
+      Lizzie.config = allocate(Config.class);
+      Lizzie.gtpConsole = allocate(SilentGtpConsole.class);
+      EngineManager.isEngineGame = false;
+      EngineManager.isPreEngineGame = false;
+
+      Thread commandThread =
+          daemonThread(
+              "blocking-komi-command",
+              () -> {
+                try {
+                  engine.komi(6.5);
+                } finally {
+                  commandFinished.countDown();
+                }
+              });
+      commandThread.start();
+      assertTrue(failingOutput.writeStarted.await(1, TimeUnit.SECONDS));
+
+      Thread leaseThread =
+          daemonThread(
+              "lease-during-blocking-komi",
+              () ->
+                  leaseAvailability.set(
+                      engine
+                          .acquireForegroundAnalysisLease(line -> {}, lease -> {}, lease -> {})
+                          .availability()));
+      leaseThread.start();
+      leaseThread.join(1000L);
+
+      assertFalse(leaseThread.isAlive(), "lease admission must not wait for komi transport I/O");
+      assertEquals(
+          Leelaz.ExclusiveGtpLeaseAvailability.ENGINE_NOT_READY, leaseAvailability.get());
+      failingOutput.failWrite.countDown();
+      assertTrue(commandFinished.await(1, TimeUnit.SECONDS));
+    } finally {
+      failingOutput.failWrite.countDown();
+      Lizzie.leelaz = previousEngine;
+      Lizzie.board = previousBoard;
+      Lizzie.frame = previousFrame;
+      Lizzie.config = previousConfig;
+      Lizzie.gtpConsole = previousGtpConsole;
+      EngineManager.isEngineGame = previousEngineGame;
+      EngineManager.isPreEngineGame = previousPreEngineGame;
+    }
+  }
+
+  @Test
+  void throwingSendFailureCallbackCannotStrandQueuedCommand() throws Exception {
+    Leelaz previousEngine = Lizzie.leelaz;
+    LizzieFrame previousFrame = Lizzie.frame;
+    Config previousConfig = Lizzie.config;
+    GtpConsolePane previousGtpConsole = Lizzie.gtpConsole;
+    Leelaz engine = reusableKatagoEngine(false, false);
+    BlockingFailOnceOutput failingOutput = new BlockingFailOnceOutput();
+    installOutput(engine, Leelaz.createCommandOutputStream(failingOutput));
+    CountDownLatch commandFinished = new CountDownLatch(1);
+    AtomicReference<Throwable> commandFailure = new AtomicReference<>();
+    try {
+      Lizzie.leelaz = engine;
+      Lizzie.frame = allocate(LizzieFrame.class);
+      Lizzie.config = allocate(Config.class);
+      Lizzie.gtpConsole = allocate(SilentGtpConsole.class);
+
+      Thread commandThread =
+          daemonThread(
+              "throwing-send-failure-callback",
+              () -> {
+                try {
+                  invokeSendCommandWithResponse(
+                      engine,
+                      "name",
+                      () -> {
+                        throw new IllegalStateException("simulated callback failure");
+                      });
+                } catch (Throwable failure) {
+                  commandFailure.set(failure);
+                } finally {
+                  commandFinished.countDown();
+                }
+              });
+      commandThread.start();
+      assertTrue(failingOutput.writeStarted.await(1, TimeUnit.SECONDS));
+
+      engine.sendCommand("version");
+      failingOutput.failWrite.countDown();
+
+      assertTrue(commandFinished.await(1, TimeUnit.SECONDS));
+      assertTrue(commandFailure.get() != null);
+      waitUntil(() -> failingOutput.output().contains("version\n"));
+    } finally {
+      failingOutput.failWrite.countDown();
+      Lizzie.leelaz = previousEngine;
+      Lizzie.frame = previousFrame;
+      Lizzie.config = previousConfig;
+      Lizzie.gtpConsole = previousGtpConsole;
+    }
+  }
+
+  @Test
+  void cancelledLeaseDropsInitialStopWaitingForTransport() throws Exception {
+    Leelaz previousEngine = Lizzie.leelaz;
+    LizzieFrame previousFrame = Lizzie.frame;
+    boolean previousEngineGame = EngineManager.isEngineGame;
+    boolean previousPreEngineGame = EngineManager.isPreEngineGame;
+    Leelaz engine = reusableKatagoEngine(false, false);
+    ByteArrayOutputStream output = installOutput(engine);
+    BufferedOutputStream transport = commandOutputStream(engine);
+    Object owner = new Object();
+    CountDownLatch outputHeld = new CountDownLatch(1);
+    CountDownLatch releaseOutput = new CountDownLatch(1);
+    AtomicReference<Leelaz.ExclusiveGtpLeaseAvailability> availability =
+        new AtomicReference<>();
+    try {
+      Lizzie.leelaz = engine;
+      Lizzie.frame = null;
+      EngineManager.isEngineGame = false;
+      EngineManager.isPreEngineGame = false;
+
+      Thread outputHolder =
+          daemonThread(
+              "initial-stop-output-holder",
+              () -> {
+                synchronized (transport) {
+                  outputHeld.countDown();
+                  await(releaseOutput);
+                }
+              });
+      outputHolder.start();
+      assertTrue(outputHeld.await(1, TimeUnit.SECONDS));
+
+      Thread acquisitionThread =
+          daemonThread(
+              "initial-stop-waiting-for-output",
+              () ->
+                  availability.set(
+                      engine.beginForegroundAnalysisLease(
+                          owner, line -> {}, () -> {}, () -> {})));
+      acquisitionThread.start();
+      waitUntil(() -> engine.hasExclusiveGtpLeaseOwnedBy(owner));
+
+      assertTrue(engine.endForegroundAnalysisLease(owner, () -> {}));
+      releaseOutput.countDown();
+      acquisitionThread.join(1000L);
+
+      assertFalse(acquisitionThread.isAlive());
+      assertEquals(Leelaz.ExclusiveGtpLeaseAvailability.ENGINE_NOT_READY, availability.get());
+      assertEquals("", output.toString(StandardCharsets.UTF_8));
+    } finally {
+      releaseOutput.countDown();
+      engine.endExclusiveGtpSession();
+      Lizzie.leelaz = previousEngine;
+      Lizzie.frame = previousFrame;
+      EngineManager.isEngineGame = previousEngineGame;
+      EngineManager.isPreEngineGame = previousPreEngineGame;
+    }
+  }
+
+  @Test
+  void closedLeaseDropsFinalStopWaitingForTransport() throws Exception {
+    Leelaz previousEngine = Lizzie.leelaz;
+    LizzieFrame previousFrame = Lizzie.frame;
+    boolean previousEngineGame = EngineManager.isEngineGame;
+    boolean previousPreEngineGame = EngineManager.isPreEngineGame;
+    Leelaz engine = reusableKatagoEngine(false, false);
+    ByteArrayOutputStream output = installOutput(engine);
+    BufferedOutputStream transport = commandOutputStream(engine);
+    Object owner = new Object();
+    CountDownLatch outputHeld = new CountDownLatch(1);
+    CountDownLatch releaseOutput = new CountDownLatch(1);
+    try {
+      Lizzie.leelaz = engine;
+      Lizzie.frame = null;
+      EngineManager.isEngineGame = false;
+      EngineManager.isPreEngineGame = false;
+      assertEquals(
+          Leelaz.ExclusiveGtpLeaseAvailability.AVAILABLE,
+          engine.beginForegroundAnalysisLease(owner, line -> {}, () -> {}, () -> {}));
+      processCommandResponse(engine, "=800000000");
+      assertTrue(dispatch(engine, ""));
+
+      Thread outputHolder =
+          daemonThread(
+              "final-stop-output-holder",
+              () -> {
+                synchronized (transport) {
+                  outputHeld.countDown();
+                  await(releaseOutput);
+                }
+              });
+      outputHolder.start();
+      assertTrue(outputHeld.await(1, TimeUnit.SECONDS));
+
+      Thread releaseThread =
+          daemonThread(
+              "final-stop-waiting-for-output",
+              () -> engine.endForegroundAnalysisLease(owner, () -> {}));
+      releaseThread.start();
+      waitForState(releaseThread, Thread.State.BLOCKED);
+
+      engine.endExclusiveGtpSession();
+      releaseOutput.countDown();
+      releaseThread.join(1000L);
+
+      assertFalse(releaseThread.isAlive());
+      assertEquals("800000000 stop\n", output.toString(StandardCharsets.UTF_8));
+    } finally {
+      releaseOutput.countDown();
+      engine.endExclusiveGtpSession();
+      Lizzie.leelaz = previousEngine;
+      Lizzie.frame = previousFrame;
+      EngineManager.isEngineGame = previousEngineGame;
+      EngineManager.isPreEngineGame = previousPreEngineGame;
+    }
+  }
+
+  @Test
+  void timedOutLeaseDropsFinalStopWaitingForTransport() throws Exception {
+    Leelaz previousEngine = Lizzie.leelaz;
+    LizzieFrame previousFrame = Lizzie.frame;
+    boolean previousEngineGame = EngineManager.isEngineGame;
+    boolean previousPreEngineGame = EngineManager.isPreEngineGame;
+    RecordingRestoreLeelaz engine = recordingRestoreEngine();
+    engine.releaseStopTimeoutMillis = 25L;
+    ByteArrayOutputStream output = installOutput(engine);
+    BufferedOutputStream transport = commandOutputStream(engine);
+    Object owner = new Object();
+    CountDownLatch outputHeld = new CountDownLatch(1);
+    CountDownLatch releaseOutput = new CountDownLatch(1);
+    try {
+      Lizzie.leelaz = engine;
+      Lizzie.frame = null;
+      EngineManager.isEngineGame = false;
+      EngineManager.isPreEngineGame = false;
+      assertEquals(
+          Leelaz.ExclusiveGtpLeaseAvailability.AVAILABLE,
+          engine.beginForegroundAnalysisLease(owner, line -> {}, () -> {}, () -> {}));
+      processCommandResponse(engine, "=800000000");
+      assertTrue(dispatch(engine, ""));
+
+      Thread outputHolder =
+          daemonThread(
+              "timed-final-stop-output-holder",
+              () -> {
+                synchronized (transport) {
+                  outputHeld.countDown();
+                  await(releaseOutput);
+                }
+              });
+      outputHolder.start();
+      assertTrue(outputHeld.await(1, TimeUnit.SECONDS));
+
+      Thread releaseThread =
+          daemonThread(
+              "timed-final-stop-waiting-for-output",
+              () -> engine.endForegroundAnalysisLease(owner, () -> {}));
+      releaseThread.start();
+      waitForState(releaseThread, Thread.State.BLOCKED);
+      waitUntil(() -> !engine.hasExclusiveGtpLease());
+      releaseOutput.countDown();
+      releaseThread.join(1000L);
+
+      assertFalse(releaseThread.isAlive());
+      assertEquals("800000000 stop\n", output.toString(StandardCharsets.UTF_8));
+    } finally {
+      releaseOutput.countDown();
+      engine.endExclusiveGtpSession();
+      Lizzie.leelaz = previousEngine;
+      Lizzie.frame = previousFrame;
+      EngineManager.isEngineGame = previousEngineGame;
+      EngineManager.isPreEngineGame = previousPreEngineGame;
+    }
   }
 
   @Test
@@ -657,6 +1243,60 @@ class LeelazExclusiveRemoteGtpSessionTest {
     return bytes;
   }
 
+  private static void installOutput(Leelaz engine, BufferedOutputStream output) throws Exception {
+    Field field = Leelaz.class.getDeclaredField("outputStream");
+    field.setAccessible(true);
+    field.set(engine, output);
+  }
+
+  private static BufferedOutputStream commandOutputStream(Leelaz engine) throws Exception {
+    Field field = Leelaz.class.getDeclaredField("outputStream");
+    field.setAccessible(true);
+    return (BufferedOutputStream) field.get(engine);
+  }
+
+  private static ArrayDeque<?> commandQueue(Leelaz engine) throws Exception {
+    Field field = Leelaz.class.getDeclaredField("cmdQueue");
+    field.setAccessible(true);
+    return (ArrayDeque<?>) field.get(engine);
+  }
+
+  private static Thread daemonThread(String name, Runnable action) {
+    Thread thread = new Thread(action, name);
+    thread.setDaemon(true);
+    return thread;
+  }
+
+  private static void await(CountDownLatch latch) {
+    try {
+      if (!latch.await(1, TimeUnit.SECONDS)) {
+        throw new AssertionError("timed out waiting for controlled concurrency barrier");
+      }
+    } catch (InterruptedException ex) {
+      Thread.currentThread().interrupt();
+      throw new AssertionError(ex);
+    }
+  }
+
+  private static void waitForState(Thread thread, Thread.State expected) {
+    long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(1);
+    while (thread.getState() != expected && System.nanoTime() < deadline) {
+      Thread.onSpinWait();
+    }
+    assertEquals(expected, thread.getState(), "controlled thread did not reach expected state");
+  }
+
+  private static void invokeSendCommandWithResponse(
+      Leelaz engine, String command, Runnable onResponse) {
+    try {
+      Method method = Leelaz.class.getDeclaredMethod("sendCommand", String.class, Runnable.class);
+      method.setAccessible(true);
+      method.invoke(engine, command, onResponse);
+    } catch (ReflectiveOperationException ex) {
+      throw new AssertionError(ex);
+    }
+  }
+
   private static void installFailOnceOutput(Leelaz engine) throws Exception {
     Field field = Leelaz.class.getDeclaredField("outputStream");
     field.setAccessible(true);
@@ -757,6 +1397,28 @@ class LeelazExclusiveRemoteGtpSessionTest {
       }
       restoredMarker = currentMarker;
       resendCount++;
+    }
+  }
+
+  private static final class BlockingFailOnceOutput extends OutputStream {
+    private final CountDownLatch writeStarted = new CountDownLatch(1);
+    private final CountDownLatch failWrite = new CountDownLatch(1);
+    private final ByteArrayOutputStream output = new ByteArrayOutputStream();
+    private boolean failed;
+
+    @Override
+    public synchronized void write(int value) throws IOException {
+      if (!failed) {
+        writeStarted.countDown();
+        await(failWrite);
+        failed = true;
+        throw new IOException("simulated command failure");
+      }
+      output.write(value);
+    }
+
+    private synchronized String output() {
+      return output.toString(StandardCharsets.UTF_8);
     }
   }
 

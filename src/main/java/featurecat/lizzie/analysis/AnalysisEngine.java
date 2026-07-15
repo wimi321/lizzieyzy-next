@@ -119,8 +119,7 @@ public class AnalysisEngine {
   private Leelaz sharedForegroundEngine;
   private boolean sharedForegroundLeaseStarting;
   private boolean sharedForegroundLeaseActive;
-  private boolean sharedForegroundLeaseOwned;
-  private Object sharedForegroundLeaseOwner;
+  private Leelaz.ForegroundAnalysisLease sharedForegroundLease;
   private Leelaz.ExclusiveGtpLeaseAvailability foregroundLeaseAvailability;
 
   public AnalysisEngine(boolean isPreLoad) throws IOException {
@@ -619,10 +618,10 @@ public class AnalysisEngine {
       failRemoteGtpSetup();
       return true;
     }
-    Object owner = sharedForegroundLeaseOwner;
+    Leelaz.ForegroundAnalysisLease lease = sharedForegroundLease;
     if (sharedForegroundEngine == null
-        || owner == null
-        || !sharedForegroundEngine.setForegroundAnalysisLeaseRestoreRules(owner, payload)) {
+        || lease == null
+        || !lease.setRestoreRules(payload)) {
       failRemoteGtpSetup();
       return true;
     }
@@ -1361,15 +1360,12 @@ public class AnalysisEngine {
       return false;
     }
     sharedForegroundLeaseStarting = true;
-    Object leaseOwner = new Object();
-    sharedForegroundLeaseOwner = leaseOwner;
-    Leelaz.ExclusiveGtpLeaseAvailability availability =
-        sharedForegroundEngine.beginForegroundAnalysisLease(
-            leaseOwner,
+    Leelaz.ForegroundAnalysisLeaseAcquisition acquisition =
+        sharedForegroundEngine.acquireForegroundAnalysisLease(
             this::parseLine,
-            () -> {
+            lease -> {
               synchronized (AnalysisEngine.this) {
-                if (sharedForegroundLeaseOwner != leaseOwner || !sharedForegroundLeaseStarting) {
+                if (sharedForegroundLease != lease || !sharedForegroundLeaseStarting) {
                   return;
                 }
                 sharedForegroundLeaseStarting = false;
@@ -1380,26 +1376,24 @@ public class AnalysisEngine {
                 }
               }
             },
-            () -> {
+            lease -> {
               synchronized (AnalysisEngine.this) {
-                if (sharedForegroundLeaseOwner != leaseOwner) {
+                if (sharedForegroundLease != lease) {
                   return;
                 }
                 sharedForegroundLeaseStarting = false;
                 sharedForegroundLeaseActive = false;
-                sharedForegroundLeaseOwned = false;
-                sharedForegroundLeaseOwner = null;
+                sharedForegroundLease = null;
                 requestDispatchFailed = true;
                 finishFailedRequestDispatch(!silentProgress);
               }
             });
+    Leelaz.ExclusiveGtpLeaseAvailability availability = acquisition.availability();
+    sharedForegroundLease = acquisition.lease();
     foregroundLeaseAvailability = availability;
-    sharedForegroundLeaseOwned =
-        availability == Leelaz.ExclusiveGtpLeaseAvailability.AVAILABLE
-            && sharedForegroundEngine.hasExclusiveGtpLeaseOwnedBy(leaseOwner);
     if (availability != Leelaz.ExclusiveGtpLeaseAvailability.AVAILABLE) {
       sharedForegroundLeaseStarting = false;
-      sharedForegroundLeaseOwner = null;
+      sharedForegroundLease = null;
     }
     return availability == Leelaz.ExclusiveGtpLeaseAvailability.AVAILABLE;
   }
@@ -1414,15 +1408,12 @@ public class AnalysisEngine {
 
   private synchronized boolean releaseSharedForegroundLease(
       Runnable afterRestore, Runnable afterRestoreFailure) {
-    Leelaz engine = sharedForegroundEngine;
-    boolean owned = sharedForegroundLeaseOwned;
-    Object leaseOwner = sharedForegroundLeaseOwner;
-    sharedForegroundLeaseOwned = false;
+    Leelaz.ForegroundAnalysisLease lease = sharedForegroundLease;
     sharedForegroundLeaseStarting = false;
     sharedForegroundLeaseActive = false;
-    sharedForegroundLeaseOwner = null;
-    if (engine != null && owned && leaseOwner != null) {
-      return engine.endForegroundAnalysisLease(leaseOwner, afterRestore, afterRestoreFailure);
+    sharedForegroundLease = null;
+    if (lease != null) {
+      return lease.release(afterRestore, afterRestoreFailure);
     }
     return false;
   }

@@ -267,8 +267,8 @@ class AnalysisEngineRequestTest {
       TrackingWaitForAnalysis waitFrame = allocate(TrackingWaitForAnalysis.class);
       AtomicInteger completions = new AtomicInteger();
       setField(AnalysisEngine.class, engine, "sharedForegroundEngine", foreground);
-      setField(AnalysisEngine.class, engine, "sharedForegroundLeaseOwned", true);
-      setField(AnalysisEngine.class, engine, "sharedForegroundLeaseOwner", new Object());
+      setField(
+          AnalysisEngine.class, engine, "sharedForegroundLease", foregroundLease(foreground));
       setField(AnalysisEngine.class, engine, "waitFrame", waitFrame);
       setIntField(AnalysisEngine.class, engine, "resultCount", 1);
       setField(
@@ -305,8 +305,8 @@ class AnalysisEngineRequestTest {
       AtomicInteger completions = new AtomicInteger();
       Lizzie.frame.isBatchAnalysisMode = true;
       setField(AnalysisEngine.class, engine, "sharedForegroundEngine", foreground);
-      setField(AnalysisEngine.class, engine, "sharedForegroundLeaseOwned", true);
-      setField(AnalysisEngine.class, engine, "sharedForegroundLeaseOwner", new Object());
+      setField(
+          AnalysisEngine.class, engine, "sharedForegroundLease", foregroundLease(foreground));
       setField(AnalysisEngine.class, engine, "waitFrame", waitFrame);
       setIntField(AnalysisEngine.class, engine, "resultCount", 1);
       setField(
@@ -1904,6 +1904,13 @@ class AnalysisEngineRequestTest {
     Field field = owner.getDeclaredField(name);
     field.setAccessible(true);
     field.set(target, value);
+  }
+
+  private static Leelaz.ForegroundAnalysisLease foregroundLease(Leelaz engine) throws Exception {
+    java.lang.reflect.Constructor<Leelaz.ForegroundAnalysisLease> constructor =
+        Leelaz.ForegroundAnalysisLease.class.getDeclaredConstructor(Leelaz.class);
+    constructor.setAccessible(true);
+    return constructor.newInstance(engine);
   }
 
   private static boolean dispatchExclusiveLine(Leelaz engine, String line) throws Exception {
