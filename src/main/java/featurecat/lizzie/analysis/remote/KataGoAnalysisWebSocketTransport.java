@@ -21,7 +21,7 @@ import java.util.Set;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.json.JSONArray;
@@ -81,21 +81,19 @@ public class KataGoAnalysisWebSocketTransport implements EngineTransport {
   private final ZhiziGtpTransport.BlockingByteInputStream stderr =
       new ZhiziGtpTransport.BlockingByteInputStream();
   private final GtpCommandOutputStream stdin = new GtpCommandOutputStream();
-  private final AtomicInteger queryCounter = new AtomicInteger();
+  private final AtomicLong queryCounter = new AtomicLong();
   private final AtomicBoolean open = new AtomicBoolean(false);
+  private final AtomicBoolean terminated = new AtomicBoolean(false);
   private final StringBuilder incomingText = new StringBuilder();
   private final List<Move> initialStones = new ArrayList<>();
   private final List<Move> moves = new ArrayList<>();
-  private final Set<String> ignoredQueryIds = new HashSet<>();
 
   private WebSocket webSocket;
   private int boardWidth = DEFAULT_BOARD_SIZE;
   private int boardHeight = DEFAULT_BOARD_SIZE;
   private double komi = 7.5;
   private String rules = CHINESE_RULES;
-  private String activeQueryId = "";
-  private String activeGenmoveColor = "";
-  private String activeGtpResponseId = "";
+  private ActiveQuery activeQuery;
   private String snapshotInitialPlayer = "";
 
   public KataGoAnalysisWebSocketTransport(String remoteUrl) throws IOException {
@@ -121,14 +119,24 @@ public class KataGoAnalysisWebSocketTransport implements EngineTransport {
   @Override
   public void start() throws IOException {
     try {
-      webSocket =
+      WebSocket connected =
           httpClient
               .newWebSocketBuilder()
               .connectTimeout(CONNECT_TIMEOUT)
               .buildAsync(remoteUri, new Listener())
               .get(CONNECT_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS);
-      open.set(true);
-      writeStderrLine("自建算力已连接：" + remoteUri);
+      synchronized (this) {
+        if (terminated.get()) {
+          try {
+            connected.sendClose(WebSocket.NORMAL_CLOSURE, "closed during connect");
+          } catch (Exception ignored) {
+          }
+          throw new IOException("自建算力在连接完成前已断开。");
+        }
+        webSocket = connected;
+        open.set(true);
+        writeStderrLine("自建算力已连接：" + remoteUri);
+      }
     } catch (Exception e) {
       open.set(false);
       throw new IOException("连接自建算力失败，请检查 ws/wss 链接是否可用。", e);
@@ -162,17 +170,28 @@ public class KataGoAnalysisWebSocketTransport implements EngineTransport {
 
   @Override
   public void close() {
+    terminateTransport(true);
+  }
+
+  private synchronized void terminateTransport(boolean sendClose) {
+    if (!terminated.compareAndSet(false, true)) {
+      return;
+    }
     open.set(false);
+    ActiveQuery query = activeQuery;
+    if (query != null) {
+      completeActiveQuery(query);
+    }
     WebSocket current = webSocket;
     webSocket = null;
-    if (current != null) {
+    if (sendClose && current != null) {
       try {
         current.sendClose(WebSocket.NORMAL_CLOSURE, "bye");
       } catch (Exception ignored) {
       }
     }
-    closeQuietly(stdout);
-    closeQuietly(stderr);
+    stdout.finish();
+    stderr.finish();
   }
 
   private synchronized void handleCommandLine(String rawLine) {
@@ -268,10 +287,8 @@ public class KataGoAnalysisWebSocketTransport implements EngineTransport {
       } else if (lower.startsWith("kata-genmove_analyze ") || lower.startsWith("genmove ")) {
         startAnalysis(responseId, line, true);
       } else if (lower.equals("stop") || lower.equals("stop-ponder")) {
-        stopActiveQuery();
-        writeOk(responseId, "");
+        requestStop(responseId);
       } else if (lower.equals("quit")) {
-        stopActiveQuery();
         writeOk(responseId, "");
         close();
       } else {
@@ -290,16 +307,50 @@ public class KataGoAnalysisWebSocketTransport implements EngineTransport {
     if (!open.get() || current == null) {
       throw new IOException("自建算力未连接。");
     }
-    stopActiveQuery();
-    String queryId = "lz-ws-" + queryCounter.incrementAndGet();
-    activeQueryId = queryId;
-    activeGtpResponseId = responseId;
+    if (activeQuery != null) {
+      throw new IOException("another websocket analysis query is still active");
+    }
+    long querySequence = queryCounter.incrementAndGet();
+    String queryId = "lz-ws-" + querySequence;
     String player = playerToken(command, genmove);
-    activeGenmoveColor = genmove ? player : "";
+    ActiveQuery queryContext =
+        new ActiveQuery(querySequence, queryId, responseId, genmove, player);
+    activeQuery = queryContext;
     boolean ownership = command.toLowerCase(Locale.ROOT).contains("ownership true");
     int intervalCentisec = Math.max(10, analyzeIntervalCentisec(command, genmove));
     JSONObject query = buildAnalysisQuery(queryId, genmove, ownership, intervalCentisec, player);
-    current.sendText(query.toString(), true);
+    try {
+      current
+          .sendText(query.toString(), true)
+          .whenComplete((ignored, failure) -> completeAnalysisSend(queryContext, failure));
+    } catch (RuntimeException failure) {
+      failActiveQuery(queryContext, "发送分析请求失败：" + summarize(failure.getMessage()));
+    }
+  }
+
+  private synchronized void completeAnalysisSend(ActiveQuery query, Throwable failure) {
+    if (activeQuery != query || query.completed) {
+      return;
+    }
+    if (failure != null) {
+      failActiveQuery(query, "发送分析请求失败：" + summarize(failure.getMessage()));
+      return;
+    }
+    query.sendCompleted = true;
+    while (!query.pendingResponses.isEmpty()
+        && !isAnalysisPayload(query, query.pendingResponses.get(0))) {
+      processWebSocketResponse(query.pendingResponses.remove(0));
+      if (activeQuery != query || query.completed) {
+        return;
+      }
+    }
+    if (!query.genmove) {
+      appendStdout("=" + safeResponseId(query.gtpResponseId) + "\n");
+      query.responseStarted = true;
+    }
+    while (!query.pendingResponses.isEmpty() && activeQuery == query && !query.completed) {
+      processWebSocketResponse(query.pendingResponses.remove(0));
+    }
   }
 
   private void writeKnownKataGoParam(String responseId, String command) {
@@ -568,41 +619,101 @@ public class KataGoAnalysisWebSocketTransport implements EngineTransport {
       try {
         response = new JSONObject(line);
       } catch (Exception e) {
-        writeStderrLine("自建算力返回了无法解析的 JSON：" + summarize(line));
+        failProtocol("自建算力返回了无法解析的 JSON：" + summarize(line));
+        return;
+      }
+      ActiveQuery query = activeQuery;
+      if (isRetiredQueryId(response.optString("id", ""), query)) {
         continue;
       }
-      String queryId = response.optString("id", "");
-      if (queryId.isEmpty() || ignoredQueryIds.remove(queryId)) {
+      if (query != null && !query.sendCompleted) {
+        query.pendingResponses.add(response);
         continue;
       }
-      if (!queryId.equals(activeQueryId)) {
-        continue;
+      processWebSocketResponse(response);
+    }
+  }
+
+  private void processWebSocketResponse(JSONObject response) {
+    String queryId = response.optString("id", "");
+    ActiveQuery query = activeQuery;
+    if (response.has("error")) {
+      if (query != null) {
+        failActiveQuery(query, "自建算力错误：" + response.optString("error"));
+      } else {
+        failProtocol("自建算力错误：" + response.optString("error"));
       }
-      if (response.has("error")) {
-        writeStderrLine("自建算力错误：" + response.optString("error"));
-        activeQueryId = "";
-        activeGenmoveColor = "";
-        continue;
+      return;
+    }
+    if (query == null) {
+      failProtocol("自建算力返回了没有活动查询的响应：" + summarize(response.toString()));
+      return;
+    }
+    if (queryId.isEmpty()) {
+      failActiveQuery(query, "自建算力响应缺少查询 ID。");
+      return;
+    }
+    if (queryId.equals(query.terminateQueryId)) {
+      if (!"terminate".equals(response.optString("action", ""))
+          || !query.queryId.equals(response.optString("terminateId", ""))) {
+        failActiveQuery(query, "自建算力返回了不完整的停止回执。");
+        return;
       }
-      String infoLine = toGtpInfoLine(response);
-      if (!infoLine.isEmpty()) {
-        appendStdout(infoLine + "\n");
+      query.terminateAcknowledged = true;
+      completeStoppedQueryIfReady(query);
+      return;
+    }
+    if (!queryId.equals(query.queryId)) {
+      failActiveQuery(query, "自建算力返回了错误的查询 ID：" + summarize(queryId));
+      return;
+    }
+    if (response.has("warning")) {
+      writeStderrLine("自建算力警告：" + response.optString("warning"));
+      return;
+    }
+    if (!query.sendCompleted || (!query.genmove && !query.responseStarted)) {
+      failActiveQuery(query, "自建算力在查询发送完成前返回了响应。");
+      return;
+    }
+    if (query.analysisFinalReceived) {
+      return;
+    }
+    Object duringSearch = response.opt("isDuringSearch");
+    if (!(duringSearch instanceof Boolean)) {
+      failActiveQuery(query, "自建算力分析响应缺少 isDuringSearch。");
+      return;
+    }
+    String infoLine = toGtpInfoLine(response);
+    if (!infoLine.isEmpty()) {
+      appendStdout(infoLine + "\n");
+    }
+    boolean partial = (Boolean) duringSearch;
+    if (!partial && query.genmove) {
+      String move = firstMove(response);
+      if (!move.isEmpty()) {
+        moves.add(new Move(query.genmoveColor, move));
+        writeOk(query.gtpResponseId, move);
       }
-      boolean partial = response.optBoolean("isDuringSearch", false);
-      if (!partial && !activeGenmoveColor.isEmpty()) {
-        String move = firstMove(response);
-        if (!move.isEmpty()) {
-          moves.add(new Move(activeGenmoveColor, move));
-          writeOk(activeGtpResponseId, move);
-        }
-        activeGenmoveColor = "";
-        activeQueryId = "";
-        activeGtpResponseId = "";
-      } else if (!partial && activeQueryId.equals(queryId)) {
-        activeQueryId = "";
-        activeGtpResponseId = "";
+      query.analysisFinalReceived = true;
+      completeStoppedQueryIfReady(query);
+      if (!query.stopRequested) {
+        completeActiveQuery(query);
+      }
+    } else if (!partial && !query.analysisFinalReceived) {
+      appendStdout("\n");
+      query.analysisFinalReceived = true;
+      completeStoppedQueryIfReady(query);
+      if (!query.stopRequested) {
+        completeActiveQuery(query);
       }
     }
+  }
+
+  private static boolean isAnalysisPayload(ActiveQuery query, JSONObject response) {
+    return !response.has("error")
+        && !response.has("warning")
+        && query.queryId.equals(response.optString("id", ""))
+        && response.opt("isDuringSearch") instanceof Boolean;
   }
 
   static String toGtpInfoLine(JSONObject response) {
@@ -673,25 +784,106 @@ public class KataGoAnalysisWebSocketTransport implements EngineTransport {
     return move == null ? "" : move.optString("move", "");
   }
 
-  private void stopActiveQuery() {
-    if (activeQueryId == null || activeQueryId.isEmpty()) {
+  private void requestStop(String responseId) {
+    ActiveQuery query = activeQuery;
+    if (query == null) {
+      writeOk(responseId, "");
       return;
     }
-    ignoredQueryIds.add(activeQueryId);
+    if (query.stopRequested) {
+      return;
+    }
+    query.stopRequested = true;
+    query.stopGtpResponseId = responseId;
+    query.terminateQueryId = "terminate-" + query.queryId;
     WebSocket current = webSocket;
     if (current != null && open.get()) {
       JSONObject terminate = new JSONObject();
-      terminate.put("id", "terminate-" + activeQueryId);
+      terminate.put("id", query.terminateQueryId);
       terminate.put("action", "terminate");
-      terminate.put("terminateId", activeQueryId);
+      terminate.put("terminateId", query.queryId);
       try {
-        current.sendText(terminate.toString(), true);
-      } catch (Exception ignored) {
+        current
+            .sendText(terminate.toString(), true)
+            .whenComplete((ignored, failure) -> completeTerminateSend(query, failure));
+      } catch (RuntimeException failure) {
+        completeTerminateSend(query, failure);
       }
+    } else {
+      completeTerminateSend(query, new IOException("websocket transport is closed"));
     }
-    activeQueryId = "";
-    activeGenmoveColor = "";
-    activeGtpResponseId = "";
+  }
+
+  private synchronized void completeTerminateSend(ActiveQuery query, Throwable failure) {
+    if (failure == null || activeQuery != query || query.completed) {
+      return;
+    }
+    failActiveQuery(query, "发送停止请求失败：" + summarize(failure.getMessage()));
+  }
+
+  private void failActiveQuery(ActiveQuery query, String diagnostic) {
+    if (activeQuery != query || query.completed) {
+      return;
+    }
+    writeStderrLine(diagnostic);
+    if (!query.responseStarted) {
+      writeError(query.gtpResponseId, diagnostic);
+    }
+    completeActiveQuery(query);
+    terminateTransport(true);
+  }
+
+  private void failProtocol(String diagnostic) {
+    ActiveQuery query = activeQuery;
+    if (query != null) {
+      failActiveQuery(query, diagnostic);
+      return;
+    }
+    writeStderrLine(diagnostic);
+    terminateTransport(true);
+  }
+
+  private void completeStoppedQueryIfReady(ActiveQuery query) {
+    if (activeQuery != query
+        || query.completed
+        || !query.stopRequested
+        || !query.analysisFinalReceived
+        || !query.terminateAcknowledged) {
+      return;
+    }
+    writeOk(query.stopGtpResponseId, "");
+    completeActiveQuery(query);
+  }
+
+  private void completeActiveQuery(ActiveQuery query) {
+    if (activeQuery != query || query.completed) {
+      return;
+    }
+    query.completed = true;
+    activeQuery = null;
+  }
+
+  private boolean isRetiredQueryId(String queryId, ActiveQuery query) {
+    long sequence = querySequence(queryId);
+    if (sequence <= 0) {
+      return false;
+    }
+    return query == null ? sequence <= queryCounter.get() : sequence < query.sequence;
+  }
+
+  private static long querySequence(String queryId) {
+    String normalized = queryId;
+    if (normalized.startsWith("terminate-")) {
+      normalized = normalized.substring("terminate-".length());
+    }
+    if (!normalized.startsWith("lz-ws-")) {
+      return -1;
+    }
+    try {
+      return Long.parseLong(normalized.substring("lz-ws-".length()));
+    } catch (NumberFormatException ex) {
+      return -1;
+    }
   }
 
   private String nextPlayer() {
@@ -800,15 +992,6 @@ public class KataGoAnalysisWebSocketTransport implements EngineTransport {
     return normalized.length() <= 180 ? normalized : normalized.substring(0, 180) + "...";
   }
 
-  private static void closeQuietly(AutoCloseable closeable) {
-    try {
-      if (closeable != null) {
-        closeable.close();
-      }
-    } catch (Exception ignored) {
-    }
-  }
-
   private static final class SnapshotPosition {
     private final int width;
     private final int height;
@@ -822,6 +1005,36 @@ public class KataGoAnalysisWebSocketTransport implements EngineTransport {
       this.komi = komi;
       this.player = player;
       this.stones = stones;
+    }
+  }
+
+  private static final class ActiveQuery {
+    private final long sequence;
+    private final String queryId;
+    private final String gtpResponseId;
+    private final boolean genmove;
+    private final String genmoveColor;
+    private String terminateQueryId = "";
+    private String stopGtpResponseId = "";
+    private final List<JSONObject> pendingResponses = new ArrayList<>();
+    private boolean sendCompleted;
+    private boolean responseStarted;
+    private boolean stopRequested;
+    private boolean analysisFinalReceived;
+    private boolean terminateAcknowledged;
+    private boolean completed;
+
+    private ActiveQuery(
+        long sequence,
+        String queryId,
+        String gtpResponseId,
+        boolean genmove,
+        String genmoveColor) {
+      this.sequence = sequence;
+      this.queryId = queryId;
+      this.gtpResponseId = gtpResponseId;
+      this.genmove = genmove;
+      this.genmoveColor = genmoveColor;
     }
   }
 
@@ -885,15 +1098,15 @@ public class KataGoAnalysisWebSocketTransport implements EngineTransport {
 
     @Override
     public CompletionStage<?> onClose(WebSocket webSocket, int statusCode, String reason) {
-      open.set(false);
       writeStderrLine("自建算力连接已断开：" + statusCode + " " + reason);
+      terminateTransport(false);
       return WebSocket.Listener.super.onClose(webSocket, statusCode, reason);
     }
 
     @Override
     public void onError(WebSocket webSocket, Throwable error) {
-      open.set(false);
       writeStderrLine("自建算力连接错误：" + (error == null ? "unknown" : error.getMessage()));
+      terminateTransport(false);
     }
   }
 

@@ -3,10 +3,12 @@ package featurecat.lizzie.analysis;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import featurecat.lizzie.Config;
 import featurecat.lizzie.Lizzie;
+import featurecat.lizzie.analysis.remote.KataGoAnalysisWebSocketTransportTest;
 import featurecat.lizzie.gui.GtpConsolePane;
 import featurecat.lizzie.gui.LizzieFrame;
 import featurecat.lizzie.rules.Board;
@@ -14,6 +16,8 @@ import java.io.BufferedOutputStream;
 import java.io.BufferedReader;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.io.StringReader;
 import java.lang.reflect.Field;
@@ -215,6 +219,60 @@ class LeelazExclusiveRemoteGtpSessionTest {
       assertEquals(1, closed.get());
       assertFalse(engine.hasExclusiveGtpWorkInProgress());
       assertFalse(engine.isLoaded());
+    }
+  }
+
+  @Test
+  void webSocketEofClosesActiveForegroundLeaseThroughReader() throws Exception {
+    try (KataGoAnalysisWebSocketTransportTest.TransportHarness transport =
+        KataGoAnalysisWebSocketTransportTest.TransportHarness.open()) {
+      Leelaz engine = reusableKatagoEngine(false, false);
+      installInput(engine, transport.transport().stdout());
+      installOutput(
+          engine, Leelaz.createCommandOutputStream(transport.transport().stdin()));
+      engine.isNormalEnd = true;
+      CountDownLatch ready = new CountDownLatch(1);
+      AtomicInteger closed = new AtomicInteger();
+      AtomicReference<Throwable> readerFailure = new AtomicReference<>();
+      Thread reader =
+          daemonThread(
+              "websocket-eof-lease-reader",
+              () -> {
+                try {
+                  invokeRead(engine);
+                } catch (Throwable failure) {
+                  readerFailure.set(failure);
+                }
+              });
+
+      try (ForegroundLeaseGlobalState ignored =
+          ForegroundLeaseGlobalState.installForReader(engine)) {
+        reader.start();
+        try {
+          Leelaz.ForegroundAnalysisLeaseAcquisition acquisition =
+              engine.acquireForegroundAnalysisLease(
+                  line -> {}, lease -> ready.countDown(), lease -> closed.incrementAndGet());
+          assertEquals(
+              Leelaz.ExclusiveGtpLeaseAvailability.AVAILABLE, acquisition.availability());
+          await(ready);
+          assertTrue(engine.sendExclusiveGtpCommand("kata-analyze B 10"));
+
+          transport.closeFromServer(1006, "lost");
+
+          reader.join(1000L);
+          assertFalse(reader.isAlive());
+          assertNull(readerFailure.get());
+          assertEquals(1, closed.get());
+          assertFalse(acquisition.lease().isOwned());
+          assertEquals(
+              java.util.Optional.of(Leelaz.ForegroundAnalysisLeaseFailure.TRANSPORT_CLOSED),
+              acquisition.lease().failureReason());
+          assertFalse(engine.isLoaded());
+        } finally {
+          transport.close();
+          reader.join(1000L);
+        }
+      }
     }
   }
 
@@ -1626,6 +1684,14 @@ class LeelazExclusiveRemoteGtpSessionTest {
     field.set(engine, new BufferedReader(new StringReader(input)));
   }
 
+  private static void installInput(Leelaz engine, InputStream input) throws Exception {
+    Field field = Leelaz.class.getDeclaredField("inputStream");
+    field.setAccessible(true);
+    field.set(
+        engine,
+        new BufferedReader(new InputStreamReader(input, StandardCharsets.UTF_8)));
+  }
+
   private static void invokeRead(Leelaz engine) throws Exception {
     Method method = Leelaz.class.getDeclaredMethod("read");
     method.setAccessible(true);
@@ -1795,6 +1861,8 @@ class LeelazExclusiveRemoteGtpSessionTest {
     private final Leelaz previousEngine;
     private final Board previousBoard;
     private final LizzieFrame previousFrame;
+    private final Config previousConfig;
+    private final GtpConsolePane previousGtpConsole;
     private final boolean previousEngineGame;
     private final boolean previousPreEngineGame;
 
@@ -1802,11 +1870,15 @@ class LeelazExclusiveRemoteGtpSessionTest {
         Leelaz previousEngine,
         Board previousBoard,
         LizzieFrame previousFrame,
+        Config previousConfig,
+        GtpConsolePane previousGtpConsole,
         boolean previousEngineGame,
         boolean previousPreEngineGame) {
       this.previousEngine = previousEngine;
       this.previousBoard = previousBoard;
       this.previousFrame = previousFrame;
+      this.previousConfig = previousConfig;
+      this.previousGtpConsole = previousGtpConsole;
       this.previousEngineGame = previousEngineGame;
       this.previousPreEngineGame = previousPreEngineGame;
     }
@@ -1817,6 +1889,8 @@ class LeelazExclusiveRemoteGtpSessionTest {
               Lizzie.leelaz,
               Lizzie.board,
               Lizzie.frame,
+              Lizzie.config,
+              Lizzie.gtpConsole,
               EngineManager.isEngineGame,
               EngineManager.isPreEngineGame);
       Lizzie.leelaz = engine;
@@ -1827,11 +1901,22 @@ class LeelazExclusiveRemoteGtpSessionTest {
       return state;
     }
 
+    private static ForegroundLeaseGlobalState installForReader(Leelaz engine) throws Exception {
+      Config config = allocate(Config.class);
+      GtpConsolePane gtpConsole = allocate(SilentGtpConsole.class);
+      ForegroundLeaseGlobalState state = install(engine);
+      Lizzie.config = config;
+      Lizzie.gtpConsole = gtpConsole;
+      return state;
+    }
+
     @Override
     public void close() {
       Lizzie.leelaz = previousEngine;
       Lizzie.board = previousBoard;
       Lizzie.frame = previousFrame;
+      Lizzie.config = previousConfig;
+      Lizzie.gtpConsole = previousGtpConsole;
       EngineManager.isEngineGame = previousEngineGame;
       EngineManager.isPreEngineGame = previousPreEngineGame;
     }
