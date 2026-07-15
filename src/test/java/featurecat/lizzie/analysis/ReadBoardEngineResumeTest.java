@@ -1009,9 +1009,11 @@ class ReadBoardEngineResumeTest {
               "stop",
               "boardsize",
               "komi",
+              "kata-get-rules",
               "kata-set-rules",
               "clear_board",
               "play",
+              "set_position",
               "kata-analyze"));
       setField(foreground, "endGetCommandList", true);
       setField(
@@ -1438,6 +1440,22 @@ class ReadBoardEngineResumeTest {
 
       assertEquals(1, harness.leelaz.readBoardGmaCount);
       assertEquals("B", harness.leelaz.lastReadBoardGmaColor);
+    }
+  }
+
+  @Test
+  void readBoardGmaLeaseRejectionRollsBackPendingState() throws Exception {
+    try (EngineResumeHarness harness =
+        EngineResumeHarness.create(rootHistory(emptyStones(), true))) {
+      harness.frame.bothSync = true;
+      harness.leelaz.enableReadBoardGmaSupport();
+      harness.leelaz.rejectReadBoardGma = true;
+
+      harness.readBoard.parseLine("play>black>0 0 0 gma");
+      harness.sync(snapshot(emptyStones(), Optional.empty(), Stone.EMPTY));
+
+      assertEquals(0, harness.leelaz.readBoardGmaCount);
+      assertFalse(getBooleanField(harness.readBoard, "readBoardGmaPending"));
     }
   }
 

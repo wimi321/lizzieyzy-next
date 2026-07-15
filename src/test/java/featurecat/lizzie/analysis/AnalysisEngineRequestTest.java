@@ -3,7 +3,6 @@ package featurecat.lizzie.analysis;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -26,6 +25,7 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -70,8 +70,7 @@ class AnalysisEngineRequestTest {
       assertFalse(engine.isLoaded());
       assertNull(engine.process);
       assertEquals(
-          Leelaz.ExclusiveGtpLeaseAvailability.NOT_KATAGO,
-          engine.getForegroundLeaseAvailability());
+          Leelaz.ExclusiveGtpLeaseAvailability.NOT_KATAGO, engine.getForegroundLeaseAvailability());
     }
   }
 
@@ -145,6 +144,32 @@ class AnalysisEngineRequestTest {
   }
 
   @Test
+  void reuseModeRejectsEveryReadBoardGmaBusyPhase() throws Exception {
+    try (TestEnvironment env = TestEnvironment.open()) {
+      Lizzie.config.analysisReuseCurrentEngine = true;
+      Leelaz foreground = reusableForegroundEngine(true);
+      Lizzie.leelaz = foreground;
+      ReadBoard readBoard = allocate(ReadBoard.class);
+      Lizzie.frame.readBoard = readBoard;
+
+      for (String fieldName :
+          List.of(
+              "readBoardGmaPending",
+              "readBoardGmaEngineRestorePending",
+              "readBoardGmaEngineRestoreInProgress")) {
+        setField(ReadBoard.class, readBoard, fieldName, true);
+
+        assertEquals(
+            Leelaz.ExclusiveGtpLeaseAvailability.READBOARD_GMA,
+            new AnalysisEngine(false).getForegroundLeaseAvailability(),
+            fieldName);
+
+        setField(ReadBoard.class, readBoard, fieldName, false);
+      }
+    }
+  }
+
+  @Test
   void reuseModeRejectsEngineGamePreparationAndExistingLease() throws Exception {
     try (TestEnvironment env = TestEnvironment.open()) {
       boolean previousPreEngineGame = EngineManager.isPreEngineGame;
@@ -211,6 +236,23 @@ class AnalysisEngineRequestTest {
       assertFalse(frame.isContributing);
       assertNull(frame.contributeEngine);
       assertTrue(foreground.hasExclusiveGtpLease());
+      foreground.endExclusiveGtpSession();
+    }
+  }
+
+  @Test
+  void rejectedInteractiveGenmoveDoesNotLeaveInputCommandStateBehind() throws Exception {
+    try (TestEnvironment env = TestEnvironment.open()) {
+      boardWithHistory(new BoardHistoryList(BoardData.empty(BOARD_SIZE, BOARD_SIZE)));
+      Leelaz foreground = reusableForegroundEngine(true);
+      Lizzie.leelaz = foreground;
+      assertEquals(
+          Leelaz.ExclusiveGtpLeaseAvailability.AVAILABLE,
+          foreground.beginExclusiveGtpSession(line -> {}, () -> {}, () -> {}));
+
+      Lizzie.frame.genmove();
+
+      assertFalse(foreground.isInputCommand);
       foreground.endExclusiveGtpSession();
     }
   }
@@ -311,8 +353,7 @@ class AnalysisEngineRequestTest {
       assertEquals(0, successfulContinuations.get());
       assertFalse(Lizzie.frame.isBatchAnalysisMode);
       assertEquals(
-          Leelaz.ExclusiveGtpLeaseAvailability.AVAILABLE,
-          engine.getForegroundLeaseAvailability());
+          Leelaz.ExclusiveGtpLeaseAvailability.AVAILABLE, engine.getForegroundLeaseAvailability());
     }
   }
 
@@ -360,8 +401,42 @@ class AnalysisEngineRequestTest {
       assertEquals(0, successfulContinuations.get());
       assertFalse(Lizzie.frame.isBatchAnalysisMode);
       assertEquals(
-          Leelaz.ExclusiveGtpLeaseAvailability.AVAILABLE,
-          engine.getForegroundLeaseAvailability());
+          Leelaz.ExclusiveGtpLeaseAvailability.AVAILABLE, engine.getForegroundLeaseAvailability());
+    }
+  }
+
+  @Test
+  void foregroundReuseCapturesRulesAndAcknowledgesSetupCommandsInOrder() throws Exception {
+    try (TestEnvironment env = TestEnvironment.open()) {
+      BoardHistoryList history = new BoardHistoryList(BoardData.empty(BOARD_SIZE, BOARD_SIZE));
+      history.add(
+          moveNode(stones(placement(0, 0, Stone.BLACK)), new int[] {0, 0}, Stone.BLACK, false, 1));
+      boardWithHistory(history);
+      Leelaz foreground = reusableForegroundEngine(true);
+      ByteArrayOutputStream output = installLeelazOutput(foreground);
+      Lizzie.leelaz = foreground;
+      Lizzie.config.analysisReuseCurrentEngine = true;
+      Lizzie.config.analysisUseCurrentRules = true;
+      AnalysisEngine engine = new AnalysisEngine(false);
+
+      engine.startRequest(1, -1, false);
+      int leaseStopCommandId = getExclusiveStopCommandId(foreground);
+      processCommandResponse(foreground, "=" + leaseStopCommandId);
+      assertTrue(dispatchExclusiveLine(foreground, ""));
+      assertTrue(output.toString(StandardCharsets.UTF_8).endsWith("830000000 kata-get-rules\n"));
+
+      String originalRules =
+          "{\"koRule\":\"POSITIONAL\",\"scoringRule\":\"AREA\",\"taxRule\":\"NONE\"}";
+      assertTrue(dispatchExclusiveLine(foreground, "=830000000 " + originalRules));
+      assertTrue(output.toString(StandardCharsets.UTF_8).endsWith("830000001 boardsize 3\n"));
+
+      assertTrue(dispatchExclusiveLine(foreground, "=830000001"));
+      assertTrue(output.toString(StandardCharsets.UTF_8).endsWith("830000002 komi 7.5\n"));
+      assertTrue(dispatchExclusiveLine(foreground, "=830000002"));
+      assertTrue(
+          output
+              .toString(StandardCharsets.UTF_8)
+              .endsWith("830000003 kata-set-rules " + originalRules + "\n"));
     }
   }
 
@@ -718,12 +793,32 @@ class AnalysisEngineRequestTest {
 
       assertTrue(engine.sentCommands.contains("boardsize 3"));
       assertTrue(engine.sentCommands.contains("komi 7.5"));
-      assertTrue(engine.sentCommands.contains("kata-set-rules chinese"));
-      assertTrue(engine.sentCommands.contains("clear_board"));
+      assertTrue(engine.sentCommands.contains("kata-set-rules tromp-taylor"));
+      assertTrue(engine.sentCommands.contains("set_position"));
       assertTrue(engine.sentCommands.contains("play B A3"));
-      assertNumberedAnalyzeCommand(
-          lastCommand(engine.sentCommands), "kata-analyze W 50");
+      assertNumberedAnalyzeCommand(lastCommand(engine.sentCommands), "kata-analyze W 50");
       assertEquals(1, engine.pendingRequestCount());
+    }
+  }
+
+  @Test
+  void remoteGtpSnapshotUsesStaticSetPositionBeforeReplayingLaterActions() throws Exception {
+    try (TestEnvironment env = TestEnvironment.open()) {
+      Stone[] snapshotStones = stones(placement(0, 0, Stone.BLACK), placement(2, 0, Stone.WHITE));
+      BoardHistoryList history =
+          new BoardHistoryList(
+              snapshotNode(snapshotStones, Optional.empty(), Stone.EMPTY, false, 58));
+      history.add(passNode(snapshotStones, Stone.WHITE, true, 59));
+      boardWithHistory(history);
+      TrackingAnalysisEngine engine = TrackingAnalysisEngine.create();
+      setField(AnalysisEngine.class, engine, "useRemoteCompute", true);
+
+      engine.sendRequest(history.getCurrentHistoryNode());
+
+      assertTrue(engine.sentCommands.contains("set_position B A3 W C3"));
+      assertTrue(engine.sentCommands.contains("play W pass"));
+      assertFalse(engine.sentCommands.contains("play B A3"));
+      assertFalse(engine.sentCommands.contains("play W C3"));
     }
   }
 
@@ -739,9 +834,7 @@ class AnalysisEngineRequestTest {
           assertNumberedAnalyzeCommand(lastCommand(engine.sentCommands), "kata-analyze W 50");
       invokeAnalysisEngineParseLine(engine, "=" + analyzeCommandId);
 
-      invokeAnalysisEngineParseLine(
-          engine,
-          remoteGtpInfoLine(33, 62.0, 1.5));
+      invokeAnalysisEngineParseLine(engine, remoteGtpInfoLine(33, 62.0, 1.5));
       int stopCommandId = assertNumberedStopCommand(lastCommand(engine.sentCommands));
       assertEquals(
           0,
@@ -799,7 +892,7 @@ class AnalysisEngineRequestTest {
 
       engine.startRequest(-1, -1, false);
 
-      assertEquals(1, countCommand(engine.sentCommands, "clear_board"));
+      assertEquals(1, countCommand(engine.sentCommands, "set_position"));
       assertTrue(engine.sentCommands.contains("play B A3"));
       assertNumberedAnalyzeCommand(
           lastCommand(engine.sentCommands), "kata-analyze W 1 maxmoves 1 rootInfo true");
@@ -808,7 +901,7 @@ class AnalysisEngineRequestTest {
 
       assertEquals(
           1,
-          countCommand(engine.sentCommands, "clear_board"),
+          countCommand(engine.sentCommands, "set_position"),
           "remote mainline analysis should keep the board and avoid O(n^2) replay.");
       assertNumberedAnalyzeCommand(
           lastCommand(engine.sentCommands), "kata-analyze B 1 maxmoves 1 rootInfo true");
@@ -816,7 +909,7 @@ class AnalysisEngineRequestTest {
 
       completeRemoteGtpSearch(engine, 16, 58.0, 0.7);
 
-      assertEquals(1, countCommand(engine.sentCommands, "clear_board"));
+      assertEquals(1, countCommand(engine.sentCommands, "set_position"));
       assertNumberedAnalyzeCommand(
           lastCommand(engine.sentCommands), "kata-analyze W 1 maxmoves 1 rootInfo true");
       assertTrue(engine.sentCommands.contains("play B C3"));
@@ -868,7 +961,7 @@ class AnalysisEngineRequestTest {
       int requested = engine.startRequestMissingMainline(false);
 
       assertEquals(2, requested);
-      assertEquals(1, countCommand(engine.sentCommands, "clear_board"));
+      assertEquals(1, countCommand(engine.sentCommands, "set_position"));
       assertTrue(engine.sentCommands.contains("play B A3"));
       assertTrue(engine.sentCommands.contains("play W B3"));
 
@@ -876,7 +969,7 @@ class AnalysisEngineRequestTest {
           lastCommand(engine.sentCommands), "kata-analyze B 1 maxmoves 1 rootInfo true");
       completeRemoteGtpSearch(engine, 16, 58.0, 0.7);
 
-      assertEquals(1, countCommand(engine.sentCommands, "clear_board"));
+      assertEquals(1, countCommand(engine.sentCommands, "set_position"));
       assertNumberedAnalyzeCommand(
           lastCommand(engine.sentCommands), "kata-analyze W 1 maxmoves 1 rootInfo true");
       assertTrue(engine.sentCommands.contains("play B C3"));
@@ -902,8 +995,7 @@ class AnalysisEngineRequestTest {
 
       String analyzeCommand = lastCommand(engine.sentCommands);
       int analyzeCommandId =
-          assertNumberedAnalyzeCommand(
-              analyzeCommand, "kata-analyze W 1 maxmoves 1 rootInfo true");
+          assertNumberedAnalyzeCommand(analyzeCommand, "kata-analyze W 1 maxmoves 1 rootInfo true");
       invokeAnalysisEngineParseLine(engine, "=" + analyzeCommandId);
       invokeAnalysisEngineParseLine(engine, remoteGtpInfoLine(15, 58.0, 0.9));
       assertEquals(
@@ -926,11 +1018,36 @@ class AnalysisEngineRequestTest {
   }
 
   @Test
-  void remoteGtpMissingStopAckDoesNotStallQueuedQuickCurve() throws Exception {
+  void remoteGtpStopErrorFailsWithoutCommittingResult() throws Exception {
+    try (TestEnvironment env = TestEnvironment.open()) {
+      BoardHistoryNode node = singleUnanalyzedMoveNode();
+      TrackingAnalysisEngine engine = TrackingAnalysisEngine.create();
+      setField(AnalysisEngine.class, engine, "useRemoteCompute", true);
+      engine.setKeepAliveAfterCurrentRequest(true);
+
+      engine.startRequest(-1, -1, false);
+
+      int analyzeCommandId =
+          assertNumberedAnalyzeCommand(
+              lastCommand(engine.sentCommands), "kata-analyze W 1 maxmoves 1 rootInfo true");
+      invokeAnalysisEngineParseLine(engine, "=" + analyzeCommandId);
+      invokeAnalysisEngineParseLine(engine, remoteGtpInfoLine(16, 62.0, 1.5));
+      int stopCommandId = assertNumberedStopCommand(lastCommand(engine.sentCommands));
+      invokeAnalysisEngineParseLine(engine, "");
+      invokeAnalysisEngineParseLine(engine, "?" + stopCommandId + " cannot stop");
+
+      assertEquals(0, node.getData().getPlayouts());
+      assertFalse(engine.isAnalysisInProgress());
+    }
+  }
+
+  @Test
+  void remoteGtpMissingStopAckFailsWithoutCommittingOrAdvancing() throws Exception {
     try (TestEnvironment env = TestEnvironment.open()) {
       BoardHistoryList history = new BoardHistoryList(BoardData.empty(BOARD_SIZE, BOARD_SIZE));
       history.add(
           moveNode(stones(placement(0, 0, Stone.BLACK)), new int[] {0, 0}, Stone.BLACK, false, 1));
+      BoardHistoryNode firstNode = history.getCurrentHistoryNode();
       history.add(
           moveNode(
               stones(placement(0, 0, Stone.BLACK), placement(1, 0, Stone.WHITE)),
@@ -953,25 +1070,11 @@ class AnalysisEngineRequestTest {
       int firstStopCommandId = assertNumberedStopCommand(lastCommand(engine.sentCommands));
       invokeAnalysisEngineParseLine(engine, "");
 
-      waitUntil(() -> countCommandContaining(engine.sentCommands, " kata-analyze ") == 2);
-      assertTrue(
-          engine.sentCommands.contains("play W B3"),
-          "the queued second move should start even when the remote bridge never acknowledges stop.");
-      int secondAnalyzeCommandId =
-          assertNumberedAnalyzeCommand(
-              lastCommand(engine.sentCommands), "kata-analyze B 1 maxmoves 1 rootInfo true");
+      waitUntil(() -> !engine.isAnalysisInProgress());
 
-      invokeAnalysisEngineParseLine(engine, "=" + secondAnalyzeCommandId);
-      invokeAnalysisEngineParseLine(engine, remoteGtpInfoLine(16, 55.0, 0.4));
-      int secondStopCommandId = assertNumberedStopCommand(lastCommand(engine.sentCommands));
-      assertNotEquals(firstStopCommandId, secondStopCommandId);
-      invokeAnalysisEngineParseLine(engine, "");
-      invokeAnalysisEngineParseLine(engine, "=" + secondStopCommandId);
-
-      assertFalse(
-          engine.isAnalysisInProgress(),
-          "a missing stop acknowledgement must not strand later queued nodes.");
-      waitForMovelistRefreshThreads();
+      assertEquals(0, firstNode.getData().getPlayouts());
+      assertEquals(1, countCommandContaining(engine.sentCommands, " kata-analyze "));
+      assertEquals(firstStopCommandId, assertNumberedStopCommand(lastCommand(engine.sentCommands)));
     }
   }
 
@@ -997,8 +1100,7 @@ class AnalysisEngineRequestTest {
 
       engine.startRequest(-1, -1, false);
       int analyzeCommandId =
-          assertNumberedAnalyzeCommand(
-              lastCommand(engine.sentCommands), "kata-analyze W 1");
+          assertNumberedAnalyzeCommand(lastCommand(engine.sentCommands), "kata-analyze W 1");
       invokeAnalysisEngineParseLine(engine, "=" + analyzeCommandId);
       invokeAnalysisEngineParseLine(engine, remoteGtpInfoLine(64, 62.0, 1.5));
       int stopCommandId = assertNumberedStopCommand(lastCommand(engine.sentCommands));
@@ -1207,8 +1309,7 @@ class AnalysisEngineRequestTest {
       assertEquals(1, engine.requestCount(), "flash analysis should continue partial results.");
       JSONObject request = engine.singleRequest();
       assertEquals(
-          List.of(List.of("B", "A3"), List.of("W", "B3")),
-          request.getJSONArray("moves").toList());
+          List.of(List.of("B", "A3"), List.of("W", "B3")), request.getJSONArray("moves").toList());
       assertEquals(List.of(2), request.getJSONArray("analyzeTurns").toList());
       assertEquals(targetVisits, request.getInt("maxVisits"));
     }
@@ -1278,11 +1379,11 @@ class AnalysisEngineRequestTest {
 
       engine.startRequestAllBranches(false);
 
-      assertEquals(1, engine.requestCount(), "branch flash analysis should continue partial nodes.");
+      assertEquals(
+          1, engine.requestCount(), "branch flash analysis should continue partial nodes.");
       JSONObject request = engine.singleRequest();
       assertEquals(
-          List.of(List.of("B", "A3"), List.of("W", "B3")),
-          request.getJSONArray("moves").toList());
+          List.of(List.of("B", "A3"), List.of("W", "B3")), request.getJSONArray("moves").toList());
       assertEquals(List.of(2), request.getJSONArray("analyzeTurns").toList());
     }
   }
@@ -1836,8 +1937,7 @@ class AnalysisEngineRequestTest {
   private static void invokeStopBusyQuickAnalysisEngineBeforeLoadedKifuAnalysis(LizzieFrame frame)
       throws Exception {
     Method method =
-        LizzieFrame.class.getDeclaredMethod(
-            "stopBusyQuickAnalysisEngineBeforeLoadedKifuAnalysis");
+        LizzieFrame.class.getDeclaredMethod("stopBusyQuickAnalysisEngineBeforeLoadedKifuAnalysis");
     method.setAccessible(true);
     method.invoke(frame);
   }
@@ -1964,9 +2064,11 @@ class AnalysisEngineRequestTest {
             "stop",
             "boardsize",
             "komi",
+            "kata-get-rules",
             "kata-set-rules",
             "clear_board",
             "play",
+            "set_position",
             "kata-analyze"));
     Field output = Leelaz.class.getDeclaredField("outputStream");
     output.setAccessible(true);
@@ -1975,6 +2077,12 @@ class AnalysisEngineRequestTest {
     capabilityDiscovery.setAccessible(true);
     capabilityDiscovery.set(engine, true);
     return engine;
+  }
+
+  private static ByteArrayOutputStream installLeelazOutput(Leelaz engine) throws Exception {
+    ByteArrayOutputStream output = new ByteArrayOutputStream();
+    setField(Leelaz.class, engine, "outputStream", new BufferedOutputStream(output));
+    return output;
   }
 
   private static final class TestEnvironment implements AutoCloseable {
@@ -2092,8 +2200,7 @@ class AnalysisEngineRequestTest {
     }
 
     @Override
-    public boolean endForegroundAnalysisLease(
-        Object owner, Runnable completion, Runnable failure) {
+    public boolean endForegroundAnalysisLease(Object owner, Runnable completion, Runnable failure) {
       afterRestore = completion;
       afterRestoreFailure = failure;
       return true;

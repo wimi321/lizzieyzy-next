@@ -128,9 +128,11 @@ class KataGoRuntimeHelperBenchmarkLeaseTest {
             "stop",
             "boardsize",
             "komi",
+            "kata-get-rules",
             "kata-set-rules",
             "clear_board",
             "play",
+            "set_position",
             "kata-analyze"));
     Field capabilityField = Leelaz.class.getDeclaredField("endGetCommandList");
     capabilityField.setAccessible(true);

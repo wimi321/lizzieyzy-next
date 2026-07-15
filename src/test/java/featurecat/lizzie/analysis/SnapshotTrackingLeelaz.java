@@ -24,6 +24,7 @@ class SnapshotTrackingLeelaz extends Leelaz {
   int nameCmdCount;
   int genmoveCount;
   int readBoardGmaCount;
+  boolean rejectReadBoardGma;
   String lastGenmoveColor;
   String lastReadBoardGmaColor;
   List<String> playedMoves;
@@ -124,8 +125,11 @@ class SnapshotTrackingLeelaz extends Leelaz {
   }
 
   @Override
-  public void genmoveAnalyzeForReadBoard(
+  public boolean genmoveAnalyzeForReadBoard(
       String color, int maxTimeSeconds, int maxVisits, boolean ponder) {
+    if (rejectReadBoardGma) {
+      return false;
+    }
     readBoardGmaCount++;
     lastReadBoardGmaColor = color;
     recordedCommands()
@@ -139,6 +143,7 @@ class SnapshotTrackingLeelaz extends Leelaz {
                 + " ponder="
                 + ponder);
     isThinking = true;
+    return true;
   }
 
   @Override

@@ -303,6 +303,11 @@ public class SetKataRules extends JDialog {
     btnApply.addActionListener(
         new ActionListener() {
           public void actionPerformed(ActionEvent e) {
+            if (Lizzie.leelaz.hasExclusiveGtpWorkInProgress()) {
+              Utils.showMsg(
+                  resourceBundle.getString("AnalysisSettings.reuseStatus.existing_lease"));
+              return;
+            }
             Lizzie.board.clearBestMovesAfter(Lizzie.board.getHistory().getStart());
             if (jo == null) {
               jo = new JSONObject();

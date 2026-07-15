@@ -40,9 +40,11 @@ class AnalysisSettingsSaveConfigTest {
             "stop",
             "boardsize",
             "komi",
+            "kata-get-rules",
             "kata-set-rules",
             "clear_board",
             "play",
+            "set_position",
             "kata-analyze"));
     setField(Leelaz.class, foreground, "endGetCommandList", true);
     setField(

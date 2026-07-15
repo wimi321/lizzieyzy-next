@@ -11,6 +11,7 @@ import featurecat.lizzie.gui.JFontLabel;
 import featurecat.lizzie.gui.LizzieFrame;
 import featurecat.lizzie.gui.Message;
 import featurecat.lizzie.rules.Board;
+import featurecat.lizzie.rules.BoardHistoryList;
 import featurecat.lizzie.rules.BoardData;
 import featurecat.lizzie.rules.BoardHistoryNode;
 import featurecat.lizzie.rules.Stone;
@@ -82,7 +83,15 @@ public class Leelaz {
 
   private static final List<String> FLASH_ANALYSIS_GTP_COMMANDS =
       List.of(
-          "stop", "boardsize", "komi", "kata-set-rules", "clear_board", "play", "kata-analyze");
+          "stop",
+          "boardsize",
+          "komi",
+          "kata-get-rules",
+          "kata-set-rules",
+          "clear_board",
+          "play",
+          "set_position",
+          "kata-analyze");
 
   private enum StartupCommandAction {
     NONE,
@@ -106,6 +115,7 @@ public class Leelaz {
   private final ThreadLocal<ExclusiveGtpSession> foregroundRestoreCommandSession =
       new ThreadLocal<>();
   private volatile boolean foregroundRestoreInProgress;
+  private volatile boolean suppressNormalCommandsForForegroundAnalysis;
   private volatile ExclusiveGtpSession foregroundRestoreSession;
   private ArrayDeque<PendingResponseHandler> pendingResponseHandlers;
   private final AtomicInteger loadSgfResponseCommandIds = new AtomicInteger(1);
@@ -512,9 +522,7 @@ public class Leelaz {
           tryToDignostic(
               Lizzie.resourceBundle.getString("Leelaz.engineFailed")
                   + ": "
-                  + (e.getLocalizedMessage() == null
-                      ? "远程算力连接失败"
-                      : e.getLocalizedMessage()),
+                  + (e.getLocalizedMessage() == null ? "远程算力连接失败" : e.getLocalizedMessage()),
               true);
         } catch (JSONException diagnosticError) {
           diagnosticError.printStackTrace();
@@ -864,7 +872,8 @@ public class Leelaz {
 
   /** Initializes the input and output streams */
   public void initializeStreams() {
-    initializeStreams(process.getInputStream(), process.getOutputStream(), process.getErrorStream());
+    initializeStreams(
+        process.getInputStream(), process.getOutputStream(), process.getErrorStream());
   }
 
   private void initializeStreams(InputStream stdout, OutputStream stdin, InputStream stderr) {
@@ -2446,6 +2455,7 @@ public class Leelaz {
   }
 
   public void boardSize(int width, int height) {
+    if (rejectNewExclusiveWorkDuringGtpLease()) return;
     boardSize(width, height, true);
   }
 
@@ -2469,6 +2479,7 @@ public class Leelaz {
 
   public void komi(double komi) {
     synchronized (this) {
+      if (rejectNewExclusiveWorkDuringGtpLease()) return;
       this.komi = (float) komi;
       sendCommand("komi " + (komi == 0.0 ? "0" : komi));
       Lizzie.board.getHistory().getGameInfo().setKomi(komi);
@@ -2480,6 +2491,7 @@ public class Leelaz {
 
   public void komiNoMenu(double komi) {
     synchronized (this) {
+      if (rejectNewExclusiveWorkDuringGtpLease()) return;
       this.komi = (float) komi;
       sendCommand("komi " + (komi == 0.0 ? "0" : komi));
       Lizzie.board.getHistory().getGameInfo().setKomiNoMenu(komi);
@@ -3082,7 +3094,8 @@ public class Leelaz {
       CommandSendFailureHandler onSendFailure,
       boolean failOnSendError,
       boolean mirrorToSecondEngine) {
-    if (shouldDropStaleForegroundRestoreCommand()) {
+    if (shouldDropStaleForegroundRestoreCommand()
+        || shouldSuppressNormalCommandForForegroundAnalysis()) {
       return;
     }
     if (Lizzie.config.isDoubleEngineMode()) {
@@ -3122,7 +3135,8 @@ public class Leelaz {
       }
     }
     synchronized (commandQueue()) {
-      if (shouldDropStaleForegroundRestoreCommand()) {
+      if (shouldDropStaleForegroundRestoreCommand()
+          || shouldSuppressNormalCommandForForegroundAnalysis()) {
         return;
       }
       ArrayDeque<QueuedCommand> targetQueue = commandQueueForCurrentThread();
@@ -3144,8 +3158,7 @@ public class Leelaz {
           cmdNumber--;
         }
       }
-      targetQueue.addLast(
-          new QueuedCommand(command, onResponse, onSendFailure, failOnSendError));
+      targetQueue.addLast(new QueuedCommand(command, onResponse, onSendFailure, failOnSendError));
       trySendCommandFromQueue();
     }
     if (Lizzie.frame.isAutocounting) {
@@ -3274,7 +3287,8 @@ public class Leelaz {
   }
 
   private void sendCommandNoLeelaz2(String command, Runnable onResponse) {
-    if (shouldDropStaleForegroundRestoreCommand()) {
+    if (shouldDropStaleForegroundRestoreCommand()
+        || shouldSuppressNormalCommandForForegroundAnalysis()) {
       return;
     }
     if (Lizzie.config.isDoubleEngineMode()) {
@@ -3313,7 +3327,8 @@ public class Leelaz {
       }
     }
     synchronized (commandQueue()) {
-      if (shouldDropStaleForegroundRestoreCommand()) {
+      if (shouldDropStaleForegroundRestoreCommand()
+          || shouldSuppressNormalCommandForForegroundAnalysis()) {
         return;
       }
       ArrayDeque<QueuedCommand> targetQueue = commandQueueForCurrentThread();
@@ -3354,9 +3369,7 @@ public class Leelaz {
       }
       ArrayDeque<QueuedCommand> targetQueue =
           foregroundRestoreInProgress ? foregroundRestoreCommandQueue() : commandQueue();
-      if (!foregroundRestoreInProgress
-          && requireResponseBeforeSend
-          && !isResponseUpToPreDate()) {
+      if (!foregroundRestoreInProgress && requireResponseBeforeSend && !isResponseUpToPreDate()) {
         return;
       }
       if (targetQueue.isEmpty()) {
@@ -3550,10 +3563,14 @@ public class Leelaz {
         : commandQueue();
   }
 
-  private synchronized boolean shouldDropStaleForegroundRestoreCommand() {
+  private boolean shouldDropStaleForegroundRestoreCommand() {
     ExclusiveGtpSession session = foregroundRestoreCommandSession.get();
-    return session != null
-        && (session.restoreCompleted || foregroundRestoreSession != session);
+    return session != null && (session.restoreCompleted || foregroundRestoreSession != session);
+  }
+
+  private boolean shouldSuppressNormalCommandForForegroundAnalysis() {
+    return suppressNormalCommandsForForegroundAnalysis
+        && foregroundRestoreCommandSession.get() == null;
   }
 
   private PendingResponseHandler buildPendingResponseHandler(String command, Runnable handler) {
@@ -3726,8 +3743,7 @@ public class Leelaz {
 
   private void processCommandResponseLine(String line) {
     if (foregroundRestoreInProgress && line != null && line.trim().startsWith("?")) {
-      failForegroundRestore(
-          foregroundRestoreSession, "restore command failed: " + line.trim());
+      failForegroundRestore(foregroundRestoreSession, "restore command failed: " + line.trim());
     }
     boolean matchedPendingHandler = runPendingResponseHandlerForLine(line);
     activateExclusiveGtpSessionAfterStop(line);
@@ -3778,11 +3794,22 @@ public class Leelaz {
 
   public synchronized ExclusiveGtpLeaseAvailability beginForegroundAnalysisLease(
       Object owner, Consumer<String> lineConsumer, Runnable onReady, Runnable onClosed) {
-    ExclusiveGtpLeaseAvailability availability = previewForegroundAnalysisLeaseAvailability();
-    if (availability != ExclusiveGtpLeaseAvailability.AVAILABLE) {
-      return availability;
+    synchronized (commandQueue()) {
+      ExclusiveGtpLeaseAvailability availability = previewForegroundAnalysisLeaseAvailability();
+      if (availability != ExclusiveGtpLeaseAvailability.AVAILABLE) {
+        return availability;
+      }
+      if (!commandQueue().isEmpty()) {
+        return ExclusiveGtpLeaseAvailability.ENGINE_NOT_READY;
+      }
+      suppressNormalCommandsForForegroundAnalysis = true;
+      ExclusiveGtpLeaseAvailability result =
+          beginExclusiveGtpSession(owner, lineConsumer, onReady, onClosed);
+      if (result != ExclusiveGtpLeaseAvailability.AVAILABLE && !foregroundRestoreInProgress) {
+        suppressNormalCommandsForForegroundAnalysis = false;
+      }
+      return result;
     }
-    return beginExclusiveGtpSession(owner, lineConsumer, onReady, onClosed);
   }
 
   public synchronized ExclusiveGtpLeaseAvailability previewForegroundAnalysisLeaseAvailability() {
@@ -3798,7 +3825,7 @@ public class Leelaz {
     }
     if (Lizzie.frame != null
         && Lizzie.frame.readBoard != null
-        && Lizzie.frame.readBoard.isReadBoardGmaAutoPlayActive()) {
+        && Lizzie.frame.readBoard.isReadBoardGmaEngineBusy()) {
       return ExclusiveGtpLeaseAvailability.READBOARD_GMA;
     }
     if (EngineManager.isEngineGame()) {
@@ -3843,8 +3870,7 @@ public class Leelaz {
     if (!commandLists.containsAll(FLASH_ANALYSIS_GTP_COMMANDS)) {
       return ExclusiveGtpLeaseAvailability.MISSING_CAPABILITY;
     }
-    if (Board.boardWidth != Board.boardHeight
-        && !commandLists.contains("rectangular_boardsize")) {
+    if (Board.boardWidth != Board.boardHeight && !commandLists.contains("rectangular_boardsize")) {
       return ExclusiveGtpLeaseAvailability.MISSING_CAPABILITY;
     }
     if (exclusiveGtpSession != null) {
@@ -3903,6 +3929,20 @@ public class Leelaz {
     return exclusiveGtpSession != null && exclusiveGtpSession.owner == owner;
   }
 
+  synchronized boolean setForegroundAnalysisLeaseRestoreRules(Object owner, String rules) {
+    ExclusiveGtpSession session = exclusiveGtpSession;
+    if (session == null
+        || session.owner != owner
+        || !session.active
+        || session.closing
+        || rules == null
+        || rules.trim().isEmpty()) {
+      return false;
+    }
+    session.originalRules = rules.trim();
+    return true;
+  }
+
   public synchronized boolean beginExclusiveGtpLifecycleTransition() {
     return beginExclusiveGtpLifecycleTransition(Thread.currentThread());
   }
@@ -3937,8 +3977,7 @@ public class Leelaz {
   }
 
   private synchronized void endExclusiveGtpLifecycleTransition(Object owner) {
-    if (!exclusiveGtpLifecycleTransition
-        || exclusiveGtpLifecycleOwner != owner) {
+    if (!exclusiveGtpLifecycleTransition || exclusiveGtpLifecycleOwner != owner) {
       return;
     }
     exclusiveGtpLifecycleDepth--;
@@ -3953,11 +3992,12 @@ public class Leelaz {
     if (!hasConflictingExclusiveGtpWork()) {
       return false;
     }
-    SwingUtilities.invokeLater(
-        () ->
-            Utils.showMsg(
-                Lizzie.resourceBundle.getString(
-                    "AnalysisSettings.reuseStatus.existing_lease")));
+    if (Lizzie.frame != null && Lizzie.frame.isDisplayable() && Lizzie.resourceBundle != null) {
+      SwingUtilities.invokeLater(
+          () ->
+              Utils.showMsg(
+                  Lizzie.resourceBundle.getString("AnalysisSettings.reuseStatus.existing_lease")));
+    }
     return true;
   }
 
@@ -3965,8 +4005,7 @@ public class Leelaz {
     if (exclusiveGtpSession != null || foregroundRestoreInProgress) {
       return true;
     }
-    return exclusiveGtpLifecycleTransition
-        && exclusiveGtpLifecycleOwner != Thread.currentThread();
+    return exclusiveGtpLifecycleTransition && exclusiveGtpLifecycleOwner != Thread.currentThread();
   }
 
   public void endForegroundAnalysisLease(Object owner) {
@@ -4043,24 +4082,20 @@ public class Leelaz {
 
   private void failForegroundLeaseRelease(ExclusiveGtpSession session, String detail) {
     cancelForegroundReleaseStopTimeout(session);
-    if (!markForegroundRestoreFailed(session, detail)) {
-      return;
-    }
     synchronized (this) {
-      if (exclusiveGtpSession != session) {
+      if (session == null
+          || exclusiveGtpSession != session
+          || session.restoreCompleted
+          || session.releaseStopFailed) {
         return;
       }
+      session.releaseStopFailed = true;
       session.closing = true;
-      exclusiveGtpLifecycleTransition = true;
-      exclusiveGtpLifecycleOwner = null;
-      exclusiveGtpLifecycleDepth = 0;
-      foregroundRestoreInProgress = true;
-      foregroundRestoreSession = session;
     }
-    if (!closeExclusiveGtpSession(session)) {
-      return;
-    }
-    completeForegroundRestore(session);
+    String message = "Failed to stop foreground engine before restore: " + detail;
+    rememberRecentLine(recentStderrLines, message);
+    System.err.println(message);
+    restoreAfterClosedForegroundLease(session);
   }
 
   private void restoreAfterClosedForegroundLease(ExclusiveGtpSession session) {
@@ -4100,8 +4135,7 @@ public class Leelaz {
         },
         30000L);
     Thread restoreThread =
-        new Thread(
-            () -> performForegroundRestore(session), "lizzie-foreground-engine-restore");
+        new Thread(() -> performForegroundRestore(session), "lizzie-foreground-engine-restore");
     restoreThread.setDaemon(true);
     session.restoreThread = restoreThread;
     restoreThread.start();
@@ -4110,6 +4144,24 @@ public class Leelaz {
   private void performForegroundRestore(ExclusiveGtpSession session) {
     foregroundRestoreCommandSession.set(session);
     try {
+      int currentBoardWidth = Board.boardWidth;
+      int currentBoardHeight = Board.boardHeight;
+      sendCommand(
+          currentBoardWidth == currentBoardHeight
+              ? "boardsize " + currentBoardWidth
+              : "rectangular_boardsize " + currentBoardWidth + " " + currentBoardHeight);
+      width = currentBoardWidth;
+      height = currentBoardHeight;
+      double currentKomi = komi;
+      BoardHistoryList currentHistory = Lizzie.board == null ? null : Lizzie.board.getHistory();
+      if (currentHistory != null && currentHistory.getGameInfo() != null) {
+        currentKomi = currentHistory.getGameInfo().getKomi();
+      }
+      sendCommand("komi " + (currentKomi == 0.0 ? "0" : currentKomi));
+      komi = (float) currentKomi;
+      if (session.originalRules != null) {
+        sendCommand("kata-set-rules " + session.originalRules);
+      }
       Lizzie.board.resendMoveToEngine(this, false);
       if (isForegroundRestoreCompleted(session)) {
         return;
@@ -4161,12 +4213,14 @@ public class Leelaz {
     Timer restoreTimeout;
     Thread restoreThread;
     boolean restoreFailed;
+    boolean releaseStopFailed;
     synchronized (this) {
       if (session == null || session.restoreCompleted) {
         return;
       }
       session.restoreCompleted = true;
       restoreFailed = session.restoreFailed;
+      releaseStopFailed = session.releaseStopFailed;
       restoreTimeout = session.restoreTimeout;
       restoreThread = session.restoreThread;
       foregroundRestoreInProgress = false;
@@ -4183,6 +4237,7 @@ public class Leelaz {
       notPondering();
       isLoaded = false;
       finishForegroundRestoreLifecycle();
+      suppressNormalCommandsForForegroundAnalysis = false;
       runForegroundRestoreFailure(session);
       return;
     }
@@ -4194,13 +4249,16 @@ public class Leelaz {
     } catch (RuntimeException ex) {
       ex.printStackTrace();
     }
-    if (session.wasPondering
-        && Lizzie.leelaz == this
-        && canResumePonderAfterForegroundLease()) {
+    suppressNormalCommandsForForegroundAnalysis = false;
+    if (session.wasPondering && Lizzie.leelaz == this && canResumePonderAfterForegroundLease()) {
       ponder();
     }
     finishForegroundRestoreLifecycle();
-    runForegroundRestoreCompletion(session);
+    if (releaseStopFailed) {
+      runForegroundRestoreFailure(session);
+    } else {
+      runForegroundRestoreCompletion(session);
+    }
   }
 
   private void runForegroundRestoreCompletion(ExclusiveGtpSession session) {
@@ -4256,10 +4314,9 @@ public class Leelaz {
             || (!Lizzie.frame.isPlayingAgainstLeelaz
                 && !Lizzie.frame.isAnaPlayingAgainstLeelaz
                 && !Lizzie.frame.isContributing
-                && (Lizzie.frame.humanSlGame == null
-                    || Lizzie.frame.humanSlGame.isFinished())
+                && (Lizzie.frame.humanSlGame == null || Lizzie.frame.humanSlGame.isFinished())
                 && (Lizzie.frame.readBoard == null
-                    || !Lizzie.frame.readBoard.isReadBoardGmaAutoPlayActive())));
+                    || !Lizzie.frame.readBoard.isReadBoardGmaEngineBusy())));
   }
 
   private boolean writeExclusiveGtpCommand(String command) {
@@ -4291,8 +4348,7 @@ public class Leelaz {
       if (trimmed.startsWith("info ")) {
         return true;
       }
-      if (trimmed.startsWith("?")
-          && parseResponseCommandId(trimmed) == session.stopCommandId) {
+      if (trimmed.startsWith("?") && parseResponseCommandId(trimmed) == session.stopCommandId) {
         abortExclusiveGtpSession();
         return true;
       }
@@ -4485,8 +4541,10 @@ public class Leelaz {
     private volatile boolean releaseRequested;
     private volatile int releaseStopCommandId;
     private volatile boolean releaseStopAcknowledged;
-    private boolean restoreCompleted;
+    private boolean releaseStopFailed;
+    private volatile boolean restoreCompleted;
     private boolean restoreFailed;
+    private String originalRules;
     private Runnable afterRestore;
     private Runnable afterRestoreFailure;
     private Thread restoreThread;
@@ -4982,7 +5040,14 @@ public class Leelaz {
   }
 
   public synchronized void genmove(String color) {
-    if (rejectNewExclusiveWorkDuringGtpLease()) return;
+    genmove(color, false);
+  }
+
+  public synchronized boolean genmove(String color, boolean inputCommand) {
+    if (rejectNewExclusiveWorkDuringGtpLease()) return false;
+    if (inputCommand) {
+      isInputCommand = true;
+    }
     sendPlayingAgainstHumanTimeLeftBeforeGenmove();
     String command =
         (this.isKatago
@@ -4995,6 +5060,7 @@ public class Leelaz {
     sendCommand(command);
     isThinking = true;
     LizzieFrame.menu.toggleEngineMenuStatus(false, true);
+    return true;
   }
 
   private static final class ReadBoardGmaRuntimeParam {
@@ -5027,9 +5093,9 @@ public class Leelaz {
     return true;
   }
 
-  public synchronized void genmoveAnalyzeForReadBoard(
+  public synchronized boolean genmoveAnalyzeForReadBoard(
       String color, int maxTimeSeconds, int maxVisits, boolean ponder) {
-    if (rejectNewExclusiveWorkDuringGtpLease()) return;
+    if (rejectNewExclusiveWorkDuringGtpLease()) return false;
     setReadBoardGmaPondering(ponder);
     prepareReadBoardGmaMaxTime(maxTimeSeconds);
     prepareReadBoardGmaMaxVisits(maxVisits);
@@ -5042,6 +5108,7 @@ public class Leelaz {
     sendCommandNoLeelaz2(command.toString());
     isThinking = true;
     LizzieFrame.menu.toggleEngineMenuStatus(false, true);
+    return true;
   }
 
   public void setReadBoardGmaPondering(boolean ponder) {

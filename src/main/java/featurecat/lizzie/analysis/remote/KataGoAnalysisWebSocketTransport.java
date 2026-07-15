@@ -10,6 +10,7 @@ import java.net.http.HttpClient;
 import java.net.http.WebSocket;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -28,6 +29,38 @@ public class KataGoAnalysisWebSocketTransport implements EngineTransport {
   private static final int DEFAULT_BOARD_SIZE = 19;
   private static final int LIVE_ANALYSIS_MAX_VISITS = 10_000_000;
   private static final int GENMOVE_MAX_VISITS = 256;
+  private static final String CHINESE_RULES =
+      "{\"friendlyPassOk\":true,\"hasButton\":false,\"ko\":\"SIMPLE\","
+          + "\"scoring\":\"AREA\",\"suicide\":false,\"tax\":\"NONE\","
+          + "\"whiteHandicapBonus\":\"N\"}";
+  private static final String CHINESE_POSITIONAL_RULES =
+      "{\"friendlyPassOk\":true,\"hasButton\":false,\"ko\":\"POSITIONAL\","
+          + "\"scoring\":\"AREA\",\"suicide\":false,\"tax\":\"NONE\","
+          + "\"whiteHandicapBonus\":\"N\"}";
+  private static final String JAPANESE_RULES =
+      "{\"friendlyPassOk\":true,\"hasButton\":false,\"ko\":\"SIMPLE\","
+          + "\"scoring\":\"TERRITORY\",\"suicide\":false,\"tax\":\"SEKI\","
+          + "\"whiteHandicapBonus\":\"0\"}";
+  private static final String STONE_SCORING_RULES =
+      "{\"friendlyPassOk\":true,\"hasButton\":false,\"ko\":\"SIMPLE\","
+          + "\"scoring\":\"AREA\",\"suicide\":false,\"tax\":\"ALL\","
+          + "\"whiteHandicapBonus\":\"0\"}";
+  private static final String AGA_RULES =
+      "{\"friendlyPassOk\":true,\"hasButton\":false,\"ko\":\"SITUATIONAL\","
+          + "\"scoring\":\"AREA\",\"suicide\":false,\"tax\":\"NONE\","
+          + "\"whiteHandicapBonus\":\"N-1\"}";
+  private static final String NEW_ZEALAND_RULES =
+      "{\"friendlyPassOk\":true,\"hasButton\":false,\"ko\":\"SITUATIONAL\","
+          + "\"scoring\":\"AREA\",\"suicide\":true,\"tax\":\"NONE\","
+          + "\"whiteHandicapBonus\":\"0\"}";
+  private static final String AGA_BUTTON_RULES =
+      "{\"friendlyPassOk\":true,\"hasButton\":true,\"ko\":\"SITUATIONAL\","
+          + "\"scoring\":\"AREA\",\"suicide\":false,\"tax\":\"NONE\","
+          + "\"whiteHandicapBonus\":\"N-1\"}";
+  private static final String TROMP_TAYLOR_RULES =
+      "{\"friendlyPassOk\":false,\"hasButton\":false,\"ko\":\"POSITIONAL\","
+          + "\"scoring\":\"AREA\",\"suicide\":true,\"tax\":\"NONE\","
+          + "\"whiteHandicapBonus\":\"0\"}";
 
   private final URI remoteUri;
   private final HttpClient httpClient;
@@ -39,6 +72,7 @@ public class KataGoAnalysisWebSocketTransport implements EngineTransport {
   private final AtomicInteger queryCounter = new AtomicInteger();
   private final AtomicBoolean open = new AtomicBoolean(false);
   private final StringBuilder incomingText = new StringBuilder();
+  private final List<Move> initialStones = new ArrayList<>();
   private final List<Move> moves = new ArrayList<>();
   private final Set<String> ignoredQueryIds = new HashSet<>();
 
@@ -46,7 +80,7 @@ public class KataGoAnalysisWebSocketTransport implements EngineTransport {
   private int boardWidth = DEFAULT_BOARD_SIZE;
   private int boardHeight = DEFAULT_BOARD_SIZE;
   private double komi = 7.5;
-  private String rules = "chinese";
+  private String rules = CHINESE_RULES;
   private String activeQueryId = "";
   private String activeGenmoveColor = "";
   private String activeGtpResponseId = "";
@@ -152,36 +186,41 @@ public class KataGoAnalysisWebSocketTransport implements EngineTransport {
             responseId,
             "protocol_version\nname\nversion\nlist_commands\nboardsize\nrectangular_boardsize\n"
                 + "komi\nkata-get-rules\nkata-get-param\nkata-set-param\nkata-set-rules\n"
-                + "clear_board\nplay\nundo\nkata-analyze\nkata-genmove_analyze\n"
+                + "clear_board\nset_position\nplay\nundo\nkata-analyze\nkata-genmove_analyze\n"
                 + "genmove\nkata-time_settings\ntime_settings\nstop\nquit");
       } else if (lower.startsWith("boardsize ")) {
         int size = parseIntToken(line, 1, DEFAULT_BOARD_SIZE);
         boardWidth = Math.max(1, size);
         boardHeight = Math.max(1, size);
+        initialStones.clear();
         moves.clear();
         writeOk(responseId, "");
       } else if (lower.startsWith("rectangular_boardsize ")) {
         boardWidth = Math.max(1, parseIntToken(line, 1, DEFAULT_BOARD_SIZE));
         boardHeight = Math.max(1, parseIntToken(line, 2, DEFAULT_BOARD_SIZE));
+        initialStones.clear();
         moves.clear();
         writeOk(responseId, "");
       } else if (lower.startsWith("komi ")) {
         komi = parseDoubleToken(line, 1, komi);
         writeOk(responseId, "");
       } else if (lower.startsWith("kata-get-rules")) {
-        writeOk(
-            responseId,
-            "{\"friendlyPassOk\":false,\"hasButton\":false,\"ko\":\"POSITIONAL\","
-                + "\"scoring\":\"AREA\",\"suicide\":true,\"tax\":\"NONE\","
-                + "\"whiteHandicapBonus\":\"0\"}");
+        writeOk(responseId, rules);
       } else if (lower.startsWith("kata-get-param ")) {
         writeKnownKataGoParam(responseId, line);
       } else if (lower.startsWith("kata-set-rules ")) {
-        rules = token(line, 1, "chinese");
+        rules = normalizeRules(line.substring(line.indexOf(' ') + 1).trim());
         writeOk(responseId, "");
       } else if (lower.startsWith("kata-set-param ") || lower.startsWith("time_")) {
         writeOk(responseId, "");
       } else if (lower.equals("clear_board")) {
+        initialStones.clear();
+        moves.clear();
+        writeOk(responseId, "");
+      } else if (lower.equals("set_position") || lower.startsWith("set_position ")) {
+        List<Move> position = parseSetPosition(line);
+        initialStones.clear();
+        initialStones.addAll(position);
         moves.clear();
         writeOk(responseId, "");
       } else if (lower.startsWith("play ")) {
@@ -215,11 +254,14 @@ public class KataGoAnalysisWebSocketTransport implements EngineTransport {
         writeOk(responseId, "");
       }
     } catch (Exception e) {
-      writeError(responseId, e.getLocalizedMessage() == null ? e.getClass().getSimpleName() : e.getLocalizedMessage());
+      writeError(
+          responseId,
+          e.getLocalizedMessage() == null ? e.getClass().getSimpleName() : e.getLocalizedMessage());
     }
   }
 
-  private void startAnalysis(String responseId, String command, boolean genmove) throws IOException {
+  private void startAnalysis(String responseId, String command, boolean genmove)
+      throws IOException {
     WebSocket current = webSocket;
     if (!open.get() || current == null) {
       throw new IOException("自建算力未连接。");
@@ -247,7 +289,7 @@ public class KataGoAnalysisWebSocketTransport implements EngineTransport {
     }
   }
 
-  private JSONObject buildAnalysisQuery(
+  JSONObject buildAnalysisQuery(
       String queryId,
       boolean genmove,
       boolean ownership,
@@ -255,7 +297,8 @@ public class KataGoAnalysisWebSocketTransport implements EngineTransport {
       String reportWinrateAs) {
     JSONObject query = new JSONObject();
     query.put("id", queryId);
-    query.put("rules", rules == null || rules.isBlank() ? "chinese" : rules);
+    String queryRules = rules == null || rules.isBlank() ? CHINESE_RULES : rules;
+    query.put("rules", queryRules.startsWith("{") ? new JSONObject(queryRules) : queryRules);
     query.put("priority", genmove ? 2 : 0);
     query.put("analyzeTurns", new JSONArray().put(moves.size()));
     query.put("maxVisits", genmove ? GENMOVE_MAX_VISITS : LIVE_ANALYSIS_MAX_VISITS);
@@ -265,8 +308,12 @@ public class KataGoAnalysisWebSocketTransport implements EngineTransport {
     query.put("includeOwnership", ownership && !genmove);
     query.put("includeMovesOwnership", ownership && !genmove);
     query.put("includePolicy", true);
-    query.put("initialStones", new JSONArray());
-    query.put("initialPlayer", "B");
+    JSONArray jsonInitialStones = new JSONArray();
+    for (Move stone : initialStones) {
+      jsonInitialStones.put(new JSONArray().put(stone.color).put(stone.point));
+    }
+    query.put("initialStones", jsonInitialStones);
+    query.put("initialPlayer", moves.isEmpty() ? reportWinrateAs : moves.get(0).color);
     JSONArray jsonMoves = new JSONArray();
     for (Move move : moves) {
       jsonMoves.put(new JSONArray().put(move.color).put(move.point));
@@ -279,6 +326,133 @@ public class KataGoAnalysisWebSocketTransport implements EngineTransport {
       query.put("reportDuringSearchEvery", Math.max(0.1, intervalCentisec / 100.0));
     }
     return query;
+  }
+
+  private String normalizeRules(String value) {
+    String trimmed = value == null ? "" : value.trim();
+    if (trimmed.startsWith("{")) {
+      new JSONObject(trimmed);
+      return trimmed;
+    }
+    String normalized = trimmed.toLowerCase(Locale.ROOT);
+    if ("chinese".equals(normalized)) {
+      return CHINESE_RULES;
+    }
+    if ("chinese-ogs".equals(normalized) || "chinese-kgs".equals(normalized)) {
+      return CHINESE_POSITIONAL_RULES;
+    }
+    if ("japanese".equals(normalized) || "korean".equals(normalized)) {
+      return JAPANESE_RULES;
+    }
+    if ("stone-scoring".equals(normalized)) {
+      return STONE_SCORING_RULES;
+    }
+    if ("aga".equals(normalized) || "bga".equals(normalized)) {
+      return AGA_RULES;
+    }
+    if ("new-zealand".equals(normalized)) {
+      return NEW_ZEALAND_RULES;
+    }
+    if ("aga-button".equals(normalized)) {
+      return AGA_BUTTON_RULES;
+    }
+    if ("tromp-taylor".equals(normalized) || "tromp_taylor".equals(normalized)) {
+      return TROMP_TAYLOR_RULES;
+    }
+    throw new IllegalArgumentException("unsupported rules: " + value);
+  }
+
+  private List<Move> parseSetPosition(String line) {
+    String[] tokens = line.trim().split("\\s+");
+    if ((tokens.length - 1) % 2 != 0) {
+      throw new IllegalArgumentException("invalid set_position command");
+    }
+    List<Move> position = new ArrayList<>();
+    Set<String> occupied = new HashSet<>();
+    for (int i = 1; i < tokens.length; i += 2) {
+      String color = normalizeColor(tokens[i]);
+      String point = tokens[i + 1].toUpperCase(Locale.ROOT);
+      if (color.isEmpty() || !isBoardPoint(point) || !occupied.add(point)) {
+        throw new IllegalArgumentException("invalid set_position command");
+      }
+      position.add(new Move(color, point));
+    }
+    if (containsZeroLibertyGroup(position)) {
+      throw new IllegalArgumentException("invalid set_position command");
+    }
+    return position;
+  }
+
+  private boolean containsZeroLibertyGroup(List<Move> position) {
+    String[][] colors = new String[boardWidth][boardHeight];
+    for (Move stone : position) {
+      int[] coordinates = pointCoordinates(stone.point);
+      colors[coordinates[0]][coordinates[1]] = stone.color;
+    }
+    boolean[][] visited = new boolean[boardWidth][boardHeight];
+    int[][] directions = {{-1, 0}, {1, 0}, {0, -1}, {0, 1}};
+    for (int x = 0; x < boardWidth; x++) {
+      for (int y = 0; y < boardHeight; y++) {
+        if (colors[x][y] == null || visited[x][y]) {
+          continue;
+        }
+        String color = colors[x][y];
+        boolean hasLiberty = false;
+        ArrayDeque<Integer> group = new ArrayDeque<>();
+        group.addLast(y * boardWidth + x);
+        visited[x][y] = true;
+        while (!group.isEmpty()) {
+          int point = group.removeFirst();
+          int pointX = point % boardWidth;
+          int pointY = point / boardWidth;
+          for (int[] direction : directions) {
+            int adjacentX = pointX + direction[0];
+            int adjacentY = pointY + direction[1];
+            if (adjacentX < 0
+                || adjacentX >= boardWidth
+                || adjacentY < 0
+                || adjacentY >= boardHeight) {
+              continue;
+            }
+            String adjacentColor = colors[adjacentX][adjacentY];
+            if (adjacentColor == null) {
+              hasLiberty = true;
+            } else if (color.equals(adjacentColor) && !visited[adjacentX][adjacentY]) {
+              visited[adjacentX][adjacentY] = true;
+              group.addLast(adjacentY * boardWidth + adjacentX);
+            }
+          }
+        }
+        if (!hasLiberty) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  private int[] pointCoordinates(String point) {
+    char columnName = point.charAt(0);
+    int column = columnName - 'A' - (columnName > 'I' ? 1 : 0);
+    return new int[] {column, Integer.parseInt(point.substring(1)) - 1};
+  }
+
+  private boolean isBoardPoint(String point) {
+    if (point == null || point.length() < 2) {
+      return false;
+    }
+    char columnName = point.charAt(0);
+    if (columnName < 'A' || columnName > 'Z' || columnName == 'I') {
+      return false;
+    }
+    try {
+      int[] coordinates = pointCoordinates(point);
+      int column = coordinates[0];
+      int row = coordinates[1] + 1;
+      return column >= 0 && column < boardWidth && row >= 1 && row <= boardHeight;
+    } catch (NumberFormatException ex) {
+      return false;
+    }
   }
 
   private synchronized void handleWebSocketMessage(String text) {
@@ -431,7 +605,11 @@ public class KataGoAnalysisWebSocketTransport implements EngineTransport {
   }
 
   private void writeOk(String responseId, String body) {
-    appendStdout("=" + safeResponseId(responseId) + (body == null || body.isEmpty() ? "" : " " + body) + "\n\n");
+    appendStdout(
+        "="
+            + safeResponseId(responseId)
+            + (body == null || body.isEmpty() ? "" : " " + body)
+            + "\n\n");
   }
 
   private void writeError(String responseId, String body) {

@@ -156,11 +156,11 @@ public class ReadBoard {
   private boolean needGenmove = false;
   private boolean showInBoard = false;
   private volatile boolean isSyncing = false;
-  private boolean readBoardGmaAutoPlayActive = false;
+  private volatile boolean readBoardGmaAutoPlayActive = false;
   private Stone readBoardGmaAutoPlayColor = Stone.EMPTY;
   private int readBoardGmaTimeSeconds = 0;
   private int readBoardGmaMaxVisits = 0;
-  private boolean readBoardGmaPending = false;
+  private volatile boolean readBoardGmaPending = false;
   private boolean readBoardGmaPendingLogicallyInvalid = false;
   private boolean readBoardGmaAwaitingSyncedBoard = false;
   private volatile boolean readBoardGmaEngineRestorePending = false;
@@ -3723,6 +3723,13 @@ public class ReadBoard {
     return readBoardGmaAutoPlayActive;
   }
 
+  public boolean isReadBoardGmaEngineBusy() {
+    return readBoardGmaAutoPlayActive
+        || readBoardGmaPending
+        || readBoardGmaEngineRestorePending
+        || readBoardGmaEngineRestoreInProgress;
+  }
+
   public void onReadBoardGmaCapabilityReady() {
     scheduleReadBoardGmaIfNeeded("capability-ready");
   }
@@ -3971,8 +3978,12 @@ public class ReadBoard {
             + readBoardGmaMaxVisits
             + " ponder="
             + ponder);
-    Lizzie.leelaz.genmoveAnalyzeForReadBoard(
-        color, readBoardGmaTimeSeconds, readBoardGmaMaxVisits, ponder);
+    if (!Lizzie.leelaz.genmoveAnalyzeForReadBoard(
+        color, readBoardGmaTimeSeconds, readBoardGmaMaxVisits, ponder)) {
+      readBoardGmaPending = false;
+      readBoardGmaPendingLogicallyInvalid = false;
+      localMoveSyncDebug("ReadBoard GMA rejected by foreground lease reason=" + reason);
+    }
     return true;
   }
 

@@ -46,8 +46,7 @@ class LeelazExclusiveRemoteGtpSessionTest {
     assertEquals(1, ready.get());
     assertTrue(dispatch(engine, ""), "the trailing stop boundary must be consumed once.");
     assertTrue(engine.sendExclusiveGtpCommand("kata-raw-nn 0"));
-    assertEquals(
-        "800000000 stop\nkata-raw-nn 0\n", bytes.toString(StandardCharsets.UTF_8));
+    assertEquals("800000000 stop\nkata-raw-nn 0\n", bytes.toString(StandardCharsets.UTF_8));
 
     assertTrue(dispatch(engine, "= symmetry 0"));
     assertTrue(dispatch(engine, "whiteWin 0.61"));
@@ -73,7 +72,8 @@ class LeelazExclusiveRemoteGtpSessionTest {
 
     assertEquals(1, closed.get());
     assertFalse(engine.sendExclusiveGtpCommand("kata-raw-nn 0"));
-    assertTrue(engine.isLoaded(), "the stop error itself must not mark the engine restore as failed.");
+    assertTrue(
+        engine.isLoaded(), "the stop error itself must not mark the engine restore as failed.");
   }
 
   @Test
@@ -126,6 +126,20 @@ class LeelazExclusiveRemoteGtpSessionTest {
     assertEquals(
         Leelaz.ExclusiveGtpLeaseAvailability.MISSING_CAPABILITY,
         missingCapability.previewExclusiveGtpLeaseAvailability());
+
+    Leelaz missingSetPosition = reusableKatagoEngine(false, false);
+    missingSetPosition.commandLists.remove("set_position");
+    installOutput(missingSetPosition);
+    assertEquals(
+        Leelaz.ExclusiveGtpLeaseAvailability.MISSING_CAPABILITY,
+        missingSetPosition.previewExclusiveGtpLeaseAvailability());
+
+    Leelaz missingRulesQuery = reusableKatagoEngine(false, false);
+    missingRulesQuery.commandLists.remove("kata-get-rules");
+    installOutput(missingRulesQuery);
+    assertEquals(
+        Leelaz.ExclusiveGtpLeaseAvailability.MISSING_CAPABILITY,
+        missingRulesQuery.previewExclusiveGtpLeaseAvailability());
   }
 
   @Test
@@ -212,14 +226,12 @@ class LeelazExclusiveRemoteGtpSessionTest {
       assertTrue(engine.hasExclusiveGtpLeaseOwnedBy(owner));
 
       Lizzie.leelaz = null;
-      assertTrue(
-          engine.endForegroundAnalysisLease(owner, restoreCompletions::incrementAndGet));
+      assertTrue(engine.endForegroundAnalysisLease(owner, restoreCompletions::incrementAndGet));
       assertTrue(dispatch(engine, "=800000001"));
       assertTrue(dispatch(engine, ""));
       assertFalse(engine.hasExclusiveGtpLease());
       assertEquals(1, restoreCompletions.get());
-      assertFalse(
-          engine.endForegroundAnalysisLease(owner, restoreCompletions::incrementAndGet));
+      assertFalse(engine.endForegroundAnalysisLease(owner, restoreCompletions::incrementAndGet));
       assertEquals(1, restoreCompletions.get());
     } finally {
       Lizzie.leelaz = previousEngine;
@@ -313,22 +325,114 @@ class LeelazExclusiveRemoteGtpSessionTest {
   }
 
   @Test
-  void foregroundLeaseReleaseTimeoutFailsWithoutRestoringOrRunningSuccessCompletion()
+  void foregroundLeaseRestoresCapturedRulesBeforeRestoringBoard() throws Exception {
+    RestoreHarness harness = RestoreHarness.open(false, false);
+    String originalRules =
+        "{\"koRule\":\"POSITIONAL\",\"scoringRule\":\"AREA\",\"taxRule\":\"NONE\"}";
+    try {
+      assertTrue(
+          harness.engine.setForegroundAnalysisLeaseRestoreRules(harness.owner, originalRules));
+      harness.output.reset();
+
+      assertTrue(
+          harness.engine.endForegroundAnalysisLease(
+              harness.owner, harness.completions::incrementAndGet));
+      assertTrue(dispatch(harness.engine, "=800000001"));
+      assertTrue(dispatch(harness.engine, ""));
+      waitUntil(() -> harness.board.resendCount == 1);
+
+      assertTrue(
+          harness
+              .output
+              .toString(StandardCharsets.UTF_8)
+              .contains("\nkomi 7.5\nkata-set-rules " + originalRules + "\n"));
+      completeForegroundRestore(harness.engine);
+    } finally {
+      harness.close();
+    }
+  }
+
+  @Test
+  void foregroundLeaseDropsNormalCommandsInsteadOfReplayingThemAfterRestore() throws Exception {
+    RestoreHarness harness = RestoreHarness.open(false, false);
+    try {
+      harness.output.reset();
+      harness.engine.sendCommand("play B D4");
+
+      assertTrue(
+          harness.engine.endForegroundAnalysisLease(
+              harness.owner, harness.completions::incrementAndGet));
+      assertTrue(dispatch(harness.engine, "=800000001"));
+      assertTrue(dispatch(harness.engine, ""));
+      waitUntil(() -> harness.board.resendCount == 1);
+      completeForegroundRestore(harness.engine);
+
+      assertFalse(harness.output.toString(StandardCharsets.UTF_8).contains("play B D4"));
+    } finally {
+      harness.close();
+    }
+  }
+
+  @Test
+  void foregroundLeaseRejectsKomiAndBoardSizeBeforeMutatingApplicationState() throws Exception {
+    RestoreHarness harness = RestoreHarness.open(false, false);
+    try {
+      float originalKomi = harness.engine.komi;
+      int originalWidth = harness.engine.width;
+      int originalHeight = harness.engine.height;
+      harness.output.reset();
+
+      harness.engine.komi(5.5);
+      harness.engine.boardSize(13, 13);
+
+      assertEquals(originalKomi, harness.engine.komi);
+      assertEquals(originalWidth, harness.engine.width);
+      assertEquals(originalHeight, harness.engine.height);
+      assertEquals("", harness.output.toString(StandardCharsets.UTF_8));
+    } finally {
+      harness.close();
+    }
+  }
+
+  @Test
+  void foregroundLeaseReleaseTimeoutRestoresBoardBeforeReportingFailure()
       throws Exception {
     RestoreHarness harness = RestoreHarness.open(false, false);
     AtomicInteger failures = new AtomicInteger();
     try {
-      Lizzie.frame = null;
       harness.engine.releaseStopTimeoutMillis = 25L;
 
       assertTrue(
           harness.engine.endForegroundAnalysisLease(
-              harness.owner,
-              harness.completions::incrementAndGet,
-              failures::incrementAndGet));
-      waitUntil(() -> !harness.engine.isLoaded());
+              harness.owner, harness.completions::incrementAndGet, failures::incrementAndGet));
+      waitUntil(() -> harness.board.resendCount == 1);
+      completeForegroundRestore(harness.engine);
+      waitUntil(() -> failures.get() == 1);
 
-      assertEquals(0, harness.board.resendCount);
+      assertTrue(harness.engine.isLoaded());
+      assertEquals(1, harness.board.resendCount);
+      assertEquals(0, harness.completions.get());
+      assertEquals(1, failures.get());
+    } finally {
+      harness.close();
+    }
+  }
+
+  @Test
+  void foregroundLeaseReleaseStopErrorRestoresBoardBeforeReportingFailure() throws Exception {
+    RestoreHarness harness = RestoreHarness.open(false, false);
+    AtomicInteger failures = new AtomicInteger();
+    try {
+      assertTrue(
+          harness.engine.endForegroundAnalysisLease(
+              harness.owner, harness.completions::incrementAndGet, failures::incrementAndGet));
+      assertTrue(dispatch(harness.engine, "?800000001 cannot stop"));
+      waitUntil(() -> harness.board.resendCount == 1);
+      completeForegroundRestore(harness.engine);
+      waitUntil(() -> failures.get() == 1);
+
+      assertTrue(harness.engine.isLoaded());
+      assertEquals(1, harness.board.resendCount);
       assertEquals(0, harness.completions.get());
       assertEquals(1, failures.get());
     } finally {
@@ -390,8 +494,7 @@ class LeelazExclusiveRemoteGtpSessionTest {
   }
 
   @Test
-  void foregroundLeaseRestoresBoardButDoesNotResumePonderAfterEnteringPlayMode()
-      throws Exception {
+  void foregroundLeaseRestoresBoardButDoesNotResumePonderAfterEnteringPlayMode() throws Exception {
     RestoreHarness harness = RestoreHarness.open(true, true);
     try {
       harness.finishRestore();
@@ -417,9 +520,11 @@ class LeelazExclusiveRemoteGtpSessionTest {
             "stop",
             "boardsize",
             "komi",
+            "kata-get-rules",
             "kata-set-rules",
             "clear_board",
             "play",
+            "set_position",
             "kata-analyze"));
     setCapabilityDiscoveryComplete(engine, true);
     return engine;
@@ -435,9 +540,11 @@ class LeelazExclusiveRemoteGtpSessionTest {
             "stop",
             "boardsize",
             "komi",
+            "kata-get-rules",
             "kata-set-rules",
             "clear_board",
             "play",
+            "set_position",
             "kata-analyze"));
     setCapabilityDiscoveryComplete(engine, true);
     return engine;
@@ -474,8 +581,7 @@ class LeelazExclusiveRemoteGtpSessionTest {
     Field sessionField = Leelaz.class.getDeclaredField("foregroundRestoreSession");
     sessionField.setAccessible(true);
     Object session = sessionField.get(engine);
-    Method method =
-        Leelaz.class.getDeclaredMethod("completeForegroundRestore", session.getClass());
+    Method method = Leelaz.class.getDeclaredMethod("completeForegroundRestore", session.getClass());
     method.setAccessible(true);
     method.invoke(engine, session);
   }
@@ -658,5 +764,4 @@ class LeelazExclusiveRemoteGtpSessionTest {
     @Override
     public void addLine(String line) {}
   }
-
 }

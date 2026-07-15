@@ -7517,8 +7517,7 @@ public class LizzieFrame extends JFrame {
   }
 
   public void genmove() {
-    Lizzie.leelaz.isInputCommand = true;
-    Lizzie.leelaz.genmove(Lizzie.board.getHistory().isBlacksTurn() ? "B" : "W");
+    Lizzie.leelaz.genmove(Lizzie.board.getHistory().isBlacksTurn() ? "B" : "W", true);
   }
 
   public boolean processSubOnMouseMoved(int x, int y) {
