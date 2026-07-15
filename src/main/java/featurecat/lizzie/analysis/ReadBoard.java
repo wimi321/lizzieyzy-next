@@ -808,17 +808,6 @@ public class ReadBoard {
     if (line.startsWith("play")) {
       String[] params = line.trim().split(">");
       Stone autoPlayColor = autoPlayColorFromPlayParams(params);
-      clearFailedLocalMoveStateIfAutoPlaySideChanged(autoPlayColor);
-      if (hasFailedLocalMoveStateToPreserve()) {
-        localMoveSyncDebug(
-            "play line preserves failed local move state autoPlayColor="
-                + autoPlayColor
-                + " "
-                + pendingLocalMoveState());
-      } else {
-        clearFailedLocalMoveSuppression();
-        clearFailedLocalMoveRecovery();
-      }
       if (params.length == 3) {
         String[] playParams = params[2].trim().split(" ");
         if (playParams.length < 3) {
@@ -828,19 +817,34 @@ public class ReadBoard {
         int firstPlayouts = Integer.parseInt(playParams[2]);
         int time = Integer.parseInt(playParams[0]);
         boolean useGma = isReadBoardGmaPlayMode(playParams);
-        if (useGma
-            && Lizzie.leelaz != null
-            && Lizzie.leelaz.hasExclusiveGtpWorkInProgress()) {
-          Utils.showMsg(
-              Lizzie.resourceBundle.getString(
-                  "AnalysisSettings.reuseStatus.existing_lease"));
+        Leelaz currentForegroundEngine = useGma ? Lizzie.leelaz : null;
+        if (currentForegroundEngine != null
+            && !currentForegroundEngine.beginExclusiveGtpLifecycleTransition()) {
+          showForegroundEngineLeaseConflict();
           return;
         }
+        try {
+          clearFailedLocalMoveStateIfAutoPlaySideChanged(autoPlayColor);
+          if (hasFailedLocalMoveStateToPreserve()) {
+            localMoveSyncDebug(
+                "play line preserves failed local move state autoPlayColor="
+                    + autoPlayColor
+                    + " "
+                    + pendingLocalMoveState());
+          } else {
+            clearFailedLocalMoveSuppression();
+            clearFailedLocalMoveRecovery();
+          }
         readBoardGmaAutoPlayActive = useGma;
         readBoardGmaAutoPlayColor = autoPlayColor;
         readBoardGmaTimeSeconds = Math.max(0, time);
         readBoardGmaMaxVisits = Math.max(0, playouts);
         readBoardGmaAwaitingSyncedBoard = useGma;
+        } finally {
+          if (currentForegroundEngine != null) {
+            currentForegroundEngine.endExclusiveGtpLifecycleTransition();
+          }
+        }
         if (!useGma) {
           readBoardGmaAwaitingSyncedBoard = false;
           invalidateReadBoardGmaPhysicalRequestIfPending("play-mode-switch");
@@ -1027,6 +1031,14 @@ public class ReadBoard {
       restoreFloatBoardAfterPlaceResult();
       localMoveSyncDebug("readboard line placeComplete after " + pendingLocalMoveState());
     }
+  }
+
+  void showForegroundEngineLeaseConflict() {
+    SwingUtilities.invokeLater(
+        () ->
+            Utils.showMsg(
+                Lizzie.resourceBundle.getString(
+                    "AnalysisSettings.reuseStatus.existing_lease")));
   }
 
   private static boolean isPlacementFailedLine(String line) {

@@ -408,7 +408,7 @@ public class AnalysisEngine {
     if (trimmed.isEmpty()) {
       if (remoteGtpAnalyzeResponseStarted) {
         requestDispatchFailed = true;
-        finishAbortedAnalysis();
+        finishFailedRequestDispatch(!silentProgress);
         return true;
       }
       return false;
@@ -512,7 +512,7 @@ public class AnalysisEngine {
     } else {
       remoteGtpWaitingForStopAck = false;
       requestDispatchFailed = true;
-      finishAbortedAnalysis();
+      finishFailedRequestDispatch(!silentProgress);
     }
   }
 
@@ -584,14 +584,16 @@ public class AnalysisEngine {
     remoteGtpStopAckReceived = false;
     if (!commitRemoteGtpStoppingResult()) {
       requestDispatchFailed = true;
-      finishAbortedAnalysis();
+      finishFailedRequestDispatch(!silentProgress);
       return;
     }
     if (resultCount == analyzeMap.size()) {
       setResult();
       return;
     }
-    startNextRemoteGtpJob();
+    if (!startNextRemoteGtpJob()) {
+      finishFailedRequestDispatch(!silentProgress);
+    }
   }
 
   private boolean commitRemoteGtpStoppingResult() {
@@ -615,7 +617,8 @@ public class AnalysisEngine {
     }
     resultCount++;
     Lizzie.frame.requestProblemListRefresh();
-    if (waitFrame != null) {
+    if (waitFrame != null
+        && (sharedForegroundEngine == null || resultCount < analyzeMap.size())) {
       waitFrame.setProgress(resultCount, analyzeMap.size());
     } else if (silentProgress && shouldRefreshSilentProgress(resultCount, analyzeMap.size())) {
       Lizzie.board.setMovelistAll();
@@ -664,7 +667,7 @@ public class AnalysisEngine {
                   finishRemoteGtpJobIfComplete();
                 } else {
                   requestDispatchFailed = true;
-                  finishAbortedAnalysis();
+                  finishFailedRequestDispatch(!silentProgress);
                 }
               }
             },
@@ -724,23 +727,41 @@ public class AnalysisEngine {
       Lizzie.frame.requestProblemListRefresh();
       boolean shouldKeepAlive = isPreLoad || keepAliveAfterCurrentRequest;
       keepAliveAfterCurrentRequest = false;
-      if (Lizzie.config.analysisAutoQuit && !Lizzie.frame.isBatchAna && !shouldKeepAlive) {
+      if (Lizzie.config.analysisAutoQuit
+          && !Lizzie.frame.isBatchAna
+          && !shouldKeepAlive
+          && sharedForegroundEngine == null) {
         normalQuit();
       }
     } finally {
       if (Lizzie.config.analysisAlwaysOverride)
         Lizzie.config.enableLizzieCache = oriEnableLizzieCache;
     }
-    releaseSharedForegroundLease();
-    if (shouldRePonder && !Lizzie.leelaz.isPondering()) Lizzie.leelaz.togglePonder();
+    if (sharedForegroundEngine == null && shouldRePonder && !Lizzie.leelaz.isPondering())
+      Lizzie.leelaz.togglePonder();
     Lizzie.frame.renderVarTree(0, 0, false, false);
+    Runnable finishSuccessfulRequest =
+        () -> {
+          if (sharedForegroundEngine != null && waitFrame != null) {
+            waitFrame.setProgress(resultCount, analyzeMap.size());
+          }
     runCompletionCallback();
+        };
+    if (!releaseSharedForegroundLease(
+        finishSuccessfulRequest, this::finishSharedForegroundRestoreFailure)) {
+      finishSuccessfulRequest.run();
+    }
   }
 
   public void normalQuit() {
     // TODO Auto-generated method stub
     isNormalEnd = true;
+    if (sharedForegroundEngine != null) {
+      requestDispatchFailed = true;
+      finishFailedRequestDispatch(false);
+    } else {
     releaseSharedForegroundLease();
+    }
     if (this.useJavaSSH) {
       if (this.javaSSH != null) this.javaSSH.close();
     } else if (this.useRemoteCompute) {
@@ -898,7 +919,20 @@ public class AnalysisEngine {
   }
 
   private void finishFailedRequestDispatch(boolean showProgressDialog) {
+    releaseSharedForegroundLease();
     analyzeMap.clear();
+    remoteGtpQueue().clear();
+    remoteGtpActiveJob = null;
+    remoteGtpWaitingForStopAck = false;
+    remoteGtpStopSent = false;
+    remoteGtpExpectedStopCommandId = 0;
+    remoteGtpExpectedAnalyzeCommandId = 0;
+    remoteGtpAnalyzeResponseStarted = false;
+    remoteGtpAnalyzeCompletionReceived = false;
+    remoteGtpStopAckReceived = false;
+    remoteGtpStoppingJob = null;
+    remoteGtpStoppingMoves = null;
+    remoteGtpStoppingRootInfo = null;
     resultCount = 0;
     completionCallback = null;
     requestDispatchFailed = false;
@@ -909,7 +943,10 @@ public class AnalysisEngine {
           () -> {
             if (waitFrame != null) waitFrame.setVisible(false);
             if (showProgressDialog) {
-              if (sharedForegroundEngine != null && foregroundLeaseAvailability != null) {
+              if (sharedForegroundEngine != null
+                  && foregroundLeaseAvailability != null
+                  && foregroundLeaseAvailability
+                      != Leelaz.ExclusiveGtpLeaseAvailability.AVAILABLE) {
                 Utils.showMsg(
                     resourceBundle.getString(
                         "AnalysisSettings.reuseStatus."
@@ -1125,7 +1162,7 @@ public class AnalysisEngine {
                 sharedForegroundLeaseActive = true;
                 if (!startNextRemoteGtpJob()) {
                   requestDispatchFailed = true;
-                  finishAbortedAnalysis();
+                  finishFailedRequestDispatch(!silentProgress);
                 }
               }
             },
@@ -1138,7 +1175,8 @@ public class AnalysisEngine {
                 sharedForegroundLeaseActive = false;
                 sharedForegroundLeaseOwned = false;
                 sharedForegroundLeaseOwner = null;
-                finishAbortedAnalysis();
+                requestDispatchFailed = true;
+                finishFailedRequestDispatch(!silentProgress);
               }
             });
     foregroundLeaseAvailability = availability;
@@ -1153,6 +1191,15 @@ public class AnalysisEngine {
   }
 
   private synchronized void releaseSharedForegroundLease() {
+    releaseSharedForegroundLease(null);
+  }
+
+  private synchronized boolean releaseSharedForegroundLease(Runnable afterRestore) {
+    return releaseSharedForegroundLease(afterRestore, null);
+  }
+
+  private synchronized boolean releaseSharedForegroundLease(
+      Runnable afterRestore, Runnable afterRestoreFailure) {
     Leelaz engine = sharedForegroundEngine;
     boolean owned = sharedForegroundLeaseOwned;
     Object leaseOwner = sharedForegroundLeaseOwner;
@@ -1161,8 +1208,14 @@ public class AnalysisEngine {
     sharedForegroundLeaseActive = false;
     sharedForegroundLeaseOwner = null;
     if (engine != null && owned && leaseOwner != null) {
-      engine.endForegroundAnalysisLease(leaseOwner);
+      return engine.endForegroundAnalysisLease(leaseOwner, afterRestore, afterRestoreFailure);
     }
+    return false;
+  }
+
+  private synchronized void finishSharedForegroundRestoreFailure() {
+    requestDispatchFailed = true;
+    finishFailedRequestDispatch(!silentProgress);
   }
 
   private List<String> buildRemoteGtpSetupCommands(BoardHistoryNode analyzeNode) {
@@ -1464,6 +1517,10 @@ public class AnalysisEngine {
     return useRemoteCompute
         == RemoteComputeConfig.isRemoteComputeEngineCommand(
             resolveConfiguredAnalysisEngineCommand(true));
+  }
+
+  public boolean usesSharedForegroundEngine() {
+    return sharedForegroundEngine != null;
   }
 
   public void shutdown() {

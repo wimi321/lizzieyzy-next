@@ -799,6 +799,11 @@ public class Utils {
   }
 
   public static void updateAnalysisEngineRemoteEngineData(RemoteEngineData remoteEngineData) {
+    updateAnalysisEngineRemoteEngineData(Lizzie.config.leelazConfig, remoteEngineData);
+  }
+
+  public static void updateAnalysisEngineRemoteEngineData(
+      JSONObject targetLeelazConfig, RemoteEngineData remoteEngineData) {
     JSONObject remoteEngineInfo = new JSONObject();
     remoteEngineInfo.put("useJavaSSH", remoteEngineData.useJavaSSH);
     remoteEngineInfo.put("ip", remoteEngineData.ip);
@@ -807,7 +812,7 @@ public class Utils {
     remoteEngineInfo.put("password", remoteEngineData.password);
     remoteEngineInfo.put("useKeyGen", remoteEngineData.useKeyGen);
     remoteEngineInfo.put("keyGenPath", remoteEngineData.keyGenPath);
-    Lizzie.config.leelazConfig.put("analysis-engine-ssh-info", remoteEngineInfo);
+    targetLeelazConfig.put("analysis-engine-ssh-info", remoteEngineInfo);
   }
 
   public static ArrayList<EngineData> getEngineData() {

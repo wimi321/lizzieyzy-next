@@ -9,7 +9,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import featurecat.lizzie.Config;
 import featurecat.lizzie.Lizzie;
+import featurecat.lizzie.gui.HumanSlGameController;
 import featurecat.lizzie.gui.LizzieFrame;
+import featurecat.lizzie.gui.WaitForAnalysis;
 import featurecat.lizzie.rules.Board;
 import featurecat.lizzie.rules.BoardData;
 import featurecat.lizzie.rules.BoardHistoryList;
@@ -18,17 +20,20 @@ import featurecat.lizzie.rules.Movelist;
 import featurecat.lizzie.rules.SGFParser;
 import featurecat.lizzie.rules.Stone;
 import featurecat.lizzie.rules.Zobrist;
-import java.io.IOException;
 import java.io.BufferedOutputStream;
 import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.OutputStream;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.ResourceBundle;
 import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BooleanSupplier;
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -66,6 +71,296 @@ class AnalysisEngineRequestTest {
       assertNull(engine.process);
       assertEquals(
           Leelaz.ExclusiveGtpLeaseAvailability.NOT_KATAGO,
+          engine.getForegroundLeaseAvailability());
+    }
+  }
+
+  @Test
+  void reuseModeBindsTheForegroundEngineAgainForEachAnalysisTask() throws Exception {
+    try (TestEnvironment env = TestEnvironment.open()) {
+      Lizzie.config.analysisReuseCurrentEngine = true;
+      Leelaz firstForeground = reusableForegroundEngine(true);
+      Leelaz secondForeground = reusableForegroundEngine(true);
+      Lizzie.leelaz = firstForeground;
+      AnalysisEngine firstTask = new AnalysisEngine(false);
+
+      Lizzie.leelaz = secondForeground;
+      AnalysisEngine secondTask = new AnalysisEngine(false);
+
+      assertFalse(firstTask.matchesCurrentAnalysisBackend());
+      assertTrue(secondTask.matchesCurrentAnalysisBackend());
+      assertNull(secondTask.process);
+    }
+  }
+
+  @Test
+  void reuseModeReportsMissingEngineReadinessCapabilitiesAndPlayMode() throws Exception {
+    try (TestEnvironment env = TestEnvironment.open()) {
+      Lizzie.config.analysisReuseCurrentEngine = true;
+      Lizzie.leelaz = null;
+      assertEquals(
+          Leelaz.ExclusiveGtpLeaseAvailability.NO_FOREGROUND_ENGINE,
+          new AnalysisEngine(false).getForegroundLeaseAvailability());
+
+      Leelaz foreground = reusableForegroundEngine(true);
+      Lizzie.leelaz = foreground;
+      setField(Leelaz.class, foreground, "endGetCommandList", false);
+      assertEquals(
+          Leelaz.ExclusiveGtpLeaseAvailability.ENGINE_NOT_READY,
+          new AnalysisEngine(false).getForegroundLeaseAvailability());
+
+      setField(Leelaz.class, foreground, "endGetCommandList", true);
+      foreground.commandLists.remove("kata-analyze");
+      assertEquals(
+          Leelaz.ExclusiveGtpLeaseAvailability.MISSING_CAPABILITY,
+          new AnalysisEngine(false).getForegroundLeaseAvailability());
+
+      foreground.commandLists.add("kata-analyze");
+      Lizzie.frame.isPlayingAgainstLeelaz = true;
+      assertEquals(
+          Leelaz.ExclusiveGtpLeaseAvailability.PLAY_MODE,
+          new AnalysisEngine(false).getForegroundLeaseAvailability());
+    }
+  }
+
+  @Test
+  void reuseModeAllowsPonderingButRejectsGenmoveWithoutDedicatedFallback() throws Exception {
+    try (TestEnvironment env = TestEnvironment.open()) {
+      Lizzie.config.analysisReuseCurrentEngine = true;
+      Leelaz foreground = reusableForegroundEngine(true);
+      Lizzie.leelaz = foreground;
+      foreground.Pondering();
+
+      AnalysisEngine ponderingTask = new AnalysisEngine(false);
+      assertTrue(ponderingTask.isLoaded());
+
+      foreground.isThinking = true;
+      AnalysisEngine genmoveTask = new AnalysisEngine(false);
+      assertFalse(genmoveTask.isLoaded());
+      assertNull(genmoveTask.process);
+      assertEquals(
+          Leelaz.ExclusiveGtpLeaseAvailability.GENMOVE,
+          genmoveTask.getForegroundLeaseAvailability());
+    }
+  }
+
+  @Test
+  void reuseModeRejectsEngineGamePreparationAndExistingLease() throws Exception {
+    try (TestEnvironment env = TestEnvironment.open()) {
+      boolean previousPreEngineGame = EngineManager.isPreEngineGame;
+      Lizzie.config.analysisReuseCurrentEngine = true;
+      Leelaz foreground = reusableForegroundEngine(true);
+      Lizzie.leelaz = foreground;
+      try {
+        EngineManager.isPreEngineGame = true;
+        AnalysisEngine gameTask = new AnalysisEngine(false);
+        assertEquals(
+            Leelaz.ExclusiveGtpLeaseAvailability.ENGINE_GAME,
+            gameTask.getForegroundLeaseAvailability());
+
+        EngineManager.isPreEngineGame = false;
+        assertEquals(
+            Leelaz.ExclusiveGtpLeaseAvailability.AVAILABLE,
+            foreground.beginExclusiveGtpSession(line -> {}, () -> {}, () -> {}));
+        AnalysisEngine leasedTask = new AnalysisEngine(false);
+        assertFalse(leasedTask.isLoaded());
+        assertNull(leasedTask.process);
+        assertEquals(
+            Leelaz.ExclusiveGtpLeaseAvailability.EXISTING_LEASE,
+            leasedTask.getForegroundLeaseAvailability());
+      } finally {
+        foreground.endExclusiveGtpSession();
+        EngineManager.isPreEngineGame = previousPreEngineGame;
+      }
+    }
+  }
+
+  @Test
+  void reuseModeRejectsHumanSlAndContributionModes() throws Exception {
+    try (TestEnvironment env = TestEnvironment.open()) {
+      Lizzie.config.analysisReuseCurrentEngine = true;
+      Leelaz foreground = reusableForegroundEngine(true);
+      Lizzie.leelaz = foreground;
+      Lizzie.frame.humanSlGame = allocate(HumanSlGameController.class);
+
+      assertEquals(
+          Leelaz.ExclusiveGtpLeaseAvailability.HUMAN_SL_GAME,
+          new AnalysisEngine(false).getForegroundLeaseAvailability());
+
+      Lizzie.frame.humanSlGame = null;
+      Lizzie.frame.isContributing = true;
+      assertEquals(
+          Leelaz.ExclusiveGtpLeaseAvailability.APPLICATION_EXCLUSIVE_MODE,
+          new AnalysisEngine(false).getForegroundLeaseAvailability());
+    }
+  }
+
+  @Test
+  void activeFlashLeaseRejectsContributionEntryWithoutSideEffects() throws Exception {
+    try (TestEnvironment env = TestEnvironment.open()) {
+      Leelaz foreground = reusableForegroundEngine(true);
+      Lizzie.leelaz = foreground;
+      assertEquals(
+          Leelaz.ExclusiveGtpLeaseAvailability.AVAILABLE,
+          foreground.beginExclusiveGtpSession(line -> {}, () -> {}, () -> {}));
+      TrackingLizzieFrame frame = (TrackingLizzieFrame) Lizzie.frame;
+
+      frame.startContributeEngine();
+
+      assertEquals(1, frame.foregroundReservationConflictCount);
+      assertFalse(frame.isContributing);
+      assertNull(frame.contributeEngine);
+      assertTrue(foreground.hasExclusiveGtpLease());
+      foreground.endExclusiveGtpSession();
+    }
+  }
+
+  @Test
+  void sharedBatchCompletionWaitsForForegroundRestoreBeforeFinalProgressAndCallback()
+      throws Exception {
+    try (TestEnvironment env = TestEnvironment.open()) {
+      boardWithHistory(new BoardHistoryList(BoardData.empty(BOARD_SIZE, BOARD_SIZE)));
+      TrackingAnalysisEngine engine = TrackingAnalysisEngine.create();
+      DeferredRestoreLeelaz foreground = new DeferredRestoreLeelaz();
+      TrackingWaitForAnalysis waitFrame = allocate(TrackingWaitForAnalysis.class);
+      AtomicInteger completions = new AtomicInteger();
+      setField(AnalysisEngine.class, engine, "sharedForegroundEngine", foreground);
+      setField(AnalysisEngine.class, engine, "sharedForegroundLeaseOwned", true);
+      setField(AnalysisEngine.class, engine, "sharedForegroundLeaseOwner", new Object());
+      setField(AnalysisEngine.class, engine, "waitFrame", waitFrame);
+      setIntField(AnalysisEngine.class, engine, "resultCount", 1);
+      setField(
+          AnalysisEngine.class,
+          engine,
+          "analyzeMap",
+          new java.util.HashMap<Integer, BoardHistoryNode>(
+              java.util.Map.of(1, Lizzie.board.getHistory().getCurrentHistoryNode())));
+      engine.setCompletionCallback(completions::incrementAndGet);
+
+      invokeAnalysisEngineSetResult(engine);
+
+      assertEquals(0, waitFrame.progressCalls);
+      assertEquals(0, completions.get());
+
+      foreground.completeRestore();
+      javax.swing.SwingUtilities.invokeAndWait(() -> {});
+
+      assertEquals(1, waitFrame.progressCalls);
+      assertEquals(1, waitFrame.currentMove);
+      assertEquals(1, waitFrame.totalMoves);
+      assertEquals(1, completions.get());
+    }
+  }
+
+  @Test
+  void sharedBatchRestoreFailureDoesNotRunFinalProgressOrSuccessCallback() throws Exception {
+    try (TestEnvironment env = TestEnvironment.open()) {
+      boardWithHistory(new BoardHistoryList(BoardData.empty(BOARD_SIZE, BOARD_SIZE)));
+      TrackingAnalysisEngine engine = TrackingAnalysisEngine.create();
+      setField(AnalysisEngine.class, engine, "silentProgress", true);
+      DeferredRestoreLeelaz foreground = new DeferredRestoreLeelaz();
+      TrackingWaitForAnalysis waitFrame = allocate(TrackingWaitForAnalysis.class);
+      AtomicInteger completions = new AtomicInteger();
+      Lizzie.frame.isBatchAnalysisMode = true;
+      setField(AnalysisEngine.class, engine, "sharedForegroundEngine", foreground);
+      setField(AnalysisEngine.class, engine, "sharedForegroundLeaseOwned", true);
+      setField(AnalysisEngine.class, engine, "sharedForegroundLeaseOwner", new Object());
+      setField(AnalysisEngine.class, engine, "waitFrame", waitFrame);
+      setIntField(AnalysisEngine.class, engine, "resultCount", 1);
+      setField(
+          AnalysisEngine.class,
+          engine,
+          "analyzeMap",
+          new java.util.HashMap<Integer, BoardHistoryNode>(
+              java.util.Map.of(1, Lizzie.board.getHistory().getCurrentHistoryNode())));
+      engine.setCompletionCallback(completions::incrementAndGet);
+
+      invokeAnalysisEngineSetResult(engine);
+      foreground.failRestore();
+      javax.swing.SwingUtilities.invokeAndWait(() -> {});
+
+      assertEquals(0, waitFrame.progressCalls);
+      assertEquals(0, completions.get());
+      assertFalse(Lizzie.frame.isBatchAnalysisMode);
+    }
+  }
+
+  @Test
+  void foregroundLeaseStopFailureEndsRequestWithoutRunningSuccessContinuation() throws Exception {
+    try (TestEnvironment env = TestEnvironment.open()) {
+      BoardHistoryList history = new BoardHistoryList(BoardData.empty(BOARD_SIZE, BOARD_SIZE));
+      history.add(
+          moveNode(stones(placement(0, 0, Stone.BLACK)), new int[] {0, 0}, Stone.BLACK, false, 1));
+      boardWithHistory(history);
+      Leelaz foreground = reusableForegroundEngine(true);
+      Lizzie.leelaz = foreground;
+      Lizzie.config.analysisReuseCurrentEngine = true;
+      Lizzie.frame.isBatchAnalysisMode = true;
+      AtomicInteger successfulContinuations = new AtomicInteger();
+      AnalysisEngine engine = new AnalysisEngine(false);
+      setField(AnalysisEngine.class, engine, "silentProgress", true);
+      engine.setCompletionCallback(successfulContinuations::incrementAndGet);
+
+      engine.startRequest(1, -1, false);
+      assertTrue(engine.isAnalysisInProgress());
+      Lizzie.leelaz = null;
+      int stopCommandId = getExclusiveStopCommandId(foreground);
+      assertTrue(dispatchExclusiveLine(foreground, "?" + stopCommandId + " cannot stop"));
+
+      assertFalse(engine.isAnalysisInProgress());
+      assertEquals(0, successfulContinuations.get());
+      assertFalse(Lizzie.frame.isBatchAnalysisMode);
+      assertEquals(
+          Leelaz.ExclusiveGtpLeaseAvailability.AVAILABLE,
+          engine.getForegroundLeaseAvailability());
+    }
+  }
+
+  @Test
+  void foregroundLeaseSetupSendFailureEndsRequestWithoutRunningSuccessContinuation()
+      throws Exception {
+    try (TestEnvironment env = TestEnvironment.open()) {
+      BoardHistoryList history = new BoardHistoryList(BoardData.empty(BOARD_SIZE, BOARD_SIZE));
+      history.add(
+          moveNode(stones(placement(0, 0, Stone.BLACK)), new int[] {0, 0}, Stone.BLACK, false, 1));
+      boardWithHistory(history);
+      Leelaz foreground = reusableForegroundEngine(true);
+      Lizzie.leelaz = foreground;
+      Lizzie.config.analysisReuseCurrentEngine = true;
+      Lizzie.frame.isBatchAnalysisMode = true;
+      AtomicInteger successfulContinuations = new AtomicInteger();
+      AnalysisEngine engine = new AnalysisEngine(false);
+      setField(AnalysisEngine.class, engine, "silentProgress", true);
+      engine.setCompletionCallback(successfulContinuations::incrementAndGet);
+
+      engine.startRequest(1, -1, false);
+      int stopCommandId = getExclusiveStopCommandId(foreground);
+      setField(
+          Leelaz.class,
+          foreground,
+          "outputStream",
+          new BufferedOutputStream(
+              new OutputStream() {
+                @Override
+                public void write(int value) throws IOException {
+                  throw new IOException("simulated setup send failure");
+                }
+              }));
+      Lizzie.leelaz = null;
+      ResourceBundle previousResourceBundle = Lizzie.resourceBundle;
+      Lizzie.resourceBundle = null;
+      try {
+        assertFalse(dispatchExclusiveLine(foreground, "=" + stopCommandId));
+        processCommandResponse(foreground, "=" + stopCommandId);
+      } finally {
+        Lizzie.resourceBundle = previousResourceBundle;
+      }
+
+      assertFalse(engine.isAnalysisInProgress());
+      assertEquals(0, successfulContinuations.get());
+      assertFalse(Lizzie.frame.isBatchAnalysisMode);
+      assertEquals(
+          Leelaz.ExclusiveGtpLeaseAvailability.AVAILABLE,
           engine.getForegroundLeaseAvailability());
     }
   }
@@ -676,6 +971,44 @@ class AnalysisEngineRequestTest {
       assertFalse(
           engine.isAnalysisInProgress(),
           "a missing stop acknowledgement must not strand later queued nodes.");
+      waitForMovelistRefreshThreads();
+    }
+  }
+
+  @Test
+  void queuedRemoteGtpSetupSendFailureUsesDispatchFailureCleanup() throws Exception {
+    try (TestEnvironment env = TestEnvironment.open()) {
+      BoardHistoryList history = new BoardHistoryList(BoardData.empty(BOARD_SIZE, BOARD_SIZE));
+      history.add(
+          moveNode(stones(placement(0, 0, Stone.BLACK)), new int[] {0, 0}, Stone.BLACK, false, 1));
+      history.add(
+          moveNode(
+              stones(placement(0, 0, Stone.BLACK), placement(1, 0, Stone.WHITE)),
+              new int[] {1, 0},
+              Stone.WHITE,
+              true,
+              2));
+      boardWithHistory(history);
+      TrackingAnalysisEngine engine = TrackingAnalysisEngine.create();
+      setField(AnalysisEngine.class, engine, "useRemoteCompute", true);
+      Lizzie.frame.isBatchAnalysisMode = true;
+      AtomicInteger successfulContinuations = new AtomicInteger();
+      engine.setCompletionCallback(successfulContinuations::incrementAndGet);
+
+      engine.startRequest(-1, -1, false);
+      int analyzeCommandId =
+          assertNumberedAnalyzeCommand(
+              lastCommand(engine.sentCommands), "kata-analyze W 1");
+      invokeAnalysisEngineParseLine(engine, "=" + analyzeCommandId);
+      invokeAnalysisEngineParseLine(engine, remoteGtpInfoLine(64, 62.0, 1.5));
+      int stopCommandId = assertNumberedStopCommand(lastCommand(engine.sentCommands));
+      invokeAnalysisEngineParseLine(engine, "");
+      engine.failSends = true;
+      invokeAnalysisEngineParseLine(engine, "=" + stopCommandId);
+
+      assertFalse(engine.isAnalysisInProgress());
+      assertEquals(0, successfulContinuations.get());
+      assertFalse(Lizzie.frame.isBatchAnalysisMode);
       waitForMovelistRefreshThreads();
     }
   }
@@ -1472,11 +1805,32 @@ class AnalysisEngineRequestTest {
     field.set(target, value);
   }
 
+  private static boolean dispatchExclusiveLine(Leelaz engine, String line) throws Exception {
+    Method method = Leelaz.class.getDeclaredMethod("dispatchExclusiveGtpLine", String.class);
+    method.setAccessible(true);
+    return (boolean) method.invoke(engine, line);
+  }
+
+  private static void processCommandResponse(Leelaz engine, String line) throws Exception {
+    Method method = Leelaz.class.getDeclaredMethod("processCommandResponseLine", String.class);
+    method.setAccessible(true);
+    method.invoke(engine, line);
+  }
+
   private static void setIntField(Class<?> owner, Object target, String name, int value)
       throws Exception {
     Field field = owner.getDeclaredField(name);
     field.setAccessible(true);
     field.setInt(target, value);
+  }
+
+  private static int getExclusiveStopCommandId(Leelaz engine) throws Exception {
+    Field sessionField = Leelaz.class.getDeclaredField("exclusiveGtpSession");
+    sessionField.setAccessible(true);
+    Object session = sessionField.get(engine);
+    Field stopCommandIdField = session.getClass().getDeclaredField("stopCommandId");
+    stopCommandIdField.setAccessible(true);
+    return stopCommandIdField.getInt(session);
   }
 
   private static void invokeStopBusyQuickAnalysisEngineBeforeLoadedKifuAnalysis(LizzieFrame frame)
@@ -1546,6 +1900,12 @@ class AnalysisEngineRequestTest {
     Method method = AnalysisEngine.class.getDeclaredMethod("parseLine", String.class);
     method.setAccessible(true);
     method.invoke(engine, line);
+  }
+
+  private static void invokeAnalysisEngineSetResult(AnalysisEngine engine) throws Exception {
+    Method method = AnalysisEngine.class.getDeclaredMethod("setResult");
+    method.setAccessible(true);
+    method.invoke(engine);
   }
 
   private static int countCommand(List<String> commands, String expected) {
@@ -1702,6 +2062,7 @@ class AnalysisEngineRequestTest {
 
   private static final class TrackingLizzieFrame extends LizzieFrame {
     private int flashAutoAnaSaveAndLoadCalls;
+    private int foregroundReservationConflictCount;
 
     private TrackingLizzieFrame() {}
 
@@ -1715,6 +2076,59 @@ class AnalysisEngineRequestTest {
 
     @Override
     public void clearKataEstimate() {}
+
+    @Override
+    protected void showForegroundEngineModeReservationConflict() {
+      foregroundReservationConflictCount++;
+    }
+  }
+
+  private static final class DeferredRestoreLeelaz extends Leelaz {
+    private Runnable afterRestore;
+    private Runnable afterRestoreFailure;
+
+    private DeferredRestoreLeelaz() throws IOException {
+      super("");
+    }
+
+    @Override
+    public boolean endForegroundAnalysisLease(
+        Object owner, Runnable completion, Runnable failure) {
+      afterRestore = completion;
+      afterRestoreFailure = failure;
+      return true;
+    }
+
+    private void completeRestore() {
+      Runnable completion = afterRestore;
+      afterRestore = null;
+      completion.run();
+    }
+
+    private void failRestore() {
+      Runnable failure = afterRestoreFailure;
+      afterRestore = null;
+      afterRestoreFailure = null;
+      failure.run();
+    }
+  }
+
+  private static final class TrackingWaitForAnalysis extends WaitForAnalysis {
+    private int progressCalls;
+    private int currentMove;
+    private int totalMoves;
+
+    private TrackingWaitForAnalysis() {}
+
+    @Override
+    public void setProgress(int curMove, int allMove) {
+      progressCalls++;
+      currentMove = curMove;
+      totalMoves = allMove;
+    }
+
+    @Override
+    public void setVisible(boolean visible) {}
   }
 
   private static final class TrackingAnalysisEngine extends AnalysisEngine {

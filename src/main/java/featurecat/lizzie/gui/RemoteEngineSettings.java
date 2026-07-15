@@ -13,6 +13,7 @@ import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.io.File;
 import java.io.IOException;
+import java.util.function.Consumer;
 import javax.imageio.ImageIO;
 import javax.swing.JButton;
 import javax.swing.JDialog;
@@ -35,11 +36,28 @@ public class RemoteEngineSettings extends JDialog {
   private JDialog thisDialog = this;
   private boolean isAnalysisEngine;
   private boolean isContributeEngine;
+  private RemoteEngineData initialAnalysisEngineData;
+  private Consumer<RemoteEngineData> analysisEngineDataConsumer;
 
   public RemoteEngineSettings(JDialog owner, boolean isAnalysisEngine, boolean isContributeEngine) {
     super(owner);
     this.isAnalysisEngine = isAnalysisEngine;
     this.isContributeEngine = isContributeEngine;
+    initialize(owner);
+  }
+
+  public RemoteEngineSettings(
+      JDialog owner,
+      RemoteEngineData initialAnalysisEngineData,
+      Consumer<RemoteEngineData> analysisEngineDataConsumer) {
+    super(owner);
+    this.isAnalysisEngine = true;
+    this.initialAnalysisEngineData = initialAnalysisEngineData;
+    this.analysisEngineDataConsumer = analysisEngineDataConsumer;
+    initialize(owner);
+  }
+
+  private void initialize(JDialog owner) {
     setResizable(false);
     setTitle(Lizzie.resourceBundle.getString("RemoteEngineSettings.title"));
     try {
@@ -78,7 +96,9 @@ public class RemoteEngineSettings extends JDialog {
     chkUseKeyGen =
         new JFontCheckBox(Lizzie.resourceBundle.getString("RemoteEngineSettings.chkUseKeyGen"));
     RemoteEngineData remoteEngineData;
-    if (isAnalysisEngine) {
+    if (initialAnalysisEngineData != null) {
+      remoteEngineData = initialAnalysisEngineData;
+    } else if (isAnalysisEngine) {
       remoteEngineData = Utils.getAnalysisEngineRemoteEngineData();
     } else if (isContributeEngine) {
       remoteEngineData = Utils.getContributeRemoteEngineData();
@@ -185,7 +205,9 @@ public class RemoteEngineSettings extends JDialog {
             remoteEngineData.password = Utils.doEncrypt(new String(txtPassword.getPassword()));
             remoteEngineData.keyGenPath = keyGenPath;
             remoteEngineData.useKeyGen = chkUseKeyGen.isSelected();
-            if (isAnalysisEngine) Utils.saveAnalysisEngineRemoteEngineData(remoteEngineData);
+            if (analysisEngineDataConsumer != null)
+              analysisEngineDataConsumer.accept(remoteEngineData);
+            else if (isAnalysisEngine) Utils.saveAnalysisEngineRemoteEngineData(remoteEngineData);
             else if (isContributeEngine) Utils.saveContributeRemoteEngineData(remoteEngineData);
             else Utils.saveEstimateEngineRemoteEngineData(remoteEngineData);
             setVisible(false);

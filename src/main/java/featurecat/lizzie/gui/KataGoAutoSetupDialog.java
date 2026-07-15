@@ -1895,9 +1895,16 @@ public class KataGoAutoSetupDialog extends JDialog {
       return;
     }
 
+    KataGoRuntimeHelper.BenchmarkPauseResult pauseResult =
+        KataGoRuntimeHelper.pauseCurrentAnalysisForBenchmark();
+    if (!pauseResult.accepted()) {
+      Utils.showMsg(
+          Lizzie.resourceBundle.getString("AnalysisSettings.reuseStatus.existing_lease"), this);
+      return;
+    }
+    final boolean analysisWasPondering = pauseResult.analysisWasPondering();
     final DownloadSession session = new DownloadSession();
     activeDownloadSession = session;
-    final boolean analysisWasPondering = KataGoRuntimeHelper.pauseCurrentAnalysisForBenchmark();
     btnStopDownload.setText(text("AutoSetup.stopBenchmark"));
     setBusy(true, text("AutoSetup.benchmarkPreparing"), 30, 1000);
     Thread worker =

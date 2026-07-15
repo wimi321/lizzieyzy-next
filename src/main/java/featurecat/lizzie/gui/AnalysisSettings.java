@@ -101,9 +101,10 @@ public class AnalysisSettings extends JDialog {
   private JButton btnGenerate;
   private JButton btnSavedEngine;
   private JFontButton btnSetRemoteEngine;
-  private final Context context;
   private String originalEngineCommand = "";
   private boolean engineCommandExplicitlyChanged = false;
+  private RemoteEngineData pendingRemoteEngineData;
+  private final Context context;
 
   public AnalysisSettings(boolean isDuringAnalyze, boolean fromError) {
     this(
@@ -361,8 +362,13 @@ public class AnalysisSettings extends JDialog {
         new ActionListener() {
           @Override
           public void actionPerformed(ActionEvent e) {
+            RemoteEngineData initialData =
+                pendingRemoteEngineData != null
+                    ? pendingRemoteEngineData
+                    : Utils.getAnalysisEngineRemoteEngineData();
             RemoteEngineSettings remoteEngineSettings =
-                new RemoteEngineSettings(dialog, true, false);
+                new RemoteEngineSettings(
+                    dialog, initialData, data -> pendingRemoteEngineData = data);
             remoteEngineSettings.setVisible(true);
           }
         });
@@ -641,7 +647,7 @@ public class AnalysisSettings extends JDialog {
     boolean reuseCurrentEngine = chkReuseCurrentEngine.isSelected();
     String newCommand = engineCmd.getText().trim();
     if (!reuseCurrentEngine && newCommand.isEmpty()) {
-      Utils.showMsg(Lizzie.resourceBundle.getString("AnalysisSettings.commandRequired"));
+      showCommandRequired();
       return false;
     }
     boolean newCommandCustomized =
@@ -659,40 +665,36 @@ public class AnalysisSettings extends JDialog {
     boolean newAnalysisEnginePreLoad = chkPreLoad.isSelected();
     boolean newAnalysisAlwaysOverride = chkAlwaysOverride.isSelected();
     boolean newAnalysisUseCurrentRules = rdoUseCurrentRules.isSelected();
-    RemoteEngineData remoteEngineData = Utils.getAnalysisEngineRemoteEngineData();
+    RemoteEngineData remoteEngineData =
+        pendingRemoteEngineData != null
+            ? pendingRemoteEngineData
+            : Utils.getAnalysisEngineRemoteEngineData();
     remoteEngineData.useJavaSSH = chkUseJavaSSH.isSelected();
 
-    JSONObject previousUiConfig = Lizzie.config.uiConfig;
-    JSONObject previousLeelazConfig = Lizzie.config.leelazConfig;
-    Lizzie.config.uiConfig = new JSONObject(previousUiConfig.toString());
-    Lizzie.config.leelazConfig = new JSONObject(previousLeelazConfig.toString());
-    Utils.updateAnalysisEngineRemoteEngineData(remoteEngineData);
-    Lizzie.config.uiConfig.put(
+    JSONObject candidateUiConfig = new JSONObject(Lizzie.config.uiConfig.toString());
+    JSONObject candidateLeelazConfig = new JSONObject(Lizzie.config.leelazConfig.toString());
+    Utils.updateAnalysisEngineRemoteEngineData(candidateLeelazConfig, remoteEngineData);
+    candidateUiConfig.put(
         "analysis-engine-command-customized", newCommandCustomized);
     if (context == Context.BATCH) {
-      Lizzie.config.uiConfig.put("batch-analysis-playouts", newBatchAnalysisPlayouts);
+      candidateUiConfig.put("batch-analysis-playouts", newBatchAnalysisPlayouts);
     } else {
-      Lizzie.config.uiConfig.put("analysis-max-visits", newAnalysisMaxVisits);
+      candidateUiConfig.put("analysis-max-visits", newAnalysisMaxVisits);
     }
     //    if (Lizzie.config.analysisMaxVisits == 1)
     //      Utils.showMsg(
     //          Lizzie.resourceBundle.getString(
     //              "AnalysisSettings.maxVisits1Hint")); // ("单步计算量最小为2,当前设置为1,将自动调整为2");
-    Lizzie.config.uiConfig.put("analysis-auto-quit", newAnalysisAutoQuit);
-    Lizzie.config.uiConfig.put("analysis-engine-preload", newAnalysisEnginePreLoad);
-    Lizzie.config.uiConfig.put("analysis-reuse-current-engine", reuseCurrentEngine);
-    Lizzie.config.uiConfig.put("analysis-always-override", newAnalysisAlwaysOverride);
-    Lizzie.config.uiConfig.put("analysis-use-current-rules", newAnalysisUseCurrentRules);
-    Lizzie.config.uiConfig.put("analysis-engine-command", newCommand);
+    candidateUiConfig.put("analysis-auto-quit", newAnalysisAutoQuit);
+    candidateUiConfig.put("analysis-engine-preload", newAnalysisEnginePreLoad);
+    candidateUiConfig.put("analysis-reuse-current-engine", reuseCurrentEngine);
+    candidateUiConfig.put("analysis-always-override", newAnalysisAlwaysOverride);
+    candidateUiConfig.put("analysis-use-current-rules", newAnalysisUseCurrentRules);
+    candidateUiConfig.put("analysis-engine-command", newCommand);
     try {
-      Lizzie.config.save();
+      Lizzie.config.saveConfigSections(candidateUiConfig, candidateLeelazConfig);
     } catch (IOException e) {
-      Lizzie.config.uiConfig = previousUiConfig;
-      Lizzie.config.leelazConfig = previousLeelazConfig;
-      Utils.showMsg(
-          Lizzie.resourceBundle.getString("AnalysisSettings.saveFailed")
-              + ": "
-              + e.getLocalizedMessage());
+      showSaveFailure(e);
       return false;
     }
     Lizzie.config.analysisEngineCommand = newCommand;
@@ -712,5 +714,16 @@ public class AnalysisSettings extends JDialog {
       Lizzie.frame.destroyAnalysisEngine();
     }
     return true;
+  }
+
+  void showSaveFailure(IOException error) {
+    Utils.showMsg(
+        Lizzie.resourceBundle.getString("AnalysisSettings.saveFailed")
+            + ": "
+            + error.getLocalizedMessage());
+  }
+
+  void showCommandRequired() {
+    Utils.showMsg(Lizzie.resourceBundle.getString("AnalysisSettings.commandRequired"));
   }
 }

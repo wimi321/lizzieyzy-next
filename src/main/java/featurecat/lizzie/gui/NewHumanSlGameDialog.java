@@ -179,7 +179,11 @@ public final class NewHumanSlGameDialog extends JDialog {
                     () -> {
                       progressDialog.dispose();
                       Utils.showMsg(resourceBundle.getString("HumanSlGame.downloadCompletePrompt"));
-                      if (!startConfiguredGame(downloadedModel)) {
+                      boolean[] started = {false};
+                      boolean reserved =
+                          Lizzie.frame.runWithForegroundEngineModeReservation(
+                              () -> started[0] = startConfiguredGame(downloadedModel));
+                      if (reserved && !started[0]) {
                         restorePondering(wasPondering);
                       }
                       dispose();
@@ -206,6 +210,9 @@ public final class NewHumanSlGameDialog extends JDialog {
     progressDialog.setDownloadSession(downloadSession);
     worker.start();
     progressDialog.setVisible(true);
+    if (cancelled) {
+      restorePondering(wasPondering);
+    }
   }
 
   private void restorePondering(boolean wasPondering) {

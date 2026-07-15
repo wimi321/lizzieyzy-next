@@ -11,6 +11,7 @@ import java.awt.Color;
 import java.awt.Frame;
 import java.awt.Toolkit;
 import java.io.*;
+import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
@@ -2943,10 +2944,31 @@ public class Config {
   }
 
   private void writeConfig(JSONObject config, File file) throws IOException, JSONException {
-    file.createNewFile();
-    try (FileOutputStream fp = new FileOutputStream(file);
+    Path target = file.toPath().toAbsolutePath();
+    Path parent = target.getParent();
+    if (parent == null) {
+      throw new IOException("Config file has no parent directory: " + target);
+    }
+    Path temporary = Files.createTempFile(parent, "." + file.getName(), ".tmp");
+    try (FileOutputStream fp = new FileOutputStream(temporary.toFile());
         OutputStreamWriter writer = new OutputStreamWriter(fp, "utf-8")) {
       writer.write(config.toString(2));
+    } catch (IOException | RuntimeException e) {
+      Files.deleteIfExists(temporary);
+      throw e;
+    }
+    try {
+      try {
+        Files.move(
+            temporary,
+            target,
+            StandardCopyOption.ATOMIC_MOVE,
+            StandardCopyOption.REPLACE_EXISTING);
+      } catch (AtomicMoveNotSupportedException e) {
+        Files.move(temporary, target, StandardCopyOption.REPLACE_EXISTING);
+      }
+    } finally {
+      Files.deleteIfExists(temporary);
     }
   }
 
@@ -3424,6 +3446,17 @@ public class Config {
 
   public void save() throws IOException {
     writeConfig(this.config, new File(configFilename));
+  }
+
+  public void saveConfigSections(JSONObject candidateUi, JSONObject candidateLeelaz)
+      throws IOException {
+    JSONObject candidateRoot = new JSONObject(this.config.toString());
+    candidateRoot.put("ui", new JSONObject(candidateUi.toString()));
+    candidateRoot.put("leelaz", new JSONObject(candidateLeelaz.toString()));
+    writeConfig(candidateRoot, new File(configFilename));
+    this.config = candidateRoot;
+    this.uiConfig = candidateRoot.getJSONObject("ui");
+    this.leelazConfig = candidateRoot.getJSONObject("leelaz");
   }
 
   public void saveTempBoard() throws IOException {
