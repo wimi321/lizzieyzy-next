@@ -188,12 +188,12 @@ public class Leelaz {
   public String recentRulesLine = "";
   public int usingSpecificRules = -1; // 1=中国规则2=中古规则3=日本规则4=TT规则5=其他规则
   public boolean preload = false;
-  public boolean started = false;
-  public boolean isDownWithError = false;
-  public boolean isLoaded = false;
+  public volatile boolean started = false;
+  public volatile boolean isDownWithError = false;
+  public volatile boolean isLoaded = false;
   private volatile long bundledStartupToken = 0L;
   public boolean isCheckingVersion;
-  public boolean isCheckingName;
+  public volatile boolean isCheckingName;
   public String initialCommand;
   private boolean isCheckingPda = false;
   public boolean isKataGoPda = false;
@@ -304,8 +304,8 @@ public class Leelaz {
   // public boolean isReadyForGenmoveGame=false;
   // private boolean isModifying=false;
   // private int ignoreCmdNumber=0;
-  public boolean isTuning = false;
-  public boolean isNormalEnd = false;
+  public volatile boolean isTuning = false;
+  public volatile boolean isNormalEnd = false;
   public boolean canCheckAlive = true;
   public boolean isLeela0110 = false;
   private List<MoveData> leela0110BestMoves;
@@ -1512,7 +1512,6 @@ public class Leelaz {
     StartupCommandAction startupCommandAction = StartupCommandAction.NONE;
     if (isCheckingName) {
       noAnalyze = false;
-      isCheckingName = false;
       isKataGoPda = false;
       pkMoveStartTime = System.currentTimeMillis();
       if (params[1].toLowerCase().startsWith("golaxy")) requireResponseBeforeSend = true;
@@ -1584,6 +1583,7 @@ public class Leelaz {
         isSai = true;
         canAddPlayer = true;
       }
+      isCheckingName = false;
     } else if (isCheckingVersion && !isLeela0110) {
       if (isKatago) {
         String[] ver = params[1].split("\\.");

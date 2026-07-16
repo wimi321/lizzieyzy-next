@@ -11,6 +11,7 @@ import java.lang.reflect.Method;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import org.junit.jupiter.api.Test;
@@ -425,6 +426,177 @@ class EngineManagerLifecycleReservationTest {
     }
   }
 
+  @Test
+  void switchWaitsForPublishedNameCheckAndBoardSynchronizationBeforeCompleting()
+      throws Exception {
+    Leelaz previousEngine = Lizzie.leelaz;
+    Leelaz current = new Leelaz("");
+    ControlledReadinessLeelaz target = unavailableControlledEngine(500L);
+    ControlledReadinessEngineManager manager =
+        new ControlledReadinessEngineManager(List.of(current, target), target, 1000L);
+    try {
+      Lizzie.leelaz = current;
+
+      manager.switchEngine(1, true);
+      assertTrue(target.firstLoadedReadEntered.await(1, TimeUnit.SECONDS));
+      target.isLoaded = true;
+      target.allowFirstLoadedRead.countDown();
+
+      assertTrue(target.secondLoadedReadEntered.await(1, TimeUnit.SECONDS));
+      assertTrue(current.hasExclusiveGtpWorkInProgress());
+      assertTrue(target.hasExclusiveGtpWorkInProgress());
+
+      target.isCheckingName = false;
+      target.allowSecondLoadedRead.countDown();
+      assertTrue(manager.synchronizationStarted.await(1, TimeUnit.SECONDS));
+      assertEquals(1L, manager.completed.getCount());
+      assertTrue(current.hasExclusiveGtpWorkInProgress());
+      assertTrue(target.hasExclusiveGtpWorkInProgress());
+
+      manager.allowSynchronizationToComplete.countDown();
+      assertTrue(manager.completed.await(1, TimeUnit.SECONDS));
+      assertEquals(1, manager.synchronizationCount);
+      assertEquals(0, manager.failureCount);
+      assertFalse(current.hasExclusiveGtpWorkInProgress());
+      assertFalse(target.hasExclusiveGtpWorkInProgress());
+    } finally {
+      target.started = false;
+      target.releaseLoadedReads();
+      manager.allowSynchronizationToComplete.countDown();
+      manager.completed.await(1, TimeUnit.SECONDS);
+      Lizzie.leelaz = previousEngine;
+    }
+  }
+
+  @Test
+  void publishedAbnormalExitFailsWithoutWaitingForTheStartupTimeout() throws Exception {
+    assertPublishedTerminalStateFailsImmediately(
+        target -> target.isDownWithError = true, "abnormal exit");
+  }
+
+  @Test
+  void publishedNormalExitFailsWithoutWaitingForTheStartupTimeout() throws Exception {
+    assertPublishedTerminalStateFailsImmediately(
+        target -> target.isNormalEnd = true, "normal exit");
+  }
+
+  @Test
+  void publishedStoppedStateFailsWithoutWaitingForTheStartupTimeout() throws Exception {
+    assertPublishedTerminalStateFailsImmediately(target -> target.started = false, "stopped");
+  }
+
+  @Test
+  void tuningStateExtendsTheOrdinaryStartupDeadline() throws Exception {
+    Leelaz previousEngine = Lizzie.leelaz;
+    Leelaz current = new Leelaz("");
+    ControlledReadinessLeelaz target = unavailableControlledEngine(1000L);
+    target.isTuning = true;
+    ControlledReadinessEngineManager manager =
+        new ControlledReadinessEngineManager(List.of(current, target), target, 10L);
+    try {
+      Lizzie.leelaz = current;
+
+      manager.switchEngine(1, true);
+      assertTrue(target.firstLoadedReadEntered.await(1, TimeUnit.SECONDS));
+      target.allowFirstLoadedRead.countDown();
+      assertTrue(target.secondLoadedReadEntered.await(1, TimeUnit.SECONDS));
+      assertFalse(manager.completed.await(50, TimeUnit.MILLISECONDS));
+      target.allowSecondLoadedRead.countDown();
+      assertTrue(target.thirdLoadedReadEntered.await(1, TimeUnit.SECONDS));
+
+      target.isLoaded = true;
+      target.isCheckingName = false;
+      target.allowThirdLoadedRead.countDown();
+      assertTrue(manager.synchronizationStarted.await(1, TimeUnit.SECONDS));
+      manager.allowSynchronizationToComplete.countDown();
+      assertTrue(manager.completed.await(1, TimeUnit.SECONDS));
+      assertEquals(1, manager.synchronizationCount);
+      assertEquals(0, manager.failureCount);
+      assertFalse(current.hasExclusiveGtpWorkInProgress());
+      assertFalse(target.hasExclusiveGtpWorkInProgress());
+    } finally {
+      target.started = false;
+      target.releaseLoadedReads();
+      manager.allowSynchronizationToComplete.countDown();
+      manager.completed.await(1, TimeUnit.SECONDS);
+      Lizzie.leelaz = previousEngine;
+    }
+  }
+
+  @Test
+  void tuningTimeoutReleasesBothSwitchReservations() throws Exception {
+    Leelaz previousEngine = Lizzie.leelaz;
+    Leelaz current = new Leelaz("");
+    ControlledReadinessLeelaz target = unavailableControlledEngine(10L);
+    target.isTuning = true;
+    ControlledReadinessEngineManager manager =
+        new ControlledReadinessEngineManager(List.of(current, target), target, 1000L);
+    try {
+      Lizzie.leelaz = current;
+      target.releaseLoadedReads();
+
+      manager.switchEngine(1, true);
+
+      assertTrue(manager.completed.await(1, TimeUnit.SECONDS));
+      assertEquals(target, Lizzie.leelaz);
+      assertEquals(1, manager.failureCount);
+      assertEquals(0, manager.synchronizationCount);
+      assertFalse(target.isLoaded());
+      assertFalse(current.hasExclusiveGtpWorkInProgress());
+      assertFalse(target.hasExclusiveGtpWorkInProgress());
+    } finally {
+      target.started = false;
+      target.releaseLoadedReads();
+      manager.allowSynchronizationToComplete.countDown();
+      manager.completed.await(1, TimeUnit.SECONDS);
+      Lizzie.leelaz = previousEngine;
+    }
+  }
+
+  private static void assertPublishedTerminalStateFailsImmediately(
+      Consumer<ControlledReadinessLeelaz> publishTerminalState, String stateDescription)
+      throws Exception {
+    Leelaz previousEngine = Lizzie.leelaz;
+    Leelaz current = new Leelaz("");
+    ControlledReadinessLeelaz target = unavailableControlledEngine(500L);
+    ControlledReadinessEngineManager manager =
+        new ControlledReadinessEngineManager(List.of(current, target), target, 5000L);
+    try {
+      Lizzie.leelaz = current;
+
+      manager.switchEngine(1, true);
+      assertTrue(target.firstLoadedReadEntered.await(1, TimeUnit.SECONDS));
+      publishTerminalState.accept(target);
+      target.allowFirstLoadedRead.countDown();
+
+      assertTrue(
+          manager.completed.await(500, TimeUnit.MILLISECONDS),
+          stateDescription + " should fail before the five-second startup timeout");
+      target.releaseLoadedReads();
+      assertEquals(target, Lizzie.leelaz);
+      assertEquals(1, manager.failureCount);
+      assertEquals(0, manager.synchronizationCount);
+      assertFalse(target.isLoaded());
+      assertFalse(current.hasExclusiveGtpWorkInProgress());
+      assertFalse(target.hasExclusiveGtpWorkInProgress());
+    } finally {
+      target.started = false;
+      target.releaseLoadedReads();
+      manager.allowSynchronizationToComplete.countDown();
+      manager.completed.await(1, TimeUnit.SECONDS);
+      Lizzie.leelaz = previousEngine;
+    }
+  }
+
+  private static ControlledReadinessLeelaz unavailableControlledEngine(
+      long tuningTimeoutMillis) throws Exception {
+    ControlledReadinessLeelaz engine = new ControlledReadinessLeelaz(tuningTimeoutMillis);
+    engine.started = true;
+    engine.isLoaded = false;
+    engine.isCheckingName = true;
+    return engine;
+  }
+
   private static Leelaz unavailableStartedEngine() throws Exception {
     Leelaz engine = new Leelaz("");
     engine.started = true;
@@ -563,6 +735,110 @@ class EngineManagerLifecycleReservationTest {
     @Override
     protected void showEngineSynchronizationFailure(Leelaz engine) {
       failureCount++;
+    }
+  }
+
+  private static final class ControlledReadinessEngineManager extends EngineManager {
+    private final Leelaz target;
+    private final long timeoutMillis;
+    private final CountDownLatch synchronizationStarted = new CountDownLatch(1);
+    private final CountDownLatch allowSynchronizationToComplete = new CountDownLatch(1);
+    private final CountDownLatch completed = new CountDownLatch(1);
+    private int failureCount;
+    private int synchronizationCount;
+
+    private ControlledReadinessEngineManager(
+        List<Leelaz> engines, Leelaz target, long timeoutMillis) {
+      super(engines);
+      this.target = target;
+      this.timeoutMillis = timeoutMillis;
+    }
+
+    @Override
+    protected void switchEngineInternal(int index, boolean isMain, Runnable afterSync) {
+      Lizzie.leelaz = target;
+      synchronizeEngineWhenReady(
+          target,
+          () -> {
+            synchronizationStarted.countDown();
+            await(allowSynchronizationToComplete);
+            synchronizationCount++;
+          },
+          () -> {
+            afterSync.run();
+            completed.countDown();
+          });
+    }
+
+    @Override
+    protected long engineSynchronizationTimeoutMillis(Leelaz engine) {
+      return timeoutMillis;
+    }
+
+    @Override
+    protected void showEngineSynchronizationFailure(Leelaz engine) {
+      failureCount++;
+    }
+
+    private static void await(CountDownLatch latch) {
+      try {
+        latch.await();
+      } catch (InterruptedException ex) {
+        Thread.currentThread().interrupt();
+        throw new IllegalStateException("controlled board synchronization interrupted", ex);
+      }
+    }
+  }
+
+  private static final class ControlledReadinessLeelaz extends Leelaz {
+    private final AtomicInteger loadedReadCount = new AtomicInteger();
+    private final CountDownLatch firstLoadedReadEntered = new CountDownLatch(1);
+    private final CountDownLatch allowFirstLoadedRead = new CountDownLatch(1);
+    private final CountDownLatch secondLoadedReadEntered = new CountDownLatch(1);
+    private final CountDownLatch allowSecondLoadedRead = new CountDownLatch(1);
+    private final CountDownLatch thirdLoadedReadEntered = new CountDownLatch(1);
+    private final CountDownLatch allowThirdLoadedRead = new CountDownLatch(1);
+    private final long tuningTimeoutMillis;
+
+    private ControlledReadinessLeelaz(long tuningTimeoutMillis) throws Exception {
+      super("");
+      this.tuningTimeoutMillis = tuningTimeoutMillis;
+    }
+
+    @Override
+    public boolean isLoaded() {
+      int read = loadedReadCount.incrementAndGet();
+      if (read == 1) {
+        firstLoadedReadEntered.countDown();
+        await(allowFirstLoadedRead);
+      } else if (read == 2) {
+        secondLoadedReadEntered.countDown();
+        await(allowSecondLoadedRead);
+      } else if (read == 3) {
+        thirdLoadedReadEntered.countDown();
+        await(allowThirdLoadedRead);
+      }
+      return super.isLoaded();
+    }
+
+    @Override
+    long engineTuningSynchronizationTimeoutMillis() {
+      return tuningTimeoutMillis;
+    }
+
+    private void releaseLoadedReads() {
+      allowFirstLoadedRead.countDown();
+      allowSecondLoadedRead.countDown();
+      allowThirdLoadedRead.countDown();
+    }
+
+    private static void await(CountDownLatch latch) {
+      try {
+        latch.await();
+      } catch (InterruptedException ex) {
+        Thread.currentThread().interrupt();
+        throw new IllegalStateException("controlled readiness read interrupted", ex);
+      }
     }
   }
 
