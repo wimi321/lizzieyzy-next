@@ -2,6 +2,7 @@ package featurecat.lizzie.util;
 
 import featurecat.lizzie.Config;
 import featurecat.lizzie.Lizzie;
+import featurecat.lizzie.analysis.EngineManager;
 import featurecat.lizzie.gui.EngineData;
 import java.io.BufferedInputStream;
 import java.io.BufferedReader;
@@ -68,9 +69,9 @@ public final class KataGoAutoSetupHelper {
           Pattern.CASE_INSENSITIVE);
   private static final Pattern VERSION_MODEL_SOURCE_PATTERN =
       Pattern.compile("^Model source:\\s*(.+)$", Pattern.CASE_INSENSITIVE | Pattern.MULTILINE);
-  private static final int MAX_OFFICIAL_WEIGHTS = 40;
+  private static final int MAX_OFFICIAL_WEIGHTS = 10;
   private static final int MAX_OFFICIAL_WEIGHT_FAMILIES = 5;
-  private static final int MAX_OFFICIAL_WEIGHTS_PER_FAMILY = 3;
+  private static final int MAX_OFFICIAL_WEIGHTS_PER_FAMILY = 2;
   private static final List<String> PREFERRED_WEIGHT_FAMILIES =
       Collections.unmodifiableList(Arrays.asList("b28", "b40", "b20", "b15", "b10"));
   private static final String DEFAULT_WEIGHT_FILE_NAME = "default.bin.gz";
@@ -784,13 +785,26 @@ public final class KataGoAutoSetupHelper {
     Path normalizedWeightPath = weightPath.toAbsolutePath().normalize();
     String fileName = normalizedWeightPath.getFileName().toString();
     String resolvedModelName = fileName;
-    if (DEFAULT_WEIGHT_FILE_NAME.equalsIgnoreCase(fileName)) {
+    if (DEFAULT_WEIGHT_FILE_NAME.equalsIgnoreCase(fileName)
+        && isBundledDefaultWeight(normalizedWeightPath)) {
       String bundledModel = readBundledModelSource(normalizedWeightPath, workingDir, appRoot);
       if (!bundledModel.isEmpty()) {
         resolvedModelName = bundledModel;
       }
     }
     return toWeightDisplayName(resolvedModelName);
+  }
+
+  private static boolean isBundledDefaultWeight(Path weightPath) {
+    if (weightPath == null || weightPath.getParent() == null) {
+      return false;
+    }
+    Path weightsDir = weightPath.getParent();
+    Path root = weightsDir.getParent();
+    return root != null
+        && weightsDir.getFileName() != null
+        && "weights".equalsIgnoreCase(weightsDir.getFileName().toString())
+        && Files.isRegularFile(root.resolve("engines").resolve("katago").resolve("VERSION.txt"));
   }
 
   public static SetupResult applyAutoSetup(SetupSnapshot snapshot) throws IOException {
@@ -1075,7 +1089,7 @@ public final class KataGoAutoSetupHelper {
     return Utils.isBlank(engineName) ? fallback : engineName.trim();
   }
 
-  private static List<RemoteWeightInfo> parseOfficialWeights(String html) throws IOException {
+  static List<RemoteWeightInfo> parseOfficialWeights(String html) throws IOException {
     Matcher strongestMatcher = STRONGEST_PATTERN.matcher(html);
     String strongestUrl = "";
     String strongestName = "";
@@ -1235,9 +1249,7 @@ public final class KataGoAutoSetupHelper {
       if (familyWeights == null) {
         continue;
       }
-      for (int i = 0; i < familyWeights.size() && i < MAX_OFFICIAL_WEIGHTS_PER_FAMILY; i++) {
-        selected.add(familyWeights.get(i));
-      }
+      selected.addAll(selectFamilyWeightChoices(familyWeights));
     }
     if (selected.isEmpty()) {
       return new ArrayList<>(
@@ -1247,6 +1259,30 @@ public final class KataGoAutoSetupHelper {
       return new ArrayList<>(selected.subList(0, MAX_OFFICIAL_WEIGHTS));
     }
     return selected;
+  }
+
+  private static List<RemoteWeightInfo> selectFamilyWeightChoices(
+      List<RemoteWeightInfo> familyWeights) {
+    LinkedHashSet<RemoteWeightInfo> selected = new LinkedHashSet<>();
+    for (RemoteWeightInfo info : familyWeights) {
+      if (info.recommended) {
+        selected.add(info);
+      }
+    }
+    for (RemoteWeightInfo info : familyWeights) {
+      if (info.latest) {
+        selected.add(info);
+      }
+    }
+    selected.addAll(familyWeights);
+    List<RemoteWeightInfo> result = new ArrayList<>(MAX_OFFICIAL_WEIGHTS_PER_FAMILY);
+    for (RemoteWeightInfo info : selected) {
+      result.add(info);
+      if (result.size() >= MAX_OFFICIAL_WEIGHTS_PER_FAMILY) {
+        break;
+      }
+    }
+    return result;
   }
 
   private static List<String> chooseOfficialWeightFamilies(
@@ -1752,9 +1788,9 @@ public final class KataGoAutoSetupHelper {
   }
 
   private static Path chooseActiveWeight(Path workingDir, Path appRoot, List<Path> candidates) {
-    Path preferred = preferredWeightFromConfig(workingDir);
-    if (preferred != null) {
-      return preferred;
+    Path configured = configuredWeightFromEngineCommands(workingDir, appRoot);
+    if (configured != null) {
+      return configured;
     }
     Path workingDefault =
         workingDir.resolve("weights").resolve("default.bin.gz").toAbsolutePath().normalize();
@@ -1770,6 +1806,98 @@ public final class KataGoAutoSetupHelper {
       return bundledDefault;
     }
     return null;
+  }
+
+  private static Path configuredWeightFromEngineCommands(Path workingDir, Path appRoot) {
+    if (Lizzie.config == null
+        || Lizzie.config.uiConfig == null
+        || Lizzie.config.leelazConfig == null) {
+      return null;
+    }
+
+    org.json.JSONArray engines = Lizzie.config.leelazConfig.optJSONArray("engine-settings-list");
+    if (engines != null) {
+      LinkedHashSet<Integer> candidateIndexes = new LinkedHashSet<>();
+      if (Lizzie.engineManager != null && !EngineManager.isEmpty) {
+        candidateIndexes.add(EngineManager.currentEngineNo);
+      }
+      candidateIndexes.add(Lizzie.config.uiConfig.optInt("default-engine", -1));
+      for (int i = 0; i < engines.length(); i++) {
+        org.json.JSONObject engine = engines.optJSONObject(i);
+        if (engine != null && engine.optBoolean("isDefault", false)) {
+          candidateIndexes.add(i);
+        }
+      }
+      for (Integer index : candidateIndexes) {
+        if (index == null || index < 0 || index >= engines.length()) {
+          continue;
+        }
+        org.json.JSONObject engine = engines.optJSONObject(index);
+        Path configured =
+            engine == null
+                ? null
+                : weightFromCommand(engine.optString("command", ""), workingDir, appRoot);
+        if (isUsableWeight(configured)) {
+          return configured;
+        }
+      }
+    }
+
+    Path analysisWeight =
+        weightFromCommand(
+            Lizzie.config.uiConfig.optString("analysis-engine-command", ""), workingDir, appRoot);
+    if (isUsableWeight(analysisWeight)) {
+      return analysisWeight;
+    }
+
+    Path autoSetupWeight =
+        configuredWeightPath("katago-auto-setup-weight-path", workingDir, appRoot);
+    if (isUsableWeight(autoSetupWeight)) {
+      return autoSetupWeight;
+    }
+    return preferredWeightFromConfig(workingDir);
+  }
+
+  private static Path weightFromCommand(String command, Path workingDir, Path appRoot) {
+    List<String> commandParts = Utils.splitCommand(command);
+    if (commandParts == null) {
+      return null;
+    }
+    for (int i = 0; i < commandParts.size() - 1; i++) {
+      if (!"-model".equals(commandParts.get(i))) {
+        continue;
+      }
+      return resolveConfiguredPath(commandParts.get(i + 1), workingDir, appRoot);
+    }
+    return null;
+  }
+
+  private static Path configuredWeightPath(String key, Path workingDir, Path appRoot) {
+    String value = Lizzie.config.uiConfig.optString(key, "").trim();
+    return resolveConfiguredPath(value, workingDir, appRoot);
+  }
+
+  private static Path resolveConfiguredPath(String value, Path workingDir, Path appRoot) {
+    if (value == null || value.trim().isEmpty()) {
+      return null;
+    }
+    try {
+      Path path = Paths.get(value.trim());
+      if (path.isAbsolute()) {
+        return path.toAbsolutePath().normalize();
+      }
+      Path workingCandidate = workingDir.resolve(path).toAbsolutePath().normalize();
+      if (Files.isRegularFile(workingCandidate)) {
+        return workingCandidate;
+      }
+      return appRoot.resolve(path).toAbsolutePath().normalize();
+    } catch (Exception e) {
+      return null;
+    }
+  }
+
+  private static boolean isUsableWeight(Path path) {
+    return path != null && Files.isRegularFile(path) && isSupportedWeightFile(path);
   }
 
   private static Path preferredWeightFromConfig(Path workingDir) {

@@ -45,6 +45,53 @@ public class KataGoAutoSetupHelperTest {
   }
 
   @Test
+  void officialWeightChoicesKeepTwoPerPreferredFamilyAndPrioritizeBadges() throws Exception {
+    String latestModel = officialModel("b28", 3);
+    String strongestModel = officialModel("b40", 3);
+    StringBuilder html =
+        new StringBuilder()
+            .append("<span>Strongest confidently-rated network:</span>")
+            .append(officialLink(strongestModel))
+            .append("<span>Latest network:</span>")
+            .append(officialLink(latestModel))
+            .append("<table class=\"table mt-3\">");
+    for (String family : List.of("b60", "b10", "b15", "b20", "b40", "b28")) {
+      for (int version = 1; version <= 3; version++) {
+        String model = officialModel(family, version);
+        html.append("<tr>")
+            .append("<td>")
+            .append(model)
+            .append("</td>")
+            .append("<td>2026-06-")
+            .append(10 + version)
+            .append("</td>")
+            .append("<td>")
+            .append(15000 + version)
+            .append(" Elo</td>")
+            .append("<td>")
+            .append(officialLink(model))
+            .append("</td>")
+            .append("</tr>");
+      }
+    }
+    html.append("</table>");
+
+    List<KataGoAutoSetupHelper.RemoteWeightInfo> choices =
+        KataGoAutoSetupHelper.parseOfficialWeights(html.toString());
+
+    assertEquals(10, choices.size());
+    assertEquals(
+        List.of("b28", "b28", "b40", "b40", "b20", "b20", "b15", "b15", "b10", "b10"),
+        choices.stream().map(KataGoAutoSetupHelperTest::officialFamily).toList());
+    assertTrue(
+        choices.stream().anyMatch(info -> info.modelName.equals(latestModel) && info.latest));
+    assertTrue(
+        choices.stream()
+            .anyMatch(info -> info.modelName.equals(strongestModel) && info.recommended));
+    assertFalse(choices.stream().anyMatch(info -> officialFamily(info).equals("b60")));
+  }
+
+  @Test
   void importWeightCopiesToLocalWeightsWithoutChangingPreferredWeight() throws Exception {
     Path tempRoot = Files.createTempDirectory("katago-import-weight");
     Path source = Files.write(tempRoot.resolve("custom.bin.gz"), new byte[] {1, 2, 3, 4});
@@ -61,6 +108,53 @@ public class KataGoAutoSetupHelperTest {
           assertEquals(
               "old.bin.gz", Lizzie.config.uiConfig.optString("katago-preferred-weight-path"));
           assertFalse(imported.equals(source.toAbsolutePath().normalize()));
+        });
+  }
+
+  @Test
+  void importedWeightDoesNotReplaceWeightConfiguredByDefaultEngine() throws Exception {
+    Path tempRoot = Files.createTempDirectory("katago-import-keeps-active");
+    Path appRoot = Files.createDirectories(tempRoot.resolve("portable with spaces"));
+    Path workDir = Files.createDirectories(appRoot.resolve("user-data"));
+    Path engine =
+        touch(
+            appRoot
+                .resolve("engines")
+                .resolve("katago")
+                .resolve(detectTestPlatformDir())
+                .resolve(testKataGoBinaryName()));
+    Path configDir =
+        Files.createDirectories(appRoot.resolve("engines").resolve("katago").resolve("configs"));
+    Files.writeString(
+        appRoot.resolve("engines").resolve("katago").resolve("VERSION.txt"),
+        "Model source: kata1-zhizi-b28c512nbt-muonfd2.bin.gz\n");
+    Path gtpConfig = touch(configDir.resolve("gtp.cfg"));
+    touch(configDir.resolve("analysis.cfg"));
+    touch(configDir.resolve("estimate.cfg"));
+    Path bundledWeight = touch(appRoot.resolve("weights").resolve("default.bin.gz"));
+    Path source = touch(tempRoot.resolve("incoming").resolve("default.bin.gz"));
+
+    withProcessDirAndConfig(
+        appRoot,
+        workDir,
+        () -> {
+          ArrayList<EngineData> engines = new ArrayList<>();
+          engines.add(engineData("KataGo Bundled", engine, gtpConfig, bundledWeight, true));
+          Utils.saveEngineSettings(engines);
+          Lizzie.config.uiConfig.put("default-engine", 0);
+
+          assertEquals(bundledWeight, KataGoAutoSetupHelper.inspectLocalSetup().activeWeightPath);
+          assertEquals(
+              "zhizi 28B muonfd2", KataGoAutoSetupHelper.resolveWeightDisplayName(bundledWeight));
+
+          Path imported = KataGoAutoSetupHelper.importWeight(source);
+          KataGoAutoSetupHelper.SetupSnapshot refreshed = KataGoAutoSetupHelper.inspectLocalSetup();
+
+          assertTrue(Files.isRegularFile(imported));
+          assertTrue(refreshed.weightCandidates.contains(imported));
+          assertEquals(bundledWeight, refreshed.activeWeightPath);
+          assertFalse(imported.equals(refreshed.activeWeightPath));
+          assertEquals("default", KataGoAutoSetupHelper.resolveWeightDisplayName(imported));
         });
   }
 
@@ -553,6 +647,9 @@ public class KataGoAutoSetupHelperTest {
     withUserDirAndConfig(
         tempRoot,
         () -> {
+          Lizzie.config.uiConfig.put("autoload-default", false);
+          Lizzie.config.uiConfig.put("autoload-empty", true);
+          Lizzie.config.uiConfig.put("autoload-last", false);
           KataGoAutoSetupHelper.SetupSnapshot snapshot = KataGoAutoSetupHelper.inspectLocalSetup();
           KataGoAutoSetupHelper.SetupResult initial =
               KataGoAutoSetupHelper.applyAutoSetup(snapshot.withActiveWeight(firstWeight));
@@ -576,6 +673,9 @@ public class KataGoAutoSetupHelperTest {
           assertFalse(engines.get(first.engineIndex).isDefault);
           assertTrue(engines.get(second.engineIndex).isDefault);
           assertEquals(second.engineIndex, Lizzie.config.uiConfig.optInt("default-engine"));
+          assertFalse(Lizzie.config.uiConfig.optBoolean("autoload-default"));
+          assertTrue(Lizzie.config.uiConfig.optBoolean("autoload-empty"));
+          assertFalse(Lizzie.config.uiConfig.optBoolean("autoload-last"));
           assertTrue(
               Lizzie.config
                   .uiConfig
@@ -612,6 +712,20 @@ public class KataGoAutoSetupHelperTest {
     data.keyGenPath = "";
     data.initialCommand = "";
     return data;
+  }
+
+  private static String officialModel(String family, int version) {
+    return "kata1-" + family + "c512nbt-s" + version + "-d" + version;
+  }
+
+  private static String officialLink(String model) {
+    return "<a href=\"https://example.com/" + model + ".bin.gz\">" + model + "</a>";
+  }
+
+  private static String officialFamily(KataGoAutoSetupHelper.RemoteWeightInfo info) {
+    int start = info.modelName.indexOf("-b");
+    int end = info.modelName.indexOf('c', start + 2);
+    return start >= 0 && end > start ? info.modelName.substring(start + 1, end) : "";
   }
 
   private static Path touch(Path path) throws Exception {

@@ -6,10 +6,12 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import javax.swing.JButton;
 import javax.swing.JCheckBox;
+import javax.swing.JComponent;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.JProgressBar;
 import javax.swing.JTextField;
+import javax.swing.KeyStroke;
 import org.junit.jupiter.api.Test;
 
 class AccessibilitySupportTest {
@@ -37,6 +39,20 @@ class AccessibilitySupportTest {
         "Reload the official weight list",
         button.getAccessibleContext().getAccessibleDescription());
     assertEquals("Reload the official weight list", button.getToolTipText());
+  }
+
+  @Test
+  void accessibleButtonsActivateWithEnterAsWellAsSpace() {
+    JButton button = new JButton("Import");
+
+    AccessibilitySupport.button(button, "Import", "Import a local weight");
+
+    assertEquals(
+        "pressed",
+        button.getInputMap(JComponent.WHEN_FOCUSED).get(KeyStroke.getKeyStroke("pressed ENTER")));
+    assertEquals(
+        "released",
+        button.getInputMap(JComponent.WHEN_FOCUSED).get(KeyStroke.getKeyStroke("released ENTER")));
   }
 
   @Test

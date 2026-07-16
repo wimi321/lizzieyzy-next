@@ -49,8 +49,16 @@ public final class AccessibilitySupport {
 
   public static <T extends AbstractButton> T button(T button, String name, String description) {
     named(button, name, description);
-    if (button != null && (button.getToolTipText() == null || button.getToolTipText().isBlank())) {
-      button.setToolTipText(clean(description).isEmpty() ? clean(name) : clean(description));
+    if (button != null) {
+      button
+          .getInputMap(JComponent.WHEN_FOCUSED)
+          .put(KeyStroke.getKeyStroke("pressed ENTER"), "pressed");
+      button
+          .getInputMap(JComponent.WHEN_FOCUSED)
+          .put(KeyStroke.getKeyStroke("released ENTER"), "released");
+      if (button.getToolTipText() == null || button.getToolTipText().isBlank()) {
+        button.setToolTipText(clean(description).isEmpty() ? clean(name) : clean(description));
+      }
     }
     return button;
   }
