@@ -68,9 +68,9 @@ public final class KataGoAutoSetupHelper {
           Pattern.CASE_INSENSITIVE);
   private static final Pattern VERSION_MODEL_SOURCE_PATTERN =
       Pattern.compile("^Model source:\\s*(.+)$", Pattern.CASE_INSENSITIVE | Pattern.MULTILINE);
-  private static final int MAX_OFFICIAL_WEIGHTS = 40;
+  private static final int MAX_OFFICIAL_WEIGHTS = 10;
   private static final int MAX_OFFICIAL_WEIGHT_FAMILIES = 5;
-  private static final int MAX_OFFICIAL_WEIGHTS_PER_FAMILY = 3;
+  private static final int MAX_OFFICIAL_WEIGHTS_PER_FAMILY = 2;
   private static final List<String> PREFERRED_WEIGHT_FAMILIES =
       Collections.unmodifiableList(Arrays.asList("b28", "b40", "b20", "b15", "b10"));
   private static final String DEFAULT_WEIGHT_FILE_NAME = "default.bin.gz";
@@ -1075,7 +1075,7 @@ public final class KataGoAutoSetupHelper {
     return Utils.isBlank(engineName) ? fallback : engineName.trim();
   }
 
-  private static List<RemoteWeightInfo> parseOfficialWeights(String html) throws IOException {
+  static List<RemoteWeightInfo> parseOfficialWeights(String html) throws IOException {
     Matcher strongestMatcher = STRONGEST_PATTERN.matcher(html);
     String strongestUrl = "";
     String strongestName = "";
@@ -1235,9 +1235,7 @@ public final class KataGoAutoSetupHelper {
       if (familyWeights == null) {
         continue;
       }
-      for (int i = 0; i < familyWeights.size() && i < MAX_OFFICIAL_WEIGHTS_PER_FAMILY; i++) {
-        selected.add(familyWeights.get(i));
-      }
+      selected.addAll(selectFamilyWeightChoices(familyWeights));
     }
     if (selected.isEmpty()) {
       return new ArrayList<>(
@@ -1247,6 +1245,30 @@ public final class KataGoAutoSetupHelper {
       return new ArrayList<>(selected.subList(0, MAX_OFFICIAL_WEIGHTS));
     }
     return selected;
+  }
+
+  private static List<RemoteWeightInfo> selectFamilyWeightChoices(
+      List<RemoteWeightInfo> familyWeights) {
+    LinkedHashSet<RemoteWeightInfo> selected = new LinkedHashSet<>();
+    for (RemoteWeightInfo info : familyWeights) {
+      if (info.recommended) {
+        selected.add(info);
+      }
+    }
+    for (RemoteWeightInfo info : familyWeights) {
+      if (info.latest) {
+        selected.add(info);
+      }
+    }
+    selected.addAll(familyWeights);
+    List<RemoteWeightInfo> result = new ArrayList<>(MAX_OFFICIAL_WEIGHTS_PER_FAMILY);
+    for (RemoteWeightInfo info : selected) {
+      result.add(info);
+      if (result.size() >= MAX_OFFICIAL_WEIGHTS_PER_FAMILY) {
+        break;
+      }
+    }
+    return result;
   }
 
   private static List<String> chooseOfficialWeightFamilies(

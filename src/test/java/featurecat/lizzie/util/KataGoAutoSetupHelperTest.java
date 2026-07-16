@@ -45,6 +45,53 @@ public class KataGoAutoSetupHelperTest {
   }
 
   @Test
+  void officialWeightChoicesKeepTwoPerPreferredFamilyAndPrioritizeBadges() throws Exception {
+    String latestModel = officialModel("b28", 3);
+    String strongestModel = officialModel("b40", 3);
+    StringBuilder html =
+        new StringBuilder()
+            .append("<span>Strongest confidently-rated network:</span>")
+            .append(officialLink(strongestModel))
+            .append("<span>Latest network:</span>")
+            .append(officialLink(latestModel))
+            .append("<table class=\"table mt-3\">");
+    for (String family : List.of("b60", "b10", "b15", "b20", "b40", "b28")) {
+      for (int version = 1; version <= 3; version++) {
+        String model = officialModel(family, version);
+        html.append("<tr>")
+            .append("<td>")
+            .append(model)
+            .append("</td>")
+            .append("<td>2026-06-")
+            .append(10 + version)
+            .append("</td>")
+            .append("<td>")
+            .append(15000 + version)
+            .append(" Elo</td>")
+            .append("<td>")
+            .append(officialLink(model))
+            .append("</td>")
+            .append("</tr>");
+      }
+    }
+    html.append("</table>");
+
+    List<KataGoAutoSetupHelper.RemoteWeightInfo> choices =
+        KataGoAutoSetupHelper.parseOfficialWeights(html.toString());
+
+    assertEquals(10, choices.size());
+    assertEquals(
+        List.of("b28", "b28", "b40", "b40", "b20", "b20", "b15", "b15", "b10", "b10"),
+        choices.stream().map(KataGoAutoSetupHelperTest::officialFamily).toList());
+    assertTrue(
+        choices.stream().anyMatch(info -> info.modelName.equals(latestModel) && info.latest));
+    assertTrue(
+        choices.stream()
+            .anyMatch(info -> info.modelName.equals(strongestModel) && info.recommended));
+    assertFalse(choices.stream().anyMatch(info -> officialFamily(info).equals("b60")));
+  }
+
+  @Test
   void importWeightCopiesToLocalWeightsWithoutChangingPreferredWeight() throws Exception {
     Path tempRoot = Files.createTempDirectory("katago-import-weight");
     Path source = Files.write(tempRoot.resolve("custom.bin.gz"), new byte[] {1, 2, 3, 4});
@@ -553,6 +600,9 @@ public class KataGoAutoSetupHelperTest {
     withUserDirAndConfig(
         tempRoot,
         () -> {
+          Lizzie.config.uiConfig.put("autoload-default", false);
+          Lizzie.config.uiConfig.put("autoload-empty", true);
+          Lizzie.config.uiConfig.put("autoload-last", false);
           KataGoAutoSetupHelper.SetupSnapshot snapshot = KataGoAutoSetupHelper.inspectLocalSetup();
           KataGoAutoSetupHelper.SetupResult initial =
               KataGoAutoSetupHelper.applyAutoSetup(snapshot.withActiveWeight(firstWeight));
@@ -576,6 +626,9 @@ public class KataGoAutoSetupHelperTest {
           assertFalse(engines.get(first.engineIndex).isDefault);
           assertTrue(engines.get(second.engineIndex).isDefault);
           assertEquals(second.engineIndex, Lizzie.config.uiConfig.optInt("default-engine"));
+          assertFalse(Lizzie.config.uiConfig.optBoolean("autoload-default"));
+          assertTrue(Lizzie.config.uiConfig.optBoolean("autoload-empty"));
+          assertFalse(Lizzie.config.uiConfig.optBoolean("autoload-last"));
           assertTrue(
               Lizzie.config
                   .uiConfig
@@ -612,6 +665,20 @@ public class KataGoAutoSetupHelperTest {
     data.keyGenPath = "";
     data.initialCommand = "";
     return data;
+  }
+
+  private static String officialModel(String family, int version) {
+    return "kata1-" + family + "c512nbt-s" + version + "-d" + version;
+  }
+
+  private static String officialLink(String model) {
+    return "<a href=\"https://example.com/" + model + ".bin.gz\">" + model + "</a>";
+  }
+
+  private static String officialFamily(KataGoAutoSetupHelper.RemoteWeightInfo info) {
+    int start = info.modelName.indexOf("-b");
+    int end = info.modelName.indexOf('c', start + 2);
+    return start >= 0 && end > start ? info.modelName.substring(start + 1, end) : "";
   }
 
   private static Path touch(Path path) throws Exception {
