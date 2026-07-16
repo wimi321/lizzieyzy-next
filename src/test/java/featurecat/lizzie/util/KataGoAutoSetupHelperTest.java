@@ -112,6 +112,53 @@ public class KataGoAutoSetupHelperTest {
   }
 
   @Test
+  void importedWeightDoesNotReplaceWeightConfiguredByDefaultEngine() throws Exception {
+    Path tempRoot = Files.createTempDirectory("katago-import-keeps-active");
+    Path appRoot = Files.createDirectories(tempRoot.resolve("portable with spaces"));
+    Path workDir = Files.createDirectories(appRoot.resolve("user-data"));
+    Path engine =
+        touch(
+            appRoot
+                .resolve("engines")
+                .resolve("katago")
+                .resolve(detectTestPlatformDir())
+                .resolve(testKataGoBinaryName()));
+    Path configDir =
+        Files.createDirectories(appRoot.resolve("engines").resolve("katago").resolve("configs"));
+    Files.writeString(
+        appRoot.resolve("engines").resolve("katago").resolve("VERSION.txt"),
+        "Model source: kata1-zhizi-b28c512nbt-muonfd2.bin.gz\n");
+    Path gtpConfig = touch(configDir.resolve("gtp.cfg"));
+    touch(configDir.resolve("analysis.cfg"));
+    touch(configDir.resolve("estimate.cfg"));
+    Path bundledWeight = touch(appRoot.resolve("weights").resolve("default.bin.gz"));
+    Path source = touch(tempRoot.resolve("incoming").resolve("default.bin.gz"));
+
+    withProcessDirAndConfig(
+        appRoot,
+        workDir,
+        () -> {
+          ArrayList<EngineData> engines = new ArrayList<>();
+          engines.add(engineData("KataGo Bundled", engine, gtpConfig, bundledWeight, true));
+          Utils.saveEngineSettings(engines);
+          Lizzie.config.uiConfig.put("default-engine", 0);
+
+          assertEquals(bundledWeight, KataGoAutoSetupHelper.inspectLocalSetup().activeWeightPath);
+          assertEquals(
+              "zhizi 28B muonfd2", KataGoAutoSetupHelper.resolveWeightDisplayName(bundledWeight));
+
+          Path imported = KataGoAutoSetupHelper.importWeight(source);
+          KataGoAutoSetupHelper.SetupSnapshot refreshed = KataGoAutoSetupHelper.inspectLocalSetup();
+
+          assertTrue(Files.isRegularFile(imported));
+          assertTrue(refreshed.weightCandidates.contains(imported));
+          assertEquals(bundledWeight, refreshed.activeWeightPath);
+          assertFalse(imported.equals(refreshed.activeWeightPath));
+          assertEquals("default", KataGoAutoSetupHelper.resolveWeightDisplayName(imported));
+        });
+  }
+
+  @Test
   void importHumanSlModelCopiesToSeparateDirectoryAndDoesNotChangeActiveWeight() throws Exception {
     Path tempRoot = Files.createTempDirectory("katago-import-humansl");
     Path source = Files.write(tempRoot.resolve("custom-human.bin.gz"), new byte[2 * 1024 * 1024]);

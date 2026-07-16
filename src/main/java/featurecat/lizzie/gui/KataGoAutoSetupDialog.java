@@ -42,6 +42,7 @@ import java.util.Collections;
 import java.util.IllegalFormatException;
 import java.util.List;
 import java.util.Locale;
+import javax.swing.AbstractButton;
 import javax.swing.BorderFactory;
 import javax.swing.DefaultComboBoxModel;
 import javax.swing.DefaultListCellRenderer;
@@ -57,6 +58,7 @@ import javax.swing.JProgressBar;
 import javax.swing.JScrollPane;
 import javax.swing.JTextArea;
 import javax.swing.ListSelectionModel;
+import javax.swing.Scrollable;
 import javax.swing.SwingConstants;
 import javax.swing.SwingUtilities;
 import javax.swing.filechooser.FileNameExtensionFilter;
@@ -117,7 +119,7 @@ public class KataGoAutoSetupDialog extends JDialog {
   private final JLabel lblStatus = new JFontLabel();
   private final JList<String> sectionNav = new JList<String>();
   private final CardLayout detailCardLayout = new CardLayout();
-  private final JPanel detailCards = new JPanel(detailCardLayout);
+  private final JPanel detailCards = new ViewportWidthPanel(detailCardLayout);
   private final JPanel progressPanel = new JPanel(new BorderLayout(0, 6));
   private final JLabel progressStatusLabel = new JFontLabel();
   private final JLabel progressTitleLabel = new JFontLabel();
@@ -339,8 +341,25 @@ public class KataGoAutoSetupDialog extends JDialog {
     button.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
     button.setMargin(new Insets(0, 10, 0, 10));
     AppleStyleSupport.installButtonStyle(button);
-    Dimension preferred = button.getPreferredSize();
-    button.setPreferredSize(new Dimension(Math.max(preferred.width, primary ? 106 : 90), 32));
+    Dimension preferred = localizedButtonSize(button, primary ? 106 : 90, 32);
+    button.setPreferredSize(preferred);
+    button.setMinimumSize(preferred);
+  }
+
+  static Dimension localizedButtonSize(
+      AbstractButton button, int minimumWidth, int preferredHeight) {
+    FontMetrics metrics = button.getFontMetrics(button.getFont());
+    Insets insets = button.getInsets();
+    String label = button.getText() == null ? "" : button.getText();
+    int contentWidth = SwingUtilities.computeStringWidth(metrics, label);
+    if (button.getIcon() != null) {
+      contentWidth += button.getIcon().getIconWidth();
+      if (!label.isEmpty()) {
+        contentWidth += button.getIconTextGap();
+      }
+    }
+    int localizedWidth = contentWidth + insets.left + insets.right + 12;
+    return new Dimension(Math.max(minimumWidth, localizedWidth), preferredHeight);
   }
 
   private void styleIconButton(JFontButton button) {
@@ -577,7 +596,7 @@ public class KataGoAutoSetupDialog extends JDialog {
     cmbRemoteWeights.setPreferredSize(new Dimension(VALUE_COLUMN_WIDTH, 36));
     JPanel selection = new JPanel(new BorderLayout(0, 5));
     selection.setOpaque(false);
-    selection.add(createInlineActionRow(cmbRemoteWeights, btnDownloadWeight), BorderLayout.NORTH);
+    selection.add(createStackedActionRow(cmbRemoteWeights, btnDownloadWeight), BorderLayout.NORTH);
     selection.add(lblRemoteDetailValue, BorderLayout.CENTER);
     block.add(selection, BorderLayout.CENTER);
     return block;
@@ -595,7 +614,7 @@ public class KataGoAutoSetupDialog extends JDialog {
     JPanel selection = new JPanel(new BorderLayout(0, 5));
     selection.setOpaque(false);
     selection.add(
-        createInlineActionRow(cmbLocalWeights, btnUseWeight, btnImportWeight), BorderLayout.NORTH);
+        createStackedActionRow(cmbLocalWeights, btnUseWeight, btnImportWeight), BorderLayout.NORTH);
     selection.add(lblLocalWeightDetailValue, BorderLayout.CENTER);
     block.add(selection, BorderLayout.CENTER);
     return block;
@@ -611,10 +630,10 @@ public class KataGoAutoSetupDialog extends JDialog {
     labels.setOpaque(false);
     labels.add(title, BorderLayout.NORTH);
     labels.add(lblHumanSlModelValue, BorderLayout.CENTER);
-    block.add(labels, BorderLayout.CENTER);
+    block.add(labels, BorderLayout.NORTH);
     block.add(
-        createActionBar(FlowLayout.RIGHT, btnDownloadHumanSlModel, btnImportHumanSlModel),
-        BorderLayout.EAST);
+        createActionBar(FlowLayout.RIGHT, 1, btnDownloadHumanSlModel, btnImportHumanSlModel),
+        BorderLayout.SOUTH);
     return block;
   }
 
@@ -783,16 +802,21 @@ public class KataGoAutoSetupDialog extends JDialog {
   }
 
   static JPanel createActionBar(int alignment, JComponent... actions) {
+    int columns = actions.length > 2 ? 2 : Math.max(1, actions.length);
+    return createActionBar(alignment, columns, actions);
+  }
+
+  private static JPanel createActionBar(int alignment, int columns, JComponent... actions) {
     JPanel actionBar = new JPanel(new BorderLayout());
     actionBar.setOpaque(false);
 
     JPanel actionGrid = new JPanel(new GridBagLayout());
     actionGrid.setOpaque(false);
-    int columns = actions.length > 2 ? 2 : Math.max(1, actions.length);
+    int safeColumns = Math.max(1, columns);
     for (int index = 0; index < actions.length; index++) {
       GridBagConstraints constraints = new GridBagConstraints();
-      constraints.gridx = index % columns;
-      constraints.gridy = index / columns;
+      constraints.gridx = index % safeColumns;
+      constraints.gridy = index / safeColumns;
       constraints.anchor = GridBagConstraints.EAST;
       constraints.insets =
           new Insets(constraints.gridy == 0 ? 0 : 6, constraints.gridx == 0 ? 0 : 6, 0, 0);
@@ -804,12 +828,45 @@ public class KataGoAutoSetupDialog extends JDialog {
     return actionBar;
   }
 
-  private JPanel createInlineActionRow(JComponent mainComponent, JComponent... actions) {
-    JPanel row = new JPanel(new BorderLayout(6, 0));
+  static JPanel createStackedActionRow(JComponent mainComponent, JComponent... actions) {
+    JPanel row = new JPanel(new BorderLayout(0, 6));
     row.setOpaque(false);
-    row.add(mainComponent, BorderLayout.CENTER);
-    row.add(createActionBar(FlowLayout.RIGHT, actions), BorderLayout.EAST);
+    Dimension minimum = mainComponent.getMinimumSize();
+    mainComponent.setMinimumSize(new Dimension(0, minimum.height));
+    row.add(mainComponent, BorderLayout.NORTH);
+    row.add(createActionBar(FlowLayout.RIGHT, 1, actions), BorderLayout.SOUTH);
     return row;
+  }
+
+  static final class ViewportWidthPanel extends JPanel implements Scrollable {
+    ViewportWidthPanel(CardLayout layout) {
+      super(layout);
+    }
+
+    @Override
+    public Dimension getPreferredScrollableViewportSize() {
+      return getPreferredSize();
+    }
+
+    @Override
+    public int getScrollableUnitIncrement(Rectangle visibleRect, int orientation, int direction) {
+      return 14;
+    }
+
+    @Override
+    public int getScrollableBlockIncrement(Rectangle visibleRect, int orientation, int direction) {
+      return Math.max(14, visibleRect.height - 14);
+    }
+
+    @Override
+    public boolean getScrollableTracksViewportWidth() {
+      return true;
+    }
+
+    @Override
+    public boolean getScrollableTracksViewportHeight() {
+      return false;
+    }
   }
 
   private JTextArea createHintText(String message) {
@@ -1965,11 +2022,11 @@ public class KataGoAutoSetupDialog extends JDialog {
       String message,
       boolean showSuccessPopup,
       boolean includeWeightPathInPopup) {
+    String reloadWarning = reloadRunningEngine(result.engineIndex);
     snapshot = KataGoAutoSetupHelper.inspectLocalSetup();
     renderSnapshot();
     selectRemoteWeightByModelName(KataGoAutoSetupHelper.resolveActiveWeightModelName(snapshot));
     updateSelectedRemoteWeightInfo();
-    String reloadWarning = reloadRunningEngine(result.engineIndex);
     if (reloadWarning == null || reloadWarning.trim().isEmpty()) {
       lblStatus.setText(message);
       lblStatus.setForeground(OK_COLOR);
@@ -2347,6 +2404,7 @@ public class KataGoAutoSetupDialog extends JDialog {
   private String formatRemoteMetadata(RemoteWeightInfo info) {
     StringBuilder metadata = new StringBuilder();
     appendMetadata(metadata, formatRemoteReleaseDate(info));
+    appendMetadata(metadata, info == null ? "" : info.eloRating);
     if (info.recommended) {
       appendMetadata(metadata, text("AutoSetup.recommendedStrongest"));
     }
@@ -2436,9 +2494,6 @@ public class KataGoAutoSetupDialog extends JDialog {
     boolean current = matchesCurrentWeight(info);
     String detailText = formatRemoteModelName(info) + "  |  " + formatRemoteMetadata(info);
     StringBuilder technicalDetail = new StringBuilder(detailText);
-    if (info.eloRating != null && !info.eloRating.trim().isEmpty()) {
-      technicalDetail.append("  |  ").append(info.eloRating.trim());
-    }
     technicalDetail
         .append("  |  ")
         .append(info.fileName())
