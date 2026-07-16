@@ -3878,14 +3878,21 @@ public class ReadBoard {
         readBoardGmaDeferredRestoreNode = null;
       }
     }
+    if (restoreFailure != null) {
+      synchronized (this) {
+        readBoardGmaEngineRestorePending = false;
+        readBoardGmaDeferredRestoreNode = null;
+      }
+      if (Lizzie.leelaz != null) {
+        Lizzie.leelaz.failReadBoardGmaEngineRestore(restoreFailure.getMessage());
+      }
+      throw restoreFailure;
+    }
     if (hasNewerRestoreNode) {
       return flushReadBoardGmaEngineRestoreIfReady(reason + "-latest");
     }
     if (!readBoardGmaAutoPlayActive && Lizzie.leelaz != null) {
       Lizzie.leelaz.restoreReadBoardGmaRuntimeSettingsIfNeeded();
-    }
-    if (restoreFailure != null) {
-      throw restoreFailure;
     }
     return true;
   }

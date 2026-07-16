@@ -78,6 +78,7 @@ public class Leelaz {
     READBOARD_GMA,
     EXISTING_LEASE,
     ENGINE_LIFECYCLE,
+    ENGINE_STATE_UNRESTORED,
     APPLICATION_EXCLUSIVE_MODE
   }
 
@@ -138,7 +139,10 @@ public class Leelaz {
   private volatile ExclusiveGtpSession foregroundRestoreSession;
   private ArrayDeque<PendingResponseHandler> pendingResponseHandlers;
   private final AtomicInteger loadSgfResponseCommandIds = new AtomicInteger(1);
+  private final AtomicInteger readBoardGmaResponseCommandIds = new AtomicInteger(700000000);
   private final AtomicInteger exclusiveGtpResponseCommandIds = new AtomicInteger(800000000);
+  private final AtomicInteger boardSynchronizationResponseCommandIds =
+      new AtomicInteger(900000000);
   private volatile boolean currentCommandResponseError;
   private volatile String currentCommandResponseLine = "";
 
@@ -332,6 +336,10 @@ public class Leelaz {
       new ReadBoardGmaRuntimeParam("maxVisits");
   private final ReadBoardGmaRuntimeParam readBoardGmaPondering =
       new ReadBoardGmaRuntimeParam("ponderingEnabled");
+  private volatile Object readBoardGmaLock;
+  private volatile EngineModeReservation readBoardGmaReservation;
+  private volatile ReadBoardGmaRestoreBarrier readBoardGmaRestoreBarrier;
+  private volatile boolean engineStateUnrestored;
   private int currentTotalPlayouts;
   public boolean supportMovesOwnership = false;
 
@@ -673,7 +681,9 @@ public class Leelaz {
     startGetCommandList = false;
     commandLists.clear();
     readBoardGmaUnsupportedPromptShown = false;
-    clearReadBoardGmaSearchLimitSnapshots();
+    if (!engineStateUnrestored) {
+      clearReadBoardGmaSearchLimitSnapshots();
+    }
     // sendCommand("turnon");
     if (!isSSH) {
       Runnable runnable =
@@ -777,40 +787,181 @@ public class Leelaz {
   //	}
 
   public void restartClosedEngine(int index) throws IOException {
-    boolean isPondering = this.isPondering;
-    if (engineCommand.trim().isEmpty()) {
-      return;
-    }
-    if (useRemoteCompute && isStarted()) {
-      normalQuit();
-    }
-    isLoaded = false;
-    canCheckAlive = false;
-    startEngine(index);
-    Leelaz thisLeelz = this;
-    Runnable syncBoard =
-        new Runnable() {
-          public void run() {
-            while (!isLoaded() || isCheckingName) {
+    restartClosedEngine(index, null);
+  }
+
+  void restartClosedEngine(int index, Runnable afterBoardRestore) throws IOException {
+    boolean restoreScheduled = false;
+    try {
+      boolean isPondering = this.isPondering;
+      if (engineCommand.trim().isEmpty()) {
+        return;
+      }
+      if (useRemoteCompute && isStarted()) {
+        normalQuit();
+      }
+      isLoaded = false;
+      canCheckAlive = false;
+      startEngine(index);
+      Leelaz thisLeelz = this;
+      Runnable syncBoard =
+          new Runnable() {
+            public void run() {
+              boolean completionDelegated = false;
               try {
-                Thread.sleep(100);
-              } catch (InterruptedException e) {
-                // TODO Auto-generated catch block
-                e.printStackTrace();
+                if (!waitForAutomaticRestartReadiness()) {
+                  isLoaded = false;
+                  markBoardSynchronizationFailed(
+                      "automatic engine restart did not become ready");
+                  return;
+                }
+                if (thisLeelz != Lizzie.leelaz) {
+                  return;
+                }
+                if (afterBoardRestore == null) {
+                  thisLeelz.restoreClosedEngineBoardState(isPondering);
+                } else {
+                  completionDelegated = true;
+                  thisLeelz.restoreClosedEngineBoardState(isPondering, afterBoardRestore);
+                }
+              } finally {
+                if (afterBoardRestore != null && !completionDelegated) {
+                  afterBoardRestore.run();
+                }
               }
             }
-            if (thisLeelz != Lizzie.leelaz) {
-              return;
-            }
-            thisLeelz.restoreClosedEngineBoardState(isPondering);
-          }
-        };
-    Thread syncBoardTh = new Thread(syncBoard);
-    syncBoardTh.start();
+          };
+      Thread syncBoardTh = new Thread(syncBoard);
+      syncBoardTh.start();
+      restoreScheduled = true;
+    } finally {
+      if (!restoreScheduled && afterBoardRestore != null) {
+        afterBoardRestore.run();
+      }
+    }
+  }
+
+  private boolean waitForAutomaticRestartReadiness() {
+    long now = System.nanoTime();
+    long deadline =
+        now
+            + TimeUnit.MILLISECONDS.toNanos(
+                Math.max(1L, engineStartupSynchronizationTimeoutMillis()));
+    boolean tuningTimeoutApplied = false;
+    while (true) {
+      if (!isStarted() || isDownWithError || isNormalEnd) {
+        return false;
+      }
+      if (isLoaded() && !isCheckingName) {
+        return true;
+      }
+      now = System.nanoTime();
+      if (!tuningTimeoutApplied && isTuning) {
+        deadline =
+            now
+                + TimeUnit.MILLISECONDS.toNanos(
+                    Math.max(1L, engineTuningSynchronizationTimeoutMillis()));
+        tuningTimeoutApplied = true;
+      }
+      if (now >= deadline) {
+        return false;
+      }
+      long remainingMillis =
+          Math.max(1L, TimeUnit.NANOSECONDS.toMillis(deadline - now));
+      try {
+        Thread.sleep(Math.min(100L, remainingMillis));
+      } catch (InterruptedException ex) {
+        Thread.currentThread().interrupt();
+        return false;
+      }
+    }
   }
 
   void restoreClosedEngineBoardState(boolean resumePonder) {
     Lizzie.board.resendMoveToEngine(this, resumePonder);
+    if (KataGoRuntimeHelper.isBenchmarkEngineSyncSuppressed()) {
+      return;
+    }
+    if (engineStateUnrestored) {
+      confirmBoardSynchronization(
+          this::completeReadBoardGmaRecoveryAfterBoardSync,
+          this::markBoardSynchronizationFailed);
+    }
+  }
+
+  private void restoreClosedEngineBoardState(boolean resumePonder, Runnable afterBoardRestore) {
+    try {
+      Lizzie.board.resendMoveToEngine(this, resumePonder);
+    } catch (RuntimeException failure) {
+      isLoaded = false;
+      markBoardSynchronizationFailed(
+          failure.getMessage() == null
+              ? "automatic engine board restore failed"
+              : failure.getMessage());
+      afterBoardRestore.run();
+      return;
+    }
+    if (KataGoRuntimeHelper.isBenchmarkEngineSyncSuppressed()) {
+      afterBoardRestore.run();
+      return;
+    }
+    confirmBoardSynchronization(
+        () -> {
+          if (engineStateUnrestored) {
+            completeReadBoardGmaRecoveryAfterBoardSync();
+          }
+          afterBoardRestore.run();
+        },
+        detail -> {
+          isLoaded = false;
+          markBoardSynchronizationFailed(detail);
+          afterBoardRestore.run();
+        });
+  }
+
+  void completeReadBoardGmaRecoveryAfterBoardSync() {
+    synchronized (readBoardGmaLock()) {
+      if (!engineStateUnrestored
+          || this != Lizzie.leelaz
+          || !started
+          || !isLoaded
+          || isCheckingName
+          || !endGetCommandList) {
+        return;
+      }
+      clearReadBoardGmaSearchLimitSnapshots();
+      isThinking = false;
+      isInputCommand = false;
+      engineStateUnrestored = false;
+    }
+  }
+
+  boolean hasUnrestoredReadBoardGmaState() {
+    return engineStateUnrestored;
+  }
+
+  ExclusiveGtpLifecycleReservation beginAutomaticEngineRestartReservation() {
+    synchronized (engineArbitrationLock()) {
+      if (engineStateUnrestored
+          || readBoardGmaReservation != null
+          || readBoardGmaRestoreBarrier != null) {
+        return null;
+      }
+      Object owner = new Object();
+      if (!beginExclusiveGtpLifecycleTransition(owner)) {
+        return null;
+      }
+      return new ExclusiveGtpLifecycleReservation(this, owner);
+    }
+  }
+
+  void markBoardSynchronizationFailed(String detail) {
+    synchronized (readBoardGmaLock()) {
+      engineStateUnrestored = true;
+    }
+    rememberRecentLine(
+        recentStderrLines, "ReadBoard GMA recovery confirmation failed: " + detail);
+    resetGtpCommandStateAfterRestoreFailure();
   }
 
   public void normalQuit() {
@@ -3021,6 +3172,7 @@ public class Leelaz {
     markForegroundRestoreFailed(interruptedForegroundWork, "engine transport closed");
     abortExclusiveGtpSession();
     completeForegroundRestore(interruptedForegroundWork);
+    failReadBoardGmaEngineRestore("engine transport closed");
     if (!isNormalEnd) {
       isDownWithError = true;
       // isLoaded=false;
@@ -3645,14 +3797,33 @@ public class Leelaz {
   }
 
   private PendingResponseHandler buildPendingResponseHandler(String command, Runnable handler) {
-    return new PendingResponseHandler(handler, nextResponseCommandId(command));
+    return new PendingResponseHandler(
+        handler,
+        nextResponseCommandId(command, handler),
+        requiresMatchingResponseCommandId(command, handler));
   }
 
-  private int nextResponseCommandId(String command) {
-    if (command == null || !command.startsWith("loadsgf ")) {
-      return NO_RESPONSE_COMMAND_ID;
+  private boolean requiresMatchingResponseCommandId(String command, Runnable handler) {
+    return handler instanceof BoardSynchronizationResponseHandler
+        || (command != null
+            && handler != NO_OP_RESPONSE_HANDLER
+            && (command.startsWith("kata-get-param ")
+                || command.startsWith("kata-set-param ")));
+  }
+
+  private int nextResponseCommandId(String command, Runnable handler) {
+    if (command != null && command.startsWith("loadsgf ")) {
+      return loadSgfResponseCommandIds.getAndIncrement();
     }
-    return loadSgfResponseCommandIds.getAndIncrement();
+    if (handler instanceof BoardSynchronizationResponseHandler) {
+      return boardSynchronizationResponseCommandIds.getAndIncrement();
+    }
+    if (command != null
+        && handler != NO_OP_RESPONSE_HANDLER
+        && (command.startsWith("kata-get-param ") || command.startsWith("kata-set-param "))) {
+      return readBoardGmaResponseCommandIds.getAndIncrement();
+    }
+    return NO_RESPONSE_COMMAND_ID;
   }
 
   private String buildCommandLine(String command, int responseCommandId) {
@@ -3683,16 +3854,46 @@ public class Leelaz {
     }
   }
 
-  private void removePendingResponseHandler(Runnable handler) {
+  private boolean removePendingResponseHandler(Runnable handler) {
     ArrayDeque<PendingResponseHandler> handlers = pendingResponseHandlers();
     synchronized (handlers) {
       Iterator<PendingResponseHandler> iterator = handlers.descendingIterator();
       while (iterator.hasNext()) {
         if (iterator.next().handler == handler) {
           iterator.remove();
-          return;
+          return true;
         }
       }
+    }
+    return false;
+  }
+
+  private void retireTimedOutNormalCommand(Runnable handler) {
+    boolean removedQueued = false;
+    synchronized (commandQueue()) {
+      Iterator<QueuedCommand> iterator = commandQueue().iterator();
+      while (iterator.hasNext()) {
+        QueuedCommand queuedCommand = iterator.next();
+        if (queuedCommand.onResponse != handler) {
+          continue;
+        }
+        iterator.remove();
+        cmdNumber = Math.max(1, cmdNumber - 1);
+        if (currentCmdNum > cmdNumber - 1) {
+          currentCmdNum = cmdNumber - 1;
+        }
+        removedQueued = true;
+        break;
+      }
+    }
+    if (!removedQueued && removePendingResponseHandler(handler)) {
+      retireOutstandingResponseCountOnNoResponseTimeout();
+      return;
+    }
+    try {
+      trySendCommandFromQueue();
+    } catch (RuntimeException ex) {
+      ex.printStackTrace();
     }
   }
 
@@ -3782,7 +3983,9 @@ public class Leelaz {
         return null;
       }
       if (responseCommandId == NO_RESPONSE_COMMAND_ID) {
-        return handlers.removeFirst();
+        return handlers.peekFirst().requiresMatchingResponseCommandId
+            ? null
+            : handlers.removeFirst();
       }
       Iterator<PendingResponseHandler> iterator = handlers.iterator();
       while (iterator.hasNext()) {
@@ -3812,14 +4015,24 @@ public class Leelaz {
     }
   }
 
+  private boolean hasStrictPendingResponseHandlerAtFront() {
+    ArrayDeque<PendingResponseHandler> handlers = pendingResponseHandlers();
+    synchronized (handlers) {
+      return !handlers.isEmpty() && handlers.peekFirst().requiresMatchingResponseCommandId;
+    }
+  }
+
   private void processCommandResponseLine(String line) {
     if (foregroundRestoreInProgress && line != null && line.trim().startsWith("?")) {
       failForegroundRestore(foregroundRestoreSession, "restore command failed: " + line.trim());
     }
     boolean matchedPendingHandler = runPendingResponseHandlerForLine(line);
     acknowledgeExclusiveGtpInitialStop(line);
-    if (!matchedPendingHandler && parseResponseCommandId(line) != NO_RESPONSE_COMMAND_ID) {
-      return;
+    if (!matchedPendingHandler) {
+      if (parseResponseCommandId(line) != NO_RESPONSE_COMMAND_ID
+          || hasStrictPendingResponseHandlerAtFront()) {
+        return;
+      }
     }
     currentCmdNum++;
     if (currentCmdNum > cmdNumber - 1) {
@@ -3991,6 +4204,12 @@ public class Leelaz {
   }
 
   private ExclusiveGtpLeaseAvailability intrinsicExclusiveGtpLeaseAvailability() {
+    if (engineStateUnrestored) {
+      return ExclusiveGtpLeaseAvailability.ENGINE_STATE_UNRESTORED;
+    }
+    if (readBoardGmaReservation != null) {
+      return ExclusiveGtpLeaseAvailability.READBOARD_GMA;
+    }
     if (exclusiveGtpLifecycleTransition) {
       return ExclusiveGtpLeaseAvailability.ENGINE_LIFECYCLE;
     }
@@ -4094,6 +4313,9 @@ public class Leelaz {
 
   public boolean beginExclusiveGtpLifecycleTransition() {
     synchronized (engineArbitrationLock()) {
+      if (engineStateUnrestored || readBoardGmaReservation != null) {
+        return false;
+      }
       return beginExclusiveGtpLifecycleTransition(Thread.currentThread());
     }
   }
@@ -4110,6 +4332,9 @@ public class Leelaz {
 
   public EngineModeReservation beginEngineModeReservation() {
     synchronized (engineArbitrationLock()) {
+      if (engineStateUnrestored || readBoardGmaReservation != null) {
+        return null;
+      }
       Object owner = Thread.currentThread();
       if (!beginExclusiveGtpLifecycleTransition(owner)) {
         return null;
@@ -4156,14 +4381,18 @@ public class Leelaz {
   }
 
   private boolean rejectNewExclusiveWorkDuringGtpLease() {
-    if (!hasConflictingExclusiveGtpWork()) {
+    if (!engineStateUnrestored
+        && readBoardGmaReservation == null
+        && !hasConflictingExclusiveGtpWork()) {
       return false;
     }
     if (Lizzie.frame != null && Lizzie.frame.isDisplayable() && Lizzie.resourceBundle != null) {
+      String key =
+          engineStateUnrestored
+              ? "AnalysisSettings.reuseStatus.engine_state_unrestored"
+              : "AnalysisSettings.reuseStatus.existing_lease";
       SwingUtilities.invokeLater(
-          () ->
-              Utils.showMsg(
-                  Lizzie.resourceBundle.getString("AnalysisSettings.reuseStatus.existing_lease")));
+          () -> Utils.showMsg(Lizzie.resourceBundle.getString(key)));
     }
     return true;
   }
@@ -4507,7 +4736,7 @@ public class Leelaz {
     }
     if (restoreFailed) {
       try {
-        resetGtpCommandStateAfterForegroundRestoreFailure();
+        resetGtpCommandStateAfterRestoreFailure();
         notPondering();
       } finally {
         finishForegroundRestoreLifecycle();
@@ -4561,7 +4790,7 @@ public class Leelaz {
     }
   }
 
-  private void resetGtpCommandStateAfterForegroundRestoreFailure() {
+  private void resetGtpCommandStateAfterRestoreFailure() {
     synchronized (commandQueue()) {
       commandQueue().clear();
       foregroundRestoreCommandQueue().clear();
@@ -4885,10 +5114,13 @@ public class Leelaz {
   private static final class PendingResponseHandler {
     private final Runnable handler;
     private final int responseCommandId;
+    private final boolean requiresMatchingResponseCommandId;
 
-    private PendingResponseHandler(Runnable handler, int responseCommandId) {
+    private PendingResponseHandler(
+        Runnable handler, int responseCommandId, boolean requiresMatchingResponseCommandId) {
       this.handler = handler;
       this.responseCommandId = responseCommandId;
+      this.requiresMatchingResponseCommandId = requiresMatchingResponseCommandId;
     }
 
     private void run() {
@@ -5503,9 +5735,42 @@ public class Leelaz {
     private boolean snapshotRequested = false;
     private boolean overridden = false;
     private boolean restorePending = false;
+    private boolean restoreTracked = false;
+    private long revision;
+    private long standaloneRestoreRevision = -1L;
+    private ReadBoardGmaRestoreBarrier barrierRestoreDispatched;
 
     private ReadBoardGmaRuntimeParam(String name) {
       this.name = name;
+    }
+  }
+
+  private static final class ReadBoardGmaRestoreBarrier {
+    private final Runnable onSuccess;
+    private final Consumer<String> onFailure;
+    private int remaining;
+    private boolean completed;
+    private Timer timeout;
+
+    private ReadBoardGmaRestoreBarrier(Runnable onSuccess, Consumer<String> onFailure) {
+      this.onSuccess = onSuccess;
+      this.onFailure = onFailure;
+    }
+
+    private void register() {
+      remaining++;
+    }
+
+    private boolean completeOne() {
+      if (completed || remaining <= 0) {
+        return false;
+      }
+      remaining--;
+      return remaining == 0;
+    }
+
+    private boolean isEmpty() {
+      return !completed && remaining == 0;
     }
   }
 
@@ -5529,7 +5794,8 @@ public class Leelaz {
 
   public synchronized boolean genmoveAnalyzeForReadBoard(
       String color, int maxTimeSeconds, int maxVisits, boolean ponder) {
-    if (rejectNewExclusiveWorkDuringGtpLease()) return false;
+    if (isThinking) return false;
+    if (!beginReadBoardGmaSession()) return false;
     setReadBoardGmaPondering(ponder);
     prepareReadBoardGmaMaxTime(maxTimeSeconds);
     prepareReadBoardGmaMaxVisits(maxVisits);
@@ -5555,8 +5821,83 @@ public class Leelaz {
   }
 
   public void restoreReadBoardGmaRuntimeSettingsIfNeeded() {
-    restoreReadBoardGmaRuntimeParamIfNeeded(readBoardGmaPondering);
-    restoreReadBoardGmaSearchLimitsIfNeeded();
+    completeReadBoardGmaEngineRestore(null, null);
+  }
+
+  public void completeReadBoardGmaEngineRestore(
+      Runnable onSuccess, Consumer<String> onFailure) {
+    ReadBoardGmaRestoreBarrier barrier;
+    List<ReadBoardGmaRuntimeParam> paramsToRestore = new ArrayList<>();
+    boolean noParamsToRestore;
+    synchronized (readBoardGmaLock()) {
+      if (engineStateUnrestored
+          || readBoardGmaReservation == null
+          || readBoardGmaRestoreBarrier != null) {
+        return;
+      }
+      barrier = new ReadBoardGmaRestoreBarrier(onSuccess, onFailure);
+      readBoardGmaRestoreBarrier = barrier;
+      registerReadBoardGmaRuntimeParamRestore(
+          barrier, readBoardGmaPondering, paramsToRestore);
+      registerReadBoardGmaRuntimeParamRestore(barrier, readBoardGmaMaxTime, paramsToRestore);
+      registerReadBoardGmaRuntimeParamRestore(barrier, readBoardGmaMaxVisits, paramsToRestore);
+      noParamsToRestore = barrier.isEmpty();
+    }
+    if (noParamsToRestore) {
+      completeReadBoardGmaRuntimeRestore(barrier);
+      return;
+    }
+    startReadBoardGmaRestoreBarrierTimeout(barrier);
+    for (ReadBoardGmaRuntimeParam param : paramsToRestore) {
+      synchronized (readBoardGmaLock()) {
+        if (readBoardGmaRestoreBarrier != barrier || barrier.completed) {
+          return;
+        }
+      }
+      restoreReadBoardGmaRuntimeParamIfNeeded(param);
+    }
+  }
+
+  private Object readBoardGmaLock() {
+    Object lock = readBoardGmaLock;
+    if (lock != null) {
+      return lock;
+    }
+    synchronized (this) {
+      if (readBoardGmaLock == null) {
+        readBoardGmaLock = new Object();
+      }
+      return readBoardGmaLock;
+    }
+  }
+
+  private boolean beginReadBoardGmaSession() {
+    synchronized (readBoardGmaLock()) {
+      if (engineStateUnrestored || readBoardGmaRestoreBarrier != null) {
+        return false;
+      }
+      if (readBoardGmaReservation != null) {
+        return true;
+      }
+      EngineModeReservation reservation = beginEngineModeReservation();
+      if (reservation == null) {
+        return false;
+      }
+      readBoardGmaReservation = reservation;
+      return true;
+    }
+  }
+
+  private void registerReadBoardGmaRuntimeParamRestore(
+      ReadBoardGmaRestoreBarrier barrier,
+      ReadBoardGmaRuntimeParam param,
+      List<ReadBoardGmaRuntimeParam> paramsToRestore) {
+    if (!param.overridden || param.restoreTracked) {
+      return;
+    }
+    param.restoreTracked = true;
+    barrier.register();
+    paramsToRestore.add(param);
   }
 
   private void prepareReadBoardGmaMaxTime(int maxTimeSeconds) {
@@ -5576,44 +5917,389 @@ public class Leelaz {
   }
 
   private void prepareReadBoardGmaRuntimeParam(ReadBoardGmaRuntimeParam param, String value) {
-    param.restorePending = false;
-    captureReadBoardGmaOriginalParamIfNeeded(param);
+    boolean requestSnapshot;
+    synchronized (readBoardGmaLock()) {
+      param.restorePending = false;
+      requestSnapshot = !param.snapshotRequested;
+      param.snapshotRequested = true;
+      param.overridden = true;
+      param.revision++;
+    }
+    if (requestSnapshot) {
+      captureReadBoardGmaOriginalParam(param);
+    }
     sendCommandNoLeelaz2("kata-set-param " + param.name + " " + value);
-    param.overridden = true;
   }
 
-  private void captureReadBoardGmaOriginalParamIfNeeded(ReadBoardGmaRuntimeParam param) {
-    if (param.snapshotRequested) {
-      return;
-    }
-    param.snapshotRequested = true;
+  private void captureReadBoardGmaOriginalParam(ReadBoardGmaRuntimeParam param) {
     sendCommandNoLeelaz2(
         "kata-get-param " + param.name,
         () -> {
           String value = parseKataGetParamValue(currentCommandResponseLine());
-          if (!value.isEmpty()) {
+          boolean restorePending;
+          synchronized (readBoardGmaLock()) {
+            if (value.isEmpty() || engineStateUnrestored) {
+              return;
+            }
             param.originalValue = value;
-            restorePendingReadBoardGmaRuntimeParamIfNeeded(param);
+            restorePending = param.restorePending;
+          }
+          if (restorePending) {
+            restoreReadBoardGmaRuntimeParamIfNeeded(param);
           }
         });
   }
 
-  private void restoreReadBoardGmaRuntimeParamIfNeeded(ReadBoardGmaRuntimeParam param) {
-    if (!param.overridden) {
-      param.restorePending = false;
-      return;
+  private void startReadBoardGmaRestoreBarrierTimeout(ReadBoardGmaRestoreBarrier barrier) {
+    Timer timeout = new Timer("lizzie-readboard-gma-restore-barrier-timeout", true);
+    timeout.schedule(
+        new TimerTask() {
+          @Override
+          public void run() {
+            failReadBoardGmaRuntimeRestore(barrier, "restore response timeout");
+          }
+        },
+        Math.max(1L, readBoardGmaRestoreResponseTimeoutMillis()));
+    synchronized (readBoardGmaLock()) {
+      if (readBoardGmaRestoreBarrier != barrier || barrier.completed) {
+        timeout.cancel();
+        return;
+      }
+      barrier.timeout = timeout;
     }
-    if (param.originalValue.isEmpty()) {
-      param.restorePending = param.snapshotRequested;
-      return;
-    }
-    sendCommandNoLeelaz2("kata-set-param " + param.name + " " + param.originalValue);
-    clearReadBoardGmaRuntimeParam(param);
   }
 
-  private void restorePendingReadBoardGmaRuntimeParamIfNeeded(ReadBoardGmaRuntimeParam param) {
-    if (param.restorePending) {
-      restoreReadBoardGmaRuntimeParamIfNeeded(param);
+  private void restoreReadBoardGmaRuntimeParamIfNeeded(ReadBoardGmaRuntimeParam param) {
+    ReadBoardGmaRestoreBarrier barrier;
+    String originalValue;
+    long revision;
+    synchronized (readBoardGmaLock()) {
+      if (engineStateUnrestored || readBoardGmaReservation == null || !param.overridden) {
+        param.restorePending = false;
+        return;
+      }
+      if (param.originalValue.isEmpty()) {
+        param.restorePending = param.snapshotRequested;
+        return;
+      }
+      barrier = readBoardGmaRestoreBarrier;
+      if (barrier != null) {
+        if (!param.restoreTracked || param.barrierRestoreDispatched == barrier) {
+          return;
+        }
+        param.barrierRestoreDispatched = barrier;
+      } else {
+        if (param.standaloneRestoreRevision == param.revision) {
+          return;
+        }
+        param.standaloneRestoreRevision = param.revision;
+      }
+      param.restorePending = false;
+      originalValue = param.originalValue;
+      revision = param.revision;
+    }
+    sendAcknowledgedReadBoardGmaRestoreCommand(barrier, param, revision, originalValue);
+  }
+
+  private void sendAcknowledgedReadBoardGmaRestoreCommand(
+      ReadBoardGmaRestoreBarrier barrier,
+      ReadBoardGmaRuntimeParam param,
+      long revision,
+      String originalValue) {
+    new ReadBoardGmaTrackedCommand(barrier, param, revision, originalValue).start();
+  }
+
+  private void acknowledgeReadBoardGmaRuntimeRestore(ReadBoardGmaRestoreBarrier barrier) {
+    boolean completed;
+    synchronized (readBoardGmaLock()) {
+      if (readBoardGmaRestoreBarrier != barrier || barrier.completed) {
+        return;
+      }
+      completed = barrier.completeOne();
+    }
+    if (completed) {
+      completeReadBoardGmaRuntimeRestore(barrier);
+    }
+  }
+
+  private void failReadBoardGmaRuntimeRestore(
+      ReadBoardGmaRestoreBarrier barrier, String detail) {
+    EngineModeReservation reservation;
+    Consumer<String> failure;
+    Timer timeout;
+    synchronized (readBoardGmaLock()) {
+      if (readBoardGmaRestoreBarrier != barrier || barrier.completed) {
+        return;
+      }
+      barrier.completed = true;
+      readBoardGmaRestoreBarrier = null;
+      engineStateUnrestored = true;
+      reservation = readBoardGmaReservation;
+      readBoardGmaReservation = null;
+      failure = barrier.onFailure;
+      timeout = barrier.timeout;
+      barrier.timeout = null;
+    }
+    if (timeout != null) {
+      timeout.cancel();
+    }
+    rememberRecentLine(recentStderrLines, "ReadBoard GMA engine restore failed: " + detail);
+    resetGtpCommandStateAfterRestoreFailure();
+    if (reservation != null) {
+      reservation.close();
+    }
+    if (failure != null) {
+      failure.accept(detail);
+    }
+  }
+
+  public void failReadBoardGmaEngineRestore(String detail) {
+    ReadBoardGmaRestoreBarrier barrier;
+    EngineModeReservation reservation;
+    synchronized (readBoardGmaLock()) {
+      barrier = readBoardGmaRestoreBarrier;
+      if (barrier != null) {
+        reservation = null;
+      } else {
+        reservation = readBoardGmaReservation;
+        if (reservation == null) {
+          return;
+        }
+        engineStateUnrestored = true;
+        readBoardGmaReservation = null;
+      }
+    }
+    if (barrier != null) {
+      failReadBoardGmaRuntimeRestore(barrier, detail);
+      return;
+    }
+    rememberRecentLine(recentStderrLines, "ReadBoard GMA engine restore failed: " + detail);
+    resetGtpCommandStateAfterRestoreFailure();
+    reservation.close();
+  }
+
+  private void completeReadBoardGmaRuntimeRestore(ReadBoardGmaRestoreBarrier barrier) {
+    EngineModeReservation reservation;
+    Runnable completion;
+    Timer timeout;
+    synchronized (readBoardGmaLock()) {
+      if (readBoardGmaRestoreBarrier != barrier
+          || barrier.completed
+          || barrier.remaining != 0) {
+        return;
+      }
+      barrier.completed = true;
+      readBoardGmaRestoreBarrier = null;
+      clearReadBoardGmaSearchLimitSnapshots();
+      reservation = readBoardGmaReservation;
+      readBoardGmaReservation = null;
+      completion = barrier.onSuccess;
+      timeout = barrier.timeout;
+      barrier.timeout = null;
+    }
+    if (timeout != null) {
+      timeout.cancel();
+    }
+    if (reservation != null) {
+      reservation.close();
+    }
+    if (completion != null) {
+      completion.run();
+    }
+  }
+
+  void confirmBoardSynchronization(Runnable onSuccess, Consumer<String> onFailure) {
+    new BoardSynchronizationConfirmation(onSuccess, onFailure).start();
+  }
+
+  private interface BoardSynchronizationResponseHandler extends Runnable {}
+
+  private final class BoardSynchronizationConfirmation {
+    private final Runnable onSuccess;
+    private final Consumer<String> onFailure;
+    private final AtomicBoolean settled = new AtomicBoolean(false);
+    private final Runnable responseHandler =
+        (BoardSynchronizationResponseHandler) this::onResponse;
+    private Timer timeout;
+
+    private BoardSynchronizationConfirmation(
+        Runnable onSuccess, Consumer<String> onFailure) {
+      this.onSuccess = onSuccess;
+      this.onFailure = onFailure;
+    }
+
+    private void start() {
+      try {
+        sendCommand("name", responseHandler, this::onSendFailure, true, false);
+      } catch (RuntimeException ex) {
+        settleFailure(ex.getMessage());
+        return;
+      }
+      if (settled.get()) {
+        return;
+      }
+      timeout = new Timer("lizzie-board-sync-confirmation-timeout", true);
+      timeout.schedule(
+          new TimerTask() {
+            @Override
+            public void run() {
+              if (!settled.compareAndSet(false, true)) {
+                return;
+              }
+              try {
+                runFailure("board synchronization response timeout");
+              } finally {
+                retireTimedOutNormalCommand(responseHandler);
+              }
+            }
+          },
+          Math.max(1L, readBoardGmaRestoreResponseTimeoutMillis()));
+    }
+
+    private void onResponse() {
+      if (!settled.compareAndSet(false, true)) {
+        return;
+      }
+      cancelTimeout();
+      if (isCurrentCommandResponseError()) {
+        runFailure("board synchronization failed: " + currentCommandResponseLine());
+      } else if (onSuccess != null) {
+        onSuccess.run();
+      }
+    }
+
+    private void onSendFailure(RuntimeException failure) {
+      settleFailure(
+          failure == null ? "board synchronization send failed" : failure.getMessage());
+    }
+
+    private void settleFailure(String detail) {
+      if (!settled.compareAndSet(false, true)) {
+        return;
+      }
+      cancelTimeout();
+      runFailure(detail);
+    }
+
+    private void runFailure(String detail) {
+      if (onFailure != null) {
+        onFailure.accept(detail);
+      }
+    }
+
+    private void cancelTimeout() {
+      Timer currentTimeout = timeout;
+      timeout = null;
+      if (currentTimeout != null) {
+        currentTimeout.cancel();
+      }
+    }
+  }
+
+  protected long readBoardGmaRestoreResponseTimeoutMillis() {
+    return FOREGROUND_RELEASE_STOP_TIMEOUT_MILLIS;
+  }
+
+  private final class ReadBoardGmaTrackedCommand {
+    private final ReadBoardGmaRestoreBarrier barrier;
+    private final ReadBoardGmaRuntimeParam param;
+    private final long revision;
+    private final String originalValue;
+    private final AtomicBoolean settled = new AtomicBoolean(false);
+    private final Runnable responseHandler = this::onResponse;
+    private Timer timeout;
+
+    private ReadBoardGmaTrackedCommand(
+        ReadBoardGmaRestoreBarrier barrier,
+        ReadBoardGmaRuntimeParam param,
+        long revision,
+        String originalValue) {
+      this.barrier = barrier;
+      this.param = param;
+      this.revision = revision;
+      this.originalValue = originalValue;
+    }
+
+    private void start() {
+      try {
+        sendCommand(
+            "kata-set-param " + param.name + " " + originalValue,
+            responseHandler,
+            this::onSendFailure,
+            true,
+            false);
+      } catch (RuntimeException ex) {
+        settleFailure(ex.getMessage());
+        return;
+      }
+      if (settled.get()) {
+        return;
+      }
+      timeout = new Timer("lizzie-readboard-gma-restore-timeout", true);
+      timeout.schedule(
+          new TimerTask() {
+            @Override
+            public void run() {
+              if (!settled.compareAndSet(false, true)) {
+                return;
+              }
+              try {
+                failRestore("restore response timeout: " + param.name);
+              } finally {
+                retireTimedOutNormalCommand(responseHandler);
+              }
+            }
+          },
+          Math.max(1L, readBoardGmaRestoreResponseTimeoutMillis()));
+    }
+
+    private void onResponse() {
+      if (!settled.compareAndSet(false, true)) {
+        return;
+      }
+      cancelTimeout();
+      if (isCurrentCommandResponseError()) {
+        failRestore("restore command failed: " + currentCommandResponseLine());
+        return;
+      }
+      if (barrier != null) {
+        acknowledgeReadBoardGmaRuntimeRestore(barrier);
+        return;
+      }
+      synchronized (readBoardGmaLock()) {
+        if (!engineStateUnrestored && param.revision == revision) {
+          param.overridden = false;
+          param.restorePending = false;
+        }
+      }
+    }
+
+    private void onSendFailure(RuntimeException failure) {
+      settleFailure(failure == null ? "restore send failed: " + param.name : failure.getMessage());
+    }
+
+    private void settleFailure(String detail) {
+      if (!settled.compareAndSet(false, true)) {
+        return;
+      }
+      cancelTimeout();
+      failRestore(detail);
+    }
+
+    private void failRestore(String detail) {
+      if (barrier != null) {
+        failReadBoardGmaRuntimeRestore(barrier, detail);
+      } else {
+        failReadBoardGmaEngineRestore(detail);
+      }
+    }
+
+    private void cancelTimeout() {
+      Timer currentTimeout = timeout;
+      timeout = null;
+      if (currentTimeout != null) {
+        currentTimeout.cancel();
+      }
     }
   }
 
@@ -5625,7 +6311,14 @@ public class Leelaz {
     if (!trimmed.startsWith("=")) {
       return "";
     }
-    return trimmed.substring(1).trim();
+    String value = trimmed.substring(1).trim();
+    int separator = value.indexOf(' ');
+    if (separator > 0
+        && value.substring(0, separator).chars()
+            .allMatch(character -> character >= '0' && character <= '9')) {
+      return value.substring(separator + 1).trim();
+    }
+    return value;
   }
 
   private void clearReadBoardGmaSearchLimitSnapshots() {
@@ -5639,6 +6332,10 @@ public class Leelaz {
     param.snapshotRequested = false;
     param.overridden = false;
     param.restorePending = false;
+    param.restoreTracked = false;
+    param.revision = 0L;
+    param.standaloneRestoreRevision = -1L;
+    param.barrierRestoreDispatched = null;
   }
 
   private void sendPlayingAgainstHumanTimeLeftBeforeGenmove() {

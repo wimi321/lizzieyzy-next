@@ -2,6 +2,7 @@ package featurecat.lizzie.analysis;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import featurecat.lizzie.Config;
@@ -10,13 +11,25 @@ import featurecat.lizzie.Lizzie;
 import featurecat.lizzie.gui.GtpConsolePane;
 import featurecat.lizzie.gui.LizzieFrame;
 import featurecat.lizzie.gui.Menu;
+import featurecat.lizzie.rules.Board;
 import java.awt.Window;
+import java.io.BufferedReader;
+import java.io.IOException;
 import java.io.OutputStream;
+import java.io.StringReader;
 import java.lang.reflect.Field;
+import java.lang.reflect.InvocationTargetException;
+import java.nio.file.Path;
 import java.util.Collection;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 class LeelazReadBoardGmaTest {
   @Test
@@ -83,6 +96,28 @@ class LeelazReadBoardGmaTest {
   }
 
   @Test
+  void numberedKataGetParamResponseRestoresOnlyTheParameterValue() throws Exception {
+    try (Harness harness = Harness.open()) {
+      Leelaz engine = new Leelaz("");
+      engine.isKatago = true;
+      Lizzie.leelaz = engine;
+      RecordingOutputStream output = new RecordingOutputStream();
+      setOutputStream(engine, output);
+
+      assertTrue(engine.genmoveAnalyzeForReadBoard("B", 0, 0, false));
+      invokeProcessCommandResponseLine(
+          engine, parameterValueResponseFor(output.rawCommands(), "ponderingEnabled", "true"));
+      engine.isThinking = false;
+      engine.restoreReadBoardGmaRuntimeSettingsIfNeeded();
+
+      assertTrue(output.commands().contains("kata-set-param ponderingEnabled true"));
+      assertFalse(
+          output.commands().stream()
+              .anyMatch(command -> command.matches("kata-set-param ponderingEnabled \\d+ true")));
+    }
+  }
+
+  @Test
   void genmoveAnalyzeForReadBoardRestoresPreviousLimitOverridesWhenLimitsAreZero()
       throws Exception {
     try (Harness harness = Harness.open()) {
@@ -108,6 +143,26 @@ class LeelazReadBoardGmaTest {
   }
 
   @Test
+  void inSessionLimitRestoreErrorQuarantinesEngine() throws Exception {
+    try (Harness harness = Harness.open()) {
+      Leelaz engine = readyReadBoardGmaEngine();
+      Lizzie.leelaz = engine;
+      setReadBoardGmaParamState(engine, "readBoardGmaMaxTime", "2", true);
+      setReadBoardGmaParamState(engine, "readBoardGmaMaxVisits", "800", true);
+      RecordingOutputStream output = new RecordingOutputStream();
+      setOutputStream(engine, output);
+
+      assertTrue(engine.genmoveAnalyzeForReadBoard("W", 0, 0, false));
+      invokeProcessCommandResponseLine(
+          engine, errorResponseFor(output.rawCommands(), "maxTime", "restore failed"));
+
+      assertEquals(
+          Leelaz.ExclusiveGtpLeaseAvailability.ENGINE_STATE_UNRESTORED,
+          engine.previewForegroundAnalysisLeaseAvailability());
+    }
+  }
+
+  @Test
   void restoreReadBoardGmaSearchLimitsWaitsForOriginalValuesWhenStopHappensEarly()
       throws Exception {
     try (Harness harness = Harness.open()) {
@@ -119,11 +174,16 @@ class LeelazReadBoardGmaTest {
 
       engine.genmoveAnalyzeForReadBoard("B", 5, 1000, true);
       engine.restoreReadBoardGmaSearchLimitsIfNeeded();
-      invokeProcessCommandResponseLine(engine, "= true");
-      invokeProcessCommandResponseLine(engine, "=");
-      invokeProcessCommandResponseLine(engine, "= 2");
-      invokeProcessCommandResponseLine(engine, "=");
-      invokeProcessCommandResponseLine(engine, "= 800");
+      invokeProcessCommandResponseLine(
+          engine, parameterValueResponseFor(output.rawCommands(), "ponderingEnabled", "true"));
+      invokeProcessCommandResponseLine(
+          engine, successResponseFor(output.rawCommands(), "ponderingEnabled"));
+      invokeProcessCommandResponseLine(
+          engine, parameterValueResponseFor(output.rawCommands(), "maxTime", "2"));
+      invokeProcessCommandResponseLine(
+          engine, successResponseFor(output.rawCommands(), "maxTime"));
+      invokeProcessCommandResponseLine(
+          engine, parameterValueResponseFor(output.rawCommands(), "maxVisits", "800"));
 
       assertEquals(
           List.of(
@@ -152,10 +212,14 @@ class LeelazReadBoardGmaTest {
 
       engine.genmoveAnalyzeForReadBoard("B", 5, 0, true);
       engine.restoreReadBoardGmaSearchLimitsIfNeeded();
+      engine.isThinking = false;
       engine.genmoveAnalyzeForReadBoard("W", 6, 0, true);
-      invokeProcessCommandResponseLine(engine, "= true");
-      invokeProcessCommandResponseLine(engine, "=");
-      invokeProcessCommandResponseLine(engine, "= 2");
+      invokeProcessCommandResponseLine(
+          engine, parameterValueResponseFor(output.rawCommands(), "ponderingEnabled", "true"));
+      invokeProcessCommandResponseLine(
+          engine, successResponseFor(output.rawCommands(), "ponderingEnabled"));
+      invokeProcessCommandResponseLine(
+          engine, parameterValueResponseFor(output.rawCommands(), "maxTime", "2"));
 
       assertEquals(
           List.of(
@@ -183,8 +247,10 @@ class LeelazReadBoardGmaTest {
 
       engine.genmoveAnalyzeForReadBoard("B", 0, 0, false);
       invokeRestoreReadBoardGmaRuntimeSettingsIfNeeded(engine);
-      invokeProcessCommandResponseLine(engine, "= true");
-      invokeProcessCommandResponseLine(engine, "=");
+      invokeProcessCommandResponseLine(
+          engine, parameterValueResponseFor(output.rawCommands(), "ponderingEnabled", "true"));
+      invokeProcessCommandResponseLine(
+          engine, successResponseFor(output.rawCommands(), "ponderingEnabled"));
 
       assertEquals(
           List.of(
@@ -207,10 +273,16 @@ class LeelazReadBoardGmaTest {
       setOutputStream(engine, output);
 
       engine.genmoveAnalyzeForReadBoard("B", 0, 0, false);
-      invokeProcessCommandResponseLine(engine, "= true");
+      invokeProcessCommandResponseLine(
+          engine, parameterValueResponseFor(output.rawCommands(), "ponderingEnabled", "true"));
+      invokeProcessCommandResponseLine(
+          engine, successResponseFor(output.rawCommands(), "ponderingEnabled"));
       invokeProcessCommandResponseLine(engine, "=");
       invokeRestoreReadBoardGmaRuntimeSettingsIfNeeded(engine);
+      invokeProcessCommandResponseLine(
+          engine, successResponseFor(output.rawCommands(), "ponderingEnabled"));
 
+      engine.isThinking = false;
       engine.genmoveAnalyzeForReadBoard("W", 0, 0, false);
 
       assertEquals(
@@ -223,6 +295,593 @@ class LeelazReadBoardGmaTest {
               "kata-set-param ponderingEnabled false",
               "kata-genmove_analyze W 10"),
           output.commands());
+    }
+  }
+
+  @Test
+  void readBoardGmaKeepsEngineReservedUntilEveryRuntimeRestoreIsAcknowledged()
+      throws Exception {
+    try (Harness harness = Harness.open()) {
+      Leelaz engine = readyReadBoardGmaEngine();
+      Lizzie.leelaz = engine;
+      RecordingOutputStream output = new RecordingOutputStream();
+      setOutputStream(engine, output);
+
+      assertTrue(engine.genmoveAnalyzeForReadBoard("B", 5, 1000, true));
+      acknowledgeInitialGmaCommands(engine, output);
+      engine.isThinking = false;
+
+      engine.restoreReadBoardGmaRuntimeSettingsIfNeeded();
+
+      assertEquals(
+          Leelaz.ExclusiveGtpLeaseAvailability.READBOARD_GMA,
+          engine.previewForegroundAnalysisLeaseAvailability());
+      invokeProcessCommandResponseLine(
+          engine, successResponseFor(output.rawCommands(), "maxVisits"));
+      assertEquals(
+          Leelaz.ExclusiveGtpLeaseAvailability.READBOARD_GMA,
+          engine.previewForegroundAnalysisLeaseAvailability());
+      invokeProcessCommandResponseLine(
+          engine, successResponseFor(output.rawCommands(), "ponderingEnabled"));
+      assertEquals(
+          Leelaz.ExclusiveGtpLeaseAvailability.READBOARD_GMA,
+          engine.previewForegroundAnalysisLeaseAvailability());
+      invokeProcessCommandResponseLine(
+          engine, successResponseFor(output.rawCommands(), "maxTime"));
+
+      assertEquals(
+          Leelaz.ExclusiveGtpLeaseAvailability.AVAILABLE,
+          engine.previewForegroundAnalysisLeaseAvailability());
+    }
+  }
+
+  @Test
+  void restoreCannotMissAnOverrideWhileItsSnapshotCommandIsBeingSent() throws Exception {
+    try (Harness harness = Harness.open()) {
+      Leelaz engine = readyReadBoardGmaEngine();
+      Lizzie.leelaz = engine;
+      BlockingFirstFlushOutputStream output = new BlockingFirstFlushOutputStream();
+      setOutputStream(engine, output);
+      AtomicReference<Throwable> failure = new AtomicReference<>();
+      Thread genmoveThread =
+          new Thread(
+              () -> {
+                try {
+                  engine.genmoveAnalyzeForReadBoard("B", 0, 0, false);
+                } catch (Throwable ex) {
+                  failure.set(ex);
+                }
+              },
+              "readboard-gma-prepare-race-test");
+      genmoveThread.setDaemon(true);
+
+      genmoveThread.start();
+      assertTrue(output.firstFlushStarted.await(1, TimeUnit.SECONDS));
+      engine.completeReadBoardGmaEngineRestore(
+          () -> {}, detail -> failure.set(new AssertionError(detail)));
+      assertEquals(
+          Leelaz.ExclusiveGtpLeaseAvailability.READBOARD_GMA,
+          engine.previewForegroundAnalysisLeaseAvailability());
+
+      output.releaseFirstFlush.countDown();
+      genmoveThread.join(1000L);
+      assertFalse(genmoveThread.isAlive());
+      assertEquals(null, failure.get());
+      engine.isThinking = false;
+      invokeProcessCommandResponseLine(
+          engine,
+          parameterValueResponseFor(output.rawCommands(), "ponderingEnabled", "true"));
+      invokeProcessCommandResponseLine(
+          engine, successResponseFor(output.rawCommands(), "ponderingEnabled"));
+      assertEquals(
+          Leelaz.ExclusiveGtpLeaseAvailability.AVAILABLE,
+          engine.previewForegroundAnalysisLeaseAvailability());
+    }
+  }
+
+  @Test
+  void readBoardGmaRejectsOverlappingGmaAndNormalEngineModeOnCallingThread()
+      throws Exception {
+    try (Harness harness = Harness.open()) {
+      Leelaz engine = readyReadBoardGmaEngine();
+      Lizzie.leelaz = engine;
+      setOutputStream(engine, new RecordingOutputStream());
+
+      assertTrue(engine.genmoveAnalyzeForReadBoard("B", 5, 1000, true));
+
+      assertFalse(engine.genmoveAnalyzeForReadBoard("W", 5, 1000, true));
+      assertEquals(null, engine.beginEngineModeReservation());
+      assertFalse(engine.beginExclusiveGtpLifecycleTransition());
+      assertFalse(engine.genmove("W", false));
+    }
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"ponderingEnabled", "maxTime", "maxVisits"})
+  void readBoardGmaRuntimeRestoreErrorQuarantinesEngineAndIgnoresLateSuccess(String failedParam)
+      throws Exception {
+    try (Harness harness = Harness.open()) {
+      Leelaz engine = readyReadBoardGmaEngine();
+      Lizzie.leelaz = engine;
+      RecordingOutputStream output = new RecordingOutputStream();
+      setOutputStream(engine, output);
+
+      assertTrue(engine.genmoveAnalyzeForReadBoard("B", 5, 1000, true));
+      acknowledgeInitialGmaCommands(engine, output);
+      engine.isThinking = false;
+      engine.restoreReadBoardGmaRuntimeSettingsIfNeeded();
+
+      invokeProcessCommandResponseLine(
+          engine, errorResponseFor(output.rawCommands(), failedParam, "restore failed"));
+
+      assertEquals(
+          Leelaz.ExclusiveGtpLeaseAvailability.ENGINE_STATE_UNRESTORED,
+          engine.previewForegroundAnalysisLeaseAvailability());
+      assertFalse(engine.genmove("B", false));
+      assertFalse(engine.genmoveAnalyzeForReadBoard("B", 1, 1, false));
+      assertEquals(null, engine.beginEngineModeReservation());
+      assertFalse(engine.beginExclusiveGtpLifecycleTransition());
+
+      invokeProcessCommandResponseLine(
+          engine, successResponseFor(output.rawCommands(), failedParam));
+
+      assertEquals(
+          Leelaz.ExclusiveGtpLeaseAvailability.ENGINE_STATE_UNRESTORED,
+          engine.previewForegroundAnalysisLeaseAvailability());
+      Leelaz.ExclusiveGtpLifecycleReservation lifecycle =
+          engine.beginExclusiveGtpLifecycleReservation();
+      assertTrue(lifecycle != null, "manual switch/restart must remain available for recovery.");
+      lifecycle.close();
+    }
+  }
+
+  @Test
+  void partialRuntimeRestoreSuccessKeepsEverySnapshotUntilTheBarrierCompletes() throws Exception {
+    try (Harness harness = Harness.open()) {
+      Leelaz engine = readyReadBoardGmaEngine();
+      Lizzie.leelaz = engine;
+      RecordingOutputStream output = new RecordingOutputStream();
+      setOutputStream(engine, output);
+      assertTrue(engine.genmoveAnalyzeForReadBoard("B", 5, 1000, true));
+      acknowledgeInitialGmaCommands(engine, output);
+      engine.isThinking = false;
+      engine.restoreReadBoardGmaRuntimeSettingsIfNeeded();
+
+      invokeProcessCommandResponseLine(
+          engine, successResponseFor(output.rawCommands(), "ponderingEnabled"));
+      assertEquals(
+          "true", getReadBoardGmaParamOriginalValue(engine, "readBoardGmaPondering"));
+      invokeProcessCommandResponseLine(
+          engine, errorResponseFor(output.rawCommands(), "maxTime", "restore failed"));
+
+      assertEquals("2", getReadBoardGmaParamOriginalValue(engine, "readBoardGmaMaxTime"));
+      assertEquals("800", getReadBoardGmaParamOriginalValue(engine, "readBoardGmaMaxVisits"));
+      assertEquals(
+          "true", getReadBoardGmaParamOriginalValue(engine, "readBoardGmaPondering"));
+    }
+  }
+
+  @Test
+  void runtimeRestoreErrorCanBeRecoveredByAnImmediateSameInstanceRestart() throws Exception {
+    try (Harness harness = Harness.open()) {
+      Leelaz engine = readyReadBoardGmaEngine();
+      Lizzie.leelaz = engine;
+      RecordingOutputStream output = new RecordingOutputStream();
+      setOutputStream(engine, output);
+      assertTrue(engine.genmoveAnalyzeForReadBoard("B", 5, 1000, true));
+      acknowledgeInitialGmaCommands(engine, output);
+      engine.isThinking = false;
+      engine.restoreReadBoardGmaRuntimeSettingsIfNeeded();
+      invokeProcessCommandResponseLine(
+          engine, errorResponseFor(output.rawCommands(), "maxTime", "restore failed"));
+
+      engine.restoreClosedEngineBoardState(false);
+      invokeProcessCommandResponseLine(engine, "=");
+      assertEquals(
+          Leelaz.ExclusiveGtpLeaseAvailability.ENGINE_STATE_UNRESTORED,
+          engine.previewForegroundAnalysisLeaseAvailability());
+      invokeProcessCommandResponseLine(engine, numberedResponseFor(output.rawCommands(), "name"));
+
+      assertEquals(
+          Leelaz.ExclusiveGtpLeaseAvailability.AVAILABLE,
+          engine.previewForegroundAnalysisLeaseAvailability());
+    }
+  }
+
+  @Test
+  void repeatedCleanupAfterSuccessDoesNotSendOrCompleteAgain() throws Exception {
+    try (Harness harness = Harness.open()) {
+      Leelaz engine = readyReadBoardGmaEngine();
+      Lizzie.leelaz = engine;
+      RecordingOutputStream output = new RecordingOutputStream();
+      setOutputStream(engine, output);
+      assertTrue(engine.genmoveAnalyzeForReadBoard("B", 0, 0, false));
+      invokeProcessCommandResponseLine(
+          engine, parameterValueResponseFor(output.rawCommands(), "ponderingEnabled", "true"));
+      invokeProcessCommandResponseLine(
+          engine, successResponseFor(output.rawCommands(), "ponderingEnabled"));
+      invokeProcessCommandResponseLine(engine, "=");
+      engine.isThinking = false;
+      AtomicInteger successes = new AtomicInteger();
+
+      engine.completeReadBoardGmaEngineRestore(successes::incrementAndGet, detail -> {});
+      invokeProcessCommandResponseLine(
+          engine, successResponseFor(output.rawCommands(), "ponderingEnabled"));
+      int commandCount = output.rawCommands().size();
+      engine.completeReadBoardGmaEngineRestore(successes::incrementAndGet, detail -> {});
+
+      assertEquals(1, successes.get());
+      assertEquals(commandCount, output.rawCommands().size());
+    }
+  }
+
+  @Test
+  void repeatedCleanupAfterFailureDoesNotRetryOrReportSuccess() throws Exception {
+    try (Harness harness = Harness.open()) {
+      Leelaz engine = readyReadBoardGmaEngine();
+      Lizzie.leelaz = engine;
+      RecordingOutputStream output = new RecordingOutputStream();
+      setOutputStream(engine, output);
+      assertTrue(engine.genmoveAnalyzeForReadBoard("B", 5, 1000, true));
+      acknowledgeInitialGmaCommands(engine, output);
+      engine.isThinking = false;
+      AtomicInteger successes = new AtomicInteger();
+      AtomicInteger failures = new AtomicInteger();
+      engine.completeReadBoardGmaEngineRestore(
+          successes::incrementAndGet, detail -> failures.incrementAndGet());
+      invokeProcessCommandResponseLine(
+          engine, errorResponseFor(output.rawCommands(), "maxTime", "restore failed"));
+      int commandCount = output.rawCommands().size();
+
+      engine.completeReadBoardGmaEngineRestore(
+          successes::incrementAndGet, detail -> failures.incrementAndGet());
+
+      assertEquals(0, successes.get());
+      assertEquals(1, failures.get());
+      assertEquals(commandCount, output.rawCommands().size());
+    }
+  }
+
+  @Test
+  void readBoardGmaRuntimeRestoreSendFailureQuarantinesEngine() throws Exception {
+    try (Harness harness = Harness.open()) {
+      Leelaz engine = readyReadBoardGmaEngine();
+      Lizzie.leelaz = engine;
+      RecordingOutputStream output = new RecordingOutputStream();
+      setOutputStream(engine, output);
+      assertTrue(engine.genmoveAnalyzeForReadBoard("B", 5, 1000, true));
+      acknowledgeInitialGmaCommands(engine, output);
+      engine.isThinking = false;
+      setOutputStream(
+          engine,
+          new OutputStream() {
+            @Override
+            public void write(int value) throws IOException {
+              throw new IOException("controlled restore send failure");
+            }
+          });
+      CountDownLatch failed = new CountDownLatch(1);
+
+      engine.completeReadBoardGmaEngineRestore(() -> {}, detail -> failed.countDown());
+
+      assertTrue(failed.await(1, TimeUnit.SECONDS));
+      assertEquals(
+          Leelaz.ExclusiveGtpLeaseAvailability.ENGINE_STATE_UNRESTORED,
+          engine.previewForegroundAnalysisLeaseAvailability());
+    }
+  }
+
+  @Test
+  void readBoardGmaRuntimeRestoreTimeoutQuarantinesEngine() throws Exception {
+    try (Harness harness = Harness.open()) {
+      Leelaz engine = new ShortGmaRestoreTimeoutLeelaz();
+      configureReadyReadBoardGmaEngine(engine);
+      Lizzie.leelaz = engine;
+      RecordingOutputStream output = new RecordingOutputStream();
+      setOutputStream(engine, output);
+      assertTrue(engine.genmoveAnalyzeForReadBoard("B", 5, 1000, true));
+      acknowledgeInitialGmaCommands(engine, output);
+      engine.isThinking = false;
+      CountDownLatch failed = new CountDownLatch(1);
+
+      engine.completeReadBoardGmaEngineRestore(() -> {}, detail -> failed.countDown());
+
+      assertTrue(failed.await(1, TimeUnit.SECONDS));
+      assertEquals(
+          Leelaz.ExclusiveGtpLeaseAvailability.ENGINE_STATE_UNRESTORED,
+          engine.previewForegroundAnalysisLeaseAvailability());
+    }
+  }
+
+  @Test
+  void readBoardGmaRestoreTimeoutAlsoCoversOriginalValueStillInFlight() throws Exception {
+    try (Harness harness = Harness.open()) {
+      Leelaz engine = new ShortGmaRestoreTimeoutLeelaz();
+      configureReadyReadBoardGmaEngine(engine);
+      Lizzie.leelaz = engine;
+      RecordingOutputStream output = new RecordingOutputStream();
+      setOutputStream(engine, output);
+      assertTrue(engine.genmoveAnalyzeForReadBoard("B", 5, 1000, true));
+      CountDownLatch failed = new CountDownLatch(1);
+
+      engine.completeReadBoardGmaEngineRestore(() -> {}, detail -> failed.countDown());
+
+      assertTrue(failed.await(1, TimeUnit.SECONDS));
+      assertEquals(
+          Leelaz.ExclusiveGtpLeaseAvailability.ENGINE_STATE_UNRESTORED,
+          engine.previewForegroundAnalysisLeaseAvailability());
+
+      engine.restoreClosedEngineBoardState(false);
+      invokeProcessCommandResponseLine(engine, "=");
+      assertEquals(
+          Leelaz.ExclusiveGtpLeaseAvailability.ENGINE_STATE_UNRESTORED,
+          engine.previewForegroundAnalysisLeaseAvailability());
+      invokeProcessCommandResponseLine(engine, numberedResponseFor(output.rawCommands(), "name"));
+      assertEquals(
+          Leelaz.ExclusiveGtpLeaseAvailability.AVAILABLE,
+          engine.previewForegroundAnalysisLeaseAvailability());
+    }
+  }
+
+  @Test
+  void readBoardGmaTransportEofDuringRestoreQuarantinesEngine() throws Exception {
+    try (Harness harness = Harness.open()) {
+      Leelaz engine = readyReadBoardGmaEngine();
+      Lizzie.leelaz = engine;
+      RecordingOutputStream output = new RecordingOutputStream();
+      setOutputStream(engine, output);
+      assertTrue(engine.genmoveAnalyzeForReadBoard("B", 5, 1000, true));
+      acknowledgeInitialGmaCommands(engine, output);
+      engine.isThinking = false;
+      CountDownLatch failed = new CountDownLatch(1);
+      engine.completeReadBoardGmaEngineRestore(() -> {}, detail -> failed.countDown());
+
+      engine.failReadBoardGmaEngineRestore("transport EOF");
+
+      assertTrue(failed.await(1, TimeUnit.SECONDS));
+      assertEquals(
+          Leelaz.ExclusiveGtpLeaseAvailability.ENGINE_STATE_UNRESTORED,
+          engine.previewForegroundAnalysisLeaseAvailability());
+    }
+  }
+
+  @Test
+  void readBoardGmaBoardRestoreFailureQuarantinesEngineBeforeRuntimeRestore() throws Exception {
+    try (Harness harness = Harness.open()) {
+      Leelaz engine = new FailingBoardRestoreLeelaz();
+      configureReadyReadBoardGmaEngine(engine);
+      Lizzie.leelaz = engine;
+      RecordingOutputStream output = new RecordingOutputStream();
+      setOutputStream(engine, output);
+      assertTrue(engine.genmoveAnalyzeForReadBoard("B", 5, 1000, true));
+      acknowledgeInitialGmaCommands(engine, output);
+      engine.isThinking = false;
+      ReadBoard readBoard = allocate(ReadBoard.class);
+      Lizzie.frame.readBoard = readBoard;
+      setBooleanField(readBoard, "readBoardGmaEngineRestorePending", true);
+      setObjectField(
+          readBoard,
+          "readBoardGmaDeferredRestoreNode",
+          Lizzie.board.getHistory().getCurrentHistoryNode());
+
+      InvocationTargetException failure =
+          assertThrows(
+              InvocationTargetException.class,
+              () -> invokeFlushReadBoardGmaEngineRestoreIfReady(readBoard));
+
+      assertTrue(failure.getCause().getMessage().contains("controlled board restore failure"));
+      assertEquals(
+          Leelaz.ExclusiveGtpLeaseAvailability.ENGINE_STATE_UNRESTORED,
+          engine.previewForegroundAnalysisLeaseAvailability());
+    }
+  }
+
+  @Test
+  void readBoardGmaKeepsReservationUntilBoardAndRuntimeRestoreAreAcknowledged() throws Exception {
+    try (Harness harness = Harness.open()) {
+      ControlledBoardRestoreLeelaz engine = new ControlledBoardRestoreLeelaz();
+      configureReadyReadBoardGmaEngine(engine);
+      Lizzie.leelaz = engine;
+      RecordingOutputStream output = new RecordingOutputStream();
+      setOutputStream(engine, output);
+      assertTrue(engine.genmoveAnalyzeForReadBoard("B", 5, 1000, true));
+      acknowledgeInitialGmaCommands(engine, output);
+      engine.isThinking = false;
+      ReadBoard readBoard = allocate(ReadBoard.class);
+      Lizzie.frame.readBoard = readBoard;
+      setBooleanField(readBoard, "readBoardGmaEngineRestorePending", true);
+      setObjectField(
+          readBoard,
+          "readBoardGmaDeferredRestoreNode",
+          Lizzie.board.getHistory().getCurrentHistoryNode());
+      AtomicReference<Throwable> failure = new AtomicReference<>();
+      Thread restoreThread =
+          new Thread(
+              () -> {
+                try {
+                  invokeFlushReadBoardGmaEngineRestoreIfReady(readBoard);
+                } catch (Throwable ex) {
+                  failure.set(ex);
+                }
+              },
+              "readboard-gma-board-restore-test");
+      restoreThread.setDaemon(true);
+
+      restoreThread.start();
+      assertTrue(engine.loadStarted.await(1, TimeUnit.SECONDS));
+      assertEquals(
+          Leelaz.ExclusiveGtpLeaseAvailability.READBOARD_GMA,
+          engine.previewForegroundAnalysisLeaseAvailability());
+
+      engine.completeLoad.countDown();
+      restoreThread.join(1000L);
+      assertFalse(restoreThread.isAlive());
+      assertEquals(null, failure.get());
+      assertEquals(
+          Leelaz.ExclusiveGtpLeaseAvailability.READBOARD_GMA,
+          engine.previewForegroundAnalysisLeaseAvailability());
+
+      invokeProcessCommandResponseLine(
+          engine, successResponseFor(output.rawCommands(), "maxVisits"));
+      invokeProcessCommandResponseLine(
+          engine, successResponseFor(output.rawCommands(), "ponderingEnabled"));
+      assertEquals(
+          Leelaz.ExclusiveGtpLeaseAvailability.READBOARD_GMA,
+          engine.previewForegroundAnalysisLeaseAvailability());
+      invokeProcessCommandResponseLine(
+          engine, successResponseFor(output.rawCommands(), "maxTime"));
+      assertEquals(
+          Leelaz.ExclusiveGtpLeaseAvailability.AVAILABLE,
+          engine.previewForegroundAnalysisLeaseAvailability());
+    }
+  }
+
+  @Test
+  void readLoopEofQuarantinesActiveReadBoardGmaSession() throws Exception {
+    try (Harness harness = Harness.open()) {
+      Leelaz engine = readyReadBoardGmaEngine();
+      Lizzie.leelaz = engine;
+      setOutputStream(engine, new RecordingOutputStream());
+      setInputStream(engine, "");
+      engine.isNormalEnd = true;
+      assertTrue(engine.genmoveAnalyzeForReadBoard("B", 5, 1000, true));
+
+      invokeRead(engine);
+
+      assertEquals(
+          Leelaz.ExclusiveGtpLeaseAvailability.ENGINE_STATE_UNRESTORED,
+          engine.previewForegroundAnalysisLeaseAvailability());
+    }
+  }
+
+  @Test
+  void manualRestartKeepsQuarantineUntilBoardSyncConfirmationIsAcknowledged() throws Exception {
+    try (Harness harness = Harness.open()) {
+      Leelaz engine = readyReadBoardGmaEngine();
+      Lizzie.leelaz = engine;
+      RecordingOutputStream output = new RecordingOutputStream();
+      setOutputStream(engine, output);
+      assertTrue(engine.genmoveAnalyzeForReadBoard("B", 5, 1000, true));
+      acknowledgeInitialGmaCommands(engine, output);
+      engine.isThinking = false;
+      engine.failReadBoardGmaEngineRestore("controlled board restore failure");
+
+      engine.restoreClosedEngineBoardState(false);
+
+      assertEquals(
+          Leelaz.ExclusiveGtpLeaseAvailability.ENGINE_STATE_UNRESTORED,
+          engine.previewForegroundAnalysisLeaseAvailability());
+      invokeProcessCommandResponseLine(engine, "=");
+      assertEquals(
+          Leelaz.ExclusiveGtpLeaseAvailability.ENGINE_STATE_UNRESTORED,
+          engine.previewForegroundAnalysisLeaseAvailability());
+      String boardFenceResponse = numberedResponseFor(output.rawCommands(), "name");
+      int responseCountBeforeStaleLines = getIntField(engine, "currentCmdNum");
+      invokeProcessCommandResponseLine(engine, "=");
+      assertEquals(
+          Leelaz.ExclusiveGtpLeaseAvailability.ENGINE_STATE_UNRESTORED,
+          engine.previewForegroundAnalysisLeaseAvailability());
+      assertEquals(responseCountBeforeStaleLines, getIntField(engine, "currentCmdNum"));
+      invokeProcessCommandResponseLine(engine, "=123456789 stale response");
+      assertEquals(
+          Leelaz.ExclusiveGtpLeaseAvailability.ENGINE_STATE_UNRESTORED,
+          engine.previewForegroundAnalysisLeaseAvailability());
+      assertEquals(responseCountBeforeStaleLines, getIntField(engine, "currentCmdNum"));
+      invokeProcessCommandResponseLine(engine, boardFenceResponse);
+      assertEquals(
+          Leelaz.ExclusiveGtpLeaseAvailability.AVAILABLE,
+          engine.previewForegroundAnalysisLeaseAvailability());
+    }
+  }
+
+  @Test
+  void automaticRestartKeepsReservationUntilBoardFenceIsAcknowledged() throws Exception {
+    try (Harness harness = Harness.open()) {
+      ReadyAutomaticRestartLeelaz engine = new ReadyAutomaticRestartLeelaz();
+      configureReadyReadBoardGmaEngine(engine);
+      Lizzie.leelaz = engine;
+      RecordingOutputStream output = new RecordingOutputStream();
+      setOutputStream(engine, output);
+      Leelaz.ExclusiveGtpLifecycleReservation reservation =
+          engine.beginAutomaticEngineRestartReservation();
+      assertTrue(reservation != null);
+      CountDownLatch completed = new CountDownLatch(1);
+
+      engine.restartClosedEngine(
+          0,
+          () -> {
+            reservation.close();
+            completed.countDown();
+          });
+
+      assertTrue(waitForRawCommand(output, "name", 1, TimeUnit.SECONDS));
+      assertEquals(null, engine.beginEngineModeReservation());
+      assertFalse(completed.await(50, TimeUnit.MILLISECONDS));
+      invokeProcessCommandResponseLine(engine, numberedResponseFor(output.rawCommands(), "name"));
+      assertTrue(completed.await(1, TimeUnit.SECONDS));
+      Leelaz.EngineModeReservation afterFence = engine.beginEngineModeReservation();
+      assertTrue(afterFence != null);
+      afterFence.close();
+    }
+  }
+
+  @Test
+  void automaticRestartReadinessTimeoutReleasesReservationForManualRecovery() throws Exception {
+    try (Harness harness = Harness.open()) {
+      TimeoutAutomaticRestartLeelaz engine = new TimeoutAutomaticRestartLeelaz();
+      Lizzie.leelaz = engine;
+      Leelaz.ExclusiveGtpLifecycleReservation reservation =
+          engine.beginAutomaticEngineRestartReservation();
+      assertTrue(reservation != null);
+      CountDownLatch completed = new CountDownLatch(1);
+
+      engine.restartClosedEngine(
+          0,
+          () -> {
+            reservation.close();
+            completed.countDown();
+          });
+
+      boolean completedBeforeControlledRelease =
+          completed.await(250, TimeUnit.MILLISECONDS);
+      if (!completedBeforeControlledRelease) {
+        engine.isCheckingName = false;
+        engine.isLoaded = true;
+        completed.await(1, TimeUnit.SECONDS);
+      }
+      assertTrue(completedBeforeControlledRelease);
+      assertFalse(engine.isLoaded());
+      assertTrue(engine.hasUnrestoredReadBoardGmaState());
+      Leelaz.ExclusiveGtpLifecycleReservation manualRecovery =
+          engine.beginExclusiveGtpLifecycleReservation();
+      assertTrue(manualRecovery != null);
+      manualRecovery.close();
+    }
+  }
+
+  @Test
+  void standaloneRestoreTimeoutQuarantinesBeforeAQueuedSiblingCanBeSent() throws Exception {
+    try (Harness harness = Harness.open()) {
+      Leelaz engine = new ShortGmaRestoreTimeoutLeelaz();
+      configureReadyReadBoardGmaEngine(engine);
+      Lizzie.leelaz = engine;
+      engine.requireResponseBeforeSend = true;
+      setReadBoardGmaParamState(engine, "readBoardGmaMaxTime", "2", true);
+      setReadBoardGmaParamState(engine, "readBoardGmaMaxVisits", "800", true);
+      BlockingSecondFlushOutputStream output = new BlockingSecondFlushOutputStream();
+      setOutputStream(engine, output);
+      invokeBeginReadBoardGmaSession(engine);
+
+      engine.restoreReadBoardGmaSearchLimitsIfNeeded();
+
+      boolean siblingSendStarted = output.secondFlushStarted.await(250, TimeUnit.MILLISECONDS);
+      Leelaz.ExclusiveGtpLeaseAvailability availabilityBeforeRelease =
+          engine.previewForegroundAnalysisLeaseAvailability();
+      output.releaseSecondFlush.countDown();
+      assertFalse(siblingSendStarted);
+      assertEquals(
+          Leelaz.ExclusiveGtpLeaseAvailability.ENGINE_STATE_UNRESTORED,
+          availabilityBeforeRelease);
     }
   }
 
@@ -240,13 +899,16 @@ class LeelazReadBoardGmaTest {
       Lizzie.frame.readBoard = readBoard;
 
       engine.genmoveAnalyzeForReadBoard("B", 0, 0, true);
-      invokeProcessCommandResponseLine(engine, "= true");
-      invokeProcessCommandResponseLine(engine, "=");
+      invokeProcessCommandResponseLine(
+          engine, parameterValueResponseFor(output.rawCommands(), "ponderingEnabled", "true"));
+      invokeProcessCommandResponseLine(
+          engine, successResponseFor(output.rawCommands(), "ponderingEnabled"));
 
       assertEquals(1, pendingResponseHandlerCount(engine));
 
       invokeParseLine(engine, "play D4");
-      invokeProcessCommandResponseLine(engine, "=");
+      invokeProcessCommandResponseLine(
+          engine, successResponseFor(output.rawCommands(), "ponderingEnabled"));
 
       assertEquals(0, pendingResponseHandlerCount(engine));
       assertFalse(getBooleanField(engine, "isCommandLine"));
@@ -267,8 +929,10 @@ class LeelazReadBoardGmaTest {
       Lizzie.frame.readBoard = readBoard;
 
       engine.genmoveAnalyzeForReadBoard("B", 0, 0, true);
-      invokeProcessCommandResponseLine(engine, "= true");
-      invokeProcessCommandResponseLine(engine, "=");
+      invokeProcessCommandResponseLine(
+          engine, parameterValueResponseFor(output.rawCommands(), "ponderingEnabled", "true"));
+      invokeProcessCommandResponseLine(
+          engine, successResponseFor(output.rawCommands(), "ponderingEnabled"));
       assertEquals(1, pendingResponseHandlerCount(engine));
 
       readBoard.parseLine("nobothSync");
@@ -294,8 +958,10 @@ class LeelazReadBoardGmaTest {
       Lizzie.frame.readBoard = readBoard;
 
       engine.genmoveAnalyzeForReadBoard("B", 0, 0, true);
-      invokeProcessCommandResponseLine(engine, "= true");
-      invokeProcessCommandResponseLine(engine, "=");
+      invokeProcessCommandResponseLine(
+          engine, parameterValueResponseFor(output.rawCommands(), "ponderingEnabled", "true"));
+      invokeProcessCommandResponseLine(
+          engine, successResponseFor(output.rawCommands(), "ponderingEnabled"));
       assertEquals(1, pendingResponseHandlerCount(engine));
 
       invokeParseLine(engine, "? engine failed");
@@ -306,6 +972,114 @@ class LeelazReadBoardGmaTest {
     }
   }
 
+  private static Leelaz readyReadBoardGmaEngine() throws Exception {
+    Leelaz engine = new Leelaz("");
+    configureReadyReadBoardGmaEngine(engine);
+    return engine;
+  }
+
+  private static void configureReadyReadBoardGmaEngine(Leelaz engine) throws Exception {
+    engine.started = true;
+    engine.isLoaded = true;
+    engine.isKatago = true;
+    engine.commandLists.addAll(
+        List.of(
+            "stop",
+            "boardsize",
+            "komi",
+            "kata-get-rules",
+            "kata-set-rules",
+            "clear_board",
+            "play",
+            "set_position",
+            "kata-analyze",
+            "kata-genmove_analyze",
+            "kata-get-param",
+            "kata-set-param"));
+    Field commandListReady = Leelaz.class.getDeclaredField("endGetCommandList");
+    commandListReady.setAccessible(true);
+    commandListReady.setBoolean(engine, true);
+  }
+
+  private static void acknowledgeInitialGmaCommands(
+      Leelaz engine, RecordingOutputStream output) throws Exception {
+    invokeProcessCommandResponseLine(
+        engine, parameterValueResponseFor(output.rawCommands(), "ponderingEnabled", "true"));
+    invokeProcessCommandResponseLine(
+        engine, successResponseFor(output.rawCommands(), "ponderingEnabled"));
+    invokeProcessCommandResponseLine(
+        engine, parameterValueResponseFor(output.rawCommands(), "maxTime", "2"));
+    invokeProcessCommandResponseLine(engine, successResponseFor(output.rawCommands(), "maxTime"));
+    invokeProcessCommandResponseLine(
+        engine, parameterValueResponseFor(output.rawCommands(), "maxVisits", "800"));
+    invokeProcessCommandResponseLine(
+        engine, successResponseFor(output.rawCommands(), "maxVisits"));
+    invokeProcessCommandResponseLine(engine, "=");
+  }
+
+  private static String successResponseFor(List<String> commands, String paramName) {
+    for (int index = commands.size() - 1; index >= 0; index--) {
+      String command = commands.get(index);
+      if (!command.contains("kata-set-param " + paramName + " ")) {
+        continue;
+      }
+      int firstSpace = command.indexOf(' ');
+      if (firstSpace > 0 && command.substring(0, firstSpace).chars().allMatch(Character::isDigit)) {
+        return "=" + command.substring(0, firstSpace);
+      }
+      return "=";
+    }
+    throw new IllegalArgumentException("Missing restore command for " + paramName);
+  }
+
+  private static String parameterValueResponseFor(
+      List<String> commands, String paramName, String value) {
+    for (String command : commands) {
+      if (!command.contains("kata-get-param " + paramName)) {
+        continue;
+      }
+      int firstSpace = command.indexOf(' ');
+      if (firstSpace > 0 && command.substring(0, firstSpace).chars().allMatch(Character::isDigit)) {
+        return "=" + command.substring(0, firstSpace) + " " + value;
+      }
+      return "= " + value;
+    }
+    throw new IllegalArgumentException("Missing snapshot command for " + paramName);
+  }
+
+  private static String errorResponseFor(
+      List<String> commands, String paramName, String detail) {
+    return successResponseFor(commands, paramName).replaceFirst("^=", "?") + " " + detail;
+  }
+
+  private static String numberedResponseFor(List<String> commands, String commandName) {
+    for (int index = commands.size() - 1; index >= 0; index--) {
+      String command = commands.get(index);
+      int firstSpace = command.indexOf(' ');
+      if (firstSpace > 0
+          && command.substring(0, firstSpace).chars().allMatch(Character::isDigit)
+          && command.substring(firstSpace + 1).equals(commandName)) {
+        return "=" + command.substring(0, firstSpace);
+      }
+    }
+    throw new IllegalArgumentException("Missing numbered command " + commandName);
+  }
+
+  private static boolean waitForRawCommand(
+      RecordingOutputStream output, String commandName, long timeout, TimeUnit unit)
+      throws InterruptedException {
+    long deadline = System.nanoTime() + unit.toNanos(timeout);
+    while (System.nanoTime() < deadline) {
+      try {
+        numberedResponseFor(output.rawCommands(), commandName);
+        return true;
+      } catch (IllegalArgumentException ignored) {
+        Thread.sleep(10L);
+      }
+    }
+    return false;
+  }
+
   private static void invokeRestoreReadBoardGmaRuntimeSettingsIfNeeded(Leelaz engine)
       throws Exception {
     java.lang.reflect.Method method =
@@ -314,10 +1088,30 @@ class LeelazReadBoardGmaTest {
     method.invoke(engine);
   }
 
+  private static void invokeBeginReadBoardGmaSession(Leelaz engine) throws Exception {
+    java.lang.reflect.Method method =
+        Leelaz.class.getDeclaredMethod("beginReadBoardGmaSession");
+    method.setAccessible(true);
+    assertTrue((Boolean) method.invoke(engine));
+  }
+
   private static void setOutputStream(Leelaz engine, OutputStream stream) throws Exception {
     Field outputField = Leelaz.class.getDeclaredField("outputStream");
     outputField.setAccessible(true);
     outputField.set(engine, Leelaz.createCommandOutputStream(stream));
+  }
+
+  private static void setInputStream(Leelaz engine, String input) throws Exception {
+    Field field = Leelaz.class.getDeclaredField("inputStream");
+    field.setAccessible(true);
+    field.set(engine, new BufferedReader(new StringReader(input)));
+  }
+
+  private static void setObjectField(Object target, String fieldName, Object value)
+      throws Exception {
+    Field field = target.getClass().getDeclaredField(fieldName);
+    field.setAccessible(true);
+    field.set(target, value);
   }
 
   private static void setBooleanField(Object target, String fieldName, boolean value)
@@ -350,6 +1144,22 @@ class LeelazReadBoardGmaTest {
     return field.getBoolean(target);
   }
 
+  private static int getIntField(Object target, String fieldName) throws Exception {
+    Field field = target.getClass().getDeclaredField(fieldName);
+    field.setAccessible(true);
+    return field.getInt(target);
+  }
+
+  private static String getReadBoardGmaParamOriginalValue(Leelaz engine, String paramFieldName)
+      throws Exception {
+    Field field = Leelaz.class.getDeclaredField(paramFieldName);
+    field.setAccessible(true);
+    Object param = field.get(engine);
+    Field originalValue = param.getClass().getDeclaredField("originalValue");
+    originalValue.setAccessible(true);
+    return (String) originalValue.get(param);
+  }
+
   private static void invokeProcessCommandResponseLine(Leelaz engine, String line)
       throws Exception {
     java.lang.reflect.Method method =
@@ -362,6 +1172,21 @@ class LeelazReadBoardGmaTest {
     java.lang.reflect.Method method = Leelaz.class.getDeclaredMethod("parseLine", String.class);
     method.setAccessible(true);
     method.invoke(engine, line);
+  }
+
+  private static void invokeRead(Leelaz engine) throws Exception {
+    java.lang.reflect.Method method = Leelaz.class.getDeclaredMethod("read");
+    method.setAccessible(true);
+    method.invoke(engine);
+  }
+
+  private static void invokeFlushReadBoardGmaEngineRestoreIfReady(ReadBoard readBoard)
+      throws Exception {
+    java.lang.reflect.Method method =
+        ReadBoard.class.getDeclaredMethod(
+            "flushReadBoardGmaEngineRestoreIfReady", String.class);
+    method.setAccessible(true);
+    method.invoke(readBoard, "test");
   }
 
   private static int pendingResponseHandlerCount(Leelaz engine) throws Exception {
@@ -390,6 +1215,7 @@ class LeelazReadBoardGmaTest {
     private final GtpConsolePane previousGtpConsole;
     private final Leelaz previousLeelaz;
     private final Leelaz previousLeelaz2;
+    private final Board previousBoard;
     private final Menu previousMenu;
     private final boolean previousEngineGameFlag;
 
@@ -399,6 +1225,7 @@ class LeelazReadBoardGmaTest {
         GtpConsolePane previousGtpConsole,
         Leelaz previousLeelaz,
         Leelaz previousLeelaz2,
+        Board previousBoard,
         Menu previousMenu,
         boolean previousEngineGameFlag) {
       this.previousConfig = previousConfig;
@@ -406,6 +1233,7 @@ class LeelazReadBoardGmaTest {
       this.previousGtpConsole = previousGtpConsole;
       this.previousLeelaz = previousLeelaz;
       this.previousLeelaz2 = previousLeelaz2;
+      this.previousBoard = previousBoard;
       this.previousMenu = previousMenu;
       this.previousEngineGameFlag = previousEngineGameFlag;
     }
@@ -418,14 +1246,17 @@ class LeelazReadBoardGmaTest {
               Lizzie.gtpConsole,
               Lizzie.leelaz,
               Lizzie.leelaz2,
+              Lizzie.board,
               LizzieFrame.menu,
               EngineManager.isEngineGame);
       Lizzie.config = minimalConfig();
       Lizzie.frame = allocate(SilentFrame.class);
       Lizzie.gtpConsole = allocate(SilentGtpConsole.class);
-      Lizzie.leelaz = null;
+      Lizzie.leelaz = new Leelaz("");
       Lizzie.leelaz2 = null;
-      LizzieFrame.menu = allocate(Menu.class);
+      Lizzie.board = new Board();
+      Lizzie.leelaz = null;
+      LizzieFrame.menu = allocate(SilentMenu.class);
       EngineManager.isEngineGame = false;
       return harness;
     }
@@ -437,6 +1268,7 @@ class LeelazReadBoardGmaTest {
       Lizzie.gtpConsole = previousGtpConsole;
       Lizzie.leelaz = previousLeelaz;
       Lizzie.leelaz2 = previousLeelaz2;
+      Lizzie.board = previousBoard;
       LizzieFrame.menu = previousMenu;
       EngineManager.isEngineGame = previousEngineGameFlag;
     }
@@ -461,7 +1293,112 @@ class LeelazReadBoardGmaTest {
     }
 
     private synchronized List<String> commands() {
+      List<String> normalized = new ArrayList<>();
+      for (String command : commands) {
+        int firstSpace = command.indexOf(' ');
+        if (firstSpace > 0
+            && command.substring(0, firstSpace).chars().allMatch(Character::isDigit)) {
+          normalized.add(command.substring(firstSpace + 1));
+        } else {
+          normalized.add(command);
+        }
+      }
+      return normalized;
+    }
+
+    private synchronized List<String> rawCommands() {
       return new ArrayList<>(commands);
+    }
+  }
+
+  private static final class BlockingFirstFlushOutputStream extends OutputStream {
+    private final StringBuilder currentCommand = new StringBuilder();
+    private final List<String> commands = new ArrayList<>();
+    private final CountDownLatch firstFlushStarted = new CountDownLatch(1);
+    private final CountDownLatch releaseFirstFlush = new CountDownLatch(1);
+    private boolean firstFlush = true;
+
+    @Override
+    public synchronized void write(int value) {
+      currentCommand.append((char) value);
+    }
+
+    @Override
+    public synchronized void flush() throws IOException {
+      if (firstFlush) {
+        firstFlush = false;
+        firstFlushStarted.countDown();
+        try {
+          releaseFirstFlush.await();
+        } catch (InterruptedException ex) {
+          Thread.currentThread().interrupt();
+          throw new IOException("controlled first flush interrupted", ex);
+        }
+      }
+      String command = currentCommand.toString().trim();
+      currentCommand.setLength(0);
+      if (!command.isEmpty()) {
+        commands.add(command);
+      }
+    }
+
+    private synchronized List<String> rawCommands() {
+      return new ArrayList<>(commands);
+    }
+  }
+
+  private static final class BlockingSecondFlushOutputStream extends OutputStream {
+    private final CountDownLatch secondFlushStarted = new CountDownLatch(1);
+    private final CountDownLatch releaseSecondFlush = new CountDownLatch(1);
+    private int flushCount;
+
+    @Override
+    public void write(int value) {}
+
+    @Override
+    public void flush() throws IOException {
+      flushCount++;
+      if (flushCount != 2) {
+        return;
+      }
+      secondFlushStarted.countDown();
+      try {
+        releaseSecondFlush.await();
+      } catch (InterruptedException ex) {
+        Thread.currentThread().interrupt();
+        throw new IOException("controlled second flush interrupted", ex);
+      }
+    }
+  }
+
+  private static final class FailingBoardRestoreLeelaz extends Leelaz {
+    private FailingBoardRestoreLeelaz() throws IOException {
+      super("");
+    }
+
+    @Override
+    public void loadSgf(Path sgfFile) {
+      throw new IllegalStateException("controlled board restore failure");
+    }
+  }
+
+  private static final class ControlledBoardRestoreLeelaz extends Leelaz {
+    private final CountDownLatch loadStarted = new CountDownLatch(1);
+    private final CountDownLatch completeLoad = new CountDownLatch(1);
+
+    private ControlledBoardRestoreLeelaz() throws IOException {
+      super("");
+    }
+
+    @Override
+    public void loadSgf(Path sgfFile) {
+      loadStarted.countDown();
+      try {
+        completeLoad.await();
+      } catch (InterruptedException ex) {
+        Thread.currentThread().interrupt();
+        throw new IllegalStateException("controlled board restore interrupted", ex);
+      }
     }
   }
 
@@ -472,6 +1409,55 @@ class LeelazReadBoardGmaTest {
 
     @Override
     public void refresh() {}
+  }
+
+  private static final class SilentMenu extends Menu {
+    private SilentMenu() {}
+
+    @Override
+    public void toggleEngineMenuStatus(boolean isPondering, boolean isThinking) {}
+  }
+
+  private static final class ShortGmaRestoreTimeoutLeelaz extends Leelaz {
+    private ShortGmaRestoreTimeoutLeelaz() throws IOException {
+      super("");
+    }
+
+    @Override
+    protected long readBoardGmaRestoreResponseTimeoutMillis() {
+      return 25L;
+    }
+  }
+
+  private static final class ReadyAutomaticRestartLeelaz extends Leelaz {
+    private ReadyAutomaticRestartLeelaz() throws IOException {
+      super("controlled-engine");
+    }
+
+    @Override
+    public void startEngine(int index) {
+      started = true;
+      isLoaded = true;
+      isCheckingName = false;
+    }
+  }
+
+  private static final class TimeoutAutomaticRestartLeelaz extends Leelaz {
+    private TimeoutAutomaticRestartLeelaz() throws IOException {
+      super("controlled-engine");
+    }
+
+    @Override
+    public void startEngine(int index) {
+      started = true;
+      isLoaded = false;
+      isCheckingName = true;
+    }
+
+    @Override
+    long engineStartupSynchronizationTimeoutMillis() {
+      return 25L;
+    }
   }
 
   private static final class SilentGtpConsole extends GtpConsolePane {

@@ -1568,16 +1568,18 @@ public class EngineManager {
           restartRemoteEngineInBackground(Lizzie.leelaz, currentEngineNo);
         } else {
           try {
-            Lizzie.leelaz.restartClosedEngine(currentEngineNo);
+            restartEngineAutomatically(Lizzie.leelaz, currentEngineNo);
           } catch (IOException e) {
             e.printStackTrace();
           }
         }
       }
-      if (Lizzie.leelaz.useJavaSSH && Lizzie.leelaz.isLoaded() && Lizzie.leelaz.canCheckAlive) {
+      if (Lizzie.leelaz.useJavaSSH
+          && Lizzie.leelaz.isLoaded()
+          && Lizzie.leelaz.canCheckAlive) {
         if (Lizzie.leelaz.javaSSHClosed)
           try {
-            Lizzie.leelaz.restartClosedEngine(currentEngineNo);
+            restartEngineAutomatically(Lizzie.leelaz, currentEngineNo);
           } catch (IOException e) {
             // TODO Auto-generated catch block
             e.printStackTrace();
@@ -1771,13 +1773,23 @@ public class EngineManager {
   }
 
   private void restartRemoteEngineInBackground(Leelaz engine, int index) {
-    if (engine == null || !REMOTE_ENGINES_RESTARTING.add(engine)) {
+    if (engine == null) {
+      return;
+    }
+    Leelaz.ExclusiveGtpLifecycleReservation reservation =
+        engine.beginAutomaticEngineRestartReservation();
+    if (reservation == null) {
+      return;
+    }
+    if (!REMOTE_ENGINES_RESTARTING.add(engine)) {
+      reservation.close();
       return;
     }
     engine.canCheckAlive = false;
     Thread restartThread =
         new Thread(
             () -> {
+              boolean restoreScheduled = false;
               try {
                 if (Lizzie.leelaz != engine
                     || currentEngineNo != index
@@ -1786,16 +1798,34 @@ public class EngineManager {
                   engine.canCheckAlive = true;
                   return;
                 }
-                engine.restartClosedEngine(index);
+                engine.restartClosedEngine(index, reservation::close);
+                restoreScheduled = true;
               } catch (IOException failure) {
                 failure.printStackTrace();
               } finally {
+                if (!restoreScheduled) {
+                  reservation.close();
+                }
                 REMOTE_ENGINES_RESTARTING.remove(engine);
               }
             },
             "lizzie-remote-engine-restart");
     restartThread.setDaemon(true);
     restartThread.start();
+  }
+
+  private void restartEngineAutomatically(Leelaz engine, int index) throws IOException {
+    Leelaz.ExclusiveGtpLifecycleReservation reservation =
+        engine.beginAutomaticEngineRestartReservation();
+    if (reservation == null) {
+      return;
+    }
+    try {
+      engine.restartClosedEngine(index, reservation::close);
+    } catch (IOException | RuntimeException failure) {
+      reservation.close();
+      throw failure;
+    }
   }
 
   public void refreshEngineCatalog() throws JSONException, IOException {
@@ -1987,7 +2017,14 @@ public class EngineManager {
     } catch (Exception e) {
     }
     switchEngineInternal(
-        currentEngineNo > 0 ? currentEngineNo : engineNo, true, reservations::close);
+        currentEngineNo > 0 ? currentEngineNo : engineNo,
+        true,
+        releaseEngineLifecycleAfterBoardSync(
+            currentForegroundEngine,
+            currentForegroundEngine,
+            true,
+            true,
+            reservations));
   }
 
   public void reStartEngine(int index) {
@@ -2011,7 +2048,11 @@ public class EngineManager {
 
     } catch (Exception e) {
     }
-    switchEngineInternal(index, true, reservations::close);
+    switchEngineInternal(
+        index,
+        true,
+        releaseEngineLifecycleAfterBoardSync(
+            currentForegroundEngine, targetEngine, true, true, reservations));
   }
 
   public void reStartEngine2() {
@@ -2268,7 +2309,47 @@ public class EngineManager {
       showForegroundEngineLeaseInUse();
       return;
     }
-    switchEngineInternal(index, isMain, reservations::close);
+    switchEngineInternal(
+        index,
+        isMain,
+        targetEngine == currentForegroundEngine
+            ? reservations::close
+            : releaseEngineLifecycleAfterBoardSync(
+                currentForegroundEngine, targetEngine, isMain, false, reservations));
+  }
+
+  private Runnable releaseEngineLifecycleAfterBoardSync(
+      Leelaz current,
+      Leelaz target,
+      boolean isMain,
+      boolean allowTargetRecovery,
+      EngineLifecycleReservations reservations) {
+    if (!isMain
+        || current == null
+        || target == null
+        || (!current.hasUnrestoredReadBoardGmaState()
+            && !(allowTargetRecovery && target.hasUnrestoredReadBoardGmaState()))) {
+      return reservations::close;
+    }
+    return () -> {
+      if (Lizzie.leelaz != target || !target.isStarted() || !target.isLoaded()) {
+        reservations.close();
+        return;
+      }
+      target.confirmBoardSynchronization(
+          () -> {
+            if (allowTargetRecovery) {
+              target.completeReadBoardGmaRecoveryAfterBoardSync();
+            }
+            reservations.close();
+          },
+          detail -> {
+            target.isLoaded = false;
+            target.markBoardSynchronizationFailed(detail);
+            showEngineSynchronizationFailure(target);
+            reservations.close();
+          });
+    };
   }
 
   protected void switchEngineInternal(int index, boolean isMain, Runnable afterSync) {
