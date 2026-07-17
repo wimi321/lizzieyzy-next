@@ -651,7 +651,12 @@ public class AnalysisSettings extends JDialog {
       return false;
     }
     boolean newCommandCustomized =
-        reuseCurrentEngine ? Lizzie.config.analysisEngineCommandCustomized : true;
+        commandCustomizedAfterSave(
+            Lizzie.config.analysisEngineCommandCustomized,
+            reuseCurrentEngine,
+            engineCommandExplicitlyChanged,
+            originalEngineCommand,
+            newCommand);
     int newAnalysisMaxVisits = Lizzie.config.analysisMaxVisits;
     int newBatchAnalysisPlayouts = Lizzie.config.batchAnalysisPlayouts;
     if (context == Context.BATCH) {
@@ -714,6 +719,17 @@ public class AnalysisSettings extends JDialog {
       Lizzie.frame.destroyAnalysisEngine();
     }
     return true;
+  }
+
+  static boolean commandCustomizedAfterSave(
+      boolean previouslyCustomized,
+      boolean reuseCurrentEngine,
+      boolean explicitlyChanged,
+      String originalCommand,
+      String newCommand) {
+    return previouslyCustomized
+        || (!reuseCurrentEngine
+            && (explicitlyChanged || !newCommand.equals(originalCommand)));
   }
 
   void showSaveFailure(IOException error) {

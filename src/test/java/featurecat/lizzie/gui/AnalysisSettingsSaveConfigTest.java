@@ -27,6 +27,25 @@ import org.junit.jupiter.api.Test;
 class AnalysisSettingsSaveConfigTest {
 
   @Test
+  void unchangedGeneratedCommandRemainsAutoManagedAfterSavingDedicatedMode() {
+    assertFalse(
+        AnalysisSettings.commandCustomizedAfterSave(
+            false, false, false, "generated-command", "generated-command"));
+    assertTrue(
+        AnalysisSettings.commandCustomizedAfterSave(
+            false, false, true, "generated-command", "generated-command"));
+    assertTrue(
+        AnalysisSettings.commandCustomizedAfterSave(
+            false, false, false, "generated-command", "edited-command"));
+    assertFalse(
+        AnalysisSettings.commandCustomizedAfterSave(
+            false, true, true, "generated-command", "edited-command"));
+    assertTrue(
+        AnalysisSettings.commandCustomizedAfterSave(
+            true, false, false, "custom-command", "custom-command"));
+  }
+
+  @Test
   void foregroundLeasePreventsDeferredHumanSlStartReservation() throws Exception {
     LizzieFrame previousFrame = Lizzie.frame;
     Leelaz previousEngine = Lizzie.leelaz;
