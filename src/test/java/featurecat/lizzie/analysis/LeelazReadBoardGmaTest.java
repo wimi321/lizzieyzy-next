@@ -19,6 +19,7 @@ import java.io.OutputStream;
 import java.io.StringReader;
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Collection;
 import java.util.ArrayList;
@@ -572,6 +573,453 @@ class LeelazReadBoardGmaTest {
   }
 
   @Test
+  void readBoardGmaRestoreFailureCancelsLoadSgfBeforePendingRegistration() throws Exception {
+    try (Harness harness = Harness.open()) {
+      Leelaz engine = readyReadBoardGmaEngine();
+      Lizzie.leelaz = engine;
+      RecordingOutputStream output = new RecordingOutputStream();
+      setOutputStream(engine, output);
+      invokeBeginReadBoardGmaSession(engine);
+      Path sgfFile = Files.createTempFile("gma-reset-loadsgf-", ".sgf");
+      AtomicInteger consumed = new AtomicInteger();
+      AtomicReference<Throwable> loadFailure = new AtomicReference<>();
+      Thread loadThread =
+          new Thread(
+              () -> {
+                try {
+                  engine.loadSgf(sgfFile, consumed::incrementAndGet);
+                } catch (Throwable failure) {
+                  loadFailure.set(failure);
+                }
+              },
+              "gma-reset-loadsgf-test");
+      loadThread.setDaemon(true);
+      try {
+        Object pendingHandlers = pendingResponseHandlers(engine);
+        synchronized (pendingHandlers) {
+          loadThread.start();
+          assertTrue(waitForThreadState(loadThread, Thread.State.BLOCKED, 1, TimeUnit.SECONDS));
+
+          engine.failReadBoardGmaEngineRestore("controlled restore failure");
+        }
+
+        loadThread.join(1000L);
+        assertFalse(
+            loadThread.isAlive(),
+            "GMA failure must settle a loadsgf cancelled before pending registration.");
+        assertFalse(
+            output.commands().stream().anyMatch(command -> command.startsWith("loadsgf ")),
+            "a loadsgf cancelled before registration must never reach the engine.");
+        assertEquals(1, consumed.get());
+        assertTrue(loadFailure.get() instanceof IllegalStateException);
+        assertTrue(loadFailure.get().getMessage().contains("loadsgf"));
+      } finally {
+        loadThread.interrupt();
+        loadThread.join(1000L);
+        Files.deleteIfExists(sgfFile);
+      }
+    }
+  }
+
+  @Test
+  void readBoardGmaRestoreFailureKeepsWritingLoadSgfAliveUntilItsResponse() throws Exception {
+    try (Harness harness = Harness.open()) {
+      Leelaz engine = readyReadBoardGmaEngine();
+      Lizzie.leelaz = engine;
+      BlockingFirstFlushOutputStream output = new BlockingFirstFlushOutputStream();
+      setOutputStream(engine, output);
+      invokeBeginReadBoardGmaSession(engine);
+      Path sgfFile = Files.createTempFile("gma-reset-writing-loadsgf-", ".sgf");
+      AtomicInteger consumed = new AtomicInteger();
+      AtomicReference<Throwable> loadFailure = new AtomicReference<>();
+      Thread loadThread =
+          new Thread(
+              () -> {
+                try {
+                  engine.loadSgf(sgfFile, consumed::incrementAndGet);
+                } catch (Throwable failure) {
+                  loadFailure.set(failure);
+                }
+              },
+              "gma-reset-writing-loadsgf-test");
+      loadThread.setDaemon(true);
+      try {
+        loadThread.start();
+        assertTrue(output.firstFlushStarted.await(1, TimeUnit.SECONDS));
+
+        engine.failReadBoardGmaEngineRestore("controlled restore failure");
+
+        assertTrue(loadThread.isAlive());
+        assertEquals(
+            0,
+            consumed.get(),
+            "temporary SGF cleanup must wait while the command is still being written.");
+        output.releaseFirstFlush.countDown();
+        assertTrue(waitForRawCommandPrefix(output, "loadsgf ", 1, TimeUnit.SECONDS));
+        loadThread.join(100L);
+        assertEquals(
+            0,
+            consumed.get(),
+            "a written loadsgf must remain tracked after restore returns failure.");
+        invokeProcessCommandResponseLine(
+            engine, successResponseForPrefix(output.rawCommands(), "loadsgf "));
+
+        loadThread.join(1000L);
+        assertFalse(loadThread.isAlive());
+        assertEquals(1, consumed.get());
+        assertTrue(loadFailure.get() instanceof IllegalStateException);
+        assertTrue(loadFailure.get().getMessage().contains("loadsgf"));
+      } finally {
+        output.releaseFirstFlush.countDown();
+        loadThread.interrupt();
+        loadThread.join(1000L);
+        Files.deleteIfExists(sgfFile);
+      }
+    }
+  }
+
+  @Test
+  void readBoardGmaRestoreFailureKeepsSentLoadSgfAliveUntilItsResponse() throws Exception {
+    try (Harness harness = Harness.open()) {
+      Leelaz engine = readyReadBoardGmaEngine();
+      Lizzie.leelaz = engine;
+      RecordingOutputStream output = new RecordingOutputStream();
+      setOutputStream(engine, output);
+      Path sgfFile = Files.createTempFile("gma-reset-sent-loadsgf-", ".sgf");
+      AtomicInteger consumed = new AtomicInteger();
+      AtomicReference<Throwable> loadFailure = new AtomicReference<>();
+      Thread loadThread =
+          new Thread(
+              () -> {
+                try {
+                  engine.loadSgf(sgfFile, consumed::incrementAndGet);
+                } catch (Throwable failure) {
+                  loadFailure.set(failure);
+                }
+              },
+              "gma-reset-sent-loadsgf-test");
+      loadThread.setDaemon(true);
+      try {
+        loadThread.start();
+        assertTrue(waitForRawCommandPrefix(output, "loadsgf ", 1, TimeUnit.SECONDS));
+        invokeBeginReadBoardGmaSession(engine);
+
+        engine.failReadBoardGmaEngineRestore("controlled restore failure");
+
+        assertTrue(loadThread.isAlive());
+        assertEquals(
+            0,
+            consumed.get(),
+            "temporary SGF cleanup must wait for a sent loadsgf consumer response.");
+        invokeProcessCommandResponseLine(
+            engine, successResponseForPrefix(output.rawCommands(), "loadsgf "));
+
+        loadThread.join(1000L);
+        assertFalse(loadThread.isAlive());
+        assertEquals(1, consumed.get());
+        assertTrue(loadFailure.get() instanceof IllegalStateException);
+        assertTrue(loadFailure.get().getMessage().contains("loadsgf"));
+      } finally {
+        loadThread.interrupt();
+        loadThread.join(1000L);
+        Files.deleteIfExists(sgfFile);
+      }
+    }
+  }
+
+  @Test
+  void readBoardGmaRestoreFailureKeepsBothMirroredLoadSgfConsumersAlive() throws Exception {
+    try (Harness harness = Harness.open()) {
+      Lizzie.config.extraMode = ExtraMode.Double_Engine;
+      Leelaz primary = readyReadBoardGmaEngine();
+      Leelaz secondary = new Leelaz("");
+      Lizzie.leelaz = primary;
+      Lizzie.leelaz2 = secondary;
+      RecordingOutputStream primaryOutput = new RecordingOutputStream();
+      RecordingOutputStream secondaryOutput = new RecordingOutputStream();
+      setOutputStream(primary, primaryOutput);
+      setOutputStream(secondary, secondaryOutput);
+      Path sgfFile = Files.createTempFile("gma-reset-mirrored-loadsgf-", ".sgf");
+      AtomicInteger consumed = new AtomicInteger();
+      AtomicReference<Throwable> loadFailure = new AtomicReference<>();
+      Thread loadThread =
+          new Thread(
+              () -> {
+                try {
+                  primary.loadSgf(sgfFile, consumed::incrementAndGet);
+                } catch (Throwable failure) {
+                  loadFailure.set(failure);
+                }
+              },
+              "gma-reset-mirrored-loadsgf-test");
+      loadThread.setDaemon(true);
+      try {
+        loadThread.start();
+        assertTrue(waitForRawCommandPrefix(primaryOutput, "loadsgf ", 1, TimeUnit.SECONDS));
+        assertTrue(waitForRawCommandPrefix(secondaryOutput, "loadsgf ", 1, TimeUnit.SECONDS));
+        invokeBeginReadBoardGmaSession(primary);
+
+        primary.failReadBoardGmaEngineRestore("controlled restore failure");
+
+        assertEquals(1, pendingResponseHandlerCount(primary));
+        assertEquals(1, pendingResponseHandlerCount(secondary));
+        assertEquals(0, consumed.get());
+        invokeProcessCommandResponseLine(
+            primary, successResponseForPrefix(primaryOutput.rawCommands(), "loadsgf "));
+        assertEquals(0, consumed.get());
+        invokeProcessCommandResponseLine(
+            secondary, successResponseForPrefix(secondaryOutput.rawCommands(), "loadsgf "));
+
+        loadThread.join(1000L);
+        assertFalse(loadThread.isAlive());
+        assertEquals(1, consumed.get());
+        assertTrue(loadFailure.get() instanceof IllegalStateException);
+        assertTrue(loadFailure.get().getMessage().contains("loadsgf"));
+      } finally {
+        loadThread.interrupt();
+        loadThread.join(1000L);
+        Files.deleteIfExists(sgfFile);
+      }
+    }
+  }
+
+  @Test
+  void readBoardGmaResetPublishesFailureBeforeAConcurrentLoadSgfResponse() throws Exception {
+    try (Harness harness = Harness.open()) {
+      Leelaz engine = readyReadBoardGmaEngine();
+      engine.requireResponseBeforeSend = true;
+      Lizzie.leelaz = engine;
+      RecordingOutputStream output = new RecordingOutputStream();
+      setOutputStream(engine, output);
+      Path sentSgf = Files.createTempFile("gma-reset-sent-race-", ".sgf");
+      Path queuedSgf = Files.createTempFile("gma-reset-queued-race-", ".sgf");
+      AtomicReference<Throwable> sentFailure = new AtomicReference<>();
+      AtomicReference<Throwable> queuedFailure = new AtomicReference<>();
+      CountDownLatch queuedCleanupStarted = new CountDownLatch(1);
+      CountDownLatch releaseQueuedCleanup = new CountDownLatch(1);
+      Thread sentThread =
+          newLoadSgfThread(engine, sentSgf, () -> {}, sentFailure, "gma-reset-sent-race-test");
+      Thread queuedThread =
+          newLoadSgfThread(
+              engine,
+              queuedSgf,
+              () -> {
+                queuedCleanupStarted.countDown();
+                awaitLatch(releaseQueuedCleanup);
+              },
+              queuedFailure,
+              "gma-reset-queued-race-test");
+      Thread resetThread =
+          new Thread(
+              () -> engine.failReadBoardGmaEngineRestore("controlled restore failure"),
+              "gma-reset-publish-race-test");
+      resetThread.setDaemon(true);
+      try {
+        sentThread.start();
+        assertTrue(waitForRawCommandPrefix(output, "loadsgf ", 1, TimeUnit.SECONDS));
+        queuedThread.start();
+        assertTrue(waitForCommandQueueSize(engine, 1, 1, TimeUnit.SECONDS));
+        invokeBeginReadBoardGmaSession(engine);
+
+        resetThread.start();
+        assertTrue(queuedCleanupStarted.await(1, TimeUnit.SECONDS));
+        invokeProcessCommandResponseLine(
+            engine, successResponseForPrefix(output.rawCommands(), "loadsgf "));
+
+        sentThread.join(1000L);
+        assertFalse(sentThread.isAlive());
+        assertTrue(
+            sentFailure.get() instanceof IllegalStateException,
+            "the response must observe reset failure even while reset is publishing callbacks.");
+      } finally {
+        releaseQueuedCleanup.countDown();
+        resetThread.join(1000L);
+        sentThread.interrupt();
+        queuedThread.interrupt();
+        sentThread.join(1000L);
+        queuedThread.join(1000L);
+        Files.deleteIfExists(sentSgf);
+        Files.deleteIfExists(queuedSgf);
+      }
+      assertTrue(queuedFailure.get() instanceof IllegalStateException);
+    }
+  }
+
+  @Test
+  void readBoardGmaResetRetiredLoadSgfResponseDoesNotOpenSiblingSendWindow()
+      throws Exception {
+    try (Harness harness = Harness.open()) {
+      Leelaz engine = readyReadBoardGmaEngine();
+      engine.requireResponseBeforeSend = true;
+      Lizzie.leelaz = engine;
+      RecordingOutputStream output = new RecordingOutputStream();
+      setOutputStream(engine, output);
+      Path sgfFile = Files.createTempFile("gma-reset-retired-outstanding-", ".sgf");
+      AtomicReference<Throwable> loadFailure = new AtomicReference<>();
+      Thread loadThread =
+          newLoadSgfThread(engine, sgfFile, () -> {}, loadFailure, "gma-reset-outstanding-test");
+      try {
+        loadThread.start();
+        assertTrue(waitForRawCommandPrefix(output, "loadsgf ", 1, TimeUnit.SECONDS));
+        invokeBeginReadBoardGmaSession(engine);
+        engine.failReadBoardGmaEngineRestore("controlled restore failure");
+        engine.sendCommand("name");
+        engine.sendCommand("version");
+        assertTrue(output.commands().contains("name"));
+        assertFalse(output.commands().contains("version"));
+
+        invokeProcessCommandResponseLine(
+            engine, successResponseForPrefix(output.rawCommands(), "loadsgf "));
+
+        assertFalse(
+            output.commands().contains("version"),
+            "a retired loadsgf response must not advance the new outstanding baseline.");
+        invokeProcessCommandResponseLine(engine, "=");
+        assertTrue(output.commands().contains("version"));
+        loadThread.join(1000L);
+        assertFalse(loadThread.isAlive());
+        assertTrue(loadFailure.get() instanceof IllegalStateException);
+      } finally {
+        loadThread.interrupt();
+        loadThread.join(1000L);
+        Files.deleteIfExists(sgfFile);
+      }
+    }
+  }
+
+  @Test
+  void readBoardGmaResetIgnoresLateUnnumberedResponseAheadOfLoadSgfResponse()
+      throws Exception {
+    try (Harness harness = Harness.open()) {
+      Leelaz engine = readyReadBoardGmaEngine();
+      Lizzie.leelaz = engine;
+      RecordingOutputStream output = new RecordingOutputStream();
+      setOutputStream(engine, output);
+      Path sgfFile = Files.createTempFile("gma-reset-late-response-", ".sgf");
+      AtomicInteger consumed = new AtomicInteger();
+      AtomicReference<Throwable> loadFailure = new AtomicReference<>();
+      Thread loadThread =
+          newLoadSgfThread(
+              engine,
+              sgfFile,
+              consumed::incrementAndGet,
+              loadFailure,
+              "gma-reset-late-response-test");
+      try {
+        loadThread.start();
+        assertTrue(waitForRawCommandPrefix(output, "loadsgf ", 1, TimeUnit.SECONDS));
+        invokeBeginReadBoardGmaSession(engine);
+        engine.failReadBoardGmaEngineRestore("controlled restore failure");
+
+        invokeProcessCommandResponseLine(engine, "=");
+
+        assertTrue(loadThread.isAlive());
+        assertEquals(0, consumed.get());
+        assertEquals(1, pendingResponseHandlerCount(engine));
+        invokeProcessCommandResponseLine(
+            engine, successResponseForPrefix(output.rawCommands(), "loadsgf "));
+        loadThread.join(1000L);
+        assertFalse(loadThread.isAlive());
+        assertEquals(1, consumed.get());
+        assertTrue(loadFailure.get() instanceof IllegalStateException);
+      } finally {
+        loadThread.interrupt();
+        loadThread.join(1000L);
+        Files.deleteIfExists(sgfFile);
+      }
+    }
+  }
+
+  @Test
+  void readBoardGmaResetLinearizesLoadSgfTimeoutBeforeNewOutstandingCommands()
+      throws Exception {
+    try (Harness harness = Harness.open()) {
+      Leelaz engine = readyReadBoardGmaEngine();
+      engine.requireResponseBeforeSend = true;
+      Lizzie.leelaz = engine;
+      RecordingOutputStream output = new RecordingOutputStream();
+      setOutputStream(engine, output);
+      Path sgfFile = Files.createTempFile("gma-reset-timeout-linearization-", ".sgf");
+      AtomicReference<Throwable> loadFailure = new AtomicReference<>();
+      Thread loadThread =
+          newLoadSgfThread(
+              engine, sgfFile, () -> {}, loadFailure, "gma-reset-timeout-linearization-test");
+      try {
+        loadThread.start();
+        assertTrue(waitForRawCommandPrefix(output, "loadsgf ", 1, TimeUnit.SECONDS));
+        invokeBeginReadBoardGmaSession(engine);
+        Object commandQueue = commandQueue(engine);
+        synchronized (commandQueue) {
+          loadThread.interrupt();
+          assertTrue(waitForThreadState(loadThread, Thread.State.BLOCKED, 1, TimeUnit.SECONDS));
+
+          engine.failReadBoardGmaEngineRestore("controlled restore failure");
+          engine.sendCommand("name");
+          engine.sendCommand("version");
+          assertFalse(output.commands().contains("version"));
+        }
+
+        loadThread.join(1000L);
+        assertFalse(loadThread.isAlive());
+        assertFalse(
+            output.commands().contains("version"),
+            "timeout retirement after reset must not advance the new outstanding baseline.");
+        invokeProcessCommandResponseLine(engine, "=");
+        assertTrue(output.commands().contains("version"));
+        assertTrue(loadFailure.get() instanceof IllegalStateException);
+      } finally {
+        loadThread.interrupt();
+        loadThread.join(1000L);
+        Files.deleteIfExists(sgfFile);
+      }
+    }
+  }
+
+  @Test
+  void readBoardGmaResetDoesNotRetireWritingLoadSgfTwiceAfterSendFailure() throws Exception {
+    try (Harness harness = Harness.open()) {
+      Leelaz engine = readyReadBoardGmaEngine();
+      engine.requireResponseBeforeSend = true;
+      Lizzie.leelaz = engine;
+      BlockingFailingFirstFlushOutputStream blockedOutput =
+          new BlockingFailingFirstFlushOutputStream();
+      setOutputStream(engine, blockedOutput);
+      invokeBeginReadBoardGmaSession(engine);
+      Path sgfFile = Files.createTempFile("gma-reset-send-failure-retirement-", ".sgf");
+      AtomicReference<Throwable> loadFailure = new AtomicReference<>();
+      Thread loadThread =
+          newLoadSgfThread(
+              engine, sgfFile, () -> {}, loadFailure, "gma-reset-send-failure-retirement-test");
+      try {
+        loadThread.start();
+        assertTrue(blockedOutput.firstFlushStarted.await(1, TimeUnit.SECONDS));
+        engine.failReadBoardGmaEngineRestore("controlled restore failure");
+        RecordingOutputStream recoveryOutput = new RecordingOutputStream();
+        setOutputStream(engine, recoveryOutput);
+        engine.sendCommand("name");
+        engine.sendCommand("version");
+        engine.sendCommand("protocol_version");
+        blockedOutput.releaseFirstFlush.countDown();
+        loadThread.join(1000L);
+        assertFalse(loadThread.isAlive());
+
+        invokeProcessCommandResponseLine(engine, "=");
+
+        assertFalse(
+            recoveryOutput.commands().contains("version"),
+            "post-reset send failure must not retire the old loadsgf outstanding twice.");
+        assertFalse(recoveryOutput.commands().contains("protocol_version"));
+        assertTrue(loadFailure.get() instanceof IllegalStateException);
+      } finally {
+        blockedOutput.releaseFirstFlush.countDown();
+        loadThread.interrupt();
+        loadThread.join(1000L);
+        Files.deleteIfExists(sgfFile);
+      }
+    }
+  }
+
+  @Test
   void readBoardGmaRuntimeRestoreTimeoutQuarantinesEngine() throws Exception {
     try (Harness harness = Harness.open()) {
       Leelaz engine = new ShortGmaRestoreTimeoutLeelaz();
@@ -1065,6 +1513,19 @@ class LeelazReadBoardGmaTest {
     throw new IllegalArgumentException("Missing numbered command " + commandName);
   }
 
+  private static String successResponseForPrefix(List<String> commands, String commandPrefix) {
+    for (int index = commands.size() - 1; index >= 0; index--) {
+      String command = commands.get(index);
+      int firstSpace = command.indexOf(' ');
+      if (firstSpace > 0
+          && command.substring(0, firstSpace).chars().allMatch(Character::isDigit)
+          && command.substring(firstSpace + 1).startsWith(commandPrefix)) {
+        return "=" + command.substring(0, firstSpace);
+      }
+    }
+    throw new IllegalArgumentException("Missing numbered command prefix " + commandPrefix);
+  }
+
   private static boolean waitForRawCommand(
       RecordingOutputStream output, String commandName, long timeout, TimeUnit unit)
       throws InterruptedException {
@@ -1078,6 +1539,102 @@ class LeelazReadBoardGmaTest {
       }
     }
     return false;
+  }
+
+  private static boolean waitForRawCommandPrefix(
+      RecordingOutputStream output, String commandPrefix, long timeout, TimeUnit unit)
+      throws InterruptedException {
+    long deadline = System.nanoTime() + unit.toNanos(timeout);
+    while (System.nanoTime() < deadline) {
+      for (String command : output.commands()) {
+        if (command.startsWith(commandPrefix)) {
+          return true;
+        }
+      }
+      Thread.sleep(10L);
+    }
+    return false;
+  }
+
+  private static boolean waitForRawCommandPrefix(
+      BlockingFirstFlushOutputStream output,
+      String commandPrefix,
+      long timeout,
+      TimeUnit unit)
+      throws InterruptedException {
+    long deadline = System.nanoTime() + unit.toNanos(timeout);
+    while (System.nanoTime() < deadline) {
+      for (String command : output.rawCommands()) {
+        int firstSpace = command.indexOf(' ');
+        String normalized = firstSpace < 0 ? command : command.substring(firstSpace + 1);
+        if (normalized.startsWith(commandPrefix)) {
+          return true;
+        }
+      }
+      Thread.sleep(10L);
+    }
+    return false;
+  }
+
+  private static boolean waitForThreadState(
+      Thread thread, Thread.State state, long timeout, TimeUnit unit) throws InterruptedException {
+    long deadline = System.nanoTime() + unit.toNanos(timeout);
+    while (System.nanoTime() < deadline) {
+      if (thread.getState() == state) {
+        return true;
+      }
+      Thread.sleep(10L);
+    }
+    return false;
+  }
+
+  private static boolean waitForCommandQueueSize(
+      Leelaz engine, int expectedSize, long timeout, TimeUnit unit) throws Exception {
+    Field field = Leelaz.class.getDeclaredField("cmdQueue");
+    field.setAccessible(true);
+    long deadline = System.nanoTime() + unit.toNanos(timeout);
+    while (System.nanoTime() < deadline) {
+      Collection<?> queue = (Collection<?>) field.get(engine);
+      if (queue != null && queue.size() == expectedSize) {
+        return true;
+      }
+      Thread.sleep(10L);
+    }
+    return false;
+  }
+
+  private static Object commandQueue(Leelaz engine) throws Exception {
+    Field field = Leelaz.class.getDeclaredField("cmdQueue");
+    field.setAccessible(true);
+    return field.get(engine);
+  }
+
+  private static Thread newLoadSgfThread(
+      Leelaz engine,
+      Path sgfFile,
+      Runnable afterConsumed,
+      AtomicReference<Throwable> failure,
+      String threadName) {
+    Thread thread =
+        new Thread(
+            () -> {
+              try {
+                engine.loadSgf(sgfFile, afterConsumed);
+              } catch (Throwable ex) {
+                failure.set(ex);
+              }
+            },
+            threadName);
+    thread.setDaemon(true);
+    return thread;
+  }
+
+  private static void awaitLatch(CountDownLatch latch) {
+    try {
+      latch.await();
+    } catch (InterruptedException ex) {
+      Thread.currentThread().interrupt();
+    }
   }
 
   private static void invokeRestoreReadBoardGmaRuntimeSettingsIfNeeded(Leelaz engine)
@@ -1190,10 +1747,14 @@ class LeelazReadBoardGmaTest {
   }
 
   private static int pendingResponseHandlerCount(Leelaz engine) throws Exception {
+    Collection<?> handlers = (Collection<?>) pendingResponseHandlers(engine);
+    return handlers == null ? 0 : handlers.size();
+  }
+
+  private static Object pendingResponseHandlers(Leelaz engine) throws Exception {
     Field field = Leelaz.class.getDeclaredField("pendingResponseHandlers");
     field.setAccessible(true);
-    Collection<?> handlers = (Collection<?>) field.get(engine);
-    return handlers == null ? 0 : handlers.size();
+    return field.get(engine);
   }
 
   @SuppressWarnings("unchecked")
@@ -1368,6 +1929,26 @@ class LeelazReadBoardGmaTest {
         Thread.currentThread().interrupt();
         throw new IOException("controlled second flush interrupted", ex);
       }
+    }
+  }
+
+  private static final class BlockingFailingFirstFlushOutputStream extends OutputStream {
+    private final CountDownLatch firstFlushStarted = new CountDownLatch(1);
+    private final CountDownLatch releaseFirstFlush = new CountDownLatch(1);
+
+    @Override
+    public void write(int value) {}
+
+    @Override
+    public void flush() throws IOException {
+      firstFlushStarted.countDown();
+      try {
+        releaseFirstFlush.await();
+      } catch (InterruptedException ex) {
+        Thread.currentThread().interrupt();
+        throw new IOException("controlled blocked flush interrupted", ex);
+      }
+      throw new IOException("controlled blocked flush failure");
     }
   }
 

@@ -132,6 +132,7 @@ public class Leelaz {
   private ArrayDeque<QueuedCommand> cmdQueue;
   private ArrayDeque<QueuedCommand> foregroundRestoreQueue;
   private boolean normalCommandSendInProgress;
+  private QueuedCommand normalCommandBeingSent;
   private final ThreadLocal<ExclusiveGtpSession> foregroundRestoreCommandSession =
       new ThreadLocal<>();
   private volatile boolean foregroundRestoreInProgress;
@@ -961,7 +962,7 @@ public class Leelaz {
     }
     rememberRecentLine(
         recentStderrLines, "ReadBoard GMA recovery confirmation failed: " + detail);
-    resetGtpCommandStateAfterRestoreFailure();
+    resetGtpCommandStateAfterRestoreFailure(detail);
   }
 
   public void normalQuit() {
@@ -3439,7 +3440,10 @@ public class Leelaz {
         new TrackedLoadSgfConsumer(targetEngine, sgfFile, dispatch);
     try {
       sendLoadSgfCommand(
-          targetEngine, sgfFile, trackedConsumer.responseHandler(), trackedConsumer::failFromSend);
+          targetEngine,
+          sgfFile,
+          trackedConsumer.responseHandler(),
+          trackedConsumer.sendFailureHandler());
       return null;
     } catch (RuntimeException ex) {
       trackedConsumer.failFromSend(ex);
@@ -3570,6 +3574,7 @@ public class Leelaz {
       }
       queuedCommand = targetQueue.removeFirst();
       normalCommandSendInProgress = true;
+      normalCommandBeingSent = queuedCommand;
     }
     String command = queuedCommand.command;
     if (command.equals("stop-ponder")) command = "stop";
@@ -3577,11 +3582,14 @@ public class Leelaz {
     RuntimeException sendFailure = null;
     try {
       deferredResponse =
-          sendCommandToLeelaz(command, queuedCommand.onResponse, queuedCommand.failOnSendError);
+          sendCommandToLeelaz(command, queuedCommand);
     } catch (RuntimeException ex) {
       sendFailure = ex;
     } finally {
       synchronized (commandQueue()) {
+        if (normalCommandBeingSent == queuedCommand) {
+          normalCommandBeingSent = null;
+        }
         normalCommandSendInProgress = false;
       }
     }
@@ -3610,7 +3618,7 @@ public class Leelaz {
    * @param command a GTP command containing no newline characters
    */
   private Runnable sendCommandToLeelaz(
-      String command, Runnable onResponse, boolean failOnSendError) {
+      String command, QueuedCommand queuedCommand) {
     Runnable deferredResponse = null;
     logInterestingCommand(command, "sendCommandToLeelaz");
     if (command.startsWith("fixed_handicap")
@@ -3618,14 +3626,22 @@ public class Leelaz {
     if (command.startsWith("benchmark")) {
       currentCmdNum++;
     }
-    Runnable responseHandler = onResponse == null ? NO_OP_RESPONSE_HANDLER : onResponse;
-    PendingResponseHandler pendingHandler = buildPendingResponseHandler(command, responseHandler);
+    Runnable responseHandler =
+        queuedCommand.onResponse == null ? NO_OP_RESPONSE_HANDLER : queuedCommand.onResponse;
+    PendingResponseHandler pendingHandler =
+        buildPendingResponseHandler(command, responseHandler, queuedCommand);
     String commandLine = buildCommandLine(command, pendingHandler.responseCommandId);
     BufferedOutputStream currentOutputStream = outputStream;
     if (currentOutputStream != null) {
-      addPendingResponseHandler(pendingHandler);
+      if (!addPendingResponseHandler(pendingHandler)) {
+        return null;
+      }
       try {
         synchronized (currentOutputStream) {
+          if (!queuedCommand.beginOutputWrite()) {
+            removePendingResponseHandler(pendingHandler);
+            return null;
+          }
           currentOutputStream.write((commandLine + "\n").getBytes());
           currentOutputStream.flush();
         }
@@ -3644,10 +3660,10 @@ public class Leelaz {
         rememberRecentLine(
             recentStderrLines, "Failed to send GTP command '" + commandLine + "': " + detail);
         System.err.println("Failed to send GTP command '" + commandLine + "': " + detail);
-        if (failOnSendError) {
+        if (queuedCommand.failOnSendError) {
           throw buildCommandSendFailure(commandLine, detail, e);
         }
-        deferredResponse = onResponse;
+        deferredResponse = queuedCommand.onResponse;
       }
       if (EngineManager.isEngineGame()) {
         Lizzie.gtpConsole.addCommandForEngineGame(
@@ -3663,11 +3679,11 @@ public class Leelaz {
       rememberRecentLine(
           recentStderrLines, "Failed to send GTP command '" + commandLine + "': " + detail);
       System.err.println("Failed to send GTP command '" + commandLine + "': " + detail);
-      if (failOnSendError) {
+      if (queuedCommand.failOnSendError) {
         retireOutstandingResponseCountOnSendFailure(pendingHandler);
         throw buildCommandSendFailure(commandLine, detail, null);
       }
-      deferredResponse = onResponse;
+      deferredResponse = queuedCommand.onResponse;
     }
     if (canSetNotPlayed) {
       canSetNotPlayed = false;
@@ -3720,23 +3736,10 @@ public class Leelaz {
       return;
     }
     synchronized (commandQueue()) {
+      if (pendingHandler.isOutstandingResponseRetired()) {
+        return;
+      }
       cmdNumber = Math.max(1, cmdNumber - 1);
-      if (currentCmdNum > cmdNumber - 1) {
-        currentCmdNum = cmdNumber - 1;
-      }
-    }
-    try {
-      trySendCommandFromQueue();
-    } catch (Exception ex) {
-      ex.printStackTrace();
-    }
-  }
-
-  private void retireOutstandingResponseCountOnNoResponseTimeout() {
-    synchronized (commandQueue()) {
-      if (currentCmdNum < cmdNumber - 1) {
-        currentCmdNum++;
-      }
       if (currentCmdNum > cmdNumber - 1) {
         currentCmdNum = cmdNumber - 1;
       }
@@ -3796,9 +3799,12 @@ public class Leelaz {
     return suppress;
   }
 
-  private PendingResponseHandler buildPendingResponseHandler(String command, Runnable handler) {
+  private PendingResponseHandler buildPendingResponseHandler(
+      String command, Runnable handler, QueuedCommand queuedCommand) {
     return new PendingResponseHandler(
+        command,
         handler,
+        queuedCommand,
         nextResponseCommandId(command, handler),
         requiresMatchingResponseCommandId(command, handler));
   }
@@ -3840,11 +3846,19 @@ public class Leelaz {
     return pendingResponseHandlers;
   }
 
-  private void addPendingResponseHandler(PendingResponseHandler handler) {
+  private boolean addPendingResponseHandler(PendingResponseHandler handler) {
+    if (handler.queuedCommand.isCancelledBeforeOutputWrite()) {
+      return false;
+    }
     ArrayDeque<PendingResponseHandler> handlers = pendingResponseHandlers();
     synchronized (handlers) {
       handlers.addLast(handler);
     }
+    if (handler.queuedCommand.isCancelledBeforeOutputWrite()) {
+      removePendingResponseHandler(handler);
+      return false;
+    }
+    return true;
   }
 
   private void removePendingResponseHandler(PendingResponseHandler handler) {
@@ -3854,22 +3868,23 @@ public class Leelaz {
     }
   }
 
-  private boolean removePendingResponseHandler(Runnable handler) {
+  private PendingResponseHandler removePendingResponseHandler(Runnable handler) {
     ArrayDeque<PendingResponseHandler> handlers = pendingResponseHandlers();
     synchronized (handlers) {
       Iterator<PendingResponseHandler> iterator = handlers.descendingIterator();
       while (iterator.hasNext()) {
-        if (iterator.next().handler == handler) {
+        PendingResponseHandler pendingHandler = iterator.next();
+        if (pendingHandler.handler == handler) {
           iterator.remove();
-          return true;
+          return pendingHandler;
         }
       }
     }
-    return false;
+    return null;
   }
 
   private void retireTimedOutNormalCommand(Runnable handler) {
-    boolean removedQueued = false;
+    boolean retired = false;
     synchronized (commandQueue()) {
       Iterator<QueuedCommand> iterator = commandQueue().iterator();
       while (iterator.hasNext()) {
@@ -3882,25 +3897,31 @@ public class Leelaz {
         if (currentCmdNum > cmdNumber - 1) {
           currentCmdNum = cmdNumber - 1;
         }
-        removedQueued = true;
+        retired = true;
         break;
       }
+      if (!retired) {
+        PendingResponseHandler removedHandler = removePendingResponseHandler(handler);
+        if (removedHandler != null) {
+          retirePendingResponseCountWithoutResponse(removedHandler);
+          retired = true;
+        }
+      }
     }
-    if (!removedQueued && removePendingResponseHandler(handler)) {
-      retireOutstandingResponseCountOnNoResponseTimeout();
-      return;
-    }
-    try {
-      trySendCommandFromQueue();
-    } catch (RuntimeException ex) {
-      ex.printStackTrace();
+    if (retired && !engineStateUnrestored) {
+      try {
+        trySendCommandFromQueue();
+      } catch (RuntimeException ex) {
+        ex.printStackTrace();
+      }
     }
   }
 
-  private boolean removeQueuedLoadSgfCommand(Runnable handler) {
+  private void retireTrackedLoadSgfWithoutResponse(Runnable handler) {
     if (handler == null) {
-      return false;
+      return;
     }
+    boolean retired = false;
     synchronized (commandQueue()) {
       Iterator<QueuedCommand> iterator = commandQueue().iterator();
       while (iterator.hasNext()) {
@@ -3916,10 +3937,33 @@ public class Leelaz {
         if (currentCmdNum > cmdNumber - 1) {
           currentCmdNum = cmdNumber - 1;
         }
-        return true;
+        retired = true;
+        break;
+      }
+      if (!retired) {
+        PendingResponseHandler removedHandler = removePendingResponseHandler(handler);
+        if (removedHandler != null) {
+          retirePendingResponseCountWithoutResponse(removedHandler);
+          retired = true;
+        }
       }
     }
-    return false;
+    if (retired) {
+      try {
+        trySendCommandFromQueue();
+      } catch (RuntimeException ex) {
+        ex.printStackTrace();
+      }
+    }
+  }
+
+  private void retirePendingResponseCountWithoutResponse(PendingResponseHandler handler) {
+    if (!handler.isOutstandingResponseRetired() && currentCmdNum < cmdNumber - 1) {
+      currentCmdNum++;
+    }
+    if (currentCmdNum > cmdNumber - 1) {
+      currentCmdNum = cmdNumber - 1;
+    }
   }
 
   private boolean hasPendingResponseHandler(Runnable handler) {
@@ -3999,16 +4043,17 @@ public class Leelaz {
     }
   }
 
+  // Response-binding tests invoke this directly to isolate handler routing from queue counters.
   private boolean runPendingResponseHandlerForLine(String line) {
     currentCommandResponseLine = line == null ? "" : line;
     currentCommandResponseError = line != null && line.startsWith("?");
     try {
       PendingResponseHandler handler = pollPendingResponseHandler(line);
-      if (handler != null) {
-        handler.run();
-        return true;
+      if (handler == null) {
+        return false;
       }
-      return false;
+      handler.run();
+      return true;
     } finally {
       currentCommandResponseLine = "";
       currentCommandResponseError = false;
@@ -4026,17 +4071,36 @@ public class Leelaz {
     if (foregroundRestoreInProgress && line != null && line.trim().startsWith("?")) {
       failForegroundRestore(foregroundRestoreSession, "restore command failed: " + line.trim());
     }
-    boolean matchedPendingHandler = runPendingResponseHandlerForLine(line);
-    acknowledgeExclusiveGtpInitialStop(line);
-    if (!matchedPendingHandler) {
-      if (parseResponseCommandId(line) != NO_RESPONSE_COMMAND_ID
-          || hasStrictPendingResponseHandlerAtFront()) {
-        return;
+    PendingResponseHandler matchedPendingHandler;
+    boolean ignoreResponse;
+    currentCommandResponseLine = line == null ? "" : line;
+    currentCommandResponseError = line != null && line.startsWith("?");
+    try {
+      synchronized (commandQueue()) {
+        matchedPendingHandler = pollPendingResponseHandler(line);
+        ignoreResponse =
+            matchedPendingHandler == null
+                && (parseResponseCommandId(line) != NO_RESPONSE_COMMAND_ID
+                    || hasStrictPendingResponseHandlerAtFront());
+        if (!ignoreResponse
+            && (matchedPendingHandler == null
+                || !matchedPendingHandler.isOutstandingResponseRetired())) {
+          currentCmdNum++;
+          if (currentCmdNum > cmdNumber - 1) {
+            currentCmdNum = cmdNumber - 1;
+          }
+        }
       }
+      if (matchedPendingHandler != null) {
+        matchedPendingHandler.run();
+      }
+      acknowledgeExclusiveGtpInitialStop(line);
+    } finally {
+      currentCommandResponseLine = "";
+      currentCommandResponseError = false;
     }
-    currentCmdNum++;
-    if (currentCmdNum > cmdNumber - 1) {
-      currentCmdNum = cmdNumber - 1;
+    if (ignoreResponse) {
+      return;
     }
     try {
       trySendCommandFromQueue();
@@ -4736,7 +4800,7 @@ public class Leelaz {
     }
     if (restoreFailed) {
       try {
-        resetGtpCommandStateAfterRestoreFailure();
+        resetGtpCommandStateAfterRestoreFailure("foreground engine restore failed");
         notPondering();
       } finally {
         finishForegroundRestoreLifecycle();
@@ -4790,17 +4854,86 @@ public class Leelaz {
     }
   }
 
-  private void resetGtpCommandStateAfterRestoreFailure() {
+  private void resetGtpCommandStateAfterRestoreFailure(String detail) {
+    RuntimeException failure =
+        new IllegalStateException(
+            "Engine command state reset interrupted loadsgf after restore failure: " + detail);
+    List<QueuedCommand> cancelledLoadSgfCommands = new ArrayList<>();
+    List<QueuedCommand> sentLoadSgfCommands = new ArrayList<>();
+    ArrayDeque<PendingResponseHandler> handlers = pendingResponseHandlers();
     synchronized (commandQueue()) {
+      cancelQueuedLoadSgfCommands(commandQueue(), failure, cancelledLoadSgfCommands);
+      cancelQueuedLoadSgfCommands(
+          foregroundRestoreCommandQueue(), failure, cancelledLoadSgfCommands);
+      classifyTrackedLoadSgfReset(
+          normalCommandBeingSent,
+          failure,
+          cancelledLoadSgfCommands,
+          sentLoadSgfCommands);
       commandQueue().clear();
       foregroundRestoreCommandQueue().clear();
+      synchronized (handlers) {
+        Iterator<PendingResponseHandler> iterator = handlers.iterator();
+        while (iterator.hasNext()) {
+          PendingResponseHandler handler = iterator.next();
+          if (handler.isTrackedLoadSgf()) {
+            boolean cancelled =
+                classifyTrackedLoadSgfReset(
+                    handler.queuedCommand,
+                    failure,
+                    cancelledLoadSgfCommands,
+                    sentLoadSgfCommands);
+            if (!cancelled) {
+              handler.requireMatchingResponseCommandId();
+              continue;
+            }
+          }
+          iterator.remove();
+        }
+      }
       cmdNumber = 1;
       currentCmdNum = 0;
       modifyNumber = 0;
     }
-    ArrayDeque<PendingResponseHandler> handlers = pendingResponseHandlers();
-    synchronized (handlers) {
-      handlers.clear();
+    for (QueuedCommand command : cancelledLoadSgfCommands) {
+      command.notifySendFailure(failure);
+    }
+    for (QueuedCommand command : sentLoadSgfCommands) {
+      command.publishStateResetAfterOutputWrite();
+    }
+  }
+
+  private void cancelQueuedLoadSgfCommands(
+      ArrayDeque<QueuedCommand> queue,
+      RuntimeException failure,
+      List<QueuedCommand> cancelledCommands) {
+    for (QueuedCommand command : queue) {
+      if (command.isTrackedLoadSgf() && command.cancelBeforeOutputWrite(failure)) {
+        addUniqueCommand(cancelledCommands, command);
+      }
+    }
+  }
+
+  private boolean classifyTrackedLoadSgfReset(
+      QueuedCommand command,
+      RuntimeException failure,
+      List<QueuedCommand> cancelledCommands,
+      List<QueuedCommand> sentCommands) {
+    if (command == null || !command.isTrackedLoadSgf()) {
+      return false;
+    }
+    if (command.cancelBeforeOutputWrite(failure)) {
+      addUniqueCommand(cancelledCommands, command);
+      return true;
+    }
+    command.markStateResetAfterOutputWrite(failure);
+    addUniqueCommand(sentCommands, command);
+    return false;
+  }
+
+  private void addUniqueCommand(List<QueuedCommand> commands, QueuedCommand command) {
+    if (!commands.contains(command)) {
+      commands.add(command);
     }
   }
 
@@ -5030,6 +5163,10 @@ public class Leelaz {
   @FunctionalInterface
   private interface CommandSendFailureHandler {
     void onSendFailure(RuntimeException ex);
+
+    default void onStateResetAfterOutputWrite(RuntimeException ex) {
+      onSendFailure(ex);
+    }
   }
 
   private static final class RecoverableBufferedOutputStream extends BufferedOutputStream {
@@ -5112,18 +5249,39 @@ public class Leelaz {
   }
 
   private static final class PendingResponseHandler {
+    private final String command;
     private final Runnable handler;
+    private final QueuedCommand queuedCommand;
     private final int responseCommandId;
-    private final boolean requiresMatchingResponseCommandId;
+    private boolean requiresMatchingResponseCommandId;
 
     private PendingResponseHandler(
-        Runnable handler, int responseCommandId, boolean requiresMatchingResponseCommandId) {
+        String command,
+        Runnable handler,
+        QueuedCommand queuedCommand,
+        int responseCommandId,
+        boolean requiresMatchingResponseCommandId) {
+      this.command = command;
       this.handler = handler;
+      this.queuedCommand = queuedCommand;
       this.responseCommandId = responseCommandId;
       this.requiresMatchingResponseCommandId = requiresMatchingResponseCommandId;
     }
 
+    private boolean isTrackedLoadSgf() {
+      return command != null && command.startsWith("loadsgf ") && queuedCommand.isTrackedLoadSgf();
+    }
+
+    private boolean isOutstandingResponseRetired() {
+      return queuedCommand.isOutstandingResponseRetired();
+    }
+
+    private void requireMatchingResponseCommandId() {
+      requiresMatchingResponseCommandId = true;
+    }
+
     private void run() {
+      queuedCommand.publishStateResetAfterOutputWrite();
       handler.run();
     }
   }
@@ -5259,6 +5417,18 @@ public class Leelaz {
     private final LoadSgfDispatch dispatch;
     private final AtomicBoolean settled = new AtomicBoolean(false);
     private final Runnable responseHandler = this::onResponse;
+    private final CommandSendFailureHandler sendFailureHandler =
+        new CommandSendFailureHandler() {
+          @Override
+          public void onSendFailure(RuntimeException ex) {
+            failFromSend(ex);
+          }
+
+          @Override
+          public void onStateResetAfterOutputWrite(RuntimeException ex) {
+            dispatch.recordFailure(ex);
+          }
+        };
 
     private TrackedLoadSgfConsumer(Leelaz targetEngine, Path sgfFile, LoadSgfDispatch dispatch) {
       this.targetEngine = targetEngine;
@@ -5269,6 +5439,10 @@ public class Leelaz {
 
     private Runnable responseHandler() {
       return responseHandler;
+    }
+
+    private CommandSendFailureHandler sendFailureHandler() {
+      return sendFailureHandler;
     }
 
     private void onResponse() {
@@ -5313,12 +5487,7 @@ public class Leelaz {
         return;
       }
       if (removeHandler) {
-        boolean hadPendingHandler = targetEngine.hasPendingResponseHandler(responseHandler);
-        targetEngine.removePendingResponseHandler(responseHandler);
-        boolean removedQueued = targetEngine.removeQueuedLoadSgfCommand(responseHandler);
-        if (hadPendingHandler && !removedQueued) {
-          targetEngine.retireOutstandingResponseCountOnNoResponseTimeout();
-        }
+        targetEngine.retireTrackedLoadSgfWithoutResponse(responseHandler);
       }
       if (shouldRecordFailure && ex != null) {
         if (cancelOtherConsumers) {
@@ -5481,6 +5650,11 @@ public class Leelaz {
     private final Runnable onResponse;
     private final CommandSendFailureHandler onSendFailure;
     private final boolean failOnSendError;
+    private RuntimeException cancellationFailure;
+    private boolean outputWriteStarted;
+    private RuntimeException stateResetAfterOutputWriteFailure;
+    private boolean stateResetAfterOutputWritePublished;
+    private boolean outstandingResponseRetired;
 
     private QueuedCommand(
         String command,
@@ -5491,6 +5665,61 @@ public class Leelaz {
       this.onResponse = onResponse;
       this.onSendFailure = onSendFailure;
       this.failOnSendError = failOnSendError;
+    }
+
+    private boolean isTrackedLoadSgf() {
+      return command != null && command.startsWith("loadsgf ") && onSendFailure != null;
+    }
+
+    private synchronized boolean cancelBeforeOutputWrite(RuntimeException failure) {
+      if (outputWriteStarted) {
+        return false;
+      }
+      outstandingResponseRetired = true;
+      if (cancellationFailure == null) {
+        cancellationFailure = failure;
+      }
+      return true;
+    }
+
+    private synchronized boolean isCancelledBeforeOutputWrite() {
+      return cancellationFailure != null;
+    }
+
+    private synchronized boolean beginOutputWrite() {
+      if (cancellationFailure != null) {
+        return false;
+      }
+      outputWriteStarted = true;
+      return true;
+    }
+
+    private synchronized void markStateResetAfterOutputWrite(RuntimeException failure) {
+      outstandingResponseRetired = true;
+      if (stateResetAfterOutputWriteFailure == null) {
+        stateResetAfterOutputWriteFailure = failure;
+      }
+    }
+
+    private synchronized boolean isOutstandingResponseRetired() {
+      return outstandingResponseRetired;
+    }
+
+    private void notifySendFailure(RuntimeException failure) {
+      if (onSendFailure != null) {
+        onSendFailure.onSendFailure(failure);
+      }
+    }
+
+    private synchronized void publishStateResetAfterOutputWrite() {
+      if (stateResetAfterOutputWriteFailure == null
+          || stateResetAfterOutputWritePublished) {
+        return;
+      }
+      if (onSendFailure != null) {
+        onSendFailure.onStateResetAfterOutputWrite(stateResetAfterOutputWriteFailure);
+      }
+      stateResetAfterOutputWritePublished = true;
     }
   }
 
@@ -6044,7 +6273,7 @@ public class Leelaz {
       timeout.cancel();
     }
     rememberRecentLine(recentStderrLines, "ReadBoard GMA engine restore failed: " + detail);
-    resetGtpCommandStateAfterRestoreFailure();
+    resetGtpCommandStateAfterRestoreFailure(detail);
     if (reservation != null) {
       reservation.close();
     }
@@ -6074,7 +6303,7 @@ public class Leelaz {
       return;
     }
     rememberRecentLine(recentStderrLines, "ReadBoard GMA engine restore failed: " + detail);
-    resetGtpCommandStateAfterRestoreFailure();
+    resetGtpCommandStateAfterRestoreFailure(detail);
     reservation.close();
   }
 
