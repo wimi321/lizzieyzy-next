@@ -2459,6 +2459,22 @@ public class Leelaz {
     }
   }
 
+  /**
+   * Aligns the running engine with the displayed game's komi without changing the engine default or
+   * discarding analysis embedded in a loaded SGF.
+   */
+  public boolean syncKomiForCurrentGame(double komi) {
+    float normalizedKomi = (float) (komi == 0.0 ? 0.0 : komi);
+    synchronized (this) {
+      if (Float.compare(this.komi, normalizedKomi) == 0) {
+        return false;
+      }
+      this.komi = normalizedKomi;
+      sendCommand("komi " + (komi == 0.0 ? "0" : komi));
+      return true;
+    }
+  }
+
   public void nameCmdfornoponder() {
     YikeSyncDebugLog.log(
         "Leelaz nameCmdfornoponder isKatago="

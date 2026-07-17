@@ -108,6 +108,38 @@ class BoardPrimaryEngineSyncTest {
   }
 
   @Test
+  void trySyncCurrentPositionToPrimaryEngineSynchronizesChangedGameKomiWithoutReset()
+      throws Exception {
+    try (TestHarness harness = TestHarness.open()) {
+      Board board = allocate(Board.class);
+      board.startStonelist = new ArrayList<>();
+      board.hasStartStone = false;
+      BoardHistoryList history = new BoardHistoryList(BoardData.empty(BOARD_SIZE, BOARD_SIZE));
+      history.getGameInfo().setKomiNoMenu(0.0);
+      BoardData previousPosition = history.getData().clone();
+      board.setHistory(history);
+      Lizzie.board = board;
+
+      Leelaz engine = new Leelaz("");
+      engine.komi = 7.5f;
+      engine.orikomi = 7.5f;
+      engine.isLoaded = true;
+      setStarted(engine, true);
+      RecordingOutputStream output = new RecordingOutputStream();
+      setOutputStream(engine, output);
+      Lizzie.leelaz = engine;
+
+      assertTrue(
+          board.trySyncCurrentPositionToPrimaryEngineIncrementally(
+              previousPosition, BOARD_SIZE, BOARD_SIZE));
+
+      assertEquals(List.of("komi 0"), output.commands());
+      assertEquals(0.0, engine.komi, 0.0001);
+      assertEquals(7.5, engine.orikomi, 0.0001);
+    }
+  }
+
+  @Test
   void trySyncCurrentPositionToPrimaryEngineIncrementallyRejectsMultipleAppendedMoves()
       throws Exception {
     try (TestHarness harness = TestHarness.open()) {
