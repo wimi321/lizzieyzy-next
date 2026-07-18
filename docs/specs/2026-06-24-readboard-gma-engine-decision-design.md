@@ -44,7 +44,7 @@ play>black>5 1000 0 gma
 
 ### 2026-07 WebSocket 能力例外
 
-后续 WebSocket 参数合同将 GMA 能力拆为“固定限制落子”和“后台 pondering”。自建算力 WebSocket 可以通过真实的 `maxTime` / `maxVisits` 查询状态支持前者，但不支持 `ponderingEnabled`，因此不得读取、设置或恢复该参数。本地与 SSH GTP 引擎继续遵守下文原有 pondering 合同。在后台 pondering 降级提示完成前，WebSocket 的 `ponder=true` GMA 路径保持不可用；提示与继续执行行为由后续任务处理。
+后续 WebSocket 参数合同将 GMA 能力拆为“固定限制落子”和“后台 pondering”。自建算力 WebSocket 可以通过真实的 `maxTime` / `maxVisits` 查询状态支持前者，但不支持 `ponderingEnabled`，因此不得读取、设置或恢复该参数。本地与 SSH GTP 引擎继续遵守下文原有 pondering 合同。ReadBoard 请求后台 pondering 时，Lizzie 在主窗口每个 GMA 会话至多提示一次；用户确认或选择“不再提示”后，继续执行受固定限制约束的 GMA。“不再提示”只持久抑制 Lizzie 侧这条说明，不修改 ReadBoard 的 pondering 偏好。
 
 ## 命令与参数
 
