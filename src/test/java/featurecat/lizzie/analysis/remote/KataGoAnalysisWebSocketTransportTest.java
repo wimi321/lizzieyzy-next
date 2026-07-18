@@ -112,8 +112,96 @@ public class KataGoAnalysisWebSocketTransportTest {
 
       sendResult.complete(harness.webSocket);
       assertEquals(
-          "=27\ninfo move Q16 visits 12 order 0\n",
+          "=27\ninfo move Q16 visits 12 order 0\n", readAvailable(harness.transport.stdout()));
+    }
+  }
+
+  @Test
+  void activeQueryKeepsItsParameterSnapshotAndLaterQueriesUseCommittedValues() throws Exception {
+    try (TransportHarness harness = TransportHarness.open()) {
+      assertEquals("=\n\n", sendGtp(harness.transport, "kata-set-param maxTime 1.25"));
+      assertEquals("=\n\n", sendGtp(harness.transport, "kata-set-param maxVisits 125"));
+      assertEquals(
+          "=\n\n", sendGtp(harness.transport, "kata-set-param playoutDoublingAdvantage -1"));
+      assertEquals(
+          "=\n\n", sendGtp(harness.transport, "kata-set-param analysisWideRootNoise 0.25"));
+
+      CompletableFuture<WebSocket> sendResult = harness.webSocket.deferNextSend();
+      writeGtp(harness.transport, "201 genmove B");
+      JSONObject active = harness.webSocket.sentJson(0);
+      assertEquals(125L, active.getLong("maxVisits"));
+      assertEquals(1.25, active.getJSONObject("overrideSettings").getDouble("maxTime"));
+      assertEquals(-1.0, active.getDouble("playoutDoublingAdvantage"));
+
+      assertEquals("=211\n\n", sendGtp(harness.transport, "211 kata-set-param maxTime 2.5"));
+      assertEquals("=212\n\n", sendGtp(harness.transport, "212 kata-set-param maxVisits 250"));
+      assertEquals(
+          "=213\n\n", sendGtp(harness.transport, "213 kata-set-param playoutDoublingAdvantage 2"));
+      assertEquals(
+          "=214\n\n", sendGtp(harness.transport, "214 kata-set-param analysisWideRootNoise 0.5"));
+
+      assertEquals(125L, active.getLong("maxVisits"));
+      assertEquals(1.25, active.getJSONObject("overrideSettings").getDouble("maxTime"));
+      assertEquals(-1.0, active.getDouble("playoutDoublingAdvantage"));
+      assertEquals(1, harness.webSocket.sentTexts.size());
+
+      sendResult.complete(harness.webSocket);
+      assertEquals("", readAvailable(harness.transport.stdout()));
+      harness.webSocket.emit(analysisResponse(active.getString("id"), false, "Q16", 125));
+      assertEquals(
+          "info move Q16 visits 125 order 0\n=201 Q16\n\n",
           readAvailable(harness.transport.stdout()));
+
+      writeGtp(harness.transport, "221 genmove W");
+      JSONObject nextMove = harness.webSocket.sentJson(1);
+      assertEquals(250L, nextMove.getLong("maxVisits"));
+      assertEquals(2.5, nextMove.getJSONObject("overrideSettings").getDouble("maxTime"));
+      assertEquals(2.0, nextMove.getDouble("playoutDoublingAdvantage"));
+      harness.webSocket.emit(analysisResponse(nextMove.getString("id"), false, "D4", 250));
+      assertEquals(
+          "info move D4 visits 250 order 0\n=221 D4\n\n",
+          readAvailable(harness.transport.stdout()));
+
+      writeGtp(harness.transport, "231 kata-analyze B 10");
+      JSONObject nextAnalysis = harness.webSocket.sentJson(2);
+      assertEquals(2.0, nextAnalysis.getDouble("playoutDoublingAdvantage"));
+      assertEquals(0.5, nextAnalysis.getJSONObject("overrideSettings").getDouble("wideRootNoise"));
+      assertEquals("=231\n", readAvailable(harness.transport.stdout()));
+      harness.webSocket.emit(finalWithoutResults(nextAnalysis.getString("id")));
+      assertEquals("\n", readAvailable(harness.transport.stdout()));
+    }
+  }
+
+  @Test
+  void parameterUpdateAndStopDuringPendingSendKeepOneTerminalResponse() throws Exception {
+    try (TransportHarness harness = TransportHarness.open()) {
+      CompletableFuture<WebSocket> sendResult = harness.webSocket.deferNextSend();
+      writeGtp(harness.transport, "301 kata-analyze B 10");
+      JSONObject active = harness.webSocket.sentJson(0);
+
+      assertEquals(
+          "=311\n\n",
+          sendGtp(harness.transport, "311 kata-set-param playoutDoublingAdvantage 1.5"));
+      writeGtp(harness.transport, "302 stop");
+      JSONObject terminate = harness.webSocket.sentJson(1);
+      harness.webSocket.emit(terminate);
+      harness.webSocket.emit(finalWithoutResults(active.getString("id")));
+      assertEquals("", readAvailable(harness.transport.stdout()));
+
+      sendResult.complete(harness.webSocket);
+      assertEquals("=301\n\n=302\n\n", readAvailable(harness.transport.stdout()));
+
+      harness.webSocket.emit(terminate);
+      harness.webSocket.emit(finalWithoutResults(active.getString("id")));
+      assertEquals("", readAvailable(harness.transport.stdout()));
+      assertEquals(2, harness.webSocket.sentTexts.size());
+
+      writeGtp(harness.transport, "303 kata-analyze W 10");
+      JSONObject next = harness.webSocket.sentJson(2);
+      assertEquals(1.5, next.getDouble("playoutDoublingAdvantage"));
+      assertEquals("=303\n", readAvailable(harness.transport.stdout()));
+      harness.webSocket.emit(finalWithoutResults(next.getString("id")));
+      assertEquals("\n", readAvailable(harness.transport.stdout()));
     }
   }
 

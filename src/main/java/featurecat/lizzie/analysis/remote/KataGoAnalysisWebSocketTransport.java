@@ -97,10 +97,7 @@ public class KataGoAnalysisWebSocketTransport implements EngineTransport {
   private int boardHeight = DEFAULT_BOARD_SIZE;
   private double komi = 7.5;
   private String rules = CHINESE_RULES;
-  private double moveMaxTime = DEFAULT_MOVE_MAX_TIME;
-  private long moveMaxVisits = DEFAULT_MOVE_MAX_VISITS;
-  private double playoutDoublingAdvantage = DEFAULT_PLAYOUT_DOUBLING_ADVANTAGE;
-  private double analysisWideRootNoise = DEFAULT_ANALYSIS_WIDE_ROOT_NOISE;
+  private QueryParameters queryParameters = QueryParameters.defaults();
   private ActiveQuery activeQuery;
   private String snapshotInitialPlayer = "";
 
@@ -328,12 +325,15 @@ public class KataGoAnalysisWebSocketTransport implements EngineTransport {
     long querySequence = queryCounter.incrementAndGet();
     String queryId = "lz-ws-" + querySequence;
     String player = playerToken(command, genmove);
+    QueryParameters parameterSnapshot = queryParameters;
     ActiveQuery queryContext =
-        new ActiveQuery(querySequence, queryId, responseId, genmove, player);
+        new ActiveQuery(querySequence, queryId, responseId, genmove, player, parameterSnapshot);
     activeQuery = queryContext;
     boolean ownership = command.toLowerCase(Locale.ROOT).contains("ownership true");
     int intervalCentisec = Math.max(10, analyzeIntervalCentisec(command, genmove));
-    JSONObject query = buildAnalysisQuery(queryId, genmove, ownership, intervalCentisec, player);
+    JSONObject query =
+        buildAnalysisQuery(
+            queryId, genmove, ownership, intervalCentisec, player, queryContext.parameterSnapshot);
     try {
       current
           .sendText(query.toString(), true)
@@ -371,13 +371,13 @@ public class KataGoAnalysisWebSocketTransport implements EngineTransport {
   private void writeKnownKataGoParam(String responseId, String command) {
     String param = token(command, 1, "");
     if ("maxTime".equals(param)) {
-      writeOk(responseId, Double.toString(moveMaxTime));
+      writeOk(responseId, Double.toString(queryParameters.moveMaxTime()));
     } else if ("maxVisits".equals(param)) {
-      writeOk(responseId, Long.toString(moveMaxVisits));
+      writeOk(responseId, Long.toString(queryParameters.moveMaxVisits()));
     } else if ("playoutDoublingAdvantage".equals(param)) {
-      writeOk(responseId, Double.toString(playoutDoublingAdvantage));
+      writeOk(responseId, Double.toString(queryParameters.playoutDoublingAdvantage()));
     } else if ("analysisWideRootNoise".equals(param)) {
-      writeOk(responseId, Double.toString(analysisWideRootNoise));
+      writeOk(responseId, Double.toString(queryParameters.analysisWideRootNoise()));
     } else {
       writeError(responseId, "unknown parameter");
     }
@@ -394,20 +394,24 @@ public class KataGoAnalysisWebSocketTransport implements EngineTransport {
           value.isEmpty()
               ? DEFAULT_MOVE_MAX_TIME
               : parseFiniteDouble(value, "maxTime", 0.0, DEFAULT_MOVE_MAX_TIME);
-      moveMaxTime = parsed;
+      queryParameters = queryParameters.withMoveMaxTime(parsed);
       writeOk(responseId, "");
     } else if ("maxVisits".equals(param)) {
       long parsed =
           value.isEmpty()
               ? DEFAULT_MOVE_MAX_VISITS
               : parseIntegralValue(value, "maxVisits", 1, MAX_MOVE_MAX_VISITS);
-      moveMaxVisits = parsed;
+      queryParameters = queryParameters.withMoveMaxVisits(parsed);
       writeOk(responseId, "");
     } else if ("playoutDoublingAdvantage".equals(param)) {
-      playoutDoublingAdvantage = parseFiniteDouble(value, "playoutDoublingAdvantage", -3.0, 3.0);
+      queryParameters =
+          queryParameters.withPlayoutDoublingAdvantage(
+              parseFiniteDouble(value, "playoutDoublingAdvantage", -3.0, 3.0));
       writeOk(responseId, "");
     } else if ("analysisWideRootNoise".equals(param)) {
-      analysisWideRootNoise = parseFiniteDouble(value, "analysisWideRootNoise", 0.0, 5.0);
+      queryParameters =
+          queryParameters.withAnalysisWideRootNoise(
+              parseFiniteDouble(value, "analysisWideRootNoise", 0.0, 5.0));
       writeOk(responseId, "");
     } else {
       writeError(responseId, "unknown parameter");
@@ -441,14 +445,25 @@ public class KataGoAnalysisWebSocketTransport implements EngineTransport {
       boolean ownership,
       int intervalCentisec,
       String reportWinrateAs) {
+    return buildAnalysisQuery(
+        queryId, genmove, ownership, intervalCentisec, reportWinrateAs, queryParameters);
+  }
+
+  private JSONObject buildAnalysisQuery(
+      String queryId,
+      boolean genmove,
+      boolean ownership,
+      int intervalCentisec,
+      String reportWinrateAs,
+      QueryParameters parameterSnapshot) {
     JSONObject query = new JSONObject();
     query.put("id", queryId);
     String queryRules = rules == null || rules.isBlank() ? CHINESE_RULES : rules;
     query.put("rules", queryRules.startsWith("{") ? new JSONObject(queryRules) : queryRules);
     query.put("priority", genmove ? 2 : 0);
     query.put("analyzeTurns", new JSONArray().put(moves.size()));
-    query.put("maxVisits", genmove ? moveMaxVisits : LIVE_ANALYSIS_MAX_VISITS);
-    query.put("playoutDoublingAdvantage", playoutDoublingAdvantage);
+    query.put("maxVisits", genmove ? parameterSnapshot.moveMaxVisits() : LIVE_ANALYSIS_MAX_VISITS);
+    query.put("playoutDoublingAdvantage", parameterSnapshot.playoutDoublingAdvantage());
     query.put("komi", komi);
     query.put("boardXSize", boardWidth);
     query.put("boardYSize", boardHeight);
@@ -473,9 +488,9 @@ public class KataGoAnalysisWebSocketTransport implements EngineTransport {
     JSONObject overrides = new JSONObject();
     overrides.put("reportAnalysisWinratesAs", "B".equals(reportWinrateAs) ? "BLACK" : "WHITE");
     if (genmove) {
-      overrides.put("maxTime", moveMaxTime);
+      overrides.put("maxTime", parameterSnapshot.moveMaxTime());
     } else {
-      overrides.put("wideRootNoise", analysisWideRootNoise);
+      overrides.put("wideRootNoise", parameterSnapshot.analysisWideRootNoise());
     }
     query.put("overrideSettings", overrides);
     if (!genmove) {
@@ -1069,6 +1084,38 @@ public class KataGoAnalysisWebSocketTransport implements EngineTransport {
     return normalized.length() <= 180 ? normalized : normalized.substring(0, 180) + "...";
   }
 
+  private record QueryParameters(
+      double moveMaxTime,
+      long moveMaxVisits,
+      double playoutDoublingAdvantage,
+      double analysisWideRootNoise) {
+    private static QueryParameters defaults() {
+      return new QueryParameters(
+          DEFAULT_MOVE_MAX_TIME,
+          DEFAULT_MOVE_MAX_VISITS,
+          DEFAULT_PLAYOUT_DOUBLING_ADVANTAGE,
+          DEFAULT_ANALYSIS_WIDE_ROOT_NOISE);
+    }
+
+    private QueryParameters withMoveMaxTime(double value) {
+      return new QueryParameters(
+          value, moveMaxVisits, playoutDoublingAdvantage, analysisWideRootNoise);
+    }
+
+    private QueryParameters withMoveMaxVisits(long value) {
+      return new QueryParameters(
+          moveMaxTime, value, playoutDoublingAdvantage, analysisWideRootNoise);
+    }
+
+    private QueryParameters withPlayoutDoublingAdvantage(double value) {
+      return new QueryParameters(moveMaxTime, moveMaxVisits, value, analysisWideRootNoise);
+    }
+
+    private QueryParameters withAnalysisWideRootNoise(double value) {
+      return new QueryParameters(moveMaxTime, moveMaxVisits, playoutDoublingAdvantage, value);
+    }
+  }
+
   private static final class SnapshotPosition {
     private final int width;
     private final int height;
@@ -1091,6 +1138,7 @@ public class KataGoAnalysisWebSocketTransport implements EngineTransport {
     private final String gtpResponseId;
     private final boolean genmove;
     private final String genmoveColor;
+    private final QueryParameters parameterSnapshot;
     private String terminateQueryId = "";
     private String stopGtpResponseId = "";
     private final List<JSONObject> pendingResponses = new ArrayList<>();
@@ -1106,12 +1154,14 @@ public class KataGoAnalysisWebSocketTransport implements EngineTransport {
         String queryId,
         String gtpResponseId,
         boolean genmove,
-        String genmoveColor) {
+        String genmoveColor,
+        QueryParameters parameterSnapshot) {
       this.sequence = sequence;
       this.queryId = queryId;
       this.gtpResponseId = gtpResponseId;
       this.genmove = genmove;
       this.genmoveColor = genmoveColor;
+      this.parameterSnapshot = parameterSnapshot;
     }
   }
 
