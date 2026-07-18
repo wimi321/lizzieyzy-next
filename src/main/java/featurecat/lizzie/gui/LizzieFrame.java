@@ -5285,27 +5285,12 @@ public class LizzieFrame extends JFrame {
           double ponderingSize = Lizzie.config.userKnownX ? 0.025 : 0.04;
           maxSize = (int) (min(width - leftInset - rightInset, height - topInset - bottomInset));
 
-          int ponderingY =
-              height - bottomInset; // - (int) (maxSize * 0.023) - (int) (maxBound * ponderingSize);
-          int ponderingY2 =
-              height - bottomInset; // - (int) (maxSize * 0.023) - (int) (maxBound * ponderingSize *
-          // 0.4);
+          int ponderingY = statusAreaBottom(height, bottomInset);
           if (Lizzie.config.showStatus) {
             ponderingY = ponderingY - (int) (maxSize * 0.023) - (int) (maxBound * ponderingSize);
-            ponderingY2 =
-                ponderingY2
-                    - (int) (maxSize * 0.023)
-                    - (int) (maxBound * ponderingSize * (Lizzie.config.userKnownX ? 0.3 : 0.4));
           }
-          double loadingSize = 0.03;
-          int loadingX = ponderingX;
-          int loadingY =
-              ponderingY
-                  - (int)
-                      (maxBound
-                          * (loadingSize
-                              - ponderingSize * (Lizzie.config.userKnownX ? 1.15 : 0.75)));
-          if (Lizzie.config.showStatus && !Lizzie.config.userKnownX) drawCommandString(g);
+          if (Lizzie.config.showStatus && !Lizzie.config.userKnownX)
+            drawCommandString(g, ponderingY);
           if (Lizzie.config.showStatus) {
             if (Lizzie.leelaz != null && (Lizzie.leelaz.isLoaded() || Lizzie.leelaz.isNormalEnd)) {
               String statusKey =
@@ -5327,13 +5312,12 @@ public class LizzieFrame extends JFrame {
                 weightText = Lizzie.resourceBundle.getString("LizzieFrame.noEngineText");
               else weightText = statusEngineName(Lizzie.leelaz);
               String text2 = ponderingText + " " + statusText; // + " " + switchingText;
-              drawPonderingState(
-                  g, weightText, text2, ponderingX, ponderingY, ponderingY2, ponderingSize);
+              drawPonderingState(g, weightText, text2, ponderingX, ponderingY);
               vh = ponderingY;
             } else {
               String loadingText = getLoadingText();
-              drawPonderingState(g, loadingText, loadingX, loadingY, loadingSize);
-              vh = loadingY;
+              drawPonderingState(g, loadingText, ponderingX, ponderingY);
+              vh = ponderingY;
             }
           }
           if (backgroundG.isPresent()) {
@@ -5517,17 +5501,9 @@ public class LizzieFrame extends JFrame {
           double ponderingSize = Lizzie.config.userKnownX ? 0.025 : 0.04;
           int ponderingX = leftInset;
 
-          int ponderingY =
-              height - bottomInset; // - (int) (maxSize * 0.023) - (int) (maxBound * ponderingSize);
-          int ponderingY2 =
-              height - bottomInset; // - (int) (maxSize * 0.023) - (int) (maxBound * ponderingSize *
-          // 0.4);
+          int ponderingY = statusAreaBottom(height, bottomInset);
           if (Lizzie.config.showStatus) {
             ponderingY = ponderingY - (int) (maxSize * 0.023) - (int) (maxBound * ponderingSize);
-            ponderingY2 =
-                ponderingY2
-                    - (int) (maxSize * 0.023)
-                    - (int) (maxBound * ponderingSize * (Lizzie.config.userKnownX ? 0.3 : 0.4));
           }
           // dynamic komi
           // double dynamicKomiSize = .02;
@@ -5535,16 +5511,6 @@ public class LizzieFrame extends JFrame {
           // int dynamicKomiY = ponderingY - (int) (maxBound * dynamicKomiSize);
           // int dynamicKomiLabelX = leftInset;
           // int dynamicKomiLabelY = dynamicKomiY - (int) (maxBound * dynamicKomiSize);
-
-          // loading message;
-          double loadingSize = 0.03;
-          int loadingX = ponderingX;
-          int loadingY =
-              ponderingY
-                  - (int)
-                      (maxBound
-                          * (loadingSize
-                              - ponderingSize * (Lizzie.config.userKnownX ? 1.15 : 0.75)));
 
           // subboard
           int subBoardGap = 0;
@@ -5682,7 +5648,7 @@ public class LizzieFrame extends JFrame {
             // RenderingHints.VALUE_RENDER_QUALITY);
 
             if (Lizzie.config.showStatus && !Lizzie.config.isMinMode() && !Lizzie.config.userKnownX)
-              drawCommandString(g);
+              drawCommandString(g, ponderingY);
             //
             //          if (boardPos != boardX + maxSize / 2) {
             //            boardPos = boardX + maxSize / 2;
@@ -5773,11 +5739,10 @@ public class LizzieFrame extends JFrame {
                   weightText = Lizzie.resourceBundle.getString("LizzieFrame.noEngineText");
                 else weightText = statusEngineName(Lizzie.leelaz);
                 String text2 = ponderingText + " " + statusText; // + " " + switchingText;
-                drawPonderingState(
-                    g, weightText, text2, ponderingX, ponderingY, ponderingY2, ponderingSize);
+                drawPonderingState(g, weightText, text2, ponderingX, ponderingY);
               } else {
                 String loadingText = getLoadingText();
-                drawPonderingState(g, loadingText, loadingX, loadingY, loadingSize);
+                drawPonderingState(g, loadingText, ponderingX, ponderingY);
               }
             }
 
@@ -5956,7 +5921,7 @@ public class LizzieFrame extends JFrame {
             int cx = capx, cy = vy, cw = spaceW, ch = vh;
             if (Lizzie.config.showVariationGraph || showListPane) cw = spaceW * 4 / 10;
             if (Lizzie.config.showStatus && !Lizzie.config.isMinMode() && !Lizzie.config.userKnownX)
-              drawCommandString(g);
+              drawCommandString(g, ponderingY);
 
             if (Lizzie.config.showWinrateGraph) {
               drawMoveStatistics(g, statx, staty, statw, stath);
@@ -5984,8 +5949,7 @@ public class LizzieFrame extends JFrame {
                   weightText = Lizzie.resourceBundle.getString("LizzieFrame.noEngineText");
                 else weightText = statusEngineName(Lizzie.leelaz);
                 String text2 = ponderingText + " " + statusText; // + " " + switchingText;
-                drawPonderingState(
-                    g, weightText, text2, ponderingX, ponderingY, ponderingY2, ponderingSize);
+                drawPonderingState(g, weightText, text2, ponderingX, ponderingY);
               }
             }
             boardRenderer.setLocation(boardX, boardY);
@@ -5999,7 +5963,7 @@ public class LizzieFrame extends JFrame {
             if (Lizzie.config.showStatus && !Lizzie.config.isMinMode()) {
               if (Lizzie.leelaz == null || !Lizzie.leelaz.isLoaded()) {
                 String loadingText = getLoadingText();
-                drawPonderingState(g, loadingText, loadingX, loadingY, loadingSize);
+                drawPonderingState(g, loadingText, ponderingX, ponderingY);
               }
             }
 
@@ -6234,20 +6198,47 @@ public class LizzieFrame extends JFrame {
   }
 
   private void drawPonderingState(
-      Graphics2D g, String text1, String text2, int x, int y, int y2, double size) {
+      Graphics2D g, String text1, String text2, int x, int statusAreaTop) {
     if (Lizzie.readMode || hasEngineStartupNotice()) {
       return;
     }
-    double firstSize = size * (Lizzie.config.userKnownX ? 0.7 : 0.6);
-    double secondSize = size * (Lizzie.config.userKnownX ? 0.75 : 0.4);
-    int firstFontSize = ponderingFontSize(firstSize, false);
-    int secondFontSize = ponderingFontSize(secondSize, true);
-    int firstHeight = statusTextHeight(g, text1, x, firstFontSize);
-    int secondHeight = statusTextHeight(g, text2, x, secondFontSize);
-    int bottomLimit = mainPanel.getHeight() - Math.max(0, toolbarHeight) - 4;
-    int[] tops = stackedStatusTextTops(y, y2, firstHeight, secondHeight, bottomLimit);
-    drawStatusText(g, text1, x, tops[0], firstFontSize);
-    drawStatusText(g, text2, x, tops[1], secondFontSize);
+    int lineCount = Lizzie.config.userKnownX ? 2 : 3;
+    int[][] lines = statusLineBounds(statusAreaTop, currentStatusAreaBottom(), lineCount);
+    drawStatusTextInBounds(g, text1, x, lines[0], true);
+    drawStatusTextInBounds(g, text2, x, lines[1], false);
+  }
+
+  static int statusAreaBottom(int panelHeight, int bottomInset) {
+    return Math.max(0, panelHeight - Math.max(0, bottomInset));
+  }
+
+  private int currentStatusAreaBottom() {
+    return Math.max(
+        0,
+        statusAreaBottom(mainPanel.getHeight(), mainPanel.getInsets().bottom)
+            - 4);
+  }
+
+  static int[][] statusLineBounds(int requestedTop, int requestedBottom, int lineCount) {
+    if (lineCount <= 0) {
+      return new int[0][2];
+    }
+    int top = Math.max(0, Math.min(requestedTop, requestedBottom));
+    int bottom = Math.max(top, requestedBottom);
+    int availableHeight = bottom - top;
+    int gap = availableHeight >= lineCount * 6 ? 2 : 0;
+    int textHeight = Math.max(0, availableHeight - gap * (lineCount - 1));
+    int baseHeight = textHeight / lineCount;
+    int remainder = textHeight % lineCount;
+    int[][] bounds = new int[lineCount][2];
+    int y = top;
+    for (int index = 0; index < lineCount; index++) {
+      int height = baseHeight + (index < remainder ? 1 : 0);
+      bounds[index][0] = y;
+      bounds[index][1] = height;
+      y += height + gap;
+    }
+    return bounds;
   }
 
   /** Requests a bounded-rate title and board refresh from an engine output thread. */
@@ -6293,7 +6284,8 @@ public class LizzieFrame extends JFrame {
     int width = Math.min(maxWidth, Math.max(stringWidth, 1));
     int height = Math.max((int) (fm.getHeight() * 1.2), 1);
     int drawX = Math.max(0, Math.min(x, mainPanel.getWidth() - width));
-    int bottomLimit = mainPanel.getHeight() - Math.max(0, toolbarHeight) - height - 4;
+    int bottomLimit =
+        mainPanel.getHeight() - Math.max(0, mainPanel.getInsets().bottom) - height - 4;
     int drawY = Math.max(0, Math.min(y, Math.max(0, bottomLimit)));
 
     g.setColor(new Color(0, 0, 0, 130));
@@ -6307,16 +6299,21 @@ public class LizzieFrame extends JFrame {
     return stringWidth;
   }
 
-  private void drawPonderingState(Graphics2D g, String text, int x, int y, double size) {
+  private void drawPonderingState(Graphics2D g, String text, int x, int statusAreaTop) {
     if (Lizzie.readMode) {
       return;
     }
     if (hasEngineStartupNotice()) {
       return;
     }
-
-    int fontSize = ponderingFontSize(size, false);
-    drawStatusText(g, text, x, y, fontSize);
+    int lineCount = Lizzie.config.userKnownX ? 1 : 3;
+    int[][] lines = statusLineBounds(statusAreaTop, currentStatusAreaBottom(), lineCount);
+    int[] bounds = lines[0];
+    if (lineCount > 1) {
+      int secondBottom = lines[1][0] + lines[1][1];
+      bounds = new int[] {lines[0][0], secondBottom - lines[0][0]};
+    }
+    drawStatusTextInBounds(g, text, x, bounds, true);
   }
 
   private void drawPonderingState2(Graphics2D g, String text, int x, int y, double size) {
@@ -6337,7 +6334,18 @@ public class LizzieFrame extends JFrame {
       if (maxWidth > maxHeight * 3) maxWidth = maxWidth * 3 / 5;
       else if (maxWidth > maxHeight * 2) maxWidth = maxHeight * 2;
     }
-    return Math.max(1, (int) (Math.max(maxWidth, maxHeight) * size));
+    int requestedSize = Math.max(1, (int) (Math.max(maxWidth, maxHeight) * size));
+    return boundedStatusFontSize(requestedSize, Config.frameFontSize, !secondary);
+  }
+
+  static int boundedStatusFontSize(int requestedSize, int frameFontSize, boolean primary) {
+    int safeRequestedSize = Math.max(1, requestedSize);
+    int safeFrameFontSize = Math.max(1, frameFontSize);
+    int cap =
+        primary
+            ? Math.max(18, Math.min(28, safeFrameFontSize + 10))
+            : Math.max(13, Math.min(20, safeFrameFontSize + 4));
+    return Math.min(safeRequestedSize, cap);
   }
 
   static Font fitStatusFont(
@@ -6405,7 +6413,8 @@ public class LizzieFrame extends JFrame {
     int width = Math.min(maxWidth, Math.max(stringWidth, 1));
     int height = Math.max((int) (metrics.getHeight() * 1.2), 1);
     int x = Math.max(0, Math.min(requestedX, mainPanel.getWidth() - width));
-    int bottomLimit = mainPanel.getHeight() - Math.max(0, toolbarHeight) - height - 4;
+    int bottomLimit =
+        mainPanel.getHeight() - Math.max(0, mainPanel.getInsets().bottom) - height - 4;
     int y = Math.max(0, Math.min(requestedY, Math.max(0, bottomLimit)));
 
     graphics.setColor(new Color(0, 0, 0, 130));
@@ -6418,29 +6427,52 @@ public class LizzieFrame extends JFrame {
     graphics.drawString(text, x + (width - stringWidth) / 2, baseline);
   }
 
-  private int statusTextHeight(
-      Graphics2D graphics, String text, int x, int requestedFontSize) {
+  private void drawStatusTextInBounds(
+      Graphics2D graphics, String value, int requestedX, int[] bounds, boolean primary) {
+    if (bounds == null || bounds.length < 2 || bounds[1] <= 0) {
+      return;
+    }
+    String text = value == null ? "" : value;
+    int maxWidth = statusTextMaxWidth(requestedX);
+    int lineHeight = Math.max(1, bounds[1]);
+    int requestedFontSize = Math.max(1, primary ? lineHeight : lineHeight * 9 / 10);
     Font font =
-        fitStatusFont(
-            graphics,
-            text,
-            Math.max(1, requestedFontSize),
-            Math.max(10, Config.frameFontSize),
-            statusTextMaxWidth(x));
-    return Math.max((int) (graphics.getFontMetrics(font).getHeight() * 1.2), 1);
+        fitStatusFontInBox(
+            graphics, text, requestedFontSize, Math.max(8, Config.frameFontSize), maxWidth, lineHeight);
+    FontMetrics metrics = graphics.getFontMetrics(font);
+    text = truncateStatusText(text, metrics, maxWidth);
+    int stringWidth = metrics.stringWidth(text);
+    if (stringWidth <= 0) {
+      return;
+    }
+    int width = Math.min(maxWidth, Math.max(stringWidth, 1));
+    int x = Math.max(0, Math.min(requestedX, mainPanel.getWidth() - width));
+    int y = Math.max(0, bounds[0]);
+
+    graphics.setColor(new Color(0, 0, 0, 130));
+    graphics.fillRect(x, y, width, lineHeight);
+    graphics.drawRect(x, y, width, lineHeight);
+    graphics.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+    graphics.setColor(Color.WHITE);
+    graphics.setFont(font);
+    int baseline = y + (lineHeight - metrics.getHeight()) / 2 + metrics.getAscent();
+    graphics.drawString(text, x + (width - stringWidth) / 2, baseline);
   }
 
-  static int[] stackedStatusTextTops(
-      int requestedFirstTop,
-      int requestedSecondTop,
-      int firstHeight,
-      int secondHeight,
-      int bottomLimit) {
-    int firstTop = Math.max(0, requestedFirstTop);
-    int secondTop = Math.max(requestedSecondTop, firstTop + Math.max(0, firstHeight) + 2);
-    int overflow = Math.max(0, secondTop + Math.max(0, secondHeight) - bottomLimit);
-    int shift = Math.min(firstTop, overflow);
-    return new int[] {firstTop - shift, secondTop - shift};
+  static Font fitStatusFontInBox(
+      Graphics2D graphics,
+      String text,
+      int requestedSize,
+      int minimumSize,
+      int maxWidth,
+      int maxHeight) {
+    Font font = fitStatusFont(graphics, text, requestedSize, minimumSize, maxWidth);
+    int safeMinimumSize = Math.max(1, Math.min(font.getSize(), minimumSize));
+    while (font.getSize() > safeMinimumSize
+        && graphics.getFontMetrics(font).getHeight() > Math.max(1, maxHeight - 2)) {
+      font = font.deriveFont((float) (font.getSize() - 1));
+    }
+    return font;
   }
 
   private int statusTextMaxWidth(int x) {
@@ -6596,28 +6628,10 @@ public class LizzieFrame extends JFrame {
 
   // private boolean userAlreadyKnowsAboutCommandString = false;
 
-  private void drawCommandString(Graphics2D g) {
-    // if (userAlreadyKnowsAboutCommandString) return;
-
-    int maxSize = (int) (min(mainPanel.getWidth(), mainPanel.getHeight()) * 0.98);
-
-    Font font = new Font(Lizzie.config.fontName, Font.PLAIN, (int) (maxSize * 0.023));
+  private void drawCommandString(Graphics2D g, int statusAreaTop) {
     String commandString = Lizzie.resourceBundle.getString("LizzieFrame.prompt.showControlsHint");
-
-    int showCommandsHeight = (int) (font.getSize() * 1.1);
-    int showCommandsWidth = g.getFontMetrics(font).stringWidth(commandString);
-    int showCommandsX = mainPanel.getInsets().left;
-    int showCommandsY = mainPanel.getHeight() - showCommandsHeight - mainPanel.getInsets().bottom;
-    // - this.getJMenuBar().getHeight();
-    g.setColor(new Color(0, 0, 0, 130));
-    g.fillRect(showCommandsX, showCommandsY, showCommandsWidth, showCommandsHeight);
-
-    g.setStroke(new BasicStroke(1));
-
-    g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-    g.setColor(Color.WHITE);
-    g.setFont(font);
-    g.drawString(commandString, showCommandsX, showCommandsY + font.getSize());
+    int[][] lines = statusLineBounds(statusAreaTop, currentStatusAreaBottom(), 3);
+    drawStatusTextInBounds(g, commandString, mainPanel.getInsets().left, lines[2], false);
   }
 
   private void drawMoveStatistics(Graphics2D g, int posX, int posY, int width, int height) {
@@ -10174,8 +10188,7 @@ public class LizzieFrame extends JFrame {
             if (yikeLiveDialog == null || !yikeLiveDialog.isDisplayable()) {
               yikeLiveDialog = new YikeLiveDialog(LizzieFrame.this);
             }
-            yikeLiveDialog.setVisible(true);
-            yikeLiveDialog.toFront();
+            yikeLiveDialog.showAndActivate();
             yikeLiveDialog.refreshIfEmpty();
           }
         });

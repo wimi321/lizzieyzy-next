@@ -55,7 +55,7 @@ public class KataGoAutoSetupHelperTest {
             .append("<span>Latest network:</span>")
             .append(officialLink(latestModel))
             .append("<table class=\"table mt-3\">");
-    for (String family : List.of("b60", "b10", "b15", "b20", "b40", "b28")) {
+    for (String family : List.of("b6", "b10", "b15", "b18", "b20", "b28", "b40", "b60", "b80")) {
       for (int version = 1; version <= 3; version++) {
         String model = officialModel(family, version);
         html.append("<tr>")
@@ -79,16 +79,45 @@ public class KataGoAutoSetupHelperTest {
     List<KataGoAutoSetupHelper.RemoteWeightInfo> choices =
         KataGoAutoSetupHelper.parseOfficialWeights(html.toString());
 
-    assertEquals(10, choices.size());
+    assertEquals(16, choices.size());
     assertEquals(
-        List.of("b28", "b28", "b40", "b40", "b20", "b20", "b15", "b15", "b10", "b10"),
+        List.of(
+            "b28", "b28", "b40", "b40", "b60", "b60", "b20", "b20", "b18", "b18", "b15", "b15",
+            "b10", "b10", "b6", "b6"),
         choices.stream().map(KataGoAutoSetupHelperTest::officialFamily).toList());
     assertTrue(
         choices.stream().anyMatch(info -> info.modelName.equals(latestModel) && info.latest));
     assertTrue(
         choices.stream()
             .anyMatch(info -> info.modelName.equals(strongestModel) && info.recommended));
-    assertFalse(choices.stream().anyMatch(info -> officialFamily(info).equals("b60")));
+    assertFalse(choices.stream().anyMatch(info -> officialFamily(info).equals("b80")));
+  }
+
+  @Test
+  void officialWeightChoicesKeepBundledZhiziAlongsideTheLatest28b() throws Exception {
+    String latestModel = officialModel("b28", 3);
+    String olderModel = officialModel("b28", 2);
+    String bundledModel = "kata1-zhizi-b28c512nbt-muonfd2";
+    String html =
+        new StringBuilder()
+            .append("<span>Latest network:</span>")
+            .append(officialLink(latestModel))
+            .append("<table class=\"table mt-3\">")
+            .append(officialRow(latestModel, "2026-06-28", "14180 Elo"))
+            .append(officialRow(olderModel, "2026-06-20", "14130 Elo"))
+            .append(officialRow(bundledModel, "2026-03-22", "14158 Elo"))
+            .append("</table>")
+            .toString();
+
+    List<KataGoAutoSetupHelper.RemoteWeightInfo> choices =
+        KataGoAutoSetupHelper.parseOfficialWeights(html);
+    List<KataGoAutoSetupHelper.RemoteWeightInfo> family =
+        choices.stream().filter(info -> officialFamily(info).equals("b28")).toList();
+
+    assertEquals(2, family.size());
+    assertTrue(family.stream().anyMatch(KataGoAutoSetupHelper::isDefaultGeneralUseWeight));
+    assertTrue(family.stream().anyMatch(info -> info.modelName.equals(latestModel) && info.latest));
+    assertFalse(family.stream().anyMatch(info -> info.modelName.equals(olderModel)));
   }
 
   @Test
@@ -755,6 +784,18 @@ public class KataGoAutoSetupHelperTest {
 
   private static String officialLink(String model) {
     return "<a href=\"https://example.com/" + model + ".bin.gz\">" + model + "</a>";
+  }
+
+  private static String officialRow(String model, String releaseDate, String elo) {
+    return "<tr><td>"
+        + model
+        + "</td><td>"
+        + releaseDate
+        + "</td><td>"
+        + elo
+        + "</td><td>"
+        + officialLink(model)
+        + "</td></tr>";
   }
 
   private static String officialFamily(KataGoAutoSetupHelper.RemoteWeightInfo info) {

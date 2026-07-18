@@ -88,11 +88,36 @@ class LizzieFrameRegressionTest {
   }
 
   @Test
-  void stackedEngineStatusLinesStaySeparatedAboveBottomToolbar() {
-    int[] tops = LizzieFrame.stackedStatusTextTops(642, 667, 36, 22, 670);
+  void engineStatusAreaExcludesBottomToolbarAndUsesAllRemainingHeight() {
+    int bottom = LizzieFrame.statusAreaBottom(700, 4);
+    int[][] lines = LizzieFrame.statusLineBounds(620, bottom, 3);
 
-    assertTrue(tops[1] >= tops[0] + 38);
-    assertTrue(tops[1] + 22 <= 670);
+    assertEquals(696, bottom);
+    assertEquals(620, lines[0][0]);
+    assertTrue(lines[1][0] >= lines[0][0] + lines[0][1]);
+    assertTrue(lines[2][0] >= lines[1][0] + lines[1][1]);
+    assertEquals(bottom, lines[2][0] + lines[2][1]);
+  }
+
+  @Test
+  void engineStatusTypographyCanGrowToFillItsLine() {
+    BufferedImage image = new BufferedImage(800, 200, BufferedImage.TYPE_INT_ARGB);
+    Graphics2D graphics = image.createGraphics();
+    try {
+      Font font =
+          LizzieFrame.fitStatusFontInBox(graphics, "智子云算力", 48, 12, 400, 60);
+
+      assertTrue(font.getSize() > 28);
+      assertTrue(graphics.getFontMetrics(font).getHeight() <= 58);
+    } finally {
+      graphics.dispose();
+    }
+  }
+
+  @Test
+  void loadingStatusTypographyStillShrinksForSmallWindows() {
+    assertEquals(9, LizzieFrame.boundedStatusFontSize(9, 12, true));
+    assertEquals(8, LizzieFrame.boundedStatusFontSize(8, 12, false));
   }
 
   @Test
