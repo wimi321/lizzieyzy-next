@@ -27,6 +27,23 @@ class BrowserFrameJcefBundleTest {
   }
 
   @Test
+  void findsJcefBundleFromConfiguredWorkDirectoryWhenJarLivesElsewhere() throws IOException {
+    Path checkout = Files.createDirectories(tempDir.resolve("checkout"));
+    Path codeSource = Files.createDirectories(checkout.resolve("target"));
+    Path configuredWorkDirectory = Files.createDirectories(tempDir.resolve("offline-assets"));
+    Path bundle = configuredWorkDirectory.resolve(BrowserFrame.JCEF_BUNDLE_DIRECTORY);
+    writeBundle(bundle, BrowserFrame.JCEF_RELEASE_TAG, "*");
+
+    List<java.io.File> bases =
+        BrowserFrame.jcefSearchBases(
+            codeSource.toFile(), checkout.toFile(), configuredWorkDirectory.toFile());
+    Optional<java.io.File> resolved = BrowserFrame.findBundledJcefFolder(bases);
+
+    assertTrue(resolved.isPresent());
+    assertEquals(bundle.toFile().getCanonicalFile(), resolved.get());
+  }
+
+  @Test
   void rejectsStaleJcefBundle() throws IOException {
     Path bundle = tempDir.resolve(BrowserFrame.JCEF_BUNDLE_DIRECTORY);
     writeBundle(bundle, "jcef-old", "*");

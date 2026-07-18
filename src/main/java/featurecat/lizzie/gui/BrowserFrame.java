@@ -554,13 +554,27 @@ public class BrowserFrame extends JFrame {
   }
 
   private static List<File> defaultJcefSearchBases() {
-    List<File> bases = new ArrayList<>();
-    bases.add(new File(System.getProperty("user.dir", ".")));
     File codeSourceFolder = getCodeSourceFolder();
+    File launchDirectory = new File(System.getProperty("user.dir", "."));
+    File configuredWorkDirectory = null;
+    if (Lizzie.config != null) {
+      configuredWorkDirectory = Lizzie.config.getWorkDirectory();
+    }
+    return jcefSearchBases(codeSourceFolder, launchDirectory, configuredWorkDirectory);
+  }
+
+  static List<File> jcefSearchBases(
+      File codeSourceFolder, File launchDirectory, File configuredWorkDirectory) {
+    List<File> bases = new ArrayList<>();
+    // Prefer the runtime shipped beside the current jar/app before considering writable folders.
     if (codeSourceFolder != null) {
       bases.add(codeSourceFolder);
       bases.add(codeSourceFolder.getParentFile());
     }
+    bases.add(launchDirectory);
+    // Development and portable launches may keep the jar and large offline assets in different
+    // folders. The explicit work directory is the authoritative asset root in that layout.
+    bases.add(configuredWorkDirectory);
     return bases;
   }
 
