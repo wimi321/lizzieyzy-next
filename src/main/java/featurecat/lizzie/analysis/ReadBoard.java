@@ -157,6 +157,9 @@ public class ReadBoard {
   private boolean showInBoard = false;
   private volatile boolean isSyncing = false;
   private volatile boolean readBoardGmaAutoPlayActive = false;
+  private volatile boolean readBoardWebSocketPonderingNoticeAcknowledged = false;
+  private volatile boolean readBoardWebSocketPonderingNoticePending = false;
+  private volatile long readBoardGmaSessionGeneration = 0L;
   private Stone readBoardGmaAutoPlayColor = Stone.EMPTY;
   private int readBoardGmaTimeSeconds = 0;
   private int readBoardGmaMaxVisits = 0;
@@ -836,6 +839,11 @@ public class ReadBoard {
             clearFailedLocalMoveRecovery();
           }
         readBoardGmaAutoPlayActive = useGma;
+        if (useGma) {
+          readBoardWebSocketPonderingNoticeAcknowledged = false;
+          readBoardWebSocketPonderingNoticePending = false;
+          readBoardGmaSessionGeneration++;
+        }
         readBoardGmaAutoPlayColor = autoPlayColor;
         readBoardGmaTimeSeconds = Math.max(0, time);
         readBoardGmaMaxVisits = Math.max(0, playouts);
@@ -3746,6 +3754,9 @@ public class ReadBoard {
     }
     boolean pendingPhysicalRequest = readBoardGmaPending;
     readBoardGmaAutoPlayActive = false;
+    readBoardWebSocketPonderingNoticeAcknowledged = false;
+    readBoardWebSocketPonderingNoticePending = false;
+    readBoardGmaSessionGeneration++;
     readBoardGmaAwaitingSyncedBoard = false;
     readBoardGmaAutoPlayColor = Stone.EMPTY;
     readBoardGmaTimeSeconds = 0;
@@ -3978,7 +3989,31 @@ public class ReadBoard {
     }
 
     String color = readBoardGmaAutoPlayColor.isBlack() ? "B" : "W";
-    boolean ponder = Lizzie.config != null && Lizzie.config.readBoardPonder;
+    boolean ponderRequested = Lizzie.config != null && Lizzie.config.readBoardPonder;
+    boolean ponder = ponderRequested && Lizzie.leelaz.supportsReadBoardGmaPondering();
+    if (ponderRequested
+        && !ponder
+        && !readBoardWebSocketPonderingNoticeAcknowledged
+        && !Lizzie.config.suppressReadBoardWebSocketPonderingNotice) {
+      if (readBoardWebSocketPonderingNoticePending) {
+        return true;
+      }
+      readBoardWebSocketPonderingNoticePending = true;
+      long promptSessionGeneration = readBoardGmaSessionGeneration;
+      Lizzie.frame.showReadBoardWebSocketPonderingNotice(
+          suppressPermanently -> {
+            if (suppressPermanently && Lizzie.config != null) {
+              Lizzie.config.suppressReadBoardWebSocketPonderingNotice();
+            }
+            if (readBoardGmaAutoPlayActive
+                && readBoardGmaSessionGeneration == promptSessionGeneration) {
+              readBoardWebSocketPonderingNoticePending = false;
+              readBoardWebSocketPonderingNoticeAcknowledged = true;
+              scheduleReadBoardGmaIfNeeded("pondering-notice-acknowledged");
+            }
+          });
+      return true;
+    }
     readBoardGmaPending = true;
     readBoardGmaPendingLogicallyInvalid = false;
     localMoveSyncDebug(

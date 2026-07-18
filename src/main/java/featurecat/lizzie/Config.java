@@ -1233,6 +1233,7 @@ public class Config {
   public boolean logGtpToFile = false;
   public boolean enableStartupBenchmark = true;
   public boolean readBoardPonder = false;
+  public boolean suppressReadBoardWebSocketPonderingNotice = false;
   public boolean readBoardGetFocus = true;
 
   public int otherSizeWidth = 21;
@@ -2045,6 +2046,8 @@ public class Config {
     scoreLossThreshold4 = uiConfig.optDouble("score-loss-threshold-4", -6);
     scoreLossThreshold5 = uiConfig.optDouble("score-loss-threshold-5", -12);
     showPonderLimitedTips = uiConfig.optBoolean("show-ponder-limited-tips", true);
+    suppressReadBoardWebSocketPonderingNotice =
+        uiConfig.optBoolean("suppress-readboard-websocket-pondering-notice", false);
     foxAfterGet = uiConfig.optInt("fox-after-get", 0);
     lastFoxName = uiConfig.optString("last-fox-name", "");
     continueWithBestMove = uiConfig.optBoolean("continue-with-best-move", false);
@@ -3446,6 +3449,16 @@ public class Config {
 
   public void save() throws IOException {
     writeConfig(this.config, new File(configFilename));
+  }
+
+  public void suppressReadBoardWebSocketPonderingNotice() {
+    suppressReadBoardWebSocketPonderingNotice = true;
+    uiConfig.put("suppress-readboard-websocket-pondering-notice", true);
+    try {
+      save();
+    } catch (IOException e) {
+      e.printStackTrace();
+    }
   }
 
   public void saveConfigSections(JSONObject candidateUi, JSONObject candidateLeelaz)

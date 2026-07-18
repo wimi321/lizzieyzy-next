@@ -2,6 +2,7 @@ package featurecat.lizzie;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -12,6 +13,23 @@ import org.json.JSONObject;
 import org.junit.jupiter.api.Test;
 
 class ConfigTransactionalSaveTest {
+
+  @Test
+  void readBoardWebSocketPonderingNoticeSuppressionDefaultsToFalseAndPersists()
+      throws Exception {
+    Path workDirectory = Files.createTempDirectory("lizzie-readboard-pondering-notice");
+    Config config = ConfigTestHelper.createForTests(workDirectory);
+    initializeConfigSections(config);
+
+    assertFalse(config.suppressReadBoardWebSocketPonderingNotice);
+
+    config.suppressReadBoardWebSocketPonderingNotice();
+    JSONObject saved =
+        new JSONObject(Files.readString(Path.of(config.getConfigFilePath())));
+
+    assertTrue(
+        saved.getJSONObject("ui").getBoolean("suppress-readboard-websocket-pondering-notice"));
+  }
 
   @Test
   void saveConfigSectionsPersistsCandidateSectionsAndAdoptsTheirRoot() throws Exception {

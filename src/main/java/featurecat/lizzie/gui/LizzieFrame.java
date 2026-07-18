@@ -3423,6 +3423,32 @@ public class LizzieFrame extends JFrame {
     return "kata-set-param maxTime " + seconds;
   }
 
+  public void showReadBoardWebSocketPonderingNotice(Consumer<Boolean> decision) {
+    Runnable showNotice =
+        () -> {
+          Object[] options = {
+            Lizzie.resourceBundle.getString("LizzieFrame.confirm"),
+            Lizzie.resourceBundle.getString("ReadBoard.websocketPonderingNotice.suppress")
+          };
+          int selected =
+              JOptionPane.showOptionDialog(
+                  this,
+                  Lizzie.resourceBundle.getString("ReadBoard.websocketPonderingNotice.message"),
+                  Lizzie.resourceBundle.getString("ReadBoard.websocketPonderingNotice.title"),
+                  JOptionPane.DEFAULT_OPTION,
+                  JOptionPane.INFORMATION_MESSAGE,
+                  null,
+                  options,
+                  options[0]);
+          decision.accept(selected == 1);
+        };
+    if (SwingUtilities.isEventDispatchThread()) {
+      showNotice.run();
+    } else {
+      SwingUtilities.invokeLater(showNotice);
+    }
+  }
+
   public void showUnsupportedWebSocketAdvancedClock() {
     Utils.showMsg(
         Lizzie.resourceBundle.getString("DesktopTimeControl.websocketAdvancedUnsupported"));
