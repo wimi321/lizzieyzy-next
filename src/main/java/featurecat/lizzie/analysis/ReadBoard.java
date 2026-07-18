@@ -3777,6 +3777,13 @@ public class ReadBoard {
       }
       return;
     }
+    if (Lizzie.leelaz != null
+        && Lizzie.leelaz.cancelReadBoardGmaPreparationIfPending(null, null)) {
+      readBoardGmaPending = false;
+      readBoardGmaPendingLogicallyInvalid = false;
+      localMoveSyncDebug("ReadBoard GMA cancel parameter preparation reason=" + reason);
+      return;
+    }
     readBoardGmaPendingLogicallyInvalid = true;
     requestReadBoardGmaEngineRestore(reason);
   }
