@@ -8,6 +8,7 @@ import featurecat.lizzie.Config;
 import featurecat.lizzie.Lizzie;
 import featurecat.lizzie.analysis.EngineManager;
 import featurecat.lizzie.analysis.GameInfo;
+import featurecat.lizzie.analysis.Leelaz;
 import featurecat.lizzie.util.Utils;
 import java.awt.*;
 import java.awt.event.ActionEvent;
@@ -595,8 +596,6 @@ public class NewGameDialog extends JDialog {
         new ItemListener() {
           public void itemStateChanged(final ItemEvent e) {
             int index = kataTimeComboBox.getSelectedIndex();
-            Lizzie.config.kataTimeType = index;
-            Lizzie.config.uiConfig.put("kata-time-type", index);
             if (index == 0) {
               txtKataTimeSaveMins.setColumns(3);
               lblKataTimeFisherIncrementSecs.setVisible(false);
@@ -867,7 +866,6 @@ public class NewGameDialog extends JDialog {
       chkUseAdvTime.setEnabled(false);
       btnAboutAdvTime.setEnabled(false);
       txtAdvanceTime.setEnabled(false);
-      Lizzie.config.genmoveGameNoTime = true;
     } else {
       kataTimeComboBox.setEnabled(true);
       txtKataTimeSaveMins.setEnabled(true);
@@ -879,23 +877,19 @@ public class NewGameDialog extends JDialog {
       chkUseAdvTime.setEnabled(true);
       btnAboutAdvTime.setEnabled(true);
       txtAdvanceTime.setEnabled(true);
-      Lizzie.config.genmoveGameNoTime = false;
     }
   }
 
   private void chkTimeChanged() {
-    Lizzie.config.kataTimeSettings = chkKataTime.isSelected();
-    Lizzie.config.advanceTimeSettings = chkUseAdvTime.isSelected();
-    Lizzie.config.uiConfig.put("advance-time-settings", Lizzie.config.advanceTimeSettings);
-    Lizzie.config.uiConfig.put("kata-time-settings", Lizzie.config.kataTimeSettings);
-
-    kataTimeComboBox.setEnabled(Lizzie.config.kataTimeSettings);
-    txtKataTimeSaveMins.setEnabled(Lizzie.config.kataTimeSettings);
-    txtKataTimeByoyomiSecs.setEnabled(Lizzie.config.kataTimeSettings);
-    txtKataTimeByoyomiTimes.setEnabled(Lizzie.config.kataTimeSettings);
-    txtKataTimeFisherIncrementSecs.setEnabled(Lizzie.config.kataTimeSettings);
-    txtAdvanceTime.setEnabled(Lizzie.config.advanceTimeSettings);
-    if (Lizzie.config.kataTimeSettings || Lizzie.config.advanceTimeSettings) {
+    boolean kataTimeSelected = chkKataTime.isSelected();
+    boolean advancedTimeSelected = chkUseAdvTime.isSelected();
+    kataTimeComboBox.setEnabled(kataTimeSelected);
+    txtKataTimeSaveMins.setEnabled(kataTimeSelected);
+    txtKataTimeByoyomiSecs.setEnabled(kataTimeSelected);
+    txtKataTimeByoyomiTimes.setEnabled(kataTimeSelected);
+    txtKataTimeFisherIncrementSecs.setEnabled(kataTimeSelected);
+    txtAdvanceTime.setEnabled(advancedTimeSelected);
+    if (kataTimeSelected || advancedTimeSelected) {
       textTime.setEnabled(false);
     } else {
       textTime.setEnabled(true);
@@ -927,6 +921,18 @@ public class NewGameDialog extends JDialog {
     try {
       if (engine.getSelectedIndex() == -1) {
         Utils.showMsg(resourceBundle.getString("NewAnaGameDialog.noEngineHint"));
+        return;
+      }
+      DesktopTimeControl.Mode timeMode =
+          DesktopTimeControl.selectedMode(chkUseAdvTime.isSelected(), chkKataTime.isSelected());
+      Leelaz selectedEngine = Lizzie.engineManager.engineList.get(engine.getSelectedIndex());
+      if (!DesktopTimeControl.submitHumanSelection(
+          Lizzie.config,
+          selectedEngine,
+          timeMode,
+          kataTimeComboBox.getSelectedIndex(),
+          chkNoTime.isSelected(),
+          Lizzie.frame::showUnsupportedWebSocketAdvancedClock)) {
         return;
       }
       Lizzie.frame.isPlayingAgainstLeelaz = false;

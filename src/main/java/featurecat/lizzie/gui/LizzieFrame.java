@@ -3423,6 +3423,16 @@ public class LizzieFrame extends JFrame {
     return "kata-set-param maxTime " + seconds;
   }
 
+  public void showUnsupportedWebSocketAdvancedClock() {
+    Utils.showMsg(
+        Lizzie.resourceBundle.getString("DesktopTimeControl.websocketAdvancedUnsupported"));
+  }
+
+  private static DesktopTimeControl.Mode configuredTimeControlMode() {
+    return DesktopTimeControl.selectedMode(
+        Lizzie.config.advanceTimeSettings, Lizzie.config.kataTimeSettings);
+  }
+
   private static void installPlayingAgainstHumanCountDown(
       String timeSettings, Leelaz engine, boolean needCountDown) {
     if (!needCountDown || engine == null) return;
@@ -3528,6 +3538,13 @@ public class LizzieFrame extends JFrame {
     if (newGameDialog.isCancelled()) {
       if (isPondering) Lizzie.leelaz.togglePonder();
       Lizzie.frame.isPlayingAgainstLeelaz = false;
+      return;
+    }
+    if (DesktopTimeControl.rejectsHumanGame(
+        Lizzie.leelaz, configuredTimeControlMode(), Lizzie.config.genmoveGameNoTime)) {
+      if (isPondering) Lizzie.leelaz.togglePonder();
+      Lizzie.frame.isPlayingAgainstLeelaz = false;
+      showUnsupportedWebSocketAdvancedClock();
       return;
     }
     Lizzie.frame.isAnaPlayingAgainstLeelaz = false;
@@ -10661,6 +10678,12 @@ public class LizzieFrame extends JFrame {
       return;
     }
     if (EngineManager.isEmpty) return;
+    if (isGenmove
+        && DesktopTimeControl.rejectsHumanGame(
+            Lizzie.leelaz, configuredTimeControlMode(), Lizzie.config.genmoveGameNoTime)) {
+      showUnsupportedWebSocketAdvancedClock();
+      return;
+    }
     if (isPlayingAgainstLeelaz || isAnaPlayingAgainstLeelaz) {
       stopAiPlayingAndPolicy();
     }

@@ -2,6 +2,7 @@ package featurecat.lizzie.analysis;
 
 import featurecat.lizzie.Config;
 import featurecat.lizzie.Lizzie;
+import featurecat.lizzie.gui.DesktopTimeControl;
 import featurecat.lizzie.gui.EngineData;
 import featurecat.lizzie.gui.LizzieFrame;
 import featurecat.lizzie.gui.Menu;
@@ -207,6 +208,15 @@ public class EngineManager {
       boolean isExchange,
       boolean checkGameMaxMove,
       int maxGameMoves) {
+    if (isGenmove
+        && DesktopTimeControl.rejectsEngineGame(
+            engineList,
+            engineBlack,
+            engineWhite,
+            Lizzie.config.pkAdvanceTimeSettings)) {
+      Lizzie.frame.showUnsupportedWebSocketAdvancedClock();
+      return false;
+    }
     if (Lizzie.frame.isTrying) Lizzie.frame.tryPlay(false);
     engineGameInfo = new EngineGameInfo();
     if (Lizzie.frame.isShowingHeatmap) Lizzie.leelaz.toggleHeatmap(true);
@@ -1446,16 +1456,12 @@ public class EngineManager {
                   StartCountDown();
                 }
               } else {
-                if (engineGameInfo.timeWhite > 0)
-                  Lizzie.engineManager
-                      .engineList
-                      .get(engineGameInfo.whiteEngineIndex)
-                      .sendCommand("time_settings 0 " + engineGameInfo.timeWhite + " 1");
-                if (engineGameInfo.timeBlack > 0)
-                  Lizzie.engineManager
-                      .engineList
-                      .get(engineGameInfo.blackEngineIndex)
-                      .sendCommand("time_settings 0 " + engineGameInfo.timeBlack + " 1");
+                DesktopTimeControl.sendEngineGameFixedTime(
+                    Lizzie.engineManager.engineList.get(engineGameInfo.whiteEngineIndex),
+                    engineGameInfo.timeWhite);
+                DesktopTimeControl.sendEngineGameFixedTime(
+                    Lizzie.engineManager.engineList.get(engineGameInfo.blackEngineIndex),
+                    engineGameInfo.timeBlack);
               }
               Lizzie.engineManager
                   .engineList
@@ -2273,9 +2279,9 @@ public class EngineManager {
                 newEng.sendCommand(Lizzie.config.advanceBlackTimeTxt);
               } else {
                 if (index == engineGameInfo.whiteEngineIndex && engineGameInfo.timeWhite > 0)
-                  newEng.sendCommand("time_settings 0 " + engineGameInfo.timeWhite + " 1");
+                  DesktopTimeControl.sendEngineGameFixedTime(newEng, engineGameInfo.timeWhite);
                 else if (index == engineGameInfo.blackEngineIndex && engineGameInfo.timeBlack > 0)
-                  newEng.sendCommand("time_settings 0 " + engineGameInfo.timeBlack + " 1");
+                  DesktopTimeControl.sendEngineGameFixedTime(newEng, engineGameInfo.timeBlack);
               }
               if (Lizzie.board.getHistory().isBlacksTurn()) {
                 Lizzie.leelaz = engineList.get(engineGameInfo.blackEngineIndex);

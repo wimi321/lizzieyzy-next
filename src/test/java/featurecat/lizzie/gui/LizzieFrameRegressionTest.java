@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import featurecat.lizzie.Config;
+import featurecat.lizzie.ConfigTestHelper;
 import featurecat.lizzie.Lizzie;
 import featurecat.lizzie.analysis.AnalysisEngine;
 import featurecat.lizzie.analysis.EngineManager;
@@ -14,6 +15,7 @@ import featurecat.lizzie.analysis.MoveRankDefinition;
 import featurecat.lizzie.analysis.PlayerStrengthEstimator;
 import featurecat.lizzie.analysis.ReadBoard;
 import featurecat.lizzie.analysis.TrackingEngine;
+import featurecat.lizzie.analysis.remote.RemoteComputeConfig;
 import featurecat.lizzie.rules.Board;
 import featurecat.lizzie.rules.BoardData;
 import featurecat.lizzie.rules.BoardHistoryList;
@@ -47,6 +49,7 @@ import javax.swing.JPanel;
 import javax.swing.SwingUtilities;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.json.JSONObject;
 
 class LizzieFrameRegressionTest {
   private static final int BOARD_SIZE = 2;
@@ -177,6 +180,38 @@ class LizzieFrameRegressionTest {
       }
       Lizzie.frame = previousFrame;
       Lizzie.leelaz = previousEngine;
+    }
+  }
+
+  @Test
+  void websocketAdvancedClockStopsContinueGameBeforeCommandsOrGameStateChanges(
+      @TempDir Path tempDir) throws Exception {
+    Config previousConfig = Lizzie.config;
+    LizzieFrame previousFrame = Lizzie.frame;
+    Leelaz previousEngine = Lizzie.leelaz;
+    boolean previousEmpty = EngineManager.isEmpty;
+    WebSocketClockGateFrame frame = allocate(WebSocketClockGateFrame.class);
+    ClockGateLeelaz engine = new ClockGateLeelaz();
+    try {
+      Lizzie.config = ConfigTestHelper.createForTests(tempDir);
+      Lizzie.config.uiConfig = new JSONObject();
+      Lizzie.config.advanceTimeSettings = true;
+      Lizzie.config.kataTimeSettings = false;
+      Lizzie.config.genmoveGameNoTime = false;
+      Lizzie.frame = frame;
+      Lizzie.leelaz = engine;
+      EngineManager.isEmpty = false;
+
+      frame.continueAiPlaying(true, true, true, false);
+
+      assertEquals(1, frame.warningCount);
+      assertEquals(0, engine.commandCount);
+      assertFalse(frame.isPlayingAgainstLeelaz);
+    } finally {
+      Lizzie.config = previousConfig;
+      Lizzie.frame = previousFrame;
+      Lizzie.leelaz = previousEngine;
+      EngineManager.isEmpty = previousEmpty;
     }
   }
 
@@ -1950,6 +1985,32 @@ class LizzieFrameRegressionTest {
     public boolean stopAiPlayingAndPolicy() {
       stopAiPlayingCalled = true;
       return false;
+    }
+  }
+
+  private static final class WebSocketClockGateFrame extends LizzieFrame {
+    private int warningCount;
+
+    private WebSocketClockGateFrame() {
+      super();
+    }
+
+    @Override
+    public void showUnsupportedWebSocketAdvancedClock() {
+      warningCount++;
+    }
+  }
+
+  private static final class ClockGateLeelaz extends Leelaz {
+    private int commandCount;
+
+    private ClockGateLeelaz() throws Exception {
+      super(RemoteComputeConfig.COMMAND_CUSTOM_WS);
+    }
+
+    @Override
+    public void sendCommand(String command) {
+      commandCount++;
     }
   }
 
