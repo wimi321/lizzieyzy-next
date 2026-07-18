@@ -438,6 +438,55 @@ public class KataGoAnalysisWebSocketTransportTest {
   }
 
   @Test
+  void advertisesOnlySupportedWebSocketTimeCommands() throws Exception {
+    KataGoAnalysisWebSocketTransport transport =
+        new KataGoAnalysisWebSocketTransport("ws://127.0.0.1:1");
+
+    String commands = sendGtp(transport, "list_commands");
+
+    assertTrue(commands.contains("\nkata-list_time_settings\n"));
+    assertTrue(commands.contains("\nkata-time_settings\n"));
+    assertFalse(commands.contains("\ntime_settings\n"));
+    assertFalse(commands.contains("\ntime_left\n"));
+    assertEquals("=71 none\n\n", sendGtp(transport, "71 kata-list_time_settings"));
+  }
+
+  @Test
+  void noneClockModeKeepsIndependentFixedMoveTime() throws Exception {
+    KataGoAnalysisWebSocketTransport transport =
+        new KataGoAnalysisWebSocketTransport("ws://127.0.0.1:1");
+
+    assertEquals("=\n\n", sendGtp(transport, "kata-set-param maxTime 2.5"));
+
+    assertEquals("=72\n\n", sendGtp(transport, "72 kata-time_settings none"));
+    assertEquals("=73 2.5\n\n", sendGtp(transport, "73 kata-get-param maxTime"));
+  }
+
+  @Test
+  void rejectsUnsupportedClockCommandsWithIdsWithoutChangingMoveLimits() throws Exception {
+    KataGoAnalysisWebSocketTransport transport =
+        new KataGoAnalysisWebSocketTransport("ws://127.0.0.1:1");
+    assertEquals("=\n\n", sendGtp(transport, "kata-set-param maxTime 3.5"));
+    assertEquals("=\n\n", sendGtp(transport, "kata-set-param maxVisits 777"));
+
+    assertEquals(
+        "?74 websocket analysis adapter supports only kata-time_settings none\n\n",
+        sendGtp(transport, "74 kata-time_settings absolute 60"));
+    assertEquals(
+        "?75 time_settings unsupported by websocket analysis adapter\n\n",
+        sendGtp(transport, "75 time_settings 60 10 1"));
+    assertEquals(
+        "?76 time_left unsupported by websocket analysis adapter\n\n",
+        sendGtp(transport, "76 time_left B 30 1"));
+    assertEquals(
+        "?77 websocket analysis adapter supports only kata-time_settings none\n\n",
+        sendGtp(transport, "77 kata-time_settings"));
+
+    assertEquals("= 3.5\n\n", sendGtp(transport, "kata-get-param maxTime"));
+    assertEquals("= 777\n\n", sendGtp(transport, "kata-get-param maxVisits"));
+  }
+
+  @Test
   void moveSearchLimitsRoundTripAndResetToAdapterBaselines() throws Exception {
     KataGoAnalysisWebSocketTransport transport =
         new KataGoAnalysisWebSocketTransport("ws://127.0.0.1:1");

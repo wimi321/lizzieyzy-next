@@ -228,7 +228,9 @@ public class KataGoAnalysisWebSocketTransport implements EngineTransport {
                 + "komi\nkata-get-rules\nkata-get-param\nkata-set-param\nkata-set-rules\n"
                 + "clear_board\nset_position\nloadsgf\nplay\nundo\nkata-analyze\n"
                 + "kata-genmove_analyze\n"
-                + "genmove\nkata-time_settings\ntime_settings\nstop\nquit");
+                + "genmove\nkata-list_time_settings\nkata-time_settings\nstop\nquit");
+      } else if (lower.equals("kata-list_time_settings")) {
+        writeOk(responseId, "none");
       } else if (lower.startsWith("boardsize ")) {
         int size = parseIntToken(line, 1, DEFAULT_BOARD_SIZE);
         boardWidth = Math.max(1, size);
@@ -256,10 +258,14 @@ public class KataGoAnalysisWebSocketTransport implements EngineTransport {
         writeOk(responseId, "");
       } else if (lower.equals("kata-set-param") || lower.startsWith("kata-set-param ")) {
         setKataGoParam(responseId, line);
-      } else if (lower.startsWith("time_settings ")
-          || lower.startsWith("time_left ")
-          || lower.startsWith("kata-time_settings ")) {
+      } else if (lower.equals("kata-time_settings none")) {
         writeOk(responseId, "");
+      } else if (lower.equals("kata-time_settings") || lower.startsWith("kata-time_settings ")) {
+        writeError(responseId, "websocket analysis adapter supports only kata-time_settings none");
+      } else if (lower.equals("time_settings") || lower.startsWith("time_settings ")) {
+        writeError(responseId, "time_settings unsupported by websocket analysis adapter");
+      } else if (lower.equals("time_left") || lower.startsWith("time_left ")) {
+        writeError(responseId, "time_left unsupported by websocket analysis adapter");
       } else if (lower.equals("clear_board")) {
         initialStones.clear();
         moves.clear();
