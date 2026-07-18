@@ -5,6 +5,7 @@ import featurecat.lizzie.gui.YikeApiClient.YikeLiveGame;
 import featurecat.lizzie.gui.YikeApiClient.YikeLivePage;
 import java.awt.BorderLayout;
 import java.awt.FlowLayout;
+import java.awt.Frame;
 import java.awt.GraphicsEnvironment;
 import java.awt.Rectangle;
 import java.awt.Window;
@@ -21,7 +22,7 @@ import javax.imageio.ImageIO;
 import javax.swing.BorderFactory;
 import javax.swing.JButton;
 import javax.swing.JComboBox;
-import javax.swing.JDialog;
+import javax.swing.JFrame;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
@@ -37,7 +38,7 @@ import javax.swing.event.DocumentListener;
 import javax.swing.table.DefaultTableModel;
 import javax.swing.table.TableRowSorter;
 
-public class YikeLiveDialog extends JDialog {
+public class YikeLiveDialog extends JFrame {
   private static final long serialVersionUID = 4797528713876680614L;
   private static final int DEFAULT_WIDTH = 920;
   private static final int DEFAULT_HEIGHT = 420;
@@ -63,9 +64,8 @@ public class YikeLiveDialog extends JDialog {
   private String activeSyncUrl = "";
 
   public YikeLiveDialog(Window owner) {
-    super(owner);
+    super();
     setTitle(text("YikeLiveDialog.title", "Yike Live Center"));
-    setModalityType(ModalityType.MODELESS);
     setAlwaysOnTop(Lizzie.frame.isAlwaysOnTop());
     setDefaultCloseOperation(HIDE_ON_CLOSE);
     try {
@@ -194,6 +194,17 @@ public class YikeLiveDialog extends JDialog {
     setSize(DEFAULT_WIDTH, DEFAULT_HEIGHT);
     setLocationRelativeTo(owner);
     fitOnScreen();
+  }
+
+  public void showAndActivate() {
+    setExtendedState(restoredWindowState(getExtendedState()));
+    setVisible(true);
+    toFront();
+    requestFocus();
+  }
+
+  static int restoredWindowState(int state) {
+    return state & ~Frame.ICONIFIED;
   }
 
   public void refreshIfEmpty() {
