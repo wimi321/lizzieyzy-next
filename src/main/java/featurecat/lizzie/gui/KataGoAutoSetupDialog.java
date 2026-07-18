@@ -22,6 +22,7 @@ import java.awt.Dimension;
 import java.awt.FlowLayout;
 import java.awt.Font;
 import java.awt.FontMetrics;
+import java.awt.GradientPaint;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
 import java.awt.GraphicsConfiguration;
@@ -29,24 +30,38 @@ import java.awt.GraphicsEnvironment;
 import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
 import java.awt.Insets;
+import java.awt.LayoutManager;
 import java.awt.Polygon;
 import java.awt.Rectangle;
 import java.awt.RenderingHints;
+import java.awt.Shape;
 import java.awt.Window;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import java.awt.geom.Arc2D;
+import java.awt.geom.Ellipse2D;
+import java.awt.geom.RoundRectangle2D;
 import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.IllegalFormatException;
 import java.util.List;
 import java.util.Locale;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import javax.swing.AbstractAction;
 import javax.swing.AbstractButton;
 import javax.swing.BorderFactory;
-import javax.swing.DefaultComboBoxModel;
-import javax.swing.DefaultListCellRenderer;
+import javax.swing.ButtonGroup;
+import javax.swing.DefaultListModel;
 import javax.swing.Icon;
+import javax.swing.JButton;
 import javax.swing.JComponent;
 import javax.swing.JDialog;
 import javax.swing.JFileChooser;
@@ -57,34 +72,57 @@ import javax.swing.JPanel;
 import javax.swing.JProgressBar;
 import javax.swing.JScrollPane;
 import javax.swing.JTextArea;
+import javax.swing.JToggleButton;
+import javax.swing.KeyStroke;
+import javax.swing.ListCellRenderer;
 import javax.swing.ListSelectionModel;
 import javax.swing.Scrollable;
 import javax.swing.SwingConstants;
 import javax.swing.SwingUtilities;
 import javax.swing.filechooser.FileNameExtensionFilter;
+import javax.swing.plaf.basic.BasicButtonUI;
+import javax.swing.plaf.basic.BasicScrollBarUI;
 
 public class KataGoAutoSetupDialog extends JDialog {
   private static final Color OK_COLOR = new Color(28, 121, 82);
   private static final Color WARN_COLOR = new Color(184, 110, 27);
   private static final Color ERROR_COLOR = new Color(172, 56, 56);
-  private static final Color APP_BG = new Color(244, 241, 233);
-  private static final Color CARD_BG = new Color(255, 253, 247);
-  private static final Color INFO_BG = new Color(249, 247, 240);
-  private static final Color INFO_BORDER = new Color(224, 218, 205);
-  private static final Color SIDEBAR_BG = new Color(36, 52, 55);
-  private static final Color SIDEBAR_SELECTED_BG = new Color(55, 83, 82);
+  private static final Color APP_BG = new Color(248, 245, 238);
+  private static final Color CARD_BG = new Color(255, 253, 248);
+  private static final Color INFO_BG = new Color(252, 249, 242);
+  private static final Color INFO_BORDER = new Color(224, 210, 184);
+  private static final Color SIDEBAR_BG = new Color(8, 61, 58);
+  private static final Color SIDEBAR_SELECTED_BG = new Color(20, 100, 94);
   private static final Color SIDEBAR_TEXT = new Color(236, 241, 232);
   private static final Color TEXT_PRIMARY = new Color(35, 39, 36);
   private static final Color TEXT_SECONDARY = new Color(101, 106, 100);
+  private static final Color ACCENT_TEAL = new Color(10, 101, 94);
+  private static final Color ACCENT_TEAL_HOVER = new Color(13, 116, 107);
+  private static final Color ACCENT_GOLD = new Color(194, 139, 45);
   private static final String BENCHMARK_PROGRESS_KEY = "lizzie.benchmark.dialog.progress";
   private static final String WRAPPING_TEXT_KEY = "lizzie.autosetup.wrappingText";
   private static final String INFO_HTML_PREFIX = "<html><div style='width: 360px'>";
   private static final String INFO_HTML_SUFFIX = "</div></html>";
   private static final int MAX_INFO_TEXT_LENGTH = 104;
   private static final int GPU_INFO_TEXT_LENGTH = 132;
-  private static final int DIALOG_WIDTH = 900;
-  private static final int DIALOG_HEIGHT = 620;
+  private static final int DIALOG_WIDTH = 1200;
+  private static final int DIALOG_HEIGHT = 900;
   private static final int VALUE_COLUMN_WIDTH = 390;
+  private static final int WEIGHT_CATALOG_ROW_HEIGHT = 34;
+  private static final int WEIGHT_CATALOG_VISIBLE_ROWS = 6;
+  private static final int WEIGHT_CATALOG_HORIZONTAL_INSET = 14;
+  private static final int WEIGHT_CATALOG_ELO_WIDTH = 84;
+  private static final int WEIGHT_CATALOG_DATE_WIDTH = 116;
+  private static final int WEIGHT_CATALOG_STATUS_WIDTH = 116;
+  private static final int WEIGHT_CATALOG_MODEL_MAX_WIDTH = 330;
+  private static final int WEIGHT_CATALOG_ELO_GAP = 8;
+  private static final int WEIGHT_CATALOG_DATE_GAP = 20;
+  private static final int WEIGHT_CATALOG_STATUS_GAP = 26;
+  private static final int WEIGHT_RECOMMENDATION_CARD_HEIGHT = 150;
+  private static final DateTimeFormatter LOCAL_WEIGHT_DATE_FORMAT =
+      DateTimeFormatter.ofPattern("yyyy-MM-dd");
+  private static final Pattern ELO_VALUE_PATTERN =
+      Pattern.compile("[-+]?\\d[\\d,]*(?:\\.\\d+)?");
   private static final long ERROR_POPUP_DEDUP_MILLIS = 5000L;
   private static final String CARD_OVERVIEW = "overview";
   private static final String CARD_WEIGHTS = "weights";
@@ -101,6 +139,7 @@ public class KataGoAutoSetupDialog extends JDialog {
   private String lastBackgroundErrorMessage = "";
   private long lastBackgroundErrorMillis = 0L;
   private int selectedSetupSectionIndex = 0;
+  private int hoveredWeightDownloadRow = -1;
 
   private final JLabel lblEngineValue = new JFontLabel();
   private final JLabel lblWeightValue = new JFontLabel();
@@ -111,24 +150,39 @@ public class KataGoAutoSetupDialog extends JDialog {
   private final JLabel lblTensorRtDownloadValue = new JFontLabel();
   private final JLabel lblTensorRtConfigValue = new JFontLabel();
   private final JLabel lblBenchmarkValue = new JFontLabel();
-  private final JLabel lblRemoteDetailValue = new JFontLabel();
-  private final JLabel lblLocalWeightDetailValue = new JFontLabel();
+  private final JLabel lblSelectedWeightName = new JFontLabel();
+  private final JLabel lblSelectedWeightMeta = new JFontLabel();
   private final JLabel lblCurrentWeightName = new JFontLabel();
-  private final JLabel lblCurrentWeightStatus = new JFontLabel();
+  private final StatusPillLabel lblCurrentWeightStatus = new StatusPillLabel();
   private final JLabel lblHumanSlModelValue = new JFontLabel();
+  private final WeightStatusTagLabel lblHumanSlStatus = new WeightStatusTagLabel();
   private final JLabel lblStatus = new JFontLabel();
   private final JList<String> sectionNav = new JList<String>();
-  private final CardLayout detailCardLayout = new CardLayout();
+  private final ActiveCardLayout detailCardLayout = new ActiveCardLayout();
   private final JPanel detailCards = new ViewportWidthPanel(detailCardLayout);
+  private final JPanel footerPanel = new JPanel(new BorderLayout(0, 10));
   private final JPanel progressPanel = new JPanel(new BorderLayout(0, 6));
   private final JLabel progressStatusLabel = new JFontLabel();
   private final JLabel progressTitleLabel = new JFontLabel();
-  private final JFontComboBox<RemoteWeightInfo> cmbRemoteWeights =
-      new JFontComboBox<RemoteWeightInfo>();
-  private final JFontComboBox<Path> cmbLocalWeights = new JFontComboBox<Path>();
+  private final DefaultListModel<WeightCatalogEntry> weightCatalogModel =
+      new DefaultListModel<WeightCatalogEntry>();
+  private final JList<WeightCatalogEntry> weightCatalogList =
+      new JList<WeightCatalogEntry>(weightCatalogModel);
+  private final JToggleButton btnOfficialWeightTab = new JToggleButton();
+  private final JToggleButton btnCustomWeightTab = new JToggleButton();
+  private final JPanel weightCatalogActionCards = new JPanel(new ActiveCardLayout());
+  private final JPanel weightCatalogContentCards = new JPanel(new CardLayout());
+  private final JScrollPane weightCatalogScrollPane = new JScrollPane(weightCatalogList);
+  private final JPanel selectedWeightActions = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
+  private final JFontLabel lblWeightCatalogEmpty = new JFontLabel();
+  private final WeightRecommendationCard balancedRecommendation =
+      new WeightRecommendationCard(RecommendationTone.TEAL);
+  private final WeightRecommendationCard strongestRecommendation =
+      new WeightRecommendationCard(RecommendationTone.GOLD);
+  private final WeightRecommendationCard lightweightRecommendation =
+      new WeightRecommendationCard(RecommendationTone.SAGE);
   private final JProgressBar progressBar = new JProgressBar();
   private final JFontButton btnRefresh = new JFontButton();
-  private final JFontButton btnAutoSetup = new JFontButton();
   private final JFontButton btnReloadRemoteWeights = new JFontButton();
   private final JFontButton btnDownloadWeight = new JFontButton();
   private final JFontButton btnImportWeight = new JFontButton();
@@ -142,13 +196,15 @@ public class KataGoAutoSetupDialog extends JDialog {
   private final JFontButton btnOptimizePerformance = new JFontButton();
   private final JFontButton btnStopDownload = new JFontButton();
   private final JFontButton btnClose = new JFontButton();
+  private WeightCatalogMode weightCatalogMode = WeightCatalogMode.OFFICIAL;
 
   public KataGoAutoSetupDialog(Window owner) {
     super(owner);
     setModal(false);
     setTitle(text("AutoSetup.title"));
-    setSize(DIALOG_WIDTH, DIALOG_HEIGHT);
-    setMinimumSize(new Dimension(760, 520));
+    configureNativeWindowChrome();
+    setSize(initialDialogSize());
+    setMinimumSize(new Dimension(900, 620));
     setDefaultCloseOperation(DO_NOTHING_ON_CLOSE);
     setAlwaysOnTop(owner instanceof LizzieFrame && ((LizzieFrame) owner).isAlwaysOnTop());
     placeOnOwnerScreen(owner);
@@ -165,54 +221,15 @@ public class KataGoAutoSetupDialog extends JDialog {
     content.setBackground(APP_BG);
     setContentPane(content);
 
-    cmbLocalWeights.setMaximumRowCount(10);
-    cmbLocalWeights.setRenderer(
-        new DefaultListCellRenderer() {
-          @Override
-          public Component getListCellRendererComponent(
-              JList<?> list, Object value, int index, boolean isSelected, boolean cellHasFocus) {
-            JLabel label =
-                (JLabel)
-                    super.getListCellRendererComponent(
-                        list, value, index, isSelected, cellHasFocus);
-            if (value instanceof Path) {
-              label.setText(formatLocalWeightChoice((Path) value));
-            }
-            label.setBorder(BorderFactory.createEmptyBorder(4, 8, 4, 8));
-            return label;
-          }
-        });
-    cmbLocalWeights.addActionListener(e -> updateSelectedLocalWeightInfo());
-
-    cmbRemoteWeights.setMaximumRowCount(10);
-    cmbRemoteWeights.setRenderer(
-        new DefaultListCellRenderer() {
-          @Override
-          public Component getListCellRendererComponent(
-              JList<?> list, Object value, int index, boolean isSelected, boolean cellHasFocus) {
-            JLabel label =
-                (JLabel)
-                    super.getListCellRendererComponent(
-                        list, value, index, isSelected, cellHasFocus);
-            if (value instanceof RemoteWeightInfo) {
-              RemoteWeightInfo info = (RemoteWeightInfo) value;
-              label.setText(index < 0 ? formatRemoteChoice(info) : formatRemotePopupChoice(info));
-            }
-            label.setBorder(
-                BorderFactory.createEmptyBorder(index < 0 ? 3 : 5, 8, index < 0 ? 3 : 5, 8));
-            return label;
-          }
-        });
-    cmbRemoteWeights.addActionListener(e -> updateSelectedRemoteWeightInfo());
+    configureWeightCatalog();
 
     content.add(createHeaderPanel(), BorderLayout.NORTH);
 
-    JPanel body = new JPanel(new BorderLayout(14, 0));
-    body.setOpaque(false);
-    body.setBorder(BorderFactory.createEmptyBorder(10, 14, 10, 14));
+    JPanel body = new WarmBodyPanel();
     body.add(createSidebarPanel(), BorderLayout.WEST);
 
     detailCards.setOpaque(false);
+    detailCards.setBorder(BorderFactory.createEmptyBorder(14, 28, 14, 30));
     detailCards.add(createOverviewSection(), CARD_OVERVIEW);
     detailCards.add(createWeightsSection(), CARD_WEIGHTS);
     detailCards.add(createBenchmarkSection(), CARD_BENCHMARK);
@@ -235,12 +252,16 @@ public class KataGoAutoSetupDialog extends JDialog {
         text("Accessibility.autoSetupProgress"),
         text("Accessibility.autoSetupProgressDescription"));
     AccessibilitySupport.named(
-        cmbRemoteWeights,
+        weightCatalogList,
         text("Accessibility.downloadableWeights"),
         text("Accessibility.downloadableWeightsDescription"));
     AccessibilitySupport.named(
-        cmbLocalWeights,
-        text("Accessibility.downloadedWeights"),
+        btnOfficialWeightTab,
+        text("AutoSetup.officialWeights"),
+        text("Accessibility.downloadableWeightsDescription"));
+    AccessibilitySupport.named(
+        btnCustomWeightTab,
+        text("AutoSetup.localWeights"),
         text("Accessibility.downloadedWeightsDescription"));
     AccessibilitySupport.named(
         btnDownloadWeight,
@@ -251,6 +272,10 @@ public class KataGoAutoSetupDialog extends JDialog {
         text("AutoSetup.useWeight"),
         text("Accessibility.downloadedWeightsDescription"));
     AccessibilitySupport.named(
+        btnImportHumanSlModel,
+        text("AutoSetup.importHumanSlModel"),
+        text("AutoSetup.importHumanSlModel"));
+    AccessibilitySupport.named(
         lblCurrentWeightName, text("AutoSetup.currentWeight"), text("AutoSetup.currentlyUsing"));
     AccessibilitySupport.named(
         sectionNav, text("AutoSetup.sidebarTitle"), text("AutoSetup.expertSubtitle"));
@@ -258,6 +283,27 @@ public class KataGoAutoSetupDialog extends JDialog {
     AccessibilitySupport.installEscapeAction(getRootPane(), this, this::closeOrCancelActiveTask);
 
     refreshState();
+  }
+
+  private void configureNativeWindowChrome() {
+    if (!isMacOs()) {
+      return;
+    }
+    getRootPane().putClientProperty("apple.awt.fullWindowContent", Boolean.TRUE);
+    getRootPane().putClientProperty("apple.awt.transparentTitleBar", Boolean.TRUE);
+    getRootPane().putClientProperty("apple.awt.windowTitleVisible", Boolean.FALSE);
+  }
+
+  private static boolean isMacOs() {
+    return System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("mac");
+  }
+
+  private static Dimension initialDialogSize() {
+    Rectangle available =
+        GraphicsEnvironment.getLocalGraphicsEnvironment().getMaximumWindowBounds();
+    int width = Math.max(900, Math.min(DIALOG_WIDTH, available.width - 72));
+    int height = Math.max(620, Math.min(DIALOG_HEIGHT, available.height - 72));
+    return new Dimension(width, height);
   }
 
   /** Opens the dialog directly on the Weights card (nav index 1 maps to CARD_WEIGHTS). */
@@ -275,20 +321,25 @@ public class KataGoAutoSetupDialog extends JDialog {
   }
 
   public void startRecommendedWeightDownload() {
-    startRecommendedWeightDownload(false);
+    startRecommendedWeightDownloadInternal();
   }
 
   private void configureButtons() {
     btnRefresh.setText(text("AutoSetup.refresh"));
-    btnAutoSetup.setText(text("AutoSetup.autoSetup"));
     btnReloadRemoteWeights.setText("");
     btnReloadRemoteWeights.setIcon(new RefreshIcon());
     btnReloadRemoteWeights.setToolTipText(text("AutoSetup.refreshOfficialWeights"));
     btnDownloadWeight.setText(text("AutoSetup.downloadWeight"));
+    btnDownloadWeight.setIcon(new WeightActionIcon(WeightActionIcon.DOWNLOAD));
     btnImportWeight.setText(text("AutoSetup.importWeight"));
+    btnImportWeight.setIcon(new WeightActionIcon(WeightActionIcon.IMPORT));
     btnUseWeight.setText(text("AutoSetup.useWeight"));
-    btnDownloadHumanSlModel.setText(text("AutoSetup.downloadHumanSlModel"));
-    btnImportHumanSlModel.setText(text("AutoSetup.importHumanSlModel"));
+    btnUseWeight.setIcon(new WeightActionIcon(WeightActionIcon.USE));
+    btnDownloadHumanSlModel.setText(text("AutoSetup.downloadOnDemand"));
+    btnDownloadHumanSlModel.setIcon(new WeightActionIcon(WeightActionIcon.DOWNLOAD));
+    btnImportHumanSlModel.setText("");
+    btnImportHumanSlModel.setIcon(new WeightActionIcon(WeightActionIcon.IMPORT));
+    btnImportHumanSlModel.setToolTipText(text("AutoSetup.importHumanSlModel"));
     btnInstallNvidiaRuntime.setText(text("AutoSetup.installNvidiaRuntime"));
     btnInstallTensorRt.setText(text("AutoSetup.installTensorRt"));
     btnSwitchBackCuda.setText(text("AutoSetup.switchBackCuda"));
@@ -297,8 +348,9 @@ public class KataGoAutoSetupDialog extends JDialog {
     btnStopDownload.setText(text("AutoSetup.stopDownload"));
     btnStopDownload.setEnabled(false);
     btnClose.setText(text("AutoSetup.close"));
+    btnOfficialWeightTab.setText(text("AutoSetup.officialWeightTab"));
+    btnCustomWeightTab.setText(text("AutoSetup.customWeightTab"));
 
-    styleButton(btnAutoSetup, true);
     styleButton(btnDownloadWeight, true);
     styleButton(btnOptimizePerformance, true);
     styleButton(btnRefresh, false);
@@ -313,13 +365,85 @@ public class KataGoAutoSetupDialog extends JDialog {
     styleButton(btnCleanTensorRtCache, false);
     styleButton(btnStopDownload, false);
     styleButton(btnClose, false);
+
+    styleWeightButton(btnDownloadWeight, WeightButtonStyle.PRIMARY);
+    styleWeightButton(btnUseWeight, WeightButtonStyle.PRIMARY);
+    styleWeightButton(btnImportWeight, WeightButtonStyle.OUTLINE);
+    styleWeightButton(btnDownloadHumanSlModel, WeightButtonStyle.PRIMARY);
+    styleWeightButton(btnImportHumanSlModel, WeightButtonStyle.ICON);
+    styleWeightButton(btnReloadRemoteWeights, WeightButtonStyle.ICON);
+    styleWeightCatalogTab(btnOfficialWeightTab);
+    styleWeightCatalogTab(btnCustomWeightTab);
+  }
+
+  private void configureWeightCatalog() {
+    ButtonGroup tabs = new ButtonGroup();
+    tabs.add(btnOfficialWeightTab);
+    tabs.add(btnCustomWeightTab);
+    btnOfficialWeightTab.setSelected(true);
+
+    weightCatalogList.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+    weightCatalogList.setFixedCellHeight(WEIGHT_CATALOG_ROW_HEIGHT);
+    weightCatalogList.setVisibleRowCount(WEIGHT_CATALOG_VISIBLE_ROWS);
+    weightCatalogList.setBackground(CARD_BG);
+    weightCatalogList.setForeground(TEXT_PRIMARY);
+    weightCatalogList.setSelectionBackground(new Color(230, 244, 239));
+    weightCatalogList.setSelectionForeground(TEXT_PRIMARY);
+    weightCatalogList.setBorder(BorderFactory.createEmptyBorder());
+    weightCatalogList.setCellRenderer(new WeightCatalogRenderer());
+    weightCatalogList.addListSelectionListener(
+        event -> {
+          if (!event.getValueIsAdjusting()) {
+            updateSelectedWeightInfo();
+          }
+        });
+    MouseAdapter downloadActionHandler =
+        new MouseAdapter() {
+          @Override
+          public void mouseMoved(MouseEvent event) {
+            updateWeightDownloadHover(event);
+          }
+
+          @Override
+          public void mouseExited(MouseEvent event) {
+            setHoveredWeightDownloadRow(-1);
+          }
+
+          @Override
+          public void mouseClicked(MouseEvent event) {
+            if (!SwingUtilities.isLeftMouseButton(event)) {
+              return;
+            }
+            int row = downloadableWeightRowAt(event);
+            if (row < 0) {
+              return;
+            }
+            weightCatalogList.setSelectedIndex(row);
+            weightCatalogList.ensureIndexIsVisible(row);
+            startRecommendedWeightDownloadInternal();
+          }
+        };
+    weightCatalogList.addMouseListener(downloadActionHandler);
+    weightCatalogList.addMouseMotionListener(downloadActionHandler);
+    weightCatalogList
+        .getInputMap(JComponent.WHEN_FOCUSED)
+        .put(KeyStroke.getKeyStroke("ENTER"), "activate-selected-weight");
+    weightCatalogList
+        .getActionMap()
+        .put(
+            "activate-selected-weight",
+            new AbstractAction() {
+              @Override
+              public void actionPerformed(java.awt.event.ActionEvent event) {
+                activateSelectedWeight();
+              }
+            });
   }
 
   private void wireActions() {
     btnRefresh.addActionListener(e -> refreshState());
-    btnAutoSetup.addActionListener(e -> autoSetupOrDownload());
     btnReloadRemoteWeights.addActionListener(e -> reloadRemoteWeightInfo());
-    btnDownloadWeight.addActionListener(e -> startRecommendedWeightDownload(false));
+    btnDownloadWeight.addActionListener(e -> startRecommendedWeightDownloadInternal());
     btnImportWeight.addActionListener(e -> importCustomWeight());
     btnUseWeight.addActionListener(e -> useSelectedWeight());
     btnDownloadHumanSlModel.addActionListener(e -> startHumanSlModelDownload());
@@ -331,6 +455,12 @@ public class KataGoAutoSetupDialog extends JDialog {
     btnOptimizePerformance.addActionListener(e -> startPerformanceBenchmark());
     btnStopDownload.addActionListener(e -> stopActiveDownload());
     btnClose.addActionListener(e -> closeOrCancelActiveTask());
+    btnOfficialWeightTab.addActionListener(
+        e -> switchWeightCatalogMode(WeightCatalogMode.OFFICIAL));
+    btnCustomWeightTab.addActionListener(e -> switchWeightCatalogMode(WeightCatalogMode.CUSTOM));
+    balancedRecommendation.setActivation(() -> activateRecommendation(balancedRecommendation));
+    strongestRecommendation.setActivation(() -> activateRecommendation(strongestRecommendation));
+    lightweightRecommendation.setActivation(() -> activateRecommendation(lightweightRecommendation));
   }
 
   private void styleButton(JFontButton button, boolean primary) {
@@ -374,51 +504,59 @@ public class KataGoAutoSetupDialog extends JDialog {
     button.setMaximumSize(size);
   }
 
+  private void styleWeightButton(JFontButton button, WeightButtonStyle style) {
+    button.setUI(new WeightButtonUI(style));
+    int horizontalPadding = style == WeightButtonStyle.ICON ? 0 : 14;
+    button.setBorder(BorderFactory.createEmptyBorder(0, horizontalPadding, 0, horizontalPadding));
+    button.setContentAreaFilled(false);
+    button.setBorderPainted(false);
+    button.setOpaque(false);
+    button.setRolloverEnabled(true);
+    button.setForeground(style == WeightButtonStyle.PRIMARY ? Color.WHITE : TEXT_PRIMARY);
+    int height = style == WeightButtonStyle.ICON ? 42 : 40;
+    int width = style == WeightButtonStyle.ICON ? 42 : button.getPreferredSize().width;
+    Dimension size = new Dimension(width, height);
+    button.setPreferredSize(size);
+    button.setMinimumSize(size);
+    if (style == WeightButtonStyle.ICON) {
+      button.setMaximumSize(size);
+    }
+  }
+
+  private void styleWeightCatalogTab(JToggleButton button) {
+    button.setUI(new WeightCatalogTabUI());
+    button.setOpaque(false);
+    button.setContentAreaFilled(false);
+    button.setBorderPainted(false);
+    button.setFocusPainted(false);
+    button.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+    button.setFont(button.getFont().deriveFont(Font.BOLD));
+    button.setForeground(TEXT_SECONDARY);
+    button.setMargin(new Insets(0, 12, 0, 12));
+    button.setPreferredSize(new Dimension(180, 34));
+  }
+
   private JPanel createHeaderPanel() {
-    JPanel header = new JPanel(new BorderLayout(12, 3));
+    JPanel header = new JPanel(new BorderLayout(12, 0));
     header.setBackground(SIDEBAR_BG);
-    header.setBorder(BorderFactory.createEmptyBorder(10, 16, 10, 16));
+    header.setBorder(BorderFactory.createEmptyBorder(10, isMacOs() ? 82 : 20, 10, 20));
+    header.setPreferredSize(new Dimension(10, 62));
+
+    JFontLabel icon = new JFontLabel();
+    icon.setIcon(new WeightStoneIcon(42));
+    header.add(icon, BorderLayout.WEST);
 
     JFontLabel title = new JFontLabel(text("AutoSetup.title"));
-    title.setForeground(Color.WHITE);
-    title.setFont(title.getFont().deriveFont(Font.BOLD, title.getFont().getSize2D() + 5f));
-
-    JFontLabel subtitle =
-        new JFontLabel(
-            "<html>"
-                + text("AutoSetup.expertHeader")
-                + "<br>"
-                + text("AutoSetup.expertSubtitle")
-                + "</html>");
-    subtitle.setForeground(new Color(207, 218, 205));
-
-    JPanel titleBlock = new JPanel(new BorderLayout(0, 4));
-    titleBlock.setOpaque(false);
-    titleBlock.add(title, BorderLayout.NORTH);
-    titleBlock.add(subtitle, BorderLayout.CENTER);
-    header.add(titleBlock, BorderLayout.CENTER);
-
-    JFontLabel modeBadge = new JFontLabel(text("AutoSetup.expertMode"));
-    modeBadge.setHorizontalAlignment(SwingConstants.CENTER);
-    modeBadge.setForeground(SIDEBAR_TEXT);
-    modeBadge.setBorder(
-        BorderFactory.createCompoundBorder(
-            BorderFactory.createLineBorder(new Color(103, 130, 121)),
-            BorderFactory.createEmptyBorder(5, 10, 5, 10)));
-    header.add(modeBadge, BorderLayout.EAST);
+    title.setForeground(new Color(243, 213, 158));
+    title.setFont(title.getFont().deriveFont(Font.BOLD, title.getFont().getSize2D() + 7f));
+    header.add(title, BorderLayout.CENTER);
     return header;
   }
 
   private JPanel createSidebarPanel() {
-    JPanel sidebar = new JPanel(new BorderLayout(0, 12));
-    sidebar.setPreferredSize(new Dimension(180, 10));
-    sidebar.setBackground(SIDEBAR_BG);
-    sidebar.setBorder(BorderFactory.createEmptyBorder(12, 12, 12, 12));
-
-    JFontLabel sidebarTitle = new JFontLabel(text("AutoSetup.sidebarTitle"));
-    sidebarTitle.setForeground(SIDEBAR_TEXT);
-    sidebarTitle.setFont(sidebarTitle.getFont().deriveFont(Font.BOLD));
-    sidebar.add(sidebarTitle, BorderLayout.NORTH);
+    JPanel sidebar = new SidebarBackdropPanel();
+    sidebar.setPreferredSize(new Dimension(218, 10));
+    sidebar.setBorder(BorderFactory.createEmptyBorder(20, 12, 16, 12));
 
     sectionNav.setListData(
         new String[] {
@@ -430,27 +568,12 @@ public class KataGoAutoSetupDialog extends JDialog {
         });
     sectionNav.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
     sectionNav.setSelectedIndex(0);
-    sectionNav.setFixedCellHeight(36);
-    sectionNav.setBackground(SIDEBAR_BG);
+    sectionNav.setFixedCellHeight(58);
+    sectionNav.setOpaque(false);
+    sectionNav.setBackground(new Color(0, 0, 0, 0));
     sectionNav.setForeground(SIDEBAR_TEXT);
     sectionNav.setBorder(null);
-    sectionNav.setCellRenderer(
-        new DefaultListCellRenderer() {
-          @Override
-          public Component getListCellRendererComponent(
-              JList<?> list, Object value, int index, boolean isSelected, boolean cellHasFocus) {
-            JLabel label =
-                (JLabel)
-                    super.getListCellRendererComponent(
-                        list, value, index, isSelected, cellHasFocus);
-            label.setOpaque(true);
-            label.setBorder(BorderFactory.createEmptyBorder(7, 10, 7, 10));
-            label.setForeground(SIDEBAR_TEXT);
-            label.setBackground(isSelected ? SIDEBAR_SELECTED_BG : SIDEBAR_BG);
-            label.setFont(label.getFont().deriveFont(isSelected ? Font.BOLD : Font.PLAIN));
-            return label;
-          }
-        });
+    sectionNav.setCellRenderer(new SidebarNavRenderer());
     sectionNav.addListSelectionListener(
         e -> {
           if (e.getValueIsAdjusting()) {
@@ -460,15 +583,15 @@ public class KataGoAutoSetupDialog extends JDialog {
           switch (selectedIndex) {
             case 1:
               selectedSetupSectionIndex = selectedIndex;
-              detailCardLayout.show(detailCards, CARD_WEIGHTS);
+              showDetailCard(CARD_WEIGHTS);
               break;
             case 2:
               selectedSetupSectionIndex = selectedIndex;
-              detailCardLayout.show(detailCards, CARD_BENCHMARK);
+              showDetailCard(CARD_BENCHMARK);
               break;
             case 3:
               selectedSetupSectionIndex = selectedIndex;
-              detailCardLayout.show(detailCards, CARD_ACCELERATION);
+              showDetailCard(CARD_ACCELERATION);
               break;
             case 4:
               SwingUtilities.invokeLater(
@@ -479,16 +602,18 @@ public class KataGoAutoSetupDialog extends JDialog {
               break;
             default:
               selectedSetupSectionIndex = 0;
-              detailCardLayout.show(detailCards, CARD_OVERVIEW);
+              showDetailCard(CARD_OVERVIEW);
               break;
           }
         });
     sidebar.add(sectionNav, BorderLayout.CENTER);
-
-    JFontLabel note = new JFontLabel("<html>" + text("AutoSetup.sidebarHint") + "</html>");
-    note.setForeground(new Color(193, 203, 194));
-    sidebar.add(note, BorderLayout.SOUTH);
     return sidebar;
+  }
+
+  private void showDetailCard(String cardName) {
+    detailCardLayout.show(detailCards, cardName);
+    detailCards.revalidate();
+    detailCards.repaint();
   }
 
   private JPanel createOverviewSection() {
@@ -499,7 +624,7 @@ public class KataGoAutoSetupDialog extends JDialog {
     addInfoRow(rows, gbc, text("AutoSetup.localWeightModel"), lblWeightModelValue);
     addInfoRow(rows, gbc, text("AutoSetup.localConfig"), lblConfigValue);
 
-    JPanel actions = createActionBar(FlowLayout.RIGHT, btnRefresh, btnAutoSetup);
+    JPanel actions = createActionBar(FlowLayout.RIGHT, btnRefresh);
     return createSectionCard(
         text("AutoSetup.overviewTitle"), text("AutoSetup.overviewSubtitle"), rows, actions);
   }
@@ -522,6 +647,12 @@ public class KataGoAutoSetupDialog extends JDialog {
   }
 
   private JPanel createWeightsSection() {
+    JPanel page = new JPanel(new BorderLayout(0, 10));
+    page.setOpaque(false);
+    page.add(
+        createPageHeading(text("AutoSetup.weightsTitle"), text("AutoSetup.weightsSubtitle")),
+        BorderLayout.NORTH);
+
     JPanel content = new JPanel(new GridBagLayout());
     content.setOpaque(false);
     GridBagConstraints constraints = new GridBagConstraints();
@@ -534,39 +665,83 @@ public class KataGoAutoSetupDialog extends JDialog {
 
     constraints.gridy++;
     constraints.insets = new Insets(8, 0, 0, 0);
-    content.add(createOfficialWeightsBlock(), constraints);
+    content.add(createWeightRecommendations(), constraints);
 
     constraints.gridy++;
     constraints.insets = new Insets(8, 0, 0, 0);
-    content.add(createLocalWeightsBlock(), constraints);
+    content.add(createWeightCatalogBlock(), constraints);
 
     constraints.gridy++;
     constraints.insets = new Insets(8, 0, 0, 0);
     content.add(createHumanSlModelBlock(), constraints);
 
-    return createSectionCard(
-        text("AutoSetup.weightsTitle"), text("AutoSetup.weightsSubtitle"), content, null);
+    JPanel contentWrap = new JPanel(new BorderLayout());
+    contentWrap.setOpaque(false);
+    contentWrap.add(content, BorderLayout.NORTH);
+    page.add(contentWrap, BorderLayout.CENTER);
+    return page;
+  }
+
+  private JPanel createWeightRecommendations() {
+    JPanel section = new JPanel(new BorderLayout(0, 6));
+    section.setOpaque(false);
+    JFontLabel title = new JFontLabel(text("AutoSetup.recommendationTitle"));
+    title.setForeground(TEXT_PRIMARY);
+    title.setFont(title.getFont().deriveFont(Font.BOLD, title.getFont().getSize2D() + 2f));
+    section.add(title, BorderLayout.NORTH);
+
+    JPanel cards = new JPanel(new GridBagLayout());
+    cards.setOpaque(false);
+    GridBagConstraints gbc = new GridBagConstraints();
+    gbc.gridy = 0;
+    gbc.weightx = 1;
+    gbc.fill = GridBagConstraints.BOTH;
+    gbc.insets = new Insets(0, 0, 0, 7);
+    cards.add(balancedRecommendation, gbc);
+    gbc.gridx = 1;
+    gbc.insets = new Insets(0, 7, 0, 7);
+    cards.add(strongestRecommendation, gbc);
+    gbc.gridx = 2;
+    gbc.insets = new Insets(0, 7, 0, 0);
+    cards.add(lightweightRecommendation, gbc);
+    section.add(cards, BorderLayout.CENTER);
+    return section;
+  }
+
+  private JPanel createPageHeading(String title, String subtitle) {
+    JPanel heading = new JPanel(new BorderLayout(0, 4));
+    heading.setOpaque(false);
+    JFontLabel titleLabel = new JFontLabel(title);
+    titleLabel.setForeground(TEXT_PRIMARY);
+    titleLabel.setFont(
+        titleLabel.getFont().deriveFont(Font.BOLD, titleLabel.getFont().getSize2D() + 8f));
+    JFontLabel subtitleLabel = new JFontLabel(subtitle);
+    subtitleLabel.setForeground(TEXT_SECONDARY);
+    subtitleLabel.setFont(
+        subtitleLabel.getFont().deriveFont(subtitleLabel.getFont().getSize2D() + 1f));
+    heading.add(titleLabel, BorderLayout.NORTH);
+    heading.add(subtitleLabel, BorderLayout.CENTER);
+    return heading;
   }
 
   private JPanel createCurrentWeightBanner() {
-    JPanel banner = new JPanel(new BorderLayout(12, 0));
-    banner.setBackground(new Color(246, 250, 245));
-    banner.setBorder(
-        BorderFactory.createCompoundBorder(
-            BorderFactory.createLineBorder(new Color(191, 211, 194)),
-            BorderFactory.createEmptyBorder(8, 10, 8, 10)));
+    JPanel banner = new RoundedSurfacePanel(CARD_BG, new Color(214, 190, 148), 16, true);
+    banner.setLayout(new BorderLayout(16, 0));
+    banner.setBorder(BorderFactory.createEmptyBorder(12, 18, 12, 18));
+    banner.setPreferredSize(new Dimension(10, 72));
 
     JFontLabel icon = new JFontLabel();
-    icon.setIcon(new WeightStoneIcon());
+    icon.setIcon(new WeightStoneIcon(48, true));
     banner.add(icon, BorderLayout.WEST);
 
     JFontLabel caption = new JFontLabel(text("AutoSetup.currentWeight"));
-    caption.setForeground(TEXT_SECONDARY);
+    caption.setForeground(new Color(160, 109, 31));
+    caption.setFont(caption.getFont().deriveFont(caption.getFont().getSize2D() + 1f));
     lblCurrentWeightName.setForeground(TEXT_PRIMARY);
     lblCurrentWeightName.setFont(
         lblCurrentWeightName
             .getFont()
-            .deriveFont(Font.BOLD, lblCurrentWeightName.getFont().getSize2D() + 1f));
+            .deriveFont(Font.BOLD, lblCurrentWeightName.getFont().getSize2D() + 5f));
     JPanel labels = new JPanel(new BorderLayout(0, 2));
     labels.setOpaque(false);
     labels.add(caption, BorderLayout.NORTH);
@@ -575,53 +750,135 @@ public class KataGoAutoSetupDialog extends JDialog {
 
     lblCurrentWeightStatus.setHorizontalAlignment(SwingConstants.CENTER);
     lblCurrentWeightStatus.setForeground(OK_COLOR);
-    lblCurrentWeightStatus.setBorder(
-        BorderFactory.createCompoundBorder(
-            BorderFactory.createLineBorder(new Color(156, 195, 169)),
-            BorderFactory.createEmptyBorder(4, 9, 4, 9)));
+    lblCurrentWeightStatus.setFont(lblCurrentWeightStatus.getFont().deriveFont(Font.BOLD));
+    lblCurrentWeightStatus.setBorder(BorderFactory.createEmptyBorder(8, 18, 8, 18));
     banner.add(lblCurrentWeightStatus, BorderLayout.EAST);
     return banner;
   }
 
-  private JPanel createOfficialWeightsBlock() {
-    JPanel block = createWeightBlock();
-    block.add(
-        createWeightSectionHeader(
-            text("AutoSetup.officialWeights"),
-            text("AutoSetup.officialWeightsHint"),
-            btnReloadRemoteWeights),
-        BorderLayout.NORTH);
+  private JPanel createWeightCatalogBlock() {
+    JPanel section = new JPanel(new BorderLayout(0, 5));
+    section.setOpaque(false);
+    JFontLabel title = new JFontLabel(text("AutoSetup.moreWeights"));
+    title.setForeground(TEXT_PRIMARY);
+    title.setFont(title.getFont().deriveFont(Font.BOLD, title.getFont().getSize2D() + 2f));
+    section.add(title, BorderLayout.NORTH);
 
-    styleCompactWeightStatus(lblRemoteDetailValue);
-    cmbRemoteWeights.setPreferredSize(new Dimension(VALUE_COLUMN_WIDTH, 36));
-    JPanel selection = new JPanel(new BorderLayout(0, 5));
-    selection.setOpaque(false);
-    selection.add(createStackedActionRow(cmbRemoteWeights, btnDownloadWeight), BorderLayout.NORTH);
-    selection.add(lblRemoteDetailValue, BorderLayout.CENTER);
-    block.add(selection, BorderLayout.CENTER);
-    return block;
+    JPanel block = new RoundedSurfacePanel(CARD_BG, new Color(218, 205, 181), 13, false);
+    block.setLayout(new BorderLayout(0, 0));
+    block.setBorder(BorderFactory.createEmptyBorder(6, 8, 6, 8));
+    block.add(createWeightCatalogTabs(), BorderLayout.NORTH);
+    block.add(createWeightCatalogTable(), BorderLayout.CENTER);
+    block.add(createSelectedWeightDetailBar(), BorderLayout.SOUTH);
+    section.add(block, BorderLayout.CENTER);
+    return section;
   }
 
-  private JPanel createLocalWeightsBlock() {
-    JPanel block = createWeightBlock();
-    block.add(
-        createWeightSectionHeader(
-            text("AutoSetup.localWeights"), text("AutoSetup.localWeightsHint"), null),
-        BorderLayout.NORTH);
+  private JPanel createWeightCatalogTabs() {
+    JPanel row = new JPanel(new BorderLayout(8, 0));
+    row.setOpaque(false);
+    JPanel tabs = new JPanel(new GridBagLayout());
+    tabs.setOpaque(false);
+    GridBagConstraints gbc = new GridBagConstraints();
+    gbc.gridy = 0;
+    gbc.weightx = 1;
+    gbc.fill = GridBagConstraints.HORIZONTAL;
+    tabs.add(btnOfficialWeightTab, gbc);
+    gbc.gridx = 1;
+    tabs.add(btnCustomWeightTab, gbc);
+    row.add(tabs, BorderLayout.CENTER);
 
-    styleCompactWeightStatus(lblLocalWeightDetailValue);
-    cmbLocalWeights.setPreferredSize(new Dimension(VALUE_COLUMN_WIDTH, 36));
-    JPanel selection = new JPanel(new BorderLayout(0, 5));
-    selection.setOpaque(false);
-    selection.add(
-        createStackedActionRow(cmbLocalWeights, btnUseWeight, btnImportWeight), BorderLayout.NORTH);
-    selection.add(lblLocalWeightDetailValue, BorderLayout.CENTER);
-    block.add(selection, BorderLayout.CENTER);
-    return block;
+    weightCatalogActionCards.setOpaque(false);
+    weightCatalogActionCards.add(btnReloadRemoteWeights, WeightCatalogMode.OFFICIAL.cardName);
+    weightCatalogActionCards.add(btnImportWeight, WeightCatalogMode.CUSTOM.cardName);
+    row.add(weightCatalogActionCards, BorderLayout.EAST);
+    return row;
+  }
+
+  private JPanel createWeightCatalogTable() {
+    JPanel table = new JPanel(new BorderLayout());
+    table.setOpaque(false);
+    table.setBorder(BorderFactory.createEmptyBorder(4, 0, 5, 0));
+    table.add(createWeightCatalogColumnHeader(), BorderLayout.NORTH);
+
+    weightCatalogScrollPane.setBorder(
+        BorderFactory.createMatteBorder(1, 0, 1, 0, new Color(225, 219, 207)));
+    weightCatalogScrollPane.setHorizontalScrollBarPolicy(JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
+    weightCatalogScrollPane.setVerticalScrollBarPolicy(JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED);
+    weightCatalogScrollPane.getVerticalScrollBar().setUnitIncrement(WEIGHT_CATALOG_ROW_HEIGHT);
+    weightCatalogScrollPane.getVerticalScrollBar().setUI(new WeightCatalogScrollBarUI());
+    weightCatalogScrollPane.getViewport().setBackground(CARD_BG);
+    weightCatalogScrollPane.setPreferredSize(
+        new Dimension(10, weightCatalogVisibleHeight(WEIGHT_CATALOG_VISIBLE_ROWS)));
+
+    lblWeightCatalogEmpty.setHorizontalAlignment(SwingConstants.CENTER);
+    lblWeightCatalogEmpty.setForeground(TEXT_SECONDARY);
+    lblWeightCatalogEmpty.setBorder(BorderFactory.createEmptyBorder(18, 12, 18, 12));
+    JPanel empty = new JPanel(new BorderLayout());
+    empty.setBackground(CARD_BG);
+    empty.add(lblWeightCatalogEmpty, BorderLayout.CENTER);
+
+    weightCatalogContentCards.setOpaque(false);
+    weightCatalogContentCards.add(weightCatalogScrollPane, "list");
+    weightCatalogContentCards.add(empty, "empty");
+    weightCatalogContentCards.setPreferredSize(weightCatalogScrollPane.getPreferredSize());
+    table.add(weightCatalogContentCards, BorderLayout.CENTER);
+    return table;
+  }
+
+  private JPanel createWeightCatalogColumnHeader() {
+    JFontLabel model = createWeightCatalogHeaderLabel(text("AutoSetup.weightColumnModel"));
+    JFontLabel elo = createWeightCatalogHeaderLabel(text("AutoSetup.weightColumnElo"));
+    JFontLabel date = createWeightCatalogHeaderLabel(text("AutoSetup.weightColumnReleaseDate"));
+    JFontLabel status = createWeightCatalogHeaderLabel(text("AutoSetup.weightColumnStatus"));
+    JPanel header = new JPanel();
+    header.setOpaque(false);
+    header.setBorder(BorderFactory.createEmptyBorder(1, 14, 3, 14));
+    configureWeightCatalogColumns(header, model, elo, date, status);
+    return header;
+  }
+
+  private JFontLabel createWeightCatalogHeaderLabel(String value) {
+    JFontLabel label = new JFontLabel(value);
+    label.setForeground(new Color(123, 121, 113));
+    label.setFont(label.getFont().deriveFont(label.getFont().getSize2D() - 1f));
+    return label;
+  }
+
+  private JPanel createSelectedWeightDetailBar() {
+    JPanel detail =
+        new RoundedSurfacePanel(new Color(253, 249, 241), new Color(225, 210, 184), 11, false);
+    detail.setLayout(new BorderLayout(10, 0));
+    detail.setBorder(BorderFactory.createEmptyBorder(7, 12, 7, 8));
+    JFontLabel icon = new JFontLabel();
+    icon.setIcon(new WeightStoneIcon(38, true));
+    detail.add(icon, BorderLayout.WEST);
+
+    lblSelectedWeightName.setForeground(TEXT_PRIMARY);
+    lblSelectedWeightName.setFont(lblSelectedWeightName.getFont().deriveFont(Font.BOLD));
+    lblSelectedWeightMeta.setForeground(TEXT_SECONDARY);
+    lblSelectedWeightMeta.setFont(
+        lblSelectedWeightMeta
+            .getFont()
+            .deriveFont(lblSelectedWeightMeta.getFont().getSize2D() - 1f));
+    JPanel labels = new JPanel(new BorderLayout(0, 1));
+    labels.setOpaque(false);
+    labels.add(lblSelectedWeightName, BorderLayout.NORTH);
+    labels.add(lblSelectedWeightMeta, BorderLayout.CENTER);
+    detail.add(labels, BorderLayout.CENTER);
+
+    selectedWeightActions.setOpaque(false);
+    selectedWeightActions.add(btnDownloadWeight);
+    selectedWeightActions.add(btnUseWeight);
+    detail.add(selectedWeightActions, BorderLayout.EAST);
+    return detail;
   }
 
   private JPanel createHumanSlModelBlock() {
     JPanel block = createWeightBlock();
+    JFontLabel icon = new JFontLabel();
+    icon.setIcon(new HumanSlIcon());
+    block.add(icon, BorderLayout.WEST);
     JFontLabel title = new JFontLabel(text("AutoSetup.humanSlModel"));
     title.setForeground(TEXT_PRIMARY);
     title.setFont(title.getFont().deriveFont(Font.BOLD));
@@ -630,47 +887,23 @@ public class KataGoAutoSetupDialog extends JDialog {
     labels.setOpaque(false);
     labels.add(title, BorderLayout.NORTH);
     labels.add(lblHumanSlModelValue, BorderLayout.CENTER);
-    block.add(labels, BorderLayout.NORTH);
-    block.add(
-        createActionBar(FlowLayout.RIGHT, 1, btnDownloadHumanSlModel, btnImportHumanSlModel),
-        BorderLayout.SOUTH);
+    block.setBorder(BorderFactory.createEmptyBorder(9, 14, 9, 12));
+    block.add(labels, BorderLayout.CENTER);
+
+    JPanel actions = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
+    actions.setOpaque(false);
+    actions.add(lblHumanSlStatus);
+    actions.add(btnDownloadHumanSlModel);
+    actions.add(btnImportHumanSlModel);
+    block.add(actions, BorderLayout.EAST);
     return block;
   }
 
   private JPanel createWeightBlock() {
-    JPanel block = new JPanel(new BorderLayout(8, 6));
-    block.setBackground(INFO_BG);
-    block.setBorder(
-        BorderFactory.createCompoundBorder(
-            BorderFactory.createLineBorder(INFO_BORDER),
-            BorderFactory.createEmptyBorder(7, 9, 7, 9)));
+    JPanel block = new RoundedSurfacePanel(CARD_BG, new Color(218, 205, 181), 13, false);
+    block.setLayout(new BorderLayout(8, 6));
+    block.setBorder(BorderFactory.createEmptyBorder(8, 10, 8, 10));
     return block;
-  }
-
-  private JPanel createWeightSectionHeader(String title, String hint, JComponent action) {
-    JPanel header = new JPanel(new BorderLayout(8, 0));
-    header.setOpaque(false);
-    JFontLabel titleLabel = new JFontLabel(title);
-    titleLabel.setForeground(TEXT_PRIMARY);
-    titleLabel.setFont(titleLabel.getFont().deriveFont(Font.BOLD));
-    JFontLabel hintLabel = new JFontLabel(hint);
-    hintLabel.setForeground(TEXT_SECONDARY);
-    JPanel labels = new JPanel(new BorderLayout(8, 0));
-    labels.setOpaque(false);
-    labels.add(titleLabel, BorderLayout.WEST);
-    labels.add(hintLabel, BorderLayout.CENTER);
-    header.add(labels, BorderLayout.CENTER);
-    if (action != null) {
-      header.add(action, BorderLayout.EAST);
-    }
-    return header;
-  }
-
-  private void styleCompactWeightStatus(JLabel label) {
-    label.setOpaque(false);
-    label.setForeground(TEXT_SECONDARY);
-    label.setBorder(BorderFactory.createEmptyBorder(1, 2, 0, 2));
-    label.setPreferredSize(new Dimension(10, 22));
   }
 
   private JPanel createAccelerationSection() {
@@ -709,10 +942,10 @@ public class KataGoAutoSetupDialog extends JDialog {
   }
 
   private JPanel createFooterPanel() {
-    JPanel footer = new JPanel(new BorderLayout(0, 10));
-    footer.setOpaque(true);
-    footer.setBackground(APP_BG);
-    footer.setBorder(BorderFactory.createEmptyBorder(0, 16, 14, 16));
+    footerPanel.setOpaque(true);
+    footerPanel.setBackground(APP_BG);
+    footerPanel.setBorder(BorderFactory.createEmptyBorder(8, 28, 12, 30));
+    footerPanel.setVisible(false);
 
     progressPanel.setOpaque(true);
     progressPanel.setBackground(new Color(255, 249, 235));
@@ -735,7 +968,7 @@ public class KataGoAutoSetupDialog extends JDialog {
     progressHeader.add(progressStatusLabel, BorderLayout.CENTER);
     progressPanel.add(progressHeader, BorderLayout.NORTH);
     progressPanel.add(progressBar, BorderLayout.CENTER);
-    footer.add(progressPanel, BorderLayout.NORTH);
+    footerPanel.add(progressPanel, BorderLayout.NORTH);
 
     JPanel statusBar = new JPanel(new BorderLayout(12, 0));
     statusBar.setOpaque(false);
@@ -747,8 +980,8 @@ public class KataGoAutoSetupDialog extends JDialog {
             BorderFactory.createEmptyBorder(7, 10, 7, 10)));
     statusBar.add(lblStatus, BorderLayout.CENTER);
     statusBar.add(createActionBar(FlowLayout.RIGHT, btnStopDownload, btnClose), BorderLayout.EAST);
-    footer.add(statusBar, BorderLayout.SOUTH);
-    return footer;
+    footerPanel.add(statusBar, BorderLayout.SOUTH);
+    return footerPanel;
   }
 
   private JPanel createSectionCard(
@@ -828,14 +1061,8 @@ public class KataGoAutoSetupDialog extends JDialog {
     return actionBar;
   }
 
-  static JPanel createStackedActionRow(JComponent mainComponent, JComponent... actions) {
-    JPanel row = new JPanel(new BorderLayout(0, 6));
-    row.setOpaque(false);
-    Dimension minimum = mainComponent.getMinimumSize();
-    mainComponent.setMinimumSize(new Dimension(0, minimum.height));
-    row.add(mainComponent, BorderLayout.NORTH);
-    row.add(createActionBar(FlowLayout.RIGHT, 1, actions), BorderLayout.SOUTH);
-    return row;
+  static JPanel createResponsiveActionRow(JComponent mainComponent, JComponent... actions) {
+    return new ResponsiveActionRow(mainComponent, actions);
   }
 
   static final class ViewportWidthPanel extends JPanel implements Scrollable {
@@ -1008,13 +1235,8 @@ public class KataGoAutoSetupDialog extends JDialog {
     setInfoValue(lblConfigValue, snapshot.hasConfigs(), formatConfig(snapshot));
     updateNvidiaRuntimeInfo();
     updateBenchmarkInfo();
-    if (remoteWeightInfos.isEmpty()) {
-      lblRemoteDetailValue.setText(text("AutoSetup.loadingRemote"));
-      lblRemoteDetailValue.setToolTipText(null);
-      lblRemoteDetailValue.setForeground(Color.DARK_GRAY);
-    } else {
-      updateSelectedRemoteWeightInfo();
-    }
+    renderWeightRecommendations();
+    updateSelectedWeightInfo();
 
     renderSetupStatus();
   }
@@ -1087,34 +1309,29 @@ public class KataGoAutoSetupDialog extends JDialog {
   }
 
   private void renderLocalWeights() {
-    DefaultComboBoxModel<Path> model = new DefaultComboBoxModel<Path>();
-    if (snapshot != null) {
-      for (Path weight : snapshot.weightCandidates) {
-        model.addElement(weight);
-      }
-    }
-    cmbLocalWeights.setModel(model);
-    cmbLocalWeights.setEnabled(model.getSize() > 0);
-    if (snapshot != null && snapshot.activeWeightPath != null) {
-      selectLocalWeight(snapshot.activeWeightPath);
-    }
-    updateSelectedLocalWeightInfo();
+    rebuildWeightCatalog(null);
   }
 
   private void renderHumanSlModel() {
     KataGoAutoSetupHelper.HumanSlModelStatus status = KataGoAutoSetupHelper.inspectHumanSlModel();
+    String release = text("AutoSetup.humanSlModelRelease");
+    lblHumanSlModelValue.setText(
+        text("AutoSetup.humanSlModelDescription") + "  ·  " + release);
     if (status.isInstalled()) {
       String path = status.modelPath.toAbsolutePath().normalize().toString();
-      lblHumanSlModelValue.setText(text("AutoSetup.humanSlModelDownloaded"));
       lblHumanSlModelValue.setToolTipText(path);
-      lblHumanSlModelValue.setForeground(OK_COLOR);
+      lblHumanSlModelValue.setForeground(TEXT_SECONDARY);
+      lblHumanSlStatus.setStatus(
+          text("AutoSetup.humanSlModelDownloaded"), StatusTagTone.SUCCESS);
       btnDownloadHumanSlModel.setText(text("AutoSetup.humanSlModelDownloaded"));
       btnDownloadHumanSlModel.setEnabled(false);
+      btnDownloadHumanSlModel.setVisible(false);
     } else {
-      lblHumanSlModelValue.setText(text("AutoSetup.humanSlModelMissingShort"));
       lblHumanSlModelValue.setToolTipText(text("AutoSetup.humanSlModelMissing"));
-      lblHumanSlModelValue.setForeground(WARN_COLOR);
-      btnDownloadHumanSlModel.setText(text("AutoSetup.downloadHumanSlModel"));
+      lblHumanSlModelValue.setForeground(TEXT_SECONDARY);
+      lblHumanSlStatus.setStatus(text("AutoSetup.notDownloaded"), StatusTagTone.GOLD);
+      btnDownloadHumanSlModel.setText(text("AutoSetup.downloadOnDemand"));
+      btnDownloadHumanSlModel.setVisible(true);
       btnDownloadHumanSlModel.setEnabled(
           activeDownloadSession == null && activeWorkerThread == null);
     }
@@ -1366,9 +1583,8 @@ public class KataGoAutoSetupDialog extends JDialog {
   private void loadRemoteWeightInfo() {
     btnReloadRemoteWeights.setEnabled(false);
     if (remoteWeightInfos.isEmpty()) {
-      lblRemoteDetailValue.setText(text("AutoSetup.loadingRemote"));
-      lblRemoteDetailValue.setToolTipText(null);
-      lblRemoteDetailValue.setForeground(WARN_COLOR);
+      lblWeightCatalogEmpty.setText(text("AutoSetup.loadingRemote"));
+      showWeightCatalogEmptyState(true);
     }
     new Thread(
             () -> {
@@ -1379,14 +1595,13 @@ public class KataGoAutoSetupDialog extends JDialog {
                 SwingUtilities.invokeLater(
                     () -> {
                       if (remoteWeightInfos.isEmpty()) {
-                        cmbRemoteWeights.setModel(new DefaultComboBoxModel<RemoteWeightInfo>());
-                        cmbRemoteWeights.setEnabled(false);
-                        lblRemoteDetailValue.setText(text("AutoSetup.remoteUnavailable"));
-                        lblRemoteDetailValue.setToolTipText(e.getMessage());
-                        lblRemoteDetailValue.setForeground(ERROR_COLOR);
+                        rebuildWeightCatalog(null);
+                        lblWeightCatalogEmpty.setText(text("AutoSetup.remoteUnavailable"));
+                        lblWeightCatalogEmpty.setToolTipText(e.getMessage());
+                        showWeightCatalogEmptyState(true);
                         btnDownloadWeight.setEnabled(false);
                       } else {
-                        updateSelectedRemoteWeightInfo();
+                        updateSelectedWeightInfo();
                         lblStatus.setText(text("AutoSetup.remoteRefreshFailedCached"));
                         lblStatus.setToolTipText(e.getMessage());
                         lblStatus.setForeground(WARN_COLOR);
@@ -1412,20 +1627,13 @@ public class KataGoAutoSetupDialog extends JDialog {
     RemoteWeightInfo previousSelection = getSelectedRemoteWeight();
     String previousModel = previousSelection == null ? "" : previousSelection.modelName;
     remoteWeightInfos = infos == null ? Collections.<RemoteWeightInfo>emptyList() : infos;
-    DefaultComboBoxModel<RemoteWeightInfo> model = new DefaultComboBoxModel<RemoteWeightInfo>();
-    for (RemoteWeightInfo info : remoteWeightInfos) {
-      model.addElement(info);
-    }
-    cmbRemoteWeights.setModel(model);
-    cmbRemoteWeights.setEnabled(model.getSize() > 0);
     RemoteWeightInfo preferred = findRemoteWeight(previousModel);
     if (preferred == null) {
       preferred = choosePreferredRemoteWeight();
     }
-    if (preferred != null) {
-      cmbRemoteWeights.setSelectedItem(preferred);
-    }
-    updateSelectedRemoteWeightInfo();
+    rebuildWeightCatalog(preferred == null ? null : WeightCatalogEntry.officialKey(preferred));
+    renderWeightRecommendations();
+    updateSelectedWeightInfo();
     lblStatus.setToolTipText(null);
     if (!hasActiveBackgroundTask()) {
       renderSetupStatus();
@@ -1444,27 +1652,6 @@ public class KataGoAutoSetupDialog extends JDialog {
       }
     }
     return null;
-  }
-
-  private void autoSetupOrDownload() {
-    if (snapshot == null) {
-      snapshot = KataGoAutoSetupHelper.inspectLocalSetup();
-    }
-    Path selectedWeight = getSelectedLocalWeight();
-    if (selectedWeight == null) {
-      int result =
-          JOptionPane.showConfirmDialog(
-              this,
-              text("AutoSetup.askDownloadWeight"),
-              text("AutoSetup.title"),
-              JOptionPane.YES_NO_OPTION,
-              JOptionPane.QUESTION_MESSAGE);
-      if (result == JOptionPane.YES_OPTION) {
-        startRecommendedWeightDownload(true);
-      }
-      return;
-    }
-    startAutoSetup(snapshot.withActiveWeight(selectedWeight));
   }
 
   private void useSelectedWeight() {
@@ -1615,7 +1802,7 @@ public class KataGoAutoSetupDialog extends JDialog {
     worker.start();
   }
 
-  private void startRecommendedWeightDownload(boolean autoApplyAfterDownload) {
+  private void startRecommendedWeightDownloadInternal() {
     final RemoteWeightInfo targetInfo = getSelectedRemoteWeight();
     if (targetInfo == null) {
       Utils.showMsg(text("AutoSetup.noRemoteWeights"), this);
@@ -1642,17 +1829,6 @@ public class KataGoAutoSetupDialog extends JDialog {
                                         totalBytes)),
                         session);
                 SetupSnapshot refreshed = KataGoAutoSetupHelper.inspectLocalSetup();
-                if (autoApplyAfterDownload) {
-                  SetupResult result =
-                      KataGoAutoSetupHelper.applyAutoSetup(
-                          refreshed.withActiveWeight(downloadedWeight));
-                  SwingUtilities.invokeLater(
-                      () -> {
-                        setBusy(false, text("AutoSetup.downloadDone"), 0, 0);
-                        onSetupApplied(result, text("AutoSetup.downloadAndSetupDone"));
-                      });
-                  return;
-                }
                 SwingUtilities.invokeLater(
                     () -> {
                       setBusy(false, text("AutoSetup.downloadDone"), 0, 0);
@@ -1673,7 +1849,7 @@ public class KataGoAutoSetupDialog extends JDialog {
                 clearActiveDownload(session, Thread.currentThread());
               }
             },
-            autoApplyAfterDownload ? "katago-download-and-setup" : "katago-download-weight");
+            "katago-download-weight");
     activeWorkerThread = worker;
     worker.start();
   }
@@ -1953,32 +2129,6 @@ public class KataGoAutoSetupDialog extends JDialog {
     worker.start();
   }
 
-  private void startAutoSetup(SetupSnapshot state) {
-    setBusy(true, text("AutoSetup.settingUp"), 0, -1);
-    Thread worker =
-        new Thread(
-            () -> {
-              try {
-                SetupResult result = KataGoAutoSetupHelper.applyAutoSetup(state);
-                SwingUtilities.invokeLater(
-                    () -> {
-                      activeWorkerThread = null;
-                      setBusy(false, text("AutoSetup.setupDone"), 0, 0);
-                      onSetupApplied(result, text("AutoSetup.setupDoneMessage"));
-                    });
-              } catch (IOException e) {
-                SwingUtilities.invokeLater(
-                    () -> {
-                      activeWorkerThread = null;
-                      onBackgroundError(e);
-                    });
-              }
-            },
-            "katago-auto-setup");
-    activeWorkerThread = worker;
-    worker.start();
-  }
-
   private void startWeightEngineSetup(SetupSnapshot state) {
     setBusy(true, text("AutoSetup.settingUp"), 0, -1);
     Thread worker =
@@ -2113,15 +2263,18 @@ public class KataGoAutoSetupDialog extends JDialog {
     progressStatusLabel.setText(statusText);
     progressStatusLabel.setForeground(busy ? WARN_COLOR : Color.DARK_GRAY);
     btnRefresh.setEnabled(!busy);
-    btnAutoSetup.setEnabled(!busy);
     btnReloadRemoteWeights.setEnabled(!busy);
     btnDownloadWeight.setEnabled(!busy && canDownloadSelectedRemoteWeight());
     btnImportWeight.setEnabled(!busy);
     btnUseWeight.setEnabled(!busy && canUseSelectedLocalWeight());
     btnDownloadHumanSlModel.setEnabled(!busy && canDownloadHumanSlModel());
     btnImportHumanSlModel.setEnabled(!busy);
-    cmbLocalWeights.setEnabled(!busy && cmbLocalWeights.getItemCount() > 0);
-    cmbRemoteWeights.setEnabled(!busy && cmbRemoteWeights.getItemCount() > 0);
+    weightCatalogList.setEnabled(!busy && !weightCatalogModel.isEmpty());
+    btnOfficialWeightTab.setEnabled(!busy);
+    btnCustomWeightTab.setEnabled(!busy);
+    balancedRecommendation.setEnabled(!busy && balancedRecommendation.getWeight() != null);
+    strongestRecommendation.setEnabled(!busy && strongestRecommendation.getWeight() != null);
+    lightweightRecommendation.setEnabled(!busy && lightweightRecommendation.getWeight() != null);
     btnInstallNvidiaRuntime.setEnabled(!busy && canInstallNvidiaRuntime());
     btnInstallTensorRt.setEnabled(!busy && canInstallTensorRt());
     btnSwitchBackCuda.setEnabled(!busy && canSwitchBackToCuda());
@@ -2132,6 +2285,7 @@ public class KataGoAutoSetupDialog extends JDialog {
     btnClose.setEnabled(true);
 
     progressPanel.setVisible(busy);
+    footerPanel.setVisible(busy);
     AccessibilitySupport.announce(progressStatusLabel, previousStatus, statusText);
     progressBar.setIndeterminate(busy && totalBytes <= 0);
     if (!busy) {
@@ -2265,8 +2419,8 @@ public class KataGoAutoSetupDialog extends JDialog {
   }
 
   private Path getSelectedLocalWeight() {
-    Object selected = cmbLocalWeights.getSelectedItem();
-    return selected instanceof Path ? (Path) selected : null;
+    WeightCatalogEntry selected = weightCatalogList.getSelectedValue();
+    return selected == null ? null : selected.localPath;
   }
 
   private boolean canUseSelectedLocalWeight() {
@@ -2289,42 +2443,346 @@ public class KataGoAutoSetupDialog extends JDialog {
   }
 
   private void updateSelectedLocalWeightInfo() {
-    Path selectedWeight = getSelectedLocalWeight();
-    if (selectedWeight == null) {
-      lblLocalWeightDetailValue.setText(text("AutoSetup.noLocalWeights"));
-      lblLocalWeightDetailValue.setToolTipText(null);
-      lblLocalWeightDetailValue.setForeground(ERROR_COLOR);
-      btnUseWeight.setText(text("AutoSetup.useWeight"));
-      btnUseWeight.setEnabled(false);
+    updateSelectedWeightInfo();
+  }
+
+  private void updateSelectedWeightInfo() {
+    WeightCatalogEntry entry = weightCatalogList.getSelectedValue();
+    if (entry == null) {
+      String emptyText =
+          weightCatalogMode == WeightCatalogMode.OFFICIAL
+              ? text("AutoSetup.remoteUnavailable")
+              : text("AutoSetup.noLocalWeights");
+      lblSelectedWeightName.setText(emptyText);
+      lblSelectedWeightName.setToolTipText(null);
+      lblSelectedWeightMeta.setText("");
+      btnDownloadWeight.setVisible(false);
+      btnUseWeight.setVisible(false);
+      selectedWeightActions.revalidate();
+      selectedWeightActions.repaint();
       return;
     }
-    String displayName = KataGoAutoSetupHelper.resolveWeightDisplayName(selectedWeight);
-    String fullDetail = displayName + "  |  " + selectedWeight.toAbsolutePath().normalize();
-    boolean current = isCurrentLocalWeight(selectedWeight);
-    String visibleDetail =
-        current
-            ? displayName + "  |  " + text("AutoSetup.currentlyUsing")
-            : text("AutoSetup.readyToUseWeight") + "  |  " + displayName;
-    lblLocalWeightDetailValue.setText(compactInfoText(visibleDetail));
-    lblLocalWeightDetailValue.setToolTipText(fullDetail);
-    lblLocalWeightDetailValue.setForeground(current ? OK_COLOR : Color.DARK_GRAY);
-    btnUseWeight.setText(
-        current ? text("AutoSetup.currentlyUsingShort") : text("AutoSetup.useWeight"));
-    btnUseWeight.setEnabled(canUseSelectedLocalWeight());
-    cmbLocalWeights.repaint();
+
+    if (entry.remoteInfo != null) {
+      RemoteWeightInfo info = entry.remoteInfo;
+      boolean downloaded = entry.localPath != null;
+      boolean current = downloaded && isCurrentLocalWeight(entry.localPath);
+      lblSelectedWeightName.setText(formatRemoteModelName(info));
+      lblSelectedWeightMeta.setText(formatSelectedRemoteMetadata(info, downloaded, current));
+      String tooltip =
+          weightTooltip(
+              formatRemoteModelName(info),
+              formatRemoteMetadata(info),
+              info.eloRating,
+              info.fileName(),
+              info.downloadUrl);
+      lblSelectedWeightName.setToolTipText(tooltip);
+      lblSelectedWeightMeta.setToolTipText(tooltip);
+      btnDownloadWeight.setVisible(!downloaded);
+      btnDownloadWeight.setText(text("AutoSetup.downloadWeight"));
+      btnDownloadWeight.setEnabled(canDownloadSelectedRemoteWeight());
+      btnUseWeight.setVisible(downloaded);
+      btnUseWeight.setText(
+          current ? text("AutoSetup.currentlyUsingShort") : text("AutoSetup.useWeight"));
+      btnUseWeight.setEnabled(downloaded && !current && !hasActiveBackgroundTask());
+    } else {
+      Path path = entry.localPath;
+      String displayName = KataGoAutoSetupHelper.resolveWeightDisplayName(path);
+      boolean current = isCurrentLocalWeight(path);
+      lblSelectedWeightName.setText(displayName);
+      lblSelectedWeightMeta.setText(formatSelectedLocalMetadata(path, current));
+      String tooltip = weightTooltip(displayName, path.toAbsolutePath().normalize().toString());
+      lblSelectedWeightName.setToolTipText(tooltip);
+      lblSelectedWeightMeta.setToolTipText(tooltip);
+      btnDownloadWeight.setVisible(false);
+      btnUseWeight.setVisible(true);
+      btnUseWeight.setText(
+          current ? text("AutoSetup.currentlyUsingShort") : text("AutoSetup.useWeight"));
+      btnUseWeight.setEnabled(!current && !hasActiveBackgroundTask());
+    }
+    selectedWeightActions.revalidate();
+    selectedWeightActions.repaint();
+    weightCatalogList.repaint();
   }
 
   private void selectLocalWeight(Path weightPath) {
     if (weightPath == null) {
       return;
     }
-    Path normalized = weightPath.toAbsolutePath().normalize();
-    for (int i = 0; i < cmbLocalWeights.getItemCount(); i++) {
-      Path item = cmbLocalWeights.getItemAt(i);
-      if (item != null && item.toAbsolutePath().normalize().equals(normalized)) {
-        cmbLocalWeights.setSelectedIndex(i);
+    RemoteWeightInfo remote = findRemoteWeightForLocalPath(weightPath);
+    if (remote != null) {
+      switchWeightCatalogMode(WeightCatalogMode.OFFICIAL);
+      selectWeightCatalogEntry(WeightCatalogEntry.officialKey(remote));
+    } else {
+      switchWeightCatalogMode(WeightCatalogMode.CUSTOM);
+      selectWeightCatalogEntry(WeightCatalogEntry.customKey(weightPath));
+    }
+  }
+
+  private void activateSelectedWeight() {
+    WeightCatalogEntry entry = weightCatalogList.getSelectedValue();
+    if (entry == null) {
+      return;
+    }
+    if (entry.remoteInfo != null && entry.localPath == null) {
+      startRecommendedWeightDownloadInternal();
+      return;
+    }
+    if (canUseSelectedLocalWeight()) {
+      useSelectedWeight();
+    }
+  }
+
+  private void updateWeightDownloadHover(MouseEvent event) {
+    int row = downloadableWeightRowAt(event);
+    setHoveredWeightDownloadRow(row);
+    weightCatalogList.setCursor(
+        row >= 0
+            ? Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)
+            : Cursor.getDefaultCursor());
+    weightCatalogList.setToolTipText(row >= 0 ? text("AutoSetup.downloadWeight") : null);
+  }
+
+  private int downloadableWeightRowAt(MouseEvent event) {
+    if (event == null
+        || hasActiveBackgroundTask()
+        || !isWeightCatalogDownloadHit(event.getX(), weightCatalogList.getWidth())) {
+      return -1;
+    }
+    int row = weightCatalogList.locationToIndex(event.getPoint());
+    if (row < 0) {
+      return -1;
+    }
+    Rectangle bounds = weightCatalogList.getCellBounds(row, row);
+    if (bounds == null || !bounds.contains(event.getPoint())) {
+      return -1;
+    }
+    WeightCatalogEntry entry = weightCatalogModel.get(row);
+    return entry.remoteInfo != null && entry.localPath == null ? row : -1;
+  }
+
+  private void setHoveredWeightDownloadRow(int row) {
+    if (hoveredWeightDownloadRow == row) {
+      return;
+    }
+    int previous = hoveredWeightDownloadRow;
+    hoveredWeightDownloadRow = row;
+    repaintWeightCatalogRow(previous);
+    repaintWeightCatalogRow(row);
+  }
+
+  private void repaintWeightCatalogRow(int row) {
+    if (row < 0 || row >= weightCatalogModel.size()) {
+      return;
+    }
+    Rectangle bounds = weightCatalogList.getCellBounds(row, row);
+    if (bounds != null) {
+      weightCatalogList.repaint(bounds);
+    }
+  }
+
+  private void switchWeightCatalogMode(WeightCatalogMode mode) {
+    if (mode == null) {
+      return;
+    }
+    weightCatalogMode = mode;
+    btnOfficialWeightTab.setSelected(mode == WeightCatalogMode.OFFICIAL);
+    btnCustomWeightTab.setSelected(mode == WeightCatalogMode.CUSTOM);
+    ((CardLayout) weightCatalogActionCards.getLayout())
+        .show(weightCatalogActionCards, mode.cardName);
+    rebuildWeightCatalog(null);
+  }
+
+  private void rebuildWeightCatalog(String preferredKey) {
+    setHoveredWeightDownloadRow(-1);
+    weightCatalogList.setCursor(Cursor.getDefaultCursor());
+    weightCatalogList.setToolTipText(null);
+    WeightCatalogEntry previous = weightCatalogList.getSelectedValue();
+    String selectionKey =
+        preferredKey != null ? preferredKey : previous == null ? null : previous.stableKey();
+    weightCatalogModel.clear();
+    if (weightCatalogMode == WeightCatalogMode.OFFICIAL) {
+      for (RemoteWeightInfo info : remoteWeightInfos) {
+        weightCatalogModel.addElement(
+            WeightCatalogEntry.official(info, findDownloadedRemoteWeightPath(info)));
+      }
+    } else if (snapshot != null && snapshot.weightCandidates != null) {
+      for (Path weight : snapshot.weightCandidates) {
+        if (weight != null && findRemoteWeightForLocalPath(weight) == null) {
+          weightCatalogModel.addElement(WeightCatalogEntry.custom(weight));
+        }
+      }
+    }
+
+    if (!selectWeightCatalogEntry(selectionKey)) {
+      selectCurrentOrPreferredWeight();
+    }
+    boolean empty = weightCatalogModel.isEmpty();
+    lblWeightCatalogEmpty.setText(
+        weightCatalogMode == WeightCatalogMode.OFFICIAL
+            ? text("AutoSetup.remoteUnavailable")
+            : text("AutoSetup.noCustomWeights"));
+    lblWeightCatalogEmpty.setToolTipText(null);
+    showWeightCatalogEmptyState(empty);
+    updateWeightCatalogViewportHeight(weightCatalogModel.size());
+    weightCatalogList.setEnabled(!empty && !hasActiveBackgroundTask());
+    updateSelectedWeightInfo();
+  }
+
+  private void updateWeightCatalogViewportHeight(int entryCount) {
+    int visibleRows = weightCatalogViewportRows(entryCount);
+    Dimension size = new Dimension(10, weightCatalogVisibleHeight(visibleRows));
+    weightCatalogScrollPane.setPreferredSize(size);
+    weightCatalogContentCards.setPreferredSize(size);
+    weightCatalogContentCards.revalidate();
+  }
+
+  private void selectCurrentOrPreferredWeight() {
+    if (weightCatalogModel.isEmpty()) {
+      weightCatalogList.clearSelection();
+      return;
+    }
+    for (int index = 0; index < weightCatalogModel.size(); index++) {
+      WeightCatalogEntry entry = weightCatalogModel.get(index);
+      if (entry.localPath != null && isCurrentLocalWeight(entry.localPath)) {
+        weightCatalogList.setSelectedIndex(index);
+        weightCatalogList.ensureIndexIsVisible(index);
         return;
       }
+    }
+    if (weightCatalogMode == WeightCatalogMode.OFFICIAL) {
+      RemoteWeightInfo preferred = choosePreferredRemoteWeight();
+      if (preferred != null
+          && selectWeightCatalogEntry(WeightCatalogEntry.officialKey(preferred))) {
+        return;
+      }
+    }
+    weightCatalogList.setSelectedIndex(0);
+  }
+
+  private boolean selectWeightCatalogEntry(String stableKey) {
+    if (stableKey == null || stableKey.trim().isEmpty()) {
+      return false;
+    }
+    for (int index = 0; index < weightCatalogModel.size(); index++) {
+      if (stableKey.equals(weightCatalogModel.get(index).stableKey())) {
+        weightCatalogList.setSelectedIndex(index);
+        weightCatalogList.ensureIndexIsVisible(index);
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private void showWeightCatalogEmptyState(boolean empty) {
+    CardLayout layout = (CardLayout) weightCatalogContentCards.getLayout();
+    layout.show(weightCatalogContentCards, empty ? "empty" : "list");
+  }
+
+  private RemoteWeightInfo findRemoteWeightForLocalPath(Path path) {
+    if (path == null || path.getFileName() == null) {
+      return null;
+    }
+    String fileName = normalizeWeightName(path.getFileName().toString());
+    String displayName = normalizeWeightName(KataGoAutoSetupHelper.resolveWeightDisplayName(path));
+    for (RemoteWeightInfo info : remoteWeightInfos) {
+      if (fileName.equals(normalizeWeightName(info.fileName()))
+          || displayName.equals(normalizeWeightName(formatRemoteModelName(info)))) {
+        return info;
+      }
+      if (isCurrentLocalWeight(path) && matchesCurrentWeight(info)) {
+        return info;
+      }
+    }
+    return null;
+  }
+
+  private Path findDownloadedRemoteWeightPath(RemoteWeightInfo info) {
+    if (info == null || snapshot == null || snapshot.weightCandidates == null) {
+      return null;
+    }
+    for (Path candidate :
+        prioritizeActiveWeightCandidate(snapshot.activeWeightPath, snapshot.weightCandidates)) {
+      RemoteWeightInfo matched = findRemoteWeightForLocalPath(candidate);
+      if (matched != null && matchesModelName(info, matched.modelName)) {
+        return candidate;
+      }
+    }
+    return null;
+  }
+
+  static List<Path> prioritizeActiveWeightCandidate(Path activeWeight, List<Path> candidates) {
+    List<Path> ordered = new ArrayList<Path>();
+    if (activeWeight != null) {
+      ordered.add(activeWeight.toAbsolutePath().normalize());
+    }
+    if (candidates == null) {
+      return ordered;
+    }
+    for (Path candidate : candidates) {
+      if (candidate == null) {
+        continue;
+      }
+      Path normalized = candidate.toAbsolutePath().normalize();
+      if (!ordered.contains(normalized)) {
+        ordered.add(normalized);
+      }
+    }
+    return ordered;
+  }
+
+  private String formatSelectedRemoteMetadata(
+      RemoteWeightInfo info, boolean downloaded, boolean current) {
+    StringBuilder value = new StringBuilder();
+    if (info.eloRating != null && !info.eloRating.trim().isEmpty()) {
+      appendMetadata(value, "Elo " + info.eloRating.trim());
+    }
+    String releaseDate = formatRemoteReleaseDate(info);
+    if (!releaseDate.isEmpty()) {
+      appendMetadata(value, text("AutoSetup.releasedShort") + " " + releaseDate);
+    }
+    if (current) {
+      appendMetadata(value, text("AutoSetup.currentlyUsingShort"));
+    } else if (downloaded) {
+      appendMetadata(value, text("AutoSetup.downloaded"));
+    }
+    return value.toString();
+  }
+
+  private String formatRecommendationMetadata(RemoteWeightInfo info) {
+    if (info == null) {
+      return "";
+    }
+    StringBuilder value = new StringBuilder("Elo ").append(compactEloRating(info.eloRating));
+    String releaseDate = formatRemoteReleaseDate(info);
+    if (!releaseDate.isEmpty()) {
+      appendMetadata(value, releaseDate);
+    }
+    return value.toString();
+  }
+
+  private String formatSelectedLocalMetadata(Path path, boolean current) {
+    StringBuilder value = new StringBuilder();
+    appendMetadata(value, text("AutoSetup.importedWeight"));
+    String date = formatLocalWeightDate(path);
+    if (!date.isEmpty()) {
+      appendMetadata(value, text("AutoSetup.importedShort") + " " + date);
+    }
+    if (current) {
+      appendMetadata(value, text("AutoSetup.currentlyUsingShort"));
+    }
+    return value.toString();
+  }
+
+  private String formatLocalWeightDate(Path path) {
+    if (path == null) {
+      return "";
+    }
+    try {
+      return LOCAL_WEIGHT_DATE_FORMAT.format(
+          Files.getLastModifiedTime(path).toInstant().atZone(ZoneId.systemDefault()));
+    } catch (IOException e) {
+      return "";
     }
   }
 
@@ -2368,45 +2826,11 @@ public class KataGoAutoSetupDialog extends JDialog {
     return remainingSeconds + "s";
   }
 
-  private String formatRemoteChoice(RemoteWeightInfo info) {
-    if (info == null) {
-      return text("AutoSetup.remoteUnavailable");
-    }
-    StringBuilder label = new StringBuilder();
-    label.append(formatRemoteModelName(info));
-    String releaseDate = formatRemoteReleaseDate(info);
-    if (!releaseDate.isEmpty()) {
-      label.append("  |  ").append(releaseDate);
-    }
-    if (info.recommended) {
-      label.append("  |  ").append(text("AutoSetup.recommendedStrongest"));
-    }
-    if (info.latest) {
-      label.append("  |  ").append(text("AutoSetup.recommendedLatest"));
-    }
-    if (isDownloadedRemoteWeight(info)) {
-      label.append("  |  ").append(text("AutoSetup.downloaded"));
-    }
-    if (matchesCurrentWeight(info)) {
-      label.append("  |  ").append(text("AutoSetup.currentlyUsingShort"));
-    }
-    return label.toString();
-  }
-
-  private String formatRemotePopupChoice(RemoteWeightInfo info) {
-    return "<html><b>"
-        + escapeHtml(formatRemoteModelName(info))
-        + "</b><br><font color='#666b66'>"
-        + escapeHtml(formatRemoteMetadata(info))
-        + "</font></html>";
-  }
-
   private String formatRemoteMetadata(RemoteWeightInfo info) {
     StringBuilder metadata = new StringBuilder();
     appendMetadata(metadata, formatRemoteReleaseDate(info));
-    appendMetadata(metadata, info == null ? "" : info.eloRating);
     if (info.recommended) {
-      appendMetadata(metadata, text("AutoSetup.recommendedStrongest"));
+      appendMetadata(metadata, text("AutoSetup.officialStrongestBadge"));
     }
     if (info.latest) {
       appendMetadata(metadata, text("AutoSetup.recommendedLatest"));
@@ -2430,34 +2854,6 @@ public class KataGoAutoSetupDialog extends JDialog {
     metadata.append(value.trim());
   }
 
-  private static String escapeHtml(String value) {
-    if (value == null) {
-      return "";
-    }
-    return value
-        .replace("&", "&amp;")
-        .replace("<", "&lt;")
-        .replace(">", "&gt;")
-        .replace("\"", "&quot;");
-  }
-
-  private String formatLocalWeightChoice(Path weightPath) {
-    if (weightPath == null) {
-      return text("AutoSetup.noLocalWeights");
-    }
-    String displayName = KataGoAutoSetupHelper.resolveWeightDisplayName(weightPath);
-    String fileName =
-        weightPath.getFileName() == null
-            ? weightPath.toString()
-            : weightPath.getFileName().toString();
-    if (displayName == null || displayName.trim().isEmpty() || displayName.equals(fileName)) {
-      displayName = fileName;
-    }
-    return isCurrentLocalWeight(weightPath)
-        ? displayName + "  |  " + text("AutoSetup.currentlyUsingShort")
-        : displayName;
-  }
-
   private boolean isSupportedWeightFileName(Path path) {
     if (path == null || path.getFileName() == null) {
       return false;
@@ -2479,38 +2875,50 @@ public class KataGoAutoSetupDialog extends JDialog {
     return value.substring(0, head) + " ... " + value.substring(value.length() - tail);
   }
 
-  private void updateSelectedRemoteWeightInfo() {
-    RemoteWeightInfo info = getSelectedRemoteWeight();
-    if (info == null) {
-      lblRemoteDetailValue.setText(text("AutoSetup.remoteUnavailable"));
-      lblRemoteDetailValue.setToolTipText(null);
-      lblRemoteDetailValue.setForeground(ERROR_COLOR);
-      btnDownloadWeight.setText(text("AutoSetup.downloadWeight"));
-      btnDownloadWeight.setEnabled(false);
-      btnStopDownload.setEnabled(false);
-      return;
+  private String weightTooltip(String... lines) {
+    StringBuilder html = new StringBuilder("<html><div style='width: 420px'>");
+    boolean hasLine = false;
+    for (String line : lines) {
+      if (line == null || line.trim().isEmpty()) {
+        continue;
+      }
+      if (hasLine) {
+        html.append("<br>");
+      }
+      appendWrappedTooltipLine(html, line.trim());
+      hasLine = true;
     }
-    boolean downloaded = isDownloadedRemoteWeight(info);
-    boolean current = matchesCurrentWeight(info);
-    String detailText = formatRemoteModelName(info) + "  |  " + formatRemoteMetadata(info);
-    StringBuilder technicalDetail = new StringBuilder(detailText);
-    technicalDetail
-        .append("  |  ")
-        .append(info.fileName())
-        .append("  |  ")
-        .append(info.downloadUrl);
-    lblRemoteDetailValue.setText(compactInfoText(detailText));
-    lblRemoteDetailValue.setToolTipText(technicalDetail.toString());
-    lblRemoteDetailValue.setForeground(current || downloaded ? OK_COLOR : Color.DARK_GRAY);
-    btnDownloadWeight.setText(
-        downloaded ? text("AutoSetup.downloaded") : text("AutoSetup.downloadWeight"));
-    btnDownloadWeight.setEnabled(canDownloadSelectedRemoteWeight());
-    cmbRemoteWeights.repaint();
+    html.append("</div></html>");
+    return hasLine ? html.toString() : null;
+  }
+
+  private void appendWrappedTooltipLine(StringBuilder html, String value) {
+    final int lineLength = 68;
+    for (int start = 0; start < value.length(); start += lineLength) {
+      if (start > 0) {
+        html.append("<br>");
+      }
+      int end = Math.min(value.length(), start + lineLength);
+      html.append(escapeTooltipHtml(value.substring(start, end)));
+    }
+  }
+
+  private String escapeTooltipHtml(String value) {
+    return value
+        .replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+        .replace("\"", "&quot;")
+        .replace("'", "&#39;");
+  }
+
+  private void updateSelectedRemoteWeightInfo() {
+    updateSelectedWeightInfo();
   }
 
   private RemoteWeightInfo getSelectedRemoteWeight() {
-    Object selected = cmbRemoteWeights.getSelectedItem();
-    return selected instanceof RemoteWeightInfo ? (RemoteWeightInfo) selected : null;
+    WeightCatalogEntry selected = weightCatalogList.getSelectedValue();
+    return selected == null ? null : selected.remoteInfo;
   }
 
   private RemoteWeightInfo choosePreferredRemoteWeight() {
@@ -2538,16 +2946,128 @@ public class KataGoAutoSetupDialog extends JDialog {
     return remoteWeightInfos.get(0);
   }
 
+  private void renderWeightRecommendations() {
+    RemoteWeightInfo balanced = null;
+    for (RemoteWeightInfo info : remoteWeightInfos) {
+      if (KataGoAutoSetupHelper.isDefaultGeneralUseWeight(info)) {
+        balanced = info;
+        break;
+      }
+    }
+    if (balanced == null) {
+      balanced = chooseRemoteWeightByFamily("28B");
+    }
+    if (balanced == null) {
+      balanced = choosePreferredRemoteWeight();
+    }
+    RemoteWeightInfo strongest = chooseStrongestRemoteWeight();
+    RemoteWeightInfo lightweight = chooseRemoteWeightByFamily("20B");
+    if (lightweight == null) {
+      lightweight = chooseRemoteWeightByFamily("15B");
+    }
+    if (lightweight == null) {
+      lightweight = chooseRemoteWeightByFamily("10B");
+    }
+
+    balancedRecommendation.configure(
+        text("AutoSetup.recommendationBalanced"),
+        text("AutoSetup.recommendationBalancedHint"),
+        balanced,
+        text("AutoSetup.recommendedBadge"));
+    strongestRecommendation.configure(
+        text("AutoSetup.recommendationStrongest"),
+        text("AutoSetup.recommendationStrongestHint"),
+        strongest,
+        text("AutoSetup.officialStrongestBadge"));
+    lightweightRecommendation.configure(
+        text("AutoSetup.recommendationLightweight"),
+        text("AutoSetup.recommendationLightweightHint"),
+        lightweight,
+        "");
+  }
+
+  private RemoteWeightInfo chooseStrongestRemoteWeight() {
+    RemoteWeightInfo strongest = null;
+    double highestElo = Double.NEGATIVE_INFINITY;
+    for (RemoteWeightInfo info : remoteWeightInfos) {
+      if (info.recommended) {
+        return info;
+      }
+      double elo = parseElo(info.eloRating);
+      if (strongest == null || elo > highestElo) {
+        strongest = info;
+        highestElo = elo;
+      }
+    }
+    return strongest;
+  }
+
+  private RemoteWeightInfo chooseRemoteWeightByFamily(String family) {
+    for (RemoteWeightInfo info : remoteWeightInfos) {
+      if (family.equalsIgnoreCase(remoteWeightFamily(info))) {
+        return info;
+      }
+    }
+    return null;
+  }
+
+  static String compactEloRating(String value) {
+    double elo = parseElo(value);
+    if (!Double.isFinite(elo)) {
+      return "-";
+    }
+    return String.format(Locale.ROOT, "%,.0f", elo);
+  }
+
+  private static double parseElo(String value) {
+    if (value == null) {
+      return Double.NEGATIVE_INFINITY;
+    }
+    Matcher matcher = ELO_VALUE_PATTERN.matcher(value);
+    if (!matcher.find()) {
+      return Double.NEGATIVE_INFINITY;
+    }
+    try {
+      return Double.parseDouble(matcher.group().replace(",", ""));
+    } catch (NumberFormatException e) {
+      return Double.NEGATIVE_INFINITY;
+    }
+  }
+
+  private void selectRecommendedWeight(RemoteWeightInfo info) {
+    if (info == null) {
+      return;
+    }
+    switchWeightCatalogMode(WeightCatalogMode.OFFICIAL);
+    selectWeightCatalogEntry(WeightCatalogEntry.officialKey(info));
+    weightCatalogList.requestFocusInWindow();
+  }
+
+  private void activateRecommendation(WeightRecommendationCard card) {
+    if (card == null || card.getWeight() == null || hasActiveBackgroundTask()) {
+      return;
+    }
+    selectRecommendedWeight(card.getWeight());
+    if (card.getAction() == RecommendationAction.DOWNLOAD) {
+      startRecommendedWeightDownloadInternal();
+    } else if (card.getAction() == RecommendationAction.USE) {
+      useSelectedWeight();
+    }
+  }
+
   private void selectRemoteWeightByModelName(String modelName) {
     if (modelName == null || modelName.trim().isEmpty()) {
       return;
     }
-    for (int i = 0; i < cmbRemoteWeights.getItemCount(); i++) {
-      RemoteWeightInfo item = cmbRemoteWeights.getItemAt(i);
-      if (matchesModelName(item, modelName)) {
-        cmbRemoteWeights.setSelectedIndex(i);
+    for (RemoteWeightInfo info : remoteWeightInfos) {
+      if (matchesModelName(info, modelName)) {
+        switchWeightCatalogMode(WeightCatalogMode.OFFICIAL);
+        selectWeightCatalogEntry(WeightCatalogEntry.officialKey(info));
         return;
       }
+    }
+    if (snapshot != null && snapshot.activeWeightPath != null) {
+      selectLocalWeight(snapshot.activeWeightPath);
     }
   }
 
@@ -2564,30 +3084,7 @@ public class KataGoAutoSetupDialog extends JDialog {
   }
 
   private boolean isDownloadedRemoteWeight(RemoteWeightInfo info) {
-    if (info == null) {
-      return false;
-    }
-    if (matchesCurrentWeight(info)) {
-      return true;
-    }
-    if (snapshot == null || snapshot.weightCandidates == null) {
-      return false;
-    }
-    String remoteFileName = normalizeWeightName(info.fileName());
-    for (Path candidate : snapshot.weightCandidates) {
-      if (candidate == null || candidate.getFileName() == null) {
-        continue;
-      }
-      String candidateFileName = normalizeWeightName(candidate.getFileName().toString());
-      if (candidateFileName.equals(remoteFileName)) {
-        return true;
-      }
-      String displayName = KataGoAutoSetupHelper.resolveWeightDisplayName(candidate);
-      if (matchesModelName(info, displayName)) {
-        return true;
-      }
-    }
-    return false;
+    return findDownloadedRemoteWeightPath(info) != null;
   }
 
   private String normalizeWeightName(String value) {
@@ -2653,15 +3150,18 @@ public class KataGoAutoSetupDialog extends JDialog {
       return;
     }
     btnRefresh.setEnabled(true);
-    btnAutoSetup.setEnabled(true);
     btnReloadRemoteWeights.setEnabled(true);
     btnDownloadWeight.setEnabled(canDownloadSelectedRemoteWeight());
     btnImportWeight.setEnabled(true);
     btnUseWeight.setEnabled(canUseSelectedLocalWeight());
     btnDownloadHumanSlModel.setEnabled(canDownloadHumanSlModel());
     btnImportHumanSlModel.setEnabled(true);
-    cmbLocalWeights.setEnabled(cmbLocalWeights.getItemCount() > 0);
-    cmbRemoteWeights.setEnabled(cmbRemoteWeights.getItemCount() > 0);
+    weightCatalogList.setEnabled(!weightCatalogModel.isEmpty());
+    btnOfficialWeightTab.setEnabled(true);
+    btnCustomWeightTab.setEnabled(true);
+    balancedRecommendation.setEnabled(balancedRecommendation.getWeight() != null);
+    strongestRecommendation.setEnabled(strongestRecommendation.getWeight() != null);
+    lightweightRecommendation.setEnabled(lightweightRecommendation.getWeight() != null);
     btnInstallNvidiaRuntime.setEnabled(canInstallNvidiaRuntime());
     btnInstallTensorRt.setEnabled(canInstallTensorRt());
     btnSwitchBackCuda.setEnabled(canSwitchBackToCuda());
@@ -2675,8 +3175,752 @@ public class KataGoAutoSetupDialog extends JDialog {
     return Lizzie.resourceBundle.getString(key);
   }
 
-  private static class WeightStoneIcon implements Icon {
-    private static final int SIZE = 36;
+  private enum WeightCatalogMode {
+    OFFICIAL("official"),
+    CUSTOM("custom");
+
+    private final String cardName;
+
+    WeightCatalogMode(String cardName) {
+      this.cardName = cardName;
+    }
+  }
+
+  private static final class WeightCatalogEntry {
+    private final RemoteWeightInfo remoteInfo;
+    private final Path localPath;
+
+    private WeightCatalogEntry(RemoteWeightInfo remoteInfo, Path localPath) {
+      this.remoteInfo = remoteInfo;
+      this.localPath = localPath == null ? null : localPath.toAbsolutePath().normalize();
+    }
+
+    private static WeightCatalogEntry official(RemoteWeightInfo info, Path downloadedPath) {
+      return new WeightCatalogEntry(info, downloadedPath);
+    }
+
+    private static WeightCatalogEntry custom(Path path) {
+      return new WeightCatalogEntry(null, path);
+    }
+
+    private String stableKey() {
+      return remoteInfo == null ? customKey(localPath) : officialKey(remoteInfo);
+    }
+
+    private static String officialKey(RemoteWeightInfo info) {
+      if (info == null) {
+        return "";
+      }
+      return "official:"
+          + (info.modelName == null ? info.fileName() : info.modelName)
+              .trim()
+              .toLowerCase(Locale.ROOT);
+    }
+
+    private static String customKey(Path path) {
+      return path == null ? "" : "custom:" + path.toAbsolutePath().normalize();
+    }
+  }
+
+  private enum RecommendationTone {
+    TEAL(new Color(18, 105, 97), new Color(214, 235, 229)),
+    GOLD(new Color(201, 133, 27), new Color(249, 232, 202)),
+    SAGE(new Color(54, 125, 86), new Color(220, 237, 223));
+
+    private final Color accent;
+    private final Color wash;
+
+    RecommendationTone(Color accent, Color wash) {
+      this.accent = accent;
+      this.wash = wash;
+    }
+  }
+
+  enum RecommendationAction {
+    NONE,
+    DOWNLOAD,
+    USE,
+    CURRENT
+  }
+
+  static RecommendationAction recommendationAction(boolean downloaded, boolean current) {
+    if (current) {
+      return RecommendationAction.CURRENT;
+    }
+    return downloaded ? RecommendationAction.USE : RecommendationAction.DOWNLOAD;
+  }
+
+  static Rectangle centeredRecommendationIconBounds(
+      int containerWidth, int containerHeight, Dimension iconSize) {
+    int width = iconSize == null ? 0 : Math.max(0, iconSize.width);
+    int height = iconSize == null ? 0 : Math.max(0, iconSize.height);
+    return new Rectangle(
+        Math.max(0, (containerWidth - width) / 2),
+        Math.max(0, (containerHeight - height) / 2),
+        width,
+        height);
+  }
+
+  private static Color blendColor(Color first, Color second, float ratio) {
+    float bounded = Math.max(0f, Math.min(1f, ratio));
+    return new Color(
+        Math.round(first.getRed() * (1f - bounded) + second.getRed() * bounded),
+        Math.round(first.getGreen() * (1f - bounded) + second.getGreen() * bounded),
+        Math.round(first.getBlue() * (1f - bounded) + second.getBlue() * bounded));
+  }
+
+  private final class WeightRecommendationCard extends JPanel {
+    private final RecommendationTone tone;
+    private final JFontLabel title = new JFontLabel();
+    private final JTextArea description = new JTextArea();
+    private final JFontLabel model = new JFontLabel();
+    private final JFontLabel metadata = new JFontLabel();
+    private final WeightStatusTagLabel badge = new WeightStatusTagLabel();
+    private final JFontButton actionButton = new JFontButton();
+    private RemoteWeightInfo weight;
+    private RecommendationAction action = RecommendationAction.NONE;
+    private Runnable activation;
+
+    private WeightRecommendationCard(RecommendationTone tone) {
+      this.tone = tone;
+      setLayout(new GridBagLayout());
+      setOpaque(false);
+      setBorder(BorderFactory.createEmptyBorder(7, 12, 7, 12));
+      setPreferredSize(new Dimension(10, WEIGHT_RECOMMENDATION_CARD_HEIGHT));
+
+      JFontLabel icon = new JFontLabel();
+      icon.setHorizontalAlignment(SwingConstants.CENTER);
+      icon.setIcon(new RecommendationIcon(tone));
+      badge.setStatus(
+          "", tone == RecommendationTone.GOLD ? StatusTagTone.GOLD : StatusTagTone.TEAL);
+      JPanel iconRow = new RecommendationHeaderPanel(icon, badge);
+
+      GridBagConstraints gbc = new GridBagConstraints();
+      gbc.gridx = 0;
+      gbc.gridy = 0;
+      gbc.weightx = 1;
+      gbc.fill = GridBagConstraints.HORIZONTAL;
+      add(iconRow, gbc);
+
+      title.setForeground(TEXT_PRIMARY);
+      title.setHorizontalAlignment(SwingConstants.CENTER);
+      title.setFont(title.getFont().deriveFont(Font.BOLD, title.getFont().getSize2D() + 2f));
+      gbc.gridy++;
+      gbc.insets = new Insets(1, 0, 0, 0);
+      add(title, gbc);
+
+      description.setEditable(false);
+      description.setFocusable(false);
+      description.setLineWrap(true);
+      description.setWrapStyleWord(true);
+      description.setOpaque(false);
+      description.setForeground(TEXT_SECONDARY);
+      description.setFont(title.getFont().deriveFont(Font.PLAIN, title.getFont().getSize2D() - 3f));
+      description.setBorder(BorderFactory.createEmptyBorder(0, 2, 0, 2));
+      description.setRows(2);
+      gbc.gridy++;
+      gbc.weighty = 0;
+      gbc.fill = GridBagConstraints.HORIZONTAL;
+      gbc.insets = new Insets(1, 0, 2, 0);
+      add(description, gbc);
+
+      JPanel separator = new JPanel();
+      separator.setBackground(new Color(226, 221, 211));
+      separator.setPreferredSize(new Dimension(10, 1));
+      gbc.gridy++;
+      gbc.weighty = 0;
+      gbc.fill = GridBagConstraints.HORIZONTAL;
+      gbc.insets = new Insets(0, 0, 4, 0);
+      add(separator, gbc);
+
+      model.setForeground(TEXT_PRIMARY);
+      model.setFont(model.getFont().deriveFont(Font.BOLD));
+      metadata.setForeground(TEXT_SECONDARY);
+      metadata.setFont(metadata.getFont().deriveFont(metadata.getFont().getSize2D() - 1f));
+      JPanel labels = new JPanel(new BorderLayout(0, 1));
+      labels.setOpaque(false);
+      labels.add(model, BorderLayout.NORTH);
+      labels.add(metadata, BorderLayout.CENTER);
+
+      styleWeightButton(actionButton, WeightButtonStyle.PRIMARY);
+      actionButton.setIconTextGap(5);
+      actionButton.addActionListener(
+          event -> {
+            if (activation != null) {
+              activation.run();
+            }
+          });
+      JPanel footer = new JPanel(new BorderLayout(8, 1));
+      footer.setOpaque(false);
+      footer.add(labels, BorderLayout.CENTER);
+      footer.add(actionButton, BorderLayout.EAST);
+      gbc.gridy++;
+      gbc.insets = new Insets(0, 0, 0, 0);
+      add(footer, gbc);
+    }
+
+    private void configure(
+        String titleText, String descriptionText, RemoteWeightInfo remoteWeight, String badgeText) {
+      weight = remoteWeight;
+      title.setText(titleText);
+      description.setText(descriptionText);
+      badge.setStatus(
+          remoteWeight == null ? "" : badgeText,
+          tone == RecommendationTone.GOLD ? StatusTagTone.GOLD : StatusTagTone.TEAL);
+      if (remoteWeight == null) {
+        action = RecommendationAction.NONE;
+        model.setText(text("AutoSetup.loadingRemote"));
+        metadata.setText("");
+        setToolTipText(null);
+        setEnabled(false);
+      } else {
+        Path downloadedPath = findDownloadedRemoteWeightPath(remoteWeight);
+        boolean current = matchesCurrentWeight(remoteWeight);
+        action = recommendationAction(downloadedPath != null || current, current);
+        model.setText(formatRemoteModelName(remoteWeight));
+        metadata.setText(formatRecommendationMetadata(remoteWeight));
+        setToolTipText(
+            weightTooltip(
+                formatRemoteModelName(remoteWeight),
+                formatRemoteMetadata(remoteWeight),
+                remoteWeight.eloRating,
+                remoteWeight.fileName(),
+                remoteWeight.downloadUrl));
+        setEnabled(!hasActiveBackgroundTask());
+      }
+      configureActionButton();
+      getAccessibleContext().setAccessibleName(titleText + " " + model.getText());
+      getAccessibleContext()
+          .setAccessibleDescription(
+              descriptionText
+                  + (actionButton.isVisible() ? " · " + actionButton.getText() : ""));
+      revalidate();
+      repaint();
+    }
+
+    private void configureActionButton() {
+      if (action == RecommendationAction.DOWNLOAD) {
+        actionButton.setText(text("AutoSetup.downloadShort"));
+        actionButton.setIcon(new WeightActionIcon(WeightActionIcon.DOWNLOAD));
+      } else if (action == RecommendationAction.USE) {
+        actionButton.setText(text("AutoSetup.useWeight"));
+        actionButton.setIcon(new WeightActionIcon(WeightActionIcon.USE));
+      } else if (action == RecommendationAction.CURRENT) {
+        actionButton.setText(text("AutoSetup.currentlyUsingShort"));
+        actionButton.setIcon(new WeightActionIcon(WeightActionIcon.USE));
+      } else {
+        actionButton.setText("");
+        actionButton.setIcon(null);
+      }
+      boolean visible = action != RecommendationAction.NONE;
+      actionButton.setVisible(visible);
+      if (visible) {
+        Dimension preferred = localizedButtonSize(actionButton, 78, 30);
+        preferred = new Dimension(Math.min(142, preferred.width), 30);
+        actionButton.setPreferredSize(preferred);
+        actionButton.setMinimumSize(preferred);
+        actionButton.setMaximumSize(preferred);
+      }
+      actionButton.setEnabled(
+          isEnabled()
+              && (action == RecommendationAction.DOWNLOAD || action == RecommendationAction.USE));
+      actionButton.setToolTipText(actionButton.isVisible() ? actionButton.getText() : null);
+      AccessibilitySupport.named(
+          actionButton,
+          actionButton.getText(),
+          title.getText() + " · " + model.getText() + " · " + actionButton.getText());
+    }
+
+    private void setActivation(Runnable activation) {
+      this.activation = activation;
+    }
+
+    @Override
+    public void setEnabled(boolean enabled) {
+      super.setEnabled(enabled);
+      if (actionButton != null) {
+        actionButton.setEnabled(
+            enabled
+                && (action == RecommendationAction.DOWNLOAD
+                    || action == RecommendationAction.USE));
+      }
+      repaint();
+    }
+
+    @Override
+    protected void paintComponent(Graphics graphics) {
+      Graphics2D g2 = (Graphics2D) graphics.create();
+      try {
+        g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+        boolean hover = actionButton != null && actionButton.getModel().isRollover();
+        Color fill = hover ? blendColor(CARD_BG, tone.wash, 0.24f) : CARD_BG;
+        g2.setColor(new Color(72, 56, 32, hover ? 23 : 16));
+        g2.fillRoundRect(2, 3, getWidth() - 4, getHeight() - 4, 16, 16);
+        g2.setColor(fill);
+        g2.fillRoundRect(0, 0, getWidth() - 1, getHeight() - 3, 16, 16);
+        g2.setColor(isEnabled() ? tone.accent : new Color(199, 194, 183));
+        g2.setStroke(new BasicStroke(hover ? 1.35f : 1f));
+        g2.drawRoundRect(0, 0, getWidth() - 1, getHeight() - 3, 16, 16);
+      } finally {
+        g2.dispose();
+      }
+      super.paintComponent(graphics);
+    }
+
+    private RemoteWeightInfo getWeight() {
+      return weight;
+    }
+
+    private RecommendationAction getAction() {
+      return action;
+    }
+  }
+
+  private static final class RecommendationHeaderPanel extends JPanel {
+    private final JComponent centered;
+    private final JComponent trailing;
+
+    private RecommendationHeaderPanel(JComponent centered, JComponent trailing) {
+      this.centered = centered;
+      this.trailing = trailing;
+      setLayout(null);
+      setOpaque(false);
+      add(centered);
+      add(trailing);
+    }
+
+    @Override
+    public void doLayout() {
+      Rectangle centeredBounds =
+          centeredRecommendationIconBounds(getWidth(), getHeight(), centered.getPreferredSize());
+      centered.setBounds(centeredBounds);
+      Dimension trailingSize = trailing.getPreferredSize();
+      trailing.setBounds(
+          Math.max(0, getWidth() - trailingSize.width),
+          Math.max(0, (getHeight() - trailingSize.height) / 2),
+          Math.min(getWidth(), trailingSize.width),
+          trailingSize.height);
+    }
+
+    @Override
+    public Dimension getPreferredSize() {
+      Dimension centeredSize = centered.getPreferredSize();
+      Dimension trailingSize = trailing.getPreferredSize();
+      return new Dimension(
+          Math.max(centeredSize.width, trailingSize.width * 2),
+          Math.max(centeredSize.height, trailingSize.height));
+    }
+  }
+
+  static void configureWeightCatalogColumns(
+      JPanel panel, JComponent identity, JComponent elo, JComponent date, JComponent status) {
+    panel.removeAll();
+    panel.setLayout(new WeightCatalogColumnsLayout(identity, elo, date, status));
+    setHorizontalAlignment(identity, SwingConstants.LEFT);
+    setHorizontalAlignment(elo, SwingConstants.CENTER);
+    setHorizontalAlignment(date, SwingConstants.CENTER);
+    setHorizontalAlignment(status, SwingConstants.CENTER);
+    panel.add(identity);
+    panel.add(elo);
+    panel.add(date);
+    panel.add(status);
+  }
+
+  static boolean isWeightCatalogDownloadHit(int x, int listWidth) {
+    Rectangle statusBounds =
+        weightCatalogStatusActionBounds(
+            listWidth,
+            WEIGHT_CATALOG_ROW_HEIGHT,
+            new Insets(0, WEIGHT_CATALOG_HORIZONTAL_INSET, 0, WEIGHT_CATALOG_HORIZONTAL_INSET));
+    return x >= statusBounds.x && x < statusBounds.x + statusBounds.width;
+  }
+
+  private static void setHorizontalAlignment(JComponent component, int alignment) {
+    if (component instanceof JLabel) {
+      ((JLabel) component).setHorizontalAlignment(alignment);
+    }
+  }
+
+  static Rectangle[] weightCatalogColumnBounds(int width, int height, Insets insets) {
+    Insets safeInsets = insets == null ? new Insets(0, 0, 0, 0) : insets;
+    int contentWidth = Math.max(0, width - safeInsets.left - safeInsets.right);
+    int gapWidth =
+        WEIGHT_CATALOG_ELO_GAP + WEIGHT_CATALOG_DATE_GAP + WEIGHT_CATALOG_STATUS_GAP;
+    int columnWidth = Math.max(0, contentWidth - gapWidth);
+    int minimumTrailingWidth =
+        WEIGHT_CATALOG_ELO_WIDTH + WEIGHT_CATALOG_DATE_WIDTH + WEIGHT_CATALOG_STATUS_WIDTH;
+    int modelWidth =
+        Math.min(
+            WEIGHT_CATALOG_MODEL_MAX_WIDTH,
+            Math.max(0, columnWidth - minimumTrailingWidth));
+    int trailingWidth = Math.max(0, columnWidth - modelWidth);
+    int eloWidth;
+    int dateWidth;
+    if (trailingWidth >= minimumTrailingWidth) {
+      int extraWidth = trailingWidth - minimumTrailingWidth;
+      eloWidth = WEIGHT_CATALOG_ELO_WIDTH + Math.round(extraWidth * 0.20f);
+      dateWidth = WEIGHT_CATALOG_DATE_WIDTH + Math.round(extraWidth * 0.35f);
+    } else {
+      eloWidth =
+          minimumTrailingWidth == 0
+              ? 0
+              : Math.round(
+                  trailingWidth * (WEIGHT_CATALOG_ELO_WIDTH / (float) minimumTrailingWidth));
+      dateWidth =
+          minimumTrailingWidth == 0
+              ? 0
+              : Math.round(
+                  trailingWidth * (WEIGHT_CATALOG_DATE_WIDTH / (float) minimumTrailingWidth));
+    }
+    int statusWidth = Math.max(0, trailingWidth - eloWidth - dateWidth);
+    int contentHeight = Math.max(0, height - safeInsets.top - safeInsets.bottom);
+    int x = safeInsets.left;
+    Rectangle model = new Rectangle(x, safeInsets.top, modelWidth, contentHeight);
+    x += modelWidth + WEIGHT_CATALOG_ELO_GAP;
+    Rectangle elo = new Rectangle(x, safeInsets.top, eloWidth, contentHeight);
+    x += eloWidth + WEIGHT_CATALOG_DATE_GAP;
+    Rectangle date = new Rectangle(x, safeInsets.top, dateWidth, contentHeight);
+    x += dateWidth + WEIGHT_CATALOG_STATUS_GAP;
+    Rectangle status = new Rectangle(x, safeInsets.top, statusWidth, contentHeight);
+    return new Rectangle[] {model, elo, date, status};
+  }
+
+  private static Rectangle weightCatalogStatusActionBounds(
+      int width, int height, Insets insets) {
+    Rectangle statusColumn = weightCatalogColumnBounds(width, height, insets)[3];
+    int actionWidth = Math.min(statusColumn.width, WEIGHT_CATALOG_STATUS_WIDTH);
+    return new Rectangle(
+        statusColumn.x + Math.max(0, (statusColumn.width - actionWidth) / 2),
+        statusColumn.y,
+        actionWidth,
+        statusColumn.height);
+  }
+
+  private static final class WeightCatalogColumnsLayout implements LayoutManager {
+    private final Component identity;
+    private final Component elo;
+    private final Component date;
+    private final Component status;
+
+    private WeightCatalogColumnsLayout(
+        Component identity, Component elo, Component date, Component status) {
+      this.identity = identity;
+      this.elo = elo;
+      this.date = date;
+      this.status = status;
+    }
+
+    @Override
+    public void addLayoutComponent(String name, Component component) {}
+
+    @Override
+    public void removeLayoutComponent(Component component) {}
+
+    @Override
+    public Dimension preferredLayoutSize(Container parent) {
+      Insets insets = parent.getInsets();
+      int width =
+          WEIGHT_CATALOG_MODEL_MAX_WIDTH
+              + WEIGHT_CATALOG_ELO_GAP
+              + WEIGHT_CATALOG_ELO_WIDTH
+              + WEIGHT_CATALOG_DATE_GAP
+              + WEIGHT_CATALOG_DATE_WIDTH
+              + WEIGHT_CATALOG_STATUS_GAP
+              + WEIGHT_CATALOG_STATUS_WIDTH
+              + insets.left
+              + insets.right;
+      int height =
+          Math.max(
+              Math.max(identity.getPreferredSize().height, elo.getPreferredSize().height),
+              Math.max(date.getPreferredSize().height, status.getPreferredSize().height));
+      return new Dimension(width, height + insets.top + insets.bottom);
+    }
+
+    @Override
+    public Dimension minimumLayoutSize(Container parent) {
+      return preferredLayoutSize(parent);
+    }
+
+    @Override
+    public void layoutContainer(Container parent) {
+      Rectangle[] bounds =
+          weightCatalogColumnBounds(
+              parent.getWidth(), parent.getHeight(), parent.getInsets());
+      Component[] components = {identity, elo, date, status};
+      for (int index = 0; index < components.length; index++) {
+        Dimension preferred = components[index].getPreferredSize();
+        Rectangle column = bounds[index];
+        int componentHeight = Math.min(column.height, preferred.height);
+        components[index].setBounds(
+            column.x,
+            column.y + Math.max(0, (column.height - componentHeight) / 2),
+            column.width,
+            componentHeight);
+      }
+    }
+  }
+
+  private final class WeightCatalogRenderer extends JPanel
+      implements ListCellRenderer<WeightCatalogEntry> {
+    private final FamilyTagLabel family = new FamilyTagLabel();
+    private final JFontLabel model = new JFontLabel();
+    private final WeightStatusTagLabel recommendation = new WeightStatusTagLabel();
+    private final JFontLabel elo = new JFontLabel();
+    private final JFontLabel date = new JFontLabel();
+    private final WeightStatusTagLabel status = new WeightStatusTagLabel();
+    private final JPanel identity = new JPanel(new GridBagLayout());
+    private boolean selected;
+    private boolean focused;
+
+    private WeightCatalogRenderer() {
+      identity.setOpaque(false);
+      GridBagConstraints gbc = new GridBagConstraints();
+      gbc.gridy = 0;
+      gbc.insets = new Insets(0, 0, 0, 8);
+      identity.add(family, gbc);
+      gbc.gridx = 1;
+      gbc.weightx = 1;
+      gbc.fill = GridBagConstraints.HORIZONTAL;
+      identity.add(model, gbc);
+      gbc.gridx = 2;
+      gbc.weightx = 0;
+      gbc.fill = GridBagConstraints.NONE;
+      gbc.insets = new Insets(0, 5, 0, 4);
+      identity.add(recommendation, gbc);
+
+      elo.setHorizontalAlignment(SwingConstants.CENTER);
+      date.setHorizontalAlignment(SwingConstants.RIGHT);
+      status.setHorizontalAlignment(SwingConstants.CENTER);
+      setOpaque(false);
+      setBorder(BorderFactory.createEmptyBorder(0, 14, 0, 14));
+      configureWeightCatalogColumns(this, identity, elo, date, status);
+    }
+
+    @Override
+    public Component getListCellRendererComponent(
+        JList<? extends WeightCatalogEntry> list,
+        WeightCatalogEntry value,
+        int index,
+        boolean isSelected,
+        boolean cellHasFocus) {
+      selected = isSelected;
+      focused = cellHasFocus;
+      Color primary = isSelected ? new Color(18, 80, 75) : TEXT_PRIMARY;
+      RemoteWeightInfo remote = value == null ? null : value.remoteInfo;
+      Path local = value == null ? null : value.localPath;
+      family.setFamily(
+          remote == null ? text("AutoSetup.customWeightShort") : remoteWeightFamily(remote),
+          isSelected);
+      model.setText(
+          remote != null
+              ? formatRemoteModelName(remote)
+              : local == null
+                  ? text("AutoSetup.noLocalWeights")
+                  : KataGoAutoSetupHelper.resolveWeightDisplayName(local));
+      model.setForeground(primary);
+      Font baseFont = list.getFont() == null ? model.getFont() : list.getFont();
+      model.setFont(baseFont.deriveFont(Font.PLAIN));
+      model.setMinimumSize(new Dimension(0, model.getPreferredSize().height));
+      identity.setMinimumSize(new Dimension(0, identity.getPreferredSize().height));
+      elo.setFont(baseFont.deriveFont(Font.BOLD));
+      date.setFont(baseFont.deriveFont(Font.PLAIN));
+      recommendation.setStatus(remoteWeightRecommendation(remote), StatusTagTone.GOLD);
+      elo.setText(remote == null ? "-" : compactEloRating(remote.eloRating));
+      date.setText(remote == null ? formatLocalWeightDate(local) : formatRemoteReleaseDate(remote));
+      boolean current = local != null && isCurrentLocalWeight(local);
+      if (current) {
+        status.setStatus(text("AutoSetup.currentlyUsingShort"), StatusTagTone.TEAL);
+        status.setToolTipText(text("AutoSetup.currentlyUsingShort"));
+      } else if (remote != null && local == null) {
+        status.setDownloadAction(
+            text("AutoSetup.downloadShort"), index == hoveredWeightDownloadRow);
+        status.setToolTipText(text("AutoSetup.downloadWeight"));
+      } else {
+        status.setStatus(
+            remote == null ? text("AutoSetup.importedWeight") : text("AutoSetup.downloaded"),
+            StatusTagTone.SUCCESS);
+        status.setToolTipText(
+            remote == null ? text("AutoSetup.importedWeight") : text("AutoSetup.downloaded"));
+      }
+      Color secondary = isSelected ? new Color(29, 108, 89) : new Color(88, 91, 86);
+      elo.setForeground(secondary);
+      date.setForeground(secondary);
+      String tooltip =
+          value == null
+              ? null
+              : remote != null
+                  ? weightTooltip(
+                      formatRemoteModelName(remote),
+                      formatRemoteMetadata(remote),
+                      remote.eloRating,
+                      remote.fileName(),
+                      remote.downloadUrl)
+                  : weightTooltip(
+                      KataGoAutoSetupHelper.resolveWeightDisplayName(local),
+                      local.toAbsolutePath().normalize().toString());
+      setToolTipText(tooltip);
+      model.setToolTipText(tooltip);
+      elo.setToolTipText(tooltip);
+      date.setToolTipText(tooltip);
+      return this;
+    }
+
+    @Override
+    protected void paintComponent(Graphics graphics) {
+      Graphics2D g2 = (Graphics2D) graphics.create();
+      try {
+        g2.setColor(selected ? new Color(230, 244, 239) : new Color(255, 254, 250));
+        g2.fillRect(0, 0, getWidth(), getHeight());
+        if (selected) {
+          g2.setColor(ACCENT_TEAL);
+          g2.fillRoundRect(0, 2, 5, Math.max(1, getHeight() - 4), 5, 5);
+        }
+        g2.setColor(new Color(231, 227, 218));
+        g2.drawLine(10, getHeight() - 1, getWidth() - 10, getHeight() - 1);
+        if (focused) {
+          g2.setColor(new Color(49, 125, 116, 145));
+          g2.drawRoundRect(5, 2, Math.max(1, getWidth() - 11), Math.max(1, getHeight() - 5), 8, 8);
+        }
+      } finally {
+        g2.dispose();
+      }
+      super.paintComponent(graphics);
+    }
+  }
+
+  static int weightCatalogVisibleHeight(int rows) {
+    return Math.max(0, rows) * WEIGHT_CATALOG_ROW_HEIGHT + 2;
+  }
+
+  static int weightCatalogViewportRows(int entryCount) {
+    if (entryCount <= 0) {
+      return 2;
+    }
+    return Math.min(WEIGHT_CATALOG_VISIBLE_ROWS, entryCount);
+  }
+
+  private String remoteWeightRecommendation(RemoteWeightInfo info) {
+    if (info == null) {
+      return "";
+    }
+    if (KataGoAutoSetupHelper.isDefaultGeneralUseWeight(info)) {
+      return text("AutoSetup.recommendedBadge");
+    }
+    if (info.recommended) {
+      return text("AutoSetup.officialStrongestBadge");
+    }
+    return info.latest ? text("AutoSetup.recommendedLatest") : "";
+  }
+
+  private String remoteWeightFamily(RemoteWeightInfo info) {
+    if (info == null) {
+      return "";
+    }
+    String model = info.modelName == null ? "" : info.modelName.toLowerCase(Locale.ROOT);
+    int marker = model.indexOf("-b");
+    while (marker >= 0 && marker + 2 < model.length()) {
+      int end = marker + 2;
+      while (end < model.length() && Character.isDigit(model.charAt(end))) {
+        end++;
+      }
+      if (end > marker + 2) {
+        return model.substring(marker + 2, end).toUpperCase(Locale.ROOT) + "B";
+      }
+      marker = model.indexOf("-b", marker + 2);
+    }
+    String display = formatRemoteModelName(info);
+    for (String token : display.split("\\s+")) {
+      if (token.toUpperCase(Locale.ROOT).matches("[0-9]{1,3}B")) {
+        return token.toUpperCase(Locale.ROOT);
+      }
+    }
+    return "AI";
+  }
+
+  private enum WeightButtonStyle {
+    PRIMARY,
+    OUTLINE,
+    ICON
+  }
+
+  private static final class WeightCatalogTabUI extends BasicButtonUI {
+    @Override
+    public void paint(Graphics graphics, JComponent component) {
+      AbstractButton button = (AbstractButton) component;
+      Graphics2D g2 = (Graphics2D) graphics.create();
+      try {
+        g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+        boolean selected = button.isSelected();
+        boolean hover = button.isEnabled() && button.getModel().isRollover();
+        Color fill =
+            selected ? ACCENT_TEAL : hover ? new Color(247, 244, 236) : new Color(251, 249, 244);
+        Color border = selected ? ACCENT_TEAL : new Color(218, 211, 198);
+        g2.setColor(fill);
+        g2.fillRoundRect(0, 0, component.getWidth(), component.getHeight(), 9, 9);
+        g2.setColor(border);
+        g2.drawRoundRect(0, 0, component.getWidth() - 1, component.getHeight() - 1, 9, 9);
+        button.setForeground(selected ? Color.WHITE : TEXT_SECONDARY);
+      } finally {
+        g2.dispose();
+      }
+      super.paint(graphics, component);
+    }
+  }
+
+  private static final class WeightCatalogScrollBarUI extends BasicScrollBarUI {
+    @Override
+    protected void configureScrollBarColors() {
+      thumbColor = new Color(159, 156, 148);
+      trackColor = new Color(245, 242, 235);
+    }
+
+    @Override
+    protected JButton createDecreaseButton(int orientation) {
+      return zeroButton();
+    }
+
+    @Override
+    protected JButton createIncreaseButton(int orientation) {
+      return zeroButton();
+    }
+
+    private JButton zeroButton() {
+      JButton button = new JButton();
+      button.setPreferredSize(new Dimension(0, 0));
+      button.setMinimumSize(new Dimension(0, 0));
+      button.setMaximumSize(new Dimension(0, 0));
+      return button;
+    }
+
+    @Override
+    protected void paintThumb(Graphics graphics, JComponent component, Rectangle bounds) {
+      if (!component.isEnabled() || bounds.isEmpty()) {
+        return;
+      }
+      Graphics2D g2 = (Graphics2D) graphics.create();
+      try {
+        g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+        g2.setColor(thumbColor);
+        g2.fillRoundRect(
+            bounds.x + 2,
+            bounds.y + 2,
+            Math.max(4, bounds.width - 4),
+            Math.max(8, bounds.height - 4),
+            8,
+            8);
+      } finally {
+        g2.dispose();
+      }
+    }
+  }
+
+  private static final class RecommendationIcon implements Icon {
+    private static final int SIZE = 40;
+    private final RecommendationTone tone;
+
+    private RecommendationIcon(RecommendationTone tone) {
+      this.tone = tone;
+    }
 
     @Override
     public int getIconWidth() {
@@ -2693,19 +3937,816 @@ public class KataGoAutoSetupDialog extends JDialog {
       Graphics2D g2 = (Graphics2D) graphics.create();
       try {
         g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-        g2.setColor(new Color(226, 196, 136));
-        g2.fillRoundRect(x, y, SIZE, SIZE, 10, 10);
-        g2.setColor(new Color(153, 116, 61, 145));
-        for (int offset = 9; offset < SIZE; offset += 9) {
-          g2.drawLine(x + offset, y + 5, x + offset, y + SIZE - 5);
-          g2.drawLine(x + 5, y + offset, x + SIZE - 5, y + offset);
+        g2.setColor(tone.wash);
+        g2.fillOval(x, y, SIZE, SIZE);
+        g2.setColor(tone.accent);
+        g2.setStroke(new BasicStroke(2.2f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+        g2.drawOval(x + 2, y + 2, SIZE - 5, SIZE - 5);
+        int centerX = x + SIZE / 2;
+        int centerY = y + SIZE / 2;
+        if (tone == RecommendationTone.GOLD) {
+          Polygon crown = new Polygon();
+          crown.addPoint(x + 9, y + 17);
+          crown.addPoint(x + 16, y + 25);
+          crown.addPoint(centerX, y + 12);
+          crown.addPoint(x + 30, y + 25);
+          crown.addPoint(x + 37, y + 17);
+          crown.addPoint(x + 34, y + 34);
+          crown.addPoint(x + 12, y + 34);
+          g2.drawPolygon(crown);
+          g2.drawLine(x + 12, y + 29, x + 34, y + 29);
+        } else if (tone == RecommendationTone.SAGE) {
+          g2.drawArc(x + 12, y + 8, 23, 29, 100, 205);
+          g2.drawLine(x + 14, y + 35, x + 33, y + 15);
+          g2.drawLine(x + 19, y + 28, x + 28, y + 28);
+        } else {
+          Polygon star = new Polygon();
+          for (int index = 0; index < 10; index++) {
+            double angle = -Math.PI / 2 + index * Math.PI / 5;
+            double radius = index % 2 == 0 ? 14 : 6;
+            star.addPoint(
+                centerX + (int) Math.round(Math.cos(angle) * radius),
+                centerY + (int) Math.round(Math.sin(angle) * radius));
+          }
+          g2.fillPolygon(star);
         }
+      } finally {
+        g2.dispose();
+      }
+    }
+  }
+
+  private static final class WeightButtonUI extends BasicButtonUI {
+    private final WeightButtonStyle style;
+
+    private WeightButtonUI(WeightButtonStyle style) {
+      this.style = style;
+    }
+
+    @Override
+    public void paint(Graphics graphics, JComponent component) {
+      AbstractButton button = (AbstractButton) component;
+      Graphics2D g2 = (Graphics2D) graphics.create();
+      try {
+        g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+        boolean hover = button.isEnabled() && button.getModel().isRollover();
+        boolean pressed = button.isEnabled() && button.getModel().isPressed();
+        Color fill;
+        Color border;
+        if (!button.isEnabled()) {
+          fill = new Color(232, 228, 218);
+          border = new Color(218, 212, 200);
+        } else if (style == WeightButtonStyle.PRIMARY) {
+          fill = pressed ? new Color(7, 79, 74) : hover ? ACCENT_TEAL_HOVER : ACCENT_TEAL;
+          border = fill.darker();
+        } else {
+          fill = hover ? new Color(255, 249, 237) : new Color(255, 253, 248);
+          border = hover ? ACCENT_GOLD : new Color(213, 179, 119);
+        }
+        int arc = style == WeightButtonStyle.ICON ? 11 : 13;
+        g2.setColor(fill);
+        g2.fill(
+            new RoundRectangle2D.Float(
+                0.5f, 0.5f, component.getWidth() - 1f, component.getHeight() - 1f, arc, arc));
+        g2.setColor(border);
+        g2.setStroke(new BasicStroke(1f));
+        g2.draw(
+            new RoundRectangle2D.Float(
+                0.5f, 0.5f, component.getWidth() - 1f, component.getHeight() - 1f, arc, arc));
+      } finally {
+        g2.dispose();
+      }
+      super.paint(graphics, component);
+    }
+  }
+
+  private static final class RoundedSurfacePanel extends JPanel {
+    private final Color surface;
+    private final Color outline;
+    private final int arc;
+    private final boolean shadow;
+
+    private RoundedSurfacePanel(Color surface, Color outline, int arc, boolean shadow) {
+      this.surface = surface;
+      this.outline = outline;
+      this.arc = arc;
+      this.shadow = shadow;
+      setOpaque(false);
+    }
+
+    @Override
+    protected void paintComponent(Graphics graphics) {
+      Graphics2D g2 = (Graphics2D) graphics.create();
+      try {
+        g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+        int bottomInset = shadow ? 3 : 1;
+        if (shadow) {
+          g2.setColor(new Color(73, 55, 30, 22));
+          g2.fill(new RoundRectangle2D.Float(2f, 3f, getWidth() - 4f, getHeight() - 4f, arc, arc));
+        }
+        g2.setColor(surface);
+        g2.fill(
+            new RoundRectangle2D.Float(
+                0.5f, 0.5f, getWidth() - 1f, getHeight() - bottomInset, arc, arc));
+        g2.setColor(outline);
+        g2.setStroke(new BasicStroke(1f));
+        g2.draw(
+            new RoundRectangle2D.Float(
+                0.5f, 0.5f, getWidth() - 1f, getHeight() - bottomInset, arc, arc));
+      } finally {
+        g2.dispose();
+      }
+      super.paintComponent(graphics);
+    }
+  }
+
+  private static final class StatusPillLabel extends JFontLabel {
+    private Color tone = OK_COLOR;
+
+    private StatusPillLabel() {
+      setOpaque(false);
+    }
+
+    @Override
+    public void setForeground(Color color) {
+      tone = color == null ? OK_COLOR : color;
+      super.setForeground(OK_COLOR.equals(tone) ? Color.WHITE : ERROR_COLOR);
+    }
+
+    @Override
+    protected void paintComponent(Graphics graphics) {
+      boolean ready = OK_COLOR.equals(tone);
+      Graphics2D g2 = (Graphics2D) graphics.create();
+      try {
+        g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+        g2.setColor(ready ? ACCENT_TEAL : new Color(253, 239, 235));
+        g2.fillRoundRect(0, 0, getWidth(), getHeight(), getHeight(), getHeight());
+        if (!ready) {
+          g2.setColor(new Color(224, 173, 162));
+          g2.drawRoundRect(0, 0, getWidth() - 1, getHeight() - 1, getHeight(), getHeight());
+        }
+      } finally {
+        g2.dispose();
+      }
+      super.paintComponent(graphics);
+    }
+  }
+
+  private static final class WarmBodyPanel extends JPanel {
+    private WarmBodyPanel() {
+      super(new BorderLayout(0, 0));
+      setOpaque(false);
+    }
+
+    @Override
+    protected void paintComponent(Graphics graphics) {
+      Graphics2D g2 = (Graphics2D) graphics.create();
+      try {
+        g2.setPaint(
+            new GradientPaint(
+                0, 0, new Color(250, 247, 240), getWidth(), getHeight(), new Color(246, 242, 233)));
+        g2.fillRect(0, 0, getWidth(), getHeight());
+        g2.setColor(new Color(178, 139, 76, 8));
+        for (int x = 24; x < getWidth(); x += 48) {
+          g2.drawLine(x, 0, x, getHeight());
+        }
+        for (int y = 24; y < getHeight(); y += 48) {
+          g2.drawLine(0, y, getWidth(), y);
+        }
+        g2.setColor(new Color(195, 158, 92, 14));
+        g2.setStroke(new BasicStroke(1.2f));
+        g2.drawArc(getWidth() - 320, -180, 420, 420, 202, 118);
+        g2.drawArc(getWidth() - 250, -130, 310, 310, 195, 125);
+      } finally {
+        g2.dispose();
+      }
+      super.paintComponent(graphics);
+    }
+  }
+
+  private static final class SidebarBackdropPanel extends JPanel {
+    private SidebarBackdropPanel() {
+      super(new BorderLayout(0, 12));
+      setOpaque(false);
+    }
+
+    @Override
+    protected void paintComponent(Graphics graphics) {
+      Graphics2D g2 = (Graphics2D) graphics.create();
+      try {
+        g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+        g2.setPaint(
+            new GradientPaint(0, 0, new Color(6, 67, 63), 0, getHeight(), new Color(2, 45, 45)));
+        g2.fillRect(0, 0, getWidth(), getHeight());
+        int startY = Math.max(300, getHeight() - 190);
+        g2.setColor(new Color(203, 170, 101, 24));
+        for (int x = 18; x < getWidth(); x += 27) {
+          g2.drawLine(x, startY, x, getHeight());
+        }
+        for (int y = startY; y < getHeight(); y += 27) {
+          g2.drawLine(0, y, getWidth(), y);
+        }
+        int[][] stones = {
+          {25, 45, 13, 0},
+          {54, 73, 13, 0},
+          {82, 100, 14, 1},
+          {110, 74, 13, 1},
+          {136, 48, 13, 0},
+          {164, 99, 13, 0},
+          {54, 128, 13, 0},
+          {110, 154, 13, 1}
+        };
+        for (int[] stone : stones) {
+          int y = startY + stone[1];
+          g2.setColor(stone[3] == 0 ? new Color(5, 16, 17, 150) : new Color(221, 229, 219, 135));
+          g2.fillOval(stone[0], y, stone[2], stone[2]);
+        }
+      } finally {
+        g2.dispose();
+      }
+      super.paintComponent(graphics);
+    }
+  }
+
+  static Font deriveSidebarNavFont(Font preferred, Font fallback, boolean selected) {
+    Font base = preferred != null ? preferred : fallback;
+    if (base == null) {
+      base = new Font(Font.DIALOG, Font.PLAIN, 12);
+    }
+    return base.deriveFont(selected ? Font.BOLD : Font.PLAIN, base.getSize2D() + 1.5f);
+  }
+
+  private static final class SidebarNavRenderer extends JPanel implements ListCellRenderer<String> {
+    private final JFontLabel label = new JFontLabel();
+    private boolean selected;
+    private boolean focused;
+
+    private SidebarNavRenderer() {
+      super(new BorderLayout());
+      setOpaque(false);
+      setBorder(BorderFactory.createEmptyBorder(0, 14, 0, 10));
+      label.setIconTextGap(15);
+      add(label, BorderLayout.CENTER);
+    }
+
+    @Override
+    public Component getListCellRendererComponent(
+        JList<? extends String> list,
+        String value,
+        int index,
+        boolean isSelected,
+        boolean cellHasFocus) {
+      selected = isSelected;
+      focused = cellHasFocus;
+      label.setText(value);
+      label.setIcon(new NavIcon(index, isSelected));
+      label.setForeground(isSelected ? Color.WHITE : SIDEBAR_TEXT);
+      label.setFont(deriveSidebarNavFont(list.getFont(), label.getFont(), isSelected));
+      return this;
+    }
+
+    @Override
+    protected void paintComponent(Graphics graphics) {
+      Graphics2D g2 = (Graphics2D) graphics.create();
+      try {
+        g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+        if (selected) {
+          g2.setColor(SIDEBAR_SELECTED_BG);
+          g2.fillRoundRect(2, 3, getWidth() - 4, getHeight() - 6, 14, 14);
+          g2.setColor(ACCENT_GOLD);
+          g2.fillRoundRect(2, 8, 5, getHeight() - 16, 5, 5);
+        }
+        if (focused) {
+          g2.setColor(new Color(242, 210, 148, 120));
+          g2.drawRoundRect(3, 4, getWidth() - 7, getHeight() - 9, 12, 12);
+        }
+      } finally {
+        g2.dispose();
+      }
+      super.paintComponent(graphics);
+    }
+  }
+
+  private static final class FamilyTagLabel extends JFontLabel {
+    private Color tone = new Color(30, 135, 124);
+
+    private FamilyTagLabel() {
+      setHorizontalAlignment(SwingConstants.CENTER);
+      setBorder(BorderFactory.createEmptyBorder(2, 7, 2, 7));
+      setFont(getFont().deriveFont(Font.BOLD));
+      setOpaque(false);
+    }
+
+    private void setFamily(String value, boolean selected) {
+      setText(value);
+      tone = familyTone(value, selected);
+      setForeground(Color.WHITE);
+    }
+
+    @Override
+    protected void paintComponent(Graphics graphics) {
+      Graphics2D g2 = (Graphics2D) graphics.create();
+      try {
+        g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+        g2.setColor(tone);
+        g2.fillRoundRect(0, 2, getWidth(), Math.max(1, getHeight() - 4), 9, 9);
+      } finally {
+        g2.dispose();
+      }
+      super.paintComponent(graphics);
+    }
+
+    private static Color familyTone(String value, boolean selected) {
+      String family = value == null ? "" : value.toUpperCase(Locale.ROOT);
+      Color base;
+      if (family.startsWith("40")) {
+        base = new Color(58, 82, 143);
+      } else if (family.startsWith("60")) {
+        base = new Color(91, 68, 139);
+      } else if (family.startsWith("28")) {
+        base = new Color(22, 121, 111);
+      } else if (family.startsWith("20")) {
+        base = new Color(20, 126, 116);
+      } else if (family.startsWith("18")) {
+        base = new Color(48, 112, 150);
+      } else if (family.startsWith("15")) {
+        base = new Color(61, 115, 166);
+      } else if (family.startsWith("10")) {
+        base = new Color(55, 139, 132);
+      } else if (family.startsWith("6")) {
+        base = new Color(83, 139, 112);
+      } else if (family.toLowerCase(Locale.ROOT).contains("custom")) {
+        base = new Color(126, 105, 78);
+      } else {
+        base = new Color(30, 135, 124);
+      }
+      return selected ? base.darker() : base;
+    }
+  }
+
+  private static final class WeightStatusTagLabel extends JFontLabel {
+    private Color fill = new Color(247, 240, 222);
+    private Color outline = new Color(221, 188, 122);
+    private boolean actionStyle;
+
+    private WeightStatusTagLabel() {
+      setOpaque(false);
+      setHorizontalAlignment(SwingConstants.CENTER);
+      setBorder(BorderFactory.createEmptyBorder(1, 6, 1, 6));
+      setFont(getFont().deriveFont(getFont().getSize2D() - 1f));
+    }
+
+    private void setStatus(String value, StatusTagTone tone) {
+      String status = value == null ? "" : value.trim();
+      setText(status);
+      setVisible(!status.isEmpty());
+      actionStyle = false;
+      setIcon(null);
+      setIconTextGap(0);
+      setBorder(BorderFactory.createEmptyBorder(1, 6, 1, 6));
+      if (tone == StatusTagTone.SUCCESS) {
+        fill = new Color(236, 247, 239);
+        outline = new Color(161, 203, 175);
+        setForeground(new Color(24, 112, 76));
+      } else if (tone == StatusTagTone.TEAL) {
+        fill = new Color(231, 246, 242);
+        outline = new Color(145, 198, 187);
+        setForeground(new Color(19, 105, 95));
+      } else {
+        fill = new Color(253, 246, 229);
+        outline = new Color(226, 190, 116);
+        setForeground(new Color(168, 103, 18));
+      }
+    }
+
+    private void setDownloadAction(String value, boolean hovered) {
+      String label = value == null ? "" : value.trim();
+      setText(label);
+      setVisible(!label.isEmpty());
+      actionStyle = true;
+      setIcon(new WeightActionIcon(WeightActionIcon.DOWNLOAD));
+      setIconTextGap(4);
+      setBorder(BorderFactory.createEmptyBorder(1, 9, 1, 9));
+      if (hovered) {
+        fill = ACCENT_TEAL;
+        outline = ACCENT_TEAL;
+        setForeground(Color.WHITE);
+      } else {
+        fill = new Color(255, 250, 239);
+        outline = new Color(218, 160, 61);
+        setForeground(new Color(158, 91, 12));
+      }
+    }
+
+    @Override
+    protected void paintComponent(Graphics graphics) {
+      Graphics2D g2 = (Graphics2D) graphics.create();
+      try {
+        g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+        g2.setColor(fill);
+        int arc = actionStyle ? 10 : 8;
+        int capsuleWidth = Math.min(getWidth(), WEIGHT_CATALOG_STATUS_WIDTH);
+        int capsuleX = Math.max(0, (getWidth() - capsuleWidth) / 2);
+        g2.fillRoundRect(
+            capsuleX,
+            1,
+            Math.max(1, capsuleWidth - 1),
+            Math.max(1, getHeight() - 2),
+            arc,
+            arc);
+        g2.setColor(outline);
+        g2.drawRoundRect(
+            capsuleX,
+            1,
+            Math.max(1, capsuleWidth - 1),
+            Math.max(1, getHeight() - 2),
+            arc,
+            arc);
+      } finally {
+        g2.dispose();
+      }
+      super.paintComponent(graphics);
+    }
+  }
+
+  private enum StatusTagTone {
+    GOLD,
+    SUCCESS,
+    TEAL
+  }
+
+  static final class ResponsiveActionRow extends JPanel {
+    private static final int GAP = 7;
+    private static final int MIN_MAIN_WIDTH = 220;
+    private static final int DEFAULT_LAYOUT_WIDTH = 640;
+    private final JComponent mainComponent;
+    private final JComponent[] actions;
+    private boolean lastHorizontal = true;
+
+    private ResponsiveActionRow(JComponent mainComponent, JComponent... actions) {
+      this.mainComponent = mainComponent;
+      this.actions = actions.clone();
+      setLayout(null);
+      setOpaque(false);
+      add(mainComponent);
+      for (JComponent action : this.actions) {
+        add(action);
+      }
+    }
+
+    @Override
+    public void setBounds(int x, int y, int width, int height) {
+      boolean newHorizontal = horizontal(Math.max(1, width));
+      boolean orientationChanged = newHorizontal != lastHorizontal;
+      lastHorizontal = newHorizontal;
+      super.setBounds(x, y, width, height);
+      if (orientationChanged && getParent() != null) {
+        SwingUtilities.invokeLater(getParent()::revalidate);
+      }
+    }
+
+    private int actionWidth() {
+      int width = 0;
+      for (JComponent action : actions) {
+        width += action.getPreferredSize().width;
+      }
+      return width + Math.max(0, actions.length - 1) * GAP;
+    }
+
+    private int tallestAction() {
+      int height = 0;
+      for (JComponent action : actions) {
+        height = Math.max(height, action.getPreferredSize().height);
+      }
+      return height;
+    }
+
+    private boolean horizontal(int availableWidth) {
+      return availableWidth >= MIN_MAIN_WIDTH + GAP + actionWidth();
+    }
+
+    @Override
+    public Dimension getPreferredSize() {
+      int width = getWidth() > 0 ? getWidth() : DEFAULT_LAYOUT_WIDTH;
+      Dimension main = mainComponent.getPreferredSize();
+      if (horizontal(width)) {
+        return new Dimension(
+            Math.max(main.width + GAP + actionWidth(), width),
+            Math.max(main.height, tallestAction()));
+      }
+      return new Dimension(
+          Math.max(main.width, actionWidth()),
+          main.height + GAP + wrappedActionHeight(Math.max(1, width)));
+    }
+
+    private int wrappedActionHeight(int width) {
+      int rows = 1;
+      int used = 0;
+      for (JComponent action : actions) {
+        int actionWidth = action.getPreferredSize().width;
+        if (used > 0 && used + GAP + actionWidth > width) {
+          rows++;
+          used = 0;
+        }
+        used += (used == 0 ? 0 : GAP) + actionWidth;
+      }
+      return rows * tallestAction() + Math.max(0, rows - 1) * GAP;
+    }
+
+    @Override
+    public void doLayout() {
+      int width = getWidth();
+      Dimension main = mainComponent.getPreferredSize();
+      if (horizontal(width)) {
+        int actionX = width;
+        int rowHeight = Math.max(main.height, tallestAction());
+        for (int index = actions.length - 1; index >= 0; index--) {
+          Dimension size = actions[index].getPreferredSize();
+          actionX -= size.width;
+          actions[index].setBounds(actionX, (rowHeight - size.height) / 2, size.width, size.height);
+          actionX -= GAP;
+        }
+        mainComponent.setBounds(
+            0, (rowHeight - main.height) / 2, Math.max(0, actionX), main.height);
+        return;
+      }
+
+      mainComponent.setBounds(0, 0, width, main.height);
+      int x = width;
+      int y = main.height + GAP;
+      int rowHeight = tallestAction();
+      for (int index = actions.length - 1; index >= 0; index--) {
+        Dimension size = actions[index].getPreferredSize();
+        if (x < width && x - GAP - size.width < 0) {
+          x = width;
+          y += rowHeight + GAP;
+        }
+        x -= size.width;
+        actions[index].setBounds(x, y, size.width, size.height);
+        x -= GAP;
+      }
+    }
+  }
+
+  static final class ActiveCardLayout extends CardLayout {
+    @Override
+    public Dimension preferredLayoutSize(Container parent) {
+      return activeSize(parent, false);
+    }
+
+    @Override
+    public Dimension minimumLayoutSize(Container parent) {
+      return activeSize(parent, true);
+    }
+
+    private Dimension activeSize(Container parent, boolean minimum) {
+      synchronized (parent.getTreeLock()) {
+        Dimension size = new Dimension();
+        for (Component component : parent.getComponents()) {
+          if (!component.isVisible()) {
+            continue;
+          }
+          Dimension candidate = minimum ? component.getMinimumSize() : component.getPreferredSize();
+          size.width = candidate.width;
+          size.height = candidate.height;
+          break;
+        }
+        Insets insets = parent.getInsets();
+        size.width += insets.left + insets.right + getHgap() * 2;
+        size.height += insets.top + insets.bottom + getVgap() * 2;
+        return size;
+      }
+    }
+  }
+
+  private static final class NavIcon implements Icon {
+    private static final int SIZE = 25;
+    private final int type;
+    private final boolean selected;
+
+    private NavIcon(int type, boolean selected) {
+      this.type = type;
+      this.selected = selected;
+    }
+
+    @Override
+    public int getIconWidth() {
+      return SIZE;
+    }
+
+    @Override
+    public int getIconHeight() {
+      return SIZE;
+    }
+
+    @Override
+    public void paintIcon(Component component, Graphics graphics, int x, int y) {
+      Graphics2D g2 = (Graphics2D) graphics.create();
+      try {
+        g2.translate(x, y);
+        double scale = SIZE / 21.0;
+        g2.scale(scale, scale);
+        g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+        g2.setColor(selected ? new Color(245, 218, 166) : new Color(205, 220, 211));
+        g2.setStroke(new BasicStroke(1.8f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+        switch (type) {
+          case 0:
+            for (int row = 0; row < 2; row++) {
+              for (int column = 0; column < 2; column++) {
+                g2.fillRoundRect(2 + column * 10, 2 + row * 10, 7, 7, 2, 2);
+              }
+            }
+            break;
+          case 1:
+            g2.drawRoundRect(2, 5, 17, 12, 7, 7);
+            g2.drawLine(10, 3, 10, 13);
+            g2.drawLine(6, 10, 10, 14);
+            g2.drawLine(14, 10, 10, 14);
+            break;
+          case 2:
+            g2.drawOval(6, 2, 9, 12);
+            g2.drawLine(6, 11, 3, 17);
+            g2.drawLine(15, 11, 18, 17);
+            g2.drawLine(8, 16, 10, 20);
+            g2.drawLine(12, 16, 10, 20);
+            break;
+          case 3:
+            g2.drawRoundRect(4, 4, 13, 13, 3, 3);
+            g2.drawRect(7, 7, 7, 7);
+            for (int offset = 5; offset <= 16; offset += 5) {
+              g2.drawLine(offset, 1, offset, 4);
+              g2.drawLine(offset, 17, offset, 20);
+              g2.drawLine(1, offset, 4, offset);
+              g2.drawLine(17, offset, 20, offset);
+            }
+            break;
+          default:
+            g2.drawOval(2, 2, 17, 17);
+            g2.drawOval(6, 2, 9, 17);
+            g2.drawLine(2, 10, 19, 10);
+            break;
+        }
+      } finally {
+        g2.dispose();
+      }
+    }
+  }
+
+  private static final class WeightActionIcon implements Icon {
+    private static final int DOWNLOAD = 0;
+    private static final int IMPORT = 1;
+    private static final int USE = 2;
+    private static final int SIZE = 16;
+    private final int type;
+
+    private WeightActionIcon(int type) {
+      this.type = type;
+    }
+
+    @Override
+    public int getIconWidth() {
+      return SIZE;
+    }
+
+    @Override
+    public int getIconHeight() {
+      return SIZE;
+    }
+
+    @Override
+    public void paintIcon(Component component, Graphics graphics, int x, int y) {
+      AbstractButton button =
+          component instanceof AbstractButton ? (AbstractButton) component : null;
+      Color color =
+          component != null && component.isEnabled()
+              ? component.getForeground()
+              : new Color(142, 142, 137);
+      Graphics2D g2 = (Graphics2D) graphics.create();
+      try {
+        g2.translate(x, y);
+        g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+        g2.setColor(color);
+        g2.setStroke(new BasicStroke(1.7f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+        if (type == USE) {
+          g2.drawOval(1, 1, 14, 14);
+          g2.drawLine(4, 8, 7, 11);
+          g2.drawLine(7, 11, 12, 5);
+          return;
+        }
+        g2.drawLine(2, 12, 2, 15);
+        g2.drawLine(2, 15, 14, 15);
+        g2.drawLine(14, 15, 14, 12);
+        if (type == DOWNLOAD) {
+          g2.drawLine(8, 1, 8, 11);
+          g2.drawLine(4, 7, 8, 11);
+          g2.drawLine(12, 7, 8, 11);
+        } else {
+          g2.drawLine(8, 12, 8, 2);
+          g2.drawLine(4, 6, 8, 2);
+          g2.drawLine(12, 6, 8, 2);
+        }
+      } finally {
+        g2.dispose();
+      }
+    }
+  }
+
+  private static final class HumanSlIcon implements Icon {
+    private static final int SIZE = 38;
+
+    @Override
+    public int getIconWidth() {
+      return SIZE;
+    }
+
+    @Override
+    public int getIconHeight() {
+      return SIZE;
+    }
+
+    @Override
+    public void paintIcon(Component component, Graphics graphics, int x, int y) {
+      Graphics2D g2 = (Graphics2D) graphics.create();
+      try {
+        g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+        g2.setColor(new Color(229, 244, 235));
+        g2.fillOval(x, y, SIZE, SIZE);
+        g2.setColor(OK_COLOR);
+        g2.fillOval(x + 13, y + 7, 12, 12);
+        g2.fillRoundRect(x + 8, y + 21, 22, 11, 9, 9);
+      } finally {
+        g2.dispose();
+      }
+    }
+  }
+
+  private static class WeightStoneIcon implements Icon {
+    private final int size;
+    private final boolean circular;
+
+    private WeightStoneIcon(int size) {
+      this(size, false);
+    }
+
+    private WeightStoneIcon(int size, boolean circular) {
+      this.size = Math.max(32, size);
+      this.circular = circular;
+    }
+
+    @Override
+    public int getIconWidth() {
+      return size;
+    }
+
+    @Override
+    public int getIconHeight() {
+      return size;
+    }
+
+    @Override
+    public void paintIcon(Component component, Graphics graphics, int x, int y) {
+      Graphics2D g2 = (Graphics2D) graphics.create();
+      try {
+        Shape originalClip = g2.getClip();
+        g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+        g2.setColor(new Color(226, 196, 136));
+        int arc = Math.max(10, size / 4);
+        if (circular) {
+          g2.fillOval(x, y, size, size);
+          g2.setClip(new Ellipse2D.Double(x, y, size, size));
+        } else {
+          g2.fillRoundRect(x, y, size, size, arc, arc);
+        }
+        g2.setColor(new Color(153, 116, 61, 145));
+        int margin = Math.max(6, size / 7);
+        int step = (size - margin * 2) / 3;
+        for (int index = 0; index < 4; index++) {
+          int offset = margin + index * step;
+          g2.drawLine(x + offset, y + margin, x + offset, y + size - margin);
+          g2.drawLine(x + margin, y + offset, x + size - margin, y + offset);
+        }
+        int stone = Math.max(13, size / 3);
         g2.setColor(new Color(31, 34, 32));
-        g2.fillOval(x + 7, y + 7, 13, 13);
+        g2.fillOval(x + margin, y + margin, stone, stone);
         g2.setColor(new Color(250, 249, 245));
-        g2.fillOval(x + 17, y + 17, 13, 13);
+        int whiteX = x + size - margin - stone;
+        int whiteY = y + size - margin - stone;
+        g2.fillOval(whiteX, whiteY, stone, stone);
         g2.setColor(new Color(157, 153, 143));
-        g2.drawOval(x + 17, y + 17, 13, 13);
+        g2.drawOval(whiteX, whiteY, stone, stone);
+        if (circular) {
+          int smallStone = Math.max(9, stone - 4);
+          g2.setColor(new Color(31, 34, 32));
+          g2.fillOval(x + margin, y + size - margin - smallStone, smallStone, smallStone);
+          g2.fillOval(x + size / 2, y + size / 2 - smallStone / 2, smallStone, smallStone);
+          g2.setColor(new Color(250, 249, 245));
+          g2.fillOval(x + size - margin - smallStone, y + margin, smallStone, smallStone);
+          g2.setColor(new Color(157, 153, 143));
+          g2.drawOval(x + size - margin - smallStone, y + margin, smallStone, smallStone);
+          g2.setClip(originalClip);
+          g2.setColor(new Color(194, 139, 45, 150));
+          g2.drawOval(x, y, size - 1, size - 1);
+        }
       } finally {
         g2.dispose();
       }

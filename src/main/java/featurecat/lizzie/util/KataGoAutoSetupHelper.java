@@ -69,11 +69,12 @@ public final class KataGoAutoSetupHelper {
           Pattern.CASE_INSENSITIVE);
   private static final Pattern VERSION_MODEL_SOURCE_PATTERN =
       Pattern.compile("^Model source:\\s*(.+)$", Pattern.CASE_INSENSITIVE | Pattern.MULTILINE);
-  private static final int MAX_OFFICIAL_WEIGHTS = 10;
-  private static final int MAX_OFFICIAL_WEIGHT_FAMILIES = 5;
+  private static final int MAX_OFFICIAL_WEIGHTS = 16;
+  private static final int MAX_OFFICIAL_WEIGHT_FAMILIES = 8;
   private static final int MAX_OFFICIAL_WEIGHTS_PER_FAMILY = 2;
   private static final List<String> PREFERRED_WEIGHT_FAMILIES =
-      Collections.unmodifiableList(Arrays.asList("b28", "b40", "b20", "b15", "b10"));
+      Collections.unmodifiableList(
+          Arrays.asList("b28", "b40", "b60", "b20", "b18", "b15", "b10", "b6"));
   private static final String DEFAULT_WEIGHT_FILE_NAME = "default.bin.gz";
   private static final String DEFAULT_GENERAL_USE_WEIGHT_MODEL = "kata1-zhizi-b28c512nbt-muonfd2";
   private static final String BUNDLED_2026_06_28B_MODEL =
@@ -1264,6 +1265,11 @@ public final class KataGoAutoSetupHelper {
   private static List<RemoteWeightInfo> selectFamilyWeightChoices(
       List<RemoteWeightInfo> familyWeights) {
     LinkedHashSet<RemoteWeightInfo> selected = new LinkedHashSet<>();
+    for (RemoteWeightInfo info : familyWeights) {
+      if (isDefaultGeneralUseWeight(info)) {
+        selected.add(info);
+      }
+    }
     for (RemoteWeightInfo info : familyWeights) {
       if (info.recommended) {
         selected.add(info);
