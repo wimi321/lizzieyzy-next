@@ -32,7 +32,11 @@ public class KataGoAnalysisWebSocketTransport implements EngineTransport {
   private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(20);
   private static final int DEFAULT_BOARD_SIZE = 19;
   private static final int LIVE_ANALYSIS_MAX_VISITS = 10_000_000;
-  private static final int GENMOVE_MAX_VISITS = 256;
+  private static final double DEFAULT_MOVE_MAX_TIME = 1e20;
+  private static final long DEFAULT_MOVE_MAX_VISITS = 256;
+  private static final long MAX_MOVE_MAX_VISITS = 1L << 50;
+  private static final double DEFAULT_PLAYOUT_DOUBLING_ADVANTAGE = 0.0;
+  private static final double DEFAULT_ANALYSIS_WIDE_ROOT_NOISE = 0.04;
   private static final String CHINESE_RULES =
       "{\"friendlyPassOk\":true,\"hasButton\":false,\"ko\":\"SIMPLE\","
           + "\"scoring\":\"AREA\",\"suicide\":false,\"tax\":\"NONE\","
@@ -93,6 +97,10 @@ public class KataGoAnalysisWebSocketTransport implements EngineTransport {
   private int boardHeight = DEFAULT_BOARD_SIZE;
   private double komi = 7.5;
   private String rules = CHINESE_RULES;
+  private double moveMaxTime = DEFAULT_MOVE_MAX_TIME;
+  private long moveMaxVisits = DEFAULT_MOVE_MAX_VISITS;
+  private double playoutDoublingAdvantage = DEFAULT_PLAYOUT_DOUBLING_ADVANTAGE;
+  private double analysisWideRootNoise = DEFAULT_ANALYSIS_WIDE_ROOT_NOISE;
   private ActiveQuery activeQuery;
   private String snapshotInitialPlayer = "";
 
@@ -241,13 +249,14 @@ public class KataGoAnalysisWebSocketTransport implements EngineTransport {
         writeOk(responseId, "");
       } else if (lower.startsWith("kata-get-rules")) {
         writeOk(responseId, rules);
-      } else if (lower.startsWith("kata-get-param ")) {
+      } else if (lower.equals("kata-get-param") || lower.startsWith("kata-get-param ")) {
         writeKnownKataGoParam(responseId, line);
       } else if (lower.startsWith("kata-set-rules ")) {
         rules = normalizeRules(line.substring(line.indexOf(' ') + 1).trim());
         writeOk(responseId, "");
-      } else if (lower.startsWith("kata-set-param ")
-          || lower.startsWith("time_settings ")
+      } else if (lower.equals("kata-set-param") || lower.startsWith("kata-set-param ")) {
+        setKataGoParam(responseId, line);
+      } else if (lower.startsWith("time_settings ")
           || lower.startsWith("time_left ")
           || lower.startsWith("kata-time_settings ")) {
         writeOk(responseId, "");
@@ -355,13 +364,69 @@ public class KataGoAnalysisWebSocketTransport implements EngineTransport {
 
   private void writeKnownKataGoParam(String responseId, String command) {
     String param = token(command, 1, "");
-    if ("playoutDoublingAdvantage".equals(param)) {
-      writeOk(responseId, "0.0");
+    if ("maxTime".equals(param)) {
+      writeOk(responseId, Double.toString(moveMaxTime));
+    } else if ("maxVisits".equals(param)) {
+      writeOk(responseId, Long.toString(moveMaxVisits));
+    } else if ("playoutDoublingAdvantage".equals(param)) {
+      writeOk(responseId, Double.toString(playoutDoublingAdvantage));
     } else if ("analysisWideRootNoise".equals(param)) {
-      writeOk(responseId, "0.04");
+      writeOk(responseId, Double.toString(analysisWideRootNoise));
     } else {
       writeError(responseId, "unknown parameter");
     }
+  }
+
+  private void setKataGoParam(String responseId, String command) {
+    String param = token(command, 1, "");
+    String value = token(command, 2, "");
+    if (!token(command, 3, "").isEmpty()) {
+      throw new IllegalArgumentException("invalid parameter value");
+    }
+    if ("maxTime".equals(param)) {
+      double parsed =
+          value.isEmpty()
+              ? DEFAULT_MOVE_MAX_TIME
+              : parseFiniteDouble(value, "maxTime", 0.0, DEFAULT_MOVE_MAX_TIME);
+      moveMaxTime = parsed;
+      writeOk(responseId, "");
+    } else if ("maxVisits".equals(param)) {
+      long parsed =
+          value.isEmpty()
+              ? DEFAULT_MOVE_MAX_VISITS
+              : parseIntegralValue(value, "maxVisits", 1, MAX_MOVE_MAX_VISITS);
+      moveMaxVisits = parsed;
+      writeOk(responseId, "");
+    } else if ("playoutDoublingAdvantage".equals(param)) {
+      playoutDoublingAdvantage = parseFiniteDouble(value, "playoutDoublingAdvantage", -3.0, 3.0);
+      writeOk(responseId, "");
+    } else if ("analysisWideRootNoise".equals(param)) {
+      analysisWideRootNoise = parseFiniteDouble(value, "analysisWideRootNoise", 0.0, 5.0);
+      writeOk(responseId, "");
+    } else {
+      writeError(responseId, "unknown parameter");
+    }
+  }
+
+  private static double parseFiniteDouble(String value, String param, double min, double max) {
+    final double parsed;
+    try {
+      parsed = Double.parseDouble(value);
+    } catch (NumberFormatException e) {
+      throw new IllegalArgumentException("invalid value for " + param);
+    }
+    if (!Double.isFinite(parsed) || parsed < min || parsed > max) {
+      throw new IllegalArgumentException("invalid value for " + param);
+    }
+    return parsed;
+  }
+
+  private static long parseIntegralValue(String value, String param, long min, long max) {
+    double parsed = parseFiniteDouble(value, param, min, max);
+    if (parsed != Math.rint(parsed)) {
+      throw new IllegalArgumentException("invalid value for " + param);
+    }
+    return (long) parsed;
   }
 
   JSONObject buildAnalysisQuery(
@@ -376,7 +441,8 @@ public class KataGoAnalysisWebSocketTransport implements EngineTransport {
     query.put("rules", queryRules.startsWith("{") ? new JSONObject(queryRules) : queryRules);
     query.put("priority", genmove ? 2 : 0);
     query.put("analyzeTurns", new JSONArray().put(moves.size()));
-    query.put("maxVisits", genmove ? GENMOVE_MAX_VISITS : LIVE_ANALYSIS_MAX_VISITS);
+    query.put("maxVisits", genmove ? moveMaxVisits : LIVE_ANALYSIS_MAX_VISITS);
+    query.put("playoutDoublingAdvantage", playoutDoublingAdvantage);
     query.put("komi", komi);
     query.put("boardXSize", boardWidth);
     query.put("boardYSize", boardHeight);
@@ -400,6 +466,11 @@ public class KataGoAnalysisWebSocketTransport implements EngineTransport {
     query.put("moves", jsonMoves);
     JSONObject overrides = new JSONObject();
     overrides.put("reportAnalysisWinratesAs", "B".equals(reportWinrateAs) ? "BLACK" : "WHITE");
+    if (genmove) {
+      overrides.put("maxTime", moveMaxTime);
+    } else {
+      overrides.put("wideRootNoise", analysisWideRootNoise);
+    }
     query.put("overrideSettings", overrides);
     if (!genmove) {
       query.put("reportDuringSearchEvery", Math.max(0.1, intervalCentisec / 100.0));
