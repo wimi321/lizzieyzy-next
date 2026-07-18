@@ -1477,6 +1477,28 @@ class ReadBoardEngineResumeTest {
   }
 
   @Test
+  void closingWebsocketPonderingNoticeDoesNotStartGmaOrPromptAgainInSameSession()
+      throws Exception {
+    try (EngineResumeHarness harness =
+        EngineResumeHarness.create(rootHistory(emptyStones(), true))) {
+      harness.frame.bothSync = true;
+      harness.leelaz.enableReadBoardGmaFixedLimitOnlySupport();
+      Lizzie.config.readBoardPonder = true;
+      Lizzie.config.suppressReadBoardWebSocketPonderingNotice = false;
+
+      harness.readBoard.parseLine("play>black>5 12 0 gma");
+      harness.sync(snapshot(emptyStones(), Optional.empty(), Stone.EMPTY));
+      harness.frame.closeReadBoardPonderingNotice();
+      harness.sync(snapshot(emptyStones(), Optional.empty(), Stone.EMPTY));
+
+      assertEquals(1, harness.frame.readBoardPonderingNoticeCount);
+      assertEquals(0, harness.leelaz.readBoardGmaCount);
+      assertFalse(Lizzie.config.suppressReadBoardWebSocketPonderingNotice);
+      assertTrue(Lizzie.config.readBoardPonder);
+    }
+  }
+
+  @Test
   void websocketPonderingNoticeIsEligibleAgainAfterStopSyncStartsANewGmaSession()
       throws Exception {
     try (EngineResumeHarness harness =
@@ -2184,7 +2206,8 @@ class ReadBoardEngineResumeTest {
     private int togglePonderMannulCount;
     private TrackingBoard board;
     private int readBoardPonderingNoticeCount;
-    private Consumer<Boolean> readBoardPonderingNoticeDecision;
+    private Consumer<LizzieFrame.ReadBoardWebSocketPonderingDecision>
+        readBoardPonderingNoticeDecision;
 
     private void initialize(TrackingBoard board) {
       this.board = board;
@@ -2197,16 +2220,29 @@ class ReadBoardEngineResumeTest {
     }
 
     @Override
-    public void showReadBoardWebSocketPonderingNotice(Consumer<Boolean> decision) {
+    public void showReadBoardWebSocketPonderingNotice(
+        Consumer<LizzieFrame.ReadBoardWebSocketPonderingDecision> decision) {
       readBoardPonderingNoticeCount++;
       readBoardPonderingNoticeDecision = decision;
     }
 
     private void answerReadBoardPonderingNotice(boolean suppressPermanently) {
-      Consumer<Boolean> decision = readBoardPonderingNoticeDecision;
+      Consumer<LizzieFrame.ReadBoardWebSocketPonderingDecision> decision =
+          readBoardPonderingNoticeDecision;
       readBoardPonderingNoticeDecision = null;
       assertNotNull(decision);
-      decision.accept(suppressPermanently);
+      decision.accept(
+          suppressPermanently
+              ? LizzieFrame.ReadBoardWebSocketPonderingDecision.SUPPRESS
+              : LizzieFrame.ReadBoardWebSocketPonderingDecision.CONFIRM);
+    }
+
+    private void closeReadBoardPonderingNotice() {
+      Consumer<LizzieFrame.ReadBoardWebSocketPonderingDecision> decision =
+          readBoardPonderingNoticeDecision;
+      readBoardPonderingNoticeDecision = null;
+      assertNotNull(decision);
+      decision.accept(LizzieFrame.ReadBoardWebSocketPonderingDecision.DISMISS);
     }
 
     @Override

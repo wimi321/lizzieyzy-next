@@ -3423,7 +3423,14 @@ public class LizzieFrame extends JFrame {
     return "kata-set-param maxTime " + seconds;
   }
 
-  public void showReadBoardWebSocketPonderingNotice(Consumer<Boolean> decision) {
+  public enum ReadBoardWebSocketPonderingDecision {
+    CONFIRM,
+    SUPPRESS,
+    DISMISS
+  }
+
+  public void showReadBoardWebSocketPonderingNotice(
+      Consumer<ReadBoardWebSocketPonderingDecision> decision) {
     Runnable showNotice =
         () -> {
           Object[] options = {
@@ -3440,7 +3447,12 @@ public class LizzieFrame extends JFrame {
                   null,
                   options,
                   options[0]);
-          decision.accept(selected == 1);
+          decision.accept(
+              selected == 0
+                  ? ReadBoardWebSocketPonderingDecision.CONFIRM
+                  : selected == 1
+                      ? ReadBoardWebSocketPonderingDecision.SUPPRESS
+                      : ReadBoardWebSocketPonderingDecision.DISMISS);
         };
     if (SwingUtilities.isEventDispatchThread()) {
       showNotice.run();

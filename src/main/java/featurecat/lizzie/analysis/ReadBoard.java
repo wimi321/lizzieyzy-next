@@ -4001,8 +4001,12 @@ public class ReadBoard {
       readBoardWebSocketPonderingNoticePending = true;
       long promptSessionGeneration = readBoardGmaSessionGeneration;
       Lizzie.frame.showReadBoardWebSocketPonderingNotice(
-          suppressPermanently -> {
-            if (suppressPermanently && Lizzie.config != null) {
+          decision -> {
+            if (decision == LizzieFrame.ReadBoardWebSocketPonderingDecision.DISMISS) {
+              return;
+            }
+            if (decision == LizzieFrame.ReadBoardWebSocketPonderingDecision.SUPPRESS
+                && Lizzie.config != null) {
               Lizzie.config.suppressReadBoardWebSocketPonderingNotice();
             }
             if (readBoardGmaAutoPlayActive
