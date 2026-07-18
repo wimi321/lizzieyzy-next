@@ -1267,6 +1267,7 @@ public class Board {
     if (!isPrimaryEngineReady()) {
       return false;
     }
+    syncPrimaryEngineKomiToCurrentGame();
     if (Lizzie.leelaz.width != boardWidth || Lizzie.leelaz.height != boardHeight) {
       Lizzie.leelaz.boardSizeForEngine(boardWidth, boardHeight);
     }
@@ -1288,13 +1289,23 @@ public class Board {
     }
     BoardData currentPosition = currentHistory.getData();
     if (matchesEnginePosition(previousPosition, currentPosition)) {
+      syncPrimaryEngineKomiToCurrentGame();
       return true;
     }
     BoardHistoryNode previousNode = currentHistory.getCurrentHistoryNode().previous().orElse(null);
     if (previousNode == null || !matchesEnginePosition(previousPosition, previousNode.getData())) {
       return false;
     }
+    syncPrimaryEngineKomiToCurrentGame();
     return playHistoryActionToPrimaryEngine(currentPosition);
+  }
+
+  private void syncPrimaryEngineKomiToCurrentGame() {
+    BoardHistoryList currentHistory = getHistory();
+    if (currentHistory == null || currentHistory.getGameInfo() == null) {
+      return;
+    }
+    Lizzie.leelaz.syncKomiForCurrentGame(currentHistory.getGameInfo().getKomi());
   }
 
   private boolean isPrimaryEngineReady() {

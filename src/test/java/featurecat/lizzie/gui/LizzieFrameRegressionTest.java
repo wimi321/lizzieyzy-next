@@ -770,9 +770,9 @@ class LizzieFrameRegressionTest {
 
       assertEquals(0, frame.flashAnalyzeGameCount);
       assertEquals(
-          List.of("boardsize 2", "clear_board", "play B A2", "ponder"),
+          List.of("komi 7.5", "boardsize 2", "clear_board", "play B A2", "ponder"),
           leelaz.commands(),
-          "foreground analysis should replay the loaded SGF position before starting ponder.");
+          "foreground analysis should replay the loaded SGF komi and position before pondering.");
     } finally {
       env.close();
     }
@@ -795,9 +795,9 @@ class LizzieFrameRegressionTest {
       frame.togglePonderMannul();
 
       assertEquals(
-          List.of("boardsize 2", "clear_board", "play B A2", "ponder"),
+          List.of("komi 7.5", "boardsize 2", "clear_board", "play B A2", "ponder"),
           leelaz.commands(),
-          "manual resume should also align the engine to the current SGF before analysis.");
+          "manual resume should align the engine to the current SGF komi and position.");
     } finally {
       env.close();
     }

@@ -917,7 +917,8 @@ class BoardNodeKindHistoryPipelineTest {
   }
 
   @Test
-  void loadFromStringWithKomiDoesNotOverwriteCurrentEngineKomi() throws Exception {
+  void loadFromStringHandicapKomiSynchronizesCurrentEngineWithoutChangingDefault()
+      throws Exception {
     TestEnvironment env = TestEnvironment.open();
     int previousCurrentEngineNo = EngineManager.currentEngineNo;
     try {
@@ -925,29 +926,37 @@ class BoardNodeKindHistoryPipelineTest {
       EngineManager.currentEngineNo = 0;
       EngineManager.isEmpty = false;
       TrackingLeelaz leelaz = (TrackingLeelaz) Lizzie.leelaz;
-      leelaz.komi = 6.5f;
-      leelaz.orikomi = 6.5f;
+      leelaz.komi = 7.5f;
+      leelaz.orikomi = 7.5f;
       leelaz.isLoaded = true;
       setStarted(leelaz, true);
 
-      assertTrue(SGFParser.loadFromString("(;SZ[3]KM[7.5];B[aa])"));
+      assertTrue(SGFParser.loadFromString("(;SZ[3]KM[0]HA[2]AB[aa]AB[ca]PL[W];W[ba])"));
 
-      assertFalse(
-          leelaz.recordedCommands().contains("komi 7.5"),
-          "loading SGF KM should not send a komi command that overwrites the current engine.");
+      assertTrue(
+          leelaz.recordedCommands().contains("komi 0"),
+          "the running engine must analyze with the komi displayed from the loaded SGF.");
       assertEquals(
-          6.5,
+          0.0,
           leelaz.komi,
           0.0001,
-          "current engine komi field should keep the engine/default komi after loading SGF.");
+          "the engine's current-game komi should match the loaded handicap game.");
       assertEquals(
           7.5,
+          leelaz.orikomi,
+          0.0001,
+          "loading a game must not rewrite the engine profile's default komi.");
+      assertEquals(
+          0.0,
           Lizzie.board.getHistory().getGameInfo().getKomi(),
           0.0001,
-          "SGF KM should still be visible as loaded game information.");
+          "SGF KM should remain the displayed game komi.");
       assertFalse(
           Lizzie.board.getHistory().getGameInfo().changedKomi,
           "loaded SGF KM should not be treated as a manual engine-komi change.");
+      assertTrue(
+          leelaz.lastLoadedSgfContent().contains("KM[0.0]"),
+          "the root setup snapshot passed to KataGo must carry the loaded SGF komi.");
     } finally {
       EngineManager.currentEngineNo = previousCurrentEngineNo;
       env.close();
@@ -4438,6 +4447,7 @@ class BoardNodeKindHistoryPipelineTest {
     private Stone[] stones;
     private boolean blackToPlay = true;
     private Path lastLoadedSgf;
+    private String lastLoadedSgfContent = "";
 
     private TrackingLeelaz() throws IOException {
       super("");
@@ -4510,6 +4520,10 @@ class BoardNodeKindHistoryPipelineTest {
       return lastLoadedSgf;
     }
 
+    private String lastLoadedSgfContent() {
+      return lastLoadedSgfContent;
+    }
+
     private List<String> recordedCommands() {
       if (commands == null) {
         commands = new ArrayList<>();
@@ -4536,6 +4550,7 @@ class BoardNodeKindHistoryPipelineTest {
       resetBoardState();
       try {
         String content = Files.readString(path);
+        lastLoadedSgfContent = content;
         Matcher matcher = PROPERTY_PATTERN.matcher(content);
         while (matcher.find()) {
           String tag = matcher.group(1);
