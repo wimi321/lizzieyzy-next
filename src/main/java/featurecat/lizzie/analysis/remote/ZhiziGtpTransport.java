@@ -593,6 +593,11 @@ public class ZhiziGtpTransport implements EngineTransport {
       notifyAll();
     }
 
+    synchronized void finish() {
+      closed = true;
+      notifyAll();
+    }
+
     private void waitForData() throws IOException {
       while (availableBytes == 0 && !closed) {
         try {

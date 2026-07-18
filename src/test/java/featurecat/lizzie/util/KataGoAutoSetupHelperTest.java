@@ -692,6 +692,41 @@ public class KataGoAutoSetupHelperTest {
         });
   }
 
+  @Test
+  void autoSetupDoesNotOverwriteUserManagedAnalysisCommand() throws Exception {
+    Path tempRoot = Files.createTempDirectory("katago-user-analysis-command");
+    touch(
+        tempRoot
+            .resolve("engines")
+            .resolve("katago")
+            .resolve(detectTestPlatformDir())
+            .resolve(testKataGoBinaryName()));
+    Path configDir =
+        Files.createDirectories(tempRoot.resolve("engines").resolve("katago").resolve("configs"));
+    touch(configDir.resolve("gtp.cfg"));
+    touch(configDir.resolve("analysis.cfg"));
+    touch(configDir.resolve("estimate.cfg"));
+    Path weight = touch(tempRoot.resolve("weights").resolve("model.bin.gz"));
+
+    withUserDirAndConfig(
+        tempRoot,
+        () -> {
+          String customCommand = "custom-katago analysis -model custom.bin.gz";
+          Lizzie.config.analysisEngineCommand = customCommand;
+          Lizzie.config.analysisEngineCommandCustomized = true;
+          Lizzie.config.uiConfig.put("analysis-engine-command", customCommand);
+          Lizzie.config.uiConfig.put("analysis-engine-command-customized", true);
+
+          KataGoAutoSetupHelper.applyAutoSetup(
+              KataGoAutoSetupHelper.inspectLocalSetup().withActiveWeight(weight));
+
+          assertEquals(customCommand, Lizzie.config.analysisEngineCommand);
+          assertEquals(
+              customCommand,
+              Lizzie.config.uiConfig.optString("analysis-engine-command"));
+        });
+  }
+
   private static EngineData engineData(
       String name, Path enginePath, Path configPath, Path weightPath, boolean isDefault) {
     EngineData data = new EngineData();

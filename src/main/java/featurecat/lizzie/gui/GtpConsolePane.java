@@ -393,19 +393,25 @@ public class GtpConsolePane extends JDialog {
         String cmdParams[] = command.split(" ");
         if (cmdParams.length >= 2) {
           String param1 = cmdParams[1].toLowerCase();
-          boolean needChangePla =
-              (Lizzie.board.getData().blackToPlay != "b".equalsIgnoreCase(param1));
-          if (needChangePla) {
-            Lizzie.board.getHistory().getData().blackToPlay =
-                !Lizzie.board.getHistory().getData().blackToPlay;
-          }
           if (commandToLower.startsWith("genmove")) {
             if (!Lizzie.leelaz.isThinking) {
               // Lizzie.leelaz.time_settings();
-              Lizzie.leelaz.isInputCommand = true;
-              Lizzie.leelaz.genmove(param1);
+              boolean previousBlackToPlay = Lizzie.board.getData().blackToPlay;
+              boolean needChangePla = previousBlackToPlay != "b".equalsIgnoreCase(param1);
+              if (needChangePla) {
+                Lizzie.board.getHistory().getData().blackToPlay = !previousBlackToPlay;
+              }
+              if (!Lizzie.leelaz.genmove(param1, true)) {
+                Lizzie.board.getHistory().getData().blackToPlay = previousBlackToPlay;
+              }
             }
           } else {
+            boolean needChangePla =
+                (Lizzie.board.getData().blackToPlay != "b".equalsIgnoreCase(param1));
+            if (needChangePla) {
+              Lizzie.board.getHistory().getData().blackToPlay =
+                  !Lizzie.board.getHistory().getData().blackToPlay;
+            }
             if (cmdParams.length >= 3) {
               String param2 = cmdParams[2].toUpperCase();
               Lizzie.board.place(param2);

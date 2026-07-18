@@ -179,7 +179,11 @@ public final class NewHumanSlGameDialog extends JDialog {
                     () -> {
                       progressDialog.dispose();
                       Utils.showMsg(resourceBundle.getString("HumanSlGame.downloadCompletePrompt"));
-                      if (!startConfiguredGame(downloadedModel)) {
+                      boolean[] started = {false};
+                      boolean reserved =
+                          Lizzie.frame.runWithForegroundEngineModeReservation(
+                              () -> started[0] = startConfiguredGame(downloadedModel));
+                      if (reserved && !started[0]) {
                         restorePondering(wasPondering);
                       }
                       dispose();
@@ -206,6 +210,9 @@ public final class NewHumanSlGameDialog extends JDialog {
     progressDialog.setDownloadSession(downloadSession);
     worker.start();
     progressDialog.setVisible(true);
+    if (cancelled) {
+      restorePondering(wasPondering);
+    }
   }
 
   private void restorePondering(boolean wasPondering) {
@@ -254,19 +261,6 @@ public final class NewHumanSlGameDialog extends JDialog {
 
   private String resolveAnalysisCommand() {
     if (Lizzie.config == null) {
-      return "";
-    }
-    if (!Lizzie.config.analysisEngineCommandCustomized) {
-      featurecat.lizzie.util.AnalysisEngineCommandHelper.Result result =
-          featurecat.lizzie.util.AnalysisEngineCommandHelper.fromDefaultEngine(
-              Utils.getEngineData());
-      if (result.isSuccess()) {
-        Lizzie.config.analysisEngineCommand = result.getCommand();
-        if (Lizzie.config.uiConfig != null) {
-          Lizzie.config.uiConfig.put("analysis-engine-command", result.getCommand());
-        }
-        return result.getCommand();
-      }
       return "";
     }
     String command = Lizzie.config.analysisEngineCommand;

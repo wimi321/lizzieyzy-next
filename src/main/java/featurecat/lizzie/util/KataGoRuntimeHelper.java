@@ -1388,8 +1388,18 @@ public final class KataGoRuntimeHelper {
     return benchmarkEngineSyncSuppressed;
   }
 
-  public static boolean pauseCurrentAnalysisForBenchmark() {
+  public record BenchmarkPauseResult(boolean accepted, boolean analysisWasPondering) {}
+
+  public static BenchmarkPauseResult pauseCurrentAnalysisForBenchmark() {
+    Leelaz currentEngine = Lizzie.leelaz;
+    if (currentEngine != null && !currentEngine.beginExclusiveGtpLifecycleTransition()) {
+      return new BenchmarkPauseResult(false, false);
+    }
+    try {
     synchronized (BENCHMARK_ANALYSIS_PAUSE_LOCK) {
+        if (benchmarkEngineSyncSuppressed) {
+          return new BenchmarkPauseResult(false, false);
+        }
       if (benchmarkPreviousShowPonderTips == null && Lizzie.config != null) {
         benchmarkPreviousShowPonderTips = Lizzie.config.showPonderLimitedTips;
         Lizzie.config.showPonderLimitedTips = false;
@@ -1399,7 +1409,6 @@ public final class KataGoRuntimeHelper {
       benchmarkEngineSyncSuppressed = true;
     }
 
-    Leelaz currentEngine = Lizzie.leelaz;
     boolean analysisWasPondering =
         currentEngine != null && currentEngine.isLoaded() && currentEngine.isPondering();
     if (currentEngine != null
@@ -1422,7 +1431,7 @@ public final class KataGoRuntimeHelper {
         currentEngine.normalQuit();
         currentEngine.shutdown();
         waitForEngineShutdown(currentEngine, 8000L);
-        return analysisWasPondering;
+          return new BenchmarkPauseResult(true, analysisWasPondering);
       } catch (Exception e) {
         synchronized (BENCHMARK_ANALYSIS_PAUSE_LOCK) {
           benchmarkPausedEngineIndex = -1;
@@ -1437,7 +1446,12 @@ public final class KataGoRuntimeHelper {
       } catch (Exception ignored) {
       }
     }
-    return analysisWasPondering;
+      return new BenchmarkPauseResult(true, analysisWasPondering);
+    } finally {
+      if (currentEngine != null) {
+        currentEngine.endExclusiveGtpLifecycleTransition();
+      }
+    }
   }
 
   public static void restoreAnalysisAfterBenchmark(boolean analysisWasPondering) {
@@ -1529,6 +1543,7 @@ public final class KataGoRuntimeHelper {
             () -> {
               JDialog notice = null;
               boolean pausedAnalysis = false;
+              boolean benchmarkPauseAccepted = false;
               SetupSnapshot snapshot = null;
               try {
                 try {
@@ -1559,7 +1574,12 @@ public final class KataGoRuntimeHelper {
                         session);
                 final JDialog progressNotice = notice;
                 if (session.isCancelled()) return;
-                pausedAnalysis = pauseCurrentAnalysisForBenchmark();
+                BenchmarkPauseResult pauseResult = pauseCurrentAnalysisForBenchmark();
+                if (!pauseResult.accepted()) {
+                  return;
+                }
+                benchmarkPauseAccepted = true;
+                pausedAnalysis = pauseResult.analysisWasPondering();
 
                 System.out.println(
                     "Running Apple Silicon KataGo benchmark in background for automatic tuning...");
@@ -1587,7 +1607,9 @@ public final class KataGoRuntimeHelper {
                 if (notice != null) {
                   disposeBenchmarkNotice(notice);
                 }
+                if (benchmarkPauseAccepted) {
                 restoreAnalysisAfterBenchmark(pausedAnalysis);
+                }
                 synchronized (APPLE_AUTO_OPTIMIZE_LOCK) {
                   appleAutoOptimizeRunning = false;
                 }
@@ -1934,12 +1956,18 @@ public final class KataGoRuntimeHelper {
                       : null;
 
               boolean pausedAnalysis = false;
+              boolean benchmarkPauseAccepted = false;
 
               try {
                 if (benchmarkSession.isCancelled()) {
                   return;
                 }
-                pausedAnalysis = pauseCurrentAnalysisForBenchmark();
+                BenchmarkPauseResult pauseResult = pauseCurrentAnalysisForBenchmark();
+                if (!pauseResult.accepted()) {
+                  return;
+                }
+                benchmarkPauseAccepted = true;
+                pausedAnalysis = pauseResult.analysisWasPondering();
                 BenchmarkResult result =
                     runBenchmarkAndApply(
                         snapshot,
@@ -1958,7 +1986,9 @@ public final class KataGoRuntimeHelper {
                 if (notice != null) {
                   disposeBenchmarkNotice(notice);
                 }
+                if (benchmarkPauseAccepted) {
                 restoreAnalysisAfterBenchmark(pausedAnalysis);
+              }
               }
             },
             "katago-first-run-benchmark");

@@ -26,6 +26,7 @@ import java.awt.GraphicsConfiguration;
 import java.awt.GraphicsDevice;
 import java.awt.Graphics2D;
 import java.awt.Rectangle;
+import java.awt.Window;
 import java.awt.geom.AffineTransform;
 import java.awt.image.BufferedImage;
 import java.awt.image.ColorModel;
@@ -152,6 +153,60 @@ class LizzieFrameRegressionTest {
     assertEquals(
         LizzieFrame.QuickAnalysisWarmupAction.STOP,
         LizzieFrame.decideQuickAnalysisWarmup(false, false, true, false));
+  }
+
+  @Test
+  void startNewGameStopsBeforeMutatingStateWhenForegroundEngineIsReserved() throws Exception {
+    LizzieFrame previousFrame = Lizzie.frame;
+    Leelaz previousEngine = Lizzie.leelaz;
+    Leelaz engine = new Leelaz("");
+    Leelaz.ExclusiveGtpLifecycleReservation reservation =
+        engine.beginExclusiveGtpLifecycleReservation();
+    NewGameGateFrame frame = allocate(NewGameGateFrame.class);
+    try {
+      Lizzie.frame = frame;
+      Lizzie.leelaz = engine;
+
+      frame.startNewGame();
+
+      assertEquals(1, frame.conflictCount);
+      assertFalse(frame.stopAiPlayingCalled);
+    } finally {
+      if (reservation != null) {
+        reservation.close();
+      }
+      Lizzie.frame = previousFrame;
+      Lizzie.leelaz = previousEngine;
+    }
+  }
+
+  @Test
+  void noAnalyzeFallbackUsesHeldModeReservationAndRestoresPonderingWhenCancelled()
+      throws Exception {
+    LizzieFrame previousFrame = Lizzie.frame;
+    Leelaz previousEngine = Lizzie.leelaz;
+    NoAnalyzeGameFrame frame = allocate(NoAnalyzeGameFrame.class);
+    CancelledNewGameDialog dialog = allocate(CancelledNewGameDialog.class);
+    NoAnalyzeLeelaz engine = new NoAnalyzeLeelaz();
+    frame.dialog = dialog;
+    try {
+      Lizzie.frame = frame;
+      Lizzie.leelaz = engine;
+
+      frame.startAnalyzeGameDialog();
+
+      assertEquals(1, dialog.visibleCount);
+      assertEquals(1, frame.createDialogCount);
+      assertTrue(frame.modeReservedWhenDialogCreated);
+      assertEquals(1, frame.stopAiPlayingCount);
+      assertEquals(0, frame.conflictCount);
+      assertEquals(2, engine.toggleCount, "cancel must restore the pondering stopped by new game");
+      assertTrue(engine.isPondering());
+      assertFalse(engine.hasExclusiveGtpWorkInProgress());
+    } finally {
+      Lizzie.frame = previousFrame;
+      Lizzie.leelaz = previousEngine;
+    }
   }
 
   @Test
@@ -1875,6 +1930,110 @@ class LizzieFrameRegressionTest {
     @Override
     public boolean isLoaded() {
       return loaded;
+    }
+  }
+
+  private static final class NewGameGateFrame extends LizzieFrame {
+    private int conflictCount;
+    private boolean stopAiPlayingCalled;
+
+    private NewGameGateFrame() {
+      super();
+    }
+
+    @Override
+    protected void showForegroundEngineLeaseConflict() {
+      conflictCount++;
+    }
+
+    @Override
+    public boolean stopAiPlayingAndPolicy() {
+      stopAiPlayingCalled = true;
+      return false;
+    }
+  }
+
+  private static final class NoAnalyzeGameFrame extends LizzieFrame {
+    private CancelledNewGameDialog dialog;
+    private int conflictCount;
+    private int stopAiPlayingCount;
+    private int createDialogCount;
+    private boolean modeReservedWhenDialogCreated;
+
+    private NoAnalyzeGameFrame() {
+      super();
+    }
+
+    @Override
+    protected NewGameDialog createNewGameDialog() {
+      createDialogCount++;
+      modeReservedWhenDialogCreated = Lizzie.leelaz.hasExclusiveGtpWorkInProgress();
+      return dialog;
+    }
+
+    @Override
+    protected void showForegroundEngineLeaseConflict() {
+      conflictCount++;
+    }
+
+    @Override
+    protected void showForegroundEngineModeReservationConflict() {
+      conflictCount++;
+    }
+
+    @Override
+    public boolean stopAiPlayingAndPolicy() {
+      stopAiPlayingCount++;
+      return false;
+    }
+  }
+
+  private static final class CancelledNewGameDialog extends NewGameDialog {
+    private int visibleCount;
+
+    private CancelledNewGameDialog() {
+      super((Window) null);
+    }
+
+    @Override
+    public void setVisible(boolean visible) {
+      if (visible) {
+        visibleCount++;
+      }
+    }
+
+    @Override
+    public boolean playerIsBlack() {
+      return true;
+    }
+
+    @Override
+    public boolean isCancelled() {
+      return true;
+    }
+
+    @Override
+    public void dispose() {}
+  }
+
+  private static final class NoAnalyzeLeelaz extends Leelaz {
+    private boolean pondering = true;
+    private int toggleCount;
+
+    private NoAnalyzeLeelaz() throws Exception {
+      super("");
+      noAnalyze = true;
+    }
+
+    @Override
+    public boolean isPondering() {
+      return pondering;
+    }
+
+    @Override
+    public void togglePonder() {
+      toggleCount++;
+      pondering = !pondering;
     }
   }
 

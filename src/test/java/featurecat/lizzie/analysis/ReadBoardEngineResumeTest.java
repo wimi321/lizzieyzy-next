@@ -21,6 +21,7 @@ import featurecat.lizzie.rules.Zobrist;
 import java.io.BufferedOutputStream;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.lang.reflect.Field;
@@ -948,6 +949,88 @@ class ReadBoardEngineResumeTest {
   }
 
   @Test
+  void readBoardGmaActivationUsesForegroundLifecycleReservation() throws Exception {
+    try (EngineResumeHarness harness =
+        EngineResumeHarness.create(rootHistory(emptyStones(), true))) {
+      RecordingLifecycleLeelaz foreground = new RecordingLifecycleLeelaz();
+      Lizzie.leelaz = foreground;
+
+      harness.readBoard.parseLine("play>white>0 0 0 gma");
+
+      assertEquals(1, foreground.beginLifecycleCount);
+      assertEquals(1, foreground.endLifecycleCount);
+      assertTrue(harness.readBoard.isReadBoardGmaAutoPlayActive());
+    }
+  }
+
+  @Test
+  void readBoardGmaActivationRejectedByForegroundLeaseHasNoSideEffects() throws Exception {
+    try (EngineResumeHarness harness =
+        EngineResumeHarness.create(rootHistory(emptyStones(), true))) {
+      RecordingLifecycleLeelaz foreground = new RecordingLifecycleLeelaz();
+      foreground.allowLifecycle = false;
+      Lizzie.leelaz = foreground;
+      setField(harness.readBoard, "failedLocalMoveSuppressionActive", true);
+      setField(harness.readBoard, "failedLocalMoveSuppressionX", 2);
+      setField(harness.readBoard, "failedLocalMoveSuppressionY", 3);
+      setField(harness.readBoard, "failedLocalMoveSuppressionColor", Stone.BLACK);
+      setField(harness.readBoard, "failedLocalMoveRecoveryActive", true);
+      setField(harness.readBoard, "failedLocalMoveRecoveryX", 2);
+      setField(harness.readBoard, "failedLocalMoveRecoveryY", 3);
+      setField(harness.readBoard, "failedLocalMoveRecoveryColor", Stone.BLACK);
+      setField(harness.readBoard, "failedLocalMoveAwaitingRemoteObservation", true);
+
+      harness.readBoard.parseLine("play>white>5 12 34 gma");
+
+      assertEquals(1, foreground.beginLifecycleCount);
+      assertEquals(0, foreground.endLifecycleCount);
+      assertFalse(harness.readBoard.isReadBoardGmaAutoPlayActive());
+      assertFalse(getBooleanField(harness.readBoard, "readBoardGmaAwaitingSyncedBoard"));
+      assertEquals(0, getIntField(harness.readBoard, "readBoardGmaTimeSeconds"));
+      assertEquals(0, getIntField(harness.readBoard, "readBoardGmaMaxVisits"));
+      assertTrue(getBooleanField(harness.readBoard, "failedLocalMoveSuppressionActive"));
+      assertTrue(getBooleanField(harness.readBoard, "failedLocalMoveRecoveryActive"));
+      assertTrue(
+          getBooleanField(harness.readBoard, "failedLocalMoveAwaitingRemoteObservation"));
+      assertEquals(Stone.BLACK, getField(harness.readBoard, "failedLocalMoveRecoveryColor"));
+    }
+  }
+
+  @Test
+  void activatedReadBoardGmaBlocksForegroundAnalysisLease() throws Exception {
+    try (EngineResumeHarness harness =
+        EngineResumeHarness.create(rootHistory(emptyStones(), true))) {
+      Leelaz foreground = new Leelaz("");
+      foreground.isLoaded = true;
+      foreground.started = true;
+      foreground.isKatago = true;
+      foreground.commandLists.addAll(
+          List.of(
+              "stop",
+              "boardsize",
+              "komi",
+              "kata-get-rules",
+              "kata-set-rules",
+              "clear_board",
+              "play",
+              "set_position",
+              "kata-analyze"));
+      setField(foreground, "endGetCommandList", true);
+      setField(
+          foreground,
+          "outputStream",
+          new BufferedOutputStream(new ByteArrayOutputStream()));
+      Lizzie.leelaz = foreground;
+
+      harness.readBoard.parseLine("play>white>0 0 0 gma");
+
+      assertEquals(
+          Leelaz.ExclusiveGtpLeaseAvailability.READBOARD_GMA,
+          foreground.previewForegroundAnalysisLeaseAvailability());
+    }
+  }
+
+  @Test
   void readBoardGmaStartsAfterTrustedFoxCornerMarkerShowsConfiguredSideToMove() throws Exception {
     try (EngineResumeHarness harness =
         EngineResumeHarness.create(rootHistory(emptyStones(), true))) {
@@ -1361,6 +1444,22 @@ class ReadBoardEngineResumeTest {
   }
 
   @Test
+  void readBoardGmaLeaseRejectionRollsBackPendingState() throws Exception {
+    try (EngineResumeHarness harness =
+        EngineResumeHarness.create(rootHistory(emptyStones(), true))) {
+      harness.frame.bothSync = true;
+      harness.leelaz.enableReadBoardGmaSupport();
+      harness.leelaz.rejectReadBoardGma = true;
+
+      harness.readBoard.parseLine("play>black>0 0 0 gma");
+      harness.sync(snapshot(emptyStones(), Optional.empty(), Stone.EMPTY));
+
+      assertEquals(0, harness.leelaz.readBoardGmaCount);
+      assertFalse(getBooleanField(harness.readBoard, "readBoardGmaPending"));
+    }
+  }
+
+  @Test
   void readBoardGmaSkipsEmptyBoardDefaultTurnWhenSetupRiskExists() throws Exception {
     try (EngineResumeHarness harness =
         EngineResumeHarness.create(rootHistory(emptyStones(), true))) {
@@ -1629,6 +1728,12 @@ class ReadBoardEngineResumeTest {
     return field.getBoolean(target);
   }
 
+  private static int getIntField(Object target, String name) throws Exception {
+    Field field = findField(target.getClass(), name);
+    field.setAccessible(true);
+    return field.getInt(target);
+  }
+
   private static Object getField(Object target, String name) throws Exception {
     Field field = findField(target.getClass(), name);
     field.setAccessible(true);
@@ -1781,7 +1886,7 @@ class ReadBoardEngineResumeTest {
       LizzieFrame.boardRenderer = new BoardRenderer(false);
       LizzieFrame.toolbar = minimalToolbar();
 
-      ReadBoard readBoard = allocate(ReadBoard.class);
+      ReadBoard readBoard = allocate(SilentConflictReadBoard.class);
       setField(readBoard, "conflictTracker", new SyncConflictTracker());
       setField(readBoard, "historyJumpTracker", new SyncHistoryJumpTracker());
       setField(readBoard, "localNavigationTracker", new SyncLocalNavigationTracker());
@@ -1828,6 +1933,36 @@ class ReadBoardEngineResumeTest {
       LizzieFrame.boardRenderer = previousBoardRenderer;
       LizzieFrame.toolbar = previousToolbar;
     }
+  }
+
+  private static final class RecordingLifecycleLeelaz extends Leelaz {
+    private int beginLifecycleCount;
+    private int endLifecycleCount;
+    private boolean allowLifecycle = true;
+
+    private RecordingLifecycleLeelaz() throws IOException {
+      super("");
+    }
+
+    @Override
+    public synchronized boolean beginExclusiveGtpLifecycleTransition() {
+      beginLifecycleCount++;
+      return allowLifecycle;
+    }
+
+    @Override
+    public synchronized void endExclusiveGtpLifecycleTransition() {
+      endLifecycleCount++;
+    }
+  }
+
+  private static final class SilentConflictReadBoard extends ReadBoard {
+    private SilentConflictReadBoard() throws Exception {
+      super(false, false);
+    }
+
+    @Override
+    void showForegroundEngineLeaseConflict() {}
   }
 
   private static final class TrackingBoard extends Board {

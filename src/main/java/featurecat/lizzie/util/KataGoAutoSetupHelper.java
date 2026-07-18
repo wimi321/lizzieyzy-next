@@ -953,7 +953,10 @@ public final class KataGoAutoSetupHelper {
     if (makeDefault) {
       Lizzie.config.uiConfig.put("default-engine", engineIndex);
     }
-    Lizzie.config.uiConfig.put("analysis-engine-command", analysisCommand);
+    if (!Lizzie.config.analysisEngineCommandCustomized) {
+      Lizzie.config.analysisEngineCommand = analysisCommand;
+      Lizzie.config.uiConfig.put("analysis-engine-command", analysisCommand);
+    }
     Lizzie.config.uiConfig.put("estimate-command", estimateCommand);
     Lizzie.config.uiConfig.put(
         "katago-auto-setup-weight-name", snapshot.activeWeightPath.getFileName().toString());

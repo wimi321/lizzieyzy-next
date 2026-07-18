@@ -156,11 +156,11 @@ public class ReadBoard {
   private boolean needGenmove = false;
   private boolean showInBoard = false;
   private volatile boolean isSyncing = false;
-  private boolean readBoardGmaAutoPlayActive = false;
+  private volatile boolean readBoardGmaAutoPlayActive = false;
   private Stone readBoardGmaAutoPlayColor = Stone.EMPTY;
   private int readBoardGmaTimeSeconds = 0;
   private int readBoardGmaMaxVisits = 0;
-  private boolean readBoardGmaPending = false;
+  private volatile boolean readBoardGmaPending = false;
   private boolean readBoardGmaPendingLogicallyInvalid = false;
   private boolean readBoardGmaAwaitingSyncedBoard = false;
   private volatile boolean readBoardGmaEngineRestorePending = false;
@@ -808,17 +808,6 @@ public class ReadBoard {
     if (line.startsWith("play")) {
       String[] params = line.trim().split(">");
       Stone autoPlayColor = autoPlayColorFromPlayParams(params);
-      clearFailedLocalMoveStateIfAutoPlaySideChanged(autoPlayColor);
-      if (hasFailedLocalMoveStateToPreserve()) {
-        localMoveSyncDebug(
-            "play line preserves failed local move state autoPlayColor="
-                + autoPlayColor
-                + " "
-                + pendingLocalMoveState());
-      } else {
-        clearFailedLocalMoveSuppression();
-        clearFailedLocalMoveRecovery();
-      }
       if (params.length == 3) {
         String[] playParams = params[2].trim().split(" ");
         if (playParams.length < 3) {
@@ -828,11 +817,34 @@ public class ReadBoard {
         int firstPlayouts = Integer.parseInt(playParams[2]);
         int time = Integer.parseInt(playParams[0]);
         boolean useGma = isReadBoardGmaPlayMode(playParams);
+        Leelaz currentForegroundEngine = useGma ? Lizzie.leelaz : null;
+        if (currentForegroundEngine != null
+            && !currentForegroundEngine.beginExclusiveGtpLifecycleTransition()) {
+          showForegroundEngineLeaseConflict();
+          return;
+        }
+        try {
+          clearFailedLocalMoveStateIfAutoPlaySideChanged(autoPlayColor);
+          if (hasFailedLocalMoveStateToPreserve()) {
+            localMoveSyncDebug(
+                "play line preserves failed local move state autoPlayColor="
+                    + autoPlayColor
+                    + " "
+                    + pendingLocalMoveState());
+          } else {
+            clearFailedLocalMoveSuppression();
+            clearFailedLocalMoveRecovery();
+          }
         readBoardGmaAutoPlayActive = useGma;
         readBoardGmaAutoPlayColor = autoPlayColor;
         readBoardGmaTimeSeconds = Math.max(0, time);
         readBoardGmaMaxVisits = Math.max(0, playouts);
         readBoardGmaAwaitingSyncedBoard = useGma;
+        } finally {
+          if (currentForegroundEngine != null) {
+            currentForegroundEngine.endExclusiveGtpLifecycleTransition();
+          }
+        }
         if (!useGma) {
           readBoardGmaAwaitingSyncedBoard = false;
           invalidateReadBoardGmaPhysicalRequestIfPending("play-mode-switch");
@@ -1019,6 +1031,14 @@ public class ReadBoard {
       restoreFloatBoardAfterPlaceResult();
       localMoveSyncDebug("readboard line placeComplete after " + pendingLocalMoveState());
     }
+  }
+
+  void showForegroundEngineLeaseConflict() {
+    SwingUtilities.invokeLater(
+        () ->
+            Utils.showMsg(
+                Lizzie.resourceBundle.getString(
+                    "AnalysisSettings.reuseStatus.existing_lease")));
   }
 
   private static boolean isPlacementFailedLine(String line) {
@@ -3703,6 +3723,13 @@ public class ReadBoard {
     return readBoardGmaAutoPlayActive;
   }
 
+  public boolean isReadBoardGmaEngineBusy() {
+    return readBoardGmaAutoPlayActive
+        || readBoardGmaPending
+        || readBoardGmaEngineRestorePending
+        || readBoardGmaEngineRestoreInProgress;
+  }
+
   public void onReadBoardGmaCapabilityReady() {
     scheduleReadBoardGmaIfNeeded("capability-ready");
   }
@@ -3851,14 +3878,21 @@ public class ReadBoard {
         readBoardGmaDeferredRestoreNode = null;
       }
     }
+    if (restoreFailure != null) {
+      synchronized (this) {
+        readBoardGmaEngineRestorePending = false;
+        readBoardGmaDeferredRestoreNode = null;
+      }
+      if (Lizzie.leelaz != null) {
+        Lizzie.leelaz.failReadBoardGmaEngineRestore(restoreFailure.getMessage());
+      }
+      throw restoreFailure;
+    }
     if (hasNewerRestoreNode) {
       return flushReadBoardGmaEngineRestoreIfReady(reason + "-latest");
     }
     if (!readBoardGmaAutoPlayActive && Lizzie.leelaz != null) {
       Lizzie.leelaz.restoreReadBoardGmaRuntimeSettingsIfNeeded();
-    }
-    if (restoreFailure != null) {
-      throw restoreFailure;
     }
     return true;
   }
@@ -3951,8 +3985,12 @@ public class ReadBoard {
             + readBoardGmaMaxVisits
             + " ponder="
             + ponder);
-    Lizzie.leelaz.genmoveAnalyzeForReadBoard(
-        color, readBoardGmaTimeSeconds, readBoardGmaMaxVisits, ponder);
+    if (!Lizzie.leelaz.genmoveAnalyzeForReadBoard(
+        color, readBoardGmaTimeSeconds, readBoardGmaMaxVisits, ponder)) {
+      readBoardGmaPending = false;
+      readBoardGmaPendingLogicallyInvalid = false;
+      localMoveSyncDebug("ReadBoard GMA rejected by foreground lease reason=" + reason);
+    }
     return true;
   }
 
