@@ -8,6 +8,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import featurecat.lizzie.Config;
 import featurecat.lizzie.ExtraMode;
 import featurecat.lizzie.Lizzie;
+import featurecat.lizzie.analysis.remote.RemoteComputeConfig;
 import featurecat.lizzie.gui.GtpConsolePane;
 import featurecat.lizzie.gui.LizzieFrame;
 import featurecat.lizzie.gui.Menu;
@@ -49,6 +50,405 @@ class LeelazReadBoardGmaTest {
     engine.commandLists.remove("kata-set-param");
     assertFalse(
         engine.supportsReadBoardGma(), "GMA gate must require runtime ponder param support.");
+  }
+
+  @Test
+  void websocketGmaSupportsFixedLimitsWithoutClaimingPondering() throws Exception {
+    Leelaz engine = readyReadBoardGmaEngine();
+    engine.setEngineCommand(RemoteComputeConfig.COMMAND_CUSTOM_WS);
+
+    assertTrue(engine.supportsReadBoardGmaFixedLimits());
+    assertFalse(engine.supportsReadBoardGmaPondering());
+  }
+
+  @Test
+  void websocketGmaAppliesFixedLimitsWithoutSendingPonderingParam() throws Exception {
+    try (Harness harness = Harness.open()) {
+      Leelaz engine = readyReadBoardGmaEngine();
+      engine.setEngineCommand(RemoteComputeConfig.COMMAND_CUSTOM_WS);
+      Lizzie.leelaz = engine;
+      RecordingOutputStream output = new RecordingOutputStream();
+      setOutputStream(engine, output);
+
+      assertTrue(engine.genmoveAnalyzeForReadBoard("B", 5, 1000, false));
+
+      assertEquals(List.of("kata-get-param maxTime"), output.commands());
+
+      invokeProcessCommandResponseLine(
+          engine, parameterValueResponseFor(output.rawCommands(), "maxTime", "2"));
+      assertEquals(
+          List.of("kata-get-param maxTime", "kata-set-param maxTime 5"), output.commands());
+
+      invokeProcessCommandResponseLine(
+          engine, successResponseFor(output.rawCommands(), "maxTime"));
+      assertEquals(
+          List.of(
+              "kata-get-param maxTime",
+              "kata-set-param maxTime 5",
+              "kata-get-param maxVisits"),
+          output.commands());
+
+      invokeProcessCommandResponseLine(
+          engine, parameterValueResponseFor(output.rawCommands(), "maxVisits", "800"));
+      assertEquals(
+          List.of(
+              "kata-get-param maxTime",
+              "kata-set-param maxTime 5",
+              "kata-get-param maxVisits",
+              "kata-set-param maxVisits 1000"),
+          output.commands());
+
+      invokeProcessCommandResponseLine(
+          engine, successResponseFor(output.rawCommands(), "maxVisits"));
+      assertEquals(
+          List.of(
+              "kata-get-param maxTime",
+              "kata-set-param maxTime 5",
+              "kata-get-param maxVisits",
+              "kata-set-param maxVisits 1000",
+              "kata-genmove_analyze B 10"),
+          output.commands());
+    }
+  }
+
+  @Test
+  void websocketGmaRejectsPonderingBeforeStartingTheFixedLimitSession() throws Exception {
+    try (Harness harness = Harness.open()) {
+      Leelaz engine = readyReadBoardGmaEngine();
+      engine.setEngineCommand(RemoteComputeConfig.COMMAND_CUSTOM_WS);
+      Lizzie.leelaz = engine;
+      RecordingOutputStream output = new RecordingOutputStream();
+      setOutputStream(engine, output);
+
+      assertFalse(engine.genmoveAnalyzeForReadBoard("B", 5, 1000, true));
+
+      assertTrue(output.commands().isEmpty());
+      assertEquals(
+          Leelaz.ExclusiveGtpLeaseAvailability.AVAILABLE,
+          engine.previewForegroundAnalysisLeaseAvailability());
+    }
+  }
+
+  @Test
+  void websocketGmaSetupErrorQuarantinesEngineAndIgnoresLateSuccess() throws Exception {
+    try (Harness harness = Harness.open()) {
+      Leelaz engine = readyReadBoardGmaEngine();
+      engine.setEngineCommand(RemoteComputeConfig.COMMAND_CUSTOM_WS);
+      Lizzie.leelaz = engine;
+      RecordingOutputStream output = new RecordingOutputStream();
+      setOutputStream(engine, output);
+
+      assertTrue(engine.genmoveAnalyzeForReadBoard("B", 5, 1000, false));
+      invokeProcessCommandResponseLine(
+          engine, parameterValueResponseFor(output.rawCommands(), "maxTime", "2"));
+      invokeProcessCommandResponseLine(
+          engine, errorResponseFor(output.rawCommands(), "maxTime", "setup failed"));
+
+      assertEquals(
+          Leelaz.ExclusiveGtpLeaseAvailability.ENGINE_STATE_UNRESTORED,
+          engine.previewForegroundAnalysisLeaseAvailability());
+      assertFalse(
+          output.commands().stream().anyMatch(command -> command.startsWith("kata-genmove_analyze")));
+
+      invokeProcessCommandResponseLine(
+          engine, successResponseFor(output.rawCommands(), "maxTime"));
+      assertEquals(
+          Leelaz.ExclusiveGtpLeaseAvailability.ENGINE_STATE_UNRESTORED,
+          engine.previewForegroundAnalysisLeaseAvailability());
+    }
+  }
+
+  @Test
+  void websocketGmaSetupSendFailureQuarantinesEngine() throws Exception {
+    try (Harness harness = Harness.open()) {
+      Leelaz engine = readyReadBoardGmaEngine();
+      engine.setEngineCommand(RemoteComputeConfig.COMMAND_CUSTOM_WS);
+      Lizzie.leelaz = engine;
+      setOutputStream(
+          engine,
+          new OutputStream() {
+            @Override
+            public void write(int value) throws IOException {
+              throw new IOException("controlled setup send failure");
+            }
+          });
+
+      assertTrue(engine.genmoveAnalyzeForReadBoard("B", 5, 1000, false));
+
+      assertEquals(
+          Leelaz.ExclusiveGtpLeaseAvailability.ENGINE_STATE_UNRESTORED,
+          engine.previewForegroundAnalysisLeaseAvailability());
+    }
+  }
+
+  @Test
+  void websocketGmaSetupTimeoutQuarantinesEngine() throws Exception {
+    try (Harness harness = Harness.open()) {
+      Leelaz engine = new ShortGmaRestoreTimeoutLeelaz();
+      configureReadyReadBoardGmaEngine(engine);
+      engine.setEngineCommand(RemoteComputeConfig.COMMAND_CUSTOM_WS);
+      Lizzie.leelaz = engine;
+      setOutputStream(engine, new RecordingOutputStream());
+
+      assertTrue(engine.genmoveAnalyzeForReadBoard("B", 5, 1000, false));
+
+      long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(1);
+      while (engine.previewForegroundAnalysisLeaseAvailability()
+              != Leelaz.ExclusiveGtpLeaseAvailability.ENGINE_STATE_UNRESTORED
+          && System.nanoTime() < deadline) {
+        Thread.sleep(5L);
+      }
+      assertEquals(
+          Leelaz.ExclusiveGtpLeaseAvailability.ENGINE_STATE_UNRESTORED,
+          engine.previewForegroundAnalysisLeaseAvailability());
+    }
+  }
+
+  @Test
+  void websocketGmaRestoresExactFixedLimitsBeforeReleasingReservation() throws Exception {
+    try (Harness harness = Harness.open()) {
+      Leelaz engine = readyReadBoardGmaEngine();
+      engine.setEngineCommand(RemoteComputeConfig.COMMAND_CUSTOM_WS);
+      Lizzie.leelaz = engine;
+      RecordingOutputStream output = new RecordingOutputStream();
+      setOutputStream(engine, output);
+      assertTrue(engine.genmoveAnalyzeForReadBoard("B", 5, 1000, false));
+      acknowledgeWebSocketGmaSetup(engine, output, "2", "800");
+      engine.isThinking = false;
+      AtomicInteger successes = new AtomicInteger();
+
+      engine.completeReadBoardGmaEngineRestore(successes::incrementAndGet, detail -> {});
+
+      assertTrue(output.commands().contains("kata-set-param maxTime 2"));
+      assertTrue(output.commands().contains("kata-set-param maxVisits 800"));
+      assertFalse(
+          output.commands().stream().anyMatch(command -> command.contains("ponderingEnabled")));
+      assertEquals(
+          Leelaz.ExclusiveGtpLeaseAvailability.READBOARD_GMA,
+          engine.previewForegroundAnalysisLeaseAvailability());
+
+      invokeProcessCommandResponseLine(
+          engine, successResponseFor(output.rawCommands(), "maxVisits"));
+      assertEquals(
+          Leelaz.ExclusiveGtpLeaseAvailability.READBOARD_GMA,
+          engine.previewForegroundAnalysisLeaseAvailability());
+      invokeProcessCommandResponseLine(
+          engine, successResponseFor(output.rawCommands(), "maxTime"));
+
+      assertEquals(1, successes.get());
+      assertEquals(
+          Leelaz.ExclusiveGtpLeaseAvailability.AVAILABLE,
+          engine.previewForegroundAnalysisLeaseAvailability());
+    }
+  }
+
+  @Test
+  void websocketGmaReusesOriginalSnapshotAndAppliesChangesOnlyToTheNextMove() throws Exception {
+    try (Harness harness = Harness.open()) {
+      Leelaz engine = readyReadBoardGmaEngine();
+      engine.setEngineCommand(RemoteComputeConfig.COMMAND_CUSTOM_WS);
+      Lizzie.leelaz = engine;
+      RecordingOutputStream output = new RecordingOutputStream();
+      setOutputStream(engine, output);
+      assertTrue(engine.genmoveAnalyzeForReadBoard("B", 5, 1000, false));
+      acknowledgeWebSocketGmaSetup(engine, output, "2", "800");
+      int firstMoveCommandCount = output.commands().size();
+
+      assertFalse(engine.genmoveAnalyzeForReadBoard("W", 6, 900, false));
+      assertEquals(firstMoveCommandCount, output.commands().size());
+
+      engine.isThinking = false;
+      assertTrue(engine.genmoveAnalyzeForReadBoard("W", 6, 900, false));
+      assertEquals(
+          "kata-set-param maxTime 6", output.commands().get(firstMoveCommandCount));
+      invokeProcessCommandResponseLine(
+          engine, successResponseFor(output.rawCommands(), "maxTime"));
+      assertEquals(
+          "kata-set-param maxVisits 900", output.commands().get(firstMoveCommandCount + 1));
+      invokeProcessCommandResponseLine(
+          engine, successResponseFor(output.rawCommands(), "maxVisits"));
+
+      assertEquals(
+          "kata-genmove_analyze W 10", output.commands().get(firstMoveCommandCount + 2));
+      assertEquals(
+          1,
+          output.commands().stream()
+              .filter(command -> command.equals("kata-get-param maxTime"))
+              .count());
+      assertEquals(
+          1,
+          output.commands().stream()
+              .filter(command -> command.equals("kata-get-param maxVisits"))
+              .count());
+    }
+  }
+
+  @Test
+  void websocketGmaStopDuringSnapshotWaitDoesNotReleaseOrStartTheMove() throws Exception {
+    try (Harness harness = Harness.open()) {
+      Leelaz engine = readyReadBoardGmaEngine();
+      engine.setEngineCommand(RemoteComputeConfig.COMMAND_CUSTOM_WS);
+      Lizzie.leelaz = engine;
+      RecordingOutputStream output = new RecordingOutputStream();
+      setOutputStream(engine, output);
+      assertTrue(engine.genmoveAnalyzeForReadBoard("B", 5, 1000, false));
+      AtomicInteger successes = new AtomicInteger();
+
+      assertTrue(
+          engine.cancelReadBoardGmaPreparationIfPending(
+              successes::incrementAndGet, detail -> {}));
+
+      assertEquals(
+          Leelaz.ExclusiveGtpLeaseAvailability.READBOARD_GMA,
+          engine.previewForegroundAnalysisLeaseAvailability());
+      invokeProcessCommandResponseLine(
+          engine, parameterValueResponseFor(output.rawCommands(), "maxTime", "2"));
+
+      assertEquals(List.of("kata-get-param maxTime"), output.commands());
+      assertEquals(1, successes.get());
+      assertEquals(
+          Leelaz.ExclusiveGtpLeaseAvailability.AVAILABLE,
+          engine.previewForegroundAnalysisLeaseAvailability());
+    }
+  }
+
+  @Test
+  void websocketGmaStopDuringSetWaitRestoresTheAcknowledgedOverride() throws Exception {
+    try (Harness harness = Harness.open()) {
+      Leelaz engine = readyReadBoardGmaEngine();
+      engine.setEngineCommand(RemoteComputeConfig.COMMAND_CUSTOM_WS);
+      Lizzie.leelaz = engine;
+      RecordingOutputStream output = new RecordingOutputStream();
+      setOutputStream(engine, output);
+      assertTrue(engine.genmoveAnalyzeForReadBoard("B", 5, 1000, false));
+      invokeProcessCommandResponseLine(
+          engine, parameterValueResponseFor(output.rawCommands(), "maxTime", "2"));
+      AtomicInteger successes = new AtomicInteger();
+
+      engine.completeReadBoardGmaEngineRestore(successes::incrementAndGet, detail -> {});
+      invokeProcessCommandResponseLine(
+          engine, successResponseFor(output.rawCommands(), "maxTime"));
+
+      assertEquals(
+          List.of(
+              "kata-get-param maxTime",
+              "kata-set-param maxTime 5",
+              "kata-set-param maxTime 2"),
+          output.commands());
+      assertEquals(
+          Leelaz.ExclusiveGtpLeaseAvailability.READBOARD_GMA,
+          engine.previewForegroundAnalysisLeaseAvailability());
+      invokeProcessCommandResponseLine(
+          engine, successResponseFor(output.rawCommands(), "maxTime"));
+
+      assertEquals(1, successes.get());
+      assertEquals(
+          Leelaz.ExclusiveGtpLeaseAvailability.AVAILABLE,
+          engine.previewForegroundAnalysisLeaseAvailability());
+    }
+  }
+
+  @Test
+  void websocketGmaSnapshotsBothOriginalLimitsEvenWhenReadBoardUsesDefaults() throws Exception {
+    try (Harness harness = Harness.open()) {
+      Leelaz engine = readyReadBoardGmaEngine();
+      engine.setEngineCommand(RemoteComputeConfig.COMMAND_CUSTOM_WS);
+      Lizzie.leelaz = engine;
+      RecordingOutputStream output = new RecordingOutputStream();
+      setOutputStream(engine, output);
+
+      assertTrue(engine.genmoveAnalyzeForReadBoard("B", 0, 0, false));
+
+      assertEquals(List.of("kata-get-param maxTime"), output.commands());
+      invokeProcessCommandResponseLine(
+          engine, parameterValueResponseFor(output.rawCommands(), "maxTime", "2"));
+      assertEquals(
+          List.of("kata-get-param maxTime", "kata-get-param maxVisits"), output.commands());
+      invokeProcessCommandResponseLine(
+          engine, parameterValueResponseFor(output.rawCommands(), "maxVisits", "800"));
+
+      assertEquals(
+          List.of(
+              "kata-get-param maxTime",
+              "kata-get-param maxVisits",
+              "kata-genmove_analyze B 10"),
+          output.commands());
+    }
+  }
+
+  @Test
+  void websocketGmaCancelBeforeFinalSetAckCannotStartTheMove() throws Exception {
+    try (Harness harness = Harness.open()) {
+      Leelaz engine = readyReadBoardGmaEngine();
+      engine.setEngineCommand(RemoteComputeConfig.COMMAND_CUSTOM_WS);
+      Lizzie.leelaz = engine;
+      RecordingOutputStream output = new RecordingOutputStream();
+      setOutputStream(engine, output);
+      assertTrue(engine.genmoveAnalyzeForReadBoard("B", 5, 1000, false));
+      invokeProcessCommandResponseLine(
+          engine, parameterValueResponseFor(output.rawCommands(), "maxTime", "2"));
+      invokeProcessCommandResponseLine(
+          engine, successResponseFor(output.rawCommands(), "maxTime"));
+      invokeProcessCommandResponseLine(
+          engine, parameterValueResponseFor(output.rawCommands(), "maxVisits", "800"));
+
+      assertTrue(engine.cancelReadBoardGmaPreparationIfPending(null, detail -> {}));
+      invokeProcessCommandResponseLine(
+          engine, successResponseFor(output.rawCommands(), "maxVisits"));
+
+      assertFalse(
+          output.commands().stream().anyMatch(command -> command.startsWith("kata-genmove_analyze")));
+      assertTrue(output.commands().contains("kata-set-param maxTime 2"));
+      assertTrue(output.commands().contains("kata-set-param maxVisits 800"));
+      assertEquals(
+          Leelaz.ExclusiveGtpLeaseAvailability.READBOARD_GMA,
+          engine.previewForegroundAnalysisLeaseAvailability());
+      invokeProcessCommandResponseLine(
+          engine, successResponseFor(output.rawCommands(), "maxVisits"));
+      invokeProcessCommandResponseLine(
+          engine, successResponseFor(output.rawCommands(), "maxTime"));
+      assertEquals(
+          Leelaz.ExclusiveGtpLeaseAvailability.AVAILABLE,
+          engine.previewForegroundAnalysisLeaseAvailability());
+    }
+  }
+
+  @Test
+  void readBoardStopSyncCancelsWebsocketGmaPreparation() throws Exception {
+    try (Harness harness = Harness.open()) {
+      Leelaz engine = readyReadBoardGmaEngine();
+      engine.setEngineCommand(RemoteComputeConfig.COMMAND_CUSTOM_WS);
+      Lizzie.leelaz = engine;
+      RecordingOutputStream output = new RecordingOutputStream();
+      setOutputStream(engine, output);
+      ReadBoard readBoard = allocate(ReadBoard.class);
+      setObjectField(readBoard, "conflictTracker", new SyncConflictTracker());
+      setObjectField(readBoard, "historyJumpTracker", new SyncHistoryJumpTracker());
+      setObjectField(readBoard, "localNavigationTracker", new SyncLocalNavigationTracker());
+      setBooleanField(readBoard, "readBoardGmaPending", true);
+      setBooleanField(readBoard, "readBoardGmaAutoPlayActive", true);
+      Lizzie.frame.readBoard = readBoard;
+      assertTrue(engine.genmoveAnalyzeForReadBoard("B", 5, 1000, false));
+
+      readBoard.parseLine("stopsync");
+
+      assertFalse(getBooleanField(readBoard, "readBoardGmaPending"));
+      assertEquals(
+          Leelaz.ExclusiveGtpLeaseAvailability.READBOARD_GMA,
+          engine.previewForegroundAnalysisLeaseAvailability());
+      invokeProcessCommandResponseLine(
+          engine, parameterValueResponseFor(output.rawCommands(), "maxTime", "2"));
+      assertEquals(List.of("kata-get-param maxTime", "stop"), output.commands());
+      assertFalse(
+          output.commands().stream()
+              .anyMatch(
+                  command ->
+                      command.startsWith("kata-set-param")
+                          || command.startsWith("kata-genmove_analyze")));
+      assertEquals(
+          Leelaz.ExclusiveGtpLeaseAvailability.AVAILABLE,
+          engine.previewForegroundAnalysisLeaseAvailability());
+    }
   }
 
   @Test
@@ -1463,6 +1863,18 @@ class LeelazReadBoardGmaTest {
     invokeProcessCommandResponseLine(
         engine, successResponseFor(output.rawCommands(), "maxVisits"));
     invokeProcessCommandResponseLine(engine, "=");
+  }
+
+  private static void acknowledgeWebSocketGmaSetup(
+      Leelaz engine, RecordingOutputStream output, String maxTime, String maxVisits)
+      throws Exception {
+    invokeProcessCommandResponseLine(
+        engine, parameterValueResponseFor(output.rawCommands(), "maxTime", maxTime));
+    invokeProcessCommandResponseLine(engine, successResponseFor(output.rawCommands(), "maxTime"));
+    invokeProcessCommandResponseLine(
+        engine, parameterValueResponseFor(output.rawCommands(), "maxVisits", maxVisits));
+    invokeProcessCommandResponseLine(
+        engine, successResponseFor(output.rawCommands(), "maxVisits"));
   }
 
   private static String successResponseFor(List<String> commands, String paramName) {

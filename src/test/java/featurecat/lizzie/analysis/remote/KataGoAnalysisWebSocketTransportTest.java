@@ -112,8 +112,96 @@ public class KataGoAnalysisWebSocketTransportTest {
 
       sendResult.complete(harness.webSocket);
       assertEquals(
-          "=27\ninfo move Q16 visits 12 order 0\n",
+          "=27\ninfo move Q16 visits 12 order 0\n", readAvailable(harness.transport.stdout()));
+    }
+  }
+
+  @Test
+  void activeQueryKeepsItsParameterSnapshotAndLaterQueriesUseCommittedValues() throws Exception {
+    try (TransportHarness harness = TransportHarness.open()) {
+      assertEquals("=\n\n", sendGtp(harness.transport, "kata-set-param maxTime 1.25"));
+      assertEquals("=\n\n", sendGtp(harness.transport, "kata-set-param maxVisits 125"));
+      assertEquals(
+          "=\n\n", sendGtp(harness.transport, "kata-set-param playoutDoublingAdvantage -1"));
+      assertEquals(
+          "=\n\n", sendGtp(harness.transport, "kata-set-param analysisWideRootNoise 0.25"));
+
+      CompletableFuture<WebSocket> sendResult = harness.webSocket.deferNextSend();
+      writeGtp(harness.transport, "201 genmove B");
+      JSONObject active = harness.webSocket.sentJson(0);
+      assertEquals(125L, active.getLong("maxVisits"));
+      assertEquals(1.25, active.getJSONObject("overrideSettings").getDouble("maxTime"));
+      assertEquals(-1.0, active.getDouble("playoutDoublingAdvantage"));
+
+      assertEquals("=211\n\n", sendGtp(harness.transport, "211 kata-set-param maxTime 2.5"));
+      assertEquals("=212\n\n", sendGtp(harness.transport, "212 kata-set-param maxVisits 250"));
+      assertEquals(
+          "=213\n\n", sendGtp(harness.transport, "213 kata-set-param playoutDoublingAdvantage 2"));
+      assertEquals(
+          "=214\n\n", sendGtp(harness.transport, "214 kata-set-param analysisWideRootNoise 0.5"));
+
+      assertEquals(125L, active.getLong("maxVisits"));
+      assertEquals(1.25, active.getJSONObject("overrideSettings").getDouble("maxTime"));
+      assertEquals(-1.0, active.getDouble("playoutDoublingAdvantage"));
+      assertEquals(1, harness.webSocket.sentTexts.size());
+
+      sendResult.complete(harness.webSocket);
+      assertEquals("", readAvailable(harness.transport.stdout()));
+      harness.webSocket.emit(analysisResponse(active.getString("id"), false, "Q16", 125));
+      assertEquals(
+          "info move Q16 visits 125 order 0\n=201 Q16\n\n",
           readAvailable(harness.transport.stdout()));
+
+      writeGtp(harness.transport, "221 genmove W");
+      JSONObject nextMove = harness.webSocket.sentJson(1);
+      assertEquals(250L, nextMove.getLong("maxVisits"));
+      assertEquals(2.5, nextMove.getJSONObject("overrideSettings").getDouble("maxTime"));
+      assertEquals(2.0, nextMove.getDouble("playoutDoublingAdvantage"));
+      harness.webSocket.emit(analysisResponse(nextMove.getString("id"), false, "D4", 250));
+      assertEquals(
+          "info move D4 visits 250 order 0\n=221 D4\n\n",
+          readAvailable(harness.transport.stdout()));
+
+      writeGtp(harness.transport, "231 kata-analyze B 10");
+      JSONObject nextAnalysis = harness.webSocket.sentJson(2);
+      assertEquals(2.0, nextAnalysis.getDouble("playoutDoublingAdvantage"));
+      assertEquals(0.5, nextAnalysis.getJSONObject("overrideSettings").getDouble("wideRootNoise"));
+      assertEquals("=231\n", readAvailable(harness.transport.stdout()));
+      harness.webSocket.emit(finalWithoutResults(nextAnalysis.getString("id")));
+      assertEquals("\n", readAvailable(harness.transport.stdout()));
+    }
+  }
+
+  @Test
+  void parameterUpdateAndStopDuringPendingSendKeepOneTerminalResponse() throws Exception {
+    try (TransportHarness harness = TransportHarness.open()) {
+      CompletableFuture<WebSocket> sendResult = harness.webSocket.deferNextSend();
+      writeGtp(harness.transport, "301 kata-analyze B 10");
+      JSONObject active = harness.webSocket.sentJson(0);
+
+      assertEquals(
+          "=311\n\n",
+          sendGtp(harness.transport, "311 kata-set-param playoutDoublingAdvantage 1.5"));
+      writeGtp(harness.transport, "302 stop");
+      JSONObject terminate = harness.webSocket.sentJson(1);
+      harness.webSocket.emit(terminate);
+      harness.webSocket.emit(finalWithoutResults(active.getString("id")));
+      assertEquals("", readAvailable(harness.transport.stdout()));
+
+      sendResult.complete(harness.webSocket);
+      assertEquals("=301\n\n=302\n\n", readAvailable(harness.transport.stdout()));
+
+      harness.webSocket.emit(terminate);
+      harness.webSocket.emit(finalWithoutResults(active.getString("id")));
+      assertEquals("", readAvailable(harness.transport.stdout()));
+      assertEquals(2, harness.webSocket.sentTexts.size());
+
+      writeGtp(harness.transport, "303 kata-analyze W 10");
+      JSONObject next = harness.webSocket.sentJson(2);
+      assertEquals(1.5, next.getDouble("playoutDoublingAdvantage"));
+      assertEquals("=303\n", readAvailable(harness.transport.stdout()));
+      harness.webSocket.emit(finalWithoutResults(next.getString("id")));
+      assertEquals("\n", readAvailable(harness.transport.stdout()));
     }
   }
 
@@ -435,6 +523,193 @@ public class KataGoAnalysisWebSocketTransportTest {
     assertTrue(rules.contains("\"scoring\":\"AREA\""));
     assertTrue(rules.contains("\"ko\":\"SIMPLE\""));
     assertTrue(rules.contains("\"friendlyPassOk\":true"));
+  }
+
+  @Test
+  void advertisesOnlySupportedWebSocketTimeCommands() throws Exception {
+    KataGoAnalysisWebSocketTransport transport =
+        new KataGoAnalysisWebSocketTransport("ws://127.0.0.1:1");
+
+    String commands = sendGtp(transport, "list_commands");
+
+    assertTrue(commands.contains("\nkata-list_time_settings\n"));
+    assertTrue(commands.contains("\nkata-time_settings\n"));
+    assertFalse(commands.contains("\ntime_settings\n"));
+    assertFalse(commands.contains("\ntime_left\n"));
+    assertEquals("=71 none\n\n", sendGtp(transport, "71 kata-list_time_settings"));
+  }
+
+  @Test
+  void noneClockModeKeepsIndependentFixedMoveTime() throws Exception {
+    KataGoAnalysisWebSocketTransport transport =
+        new KataGoAnalysisWebSocketTransport("ws://127.0.0.1:1");
+
+    assertEquals("=\n\n", sendGtp(transport, "kata-set-param maxTime 2.5"));
+
+    assertEquals("=72\n\n", sendGtp(transport, "72 kata-time_settings none"));
+    assertEquals("=73 2.5\n\n", sendGtp(transport, "73 kata-get-param maxTime"));
+  }
+
+  @Test
+  void rejectsUnsupportedClockCommandsWithIdsWithoutChangingMoveLimits() throws Exception {
+    KataGoAnalysisWebSocketTransport transport =
+        new KataGoAnalysisWebSocketTransport("ws://127.0.0.1:1");
+    assertEquals("=\n\n", sendGtp(transport, "kata-set-param maxTime 3.5"));
+    assertEquals("=\n\n", sendGtp(transport, "kata-set-param maxVisits 777"));
+
+    assertEquals(
+        "?74 websocket analysis adapter supports only kata-time_settings none\n\n",
+        sendGtp(transport, "74 kata-time_settings absolute 60"));
+    assertEquals(
+        "?75 time_settings unsupported by websocket analysis adapter\n\n",
+        sendGtp(transport, "75 time_settings 60 10 1"));
+    assertEquals(
+        "?76 time_left unsupported by websocket analysis adapter\n\n",
+        sendGtp(transport, "76 time_left B 30 1"));
+    assertEquals(
+        "?77 websocket analysis adapter supports only kata-time_settings none\n\n",
+        sendGtp(transport, "77 kata-time_settings"));
+
+    assertEquals("= 3.5\n\n", sendGtp(transport, "kata-get-param maxTime"));
+    assertEquals("= 777\n\n", sendGtp(transport, "kata-get-param maxVisits"));
+  }
+
+  @Test
+  void moveSearchLimitsRoundTripAndResetToAdapterBaselines() throws Exception {
+    KataGoAnalysisWebSocketTransport transport =
+        new KataGoAnalysisWebSocketTransport("ws://127.0.0.1:1");
+
+    assertEquals("= 1.0E20\n\n", sendGtp(transport, "kata-get-param maxTime"));
+    assertEquals("= 256\n\n", sendGtp(transport, "kata-get-param maxVisits"));
+
+    assertEquals("=31\n\n", sendGtp(transport, "31 kata-set-param maxTime 2.5"));
+    assertEquals("=32 2.5\n\n", sendGtp(transport, "32 kata-get-param maxTime"));
+    assertEquals("=33\n\n", sendGtp(transport, "33 kata-set-param maxVisits 4096"));
+    assertEquals("=34 4096\n\n", sendGtp(transport, "34 kata-get-param maxVisits"));
+
+    assertEquals("=35\n\n", sendGtp(transport, "35 kata-set-param maxTime"));
+    assertEquals("=36 1.0E20\n\n", sendGtp(transport, "36 kata-get-param maxTime"));
+    assertEquals("=37\n\n", sendGtp(transport, "37 kata-set-param maxVisits"));
+    assertEquals("=38 256\n\n", sendGtp(transport, "38 kata-get-param maxVisits"));
+  }
+
+  @Test
+  void rejectsInvalidParameterUpdatesWithoutChangingEffectiveValues() throws Exception {
+    KataGoAnalysisWebSocketTransport transport =
+        new KataGoAnalysisWebSocketTransport("ws://127.0.0.1:1");
+
+    assertEquals("=\n\n", sendGtp(transport, "kata-set-param maxTime 12.5"));
+    assertTrue(sendGtp(transport, "41 kata-set-param maxTime NaN").startsWith("?41 "));
+    assertTrue(sendGtp(transport, "42 kata-set-param maxTime Infinity").startsWith("?42 "));
+    assertTrue(sendGtp(transport, "43 kata-set-param maxTime -1").startsWith("?43 "));
+    assertTrue(sendGtp(transport, "44 kata-set-param maxTime 1.1e20").startsWith("?44 "));
+    assertTrue(sendGtp(transport, "45 kata-set-param maxTime nope").startsWith("?45 "));
+    assertEquals("= 12.5\n\n", sendGtp(transport, "kata-get-param maxTime"));
+
+    assertEquals("=\n\n", sendGtp(transport, "kata-set-param maxVisits 99"));
+    assertTrue(sendGtp(transport, "51 kata-set-param maxVisits 0").startsWith("?51 "));
+    assertTrue(sendGtp(transport, "52 kata-set-param maxVisits 1.5").startsWith("?52 "));
+    assertTrue(
+        sendGtp(transport, "53 kata-set-param maxVisits 1125899906842625").startsWith("?53 "));
+    assertTrue(sendGtp(transport, "54 kata-set-param maxVisits nope").startsWith("?54 "));
+    assertEquals("= 99\n\n", sendGtp(transport, "kata-get-param maxVisits"));
+  }
+
+  @Test
+  void acceptsInclusiveNumericParameterBoundaries() throws Exception {
+    KataGoAnalysisWebSocketTransport transport =
+        new KataGoAnalysisWebSocketTransport("ws://127.0.0.1:1");
+
+    String[][] acceptedValues = {
+      {"maxTime", "0", "0.0"},
+      {"maxTime", "1e20", "1.0E20"},
+      {"maxVisits", "1", "1"},
+      {"maxVisits", "1125899906842624", "1125899906842624"},
+      {"playoutDoublingAdvantage", "-3", "-3.0"},
+      {"playoutDoublingAdvantage", "3", "3.0"},
+      {"analysisWideRootNoise", "0", "0.0"},
+      {"analysisWideRootNoise", "5", "5.0"}
+    };
+    for (String[] accepted : acceptedValues) {
+      assertEquals(
+          "=\n\n", sendGtp(transport, "kata-set-param " + accepted[0] + " " + accepted[1]));
+      assertEquals(
+          "= " + accepted[2] + "\n\n", sendGtp(transport, "kata-get-param " + accepted[0]));
+    }
+  }
+
+  @Test
+  void queryCustomizationParametersRoundTripAndUnsupportedParametersFail() throws Exception {
+    KataGoAnalysisWebSocketTransport transport =
+        new KataGoAnalysisWebSocketTransport("ws://127.0.0.1:1");
+
+    assertEquals("=61\n\n", sendGtp(transport, "61 kata-set-param playoutDoublingAdvantage -2.5"));
+    assertEquals("=62 -2.5\n\n", sendGtp(transport, "62 kata-get-param playoutDoublingAdvantage"));
+    assertEquals("=63\n\n", sendGtp(transport, "63 kata-set-param analysisWideRootNoise 1.25"));
+    assertEquals("=64 1.25\n\n", sendGtp(transport, "64 kata-get-param analysisWideRootNoise"));
+
+    assertTrue(
+        sendGtp(transport, "65 kata-set-param playoutDoublingAdvantage 3.1").startsWith("?65 "));
+    assertTrue(
+        sendGtp(transport, "66 kata-set-param analysisWideRootNoise -0.1").startsWith("?66 "));
+    assertEquals("= -2.5\n\n", sendGtp(transport, "kata-get-param playoutDoublingAdvantage"));
+    assertEquals("= 1.25\n\n", sendGtp(transport, "kata-get-param analysisWideRootNoise"));
+
+    assertTrue(sendGtp(transport, "67 kata-get-param ponderingEnabled").startsWith("?67 "));
+    assertTrue(sendGtp(transport, "68 kata-set-param ponderingEnabled true").startsWith("?68 "));
+    assertTrue(sendGtp(transport, "69 kata-get-param unsupported").startsWith("?69 "));
+    assertTrue(sendGtp(transport, "70 kata-set-param unsupported 1").startsWith("?70 "));
+  }
+
+  @Test
+  void moveProducingQueriesUseEffectiveMoveSearchLimits() throws Exception {
+    try (TransportHarness harness = TransportHarness.open()) {
+      assertEquals("=\n\n", sendGtp(harness.transport, "kata-set-param maxTime 0.75"));
+      assertEquals("=\n\n", sendGtp(harness.transport, "kata-set-param maxVisits 321"));
+      assertEquals(
+          "=\n\n", sendGtp(harness.transport, "kata-set-param playoutDoublingAdvantage 1.5"));
+      assertEquals("=\n\n", sendGtp(harness.transport, "kata-set-param analysisWideRootNoise 2.0"));
+
+      writeGtp(harness.transport, "genmove B");
+      JSONObject genmove = harness.webSocket.sentJson(0);
+      assertEquals(321L, genmove.getLong("maxVisits"));
+      assertFalse(genmove.has("maxTime"));
+      assertEquals(0.75, genmove.getJSONObject("overrideSettings").getDouble("maxTime"));
+      assertEquals(1.5, genmove.getDouble("playoutDoublingAdvantage"));
+      assertFalse(genmove.getJSONObject("overrideSettings").has("wideRootNoise"));
+
+      harness.webSocket.emit(
+          analysisResponse(genmove.getString("id"), false, "D4", genmove.getInt("maxVisits")));
+      readAvailable(harness.transport.stdout());
+
+      writeGtp(harness.transport, "kata-genmove_analyze W 50");
+      JSONObject analyzedGenmove = harness.webSocket.sentJson(1);
+      assertEquals(321L, analyzedGenmove.getLong("maxVisits"));
+      assertFalse(analyzedGenmove.has("maxTime"));
+      assertEquals(0.75, analyzedGenmove.getJSONObject("overrideSettings").getDouble("maxTime"));
+      assertEquals(1.5, analyzedGenmove.getDouble("playoutDoublingAdvantage"));
+      assertFalse(analyzedGenmove.getJSONObject("overrideSettings").has("wideRootNoise"));
+    }
+  }
+
+  @Test
+  void continuousAnalysisKeepsItsExistingLimitAndUsesOnlySharedCustomizations() throws Exception {
+    try (TransportHarness harness = TransportHarness.open()) {
+      assertEquals("=\n\n", sendGtp(harness.transport, "kata-set-param maxTime 0.25"));
+      assertEquals("=\n\n", sendGtp(harness.transport, "kata-set-param maxVisits 12"));
+      assertEquals(
+          "=\n\n", sendGtp(harness.transport, "kata-set-param playoutDoublingAdvantage -1.5"));
+      assertEquals("=\n\n", sendGtp(harness.transport, "kata-set-param analysisWideRootNoise 0.5"));
+
+      writeGtp(harness.transport, "kata-analyze B 10");
+      JSONObject analysis = harness.webSocket.sentJson(0);
+
+      assertEquals(10_000_000, analysis.getInt("maxVisits"));
+      assertFalse(analysis.has("maxTime"));
+      assertFalse(analysis.getJSONObject("overrideSettings").has("maxTime"));
+      assertEquals(-1.5, analysis.getDouble("playoutDoublingAdvantage"));
+      assertEquals(0.5, analysis.getJSONObject("overrideSettings").getDouble("wideRootNoise"));
+    }
   }
 
   @Test

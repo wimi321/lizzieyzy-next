@@ -417,8 +417,7 @@ public class NewEngineGameDialog extends JDialog {
           @Override
           public void actionPerformed(ActionEvent e) {
             // TODO Auto-generated method stub
-            Lizzie.config.pkAdvanceTimeSettings = chkUseAdvanceTime.isSelected();
-            if (Lizzie.config.pkAdvanceTimeSettings) {
+            if (chkUseAdvanceTime.isSelected()) {
               LizzieFrame.toolbar.chkenginePkTime.setEnabled(false);
               LizzieFrame.toolbar.txtenginePkTime.setEnabled(false);
               LizzieFrame.toolbar.txtenginePkTimeWhite.setEnabled(false);
@@ -433,8 +432,6 @@ public class NewEngineGameDialog extends JDialog {
               txtBlackAdvanceTime.setEnabled(false);
               txtWhiteAdvanceTime.setEnabled(false);
             }
-            Lizzie.config.uiConfig.put(
-                "pk-advance-time-settings", Lizzie.config.pkAdvanceTimeSettings);
           }
         });
     chkUseAdvanceTime.setSelected(Lizzie.config.pkAdvanceTimeSettings);
@@ -844,7 +841,7 @@ public class NewEngineGameDialog extends JDialog {
     resignThresoldHint.setVisible(genmoveMode);
     chkUseAdvanceTime.setEnabled(genmoveMode);
 
-    if (genmoveMode && Lizzie.config.pkAdvanceTimeSettings) {
+    if (genmoveMode && chkUseAdvanceTime.isSelected()) {
       LizzieFrame.toolbar.chkenginePkTime.setEnabled(false);
       LizzieFrame.toolbar.txtenginePkTime.setEnabled(false);
       LizzieFrame.toolbar.txtenginePkTimeWhite.setEnabled(false);
@@ -955,6 +952,16 @@ public class NewEngineGameDialog extends JDialog {
             && !LizzieFrame.toolbar.chkenginePkBatch.isSelected())
           Utils.showMsg(Lizzie.resourceBundle.getString("NewEngineGameDialog.multiSgfNotBatch"));
       }
+      boolean advancedClock = chkUseAdvanceTime.isSelected();
+      if (LizzieFrame.toolbar.isGenmoveToolbar
+          && DesktopTimeControl.rejectsEngineGame(
+              Lizzie.engineManager.engineList,
+              LizzieFrame.toolbar.engineBlackToolbar,
+              LizzieFrame.toolbar.engineWhiteToolbar,
+              advancedClock)) {
+        Lizzie.frame.showUnsupportedWebSocketAdvancedClock();
+        return;
+      }
       //
       // LizzieFrame.toolbar.chkenginePkContinue.removeActionListener(chkEnginePkContinueListener);
       //  LizzieFrame.toolbar.chkenginePkBatch.removeActionListener(chkBatchGameListener);
@@ -974,6 +981,7 @@ public class NewEngineGameDialog extends JDialog {
           !textFieldHandicap.isEnabled()
               ? 0
               : FORMAT_HANDICAP.parse(textFieldHandicap.getText()).intValue();
+      DesktopTimeControl.commitEngineGameSelection(Lizzie.config, advancedClock);
       try {
         Lizzie.config.firstEngineResignMoveCounts =
             Integer.parseInt(txtresignSettingBlack.getText());

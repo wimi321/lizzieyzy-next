@@ -31,6 +31,7 @@ class SnapshotTrackingLeelaz extends Leelaz {
   List<String> sentCommands;
   private boolean readBoardGmaCapabilityKnown;
   private boolean readBoardGmaSupported;
+  private boolean readBoardGmaPonderingSupported;
   private Stone[] stones;
   private boolean blackToPlay = true;
   private Path lastLoadedSgf;
@@ -54,6 +55,7 @@ class SnapshotTrackingLeelaz extends Leelaz {
     leelaz.sentCommands = new ArrayList<>();
     leelaz.readBoardGmaCapabilityKnown = false;
     leelaz.readBoardGmaSupported = false;
+    leelaz.readBoardGmaPonderingSupported = false;
     initializeReadBoardGmaRuntimeParam(leelaz, "readBoardGmaMaxTime", "maxTime");
     initializeReadBoardGmaRuntimeParam(leelaz, "readBoardGmaMaxVisits", "maxVisits");
     initializeReadBoardGmaRuntimeParam(leelaz, "readBoardGmaPondering", "ponderingEnabled");
@@ -76,6 +78,14 @@ class SnapshotTrackingLeelaz extends Leelaz {
   void enableReadBoardGmaSupport() {
     readBoardGmaCapabilityKnown = true;
     readBoardGmaSupported = true;
+    readBoardGmaPonderingSupported = true;
+    isKatago = true;
+  }
+
+  void enableReadBoardGmaFixedLimitOnlySupport() {
+    readBoardGmaCapabilityKnown = true;
+    readBoardGmaSupported = true;
+    readBoardGmaPonderingSupported = false;
     isKatago = true;
   }
 
@@ -122,6 +132,16 @@ class SnapshotTrackingLeelaz extends Leelaz {
   @Override
   public boolean supportsReadBoardGma() {
     return readBoardGmaSupported;
+  }
+
+  @Override
+  public boolean supportsReadBoardGmaFixedLimits() {
+    return readBoardGmaSupported;
+  }
+
+  @Override
+  public boolean supportsReadBoardGmaPondering() {
+    return readBoardGmaPonderingSupported;
   }
 
   @Override

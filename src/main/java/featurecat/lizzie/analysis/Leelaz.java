@@ -340,6 +340,7 @@ public class Leelaz {
   private volatile Object readBoardGmaLock;
   private volatile EngineModeReservation readBoardGmaReservation;
   private volatile ReadBoardGmaRestoreBarrier readBoardGmaRestoreBarrier;
+  private volatile ReadBoardGmaPreparation readBoardGmaPreparation;
   private volatile boolean engineStateUnrestored;
   private int currentTotalPlayouts;
   public boolean supportMovesOwnership = false;
@@ -5974,6 +5975,270 @@ public class Leelaz {
     }
   }
 
+  private final class ReadBoardGmaPreparation {
+    private final String color;
+    private final int maxTimeSeconds;
+    private final int maxVisits;
+    private boolean cancellationRequested;
+    private Runnable cancellationSuccess;
+    private Consumer<String> cancellationFailure;
+
+    private ReadBoardGmaPreparation(String color, int maxTimeSeconds, int maxVisits) {
+      this.color = color;
+      this.maxTimeSeconds = maxTimeSeconds;
+      this.maxVisits = maxVisits;
+    }
+
+    private void start() {
+      prepareParam(readBoardGmaMaxTime, maxTimeSeconds, this::prepareMaxVisits);
+    }
+
+    private void prepareMaxVisits() {
+      prepareParam(readBoardGmaMaxVisits, maxVisits, this::finish);
+    }
+
+    private void prepareParam(ReadBoardGmaRuntimeParam param, int value, Runnable completion) {
+      if (finishCancellationIfRequested()) {
+        return;
+      }
+      boolean requestSnapshot;
+      synchronized (readBoardGmaLock()) {
+        if (readBoardGmaPreparation != this || engineStateUnrestored) {
+          return;
+        }
+        requestSnapshot = !param.snapshotRequested;
+        if (requestSnapshot) {
+          param.snapshotRequested = true;
+        }
+      }
+      if (requestSnapshot) {
+        sendPreparationCommand(
+            "kata-get-param " + param.name,
+            response -> {
+              String originalValue = parseKataGetParamValue(response);
+              if (originalValue.isEmpty()) {
+                fail("invalid parameter snapshot response: " + param.name);
+                return;
+              }
+              synchronized (readBoardGmaLock()) {
+                if (readBoardGmaPreparation != this || engineStateUnrestored) {
+                  return;
+                }
+                param.originalValue = originalValue;
+              }
+              if (finishCancellationIfRequested()) {
+                return;
+              }
+              if (value <= 0) {
+                completion.run();
+                return;
+              }
+              setParam(param, String.valueOf(value), true, completion);
+            });
+        return;
+      }
+      if (value <= 0) {
+        restoreParamForMoveIfNeeded(param, completion);
+        return;
+      }
+      setParam(param, String.valueOf(value), true, completion);
+    }
+
+    private void restoreParamForMoveIfNeeded(
+        ReadBoardGmaRuntimeParam param, Runnable completion) {
+      String originalValue;
+      synchronized (readBoardGmaLock()) {
+        if (readBoardGmaPreparation != this || engineStateUnrestored) {
+          return;
+        }
+        if (!param.overridden) {
+          originalValue = null;
+        } else {
+          originalValue = param.originalValue;
+        }
+      }
+      if (originalValue == null) {
+        completion.run();
+        return;
+      }
+      if (originalValue.isEmpty()) {
+        fail("missing parameter snapshot: " + param.name);
+        return;
+      }
+      setParam(param, originalValue, false, completion);
+    }
+
+    private void setParam(
+        ReadBoardGmaRuntimeParam param,
+        String value,
+        boolean overridden,
+        Runnable completion) {
+      sendPreparationCommand(
+          "kata-set-param " + param.name + " " + value,
+          response -> {
+            synchronized (readBoardGmaLock()) {
+              if (readBoardGmaPreparation != this || engineStateUnrestored) {
+                return;
+              }
+              param.overridden = overridden;
+              param.restorePending = false;
+              param.revision++;
+            }
+            if (finishCancellationIfRequested()) {
+              return;
+            }
+            completion.run();
+          });
+    }
+
+    private void finish() {
+      boolean cancelled;
+      Runnable cancellationSuccessCallback;
+      Consumer<String> cancellationFailureCallback;
+      synchronized (readBoardGmaLock()) {
+        if (readBoardGmaPreparation != this || engineStateUnrestored) {
+          return;
+        }
+        readBoardGmaPreparation = null;
+        cancelled = cancellationRequested;
+        if (cancelled) {
+          cancellationSuccessCallback = cancellationSuccess;
+          cancellationFailureCallback = cancellationFailure;
+        } else {
+          cancellationSuccessCallback = null;
+          cancellationFailureCallback = null;
+        }
+      }
+      if (cancelled) {
+        completeReadBoardGmaEngineRestore(
+            cancellationSuccessCallback, cancellationFailureCallback);
+        return;
+      }
+      sendReadBoardGmaCommand(color);
+    }
+
+    private void sendPreparationCommand(String command, Consumer<String> success) {
+      new ReadBoardGmaPreparationCommand(this, command, success).start();
+    }
+
+    private void fail(String detail) {
+      Consumer<String> cancellationFailureCallback;
+      synchronized (readBoardGmaLock()) {
+        if (readBoardGmaPreparation != this || engineStateUnrestored) {
+          return;
+        }
+        readBoardGmaPreparation = null;
+        cancellationFailureCallback = cancellationFailure;
+      }
+      failReadBoardGmaEngineRestore(detail);
+      if (cancellationFailureCallback != null) {
+        cancellationFailureCallback.accept(detail);
+      }
+    }
+
+    private void requestCancellation(Runnable onSuccess, Consumer<String> onFailure) {
+      synchronized (readBoardGmaLock()) {
+        if (readBoardGmaPreparation != this || cancellationRequested) {
+          return;
+        }
+        cancellationRequested = true;
+        cancellationSuccess = onSuccess;
+        cancellationFailure = onFailure;
+      }
+    }
+
+    private boolean finishCancellationIfRequested() {
+      Runnable onSuccess;
+      Consumer<String> onFailure;
+      synchronized (readBoardGmaLock()) {
+        if (readBoardGmaPreparation != this || !cancellationRequested) {
+          return false;
+        }
+        readBoardGmaPreparation = null;
+        onSuccess = cancellationSuccess;
+        onFailure = cancellationFailure;
+      }
+      completeReadBoardGmaEngineRestore(onSuccess, onFailure);
+      return true;
+    }
+  }
+
+  private final class ReadBoardGmaPreparationCommand {
+    private final ReadBoardGmaPreparation preparation;
+    private final String command;
+    private final Consumer<String> success;
+    private final AtomicBoolean settled = new AtomicBoolean(false);
+    private final Runnable responseHandler = this::onResponse;
+    private Timer timeout;
+
+    private ReadBoardGmaPreparationCommand(
+        ReadBoardGmaPreparation preparation, String command, Consumer<String> success) {
+      this.preparation = preparation;
+      this.command = command;
+      this.success = success;
+    }
+
+    private void start() {
+      try {
+        sendCommand(command, responseHandler, this::onSendFailure, true, false);
+      } catch (RuntimeException failure) {
+        settleFailure(failure.getMessage());
+        return;
+      }
+      if (settled.get()) {
+        return;
+      }
+      timeout = new Timer("lizzie-readboard-gma-prepare-timeout", true);
+      timeout.schedule(
+          new TimerTask() {
+            @Override
+            public void run() {
+              if (!settled.compareAndSet(false, true)) {
+                return;
+              }
+              try {
+                preparation.fail("parameter response timeout: " + command);
+              } finally {
+                retireTimedOutNormalCommand(responseHandler);
+              }
+            }
+          },
+          Math.max(1L, readBoardGmaRestoreResponseTimeoutMillis()));
+    }
+
+    private void onResponse() {
+      if (!settled.compareAndSet(false, true)) {
+        return;
+      }
+      cancelTimeout();
+      if (isCurrentCommandResponseError()) {
+        preparation.fail("parameter command failed: " + currentCommandResponseLine());
+        return;
+      }
+      success.accept(currentCommandResponseLine());
+    }
+
+    private void onSendFailure(RuntimeException failure) {
+      settleFailure(failure == null ? "parameter send failed: " + command : failure.getMessage());
+    }
+
+    private void settleFailure(String detail) {
+      if (!settled.compareAndSet(false, true)) {
+        return;
+      }
+      cancelTimeout();
+      preparation.fail(detail);
+    }
+
+    private void cancelTimeout() {
+      Timer currentTimeout = timeout;
+      timeout = null;
+      if (currentTimeout != null) {
+        currentTimeout.cancel();
+      }
+    }
+  }
+
   private static final class ReadBoardGmaRestoreBarrier {
     private final Runnable onSuccess;
     private final Consumer<String> onFailure;
@@ -6008,11 +6273,20 @@ public class Leelaz {
   }
 
   public boolean supportsReadBoardGma() {
+    return supportsReadBoardGmaFixedLimits();
+  }
+
+  public boolean supportsReadBoardGmaFixedLimits() {
     return isKatago
         && endGetCommandList
         && commandLists.contains("kata-genmove_analyze")
         && commandLists.contains("kata-get-param")
         && commandLists.contains("kata-set-param");
+  }
+
+  public boolean supportsReadBoardGmaPondering() {
+    return supportsReadBoardGmaFixedLimits()
+        && !RemoteComputeConfig.isCustomWebSocketEngineCommand(engineCommand);
   }
 
   public boolean shouldShowReadBoardGmaUnsupportedPrompt() {
@@ -6024,10 +6298,27 @@ public class Leelaz {
   public synchronized boolean genmoveAnalyzeForReadBoard(
       String color, int maxTimeSeconds, int maxVisits, boolean ponder) {
     if (isThinking) return false;
+    if (ponder && RemoteComputeConfig.isCustomWebSocketEngineCommand(engineCommand)) return false;
     if (!beginReadBoardGmaSession()) return false;
+    if (RemoteComputeConfig.isCustomWebSocketEngineCommand(engineCommand)) {
+      synchronized (readBoardGmaLock()) {
+        if (readBoardGmaPreparation != null) {
+          return false;
+        }
+        readBoardGmaPreparation =
+            new ReadBoardGmaPreparation(color, maxTimeSeconds, maxVisits);
+      }
+      readBoardGmaPreparation.start();
+      return true;
+    }
     setReadBoardGmaPondering(ponder);
     prepareReadBoardGmaMaxTime(maxTimeSeconds);
     prepareReadBoardGmaMaxVisits(maxVisits);
+    sendReadBoardGmaCommand(color);
+    return true;
+  }
+
+  private void sendReadBoardGmaCommand(String color) {
     StringBuilder command =
         new StringBuilder("kata-genmove_analyze ")
             .append(color)
@@ -6037,10 +6328,12 @@ public class Leelaz {
     sendCommandNoLeelaz2(command.toString());
     isThinking = true;
     LizzieFrame.menu.toggleEngineMenuStatus(false, true);
-    return true;
   }
 
   public void setReadBoardGmaPondering(boolean ponder) {
+    if (RemoteComputeConfig.isCustomWebSocketEngineCommand(engineCommand)) {
+      return;
+    }
     prepareReadBoardGmaRuntimeParam(readBoardGmaPondering, ponder ? "true" : "false");
   }
 
@@ -6053,12 +6346,27 @@ public class Leelaz {
     completeReadBoardGmaEngineRestore(null, null);
   }
 
+  public boolean cancelReadBoardGmaPreparationIfPending(
+      Runnable onSuccess, Consumer<String> onFailure) {
+    synchronized (readBoardGmaLock()) {
+      if (readBoardGmaPreparation == null) {
+        return false;
+      }
+      readBoardGmaPreparation.requestCancellation(onSuccess, onFailure);
+      return true;
+    }
+  }
+
   public void completeReadBoardGmaEngineRestore(
       Runnable onSuccess, Consumer<String> onFailure) {
     ReadBoardGmaRestoreBarrier barrier;
     List<ReadBoardGmaRuntimeParam> paramsToRestore = new ArrayList<>();
     boolean noParamsToRestore;
     synchronized (readBoardGmaLock()) {
+      if (readBoardGmaPreparation != null) {
+        readBoardGmaPreparation.requestCancellation(onSuccess, onFailure);
+        return;
+      }
       if (engineStateUnrestored
           || readBoardGmaReservation == null
           || readBoardGmaRestoreBarrier != null) {

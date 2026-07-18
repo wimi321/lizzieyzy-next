@@ -42,6 +42,10 @@ play>black>5 1000 0 gma
 5. `未知` 时静默等待现有启动握手完成，完成后自动继续；不显示“正在检测”，也不要求用户操作。
 6. `不支持` 时本手不自动落子，对同一引擎会话只显示一次“该模式仅支持 KataGo”。切换或重启引擎才使缓存和提示资格失效。
 
+### 2026-07 WebSocket 能力例外
+
+后续 WebSocket 参数合同将 GMA 能力拆为“固定限制落子”和“后台 pondering”。自建算力 WebSocket 可以通过真实的 `maxTime` / `maxVisits` 查询状态支持前者，但不支持 `ponderingEnabled`，因此不得读取、设置或恢复该参数。本地与 SSH GTP 引擎继续遵守下文原有 pondering 合同。ReadBoard 请求后台 pondering 时，Lizzie 在主窗口每个 GMA 会话至多提示一次；用户确认或选择“不再提示”后，继续执行受固定限制约束的 GMA。“不再提示”只持久抑制 Lizzie 侧这条说明，不修改 ReadBoard 的 pondering 偏好。
+
 ## 命令与参数
 
 轮到引擎棋色且能力为支持时，Host 构造 `kata-genmove_analyze`。分析输出沿用现有 KataGo 解析路径更新 UI；最终 `play` 才触发实际落子。真实 KataGo 不接受把 `maxTime` / `maxVisits` 追加到 `kata-genmove_analyze` 末尾，因此本模式通过运行时参数控制搜索上限，最终命令本身保持 `kata-genmove_analyze <color> <interval>`。

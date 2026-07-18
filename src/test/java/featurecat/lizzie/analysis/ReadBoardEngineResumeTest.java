@@ -30,6 +30,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.function.Consumer;
 import javax.swing.JCheckBox;
 import javax.swing.JTextField;
 import javax.swing.SwingUtilities;
@@ -1444,6 +1445,176 @@ class ReadBoardEngineResumeTest {
   }
 
   @Test
+  void websocketGmaWaitsForPonderingNoticeThenContinuesWithoutPondering() throws Exception {
+    try (EngineResumeHarness harness =
+        EngineResumeHarness.create(rootHistory(emptyStones(), true))) {
+      harness.frame.bothSync = true;
+      harness.leelaz.enableReadBoardGmaFixedLimitOnlySupport();
+      Lizzie.config.readBoardPonder = true;
+      Lizzie.config.suppressReadBoardWebSocketPonderingNotice = false;
+
+      harness.readBoard.parseLine("play>black>5 12 0 gma");
+      harness.sync(snapshot(emptyStones(), Optional.empty(), Stone.EMPTY));
+
+      assertEquals(1, harness.frame.readBoardPonderingNoticeCount);
+      assertEquals(0, harness.leelaz.readBoardGmaCount);
+      assertTrue(Lizzie.config.readBoardPonder);
+
+      harness.sync(snapshot(emptyStones(), Optional.empty(), Stone.EMPTY));
+
+      assertEquals(1, harness.frame.readBoardPonderingNoticeCount);
+      assertEquals(0, harness.leelaz.readBoardGmaCount);
+
+      harness.frame.answerReadBoardPonderingNotice(false);
+
+      assertEquals(1, harness.frame.readBoardPonderingNoticeCount);
+      assertEquals(1, harness.leelaz.readBoardGmaCount);
+      assertEquals(
+          "kata-genmove_analyze B maxTime=5 maxVisits=12 ponder=false",
+          harness.leelaz.sentCommands.get(0));
+      assertTrue(Lizzie.config.readBoardPonder);
+    }
+  }
+
+  @Test
+  void closingWebsocketPonderingNoticeDoesNotStartGmaOrPromptAgainInSameSession()
+      throws Exception {
+    try (EngineResumeHarness harness =
+        EngineResumeHarness.create(rootHistory(emptyStones(), true))) {
+      harness.frame.bothSync = true;
+      harness.leelaz.enableReadBoardGmaFixedLimitOnlySupport();
+      Lizzie.config.readBoardPonder = true;
+      Lizzie.config.suppressReadBoardWebSocketPonderingNotice = false;
+
+      harness.readBoard.parseLine("play>black>5 12 0 gma");
+      harness.sync(snapshot(emptyStones(), Optional.empty(), Stone.EMPTY));
+      harness.frame.closeReadBoardPonderingNotice();
+      harness.sync(snapshot(emptyStones(), Optional.empty(), Stone.EMPTY));
+
+      assertEquals(1, harness.frame.readBoardPonderingNoticeCount);
+      assertEquals(0, harness.leelaz.readBoardGmaCount);
+      assertFalse(Lizzie.config.suppressReadBoardWebSocketPonderingNotice);
+      assertTrue(Lizzie.config.readBoardPonder);
+    }
+  }
+
+  @Test
+  void websocketPonderingNoticeIsEligibleAgainAfterStopSyncStartsANewGmaSession()
+      throws Exception {
+    try (EngineResumeHarness harness =
+        EngineResumeHarness.create(rootHistory(emptyStones(), true))) {
+      harness.frame.bothSync = true;
+      harness.leelaz.enableReadBoardGmaFixedLimitOnlySupport();
+      Lizzie.config.readBoardPonder = true;
+      Lizzie.config.suppressReadBoardWebSocketPonderingNotice = false;
+
+      harness.readBoard.parseLine("play>black>5 12 0 gma");
+      harness.sync(snapshot(emptyStones(), Optional.empty(), Stone.EMPTY));
+      assertEquals(1, harness.frame.readBoardPonderingNoticeCount);
+
+      harness.readBoard.parseLine("stopsync");
+      harness.frame.bothSync = true;
+      harness.readBoard.parseLine("play>black>5 12 0 gma");
+      harness.sync(snapshot(emptyStones(), Optional.empty(), Stone.EMPTY));
+
+      assertEquals(2, harness.frame.readBoardPonderingNoticeCount);
+      assertEquals(0, harness.leelaz.readBoardGmaCount);
+    }
+  }
+
+  @Test
+  void stalePonderingNoticeAcknowledgementAfterStopSyncDoesNotRestartGma() throws Exception {
+    try (EngineResumeHarness harness =
+        EngineResumeHarness.create(rootHistory(emptyStones(), true))) {
+      harness.frame.bothSync = true;
+      harness.leelaz.enableReadBoardGmaFixedLimitOnlySupport();
+      Lizzie.config.readBoardPonder = true;
+      Lizzie.config.suppressReadBoardWebSocketPonderingNotice = false;
+
+      harness.readBoard.parseLine("play>black>5 12 0 gma");
+      harness.sync(snapshot(emptyStones(), Optional.empty(), Stone.EMPTY));
+      assertEquals(1, harness.frame.readBoardPonderingNoticeCount);
+
+      harness.readBoard.parseLine("stopsync");
+      harness.frame.answerReadBoardPonderingNotice(false);
+
+      assertEquals(0, harness.leelaz.readBoardGmaCount);
+      assertFalse(harness.readBoard.isReadBoardGmaAutoPlayActive());
+    }
+  }
+
+  @Test
+  void acknowledgedPonderingDifferenceIsNotPromptedAgainForLaterMoveInSameSession()
+      throws Exception {
+    try (EngineResumeHarness harness =
+        EngineResumeHarness.create(rootHistory(emptyStones(), true))) {
+      harness.frame.bothSync = true;
+      harness.leelaz.enableReadBoardGmaFixedLimitOnlySupport();
+      Lizzie.config.readBoardPonder = true;
+      Lizzie.config.suppressReadBoardWebSocketPonderingNotice = false;
+
+      harness.readBoard.parseLine("play>black>5 12 0 gma");
+      harness.sync(snapshot(emptyStones(), Optional.empty(), Stone.EMPTY));
+      harness.frame.answerReadBoardPonderingNotice(false);
+      assertEquals(1, harness.leelaz.readBoardGmaCount);
+
+      assertTrue(harness.readBoard.handleReadBoardGmaEnginePlay("pass"));
+      harness.leelaz.isThinking = false;
+      harness.readBoard.afterReadBoardGmaTerminalResponseConsumed("first-move");
+      assertTrue(waitForSentCommandPrefix(harness.leelaz, "loadsgf "));
+      harness.sync(snapshot(emptyStones(), Optional.empty(), Stone.EMPTY));
+
+      assertEquals(1, harness.frame.readBoardPonderingNoticeCount);
+      assertEquals(2, harness.leelaz.readBoardGmaCount);
+    }
+  }
+
+  @Test
+  void suppressedWebsocketPonderingNoticeContinuesWithoutChangingReadBoardPreference()
+      throws Exception {
+    try (EngineResumeHarness harness =
+        EngineResumeHarness.create(rootHistory(emptyStones(), true))) {
+      harness.frame.bothSync = true;
+      harness.leelaz.enableReadBoardGmaFixedLimitOnlySupport();
+      Lizzie.config.readBoardPonder = true;
+      Lizzie.config.suppressReadBoardWebSocketPonderingNotice = true;
+
+      harness.readBoard.parseLine("play>black>6 24 0 gma");
+      harness.sync(snapshot(emptyStones(), Optional.empty(), Stone.EMPTY));
+
+      assertEquals(0, harness.frame.readBoardPonderingNoticeCount);
+      assertEquals(1, harness.leelaz.readBoardGmaCount);
+      assertEquals(
+          "kata-genmove_analyze B maxTime=6 maxVisits=24 ponder=false",
+          harness.leelaz.sentCommands.get(0));
+      assertTrue(Lizzie.config.readBoardPonder);
+    }
+  }
+
+  @Test
+  void noLongerShowActionSuppressesNoticeAndImmediatelyContinuesCurrentGma() throws Exception {
+    try (EngineResumeHarness harness =
+        EngineResumeHarness.create(rootHistory(emptyStones(), true))) {
+      harness.frame.bothSync = true;
+      harness.leelaz.enableReadBoardGmaFixedLimitOnlySupport();
+      Lizzie.config.readBoardPonder = true;
+      Lizzie.config.suppressReadBoardWebSocketPonderingNotice = false;
+
+      harness.readBoard.parseLine("play>black>7 48 0 gma");
+      harness.sync(snapshot(emptyStones(), Optional.empty(), Stone.EMPTY));
+      harness.frame.answerReadBoardPonderingNotice(true);
+
+      assertEquals(1, ((TrackingConfig) Lizzie.config).suppressionCount);
+      assertTrue(Lizzie.config.suppressReadBoardWebSocketPonderingNotice);
+      assertEquals(1, harness.leelaz.readBoardGmaCount);
+      assertEquals(
+          "kata-genmove_analyze B maxTime=7 maxVisits=48 ponder=false",
+          harness.leelaz.sentCommands.get(0));
+      assertTrue(Lizzie.config.readBoardPonder);
+    }
+  }
+
+  @Test
   void readBoardGmaLeaseRejectionRollsBackPendingState() throws Exception {
     try (EngineResumeHarness harness =
         EngineResumeHarness.create(rootHistory(emptyStones(), true))) {
@@ -1862,7 +2033,7 @@ class ReadBoardEngineResumeTest {
       BoardRenderer previousBoardRenderer = LizzieFrame.boardRenderer;
       BottomToolbar previousToolbar = LizzieFrame.toolbar;
 
-      Config config = allocate(Config.class);
+      TrackingConfig config = allocate(TrackingConfig.class);
       config.alwaysSyncBoardStat = false;
       config.alwaysGotoLastOnLive = false;
       config.newMoveNumberInBranch = true;
@@ -1870,6 +2041,7 @@ class ReadBoardEngineResumeTest {
       config.readBoardPonder = true;
       config.winrateAlwaysBlack = false;
       config.leelazConfig = new JSONObject().put("max-game-thinking-time-seconds", 2);
+      config.suppressionCount = 0;
       Lizzie.config = config;
 
       SnapshotTrackingLeelaz leelaz = SnapshotTrackingLeelaz.create();
@@ -1932,6 +2104,18 @@ class ReadBoardEngineResumeTest {
       Lizzie.frame = previousFrame;
       LizzieFrame.boardRenderer = previousBoardRenderer;
       LizzieFrame.toolbar = previousToolbar;
+    }
+  }
+
+  private static final class TrackingConfig extends Config {
+    private int suppressionCount;
+
+    private TrackingConfig() throws IOException {}
+
+    @Override
+    public void suppressReadBoardWebSocketPonderingNotice() {
+      suppressionCount++;
+      suppressReadBoardWebSocketPonderingNotice = true;
     }
   }
 
@@ -2021,6 +2205,9 @@ class ReadBoardEngineResumeTest {
     private Runnable lastScheduledResumeAction;
     private int togglePonderMannulCount;
     private TrackingBoard board;
+    private int readBoardPonderingNoticeCount;
+    private Consumer<LizzieFrame.ReadBoardWebSocketPonderingDecision>
+        readBoardPonderingNoticeDecision;
 
     private void initialize(TrackingBoard board) {
       this.board = board;
@@ -2028,10 +2215,41 @@ class ReadBoardEngineResumeTest {
       syncBoard = false;
       isPlayingAgainstLeelaz = false;
       playerIsBlack = true;
+      readBoardPonderingNoticeCount = 0;
+      readBoardPonderingNoticeDecision = null;
+    }
+
+    @Override
+    public void showReadBoardWebSocketPonderingNotice(
+        Consumer<LizzieFrame.ReadBoardWebSocketPonderingDecision> decision) {
+      readBoardPonderingNoticeCount++;
+      readBoardPonderingNoticeDecision = decision;
+    }
+
+    private void answerReadBoardPonderingNotice(boolean suppressPermanently) {
+      Consumer<LizzieFrame.ReadBoardWebSocketPonderingDecision> decision =
+          readBoardPonderingNoticeDecision;
+      readBoardPonderingNoticeDecision = null;
+      assertNotNull(decision);
+      decision.accept(
+          suppressPermanently
+              ? LizzieFrame.ReadBoardWebSocketPonderingDecision.SUPPRESS
+              : LizzieFrame.ReadBoardWebSocketPonderingDecision.CONFIRM);
+    }
+
+    private void closeReadBoardPonderingNotice() {
+      Consumer<LizzieFrame.ReadBoardWebSocketPonderingDecision> decision =
+          readBoardPonderingNoticeDecision;
+      readBoardPonderingNoticeDecision = null;
+      assertNotNull(decision);
+      decision.accept(LizzieFrame.ReadBoardWebSocketPonderingDecision.DISMISS);
     }
 
     @Override
     public void refresh() {}
+
+    @Override
+    public void onMainEnginePonder() {}
 
     @Override
     public void togglePonderMannul() {
