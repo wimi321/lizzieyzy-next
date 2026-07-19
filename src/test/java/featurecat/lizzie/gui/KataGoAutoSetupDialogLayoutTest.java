@@ -19,6 +19,11 @@ import org.junit.jupiter.api.Test;
 
 class KataGoAutoSetupDialogLayoutTest {
   @Test
+  void missingSetupPathsAreHandledAsAbsentFiles() {
+    assertFalse(KataGoAutoSetupDialog.isRegularFile(null));
+  }
+
+  @Test
   void sidebarRendererFontDoesNotGrowAcrossRepaints() {
     Font listFont = new Font(Font.DIALOG, Font.PLAIN, 13);
 
@@ -44,8 +49,7 @@ class KataGoAutoSetupDialogLayoutTest {
   @Test
   void eloColumnShowsOnlyTheReadableRatingValue() {
     assertEquals(
-        "14,552",
-        KataGoAutoSetupDialog.compactEloRating("14551.5 ± 26.0 - (3,325 games)"));
+        "14,552", KataGoAutoSetupDialog.compactEloRating("14551.5 ± 26.0 - (3,325 games)"));
     assertEquals("-", KataGoAutoSetupDialog.compactEloRating("not rated"));
   }
 
@@ -86,9 +90,7 @@ class KataGoAutoSetupDialogLayoutTest {
   void downloadedWeightMatchingPrefersThePathUsedByTheCurrentEngine() {
     Path bundledAlias = Path.of("weights", "default.bin.gz").toAbsolutePath().normalize();
     Path activeZhizi =
-        Path.of("weights", "kata1-zhizi-b28c512nbt-muonfd2.bin.gz")
-            .toAbsolutePath()
-            .normalize();
+        Path.of("weights", "kata1-zhizi-b28c512nbt-muonfd2.bin.gz").toAbsolutePath().normalize();
     Path other = Path.of("weights", "other.bin.gz").toAbsolutePath().normalize();
 
     List<Path> ordered =
@@ -247,23 +249,18 @@ class KataGoAutoSetupDialogLayoutTest {
   void weightSwitchOnlyInterruptsRecoverableQuickAnalysis() {
     assertEquals(
         KataGoAutoSetupDialog.WeightSwitchPreparation.READY,
-        KataGoAutoSetupDialog.decideWeightSwitchPreparation(
-            false, false, false, false, false));
+        KataGoAutoSetupDialog.decideWeightSwitchPreparation(false, false, false, false, false));
     assertEquals(
         KataGoAutoSetupDialog.WeightSwitchPreparation.RESET_QUICK_ANALYSIS,
-        KataGoAutoSetupDialog.decideWeightSwitchPreparation(
-            true, true, true, false, false));
+        KataGoAutoSetupDialog.decideWeightSwitchPreparation(true, true, true, false, false));
     assertEquals(
         KataGoAutoSetupDialog.WeightSwitchPreparation.WAIT_FOR_QUICK_ANALYSIS,
-        KataGoAutoSetupDialog.decideWeightSwitchPreparation(
-            true, true, true, true, true));
+        KataGoAutoSetupDialog.decideWeightSwitchPreparation(true, true, true, true, true));
     assertEquals(
         KataGoAutoSetupDialog.WeightSwitchPreparation.BLOCKED_BY_ANALYSIS,
-        KataGoAutoSetupDialog.decideWeightSwitchPreparation(
-            true, true, false, true, true));
+        KataGoAutoSetupDialog.decideWeightSwitchPreparation(true, true, false, true, true));
     assertEquals(
         KataGoAutoSetupDialog.WeightSwitchPreparation.BLOCKED_BY_ENGINE_TASK,
-        KataGoAutoSetupDialog.decideWeightSwitchPreparation(
-            true, false, false, true, false));
+        KataGoAutoSetupDialog.decideWeightSwitchPreparation(true, false, false, true, false));
   }
 }
