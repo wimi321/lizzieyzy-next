@@ -2306,14 +2306,32 @@ public class EngineManager {
   }
 
   public void switchEngine(int index, boolean isMain) {
+    switchEngineIfAvailable(index, isMain, true);
+  }
+
+  /**
+   * Attempts an engine switch without showing the generic exclusive-task popup.
+   *
+   * <p>Configuration workflows use this after coordinating any interruptible quick analysis so
+   * they can report failure in their own status area instead of claiming that a switch succeeded.
+   */
+  public boolean switchEngineIfAvailable(int index, boolean isMain) {
+    return switchEngineIfAvailable(index, isMain, false);
+  }
+
+  private boolean switchEngineIfAvailable(int index, boolean isMain, boolean showConflict) {
+    if (engineList == null || index < 0 || index >= engineList.size()) {
+      return false;
+    }
     Leelaz currentForegroundEngine = Lizzie.leelaz;
-    Leelaz targetEngine =
-        index >= 0 && index < engineList.size() ? engineList.get(index) : null;
+    Leelaz targetEngine = engineList.get(index);
     EngineLifecycleReservations reservations =
         reserveEngineLifecycle(currentForegroundEngine, targetEngine);
     if (reservations == null) {
-      showForegroundEngineLeaseInUse();
-      return;
+      if (showConflict) {
+        showForegroundEngineLeaseInUse();
+      }
+      return false;
     }
     switchEngineInternal(
         index,
@@ -2322,6 +2340,7 @@ public class EngineManager {
             ? reservations::close
             : releaseEngineLifecycleAfterBoardSync(
                 currentForegroundEngine, targetEngine, isMain, false, reservations));
+    return true;
   }
 
   private Runnable releaseEngineLifecycleAfterBoardSync(

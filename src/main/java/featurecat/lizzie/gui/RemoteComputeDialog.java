@@ -720,7 +720,8 @@ public class RemoteComputeDialog extends JDialog {
   }
 
   private void populateWeightOptions(ZhiziEngineCatalog catalog, String preferredWeight) {
-    ZhiziEngineCatalog safeCatalog = catalog == null ? ZhiziEngineCatalog.fallback() : catalog;
+    ZhiziEngineCatalog safeCatalog =
+        catalog == null ? ZhiziEngineCatalog.fallback() : catalog.withConfirmedWeights();
     String preferred =
         ZhiziEngineCatalog.isSafeOptionName(preferredWeight)
             ? preferredWeight.trim()
@@ -1770,6 +1771,10 @@ public class RemoteComputeDialog extends JDialog {
     }
 
     private String meaningfulDescription() {
+      String curatedHint = RemoteComputeConfig.hintForZhiziWeight(name);
+      if (!curatedHint.isEmpty()) {
+        return curatedHint;
+      }
       if (description.isEmpty()) {
         return "";
       }

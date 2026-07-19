@@ -211,6 +211,24 @@ class EngineManagerLifecycleReservationTest {
   }
 
   @Test
+  void configurationSwitchReportsReservationConflictWithoutGenericPopup() throws Exception {
+    Leelaz previousEngine = Lizzie.leelaz;
+    LifecycleConflictLeelaz current = new LifecycleConflictLeelaz();
+    Leelaz target = new Leelaz("");
+    DeferredSwitchEngineManager manager =
+        new DeferredSwitchEngineManager(List.of(current, target));
+    try {
+      Lizzie.leelaz = current;
+
+      assertFalse(manager.switchEngineIfAvailable(1, true));
+      assertEquals(0, manager.conflictCount);
+      assertEquals(0, manager.switchCount);
+    } finally {
+      Lizzie.leelaz = previousEngine;
+    }
+  }
+
+  @Test
   void recoverySwitchWaitsForTargetBoardSynchronizationFenceBeforeReleasingReservations()
       throws Exception {
     Leelaz previousEngine = Lizzie.leelaz;

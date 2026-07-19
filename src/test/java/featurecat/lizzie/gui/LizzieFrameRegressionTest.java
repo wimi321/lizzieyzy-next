@@ -115,6 +115,25 @@ class LizzieFrameRegressionTest {
   }
 
   @Test
+  void firstPaintStatusHintUsesCurrentLayoutBoardBoundary() {
+    int availableWidth = LizzieFrame.statusTextMaxWidth(1200, 8, 500, true);
+
+    assertEquals(484, availableWidth);
+    BufferedImage image = new BufferedImage(1200, 120, BufferedImage.TYPE_INT_ARGB);
+    Graphics2D graphics = image.createGraphics();
+    try {
+      String hint = "按住X键不放查看快捷键提示";
+      Font font = LizzieFrame.fitStatusFontInBox(graphics, hint, 28, 12, availableWidth, 36);
+      String displayed =
+          LizzieFrame.truncateStatusText(hint, graphics.getFontMetrics(font), availableWidth);
+
+      assertTrue(displayed.contains("X"));
+    } finally {
+      graphics.dispose();
+    }
+  }
+
+  @Test
   void loadingStatusTypographyStillShrinksForSmallWindows() {
     assertEquals(9, LizzieFrame.boundedStatusFontSize(9, 12, true));
     assertEquals(8, LizzieFrame.boundedStatusFontSize(8, 12, false));
@@ -971,6 +990,34 @@ class LizzieFrameRegressionTest {
           1,
           leelaz.ponderCount,
           "foreground analysis should restart after navigation-triggered curve completion.");
+    } finally {
+      env.close();
+    }
+  }
+
+  @Test
+  void quickAnalysisResumeWaitsForNewForegroundEngineWhenReuseIsEnabled() throws Exception {
+    TestEnvironment env = TestEnvironment.open();
+    try {
+      Lizzie.config = configWithAutoQuickAnalyze();
+      Lizzie.config.analysisReuseCurrentEngine = true;
+      Lizzie.board = boardWith(historyWithUnanalyzedMove());
+      LoadingLeelaz leelaz = allocate(LoadingLeelaz.class);
+      Lizzie.leelaz = leelaz;
+      EngineManager.isEmpty = false;
+      EngineManager.isEngineGame = false;
+      EngineManager.isPreEngineGame = false;
+      QuickAnalysisResumeFrame frame = allocate(QuickAnalysisResumeFrame.class);
+      NavigationQuickAnalysisEngine engine = allocate(NavigationQuickAnalysisEngine.class);
+      frame.analysisEngine = engine;
+      Lizzie.frame = frame;
+
+      SwingUtilities.invokeAndWait(frame::continueQuickAnalysisAfterHistoryNavigationWhenIdle);
+      assertEquals(0, engine.missingMainlineRequestCount);
+
+      leelaz.loaded = true;
+      SwingUtilities.invokeAndWait(frame::continueQuickAnalysisAfterHistoryNavigationWhenIdle);
+      assertEquals(1, engine.missingMainlineRequestCount);
     } finally {
       env.close();
     }
@@ -1977,6 +2024,19 @@ class LizzieFrameRegressionTest {
       } else {
         ponder();
       }
+    }
+  }
+
+  private static final class LoadingLeelaz extends TrackingLeelaz {
+    private boolean loaded;
+
+    private LoadingLeelaz() throws java.io.IOException {
+      super();
+    }
+
+    @Override
+    public boolean isLoaded() {
+      return loaded;
     }
   }
 

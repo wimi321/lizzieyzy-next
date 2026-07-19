@@ -57,6 +57,50 @@ class ZhiziEngineCatalogTest {
   }
 
   @Test
+  void fallbackIncludesEveryConfirmedZhiziWeightInStableOrder() {
+    ZhiziEngineCatalog catalog = ZhiziEngineCatalog.fallback();
+
+    assertEquals("28bnbt", catalog.defaultWeight());
+    assertEquals(
+        List.of("18bnbt", "28bnbt", "fdx", "60b", "40b", "20b"), names(catalog));
+    assertEquals("40B NBT extra-large weight", description(catalog, "fdx"));
+    assertTrue(description(catalog, "20b").contains("handicap"));
+  }
+
+  @Test
+  void confirmedWeightsCompleteOldCachesAndPreserveServerOnlyOptions() throws Exception {
+    ZhiziEngineCatalog oldCache =
+        new ZhiziEngineCatalog(
+            "7.9.0",
+            "28bnbt",
+            List.of(
+                new ZhiziEngineCatalog.Option("28bnbt", "server description"),
+                new ZhiziEngineCatalog.Option("future-net", "future option")));
+
+    ZhiziEngineCatalog completed = oldCache.withConfirmedWeights();
+
+    assertEquals(
+        List.of("18bnbt", "28bnbt", "fdx", "60b", "40b", "20b", "future-net"),
+        names(completed));
+    assertEquals("server description", description(completed, "28bnbt"));
+    assertEquals("future option", description(completed, "future-net"));
+  }
+
+  @Test
+  void stringWeightEntriesFromOlderServersRemainSupported() throws Exception {
+    JSONObject json =
+        new JSONObject()
+            .put("defaultKataWeight", "28bnbt")
+            .put(
+                "supportKataWeights",
+                new JSONArray().put("18bnbt").put("28bnbt").put("fdx"));
+
+    ZhiziEngineCatalog catalog = ZhiziEngineCatalog.fromJson(json);
+
+    assertEquals(List.of("18bnbt", "28bnbt", "fdx"), names(catalog));
+  }
+
+  @Test
   void emptyOrUntrustedCatalogIsRejected() {
     JSONObject json =
         new JSONObject()
@@ -72,5 +116,13 @@ class ZhiziEngineCatalogTest {
 
   private static List<String> names(ZhiziEngineCatalog catalog) {
     return catalog.weights().stream().map(ZhiziEngineCatalog.Option::name).toList();
+  }
+
+  private static String description(ZhiziEngineCatalog catalog, String name) {
+    return catalog.weights().stream()
+        .filter(option -> name.equals(option.name()))
+        .findFirst()
+        .orElseThrow()
+        .description();
   }
 }

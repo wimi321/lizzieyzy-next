@@ -242,4 +242,28 @@ class KataGoAutoSetupDialogLayoutTest {
     assertTrue(label.getPreferredSize().height > 30);
     assertTrue(label.getAccessibleContext().getAccessibleName().equals(status));
   }
+
+  @Test
+  void weightSwitchOnlyInterruptsRecoverableQuickAnalysis() {
+    assertEquals(
+        KataGoAutoSetupDialog.WeightSwitchPreparation.READY,
+        KataGoAutoSetupDialog.decideWeightSwitchPreparation(
+            false, false, false, false, false));
+    assertEquals(
+        KataGoAutoSetupDialog.WeightSwitchPreparation.RESET_QUICK_ANALYSIS,
+        KataGoAutoSetupDialog.decideWeightSwitchPreparation(
+            true, true, true, false, false));
+    assertEquals(
+        KataGoAutoSetupDialog.WeightSwitchPreparation.WAIT_FOR_QUICK_ANALYSIS,
+        KataGoAutoSetupDialog.decideWeightSwitchPreparation(
+            true, true, true, true, true));
+    assertEquals(
+        KataGoAutoSetupDialog.WeightSwitchPreparation.BLOCKED_BY_ANALYSIS,
+        KataGoAutoSetupDialog.decideWeightSwitchPreparation(
+            true, true, false, true, true));
+    assertEquals(
+        KataGoAutoSetupDialog.WeightSwitchPreparation.BLOCKED_BY_ENGINE_TASK,
+        KataGoAutoSetupDialog.decideWeightSwitchPreparation(
+            true, false, false, true, false));
+  }
 }

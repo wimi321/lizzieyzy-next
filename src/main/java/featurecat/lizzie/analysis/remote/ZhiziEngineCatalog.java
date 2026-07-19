@@ -5,6 +5,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.regex.Pattern;
@@ -16,6 +17,14 @@ public final class ZhiziEngineCatalog {
   private static final Pattern SAFE_OPTION_NAME =
       Pattern.compile("[A-Za-z0-9][A-Za-z0-9._+-]{0,63}");
   private static final int MAX_DESCRIPTION_LENGTH = 180;
+  private static final List<Option> CONFIRMED_WEIGHTS =
+      List.of(
+          new Option("18bnbt", "weight for 18bnbt"),
+          new Option("28bnbt", "weight for 28bnbt"),
+          new Option("fdx", "40B NBT extra-large weight"),
+          new Option("60b", "60B weight"),
+          new Option("40b", "40B weight"),
+          new Option("20b", "20B weight, commonly used for handicap games"));
 
   private final String serverVersion;
   private final String defaultWeight;
@@ -58,11 +67,45 @@ public final class ZhiziEngineCatalog {
   public boolean containsWeight(String name) {
     String candidate = safeName(name);
     for (Option option : weights) {
-      if (option.name.equals(candidate)) {
+      if (option.name.equalsIgnoreCase(candidate)) {
         return true;
       }
     }
     return false;
+  }
+
+  /**
+   * Completes a live or cached server catalog with Zhizi's confirmed public weights.
+   *
+   * <p>The server remains authoritative for descriptions and may add new entries. Confirmed entries
+   * use a stable order so a failed refresh or an older three-item cache never hides valid choices.
+   */
+  public ZhiziEngineCatalog withConfirmedWeights() {
+    Map<String, Option> reported = new LinkedHashMap<>();
+    for (Option option : weights) {
+      reported.putIfAbsent(option.name.toLowerCase(Locale.ROOT), option);
+    }
+
+    List<Option> merged = new ArrayList<>();
+    for (Option confirmed : CONFIRMED_WEIGHTS) {
+      Option serverOption = reported.remove(confirmed.name.toLowerCase(Locale.ROOT));
+      merged.add(
+          serverOption == null
+              ? confirmed
+              : new Option(
+                  confirmed.name,
+                  serverOption.description.isEmpty()
+                      ? confirmed.description
+                      : serverOption.description));
+    }
+    merged.addAll(reported.values());
+
+    String preferred = canonicalConfirmedName(defaultWeight);
+    try {
+      return new ZhiziEngineCatalog(serverVersion, preferred, merged);
+    } catch (IOException impossible) {
+      throw new IllegalStateException(impossible);
+    }
   }
 
   public JSONObject toJson() {
@@ -85,13 +128,15 @@ public final class ZhiziEngineCatalog {
     List<Option> weights = new ArrayList<>();
     if (items != null) {
       for (int i = 0; i < items.length(); i++) {
-        JSONObject item = items.optJSONObject(i);
-        if (item == null) {
-          continue;
-        }
-        String name = safeName(item.optString("name", ""));
+        Object rawItem = items.opt(i);
+        JSONObject item = rawItem instanceof JSONObject ? (JSONObject) rawItem : null;
+        String name =
+            safeName(
+                item == null
+                    ? (rawItem instanceof String ? (String) rawItem : "")
+                    : item.optString("name", ""));
         if (!name.isEmpty()) {
-          weights.add(new Option(name, item.optString("description", "")));
+          weights.add(new Option(name, item == null ? "" : item.optString("description", "")));
         }
       }
     }
@@ -109,11 +154,7 @@ public final class ZhiziEngineCatalog {
 
   public static ZhiziEngineCatalog fallback() {
     try {
-      List<Option> weights = new ArrayList<>();
-      weights.add(new Option("28bnbt", "weight for 28bnbt"));
-      weights.add(new Option("18bnbt", "weight for 18bnbt"));
-      weights.add(new Option("fdx", "fdx"));
-      return new ZhiziEngineCatalog("", "28bnbt", weights);
+      return new ZhiziEngineCatalog("", "28bnbt", CONFIRMED_WEIGHTS);
     } catch (IOException impossible) {
       throw new IllegalStateException(impossible);
     }
@@ -126,6 +167,16 @@ public final class ZhiziEngineCatalog {
   private static String safeName(String value) {
     String name = value == null ? "" : value.trim();
     return isSafeOptionName(name) ? name : "";
+  }
+
+  private static String canonicalConfirmedName(String value) {
+    String safeValue = safeName(value);
+    for (Option confirmed : CONFIRMED_WEIGHTS) {
+      if (confirmed.name.equalsIgnoreCase(safeValue)) {
+        return confirmed.name;
+      }
+    }
+    return safeValue;
   }
 
   private static String cleanText(String value) {
