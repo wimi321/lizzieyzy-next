@@ -13,6 +13,8 @@ import java.awt.Insets;
 import java.awt.RenderingHints;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
+import java.beans.PropertyChangeEvent;
+import java.beans.PropertyChangeListener;
 import java.util.ArrayList;
 import java.util.List;
 import javax.swing.JButton;
@@ -20,6 +22,7 @@ import javax.swing.JMenu;
 import javax.swing.JMenuBar;
 import javax.swing.JPanel;
 import javax.swing.JPopupMenu;
+import javax.swing.SwingUtilities;
 import javax.swing.border.EmptyBorder;
 import javax.swing.event.MenuEvent;
 import javax.swing.event.MenuListener;
@@ -43,6 +46,9 @@ public class WindowMenuStrip extends JPanel {
   }
 
   public void rebuild() {
+    for (MenuButton button : menuButtons) {
+      button.detach();
+    }
     removeAll();
     menuButtons.clear();
     if (sourceMenuBar == null) {
@@ -212,14 +218,15 @@ public class WindowMenuStrip extends JPanel {
 
   private final class MenuButton extends JButton {
     private final JMenu menu;
+    private final PropertyChangeListener menuPropertyListener = this::menuPropertyChanged;
     private boolean suppressNextAction;
 
     private MenuButton(JMenu menu) {
       super(menu.getText());
       this.menu = menu;
       ensurePopupListener(menu);
-      setFont(menu.getFont().deriveFont(Font.BOLD, Math.max(Config.frameFontSize, 12)));
-      setForeground(AppleStyleSupport.dialogTextColor());
+      syncFromMenu();
+      menu.addPropertyChangeListener(menuPropertyListener);
       setOpaque(false);
       setContentAreaFilled(false);
       setBorderPainted(false);
@@ -262,6 +269,40 @@ public class WindowMenuStrip extends JPanel {
               repaint();
             }
           });
+    }
+
+    private void menuPropertyChanged(PropertyChangeEvent event) {
+      String property = event.getPropertyName();
+      if ("visible".equals(property)) {
+        SwingUtilities.invokeLater(WindowMenuStrip.this::rebuild);
+        return;
+      }
+      if ("text".equals(property)
+          || "enabled".equals(property)
+          || "font".equals(property)
+          || "foreground".equals(property)) {
+        syncFromMenu();
+      }
+    }
+
+    private void syncFromMenu() {
+      setText(menu.getText());
+      setEnabled(menu.isEnabled());
+      Font menuFont = menu.getFont();
+      if (menuFont != null) {
+        setFont(menuFont.deriveFont(Font.BOLD, Math.max(Config.frameFontSize, 12)));
+      }
+      setForeground(AppleStyleSupport.dialogTextColor());
+      if (getAccessibleContext() != null) {
+        getAccessibleContext().setAccessibleName(menu.getText());
+        getAccessibleContext().setAccessibleDescription(menu.getText());
+      }
+      revalidate();
+      repaint();
+    }
+
+    private void detach() {
+      menu.removePropertyChangeListener(menuPropertyListener);
     }
 
     @Override

@@ -44,6 +44,37 @@ class WindowsUpdateApplierTest {
   }
 
   @Test
+  void fallsBackToCurrentAppJarForLegacyUpdateRequest() throws Exception {
+    Fixture fixture = fixture();
+    Path coreZip = tempDir.resolve("core.zip");
+    writeZip(coreZip, entry("app/lizzie-yzy2.5.3-shaded.jar", "new-core"));
+    Path request =
+        request(
+            fixture,
+            component("core", "replace-core", coreZip, "lizzieyzy-next-core.jar", null),
+            installedManifest());
+
+    WindowsUpdateApplier.apply(request);
+
+    assertEquals("new-core", Files.readString(fixture.currentJar));
+  }
+
+  @Test
+  void rejectsCoreSourceThatEscapesTheExtractedArchive() throws Exception {
+    Fixture fixture = fixture();
+    Path coreZip = tempDir.resolve("core.zip");
+    writeZip(coreZip, entry("app/lizzie-yzy2.5.3-shaded.jar", "new-core"));
+    Path request =
+        request(
+            fixture,
+            component("core", "replace-core", coreZip, "../../outside.jar", null),
+            installedManifest());
+
+    assertThrows(IOException.class, () -> WindowsUpdateApplier.apply(request));
+    assertEquals("old-core", Files.readString(fixture.currentJar));
+  }
+
+  @Test
   void replacesMappedResourceDirectory() throws Exception {
     Fixture fixture = fixture();
     Path engineDir = fixture.appDir.resolve("engines/katago/windows-x64");

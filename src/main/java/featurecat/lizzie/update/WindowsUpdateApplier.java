@@ -90,12 +90,43 @@ public final class WindowsUpdateApplier {
       Path backupRoot,
       List<BackupEntry> backups)
       throws IOException {
-    Path newJar = extracted.resolve(component.optString("sourcePath", currentJar.getFileName().toString()));
-    if (!Files.isRegularFile(newJar)) {
-      throw new IOException("Core update jar not found: " + newJar);
-    }
+    Path newJar = resolveCoreUpdateJar(component, extracted, currentJar);
     replaceFile(newJar, currentJar, backupRoot, appDir, backups);
     replaceBundledLauncherConfigsIfPresent(extracted, appDir, backupRoot, backups);
+  }
+
+  private static Path resolveCoreUpdateJar(
+      JSONObject component, Path extracted, Path currentJar) throws IOException {
+    String requested = component.optString("sourcePath", currentJar.getFileName().toString());
+    List<String> candidates = new ArrayList<>();
+    candidates.add(requested);
+    candidates.add("app/" + currentJar.getFileName());
+    candidates.add(currentJar.getFileName().toString());
+    candidates.add("lizzieyzy-next-core.jar");
+    List<Path> attempted = new ArrayList<>();
+    for (String candidate : candidates) {
+      if (candidate == null || candidate.isBlank()) {
+        continue;
+      }
+      Path path = safeExtractedSource(extracted, candidate);
+      if (attempted.contains(path)) {
+        continue;
+      }
+      attempted.add(path);
+      if (Files.isRegularFile(path)) {
+        return path;
+      }
+    }
+    throw new IOException("Core update jar not found. Tried: " + attempted);
+  }
+
+  private static Path safeExtractedSource(Path extracted, String relativePath) throws IOException {
+    Path normalizedRoot = extracted.toAbsolutePath().normalize();
+    Path source = normalizedRoot.resolve(relativePath).normalize();
+    if (!source.startsWith(normalizedRoot)) {
+      throw new IOException("Update source escapes extracted archive: " + relativePath);
+    }
+    return source;
   }
 
   private static void replaceBundledLauncherConfigsIfPresent(

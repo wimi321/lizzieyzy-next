@@ -114,7 +114,7 @@
 
 Windows `portable.zip` 是真正的免安装模式：配置、日志、保存棋谱、下载权重和软件内安装的 TensorRT 加速文件都会保存在解压出来的同一个文件夹里，主要位置是 `user-data/`。如果想彻底清理这个免安装版，删除整个解压文件夹即可；如果想保留设置，升级前把旧文件夹里的 `user-data/` 复制到新文件夹。
 
-已有 Windows 免安装版时，日常小版本升级不用重新下载完整大包。下载 `*windows64.core-update.zip`，关闭软件，把 zip 里的内容解压到旧的免安装目录覆盖即可。这个小包只替换 `app/lizzie-yzy2.5.3-shaded.jar` 和 `app/LizzieYzy Next*.cfg`，用来同步标题栏版本号和必要 JVM 参数；不会重复下载或覆盖 `weights/`、`engines/`、`runtime/`、`jcef-bundle/`、`readboard/`、`user-data/`。如果某次 release 明确写了 KataGo、权重或运行环境升级，再按说明下载完整包或对应资源包。
+已有 Windows 免安装版时，日常小版本升级不用重新下载完整大包。下载 `*windows64.core-update.zip`，关闭软件，把 zip 里的内容解压到旧的免安装目录覆盖即可。这个小包更新 `app/lizzie-yzy2.5.3-shaded.jar` 和 `app/LizzieYzy Next*.cfg`，并保留一个供旧版自动更新器识别的兼容文件；不会重复下载或覆盖 `weights/`、`engines/`、`runtime/`、`jcef-bundle/`、`readboard/`、`user-data/`。如果某次 release 明确写了 KataGo、权重或运行环境升级，再按说明下载完整包或对应资源包。
 
 如果你懒得分辨：
 

@@ -57,7 +57,7 @@
 - TensorRT 分卷包是高级可选资产，不计入普通用户主推荐路径；只下载 `.7z.001` 没用，必须下载全部 `.7z.00N`。
 - Windows 64 位现在优先推荐免安装包，安装器作为可选路径保留。
 - Windows 免安装包会在解压目录内启用便携模式，配置、日志、保存棋谱、下载权重和软件内安装的 TensorRT 文件都随这个文件夹保存，主要位于 `user-data/`。
-- 已有 Windows 免安装版时，关闭软件后把 `<date>-windows64.core-update.zip` 解压到旧目录覆盖即可；它只替换 `app/lizzie-yzy2.5.3-shaded.jar` 和 `app/LizzieYzy Next*.cfg`，用于同步标题栏版本号和必要 JVM 参数，不会覆盖权重、引擎、运行环境、JCEF、readboard、TensorRT 或 `user-data/`。
+- 已有 Windows 免安装版时，关闭软件后把 `<date>-windows64.core-update.zip` 解压到旧目录覆盖即可；它更新 `app/lizzie-yzy2.5.3-shaded.jar` 和 `app/LizzieYzy Next*.cfg`，并携带 `lizzieyzy-next-core.jar` 兼容旧版自动更新请求。这个兼容文件与主 jar 内容、校验值相同，不会覆盖权重、引擎、运行环境、JCEF、readboard、TensorRT 或 `user-data/`。
 - 远程算力不属于发布包资产：`设置 -> 远程算力中心` 只保存连接配置和可选 token，不把智子云算力、KaTrain/SWHub 自建远程服务或任何云端模型打进安装包。
 - 旧 tag 里如果还看到兼容 zip 或历史包，那属于历史发布格式。
 
