@@ -168,6 +168,7 @@ with zipfile.ZipFile(core_path) as archive:
         if name and not name.endswith("/")
     }
 assert "app/lizzie-yzy2.5.3-shaded.jar" in entries
+assert "lizzieyzy-next-core.jar" in entries, "core update must retain the legacy updater source alias"
 assert any(entry.startswith("app/LizzieYzy Next") and entry.endswith(".cfg") for entry in entries), "core update must include launcher cfg files so title-bar version and JVM options are refreshed"
 assert "README.txt" in entries
 assert "lizzieyzy-next-core-update-manifest.json" in entries

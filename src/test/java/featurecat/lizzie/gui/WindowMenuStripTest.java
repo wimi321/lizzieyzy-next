@@ -1,5 +1,6 @@
 package featurecat.lizzie.gui;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -14,6 +15,23 @@ import javax.swing.JPopupMenu;
 import org.junit.jupiter.api.Test;
 
 class WindowMenuStripTest {
+  @Test
+  void mirrorsSourceMenuTextAndEnabledStateWithoutRebuild() {
+    JMenuBar menuBar = new JMenuBar();
+    JMenu engine = new JMenu("[1] KataGo");
+    menuBar.add(engine);
+
+    WindowMenuStrip strip = new WindowMenuStrip(menuBar);
+    JButton button = (JButton) strip.getComponent(0);
+
+    engine.setText("[2] ZenGTPX");
+    engine.setEnabled(false);
+
+    assertEquals("[2] ZenGTPX", button.getText());
+    assertEquals("[2] ZenGTPX", button.getAccessibleContext().getAccessibleName());
+    assertFalse(button.isEnabled());
+  }
+
   @Test
   void secondPressOnOpenTopMenuClosesInsteadOfReopening() {
     JMenuBar menuBar = new JMenuBar();

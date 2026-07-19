@@ -1089,6 +1089,8 @@ create_core_update_asset() {
   rm -rf "$core_dir" "$core_zip"
   mkdir -p "$core_dir/app"
   cp "$JAR_PATH" "$core_dir/app/$MAIN_JAR"
+  # Clients released before the component-path migration still request this root-level alias.
+  cp "$JAR_PATH" "$core_dir/lizzieyzy-next-core.jar"
   shopt -s nullglob
   for launcher_cfg in "$DIST_DIR"/app-image-*/*/app/*.cfg; do
     cp "$launcher_cfg" "$core_dir/app/$(basename "$launcher_cfg")"
@@ -1157,6 +1159,12 @@ files = [
     {
         "path": f"app/{main_jar}",
         "purpose": "in-app-updater-and-manual-overlay-target",
+        "sizeBytes": jar.stat().st_size,
+        "sha256": jar_sha256,
+    },
+    {
+        "path": "lizzieyzy-next-core.jar",
+        "purpose": "legacy-in-app-updater-source",
         "sizeBytes": jar.stat().st_size,
         "sha256": jar_sha256,
     },

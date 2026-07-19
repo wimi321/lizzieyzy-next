@@ -9935,23 +9935,23 @@ public class Menu extends JMenuBar {
   }
 
   public void updateEngineMenu() {
+    if (!SwingUtilities.isEventDispatchThread()) {
+      SwingUtilities.invokeLater(this::updateEngineMenu);
+      return;
+    }
 
-    this.remove(engineMenu);
-    this.remove(engineMenu2);
-    engineMenu = new JFontMenu(resourceBundle.getString("Menu.noEngine"));
+    engineMenu.removeAll();
+    engineMenu2.removeAll();
     engineMenu.setText(resourceBundle.getString("Menu.noEngine"));
+    engineMenu.setIcon(null);
     engineMenu.setForeground(MorandiPalette.MENU_ITEM_TEXT);
     engineMenu.setFont(
         new Font(Config.sysDefaultFontName, Font.BOLD, Math.max(Config.frameFontSize, 15)));
-    this.add(engineMenu);
-    //   if (Lizzie.config.Lizzie.config.isDoubleEngineMode()) {
-    engineMenu2 = new JFontMenu(resourceBundle.getString("Menu.noEngine"));
     engineMenu2.setText(resourceBundle.getString("Menu.noEngine"));
+    engineMenu2.setIcon(null);
     engineMenu2.setForeground(MorandiPalette.MENU_ITEM_TEXT);
     engineMenu2.setFont(
         new Font(Config.sysDefaultFontName, Font.BOLD, Math.max(Config.frameFontSize, 15)));
-    this.add(engineMenu2);
-    //    }
     if (!Lizzie.config.showDoubleMenu) {
       if (Lizzie.config.isFrameFontSmall() && komiContentPanel != null) {
         this.remove(komiContentPanel);
@@ -10075,6 +10075,12 @@ public class Menu extends JMenuBar {
     engineMenu2.add(restartCurrentEngine2);
     engineMenu2.add(shutdownCurrentEngine2);
     if (!Lizzie.config.isDoubleEngineMode()) engineMenu2.setVisible(false);
+    engineMenu.revalidate();
+    engineMenu.repaint();
+    engineMenu2.revalidate();
+    engineMenu2.repaint();
+    revalidate();
+    repaint();
   }
 
   public void changeEngineIcon(int index, int mode) {
