@@ -11,6 +11,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import featurecat.lizzie.Config;
 import featurecat.lizzie.Lizzie;
 import featurecat.lizzie.analysis.MoveData;
+import featurecat.lizzie.analysis.MoveRankEvaluationMode;
 import featurecat.lizzie.rules.Board;
 import featurecat.lizzie.rules.BoardData;
 import featurecat.lizzie.rules.BoardHistoryList;
@@ -502,6 +503,7 @@ class MoveOnlyUiGateTest {
     config.scoreLossThreshold3 = -3;
     config.scoreLossThreshold4 = -6;
     config.scoreLossThreshold5 = -12;
+    config.moveRankEvaluationMode = MoveRankEvaluationMode.WINRATE;
     Lizzie.config = config;
     try {
       Set<Integer> colors = new HashSet<Integer>();

@@ -1028,15 +1028,19 @@ public class FloatBoardRenderer {
           int playoutsPrevious = node.previous().get().getData().getPlayouts();
           if (playouts > 0 && playoutsPrevious > 0) {
             if (moveNumberList[index] == moveNumber) {
-              if (node.isBest) drawMoveRankMarkCircle(g, markX, markY, stoneRadius, 0, 0, true);
+              if (node.isBest)
+                drawMoveRankMarkCircle(
+                    g, markX, markY, stoneRadius, 0, Optional.of(0.0), true);
               else
                 drawMoveRankMarkCircle(
                     g,
                     markX,
                     markY,
                     stoneRadius,
-                    Lizzie.config.useWinLossInMoveRank ? Lizzie.board.lastWinrateDiff(node) : 0,
-                    Lizzie.config.useScoreLossInMoveRank ? Lizzie.board.lastScoreMeanDiff(node) : 0,
+                    Lizzie.board.lastWinrateDiff(node),
+                    node.getData().isKataData
+                        ? Optional.of(Lizzie.board.lastScoreMeanDiff(node))
+                        : Optional.empty(),
                     true);
               drawList[index] = 1;
             }
@@ -1059,13 +1063,18 @@ public class FloatBoardRenderer {
           NodeInfo nodeInfo = node.previous().get().nodeInfo;
           if (nodeInfo.analyzed && nodeInfo.previousPlayouts > 0) {
             if (moveNumberList[index] == moveNumber && drawList[index] != 1) {
-              double winrateDiff =
-                  Lizzie.config.useWinLossInMoveRank ? nodeInfo.getWinrateDiff() : 0;
-              double scoreDiff =
-                  Lizzie.config.useScoreLossInMoveRank ? nodeInfo.getScoreMeanDiff() : 0;
               int markX = x + scaledMarginWidth + squareWidth * coords[0];
               int markY = y + scaledMarginHeight + squareHeight * coords[1];
-              drawMoveRankMarkCircle(g, markX, markY, stoneRadius, winrateDiff, scoreDiff, false);
+              drawMoveRankMarkCircle(
+                  g,
+                  markX,
+                  markY,
+                  stoneRadius,
+                  nodeInfo.getWinrateDiff(),
+                  node.getData().isKataData
+                      ? Optional.of(nodeInfo.getScoreMeanDiff())
+                      : Optional.empty(),
+                  false);
               drawList[index] = 1;
             }
           }
@@ -1081,7 +1090,7 @@ public class FloatBoardRenderer {
       int markY,
       int stoneRadius2,
       double winrateDiff,
-      double scoreDiff,
+      Optional<Double> scoreDiff,
       boolean isLastMove) {
     double severity = moveRankMarkSeverity(winrateDiff, scoreDiff);
     float radiusF = (float) (0.1 + Math.min(1.0, severity / 6.0) * 0.09);
@@ -1104,6 +1113,10 @@ public class FloatBoardRenderer {
   }
 
   static double moveRankMarkSeverity(double winrateDiff, double scoreDiff) {
+    return MoveRankDefinition.severity(winrateDiff, scoreDiff, Lizzie.config);
+  }
+
+  static double moveRankMarkSeverity(double winrateDiff, Optional<Double> scoreDiff) {
     return MoveRankDefinition.severity(winrateDiff, scoreDiff, Lizzie.config);
   }
 

@@ -7,6 +7,7 @@ import featurecat.lizzie.analysis.EngineManager;
 import featurecat.lizzie.analysis.FastLink;
 import featurecat.lizzie.analysis.GameInfo;
 import featurecat.lizzie.analysis.Leelaz;
+import featurecat.lizzie.analysis.MoveRankEvaluationMode;
 import featurecat.lizzie.theme.MorandiPalette;
 import featurecat.lizzie.theme.Theme;
 import featurecat.lizzie.update.WindowsUpdateController;
@@ -8879,57 +8880,36 @@ public class Menu extends JMenuBar {
     setTooltip(setCustomMoves);
     JFontCheckBoxMenuItem showMoveRankInOrigin =
         new JFontCheckBoxMenuItem(resourceBundle.getString("Menu.showMoveRankInOrigin"));
-    JFontMenuItem chkUseWinScore = new JFontMenuItem();
-    chkUseWinScore.setLayout(new FlowLayout(FlowLayout.CENTER, 0, 0));
-    chkUseWinScore.add(new JFontLabel(resourceBundle.getString("Menu.rankMenu.base"))); // 依据:
-    JFontCheckBox chkWin = new JFontCheckBox(resourceBundle.getString("Menu.rankMenu.win"));
-    chkWin.setOpaque(false);
-    JFontCheckBox chkScore = new JFontCheckBox(resourceBundle.getString("Menu.rankMenu.score"));
-    chkScore.setOpaque(false);
-    chkWin.setToolTipText(resourceBundle.getString("Menu.rankMenu.base.tooltips"));
-    chkScore.setToolTipText(resourceBundle.getString("Menu.rankMenu.base.tooltips"));
-    chkUseWinScore.setToolTipText(resourceBundle.getString("Menu.rankMenu.base.tooltips"));
-    chkWin.addActionListener(
-        new ActionListener() {
-          @Override
-          public void actionPerformed(ActionEvent e) {
-            if (!chkScore.isSelected() && !chkWin.isSelected()) {
-              chkScore.setSelected(true);
-              Lizzie.config.useScoreLossInMoveRank = chkScore.isSelected();
-              Lizzie.config.uiConfig.put(
-                  "use-score-loss-in-move-rank", Lizzie.config.useScoreLossInMoveRank);
-            }
-            Lizzie.config.useWinLossInMoveRank = chkWin.isSelected();
-            Lizzie.config.uiConfig.put(
-                "use-win-loss-in-move-rank", Lizzie.config.useWinLossInMoveRank);
-            Lizzie.frame.refresh();
-          }
-        });
-    chkScore.addActionListener(
-        new ActionListener() {
-          @Override
-          public void actionPerformed(ActionEvent e) {
-            if (!chkScore.isSelected() && !chkWin.isSelected()) {
-              chkWin.setSelected(true);
-              Lizzie.config.useWinLossInMoveRank = chkWin.isSelected();
-              Lizzie.config.uiConfig.put(
-                  "use-win-loss-in-move-rank", Lizzie.config.useWinLossInMoveRank);
-            }
-            Lizzie.config.useScoreLossInMoveRank = chkScore.isSelected();
-            Lizzie.config.uiConfig.put(
-                "use-score-loss-in-move-rank", Lizzie.config.useScoreLossInMoveRank);
-            Lizzie.frame.refresh();
-          }
-        });
-    chkUseWinScore.add(chkWin);
-    chkUseWinScore.add(chkScore);
+    JFontMenu moveRankBasisMenu =
+        new JFontMenu(resourceBundle.getString("Menu.rankMenu.evaluationMode"));
+    JFontCheckBoxMenuItem rankModeAuto =
+        moveRankModeItem("Menu.rankMenu.evaluationMode.auto", MoveRankEvaluationMode.AUTO);
+    JFontCheckBoxMenuItem rankModeScore =
+        moveRankModeItem("Menu.rankMenu.evaluationMode.score", MoveRankEvaluationMode.SCORE);
+    JFontCheckBoxMenuItem rankModeWinrate =
+        moveRankModeItem("Menu.rankMenu.evaluationMode.winrate", MoveRankEvaluationMode.WINRATE);
+    JFontCheckBoxMenuItem rankModeCombined =
+        moveRankModeItem(
+            "Menu.rankMenu.evaluationMode.combined", MoveRankEvaluationMode.COMBINED);
+    ButtonGroup moveRankModeGroup = new ButtonGroup();
+    moveRankModeGroup.add(rankModeAuto);
+    moveRankModeGroup.add(rankModeScore);
+    moveRankModeGroup.add(rankModeWinrate);
+    moveRankModeGroup.add(rankModeCombined);
+    moveRankBasisMenu.add(rankModeAuto);
+    moveRankBasisMenu.add(rankModeScore);
+    moveRankBasisMenu.add(rankModeWinrate);
+    moveRankBasisMenu.addSeparator();
+    moveRankBasisMenu.add(rankModeCombined);
+    syncMoveRankModeSelection(
+        rankModeAuto, rankModeScore, rankModeWinrate, rankModeCombined);
     if (rankPopupMenu != null) {
       rankPopupMenu.add(rankNoneMove);
       rankPopupMenu.add(rankLastMove);
       rankPopupMenu.add(rankCustomMove);
       rankPopupMenu.add(rankAllMove);
       rankPopupMenu.addSeparator();
-      rankPopupMenu.add(chkUseWinScore);
+      rankPopupMenu.add(moveRankBasisMenu);
     } else {
       rankJMenu.add(rankNoneMove);
       rankJMenu.add(rankLastMove);
@@ -8982,7 +8962,7 @@ public class Menu extends JMenuBar {
             }
           });
       rankJMenu.add(showMoveRankInOrigin);
-      rankJMenu.add(chkUseWinScore);
+      rankJMenu.add(moveRankBasisMenu);
     }
     rankCustomMove.setPreferredSize(
         new Dimension(
@@ -8999,10 +8979,6 @@ public class Menu extends JMenuBar {
                 : (Lizzie.config.isFrameFontSmall()
                     ? 25
                     : (Lizzie.config.isFrameFontMiddle() ? 27 : 30)))));
-    chkUseWinScore.setPreferredSize(
-        new Dimension(
-            (int) rankCustomMove.getPreferredSize().getWidth(),
-            (int) (rankCustomMove.getPreferredSize().getHeight() * 1.2)));
     rankNoneMove.addActionListener(
         new ActionListener() {
           @Override
@@ -9069,8 +9045,8 @@ public class Menu extends JMenuBar {
               rankCustomMove.setState(false);
               rankNoneMove.setState(false);
               rankLastMove.setState(false);
-              chkWin.setSelected(Lizzie.config.useWinLossInMoveRank);
-              chkScore.setSelected(Lizzie.config.useScoreLossInMoveRank);
+              syncMoveRankModeSelection(
+                  rankModeAuto, rankModeScore, rankModeWinrate, rankModeCombined);
               txtCustomMove.setText(String.valueOf(Lizzie.config.txtMoveRankMarkLastMove));
               if (Lizzie.config.allowMoveNumber != 0) {
                 rankNoneMove.setState(true);
@@ -9102,8 +9078,8 @@ public class Menu extends JMenuBar {
               rankCustomMove.setState(false);
               rankNoneMove.setState(false);
               rankLastMove.setState(false);
-              chkWin.setSelected(Lizzie.config.useWinLossInMoveRank);
-              chkScore.setSelected(Lizzie.config.useScoreLossInMoveRank);
+              syncMoveRankModeSelection(
+                  rankModeAuto, rankModeScore, rankModeWinrate, rankModeCombined);
               txtCustomMove.setText(String.valueOf(Lizzie.config.txtMoveRankMarkLastMove));
               if (Lizzie.config.allowMoveNumber != 0) {
                 rankNoneMove.setState(true);
@@ -9135,6 +9111,46 @@ public class Menu extends JMenuBar {
             public void menuCanceled(MenuEvent e) {}
           });
     }
+  }
+
+  private JFontCheckBoxMenuItem moveRankModeItem(
+      String resourceKey, MoveRankEvaluationMode mode) {
+    JFontCheckBoxMenuItem item = new JFontCheckBoxMenuItem(resourceBundle.getString(resourceKey));
+    item.setToolTipText(resourceBundle.getString(resourceKey + ".tooltip"));
+    item.addActionListener(e -> setMoveRankEvaluationMode(mode));
+    return item;
+  }
+
+  private void setMoveRankEvaluationMode(MoveRankEvaluationMode mode) {
+    Lizzie.config.moveRankEvaluationMode = mode;
+    Lizzie.config.useWinLossInMoveRank = mode.usesWinrate();
+    Lizzie.config.useScoreLossInMoveRank = mode.usesScore();
+    Lizzie.config.uiConfig.put("move-rank-evaluation-mode", mode.configValue());
+    Lizzie.config.uiConfig.put(
+        "use-win-loss-in-move-rank", Lizzie.config.useWinLossInMoveRank);
+    Lizzie.config.uiConfig.put(
+        "use-score-loss-in-move-rank", Lizzie.config.useScoreLossInMoveRank);
+    persistUiSettings();
+    Lizzie.frame.refresh();
+  }
+
+  private void syncMoveRankModeSelection(
+      JFontCheckBoxMenuItem auto,
+      JFontCheckBoxMenuItem score,
+      JFontCheckBoxMenuItem winrate,
+      JFontCheckBoxMenuItem combined) {
+    MoveRankEvaluationMode mode = Lizzie.config.moveRankEvaluationMode;
+    if (mode == null) {
+      mode =
+          MoveRankEvaluationMode.fromConfig(
+              "",
+              Lizzie.config.useWinLossInMoveRank,
+              Lizzie.config.useScoreLossInMoveRank);
+    }
+    auto.setSelected(mode == MoveRankEvaluationMode.AUTO);
+    score.setSelected(mode == MoveRankEvaluationMode.SCORE);
+    winrate.setSelected(mode == MoveRankEvaluationMode.WINRATE);
+    combined.setSelected(mode == MoveRankEvaluationMode.COMBINED);
   }
 
   private void pauseGame() {

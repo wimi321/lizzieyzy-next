@@ -457,23 +457,24 @@ public class BoardRenderer {
                   : node.previous().get().getData().getPlayouts();
           if (playouts > 0 && playoutsPrevious > 0) {
             if (moveNumberList[index] == moveNumber) {
-              if (node.isBest) drawMoveRankMarkCircle(g, markX, markY, stoneRadius, 0, 0, true);
+              if (node.isBest)
+                drawMoveRankMarkCircle(
+                    g, markX, markY, stoneRadius, 0, Optional.of(0.0), true);
               else
                 drawMoveRankMarkCircle(
                     g,
                     markX,
                     markY,
                     stoneRadius,
-                    Lizzie.config.useWinLossInMoveRank
-                        ? (isSub
-                            ? Lizzie.board.lastWinrateDiff2(node)
-                            : Lizzie.board.lastWinrateDiff(node))
-                        : 0,
-                    Lizzie.config.useScoreLossInMoveRank
-                        ? (isSub
-                            ? Lizzie.board.lastScoreMeanDiff2(node)
-                            : Lizzie.board.lastScoreMeanDiff(node))
-                        : 0,
+                    isSub
+                        ? Lizzie.board.lastWinrateDiff2(node)
+                        : Lizzie.board.lastWinrateDiff(node),
+                    node.getData().isKataData
+                        ? Optional.of(
+                            isSub
+                                ? Lizzie.board.lastScoreMeanDiff2(node)
+                                : Lizzie.board.lastScoreMeanDiff(node))
+                        : Optional.empty(),
                     true);
               drawList[index] = 1;
             }
@@ -498,13 +499,18 @@ public class BoardRenderer {
               isSub ? node.previous().get().nodeInfo2 : node.previous().get().nodeInfo;
           if (nodeInfo.analyzed && nodeInfo.previousPlayouts > 0) {
             if (moveNumberList[index] == moveNumber && drawList[index] != 1) {
-              double winrateDiff =
-                  Lizzie.config.useWinLossInMoveRank ? nodeInfo.getWinrateDiff() : 0;
-              double scoreDiff =
-                  Lizzie.config.useScoreLossInMoveRank ? nodeInfo.getScoreMeanDiff() : 0;
               int markX = x + scaledMarginWidth + squareWidth * coords[0];
               int markY = y + scaledMarginHeight + squareHeight * coords[1];
-              drawMoveRankMarkCircle(g, markX, markY, stoneRadius, winrateDiff, scoreDiff, false);
+              drawMoveRankMarkCircle(
+                  g,
+                  markX,
+                  markY,
+                  stoneRadius,
+                  nodeInfo.getWinrateDiff(),
+                  node.getData().isKataData
+                      ? Optional.of(nodeInfo.getScoreMeanDiff())
+                      : Optional.empty(),
+                  false);
               drawList[index] = 1;
             }
           }
@@ -520,7 +526,7 @@ public class BoardRenderer {
       int markY,
       int stoneRadius2,
       double winrateDiff,
-      double scoreDiff,
+      Optional<Double> scoreDiff,
       boolean isLastMove) {
     float radiusF = 0.1f;
     MoveRankDefinition.Rank rank =

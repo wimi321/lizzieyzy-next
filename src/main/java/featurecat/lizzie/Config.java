@@ -1,6 +1,7 @@
 package featurecat.lizzie;
 
 import featurecat.lizzie.analysis.EngineManager;
+import featurecat.lizzie.analysis.MoveRankEvaluationMode;
 import featurecat.lizzie.gui.LizzieFrame;
 import featurecat.lizzie.theme.Theme;
 import featurecat.lizzie.util.AnalysisEngineCommandHelper;
@@ -1246,6 +1247,7 @@ public class Config {
 
   public boolean useScoreLossInMoveRank = true;
   public boolean useWinLossInMoveRank = true;
+  public MoveRankEvaluationMode moveRankEvaluationMode = MoveRankEvaluationMode.AUTO;
 
   public double winLossThreshold1 = -1;
   public double winLossThreshold2 = -3;
@@ -2035,6 +2037,13 @@ public class Config {
     readBoardGetFocus = uiConfig.optBoolean("read-board-get-focus", true);
     useScoreLossInMoveRank = uiConfig.optBoolean("use-score-loss-in-move-rank", true);
     useWinLossInMoveRank = uiConfig.optBoolean("use-win-loss-in-move-rank", true);
+    moveRankEvaluationMode =
+        MoveRankEvaluationMode.fromConfig(
+            uiConfig.optString("move-rank-evaluation-mode", ""),
+            useWinLossInMoveRank,
+            useScoreLossInMoveRank);
+    useWinLossInMoveRank = moveRankEvaluationMode.usesWinrate();
+    useScoreLossInMoveRank = moveRankEvaluationMode.usesScore();
     winLossThreshold1 = uiConfig.optDouble("win-loss-threshold-1", -1);
     winLossThreshold2 = uiConfig.optDouble("win-loss-threshold-2", -3);
     winLossThreshold3 = uiConfig.optDouble("win-loss-threshold-3", -6);
