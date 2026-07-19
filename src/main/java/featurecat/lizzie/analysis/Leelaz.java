@@ -4,6 +4,7 @@ import featurecat.lizzie.Config;
 import featurecat.lizzie.Lizzie;
 import featurecat.lizzie.analysis.remote.EngineTransport;
 import featurecat.lizzie.analysis.remote.RemoteComputeConfig;
+import featurecat.lizzie.analysis.gtpconfig.GtpConfigurationProbe;
 import featurecat.lizzie.gui.EngineData;
 import featurecat.lizzie.gui.EngineFailedMessage;
 import featurecat.lizzie.gui.JFontCheckBox;
@@ -196,6 +197,8 @@ public class Leelaz {
   public boolean isCheckingVersion;
   public volatile boolean isCheckingName;
   public String initialCommand;
+  public String gtpConfigurationProtocol = "";
+  public JSONObject gtpConfigurationProfile;
   private boolean isCheckingPda = false;
   public boolean isKataGoPda = false;
   public boolean isDymPda = false;
@@ -704,6 +707,7 @@ public class Leelaz {
               sendCommand("name");
               sendCommand("version");
               sendCommand("list_commands");
+              enqueueSavedGtpConfiguration();
               if (!(Lizzie.frame.isPlayingAgainstLeelaz || Lizzie.frame.isAnaPlayingAgainstLeelaz))
                 sendCommand("komi " + komi);
               boardSizeForEngine(width, height);
@@ -734,6 +738,7 @@ public class Leelaz {
               sendCommand("name");
               sendCommand("version");
               sendCommand("list_commands");
+              enqueueSavedGtpConfiguration();
               boardSizeForEngine(width, height);
               if (!(Lizzie.frame.isPlayingAgainstLeelaz || Lizzie.frame.isAnaPlayingAgainstLeelaz))
                 sendCommand("komi " + komi);
@@ -3484,6 +3489,85 @@ public class Leelaz {
 
   public void sendCommandNoLeelaz2(String command) {
     sendCommandNoLeelaz2(command, null);
+  }
+
+  private void enqueueSavedGtpConfiguration() {
+    configurationProfileCommand(gtpConfigurationProtocol, gtpConfigurationProfile)
+        .ifPresent(command -> sendCommand(command, null, false, false));
+  }
+
+  public static Optional<String> configurationProfileCommand(
+      String protocol, JSONObject profile) {
+    if (!GtpConfigurationProbe.ZENGTP_PROTOCOL.equals(protocol) || profile == null) {
+      return Optional.empty();
+    }
+    return Optional.of(GtpConfigurationProbe.ZENGTP_SET_COMMAND + " " + profile.toString());
+  }
+
+  public boolean supportsGtpConfiguration() {
+    return commandLists.contains(GtpConfigurationProbe.ZENGTP_SET_COMMAND);
+  }
+
+  public void applyGtpConfigurationProfile(
+      JSONObject profile, Consumer<JSONObject> onSuccess, Consumer<String> onFailure) {
+    Optional<String> command =
+        configurationProfileCommand(GtpConfigurationProbe.ZENGTP_PROTOCOL, profile);
+    if (command.isEmpty()) {
+      if (onFailure != null) {
+        onFailure.accept("Configuration profile is empty");
+      }
+      return;
+    }
+    if (!started || !supportsGtpConfiguration()) {
+      if (onFailure != null) {
+        onFailure.accept("The running engine does not expose visual configuration");
+      }
+      return;
+    }
+    sendCommand(
+        command.get(),
+        () -> {
+          if (isCurrentCommandResponseError()) {
+            if (onFailure != null) {
+              onFailure.accept(gtpResponsePayload(currentCommandResponseLine()));
+            }
+            return;
+          }
+          JSONObject response = new JSONObject();
+          String payload = gtpResponsePayload(currentCommandResponseLine());
+          if (!payload.isEmpty()) {
+            try {
+              response = new JSONObject(payload);
+            } catch (JSONException ignored) {
+              response.put("raw", payload);
+            }
+          }
+          if (onSuccess != null) {
+            onSuccess.accept(response);
+          }
+        },
+        failure -> {
+          if (onFailure != null) {
+            onFailure.accept(failure == null ? "Failed to send configuration" : failure.getMessage());
+          }
+        },
+        true,
+        false);
+  }
+
+  static String gtpResponsePayload(String line) {
+    if (line == null) {
+      return "";
+    }
+    String trimmed = line.trim();
+    if (trimmed.isEmpty() || (trimmed.charAt(0) != '=' && trimmed.charAt(0) != '?')) {
+      return trimmed;
+    }
+    int index = 1;
+    while (index < trimmed.length() && Character.isDigit(trimmed.charAt(index))) {
+      index++;
+    }
+    return trimmed.substring(index).trim();
   }
 
   private void sendCommandNoLeelaz2(String command, Runnable onResponse) {

@@ -822,25 +822,7 @@ public class Utils {
     if (engineOpt.isPresent()) {
       JSONArray engineJSArray = engineOpt.get();
       for (int i = 0; i < engineJSArray.length(); i++) {
-        EngineData engineDt = new EngineData();
-        JSONObject engineInfo = engineJSArray.getJSONObject(i);
-        engineDt.index = i;
-        engineDt.commands = engineInfo.optString("command", "");
-        engineDt.name = engineInfo.optString("name", "");
-        engineDt.preload = engineInfo.optBoolean("preload", false);
-        engineDt.komi = engineInfo.optFloat("komi", 7.5F);
-        engineDt.width = engineInfo.optInt("width", 19);
-        engineDt.height = engineInfo.optInt("height", 19);
-        engineDt.isDefault = engineInfo.optBoolean("isDefault", false);
-        engineDt.useJavaSSH = engineInfo.optBoolean("useJavaSSH", false);
-        engineDt.useKeyGen = engineInfo.optBoolean("useKeyGen", false);
-        engineDt.keyGenPath = engineInfo.optString("keyGenPath", "");
-        engineDt.ip = engineInfo.optString("ip", "");
-        engineDt.port = engineInfo.optString("port", "");
-        engineDt.userName = engineInfo.optString("userName", "");
-        engineDt.password = engineInfo.optString("password", "");
-        engineDt.initialCommand = engineInfo.optString("initialCommand", "");
-        engineData.add(engineDt);
+        engineData.add(engineDataFromJson(engineJSArray.getJSONObject(i), i));
       }
     } else {
       engineData = getEngineDataOld();
@@ -860,25 +842,7 @@ public class Utils {
     JSONArray engineDate = new JSONArray();
     int defaultEngineIndex = normalizeDefaultEngineFlags(engineData);
     for (int i = 0; i < engineData.size(); i++) {
-      JSONObject engineInfo = new JSONObject();
-      EngineData engineDt = engineData.get(i);
-      boolean isDefault = engineDt.isDefault;
-      engineInfo.put("command", engineDt.commands);
-      engineInfo.put("name", engineDt.name);
-      engineInfo.put("preload", engineDt.preload);
-      engineInfo.put("komi", engineDt.komi);
-      engineInfo.put("width", engineDt.width);
-      engineInfo.put("height", engineDt.height);
-      engineInfo.put("isDefault", isDefault);
-      engineInfo.put("useJavaSSH", engineDt.useJavaSSH);
-      engineInfo.put("ip", engineDt.ip);
-      engineInfo.put("port", engineDt.port);
-      engineInfo.put("userName", engineDt.userName);
-      engineInfo.put("password", engineDt.password);
-      engineInfo.put("useKeyGen", engineDt.useKeyGen);
-      engineInfo.put("keyGenPath", engineDt.keyGenPath);
-      engineInfo.put("initialCommand", engineDt.initialCommand);
-      engineDate.put(engineInfo);
+      engineDate.put(engineDataToJson(engineData.get(i)));
     }
     Lizzie.config.leelazConfig.put("engine-settings-list", engineDate);
     if (Lizzie.config.uiConfig != null) {
@@ -1303,6 +1267,59 @@ public class Utils {
       }
       Files.copy(in, getDistFile(resource, newFolderName));
     }
+  }
+
+  static EngineData engineDataFromJson(JSONObject engineInfo, int index) {
+    EngineData engineDt = new EngineData();
+    engineDt.index = index;
+    engineDt.commands = engineInfo.optString("command", "");
+    engineDt.name = engineInfo.optString("name", "");
+    engineDt.preload = engineInfo.optBoolean("preload", false);
+    engineDt.komi = engineInfo.optFloat("komi", 7.5F);
+    engineDt.width = engineInfo.optInt("width", 19);
+    engineDt.height = engineInfo.optInt("height", 19);
+    engineDt.isDefault = engineInfo.optBoolean("isDefault", false);
+    engineDt.useJavaSSH = engineInfo.optBoolean("useJavaSSH", false);
+    engineDt.useKeyGen = engineInfo.optBoolean("useKeyGen", false);
+    engineDt.keyGenPath = engineInfo.optString("keyGenPath", "");
+    engineDt.ip = engineInfo.optString("ip", "");
+    engineDt.port = engineInfo.optString("port", "");
+    engineDt.userName = engineInfo.optString("userName", "");
+    engineDt.password = engineInfo.optString("password", "");
+    engineDt.initialCommand = engineInfo.optString("initialCommand", "");
+    engineDt.gtpConfigurationProtocol =
+        engineInfo.optString("gtpConfigurationProtocol", "");
+    JSONObject profile = engineInfo.optJSONObject("gtpConfigurationProfile");
+    engineDt.gtpConfigurationProfile =
+        profile == null ? null : new JSONObject(profile.toString());
+    return engineDt;
+  }
+
+  static JSONObject engineDataToJson(EngineData engineDt) {
+    JSONObject engineInfo = new JSONObject();
+    engineInfo.put("command", engineDt.commands);
+    engineInfo.put("name", engineDt.name);
+    engineInfo.put("preload", engineDt.preload);
+    engineInfo.put("komi", engineDt.komi);
+    engineInfo.put("width", engineDt.width);
+    engineInfo.put("height", engineDt.height);
+    engineInfo.put("isDefault", engineDt.isDefault);
+    engineInfo.put("useJavaSSH", engineDt.useJavaSSH);
+    engineInfo.put("ip", engineDt.ip);
+    engineInfo.put("port", engineDt.port);
+    engineInfo.put("userName", engineDt.userName);
+    engineInfo.put("password", engineDt.password);
+    engineInfo.put("useKeyGen", engineDt.useKeyGen);
+    engineInfo.put("keyGenPath", engineDt.keyGenPath);
+    engineInfo.put("initialCommand", engineDt.initialCommand);
+    if (engineDt.gtpConfigurationProtocol != null
+        && !engineDt.gtpConfigurationProtocol.isBlank()
+        && engineDt.gtpConfigurationProfile != null) {
+      engineInfo.put("gtpConfigurationProtocol", engineDt.gtpConfigurationProtocol);
+      engineInfo.put(
+          "gtpConfigurationProfile", new JSONObject(engineDt.gtpConfigurationProfile.toString()));
+    }
+    return engineInfo;
   }
 
   public static boolean deleteDir(File dir) {

@@ -34,6 +34,7 @@ import java.util.concurrent.TimeUnit;
 import javax.swing.SwingUtilities;
 import javax.swing.Timer;
 import org.json.JSONException;
+import org.json.JSONObject;
 
 public class EngineManager {
   private static final Set<Leelaz> REMOTE_ENGINES_RESTARTING = ConcurrentHashMap.newKeySet();
@@ -83,6 +84,8 @@ public class EngineManager {
       e.userName = engineDt.userName;
       e.password = engineDt.password;
       e.initialCommand = engineDt.initialCommand;
+      e.gtpConfigurationProtocol = engineDt.gtpConfigurationProtocol;
+      e.gtpConfigurationProfile = copyProfile(engineDt.gtpConfigurationProfile);
       if (i == index || loadDefault && engineDt.isDefault) {
         if (engineDt.isDefault) index = engineDt.index;
         if (e.oriWidth != 19 || e.oriHeight != 19) {
@@ -1695,6 +1698,8 @@ public class EngineManager {
       e.userName = engineDt.userName;
       e.password = engineDt.password;
       e.initialCommand = engineDt.initialCommand;
+      e.gtpConfigurationProtocol = engineDt.gtpConfigurationProtocol;
+      e.gtpConfigurationProfile = copyProfile(engineDt.gtpConfigurationProfile);
       if (!loadLeelaz && engineDt.name.equals(currentEngineName)) {
         loadLeelaz = true;
         if (e.oriWidth != Board.boardWidth || e.oriHeight != Board.boardHeight) {
@@ -1935,7 +1940,13 @@ public class EngineManager {
     engine.userName = engineDt.userName;
     engine.password = engineDt.password;
     engine.initialCommand = engineDt.initialCommand;
+    engine.gtpConfigurationProtocol = engineDt.gtpConfigurationProtocol;
+    engine.gtpConfigurationProfile = copyProfile(engineDt.gtpConfigurationProfile);
     engine.getEngineName(index);
+  }
+
+  private static JSONObject copyProfile(JSONObject profile) {
+    return profile == null ? null : new JSONObject(profile.toString());
   }
 
   private void refreshEngineSelectionControls(ArrayList<EngineData> engineData) {
