@@ -4370,6 +4370,18 @@ public class Leelaz {
     }
   }
 
+  /** Returns whether foreground quick analysis owns, or is restoring from, the exclusive lease. */
+  public boolean hasForegroundAnalysisLeaseWorkInProgress() {
+    synchronized (engineArbitrationLock()) {
+      if (exclusiveGtpSession != null
+          && exclusiveGtpSession.owner instanceof ForegroundAnalysisLease) {
+        return true;
+      }
+      return foregroundRestoreSession != null
+          && foregroundRestoreSession.owner instanceof ForegroundAnalysisLease;
+    }
+  }
+
   public boolean hasExclusiveGtpLeaseOwnedBy(Object owner) {
     synchronized (engineArbitrationLock()) {
       return exclusiveGtpSession != null && exclusiveGtpSession.owner == owner;

@@ -25,17 +25,17 @@ class RemoteComputeConfigTest {
         AppLocale.SIMPLIFIED_CHINESE.loadBundle(),
         () -> {
           assertEquals(
-              "智子云算力 VIP 包月 · Zhizi 28B · TensorRT",
+              "智子云算力 VIP 包月 · 28B NBT · TensorRT",
               RemoteComputeConfig.displayNameForZhiziArgs(RemoteComputeConfig.DEFAULT_ZHIZI_ARGS));
           assertEquals(
-              "智子云算力 按量 1x · Zhizi 28B · TensorRT",
+              "智子云算力 按量 1x · 28B NBT · TensorRT",
               RemoteComputeConfig.displayNameForZhiziArgs(
                   RemoteComputeConfig.ON_DEMAND_1X_ZHIZI_ARGS));
           assertEquals(
-              "智子云算力 按量 3x · Zhizi 28B · TensorRT",
+              "智子云算力 按量 3x · 28B NBT · TensorRT",
               RemoteComputeConfig.displayNameForZhiziArgs(RemoteComputeConfig.FASTER_ZHIZI_ARGS));
           assertEquals(
-              "智子云算力 VIP 包月 · Zhizi 28B · TensorRT",
+              "智子云算力 VIP 包月 · 28B NBT · TensorRT",
               RemoteComputeConfig.displayNameForZhiziArgs(RemoteComputeConfig.VIP_ZHIZI_ARGS));
         });
   }
@@ -66,6 +66,31 @@ class RemoteComputeConfigTest {
   }
 
   @Test
+  void everyConfirmedZhiziWeightUsesTheExactServerArgumentAndReadableLabel() {
+    String[] weights = {"18bnbt", "28bnbt", "fdx", "60b", "40b", "20b"};
+    for (String weight : weights) {
+      String args =
+          RemoteComputeConfig.withKataWeight(RemoteComputeConfig.DEFAULT_ZHIZI_ARGS, weight);
+      assertEquals(weight, RemoteComputeConfig.kataWeightForArgs(args));
+      assertTrue(args.contains("--kata-weight " + weight));
+    }
+
+    assertEquals("18B NBT", RemoteComputeConfig.displayNameForZhiziWeight("18bnbt"));
+    assertEquals("28B NBT", RemoteComputeConfig.displayNameForZhiziWeight("28bnbt"));
+    assertEquals("FDX · 40B NBT", RemoteComputeConfig.displayNameForZhiziWeight("fdx"));
+    assertEquals("60B", RemoteComputeConfig.displayNameForZhiziWeight("60b"));
+    assertEquals("40B", RemoteComputeConfig.displayNameForZhiziWeight("40b"));
+    assertEquals("20B", RemoteComputeConfig.displayNameForZhiziWeight("20b"));
+
+    withResourceBundle(
+        AppLocale.SIMPLIFIED_CHINESE.loadBundle(),
+        () -> {
+          assertEquals("超大权重", RemoteComputeConfig.hintForZhiziWeight("fdx"));
+          assertEquals("让子棋常用", RemoteComputeConfig.hintForZhiziWeight("20b"));
+        });
+  }
+
+  @Test
   void invalidWeightCannotBeInjectedIntoEngineArguments() {
     String selected =
         RemoteComputeConfig.withKataWeight(
@@ -93,7 +118,9 @@ class RemoteComputeConfigTest {
 
           RemoteComputeConfig.State restored = RemoteComputeConfig.load();
           assertEquals("40b", restored.zhiziCatalog.defaultWeight());
-          assertEquals(2, restored.zhiziCatalog.weights().size());
+          assertEquals(6, restored.zhiziCatalog.weights().size());
+          assertTrue(restored.zhiziCatalog.containsWeight("20b"));
+          assertTrue(restored.zhiziCatalog.containsWeight("60b"));
           assertFalse(
               RemoteComputeConfig.shouldRefreshZhiziCatalog(
                   restored,
@@ -112,7 +139,8 @@ class RemoteComputeConfigTest {
           assertEquals(
               "智子云算力",
               RemoteComputeConfig.compactDisplayNameForCommand(
-                  RemoteComputeConfig.COMMAND_ZHIZI, "智子云算力 VIP 包月 · Zhizi 28B · TensorRT"));
+                  RemoteComputeConfig.COMMAND_ZHIZI,
+                  "智子云算力 VIP 包月 · 28B NBT · TensorRT"));
           assertEquals(
               "自建算力",
               RemoteComputeConfig.compactDisplayNameForCommand(
@@ -137,7 +165,7 @@ class RemoteComputeConfigTest {
                   RemoteComputeConfig.ON_DEMAND_1X_ZHIZI_ARGS);
 
           assertEquals("การคำนวณแบบกำหนดเอง · compute.example.com", custom);
-          assertTrue(zhizi.startsWith("คลาวด์ Zhizi ตามการใช้งาน 1x · Zhizi 28B · "));
+          assertTrue(zhizi.startsWith("คลาวด์ Zhizi ตามการใช้งาน 1x · 28B NBT · "));
           assertFalse(custom.matches(".*\\p{IsHan}.*"));
           assertFalse(zhizi.matches(".*\\p{IsHan}.*"));
         });

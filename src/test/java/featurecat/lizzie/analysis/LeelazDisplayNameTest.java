@@ -55,7 +55,7 @@ class LeelazDisplayNameTest {
     try {
       Lizzie.resourceBundle = AppLocale.SIMPLIFIED_CHINESE.loadBundle();
       assertEquals(
-          "智子云算力 VIP 包月 · Zhizi 28B · TensorRT",
+          "智子云算力 VIP 包月 · 28B NBT · TensorRT",
           Leelaz.friendlyEngineName(
               "智子云算力 28B TensorRT", RemoteComputeConfig.COMMAND_ZHIZI));
     } finally {

@@ -4682,6 +4682,7 @@ public class LizzieFrame extends JFrame {
       if (!showControls) {
         BufferedImage cachedImage = acquirePaintBuffer(width, height);
         Graphics2D g = (Graphics2D) cachedImage.getGraphics();
+        int deferredStatusHintTop = -1;
         // g.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
         if (Lizzie.config.isFourSubMode()) {
           int topInset = mainPanel.getInsets().top;
@@ -5290,7 +5291,7 @@ public class LizzieFrame extends JFrame {
             ponderingY = ponderingY - (int) (maxSize * 0.023) - (int) (maxBound * ponderingSize);
           }
           if (Lizzie.config.showStatus && !Lizzie.config.userKnownX)
-            drawCommandString(g, ponderingY);
+            deferredStatusHintTop = ponderingY;
           if (Lizzie.config.showStatus) {
             if (Lizzie.leelaz != null && (Lizzie.leelaz.isLoaded() || Lizzie.leelaz.isNormalEnd)) {
               String statusKey =
@@ -5648,7 +5649,7 @@ public class LizzieFrame extends JFrame {
             // RenderingHints.VALUE_RENDER_QUALITY);
 
             if (Lizzie.config.showStatus && !Lizzie.config.isMinMode() && !Lizzie.config.userKnownX)
-              drawCommandString(g, ponderingY);
+              deferredStatusHintTop = ponderingY;
             //
             //          if (boardPos != boardX + maxSize / 2) {
             //            boardPos = boardX + maxSize / 2;
@@ -5921,7 +5922,7 @@ public class LizzieFrame extends JFrame {
             int cx = capx, cy = vy, cw = spaceW, ch = vh;
             if (Lizzie.config.showVariationGraph || showListPane) cw = spaceW * 4 / 10;
             if (Lizzie.config.showStatus && !Lizzie.config.isMinMode() && !Lizzie.config.userKnownX)
-              drawCommandString(g, ponderingY);
+              deferredStatusHintTop = ponderingY;
 
             if (Lizzie.config.showWinrateGraph) {
               drawMoveStatistics(g, statx, staty, statw, stath);
@@ -6009,6 +6010,10 @@ public class LizzieFrame extends JFrame {
               drawWinratePane(grx, gry, grw, grh);
             }
           }
+        }
+        // Use the finalized board geometry and paint the shortcut hint above all panel content.
+        if (deferredStatusHintTop >= 0) {
+          drawCommandString(g, deferredStatusHintTop);
         }
         // cleanup
         g.dispose();
@@ -6476,14 +6481,17 @@ public class LizzieFrame extends JFrame {
   }
 
   private int statusTextMaxWidth(int x) {
-    int availableWidth = mainPanel.getWidth() - Math.max(0, x) - 8;
-    if (!Lizzie.config.isFloatBoardMode()
-        && boardRenderer != null
-        && mainPanel.getWidth() > mainPanel.getHeight()) {
-      int mainBoardX = boardRenderer.getLocation().x;
-      if (mainBoardX > x) {
-        availableWidth = Math.min(availableWidth, mainBoardX - x - 8);
-      }
+    boolean constrainToMainBoard =
+        !Lizzie.config.isFloatBoardMode() && mainPanel.getWidth() > mainPanel.getHeight();
+    return statusTextMaxWidth(mainPanel.getWidth(), x, boardX, constrainToMainBoard);
+  }
+
+  static int statusTextMaxWidth(
+      int panelWidth, int requestedX, int currentBoardX, boolean constrainToMainBoard) {
+    int safeX = Math.max(0, requestedX);
+    int availableWidth = panelWidth - safeX - 8;
+    if (constrainToMainBoard && currentBoardX > safeX) {
+      availableWidth = Math.min(availableWidth, currentBoardX - safeX - 8);
     }
     return Math.max(1, availableWidth);
   }
@@ -18010,13 +18018,19 @@ public class LizzieFrame extends JFrame {
 
   private QuickAnalysisWarmupAction currentQuickAnalysisWarmupAction(
       boolean requiresAutoAnalyze) {
-    boolean remotePrimary = isCurrentPrimaryEngineRemote();
-    boolean primaryLoaded = !remotePrimary || Lizzie.leelaz.isLoaded();
+    boolean dependsOnPrimary =
+        isCurrentPrimaryEngineRemote()
+            || (Lizzie.config != null && Lizzie.config.analysisReuseCurrentEngine);
+    boolean primaryLoaded =
+        !dependsOnPrimary || (Lizzie.leelaz != null && Lizzie.leelaz.isLoaded());
     boolean primaryFailed =
-        remotePrimary && Lizzie.leelaz.isDownWithError && !Lizzie.leelaz.isStarted();
+        dependsOnPrimary
+            && Lizzie.leelaz != null
+            && Lizzie.leelaz.isDownWithError
+            && !Lizzie.leelaz.isStarted();
     return decideQuickAnalysisWarmup(
         isQuickAnalysisWarmupContextEligible(requiresAutoAnalyze),
-        remotePrimary,
+        dependsOnPrimary,
         primaryLoaded,
         primaryFailed);
   }
@@ -18150,6 +18164,15 @@ public class LizzieFrame extends JFrame {
     }
     if (!canContinueQuickAnalysisAfterHistoryNavigation()) {
       stopQuickAnalysisNavigationResumeTimer();
+      return;
+    }
+    QuickAnalysisWarmupAction warmupAction = currentQuickAnalysisWarmupAction(true);
+    if (warmupAction == QuickAnalysisWarmupAction.WAIT_FOR_PRIMARY) {
+      return;
+    }
+    if (warmupAction == QuickAnalysisWarmupAction.STOP) {
+      stopQuickAnalysisNavigationResumeTimer();
+      resumeForegroundAnalysisAfterQuickAnalysisComplete();
       return;
     }
     AnalysisEngine currentEngine = analysisEngine;

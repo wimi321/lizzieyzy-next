@@ -54,7 +54,7 @@ public final class ZhiziServerCatalogClient {
     String response =
         sshQuery.query(
             endpoint.host, endpoint.port, endpoint.username, account.password, "query-server");
-    return ZhiziEngineCatalog.fromJson(response);
+    return ZhiziEngineCatalog.fromJson(response).withConfirmedWeights();
   }
 
   private JSONObject getJson(URI uri) throws IOException, InterruptedException {

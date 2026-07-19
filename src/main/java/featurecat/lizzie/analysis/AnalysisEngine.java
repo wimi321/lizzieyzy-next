@@ -1804,6 +1804,11 @@ public class AnalysisEngine {
     return analyzeMap.size() > 0 && resultCount < analyzeMap.size();
   }
 
+  /** Silent analysis is safe to pause and resume when the user explicitly changes engines. */
+  public synchronized boolean isSilentAnalysisInProgress() {
+    return isAnalysisInProgress() && silentProgress;
+  }
+
   public void setCompletionCallback(Runnable completionCallback) {
     this.completionCallback = completionCallback;
   }

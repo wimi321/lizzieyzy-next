@@ -46,6 +46,9 @@ class LeelazExclusiveRemoteGtpSessionTest {
         Leelaz.ExclusiveGtpLeaseAvailability.AVAILABLE,
         engine.beginExclusiveGtpSession(
             received::add, ready::incrementAndGet, closed::incrementAndGet));
+    assertFalse(
+        engine.hasForegroundAnalysisLeaseWorkInProgress(),
+        "generic exclusive work must not be mistaken for interruptible quick analysis.");
     assertEquals("800000000 stop\n", bytes.toString(StandardCharsets.UTF_8));
     assertTrue(dispatch(engine, "info move D4 visits 10"));
     assertEquals(0, ready.get());
@@ -109,6 +112,7 @@ class LeelazExclusiveRemoteGtpSessionTest {
               });
       assertEquals(
           Leelaz.ExclusiveGtpLeaseAvailability.AVAILABLE, acquisition.availability());
+      assertTrue(engine.hasForegroundAnalysisLeaseWorkInProgress());
       assertFalse(dispatch(engine, "=800000001"));
       processCommandResponse(engine, "=800000001");
       assertFalse(dispatch(engine, ""));
@@ -116,6 +120,7 @@ class LeelazExclusiveRemoteGtpSessionTest {
 
       assertEquals(0, ready.get());
       assertFalse(engine.hasExclusiveGtpWorkInProgress());
+      assertFalse(engine.hasForegroundAnalysisLeaseWorkInProgress());
       assertFalse(dispatch(engine, "=800000000"));
       processCommandResponse(engine, "=800000000");
       assertFalse(dispatch(engine, ""));

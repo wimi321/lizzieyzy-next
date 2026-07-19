@@ -77,7 +77,8 @@ public final class RemoteComputeConfig {
     json.put("remember-zhizi-password", state.rememberZhiziPassword);
     json.put("custom-remote-code", state.customRemoteCode == null ? "" : state.customRemoteCode);
     if (state.zhiziCatalog != null) {
-      json.put("zhizi-engine-catalog", state.zhiziCatalog.toJson());
+      json.put(
+          "zhizi-engine-catalog", state.zhiziCatalog.withConfirmedWeights().toJson());
     }
     json.put("zhizi-catalog-updated-at", Math.max(0L, state.zhiziCatalogUpdatedAt));
     String savedPassword = state.zhiziPassword == null ? "" : state.zhiziPassword;
@@ -139,7 +140,7 @@ public final class RemoteComputeConfig {
       return;
     }
     State state = load();
-    state.zhiziCatalog = catalog;
+    state.zhiziCatalog = catalog.withConfirmedWeights();
     state.zhiziCatalogUpdatedAt = System.currentTimeMillis();
     save(state);
   }
@@ -371,18 +372,30 @@ public final class RemoteComputeConfig {
   public static String displayNameForZhiziWeight(String weight) {
     String normalized = weight == null ? "" : weight.trim();
     if ("28bnbt".equalsIgnoreCase(normalized)) {
-      return "Zhizi 28B";
+      return "28B NBT";
     }
     if ("18bnbt".equalsIgnoreCase(normalized)) {
-      return "Zhizi 18B";
+      return "18B NBT";
     }
     if ("fdx".equalsIgnoreCase(normalized)) {
-      return "FDX";
+      return "FDX · 40B NBT";
     }
     if (normalized.matches("(?i)\\d+b")) {
       return normalized.toUpperCase();
     }
-    return normalized.isEmpty() ? "Zhizi 28B" : normalized;
+    return normalized.isEmpty() ? "28B NBT" : normalized;
+  }
+
+  public static String hintForZhiziWeight(String weight) {
+    String normalized = weight == null ? "" : weight.trim();
+    if ("fdx".equalsIgnoreCase(normalized)) {
+      return localizedText("RemoteCompute.weightHint.fdx", "Extra-large network");
+    }
+    if ("20b".equalsIgnoreCase(normalized)) {
+      return localizedText(
+          "RemoteCompute.weightHint.20b", "Commonly used for handicap games");
+    }
+    return "";
   }
 
   public static boolean isCustomWebSocketUrl(String value) {
@@ -549,7 +562,7 @@ public final class RemoteComputeConfig {
   private static ZhiziEngineCatalog loadZhiziCatalog(JSONObject json) {
     if (json != null) {
       try {
-        return ZhiziEngineCatalog.fromJson(json);
+        return ZhiziEngineCatalog.fromJson(json).withConfirmedWeights();
       } catch (IOException ignored) {
         // A corrupt cache must never prevent the remote-compute dialog from opening.
       }
