@@ -72,6 +72,7 @@ public class SGFParser {
 
     boolean returnValue = parse(value);
     if (returnValue) {
+      applySgfKomiForSetupGameWhenReadKomiDisabled();
       discardImportedAnalysisIfGameKomiDiffersFromEngineDefault();
     }
     Lizzie.board.isLoadingFile = false;
@@ -110,6 +111,7 @@ public class SGFParser {
     Lizzie.board.isLoadingFile = true;
     boolean result = parse(sgfString);
     if (result) {
+      applySgfKomiForSetupGameWhenReadKomiDisabled();
       discardImportedAnalysisIfGameKomiDiffersFromEngineDefault();
     }
     if (Lizzie.config.loadSgfLast)
@@ -137,25 +139,50 @@ public class SGFParser {
     }
   }
 
+  private static void applySgfKomiForSetupGameWhenReadKomiDisabled() {
+    if (Lizzie.config == null || Lizzie.config.readKomi) {
+      return;
+    }
+    BoardHistoryList history = currentHistory();
+    if (history == null || !isSetupOrHandicapGame(history)) {
+      return;
+    }
+    parsedRootKomi(history.getStart()).ifPresent(komi -> history.getGameInfo().setKomi(komi));
+  }
+
   private static void discardImportedAnalysisIfGameKomiDiffersFromEngineDefault() {
-    if (Lizzie.board == null || Lizzie.board.getHistory() == null) {
+    BoardHistoryList history = currentHistory();
+    if (history == null) {
       return;
     }
-    BoardHistoryList history = Lizzie.board.getHistory();
-    if (history.getGameInfo() == null) {
+    double gameKomi =
+        parsedRootKomi(history.getStart()).orElse(history.getGameInfo().getKomi());
+    if (!isSetupOrHandicapGame(history)) {
       return;
     }
-    double gameKomi = history.getGameInfo().getKomi();
-    int handicap = history.getGameInfo().getHandicap();
-    if (handicap <= 0 && !hasRootSetupStones(history.getStart())) {
-      return;
-    }
-    double engineDefaultKomi =
-        Lizzie.leelaz == null ? GameInfo.DEFAULT_KOMI : Lizzie.leelaz.orikomi;
-    if (Math.abs(gameKomi - engineDefaultKomi) < 0.0001) {
+    if (Math.abs(gameKomi - GameInfo.DEFAULT_KOMI) < 0.0001) {
       return;
     }
     clearImportedAnalysisPayloads(history.getStart());
+  }
+
+  private static BoardHistoryList currentHistory() {
+    if (Lizzie.board == null || Lizzie.board.getHistory() == null) {
+      return null;
+    }
+    BoardHistoryList history = Lizzie.board.getHistory();
+    return history.getGameInfo() == null ? null : history;
+  }
+
+  private static boolean isSetupOrHandicapGame(BoardHistoryList history) {
+    if (history == null || history.getStart() == null || history.getStart().getData() == null) {
+      return false;
+    }
+    int handicap = history.getGameInfo().getHandicap();
+    if (handicap <= 0) {
+      handicap = parseHandicapProperty(history.getStart().getData().getProperty("HA"));
+    }
+    return handicap > 0 || hasRootSetupStones(history.getStart());
   }
 
   private static boolean hasRootSetupStones(BoardHistoryNode start) {
@@ -165,6 +192,47 @@ public class SGFParser {
     return start.getData().getProperties().containsKey("AB")
         || start.getData().getProperties().containsKey("AW")
         || start.getData().getProperties().containsKey("AE");
+  }
+
+  private static Optional<Double> parsedRootKomi(BoardHistoryNode start) {
+    if (start == null || start.getData() == null) {
+      return Optional.empty();
+    }
+    String rawKomi = start.getData().getProperty("KM");
+    if (Utils.isBlank(rawKomi)) {
+      rawKomi = start.getData().getProperty("KO");
+    }
+    return parseSgfKomi(rawKomi);
+  }
+
+  private static Optional<Double> parseSgfKomi(String rawKomi) {
+    if (Utils.isBlank(rawKomi)) {
+      return Optional.empty();
+    }
+    try {
+      Double komi = Double.parseDouble(rawKomi.trim());
+      return normalizeSgfKomi(komi);
+    } catch (NumberFormatException ignored) {
+      return Optional.empty();
+    }
+  }
+
+  private static Optional<Double> normalizeSgfKomi(Double komi) {
+    if (komi == null) {
+      return Optional.empty();
+    }
+    if (komi >= 200) {
+      komi = komi / 100;
+      if (komi <= 4 && komi >= -4) {
+        komi = komi * 2;
+      }
+    }
+    if (komi.toString().endsWith(".75") || komi.toString().endsWith(".25")) {
+      komi = komi * 2;
+    }
+    return Math.abs(komi) < Board.boardWidth * Board.boardHeight
+        ? Optional.of(komi)
+        : Optional.empty();
   }
 
   private static void clearImportedAnalysisPayloads(BoardHistoryNode start) {
@@ -307,6 +375,7 @@ public class SGFParser {
     // boolean isChineseRule = true;
     // boolean hasHandicap = false;
     Double komi = Lizzie.board.getHistory().getGameInfo().getKomi();
+    boolean parsedKomiTag = false;
     // Support unicode characters (UTF-8)
     int len = value.length();
     boolean shouldProcessDummy = false;
@@ -554,6 +623,7 @@ public class SGFParser {
             try {
               if (!tagContent.trim().isEmpty()) {
                 komi = Double.parseDouble(tagContent);
+                parsedKomiTag = true;
               }
             } catch (NumberFormatException e) {
               e.printStackTrace();
@@ -698,19 +768,16 @@ public class SGFParser {
       }
     }
     flushPendingSetupMetadataToCurrentNode(Lizzie.board.getHistory(), pendingSetupMetadata);
-    if (Lizzie.config.readKomi) {
+    Optional<Double> parsedKomi = parsedKomiTag ? normalizeSgfKomi(komi) : Optional.empty();
+    if (parsedKomi.isPresent()
+        && (Lizzie.config.readKomi
+            || isSetupOrHandicapGame(Lizzie.board.getHistory())
+            || parseHandicapProperty(gameProperties.get("HA")) > 0)) {
       //      if (!hasHandicap && komi == 0) {
       //        if (isChineseRule) komi = 7.5;
       //        else komi = 6.5;
       //      }
-      if (komi >= 200) {
-        komi = komi / 100;
-        if (komi <= 4 && komi >= -4) komi = komi * 2;
-      }
-      if (komi.toString().endsWith(".75") || komi.toString().endsWith(".25")) komi = komi * 2;
-      if (Math.abs(komi) < Board.boardWidth * Board.boardHeight) {
-        Lizzie.board.getHistory().getGameInfo().setKomi(komi);
-      }
+      Lizzie.board.getHistory().getGameInfo().setKomi(parsedKomi.get());
     }
     Lizzie.frame.setPlayers(whitePlayer, blackPlayer);
     Lizzie.frame.setResult(result);
@@ -3663,6 +3730,7 @@ public class SGFParser {
     }
 
     String blackPlayer = "", whitePlayer = "";
+    Optional<Double> parsedKomi = Optional.empty();
 
     // Support unicode characters (UTF-8)
     for (int i = 0; i < value.length(); i++) {
@@ -3823,19 +3891,13 @@ public class SGFParser {
           } else if (tag.equals("PW")) {
             whitePlayer = tagContent;
             history.getGameInfo().setPlayerWhite(whitePlayer);
-          } else if (tag.equals("KM") && Lizzie.config.readKomi) {
+          } else if (tag.equals("KM")) {
             if (firstTime) {
               try {
                 if (!tagContent.trim().isEmpty()) {
-                  Double komi = Double.parseDouble(tagContent);
-                  if (komi >= 200) {
-                    komi = komi / 100;
-                    if (komi <= 4 && komi >= -4) komi = komi * 2;
-                  }
-                  if (komi.toString().endsWith(".75") || komi.toString().endsWith(".25"))
-                    komi = komi * 2;
-                  if (Math.abs(komi) < Board.boardWidth * Board.boardHeight) {
-                    history.getGameInfo().setKomiNoMenu(komi);
+                  parsedKomi = normalizeSgfKomi(Double.parseDouble(tagContent));
+                  if (Lizzie.config.readKomi && parsedKomi.isPresent()) {
+                    history.getGameInfo().setKomiNoMenu(parsedKomi.get());
                   }
                 }
               } catch (NumberFormatException e) {
@@ -3973,6 +4035,11 @@ public class SGFParser {
         history.getData().addProperties(gameProperties);
       }
       stabilizeRootSetupSideToPlay(history);
+      if (!Lizzie.config.readKomi
+          && parsedKomi.isPresent()
+          && (isSetupOrHandicapGame(history) || parseHandicapProperty(gameProperties.get("HA")) > 0)) {
+        history.getGameInfo().setKomiNoMenu(parsedKomi.get());
+      }
     }
     return history;
   }

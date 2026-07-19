@@ -964,7 +964,7 @@ class BoardNodeKindHistoryPipelineTest {
   }
 
   @Test
-  void loadFromStringHandicapKomiDiscardsImportedAnalysisWithEngineDefaultKomi()
+  void loadFromStringHandicapKomiDiscardsImportedAnalysisBeforeEngineDefaultKomiInitializes()
       throws Exception {
     TestEnvironment env = TestEnvironment.open();
     int previousCurrentEngineNo = EngineManager.currentEngineNo;
@@ -1000,6 +1000,107 @@ class BoardNodeKindHistoryPipelineTest {
           leelaz.recordedCommands().contains("komi 0"),
           "fresh analysis should still be requested with the loaded SGF komi.");
       assertEquals(7.5, leelaz.orikomi, 0.0001);
+    } finally {
+      EngineManager.currentEngineNo = previousCurrentEngineNo;
+      env.close();
+    }
+  }
+
+  @Test
+  void loadFromStringHandicapKomiUsesSgfKomiAndClearsStaleAnalysisWhenReadKomiDisabled()
+      throws Exception {
+    TestEnvironment env = TestEnvironment.open();
+    int previousCurrentEngineNo = EngineManager.currentEngineNo;
+    try {
+      Lizzie.config.readKomi = false;
+      EngineManager.currentEngineNo = 0;
+      EngineManager.isEmpty = false;
+      TrackingLeelaz leelaz = (TrackingLeelaz) Lizzie.leelaz;
+      leelaz.komi = 7.5f;
+      leelaz.orikomi = 0.0f;
+      leelaz.isLoaded = true;
+      leelaz.notPondering();
+      setStarted(leelaz, true);
+      String staleAnalysis =
+          "zhizi28Bmuonfd2 0.8 536 13.8015 14.4396\n"
+              + "move B2 visits 211 winrate 9918 prior 1764 scoreMean 13.80 pv B2 C2";
+      String sgf =
+          "(;SZ[3]KM[0.0]HA[2]AB[aa][ca]PL[W]LZOP["
+              + staleAnalysis
+              + "]LZ["
+              + staleAnalysis
+              + "];W[ba])";
+
+      assertTrue(SGFParser.loadFromString(sgf));
+
+      BoardData root = Lizzie.board.getHistory().getStart().getData();
+      assertEquals(
+          0.0,
+          Lizzie.board.getHistory().getGameInfo().getKomi(),
+          0.0001,
+          "handicap/root-setup SGFs must use their own KM even when general SGF-komi import is off.");
+      assertFalse(
+          root.hasAnyAnalysisPayload(),
+          "stale embedded analysis must be discarded after forcing the setup SGF komi.");
+      assertEquals(0.0, root.scoreMean, 0.0001);
+      assertTrue(
+          leelaz.recordedCommands().contains("komi 0"),
+          "fresh analysis should be requested with the setup SGF komi, not the engine default.");
+      assertEquals(
+          0.0,
+          leelaz.orikomi,
+          0.0001,
+          "clearing stale SGF analysis must not depend on a fully initialized engine default komi.");
+    } finally {
+      EngineManager.currentEngineNo = previousCurrentEngineNo;
+      env.close();
+    }
+  }
+
+  @Test
+  void loadFromStringYikeHandicapHeaderOrderUsesSgfKomiWhenReadKomiDisabled()
+      throws Exception {
+    TestEnvironment env = TestEnvironment.open();
+    int previousCurrentEngineNo = EngineManager.currentEngineNo;
+    try {
+      Lizzie.config.readKomi = false;
+      EngineManager.currentEngineNo = 0;
+      EngineManager.isEmpty = false;
+      TrackingLeelaz leelaz = (TrackingLeelaz) Lizzie.leelaz;
+      leelaz.komi = 7.5f;
+      leelaz.orikomi = 7.5f;
+      leelaz.isLoaded = true;
+      leelaz.notPondering();
+      setStarted(leelaz, true);
+      String staleAnalysis =
+          "zhizi28Bmuonfd2 0.8 536 13.8015 14.4396\n"
+              + "move Q4 visits 211 winrate 9918 prior 1764 scoreMean 13.80 pv Q4 R4";
+      String sgf =
+          "(;CA[UTF-8]AB[aa][ca]PL[W]FF[4]RU[jp]GM[1]SZ[3]SO[弈客直播员]"
+              + "AP[LizzieYzy Next: next-2026-07-13.2]HA[2]KM[0.0]"
+              + "PW[KataGo]PB[申真谞]LZOP["
+              + staleAnalysis
+              + "]LZ["
+              + staleAnalysis
+              + "];W[ba])";
+
+      assertTrue(SGFParser.loadFromString(sgf));
+
+      BoardHistoryList history = Lizzie.board.getHistory();
+      assertEquals(0.0, history.getGameInfo().getKomi(), 0.0001);
+      assertFalse(history.getStart().getData().hasAnyAnalysisPayload());
+      assertTrue(leelaz.recordedCommands().contains("komi 0"));
+      assertFalse(
+          (boolean) requireMethod(Leelaz.class, "shouldApplyInitialEngineKomiToCurrentGame")
+              .invoke(leelaz),
+          "engine startup must not overwrite a loaded handicap SGF komi after parsing.");
+
+      leelaz.boardSizeForEngine(3, 3);
+      assertEquals(
+          0.0,
+          history.getGameInfo().getKomi(),
+          0.0001,
+          "late engine first-load board-size initialization must not overwrite a loaded SGF komi.");
     } finally {
       EngineManager.currentEngineNo = previousCurrentEngineNo;
       env.close();
