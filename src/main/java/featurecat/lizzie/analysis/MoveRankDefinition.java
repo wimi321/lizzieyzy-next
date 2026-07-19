@@ -137,6 +137,11 @@ public final class MoveRankDefinition {
   }
 
   public static double severity(double winrateDiff, double scoreDiff, Config config) {
+    return severity(winrateDiff, Optional.of(scoreDiff), config);
+  }
+
+  public static double severity(
+      double winrateDiff, Optional<Double> scoreDiff, Config config) {
     double winrateSeverity =
         metricSeverity(
             winrateDiff,
@@ -146,14 +151,33 @@ public final class MoveRankDefinition {
             winLossThreshold(config, 4),
             winLossThreshold(config, 5));
     double scoreSeverity =
-        metricSeverity(
-            scoreDiff,
-            scoreLossThreshold(config, 1),
-            scoreLossThreshold(config, 2),
-            scoreLossThreshold(config, 3),
-            scoreLossThreshold(config, 4),
-            scoreLossThreshold(config, 5));
-    return Math.max(winrateSeverity, scoreSeverity);
+        scoreDiff
+            .map(
+                diff ->
+                    metricSeverity(
+                        diff,
+                        scoreLossThreshold(config, 1),
+                        scoreLossThreshold(config, 2),
+                        scoreLossThreshold(config, 3),
+                        scoreLossThreshold(config, 4),
+                        scoreLossThreshold(config, 5)))
+            .orElse(0.0);
+    switch (evaluationMode(config)) {
+      case SCORE:
+        return scoreDiff.isPresent() ? scoreSeverity : 0;
+      case WINRATE:
+        return winrateSeverity;
+      case COMBINED:
+        return Math.max(winrateSeverity, scoreSeverity);
+      case AUTO:
+      default:
+        if (scoreDiff.isEmpty()) {
+          return winrateSeverity;
+        }
+        return winrateSeverity >= Rank.MISTAKE.severityLevel()
+            ? Math.max(winrateSeverity, scoreSeverity)
+            : scoreSeverity;
+    }
   }
 
   public static Color severityColor(double severity) {
@@ -175,14 +199,34 @@ public final class MoveRankDefinition {
 
   private static boolean reachesThreshold(
       double winrateDiff, Optional<Double> scoreDiff, Config config, int level) {
-    boolean useWinLoss = config == null || config.useWinLossInMoveRank;
-    boolean useScoreLoss = config == null || config.useScoreLossInMoveRank;
-    boolean reachesWinLoss = useWinLoss && winrateDiff <= winLossThreshold(config, level);
+    boolean reachesWinLoss = winrateDiff <= winLossThreshold(config, level);
     boolean reachesScoreLoss =
-        useScoreLoss
-            && scoreDiff.isPresent()
-            && scoreDiff.get() <= scoreLossThreshold(config, level);
-    return reachesWinLoss || reachesScoreLoss;
+        scoreDiff.isPresent() && scoreDiff.get() <= scoreLossThreshold(config, level);
+    switch (evaluationMode(config)) {
+      case SCORE:
+        return reachesScoreLoss;
+      case WINRATE:
+        return reachesWinLoss;
+      case COMBINED:
+        return reachesWinLoss || reachesScoreLoss;
+      case AUTO:
+      default:
+        if (scoreDiff.isEmpty()) {
+          return reachesWinLoss;
+        }
+        return reachesScoreLoss || (level >= Rank.MISTAKE.severityLevel() && reachesWinLoss);
+    }
+  }
+
+  private static MoveRankEvaluationMode evaluationMode(Config config) {
+    if (config == null) {
+      return MoveRankEvaluationMode.AUTO;
+    }
+    if (config.moveRankEvaluationMode != null) {
+      return config.moveRankEvaluationMode;
+    }
+    return MoveRankEvaluationMode.fromConfig(
+        "", config.useWinLossInMoveRank, config.useScoreLossInMoveRank);
   }
 
   private static double metricSeverity(
