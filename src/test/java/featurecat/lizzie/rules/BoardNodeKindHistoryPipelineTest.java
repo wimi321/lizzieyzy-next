@@ -964,6 +964,49 @@ class BoardNodeKindHistoryPipelineTest {
   }
 
   @Test
+  void loadFromStringHandicapKomiDiscardsImportedAnalysisWithEngineDefaultKomi()
+      throws Exception {
+    TestEnvironment env = TestEnvironment.open();
+    int previousCurrentEngineNo = EngineManager.currentEngineNo;
+    try {
+      Lizzie.config.readKomi = true;
+      EngineManager.currentEngineNo = 0;
+      EngineManager.isEmpty = false;
+      TrackingLeelaz leelaz = (TrackingLeelaz) Lizzie.leelaz;
+      leelaz.komi = 7.5f;
+      leelaz.orikomi = 7.5f;
+      leelaz.isLoaded = true;
+      leelaz.notPondering();
+      setStarted(leelaz, true);
+      String staleAnalysis =
+          "zhizi28Bmuonfd2 0.8 536 13.8015 14.4396\n"
+              + "move B2 visits 211 winrate 9918 prior 1764 scoreMean 13.80 pv B2 C2";
+      String sgf =
+          "(;SZ[3]KM[0]HA[2]AB[aa]AB[ca]PL[W]LZOP["
+              + staleAnalysis
+              + "]LZ["
+              + staleAnalysis
+              + "];W[ba])";
+
+      assertTrue(SGFParser.loadFromString(sgf));
+
+      BoardData root = Lizzie.board.getHistory().getStart().getData();
+      assertFalse(
+          root.hasAnyAnalysisPayload(),
+          "stale imported analysis must not hide fresh analysis for non-default-komi handicap SGFs.");
+      assertEquals(0, root.getPlayouts(), "root playouts should wait for fresh engine analysis.");
+      assertEquals(0.0, root.scoreMean, 0.0001, "stale 13.7-point score must be cleared.");
+      assertTrue(
+          leelaz.recordedCommands().contains("komi 0"),
+          "fresh analysis should still be requested with the loaded SGF komi.");
+      assertEquals(7.5, leelaz.orikomi, 0.0001);
+    } finally {
+      EngineManager.currentEngineNo = previousCurrentEngineNo;
+      env.close();
+    }
+  }
+
+  @Test
   void parseSgfDetachedLzopRoundTripKeepsSingleEngineAnalysisPayload() throws Exception {
     TestEnvironment env = TestEnvironment.open();
     try {

@@ -12,6 +12,7 @@ import featurecat.lizzie.util.Utils;
 import java.io.*;
 import java.lang.reflect.Field;
 import java.text.SimpleDateFormat;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -70,6 +71,9 @@ public class SGFParser {
     }
 
     boolean returnValue = parse(value);
+    if (returnValue) {
+      discardImportedAnalysisIfGameKomiDiffersFromEngineDefault();
+    }
     Lizzie.board.isLoadingFile = false;
     SwingUtilities.invokeLater(
         new Runnable() {
@@ -105,6 +109,9 @@ public class SGFParser {
     isExtraMode2 = false;
     Lizzie.board.isLoadingFile = true;
     boolean result = parse(sgfString);
+    if (result) {
+      discardImportedAnalysisIfGameKomiDiffersFromEngineDefault();
+    }
     if (Lizzie.config.loadSgfLast)
       while (Lizzie.board.nextMove(false))
         ;
@@ -127,6 +134,57 @@ public class SGFParser {
   private static void syncPrimaryEngineAfterSgfLoad() {
     if (Lizzie.board != null) {
       Lizzie.board.resendCurrentPositionToPrimaryEngine();
+    }
+  }
+
+  private static void discardImportedAnalysisIfGameKomiDiffersFromEngineDefault() {
+    if (Lizzie.board == null || Lizzie.board.getHistory() == null) {
+      return;
+    }
+    BoardHistoryList history = Lizzie.board.getHistory();
+    if (history.getGameInfo() == null) {
+      return;
+    }
+    double gameKomi = history.getGameInfo().getKomi();
+    int handicap = history.getGameInfo().getHandicap();
+    if (handicap <= 0 && !hasRootSetupStones(history.getStart())) {
+      return;
+    }
+    double engineDefaultKomi =
+        Lizzie.leelaz == null ? GameInfo.DEFAULT_KOMI : Lizzie.leelaz.orikomi;
+    if (Math.abs(gameKomi - engineDefaultKomi) < 0.0001) {
+      return;
+    }
+    clearImportedAnalysisPayloads(history.getStart());
+  }
+
+  private static boolean hasRootSetupStones(BoardHistoryNode start) {
+    if (start == null || start.getData() == null) {
+      return false;
+    }
+    return start.getData().getProperties().containsKey("AB")
+        || start.getData().getProperties().containsKey("AW")
+        || start.getData().getProperties().containsKey("AE");
+  }
+
+  private static void clearImportedAnalysisPayloads(BoardHistoryNode start) {
+    if (start == null) {
+      return;
+    }
+    ArrayDeque<BoardHistoryNode> pending = new ArrayDeque<>();
+    pending.push(start);
+    while (!pending.isEmpty()) {
+      BoardHistoryNode node = pending.pop();
+      if (node.getData().hasAnyAnalysisPayload()) {
+        node.getData().clearAnalysisPayloadState();
+        node.nodeInfo = new NodeInfo();
+        node.nodeInfoMain = new NodeInfo();
+        node.nodeInfo2 = new NodeInfo();
+        node.nodeInfoMain2 = new NodeInfo();
+      }
+      for (int i = node.numberOfChildren() - 1; i >= 0; i--) {
+        pending.push(node.getVariations().get(i));
+      }
     }
   }
 
