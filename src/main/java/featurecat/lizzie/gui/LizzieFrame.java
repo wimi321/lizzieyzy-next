@@ -24,6 +24,8 @@ import featurecat.lizzie.analysis.ReadBoard;
 import featurecat.lizzie.analysis.ReadBoardUpdateInstaller;
 import featurecat.lizzie.analysis.ReadBoardUpdateRequest;
 import featurecat.lizzie.analysis.TrackingEngine;
+import featurecat.lizzie.analysis.WholeGameAnalysisPlan;
+import featurecat.lizzie.analysis.WholeGameAnalysisSession;
 import featurecat.lizzie.analysis.remote.RemoteComputeConfig;
 import featurecat.lizzie.rules.Board;
 import featurecat.lizzie.rules.BoardData;
@@ -521,6 +523,8 @@ public class LizzieFrame extends JFrame {
   public ArrayList<String> priorityMoveCoords = new ArrayList<String>();
 
   public AnalysisEngine analysisEngine;
+  private WholeGameAnalysisSession wholeGameAnalysisSession;
+  private WholeGameAnalysisDialog wholeGameAnalysisDialog;
   private FlashAnalysisRequest pendingFlashAnalysisAfterSettings;
   private final java.util.concurrent.atomic.AtomicBoolean quickAnalysisEngineStarting =
       new java.util.concurrent.atomic.AtomicBoolean(false);
@@ -13301,9 +13305,117 @@ public class LizzieFrame extends JFrame {
   }
 
   public void destroyAnalysisEngine() {
+    if (wholeGameAnalysisSession != null && wholeGameAnalysisSession.isRunning()) {
+      wholeGameAnalysisSession.cancel();
+      return;
+    }
     if (analysisEngine != null) {
+      analysisEngine.clearRequestCallbacks();
       analysisEngine.normalQuit();
     }
+  }
+
+  public void openWholeGameDeepAnalysis() {
+    if (!SwingUtilities.isEventDispatchThread()) {
+      SwingUtilities.invokeLater(this::openWholeGameDeepAnalysis);
+      return;
+    }
+    if (wholeGameAnalysisSession != null && wholeGameAnalysisSession.isRunning()) {
+      if (wholeGameAnalysisDialog != null) {
+        wholeGameAnalysisDialog.showOnScreen();
+      }
+      return;
+    }
+    if (Lizzie.board == null || Lizzie.board.getHistory() == null) {
+      Utils.showMsg(Lizzie.resourceBundle.getString("WholeGameAnalysis.noGame"));
+      return;
+    }
+    WholeGameAnalysisPlan plan =
+        WholeGameAnalysisPlan.create(
+            Lizzie.board.getHistory().getStart(),
+            WholeGameAnalysisPlan.DEFAULT_BASELINE_VISITS,
+            Math.max(
+                WholeGameAnalysisPlan.MINIMUM_DEEP_VISITS,
+                AnalysisEngine.targetAnalysisVisits()));
+    if (plan.moveCount() == 0) {
+      Utils.showMsg(Lizzie.resourceBundle.getString("WholeGameAnalysis.noGame"));
+      return;
+    }
+    if (isWholeGameAnalysisConflict()) {
+      Utils.showMsg(Lizzie.resourceBundle.getString("WholeGameAnalysis.conflict"));
+      return;
+    }
+    if (analysisEngine != null && analysisEngine.isAnalysisInProgress()) {
+      if (!analysisEngine.isSilentAnalysisInProgress()) {
+        Utils.showMsg(Lizzie.resourceBundle.getString("WholeGameAnalysis.conflict.analysis"));
+        return;
+      }
+      analysisEngine.clearRequestCallbacks();
+      analysisEngine.normalQuit();
+      analysisEngine = null;
+    } else if (analysisEngine != null) {
+      analysisEngine.clearRequestCallbacks();
+      analysisEngine.normalQuit();
+      analysisEngine = null;
+    }
+    stopQuickAnalysisNavigationResumeTimer();
+    synchronized (pendingQuickAnalysisCallbacks) {
+      pendingQuickAnalysisCallbacks.clear();
+    }
+    if (wholeGameAnalysisDialog != null) {
+      wholeGameAnalysisDialog.dispose();
+    }
+    WholeGameAnalysisDialog dialog = new WholeGameAnalysisDialog(this);
+    WholeGameAnalysisSession session = new WholeGameAnalysisSession(this, plan, dialog);
+    dialog.setSession(session);
+    wholeGameAnalysisDialog = dialog;
+    wholeGameAnalysisSession = session;
+    dialog.showOnScreen();
+    session.start();
+  }
+
+  public void attachWholeGameAnalysisEngine(
+      WholeGameAnalysisSession session, AnalysisEngine engine) {
+    if (wholeGameAnalysisSession != session) {
+      engine.clearRequestCallbacks();
+      engine.normalQuit();
+      return;
+    }
+    analysisEngine = engine;
+  }
+
+  public void onWholeGameAnalysisFinished(
+      WholeGameAnalysisSession session,
+      AnalysisEngine completedEngine,
+      boolean resumeForegroundAnalysis) {
+    if (analysisEngine == completedEngine) {
+      analysisEngine = null;
+    }
+    if (wholeGameAnalysisSession == session) {
+      wholeGameAnalysisSession = null;
+    }
+    if (resumeForegroundAnalysis) {
+      resumeForegroundAnalysisAfterQuickAnalysisComplete();
+    } else {
+      refresh();
+    }
+  }
+
+  private boolean isWholeGameAnalysisConflict() {
+    return Lizzie.config.isAutoAna
+        || isBatchAna
+        || isBatchAnalysisMode
+        || EngineManager.isPreEngineGame
+        || EngineManager.isEngineGame()
+        || isPlayingAgainstLeelaz
+        || isAnaPlayingAgainstLeelaz
+        || humanSlGame != null
+        || isContributing
+        || isTrying;
+  }
+
+  private boolean isWholeGameAnalysisStartingOrRunning() {
+    return wholeGameAnalysisSession != null && wholeGameAnalysisSession.isRunning();
   }
 
   boolean runWithForegroundEngineModeReservation(Runnable action) {
@@ -17803,7 +17915,9 @@ public class LizzieFrame extends JFrame {
   }
 
   private boolean resumeForegroundAnalysisForCurrentPosition() {
-    if (Lizzie.leelaz == null || EngineManager.isEmpty) {
+    if (isWholeGameAnalysisStartingOrRunning()
+        || Lizzie.leelaz == null
+        || EngineManager.isEmpty) {
       return false;
     }
     if (!syncCurrentPositionToPrimaryEngineForAnalysis()) {
@@ -18006,6 +18120,7 @@ public class LizzieFrame extends JFrame {
   private boolean isQuickAnalysisWarmupContextEligible(boolean requiresAutoAnalyze) {
     return Lizzie.config != null
         && (!requiresAutoAnalyze || Lizzie.config.autoQuickAnalyzeOnLoad)
+        && !isWholeGameAnalysisStartingOrRunning()
         && !EngineManager.isEngineGame()
         && !isPlayingAgainstLeelaz
         && !isAnaPlayingAgainstLeelaz;
@@ -18097,6 +18212,16 @@ public class LizzieFrame extends JFrame {
   private void finishQuickAnalysisEngineWarmup(AnalysisEngine warmedEngine) {
     java.util.List<Runnable> callbacks = java.util.Collections.emptyList();
     try {
+      if (isWholeGameAnalysisStartingOrRunning()) {
+        if (warmedEngine != null) {
+          warmedEngine.clearRequestCallbacks();
+          warmedEngine.normalQuit();
+        }
+        synchronized (pendingQuickAnalysisCallbacks) {
+          pendingQuickAnalysisCallbacks.clear();
+        }
+        return;
+      }
       if (isAnalysisEngineReusable(warmedEngine)) {
         if (!isAnalysisEngineReusable(analysisEngine)) {
           analysisEngine = warmedEngine;

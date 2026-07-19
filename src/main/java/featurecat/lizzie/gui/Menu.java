@@ -3324,6 +3324,16 @@ public class Menu extends JMenuBar {
           }
         });
 
+    final JFontMenuItem wholeGameDeepAnalysis =
+        new JFontMenuItem(resourceBundle.getString("Menu.wholeGameDeepAnalysis"));
+    analyzeMenu.add(wholeGameDeepAnalysis);
+    wholeGameDeepAnalysis.addActionListener(
+        new ActionListener() {
+          public void actionPerformed(ActionEvent e) {
+            Lizzie.frame.openWholeGameDeepAnalysis();
+          }
+        });
+
     final JFontMenuItem playerStrengthEstimate =
         new JFontMenuItem(resourceBundle.getString("Menu.playerStrengthEstimate"));
     analyzeMenu.add(playerStrengthEstimate);
@@ -7844,6 +7854,26 @@ public class Menu extends JMenuBar {
             }
           });
 
+      JFontButton btnWholeGameDeepAnalysis =
+          new JFontButton(resourceBundle.getString("Menu.wholeGameDeepAnalysisButton"));
+      btnWholeGameDeepAnalysis.setFocusable(false);
+      btnWholeGameDeepAnalysis.setMargin(new Insets(0, 10, 0, 10));
+      AppleStyleSupport.markPrimary(btnWholeGameDeepAnalysis);
+      btnWholeGameDeepAnalysis.setPreferredSize(
+          new Dimension(
+              Math.max(
+                  Lizzie.config.isChinese ? Config.menuHeight * 4 : Config.menuHeight * 7,
+                  btnWholeGameDeepAnalysis.getPreferredSize().width + 12),
+              Config.menuHeight));
+      btnWholeGameDeepAnalysis.setToolTipText(
+          resourceBundle.getString("Menu.wholeGameDeepAnalysisTip"));
+      btnWholeGameDeepAnalysis.addActionListener(
+          new ActionListener() {
+            public void actionPerformed(ActionEvent e) {
+              Lizzie.frame.openWholeGameDeepAnalysis();
+            }
+          });
+
       JPopupMenu flashAnalyzePopup = new JPopupMenu();
       JFontMenuItem flashAnalyzeAllGame =
           new JFontMenuItem(resourceBundle.getString("Menu.flashAnalyzeAllGame")); // "闪电分析(全局)");
@@ -8223,6 +8253,7 @@ public class Menu extends JMenuBar {
       Lizzie.frame.topPanel.leftArea.add(btnFoxKifu);
       Lizzie.frame.topPanel.leftArea.add(btnTencentKifu);
       Lizzie.frame.topPanel.leftArea.add(btnPlayerStrengthEstimate);
+      Lizzie.frame.topPanel.leftArea.add(btnWholeGameDeepAnalysis);
 
       Lizzie.frame.topPanel.centerArea.add(btnAutoSetup);
       Lizzie.frame.topPanel.centerArea.add(btnFlashAnalyze);
