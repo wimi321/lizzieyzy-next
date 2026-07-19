@@ -1,5 +1,7 @@
 package featurecat.lizzie.gui;
 
+import org.json.JSONObject;
+
 public class EngineData {
   public int index;
   public String commands;
@@ -17,4 +19,17 @@ public class EngineData {
   public boolean useKeyGen;
   public String keyGenPath = "";
   public String initialCommand = "";
+  public String gtpConfigurationProtocol = "";
+  public JSONObject gtpConfigurationProfile;
+
+  public void copyGtpConfigurationFrom(EngineData source) {
+    if (source == null) {
+      return;
+    }
+    gtpConfigurationProtocol = source.gtpConfigurationProtocol;
+    gtpConfigurationProfile =
+        source.gtpConfigurationProfile == null
+            ? null
+            : new JSONObject(source.gtpConfigurationProfile.toString());
+  }
 }

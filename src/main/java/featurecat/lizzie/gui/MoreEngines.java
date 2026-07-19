@@ -2,6 +2,9 @@ package featurecat.lizzie.gui;
 
 import featurecat.lizzie.Config;
 import featurecat.lizzie.Lizzie;
+import featurecat.lizzie.analysis.Leelaz;
+import featurecat.lizzie.analysis.gtpconfig.GtpConfigurationProbe;
+import featurecat.lizzie.analysis.gtpconfig.GtpConfigurationSchema;
 import featurecat.lizzie.util.Utils;
 import java.awt.BorderLayout;
 import java.awt.Color;
@@ -22,7 +25,9 @@ import java.awt.event.WindowEvent;
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Optional;
 import java.util.ResourceBundle;
+import java.util.concurrent.ExecutionException;
 import javax.imageio.ImageIO;
 import javax.swing.AbstractButton;
 import javax.swing.BorderFactory;
@@ -37,6 +42,8 @@ import javax.swing.JScrollPane;
 import javax.swing.JTable;
 import javax.swing.JTextArea;
 import javax.swing.SwingUtilities;
+import javax.swing.SwingWorker;
+import javax.swing.Timer;
 import javax.swing.table.AbstractTableModel;
 import javax.swing.table.DefaultTableCellRenderer;
 import javax.swing.table.TableCellRenderer;
@@ -78,6 +85,7 @@ public class MoreEngines extends JPanel {
   JFontButton moveDown5;
   JFontButton moveFirst;
   JFontButton moveLast;
+  JFontButton gtpConfig;
   JFontCheckBox preload;
   JFontCheckBox chkDefault;
   JFontRadioButton rdoDefault;
@@ -198,12 +206,14 @@ public class MoreEngines extends JPanel {
     this.moveDown5 = new JFontButton(this.resourceBundle.getString("MoreEngines.moveDown5"));
     this.moveFirst = new JFontButton(this.resourceBundle.getString("MoreEngines.moveFirst"));
     this.moveLast = new JFontButton(this.resourceBundle.getString("MoreEngines.moveLast"));
+    this.gtpConfig = new JFontButton(this.resourceBundle.getString("MoreEngines.gtpConfig"));
     this.moveUp.setMargin(new Insets(0, 0, 0, 0));
     this.moveDown.setMargin(new Insets(0, 0, 0, 0));
     this.moveUp5.setMargin(new Insets(0, 0, 0, 0));
     this.moveDown5.setMargin(new Insets(0, 0, 0, 0));
     this.moveFirst.setMargin(new Insets(0, 0, 0, 0));
     this.moveLast.setMargin(new Insets(0, 0, 0, 0));
+    this.gtpConfig.setMargin(new Insets(0, 4, 0, 4));
     this.scan.setMargin(new Insets(0, 0, 0, 0));
     this.add.setMargin(new Insets(0, 0, 0, 0));
     this.save.setMargin(new Insets(0, 0, 0, 0));
@@ -390,6 +400,9 @@ public class MoreEngines extends JPanel {
     orderingX = placeInRow(moveDown5, orderingX, 354, 2, 55);
     orderingX = placeInRow(moveFirst, orderingX, 354, 2, 55);
     placeInRow(moveLast, orderingX, 354, 0, 55);
+    int gtpConfigWidth =
+        Math.min(200, AccessibilitySupport.localizedControlWidth(this.gtpConfig, 150));
+    this.gtpConfig.setBounds(360, 354, gtpConfigWidth, 24);
 
     int actionRight = 885;
     actionRight = placeFromRight(exit, actionRight, 354, 2, 60);
@@ -477,6 +490,7 @@ public class MoreEngines extends JPanel {
     this.selectpanel.add(this.moveLast);
     this.selectpanel.add(this.moveDown);
     this.selectpanel.add(this.moveDown5);
+    this.selectpanel.add(this.gtpConfig);
     this.selectpanel.add(this.chkDefault);
     this.selectpanel.add(lblchooseStart);
     this.selectpanel.add(this.rdoDefault);
@@ -484,6 +498,10 @@ public class MoreEngines extends JPanel {
     this.selectpanel.add(this.rdoMannul);
     this.selectpanel.add(this.rdoNone);
     this.selectpanel.add(this.delete);
+    AccessibilitySupport.button(
+        this.gtpConfig,
+        this.resourceBundle.getString("MoreEngines.gtpConfig"),
+        this.resourceBundle.getString("MoreEngines.gtpConfigDescription"));
     AccessibilitySupport.applyToTree(this);
     this.scan.addActionListener(
         new ActionListener() {
@@ -494,6 +512,7 @@ public class MoreEngines extends JPanel {
             setVisible(true);
           }
         });
+    this.gtpConfig.addActionListener(event -> configureSelectedEngine());
     this.add.addActionListener(
         new ActionListener() {
           public void actionPerformed(ActionEvent e) {
@@ -892,6 +911,7 @@ public class MoreEngines extends JPanel {
       this.moveLast.setEnabled(true);
       this.moveDown.setEnabled(true);
       this.moveDown5.setEnabled(true);
+      this.gtpConfig.setEnabled(true);
     } else {
       this.txtName.setEnabled(false);
       txtInitialCommand.setEnabled(false);
@@ -919,6 +939,7 @@ public class MoreEngines extends JPanel {
       this.rdoUsePassword.setEnabled(false);
       this.rdoKeyGen.setEnabled(false);
       this.scanKeygen.setEnabled(false);
+      this.gtpConfig.setEnabled(false);
     }
   }
 
@@ -1019,8 +1040,13 @@ public class MoreEngines extends JPanel {
     needUpdateEngine = true;
     ArrayList<EngineData> engineData = Utils.getEngineData();
     EngineData engineDt = new EngineData();
+    String editedCommand = this.command.getText().trim();
+    if (this.curIndex >= 0 && this.curIndex < engineData.size()) {
+      copyGtpConfigurationForUnchangedCommand(
+          engineDt, engineData.get(this.curIndex), editedCommand);
+    }
     engineDt.index = this.curIndex;
-    engineDt.commands = this.command.getText().trim();
+    engineDt.commands = editedCommand;
     engineDt.name = this.txtName.getText();
     if (txtInitialCommand
         .getText()
@@ -1057,6 +1083,180 @@ public class MoreEngines extends JPanel {
     }
     Utils.saveEngineSettings(engineData);
     refreshEngineCatalogIfReady();
+  }
+
+  static void copyGtpConfigurationForUnchangedCommand(
+      EngineData target, EngineData previous, String editedCommand) {
+    if (target != null
+        && previous != null
+        && editedCommand != null
+        && editedCommand.equals(previous.commands)) {
+      target.copyGtpConfigurationFrom(previous);
+    }
+  }
+
+  private void configureSelectedEngine() {
+    if (curIndex < 0) {
+      return;
+    }
+    saveCurrentEngineConfig();
+    ArrayList<EngineData> engines = Utils.getEngineData();
+    if (curIndex >= engines.size()) {
+      return;
+    }
+    EngineData selected = engines.get(curIndex);
+    if (selected.useJavaSSH) {
+      showGtpConfigurationMessage(
+          resourceBundle.getString("GtpEngineConfig.remoteUnsupported"),
+          JOptionPane.INFORMATION_MESSAGE);
+      return;
+    }
+    int selectedIndex = curIndex;
+    String selectedCommand = selected.commands;
+    JSONObject savedProfile =
+        selected.gtpConfigurationProfile == null
+            ? null
+            : new JSONObject(selected.gtpConfigurationProfile.toString());
+    setGtpConfigurationBusy(resourceBundle.getString("GtpEngineConfig.detecting"));
+    new SwingWorker<GtpConfigurationProbe.Inspection, Void>() {
+      @Override
+      protected GtpConfigurationProbe.Inspection doInBackground() throws Exception {
+        return new GtpConfigurationProbe().inspect(selectedCommand);
+      }
+
+      @Override
+      protected void done() {
+        restoreGtpConfigurationButton();
+        try {
+          GtpConfigurationProbe.Inspection inspection = get();
+          if (!inspection.supported()) {
+            showGtpConfigurationMessage(
+                resourceBundle.getString("GtpEngineConfig.unsupported"),
+                JOptionPane.INFORMATION_MESSAGE);
+            return;
+          }
+          Optional<JSONObject> profile =
+              GtpEngineConfigDialog.showDialog(
+                  MoreEngines.this, inspection.schema(), savedProfile);
+          profile.ifPresent(
+              value ->
+                  applyGtpConfiguration(
+                      selectedIndex, selectedCommand, inspection.schema(), value));
+        } catch (InterruptedException error) {
+          Thread.currentThread().interrupt();
+          showGtpConfigurationError(error);
+        } catch (ExecutionException error) {
+          showGtpConfigurationError(error.getCause());
+        }
+      }
+    }.execute();
+  }
+
+  private void applyGtpConfiguration(
+      int selectedIndex,
+      String selectedCommand,
+      GtpConfigurationSchema schema,
+      JSONObject requestedProfile) {
+    setGtpConfigurationBusy(resourceBundle.getString("GtpEngineConfig.applying"));
+    new SwingWorker<GtpConfigurationProbe.ApplyResult, Void>() {
+      @Override
+      protected GtpConfigurationProbe.ApplyResult doInBackground() throws Exception {
+        return new GtpConfigurationProbe().applyProfile(selectedCommand, requestedProfile);
+      }
+
+      @Override
+      protected void done() {
+        try {
+          GtpConfigurationProbe.ApplyResult result = get();
+          persistGtpConfiguration(selectedIndex, selectedCommand, schema.protocol(), result.profile());
+          applyProfileToRunningEngine(selectedIndex, result.profile());
+        } catch (InterruptedException error) {
+          Thread.currentThread().interrupt();
+          restoreGtpConfigurationButton();
+          showGtpConfigurationError(error);
+        } catch (ExecutionException | IllegalStateException error) {
+          restoreGtpConfigurationButton();
+          Throwable cause = error instanceof ExecutionException ? error.getCause() : error;
+          showGtpConfigurationError(cause);
+        }
+      }
+    }.execute();
+  }
+
+  private void persistGtpConfiguration(
+      int selectedIndex, String expectedCommand, String protocol, JSONObject profile) {
+    ArrayList<EngineData> engines = Utils.getEngineData();
+    if (selectedIndex < 0 || selectedIndex >= engines.size()) {
+      throw new IllegalStateException(resourceBundle.getString("GtpEngineConfig.engineChanged"));
+    }
+    EngineData engine = engines.get(selectedIndex);
+    if (!expectedCommand.equals(engine.commands)) {
+      throw new IllegalStateException(resourceBundle.getString("GtpEngineConfig.engineChanged"));
+    }
+    engine.gtpConfigurationProtocol = protocol;
+    engine.gtpConfigurationProfile = new JSONObject(profile.toString());
+    Utils.saveEngineSettings(engines);
+    markEngineCatalogChangedAndRefresh();
+  }
+
+  private void applyProfileToRunningEngine(int selectedIndex, JSONObject profile) {
+    if (Lizzie.engineManager == null
+        || selectedIndex < 0
+        || selectedIndex >= Lizzie.engineManager.engineList.size()) {
+      showGtpConfigurationSavedStatus();
+      return;
+    }
+    Leelaz engine = Lizzie.engineManager.engineList.get(selectedIndex);
+    engine.gtpConfigurationProtocol = GtpConfigurationProbe.ZENGTP_PROTOCOL;
+    engine.gtpConfigurationProfile = new JSONObject(profile.toString());
+    if (!engine.started || !engine.supportsGtpConfiguration()) {
+      showGtpConfigurationSavedStatus();
+      return;
+    }
+    engine.applyGtpConfigurationProfile(
+        profile,
+        response -> SwingUtilities.invokeLater(this::showGtpConfigurationSavedStatus),
+        error ->
+            SwingUtilities.invokeLater(
+                () -> {
+                  restoreGtpConfigurationButton();
+                  showGtpConfigurationMessage(
+                      resourceBundle.getString("GtpEngineConfig.savedForNextStart"),
+                      JOptionPane.WARNING_MESSAGE);
+                }));
+  }
+
+  private void setGtpConfigurationBusy(String text) {
+    gtpConfig.setText(text);
+    gtpConfig.setEnabled(false);
+    table.setEnabled(false);
+  }
+
+  private void showGtpConfigurationSavedStatus() {
+    gtpConfig.setText(resourceBundle.getString("GtpEngineConfig.saved"));
+    gtpConfig.setEnabled(false);
+    table.setEnabled(true);
+    Timer timer = new Timer(1600, event -> restoreGtpConfigurationButton());
+    timer.setRepeats(false);
+    timer.start();
+  }
+
+  private void restoreGtpConfigurationButton() {
+    gtpConfig.setText(resourceBundle.getString("MoreEngines.gtpConfig"));
+    gtpConfig.setEnabled(curIndex >= 0);
+    table.setEnabled(true);
+  }
+
+  private void showGtpConfigurationError(Throwable error) {
+    String detail = error == null || error.getMessage() == null ? "" : error.getMessage();
+    showGtpConfigurationMessage(
+        String.format(resourceBundle.getString("GtpEngineConfig.loadFailed"), detail),
+        JOptionPane.ERROR_MESSAGE);
+  }
+
+  private void showGtpConfigurationMessage(String message, int messageType) {
+    JOptionPane.showMessageDialog(
+        engjf, message, resourceBundle.getString("GtpEngineConfig.title"), messageType);
   }
 
   private static void markEngineCatalogChangedAndRefresh() {
