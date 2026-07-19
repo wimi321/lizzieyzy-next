@@ -4194,6 +4194,8 @@ def build_release_notes(asset_map: dict[str, str | None], bundle: dict[str, str]
         return build_next_2026_07_13_notes(
             asset_map, bundle, repo, release_tag, use_system_language=True
         )
+    if release_tag == 'next-2026-07-19.1':
+        return build_next_2026_07_19_1_notes(asset_map, bundle, repo, release_tag)
 
     assets_cn = {
         key: format_asset(asset_map[key], repo, release_tag)
@@ -8451,6 +8453,219 @@ def build_next_2026_07_13_notes(
                     'rows': standard_download_rows(
                         STANDARD_DOWNLOAD_LABELS[block['labels']],
                         localized_assets,
+                    ),
+                },
+                'why': {'heading': block['why_heading'], 'items': block['why']},
+                'contact': {'heading': block['contact_heading'], 'items': block['contact']},
+            }
+        )
+    add_nvidia50_download_rows(sections, assets_cn, assets)
+    add_tensorrt_split_download_row(sections, assets_cn, assets, asset_map)
+    remove_windows_core_update_auto_notes(sections)
+    validate_release_sections(sections)
+    return release_heading(release_tag) + '\n\n' + '\n\n---\n\n'.join(
+        render_language_section(section) for section in sections
+    ) + '\n'
+
+
+def build_next_2026_07_19_1_notes(
+    asset_map: dict[str, str | None],
+    bundle: dict[str, str],
+    repo: str,
+    release_tag: str | None,
+) -> str:
+    assets_cn = {key: format_asset(asset_map[key], repo, release_tag) for key in asset_map}
+    assets = {key: format_asset_en(asset_map[key], repo, release_tag) for key in asset_map}
+    katago_version = bundle['katago_version']
+    model_source = bundle['model_source']
+    previous_release = 'next-2026-07-13.2'
+    blocks = [
+        {
+            'language': '中文',
+            'labels': 'zh',
+            'intro': f'这是 {previous_release} 之后的功能与稳定性预览版，重点简化 KataGo 权重使用、补全智子云权重选择，并让快速分析、弈客和棋盘同步更可靠。',
+            'updates_heading': '本版主要更新',
+            'updates': [
+                '重做“一键设置 → 权重管理”：官方权重和自定义权重分类更清楚，保留官网多模型、Elo、发布日期、HumanSL 与推荐方案；下载后可直接“使用此权重”。',
+                '修复快速胜率曲线占用引擎时切换权重提示“独占任务”的问题。软件只会安全停止可恢复的快速分析，不会打断对局、同步或手动批量分析。',
+                '智子云算力支持动态刷新并补齐 `18bnbt / 28bnbt / fdx / 60b / 40b / 20b` 六种权重；FDX 标注为 40B NBT 超大权重，20B 标注为让子棋常用。',
+                '闪电分析和固定上限快速分析优先复用当前前台 KataGo，减少重复启动；切换节点或快速曲线完成后会更及时恢复棋盘实时分析。',
+                '修复 macOS 内置弈客网页版、让子棋初始目差、分支预览手数、首次绘制快捷键提示等问题，并继续完善多语言、高缩放与无障碍显示。',
+                '更新 readboard 清空棋盘、分析状态及 v2 更新包协议。感谢 `qiyi71w` 持续改进棋盘同步、快速分析与分支预览。',
+            ],
+            'before_heading': '下载前先看这几句',
+            'before': [
+                f'主推荐整合包继续内置 KataGo `{katago_version}` 和默认权重 `{model_source}`。',
+                'Windows 普通用户优先下载 {windows_opencl_portable}；NVIDIA 用户按显卡代际选择普通 NVIDIA 或 RTX 50 CUDA 包。',
+                '已有免安装版可保留原目录中的 `user-data`、自定义权重和 TensorRT；覆盖升级前仍建议先备份。',
+                '这是 pre-release，适合希望提前体验新权重管理和分析优化的用户。',
+            ],
+            'download_heading': '下载建议',
+            'download_headers': ('你的电脑', '直接下载这个'),
+            'why_heading': '这一版为什么值得测试',
+            'why': [
+                '选择、下载和启用权重现在是一条连续流程，普通用户不再需要理解引擎槽位和独占租约。',
+                '本地与智子云权重选择更完整，快速分析复用前台引擎后启动等待更少。',
+                '全量自动化、真实 20B 权重切换和全新配置首次启动均已验证。',
+            ],
+            'contact_heading': '交流',
+            'contact': ['QQ 群：`299419120`'],
+        },
+        {
+            'language': '繁體中文',
+            'labels': 'zh_hant',
+            'intro': f'這是 {previous_release} 之後的功能與穩定性預覽版，重點簡化 KataGo 權重使用、補齊智子雲權重選擇，並讓快速分析、弈客與棋盤同步更可靠。',
+            'updates_heading': '本版主要更新',
+            'updates': [
+                '重做「一鍵設定 → 權重管理」：官方與自訂權重分類更清楚，保留官網多模型、Elo、發布日期、HumanSL 與推薦方案；下載後可直接「使用此權重」。',
+                '修正快速勝率曲線佔用引擎時切換權重出現「獨佔任務」的問題。只會安全停止可恢復的快速分析，不會中斷對局、同步或手動批次分析。',
+                '智子雲算力支援動態更新並補齊 `18bnbt / 28bnbt / fdx / 60b / 40b / 20b` 六種權重；FDX 標示為 40B NBT 超大權重，20B 標示為讓子棋常用。',
+                '閃電分析與固定上限快速分析優先重用目前前台 KataGo，減少重複啟動；切換節點或快速曲線完成後會更快恢復棋盤即時分析。',
+                '修正 macOS 內建弈客網頁版、讓子棋初始目差、分支預覽手數、首次繪製快捷鍵提示，並繼續改善多語言、高縮放與無障礙顯示。',
+                '更新 readboard 清空棋盤、分析狀態與 v2 更新包協定。感謝 `qiyi71w` 持續改善棋盤同步、快速分析與分支預覽。',
+            ],
+            'before_heading': '下載前先看這幾句',
+            'before': [
+                f'主推薦整合包繼續內建 KataGo `{katago_version}` 與預設權重 `{model_source}`。',
+                'Windows 一般使用者優先下載 {windows_opencl_portable}；NVIDIA 使用者依顯卡世代選擇一般 NVIDIA 或 RTX 50 CUDA 套件。',
+                '既有免安裝版可保留原目錄中的 `user-data`、自訂權重與 TensorRT；覆蓋升級前仍建議先備份。',
+                '這是 pre-release，適合想提前體驗新權重管理與分析改善的使用者。',
+            ],
+            'download_heading': '下載建議',
+            'download_headers': ('你的電腦', '直接下載這個'),
+            'why_heading': '這一版為什麼值得測試',
+            'why': [
+                '選擇、下載與啟用權重現在是一條連續流程，一般使用者不必理解引擎槽位或獨佔租約。',
+                '本機與智子雲權重選擇更完整，快速分析重用前台引擎後等待更少。',
+                '已通過完整自動化、真實 20B 權重切換與全新設定首次啟動驗證。',
+            ],
+            'contact_heading': '交流',
+            'contact': ['QQ 群：`299419120`'],
+        },
+        {
+            'language': 'English',
+            'labels': 'en',
+            'intro': f'This preview collects the feature and stability work since {previous_release}, with a simpler KataGo weight workflow, complete Zhizi Cloud model choices, and more reliable quick analysis, Yike, and board synchronization.',
+            'updates_heading': 'Release Highlights',
+            'updates': [
+                'Redesigned KataGo Auto Setup weight management with clear Official and Custom categories, multiple official model families, Elo, release dates, HumanSL, recommendations, and a direct Use this weight action.',
+                'Fixed weight switching while quick win-rate analysis owns the engine. Only recoverable quick analysis is stopped; games, board sync, manual analysis, and other exclusive work remain protected.',
+                'Zhizi Cloud now refreshes dynamically and exposes `18bnbt / 28bnbt / fdx / 60b / 40b / 20b`; FDX is identified as the 40B NBT extra-large model and 20B as a handicap-oriented choice.',
+                'Flash analysis and fixed-limit quick analysis reuse the foreground KataGo when possible, reducing restarts and restoring live board analysis sooner after navigation or curve completion.',
+                'Fixed the built-in Yike browser on macOS, handicap opening score, branch-preview move numbers, and the first-paint shortcut hint, with further localization, HiDPI, and accessibility polish.',
+                'Updated readboard clear-board, analysis-state, and v2 package protocols. Thanks to `qiyi71w` for continued improvements to synchronization, quick analysis, and branch previews.',
+            ],
+            'before_heading': 'Read Before Downloading',
+            'before': [
+                f'The recommended bundles continue to include KataGo `{katago_version}` and the default model `{model_source}`.',
+                'Most Windows users should choose {windows_opencl_portable}; NVIDIA users should select the standard NVIDIA or RTX 50 CUDA build for their GPU generation.',
+                'Existing portable users can keep `user-data`, custom weights, and TensorRT in place, but should still back up before overwriting an installation.',
+                'This is a pre-release for users who want to test the new weight and analysis workflow early.',
+            ],
+            'download_heading': 'Download Guide',
+            'download_headers': ('Your computer', 'Download this file'),
+            'why_heading': 'Why Test This Release',
+            'why': [
+                'Selecting, downloading, and activating a weight is now one continuous workflow without exposing engine-slot or lease terminology.',
+                'Local and Zhizi model choices are more complete, while foreground-engine reuse reduces analysis startup delays.',
+                'The full automated suite, a real 20B model switch, and fresh-profile first launch were verified before release.',
+            ],
+            'contact_heading': 'Contact',
+            'contact': ['QQ group: `299419120`'],
+        },
+        {
+            'language': '日本語',
+            'labels': 'ja',
+            'intro': f'{previous_release} 以降の機能と安定性をまとめたプレビュー版です。KataGo weight 操作、Zhizi Cloud model 選択、quick analysis、Yike、棋盤同期を改善しました。',
+            'updates_heading': '主な更新',
+            'updates': [
+                'KataGo 一括設定の weight 管理を再設計し、公式/カスタム分類、複数モデル、Elo、公開日、HumanSL、推奨案、「この weight を使用」を分かりやすくしました。',
+                'quick win-rate analysis が engine を使用中でも安全に weight を切替可能にしました。対局、同期、手動分析などの排他タスクは中断しません。',
+                'Zhizi Cloud は `18bnbt / 28bnbt / fdx / 60b / 40b / 20b` を動的更新します。FDX は 40B NBT 超大 model、20B は handicap 向けとして表示します。',
+                'flash analysis と固定上限 quick analysis は可能な場合 foreground KataGo を再利用し、再起動待ちと盤面分析の復帰遅延を減らします。',
+                'macOS 内蔵 Yike、handicap 初期 score、branch preview 手数、初回描画の shortcut 表示、多言語・HiDPI・accessibility を修正しました。',
+                'readboard の clear-board、analysis-state、v2 package protocol を更新しました。継続的に改善してくださった `qiyi71w` に感謝します。',
+            ],
+            'before_heading': 'ダウンロード前に',
+            'before': [
+                f'推奨 bundle は KataGo `{katago_version}` と既定 model `{model_source}` を引き続き同梱します。',
+                '多くの Windows ユーザーは {windows_opencl_portable}、NVIDIA ユーザーは GPU 世代に合う NVIDIA または RTX 50 CUDA build を選んでください。',
+                'portable 版は `user-data`、custom weight、TensorRT を保持できますが、上書き前の backup を推奨します。',
+                'これは新しい weight/analysis workflow を先行確認するための pre-release です。',
+            ],
+            'download_heading': 'ダウンロード案内',
+            'download_headers': ('お使いの環境', 'ダウンロードするファイル'),
+            'why_heading': 'このリリースを試す理由',
+            'why': ['weight の選択・download・適用が一つの流れになりました。', 'local/Zhizi model が充実し、analysis の起動待ちが減りました。', '全自動テスト、実 20B weight 切替、fresh profile 起動を確認済みです。'],
+            'contact_heading': '連絡先',
+            'contact': ['QQ group: `299419120`'],
+        },
+        {
+            'language': '한국어',
+            'labels': 'ko',
+            'intro': f'{previous_release} 이후의 기능과 안정성 개선을 모은 preview입니다. KataGo weight 사용, Zhizi Cloud model 선택, quick analysis, Yike, 바둑판 동기화를 단순하고 안정적으로 개선했습니다.',
+            'updates_heading': '주요 업데이트',
+            'updates': [
+                'KataGo 원클릭 설정 weight 관리를 공식/사용자 weight, 여러 model, Elo, 공개일, HumanSL, 추천 및 “이 weight 사용” 흐름으로 재설계했습니다.',
+                'quick win-rate analysis 가 engine 을 점유할 때도 안전하게 weight 를 바꿉니다. 대국, 동기화, 수동 분석 등 다른 exclusive task 는 중단하지 않습니다.',
+                'Zhizi Cloud 에서 `18bnbt / 28bnbt / fdx / 60b / 40b / 20b` 를 동적으로 갱신합니다. FDX 는 40B NBT 초대형 model, 20B 는 handicap 용으로 표시합니다.',
+                'flash analysis 와 고정 제한 quick analysis 가 가능한 경우 foreground KataGo 를 재사용해 재시작과 분석 복귀 대기를 줄입니다.',
+                'macOS 내장 Yike, handicap 초기 score, branch preview 수순, 첫 paint shortcut, 다국어/HiDPI/accessibility 표시를 수정했습니다.',
+                'readboard clear-board, analysis-state, v2 package protocol 을 갱신했습니다. 지속적으로 기여한 `qiyi71w` 님께 감사드립니다.',
+            ],
+            'before_heading': '다운로드 전 확인',
+            'before': [f'추천 bundle 은 KataGo `{katago_version}` 와 기본 model `{model_source}` 를 계속 포함합니다.', '대부분의 Windows 사용자는 {windows_opencl_portable}, NVIDIA 사용자는 GPU 세대에 맞는 NVIDIA 또는 RTX 50 CUDA build 를 선택하세요.', 'portable 사용자는 `user-data`, custom weight, TensorRT 를 유지할 수 있지만 덮어쓰기 전 backup 을 권장합니다.', '새 weight/analysis workflow 를 먼저 시험하는 pre-release 입니다.'],
+            'download_heading': '다운로드 안내',
+            'download_headers': ('내 컴퓨터', '다운로드할 파일'),
+            'why_heading': '이 릴리스를 테스트할 이유',
+            'why': ['weight 선택, download, 적용이 하나의 이해하기 쉬운 흐름이 되었습니다.', 'local/Zhizi model 선택이 넓어지고 analysis 시작 대기가 줄었습니다.', '전체 자동화, 실제 20B 전환, fresh profile 시작을 검증했습니다.'],
+            'contact_heading': '연락처',
+            'contact': ['QQ 그룹: `299419120`'],
+        },
+        {
+            'language': 'ภาษาไทย',
+            'labels': 'th',
+            'intro': f'pre-release นี้รวมงานด้านฟังก์ชันและความเสถียรหลัง {previous_release} โดยทำให้การใช้ KataGo weight, การเลือก model บน Zhizi Cloud, quick analysis, Yike และการ sync กระดานง่ายและเสถียรขึ้น',
+            'updates_heading': 'ไฮไลต์ของเวอร์ชันนี้',
+            'updates': [
+                'ออกแบบหน้า weight ของ KataGo Auto Setup ใหม่ แยก official/custom ชัดเจน พร้อมหลาย model, Elo, วันที่เผยแพร่, HumanSL, คำแนะนำ และปุ่ม Use this weight',
+                'แก้การสลับ weight ขณะ quick win-rate analysis ใช้ engine โดยหยุดเฉพาะ quick analysis ที่กู้คืนได้ และไม่รบกวนเกม, board sync หรือ manual analysis',
+                'Zhizi Cloud refresh และเลือก `18bnbt / 28bnbt / fdx / 60b / 40b / 20b` ได้ โดย FDX ระบุเป็น 40B NBT ขนาดใหญ่ และ 20B เหมาะกับ handicap',
+                'flash analysis และ quick analysis แบบจำกัดค่าจะ reuse foreground KataGo เมื่อทำได้ เพื่อลดเวลารอเริ่ม engine และคืน live analysis ให้เร็วขึ้น',
+                'แก้ built-in Yike บน macOS, handicap opening score, เลข move ใน branch preview, shortcut ใน first paint รวมถึงภาษา, HiDPI และ accessibility',
+                'อัปเดต readboard clear-board, analysis-state และ v2 package protocol ขอบคุณ `qiyi71w` สำหรับการพัฒนาอย่างต่อเนื่อง',
+            ],
+            'before_heading': 'ก่อนดาวน์โหลด',
+            'before': [f'แพ็กเกจแนะนำยังรวม KataGo `{katago_version}` และ model เริ่มต้น `{model_source}`', 'ผู้ใช้ Windows ส่วนใหญ่เลือก {windows_opencl_portable}; ผู้ใช้ NVIDIA เลือก NVIDIA หรือ RTX 50 CUDA build ตามรุ่น GPU', 'portable เดิมเก็บ `user-data`, custom weight และ TensorRT ได้ แต่ควร backup ก่อนเขียนทับ', 'นี่คือ pre-release สำหรับผู้ที่ต้องการลอง workflow ใหม่ก่อน'],
+            'download_heading': 'คำแนะนำดาวน์โหลด',
+            'download_headers': ('คอมพิวเตอร์ของคุณ', 'ดาวน์โหลดไฟล์นี้'),
+            'why_heading': 'ทำไมควรทดสอบเวอร์ชันนี้',
+            'why': ['การเลือก ดาวน์โหลด และใช้ weight เป็น flow เดียวที่เข้าใจง่ายขึ้น', 'ตัวเลือก local/Zhizi model ครบขึ้นและรอเริ่ม analysis น้อยลง', 'ผ่าน full automated suite, การสลับ 20B จริง และ fresh-profile startup'],
+            'contact_heading': 'ติดต่อ',
+            'contact': ['QQ group: `299419120`'],
+        },
+    ]
+
+    sections: list[dict[str, object]] = []
+    for block in blocks:
+        localized_assets = assets_cn if block['labels'] in ('zh', 'zh_hant') else assets
+        before_items = [
+            item.format(
+                windows_opencl_portable=localized_assets['windows_opencl_portable'],
+            )
+            for item in block['before']
+        ]
+        sections.append(
+            {
+                'language': block['language'],
+                'intro': block['intro'],
+                'updates': {'heading': block['updates_heading'], 'items': block['updates']},
+                'before': {'heading': block['before_heading'], 'items': before_items},
+                'download': {
+                    'heading': block['download_heading'],
+                    'headers': block['download_headers'],
+                    'rows': standard_download_rows(
+                        STANDARD_DOWNLOAD_LABELS[block['labels']], localized_assets
                     ),
                 },
                 'why': {'heading': block['why_heading'], 'items': block['why']},
