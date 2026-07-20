@@ -22,6 +22,9 @@ def main() -> None:
     workflow = (ROOT / ".github/workflows/build-windows-release.yml").read_text(
         encoding="utf-8"
     )
+    update_controller = (
+        ROOT / "src/main/java/featurecat/lizzie/update/WindowsUpdateController.java"
+    ).read_text(encoding="utf-8")
 
     require(
         package_script,
@@ -51,6 +54,19 @@ def main() -> None:
     require(workflow, "-OpenAutoSetup", "build-windows-release.yml")
     require(workflow, "runtime/bin/server/jvm.dll", "build-windows-release.yml")
     require(workflow, "^jdk.accessibility@", "build-windows-release.yml")
+    require(
+        package_script,
+        'LIZZIE_RELEASE_PRERELEASE:-false',
+        "package_windows_exe.sh",
+    )
+    require(
+        package_script,
+        '"prerelease": prerelease == "true"',
+        "package_windows_exe.sh",
+    )
+    require(workflow, "--jq '.prerelease'", "build-windows-release.yml")
+    if "scheduleAutomaticCheck" in lizzie_source or "auto-check" in update_controller:
+        raise AssertionError("Windows updates must only run after an explicit user action")
 
     print("Windows launcher packaging guards passed.")
 

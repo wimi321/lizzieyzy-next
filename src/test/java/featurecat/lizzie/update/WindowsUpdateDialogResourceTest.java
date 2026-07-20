@@ -14,8 +14,7 @@ class WindowsUpdateDialogResourceTest {
     assertEquals("New version available", bundle.getString("WindowsUpdate.title"));
     assertEquals("Current version", bundle.getString("WindowsUpdate.currentVersion"));
     assertEquals("Update now", bundle.getString("WindowsUpdate.btnUpdate"));
-    assertEquals("Remind me later", bundle.getString("WindowsUpdate.btnLater"));
-    assertEquals("Skip this version", bundle.getString("WindowsUpdate.btnIgnore"));
+    assertEquals("Close", bundle.getString("WindowsUpdate.btnLater"));
     assertEquals("View release", bundle.getString("WindowsUpdate.btnRelease"));
     assertEquals(
         "The update is downloaded and verified first; the app then closes and a standalone"
@@ -64,8 +63,7 @@ class WindowsUpdateDialogResourceTest {
     assertEquals("发现新版本", bundle.getString("WindowsUpdate.title"));
     assertEquals("当前版本", bundle.getString("WindowsUpdate.currentVersion"));
     assertEquals("立即更新", bundle.getString("WindowsUpdate.btnUpdate"));
-    assertEquals("稍后提醒", bundle.getString("WindowsUpdate.btnLater"));
-    assertEquals("忽略此版本", bundle.getString("WindowsUpdate.btnIgnore"));
+    assertEquals("关闭", bundle.getString("WindowsUpdate.btnLater"));
     assertEquals("查看 Release", bundle.getString("WindowsUpdate.btnRelease"));
     assertEquals(
         "这次会先下载并校验更新文件，然后关闭当前程序，由独立更新器替换文件并重新打开。", bundle.getString("WindowsUpdate.summary.intro"));

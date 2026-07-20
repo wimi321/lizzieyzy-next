@@ -1,6 +1,7 @@
 package featurecat.lizzie.analysis.remote;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import java.io.InputStream;
@@ -9,6 +10,10 @@ import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 
 class ZhiziGtpTransportTest {
@@ -199,6 +204,74 @@ class ZhiziGtpTransportTest {
     stream.write("name\n".getBytes(StandardCharsets.UTF_8));
 
     assertThrows(java.io.IOException.class, stream::flush);
+  }
+
+  @Test
+  void analysisWatchdogDetectsConnectedSocketThatReturnsNoInfo() throws Exception {
+    ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
+    CountDownLatch timedOut = new CountDownLatch(1);
+    try {
+      ZhiziGtpTransport.AnalysisResponseWatchdog watchdog =
+          new ZhiziGtpTransport.AnalysisResponseWatchdog(scheduler, 30L, timedOut::countDown);
+      ZhiziGtpTransport.SocketCommandOutputStream stream =
+          new ZhiziGtpTransport.SocketCommandOutputStream(
+              new FakeEmitter(true), watchdog::onCommandSubmittedOrEmitted);
+
+      send(stream, "kata-analyze B 10");
+
+      assertEquals(true, timedOut.await(2, TimeUnit.SECONDS));
+      assertEquals(true, watchdog.isUnresponsive());
+    } finally {
+      scheduler.shutdownNow();
+    }
+  }
+
+  @Test
+  void analysisWatchdogDetectsAnalysisRequestThatRemainsQueued() throws Exception {
+    ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
+    CountDownLatch timedOut = new CountDownLatch(1);
+    try {
+      ZhiziGtpTransport.AnalysisResponseWatchdog watchdog =
+          new ZhiziGtpTransport.AnalysisResponseWatchdog(scheduler, 30L, timedOut::countDown);
+      ZhiziGtpTransport.SocketCommandOutputStream stream =
+          new ZhiziGtpTransport.SocketCommandOutputStream(
+              new FakeEmitter(false), watchdog::onCommandSubmittedOrEmitted);
+
+      send(stream, "kata-analyze B 10");
+
+      assertEquals(1, stream.queuedCommandCount());
+      assertEquals(true, timedOut.await(2, TimeUnit.SECONDS));
+      assertEquals(true, watchdog.isUnresponsive());
+    } finally {
+      scheduler.shutdownNow();
+    }
+  }
+
+  @Test
+  void analysisWatchdogIsCancelledByInfoOrExplicitStop() throws Exception {
+    ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
+    CountDownLatch timedOut = new CountDownLatch(1);
+    try {
+      ZhiziGtpTransport.AnalysisResponseWatchdog watchdog =
+          new ZhiziGtpTransport.AnalysisResponseWatchdog(scheduler, 80L, timedOut::countDown);
+      ZhiziGtpTransport.SocketCommandOutputStream stream =
+          new ZhiziGtpTransport.SocketCommandOutputStream(
+              new FakeEmitter(true), watchdog::onCommandSubmittedOrEmitted);
+
+      send(stream, "kata-analyze B 10");
+      watchdog.onAnalysisResponseAccepted();
+      TimeUnit.MILLISECONDS.sleep(120L);
+      assertFalse(watchdog.isUnresponsive());
+      assertEquals(1L, timedOut.getCount());
+
+      send(stream, "kata-analyze W 10");
+      send(stream, "stop");
+      TimeUnit.MILLISECONDS.sleep(120L);
+      assertFalse(watchdog.isUnresponsive());
+      assertEquals(1L, timedOut.getCount());
+    } finally {
+      scheduler.shutdownNow();
+    }
   }
 
   private static void send(OutputStream stream, String command) throws Exception {

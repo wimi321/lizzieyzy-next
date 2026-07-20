@@ -31,6 +31,7 @@ public class ZhiziGtpTransport implements EngineTransport {
   private static final Duration READY_TIMEOUT = Duration.ofSeconds(60);
   private static final Duration READY_FALLBACK_AFTER_RECONNECT = Duration.ofSeconds(4);
   private static final Duration RECONNECT_GRACE_PERIOD = Duration.ofSeconds(45);
+  private static final Duration ANALYSIS_RESPONSE_TIMEOUT = Duration.ofSeconds(20);
   private static final int MAX_START_ATTEMPTS = 3;
 
   private final ZhiziApiClient apiClient;
@@ -38,8 +39,7 @@ public class ZhiziGtpTransport implements EngineTransport {
   private final String args;
   private final BlockingByteInputStream stdout = new BlockingByteInputStream();
   private final BlockingByteInputStream stderr = new BlockingByteInputStream();
-  private final SocketCommandOutputStream stdin =
-      new SocketCommandOutputStream(new SocketCommandEmitter(null));
+  private final SocketCommandOutputStream stdin;
   private final AtomicBoolean open = new AtomicBoolean(false);
   private final AtomicBoolean closed = new AtomicBoolean(true);
   private final AtomicBoolean everReady = new AtomicBoolean(false);
@@ -52,7 +52,9 @@ public class ZhiziGtpTransport implements EngineTransport {
             thread.setDaemon(true);
             return thread;
           });
+  private final AnalysisResponseWatchdog analysisWatchdog;
   private volatile ScheduledFuture<?> readyFallbackTask;
+  private volatile Runnable unresponsiveListener = () -> {};
   private volatile long lastDisconnectAtMs;
   private Socket socket;
   private OkHttpClient socketHttpClient;
@@ -62,6 +64,17 @@ public class ZhiziGtpTransport implements EngineTransport {
     this.apiClient = apiClient;
     this.accountToken = accountToken == null ? "" : accountToken.trim();
     this.args = args == null || args.trim().isEmpty() ? RemoteComputeConfig.DEFAULT_ZHIZI_ARGS : args;
+    this.analysisWatchdog =
+        new AnalysisResponseWatchdog(
+            reconnectExecutor,
+            ANALYSIS_RESPONSE_TIMEOUT.toMillis(),
+            () -> {
+              writeStderrLine("智子云算力未返回分析结果，正在自动重建会话并恢复当前棋局...");
+              unresponsiveListener.run();
+            });
+    this.stdin =
+        new SocketCommandOutputStream(
+            new SocketCommandEmitter(null), analysisWatchdog::onCommandSubmittedOrEmitted);
   }
 
   public static ZhiziGtpTransport fromSavedConfig() throws IOException {
@@ -174,6 +187,7 @@ public class ZhiziGtpTransport implements EngineTransport {
         objects -> {
           open.set(false);
           stdin.bind(new SocketCommandEmitter(null));
+          analysisWatchdog.suspend();
           cancelReadyFallback();
           lastDisconnectAtMs = System.currentTimeMillis();
           String reason = summarize(first(objects));
@@ -239,7 +253,7 @@ public class ZhiziGtpTransport implements EngineTransport {
   @Override
   public boolean isOpen() {
     Socket current = socket;
-    if (closed.get() || current == null) {
+    if (closed.get() || current == null || analysisWatchdog.isUnresponsive()) {
       return false;
     }
     return connectionIsUsable(
@@ -250,6 +264,16 @@ public class ZhiziGtpTransport implements EngineTransport {
         lastDisconnectAtMs,
         System.currentTimeMillis(),
         RECONNECT_GRACE_PERIOD.toMillis());
+  }
+
+  @Override
+  public void setUnresponsiveListener(Runnable listener) {
+    unresponsiveListener = listener == null ? () -> {} : listener;
+  }
+
+  @Override
+  public void markAnalysisResponseAccepted() {
+    analysisWatchdog.onAnalysisResponseAccepted();
   }
 
   static boolean connectionIsUsable(
@@ -280,6 +304,7 @@ public class ZhiziGtpTransport implements EngineTransport {
     closed.set(true);
     open.set(false);
     cancelReadyFallback();
+    analysisWatchdog.cancel();
     disposeSocketSession(true);
     stdin.closeForShutdown();
     reconnectExecutor.shutdownNow();
@@ -290,6 +315,7 @@ public class ZhiziGtpTransport implements EngineTransport {
   private void disposeSocketSession(boolean sendQuit) {
     open.set(false);
     cancelReadyFallback();
+    analysisWatchdog.suspend();
     stdin.bind(new SocketCommandEmitter(null));
     Socket current = socket;
     socket = null;
@@ -484,6 +510,77 @@ public class ZhiziGtpTransport implements EngineTransport {
     writePayload(stderr, "[remote] " + line + "\n");
   }
 
+  static final class AnalysisResponseWatchdog {
+    private final ScheduledExecutorService scheduler;
+    private final long timeoutMillis;
+    private final Runnable timeoutAction;
+    private long generation;
+    private boolean unresponsive;
+    private ScheduledFuture<?> timeoutTask;
+
+    AnalysisResponseWatchdog(
+        ScheduledExecutorService scheduler, long timeoutMillis, Runnable timeoutAction) {
+      this.scheduler = scheduler;
+      this.timeoutMillis = Math.max(1L, timeoutMillis);
+      this.timeoutAction = timeoutAction == null ? () -> {} : timeoutAction;
+    }
+
+    synchronized void onCommandSubmittedOrEmitted(String command) {
+      if (SocketCommandOutputStream.isStopCommand(command)) {
+        cancel();
+        return;
+      }
+      if (!SocketCommandOutputStream.isContinuousAnalysisCommand(command)) {
+        return;
+      }
+      long expectedGeneration = ++generation;
+      unresponsive = false;
+      cancelTask();
+      timeoutTask =
+          scheduler.schedule(
+              () -> expire(expectedGeneration), timeoutMillis, TimeUnit.MILLISECONDS);
+    }
+
+    synchronized void onAnalysisResponseAccepted() {
+      generation++;
+      unresponsive = false;
+      cancelTask();
+    }
+
+    synchronized void suspend() {
+      generation++;
+      unresponsive = false;
+      cancelTask();
+    }
+
+    synchronized void cancel() {
+      suspend();
+    }
+
+    synchronized boolean isUnresponsive() {
+      return unresponsive;
+    }
+
+    private void expire(long expectedGeneration) {
+      synchronized (this) {
+        if (generation != expectedGeneration || unresponsive) {
+          return;
+        }
+        unresponsive = true;
+        timeoutTask = null;
+      }
+      timeoutAction.run();
+    }
+
+    private void cancelTask() {
+      ScheduledFuture<?> task = timeoutTask;
+      timeoutTask = null;
+      if (task != null) {
+        task.cancel(false);
+      }
+    }
+  }
+
   static String decodePayload(Object payload) {
     if (payload == null) {
       return "";
@@ -630,10 +727,18 @@ public class ZhiziGtpTransport implements EngineTransport {
     private String lastAnalysisCommand = "";
     private boolean lastQueuedFlushHadAnalysis;
     private volatile CommandEmitter emitter;
+    private final java.util.function.Consumer<String> commandStateListener;
     private volatile boolean closed;
 
     SocketCommandOutputStream(CommandEmitter emitter) {
+      this(emitter, command -> {});
+    }
+
+    SocketCommandOutputStream(
+        CommandEmitter emitter, java.util.function.Consumer<String> commandStateListener) {
       this.emitter = emitter == null ? new SocketCommandEmitter(null) : emitter;
+      this.commandStateListener =
+          commandStateListener == null ? command -> {} : commandStateListener;
     }
 
     void bind(CommandEmitter emitter) {
@@ -654,6 +759,7 @@ public class ZhiziGtpTransport implements EngineTransport {
           lastQueuedFlushHadAnalysis = true;
         }
         current.emit(command);
+        commandStateListener.accept(command);
         flushed++;
       }
       if (queuedCommands.isEmpty()) {
@@ -671,6 +777,7 @@ public class ZhiziGtpTransport implements EngineTransport {
         return false;
       }
       current.emit(lastAnalysisCommand);
+      commandStateListener.accept(lastAnalysisCommand);
       return true;
     }
 
@@ -707,6 +814,7 @@ public class ZhiziGtpTransport implements EngineTransport {
       String command = buffer.toString(StandardCharsets.UTF_8);
       buffer.reset();
       rememberCommand(command);
+      commandStateListener.accept(command);
       CommandEmitter current = emitter;
       if (current != null && current.isConnected()) {
         current.emit(command);
@@ -738,15 +846,20 @@ public class ZhiziGtpTransport implements EngineTransport {
 
     private static boolean isAnalysisCommand(String command) {
       String normalized = firstCommandLine(command).trim();
+      return isContinuousAnalysisCommand(command)
+          || normalized.equals("kata-raw-nn")
+          || normalized.startsWith("kata-raw-nn ");
+    }
+
+    static boolean isContinuousAnalysisCommand(String command) {
+      String normalized = firstCommandLine(command).trim();
       return normalized.startsWith("kata-analyze ")
           || normalized.startsWith("kata-analyze_interval ")
-          || normalized.equals("kata-raw-nn")
-          || normalized.startsWith("kata-raw-nn ")
           || normalized.startsWith("lz-analyze ")
           || normalized.startsWith("analyze ");
     }
 
-    private static boolean isStopCommand(String command) {
+    static boolean isStopCommand(String command) {
       String normalized = firstCommandLine(command).trim();
       return normalized.equals("stop")
           || normalized.equals("stop-ponder")

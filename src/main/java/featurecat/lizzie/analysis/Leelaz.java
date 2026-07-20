@@ -543,6 +543,7 @@ public class Leelaz {
       this.isSSH = false;
       try {
         this.remoteTransport = RemoteComputeConfig.createTransportForCommand(this.engineCommand);
+        this.remoteTransport.setUnresponsiveListener(this::recoverUnresponsiveRemoteAnalysis);
         this.remoteTransport.start();
         initializeStreams(
             this.remoteTransport.stdout(),
@@ -1726,6 +1727,9 @@ public class Leelaz {
                   + isPondering);
         }
         if ((upToDate)) {
+          if (useRemoteCompute && remoteTransport != null) {
+            remoteTransport.markAnalysisResponseAccepted();
+          }
           if (EngineManager.isEngineGame) {
             // Lizzie.frame.subBoardRenderer.reverseBestmoves = false;
             // Lizzie.frame.boardRenderer.reverseBestmoves = false;
@@ -8101,6 +8105,17 @@ public class Leelaz {
       return remoteTransport == null || !remoteTransport.isOpen();
     }
     return process != null && !process.isAlive();
+  }
+
+  private void recoverUnresponsiveRemoteAnalysis() {
+    if (!useRemoteCompute
+        || isNormalEnd
+        || !started
+        || !isPondering
+        || Lizzie.engineManager == null) {
+      return;
+    }
+    Lizzie.engineManager.restartUnresponsiveRemoteEngine(this, currentEngineN);
   }
 
   public void maybeAjustPDA(BoardHistoryNode node) {

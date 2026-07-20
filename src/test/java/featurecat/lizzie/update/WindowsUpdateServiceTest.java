@@ -20,6 +20,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.util.HexFormat;
+import java.util.Optional;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -94,6 +95,30 @@ class WindowsUpdateServiceTest {
     assertFalse(error.getMessage().contains("Invalid update manifest"));
     assertTrue(error.getMessage().contains(NetworkProxy.KEY_PROXY_HOST));
     assertTrue(error.getMessage().contains("Settings"));
+  }
+
+  @Test
+  void manualUpdateCheckNeverOffersPrereleaseManifest() throws Exception {
+    JSONObject prerelease = UpdateManifestTest.validManifest().put("prerelease", true);
+    try (OneShotHttp server = new OneShotHttp(prerelease.toString())) {
+      String previousVersion = Lizzie.nextVersion;
+      try {
+        Lizzie.nextVersion = "next-2026-06-01.1";
+        Lizzie.config = ConfigTestHelper.createForTests(tempDir.resolve("prerelease-config"));
+        Lizzie.config.uiConfig = new JSONObject();
+        configureUpdatePaths();
+        System.setProperty(
+            WindowsUpdateService.MANIFEST_URL_PROPERTY,
+            "http://127.0.0.1:" + server.port() + "/update.json");
+
+        Optional<WindowsUpdatePlan> plan = new WindowsUpdateService().checkForUpdate();
+
+        assertTrue(plan.isEmpty());
+        assertEquals(1, server.requests.get());
+      } finally {
+        Lizzie.nextVersion = previousVersion;
+      }
+    }
   }
 
   private void useManualProxy(int port) {

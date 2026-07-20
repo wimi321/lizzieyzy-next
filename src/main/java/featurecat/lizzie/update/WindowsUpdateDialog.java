@@ -26,15 +26,12 @@ import javax.swing.SwingUtilities;
 public final class WindowsUpdateDialog extends JDialog {
   private final WindowsUpdateService service;
   private final WindowsUpdatePlan plan;
-  private final String ignoreVersionKey;
   private final JProgressBar progressBar = new JProgressBar();
   private final JLabel statusLabel = new JLabel(" ");
   private final JFontButton updateButton =
       new JFontButton(tr("WindowsUpdate.btnUpdate", "立即更新", "Update now"));
   private final JFontButton laterButton =
-      new JFontButton(tr("WindowsUpdate.btnLater", "稍后提醒", "Remind me later"));
-  private final JFontButton ignoreButton =
-      new JFontButton(tr("WindowsUpdate.btnIgnore", "忽略此版本", "Skip this version"));
+      new JFontButton(tr("WindowsUpdate.btnLater", "关闭", "Close"));
   private final JFontButton releaseButton =
       new JFontButton(tr("WindowsUpdate.btnRelease", "查看 Release", "View release"));
 
@@ -53,17 +50,13 @@ public final class WindowsUpdateDialog extends JDialog {
   }
 
   public WindowsUpdateDialog(
-      Component parent,
-      WindowsUpdateService service,
-      WindowsUpdatePlan plan,
-      String ignoreVersionKey) {
+      Component parent, WindowsUpdateService service, WindowsUpdatePlan plan) {
     super(
         parent == null ? null : SwingUtilities.getWindowAncestor(parent),
         tr("WindowsUpdate.title", "发现新版本", "New version available"),
         ModalityType.MODELESS);
     this.service = service;
     this.plan = plan;
-    this.ignoreVersionKey = ignoreVersionKey;
     buildUi(parent);
   }
 
@@ -109,7 +102,6 @@ public final class WindowsUpdateDialog extends JDialog {
     JPanel buttons = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
     buttons.setOpaque(false);
     buttons.add(releaseButton);
-    buttons.add(ignoreButton);
     buttons.add(laterButton);
     buttons.add(updateButton);
     footer.add(buttons, BorderLayout.SOUTH);
@@ -117,7 +109,6 @@ public final class WindowsUpdateDialog extends JDialog {
 
     releaseButton.addActionListener(e -> openRelease());
     laterButton.addActionListener(e -> dispose());
-    ignoreButton.addActionListener(e -> ignoreVersion());
     updateButton.addActionListener(e -> startUpdate());
     pack();
     setLocationRelativeTo(parent == null ? Lizzie.frame : parent);
@@ -272,20 +263,9 @@ public final class WindowsUpdateDialog extends JDialog {
     }
   }
 
-  private void ignoreVersion() {
-    Lizzie.config.uiConfig.put(ignoreVersionKey, plan.manifest.releaseTag);
-    try {
-      Lizzie.config.save();
-    } catch (IOException e) {
-      e.printStackTrace();
-    }
-    dispose();
-  }
-
   private void setButtonsEnabled(boolean enabled) {
     updateButton.setEnabled(enabled);
     laterButton.setEnabled(enabled);
-    ignoreButton.setEnabled(enabled);
     releaseButton.setEnabled(enabled);
   }
 

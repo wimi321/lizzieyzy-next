@@ -40,6 +40,9 @@ public final class WindowsUpdateService {
     }
     WindowsUpdatePaths paths = WindowsUpdatePaths.detect();
     UpdateManifest manifest = fetchLatestManifest();
+    if (manifest.prerelease) {
+      return Optional.empty();
+    }
     InstalledUpdateState installed =
         InstalledUpdateState.read(paths.appDir, Lizzie.nextVersion, paths.flavor);
     WindowsUpdatePlan plan =

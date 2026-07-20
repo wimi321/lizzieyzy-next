@@ -71,12 +71,13 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
+          release_prerelease="$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${{ inputs.release_tag }}" --jq '.prerelease')"
           serial="${{ inputs.release_tag }}"
           serial="${serial##*.}"
           if [[ ! "$serial" =~ ^[0-9]+$ ]]; then
             serial="${GITHUB_RUN_ATTEMPT:-0}"
           fi
-          WINDOWS_BUILD_SERIAL="$serial" \
+          WINDOWS_BUILD_SERIAL="$serial" LIZZIE_RELEASE_PRERELEASE="$release_prerelease" \
             ./scripts/package_windows_exe.sh "${{ inputs.date_tag }}" 1.0.0 target/lizzie-yzy2.5.3-shaded.jar "${{ inputs.release_tag }}"
 
       - name: Validate public Windows assets

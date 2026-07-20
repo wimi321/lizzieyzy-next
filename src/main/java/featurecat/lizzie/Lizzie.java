@@ -15,7 +15,6 @@ import featurecat.lizzie.gui.LoadEngine;
 import featurecat.lizzie.gui.web.WebBoardManager;
 import featurecat.lizzie.rules.Board;
 import featurecat.lizzie.rules.BoardHistoryNode;
-import featurecat.lizzie.update.WindowsUpdateController;
 import featurecat.lizzie.util.KataGoAutoSetupHelper;
 import featurecat.lizzie.util.KataGoAutoSetupHelper.SetupSnapshot;
 import featurecat.lizzie.util.KataGoRuntimeHelper;
@@ -255,7 +254,6 @@ public class Lizzie {
     scheduleBoardSyncSmokeProbe();
     scheduleAutoSetupSmokeProbe();
     scheduleYikeWebSmokeProbe();
-    WindowsUpdateController.scheduleAutomaticCheck();
   }
 
   /**
