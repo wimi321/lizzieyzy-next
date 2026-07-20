@@ -40,7 +40,7 @@ public final class WindowsUpdateService {
     }
     WindowsUpdatePaths paths = WindowsUpdatePaths.detect();
     UpdateManifest manifest = fetchLatestManifest();
-    if (manifest.prerelease) {
+    if (!isStableRelease(manifest)) {
       return Optional.empty();
     }
     InstalledUpdateState installed =
@@ -48,6 +48,10 @@ public final class WindowsUpdateService {
     WindowsUpdatePlan plan =
         WindowsUpdatePlan.create(manifest, installed, Lizzie.nextVersion, paths.flavor);
     return plan.hasUpdate() ? Optional.of(plan) : Optional.empty();
+  }
+
+  static boolean isStableRelease(UpdateManifest manifest) {
+    return manifest != null && !manifest.prerelease;
   }
 
   public UpdateManifest fetchLatestManifest() throws IOException {
