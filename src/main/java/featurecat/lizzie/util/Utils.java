@@ -840,7 +840,13 @@ public class Utils {
 
   public static void saveEngineSettings(ArrayList<EngineData> engineData) {
     JSONArray engineDate = new JSONArray();
-    int defaultEngineIndex = normalizeDefaultEngineFlags(engineData);
+    int configuredDefaultEngine = -1;
+    if (Lizzie.config.uiConfig != null
+        && Lizzie.config.uiConfig.optBoolean("autoload-default", false)) {
+      configuredDefaultEngine = Lizzie.config.uiConfig.optInt("default-engine", -1);
+    }
+    int defaultEngineIndex =
+        normalizeDefaultEngineFlags(engineData, configuredDefaultEngine);
     for (int i = 0; i < engineData.size(); i++) {
       engineDate.put(engineDataToJson(engineData.get(i)));
     }
@@ -856,6 +862,11 @@ public class Utils {
   }
 
   static int normalizeDefaultEngineFlags(ArrayList<EngineData> engineData) {
+    return normalizeDefaultEngineFlags(engineData, -1);
+  }
+
+  static int normalizeDefaultEngineFlags(
+      ArrayList<EngineData> engineData, int configuredDefaultEngine) {
     int defaultEngineIndex = -1;
     if (engineData == null) {
       return defaultEngineIndex;
@@ -866,6 +877,15 @@ public class Utils {
         defaultEngineIndex = i;
         break;
       }
+    }
+    // Older profiles can have a valid default-engine index while every per-engine isDefault flag
+    // is false. When those profiles still explicitly request default-engine autoload, preserve the
+    // indexed choice the first time the engine list is rewritten by a newer client.
+    if (defaultEngineIndex < 0
+        && configuredDefaultEngine >= 0
+        && configuredDefaultEngine < engineData.size()
+        && engineData.get(configuredDefaultEngine) != null) {
+      defaultEngineIndex = configuredDefaultEngine;
     }
     for (int i = 0; i < engineData.size(); i++) {
       EngineData engineDt = engineData.get(i);

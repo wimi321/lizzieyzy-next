@@ -35,6 +35,7 @@ import javax.swing.SwingConstants;
 import javax.swing.SwingUtilities;
 import javax.swing.WindowConstants;
 import javax.swing.border.AbstractBorder;
+import javax.swing.plaf.basic.BasicButtonUI;
 
 /** Modeless progress surface for whole-game analysis; the board remains fully interactive. */
 public final class WholeGameAnalysisDialog extends JDialog
@@ -240,6 +241,7 @@ public final class WholeGameAnalysisDialog extends JDialog
   }
 
   private void styleButton(JButton button, boolean primary) {
+    installPortableButtonFill(button);
     button.setFocusPainted(false);
     button.setOpaque(true);
     button.setBorder(new RoundedBorder(primary ? ACCENT : BORDER, 12));
@@ -247,6 +249,13 @@ public final class WholeGameAnalysisDialog extends JDialog
     button.setForeground(primary ? Color.WHITE : TEXT);
     updateButtonSize(button);
     button.getAccessibleContext().setAccessibleName(button.getText());
+  }
+
+  static void installPortableButtonFill(JButton button) {
+    // Windows native LAF can ignore JButton background colors. The completion button uses white
+    // text on an accent fill, so install a cross-platform UI that actually paints that fill.
+    button.setUI(new BasicButtonUI());
+    button.setContentAreaFilled(true);
   }
 
   private static void updateButtonSize(JButton button) {
