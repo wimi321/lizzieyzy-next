@@ -722,7 +722,9 @@ public class Leelaz {
       Thread thread = new Thread(runnable);
       thread.start();
     }
-    if (this == Lizzie.leelaz) Lizzie.board.getHistory().getGameInfo().setKomi(komi);
+    if (this == Lizzie.leelaz && shouldApplyInitialEngineKomiToCurrentGame()) {
+      Lizzie.board.getHistory().getGameInfo().setKomi(komi);
+    }
     if (isSSH) {
       Runnable runnable =
           new Runnable() {
@@ -2648,11 +2650,38 @@ public class Leelaz {
     this.height = height;
     if (reopenMainBoard) Lizzie.board.reopen(width, height);
     if (firstLoad) {
-      Lizzie.board.getHistory().getGameInfo().setKomi(komi);
-      Lizzie.board.getHistory().getGameInfo();
+      if (shouldApplyInitialEngineKomiToCurrentGame()) {
+        Lizzie.board.getHistory().getGameInfo().setKomi(komi);
+      }
       GameInfo.DEFAULT_KOMI = (double) komi;
       firstLoad = false;
     }
+  }
+
+  private boolean shouldApplyInitialEngineKomiToCurrentGame() {
+    if (Lizzie.board == null || Lizzie.board.getHistory() == null) {
+      return false;
+    }
+    BoardHistoryList history = Lizzie.board.getHistory();
+    BoardHistoryNode start = history.getStart();
+    if (start == null || start.getData() == null) {
+      return false;
+    }
+    if (start.next(true).isPresent()) {
+      return false;
+    }
+    BoardData data = start.getData();
+    if (!data.getProperties().isEmpty()) {
+      return false;
+    }
+    if (data.stones != null) {
+      for (Stone stone : data.stones) {
+        if (stone != null && (stone.isBlack() || stone.isWhite())) {
+          return false;
+        }
+      }
+    }
+    return true;
   }
 
   public void komi(double komi) {
@@ -3773,8 +3802,11 @@ public class Leelaz {
             oriEnginename,
             EngineManager.engineGameInfo.isBlackEngine(currentEngineN()));
 
-      } else if (Lizzie.config.alwaysGtp || Lizzie.gtpConsole.isVisible())
+      } else if (Lizzie.gtpConsole != null
+          && ((Lizzie.config != null && Lizzie.config.alwaysGtp)
+              || Lizzie.gtpConsole.isVisible())) {
         Lizzie.gtpConsole.addCommand(command, cmdNumber, oriEnginename);
+      }
     } else {
       String detail = "outputStream unavailable";
       rememberRecentLine(

@@ -9,6 +9,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import featurecat.lizzie.Config;
 import featurecat.lizzie.Lizzie;
+import featurecat.lizzie.analysis.GameInfo;
 import featurecat.lizzie.analysis.Leelaz;
 import featurecat.lizzie.gui.LizzieFrame;
 import featurecat.lizzie.gui.Menu;
@@ -713,33 +714,38 @@ class BoardMovelistExportTest {
   }
 
   @Test
-  void resendMoveToEngineSnapshotRestoreUsesCurrentEngineKomiNotLoadedGameInfoKomi()
-      throws Exception {
+  void resendMoveToEngineSnapshotRestoreSyncsLoadedGameKomiBeforeLoadsgf() throws Exception {
     TestEnvironment env = TestEnvironment.open();
     Board previousBoard = Lizzie.board;
+    double previousDefaultKomi = GameInfo.DEFAULT_KOMI;
     try {
+      GameInfo.DEFAULT_KOMI = 7.5;
       Board board = allocate(Board.class);
       board.startStonelist = new ArrayList<>();
       board.hasStartStone = false;
       BoardData snapshot = capturedCenterSnapshotAnchor();
-      snapshot.komi = 7.5;
+      snapshot.komi = 0.0;
       BoardHistoryList history = new BoardHistoryList(snapshot);
-      history.getGameInfo().setKomiNoMenu(7.5);
+      history.getGameInfo().setKomiNoMenu(0.0);
       board.setHistory(history);
       Lizzie.board = board;
 
       SnapshotSgfAwareFakeLeelaz engine = allocate(SnapshotSgfAwareFakeLeelaz.class);
-      engine.komi = 6.5f;
-      engine.orikomi = 6.5f;
+      engine.komi = 7.5f;
+      engine.orikomi = 7.5f;
       board.resendMoveToEngine(engine, false);
 
       assertTrue(
-          engine.loadedSgf().contains("KM[6.5]"),
-          "snapshot restore should keep the current engine komi in KataGo loadsgf.");
+          engine.recordedCommands().contains("komi 0"),
+          "engine replay should sync to the loaded game's komi before clear/loadsgf.");
       assertFalse(
           engine.loadedSgf().contains("KM[7.5]"),
-          "loaded SGF/game-info komi must not overwrite the current engine komi.");
+          "stale engine komi must not leak into KataGo loadsgf.");
+      assertTrue(
+          engine.loadedSgf().contains("KM[0.0]"),
+          "snapshot restore should load the displayed game's komi.");
     } finally {
+      GameInfo.DEFAULT_KOMI = previousDefaultKomi;
       Lizzie.board = previousBoard;
       env.close();
     }
