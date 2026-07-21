@@ -13,6 +13,7 @@ import java.awt.Font;
 import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
 import java.awt.Insets;
+import java.awt.Rectangle;
 import java.awt.Window;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -32,6 +33,7 @@ import javax.swing.JPanel;
 import javax.swing.JScrollPane;
 import javax.swing.JSpinner;
 import javax.swing.JTextField;
+import javax.swing.Scrollable;
 import javax.swing.SpinnerNumberModel;
 import javax.swing.SwingConstants;
 import javax.swing.SwingUtilities;
@@ -125,7 +127,7 @@ public final class GtpEngineConfigDialog {
     return header;
   }
 
-  static final class EditorPanel extends JPanel {
+  static final class EditorPanel extends JPanel implements Scrollable {
     private final GtpConfigurationSchema schema;
     private final ResourceBundle bundle;
     private final Map<String, ValueEditor> editors = new LinkedHashMap<String, ValueEditor>();
@@ -211,6 +213,43 @@ public final class GtpEngineConfigDialog {
         }
       }
       return true;
+    }
+
+    boolean hasReadableNumericEditors() {
+      for (ValueEditor editor : editors.values()) {
+        if (editor instanceof SpinnerEditor
+            && !((SpinnerEditor) editor).hasReadableText()) {
+          return false;
+        }
+      }
+      return true;
+    }
+
+    @Override
+    public Dimension getPreferredScrollableViewportSize() {
+      return getPreferredSize();
+    }
+
+    @Override
+    public int getScrollableUnitIncrement(
+        Rectangle visibleRect, int orientation, int direction) {
+      return 16;
+    }
+
+    @Override
+    public int getScrollableBlockIncrement(
+        Rectangle visibleRect, int orientation, int direction) {
+      return 64;
+    }
+
+    @Override
+    public boolean getScrollableTracksViewportWidth() {
+      return true;
+    }
+
+    @Override
+    public boolean getScrollableTracksViewportHeight() {
+      return false;
     }
 
     void restoreDefaults() {
@@ -455,6 +494,32 @@ public final class GtpEngineConfigDialog {
     private SpinnerEditor(JSpinner component, boolean integer) {
       this.component = component;
       this.integer = integer;
+      if (component.getEditor() instanceof JSpinner.DefaultEditor) {
+        javax.swing.JFormattedTextField textField =
+            ((JSpinner.DefaultEditor) component.getEditor()).getTextField();
+        Color foreground = UIManager.getColor("TextField.foreground");
+        Color background = UIManager.getColor("TextField.background");
+        Color caret = UIManager.getColor("TextField.caretForeground");
+        if (foreground != null) {
+          textField.setForeground(foreground);
+        }
+        if (background != null) {
+          textField.setBackground(background);
+        }
+        if (caret != null) {
+          textField.setCaretColor(caret);
+        }
+        textField.setHorizontalAlignment(JTextField.LEADING);
+      }
+    }
+
+    private boolean hasReadableText() {
+      if (!(component.getEditor() instanceof JSpinner.DefaultEditor)) {
+        return true;
+      }
+      javax.swing.JFormattedTextField textField =
+          ((JSpinner.DefaultEditor) component.getEditor()).getTextField();
+      return !textField.getForeground().equals(textField.getBackground());
     }
 
     @Override

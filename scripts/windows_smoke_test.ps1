@@ -181,8 +181,30 @@ function Invoke-BundledKataGoBenchmarkProbe {
         $env:PATH = "$($assets.EngineDir);$originalPath"
         Push-Location $assets.EngineDir
         Write-Host "Running bundled KataGo benchmark probe: $($assets.EnginePath)"
-        $output = & $assets.EnginePath @arguments 2>&1
-        $exitCode = $LASTEXITCODE
+        $originalErrorActionPreference = $ErrorActionPreference
+        $nativePreference = Get-Variable -Name PSNativeCommandUseErrorActionPreference -ErrorAction SilentlyContinue
+        $originalNativeErrorPreference = if ($nativePreference) {
+            $nativePreference.Value
+        }
+        else {
+            $null
+        }
+        try {
+            # KataGo writes normal benchmark progress to stderr. Capture it and
+            # judge the native process by its exit code and known fatal markers.
+            $ErrorActionPreference = "Continue"
+            if ($nativePreference) {
+                $PSNativeCommandUseErrorActionPreference = $false
+            }
+            $output = & $assets.EnginePath @arguments 2>&1
+            $exitCode = $LASTEXITCODE
+        }
+        finally {
+            $ErrorActionPreference = $originalErrorActionPreference
+            if ($nativePreference) {
+                $PSNativeCommandUseErrorActionPreference = $originalNativeErrorPreference
+            }
+        }
         $joined = (($output | ForEach-Object { $_.ToString() }) -join [Environment]::NewLine)
         if ($joined) {
             Write-Host $joined
@@ -237,20 +259,49 @@ function Get-NativeReadBoardAssets {
     }
 }
 
+function Get-NativeReadBoardProcessIds {
+    param(
+        [string]$ReadBoardExePath = ""
+    )
+
+    $processIds = New-Object 'System.Collections.Generic.HashSet[int]'
+    try {
+        Get-CimInstance Win32_Process -Filter "Name = 'readboard.exe'" -ErrorAction Stop |
+            Where-Object {
+                (-not $ReadBoardExePath) -or
+                ($_.ExecutablePath -and ($_.ExecutablePath -ieq $ReadBoardExePath)) -or
+                ($_.CommandLine -and ($_.CommandLine -like "*$ReadBoardExePath*"))
+            } |
+            ForEach-Object { [void]$processIds.Add([int]$_.ProcessId) }
+    }
+    catch {
+        Write-Verbose "Win32_Process inspection is unavailable; using the readboard executable path."
+    }
+
+    Get-Process -Name readboard -ErrorAction SilentlyContinue |
+        Where-Object {
+            if (-not $ReadBoardExePath) {
+                return $true
+            }
+            try {
+                $_.Path -and ($_.Path -ieq $ReadBoardExePath)
+            }
+            catch {
+                $false
+            }
+        } |
+        ForEach-Object { [void]$processIds.Add([int]$_.Id) }
+
+    return @($processIds | ForEach-Object { $_ })
+}
+
 function Stop-NativeReadBoardProcesses {
     param(
         [string]$ReadBoardExePath = ""
     )
 
-    Get-CimInstance Win32_Process -Filter "Name = 'readboard.exe'" -ErrorAction SilentlyContinue |
-        Where-Object {
-            (-not $ReadBoardExePath) -or
-            ($_.ExecutablePath -and ($_.ExecutablePath -ieq $ReadBoardExePath)) -or
-            ($_.CommandLine -and ($_.CommandLine -like "*$ReadBoardExePath*"))
-        } |
-        ForEach-Object {
-            Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue
-        }
+    Get-NativeReadBoardProcessIds -ReadBoardExePath $ReadBoardExePath |
+        ForEach-Object { Stop-Process -Id $_ -Force -ErrorAction SilentlyContinue }
 }
 
 function Invoke-NativeReadBoardPipeProbe {
@@ -337,6 +388,20 @@ function Assert-NoForcedJavaUiScale {
     }
 }
 
+function Get-AppCfgPath {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$AppExe
+    )
+
+    $appDir = Split-Path -Parent $AppExe
+    $cfgPath = Join-Path (Join-Path $appDir "app") ("{0}.cfg" -f [System.IO.Path]::GetFileNameWithoutExtension($AppExe))
+    if (-not (Test-Path -LiteralPath $cfgPath)) {
+        throw "Packaged app cfg file was not found: $cfgPath"
+    }
+    return $cfgPath
+}
+
 function Add-AppJavaOption {
     param(
         [Parameter(Mandatory = $true)]
@@ -346,11 +411,7 @@ function Add-AppJavaOption {
         [string]$JavaOption
     )
 
-    $appDir = Split-Path -Parent $AppExe
-    $cfgPath = Join-Path (Join-Path $appDir "app") ("{0}.cfg" -f [System.IO.Path]::GetFileNameWithoutExtension($AppExe))
-    if (-not (Test-Path -LiteralPath $cfgPath)) {
-        throw "Packaged app cfg file was not found: $cfgPath"
-    }
+    $cfgPath = Get-AppCfgPath -AppExe $AppExe
 
     $line = "java-options=$JavaOption"
     $content = Get-Content -LiteralPath $cfgPath -Raw
@@ -380,15 +441,10 @@ function Assert-BoardSyncProcessAppears {
         if ($AppProcess.HasExited) {
             throw "Application exited before board sync process appeared."
         }
-        $match = Get-CimInstance Win32_Process -Filter "Name = 'readboard.exe'" -ErrorAction SilentlyContinue |
-            Where-Object {
-                ($_.ExecutablePath -and ($_.ExecutablePath -ieq $assets.ExePath)) -or
-                ($_.CommandLine -and ($_.CommandLine -like "*$($assets.ExePath)*")) -or
-                ($_.ExecutablePath -and ($_.ExecutablePath -like "*\app\readboard\readboard.exe"))
-            } |
+        $matchId = Get-NativeReadBoardProcessIds -ReadBoardExePath $assets.ExePath |
             Select-Object -First 1
-        if ($match) {
-            Write-Host "Board sync app-entry probe passed. readboard.exe process id: $($match.ProcessId)"
+        if ($null -ne $matchId) {
+            Write-Host "Board sync app-entry probe passed. readboard.exe process id: $matchId"
             Stop-NativeReadBoardProcesses -ReadBoardExePath $assets.ExePath
             return
         }
@@ -427,26 +483,77 @@ if ($ProbeBoardSync -or $LauncherOnly) {
     Assert-PackagedJavaRuntimeLauncher -AppExe $AppExe
 }
 
-if ($ProbeBoardSync) {
-    Add-AppJavaOption -AppExe $AppExe -JavaOption "-Dlizzie.smoke.openBoardSync=true"
-    Add-AppJavaOption -AppExe $AppExe -JavaOption "-Dlizzie.smoke.openBoardSyncDelayMs=5000"
-    Invoke-NativeReadBoardPipeProbe -AppExe $AppExe
+function Stop-AppClockHelperProcesses {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$AppExe
+    )
+
+    $appDir = Split-Path -Parent $AppExe
+    $runtimeJava = Join-Path $appDir "runtime\bin\java.exe"
+    $processIds = New-Object 'System.Collections.Generic.HashSet[int]'
+
+    try {
+        Get-CimInstance Win32_Process -Filter "Name = 'java.exe'" -ErrorAction Stop |
+            Where-Object {
+                $_.ExecutablePath -and
+                ($_.ExecutablePath -ieq $runtimeJava) -and
+                $_.CommandLine -and
+                ($_.CommandLine -like "*clockHelper\invisibleFrame.jar*")
+            } |
+            ForEach-Object { [void]$processIds.Add([int]$_.ProcessId) }
+    }
+    catch {
+        Write-Verbose "Win32_Process inspection is unavailable; using the packaged runtime path."
+    }
+
+    # After the native launcher is stopped, any java/javaw process from this exact
+    # packaged runtime is an orphaned helper. This also works in restricted CI shells
+    # where Win32_Process command-line inspection is denied.
+    Get-Process -Name java, javaw -ErrorAction SilentlyContinue |
+        Where-Object {
+            try {
+                $_.Path -and ($_.Path -ieq $runtimeJava)
+            }
+            catch {
+                $false
+            }
+        } |
+        ForEach-Object { [void]$processIds.Add([int]$_.Id) }
+
+    foreach ($processId in $processIds) {
+        Stop-Process -Id $processId -Force -ErrorAction SilentlyContinue
+    }
 }
 
-if ($OpenAutoSetup) {
-    Add-AppJavaOption -AppExe $AppExe -JavaOption "-Dlizzie.smoke.openAutoSetup=true"
-    Add-AppJavaOption -AppExe $AppExe -JavaOption "-Dlizzie.smoke.openAutoSetupDelayMs=2500"
+$appCfgPath = $null
+$appCfgBytes = $null
+$process = $null
+if ($ProbeBoardSync -or $OpenAutoSetup) {
+    $appCfgPath = Get-AppCfgPath -AppExe $AppExe
+    $appCfgBytes = [System.IO.File]::ReadAllBytes($appCfgPath)
 }
-
-Write-Host "Launching $AppExe"
-$process = Start-Process -FilePath $AppExe -WorkingDirectory $appDir -PassThru
-
-$deadline = (Get-Date).AddSeconds($WaitSeconds)
-$passed = $false
-$healthyDeadline = (Get-Date).AddSeconds($HealthyProcessSeconds)
-$activeConfigDir = Resolve-ExistingSmokeConfigDir -Candidates $configDirCandidates
 
 try {
+    if ($ProbeBoardSync) {
+        Add-AppJavaOption -AppExe $AppExe -JavaOption "-Dlizzie.smoke.openBoardSync=true"
+        Add-AppJavaOption -AppExe $AppExe -JavaOption "-Dlizzie.smoke.openBoardSyncDelayMs=5000"
+        Invoke-NativeReadBoardPipeProbe -AppExe $AppExe
+    }
+
+    if ($OpenAutoSetup) {
+        Add-AppJavaOption -AppExe $AppExe -JavaOption "-Dlizzie.smoke.openAutoSetup=true"
+        Add-AppJavaOption -AppExe $AppExe -JavaOption "-Dlizzie.smoke.openAutoSetupDelayMs=2500"
+    }
+
+    Write-Host "Launching $AppExe"
+    $process = Start-Process -FilePath $AppExe -WorkingDirectory $appDir -PassThru
+
+    $deadline = (Get-Date).AddSeconds($WaitSeconds)
+    $passed = $false
+    $healthyDeadline = (Get-Date).AddSeconds($HealthyProcessSeconds)
+    $activeConfigDir = Resolve-ExistingSmokeConfigDir -Candidates $configDirCandidates
+
     while ((Get-Date) -lt $deadline) {
         Start-Sleep -Seconds 2
 
@@ -482,7 +589,9 @@ try {
             if ($ProbeBoardSync) {
                 Assert-BoardSyncProcessAppears -AppProcess $process -AppExe $AppExe
             }
-            Invoke-BundledKataGoBenchmarkProbe -AppExe $AppExe -ConfigDir $activeConfigDir
+            if (-not $hasRuntimeLogs) {
+                Invoke-BundledKataGoBenchmarkProbe -AppExe $AppExe -ConfigDir $activeConfigDir
+            }
             if ($hasRuntimeLogs) {
                 Write-Host "Smoke test passed. Config files and bundled KataGo runtime logs were created."
             }
@@ -511,6 +620,12 @@ finally {
     if ($process -and -not $process.HasExited) {
         Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
         Start-Sleep -Seconds 2
+    }
+    Stop-AppClockHelperProcesses -AppExe $AppExe
+
+    if ($appCfgPath -and $null -ne $appCfgBytes) {
+        [System.IO.File]::WriteAllBytes($appCfgPath, $appCfgBytes)
+        Write-Host "Restored packaged app cfg after smoke JVM option injection."
     }
 
     $activeConfigDir = Resolve-ExistingSmokeConfigDir -Candidates $configDirCandidates

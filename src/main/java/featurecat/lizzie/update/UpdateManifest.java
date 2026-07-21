@@ -18,6 +18,7 @@ public final class UpdateManifest {
   public final String publishedAt;
   public final String notesUrl;
   public final String minUpdaterVersion;
+  public final boolean prerelease;
   public final List<Component> components;
 
   private UpdateManifest(
@@ -26,12 +27,14 @@ public final class UpdateManifest {
       String publishedAt,
       String notesUrl,
       String minUpdaterVersion,
+      boolean prerelease,
       List<Component> components) {
     this.schemaVersion = schemaVersion;
     this.releaseTag = releaseTag;
     this.publishedAt = publishedAt;
     this.notesUrl = notesUrl;
     this.minUpdaterVersion = minUpdaterVersion;
+    this.prerelease = prerelease;
     this.components = Collections.unmodifiableList(new ArrayList<>(components));
   }
 
@@ -54,6 +57,7 @@ public final class UpdateManifest {
     String publishedAt = requiredString(json, "publishedAt");
     String notesUrl = requiredString(json, "notesUrl");
     String minUpdaterVersion = requiredString(json, "minUpdaterVersion");
+    boolean prerelease = json.optBoolean("prerelease", false);
     JSONArray rawComponents = json.optJSONArray("components");
     if (rawComponents == null || rawComponents.isEmpty()) {
       throw new IllegalArgumentException("Update manifest must include at least one component.");
@@ -68,7 +72,13 @@ public final class UpdateManifest {
       components.add(Component.parse(rawComponent));
     }
     return new UpdateManifest(
-        schemaVersion, releaseTag, publishedAt, notesUrl, minUpdaterVersion, components);
+        schemaVersion,
+        releaseTag,
+        publishedAt,
+        notesUrl,
+        minUpdaterVersion,
+        prerelease,
+        components);
   }
 
   public JSONObject toJson() {
@@ -78,6 +88,7 @@ public final class UpdateManifest {
     json.put("publishedAt", publishedAt);
     json.put("notesUrl", notesUrl);
     json.put("minUpdaterVersion", minUpdaterVersion);
+    json.put("prerelease", prerelease);
     JSONArray array = new JSONArray();
     for (Component component : components) {
       array.put(component.toJson());

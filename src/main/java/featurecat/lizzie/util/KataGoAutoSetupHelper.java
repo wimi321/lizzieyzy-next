@@ -6,11 +6,13 @@ import featurecat.lizzie.analysis.EngineManager;
 import featurecat.lizzie.gui.EngineData;
 import java.io.BufferedInputStream;
 import java.io.BufferedReader;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.InterruptedIOException;
 import java.io.OutputStream;
+import java.io.UncheckedIOException;
 import java.net.HttpURLConnection;
 import java.net.URI;
 import java.net.URISyntaxException;
@@ -31,10 +33,12 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
+import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
 import org.jdesktop.swingx.util.OS;
+import org.json.JSONObject;
 
 public final class KataGoAutoSetupHelper {
   private static final String AUTO_SETUP_ENGINE_NAME = "KataGo Auto Setup";
@@ -139,6 +143,137 @@ public final class KataGoAutoSetupHelper {
     }
   }
 
+  public enum DiscoverySource {
+    CURRENT_ENGINE,
+    STARTUP_ENGINE,
+    DEFAULT_ENGINE,
+    REMEMBERED_SETUP,
+    ANALYSIS_COMMAND,
+    BUNDLED_PACKAGE,
+    MANUAL_SELECTION,
+    NONE
+  }
+
+  public enum PackageFlavor {
+    OPENCL,
+    NVIDIA,
+    NVIDIA50_CUDA,
+    TENSORRT,
+    CPU,
+    WITH_KATAGO,
+    WITHOUT_ENGINE,
+    CORE_UPDATE_ONLY,
+    INCOMPLETE_BUNDLE,
+    EXTERNAL,
+    UNKNOWN
+  }
+
+  public enum MissingComponent {
+    ENGINE,
+    GTP_CONFIG,
+    ANALYSIS_CONFIG,
+    WEIGHT
+  }
+
+  public enum EngineValidationStatus {
+    NOT_RUN,
+    VALID,
+    MISSING_DEPENDENCY,
+    WRONG_ARCHITECTURE,
+    START_FAILED,
+    TIMED_OUT
+  }
+
+  public static final class EngineValidationResult {
+    public final EngineValidationStatus status;
+    public final String detail;
+
+    private EngineValidationResult(EngineValidationStatus status, String detail) {
+      this.status = status == null ? EngineValidationStatus.NOT_RUN : status;
+      this.detail = detail == null ? "" : detail.trim();
+    }
+
+    public boolean isValid() {
+      return status == EngineValidationStatus.VALID;
+    }
+  }
+
+  public static final class LocalKataGoDiscoveryResult {
+    public final Path workingDir;
+    public final Path appRoot;
+    public final Path enginePath;
+    public final Path gtpConfigPath;
+    public final Path analysisConfigPath;
+    public final Path estimateConfigPath;
+    public final Path activeWeightPath;
+    public final List<Path> weightCandidates;
+    public final DiscoverySource source;
+    public final String sourceName;
+    public final PackageFlavor packageFlavor;
+    public final List<MissingComponent> missingComponents;
+    public final List<String> diagnostics;
+
+    private LocalKataGoDiscoveryResult(
+        Path workingDir,
+        Path appRoot,
+        Path enginePath,
+        Path gtpConfigPath,
+        Path analysisConfigPath,
+        Path estimateConfigPath,
+        Path activeWeightPath,
+        List<Path> weightCandidates,
+        DiscoverySource source,
+        String sourceName,
+        PackageFlavor packageFlavor,
+        List<String> diagnostics) {
+      this.workingDir = normalize(workingDir);
+      this.appRoot = normalize(appRoot);
+      this.enginePath = normalize(enginePath);
+      this.gtpConfigPath = normalize(gtpConfigPath);
+      this.analysisConfigPath = normalize(analysisConfigPath);
+      this.estimateConfigPath = normalize(estimateConfigPath);
+      this.activeWeightPath = normalize(activeWeightPath);
+      this.weightCandidates = immutableNormalizedPaths(weightCandidates);
+      this.source = source == null ? DiscoverySource.NONE : source;
+      this.sourceName = sourceName == null ? "" : sourceName.trim();
+      this.packageFlavor = packageFlavor == null ? PackageFlavor.UNKNOWN : packageFlavor;
+      this.diagnostics =
+          Collections.unmodifiableList(
+              diagnostics == null ? new ArrayList<String>() : new ArrayList<>(diagnostics));
+      List<MissingComponent> missing = new ArrayList<>();
+      if (!isRegularFile(this.enginePath)) {
+        missing.add(MissingComponent.ENGINE);
+      }
+      if (!isRegularFile(this.gtpConfigPath)) {
+        missing.add(MissingComponent.GTP_CONFIG);
+      }
+      if (!isRegularFile(this.analysisConfigPath)) {
+        missing.add(MissingComponent.ANALYSIS_CONFIG);
+      }
+      if (!isUsableWeight(this.activeWeightPath)) {
+        missing.add(MissingComponent.WEIGHT);
+      }
+      this.missingComponents = Collections.unmodifiableList(missing);
+    }
+
+    public boolean isComplete() {
+      return missingComponents.isEmpty();
+    }
+
+    public SetupSnapshot toSnapshot() {
+      return new SetupSnapshot(
+          workingDir,
+          appRoot,
+          enginePath,
+          gtpConfigPath,
+          analysisConfigPath,
+          estimateConfigPath,
+          activeWeightPath,
+          weightCandidates,
+          this);
+    }
+  }
+
   public static final class SetupSnapshot {
     public final Path workingDir;
     public final Path appRoot;
@@ -148,6 +283,7 @@ public final class KataGoAutoSetupHelper {
     public final Path estimateConfigPath;
     public final Path activeWeightPath;
     public final List<Path> weightCandidates;
+    public final LocalKataGoDiscoveryResult discovery;
 
     private SetupSnapshot(
         Path workingDir,
@@ -158,6 +294,28 @@ public final class KataGoAutoSetupHelper {
         Path estimateConfigPath,
         Path activeWeightPath,
         List<Path> weightCandidates) {
+      this(
+          workingDir,
+          appRoot,
+          enginePath,
+          gtpConfigPath,
+          analysisConfigPath,
+          estimateConfigPath,
+          activeWeightPath,
+          weightCandidates,
+          null);
+    }
+
+    private SetupSnapshot(
+        Path workingDir,
+        Path appRoot,
+        Path enginePath,
+        Path gtpConfigPath,
+        Path analysisConfigPath,
+        Path estimateConfigPath,
+        Path activeWeightPath,
+        List<Path> weightCandidates,
+        LocalKataGoDiscoveryResult discovery) {
       this.workingDir = workingDir;
       this.appRoot = appRoot;
       this.enginePath = enginePath;
@@ -166,6 +324,7 @@ public final class KataGoAutoSetupHelper {
       this.estimateConfigPath = estimateConfigPath;
       this.activeWeightPath = activeWeightPath;
       this.weightCandidates = Collections.unmodifiableList(new ArrayList<>(weightCandidates));
+      this.discovery = discovery;
     }
 
     public boolean hasEngine() {
@@ -203,7 +362,8 @@ public final class KataGoAutoSetupHelper {
           analysisConfigPath,
           estimateConfigPath,
           weightPath == null ? activeWeightPath : weightPath.toAbsolutePath().normalize(),
-          new ArrayList<>(dedup));
+          new ArrayList<>(dedup),
+          discovery);
     }
 
     public SetupSnapshot withEnginePath(Path enginePath) {
@@ -215,7 +375,8 @@ public final class KataGoAutoSetupHelper {
           analysisConfigPath,
           estimateConfigPath,
           activeWeightPath,
-          weightCandidates);
+          weightCandidates,
+          discovery);
     }
   }
 
@@ -284,26 +445,223 @@ public final class KataGoAutoSetupHelper {
   }
 
   public static SetupSnapshot inspectLocalSetup() {
+    return inspectLocalKataGo().toSnapshot();
+  }
+
+  public static LocalKataGoDiscoveryResult inspectLocalKataGo() {
     Path workingDir = currentWorkingDir();
     Path appRoot = findAppRoot().orElse(workingDir);
-    Path enginePath = detectEngineBinary(workingDir, appRoot);
-    Path gtpConfigPath = detectConfig(workingDir, appRoot, "gtp.cfg");
-    Path analysisConfigPath = detectConfig(workingDir, appRoot, "analysis.cfg");
-    Path estimateConfigPath = detectConfig(workingDir, appRoot, "estimate.cfg");
-    if (estimateConfigPath == null) {
+    PackageFlavor packageFlavor = detectPackageFlavor(appRoot);
+    List<Path> bundledWeights = collectWeightCandidates(workingDir, appRoot);
+    List<String> diagnostics = new ArrayList<>();
+    LocalKataGoDiscoveryResult bestPartial = null;
+
+    for (SavedEngineCandidate candidate : savedEngineCandidates()) {
+      LocalKataGoDiscoveryResult result =
+          discoverFromCommand(
+              candidate.command,
+              candidate.source,
+              candidate.name,
+              candidate.useJavaSsh,
+              workingDir,
+              appRoot,
+              bundledWeights,
+              packageFlavor,
+              diagnostics);
+      if (result == null) {
+        continue;
+      }
+      if (result.isComplete()) {
+        return result;
+      }
+      if (bestPartial == null && result.enginePath != null) {
+        bestPartial = result;
+      }
+    }
+
+    LocalKataGoDiscoveryResult remembered =
+        discoverRememberedSetup(workingDir, appRoot, bundledWeights, packageFlavor, diagnostics);
+    if (remembered != null) {
+      if (remembered.isComplete()) {
+        return remembered;
+      }
+      if (bestPartial == null && remembered.enginePath != null) {
+        bestPartial = remembered;
+      }
+    }
+
+    if (Lizzie.config != null && Lizzie.config.uiConfig != null) {
+      LocalKataGoDiscoveryResult analysis =
+          discoverFromCommand(
+              Lizzie.config.uiConfig.optString("analysis-engine-command", ""),
+              DiscoverySource.ANALYSIS_COMMAND,
+              "",
+              false,
+              workingDir,
+              appRoot,
+              bundledWeights,
+              packageFlavor,
+              diagnostics);
+      if (analysis != null) {
+        if (analysis.isComplete()) {
+          return analysis;
+        }
+        if (bestPartial == null && analysis.enginePath != null) {
+          bestPartial = analysis;
+        }
+      }
+    }
+
+    LocalKataGoDiscoveryResult bundled =
+        discoverBundledSetup(workingDir, appRoot, bundledWeights, packageFlavor, diagnostics);
+    if (bundled.isComplete()) {
+      return bundled;
+    }
+    if (bestPartial != null) {
+      List<String> mergedDiagnostics = new ArrayList<>(diagnostics);
+      mergedDiagnostics.addAll(bestPartial.diagnostics);
+      return copyDiscovery(bestPartial, mergedDiagnostics);
+    }
+    return bundled;
+  }
+
+  public static LocalKataGoDiscoveryResult inspectSelectedLocalKataGo(
+      Path selectedEngine, Path selectedGtpConfig, Path selectedWeight) {
+    Path workingDir = currentWorkingDir();
+    Path appRoot = findAppRoot().orElse(workingDir);
+    List<Path> weights = collectWeightCandidates(workingDir, appRoot);
+    Path enginePath = normalize(selectedEngine);
+    Path gtpConfigPath = normalize(selectedGtpConfig);
+    if (!isRegularFile(gtpConfigPath)) {
+      gtpConfigPath = findRelatedFile(enginePath, appRoot, "gtp.cfg", false);
+    }
+    Path analysisConfigPath =
+        isRegularFile(gtpConfigPath)
+            ? siblingFile(gtpConfigPath, "analysis.cfg")
+            : findRelatedFile(enginePath, appRoot, "analysis.cfg", false);
+    Path estimateConfigPath =
+        isRegularFile(gtpConfigPath)
+            ? siblingFile(gtpConfigPath, "estimate.cfg")
+            : findRelatedFile(enginePath, appRoot, "estimate.cfg", false);
+    if (!isRegularFile(estimateConfigPath)) {
       estimateConfigPath = gtpConfigPath;
     }
-    List<Path> weightCandidates = collectWeightCandidates(workingDir, appRoot);
-    Path activeWeightPath = chooseActiveWeight(workingDir, appRoot, weightCandidates);
-    return new SetupSnapshot(
+    Path weightPath = normalize(selectedWeight);
+    if (!isUsableWeight(weightPath)) {
+      weightPath = findRelatedWeight(enginePath, appRoot);
+    }
+    List<Path> allWeights = prependUnique(weightPath, weights);
+    return new LocalKataGoDiscoveryResult(
         workingDir,
         appRoot,
         enginePath,
         gtpConfigPath,
         analysisConfigPath,
         estimateConfigPath,
-        activeWeightPath,
-        weightCandidates);
+        weightPath,
+        allWeights,
+        DiscoverySource.MANUAL_SELECTION,
+        enginePath == null ? "" : enginePath.getFileName().toString(),
+        PackageFlavor.EXTERNAL,
+        new ArrayList<String>());
+  }
+
+  public static void rememberSelectedLocalKataGo(LocalKataGoDiscoveryResult result)
+      throws IOException {
+    if (result == null || Lizzie.config == null || Lizzie.config.uiConfig == null) {
+      return;
+    }
+    putRememberedPath("katago-auto-setup-engine-path", result.enginePath);
+    putRememberedPath("katago-auto-setup-gtp-config-path", result.gtpConfigPath);
+    putRememberedPath("katago-auto-setup-analysis-config-path", result.analysisConfigPath);
+    putRememberedPath("katago-auto-setup-weight-path", result.activeWeightPath);
+    Lizzie.config.save();
+  }
+
+  public static Path repairAnalysisConfig(SetupSnapshot snapshot) throws IOException {
+    if (snapshot == null || !isRegularFile(snapshot.gtpConfigPath)) {
+      throw new IOException(resource("AutoSetup.missingGtpConfig", "GTP config is missing."));
+    }
+    return AnalysisEngineCommandHelper.ensureAnalysisConfig(snapshot.gtpConfigPath);
+  }
+
+  public static EngineValidationResult validateLocalEngine(Path enginePath, long timeoutSeconds) {
+    if (!isRegularFile(enginePath)) {
+      return new EngineValidationResult(
+          EngineValidationStatus.START_FAILED, "KataGo executable was not found.");
+    }
+    Process process = null;
+    ByteArrayOutputStream output = new ByteArrayOutputStream();
+    Thread outputPump = null;
+    try {
+      ProcessBuilder builder = new ProcessBuilder(enginePath.toString(), "version");
+      Path parent = enginePath.toAbsolutePath().normalize().getParent();
+      if (parent != null && Files.isDirectory(parent)) {
+        builder.directory(parent.toFile());
+      }
+      KataGoRuntimeHelper.configureBundledProcessBuilder(builder, enginePath);
+      builder.redirectErrorStream(true);
+      process = builder.start();
+      final Process runningProcess = process;
+      outputPump =
+          new Thread(
+              () -> {
+                try (InputStream input = runningProcess.getInputStream()) {
+                  byte[] buffer = new byte[4096];
+                  int read;
+                  while ((read = input.read(buffer)) >= 0 && output.size() < 64 * 1024) {
+                    output.write(buffer, 0, Math.min(read, 64 * 1024 - output.size()));
+                  }
+                } catch (IOException ignored) {
+                }
+              },
+              "katago-version-output");
+      outputPump.setDaemon(true);
+      outputPump.start();
+      long effectiveTimeout = Math.max(2L, timeoutSeconds);
+      if (!process.waitFor(effectiveTimeout, TimeUnit.SECONDS)) {
+        process.destroyForcibly();
+        return new EngineValidationResult(
+            EngineValidationStatus.TIMED_OUT, "KataGo version check timed out.");
+      }
+      outputPump.join(1000L);
+      String detail = output.toString(StandardCharsets.UTF_8.name()).trim();
+      if (process.exitValue() == 0) {
+        return new EngineValidationResult(EngineValidationStatus.VALID, detail);
+      }
+      return classifyValidationFailure(detail, null);
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      return new EngineValidationResult(
+          EngineValidationStatus.TIMED_OUT, "KataGo version check was interrupted.");
+    } catch (IOException e) {
+      return classifyValidationFailure("", e);
+    } finally {
+      if (process != null && process.isAlive()) {
+        process.destroyForcibly();
+      }
+    }
+  }
+
+  private static EngineValidationResult classifyValidationFailure(String output, Exception error) {
+    String detail =
+        !Utils.isBlank(output)
+            ? output.trim()
+            : error == null || error.getMessage() == null ? "" : error.getMessage().trim();
+    String normalized = detail.toLowerCase(Locale.ROOT);
+    if (normalized.contains("error=193")
+        || normalized.contains("bad cpu type")
+        || normalized.contains("exec format")
+        || normalized.contains("not a valid win32")) {
+      return new EngineValidationResult(EngineValidationStatus.WRONG_ARCHITECTURE, detail);
+    }
+    if (normalized.contains("error=126")
+        || normalized.contains("dll")
+        || normalized.contains("shared librar")
+        || normalized.contains("library not loaded")) {
+      return new EngineValidationResult(EngineValidationStatus.MISSING_DEPENDENCY, detail);
+    }
+    return new EngineValidationResult(EngineValidationStatus.START_FAILED, detail);
   }
 
   public static boolean migrateAutoSetupCommandsIfNeeded() {
@@ -967,6 +1325,12 @@ public final class KataGoAutoSetupHelper {
     Lizzie.config.uiConfig.put(
         "katago-auto-setup-engine-path",
         snapshot.enginePath.toAbsolutePath().normalize().toString());
+    Lizzie.config.uiConfig.put(
+        "katago-auto-setup-gtp-config-path",
+        snapshot.gtpConfigPath.toAbsolutePath().normalize().toString());
+    Lizzie.config.uiConfig.put(
+        "katago-auto-setup-analysis-config-path",
+        snapshot.analysisConfigPath.toAbsolutePath().normalize().toString());
     Lizzie.config.uiConfig.put("katago-auto-setup-updated-at", System.currentTimeMillis());
     Lizzie.config.save();
     return new SetupResult(snapshot, engineIndex, resolvedEngineName, createdEngine);
@@ -1490,6 +1854,8 @@ public final class KataGoAutoSetupHelper {
     }
     if (appRoot != null && !appRoot.equals(workingDir)) {
       candidates.add(appRoot.resolve("engines").resolve("katago").resolve("VERSION.txt"));
+      candidates.add(
+          appRoot.resolve("app").resolve("engines").resolve("katago").resolve("VERSION.txt"));
     }
     if (weightPath != null) {
       Path current = weightPath.toAbsolutePath().normalize().getParent();
@@ -1520,6 +1886,560 @@ public final class KataGoAutoSetupHelper {
     return "";
   }
 
+  private static List<SavedEngineCandidate> savedEngineCandidates() {
+    List<SavedEngineCandidate> candidates = new ArrayList<>();
+    if (Lizzie.config == null
+        || Lizzie.config.uiConfig == null
+        || Lizzie.config.leelazConfig == null) {
+      return candidates;
+    }
+    ArrayList<EngineData> engines;
+    try {
+      engines = Utils.getEngineData();
+    } catch (RuntimeException e) {
+      return candidates;
+    }
+    LinkedHashMap<Integer, DiscoverySource> orderedIndexes = new LinkedHashMap<>();
+    if (Lizzie.engineManager != null && !EngineManager.isEmpty) {
+      addCandidateIndex(
+          orderedIndexes, EngineManager.currentEngineNo, DiscoverySource.CURRENT_ENGINE);
+    }
+    int startupIndex = configuredStartupEngineIndex(engines);
+    addCandidateIndex(orderedIndexes, startupIndex, DiscoverySource.STARTUP_ENGINE);
+    int configuredDefault = Lizzie.config.uiConfig.optInt("default-engine", -1);
+    addCandidateIndex(orderedIndexes, configuredDefault, DiscoverySource.DEFAULT_ENGINE);
+    for (int i = 0; i < engines.size(); i++) {
+      EngineData engine = engines.get(i);
+      if (engine != null && engine.isDefault) {
+        addCandidateIndex(orderedIndexes, i, DiscoverySource.DEFAULT_ENGINE);
+      }
+    }
+    for (java.util.Map.Entry<Integer, DiscoverySource> entry : orderedIndexes.entrySet()) {
+      int index = entry.getKey();
+      if (index < 0 || index >= engines.size()) {
+        continue;
+      }
+      EngineData engine = engines.get(index);
+      if (engine == null) {
+        continue;
+      }
+      candidates.add(
+          new SavedEngineCandidate(
+              engine.commands, engine.name, engine.useJavaSSH, entry.getValue()));
+    }
+    return candidates;
+  }
+
+  private static int configuredStartupEngineIndex(List<EngineData> engines) {
+    if (Lizzie.config == null || Lizzie.config.uiConfig == null || engines == null) {
+      return -1;
+    }
+    if (Lizzie.config.uiConfig.optBoolean("autoload-last", false)) {
+      return Lizzie.config.uiConfig.optInt("last-engine", -1);
+    }
+    if (Lizzie.config.uiConfig.optBoolean("autoload-default", false)) {
+      return Lizzie.config.uiConfig.optInt("default-engine", -1);
+    }
+    return -1;
+  }
+
+  private static void addCandidateIndex(
+      LinkedHashMap<Integer, DiscoverySource> indexes, int index, DiscoverySource source) {
+    if (index >= 0 && !indexes.containsKey(index)) {
+      indexes.put(index, source);
+    }
+  }
+
+  private static LocalKataGoDiscoveryResult discoverFromCommand(
+      String command,
+      DiscoverySource source,
+      String sourceName,
+      boolean useJavaSsh,
+      Path workingDir,
+      Path appRoot,
+      List<Path> bundledWeights,
+      PackageFlavor packageFlavor,
+      List<String> diagnostics) {
+    if (isExcludedEngineCommand(command, useJavaSsh)) {
+      return null;
+    }
+    List<String> parts = Utils.splitCommand(command);
+    if (parts == null || parts.isEmpty()) {
+      return null;
+    }
+    int modeIndex = findCommandModeIndex(parts);
+    if (modeIndex < 0) {
+      return null;
+    }
+    String executableToken = parts.get(0);
+    if (!looksLikeKataGoExecutable(executableToken)) {
+      return null;
+    }
+    Path enginePath = resolveExecutablePath(executableToken, workingDir, appRoot);
+    Path executableDir = enginePath == null ? null : enginePath.getParent();
+    Path modelPath =
+        resolveCommandOption(parts, "-model", "--model", workingDir, appRoot, executableDir);
+    Path commandConfig =
+        resolveCommandOption(parts, "-config", "--config", workingDir, appRoot, executableDir);
+    boolean analysisMode = "analysis".equalsIgnoreCase(parts.get(modeIndex));
+    Path gtpConfigPath = analysisMode ? siblingFile(commandConfig, "gtp.cfg") : commandConfig;
+    Path analysisConfigPath =
+        analysisMode ? commandConfig : siblingFile(commandConfig, "analysis.cfg");
+    Path matchingAnalysisConfig =
+        matchingAnalysisConfig(enginePath, modelPath, workingDir, appRoot);
+    if (!isRegularFile(analysisConfigPath) && isRegularFile(matchingAnalysisConfig)) {
+      analysisConfigPath = matchingAnalysisConfig;
+    }
+    Path estimateConfigPath = siblingFile(gtpConfigPath, "estimate.cfg");
+    if (!isRegularFile(estimateConfigPath)) {
+      estimateConfigPath = gtpConfigPath;
+    }
+    List<Path> weights = prependUnique(modelPath, bundledWeights);
+    PackageFlavor effectiveFlavor =
+        isBundledKataGoPath(enginePath, workingDir, appRoot)
+            ? packageFlavor
+            : PackageFlavor.EXTERNAL;
+    LocalKataGoDiscoveryResult result =
+        new LocalKataGoDiscoveryResult(
+            workingDir,
+            appRoot,
+            enginePath,
+            gtpConfigPath,
+            analysisConfigPath,
+            estimateConfigPath,
+            modelPath,
+            weights,
+            source,
+            sourceName,
+            effectiveFlavor,
+            new ArrayList<String>());
+    if (!result.isComplete()) {
+      diagnostics.add(discoveryFailureSummary(source, sourceName, result.missingComponents));
+    }
+    return result;
+  }
+
+  private static LocalKataGoDiscoveryResult discoverRememberedSetup(
+      Path workingDir,
+      Path appRoot,
+      List<Path> bundledWeights,
+      PackageFlavor packageFlavor,
+      List<String> diagnostics) {
+    if (Lizzie.config == null || Lizzie.config.uiConfig == null) {
+      return null;
+    }
+    Path enginePath = configuredWeightPath("katago-auto-setup-engine-path", workingDir, appRoot);
+    if (enginePath == null) {
+      return null;
+    }
+    Path gtpConfigPath =
+        configuredWeightPath("katago-auto-setup-gtp-config-path", workingDir, appRoot);
+    if (!isRegularFile(gtpConfigPath)) {
+      gtpConfigPath = findRelatedFile(enginePath, appRoot, "gtp.cfg", false);
+    }
+    Path analysisConfigPath =
+        configuredWeightPath("katago-auto-setup-analysis-config-path", workingDir, appRoot);
+    if (!isRegularFile(analysisConfigPath) && isRegularFile(gtpConfigPath)) {
+      analysisConfigPath = siblingFile(gtpConfigPath, "analysis.cfg");
+    }
+    Path estimateConfigPath = siblingFile(gtpConfigPath, "estimate.cfg");
+    if (!isRegularFile(estimateConfigPath)) {
+      estimateConfigPath = gtpConfigPath;
+    }
+    Path weightPath = configuredWeightPath("katago-auto-setup-weight-path", workingDir, appRoot);
+    LocalKataGoDiscoveryResult result =
+        new LocalKataGoDiscoveryResult(
+            workingDir,
+            appRoot,
+            enginePath,
+            gtpConfigPath,
+            analysisConfigPath,
+            estimateConfigPath,
+            weightPath,
+            prependUnique(weightPath, bundledWeights),
+            DiscoverySource.REMEMBERED_SETUP,
+            "",
+            isBundledKataGoPath(enginePath, workingDir, appRoot)
+                ? packageFlavor
+                : PackageFlavor.EXTERNAL,
+            new ArrayList<String>());
+    if (!result.isComplete()) {
+      diagnostics.add(
+          discoveryFailureSummary(DiscoverySource.REMEMBERED_SETUP, "", result.missingComponents));
+    }
+    return result;
+  }
+
+  private static LocalKataGoDiscoveryResult discoverBundledSetup(
+      Path workingDir,
+      Path appRoot,
+      List<Path> bundledWeights,
+      PackageFlavor packageFlavor,
+      List<String> diagnostics) {
+    Path enginePath = detectEngineBinary(workingDir, appRoot);
+    Path gtpConfigPath = detectConfig(workingDir, appRoot, "gtp.cfg");
+    Path analysisConfigPath = detectConfig(workingDir, appRoot, "analysis.cfg");
+    Path estimateConfigPath = detectConfig(workingDir, appRoot, "estimate.cfg");
+    if (!isRegularFile(estimateConfigPath)) {
+      estimateConfigPath = gtpConfigPath;
+    }
+    Path weightPath = chooseBundledWeight(workingDir, appRoot, bundledWeights);
+    LocalKataGoDiscoveryResult result =
+        new LocalKataGoDiscoveryResult(
+            workingDir,
+            appRoot,
+            enginePath,
+            gtpConfigPath,
+            analysisConfigPath,
+            estimateConfigPath,
+            weightPath,
+            bundledWeights,
+            enginePath == null ? DiscoverySource.NONE : DiscoverySource.BUNDLED_PACKAGE,
+            "",
+            packageFlavor,
+            diagnostics);
+    if (!result.isComplete() && expectsBundledEngine(packageFlavor)) {
+      result =
+          new LocalKataGoDiscoveryResult(
+              workingDir,
+              appRoot,
+              enginePath,
+              gtpConfigPath,
+              analysisConfigPath,
+              estimateConfigPath,
+              weightPath,
+              bundledWeights,
+              enginePath == null ? DiscoverySource.NONE : DiscoverySource.BUNDLED_PACKAGE,
+              "",
+              PackageFlavor.INCOMPLETE_BUNDLE,
+              diagnostics);
+    }
+    return result;
+  }
+
+  private static boolean expectsBundledEngine(PackageFlavor flavor) {
+    return flavor == PackageFlavor.OPENCL
+        || flavor == PackageFlavor.NVIDIA
+        || flavor == PackageFlavor.NVIDIA50_CUDA
+        || flavor == PackageFlavor.TENSORRT
+        || flavor == PackageFlavor.CPU
+        || flavor == PackageFlavor.WITH_KATAGO;
+  }
+
+  private static Path chooseBundledWeight(
+      Path workingDir, Path appRoot, List<Path> weightCandidates) {
+    Path preferred = preferredWeightFromConfig(workingDir);
+    if (isUsableWeight(preferred) && isWithinEither(preferred, workingDir, appRoot)) {
+      return preferred;
+    }
+    Path workingDefault =
+        normalize(workingDir.resolve("weights").resolve(DEFAULT_WEIGHT_FILE_NAME));
+    if (isUsableWeight(workingDefault)) {
+      return workingDefault;
+    }
+    Path appDefault = normalize(appRoot.resolve("weights").resolve(DEFAULT_WEIGHT_FILE_NAME));
+    if (isUsableWeight(appDefault)) {
+      return appDefault;
+    }
+    Path packagedAppDefault =
+        normalize(appRoot.resolve("app").resolve("weights").resolve(DEFAULT_WEIGHT_FILE_NAME));
+    if (isUsableWeight(packagedAppDefault)) {
+      return packagedAppDefault;
+    }
+    return weightCandidates == null || weightCandidates.isEmpty() ? null : weightCandidates.get(0);
+  }
+
+  private static LocalKataGoDiscoveryResult copyDiscovery(
+      LocalKataGoDiscoveryResult source, List<String> diagnostics) {
+    return new LocalKataGoDiscoveryResult(
+        source.workingDir,
+        source.appRoot,
+        source.enginePath,
+        source.gtpConfigPath,
+        source.analysisConfigPath,
+        source.estimateConfigPath,
+        source.activeWeightPath,
+        source.weightCandidates,
+        source.source,
+        source.sourceName,
+        source.packageFlavor,
+        diagnostics);
+  }
+
+  private static boolean isExcludedEngineCommand(String command, boolean useJavaSsh) {
+    if (useJavaSsh || Utils.isBlank(command)) {
+      return true;
+    }
+    String normalized = command.trim().toLowerCase(Locale.ROOT);
+    if (normalized.startsWith("remote-compute://")
+        || normalized.startsWith("ws://")
+        || normalized.startsWith("wss://")
+        || normalized.startsWith("http://")
+        || normalized.startsWith("https://")
+        || normalized.startsWith("ssh ")) {
+      return true;
+    }
+    List<String> parts = Utils.splitCommand(command);
+    return parts == null || parts.isEmpty() || Utils.isJavaCommand(parts.get(0));
+  }
+
+  private static int findCommandModeIndex(List<String> parts) {
+    for (int i = 1; i < parts.size(); i++) {
+      String value = parts.get(i);
+      if ("gtp".equalsIgnoreCase(value) || "analysis".equalsIgnoreCase(value)) {
+        return i;
+      }
+    }
+    return -1;
+  }
+
+  private static boolean looksLikeKataGoExecutable(String executable) {
+    String fileName = executable == null ? "" : executable.replace('\\', '/');
+    int slash = fileName.lastIndexOf('/');
+    if (slash >= 0) {
+      fileName = fileName.substring(slash + 1);
+    }
+    String normalized = fileName.toLowerCase(Locale.ROOT);
+    return normalized.contains("katago");
+  }
+
+  private static Path resolveExecutablePath(String value, Path workingDir, Path appRoot) {
+    if (Utils.isBlank(value)) {
+      return null;
+    }
+    Path onPath = Utils.resolveExistingExecutable(value);
+    if (isRegularFile(onPath)) {
+      return normalize(onPath);
+    }
+    return resolvePath(value, workingDir, appRoot, null);
+  }
+
+  private static Path resolveCommandOption(
+      List<String> parts,
+      String shortName,
+      String longName,
+      Path workingDir,
+      Path appRoot,
+      Path executableDir) {
+    if (parts == null) {
+      return null;
+    }
+    for (int i = 0; i < parts.size() - 1; i++) {
+      if (shortName.equalsIgnoreCase(parts.get(i)) || longName.equalsIgnoreCase(parts.get(i))) {
+        return resolvePath(parts.get(i + 1), workingDir, appRoot, executableDir);
+      }
+    }
+    return null;
+  }
+
+  private static Path resolvePath(String value, Path workingDir, Path appRoot, Path executableDir) {
+    if (Utils.isBlank(value)) {
+      return null;
+    }
+    try {
+      Path raw = Paths.get(value.trim());
+      if (raw.isAbsolute()) {
+        return normalize(raw);
+      }
+      LinkedHashSet<Path> bases = new LinkedHashSet<>();
+      if (workingDir != null) {
+        bases.add(workingDir);
+      }
+      if (appRoot != null) {
+        bases.add(appRoot);
+        bases.add(appRoot.resolve("app"));
+      }
+      if (executableDir != null) {
+        bases.add(executableDir);
+      }
+      Path fallback = null;
+      for (Path base : bases) {
+        Path candidate = normalize(base.resolve(raw));
+        if (fallback == null) {
+          fallback = candidate;
+        }
+        if (isRegularFile(candidate)) {
+          return candidate;
+        }
+      }
+      return fallback;
+    } catch (RuntimeException e) {
+      return null;
+    }
+  }
+
+  private static Path matchingAnalysisConfig(
+      Path expectedEngine, Path expectedWeight, Path workingDir, Path appRoot) {
+    if (Lizzie.config == null || Lizzie.config.uiConfig == null) {
+      return null;
+    }
+    List<String> parts =
+        Utils.splitCommand(Lizzie.config.uiConfig.optString("analysis-engine-command", ""));
+    if (parts == null || parts.isEmpty() || findCommandModeIndex(parts) < 0) {
+      return null;
+    }
+    Path engine = resolveExecutablePath(parts.get(0), workingDir, appRoot);
+    Path engineDir = engine == null ? null : engine.getParent();
+    Path weight = resolveCommandOption(parts, "-model", "--model", workingDir, appRoot, engineDir);
+    if (!pathsEqual(engine, expectedEngine) || !pathsEqual(weight, expectedWeight)) {
+      return null;
+    }
+    return resolveCommandOption(parts, "-config", "--config", workingDir, appRoot, engineDir);
+  }
+
+  private static Path siblingFile(Path path, String fileName) {
+    if (path == null || path.getParent() == null) {
+      return null;
+    }
+    return normalize(path.getParent().resolve(fileName));
+  }
+
+  private static Path findRelatedFile(
+      Path enginePath, Path appRoot, String fileName, boolean includeRecursiveSearch) {
+    if (enginePath == null) {
+      return null;
+    }
+    LinkedHashSet<Path> candidates = new LinkedHashSet<>();
+    Path engineDir = enginePath.getParent();
+    if (engineDir != null) {
+      candidates.add(engineDir.resolve(fileName));
+      candidates.add(engineDir.resolve("configs").resolve(fileName));
+      if (engineDir.getParent() != null) {
+        candidates.add(engineDir.getParent().resolve("configs").resolve(fileName));
+        if (engineDir.getParent().getParent() != null) {
+          candidates.add(engineDir.getParent().getParent().resolve("configs").resolve(fileName));
+        }
+      }
+    }
+    if (isBundledKataGoPath(enginePath, null, appRoot)) {
+      candidates.add(
+          appRoot.resolve("engines").resolve("katago").resolve("configs").resolve(fileName));
+      candidates.add(
+          appRoot
+              .resolve("app")
+              .resolve("engines")
+              .resolve("katago")
+              .resolve("configs")
+              .resolve(fileName));
+    }
+    for (Path candidate : candidates) {
+      if (Files.isRegularFile(candidate)) {
+        return normalize(candidate);
+      }
+    }
+    if (includeRecursiveSearch && engineDir != null) {
+      return searchFileByName(engineDir, fileName, 3);
+    }
+    return null;
+  }
+
+  private static Path findRelatedWeight(Path enginePath, Path appRoot) {
+    LinkedHashSet<Path> roots = new LinkedHashSet<>();
+    Path engineDir = enginePath == null ? null : enginePath.getParent();
+    Path current = engineDir;
+    for (int depth = 0; current != null && depth < 4; depth++) {
+      roots.add(current.resolve("weights"));
+      if (depth == 0) {
+        roots.add(current);
+      }
+      current = current.getParent();
+    }
+    if (isBundledKataGoPath(enginePath, null, appRoot)) {
+      roots.add(appRoot.resolve("weights"));
+      roots.add(appRoot.resolve("app").resolve("weights"));
+    }
+    for (Path root : roots) {
+      LinkedHashSet<Path> found = new LinkedHashSet<>();
+      collectWeightCandidates(found, root);
+      if (!found.isEmpty()) {
+        return found.iterator().next();
+      }
+    }
+    return null;
+  }
+
+  private static String discoveryFailureSummary(
+      DiscoverySource source, String name, List<MissingComponent> missing) {
+    String label = source == null ? DiscoverySource.NONE.name() : source.name();
+    if (!Utils.isBlank(name)) {
+      label += " (" + name.trim() + ")";
+    }
+    return label + ": " + missing;
+  }
+
+  private static boolean pathsEqual(Path first, Path second) {
+    return first != null && second != null && normalize(first).equals(normalize(second));
+  }
+
+  private static boolean isWithin(Path path, Path root) {
+    return path != null && root != null && normalize(path).startsWith(normalize(root));
+  }
+
+  private static boolean isWithinEither(Path path, Path firstRoot, Path secondRoot) {
+    return isWithin(path, firstRoot) || isWithin(path, secondRoot);
+  }
+
+  private static boolean isBundledKataGoPath(Path path, Path workingDir, Path appRoot) {
+    if (path == null) {
+      return false;
+    }
+    Path normalized = normalize(path);
+    if (workingDir != null
+        && normalized.startsWith(normalize(workingDir.resolve("engines").resolve("katago")))) {
+      return true;
+    }
+    return appRoot != null
+        && (normalized.startsWith(normalize(appRoot.resolve("engines").resolve("katago")))
+            || normalized.startsWith(
+                normalize(appRoot.resolve("app").resolve("engines").resolve("katago"))));
+  }
+
+  private static Path normalize(Path path) {
+    return path == null ? null : path.toAbsolutePath().normalize();
+  }
+
+  private static boolean isRegularFile(Path path) {
+    return path != null && Files.isRegularFile(path);
+  }
+
+  private static List<Path> immutableNormalizedPaths(List<Path> paths) {
+    LinkedHashSet<Path> normalized = new LinkedHashSet<>();
+    if (paths != null) {
+      for (Path path : paths) {
+        if (path != null) {
+          normalized.add(normalize(path));
+        }
+      }
+    }
+    return Collections.unmodifiableList(new ArrayList<>(normalized));
+  }
+
+  private static void putRememberedPath(String key, Path path) {
+    if (Lizzie.config == null || Lizzie.config.uiConfig == null) {
+      return;
+    }
+    if (path == null) {
+      Lizzie.config.uiConfig.remove(key);
+    } else {
+      Lizzie.config.uiConfig.put(key, normalize(path).toString());
+    }
+  }
+
+  private static final class SavedEngineCandidate {
+    private final String command;
+    private final String name;
+    private final boolean useJavaSsh;
+    private final DiscoverySource source;
+
+    private SavedEngineCandidate(
+        String command, String name, boolean useJavaSsh, DiscoverySource source) {
+      this.command = command == null ? "" : command;
+      this.name = name == null ? "" : name;
+      this.useJavaSsh = useJavaSsh;
+      this.source = source;
+    }
+  }
+
   private static Path currentWorkingDir() {
     if (Lizzie.config != null) {
       return Lizzie.config.getWorkDirectory().toPath().toAbsolutePath().normalize();
@@ -1547,8 +2467,7 @@ public final class KataGoAutoSetupHelper {
     for (Path seedPath : seedPaths) {
       Path current = seedPath;
       for (int depth = 0; current != null && depth < 8; depth++) {
-        if (Files.isDirectory(current.resolve("engines"))
-            && Files.isDirectory(current.resolve("weights"))) {
+        if (looksLikeAppRoot(current)) {
           return Optional.of(current.toAbsolutePath().normalize());
         }
         if (humanSlOnlyRoot == null
@@ -1561,6 +2480,96 @@ public final class KataGoAutoSetupHelper {
     return Optional.ofNullable(humanSlOnlyRoot);
   }
 
+  private static boolean looksLikeAppRoot(Path directory) {
+    if (directory == null || !Files.isDirectory(directory)) {
+      return false;
+    }
+    if (Files.isRegularFile(directory.resolve(".lizzie-portable"))
+        || Files.isRegularFile(directory.resolve("PROJECT_INFO.txt"))
+        || Files.isRegularFile(directory.resolve("app").resolve("PROJECT_INFO.txt"))
+        || Files.isRegularFile(directory.resolve("lizzieyzy-next-installed-manifest.json"))
+        || Files.isRegularFile(
+            directory.resolve("app").resolve("lizzieyzy-next-installed-manifest.json"))
+        || Files.isRegularFile(directory.resolve("lizzieyzy-next-core-update-manifest.json"))) {
+      return true;
+    }
+    return Files.isDirectory(directory.resolve("engines"))
+        && Files.isDirectory(directory.resolve("weights"));
+  }
+
+  private static PackageFlavor detectPackageFlavor(Path appRoot) {
+    if (appRoot == null) {
+      return PackageFlavor.UNKNOWN;
+    }
+    String declaredFlavor = readInstalledFlavor(appRoot);
+    if (Files.isRegularFile(appRoot.resolve("lizzieyzy-next-core-update-manifest.json"))
+        && declaredFlavor.isEmpty()) {
+      return PackageFlavor.CORE_UPDATE_ONLY;
+    }
+    PackageFlavor parsed = packageFlavorFromText(declaredFlavor);
+    if (parsed == PackageFlavor.WITHOUT_ENGINE) {
+      return parsed;
+    }
+    Path detectedEngine = detectEngineBinary(appRoot, appRoot);
+    if (detectedEngine != null) {
+      PackageFlavor fromPath = packageFlavorFromText(detectedEngine.toString());
+      return fromPath == PackageFlavor.UNKNOWN
+          ? parsed == PackageFlavor.UNKNOWN ? PackageFlavor.WITH_KATAGO : parsed
+          : fromPath;
+    }
+    if (!declaredFlavor.isEmpty() && parsed != PackageFlavor.UNKNOWN) {
+      return PackageFlavor.INCOMPLETE_BUNDLE;
+    }
+    if (Files.isRegularFile(appRoot.resolve("PROJECT_INFO.txt"))
+        || Files.isRegularFile(appRoot.resolve("app").resolve("PROJECT_INFO.txt"))
+        || Files.isRegularFile(appRoot.resolve(".lizzie-portable"))) {
+      return PackageFlavor.INCOMPLETE_BUNDLE;
+    }
+    return PackageFlavor.UNKNOWN;
+  }
+
+  private static String readInstalledFlavor(Path appRoot) {
+    Path manifest = appRoot.resolve("lizzieyzy-next-installed-manifest.json");
+    if (!Files.isRegularFile(manifest)) {
+      manifest = appRoot.resolve("app").resolve("lizzieyzy-next-installed-manifest.json");
+    }
+    if (!Files.isRegularFile(manifest)) {
+      return "";
+    }
+    try {
+      String text = new String(Files.readAllBytes(manifest), StandardCharsets.UTF_8);
+      return new JSONObject(text).optString("flavor", "").trim();
+    } catch (Exception e) {
+      return "";
+    }
+  }
+
+  private static PackageFlavor packageFlavorFromText(String value) {
+    String normalized = value == null ? "" : value.toLowerCase(Locale.ROOT).replace('\\', '/');
+    if (normalized.contains("without.engine") || normalized.contains("without-engine")) {
+      return PackageFlavor.WITHOUT_ENGINE;
+    }
+    if (normalized.contains("nvidia-tensorrt") || normalized.contains("nvidia50-trt")) {
+      return PackageFlavor.TENSORRT;
+    }
+    if (normalized.contains("nvidia50.cuda") || normalized.contains("nvidia50-cuda")) {
+      return PackageFlavor.NVIDIA50_CUDA;
+    }
+    if (normalized.contains("nvidia")) {
+      return PackageFlavor.NVIDIA;
+    }
+    if (normalized.contains("opencl")) {
+      return PackageFlavor.OPENCL;
+    }
+    if (normalized.contains("cpu")) {
+      return PackageFlavor.CPU;
+    }
+    if (normalized.contains("with-katago") || normalized.contains("with.katago")) {
+      return PackageFlavor.WITH_KATAGO;
+    }
+    return PackageFlavor.UNKNOWN;
+  }
+
   private static Path detectEngineBinary(Path workingDir, Path appRoot) {
     String binaryName = OS.isWindows() ? "katago.exe" : "katago";
     String platformDir = detectPlatformDir();
@@ -1569,8 +2578,17 @@ public final class KataGoAutoSetupHelper {
         workingDir.resolve("engines").resolve("katago").resolve(platformDir).resolve(binaryName));
     directCandidates.add(
         appRoot.resolve("engines").resolve("katago").resolve(platformDir).resolve(binaryName));
+    directCandidates.add(
+        appRoot
+            .resolve("app")
+            .resolve("engines")
+            .resolve("katago")
+            .resolve(platformDir)
+            .resolve(binaryName));
     directCandidates.add(workingDir.resolve("engines").resolve("katago").resolve(binaryName));
     directCandidates.add(appRoot.resolve("engines").resolve("katago").resolve(binaryName));
+    directCandidates.add(
+        appRoot.resolve("app").resolve("engines").resolve("katago").resolve(binaryName));
     for (Path candidate : directCandidates) {
       if (Files.isRegularFile(candidate)) {
         return candidate.toAbsolutePath().normalize();
@@ -1580,7 +2598,11 @@ public final class KataGoAutoSetupHelper {
     if (searched != null) {
       return searched;
     }
-    return searchFileByName(appRoot.resolve("engines"), binaryName, 5);
+    searched = searchFileByName(appRoot.resolve("engines"), binaryName, 5);
+    if (searched != null) {
+      return searched;
+    }
+    return searchFileByName(appRoot.resolve("app").resolve("engines"), binaryName, 5);
   }
 
   private static Path detectConfig(Path workingDir, Path appRoot, String fileName) {
@@ -1589,6 +2611,13 @@ public final class KataGoAutoSetupHelper {
         workingDir.resolve("engines").resolve("katago").resolve("configs").resolve(fileName));
     directCandidates.add(
         appRoot.resolve("engines").resolve("katago").resolve("configs").resolve(fileName));
+    directCandidates.add(
+        appRoot
+            .resolve("app")
+            .resolve("engines")
+            .resolve("katago")
+            .resolve("configs")
+            .resolve(fileName));
     for (Path candidate : directCandidates) {
       if (Files.isRegularFile(candidate)) {
         return candidate.toAbsolutePath().normalize();
@@ -1598,7 +2627,11 @@ public final class KataGoAutoSetupHelper {
     if (searched != null) {
       return searched;
     }
-    return searchFileByName(appRoot.resolve("engines"), fileName, 6);
+    searched = searchFileByName(appRoot.resolve("engines"), fileName, 6);
+    if (searched != null) {
+      return searched;
+    }
+    return searchFileByName(appRoot.resolve("app").resolve("engines"), fileName, 6);
   }
 
   private static List<Path> collectWeightCandidates(Path workingDir, Path appRoot) {
@@ -1607,6 +2640,7 @@ public final class KataGoAutoSetupHelper {
     if (!workingDir.equals(appRoot)) {
       collectWeightCandidates(candidates, appRoot.resolve("weights"));
     }
+    collectWeightCandidates(candidates, appRoot.resolve("app").resolve("weights"));
     return new ArrayList<>(candidates);
   }
 
@@ -1633,7 +2667,7 @@ public final class KataGoAutoSetupHelper {
                       },
                       Comparator.reverseOrder()))
           .forEach(path -> out.add(path.toAbsolutePath().normalize()));
-    } catch (IOException e) {
+    } catch (IOException | UncheckedIOException | SecurityException e) {
     }
   }
 
@@ -1899,7 +2933,11 @@ public final class KataGoAutoSetupHelper {
       if (Files.isRegularFile(workingCandidate)) {
         return workingCandidate;
       }
-      return appRoot.resolve(path).toAbsolutePath().normalize();
+      Path appRootCandidate = appRoot.resolve(path).toAbsolutePath().normalize();
+      if (Files.isRegularFile(appRootCandidate)) {
+        return appRootCandidate;
+      }
+      return appRoot.resolve("app").resolve(path).toAbsolutePath().normalize();
     } catch (Exception e) {
       return null;
     }

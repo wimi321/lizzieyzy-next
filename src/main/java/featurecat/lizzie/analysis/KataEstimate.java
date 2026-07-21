@@ -426,6 +426,11 @@ public class KataEstimate {
   }
 
   private void territory() {
+    if (Lizzie.frame == null
+        || (!Lizzie.frame.isCounting && !Lizzie.frame.isAutocounting)) {
+      numberofcount = 0;
+      return;
+    }
     blackEatCount = Lizzie.board.getData().blackCaptures;
     whiteEatCount = Lizzie.board.getData().whiteCaptures;
     blackPrisonerCount = 0;
@@ -696,5 +701,12 @@ public class KataEstimate {
             true,
             false);
     engineFailedMessage.setVisible(true);
+  }
+
+  public boolean isOperational() {
+    if (outputStream == null || isNormalEnd) return false;
+    if (useRemoteCompute) return remoteTransport != null && remoteTransport.isOpen();
+    if (useJavaSSH) return !javaSSHClosed;
+    return process != null && process.isAlive();
   }
 }

@@ -3324,6 +3324,16 @@ public class Menu extends JMenuBar {
           }
         });
 
+    final JFontMenuItem wholeGameDeepAnalysis =
+        new JFontMenuItem(resourceBundle.getString("Menu.wholeGameDeepAnalysis"));
+    analyzeMenu.add(wholeGameDeepAnalysis);
+    wholeGameDeepAnalysis.addActionListener(
+        new ActionListener() {
+          public void actionPerformed(ActionEvent e) {
+            Lizzie.frame.openWholeGameDeepAnalysis();
+          }
+        });
+
     final JFontMenuItem playerStrengthEstimate =
         new JFontMenuItem(resourceBundle.getString("Menu.playerStrengthEstimate"));
     analyzeMenu.add(playerStrengthEstimate);
@@ -4762,18 +4772,6 @@ public class Menu extends JMenuBar {
           }
         });
 
-    final JFontCheckBoxMenuItem flashAnalyze =
-        new JFontCheckBoxMenuItem(resourceBundle.getString("BottomToolbar.flashAnalyze"));
-    customToolbarItem.add(flashAnalyze);
-    flashAnalyze.addActionListener(
-        new ActionListener() {
-          public void actionPerformed(ActionEvent e) {
-            Lizzie.config.flashAnalyze = !Lizzie.config.flashAnalyze;
-            Lizzie.config.uiConfig.put("flash-analyze", Lizzie.config.flashAnalyze);
-            LizzieFrame.toolbar.reSetButtonLocation();
-          }
-        });
-
     final JFontCheckBoxMenuItem batchOpen =
         new JFontCheckBoxMenuItem(resourceBundle.getString("BottomToolbar.batchOpen")); // "批量分析");
     customToolbarItem.add(batchOpen);
@@ -5035,8 +5033,6 @@ public class Menu extends JMenuBar {
             else setMainButton.setState(false);
             if (Lizzie.config.backMain) backMain.setState(true);
             else backMain.setState(false);
-            if (Lizzie.config.flashAnalyze) flashAnalyze.setState(true);
-            else flashAnalyze.setState(false);
             if (Lizzie.config.clearButton) clearButton.setState(true);
             else clearButton.setState(false);
             if (Lizzie.config.countButton) countButton.setState(true);
@@ -5090,7 +5086,7 @@ public class Menu extends JMenuBar {
 
     final JFontMenuItem checkUpdate = new JFontMenuItem("检查更新");
     helpMenu.add(checkUpdate);
-    checkUpdate.addActionListener(e -> WindowsUpdateController.checkForUpdate(Lizzie.frame, false));
+    checkUpdate.addActionListener(e -> WindowsUpdateController.checkForUpdate(Lizzie.frame));
 
     helpMenu.addSeparator();
     final JFontMenuItem clearUserData = new JFontMenuItem("清除所有个人数据");
@@ -7739,7 +7735,6 @@ public class Menu extends JMenuBar {
       ImageIcon eraser2 = ToolbarIconCache.get("/assets/eraser2.png", iconSize, brightenIcons);
       ImageIcon clear = ToolbarIconCache.get("/assets/clear.png", iconSize, brightenIcons);
       ImageIcon drawPaint = ToolbarIconCache.get("/assets/paint.png", iconSize, brightenIcons);
-      ImageIcon flash = ToolbarIconCache.get("/assets/flash.png", iconSize, brightenIcons);
 
       JFontButton btnNewFile = new JFontButton(iconNewFile);
       btnNewFile.setFocusable(false);
@@ -7844,153 +7839,22 @@ public class Menu extends JMenuBar {
             }
           });
 
-      JPopupMenu flashAnalyzePopup = new JPopupMenu();
-      JFontMenuItem flashAnalyzeAllGame =
-          new JFontMenuItem(resourceBundle.getString("Menu.flashAnalyzeAllGame")); // "闪电分析(全局)");
-      flashAnalyzeAllGame.addActionListener(
-          new ActionListener() {
-            public void actionPerformed(ActionEvent e) {
-              Lizzie.frame.flashAnalyzeGame(true, false);
-            }
-          });
-
-      JFontMenuItem flashAnalyzePartGame =
-          new JFontMenuItem(resourceBundle.getString("Menu.flashAnalyzePartGame")); // "闪电分析(部分)");
-      flashAnalyzePartGame.addActionListener(
-          new ActionListener() {
-            @Override
-            public void actionPerformed(ActionEvent e) {
-              Lizzie.frame.flashAnalyzePart();
-            }
-          });
-
-      final JFontMenuItem flashAnalyzeAllBranches =
-          new JFontMenuItem(resourceBundle.getString("Menu.flashAnalyzeAllBranches"));
-      flashAnalyzeAllBranches.addActionListener(
-          new ActionListener() {
-            public void actionPerformed(ActionEvent e) {
-              Lizzie.frame.flashAnalyzeGame(false, true);
-            }
-          });
-
-      JFontMenuItem flashAnalyzeSettings =
-          new JFontMenuItem(resourceBundle.getString("Menu.flashAnalyzeSettings")); // "闪电分析设置");
-      flashAnalyzeSettings.addActionListener(
-          new ActionListener() {
-            public void actionPerformed(ActionEvent e) {
-              Lizzie.frame.flashAnalyzeSettings();
-            }
-          });
-
-      flashAnalyzePopup.add(flashAnalyzeAllGame);
-      flashAnalyzePopup.add(flashAnalyzePartGame);
-      flashAnalyzePopup.add(flashAnalyzeAllBranches);
-      flashAnalyzePopup.add(flashAnalyzeSettings);
-
-      JFontButton btnFlashAnalyze = new JFontButton(flash);
-      btnFlashAnalyze.setFocusable(false);
-      btnFlashAnalyze.setPreferredSize(new Dimension(Config.menuHeight, Config.menuHeight));
-      btnFlashAnalyze.setToolTipText(resourceBundle.getString("Menu.btnAnalyze.btnFlashAnalyze"));
-      btnFlashAnalyze.addActionListener(
-          new ActionListener() {
-            public void actionPerformed(ActionEvent e) {
-              flashAnalyzePopup.show(
-                  Lizzie.frame.topPanel,
-                  btnFlashAnalyze.getX(),
-                  btnFlashAnalyze.getY() + btnFlashAnalyze.getHeight());
-            }
-          });
-
       JFontButton btnAnalyze = new JFontButton(iconAnalyze);
       btnAnalyze.setFocusable(false);
       AppleStyleSupport.markPrimary(btnAnalyze);
       btnAnalyze.setPreferredSize(new Dimension(Config.menuHeight, Config.menuHeight));
       btnAnalyze.setToolTipText(
           resourceBundle.getString("Menu.btnAnalyze.toolTipText")); // ("自动分析(A)");
-      if (Lizzie.frame.toolbarHeight > 0 && Lizzie.config.batchOpen) {
-        btnAnalyze.addActionListener(
-            new ActionListener() {
-              public void actionPerformed(ActionEvent e) {
-                StartAnaDialog newgame = new StartAnaDialog(false, Lizzie.frame);
-                newgame.setVisible(true);
-                if (newgame.isCancelled()) {
-                  LizzieFrame.toolbar.resetAutoAna();
-                  return;
-                }
-              }
-            });
-      } else {
-        JPopupMenu autoAnalyzePopup = new JPopupMenu();
-        final JFontMenuItem autoAnalyze =
-            new JFontMenuItem(resourceBundle.getString("Menu.autoAnalyze")); // ("自动分析(A)");
-        autoAnalyze.addActionListener(
-            new ActionListener() {
-              @Override
-              public void actionPerformed(ActionEvent e) {
-                StartAnaDialog newgame = new StartAnaDialog(false, Lizzie.frame);
-                newgame.setVisible(true);
-                if (newgame.isCancelled()) {
-                  LizzieFrame.toolbar.resetAutoAna();
-                  return;
-                }
-              }
-            });
-        autoAnalyzePopup.add(autoAnalyze);
-
-        final JFontMenuItem batchAnalyze =
-            new JFontMenuItem(resourceBundle.getString("Menu.batchAnalyze")); // ("批量分析(Ctrl+O)");
-        batchAnalyze.addActionListener(
-            new ActionListener() {
-              @Override
-              public void actionPerformed(ActionEvent e) {
-                Lizzie.frame.openFileWithAna(false);
-              }
-            });
-        autoAnalyzePopup.add(batchAnalyze);
-
-        final JFontMenuItem batchAnalysisMode =
-            new JFontMenuItem(
-                resourceBundle.getString("Menu.batchAnalysisMode")); // ("批量分析(闪电模式)");
-        batchAnalysisMode.addActionListener(
-            new ActionListener() {
-              @Override
-              public void actionPerformed(ActionEvent e) {
-                Lizzie.frame.openFileWithAna(true);
-              }
-            });
-        autoAnalyzePopup.add(batchAnalysisMode);
-
-        final JFontMenuItem stopAutoAnalyze =
-            new JFontMenuItem(resourceBundle.getString("Menu.stopAutoAnalyze")); // ("停止自动(批量)分析");
-        autoAnalyzePopup.addSeparator();
-        autoAnalyzePopup.add(stopAutoAnalyze);
-        stopAutoAnalyze.addActionListener(
-            new ActionListener() {
-              public void actionPerformed(ActionEvent e) {
-                LizzieFrame.toolbar.stopAutoAna(true, true);
-              }
-            });
-
-        final JFontMenuItem batchAnalyzeTable =
-            new JFontMenuItem(resourceBundle.getString("Menu.batchAnalyzeTable")); // ("批量分析进度表");
-        autoAnalyzePopup.add(batchAnalyzeTable);
-        batchAnalyzeTable.addActionListener(
-            new ActionListener() {
-              public void actionPerformed(ActionEvent e) {
-                Lizzie.frame.openAnalysisTable();
-              }
-            });
-
-        btnAnalyze.addActionListener(
-            new ActionListener() {
-              public void actionPerformed(ActionEvent e) {
-                autoAnalyzePopup.show(
-                    Lizzie.frame.topPanel,
-                    btnAnalyze.getX(),
-                    btnAnalyze.getY() + btnAnalyze.getHeight());
-              }
-            });
-      }
+      btnAnalyze
+          .getAccessibleContext()
+          .setAccessibleDescription(resourceBundle.getString("Menu.btnAnalyze.toolTipText"));
+      JPopupMenu autoAnalyzePopup = AutoAnalyzeMenu.create(resourceBundle);
+      btnAnalyze.addActionListener(
+          e ->
+              autoAnalyzePopup.show(
+                  Lizzie.frame.topPanel,
+                  btnAnalyze.getX(),
+                  btnAnalyze.getY() + btnAnalyze.getHeight()));
 
       JFontButton btnHawkeye = new JFontButton(iconHawkeye);
       btnHawkeye.setPreferredSize(new Dimension(Config.menuHeight, Config.menuHeight));
@@ -8223,9 +8087,7 @@ public class Menu extends JMenuBar {
       Lizzie.frame.topPanel.leftArea.add(btnFoxKifu);
       Lizzie.frame.topPanel.leftArea.add(btnTencentKifu);
       Lizzie.frame.topPanel.leftArea.add(btnPlayerStrengthEstimate);
-
       Lizzie.frame.topPanel.centerArea.add(btnAutoSetup);
-      Lizzie.frame.topPanel.centerArea.add(btnFlashAnalyze);
       Lizzie.frame.topPanel.centerArea.add(btnAnalyze);
 
       Lizzie.frame.topPanel.rightArea.add(btnHawkeye);

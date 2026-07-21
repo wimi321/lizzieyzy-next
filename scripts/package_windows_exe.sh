@@ -9,6 +9,7 @@ DATE_TAG="${1:-$(date +%F)}"
 APP_VERSION="${2:-1.0.0}"
 JAR_PATH="${3:-target/lizzie-yzy2.5.3-shaded.jar}"
 APP_DISPLAY_VERSION="${LIZZIE_NEXT_VERSION:-${4:-next-dev}}"
+RELEASE_PRERELEASE="${LIZZIE_RELEASE_PRERELEASE:-false}"
 WINDOWS_UPGRADE_UUID="${WINDOWS_UPGRADE_UUID:-c2ef73ec-f99a-4f3d-b950-f52c0186122a}"
 WINDOWS_JAVA_INITIAL_RAM_PERCENTAGE="${WINDOWS_JAVA_INITIAL_RAM_PERCENTAGE:-1.0}"
 WINDOWS_JAVA_MAX_RAM_PERCENTAGE="${WINDOWS_JAVA_MAX_RAM_PERCENTAGE:-50.0}"
@@ -1229,6 +1230,7 @@ write_update_manifest() {
     "$repo" \
     "$APP_DISPLAY_VERSION" \
     "$DATE_TAG" \
+    "$RELEASE_PRERELEASE" \
     "$(basename "$core_zip")" \
     "$core_size" \
     "$core_sha" <<'PY'
@@ -1236,7 +1238,9 @@ import json
 import pathlib
 import sys
 
-manifest_file, repo, release_tag, date_tag, core_asset, core_size, core_sha = sys.argv[1:]
+manifest_file, repo, release_tag, date_tag, prerelease, core_asset, core_size, core_sha = sys.argv[1:]
+if prerelease not in {"true", "false"}:
+    raise SystemExit(f"LIZZIE_RELEASE_PRERELEASE must be true or false, got {prerelease!r}")
 download_base = f"https://github.com/{repo}/releases/download/{release_tag}"
 payload = {
     "schemaVersion": 1,
@@ -1244,6 +1248,7 @@ payload = {
     "publishedAt": f"{date_tag}T00:00:00Z",
     "notesUrl": f"https://github.com/{repo}/releases/tag/{release_tag}",
     "minUpdaterVersion": "1",
+    "prerelease": prerelease == "true",
     "components": [
         {
             "id": "core",

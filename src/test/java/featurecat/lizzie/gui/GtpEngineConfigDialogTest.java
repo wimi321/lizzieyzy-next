@@ -6,10 +6,12 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import featurecat.lizzie.analysis.gtpconfig.GtpConfigurationSchema;
+import java.awt.Color;
 import java.util.Locale;
 import java.util.ResourceBundle;
 import java.util.concurrent.atomic.AtomicReference;
 import javax.swing.SwingUtilities;
+import javax.swing.UIManager;
 import org.json.JSONArray;
 import org.json.JSONObject;
 import org.junit.jupiter.api.Test;
@@ -30,6 +32,7 @@ class GtpEngineConfigDialogTest {
     assertTrue(panel.isFieldEnabled("rankPreset"));
     assertFalse(panel.isFieldEnabled("maxTimeSeconds"));
     assertTrue(panel.hasAccessibleEditorNames());
+    assertTrue(panel.getScrollableTracksViewportWidth());
     assertEquals("6d", panel.profile().getString("rankPreset"));
     assertTrue(GtpEngineConfigDialog.sameValue(60, 60.0));
     assertFalse(GtpEngineConfigDialog.sameValue(60, 59.999));
@@ -60,6 +63,45 @@ class GtpEngineConfigDialogTest {
     assertEquals("rank", unchanged.gtpConfigurationProfile.getString("mode"));
     assertTrue(changed.gtpConfigurationProtocol.isEmpty());
     assertNull(changed.gtpConfigurationProfile);
+  }
+
+  @Test
+  void numericEditorsUseReadableApplicationTextFieldColors() throws Exception {
+    AtomicReference<Boolean> readable = new AtomicReference<Boolean>();
+    SwingUtilities.invokeAndWait(
+        () -> {
+          Object oldFormattedForeground = UIManager.get("FormattedTextField.foreground");
+          Object oldFormattedBackground = UIManager.get("FormattedTextField.background");
+          Object oldTextForeground = UIManager.get("TextField.foreground");
+          Object oldTextBackground = UIManager.get("TextField.background");
+          try {
+            UIManager.put("FormattedTextField.foreground", Color.WHITE);
+            UIManager.put("FormattedTextField.background", Color.WHITE);
+            UIManager.put("TextField.foreground", Color.BLACK);
+            UIManager.put("TextField.background", Color.WHITE);
+            GtpEngineConfigDialog.EditorPanel panel =
+                new GtpEngineConfigDialog.EditorPanel(
+                    GtpConfigurationSchema.parse(schema()),
+                    new JSONObject().put("maxTimeSeconds", 45.0).put("threads", 8),
+                    ResourceBundle.getBundle(
+                        "l10n.DisplayStrings", Locale.SIMPLIFIED_CHINESE));
+            readable.set(panel.hasReadableNumericEditors());
+          } finally {
+            restoreUiDefault("FormattedTextField.foreground", oldFormattedForeground);
+            restoreUiDefault("FormattedTextField.background", oldFormattedBackground);
+            restoreUiDefault("TextField.foreground", oldTextForeground);
+            restoreUiDefault("TextField.background", oldTextBackground);
+          }
+        });
+    assertTrue(readable.get());
+  }
+
+  private static void restoreUiDefault(String key, Object value) {
+    if (value == null) {
+      UIManager.getDefaults().remove(key);
+    } else {
+      UIManager.put(key, value);
+    }
   }
 
   private static JSONObject schema() {

@@ -1,6 +1,7 @@
 package featurecat.lizzie.update;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -14,10 +15,21 @@ class UpdateManifestTest {
     UpdateManifest manifest = UpdateManifest.parse(validManifest().toString());
 
     assertEquals("next-2026-06-12.1", manifest.releaseTag);
+    assertFalse(manifest.prerelease);
     assertEquals(1, manifest.components.size());
     UpdateManifest.Component core = manifest.components.get(0);
     assertEquals("core", core.id);
     assertTrue(core.matches("windows", "opencl"));
+  }
+
+  @Test
+  void parsesPrereleaseFlagAndKeepsLegacyManifestsStable() {
+    JSONObject prerelease = validManifest().put("prerelease", true);
+    assertTrue(UpdateManifest.parse(prerelease).prerelease);
+
+    JSONObject legacy = validManifest();
+    legacy.remove("prerelease");
+    assertFalse(UpdateManifest.parse(legacy).prerelease);
   }
 
   @Test
@@ -72,6 +84,7 @@ class UpdateManifestTest {
     manifest.put("publishedAt", "2026-06-12T00:00:00Z");
     manifest.put("notesUrl", "https://example.test/release");
     manifest.put("minUpdaterVersion", "1");
+    manifest.put("prerelease", false);
     manifest.put("components", new JSONArray().put(component));
     return manifest;
   }

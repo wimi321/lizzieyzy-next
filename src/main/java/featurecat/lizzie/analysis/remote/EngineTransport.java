@@ -15,6 +15,10 @@ public interface EngineTransport extends AutoCloseable {
 
   boolean isOpen();
 
+  default void setUnresponsiveListener(Runnable listener) {}
+
+  default void markAnalysisProgressAccepted(long totalPlayouts) {}
+
   String description();
 
   @Override

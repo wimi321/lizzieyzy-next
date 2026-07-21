@@ -90,6 +90,17 @@ public final class AnalysisEngineCommandHelper {
     return fromDefaultEngine(engines);
   }
 
+  public static Path ensureAnalysisConfig(Path gtpConfigPath) throws IOException {
+    if (gtpConfigPath == null || !Files.isRegularFile(gtpConfigPath)) {
+      throw new IOException(message("AnalysisEngineCommandHelper.missingConfig"));
+    }
+    Path analysisConfig = siblingAnalysisConfig(gtpConfigPath.toAbsolutePath().normalize());
+    if (!Files.isRegularFile(analysisConfig)) {
+      copyTemplate(analysisConfig);
+    }
+    return analysisConfig;
+  }
+
   public static boolean isAnalysisCommandCustomized(
       boolean hasCustomizedFlag, boolean customizedFlag, String command) {
     if (hasCustomizedFlag) {
