@@ -1509,6 +1509,7 @@ public class BottomToolbar extends JPanel {
               Lizzie.frame.clearKataEstimate();
               Lizzie.frame.refresh();
               Lizzie.frame.isCounting = false;
+              Lizzie.frame.cancelPositionEstimateRequest();
               Lizzie.frame.estimateResults.setVisible(false);
             } else {
               Lizzie.frame.countstones(true);

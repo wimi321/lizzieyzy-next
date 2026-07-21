@@ -19,6 +19,7 @@ import featurecat.lizzie.analysis.KataEstimate;
 import featurecat.lizzie.analysis.Leelaz;
 import featurecat.lizzie.analysis.MoveData;
 import featurecat.lizzie.analysis.MoveRankDefinition;
+import featurecat.lizzie.analysis.OwnershipEstimate;
 import featurecat.lizzie.analysis.PlayerStrengthEstimator;
 import featurecat.lizzie.analysis.ReadBoard;
 import featurecat.lizzie.analysis.ReadBoardUpdateInstaller;
@@ -316,6 +317,10 @@ public class LizzieFrame extends JFrame {
   public volatile KataEstimate zen;
   private final java.util.concurrent.atomic.AtomicBoolean estimateEngineStarting =
       new java.util.concurrent.atomic.AtomicBoolean(false);
+  private int positionEstimateRequestGeneration;
+  private javax.swing.Timer positionEstimateRequestTimer;
+  private Leelaz positionEstimateEngine;
+  private boolean resumePrimaryPonderAfterPositionEstimate;
   public SetEstimateParam setEstimateParam;
   public ReadBoard readBoard;
   private Object readBoardRestartLock = new Object();
@@ -3077,11 +3082,207 @@ public class LizzieFrame extends JFrame {
   }
 
   public void countstones(boolean shouldRetart) {
+    if (!SwingUtilities.isEventDispatchThread()) {
+      SwingUtilities.invokeLater(() -> countstones(shouldRetart));
+      return;
+    }
+    ensureEstimateResultsDialog();
+    invalidatePositionEstimateRequest();
+    int generation = ++positionEstimateRequestGeneration;
+    BoardHistoryNode requestedNode = getDisplayNode();
+    isCounting = true;
+    estimateResults.beginCalculation();
+
+    if (isEstimateEngineUsable(zen)) {
+      runDedicatedPositionEstimate(generation);
+      return;
+    }
+
+    Leelaz primary = Lizzie.leelaz;
+    boolean primaryWasPondering =
+        canUsePrimaryEngineForPositionEstimate(primary) && primary.isPondering();
+    if (canUsePrimaryEngineForPositionEstimate(primary)
+        && primary.requestPositionEstimate(
+            ownership ->
+                SwingUtilities.invokeLater(
+                    () -> completePrimaryPositionEstimate(generation, requestedNode, ownership)))) {
+      positionEstimateEngine = primary;
+      resumePrimaryPonderAfterPositionEstimate = primaryWasPondering;
+      javax.swing.Timer timeout =
+          new javax.swing.Timer(
+              3000,
+              e -> {
+                if (generation != positionEstimateRequestGeneration) return;
+                if (!isCounting) {
+                  invalidatePositionEstimateRequest();
+                  return;
+                }
+                startDedicatedPositionEstimateAsync(generation);
+              });
+      timeout.setRepeats(false);
+      positionEstimateRequestTimer = timeout;
+      timeout.start();
+      return;
+    }
+    startDedicatedPositionEstimateAsync(generation);
+  }
+
+  private void ensureEstimateResultsDialog() {
     if (estimateResults == null || !estimateResults.isVisible()) {
       if (Lizzie.frame.floatBoard != null && Lizzie.frame.floatBoard.isVisible())
         estimateResults = new EstimateResults(null);
       else estimateResults = new EstimateResults(this);
     }
+  }
+
+  private boolean canUsePrimaryEngineForPositionEstimate(Leelaz engine) {
+    return engine != null
+        && !Lizzie.config.useZenEstimate
+        && engine.isKatago
+        && engine.isStarted()
+        && engine.isLoaded()
+        && !engine.isProcessDead()
+        && !EngineManager.isEngineGame()
+        && !isPlayingAgainstLeelaz
+        && !isAnaPlayingAgainstLeelaz;
+  }
+
+  private void completePrimaryPositionEstimate(
+      int generation, BoardHistoryNode requestedNode, List<Double> ownership) {
+    if (generation != positionEstimateRequestGeneration) return;
+    if (!isCounting) {
+      invalidatePositionEstimateRequest();
+      return;
+    }
+    if (requestedNode != getDisplayNode()) {
+      countstones(true);
+      return;
+    }
+    OwnershipEstimate.Result result;
+    try {
+      BoardData data = requestedNode.getData();
+      result =
+          OwnershipEstimate.calculate(
+              Board.boardWidth,
+              Board.boardHeight,
+              data.stones,
+              data.blackCaptures,
+              data.whiteCaptures,
+              ownership,
+              Lizzie.config.estimateThreshold);
+    } catch (RuntimeException e) {
+      startDedicatedPositionEstimateAsync(generation);
+      return;
+    }
+
+    invalidatePositionEstimateRequest();
+    boardRenderer.drawEstimateImage(result.renderedOwnership());
+    if (floatBoard != null && floatBoard.isVisible()) {
+      floatBoard.boardRenderer.drawEstimateImage(result.renderedOwnership());
+    }
+    estimateResults.Counts(
+        result.blackCaptures(),
+        result.whiteCaptures(),
+        result.blackPrisoners(),
+        result.whitePrisoners(),
+        result.blackPoints(),
+        result.whitePoints(),
+        result.blackAlive(),
+        result.whiteAlive());
+    refresh();
+  }
+
+  public void startAutoPositionEstimate() {
+    if (!SwingUtilities.isEventDispatchThread()) {
+      SwingUtilities.invokeLater(this::startAutoPositionEstimate);
+      return;
+    }
+    ensureEstimateResultsDialog();
+    invalidatePositionEstimateRequest();
+    int generation = ++positionEstimateRequestGeneration;
+    isCounting = true;
+    isAutocounting = true;
+    estimateResults.beginCalculation();
+    startDedicatedPositionEstimateAsync(generation);
+  }
+
+  public void forwardAutoPositionEstimateCommand(String command, boolean needVerify) {
+    KataEstimate engine = zen;
+    if (isAutocounting && isEstimateEngineUsable(engine)) {
+      engine.sendAndEstimate(command, needVerify);
+    }
+  }
+
+  public void cancelPositionEstimateRequest() {
+    if (!SwingUtilities.isEventDispatchThread()) {
+      SwingUtilities.invokeLater(this::cancelPositionEstimateRequest);
+      return;
+    }
+    ++positionEstimateRequestGeneration;
+    invalidatePositionEstimateRequest();
+  }
+
+  private void invalidatePositionEstimateRequest() {
+    if (positionEstimateRequestTimer != null) {
+      positionEstimateRequestTimer.stop();
+      positionEstimateRequestTimer = null;
+    }
+    if (positionEstimateEngine != null) {
+      Leelaz engine = positionEstimateEngine;
+      boolean shouldResumePonder = resumePrimaryPonderAfterPositionEstimate;
+      positionEstimateEngine = null;
+      resumePrimaryPonderAfterPositionEstimate = false;
+      engine.cancelPositionEstimateRequest();
+      if (shouldResumePonder
+          && engine.isStarted()
+          && engine.isLoaded()
+          && !engine.isProcessDead()) {
+        engine.ponder();
+      }
+    } else {
+      resumePrimaryPonderAfterPositionEstimate = false;
+    }
+  }
+
+  private void startDedicatedPositionEstimateAsync(int generation) {
+    if (generation != positionEstimateRequestGeneration || !isCounting) return;
+    invalidatePositionEstimateRequest();
+    if (isEstimateEngineUsable(zen)) {
+      runDedicatedPositionEstimate(generation);
+      return;
+    }
+    preloadEstimateEngineAfterStartup();
+    final int[] checks = {0};
+    javax.swing.Timer poll = new javax.swing.Timer(100, null);
+    poll.addActionListener(
+        e -> {
+          if (generation != positionEstimateRequestGeneration || !isCounting) {
+            poll.stop();
+            return;
+          }
+          if (isEstimateEngineUsable(zen)) {
+            poll.stop();
+            positionEstimateRequestTimer = null;
+            runDedicatedPositionEstimate(generation);
+            return;
+          }
+          checks[0]++;
+          if ((!estimateEngineStarting.get() && checks[0] >= 5) || checks[0] >= 600) {
+            poll.stop();
+            positionEstimateRequestTimer = null;
+            isCounting = false;
+            isAutocounting = false;
+            estimateResults.failCalculation();
+          }
+        });
+    positionEstimateRequestTimer = poll;
+    poll.start();
+  }
+
+  private void runDedicatedPositionEstimate(int generation) {
+    if (generation != positionEstimateRequestGeneration
+        || !isCounting
+        || !isEstimateEngineUsable(zen)) return;
     if (Lizzie.config.showKataGoEstimate
         && !Lizzie.config.isHiddenKataEstimate
         && Lizzie.leelaz.isKatago) {
@@ -3089,21 +3290,12 @@ public class LizzieFrame extends JFrame {
       clearKataEstimate();
       Lizzie.leelaz.ponder();
     }
-    if (shouldRetart) {
-      if (zen == null
-          || zen.useJavaSSH && zen.javaSSHClosed
-          || (!zen.useJavaSSH && (zen.process == null || !zen.process.isAlive()))) {
-        try {
-          zen = new KataEstimate(false);
-        } catch (IOException e1) {
-          e1.printStackTrace();
-        }
-      }
-    }
-    //  zen.noread = false;
     zen.syncboradstat();
     zen.countStones();
-    isCounting = true;
+  }
+
+  private boolean isEstimateEngineUsable(KataEstimate engine) {
+    return engine != null && engine.isOperational();
   }
 
   public void restartZen() {
@@ -11217,6 +11409,7 @@ public class LizzieFrame extends JFrame {
         clearKataEstimate();
         Lizzie.frame.refresh();
         Lizzie.frame.isCounting = false;
+        cancelPositionEstimateRequest();
         estimateResults.setVisible(false);
       } else {
         Lizzie.frame.countstones(true);
@@ -17502,6 +17695,7 @@ public class LizzieFrame extends JFrame {
     if (Lizzie.frame.isCounting) {
       Lizzie.frame.clearKataEstimate();
       Lizzie.frame.isCounting = false;
+      cancelPositionEstimateRequest();
       estimateResults.setVisible(false);
     }
     refresh();
@@ -17970,14 +18164,17 @@ public class LizzieFrame extends JFrame {
 
   /** Starts the optional score-estimate engine away from the Swing event thread. */
   public void preloadEstimateEngineAfterStartup() {
-    if (zen != null || !estimateEngineStarting.compareAndSet(false, true)) {
+    if (isEstimateEngineUsable(zen) || !estimateEngineStarting.compareAndSet(false, true)) {
       return;
     }
+    KataEstimate staleEngine = zen;
+    zen = null;
     Thread starter =
         new Thread(
             () -> {
               KataEstimate warmedEngine = null;
               try {
+                if (staleEngine != null) staleEngine.shutdown();
                 warmedEngine = new KataEstimate(true);
               } catch (IOException e) {
                 e.printStackTrace();
@@ -17986,7 +18183,8 @@ public class LizzieFrame extends JFrame {
               SwingUtilities.invokeLater(
                   () -> {
                     try {
-                      if (zen == null) {
+                      if (isEstimateEngineUsable(completedEngine)
+                          && !isEstimateEngineUsable(zen)) {
                         zen = completedEngine;
                       } else if (completedEngine != null && zen != completedEngine) {
                         completedEngine.shutdown();

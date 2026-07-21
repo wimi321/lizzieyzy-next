@@ -1947,6 +1947,7 @@ public class Board {
           Lizzie.resourceBundle.getString("EstimateResults.estimate"));
       Lizzie.frame.estimateResults.iscounted = false;
       Lizzie.frame.isCounting = false;
+      Lizzie.frame.cancelPositionEstimateRequest();
     }
     synchronized (this) {
       boolean valid = isValid(x, y);
@@ -2800,6 +2801,7 @@ public class Board {
           Lizzie.resourceBundle.getString("EstimateResults.estimate"));
       Lizzie.frame.estimateResults.iscounted = false;
       Lizzie.frame.isCounting = false;
+      Lizzie.frame.cancelPositionEstimateRequest();
     }
     // Lizzie.frame.isShowingHeatmap = false;
     if (Lizzie.frame.independentMainBoard != null) {

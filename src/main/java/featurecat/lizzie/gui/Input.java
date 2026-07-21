@@ -686,6 +686,7 @@ public class Input implements MouseListener, KeyListener, MouseWheelListener, Mo
         if (Lizzie.frame.isCounting) {
           Lizzie.frame.clearKataEstimate();
           Lizzie.frame.isCounting = false;
+          Lizzie.frame.cancelPositionEstimateRequest();
           Lizzie.frame.estimateResults.setVisible(false);
         } else {
           Lizzie.frame.countstones(true);

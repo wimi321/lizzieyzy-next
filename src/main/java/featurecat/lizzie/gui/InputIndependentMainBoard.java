@@ -523,6 +523,7 @@ public class InputIndependentMainBoard implements KeyListener {
           LizzieFrame.boardRenderer.removeKataEstimateImage();
           // Lizzie.frame.repaint();
           Lizzie.frame.isCounting = false;
+          Lizzie.frame.cancelPositionEstimateRequest();
           Lizzie.frame.estimateResults.setVisible(false);
         } else {
           Lizzie.frame.countstones(true);
