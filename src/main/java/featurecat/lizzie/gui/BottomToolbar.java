@@ -83,7 +83,6 @@ public class BottomToolbar extends JPanel {
   JPopupMenu yike;
   JPopupMenu sharePopup;
   JPopupMenu autoAnalyzePopup;
-  JPopupMenu flashAnalyzePopup;
   JButton tryPlay;
   JButton analyzeList;
   JButton move;
@@ -96,7 +95,6 @@ public class BottomToolbar extends JPanel {
   JButton autoPlay;
   JButton deleteMove;
   JButton share;
-  JButton flashAnalyze;
   JButton remoteComputeButton;
   JButton downloadWeightButton;
   JButton moreActionsButton;
@@ -358,9 +356,6 @@ public class BottomToolbar extends JPanel {
     if (autoAnalyzePopup != null) {
       AppleStyleSupport.installPopupStyle(autoAnalyzePopup);
     }
-    if (flashAnalyzePopup != null) {
-      AppleStyleSupport.installPopupStyle(flashAnalyzePopup);
-    }
     if (moreActionsPopup != null) {
       AppleStyleSupport.installPopupStyle(moreActionsPopup);
     }
@@ -604,7 +599,6 @@ public class BottomToolbar extends JPanel {
     badMoves =
         new JFontButton(Lizzie.resourceBundle.getString("BottomToolbar.badMoves")); // ("超级鹰眼");
     share = new JFontButton(Lizzie.resourceBundle.getString("BottomToolbar.share")); // ("分享");
-    flashAnalyze = new JFontButton(Lizzie.resourceBundle.getString("BottomToolbar.flashAnalyze"));
     remoteComputeButton = new JFontButton(Lizzie.resourceBundle.getString("Menu.remoteCompute"));
     AppleStyleSupport.markPrimary(remoteComputeButton);
     downloadWeightButton =
@@ -643,6 +637,10 @@ public class BottomToolbar extends JPanel {
     batchOpen =
         new JFontButton(Lizzie.resourceBundle.getString("BottomToolbar.batchOpen")); // ("批量分析");
     AppleStyleSupport.markPrimary(batchOpen);
+    batchOpen.setToolTipText(resourceBundle.getString("BottomToolbar.autoAnalyzeTip"));
+    batchOpen
+        .getAccessibleContext()
+        .setAccessibleDescription(resourceBundle.getString("BottomToolbar.autoAnalyzeTip"));
     refresh = new JFontButton(Lizzie.resourceBundle.getString("BottomToolbar.refresh")); // ("刷新");
     tryPlay = new JFontButton(Lizzie.resourceBundle.getString("BottomToolbar.tryPlay")); // ("试下");
     analyzeList =
@@ -711,7 +709,6 @@ public class BottomToolbar extends JPanel {
     buttonPane.add(remoteComputeButton);
     buttonPane.add(downloadWeightButton);
     buttonPane.add(share);
-    buttonPane.add(flashAnalyze);
     buttonPane.add(liveButton);
     buttonPane.add(deleteMove);
     buttonPane.add(badMoves);
@@ -771,7 +768,6 @@ public class BottomToolbar extends JPanel {
     coords.setFocusable(false);
     liveButton.setFocusable(false);
     share.setFocusable(false);
-    flashAnalyze.setFocusable(false);
     remoteComputeButton.setFocusable(false);
     downloadWeightButton.setFocusable(false);
     rightMove.setFocusable(false);
@@ -782,7 +778,6 @@ public class BottomToolbar extends JPanel {
     moreActionsButton.setFocusable(false);
 
     share.setMargin(new Insets(0, 0, 0, 0));
-    flashAnalyze.setMargin(new Insets(0, 0, 0, 0));
     deleteMove.setMargin(new Insets(0, 0, 0, 0));
     autoPlay.setMargin(new Insets(0, 0, 0, 0));
     badMoves.setMargin(new Insets(0, 0, 0, 0));
@@ -828,7 +823,6 @@ public class BottomToolbar extends JPanel {
     //      extraLength += (Config.frameFontSize - 12) * 5;
     //    }
     setButtonSize(autoPlay, false);
-    setButtonSize(flashAnalyze, false);
     setButtonSize(remoteComputeButton, false);
     setButtonSize(downloadWeightButton, false);
     setButtonSize(deleteMove, true);
@@ -945,60 +939,7 @@ public class BottomToolbar extends JPanel {
           }
         });
 
-    flashAnalyzePopup = new JPopupMenu();
     moreActionsPopup = new JPopupMenu();
-
-    final JFontMenuItem flashAnalyzeAllGame =
-        new JFontMenuItem(resourceBundle.getString("Menu.flashAnalyzeAllGame"));
-    flashAnalyzePopup.add(flashAnalyzeAllGame);
-    flashAnalyzeAllGame.addActionListener(
-        new ActionListener() {
-          public void actionPerformed(ActionEvent e) {
-            Lizzie.frame.flashAnalyzeGame(true, false);
-          }
-        });
-
-    final JFontMenuItem flashAnalyzePartGame =
-        new JFontMenuItem(resourceBundle.getString("Menu.flashAnalyzePartGame"));
-    flashAnalyzePopup.add(flashAnalyzePartGame);
-    flashAnalyzePartGame.addActionListener(
-        new ActionListener() {
-          public void actionPerformed(ActionEvent e) {
-            Lizzie.frame.flashAnalyzePart();
-          }
-        });
-
-    final JFontMenuItem flashAnalyzeAllBranches =
-        new JFontMenuItem(resourceBundle.getString("Menu.flashAnalyzeAllBranches"));
-    flashAnalyzePopup.add(flashAnalyzeAllBranches);
-    flashAnalyzeAllBranches.addActionListener(
-        new ActionListener() {
-          public void actionPerformed(ActionEvent e) {
-            Lizzie.frame.flashAnalyzeGame(false, true);
-          }
-        });
-
-    final JFontMenuItem flashAnalyzeSettings =
-        new JFontMenuItem(resourceBundle.getString("Menu.flashAnalyzeSettings"));
-    flashAnalyzePopup.add(flashAnalyzeSettings);
-    flashAnalyzeSettings.addActionListener(
-        new ActionListener() {
-          public void actionPerformed(ActionEvent e) {
-            Lizzie.frame.flashAnalyzeSettings();
-          }
-        });
-    //    flashAnalyzePopup.setVisible(true);
-    //    flashAnalyzePopup.setVisible(false);
-
-    flashAnalyze.addActionListener(
-        new ActionListener() {
-          public void actionPerformed(ActionEvent e) {
-            flashAnalyzePopup.show(
-                buttonPane,
-                flashAnalyze.getX(),
-                flashAnalyze.getY() - flashAnalyzePopup.getHeight());
-          }
-        });
 
     moreActionsButton.addActionListener(
         new ActionListener() {
@@ -1275,72 +1216,15 @@ public class BottomToolbar extends JPanel {
             Lizzie.frame.refresh();
           }
         });
-    autoAnalyzePopup = new JPopupMenu();
-    final JFontMenuItem autoAnalyze =
-        new JFontMenuItem(resourceBundle.getString("Menu.autoAnalyze")); // ("自动分析(A)");
-    // aboutItem.setMnemonic('A');
-    autoAnalyze.addActionListener(
-        new ActionListener() {
-          @Override
-          public void actionPerformed(ActionEvent e) {
-            StartAnaDialog newgame = new StartAnaDialog(false, Lizzie.frame);
-            newgame.setVisible(true);
-            if (newgame.isCancelled()) {
-              LizzieFrame.toolbar.resetAutoAna();
-              return;
-            }
-          }
-        });
-    autoAnalyzePopup.add(autoAnalyze);
-
-    final JFontMenuItem batchAnalyze =
-        new JFontMenuItem(resourceBundle.getString("Menu.batchAnalyze")); // ("批量分析(Ctrl+O)");
-    batchAnalyze.addActionListener(
-        new ActionListener() {
-          @Override
-          public void actionPerformed(ActionEvent e) {
-            Lizzie.frame.openFileWithAna(false);
-          }
-        });
-    autoAnalyzePopup.add(batchAnalyze);
-
-    final JFontMenuItem batchAnalysisMode =
-        new JFontMenuItem(resourceBundle.getString("Menu.batchAnalysisMode")); // ("批量分析(闪电模式)");
-    batchAnalysisMode.addActionListener(
-        new ActionListener() {
-          @Override
-          public void actionPerformed(ActionEvent e) {
-            Lizzie.frame.openFileWithAna(true);
-          }
-        });
-    autoAnalyzePopup.add(batchAnalysisMode);
-
-    final JFontMenuItem stopAutoAnalyze =
-        new JFontMenuItem(resourceBundle.getString("Menu.stopAutoAnalyze")); // ("停止自动(批量)分析");
-    autoAnalyzePopup.addSeparator();
-    autoAnalyzePopup.add(stopAutoAnalyze);
-    stopAutoAnalyze.addActionListener(
-        new ActionListener() {
-          public void actionPerformed(ActionEvent e) {
-            LizzieFrame.toolbar.stopAutoAna(true, true);
-          }
-        });
-
-    final JFontMenuItem batchAnalyzeTable =
-        new JFontMenuItem(resourceBundle.getString("Menu.batchAnalyzeTable")); // ("批量分析进度表");
-    autoAnalyzePopup.add(batchAnalyzeTable);
-    batchAnalyzeTable.addActionListener(
-        new ActionListener() {
-          public void actionPerformed(ActionEvent e) {
-            Lizzie.frame.openAnalysisTable();
-          }
-        });
+    autoAnalyzePopup = AutoAnalyzeMenu.create(resourceBundle);
 
     batchOpen.addActionListener(
         new ActionListener() {
           public void actionPerformed(ActionEvent e) {
             autoAnalyzePopup.show(
-                buttonPane, batchOpen.getX(), batchOpen.getY() - autoAnalyzePopup.getHeight());
+                buttonPane,
+                batchOpen.getX(),
+                batchOpen.getY() - autoAnalyzePopup.getPreferredSize().height);
           }
         });
 
@@ -4589,8 +4473,6 @@ public class BottomToolbar extends JPanel {
     else liveButton.setVisible(false);
     if (Lizzie.config.share) share.setVisible(true);
     else share.setVisible(false);
-    if (Lizzie.config.flashAnalyze) flashAnalyze.setVisible(true);
-    else flashAnalyze.setVisible(false);
     if (Lizzie.config.kataEstimate) kataEstimate.setVisible(true);
     else kataEstimate.setVisible(false);
     if (Lizzie.config.batchOpen) batchOpen.setVisible(true);
@@ -4764,9 +4646,6 @@ public class BottomToolbar extends JPanel {
     }
     if (kataEstimate.isVisible()) {
       length = length + kataEstimate.getWidth() - (Config.isScaled ? 0 : 1);
-    }
-    if (flashAnalyze.isVisible()) {
-      length = length + flashAnalyze.getWidth() - (Config.isScaled ? 0 : 1);
     }
     if (batchOpen.isVisible()) {
       length = length + batchOpen.getWidth() - (Config.isScaled ? 0 : 1);
@@ -4968,10 +4847,6 @@ public class BottomToolbar extends JPanel {
       w = w - (batchOpen.getWidth() - (Config.isScaled ? 0 : 1));
       batchOpen.setLocation(w, 0);
     }
-    if (flashAnalyze.isVisible()) {
-      w = w - (flashAnalyze.getWidth() - (Config.isScaled ? 0 : 1));
-      flashAnalyze.setLocation(w, 0);
-    }
     if (kataEstimate.isVisible()) {
       w = w - (kataEstimate.getWidth() - (Config.isScaled ? 0 : 1));
       kataEstimate.setLocation(w, 0);
@@ -5016,10 +4891,6 @@ public class BottomToolbar extends JPanel {
     if (kataEstimate.isVisible()) {
       kataEstimate.setLocation(w, 0);
       w = w + kataEstimate.getWidth() - (Config.isScaled ? 0 : 1);
-    }
-    if (flashAnalyze.isVisible()) {
-      flashAnalyze.setLocation(w, 0);
-      w = w + flashAnalyze.getWidth() - (Config.isScaled ? 0 : 1);
     }
     if (batchOpen.isVisible()) {
       batchOpen.setLocation(w, 0);
@@ -5156,7 +5027,7 @@ public class BottomToolbar extends JPanel {
     buttonPane.setOpaque(false);
 
     // Build layout lists BEFORE hiding — visibleButtons checks isVisible()
-    List<JButton> leftPrimary = visibleButtons(analyse, batchOpen, flashAnalyze);
+    List<JButton> leftPrimary = visibleButtons(analyse, batchOpen);
     List<JButton> leftOptional =
         visibleButtons(
             openfile,
@@ -5196,7 +5067,6 @@ public class BottomToolbar extends JPanel {
           remoteComputeButton,
           downloadWeightButton,
           share,
-          flashAnalyze,
           liveButton,
           deleteMove,
           badMoves,
@@ -5306,8 +5176,6 @@ public class BottomToolbar extends JPanel {
     yike.setVisible(false);
     sharePopup.setVisible(true);
     sharePopup.setVisible(false);
-    flashAnalyzePopup.setVisible(true);
-    flashAnalyzePopup.setVisible(false);
   }
 
   //  public void setFontSize(int fontSize) {
