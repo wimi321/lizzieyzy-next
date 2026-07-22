@@ -70,14 +70,17 @@ jobs:
               ;;
           esac
           test -f "$request_file"
+          release_tag="$(
+            python3 -c \
+              'import json, sys; print(json.load(open(sys.argv[1], encoding="utf-8"))["release_tag"])' \
+              "$request_file"
+          )"
           target_sha="$TARGET_SHA"
-          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
-            release_tag="$(
-              python3 -c \
-                'import json, sys; print(json.load(open(sys.argv[1], encoding="utf-8"))["release_tag"])' \
-                "$request_file"
-            )"
+          if git show-ref --verify --quiet "refs/tags/$release_tag"; then
             target_sha="$(git rev-parse "refs/tags/${release_tag}^{commit}")"
+          elif [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            echo "Manual recovery requires an existing release tag: $release_tag" >&2
+            exit 1
           fi
           echo "request_file=$request_file" >> "$GITHUB_OUTPUT"
           echo "target_sha=$target_sha" >> "$GITHUB_OUTPUT"

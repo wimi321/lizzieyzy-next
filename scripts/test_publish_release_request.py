@@ -247,7 +247,7 @@ class ReviewedReleaseNotesTest(unittest.TestCase):
 
 
 class ReleaseWorkflowResilienceTest(unittest.TestCase):
-    def test_manual_recovery_uses_the_requested_tag_target(self) -> None:
+    def test_release_retry_uses_the_existing_requested_tag_target(self) -> None:
         workflow = (
             SCRIPT_PATH.parents[1]
             / ".github"
@@ -256,7 +256,11 @@ class ReleaseWorkflowResilienceTest(unittest.TestCase):
         ).read_text(encoding="utf-8")
 
         self.assertIn('git rev-parse "refs/tags/${release_tag}^{commit}"', workflow)
+        self.assertIn(
+            'git show-ref --verify --quiet "refs/tags/$release_tag"', workflow
+        )
         self.assertIn('target_sha="$TARGET_SHA"', workflow)
+        self.assertIn("Manual recovery requires an existing release tag", workflow)
         self.assertIn('echo "target_sha=$target_sha" >> "$GITHUB_OUTPUT"', workflow)
         self.assertIn(
             '--target-sha "${{ steps.request.outputs.target_sha }}"', workflow
