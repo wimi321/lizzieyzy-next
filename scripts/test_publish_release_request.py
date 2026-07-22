@@ -54,7 +54,12 @@ def all_asset_names() -> list[str]:
 
 
 class FakeClient:
-    def __init__(self, failed_workflow: str | None = None) -> None:
+    def __init__(
+        self,
+        failed_workflow: str | None = None,
+        detach_on_publish: bool = False,
+        hide_public_by_tag: bool = False,
+    ) -> None:
         self.tag_sha: str | None = None
         self.release: dict[str, object] | None = None
         self.assets: list[str] = []
@@ -62,8 +67,11 @@ class FakeClient:
         self.workflow_runs: dict[str, list[dict[str, object]]] = {}
         self.next_run_id = 100
         self.failed_workflow = failed_workflow
+        self.detach_on_publish = detach_on_publish
+        self.hide_public_by_tag = hide_public_by_tag
         self.dispatched: list[str] = []
         self.dispatched_inputs: dict[str, dict[str, str]] = {}
+        self.update_payloads: list[dict[str, object]] = []
 
     def get_tag_sha(self, _tag: str) -> str | None:
         return self.tag_sha
@@ -71,8 +79,29 @@ class FakeClient:
     def create_tag(self, _tag: str, target_sha: str) -> None:
         self.tag_sha = target_sha
 
-    def get_release(self, _tag: str) -> dict[str, object] | None:
-        return dict(self.release) if self.release is not None else None
+    def get_release_by_tag(self, tag: str) -> dict[str, object] | None:
+        if self.release is None or self.release.get("tag_name") != tag:
+            return None
+        if self.hide_public_by_tag and self.release.get("draft") is False:
+            return None
+        return dict(self.release)
+
+    def get_release(self, tag: str) -> dict[str, object] | None:
+        return self.get_release_by_tag(tag)
+
+    def find_orphaned_release(
+        self, title: str, target_sha: str
+    ) -> dict[str, object] | None:
+        if self.release is None:
+            return None
+        if (
+            str(self.release.get("tag_name") or "").startswith("untagged-")
+            and self.release.get("name") == title
+            and self.release.get("target_commitish") == target_sha
+            and self.release.get("prerelease") is True
+        ):
+            return dict(self.release)
+        return None
 
     def create_draft_release(
         self, request: PUBLISH.ReleaseRequest, _target_sha: str
@@ -80,6 +109,7 @@ class FakeClient:
         self.release = {
             "id": 7,
             "tag_name": request.release_tag,
+            "target_commitish": _target_sha,
             "name": request.title,
             "body": "building",
             "draft": True,
@@ -92,7 +122,10 @@ class FakeClient:
         self, _release_id: int, payload: dict[str, object]
     ) -> dict[str, object]:
         assert self.release is not None
+        self.update_payloads.append(dict(payload))
         self.release.update(payload)
+        if payload.get("draft") is False and self.detach_on_publish:
+            self.release["tag_name"] = "untagged-detached-release"
         self.release["html_url"] = "https://example.invalid/release"
         return dict(self.release)
 
@@ -214,6 +247,22 @@ class ReviewedReleaseNotesTest(unittest.TestCase):
 
 
 class ReleaseWorkflowResilienceTest(unittest.TestCase):
+    def test_manual_recovery_uses_the_requested_tag_target(self) -> None:
+        workflow = (
+            SCRIPT_PATH.parents[1]
+            / ".github"
+            / "workflows"
+            / "publish-requested-pre-release.yml"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn('git rev-parse "refs/tags/${release_tag}^{commit}"', workflow)
+        self.assertIn('target_sha="$TARGET_SHA"', workflow)
+        self.assertIn('echo "target_sha=$target_sha" >> "$GITHUB_OUTPUT"', workflow)
+        self.assertIn(
+            '--target-sha "${{ steps.request.outputs.target_sha }}"', workflow
+        )
+        self.assertNotIn('--target-sha "${{ github.sha }}"', workflow)
+
     def test_windows_draft_release_metadata_has_an_explicit_input_and_safe_fallback(self) -> None:
         workflow = (
             SCRIPT_PATH.parents[1] / ".github" / "workflows" / "build-windows-release.yml"
@@ -300,6 +349,8 @@ class ReleasePublisherTest(unittest.TestCase):
         self.assertEqual(TARGET_SHA, client.tag_sha)
         self.assertFalse(release["draft"])
         self.assertTrue(release["prerelease"])
+        self.assertEqual(RELEASE_TAG, release["tag_name"])
+        self.assertEqual(TARGET_SHA, release["target_commitish"])
         self.assertEqual(
             [spec.workflow_file for spec in PUBLISH.WORKFLOWS],
             client.dispatched,
@@ -312,6 +363,10 @@ class ReleasePublisherTest(unittest.TestCase):
             if workflow_file != "build-windows-release.yml":
                 self.assertNotIn("release_prerelease", inputs)
         self.assertCountEqual(all_asset_names(), client.assets)
+        self.assertTrue(client.update_payloads)
+        for payload in client.update_payloads:
+            self.assertEqual(RELEASE_TAG, payload["tag_name"])
+            self.assertEqual(TARGET_SHA, payload["target_commitish"])
 
     def test_failed_platform_keeps_release_as_draft(self) -> None:
         client = FakeClient(failed_workflow="build-linux-release.yml")
@@ -329,6 +384,9 @@ class ReleasePublisherTest(unittest.TestCase):
         client.assets = all_asset_names()
         client.release = {
             "id": 7,
+            "tag_name": RELEASE_TAG,
+            "target_commitish": TARGET_SHA,
+            "name": self.request().title,
             "body": self.release_notes(),
             "draft": False,
             "prerelease": True,
@@ -339,6 +397,43 @@ class ReleasePublisherTest(unittest.TestCase):
 
         self.assertFalse(release["draft"])
         self.assertEqual([], client.dispatched)
+
+    def test_recovers_orphaned_published_release_without_rebuilding(self) -> None:
+        client = FakeClient()
+        client.tag_sha = TARGET_SHA
+        client.assets = all_asset_names()
+        client.release = {
+            "id": 7,
+            "tag_name": "untagged-detached-release",
+            "target_commitish": TARGET_SHA,
+            "name": self.request().title,
+            "body": self.release_notes(),
+            "draft": False,
+            "prerelease": True,
+            "html_url": "https://example.invalid/orphaned",
+        }
+
+        release = self.publisher(client).publish()
+
+        self.assertEqual(RELEASE_TAG, release["tag_name"])
+        self.assertEqual(TARGET_SHA, release["target_commitish"])
+        self.assertEqual([], client.dispatched)
+        self.assertEqual(1, len(client.update_payloads))
+
+    def test_fails_closed_when_github_detaches_the_release_tag(self) -> None:
+        client = FakeClient(detach_on_publish=True)
+
+        with self.assertRaisesRegex(PUBLISH.PublishError, "tag identity changed"):
+            self.publisher(client).publish()
+
+        assert client.release is not None
+        self.assertEqual("untagged-detached-release", client.release["tag_name"])
+
+    def test_fails_closed_when_published_tag_is_not_publicly_addressable(self) -> None:
+        client = FakeClient(hide_public_by_tag=True)
+
+        with self.assertRaisesRegex(PUBLISH.PublishError, "not addressable by tag"):
+            self.publisher(client).publish()
 
     def test_rejects_incomplete_notes_before_creating_a_tag(self) -> None:
         client = FakeClient()

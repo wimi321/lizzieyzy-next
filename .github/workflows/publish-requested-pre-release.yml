@@ -70,7 +70,17 @@ jobs:
               ;;
           esac
           test -f "$request_file"
+          target_sha="$TARGET_SHA"
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            release_tag="$(
+              python3 -c \
+                'import json, sys; print(json.load(open(sys.argv[1], encoding="utf-8"))["release_tag"])' \
+                "$request_file"
+            )"
+            target_sha="$(git rev-parse "refs/tags/${release_tag}^{commit}")"
+          fi
           echo "request_file=$request_file" >> "$GITHUB_OUTPUT"
+          echo "target_sha=$target_sha" >> "$GITHUB_OUTPUT"
 
       - name: Test release metadata and fail-closed publishing
         run: |
@@ -85,4 +95,4 @@ jobs:
           python3 scripts/publish_release_request.py \
             --request "${{ steps.request.outputs.request_file }}" \
             --repository "${{ github.repository }}" \
-            --target-sha "${{ github.sha }}"
+            --target-sha "${{ steps.request.outputs.target_sha }}"
