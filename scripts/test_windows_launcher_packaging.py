@@ -80,7 +80,19 @@ def main() -> None:
         '"prerelease": prerelease == "true"',
         "package_windows_exe.sh",
     )
-    require(workflow, "--jq '.prerelease'", "build-windows-release.yml")
+    require(
+        workflow,
+        "RELEASE_PRERELEASE: ${{ inputs.release_prerelease }}",
+        "build-windows-release.yml",
+    )
+    require(workflow, "releases?per_page=100", "build-windows-release.yml")
+    require(
+        workflow,
+        'if [[ "$release_prerelease" != "true" && "$release_prerelease" != "false" ]]',
+        "build-windows-release.yml",
+    )
+    if "releases/tags/" in workflow:
+        raise AssertionError("draft release metadata must not use the tag endpoint")
     if "scheduleAutomaticCheck" in lizzie_source or "auto-check" in update_controller:
         raise AssertionError("Windows updates must only run after an explicit user action")
 

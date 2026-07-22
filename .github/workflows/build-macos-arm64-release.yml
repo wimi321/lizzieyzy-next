@@ -106,7 +106,7 @@ jobs:
           APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           APPLE_SIGN_IDENTITY: ${{ secrets.APPLE_SIGN_IDENTITY }}
-        run: bash ./scripts/sign_macos_release.sh dist/release mac-arm64
+        run: bash ./scripts/sign_macos_release_with_retry.sh dist/release mac-arm64
 
       - name: Validate public macOS arm64 assets
         run: bash ./scripts/validate_release_assets.sh mac-arm64 dist/release "${{ inputs.date_tag }}"

@@ -93,6 +93,7 @@ class WorkflowSpec:
     workflow_file: str
     exact_suffixes: tuple[str, ...]
     required_patterns: tuple[re.Pattern[str], ...] = ()
+    dispatch_inputs: tuple[tuple[str, str], ...] = ()
 
     def missing_assets(self, asset_names: Iterable[str], date_tag: str) -> list[str]:
         names = set(asset_names)
@@ -129,6 +130,7 @@ WORKFLOWS = (
             "windows64.nvidia.tensorrt.portable.sha256.txt",
         ),
         (re.compile(r"^{date}-windows64\.nvidia\.tensorrt\.portable\.7z\.\d{{3}}$"),),
+        (("release_prerelease", "true"),),
     ),
     WorkflowSpec(
         "Linux",
@@ -380,16 +382,19 @@ class ReleasePublisher:
             self.sleep(min(self.poll_seconds, 10))
         raise PublishError(f"Timed out locating dispatched workflow run for {workflow_file}")
 
-    def _dispatch(self, workflow_file: str) -> int:
+    def _dispatch(self, spec: WorkflowSpec) -> int:
+        workflow_file = spec.workflow_file
         existing = self.client.list_workflow_runs(workflow_file, self.request.release_tag)
         previous_ids = {int(run["id"]) for run in existing if run.get("id") is not None}
+        inputs = {
+            "date_tag": self.request.date_tag,
+            "release_tag": self.request.release_tag,
+        }
+        inputs.update(spec.dispatch_inputs)
         run_id = self.client.dispatch_workflow(
             workflow_file,
             self.request.release_tag,
-            {
-                "date_tag": self.request.date_tag,
-                "release_tag": self.request.release_tag,
-            },
+            inputs,
         )
         if run_id is None:
             run_id = self._discover_new_run(workflow_file, previous_ids)
@@ -492,7 +497,7 @@ class ReleasePublisher:
                 run_id = int(active["id"])
                 print(f"{spec.platform}: waiting for existing run {run_id}", flush=True)
             else:
-                run_id = self._dispatch(spec.workflow_file)
+                run_id = self._dispatch(spec)
             runs[spec.platform] = run_id
 
         self._wait_for_runs(runs)
