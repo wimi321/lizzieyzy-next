@@ -223,22 +223,48 @@ class GitHubClient:
             expected=(201,),
         )
 
-    def get_release(self, tag: str) -> dict[str, object] | None:
+    def get_release_by_tag(self, tag: str) -> dict[str, object] | None:
         path = f"/repos/{self.repository}/releases/tags/{quote(tag, safe='')}"
         _status, payload = self._request("GET", path, allow_not_found=True)
         if payload is not None:
             assert isinstance(payload, dict)
             return payload
+        return None
 
-        # The tag endpoint can omit drafts. The authenticated release listing includes them.
-        _status, listing = self._request(
+    def list_releases(self) -> list[dict[str, object]]:
+        _status, payload = self._request(
             "GET", f"/repos/{self.repository}/releases?per_page=100"
         )
-        assert isinstance(listing, list)
-        for release in listing:
-            if isinstance(release, dict) and release.get("tag_name") == tag:
+        assert isinstance(payload, list)
+        return [release for release in payload if isinstance(release, dict)]
+
+    def get_release(self, tag: str) -> dict[str, object] | None:
+        release = self.get_release_by_tag(tag)
+        if release is not None:
+            return release
+
+        # The tag endpoint can omit drafts. The authenticated release listing includes them.
+        for release in self.list_releases():
+            if release.get("tag_name") == tag:
                 return release
         return None
+
+    def find_orphaned_release(
+        self, title: str, target_sha: str
+    ) -> dict[str, object] | None:
+        candidates = [
+            release
+            for release in self.list_releases()
+            if str(release.get("tag_name") or "").startswith("untagged-")
+            and release.get("name") == title
+            and release.get("target_commitish") == target_sha
+            and release.get("prerelease") is True
+        ]
+        if len(candidates) > 1:
+            raise PublishError(
+                f"Found multiple orphaned releases for {title} at {target_sha}"
+            )
+        return candidates[0] if candidates else None
 
     def create_draft_release(
         self, request: ReleaseRequest, target_sha: str
@@ -349,12 +375,73 @@ class ReleasePublisher:
             )
         print(f"Reusing tag {self.request.release_tag} at {existing}", flush=True)
 
+    def _assert_release_identity(self, release: dict[str, object]) -> None:
+        actual_tag = str(release.get("tag_name") or "")
+        if actual_tag != self.request.release_tag:
+            raise PublishError(
+                "Release tag identity changed: "
+                f"expected {self.request.release_tag}, got {actual_tag or '<missing>'}"
+            )
+        actual_target = str(release.get("target_commitish") or "")
+        if actual_target != self.target_sha:
+            raise PublishError(
+                "Release target changed: "
+                f"expected {self.target_sha}, got {actual_target or '<missing>'}"
+            )
+
+    def _restore_orphaned_release(
+        self, release: dict[str, object]
+    ) -> dict[str, object]:
+        release_id = int(release["id"])
+        restored = self.client.update_release(
+            release_id,
+            {
+                "tag_name": self.request.release_tag,
+                "target_commitish": self.target_sha,
+                "name": self.request.title,
+                "draft": release.get("draft") is True,
+                "prerelease": True,
+                "make_latest": "false",
+            },
+        )
+        self._assert_release_identity(restored)
+        print(
+            f"Restored orphaned release {release_id} to {self.request.release_tag}",
+            flush=True,
+        )
+        return restored
+
+    def _verify_public_release_identity(
+        self, release_id: int
+    ) -> dict[str, object]:
+        release = self.client.get_release_by_tag(self.request.release_tag)
+        if release is None:
+            raise PublishError(
+                f"Published release is not addressable by tag {self.request.release_tag}"
+            )
+        if int(release.get("id", -1)) != release_id:
+            raise PublishError(
+                f"Tag {self.request.release_tag} resolves to a different release"
+            )
+        self._assert_release_identity(release)
+        if release.get("draft") is not False or release.get("prerelease") is not True:
+            raise PublishError("Release is not publicly visible as a pre-release")
+        return release
+
     def _ensure_draft_release(self) -> tuple[dict[str, object], bool]:
         release = self.client.get_release(self.request.release_tag)
         if release is None:
-            release = self.client.create_draft_release(self.request, self.target_sha)
-            print(f"Created draft pre-release {self.request.release_tag}", flush=True)
-            return release, False
+            orphaned = self.client.find_orphaned_release(
+                self.request.title, self.target_sha
+            )
+            if orphaned is not None:
+                release = self._restore_orphaned_release(orphaned)
+            else:
+                release = self.client.create_draft_release(self.request, self.target_sha)
+                print(f"Created draft pre-release {self.request.release_tag}", flush=True)
+                self._assert_release_identity(release)
+                return release, False
+        self._assert_release_identity(release)
         if release.get("prerelease") is not True:
             raise PublishError("Existing release is not marked as a pre-release")
         if release.get("draft") is False:
@@ -479,6 +566,7 @@ class ReleasePublisher:
             assets = self._verify_platform_assets(release_id)
             if not self._notes_complete(release):
                 raise PublishError("Published pre-release does not contain all six language sections")
+            release = self._verify_public_release_identity(release_id)
             print(f"{self.request.release_tag} is already complete", flush=True)
             self._publish_summary(release, assets)
             return release
@@ -506,6 +594,8 @@ class ReleasePublisher:
         release = self.client.update_release(
             release_id,
             {
+                "tag_name": self.request.release_tag,
+                "target_commitish": self.target_sha,
                 "name": self.request.title,
                 "body": self.release_notes,
                 "draft": True,
@@ -513,20 +603,25 @@ class ReleasePublisher:
                 "make_latest": "false",
             },
         )
+        self._assert_release_identity(release)
         if not self._notes_complete(release):
             raise PublishError("GitHub did not retain the reviewed six-language release notes")
 
         release = self.client.update_release(
             release_id,
             {
+                "tag_name": self.request.release_tag,
+                "target_commitish": self.target_sha,
                 "name": self.request.title,
                 "draft": False,
                 "prerelease": True,
                 "make_latest": "false",
             },
         )
+        self._assert_release_identity(release)
         if release.get("draft") is not False or release.get("prerelease") is not True:
             raise PublishError("GitHub did not publish the release as a pre-release")
+        release = self._verify_public_release_identity(release_id)
         assets = self._verify_platform_assets(release_id)
         self._publish_summary(release, assets)
         print(f"Published pre-release: {release.get('html_url', '')}", flush=True)
