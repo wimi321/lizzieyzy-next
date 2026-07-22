@@ -5,7 +5,10 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 from pathlib import Path
+import shutil
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -60,6 +63,7 @@ class FakeClient:
         self.next_run_id = 100
         self.failed_workflow = failed_workflow
         self.dispatched: list[str] = []
+        self.dispatched_inputs: dict[str, dict[str, str]] = {}
 
     def get_tag_sha(self, _tag: str) -> str | None:
         return self.tag_sha
@@ -99,7 +103,7 @@ class FakeClient:
         return list(self.workflow_runs.get(workflow_file, []))
 
     def dispatch_workflow(
-        self, workflow_file: str, _tag: str, _inputs: dict[str, str]
+        self, workflow_file: str, _tag: str, inputs: dict[str, str]
     ) -> int:
         self.next_run_id += 1
         run_id = self.next_run_id
@@ -114,6 +118,7 @@ class FakeClient:
         self.runs[run_id] = run
         self.workflow_runs.setdefault(workflow_file, []).insert(0, run)
         self.dispatched.append(workflow_file)
+        self.dispatched_inputs[workflow_file] = dict(inputs)
 
         if conclusion == "success":
             for spec in PUBLISH.WORKFLOWS:
@@ -208,6 +213,61 @@ class ReviewedReleaseNotesTest(unittest.TestCase):
         self.assertNotIn("}}", notes)
 
 
+class ReleaseWorkflowResilienceTest(unittest.TestCase):
+    def test_windows_draft_release_metadata_has_an_explicit_input_and_safe_fallback(self) -> None:
+        workflow = (
+            SCRIPT_PATH.parents[1] / ".github" / "workflows" / "build-windows-release.yml"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("release_prerelease:", workflow)
+        self.assertIn("releases?per_page=100", workflow)
+        self.assertNotIn("releases/tags/", workflow)
+        self.assertIn('LIZZIE_RELEASE_PRERELEASE="$release_prerelease"', workflow)
+
+    @unittest.skipIf(os.name == "nt", "behavior test runs with native bash in CI")
+    def test_macos_signing_retries_transient_failures(self) -> None:
+        bash = shutil.which("bash")
+        if bash is None:
+            self.skipTest("bash is unavailable")
+
+        helper = SCRIPT_PATH.with_name("sign_macos_release_with_retry.sh")
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            attempts = root / "attempts.txt"
+            fake_signer = root / "fake-sign.sh"
+            fake_signer.write_text(
+                "#!/usr/bin/env bash\n"
+                "set -euo pipefail\n"
+                "count=0\n"
+                '[[ ! -f "$ATTEMPT_FILE" ]] || count="$(cat "$ATTEMPT_FILE")"\n'
+                "count=$((count + 1))\n"
+                'printf \'%s\' "$count" > "$ATTEMPT_FILE"\n'
+                '[[ "$count" -ge 3 ]]\n',
+                encoding="utf-8",
+            )
+            env = os.environ.copy()
+            env.update(
+                {
+                    "ATTEMPT_FILE": str(attempts),
+                    "MACOS_SIGN_SCRIPT": str(fake_signer),
+                    "MACOS_SIGN_MAX_ATTEMPTS": "3",
+                    "MACOS_SIGN_RETRY_DELAY_SECONDS": "0",
+                }
+            )
+
+            completed = subprocess.run(
+                [bash, str(helper), "unused", "mac-arm64"],
+                check=False,
+                capture_output=True,
+                text=True,
+                env=env,
+            )
+
+            self.assertEqual(0, completed.returncode, completed.stderr)
+            self.assertEqual("3", attempts.read_text(encoding="utf-8"))
+            self.assertEqual(2, completed.stderr.count("retrying"))
+
+
 class ReleasePublisherTest(unittest.TestCase):
     def request(self) -> PUBLISH.ReleaseRequest:
         return PUBLISH.ReleaseRequest(
@@ -244,6 +304,13 @@ class ReleasePublisherTest(unittest.TestCase):
             [spec.workflow_file for spec in PUBLISH.WORKFLOWS],
             client.dispatched,
         )
+        self.assertEqual(
+            "true",
+            client.dispatched_inputs["build-windows-release.yml"]["release_prerelease"],
+        )
+        for workflow_file, inputs in client.dispatched_inputs.items():
+            if workflow_file != "build-windows-release.yml":
+                self.assertNotIn("release_prerelease", inputs)
         self.assertCountEqual(all_asset_names(), client.assets)
 
     def test_failed_platform_keeps_release_as_draft(self) -> None:

@@ -38,17 +38,21 @@ jobs:
             scripts/generate_release_notes.py \
             scripts/package_runtime_tools.py \
             scripts/prepare_bundled_jcef.py \
+            scripts/publish_release_request.py \
             scripts/summarize_jfr.py \
             scripts/test_generate_release_notes.py \
+            scripts/test_publish_release_request.py \
             scripts/test_windows_launcher_packaging.py
           python3 scripts/test_generate_release_notes.py
           python3 scripts/test_prepare_bundled_jcef.py
+          python3 scripts/test_publish_release_request.py
           python3 scripts/test_windows_launcher_packaging.py
           bash -n \
             scripts/package_macos_dmg.sh \
             scripts/package_release.sh \
             scripts/package_windows_exe.sh \
             scripts/run_jfr_benchmark.sh \
+            scripts/sign_macos_release_with_retry.sh \
             scripts/validate_release_assets.sh
 
       - name: Run unit tests
