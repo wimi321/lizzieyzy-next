@@ -72,6 +72,9 @@ class FakeClient:
         self.dispatched: list[str] = []
         self.dispatched_inputs: dict[str, dict[str, str]] = {}
         self.update_payloads: list[dict[str, object]] = []
+        self.detached_tag_aliases: dict[str, str] = {}
+        self.deleted_tags: list[str] = []
+        self.protected_release_tags: set[str] = set()
 
     def get_tag_sha(self, _tag: str) -> str | None:
         return self.tag_sha
@@ -80,6 +83,14 @@ class FakeClient:
         self.tag_sha = target_sha
 
     def get_release_by_tag(self, tag: str) -> dict[str, object] | None:
+        if tag in self.protected_release_tags:
+            return {
+                "id": 8,
+                "tag_name": tag,
+                "target_commitish": TARGET_SHA,
+                "draft": False,
+                "prerelease": True,
+            }
         if self.release is None or self.release.get("tag_name") != tag:
             return None
         if self.hide_public_by_tag and self.release.get("draft") is False:
@@ -102,6 +113,15 @@ class FakeClient:
         ):
             return dict(self.release)
         return None
+
+    def list_detached_tag_aliases(self, target_sha: str) -> list[str]:
+        return [
+            tag for tag, sha in self.detached_tag_aliases.items() if sha == target_sha
+        ]
+
+    def delete_tag(self, tag: str) -> None:
+        self.detached_tag_aliases.pop(tag)
+        self.deleted_tags.append(tag)
 
     def create_draft_release(
         self, request: PUBLISH.ReleaseRequest, _target_sha: str
@@ -197,6 +217,37 @@ class ReleaseRequestTest(unittest.TestCase):
     def test_rejects_unreviewable_title(self) -> None:
         with self.assertRaisesRegex(PUBLISH.PublishError, "title must be exactly"):
             self.load(request_payload(title="Surprise release"))
+
+
+class GitHubClientTagAliasTest(unittest.TestCase):
+    def test_only_returns_synthetic_lightweight_aliases_for_the_release_target(self) -> None:
+        client = PUBLISH.GitHubClient("owner/repository", "test-token")
+        client._request = lambda *_args, **_kwargs: (  # type: ignore[method-assign]
+            200,
+            [
+                {
+                    "ref": "refs/tags/untagged-0123456789abcdefabcd",
+                    "object": {"type": "commit", "sha": TARGET_SHA},
+                },
+                {
+                    "ref": "refs/tags/untagged-human-label",
+                    "object": {"type": "commit", "sha": TARGET_SHA},
+                },
+                {
+                    "ref": "refs/tags/untagged-fedcba9876543210abcd",
+                    "object": {"type": "commit", "sha": "b" * 40},
+                },
+                {
+                    "ref": "refs/tags/untagged-abcdef0123456789abcd",
+                    "object": {"type": "tag", "sha": TARGET_SHA},
+                },
+            ],
+        )
+
+        self.assertEqual(
+            ["untagged-0123456789abcdefabcd"],
+            client.list_detached_tag_aliases(TARGET_SHA),
+        )
 
 
 class WorkflowSpecTest(unittest.TestCase):
@@ -401,6 +452,52 @@ class ReleasePublisherTest(unittest.TestCase):
 
         self.assertFalse(release["draft"])
         self.assertEqual([], client.dispatched)
+
+    def test_cleans_unbound_synthetic_tag_alias_for_published_release(self) -> None:
+        client = FakeClient()
+        client.tag_sha = TARGET_SHA
+        client.assets = all_asset_names()
+        client.detached_tag_aliases = {
+            "untagged-0123456789abcdefabcd": TARGET_SHA,
+        }
+        client.release = {
+            "id": 7,
+            "tag_name": RELEASE_TAG,
+            "target_commitish": TARGET_SHA,
+            "name": self.request().title,
+            "body": self.release_notes(),
+            "draft": False,
+            "prerelease": True,
+            "html_url": "https://example.invalid/release",
+        }
+
+        self.publisher(client).publish()
+
+        self.assertEqual(["untagged-0123456789abcdefabcd"], client.deleted_tags)
+        self.assertEqual({}, client.detached_tag_aliases)
+
+    def test_preserves_synthetic_tag_alias_when_a_release_still_uses_it(self) -> None:
+        alias = "untagged-0123456789abcdefabcd"
+        client = FakeClient()
+        client.tag_sha = TARGET_SHA
+        client.assets = all_asset_names()
+        client.detached_tag_aliases = {alias: TARGET_SHA}
+        client.protected_release_tags = {alias}
+        client.release = {
+            "id": 7,
+            "tag_name": RELEASE_TAG,
+            "target_commitish": TARGET_SHA,
+            "name": self.request().title,
+            "body": self.release_notes(),
+            "draft": False,
+            "prerelease": True,
+            "html_url": "https://example.invalid/release",
+        }
+
+        self.publisher(client).publish()
+
+        self.assertEqual([], client.deleted_tags)
+        self.assertEqual({alias: TARGET_SHA}, client.detached_tag_aliases)
 
     def test_recovers_orphaned_published_release_without_rebuilding(self) -> None:
         client = FakeClient()

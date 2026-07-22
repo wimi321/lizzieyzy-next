@@ -266,6 +266,34 @@ class GitHubClient:
             )
         return candidates[0] if candidates else None
 
+    def list_detached_tag_aliases(self, target_sha: str) -> list[str]:
+        _status, payload = self._request(
+            "GET",
+            f"/repos/{self.repository}/git/matching-refs/tags/untagged-",
+        )
+        assert isinstance(payload, list)
+        aliases: list[str] = []
+        for ref in payload:
+            if not isinstance(ref, dict):
+                continue
+            name = str(ref.get("ref") or "").removeprefix("refs/tags/")
+            obj = ref.get("object")
+            if (
+                re.fullmatch(r"untagged-[0-9a-f]{20}", name)
+                and isinstance(obj, dict)
+                and obj.get("type") == "commit"
+                and obj.get("sha") == target_sha
+            ):
+                aliases.append(name)
+        return aliases
+
+    def delete_tag(self, tag: str) -> None:
+        self._request(
+            "DELETE",
+            f"/repos/{self.repository}/git/refs/tags/{quote(tag, safe='')}",
+            expected=(204,),
+        )
+
     def create_draft_release(
         self, request: ReleaseRequest, target_sha: str
     ) -> dict[str, object]:
@@ -428,6 +456,13 @@ class ReleasePublisher:
             raise PublishError("Release is not publicly visible as a pre-release")
         return release
 
+    def _cleanup_detached_tag_aliases(self) -> None:
+        for alias in self.client.list_detached_tag_aliases(self.target_sha):
+            if self.client.get_release_by_tag(alias) is not None:
+                continue
+            self.client.delete_tag(alias)
+            print(f"Removed detached release tag alias {alias}", flush=True)
+
     def _ensure_draft_release(self) -> tuple[dict[str, object], bool]:
         release = self.client.get_release(self.request.release_tag)
         if release is None:
@@ -567,6 +602,7 @@ class ReleasePublisher:
             if not self._notes_complete(release):
                 raise PublishError("Published pre-release does not contain all six language sections")
             release = self._verify_public_release_identity(release_id)
+            self._cleanup_detached_tag_aliases()
             print(f"{self.request.release_tag} is already complete", flush=True)
             self._publish_summary(release, assets)
             return release
@@ -622,6 +658,7 @@ class ReleasePublisher:
         if release.get("draft") is not False or release.get("prerelease") is not True:
             raise PublishError("GitHub did not publish the release as a pre-release")
         release = self._verify_public_release_identity(release_id)
+        self._cleanup_detached_tag_aliases()
         assets = self._verify_platform_assets(release_id)
         self._publish_summary(release, assets)
         print(f"Published pre-release: {release.get('html_url', '')}", flush=True)
