@@ -1,0 +1,88 @@
+name: Publish Requested Pre-release
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/release-requests/*.json
+  workflow_dispatch:
+    inputs:
+      request_file:
+        description: Reviewed request file under .github/release-requests
+        required: true
+        type: string
+
+permissions:
+  actions: write
+  contents: write
+
+concurrency:
+  group: publish-requested-pre-release
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+
+    steps:
+      - name: Checkout exact release source
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.x'
+
+      - name: Locate the reviewed release request
+        id: request
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BEFORE_SHA: ${{ github.event.before }}
+          TARGET_SHA: ${{ github.sha }}
+          MANUAL_REQUEST: ${{ inputs.request_file }}
+        run: |
+          set -euo pipefail
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            request_file="$MANUAL_REQUEST"
+          else
+            mapfile -t requests < <(
+              git diff --name-only "$BEFORE_SHA" "$TARGET_SHA" -- \
+                '.github/release-requests/*.json'
+            )
+            if [[ "${#requests[@]}" -ne 1 ]]; then
+              printf 'Expected exactly one changed release request, found %s\n' "${#requests[@]}" >&2
+              printf '%s\n' "${requests[@]}" >&2
+              exit 1
+            fi
+            request_file="${requests[0]}"
+          fi
+
+          case "$request_file" in
+            .github/release-requests/*.json) ;;
+            *)
+              echo "Request must be a JSON file under .github/release-requests" >&2
+              exit 1
+              ;;
+          esac
+          test -f "$request_file"
+          echo "request_file=$request_file" >> "$GITHUB_OUTPUT"
+
+      - name: Test release metadata and fail-closed publishing
+        run: |
+          python3 -m unittest \
+            scripts.test_publish_release_request \
+            scripts.test_generate_release_notes
+
+      - name: Build, verify, and publish the pre-release
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          python3 scripts/publish_release_request.py \
+            --request "${{ steps.request.outputs.request_file }}" \
+            --repository "${{ github.repository }}" \
+            --target-sha "${{ github.sha }}"
