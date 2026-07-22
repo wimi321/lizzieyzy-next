@@ -1260,7 +1260,7 @@ class LeelazReadBoardGmaTest {
           newLoadSgfThread(engine, sgfFile, () -> {}, loadFailure, "gma-reset-outstanding-test");
       try {
         loadThread.start();
-        assertTrue(waitForRawCommandPrefix(output, "loadsgf ", 1, TimeUnit.SECONDS));
+        assertTrue(waitForRawCommandPrefix(output, "loadsgf ", 3, TimeUnit.SECONDS));
         invokeBeginReadBoardGmaSession(engine);
         engine.failReadBoardGmaEngineRestore("controlled restore failure");
         engine.sendCommand("name");

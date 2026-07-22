@@ -517,6 +517,76 @@ class AnalysisEngineRequestTest {
   }
 
   @Test
+  void wholeGameRequestIncludesRootAndUsesExplicitTargetWithoutOwnership() throws Exception {
+    try (TestEnvironment env = TestEnvironment.open()) {
+      BoardHistoryList history = new BoardHistoryList(BoardData.empty(BOARD_SIZE, BOARD_SIZE));
+      history.add(
+          moveNode(stones(placement(0, 0, Stone.BLACK)), new int[] {0, 0}, Stone.BLACK, false, 1));
+      boardWithHistory(history);
+      TrackingAnalysisEngine engine = TrackingAnalysisEngine.create();
+      BoardHistoryNode root = history.getStart();
+      BoardHistoryNode firstMove = root.next().orElseThrow();
+
+      int requested =
+          engine.startWholeGameRequest(List.of(root, firstMove), 500, false);
+
+      assertEquals(2, requested);
+      JSONObject rootRequest = engine.requestAt(0);
+      JSONObject moveRequest = engine.requestAt(1);
+      assertEquals(500, rootRequest.getInt("maxVisits"));
+      assertFalse(rootRequest.getBoolean("includeOwnership"));
+      assertEquals(List.of(0), rootRequest.getJSONArray("analyzeTurns").toList());
+      assertEquals(List.of(1), moveRequest.getJSONArray("analyzeTurns").toList());
+    }
+  }
+
+  @Test
+  void wholeGameRequestNeverDowngradesCachedResultsEvenWhenOverrideIsEnabled() throws Exception {
+    try (TestEnvironment env = TestEnvironment.open()) {
+      Lizzie.config.analysisAlwaysOverride = true;
+      BoardData rootData = BoardData.empty(BOARD_SIZE, BOARD_SIZE);
+      rootData.setPlayouts(100);
+      rootData.winrate = 41.0;
+      BoardHistoryList history = new BoardHistoryList(rootData);
+      boardWithHistory(history);
+      TrackingAnalysisEngine engine = TrackingAnalysisEngine.create();
+      AtomicInteger progress = new AtomicInteger();
+      engine.setProgressListener((completed, total) -> progress.set(completed));
+
+      assertEquals(
+          1,
+          engine.startWholeGameRequest(List.of(history.getStart()), 500, false));
+      rootData.setPlayouts(800);
+      rootData.winrate = 44.0;
+      engine.parseResult(analysisResult(1, 500, 70.0));
+
+      assertEquals(800, rootData.getPlayouts());
+      assertEquals(44.0, rootData.winrate, 0.0001);
+      assertEquals(history.getStart(), history.getCurrentHistoryNode());
+      assertEquals(1, progress.get());
+      waitForMovelistRefreshThreads();
+    }
+  }
+
+  @Test
+  void wholeGameRequestSkipsNodesAlreadyAtTheTargetRegardlessOfOverride() throws Exception {
+    try (TestEnvironment env = TestEnvironment.open()) {
+      Lizzie.config.analysisAlwaysOverride = true;
+      BoardData rootData = BoardData.empty(BOARD_SIZE, BOARD_SIZE);
+      rootData.setPlayouts(500);
+      BoardHistoryList history = new BoardHistoryList(rootData);
+      boardWithHistory(history);
+      TrackingAnalysisEngine engine = TrackingAnalysisEngine.create();
+
+      int requested =
+          engine.startWholeGameRequest(List.of(history.getStart()), 500, false);
+
+      assertEquals(0, requested);
+      assertEquals(0, engine.requestCount());
+    }
+  }
+
+  @Test
   void startRequestMissingMainlineAnalyzesOnlyUnanalyzedMainlineMoves() throws Exception {
     try (TestEnvironment env = TestEnvironment.open()) {
       BoardHistoryList history = new BoardHistoryList(BoardData.empty(BOARD_SIZE, BOARD_SIZE));

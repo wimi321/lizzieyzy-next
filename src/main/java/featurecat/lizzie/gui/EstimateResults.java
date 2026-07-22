@@ -28,6 +28,7 @@ import javax.swing.ImageIcon;
 import javax.swing.JButton;
 import javax.swing.JDialog;
 import javax.swing.JPanel;
+import javax.swing.SwingUtilities;
 
 public class EstimateResults extends JDialog {
   private final ResourceBundle resourceBundle = Lizzie.resourceBundle;
@@ -59,6 +60,8 @@ public class EstimateResults extends JDialog {
   public JButton btnSettings;
   private BufferedImage cachedBackgroundImage;
   private TexturePaint paint;
+  private boolean calculationPending;
+  private boolean calculationFailed;
 
   public EstimateResults(Window owner) {
     super(owner);
@@ -76,6 +79,7 @@ public class EstimateResults extends JDialog {
             Lizzie.frame.refresh();
             Lizzie.frame.isCounting = false;
             iscounted = false;
+            Lizzie.frame.cancelPositionEstimateRequest();
             Lizzie.frame.refresh();
             btnAuto.setText(resourceBundle.getString("EstimateResults.autoEstimate")); // ""自动判断");
             Lizzie.frame.isAutocounting = false;
@@ -132,14 +136,15 @@ public class EstimateResults extends JDialog {
             // Lizzie.frame.zen.noread = false;
 
             if (!Lizzie.frame.isAutocounting) {
-              Lizzie.frame.isAutocounting = true;
-              Lizzie.frame.zen.syncboradstat();
-              Lizzie.frame.zen.countStones();
+              Lizzie.frame.startAutoPositionEstimate();
               btnAuto.setText(resourceBundle.getString("EstimateResults.stopEstimate")); // "停止判断");
             } else {
               Lizzie.frame.clearEstimate();
               Lizzie.frame.refresh();
-              // Lizzie.frame.iscounting=false;
+              Lizzie.frame.isCounting = false;
+              Lizzie.frame.cancelPositionEstimateRequest();
+              iscounted = false;
+              btnEstimate.setText(resourceBundle.getString("EstimateResults.estimate"));
               btnAuto.setText(resourceBundle.getString("EstimateResults.autoEstimate")); // "自动判断");
               Lizzie.frame.isAutocounting = false;
             }
@@ -151,18 +156,16 @@ public class EstimateResults extends JDialog {
             // Lizzie.frame.zen.noread = false;
             if (!iscounted) {
               Lizzie.frame.countstones(true);
-              Lizzie.frame.isCounting = true;
-              btnEstimate.setText(
-                  resourceBundle.getString("EstimateResults.closeEstimate")); // "关闭判断");
             } else {
               Lizzie.frame.clearEstimate();
               Lizzie.frame.refresh();
               Lizzie.frame.isCounting = false;
+              Lizzie.frame.cancelPositionEstimateRequest();
+              iscounted = false;
               btnEstimate.setText(resourceBundle.getString("EstimateResults.estimate")); // "判断形势");
               repaint();
               // Lizzie.frame.setVisible(true);
             }
-            iscounted = !iscounted;
           }
         });
 
@@ -173,12 +176,12 @@ public class EstimateResults extends JDialog {
             Lizzie.config.estimateArea = !Lizzie.config.estimateArea;
             if (Lizzie.config.estimateArea) {
               btnArea.setText(resourceBundle.getString("EstimateResults.territoryMode"));
-              if (!Lizzie.config.useZenEstimate)
+              if (!Lizzie.config.useZenEstimate && Lizzie.frame.zen != null)
                 Lizzie.frame.zen.sendCommand("kata-set-rules chinese");
               // "数目模式");
             } else {
               btnArea.setText(resourceBundle.getString("EstimateResults.areaMode"));
-              if (!Lizzie.config.useZenEstimate)
+              if (!Lizzie.config.useZenEstimate && Lizzie.frame.zen != null)
                 Lizzie.frame.zen.sendCommand("kata-set-rules japanese");
               // "数子模式");
             }
@@ -206,6 +209,30 @@ public class EstimateResults extends JDialog {
   public void showEstimate() {
     setLocNearBoard();
     this.setVisible(true);
+  }
+
+  public void beginCalculation() {
+    calculationPending = true;
+    calculationFailed = false;
+    iscounted = true;
+    btnEstimate.setText(resourceBundle.getString("EstimateResults.closeEstimate"));
+    showEstimate();
+    repaint();
+  }
+
+  public void completeCalculation() {
+    calculationPending = false;
+    calculationFailed = false;
+    repaint();
+  }
+
+  public void failCalculation() {
+    calculationPending = false;
+    calculationFailed = true;
+    iscounted = false;
+    btnEstimate.setText(resourceBundle.getString("EstimateResults.estimate"));
+    btnAuto.setText(resourceBundle.getString("EstimateResults.autoEstimate"));
+    repaint();
   }
 
   private void setLocNearBoard() {
@@ -270,6 +297,20 @@ public class EstimateResults extends JDialog {
       int whitePoints,
       int blackAlive,
       int whiteAlive) {
+    if (!SwingUtilities.isEventDispatchThread()) {
+      SwingUtilities.invokeLater(
+          () ->
+              Counts(
+                  blackEatCount,
+                  whiteEatCount,
+                  blackPrisonerCount,
+                  whitePrisonerCount,
+                  blackPoints,
+                  whitePoints,
+                  blackAlive,
+                  whiteAlive));
+      return;
+    }
     // synchronized (this) {
     allBlackCounts = 0;
     allWhiteCounts = 0;
@@ -296,6 +337,7 @@ public class EstimateResults extends JDialog {
       iscounted = true;
     }
 
+    completeCalculation();
     repaint();
     //  }
   }
@@ -329,6 +371,22 @@ public class EstimateResults extends JDialog {
     if (paint != null) g2.setPaint(paint);
     else g2.setColor(Color.GRAY);
     g2.fill(new Rectangle(0, 0, width, height));
+
+    if (calculationPending || calculationFailed) {
+      String status =
+          resourceBundle.getString(
+              calculationPending
+                  ? "EstimateResults.calculating"
+                  : "EstimateResults.unavailable");
+      g2.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
+      g2.setFont(
+          new Font(Lizzie.config.isChinese ? "SimHei" : Lizzie.config.uiFontName, Font.PLAIN, 16));
+      g2.setColor(Color.BLACK);
+      int textWidth = g2.getFontMetrics().stringWidth(status);
+      g2.drawString(status, Math.max(8, (width - textWidth) / 2), Math.max(28, height / 2));
+      g2.dispose();
+      return;
+    }
 
     // cachedImage = new BufferedImage(width, height, TYPE_INT_ARGB);
     // Graphics2D g2 = (Graphics2D) cachedImage.getGraphics();

@@ -27,12 +27,13 @@ import java.io.OutputStream;
 import java.nio.file.Path;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.ResourceBundle;
 import java.util.Set;
 import java.util.Stack;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
@@ -42,6 +43,16 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 
 public class AnalysisEngine {
+  public enum Workload {
+    STANDARD,
+    WHOLE_GAME
+  }
+
+  @FunctionalInterface
+  public interface ProgressListener {
+    void onProgress(int completed, int total);
+  }
+
   private static final int REMOTE_GTP_SILENT_INTERVAL_CENTISEC = 1;
   private static final int REMOTE_GTP_SILENT_MAX_VISITS = 16;
   private static final int REMOTE_GTP_OVERVIEW_STRIDE = 8;
@@ -68,9 +79,10 @@ public class AnalysisEngine {
   private List<String> commands;
   private boolean isPreLoad;
   // private HashMap<Integer, List<MoveData>> resultMap = new HashMap<Integer, List<MoveData>>();
-  private HashMap<Integer, BoardHistoryNode> analyzeMap = new HashMap<Integer, BoardHistoryNode>();
+  private Map<Integer, BoardHistoryNode> analyzeMap =
+      new ConcurrentHashMap<Integer, BoardHistoryNode>();
   private int globalID;
-  private int resultCount;
+  private volatile int resultCount;
   // private int analyzeNumberCount;
   // private BoardHistoryNode startAnalyzeNode;
   public WaitForAnalysis waitFrame;
@@ -88,9 +100,18 @@ public class AnalysisEngine {
   private boolean shouldRePonder = false;
   private boolean isLoaded = false;
   private boolean silentProgress = false;
-  private boolean requestDispatchFailed = false;
-  private Runnable completionCallback;
-  private boolean keepAliveAfterCurrentRequest = false;
+  private volatile boolean requestDispatchFailed = false;
+  private volatile boolean requestDispatchComplete = false;
+  private volatile Runnable completionCallback;
+  private volatile Runnable failureCallback;
+  private volatile ProgressListener progressListener;
+  private volatile boolean keepAliveAfterCurrentRequest = false;
+  private volatile boolean preserveExistingAnalysis = false;
+  private volatile boolean preserveBoardPositionOnCompletion = false;
+  private volatile boolean protectForegroundCurrentNode = true;
+  private volatile int explicitRequestTargetVisits = -1;
+  private volatile BoardHistoryNode requestHistoryRoot;
+  private final Workload workload;
   private ArrayDeque<RemoteGtpAnalyzeJob> remoteGtpQueue;
   private RemoteGtpAnalyzeJob remoteGtpActiveJob;
   private boolean remoteGtpWaitingForStopAck;
@@ -123,7 +144,13 @@ public class AnalysisEngine {
   private Leelaz.ExclusiveGtpLeaseAvailability foregroundLeaseAvailability;
 
   public AnalysisEngine(boolean isPreLoad) throws IOException {
+    this(isPreLoad, Workload.STANDARD, -1);
+  }
+
+  public AnalysisEngine(boolean isPreLoad, Workload workload, int requestedMaxVisits)
+      throws IOException {
     this.isPreLoad = isPreLoad;
+    this.workload = workload == null ? Workload.STANDARD : workload;
     if (Lizzie.config.analysisReuseCurrentEngine) {
       useRemoteCompute = true;
       sharedForegroundEngine = Lizzie.leelaz;
@@ -137,14 +164,17 @@ public class AnalysisEngine {
       return;
     }
     int maxVisits =
-        Lizzie.frame.isBatchAnalysisMode
-            ? Math.max(2, Lizzie.config.batchAnalysisPlayouts)
-            : Lizzie.config.analysisMaxVisits + 1;
+        requestedMaxVisits > 0
+            ? requestedMaxVisits
+            : (Lizzie.frame.isBatchAnalysisMode
+                ? Math.max(2, Lizzie.config.batchAnalysisPlayouts)
+                : Lizzie.config.analysisMaxVisits + 1);
     engineCommand =
         KataGoRuntimeHelper.optimizeAnalysisEngineCommand(
             resolveConfiguredAnalysisEngineCommand(isPreLoad),
             maxVisits,
-            Lizzie.frame.isBatchAnalysisMode);
+            Lizzie.frame.isBatchAnalysisMode,
+            this.workload == Workload.WHOLE_GAME);
     RemoteEngineData remoteData = Utils.getAnalysisEngineRemoteEngineData();
     this.useJavaSSH = remoteData.useJavaSSH;
     this.ip = remoteData.ip;
@@ -362,9 +392,15 @@ public class AnalysisEngine {
     int id = Integer.parseInt(result.getString("id"));
     BoardHistoryNode node = analyzeMap.get(id);
     if (node == null) return;
+    if (!requestStillTargetsCurrentGame()) {
+      requestDispatchFailed = true;
+      finishFailedRequestDispatch(false);
+      return;
+    }
     if (shouldKeepForegroundAnalysis(node)) {
       resultCount++;
-      if (resultCount == analyzeMap.size()) setResult();
+      notifyProgress();
+      if (canFinalizeCurrentRequest() && resultCount == analyzeMap.size()) setResult();
       return;
     }
     List<MoveData> moves = Utils.getBestMovesFromJsonArray(moveInfos, true, true);
@@ -376,6 +412,7 @@ public class AnalysisEngine {
     }
     applyAnalysisPayload(node, moves, ownershipArray);
     resultCount++;
+    notifyProgress();
     Lizzie.frame.requestProblemListRefresh();
     if (waitFrame != null) {
       waitFrame.setProgress(resultCount, analyzeMap.size());
@@ -383,7 +420,7 @@ public class AnalysisEngine {
       Lizzie.board.setMovelistAll();
       Lizzie.frame.refresh();
     }
-    if (resultCount == analyzeMap.size()) setResult();
+    if (canFinalizeCurrentRequest() && resultCount == analyzeMap.size()) setResult();
   }
 
   private boolean handleRemoteGtpLine(String line) {
@@ -688,7 +725,7 @@ public class AnalysisEngine {
       finishFailedRequestDispatch(!silentProgress);
       return;
     }
-    if (resultCount == analyzeMap.size()) {
+    if (canFinalizeCurrentRequest() && resultCount == analyzeMap.size()) {
       setResult();
       return;
     }
@@ -698,6 +735,9 @@ public class AnalysisEngine {
   }
 
   private boolean commitRemoteGtpStoppingResult() {
+    if (!requestStillTargetsCurrentGame()) {
+      return false;
+    }
     RemoteGtpAnalyzeJob job = remoteGtpStoppingJob;
     List<MoveData> moves = remoteGtpStoppingMoves;
     RemoteGtpRootInfo rootInfo = remoteGtpStoppingRootInfo;
@@ -707,8 +747,8 @@ public class AnalysisEngine {
     if (job == null || moves == null || moves.isEmpty()) {
       return false;
     }
-    applyAnalysisPayload(job.node, moves, null);
-    if (rootInfo != null) {
+    boolean payloadApplied = applyAnalysisPayload(job.node, moves, null);
+    if (payloadApplied && rootInfo != null) {
       BoardData data = job.node.getData();
       data.winrate = rootInfo.winrate;
       data.scoreMean = rootInfo.scoreLead;
@@ -717,6 +757,7 @@ public class AnalysisEngine {
       Lizzie.board.updateMovelist(job.node);
     }
     resultCount++;
+    notifyProgress();
     Lizzie.frame.requestProblemListRefresh();
     if (waitFrame != null && (sharedForegroundEngine == null || resultCount < analyzeMap.size())) {
       waitFrame.setProgress(resultCount, analyzeMap.size());
@@ -771,18 +812,30 @@ public class AnalysisEngine {
     watchdog.start();
   }
 
-  private void applyAnalysisPayload(
+  private boolean applyAnalysisPayload(
       BoardHistoryNode node, List<MoveData> moves, ArrayList<Double> ownershipArray) {
+    if (node == null || node.getData() == null) {
+      return false;
+    }
+    if (preserveExistingAnalysis
+        && explicitRequestTargetVisits > 0
+        && node.getData().getPlayouts() >= explicitRequestTargetVisits) {
+      return false;
+    }
     node.getData()
         .tryToSetBestMoves(
             moves,
-            resourceBundle.getString("AnalysisEngine.flashAnalyze"),
+            resourceBundle.getString(
+                workload == Workload.WHOLE_GAME
+                    ? "AnalysisEngine.wholeGameDeepAnalyze"
+                    : "AnalysisEngine.flashAnalyze"),
             false,
             MoveData.getPlayouts(moves),
             ownershipArray,
-            Lizzie.config.analysisAlwaysOverride);
+            !preserveExistingAnalysis && Lizzie.config.analysisAlwaysOverride);
     node.getData().comment = SGFParser.formatComment(node);
     Lizzie.board.updateMovelist(node);
+    return true;
   }
 
   private static boolean shouldRefreshSilentProgress(int resultCount, int totalCount) {
@@ -799,7 +852,8 @@ public class AnalysisEngine {
   }
 
   private boolean shouldKeepForegroundAnalysis(BoardHistoryNode node) {
-    return silentProgress
+    return protectForegroundCurrentNode
+        && silentProgress
         && Lizzie.leelaz != null
         && (Lizzie.leelaz.isPondering() || Lizzie.leelaz.isThinking)
         && Lizzie.board != null
@@ -808,15 +862,22 @@ public class AnalysisEngine {
   }
 
   private void setResult() {
+    if (!requestStillTargetsCurrentGame()) {
+      requestDispatchFailed = true;
+      finishFailedRequestDispatch(false);
+      return;
+    }
     Lizzie.board.clearPkBoardStat();
     Lizzie.board.isKataBoard = true;
     boolean oriEnableLizzieCache = Lizzie.config.enableLizzieCache;
-    if (Lizzie.config.analysisAlwaysOverride) {
+    if (Lizzie.config.analysisAlwaysOverride && !preserveExistingAnalysis) {
       Lizzie.config.enableLizzieCache = false;
     }
     try {
       Lizzie.board.setMovelistAll();
-      if (Lizzie.board.getHistory().getCurrentHistoryNode() == Lizzie.board.getHistory().getStart())
+      if (!preserveBoardPositionOnCompletion
+          && Lizzie.board.getHistory().getCurrentHistoryNode()
+              == Lizzie.board.getHistory().getStart())
         Lizzie.board.nextMove(true);
       Lizzie.frame.refresh();
       Lizzie.frame.requestProblemListRefresh();
@@ -829,7 +890,7 @@ public class AnalysisEngine {
         normalQuit();
       }
     } finally {
-      if (Lizzie.config.analysisAlwaysOverride)
+      if (Lizzie.config.analysisAlwaysOverride && !preserveExistingAnalysis)
         Lizzie.config.enableLizzieCache = oriEnableLizzieCache;
     }
     if (sharedForegroundEngine == null && shouldRePonder && !Lizzie.leelaz.isPondering())
@@ -870,7 +931,7 @@ public class AnalysisEngine {
 
   private synchronized void finishAbortedAnalysis() {
     releaseSharedForegroundLease();
-    if (analyzeMap.isEmpty() && completionCallback == null) {
+    if (analyzeMap.isEmpty() && completionCallback == null && failureCallback == null) {
       return;
     }
     analyzeMap.clear();
@@ -888,7 +949,12 @@ public class AnalysisEngine {
     remoteGtpStoppingMoves = null;
     remoteGtpStoppingRootInfo = null;
     resultCount = 0;
-    runCompletionCallback();
+    requestDispatchComplete = false;
+    if (failureCallback != null) {
+      runFailureCallback();
+    } else {
+      runCompletionCallback();
+    }
   }
 
   public void startRequestAllBranches() {
@@ -971,6 +1037,54 @@ public class AnalysisEngine {
     return requestCount;
   }
 
+  /** Starts a resumable, non-blocking whole-game stage with an explicit visit target. */
+  public int startWholeGameRequest(
+      List<BoardHistoryNode> requestedNodes, int targetVisits, boolean includeOwnership) {
+    if (!isLoaded) return -1;
+    prepareRequestState(false);
+    preserveExistingAnalysis = true;
+    preserveBoardPositionOnCompletion = true;
+    protectForegroundCurrentNode = false;
+    explicitRequestTargetVisits = Math.max(1, targetVisits);
+    requestHistoryRoot =
+        Lizzie.board == null || Lizzie.board.getHistory() == null
+            ? null
+            : Lizzie.board.getHistory().getStart();
+
+    Set<BoardHistoryNode> uniqueNodes = new LinkedHashSet<BoardHistoryNode>();
+    if (requestedNodes != null) {
+      for (BoardHistoryNode node : requestedNodes) {
+        if (node != null
+            && node.getData() != null
+            && node.getData().getPlayouts() < explicitRequestTargetVisits) {
+          uniqueNodes.add(node);
+        }
+      }
+    }
+
+    if (useRemoteCompute) {
+      if (requestStillTargetsCurrentGame()) {
+        enqueueRemoteGtpRequests(
+            orderRemoteGtpMainlineNodes(new ArrayList<BoardHistoryNode>(uniqueNodes)),
+            explicitRequestTargetVisits);
+      } else {
+        requestDispatchFailed = true;
+      }
+    } else {
+      for (BoardHistoryNode node : uniqueNodes) {
+        if (!requestStillTargetsCurrentGame()) {
+          requestDispatchFailed = true;
+          break;
+        }
+        if (!sendRequest(node, explicitRequestTargetVisits, includeOwnership)) break;
+      }
+    }
+    int requestCount = analyzeMap.size();
+    boolean dispatchFailed = requestDispatchFailed;
+    showRequestProgressOrContinueBatch(false);
+    return dispatchFailed ? -1 : requestCount;
+  }
+
   private void prepareRequestState(boolean showProgressDialog) {
     analyzeMap.clear();
     remoteGtpQueue().clear();
@@ -990,7 +1104,13 @@ public class AnalysisEngine {
     if (globalID <= 0) globalID = 1;
     resultCount = 0;
     requestDispatchFailed = false;
+    requestDispatchComplete = false;
     silentProgress = !showProgressDialog;
+    preserveExistingAnalysis = false;
+    preserveBoardPositionOnCompletion = false;
+    protectForegroundCurrentNode = true;
+    explicitRequestTargetVisits = -1;
+    requestHistoryRoot = null;
     if (!showProgressDialog) waitFrame = null;
     if (sharedForegroundEngine == null && showProgressDialog && Lizzie.leelaz.isPondering()) {
       Lizzie.leelaz.togglePonder();
@@ -999,9 +1119,15 @@ public class AnalysisEngine {
   }
 
   private void showRequestProgressOrContinueBatch(boolean showProgressDialog) {
+    requestDispatchComplete = true;
     if (requestDispatchFailed) {
       finishFailedRequestDispatch(showProgressDialog);
     } else if (analyzeMap.size() > 0) {
+      notifyProgress();
+      if (resultCount >= analyzeMap.size()) {
+        setResult();
+        return;
+      }
       Lizzie.frame.requestProblemListRefresh();
       if (showProgressDialog) {
         if (waitFrame == null) waitFrame = new WaitForAnalysis();
@@ -1015,6 +1141,7 @@ public class AnalysisEngine {
   }
 
   private void finishFailedRequestDispatch(boolean showProgressDialog) {
+    Runnable failedRequestCallback = failureCallback;
     releaseSharedForegroundLease();
     analyzeMap.clear();
     remoteGtpQueue().clear();
@@ -1031,7 +1158,10 @@ public class AnalysisEngine {
     remoteGtpStoppingMoves = null;
     remoteGtpStoppingRootInfo = null;
     resultCount = 0;
+    requestDispatchComplete = false;
     completionCallback = null;
+    failureCallback = null;
+    progressListener = null;
     requestDispatchFailed = false;
     if (shouldRePonder && !Lizzie.leelaz.isPondering()) Lizzie.leelaz.togglePonder();
     if (Lizzie.frame.isBatchAnalysisMode) Lizzie.frame.isBatchAnalysisMode = false;
@@ -1054,21 +1184,31 @@ public class AnalysisEngine {
             }
           });
     }
+    if (failedRequestCallback != null) {
+      javax.swing.SwingUtilities.invokeLater(failedRequestCallback);
+    }
   }
 
   public boolean sendRequest(BoardHistoryNode analyzeNode) {
+    return sendRequest(
+        analyzeNode,
+        targetAnalysisVisits(),
+        Lizzie.config.showKataGoEstimate);
+  }
+
+  private boolean sendRequest(
+      BoardHistoryNode analyzeNode, int maxVisits, boolean includeOwnership) {
     if (useRemoteCompute) {
-      return sendRemoteGtpRequest(analyzeNode);
+      return sendRemoteGtpRequest(analyzeNode, maxVisits);
     }
     JSONObject request = new JSONObject();
-    int maxVisits = targetAnalysisVisits();
     request.put("id", String.valueOf(globalID));
     request.put("maxVisits", maxVisits);
     request.put("includePVVisits", Lizzie.config.showPvVisits);
-    request.put("includeOwnership", Lizzie.config.showKataGoEstimate);
+    request.put("includeOwnership", includeOwnership);
     request.put(
         "includeMovesOwnership",
-        Lizzie.config.showKataGoEstimate && Lizzie.config.useMovesOwnership);
+        includeOwnership && Lizzie.config.useMovesOwnership);
     BoardHistoryNode snapshotAnchor = findSnapshotAnchor(analyzeNode);
     BoardHistoryNode initialStateAnchor = resolveInitialStateAnchor(snapshotAnchor);
     ArrayList<String[]> moveList = collectHistoryActions(analyzeNode, snapshotAnchor);
@@ -1113,10 +1253,14 @@ public class AnalysisEngine {
   }
 
   private boolean sendRemoteGtpRequest(BoardHistoryNode analyzeNode) {
+    return sendRemoteGtpRequest(analyzeNode, targetAnalysisVisits());
+  }
+
+  private boolean sendRemoteGtpRequest(BoardHistoryNode analyzeNode, int targetVisits) {
     int requestId =
         enqueueRemoteGtpRequest(
             analyzeNode,
-            Math.max(1, targetAnalysisVisits()),
+            Math.max(1, targetVisits),
             buildRemoteGtpSetupCommands(analyzeNode));
     if (remoteGtpActiveJob == null && !remoteGtpWaitingForStopAck) {
       if (!startNextRemoteGtpJob()) {
@@ -1141,8 +1285,17 @@ public class AnalysisEngine {
       moveNum++;
     }
     List<BoardHistoryNode> orderedNodes = orderRemoteGtpMainlineNodes(selectedNodes);
+    enqueueRemoteGtpRequests(orderedNodes, targetVisits);
+  }
+
+  private void enqueueRemoteGtpRequests(
+      List<BoardHistoryNode> orderedNodes, int targetVisits) {
     BoardHistoryNode previousQueuedNode = null;
     for (BoardHistoryNode selectedNode : orderedNodes) {
+      if (!requestStillTargetsCurrentGame()) {
+        requestDispatchFailed = true;
+        break;
+      }
       List<String> commands =
           previousQueuedNode == null
               ? buildRemoteGtpSetupCommands(selectedNode)
@@ -1813,6 +1966,20 @@ public class AnalysisEngine {
     this.completionCallback = completionCallback;
   }
 
+  public void setFailureCallback(Runnable failureCallback) {
+    this.failureCallback = failureCallback;
+  }
+
+  public void setProgressListener(ProgressListener progressListener) {
+    this.progressListener = progressListener;
+  }
+
+  public void clearRequestCallbacks() {
+    completionCallback = null;
+    failureCallback = null;
+    progressListener = null;
+  }
+
   public void setKeepAliveAfterCurrentRequest(boolean keepAliveAfterCurrentRequest) {
     this.keepAliveAfterCurrentRequest = keepAliveAfterCurrentRequest;
   }
@@ -1820,9 +1987,39 @@ public class AnalysisEngine {
   private void runCompletionCallback() {
     Runnable callback = completionCallback;
     completionCallback = null;
+    failureCallback = null;
+    progressListener = null;
     if (callback != null) {
       javax.swing.SwingUtilities.invokeLater(callback);
     }
+  }
+
+  private void runFailureCallback() {
+    Runnable callback = failureCallback;
+    completionCallback = null;
+    failureCallback = null;
+    progressListener = null;
+    if (callback != null) {
+      javax.swing.SwingUtilities.invokeLater(callback);
+    }
+  }
+
+  private void notifyProgress() {
+    ProgressListener listener = progressListener;
+    if (listener != null) {
+      listener.onProgress(resultCount, analyzeMap.size());
+    }
+  }
+
+  private boolean requestStillTargetsCurrentGame() {
+    return requestHistoryRoot == null
+        || (Lizzie.board != null
+            && Lizzie.board.getHistory() != null
+            && Lizzie.board.getHistory().getStart() == requestHistoryRoot);
+  }
+
+  private boolean canFinalizeCurrentRequest() {
+    return explicitRequestTargetVisits <= 0 || requestDispatchComplete;
   }
 
   public boolean isLoaded() {
@@ -1831,6 +2028,10 @@ public class AnalysisEngine {
 
   public Leelaz.ExclusiveGtpLeaseAvailability getForegroundLeaseAvailability() {
     return foregroundLeaseAvailability;
+  }
+
+  public boolean usesRemoteBackend() {
+    return useRemoteCompute || useJavaSSH;
   }
 
   private static final class RemoteGtpAnalyzeJob {

@@ -5,8 +5,13 @@ import featurecat.lizzie.analysis.AnalysisEngine;
 import featurecat.lizzie.analysis.EngineManager;
 import featurecat.lizzie.analysis.Leelaz;
 import featurecat.lizzie.util.KataGoAutoSetupHelper;
+import featurecat.lizzie.util.KataGoAutoSetupHelper.DiscoverySource;
 import featurecat.lizzie.util.KataGoAutoSetupHelper.DownloadCancelledException;
 import featurecat.lizzie.util.KataGoAutoSetupHelper.DownloadSession;
+import featurecat.lizzie.util.KataGoAutoSetupHelper.EngineValidationResult;
+import featurecat.lizzie.util.KataGoAutoSetupHelper.EngineValidationStatus;
+import featurecat.lizzie.util.KataGoAutoSetupHelper.LocalKataGoDiscoveryResult;
+import featurecat.lizzie.util.KataGoAutoSetupHelper.PackageFlavor;
 import featurecat.lizzie.util.KataGoAutoSetupHelper.RemoteWeightInfo;
 import featurecat.lizzie.util.KataGoAutoSetupHelper.SetupResult;
 import featurecat.lizzie.util.KataGoAutoSetupHelper.SetupSnapshot;
@@ -20,6 +25,7 @@ import java.awt.Color;
 import java.awt.Component;
 import java.awt.Container;
 import java.awt.Cursor;
+import java.awt.Desktop;
 import java.awt.Dimension;
 import java.awt.FlowLayout;
 import java.awt.Font;
@@ -46,6 +52,7 @@ import java.awt.geom.Arc2D;
 import java.awt.geom.Ellipse2D;
 import java.awt.geom.RoundRectangle2D;
 import java.io.IOException;
+import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.ZoneId;
@@ -123,8 +130,7 @@ public class KataGoAutoSetupDialog extends JDialog {
   private static final int WEIGHT_RECOMMENDATION_CARD_HEIGHT = 150;
   private static final DateTimeFormatter LOCAL_WEIGHT_DATE_FORMAT =
       DateTimeFormatter.ofPattern("yyyy-MM-dd");
-  private static final Pattern ELO_VALUE_PATTERN =
-      Pattern.compile("[-+]?\\d[\\d,]*(?:\\.\\d+)?");
+  private static final Pattern ELO_VALUE_PATTERN = Pattern.compile("[-+]?\\d[\\d,]*(?:\\.\\d+)?");
   private static final long ERROR_POPUP_DEDUP_MILLIS = 5000L;
   private static final int WEIGHT_SWITCH_POLL_MILLIS = 100;
   private static final long WEIGHT_SWITCH_TIMEOUT_MILLIS = 35000L;
@@ -141,6 +147,8 @@ public class KataGoAutoSetupDialog extends JDialog {
   private boolean pendingWeightSwitchShouldResumeQuickAnalysis;
   private volatile NvidiaGpuDetector.DetectionResult nvidiaGpuDetection;
   private volatile boolean nvidiaGpuDetectionRunning;
+  private volatile EngineValidationResult engineValidationResult;
+  private long engineValidationRequestId;
   private long progressStartedAtMillis;
   private String lastBackgroundErrorMessage = "";
   private long lastBackgroundErrorMillis = 0L;
@@ -150,7 +158,11 @@ public class KataGoAutoSetupDialog extends JDialog {
   private final JLabel lblEngineValue = new JFontLabel();
   private final JLabel lblWeightValue = new JFontLabel();
   private final JLabel lblWeightModelValue = new JFontLabel();
-  private final JLabel lblConfigValue = new JFontLabel();
+  private final JLabel lblGtpConfigValue = new JFontLabel();
+  private final JLabel lblAnalysisConfigValue = new JFontLabel();
+  private final JLabel lblDiscoverySourceValue = new JFontLabel();
+  private final JLabel lblPackageFlavorValue = new JFontLabel();
+  private final JLabel lblEngineValidationValue = new JFontLabel();
   private final JLabel lblNvidiaRuntimeValue = new JFontLabel();
   private final JLabel lblNvidiaGpuValue = new JFontLabel();
   private final JLabel lblTensorRtDownloadValue = new JFontLabel();
@@ -189,6 +201,10 @@ public class KataGoAutoSetupDialog extends JDialog {
       new WeightRecommendationCard(RecommendationTone.SAGE);
   private final JProgressBar progressBar = new JProgressBar();
   private final JFontButton btnRefresh = new JFontButton();
+  private final JFontButton btnChooseLocalEngine = new JFontButton();
+  private final JFontButton btnRepairAnalysisConfig = new JFontButton();
+  private final JFontButton btnOpenAppFolder = new JFontButton();
+  private final JFontButton btnViewFullDownloads = new JFontButton();
   private final JFontButton btnReloadRemoteWeights = new JFontButton();
   private final JFontButton btnDownloadWeight = new JFontButton();
   private final JFontButton btnImportWeight = new JFontButton();
@@ -282,6 +298,21 @@ public class KataGoAutoSetupDialog extends JDialog {
         text("AutoSetup.importHumanSlModel"),
         text("AutoSetup.importHumanSlModel"));
     AccessibilitySupport.named(
+        btnChooseLocalEngine,
+        text("AutoSetup.chooseExistingKataGo"),
+        text("AutoSetup.chooseKataGoExecutable"));
+    AccessibilitySupport.named(
+        btnRepairAnalysisConfig,
+        text("AutoSetup.repairAnalysisConfig"),
+        text("AutoSetup.repairAnalysisConfig"));
+    AccessibilitySupport.named(
+        btnOpenAppFolder, text("AutoSetup.openAppFolder"), text("AutoSetup.openAppFolder"));
+    AccessibilitySupport.named(
+        btnViewFullDownloads,
+        text("AutoSetup.viewFullDownloads"),
+        text("AutoSetup.viewFullDownloads"));
+    AccessibilitySupport.named(btnRefresh, text("AutoSetup.refresh"), text("AutoSetup.refresh"));
+    AccessibilitySupport.named(
         lblCurrentWeightName, text("AutoSetup.currentWeight"), text("AutoSetup.currentlyUsing"));
     AccessibilitySupport.named(
         sectionNav, text("AutoSetup.sidebarTitle"), text("AutoSetup.expertSubtitle"));
@@ -322,7 +353,9 @@ public class KataGoAutoSetupDialog extends JDialog {
       nvidiaGpuDetection = null;
     }
     snapshot = KataGoAutoSetupHelper.inspectLocalSetup();
+    engineValidationResult = null;
     renderSnapshot();
+    validateDiscoveredEngineAsync();
     loadRemoteWeightInfo();
   }
 
@@ -332,6 +365,10 @@ public class KataGoAutoSetupDialog extends JDialog {
 
   private void configureButtons() {
     btnRefresh.setText(text("AutoSetup.refresh"));
+    btnChooseLocalEngine.setText(text("AutoSetup.chooseExistingKataGo"));
+    btnRepairAnalysisConfig.setText(text("AutoSetup.repairAnalysisConfig"));
+    btnOpenAppFolder.setText(text("AutoSetup.openAppFolder"));
+    btnViewFullDownloads.setText(text("AutoSetup.viewFullDownloads"));
     btnReloadRemoteWeights.setText("");
     btnReloadRemoteWeights.setIcon(new RefreshIcon());
     btnReloadRemoteWeights.setToolTipText(text("AutoSetup.refreshOfficialWeights"));
@@ -360,6 +397,10 @@ public class KataGoAutoSetupDialog extends JDialog {
     styleButton(btnDownloadWeight, true);
     styleButton(btnOptimizePerformance, true);
     styleButton(btnRefresh, false);
+    styleButton(btnChooseLocalEngine, true);
+    styleButton(btnRepairAnalysisConfig, false);
+    styleButton(btnOpenAppFolder, false);
+    styleButton(btnViewFullDownloads, false);
     styleIconButton(btnReloadRemoteWeights);
     styleButton(btnImportWeight, false);
     styleButton(btnUseWeight, true);
@@ -448,6 +489,10 @@ public class KataGoAutoSetupDialog extends JDialog {
 
   private void wireActions() {
     btnRefresh.addActionListener(e -> refreshState());
+    btnChooseLocalEngine.addActionListener(e -> chooseExistingKataGo());
+    btnRepairAnalysisConfig.addActionListener(e -> repairAnalysisConfig());
+    btnOpenAppFolder.addActionListener(e -> openAppFolder());
+    btnViewFullDownloads.addActionListener(e -> openFullPackageDownloads());
     btnReloadRemoteWeights.addActionListener(e -> reloadRemoteWeightInfo());
     btnDownloadWeight.addActionListener(e -> startRecommendedWeightDownloadInternal());
     btnImportWeight.addActionListener(e -> importCustomWeight());
@@ -466,7 +511,8 @@ public class KataGoAutoSetupDialog extends JDialog {
     btnCustomWeightTab.addActionListener(e -> switchWeightCatalogMode(WeightCatalogMode.CUSTOM));
     balancedRecommendation.setActivation(() -> activateRecommendation(balancedRecommendation));
     strongestRecommendation.setActivation(() -> activateRecommendation(strongestRecommendation));
-    lightweightRecommendation.setActivation(() -> activateRecommendation(lightweightRecommendation));
+    lightweightRecommendation.setActivation(
+        () -> activateRecommendation(lightweightRecommendation));
   }
 
   private void styleButton(JFontButton button, boolean primary) {
@@ -628,9 +674,20 @@ public class KataGoAutoSetupDialog extends JDialog {
     addInfoRow(rows, gbc, text("AutoSetup.localEngine"), lblEngineValue);
     addInfoRow(rows, gbc, text("AutoSetup.localWeight"), lblWeightValue);
     addInfoRow(rows, gbc, text("AutoSetup.localWeightModel"), lblWeightModelValue);
-    addInfoRow(rows, gbc, text("AutoSetup.localConfig"), lblConfigValue);
+    addInfoRow(rows, gbc, text("AutoSetup.gtpConfig"), lblGtpConfigValue);
+    addInfoRow(rows, gbc, text("AutoSetup.analysisConfig"), lblAnalysisConfigValue);
+    addInfoRow(rows, gbc, text("AutoSetup.discoverySource"), lblDiscoverySourceValue);
+    addInfoRow(rows, gbc, text("AutoSetup.packageType"), lblPackageFlavorValue);
+    addInfoRow(rows, gbc, text("AutoSetup.engineValidation"), lblEngineValidationValue);
 
-    JPanel actions = createActionBar(FlowLayout.RIGHT, btnRefresh);
+    JPanel actions =
+        createActionBar(
+            FlowLayout.RIGHT,
+            btnChooseLocalEngine,
+            btnRepairAnalysisConfig,
+            btnOpenAppFolder,
+            btnViewFullDownloads,
+            btnRefresh);
     return createSectionCard(
         text("AutoSetup.overviewTitle"), text("AutoSetup.overviewSubtitle"), rows, actions);
   }
@@ -1238,7 +1295,15 @@ public class KataGoAutoSetupDialog extends JDialog {
     setInfoValue(lblWeightModelValue, snapshot.hasWeight(), formatWeightModel(snapshot));
     renderLocalWeights();
     renderHumanSlModel();
-    setInfoValue(lblConfigValue, snapshot.hasConfigs(), formatConfig(snapshot));
+    setInfoValue(
+        lblGtpConfigValue,
+        snapshot.gtpConfigPath != null && Files.isRegularFile(snapshot.gtpConfigPath),
+        formatPath(snapshot.gtpConfigPath));
+    setInfoValue(
+        lblAnalysisConfigValue,
+        snapshot.analysisConfigPath != null && Files.isRegularFile(snapshot.analysisConfigPath),
+        formatPath(snapshot.analysisConfigPath));
+    renderDiscoveryDetails();
     updateNvidiaRuntimeInfo();
     updateBenchmarkInfo();
     renderWeightRecommendations();
@@ -1247,9 +1312,65 @@ public class KataGoAutoSetupDialog extends JDialog {
     renderSetupStatus();
   }
 
+  private void renderDiscoveryDetails() {
+    LocalKataGoDiscoveryResult discovery = snapshot == null ? null : snapshot.discovery;
+    DiscoverySource source = discovery == null ? DiscoverySource.NONE : discovery.source;
+    PackageFlavor flavor = discovery == null ? PackageFlavor.UNKNOWN : discovery.packageFlavor;
+    String sourceText = discoverySourceText(source);
+    if (discovery != null && !Utils.isBlank(discovery.sourceName)) {
+      sourceText += " · " + discovery.sourceName;
+    }
+    setInfoValue(lblDiscoverySourceValue, source != DiscoverySource.NONE, sourceText);
+    setInfoValue(
+        lblPackageFlavorValue,
+        flavor != PackageFlavor.INCOMPLETE_BUNDLE && flavor != PackageFlavor.CORE_UPDATE_ONLY,
+        packageFlavorText(flavor));
+
+    boolean hasGtp = snapshot != null && isRegularFile(snapshot.gtpConfigPath);
+    boolean hasAnalysis = snapshot != null && isRegularFile(snapshot.analysisConfigPath);
+    btnRepairAnalysisConfig.setVisible(hasGtp && !hasAnalysis);
+    btnChooseLocalEngine.setVisible(
+        snapshot == null
+            || !snapshot.hasEngine()
+            || !hasGtp
+            || !snapshot.hasWeight()
+            || flavor == PackageFlavor.WITHOUT_ENGINE
+            || flavor == PackageFlavor.CORE_UPDATE_ONLY);
+    boolean incompletePackage = flavor == PackageFlavor.INCOMPLETE_BUNDLE;
+    btnOpenAppFolder.setVisible(incompletePackage || flavor == PackageFlavor.CORE_UPDATE_ONLY);
+    btnViewFullDownloads.setVisible(incompletePackage || flavor == PackageFlavor.CORE_UPDATE_ONLY);
+    if (snapshot == null || !snapshot.hasEngine()) {
+      setInfoValue(lblEngineValidationValue, false, text("AutoSetup.validationNotAvailable"));
+    } else {
+      lblEngineValidationValue.setText(text("AutoSetup.validationChecking"));
+      lblEngineValidationValue.setToolTipText(null);
+      lblEngineValidationValue.setForeground(WARN_COLOR);
+    }
+  }
+
+  static boolean isRegularFile(Path path) {
+    return path != null && Files.isRegularFile(path);
+  }
+
   private void renderSetupStatus() {
     lblStatus.setToolTipText(null);
-    if (snapshot != null && snapshot.hasEngine() && snapshot.hasConfigs() && snapshot.hasWeight()) {
+    PackageFlavor flavor =
+        snapshot == null || snapshot.discovery == null
+            ? PackageFlavor.UNKNOWN
+            : snapshot.discovery.packageFlavor;
+    if (flavor == PackageFlavor.WITHOUT_ENGINE) {
+      lblStatus.setText(text("AutoSetup.withoutEnginePackage"));
+      lblStatus.setForeground(WARN_COLOR);
+    } else if (flavor == PackageFlavor.CORE_UPDATE_ONLY) {
+      lblStatus.setText(text("AutoSetup.coreUpdateStandalone"));
+      lblStatus.setForeground(ERROR_COLOR);
+    } else if (flavor == PackageFlavor.INCOMPLETE_BUNDLE) {
+      lblStatus.setText(text("AutoSetup.incompletePackage"));
+      lblStatus.setForeground(ERROR_COLOR);
+    } else if (snapshot != null
+        && snapshot.hasEngine()
+        && snapshot.hasConfigs()
+        && snapshot.hasWeight()) {
       lblStatus.setText(text("AutoSetup.ready"));
       lblStatus.setForeground(OK_COLOR);
     } else if (snapshot == null || !snapshot.hasWeight()) {
@@ -1321,14 +1442,12 @@ public class KataGoAutoSetupDialog extends JDialog {
   private void renderHumanSlModel() {
     KataGoAutoSetupHelper.HumanSlModelStatus status = KataGoAutoSetupHelper.inspectHumanSlModel();
     String release = text("AutoSetup.humanSlModelRelease");
-    lblHumanSlModelValue.setText(
-        text("AutoSetup.humanSlModelDescription") + "  ·  " + release);
+    lblHumanSlModelValue.setText(text("AutoSetup.humanSlModelDescription") + "  ·  " + release);
     if (status.isInstalled()) {
       String path = status.modelPath.toAbsolutePath().normalize().toString();
       lblHumanSlModelValue.setToolTipText(path);
       lblHumanSlModelValue.setForeground(TEXT_SECONDARY);
-      lblHumanSlStatus.setStatus(
-          text("AutoSetup.humanSlModelDownloaded"), StatusTagTone.SUCCESS);
+      lblHumanSlStatus.setStatus(text("AutoSetup.humanSlModelDownloaded"), StatusTagTone.SUCCESS);
       btnDownloadHumanSlModel.setText(text("AutoSetup.humanSlModelDownloaded"));
       btnDownloadHumanSlModel.setEnabled(false);
       btnDownloadHumanSlModel.setVisible(false);
@@ -1344,17 +1463,269 @@ public class KataGoAutoSetupDialog extends JDialog {
     btnImportHumanSlModel.setEnabled(activeDownloadSession == null && activeWorkerThread == null);
   }
 
-  private String formatConfig(SetupSnapshot state) {
-    if (state.gtpConfigPath == null) {
-      return text("AutoSetup.notFound");
+  private String discoverySourceText(DiscoverySource source) {
+    if (source == null) {
+      return text("AutoSetup.sourceNone");
     }
-    return state.gtpConfigPath.getFileName()
-        + " / "
-        + (state.analysisConfigPath != null
-            ? state.analysisConfigPath.getFileName()
-            : state.gtpConfigPath.getFileName())
-        + "  |  "
-        + state.gtpConfigPath.getParent();
+    switch (source) {
+      case CURRENT_ENGINE:
+        return text("AutoSetup.sourceCurrentEngine");
+      case STARTUP_ENGINE:
+        return text("AutoSetup.sourceStartupEngine");
+      case DEFAULT_ENGINE:
+        return text("AutoSetup.sourceDefaultEngine");
+      case REMEMBERED_SETUP:
+        return text("AutoSetup.sourceRememberedSetup");
+      case ANALYSIS_COMMAND:
+        return text("AutoSetup.sourceAnalysisCommand");
+      case BUNDLED_PACKAGE:
+        return text("AutoSetup.sourceBundledPackage");
+      case MANUAL_SELECTION:
+        return text("AutoSetup.sourceManualSelection");
+      default:
+        return text("AutoSetup.sourceNone");
+    }
+  }
+
+  private String packageFlavorText(PackageFlavor flavor) {
+    if (flavor == null) {
+      return text("AutoSetup.packageUnknown");
+    }
+    switch (flavor) {
+      case OPENCL:
+        return text("AutoSetup.packageOpenCl");
+      case NVIDIA:
+        return text("AutoSetup.packageNvidia");
+      case NVIDIA50_CUDA:
+        return text("AutoSetup.packageNvidia50Cuda");
+      case TENSORRT:
+        return text("AutoSetup.packageTensorRt");
+      case CPU:
+        return text("AutoSetup.packageCpu");
+      case WITH_KATAGO:
+        return text("AutoSetup.packageWithKataGo");
+      case WITHOUT_ENGINE:
+        return text("AutoSetup.packageWithoutEngine");
+      case CORE_UPDATE_ONLY:
+        return text("AutoSetup.packageCoreUpdateOnly");
+      case INCOMPLETE_BUNDLE:
+        return text("AutoSetup.packageIncomplete");
+      case EXTERNAL:
+        return text("AutoSetup.packageExternal");
+      default:
+        return text("AutoSetup.packageUnknown");
+    }
+  }
+
+  private void chooseExistingKataGo() {
+    Path initialDirectory =
+        snapshot != null && snapshot.enginePath != null
+            ? snapshot.enginePath.getParent()
+            : snapshot == null ? null : snapshot.appRoot;
+    JFileChooser chooser = createLocalSetupFileChooser(initialDirectory);
+    chooser.setDialogTitle(text("AutoSetup.chooseKataGoExecutable"));
+    if (System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("win")) {
+      chooser.setFileFilter(
+          new FileNameExtensionFilter(text("AutoSetup.kataGoExecutableFilter"), "exe"));
+    }
+    if (chooser.showOpenDialog(this) != JFileChooser.APPROVE_OPTION) {
+      return;
+    }
+    Path enginePath = chooser.getSelectedFile().toPath().toAbsolutePath().normalize();
+    LocalKataGoDiscoveryResult selected =
+        KataGoAutoSetupHelper.inspectSelectedLocalKataGo(enginePath, null, null);
+    Path gtpConfigPath = selected.gtpConfigPath;
+    if (gtpConfigPath == null || !Files.isRegularFile(gtpConfigPath)) {
+      gtpConfigPath =
+          chooseSupportingFile(
+              text("AutoSetup.chooseGtpConfig"), enginePath.getParent(), "cfg", "gtp.cfg");
+      if (gtpConfigPath == null) {
+        return;
+      }
+      selected =
+          KataGoAutoSetupHelper.inspectSelectedLocalKataGo(
+              enginePath, gtpConfigPath, selected.activeWeightPath);
+    }
+    Path weightPath = selected.activeWeightPath;
+    if (weightPath == null || !Files.isRegularFile(weightPath)) {
+      weightPath =
+          chooseSupportingFile(
+              text("AutoSetup.chooseWeight"), enginePath.getParent(), "gz", ".bin.gz / .txt.gz");
+      if (weightPath == null) {
+        return;
+      }
+      selected =
+          KataGoAutoSetupHelper.inspectSelectedLocalKataGo(
+              enginePath, selected.gtpConfigPath, weightPath);
+    }
+    try {
+      KataGoAutoSetupHelper.rememberSelectedLocalKataGo(selected);
+      snapshot = selected.toSnapshot();
+      engineValidationResult = null;
+      renderSnapshot();
+      validateDiscoveredEngineAsync();
+    } catch (IOException e) {
+      showLocalSetupError(e);
+    }
+  }
+
+  private JFileChooser createLocalSetupFileChooser(Path initialDirectory) {
+    JFileChooser chooser =
+        initialDirectory != null && Files.isDirectory(initialDirectory)
+            ? new JFileChooser(initialDirectory.toFile())
+            : new JFileChooser();
+    chooser.setFileSelectionMode(JFileChooser.FILES_ONLY);
+    chooser.setAcceptAllFileFilterUsed(true);
+    return chooser;
+  }
+
+  private Path chooseSupportingFile(
+      String title, Path initialDirectory, String extension, String description) {
+    JFileChooser chooser = createLocalSetupFileChooser(initialDirectory);
+    chooser.setDialogTitle(title);
+    chooser.setFileFilter(new FileNameExtensionFilter(description, extension));
+    if (chooser.showOpenDialog(this) != JFileChooser.APPROVE_OPTION) {
+      return null;
+    }
+    return chooser.getSelectedFile().toPath().toAbsolutePath().normalize();
+  }
+
+  private void repairAnalysisConfig() {
+    btnRepairAnalysisConfig.setEnabled(false);
+    new Thread(
+            () -> {
+              try {
+                Path repaired = KataGoAutoSetupHelper.repairAnalysisConfig(snapshot);
+                LocalKataGoDiscoveryResult selected =
+                    KataGoAutoSetupHelper.inspectSelectedLocalKataGo(
+                        snapshot.enginePath, snapshot.gtpConfigPath, snapshot.activeWeightPath);
+                KataGoAutoSetupHelper.rememberSelectedLocalKataGo(selected);
+                SwingUtilities.invokeLater(
+                    () -> {
+                      refreshState();
+                      lblStatus.setText(
+                          text("AutoSetup.analysisConfigRepaired")
+                              + " · "
+                              + repaired.getFileName());
+                      lblStatus.setForeground(OK_COLOR);
+                    });
+              } catch (IOException e) {
+                SwingUtilities.invokeLater(
+                    () -> {
+                      btnRepairAnalysisConfig.setEnabled(true);
+                      showLocalSetupError(e);
+                    });
+              }
+            },
+            "katago-analysis-config-repair")
+        .start();
+  }
+
+  private void openAppFolder() {
+    Path directory = snapshot == null ? null : snapshot.appRoot;
+    if (directory == null || !Files.isDirectory(directory)) {
+      showLocalSetupError(new IOException(text("AutoSetup.appFolderUnavailable")));
+      return;
+    }
+    try {
+      if (!Desktop.isDesktopSupported() || !Desktop.getDesktop().isSupported(Desktop.Action.OPEN)) {
+        throw new IOException(text("AutoSetup.openFolderUnsupported"));
+      }
+      Desktop.getDesktop().open(directory.toFile());
+    } catch (IOException e) {
+      showLocalSetupError(e);
+    }
+  }
+
+  private void openFullPackageDownloads() {
+    try {
+      if (!Desktop.isDesktopSupported()
+          || !Desktop.getDesktop().isSupported(Desktop.Action.BROWSE)) {
+        throw new IOException(text("AutoSetup.openBrowserUnsupported"));
+      }
+      Desktop.getDesktop()
+          .browse(URI.create("https://github.com/wimi321/lizzieyzy-next/releases/latest"));
+    } catch (IOException | RuntimeException e) {
+      showLocalSetupError(e);
+    }
+  }
+
+  private void showLocalSetupError(Exception error) {
+    String detail = error == null || error.getMessage() == null ? "" : error.getMessage().trim();
+    lblStatus.setText(detail.isEmpty() ? text("AutoSetup.failed") : detail);
+    lblStatus.setForeground(ERROR_COLOR);
+    JOptionPane.showMessageDialog(
+        this,
+        detail.isEmpty() ? text("AutoSetup.failed") : detail,
+        text("AutoSetup.title"),
+        JOptionPane.ERROR_MESSAGE);
+  }
+
+  private void validateDiscoveredEngineAsync() {
+    final long requestId = ++engineValidationRequestId;
+    final Path enginePath = snapshot == null ? null : snapshot.enginePath;
+    if (enginePath == null || !Files.isRegularFile(enginePath)) {
+      engineValidationResult = null;
+      return;
+    }
+    btnUseWeight.setEnabled(false);
+    btnOptimizePerformance.setEnabled(false);
+    new Thread(
+            () -> {
+              EngineValidationResult result =
+                  KataGoAutoSetupHelper.validateLocalEngine(enginePath, 8L);
+              SwingUtilities.invokeLater(
+                  () -> {
+                    if (requestId != engineValidationRequestId
+                        || snapshot == null
+                        || snapshot.enginePath == null
+                        || !snapshot
+                            .enginePath
+                            .toAbsolutePath()
+                            .normalize()
+                            .equals(enginePath.toAbsolutePath().normalize())) {
+                      return;
+                    }
+                    engineValidationResult = result;
+                    renderEngineValidation(result);
+                    refreshIdleControls();
+                  });
+            },
+            "katago-version-validation")
+        .start();
+  }
+
+  private void renderEngineValidation(EngineValidationResult result) {
+    if (result == null || result.status == EngineValidationStatus.NOT_RUN) {
+      setInfoValue(lblEngineValidationValue, false, text("AutoSetup.validationNotAvailable"));
+      return;
+    }
+    String value;
+    switch (result.status) {
+      case VALID:
+        value = text("AutoSetup.validationPassed");
+        break;
+      case MISSING_DEPENDENCY:
+        value = text("AutoSetup.validationMissingDependency");
+        break;
+      case WRONG_ARCHITECTURE:
+        value = text("AutoSetup.validationWrongArchitecture");
+        break;
+      case TIMED_OUT:
+        value = text("AutoSetup.validationTimedOut");
+        break;
+      default:
+        value = text("AutoSetup.validationStartFailed");
+        break;
+    }
+    lblEngineValidationValue.setText(value);
+    lblEngineValidationValue.setToolTipText(Utils.isBlank(result.detail) ? value : result.detail);
+    lblEngineValidationValue.setForeground(result.isValid() ? OK_COLOR : ERROR_COLOR);
+    if (!result.isValid()) {
+      lblStatus.setText(value);
+      lblStatus.setToolTipText(result.detail);
+      lblStatus.setForeground(ERROR_COLOR);
+    }
   }
 
   private void updateNvidiaRuntimeInfo() {
@@ -1583,7 +1954,8 @@ public class KataGoAutoSetupDialog extends JDialog {
       lblBenchmarkValue.setToolTipText(result.summary);
       lblBenchmarkValue.setForeground(OK_COLOR);
     }
-    btnOptimizePerformance.setEnabled(activeWorkerThread == null && activeDownloadSession == null);
+    btnOptimizePerformance.setEnabled(
+        canRunBenchmark() && activeWorkerThread == null && activeDownloadSession == null);
   }
 
   private void loadRemoteWeightInfo() {
@@ -1685,15 +2057,12 @@ public class KataGoAutoSetupDialog extends JDialog {
     LizzieFrame frame = Lizzie.frame;
     AnalysisEngine quickAnalysis = frame == null ? null : frame.analysisEngine;
     Leelaz foregroundEngine = Lizzie.leelaz;
-    boolean analysisInProgress =
-        quickAnalysis != null && quickAnalysis.isAnalysisInProgress();
-    boolean silentAnalysis =
-        quickAnalysis != null && quickAnalysis.isSilentAnalysisInProgress();
+    boolean analysisInProgress = quickAnalysis != null && quickAnalysis.isAnalysisInProgress();
+    boolean silentAnalysis = quickAnalysis != null && quickAnalysis.isSilentAnalysisInProgress();
     boolean engineHasExclusiveWork =
         foregroundEngine != null && foregroundEngine.hasExclusiveGtpWorkInProgress();
     boolean foregroundAnalysisWork =
-        foregroundEngine != null
-            && foregroundEngine.hasForegroundAnalysisLeaseWorkInProgress();
+        foregroundEngine != null && foregroundEngine.hasForegroundAnalysisLeaseWorkInProgress();
     WeightSwitchPreparation preparation =
         decideWeightSwitchPreparation(
             quickAnalysis != null,
@@ -1712,9 +2081,7 @@ public class KataGoAutoSetupDialog extends JDialog {
     }
 
     boolean resumeQuickAnalysis =
-        silentAnalysis
-            && Lizzie.config != null
-            && Lizzie.config.autoQuickAnalyzeOnLoad;
+        silentAnalysis && Lizzie.config != null && Lizzie.config.autoQuickAnalyzeOnLoad;
     pendingWeightSwitchShouldResumeQuickAnalysis = resumeQuickAnalysis;
     if (quickAnalysis != null) {
       quickAnalysis.normalQuit();
@@ -1723,8 +2090,7 @@ public class KataGoAutoSetupDialog extends JDialog {
       }
     }
     if (preparation == WeightSwitchPreparation.WAIT_FOR_QUICK_ANALYSIS) {
-      waitForQuickAnalysisRelease(
-          foregroundEngine, requestedSnapshot, resumeQuickAnalysis);
+      waitForQuickAnalysisRelease(foregroundEngine, requestedSnapshot, resumeQuickAnalysis);
       return;
     }
     startWeightEngineSetup(requestedSnapshot, resumeQuickAnalysis);
@@ -1751,9 +2117,7 @@ public class KataGoAutoSetupDialog extends JDialog {
   }
 
   private void waitForQuickAnalysisRelease(
-      Leelaz foregroundEngine,
-      SetupSnapshot requestedSnapshot,
-      boolean resumeQuickAnalysis) {
+      Leelaz foregroundEngine, SetupSnapshot requestedSnapshot, boolean resumeQuickAnalysis) {
     if (foregroundEngine == null) {
       startWeightEngineSetup(requestedSnapshot, resumeQuickAnalysis);
       return;
@@ -1791,8 +2155,7 @@ public class KataGoAutoSetupDialog extends JDialog {
     timer.start();
   }
 
-  private void finishWeightSwitchWait(
-      javax.swing.Timer timer, String message, Color statusColor) {
+  private void finishWeightSwitchWait(javax.swing.Timer timer, String message, Color statusColor) {
     timer.stop();
     if (pendingWeightSwitchTimer == timer) {
       pendingWeightSwitchTimer = null;
@@ -2338,26 +2701,16 @@ public class KataGoAutoSetupDialog extends JDialog {
     String reloadWarning = reloadRunningEngine(result.engineIndex);
     if (reloadWarning != null && !reloadWarning.trim().isEmpty()) {
       finishSetupApplied(
-          result,
-          message,
-          reloadWarning,
-          showSuccessPopup,
-          includeWeightPathInPopup);
+          result, message, reloadWarning, showSuccessPopup, includeWeightPathInPopup);
       return;
     }
     if (Lizzie.engineManager != null
         && result.engineIndex >= 0
         && !isAppliedEngineReady(result.engineIndex)) {
-      waitForAppliedEngine(
-          result, message, showSuccessPopup, includeWeightPathInPopup);
+      waitForAppliedEngine(result, message, showSuccessPopup, includeWeightPathInPopup);
       return;
     }
-    finishSetupApplied(
-        result,
-        message,
-        null,
-        showSuccessPopup,
-        includeWeightPathInPopup);
+    finishSetupApplied(result, message, null, showSuccessPopup, includeWeightPathInPopup);
   }
 
   private void waitForAppliedEngine(
@@ -2380,11 +2733,7 @@ public class KataGoAutoSetupDialog extends JDialog {
                 source.stop();
                 pendingWeightSwitchTimer = null;
                 finishSetupApplied(
-                    result,
-                    message,
-                    null,
-                    showSuccessPopup,
-                    includeWeightPathInPopup);
+                    result, message, null, showSuccessPopup, includeWeightPathInPopup);
                 return;
               }
               if (System.currentTimeMillis() >= deadline
@@ -2534,6 +2883,10 @@ public class KataGoAutoSetupDialog extends JDialog {
     progressStatusLabel.setText(statusText);
     progressStatusLabel.setForeground(busy ? WARN_COLOR : Color.DARK_GRAY);
     btnRefresh.setEnabled(!busy);
+    btnChooseLocalEngine.setEnabled(!busy);
+    btnRepairAnalysisConfig.setEnabled(!busy);
+    btnOpenAppFolder.setEnabled(!busy);
+    btnViewFullDownloads.setEnabled(!busy);
     btnReloadRemoteWeights.setEnabled(!busy);
     btnDownloadWeight.setEnabled(!busy && canDownloadSelectedRemoteWeight());
     btnImportWeight.setEnabled(!busy);
@@ -2677,7 +3030,12 @@ public class KataGoAutoSetupDialog extends JDialog {
     return snapshot != null
         && snapshot.hasEngine()
         && snapshot.hasConfigs()
-        && snapshot.hasWeight();
+        && snapshot.hasWeight()
+        && isEngineValidationReady();
+  }
+
+  private boolean isEngineValidationReady() {
+    return engineValidationResult != null && engineValidationResult.isValid();
   }
 
   private boolean canDownloadHumanSlModel() {
@@ -2700,6 +3058,10 @@ public class KataGoAutoSetupDialog extends JDialog {
     Path selectedWeight = getSelectedLocalWeight();
     return selectedWeight != null
         && !isCurrentLocalWeight(selectedWeight)
+        && snapshot != null
+        && snapshot.hasEngine()
+        && snapshot.hasConfigs()
+        && isEngineValidationReady()
         && activeDownloadSession == null
         && activeWorkerThread == null;
   }
@@ -2810,9 +3172,7 @@ public class KataGoAutoSetupDialog extends JDialog {
     int row = downloadableWeightRowAt(event);
     setHoveredWeightDownloadRow(row);
     weightCatalogList.setCursor(
-        row >= 0
-            ? Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)
-            : Cursor.getDefaultCursor());
+        row >= 0 ? Cursor.getPredefinedCursor(Cursor.HAND_CURSOR) : Cursor.getDefaultCursor());
     weightCatalogList.setToolTipText(row >= 0 ? text("AutoSetup.downloadWeight") : null);
   }
 
@@ -3423,6 +3783,10 @@ public class KataGoAutoSetupDialog extends JDialog {
       return;
     }
     btnRefresh.setEnabled(true);
+    btnChooseLocalEngine.setEnabled(true);
+    btnRepairAnalysisConfig.setEnabled(true);
+    btnOpenAppFolder.setEnabled(true);
+    btnViewFullDownloads.setEnabled(true);
     btnReloadRemoteWeights.setEnabled(true);
     btnDownloadWeight.setEnabled(canDownloadSelectedRemoteWeight());
     btnImportWeight.setEnabled(true);
@@ -3673,8 +4037,7 @@ public class KataGoAutoSetupDialog extends JDialog {
       getAccessibleContext().setAccessibleName(titleText + " " + model.getText());
       getAccessibleContext()
           .setAccessibleDescription(
-              descriptionText
-                  + (actionButton.isVisible() ? " · " + actionButton.getText() : ""));
+              descriptionText + (actionButton.isVisible() ? " · " + actionButton.getText() : ""));
       revalidate();
       repaint();
     }
@@ -3722,8 +4085,7 @@ public class KataGoAutoSetupDialog extends JDialog {
       if (actionButton != null) {
         actionButton.setEnabled(
             enabled
-                && (action == RecommendationAction.DOWNLOAD
-                    || action == RecommendationAction.USE));
+                && (action == RecommendationAction.DOWNLOAD || action == RecommendationAction.USE));
       }
       repaint();
     }
@@ -3825,15 +4187,12 @@ public class KataGoAutoSetupDialog extends JDialog {
   static Rectangle[] weightCatalogColumnBounds(int width, int height, Insets insets) {
     Insets safeInsets = insets == null ? new Insets(0, 0, 0, 0) : insets;
     int contentWidth = Math.max(0, width - safeInsets.left - safeInsets.right);
-    int gapWidth =
-        WEIGHT_CATALOG_ELO_GAP + WEIGHT_CATALOG_DATE_GAP + WEIGHT_CATALOG_STATUS_GAP;
+    int gapWidth = WEIGHT_CATALOG_ELO_GAP + WEIGHT_CATALOG_DATE_GAP + WEIGHT_CATALOG_STATUS_GAP;
     int columnWidth = Math.max(0, contentWidth - gapWidth);
     int minimumTrailingWidth =
         WEIGHT_CATALOG_ELO_WIDTH + WEIGHT_CATALOG_DATE_WIDTH + WEIGHT_CATALOG_STATUS_WIDTH;
     int modelWidth =
-        Math.min(
-            WEIGHT_CATALOG_MODEL_MAX_WIDTH,
-            Math.max(0, columnWidth - minimumTrailingWidth));
+        Math.min(WEIGHT_CATALOG_MODEL_MAX_WIDTH, Math.max(0, columnWidth - minimumTrailingWidth));
     int trailingWidth = Math.max(0, columnWidth - modelWidth);
     int eloWidth;
     int dateWidth;
@@ -3866,8 +4225,7 @@ public class KataGoAutoSetupDialog extends JDialog {
     return new Rectangle[] {model, elo, date, status};
   }
 
-  private static Rectangle weightCatalogStatusActionBounds(
-      int width, int height, Insets insets) {
+  private static Rectangle weightCatalogStatusActionBounds(int width, int height, Insets insets) {
     Rectangle statusColumn = weightCatalogColumnBounds(width, height, insets)[3];
     int actionWidth = Math.min(statusColumn.width, WEIGHT_CATALOG_STATUS_WIDTH);
     return new Rectangle(
@@ -3925,8 +4283,7 @@ public class KataGoAutoSetupDialog extends JDialog {
     @Override
     public void layoutContainer(Container parent) {
       Rectangle[] bounds =
-          weightCatalogColumnBounds(
-              parent.getWidth(), parent.getHeight(), parent.getInsets());
+          weightCatalogColumnBounds(parent.getWidth(), parent.getHeight(), parent.getInsets());
       Component[] components = {identity, elo, date, status};
       for (int index = 0; index < components.length; index++) {
         Dimension preferred = components[index].getPreferredSize();
@@ -4629,20 +4986,10 @@ public class KataGoAutoSetupDialog extends JDialog {
         int capsuleWidth = Math.min(getWidth(), WEIGHT_CATALOG_STATUS_WIDTH);
         int capsuleX = Math.max(0, (getWidth() - capsuleWidth) / 2);
         g2.fillRoundRect(
-            capsuleX,
-            1,
-            Math.max(1, capsuleWidth - 1),
-            Math.max(1, getHeight() - 2),
-            arc,
-            arc);
+            capsuleX, 1, Math.max(1, capsuleWidth - 1), Math.max(1, getHeight() - 2), arc, arc);
         g2.setColor(outline);
         g2.drawRoundRect(
-            capsuleX,
-            1,
-            Math.max(1, capsuleWidth - 1),
-            Math.max(1, getHeight() - 2),
-            arc,
-            arc);
+            capsuleX, 1, Math.max(1, capsuleWidth - 1), Math.max(1, getHeight() - 2), arc, arc);
       } finally {
         g2.dispose();
       }

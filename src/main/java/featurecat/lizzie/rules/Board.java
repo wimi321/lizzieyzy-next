@@ -1302,10 +1302,27 @@ public class Board {
 
   private void syncPrimaryEngineKomiToCurrentGame() {
     BoardHistoryList currentHistory = getHistory();
-    if (currentHistory == null || currentHistory.getGameInfo() == null) {
+    if (Lizzie.leelaz == null
+        || currentHistory == null
+        || currentHistory.getGameInfo() == null) {
       return;
     }
     Lizzie.leelaz.syncKomiForCurrentGame(currentHistory.getGameInfo().getKomi());
+  }
+
+  private void syncEngineKomiToNonDefaultCurrentGame(Leelaz engine) {
+    BoardHistoryList currentHistory = getHistory();
+    if (engine == null
+        || Float.isNaN(engine.komi)
+        || currentHistory == null
+        || currentHistory.getGameInfo() == null) {
+      return;
+    }
+    double gameKomi = currentHistory.getGameInfo().getKomi();
+    if (Double.compare(gameKomi, GameInfo.DEFAULT_KOMI) == 0) {
+      return;
+    }
+    engine.syncKomiForCurrentGame(gameKomi);
   }
 
   private boolean isPrimaryEngineReady() {
@@ -1947,6 +1964,7 @@ public class Board {
           Lizzie.resourceBundle.getString("EstimateResults.estimate"));
       Lizzie.frame.estimateResults.iscounted = false;
       Lizzie.frame.isCounting = false;
+      Lizzie.frame.cancelPositionEstimateRequest();
     }
     synchronized (this) {
       boolean valid = isValid(x, y);
@@ -2800,6 +2818,7 @@ public class Board {
           Lizzie.resourceBundle.getString("EstimateResults.estimate"));
       Lizzie.frame.estimateResults.iscounted = false;
       Lizzie.frame.isCounting = false;
+      Lizzie.frame.cancelPositionEstimateRequest();
     }
     // Lizzie.frame.isShowingHeatmap = false;
     if (Lizzie.frame.independentMainBoard != null) {
@@ -2945,6 +2964,7 @@ public class Board {
   }
 
   private void restoreEnginePosition(Leelaz engine, ArrayList<Movelist> fallbackMoves) {
+    syncEngineKomiToNonDefaultCurrentGame(engine);
     boolean wasPondering = engine.isPondering();
     engine.sendCommand("clear_board");
     BoardHistoryNode currentNode = getHistory().getCurrentHistoryNode();

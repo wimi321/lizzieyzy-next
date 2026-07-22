@@ -1155,6 +1155,44 @@ public class KataGoRuntimeHelperTest {
     }
   }
 
+  @Test
+  void wholeGameAnalysisUsesParallelPositionProfile() throws Exception {
+    Path runtimeWorkDirectory = Files.createTempDirectory("katago-helper-whole-game");
+    withConfig(
+        runtimeWorkDirectory,
+        () -> {
+          String command =
+              KataGoRuntimeHelper.optimizeAnalysisEngineCommand(
+                  "katago analysis -model model.bin.gz -config analysis.cfg",
+                  500,
+                  false,
+                  true);
+
+          assertTrue(command.contains("numAnalysisThreads="));
+          assertTrue(command.contains("numSearchThreadsPerAnalysisThread="));
+          assertTrue(command.contains("analysisPVLen="));
+        });
+  }
+
+  @Test
+  void wholeGameAnalysisRespectsExplicitThreadOverrides() throws Exception {
+    Path runtimeWorkDirectory = Files.createTempDirectory("katago-helper-whole-game-override");
+    withConfig(
+        runtimeWorkDirectory,
+        () -> {
+          String command =
+              KataGoRuntimeHelper.optimizeAnalysisEngineCommand(
+                  "katago analysis -model model.bin.gz -config analysis.cfg "
+                      + "-override-config numAnalysisThreads=3,numSearchThreadsPerAnalysisThread=4",
+                  500,
+                  false,
+                  true);
+
+          assertEquals(1, occurrences(command, "numAnalysisThreads=3"));
+          assertEquals(1, occurrences(command, "numSearchThreadsPerAnalysisThread=4"));
+        });
+  }
+
   private static Config createTestConfig(Path runtimeWorkDirectory) {
     Config config = ConfigTestHelper.createForTests(runtimeWorkDirectory);
     config.config = new JSONObject();
@@ -1476,6 +1514,16 @@ public class KataGoRuntimeHelperTest {
     assertTrue(index >= 0, "Expected benchmark option " + option);
     assertTrue(index + 1 < command.size(), "Expected a value after benchmark option " + option);
     assertEquals(expectedValue, command.get(index + 1));
+  }
+
+  private static int occurrences(String text, String value) {
+    int count = 0;
+    int index = 0;
+    while ((index = text.indexOf(value, index)) >= 0) {
+      count++;
+      index += value.length();
+    }
+    return count;
   }
 
   private interface ThrowingRunnable {

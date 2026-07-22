@@ -29,6 +29,19 @@ public class UtilsEngineSettingsTest {
     assertEquals(2, engines.get(2).index);
   }
 
+  @Test
+  void restoresLegacyConfiguredDefaultWhenPerEngineFlagsAreMissing() {
+    ArrayList<EngineData> engines = new ArrayList<EngineData>();
+    engines.add(engine("first", false));
+    engines.add(engine("legacy default", false));
+
+    int defaultIndex = Utils.normalizeDefaultEngineFlags(engines, 1);
+
+    assertEquals(1, defaultIndex);
+    assertFalse(engines.get(0).isDefault);
+    assertTrue(engines.get(1).isDefault);
+  }
+
   private static EngineData engine(String name, boolean isDefault) {
     EngineData engineData = new EngineData();
     engineData.name = name;

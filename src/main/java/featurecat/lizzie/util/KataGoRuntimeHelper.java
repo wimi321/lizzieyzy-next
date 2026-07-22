@@ -1998,6 +1998,15 @@ public final class KataGoRuntimeHelper {
 
   public static String optimizeAnalysisEngineCommand(
       String engineCommand, int maxVisits, boolean isBatchAnalysisMode) {
+    return optimizeAnalysisEngineCommand(
+        engineCommand, maxVisits, isBatchAnalysisMode, false);
+  }
+
+  public static String optimizeAnalysisEngineCommand(
+      String engineCommand,
+      int maxVisits,
+      boolean isBatchAnalysisMode,
+      boolean wholeGameThroughput) {
     if (engineCommand == null || engineCommand.trim().isEmpty()) {
       return engineCommand;
     }
@@ -2014,6 +2023,22 @@ public final class KataGoRuntimeHelper {
     boolean commandChanged = false;
     if (looksLikeKataGoCommand(engineCommand)) {
       commandChanged = appendAnalysisPvLenOverride(commandParts);
+    }
+
+    if (wholeGameThroughput && looksLikeKataGoCommand(engineCommand)) {
+      AnalysisThreadProfile profile = resolveWholeGameAnalysisProfile();
+      if (!hasAnalysisThreadOverride) {
+        appendOverrideConfig(commandParts, "numAnalysisThreads=" + profile.numAnalysisThreads);
+        commandChanged = true;
+      }
+      if (!hasSearchThreadOverride) {
+        appendOverrideConfig(
+            commandParts,
+            "numSearchThreadsPerAnalysisThread="
+                + profile.numSearchThreadsPerAnalysisThread);
+        commandChanged = true;
+      }
+      return commandChanged ? buildCommandLine(commandParts) : engineCommand;
     }
 
     if (shouldUseAppleSiliconAnalysisProfile(engineCommand)) {
@@ -2242,6 +2267,13 @@ public final class KataGoRuntimeHelper {
           Math.max(numAnalysisThreads, Math.min(MAX_APPLE_ANALYSIS_THREADS, totalThreadBudget));
     }
 
+    return new AnalysisThreadProfile(numAnalysisThreads, perAnalysisThread);
+  }
+
+  private static AnalysisThreadProfile resolveWholeGameAnalysisProfile() {
+    int totalThreadBudget = Math.max(2, Math.min(24, Utils.getRecommendedKataGoThreads()));
+    int numAnalysisThreads = Math.max(2, Math.min(8, totalThreadBudget / 2));
+    int perAnalysisThread = Math.max(1, Math.min(2, totalThreadBudget / numAnalysisThreads));
     return new AnalysisThreadProfile(numAnalysisThreads, perAnalysisThread);
   }
 

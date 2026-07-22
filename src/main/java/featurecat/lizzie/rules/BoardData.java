@@ -659,6 +659,11 @@ public class BoardData {
     }
   }
 
+  public void clearAnalysisPayloadState() {
+    clearPrimaryAnalysisPayloadState();
+    clearSecondaryAnalysisPayloadState();
+  }
+
   private void clearPrimaryAnalysisPayloadState() {
     engineName = "";
     winrate = 50;

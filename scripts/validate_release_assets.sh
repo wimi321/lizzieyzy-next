@@ -147,6 +147,7 @@ date_tag = sys.argv[2]
 manifest = json.loads((release_dir / "lizzieyzy-next-update-manifest.json").read_text(encoding="utf-8"))
 assert manifest["schemaVersion"] == 1
 assert manifest["releaseTag"].startswith("next-")
+assert isinstance(manifest["prerelease"], bool)
 components = manifest["components"]
 assert components, "manifest must include components"
 core = next(item for item in components if item["id"] == "core")

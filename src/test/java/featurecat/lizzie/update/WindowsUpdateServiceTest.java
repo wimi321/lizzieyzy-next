@@ -96,6 +96,24 @@ class WindowsUpdateServiceTest {
     assertTrue(error.getMessage().contains("Settings"));
   }
 
+  @Test
+  void prereleaseManifestIsFetchedButRejectedByStableUpdatePolicy() throws Exception {
+    JSONObject prerelease = UpdateManifestTest.validManifest().put("prerelease", true);
+    try (OneShotHttp server = new OneShotHttp(prerelease.toString())) {
+      Lizzie.config = ConfigTestHelper.createForTests(tempDir.resolve("prerelease-config"));
+      Lizzie.config.uiConfig = new JSONObject();
+      System.setProperty(
+          WindowsUpdateService.MANIFEST_URL_PROPERTY,
+          "http://127.0.0.1:" + server.port() + "/update.json");
+
+      UpdateManifest manifest = new WindowsUpdateService().fetchLatestManifest();
+
+      assertTrue(manifest.prerelease);
+      assertFalse(WindowsUpdateService.isStableRelease(manifest));
+      assertEquals(1, server.requests.get());
+    }
+  }
+
   private void useManualProxy(int port) {
     Lizzie.config = ConfigTestHelper.createForTests(tempDir.resolve("config"));
     Lizzie.config.uiConfig = new JSONObject();

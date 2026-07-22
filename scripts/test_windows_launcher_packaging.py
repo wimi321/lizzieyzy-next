@@ -22,6 +22,9 @@ def main() -> None:
     workflow = (ROOT / ".github/workflows/build-windows-release.yml").read_text(
         encoding="utf-8"
     )
+    update_controller = (
+        ROOT / "src/main/java/featurecat/lizzie/update/WindowsUpdateController.java"
+    ).read_text(encoding="utf-8")
 
     require(
         package_script,
@@ -45,12 +48,41 @@ def main() -> None:
 
     require(smoke_script, "[switch]$LauncherOnly", "windows_smoke_test.ps1")
     require(smoke_script, "[switch]$OpenAutoSetup", "windows_smoke_test.ps1")
+    require(smoke_script, "[System.IO.File]::ReadAllBytes", "windows_smoke_test.ps1")
+    require(smoke_script, "[System.IO.File]::WriteAllBytes", "windows_smoke_test.ps1")
+    require(smoke_script, "Stop-AppClockHelperProcesses", "windows_smoke_test.ps1")
+    require(smoke_script, "Get-Process -Name java, javaw", "windows_smoke_test.ps1")
+    require(smoke_script, "Get-NativeReadBoardProcessIds", "windows_smoke_test.ps1")
+    require(smoke_script, "Get-Process -Name readboard", "windows_smoke_test.ps1")
+    require(
+        smoke_script,
+        '$ErrorActionPreference = "Continue"',
+        "windows_smoke_test.ps1",
+    )
+    require(
+        smoke_script,
+        "if (-not $hasRuntimeLogs)",
+        "windows_smoke_test.ps1",
+    )
     require(lizzie_source, "lizzie.smoke.openAutoSetup", "Lizzie.java")
     require(workflow, "LizzieYzy Next NVIDIA.exe", "build-windows-release.yml")
     require(workflow, "-LauncherOnly", "build-windows-release.yml")
     require(workflow, "-OpenAutoSetup", "build-windows-release.yml")
     require(workflow, "runtime/bin/server/jvm.dll", "build-windows-release.yml")
     require(workflow, "^jdk.accessibility@", "build-windows-release.yml")
+    require(
+        package_script,
+        'LIZZIE_RELEASE_PRERELEASE:-false',
+        "package_windows_exe.sh",
+    )
+    require(
+        package_script,
+        '"prerelease": prerelease == "true"',
+        "package_windows_exe.sh",
+    )
+    require(workflow, "--jq '.prerelease'", "build-windows-release.yml")
+    if "scheduleAutomaticCheck" in lizzie_source or "auto-check" in update_controller:
+        raise AssertionError("Windows updates must only run after an explicit user action")
 
     print("Windows launcher packaging guards passed.")
 

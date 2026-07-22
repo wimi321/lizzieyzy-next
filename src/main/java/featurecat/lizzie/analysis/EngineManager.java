@@ -1825,6 +1825,18 @@ public class EngineManager {
     restartThread.start();
   }
 
+  void restartUnresponsiveRemoteEngine(Leelaz engine, int index) {
+    if (engine == null
+        || engine != Lizzie.leelaz
+        || index != currentEngineNo
+        || isEmpty
+        || !engine.isPondering()
+        || !engine.isProcessDead()) {
+      return;
+    }
+    restartRemoteEngineInBackground(engine, index);
+  }
+
   private void restartEngineAutomatically(Leelaz engine, int index) throws IOException {
     Leelaz.ExclusiveGtpLifecycleReservation reservation =
         engine.beginAutomaticEngineRestartReservation();

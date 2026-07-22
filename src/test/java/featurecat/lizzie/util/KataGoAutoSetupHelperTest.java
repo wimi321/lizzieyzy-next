@@ -2,9 +2,11 @@ package featurecat.lizzie.util;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assumptions.assumeFalse;
 
 import com.sun.net.httpserver.HttpServer;
 import featurecat.lizzie.Config;
@@ -25,6 +27,492 @@ import java.util.concurrent.Executors;
 import org.junit.jupiter.api.Test;
 
 public class KataGoAutoSetupHelperTest {
+  @Test
+  void discoversCompleteExternalKataGoFromDefaultEngineAsOneCoherentProfile() throws Exception {
+    Path root = Files.createTempDirectory("katago-discovery-external");
+    Path external = Files.createDirectories(root.resolve("外部 KataGo 有空格"));
+    Path engine = touch(external.resolve(testKataGoBinaryName()));
+    Path configs = Files.createDirectories(external.resolve("configs"));
+    Path gtp = touch(configs.resolve("gtp.cfg"));
+    Path analysis = touch(configs.resolve("analysis.cfg"));
+    Path weight = touch(external.resolve("模型 权重.bin.gz"));
+
+    withUserDirAndConfig(
+        root,
+        () -> {
+          Utils.saveEngineSettings(
+              new ArrayList<>(List.of(engineData("外部 KataGo", engine, gtp, weight, true))));
+
+          KataGoAutoSetupHelper.LocalKataGoDiscoveryResult result =
+              KataGoAutoSetupHelper.inspectLocalKataGo();
+
+          assertTrue(result.isComplete());
+          assertEquals(KataGoAutoSetupHelper.DiscoverySource.DEFAULT_ENGINE, result.source);
+          assertEquals(KataGoAutoSetupHelper.PackageFlavor.EXTERNAL, result.packageFlavor);
+          assertEquals(engine, result.enginePath);
+          assertEquals(gtp, result.gtpConfigPath);
+          assertEquals(analysis, result.analysisConfigPath);
+          assertEquals(weight, result.activeWeightPath);
+        });
+  }
+
+  @Test
+  void resolvesRelativeConfigAndWeightAgainstExecutableDirectory() throws Exception {
+    Path root = Files.createTempDirectory("katago-discovery-relative");
+    Path external = Files.createDirectories(root.resolve("engine dir"));
+    Path engine = touch(external.resolve(testKataGoBinaryName()));
+    Path configs = Files.createDirectories(external.resolve("configs"));
+    Path gtp = touch(configs.resolve("gtp.cfg"));
+    Path analysis = touch(configs.resolve("analysis.cfg"));
+    Path weight = touch(external.resolve("weights").resolve("relative.bin.gz"));
+
+    withUserDirAndConfig(
+        root,
+        () -> {
+          EngineData relative = new EngineData();
+          relative.name = "KataGo Relative";
+          relative.commands =
+              quoteLiteral(root.relativize(engine))
+                  + " gtp -model "
+                  + quoteLiteral(Path.of("weights", weight.getFileName().toString()))
+                  + " -config "
+                  + quoteLiteral(Path.of("configs", "gtp.cfg"));
+          relative.isDefault = true;
+          Utils.saveEngineSettings(new ArrayList<>(List.of(relative)));
+
+          KataGoAutoSetupHelper.LocalKataGoDiscoveryResult result =
+              KataGoAutoSetupHelper.inspectLocalKataGo();
+
+          assertTrue(result.isComplete());
+          assertEquals(engine, result.enginePath);
+          assertEquals(gtp, result.gtpConfigPath);
+          assertEquals(analysis, result.analysisConfigPath);
+          assertEquals(weight, result.activeWeightPath);
+        });
+  }
+
+  @Test
+  void skipsRemoteDefaultCandidateAndUsesLocalDefaultFlag() throws Exception {
+    Path root = Files.createTempDirectory("katago-discovery-remote-skip");
+    Path local = Files.createDirectories(root.resolve("local"));
+    Path engine = touch(local.resolve(testKataGoBinaryName()));
+    Path gtp = touch(local.resolve("configs").resolve("gtp.cfg"));
+    touch(local.resolve("configs").resolve("analysis.cfg"));
+    Path weight = touch(local.resolve("local.bin.gz"));
+
+    withUserDirAndConfig(
+        root,
+        () -> {
+          EngineData remote = new EngineData();
+          remote.name = "智子云算力";
+          remote.commands = "remote-compute://zhizi/default";
+          remote.isDefault = false;
+          EngineData localDefault = engineData("KataGo Local", engine, gtp, weight, true);
+          Utils.saveEngineSettings(new ArrayList<>(List.of(remote, localDefault)));
+          Lizzie.config.uiConfig.put("default-engine", 1);
+
+          KataGoAutoSetupHelper.LocalKataGoDiscoveryResult result =
+              KataGoAutoSetupHelper.inspectLocalKataGo();
+
+          assertTrue(result.isComplete());
+          assertEquals(engine, result.enginePath);
+          assertEquals(KataGoAutoSetupHelper.DiscoverySource.DEFAULT_ENGINE, result.source);
+        });
+  }
+
+  @Test
+  void startupEngineTakesPriorityOverTheDefaultEngine() throws Exception {
+    Path root = Files.createTempDirectory("katago-discovery-startup-priority");
+    Path startup = Files.createDirectories(root.resolve("startup"));
+    Path startupEngine = touch(startup.resolve(testKataGoBinaryName()));
+    Path startupGtp = touch(startup.resolve("configs").resolve("gtp.cfg"));
+    touch(startup.resolve("configs").resolve("analysis.cfg"));
+    Path startupWeight = touch(startup.resolve("startup.bin.gz"));
+    Path defaultDir = Files.createDirectories(root.resolve("default"));
+    Path defaultEngine = touch(defaultDir.resolve(testKataGoBinaryName()));
+    Path defaultGtp = touch(defaultDir.resolve("configs").resolve("gtp.cfg"));
+    touch(defaultDir.resolve("configs").resolve("analysis.cfg"));
+    Path defaultWeight = touch(defaultDir.resolve("default.bin.gz"));
+
+    withUserDirAndConfig(
+        root,
+        () -> {
+          Utils.saveEngineSettings(
+              new ArrayList<>(
+                  List.of(
+                      engineData("Startup KataGo", startupEngine, startupGtp, startupWeight, false),
+                      engineData(
+                          "Default KataGo", defaultEngine, defaultGtp, defaultWeight, true))));
+          Lizzie.config.uiConfig.put("autoload-last", true);
+          Lizzie.config.uiConfig.put("last-engine", 0);
+          Lizzie.config.uiConfig.put("default-engine", 1);
+
+          KataGoAutoSetupHelper.LocalKataGoDiscoveryResult result =
+              KataGoAutoSetupHelper.inspectLocalKataGo();
+
+          assertEquals(KataGoAutoSetupHelper.DiscoverySource.STARTUP_ENGINE, result.source);
+          assertEquals(startupEngine, result.enginePath);
+          assertEquals(startupWeight, result.activeWeightPath);
+        });
+  }
+
+  @Test
+  void discoversRememberedSetupBeforeIndependentAnalysisCommand() throws Exception {
+    Path root = Files.createTempDirectory("katago-discovery-remembered-priority");
+    Path remembered = Files.createDirectories(root.resolve("remembered"));
+    Path rememberedEngine = touch(remembered.resolve(testKataGoBinaryName()));
+    Path rememberedGtp = touch(remembered.resolve("configs").resolve("gtp.cfg"));
+    Path rememberedAnalysis = touch(remembered.resolve("configs").resolve("analysis.cfg"));
+    Path rememberedWeight = touch(remembered.resolve("remembered.bin.gz"));
+    Path analysisDir = Files.createDirectories(root.resolve("analysis"));
+    Path analysisEngine = touch(analysisDir.resolve(testKataGoBinaryName()));
+    Path analysisConfig = touch(analysisDir.resolve("configs").resolve("analysis.cfg"));
+    touch(analysisDir.resolve("configs").resolve("gtp.cfg"));
+    Path analysisWeight = touch(analysisDir.resolve("analysis.bin.gz"));
+
+    withUserDirAndConfig(
+        root,
+        () -> {
+          Lizzie.config.uiConfig.put("katago-auto-setup-engine-path", rememberedEngine.toString());
+          Lizzie.config.uiConfig.put("katago-auto-setup-gtp-config-path", rememberedGtp.toString());
+          Lizzie.config.uiConfig.put(
+              "katago-auto-setup-analysis-config-path", rememberedAnalysis.toString());
+          Lizzie.config.uiConfig.put("katago-auto-setup-weight-path", rememberedWeight.toString());
+          Lizzie.config.uiConfig.put(
+              "analysis-engine-command",
+              quote(analysisEngine)
+                  + " analysis -model "
+                  + quote(analysisWeight)
+                  + " -config "
+                  + quote(analysisConfig));
+
+          KataGoAutoSetupHelper.LocalKataGoDiscoveryResult result =
+              KataGoAutoSetupHelper.inspectLocalKataGo();
+
+          assertEquals(KataGoAutoSetupHelper.DiscoverySource.REMEMBERED_SETUP, result.source);
+          assertEquals(rememberedEngine, result.enginePath);
+          assertEquals(rememberedWeight, result.activeWeightPath);
+        });
+  }
+
+  @Test
+  void discoversACompleteIndependentAnalysisCommand() throws Exception {
+    Path root = Files.createTempDirectory("katago-discovery-analysis-command");
+    Path engine = touch(root.resolve("analysis").resolve(testKataGoBinaryName()));
+    Path analysisConfig =
+        touch(root.resolve("analysis").resolve("configs").resolve("analysis.cfg"));
+    Path gtpConfig = touch(root.resolve("analysis").resolve("configs").resolve("gtp.cfg"));
+    Path weight = touch(root.resolve("analysis").resolve("analysis.bin.gz"));
+
+    withUserDirAndConfig(
+        root,
+        () -> {
+          Lizzie.config.uiConfig.put(
+              "analysis-engine-command",
+              quote(engine)
+                  + " analysis -model "
+                  + quote(weight)
+                  + " -config "
+                  + quote(analysisConfig));
+
+          KataGoAutoSetupHelper.LocalKataGoDiscoveryResult result =
+              KataGoAutoSetupHelper.inspectLocalKataGo();
+
+          assertTrue(result.isComplete());
+          assertEquals(KataGoAutoSetupHelper.DiscoverySource.ANALYSIS_COMMAND, result.source);
+          assertEquals(engine, result.enginePath);
+          assertEquals(gtpConfig, result.gtpConfigPath);
+          assertEquals(analysisConfig, result.analysisConfigPath);
+          assertEquals(weight, result.activeWeightPath);
+        });
+  }
+
+  @Test
+  void doesNotTreatAnotherGtpEngineAsLocalKataGo() throws Exception {
+    Path root = Files.createTempDirectory("katago-discovery-non-katago");
+    Path engine = touch(root.resolve("other-engine").resolve("leela-zero"));
+    Path config = touch(root.resolve("other-engine").resolve("configs").resolve("gtp.cfg"));
+    touch(root.resolve("other-engine").resolve("configs").resolve("analysis.cfg"));
+    Path weight = touch(root.resolve("other-engine").resolve("network.bin.gz"));
+
+    withUserDirAndConfig(
+        root,
+        () -> {
+          Utils.saveEngineSettings(
+              new ArrayList<>(
+                  List.of(engineData("Other GTP engine", engine, config, weight, true))));
+
+          KataGoAutoSetupHelper.LocalKataGoDiscoveryResult result =
+              KataGoAutoSetupHelper.inspectLocalKataGo();
+
+          assertEquals(KataGoAutoSetupHelper.DiscoverySource.NONE, result.source);
+          assertNull(result.enginePath);
+        });
+  }
+
+  @Test
+  void incompleteExternalProfileFallsBackWithoutMixingBundledFiles() throws Exception {
+    Path root = Files.createTempDirectory("katago-discovery-no-mix");
+    Path external = Files.createDirectories(root.resolve("external"));
+    Path externalEngine = touch(external.resolve(testKataGoBinaryName()));
+    Path externalGtp = touch(external.resolve("configs").resolve("gtp.cfg"));
+    Path externalWeight = touch(external.resolve("external.bin.gz"));
+    Path bundledEngine =
+        touch(
+            root.resolve("engines")
+                .resolve("katago")
+                .resolve(detectTestPlatformDir())
+                .resolve(testKataGoBinaryName()));
+    Path bundledConfigs =
+        Files.createDirectories(root.resolve("engines").resolve("katago").resolve("configs"));
+    Path bundledGtp = touch(bundledConfigs.resolve("gtp.cfg"));
+    Path bundledAnalysis = touch(bundledConfigs.resolve("analysis.cfg"));
+    Path bundledWeight = touch(root.resolve("weights").resolve("default.bin.gz"));
+
+    withUserDirAndConfig(
+        root,
+        () -> {
+          Utils.saveEngineSettings(
+              new ArrayList<>(
+                  List.of(
+                      engineData(
+                          "Incomplete KataGo",
+                          externalEngine,
+                          externalGtp,
+                          externalWeight,
+                          true))));
+
+          KataGoAutoSetupHelper.LocalKataGoDiscoveryResult result =
+              KataGoAutoSetupHelper.inspectLocalKataGo();
+
+          assertTrue(result.isComplete());
+          assertEquals(KataGoAutoSetupHelper.DiscoverySource.BUNDLED_PACKAGE, result.source);
+          assertEquals(bundledEngine, result.enginePath);
+          assertEquals(bundledGtp, result.gtpConfigPath);
+          assertEquals(bundledAnalysis, result.analysisConfigPath);
+          assertEquals(bundledWeight, result.activeWeightPath);
+          assertFalse(result.enginePath.equals(externalEngine));
+          assertFalse(result.activeWeightPath.equals(externalWeight));
+        });
+  }
+
+  @Test
+  void recognizesNoEngineAndStandaloneCoreUpdatePackages() throws Exception {
+    Path noEngine = Files.createTempDirectory("katago-no-engine-package");
+    Files.writeString(
+        noEngine.resolve("lizzieyzy-next-installed-manifest.json"),
+        "{\"platform\":\"windows\",\"flavor\":\"without.engine\"}");
+    withUserDirAndConfig(
+        noEngine,
+        () ->
+            assertEquals(
+                KataGoAutoSetupHelper.PackageFlavor.WITHOUT_ENGINE,
+                KataGoAutoSetupHelper.inspectLocalKataGo().packageFlavor));
+
+    Path coreUpdate = Files.createTempDirectory("katago-core-update-package");
+    Files.writeString(coreUpdate.resolve("lizzieyzy-next-core-update-manifest.json"), "{}");
+    withUserDirAndConfig(
+        coreUpdate,
+        () ->
+            assertEquals(
+                KataGoAutoSetupHelper.PackageFlavor.CORE_UPDATE_ONLY,
+                KataGoAutoSetupHelper.inspectLocalKataGo().packageFlavor));
+
+    Path incomplete = Files.createTempDirectory("katago-incomplete-package");
+    Files.writeString(
+        incomplete.resolve("lizzieyzy-next-installed-manifest.json"),
+        "{\"platform\":\"windows\",\"flavor\":\"opencl\"}");
+    withUserDirAndConfig(
+        incomplete,
+        () ->
+            assertEquals(
+                KataGoAutoSetupHelper.PackageFlavor.INCOMPLETE_BUNDLE,
+                KataGoAutoSetupHelper.inspectLocalKataGo().packageFlavor));
+  }
+
+  @Test
+  void recognizesEverySupportedCompletePackageFlavor() throws Exception {
+    Object[][] cases = {
+      {"opencl", KataGoAutoSetupHelper.PackageFlavor.OPENCL},
+      {"nvidia", KataGoAutoSetupHelper.PackageFlavor.NVIDIA},
+      {"nvidia50.cuda", KataGoAutoSetupHelper.PackageFlavor.NVIDIA50_CUDA},
+      {"nvidia-tensorrt", KataGoAutoSetupHelper.PackageFlavor.TENSORRT},
+      {"cpu", KataGoAutoSetupHelper.PackageFlavor.CPU},
+      {"with-katago", KataGoAutoSetupHelper.PackageFlavor.WITH_KATAGO}
+    };
+    for (Object[] testCase : cases) {
+      String flavor = (String) testCase[0];
+      Path root = Files.createTempDirectory("katago-package-" + flavor.replace('.', '-'));
+      Files.writeString(
+          root.resolve("lizzieyzy-next-installed-manifest.json"),
+          "{\"platform\":\"windows\",\"flavor\":\"" + flavor + "\"}");
+      touch(
+          root.resolve("engines")
+              .resolve("katago")
+              .resolve(detectTestPlatformDir())
+              .resolve(testKataGoBinaryName()));
+      touch(root.resolve("engines").resolve("katago").resolve("configs").resolve("gtp.cfg"));
+      touch(root.resolve("engines").resolve("katago").resolve("configs").resolve("analysis.cfg"));
+      touch(root.resolve("weights").resolve("default.bin.gz"));
+
+      withUserDirAndConfig(
+          root,
+          () ->
+              assertEquals(
+                  testCase[1], KataGoAutoSetupHelper.inspectLocalKataGo().packageFlavor, flavor));
+    }
+  }
+
+  @Test
+  void discoversJpackagePortableAssetsInsideAppDirectory() throws Exception {
+    Path portableRoot = Files.createTempDirectory("katago-jpackage-portable");
+    Path app = Files.createDirectories(portableRoot.resolve("app"));
+    Path workDir = Files.createDirectories(portableRoot.resolve("user-data"));
+    touch(portableRoot.resolve(".lizzie-portable"));
+    touch(app.resolve("PROJECT_INFO.txt"));
+    Files.writeString(
+        app.resolve("lizzieyzy-next-installed-manifest.json"),
+        "{\"platform\":\"windows\",\"flavor\":\"opencl\"}");
+    Path engine =
+        touch(
+            app.resolve("engines")
+                .resolve("katago")
+                .resolve(detectTestPlatformDir())
+                .resolve(testKataGoBinaryName()));
+    Path configs =
+        Files.createDirectories(app.resolve("engines").resolve("katago").resolve("configs"));
+    Path gtp = touch(configs.resolve("gtp.cfg"));
+    Path analysis = touch(configs.resolve("analysis.cfg"));
+    Path weight = touch(app.resolve("weights").resolve("default.bin.gz"));
+
+    withProcessDirAndConfig(
+        portableRoot,
+        workDir,
+        () -> {
+          KataGoAutoSetupHelper.LocalKataGoDiscoveryResult result =
+              KataGoAutoSetupHelper.inspectLocalKataGo();
+
+          assertTrue(result.isComplete());
+          assertEquals(portableRoot, result.appRoot);
+          assertEquals(KataGoAutoSetupHelper.PackageFlavor.OPENCL, result.packageFlavor);
+          assertEquals(KataGoAutoSetupHelper.DiscoverySource.BUNDLED_PACKAGE, result.source);
+          assertEquals(engine, result.enginePath);
+          assertEquals(gtp, result.gtpConfigPath);
+          assertEquals(analysis, result.analysisConfigPath);
+          assertEquals(weight, result.activeWeightPath);
+        });
+  }
+
+  @Test
+  void resolvesSavedRelativeCommandAgainstJpackageAppDirectory() throws Exception {
+    Path portableRoot = Files.createTempDirectory("katago-jpackage-relative-command");
+    Path app = Files.createDirectories(portableRoot.resolve("app"));
+    Path workDir = Files.createDirectories(portableRoot.resolve("user-data"));
+    touch(portableRoot.resolve(".lizzie-portable"));
+    touch(app.resolve("PROJECT_INFO.txt"));
+    Path engine =
+        touch(
+            app.resolve("engines")
+                .resolve("katago")
+                .resolve(detectTestPlatformDir())
+                .resolve(testKataGoBinaryName()));
+    Path configs =
+        Files.createDirectories(app.resolve("engines").resolve("katago").resolve("configs"));
+    Path gtp = touch(configs.resolve("gtp.cfg"));
+    Path analysis = touch(configs.resolve("analysis.cfg"));
+    Path weight = touch(app.resolve("weights").resolve("default.bin.gz"));
+
+    withProcessDirAndConfig(
+        portableRoot,
+        workDir,
+        () -> {
+          EngineData relative = new EngineData();
+          relative.name = "KataGo Portable";
+          relative.commands =
+              quoteLiteral(app.relativize(engine))
+                  + " gtp -model "
+                  + quoteLiteral(app.relativize(weight))
+                  + " -config "
+                  + quoteLiteral(app.relativize(gtp));
+          relative.isDefault = true;
+          Utils.saveEngineSettings(new ArrayList<>(List.of(relative)));
+
+          KataGoAutoSetupHelper.LocalKataGoDiscoveryResult result =
+              KataGoAutoSetupHelper.inspectLocalKataGo();
+
+          assertTrue(result.isComplete());
+          assertEquals(KataGoAutoSetupHelper.DiscoverySource.DEFAULT_ENGINE, result.source);
+          assertEquals(engine, result.enginePath);
+          assertEquals(gtp, result.gtpConfigPath);
+          assertEquals(analysis, result.analysisConfigPath);
+          assertEquals(weight, result.activeWeightPath);
+        });
+  }
+
+  @Test
+  void repairsMissingAnalysisConfigOnlyAfterExplicitRequest() throws Exception {
+    Path root = Files.createTempDirectory("katago-analysis-repair");
+    Path engine = touch(root.resolve("external").resolve(testKataGoBinaryName()));
+    Path gtp = touch(root.resolve("external").resolve("configs").resolve("gtp.cfg"));
+    Path weight = touch(root.resolve("external").resolve("weight.bin.gz"));
+
+    withUserDirAndConfig(
+        root,
+        () -> {
+          KataGoAutoSetupHelper.SetupSnapshot snapshot =
+              KataGoAutoSetupHelper.inspectSelectedLocalKataGo(engine, gtp, weight).toSnapshot();
+          assertFalse(snapshot.hasConfigs());
+          assertNotNull(snapshot.analysisConfigPath);
+          assertFalse(Files.exists(snapshot.analysisConfigPath));
+
+          Path repaired = KataGoAutoSetupHelper.repairAnalysisConfig(snapshot);
+
+          assertNotNull(repaired);
+          assertTrue(Files.isRegularFile(repaired));
+          assertTrue(Files.size(repaired) > 0L);
+        });
+  }
+
+  @Test
+  void manualExternalSelectionDoesNotBorrowBundledConfigOrWeight() throws Exception {
+    Path appRoot = Files.createTempDirectory("katago-manual-no-mix-app");
+    touch(appRoot.resolve("PROJECT_INFO.txt"));
+    touch(appRoot.resolve("engines").resolve("katago").resolve("configs").resolve("gtp.cfg"));
+    touch(appRoot.resolve("weights").resolve("bundled.bin.gz"));
+    Path externalRoot = Files.createTempDirectory("katago-manual-no-mix-external");
+    Path externalEngine = touch(externalRoot.resolve(testKataGoBinaryName()));
+
+    withUserDirAndConfig(
+        appRoot,
+        () -> {
+          KataGoAutoSetupHelper.LocalKataGoDiscoveryResult result =
+              KataGoAutoSetupHelper.inspectSelectedLocalKataGo(externalEngine, null, null);
+
+          assertEquals(externalEngine, result.enginePath);
+          assertNull(result.gtpConfigPath);
+          assertNull(result.activeWeightPath);
+          assertTrue(
+              result.missingComponents.contains(KataGoAutoSetupHelper.MissingComponent.GTP_CONFIG));
+          assertTrue(
+              result.missingComponents.contains(KataGoAutoSetupHelper.MissingComponent.WEIGHT));
+        });
+  }
+
+  @Test
+  void validatesAWorkingKataGoExecutableWithoutBlockingTheCallerIndefinitely() throws Exception {
+    assumeFalse(System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("win"));
+    Path root = Files.createTempDirectory("katago-version-validation");
+    Path engine = root.resolve("katago");
+    Files.writeString(engine, "#!/bin/sh\nprintf 'KataGo test version\\n'\n");
+    assertTrue(engine.toFile().setExecutable(true));
+
+    KataGoAutoSetupHelper.EngineValidationResult result =
+        KataGoAutoSetupHelper.validateLocalEngine(engine, 3L);
+
+    assertEquals(KataGoAutoSetupHelper.EngineValidationStatus.VALID, result.status);
+    assertTrue(result.detail.contains("KataGo test version"));
+  }
+
   @Test
   void weightDisplayNameKeepsUserModelNameAndHidesTrainingHashes() {
     assertEquals(
@@ -750,9 +1238,7 @@ public class KataGoAutoSetupHelperTest {
               KataGoAutoSetupHelper.inspectLocalSetup().withActiveWeight(weight));
 
           assertEquals(customCommand, Lizzie.config.analysisEngineCommand);
-          assertEquals(
-              customCommand,
-              Lizzie.config.uiConfig.optString("analysis-engine-command"));
+          assertEquals(customCommand, Lizzie.config.uiConfig.optString("analysis-engine-command"));
         });
   }
 
@@ -827,6 +1313,10 @@ public class KataGoAutoSetupHelperTest {
 
   private static String quote(Path path) {
     return "\"" + path.toAbsolutePath().normalize().toString() + "\"";
+  }
+
+  private static String quoteLiteral(Path path) {
+    return "\"" + path.toString() + "\"";
   }
 
   private static String detectTestPlatformDir() {
