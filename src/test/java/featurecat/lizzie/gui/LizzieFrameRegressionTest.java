@@ -185,6 +185,12 @@ class LizzieFrameRegressionTest {
 
   @Test
   void quickAnalysisWarmupWaitsForRemotePrimaryEngine() {
+    assertFalse(LizzieFrame.shouldDiscardQuickAnalysisWarmup(7L, 7L));
+    assertTrue(LizzieFrame.shouldDiscardQuickAnalysisWarmup(7L, 8L));
+    assertTrue(LizzieFrame.quickAnalysisDependsOnPrimary(true, false, false));
+    assertTrue(LizzieFrame.quickAnalysisDependsOnPrimary(false, true, false));
+    assertTrue(LizzieFrame.quickAnalysisDependsOnPrimary(false, false, true));
+    assertFalse(LizzieFrame.quickAnalysisDependsOnPrimary(false, false, false));
     assertEquals(
         LizzieFrame.QuickAnalysisWarmupAction.START,
         LizzieFrame.decideQuickAnalysisWarmup(true, false, false, false));

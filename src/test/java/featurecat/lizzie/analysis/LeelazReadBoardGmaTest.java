@@ -1674,6 +1674,50 @@ class LeelazReadBoardGmaTest {
   }
 
   @Test
+  void automaticRestartResumesAnalysisOnlyAfterBoardFenceAndRuntimeSettings() throws Exception {
+    try (Harness harness = Harness.open()) {
+      ReadyAutomaticRestartPonderLeelaz engine = new ReadyAutomaticRestartPonderLeelaz();
+      configureReadyReadBoardGmaEngine(engine);
+      Field isPondering = Leelaz.class.getDeclaredField("isPondering");
+      isPondering.setAccessible(true);
+      isPondering.setBoolean(engine, true);
+      Lizzie.leelaz = engine;
+      RecordingOutputStream output = new RecordingOutputStream();
+      setOutputStream(engine, output);
+      CountDownLatch completed = new CountDownLatch(1);
+
+      engine.restartClosedEngine(0, completed::countDown);
+
+      assertTrue(waitForRawCommand(output, "name", 1, TimeUnit.SECONDS));
+      assertFalse(
+          output.commands().stream().anyMatch(command -> command.startsWith("kata-analyze")),
+          "Analysis must not start before the board synchronization fence is acknowledged.");
+
+      invokeProcessCommandResponseLine(engine, numberedResponseFor(output.rawCommands(), "name"));
+
+      assertTrue(completed.await(1, TimeUnit.SECONDS));
+      invokeProcessCommandResponseLine(engine, "=");
+      invokeProcessCommandResponseLine(engine, "=");
+      assertTrue(
+          waitForRawCommandPrefix(output, "kata-analyze", 1, TimeUnit.SECONDS),
+          output.commands().toString());
+      List<String> commands = output.commands();
+      int boardFence = commands.indexOf("name");
+      int timeSettings = commands.indexOf("kata-time_settings none");
+      int maxTime = indexOfCommandStartingWith(commands, "kata-set-param maxTime ");
+      int analyze = indexOfCommandStartingWith(commands, "kata-analyze ");
+      assertTrue(boardFence >= 0);
+      assertTrue(timeSettings > boardFence);
+      assertTrue(maxTime > timeSettings);
+      assertTrue(analyze > maxTime);
+      assertEquals(
+          commands.size() - 1,
+          analyze,
+          "No startup command may follow and silently stop the recovered analysis stream.");
+    }
+  }
+
+  @Test
   void automaticRestartReadinessTimeoutReleasesReservationForManualRecovery() throws Exception {
     try (Harness harness = Harness.open()) {
       TimeoutAutomaticRestartLeelaz engine = new TimeoutAutomaticRestartLeelaz();
@@ -1951,6 +1995,15 @@ class LeelazReadBoardGmaTest {
       }
     }
     return false;
+  }
+
+  private static int indexOfCommandStartingWith(List<String> commands, String prefix) {
+    for (int index = 0; index < commands.size(); index++) {
+      if (commands.get(index).startsWith(prefix)) {
+        return index;
+      }
+    }
+    return -1;
   }
 
   private static boolean waitForRawCommandPrefix(
@@ -2432,6 +2485,29 @@ class LeelazReadBoardGmaTest {
       started = true;
       isLoaded = true;
       isCheckingName = false;
+    }
+  }
+
+  private static final class ReadyAutomaticRestartPonderLeelaz extends Leelaz {
+    private ReadyAutomaticRestartPonderLeelaz() throws IOException {
+      super("controlled-engine");
+    }
+
+    @Override
+    public void startEngine(int index) {
+      started = true;
+      isLoaded = true;
+      isCheckingName = false;
+    }
+
+    @Override
+    void resumeClosedEngineAfterBoardSynchronization(boolean resumePonder) {
+      if (!resumePonder) {
+        return;
+      }
+      sendCommand("kata-time_settings none");
+      sendCommand("kata-set-param maxTime 2");
+      sendCommand("kata-analyze 10");
     }
   }
 

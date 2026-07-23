@@ -80,6 +80,7 @@ public final class KataGoRuntimeHelper {
   private static final String NVIDIA50_CUDA_BACKEND = "nvidia50-cuda";
   private static final String NVIDIA_TRT_BACKEND = "nvidia-tensorrt";
   private static final String NVIDIA50_TRT_BACKEND = "nvidia50-trt";
+  private static final String OPENCL_BACKEND = "opencl";
   private static final String ENGINE_BACKEND_MARKER_NAME = "lizzieyzy-next-engine-backend.txt";
   private static final String NVIDIA_RUNTIME_ROOT = "nvidia-runtime";
   private static final String NVIDIA_RUNTIME_DOWNLOAD_CACHE_DIR = "downloads";
@@ -89,6 +90,15 @@ public final class KataGoRuntimeHelper {
   private static final String NVIDIA_DOWNLOAD_HOST_COM = "developer.download.nvidia.com";
   private static final String NVIDIA_DOWNLOAD_HOST_CN = "developer.download.nvidia.cn";
   private static final String BUNDLED_HOME_DATA_DIR = "katago-home";
+  private static final String OPENCL_FP32_HOME_DATA_DIR = "katago-home-opencl-fp32";
+  private static final String OPENCL_FP32_COMPATIBILITY_MARKER =
+      "compatibility-signature.txt";
+  private static final String OPENCL_TUNING_CACHE_GENERATION_MARKER =
+      "lizzie-opencl-tuning-generation.txt";
+  private static final String OPENCL_TUNING_CACHE_GENERATION = "serialized-launch-v1";
+  private static final String OPENCL_NVIDIA_DRIVER_VERSION_PROPERTY =
+      "lizzie.opencl.nvidiaDriverVersion";
+  private static final int WINDOWS_FAST_FAIL_EXIT_CODE = (int) 0xC0000409L;
   private static final String CUDA_MANIFEST_URL =
       "https://developer.download.nvidia.com/compute/cuda/redist/redistrib_12.1.1.json";
   private static final String CUDNN_MANIFEST_URL =
@@ -193,6 +203,10 @@ public final class KataGoRuntimeHelper {
   private static boolean benchmarkPausedEngineByShutdown = false;
   private static volatile boolean benchmarkEngineSyncSuppressed = false;
   private static volatile boolean appleAutoOptimizeRunning = false;
+  private static final Object NVIDIA_DRIVER_DETECTION_LOCK = new Object();
+  private static final Object OPENCL_TUNING_CACHE_LOCK = new Object();
+  private static volatile boolean nvidiaDriverDetectionComplete = false;
+  private static volatile String detectedNvidiaDriverVersion = "";
 
   private KataGoRuntimeHelper() {}
 
@@ -499,6 +513,16 @@ public final class KataGoRuntimeHelper {
     return resolveNvidiaBackend(enginePath) != null;
   }
 
+  public static boolean isBundledOpenClPath(Path enginePath) {
+    if (!isWindowsPlatform()
+        || enginePath == null
+        || !Config.isBundledKataGoExecutable(enginePath)
+        || resolveNvidiaBackend(enginePath) != null) {
+      return false;
+    }
+    return OPENCL_BACKEND.equals(readEngineBackendMarker(enginePath));
+  }
+
   private static String resolveNvidiaBackend(Path enginePath) {
     if (enginePath == null) {
       return null;
@@ -517,17 +541,8 @@ public final class KataGoRuntimeHelper {
     if (normalizedLower.contains("/" + NVIDIA_ENGINE_DIR + "/")) {
       return NVIDIA_BACKEND;
     }
-    Path engineDir = enginePath.toAbsolutePath().normalize().getParent();
-    if (engineDir == null) {
-      return null;
-    }
-    Path markerPath = engineDir.resolve(ENGINE_BACKEND_MARKER_NAME);
-    if (!Files.isRegularFile(markerPath)) {
-      return null;
-    }
-    try {
-      String backend = Files.readString(markerPath, StandardCharsets.UTF_8).trim();
-      String backendLower = backend.toLowerCase(Locale.ROOT);
+    String backendLower = readEngineBackendMarker(enginePath);
+    if (!backendLower.isEmpty()) {
       if (NVIDIA_TRT_BACKEND.equals(backendLower) || NVIDIA50_TRT_BACKEND.equals(backendLower)) {
         return NVIDIA_TRT_BACKEND;
       }
@@ -540,9 +555,28 @@ public final class KataGoRuntimeHelper {
       if (backendLower.startsWith("nvidia")) {
         return backendLower;
       }
-      return null;
+    }
+    return null;
+  }
+
+  private static String readEngineBackendMarker(Path enginePath) {
+    if (enginePath == null) {
+      return "";
+    }
+    Path engineDir = enginePath.toAbsolutePath().normalize().getParent();
+    if (engineDir == null) {
+      return "";
+    }
+    Path markerPath = engineDir.resolve(ENGINE_BACKEND_MARKER_NAME);
+    if (!Files.isRegularFile(markerPath)) {
+      return "";
+    }
+    try {
+      return Files.readString(markerPath, StandardCharsets.UTF_8)
+          .trim()
+          .toLowerCase(Locale.ROOT);
     } catch (IOException e) {
-      return null;
+      return "";
     }
   }
 
@@ -559,7 +593,7 @@ public final class KataGoRuntimeHelper {
     if (processBuilder == null || enginePath == null) {
       return;
     }
-    if (!Config.isBundledKataGoCommand(enginePath.toAbsolutePath().normalize().toString())) {
+    if (!Config.isBundledKataGoExecutable(enginePath)) {
       return;
     }
     if (Lizzie.config != null) {
@@ -588,11 +622,14 @@ public final class KataGoRuntimeHelper {
     if (enginePath == null || Lizzie.config == null) {
       return launchCommand;
     }
-    if (!Config.isBundledKataGoCommand(enginePath.toAbsolutePath().normalize().toString())) {
+    if (!Config.isBundledKataGoExecutable(enginePath)) {
       return launchCommand;
     }
 
-    Path homeDataDir = getBundledHomeDataDir();
+    boolean openClFp32Compatibility =
+        shouldUseOpenClFp32Compatibility(launchCommand, enginePath);
+    Path homeDataDir =
+        openClFp32Compatibility ? getOpenClFp32HomeDataDir() : getBundledHomeDataDir();
     if (homeDataDir == null) {
       return launchCommand;
     }
@@ -603,9 +640,63 @@ public final class KataGoRuntimeHelper {
       return launchCommand;
     }
 
-    appendOverrideConfig(launchCommand, "homeDataDir=" + homeDataDir.toString());
+    if (openClFp32Compatibility) {
+      setOverrideConfig(launchCommand, "homeDataDir=" + homeDataDir.toString());
+      setOverrideConfig(launchCommand, "openclUseFP16=false");
+    } else {
+      appendOverrideConfig(launchCommand, "homeDataDir=" + homeDataDir.toString());
+      prepareBundledOpenClTuningCache(
+          enginePath, resolveEffectiveHomeDataDir(launchCommand, homeDataDir));
+    }
     appendAnalysisPvLenOverride(launchCommand);
     return launchCommand;
+  }
+
+  public static boolean isOpenClFp32CompatibilityActive(
+      List<String> launchCommand, Path enginePath) {
+    return isBundledOpenClPath(enginePath)
+        && "false".equalsIgnoreCase(findOverrideConfigValue(launchCommand, "openclUseFP16"));
+  }
+
+  public static boolean shouldRecoverOpenClNativeExit(
+      List<String> originalCommand,
+      Path enginePath,
+      int exitCode,
+      boolean compatibilityAlreadyActive) {
+    return !compatibilityAlreadyActive
+        && exitCode == WINDOWS_FAST_FAIL_EXIT_CODE
+        && isBundledOpenClPath(enginePath)
+        && findCommandPath(originalCommand, "-model", "--model", "-weights", "--weights") != null;
+  }
+
+  public static boolean rememberOpenClFp32Compatibility(
+      List<String> originalCommand, Path enginePath) {
+    if (!isBundledOpenClPath(enginePath)) {
+      return false;
+    }
+    Path marker = getOpenClFp32CompatibilityMarker();
+    String signature =
+        buildOpenClCompatibilitySignature(
+            originalCommand, enginePath, resolveNvidiaDriverVersion());
+    if (marker == null || signature.isEmpty()) {
+      return false;
+    }
+    try {
+      Files.createDirectories(marker.getParent());
+      Files.writeString(
+          marker,
+          signature,
+          StandardCharsets.UTF_8,
+          StandardOpenOption.CREATE,
+          StandardOpenOption.TRUNCATE_EXISTING,
+          StandardOpenOption.WRITE);
+      return true;
+    } catch (IOException e) {
+      System.err.println(
+          "Unable to remember KataGo OpenCL FP32 compatibility mode: "
+              + e.getLocalizedMessage());
+      return false;
+    }
   }
 
   public static NvidiaRuntimeStatus inspectNvidiaRuntime(SetupSnapshot snapshot) {
@@ -2289,24 +2380,46 @@ public final class KataGoRuntimeHelper {
         .normalize();
   }
 
+  private static Path getOpenClFp32HomeDataDir() {
+    if (Lizzie.config == null) {
+      return null;
+    }
+    return Lizzie.config
+        .getRuntimeWorkDirectory()
+        .toPath()
+        .resolve(OPENCL_FP32_HOME_DATA_DIR)
+        .toAbsolutePath()
+        .normalize();
+  }
+
+  private static Path getOpenClFp32CompatibilityMarker() {
+    Path homeDataDir = getOpenClFp32HomeDataDir();
+    return homeDataDir == null ? null : homeDataDir.resolve(OPENCL_FP32_COMPATIBILITY_MARKER);
+  }
+
   /**
    * Returns true when the bundled engine still needs a one-time OpenCL autotuning pass, i.e. no
    * cached tuning parameters exist yet. The first OpenCL tuning can take a few minutes, so callers
    * should grant a longer startup budget in that case.
    */
   public static boolean needsFirstOpenCLTuning(Path enginePath) {
+    return needsFirstOpenCLTuning(enginePath, false);
+  }
+
+  public static boolean needsFirstOpenCLTuning(
+      Path enginePath, boolean openClFp32Compatibility) {
     if (!isWindowsPlatform()) {
       return false;
     }
-    if (enginePath == null
-        || !Config.isBundledKataGoCommand(enginePath.toAbsolutePath().normalize().toString())) {
+    if (enginePath == null || !Config.isBundledKataGoExecutable(enginePath)) {
       return false;
     }
     // NVIDIA TensorRT/CUDA packages do not rely on the OpenCL tuning cache.
     if (resolveNvidiaBackend(enginePath) != null) {
       return false;
     }
-    Path homeDataDir = getBundledHomeDataDir();
+    Path homeDataDir =
+        openClFp32Compatibility ? getOpenClFp32HomeDataDir() : getBundledHomeDataDir();
     if (homeDataDir == null) {
       return false;
     }
@@ -2320,6 +2433,147 @@ public final class KataGoRuntimeHelper {
     } catch (IOException e) {
       return true;
     }
+  }
+
+  private static boolean shouldUseOpenClFp32Compatibility(
+      List<String> command, Path enginePath) {
+    if (!isBundledOpenClPath(enginePath)) {
+      return false;
+    }
+    if ("false".equalsIgnoreCase(findOverrideConfigValue(command, "openclUseFP16"))) {
+      return true;
+    }
+    String driverVersion = resolveNvidiaDriverVersion();
+    Path marker = getOpenClFp32CompatibilityMarker();
+    if (marker == null || !Files.isRegularFile(marker)) {
+      return false;
+    }
+    String expected = buildOpenClCompatibilitySignature(command, enginePath, driverVersion);
+    if (expected.isEmpty()) {
+      return false;
+    }
+    try {
+      return expected.equals(Files.readString(marker, StandardCharsets.UTF_8).trim());
+    } catch (IOException e) {
+      return false;
+    }
+  }
+
+  private static String resolveNvidiaDriverVersion() {
+    String configured = System.getProperty(OPENCL_NVIDIA_DRIVER_VERSION_PROPERTY, "").trim();
+    if (!configured.isEmpty()) {
+      return "none".equalsIgnoreCase(configured) ? "" : normalizeDriverVersion(configured);
+    }
+    if (nvidiaDriverDetectionComplete) {
+      return detectedNvidiaDriverVersion;
+    }
+    synchronized (NVIDIA_DRIVER_DETECTION_LOCK) {
+      if (!nvidiaDriverDetectionComplete) {
+        NvidiaGpuDetector.DetectionResult detection = NvidiaGpuDetector.detectBestGpu();
+        detectedNvidiaDriverVersion =
+            detection != null && detection.bestGpu != null
+                ? normalizeDriverVersion(detection.bestGpu.driverVersion)
+                : "";
+        nvidiaDriverDetectionComplete = true;
+      }
+      return detectedNvidiaDriverVersion;
+    }
+  }
+
+  private static String normalizeDriverVersion(String driverVersion) {
+    return driverVersion == null ? "" : driverVersion.trim().replace(',', '.');
+  }
+
+  private static Path resolveEffectiveHomeDataDir(List<String> command, Path fallback) {
+    String configured = findOverrideConfigValue(command, "homeDataDir");
+    if (configured.isEmpty()) {
+      return fallback;
+    }
+    try {
+      Path path = Paths.get(configured);
+      if (!path.isAbsolute() && Lizzie.config != null) {
+        path = Lizzie.config.getRuntimeWorkDirectory().toPath().resolve(path);
+      }
+      return path.toAbsolutePath().normalize();
+    } catch (Exception e) {
+      return fallback;
+    }
+  }
+
+  private static void prepareBundledOpenClTuningCache(Path enginePath, Path homeDataDir) {
+    if (!isBundledOpenClPath(enginePath) || homeDataDir == null) {
+      return;
+    }
+    synchronized (OPENCL_TUNING_CACHE_LOCK) {
+      Path generationMarker = homeDataDir.resolve(OPENCL_TUNING_CACHE_GENERATION_MARKER);
+      try {
+        if (Files.isRegularFile(generationMarker)
+            && OPENCL_TUNING_CACHE_GENERATION.equals(
+                Files.readString(generationMarker, StandardCharsets.UTF_8).trim())) {
+          return;
+        }
+
+        Path tuningDir = homeDataDir.resolve("opencltuning");
+        if (Files.exists(tuningDir)) {
+          Path quarantine = availableOpenClTuningQuarantinePath(homeDataDir);
+          Files.move(tuningDir, quarantine);
+          System.err.println(
+              "Moved legacy KataGo OpenCL tuning cache to " + quarantine.toAbsolutePath());
+        }
+        Files.writeString(
+            generationMarker,
+            OPENCL_TUNING_CACHE_GENERATION,
+            StandardCharsets.UTF_8,
+            StandardOpenOption.CREATE,
+            StandardOpenOption.TRUNCATE_EXISTING,
+            StandardOpenOption.WRITE);
+      } catch (IOException e) {
+        System.err.println(
+            "Unable to prepare KataGo OpenCL tuning cache: " + e.getLocalizedMessage());
+      }
+    }
+  }
+
+  private static Path availableOpenClTuningQuarantinePath(Path homeDataDir) {
+    Path candidate = homeDataDir.resolve("opencltuning-legacy");
+    int suffix = 1;
+    while (Files.exists(candidate)) {
+      candidate = homeDataDir.resolve("opencltuning-legacy-" + suffix++);
+    }
+    return candidate;
+  }
+
+  private static String buildOpenClCompatibilitySignature(
+      List<String> command, Path enginePath, String driverVersion) {
+    Path modelPath = findCommandPath(command, "-model", "--model", "-weights", "--weights");
+    if (enginePath == null || modelPath == null) {
+      return "";
+    }
+    StringBuilder signature = new StringBuilder("v1");
+    signature.append("|driver=").append(normalizeDriverVersion(driverVersion));
+    appendPathFingerprint(signature, enginePath);
+    appendPathFingerprint(signature, modelPath);
+    return signature.toString();
+  }
+
+  private static Path findCommandPath(List<String> command, String... options) {
+    if (command == null || options == null) {
+      return null;
+    }
+    for (int i = 0; i + 1 < command.size(); i++) {
+      String candidate = command.get(i);
+      for (String option : options) {
+        if (!option.equals(candidate)) {
+          continue;
+        }
+        try {
+          return Paths.get(command.get(i + 1)).toAbsolutePath().normalize();
+        } catch (Exception e) {
+          return null;
+        }
+      }
+    }
+    return null;
   }
 
   private static void appendOverrideConfig(List<String> command, String keyValue) {
@@ -2350,6 +2604,73 @@ public final class KataGoRuntimeHelper {
       return;
     }
 
+    command.add("-override-config");
+    command.add(keyValue);
+  }
+
+  private static String findOverrideConfigValue(List<String> command, String key) {
+    if (command == null || key == null || key.trim().isEmpty()) {
+      return "";
+    }
+    String expectedKey = key.trim();
+    for (int i = 0; i + 1 < command.size(); i++) {
+      if (!"-override-config".equals(command.get(i))) {
+        continue;
+      }
+      String overrides = command.get(i + 1);
+      if (overrides == null) {
+        continue;
+      }
+      for (String entry : overrides.split(",")) {
+        int separator = entry.indexOf('=');
+        if (separator <= 0) {
+          continue;
+        }
+        if (expectedKey.equalsIgnoreCase(entry.substring(0, separator).trim())) {
+          return entry.substring(separator + 1).trim();
+        }
+      }
+    }
+    return "";
+  }
+
+  private static void setOverrideConfig(List<String> command, String keyValue) {
+    if (command == null || keyValue == null || keyValue.trim().isEmpty()) {
+      return;
+    }
+    String normalizedKey = overrideConfigKey(keyValue);
+    if (normalizedKey.isEmpty()) {
+      return;
+    }
+    for (int i = 0; i < command.size(); i++) {
+      if (!"-override-config".equals(command.get(i))) {
+        continue;
+      }
+      if (i + 1 >= command.size()) {
+        command.add(keyValue);
+        return;
+      }
+      String existing = command.get(i + 1);
+      List<String> entries = new ArrayList<String>();
+      boolean replaced = false;
+      if (existing != null && !existing.trim().isEmpty()) {
+        for (String entry : existing.split(",")) {
+          if (normalizedKey.equals(overrideConfigKey(entry))) {
+            if (!replaced) {
+              entries.add(keyValue);
+              replaced = true;
+            }
+          } else if (!entry.trim().isEmpty()) {
+            entries.add(entry.trim());
+          }
+        }
+      }
+      if (!replaced) {
+        entries.add(keyValue);
+      }
+      command.set(i + 1, String.join(",", entries));
+      return;
+    }
     command.add("-override-config");
     command.add(keyValue);
   }

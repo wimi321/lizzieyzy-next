@@ -156,6 +156,23 @@ public class ConfigBundledKataGoDefaultsTest {
   }
 
   @Test
+  void bundledExecutableDetectionPreservesSpacesAndUnicode() {
+    Path bundledExecutable =
+        Path.of(
+            "LizzieYzy Next 测试",
+            "app",
+            "engines",
+            "katago",
+            "windows-x64",
+            "katago.exe");
+    Path externalExecutable =
+        Path.of("LizzieYzy Next 测试", "app", "custom engines", "katago.exe");
+
+    assertTrue(Config.isBundledKataGoExecutable(bundledExecutable));
+    assertFalse(Config.isBundledKataGoExecutable(externalExecutable));
+  }
+
+  @Test
   void incompleteNearbyBundleDoesNotHideACompletePortableBundle() throws Exception {
     Path incompleteRoot = Files.createTempDirectory("lizzie-incomplete-bundle");
     Files.createDirectories(incompleteRoot.resolve("engines"));
