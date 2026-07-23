@@ -9,6 +9,7 @@ import featurecat.lizzie.analysis.EngineManager;
 import featurecat.lizzie.analysis.MoveData;
 import featurecat.lizzie.rules.Board;
 import featurecat.lizzie.rules.BoardData;
+import featurecat.lizzie.rules.BoardHistoryNode;
 import featurecat.lizzie.rules.SGFParser;
 import featurecat.lizzie.rules.Stone;
 import featurecat.lizzie.util.Utils;
@@ -1165,10 +1166,11 @@ public class IndependentMainBoard extends JFrame {
   }
 
   public boolean isMouseOver(int x, int y) {
-    if (!Lizzie.config.showBlackCandidates && !Lizzie.config.showWhiteCandidates) {
+    BoardHistoryNode displayNode = Lizzie.frame.getDisplayNode();
+    if (!Lizzie.frame.shouldShowCandidatesFor(displayNode)) {
       return false;
     }
-    if (Lizzie.config.showSuggestionVariations)
+    if (Lizzie.frame.shouldShowSuggestionVariationsFor(displayNode))
       return mouseOverCoordinate[0] == x && mouseOverCoordinate[1] == y;
     else return false;
   }

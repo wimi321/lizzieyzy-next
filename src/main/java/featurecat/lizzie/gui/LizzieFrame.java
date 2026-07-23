@@ -531,6 +531,7 @@ public class LizzieFrame extends JFrame {
   public AnalysisEngine analysisEngine;
   private WholeGameAnalysisSession wholeGameAnalysisSession;
   private WholeGameAnalysisDialog wholeGameAnalysisDialog;
+  private WholeGameAnalysisResultView wholeGameAnalysisResultView;
   private FlashAnalysisRequest pendingFlashAnalysisAfterSettings;
   private final java.util.concurrent.atomic.AtomicBoolean quickAnalysisEngineStarting =
       new java.util.concurrent.atomic.AtomicBoolean(false);
@@ -1671,8 +1672,7 @@ public class LizzieFrame extends JFrame {
           @Override
           protected void paintComponent(Graphics graphics) {
             Graphics2D g2 = (Graphics2D) graphics.create();
-            g2.setRenderingHint(
-                RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
             Color background =
                 isEnabled() ? new Color(91, 65, 25, 238) : new Color(34, 48, 64, 232);
             if (getModel().isRollover() && isEnabled()) {
@@ -1733,9 +1733,7 @@ public class LizzieFrame extends JFrame {
     AccessibilitySupport.named(
         sidebarPanel,
         text("Accessibility.sidebar", "Sidebar"),
-        text(
-            "Accessibility.sidebarDescription",
-            "Comments and problem-move sidebar."));
+        text("Accessibility.sidebarDescription", "Comments and problem-move sidebar."));
     AccessibilitySupport.named(
         listTable,
         text("Accessibility.candidateTable", "Candidate moves"),
@@ -1767,10 +1765,7 @@ public class LizzieFrame extends JFrame {
   static Rectangle fitWindowBounds(Rectangle requested, List<Rectangle> workAreas) {
     Rectangle normalized =
         new Rectangle(
-            requested.x,
-            requested.y,
-            Math.max(1, requested.width),
-            Math.max(1, requested.height));
+            requested.x, requested.y, Math.max(1, requested.width), Math.max(1, requested.height));
     if (workAreas == null || workAreas.isEmpty()) {
       return normalized;
     }
@@ -2133,6 +2128,111 @@ public class LizzieFrame extends JFrame {
     featurecat.lizzie.rules.BoardHistoryNode override = displayNodeOverride;
     if (override != null) return override;
     return Lizzie.board.getHistory().getCurrentHistoryNode();
+  }
+
+  private WholeGameAnalysisResultView wholeGameAnalysisResultView() {
+    if (wholeGameAnalysisResultView == null) {
+      wholeGameAnalysisResultView = new WholeGameAnalysisResultView();
+    }
+    return wholeGameAnalysisResultView;
+  }
+
+  private BoardHistoryNode currentGameRoot() {
+    return Lizzie.board == null || Lizzie.board.getHistory() == null
+        ? null
+        : Lizzie.board.getHistory().getStart();
+  }
+
+  private void activateWholeGameAnalysisResultView(BoardHistoryNode root) {
+    wholeGameAnalysisResultView().activate(root);
+    isShowingHeatmap = false;
+    isShowingPolicy = false;
+    if (Lizzie.leelaz != null) {
+      Lizzie.leelaz.isheatmap = false;
+      Lizzie.leelaz.iskataHeatmapShowOwner = false;
+    }
+    if (Lizzie.leelaz2 != null) {
+      Lizzie.leelaz2.isheatmap = false;
+      Lizzie.leelaz2.iskataHeatmapShowOwner = false;
+    }
+    if (Lizzie.board != null) {
+      Lizzie.board.clearBestHeatMove();
+    }
+  }
+
+  boolean isWholeGameMoveEvaluationVisibleFor(BoardHistoryNode node) {
+    WholeGameAnalysisResultView resultView = wholeGameAnalysisResultView;
+    return resultView != null && resultView.hasVisibleMoveEvaluation(currentGameRoot(), node);
+  }
+
+  boolean shouldShowBestMovesFor(BoardHistoryNode node) {
+    boolean configured = Lizzie.config != null && Lizzie.config.showBestMovesNow();
+    WholeGameAnalysisResultView resultView = wholeGameAnalysisResultView;
+    return resultView == null
+        ? configured
+        : resultView.shouldShowSuggestions(currentGameRoot(), node, configured);
+  }
+
+  boolean shouldShowBranchesFor(BoardHistoryNode node) {
+    boolean configured = Lizzie.config != null && Lizzie.config.showBranchNow();
+    WholeGameAnalysisResultView resultView = wholeGameAnalysisResultView;
+    return resultView == null
+        ? configured
+        : resultView.shouldShowSuggestions(currentGameRoot(), node, configured);
+  }
+
+  boolean shouldShowSuggestionVariationsFor(BoardHistoryNode node) {
+    boolean configured = Lizzie.config != null && Lizzie.config.showSuggestionVariations;
+    WholeGameAnalysisResultView resultView = wholeGameAnalysisResultView;
+    return resultView == null
+        ? configured
+        : resultView.shouldShowSuggestions(currentGameRoot(), node, configured);
+  }
+
+  boolean shouldShowCandidatesFor(BoardHistoryNode node) {
+    boolean configured =
+        Lizzie.config != null
+            && node != null
+            && node.getData() != null
+            && (node.getData().blackToPlay
+                ? Lizzie.config.showBlackCandidates
+                : Lizzie.config.showWhiteCandidates);
+    WholeGameAnalysisResultView resultView = wholeGameAnalysisResultView;
+    return resultView == null
+        ? configured
+        : resultView.shouldShowSuggestions(currentGameRoot(), node, configured);
+  }
+
+  boolean shouldShowSuggestionWinrateFor(BoardHistoryNode node) {
+    boolean configured = Lizzie.config != null && Lizzie.config.showWinrateInSuggestion;
+    WholeGameAnalysisResultView resultView = wholeGameAnalysisResultView;
+    return resultView == null
+        ? configured
+        : resultView.shouldShowSuggestionWinrate(currentGameRoot(), node, configured);
+  }
+
+  boolean shouldShowSuggestionPlayoutsFor(BoardHistoryNode node) {
+    boolean configured = Lizzie.config != null && Lizzie.config.showPlayoutsInSuggestion;
+    WholeGameAnalysisResultView resultView = wholeGameAnalysisResultView;
+    return resultView == null
+        ? configured
+        : resultView.shouldShowSuggestionPlayouts(currentGameRoot(), node, configured);
+  }
+
+  boolean shouldShowHeatmapFor(BoardHistoryNode node) {
+    return isShowingHeatmap;
+  }
+
+  boolean shouldShowPolicyFor(BoardHistoryNode node) {
+    return isShowingPolicy;
+  }
+
+  int effectiveMoveRankMarkLimit(BoardHistoryNode node) {
+    int configured = Lizzie.config == null ? -1 : Lizzie.config.moveRankMarkLastMove;
+    WholeGameAnalysisResultView resultView = wholeGameAnalysisResultView;
+    return resultView == null
+        ? configured
+        : resultView.effectiveMoveRankLimit(currentGameRoot(), node, configured);
   }
 
   public void setDisplayNodeOverride(featurecat.lizzie.rules.BoardHistoryNode node) {
@@ -3868,11 +3968,14 @@ public class LizzieFrame extends JFrame {
   }
 
   protected void showForegroundEngineLeaseConflict() {
-    Utils.showMsg(
-        Lizzie.resourceBundle.getString("AnalysisSettings.reuseStatus.existing_lease"));
+    Utils.showMsg(Lizzie.resourceBundle.getString("AnalysisSettings.reuseStatus.existing_lease"));
   }
 
   public static void editGameInfo() {
+    if (Lizzie.frame != null && Lizzie.frame.isWholeGameAnalysisStartingOrRunning()) {
+      Utils.showMsg(Lizzie.resourceBundle.getString("WholeGameAnalysis.conflict.analysis"));
+      return;
+    }
     GameInfo gameInfo = Lizzie.board.getHistory().getGameInfo();
 
     GameInfoDialog gameInfoDialog = new GameInfoDialog();
@@ -6417,10 +6520,7 @@ public class LizzieFrame extends JFrame {
   }
 
   private int currentStatusAreaBottom() {
-    return Math.max(
-        0,
-        statusAreaBottom(mainPanel.getHeight(), mainPanel.getInsets().bottom)
-            - 4);
+    return Math.max(0, statusAreaBottom(mainPanel.getHeight(), mainPanel.getInsets().bottom) - 4);
   }
 
   static int[][] statusLineBounds(int requestedTop, int requestedBottom, int lineCount) {
@@ -6642,7 +6742,12 @@ public class LizzieFrame extends JFrame {
     int requestedFontSize = Math.max(1, primary ? lineHeight : lineHeight * 9 / 10);
     Font font =
         fitStatusFontInBox(
-            graphics, text, requestedFontSize, Math.max(8, Config.frameFontSize), maxWidth, lineHeight);
+            graphics,
+            text,
+            requestedFontSize,
+            Math.max(8, Config.frameFontSize),
+            maxWidth,
+            lineHeight);
     FontMetrics metrics = graphics.getFontMetrics(font);
     text = truncateStatusText(text, metrics, maxWidth);
     int stringWidth = metrics.stringWidth(text);
@@ -8161,21 +8266,21 @@ public class LizzieFrame extends JFrame {
   //  }
 
   public boolean isMouseOver(int x, int y) {
-    if ((Lizzie.board.getHistory().isBlacksTurn() && !Lizzie.config.showBlackCandidates)
-        || (!Lizzie.board.getHistory().isBlacksTurn() && !Lizzie.config.showWhiteCandidates)) {
+    BoardHistoryNode displayNode = getDisplayNode();
+    if (!shouldShowCandidatesFor(displayNode)) {
       return false;
     }
-    if (Lizzie.config.showSuggestionVariations)
+    if (shouldShowSuggestionVariationsFor(displayNode))
       return mouseOverCoordinate[0] == x && mouseOverCoordinate[1] == y;
     else return false;
   }
 
   public boolean isMouseOverIndependMainBoard(int x, int y) {
-    if ((Lizzie.board.getHistory().isBlacksTurn() && !Lizzie.config.showBlackCandidates)
-        || (!Lizzie.board.getHistory().isBlacksTurn() && !Lizzie.config.showWhiteCandidates)) {
+    BoardHistoryNode displayNode = getDisplayNode();
+    if (!shouldShowCandidatesFor(displayNode)) {
       return false;
     }
-    if (Lizzie.config.showSuggestionVariations)
+    if (shouldShowSuggestionVariationsFor(displayNode))
       return independentMainBoard.mouseOverCoordinate[0] == x
           && independentMainBoard.mouseOverCoordinate[1] == y;
     else return false;
@@ -10795,6 +10900,10 @@ public class LizzieFrame extends JFrame {
   }
 
   public void setRules() {
+    if (isWholeGameAnalysisStartingOrRunning()) {
+      Utils.showMsg(Lizzie.resourceBundle.getString("WholeGameAnalysis.conflict.analysis"));
+      return;
+    }
     setkatarules = new SetKataRules();
     setkatarules.setVisible(true);
     Runnable runnable =
@@ -13553,8 +13662,7 @@ public class LizzieFrame extends JFrame {
             Lizzie.board.getHistory().getStart(),
             WholeGameAnalysisPlan.DEFAULT_BASELINE_VISITS,
             Math.max(
-                WholeGameAnalysisPlan.MINIMUM_DEEP_VISITS,
-                AnalysisEngine.targetAnalysisVisits()));
+                WholeGameAnalysisPlan.MINIMUM_DEEP_VISITS, AnalysisEngine.targetAnalysisVisits()));
     if (plan.moveCount() == 0) {
       Utils.showMsg(Lizzie.resourceBundle.getString("WholeGameAnalysis.noGame"));
       return;
@@ -13586,6 +13694,7 @@ public class LizzieFrame extends JFrame {
     WholeGameAnalysisDialog dialog = new WholeGameAnalysisDialog(this);
     WholeGameAnalysisSession session = new WholeGameAnalysisSession(this, plan, dialog);
     dialog.setSession(session);
+    activateWholeGameAnalysisResultView(plan.root());
     wholeGameAnalysisDialog = dialog;
     wholeGameAnalysisSession = session;
     dialog.showOnScreen();
@@ -13597,26 +13706,41 @@ public class LizzieFrame extends JFrame {
     if (wholeGameAnalysisSession != session) {
       engine.clearRequestCallbacks();
       engine.normalQuit();
-      return;
     }
-    analysisEngine = engine;
   }
 
   public void onWholeGameAnalysisFinished(
       WholeGameAnalysisSession session,
       AnalysisEngine completedEngine,
       boolean resumeForegroundAnalysis) {
+    if (wholeGameAnalysisSession != session) {
+      return;
+    }
+    boolean complete =
+        session != null && session.state() == WholeGameAnalysisSession.State.COMPLETE;
     if (analysisEngine == completedEngine) {
       analysisEngine = null;
     }
-    if (wholeGameAnalysisSession == session) {
-      wholeGameAnalysisSession = null;
-    }
+    wholeGameAnalysisSession = null;
     if (resumeForegroundAnalysis) {
       resumeForegroundAnalysisAfterQuickAnalysisComplete();
     } else {
       refresh();
     }
+    if (complete) {
+      WholeGameAnalysisDialog completedDialog = wholeGameAnalysisDialog;
+      wholeGameAnalysisDialog = null;
+      if (completedDialog != null) {
+        completedDialog.dispose();
+      }
+      showWholeGameAnalysisCompleteNotice();
+      setMainPanelFocus();
+    }
+  }
+
+  protected void showWholeGameAnalysisCompleteNotice() {
+    Utils.showMsgNoModalForTime(
+        Lizzie.resourceBundle.getString("WholeGameAnalysis.resultsShown"), 5);
   }
 
   private boolean isWholeGameAnalysisConflict() {
@@ -13657,8 +13781,7 @@ public class LizzieFrame extends JFrame {
   }
 
   protected void showForegroundEngineModeReservationConflict() {
-    Utils.showMsg(
-        Lizzie.resourceBundle.getString("AnalysisSettings.reuseStatus.existing_lease"));
+    Utils.showMsg(Lizzie.resourceBundle.getString("AnalysisSettings.reuseStatus.existing_lease"));
   }
 
   private final java.util.concurrent.atomic.AtomicBoolean trackingEngineStarting =
@@ -13923,6 +14046,12 @@ public class LizzieFrame extends JFrame {
   }
 
   public void flashAnalyzeGame(boolean isAllGame, boolean isAllBranches, boolean silentAnalyze) {
+    if (isWholeGameAnalysisStartingOrRunning()) {
+      if (!silentAnalyze) {
+        Utils.showMsg(Lizzie.resourceBundle.getString("WholeGameAnalysis.conflict.analysis"));
+      }
+      return;
+    }
     if (!Lizzie.config.analysisReuseCurrentEngine
         && !isAnalysisEngineReusable(analysisEngine)
         && (Lizzie.config.analysisEngineCommand == null
@@ -13976,8 +14105,7 @@ public class LizzieFrame extends JFrame {
             Lizzie.resourceBundle.getString("LizzieFrame.analysisCommandMissingTitle"),
             JOptionPane.OK_CANCEL_OPTION,
             JOptionPane.WARNING_MESSAGE);
-    handleMissingFlashAnalysisCommandChoice(
-        result, isAllGame, isAllBranches, silentAnalyze);
+    handleMissingFlashAnalysisCommandChoice(result, isAllGame, isAllBranches, silentAnalyze);
   }
 
   void handleMissingFlashAnalysisCommandChoice(
@@ -14068,6 +14196,12 @@ public class LizzieFrame extends JFrame {
                 newAnalysisEngine.waitFrame = waitFrame;
                 SwingUtilities.invokeLater(
                     () -> {
+                      if (isWholeGameAnalysisStartingOrRunning()) {
+                        if (waitFrame != null) waitFrame.setVisible(false);
+                        newAnalysisEngine.clearRequestCallbacks();
+                        newAnalysisEngine.normalQuit();
+                        return;
+                      }
                       analysisEngine = newAnalysisEngine;
                       if (!newAnalysisEngine.isLoaded()) {
                         if (waitFrame != null) waitFrame.setVisible(false);
@@ -14102,6 +14236,9 @@ public class LizzieFrame extends JFrame {
       boolean isAllGame,
       boolean isAllBranches,
       boolean silentAnalyze) {
+    if (isWholeGameAnalysisStartingOrRunning() || targetEngine != analysisEngine) {
+      return;
+    }
     if (!silentAnalyze && targetEngine.waitFrame == null) {
       targetEngine.waitFrame = createFlashAnalysisLoadingFrame();
       targetEngine.waitFrame.setVisible(true);
@@ -14109,6 +14246,9 @@ public class LizzieFrame extends JFrame {
     Thread requestSender =
         new Thread(
             () -> {
+              if (isWholeGameAnalysisStartingOrRunning() || targetEngine != analysisEngine) {
+                return;
+              }
               if (isAllBranches) targetEngine.startRequestAllBranches(!silentAnalyze);
               else
                 targetEngine.startRequest(
@@ -14129,8 +14269,7 @@ public class LizzieFrame extends JFrame {
     if (!Lizzie.config.analysisReuseCurrentEngine || engine == null) {
       return;
     }
-    Leelaz.ExclusiveGtpLeaseAvailability availability =
-        engine.getForegroundLeaseAvailability();
+    Leelaz.ExclusiveGtpLeaseAvailability availability = engine.getForegroundLeaseAvailability();
     if (availability == null) {
       availability = Leelaz.ExclusiveGtpLeaseAvailability.ENGINE_NOT_READY;
     }
@@ -14186,8 +14325,7 @@ public class LizzieFrame extends JFrame {
                       "Open AI setup to inspect and repair the engine")
                   : message);
           engineStartupStatusButton.setVisible(true);
-          layoutEngineStartupStatus(
-              Math.max(1, getWidth() - getInsets().left - getInsets().right));
+          layoutEngineStartupStatus(Math.max(1, getWidth() - getInsets().left - getInsets().right));
           AccessibilitySupport.announce(engineStartupStatusButton, oldText, message);
           basePanel.repaint();
         });
@@ -14221,6 +14359,10 @@ public class LizzieFrame extends JFrame {
   }
 
   public void flashAnalyzeSettings() {
+    if (isWholeGameAnalysisStartingOrRunning()) {
+      Utils.showMsg(Lizzie.resourceBundle.getString("WholeGameAnalysis.conflict.analysis"));
+      return;
+    }
     AnalysisSettings analysisSettings = new AnalysisSettings(false, false);
     analysisSettings.setVisible(true);
   }
@@ -15691,7 +15833,9 @@ public class LizzieFrame extends JFrame {
           g2.fillRoundRect(x + 6, rowY, width - 12, rowHeight - 4, 12, 12);
         }
         g2.setColor(
-            active ? PlayerStrengthDashboardRoot.ACCENT_DARK : PlayerStrengthDashboardRoot.MUTED_TEXT);
+            active
+                ? PlayerStrengthDashboardRoot.ACCENT_DARK
+                : PlayerStrengthDashboardRoot.MUTED_TEXT);
         g2.fillOval(x + 13, rowY + rowHeight / 2 - 4, 8, 8);
         playerStrengthDrawFittedText(
             g2,
@@ -16499,12 +16643,7 @@ public class LizzieFrame extends JFrame {
       int center = x + width / 2;
       g2.setStroke(
           new BasicStroke(
-              1.1f,
-              BasicStroke.CAP_ROUND,
-              BasicStroke.JOIN_ROUND,
-              0f,
-              new float[] {5f, 5f},
-              0f));
+              1.1f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND, 0f, new float[] {5f, 5f}, 0f));
       g2.setColor(SEPARATOR);
       g2.drawLine(center, y + 34, center, y + height - 28);
       g2.setStroke(new BasicStroke(1f));
@@ -16626,7 +16765,8 @@ public class LizzieFrame extends JFrame {
       return counts;
     }
 
-    private void drawSamplePill(Graphics2D g2, int x, int y, int width, int height, int sampleCount) {
+    private void drawSamplePill(
+        Graphics2D g2, int x, int y, int width, int height, int sampleCount) {
       g2.setColor(new Color(246, 238, 219, 220));
       g2.fillRoundRect(x, y, width, height, height, height);
       g2.setColor(new Color(205, 180, 139, 130));
@@ -16719,10 +16859,7 @@ public class LizzieFrame extends JFrame {
       int fillWidth =
           fraction <= 0.0
               ? 0
-              : Math.max(
-                  height,
-                  (int)
-                      Math.round(width * playerStrengthClamp(fraction, 0.0, 1.0)));
+              : Math.max(height, (int) Math.round(width * playerStrengthClamp(fraction, 0.0, 1.0)));
       if (fillWidth > 0) {
         Paint oldPaint = g2.getPaint();
         g2.setPaint(
@@ -18134,9 +18271,7 @@ public class LizzieFrame extends JFrame {
   }
 
   private boolean resumeForegroundAnalysisForCurrentPosition() {
-    if (isWholeGameAnalysisStartingOrRunning()
-        || Lizzie.leelaz == null
-        || EngineManager.isEmpty) {
+    if (isWholeGameAnalysisStartingOrRunning() || Lizzie.leelaz == null || EngineManager.isEmpty) {
       return false;
     }
     if (!syncCurrentPositionToPrimaryEngineForAnalysis()) {
@@ -18167,8 +18302,7 @@ public class LizzieFrame extends JFrame {
 
   private void scheduleLoadedGameQuickAnalysisRetry(boolean forceFullAnalysis) {
     if (!SwingUtilities.isEventDispatchThread()) {
-      SwingUtilities.invokeLater(
-          () -> scheduleLoadedGameQuickAnalysisRetry(forceFullAnalysis));
+      SwingUtilities.invokeLater(() -> scheduleLoadedGameQuickAnalysisRetry(forceFullAnalysis));
       return;
     }
     quickAnalysisLoadRetryCount = 0;
@@ -18322,8 +18456,7 @@ public class LizzieFrame extends JFrame {
               SwingUtilities.invokeLater(
                   () -> {
                     try {
-                      if (isEstimateEngineUsable(completedEngine)
-                          && !isEstimateEngineUsable(zen)) {
+                      if (isEstimateEngineUsable(completedEngine) && !isEstimateEngineUsable(zen)) {
                         zen = completedEngine;
                       } else if (completedEngine != null && zen != completedEngine) {
                         completedEngine.shutdown();
@@ -18368,8 +18501,7 @@ public class LizzieFrame extends JFrame {
     }
   }
 
-  private QuickAnalysisWarmupAction currentQuickAnalysisWarmupAction(
-      boolean requiresAutoAnalyze) {
+  private QuickAnalysisWarmupAction currentQuickAnalysisWarmupAction(boolean requiresAutoAnalyze) {
     boolean dependsOnPrimary =
         quickAnalysisDependsOnPrimary(
             isCurrentPrimaryEngineRemote(),
@@ -18536,8 +18668,7 @@ public class LizzieFrame extends JFrame {
     }
     if (quickAnalysisNavigationResumeTimer == null) {
       quickAnalysisNavigationResumeTimer =
-          new javax.swing.Timer(
-              700, e -> continueQuickAnalysisAfterHistoryNavigationWhenIdle());
+          new javax.swing.Timer(700, e -> continueQuickAnalysisAfterHistoryNavigationWhenIdle());
       quickAnalysisNavigationResumeTimer.setRepeats(true);
     }
     quickAnalysisNavigationResumeTimer.restart();
@@ -18598,6 +18729,7 @@ public class LizzieFrame extends JFrame {
   private boolean canContinueQuickAnalysisAfterHistoryNavigation() {
     return Lizzie.config != null
         && Lizzie.config.autoQuickAnalyzeOnLoad
+        && !isWholeGameAnalysisStartingOrRunning()
         && !isBatchAna
         && !isBatchAnalysisMode
         && !isEnginePKSgfStart

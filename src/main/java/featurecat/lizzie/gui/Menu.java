@@ -1,7 +1,7 @@
 package featurecat.lizzie.gui;
 
-import featurecat.lizzie.Config;
 import featurecat.lizzie.AppLocale;
+import featurecat.lizzie.Config;
 import featurecat.lizzie.Lizzie;
 import featurecat.lizzie.analysis.EngineManager;
 import featurecat.lizzie.analysis.FastLink;
@@ -16,7 +16,6 @@ import java.awt.Color;
 import java.awt.Component;
 import java.awt.Desktop;
 import java.awt.Dimension;
-import java.awt.FlowLayout;
 import java.awt.Font;
 import java.awt.FontMetrics;
 import java.awt.Graphics;
@@ -522,10 +521,10 @@ public class Menu extends JMenuBar {
         });
     viewMenu.add(coordsMenu);
 
-    final JFontMenu appearanceMenu = new JFontMenu(resourceBundle.getString("Menu.appearanceTheme"));
+    final JFontMenu appearanceMenu =
+        new JFontMenu(resourceBundle.getString("Menu.appearanceTheme"));
 
-    final JFontMenu boardStyleMenu =
-        new JFontMenu(resourceBundle.getString("Menu.boardStyle"));
+    final JFontMenu boardStyleMenu = new JFontMenu(resourceBundle.getString("Menu.boardStyle"));
     final JFontCheckBoxMenuItem boardStyleJapanese =
         new JFontCheckBoxMenuItem(resourceBundle.getString("Menu.boardStyleJapanese"));
     final JFontCheckBoxMenuItem boardStyleChineseClassic =
@@ -941,7 +940,8 @@ public class Menu extends JMenuBar {
 
     final JFontCheckBoxMenuItem showCommentConrolPane =
         new JFontCheckBoxMenuItem(resourceBundle.getString("Menu.showCommentConrolPane"));
-    showCommentConrolPane.setToolTipText(resourceBundle.getString("Menu.showCommentConrolPane.tooltip"));
+    showCommentConrolPane.setToolTipText(
+        resourceBundle.getString("Menu.showCommentConrolPane.tooltip"));
     showCommentConrolPane.addActionListener(
         new ActionListener() {
           @Override
@@ -3284,15 +3284,16 @@ public class Menu extends JMenuBar {
 
     analyzeMenu.addSeparator();
 
+    final JFontMenuItem wholeGameDeepAnalysis =
+        AutoAnalyzeMenu.wholeGameDeepAnalysisItem(
+            resourceBundle, () -> Lizzie.frame.openWholeGameDeepAnalysis());
+    analyzeMenu.add(wholeGameDeepAnalysis);
+    analyzeMenu.addSeparator();
+
     final JFontMenuItem flashAnalyzeAllGame =
-        new JFontMenuItem(resourceBundle.getString("Menu.flashAnalyzeAllGame"));
+        AutoAnalyzeMenu.wholeGameLightningItem(
+            resourceBundle, () -> Lizzie.frame.flashAnalyzeGame(true, false));
     analyzeMenu.add(flashAnalyzeAllGame);
-    flashAnalyzeAllGame.addActionListener(
-        new ActionListener() {
-          public void actionPerformed(ActionEvent e) {
-            Lizzie.frame.flashAnalyzeGame(true, false);
-          }
-        });
 
     final JFontMenuItem flashAnalyzePartGame =
         new JFontMenuItem(resourceBundle.getString("Menu.flashAnalyzePartGame"));
@@ -3321,16 +3322,6 @@ public class Menu extends JMenuBar {
         new ActionListener() {
           public void actionPerformed(ActionEvent e) {
             Lizzie.frame.flashAnalyzeSettings();
-          }
-        });
-
-    final JFontMenuItem wholeGameDeepAnalysis =
-        new JFontMenuItem(resourceBundle.getString("Menu.wholeGameDeepAnalysis"));
-    analyzeMenu.add(wholeGameDeepAnalysis);
-    wholeGameDeepAnalysis.addActionListener(
-        new ActionListener() {
-          public void actionPerformed(ActionEvent e) {
-            Lizzie.frame.openWholeGameDeepAnalysis();
           }
         });
 
@@ -5722,8 +5713,7 @@ public class Menu extends JMenuBar {
     txtPDA.setDocument(new DoubleDocument());
     txtPDA.setHorizontalAlignment(JFontTextField.RIGHT);
     txtPDA.setFocusable(true);
-    AccessibilitySupport.labelFor(
-        lblKomiSpinner, txtKomi, resourceBundle.getString("Menu.komi"));
+    AccessibilitySupport.labelFor(lblKomiSpinner, txtKomi, resourceBundle.getString("Menu.komi"));
     AccessibilitySupport.labelFor(
         lblPDASpinner, txtPDA, resourceBundle.getString("Menu.chkPDA.toolTopText"));
     txtPDA.addKeyListener(
@@ -7369,8 +7359,7 @@ public class Menu extends JMenuBar {
     selectAllowMore = new JButton(horizonDown);
     selectAllowMore.setMargin(new Insets(0, 0, 0, 0));
     selectAllowMore.setFocusable(false);
-    selectAllowMore.setToolTipText(
-        resourceBundle.getString("Accessibility.allowMoveOptions"));
+    selectAllowMore.setToolTipText(resourceBundle.getString("Accessibility.allowMoveOptions"));
     selectAllowMore.setPreferredSize(
         new Dimension(
             (Lizzie.config.isFrameFontSmall() ? 12 : (Lizzie.config.isFrameFontMiddle() ? 15 : 18)),
@@ -7528,8 +7517,7 @@ public class Menu extends JMenuBar {
     selectAvoidMore = new JButton(horizonDown);
     selectAvoidMore.setMargin(new Insets(0, 0, 0, 0));
     selectAvoidMore.setFocusable(false);
-    selectAvoidMore.setToolTipText(
-        resourceBundle.getString("Accessibility.avoidMoveOptions"));
+    selectAvoidMore.setToolTipText(resourceBundle.getString("Accessibility.avoidMoveOptions"));
     selectAvoidMore.setPreferredSize(
         new Dimension(
             (Lizzie.config.isFrameFontSmall() ? 12 : (Lizzie.config.isFrameFontMiddle() ? 15 : 18)),
@@ -7696,13 +7684,11 @@ public class Menu extends JMenuBar {
       int iconSize = Config.menuIconSize;
       rankMarkOn = ToolbarIconCache.get("/assets/RankMarkOn.png", iconSize, brightenIcons);
       rankMarkOff = ToolbarIconCache.get("/assets/RankMarkOff.png", iconSize, brightenIcons);
-      ImageIcon iconNewFile =
-          ToolbarIconCache.get("/assets/newFile.png", iconSize, brightenIcons);
+      ImageIcon iconNewFile = ToolbarIconCache.get("/assets/newFile.png", iconSize, brightenIcons);
       ImageIcon iconOpen = ToolbarIconCache.get("/assets/open.png", iconSize, brightenIcons);
       ImageIcon iconSave = ToolbarIconCache.get("/assets/save.png", iconSize, brightenIcons);
       ImageIcon iconAnalyze = ToolbarIconCache.get("/assets/analyze.png", iconSize, brightenIcons);
-      ImageIcon iconHawkeye =
-          ToolbarIconCache.get("/assets/hawkeye2.png", iconSize, brightenIcons);
+      ImageIcon iconHawkeye = ToolbarIconCache.get("/assets/hawkeye2.png", iconSize, brightenIcons);
       ImageIcon iconSetMain = ToolbarIconCache.get("/assets/setmain.png", iconSize, brightenIcons);
       ImageIcon iconBackMain =
           ToolbarIconCache.get("/assets/backmain.png", iconSize, brightenIcons);
@@ -7717,14 +7703,12 @@ public class Menu extends JMenuBar {
           ToolbarIconCache.get("/assets/labelnum1.png", iconSize, brightenIcons);
       ImageIcon markupLabelNum2 =
           ToolbarIconCache.get("/assets/labelnum2.png", iconSize, brightenIcons);
-      ImageIcon markupCircle1 =
-          ToolbarIconCache.get("/assets/circle.png", iconSize, brightenIcons);
+      ImageIcon markupCircle1 = ToolbarIconCache.get("/assets/circle.png", iconSize, brightenIcons);
       ImageIcon markupCircle2 =
           ToolbarIconCache.get("/assets/circle2.png", iconSize, brightenIcons);
       ImageIcon markupX1 = ToolbarIconCache.get("/assets/x.png", iconSize, brightenIcons);
       ImageIcon markupX2 = ToolbarIconCache.get("/assets/x2.png", iconSize, brightenIcons);
-      ImageIcon markupSquare1 =
-          ToolbarIconCache.get("/assets/square.png", iconSize, brightenIcons);
+      ImageIcon markupSquare1 = ToolbarIconCache.get("/assets/square.png", iconSize, brightenIcons);
       ImageIcon markupSquare2 =
           ToolbarIconCache.get("/assets/square2.png", iconSize, brightenIcons);
       ImageIcon markupsanjiao1 =
@@ -8290,8 +8274,7 @@ public class Menu extends JMenuBar {
 
       JButton selectAllowMore = new JButton(horizonDown);
       selectAllowMore.setFocusable(false);
-      selectAllowMore.setToolTipText(
-          resourceBundle.getString("Accessibility.allowMoveOptions"));
+      selectAllowMore.setToolTipText(resourceBundle.getString("Accessibility.allowMoveOptions"));
       selectAllowMore.setPreferredSize(
           new Dimension(
               (Lizzie.config.isFrameFontSmall()
@@ -8457,8 +8440,7 @@ public class Menu extends JMenuBar {
 
       JButton selectAvoidMore = new JButton(horizonDown);
       selectAvoidMore.setFocusable(false);
-      selectAvoidMore.setToolTipText(
-          resourceBundle.getString("Accessibility.avoidMoveOptions"));
+      selectAvoidMore.setToolTipText(resourceBundle.getString("Accessibility.avoidMoveOptions"));
       selectAvoidMore.setPreferredSize(
           new Dimension(
               (Lizzie.config.isFrameFontSmall()
@@ -8751,8 +8733,7 @@ public class Menu extends JMenuBar {
     JFontCheckBoxMenuItem rankModeWinrate =
         moveRankModeItem("Menu.rankMenu.evaluationMode.winrate", MoveRankEvaluationMode.WINRATE);
     JFontCheckBoxMenuItem rankModeCombined =
-        moveRankModeItem(
-            "Menu.rankMenu.evaluationMode.combined", MoveRankEvaluationMode.COMBINED);
+        moveRankModeItem("Menu.rankMenu.evaluationMode.combined", MoveRankEvaluationMode.COMBINED);
     ButtonGroup moveRankModeGroup = new ButtonGroup();
     moveRankModeGroup.add(rankModeAuto);
     moveRankModeGroup.add(rankModeScore);
@@ -8763,8 +8744,7 @@ public class Menu extends JMenuBar {
     moveRankBasisMenu.add(rankModeWinrate);
     moveRankBasisMenu.addSeparator();
     moveRankBasisMenu.add(rankModeCombined);
-    syncMoveRankModeSelection(
-        rankModeAuto, rankModeScore, rankModeWinrate, rankModeCombined);
+    syncMoveRankModeSelection(rankModeAuto, rankModeScore, rankModeWinrate, rankModeCombined);
     if (rankPopupMenu != null) {
       rankPopupMenu.add(rankNoneMove);
       rankPopupMenu.add(rankLastMove);
@@ -8975,8 +8955,7 @@ public class Menu extends JMenuBar {
     }
   }
 
-  private JFontCheckBoxMenuItem moveRankModeItem(
-      String resourceKey, MoveRankEvaluationMode mode) {
+  private JFontCheckBoxMenuItem moveRankModeItem(String resourceKey, MoveRankEvaluationMode mode) {
     JFontCheckBoxMenuItem item = new JFontCheckBoxMenuItem(resourceBundle.getString(resourceKey));
     item.setToolTipText(resourceBundle.getString(resourceKey + ".tooltip"));
     item.addActionListener(e -> setMoveRankEvaluationMode(mode));
@@ -8988,10 +8967,8 @@ public class Menu extends JMenuBar {
     Lizzie.config.useWinLossInMoveRank = mode.usesWinrate();
     Lizzie.config.useScoreLossInMoveRank = mode.usesScore();
     Lizzie.config.uiConfig.put("move-rank-evaluation-mode", mode.configValue());
-    Lizzie.config.uiConfig.put(
-        "use-win-loss-in-move-rank", Lizzie.config.useWinLossInMoveRank);
-    Lizzie.config.uiConfig.put(
-        "use-score-loss-in-move-rank", Lizzie.config.useScoreLossInMoveRank);
+    Lizzie.config.uiConfig.put("use-win-loss-in-move-rank", Lizzie.config.useWinLossInMoveRank);
+    Lizzie.config.uiConfig.put("use-score-loss-in-move-rank", Lizzie.config.useScoreLossInMoveRank);
     persistUiSettings();
     Lizzie.frame.refresh();
   }
@@ -9005,9 +8982,7 @@ public class Menu extends JMenuBar {
     if (mode == null) {
       mode =
           MoveRankEvaluationMode.fromConfig(
-              "",
-              Lizzie.config.useWinLossInMoveRank,
-              Lizzie.config.useScoreLossInMoveRank);
+              "", Lizzie.config.useWinLossInMoveRank, Lizzie.config.useScoreLossInMoveRank);
     }
     auto.setSelected(mode == MoveRankEvaluationMode.AUTO);
     score.setSelected(mode == MoveRankEvaluationMode.SCORE);
@@ -9177,9 +9152,7 @@ public class Menu extends JMenuBar {
               AccessibilitySupport.localizedControlWidth(
                   chkShowWhite,
                   (int) chkShowWhite.getPreferredSize().getWidth()
-                      + (Lizzie.config.shouldWidenCheckBox
-                          ? Lizzie.config.isChinese ? 4 : 5
-                          : 0)),
+                      + (Lizzie.config.shouldWidenCheckBox ? Lizzie.config.isChinese ? 4 : 5 : 0)),
               Config.menuHeight - 3));
     if (chkAnalyzeBlack == null) {
       chkAnalyzeBlack = new JFontCheckBox(resourceBundle.getString("Menu.Black"));

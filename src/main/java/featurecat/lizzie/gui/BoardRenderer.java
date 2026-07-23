@@ -45,6 +45,13 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 public class BoardRenderer {
+  enum MoveOverlayOrder {
+    MOVE_NUMBERS_ONLY,
+    RANK_ONLY,
+    RANK_THEN_MOVE_NUMBERS,
+    MOVE_NUMBERS_THEN_RANK
+  }
+
   // Percentage of the boardLength to offset before drawing black lines
   // private static final double MARGIN = 0.03;
   private final ResourceBundle resourceBundle = Lizzie.resourceBundle;
@@ -196,18 +203,43 @@ public class BoardRenderer {
     this.isIndependBoard = isIndependBoard;
   }
 
+  static MoveOverlayOrder moveOverlayOrder(
+      int allowMoveNumber,
+      boolean inPlayMode,
+      boolean engineGame,
+      int effectiveMoveRankLimit,
+      boolean showingBranch,
+      boolean forceWholeGameMoveEvaluation) {
+    boolean showRank =
+        (allowMoveNumber == 0 || forceWholeGameMoveEvaluation)
+            && !inPlayMode
+            && !engineGame
+            && effectiveMoveRankLimit >= 0;
+    if (!showRank) {
+      return MoveOverlayOrder.MOVE_NUMBERS_ONLY;
+    }
+    if (forceWholeGameMoveEvaluation) {
+      return MoveOverlayOrder.MOVE_NUMBERS_THEN_RANK;
+    }
+    return showingBranch
+        ? MoveOverlayOrder.RANK_THEN_MOVE_NUMBERS
+        : MoveOverlayOrder.RANK_ONLY;
+  }
+
   /** Draw a go board */
   public void draw(Graphics2D g) {
     drawGoban(g);
+    featurecat.lizzie.rules.BoardHistoryNode displayNode = Lizzie.frame.getDisplayNode();
+    boolean showHeatmap = Lizzie.frame.shouldShowHeatmapFor(displayNode);
+    boolean showPolicy = Lizzie.frame.shouldShowPolicyFor(displayNode);
     nextCoords = new ArrayList<int[]>();
     if (Board.boardWidth <= 3) {
       int oriStoneRadius = stoneRadius;
       stoneRadius = stoneRadius / 2;
       if (!Lizzie.config.isThinkingMode() || (Lizzie.config.isThinkingMode() && boardIndex != 2)) {
-        if (Lizzie.frame.isShowingHeatmap
-            && !Lizzie.frame.isAnaPlayingAgainstLeelaz
-            && !Lizzie.leelaz.isZen) drawRawWinrate(g);
-        else if (Lizzie.frame.isShowingPolicy
+        if (showHeatmap && !Lizzie.frame.isAnaPlayingAgainstLeelaz && !Lizzie.leelaz.isZen)
+          drawRawWinrate(g);
+        else if (showPolicy
             && !Lizzie.leelaz.isKatago
             && !EngineManager.isEmpty
             && !Lizzie.leelaz.isZen) drawRawWinrate(g);
@@ -216,10 +248,9 @@ public class BoardRenderer {
       stoneRadius = oriStoneRadius;
     } else {
       if (!Lizzie.config.isThinkingMode() || (Lizzie.config.isThinkingMode() && boardIndex != 2)) {
-        if (Lizzie.frame.isShowingHeatmap
-            && !Lizzie.frame.isAnaPlayingAgainstLeelaz
-            && !Lizzie.leelaz.isZen) drawRawWinrate(g);
-        else if (Lizzie.frame.isShowingPolicy
+        if (showHeatmap && !Lizzie.frame.isAnaPlayingAgainstLeelaz && !Lizzie.leelaz.isZen)
+          drawRawWinrate(g);
+        else if (showPolicy
             && !Lizzie.leelaz.isKatago
             && !EngineManager.isEmpty
             && !Lizzie.leelaz.isZen) drawRawWinrate(g);
@@ -233,24 +264,46 @@ public class BoardRenderer {
       renderMouseOnStoneImage(g);
       g.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
       g.setRenderingHint(KEY_ANTIALIASING, VALUE_ANTIALIAS_ON);
-      if (Lizzie.config.moveRankMarkLastMove >= 0) drawMoveRankMark(g, Lizzie.board.mouseOnNode);
-      else drawLastMoveMark(g, Lizzie.board.mouseOnNode);
+      int effectiveMoveRankLimit =
+          Lizzie.frame.effectiveMoveRankMarkLimit(Lizzie.board.mouseOnNode);
+      if (effectiveMoveRankLimit >= 0) {
+        drawMoveRankMark(g, Lizzie.board.mouseOnNode, effectiveMoveRankLimit);
+      } else {
+        drawLastMoveMark(g, Lizzie.board.mouseOnNode);
+      }
     } else {
       if (!Lizzie.frame.isInScoreMode) drawBranch();
       else isShowingBranch = false;
 
-      featurecat.lizzie.rules.BoardHistoryNode displayNode = Lizzie.frame.getDisplayNode();
       drawStones(displayNode.getData(), displayNode.getData().stones);
       drawEstimate();
       renderImages(g);
 
-      if (Lizzie.config.allowMoveNumber == 0
-          && !Lizzie.frame.isInPlayMode()
-          && !EngineManager.isEngineGame
-          && Lizzie.config.moveRankMarkLastMove >= 0) {
-        drawMoveRankMark(g, Lizzie.frame.getDisplayNode());
-        if (isShowingBranch) drawMoveNumbers(g);
-      } else drawMoveNumbers(g);
+      int effectiveMoveRankLimit = Lizzie.frame.effectiveMoveRankMarkLimit(displayNode);
+      boolean forceWholeGameMoveEvaluation =
+          Lizzie.frame.isWholeGameMoveEvaluationVisibleFor(displayNode);
+      switch (moveOverlayOrder(
+          Lizzie.config.allowMoveNumber,
+          Lizzie.frame.isInPlayMode(),
+          EngineManager.isEngineGame,
+          effectiveMoveRankLimit,
+          isShowingBranch,
+          forceWholeGameMoveEvaluation)) {
+        case RANK_ONLY:
+          drawMoveRankMark(g, displayNode, effectiveMoveRankLimit);
+          break;
+        case RANK_THEN_MOVE_NUMBERS:
+          drawMoveRankMark(g, displayNode, effectiveMoveRankLimit);
+          drawMoveNumbers(g);
+          break;
+        case MOVE_NUMBERS_THEN_RANK:
+          drawMoveNumbers(g);
+          drawMoveRankMark(g, displayNode, effectiveMoveRankLimit);
+          break;
+        default:
+          drawMoveNumbers(g);
+          break;
+      }
 
       if (Lizzie.frame.isInScoreMode) {
       } else {
@@ -262,7 +315,7 @@ public class BoardRenderer {
             drawNextMoves(g);
           }
           // timer.lap("movenumbers");
-          if (Lizzie.config.showBestMovesNow()) {
+          if (Lizzie.frame.shouldShowBestMovesFor(displayNode)) {
             if (this.boardIndex == 0) {
               long now = System.currentTimeMillis();
               if (now - lastDrawCallLogMs > 1000) {
@@ -278,11 +331,8 @@ public class BoardRenderer {
                         + Lizzie.frame.isAnaPlayingAgainstLeelaz);
               }
             }
-            if ((Lizzie.frame.getDisplayNode().getData().blackToPlay
-                    && Lizzie.config.showBlackCandidates)
-                || (!Lizzie.frame.getDisplayNode().getData().blackToPlay
-                    && Lizzie.config.showWhiteCandidates)) {
-              if (!Lizzie.frame.isShowingHeatmap && !Lizzie.frame.isShowingPolicy) {
+            if (Lizzie.frame.shouldShowCandidatesFor(displayNode)) {
+              if (!showHeatmap && !showPolicy) {
                 drawUnimportantSuggCount = drawUnimportantSuggCount + 1;
                 if (drawUnimportantSuggCount > 100 / getInterval()) {
                   drawLeelazSuggestionsUnimportant();
@@ -371,7 +421,7 @@ public class BoardRenderer {
     boolean hasDraw = false;
     if (!Lizzie.frame.isInScoreMode
         && !Lizzie.frame.isCounting
-        && !Lizzie.frame.isShowingHeatmap
+        && !Lizzie.frame.shouldShowHeatmapFor(Lizzie.frame.getDisplayNode())
         && Lizzie.config.showKataGoEstimate
         && Lizzie.config.showKataGoEstimateOnMainbord) {
       if (estimateArray != null) {
@@ -418,11 +468,15 @@ public class BoardRenderer {
   }
 
   private void drawMoveRankMark(Graphics2D g, BoardHistoryNode node) {
+    drawMoveRankMark(g, node, Lizzie.config.moveRankMarkLastMove);
+  }
+
+  private void drawMoveRankMark(Graphics2D g, BoardHistoryNode node, int effectiveMoveRankLimit) {
     Board board = Lizzie.board;
     BoardHistoryNode lastNode = node;
     g.setRenderingHint(KEY_ANTIALIASING, VALUE_ANTIALIAS_ON);
     drawPass(g, board);
-    int limit = Lizzie.config.moveRankMarkLastMove;
+    int limit = effectiveMoveRankLimit;
     boolean shouldLimit = limit > 0;
     int[] moveNumberList = node.getData().moveNumberList;
     boolean isSub = this.boardIndex == 1;
@@ -458,8 +512,7 @@ public class BoardRenderer {
           if (playouts > 0 && playoutsPrevious > 0) {
             if (moveNumberList[index] == moveNumber) {
               if (node.isBest)
-                drawMoveRankMarkCircle(
-                    g, markX, markY, stoneRadius, 0, Optional.of(0.0), true);
+                drawMoveRankMarkCircle(g, markX, markY, stoneRadius, 0, Optional.of(0.0), true);
               else
                 drawMoveRankMarkCircle(
                     g,
@@ -487,8 +540,7 @@ public class BoardRenderer {
               break;
             default:
               drawCircle(g, markX, markY, (int) Math.round(squareWidth * 0.22f), 5f);
-              if (Lizzie.config.moveRankMarkLastMove > 1
-                  || Lizzie.config.moveRankMarkLastMove == 0) {
+              if (effectiveMoveRankLimit > 1 || effectiveMoveRankLimit == 0) {
                 g.setColor(Color.RED);
                 drawPolygonSmall(g, markX, markY, stoneRadius);
               }
@@ -1542,14 +1594,15 @@ public class BoardRenderer {
     //            && !Lizzie.frame.toolbar.chkShowWhite.isSelected())) return;
     variationOpt = Optional.empty();
 
-    if ((isShowingRawBoard() || !Lizzie.config.showBranchNow())) {
+    if ((isShowingRawBoard()
+        || !Lizzie.frame.shouldShowBranchesFor(Lizzie.frame.getDisplayNode()))) {
       return;
     }
 
     Optional<MoveData> suggestedMove = mouseOveredMove();
     if (!suggestedMove.isPresent()
-        || Lizzie.frame.isShowingPolicy
-        || Lizzie.frame.isShowingHeatmap) {
+        || Lizzie.frame.shouldShowPolicyFor(Lizzie.frame.getDisplayNode())
+        || Lizzie.frame.shouldShowHeatmapFor(Lizzie.frame.getDisplayNode())) {
       mouseOverTemp = null;
       return;
     }
@@ -1847,9 +1900,9 @@ public class BoardRenderer {
   /** Render the shadows and stones in correct background-foreground order */
   private void renderImages(Graphics2D g) {
     g.setRenderingHint(KEY_ANTIALIASING, VALUE_ANTIALIAS_OFF);
+    boolean showHeatmap = Lizzie.frame.shouldShowHeatmapFor(Lizzie.frame.getDisplayNode());
     if ((Lizzie.config.showKataGoEstimate && Lizzie.config.showKataGoEstimateOnMainbord)
-        || Lizzie.frame.isShowingHeatmap)
-      if (shouldShowCountBlockBelow()) g.drawImage(kataEstimateImage, x, y, null);
+        || showHeatmap) if (shouldShowCountBlockBelow()) g.drawImage(kataEstimateImage, x, y, null);
     if (isShowingBranch) {
       if (!Lizzie.config.removeDeadChainInVariation && !shouldShowPreviousBestMoves()) {
         g.drawImage(cachedStonesShadowImage, x, y, null);
@@ -1868,7 +1921,7 @@ public class BoardRenderer {
     }
     g.drawImage(blockimage, x, y, null);
     if ((Lizzie.config.showKataGoEstimate && Lizzie.config.showKataGoEstimateOnMainbord)
-        || Lizzie.frame.isShowingHeatmap)
+        || showHeatmap)
       if (!shouldShowCountBlockBelow()) g.drawImage(kataEstimateImage, x, y, null);
     if (Lizzie.frame.isCounting || Lizzie.frame.isAutocounting)
       g.drawImage(estimateImage, x, y, null);
@@ -2197,6 +2250,9 @@ public class BoardRenderer {
    * Draw all of Leelaz's suggestions as colored stones with winrate/playout statistics overlayed
    */
   private void drawLeelazSuggestions(Graphics2D g) {
+    BoardHistoryNode displayNode = Lizzie.frame.getDisplayNode();
+    boolean showHeatmap = Lizzie.frame.shouldShowHeatmapFor(displayNode);
+    boolean showPolicy = Lizzie.frame.shouldShowPolicyFor(displayNode);
     if (this.boardIndex == 0) {
       long now = System.currentTimeMillis();
       if (now - lastSuggestLogMs > 1000) {
@@ -2216,11 +2272,11 @@ public class BoardRenderer {
                 + " isShowingBranch="
                 + this.isShowingBranch
                 + " showBest="
-                + Lizzie.config.showBestMovesNow()
+                + Lizzie.frame.shouldShowBestMovesFor(displayNode)
                 + " isHeatmap="
-                + Lizzie.frame.isShowingHeatmap
+                + showHeatmap
                 + " isPolicy="
-                + Lizzie.frame.isShowingPolicy);
+                + showPolicy);
       }
     }
     //  g.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_SPEED);
@@ -2230,7 +2286,7 @@ public class BoardRenderer {
     float redHue = Color.RGBtoHSB(2, 0, 0, null)[0];
     float greenHue = Color.RGBtoHSB(0, 255, 0, null)[0];
     float cyanHue = Lizzie.config.bestMoveColor;
-    if (Lizzie.frame.isShowingHeatmap) {
+    if (showHeatmap) {
       int maxPolicy = 0;
       //    int minPolicy = 0;
       Leelaz leelaz =
@@ -2356,7 +2412,7 @@ public class BoardRenderer {
       return;
     }
 
-    if (Lizzie.frame.isShowingPolicy) {
+    if (showPolicy) {
       if (bestMoves.isEmpty()) return;
       Double maxPolicy = 0.0;
       for (int n = 0; n < bestMoves.size(); n++) {
@@ -2680,8 +2736,8 @@ public class BoardRenderer {
             if (isBestMove) maxColor = Lizzie.config.bestColor;
             else maxColor = fraction > 0.375 ? Color.RED : new Color(100, 255, 235);
 
-            boolean showWinrate = Lizzie.config.showWinrateInSuggestion;
-            boolean showPlayouts = Lizzie.config.showPlayoutsInSuggestion;
+            boolean showWinrate = Lizzie.frame.shouldShowSuggestionWinrateFor(displayNode);
+            boolean showPlayouts = Lizzie.frame.shouldShowSuggestionPlayoutsFor(displayNode);
             boolean showScoreLead = move.isKataData && Lizzie.config.showScoremeanInSuggestion;
             boolean canShowMaxColor = Lizzie.config.showSuggestionMaxRed && !isGenmoveBest;
             if (isMouseOver && displayedBranchLength != 1) canShowMaxColor = false;

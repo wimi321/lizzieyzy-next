@@ -11,6 +11,7 @@ import javax.swing.KeyStroke;
 final class AutoAnalyzeMenu {
   static final String ACTION_PROPERTY = "lizzie.autoAnalyzeAction";
   static final String WHOLE_GAME_ACTION = "whole-game-deep-analysis";
+  static final String WHOLE_GAME_LIGHTNING_ACTION = "whole-game-lightning-overview";
 
   private AutoAnalyzeMenu() {}
 
@@ -19,20 +20,19 @@ final class AutoAnalyzeMenu {
   }
 
   static JPopupMenu create(ResourceBundle resources, Runnable wholeGameAction) {
+    return create(resources, wholeGameAction, () -> Lizzie.frame.flashAnalyzeGame(true, false));
+  }
+
+  static JPopupMenu create(
+      ResourceBundle resources, Runnable wholeGameAction, Runnable wholeGameLightningAction) {
     JPopupMenu popup = new JPopupMenu();
 
-    JFontMenuItem wholeGame =
-        item(
-            resources,
-            "Menu.flashAnalyzeAllGame",
-            WHOLE_GAME_ACTION,
-            wholeGameAction);
-    wholeGame.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_B, InputEvent.CTRL_DOWN_MASK));
-    popup.add(wholeGame);
+    popup.add(wholeGameDeepAnalysisItem(resources, wholeGameAction));
     popup.add(
         item(resources, "Menu.autoAnalyze", "auto-analysis", AutoAnalyzeMenu::openAutoAnalyze));
 
     popup.addSeparator();
+    popup.add(wholeGameLightningItem(resources, wholeGameLightningAction));
     popup.add(
         item(
             resources,
@@ -86,6 +86,28 @@ final class AutoAnalyzeMenu {
 
     AppleStyleSupport.installPopupStyle(popup);
     return popup;
+  }
+
+  static JFontMenuItem wholeGameDeepAnalysisItem(
+      ResourceBundle resources, Runnable wholeGameAction) {
+    JFontMenuItem wholeGame =
+        item(resources, "Menu.wholeGameDeepAnalysis", WHOLE_GAME_ACTION, wholeGameAction);
+    wholeGame.setAccelerator(
+        KeyStroke.getKeyStroke(
+            KeyEvent.VK_B, InputEvent.CTRL_DOWN_MASK | InputEvent.SHIFT_DOWN_MASK));
+    return wholeGame;
+  }
+
+  static JFontMenuItem wholeGameLightningItem(
+      ResourceBundle resources, Runnable wholeGameLightningAction) {
+    JFontMenuItem lightning =
+        item(
+            resources,
+            "Menu.flashAnalyzeAllGame",
+            WHOLE_GAME_LIGHTNING_ACTION,
+            wholeGameLightningAction);
+    lightning.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_B, InputEvent.CTRL_DOWN_MASK));
+    return lightning;
   }
 
   private static JFontMenuItem item(
