@@ -652,7 +652,21 @@ public class Config {
     if (commandParts.isEmpty()) {
       return false;
     }
-    String executable = commandParts.get(0).replace('\\', '/').toLowerCase(Locale.ROOT);
+    return isBundledKataGoExecutableToken(commandParts.get(0));
+  }
+
+  public static boolean isBundledKataGoExecutable(Path executable) {
+    if (executable == null) {
+      return false;
+    }
+    return isBundledKataGoExecutableToken(executable.toAbsolutePath().normalize().toString());
+  }
+
+  private static boolean isBundledKataGoExecutableToken(String executableToken) {
+    if (executableToken == null) {
+      return false;
+    }
+    String executable = executableToken.replace('\\', '/').toLowerCase(Locale.ROOT);
     return executable.contains("/engines/katago/")
         || executable.startsWith("engines/katago/");
   }

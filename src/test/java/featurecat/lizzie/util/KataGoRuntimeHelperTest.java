@@ -96,6 +96,57 @@ public class KataGoRuntimeHelperTest {
   }
 
   @Test
+  void bundledEngineUnderSpacedUnicodePathKeepsRuntimeStateOutOfEngineDirectory()
+      throws Exception {
+    Path tempRoot = Files.createTempDirectory("katago-helper-spaced-path");
+    Path portableRoot = Files.createDirectories(tempRoot.resolve("LizzieYzy Next 测试 portable"));
+    Path enginePath =
+        touch(
+            portableRoot
+                .resolve("app")
+                .resolve("engines")
+                .resolve("katago")
+                .resolve("windows-x64")
+                .resolve("katago.exe"));
+    Path originalDirectory = Files.createDirectories(enginePath.getParent());
+    Path runtimeWorkDirectory =
+        Files.createDirectories(portableRoot.resolve("user-data").resolve("runtime"));
+    ProcessBuilder processBuilder =
+        createProcessBuilder(originalDirectory, String.join(PATH_SEPARATOR, "alpha", "beta"));
+
+    withConfig(
+        runtimeWorkDirectory,
+        () -> {
+          List<String> launchCommand =
+              KataGoRuntimeHelper.prepareBundledLaunchCommand(
+                  Arrays.asList(enginePath.toString(), "gtp", "-config", "gtp.cfg"), enginePath);
+          KataGoRuntimeHelper.configureBundledProcessBuilder(processBuilder, enginePath);
+
+          assertEquals(
+              normalize(runtimeWorkDirectory),
+              normalize(processBuilder.directory().toPath()),
+              "A portable path containing spaces must still use user-data/runtime.");
+          assertEquals(
+              normalize(enginePath.getParent()),
+              firstPathEntry(processBuilder.environment().get("PATH")));
+          int overrideIndex = launchCommand.indexOf("-override-config");
+          assertTrue(overrideIndex >= 0);
+          String overrides = launchCommand.get(overrideIndex + 1);
+          assertTrue(
+              overrides.contains(
+                  "homeDataDir="
+                      + runtimeWorkDirectory
+                          .resolve("katago-home")
+                          .toAbsolutePath()
+                          .normalize()),
+              "KataGo homeDataDir must remain one structured argument even when it has spaces.");
+          assertFalse(
+              Files.exists(enginePath.getParent().resolve("KataGoData")),
+              "The immutable engine directory must not receive cache data.");
+        });
+  }
+
+  @Test
   void bundledOpenclEngineNeedsFirstTuningUntilCacheExists() throws Exception {
     withOsName(
         WINDOWS_OS_NAME,
@@ -990,6 +1041,221 @@ public class KataGoRuntimeHelperTest {
   }
 
   @Test
+  void legacyOpenClTuningCacheIsQuarantinedBeforeFreshFp16Tuning() throws Exception {
+    withOsName(
+        WINDOWS_OS_NAME,
+        () -> {
+          Path tempRoot = Files.createTempDirectory("katago-helper-opencl-tuning-generation");
+          Path enginePath = createOpenClEngine(tempRoot);
+          Path modelPath = touch(tempRoot.resolve("weights").resolve("current.bin.gz"));
+          Path runtimeWorkDirectory = Files.createDirectories(tempRoot.resolve("runtime-root"));
+          Path homeDataDir = runtimeWorkDirectory.resolve("katago-home");
+          Path legacyTuning =
+              Files.createDirectories(homeDataDir.resolve("opencltuning"))
+                  .resolve("tune11_gpuNVIDIA_x19_y19_c512_mv15.txt");
+          Files.writeString(legacyTuning, "unsafe concurrent tuning");
+          String previousDriver = System.getProperty("lizzie.opencl.nvidiaDriverVersion");
+          try {
+            System.setProperty("lizzie.opencl.nvidiaDriverVersion", "560.76");
+            withConfig(
+                runtimeWorkDirectory,
+                () -> {
+                  List<String> command =
+                      KataGoRuntimeHelper.prepareBundledLaunchCommand(
+                          Arrays.asList(
+                              enginePath.toString(),
+                              "gtp",
+                              "-model",
+                              modelPath.toString(),
+                              "-config",
+                              "gtp.cfg",
+                              "-override-config",
+                              "numSearchThreads=2"),
+                          enginePath);
+
+                  String overrides = command.get(command.indexOf("-override-config") + 1);
+                  assertTrue(
+                      overrides.contains(
+                          "homeDataDir=" + homeDataDir.toAbsolutePath().normalize()));
+                  assertTrue(overrides.contains("numSearchThreads=2"));
+                  assertFalse(overrides.contains("openclUseFP16=false"));
+                  assertFalse(
+                      KataGoRuntimeHelper.isOpenClFp32CompatibilityActive(command, enginePath));
+                  assertFalse(Files.exists(legacyTuning));
+                  Path quarantine = homeDataDir.resolve("opencltuning-legacy");
+                  assertEquals(
+                      "unsafe concurrent tuning",
+                      Files.readString(quarantine.resolve(legacyTuning.getFileName())));
+                  assertEquals(
+                      "serialized-launch-v1",
+                      Files.readString(
+                          homeDataDir.resolve("lizzie-opencl-tuning-generation.txt")));
+                  assertTrue(KataGoRuntimeHelper.needsFirstOpenCLTuning(enginePath));
+
+                  Path freshTuning =
+                      Files.createDirectories(homeDataDir.resolve("opencltuning"))
+                          .resolve("fresh.txt");
+                  Files.writeString(freshTuning, "fresh serialized tuning");
+                  KataGoRuntimeHelper.prepareBundledLaunchCommand(
+                      Arrays.asList(
+                          enginePath.toString(),
+                          "gtp",
+                          "-model",
+                          modelPath.toString(),
+                          "-config",
+                          "gtp.cfg"),
+                      enginePath);
+                  assertEquals("fresh serialized tuning", Files.readString(freshTuning));
+                });
+          } finally {
+            restoreProperty("lizzie.opencl.nvidiaDriverVersion", previousDriver);
+          }
+        });
+  }
+
+  @Test
+  void currentNvidiaOpenClDriverKeepsNormalFp16PathWithoutFailureMarker() throws Exception {
+    withOsName(
+        WINDOWS_OS_NAME,
+        () -> {
+          Path tempRoot = Files.createTempDirectory("katago-helper-opencl-current-driver");
+          Path enginePath = createOpenClEngine(tempRoot);
+          Path modelPath = touch(tempRoot.resolve("weights").resolve("current.bin.gz"));
+          Path runtimeWorkDirectory = Files.createDirectories(tempRoot.resolve("runtime-root"));
+          String previousDriver = System.getProperty("lizzie.opencl.nvidiaDriverVersion");
+          try {
+            System.setProperty("lizzie.opencl.nvidiaDriverVersion", "610.74");
+            withConfig(
+                runtimeWorkDirectory,
+                () -> {
+                  List<String> command =
+                      KataGoRuntimeHelper.prepareBundledLaunchCommand(
+                          Arrays.asList(
+                              enginePath.toString(),
+                              "gtp",
+                              "-model",
+                              modelPath.toString(),
+                              "-config",
+                              "gtp.cfg"),
+                          enginePath);
+
+                  String overrides = command.get(command.indexOf("-override-config") + 1);
+                  assertTrue(
+                      overrides.contains(
+                          "homeDataDir="
+                              + runtimeWorkDirectory
+                                  .resolve("katago-home")
+                                  .toAbsolutePath()
+                                  .normalize()));
+                  assertFalse(overrides.contains("openclUseFP16=false"));
+                  assertFalse(
+                      KataGoRuntimeHelper.isOpenClFp32CompatibilityActive(command, enginePath));
+                });
+          } finally {
+            restoreProperty("lizzie.opencl.nvidiaDriverVersion", previousDriver);
+          }
+        });
+  }
+
+  @Test
+  void explicitOpenClFp32OverrideUsesItsOwnTuningCache() throws Exception {
+    withOsName(
+        WINDOWS_OS_NAME,
+        () -> {
+          Path tempRoot = Files.createTempDirectory("katago-helper-opencl-explicit-fp32");
+          Path enginePath = createOpenClEngine(tempRoot);
+          Path modelPath = touch(tempRoot.resolve("weights").resolve("current.bin.gz"));
+          Path runtimeWorkDirectory = Files.createDirectories(tempRoot.resolve("runtime-root"));
+          withConfig(
+              runtimeWorkDirectory,
+              () -> {
+                List<String> command =
+                    KataGoRuntimeHelper.prepareBundledLaunchCommand(
+                        Arrays.asList(
+                            enginePath.toString(),
+                            "gtp",
+                            "-model",
+                            modelPath.toString(),
+                            "-config",
+                            "gtp.cfg",
+                            "-override-config",
+                            "homeDataDir=stale-fp16-cache,openclUseFP16=false"),
+                        enginePath);
+
+                String overrides = command.get(command.indexOf("-override-config") + 1);
+                assertTrue(overrides.contains("openclUseFP16=false"));
+                assertFalse(overrides.contains("homeDataDir=stale-fp16-cache"));
+                assertTrue(
+                    overrides.contains(
+                        "homeDataDir="
+                            + runtimeWorkDirectory
+                                .resolve("katago-home-opencl-fp32")
+                                .toAbsolutePath()
+                                .normalize()));
+                assertTrue(
+                    KataGoRuntimeHelper.isOpenClFp32CompatibilityActive(command, enginePath));
+              });
+        });
+  }
+
+  @Test
+  void nativeOpenClFastFailIsRememberedOnlyForMatchingDriverEngineAndModel() throws Exception {
+    withOsName(
+        WINDOWS_OS_NAME,
+        () -> {
+          Path tempRoot = Files.createTempDirectory("katago-helper-opencl-learned-fallback");
+          Path enginePath = createOpenClEngine(tempRoot);
+          Path modelPath = touch(tempRoot.resolve("weights").resolve("current.bin.gz"));
+          Path runtimeWorkDirectory = Files.createDirectories(tempRoot.resolve("runtime-root"));
+          List<String> originalCommand =
+              Arrays.asList(
+                  enginePath.toString(),
+                  "gtp",
+                  "-model",
+                  modelPath.toString(),
+                  "-config",
+                  "gtp.cfg");
+          String previousDriver = System.getProperty("lizzie.opencl.nvidiaDriverVersion");
+          try {
+            System.setProperty("lizzie.opencl.nvidiaDriverVersion", "566.36");
+            withConfig(
+                runtimeWorkDirectory,
+                () -> {
+                  assertFalse(
+                      KataGoRuntimeHelper.shouldRecoverOpenClNativeExit(
+                          originalCommand, enginePath, 1, false));
+                  assertTrue(
+                      KataGoRuntimeHelper.shouldRecoverOpenClNativeExit(
+                          originalCommand, enginePath, (int) 0xC0000409L, false));
+                  assertFalse(
+                      KataGoRuntimeHelper.shouldRecoverOpenClNativeExit(
+                          originalCommand, enginePath, (int) 0xC0000409L, true));
+                  assertTrue(
+                      KataGoRuntimeHelper.rememberOpenClFp32Compatibility(
+                          originalCommand, enginePath));
+
+                  List<String> recovered =
+                      KataGoRuntimeHelper.prepareBundledLaunchCommand(
+                          originalCommand, enginePath);
+                  assertTrue(
+                      KataGoRuntimeHelper.isOpenClFp32CompatibilityActive(
+                          recovered, enginePath));
+
+                  Files.write(modelPath, new byte[] {1, 2, 3});
+                  List<String> changedModel =
+                      KataGoRuntimeHelper.prepareBundledLaunchCommand(
+                          originalCommand, enginePath);
+                  assertFalse(
+                      KataGoRuntimeHelper.isOpenClFp32CompatibilityActive(
+                          changedModel, enginePath));
+                });
+          } finally {
+            restoreProperty("lizzie.opencl.nvidiaDriverVersion", previousDriver);
+          }
+        });
+  }
+
+  @Test
   void katagoAnalysisCommandReceivesPvLengthOverride() throws Exception {
     Path runtimeWorkDirectory = Files.createTempDirectory("katago-helper-pvlen");
     withConfig(
@@ -1250,6 +1516,14 @@ public class KataGoRuntimeHelperTest {
   private static Path touch(Path file) throws IOException {
     Files.createDirectories(file.getParent());
     return Files.write(file, new byte[0]);
+  }
+
+  private static Path createOpenClEngine(Path tempRoot) throws IOException {
+    Path engineDir =
+        Files.createDirectories(
+            tempRoot.resolve("engines").resolve("katago").resolve("windows-x64"));
+    Files.writeString(engineDir.resolve("lizzieyzy-next-engine-backend.txt"), "opencl");
+    return touch(engineDir.resolve("katago.exe"));
   }
 
   private static void touchCommonCuda12Dlls(Path directory) throws IOException {

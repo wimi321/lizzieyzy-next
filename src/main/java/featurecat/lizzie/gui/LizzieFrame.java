@@ -41,6 +41,7 @@ import featurecat.lizzie.rules.NodeInfo;
 import featurecat.lizzie.rules.SGFParser;
 import featurecat.lizzie.rules.Stone;
 import featurecat.lizzie.theme.MorandiPalette;
+import featurecat.lizzie.util.KataGoRuntimeHelper;
 import featurecat.lizzie.util.Utils;
 import featurecat.lizzie.util.YikeSyncDebugLog;
 import java.awt.*;
@@ -533,6 +534,8 @@ public class LizzieFrame extends JFrame {
   private FlashAnalysisRequest pendingFlashAnalysisAfterSettings;
   private final java.util.concurrent.atomic.AtomicBoolean quickAnalysisEngineStarting =
       new java.util.concurrent.atomic.AtomicBoolean(false);
+  private final java.util.concurrent.atomic.AtomicLong quickAnalysisEngineGeneration =
+      new java.util.concurrent.atomic.AtomicLong(0L);
   private final java.util.List<Runnable> pendingQuickAnalysisCallbacks =
       new java.util.ArrayList<Runnable>();
   private javax.swing.Timer quickAnalysisNavigationResumeTimer;
@@ -13508,6 +13511,28 @@ public class LizzieFrame extends JFrame {
     }
   }
 
+  public void prepareQuickAnalysisForPrimaryOpenClRecovery() {
+    if (!SwingUtilities.isEventDispatchThread()) {
+      SwingUtilities.invokeLater(this::prepareQuickAnalysisForPrimaryOpenClRecovery);
+      return;
+    }
+    quickAnalysisEngineGeneration.incrementAndGet();
+    stopQuickAnalysisWarmupTimer();
+    stopQuickAnalysisNavigationResumeTimer();
+    synchronized (pendingQuickAnalysisCallbacks) {
+      pendingQuickAnalysisCallbacks.clear();
+    }
+    AnalysisEngine staleEngine = analysisEngine;
+    analysisEngine = null;
+    if (staleEngine != null) {
+      staleEngine.clearRequestCallbacks();
+      staleEngine.normalQuit();
+    }
+    if (!quickAnalysisEngineStarting.get()) {
+      scheduleQuickAnalysisWarmupWhenPrimaryReady(1200, false);
+    }
+  }
+
   public void openWholeGameDeepAnalysis() {
     if (!SwingUtilities.isEventDispatchThread()) {
       SwingUtilities.invokeLater(this::openWholeGameDeepAnalysis);
@@ -18329,11 +18354,27 @@ public class LizzieFrame extends JFrame {
         && RemoteComputeConfig.isRemoteComputeEngineCommand(Lizzie.leelaz.engineCommand());
   }
 
+  private boolean isCurrentPrimaryEngineBundledOpenCl() {
+    if (Lizzie.leelaz == null) {
+      return false;
+    }
+    try {
+      java.nio.file.Path executable =
+          KataGoRuntimeHelper.resolveCommandExecutable(
+              Utils.splitCommand(Lizzie.leelaz.engineCommand()));
+      return KataGoRuntimeHelper.isBundledOpenClPath(executable);
+    } catch (RuntimeException e) {
+      return false;
+    }
+  }
+
   private QuickAnalysisWarmupAction currentQuickAnalysisWarmupAction(
       boolean requiresAutoAnalyze) {
     boolean dependsOnPrimary =
-        isCurrentPrimaryEngineRemote()
-            || (Lizzie.config != null && Lizzie.config.analysisReuseCurrentEngine);
+        quickAnalysisDependsOnPrimary(
+            isCurrentPrimaryEngineRemote(),
+            isCurrentPrimaryEngineBundledOpenCl(),
+            Lizzie.config != null && Lizzie.config.analysisReuseCurrentEngine);
     boolean primaryLoaded =
         !dependsOnPrimary || (Lizzie.leelaz != null && Lizzie.leelaz.isLoaded());
     boolean primaryFailed =
@@ -18346,6 +18387,11 @@ public class LizzieFrame extends JFrame {
         dependsOnPrimary,
         primaryLoaded,
         primaryFailed);
+  }
+
+  static boolean quickAnalysisDependsOnPrimary(
+      boolean remotePrimary, boolean bundledOpenClPrimary, boolean reusePrimary) {
+    return remotePrimary || bundledOpenClPrimary || reusePrimary;
   }
 
   static QuickAnalysisWarmupAction decideQuickAnalysisWarmup(
@@ -18383,6 +18429,7 @@ public class LizzieFrame extends JFrame {
     if (!quickAnalysisEngineStarting.compareAndSet(false, true)) {
       return;
     }
+    final long generation = quickAnalysisEngineGeneration.get();
     Thread starter =
         new Thread(
             new Runnable() {
@@ -18397,7 +18444,7 @@ public class LizzieFrame extends JFrame {
                 SwingUtilities.invokeLater(
                     new Runnable() {
                       public void run() {
-                        finishQuickAnalysisEngineWarmup(warmedEngine);
+                        finishQuickAnalysisEngineWarmup(warmedEngine, generation);
                       }
                     });
               }
@@ -18407,9 +18454,18 @@ public class LizzieFrame extends JFrame {
     starter.start();
   }
 
-  private void finishQuickAnalysisEngineWarmup(AnalysisEngine warmedEngine) {
+  private void finishQuickAnalysisEngineWarmup(AnalysisEngine warmedEngine, long generation) {
     java.util.List<Runnable> callbacks = java.util.Collections.emptyList();
+    boolean invalidated =
+        shouldDiscardQuickAnalysisWarmup(generation, quickAnalysisEngineGeneration.get());
     try {
+      if (invalidated) {
+        if (warmedEngine != null) {
+          warmedEngine.clearRequestCallbacks();
+          warmedEngine.normalQuit();
+        }
+        return;
+      }
       if (isWholeGameAnalysisStartingOrRunning()) {
         if (warmedEngine != null) {
           warmedEngine.clearRequestCallbacks();
@@ -18435,10 +18491,17 @@ public class LizzieFrame extends JFrame {
       }
     } finally {
       quickAnalysisEngineStarting.set(false);
+      if (invalidated) {
+        scheduleQuickAnalysisWarmupWhenPrimaryReady(1200, false);
+      }
     }
     if (!callbacks.isEmpty() && !isAnalysisEngineReusable(analysisEngine)) {
       resumeForegroundAnalysisAfterQuickAnalysisComplete();
     }
+  }
+
+  static boolean shouldDiscardQuickAnalysisWarmup(long startedGeneration, long currentGeneration) {
+    return startedGeneration != currentGeneration;
   }
 
   private java.util.List<Runnable> drainQuickAnalysisCallbacks() {

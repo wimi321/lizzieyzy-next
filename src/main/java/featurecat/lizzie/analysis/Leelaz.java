@@ -194,6 +194,8 @@ public class Leelaz {
   public volatile boolean isDownWithError = false;
   public volatile boolean isLoaded = false;
   private volatile long bundledStartupToken = 0L;
+  private volatile boolean openClFp32CompatibilityActive = false;
+  private final AtomicBoolean openClCompatibilityRecoveryAttempted = new AtomicBoolean(false);
   public boolean isCheckingVersion;
   public volatile boolean isCheckingName;
   public String initialCommand;
@@ -539,6 +541,8 @@ public class Leelaz {
     // Matcher wMatcher = wPattern.matcher(engineCommand);
     currentEnginename = getEngineName(index);
     isDownWithError = false;
+    openClFp32CompatibilityActive = false;
+    openClCompatibilityRecoveryAttempted.set(false);
     this.useRemoteCompute = RemoteComputeConfig.isRemoteComputeEngineCommand(this.engineCommand);
     if (this.useRemoteCompute) {
       process = null;
@@ -643,6 +647,13 @@ public class Leelaz {
       }
       List<String> launchCommands =
           KataGoRuntimeHelper.prepareBundledLaunchCommand(commands, engineExecutable);
+      openClFp32CompatibilityActive =
+          KataGoRuntimeHelper.isOpenClFp32CompatibilityActive(launchCommands, engineExecutable);
+      if (openClFp32CompatibilityActive && bundledCommand && !preload) {
+        Lizzie.engineStartupStatus.checking(
+            "BundledEngineStartup.status.openclCompatibility",
+            "Using stable NVIDIA OpenCL compatibility mode...");
+      }
       ProcessBuilder processBuilder = new ProcessBuilder(launchCommands);
       CommandLaunchHelper.configureProcessBuilder(processBuilder, launchSpec);
       KataGoRuntimeHelper.configureBundledProcessBuilder(processBuilder, engineExecutable);
@@ -865,7 +876,7 @@ public class Leelaz {
       if (!isStarted() || isDownWithError || isNormalEnd) {
         return false;
       }
-      if (isLoaded() && !isCheckingName) {
+      if (automaticRestartReady(isLoaded(), isCheckingName, endGetCommandList)) {
         return true;
       }
       now = System.nanoTime();
@@ -890,21 +901,33 @@ public class Leelaz {
     }
   }
 
+  static boolean automaticRestartReady(
+      boolean loaded, boolean checkingName, boolean commandListReady) {
+    return loaded && !checkingName && commandListReady;
+  }
+
   void restoreClosedEngineBoardState(boolean resumePonder) {
-    Lizzie.board.resendMoveToEngine(this, resumePonder);
+    isPondering = false;
+    Lizzie.board.resendMoveToEngine(this, false);
     if (KataGoRuntimeHelper.isBenchmarkEngineSyncSuppressed()) {
       return;
     }
     if (engineStateUnrestored) {
       confirmBoardSynchronization(
-          this::completeReadBoardGmaRecoveryAfterBoardSync,
+          () -> {
+            completeReadBoardGmaRecoveryAfterBoardSync();
+            resumeClosedEngineAfterBoardSynchronization(resumePonder);
+          },
           this::markBoardSynchronizationFailed);
+      return;
     }
+    resumeClosedEngineAfterBoardSynchronization(resumePonder);
   }
 
   private void restoreClosedEngineBoardState(boolean resumePonder, Runnable afterBoardRestore) {
     try {
-      Lizzie.board.resendMoveToEngine(this, resumePonder);
+      isPondering = false;
+      Lizzie.board.resendMoveToEngine(this, false);
     } catch (RuntimeException failure) {
       isLoaded = false;
       markBoardSynchronizationFailed(
@@ -920,16 +943,26 @@ public class Leelaz {
     }
     confirmBoardSynchronization(
         () -> {
-          if (engineStateUnrestored) {
-            completeReadBoardGmaRecoveryAfterBoardSync();
+          try {
+            if (engineStateUnrestored) {
+              completeReadBoardGmaRecoveryAfterBoardSync();
+            }
+            resumeClosedEngineAfterBoardSynchronization(resumePonder);
+          } finally {
+            afterBoardRestore.run();
           }
-          afterBoardRestore.run();
         },
         detail -> {
           isLoaded = false;
           markBoardSynchronizationFailed(detail);
           afterBoardRestore.run();
         });
+  }
+
+  void resumeClosedEngineAfterBoardSynchronization(boolean resumePonder) {
+    if (resumePonder) {
+      Lizzie.initializeAfterVersionCheck(false, this);
+    }
   }
 
   void completeReadBoardGmaRecoveryAfterBoardSync() {
@@ -3278,7 +3311,7 @@ public class Leelaz {
     abortExclusiveGtpSession();
     completeForegroundRestore(interruptedForegroundWork);
     failReadBoardGmaEngineRestore("engine transport closed");
-    if (!isNormalEnd) {
+    if (!isNormalEnd && !tryRecoverBundledOpenClNativeExit()) {
       isDownWithError = true;
       // isLoaded=false;
       tryToDignostic(
@@ -3287,6 +3320,76 @@ public class Leelaz {
       // ("打开Gtp窗口(快捷键E)查看报错信息");
       // LizzieFrame.openMoreEngineDialog();
     }
+  }
+
+  private boolean tryRecoverBundledOpenClNativeExit() {
+    if (process == null
+        || useRemoteCompute
+        || useJavaSSH
+        || openClCompatibilityRecoveryAttempted.get()) {
+      return false;
+    }
+    int exitCode;
+    try {
+      exitCode = process.exitValue();
+    } catch (IllegalThreadStateException e) {
+      return false;
+    }
+    Path engineExecutable = KataGoRuntimeHelper.resolveCommandExecutable(commands);
+    if (!KataGoRuntimeHelper.shouldRecoverOpenClNativeExit(
+        commands, engineExecutable, exitCode, openClFp32CompatibilityActive)) {
+      return false;
+    }
+    ExclusiveGtpLifecycleReservation reservation = beginAutomaticEngineRestartReservation();
+    if (reservation == null
+        || !openClCompatibilityRecoveryAttempted.compareAndSet(false, true)
+        || !KataGoRuntimeHelper.rememberOpenClFp32Compatibility(commands, engineExecutable)) {
+      if (reservation != null) {
+        reservation.close();
+      }
+      return false;
+    }
+
+    isDownWithError = false;
+    isLoaded = false;
+    canCheckAlive = false;
+    if (this == Lizzie.leelaz) {
+      Lizzie.engineStartupStatus.checking(
+          "BundledEngineStartup.status.openclRecovering",
+          "NVIDIA OpenCL compatibility recovery is starting...");
+      if (Lizzie.frame != null) {
+        SwingUtilities.invokeLater(Lizzie.frame::prepareQuickAnalysisForPrimaryOpenClRecovery);
+      }
+    }
+    int engineIndex = currentEngineN;
+    Thread recovery =
+        new Thread(
+            () -> {
+              boolean restoreScheduled = false;
+              try {
+                restartClosedEngine(engineIndex, reservation::close);
+                restoreScheduled = true;
+              } catch (IOException | RuntimeException failure) {
+                failure.printStackTrace();
+                isDownWithError = true;
+                SwingUtilities.invokeLater(
+                    () ->
+                        tryToDignostic(
+                            buildEngineExitDiagnostic(
+                                text(
+                                    "BundledEngineStartup.openclRecoveryFailed",
+                                    "NVIDIA OpenCL compatibility recovery failed.")),
+                            false));
+              } finally {
+                if (!restoreScheduled) {
+                  reservation.close();
+                }
+              }
+            },
+            "katago-opencl-fp32-recovery");
+    recovery.setDaemon(true);
+    recovery.start();
+    return true;
   }
 
   //	private void stopAutoAna() {
@@ -7823,7 +7926,9 @@ public class Leelaz {
     }
     final boolean nvidiaBundled = KataGoRuntimeHelper.isNvidiaBundledPath(engineExecutable);
     final boolean firstOpenCLTuning =
-        !nvidiaBundled && KataGoRuntimeHelper.needsFirstOpenCLTuning(engineExecutable);
+        !nvidiaBundled
+            && KataGoRuntimeHelper.needsFirstOpenCLTuning(
+                engineExecutable, openClFp32CompatibilityActive);
     final long timeoutMillis =
         firstOpenCLTuning
             ? FIRST_OPENCL_TUNING_START_TIMEOUT_MS
