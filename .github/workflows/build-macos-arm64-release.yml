@@ -45,6 +45,9 @@ jobs:
           python3 -m pip install pillow
           python3 scripts/generate_app_icons.py
 
+      - name: Verify macOS KataGo dependency bundler
+        run: python3 scripts/test_macos_katago_bundle.py
+
       - name: Build shaded jar
         run: mvn -DskipTests package
 

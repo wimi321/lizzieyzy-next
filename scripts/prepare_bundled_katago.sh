@@ -192,60 +192,29 @@ prepare_linux_bundle() {
 
 prepare_macos_bundle() {
   local katago_prefix
-  local libzip_prefix
-  local xz_prefix
-  local zstd_prefix
   local platform_dir
 
   katago_prefix="$(brew_prefix_for katago)"
-  libzip_prefix="$(brew_prefix_for libzip)"
-  xz_prefix="$(brew_prefix_for xz)"
-  zstd_prefix="$(brew_prefix_for zstd)"
   platform_dir="$(detect_macos_platform_dir)"
 
   local macos_root="$ENGINES_ROOT/$platform_dir"
   local katago_bin="${MACOS_KATAGO_BIN:-${katago_prefix:+$katago_prefix/bin/katago}}"
-  local libzip_bin="${MACOS_LIBZIP_BIN:-${libzip_prefix:+$libzip_prefix/lib/libzip.5.dylib}}"
-  local liblzma_bin="${MACOS_LIBLZMA_BIN:-${xz_prefix:+$xz_prefix/lib/liblzma.5.dylib}}"
-  local libzstd_bin="${MACOS_LIBZSTD_BIN:-${zstd_prefix:+$zstd_prefix/lib/libzstd.1.dylib}}"
+  local bundler="$ROOT_DIR/scripts/macos_katago_bundle.py"
 
   if [[ ! -x "$katago_bin" ]]; then
     echo "Skipping $platform_dir bundle: $katago_bin not found"
     return 0
   fi
 
-  require_cmd install_name_tool
-
-  rm -rf "$macos_root"
-  mkdir -p "$macos_root/lib"
-
-  cp -Lf "$katago_bin" "$macos_root/katago"
-  cp -Lf "$libzip_bin" "$macos_root/lib/libzip.5.dylib"
-  cp -Lf "$liblzma_bin" "$macos_root/lib/liblzma.5.dylib"
-  cp -Lf "$libzstd_bin" "$macos_root/lib/libzstd.1.dylib"
-  chmod +x "$macos_root/katago"
-
-  install_name_tool \
-    -change "$libzip_bin" \
-    @executable_path/lib/libzip.5.dylib \
-    "$macos_root/katago"
-  install_name_tool -id @loader_path/libzip.5.dylib "$macos_root/lib/libzip.5.dylib"
-  install_name_tool -id @loader_path/liblzma.5.dylib "$macos_root/lib/liblzma.5.dylib"
-  install_name_tool -id @loader_path/libzstd.1.dylib "$macos_root/lib/libzstd.1.dylib"
-  install_name_tool \
-    -change "$liblzma_bin" \
-    @loader_path/liblzma.5.dylib \
-    "$macos_root/lib/libzip.5.dylib"
-  install_name_tool \
-    -change "$libzstd_bin" \
-    @loader_path/libzstd.1.dylib \
-    "$macos_root/lib/libzip.5.dylib"
-
-  if command -v codesign >/dev/null 2>&1; then
-    codesign --force --sign - "$macos_root/lib/"*.dylib "$macos_root/katago" >/dev/null 2>&1 || true
+  if [[ ! -f "$bundler" ]]; then
+    echo "Missing macOS KataGo bundler: $bundler"
+    exit 1
   fi
-
-  "$macos_root/katago" version >/dev/null
+  require_cmd python3
+  python3 "$bundler" bundle \
+    --katago "$katago_bin" \
+    --output "$macos_root" \
+    --expected-version "${KATAGO_TAG#v}"
 }
 
 write_manifest() {

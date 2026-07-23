@@ -87,4 +87,23 @@ if [[ ! -f "$MOUNT_POINT/.DS_Store" ]]; then
   exit 1
 fi
 
+APP_PATH="$(find "$MOUNT_POINT" -maxdepth 1 -type d -name '*.app' -print -quit)"
+KATAGO_BUNDLES=()
+while IFS= read -r -d '' katago_path; do
+  KATAGO_BUNDLES+=("$(dirname "$katago_path")")
+done < <(
+  find "$APP_PATH/Contents/app/engines/katago" \
+    -mindepth 2 -maxdepth 2 -type f -name katago -print0 2>/dev/null
+)
+
+if [[ "${#KATAGO_BUNDLES[@]}" -gt 1 ]]; then
+  echo "Expected at most one native macOS KataGo bundle; found ${#KATAGO_BUNDLES[@]}." >&2
+  exit 1
+fi
+if [[ "${#KATAGO_BUNDLES[@]}" -eq 1 ]]; then
+  SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  python3 "$SCRIPT_DIR/macos_katago_bundle.py" audit \
+    --bundle "${KATAGO_BUNDLES[0]}"
+fi
+
 echo "Validated macOS drag-install DMG layout: $(basename "$DMG_PATH")"

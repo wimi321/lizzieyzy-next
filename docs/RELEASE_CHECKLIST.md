@@ -55,6 +55,7 @@
 - `scripts/generate_app_icons.py`
 - `scripts/package_release.sh`
 - `scripts/package_macos_dmg.sh`
+- `scripts/macos_katago_bundle.py`
 - `scripts/package_windows_exe.sh`
 - `scripts/generate_release_notes.py`
 - `scripts/validate_release_assets.sh`
@@ -83,6 +84,7 @@ GitHub Actions：
 - `src/main/resources/assets/logo.png`、`packaging/icons/app-icon.ico`、`packaging/icons/app-icon.icns` 代表的是同一套当前图标
 - `weights/default.bin.gz` 存在
 - `engines/katago/` 下目标平台文件完整
+- macOS 内置 KataGo 不得引用 `/opt/homebrew`、`/usr/local` 或未解析的 `@rpath`；`macos_katago_bundle.py audit` 必须能直接运行引擎
 - 如需 bundled Java，对应 `runtime/` 目录仍然存在
 - 发版 tag 已确定，例如 `next-2026-04-24.2`；构建脚本最后一个参数必须传这个 tag
 
@@ -150,6 +152,10 @@ LEGACY_WINDOWS32_ZIP=1 LEGACY_OTHER_SYSTEMS_ZIP=1 ./scripts/package_release.sh 2
 ./scripts/package_macos_dmg.sh 2026-04-24 1.0.0 target/lizzie-yzy2.5.3-shaded.jar next-2026-04-24.2
 ./scripts/validate_release_assets.sh mac-arm64 dist/release 2026-04-24
 ```
+
+macOS 校验不是只看 DMG 布局：打包脚本会在 App image 中运行内置 KataGo，
+`validate_release_assets.sh` 还会挂载最终 DMG，再检查一次动态库闭包并运行
+`katago version`。任一步失败都不能上传该资产。
 
 ### 8. 生成发布页文案
 
