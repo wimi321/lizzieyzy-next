@@ -1560,12 +1560,20 @@ class ReadBoardEngineResumeTest {
 
       assertTrue(harness.readBoard.handleReadBoardGmaEnginePlay("pass"));
       harness.leelaz.isThinking = false;
+      harness.leelaz.blockNextLoadSgf();
       harness.readBoard.afterReadBoardGmaTerminalResponseConsumed("first-move");
-      assertTrue(waitForSentCommandPrefix(harness.leelaz, "loadsgf "));
+      assertTrue(harness.leelaz.awaitBlockedLoadSgf());
       harness.sync(snapshot(emptyStones(), Optional.empty(), Stone.EMPTY));
+      assertEquals(
+          1,
+          harness.leelaz.readBoardGmaCount,
+          "the next GMA request must wait until the exact engine restore has completed");
+      harness.leelaz.releaseBlockedLoadSgf();
 
       assertEquals(1, harness.frame.readBoardPonderingNoticeCount);
-      assertEquals(2, harness.leelaz.readBoardGmaCount);
+      assertTrue(
+          waitForReadBoardGmaCount(harness.leelaz, 2),
+          "the completed restore must resume GMA after the synced board arrived during loadsgf");
     }
   }
 
@@ -1987,6 +1995,17 @@ class ReadBoardEngineResumeTest {
     return false;
   }
 
+  private static boolean waitForReadBoardGmaCount(
+      SnapshotTrackingLeelaz leelaz, int expectedCount) throws InterruptedException {
+    for (int attempt = 0; attempt < 100; attempt++) {
+      if (leelaz.readBoardGmaCount >= expectedCount) {
+        return true;
+      }
+      Thread.sleep(10);
+    }
+    return false;
+  }
+
   private static final class EngineResumeHarness implements AutoCloseable {
     private final Config previousConfig;
     private final Board previousBoard;
@@ -2098,6 +2117,7 @@ class ReadBoardEngineResumeTest {
 
     @Override
     public void close() {
+      leelaz.releaseBlockedLoadSgf();
       Lizzie.config = previousConfig;
       Lizzie.board = previousBoard;
       Lizzie.leelaz = previousLeelaz;
