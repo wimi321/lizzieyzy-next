@@ -3,6 +3,7 @@ package featurecat.lizzie.gui;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 
 import java.util.List;
 import java.util.Locale;
@@ -19,13 +20,16 @@ class AutoAnalyzeMenuTest {
     ResourceBundle resources =
         ResourceBundle.getBundle("l10n.DisplayStrings", Locale.SIMPLIFIED_CHINESE);
     AtomicInteger activations = new AtomicInteger();
+    AtomicInteger lightningActivations = new AtomicInteger();
 
-    JPopupMenu popup = AutoAnalyzeMenu.create(resources, activations::incrementAndGet);
+    JPopupMenu popup =
+        AutoAnalyzeMenu.create(
+            resources, activations::incrementAndGet, lightningActivations::incrementAndGet);
 
-    assertEquals(12, popup.getComponentCount());
+    assertEquals(13, popup.getComponentCount());
     JMenuItem first = assertInstanceOf(JMenuItem.class, popup.getComponent(0));
     assertEquals("整盘精析（推荐）", first.getText());
-    assertEquals("ctrl pressed B", first.getAccelerator().toString());
+    assertEquals("shift ctrl pressed B", first.getAccelerator().toString());
     assertEquals(
         AutoAnalyzeMenu.WHOLE_GAME_ACTION,
         first.getClientProperty(AutoAnalyzeMenu.ACTION_PROPERTY));
@@ -33,6 +37,15 @@ class AutoAnalyzeMenuTest {
     assertEquals(1, activations.get());
     assertEquals(resources.getString("Menu.autoAnalyze"), menuItem(popup, 1).getText());
     assertInstanceOf(JPopupMenu.Separator.class, popup.getComponent(2));
+    JMenuItem lightning = menuItem(popup, 3);
+    assertEquals("整盘速览（闪电）", lightning.getText());
+    assertEquals("ctrl pressed B", lightning.getAccelerator().toString());
+    assertEquals(
+        AutoAnalyzeMenu.WHOLE_GAME_LIGHTNING_ACTION,
+        lightning.getClientProperty(AutoAnalyzeMenu.ACTION_PROPERTY));
+    lightning.doClick();
+    assertEquals(1, lightningActivations.get());
+    assertEquals(1, activations.get());
   }
 
   @Test
@@ -49,10 +62,17 @@ class AutoAnalyzeMenuTest {
     for (Locale locale : locales) {
       ResourceBundle resources = ResourceBundle.getBundle("l10n.DisplayStrings", locale);
       assertFalse(resources.getString("BottomToolbar.autoAnalyzeTip").isBlank(), locale.toString());
+      assertFalse(resources.getString("Menu.wholeGameDeepAnalysis").isBlank(), locale.toString());
       assertFalse(resources.getString("Menu.flashAnalyzeAllGame").isBlank(), locale.toString());
+      assertNotEquals(
+          resources.getString("Menu.wholeGameDeepAnalysis"),
+          resources.getString("Menu.flashAnalyzeAllGame"),
+          locale.toString());
       assertFalse(resources.getString("Menu.flashAnalyzePartGame").isBlank(), locale.toString());
       assertFalse(resources.getString("Menu.flashAnalyzeAllBranches").isBlank(), locale.toString());
       assertFalse(resources.getString("Menu.flashAnalyzeSettings").isBlank(), locale.toString());
+      assertFalse(
+          resources.getString("WholeGameAnalysis.resultsShown").isBlank(), locale.toString());
     }
   }
 

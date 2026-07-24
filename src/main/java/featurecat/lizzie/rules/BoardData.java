@@ -343,12 +343,26 @@ public class BoardData {
       int totalplayouts,
       List<Double> estimateArray,
       boolean forceOverride) {
+    tryToSetBestMovesWithStatus(
+        moves, engName, isFromLeelaz, totalplayouts, estimateArray, forceOverride);
+  }
+
+  public boolean tryToSetBestMovesWithStatus(
+      List<MoveData> moves,
+      String engName,
+      boolean isFromLeelaz,
+      int totalplayouts,
+      List<Double> estimateArray,
+      boolean forceOverride) {
+    if (moves == null || moves.isEmpty()) {
+      return false;
+    }
     if (!forceOverride
         && Lizzie.config.enableLizzieCache
         && !Lizzie.config.isAutoAna
         && !EngineManager.isEngineGame) {
       if (!(totalplayouts > playouts || isChanged || pda != Lizzie.leelaz.pda)) {
-        if (estimateArray == null || this.estimateArray != null) return;
+        if (estimateArray == null || this.estimateArray != null) return false;
       }
     }
     // added for change bestmoves when playouts is not increased
@@ -393,6 +407,7 @@ public class BoardData {
 
     tryToLimitMoves(moves, bestMoves, true);
     bestMoves = moves;
+    return true;
   }
 
   private void tryToLimitMoves(List<MoveData> moves, List<MoveData> lastMoves, boolean isMain) {
@@ -657,6 +672,29 @@ public class BoardData {
       Lizzie.leelaz2.scoreMean = 0;
       Lizzie.leelaz2.scoreStdev = 0;
     }
+  }
+
+  /**
+   * Returns whether the primary payload is complete enough to be displayed as a whole-game result.
+   *
+   * <p>Supported Go positions always have pass available, so an empty candidate list is treated as
+   * an incomplete engine response rather than as an implicitly terminal position. The analysis JSON
+   * and GTP adapters do not expose a reliable terminal-position marker that would justify accepting
+   * an empty list.
+   */
+  public boolean hasCompletePrimaryAnalysis(int targetVisits, boolean ownershipRequested) {
+    MoveData firstMove = bestMoves == null || bestMoves.isEmpty() ? null : bestMoves.get(0);
+    return getPlayouts() >= Math.max(1, targetVisits)
+        && firstMove != null
+        && firstMove.coordinate != null
+        && !firstMove.coordinate.trim().isEmpty()
+        && firstMove.playouts > 0
+        && Double.isFinite(firstMove.winrate)
+        && firstMove.variation != null
+        && !firstMove.variation.isEmpty()
+        && firstMove.variation.get(0) != null
+        && !firstMove.variation.get(0).trim().isEmpty()
+        && (!ownershipRequested || (estimateArray != null && !estimateArray.isEmpty()));
   }
 
   public void clearAnalysisPayloadState() {

@@ -2,6 +2,7 @@ package featurecat.lizzie.gui;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -15,6 +16,7 @@ import featurecat.lizzie.analysis.MoveRankDefinition;
 import featurecat.lizzie.analysis.PlayerStrengthEstimator;
 import featurecat.lizzie.analysis.ReadBoard;
 import featurecat.lizzie.analysis.TrackingEngine;
+import featurecat.lizzie.analysis.WholeGameAnalysisSession;
 import featurecat.lizzie.analysis.remote.RemoteComputeConfig;
 import featurecat.lizzie.rules.Board;
 import featurecat.lizzie.rules.BoardData;
@@ -935,6 +937,104 @@ class LizzieFrameRegressionTest {
   }
 
   @Test
+  void runningWholeGameAnalysisBlocksSilentQuickAnalysisDispatch() throws Exception {
+    TestEnvironment env = TestEnvironment.open();
+    try {
+      Lizzie.config = configWithAutoQuickAnalyze();
+      QuickAnalysisResumeFrame frame = allocate(QuickAnalysisResumeFrame.class);
+      QuickAnalysisCompletionEngine engine = allocate(QuickAnalysisCompletionEngine.class);
+      engine.requestStarted = new CountDownLatch(1);
+      frame.analysisEngine = engine;
+      WholeGameAnalysisSession session = allocate(WholeGameAnalysisSession.class);
+      setDeclaredField(
+          WholeGameAnalysisSession.class,
+          session,
+          "state",
+          WholeGameAnalysisSession.State.BASELINE);
+      setField(frame, "wholeGameAnalysisSession", session);
+      Lizzie.frame = frame;
+
+      frame.flashAnalyzeGame(true, false, true);
+
+      assertEquals(1L, engine.requestStarted.getCount());
+      assertSame(engine, frame.analysisEngine);
+    } finally {
+      env.close();
+    }
+  }
+
+  @Test
+  void navigatingDuringWholeGameAnalysisDoesNotScheduleQuickAnalysisContinuation()
+      throws Exception {
+    TestEnvironment env = TestEnvironment.open();
+    try {
+      Lizzie.config = configWithAutoQuickAnalyze();
+      Lizzie.board = boardWith(historyWithUnanalyzedMove());
+      LizzieFrame frame = allocate(LizzieFrame.class);
+      WholeGameAnalysisSession session = allocate(WholeGameAnalysisSession.class);
+      setDeclaredField(
+          WholeGameAnalysisSession.class,
+          session,
+          "state",
+          WholeGameAnalysisSession.State.BASELINE);
+      setField(frame, "wholeGameAnalysisSession", session);
+      Lizzie.frame = frame;
+
+      SwingUtilities.invokeAndWait(
+          frame::scheduleQuickAnalysisContinuationAfterHistoryNavigation);
+
+      assertNull(getField(frame, "quickAnalysisNavigationResumeTimer"));
+    } finally {
+      env.close();
+    }
+  }
+
+  @Test
+  void wholeGameEngineDoesNotReplaceTheQuickAnalysisEngineSlot() throws Exception {
+    TestEnvironment env = TestEnvironment.open();
+    try {
+      LizzieFrame frame = allocate(LizzieFrame.class);
+      WholeGameAnalysisSession session = allocate(WholeGameAnalysisSession.class);
+      AnalysisEngine quickEngine = allocate(AnalysisEngine.class);
+      AnalysisEngine wholeGameEngine = allocate(AnalysisEngine.class);
+      frame.analysisEngine = quickEngine;
+      setField(frame, "wholeGameAnalysisSession", session);
+
+      frame.attachWholeGameAnalysisEngine(session, wholeGameEngine);
+
+      assertSame(quickEngine, frame.analysisEngine);
+    } finally {
+      env.close();
+    }
+  }
+
+  @Test
+  void staleWholeGameCompletionCannotDisposeTheCurrentSessionDialog() throws Exception {
+    TestEnvironment env = TestEnvironment.open();
+    try {
+      LizzieFrame frame = allocate(LizzieFrame.class);
+      WholeGameAnalysisSession staleSession = allocate(WholeGameAnalysisSession.class);
+      WholeGameAnalysisSession currentSession = allocate(WholeGameAnalysisSession.class);
+      WholeGameAnalysisDialog currentDialog = allocate(WholeGameAnalysisDialog.class);
+      setDeclaredField(
+          WholeGameAnalysisSession.class,
+          staleSession,
+          "state",
+          WholeGameAnalysisSession.State.COMPLETE);
+      setField(frame, "wholeGameAnalysisSession", currentSession);
+      setField(frame, "wholeGameAnalysisDialog", currentDialog);
+
+      frame.onWholeGameAnalysisFinished(
+          staleSession, allocate(AnalysisEngine.class), false);
+
+      assertSame(currentSession, getField(frame, "wholeGameAnalysisSession"));
+      assertSame(currentDialog, getField(frame, "wholeGameAnalysisDialog"));
+    } finally {
+      env.close();
+    }
+  }
+
+  @Test
   void downloadedKifuStartsSilentQuickAnalyzeAndForegroundAnalysis() throws Exception {
     TestEnvironment env = TestEnvironment.open();
     try {
@@ -1638,6 +1738,13 @@ class LizzieFrameRegressionTest {
 
   private static void setField(Object target, String name, Object value) throws Exception {
     Field field = LizzieFrame.class.getDeclaredField(name);
+    field.setAccessible(true);
+    field.set(target, value);
+  }
+
+  private static void setDeclaredField(
+      Class<?> owner, Object target, String name, Object value) throws Exception {
+    Field field = owner.getDeclaredField(name);
     field.setAccessible(true);
     field.set(target, value);
   }

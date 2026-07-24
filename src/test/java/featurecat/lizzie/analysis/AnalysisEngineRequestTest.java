@@ -267,8 +267,7 @@ class AnalysisEngineRequestTest {
       TrackingWaitForAnalysis waitFrame = allocate(TrackingWaitForAnalysis.class);
       AtomicInteger completions = new AtomicInteger();
       setField(AnalysisEngine.class, engine, "sharedForegroundEngine", foreground);
-      setField(
-          AnalysisEngine.class, engine, "sharedForegroundLease", foregroundLease(foreground));
+      setField(AnalysisEngine.class, engine, "sharedForegroundLease", foregroundLease(foreground));
       setField(AnalysisEngine.class, engine, "waitFrame", waitFrame);
       setIntField(AnalysisEngine.class, engine, "resultCount", 1);
       setField(
@@ -305,8 +304,7 @@ class AnalysisEngineRequestTest {
       AtomicInteger completions = new AtomicInteger();
       Lizzie.frame.isBatchAnalysisMode = true;
       setField(AnalysisEngine.class, engine, "sharedForegroundEngine", foreground);
-      setField(
-          AnalysisEngine.class, engine, "sharedForegroundLease", foregroundLease(foreground));
+      setField(AnalysisEngine.class, engine, "sharedForegroundLease", foregroundLease(foreground));
       setField(AnalysisEngine.class, engine, "waitFrame", waitFrame);
       setIntField(AnalysisEngine.class, engine, "resultCount", 1);
       setField(
@@ -324,6 +322,71 @@ class AnalysisEngineRequestTest {
       assertEquals(0, waitFrame.progressCalls);
       assertEquals(0, completions.get());
       assertFalse(Lizzie.frame.isBatchAnalysisMode);
+    }
+  }
+
+  @Test
+  void sharedBatchFailureWaitsForForegroundRestoreBeforeFailureCallback() throws Exception {
+    try (TestEnvironment env = TestEnvironment.open()) {
+      boardWithHistory(new BoardHistoryList(BoardData.empty(BOARD_SIZE, BOARD_SIZE)));
+      TrackingAnalysisEngine engine = TrackingAnalysisEngine.create();
+      DeferredRestoreLeelaz foreground = new DeferredRestoreLeelaz();
+      AtomicInteger failures = new AtomicInteger();
+      setField(AnalysisEngine.class, engine, "sharedForegroundEngine", foreground);
+      setField(AnalysisEngine.class, engine, "sharedForegroundLease", foregroundLease(foreground));
+      engine.setFailureCallback(failures::incrementAndGet);
+
+      invokeAnalysisEngineFinishFailedRequestDispatch(engine);
+      javax.swing.SwingUtilities.invokeAndWait(() -> {});
+
+      assertEquals(0, failures.get());
+
+      foreground.completeRestore();
+      javax.swing.SwingUtilities.invokeAndWait(() -> {});
+
+      assertEquals(1, failures.get());
+    }
+  }
+
+  @Test
+  void sharedBatchRestoreFailureDeliversFailureCallbackExactlyOnce() throws Exception {
+    try (TestEnvironment env = TestEnvironment.open()) {
+      boardWithHistory(new BoardHistoryList(BoardData.empty(BOARD_SIZE, BOARD_SIZE)));
+      TrackingAnalysisEngine engine = TrackingAnalysisEngine.create();
+      DeferredRestoreLeelaz foreground = new DeferredRestoreLeelaz();
+      AtomicInteger failures = new AtomicInteger();
+      setField(AnalysisEngine.class, engine, "sharedForegroundEngine", foreground);
+      setField(AnalysisEngine.class, engine, "sharedForegroundLease", foregroundLease(foreground));
+      engine.setFailureCallback(failures::incrementAndGet);
+
+      invokeAnalysisEngineFinishFailedRequestDispatch(engine);
+      javax.swing.SwingUtilities.invokeAndWait(() -> {});
+
+      assertEquals(0, failures.get());
+
+      foreground.failRestore();
+      javax.swing.SwingUtilities.invokeAndWait(() -> {});
+
+      assertEquals(1, failures.get());
+    }
+  }
+
+  @Test
+  void normalQuitPermanentlyRejectsAWholeGameRestart() throws Exception {
+    try (TestEnvironment env = TestEnvironment.open()) {
+      BoardHistoryList history = new BoardHistoryList(BoardData.empty(BOARD_SIZE, BOARD_SIZE));
+      boardWithHistory(history);
+      Leelaz foreground = reusableForegroundEngine(true);
+      Lizzie.leelaz = foreground;
+      Lizzie.config.analysisReuseCurrentEngine = true;
+      AnalysisEngine engine = new AnalysisEngine(false);
+
+      engine.normalQuit();
+      int requested =
+          engine.startWholeGameRequest(List.of(history.getStart()), 500, false);
+
+      assertEquals(-1, requested);
+      assertFalse(foreground.hasExclusiveGtpLease());
     }
   }
 
@@ -527,8 +590,7 @@ class AnalysisEngineRequestTest {
       BoardHistoryNode root = history.getStart();
       BoardHistoryNode firstMove = root.next().orElseThrow();
 
-      int requested =
-          engine.startWholeGameRequest(List.of(root, firstMove), 500, false);
+      int requested = engine.startWholeGameRequest(List.of(root, firstMove), 500, false);
 
       assertEquals(2, requested);
       JSONObject rootRequest = engine.requestAt(0);
@@ -553,18 +615,107 @@ class AnalysisEngineRequestTest {
       AtomicInteger progress = new AtomicInteger();
       engine.setProgressListener((completed, total) -> progress.set(completed));
 
-      assertEquals(
-          1,
-          engine.startWholeGameRequest(List.of(history.getStart()), 500, false));
-      rootData.setPlayouts(800);
+      assertEquals(1, engine.startWholeGameRequest(List.of(history.getStart()), 500, false));
+      installCompleteAnalysis(rootData, 800, false);
       rootData.winrate = 44.0;
       engine.parseResult(analysisResult(1, 500, 70.0));
 
       assertEquals(800, rootData.getPlayouts());
       assertEquals(44.0, rootData.winrate, 0.0001);
+      assertFalse(rootData.bestMoves.isEmpty());
       assertEquals(history.getStart(), history.getCurrentHistoryNode());
-      assertEquals(1, progress.get());
+      assertEquals(
+          0,
+          progress.get(),
+          "a response superseded by a complete higher-visit cache is consumed, not applied");
       waitForMovelistRefreshThreads();
+    }
+  }
+
+  @Test
+  void wholeGameResponseIsRejectedWhenKomiChangesDuringTheRequest() throws Exception {
+    try (TestEnvironment env = TestEnvironment.open()) {
+      BoardData rootData = BoardData.empty(BOARD_SIZE, BOARD_SIZE);
+      BoardHistoryList history = new BoardHistoryList(rootData);
+      boardWithHistory(history);
+      TrackingAnalysisEngine engine = TrackingAnalysisEngine.create();
+      AtomicInteger failures = new AtomicInteger();
+      engine.setFailureCallback(failures::incrementAndGet);
+
+      assertEquals(1, engine.startWholeGameRequest(List.of(history.getStart()), 500, false));
+      history.getGameInfo().setKomi(history.getGameInfo().getKomi() + 0.5);
+      engine.parseResult(analysisResult(1, 500, 70.0));
+      javax.swing.SwingUtilities.invokeAndWait(() -> {});
+
+      assertEquals(1, failures.get());
+      assertFalse(rootData.hasCompletePrimaryAnalysis(500, false));
+      assertFalse(engine.isAnalysisInProgress());
+    }
+  }
+
+  @Test
+  void wholeGameResponseIsRejectedWhenAnalysisRulesChangeDuringTheRequest() throws Exception {
+    try (TestEnvironment env = TestEnvironment.open()) {
+      Lizzie.config.analysisUseCurrentRules = false;
+      Lizzie.config.analysisSpecificRules = "";
+      BoardData rootData = BoardData.empty(BOARD_SIZE, BOARD_SIZE);
+      BoardHistoryList history = new BoardHistoryList(rootData);
+      boardWithHistory(history);
+      TrackingAnalysisEngine engine = TrackingAnalysisEngine.create();
+      AtomicInteger failures = new AtomicInteger();
+      engine.setFailureCallback(failures::incrementAndGet);
+
+      assertEquals(1, engine.startWholeGameRequest(List.of(history.getStart()), 500, false));
+      assertEquals("tromp-taylor", engine.singleRequest().getString("rules"));
+      Lizzie.config.analysisSpecificRules = "{\"scoringRule\":\"AREA\"}";
+      engine.parseResult(analysisResult(1, 500, 70.0));
+      javax.swing.SwingUtilities.invokeAndWait(() -> {});
+
+      assertEquals(1, failures.get());
+      assertFalse(rootData.hasCompletePrimaryAnalysis(500, false));
+      assertFalse(engine.isAnalysisInProgress());
+    }
+  }
+
+  @Test
+  void wholeGameResponseIsRejectedWhenARequestedPositionMutatesInPlace() throws Exception {
+    try (TestEnvironment env = TestEnvironment.open()) {
+      BoardData rootData = BoardData.empty(BOARD_SIZE, BOARD_SIZE);
+      BoardHistoryList history = new BoardHistoryList(rootData);
+      boardWithHistory(history);
+      TrackingAnalysisEngine engine = TrackingAnalysisEngine.create();
+      AtomicInteger failures = new AtomicInteger();
+      engine.setFailureCallback(failures::incrementAndGet);
+
+      assertEquals(1, engine.startWholeGameRequest(List.of(history.getStart()), 500, false));
+      rootData.blackToPlay = !rootData.blackToPlay;
+      engine.parseResult(analysisResult(1, 500, 70.0));
+      javax.swing.SwingUtilities.invokeAndWait(() -> {});
+
+      assertEquals(1, failures.get());
+      assertFalse(rootData.hasCompletePrimaryAnalysis(500, false));
+      assertFalse(engine.isAnalysisInProgress());
+    }
+  }
+
+  @Test
+  void wholeGameResponseIsRejectedAfterShutdownWasRequested() throws Exception {
+    try (TestEnvironment env = TestEnvironment.open()) {
+      BoardData rootData = BoardData.empty(BOARD_SIZE, BOARD_SIZE);
+      BoardHistoryList history = new BoardHistoryList(rootData);
+      boardWithHistory(history);
+      TrackingAnalysisEngine engine = TrackingAnalysisEngine.create();
+      AtomicInteger failures = new AtomicInteger();
+      engine.setFailureCallback(failures::incrementAndGet);
+
+      assertEquals(1, engine.startWholeGameRequest(List.of(history.getStart()), 500, false));
+      engine.requestShutdown();
+      engine.parseResult(analysisResult(1, 500, 70.0));
+      javax.swing.SwingUtilities.invokeAndWait(() -> {});
+
+      assertEquals(1, failures.get());
+      assertFalse(rootData.hasCompletePrimaryAnalysis(500, false));
+      assertFalse(engine.isAnalysisInProgress());
     }
   }
 
@@ -573,16 +724,266 @@ class AnalysisEngineRequestTest {
     try (TestEnvironment env = TestEnvironment.open()) {
       Lizzie.config.analysisAlwaysOverride = true;
       BoardData rootData = BoardData.empty(BOARD_SIZE, BOARD_SIZE);
+      installCompleteAnalysis(rootData, 500, false);
+      BoardHistoryList history = new BoardHistoryList(rootData);
+      boardWithHistory(history);
+      TrackingAnalysisEngine engine = TrackingAnalysisEngine.create();
+
+      int requested = engine.startWholeGameRequest(List.of(history.getStart()), 500, false);
+
+      assertEquals(0, requested);
+      assertEquals(0, engine.requestCount());
+    }
+  }
+
+  @Test
+  void wholeGameRequestDoesNotMistakeVisitOnlyHeaderForDisplayableAnalysis() throws Exception {
+    try (TestEnvironment env = TestEnvironment.open()) {
+      BoardData rootData = BoardData.empty(BOARD_SIZE, BOARD_SIZE);
       rootData.setPlayouts(500);
       BoardHistoryList history = new BoardHistoryList(rootData);
       boardWithHistory(history);
       TrackingAnalysisEngine engine = TrackingAnalysisEngine.create();
 
-      int requested =
-          engine.startWholeGameRequest(List.of(history.getStart()), 500, false);
+      int requested = engine.startWholeGameRequest(List.of(history.getStart()), 500, false);
 
-      assertEquals(0, requested);
-      assertEquals(0, engine.requestCount());
+      assertEquals(1, requested);
+      assertEquals(1, engine.requestCount());
+    }
+  }
+
+  @Test
+  void localJsonRequestIsRegisteredBeforeAnImmediateResponseArrives() throws Exception {
+    try (TestEnvironment env = TestEnvironment.open()) {
+      BoardData rootData = BoardData.empty(BOARD_SIZE, BOARD_SIZE);
+      BoardHistoryList history = new BoardHistoryList(rootData);
+      boardWithHistory(history);
+      TrackingAnalysisEngine engine = TrackingAnalysisEngine.create();
+      AtomicInteger completions = new AtomicInteger();
+      engine.synchronousResponse = analysisResult(1, 500, 70.0);
+      engine.setCompletionCallback(completions::incrementAndGet);
+
+      int requested = engine.startWholeGameRequest(List.of(history.getStart()), 500, false);
+      javax.swing.SwingUtilities.invokeAndWait(() -> {});
+
+      assertEquals(1, requested);
+      assertTrue(rootData.hasCompletePrimaryAnalysis(500, false));
+      assertEquals(1, completions.get());
+      waitForMovelistRefreshThreads();
+    }
+  }
+
+  @Test
+  void localWholeGameUsesRootVisitsWithoutRequiringTopChildToReachTarget() throws Exception {
+    try (TestEnvironment env = TestEnvironment.open()) {
+      BoardData rootData = BoardData.empty(BOARD_SIZE, BOARD_SIZE);
+      BoardHistoryList history = new BoardHistoryList(rootData);
+      boardWithHistory(history);
+      TrackingAnalysisEngine engine = TrackingAnalysisEngine.create();
+      engine.synchronousResponse = analysisResultWithRootVisits(1, 300, 500, 70.0);
+
+      int requested = engine.startWholeGameRequest(List.of(history.getStart()), 500, false);
+
+      assertEquals(1, requested);
+      assertEquals(500, rootData.getPlayouts());
+      assertEquals(300, rootData.bestMoves.get(0).playouts);
+      assertTrue(rootData.hasCompletePrimaryAnalysis(500, false));
+      waitForMovelistRefreshThreads();
+    }
+  }
+
+  @Test
+  void emptyJsonPayloadCompletesTheBatchWithoutReportingFalseSuccess() throws Exception {
+    try (TestEnvironment env = TestEnvironment.open()) {
+      BoardData rootData = BoardData.empty(BOARD_SIZE, BOARD_SIZE);
+      BoardHistoryList history = new BoardHistoryList(rootData);
+      boardWithHistory(history);
+      TrackingAnalysisEngine engine = TrackingAnalysisEngine.create();
+      AtomicInteger progress = new AtomicInteger(-1);
+      AtomicInteger completions = new AtomicInteger();
+      engine.synchronousResponse = emptyAnalysisResult(1);
+      engine.setProgressListener((completed, total) -> progress.set(completed));
+      engine.setCompletionCallback(completions::incrementAndGet);
+
+      int requested = engine.startWholeGameRequest(List.of(history.getStart()), 500, false);
+      javax.swing.SwingUtilities.invokeAndWait(() -> {});
+
+      assertEquals(1, requested);
+      assertEquals(0, progress.get());
+      assertEquals(1, completions.get());
+      assertFalse(rootData.hasCompletePrimaryAnalysis(500, false));
+      assertFalse(engine.isAnalysisInProgress());
+      waitForMovelistRefreshThreads();
+    }
+  }
+
+  @Test
+  void malformedImmediateResponseCannotStrandLaterWholeGameRequests() throws Exception {
+    try (TestEnvironment env = TestEnvironment.open()) {
+      BoardHistoryList history = new BoardHistoryList(BoardData.empty(BOARD_SIZE, BOARD_SIZE));
+      history.add(
+          moveNode(stones(placement(0, 0, Stone.BLACK)), new int[] {0, 0}, Stone.BLACK, false, 1));
+      boardWithHistory(history);
+      BoardHistoryNode root = history.getStart();
+      BoardHistoryNode move = history.getCurrentHistoryNode();
+      TrackingAnalysisEngine engine = TrackingAnalysisEngine.create();
+      AtomicInteger failures = new AtomicInteger();
+      engine.synchronousEngineLine = "{not-json";
+      engine.setFailureCallback(failures::incrementAndGet);
+
+      int requested = engine.startWholeGameRequest(List.of(root, move), 500, false);
+      javax.swing.SwingUtilities.invokeAndWait(() -> {});
+
+      assertEquals(-1, requested);
+      assertEquals(1, engine.requestCount());
+      assertEquals(0, engine.pendingRequestCount());
+      assertEquals(1, failures.get());
+      assertFalse(engine.isAnalysisInProgress());
+    }
+  }
+
+  @Test
+  void requestedLocalOwnershipMustBePresentBeforeResultCountsAsComplete() throws Exception {
+    try (TestEnvironment env = TestEnvironment.open()) {
+      BoardData rootData = BoardData.empty(BOARD_SIZE, BOARD_SIZE);
+      BoardHistoryList history = new BoardHistoryList(rootData);
+      boardWithHistory(history);
+      TrackingAnalysisEngine engine = TrackingAnalysisEngine.create();
+      engine.synchronousResponse = analysisResultWithOwnership(1, 500, 70.0);
+
+      int requested = engine.startWholeGameRequest(List.of(history.getStart()), 500, true);
+
+      assertEquals(1, requested);
+      assertTrue(engine.singleRequest().getBoolean("includeOwnership"));
+      assertTrue(rootData.hasCompletePrimaryAnalysis(500, true));
+      waitForMovelistRefreshThreads();
+    }
+  }
+
+  @Test
+  void missingRequestedOwnershipIsConsumedButNotReportedAsSuccess() throws Exception {
+    try (TestEnvironment env = TestEnvironment.open()) {
+      BoardData rootData = BoardData.empty(BOARD_SIZE, BOARD_SIZE);
+      BoardHistoryList history = new BoardHistoryList(rootData);
+      boardWithHistory(history);
+      TrackingAnalysisEngine engine = TrackingAnalysisEngine.create();
+      AtomicInteger progress = new AtomicInteger(-1);
+      engine.synchronousResponse = analysisResult(1, 500, 70.0);
+      engine.setProgressListener((completed, total) -> progress.set(completed));
+
+      int requested = engine.startWholeGameRequest(List.of(history.getStart()), 500, true);
+
+      assertEquals(1, requested);
+      assertEquals(0, progress.get());
+      assertFalse(rootData.hasCompletePrimaryAnalysis(500, true));
+      assertFalse(engine.isAnalysisInProgress());
+      waitForMovelistRefreshThreads();
+    }
+  }
+
+  @Test
+  void ownershipBackfillDoesNotDowngradeHigherVisitPrimaryAnalysis() throws Exception {
+    try (TestEnvironment env = TestEnvironment.open()) {
+      BoardData rootData = BoardData.empty(BOARD_SIZE, BOARD_SIZE);
+      installCompleteAnalysis(rootData, 10_000, false);
+      rootData.bestMoves.get(0).coordinate = "A1";
+      rootData.winrate = 44.0;
+      BoardHistoryList history = new BoardHistoryList(rootData);
+      boardWithHistory(history);
+      TrackingAnalysisEngine engine = TrackingAnalysisEngine.create();
+      engine.synchronousResponse = analysisResultWithOwnership(1, 500, 70.0);
+
+      int requested = engine.startWholeGameRequest(List.of(history.getStart()), 500, true);
+
+      assertEquals(1, requested);
+      assertEquals(10_000, rootData.getPlayouts());
+      assertEquals("A1", rootData.bestMoves.get(0).coordinate);
+      assertEquals(44.0, rootData.winrate, 0.0001);
+      assertTrue(rootData.hasCompletePrimaryAnalysis(500, true));
+      waitForMovelistRefreshThreads();
+    }
+  }
+
+  @Test
+  void remoteWholeGameUsesRootVisitsWithoutRequiringTopChildToReachTarget() throws Exception {
+    try (TestEnvironment env = TestEnvironment.open()) {
+      BoardData rootData = BoardData.empty(BOARD_SIZE, BOARD_SIZE);
+      BoardHistoryList history = new BoardHistoryList(rootData);
+      boardWithHistory(history);
+      TrackingAnalysisEngine engine = TrackingAnalysisEngine.create();
+      setField(AnalysisEngine.class, engine, "useRemoteCompute", true);
+      engine.setKeepAliveAfterCurrentRequest(true);
+
+      assertEquals(1, engine.startWholeGameRequest(List.of(history.getStart()), 500, false));
+
+      completeRemoteGtpSearch(engine, 120, 500, 62.0, 1.5);
+
+      assertEquals(500, rootData.getPlayouts());
+      assertEquals(120, rootData.bestMoves.get(0).playouts);
+      assertTrue(rootData.hasCompletePrimaryAnalysis(500, false));
+      assertFalse(engine.isAnalysisInProgress());
+      waitForMovelistRefreshThreads();
+    }
+  }
+
+  @Test
+  void remoteWholeGameResponseIsRejectedAfterShutdownDuringStopHandshake() throws Exception {
+    try (TestEnvironment env = TestEnvironment.open()) {
+      BoardData rootData = BoardData.empty(BOARD_SIZE, BOARD_SIZE);
+      BoardHistoryList history = new BoardHistoryList(rootData);
+      boardWithHistory(history);
+      TrackingAnalysisEngine engine = TrackingAnalysisEngine.create();
+      setField(AnalysisEngine.class, engine, "useRemoteCompute", true);
+      engine.setKeepAliveAfterCurrentRequest(true);
+      AtomicInteger failures = new AtomicInteger();
+      engine.setFailureCallback(failures::incrementAndGet);
+
+      assertEquals(1, engine.startWholeGameRequest(List.of(history.getStart()), 500, false));
+      int analyzeCommandId =
+          numberedCommandIdStartingWith(lastCommand(engine.sentCommands), "kata-analyze ");
+      invokeAnalysisEngineParseLine(engine, "=" + analyzeCommandId);
+      String resultLine = remoteGtpInfoLine(120, 500, 62.0, 1.5);
+      invokeAnalysisEngineParseLine(engine, resultLine);
+      int stopCommandId = assertNumberedStopCommand(lastCommand(engine.sentCommands));
+
+      engine.requestShutdown();
+      invokeAnalysisEngineParseLine(engine, resultLine);
+      invokeAnalysisEngineParseLine(engine, "");
+      invokeAnalysisEngineParseLine(engine, "=" + stopCommandId);
+      javax.swing.SwingUtilities.invokeAndWait(() -> {});
+
+      assertEquals(1, failures.get());
+      assertFalse(rootData.hasCompletePrimaryAnalysis(500, false));
+      assertFalse(engine.isAnalysisInProgress());
+    }
+  }
+
+  @Test
+  void remoteWholeGameNormalizesMissingPvToTheCandidateMove() throws Exception {
+    try (TestEnvironment env = TestEnvironment.open()) {
+      BoardData rootData = BoardData.empty(BOARD_SIZE, BOARD_SIZE);
+      BoardHistoryList history = new BoardHistoryList(rootData);
+      boardWithHistory(history);
+      TrackingAnalysisEngine engine = TrackingAnalysisEngine.create();
+      setField(AnalysisEngine.class, engine, "useRemoteCompute", true);
+      engine.setKeepAliveAfterCurrentRequest(true);
+
+      assertEquals(1, engine.startWholeGameRequest(List.of(history.getStart()), 16, false));
+
+      int analyzeCommandId =
+          numberedCommandIdStartingWith(lastCommand(engine.sentCommands), "kata-analyze ");
+      invokeAnalysisEngineParseLine(engine, "=" + analyzeCommandId);
+      String resultLine = remoteGtpInfoLineWithoutPv(16, 62.0, 1.5);
+      invokeAnalysisEngineParseLine(engine, resultLine);
+      int stopCommandId = assertNumberedStopCommand(lastCommand(engine.sentCommands));
+      invokeAnalysisEngineParseLine(engine, resultLine);
+      invokeAnalysisEngineParseLine(engine, "");
+      invokeAnalysisEngineParseLine(engine, "=" + stopCommandId);
+
+      assertEquals(List.of("B2"), rootData.bestMoves.get(0).variation);
+      assertTrue(rootData.hasCompletePrimaryAnalysis(16, false));
+      assertFalse(engine.isAnalysisInProgress());
+      waitForMovelistRefreshThreads();
     }
   }
 
@@ -1928,6 +2329,46 @@ class AnalysisEngineRequestTest {
     return result.toString();
   }
 
+  private static String analysisResultWithOwnership(int id, int visits, double winrate) {
+    JSONObject result = new JSONObject(analysisResult(id, visits, winrate));
+    JSONArray ownership = new JSONArray();
+    for (int index = 0; index < BOARD_AREA; index++) {
+      ownership.put(index % 2 == 0 ? 0.25 : -0.25);
+    }
+    result.put("ownership", ownership);
+    return result.toString();
+  }
+
+  private static String analysisResultWithRootVisits(
+      int id, int moveVisits, int rootVisits, double winrate) {
+    JSONObject result = new JSONObject(analysisResult(id, moveVisits, winrate));
+    result.put("rootInfo", new JSONObject().put("visits", rootVisits));
+    return result.toString();
+  }
+
+  private static String emptyAnalysisResult(int id) {
+    return new JSONObject()
+        .put("id", String.valueOf(id))
+        .put("moveInfos", new JSONArray())
+        .toString();
+  }
+
+  private static void installCompleteAnalysis(
+      BoardData data, int visits, boolean includeOwnership) {
+    MoveData move = new MoveData();
+    move.coordinate = "B2";
+    move.playouts = visits;
+    move.winrate = 50.0;
+    move.scoreMean = 1.5;
+    move.scoreStdev = 0.2;
+    move.isKataData = true;
+    move.order = 0;
+    move.variation = List.of("B2");
+    data.setPlayouts(visits);
+    data.bestMoves = new ArrayList<>(List.of(move));
+    data.estimateArray = includeOwnership ? List.of(0.25) : null;
+  }
+
   private static BoardHistoryNode singleUnanalyzedMoveNode() throws Exception {
     BoardHistoryList history = new BoardHistoryList(BoardData.empty(BOARD_SIZE, BOARD_SIZE));
     history.add(
@@ -2021,6 +2462,27 @@ class AnalysisEngineRequestTest {
   }
 
   private static String remoteGtpInfoLine(int visits, double winrate, double scoreLead) {
+    return remoteGtpInfoLine(visits, visits, winrate, scoreLead);
+  }
+
+  private static String remoteGtpInfoLine(
+      int moveVisits, int rootVisits, double winrate, double scoreLead) {
+    double normalizedWinrate = winrate / 100.0;
+    return "info move B2 visits "
+        + moveVisits
+        + " winrate "
+        + normalizedWinrate
+        + " scoreLead "
+        + scoreLead
+        + " order 0 pv B2 rootInfo visits "
+        + rootVisits
+        + " winrate "
+        + normalizedWinrate
+        + " scoreLead "
+        + scoreLead;
+  }
+
+  private static String remoteGtpInfoLineWithoutPv(int visits, double winrate, double scoreLead) {
     double normalizedWinrate = winrate / 100.0;
     return "info move B2 visits "
         + visits
@@ -2028,7 +2490,7 @@ class AnalysisEngineRequestTest {
         + normalizedWinrate
         + " scoreLead "
         + scoreLead
-        + " order 0 pv B2 rootInfo visits "
+        + " order 0 rootInfo visits "
         + visits
         + " winrate "
         + normalizedWinrate
@@ -2039,12 +2501,24 @@ class AnalysisEngineRequestTest {
   private static void completeRemoteGtpSearch(
       TrackingAnalysisEngine engine, int visits, double winrate, double scoreLead)
       throws Exception {
+    completeRemoteGtpSearch(engine, visits, visits, winrate, scoreLead);
+  }
+
+  private static void completeRemoteGtpSearch(
+      TrackingAnalysisEngine engine,
+      int moveVisits,
+      int rootVisits,
+      double winrate,
+      double scoreLead)
+      throws Exception {
     int analyzeCommandId =
         numberedCommandIdStartingWith(lastCommand(engine.sentCommands), "kata-analyze ");
     invokeAnalysisEngineParseLine(engine, "=" + analyzeCommandId);
-    invokeAnalysisEngineParseLine(engine, remoteGtpInfoLine(visits, winrate, scoreLead));
+    invokeAnalysisEngineParseLine(
+        engine, remoteGtpInfoLine(moveVisits, rootVisits, winrate, scoreLead));
     int stopCommandId = assertNumberedStopCommand(lastCommand(engine.sentCommands));
-    invokeAnalysisEngineParseLine(engine, remoteGtpInfoLine(visits, winrate, scoreLead));
+    invokeAnalysisEngineParseLine(
+        engine, remoteGtpInfoLine(moveVisits, rootVisits, winrate, scoreLead));
     invokeAnalysisEngineParseLine(engine, "");
     invokeAnalysisEngineParseLine(engine, "=" + stopCommandId);
   }
@@ -2084,6 +2558,14 @@ class AnalysisEngineRequestTest {
     Method method = AnalysisEngine.class.getDeclaredMethod("setResult");
     method.setAccessible(true);
     method.invoke(engine);
+  }
+
+  private static void invokeAnalysisEngineFinishFailedRequestDispatch(AnalysisEngine engine)
+      throws Exception {
+    Method method =
+        AnalysisEngine.class.getDeclaredMethod("finishFailedRequestDispatch", boolean.class);
+    method.setAccessible(true);
+    method.invoke(engine, false);
   }
 
   private static int countCommand(List<String> commands, String expected) {
@@ -2319,6 +2801,8 @@ class AnalysisEngineRequestTest {
   private static final class TrackingAnalysisEngine extends AnalysisEngine {
     private List<String> sentCommands;
     private boolean failSends;
+    private String synchronousResponse;
+    private String synchronousEngineLine;
     private int normalQuitCount;
 
     private TrackingAnalysisEngine() throws IOException {
@@ -2345,6 +2829,20 @@ class AnalysisEngineRequestTest {
         return false;
       }
       sentCommands.add(command);
+      String response = synchronousResponse;
+      synchronousResponse = null;
+      if (response != null) {
+        parseResult(response);
+      }
+      String engineLine = synchronousEngineLine;
+      synchronousEngineLine = null;
+      if (engineLine != null) {
+        try {
+          invokeAnalysisEngineParseLine(this, engineLine);
+        } catch (Exception ex) {
+          throw new RuntimeException(ex);
+        }
+      }
       return true;
     }
 
@@ -2371,6 +2869,7 @@ class AnalysisEngineRequestTest {
       Field field = AnalysisEngine.class.getDeclaredField("analyzeMap");
       field.setAccessible(true);
       ((java.util.Map<Integer, BoardHistoryNode>) field.get(this)).put(id, node);
+      setField(AnalysisEngine.class, this, "requestDispatchComplete", true);
     }
 
     private int pendingRequestCount() throws Exception {

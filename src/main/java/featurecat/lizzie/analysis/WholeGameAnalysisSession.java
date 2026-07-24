@@ -2,6 +2,7 @@ package featurecat.lizzie.analysis;
 
 import featurecat.lizzie.Lizzie;
 import featurecat.lizzie.gui.LizzieFrame;
+import featurecat.lizzie.rules.Board;
 import featurecat.lizzie.rules.BoardHistoryNode;
 import java.io.IOException;
 import java.util.List;
@@ -57,10 +58,15 @@ public final class WholeGameAnalysisSession {
 
   private static final int BASELINE_PERCENT_WEIGHT = 20;
   private static final int DEEP_PERCENT_WEIGHT = 80;
+  static final int MAX_STAGE_ATTEMPTS = 3;
 
   private final LizzieFrame frame;
   private final WholeGameAnalysisPlan plan;
   private final Listener listener;
+  private final int boardWidth;
+  private final int boardHeight;
+  private final double gameKomi;
+  private final String analysisRulesSignature;
   private volatile State state = State.IDLE;
   private volatile boolean terminal;
   private AnalysisEngine engine;
@@ -71,6 +77,11 @@ public final class WholeGameAnalysisSession {
   private int stageInitialCompleted;
   private int stageCompletedByEngine;
   private int lastTargetVisits;
+  private int baselineAttemptCount;
+  private int deepAttemptCount;
+  private boolean deepOwnershipRequested;
+  private int nextDispatchGeneration;
+  private volatile int activeDispatchGeneration;
   private long stageStartedAtMillis;
   private Timer gameGuardTimer;
 
@@ -79,6 +90,15 @@ public final class WholeGameAnalysisSession {
     this.frame = frame;
     this.plan = plan;
     this.listener = listener;
+    boardWidth = Board.boardWidth;
+    boardHeight = Board.boardHeight;
+    gameKomi =
+        Lizzie.board == null
+                || Lizzie.board.getHistory() == null
+                || Lizzie.board.getHistory().getGameInfo() == null
+            ? Double.NaN
+            : Lizzie.board.getHistory().getGameInfo().getKomi();
+    analysisRulesSignature = AnalysisEngine.currentAnalysisRulesSignature();
     baselineCompleted = plan.completedAtLeast(plan.baselineVisits());
     deepCompleted = plan.completedAtLeast(plan.deepVisits());
   }
@@ -95,9 +115,17 @@ public final class WholeGameAnalysisSession {
         new Thread(
             () -> {
               try {
+                if (!awaitForegroundLeaseHandoff()) {
+                  return;
+                }
                 AnalysisEngine created =
                     new AnalysisEngine(true, AnalysisEngine.Workload.WHOLE_GAME, plan.deepVisits());
                 SwingUtilities.invokeLater(() -> acceptEngine(created));
+              } catch (InterruptedException ex) {
+                Thread.currentThread().interrupt();
+                if (!isTerminal()) {
+                  fail("WholeGameAnalysis.error.engine");
+                }
               } catch (IOException | RuntimeException ex) {
                 ex.printStackTrace();
                 fail("WholeGameAnalysis.error.engine");
@@ -106,6 +134,17 @@ public final class WholeGameAnalysisSession {
             "whole-game-analysis-engine-starter");
     starter.setDaemon(true);
     starter.start();
+  }
+
+  private boolean awaitForegroundLeaseHandoff() throws InterruptedException {
+    while (!isTerminal()
+        && Lizzie.config != null
+        && Lizzie.config.analysisReuseCurrentEngine
+        && Lizzie.leelaz != null
+        && Lizzie.leelaz.hasExclusiveGtpWorkInProgress()) {
+      Thread.sleep(50L);
+    }
+    return !isTerminal();
   }
 
   public synchronized State state() {
@@ -151,52 +190,69 @@ public final class WholeGameAnalysisSession {
   }
 
   private void beginBaselineStage() {
+    state = State.BASELINE;
+    baselineAttemptCount = 0;
+    continueBaselineStage();
+  }
+
+  private void continueBaselineStage() {
+    if (isTerminal()) {
+      return;
+    }
     if (!currentGameMatches()) {
       fail("WholeGameAnalysis.error.gameChanged");
       return;
     }
-    List<BoardHistoryNode> pending = plan.positionsBelow(plan.baselineVisits());
+    lastTargetVisits = plan.baselineVisits();
+    List<BoardHistoryNode> pending = plan.positionsMissingAnalysis(plan.baselineVisits(), false);
     baselineCompleted = plan.positionCount() - pending.size();
     if (pending.isEmpty()) {
       baselineCompleted = plan.positionCount();
       beginDeepStage();
       return;
     }
-    state = State.BASELINE;
-    dispatchStage(pending, plan.baselineVisits(), false, this::finishBaselineStage);
-  }
-
-  private void finishBaselineStage() {
-    if (isTerminal()) {
+    if (baselineAttemptCount >= MAX_STAGE_ATTEMPTS) {
+      fail("WholeGameAnalysis.error.request");
       return;
     }
-    baselineCompleted = plan.positionCount();
-    beginDeepStage();
+    baselineAttemptCount++;
+    dispatchStage(pending, plan.baselineVisits(), false, this::continueBaselineStage);
   }
 
   private void beginDeepStage() {
+    state = State.DEEP;
+    deepAttemptCount = 0;
+    deepOwnershipRequested =
+        Lizzie.config != null
+            && Lizzie.config.showKataGoEstimate
+            && engine != null
+            && engine.supportsWholeGameOwnershipRequests();
+    continueDeepStage();
+  }
+
+  private void continueDeepStage() {
+    if (isTerminal()) {
+      return;
+    }
     if (!currentGameMatches()) {
       fail("WholeGameAnalysis.error.gameChanged");
       return;
     }
-    List<BoardHistoryNode> pending = plan.positionsBelow(plan.deepVisits());
+    lastTargetVisits = plan.deepVisits();
+    List<BoardHistoryNode> pending =
+        plan.positionsMissingAnalysis(plan.deepVisits(), deepOwnershipRequested);
     deepCompleted = plan.positionCount() - pending.size();
     if (pending.isEmpty()) {
       deepCompleted = plan.positionCount();
       finish(State.COMPLETE, "WholeGameAnalysis.complete");
       return;
     }
-    state = State.DEEP;
-    boolean includeOwnership = Lizzie.config != null && Lizzie.config.showKataGoEstimate;
-    dispatchStage(pending, plan.deepVisits(), includeOwnership, this::finishDeepStage);
-  }
-
-  private void finishDeepStage() {
-    if (isTerminal()) {
+    if (deepAttemptCount >= MAX_STAGE_ATTEMPTS) {
+      fail("WholeGameAnalysis.error.request");
       return;
     }
-    deepCompleted = plan.positionCount();
-    finish(State.COMPLETE, "WholeGameAnalysis.complete");
+    deepAttemptCount++;
+    dispatchStage(pending, plan.deepVisits(), deepOwnershipRequested, this::continueDeepStage);
   }
 
   private void dispatchStage(
@@ -214,22 +270,33 @@ public final class WholeGameAnalysisSession {
     lastTargetVisits = targetVisits;
     stageStartedAtMillis = System.currentTimeMillis();
     publish(stageDetailKey(), stageInitialCompleted, targetVisits, -1L);
+    int dispatchGeneration = ++nextDispatchGeneration;
+    activeDispatchGeneration = dispatchGeneration;
     // The session owns engine shutdown so completion callbacks cannot race process teardown.
     activeEngine.setKeepAliveAfterCurrentRequest(true);
-    activeEngine.setProgressListener(this::onEngineProgress);
-    activeEngine.setFailureCallback(this::onEngineFailure);
-    activeEngine.setCompletionCallback(successfulCompletion);
+    activeEngine.setProgressListener(
+        (completed, total) -> onEngineProgress(dispatchGeneration, completed, total));
+    activeEngine.setFailureCallback(() -> onEngineFailure(dispatchGeneration));
+    activeEngine.setCompletionCallback(
+        () -> onEngineCompletion(dispatchGeneration, successfulCompletion));
 
     Thread dispatcher =
         new Thread(
             () -> {
+              if (isTerminal() || dispatchGeneration != activeDispatchGeneration) {
+                return;
+              }
               int count =
                   activeEngine.startWholeGameRequest(pending, targetVisits, includeOwnership);
+              if (isTerminal() || dispatchGeneration != activeDispatchGeneration) {
+                return;
+              }
               if (count < 0) {
-                SwingUtilities.invokeLater(this::onEngineFailure);
+                SwingUtilities.invokeLater(() -> onEngineFailure(dispatchGeneration));
               } else if (count == 0) {
                 activeEngine.clearRequestCallbacks();
-                SwingUtilities.invokeLater(successfulCompletion);
+                SwingUtilities.invokeLater(
+                    () -> onEngineCompletion(dispatchGeneration, successfulCompletion));
               }
             },
             "whole-game-analysis-request-dispatcher");
@@ -237,8 +304,8 @@ public final class WholeGameAnalysisSession {
     dispatcher.start();
   }
 
-  private void onEngineProgress(int completed, int total) {
-    if (isTerminal()) {
+  private void onEngineProgress(int dispatchGeneration, int completed, int total) {
+    if (isTerminal() || dispatchGeneration != activeDispatchGeneration) {
       return;
     }
     stageCompletedByEngine = Math.max(stageCompletedByEngine, completed);
@@ -258,11 +325,30 @@ public final class WholeGameAnalysisSession {
     publish(stageDetailKey(), completedPositions, currentTargetVisits(), remaining);
   }
 
-  private void onEngineFailure() {
-    fail(
-        currentGameMatches()
-            ? "WholeGameAnalysis.error.request"
-            : "WholeGameAnalysis.error.gameChanged");
+  private void onEngineCompletion(int dispatchGeneration, Runnable continuation) {
+    if (!acceptDispatchCallback(dispatchGeneration)) {
+      return;
+    }
+    continuation.run();
+  }
+
+  private void onEngineFailure(int dispatchGeneration) {
+    if (!acceptDispatchCallback(dispatchGeneration)) {
+      return;
+    }
+    if (!currentGameMatches()) {
+      fail("WholeGameAnalysis.error.gameChanged");
+    } else {
+      fail("WholeGameAnalysis.error.request");
+    }
+  }
+
+  private synchronized boolean acceptDispatchCallback(int dispatchGeneration) {
+    if (terminal || dispatchGeneration <= 0 || dispatchGeneration != activeDispatchGeneration) {
+      return false;
+    }
+    activeDispatchGeneration = 0;
+    return true;
   }
 
   private void fail(String detailKey) {
@@ -278,6 +364,7 @@ public final class WholeGameAnalysisSession {
         return;
       }
       terminal = true;
+      activeDispatchGeneration = 0;
       previousState = state;
       state = terminalState;
       engineToClose = engine;
@@ -285,6 +372,7 @@ public final class WholeGameAnalysisSession {
     }
     stopGameGuard();
     if (engineToClose != null) {
+      engineToClose.requestShutdown();
       engineToClose.clearRequestCallbacks();
       closeEngine(engineToClose);
     }
@@ -353,7 +441,15 @@ public final class WholeGameAnalysisSession {
   private boolean currentGameMatches() {
     return Lizzie.board != null
         && Lizzie.board.getHistory() != null
-        && plan.stillMatches(Lizzie.board.getHistory().getStart());
+        && plan.stillMatches(Lizzie.board.getHistory().getStart())
+        && Board.boardWidth == boardWidth
+        && Board.boardHeight == boardHeight
+        && (Double.isNaN(gameKomi)
+            || (Lizzie.board.getHistory().getGameInfo() != null
+                && Double.compare(
+                        Lizzie.board.getHistory().getGameInfo().getKomi(), gameKomi)
+                    == 0))
+        && analysisRulesSignature.equals(AnalysisEngine.currentAnalysisRulesSignature());
   }
 
   private synchronized boolean isTerminal() {

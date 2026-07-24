@@ -97,7 +97,7 @@ public final class WholeGameAnalysisDialog extends JDialog
     progressBar.setString(snapshot.overallPercent + "%");
     progressLabel.setText(
         snapshot.state == WholeGameAnalysisSession.State.COMPLETE
-            ? resources.getString("WholeGameAnalysis.saveHint")
+            ? resources.getString("WholeGameAnalysis.resultsShown")
             : MessageFormat.format(
                 resources.getString("WholeGameAnalysis.progress"),
                 snapshot.completedPositions,
