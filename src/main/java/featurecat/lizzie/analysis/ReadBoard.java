@@ -165,7 +165,7 @@ public class ReadBoard {
   private int readBoardGmaMaxVisits = 0;
   private volatile boolean readBoardGmaPending = false;
   private boolean readBoardGmaPendingLogicallyInvalid = false;
-  private boolean readBoardGmaAwaitingSyncedBoard = false;
+  private volatile boolean readBoardGmaAwaitingSyncedBoard = false;
   private volatile boolean readBoardGmaEngineRestorePending = false;
   private volatile boolean readBoardGmaEngineRestoreInProgress = false;
   private volatile BoardHistoryNode readBoardGmaDeferredRestoreNode = null;
@@ -3909,7 +3909,11 @@ public class ReadBoard {
     if (hasNewerRestoreNode) {
       return flushReadBoardGmaEngineRestoreIfReady(reason + "-latest");
     }
-    if (!readBoardGmaAutoPlayActive && Lizzie.leelaz != null) {
+    if (readBoardGmaAutoPlayActive) {
+      if (!readBoardGmaAwaitingSyncedBoard) {
+        scheduleReadBoardGmaIfNeeded(reason + "-restore-complete");
+      }
+    } else if (Lizzie.leelaz != null) {
       Lizzie.leelaz.restoreReadBoardGmaRuntimeSettingsIfNeeded();
     }
     return true;

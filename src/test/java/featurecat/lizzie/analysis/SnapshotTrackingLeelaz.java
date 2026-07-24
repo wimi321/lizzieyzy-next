@@ -10,6 +10,8 @@ import java.nio.file.Path;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -23,7 +25,7 @@ class SnapshotTrackingLeelaz extends Leelaz {
   int togglePonderCount;
   int nameCmdCount;
   int genmoveCount;
-  int readBoardGmaCount;
+  volatile int readBoardGmaCount;
   boolean rejectReadBoardGma;
   String lastGenmoveColor;
   String lastReadBoardGmaColor;
@@ -35,6 +37,8 @@ class SnapshotTrackingLeelaz extends Leelaz {
   private Stone[] stones;
   private boolean blackToPlay = true;
   private Path lastLoadedSgf;
+  private volatile CountDownLatch blockedLoadSgfStarted;
+  private volatile CountDownLatch blockedLoadSgfRelease;
 
   private SnapshotTrackingLeelaz() throws IOException {
     super("");
@@ -206,7 +210,25 @@ class SnapshotTrackingLeelaz extends Leelaz {
   @Override
   public void loadSgf(Path sgfFile) {
     recordedCommands().add("loadsgf " + sgfFile.toAbsolutePath());
+    waitForBlockedLoadSgfRelease();
     restoreSnapshotSgf(sgfFile);
+  }
+
+  void blockNextLoadSgf() {
+    blockedLoadSgfStarted = new CountDownLatch(1);
+    blockedLoadSgfRelease = new CountDownLatch(1);
+  }
+
+  boolean awaitBlockedLoadSgf() throws InterruptedException {
+    CountDownLatch started = blockedLoadSgfStarted;
+    return started != null && started.await(2, TimeUnit.SECONDS);
+  }
+
+  void releaseBlockedLoadSgf() {
+    CountDownLatch release = blockedLoadSgfRelease;
+    if (release != null) {
+      release.countDown();
+    }
   }
 
   Stone[] copyStones() {
@@ -219,6 +241,28 @@ class SnapshotTrackingLeelaz extends Leelaz {
 
   Path lastLoadedSgf() {
     return lastLoadedSgf;
+  }
+
+  private void waitForBlockedLoadSgfRelease() {
+    CountDownLatch started = blockedLoadSgfStarted;
+    CountDownLatch release = blockedLoadSgfRelease;
+    if (started == null || release == null) {
+      return;
+    }
+    started.countDown();
+    try {
+      if (!release.await(5, TimeUnit.SECONDS)) {
+        throw new IllegalStateException("Timed out waiting to release blocked loadsgf fixture");
+      }
+    } catch (InterruptedException ex) {
+      Thread.currentThread().interrupt();
+      throw new IllegalStateException("Interrupted while blocking loadsgf fixture", ex);
+    } finally {
+      if (blockedLoadSgfStarted == started) {
+        blockedLoadSgfStarted = null;
+        blockedLoadSgfRelease = null;
+      }
+    }
   }
 
   private List<String> recordedCommands() {
