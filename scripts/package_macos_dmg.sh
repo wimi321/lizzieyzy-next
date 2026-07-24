@@ -24,6 +24,7 @@ fi
 PYTHON_BIN=""
 RUNTIME_TOOLS_SCRIPT="$ROOT_DIR/scripts/package_runtime_tools.py"
 JCEF_BUNDLE_PREPARE_SCRIPT="$ROOT_DIR/scripts/prepare_bundled_jcef.py"
+KATAGO_BUNDLE_SCRIPT="$ROOT_DIR/scripts/macos_katago_bundle.py"
 JCEF_RELEASE_TAG="jcef-99c2f7a+cef-127.3.1+g6cbb30e+chromium-127.0.6533.100"
 JCEF_JAVA_OPTIONS=(
   "--add-exports=java.desktop/sun.awt=ALL-UNNAMED"
@@ -209,6 +210,12 @@ for option in "${JCEF_JAVA_OPTIONS[@]}"; do
     exit 1
   fi
 done
+
+if [[ "$PACKAGE_FLAVOR" == "with-katago" ]]; then
+  resolve_python_bin
+  "$PYTHON_BIN" "$KATAGO_BUNDLE_SCRIPT" audit \
+    --bundle "$APP_IMAGE_DIR/$APP_NAME.app/Contents/app/engines/katago/$ENGINE_PLATFORM_DIR"
+fi
 
 FINAL_DMG="$ROOT_DIR/dist/release/${DATE_TAG}-${PUBLIC_ARCH_TAG}.${PACKAGE_FLAVOR}.dmg"
 INSTALL_NOTE="$META_DIR/${DATE_TAG}-${PUBLIC_ARCH_TAG}-install.txt"

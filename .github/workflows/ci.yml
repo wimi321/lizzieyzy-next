@@ -36,19 +36,24 @@ jobs:
         run: |
           python3 -m py_compile \
             scripts/generate_release_notes.py \
+            scripts/macos_katago_bundle.py \
             scripts/package_runtime_tools.py \
             scripts/prepare_bundled_jcef.py \
             scripts/publish_release_request.py \
             scripts/summarize_jfr.py \
             scripts/test_generate_release_notes.py \
+            scripts/test_macos_katago_bundle.py \
             scripts/test_publish_release_request.py \
             scripts/test_windows_launcher_packaging.py
           python3 scripts/test_generate_release_notes.py
+          python3 scripts/test_macos_katago_bundle.py
           python3 scripts/test_prepare_bundled_jcef.py
           python3 scripts/test_publish_release_request.py
           python3 scripts/test_windows_launcher_packaging.py
           bash -n \
+            scripts/prepare_bundled_katago.sh \
             scripts/package_macos_dmg.sh \
+            scripts/validate_macos_dmg_layout.sh \
             scripts/package_release.sh \
             scripts/package_windows_exe.sh \
             scripts/run_jfr_benchmark.sh \
