@@ -192,12 +192,34 @@ def portable_reference(node: BinaryNode, bundled_name: str) -> str:
     return f"@loader_path/{bundled_name}"
 
 
-def remove_signature(path: Path) -> None:
-    run(["codesign", "--remove-signature", str(path)], check=False)
-
-
 def sign_ad_hoc(path: Path) -> None:
     run(["codesign", "--force", "--sign", "-", str(path)])
+
+
+def rewrite_binary(node: BinaryNode) -> None:
+    # Do not remove the existing signature first. Xcode 16's install_name_tool
+    # rejects some current Homebrew abseil binaries after --remove-signature
+    # because their __LINKEDIT layout no longer fills the segment. Rewriting
+    # invalidates the old signature safely; the bundle is force-signed below.
+    for edge in node.edges:
+        run(
+            [
+                "install_name_tool",
+                "-change",
+                edge.original,
+                portable_reference(node, edge.bundled_name),
+                str(node.target),
+            ]
+        )
+    if not node.executable:
+        run(
+            [
+                "install_name_tool",
+                "-id",
+                f"@loader_path/{node.target.name}",
+                str(node.target),
+            ]
+        )
 
 
 def build_bundle(
@@ -271,26 +293,7 @@ def build_bundle(
             pending.append(resolved)
 
     for node in nodes.values():
-        remove_signature(node.target)
-        for edge in node.edges:
-            run(
-                [
-                    "install_name_tool",
-                    "-change",
-                    edge.original,
-                    portable_reference(node, edge.bundled_name),
-                    str(node.target),
-                ]
-            )
-        if not node.executable:
-            run(
-                [
-                    "install_name_tool",
-                    "-id",
-                    f"@loader_path/{node.target.name}",
-                    str(node.target),
-                ]
-            )
+        rewrite_binary(node)
 
     for node in nodes.values():
         if not node.executable:

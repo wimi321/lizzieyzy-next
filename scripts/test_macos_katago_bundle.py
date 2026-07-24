@@ -10,6 +10,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 
 
@@ -51,6 +52,52 @@ class MacosKataGoBundleUnitTest(unittest.TestCase):
                 "/usr/lib/libc++.1.dylib",
                 "/opt/homebrew/opt/protobuf/lib/libprotobuf.35.1.0.dylib",
             ],
+        )
+
+    def test_rewrite_keeps_signature_until_install_names_are_updated(self) -> None:
+        target = Path("/bundle/lib/libexample.dylib")
+        node = MODULE.BinaryNode(
+            source=Path("/source/libexample.dylib"),
+            target=target,
+            executable=False,
+            edges=[
+                MODULE.DependencyEdge(
+                    original="@rpath/libdependency.dylib",
+                    source=Path("/source/libdependency.dylib"),
+                    bundled_name="libdependency.dylib",
+                )
+            ],
+        )
+        commands: list[list[str]] = []
+
+        def record(command: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+            commands.append(command)
+            return subprocess.CompletedProcess(command, 0, "", "")
+
+        with mock.patch.object(MODULE, "run", side_effect=record):
+            MODULE.rewrite_binary(node)
+
+        self.assertEqual(
+            commands,
+            [
+                [
+                    "install_name_tool",
+                    "-change",
+                    "@rpath/libdependency.dylib",
+                    "@loader_path/libdependency.dylib",
+                    str(target),
+                ],
+                [
+                    "install_name_tool",
+                    "-id",
+                    "@loader_path/libexample.dylib",
+                    str(target),
+                ],
+            ],
+        )
+        self.assertFalse(
+            any("--remove-signature" in command for command in commands),
+            "Removing a signature before rewriting regresses Xcode 16 compatibility",
         )
 
 
@@ -123,6 +170,11 @@ class MacosKataGoBundleIntegrationTest(unittest.TestCase):
                 ["clang", str(main_source), str(middle), "-o", str(executable)],
                 check=True,
             )
+            for binary in (leaf, middle, executable):
+                subprocess.run(
+                    ["codesign", "--force", "--sign", "-", str(binary)],
+                    check=True,
+                )
 
             subprocess.run(
                 [
