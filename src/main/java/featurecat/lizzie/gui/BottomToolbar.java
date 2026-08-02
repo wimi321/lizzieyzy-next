@@ -164,7 +164,6 @@ public class BottomToolbar extends JPanel {
   public String batchPkNameToolbar = "";
   //  public String SF = "";
   public boolean isGenmoveToolbar = false;
-  public boolean isEngineGameHandicapToolbar = false;
   public boolean AutosavePk = true;
   public boolean exChangeToolbar = true;
   public JCheckBox chkAutoAnalyse;
@@ -4028,7 +4027,7 @@ public class BottomToolbar extends JPanel {
     boolean isBatchGame = chkenginePkBatch.isSelected();
     int batchGameNumber = Utils.parseTextToInt(txtenginePkBatch, 1);
     String batchGameName = batchPkNameToolbar;
-    boolean isContinueGame = chkenginePkContinue.isSelected() || isEngineGameHandicapToolbar;
+    boolean isContinueGame = chkenginePkContinue.isSelected();
     boolean isGenmove = isGenmoveToolbar;
     boolean isExchange = exChangeToolbar;
     return Lizzie.engineManager.startEngineGame(

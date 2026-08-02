@@ -79,7 +79,7 @@ public final class HumanSlGameController {
     Lizzie.board.getHistory().getGameInfo().setKomi(komi);
     Lizzie.board.getHistory().getGameInfo().setHandicap(handicap);
     if (handicap >= 2 && Board.boardWidth == 19 && Board.boardHeight == 19) {
-      placeHandicap(handicap);
+      Lizzie.board.setupFixedHandicap(handicap);
     }
     Lizzie.board.getHistory().getGameInfo().setKomi(komi);
     String me = Lizzie.resourceBundle.getString("HumanSlGame.humanPlayer");
@@ -437,51 +437,6 @@ public final class HumanSlGameController {
 
   private String rankLabel() {
     return profile == null ? "" : profile.replace("rank_", "").toUpperCase(java.util.Locale.ROOT);
-  }
-
-  private void placeHandicap(int handicap) {
-    int[][] points = handicapPoints(handicap);
-    boolean previous = Lizzie.leelaz != null && Lizzie.leelaz.isInputCommand;
-    if (Lizzie.leelaz != null) {
-      Lizzie.leelaz.isInputCommand = true;
-    }
-    try {
-      for (int[] point : points) {
-        Lizzie.board.place(point[0], point[1], Stone.BLACK);
-      }
-    } finally {
-      if (Lizzie.leelaz != null) {
-        Lizzie.leelaz.isInputCommand = previous;
-      }
-    }
-    Lizzie.board.hasStartStone = true;
-    Lizzie.board.addStartListAll();
-    Lizzie.board.flatten();
-  }
-
-  private static int[][] handicapPoints(int handicap) {
-    switch (handicap) {
-      case 2:
-        return new int[][] {{3, 15}, {15, 3}};
-      case 3:
-        return new int[][] {{3, 3}, {15, 3}, {3, 15}};
-      case 4:
-        return new int[][] {{3, 3}, {3, 15}, {15, 3}, {15, 15}};
-      case 5:
-        return new int[][] {{3, 3}, {3, 15}, {15, 3}, {15, 15}, {9, 9}};
-      case 6:
-        return new int[][] {{3, 3}, {3, 15}, {15, 3}, {15, 15}, {3, 9}, {15, 9}};
-      case 7:
-        return new int[][] {{3, 3}, {3, 15}, {15, 3}, {15, 15}, {15, 9}, {3, 9}, {9, 9}};
-      case 8:
-        return new int[][] {{3, 3}, {3, 15}, {15, 3}, {15, 15}, {9, 3}, {9, 15}, {3, 9}, {15, 9}};
-      case 9:
-        return new int[][] {
-          {3, 3}, {3, 15}, {15, 3}, {15, 15}, {9, 3}, {9, 15}, {3, 9}, {15, 9}, {9, 9}
-        };
-      default:
-        return new int[0][];
-    }
   }
 
   public static Path resolveDefaultHumanModel() {

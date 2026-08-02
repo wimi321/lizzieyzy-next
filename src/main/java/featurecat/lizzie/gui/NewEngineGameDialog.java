@@ -7,8 +7,6 @@ package featurecat.lizzie.gui;
 import featurecat.lizzie.Config;
 import featurecat.lizzie.Lizzie;
 import featurecat.lizzie.analysis.GameInfo;
-import featurecat.lizzie.rules.Board;
-import featurecat.lizzie.rules.Stone;
 import featurecat.lizzie.util.Utils;
 import java.awt.*;
 import java.awt.event.ActionEvent;
@@ -1047,12 +1045,6 @@ public class NewEngineGameDialog extends JDialog {
 
       resetFont();
 
-      if (handicap >= 2 && Board.boardWidth == 19 && Board.boardHeight == 19) {
-        Lizzie.board.getHistory().clear();
-        placeHandicap(handicap);
-        LizzieFrame.toolbar.isEngineGameHandicapToolbar = true;
-      } else LizzieFrame.toolbar.isEngineGameHandicapToolbar = false;
-
       Lizzie.board.getHistory().setGameInfo(gameInfo);
 
       LizzieFrame.toolbar.chkenginePk.setSelected(true);
@@ -1079,72 +1071,6 @@ public class NewEngineGameDialog extends JDialog {
         new Font(Config.sysDefaultFontName, Font.PLAIN, 12));
     LizzieFrame.toolbar.txtenginePkTimeWhite.setFont(
         new Font(Config.sysDefaultFontName, Font.PLAIN, 12));
-  }
-
-  private void placeHandicap(int handicap) {
-    // TODO Auto-generated method stub
-    switch (handicap) {
-      case 2:
-        Lizzie.board.getHistory().place(3, 15, Stone.BLACK);
-        Lizzie.board.getHistory().place(15, 3, Stone.BLACK);
-        break;
-      case 3:
-        Lizzie.board.getHistory().place(3, 3, Stone.BLACK);
-        Lizzie.board.getHistory().place(15, 3, Stone.BLACK);
-        Lizzie.board.getHistory().place(3, 15, Stone.BLACK);
-        break;
-      case 4:
-        Lizzie.board.getHistory().place(3, 3, Stone.BLACK);
-        Lizzie.board.getHistory().place(3, 15, Stone.BLACK);
-        Lizzie.board.getHistory().place(15, 3, Stone.BLACK);
-        Lizzie.board.getHistory().place(15, 15, Stone.BLACK);
-        break;
-      case 5:
-        Lizzie.board.getHistory().place(3, 3, Stone.BLACK);
-        Lizzie.board.getHistory().place(3, 15, Stone.BLACK);
-        Lizzie.board.getHistory().place(15, 3, Stone.BLACK);
-        Lizzie.board.getHistory().place(15, 15, Stone.BLACK);
-        Lizzie.board.getHistory().place(9, 9, Stone.BLACK);
-        break;
-      case 6:
-        Lizzie.board.getHistory().place(3, 3, Stone.BLACK);
-        Lizzie.board.getHistory().place(3, 15, Stone.BLACK);
-        Lizzie.board.getHistory().place(15, 3, Stone.BLACK);
-        Lizzie.board.getHistory().place(15, 15, Stone.BLACK);
-        Lizzie.board.getHistory().place(3, 9, Stone.BLACK);
-        Lizzie.board.getHistory().place(15, 9, Stone.BLACK);
-        break;
-      case 7:
-        Lizzie.board.getHistory().place(3, 3, Stone.BLACK);
-        Lizzie.board.getHistory().place(3, 15, Stone.BLACK);
-        Lizzie.board.getHistory().place(15, 3, Stone.BLACK);
-        Lizzie.board.getHistory().place(15, 15, Stone.BLACK);
-        Lizzie.board.getHistory().place(15, 9, Stone.BLACK);
-        Lizzie.board.getHistory().place(3, 9, Stone.BLACK);
-        Lizzie.board.getHistory().place(9, 9, Stone.BLACK);
-        break;
-      case 8:
-        Lizzie.board.getHistory().place(3, 3, Stone.BLACK);
-        Lizzie.board.getHistory().place(3, 15, Stone.BLACK);
-        Lizzie.board.getHistory().place(15, 3, Stone.BLACK);
-        Lizzie.board.getHistory().place(15, 15, Stone.BLACK);
-        Lizzie.board.getHistory().place(9, 3, Stone.BLACK);
-        Lizzie.board.getHistory().place(9, 15, Stone.BLACK);
-        Lizzie.board.getHistory().place(3, 9, Stone.BLACK);
-        Lizzie.board.getHistory().place(15, 9, Stone.BLACK);
-        break;
-      case 9:
-        Lizzie.board.getHistory().place(3, 3, Stone.BLACK);
-        Lizzie.board.getHistory().place(3, 15, Stone.BLACK);
-        Lizzie.board.getHistory().place(15, 3, Stone.BLACK);
-        Lizzie.board.getHistory().place(15, 15, Stone.BLACK);
-        Lizzie.board.getHistory().place(9, 3, Stone.BLACK);
-        Lizzie.board.getHistory().place(9, 15, Stone.BLACK);
-        Lizzie.board.getHistory().place(3, 9, Stone.BLACK);
-        Lizzie.board.getHistory().place(15, 9, Stone.BLACK);
-        Lizzie.board.getHistory().place(9, 9, Stone.BLACK);
-        break;
-    }
   }
 
   public void setGameInfo(GameInfo gameInfo) {

@@ -265,6 +265,8 @@ public class EngineManager {
     engineGameInfo.isExchange = isExchange;
     engineGameInfo.batchNumberCurrent = 1;
     engineGameInfo.isContinueGame = isContinueGame;
+    engineGameInfo.handicap = Lizzie.config.newEngineGameHandicap;
+    engineGameInfo.komi = Lizzie.config.newEngineGameKomi;
     engineGameInfo.blackMinMove = Lizzie.config.firstEngineMinMove;
     engineGameInfo.blackResignMoveCounts = Lizzie.config.firstEngineResignMoveCounts;
     engineGameInfo.blackResignWinrate = Lizzie.config.firstEngineResignWinrate;
@@ -446,6 +448,32 @@ public class EngineManager {
       return Lizzie.frame.enginePKSgfString.get(LizzieFrame.toolbar.currentEnginePkSgfNum);
     }
     return null;
+  }
+
+  private ArrayList<Movelist> prepareEngineGameBoard(boolean firstTime, boolean analysisMode) {
+    Lizzie.board.clear(true);
+    ArrayList<Movelist> startList = getStartListForEnginePk();
+    if (startList != null) {
+      if (analysisMode) {
+        Lizzie.board.setMoveList(startList, false, true);
+      } else {
+        Lizzie.board.setlist(startList);
+      }
+    } else if (firstTime) {
+      int width = engineList.get(engineGameInfo.blackEngineIndex).width;
+      int height = engineList.get(engineGameInfo.blackEngineIndex).height;
+      if (width != Board.boardWidth || height != Board.boardHeight) {
+        Lizzie.board.reopen(width, height);
+      }
+    }
+
+    GameInfo gameInfo = Lizzie.board.getHistory().getGameInfo();
+    gameInfo.setKomiNoMenu(engineGameInfo.komi);
+    gameInfo.setHandicap(0);
+    if (startList == null && engineGameInfo.handicap >= 2) {
+      Lizzie.board.setupFixedHandicap(engineGameInfo.handicap);
+    }
+    return startList;
   }
 
   private String formateSaveString(String filename) {
@@ -1254,21 +1282,12 @@ public class EngineManager {
     }
     if (!engineGameInfo.isGenmove) {
       // 分析模式对战
-      Lizzie.board.clear(true);
-      ArrayList<Movelist> startList = getStartListForEnginePk();
-      if (startList != null) {
-        Lizzie.board.setMoveList(startList, false, true);
-      }
+      ArrayList<Movelist> startList = prepareEngineGameBoard(firstTime, true);
       if (!firstTime) {
         engineList.get(engineGameInfo.blackEngineIndex).notPondering();
         engineList.get(engineGameInfo.blackEngineIndex).clear();
         engineList.get(engineGameInfo.whiteEngineIndex).notPondering();
         engineList.get(engineGameInfo.whiteEngineIndex).clear();
-      } else if (startList == null) {
-        int width = engineList.get(engineGameInfo.blackEngineIndex).width;
-        int height = engineList.get(engineGameInfo.blackEngineIndex).height;
-        if (width != Board.boardWidth || height != Board.boardHeight)
-          Lizzie.board.reopen(width, height);
       }
       startEngineForPk(engineGameInfo.blackEngineIndex);
       startEngineForPk(engineGameInfo.whiteEngineIndex);
@@ -1350,11 +1369,6 @@ public class EngineManager {
               } else {
                 Lizzie.leelaz = engineList.get(engineGameInfo.whiteEngineIndex);
               }
-              if (Lizzie.config.newEngineGameHandicap > 0) {
-                Lizzie.board.hasStartStone = true;
-                Lizzie.board.addStartListAll();
-                Lizzie.board.flatten();
-              }
               int cmdNumberTemp = Lizzie.leelaz.cmdNumber;
               Runnable runnable1 =
                   new Runnable() {
@@ -1409,16 +1423,7 @@ public class EngineManager {
       if (engineList.get(engineGameInfo.whiteEngineIndex) != null) {
         engineList.get(engineGameInfo.whiteEngineIndex).clearBestMoves();
       }
-      Lizzie.board.clear(true);
-      ArrayList<Movelist> startList = getStartListForEnginePk();
-      if (startList != null) {
-        Lizzie.board.setlist(startList);
-      } else if (firstTime) {
-        int width = engineList.get(engineGameInfo.blackEngineIndex).width;
-        int height = engineList.get(engineGameInfo.blackEngineIndex).height;
-        if (width != Board.boardWidth || height != Board.boardHeight)
-          Lizzie.board.reopen(width, height);
-      }
+      ArrayList<Movelist> startList = prepareEngineGameBoard(firstTime, false);
       startEngineForPk(engineGameInfo.blackEngineIndex);
       startEngineForPk(engineGameInfo.whiteEngineIndex);
       Runnable runnable =
@@ -1475,11 +1480,6 @@ public class EngineManager {
                   .get(engineGameInfo.whiteEngineIndex)
                   .sendCommand("clear_cache");
               if (startList != null) {
-                if (Lizzie.config.newEngineGameHandicap > 0) {
-                  Lizzie.board.hasStartStone = true;
-                  Lizzie.board.addStartListAll();
-                  Lizzie.board.flatten();
-                }
                 try {
                   Thread.sleep(1000);
                 } catch (InterruptedException e) {

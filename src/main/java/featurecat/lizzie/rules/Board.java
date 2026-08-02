@@ -2440,6 +2440,83 @@ public class Board {
     history.setGameInfo(oldHistory.getGameInfo());
   }
 
+  /**
+   * Replaces the current position with a standard 19x19 fixed-handicap root position.
+   *
+   * <p>Handicap stones are setup stones, not a sequence of Black moves. Keeping them on the root
+   * preserves move number zero and guarantees that White is next for every handicap count.
+   *
+   * @return {@code true} when the requested fixed handicap was applied
+   */
+  public boolean setupFixedHandicap(int handicap) {
+    int[][] points = fixedHandicapPoints(handicap);
+    if (boardWidth != 19 || boardHeight != 19 || points.length == 0) {
+      return false;
+    }
+
+    Stone[] stones = new Stone[boardWidth * boardHeight];
+    Arrays.fill(stones, Stone.EMPTY);
+    Zobrist zobrist = new Zobrist();
+    for (int[] point : points) {
+      stones[getIndex(point[0], point[1])] = Stone.BLACK;
+      zobrist.toggleStone(point[0], point[1], Stone.BLACK);
+    }
+
+    GameInfo gameInfo = history == null ? new GameInfo() : history.getGameInfo();
+    gameInfo.setHandicap(handicap);
+    BoardHistoryList fixedHandicapHistory =
+        new BoardHistoryList(
+            BoardData.snapshot(
+                stones,
+                Optional.empty(),
+                Stone.EMPTY,
+                false,
+                zobrist,
+                0,
+                new int[boardWidth * boardHeight],
+                0,
+                0,
+                50,
+                0));
+    fixedHandicapHistory.setGameInfo(gameInfo);
+    history = fixedHandicapHistory;
+    hasStartStone = false;
+    startStonelist = new ArrayList<Movelist>();
+    advanceContextRevision();
+    notifyReadBoardHistoryOverwritten();
+    return true;
+  }
+
+  private static int[][] fixedHandicapPoints(int handicap) {
+    switch (handicap) {
+      case 2:
+        return new int[][] {{3, 15}, {15, 3}};
+      case 3:
+        return new int[][] {{3, 3}, {15, 3}, {3, 15}};
+      case 4:
+        return new int[][] {{3, 3}, {3, 15}, {15, 3}, {15, 15}};
+      case 5:
+        return new int[][] {{3, 3}, {3, 15}, {15, 3}, {15, 15}, {9, 9}};
+      case 6:
+        return new int[][] {{3, 3}, {3, 15}, {15, 3}, {15, 15}, {3, 9}, {15, 9}};
+      case 7:
+        return new int[][] {
+          {3, 3}, {3, 15}, {15, 3}, {15, 15}, {15, 9}, {3, 9}, {9, 9}
+        };
+      case 8:
+        return new int[][] {
+          {3, 3}, {3, 15}, {15, 3}, {15, 15}, {9, 3}, {9, 15}, {3, 9}, {15, 9}
+        };
+      case 9:
+        return new int[][] {
+          {3, 3}, {3, 15}, {15, 3}, {15, 15}, {9, 3}, {9, 15}, {3, 9}, {15, 9},
+          {9, 9}
+        };
+      default:
+        return new int[0][];
+    }
+  }
+
   public void flattenWithCondition(
       Stone[] stones,
       Zobrist zobrist,

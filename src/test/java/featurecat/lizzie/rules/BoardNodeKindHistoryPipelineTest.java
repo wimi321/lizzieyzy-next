@@ -351,6 +351,58 @@ class BoardNodeKindHistoryPipelineTest {
   }
 
   @Test
+  void fixedHandicapSetupCreatesRootStonesAndAlwaysStartsWithWhite() throws Exception {
+    TestEnvironment env = TestEnvironment.open();
+    try {
+      Board.boardWidth = 19;
+      Board.boardHeight = 19;
+      Zobrist.init();
+      TrackingLeelaz engine = (TrackingLeelaz) Lizzie.leelaz;
+
+      for (int handicap = 2; handicap <= 9; handicap++) {
+        BoardHistoryList history = new BoardHistoryList(BoardData.empty(19, 19));
+        history.getGameInfo().setKomiNoMenu(0.5);
+        Lizzie.board.setHistory(history);
+
+        assertTrue(
+            Lizzie.board.setupFixedHandicap(handicap),
+            "standard 19x19 handicap should be accepted: " + handicap);
+
+        BoardData root = Lizzie.board.getHistory().getStart().getData();
+        assertTrue(root.isSnapshotNode(), "handicap stones should live on the root snapshot.");
+        assertEquals(0, root.moveNumber, "handicap stones must not consume move numbers.");
+        assertFalse(root.blackToPlay, "White must play first after every fixed handicap.");
+        assertEquals(
+            handicap,
+            countStones(root.stones, Stone.BLACK),
+            "the root should contain every requested handicap stone.");
+        for (int[] point : expectedFixedHandicapPoints(handicap)) {
+          assertEquals(
+              Stone.BLACK,
+              root.stones[Board.getIndex(point[0], point[1])],
+              "standard handicap point should be occupied: " + point[0] + "," + point[1]);
+        }
+        assertEquals(0, countStones(root.stones, Stone.WHITE));
+        assertEquals(handicap, Lizzie.board.getHistory().getGameInfo().getHandicap());
+        assertEquals(0.5, Lizzie.board.getHistory().getGameInfo().getKomi());
+        assertFalse(
+            Lizzie.board.hasStartStone,
+            "modern root setup should not masquerade as a legacy move prefix.");
+
+        engine.recordedCommands().clear();
+        Lizzie.board.resendMoveToEngine(engine, false);
+        assertArrayEquals(
+            root.stones,
+            engine.copyStones(),
+            "engine replay should receive the same fixed handicap position.");
+        assertFalse(engine.isBlackToPlay(), "engine replay should also leave White to play.");
+      }
+    } finally {
+      env.close();
+    }
+  }
+
+  @Test
   void liveLoadNormalHandicapRootSetupKeepsWhiteToPlayAndFixedStones() throws Exception {
     TestEnvironment env = TestEnvironment.open();
     try {
@@ -4347,6 +4399,52 @@ class BoardNodeKindHistoryPipelineTest {
       stones[index] = Stone.EMPTY;
     }
     return stones;
+  }
+
+  private static int countStones(Stone[] stones, Stone expected) {
+    int count = 0;
+    for (Stone stone : stones) {
+      if (stone == expected) {
+        count++;
+      }
+    }
+    return count;
+  }
+
+  private static int[][] expectedFixedHandicapPoints(int handicap) {
+    int[][] sequence = {
+      {3, 15}, {15, 3}, {3, 3}, {15, 15}, {9, 9}, {3, 9}, {15, 9}, {9, 3}, {9, 15}
+    };
+    switch (handicap) {
+      case 2:
+        return new int[][] {sequence[0], sequence[1]};
+      case 3:
+        return new int[][] {sequence[2], sequence[1], sequence[0]};
+      case 4:
+        return new int[][] {sequence[2], sequence[0], sequence[1], sequence[3]};
+      case 5:
+        return new int[][] {sequence[2], sequence[0], sequence[1], sequence[3], sequence[4]};
+      case 6:
+        return new int[][] {
+          sequence[2], sequence[0], sequence[1], sequence[3], sequence[5], sequence[6]
+        };
+      case 7:
+        return new int[][] {
+          sequence[2], sequence[0], sequence[1], sequence[3], sequence[6], sequence[5], sequence[4]
+        };
+      case 8:
+        return new int[][] {
+          sequence[2], sequence[0], sequence[1], sequence[3], sequence[7], sequence[8], sequence[5],
+          sequence[6]
+        };
+      case 9:
+        return new int[][] {
+          sequence[2], sequence[0], sequence[1], sequence[3], sequence[7], sequence[8], sequence[5],
+          sequence[6], sequence[4]
+        };
+      default:
+        return new int[0][];
+    }
   }
 
   private static Zobrist zobrist(Stone[] stones) {

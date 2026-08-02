@@ -19,6 +19,8 @@ public class EngineGameInfo {
   public int batchNumber;
   public int batchNumberCurrent;
   public boolean isExchange; // 是否交换黑白
+  public int handicap;
+  public double komi;
 
   public int firstEngineWinAsBlack;
   public int firstEngineWinAsWhite;
