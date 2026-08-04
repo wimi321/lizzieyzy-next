@@ -5487,8 +5487,9 @@ public class Menu extends JMenuBar {
     openTeacher.addActionListener(
         e -> {
           javax.swing.JDialog dlg = new javax.swing.JDialog(Lizzie.frame, "AI 讲棋 · GoAgent", false);
-          dlg.getContentPane().add(new TeacherPanel());
-          dlg.setSize(420, 560);
+          dlg.getContentPane().add(new javax.swing.JScrollPane(new TeacherPanel()));
+          dlg.pack();
+          if (dlg.getWidth() < 600) dlg.setSize(800, 620);
           dlg.setLocationRelativeTo(Lizzie.frame);
           dlg.setVisible(true);
         });

@@ -21,7 +21,11 @@ public class LLMClient {
 
   public LLMClient(String baseUrl, String apiKey, String model) {
     this.http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(30)).build();
-    this.baseUrl = baseUrl.endsWith("/") ? baseUrl : baseUrl + "/";
+    // 归一化 baseUrl：去结尾 /，确保末尾是 .../v1
+    String b = baseUrl.trim();
+    if (b.endsWith("/")) b = b.substring(0, b.length() - 1);
+    if (!b.endsWith("/v1")) b = b + "/v1";
+    this.baseUrl = b;
     this.apiKey = apiKey;
     this.model = model;
   }
@@ -42,7 +46,7 @@ public class LLMClient {
 
     HttpRequest req =
         HttpRequest.newBuilder()
-            .uri(URI.create(baseUrl + "v1/chat/completions"))
+            .uri(URI.create(baseUrl + "/chat/completions"))
             .timeout(Duration.ofMinutes(5))
             .header("Content-Type", "application/json")
             .header("Authorization", "Bearer " + apiKey)
@@ -60,10 +64,19 @@ public class LLMClient {
             new java.io.InputStreamReader(resp.body(), StandardCharsets.UTF_8));
     StringBuilder full = new StringBuilder();
     String line;
+    java.io.FileWriter dbg = null;
+    try {
+      dbg = new java.io.FileWriter("teacher_debug.log", true);
+    } catch (Exception ignored) {
+    }
     while ((line = r.readLine()) != null) {
       line = line.trim();
       if (line.startsWith("data:")) {
         String data = line.substring(5).trim();
+        if (dbg != null) {
+          dbg.write(data + "\n");
+          dbg.flush();
+        }
         if ("[DONE]".equals(data)) break;
         String token = parseToken(data);
         if (token != null) {
@@ -72,19 +85,39 @@ public class LLMClient {
         }
       }
     }
+    if (dbg != null) {
+      try {
+        dbg.close();
+      } catch (Exception ignored) {
+      }
+    }
     return full.toString();
   }
 
   private String parseToken(String data) {
-    // {"choices":[{"delta":{"content":"..."}}]}
+    // 行形如: {"choices":[{"delta":{"content":"实际文本"}}]}
+    // 或首包: {"choices":[{"delta":{"role":"assistant"}}]}  （无 content，应跳过）
     int idx = data.indexOf("\"content\"");
     if (idx < 0) return null;
-    int c = data.indexOf(':', idx + 9);
-    if (c < 0) return null;
-    int q1 = data.indexOf('"', c + 1);
-    if (q1 < 0) return null;
-    int q2 = data.indexOf('"', q1 + 1);
-    if (q2 < 0) return null;
+    int colon = data.indexOf(':', idx + 9);
+    if (colon < 0) return null;
+    // colon 后第一个非空白字符必须是 " 才认为是字符串 content
+    int p = colon + 1;
+    while (p < data.length() && (data.charAt(p) == ' ' || data.charAt(p) == '\t')) p++;
+    if (p >= data.length() || data.charAt(p) != '"') return null; // content 为 null 或非字符串，跳过
+    int q1 = p;
+    // 找匹配的闭合引号（处理转义 \"）
+    int q2 = q1 + 1;
+    while (q2 < data.length()) {
+      char ch = data.charAt(q2);
+      if (ch == '\\') {
+        q2 += 2;
+        continue;
+      }
+      if (ch == '"') break;
+      q2++;
+    }
+    if (q2 >= data.length()) return null;
     return unescape(data.substring(q1 + 1, q2));
   }
 

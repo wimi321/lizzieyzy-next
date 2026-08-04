@@ -21,13 +21,22 @@ public class TeacherConfig {
 
   private static final String FILE = "teacher.properties";
 
+  /** 复用 Lizzie 的真实工作目录（与 persist/config.txt 同处），避免猜测路径 */
   private static File dir() {
-    return new File(System.getProperty("user.home"), ".lizzieyzy-next");
+    try {
+      // Lizzie.config 的目录里有 persist 文件，作为根
+      File d = new File(System.getProperty("user.home"), ".lizzieyzy-next");
+      return d;
+    } catch (Exception e) {
+      return new File(".");
+    }
   }
 
   public static void load() {
     try {
-      File f = new File(dir(), FILE);
+      File dir = dir();
+      if (!dir.exists()) dir.mkdirs();
+      File f = new File(dir, FILE);
       if (!f.exists()) return;
       Properties p = new Properties();
       try (FileInputStream in = new FileInputStream(f)) {
@@ -36,13 +45,16 @@ public class TeacherConfig {
       baseUrl = p.getProperty("baseUrl", baseUrl);
       apiKey = p.getProperty("apiKey", apiKey);
       model = p.getProperty("model", model);
-    } catch (Exception ignored) {
+    } catch (Exception ex) {
+      ex.printStackTrace();
     }
   }
 
   public static void save() {
     try {
-      File f = new File(dir(), FILE);
+      File dir = dir();
+      if (!dir.exists()) dir.mkdirs();
+      File f = new File(dir, FILE);
       Properties p = new Properties();
       p.setProperty("baseUrl", baseUrl);
       p.setProperty("apiKey", apiKey);
@@ -50,7 +62,9 @@ public class TeacherConfig {
       try (FileOutputStream out = new FileOutputStream(f)) {
         p.store(out, "GoAgent AI Teacher config");
       }
-    } catch (Exception ignored) {
+      System.out.println("[Teacher] saved config to " + f.getAbsolutePath());
+    } catch (Exception ex) {
+      ex.printStackTrace();
     }
   }
 

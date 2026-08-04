@@ -1,32 +1,30 @@
 package featurecat.lizzie.teacher;
 
-import featurecat.lizzie.rules.BoardData;
+import featurecat.lizzie.teacher.analysis.AnalysisBrain.KataGoCandidate;
+import featurecat.lizzie.teacher.analysis.AnalysisBrain.MoveClassification;
+import featurecat.lizzie.teacher.analysis.AnalysisBrain.PvReport;
 import java.util.ArrayList;
 import java.util.List;
 
 /**
- * 对齐 GoAgent 的 evidenceChipsFromAnalysis：把一手 KataGo 分析派生为证据链 chips。 数据源：lizzieyzy 的
- * BoardData（winrate / scoreMean=目差 / playouts / bestMoves）。
+ * 对齐 GoAgent 的 evidenceChipsFromAnalysis：把一手 KataGo 分析派生为证据链 chips。 数据来源：lizzieyzy 的
+ * BoardData（winrate / scoreMean=目差 / playouts / bestMoves）。 增强：接入 AnalysisBrain
+ * 的失误分类(classifier)与变化图可信度(pvConfidence)。
  */
 public final class EvidenceChips {
 
   private EvidenceChips() {}
 
-  /**
-   * @param data 当前手的 BoardData 分析
-   * @param actualMove 实战落子坐标（如 "Q4"），无则 null
-   * @param bestMove AI 首选坐标（从 bestMovesToString 解析第一个）
-   * @param bestWinrate AI 首选胜率
-   * @param bestScoreLead AI 首选目差（scoreMean）
-   * @param moveNumber 手数
-   */
   public static List<TeacherEvidenceChip> fromAnalysis(
-      BoardData data,
+      int moveNumber,
       String actualMove,
-      String bestMove,
-      double bestWinrate,
-      double bestScoreLead,
-      int moveNumber) {
+      Double actualWinrate,
+      Double actualScoreLead,
+      Integer actualVisits,
+      KataGoCandidate best,
+      MoveClassification classification,
+      PvReport pv) {
+
     List<TeacherEvidenceChip> chips = new ArrayList<>();
 
     chips.add(
@@ -34,7 +32,7 @@ public final class EvidenceChips {
             "move-" + moveNumber,
             TeacherEvidenceChip.Kind.MOVE,
             "第 " + moveNumber + " 手",
-            "当前局面分析",
+            classification != null ? classification.reason : "当前局面分析",
             moveNumber,
             null));
 
@@ -49,26 +47,22 @@ public final class EvidenceChips {
               actualMove));
     }
 
-    if (bestMove != null && !bestMove.isEmpty()) {
+    if (best != null) {
       chips.add(
           new TeacherEvidenceChip(
-              "best-" + moveNumber + "-" + bestMove,
+              "best-" + moveNumber + "-" + best.move,
               TeacherEvidenceChip.Kind.CANDIDATE,
-              "AI 首选 " + bestMove,
+              "AI 首选 " + best.move,
               String.format(
-                  "胜率 %.1f%%，目差 %.1f，搜索 %d", bestWinrate * 100, bestScoreLead, data.getPlayouts()),
+                  "胜率 %.1f%%，目差 %.1f，搜索 %d",
+                  best.winrateOrZero(), best.scoreLeadOrZero(), best.visits),
               moveNumber,
-              bestMove));
+              best.move));
     }
 
-    // 损失：实战点 vs AI 首选的胜率差 / 目差
-    if (actualMove != null
-        && !actualMove.isEmpty()
-        && bestMove != null
-        && !bestMove.isEmpty()
-        && !actualMove.equals(bestMove)) {
-      double loss = (bestWinrate - data.winrate) * 100;
-      double scoreLoss = bestScoreLead - data.scoreMean;
+    if (actualMove != null && best != null && !actualMove.equals(best.move)) {
+      double loss = (best.winrateOrZero() - (actualWinrate == null ? 0 : actualWinrate)) * 100;
+      double scoreLoss = best.scoreLeadOrZero() - (actualScoreLead == null ? 0 : actualScoreLead);
       chips.add(
           new TeacherEvidenceChip(
               "loss-" + moveNumber,
@@ -79,13 +73,44 @@ public final class EvidenceChips {
               null));
     }
 
+    if (pv != null) {
+      chips.add(
+          new TeacherEvidenceChip(
+              "pv-" + moveNumber,
+              TeacherEvidenceChip.Kind.PV,
+              "PV " + pv.overall,
+              pv.summary,
+              moveNumber,
+              null));
+    }
+
+    if (classification != null) {
+      chips.add(
+          new TeacherEvidenceChip(
+              "confidence-" + moveNumber,
+              TeacherEvidenceChip.Kind.CONFIDENCE,
+              classification.severity + "/" + classification.confidence,
+              classification.reason,
+              moveNumber,
+              null));
+      if (classification.shouldTeach) {
+        chips.add(
+            new TeacherEvidenceChip(
+                "teach-" + moveNumber,
+                TeacherEvidenceChip.Kind.CONFIDENCE,
+                classification.shouldDeepen ? "建议加深后讲解" : "值得讲解",
+                classification.shouldDeepen ? "搜索不足，建议加深分析。" : "证据充分，可讲解。",
+                moveNumber,
+                null));
+      }
+    }
+
     return chips;
   }
 
   /** 从 BoardData.bestMovesToString() 解析第一个候选坐标（格式 "Q4 (52.3%, ...)" 之类） */
   public static String parseFirstBestMove(String bestMovesString) {
     if (bestMovesString == null) return null;
-    // lizzie bestMovesToString 形如 "Q4 (52.30%, 0.50, 1200)" 或 "Q4 Visits:1200 ..."，取首个坐标词
     String[] parts = bestMovesString.trim().split("\\s+");
     for (String p : parts) {
       if (p.matches("^[A-Ta-t][0-9]{1,2}$")) return p.toUpperCase();
