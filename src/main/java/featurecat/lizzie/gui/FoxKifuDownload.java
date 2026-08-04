@@ -341,9 +341,7 @@ public class FoxKifuDownload extends JFrame {
       return;
     }
     if (isKifuLoading) {
-      Utils.showMsg(
-          Lizzie.frame.kifuLoadText("KifuLoad.wait"),
-          this);
+      Utils.showMsg(Lizzie.frame.kifuLoadText("KifuLoad.wait"), this);
       return;
     }
     myUid = "";
@@ -367,9 +365,7 @@ public class FoxKifuDownload extends JFrame {
     Lizzie.config.uiConfig.put("last-fox-name", Lizzie.config.lastFoxName);
     saveConfigQuietly();
     showProgressNotice(
-        MessageFormat.format(
-            Lizzie.frame.kifuLoadText("KifuLoad.foxSearching"),
-            normalizedUser));
+        MessageFormat.format(Lizzie.frame.kifuLoadText("KifuLoad.foxSearching"), normalizedUser));
     foxReq.sendCommand("user_name " + normalizedUser);
   }
 

@@ -428,7 +428,8 @@ public class KataGoRuntimeHelperTest {
                     KataGoRuntimeHelper.inspectNvidiaRuntime(enginePath);
 
                 assertTrue(status.applicable);
-                assertTrue(status.ready, "KataGo 1.17's official z.dll must satisfy the runtime check.");
+                assertTrue(
+                    status.ready, "KataGo 1.17's official z.dll must satisfy the runtime check.");
                 assertTrue(status.missingDlls.isEmpty());
               });
         });

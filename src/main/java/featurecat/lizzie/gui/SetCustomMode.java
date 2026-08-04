@@ -205,7 +205,8 @@ public class SetCustomMode extends JDialog {
     contentPanel.add(winratePanel);
 
     commentPanel = new JCheckBox();
-    commentPanel.setToolTipText(Lizzie.resourceBundle.getString("SetCustomMode.commentPanel.tooltip"));
+    commentPanel.setToolTipText(
+        Lizzie.resourceBundle.getString("SetCustomMode.commentPanel.tooltip"));
     commentPanel.addActionListener(
         new ActionListener() {
           public void actionPerformed(ActionEvent e) {

@@ -23,8 +23,8 @@ import javax.swing.table.AbstractTableModel;
 import javax.swing.table.DefaultTableCellRenderer;
 import javax.swing.table.JTableHeader;
 import javax.swing.table.TableCellRenderer;
-import javax.swing.table.TableModel;
 import javax.swing.table.TableColumn;
+import javax.swing.table.TableModel;
 
 public class LoadEngine extends JPanel {
   public static Config config;
@@ -120,22 +120,14 @@ public class LoadEngine extends JPanel {
     fitColumnsToLocalizedHeaders(
         table,
         new int[] {
-          Lizzie.config.isFrameFontSmall()
-              ? 30
-              : (Lizzie.config.isFrameFontMiddle() ? 35 : 40),
+          Lizzie.config.isFrameFontSmall() ? 30 : (Lizzie.config.isFrameFontMiddle() ? 35 : 40),
           220,
           300,
-          Lizzie.config.isFrameFontSmall()
-              ? 48
-              : (Lizzie.config.isFrameFontMiddle() ? 52 : 60),
+          Lizzie.config.isFrameFontSmall() ? 48 : (Lizzie.config.isFrameFontMiddle() ? 52 : 60),
           36,
           36,
-          Lizzie.config.isFrameFontSmall()
-              ? 42
-              : (Lizzie.config.isFrameFontMiddle() ? 46 : 52),
-          Lizzie.config.isFrameFontSmall()
-              ? 48
-              : (Lizzie.config.isFrameFontMiddle() ? 52 : 60)
+          Lizzie.config.isFrameFontSmall() ? 42 : (Lizzie.config.isFrameFontMiddle() ? 46 : 52),
+          Lizzie.config.isFrameFontSmall() ? 48 : (Lizzie.config.isFrameFontMiddle() ? 52 : 60)
         });
     // boolean persisted = Lizzie.config.persistedUi != null;
     // if (persisted

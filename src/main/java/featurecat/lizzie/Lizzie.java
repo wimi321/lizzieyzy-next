@@ -80,8 +80,7 @@ public class Lizzie {
   private static final String SMOKE_OPEN_YIKE_WEB_PROPERTY = "lizzie.smoke.openYikeWeb";
   private static final String SMOKE_OPEN_YIKE_WEB_DELAY_MS_PROPERTY =
       "lizzie.smoke.openYikeWebDelayMs";
-  private static final String SMOKE_OPEN_REMOTE_COMPUTE_PROPERTY =
-      "lizzie.smoke.openRemoteCompute";
+  private static final String SMOKE_OPEN_REMOTE_COMPUTE_PROPERTY = "lizzie.smoke.openRemoteCompute";
   private static final String SMOKE_OPEN_REMOTE_COMPUTE_DELAY_MS_PROPERTY =
       "lizzie.smoke.openRemoteComputeDelayMs";
   private static final String UNKNOWN_HOST_NAME = "unknown-host";
@@ -757,9 +756,7 @@ public class Lizzie {
             } catch (Exception e) {
               e.printStackTrace();
               engineStartupStatus.failed(
-                  "EngineStartup.failed",
-                  "AI failed to start - click to repair",
-                  e.getMessage());
+                  "EngineStartup.failed", "AI failed to start - click to repair", e.getMessage());
               try {
                 Lizzie.engineManager = new EngineManager(Lizzie.config, -1, false);
               } catch (JSONException e1) {

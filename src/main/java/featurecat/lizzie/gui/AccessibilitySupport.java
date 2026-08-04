@@ -154,7 +154,9 @@ public final class AccessibilitySupport {
     }
   }
 
-  /** Keeps screen-reader semantics while suppressing visible tooltips for every button in a tree. */
+  /**
+   * Keeps screen-reader semantics while suppressing visible tooltips for every button in a tree.
+   */
   public static void disableVisibleButtonTooltips(Component root) {
     if (root == null) {
       return;
@@ -200,47 +202,43 @@ public final class AccessibilitySupport {
     KeyboardFocusManager focusManager = KeyboardFocusManager.getCurrentKeyboardFocusManager();
     KeyEventDispatcher dispatcher =
         event -> {
-              if (event.getID() != KeyEvent.KEY_PRESSED || !window.isDisplayable()) {
-                return false;
-              }
-              Component focusOwner =
-                  KeyboardFocusManager.getCurrentKeyboardFocusManager().getFocusOwner();
-              Window activeWindow =
-                  focusOwner == null
-                      ? KeyboardFocusManager.getCurrentKeyboardFocusManager().getActiveWindow()
-                      : SwingUtilities.getWindowAncestor(focusOwner);
-              if (activeWindow != window) {
-                return false;
-              }
-              if (event.getKeyCode() == KeyEvent.VK_F6) {
-                moveToZone(
-                    zones,
-                    focusOwner,
-                    event.isShiftDown() ? -1 : 1,
-                    event.isShiftDown());
-                event.consume();
-                return true;
-              }
-              if (event.getKeyCode() == KeyEvent.VK_ESCAPE
-                  && focusOwner instanceof JComponent
-                  && Boolean.TRUE.equals(
-                      ((JComponent) focusOwner).getClientProperty("lizzie.a11y.dynamicFocus"))) {
-                releaseDynamicFocus(focusOwner);
-                board.setFocusable(true);
-                board.requestFocusInWindow();
-                event.consume();
-                return true;
-              }
-              if (event.getKeyCode() == KeyEvent.VK_TAB
-                  && focusOwner instanceof JComponent
-                  && Boolean.TRUE.equals(
-                      ((JComponent) focusOwner).getClientProperty("lizzie.a11y.dynamicFocus"))) {
-                cycleWithinZone(zones, focusOwner, event.isShiftDown() ? -1 : 1);
-                event.consume();
-                return true;
-              }
-              return false;
-            };
+          if (event.getID() != KeyEvent.KEY_PRESSED || !window.isDisplayable()) {
+            return false;
+          }
+          Component focusOwner =
+              KeyboardFocusManager.getCurrentKeyboardFocusManager().getFocusOwner();
+          Window activeWindow =
+              focusOwner == null
+                  ? KeyboardFocusManager.getCurrentKeyboardFocusManager().getActiveWindow()
+                  : SwingUtilities.getWindowAncestor(focusOwner);
+          if (activeWindow != window) {
+            return false;
+          }
+          if (event.getKeyCode() == KeyEvent.VK_F6) {
+            moveToZone(zones, focusOwner, event.isShiftDown() ? -1 : 1, event.isShiftDown());
+            event.consume();
+            return true;
+          }
+          if (event.getKeyCode() == KeyEvent.VK_ESCAPE
+              && focusOwner instanceof JComponent
+              && Boolean.TRUE.equals(
+                  ((JComponent) focusOwner).getClientProperty("lizzie.a11y.dynamicFocus"))) {
+            releaseDynamicFocus(focusOwner);
+            board.setFocusable(true);
+            board.requestFocusInWindow();
+            event.consume();
+            return true;
+          }
+          if (event.getKeyCode() == KeyEvent.VK_TAB
+              && focusOwner instanceof JComponent
+              && Boolean.TRUE.equals(
+                  ((JComponent) focusOwner).getClientProperty("lizzie.a11y.dynamicFocus"))) {
+            cycleWithinZone(zones, focusOwner, event.isShiftDown() ? -1 : 1);
+            event.consume();
+            return true;
+          }
+          return false;
+        };
     focusManager.addKeyEventDispatcher(dispatcher);
     window.addWindowListener(
         new WindowAdapter() {
@@ -328,8 +326,7 @@ public final class AccessibilitySupport {
     }
   }
 
-  private static void cycleWithinZone(
-      List<JComponent> zones, Component focusOwner, int direction) {
+  private static void cycleWithinZone(List<JComponent> zones, Component focusOwner, int direction) {
     int zoneIndex = zoneIndex(zones, focusOwner);
     if (zoneIndex < 0) {
       return;

@@ -590,11 +590,13 @@ public class ConfigDialog2 extends JDialog {
     uiTab.add(chkShowVariationGraph);
 
     JLabel lblShowComment = new JLabel(resourceBundle.getString("LizzieConfig.title.showComment"));
-    lblShowComment.setToolTipText(resourceBundle.getString("LizzieConfig.title.showComment.tooltip"));
+    lblShowComment.setToolTipText(
+        resourceBundle.getString("LizzieConfig.title.showComment.tooltip"));
     lblShowComment.setBounds(312, 78, 214, 16);
     uiTab.add(lblShowComment);
     chkShowComment = new JCheckBox("");
-    chkShowComment.setToolTipText(resourceBundle.getString("LizzieConfig.title.showComment.tooltip"));
+    chkShowComment.setToolTipText(
+        resourceBundle.getString("LizzieConfig.title.showComment.tooltip"));
     chkShowComment.addChangeListener(
         new ChangeListener() {
           public void stateChanged(ChangeEvent e) {
@@ -1528,8 +1530,7 @@ public class ConfigDialog2 extends JDialog {
 
     txtTrackingAnalysisMaxVisits = new JTextField();
     txtTrackingAnalysisMaxVisits.setBounds(312, 724, 60, 23);
-    txtTrackingAnalysisMaxVisits.setText(
-        String.valueOf(Lizzie.config.trackingAnalysisMaxVisits));
+    txtTrackingAnalysisMaxVisits.setText(String.valueOf(Lizzie.config.trackingAnalysisMaxVisits));
     uiTab.add(txtTrackingAnalysisMaxVisits);
 
     chkShowTrackingPointOutline = new JCheckBox();
@@ -2445,22 +2446,19 @@ public class ConfigDialog2 extends JDialog {
         createUserAboutCard(
             configText("ConfigDialog2.modern.about.kifuTitle", "找棋谱更省心"),
             configText(
-                "ConfigDialog2.modern.about.kifuDescription",
-                "支持野狐、腾讯棋谱等常用入口，少复制、少切窗口，打开后直接复盘。"),
+                "ConfigDialog2.modern.about.kifuDescription", "支持野狐、腾讯棋谱等常用入口，少复制、少切窗口，打开后直接复盘。"),
             "/assets/ui/about_card_kifu.png"));
     cards.add(
         createUserAboutCard(
             configText("ConfigDialog2.modern.about.katagoTitle", "KataGo 更好上手"),
             configText(
-                "ConfigDialog2.modern.about.katagoDescription",
-                "一键设置整理权重、引擎和测速，尽量把复杂配置变成看得懂的流程。"),
+                "ConfigDialog2.modern.about.katagoDescription", "一键设置整理权重、引擎和测速，尽量把复杂配置变成看得懂的流程。"),
             "/assets/ui/about_card_katago.png"));
     cards.add(
         createUserAboutCard(
             configText("ConfigDialog2.modern.about.reviewTitle", "复盘更专注"),
             configText(
-                "ConfigDialog2.modern.about.reviewDescription",
-                "保留胜率曲线、候选点和整局快速分析，把重点放在棋局本身。"),
+                "ConfigDialog2.modern.about.reviewDescription", "保留胜率曲线、候选点和整局快速分析，把重点放在棋局本身。"),
             "/assets/ui/about_card_review.png"));
     page.add(cards, BorderLayout.CENTER);
     page.add(createUnifiedAboutCommunity(), BorderLayout.SOUTH);
@@ -2483,9 +2481,7 @@ public class ConfigDialog2 extends JDialog {
     JLabel version =
         new JLabel(
             java.text.MessageFormat.format(
-                configText(
-                    "ConfigDialog2.modern.about.versionLine",
-                    "版本 {0} · 面向日常复盘与围棋训练"),
+                configText("ConfigDialog2.modern.about.versionLine", "版本 {0} · 面向日常复盘与围棋训练"),
                 Lizzie.nextVersion));
     version.putClientProperty(CLIENT_SKIP_TEXT_STYLE, Boolean.TRUE);
     version.setForeground(SETTINGS_JADE_DARK);
@@ -2786,9 +2782,7 @@ public class ConfigDialog2 extends JDialog {
         JPanel sgf =
             createDesignSettingsCard(
                 configText("ConfigDialog2.modern.kifu.title", "打开 SGF 后行为"),
-                configText(
-                    "ConfigDialog2.modern.kifu.subtitle",
-                    "设置打开本地棋谱后的默认分析、跳转和读取行为。"));
+                configText("ConfigDialog2.modern.kifu.subtitle", "设置打开本地棋谱后的默认分析、跳转和读取行为。"));
         addToggleRow(
             sgf,
             configText("ConfigDialog2.modern.kifu.autoAnalyze", "打开棋谱后自动快速分析"),
@@ -2802,8 +2796,7 @@ public class ConfigDialog2 extends JDialog {
         addToggleRow(
             sgf,
             configText("ConfigDialog2.modern.kifu.estimateEngine", "自动加载形势判断引擎"),
-            configText(
-                "ConfigDialog2.modern.kifu.estimateEngineSub", "需要时自动加载估算/形势判断引擎"),
+            configText("ConfigDialog2.modern.kifu.estimateEngineSub", "需要时自动加载估算/形势判断引擎"),
             chkAutoLoadEstimate);
         addToggleRow(
             sgf,
@@ -2815,8 +2808,7 @@ public class ConfigDialog2 extends JDialog {
         JPanel analysis =
             createDesignSettingsCard(
                 configText("ConfigDialog2.modern.analysis.title", "分析与胜率曲线"),
-                configText(
-                    "ConfigDialog2.modern.analysis.subtitle", "控制胜率曲线、选点列表和分析数据的显示。"));
+                configText("ConfigDialog2.modern.analysis.subtitle", "控制胜率曲线、选点列表和分析数据的显示。"));
         addToggleRow(
             analysis,
             configText("ConfigDialog2.modern.analysis.winrate", "显示胜率曲线"),
@@ -2840,16 +2832,12 @@ public class ConfigDialog2 extends JDialog {
         addToggleRow(
             analysis,
             configText("ConfigDialog2.modern.analysis.maxRed", "候选点最高值红色高亮"),
-            configText(
-                "ConfigDialog2.modern.analysis.maxRedSub",
-                "关闭后蓝点上的胜率数字使用普通黑白文字，不再反成红色"),
+            configText("ConfigDialog2.modern.analysis.maxRedSub", "关闭后蓝点上的胜率数字使用普通黑白文字，不再反成红色"),
             chkMaxValueReverseColor);
         addInputRow(
             analysis,
             configText("ConfigDialog2.modern.analysis.trackingVisits", "选点评估计算量"),
-            configText(
-                "ConfigDialog2.modern.analysis.trackingVisitsSub",
-                "每个选点达到该计算量后停止评估"),
+            configText("ConfigDialog2.modern.analysis.trackingVisitsSub", "每个选点达到该计算量后停止评估"),
             txtTrackingAnalysisMaxVisits,
             configText("ConfigDialog2.modern.unit.visits", "次"));
         addInputRow(
@@ -2870,31 +2858,105 @@ public class ConfigDialog2 extends JDialog {
             createDesignSettingsCard(
                 configText("ConfigDialog2.modern.play.title", "对局与操作"),
                 configText("ConfigDialog2.modern.play.subtitle", "整理棋盘标记、鼠标操作和复盘交互选项。"));
-        addToggleRow(operation, configText("ConfigDialog2.modern.play.doubleClick", "启用双击找子"), configText("ConfigDialog2.modern.play.doubleClickSub", "双击棋盘坐标时快速定位对应落子"), chkEnableDoubClick);
-        addToggleRow(operation, configText("ConfigDialog2.modern.play.clickReview", "启用点击复盘"), configText("ConfigDialog2.modern.play.clickReviewSub", "点击棋盘时进入更顺手的复盘操作"), chkEnableClickReview);
-        addToggleRow(operation, configText("ConfigDialog2.modern.play.drag", "启用拖拽棋子"), configText("ConfigDialog2.modern.play.dragSub", "允许在棋盘上拖拽调整棋子位置"), chkEnableDragStone);
-        addToggleRow(operation, configText("ConfigDialog2.modern.play.commentPanel", "显示评论/问题手面板"), configText("ConfigDialog2.modern.play.commentPanelSub", "展示棋谱评论、问题手列表和分析说明"), chkShowComment);
-        addToggleRow(operation, configText("ConfigDialog2.modern.play.hidePanelControls", "隐藏面板顶部控制条"), configText("ConfigDialog2.modern.play.hidePanelControlsSub", "隐藏评论/问题手面板上方的小按钮和筛选条"), chkHideCommentControlPane);
-        addToggleRow(operation, configText("ConfigDialog2.modern.play.coordinates", "显示坐标"), configText("ConfigDialog2.modern.play.coordinatesSub", "在棋盘边缘显示坐标"), chkShowCoordinates);
-        addToggleRow(operation, configText("ConfigDialog2.modern.play.freezeSubBoard", "小棋盘不跟随刷新"), configText("ConfigDialog2.modern.play.freezeSubBoardSub", "鼠标经过小棋盘时保持当前局部预览"), chkNoRefreshSub);
+        addToggleRow(
+            operation,
+            configText("ConfigDialog2.modern.play.doubleClick", "启用双击找子"),
+            configText("ConfigDialog2.modern.play.doubleClickSub", "双击棋盘坐标时快速定位对应落子"),
+            chkEnableDoubClick);
+        addToggleRow(
+            operation,
+            configText("ConfigDialog2.modern.play.clickReview", "启用点击复盘"),
+            configText("ConfigDialog2.modern.play.clickReviewSub", "点击棋盘时进入更顺手的复盘操作"),
+            chkEnableClickReview);
+        addToggleRow(
+            operation,
+            configText("ConfigDialog2.modern.play.drag", "启用拖拽棋子"),
+            configText("ConfigDialog2.modern.play.dragSub", "允许在棋盘上拖拽调整棋子位置"),
+            chkEnableDragStone);
+        addToggleRow(
+            operation,
+            configText("ConfigDialog2.modern.play.commentPanel", "显示评论/问题手面板"),
+            configText("ConfigDialog2.modern.play.commentPanelSub", "展示棋谱评论、问题手列表和分析说明"),
+            chkShowComment);
+        addToggleRow(
+            operation,
+            configText("ConfigDialog2.modern.play.hidePanelControls", "隐藏面板顶部控制条"),
+            configText("ConfigDialog2.modern.play.hidePanelControlsSub", "隐藏评论/问题手面板上方的小按钮和筛选条"),
+            chkHideCommentControlPane);
+        addToggleRow(
+            operation,
+            configText("ConfigDialog2.modern.play.coordinates", "显示坐标"),
+            configText("ConfigDialog2.modern.play.coordinatesSub", "在棋盘边缘显示坐标"),
+            chkShowCoordinates);
+        addToggleRow(
+            operation,
+            configText("ConfigDialog2.modern.play.freezeSubBoard", "小棋盘不跟随刷新"),
+            configText("ConfigDialog2.modern.play.freezeSubBoardSub", "鼠标经过小棋盘时保持当前局部预览"),
+            chkNoRefreshSub);
         return operation;
       case MODERN_NAV_ADVANCED:
-        JPanel advanced = createDesignSettingsCard(configText("ConfigDialog2.modern.advanced.title", "高级与性能"), configText("ConfigDialog2.modern.advanced.subtitle", "调整后台分析、缓存和启动测速等偏高级选项。"));
-        addToggleRow(advanced, configText("ConfigDialog2.modern.advanced.ponder", "对局时后台计算"), configText("ConfigDialog2.modern.advanced.ponderSub", "人机对局时保持后台分析"), chkPonder);
-        addToggleRow(advanced, configText("ConfigDialog2.modern.advanced.fastSwitch", "启用引擎快速切换"), configText("ConfigDialog2.modern.advanced.fastSwitchSub", "在多个引擎之间更快切换"), chkFastSwtich);
-        addToggleRow(advanced, configText("ConfigDialog2.modern.advanced.cache", "启用 Lizzie 缓存"), configText("ConfigDialog2.modern.advanced.cacheSub", "缓存常用局面与分析状态，减少重复加载"), chkLizzieCache);
-        addToggleRow(advanced, configText("ConfigDialog2.modern.advanced.stopEmpty", "空棋盘停止计算"), configText("ConfigDialog2.modern.advanced.stopEmptySub", "空棋盘时自动暂停分析"), chkStopAtEmpty);
-        addToggleRow(advanced, configText("ConfigDialog2.modern.advanced.firstBenchmark", "首次启动智能测速"), configText("ConfigDialog2.modern.advanced.firstBenchmarkSub", "首次启动时引导运行智能测速优化"), chkEnableStartupBenchmark);
-        addToggleRow(advanced, configText("ConfigDialog2.modern.advanced.noCapture", "五子棋无提子规则"), configText("ConfigDialog2.modern.advanced.noCaptureSub", "五子棋模式下禁用提子逻辑"), chkNoCapture);
+        JPanel advanced =
+            createDesignSettingsCard(
+                configText("ConfigDialog2.modern.advanced.title", "高级与性能"),
+                configText("ConfigDialog2.modern.advanced.subtitle", "调整后台分析、缓存和启动测速等偏高级选项。"));
+        addToggleRow(
+            advanced,
+            configText("ConfigDialog2.modern.advanced.ponder", "对局时后台计算"),
+            configText("ConfigDialog2.modern.advanced.ponderSub", "人机对局时保持后台分析"),
+            chkPonder);
+        addToggleRow(
+            advanced,
+            configText("ConfigDialog2.modern.advanced.fastSwitch", "启用引擎快速切换"),
+            configText("ConfigDialog2.modern.advanced.fastSwitchSub", "在多个引擎之间更快切换"),
+            chkFastSwtich);
+        addToggleRow(
+            advanced,
+            configText("ConfigDialog2.modern.advanced.cache", "启用 Lizzie 缓存"),
+            configText("ConfigDialog2.modern.advanced.cacheSub", "缓存常用局面与分析状态，减少重复加载"),
+            chkLizzieCache);
+        addToggleRow(
+            advanced,
+            configText("ConfigDialog2.modern.advanced.stopEmpty", "空棋盘停止计算"),
+            configText("ConfigDialog2.modern.advanced.stopEmptySub", "空棋盘时自动暂停分析"),
+            chkStopAtEmpty);
+        addToggleRow(
+            advanced,
+            configText("ConfigDialog2.modern.advanced.firstBenchmark", "首次启动智能测速"),
+            configText("ConfigDialog2.modern.advanced.firstBenchmarkSub", "首次启动时引导运行智能测速优化"),
+            chkEnableStartupBenchmark);
+        addToggleRow(
+            advanced,
+            configText("ConfigDialog2.modern.advanced.noCapture", "五子棋无提子规则"),
+            configText("ConfigDialog2.modern.advanced.noCaptureSub", "五子棋模式下禁用提子逻辑"),
+            chkNoCapture);
         addNetworkProxyRows(advanced);
         return advanced;
       case MODERN_NAV_DISPLAY:
       default:
-        JPanel startup = createDesignSettingsCard(configText("ConfigDialog2.modern.display.title", "启动时加载"), configText("ConfigDialog2.modern.display.subtitle", "控制窗口、快捷入口和启动后常用面板的显示方式。"));
-        addToggleRow(startup, configText("ConfigDialog2.modern.display.alwaysOnTop", "窗口总在最前"), configText("ConfigDialog2.modern.display.alwaysOnTopSub", "主窗口保持在其他窗口上方"), chkAlwaysOnTop);
-        addToggleRow(startup, configText("ConfigDialog2.modern.display.quickLinks", "显示快速启动"), configText("ConfigDialog2.modern.display.quickLinksSub", "保留底部常用入口，方便快速访问"), chkShowQuickLinks);
-        addToggleRow(startup, configText("ConfigDialog2.modern.display.status", "显示状态面板"), configText("ConfigDialog2.modern.display.statusSub", "在主界面显示分析状态与提示"), chkShowStatus);
-        addToggleRow(startup, configText("ConfigDialog2.modern.display.subBoard", "显示小棋盘"), configText("ConfigDialog2.modern.display.subBoardSub", "展示右侧小棋盘和局部预览"), chkShowSubBoard);
+        JPanel startup =
+            createDesignSettingsCard(
+                configText("ConfigDialog2.modern.display.title", "启动时加载"),
+                configText("ConfigDialog2.modern.display.subtitle", "控制窗口、快捷入口和启动后常用面板的显示方式。"));
+        addToggleRow(
+            startup,
+            configText("ConfigDialog2.modern.display.alwaysOnTop", "窗口总在最前"),
+            configText("ConfigDialog2.modern.display.alwaysOnTopSub", "主窗口保持在其他窗口上方"),
+            chkAlwaysOnTop);
+        addToggleRow(
+            startup,
+            configText("ConfigDialog2.modern.display.quickLinks", "显示快速启动"),
+            configText("ConfigDialog2.modern.display.quickLinksSub", "保留底部常用入口，方便快速访问"),
+            chkShowQuickLinks);
+        addToggleRow(
+            startup,
+            configText("ConfigDialog2.modern.display.status", "显示状态面板"),
+            configText("ConfigDialog2.modern.display.statusSub", "在主界面显示分析状态与提示"),
+            chkShowStatus);
+        addToggleRow(
+            startup,
+            configText("ConfigDialog2.modern.display.subBoard", "显示小棋盘"),
+            configText("ConfigDialog2.modern.display.subBoardSub", "展示右侧小棋盘和局部预览"),
+            chkShowSubBoard);
         return startup;
     }
   }
@@ -2981,7 +3043,8 @@ public class ConfigDialog2 extends JDialog {
   private void initNetworkProxyControls() {
     JSONObject ui = Lizzie.config.uiConfig;
     initialNetworkProxyMode =
-        normalizeNetworkProxyMode(ui.optString(NetworkProxy.KEY_PROXY_MODE, NetworkProxy.DEFAULT_MODE));
+        normalizeNetworkProxyMode(
+            ui.optString(NetworkProxy.KEY_PROXY_MODE, NetworkProxy.DEFAULT_MODE));
 
     comboNetworkProxyMode = new JComboBox<>(networkProxyModeLabels());
     setSelectedNetworkProxyMode(initialNetworkProxyMode);
@@ -2994,10 +3057,7 @@ public class ConfigDialog2 extends JDialog {
     styleNetworkProxyControls();
 
     lblNetworkProxyRestartHint =
-        new JLabel(
-            configText(
-                "ConfigDialog2.modern.proxy.restartHint",
-                "切换系统代理模式后需重启程序才能完全生效。"));
+        new JLabel(configText("ConfigDialog2.modern.proxy.restartHint", "切换系统代理模式后需重启程序才能完全生效。"));
     lblNetworkProxyRestartHint.putClientProperty(CLIENT_SKIP_TEXT_STYLE, Boolean.TRUE);
     lblNetworkProxyRestartHint.setForeground(SETTINGS_MUTED);
     lblNetworkProxyRestartHint.setFont(new Font(Config.sysDefaultFontName, Font.PLAIN, 12));
@@ -3041,29 +3101,23 @@ public class ConfigDialog2 extends JDialog {
     addComponentRow(
         card,
         configText("ConfigDialog2.modern.proxy.title", "网络代理"),
-        configText(
-            "ConfigDialog2.modern.proxy.subtitle", "控制程序自身 Java 网络请求使用的代理策略"),
+        configText("ConfigDialog2.modern.proxy.subtitle", "控制程序自身 Java 网络请求使用的代理策略"),
         proxyMode);
 
     JPanel manualProxy = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
     manualProxy.setOpaque(false);
-    JLabel hostLabel =
-        proxyFieldLabel(configText("ConfigDialog2.modern.proxy.host", "代理主机"));
+    JLabel hostLabel = proxyFieldLabel(configText("ConfigDialog2.modern.proxy.host", "代理主机"));
     manualProxy.add(hostLabel);
     txtNetworkProxyHost.setPreferredSize(new Dimension(150, 30));
     manualProxy.add(detachComponent(txtNetworkProxyHost));
-    JLabel portLabel =
-        proxyFieldLabel(configText("ConfigDialog2.modern.proxy.port", "代理端口"));
+    JLabel portLabel = proxyFieldLabel(configText("ConfigDialog2.modern.proxy.port", "代理端口"));
     manualProxy.add(portLabel);
     txtNetworkProxyPort.setPreferredSize(new Dimension(70, 30));
     manualProxy.add(detachComponent(txtNetworkProxyPort));
     AccessibilitySupport.labelFor(hostLabel, txtNetworkProxyHost, hostLabel.getText());
     AccessibilitySupport.labelFor(portLabel, txtNetworkProxyPort, portLabel.getText());
     addComponentRow(
-        card,
-        configText("ConfigDialog2.modern.proxy.manual", "手动代理地址"),
-        "",
-        manualProxy);
+        card, configText("ConfigDialog2.modern.proxy.manual", "手动代理地址"), "", manualProxy);
   }
 
   private JLabel proxyFieldLabel(String text) {
@@ -3123,9 +3177,7 @@ public class ConfigDialog2 extends JDialog {
       return true;
     }
     if (txtNetworkProxyHost.getText().trim().isEmpty()) {
-      showNetworkProxyWarning(
-          configText(
-              "ConfigDialog2.modern.proxy.hostRequired", "手动代理主机不能为空。"));
+      showNetworkProxyWarning(configText("ConfigDialog2.modern.proxy.hostRequired", "手动代理主机不能为空。"));
       txtNetworkProxyHost.requestFocusInWindow();
       return false;
     }
@@ -3133,8 +3185,7 @@ public class ConfigDialog2 extends JDialog {
       parseNetworkProxyPort();
     } catch (NumberFormatException e) {
       showNetworkProxyWarning(
-          configText(
-              "ConfigDialog2.modern.proxy.invalidPort", "代理端口必须是 1 到 65535 的整数。"));
+          configText("ConfigDialog2.modern.proxy.invalidPort", "代理端口必须是 1 到 65535 的整数。"));
       txtNetworkProxyPort.requestFocusInWindow();
       txtNetworkProxyPort.selectAll();
       return false;
@@ -3284,27 +3335,65 @@ public class ConfigDialog2 extends JDialog {
     JPanel profile =
         createDesignSettingsCard(
             configText("ConfigDialog2.modern.theme.title", "主题外观"),
-            configText(
-                "ConfigDialog2.modern.theme.subtitle", "选择主题，并实时预览棋盘、棋子和背景效果。"));
-    addComponentRow(profile, configText("ConfigDialog2.modern.theme.current", "当前主题"), configText("ConfigDialog2.modern.theme.currentSub", "切换或管理主题方案"), rowOf(cmbThemes, btnAddTheme, btnDeleteTheme));
+            configText("ConfigDialog2.modern.theme.subtitle", "选择主题，并实时预览棋盘、棋子和背景效果。"));
+    addComponentRow(
+        profile,
+        configText("ConfigDialog2.modern.theme.current", "当前主题"),
+        configText("ConfigDialog2.modern.theme.currentSub", "切换或管理主题方案"),
+        rowOf(cmbThemes, btnAddTheme, btnDeleteTheme));
     pnlBoardPreview.setPreferredSize(new Dimension(220, 180));
     pnlBoardPreview.setMinimumSize(new Dimension(220, 180));
-    addLargeComponentRow(profile, configText("ConfigDialog2.modern.theme.preview", "棋盘预览"), configText("ConfigDialog2.modern.theme.previewSub", "检查背景、棋盘和棋子纹理"), detachComponent(pnlBoardPreview), 208);
+    addLargeComponentRow(
+        profile,
+        configText("ConfigDialog2.modern.theme.preview", "棋盘预览"),
+        configText("ConfigDialog2.modern.theme.previewSub", "检查背景、棋盘和棋子纹理"),
+        detachComponent(pnlBoardPreview),
+        208);
     content.add(profile);
     content.add(javax.swing.Box.createVerticalStrut(12));
 
-    JPanel strokes = createDesignSettingsCard(configText("ConfigDialog2.modern.theme.lines", "线条与字体"), configText("ConfigDialog2.modern.theme.linesSub", "调整胜率曲线、目数曲线、阴影和界面字体。"));
+    JPanel strokes =
+        createDesignSettingsCard(
+            configText("ConfigDialog2.modern.theme.lines", "线条与字体"),
+            configText("ConfigDialog2.modern.theme.linesSub", "调整胜率曲线、目数曲线、阴影和界面字体。"));
     addComponentRow(
-        strokes, configText("ConfigDialog2.modern.theme.winrateWidth", "胜率曲线宽度"), configText("ConfigDialog2.modern.theme.winrateWidthSub", "控制胜率曲线线条粗细"), rowOf(spnWinrateStrokeWidth, spnScoreLeadStrokeWidth));
-    addComponentRow(strokes, configText("ConfigDialog2.modern.theme.blunderWidth", "柱状失误条最小宽度"), configText("ConfigDialog2.modern.theme.blunderWidthSub", "让失误条在不同窗口尺寸下更清晰"), spnMinimumBlunderBarWidth);
-    addToggleInputRow(strokes, configText("ConfigDialog2.modern.theme.shadow", "棋子阴影大小"), configText("ConfigDialog2.modern.theme.shadowSub", "开启后调整棋子阴影强度"), chkShowStoneShaow, spnShadowSize);
-    addComponentRow(strokes, configText("ConfigDialog2.modern.theme.infoFont", "计算量及其他字体"), configText("ConfigDialog2.modern.theme.infoFontSub", "棋盘外信息与分析面板字体"), cmbFontName);
-    addComponentRow(strokes, configText("ConfigDialog2.modern.theme.uiFont", "UI 字体"), configText("ConfigDialog2.modern.theme.uiFontSub", "菜单、按钮和设置窗口字体"), cmbUiFontName);
-    addComponentRow(strokes, configText("ConfigDialog2.modern.theme.winrateFont", "胜率目数字体"), configText("ConfigDialog2.modern.theme.winrateFontSub", "胜率条和目差显示字体"), cmbWinrateFontName);
+        strokes,
+        configText("ConfigDialog2.modern.theme.winrateWidth", "胜率曲线宽度"),
+        configText("ConfigDialog2.modern.theme.winrateWidthSub", "控制胜率曲线线条粗细"),
+        rowOf(spnWinrateStrokeWidth, spnScoreLeadStrokeWidth));
+    addComponentRow(
+        strokes,
+        configText("ConfigDialog2.modern.theme.blunderWidth", "柱状失误条最小宽度"),
+        configText("ConfigDialog2.modern.theme.blunderWidthSub", "让失误条在不同窗口尺寸下更清晰"),
+        spnMinimumBlunderBarWidth);
+    addToggleInputRow(
+        strokes,
+        configText("ConfigDialog2.modern.theme.shadow", "棋子阴影大小"),
+        configText("ConfigDialog2.modern.theme.shadowSub", "开启后调整棋子阴影强度"),
+        chkShowStoneShaow,
+        spnShadowSize);
+    addComponentRow(
+        strokes,
+        configText("ConfigDialog2.modern.theme.infoFont", "计算量及其他字体"),
+        configText("ConfigDialog2.modern.theme.infoFontSub", "棋盘外信息与分析面板字体"),
+        cmbFontName);
+    addComponentRow(
+        strokes,
+        configText("ConfigDialog2.modern.theme.uiFont", "UI 字体"),
+        configText("ConfigDialog2.modern.theme.uiFontSub", "菜单、按钮和设置窗口字体"),
+        cmbUiFontName);
+    addComponentRow(
+        strokes,
+        configText("ConfigDialog2.modern.theme.winrateFont", "胜率目数字体"),
+        configText("ConfigDialog2.modern.theme.winrateFontSub", "胜率条和目差显示字体"),
+        cmbWinrateFontName);
     content.add(strokes);
     content.add(javax.swing.Box.createVerticalStrut(12));
 
-    JPanel assets = createDesignSettingsCard(configText("ConfigDialog2.modern.theme.assets", "图片与材质"), configText("ConfigDialog2.modern.theme.assetsSub", "配置背景、棋盘、黑子和白子的图片资源。"));
+    JPanel assets =
+        createDesignSettingsCard(
+            configText("ConfigDialog2.modern.theme.assets", "图片与材质"),
+            configText("ConfigDialog2.modern.theme.assetsSub", "配置背景、棋盘、黑子和白子的图片资源。"));
     addAssetRow(
         assets,
         configText("ConfigDialog2.modern.theme.backgroundImage", "背景图片"),
@@ -3312,22 +3401,68 @@ public class ConfigDialog2 extends JDialog {
         lblPureBackgroundColor,
         txtBackgroundPath,
         btnBackgroundPath);
-    addAssetRow(assets, configText("ConfigDialog2.modern.theme.boardImage", "棋盘图片"), chkPureBoard, lblPureBoardColor, txtBoardPath, btnBoardPath);
-    addAssetRow(assets, configText("ConfigDialog2.modern.theme.blackStoneImage", "黑子图片"), null, null, txtBlackStonePath, btnBlackStonePath);
-    addAssetRow(assets, configText("ConfigDialog2.modern.theme.whiteStoneImage", "白子图片"), chkPureStone, null, txtWhiteStonePath, btnWhiteStonePath);
-    addComponentRow(assets, configText("ConfigDialog2.modern.theme.blur", "面板背景模糊程度"), configText("ConfigDialog2.modern.theme.blurSub", "数值越大，背景越柔和"), txtBackgroundFilter);
+    addAssetRow(
+        assets,
+        configText("ConfigDialog2.modern.theme.boardImage", "棋盘图片"),
+        chkPureBoard,
+        lblPureBoardColor,
+        txtBoardPath,
+        btnBoardPath);
+    addAssetRow(
+        assets,
+        configText("ConfigDialog2.modern.theme.blackStoneImage", "黑子图片"),
+        null,
+        null,
+        txtBlackStonePath,
+        btnBlackStonePath);
+    addAssetRow(
+        assets,
+        configText("ConfigDialog2.modern.theme.whiteStoneImage", "白子图片"),
+        chkPureStone,
+        null,
+        txtWhiteStonePath,
+        btnWhiteStonePath);
+    addComponentRow(
+        assets,
+        configText("ConfigDialog2.modern.theme.blur", "面板背景模糊程度"),
+        configText("ConfigDialog2.modern.theme.blurSub", "数值越大，背景越柔和"),
+        txtBackgroundFilter);
     content.add(assets);
     content.add(javax.swing.Box.createVerticalStrut(12));
 
-    JPanel colors = createDesignSettingsCard(configText("ConfigDialog2.modern.theme.colors", "颜色与标记"), configText("ConfigDialog2.modern.theme.colorsSub", "设置胜率曲线、评论区域和棋子标记。"));
-    addColorRow(colors, configText("ConfigDialog2.modern.theme.winrateColor", "胜率曲线颜色"), lblWinrateLineColor);
-    addColorRow(colors, configText("ConfigDialog2.modern.theme.missingColor", "胜率缺失曲线颜色"), lblWinrateMissLineColor);
-    addColorRow(colors, configText("ConfigDialog2.modern.theme.blunderColor", "胜率变化条颜色"), lblBlunderBarColor);
-    addColorRow(colors, configText("ConfigDialog2.modern.theme.scoreColor", "目数曲线颜色"), lblScoreMeanLineColor);
-    addColorRow(colors, configText("ConfigDialog2.modern.theme.commentBackground", "评论背景色"), lblCommentBackgroundColor);
-    addColorRow(colors, configText("ConfigDialog2.modern.theme.commentText", "评论字体色"), lblCommentFontColor);
-    addColorRow(colors, configText("ConfigDialog2.modern.theme.bestMove", "第一选点颜色"), lblBestMoveColor);
-    addComponentRow(colors, configText("ConfigDialog2.modern.theme.commentFontSize", "评论字体大小"), configText("ConfigDialog2.modern.theme.commentFontSizeSub", "调整评论面板字号"), txtCommentFontSize);
+    JPanel colors =
+        createDesignSettingsCard(
+            configText("ConfigDialog2.modern.theme.colors", "颜色与标记"),
+            configText("ConfigDialog2.modern.theme.colorsSub", "设置胜率曲线、评论区域和棋子标记。"));
+    addColorRow(
+        colors,
+        configText("ConfigDialog2.modern.theme.winrateColor", "胜率曲线颜色"),
+        lblWinrateLineColor);
+    addColorRow(
+        colors,
+        configText("ConfigDialog2.modern.theme.missingColor", "胜率缺失曲线颜色"),
+        lblWinrateMissLineColor);
+    addColorRow(
+        colors,
+        configText("ConfigDialog2.modern.theme.blunderColor", "胜率变化条颜色"),
+        lblBlunderBarColor);
+    addColorRow(
+        colors,
+        configText("ConfigDialog2.modern.theme.scoreColor", "目数曲线颜色"),
+        lblScoreMeanLineColor);
+    addColorRow(
+        colors,
+        configText("ConfigDialog2.modern.theme.commentBackground", "评论背景色"),
+        lblCommentBackgroundColor);
+    addColorRow(
+        colors, configText("ConfigDialog2.modern.theme.commentText", "评论字体色"), lblCommentFontColor);
+    addColorRow(
+        colors, configText("ConfigDialog2.modern.theme.bestMove", "第一选点颜色"), lblBestMoveColor);
+    addComponentRow(
+        colors,
+        configText("ConfigDialog2.modern.theme.commentFontSize", "评论字体大小"),
+        configText("ConfigDialog2.modern.theme.commentFontSizeSub", "调整评论面板字号"),
+        txtCommentFontSize);
     addComponentRow(
         colors,
         configText("ConfigDialog2.modern.theme.indicator", "棋子标志类型"),
@@ -3338,7 +3473,11 @@ public class ConfigDialog2 extends JDialog {
             rdoStoneIndicatorSolid,
             rdoStoneIndicatorNo));
     addToggleInputRow(
-        colors, configText("ConfigDialog2.modern.theme.commentNode", "显示评论节点颜色"), configText("ConfigDialog2.modern.theme.commentNodeSub", "开启后使用自定义评论节点颜色"), chkShowCommentNodeColor, lblCommentNodeColor);
+        colors,
+        configText("ConfigDialog2.modern.theme.commentNode", "显示评论节点颜色"),
+        configText("ConfigDialog2.modern.theme.commentNodeSub", "开启后使用自定义评论节点颜色"),
+        chkShowCommentNodeColor,
+        lblCommentNodeColor);
     content.add(colors);
     content.add(javax.swing.Box.createVerticalStrut(12));
 
@@ -3346,14 +3485,11 @@ public class ConfigDialog2 extends JDialog {
         createDesignSettingsCard(
             configText("ConfigDialog2.modern.trackingAppearance.title", "选点评估结果外观"),
             configText(
-                "ConfigDialog2.modern.trackingAppearance.subtitle",
-                "调整评估结果的底色、动态质量外框和文字颜色。"));
+                "ConfigDialog2.modern.trackingAppearance.subtitle", "调整评估结果的底色、动态质量外框和文字颜色。"));
     addToggleRow(
         trackingAppearance,
         configText("ConfigDialog2.modern.trackingAppearance.outline", "显示评估结果外框"),
-        configText(
-            "ConfigDialog2.modern.trackingAppearance.outlineSub",
-            "用虚线外框显示等待状态和实时落子质量"),
+        configText("ConfigDialog2.modern.trackingAppearance.outlineSub", "用虚线外框显示等待状态和实时落子质量"),
         chkShowTrackingPointOutline);
     addColorRow(
         trackingAppearance,
@@ -3362,16 +3498,12 @@ public class ConfigDialog2 extends JDialog {
     addComponentRow(
         trackingAppearance,
         configText("ConfigDialog2.modern.trackingAppearance.interiorOpacity", "内部不透明度"),
-        configText(
-            "ConfigDialog2.modern.trackingAppearance.interiorOpacitySub",
-            "调整固定内部颜色的不透明程度"),
+        configText("ConfigDialog2.modern.trackingAppearance.interiorOpacitySub", "调整固定内部颜色的不透明程度"),
         pnlTrackingPointInteriorOpacity);
     addComponentRow(
         trackingAppearance,
         configText("ConfigDialog2.modern.trackingAppearance.outlineOpacity", "外框不透明度"),
-        configText(
-            "ConfigDialog2.modern.trackingAppearance.outlineOpacitySub",
-            "调整动态质量虚线外框的不透明程度"),
+        configText("ConfigDialog2.modern.trackingAppearance.outlineOpacitySub", "调整动态质量虚线外框的不透明程度"),
         pnlTrackingPointOutlineOpacity);
     addToggleRow(
         trackingAppearance,
@@ -3383,14 +3515,16 @@ public class ConfigDialog2 extends JDialog {
     addComponentRow(
         trackingAppearance,
         configText("ConfigDialog2.modern.trackingAppearance.textColor", "文字颜色"),
-        configText(
-            "ConfigDialog2.modern.trackingAppearance.textColorSub", "关闭自动适配后使用此颜色"),
+        configText("ConfigDialog2.modern.trackingAppearance.textColorSub", "关闭自动适配后使用此颜色"),
         pnlTrackingPointTextColor);
     syncTrackingPointTextColorControl();
     content.add(trackingAppearance);
     content.add(javax.swing.Box.createVerticalStrut(12));
 
-    JPanel blunders = createDesignSettingsCard(configText("ConfigDialog2.modern.theme.blunders", "错误节点"), configText("ConfigDialog2.modern.theme.blundersSub", "管理胜率波动阈值和对应颜色。"));
+    JPanel blunders =
+        createDesignSettingsCard(
+            configText("ConfigDialog2.modern.theme.blunders", "错误节点"),
+            configText("ConfigDialog2.modern.theme.blundersSub", "管理胜率波动阈值和对应颜色。"));
     pnlScrollBlunderNodes.setPreferredSize(new Dimension(440, 116));
     addLargeComponentRow(
         blunders,
@@ -3399,7 +3533,11 @@ public class ConfigDialog2 extends JDialog {
         rowOf(pnlScrollBlunderNodes, btnAdd, btnRemove, btnReset),
         150);
     addToggleInputRow(
-        blunders, configText("ConfigDialog2.modern.theme.scoreBlunders", "同时考虑胜率与目数"), configText("ConfigDialog2.modern.theme.scoreBlundersSub", "目数剧烈波动也标记为错误节点"), chkUseScoreDiff, txtPercentScoreDiff);
+        blunders,
+        configText("ConfigDialog2.modern.theme.scoreBlunders", "同时考虑胜率与目数"),
+        configText("ConfigDialog2.modern.theme.scoreBlundersSub", "目数剧烈波动也标记为错误节点"),
+        chkUseScoreDiff,
+        txtPercentScoreDiff);
     content.add(blunders);
 
     Dimension contentSize = content.getPreferredSize();
@@ -3453,7 +3591,8 @@ public class ConfigDialog2 extends JDialog {
     JPanel row =
         createDesignRow(title, configText("ConfigDialog2.modern.colorRowHint", "点击色块或按钮选择颜色"));
     JPanel control = createColorControl(colorLabel);
-    nameInteractiveComponents(control, title, configText("ConfigDialog2.modern.colorRowHint", "点击色块或按钮选择颜色"));
+    nameInteractiveComponents(
+        control, title, configText("ConfigDialog2.modern.colorRowHint", "点击色块或按钮选择颜色"));
     addDesignRowControl(row, control);
     card.add(row);
   }
@@ -3497,8 +3636,7 @@ public class ConfigDialog2 extends JDialog {
 
   private void syncTrackingPointTextColorControl() {
     if (pnlTrackingPointTextColor == null || chkTrackingPointTextAutoColor == null) return;
-    setComponentTreeEnabled(
-        pnlTrackingPointTextColor, !chkTrackingPointTextAutoColor.isSelected());
+    setComponentTreeEnabled(pnlTrackingPointTextColor, !chkTrackingPointTextAutoColor.isSelected());
   }
 
   private void setComponentTreeEnabled(Component component, boolean enabled) {
@@ -3530,9 +3668,7 @@ public class ConfigDialog2 extends JDialog {
       ColorLabel colorLabel,
       JTextField path,
       JButton browse) {
-    String description =
-        configText(
-            "ConfigDialog2.modern.theme.assetHint", "可使用纯色，也可选择图片资源");
+    String description = configText("ConfigDialog2.modern.theme.assetHint", "可使用纯色，也可选择图片资源");
     JPanel row = createDesignRow(title, description);
     JPanel controls = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
     controls.setOpaque(false);
@@ -5848,8 +5984,7 @@ public class ConfigDialog2 extends JDialog {
       return false;
     }
     Lizzie.config.uiConfig.put(NetworkProxy.KEY_PROXY_MODE, selectedNetworkProxyMode());
-    Lizzie.config.uiConfig.put(
-        NetworkProxy.KEY_PROXY_HOST, txtNetworkProxyHost.getText().trim());
+    Lizzie.config.uiConfig.put(NetworkProxy.KEY_PROXY_HOST, txtNetworkProxyHost.getText().trim());
     Lizzie.config.uiConfig.put(NetworkProxy.KEY_PROXY_PORT, savedNetworkProxyPort());
     Lizzie.config.showScoreAsDiff = chkShowScoreAsLead.isSelected();
     Lizzie.config.uiConfig.put("show-score-as-diff", Lizzie.config.showScoreAsDiff);
@@ -6006,8 +6141,7 @@ public class ConfigDialog2 extends JDialog {
       Lizzie.config.loadEstimateEngine = chkAutoLoadEstimate.isSelected();
       Lizzie.config.uiConfig.put("load-estimate-engine", Lizzie.config.loadEstimateEngine);
       int previousTrackingAnalysisMaxVisits = Lizzie.config.trackingAnalysisMaxVisits;
-      int previousAnalyzeUpdateIntervalCentisec =
-          Lizzie.config.analyzeUpdateIntervalCentisec;
+      int previousAnalyzeUpdateIntervalCentisec = Lizzie.config.analyzeUpdateIntervalCentisec;
       Lizzie.config.trackingAnalysisMaxVisits =
           Utils.parseTextToInt(
               txtTrackingAnalysisMaxVisits, Lizzie.config.trackingAnalysisMaxVisits);
@@ -6019,8 +6153,7 @@ public class ConfigDialog2 extends JDialog {
       Lizzie.config.trackingPointInteriorColor = lblTrackingPointInteriorColor.getColor();
       Lizzie.config.trackingPointInteriorOpacityPercent =
           sldTrackingPointInteriorOpacity.getValue();
-      Lizzie.config.trackingPointOutlineOpacityPercent =
-          sldTrackingPointOutlineOpacity.getValue();
+      Lizzie.config.trackingPointOutlineOpacityPercent = sldTrackingPointOutlineOpacity.getValue();
       Lizzie.config.trackingPointTextAutoColor = chkTrackingPointTextAutoColor.isSelected();
       Lizzie.config.trackingPointTextColor = lblTrackingPointTextColor.getColor();
       Lizzie.config.saveTrackingPointAppearanceConfig();

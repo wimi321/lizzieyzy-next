@@ -847,8 +847,7 @@ public class Utils {
         && Lizzie.config.uiConfig.optBoolean("autoload-default", false)) {
       configuredDefaultEngine = Lizzie.config.uiConfig.optInt("default-engine", -1);
     }
-    int defaultEngineIndex =
-        normalizeDefaultEngineFlags(engineData, configuredDefaultEngine);
+    int defaultEngineIndex = normalizeDefaultEngineFlags(engineData, configuredDefaultEngine);
     for (int i = 0; i < engineData.size(); i++) {
       engineDate.put(engineDataToJson(engineData.get(i)));
     }
@@ -1310,11 +1309,9 @@ public class Utils {
     engineDt.userName = engineInfo.optString("userName", "");
     engineDt.password = engineInfo.optString("password", "");
     engineDt.initialCommand = engineInfo.optString("initialCommand", "");
-    engineDt.gtpConfigurationProtocol =
-        engineInfo.optString("gtpConfigurationProtocol", "");
+    engineDt.gtpConfigurationProtocol = engineInfo.optString("gtpConfigurationProtocol", "");
     JSONObject profile = engineInfo.optJSONObject("gtpConfigurationProfile");
-    engineDt.gtpConfigurationProfile =
-        profile == null ? null : new JSONObject(profile.toString());
+    engineDt.gtpConfigurationProfile = profile == null ? null : new JSONObject(profile.toString());
     return engineDt;
   }
 
@@ -1492,8 +1489,7 @@ public class Utils {
   }
 
   public static void changeFontRecursive(Container root, String fontName) {
-    String resolvedFontName =
-        fontName == null || fontName.isBlank() ? Font.DIALOG : fontName;
+    String resolvedFontName = fontName == null || fontName.isBlank() ? Font.DIALOG : fontName;
     Font inheritedFont = root.getFont();
     for (Component c : root.getComponents()) {
       Font currentFont = c.getFont();

@@ -220,9 +220,7 @@ public class BoardRenderer {
     if (forceWholeGameMoveEvaluation) {
       return MoveOverlayOrder.MOVE_NUMBERS_THEN_RANK;
     }
-    return showingBranch
-        ? MoveOverlayOrder.RANK_THEN_MOVE_NUMBERS
-        : MoveOverlayOrder.RANK_ONLY;
+    return showingBranch ? MoveOverlayOrder.RANK_THEN_MOVE_NUMBERS : MoveOverlayOrder.RANK_ONLY;
   }
 
   /** Draw a go board */
@@ -2771,7 +2769,6 @@ public class BoardRenderer {
         clearAfterMove();
       }
     }
-
   }
 
   private void drawTrackingOverlay(Graphics2D g) {
@@ -2786,9 +2783,7 @@ public class BoardRenderer {
       MoveData ordinaryBestMove =
           bestMoves == null || bestMoves.isEmpty() ? null : bestMoves.get(0);
       Map<String, TrackingAnalysisController.PointResult> trackingResults =
-          currentTrackingDisplay
-              ? trackingSnapshot.results()
-              : java.util.Collections.emptyMap();
+          currentTrackingDisplay ? trackingSnapshot.results() : java.util.Collections.emptyMap();
       if (currentTrackingDisplay) {
         java.util.Collection<TrackingAnalysisController.PointResult> trackedMoves =
             trackingResults.values();
@@ -3347,8 +3342,7 @@ public class BoardRenderer {
                         && !Lizzie.board.isPkBoard
                         && !Lizzie.frame.isShowingHeatmap
                         && !Lizzie.frame.isShowingPolicy
-                        && ((displayNode.getData().blackToPlay
-                                && Lizzie.config.showBlackCandidates)
+                        && ((displayNode.getData().blackToPlay && Lizzie.config.showBlackCandidates)
                             || (!displayNode.getData().blackToPlay
                                 && Lizzie.config.showWhiteCandidates))) {
                       BoardData nextData = nexts.get(0).getData();
@@ -3511,8 +3505,7 @@ public class BoardRenderer {
         if (move.coordinate.equals(coordsName)) {
           if (move.order > 0
               && move.playouts < Lizzie.config.minPlayoutsForNextMove
-              && nextMoveNode.getData().getPlayouts()
-                  >= Lizzie.config.minPlayoutsForNextMove) {
+              && nextMoveNode.getData().getPlayouts() >= Lizzie.config.minPlayoutsForNextMove) {
             shouldIgnoreBestMove = true;
             this.ignoreBestMoveX = coordX;
             this.ignoreBestMoveY = coordY;
@@ -3531,8 +3524,7 @@ public class BoardRenderer {
     boolean blackToPlay = Lizzie.frame.getDisplayNode().getData().blackToPlay;
     if (Lizzie.config.usePureStone)
       drawStoneSimple(g, g, moveX, moveY, blackToPlay ? Stone.BLACK : Stone.WHITE);
-    else
-      drawStone(g, g, moveX, moveY, blackToPlay ? Stone.BLACK : Stone.WHITE);
+    else drawStone(g, g, moveX, moveY, blackToPlay ? Stone.BLACK : Stone.WHITE);
     if (blackToPlay) g.setColor(Color.WHITE);
     else g.setColor(Color.BLACK);
     if (showBlunderWinrate && showBlunderScore) {

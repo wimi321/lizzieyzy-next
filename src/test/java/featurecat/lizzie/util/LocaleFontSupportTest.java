@@ -9,8 +9,7 @@ class LocaleFontSupportTest {
   @Test
   void leavesConfiguredFontAloneOutsideThaiLocale() {
     assertEquals(
-        "Dialog",
-        LocaleFontSupport.resolveConfiguredFontName("Dialog", Locale.US, "Fallback"));
+        "Dialog", LocaleFontSupport.resolveConfiguredFontName("Dialog", Locale.US, "Fallback"));
   }
 
   @Test
@@ -35,7 +34,6 @@ class LocaleFontSupportTest {
   void treatsLizzieDefaultAsTheConfiguredFallback() {
     assertEquals(
         "Fallback Thai",
-        LocaleFontSupport.resolveConfiguredFontName(
-            "Lizzie Default", Locale.US, "Fallback Thai"));
+        LocaleFontSupport.resolveConfiguredFontName("Lizzie Default", Locale.US, "Fallback Thai"));
   }
 }

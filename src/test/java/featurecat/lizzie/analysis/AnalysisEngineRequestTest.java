@@ -9,8 +9,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import featurecat.lizzie.Config;
 import featurecat.lizzie.Lizzie;
-import featurecat.lizzie.gui.HumanSlGameController;
 import featurecat.lizzie.gui.GtpConsolePane;
+import featurecat.lizzie.gui.HumanSlGameController;
 import featurecat.lizzie.gui.LizzieFrame;
 import featurecat.lizzie.gui.WaitForAnalysis;
 import featurecat.lizzie.rules.Board;
@@ -59,6 +59,7 @@ class AnalysisEngineRequestTest {
     }
     createdForegroundEngines.clear();
   }
+
   private static final int BOARD_AREA = BOARD_SIZE * BOARD_SIZE;
 
   @Test
@@ -385,8 +386,7 @@ class AnalysisEngineRequestTest {
       ByteArrayOutputStream output = installLeelazOutput(foreground);
       Lizzie.leelaz = foreground;
       Leelaz.TrackingStreamLeaseAcquisition tracking = activateTracking(foreground);
-      AnalysisEngine engine =
-          new AnalysisEngine(false, AnalysisEngine.Workload.WHOLE_GAME, 500);
+      AnalysisEngine engine = new AnalysisEngine(false, AnalysisEngine.Workload.WHOLE_GAME, 500);
 
       assertEquals(1, engine.startWholeGameRequest(List.of(requestedNode), 500, false));
       assertEquals(
@@ -422,8 +422,7 @@ class AnalysisEngineRequestTest {
       Leelaz foreground = reusableForegroundEngine(true);
       Lizzie.leelaz = foreground;
       activateTracking(foreground);
-      AnalysisEngine engine =
-          new AnalysisEngine(false, AnalysisEngine.Workload.WHOLE_GAME, 500);
+      AnalysisEngine engine = new AnalysisEngine(false, AnalysisEngine.Workload.WHOLE_GAME, 500);
 
       assertEquals(1, engine.startWholeGameRequest(List.of(requestedNode), 500, false));
       Object target = getField(AnalysisEngine.class, engine, "pendingForegroundRequest");
@@ -494,8 +493,7 @@ class AnalysisEngineRequestTest {
       installLeelazOutput(foreground);
       Lizzie.leelaz = foreground;
       activateTracking(foreground);
-      AnalysisEngine engine =
-          new AnalysisEngine(false, AnalysisEngine.Workload.WHOLE_GAME, 500);
+      AnalysisEngine engine = new AnalysisEngine(false, AnalysisEngine.Workload.WHOLE_GAME, 500);
       AtomicInteger failures = new AtomicInteger();
       engine.setFailureCallback(failures::incrementAndGet);
 
@@ -680,8 +678,7 @@ class AnalysisEngineRequestTest {
         singleUnanalyzedMoveNode();
         Leelaz foreground = reusableForegroundEngine(true);
         ByteArrayOutputStream output = installLeelazOutput(foreground);
-        setField(
-            Leelaz.class, foreground, "inputStream", new BufferedReader(new StringReader("")));
+        setField(Leelaz.class, foreground, "inputStream", new BufferedReader(new StringReader("")));
         Lizzie.gtpConsole = allocate(SilentGtpConsole.class);
         Lizzie.leelaz = foreground;
         activateTracking(foreground);
@@ -823,8 +820,7 @@ class AnalysisEngineRequestTest {
   }
 
   @Test
-  void reuseModeDoesNotStartForegroundRequestAfterCurrentPositionChangesInPlace()
-      throws Exception {
+  void reuseModeDoesNotStartForegroundRequestAfterCurrentPositionChangesInPlace() throws Exception {
     try (TestEnvironment env = TestEnvironment.open()) {
       Lizzie.config.analysisReuseCurrentEngine = true;
       singleUnanalyzedMoveNode();
@@ -845,8 +841,7 @@ class AnalysisEngineRequestTest {
   }
 
   @Test
-  void reuseModeDoesNotStartForegroundRequestAfterNavigationReturnsToSameNode()
-      throws Exception {
+  void reuseModeDoesNotStartForegroundRequestAfterNavigationReturnsToSameNode() throws Exception {
     try (TestEnvironment env = TestEnvironment.open()) {
       Lizzie.config.analysisReuseCurrentEngine = true;
       BoardHistoryNode requestedNode = singleUnanalyzedMoveNode();
@@ -1094,8 +1089,7 @@ class AnalysisEngineRequestTest {
       AnalysisEngine engine = new AnalysisEngine(false);
 
       engine.normalQuit();
-      int requested =
-          engine.startWholeGameRequest(List.of(history.getStart()), 500, false);
+      int requested = engine.startWholeGameRequest(List.of(history.getStart()), 500, false);
 
       assertEquals(-1, requested);
       assertFalse(foreground.hasExclusiveGtpLease());
@@ -3289,15 +3283,13 @@ class AnalysisEngineRequestTest {
 
   private static void invokeAnalysisEnginePrepareRequestState(
       AnalysisEngine engine, boolean showProgressDialog) throws Exception {
-    Method method =
-        AnalysisEngine.class.getDeclaredMethod("prepareRequestState", boolean.class);
+    Method method = AnalysisEngine.class.getDeclaredMethod("prepareRequestState", boolean.class);
     method.setAccessible(true);
     method.invoke(engine, showProgressDialog);
   }
 
   private static void invokeAnalysisEngineResumeForeground(AnalysisEngine engine) throws Exception {
-    Method method =
-        AnalysisEngine.class.getDeclaredMethod("resumeForegroundAnalysisIfRequested");
+    Method method = AnalysisEngine.class.getDeclaredMethod("resumeForegroundAnalysisIfRequested");
     method.setAccessible(true);
     method.invoke(engine);
   }

@@ -15,9 +15,9 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
 /**
- * Pins the KataGo info-line parsing and the memory shape of its results: variation/pvVisits must
- * be compact ArrayLists, not subList views that pin the whole tokenized line (hundreds of tokens
- * with ownership data) for as long as the MoveData lives in the game tree.
+ * Pins the KataGo info-line parsing and the memory shape of its results: variation/pvVisits must be
+ * compact ArrayLists, not subList views that pin the whole tokenized line (hundreds of tokens with
+ * ownership data) for as long as the MoveData lives in the game tree.
  */
 class MoveDataParseTest {
   private static Config previousConfig;
@@ -122,8 +122,7 @@ class MoveDataParseTest {
     assertThrows(
         NumberFormatException.class,
         () ->
-            MoveData.fromInfoKatago(
-                "move Q16 visits 999999999999999999999999999999999999 pv Q16"));
+            MoveData.fromInfoKatago("move Q16 visits 999999999999999999999999999999999999 pv Q16"));
 
     MoveData positive =
         MoveData.fromInfoKatago(

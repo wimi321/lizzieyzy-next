@@ -612,20 +612,16 @@ public class KataGoAutoSetupHelperTest {
     KataGoAutoSetupHelper.RemoteWeightInfo lightweight =
         KataGoAutoSetupHelper.officialTransformerWeights().stream()
             .filter(
-                info ->
-                    info.transformerTier
-                        == KataGoAutoSetupHelper.TransformerTier.LIGHTWEIGHT)
+                info -> info.transformerTier == KataGoAutoSetupHelper.TransformerTier.LIGHTWEIGHT)
             .findFirst()
             .orElseThrow();
 
     assertEquals(
         KataGoAutoSetupHelper.QUICK_ANALYSIS_MODEL_FILE_NAME.replace(".bin.gz", ""),
         lightweight.modelName);
-    assertEquals(
-        KataGoAutoSetupHelper.QUICK_ANALYSIS_MODEL_SIZE_BYTES, lightweight.sizeBytes);
+    assertEquals(KataGoAutoSetupHelper.QUICK_ANALYSIS_MODEL_SIZE_BYTES, lightweight.sizeBytes);
     assertEquals(KataGoAutoSetupHelper.QUICK_ANALYSIS_MODEL_SHA256, lightweight.sha256);
-    assertEquals(
-        KataGoAutoSetupHelper.QUICK_ANALYSIS_MODEL_DOWNLOAD_URL, lightweight.downloadUrl);
+    assertEquals(KataGoAutoSetupHelper.QUICK_ANALYSIS_MODEL_DOWNLOAD_URL, lightweight.downloadUrl);
   }
 
   @Test
@@ -855,15 +851,14 @@ public class KataGoAutoSetupHelperTest {
               withUserDirAndConfig(
                   tempRoot,
                   () -> {
-                    Path modelDir = Files.createDirectories(tempRoot.resolve("quick-analysis-models"));
+                    Path modelDir =
+                        Files.createDirectories(tempRoot.resolve("quick-analysis-models"));
                     Path partial =
                         modelDir.resolve(
                             KataGoAutoSetupHelper.QUICK_ANALYSIS_MODEL_FILE_NAME + ".part");
-                    Files.write(
-                        partial, java.util.Arrays.copyOf(modelBytes, partialSize));
+                    Files.write(partial, java.util.Arrays.copyOf(modelBytes, partialSize));
 
-                    Path downloaded =
-                        KataGoAutoSetupHelper.downloadQuickAnalysisModel(null, null);
+                    Path downloaded = KataGoAutoSetupHelper.downloadQuickAnalysisModel(null, null);
                     KataGoAutoSetupHelper.QuickAnalysisModelStatus status =
                         KataGoAutoSetupHelper.inspectQuickAnalysisModel();
                     KataGoAutoSetupHelper.SetupSnapshot snapshot =
@@ -925,14 +920,12 @@ public class KataGoAutoSetupHelperTest {
     Path activeWeight = touch(root.resolve("weights").resolve("main.bin.gz"));
     Path quickModel =
         writeModel(
-            root
-                .resolve("quick-analysis-models")
+            root.resolve("quick-analysis-models")
                 .resolve(KataGoAutoSetupHelper.QUICK_ANALYSIS_MODEL_FILE_NAME),
             modelBytes);
 
     withQuickAnalysisDownloadProperties(
-        "http://127.0.0.1/not-used/"
-            + KataGoAutoSetupHelper.QUICK_ANALYSIS_MODEL_FILE_NAME,
+        "http://127.0.0.1/not-used/" + KataGoAutoSetupHelper.QUICK_ANALYSIS_MODEL_FILE_NAME,
         sha256(modelBytes),
         modelBytes.length,
         () ->
@@ -958,8 +951,7 @@ public class KataGoAutoSetupHelperTest {
                   assertEquals(configured.commands, Utils.getEngineData().get(0).commands);
 
                   Lizzie.config.analysisReuseCurrentEngine = true;
-                  assertTrue(
-                      KataGoAutoSetupHelper.resolveQuickAnalysisEngineCommand().isEmpty());
+                  assertTrue(KataGoAutoSetupHelper.resolveQuickAnalysisEngineCommand().isEmpty());
                 }));
   }
 

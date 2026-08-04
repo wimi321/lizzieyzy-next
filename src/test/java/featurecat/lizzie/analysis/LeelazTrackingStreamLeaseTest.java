@@ -360,9 +360,11 @@ class LeelazTrackingStreamLeaseTest {
         queuedCommandType.getDeclaredConstructor(
             String.class, Runnable.class, failureHandlerType, boolean.class);
     constructor.setAccessible(true);
-    Object queuedCommand = constructor.newInstance("loadsgf /tmp/monitor.sgf", null, failureHandler, true);
+    Object queuedCommand =
+        constructor.newInstance("loadsgf /tmp/monitor.sgf", null, failureHandler, true);
     Method markReset =
-        queuedCommandType.getDeclaredMethod("markStateResetAfterOutputWrite", RuntimeException.class);
+        queuedCommandType.getDeclaredMethod(
+            "markStateResetAfterOutputWrite", RuntimeException.class);
     markReset.setAccessible(true);
     markReset.invoke(queuedCommand, new IllegalStateException("controlled reset"));
     Method publishReset = queuedCommandType.getDeclaredMethod("publishStateResetAfterOutputWrite");
@@ -448,10 +450,7 @@ class LeelazTrackingStreamLeaseTest {
         closeThread.start();
         waitUntil(() -> !acquisition.lease().isOwned());
         rebindThread.start();
-        waitUntil(
-            () ->
-                !rebindThread.isAlive()
-                    || rebindThread.getState() == Thread.State.BLOCKED);
+        waitUntil(() -> !rebindThread.isAlive() || rebindThread.getState() == Thread.State.BLOCKED);
         rebindWaitedForCutover = rebindThread.isAlive();
       }
       closeThread.join(1000L);
@@ -484,8 +483,7 @@ class LeelazTrackingStreamLeaseTest {
       assertTrue(engine.timeoutStarted.await(1, TimeUnit.SECONDS));
       CountDownLatch callbackStarted = new CountDownLatch(1);
       CountDownLatch continueCallback = new CountDownLatch(1);
-      enqueueBlockingTrackedLoadSgf(
-          state.engine, callbackStarted, continueCallback, null);
+      enqueueBlockingTrackedLoadSgf(state.engine, callbackStarted, continueCallback, null);
       ByteArrayOutputStream reboundOutput = new ByteArrayOutputStream();
       AtomicReference<Throwable> rebindFailure = new AtomicReference<>();
       Thread rebindThread =
@@ -535,8 +533,7 @@ class LeelazTrackingStreamLeaseTest {
       assertTrue(engine.timeoutStarted.await(1, TimeUnit.SECONDS));
       CountDownLatch callbackStarted = new CountDownLatch(1);
       CountDownLatch continueCallback = new CountDownLatch(1);
-      enqueueBlockingTrackedLoadSgf(
-          state.engine, callbackStarted, continueCallback, null);
+      enqueueBlockingTrackedLoadSgf(state.engine, callbackStarted, continueCallback, null);
 
       engine.continueTimeout.countDown();
       assertTrue(callbackStarted.await(1, TimeUnit.SECONDS));
@@ -571,16 +568,15 @@ class LeelazTrackingStreamLeaseTest {
       assertEquals(null, rebindFailure.get());
       assertEquals(1, closed.get());
       assertFalse(acquisition.lease().isOwned());
-      assertEquals(
-          java.util.Optional.of(phase.failure()), acquisition.lease().failureReason());
+      assertEquals(java.util.Optional.of(phase.failure()), acquisition.lease().failureReason());
       assertEquals("version\n", reboundOutput.toString(StandardCharsets.UTF_8));
     }
   }
 
   @ParameterizedTest
   @EnumSource(TrackingTimeoutPhase.class)
-  void readerRebindRetiresCommandQueuedAfterTimeoutSnapshotBeforeGate(
-      TrackingTimeoutPhase phase) throws Exception {
+  void readerRebindRetiresCommandQueuedAfterTimeoutSnapshotBeforeGate(TrackingTimeoutPhase phase)
+      throws Exception {
     TimeoutLeelaz engine = reusableTimeoutKatago();
     phase.useShortTimeout(engine);
     engine.blockTimeout = true;
@@ -591,8 +587,7 @@ class LeelazTrackingStreamLeaseTest {
       assertTrue(engine.timeoutStarted.await(1, TimeUnit.SECONDS));
       CountDownLatch callbackStarted = new CountDownLatch(1);
       CountDownLatch continueCallback = new CountDownLatch(1);
-      enqueueBlockingTrackedLoadSgf(
-          state.engine, callbackStarted, continueCallback, null);
+      enqueueBlockingTrackedLoadSgf(state.engine, callbackStarted, continueCallback, null);
 
       engine.continueTimeout.countDown();
       assertTrue(callbackStarted.await(1, TimeUnit.SECONDS));
@@ -625,8 +620,8 @@ class LeelazTrackingStreamLeaseTest {
 
   @ParameterizedTest
   @EnumSource(TrackingTimeoutPhase.class)
-  void readerRebindRetiresSentLoadSgfHandlerPreservedByTimeoutReset(
-      TrackingTimeoutPhase phase) throws Exception {
+  void readerRebindRetiresSentLoadSgfHandlerPreservedByTimeoutReset(TrackingTimeoutPhase phase)
+      throws Exception {
     TimeoutLeelaz engine = reusableTimeoutKatago();
     phase.useShortTimeout(engine);
     engine.blockTimeout = true;
@@ -1670,9 +1665,7 @@ class LeelazTrackingStreamLeaseTest {
       state.engine.boardSize(13, 13);
 
       String mirroredCommands = secondOutput.toString(StandardCharsets.UTF_8);
-      assertTrue(
-          mirroredCommands.startsWith("boardsize 13\nclear_board\n"),
-          mirroredCommands);
+      assertTrue(mirroredCommands.startsWith("boardsize 13\nclear_board\n"), mirroredCommands);
     } finally {
       Board.boardWidth = previousBoardWidth;
       Board.boardHeight = previousBoardHeight;
@@ -1796,7 +1789,8 @@ class LeelazTrackingStreamLeaseTest {
       assertTrue(dispatch(state.engine, "=800000001"));
       assertTrue(dispatch(state.engine, ""));
       assertTrue(
-          state.output
+          state
+              .output
               .toString(StandardCharsets.UTF_8)
               .endsWith("komi 5.5\nkomi 6.5\nboardsize 13\n"),
           state.output.toString(StandardCharsets.UTF_8));
@@ -2501,10 +2495,7 @@ class LeelazTrackingStreamLeaseTest {
               "rebind-during-claimed-ordinary-write");
       rebindThread.setDaemon(true);
       rebindThread.start();
-      waitUntil(
-          () ->
-              !rebindThread.isAlive()
-                  || rebindThread.getState() == Thread.State.WAITING);
+      waitUntil(() -> !rebindThread.isAlive() || rebindThread.getState() == Thread.State.WAITING);
       boolean rebindWaitedForWrite = rebindThread.isAlive();
       oldOutput.continueWrite.countDown();
       commandThread.join(1000L);
@@ -2726,7 +2717,8 @@ class LeelazTrackingStreamLeaseTest {
             boolean.class,
             boolean.class);
     method.setAccessible(true);
-    method.invoke(engine, "loadsgf /tmp/tracking-rebind-sent.sgf", null, failureHandler, true, false);
+    method.invoke(
+        engine, "loadsgf /tmp/tracking-rebind-sent.sgf", null, failureHandler, true, false);
   }
 
   private static void enqueueBlockingTrackedLoadSgf(
@@ -2735,8 +2727,7 @@ class LeelazTrackingStreamLeaseTest {
       CountDownLatch continueCallback,
       RuntimeException callbackFailure)
       throws Exception {
-    enqueueBlockingTrackedLoadSgf(
-        engine, callbackStarted, continueCallback, callbackFailure, null);
+    enqueueBlockingTrackedLoadSgf(engine, callbackStarted, continueCallback, callbackFailure, null);
   }
 
   private static void enqueueBlockingTrackedLoadSgf(
@@ -3210,16 +3201,14 @@ class LeelazTrackingStreamLeaseTest {
   private enum SuccessfulTrackingClosePhase {
     ACQUIRING {
       @Override
-      void prepareCloseBoundary(Leelaz engine, Leelaz.TrackingStreamLease lease)
-          throws Exception {
+      void prepareCloseBoundary(Leelaz engine, Leelaz.TrackingStreamLease lease) throws Exception {
         assertTrue(lease.release());
         processCommandResponse(engine, "=800000000");
       }
     },
     FINAL {
       @Override
-      void prepareCloseBoundary(Leelaz engine, Leelaz.TrackingStreamLease lease)
-          throws Exception {
+      void prepareCloseBoundary(Leelaz engine, Leelaz.TrackingStreamLease lease) throws Exception {
         processCommandResponse(engine, "=800000000");
         assertTrue(dispatch(engine, ""));
         assertTrue(lease.release());

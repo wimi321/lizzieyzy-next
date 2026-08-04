@@ -441,8 +441,7 @@ public class MoveData {
           String subKey = data[s];
           if (subKey.equals("pvVisits")) {
             pvVisitsPos = s;
-            result.pvVisits =
-                new ArrayList<>(Arrays.asList(data).subList(s + 1, data.length));
+            result.pvVisits = new ArrayList<>(Arrays.asList(data).subList(s + 1, data.length));
             break;
           }
         }

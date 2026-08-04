@@ -1,7 +1,7 @@
 package featurecat.lizzie.gui;
 
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -18,9 +18,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
+import javax.swing.JOptionPane;
 import javax.swing.JRadioButton;
 import javax.swing.JTextField;
-import javax.swing.JOptionPane;
 import org.json.JSONObject;
 import org.junit.jupiter.api.Test;
 
@@ -110,8 +110,7 @@ class AnalysisSettingsSaveConfigTest {
   }
 
   @Test
-  void missingCommandCancellationDiscardsPendingRequestAndDoesNotStartAnalysis()
-      throws Exception {
+  void missingCommandCancellationDiscardsPendingRequestAndDoesNotStartAnalysis() throws Exception {
     TrackingFlashAnalysisFrame frame = allocate(TrackingFlashAnalysisFrame.class);
 
     frame.handleMissingFlashAnalysisCommandChoice(JOptionPane.OK_OPTION, false, true, false);
@@ -132,8 +131,7 @@ class AnalysisSettingsSaveConfigTest {
       Lizzie.config = config;
       SilentAnalysisSettings settings = allocate(SilentAnalysisSettings.class);
       setField(AnalysisSettings.class, settings, "engineCmd", new JFontTextArea("   "));
-      setField(
-          AnalysisSettings.class, settings, "chkReuseCurrentEngine", selectedCheckBox(false));
+      setField(AnalysisSettings.class, settings, "chkReuseCurrentEngine", selectedCheckBox(false));
 
       assertFalse(settings.saveConfig());
       assertEquals(1, settings.commandRequiredCount);
@@ -195,8 +193,7 @@ class AnalysisSettingsSaveConfigTest {
       assertSame(previousLeelaz, config.leelazConfig);
       assertSame(existingEngine, frame.analysisEngine);
       assertSame(
-          pendingRequest,
-          getField(LizzieFrame.class, frame, "pendingFlashAnalysisAfterSettings"));
+          pendingRequest, getField(LizzieFrame.class, frame, "pendingFlashAnalysisAfterSettings"));
       assertFalse(config.analysisAutoQuit);
       assertFalse(config.analysisEnginePreLoad);
       assertFalse(config.analysisReuseCurrentEngine);
@@ -287,8 +284,7 @@ class AnalysisSettingsSaveConfigTest {
     }
 
     @Override
-    public void flashAnalyzeGame(
-        boolean isAllGame, boolean isAllBranches, boolean silentAnalyze) {
+    public void flashAnalyzeGame(boolean isAllGame, boolean isAllBranches, boolean silentAnalyze) {
       flashCalls++;
       lastAllGame = isAllGame;
       lastAllBranches = isAllBranches;

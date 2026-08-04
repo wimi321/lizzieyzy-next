@@ -1,8 +1,7 @@
 package featurecat.lizzie.util;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
-import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -75,24 +74,16 @@ class NetworkProxyTest {
                 ui(NetworkProxy.MODE_MANUAL).put(NetworkProxy.KEY_PROXY_HOST, " ")));
     assertThrows(
         NetworkProxy.InvalidNetworkProxyConfigException.class,
-        () ->
-            NetworkProxy.proxySelector(
-                manualUi().put(NetworkProxy.KEY_PROXY_PORT, "abc")));
+        () -> NetworkProxy.proxySelector(manualUi().put(NetworkProxy.KEY_PROXY_PORT, "abc")));
     assertThrows(
         NetworkProxy.InvalidNetworkProxyConfigException.class,
-        () ->
-            NetworkProxy.proxySelector(
-                manualUi().put(NetworkProxy.KEY_PROXY_PORT, 70000)));
+        () -> NetworkProxy.proxySelector(manualUi().put(NetworkProxy.KEY_PROXY_PORT, 70000)));
     assertThrows(
         NetworkProxy.InvalidNetworkProxyConfigException.class,
-        () ->
-            NetworkProxy.proxySelector(
-                manualUi().put(NetworkProxy.KEY_PROXY_PORT, 7897.5)));
+        () -> NetworkProxy.proxySelector(manualUi().put(NetworkProxy.KEY_PROXY_PORT, 7897.5)));
     assertThrows(
         NetworkProxy.InvalidNetworkProxyConfigException.class,
-        () ->
-            NetworkProxy.proxySelector(
-                manualUi().put(NetworkProxy.KEY_PROXY_PORT, 4294975193L)));
+        () -> NetworkProxy.proxySelector(manualUi().put(NetworkProxy.KEY_PROXY_PORT, 4294975193L)));
   }
 
   @Test
@@ -108,8 +99,7 @@ class NetworkProxyTest {
   @Test
   void startupSystemProxyHookIgnoresInvalidManualSettings() {
     Lizzie.config = ConfigTestHelper.createForTests(tempDir.resolve("config"));
-    Lizzie.config.uiConfig =
-        ui(NetworkProxy.MODE_MANUAL).put(NetworkProxy.KEY_PROXY_HOST, " ");
+    Lizzie.config.uiConfig = ui(NetworkProxy.MODE_MANUAL).put(NetworkProxy.KEY_PROXY_HOST, " ");
 
     assertDoesNotThrow(NetworkProxy::installSystemProxyPropertyFromSavedConfig);
   }
@@ -123,8 +113,7 @@ class NetworkProxyTest {
                 System.getProperty("os.name", "").startsWith("Windows") ? "java.exe" : "java")
             .toString();
     String classPath =
-        System.getProperty(
-            "surefire.test.class.path", System.getProperty("java.class.path", ""));
+        System.getProperty("surefire.test.class.path", System.getProperty("java.class.path", ""));
     Process process =
         new ProcessBuilder(
                 javaExecutable,
@@ -143,8 +132,7 @@ class NetworkProxyTest {
   @Test
   void publicEntrypointsWrapInvalidStoredConfigAsIOException() throws Exception {
     Lizzie.config = ConfigTestHelper.createForTests(tempDir.resolve("config"));
-    Lizzie.config.uiConfig =
-        ui(NetworkProxy.MODE_MANUAL).put(NetworkProxy.KEY_PROXY_HOST, " ");
+    Lizzie.config.uiConfig = ui(NetworkProxy.MODE_MANUAL).put(NetworkProxy.KEY_PROXY_HOST, " ");
 
     assertInvalidStoredConfig(() -> NetworkProxy.openConnection(new URL("https://example.test")));
     assertInvalidStoredConfig(NetworkProxy::proxySelector);
@@ -202,7 +190,8 @@ class NetworkProxyTest {
   private static void assertInvalidStoredConfig(IoCallable callable) {
     IOException error = assertThrows(IOException.class, callable::call);
 
-    assertEquals(NetworkProxy.InvalidNetworkProxyConfigException.class, error.getCause().getClass());
+    assertEquals(
+        NetworkProxy.InvalidNetworkProxyConfigException.class, error.getCause().getClass());
     assertTrue(error.getMessage().contains(NetworkProxy.KEY_PROXY_HOST));
     assertTrue(error.getMessage().contains("Settings"));
   }

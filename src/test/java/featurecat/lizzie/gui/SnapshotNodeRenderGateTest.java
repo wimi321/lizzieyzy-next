@@ -178,9 +178,7 @@ class SnapshotNodeRenderGateTest {
     assertArrayEquals(
         expected,
         actual,
-        "last "
-            + allowMoveNumber
-            + " should not renumber the complete candidate preview sequence");
+        "last " + allowMoveNumber + " should not renumber the complete candidate preview sequence");
   }
 
   private static int[] pixels(BufferedImage image) {

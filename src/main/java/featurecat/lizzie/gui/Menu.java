@@ -8,6 +8,7 @@ import featurecat.lizzie.analysis.FastLink;
 import featurecat.lizzie.analysis.GameInfo;
 import featurecat.lizzie.analysis.Leelaz;
 import featurecat.lizzie.analysis.MoveRankEvaluationMode;
+import featurecat.lizzie.teacher.TeacherPanel;
 import featurecat.lizzie.theme.MorandiPalette;
 import featurecat.lizzie.theme.Theme;
 import featurecat.lizzie.update.WindowsUpdateController;
@@ -5477,6 +5478,22 @@ public class Menu extends JMenuBar {
     //   headFont = new Font(Config.sysDefaultFontName, Font.PLAIN,
     // Math.max(Lizzie.config.allFontSize, 12));
     this.add(engineMenu2);
+
+    // AI 讲棋（GoAgent 式）：打开讲棋面板对话框
+    JMenu teacherMenu = new JMenu("AI讲棋");
+    teacherMenu.setFont(
+        new Font(Config.sysDefaultFontName, Font.BOLD, Math.max(Config.frameFontSize, 15)));
+    JMenuItem openTeacher = new JMenuItem("打开讲棋面板");
+    openTeacher.addActionListener(
+        e -> {
+          javax.swing.JDialog dlg = new javax.swing.JDialog(Lizzie.frame, "AI 讲棋 · GoAgent", false);
+          dlg.getContentPane().add(new TeacherPanel());
+          dlg.setSize(420, 560);
+          dlg.setLocationRelativeTo(Lizzie.frame);
+          dlg.setVisible(true);
+        });
+    teacherMenu.add(openTeacher);
+    this.add(teacherMenu);
 
     playing = new ImageIcon();
     try {

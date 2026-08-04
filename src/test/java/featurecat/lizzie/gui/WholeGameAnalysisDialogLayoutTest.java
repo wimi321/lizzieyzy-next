@@ -37,8 +37,7 @@ class WholeGameAnalysisDialogLayoutTest {
               JLabel progress =
                   (JLabel) findByName(dialog.getContentPane(), "wholeGameProgressText");
               JLabel mode = (JLabel) findByName(dialog.getContentPane(), "wholeGameMode");
-              JLabel remaining =
-                  (JLabel) findByName(dialog.getContentPane(), "wholeGameRemaining");
+              JLabel remaining = (JLabel) findByName(dialog.getContentPane(), "wholeGameRemaining");
               JScrollPane scrollPane =
                   (JScrollPane) findByName(dialog.getContentPane(), "wholeGameScrollPane");
               progress.setText("已完成 1234 / 2345 个局面 · 当前计算量 5000");

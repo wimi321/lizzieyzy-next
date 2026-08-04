@@ -83,14 +83,12 @@ class WholeGameAnalysisPlanTest {
 
   @Test
   void planDetectsInPlaceTurnAndBoardStateMutations() {
-    BoardHistoryNode turnRoot =
-        new BoardHistoryNode(BoardData.empty(BOARD_SIZE, BOARD_SIZE));
+    BoardHistoryNode turnRoot = new BoardHistoryNode(BoardData.empty(BOARD_SIZE, BOARD_SIZE));
     WholeGameAnalysisPlan turnPlan = WholeGameAnalysisPlan.create(turnRoot, 32, 500);
     turnRoot.getData().blackToPlay = !turnRoot.getData().blackToPlay;
     assertFalse(turnPlan.stillMatches(turnRoot));
 
-    BoardHistoryNode stonesRoot =
-        new BoardHistoryNode(BoardData.empty(BOARD_SIZE, BOARD_SIZE));
+    BoardHistoryNode stonesRoot = new BoardHistoryNode(BoardData.empty(BOARD_SIZE, BOARD_SIZE));
     WholeGameAnalysisPlan stonesPlan = WholeGameAnalysisPlan.create(stonesRoot, 32, 500);
     stonesRoot.getData().stones[0] = Stone.BLACK;
     stonesRoot.getData().zobrist.toggleStone(0, 0, Stone.BLACK);

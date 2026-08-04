@@ -31,8 +31,7 @@ public final class WindowsUpdateController {
                 WindowsUpdatePlan plan = maybePlan.get();
                 SwingUtilities.invokeLater(
                     () -> {
-                      WindowsUpdateDialog dialog =
-                          new WindowsUpdateDialog(parent, service, plan);
+                      WindowsUpdateDialog dialog = new WindowsUpdateDialog(parent, service, plan);
                       dialog.setVisible(true);
                     });
               } catch (Exception e) {

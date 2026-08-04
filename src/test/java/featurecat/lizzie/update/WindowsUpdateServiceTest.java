@@ -192,9 +192,7 @@ class WindowsUpdateServiceTest {
         while ((line = reader.readLine()) != null && !line.isEmpty()) {}
         OutputStream out = socket.getOutputStream();
         out.write(
-            ("HTTP/1.1 200 OK\r\nContent-Length: "
-                    + body.length
-                    + "\r\nConnection: close\r\n\r\n")
+            ("HTTP/1.1 200 OK\r\nContent-Length: " + body.length + "\r\nConnection: close\r\n\r\n")
                 .getBytes(StandardCharsets.US_ASCII));
         out.write(body);
       }

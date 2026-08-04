@@ -139,8 +139,7 @@ class TrackingProductionCutoverTest {
       environment.engine.ponder();
       environment.processCommandResponse("=");
       assertEquals(
-          TrackingAnalysisController.AddResult.ADDED,
-          environment.frame.addTrackingPoint("A1"));
+          TrackingAnalysisController.AddResult.ADDED, environment.frame.addTrackingPoint("A1"));
       environment.completeInitialFence(800000000);
 
       Lizzie.board.place(0, 0, Stone.BLACK);
@@ -152,7 +151,8 @@ class TrackingProductionCutoverTest {
 
       String commands = environment.commands();
       assertTrue(environment.engine.isPondering());
-      assertTrue(commands.lastIndexOf("kata-analyze") > commands.lastIndexOf("play B A1"), commands);
+      assertTrue(
+          commands.lastIndexOf("kata-analyze") > commands.lastIndexOf("play B A1"), commands);
       assertEquals(expectNormalAnalysis ? 1 : 0, environment.engine.getBestMoves().size());
     } finally {
       LizzieFrame.boardRenderer = previousBoardRenderer;
@@ -368,8 +368,7 @@ class TrackingProductionCutoverTest {
   }
 
   @Test
-  void selectedTrackingPointSuppressesTheOrdinaryCandidateWhenOutlineIsDisabled()
-      throws Exception {
+  void selectedTrackingPointSuppressesTheOrdinaryCandidateWhenOutlineIsDisabled() throws Exception {
     try (TestEnvironment environment = TestEnvironment.open()) {
       Lizzie.config.showTrackingPointOutline = false;
       Lizzie.config.showWinrateInSuggestion = false;

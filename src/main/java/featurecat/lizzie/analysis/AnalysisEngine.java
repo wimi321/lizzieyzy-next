@@ -212,8 +212,7 @@ public class AnalysisEngine {
       throws IOException {
     this.isPreLoad = isPreLoad;
     this.workload = workload == null ? Workload.STANDARD : workload;
-    this.purpose =
-        purpose == null ? AnalysisResourceCoordinator.Purpose.OTHER : purpose;
+    this.purpose = purpose == null ? AnalysisResourceCoordinator.Purpose.OTHER : purpose;
     this.persistentPreload = persistentPreload;
     this.dedicatedLightweightQuickModel =
         this.purpose == AnalysisResourceCoordinator.Purpose.AUTO_QUICK_ANALYSIS
@@ -1336,13 +1335,10 @@ public class AnalysisEngine {
     if (!isLoaded || shutdownRequested) return -1;
     List<BoardHistoryNode> pendingNodes =
         collectWholeGameRequestNodes(
-            requestedNodes,
-            targetVisits,
-            includeOwnership && supportsWholeGameOwnershipRequests());
+            requestedNodes, targetVisits, includeOwnership && supportsWholeGameOwnershipRequests());
     if (!pendingNodes.isEmpty()) {
       ForegroundRequestTarget target =
-          ForegroundRequestTarget.wholeGame(
-              this, pendingNodes, targetVisits, includeOwnership);
+          ForegroundRequestTarget.wholeGame(this, pendingNodes, targetVisits, includeOwnership);
       if (tryClaimForegroundTrackingHandoff(target)) {
         return target.failed ? -1 : pendingNodes.size();
       }
@@ -1425,17 +1421,14 @@ public class AnalysisEngine {
   }
 
   private static List<BoardHistoryNode> collectWholeGameRequestNodes(
-      List<BoardHistoryNode> requestedNodes,
-      int targetVisits,
-      boolean ownershipRequested) {
+      List<BoardHistoryNode> requestedNodes, int targetVisits, boolean ownershipRequested) {
     int normalizedTargetVisits = Math.max(1, targetVisits);
     Set<BoardHistoryNode> uniqueNodes = new LinkedHashSet<BoardHistoryNode>();
     if (requestedNodes != null) {
       for (BoardHistoryNode node : requestedNodes) {
         if (node != null
             && node.getData() != null
-            && !node
-                .getData()
+            && !node.getData()
                 .hasCompletePrimaryAnalysis(normalizedTargetVisits, ownershipRequested)) {
           uniqueNodes.add(node);
         }
@@ -1711,8 +1704,7 @@ public class AnalysisEngine {
       enqueueRemoteGtpRequest(selectedNode, Math.max(1, targetVisits), commands);
       previousQueuedNode = selectedNode;
     }
-    if (shutdownRequested
-        || (!remoteGtpQueue().isEmpty() && !startNextRemoteGtpJob())) {
+    if (shutdownRequested || (!remoteGtpQueue().isEmpty() && !startNextRemoteGtpJob())) {
       requestDispatchFailed = true;
     }
   }
@@ -2699,8 +2691,7 @@ public class AnalysisEngine {
       requestPositionFingerprints() {
     if (requestPositionFingerprints == null) {
       requestPositionFingerprints =
-          new ConcurrentHashMap<
-              BoardHistoryNode, WholeGameAnalysisPlan.PositionFingerprint>();
+          new ConcurrentHashMap<BoardHistoryNode, WholeGameAnalysisPlan.PositionFingerprint>();
     }
     return requestPositionFingerprints;
   }

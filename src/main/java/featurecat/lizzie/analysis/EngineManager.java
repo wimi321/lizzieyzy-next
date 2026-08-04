@@ -213,10 +213,7 @@ public class EngineManager {
       int maxGameMoves) {
     if (isGenmove
         && DesktopTimeControl.rejectsEngineGame(
-            engineList,
-            engineBlack,
-            engineWhite,
-            Lizzie.config.pkAdvanceTimeSettings)) {
+            engineList, engineBlack, engineWhite, Lizzie.config.pkAdvanceTimeSettings)) {
       Lizzie.frame.showUnsupportedWebSocketAdvancedClock();
       return false;
     }
@@ -1583,9 +1580,7 @@ public class EngineManager {
           }
         }
       }
-      if (Lizzie.leelaz.useJavaSSH
-          && Lizzie.leelaz.isLoaded()
-          && Lizzie.leelaz.canCheckAlive) {
+      if (Lizzie.leelaz.useJavaSSH && Lizzie.leelaz.isLoaded() && Lizzie.leelaz.canCheckAlive) {
         if (Lizzie.leelaz.javaSSHClosed)
           try {
             restartEngineAutomatically(Lizzie.leelaz, currentEngineNo);
@@ -2053,11 +2048,7 @@ public class EngineManager {
         currentEngineNo > 0 ? currentEngineNo : engineNo,
         true,
         releaseEngineLifecycleAfterBoardSync(
-            currentForegroundEngine,
-            currentForegroundEngine,
-            true,
-            true,
-            reservations));
+            currentForegroundEngine, currentForegroundEngine, true, true, reservations));
   }
 
   public void reStartEngine(int index) {
@@ -2068,9 +2059,9 @@ public class EngineManager {
     EngineLifecycleReservations reservations =
         reserveEngineLifecycle(currentForegroundEngine, targetEngine);
     if (reservations == null) {
-        showForegroundEngineLeaseInUse();
-        return;
-      }
+      showForegroundEngineLeaseInUse();
+      return;
+    }
     if (!attachRestartInteractionGate(reservations)) {
       return;
     }
@@ -2343,8 +2334,8 @@ public class EngineManager {
   /**
    * Attempts an engine switch without showing the generic exclusive-task popup.
    *
-   * <p>Configuration workflows use this after coordinating any interruptible quick analysis so
-   * they can report failure in their own status area instead of claiming that a switch succeeded.
+   * <p>Configuration workflows use this after coordinating any interruptible quick analysis so they
+   * can report failure in their own status area instead of claiming that a switch succeeded.
    */
   public boolean switchEngineIfAvailable(int index, boolean isMain) {
     return switchEngineIfAvailable(index, isMain, false);
@@ -2380,15 +2371,12 @@ public class EngineManager {
       boolean isMain,
       boolean explicitRestart,
       EngineLifecycleReservations reservations) {
-    boolean trackingFirstWinner =
-        reservations != null && reservations.isTrackingFirstWinner();
+    boolean trackingFirstWinner = reservations != null && reservations.isTrackingFirstWinner();
     boolean readBoardRecovery =
         (explicitRestart
                 && ((target != null && target.hasUnrestoredReadBoardGmaState())
                     || (current != null && current.hasUnrestoredReadBoardGmaState())))
-            || (!explicitRestart
-                && current != null
-                && current.hasUnrestoredReadBoardGmaState());
+            || (!explicitRestart && current != null && current.hasUnrestoredReadBoardGmaState());
     if (!isMain
         || current == null
         || target == null
@@ -2423,32 +2411,33 @@ public class EngineManager {
   protected void switchEngineInternal(int index, boolean isMain, Runnable afterSync) {
     boolean syncScheduled = false;
     try {
-    if (Lizzie.frame.isContributing) {
-      Utils.showMsg(
-          resourceBundle.getString("Contribute.tips.contributingAndStartAnotherLizzieYzy"));
-      return;
-    }
-    engineNo = index;
-    if (Lizzie.config.isDoubleEngineMode()
-        && index == (isMain ? currentEngineNo2 : currentEngineNo)) {
-      Utils.showMsg(resourceBundle.getString("EngineManager.sameEngineHint"));
-      return;
-    }
-    if (isEmpty) isEmpty = false;
-    if (index < 0 || index >= this.engineList.size()) return;
-    Leelaz newEng = engineList.get(index);
-    if (newEng == null) return;
-    // newEng.isReadyForGenmoveGame = false;
-    boolean changeBoard = true;
-    if (newEng.width == Board.boardWidth && newEng.height == Board.boardHeight) changeBoard = false;
-    boolean changeOriBoard = true;
-    if (newEng.oriWidth == Board.boardWidth && newEng.oriHeight == Board.boardHeight)
-      changeOriBoard = false;
-    boolean isEmptyBoard = false;
-    if (Lizzie.board.getHistory().getStart() == Lizzie.board.getHistory().getEnd())
-      isEmptyBoard = true;
+      if (Lizzie.frame.isContributing) {
+        Utils.showMsg(
+            resourceBundle.getString("Contribute.tips.contributingAndStartAnotherLizzieYzy"));
+        return;
+      }
+      engineNo = index;
+      if (Lizzie.config.isDoubleEngineMode()
+          && index == (isMain ? currentEngineNo2 : currentEngineNo)) {
+        Utils.showMsg(resourceBundle.getString("EngineManager.sameEngineHint"));
+        return;
+      }
+      if (isEmpty) isEmpty = false;
+      if (index < 0 || index >= this.engineList.size()) return;
+      Leelaz newEng = engineList.get(index);
+      if (newEng == null) return;
+      // newEng.isReadyForGenmoveGame = false;
+      boolean changeBoard = true;
+      if (newEng.width == Board.boardWidth && newEng.height == Board.boardHeight)
+        changeBoard = false;
+      boolean changeOriBoard = true;
+      if (newEng.oriWidth == Board.boardWidth && newEng.oriHeight == Board.boardHeight)
+        changeOriBoard = false;
+      boolean isEmptyBoard = false;
+      if (Lizzie.board.getHistory().getStart() == Lizzie.board.getHistory().getEnd())
+        isEmptyBoard = true;
 
-    // Lizzie.frame.menu.showPda(false);
+      // Lizzie.frame.menu.showPda(false);
       if (isEmptyBoard && changeOriBoard && isMain)
         Lizzie.board.reopenOnlyBoard(newEng.oriWidth, newEng.oriHeight);
       if ((isMain && currentEngineNo != -1) || (!isMain && Lizzie.leelaz2 != null)) {

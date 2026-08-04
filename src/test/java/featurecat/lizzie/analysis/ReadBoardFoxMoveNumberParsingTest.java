@@ -52,7 +52,8 @@ class ReadBoardFoxMoveNumberParsingTest {
       readBoard.parseLine("lastMoveSource foxCornerFlip");
       readBoard.parseLine("stopsync");
 
-      assertEquals(ReadBoardLastMoveSource.LEGACY_UNKNOWN, pendingContext(readBoard).lastMoveSource);
+      assertEquals(
+          ReadBoardLastMoveSource.LEGACY_UNKNOWN, pendingContext(readBoard).lastMoveSource);
     } finally {
       Lizzie.frame = previousFrame;
       Lizzie.leelaz = previousLeelaz;

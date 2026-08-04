@@ -383,8 +383,7 @@ public final class TrackingAnalysisController {
       return AddResult.CONTEXT_MISMATCH;
     }
     if (current != null
-        && (current.cancelled
-            || current.disposition != Leelaz.TrackingReleaseDisposition.ACTIVE)) {
+        && (current.cancelled || current.disposition != Leelaz.TrackingReleaseDisposition.ACTIVE)) {
       return AddResult.LEASE_UNAVAILABLE;
     }
     if (current == null && snapshot.frozen()) {
@@ -623,8 +622,7 @@ public final class TrackingAnalysisController {
             && lease.failureReason().isEmpty()
             && attempt.result != null
             && attempt.result.visits >= context.parameters.targetVisits();
-    boolean cleanUserCancellation =
-        attempt.restorePonderOnClose && lease.failureReason().isEmpty();
+    boolean cleanUserCancellation = attempt.restorePonderOnClose && lease.failureReason().isEmpty();
     if (!completed) {
       selectedPoints.remove(attempt.coordinate);
       results.remove(attempt.coordinate);

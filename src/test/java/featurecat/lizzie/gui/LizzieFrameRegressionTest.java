@@ -20,14 +20,13 @@ import featurecat.lizzie.analysis.remote.RemoteComputeConfig;
 import featurecat.lizzie.rules.Board;
 import featurecat.lizzie.rules.BoardData;
 import featurecat.lizzie.rules.BoardHistoryList;
-import featurecat.lizzie.rules.BoardHistoryNode;
 import featurecat.lizzie.rules.Stone;
 import featurecat.lizzie.rules.Zobrist;
 import java.awt.Color;
 import java.awt.Font;
+import java.awt.Graphics2D;
 import java.awt.GraphicsConfiguration;
 import java.awt.GraphicsDevice;
-import java.awt.Graphics2D;
 import java.awt.Rectangle;
 import java.awt.Window;
 import java.awt.geom.AffineTransform;
@@ -40,21 +39,18 @@ import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.Collections;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
-import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import javax.swing.JPanel;
 import javax.swing.SwingUtilities;
+import org.json.JSONObject;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
-import org.json.JSONObject;
 
 class LizzieFrameRegressionTest {
   private static final int BOARD_SIZE = 2;
@@ -85,17 +81,14 @@ class LizzieFrameRegressionTest {
       String thaiStatus =
           "\u0E01\u0E33\u0E25\u0E31\u0E07\u0E40\u0E23\u0E34\u0E48\u0E21\u0E15\u0E49\u0E19\u0E40\u0E04\u0E23\u0E37\u0E48\u0E2D\u0E07\u0E22\u0E19\u0E15\u0E4C\u0E27\u0E34\u0E40\u0E04\u0E23\u0E32\u0E30\u0E2B\u0E4C";
       int availableWidth = 80;
-      Font font =
-          LizzieFrame.fitStatusFont(graphics, thaiStatus, 72, 12, availableWidth);
+      Font font = LizzieFrame.fitStatusFont(graphics, thaiStatus, 72, 12, availableWidth);
 
       assertTrue(font.getSize() >= 12);
       assertTrue(font.getSize() < 72);
       String displayed =
-          LizzieFrame.truncateStatusText(
-              thaiStatus, graphics.getFontMetrics(font), availableWidth);
+          LizzieFrame.truncateStatusText(thaiStatus, graphics.getFontMetrics(font), availableWidth);
       assertTrue(displayed.endsWith("..."));
-      assertTrue(
-          graphics.getFontMetrics(font).stringWidth(displayed) <= availableWidth);
+      assertTrue(graphics.getFontMetrics(font).stringWidth(displayed) <= availableWidth);
     } finally {
       graphics.dispose();
     }
@@ -118,8 +111,7 @@ class LizzieFrameRegressionTest {
     BufferedImage image = new BufferedImage(800, 200, BufferedImage.TYPE_INT_ARGB);
     Graphics2D graphics = image.createGraphics();
     try {
-      Font font =
-          LizzieFrame.fitStatusFontInBox(graphics, "智子云算力", 48, 12, 400, 60);
+      Font font = LizzieFrame.fitStatusFontInBox(graphics, "智子云算力", 48, 12, 400, 60);
 
       assertTrue(font.getSize() > 28);
       assertTrue(graphics.getFontMetrics(font).getHeight() <= 58);
@@ -155,8 +147,7 @@ class LizzieFrameRegressionTest {
 
   @Test
   void pasteSgfDecisionIgnoresEmptyClipboard() {
-    assertEquals(
-        LizzieFrame.PasteSgfDecision.IGNORE_EMPTY, LizzieFrame.pasteSgfDecision("", true));
+    assertEquals(LizzieFrame.PasteSgfDecision.IGNORE_EMPTY, LizzieFrame.pasteSgfDecision("", true));
     assertEquals(
         LizzieFrame.PasteSgfDecision.IGNORE_EMPTY, LizzieFrame.pasteSgfDecision("   ", true));
     assertEquals(
@@ -173,8 +164,7 @@ class LizzieFrameRegressionTest {
   @Test
   void pasteSgfDecisionLoadsDirectlyWhenCurrentBoardIsEmpty() {
     assertEquals(
-        LizzieFrame.PasteSgfDecision.LOAD,
-        LizzieFrame.pasteSgfDecision("(;SZ[19];B[pd])", false));
+        LizzieFrame.PasteSgfDecision.LOAD, LizzieFrame.pasteSgfDecision("(;SZ[19];B[pd])", false));
   }
 
   @Test
@@ -670,8 +660,10 @@ class LizzieFrameRegressionTest {
     java.lang.reflect.Constructor<?> constructor =
         buttonClass.getDeclaredConstructor(String.class, boolean.class);
     constructor.setAccessible(true);
-    String thaiDetailText = "\u0E02\u0E49\u0E2D\u0E21\u0E39\u0E25\u0E42\u0E14\u0E22\u0E25\u0E30\u0E40\u0E2D\u0E35\u0E22\u0E14";
-    javax.swing.JButton button = (javax.swing.JButton) constructor.newInstance(thaiDetailText, true);
+    String thaiDetailText =
+        "\u0E02\u0E49\u0E2D\u0E21\u0E39\u0E25\u0E42\u0E14\u0E22\u0E25\u0E30\u0E40\u0E2D\u0E35\u0E22\u0E14";
+    javax.swing.JButton button =
+        (javax.swing.JButton) constructor.newInstance(thaiDetailText, true);
 
     int requiredWidth = 66 + button.getFontMetrics(button.getFont()).stringWidth(thaiDetailText);
 
@@ -733,8 +725,7 @@ class LizzieFrameRegressionTest {
     panel.paint(image.createGraphics());
 
     Method rowsMethod =
-        panelClass.getDeclaredMethod(
-            "distributionRows", PlayerStrengthEstimator.SideReport.class);
+        panelClass.getDeclaredMethod("distributionRows", PlayerStrengthEstimator.SideReport.class);
     rowsMethod.setAccessible(true);
     Object[] rows = (Object[]) rowsMethod.invoke(panel, sideReport);
     Field countField = rows[0].getClass().getDeclaredField("count");
@@ -758,9 +749,7 @@ class LizzieFrameRegressionTest {
         "non-top-choice Best moves should join the original Good moves.");
     assertEquals(1, counts[MoveRankDefinition.Rank.NORMAL.ordinal()]);
     assertEquals(
-        sideReport.sampleCount,
-        total,
-        "each analyzed move should be counted exactly once.");
+        sideReport.sampleCount, total, "each analyzed move should be counted exactly once.");
   }
 
   @Test
@@ -956,8 +945,7 @@ class LizzieFrameRegressionTest {
   }
 
   @Test
-  void downloadedKifuForcesSilentQuickAnalyzeEvenWhenSgfContainsAnalysisPayload()
-      throws Exception {
+  void downloadedKifuForcesSilentQuickAnalyzeEvenWhenSgfContainsAnalysisPayload() throws Exception {
     TestEnvironment env = TestEnvironment.open();
     try {
       Lizzie.config = configWithAutoQuickAnalyze();
@@ -1001,8 +989,7 @@ class LizzieFrameRegressionTest {
   }
 
   @Test
-  void loadedGameDefersForegroundAnalysisUntilSilentQuickAnalysisCompletes()
-      throws Exception {
+  void loadedGameDefersForegroundAnalysisUntilSilentQuickAnalysisCompletes() throws Exception {
     TestEnvironment env = TestEnvironment.open();
     try {
       Lizzie.config = configWithAutoQuickAnalyze();
@@ -1083,8 +1070,7 @@ class LizzieFrameRegressionTest {
   }
 
   @Test
-  void silentQuickAnalyzeCompletionRestartsForegroundAnalysisForCurrentPosition()
-      throws Exception {
+  void silentQuickAnalyzeCompletionRestartsForegroundAnalysisForCurrentPosition() throws Exception {
     TestEnvironment env = TestEnvironment.open();
     try {
       Lizzie.config = configWithAutoQuickAnalyze();
@@ -1166,8 +1152,7 @@ class LizzieFrameRegressionTest {
       setField(frame, "wholeGameAnalysisSession", session);
       Lizzie.frame = frame;
 
-      SwingUtilities.invokeAndWait(
-          frame::scheduleQuickAnalysisContinuationAfterHistoryNavigation);
+      SwingUtilities.invokeAndWait(frame::scheduleQuickAnalysisContinuationAfterHistoryNavigation);
 
       assertNull(getField(frame, "quickAnalysisNavigationResumeTimer"));
     } finally {
@@ -1210,8 +1195,7 @@ class LizzieFrameRegressionTest {
       setField(frame, "wholeGameAnalysisSession", currentSession);
       setField(frame, "wholeGameAnalysisDialog", currentDialog);
 
-      frame.onWholeGameAnalysisFinished(
-          staleSession, allocate(AnalysisEngine.class), false);
+      frame.onWholeGameAnalysisFinished(staleSession, allocate(AnalysisEngine.class), false);
 
       assertSame(currentSession, getField(frame, "wholeGameAnalysisSession"));
       assertSame(currentDialog, getField(frame, "wholeGameAnalysisDialog"));
@@ -1496,7 +1480,8 @@ class LizzieFrameRegressionTest {
       invokeUpdateScaleFromGraphicsConfiguration(frame, graphicsConfigurationWithScale(2.0));
 
       assertEquals(1, frame.resetLocationCount, "unchanged scale should not relayout.");
-      assertEquals(1, frame.refreshContainerCount, "unchanged scale should not refresh containers.");
+      assertEquals(
+          1, frame.refreshContainerCount, "unchanged scale should not refresh containers.");
       assertEquals(1, frame.repaintCount, "unchanged scale should not repaint.");
 
       invokeUpdateScaleFromGraphicsConfiguration(frame, graphicsConfigurationWithScale(1.0));
@@ -1610,7 +1595,8 @@ class LizzieFrameRegressionTest {
     return null;
   }
 
-  private static void assertContrastAtLeast(String label, Color foreground, Color background, double min) {
+  private static void assertContrastAtLeast(
+      String label, Color foreground, Color background, double min) {
     double contrast = contrastRatio(foreground, background);
     assertTrue(
         contrast >= min,
@@ -1622,10 +1608,8 @@ class LizzieFrameRegressionTest {
   }
 
   private static double contrastRatio(Color foreground, Color background) {
-    double lighter =
-        Math.max(relativeLuminance(foreground), relativeLuminance(background));
-    double darker =
-        Math.min(relativeLuminance(foreground), relativeLuminance(background));
+    double lighter = Math.max(relativeLuminance(foreground), relativeLuminance(background));
+    double darker = Math.min(relativeLuminance(foreground), relativeLuminance(background));
     return (lighter + 0.05) / (darker + 0.05);
   }
 
@@ -1793,7 +1777,8 @@ class LizzieFrameRegressionTest {
     return (boolean) method.invoke(frame);
   }
 
-  private static void invokeRetryLoadedGameQuickAnalysisIfMissing(LizzieFrame frame) throws Exception {
+  private static void invokeRetryLoadedGameQuickAnalysisIfMissing(LizzieFrame frame)
+      throws Exception {
     Method method = LizzieFrame.class.getDeclaredMethod("retryLoadedGameQuickAnalysisIfMissing");
     method.setAccessible(true);
     SwingUtilities.invokeAndWait(() -> invokeReflective(method, frame));
@@ -1850,15 +1835,13 @@ class LizzieFrameRegressionTest {
   private static BoardHistoryList historyWithLowVisitAnalyzedMove() {
     BoardHistoryList history = new BoardHistoryList(BoardData.empty(BOARD_SIZE, BOARD_SIZE));
     history.add(
-        moveData(
-            new int[] {0, 0}, Stone.BLACK, false, 1, targetAnalysisVisitsForTest() - 1));
+        moveData(new int[] {0, 0}, Stone.BLACK, false, 1, targetAnalysisVisitsForTest() - 1));
     return history;
   }
 
   private static BoardHistoryList historyWithTargetVisitAnalyzedMove() {
     BoardHistoryList history = new BoardHistoryList(BoardData.empty(BOARD_SIZE, BOARD_SIZE));
-    history.add(
-        moveData(new int[] {0, 0}, Stone.BLACK, false, 1, targetAnalysisVisitsForTest()));
+    history.add(moveData(new int[] {0, 0}, Stone.BLACK, false, 1, targetAnalysisVisitsForTest()));
     return history;
   }
 
@@ -1979,8 +1962,8 @@ class LizzieFrameRegressionTest {
     field.set(target, value);
   }
 
-  private static void setDeclaredField(
-      Class<?> owner, Object target, String name, Object value) throws Exception {
+  private static void setDeclaredField(Class<?> owner, Object target, String name, Object value)
+      throws Exception {
     Field field = owner.getDeclaredField(name);
     field.setAccessible(true);
     field.set(target, value);

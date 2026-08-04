@@ -58,8 +58,7 @@ class LocalizationResourceParityTest {
   }
 
   @Test
-  void simplifiedChineseRemoteComputeUsesCanonicalZhiziBrandAndNaturalCopy()
-      throws IOException {
+  void simplifiedChineseRemoteComputeUsesCanonicalZhiziBrandAndNaturalCopy() throws IOException {
     ResourceFile simplified = read(ROOT.resolve("DisplayStrings_zh_CN.properties"));
     assertEquals("智子云算力", simplified.values.get("RemoteCompute.zhizi"));
 

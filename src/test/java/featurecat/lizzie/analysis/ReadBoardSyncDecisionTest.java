@@ -420,7 +420,8 @@ class ReadBoardSyncDecisionTest {
     Stone[] target = stones(placement(0, 0, Stone.WHITE));
     SyncSnapshotClassifier.SnapshotDelta snapshotDelta =
         new SyncSnapshotClassifier(BOARD_SIZE, BOARD_SIZE)
-            .summarizeDelta(syncStartNode.getData().stones, snapshot(target, Optional.empty(), Stone.EMPTY));
+            .summarizeDelta(
+                syncStartNode.getData().stones, snapshot(target, Optional.empty(), Stone.EMPTY));
     ReadBoard readBoard = allocate(ReadBoard.class);
 
     assertTrue(
@@ -1090,8 +1091,7 @@ class ReadBoardSyncDecisionTest {
   }
 
   @Test
-  void sameBoardMarkerlessFoxMetadataDoesNotOverrideRiskySnapshotSideToPlay()
-      throws Exception {
+  void sameBoardMarkerlessFoxMetadataDoesNotOverrideRiskySnapshotSideToPlay() throws Exception {
     Stone[] target =
         stones(
             placement(0, 0, Stone.WHITE),
@@ -1101,7 +1101,8 @@ class ReadBoardSyncDecisionTest {
     try (SyncHarness harness =
         SyncHarness.create(
             false,
-            rootHistory(target, Optional.empty(), Stone.EMPTY, false, 57, BoardNodeKind.SNAPSHOT))) {
+            rootHistory(
+                target, Optional.empty(), Stone.EMPTY, false, 57, BoardNodeKind.SNAPSHOT))) {
       BoardHistoryNode originalMainEnd = harness.board.getHistory().getMainEnd();
 
       armFoxMoveNumber(harness.readBoard, 58);
@@ -3190,7 +3191,8 @@ class ReadBoardSyncDecisionTest {
     return (SyncRemoteContext) getField(readBoard, "pendingRemoteContext");
   }
 
-  private static void setPendingSnapshot(ReadBoard readBoard, int[] snapshotCodes) throws Exception {
+  private static void setPendingSnapshot(ReadBoard readBoard, int[] snapshotCodes)
+      throws Exception {
     ArrayList<Integer> counts = new ArrayList<>(snapshotCodes.length);
     for (int code : snapshotCodes) {
       counts.add(code);

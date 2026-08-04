@@ -112,8 +112,7 @@ public final class InstalledUpdateState {
       if (id.isEmpty()) {
         return null;
       }
-      return new ComponentState(
-          id, json.optString("version", ""), json.optString("sha256", ""));
+      return new ComponentState(id, json.optString("version", ""), json.optString("sha256", ""));
     }
 
     public boolean matches(UpdateManifest.Component component) {

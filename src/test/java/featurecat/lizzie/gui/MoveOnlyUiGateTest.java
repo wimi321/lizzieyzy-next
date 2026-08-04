@@ -153,8 +153,7 @@ class MoveOnlyUiGateTest {
     try {
       TrackingLizzieFrame frame = configuredFrame();
       Lizzie.frame = frame;
-      BoardHistoryList history =
-          historyWithNext(currentData(), moveData(new int[] {1, 1}, 2));
+      BoardHistoryList history = historyWithNext(currentData(), moveData(new int[] {1, 1}, 2));
       BoardHistoryNode anchor = history.getStart();
       insertDummyAsFirstVariation(anchor);
       BoardHistoryNode displayNode = anchor.variations.get(1);
@@ -176,8 +175,7 @@ class MoveOnlyUiGateTest {
     try {
       TrackingLizzieFrame frame = configuredFrame();
       Lizzie.frame = frame;
-      BoardHistoryList history =
-          historyWithNext(currentData(), moveData(new int[] {1, 1}, 2));
+      BoardHistoryList history = historyWithNext(currentData(), moveData(new int[] {1, 1}, 2));
       BoardHistoryNode displayNode = history.getStart().variations.get(0);
       MoveData displayCandidate = bestMove(2, 1);
       displayCandidate.order = 1;
@@ -216,16 +214,14 @@ class MoveOnlyUiGateTest {
     try {
       TrackingLizzieFrame frame = configuredFrame();
       Lizzie.frame = frame;
-      BoardHistoryList history =
-          historyWithNext(currentData(), moveData(new int[] {1, 1}, 2));
+      BoardHistoryList history = historyWithNext(currentData(), moveData(new int[] {1, 1}, 2));
       Lizzie.board = boardWith(history);
       frame.setDisplayNodeOverride(history.getStart().variations.get(0));
       Lizzie.config.usePureStone = true;
       BoardRenderer renderer = configuredBranchRenderer();
 
       BufferedImage image = renderNextBlunderFirstMove(renderer, 1, 1);
-      int centerRgb =
-          image.getRGB(SCALED_MARGIN + SQUARE_SIZE, SCALED_MARGIN + SQUARE_SIZE);
+      int centerRgb = image.getRGB(SCALED_MARGIN + SQUARE_SIZE, SCALED_MARGIN + SQUARE_SIZE);
 
       assertEquals(
           Color.BLACK.getRGB(),
@@ -242,8 +238,7 @@ class MoveOnlyUiGateTest {
     try {
       TrackingLizzieFrame frame = configuredFrame();
       Lizzie.frame = frame;
-      Lizzie.board =
-          boardWith(historyWithNext(currentData(), moveData(new int[] {1, 1}, 2)));
+      Lizzie.board = boardWith(historyWithNext(currentData(), moveData(new int[] {1, 1}, 2)));
       BoardRenderer renderer = configuredBranchRenderer();
 
       assertTrue(

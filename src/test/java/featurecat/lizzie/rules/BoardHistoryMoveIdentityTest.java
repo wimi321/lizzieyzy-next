@@ -27,7 +27,8 @@ class BoardHistoryMoveIdentityTest {
 
       assertTrue(history.nextByMoveIdentity(clickedMove).isPresent());
       assertSame(existingVariation, history.getCurrentHistoryNode());
-      assertEquals(2, root.numberOfChildren(), "clicking an existing variation must not duplicate it.");
+      assertEquals(
+          2, root.numberOfChildren(), "clicking an existing variation must not duplicate it.");
       assertEquals(
           "existing SGF variation comment",
           history.getData().comment,

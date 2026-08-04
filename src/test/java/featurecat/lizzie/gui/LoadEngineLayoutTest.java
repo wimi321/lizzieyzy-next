@@ -13,19 +13,11 @@ class LoadEngineLayoutTest {
   @Test
   void localizedHeadersCannotBeCompressedBelowTheirRenderedWidth() {
     String[] headers = {
-      "ลำดับ",
-      "ชื่อ",
-      "คำสั่งเริ่มต้น",
-      "โหลดล่วงหน้า",
-      "กว้าง",
-      "สูง",
-      "โคมิ",
-      "ค่าเริ่มต้น"
+      "ลำดับ", "ชื่อ", "คำสั่งเริ่มต้น", "โหลดล่วงหน้า", "กว้าง", "สูง", "โคมิ", "ค่าเริ่มต้น"
     };
     JTable table = new JTable(new DefaultTableModel(headers, 0));
 
-    LoadEngine.fitColumnsToLocalizedHeaders(
-        table, new int[] {30, 120, 240, 40, 20, 20, 30, 30});
+    LoadEngine.fitColumnsToLocalizedHeaders(table, new int[] {30, 120, 240, 40, 20, 20, 30, 30});
 
     TableCellRenderer renderer = table.getTableHeader().getDefaultRenderer();
     for (int columnIndex = 0; columnIndex < table.getColumnCount(); columnIndex++) {

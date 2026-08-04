@@ -51,10 +51,7 @@ class UpdateManifestTest {
   @Test
   void rejectsUnsafeAssetName() {
     JSONObject traversalManifest = validManifest();
-    traversalManifest
-        .getJSONArray("components")
-        .getJSONObject(0)
-        .put("assetName", "../evil.zip");
+    traversalManifest.getJSONArray("components").getJSONObject(0).put("assetName", "../evil.zip");
     assertThrows(IllegalArgumentException.class, () -> UpdateManifest.parse(traversalManifest));
 
     JSONObject windowsPathManifest = validManifest();

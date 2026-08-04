@@ -11,8 +11,7 @@ class MenuPresentationModeTest {
   @Test
   void linuxWaylandUsesNativeSwingMenuBar() {
     MenuPresentationMode mode =
-        MenuPresentationMode.detect(
-            "Linux", Map.of("XDG_SESSION_TYPE", "wayland"), "auto");
+        MenuPresentationMode.detect("Linux", Map.of("XDG_SESSION_TYPE", "wayland"), "auto");
 
     assertEquals(MenuPresentationMode.NATIVE_MENU_BAR, mode);
     assertTrue(mode.usesNativeMenuBar());
@@ -22,8 +21,7 @@ class MenuPresentationModeTest {
   @Test
   void waylandDisplayIsUsedWhenSessionTypeIsMissing() {
     assertTrue(
-        MenuPresentationMode.isLinuxWayland(
-            "Linux", Map.of("WAYLAND_DISPLAY", "wayland-0")));
+        MenuPresentationMode.isLinuxWayland("Linux", Map.of("WAYLAND_DISPLAY", "wayland-0")));
   }
 
   @Test
@@ -33,19 +31,16 @@ class MenuPresentationModeTest {
         MenuPresentationMode.detect("Linux", Map.of("XDG_SESSION_TYPE", "x11"), "auto"));
     assertEquals(
         MenuPresentationMode.CUSTOM_STRIP,
-        MenuPresentationMode.detect(
-            "Windows 11", Map.of("WAYLAND_DISPLAY", "wayland-0"), "auto"));
+        MenuPresentationMode.detect("Windows 11", Map.of("WAYLAND_DISPLAY", "wayland-0"), "auto"));
     assertFalse(
-        MenuPresentationMode.isLinuxWayland(
-            "macOS", Map.of("XDG_SESSION_TYPE", "wayland")));
+        MenuPresentationMode.isLinuxWayland("macOS", Map.of("XDG_SESSION_TYPE", "wayland")));
   }
 
   @Test
   void explicitOverrideSupportsTroubleshootingBothRenderers() {
     assertEquals(
         MenuPresentationMode.CUSTOM_STRIP,
-        MenuPresentationMode.detect(
-            "Linux", Map.of("XDG_SESSION_TYPE", "wayland"), "custom"));
+        MenuPresentationMode.detect("Linux", Map.of("XDG_SESSION_TYPE", "wayland"), "custom"));
     assertEquals(
         MenuPresentationMode.NATIVE_MENU_BAR,
         MenuPresentationMode.detect("Linux", Map.of("XDG_SESSION_TYPE", "x11"), "native"));

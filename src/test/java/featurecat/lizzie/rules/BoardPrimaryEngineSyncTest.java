@@ -231,8 +231,7 @@ class BoardPrimaryEngineSyncTest {
       assertEquals(13, Board.boardWidth);
       assertEquals(13, Board.boardHeight);
       assertEquals(1, Lizzie.board.getHistory().getData().moveNumber);
-      assertEquals(
-          Stone.BLACK, Lizzie.board.getHistory().getData().stones[Board.getIndex(5, 5)]);
+      assertEquals(Stone.BLACK, Lizzie.board.getHistory().getData().stones[Board.getIndex(5, 5)]);
       assertEquals(List.of("boardsize 19"), output.commands());
     }
   }

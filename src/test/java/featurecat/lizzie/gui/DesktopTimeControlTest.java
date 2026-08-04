@@ -83,8 +83,7 @@ class DesktopTimeControlTest {
     Config config =
         ConfigTestHelper.createForTests(Files.createTempDirectory("lizzie-time-rejected"));
     config.uiConfig = new JSONObject();
-    RecordingLeelaz websocket =
-        new RecordingLeelaz(RemoteComputeConfig.COMMAND_CUSTOM_WS);
+    RecordingLeelaz websocket = new RecordingLeelaz(RemoteComputeConfig.COMMAND_CUSTOM_WS);
     AtomicInteger warnings = new AtomicInteger();
 
     boolean accepted =

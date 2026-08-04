@@ -493,9 +493,7 @@ public final class AppleStyleSupport {
     }
     if (isClassicEnabled()) {
       // White resting buttons on the light strip, neutral grey interaction states.
-      return pressed
-          ? new Color(228, 231, 235)
-          : hover ? new Color(240, 242, 245) : Color.WHITE;
+      return pressed ? new Color(228, 231, 235) : hover ? new Color(240, 242, 245) : Color.WHITE;
     }
     return pressed
         ? MorandiPalette.TOOLBAR_BUTTON_PRESSED

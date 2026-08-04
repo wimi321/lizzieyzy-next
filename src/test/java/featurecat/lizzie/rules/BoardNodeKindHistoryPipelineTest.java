@@ -1110,8 +1110,7 @@ class BoardNodeKindHistoryPipelineTest {
   }
 
   @Test
-  void loadFromStringYikeHandicapHeaderOrderUsesSgfKomiWhenReadKomiDisabled()
-      throws Exception {
+  void loadFromStringYikeHandicapHeaderOrderUsesSgfKomiWhenReadKomiDisabled() throws Exception {
     TestEnvironment env = TestEnvironment.open();
     int previousCurrentEngineNo = EngineManager.currentEngineNo;
     try {
@@ -1143,8 +1142,9 @@ class BoardNodeKindHistoryPipelineTest {
       assertFalse(history.getStart().getData().hasAnyAnalysisPayload());
       assertTrue(leelaz.recordedCommands().contains("komi 0"));
       assertFalse(
-          (boolean) requireMethod(Leelaz.class, "shouldApplyInitialEngineKomiToCurrentGame")
-              .invoke(leelaz),
+          (boolean)
+              requireMethod(Leelaz.class, "shouldApplyInitialEngineKomiToCurrentGame")
+                  .invoke(leelaz),
           "engine startup must not overwrite a loaded handicap SGF komi after parsing.");
 
       leelaz.boardSizeForEngine(3, 3);
@@ -4434,13 +4434,26 @@ class BoardNodeKindHistoryPipelineTest {
         };
       case 8:
         return new int[][] {
-          sequence[2], sequence[0], sequence[1], sequence[3], sequence[7], sequence[8], sequence[5],
+          sequence[2],
+          sequence[0],
+          sequence[1],
+          sequence[3],
+          sequence[7],
+          sequence[8],
+          sequence[5],
           sequence[6]
         };
       case 9:
         return new int[][] {
-          sequence[2], sequence[0], sequence[1], sequence[3], sequence[7], sequence[8], sequence[5],
-          sequence[6], sequence[4]
+          sequence[2],
+          sequence[0],
+          sequence[1],
+          sequence[3],
+          sequence[7],
+          sequence[8],
+          sequence[5],
+          sequence[6],
+          sequence[4]
         };
       default:
         return new int[0][];

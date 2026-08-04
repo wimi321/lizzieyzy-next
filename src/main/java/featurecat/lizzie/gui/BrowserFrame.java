@@ -524,8 +524,7 @@ public class BrowserFrame extends JFrame {
     }
   }
 
-  private static File resolveJcefBundleFolder()
-      throws IOException, UnsupportedPlatformException {
+  private static File resolveJcefBundleFolder() throws IOException, UnsupportedPlatformException {
     Optional<File> bundledFolder = findBundledJcefFolder(defaultJcefSearchBases());
     if (bundledFolder.isPresent()) {
       return bundledFolder.get();

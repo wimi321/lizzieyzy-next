@@ -88,7 +88,10 @@ public final class WindowsUpdateService {
     }
     Path stagingDir = paths.stagingDir(plan.manifest.releaseTag);
     Files.createDirectories(stagingDir);
-    Files.copy(paths.currentJar, paths.helperJarPath(plan.manifest.releaseTag), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+    Files.copy(
+        paths.currentJar,
+        paths.helperJarPath(plan.manifest.releaseTag),
+        java.nio.file.StandardCopyOption.REPLACE_EXISTING);
 
     long total = plan.selectedSizeBytes();
     long completedBefore = 0L;
@@ -128,7 +131,8 @@ public final class WindowsUpdateService {
 
   public Process launchHelper(Path requestPath) throws IOException {
     WindowsUpdatePaths paths = WindowsUpdatePaths.detect();
-    Path helperJar = paths.helperJarPath(new JSONObject(Files.readString(requestPath)).getString("releaseTag"));
+    Path helperJar =
+        paths.helperJarPath(new JSONObject(Files.readString(requestPath)).getString("releaseTag"));
     List<String> command = new ArrayList<>();
     command.add(paths.javaExecutable().toString());
     command.add("-cp");
@@ -194,7 +198,8 @@ public final class WindowsUpdateService {
     HttpURLConnection conn = null;
     try {
       conn =
-          (HttpURLConnection) NetworkProxy.openConnection(URI.create(component.downloadUrl).toURL());
+          (HttpURLConnection)
+              NetworkProxy.openConnection(URI.create(component.downloadUrl).toURL());
       conn.setConnectTimeout(CONNECT_TIMEOUT_MS);
       conn.setReadTimeout(READ_TIMEOUT_MS);
       conn.setRequestProperty("User-Agent", "LizzieYzy-Next-Updater");
@@ -203,7 +208,8 @@ public final class WindowsUpdateService {
         throw new IOException("HTTP " + code + " while downloading " + component.assetName);
       }
       long downloaded = 0L;
-      try (InputStream in = conn.getInputStream(); OutputStream out = Files.newOutputStream(part)) {
+      try (InputStream in = conn.getInputStream();
+          OutputStream out = Files.newOutputStream(part)) {
         byte[] buffer = new byte[1024 * 1024];
         int read;
         while ((read = in.read(buffer)) >= 0) {

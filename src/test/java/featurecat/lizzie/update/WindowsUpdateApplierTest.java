@@ -39,8 +39,10 @@ class WindowsUpdateApplierTest {
     assertEquals(
         "-Dlizzie.next.version=next-2026-06-21.1",
         Files.readString(fixture.appDir.resolve("LizzieYzy Next OpenCL.cfg")));
-    assertEquals("user-save", Files.readString(fixture.appRoot.resolve("user-data").resolve("save.txt")));
-    assertTrue(Files.isRegularFile(fixture.appDir.resolve(InstalledUpdateState.INSTALLED_MANIFEST_NAME)));
+    assertEquals(
+        "user-save", Files.readString(fixture.appRoot.resolve("user-data").resolve("save.txt")));
+    assertTrue(
+        Files.isRegularFile(fixture.appDir.resolve(InstalledUpdateState.INSTALLED_MANIFEST_NAME)));
   }
 
   @Test

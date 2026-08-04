@@ -128,7 +128,8 @@ public final class WindowsUpdatePaths {
 
   static Path detectCurrentJar() throws IOException {
     try {
-      File source = new File(Lizzie.class.getProtectionDomain().getCodeSource().getLocation().toURI());
+      File source =
+          new File(Lizzie.class.getProtectionDomain().getCodeSource().getLocation().toURI());
       Path path = source.toPath().toAbsolutePath().normalize();
       return Files.isRegularFile(path) ? path : null;
     } catch (URISyntaxException e) {
@@ -150,7 +151,8 @@ public final class WindowsUpdatePaths {
     }
 
     Path backendMarker =
-        appDir.resolve("engines")
+        appDir
+            .resolve("engines")
             .resolve("katago")
             .resolve("windows-x64")
             .resolve(ENGINE_BACKEND_MARKER_NAME);

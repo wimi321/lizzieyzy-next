@@ -33,8 +33,7 @@ class NewThemeAssetsTest {
   @Test
   void copyNamesTheMissingResource() {
     IOException e =
-        assertThrows(
-            IOException.class, () -> Utils.copy("/assets/no-such-resource.png", "unused"));
+        assertThrows(IOException.class, () -> Utils.copy("/assets/no-such-resource.png", "unused"));
     assertTrue(e.getMessage().contains("/assets/no-such-resource.png"));
   }
 }

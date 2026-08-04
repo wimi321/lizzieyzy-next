@@ -1136,8 +1136,7 @@ public class MoreEngines extends JPanel {
             return;
           }
           Optional<JSONObject> profile =
-              GtpEngineConfigDialog.showDialog(
-                  MoreEngines.this, inspection.schema(), savedProfile);
+              GtpEngineConfigDialog.showDialog(MoreEngines.this, inspection.schema(), savedProfile);
           profile.ifPresent(
               value ->
                   applyGtpConfiguration(
@@ -1168,7 +1167,8 @@ public class MoreEngines extends JPanel {
       protected void done() {
         try {
           GtpConfigurationProbe.ApplyResult result = get();
-          persistGtpConfiguration(selectedIndex, selectedCommand, schema.protocol(), result.profile());
+          persistGtpConfiguration(
+              selectedIndex, selectedCommand, schema.protocol(), result.profile());
           applyProfileToRunningEngine(selectedIndex, result.profile());
         } catch (InterruptedException error) {
           Thread.currentThread().interrupt();

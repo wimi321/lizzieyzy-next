@@ -31,8 +31,7 @@ public final class EngineStartupStatus {
     }
   }
 
-  private final CopyOnWriteArrayList<Consumer<Snapshot>> listeners =
-      new CopyOnWriteArrayList<>();
+  private final CopyOnWriteArrayList<Consumer<Snapshot>> listeners = new CopyOnWriteArrayList<>();
   private volatile Snapshot snapshot = new Snapshot(State.READY, "", "", "");
 
   public Snapshot snapshot() {

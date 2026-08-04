@@ -160,9 +160,7 @@ public class WindowMenuStrip extends JPanel {
       return true;
     }
     long elapsed = System.currentTimeMillis() - recentlyHiddenAtMillis;
-    return recentlyHiddenMenu == menu
-        && elapsed >= 0L
-        && elapsed <= SAME_MENU_REOPEN_SUPPRESS_MS;
+    return recentlyHiddenMenu == menu && elapsed >= 0L && elapsed <= SAME_MENU_REOPEN_SUPPRESS_MS;
   }
 
   private void rememberPopupHidden(JMenu menu) {

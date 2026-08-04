@@ -1550,8 +1550,7 @@ public class OnlineDialog extends JDialog {
             } catch (IOException | JSONException e) {
               YikeSyncDebugLog.log("OnlineDialog.reqNewYikeRoom error: " + e.toString());
               e.printStackTrace();
-              if (e instanceof IOException
-                  && showNetworkProxyConfigWarning((IOException) e)) {
+              if (e instanceof IOException && showNetworkProxyConfigWarning((IOException) e)) {
                 invalidProxyConfig.set(true);
               }
               SwingUtilities.invokeLater(

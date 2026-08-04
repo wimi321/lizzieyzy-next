@@ -153,8 +153,7 @@ class RemoteComputeConfigTest {
           assertEquals(
               "智子云算力",
               RemoteComputeConfig.compactDisplayNameForCommand(
-                  RemoteComputeConfig.COMMAND_ZHIZI,
-                  "智子云算力 VIP 包月 · 28B NBT · TensorRT"));
+                  RemoteComputeConfig.COMMAND_ZHIZI, "智子云算力 VIP 包月 · 28B NBT · TensorRT"));
           assertEquals(
               "自建算力",
               RemoteComputeConfig.compactDisplayNameForCommand(
@@ -455,8 +454,7 @@ class RemoteComputeConfigTest {
           assertEquals(RemoteComputeConfig.FASTER_ZHIZI_ARGS, state.zhiziArgs);
           assertTrue(state.rememberZhiziPassword);
           assertEquals("remember-me", state.zhiziPassword);
-          assertTrue(
-              store.read(CredentialStore.Kind.ACCOUNT_TOKEN, "user@example.com").isEmpty());
+          assertTrue(store.read(CredentialStore.Kind.ACCOUNT_TOKEN, "user@example.com").isEmpty());
           assertEquals(
               "remember-me",
               store.read(CredentialStore.Kind.PASSWORD, "user@example.com").orElseThrow());
@@ -485,12 +483,7 @@ class RemoteComputeConfigTest {
 
           ZhiziApiException futureFailure =
               new ZhiziApiException(
-                  409,
-                  "future_private_error",
-                  "",
-                  0,
-                  false,
-                  ZhiziApiException.Operation.OTHER);
+                  409, "future_private_error", "", 0, false, ZhiziApiException.Operation.OTHER);
           String fallback =
               RemoteComputeConfig.friendlyZhiziErrorMessage(
                   futureFailure, RemoteComputeConfig.ON_DEMAND_1X_ZHIZI_ARGS);

@@ -165,7 +165,8 @@ public class GlassEffectRenderer {
         pixels -= (long) previous.getWidth() * previous.getHeight();
       }
       pixels += (long) image.getWidth() * image.getHeight();
-      java.util.Iterator<Map.Entry<BlurKey, BufferedImage>> iterator = entries.entrySet().iterator();
+      java.util.Iterator<Map.Entry<BlurKey, BufferedImage>> iterator =
+          entries.entrySet().iterator();
       while (iterator.hasNext()
           && (entries.size() > MAX_CACHE_ENTRIES_PER_BACKGROUND
               || pixels > MAX_CACHE_PIXELS_PER_BACKGROUND)) {

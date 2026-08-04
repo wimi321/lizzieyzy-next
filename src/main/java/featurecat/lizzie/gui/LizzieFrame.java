@@ -136,8 +136,7 @@ public class LizzieFrame extends JFrame {
           }
           Component focusOwner =
               KeyboardFocusManager.getCurrentKeyboardFocusManager().getFocusOwner();
-          KeyboardFocusManager focusManager =
-              KeyboardFocusManager.getCurrentKeyboardFocusManager();
+          KeyboardFocusManager focusManager = KeyboardFocusManager.getCurrentKeyboardFocusManager();
           KeyEventDispatcher keyboardGate =
               event -> {
                 Component source = event.getComponent();
@@ -14373,8 +14372,7 @@ public class LizzieFrame extends JFrame {
             secondary != null && secondary.isAnalysisInProgress(),
             secondary != null && secondary.isAutomaticBackgroundTask());
     if (decision == AnalysisResourceCoordinator.ForegroundDecision.RELEASE_IDLE_SECONDARY
-        || decision
-            == AnalysisResourceCoordinator.ForegroundDecision.PREEMPT_AUTOMATIC_SECONDARY) {
+        || decision == AnalysisResourceCoordinator.ForegroundDecision.PREEMPT_AUTOMATIC_SECONDARY) {
       analysisEngine = null;
       secondary.clearRequestCallbacks();
       secondary.normalQuit();

@@ -11,8 +11,7 @@ import org.junit.jupiter.api.Test;
 class ConfigFirstLaunchDefaultsTest {
   @Test
   void freshProfileStartsInTheSupportedSystemLanguageWithoutAutomaticBenchmark() {
-    JSONObject ui =
-        new JSONObject().put("use-language", 4).put("enable-startup-benchmark", true);
+    JSONObject ui = new JSONObject().put("use-language", 4).put("enable-startup-benchmark", true);
 
     Config.applyFirstLaunchDefaults(ui, true, Locale.JAPAN);
 
@@ -32,8 +31,7 @@ class ConfigFirstLaunchDefaultsTest {
 
   @Test
   void existingProfileKeepsLanguageAndBenchmarkPreference() {
-    JSONObject ui =
-        new JSONObject().put("use-language", 6).put("enable-startup-benchmark", true);
+    JSONObject ui = new JSONObject().put("use-language", 6).put("enable-startup-benchmark", true);
 
     Config.applyFirstLaunchDefaults(ui, false, Locale.JAPAN);
 

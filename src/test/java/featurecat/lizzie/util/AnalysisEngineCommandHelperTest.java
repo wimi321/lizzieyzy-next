@@ -60,8 +60,7 @@ class AnalysisEngineCommandHelperTest {
                 + " gtp -model model.bin.gz -config "
                 + quote(gtpConfig));
 
-    AnalysisEngineCommandHelper.Result result =
-        AnalysisEngineCommandHelper.fromSavedEngine(engine);
+    AnalysisEngineCommandHelper.Result result = AnalysisEngineCommandHelper.fromSavedEngine(engine);
 
     assertFalse(result.isSuccess());
     assertFalse(Files.exists(analysisConfig));
@@ -153,8 +152,7 @@ class AnalysisEngineCommandHelperTest {
   }
 
   @Test
-  void convertsCurrentEngineBeforeDefaultEngineWhenFlashCommandIsNotCustomized()
-      throws Exception {
+  void convertsCurrentEngineBeforeDefaultEngineWhenFlashCommandIsNotCustomized() throws Exception {
     Path currentConfig = tempDir.resolve("current").resolve("gtp.cfg");
     Path defaultConfig = tempDir.resolve("default-current").resolve("gtp.cfg");
     Files.createDirectories(currentConfig.getParent());

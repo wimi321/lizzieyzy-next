@@ -177,8 +177,7 @@ public final class NetworkProxy {
 
   private static Settings settings(JSONObject uiConfig) {
     JSONObject ui = uiConfig == null ? new JSONObject() : uiConfig;
-    String mode =
-        ui.has(KEY_PROXY_MODE) ? ui.optString(KEY_PROXY_MODE, "").trim() : DEFAULT_MODE;
+    String mode = ui.has(KEY_PROXY_MODE) ? ui.optString(KEY_PROXY_MODE, "").trim() : DEFAULT_MODE;
     switch (mode) {
       case MODE_DIRECT:
       case MODE_SYSTEM:

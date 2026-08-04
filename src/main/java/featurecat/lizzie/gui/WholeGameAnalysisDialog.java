@@ -525,8 +525,7 @@ public final class WholeGameAnalysisDialog extends JDialog
       int lineHeight = 0;
       for (Component child : getComponents()) {
         if (child.getFont() != null) {
-          lineHeight =
-              Math.max(lineHeight, child.getFontMetrics(child.getFont()).getHeight());
+          lineHeight = Math.max(lineHeight, child.getFontMetrics(child.getFont()).getHeight());
         }
       }
       return new Dimension(preferred.width, Math.max(preferred.height, lineHeight));

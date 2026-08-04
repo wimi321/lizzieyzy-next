@@ -68,7 +68,6 @@ class EngineStartupDialogPolicyTest {
             false,
             false));
     assertFalse(
-        Leelaz.hasMissingLocalStartupAsset(
-            List.of(executable.toString(), "gtp"), true, false));
+        Leelaz.hasMissingLocalStartupAsset(List.of(executable.toString(), "gtp"), true, false));
   }
 }

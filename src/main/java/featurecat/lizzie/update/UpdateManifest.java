@@ -199,7 +199,8 @@ public final class UpdateManifest {
     }
 
     public boolean matches(String targetPlatform, String targetFlavor) {
-      String normalizedPlatform = targetPlatform == null ? "" : targetPlatform.toLowerCase(Locale.ROOT);
+      String normalizedPlatform =
+          targetPlatform == null ? "" : targetPlatform.toLowerCase(Locale.ROOT);
       String normalizedFlavor = targetFlavor == null ? "" : targetFlavor.toLowerCase(Locale.ROOT);
       return platform.equals(normalizedPlatform)
           && ("all".equals(flavor) || flavor.equals(normalizedFlavor));

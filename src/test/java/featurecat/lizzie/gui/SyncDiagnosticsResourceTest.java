@@ -20,8 +20,7 @@ class SyncDiagnosticsResourceTest {
     assertEquals("Export failed:", bundle.getString("SyncDiagnostics.exportFailure"));
     assertEquals("Close", bundle.getString("SyncDiagnostics.close"));
     assertEquals("Overview", bundle.getString("SyncDiagnostics.section.overview"));
-    assertEquals(
-        "ReadBoard / sync status", bundle.getString("SyncDiagnostics.section.readBoard"));
+    assertEquals("ReadBoard / sync status", bundle.getString("SyncDiagnostics.section.readBoard"));
     assertEquals(
         "Yike session / placement geometry", bundle.getString("SyncDiagnostics.section.yike"));
     assertEquals(
@@ -44,12 +43,9 @@ class SyncDiagnosticsResourceTest {
     assertEquals("导出失败：", bundle.getString("SyncDiagnostics.exportFailure"));
     assertEquals("关闭", bundle.getString("SyncDiagnostics.close"));
     assertEquals("概览", bundle.getString("SyncDiagnostics.section.overview"));
-    assertEquals(
-        "读盘工具 / 同步状态", bundle.getString("SyncDiagnostics.section.readBoard"));
-    assertEquals(
-        "弈客会话 / 落子定位", bundle.getString("SyncDiagnostics.section.yike"));
+    assertEquals("读盘工具 / 同步状态", bundle.getString("SyncDiagnostics.section.readBoard"));
+    assertEquals("弈客会话 / 落子定位", bundle.getString("SyncDiagnostics.section.yike"));
     assertEquals("最近同步决策", bundle.getString("SyncDiagnostics.section.latestDecision"));
-    assertEquals(
-        "分析恢复 / 快照状态", bundle.getString("SyncDiagnostics.section.analysis"));
+    assertEquals("分析恢复 / 快照状态", bundle.getString("SyncDiagnostics.section.analysis"));
   }
 }

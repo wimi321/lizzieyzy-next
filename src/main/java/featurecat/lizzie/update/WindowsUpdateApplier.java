@@ -95,8 +95,8 @@ public final class WindowsUpdateApplier {
     replaceBundledLauncherConfigsIfPresent(extracted, appDir, backupRoot, backups);
   }
 
-  private static Path resolveCoreUpdateJar(
-      JSONObject component, Path extracted, Path currentJar) throws IOException {
+  private static Path resolveCoreUpdateJar(JSONObject component, Path extracted, Path currentJar)
+      throws IOException {
     String requested = component.optString("sourcePath", currentJar.getFileName().toString());
     List<String> candidates = new ArrayList<>();
     candidates.add(requested);
@@ -140,11 +140,7 @@ public final class WindowsUpdateApplier {
           stream
               .filter(Files::isRegularFile)
               .filter(
-                  path ->
-                      path.getFileName()
-                          .toString()
-                          .toLowerCase(Locale.ROOT)
-                          .endsWith(".cfg"))
+                  path -> path.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(".cfg"))
               .toList();
       for (Path config : configs) {
         replaceFile(config, appDir.resolve(config.getFileName()), backupRoot, appDir, backups);
@@ -196,7 +192,8 @@ public final class WindowsUpdateApplier {
     target = safeExistingOrFutureAppTarget(appDir, target);
     backupTarget(target, backupRoot, appDir, backups);
     Files.createDirectories(target.getParent());
-    Files.copy(source, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.COPY_ATTRIBUTES);
+    Files.copy(
+        source, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.COPY_ATTRIBUTES);
   }
 
   private static void replaceDirectory(
@@ -250,7 +247,8 @@ public final class WindowsUpdateApplier {
           }
 
           @Override
-          public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
+          public FileVisitResult visitFile(Path file, BasicFileAttributes attrs)
+              throws IOException {
             Path destination = target.resolve(source.relativize(file)).normalize();
             Files.createDirectories(destination.getParent());
             Files.copy(

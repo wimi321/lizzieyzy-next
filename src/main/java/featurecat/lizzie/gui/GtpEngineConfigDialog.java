@@ -217,8 +217,7 @@ public final class GtpEngineConfigDialog {
 
     boolean hasReadableNumericEditors() {
       for (ValueEditor editor : editors.values()) {
-        if (editor instanceof SpinnerEditor
-            && !((SpinnerEditor) editor).hasReadableText()) {
+        if (editor instanceof SpinnerEditor && !((SpinnerEditor) editor).hasReadableText()) {
           return false;
         }
       }
@@ -231,14 +230,12 @@ public final class GtpEngineConfigDialog {
     }
 
     @Override
-    public int getScrollableUnitIncrement(
-        Rectangle visibleRect, int orientation, int direction) {
+    public int getScrollableUnitIncrement(Rectangle visibleRect, int orientation, int direction) {
       return 16;
     }
 
     @Override
-    public int getScrollableBlockIncrement(
-        Rectangle visibleRect, int orientation, int direction) {
+    public int getScrollableBlockIncrement(Rectangle visibleRect, int orientation, int direction) {
       return 64;
     }
 

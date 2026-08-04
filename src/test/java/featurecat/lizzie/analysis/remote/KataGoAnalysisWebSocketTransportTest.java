@@ -48,8 +48,7 @@ public class KataGoAnalysisWebSocketTransportTest {
       harness.webSocket.emit(analysisResponse(queryId, false, "D4", 24));
 
       assertEquals(
-          "info move Q16 visits 12 order 0\n"
-              + "info move D4 visits 24 order 0\n\n",
+          "info move Q16 visits 12 order 0\n" + "info move D4 visits 24 order 0\n\n",
           readAvailable(harness.transport.stdout()));
     }
   }
@@ -787,8 +786,7 @@ public class KataGoAnalysisWebSocketTransportTest {
 
     assertTrue(response.startsWith("?42 unknown command"));
     assertTrue(sendGtp(transport, "time_warp 1").startsWith("? unknown command"));
-    assertTrue(
-        sendGtp(transport, "kata-get-param unsupported").startsWith("? unknown parameter"));
+    assertTrue(sendGtp(transport, "kata-get-param unsupported").startsWith("? unknown parameter"));
   }
 
   @Test
@@ -924,8 +922,7 @@ public class KataGoAnalysisWebSocketTransportTest {
     private final FakeWebSocket webSocket;
     private final KataGoAnalysisWebSocketTransport transport;
 
-    private TransportHarness(
-        FakeWebSocket webSocket, KataGoAnalysisWebSocketTransport transport) {
+    private TransportHarness(FakeWebSocket webSocket, KataGoAnalysisWebSocketTransport transport) {
       this.webSocket = webSocket;
       this.transport = transport;
     }

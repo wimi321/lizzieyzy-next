@@ -140,8 +140,7 @@ public final class MoveRankDefinition {
     return severity(winrateDiff, Optional.of(scoreDiff), config);
   }
 
-  public static double severity(
-      double winrateDiff, Optional<Double> scoreDiff, Config config) {
+  public static double severity(double winrateDiff, Optional<Double> scoreDiff, Config config) {
     double winrateSeverity =
         metricSeverity(
             winrateDiff,

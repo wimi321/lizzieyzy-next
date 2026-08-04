@@ -18,15 +18,12 @@ class RemoteComputeQrDependencyTest {
   @Test
   void qrShareCodeRoundTripsWithoutOptionalCliOrTiffLibraries() throws Exception {
     String shareCode = "wss://compute.example.test/session/abc123";
-    BitMatrix matrix =
-        new QRCodeWriter().encode(shareCode, BarcodeFormat.QR_CODE, 192, 192);
+    BitMatrix matrix = new QRCodeWriter().encode(shareCode, BarcodeFormat.QR_CODE, 192, 192);
     BufferedImage image = MatrixToImageWriter.toBufferedImage(matrix);
 
     Result decoded =
         new MultiFormatReader()
-            .decode(
-                new BinaryBitmap(
-                    new HybridBinarizer(new BufferedImageLuminanceSource(image))));
+            .decode(new BinaryBitmap(new HybridBinarizer(new BufferedImageLuminanceSource(image))));
 
     assertEquals(shareCode, decoded.getText());
   }

@@ -37,8 +37,7 @@ class EngineManagerLifecycleReservationTest {
   }
 
   @Test
-  void activeRestartResumesPonderAfterFinalBoardFenceAndRetiresTrackingOnRebind()
-      throws Exception {
+  void activeRestartResumesPonderAfterFinalBoardFenceAndRetiresTrackingOnRebind() throws Exception {
     Leelaz previousEngine = Lizzie.leelaz;
     LizzieFrame previousFrame = Lizzie.frame;
     boolean previousEmpty = EngineManager.isEmpty;
@@ -255,8 +254,7 @@ class EngineManagerLifecycleReservationTest {
   }
 
   @Test
-  void automaticProcessRestartLosesTheRaceWhenGmaReservesBeforeRestartDispatch()
-      throws Exception {
+  void automaticProcessRestartLosesTheRaceWhenGmaReservesBeforeRestartDispatch() throws Exception {
     Leelaz previousEngine = Lizzie.leelaz;
     boolean previousEmpty = EngineManager.isEmpty;
     boolean previousEngineGame = EngineManager.isEngineGame;
@@ -362,8 +360,7 @@ class EngineManagerLifecycleReservationTest {
     Leelaz previousEngine = Lizzie.leelaz;
     Leelaz current = new Leelaz("");
     Leelaz target = new Leelaz("");
-    DeferredSwitchEngineManager manager =
-        new DeferredSwitchEngineManager(List.of(current, target));
+    DeferredSwitchEngineManager manager = new DeferredSwitchEngineManager(List.of(current, target));
     try {
       Lizzie.leelaz = current;
 
@@ -503,8 +500,7 @@ class EngineManagerLifecycleReservationTest {
   }
 
   @Test
-  void failedRecoverySwitchFenceLeavesTargetUnavailableAndReleasesReservations()
-      throws Exception {
+  void failedRecoverySwitchFenceLeavesTargetUnavailableAndReleasesReservations() throws Exception {
     Leelaz previousEngine = Lizzie.leelaz;
     Leelaz current = new Leelaz("");
     setEngineStateUnrestored(current, true);
@@ -622,8 +618,7 @@ class EngineManagerLifecycleReservationTest {
     CountingRestartGateFrame frame = allocate(CountingRestartGateFrame.class);
     engine.started = true;
     engine.isLoaded = true;
-    RecoverySwitchEngineManager manager =
-        new RecoverySwitchEngineManager(List.of(engine), engine);
+    RecoverySwitchEngineManager manager = new RecoverySwitchEngineManager(List.of(engine), engine);
     try {
       Lizzie.leelaz = engine;
       Lizzie.frame = frame;
@@ -803,8 +798,7 @@ class EngineManagerLifecycleReservationTest {
   }
 
   @Test
-  void switchWaitsForPublishedNameCheckAndBoardSynchronizationBeforeCompleting()
-      throws Exception {
+  void switchWaitsForPublishedNameCheckAndBoardSynchronizationBeforeCompleting() throws Exception {
     Leelaz previousEngine = Lizzie.leelaz;
     Leelaz current = new Leelaz("");
     ControlledReadinessLeelaz target = unavailableControlledEngine(500L);
@@ -964,8 +958,8 @@ class EngineManagerLifecycleReservationTest {
     }
   }
 
-  private static ControlledReadinessLeelaz unavailableControlledEngine(
-      long tuningTimeoutMillis) throws Exception {
+  private static ControlledReadinessLeelaz unavailableControlledEngine(long tuningTimeoutMillis)
+      throws Exception {
     ControlledReadinessLeelaz engine = new ControlledReadinessLeelaz(tuningTimeoutMillis);
     engine.started = true;
     engine.isLoaded = false;

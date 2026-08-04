@@ -83,7 +83,9 @@ public final class UpdateVersion implements Comparable<UpdateVersion> {
       return false;
     }
     UpdateVersion other = (UpdateVersion) obj;
-    return serial == other.serial && Objects.equals(date, other.date) && Objects.equals(tag, other.tag);
+    return serial == other.serial
+        && Objects.equals(date, other.date)
+        && Objects.equals(tag, other.tag);
   }
 
   @Override

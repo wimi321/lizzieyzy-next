@@ -85,8 +85,7 @@ class AppLocaleTest {
     assertEquals(AppLocale.SIMPLIFIED_CHINESE, AppLocale.fromSystemLocale(Locale.CHINA));
     assertEquals(AppLocale.TRADITIONAL_CHINESE, AppLocale.fromSystemLocale(Locale.TAIWAN));
     assertEquals(
-        AppLocale.TRADITIONAL_CHINESE,
-        AppLocale.fromSystemLocale(Locale.forLanguageTag("zh-HK")));
+        AppLocale.TRADITIONAL_CHINESE, AppLocale.fromSystemLocale(Locale.forLanguageTag("zh-HK")));
     assertEquals(
         AppLocale.TRADITIONAL_CHINESE,
         AppLocale.fromSystemLocale(Locale.forLanguageTag("zh-Hant")));
@@ -114,7 +113,8 @@ class AppLocaleTest {
     try {
       Lizzie.applyOptionPaneLocalization(AppLocale.THAI.loadBundle());
       assertEquals("\u0E15\u0E01\u0E25\u0E07", UIManager.get("OptionPane.okButtonText"));
-      assertEquals("\u0E22\u0E01\u0E40\u0E25\u0E34\u0E01", UIManager.get("OptionPane.cancelButtonText"));
+      assertEquals(
+          "\u0E22\u0E01\u0E40\u0E25\u0E34\u0E01", UIManager.get("OptionPane.cancelButtonText"));
       assertEquals("\u0E43\u0E0A\u0E48", UIManager.get("OptionPane.yesButtonText"));
       assertEquals("\u0E44\u0E21\u0E48", UIManager.get("OptionPane.noButtonText"));
     } finally {

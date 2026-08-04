@@ -37,8 +37,7 @@ class LeelazPonderStateTest {
   }
 
   @Test
-  void kataNameStartupCommandsDoNotHoldEngineMonitorWhileCommandQueueIsBlocked()
-      throws Exception {
+  void kataNameStartupCommandsDoNotHoldEngineMonitorWhileCommandQueueIsBlocked() throws Exception {
     try (TestHarness ignored = TestHarness.open()) {
       Leelaz engine = new Leelaz("");
       Lizzie.leelaz = engine;

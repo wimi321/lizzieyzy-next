@@ -138,10 +138,7 @@ public class SidebarHeaderPanel extends JPanel {
       return text("SidebarHeader.progress.complete", "Evaluation complete");
     }
     return format(
-        "SidebarHeader.progress.partial",
-        "Evaluated {0}/{1}",
-        analyzedMoves,
-        snapshot.totalMoves);
+        "SidebarHeader.progress.partial", "Evaluated {0}/{1}", analyzedMoves, snapshot.totalMoves);
   }
 
   static String progressTooltipFor(ProblemListSnapshot snapshot) {
@@ -184,8 +181,7 @@ public class SidebarHeaderPanel extends JPanel {
       int underlineY = y + 7;
       g2.setColor(withAlpha(accent, 220));
       if (showBlunders) {
-        g2.fillRoundRect(
-            x + secondLabelOffset, underlineY, fm.stringWidth(problemsText), 3, 3, 3);
+        g2.fillRoundRect(x + secondLabelOffset, underlineY, fm.stringWidth(problemsText), 3, 3, 3);
       } else {
         g2.fillRoundRect(x, underlineY, fm.stringWidth(commentsText), 3, 3, 3);
       }
@@ -228,8 +224,7 @@ public class SidebarHeaderPanel extends JPanel {
           g2.drawRoundRect(x, underlineY, fm.stringWidth(blackText) - 1, 2, 3, 3);
         } else {
           g2.setColor(new Color(245, 247, 250));
-          g2.fillRoundRect(
-              x + sideSecondOffset, underlineY, fm.stringWidth(whiteText), 3, 3, 3);
+          g2.fillRoundRect(x + sideSecondOffset, underlineY, fm.stringWidth(whiteText), 3, 3, 3);
         }
       }
       paintKeyboardFocus(g2);

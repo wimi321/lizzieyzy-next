@@ -1057,8 +1057,7 @@ public class ReadBoard implements ReadBoardTrackingEligibilityAdapter.Eligibilit
     SwingUtilities.invokeLater(
         () ->
             Utils.showMsg(
-                Lizzie.resourceBundle.getString(
-                    "AnalysisSettings.reuseStatus.existing_lease")));
+                Lizzie.resourceBundle.getString("AnalysisSettings.reuseStatus.existing_lease")));
   }
 
   private static boolean isPlacementFailedLine(String line) {
@@ -2646,11 +2645,7 @@ public class ReadBoard implements ReadBoardTrackingEligibilityAdapter.Eligibilit
       return true;
     }
     if (isTrustedFoxZeroMoveHandicapSetupTurn(
-        snapshotStones,
-        snapshotDelta,
-        remoteContext,
-        lastMoveSource,
-        foxMoveNumber)) {
+        snapshotStones, snapshotDelta, remoteContext, lastMoveSource, foxMoveNumber)) {
       return false;
     }
     if (snapshotDelta.hasMarker() && lastMoveSource.isTrustedVisualMarker()) {
@@ -3807,8 +3802,7 @@ public class ReadBoard implements ReadBoardTrackingEligibilityAdapter.Eligibilit
       }
       return;
     }
-    if (Lizzie.leelaz != null
-        && Lizzie.leelaz.cancelReadBoardGmaPreparationIfPending(null, null)) {
+    if (Lizzie.leelaz != null && Lizzie.leelaz.cancelReadBoardGmaPreparationIfPending(null, null)) {
       readBoardGmaPending = false;
       readBoardGmaPendingLogicallyInvalid = false;
       localMoveSyncDebug("ReadBoard GMA cancel parameter preparation reason=" + reason);
@@ -4215,8 +4209,7 @@ public class ReadBoard implements ReadBoardTrackingEligibilityAdapter.Eligibilit
       retiredReadBoardGmaGeneration = -1L;
       return true;
     }
-    if (readBoardGmaPendingIdentity != identity
-        || readBoardGmaPendingGeneration != generation) {
+    if (readBoardGmaPendingIdentity != identity || readBoardGmaPendingGeneration != generation) {
       return false;
     }
     readBoardGmaPending = false;
@@ -4323,8 +4316,7 @@ public class ReadBoard implements ReadBoardTrackingEligibilityAdapter.Eligibilit
       retiredReadBoardGmaGeneration = -1L;
       return true;
     }
-    if (readBoardGmaPendingIdentity != identity
-        || readBoardGmaPendingGeneration != generation) {
+    if (readBoardGmaPendingIdentity != identity || readBoardGmaPendingGeneration != generation) {
       return false;
     }
     readBoardGmaPending = false;
@@ -5385,8 +5377,7 @@ public class ReadBoard implements ReadBoardTrackingEligibilityAdapter.Eligibilit
       trackingEligibilityBoardRevision = 0L;
       trackingEligibilityReason = ReadBoardTrackingEligibilityAdapter.Reason.RETIRED;
       retiredReadBoardGmaTerminalPending = readBoardGmaPending;
-      retiredReadBoardGmaIdentity =
-          retiredReadBoardGmaTerminalPending ? retiredGmaIdentity : null;
+      retiredReadBoardGmaIdentity = retiredReadBoardGmaTerminalPending ? retiredGmaIdentity : null;
       retiredReadBoardGmaGeneration =
           retiredReadBoardGmaTerminalPending ? retiredGmaGeneration : -1L;
       readBoardGmaSessionGeneration++;

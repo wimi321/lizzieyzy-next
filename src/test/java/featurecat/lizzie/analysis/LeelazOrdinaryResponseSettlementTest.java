@@ -48,8 +48,7 @@ class LeelazOrdinaryResponseSettlementTest {
       assertEquals("kata-analyze W 10\n", output.toString(StandardCharsets.UTF_8));
       assertFalse(engine.isResponseUpToDate());
       engine.setResponseUpToDate();
-      parseInfo(
-          engine, "info move D4 visits 40 winrate 0.51 scoreLead 2.5 prior 0.2 pv D4");
+      parseInfo(engine, "info move D4 visits 40 winrate 0.51 scoreLead 2.5 prior 0.2 pv D4");
 
       assertEquals(1, engine.getBestMoves().size());
       assertEquals("D4", engine.getBestMoves().get(0).coordinate);

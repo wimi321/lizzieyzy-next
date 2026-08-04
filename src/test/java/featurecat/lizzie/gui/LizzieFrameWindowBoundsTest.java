@@ -43,8 +43,7 @@ class LizzieFrameWindowBoundsTest {
     Rectangle fitted =
         LizzieFrame.fitWindowBounds(
             new Rectangle(-1700, 100, 1200, 700),
-            Arrays.asList(
-                new Rectangle(0, 0, 1280, 760), new Rectangle(-1920, 0, 1920, 1040)));
+            Arrays.asList(new Rectangle(0, 0, 1280, 760), new Rectangle(-1920, 0, 1920, 1040)));
 
     assertEquals(new Rectangle(-1700, 100, 1200, 700), fitted);
   }

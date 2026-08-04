@@ -35,7 +35,8 @@ class ConfigBoardStyleTest {
     config.uiConfig = ui;
 
     config.boardStyle =
-        Config.normalizeBoardStyle(config.uiConfig.optString("board-style", Config.BOARD_STYLE_JAPANESE));
+        Config.normalizeBoardStyle(
+            config.uiConfig.optString("board-style", Config.BOARD_STYLE_JAPANESE));
     config.uiConfig.put("board-style", config.boardStyle);
 
     assertEquals(Config.BOARD_STYLE_JAPANESE, config.boardStyle);

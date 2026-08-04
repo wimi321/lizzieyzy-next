@@ -306,9 +306,7 @@ public class TencentKifuDownload extends JFrame {
       return;
     }
     if (isKifuLoading) {
-      Utils.showMsg(
-          Lizzie.frame.kifuLoadText("KifuLoad.wait"),
-          this);
+      Utils.showMsg(Lizzie.frame.kifuLoadText("KifuLoad.wait"), this);
       return;
     }
     currentQuery = normalizedUser;

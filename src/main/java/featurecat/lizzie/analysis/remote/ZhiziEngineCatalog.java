@@ -19,14 +19,10 @@ public final class ZhiziEngineCatalog {
   private static final int MAX_DESCRIPTION_LENGTH = 180;
   private static final List<Option> OFFICIAL_DOCUMENTED_WEIGHTS =
       List.of(
-          new Option(
-              "18bnbt", "weight for 18bnbt", DiscoverySource.OFFICIAL_DOCUMENTED),
-          new Option(
-              "28bnbt", "weight for 28bnbt", DiscoverySource.OFFICIAL_DOCUMENTED),
-          new Option(
-              "fdx", "40B NBT extra-large weight", DiscoverySource.OFFICIAL_DOCUMENTED));
-  private static final List<String> LEGACY_COMPATIBLE_WEIGHTS =
-      List.of("60b", "40b", "20b");
+          new Option("18bnbt", "weight for 18bnbt", DiscoverySource.OFFICIAL_DOCUMENTED),
+          new Option("28bnbt", "weight for 28bnbt", DiscoverySource.OFFICIAL_DOCUMENTED),
+          new Option("fdx", "40B NBT extra-large weight", DiscoverySource.OFFICIAL_DOCUMENTED));
+  private static final List<String> LEGACY_COMPATIBLE_WEIGHTS = List.of("60b", "40b", "20b");
 
   private final String serverVersion;
   private final String defaultWeight;
@@ -44,8 +40,7 @@ public final class ZhiziEngineCatalog {
     }
     String preferred = safeName(defaultWeight);
     if (!preferred.isEmpty() && !unique.containsKey(preferred)) {
-      unique.put(
-          preferred, new Option(preferred, "", DiscoverySource.USER_PRESERVED));
+      unique.put(preferred, new Option(preferred, "", DiscoverySource.USER_PRESERVED));
     }
     if (unique.isEmpty()) {
       throw new IOException("Zhizi did not report any usable KataGo weights.");

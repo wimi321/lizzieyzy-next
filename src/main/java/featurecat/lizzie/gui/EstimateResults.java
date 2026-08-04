@@ -375,10 +375,9 @@ public class EstimateResults extends JDialog {
     if (calculationPending || calculationFailed) {
       String status =
           resourceBundle.getString(
-              calculationPending
-                  ? "EstimateResults.calculating"
-                  : "EstimateResults.unavailable");
-      g2.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
+              calculationPending ? "EstimateResults.calculating" : "EstimateResults.unavailable");
+      g2.setRenderingHint(
+          RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
       g2.setFont(
           new Font(Lizzie.config.isChinese ? "SimHei" : Lizzie.config.uiFontName, Font.PLAIN, 16));
       g2.setColor(Color.BLACK);

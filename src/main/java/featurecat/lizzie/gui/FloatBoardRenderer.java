@@ -1029,8 +1029,7 @@ public class FloatBoardRenderer {
           if (playouts > 0 && playoutsPrevious > 0) {
             if (moveNumberList[index] == moveNumber) {
               if (node.isBest)
-                drawMoveRankMarkCircle(
-                    g, markX, markY, stoneRadius, 0, Optional.of(0.0), true);
+                drawMoveRankMarkCircle(g, markX, markY, stoneRadius, 0, Optional.of(0.0), true);
               else
                 drawMoveRankMarkCircle(
                     g,

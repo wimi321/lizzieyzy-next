@@ -620,9 +620,7 @@ class BoardMovelistExportTest {
 
       assertEquals(
           List.of("clear_board", "play B pass"),
-          List.of(
-              engine.recordedCommands().get(0),
-              engine.recordedCommands().get(2)),
+          List.of(engine.recordedCommands().get(0), engine.recordedCommands().get(2)),
           "load-engine replay should replay only later real actions after the removed-stone snapshot restore.");
       assertTrue(
           engine.recordedCommands().get(1).startsWith("loadsgf "),
@@ -664,12 +662,8 @@ class BoardMovelistExportTest {
       board.resendMoveToEngine(engine, true);
 
       assertEquals(
-          List.of(
-              "clear_board",
-              "play W " + Board.convertCoordinatesToName(0, 1)),
-          List.of(
-              engine.recordedCommands().get(0),
-              engine.recordedCommands().get(2)),
+          List.of("clear_board", "play W " + Board.convertCoordinatesToName(0, 1)),
+          List.of(engine.recordedCommands().get(0), engine.recordedCommands().get(2)),
           "load-engine replay should replay only later real actions after the nearest removed-stone snapshot restore.");
       assertTrue(
           engine.recordedCommands().get(1).startsWith("loadsgf "),

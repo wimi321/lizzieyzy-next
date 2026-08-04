@@ -30,12 +30,9 @@ class GlassEffectRendererCacheTest {
     BufferedImage background = background();
     BufferedImage first = GlassEffectRenderer.blurredRegion(background, 8, 9, 80, 64, 10, 800);
 
-    assertNotSame(
-        first, GlassEffectRenderer.blurredRegion(background, 9, 9, 80, 64, 10, 800));
-    assertNotSame(
-        first, GlassEffectRenderer.blurredRegion(background, 8, 9, 80, 64, 12, 800));
-    assertNotSame(
-        first, GlassEffectRenderer.blurredRegion(background(), 8, 9, 80, 64, 10, 800));
+    assertNotSame(first, GlassEffectRenderer.blurredRegion(background, 9, 9, 80, 64, 10, 800));
+    assertNotSame(first, GlassEffectRenderer.blurredRegion(background, 8, 9, 80, 64, 12, 800));
+    assertNotSame(first, GlassEffectRenderer.blurredRegion(background(), 8, 9, 80, 64, 10, 800));
   }
 
   private static BufferedImage background() {

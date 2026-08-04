@@ -101,14 +101,12 @@ public final class KataGoAutoSetupHelper {
   public static final long QUICK_ANALYSIS_MODEL_SIZE_BYTES = 38_245_488L;
   public static final String QUICK_ANALYSIS_MODEL_SHA256 =
       "0ba27eced5180b3e3d0b898b280c541112989765e789d1eb6cd0d31b2b2c1229";
-  private static final String QUICK_ANALYSIS_MODEL_URL_PROPERTY =
-      "lizzie.quick-analysis.model.url";
+  private static final String QUICK_ANALYSIS_MODEL_URL_PROPERTY = "lizzie.quick-analysis.model.url";
   private static final String QUICK_ANALYSIS_MODEL_SHA256_PROPERTY =
       "lizzie.quick-analysis.model.sha256";
   private static final String QUICK_ANALYSIS_MODEL_SIZE_PROPERTY =
       "lizzie.quick-analysis.model.size";
-  private static final String QUICK_ANALYSIS_MODEL_CONFIG_KEY =
-      "katago-quick-analysis-model-path";
+  private static final String QUICK_ANALYSIS_MODEL_CONFIG_KEY = "katago-quick-analysis-model-path";
   private static final String QUICK_ANALYSIS_MODEL_DIR_NAME = "quick-analysis-models";
   private static volatile Path quickAnalysisValidationPath;
   private static volatile long quickAnalysisValidationSize = -1L;
@@ -1146,8 +1144,8 @@ public final class KataGoAutoSetupHelper {
     }
   }
 
-  public static Path downloadQuickAnalysisModel(
-      ProgressListener listener, DownloadSession session) throws IOException {
+  public static Path downloadQuickAnalysisModel(ProgressListener listener, DownloadSession session)
+      throws IOException {
     SetupSnapshot snapshot = inspectLocalSetup();
     Path modelsDir = quickAnalysisModelsDir(snapshot.workingDir);
     RemoteWeightInfo info = quickAnalysisDownloadInfo();
@@ -1185,10 +1183,7 @@ public final class KataGoAutoSetupHelper {
   }
 
   private static Path downloadWeightToDirectory(
-      RemoteWeightInfo info,
-      Path weightsDir,
-      ProgressListener listener,
-      DownloadSession session)
+      RemoteWeightInfo info, Path weightsDir, ProgressListener listener, DownloadSession session)
       throws IOException {
     if (info == null || weightsDir == null) {
       throw new IOException(resource("AutoSetup.noRemoteWeights", "No downloadable weight found."));
@@ -1453,7 +1448,8 @@ public final class KataGoAutoSetupHelper {
     if (isValidQuickAnalysisModelFile(configured)) {
       return new QuickAnalysisModelStatus(configured);
     }
-    Path managed = quickAnalysisModelsDir(snapshot.workingDir).resolve(QUICK_ANALYSIS_MODEL_FILE_NAME);
+    Path managed =
+        quickAnalysisModelsDir(snapshot.workingDir).resolve(QUICK_ANALYSIS_MODEL_FILE_NAME);
     return new QuickAnalysisModelStatus(isValidQuickAnalysisModelFile(managed) ? managed : null);
   }
 

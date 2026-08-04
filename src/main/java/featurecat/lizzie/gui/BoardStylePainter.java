@@ -138,8 +138,7 @@ final class BoardStylePainter {
     drawLine(g, innerRight, innerBottom, innerRight, bottom);
   }
 
-  private static void drawLine(
-      Graphics2D g, double x1, double y1, double x2, double y2) {
+  private static void drawLine(Graphics2D g, double x1, double y1, double x2, double y2) {
     g.draw(new Line2D.Double(x1, y1, x2, y2));
   }
 }

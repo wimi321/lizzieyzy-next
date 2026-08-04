@@ -59,9 +59,7 @@ public final class GraphicsDriverDiagnostics {
     try {
       process =
           new ProcessBuilder(
-                  "nvidia-smi",
-                  "--query-gpu=name,driver_version",
-                  "--format=csv,noheader,nounits")
+                  "nvidia-smi", "--query-gpu=name,driver_version", "--format=csv,noheader,nounits")
               .redirectErrorStream(true)
               .start();
       if (!process.waitFor(PROBE_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {

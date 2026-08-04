@@ -90,9 +90,7 @@ public class KataEstimate {
         Lizzie.config.useZenEstimate
             ? Lizzie.config.zenEstimateCommand
             : Lizzie.config.estimateCommand;
-    if (!Lizzie.config.useZenEstimate
-        && Lizzie.leelaz != null
-        && Lizzie.leelaz.useRemoteCompute) {
+    if (!Lizzie.config.useZenEstimate && Lizzie.leelaz != null && Lizzie.leelaz.useRemoteCompute) {
       engineCommand = Lizzie.leelaz.getEngineCommand();
     }
     this.isPreLoad = isPreLoad;
@@ -125,7 +123,8 @@ public class KataEstimate {
       try {
         remoteTransport = RemoteComputeConfig.createTransportForCommand(engineCommand);
         remoteTransport.start();
-        initializeStreams(remoteTransport.stdout(), remoteTransport.stdin(), remoteTransport.stderr());
+        initializeStreams(
+            remoteTransport.stdout(), remoteTransport.stdin(), remoteTransport.stderr());
       } catch (IOException e) {
         showErrMsg(e);
         process = null;
@@ -218,7 +217,8 @@ public class KataEstimate {
   }
 
   private void initializeStreams() {
-    initializeStreams(process.getInputStream(), process.getOutputStream(), process.getErrorStream());
+    initializeStreams(
+        process.getInputStream(), process.getOutputStream(), process.getErrorStream());
   }
 
   private void initializeStreams(InputStream stdout, OutputStream stdin, InputStream stderr) {
@@ -426,8 +426,7 @@ public class KataEstimate {
   }
 
   private void territory() {
-    if (Lizzie.frame == null
-        || (!Lizzie.frame.isCounting && !Lizzie.frame.isAutocounting)) {
+    if (Lizzie.frame == null || (!Lizzie.frame.isCounting && !Lizzie.frame.isAutocounting)) {
       numberofcount = 0;
       return;
     }

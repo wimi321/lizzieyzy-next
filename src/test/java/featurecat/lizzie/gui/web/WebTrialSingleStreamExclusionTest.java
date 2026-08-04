@@ -154,8 +154,7 @@ class WebTrialSingleStreamExclusionTest {
     assertEquals(
         WebBoardManager.TrialEnterResult.IDEMPOTENT,
         manager.enterTrialWithResult("trial-owner", anchor));
-    WebBoardManager.TrialEnterResult inUse =
-        manager.enterTrialWithResult("other-client", anchor);
+    WebBoardManager.TrialEnterResult inUse = manager.enterTrialWithResult("other-client", anchor);
     assertEquals(WebBoardManager.TrialEnterResult.Kind.IN_USE, inUse.kind());
     assertEquals("trial-owner", inUse.capturedOwnerClientId());
   }

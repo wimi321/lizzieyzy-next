@@ -188,8 +188,7 @@ class LizzieFrameRestartInteractionGateTest {
     }
   }
 
-  private static void postKeyEvent(Component source, int keyCode, int modifiers)
-      throws Exception {
+  private static void postKeyEvent(Component source, int keyCode, int modifiers) throws Exception {
     EventQueue queue = Toolkit.getDefaultToolkit().getSystemEventQueue();
     queue.postEvent(
         new KeyEvent(
@@ -295,5 +294,4 @@ class LizzieFrameRestartInteractionGateTest {
       }
     }
   }
-
 }

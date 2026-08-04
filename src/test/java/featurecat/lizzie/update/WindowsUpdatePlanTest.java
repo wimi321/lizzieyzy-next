@@ -42,7 +42,9 @@ class WindowsUpdatePlanTest {
   @Test
   void skipsUnchangedResourceComponents() {
     JSONObject manifestJson = UpdateManifestTest.validManifest();
-    manifestJson.getJSONArray("components").put(component("katago-opencl", "opencl", "katago-v1", true));
+    manifestJson
+        .getJSONArray("components")
+        .put(component("katago-opencl", "opencl", "katago-v1", true));
     UpdateManifest manifest = UpdateManifest.parse(manifestJson);
     InstalledUpdateState installed =
         InstalledUpdateState.parse(
@@ -71,7 +73,10 @@ class WindowsUpdatePlanTest {
 
     WindowsUpdatePlan plan =
         WindowsUpdatePlan.create(
-            manifest, InstalledUpdateState.empty("next-dev", "windows", "opencl"), "next-dev", "opencl");
+            manifest,
+            InstalledUpdateState.empty("next-dev", "windows", "opencl"),
+            "next-dev",
+            "opencl");
 
     assertFalse(plan.hasUpdate());
   }

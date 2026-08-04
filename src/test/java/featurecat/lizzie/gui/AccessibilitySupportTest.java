@@ -63,19 +63,15 @@ class AccessibilitySupportTest {
     nextMove.setToolTipText("Old tooltip");
     panel.add(nextMove);
 
-    AccessibilitySupport.buttonWithoutTooltip(
-        nextMove, "Next move", "Go forward one move");
+    AccessibilitySupport.buttonWithoutTooltip(nextMove, "Next move", "Go forward one move");
     AccessibilitySupport.applyToTree(panel);
 
     assertNull(nextMove.getToolTipText());
     assertEquals("Next move", nextMove.getAccessibleContext().getAccessibleName());
-    assertEquals(
-        "Go forward one move", nextMove.getAccessibleContext().getAccessibleDescription());
+    assertEquals("Go forward one move", nextMove.getAccessibleContext().getAccessibleDescription());
     assertEquals(
         "pressed",
-        nextMove
-            .getInputMap(JComponent.WHEN_FOCUSED)
-            .get(KeyStroke.getKeyStroke("pressed ENTER")));
+        nextMove.getInputMap(JComponent.WHEN_FOCUSED).get(KeyStroke.getKeyStroke("pressed ENTER")));
   }
 
   @Test
@@ -97,12 +93,10 @@ class AccessibilitySupportTest {
     assertNull(labeled.getToolTipText());
     assertNull(iconOnly.getToolTipText());
     assertEquals("Auto analyze", labeled.getAccessibleContext().getAccessibleName());
-    assertEquals(
-        "Analyze every move", labeled.getAccessibleContext().getAccessibleDescription());
+    assertEquals("Analyze every move", labeled.getAccessibleContext().getAccessibleDescription());
     assertEquals("More actions", iconOnly.getAccessibleContext().getAccessibleName());
     assertEquals(
-        "Show hidden toolbar actions",
-        iconOnly.getAccessibleContext().getAccessibleDescription());
+        "Show hidden toolbar actions", iconOnly.getAccessibleContext().getAccessibleDescription());
   }
 
   @Test
@@ -142,8 +136,7 @@ class AccessibilitySupportTest {
     JButton pdaOptions = new JButton("...");
     pdaOptions.setToolTipText("Open PDA options");
     JButton explicitlyNamed = new JButton("|<");
-    AccessibilitySupport.button(
-        explicitlyNamed, "First move", "Go to the first move in the game");
+    AccessibilitySupport.button(explicitlyNamed, "First move", "Go to the first move in the game");
     panel.add(firstMove);
     panel.add(pdaOptions);
     panel.add(explicitlyNamed);

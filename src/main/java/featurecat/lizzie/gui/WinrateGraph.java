@@ -209,11 +209,7 @@ public class WinrateGraph {
     Paint previousPaint = g.getPaint();
     Stroke previousStroke = g.getStroke();
     g.setColor(haloColor);
-    g.fillOval(
-        centerX - haloRadius,
-        centerY - haloRadius,
-        haloRadius * 2,
-        haloRadius * 2);
+    g.fillOval(centerX - haloRadius, centerY - haloRadius, haloRadius * 2, haloRadius * 2);
     drawMetricMarkerCore(g, centerX, centerY, markerRadius, fillColor, borderColor);
     g.setPaint(previousPaint);
     g.setStroke(previousStroke);
@@ -227,18 +223,10 @@ public class WinrateGraph {
       Color fillColor,
       Color borderColor) {
     g.setColor(fillColor);
-    g.fillOval(
-        centerX - markerRadius,
-        centerY - markerRadius,
-        markerRadius * 2,
-        markerRadius * 2);
+    g.fillOval(centerX - markerRadius, centerY - markerRadius, markerRadius * 2, markerRadius * 2);
     g.setColor(borderColor);
     g.setStroke(new BasicStroke(1f));
-    g.drawOval(
-        centerX - markerRadius,
-        centerY - markerRadius,
-        markerRadius * 2,
-        markerRadius * 2);
+    g.drawOval(centerX - markerRadius, centerY - markerRadius, markerRadius * 2, markerRadius * 2);
   }
 
   private static Color withAlpha(Color color, int alpha) {
@@ -1487,11 +1475,7 @@ public class WinrateGraph {
     List<GraphPoint> renderedAnchors = buildGraphAnchorPoints(graphBaseNode);
     drawGraphAnchors(g, renderedAnchors);
     drawMainCurrentMarkers(
-        g,
-        renderedAnchors,
-        graphBaseNode,
-        currentScoreMarkerMoveIndex,
-        currentScoreMarkerMean);
+        g, renderedAnchors, graphBaseNode, currentScoreMarkerMoveIndex, currentScoreMarkerMean);
     QuickOverviewLayout quickOverviewLayout =
         drawQuickOverview(g, gBlunder, gBackground, graphBaseNode, posx, width, numMoves);
     rememberRenderedPointSources(quickOverviewLayout, renderedAnchors);
@@ -1657,11 +1641,7 @@ public class WinrateGraph {
           layout.innerX + layout.innerWidth);
     }
     if (currentPoint != null) {
-      drawCurrentMoveMarker(
-          g,
-          currentPoint.x,
-          currentPoint.y,
-          Math.max(3, layout.dotSize / 2 + 1));
+      drawCurrentMoveMarker(g, currentPoint.x, currentPoint.y, Math.max(3, layout.dotSize / 2 + 1));
     }
     return layout;
   }
@@ -2798,8 +2778,7 @@ public class WinrateGraph {
     return new int[] {x, y};
   }
 
-  private GraphPoint currentMoveMarkerPoint(
-      List<GraphPoint> points, BoardHistoryNode currentNode) {
+  private GraphPoint currentMoveMarkerPoint(List<GraphPoint> points, BoardHistoryNode currentNode) {
     GraphPoint exactPoint = findGraphPoint(points, currentNode);
     if (exactPoint != null) {
       return exactPoint;
@@ -2813,9 +2792,7 @@ public class WinrateGraph {
       GraphPoint fallbackPoint = findGraphPoint(points, fallbackNode);
       if (fallbackPoint != null) {
         return new GraphPoint(
-            currentNode,
-            graphPointX(currentNode.getData().moveNumber),
-            fallbackPoint.y);
+            currentNode, graphPointX(currentNode.getData().moveNumber), fallbackPoint.y);
       }
     }
     return null;

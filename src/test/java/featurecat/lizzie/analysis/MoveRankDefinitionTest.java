@@ -61,14 +61,9 @@ class MoveRankDefinitionTest {
   @Test
   void legacyBooleanSettingsMigrateWithoutLosingSingleMetricChoice() {
     assertEquals(
-        MoveRankEvaluationMode.WINRATE,
-        MoveRankEvaluationMode.fromConfig("", true, false));
-    assertEquals(
-        MoveRankEvaluationMode.SCORE,
-        MoveRankEvaluationMode.fromConfig("", false, true));
-    assertEquals(
-        MoveRankEvaluationMode.AUTO,
-        MoveRankEvaluationMode.fromConfig("", true, true));
+        MoveRankEvaluationMode.WINRATE, MoveRankEvaluationMode.fromConfig("", true, false));
+    assertEquals(MoveRankEvaluationMode.SCORE, MoveRankEvaluationMode.fromConfig("", false, true));
+    assertEquals(MoveRankEvaluationMode.AUTO, MoveRankEvaluationMode.fromConfig("", true, true));
     assertEquals(
         MoveRankEvaluationMode.COMBINED,
         MoveRankEvaluationMode.fromConfig("combined", false, false));

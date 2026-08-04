@@ -83,8 +83,7 @@ class GtpEngineConfigDialogTest {
                 new GtpEngineConfigDialog.EditorPanel(
                     GtpConfigurationSchema.parse(schema()),
                     new JSONObject().put("maxTimeSeconds", 45.0).put("threads", 8),
-                    ResourceBundle.getBundle(
-                        "l10n.DisplayStrings", Locale.SIMPLIFIED_CHINESE));
+                    ResourceBundle.getBundle("l10n.DisplayStrings", Locale.SIMPLIFIED_CHINESE));
             readable.set(panel.hasReadableNumericEditors());
           } finally {
             restoreUiDefault("FormattedTextField.foreground", oldFormattedForeground);

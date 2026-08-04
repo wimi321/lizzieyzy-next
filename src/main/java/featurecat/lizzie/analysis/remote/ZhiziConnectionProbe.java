@@ -45,8 +45,7 @@ public final class ZhiziConnectionProbe {
 
   static Result run(String accountToken, String args, Duration timeout) throws IOException {
     long started = System.nanoTime();
-    ZhiziGtpTransport transport =
-        new ZhiziGtpTransport(new ZhiziApiClient(), accountToken, args);
+    ZhiziGtpTransport transport = new ZhiziGtpTransport(new ZhiziApiClient(), accountToken, args);
     try {
       transport.start();
       long readyAt = System.nanoTime();

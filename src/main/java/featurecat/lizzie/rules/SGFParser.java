@@ -155,8 +155,7 @@ public class SGFParser {
     if (history == null) {
       return;
     }
-    double gameKomi =
-        parsedRootKomi(history.getStart()).orElse(history.getGameInfo().getKomi());
+    double gameKomi = parsedRootKomi(history.getStart()).orElse(history.getGameInfo().getKomi());
     if (!isSetupOrHandicapGame(history)) {
       return;
     }
@@ -2819,8 +2818,7 @@ public class SGFParser {
     return header.append('\n').append(detailLine).toString();
   }
 
-  private static String formatAnalysisDetailLine(
-      String bestMoves, List<Double> estimateArray) {
+  private static String formatAnalysisDetailLine(String bestMoves, List<Double> estimateArray) {
     StringBuilder detailLine = new StringBuilder();
     if (!Utils.isBlank(bestMoves)) {
       detailLine.append(bestMoves);
@@ -4037,7 +4035,8 @@ public class SGFParser {
       stabilizeRootSetupSideToPlay(history);
       if (!Lizzie.config.readKomi
           && parsedKomi.isPresent()
-          && (isSetupOrHandicapGame(history) || parseHandicapProperty(gameProperties.get("HA")) > 0)) {
+          && (isSetupOrHandicapGame(history)
+              || parseHandicapProperty(gameProperties.get("HA")) > 0)) {
         history.getGameInfo().setKomiNoMenu(parsedKomi.get());
       }
     }

@@ -468,8 +468,7 @@ public class SetAiTimes extends JDialog {
 
   private boolean applyChange() {
     DesktopTimeControl.Mode timeMode =
-        DesktopTimeControl.selectedMode(
-            chkUseAdvTime.isSelected(), chkUseKataTime.isSelected());
+        DesktopTimeControl.selectedMode(chkUseAdvTime.isSelected(), chkUseKataTime.isSelected());
     if (!DesktopTimeControl.submitHumanSelection(
         Lizzie.config,
         Lizzie.leelaz,

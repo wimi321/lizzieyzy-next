@@ -177,7 +177,9 @@ public class Board {
       return Optional.empty();
     }
 
-    if (end - start >= 5 && namedCoordinate.charAt(start) == '(' && namedCoordinate.charAt(end - 1) == ')') {
+    if (end - start >= 5
+        && namedCoordinate.charAt(start) == '('
+        && namedCoordinate.charAt(end - 1) == ')') {
       int comma = namedCoordinate.indexOf(',', start + 1);
       if (comma > start + 1 && comma < end - 2) {
         try {
@@ -225,8 +227,7 @@ public class Board {
     return Optional.of(new int[] {x, boardHeight - row});
   }
 
-  private static boolean regionEqualsIgnoreCase(
-      String value, int start, int end, String expected) {
+  private static boolean regionEqualsIgnoreCase(String value, int start, int end, String expected) {
     return end - start == expected.length()
         && value.regionMatches(true, start, expected, 0, expected.length());
   }
@@ -1303,9 +1304,7 @@ public class Board {
 
   private void syncPrimaryEngineKomiToCurrentGame() {
     BoardHistoryList currentHistory = getHistory();
-    if (Lizzie.leelaz == null
-        || currentHistory == null
-        || currentHistory.getGameInfo() == null) {
+    if (Lizzie.leelaz == null || currentHistory == null || currentHistory.getGameInfo() == null) {
       return;
     }
     Lizzie.leelaz.syncKomiForCurrentGame(currentHistory.getGameInfo().getKomi());
@@ -2500,17 +2499,12 @@ public class Board {
       case 6:
         return new int[][] {{3, 3}, {3, 15}, {15, 3}, {15, 15}, {3, 9}, {15, 9}};
       case 7:
-        return new int[][] {
-          {3, 3}, {3, 15}, {15, 3}, {15, 15}, {15, 9}, {3, 9}, {9, 9}
-        };
+        return new int[][] {{3, 3}, {3, 15}, {15, 3}, {15, 15}, {15, 9}, {3, 9}, {9, 9}};
       case 8:
-        return new int[][] {
-          {3, 3}, {3, 15}, {15, 3}, {15, 15}, {9, 3}, {9, 15}, {3, 9}, {15, 9}
-        };
+        return new int[][] {{3, 3}, {3, 15}, {15, 3}, {15, 15}, {9, 3}, {9, 15}, {3, 9}, {15, 9}};
       case 9:
         return new int[][] {
-          {3, 3}, {3, 15}, {15, 3}, {15, 15}, {9, 3}, {9, 15}, {3, 9}, {15, 9},
-          {9, 9}
+          {3, 3}, {3, 15}, {15, 3}, {15, 15}, {9, 3}, {9, 15}, {3, 9}, {15, 9}, {9, 9}
         };
       default:
         return new int[0][];

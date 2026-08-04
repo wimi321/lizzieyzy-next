@@ -435,7 +435,7 @@ public class GtpConsolePane extends JDialog {
         Lizzie.leelaz.toggleHeatmap(false);
       } else if (commandToLower.startsWith("kata-raw")) {
         if (Lizzie.leelaz.sendRawConsoleCommand(command)) {
-        Lizzie.leelaz.setHeatmap();
+          Lizzie.leelaz.setHeatmap();
         }
       } else if (commandToLower.startsWith("boardsize")) {
         String cmdParams[] = command.split(" ");

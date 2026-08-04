@@ -102,8 +102,7 @@ class KataGoRuntimeHelperBenchmarkLeaseTest {
   }
 
   @Test
-  void suppressionStaysUntilPausedReservationThenAllowsSelectedForegroundLease()
-      throws Exception {
+  void suppressionStaysUntilPausedReservationThenAllowsSelectedForegroundLease() throws Exception {
     try (BenchmarkEnvironment environment = new BenchmarkEnvironment(2)) {
       RecordingBenchmarkLeelaz pausedEngine = environment.engine(0);
       RecordingBenchmarkLeelaz selectedEngine = environment.engine(1);
@@ -372,8 +371,7 @@ class KataGoRuntimeHelperBenchmarkLeaseTest {
   }
 
   @Test
-  void benchmarkPauseClaimsActiveTrackingAndRestoresSavedPonderIntentInOneClick()
-      throws Exception {
+  void benchmarkPauseClaimsActiveTrackingAndRestoresSavedPonderIntentInOneClick() throws Exception {
     try (BenchmarkEnvironment environment = new BenchmarkEnvironment(1)) {
       RecordingBenchmarkLeelaz engine = environment.engine(0);
       ByteArrayOutputStream output = installOutput(engine);
@@ -416,7 +414,8 @@ class KataGoRuntimeHelperBenchmarkLeaseTest {
 
       assertTrue(pause.accepted());
       assertTrue(pause.analysisWasPondering());
-      assertFalse(engine.isPondering(), "benchmark must not restart ponder while tracking settles.");
+      assertFalse(
+          engine.isPondering(), "benchmark must not restart ponder while tracking settles.");
 
       assertTrue(dispatchExclusiveLine(engine, "=800000001"));
       assertTrue(dispatchExclusiveLine(engine, ""));

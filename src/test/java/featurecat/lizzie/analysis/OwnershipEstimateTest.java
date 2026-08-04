@@ -17,8 +17,7 @@ class OwnershipEstimateTest {
     stones[4] = Stone.BLACK;
 
     OwnershipEstimate.Result result =
-        OwnershipEstimate.calculate(
-            3, 3, stones, 2, 1, Collections.nCopies(9, 0.9), 0.4);
+        OwnershipEstimate.calculate(3, 3, stones, 2, 1, Collections.nCopies(9, 0.9), 0.4);
 
     assertEquals(8, result.blackPoints());
     assertEquals(0, result.whitePoints());
@@ -34,8 +33,7 @@ class OwnershipEstimateTest {
     stones[4] = Stone.BLACK;
 
     OwnershipEstimate.Result result =
-        OwnershipEstimate.calculate(
-            3, 3, stones, 0, 0, Collections.nCopies(9, -0.8), 0.4);
+        OwnershipEstimate.calculate(3, 3, stones, 0, 0, Collections.nCopies(9, -0.8), 0.4);
 
     assertEquals(1, result.blackPrisoners());
     assertEquals(9, result.whitePoints());
@@ -67,8 +65,7 @@ class OwnershipEstimateTest {
   @Test
   void treatsAnInvalidThresholdAsZero() {
     OwnershipEstimate.Result result =
-        OwnershipEstimate.calculate(
-            1, 1, emptyBoard(1, 1), 0, 0, List.of(0.7), Double.NaN);
+        OwnershipEstimate.calculate(1, 1, emptyBoard(1, 1), 0, 0, List.of(0.7), Double.NaN);
 
     assertEquals(1, result.blackPoints());
   }

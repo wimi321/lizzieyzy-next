@@ -1,8 +1,8 @@
 package featurecat.lizzie;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -15,8 +15,7 @@ import org.junit.jupiter.api.Test;
 class ConfigTransactionalSaveTest {
 
   @Test
-  void readBoardWebSocketPonderingNoticeSuppressionDefaultsToFalseAndPersists()
-      throws Exception {
+  void readBoardWebSocketPonderingNoticeSuppressionDefaultsToFalseAndPersists() throws Exception {
     Path workDirectory = Files.createTempDirectory("lizzie-readboard-pondering-notice");
     Config config = ConfigTestHelper.createForTests(workDirectory);
     initializeConfigSections(config);
@@ -24,8 +23,7 @@ class ConfigTransactionalSaveTest {
     assertFalse(config.suppressReadBoardWebSocketPonderingNotice);
 
     config.suppressReadBoardWebSocketPonderingNotice();
-    JSONObject saved =
-        new JSONObject(Files.readString(Path.of(config.getConfigFilePath())));
+    JSONObject saved = new JSONObject(Files.readString(Path.of(config.getConfigFilePath())));
 
     assertTrue(
         saved.getJSONObject("ui").getBoolean("suppress-readboard-websocket-pondering-notice"));
@@ -55,10 +53,7 @@ class ConfigTransactionalSaveTest {
     assertTrue(reloaded.getJSONObject("ui").getBoolean("analysis-reuse-current-engine"));
     assertEquals(
         "example.test",
-        reloaded
-            .getJSONObject("leelaz")
-            .getJSONObject("analysis-engine-ssh-info")
-            .getString("ip"));
+        reloaded.getJSONObject("leelaz").getJSONObject("analysis-engine-ssh-info").getString("ip"));
   }
 
   @Test

@@ -7,8 +7,8 @@ import org.junit.jupiter.api.Test;
 
 /**
  * drawName picks the Korean-capable font from this pattern. Five of its character ranges were
- * written with an en dash, which a character class treats as three literal characters instead of
- * a range, so names using compatibility jamo or halfwidth/fullwidth forms went unrecognized.
+ * written with an en dash, which a character class treats as three literal characters instead of a
+ * range, so names using compatibility jamo or halfwidth/fullwidth forms went unrecognized.
  */
 class BoardRendererKoreanNameTest {
   private static boolean matches(String name) {

@@ -61,11 +61,13 @@ public final class OwnershipEstimate {
           if (ownership < 0) rendered.set(i, 0.0);
         }
       } else if (ownership > 0) {
-        double pointOwnership = surroundedBySign(normalized, width, height, i, true) ? ownership : 0.0;
+        double pointOwnership =
+            surroundedBySign(normalized, width, height, i, true) ? ownership : 0.0;
         rendered.set(i, pointOwnership);
         if (pointOwnership > 0) blackPoints++;
       } else if (ownership < 0) {
-        double pointOwnership = surroundedBySign(normalized, width, height, i, false) ? ownership : 0.0;
+        double pointOwnership =
+            surroundedBySign(normalized, width, height, i, false) ? ownership : 0.0;
         rendered.set(i, pointOwnership);
         if (pointOwnership < 0) whitePoints++;
       }

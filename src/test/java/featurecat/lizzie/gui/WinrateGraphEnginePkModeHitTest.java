@@ -56,16 +56,9 @@ class WinrateGraphEnginePkModeHitTest {
       int[] params = (int[]) getField(fixture.graph, "params");
       double maxScoreLead = (double) getField(fixture.graph, "maxScoreLead");
       int x = graphPointX(fixture.graph, fixture.current.getData().moveNumber);
-      int y =
-          params[1]
-              + params[3] / 2
-              - (int) (4.0 * params[3] / 2 / Math.max(1.0, maxScoreLead));
+      int y = params[1] + params[3] / 2 - (int) (4.0 * params[3] / 2 / Math.max(1.0, maxScoreLead));
 
-      assertColorNear(
-          layers.winrate,
-          new int[] {x, y},
-          CURRENT_SCORE_MARKER_COLOR,
-          2);
+      assertColorNear(layers.winrate, new int[] {x, y}, CURRENT_SCORE_MARKER_COLOR, 2);
     } finally {
       env.close();
     }
@@ -100,8 +93,7 @@ class WinrateGraphEnginePkModeHitTest {
   }
 
   @Test
-  void pendingCurrentMoveUsesItsOwnColumnWithoutVerticalGuideInDualCurveMode()
-      throws Exception {
+  void pendingCurrentMoveUsesItsOwnColumnWithoutVerticalGuideInDualCurveMode() throws Exception {
     TestEnvironment env = TestEnvironment.open();
     try {
       RenderFixture fixture = modeOneFixture();
@@ -806,9 +798,7 @@ class WinrateGraphEnginePkModeHitTest {
     method.setAccessible(true);
     Object point =
         method.invoke(
-            graph,
-            (java.util.List<Object>) getField(graph, "renderedGraphPoints"),
-            currentNode);
+            graph, (java.util.List<Object>) getField(graph, "renderedGraphPoints"), currentNode);
     if (point == null) {
       return null;
     }
