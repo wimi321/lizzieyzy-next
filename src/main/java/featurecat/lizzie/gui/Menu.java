@@ -5480,21 +5480,19 @@ public class Menu extends JMenuBar {
     // Math.max(Lizzie.config.allFontSize, 12));
     this.add(engineMenu2);
 
-    // AI 讲棋（GoAgent 式）：打开讲棋面板对话框
-    JMenu teacherMenu = new JMenu("AI讲棋");
+    // AI 解说（GoAgent 式）：点击直接打开解说面板
+    JMenu teacherMenu = new JMenu("AI解说");
     teacherMenu.setFont(
         new Font(Config.sysDefaultFontName, Font.BOLD, Math.max(Config.frameFontSize, 15)));
-    JMenuItem openTeacher = new JMenuItem("打开讲棋面板");
-    openTeacher.addActionListener(
+    teacherMenu.addActionListener(
         e -> {
-          javax.swing.JDialog dlg = new javax.swing.JDialog(Lizzie.frame, "AI 讲棋 · GoAgent", false);
+          javax.swing.JDialog dlg = new javax.swing.JDialog(Lizzie.frame, "AI 解说 · GoAgent", false);
           dlg.getContentPane().add(new javax.swing.JScrollPane(new TeacherPanel()));
           dlg.pack();
           if (dlg.getWidth() < 600) dlg.setSize(800, 620);
           dlg.setLocationRelativeTo(Lizzie.frame);
           dlg.setVisible(true);
         });
-    teacherMenu.add(openTeacher);
     this.add(teacherMenu);
 
     playing = new ImageIcon();
