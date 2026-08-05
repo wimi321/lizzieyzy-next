@@ -1,0 +1,105 @@
+name: Promote Stable Release to R2
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Existing GitHub pre-release tag to promote
+        required: true
+        type: string
+      confirm_tag:
+        description: Type the same tag again to confirm stable promotion
+        required: true
+        type: string
+      allow_stable_recovery:
+        description: Allow rebuilding R2 metadata for an already-stable release
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+
+concurrency:
+  group: stable-r2-promotion
+  cancel-in-progress: false
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    environment: stable-release
+
+    steps:
+      - name: Confirm the exact release tag
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          CONFIRM_TAG: ${{ inputs.confirm_tag }}
+        run: |
+          set -euo pipefail
+          if [[ "$RELEASE_TAG" != "$CONFIRM_TAG" ]]; then
+            echo "The confirmation tag does not match the release tag." >&2
+            exit 1
+          fi
+          case "$RELEASE_TAG" in
+            next-20??-??-??.*) ;;
+            *)
+              echo "Unexpected release tag: $RELEASE_TAG" >&2
+              exit 1
+              ;;
+          esac
+
+      - name: Checkout the release tooling
+        uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Install R2 publisher dependencies
+        run: python -m pip install --disable-pip-version-check boto3 cryptography requests
+
+      - name: Test the fail-closed release publisher
+        run: python -m unittest scripts.test_r2_release
+
+      - name: Promote only after R2 verification succeeds
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          CLOUDFLARE_R2_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_R2_ACCOUNT_ID }}
+          CLOUDFLARE_R2_ACCESS_KEY_ID: ${{ secrets.CLOUDFLARE_R2_ACCESS_KEY_ID }}
+          CLOUDFLARE_R2_SECRET_ACCESS_KEY: ${{ secrets.CLOUDFLARE_R2_SECRET_ACCESS_KEY }}
+          UPDATE_SIGNING_PRIVATE_KEY: ${{ secrets.UPDATE_SIGNING_PRIVATE_KEY }}
+          R2_BUCKET: ${{ vars.CLOUDFLARE_R2_BUCKET }}
+          R2_PUBLIC_BASE: ${{ vars.R2_PUBLIC_BASE_URL }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          ALLOW_STABLE: ${{ inputs.allow_stable_recovery }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$UPDATE_SIGNING_PRIVATE_KEY" ]]; then
+            echo "UPDATE_SIGNING_PRIVATE_KEY is not configured." >&2
+            exit 1
+          fi
+          key_file="$RUNNER_TEMP/lizzie-update-signing-key.pem"
+          printf '%s\n' "$UPDATE_SIGNING_PRIVATE_KEY" > "$key_file"
+          chmod 600 "$key_file"
+          args=(
+            promote
+            --repository "${GITHUB_REPOSITORY}"
+            --tag "$RELEASE_TAG"
+            --bucket "${R2_BUCKET:-lizzieyzy-next-downloads}"
+            --public-base "${R2_PUBLIC_BASE:-https://download.goagent.top}"
+            --private-key "$key_file"
+            --key-id stable-2026-08
+          )
+          if [[ "$ALLOW_STABLE" == "true" ]]; then
+            args+=(--allow-stable)
+          fi
+          python scripts/r2_release.py "${args[@]}"
+          rm -f "$key_file"
+
+      - name: Remove temporary signing key after failure
+        if: ${{ always() }}
+        run: rm -f "$RUNNER_TEMP/lizzie-update-signing-key.pem"

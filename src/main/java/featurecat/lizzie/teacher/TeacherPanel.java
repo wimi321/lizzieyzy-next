@@ -311,7 +311,14 @@ public class TeacherPanel extends JPanel {
     } catch (Exception ex) { /* 棋理知识注入失败不阻断讲解 */ }
     // 结构化输出 + 防编造指令（对齐 ClaimVerifier.buildStructuredTeachingInstruction）
     userText += "\n\n" + ClaimVerifier.buildStructuredTeachingInstruction();
-    userText += "\n请讲解这一手（结合棋盘图、胜率、目差、AI 首选、KataGo Trace 与棋形识别），指出是否问题手及改进。所有坐标和胜率必须来自上方证据，禁用编造。";
+    userText += "\n\n请按以下格式讲解：\n";
+    userText += "1. **整体结论**（1-2 句话）\n";
+    userText += "2. **实战着手**：意图 + 胜率/目差 + 后续变化\n";
+    userText += "3. **AI 对比**：实战手 vs AI 首选（胜率/目差差异）\n";
+    userText += "4. **一选**（AI 最佳点）：选点数据 + 变化追踪 + 棋理说明\n";
+    userText += "5. **二选**（AI 次选点）：同上\n";
+    userText += "6. **三选**（AI 第三选点）：如有\n";
+    userText += "所有数据必须来自上方证据，禁用编造。若数据不足，坦诚说明。";
     session.addUser(userText);
     java.util.List<String> imgs = boardImg != null ? java.util.List.of(boardImg) : null;
     runLlm(userText, imgs);
