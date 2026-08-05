@@ -313,7 +313,7 @@ public class TeacherPanel extends JPanel {
     userText += "\n\n" + ClaimVerifier.buildStructuredTeachingInstruction();
     userText += "\n\n请基于以上数据，按角色设定中的要求进行讲解。\n";
     userText += "先给出整体结论，再逐手追踪变化图，然后对每个选点进行胜率目差解读、棋理分析和对比。\n";
-    userText += "务必以目差为核心判断标准，不要因微小目差制造虚假优劣感。\n";
+    userText += "务必胜率和目差并列呈现，不要因微小差异制造虚假优劣感。\\n";
     userText += "所有坐标和胜率必须来自上方证据，禁用编造。若数据不足，坦诚说明。";
     session.addUser(userText);
     java.util.List<String> imgs = boardImg != null ? java.util.List.of(boardImg) : null;
