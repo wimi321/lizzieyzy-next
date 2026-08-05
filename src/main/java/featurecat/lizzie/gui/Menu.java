@@ -5481,17 +5481,19 @@ public class Menu extends JMenuBar {
     this.add(engineMenu2);
 
     // AI 解说（GoAgent 式）：点击直接打开解说面板
-    JMenuItem teacherMenu = new JMenuItem("AI解说");
+    JMenu teacherMenu = new JMenu("AI解说");
     teacherMenu.setFont(
         new Font(Config.sysDefaultFontName, Font.BOLD, Math.max(Config.frameFontSize, 15)));
-    teacherMenu.addActionListener(
-        e -> {
-          javax.swing.JDialog dlg = new javax.swing.JDialog(Lizzie.frame, "AI 解说 · GoAgent", false);
-          dlg.getContentPane().add(new javax.swing.JScrollPane(new TeacherPanel()));
-          dlg.pack();
-          if (dlg.getWidth() < 600) dlg.setSize(800, 620);
-          dlg.setLocationRelativeTo(Lizzie.frame);
-          dlg.setVisible(true);
+    teacherMenu.addMouseListener(
+        new java.awt.event.MouseAdapter() {
+          @Override
+          public void mouseClicked(java.awt.event.MouseEvent e) {
+            openTeacherPanel();
+          }
+          @Override
+          public void mousePressed(java.awt.event.MouseEvent e) {
+            openTeacherPanel();
+          }
         });
     this.add(teacherMenu);
 
@@ -10276,5 +10278,15 @@ public class Menu extends JMenuBar {
     private int infoSize() {
       return Math.max(INFO_MIN_SIZE, Math.min(INFO_MAX_SIZE, getHeight() - 8));
     }
+  }
+
+  /** 打开 AI 解说面板对话框（AI解说菜单点击时调用） */
+  private void openTeacherPanel() {
+    javax.swing.JDialog dlg = new javax.swing.JDialog(Lizzie.frame, "AI 解说 · GoAgent", false);
+    dlg.getContentPane().add(new javax.swing.JScrollPane(new TeacherPanel()));
+    dlg.pack();
+    if (dlg.getWidth() < 600) dlg.setSize(800, 620);
+    dlg.setLocationRelativeTo(Lizzie.frame);
+    dlg.setVisible(true);
   }
 }
