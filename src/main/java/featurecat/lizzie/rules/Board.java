@@ -6,6 +6,7 @@ import static java.util.Collections.singletonList;
 import featurecat.lizzie.Lizzie;
 import featurecat.lizzie.analysis.EngineFollowController;
 import featurecat.lizzie.analysis.EngineManager;
+import featurecat.lizzie.analysis.ExactSnapshotEngineRestore;
 import featurecat.lizzie.analysis.GameInfo;
 import featurecat.lizzie.analysis.Leelaz;
 import featurecat.lizzie.analysis.MoveData;
@@ -177,9 +178,7 @@ public class Board {
       return Optional.empty();
     }
 
-    if (end - start >= 5
-        && namedCoordinate.charAt(start) == '('
-        && namedCoordinate.charAt(end - 1) == ')') {
+    if (end - start >= 5 && namedCoordinate.charAt(start) == '(' && namedCoordinate.charAt(end - 1) == ')') {
       int comma = namedCoordinate.indexOf(',', start + 1);
       if (comma > start + 1 && comma < end - 2) {
         try {
@@ -227,7 +226,8 @@ public class Board {
     return Optional.of(new int[] {x, boardHeight - row});
   }
 
-  private static boolean regionEqualsIgnoreCase(String value, int start, int end, String expected) {
+  private static boolean regionEqualsIgnoreCase(
+      String value, int start, int end, String expected) {
     return end - start == expected.length()
         && value.regionMatches(true, start, expected, 0, expected.length());
   }
@@ -1264,6 +1264,75 @@ public class Board {
       Lizzie.initializeAfterVersionCheck(false, leelaz);
     }
   }
+  public void resendMoveToEngineFromCurrentRoot(Leelaz leelaz) {
+    if (KataGoRuntimeHelper.isBenchmarkEngineSyncSuppressed()) {
+      return;
+    }
+    restoreEnginePositionFromRoot(leelaz, getMoveList());
+  }
+
+  public void resendMoveToEngine(
+      Leelaz leelaz,
+      boolean loadEngine,
+      ExactSnapshotEngineRestore.PreparedRestore preparedRestore) {
+    resendMoveToEngine(leelaz, loadEngine, preparedRestore, false);
+  }
+
+  public void resendMoveToEngine(
+      Leelaz leelaz,
+      boolean loadEngine,
+      ExactSnapshotEngineRestore.PreparedRestore preparedRestore,
+      boolean isEngineGame) {
+    if (KataGoRuntimeHelper.isBenchmarkEngineSyncSuppressed()) {
+      return;
+    }
+    restoreEnginePosition(leelaz, null, preparedRestore);
+    if (loadEngine) {
+      Lizzie.initializeAfterVersionCheck(isEngineGame, leelaz);
+    }
+  }
+
+  public void resendMoveToEngineFromRoot(
+      Leelaz engine,
+      Leelaz mirrorEngine,
+      boolean loadEngine,
+      boolean isEngineGame,
+      ArrayList<Movelist> moves,
+      Double gameKomi) {
+    if (KataGoRuntimeHelper.isBenchmarkEngineSyncSuppressed()) {
+      return;
+    }
+    Optional<Double> currentGameKomi = Optional.ofNullable(gameKomi);
+    currentGameKomi.ifPresent(
+        value -> {
+          syncRestoreKomi(engine, value);
+          if (mirrorEngine != null) {
+            syncRestoreKomi(mirrorEngine, value);
+          }
+        });
+    engine.sendCapturedRestoreCommand("clear_board");
+    if (mirrorEngine != null) {
+      mirrorEngine.sendCapturedRestoreCommand("clear_board");
+    }
+    replayMovesToCapturedRestoreTarget(engine, moves);
+    if (mirrorEngine != null) {
+      replayMovesToCapturedRestoreTarget(mirrorEngine, moves);
+    }
+    if (loadEngine) {
+      Lizzie.initializeAfterVersionCheck(isEngineGame, engine);
+    }
+  }
+
+  private void syncRestoreKomi(Leelaz engine, double komi) {
+    float normalizedKomi = (float) (komi == 0.0 ? 0.0 : komi);
+    synchronized (engine) {
+      if (Float.compare(engine.komi, normalizedKomi) == 0) {
+        return;
+      }
+      engine.sendCapturedRestoreCommand("komi " + (komi == 0.0 ? "0" : komi));
+      engine.komi = normalizedKomi;
+    }
+  }
 
   public boolean resendCurrentPositionToPrimaryEngine() {
     if (!isPrimaryEngineReady()) {
@@ -1304,25 +1373,33 @@ public class Board {
 
   private void syncPrimaryEngineKomiToCurrentGame() {
     BoardHistoryList currentHistory = getHistory();
-    if (Lizzie.leelaz == null || currentHistory == null || currentHistory.getGameInfo() == null) {
+    if (Lizzie.leelaz == null
+        || currentHistory == null
+        || currentHistory.getGameInfo() == null) {
       return;
     }
     Lizzie.leelaz.syncKomiForCurrentGame(currentHistory.getGameInfo().getKomi());
   }
 
-  private void syncEngineKomiToNonDefaultCurrentGame(Leelaz engine) {
+  private Optional<Double> captureNonDefaultCurrentGameKomi(Leelaz engine) {
+    return nonDefaultCurrentGameKomiForSync(engine, captureCurrentGameKomi());
+  }
+
+  private Optional<Double> nonDefaultCurrentGameKomiForSync(
+      Leelaz engine, Optional<Double> currentGameKomi) {
+    if (engine == null || Float.isNaN(engine.komi)) {
+      return Optional.empty();
+    }
+    return currentGameKomi
+        .filter(gameKomi -> Double.compare(gameKomi, GameInfo.DEFAULT_KOMI) != 0);
+  }
+
+  private Optional<Double> captureCurrentGameKomi() {
     BoardHistoryList currentHistory = getHistory();
-    if (engine == null
-        || Float.isNaN(engine.komi)
-        || currentHistory == null
-        || currentHistory.getGameInfo() == null) {
-      return;
+    if (currentHistory == null || currentHistory.getGameInfo() == null) {
+      return Optional.empty();
     }
-    double gameKomi = currentHistory.getGameInfo().getKomi();
-    if (Double.compare(gameKomi, GameInfo.DEFAULT_KOMI) == 0) {
-      return;
-    }
-    engine.syncKomiForCurrentGame(gameKomi);
+    return Optional.of(currentHistory.getGameInfo().getKomi());
   }
 
   private boolean isPrimaryEngineReady() {
@@ -1376,83 +1453,6 @@ public class Board {
       return true;
     }
     return false;
-  }
-
-  private BoardData createEditedCurrentBoardAnchor(BoardHistoryNode currentNode) {
-    if (currentNode == null || !currentNode.hasRemovedStone()) {
-      return null;
-    }
-    BoardData current = currentNode.getData();
-    if (!current.isMoveNode() && !current.isPassNode()) {
-      return null;
-    }
-    return SnapshotEngineRestore.snapshotFromCurrentBoard(current);
-  }
-
-  private BoardHistoryNode findReplaySnapshotAnchor(BoardHistoryNode node) {
-    BoardHistoryNode current = node;
-    while (true) {
-      if (isReplaySnapshotAnchor(current)) {
-        return current;
-      }
-      if (!current.previous().isPresent()) {
-        return null;
-      }
-      current = current.previous().get();
-    }
-  }
-
-  private boolean isReplaySnapshotAnchor(BoardHistoryNode node) {
-    BoardData data = node.getData();
-    if (!data.isSnapshotNode()) {
-      return false;
-    }
-    if (node.previous().isPresent()) {
-      return true;
-    }
-    if (data.moveNumber > 0 || data.lastMove.isPresent() || !data.blackToPlay) {
-      return true;
-    }
-    for (Stone stone : data.stones) {
-      if (stone.isBlack() || stone.isWhite()) {
-        return true;
-      }
-    }
-    return false;
-  }
-
-  private ArrayList<Movelist> getReplayableMovesAfter(BoardHistoryNode snapshotAnchor) {
-    ArrayList<Movelist> movelist = new ArrayList<Movelist>();
-    BoardHistoryNode node = history.getCurrentHistoryNode();
-    while (node != snapshotAnchor && node.previous().isPresent()) {
-      BoardData data = node.getData();
-      if (data.isMoveNode()) {
-        int[] moveCoords = data.lastMove.get();
-        Movelist move = new Movelist();
-        move.x = moveCoords[0];
-        move.y = moveCoords[1];
-        move.isblack = data.lastMoveColor.isBlack();
-        move.movenum = data.moveNumber;
-        movelist.add(move);
-      } else if (isKnownPass(data)) {
-        Movelist move = new Movelist();
-        move.ispass = true;
-        move.isblack = data.lastMoveColor.isBlack();
-        movelist.add(move);
-      }
-      node = node.previous().get();
-    }
-    return movelist;
-  }
-
-  private SnapshotEngineRestore.RestoreLifecycle replaySnapshotToEngine(
-      Leelaz leelaz, BoardData snapshotData) {
-    SnapshotEngineRestore.RestoreLifecycle lifecycle =
-        SnapshotEngineRestore.beginExactSnapshotRestoreIfNeeded(leelaz, snapshotData);
-    if (lifecycle == null) {
-      throw new IllegalStateException("Engine restore requires snapshot data.");
-    }
-    return lifecycle;
   }
 
   private void sendEngineMove(Leelaz leelaz, boolean black, String move) {
@@ -2499,12 +2499,17 @@ public class Board {
       case 6:
         return new int[][] {{3, 3}, {3, 15}, {15, 3}, {15, 15}, {3, 9}, {15, 9}};
       case 7:
-        return new int[][] {{3, 3}, {3, 15}, {15, 3}, {15, 15}, {15, 9}, {3, 9}, {9, 9}};
+        return new int[][] {
+          {3, 3}, {3, 15}, {15, 3}, {15, 15}, {15, 9}, {3, 9}, {9, 9}
+        };
       case 8:
-        return new int[][] {{3, 3}, {3, 15}, {15, 3}, {15, 15}, {9, 3}, {9, 15}, {3, 9}, {15, 9}};
+        return new int[][] {
+          {3, 3}, {3, 15}, {15, 3}, {15, 15}, {9, 3}, {9, 15}, {3, 9}, {15, 9}
+        };
       case 9:
         return new int[][] {
-          {3, 3}, {3, 15}, {15, 3}, {15, 15}, {9, 3}, {9, 15}, {3, 9}, {15, 9}, {9, 9}
+          {3, 3}, {3, 15}, {15, 3}, {15, 15}, {9, 3}, {9, 15}, {3, 9}, {15, 9},
+          {9, 9}
         };
       default:
         return new int[0][];
@@ -2972,7 +2977,8 @@ public class Board {
         history.next();
         advanceContextRevision();
         history.getCurrentHistoryNode().placeExtraStones();
-        if (history.getCurrentHistoryNode().hasRemovedStone())
+        if (history.getCurrentHistoryNode().hasRemovedStone()
+            || history.getCurrentHistoryNode().getData().isSnapshotNode())
           history.getCurrentHistoryNode().clearAndSyncBoard(true);
         updateIsBest();
         notifyReadBoardLocalHistoryNavigation();
@@ -3038,32 +3044,40 @@ public class Board {
 
   private void restoreEnginePosition(Leelaz engine, ArrayList<Movelist> fallbackMoves) {
     boolean wasPondering = engine.isPonderingOrWasPonderingBeforeTracking();
-    syncEngineKomiToNonDefaultCurrentGame(engine);
-    engine.sendCommand("clear_board");
     BoardHistoryNode currentNode = getHistory().getCurrentHistoryNode();
-    BoardData editedCurrentBoard = createEditedCurrentBoardAnchor(currentNode);
-    if (editedCurrentBoard != null) {
-      SnapshotEngineRestore.RestoreLifecycle lifecycle =
-          replaySnapshotToEngine(engine, editedCurrentBoard);
-      lifecycle.finishTailReplay();
-      if (wasPondering) engine.ponder();
+    Leelaz.ExactSnapshotRestoreAdmission admission =
+        engine.captureBoardSyncExactSnapshotRestoreAdmission();
+    Optional<ExactSnapshotEngineRestore.PreparedRestore> preparedRestore =
+        ExactSnapshotEngineRestore.prepare(admission, currentNode);
+    restoreEnginePosition(engine, fallbackMoves, preparedRestore.orElse(null), wasPondering);
+  }
+
+  private void restoreEnginePosition(
+      Leelaz engine,
+      ArrayList<Movelist> fallbackMoves,
+      ExactSnapshotEngineRestore.PreparedRestore preparedRestore) {
+    restoreEnginePosition(engine, fallbackMoves, preparedRestore, false);
+  }
+
+  private void restoreEnginePosition(
+      Leelaz engine,
+      ArrayList<Movelist> fallbackMoves,
+      ExactSnapshotEngineRestore.PreparedRestore preparedRestore,
+      boolean resumePonder) {
+    if (preparedRestore != null) {
+      preparedRestore.execute();
+      if (resumePonder) engine.ponder();
       return;
     }
-    ArrayList<Movelist> replayMoves = fallbackMoves;
-    BoardHistoryNode snapshotAnchor = findReplaySnapshotAnchor(currentNode);
-    if (snapshotAnchor != null) {
-      SnapshotEngineRestore.RestoreLifecycle lifecycle =
-          replaySnapshotToEngine(engine, snapshotAnchor.getData());
-      replayMoves = getReplayableMovesAfter(snapshotAnchor);
-      try {
-        replayMovesToEngine(engine, replayMoves);
-      } finally {
-        lifecycle.finishTailReplay();
-      }
-      if (wasPondering) engine.ponder();
-      return;
-    }
-    replayMovesToEngine(engine, replayMoves);
+    restoreEnginePositionFromRoot(engine, fallbackMoves);
+  }
+
+  private void restoreEnginePositionFromRoot(Leelaz engine, ArrayList<Movelist> moves) {
+    boolean wasPondering = engine.isPonderingOrWasPonderingBeforeTracking();
+    Optional<Double> currentGameKomi = captureNonDefaultCurrentGameKomi(engine);
+    currentGameKomi.ifPresent(engine::syncKomiForCurrentGame);
+    engine.sendCommand("clear_board");
+    replayMovesToEngine(engine, moves);
     if (wasPondering) engine.ponder();
   }
 
@@ -3077,6 +3091,15 @@ public class Board {
       if (mirrorEngine != null) {
         sendEngineMoveWithoutMirror(mirrorEngine, move.isblack, moveName);
       }
+    }
+  }
+
+  private void replayMovesToCapturedRestoreTarget(Leelaz engine, ArrayList<Movelist> moves) {
+    int length = moves.size();
+    for (int i = 0; i < length; i++) {
+      Movelist move = moves.get(length - 1 - i);
+      String moveName = move.ispass ? "pass" : convertCoordinatesToName(move.x, move.y);
+      engine.sendCapturedRestoreCommand("play " + (move.isblack ? "B" : "W") + " " + moveName);
     }
   }
 
@@ -3689,7 +3712,9 @@ public class Board {
       BoardData currentData = history.getData();
       boolean isPass = isKnownPass(currentData);
       boolean isHistoryAction = isHistoryAction(currentData);
-      boolean needSync = history.getCurrentHistoryNode().hasRemovedStone();
+      boolean needSync =
+          history.getCurrentHistoryNode().hasRemovedStone()
+              || currentData.isSnapshotNode();
       if (history.getCurrentHistoryNode().next().isPresent())
         updateIsBest(history.getCurrentHistoryNode().next().get());
       if (history.getPrevious().isPresent()) {

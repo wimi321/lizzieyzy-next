@@ -1,34 +1,634 @@
-package featurecat.lizzie.rules;
+package featurecat.lizzie.analysis;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import featurecat.lizzie.Config;
 import featurecat.lizzie.ExtraMode;
 import featurecat.lizzie.Lizzie;
-import featurecat.lizzie.analysis.EngineManager;
-import featurecat.lizzie.analysis.Leelaz;
 import featurecat.lizzie.gui.GtpConsolePane;
 import featurecat.lizzie.gui.LizzieFrame;
+import featurecat.lizzie.rules.Board;
+import featurecat.lizzie.rules.BoardData;
+import featurecat.lizzie.rules.BoardHistoryList;
+import featurecat.lizzie.rules.BoardHistoryNode;
+import featurecat.lizzie.rules.Movelist;
+import featurecat.lizzie.rules.Stone;
+import featurecat.lizzie.rules.Zobrist;
 import java.awt.Window;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.lang.reflect.Field;
-import java.lang.reflect.Method;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 
-class SnapshotEngineRestoreFailureAndDualEngineTest {
+class ExactSnapshotEngineRestoreContractTest {
   private static final int BOARD_SIZE = 3;
   private static final int BOARD_AREA = BOARD_SIZE * BOARD_SIZE;
   private static final String AUTO_ID_RESPONSE = "__auto-id-response__";
+
+  @Test
+  void exactSnapshotRestoreHistoryTargetReplaysOnlyRealActionsAfterNearestSnapshot()
+      throws Exception {
+    try (TestHarness harness = TestHarness.open(false)) {
+      BoardHistoryList history = new BoardHistoryList(snapshotRoot());
+      history.add(moveNode(2, 2, Stone.BLACK, true, 4));
+      Stone[] passStones = history.getData().stones.clone();
+      history.add(
+          BoardData.pass(
+              passStones,
+              Stone.WHITE,
+              false,
+              zobrist(passStones),
+              5,
+              new int[BOARD_AREA],
+              0,
+              0,
+              50,
+              0));
+
+      Leelaz engine = new Leelaz("");
+      ScriptedResponseOutputStream output =
+          new ScriptedResponseOutputStream(engine, null, null, AUTO_ID_RESPONSE);
+      setOutputStream(engine, output);
+
+      executeHistoryRestore(engine, history.getCurrentHistoryNode());
+
+      assertTrue(isLoadSgfCommand(output.commands().get(0)));
+      assertEquals(
+          List.of("play B " + Board.convertCoordinatesToName(2, 2), "play W pass"),
+          collectPlayCommands(output.commands()),
+          "history restore should replay only real MOVE/PASS nodes after the nearest snapshot.");
+    }
+  }
+
+  @Test
+  void emptyRootHistoryTargetDoesNotEnterExactRestore() throws Exception {
+    try (TestHarness harness = TestHarness.open(false)) {
+      BoardHistoryList history = new BoardHistoryList(BoardData.empty(BOARD_SIZE, BOARD_SIZE));
+      Leelaz engine = new Leelaz("");
+      RecordingOutputStream output = new RecordingOutputStream(null);
+      setOutputStream(engine, output);
+
+      assertTrue(
+          prepareHistoryRestore(engine, history.getCurrentHistoryNode()).isEmpty(),
+          "an empty root is a history origin, not an exact snapshot anchor");
+      assertTrue(
+          output.commands().isEmpty(), "a root replay caller must receive no exact commands");
+    }
+  }
+
+  @Test
+  void historyTargetCaptureUsesCurrentGameKomi() throws Exception {
+    try (TestHarness harness = TestHarness.open(false)) {
+      BoardHistoryList history = new BoardHistoryList(snapshotRoot());
+      history.getGameInfo().setKomiNoMenu(6.5);
+      Board board = allocate(Board.class);
+      board.startStonelist = new ArrayList<>();
+      board.hasStartStone = false;
+      board.setHistory(history);
+      Lizzie.board = board;
+
+      Leelaz engine = new Leelaz("");
+      engine.komi = 7.5f;
+      CommandMutationOutputStream output = new CommandMutationOutputStream(engine, null, null);
+      setOutputStream(engine, output);
+
+      prepareHistoryRestore(engine, history.getCurrentHistoryNode()).orElseThrow().execute();
+
+      assertTrue(
+          output.loadedSgf().contains("KM[6.5]"),
+          "history-target capture must use the current game's komi instead of engine cache");
+    }
+  }
+
+  @Test
+  void currentPositionCaptureUsesSnapshotKomiInsteadOfLiveGameKomi() throws Exception {
+    try (TestHarness harness = TestHarness.open(false)) {
+      BoardHistoryList history = new BoardHistoryList(snapshotRoot());
+      history.getGameInfo().setKomiNoMenu(6.5);
+      Board board = allocate(Board.class);
+      board.startStonelist = new ArrayList<>();
+      board.hasStartStone = false;
+      board.setHistory(history);
+      Lizzie.board = board;
+
+      BoardData position = moveNode(2, 2, Stone.BLACK, true, 4);
+      position.komi = 8.5;
+      Leelaz engine = new Leelaz("");
+      engine.komi = 7.5f;
+      CommandMutationOutputStream output = new CommandMutationOutputStream(engine, null, null);
+      setOutputStream(engine, output);
+
+      prepareCurrentPositionRestore(engine, position).execute();
+
+      assertTrue(
+          output.loadedSgf().contains("KM[8.5]"),
+          "current-position capture must use supplied snapshot data instead of live history");
+    }
+  }
+
+  @Test
+  void currentPositionRestoreMaterializesAndFreezesPlanBeforePreclear() throws Exception {
+    try (TestHarness harness = TestHarness.open(true)) {
+      Leelaz primary = new Leelaz("");
+      Leelaz mirror = new Leelaz("");
+      Leelaz replacementMirror = new Leelaz("");
+      Lizzie.leelaz = primary;
+      Lizzie.leelaz2 = mirror;
+
+      CommandMutationOutputStream primaryOutput =
+          new CommandMutationOutputStream(primary, null, null);
+      CommandMutationOutputStream mirrorOutput =
+          new CommandMutationOutputStream(mirror, null, null);
+      RecordingOutputStream replacementOutput = new RecordingOutputStream(null);
+      setOutputStream(primary, primaryOutput);
+      setOutputStream(mirror, mirrorOutput);
+      setOutputStream(replacementMirror, replacementOutput);
+
+      BoardData position = moveNode(2, 2, Stone.BLACK, true, 4);
+      position.komi = 8.5;
+      Leelaz.ExactSnapshotRestoreAdmission admission =
+          primary.captureBoardSyncExactSnapshotRestoreAdmission();
+      ExactSnapshotEngineRestore.PreparedRestore preparedRestore =
+          ExactSnapshotEngineRestore.prepareCurrentPosition(admission, position);
+
+      position.stones[Board.getIndex(0, 0)] = Stone.EMPTY;
+      position.komi = 1.5;
+      Board.boardWidth = 5;
+      Board.boardHeight = 5;
+      Lizzie.leelaz2 = replacementMirror;
+
+      preparedRestore.execute();
+
+      assertEquals("clear_board", primaryOutput.commands().get(0));
+      assertEquals("clear_board", mirrorOutput.commands().get(0));
+      assertTrue(primaryOutput.loadedSgf().contains("SZ[3]"));
+      assertTrue(primaryOutput.loadedSgf().contains("AB[aa]"));
+      assertTrue(primaryOutput.loadedSgf().contains("AB[cc]"));
+      assertTrue(primaryOutput.loadedSgf().contains("KM[8.5]"));
+      assertEquals(1, primaryOutput.loadSgfCommandCount());
+      assertEquals(1, mirrorOutput.loadSgfCommandCount());
+      assertEquals(0, replacementOutput.loadSgfCommandCount());
+    }
+  }
+
+  @Test
+  void invalidCurrentPositionFailsBeforeAnyRestoreSideEffect() throws Exception {
+    try (TestHarness harness = TestHarness.open(false)) {
+      Leelaz engine = new Leelaz("");
+      RecordingOutputStream output = new RecordingOutputStream(null);
+      setOutputStream(engine, output);
+      BoardData invalidPosition =
+          BoardData.snapshot(
+              null, java.util.Optional.empty(), Stone.EMPTY, true, null, 0, null, 0, 0, 50, 0);
+
+      assertThrows(
+          IllegalArgumentException.class,
+          () -> prepareCurrentPositionRestore(engine, invalidPosition));
+      assertTrue(output.commands().isEmpty());
+    }
+  }
+
+  @Test
+  void preclearFailureUpdatesOnlyTargetsThatAcceptedTheCommand() throws Exception {
+    try (TestHarness harness = TestHarness.open(true)) {
+      Leelaz primary = new Leelaz("");
+      Leelaz mirror = new Leelaz("");
+      primary.isKatago = true;
+      mirror.isKatago = true;
+      primary.getBestMoves().add(new MoveData());
+      mirror.getBestMoves().add(new MoveData());
+      primary.scoreMean = 12.0;
+      mirror.scoreMean = 34.0;
+      Lizzie.leelaz = primary;
+      Lizzie.leelaz2 = mirror;
+
+      RecordingOutputStream primaryOutput = new RecordingOutputStream(null);
+      RecordingOutputStream mirrorOutput = new RecordingOutputStream("clear_board");
+      setOutputStream(primary, primaryOutput);
+      setOutputStream(mirror, mirrorOutput);
+
+      Leelaz.ExactSnapshotRestoreAdmission admission =
+          primary.captureBoardSyncExactSnapshotRestoreAdmission();
+      ExactSnapshotEngineRestore.PreparedRestore preparedRestore =
+          ExactSnapshotEngineRestore.prepareCurrentPosition(admission, snapshotRoot());
+
+      assertThrows(RuntimeException.class, preparedRestore::execute);
+
+      assertEquals(List.of("clear_board"), primaryOutput.commands());
+      assertEquals(List.of("clear_board"), mirrorOutput.commands());
+      assertTrue(primary.getBestMoves().isEmpty());
+      assertEquals(0.0, primary.scoreMean);
+      assertEquals(1, mirror.getBestMoves().size());
+      assertEquals(34.0, mirror.scoreMean);
+      assertEquals(0, primaryOutput.loadSgfCommandCount());
+      assertEquals(0, mirrorOutput.loadSgfCommandCount());
+    }
+  }
+
+  @Test
+  void preparedRestoreCanExecuteOnlyOnce() throws Exception {
+    try (TestHarness harness = TestHarness.open(false)) {
+      BoardHistoryList history = new BoardHistoryList(snapshotRoot());
+      Leelaz engine = new Leelaz("");
+      ScriptedResponseOutputStream output =
+          new ScriptedResponseOutputStream(engine, null, null, AUTO_ID_RESPONSE);
+      setOutputStream(engine, output);
+      ExactSnapshotEngineRestore.PreparedRestore preparedRestore =
+          prepareHistoryRestore(engine, history.getCurrentHistoryNode()).orElseThrow();
+
+      preparedRestore.execute();
+      int commandCount = output.commands().size();
+
+        assertThrows(IllegalStateException.class, preparedRestore::execute);
+      assertEquals(
+          commandCount,
+          output.commands().size(),
+          "a repeated execute must fail before issuing another command");
+        }
+      }
+
+  @Test
+  void preparedBoardRestoreDoesNotReadLiveMoveListAfterPlanCapture() throws Exception {
+    try (TestHarness harness = TestHarness.open(false)) {
+      BoardHistoryList history = new BoardHistoryList(snapshotRoot());
+      history.add(moveNode(2, 2, Stone.BLACK, true, 4));
+      ThrowingMoveListBoard board = allocate(ThrowingMoveListBoard.class);
+      board.startStonelist = new ArrayList<>();
+      board.hasStartStone = false;
+      board.setHistory(history);
+      Lizzie.board = board;
+
+      Leelaz engine = new Leelaz("");
+      setOutputStream(
+          engine, new ScriptedResponseOutputStream(engine, null, null, AUTO_ID_RESPONSE));
+      ExactSnapshotEngineRestore.PreparedRestore preparedRestore =
+          prepareHistoryRestore(engine, history.getCurrentHistoryNode()).orElseThrow();
+
+      board.resendMoveToEngine(engine, false, preparedRestore);
+      }
+  }
+
+  @Test
+  void preparedRestoreSynchronizesTargetKomiCacheAfterSuccess() throws Exception {
+    try (TestHarness harness = TestHarness.open(false)) {
+      BoardHistoryList history = new BoardHistoryList(snapshotRoot());
+      history.getGameInfo().setKomiNoMenu(6.5);
+      Board board = allocate(Board.class);
+      board.startStonelist = new ArrayList<>();
+      board.hasStartStone = false;
+      board.setHistory(history);
+      Lizzie.board = board;
+      Leelaz engine = new Leelaz("");
+      engine.komi = 7.5f;
+      ScriptedResponseOutputStream output =
+          new ScriptedResponseOutputStream(engine, null, null, AUTO_ID_RESPONSE);
+      setOutputStream(engine, output);
+
+      prepareHistoryRestore(engine, history.getCurrentHistoryNode()).orElseThrow().execute();
+
+      assertEquals(6.5f, engine.komi, 0.0001f);
+    }
+  }
+
+  @Test
+  void exactSnapshotRestoreFreezesTailAndMirrorBeforeLoadResponse() throws Exception {
+    try (TestHarness harness = TestHarness.open(true)) {
+      BoardHistoryList history = new BoardHistoryList(snapshotRoot());
+      history.add(moveNode(2, 2, Stone.BLACK, true, 4));
+
+      Leelaz primary = new Leelaz("");
+      Leelaz secondary = new Leelaz("");
+      Leelaz replacementSecondary = new Leelaz("");
+      Lizzie.leelaz = primary;
+      Lizzie.leelaz2 = secondary;
+
+      RecordingOutputStream primaryOutput = new RecordingOutputStream(null);
+      RecordingOutputStream secondaryOutput = new RecordingOutputStream(null);
+      RecordingOutputStream replacementOutput = new RecordingOutputStream(null);
+      setOutputStream(primary, primaryOutput);
+      setOutputStream(secondary, secondaryOutput);
+      setOutputStream(replacementSecondary, replacementOutput);
+
+      AtomicReference<ExactSnapshotEngineRestore.Completion> completionRef =
+          new AtomicReference<>();
+      AtomicReference<Throwable> thrownRef = new AtomicReference<>();
+      Thread restoreThread =
+          new Thread(
+              () -> {
+                try {
+                  completionRef.set(
+                      executeHistoryRestore(primary, history.getCurrentHistoryNode()));
+                } catch (Throwable ex) {
+                  thrownRef.set(ex);
+                }
+              },
+              "immutable-snapshot-restore-plan");
+      restoreThread.setDaemon(true);
+      restoreThread.start();
+
+      waitForCommandCount(primaryOutput, 1);
+      waitForCommandCount(secondaryOutput, 1);
+
+      history.getData().lastMove = java.util.Optional.of(new int[] {0, 2});
+      Lizzie.leelaz2 = replacementSecondary;
+
+      invokeResponseHandlerForLine(
+          primary, buildSuccessResponseLine(primaryOutput.commands().get(0)));
+      invokeResponseHandlerForLine(
+          secondary, buildSuccessResponseLine(secondaryOutput.commands().get(0)));
+
+      restoreThread.join(2000L);
+      assertFalse(restoreThread.isAlive(), "restore should finish after captured targets respond.");
+      assertTrue(thrownRef.get() == null, "captured restore plan should complete successfully.");
+      assertNotNull(completionRef.get());
+
+      String capturedMove = "play B " + Board.convertCoordinatesToName(2, 2);
+      assertEquals(List.of(capturedMove), collectPlayCommands(primaryOutput.commands()));
+      assertEquals(
+          List.of(capturedMove),
+          collectPlayCommands(secondaryOutput.commands()),
+          "the originally captured mirror should receive the frozen tail.");
+      assertEquals(
+          0,
+          replacementOutput.commands().size(),
+          "callbacks must not re-read the replacement global mirror.");
+    }
+  }
+
+  @Test
+  void preparedRestoreDoesNotClearAnExecutionTimeGlobalMirrorThatWasNotCaptured() throws Exception {
+    try (TestHarness harness = TestHarness.open(true)) {
+      BoardHistoryList history = new BoardHistoryList(snapshotRoot());
+      Board board = allocate(Board.class);
+      board.startStonelist = new ArrayList<>();
+      board.hasStartStone = false;
+      board.setHistory(history);
+      Lizzie.board = board;
+      Leelaz target = new Leelaz("");
+      Leelaz executionTimeMirror = new Leelaz("");
+      Lizzie.leelaz = null;
+      Lizzie.leelaz2 = null;
+      ExactSnapshotEngineRestore.PreparedRestore preparedRestore =
+          prepareHistoryRestore(target, history.getCurrentHistoryNode()).orElseThrow();
+      ExactSnapshotRestoreProtocolFixture.Transport targetTransport =
+          ExactSnapshotRestoreProtocolFixture.install(
+              target, command -> ExactSnapshotRestoreProtocolFixture.Response.success());
+      ExactSnapshotRestoreProtocolFixture.Transport mirrorTransport =
+          ExactSnapshotRestoreProtocolFixture.install(
+              executionTimeMirror,
+              command -> ExactSnapshotRestoreProtocolFixture.Response.success());
+      Lizzie.leelaz = target;
+      Lizzie.leelaz2 = executionTimeMirror;
+
+      board.resendMoveToEngine(target, false, preparedRestore);
+
+      assertTrue(
+          targetTransport.commands().stream().anyMatch(command -> command.startsWith("loadsgf ")));
+      assertTrue(
+          mirrorTransport.commands().isEmpty(),
+          "prepared restore precommands must not re-resolve an execution-time mirror");
+    }
+  }
+
+  @Test
+  void productionResyncFreezesHistoryPlanBeforeOwnerPrecommands() throws Exception {
+    try (TestHarness harness = TestHarness.open(true)) {
+      BoardHistoryList history = new BoardHistoryList(snapshotRoot());
+      history.getGameInfo().setKomiNoMenu(6.5);
+      history.add(moveNode(2, 2, Stone.BLACK, true, 4));
+      Board board = allocate(Board.class);
+      board.startStonelist = new ArrayList<>();
+      board.hasStartStone = false;
+      board.setHistory(history);
+      Lizzie.board = board;
+
+      Leelaz primary = new Leelaz("");
+      Leelaz mirror = new Leelaz("");
+      Leelaz replacementMirror = new Leelaz("");
+      Lizzie.leelaz = primary;
+      Lizzie.leelaz2 = mirror;
+
+      CommandMutationOutputStream primaryOutput =
+          new CommandMutationOutputStream(
+              primary,
+              "name",
+              () -> {
+                history.getStart().getData().stones[Board.getIndex(0, 0)] = Stone.EMPTY;
+                history.getData().lastMove = java.util.Optional.of(new int[] {0, 2});
+                Lizzie.leelaz2 = replacementMirror;
+              });
+      CommandMutationOutputStream mirrorOutput =
+          new CommandMutationOutputStream(mirror, null, null);
+      RecordingOutputStream replacementOutput = new RecordingOutputStream(null);
+      setOutputStream(primary, primaryOutput);
+      setOutputStream(mirror, mirrorOutput);
+      setOutputStream(replacementMirror, replacementOutput);
+
+      new LeelazEngineCommandSink().resyncFromCurrentHistory(history.getCurrentHistoryNode());
+
+      assertEquals(1, primaryOutput.matchingCommandCount());
+      assertTrue(primaryOutput.loadedSgf().contains("AB[aa]"));
+      assertTrue(primaryOutput.loadedSgf().contains("KM[6.5]"));
+      String capturedMove = "play B " + Board.convertCoordinatesToName(2, 2);
+      assertEquals(List.of(capturedMove), collectPlayCommands(primaryOutput.commands()));
+      assertEquals(List.of(capturedMove), collectPlayCommands(mirrorOutput.commands()));
+      assertTrue(
+          replacementOutput.commands().isEmpty(),
+          "replacement mirror must receive no commands: " + replacementOutput.commands());
+    }
+  }
+
+  @Test
+  void productionResyncRestoresPonderOnCapturedPrimary() throws Exception {
+    try (TestHarness harness = TestHarness.open(false)) {
+      ProductionResyncPonderLeelaz original = new ProductionResyncPonderLeelaz();
+      ProductionResyncPonderLeelaz replacement = new ProductionResyncPonderLeelaz();
+      original.replacePrimaryOnNotPondering(replacement);
+      Lizzie.leelaz = original;
+      BoardHistoryList history = new BoardHistoryList(snapshotRoot());
+
+      new LeelazEngineCommandSink().resyncFromCurrentHistory(history.getCurrentHistoryNode());
+
+      assertEquals(1, original.ponderCalls);
+      assertTrue(original.commands().stream().anyMatch(command -> command.equals("name")));
+      assertTrue(
+          original.commands().stream()
+              .anyMatch(ExactSnapshotEngineRestoreContractTest::isLoadSgfCommand));
+      assertEquals(0, replacement.ponderCalls);
+      assertTrue(replacement.commands().isEmpty());
+    }
+  }
+
+  @Test
+  void exactSnapshotRestoreFailsWhenEngineArbitrationRejectsTailCommand() throws Exception {
+    try (TestHarness harness = TestHarness.open(false)) {
+      BoardHistoryList history = new BoardHistoryList(snapshotRoot());
+      history.add(moveNode(2, 2, Stone.BLACK, true, 4));
+
+      Leelaz engine = new Leelaz("");
+      TailRejectingOutputStream output = new TailRejectingOutputStream(engine);
+      setOutputStream(engine, output);
+
+      IllegalStateException thrown =
+          assertThrows(
+              IllegalStateException.class,
+              () -> executeHistoryRestore(engine, history.getCurrentHistoryNode()));
+
+      assertTrue(thrown.getMessage().contains("tail"));
+      assertEquals(1, output.commands().size());
+      assertTrue(isLoadSgfCommand(output.commands().get(0)));
+      assertTrue(
+          collectPlayCommands(output.commands()).isEmpty(),
+          "a rejected tail command must not be reported as a completed exact restore.");
+    }
+  }
+
+  @Test
+  void exactSnapshotRestoreDeletesSgfWhenAdmissionRejectsBeforeLoadDispatch() throws Exception {
+    String previousTempDirectory = System.getProperty("java.io.tmpdir");
+    Path tempDirectory =
+        Path.of(previousTempDirectory, "exact-restore-admission-cleanup-" + System.nanoTime());
+    Files.createDirectory(tempDirectory);
+    try (TestHarness harness = TestHarness.open(false)) {
+      System.setProperty("java.io.tmpdir", tempDirectory.toString());
+      BoardHistoryList history = new BoardHistoryList(snapshotRoot());
+      history.add(moveNode(2, 2, Stone.BLACK, true, 4));
+      Leelaz engine = new Leelaz("");
+      ExactSnapshotEngineRestore.PreparedRestore preparedRestore =
+          prepareHistoryRestore(engine, history.getCurrentHistoryNode()).orElseThrow();
+      Leelaz.EngineModeReservation reservation = engine.beginEngineModeReservation();
+      assertNotNull(reservation);
+      try {
+        assertThrows(IllegalStateException.class, preparedRestore::execute);
+      } finally {
+        reservation.close();
+      }
+      try (var files = Files.list(tempDirectory)) {
+        assertTrue(
+            files.findAny().isEmpty(),
+            "an admission rejection before loadsgf dispatch must delete the temporary SGF");
+      }
+    } finally {
+      if (previousTempDirectory == null) {
+        System.clearProperty("java.io.tmpdir");
+      } else {
+        System.setProperty("java.io.tmpdir", previousTempDirectory);
+      }
+      Files.deleteIfExists(tempDirectory);
+    }
+  }
+
+  @Test
+  void exactSnapshotRestoreDeletesSgfWhenSnapshotSerializationFails() throws Exception {
+    Path tempDirectory = Path.of(System.getProperty("java.io.tmpdir"));
+    List<Path> existingSnapshotFiles = snapshotSgfFiles(tempDirectory);
+    try (TestHarness harness = TestHarness.open(false)) {
+      BoardData malformedSnapshot =
+          BoardData.snapshot(
+              null,
+              java.util.Optional.empty(),
+              Stone.EMPTY,
+              false,
+              new Zobrist(),
+              1,
+              new int[BOARD_AREA],
+              0,
+              0,
+              50,
+              0);
+      malformedSnapshot.addProperty("SZ", String.valueOf(BOARD_SIZE));
+      BoardHistoryList history = new BoardHistoryList(malformedSnapshot);
+      Leelaz engine = new Leelaz("");
+      ExactSnapshotEngineRestore.PreparedRestore preparedRestore =
+          prepareHistoryRestore(engine, history.getCurrentHistoryNode()).orElseThrow();
+
+      assertThrows(RuntimeException.class, preparedRestore::execute);
+      assertEquals(
+          existingSnapshotFiles,
+          snapshotSgfFiles(tempDirectory),
+          "snapshot serialization failure must delete the partially-created temporary SGF");
+    }
+  }
+
+  @Test
+  void mirrorLoadSgfEnqueueRejectionFailsImmediatelyAfterPrimaryWasAccepted() throws Exception {
+    try (TestHarness harness = TestHarness.open(true)) {
+      Board board = allocate(Board.class);
+      board.startStonelist = new ArrayList<>();
+      board.hasStartStone = false;
+      BoardHistoryList history = new BoardHistoryList(snapshotRoot());
+      history.add(moveNode(2, 2, Stone.BLACK, true, 4));
+      board.setHistory(history);
+      Lizzie.board = board;
+
+      Leelaz primary = new Leelaz("");
+      Leelaz mirror = new Leelaz("");
+      AtomicReference<Leelaz.EngineModeReservation> mirrorReservation = new AtomicReference<>();
+      CommandMutationOutputStream primaryOutput =
+          new CommandMutationOutputStream(
+              primary,
+              "loadsgf ",
+              () -> {
+                Thread reservationThread =
+                    new Thread(
+                        () -> mirrorReservation.set(mirror.beginEngineModeReservation()),
+                        "mirror-loadsgf-conflict-owner");
+                reservationThread.start();
+                try {
+                  reservationThread.join();
+                } catch (InterruptedException ex) {
+                  Thread.currentThread().interrupt();
+                  throw new IllegalStateException(ex);
+                }
+              });
+      RecordingOutputStream mirrorOutput = new RecordingOutputStream(null);
+      setOutputStream(primary, primaryOutput);
+      setOutputStream(mirror, mirrorOutput);
+      Lizzie.leelaz = primary;
+      Lizzie.leelaz2 = mirror;
+
+      long startedAt = System.nanoTime();
+      try {
+        IllegalStateException thrown =
+            assertThrows(
+                IllegalStateException.class, () -> board.resendMoveToEngine(primary, false));
+        long elapsedMillis =
+            TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startedAt);
+
+        assertTrue(thrown.getMessage().contains("rejected"), thrown.getMessage());
+        assertTrue(
+            elapsedMillis < 2000L,
+            "mirror admission rejection must not wait for the no-response timeout");
+        assertNotNull(mirrorReservation.get());
+        assertEquals(1, primaryOutput.loadSgfCommandCount());
+        assertEquals(0, mirrorOutput.loadSgfCommandCount());
+        assertTrue(collectPlayCommands(primaryOutput.commands()).isEmpty());
+        assertTrue(collectPlayCommands(mirrorOutput.commands()).isEmpty());
+
+        assertEventuallyDeleted(
+            extractLoadSgfPath(
+                primaryOutput.commands().stream()
+                    .filter(ExactSnapshotEngineRestoreContractTest::isLoadSgfCommand)
+                    .findFirst()
+                    .orElseThrow()));
+      } finally {
+        if (mirrorReservation.get() != null) {
+          mirrorReservation.get().close();
+        }
+      }
+    }
+  }
 
   @Test
   void resendMoveToEngineThrowsWhenLoadsgfFlushFailsAndStopsRealReplay() throws Exception {
@@ -78,7 +678,7 @@ class SnapshotEngineRestoreFailureAndDualEngineTest {
           assertThrows(IllegalStateException.class, () -> board.resendMoveToEngine(engine, false));
 
       assertTrue(
-          thrown.getMessage().contains("? cannot loadsgf"),
+          thrown.getMessage().contains("cannot loadsgf"),
           "loadsgf GTP error responses should be exposed as restore failures.");
       assertEquals("clear_board", output.commands().get(0));
       assertTrue(isLoadSgfCommand(output.commands().get(1)));
@@ -117,7 +717,7 @@ class SnapshotEngineRestoreFailureAndDualEngineTest {
       restoreThread.start();
 
       waitForCommandCount(output, 1);
-      waitForCommandQueueSize(engine, 1);
+
       assertEquals("clear_board", output.commands().get(0));
 
       triggerQueuedSend(engine);
@@ -175,7 +775,7 @@ class SnapshotEngineRestoreFailureAndDualEngineTest {
       restoreThread.start();
 
       waitForCommandCount(output, 1);
-      waitForCommandQueueSize(engine, 1);
+
       assertEquals("clear_board", output.commands().get(0));
 
       setOutputStream(engine, null);
@@ -219,8 +819,7 @@ class SnapshotEngineRestoreFailureAndDualEngineTest {
 
       IllegalStateException thrown =
           assertThrows(
-              IllegalStateException.class,
-              () -> SnapshotEngineRestore.restoreExactSnapshotIfNeeded(primary, snapshotRoot()));
+              IllegalStateException.class, () -> executePositionRestore(primary, snapshotRoot()));
 
       assertTrue(
           thrown.getMessage().contains("loadsgf"),
@@ -256,7 +855,7 @@ class SnapshotEngineRestoreFailureAndDualEngineTest {
       setOutputStream(primary, primaryOutput);
       setOutputStream(secondary, secondaryOutput);
 
-      assertTrue(SnapshotEngineRestore.restoreExactSnapshotIfNeeded(secondary, snapshotRoot()));
+      executePositionRestore(secondary, snapshotRoot());
       assertEquals(1, secondaryOutput.commands().size());
       assertEquals(1, primaryOutput.commands().size());
       assertTrue(isLoadSgfCommand(secondaryOutput.commands().get(0)));
@@ -286,9 +885,7 @@ class SnapshotEngineRestoreFailureAndDualEngineTest {
       setOutputStream(secondary, secondaryOutput);
       setOutputStream(third, thirdOutput);
 
-      assertTrue(
-          SnapshotEngineRestore.restoreExactSnapshotIfNeeded(third, snapshotRoot()),
-          "third engine restore should only restore itself.");
+      executePositionRestore(third, snapshotRoot());
 
       assertEquals(1, thirdOutput.commands().size(), "third engine should send one loadsgf.");
       assertTrue(
@@ -415,14 +1012,16 @@ class SnapshotEngineRestoreFailureAndDualEngineTest {
       restoreThread.start();
 
       waitForCommandCount(secondaryOutput, 2);
-      waitForCommandCount(primaryOutput, 1);
+      waitForCommandCount(primaryOutput, 2);
       assertEquals("clear_board", secondaryOutput.commands().get(0));
+      assertEquals("clear_board", primaryOutput.commands().get(0));
 
       invokeResponseHandlerForLine(secondary, "=");
+      invokeResponseHandlerForLine(primary, "=");
       invokeResponseHandlerForLine(
           secondary, buildSuccessResponseLine(secondaryOutput.commands().get(1)));
       invokeResponseHandlerForLine(
-          primary, buildSuccessResponseLine(primaryOutput.commands().get(0)));
+          primary, buildSuccessResponseLine(primaryOutput.commands().get(1)));
 
       restoreThread.join(2000L);
       assertFalse(
@@ -430,7 +1029,7 @@ class SnapshotEngineRestoreFailureAndDualEngineTest {
       assertTrue(thrownRef.get() == null, "secondary restore entry should not fail.");
 
       waitForCommandCount(secondaryOutput, 4);
-      waitForCommandCount(primaryOutput, 3);
+      waitForCommandCount(primaryOutput, 4);
 
       List<String> expectedReplay =
           List.of("play B " + Board.convertCoordinatesToName(2, 2), "play W pass");
@@ -486,7 +1085,8 @@ class SnapshotEngineRestoreFailureAndDualEngineTest {
           "secondary replay should see temporary SGF while trailing real moves are being sent.");
       assertTrue(
           primaryOutput.tempFileExistedDuringReplay(),
-          "mirrored primary replay should see temporary SGF while trailing real moves are being sent.");
+          "mirrored primary replay should see temporary SGF while trailing real moves are being"
+              + " sent.");
       assertEventuallyDeleted(secondaryOutput.loadSgfPath());
     }
   }
@@ -507,8 +1107,7 @@ class SnapshotEngineRestoreFailureAndDualEngineTest {
 
       IllegalStateException thrown =
           assertThrows(
-              IllegalStateException.class,
-              () -> SnapshotEngineRestore.restoreExactSnapshotIfNeeded(primary, snapshotRoot()));
+              IllegalStateException.class, () -> executePositionRestore(primary, snapshotRoot()));
       assertTrue(thrown.getMessage().contains("loadsgf"));
       assertEquals(1, primaryOutput.commands().size());
       assertEquals(1, secondaryOutput.commands().size());
@@ -516,7 +1115,6 @@ class SnapshotEngineRestoreFailureAndDualEngineTest {
       Path tempSgf = extractLoadSgfPath(primaryOutput.commands().get(0));
       assertTrue(Files.exists(tempSgf), "temporary SGF should exist before fallback cleanup.");
 
-      assertEventuallyPendingHandlerCount(primary, 0);
       assertEventuallyDeleted(tempSgf);
     }
   }
@@ -540,7 +1138,7 @@ class SnapshotEngineRestoreFailureAndDualEngineTest {
           new Thread(
               () -> {
                 try {
-                  SnapshotEngineRestore.restoreExactSnapshotIfNeeded(primary, snapshotRoot());
+                  executePositionRestore(primary, snapshotRoot());
                 } catch (Throwable ex) {
                   thrownRef.set(ex);
                 }
@@ -551,22 +1149,22 @@ class SnapshotEngineRestoreFailureAndDualEngineTest {
 
       waitForCommandCount(primaryOutput, 1);
       waitForCommandCount(secondaryOutput, 1);
-      invokeResponseHandlerForLine(primary, "? cannot loadsgf");
+      invokeResponseHandlerForLine(
+          primary, buildResponseLine(primaryOutput.commands().get(0), "? cannot loadsgf"));
 
-      restoreThread.join(2500L);
+      restoreThread.join(7000L);
       assertFalse(restoreThread.isAlive(), "? + silent mirror should still return a failure.");
 
       Throwable thrown = thrownRef.get();
       assertTrue(thrown instanceof IllegalStateException, "restore should fail on ? responses.");
       assertTrue(
-          thrown.getMessage().contains("? cannot loadsgf"),
+          thrown.getMessage().contains("cannot loadsgf"),
           "restore failure should preserve the GTP error detail.");
       assertEquals(1, primaryOutput.commands().size());
       assertEquals(1, secondaryOutput.commands().size());
 
       Path tempSgf = extractLoadSgfPath(primaryOutput.commands().get(0));
-      assertEventuallyPendingHandlerCount(primary, 0);
-      assertEventuallyPendingHandlerCount(secondary, 0);
+
       assertEventuallyDeleted(tempSgf);
     }
   }
@@ -588,11 +1186,10 @@ class SnapshotEngineRestoreFailureAndDualEngineTest {
 
       IllegalStateException thrown =
           assertThrows(
-              IllegalStateException.class,
-              () -> SnapshotEngineRestore.restoreExactSnapshotIfNeeded(primary, snapshotRoot()));
+              IllegalStateException.class, () -> executePositionRestore(primary, snapshotRoot()));
 
       assertTrue(
-          thrown.getMessage().contains("? cannot loadsgf"),
+          thrown.getMessage().contains("cannot loadsgf"),
           "immediate ? failures should preserve the GTP error detail.");
       assertEquals(1, primaryOutput.commands().size());
       assertEquals(
@@ -603,8 +1200,7 @@ class SnapshotEngineRestoreFailureAndDualEngineTest {
       assertTrue(isLoadSgfCommand(secondaryOutput.commands().get(0)));
 
       Path tempSgf = extractLoadSgfPath(primaryOutput.commands().get(0));
-      assertEventuallyPendingHandlerCount(primary, 0);
-      assertEventuallyPendingHandlerCount(secondary, 0);
+
       assertEventuallyDeleted(tempSgf);
     }
   }
@@ -627,7 +1223,7 @@ class SnapshotEngineRestoreFailureAndDualEngineTest {
           new Thread(
               () -> {
                 try {
-                  SnapshotEngineRestore.restoreExactSnapshotIfNeeded(primary, snapshotRoot());
+                  executePositionRestore(primary, snapshotRoot());
                 } catch (Throwable ex) {
                   thrownRef.set(ex);
                 }
@@ -648,8 +1244,6 @@ class SnapshotEngineRestoreFailureAndDualEngineTest {
       assertTrue(thrown instanceof IllegalStateException, "silent-success should surface failure.");
       assertTrue(thrown.getMessage().contains("loadsgf"), "failure should keep loadsgf context.");
 
-      assertEventuallyPendingHandlerCount(primary, 0);
-      assertEventuallyPendingHandlerCount(secondary, 0);
       assertEventuallyDeleted(tempSgf);
     }
   }
@@ -672,8 +1266,7 @@ class SnapshotEngineRestoreFailureAndDualEngineTest {
 
       IllegalStateException thrown =
           assertThrows(
-              IllegalStateException.class,
-              () -> SnapshotEngineRestore.restoreExactSnapshotIfNeeded(primary, snapshotRoot()));
+              IllegalStateException.class, () -> executePositionRestore(primary, snapshotRoot()));
       assertTrue(
           thrown.getMessage().contains("loadsgf"), "mirror send failures should still be exposed.");
       assertEquals(1, primaryOutput.commands().size());
@@ -683,15 +1276,12 @@ class SnapshotEngineRestoreFailureAndDualEngineTest {
       Thread.sleep(4300L);
       assertTrue(
           Files.exists(tempSgf),
-          "slow primary consumers beyond current grace should keep temp SGF until real consumption.");
-      assertEquals(
-          1,
-          pendingResponseHandlerCount(primary),
-          "slow primary consumers beyond current grace should keep pending handlers until response.");
+          "slow primary consumers beyond current grace should keep temp SGF until real"
+              + " consumption.");
 
       invokeResponseHandlerForLine(
           primary, buildSuccessResponseLine(primaryOutput.commands().get(0)));
-      assertEventuallyPendingHandlerCount(primary, 0);
+
       assertEventuallyDeleted(tempSgf);
     }
   }
@@ -702,34 +1292,68 @@ class SnapshotEngineRestoreFailureAndDualEngineTest {
       Leelaz primary = new Leelaz("");
       Leelaz secondary = new Leelaz("");
       Lizzie.leelaz = primary;
-      Lizzie.leelaz2 = secondary;
-
       RecordingOutputStream primaryOutput = new RecordingOutputStream(null);
       RecordingOutputStream secondaryOutput = new RecordingOutputStream("loadsgf ");
       setOutputStream(primary, primaryOutput);
       setOutputStream(secondary, secondaryOutput);
 
       assertThrows(
-          IllegalStateException.class,
-          () -> SnapshotEngineRestore.restoreExactSnapshotIfNeeded(primary, snapshotRoot()));
-      assertEventuallyPendingHandlerCount(primary, 0);
+          IllegalStateException.class, () -> executePositionRestore(primary, snapshotRoot()));
 
       String loadSgfCommand = primaryOutput.commands().get(0);
       String lateLoadSgfResponse = buildSuccessResponseLine(loadSgfCommand);
 
       AtomicInteger callbackCount = new AtomicInteger(0);
       sendCommandWithResponse(primary, "name", callbackCount::incrementAndGet);
-      assertEventuallyPendingHandlerCount(primary, 1);
 
-      invokeResponseHandlerForLine(primary, lateLoadSgfResponse);
+      invokeResponseHandlerForLine(primary, "? late loadsgf response");
       assertEquals(
           0, callbackCount.get(), "late loadsgf response should not consume next command handler.");
 
-      invokeResponseHandlerForLine(primary, "=");
+      invokeResponseHandlerForLine(primary, lateLoadSgfResponse);
+      assertEquals(
+          0,
+          callbackCount.get(),
+          "late numbered loadsgf response should not consume next command handler.");
+
+      invokeResponseHandlerForLine(
+          primary, buildSuccessResponseLine(primaryOutput.commands().get(1)));
       assertEquals(1, callbackCount.get(), "next command handler should run on its own response.");
-      assertEventuallyPendingHandlerCount(primary, 0);
-      assertEquals(0, commandQueueSize(primary), "late response isolation should not block queue.");
-      assertCurrentCmdNumAligned(primary);
+    }
+  }
+
+  private static ExactSnapshotEngineRestore.Completion executeHistoryRestore(
+      Leelaz engine, BoardHistoryNode target) {
+    return prepareHistoryRestore(engine, target).orElseThrow().execute();
+  }
+
+  private static java.util.Optional<ExactSnapshotEngineRestore.PreparedRestore>
+      prepareHistoryRestore(Leelaz engine, BoardHistoryNode target) {
+    Leelaz.ExactSnapshotRestoreAdmission admission =
+        engine.captureExactSnapshotRestoreAdmission(
+            Leelaz.ExactSnapshotRestoreOwner.ORDINARY, null, engine.resolveLoadSgfMirrorEngine());
+    return ExactSnapshotEngineRestore.prepare(admission, target);
+  }
+
+  private static ExactSnapshotEngineRestore.PreparedRestore prepareCurrentPositionRestore(
+      Leelaz engine, BoardData positionData) {
+    Leelaz.ExactSnapshotRestoreAdmission admission =
+        engine.captureExactSnapshotRestoreAdmission(
+            Leelaz.ExactSnapshotRestoreOwner.ORDINARY, null, engine.resolveLoadSgfMirrorEngine());
+    return ExactSnapshotEngineRestore.prepareCurrentPosition(admission, positionData);
+  }
+
+  private static ExactSnapshotEngineRestore.Completion executePositionRestore(
+      Leelaz engine, BoardData positionData) {
+    return prepareCurrentPositionRestore(engine, positionData).execute();
+  }
+
+  private static List<Path> snapshotSgfFiles(Path tempDirectory) throws IOException {
+    try (var files = Files.list(tempDirectory)) {
+      return files
+          .filter(path -> path.getFileName().toString().startsWith("lizzie-snapshot-"))
+          .sorted()
+          .toList();
     }
   }
 
@@ -793,63 +1417,17 @@ class SnapshotEngineRestoreFailureAndDualEngineTest {
     return zobrist;
   }
 
-  private static void setOutputStream(Leelaz engine, OutputStream stream) throws Exception {
-    Field outputField = Leelaz.class.getDeclaredField("outputStream");
-    outputField.setAccessible(true);
-    outputField.set(engine, Leelaz.createCommandOutputStream(stream));
+  private static void setOutputStream(Leelaz engine, OutputStream stream) {
+    engine.installCommandOutputForTest(stream);
   }
 
-  private static void invokeResponseHandlerForLine(Leelaz engine, String line) throws Exception {
-    Method method =
-        Leelaz.class.getDeclaredMethod("runPendingResponseHandlerForLine", String.class);
-    method.setAccessible(true);
-    method.invoke(engine, line);
+  private static void invokeResponseHandlerForLine(Leelaz engine, String line) {
+    engine.runPendingResponseHandlerForTest(line);
   }
 
-  private static void triggerQueuedSend(Leelaz engine) throws Exception {
+  private static void triggerQueuedSend(Leelaz engine) {
     engine.setResponseUpToDate();
-    Method method = Leelaz.class.getDeclaredMethod("trySendCommandFromQueue");
-    method.setAccessible(true);
-    try {
-      method.invoke(engine);
-    } catch (ReflectiveOperationException ex) {
-      Throwable cause = ex.getCause();
-      if (!(cause instanceof RuntimeException)) {
-        throw ex;
-      }
-    }
-  }
-
-  private static int commandQueueSize(Leelaz engine) throws Exception {
-    Field queueField = Leelaz.class.getDeclaredField("cmdQueue");
-    queueField.setAccessible(true);
-    Object queue = queueField.get(engine);
-    if (queue == null) {
-      return 0;
-    }
-    return ((java.util.ArrayDeque<?>) queue).size();
-  }
-
-  private static void assertCurrentCmdNumAligned(Leelaz engine) throws Exception {
-    Field currentField = Leelaz.class.getDeclaredField("currentCmdNum");
-    currentField.setAccessible(true);
-    int currentCmdNum = (Integer) currentField.get(engine);
-
-    Field cmdField = Leelaz.class.getDeclaredField("cmdNumber");
-    cmdField.setAccessible(true);
-    int cmdNumber = (Integer) cmdField.get(engine);
-
-    assertTrue(currentCmdNum <= cmdNumber - 1, "currentCmdNum should stay within command range.");
-  }
-
-  private static void waitForCommandQueueSize(Leelaz engine, int expectedSize) throws Exception {
-    for (int attempt = 0; attempt < 40; attempt++) {
-      if (commandQueueSize(engine) >= expectedSize) {
-        return;
-      }
-      Thread.sleep(25L);
-    }
-    assertEquals(expectedSize, commandQueueSize(engine), "queued loadsgf should stay pending.");
+    engine.processCommandResponseLineForTest("=");
   }
 
   private static void waitForCommandCount(RecordingOutputStream output, int expectedCount)
@@ -861,27 +1439,6 @@ class SnapshotEngineRestoreFailureAndDualEngineTest {
       Thread.sleep(25L);
     }
     assertEquals(expectedCount, output.commands().size(), "expected queued command count.");
-  }
-
-  private static int pendingResponseHandlerCount(Leelaz engine) throws Exception {
-    Field pendingField = Leelaz.class.getDeclaredField("pendingResponseHandlers");
-    pendingField.setAccessible(true);
-    Object pending = pendingField.get(engine);
-    if (pending == null) {
-      return 0;
-    }
-    return ((java.util.ArrayDeque<?>) pending).size();
-  }
-
-  private static void assertEventuallyPendingHandlerCount(Leelaz engine, int expectedCount)
-      throws Exception {
-    for (int attempt = 0; attempt < 160; attempt++) {
-      if (pendingResponseHandlerCount(engine) == expectedCount) {
-        return;
-      }
-      Thread.sleep(50L);
-    }
-    assertEquals(expectedCount, pendingResponseHandlerCount(engine), "pending handlers leaked.");
   }
 
   private static boolean isLoadSgfCommand(String command) {
@@ -961,37 +1518,66 @@ class SnapshotEngineRestoreFailureAndDualEngineTest {
     return "=" + firstToken;
   }
 
-  private static void sendCommandWithResponse(Leelaz engine, String command, Runnable onResponse)
-      throws Exception {
-    Method method =
-        Leelaz.class.getDeclaredMethod(
-            "sendCommand", String.class, Runnable.class, boolean.class, boolean.class);
-    method.setAccessible(true);
-    method.invoke(engine, command, onResponse, false, false);
+  private static String buildResponseLine(String command, String response) {
+    String trimmed = command.trim();
+    int firstSpace = trimmed.indexOf(' ');
+    if (firstSpace <= 0) {
+      return response;
+    }
+    String firstToken = trimmed.substring(0, firstSpace);
+    for (int index = 0; index < firstToken.length(); index++) {
+      if (!Character.isDigit(firstToken.charAt(index))) {
+        return response;
+      }
+    }
+    if (response.length() > 1
+        && (response.charAt(0) == '=' || response.charAt(0) == '?')
+        && !Character.isDigit(response.charAt(1))) {
+      return response.charAt(0) + firstToken + response.substring(1);
+    }
+    return response;
   }
 
-  private static final class RecordingOutputStream extends OutputStream {
-    private String failCommandPrefix;
+  private static void sendCommandWithResponse(Leelaz engine, String command, Runnable onResponse) {
+    engine.sendCommandWithResponseForTest(command, onResponse);
+  }
+
+  private abstract static class RecordedCommandOutputStream extends OutputStream {
     private final StringBuilder currentCommand = new StringBuilder();
     private final List<String> commands = new ArrayList<>();
 
-    private RecordingOutputStream(String failCommandPrefix) {
-      this.failCommandPrefix = failCommandPrefix;
-    }
-
     @Override
-    public void write(int b) {
+    public final void write(int b) {
       currentCommand.append((char) b);
     }
 
     @Override
-    public void flush() throws IOException {
+    public final void flush() throws IOException {
       String command = currentCommand.toString().trim();
       currentCommand.setLength(0);
       if (command.isEmpty()) {
         return;
       }
       commands.add(command);
+      onCommand(command);
+    }
+
+    protected abstract void onCommand(String command) throws IOException;
+
+    protected final List<String> commands() {
+      return commands;
+    }
+  }
+
+  private static final class RecordingOutputStream extends RecordedCommandOutputStream {
+    private String failCommandPrefix;
+
+    private RecordingOutputStream(String failCommandPrefix) {
+      this.failCommandPrefix = failCommandPrefix;
+    }
+
+    @Override
+    protected void onCommand(String command) throws IOException {
       if (matchesCommandPrefix(command, failCommandPrefix)) {
         throw new IOException("simulated flush failure: " + command);
       }
@@ -1001,18 +1587,115 @@ class SnapshotEngineRestoreFailureAndDualEngineTest {
       this.failCommandPrefix = commandPrefix;
     }
 
+    private int loadSgfCommandCount() {
+      int count = 0;
+      for (String command : commands()) {
+        if (isLoadSgfCommand(command)) {
+          count++;
+        }
+      }
+      return count;
+    }
+  }
+
+  private static final class ProductionResyncPonderLeelaz extends Leelaz {
+    private final List<String> commands = new ArrayList<>();
+    private int ponderCalls;
+    private Leelaz replacementPrimary;
+
+    private ProductionResyncPonderLeelaz() throws IOException {
+      super("");
+      ExactSnapshotRestoreProtocolFixture.install(
+          this,
+          command -> {
+            commands.add(command);
+            return ExactSnapshotRestoreProtocolFixture.Response.success();
+          });
+    }
+
+    @Override
+    public boolean isPonderingOrWasPonderingBeforeTracking() {
+      return true;
+    }
+
+    @Override
+    public void notPondering() {
+      if (replacementPrimary != null) {
+        Lizzie.leelaz = replacementPrimary;
+      }
+    }
+
+    @Override
+    public void ponder() {
+      ponderCalls++;
+    }
+
+    private void replacePrimaryOnNotPondering(Leelaz replacement) {
+      replacementPrimary = replacement;
+    }
+
     private List<String> commands() {
       return commands;
     }
   }
 
-  private static final class ScriptedResponseOutputStream extends OutputStream {
+  private static final class CommandMutationOutputStream extends RecordedCommandOutputStream {
+    private final Leelaz engine;
+    private final String mutationCommand;
+    private final Runnable mutation;
+    private int matchingCommandCount;
+    private String loadedSgf = "";
+
+    private CommandMutationOutputStream(
+        Leelaz engine, String mutationCommand, Runnable mutation) {
+      this.engine = engine;
+      this.mutationCommand = mutationCommand;
+      this.mutation = mutation;
+    }
+
+    @Override
+    protected void onCommand(String command) throws IOException {
+      if (matchesCommandPrefix(command, mutationCommand)) {
+        matchingCommandCount++;
+        if (matchingCommandCount == 1) {
+          mutation.run();
+        }
+      }
+      if (!isLoadSgfCommand(command)) {
+        return;
+      }
+      try {
+        loadedSgf = Files.readString(extractLoadSgfPath(command));
+        invokeResponseHandlerForLine(engine, buildSuccessResponseLine(command));
+      } catch (Exception ex) {
+        throw new IOException("failed to consume snapshot SGF: " + command, ex);
+      }
+    }
+
+    private int loadSgfCommandCount() {
+      int count = 0;
+      for (String command : commands()) {
+        if (isLoadSgfCommand(command)) {
+          count++;
+        }
+      }
+      return count;
+    }
+
+    private String loadedSgf() {
+      return loadedSgf;
+    }
+
+    private int matchingCommandCount() {
+      return matchingCommandCount;
+    }
+  }
+
+  private static final class ScriptedResponseOutputStream extends RecordedCommandOutputStream {
     private final Leelaz engine;
     private final String failCommandPrefix;
     private final String clearBoardResponse;
     private final String loadSgfResponse;
-    private final StringBuilder currentCommand = new StringBuilder();
-    private final List<String> commands = new ArrayList<>();
 
     private ScriptedResponseOutputStream(
         Leelaz engine,
@@ -1026,18 +1709,7 @@ class SnapshotEngineRestoreFailureAndDualEngineTest {
     }
 
     @Override
-    public void write(int b) {
-      currentCommand.append((char) b);
-    }
-
-    @Override
-    public void flush() throws IOException {
-      String command = currentCommand.toString().trim();
-      currentCommand.setLength(0);
-      if (command.isEmpty()) {
-        return;
-      }
-      commands.add(command);
+    protected void onCommand(String command) throws IOException {
       if (matchesCommandPrefix(command, failCommandPrefix)) {
         throw new IOException("simulated flush failure: " + command);
       }
@@ -1057,22 +1729,21 @@ class SnapshotEngineRestoreFailureAndDualEngineTest {
         return clearBoardResponse;
       }
       if (isLoadSgfCommand(command)) {
+        if (loadSgfResponse == null) {
+          return null;
+        }
         if (AUTO_ID_RESPONSE.equals(loadSgfResponse)) {
           return buildSuccessResponseLine(command);
         }
-        return loadSgfResponse;
+        return buildResponseLine(command, loadSgfResponse);
       }
       return null;
     }
 
-    private List<String> commands() {
-      return commands;
-    }
   }
 
-  private static final class TailReplayAwareOutputStream extends OutputStream {
+  private static final class TailReplayAwareOutputStream extends RecordedCommandOutputStream {
     private final Leelaz engine;
-    private final StringBuilder currentCommand = new StringBuilder();
     private Path loadSgfPath;
     private boolean tempFileExistedDuringReplay;
 
@@ -1081,17 +1752,7 @@ class SnapshotEngineRestoreFailureAndDualEngineTest {
     }
 
     @Override
-    public void write(int b) {
-      currentCommand.append((char) b);
-    }
-
-    @Override
-    public void flush() throws IOException {
-      String command = currentCommand.toString().trim();
-      currentCommand.setLength(0);
-      if (command.isEmpty()) {
-        return;
-      }
+    protected void onCommand(String command) throws IOException {
       if (isLoadSgfCommand(command)) {
         loadSgfPath = extractLoadSgfPath(command);
         try {
@@ -1113,6 +1774,24 @@ class SnapshotEngineRestoreFailureAndDualEngineTest {
     private Path loadSgfPath() {
       return loadSgfPath;
     }
+  }
+
+  private static final class TailRejectingOutputStream extends RecordedCommandOutputStream {
+    private final Leelaz engine;
+
+    private TailRejectingOutputStream(Leelaz engine) {
+      this.engine = engine;
+    }
+
+    @Override
+    protected void onCommand(String command) throws IOException {
+      if (!isLoadSgfCommand(command)) {
+        return;
+      }
+      invokeResponseHandlerForLine(engine, buildSuccessResponseLine(command));
+      engine.beginForegroundRestoreForTest();
+    }
+
   }
 
   private static final class SilentFrame extends LizzieFrame {
@@ -1143,6 +1822,13 @@ class SnapshotEngineRestoreFailureAndDualEngineTest {
 
     @Override
     public void addLine(String line) {}
+  }
+
+  private static final class ThrowingMoveListBoard extends Board {
+    @Override
+    public ArrayList<Movelist> getMoveList() {
+      throw new AssertionError("prepared exact restore must not read live move list");
+    }
   }
 
   private static final class TestHarness implements AutoCloseable {

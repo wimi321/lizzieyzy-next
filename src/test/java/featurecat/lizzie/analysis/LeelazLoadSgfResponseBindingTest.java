@@ -21,11 +21,83 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 
 class LeelazLoadSgfResponseBindingTest {
+
+
+
+
+  @Test
+  void mirroredLoadSgfErrorWaitsForAlreadyDispatchedPeerBeforeCleanup() throws Exception {
+    try (TestHarness harness = TestHarness.open()) {
+      Leelaz primary = new Leelaz("");
+      Leelaz mirror = new Leelaz("");
+      RecordingOutputStream primaryOutput = new RecordingOutputStream();
+      RecordingOutputStream mirrorOutput = new RecordingOutputStream();
+      setOutputStream(primary, primaryOutput);
+      setOutputStream(mirror, mirrorOutput);
+      Path sgfFile = Files.createTempFile("mirrored-loadsgf-response-", ".sgf");
+      CountDownLatch cleaned = new CountDownLatch(1);
+      AtomicReference<Throwable> loadFailure = new AtomicReference<>();
+      Thread loadThread =
+          new Thread(
+              () -> {
+                try {
+                  primary.loadSgf(
+                      sgfFile,
+                      mirror,
+                      () -> {
+                        try {
+                          Files.deleteIfExists(sgfFile);
+                        } catch (IOException failure) {
+                          throw new IllegalStateException(failure);
+                        } finally {
+                          cleaned.countDown();
+                        }
+                      });
+                } catch (Throwable failure) {
+                  loadFailure.set(failure);
+                }
+              },
+              "mirrored-loadsgf-response-error");
+      try {
+        loadThread.start();
+        waitForCommandCount(primaryOutput, 1, 1000L, "primary loadsgf should be dispatched.");
+        waitForCommandCount(mirrorOutput, 1, 1000L, "mirror loadsgf should be dispatched.");
+
+        invokeCommandResponseLine(
+            primary, "?" + responseCommandId(primaryOutput.commands().get(0)) + " cannot loadsgf");
+
+        assertFalse(cleaned.await(50, TimeUnit.MILLISECONDS));
+        assertTrue(loadThread.isAlive());
+        assertTrue(Files.exists(sgfFile));
+        assertEquals(1, pendingHandlerCount(mirror));
+
+        invokeCommandResponseLine(mirror, buildSuccessResponseLine(mirrorOutput.commands().get(0)));
+        loadThread.join(1000L);
+
+        assertFalse(loadThread.isAlive());
+        assertTrue(loadFailure.get() instanceof IllegalStateException);
+        assertTrue(cleaned.await(1, TimeUnit.SECONDS));
+        assertFalse(Files.exists(sgfFile));
+      } finally {
+        if (loadThread.isAlive() && !mirrorOutput.commands().isEmpty()) {
+          invokeCommandResponseLine(
+              mirror, buildSuccessResponseLine(mirrorOutput.commands().get(0)));
+          loadThread.join(1000L);
+        }
+        Files.deleteIfExists(sgfFile);
+      }
+    }
+  }
+
+
+
   @Test
   void loadSgfBindsAfterConsumedToImmediateResponse() throws Exception {
     try (TestHarness harness = TestHarness.open()) {
@@ -396,9 +468,12 @@ class LeelazLoadSgfResponseBindingTest {
         assertTrue(
             loadFailure.get().getMessage().contains("loadsgf"),
             "failure should keep loadsgf context.");
+        String pollutedText = pollutedOutput.writtenText();
+        int firstSpace = pollutedText.indexOf(' ');
         assertTrue(
-            pollutedOutput.writtenText().startsWith("1 load"),
-            "polluted stream should capture partial loadsgf prefix before invalidation.");
+            firstSpace > 0
+                && pollutedText.substring(0, firstSpace).chars().allMatch(Character::isDigit),
+            "polluted stream should capture the command id prefix before invalidation.");
         assertTrue(
             outputStreamField(engine) == null, "polluted output stream should be invalidated.");
 
@@ -630,6 +705,15 @@ class LeelazLoadSgfResponseBindingTest {
       }
     }
     return "=" + firstToken;
+  }
+
+  private static int responseCommandId(String command) {
+    String firstToken = command.trim().split(" ", 2)[0];
+    try {
+      return Integer.parseInt(firstToken);
+    } catch (NumberFormatException failure) {
+      return -1;
+    }
   }
 
   private static Config minimalConfig() throws Exception {

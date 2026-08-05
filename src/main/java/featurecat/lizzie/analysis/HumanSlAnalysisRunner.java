@@ -70,6 +70,10 @@ public class HumanSlAnalysisRunner implements AutoCloseable {
     CommandLaunchHelper.LaunchSpec launchSpec = CommandLaunchHelper.prepare(commandParts);
     List<String> preparedCommands = launchSpec.getCommandParts();
     Path engineExecutable = KataGoRuntimeHelper.resolveCommandExecutable(preparedCommands);
+    if (KataGoRuntimeHelper.isBenchmarkEngineSyncSuppressed()) {
+      unavailableReason = "KataGo tuning is using the local compute device.";
+      return false;
+    }
     if (Config.isBundledKataGoCommand(String.join(" ", preparedCommands))) {
       try {
         KataGoRuntimeHelper.ensureBundledRuntimeReady(engineExecutable, Lizzie.frame);
@@ -80,7 +84,8 @@ public class HumanSlAnalysisRunner implements AutoCloseable {
     }
 
     List<String> launchCommands =
-        KataGoRuntimeHelper.prepareBundledLaunchCommand(preparedCommands, engineExecutable);
+        KataGoRuntimeHelper.prepareBundledLaunchCommand(
+            preparedCommands, engineExecutable, KataGoRuntimeHelper.LaunchPurpose.HUMAN_SL);
     ProcessBuilder processBuilder = new ProcessBuilder(launchCommands);
     CommandLaunchHelper.configureProcessBuilder(processBuilder, launchSpec);
     KataGoRuntimeHelper.configureBundledProcessBuilder(processBuilder, engineExecutable);
@@ -93,6 +98,11 @@ public class HumanSlAnalysisRunner implements AutoCloseable {
       outputStream = new BufferedOutputStream(process.getOutputStream());
       readerExecutor = Executors.newSingleThreadScheduledExecutor();
       readerExecutor.execute(this::readLoop);
+      AnalysisResourceCoordinator.processStarted(
+          this,
+          AnalysisResourceCoordinator.Purpose.OTHER,
+          String.join(" ", launchCommands),
+          process);
       started = true;
       unavailableReason = null;
       return true;
@@ -299,6 +309,8 @@ public class HumanSlAnalysisRunner implements AutoCloseable {
     if (process != null && process.isAlive()) {
       process.destroyForcibly();
     }
+    AnalysisResourceCoordinator.processStopped(
+        this, AnalysisResourceCoordinator.Purpose.OTHER, process);
   }
 
   static List<String> buildHumanSlCommand(String analysisCommand, Path humanModelPath) {

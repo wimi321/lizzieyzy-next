@@ -3,8 +3,6 @@ package featurecat.lizzie.analysis;
 import featurecat.lizzie.rules.Board;
 import featurecat.lizzie.rules.SGFParser;
 import featurecat.lizzie.rules.Stone;
-import java.io.BufferedOutputStream;
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.lang.reflect.Field;
 import java.nio.file.Files;
@@ -40,8 +38,11 @@ class SnapshotTrackingLeelaz extends Leelaz {
   private Stone[] stones;
   private boolean blackToPlay = true;
   private Path lastLoadedSgf;
+  private String lastLoadedSgfContent;
   private volatile CountDownLatch blockedLoadSgfStarted;
   private volatile CountDownLatch blockedLoadSgfRelease;
+  private Runnable beforeNextClearBoard;
+  private Runnable beforeNextIsPondering;
 
   private SnapshotTrackingLeelaz() throws IOException {
     super("");
@@ -65,7 +66,16 @@ class SnapshotTrackingLeelaz extends Leelaz {
     leelaz.readBoardGmaPonderingSupported = false;
     leelaz.commandLists = new ArrayList<>(List.of("stop", "kata-analyze"));
     setLeelazField(leelaz, "endGetCommandList", true);
-    setLeelazField(leelaz, "outputStream", new BufferedOutputStream(new ByteArrayOutputStream()));
+    ExactSnapshotRestoreProtocolFixture.install(
+        leelaz,
+        command -> {
+          if (command.startsWith("loadsgf ")) {
+            leelaz.loadSgf(Path.of(command.substring("loadsgf ".length())));
+          } else {
+            leelaz.sendCommand(command);
+          }
+          return ExactSnapshotRestoreProtocolFixture.Response.success();
+        });
     initializeReadBoardGmaRuntimeParam(leelaz, "readBoardGmaMaxTime", "maxTime");
     initializeReadBoardGmaRuntimeParam(leelaz, "readBoardGmaMaxVisits", "maxVisits");
     initializeReadBoardGmaRuntimeParam(leelaz, "readBoardGmaPondering", "ponderingEnabled");
@@ -135,6 +145,17 @@ class SnapshotTrackingLeelaz extends Leelaz {
   }
 
   @Override
+  public boolean isPondering() {
+    boolean pondering = super.isPondering();
+    Runnable action = beforeNextIsPondering;
+    beforeNextIsPondering = null;
+    if (action != null) {
+      action.run();
+    }
+    return pondering;
+  }
+
+  @Override
   public void genmove(String color) {
     genmoveCount++;
     lastGenmoveColor = color;
@@ -167,6 +188,9 @@ class SnapshotTrackingLeelaz extends Leelaz {
     if (rejectReadBoardGma) {
       return false;
     }
+    if (!beginReadBoardGmaSessionForFixture()) {
+      return false;
+    }
     readBoardGmaCount++;
     lastReadBoardGmaColor = color;
     recordedCommands()
@@ -183,6 +207,16 @@ class SnapshotTrackingLeelaz extends Leelaz {
     return true;
   }
 
+  private boolean beginReadBoardGmaSessionForFixture() {
+    try {
+      java.lang.reflect.Method method = Leelaz.class.getDeclaredMethod("beginReadBoardGmaSession");
+      method.setAccessible(true);
+      return (boolean) method.invoke(this);
+    } catch (ReflectiveOperationException ex) {
+      throw new IllegalStateException("Failed to begin fixture ReadBoard GMA session", ex);
+    }
+  }
+
   @Override
   public void nameCmd() {
     nameCmdCount++;
@@ -193,6 +227,11 @@ class SnapshotTrackingLeelaz extends Leelaz {
   public void sendCommand(String command) {
     recordedCommands().add(command);
     if ("clear_board".equals(command)) {
+      Runnable action = beforeNextClearBoard;
+      beforeNextClearBoard = null;
+      if (action != null) {
+        action.run();
+      }
       resetBoardState();
       return;
     }
@@ -232,6 +271,14 @@ class SnapshotTrackingLeelaz extends Leelaz {
     blockedLoadSgfRelease = new CountDownLatch(1);
   }
 
+  void beforeNextClearBoard(Runnable action) {
+    beforeNextClearBoard = action;
+  }
+
+  void beforeNextIsPondering(Runnable action) {
+    beforeNextIsPondering = action;
+  }
+
   boolean awaitBlockedLoadSgf() throws InterruptedException {
     CountDownLatch started = blockedLoadSgfStarted;
     return started != null && started.await(2, TimeUnit.SECONDS);
@@ -254,6 +301,10 @@ class SnapshotTrackingLeelaz extends Leelaz {
 
   Path lastLoadedSgf() {
     return lastLoadedSgf;
+  }
+
+  String lastLoadedSgfContent() {
+    return lastLoadedSgfContent;
   }
 
   private void waitForBlockedLoadSgfRelease() {
@@ -305,6 +356,7 @@ class SnapshotTrackingLeelaz extends Leelaz {
     resetBoardState();
     try {
       String content = Files.readString(path);
+      lastLoadedSgfContent = content;
       Matcher matcher = PROPERTY_PATTERN.matcher(content);
       while (matcher.find()) {
         String tag = matcher.group(1);

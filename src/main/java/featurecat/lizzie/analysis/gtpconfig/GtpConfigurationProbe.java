@@ -1,6 +1,8 @@
 package featurecat.lizzie.analysis.gtpconfig;
 
+import featurecat.lizzie.analysis.AnalysisResourceCoordinator;
 import featurecat.lizzie.util.CommandLaunchHelper;
+import featurecat.lizzie.util.KataGoRuntimeHelper;
 import featurecat.lizzie.util.Utils;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
@@ -253,6 +255,9 @@ public final class GtpConfigurationProbe {
       if (engineCommand == null || engineCommand.isBlank()) {
         throw new IOException("Engine command is empty");
       }
+      if (KataGoRuntimeHelper.isBenchmarkEngineSyncSuppressed()) {
+        throw new IOException("KataGo tuning is using the local compute device");
+      }
       if (engineCommand.startsWith("encryption||")) {
         engineCommand = Utils.doDecrypt2(engineCommand.substring("encryption||".length()));
       }
@@ -263,7 +268,10 @@ public final class GtpConfigurationProbe {
       }
       ProcessBuilder builder = new ProcessBuilder(launchSpec.getCommandParts());
       CommandLaunchHelper.configureProcessBuilder(builder, launchSpec);
-      return new ProcessSession(builder.start(), timeout);
+      ProcessSession session = new ProcessSession(builder.start(), timeout);
+      AnalysisResourceCoordinator.processStarted(
+          session, AnalysisResourceCoordinator.Purpose.OTHER, engineCommand, session.process);
+      return session;
     }
 
     @Override
@@ -339,12 +347,15 @@ public final class GtpConfigurationProbe {
       try {
         if (!process.waitFor(500, TimeUnit.MILLISECONDS)) {
           process.destroyForcibly();
+          process.waitFor(500, TimeUnit.MILLISECONDS);
         }
       } catch (InterruptedException error) {
         Thread.currentThread().interrupt();
         process.destroyForcibly();
       }
       readerExecutor.shutdownNow();
+      AnalysisResourceCoordinator.processStopped(
+          this, AnalysisResourceCoordinator.Purpose.OTHER, process);
     }
   }
 

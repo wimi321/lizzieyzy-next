@@ -906,6 +906,11 @@ public class Lizzie {
   }
 
   public static void initializeAfterVersionCheck(boolean isEngineGame, Leelaz engine) {
+    initializeAfterVersionCheck(isEngineGame, engine, true);
+  }
+
+  public static void initializeAfterVersionCheck(
+      boolean isEngineGame, Leelaz engine, boolean startPondering) {
     engine.canRestoreDymPda = true;
     if (EngineManager.isEngineGame()) {
       if (engineManager.engineList.get(EngineManager.engineGameInfo.firstEngineIndex).isKataGoPda
@@ -928,13 +933,15 @@ public class Lizzie {
     markEngineReady();
 
     if (!isEngineGame && !frame.isPlayingAgainstLeelaz) {
-      if (Lizzie.config.notStartPondering) {
-        leelaz.notPondering();
-        leelaz.setResponseUpToDate();
-        Lizzie.config.notStartPondering = false;
-      } else {
+      if (startPondering && !Lizzie.config.notStartPondering) {
         leelaz.ponder();
         leelaz.setResponseUpToDate();
+      } else {
+        leelaz.notPondering();
+        leelaz.setResponseUpToDate();
+        if (Lizzie.config.notStartPondering) {
+          Lizzie.config.notStartPondering = false;
+        }
       }
     }
     SwingUtilities.invokeLater(

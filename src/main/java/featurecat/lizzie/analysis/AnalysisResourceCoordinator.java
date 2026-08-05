@@ -9,9 +9,13 @@ import java.nio.file.StandardOpenOption;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
+import java.util.Collections;
+import java.util.IdentityHashMap;
+import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.json.JSONObject;
@@ -53,6 +57,8 @@ public final class AnalysisResourceCoordinator {
   private static final Object DIAGNOSTIC_LOCK = new Object();
   private static final Map<Object, Sample> FOREGROUND_SAMPLES = new java.util.WeakHashMap<>();
   private static final Map<Object, Long> REGISTERED_PROCESSES = new java.util.WeakHashMap<>();
+  private static final Set<Process> ACTIVE_LOCAL_COMPUTE_PROCESSES =
+      Collections.newSetFromMap(new IdentityHashMap<Process, Boolean>());
 
   private AnalysisResourceCoordinator() {}
 
@@ -78,6 +84,11 @@ public final class AnalysisResourceCoordinator {
 
   public static void processStarted(
       Object owner, Purpose purpose, String command, Process process) {
+    if (process != null) {
+      synchronized (ACTIVE_LOCAL_COMPUTE_PROCESSES) {
+        ACTIVE_LOCAL_COMPUTE_PROCESSES.add(process);
+      }
+    }
     if (!diagnosticsEnabled()) {
       return;
     }
@@ -99,6 +110,21 @@ public final class AnalysisResourceCoordinator {
   }
 
   public static void processStopped(Object owner, Purpose purpose, Process process) {
+    // Shutdown requests are asynchronous. Keep a still-alive child registered so benchmark
+    // isolation cannot race ahead while Metal/CoreML work is winding down. The next registry
+    // query can prune it, and the exit callback prevents dead Process objects accumulating when no
+    // benchmark is requested later.
+    if (process != null) {
+      if (!isProcessAlive(process)) {
+        removeTrackedLocalProcess(process);
+      } else {
+        try {
+          process.onExit().whenComplete((ignored, failure) -> removeTrackedLocalProcess(process));
+        } catch (RuntimeException unsupportedExitNotification) {
+          // activeLocalComputeProcessCount() remains a safe pruning fallback.
+        }
+      }
+    }
     if (!diagnosticsEnabled()) {
       return;
     }
@@ -114,6 +140,41 @@ public final class AnalysisResourceCoordinator {
     appendEvent("process-stopped", details);
     synchronized (FOREGROUND_SAMPLES) {
       FOREGROUND_SAMPLES.remove(owner);
+    }
+  }
+
+  /** Returns whether any registered local analysis process is still alive. */
+  public static boolean hasActiveLocalComputeProcess() {
+    return activeLocalComputeProcessCount() > 0;
+  }
+
+  static int activeLocalComputeProcessCount() {
+    synchronized (ACTIVE_LOCAL_COMPUTE_PROCESSES) {
+      int alive = 0;
+      Iterator<Process> processes = ACTIVE_LOCAL_COMPUTE_PROCESSES.iterator();
+      while (processes.hasNext()) {
+        Process process = processes.next();
+        if (!isProcessAlive(process)) {
+          processes.remove();
+        } else {
+          alive++;
+        }
+      }
+      return alive;
+    }
+  }
+
+  private static boolean isProcessAlive(Process process) {
+    try {
+      return process != null && process.isAlive();
+    } catch (RuntimeException invalidProcess) {
+      return false;
+    }
+  }
+
+  private static void removeTrackedLocalProcess(Process process) {
+    synchronized (ACTIVE_LOCAL_COMPUTE_PROCESSES) {
+      ACTIVE_LOCAL_COMPUTE_PROCESSES.remove(process);
     }
   }
 

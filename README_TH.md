@@ -23,16 +23,19 @@
 <p align="center">
   <a href="https://goagent.top/"><strong>เว็บไซต์ทางการ</strong></a>
   ·
-  <a href="https://github.com/wimi321/lizzieyzy-next/releases"><strong>ดาวน์โหลดรีลีส</strong></a>
+  <a href="https://download.goagent.top/"><strong>ดาวน์โหลดเวอร์ชันเสถียร</strong></a>
   ·
   <a href="docs/INSTALL.md"><strong>คู่มือติดตั้ง</strong></a>
   ·
   <a href="docs/TROUBLESHOOTING.md"><strong>คำถามที่พบบ่อย</strong></a>
 </p>
 
+> [!NOTE]
+> แพ็กเกจเวอร์ชันเสถียรใช้ [หน้าดาวน์โหลด Cloudflare R2](https://download.goagent.top/) เป็นแหล่งหลัก หากเชื่อมต่อไม่ได้ หรือต้องการ installer, Linux และเวอร์ชันเก่า ให้ใช้ [GitHub Releases](https://github.com/wimi321/lizzieyzy-next/releases) ตัวเลข Downloads บน GitHub ไม่รวมการดาวน์โหลดจาก R2
+
 > [!IMPORTANT]
 > ถ้าคุณแค่อยากดาวน์โหลดเวอร์ชันที่ใช่ ให้จำ 6 ข้อนี้:
-> - ผู้ใช้ Windows ส่วนใหญ่: ไปที่ [Releases](https://github.com/wimi321/lizzieyzy-next/releases) แล้วดาวน์โหลด `*windows64.opencl.portable.zip`
+> - ผู้ใช้ Windows ส่วนใหญ่: ไปที่ [ดาวน์โหลดเวอร์ชันเสถียร](https://download.goagent.top/) แล้วดาวน์โหลด `*windows64.opencl.portable.zip`
 > - ถ้าคุณมีการ์ดจอ NVIDIA และต้องการความเร็วสูงกว่า: ดาวน์โหลด `*windows64.nvidia.portable.zip`
 > - ถ้า OpenCL ไม่เสถียรบนเครื่องของคุณ: ดาวน์โหลด `*windows64.with-katago.portable.zip`
 > - ตอนนี้รองรับการใส่ชื่อเล่น Fox โดยตรงเพื่อดึงเกมสาธารณะล่าสุด ไม่ต้องรู้เลขบัญชีก่อน
@@ -60,7 +63,7 @@
 
 ## เลือกดาวน์โหลดตัวไหน
 
-ดาวน์โหลดทั้งหมดอยู่ใน [Releases](https://github.com/wimi321/lizzieyzy-next/releases)
+แพ็กเกจเวอร์ชันเสถียรที่ใช้บ่อยอยู่ใน [หน้าดาวน์โหลด Cloudflare R2](https://download.goagent.top/) ส่วน installer, Linux, เวอร์ชันเก่า และแหล่งสำรองยังอยู่ใน [GitHub Releases](https://github.com/wimi321/lizzieyzy-next/releases)
 
 | สถานการณ์ของคุณ | คีย์เวิร์ดไฟล์ที่ควรหา |
 | --- | --- |
@@ -75,7 +78,7 @@
 
 ## เริ่มต้นใน 3 ขั้นตอน
 
-1. ไปที่ [Releases](https://github.com/wimi321/lizzieyzy-next/releases) และดาวน์โหลดแพ็กเกจที่เหมาะกับระบบของคุณ
+1. ไปที่ [ดาวน์โหลดเวอร์ชันเสถียร](https://download.goagent.top/) และเลือกแพ็กเกจที่เหมาะกับระบบของคุณ ส่วน installer, Linux และเวอร์ชันเก่าให้ใช้ GitHub Releases
 2. เปิดโปรแกรมแล้วคลิก `Fox` เพื่อใส่ชื่อเล่น Fox
 3. หลังจากดึงเกมแล้ว ให้รันการวิเคราะห์ทั้งกระดานรวดเร็ว ใช้กราฟอัตราชนะและภาพรวมด้านล่างเพื่อหาจังหวะสำคัญ
 

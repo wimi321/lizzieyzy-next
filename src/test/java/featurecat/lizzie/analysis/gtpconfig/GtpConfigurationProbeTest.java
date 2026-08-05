@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import featurecat.lizzie.analysis.AnalysisResourceCoordinator;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
@@ -17,6 +18,10 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Queue;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import org.json.JSONObject;
 import org.junit.jupiter.api.Test;
 
@@ -136,6 +141,40 @@ class GtpConfigurationProbeTest {
             IOException.class,
             () -> probe.inspect(fakeEngineCommand(true), Duration.ofMillis(200)));
     assertTrue(timeout.getMessage().contains("Timed out"));
+  }
+
+  @Test
+  void realProbeChildParticipatesInLocalComputeIsolationRegistry() throws Exception {
+    GtpConfigurationProbe probe = new GtpConfigurationProbe();
+    ExecutorService executor = Executors.newSingleThreadExecutor();
+    Future<?> worker =
+        executor.submit(
+            () -> {
+              try {
+                probe.inspect(fakeEngineCommand(true), Duration.ofSeconds(5));
+              } catch (IOException expected) {
+                // Cancellation closes and terminates the deliberately blocked probe child.
+              }
+            });
+    try {
+      long registrationDeadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
+      while (!AnalysisResourceCoordinator.hasActiveLocalComputeProcess()
+          && System.nanoTime() < registrationDeadline) {
+        Thread.sleep(10L);
+      }
+      assertTrue(AnalysisResourceCoordinator.hasActiveLocalComputeProcess());
+    } finally {
+      worker.cancel(true);
+      executor.shutdownNow();
+      executor.awaitTermination(2, TimeUnit.SECONDS);
+    }
+
+    long shutdownDeadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
+    while (AnalysisResourceCoordinator.hasActiveLocalComputeProcess()
+        && System.nanoTime() < shutdownDeadline) {
+      Thread.sleep(10L);
+    }
+    assertFalse(AnalysisResourceCoordinator.hasActiveLocalComputeProcess());
   }
 
   private static String fakeEngineCommand(boolean hangOnSchema) {

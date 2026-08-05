@@ -10,38 +10,70 @@ public final class WindowsUpdateController {
   private WindowsUpdateController() {}
 
   public static void checkForUpdate(Component parent) {
-    if (!WindowsUpdatePaths.isWindowsRuntime()) {
-      Utils.showMsg("自动更新第一版仅支持 Windows。请在 GitHub Release 下载新版。");
-      return;
-    }
     if (UpdateVersion.shouldSkipAutomaticCheck(Lizzie.nextVersion)) {
-      Utils.showMsg("当前是开发版或未打包版本，无法检查更新。");
+      Utils.showMsg(
+          UpdateText.tr(
+              "WindowsUpdate.devBuild",
+              "当前是开发版或未打包版本，无法检查更新。",
+              "This development or unpackaged build cannot check for updates."));
       return;
     }
     Thread thread =
         new Thread(
             () -> {
-              WindowsUpdateService service = new WindowsUpdateService();
               try {
-                Optional<WindowsUpdatePlan> maybePlan = service.checkForUpdate();
-                if (maybePlan.isEmpty()) {
-                  SwingUtilities.invokeLater(() -> Utils.showMsg("当前已经是最新正式版本。"));
-                  return;
+                if (WindowsUpdatePaths.isWindowsRuntime()) {
+                  checkWindows(parent);
+                } else {
+                  checkPackage(parent);
                 }
-                WindowsUpdatePlan plan = maybePlan.get();
-                SwingUtilities.invokeLater(
-                    () -> {
-                      WindowsUpdateDialog dialog = new WindowsUpdateDialog(parent, service, plan);
-                      dialog.setVisible(true);
-                    });
               } catch (Exception e) {
                 e.printStackTrace();
                 SwingUtilities.invokeLater(
-                    () -> Utils.showMsg("检查更新失败: " + e.getLocalizedMessage()));
+                    () ->
+                        Utils.showMsg(
+                            UpdateText.tr(
+                                    "WindowsUpdate.checkFailed", "检查更新失败", "Update check failed")
+                                + ": "
+                                + UpdateText.userFacingError(e)));
               }
             },
-            "lizzie-windows-update-manual");
+            "lizzie-update-manual");
     thread.setDaemon(true);
     thread.start();
+  }
+
+  private static void checkWindows(Component parent) throws Exception {
+    WindowsUpdateService service = new WindowsUpdateService();
+    Optional<WindowsUpdatePlan> maybePlan = service.checkForUpdate();
+    if (maybePlan.isEmpty()) {
+      showLatest();
+      return;
+    }
+    WindowsUpdatePlan plan = maybePlan.get();
+    SwingUtilities.invokeLater(
+        () -> new WindowsUpdateDialog(parent, service, plan).setVisible(true));
+  }
+
+  private static void checkPackage(Component parent) throws Exception {
+    PlatformUpdateService service = new PlatformUpdateService();
+    Optional<PackageUpdatePlan> maybePlan = service.checkForUpdate();
+    if (maybePlan.isEmpty()) {
+      showLatest();
+      return;
+    }
+    PackageUpdatePlan plan = maybePlan.get();
+    SwingUtilities.invokeLater(
+        () -> new PackageUpdateDialog(parent, service, plan).setVisible(true));
+  }
+
+  private static void showLatest() {
+    SwingUtilities.invokeLater(
+        () ->
+            Utils.showMsg(
+                UpdateText.tr(
+                    "WindowsUpdate.latest",
+                    "当前已经是最新正式版本。",
+                    "You already have the latest stable version.")));
   }
 }

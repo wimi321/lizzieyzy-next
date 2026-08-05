@@ -5065,7 +5065,8 @@ public class Menu extends JMenuBar {
           }
         });
 
-    final JFontMenuItem checkUpdate = new JFontMenuItem("检查更新");
+    final JFontMenuItem checkUpdate =
+        new JFontMenuItem(resourceBundle.getString("Menu.checkUpdate"));
     helpMenu.add(checkUpdate);
     checkUpdate.addActionListener(e -> WindowsUpdateController.checkForUpdate(Lizzie.frame));
 

@@ -8,6 +8,7 @@ import featurecat.lizzie.Lizzie;
 import java.lang.reflect.Method;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import org.json.JSONObject;
 import org.junit.jupiter.api.Test;
 
@@ -47,6 +48,28 @@ class LeelazKataGoThreadSettingsTest {
       assertEquals(0, primaryEngine.sentCommands.size());
       assertEquals(1, preloadedEngine.sentCommands.size());
       assertEquals("kata-set-param numSearchThreads 8", preloadedEngine.sentCommands.get(0));
+    }
+  }
+
+  @Test
+  void effectiveLaunchOverrideSuppressesThePostStartupThreadMutation() throws Exception {
+    try (TestHarness harness = TestHarness.open()) {
+      harness.keepAlive();
+      SnapshotTrackingLeelaz engine = SnapshotTrackingLeelaz.create();
+      Lizzie.config.chkKataEngineThreads = true;
+      Lizzie.config.autoLoadKataEngineThreads = true;
+      Lizzie.config.txtKataEngineThreads = "8";
+      engine.rememberKataGoThreadLaunchOverride(
+          List.of("katago", "gtp", "-override-config", "nnMaxBatchSize=2,numSearchThreads=6"));
+
+      invokeKataEngineParameterLoad(engine);
+
+      assertEquals(List.of(), engine.sentCommands);
+
+      engine.rememberKataGoThreadLaunchOverride(List.of("katago", "gtp"));
+      invokeKataEngineParameterLoad(engine);
+
+      assertEquals(List.of("kata-set-param numSearchThreads 8"), engine.sentCommands);
     }
   }
 

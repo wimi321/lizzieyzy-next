@@ -3,6 +3,7 @@ dependency-reduced-pom.xml
 
 .tools/
 .cache/
+.wrangler/
 target/
 dist/
 engines/

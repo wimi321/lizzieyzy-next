@@ -262,6 +262,7 @@ public final class KataGoAutoSetupHelper {
     public final List<Path> weightCandidates;
     public final DiscoverySource source;
     public final String sourceName;
+    public final String sourceCommand;
     public final PackageFlavor packageFlavor;
     public final List<MissingComponent> missingComponents;
     public final List<String> diagnostics;
@@ -277,6 +278,7 @@ public final class KataGoAutoSetupHelper {
         List<Path> weightCandidates,
         DiscoverySource source,
         String sourceName,
+        String sourceCommand,
         PackageFlavor packageFlavor,
         List<String> diagnostics) {
       this.workingDir = normalize(workingDir);
@@ -289,6 +291,7 @@ public final class KataGoAutoSetupHelper {
       this.weightCandidates = immutableNormalizedPaths(weightCandidates);
       this.source = source == null ? DiscoverySource.NONE : source;
       this.sourceName = sourceName == null ? "" : sourceName.trim();
+      this.sourceCommand = sourceCommand == null ? "" : sourceCommand.trim();
       this.packageFlavor = packageFlavor == null ? PackageFlavor.UNKNOWN : packageFlavor;
       this.diagnostics =
           Collections.unmodifiableList(
@@ -671,6 +674,7 @@ public final class KataGoAutoSetupHelper {
         allWeights,
         DiscoverySource.MANUAL_SELECTION,
         enginePath == null ? "" : enginePath.getFileName().toString(),
+        "",
         PackageFlavor.EXTERNAL,
         new ArrayList<String>());
   }
@@ -2451,6 +2455,7 @@ public final class KataGoAutoSetupHelper {
             weights,
             source,
             sourceName,
+            command,
             effectiveFlavor,
             new ArrayList<String>());
     if (!result.isComplete()) {
@@ -2499,6 +2504,7 @@ public final class KataGoAutoSetupHelper {
             prependUnique(weightPath, bundledWeights),
             DiscoverySource.REMEMBERED_SETUP,
             "",
+            "",
             isBundledKataGoPath(enginePath, workingDir, appRoot)
                 ? packageFlavor
                 : PackageFlavor.EXTERNAL,
@@ -2536,6 +2542,7 @@ public final class KataGoAutoSetupHelper {
             bundledWeights,
             enginePath == null ? DiscoverySource.NONE : DiscoverySource.BUNDLED_PACKAGE,
             "",
+            "",
             packageFlavor,
             diagnostics);
     if (!result.isComplete() && expectsBundledEngine(packageFlavor)) {
@@ -2550,6 +2557,7 @@ public final class KataGoAutoSetupHelper {
               weightPath,
               bundledWeights,
               enginePath == null ? DiscoverySource.NONE : DiscoverySource.BUNDLED_PACKAGE,
+              "",
               "",
               PackageFlavor.INCOMPLETE_BUNDLE,
               diagnostics);
@@ -2602,6 +2610,7 @@ public final class KataGoAutoSetupHelper {
         source.weightCandidates,
         source.source,
         source.sourceName,
+        source.sourceCommand,
         source.packageFlavor,
         diagnostics);
   }

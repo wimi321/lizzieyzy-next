@@ -1,5 +1,6 @@
 package featurecat.lizzie.rules;
 
+import featurecat.lizzie.analysis.ExactSnapshotRestoreProtocolFixture;
 import featurecat.lizzie.analysis.Leelaz;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -22,6 +23,16 @@ class RuleAwareFakeLeelaz extends Leelaz {
 
   private RuleAwareFakeLeelaz() throws IOException {
     super("");
+    ExactSnapshotRestoreProtocolFixture.install(
+        this,
+        command -> {
+          if (command.startsWith("loadsgf ")) {
+            loadSgf(Path.of(command.substring("loadsgf ".length())));
+          } else {
+            sendCommand(command);
+          }
+          return ExactSnapshotRestoreProtocolFixture.Response.success();
+        });
   }
 
   @Override

@@ -100,6 +100,21 @@ ReadBoard 协议里的 `pass` 行在自动落子/交换顺序链路中表示用�
 - 后续 `clear_board + moveList` 只重放 `SNAPSHOT` 之后的真实手顺，`SNAPSHOT` 自带的静态局面持续生效。
 - 所有 `loadEngine=true` 的恢复入口都遵守同一套 `SNAPSHOT/setup` 恢复契约。
 - `restoreMoveNumber(...)` 恢复时也先命中最近 `SNAPSHOT` 边界，再续接后面的真实 `MOVE/PASS`。
+- `ExactSnapshotEngineRestore` 是 exact snapshot restore core owner：负责 immutable snapshot/current-position plan、静态锚点 materialization、真实 `MOVE/PASS` tail、临时 SGF、captured target 的 `loadsgf -> tail` sequencing、cleanup 与 completion。它不拥有 generic lifecycle、root replay、reservation、restart fence 或 ponder。
+- 普通 caller 在自己的 owner 语境中捕获 ordinary admission；switch/restart/PK/foreground/GMA adapter 在自己的 owner 语境中先冻结 opaque admission，再通过窄 capture seam 取得 exact plan。`PreparedRestore` 只暴露 one-shot `execute() -> Completion`，不暴露 komi、target、mirror、tail、SGF、root payload 或 dispatch state。
+- 所有 lifecycle 入口在第一个外部副作用前冻结 exact route，或明确冻结 owner-local root route；后续 stop/name/komi/clear/start/readiness/replacement callback 只能执行该 frozen route，不能重新读取 mutable history、engine slot 或 mirror。
+- `EngineManager` 与 `Leelaz` lifecycle owner 各自持有 target、captured mirror、owner/admission、root/exact decision、reservation lifetime、readiness、availability、restart board fence 与 ponder disposition；本轮不新增通用 lifecycle module。
+- lifecycle handoff、root initialization/payload/route state、reservation acquisition、restart orchestration、endpoint inclusion、ponder disposition 与 raw target/mirror getter 不属于 exact module；`LifecycleRestoreHandoff`、`mirrorLifecycleOwnedByOperation`、precommand choreography 和 `capturedKomi()` introspection 均不保留。
+- lifecycle root replay 继续使用入口既有的 live-board/root-movelist 产品语义，但由 owner 在 captured target/mirror/admission 下一次性执行；root 路径不通过 exact failure fallback，也不在副作用后重新 `prepare`。
+- captured mirror 不是独立 lifecycle reservation endpoint。secondary switch 只 reserve frozen previous secondary 与 frozen target；PK start/restart 只 reserve target；mirror 竞争在 exact/root enqueue 时按 captured admission fail-closed。
+- exact Board restore 的 preclear 只发给 plan capture 时的 target set，不能在执行时重新解析 `Lizzie.leelaz2`。exact module 完成边界是所有 target 已接受 `loadsgf` tail 命令，调用方随后按自己的 fence 与 disposition 收敛 owner 状态。
+- foreground/GMA adapter 只负责把自己的 session/reservation identity 映射为 opaque admission，再调用 generic history/current-position capture；产品-specific stop、name、komi、clear、quarantine 与 completion policy 留在 adapter/owner。
+- 自动/直接 restart 的 exact 与 root 路线都经过同一个 owner board synchronization fence；owner 只能在 fence 成功后恢复 captured ponder，失败或不可用时不启动分析，并在既有 completion boundary 释放 reservation。
+- `Leelaz` 继续唯一拥有 ordinary command queue、response handler、timeout、late-response retirement、output-stream invalidation 与 engine arbitration；exact module 只通过窄 admission-aware seam 使用这些能力。
+- 没有可用静态锚点时，调用方保留既有 root replay；默认空 root 不是 exact 锚点。exact 一旦开始，`loadsgf`、tail 或 arbitration 失败都原样失败，禁止猜测性 root fallback。
+- lifecycle exact/root 抛错时，owner 将 frozen target 标为 unavailable，并在既有 completion boundary 释放 reservation；不因本票据新建 `ENGINE_STATE_UNRESTORED` 或通用 retry。ReadBoard GMA 固定点既有 quarantine/retirement 行为保持独立。
+- ponder 只由 lifecycle owner 在全部目标恢复和自身 board fence 成功后按 capture 时的 disposition 决定；restore module 不擅自停止或启动 ponder。
+- tail replay 的 module 完成边界不等同于每条 GTP response 完成；后续 response/error、超时和 late-response isolation 继续由 `Leelaz` 管理。
 - `exact snapshot restore` 的 `loadsgf` 生命周期按固定顺序执行：
   1. `loadsgf` 临时 SGF 准备完成后，命令先入队再发出。
   2. 命令发出前，当前次 `loadsgf` 的 pending response handler 与 dispatch 归属绑定完成，并持续到退休或完成。
@@ -108,7 +123,7 @@ ReadBoard 协议里的 `pass` 行在自动落子/交换顺序链路中表示用�
   5. 无响应超时时，当前次 pending handler 与 outstanding response 计数同步退休，dispatch 显式结束为失败。
   6. 只有 `loadsgf` 成功消费后，dispatch 才能结束为完成态。
   7. dispatch 完结后，才允许重放 `SNAPSHOT` 尾部真实 `MOVE/PASS`。
-  8. 双引擎模式下，临时 SGF 生命周期覆盖两侧 `loadsgf` 消费与尾部真实 `MOVE/PASS` 重放，直到两侧都完成后删除。
+  8. 双引擎模式下，临时 SGF 生命周期覆盖两侧 `loadsgf` 消费与尾部真实 `MOVE/PASS` 重放；任一侧返回 `?` 后也不能取消另一侧已经 dispatch 的 consumer，直到两侧都真实消费、timeout retirement 或 fallback cleanup 后删除。
 - `exact snapshot restore` 中 `loadsgf` 发送阶段失败都视为恢复失败，必须显式结束 dispatch、终止后续真实 `MOVE/PASS` 重放、进入清理流程并显式抛错。
 - 该恢复失败规则覆盖“先入队后发送”的链路形态。
 - `exact snapshot restore` 中 `loadsgf` 收到 GTP `?` 错误响应也属于恢复失败，必须终止后续真实 `MOVE/PASS` 重放并显式抛错。

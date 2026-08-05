@@ -142,6 +142,81 @@ class ReadBoardSyncDecisionTest {
   }
 
   @Test
+  void forceRebuildCapturesRestorePlanBeforeClearWithoutPonder() throws Exception {
+    Stone[] target =
+        stones(
+            placement(0, 0, Stone.BLACK),
+            placement(1, 0, Stone.WHITE),
+            placement(0, 1, Stone.BLACK),
+            placement(1, 1, Stone.WHITE),
+            placement(2, 2, Stone.BLACK));
+    int[] lastMove = new int[] {2, 2};
+    AtomicInteger clearMutationCount = new AtomicInteger();
+
+    try (SyncHarness harness = SyncHarness.create(false, emptyHistory())) {
+      harness.leelaz.beforeNextClearBoard(
+          () -> {
+            clearMutationCount.incrementAndGet();
+            BoardData rebuiltSnapshot = harness.board.getHistory().getCurrentHistoryNode().getData();
+            rebuiltSnapshot.stones[stoneIndex(0, 0)] = Stone.EMPTY;
+          });
+      harness.readBoard.parseLine("lastMoveSource foxCornerFlip");
+
+      harness.sync(snapshot(target, Optional.of(lastMove), Stone.BLACK));
+
+      assertEquals(1, clearMutationCount.get(), "clearWithoutPonder should run the mutation once.");
+      assertArrayEquals(
+          target,
+          harness.leelaz.copyStones(),
+          "engine restore must use the plan captured before clearWithoutPonder mutates history.");
+    }
+  }
+
+  @Test
+  void rebuildRestorePlanUsesCurrentHistoryKomiInsteadOfEngineCache() throws Exception {
+    Stone[] target = stones(placement(0, 0, Stone.BLACK));
+
+    try (SyncHarness harness = SyncHarness.create(false, emptyHistory())) {
+      harness.board.getHistory().getGameInfo().setKomiNoMenu(6.5);
+      harness.leelaz.komi = 7.5f;
+      harness.readBoard.parseLine("lastMoveSource foxCornerFlip");
+
+      harness.sync(snapshot(target, Optional.empty(), Stone.EMPTY));
+
+      String sgf = harness.leelaz.lastLoadedSgfContent();
+      assertTrue(
+          sgf.contains("KM[6.5]"),
+          "rebuild exact restore must freeze the current history GameInfo komi in the SGF");
+    }
+  }
+
+  @Test
+  void forceRebuildKeepsUsingPreparedPrimaryWhenGlobalOwnerChanges() throws Exception {
+    Stone[] target =
+        stones(
+            placement(0, 0, Stone.BLACK),
+            placement(1, 0, Stone.WHITE),
+            placement(2, 2, Stone.BLACK));
+    SnapshotTrackingLeelaz replacement = SnapshotTrackingLeelaz.create();
+
+    try (SyncHarness harness = SyncHarness.create(false, emptyHistory())) {
+      harness.leelaz.beforeNextIsPondering(() -> Lizzie.leelaz = replacement);
+      harness.readBoard.parseLine("lastMoveSource foxCornerFlip");
+
+      harness.sync(snapshot(target, Optional.of(new int[] {2, 2}), Stone.BLACK));
+
+      assertArrayEquals(
+          target,
+          harness.leelaz.copyStones(),
+          "restore must stay on the primary captured before the global owner changes.");
+      assertArrayEquals(
+          stones(),
+          replacement.copyStones(),
+          "the replacement primary must not join an already prepared restore.");
+    }
+  }
+
+  @Test
   void foxLiveRollbackReusesExactMainTrunkAncestorEvenWithRepeatedStones() throws Exception {
     Stone[] repeatedStones = stones(placement(1, 1, Stone.BLACK));
 
@@ -1625,7 +1700,7 @@ class ReadBoardSyncDecisionTest {
   }
 
   @Test
-  void markerlessFoxRebuildWithDeadSnapshotGroupUsesLoadsgfForExactEngineRestore()
+  void markerlessFoxRebuildProductionEntryUsesOrdinaryAdmissionForExactEngineRestore()
       throws Exception {
     Stone[] target =
         stones(

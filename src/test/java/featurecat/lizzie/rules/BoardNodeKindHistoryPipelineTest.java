@@ -13,6 +13,7 @@ import featurecat.lizzie.ExtraMode;
 import featurecat.lizzie.Lizzie;
 import featurecat.lizzie.analysis.AnalysisEngine;
 import featurecat.lizzie.analysis.EngineManager;
+import featurecat.lizzie.analysis.ExactSnapshotRestoreProtocolFixture;
 import featurecat.lizzie.analysis.Leelaz;
 import featurecat.lizzie.analysis.MoveData;
 import featurecat.lizzie.gui.LizzieFrame;
@@ -3873,7 +3874,7 @@ class BoardNodeKindHistoryPipelineTest {
       assertTrue(
           setupNode.getData().blackToPlay,
           "setup snapshot should keep the original side to play after rebuild.");
-      assertEquals("clear", leelaz.commandsSinceLastClear().get(0));
+      assertEquals("clear_board", leelaz.commandsSinceLastClear().get(0));
       assertTrue(
           leelaz.commandsSinceLastClear().get(1).startsWith("loadsgf "),
           "stepping onto the setup snapshot should restore through exact loadsgf.");
@@ -3944,7 +3945,7 @@ class BoardNodeKindHistoryPipelineTest {
       board.moveToAnyPosition(targetMove);
 
       assertEquals(
-          "clear",
+          "clear_board",
           leelaz.recordedCommands().get(0),
           "branch jumps through setup snapshots should clear the engine before exact restore.");
       assertTrue(
@@ -4475,6 +4476,11 @@ class BoardNodeKindHistoryPipelineTest {
 
   @SuppressWarnings("unchecked")
   private static <T> T allocate(Class<T> type) throws Exception {
+    if (Leelaz.class.isAssignableFrom(type)) {
+      java.lang.reflect.Constructor<T> constructor = type.getDeclaredConstructor();
+      constructor.setAccessible(true);
+      return constructor.newInstance();
+    }
     return (T) UnsafeHolder.UNSAFE.allocateInstance(type);
   }
 
@@ -4706,6 +4712,16 @@ class BoardNodeKindHistoryPipelineTest {
 
     private TrackingLeelaz() throws IOException {
       super("");
+      ExactSnapshotRestoreProtocolFixture.install(
+          this,
+          command -> {
+            if (command.startsWith("loadsgf ")) {
+              loadSgf(Path.of(command.substring("loadsgf ".length())));
+            } else {
+              sendCommand(command);
+            }
+            return ExactSnapshotRestoreProtocolFixture.Response.success();
+          });
     }
 
     @Override
@@ -4758,7 +4774,7 @@ class BoardNodeKindHistoryPipelineTest {
 
     private List<String> commandsSinceLastClear() {
       List<String> recorded = recordedCommands();
-      int lastClear = recorded.lastIndexOf("clear");
+      int lastClear = recorded.lastIndexOf("clear_board");
       return recorded.subList(lastClear, recorded.size());
     }
 

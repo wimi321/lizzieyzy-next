@@ -206,12 +206,23 @@ gh workflow run update-release-notes.yml \
 
 现在可以直接用 `scripts/generate_release_notes.py` 生成这份多语言正文，再更新到 GitHub release。
 
+### 正式版晋升到 R2
+
+pre-release 经过各平台真机验收后，不要直接在 GitHub 页面手工改成正式版。使用
+`Promote Stable Release to R2` 工作流，输入两次相同 tag。该工作流会先验证并镜像白名单
+资产，最后发布签名更新清单并晋升 GitHub Release；R2 失败时 GitHub 状态不会改变。
+
+R2 只保留当前正式版且设有 `9,000,000,000` 字节硬门禁。完整配置、Secrets、恢复方式和
+发布后验收见 [Cloudflare R2 正式版下载与升级](R2_RELEASES.md)。正式版如果重新生成了
+Release notes，必须再运行一次 `allow_stable_recovery`，恢复 R2 主链接和签名 stable 清单。
+
 六种语言的下载表统一沿用 `next-2026-07-19.1` 的直接格式：
 
 - 每个普通资产单独一行，显示带日期的完整文件名，并直接链接到该 release 的真实下载 URL。
 - 不把免安装包和安装器压缩成同一行，也不使用 `portable / installer` 这类需要用户猜测的短标签。
 - TensorRT 的 `.7z.001` 与 `.7z.002` 是同一套分卷，可以在同一行连续列出，但必须同时显示完整文件名和直链。
 - `publish_release_request.py` 会检查六种语言的下载表；任何语言缺少完整文件名直链都不能发布。
+- pre-release 下载直链保持 GitHub；正式晋升工作流会把 R2 白名单资产改为 R2 主链接，并在正文保留 GitHub 全量备用入口。
 
 ## 七、上传前自查
 
@@ -236,6 +247,8 @@ gh workflow run update-release-notes.yml \
 - “普通 Windows 包也支持智能优化”有没有写清楚
 - “NVIDIA 包首启自动准备官方运行库”有没有写清楚
 - 下载后的应用图标、安装器图标、主窗口图标是不是同一套
+- 正式版下载页是否为 `https://download.goagent.top/`，R2 连接失败时软件是否自动续传到 GitHub
+- GitHub Downloads 徽章只代表 GitHub，不得写成包含 R2 的项目总下载量
 
 ## 九、Windows 体验复查
 

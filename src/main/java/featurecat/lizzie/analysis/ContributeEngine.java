@@ -10,6 +10,7 @@ import featurecat.lizzie.rules.BoardHistoryNode;
 import featurecat.lizzie.rules.SGFParser;
 import featurecat.lizzie.rules.Stone;
 import featurecat.lizzie.util.CommandLaunchHelper;
+import featurecat.lizzie.util.KataGoRuntimeHelper;
 import featurecat.lizzie.util.Utils;
 import java.io.BufferedOutputStream;
 import java.io.BufferedReader;
@@ -110,6 +111,9 @@ public class ContributeEngine {
     this.password = remoteData.password;
     this.useKeyGen = remoteData.useKeyGen;
     this.keyGenPath = remoteData.keyGenPath;
+    if (!this.useJavaSSH && KataGoRuntimeHelper.isBenchmarkEngineSyncSuppressed()) {
+      return;
+    }
 
     contributeGames = new ArrayList<ContributeGameInfo>();
     unParseGameInfos = new ArrayList<ContributeUnParseGameInfo>();
@@ -161,6 +165,9 @@ public class ContributeEngine {
         return;
       }
     } else {
+      if (KataGoRuntimeHelper.isBenchmarkEngineSyncSuppressed()) {
+        return;
+      }
       //      boolean started = false;
       //      if (Lizzie.config.contributeUseSlowShutdown && OS.isWindows()) {
       //        File handler = new File("SubProcessHandler.exe");
@@ -185,6 +192,8 @@ public class ContributeEngine {
       processBuilder.redirectErrorStream(false);
       try {
         process = processBuilder.start();
+        AnalysisResourceCoordinator.processStarted(
+            this, AnalysisResourceCoordinator.Purpose.OTHER, engineCommand, process);
       } catch (IOException e) {
         tryToDignostic(
             Lizzie.resourceBundle.getString("Leelaz.engineFailed")
@@ -543,6 +552,8 @@ public class ContributeEngine {
 
   public void normalQuit() {
     isNormalEnd = true;
+    AnalysisResourceCoordinator.processStopped(
+        this, AnalysisResourceCoordinator.Purpose.OTHER, process);
     Lizzie.frame.isShowingContributeGame = false;
     Lizzie.frame.isContributing = false;
     if (useJavaSSH) {
@@ -564,6 +575,8 @@ public class ContributeEngine {
   }
 
   private void shutdown() {
+    AnalysisResourceCoordinator.processStopped(
+        this, AnalysisResourceCoordinator.Purpose.OTHER, process);
     if (useJavaSSH) {
       try {
         outputStream.write(("forcequit" + "\n").getBytes());

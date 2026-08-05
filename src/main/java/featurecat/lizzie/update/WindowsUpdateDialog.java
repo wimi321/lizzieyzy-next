@@ -11,6 +11,8 @@ import java.awt.Desktop;
 import java.awt.Dimension;
 import java.awt.FlowLayout;
 import java.awt.Font;
+import java.awt.event.WindowAdapter;
+import java.awt.event.WindowEvent;
 import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Path;
@@ -26,14 +28,20 @@ import javax.swing.SwingUtilities;
 public final class WindowsUpdateDialog extends JDialog {
   private final WindowsUpdateService service;
   private final WindowsUpdatePlan plan;
+  private ResumableDownloader.Control downloadControl = new ResumableDownloader.Control();
   private final JProgressBar progressBar = new JProgressBar();
-  private final JLabel statusLabel = new JLabel(" ");
+  private final JTextArea statusLabel = UpdateText.createStatusArea();
   private final JFontButton updateButton =
       new JFontButton(tr("WindowsUpdate.btnUpdate", "立即更新", "Update now"));
   private final JFontButton laterButton =
       new JFontButton(tr("WindowsUpdate.btnLater", "关闭", "Close"));
   private final JFontButton releaseButton =
       new JFontButton(tr("WindowsUpdate.btnRelease", "查看 Release", "View release"));
+  private final JFontButton pauseButton =
+      new JFontButton(tr("WindowsUpdate.btnPause", "暂停", "Pause"));
+  private final JFontButton cancelButton =
+      new JFontButton(tr("WindowsUpdate.btnCancel", "取消", "Cancel"));
+  private volatile boolean downloading;
 
   /**
    * Resource lookup with a built-in bilingual fallback so a missing key can never throw on the
@@ -61,7 +69,14 @@ public final class WindowsUpdateDialog extends JDialog {
   }
 
   private void buildUi(Component parent) {
-    setDefaultCloseOperation(DISPOSE_ON_CLOSE);
+    setDefaultCloseOperation(DO_NOTHING_ON_CLOSE);
+    addWindowListener(
+        new WindowAdapter() {
+          @Override
+          public void windowClosing(WindowEvent event) {
+            closeRequested();
+          }
+        });
     setMinimumSize(new Dimension(560, 360));
     setLayout(new BorderLayout(12, 12));
     JPanel root = new JPanel(new BorderLayout(12, 12));
@@ -96,19 +111,26 @@ public final class WindowsUpdateDialog extends JDialog {
     progressBar.setMaximum(1000);
     progressBar.setValue(0);
     progressBar.setVisible(false);
+    UpdateText.configureProgressBar(progressBar);
     footer.add(progressBar, BorderLayout.NORTH);
     footer.add(statusLabel, BorderLayout.CENTER);
 
     JPanel buttons = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
     buttons.setOpaque(false);
+    pauseButton.setEnabled(false);
+    cancelButton.setEnabled(false);
     buttons.add(releaseButton);
     buttons.add(laterButton);
+    buttons.add(cancelButton);
+    buttons.add(pauseButton);
     buttons.add(updateButton);
     footer.add(buttons, BorderLayout.SOUTH);
     root.add(footer, BorderLayout.SOUTH);
 
     releaseButton.addActionListener(e -> openRelease());
-    laterButton.addActionListener(e -> dispose());
+    laterButton.addActionListener(e -> closeRequested());
+    pauseButton.addActionListener(e -> togglePause());
+    cancelButton.addActionListener(e -> downloadControl.cancel());
     updateButton.addActionListener(e -> startUpdate());
     pack();
     setLocationRelativeTo(parent == null ? Lizzie.frame : parent);
@@ -191,7 +213,16 @@ public final class WindowsUpdateDialog extends JDialog {
   }
 
   private void startUpdate() {
+    if (downloading) {
+      return;
+    }
+    if (downloadControl.isCancelled()) {
+      downloadControl = new ResumableDownloader.Control();
+    }
+    downloading = true;
     setButtonsEnabled(false);
+    pauseButton.setEnabled(true);
+    cancelButton.setEnabled(true);
     progressBar.setVisible(true);
     statusLabel.setText(tr("WindowsUpdate.status.preparing", "准备下载...", "Preparing download..."));
     Thread worker =
@@ -201,19 +232,24 @@ public final class WindowsUpdateDialog extends JDialog {
                 Path request =
                     service.downloadAndPrepare(
                         plan,
-                        (status, completed, total) ->
-                            SwingUtilities.invokeLater(
-                                () -> updateProgress(status, completed, total)));
+                        downloadControl,
+                        progress -> SwingUtilities.invokeLater(() -> updateProgress(progress)));
                 SwingUtilities.invokeLater(() -> applyUpdate(request));
+              } catch (ResumableDownloader.DownloadCancelledException e) {
+                SwingUtilities.invokeLater(this::downloadCancelled);
               } catch (Exception e) {
                 e.printStackTrace();
                 SwingUtilities.invokeLater(
                     () -> {
                       setButtonsEnabled(true);
+                      downloading = false;
+                      pauseButton.setEnabled(false);
+                      cancelButton.setEnabled(false);
                       String failed =
                           tr("WindowsUpdate.status.failed", "更新失败", "Update failed") + ": ";
-                      statusLabel.setText(failed + e.getLocalizedMessage());
-                      Utils.showMsg(failed + e.getLocalizedMessage());
+                      String detail = UpdateText.userFacingError(e);
+                      statusLabel.setText(failed + detail);
+                      Utils.showMsg(failed + detail);
                     });
               }
             },
@@ -222,8 +258,75 @@ public final class WindowsUpdateDialog extends JDialog {
     worker.start();
   }
 
-  private void updateProgress(String status, long completed, long total) {
-    statusLabel.setText(status + "  " + formatBytes(completed) + " / " + formatBytes(total));
+  private void togglePause() {
+    if (downloadControl.isPaused()) {
+      downloadControl.resume();
+      pauseButton.setText(tr("WindowsUpdate.btnPause", "暂停", "Pause"));
+    } else {
+      downloadControl.pause();
+      pauseButton.setText(tr("WindowsUpdate.btnResume", "继续", "Resume"));
+      statusLabel.setText(
+          tr(
+              "WindowsUpdate.status.paused",
+              "下载已暂停，进度已保留。",
+              "Download paused. Progress is preserved."));
+    }
+  }
+
+  private void downloadCancelled() {
+    downloading = false;
+    setButtonsEnabled(true);
+    pauseButton.setEnabled(false);
+    cancelButton.setEnabled(false);
+    updateButton.setText(tr("WindowsUpdate.btnResume", "继续", "Resume"));
+    statusLabel.setText(
+        tr(
+            "WindowsUpdate.status.cancelled",
+            "下载已停止，已保留进度，下次可继续。",
+            "Download stopped. Progress was kept so it can resume later."));
+  }
+
+  private void updateProgress(ResumableDownloader.Progress progress) {
+    long completed = progress.completedBytes;
+    long total = progress.totalBytes;
+    if (progress.state == ResumableDownloader.State.PAUSED) {
+      statusLabel.setText(
+          tr(
+              "WindowsUpdate.status.paused",
+              "下载已暂停，进度已保留。",
+              "Download paused. Progress is preserved."));
+      return;
+    }
+    if (progress.state == ResumableDownloader.State.VERIFYING) {
+      statusLabel.setText(
+          tr(
+              "WindowsUpdate.status.verifying",
+              "下载完成，正在校验文件...",
+              "Download complete. Verifying file..."));
+      return;
+    }
+    if (progress.state == ResumableDownloader.State.RETRYING) {
+      statusLabel.setText(
+          java.text.MessageFormat.format(
+              tr(
+                  "WindowsUpdate.status.fallback",
+                  "主下载源不可用，正在从 {0} 继续下载...",
+                  "The primary source is unavailable. Continuing from {0}..."),
+              progress.sourceName));
+      return;
+    }
+    String source = tr("WindowsUpdate.status.source", "来源", "Source") + ": " + progress.sourceName;
+    String speed =
+        progress.bytesPerSecond <= 0L
+            ? ""
+            : " · "
+                + formatBytes(progress.bytesPerSecond)
+                + "/s · "
+                + tr("WindowsUpdate.status.eta", "剩余", "Remaining")
+                + " "
+                + ResumableDownloader.formatDuration(progress.estimatedSeconds);
+    statusLabel.setText(
+        source + " · " + formatBytes(completed) + " / " + formatBytes(total) + speed);
     int value = total <= 0L ? 0 : (int) Math.max(0L, Math.min(1000L, completed * 1000L / total));
     progressBar.setValue(value);
     progressBar.setString(value / 10 + "%");
@@ -231,6 +334,9 @@ public final class WindowsUpdateDialog extends JDialog {
 
   private void applyUpdate(Path requestPath) {
     try {
+      downloading = false;
+      pauseButton.setEnabled(false);
+      cancelButton.setEnabled(false);
       statusLabel.setText(
           tr(
               "WindowsUpdate.status.launching",
@@ -267,6 +373,13 @@ public final class WindowsUpdateDialog extends JDialog {
     updateButton.setEnabled(enabled);
     laterButton.setEnabled(enabled);
     releaseButton.setEnabled(enabled);
+  }
+
+  private void closeRequested() {
+    if (downloading) {
+      downloadControl.cancel();
+    }
+    dispose();
   }
 
   static String formatBytes(long bytes) {

@@ -1,19 +1,11 @@
 package featurecat.lizzie.update;
 
 import featurecat.lizzie.Lizzie;
-import featurecat.lizzie.util.NetworkProxy;
 import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
-import java.net.HttpURLConnection;
-import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
-import java.util.HexFormat;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
@@ -21,13 +13,25 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 
 public final class WindowsUpdateService {
+  @Deprecated
   public static final String DEFAULT_MANIFEST_URL =
       "https://github.com/wimi321/lizzieyzy-next/releases/latest/download/"
           + "lizzieyzy-next-update-manifest.json";
-  public static final String MANIFEST_URL_PROPERTY = "lizzie.update.manifestUrl";
 
-  private static final int CONNECT_TIMEOUT_MS = 10000;
-  private static final int READ_TIMEOUT_MS = 30000;
+  public static final String MANIFEST_URL_PROPERTY =
+      UpdateManifestClient.LEGACY_MANIFEST_URL_PROPERTY;
+
+  private final UpdateManifestClient manifestClient;
+  private final ResumableDownloader downloader;
+
+  public WindowsUpdateService() {
+    this(new UpdateManifestClient(), new ResumableDownloader());
+  }
+
+  WindowsUpdateService(UpdateManifestClient manifestClient, ResumableDownloader downloader) {
+    this.manifestClient = manifestClient;
+    this.downloader = downloader;
+  }
 
   public interface ProgressListener {
     void onProgress(String status, long completedBytes, long totalBytes);
@@ -55,31 +59,26 @@ public final class WindowsUpdateService {
   }
 
   public UpdateManifest fetchLatestManifest() throws IOException {
-    String manifestUrl = System.getProperty(MANIFEST_URL_PROPERTY, DEFAULT_MANIFEST_URL);
-    HttpURLConnection conn = null;
-    try {
-      conn = (HttpURLConnection) NetworkProxy.openConnection(URI.create(manifestUrl).toURL());
-      conn.setConnectTimeout(CONNECT_TIMEOUT_MS);
-      conn.setReadTimeout(READ_TIMEOUT_MS);
-      conn.setRequestProperty("Accept", "application/json");
-      conn.setRequestProperty("User-Agent", "LizzieYzy-Next-Updater");
-      int code = conn.getResponseCode();
-      if (code < 200 || code >= 300) {
-        throw new IOException("HTTP " + code + " from update manifest.");
-      }
-      try (InputStream in = conn.getInputStream()) {
-        return UpdateManifest.parse(new String(in.readAllBytes(), StandardCharsets.UTF_8));
-      }
-    } catch (IllegalArgumentException e) {
-      throw new IOException("Invalid update manifest.", e);
-    } finally {
-      if (conn != null) {
-        conn.disconnect();
-      }
-    }
+    return manifestClient.fetchLatest().manifest;
   }
 
   public Path downloadAndPrepare(WindowsUpdatePlan plan, ProgressListener listener)
+      throws IOException {
+    return downloadAndPrepare(
+        plan,
+        new ResumableDownloader.Control(),
+        progress -> {
+          if (listener != null) {
+            listener.onProgress(
+                progress.state.name(), progress.completedBytes, progress.totalBytes);
+          }
+        });
+  }
+
+  public Path downloadAndPrepare(
+      WindowsUpdatePlan plan,
+      ResumableDownloader.Control control,
+      ResumableDownloader.ProgressListener listener)
       throws IOException {
     WindowsUpdatePaths paths = WindowsUpdatePaths.detect();
     List<WindowsUpdatePlan.Item> selected = plan.selectedItems();
@@ -99,7 +98,29 @@ public final class WindowsUpdateService {
     for (WindowsUpdatePlan.Item item : selected) {
       UpdateManifest.Component component = item.component;
       Path archive = stagingDir.resolve(component.assetName).normalize();
-      downloadComponent(component, archive, completedBefore, total, listener);
+      long offset = completedBefore;
+      downloader.download(
+          ResumableDownloader.DownloadSpec.from(component),
+          archive,
+          control,
+          progress -> {
+            if (listener != null) {
+              long aggregateCompleted = Math.min(total, offset + progress.completedBytes);
+              long aggregateEta =
+                  progress.bytesPerSecond <= 0L
+                      ? progress.estimatedSeconds
+                      : Math.max(0L, (total - aggregateCompleted) / progress.bytesPerSecond);
+              listener.onProgress(
+                  new ResumableDownloader.Progress(
+                      progress.state,
+                      progress.assetName,
+                      progress.sourceName,
+                      aggregateCompleted,
+                      total,
+                      progress.bytesPerSecond,
+                      aggregateEta));
+            }
+          });
       completedBefore += component.sizeBytes;
       requestComponents.put(requestComponent(component, archive, paths));
     }
@@ -124,7 +145,9 @@ public final class WindowsUpdateService {
     Files.writeString(
         requestPath, request.toString(2) + System.lineSeparator(), StandardCharsets.UTF_8);
     if (listener != null) {
-      listener.onProgress("Ready to install", total, total);
+      listener.onProgress(
+          new ResumableDownloader.Progress(
+              ResumableDownloader.State.COMPLETE, "core-update", "", total, total, 0L, 0L));
     }
     return requestPath;
   }
@@ -186,60 +209,6 @@ public final class WindowsUpdateService {
     }
   }
 
-  private void downloadComponent(
-      UpdateManifest.Component component,
-      Path output,
-      long completedBefore,
-      long totalBytes,
-      ProgressListener listener)
-      throws IOException {
-    Path part = output.resolveSibling(output.getFileName().toString() + ".part");
-    Files.deleteIfExists(part);
-    HttpURLConnection conn = null;
-    try {
-      conn =
-          (HttpURLConnection)
-              NetworkProxy.openConnection(URI.create(component.downloadUrl).toURL());
-      conn.setConnectTimeout(CONNECT_TIMEOUT_MS);
-      conn.setReadTimeout(READ_TIMEOUT_MS);
-      conn.setRequestProperty("User-Agent", "LizzieYzy-Next-Updater");
-      int code = conn.getResponseCode();
-      if (code < 200 || code >= 300) {
-        throw new IOException("HTTP " + code + " while downloading " + component.assetName);
-      }
-      long downloaded = 0L;
-      try (InputStream in = conn.getInputStream();
-          OutputStream out = Files.newOutputStream(part)) {
-        byte[] buffer = new byte[1024 * 1024];
-        int read;
-        while ((read = in.read(buffer)) >= 0) {
-          out.write(buffer, 0, read);
-          downloaded += read;
-          if (listener != null) {
-            listener.onProgress(
-                "Downloading " + component.assetName,
-                Math.min(totalBytes, completedBefore + downloaded),
-                totalBytes);
-          }
-        }
-      }
-      String digest = sha256(part);
-      if (!component.sha256.equalsIgnoreCase(digest)) {
-        Files.deleteIfExists(part);
-        throw new IOException("SHA-256 mismatch for " + component.assetName);
-      }
-      if (component.sizeBytes > 0L && Files.size(part) != component.sizeBytes) {
-        Files.deleteIfExists(part);
-        throw new IOException("Size mismatch for " + component.assetName);
-      }
-      Files.move(part, output, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
-    } finally {
-      if (conn != null) {
-        conn.disconnect();
-      }
-    }
-  }
-
   private JSONObject requestComponent(
       UpdateManifest.Component component, Path archive, WindowsUpdatePaths paths) {
     JSONObject json = new JSONObject();
@@ -293,22 +262,6 @@ public final class WindowsUpdateService {
       return component.installAction;
     }
     return "replace-app-path";
-  }
-
-  static String sha256(Path file) throws IOException {
-    try {
-      MessageDigest digest = MessageDigest.getInstance("SHA-256");
-      try (InputStream in = Files.newInputStream(file)) {
-        byte[] buffer = new byte[1024 * 1024];
-        int read;
-        while ((read = in.read(buffer)) >= 0) {
-          digest.update(buffer, 0, read);
-        }
-      }
-      return HexFormat.of().formatHex(digest.digest());
-    } catch (NoSuchAlgorithmException e) {
-      throw new IOException("SHA-256 is not available.", e);
-    }
   }
 
   private static final class PathMapping {

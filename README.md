@@ -23,7 +23,7 @@
 <p align="center">
   <a href="https://goagent.top/"><strong>官方网站</strong></a>
   ·
-  <a href="https://github.com/wimi321/lizzieyzy-next/releases"><strong>下载发布包</strong></a>
+  <a href="https://download.goagent.top/"><strong>正式版下载</strong></a>
   ·
   <a href="https://pan.baidu.com/s/1wthaL8YwGMxy_u0U7Mabpw?pwd=3i8w"><strong>百度网盘下载</strong></a>
   ·
@@ -33,7 +33,9 @@
 </p>
 
 > [!NOTE]
-> 国内用户可直接使用公开百度网盘下载：
+> 当前正式版优先从 [Cloudflare R2 下载页](https://download.goagent.top/) 下载，连接异常时可回到 [GitHub Releases](https://github.com/wimi321/lizzieyzy-next/releases) 使用完整备用资产、安装器、Linux 包和历史版本。GitHub 的 Downloads 徽章不包含 R2 下载量，不能作为项目总下载量。
+>
+> 国内用户也可使用公开百度网盘下载：
 > [https://pan.baidu.com/s/1wthaL8YwGMxy_u0U7Mabpw?pwd=3i8w](https://pan.baidu.com/s/1wthaL8YwGMxy_u0U7Mabpw?pwd=3i8w)
 > 提取码：`3i8w`
 
@@ -44,7 +46,7 @@
 
 > [!IMPORTANT]
 > 如果你只想先下对版本，先记住这几句：
-> - Windows 大多数用户：到 [Releases](https://github.com/wimi321/lizzieyzy-next/releases) 下载 `*windows64.opencl.portable.zip`
+> - Windows 大多数用户：到 [正式版下载页](https://download.goagent.top/) 下载 `*windows64.opencl.portable.zip`
 > - RTX 20/30/40 NVIDIA 显卡并且想更快：下载 `*windows64.nvidia.portable.zip`
 > - RTX 5070/5080/5090：优先下载 `*windows64.nvidia50.cuda.portable.zip`，需要 TensorRT 时再到软件内“一键设置”按需安装
 > - 已经有 Windows 免安装版：日常升级优先下载 `*windows64.core-update.zip`，关闭软件后解压到旧目录覆盖，只更新主程序和启动器配置
@@ -88,7 +90,7 @@
 
 ## 先下载哪个
 
-所有下载都在 [Releases](https://github.com/wimi321/lizzieyzy-next/releases)。下表里的文件名关键字，在最新 release 页面里都能找到。
+当前正式版常用资产在 [Cloudflare R2 下载页](https://download.goagent.top/)；安装器、Linux、历史版本和故障备用下载仍在 [GitHub Releases](https://github.com/wimi321/lizzieyzy-next/releases)。
 
 <p align="center">
   <img src="assets/package-guide-zh.svg" alt="LizzieYzy Next 下载选择图" width="100%" />
@@ -151,7 +153,7 @@ Windows `portable.zip` 是真正的免安装模式：配置、日志、保存棋
 
 ## 三步开始
 
-1. 去 [Releases](https://github.com/wimi321/lizzieyzy-next/releases) 下载适合自己系统的包。
+1. 去 [正式版下载页](https://download.goagent.top/) 下载适合自己系统的包；需要安装器、Linux 或历史版本时使用 GitHub Releases。
 2. 打开程序后，点击 `野狐棋谱`，输入野狐昵称。
 3. 抓到棋谱后继续做快速全盘分析，用主胜率图和底部快速概览直接定位关键手。
 

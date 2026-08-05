@@ -23,7 +23,7 @@
 <p align="center">
   <a href="https://goagent.top/"><strong>Official Website</strong></a>
   ·
-  <a href="https://github.com/wimi321/lizzieyzy-next/releases"><strong>Download Releases</strong></a>
+  <a href="https://download.goagent.top/"><strong>Stable Downloads</strong></a>
   ·
   <a href="https://pan.baidu.com/s/1wthaL8YwGMxy_u0U7Mabpw?pwd=3i8w"><strong>Baidu Download</strong></a>
   ·
@@ -33,6 +33,8 @@
 </p>
 
 > [!NOTE]
+> Current stable packages use the [Cloudflare R2 download page](https://download.goagent.top/) as the primary source. Use [GitHub Releases](https://github.com/wimi321/lizzieyzy-next/releases) for automatic fallback, installers, Linux packages, and version history. The GitHub Downloads badge does not include R2 traffic.
+>
 > For users in mainland China, a public Baidu Netdisk download is available:
 > [https://pan.baidu.com/s/1wthaL8YwGMxy_u0U7Mabpw?pwd=3i8w](https://pan.baidu.com/s/1wthaL8YwGMxy_u0U7Mabpw?pwd=3i8w)
 > Extraction code: `3i8w`
@@ -44,7 +46,7 @@
 
 > [!IMPORTANT]
 > If you only want the shortest possible answer, remember these 9 points:
-> - Most Windows users should go to [Releases](https://github.com/wimi321/lizzieyzy-next/releases) and download `*windows64.opencl.portable.zip`
+> - Most Windows users should open [Stable Downloads](https://download.goagent.top/) and download `*windows64.opencl.portable.zip`
 > - If your PC has an RTX 20/30/40 NVIDIA GPU and you want more speed, download `*windows64.nvidia.portable.zip`
 > - RTX 5070/5080/5090 users should try `*windows64.nvidia50.cuda.portable.zip` first; install TensorRT from the in-app KataGo Auto Setup only if needed
 > - TensorRT is not RTX 50-only: RTX 20/30/40/50 NVIDIA users can install it on demand; GTX 10 series and older cards should prefer CUDA/OpenCL
@@ -83,7 +85,7 @@ If you are searching for these things, this is the project to check first:
 
 ## What To Download First
 
-All downloads are on [Releases](https://github.com/wimi321/lizzieyzy-next/releases). The table below uses filename keywords you can match on the latest release page.
+Common stable packages are on the [Cloudflare R2 download page](https://download.goagent.top/). Installers, Linux packages, historical releases, and fallback downloads remain on [GitHub Releases](https://github.com/wimi321/lizzieyzy-next/releases).
 
 <p align="center">
   <img src="assets/package-guide.svg" alt="LizzieYzy Next package guide" width="100%" />
@@ -134,7 +136,7 @@ Quick rule:
 
 ## Start In 3 Steps
 
-1. Download the right package from [Releases](https://github.com/wimi321/lizzieyzy-next/releases).
+1. Download the right stable package from [Stable Downloads](https://download.goagent.top/); use GitHub Releases for installers, Linux, or older versions.
 2. Open `Fox Kifu` and enter a Fox nickname.
 3. Fetch the games, run fast full-game analysis, and use the graph plus overview to jump to important moves.
 

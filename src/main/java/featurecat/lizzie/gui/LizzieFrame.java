@@ -136,7 +136,8 @@ public class LizzieFrame extends JFrame {
           }
           Component focusOwner =
               KeyboardFocusManager.getCurrentKeyboardFocusManager().getFocusOwner();
-          KeyboardFocusManager focusManager = KeyboardFocusManager.getCurrentKeyboardFocusManager();
+          KeyboardFocusManager focusManager =
+              KeyboardFocusManager.getCurrentKeyboardFocusManager();
           KeyEventDispatcher keyboardGate =
               event -> {
                 Component source = event.getComponent();
@@ -14372,7 +14373,8 @@ public class LizzieFrame extends JFrame {
             secondary != null && secondary.isAnalysisInProgress(),
             secondary != null && secondary.isAutomaticBackgroundTask());
     if (decision == AnalysisResourceCoordinator.ForegroundDecision.RELEASE_IDLE_SECONDARY
-        || decision == AnalysisResourceCoordinator.ForegroundDecision.PREEMPT_AUTOMATIC_SECONDARY) {
+        || decision
+            == AnalysisResourceCoordinator.ForegroundDecision.PREEMPT_AUTOMATIC_SECONDARY) {
       analysisEngine = null;
       secondary.clearRequestCallbacks();
       secondary.normalQuit();
@@ -14742,6 +14744,7 @@ public class LizzieFrame extends JFrame {
           if (snapshot.state == EngineStartupStatus.State.READY) {
             engineStartupStatusButton.setVisible(false);
             engineStartupStatusButton.setEnabled(false);
+            basePanel.repaint();
             return;
           }
           String message = text(snapshot.messageKey, snapshot.fallback);
@@ -19360,6 +19363,9 @@ public class LizzieFrame extends JFrame {
   private boolean savedShowKataGoEstimateOnSubbord;
 
   public void startContributeEngine() {
+    if (rejectContributeDuringBenchmark()) {
+      return;
+    }
     Leelaz currentForegroundEngine = Lizzie.leelaz;
     Leelaz.ExclusiveGtpLifecycleReservation reservation =
         currentForegroundEngine == null
@@ -19379,6 +19385,9 @@ public class LizzieFrame extends JFrame {
   }
 
   protected void startContributeEngineReserved() {
+    if (rejectContributeDuringBenchmark()) {
+      return;
+    }
     if (Lizzie.frame.isContributing) {
       Utils.showMsg(Lizzie.resourceBundle.getString("Contribute.tips.alreadyTraining"));
       return;
@@ -19416,6 +19425,18 @@ public class LizzieFrame extends JFrame {
         Lizzie.config.showKataGoEstimateOnMainbord = true;
       }
     }
+  }
+
+  private boolean rejectContributeDuringBenchmark() {
+    if (!KataGoRuntimeHelper.isBenchmarkEngineSyncSuppressed()) {
+      return false;
+    }
+    showContributeBenchmarkConflict();
+    return true;
+  }
+
+  protected void showContributeBenchmarkConflict() {
+    Utils.showMsg(Lizzie.resourceBundle.getString("Contribute.tips.blockedByKataGoTuning"));
   }
 
   public void closeContributeEngine() {

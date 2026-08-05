@@ -1565,6 +1565,18 @@ public class KataGoRuntimeHelperTest {
   }
 
   @Test
+  void fixedThreadBenchmarkProgressUsesItsSingleExpectedThreadTest() {
+    KataGoRuntimeHelper.BenchmarkProgressTracker tracker =
+        new KataGoRuntimeHelper.BenchmarkProgressTracker(1);
+
+    int completed = tracker.update("numSearchThreads = 6: 1/1 positions");
+
+    assertTrue(
+        completed >= 950,
+        "A completed fixed-thread cell should nearly complete its segment instead of assuming 12 tests.");
+  }
+
+  @Test
   void appleSiliconStartupBenchmarkRespectsUserSwitch() throws Exception {
     withOsNameAndArch(
         "Mac OS X",

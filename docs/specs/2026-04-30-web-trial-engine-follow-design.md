@@ -244,7 +244,7 @@ kata-analyze 跟 displayNode 轮次对齐。非 trial 路径（含让子棋等�
 
 ## 实现注记：snapshot SGF 的 KM 字段
 
-`SnapshotEngineRestore.buildSnapshotSgf` 之前不写 `KM[]`。KataGo `loadsgf` 加载没有 KM 字段的
+`ExactSnapshotEngineRestore.buildSnapshotSgf` 之前不写 `KM[]`。KataGo `loadsgf` 加载没有 KM 字段的
 SGF 后，会按 SGF 默认值重置进程内 komi（与 lizzie 启动后 GTP `komi X` 设置过的进程内 komi
 脱钩）。修复：写入 `KM[komi]`，值取自 `Lizzie.board.getHistory().getGameInfo().getKomi()`。
 
@@ -253,7 +253,7 @@ SGF 后，会按 SGF 默认值重置进程内 komi（与 lizzie 启动后 GTP `k
 代码里保留一组诊断日志，默认关闭。启动加 `-Dlizzie.trial.diag=true` 打开：
 - `[trial-apply]`：用户落子坐标 + 落子前 displayNode 的引擎首选（`WebBoardManager.doApplyMove`）
 - `[trial-resync]` / `[trial-replay]`：sync 重 play 序列（`LeelazEngineCommandSink`）
-- `[trial-sgf]`：snapshot 路径生成的 SGF 内容（`SnapshotEngineRestore.writeSnapshotSgf`）
+- `[trial-sgf]`：snapshot 路径生成的 SGF 内容（`ExactSnapshotEngineRestore.writeSnapshotSgf`）
 - `[trial-kata-info]` / `[mainline-kata-info]`：KataGo info 写入哪个 displayNode（`Leelaz.parseInfoKatago`）
 - `[trial-raw-info]`：KataGo 原始 info 行前缀（`Leelaz.parseLine`）
 - `[katago-cmd]` / `[katago-stderr]`：发给/来自 KataGo 的所有命令与 stderr（`Leelaz.sendCommand` / `Leelaz.readError`）

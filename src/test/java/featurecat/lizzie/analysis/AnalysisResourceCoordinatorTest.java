@@ -4,11 +4,14 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -83,6 +86,28 @@ class AnalysisResourceCoordinatorTest {
   }
 
   @Test
+  void localComputeRegistryTracksAliveProcessesWithoutDiagnostics() {
+    Object owner = new Object();
+    ControllableProcess process = new ControllableProcess();
+    int baseline = AnalysisResourceCoordinator.activeLocalComputeProcessCount();
+
+    AnalysisResourceCoordinator.processStarted(
+        owner, AnalysisResourceCoordinator.Purpose.OTHER, "katago analysis", process);
+    assertEquals(baseline + 1, AnalysisResourceCoordinator.activeLocalComputeProcessCount());
+    assertTrue(AnalysisResourceCoordinator.hasActiveLocalComputeProcess());
+
+    AnalysisResourceCoordinator.processStopped(
+        owner, AnalysisResourceCoordinator.Purpose.OTHER, process);
+    assertEquals(
+        baseline + 1,
+        AnalysisResourceCoordinator.activeLocalComputeProcessCount(),
+        "a shutdown request must not hide a child that is still alive");
+
+    process.destroy();
+    assertEquals(baseline, AnalysisResourceCoordinator.activeLocalComputeProcessCount());
+  }
+
+  @Test
   void optInDiagnosticsAreStructuredAndNeverPersistSecrets() throws Exception {
     Path output = tempDir.resolve("analysis-resource-diagnostics.jsonl");
     System.setProperty("lizzie.analysis.diagnostics", "true");
@@ -116,6 +141,57 @@ class AnalysisResourceCoordinatorTest {
     } finally {
       System.clearProperty("lizzie.analysis.diagnostics");
       System.clearProperty("lizzie.analysis.diagnostics.path");
+    }
+  }
+
+  private static final class ControllableProcess extends Process {
+    private volatile boolean alive = true;
+    private final CompletableFuture<Process> exit = new CompletableFuture<>();
+
+    @Override
+    public OutputStream getOutputStream() {
+      return OutputStream.nullOutputStream();
+    }
+
+    @Override
+    public InputStream getInputStream() {
+      return InputStream.nullInputStream();
+    }
+
+    @Override
+    public InputStream getErrorStream() {
+      return InputStream.nullInputStream();
+    }
+
+    @Override
+    public int waitFor() {
+      alive = false;
+      exit.complete(this);
+      return 0;
+    }
+
+    @Override
+    public int exitValue() {
+      if (alive) {
+        throw new IllegalThreadStateException("process is still alive");
+      }
+      return 0;
+    }
+
+    @Override
+    public void destroy() {
+      alive = false;
+      exit.complete(this);
+    }
+
+    @Override
+    public boolean isAlive() {
+      return alive;
+    }
+
+    @Override
+    public CompletableFuture<Process> onExit() {
+      return exit;
     }
   }
 }

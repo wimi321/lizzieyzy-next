@@ -2,11 +2,18 @@ package featurecat.lizzie.analysis;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import featurecat.lizzie.Config;
 import featurecat.lizzie.ConfigTestHelper;
 import featurecat.lizzie.Lizzie;
+import featurecat.lizzie.gui.LizzieFrame;
+import featurecat.lizzie.rules.Board;
+import featurecat.lizzie.rules.BoardData;
+import featurecat.lizzie.rules.BoardHistoryList;
+import featurecat.lizzie.rules.Stone;
+import java.util.ArrayList;
 import java.io.BufferedReader;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -26,6 +33,63 @@ import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 
 class LeelazOpenClRecoveryTest {
+  @Test
+  void openClRecoveryCapturesRestoreBeforeLifecycleReservationAndStart() throws Exception {
+    Config previousConfig = Lizzie.config;
+    Board previousBoard = Lizzie.board;
+    Leelaz previousEngine = Lizzie.leelaz;
+    LizzieFrame previousFrame = Lizzie.frame;
+    String previousOsName = System.getProperty("os.name");
+    String previousDriver = System.getProperty("lizzie.opencl.nvidiaDriverVersion");
+    Path tempRoot = Files.createTempDirectory("leelaz-opencl-prepared-restore");
+    PreparedRecoveryLeelaz engine = new PreparedRecoveryLeelaz();
+    PreparedRestoreBoard board = preparedRestoreBoard();
+    try {
+      System.setProperty("os.name", "Windows 11");
+      System.setProperty("lizzie.opencl.nvidiaDriverVersion", "566.36");
+      Lizzie.config = ConfigTestHelper.createForTests(tempRoot.resolve("runtime-root"));
+      Lizzie.board = board;
+      Lizzie.leelaz = engine;
+      Lizzie.frame = allocate(SilentRecoveryFrame.class);
+      engine.mutateOnReservation = () -> mutateHistory(board.getHistory());
+      engine.mutateOnStart = () -> mutateHistory(board.getHistory());
+      Path enginePath = createOpenClEngine(tempRoot);
+      Path modelPath = touch(tempRoot.resolve("weights/current.bin.gz"));
+      ExitedProcess process = new ExitedProcess((int) 0xC0000409L);
+      setField(engine, "process", process);
+      setField(
+          engine,
+          "inputStream",
+          new BufferedReader(
+              new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8)));
+      setField(
+          engine,
+          "commands",
+          List.of(enginePath.toString(), "gtp", "-model", modelPath.toString()));
+      engine.started = true;
+      engine.isLoaded = true;
+
+      assertTrue(invokeOpenClRecovery(engine));
+      assertTrue(board.restoreCompleted.await(2, TimeUnit.SECONDS));
+      assertTrue(board.preparedRestoreReceived);
+      assertFalse(board.genericRestoreReceived);
+      assertTrue(engine.loadedSgf.contains("AB[dd]"));
+      assertTrue(engine.loadedSgf.contains("KM[6.5]"));
+      assertNotNull(engine.reservation);
+      engine.reservation.close();
+    } finally {
+      if (engine.reservation != null) {
+        engine.reservation.close();
+      }
+      restoreProperty("os.name", previousOsName);
+      restoreProperty("lizzie.opencl.nvidiaDriverVersion", previousDriver);
+      Lizzie.config = previousConfig;
+      Lizzie.board = previousBoard;
+      Lizzie.leelaz = previousEngine;
+      Lizzie.frame = previousFrame;
+    }
+  }
+
   @Test
   void automaticRestartWaitsForTheFullStartupCommandSequence() {
     assertFalse(Leelaz.automaticRestartReady(false, false, true));
@@ -179,6 +243,108 @@ class LeelazOpenClRecoveryTest {
     }
   }
 
+  private static PreparedRestoreBoard preparedRestoreBoard() throws Exception {
+    BoardData snapshot = BoardData.empty(19, 19);
+    snapshot.stones[Board.getIndex(3, 3)] = Stone.BLACK;
+    BoardHistoryList history = new BoardHistoryList(snapshot);
+    history.getGameInfo().setKomiNoMenu(6.5);
+    PreparedRestoreBoard board = allocate(PreparedRestoreBoard.class);
+    board.restoreCompleted = new CountDownLatch(1);
+    board.startStonelist = new ArrayList<>();
+    board.hasStartStone = false;
+    board.setHistory(history);
+    return board;
+  }
+
+  private static void mutateHistory(BoardHistoryList history) {
+    history.getStart().getData().stones[Board.getIndex(3, 3)] = Stone.EMPTY;
+    history.getGameInfo().setKomiNoMenu(7.5);
+  }
+
+  @SuppressWarnings("unchecked")
+  private static <T> T allocate(Class<T> type) throws Exception {
+    return (T) UnsafeHolder.UNSAFE.allocateInstance(type);
+  }
+
+  private static final class PreparedRecoveryLeelaz extends Leelaz {
+    private Runnable mutateOnReservation;
+    private Runnable mutateOnStart;
+    private Leelaz.ExclusiveGtpLifecycleReservation reservation;
+    private String loadedSgf = "";
+
+    private PreparedRecoveryLeelaz() throws Exception {
+      super("controlled-engine");
+      installProtocol();
+    }
+
+    private void installProtocol() {
+      ExactSnapshotRestoreProtocolFixture.install(
+          this,
+          command -> {
+            if (command.startsWith("loadsgf ")) {
+              loadedSgf = Files.readString(Path.of(command.substring("loadsgf ".length())));
+            }
+            return ExactSnapshotRestoreProtocolFixture.Response.success();
+          });
+    }
+
+    @Override
+    public ExclusiveGtpLifecycleReservation beginAutomaticEngineRestartReservation() {
+      reservation = super.beginAutomaticEngineRestartReservation();
+      if (reservation != null && mutateOnReservation != null) {
+        mutateOnReservation.run();
+      }
+      return reservation;
+    }
+
+    @Override
+    public void startEngine(int index) {
+      if (mutateOnStart != null) {
+        mutateOnStart.run();
+      }
+      started = true;
+      isLoaded = true;
+      isCheckingName = false;
+      installProtocol();
+      try {
+        setField(this, "endGetCommandList", true);
+      } catch (Exception failure) {
+        throw new IllegalStateException(failure);
+      }
+    }
+  }
+
+  private static final class SilentRecoveryFrame extends LizzieFrame {
+    @Override
+    public void prepareQuickAnalysisForPrimaryOpenClRecovery() {}
+  }
+
+  private static final class PreparedRestoreBoard extends Board {
+    private CountDownLatch restoreCompleted;
+    private boolean preparedRestoreReceived;
+    private boolean genericRestoreReceived;
+
+    @Override
+    public void resendMoveToEngine(
+        Leelaz engine,
+        boolean loadEngine,
+        ExactSnapshotEngineRestore.PreparedRestore preparedRestore) {
+      if (preparedRestore == null) {
+        genericRestoreReceived = true;
+      } else {
+        preparedRestoreReceived = true;
+        preparedRestore.execute();
+      }
+      restoreCompleted.countDown();
+    }
+
+    @Override
+    public void resendMoveToEngine(Leelaz engine, boolean loadEngine) {
+      genericRestoreReceived = true;
+      restoreCompleted.countDown();
+    }
+  }
+
   private static final class RecordingRecoveryLeelaz extends Leelaz {
     private final CountDownLatch recoveryStarted = new CountDownLatch(1);
     private int restartCount;
@@ -264,6 +430,20 @@ class LeelazOpenClRecoveryTest {
 
     private void release() {
       released.countDown();
+    }
+  }
+
+  private static final class UnsafeHolder {
+    private static final sun.misc.Unsafe UNSAFE = load();
+
+    private static sun.misc.Unsafe load() {
+      try {
+        Field field = sun.misc.Unsafe.class.getDeclaredField("theUnsafe");
+        field.setAccessible(true);
+        return (sun.misc.Unsafe) field.get(null);
+      } catch (ReflectiveOperationException failure) {
+        throw new ExceptionInInitializerError(failure);
+      }
     }
   }
 }

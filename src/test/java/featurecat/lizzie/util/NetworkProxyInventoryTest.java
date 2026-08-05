@@ -13,6 +13,10 @@ class NetworkProxyInventoryTest {
   private static final Path MAIN_SOURCES = Path.of("src/main/java");
   private static final String HELPER = "featurecat/lizzie/util/NetworkProxy.java";
   private static final String UPDATER = "featurecat/lizzie/update/WindowsUpdateService.java";
+  private static final String UPDATE_DOWNLOADER =
+      "featurecat/lizzie/update/ResumableDownloader.java";
+  private static final String UPDATE_MANIFEST_CLIENT =
+      "featurecat/lizzie/update/UpdateManifestClient.java";
   private static final String ONLINE_DIALOG = "featurecat/lizzie/gui/OnlineDialog.java";
 
   @Test
@@ -31,11 +35,16 @@ class NetworkProxyInventoryTest {
   }
 
   @Test
-  void windowsUpdaterUsesSharedProxyOpener() throws IOException {
-    String source = Files.readString(MAIN_SOURCES.resolve(UPDATER));
+  void updaterNetworkLayersUseSharedProxyOpener() throws IOException {
+    String updater = Files.readString(MAIN_SOURCES.resolve(UPDATER));
+    String downloader = Files.readString(MAIN_SOURCES.resolve(UPDATE_DOWNLOADER));
+    String manifestClient = Files.readString(MAIN_SOURCES.resolve(UPDATE_MANIFEST_CLIENT));
 
-    assertTrue(source.contains("NetworkProxy.openConnection("));
-    assertTrue(!source.contains(".toURL().openConnection("));
+    assertTrue(updater.contains("ResumableDownloader"));
+    assertTrue(downloader.contains("NetworkProxy.openConnection("));
+    assertTrue(manifestClient.contains("NetworkProxy.openConnection("));
+    assertTrue(!downloader.contains(".toURL().openConnection("));
+    assertTrue(!manifestClient.contains(".toURL().openConnection("));
   }
 
   private static void collectNetworkViolations(Path path, List<String> violations) {

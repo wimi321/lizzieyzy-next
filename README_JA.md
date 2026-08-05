@@ -23,7 +23,7 @@
 <p align="center">
   <a href="https://goagent.top/"><strong>公式サイト</strong></a>
   ·
-  <a href="https://github.com/wimi321/lizzieyzy-next/releases"><strong>Releases</strong></a>
+  <a href="https://download.goagent.top/"><strong>安定版ダウンロード</strong></a>
   ·
   <a href="https://pan.baidu.com/s/1wthaL8YwGMxy_u0U7Mabpw?pwd=3i8w"><strong>Baidu ダウンロード</strong></a>
   ·
@@ -33,6 +33,8 @@
 </p>
 
 > [!NOTE]
+> 現在の安定版は [Cloudflare R2 ダウンロードページ](https://download.goagent.top/) を優先します。接続できない場合、インストーラ、Linux、過去版は [GitHub Releases](https://github.com/wimi321/lizzieyzy-next/releases) を利用できます。GitHub の Downloads バッジには R2 のダウンロード数は含まれません。
+>
 > 中国本土から利用する場合は、公開されている Baidu Netdisk ダウンロードも使えます:
 > [https://pan.baidu.com/s/1wthaL8YwGMxy_u0U7Mabpw?pwd=3i8w](https://pan.baidu.com/s/1wthaL8YwGMxy_u0U7Mabpw?pwd=3i8w)
 > 取り出しコード: `3i8w`
@@ -44,7 +46,7 @@
 
 > [!IMPORTANT]
 > まずはこの 6 点だけ押さえれば大丈夫です:
-> - Windows 利用者の多くは [Releases](https://github.com/wimi321/lizzieyzy-next/releases) で `*windows64.opencl.portable.zip` を選べば始めやすいです
+> - Windows 利用者の多くは [安定版ダウンロード](https://download.goagent.top/) で `*windows64.opencl.portable.zip` を選べば始めやすいです
 > - NVIDIA GPU があり、より速く解析したい場合は `*windows64.nvidia.portable.zip` を選べます
 > - OpenCL の相性が悪い場合は `*windows64.with-katago.portable.zip` に切り替えられます
 > - 野狐棋譜取得はニックネーム入力に対応しており、多くの利用者はアカウント番号を先に知らなくても大丈夫です
@@ -80,7 +82,7 @@
 
 ## まずどれをダウンロードするか
 
-すべての配布物は [Releases](https://github.com/wimi321/lizzieyzy-next/releases) にあります。下の表は、最新 release ページで探すときのキーワードです。
+現在の安定版でよく使うパッケージは [Cloudflare R2 ダウンロードページ](https://download.goagent.top/) にあります。インストーラ、Linux、過去版、予備ダウンロードは [GitHub Releases](https://github.com/wimi321/lizzieyzy-next/releases) に残ります。
 
 <p align="center">
   <img src="assets/package-guide.svg" alt="LizzieYzy Next package guide" width="100%" />
@@ -125,7 +127,7 @@
 
 ## 3 ステップで開始
 
-1. [Releases](https://github.com/wimi321/lizzieyzy-next/releases) から自分の環境に合うものをダウンロードします。
+1. [安定版ダウンロード](https://download.goagent.top/) から環境に合うものを選び、インストーラ、Linux、過去版が必要な場合は GitHub Releases を使います。
 2. `野狐棋譜` を開いて野狐のニックネームを入力します。
 3. 棋譜を取得し、全局を素早く解析して、グラフと概要から重要な手へ移動します。
 

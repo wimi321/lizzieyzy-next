@@ -21,6 +21,7 @@ import featurecat.lizzie.rules.Movelist;
 import featurecat.lizzie.rules.SGFParser;
 import featurecat.lizzie.rules.Stone;
 import featurecat.lizzie.rules.Zobrist;
+import featurecat.lizzie.util.KataGoRuntimeHelper;
 import java.io.BufferedOutputStream;
 import java.io.BufferedReader;
 import java.io.ByteArrayInputStream;
@@ -921,6 +922,33 @@ class AnalysisEngineRequestTest {
       assertNull(frame.contributeEngine);
       assertTrue(foreground.hasExclusiveGtpLease());
       foreground.endExclusiveGtpSession();
+    }
+  }
+
+  @Test
+  void benchmarkSuppressionRejectsLocalContributionBeforeReservedLifecycle() throws Exception {
+    try (TestEnvironment env = TestEnvironment.open()) {
+      TrackingLizzieFrame frame = (TrackingLizzieFrame) Lizzie.frame;
+      Lizzie.config.contributeUseCommand = false;
+      Lizzie.leelaz = null;
+      boolean pauseAccepted = false;
+      try {
+        KataGoRuntimeHelper.BenchmarkPauseResult pause =
+            KataGoRuntimeHelper.pauseCurrentAnalysisForBenchmark();
+        pauseAccepted = pause.accepted();
+
+        frame.startContributeEngine();
+
+        assertTrue(pause.accepted());
+        assertEquals(1, frame.contributeBenchmarkConflictCount);
+        assertEquals(0, frame.contributionStarts);
+        assertFalse(frame.isContributing);
+        assertNull(frame.contributeEngine);
+      } finally {
+        if (pauseAccepted) {
+          KataGoRuntimeHelper.restoreAnalysisAfterBenchmark(false);
+        }
+      }
     }
   }
 
@@ -3434,9 +3462,27 @@ class AnalysisEngineRequestTest {
     Field sessionField = Leelaz.class.getDeclaredField("foregroundRestoreSession");
     sessionField.setAccessible(true);
     Object session = sessionField.get(engine);
-    Method method = Leelaz.class.getDeclaredMethod("completeForegroundRestore", session.getClass());
-    method.setAccessible(true);
-    method.invoke(engine, session);
+    assertTrue(session != null, "foreground restore session should be active");
+    Class<?> sessionType = session.getClass();
+    Field restoreThreadField = sessionType.getDeclaredField("restoreThread");
+    restoreThreadField.setAccessible(true);
+    Field restoreCompletedField = sessionType.getDeclaredField("restoreCompleted");
+    restoreCompletedField.setAccessible(true);
+    Method completeMethod =
+        Leelaz.class.getDeclaredMethod("completeForegroundRestore", sessionType);
+    completeMethod.setAccessible(true);
+    for (int attempt = 0; attempt < 5; attempt++) {
+      Thread restoreThread = (Thread) restoreThreadField.get(session);
+      if (restoreThread != null && restoreThread != Thread.currentThread()) {
+        restoreThread.join(2000);
+        assertFalse(restoreThread.isAlive(), "foreground restore attempt did not finish");
+      }
+      completeMethod.invoke(engine, session);
+      if ((boolean) restoreCompletedField.get(session)) {
+        return;
+      }
+    }
+    assertTrue(false, "foreground restore retries did not converge");
   }
 
   private static final class TestEnvironment implements AutoCloseable {
@@ -3527,6 +3573,7 @@ class AnalysisEngineRequestTest {
     private int flashAutoAnaSaveAndLoadCalls;
     private int foregroundReservationConflictCount;
     private int contributionStarts;
+    private int contributeBenchmarkConflictCount;
     private int retainedModeConflictCount;
 
     private TrackingLizzieFrame() {}
@@ -3555,6 +3602,11 @@ class AnalysisEngineRequestTest {
     @Override
     protected void startContributeEngineReserved() {
       contributionStarts++;
+    }
+
+    @Override
+    protected void showContributeBenchmarkConflict() {
+      contributeBenchmarkConflictCount++;
     }
   }
 

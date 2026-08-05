@@ -10,7 +10,6 @@ import featurecat.lizzie.rules.BoardHistoryList;
 import featurecat.lizzie.rules.BoardHistoryNode;
 import featurecat.lizzie.rules.ExtraStones;
 import featurecat.lizzie.rules.Movelist;
-import featurecat.lizzie.rules.SnapshotEngineRestore;
 import featurecat.lizzie.rules.Stone;
 import featurecat.lizzie.rules.Zobrist;
 import featurecat.lizzie.util.Utils;
@@ -2681,10 +2680,11 @@ public class ReadBoard implements ReadBoardTrackingEligibilityAdapter.Eligibilit
     if (deferReadBoardGmaEngineRestoreIfPending("syncEngineToRebuiltSnapshot", rebuiltNode)) {
       return;
     }
-    syncEngineToRebuiltSnapshotNow(rebuiltNode);
+    syncEngineToRebuiltSnapshotNow(rebuiltNode, false);
   }
 
-  private void syncEngineToRebuiltSnapshotNow(BoardHistoryNode rebuiltNode) {
+  private void syncEngineToRebuiltSnapshotNow(
+      BoardHistoryNode rebuiltNode, boolean readBoardGmaRecovery) {
     if (!isReadBoardAnalysisEngineAvailable()) {
       localMoveSyncDebug(
           "syncEngineToRebuiltSnapshot skip engine unavailable node="
@@ -2692,9 +2692,8 @@ public class ReadBoard implements ReadBoardTrackingEligibilityAdapter.Eligibilit
       return;
     }
     BoardData data = rebuiltNode.getData();
-    BoardData restoreData =
-        data.isSnapshotNode() ? data : SnapshotEngineRestore.snapshotFromCurrentBoard(data);
-    boolean wasPondering = Lizzie.leelaz.isPondering();
+    Leelaz engine = Lizzie.leelaz;
+    boolean wasPondering = engine.isPondering();
     localMoveSyncDebug(
         "syncEngineToRebuiltSnapshot begin node="
             + historyNodeSummary(rebuiltNode)
@@ -2702,11 +2701,21 @@ public class ReadBoard implements ReadBoardTrackingEligibilityAdapter.Eligibilit
             + (data.isSnapshotNode() ? "snapshot" : "move")
             + " enginePondering="
             + wasPondering);
-    Lizzie.leelaz.clearWithoutPonder();
-    localMoveSyncDebug("syncEngineToRebuiltSnapshot clearWithoutPonder sent");
-    if (!ExactSnapshotEngineRestore.restoreIfNeeded(Lizzie.leelaz, restoreData)) {
-      throw new IllegalStateException("Engine restore must sync through snapshot data.");
+    ExactSnapshotEngineRestore.PreparedRestore preparedRestore;
+    Leelaz.ExactSnapshotRestoreOwner restoreOwner =
+        readBoardGmaRecovery
+            ? Leelaz.ExactSnapshotRestoreOwner.READ_BOARD_GMA
+            : Leelaz.ExactSnapshotRestoreOwner.BOARD_SYNC;
+    Leelaz.ExactSnapshotRestoreAdmission admission =
+        engine.captureExactSnapshotRestoreAdmission(
+            restoreOwner, null, engine.resolveLoadSgfMirrorEngine());
+    preparedRestore = ExactSnapshotEngineRestore.prepareCurrentPosition(admission, data);
+    engine.notPondering();
+    engine.nameCmdfornoponder();
+    if (readBoardGmaRecovery) {
+      localMoveSyncDebug("syncEngineToRebuiltSnapshot clear_board preclear sent");
     }
+    preparedRestore.execute();
     localMoveSyncDebug(
         "syncEngineToRebuiltSnapshot loadsgf completed node=" + historyNodeSummary(rebuiltNode));
   }
@@ -3893,7 +3902,7 @@ public class ReadBoard implements ReadBoardTrackingEligibilityAdapter.Eligibilit
               + " node="
               + historyNodeSummary(restoreNode));
       try {
-        syncEngineToRebuiltSnapshotNow(restoreNode);
+        syncEngineToRebuiltSnapshotNow(restoreNode, true);
       } catch (RuntimeException ex) {
         restoreFailure = ex;
       }

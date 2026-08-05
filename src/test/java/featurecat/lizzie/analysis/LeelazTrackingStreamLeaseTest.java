@@ -634,7 +634,7 @@ class LeelazTrackingStreamLeaseTest {
       assertEquals(1, pendingResponseHandlerCount(state.engine));
       Leelaz.TrackingStreamLeaseAcquisition acquisition =
           state.engine.acquireTrackingStreamLease(line -> {}, lease -> {}, lease -> {});
-      phase.startTimeout(state.engine, acquisition.lease());
+      phase.startTimeoutAfterPendingLoadSgf(state.engine, acquisition.lease());
       assertTrue(engine.timeoutStarted.await(1, TimeUnit.SECONDS));
 
       engine.continueTimeout.countDown();
@@ -3194,6 +3194,11 @@ class LeelazTrackingStreamLeaseTest {
     abstract void useShortTimeout(TimeoutLeelaz engine);
 
     abstract void startTimeout(Leelaz engine, Leelaz.TrackingStreamLease lease) throws Exception;
+
+    void startTimeoutAfterPendingLoadSgf(Leelaz engine, Leelaz.TrackingStreamLease lease)
+        throws Exception {
+      startTimeout(engine, lease);
+    }
 
     abstract Leelaz.TrackingStreamLeaseFailure failure();
   }

@@ -224,6 +224,7 @@ public class KataGoAutoSetupDialog extends JDialog {
   private final JFontButton btnSwitchBackCuda = new JFontButton();
   private final JFontButton btnCleanTensorRtCache = new JFontButton();
   private final JFontButton btnOptimizePerformance = new JFontButton();
+  private final JFontButton btnExperimentalPerformance = new JFontButton();
   private final JFontButton btnStopDownload = new JFontButton();
   private final JFontButton btnClose = new JFontButton();
   private WeightCatalogMode weightCatalogMode = WeightCatalogMode.OFFICIAL;
@@ -404,6 +405,8 @@ public class KataGoAutoSetupDialog extends JDialog {
     btnSwitchBackCuda.setText(text("AutoSetup.switchBackCuda"));
     btnCleanTensorRtCache.setText(text("AutoSetup.cleanTensorRtCache"));
     btnOptimizePerformance.setText(text("AutoSetup.optimizePerformance"));
+    btnExperimentalPerformance.setText(text("AutoSetup.experimentalPerformance"));
+    btnExperimentalPerformance.setVisible(false);
     btnStopDownload.setText(text("AutoSetup.stopDownload"));
     btnStopDownload.setEnabled(false);
     btnClose.setText(text("AutoSetup.close"));
@@ -412,6 +415,7 @@ public class KataGoAutoSetupDialog extends JDialog {
 
     styleButton(btnDownloadWeight, true);
     styleButton(btnOptimizePerformance, true);
+    styleButton(btnExperimentalPerformance, false);
     styleButton(btnRefresh, false);
     styleButton(btnChooseLocalEngine, true);
     styleButton(btnRepairAnalysisConfig, false);
@@ -527,7 +531,8 @@ public class KataGoAutoSetupDialog extends JDialog {
     btnInstallTensorRt.addActionListener(e -> startTensorRtInstall());
     btnSwitchBackCuda.addActionListener(e -> switchBackToCuda());
     btnCleanTensorRtCache.addActionListener(e -> cleanTensorRtCache());
-    btnOptimizePerformance.addActionListener(e -> startPerformanceBenchmark());
+    btnOptimizePerformance.addActionListener(e -> startPerformanceBenchmark(false));
+    btnExperimentalPerformance.addActionListener(e -> startPerformanceBenchmark(true));
     btnStopDownload.addActionListener(e -> stopActiveDownload());
     btnClose.addActionListener(e -> closeOrCancelActiveTask());
     btnOfficialWeightTab.addActionListener(
@@ -1073,7 +1078,8 @@ public class KataGoAutoSetupDialog extends JDialog {
     JTextArea benchmarkHint = createHintText(text("AutoSetup.benchmarkHint"));
     addComponentRow(rows, gbc, text("AutoSetup.benchmarkAbout"), benchmarkHint);
 
-    JPanel actions = createActionBar(FlowLayout.RIGHT, btnOptimizePerformance);
+    JPanel actions =
+        createActionBar(FlowLayout.RIGHT, btnExperimentalPerformance, btnOptimizePerformance);
     return createSectionCard(
         text("AutoSetup.benchmarkTitle"), text("AutoSetup.benchmarkSubtitle"), rows, actions);
   }
@@ -1807,6 +1813,7 @@ public class KataGoAutoSetupDialog extends JDialog {
     }
     btnUseWeight.setEnabled(false);
     btnOptimizePerformance.setEnabled(false);
+    btnExperimentalPerformance.setEnabled(false);
     new Thread(
             () -> {
               EngineValidationResult result =
@@ -2071,6 +2078,8 @@ public class KataGoAutoSetupDialog extends JDialog {
   }
 
   private void updateBenchmarkInfo() {
+    boolean experimentalAvailable = isExperimentalAppleSiliconTuningAvailable();
+    btnExperimentalPerformance.setVisible(experimentalAvailable);
     if (snapshot == null
         || !snapshot.hasEngine()
         || !snapshot.hasConfigs()
@@ -2079,9 +2088,11 @@ public class KataGoAutoSetupDialog extends JDialog {
       lblBenchmarkValue.setToolTipText(null);
       lblBenchmarkValue.setForeground(ERROR_COLOR);
       btnOptimizePerformance.setEnabled(false);
+      btnExperimentalPerformance.setEnabled(false);
       return;
     }
-    KataGoRuntimeHelper.BenchmarkResult result = KataGoRuntimeHelper.getStoredBenchmarkResult();
+    KataGoRuntimeHelper.BenchmarkResult result =
+        KataGoRuntimeHelper.getStoredBenchmarkResult(snapshot);
     if (result == null) {
       lblBenchmarkValue.setText(text("AutoSetup.benchmarkMissing"));
       lblBenchmarkValue.setToolTipText(null);
@@ -2093,6 +2104,11 @@ public class KataGoAutoSetupDialog extends JDialog {
     }
     btnOptimizePerformance.setEnabled(
         canRunBenchmark() && activeWorkerThread == null && activeDownloadSession == null);
+    btnExperimentalPerformance.setEnabled(
+        experimentalAvailable
+            && canRunBenchmark()
+            && activeWorkerThread == null
+            && activeDownloadSession == null);
   }
 
   private void loadRemoteWeightInfo() {
@@ -2787,13 +2803,29 @@ public class KataGoAutoSetupDialog extends JDialog {
     return message;
   }
 
-  private void startPerformanceBenchmark() {
+  private void startPerformanceBenchmark(boolean experimental) {
     if (snapshot == null
         || !snapshot.hasEngine()
         || !snapshot.hasConfigs()
         || !snapshot.hasWeight()) {
       Utils.showMsg(text("AutoSetup.benchmarkUnavailable"), this);
       return;
+    }
+    if (experimental) {
+      if (!isExperimentalAppleSiliconTuningAvailable()) {
+        Utils.showMsg(text("AutoSetup.experimentalBenchmarkUnavailable"), this);
+        return;
+      }
+      int choice =
+          JOptionPane.showConfirmDialog(
+              this,
+              text("AutoSetup.experimentalBenchmarkConfirmMessage"),
+              text("AutoSetup.experimentalBenchmarkConfirmTitle"),
+              JOptionPane.OK_CANCEL_OPTION,
+              JOptionPane.WARNING_MESSAGE);
+      if (choice != JOptionPane.OK_OPTION) {
+        return;
+      }
     }
 
     KataGoRuntimeHelper.BenchmarkPauseResult pauseResult =
@@ -2820,18 +2852,21 @@ public class KataGoAutoSetupDialog extends JDialog {
                   currentSnapshot = KataGoAutoSetupHelper.inspectLocalSetup();
                 }
                 SetupSnapshot benchmarkSnapshot = currentSnapshot;
+                KataGoAutoSetupHelper.ProgressListener progressListener =
+                    (statusText, downloadedBytes, totalBytes) ->
+                        SwingUtilities.invokeLater(
+                            () ->
+                                setBusy(
+                                    true,
+                                    text("AutoSetup.benchmarking") + " " + statusText,
+                                    downloadedBytes,
+                                    totalBytes));
                 KataGoRuntimeHelper.BenchmarkResult result =
-                    KataGoRuntimeHelper.runBenchmarkAndApply(
-                        benchmarkSnapshot,
-                        (statusText, downloadedBytes, totalBytes) ->
-                            SwingUtilities.invokeLater(
-                                () ->
-                                    setBusy(
-                                        true,
-                                        text("AutoSetup.benchmarking") + " " + statusText,
-                                        downloadedBytes,
-                                        totalBytes)),
-                        session);
+                    experimental
+                        ? KataGoRuntimeHelper.runExperimentalAppleSiliconBenchmarkAndApply(
+                            benchmarkSnapshot, progressListener, session)
+                        : KataGoRuntimeHelper.runBenchmarkAndApply(
+                            benchmarkSnapshot, progressListener, session);
                 applyBenchmarkToRunningEngine(result);
                 SwingUtilities.invokeLater(
                     () -> {
@@ -2856,7 +2891,9 @@ public class KataGoAutoSetupDialog extends JDialog {
                     () -> btnStopDownload.setText(text("AutoSetup.stopDownload")));
               }
             },
-            "katago-performance-benchmark");
+            experimental
+                ? "katago-experimental-performance-benchmark"
+                : "katago-performance-benchmark");
     activeWorkerThread = worker;
     worker.start();
   }
@@ -3134,6 +3171,8 @@ public class KataGoAutoSetupDialog extends JDialog {
     btnCleanTensorRtCache.setEnabled(
         !busy && KataGoRuntimeHelper.tensorRtDownloadCacheBytes() > 0L);
     btnOptimizePerformance.setEnabled(!busy && canRunBenchmark());
+    btnExperimentalPerformance.setEnabled(
+        !busy && canRunBenchmark() && isExperimentalAppleSiliconTuningAvailable());
     btnStopDownload.setEnabled(busy && activeDownloadSession != null);
     btnClose.setEnabled(true);
 
@@ -3261,6 +3300,11 @@ public class KataGoAutoSetupDialog extends JDialog {
         && snapshot.hasConfigs()
         && snapshot.hasWeight()
         && isEngineValidationReady();
+  }
+
+  private boolean isExperimentalAppleSiliconTuningAvailable() {
+    return snapshot != null
+        && KataGoRuntimeHelper.isExperimentalAppleSiliconTuningAvailable(snapshot);
   }
 
   private boolean isEngineValidationReady() {
@@ -4123,6 +4167,9 @@ public class KataGoAutoSetupDialog extends JDialog {
     btnSwitchBackCuda.setEnabled(canSwitchBackToCuda());
     updateTensorRtCacheButton();
     btnOptimizePerformance.setEnabled(canRunBenchmark());
+    boolean experimentalAvailable = isExperimentalAppleSiliconTuningAvailable();
+    btnExperimentalPerformance.setVisible(experimentalAvailable);
+    btnExperimentalPerformance.setEnabled(canRunBenchmark() && experimentalAvailable);
     btnStopDownload.setEnabled(false);
     btnClose.setEnabled(true);
     renderWeightRecommendations();

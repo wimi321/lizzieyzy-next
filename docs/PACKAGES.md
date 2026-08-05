@@ -22,6 +22,7 @@
 - TensorRT 一键安装成功后会自动清理完整下载包缓存；首次运行产生的 CUDA/TensorRT 缓存会尽量写入软件自己的 `runtime/`，减少 C 盘额外占用
 - RTX 50 / TensorRT 吞吐与功耗对比必须固定模型、配置和缓存，并使用 [RTX 50 性能验收流程](RTX50_PERFORMANCE.md) 记录真实进程、功耗、显存和 KataGo 原始指标
 - Release 可附带高级可选 TensorRT 预装分卷包，但它不是默认推荐下载；必须下载全部 `.7z.00N` 并用 7-Zip 从 `.001` 解压
+- 当前正式版常用下载由 `https://download.goagent.top/` 提供，GitHub 保留安装器、Linux、历史版本和自动备用；pre-release 仍只在 GitHub
 
 如果你只想先看图再决定，先看这里：
 
@@ -30,6 +31,8 @@
 </p>
 
 ## 第一次下载就照这个选
+
+普通用户先打开 [正式版下载页](https://download.goagent.top/)。下表中的安装器、Linux 包和历史版本继续从 [GitHub Releases](https://github.com/wimi321/lizzieyzy-next/releases) 下载。GitHub 下载量不包含 R2 流量。
 
 | 包类型 | 典型文件名 | 适合谁 |
 | --- | --- | --- |
@@ -208,6 +211,7 @@ OUT_DIR=dist/perf SCENARIO=startup DURATION_SECONDS=45 \
 - Windows 64 位无引擎包同时提供安装器和 `.portable.zip`
 - 当前公开 release 主列表固定为 15 个首次下载主资产；`windows64.core-update.zip` 是已有 Windows 免安装用户的小更新资产；TensorRT 分卷包如出现在 Release 中，定位为高级可选资产，不替代软件内断点续传安装
 - 旧的兼容 zip 只作为历史 tag 说明保留，不再放进主推荐区
+- R2 只镜像当前正式版的 Windows 免安装包、小更新包、两款 macOS DMG 和 TensorRT 分卷；完整策略与维护流程见 [Cloudflare R2 正式版下载与升级](R2_RELEASES.md)
 
 ## 相关文档
 
