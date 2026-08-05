@@ -1,0 +1,63 @@
+[
+  {
+    "id": "sgf-ff4-red-bean",
+    "name": "Smart Game Format FF[4] specification",
+    "url": "https://www.red-bean.com/sgf/",
+    "license": "Specification reference; no text copied into cards",
+    "status": "primary-format-reference",
+    "why": "Primary SGF format reference used to validate setup properties, tree structure, and game-record parsing boundaries.",
+    "usedFor": [
+      "SGF setup property validation",
+      "variation path policy",
+      "board state consistency"
+    ]
+  },
+  {
+    "id": "sgfmill-ff4-properties",
+    "name": "Sgfmill FF[4] property list",
+    "url": "https://mjw.woodcraft.me.uk/sgfmill/doc/1.1.1/properties.html",
+    "license": "Documentation reference; no text copied into cards",
+    "status": "format-property-reference",
+    "why": "Concise property table for AB/AW/AE/B/W and related FF[4] fields; used as a cross-check for GoAgent parser coverage.",
+    "usedFor": [
+      "SGF property coverage checks",
+      "developer QA"
+    ]
+  },
+  {
+    "id": "sensei-go-terms",
+    "name": "Sensei's Library Go Terms index",
+    "url": "https://senseis.xmp.net/?GoTerms=",
+    "license": "External wiki/reference; not imported verbatim",
+    "status": "taxonomy-reference-only",
+    "why": "Broad terminology index used only for coverage planning. GoAgent cards use original teaching wording and do not copy definitions.",
+    "usedFor": [
+      "Go terminology coverage",
+      "knowledge gap analysis"
+    ]
+  },
+  {
+    "id": "josekipedia-game-collection",
+    "name": "Josekipedia professional game collection",
+    "url": "https://www.josekipedia.com/game/info.php",
+    "license": "Creative Commons license stated by Josekipedia for game database; exact terms require release review",
+    "status": "future-frequency-mining-candidate",
+    "why": "The page says comments and variations are discarded and game records are distributed under a Creative Commons License. GoAgent currently treats it only as a future frequency-mining candidate.",
+    "usedFor": [
+      "future joseki frequency mining",
+      "source policy planning"
+    ]
+  },
+  {
+    "id": "josekipedia-copyright-policy",
+    "name": "Josekipedia contributing and copyright policy",
+    "url": "https://www.josekipedia.com/info/contributing.php",
+    "license": "Policy reference only",
+    "status": "source-policy-reference",
+    "why": "Used to remind maintainers not to copy user-entered text or professional commentary into GoAgent without a rights review.",
+    "usedFor": [
+      "copyright risk policy",
+      "source registry checks"
+    ]
+  }
+]

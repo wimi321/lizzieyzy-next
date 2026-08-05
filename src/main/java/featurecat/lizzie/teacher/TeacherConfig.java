@@ -69,6 +69,7 @@ public class TeacherConfig {
   }
 
   public static LLMClient createClient() {
+    load(); // 每次先从文件读最新配置（避免启动后未 load 导致误判未配置）
     if (apiKey == null || apiKey.isEmpty()) return null;
     return new LLMClient(baseUrl, apiKey, model);
   }

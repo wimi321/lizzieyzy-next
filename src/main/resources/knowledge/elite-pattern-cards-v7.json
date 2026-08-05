@@ -1,0 +1,292 @@
+[
+  {
+    "id": "v7-evidence-human-winrate-calibration",
+    "title": "AI胜率与人类胜率的校准",
+    "category": "review-method",
+    "patternType": "human_winrate_calibration",
+    "scope": "whole-game",
+    "phase": [
+      "opening",
+      "middlegame",
+      "endgame",
+      "any"
+    ],
+    "regions": [
+      "any"
+    ],
+    "levels": [
+      "beginner",
+      "intermediate",
+      "advanced",
+      "dan",
+      "any"
+    ],
+    "tags": [
+      "胜率",
+      "目差",
+      "棋力校准",
+      "复盘方法"
+    ],
+    "aliases": [
+      "human winrate",
+      "AI胜率",
+      "score lead"
+    ],
+    "triggerSignals": [
+      "humanCalibration",
+      "scoreLead",
+      "winrateLoss",
+      "low confidence"
+    ],
+    "negativeSignals": [],
+    "katagoSignals": [
+      "humanPrior",
+      "humanScoreMean",
+      "scoreStdev"
+    ],
+    "recognition": "AI胜率是强AI视角，讲给学生时应优先转换成目差、棋形目的和下一次判断方法。",
+    "wrongThinking": "把1-3%的AI胜率波动当成学生真实胜负概率，导致过度批评或误判。",
+    "correctThinking": "先看目差和候选稳定度，再按学生棋力决定讲数字还是讲判断方法。",
+    "coachLines": [
+      "胜率是证据，不是恐吓学生的语言。",
+      "低棋力复盘更应讲损失在哪里、下一手怎么判断。"
+    ],
+    "drillPrompt": "把同一手同时写成胜率、目差和一句人类判断，比较哪种说法最能指导下一盘。",
+    "confidenceBoost": 3,
+    "sourceRefs": [
+      "goagent-curated-original",
+      "katago-analysis-engine-docs"
+    ],
+    "sourceQuality": "project-local-original"
+  },
+  {
+    "id": "v7-ownership-swing-explanation",
+    "title": "Ownership变化解释实地与厚薄",
+    "category": "strategy",
+    "patternType": "ownership_swing",
+    "scope": "local-global",
+    "phase": [
+      "middlegame",
+      "endgame"
+    ],
+    "regions": [
+      "corner",
+      "side",
+      "center",
+      "any"
+    ],
+    "levels": [
+      "intermediate",
+      "advanced",
+      "dan",
+      "any"
+    ],
+    "tags": [
+      "ownership",
+      "实地",
+      "厚薄",
+      "势力"
+    ],
+    "aliases": [
+      "territory swing",
+      "实地变化",
+      "地盘变化"
+    ],
+    "triggerSignals": [
+      "ownershipSummary",
+      "biggestSwingRegions",
+      "territory"
+    ],
+    "negativeSignals": [],
+    "katagoSignals": [
+      "ownership",
+      "ownershipStdev",
+      "includeOwnership"
+    ],
+    "recognition": "如果某个区域ownership变化明显，说明问题常在实地转换、厚势利用或孤棋安全。",
+    "wrongThinking": "只盯着最佳坐标，不问这手让哪片区域的归属发生变化。",
+    "correctThinking": "先找变化最大的区域，再解释这手影响的是实地、出路、连接还是攻击收益。",
+    "coachLines": [
+      "AI不是只推荐一个点，它在告诉你哪片区域价值变了。",
+      "ownership变化适合解释厚薄和转换。"
+    ],
+    "drillPrompt": "遮住推荐点，只看变化最大的区域，判断这手要争地、攻击还是补形。",
+    "confidenceBoost": 2,
+    "sourceRefs": [
+      "goagent-curated-original",
+      "katago-analysis-engine-docs"
+    ],
+    "sourceQuality": "project-local-original"
+  },
+  {
+    "id": "v7-joseki-sequence-not-set",
+    "title": "定式识别要看手顺而不是只看棋子集合",
+    "category": "joseki",
+    "patternType": "joseki_sequence_order",
+    "scope": "corner",
+    "phase": [
+      "opening"
+    ],
+    "regions": [
+      "corner"
+    ],
+    "levels": [
+      "beginner",
+      "intermediate",
+      "advanced",
+      "dan",
+      "any"
+    ],
+    "tags": [
+      "定式",
+      "手顺",
+      "角部",
+      "脱先"
+    ],
+    "aliases": [
+      "joseki sequence",
+      "定式手顺",
+      "前缀匹配"
+    ],
+    "triggerSignals": [
+      "sequence-trie",
+      "prefix",
+      "tenuki",
+      "joseki"
+    ],
+    "negativeSignals": [
+      "middlegame"
+    ],
+    "katagoSignals": [
+      "candidate/PV matches common next move"
+    ],
+    "recognition": "同样的角部棋子集合，手顺和颜色不同，定式意义可能完全不同。",
+    "wrongThinking": "看到几个相对点相同就直接说这是某定式。",
+    "correctThinking": "先确认颜色、手顺、是否脱先，再看KataGo是否支持继续局部。",
+    "coachLines": [
+      "定式不是形状截图，而是带条件的手顺。",
+      "脱先以后再回来，常见分支也可能不适用。"
+    ],
+    "drillPrompt": "把角部手顺打乱一次，判断哪些结论还能成立，哪些必须降级成类似型。",
+    "confidenceBoost": 3,
+    "sourceRefs": [
+      "goagent-curated-original",
+      "pachi-joseki-gpl2",
+      "josekle-mit-dictionary"
+    ],
+    "sourceQuality": "project-local-original"
+  },
+  {
+    "id": "v7-profile-overfitting-guard",
+    "title": "学生画像不能用一盘棋过拟合",
+    "category": "review-method",
+    "patternType": "profile_overfitting_guard",
+    "scope": "student-profile",
+    "phase": [
+      "any"
+    ],
+    "regions": [
+      "any"
+    ],
+    "levels": [
+      "beginner",
+      "intermediate",
+      "advanced",
+      "dan",
+      "any"
+    ],
+    "tags": [
+      "学生画像",
+      "长期弱点",
+      "置信度",
+      "训练计划"
+    ],
+    "aliases": [
+      "profile confidence",
+      "画像置信度",
+      "长期问题"
+    ],
+    "triggerSignals": [
+      "gamesReviewed",
+      "commonMistakes",
+      "profile confidence",
+      "样本不足"
+    ],
+    "negativeSignals": [],
+    "katagoSignals": [
+      "typicalMoves",
+      "lossScore"
+    ],
+    "recognition": "长期弱点需要多盘证据，单盘错误只能作为观察信号。",
+    "wrongThinking": "看到一手错就给学生贴长期标签。",
+    "correctThinking": "区分本局错手、重复模式和高置信训练主题。",
+    "coachLines": [
+      "一盘棋能发现线索，不能直接定义学生。",
+      "训练计划要标注置信度。"
+    ],
+    "drillPrompt": "把最近三盘同类错误放在一起，确认它们是否真的来自同一判断漏洞。",
+    "confidenceBoost": 2,
+    "sourceRefs": [
+      "goagent-curated-original"
+    ],
+    "sourceQuality": "project-local-original"
+  },
+  {
+    "id": "v7-pv-branch-integrity",
+    "title": "PV分支不能串线讲解",
+    "category": "review-method",
+    "patternType": "pv_branch_integrity",
+    "scope": "analysis-quality",
+    "phase": [
+      "opening",
+      "middlegame",
+      "endgame",
+      "any"
+    ],
+    "regions": [
+      "any"
+    ],
+    "levels": [
+      "intermediate",
+      "advanced",
+      "dan",
+      "any"
+    ],
+    "tags": [
+      "PV",
+      "变化",
+      "证据链",
+      "分支"
+    ],
+    "aliases": [
+      "variation integrity",
+      "PV串线",
+      "branch consistency"
+    ],
+    "triggerSignals": [
+      "pv",
+      "bestCandidates",
+      "verification",
+      "claim"
+    ],
+    "negativeSignals": [],
+    "katagoSignals": [
+      "pvVisits",
+      "topMoves"
+    ],
+    "recognition": "每条PV只属于对应候选手，不能把A候选的后续接到B候选上。",
+    "wrongThinking": "为了让讲解连贯，把不同候选的变化混在一起。",
+    "correctThinking": "讲变化前先声明是哪一手的PV；换候选就重新开分支。",
+    "coachLines": [
+      "变化图要像代码引用一样准确。",
+      "坐标和PV不是修辞，是证据。"
+    ],
+    "drillPrompt": "给两条候选PV，分别标出第一手、对方应手和结果，不交叉引用。",
+    "confidenceBoost": 2,
+    "sourceRefs": [
+      "goagent-curated-original",
+      "katago-analysis-engine-docs"
+    ],
+    "sourceQuality": "project-local-original"
+  }
+]

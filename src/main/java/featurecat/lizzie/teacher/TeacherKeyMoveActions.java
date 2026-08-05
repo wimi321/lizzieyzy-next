@@ -54,6 +54,13 @@ public class TeacherKeyMoveActions extends JPanel {
         sum.setForeground(java.awt.Color.GRAY);
         info.add(sum);
       }
+      // severity 颜色（对齐 GoAgent：问题手红/缓手黄/好手绿）
+      java.awt.Color sevColor = java.awt.Color.GRAY;
+      if ("BLUNDER".equals(m.severity) || "MISTAKE".equals(m.severity))
+        sevColor = new java.awt.Color(0xCC, 0x33, 0x33);
+      else if ("INACCURACY".equals(m.severity)) sevColor = new java.awt.Color(0xCC, 0x88, 0x00);
+      else if ("GOOD".equals(m.severity)) sevColor = new java.awt.Color(0x22, 0x99, 0x44);
+      title.setForeground(sevColor);
       row.add(info, BorderLayout.CENTER);
 
       JPanel buttons = new JPanel(new FlowLayout(FlowLayout.RIGHT, 4, 0));

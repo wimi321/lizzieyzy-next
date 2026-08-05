@@ -2,6 +2,7 @@ package featurecat.lizzie.teacher;
 
 import featurecat.lizzie.teacher.analysis.AnalysisBrain.KataGoCandidate;
 import featurecat.lizzie.teacher.analysis.AnalysisBrain.MoveClassification;
+import featurecat.lizzie.teacher.knowledge.MotifRecognizer.RecognizedTeachingMotif;
 import java.awt.BorderLayout;
 import java.awt.Color;
 import java.awt.Font;
@@ -14,17 +15,46 @@ import javax.swing.JPanel;
 import javax.swing.border.TitledBorder;
 
 /**
- * 对齐 GoAgent 的 TeacherArtifactCard：把单手讲解组织成结构化事实表格（FactCell）。 展示：实战点 / AI 首选 / 胜率损失 / 目差损失 /
- * 判定(severity/confidence)。
+ * 对齐 GoAgent 的 TeacherArtifactCard：单手讲解结构化卡片。 展示：FactCell(实战点/AI首选/胜率损失/目差损失/判定) + 知识匹配 +
+ * 关键变化(variations) + 练习建议(trainingItems)。 variations/trainingItems 由 LLM 结构化返回后填充。
  */
 public class TeacherArtifactCard extends JPanel {
+  public static class Variation {
+    public String label;
+    public String purpose;
+    public String pv;
+    public String result;
+
+    public Variation(String label, String purpose, String pv, String result) {
+      this.label = label;
+      this.purpose = purpose;
+      this.pv = pv;
+      this.result = result;
+    }
+  }
+
+  public static class TrainingItem {
+    public String title;
+    public String kind;
+    public String objective;
+
+    public TrainingItem(String title, String kind, String objective) {
+      this.title = title;
+      this.kind = kind;
+      this.objective = objective;
+    }
+  }
+
   public TeacherArtifactCard(
       int moveNumber,
       String actualMove,
       KataGoCandidate best,
       MoveClassification mc,
       double actualWinrate,
-      double actualScoreLead) {
+      double actualScoreLead,
+      List<RecognizedTeachingMotif> knowledge,
+      List<Variation> variations,
+      List<TrainingItem> trainingItems) {
     setLayout(new BorderLayout(4, 4));
     setBorder(
         BorderFactory.createTitledBorder(
@@ -35,9 +65,8 @@ public class TeacherArtifactCard extends JPanel {
             new Font(Font.SANS_SERIF, Font.BOLD, 13)));
 
     JPanel grid = new JPanel(new GridLayout(0, 1, 2, 2));
-    List<FactCell> facts =
-        buildFacts(moveNumber, actualMove, best, mc, actualWinrate, actualScoreLead);
-    for (FactCell f : facts) {
+    for (FactCell f :
+        buildFacts(moveNumber, actualMove, best, mc, actualWinrate, actualScoreLead)) {
       JPanel row = new JPanel(new BorderLayout(6, 2));
       JLabel label = new JLabel(f.label);
       label.setForeground(Color.GRAY);
@@ -49,7 +78,60 @@ public class TeacherArtifactCard extends JPanel {
       row.add(value, BorderLayout.EAST);
       grid.add(row);
     }
+
+    if (knowledge != null && !knowledge.isEmpty()) {
+      grid.add(sectionTitle("知识匹配"));
+      for (RecognizedTeachingMotif km : knowledge) {
+        JPanel row = new JPanel(new BorderLayout(6, 2));
+        JLabel label = new JLabel(km.motifType.toLowerCase());
+        label.setForeground(Color.GRAY);
+        JLabel value = new JLabel(km.title + " (" + km.confidence.name() + ")");
+        value.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 12));
+        row.add(label, BorderLayout.WEST);
+        row.add(value, BorderLayout.EAST);
+        grid.add(row);
+      }
+    }
+
+    if (variations != null && !variations.isEmpty()) {
+      grid.add(sectionTitle("关键变化 / 正确思路"));
+      for (Variation v : variations) {
+        JPanel row = new JPanel(new BorderLayout(6, 2));
+        JLabel label = new JLabel(v.label);
+        label.setForeground(Color.GRAY);
+        JLabel value =
+            new JLabel(
+                (v.purpose != null ? v.purpose + " " : "")
+                    + (v.result != null ? "→ " + v.result : ""));
+        value.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 12));
+        row.add(label, BorderLayout.WEST);
+        row.add(value, BorderLayout.EAST);
+        grid.add(row);
+      }
+    }
+
+    if (trainingItems != null && !trainingItems.isEmpty()) {
+      grid.add(sectionTitle("练习建议"));
+      for (TrainingItem t : trainingItems) {
+        JPanel row = new JPanel(new BorderLayout(6, 2));
+        JLabel label = new JLabel(t.kind);
+        label.setForeground(Color.GRAY);
+        JLabel value = new JLabel(t.title + "：" + t.objective);
+        value.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 12));
+        row.add(label, BorderLayout.WEST);
+        row.add(value, BorderLayout.EAST);
+        grid.add(row);
+      }
+    }
+
     add(grid, BorderLayout.CENTER);
+  }
+
+  private static JLabel sectionTitle(String t) {
+    JLabel l = new JLabel(t);
+    l.setFont(new Font(Font.SANS_SERIF, Font.ITALIC, 11));
+    l.setForeground(Color.GRAY);
+    return l;
   }
 
   private static List<FactCell> buildFacts(

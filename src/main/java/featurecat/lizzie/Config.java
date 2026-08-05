@@ -61,7 +61,7 @@ public class Config {
   public boolean showKataGoScoreLeadWithKomi = false;
   //  public boolean kataGoScoreMeanAlwaysBlack = false;
   // public boolean scoreMeanWinrateGraphBoard = false;
-  public boolean showKataGoEstimate = false;
+  public boolean showKataGoEstimate = true;  // 对齐 GoAgent：默认开启 ownership 势力分析
   // public boolean allowDrageDoubleClick = true;
   public boolean showKataGoEstimateOnSubbord = true;
   public boolean showKataGoEstimateOnMainbord = true;

@@ -1,0 +1,2450 @@
+[
+  {
+    "id": "elite-v4-sente_management-001",
+    "title": "先手价值：不是每手棋都要补完",
+    "category": "strategy",
+    "patternType": "sente_management",
+    "scope": "whole-board",
+    "phase": [
+      "opening",
+      "middlegame",
+      "endgame"
+    ],
+    "regions": [
+      "corner",
+      "side",
+      "center",
+      "any"
+    ],
+    "levels": [
+      "beginner",
+      "intermediate",
+      "advanced",
+      "dan"
+    ],
+    "tags": [
+      "先手",
+      "后手",
+      "sente",
+      "gote",
+      "脱先",
+      "tenuki"
+    ],
+    "aliases": [
+      "先手",
+      "后手",
+      "sente",
+      "gote",
+      "脱先",
+      "tenuki"
+    ],
+    "triggerSignals": [
+      "先手",
+      "后手",
+      "sente",
+      "gote",
+      "脱先",
+      "tenuki",
+      "sente_management"
+    ],
+    "negativeSignals": [],
+    "katagoSignals": [
+      "global_direction_loss",
+      "local_tactical_loss",
+      "medium_score_loss"
+    ],
+    "recognition": "这类局面要先判断一手棋是否保留先手，而不是只看局部是否舒服。",
+    "wrongThinking": "把棋下得很安全，但把主动权送给对方。",
+    "correctThinking": "先问这手之后对方必须应吗；如果不是，再比较全局最大点。",
+    "coachLines": [
+      "这类局面要先判断一手棋是否保留先手，而不是只看局部是否舒服。",
+      "先问这手之后对方必须应吗；如果不是，再比较全局最大点。"
+    ],
+    "drillPrompt": "同一局面给出两手：一手补强、一手争先；判断哪手保留主动权。",
+    "confidenceBoost": 3,
+    "sourceRefs": [
+      "goagent-curated-original",
+      "wikibooks-go"
+    ],
+    "sourceQuality": "curated-open-reference"
+  },
+  {
+    "id": "elite-v4-aji_management-002",
+    "title": "余味管理：现在不吃，保留将来的严厉手段",
+    "category": "strategy",
+    "patternType": "aji_management",
+    "scope": "whole-board",
+    "phase": [
+      "middlegame",
+      "endgame"
+    ],
+    "regions": [
+      "corner",
+      "side",
+      "center",
+      "any"
+    ],
+    "levels": [
+      "beginner",
+      "intermediate",
+      "advanced",
+      "dan"
+    ],
+    "tags": [
+      "余味",
+      "味道",
+      "aji",
+      "保留",
+      "后续",
+      "手段"
+    ],
+    "aliases": [
+      "余味",
+      "味道",
+      "aji",
+      "保留",
+      "后续",
+      "手段"
+    ],
+    "triggerSignals": [
+      "余味",
+      "味道",
+      "aji",
+      "保留",
+      "后续",
+      "手段",
+      "aji_management"
+    ],
+    "negativeSignals": [],
+    "katagoSignals": [
+      "global_direction_loss",
+      "local_tactical_loss",
+      "medium_score_loss"
+    ],
+    "recognition": "AI 有时不立刻吃子，是为了保留更大的后续严厉手段。",
+    "wrongThinking": "看到能吃就吃，结果把对方走厚、把自己的余味走没。",
+    "correctThinking": "先判断这个手段现在用掉会不会帮对方定型，再决定是否保留。",
+    "coachLines": [
+      "AI 有时不立刻吃子，是为了保留更大的后续严厉手段。",
+      "先判断这个手段现在用掉会不会帮对方定型，再决定是否保留。"
+    ],
+    "drillPrompt": "找出当前局面一个“现在能下但不一定该下”的手段。",
+    "confidenceBoost": 3,
+    "sourceRefs": [
+      "goagent-curated-original",
+      "wikibooks-go"
+    ],
+    "sourceQuality": "curated-open-reference"
+  },
+  {
+    "id": "elite-v4-probe-003",
+    "title": "试应手：先问对方态度再决定方向",
+    "category": "strategy",
+    "patternType": "probe",
+    "scope": "whole-board",
+    "phase": [
+      "opening",
+      "middlegame"
+    ],
+    "regions": [
+      "side",
+      "center",
+      "any"
+    ],
+    "levels": [
+      "beginner",
+      "intermediate",
+      "advanced",
+      "dan"
+    ],
+    "tags": [
+      "试应手",
+      "试探",
+      "probe",
+      "kikashi",
+      "窥"
+    ],
+    "aliases": [
+      "试应手",
+      "试探",
+      "probe",
+      "kikashi",
+      "窥"
+    ],
+    "triggerSignals": [
+      "试应手",
+      "试探",
+      "probe",
+      "kikashi",
+      "窥",
+      "probe"
+    ],
+    "negativeSignals": [],
+    "katagoSignals": [
+      "global_direction_loss",
+      "local_tactical_loss",
+      "medium_score_loss"
+    ],
+    "recognition": "试应手的价值在于让对方表态，然后根据应手选择最合适方向。",
+    "wrongThinking": "把试应手当成固定步骤，不管对方怎么应都继续原计划。",
+    "correctThinking": "先设计试探目的：想确认连接、厚薄还是应手方向。",
+    "coachLines": [
+      "试应手的价值在于让对方表态，然后根据应手选择最合适方向。",
+      "先设计试探目的：想确认连接、厚薄还是应手方向。"
+    ],
+    "drillPrompt": "这手试应后，对方两种应法分别会改变你的下一步吗？",
+    "confidenceBoost": 3,
+    "sourceRefs": [
+      "goagent-curated-original",
+      "wikibooks-go"
+    ],
+    "sourceQuality": "curated-open-reference"
+  },
+  {
+    "id": "elite-v4-kikashi-004",
+    "title": "有效利き：逼对方应，同时改善自己的后续",
+    "category": "tesuji",
+    "patternType": "kikashi",
+    "scope": "local-shape",
+    "phase": [
+      "middlegame",
+      "endgame"
+    ],
+    "regions": [
+      "corner",
+      "side",
+      "center",
+      "any"
+    ],
+    "levels": [
+      "beginner",
+      "intermediate",
+      "advanced",
+      "dan"
+    ],
+    "tags": [
+      "利き",
+      "先手交换",
+      "kikashi",
+      "forcing move"
+    ],
+    "aliases": [
+      "利き",
+      "先手交换",
+      "kikashi",
+      "forcing move"
+    ],
+    "triggerSignals": [
+      "利き",
+      "先手交换",
+      "kikashi",
+      "forcing move",
+      "kikashi"
+    ],
+    "negativeSignals": [],
+    "katagoSignals": [
+      "local_tactical_loss",
+      "shape_inefficiency",
+      "high_score_loss"
+    ],
+    "recognition": "有效利き必须让对方应，并且让自己的后续更好。",
+    "wrongThinking": "看到能逼应就下，却帮对方补强。",
+    "correctThinking": "先判断对方是否真的必须应，再看交换后谁得利。",
+    "coachLines": [
+      "有效利き必须让对方应，并且让自己的后续更好。",
+      "先判断对方是否真的必须应，再看交换后谁得利。"
+    ],
+    "drillPrompt": "判断这次交换是利き还是帮对方补形。",
+    "confidenceBoost": 3,
+    "sourceRefs": [
+      "goagent-curated-original",
+      "wikibooks-go"
+    ],
+    "sourceQuality": "curated-open-reference"
+  },
+  {
+    "id": "elite-v4-bad_kikashi-005",
+    "title": "坏利き：帮对方补形的先手交换",
+    "category": "tesuji",
+    "patternType": "bad_kikashi",
+    "scope": "local-shape",
+    "phase": [
+      "middlegame",
+      "endgame"
+    ],
+    "regions": [
+      "corner",
+      "side",
+      "center",
+      "any"
+    ],
+    "levels": [
+      "beginner",
+      "intermediate",
+      "advanced",
+      "dan"
+    ],
+    "tags": [
+      "坏利き",
+      "恶手交换",
+      "帮对方补形",
+      "bad kikashi"
+    ],
+    "aliases": [
+      "坏利き",
+      "恶手交换",
+      "帮对方补形",
+      "bad kikashi"
+    ],
+    "triggerSignals": [
+      "坏利き",
+      "恶手交换",
+      "帮对方补形",
+      "bad kikashi",
+      "bad_kikashi"
+    ],
+    "negativeSignals": [],
+    "katagoSignals": [
+      "local_tactical_loss",
+      "shape_inefficiency",
+      "high_score_loss"
+    ],
+    "recognition": "坏利き表面先手，实际让对方把弱点补掉。",
+    "wrongThinking": "以为“对方应了就是我赚”，没看对方应完更厚。",
+    "correctThinking": "交换前先问：这手是不是对方本来就想下的补强？",
+    "coachLines": [
+      "坏利き表面先手，实际让对方把弱点补掉。",
+      "交换前先问：这手是不是对方本来就想下的补强？"
+    ],
+    "drillPrompt": "找出一个看似先手但不该交换的点。",
+    "confidenceBoost": 3,
+    "sourceRefs": [
+      "goagent-curated-original",
+      "wikibooks-go"
+    ],
+    "sourceQuality": "curated-open-reference"
+  },
+  {
+    "id": "elite-v4-cut_value-006",
+    "title": "切断价值：切开以后能不能攻击其中一块",
+    "category": "tesuji",
+    "patternType": "cut_value",
+    "scope": "local-shape",
+    "phase": [
+      "middlegame"
+    ],
+    "regions": [
+      "corner",
+      "side",
+      "center",
+      "any"
+    ],
+    "levels": [
+      "beginner",
+      "intermediate",
+      "advanced",
+      "dan"
+    ],
+    "tags": [
+      "切断",
+      "断点",
+      "cut",
+      "separate",
+      "连接"
+    ],
+    "aliases": [
+      "切断",
+      "断点",
+      "cut",
+      "separate",
+      "连接"
+    ],
+    "triggerSignals": [
+      "切断",
+      "断点",
+      "cut",
+      "separate",
+      "连接",
+      "cut_value"
+    ],
+    "negativeSignals": [],
+    "katagoSignals": [
+      "local_tactical_loss",
+      "shape_inefficiency",
+      "high_score_loss"
+    ],
+    "recognition": "切断只有在切开后能攻击、得利或制造弱点时才有价值。",
+    "wrongThinking": "为了切而切，结果自己也被反击。",
+    "correctThinking": "先看切开后哪块棋弱，再看自己的棋是否有气和连接。",
+    "coachLines": [
+      "切断只有在切开后能攻击、得利或制造弱点时才有价值。",
+      "先看切开后哪块棋弱，再看自己的棋是否有气和连接。"
+    ],
+    "drillPrompt": "切断后你打算攻击哪一块？",
+    "confidenceBoost": 3,
+    "sourceRefs": [
+      "goagent-curated-original",
+      "wikibooks-go"
+    ],
+    "sourceQuality": "curated-open-reference"
+  },
+  {
+    "id": "elite-v4-connection_shape-007",
+    "title": "连接形效率：直连、虎、尖的取舍",
+    "category": "shapes",
+    "patternType": "connection_shape",
+    "scope": "local-shape",
+    "phase": [
+      "middlegame",
+      "endgame"
+    ],
+    "regions": [
+      "corner",
+      "side",
+      "center",
+      "any"
+    ],
+    "levels": [
+      "beginner",
+      "intermediate",
+      "advanced",
+      "dan"
+    ],
+    "tags": [
+      "连接",
+      "虎",
+      "尖",
+      "直连",
+      "connection",
+      "tiger mouth"
+    ],
+    "aliases": [
+      "连接",
+      "虎",
+      "尖",
+      "直连",
+      "connection",
+      "tiger mouth"
+    ],
+    "triggerSignals": [
+      "连接",
+      "虎",
+      "尖",
+      "直连",
+      "connection",
+      "tiger mouth",
+      "connection_shape"
+    ],
+    "negativeSignals": [],
+    "katagoSignals": [
+      "local_tactical_loss",
+      "shape_inefficiency",
+      "high_score_loss"
+    ],
+    "recognition": "连接不是只有一种，形好的连接能同时保留眼形、气数和先手。",
+    "wrongThinking": "只会直连，亏效率或留下坏形。",
+    "correctThinking": "比较每种连接是否补断、增加眼形、限制对方。",
+    "coachLines": [
+      "连接不是只有一种，形好的连接能同时保留眼形、气数和先手。",
+      "比较每种连接是否补断、增加眼形、限制对方。"
+    ],
+    "drillPrompt": "给三个连接点，判断哪一个形最好。",
+    "confidenceBoost": 3,
+    "sourceRefs": [
+      "goagent-curated-original",
+      "wikibooks-go"
+    ],
+    "sourceQuality": "curated-open-reference"
+  },
+  {
+    "id": "elite-v4-capturing_race-008",
+    "title": "对杀气数：先数外气，再看眼形和劫材",
+    "category": "life-death",
+    "patternType": "capturing_race",
+    "scope": "local-shape",
+    "phase": [
+      "middlegame",
+      "endgame"
+    ],
+    "regions": [
+      "corner",
+      "side",
+      "center"
+    ],
+    "levels": [
+      "beginner",
+      "intermediate",
+      "advanced",
+      "dan"
+    ],
+    "tags": [
+      "对杀",
+      "气数",
+      "semeai",
+      "liberty race",
+      "外气"
+    ],
+    "aliases": [
+      "对杀",
+      "气数",
+      "semeai",
+      "liberty race",
+      "外气"
+    ],
+    "triggerSignals": [
+      "对杀",
+      "气数",
+      "semeai",
+      "liberty race",
+      "外气",
+      "capturing_race"
+    ],
+    "negativeSignals": [],
+    "katagoSignals": [
+      "local_tactical_loss",
+      "shape_inefficiency",
+      "high_score_loss"
+    ],
+    "recognition": "对杀局面不能凭感觉，先数双方外气、内气和眼形。",
+    "wrongThinking": "只看到自己能打吃，没有完整数气。",
+    "correctThinking": "先数外气，再看是否有眼、是否有劫、是否能紧气。",
+    "coachLines": [
+      "对杀局面不能凭感觉，先数双方外气、内气和眼形。",
+      "先数外气，再看是否有眼、是否有劫、是否能紧气。"
+    ],
+    "drillPrompt": "这块棋对杀双方各有几气？",
+    "confidenceBoost": 3,
+    "sourceRefs": [
+      "goagent-curated-original",
+      "wikibooks-go"
+    ],
+    "sourceQuality": "curated-open-reference"
+  },
+  {
+    "id": "elite-v4-eye_shape_urgent-009",
+    "title": "眼形急所：做眼不是补空，而是抢形",
+    "category": "life-death",
+    "patternType": "eye_shape_urgent",
+    "scope": "local-shape",
+    "phase": [
+      "middlegame",
+      "endgame"
+    ],
+    "regions": [
+      "corner",
+      "side",
+      "center"
+    ],
+    "levels": [
+      "beginner",
+      "intermediate",
+      "advanced",
+      "dan"
+    ],
+    "tags": [
+      "眼形",
+      "做眼",
+      "破眼",
+      "life and death",
+      "eye shape"
+    ],
+    "aliases": [
+      "眼形",
+      "做眼",
+      "破眼",
+      "life and death",
+      "eye shape"
+    ],
+    "triggerSignals": [
+      "眼形",
+      "做眼",
+      "破眼",
+      "life and death",
+      "eye shape",
+      "eye_shape_urgent"
+    ],
+    "negativeSignals": [],
+    "katagoSignals": [
+      "local_tactical_loss",
+      "shape_inefficiency",
+      "high_score_loss"
+    ],
+    "recognition": "死活局面中，正确手往往是抢眼形急所，而不是随便补一口气。",
+    "wrongThinking": "把补气当成安全，却被对方占到眼形急所。",
+    "correctThinking": "先找双方共有的眼形点，再看是否必须先手占。",
+    "coachLines": [
+      "死活局面中，正确手往往是抢眼形急所，而不是随便补一口气。",
+      "先找双方共有的眼形点，再看是否必须先手占。"
+    ],
+    "drillPrompt": "找出本局唯一能做成眼形的交叉点。",
+    "confidenceBoost": 3,
+    "sourceRefs": [
+      "goagent-curated-original",
+      "wikibooks-go"
+    ],
+    "sourceQuality": "curated-open-reference"
+  },
+  {
+    "id": "elite-v4-ko_threat_value-010",
+    "title": "劫材价值：劫争前先盘点可用威胁",
+    "category": "endgame",
+    "patternType": "ko_threat_value",
+    "scope": "whole-board",
+    "phase": [
+      "middlegame",
+      "endgame"
+    ],
+    "regions": [
+      "corner",
+      "side",
+      "center",
+      "any"
+    ],
+    "levels": [
+      "beginner",
+      "intermediate",
+      "advanced",
+      "dan"
+    ],
+    "tags": [
+      "劫",
+      "劫材",
+      "ko",
+      "ko threat"
+    ],
+    "aliases": [
+      "劫",
+      "劫材",
+      "ko",
+      "ko threat"
+    ],
+    "triggerSignals": [
+      "劫",
+      "劫材",
+      "ko",
+      "ko threat",
+      "ko_threat_value"
+    ],
+    "negativeSignals": [],
+    "katagoSignals": [
+      "medium_score_loss",
+      "high_score_loss"
+    ],
+    "recognition": "劫争不是只看当前劫有多大，还要看双方劫材数量和质量。",
+    "wrongThinking": "看见劫就打，没有算自己有没有足够劫材。",
+    "correctThinking": "先比较劫本身价值，再盘点双方最大劫材。",
+    "coachLines": [
+      "劫争不是只看当前劫有多大，还要看双方劫材数量和质量。",
+      "先比较劫本身价值，再盘点双方最大劫材。"
+    ],
+    "drillPrompt": "列出你现在最大的三个劫材。",
+    "confidenceBoost": 3,
+    "sourceRefs": [
+      "goagent-curated-original",
+      "wikibooks-go"
+    ],
+    "sourceQuality": "curated-open-reference"
+  },
+  {
+    "id": "elite-v4-moyo_reduction_path-011",
+    "title": "消模样路线：从弱处进，从安全处出",
+    "category": "strategy",
+    "patternType": "moyo_reduction_path",
+    "scope": "whole-board",
+    "phase": [
+      "opening",
+      "middlegame"
+    ],
+    "regions": [
+      "side",
+      "center"
+    ],
+    "levels": [
+      "beginner",
+      "intermediate",
+      "advanced",
+      "dan"
+    ],
+    "tags": [
+      "模样",
+      "消模样",
+      "reduction",
+      "moyo",
+      "打入"
+    ],
+    "aliases": [
+      "模样",
+      "消模样",
+      "reduction",
+      "moyo",
+      "打入"
+    ],
+    "triggerSignals": [
+      "模样",
+      "消模样",
+      "reduction",
+      "moyo",
+      "打入",
+      "moyo_reduction_path"
+    ],
+    "negativeSignals": [],
+    "katagoSignals": [
+      "global_direction_loss",
+      "local_tactical_loss",
+      "medium_score_loss"
+    ],
+    "recognition": "消模样要选能安全撤出的路线，不是越深入越好。",
+    "wrongThinking": "一头扎进模样中央，结果成为被攻击对象。",
+    "correctThinking": "先找对方模样弱边，再设计自己的出口。",
+    "coachLines": [
+      "消模样要选能安全撤出的路线，不是越深入越好。",
+      "先找对方模样弱边，再设计自己的出口。"
+    ],
+    "drillPrompt": "这次消模样，你的撤退路线在哪里？",
+    "confidenceBoost": 3,
+    "sourceRefs": [
+      "goagent-curated-original",
+      "wikibooks-go"
+    ],
+    "sourceQuality": "curated-open-reference"
+  },
+  {
+    "id": "elite-v4-invasion_timing-012",
+    "title": "打入时机：对方成型前还是成型后",
+    "category": "strategy",
+    "patternType": "invasion_timing",
+    "scope": "whole-board",
+    "phase": [
+      "opening",
+      "middlegame"
+    ],
+    "regions": [
+      "side",
+      "center"
+    ],
+    "levels": [
+      "beginner",
+      "intermediate",
+      "advanced",
+      "dan"
+    ],
+    "tags": [
+      "打入",
+      "侵消",
+      "invasion",
+      "timing"
+    ],
+    "aliases": [
+      "打入",
+      "侵消",
+      "invasion",
+      "timing"
+    ],
+    "triggerSignals": [
+      "打入",
+      "侵消",
+      "invasion",
+      "timing",
+      "invasion_timing"
+    ],
+    "negativeSignals": [],
+    "katagoSignals": [
+      "global_direction_loss",
+      "local_tactical_loss",
+      "medium_score_loss"
+    ],
+    "recognition": "打入太早可能自找攻击，太晚可能来不及；时机要看对方模样成型速度。",
+    "wrongThinking": "看到大空就立刻打入，没看自己有没有支援。",
+    "correctThinking": "先看对方还能补哪里成空，再看自己有没有安全根据地。",
+    "coachLines": [
+      "打入太早可能自找攻击，太晚可能来不及；时机要看对方模样成型速度。",
+      "先看对方还能补哪里成空，再看自己有没有安全根据地。"
+    ],
+    "drillPrompt": "这手是该打入、消、还是先补自己？",
+    "confidenceBoost": 3,
+    "sourceRefs": [
+      "goagent-curated-original",
+      "wikibooks-go"
+    ],
+    "sourceQuality": "curated-open-reference"
+  },
+  {
+    "id": "elite-v4-attack_profit-013",
+    "title": "攻击收益：不是吃棋，而是边攻边围/边攻边补",
+    "category": "strategy",
+    "patternType": "attack_profit",
+    "scope": "whole-board",
+    "phase": [
+      "middlegame"
+    ],
+    "regions": [
+      "side",
+      "center",
+      "any"
+    ],
+    "levels": [
+      "beginner",
+      "intermediate",
+      "advanced",
+      "dan"
+    ],
+    "tags": [
+      "攻击收益",
+      "攻孤",
+      "attack profit",
+      "profit while attacking"
+    ],
+    "aliases": [
+      "攻击收益",
+      "攻孤",
+      "attack profit",
+      "profit while attacking"
+    ],
+    "triggerSignals": [
+      "攻击收益",
+      "攻孤",
+      "attack profit",
+      "profit while attacking",
+      "attack_profit"
+    ],
+    "negativeSignals": [],
+    "katagoSignals": [
+      "global_direction_loss",
+      "local_tactical_loss",
+      "medium_score_loss"
+    ],
+    "recognition": "好的攻击要同时得到空、厚势、先手或补强。",
+    "wrongThinking": "攻击时只想吃掉对方，结果自己也变薄。",
+    "correctThinking": "攻击前说清楚：我要得到哪一种收益？",
+    "coachLines": [
+      "好的攻击要同时得到空、厚势、先手或补强。",
+      "攻击前说清楚：我要得到哪一种收益？"
+    ],
+    "drillPrompt": "这次攻击即使吃不到棋，你能得到什么？",
+    "confidenceBoost": 3,
+    "sourceRefs": [
+      "goagent-curated-original",
+      "wikibooks-go"
+    ],
+    "sourceQuality": "curated-open-reference"
+  },
+  {
+    "id": "elite-v4-attack_not_kill-014",
+    "title": "攻击不是杀棋：逼对方走重才是目的",
+    "category": "strategy",
+    "patternType": "attack_not_kill",
+    "scope": "whole-board",
+    "phase": [
+      "middlegame"
+    ],
+    "regions": [
+      "side",
+      "center"
+    ],
+    "levels": [
+      "beginner",
+      "intermediate",
+      "advanced",
+      "dan"
+    ],
+    "tags": [
+      "攻击不是杀棋",
+      "杀棋",
+      "attack",
+      "kill"
+    ],
+    "aliases": [
+      "攻击不是杀棋",
+      "杀棋",
+      "attack",
+      "kill"
+    ],
+    "triggerSignals": [
+      "攻击不是杀棋",
+      "杀棋",
+      "attack",
+      "kill",
+      "attack_not_kill"
+    ],
+    "negativeSignals": [],
+    "katagoSignals": [
+      "global_direction_loss",
+      "local_tactical_loss",
+      "medium_score_loss"
+    ],
+    "recognition": "多数攻击的目标不是杀死，而是让对方走重、自己获得主动权。",
+    "wrongThinking": "每次攻击都想杀，导致过分和反击。",
+    "correctThinking": "先问能不能把对方赶向坏方向，再顺便扩张自己。",
+    "coachLines": [
+      "多数攻击的目标不是杀死，而是让对方走重、自己获得主动权。",
+      "先问能不能把对方赶向坏方向，再顺便扩张自己。"
+    ],
+    "drillPrompt": "如果不杀，这次攻击的合理目标是什么？",
+    "confidenceBoost": 3,
+    "sourceRefs": [
+      "goagent-curated-original",
+      "wikibooks-go"
+    ],
+    "sourceQuality": "curated-open-reference"
+  },
+  {
+    "id": "elite-v4-running_battle-015",
+    "title": "逃孤路线：往己方厚处还是对方薄处跑",
+    "category": "strategy",
+    "patternType": "running_battle",
+    "scope": "whole-board",
+    "phase": [
+      "middlegame"
+    ],
+    "regions": [
+      "side",
+      "center"
+    ],
+    "levels": [
+      "beginner",
+      "intermediate",
+      "advanced",
+      "dan"
+    ],
+    "tags": [
+      "逃孤",
+      "跑孤棋",
+      "running battle",
+      "weak group"
+    ],
+    "aliases": [
+      "逃孤",
+      "跑孤棋",
+      "running battle",
+      "weak group"
+    ],
+    "triggerSignals": [
+      "逃孤",
+      "跑孤棋",
+      "running battle",
+      "weak group",
+      "running_battle"
+    ],
+    "negativeSignals": [],
+    "katagoSignals": [
+      "global_direction_loss",
+      "local_tactical_loss",
+      "medium_score_loss"
+    ],
+    "recognition": "逃孤时路线决定后续主动权，应往自己可接应、对方薄的方向走。",
+    "wrongThinking": "只顾逃命，跑向对方厚处越跑越重。",
+    "correctThinking": "先看哪边有接应，再看能不能顺便攻击对方薄棋。",
+    "coachLines": [
+      "逃孤时路线决定后续主动权，应往自己可接应、对方薄的方向走。",
+      "先看哪边有接应，再看能不能顺便攻击对方薄棋。"
+    ],
+    "drillPrompt": "这块孤棋应该往哪里跑，能不能顺便反攻？",
+    "confidenceBoost": 3,
+    "sourceRefs": [
+      "goagent-curated-original",
+      "wikibooks-go"
+    ],
+    "sourceQuality": "curated-open-reference"
+  },
+  {
+    "id": "elite-v4-sacrifice_conversion-016",
+    "title": "弃子转换：弃的是局部，换的是全局效率",
+    "category": "strategy",
+    "patternType": "sacrifice_conversion",
+    "scope": "whole-board",
+    "phase": [
+      "middlegame"
+    ],
+    "regions": [
+      "corner",
+      "side",
+      "center"
+    ],
+    "levels": [
+      "beginner",
+      "intermediate",
+      "advanced",
+      "dan"
+    ],
+    "tags": [
+      "弃子",
+      "转换",
+      "sacrifice",
+      "sabaki",
+      "trade"
+    ],
+    "aliases": [
+      "弃子",
+      "转换",
+      "sacrifice",
+      "sabaki",
+      "trade"
+    ],
+    "triggerSignals": [
+      "弃子",
+      "转换",
+      "sacrifice",
+      "sabaki",
+      "trade",
+      "sacrifice_conversion"
+    ],
+    "negativeSignals": [],
+    "katagoSignals": [
+      "global_direction_loss",
+      "local_tactical_loss",
+      "medium_score_loss"
+    ],
+    "recognition": "弃子不是放弃，而是用小损失换先手、厚势或攻击目标。",
+    "wrongThinking": "舍不得小棋，整块棋越救越重。",
+    "correctThinking": "先算被吃的是几目，再看能换到什么全局收益。",
+    "coachLines": [
+      "弃子不是放弃，而是用小损失换先手、厚势或攻击目标。",
+      "先算被吃的是几目，再看能换到什么全局收益。"
+    ],
+    "drillPrompt": "这几颗子如果弃掉，你能换到什么？",
+    "confidenceBoost": 3,
+    "sourceRefs": [
+      "goagent-curated-original",
+      "wikibooks-go"
+    ],
+    "sourceQuality": "curated-open-reference"
+  },
+  {
+    "id": "elite-v4-sabaki-017",
+    "title": "治孤手法：靠、碰、扳，目标是轻灵成形",
+    "category": "strategy",
+    "patternType": "sabaki",
+    "scope": "whole-board",
+    "phase": [
+      "middlegame"
+    ],
+    "regions": [
+      "side",
+      "center",
+      "corner"
+    ],
+    "levels": [
+      "beginner",
+      "intermediate",
+      "advanced",
+      "dan"
+    ],
+    "tags": [
+      "治孤",
+      "sabaki",
+      "靠",
+      "碰",
+      "轻灵"
+    ],
+    "aliases": [
+      "治孤",
+      "sabaki",
+      "靠",
+      "碰",
+      "轻灵"
+    ],
+    "triggerSignals": [
+      "治孤",
+      "sabaki",
+      "靠",
+      "碰",
+      "轻灵",
+      "sabaki"
+    ],
+    "negativeSignals": [],
+    "katagoSignals": [
+      "global_direction_loss",
+      "local_tactical_loss",
+      "medium_score_loss"
+    ],
+    "recognition": "治孤时接触手段是为了借力成形，而不是硬拼气数。",
+    "wrongThinking": "孤棋被攻时只会跑，越跑越重。",
+    "correctThinking": "先找对方薄处靠碰，借对方应手做形。",
+    "coachLines": [
+      "治孤时接触手段是为了借力成形，而不是硬拼气数。",
+      "先找对方薄处靠碰，借对方应手做形。"
+    ],
+    "drillPrompt": "这块孤棋最适合靠哪一边借力？",
+    "confidenceBoost": 3,
+    "sourceRefs": [
+      "goagent-curated-original",
+      "wikibooks-go"
+    ],
+    "sourceQuality": "curated-open-reference"
+  },
+  {
+    "id": "elite-v4-thickness_usage-018",
+    "title": "厚势使用：厚势要用来攻击或限制，不是马上围小空",
+    "category": "strategy",
+    "patternType": "thickness_usage",
+    "scope": "whole-board",
+    "phase": [
+      "opening",
+      "middlegame"
+    ],
+    "regions": [
+      "side",
+      "center"
+    ],
+    "levels": [
+      "beginner",
+      "intermediate",
+      "advanced",
+      "dan"
+    ],
+    "tags": [
+      "厚势",
+      "外势",
+      "thickness",
+      "influence"
+    ],
+    "aliases": [
+      "厚势",
+      "外势",
+      "thickness",
+      "influence"
+    ],
+    "triggerSignals": [
+      "厚势",
+      "外势",
+      "thickness",
+      "influence",
+      "thickness_usage"
+    ],
+    "negativeSignals": [],
+    "katagoSignals": [
+      "global_direction_loss",
+      "local_tactical_loss",
+      "medium_score_loss"
+    ],
+    "recognition": "厚势的价值在于限制对方和支持攻击，过早围小空会降低效率。",
+    "wrongThinking": "刚得到厚势就补小空，把主动权交出去。",
+    "correctThinking": "先找厚势能压迫的对象，再决定扩张还是攻击。",
+    "coachLines": [
+      "厚势的价值在于限制对方和支持攻击，过早围小空会降低效率。",
+      "先找厚势能压迫的对象，再决定扩张还是攻击。"
+    ],
+    "drillPrompt": "你的厚势现在能影响哪块对方棋？",
+    "confidenceBoost": 3,
+    "sourceRefs": [
+      "goagent-curated-original",
+      "wikibooks-go"
+    ],
+    "sourceQuality": "curated-open-reference"
+  },
+  {
+    "id": "elite-v4-overconcentration-019",
+    "title": "凝形/过度集中：棋多但效率低",
+    "category": "shapes",
+    "patternType": "overconcentration",
+    "scope": "local-shape",
+    "phase": [
+      "opening",
+      "middlegame"
+    ],
+    "regions": [
+      "corner",
+      "side",
+      "center"
+    ],
+    "levels": [
+      "beginner",
+      "intermediate",
+      "advanced",
+      "dan"
+    ],
+    "tags": [
+      "凝形",
+      "过度集中",
+      "overconcentration",
+      "heavy shape"
+    ],
+    "aliases": [
+      "凝形",
+      "过度集中",
+      "overconcentration",
+      "heavy shape"
+    ],
+    "triggerSignals": [
+      "凝形",
+      "过度集中",
+      "overconcentration",
+      "heavy shape",
+      "overconcentration"
+    ],
+    "negativeSignals": [],
+    "katagoSignals": [
+      "local_tactical_loss",
+      "shape_inefficiency",
+      "high_score_loss"
+    ],
+    "recognition": "过度集中看似安全，实际每颗棋贡献变低。",
+    "wrongThinking": "不断在已有厚处补棋，忽略外面更大点。",
+    "correctThinking": "数一数这块棋已经安全到什么程度，再决定是否脱先。",
+    "coachLines": [
+      "过度集中看似安全，实际每颗棋贡献变低。",
+      "数一数这块棋已经安全到什么程度，再决定是否脱先。"
+    ],
+    "drillPrompt": "这手补强后，多出的效率在哪里？",
+    "confidenceBoost": 3,
+    "sourceRefs": [
+      "goagent-curated-original",
+      "wikibooks-go"
+    ],
+    "sourceQuality": "curated-open-reference"
+  },
+  {
+    "id": "elite-v4-heavy_shape-020",
+    "title": "重棋处理：越救越重时要考虑弃子",
+    "category": "shapes",
+    "patternType": "heavy_shape",
+    "scope": "local-shape",
+    "phase": [
+      "middlegame"
+    ],
+    "regions": [
+      "corner",
+      "side",
+      "center"
+    ],
+    "levels": [
+      "beginner",
+      "intermediate",
+      "advanced",
+      "dan"
+    ],
+    "tags": [
+      "重棋",
+      "厚重",
+      "heavy group",
+      "弃子"
+    ],
+    "aliases": [
+      "重棋",
+      "厚重",
+      "heavy group",
+      "弃子"
+    ],
+    "triggerSignals": [
+      "重棋",
+      "厚重",
+      "heavy group",
+      "弃子",
+      "heavy_shape"
+    ],
+    "negativeSignals": [],
+    "katagoSignals": [
+      "local_tactical_loss",
+      "shape_inefficiency",
+      "high_score_loss"
+    ],
+    "recognition": "重棋问题常不是一手能救，而是需要轻装、弃子或转身。",
+    "wrongThinking": "每颗子都想救，结果形成巨大弱块。",
+    "correctThinking": "先分清哪些子是核心，哪些子可以弃掉。",
+    "coachLines": [
+      "重棋问题常不是一手能救，而是需要轻装、弃子或转身。",
+      "先分清哪些子是核心，哪些子可以弃掉。"
+    ],
+    "drillPrompt": "这块棋中哪几颗可以弃，哪几颗必须活？",
+    "confidenceBoost": 3,
+    "sourceRefs": [
+      "goagent-curated-original",
+      "wikibooks-go"
+    ],
+    "sourceQuality": "curated-open-reference"
+  },
+  {
+    "id": "elite-v4-reverse_sente-021",
+    "title": "逆收官子：对方先手点不能随便放过",
+    "category": "endgame",
+    "patternType": "reverse_sente",
+    "scope": "whole-board",
+    "phase": [
+      "endgame"
+    ],
+    "regions": [
+      "corner",
+      "side",
+      "any"
+    ],
+    "levels": [
+      "beginner",
+      "intermediate",
+      "advanced",
+      "dan"
+    ],
+    "tags": [
+      "逆收",
+      "官子",
+      "reverse sente",
+      "yose"
+    ],
+    "aliases": [
+      "逆收",
+      "官子",
+      "reverse sente",
+      "yose"
+    ],
+    "triggerSignals": [
+      "逆收",
+      "官子",
+      "reverse sente",
+      "yose",
+      "reverse_sente"
+    ],
+    "negativeSignals": [],
+    "katagoSignals": [
+      "medium_score_loss",
+      "high_score_loss"
+    ],
+    "recognition": "逆收的价值常大于普通后手官子，因为阻止了对方先手收益。",
+    "wrongThinking": "只按自己能收几目算，没有算阻止对方的价值。",
+    "correctThinking": "先问这个点如果让对方下，是不是先手；若是，要按逆收评估。",
+    "coachLines": [
+      "逆收的价值常大于普通后手官子，因为阻止了对方先手收益。",
+      "先问这个点如果让对方下，是不是先手；若是，要按逆收评估。"
+    ],
+    "drillPrompt": "这三个官子里哪个是逆收？",
+    "confidenceBoost": 3,
+    "sourceRefs": [
+      "goagent-curated-original",
+      "wikibooks-go"
+    ],
+    "sourceQuality": "curated-open-reference"
+  },
+  {
+    "id": "elite-v4-endgame_temperature-022",
+    "title": "官子温度：先收最大且最急的点",
+    "category": "endgame",
+    "patternType": "endgame_temperature",
+    "scope": "whole-board",
+    "phase": [
+      "endgame"
+    ],
+    "regions": [
+      "corner",
+      "side",
+      "any"
+    ],
+    "levels": [
+      "beginner",
+      "intermediate",
+      "advanced",
+      "dan"
+    ],
+    "tags": [
+      "官子大小",
+      "温度",
+      "yose",
+      "endgame value"
+    ],
+    "aliases": [
+      "官子大小",
+      "温度",
+      "yose",
+      "endgame value"
+    ],
+    "triggerSignals": [
+      "官子大小",
+      "温度",
+      "yose",
+      "endgame value",
+      "endgame_temperature"
+    ],
+    "negativeSignals": [],
+    "katagoSignals": [
+      "medium_score_loss",
+      "high_score_loss"
+    ],
+    "recognition": "官子顺序要看价值和先后手，不能只看眼前一处。",
+    "wrongThinking": "顺手把局部收完，错过更大官子。",
+    "correctThinking": "列出双方最大官子，先收价值最高且能保留先手的点。",
+    "coachLines": [
+      "官子顺序要看价值和先后手，不能只看眼前一处。",
+      "列出双方最大官子，先收价值最高且能保留先手的点。"
+    ],
+    "drillPrompt": "给三个官子点排序，并标注先手/后手。",
+    "confidenceBoost": 3,
+    "sourceRefs": [
+      "goagent-curated-original",
+      "wikibooks-go"
+    ],
+    "sourceQuality": "curated-open-reference"
+  },
+  {
+    "id": "elite-v4-boundary_endgame-023",
+    "title": "边界官子：收束形状比单点目数更重要",
+    "category": "endgame",
+    "patternType": "boundary_endgame",
+    "scope": "whole-board",
+    "phase": [
+      "endgame"
+    ],
+    "regions": [
+      "side",
+      "corner"
+    ],
+    "levels": [
+      "beginner",
+      "intermediate",
+      "advanced",
+      "dan"
+    ],
+    "tags": [
+      "收束",
+      "边界",
+      "官子形",
+      "boundary"
+    ],
+    "aliases": [
+      "收束",
+      "边界",
+      "官子形",
+      "boundary"
+    ],
+    "triggerSignals": [
+      "收束",
+      "边界",
+      "官子形",
+      "boundary",
+      "boundary_endgame"
+    ],
+    "negativeSignals": [],
+    "katagoSignals": [
+      "medium_score_loss",
+      "high_score_loss"
+    ],
+    "recognition": "边界官子要看收束后的整体形，不只是当前一手几目。",
+    "wrongThinking": "只抢一手小便宜，留下对方更大的后续。",
+    "correctThinking": "先看这手是否改变边界形和后续先手。",
+    "coachLines": [
+      "边界官子要看收束后的整体形，不只是当前一手几目。",
+      "先看这手是否改变边界形和后续先手。"
+    ],
+    "drillPrompt": "这个边界收束后，对方还剩什么后续？",
+    "confidenceBoost": 3,
+    "sourceRefs": [
+      "goagent-curated-original",
+      "wikibooks-go"
+    ],
+    "sourceQuality": "curated-open-reference"
+  },
+  {
+    "id": "elite-v4-score_context_risk-024",
+    "title": "形势判断：优势简明，劣势求变",
+    "category": "strategy",
+    "patternType": "score_context_risk",
+    "scope": "whole-board",
+    "phase": [
+      "middlegame",
+      "endgame"
+    ],
+    "regions": [
+      "any"
+    ],
+    "levels": [
+      "beginner",
+      "intermediate",
+      "advanced",
+      "dan"
+    ],
+    "tags": [
+      "形势判断",
+      "优势",
+      "劣势",
+      "risk",
+      "score"
+    ],
+    "aliases": [
+      "形势判断",
+      "优势",
+      "劣势",
+      "risk",
+      "score"
+    ],
+    "triggerSignals": [
+      "形势判断",
+      "优势",
+      "劣势",
+      "risk",
+      "score",
+      "score_context_risk"
+    ],
+    "negativeSignals": [],
+    "katagoSignals": [
+      "global_direction_loss",
+      "local_tactical_loss",
+      "medium_score_loss"
+    ],
+    "recognition": "同一手在优势和劣势下评价不同：领先时简明，落后时寻找变化。",
+    "wrongThinking": "不看形势，优势时复杂化，劣势时保守。",
+    "correctThinking": "先判断大概领先/落后，再选择风险水平。",
+    "coachLines": [
+      "同一手在优势和劣势下评价不同：领先时简明，落后时寻找变化。",
+      "先判断大概领先/落后，再选择风险水平。"
+    ],
+    "drillPrompt": "这盘你是该简明收束还是制造变化？",
+    "confidenceBoost": 3,
+    "sourceRefs": [
+      "goagent-curated-original",
+      "wikibooks-go"
+    ],
+    "sourceQuality": "curated-open-reference"
+  },
+  {
+    "id": "elite-v4-count_before_fight-025",
+    "title": "攻防前数目：先知道自己为什么要冒险",
+    "category": "strategy",
+    "patternType": "count_before_fight",
+    "scope": "whole-board",
+    "phase": [
+      "middlegame",
+      "endgame"
+    ],
+    "regions": [
+      "any"
+    ],
+    "levels": [
+      "beginner",
+      "intermediate",
+      "advanced",
+      "dan"
+    ],
+    "tags": [
+      "数目",
+      "形势",
+      "冒险",
+      "counting",
+      "risk"
+    ],
+    "aliases": [
+      "数目",
+      "形势",
+      "冒险",
+      "counting",
+      "risk"
+    ],
+    "triggerSignals": [
+      "数目",
+      "形势",
+      "冒险",
+      "counting",
+      "risk",
+      "count_before_fight"
+    ],
+    "negativeSignals": [],
+    "katagoSignals": [
+      "global_direction_loss",
+      "local_tactical_loss",
+      "medium_score_loss"
+    ],
+    "recognition": "重大攻防前要先估形势，否则不知道该稳还是该拼。",
+    "wrongThinking": "不数目就战斗，结果优势局面白白复杂化。",
+    "correctThinking": "战斗前先估双方实地和厚势，决定风险等级。",
+    "coachLines": [
+      "重大攻防前要先估形势，否则不知道该稳还是该拼。",
+      "战斗前先估双方实地和厚势，决定风险等级。"
+    ],
+    "drillPrompt": "这次战斗前，双方大概谁领先？",
+    "confidenceBoost": 3,
+    "sourceRefs": [
+      "goagent-curated-original",
+      "wikibooks-go"
+    ],
+    "sourceQuality": "curated-open-reference"
+  },
+  {
+    "id": "elite-v4-largest_area-026",
+    "title": "布局最大区域：空旷边比小角补棋更大",
+    "category": "opening",
+    "patternType": "largest_area",
+    "scope": "whole-board",
+    "phase": [
+      "opening"
+    ],
+    "regions": [
+      "side",
+      "center",
+      "any"
+    ],
+    "levels": [
+      "beginner",
+      "intermediate",
+      "advanced",
+      "dan"
+    ],
+    "tags": [
+      "大场",
+      "布局",
+      "largest area",
+      "fuseki"
+    ],
+    "aliases": [
+      "大场",
+      "布局",
+      "largest area",
+      "fuseki"
+    ],
+    "triggerSignals": [
+      "大场",
+      "布局",
+      "largest area",
+      "fuseki",
+      "largest_area"
+    ],
+    "negativeSignals": [],
+    "katagoSignals": [
+      "global_direction_loss",
+      "medium_winrate_loss",
+      "candidate_style_choice"
+    ],
+    "recognition": "布局阶段常见错误是补小处而错过最大空旷区域。",
+    "wrongThinking": "局部下得舒服，但全局速度慢。",
+    "correctThinking": "先扫全盘找最大未开发区域，再回头看局部是否真急。",
+    "coachLines": [
+      "布局阶段常见错误是补小处而错过最大空旷区域。",
+      "先扫全盘找最大未开发区域，再回头看局部是否真急。"
+    ],
+    "drillPrompt": "这盘布局最大空白区在哪里？",
+    "confidenceBoost": 3,
+    "sourceRefs": [
+      "goagent-curated-original",
+      "wikibooks-go"
+    ],
+    "sourceQuality": "curated-open-reference"
+  },
+  {
+    "id": "elite-v4-urgent_corner-027",
+    "title": "布局急所：角上未定型时大场可能不如急所",
+    "category": "opening",
+    "patternType": "urgent_corner",
+    "scope": "whole-board",
+    "phase": [
+      "opening"
+    ],
+    "regions": [
+      "corner",
+      "side"
+    ],
+    "levels": [
+      "beginner",
+      "intermediate",
+      "advanced",
+      "dan"
+    ],
+    "tags": [
+      "急所",
+      "角上未定",
+      "urgent point",
+      "corner"
+    ],
+    "aliases": [
+      "急所",
+      "角上未定",
+      "urgent point",
+      "corner"
+    ],
+    "triggerSignals": [
+      "急所",
+      "角上未定",
+      "urgent point",
+      "corner",
+      "urgent_corner"
+    ],
+    "negativeSignals": [],
+    "katagoSignals": [
+      "global_direction_loss",
+      "medium_winrate_loss",
+      "candidate_style_choice"
+    ],
+    "recognition": "布局不是只抢大场，角上若有明显急所，要先处理。",
+    "wrongThinking": "看到大场就脱先，角上被严厉惩罚。",
+    "correctThinking": "先问对方下一手是否会让局部严重变差；如果会，就是急所。",
+    "coachLines": [
+      "布局不是只抢大场，角上若有明显急所，要先处理。",
+      "先问对方下一手是否会让局部严重变差；如果会，就是急所。"
+    ],
+    "drillPrompt": "如果你脱先，对方角上最严厉的一手是什么？",
+    "confidenceBoost": 3,
+    "sourceRefs": [
+      "goagent-curated-original",
+      "wikibooks-go"
+    ],
+    "sourceQuality": "curated-open-reference"
+  },
+  {
+    "id": "elite-v4-side_balance-028",
+    "title": "两翼平衡：一边太重，一边空虚",
+    "category": "opening",
+    "patternType": "side_balance",
+    "scope": "whole-board",
+    "phase": [
+      "opening"
+    ],
+    "regions": [
+      "side",
+      "any"
+    ],
+    "levels": [
+      "beginner",
+      "intermediate",
+      "advanced",
+      "dan"
+    ],
+    "tags": [
+      "两翼平衡",
+      "布局平衡",
+      "balance",
+      "side"
+    ],
+    "aliases": [
+      "两翼平衡",
+      "布局平衡",
+      "balance",
+      "side"
+    ],
+    "triggerSignals": [
+      "两翼平衡",
+      "布局平衡",
+      "balance",
+      "side",
+      "side_balance"
+    ],
+    "negativeSignals": [],
+    "katagoSignals": [
+      "global_direction_loss",
+      "medium_winrate_loss",
+      "candidate_style_choice"
+    ],
+    "recognition": "布局要避免棋力过度集中在一边，另一边完全空虚。",
+    "wrongThinking": "连续在同一边补棋，导致全局失衡。",
+    "correctThinking": "看四个角和四条边，找自己最空虚的一侧。",
+    "coachLines": [
+      "布局要避免棋力过度集中在一边，另一边完全空虚。",
+      "看四个角和四条边，找自己最空虚的一侧。"
+    ],
+    "drillPrompt": "现在最需要照顾的是哪条边？",
+    "confidenceBoost": 3,
+    "sourceRefs": [
+      "goagent-curated-original",
+      "wikibooks-go"
+    ],
+    "sourceQuality": "curated-open-reference"
+  },
+  {
+    "id": "elite-v4-contact_order-029",
+    "title": "接触战次序：先长气还是先补断",
+    "category": "tesuji",
+    "patternType": "contact_order",
+    "scope": "local-shape",
+    "phase": [
+      "middlegame"
+    ],
+    "regions": [
+      "corner",
+      "side",
+      "center"
+    ],
+    "levels": [
+      "beginner",
+      "intermediate",
+      "advanced",
+      "dan"
+    ],
+    "tags": [
+      "接触战",
+      "次序",
+      "长气",
+      "补断",
+      "contact fight"
+    ],
+    "aliases": [
+      "接触战",
+      "次序",
+      "长气",
+      "补断",
+      "contact fight"
+    ],
+    "triggerSignals": [
+      "接触战",
+      "次序",
+      "长气",
+      "补断",
+      "contact fight",
+      "contact_order"
+    ],
+    "negativeSignals": [],
+    "katagoSignals": [
+      "local_tactical_loss",
+      "shape_inefficiency",
+      "high_score_loss"
+    ],
+    "recognition": "接触战胜负常在次序：先长气、先补断、还是先打吃。",
+    "wrongThinking": "凭感觉下接触战，没有比较次序。",
+    "correctThinking": "先列出对方的反击，再选择能同时补形和限制对方的次序。",
+    "coachLines": [
+      "接触战胜负常在次序：先长气、先补断、还是先打吃。",
+      "先列出对方的反击，再选择能同时补形和限制对方的次序。"
+    ],
+    "drillPrompt": "这次接触战如果次序反了，会被对方怎么惩罚？",
+    "confidenceBoost": 3,
+    "sourceRefs": [
+      "goagent-curated-original",
+      "wikibooks-go"
+    ],
+    "sourceQuality": "curated-open-reference"
+  },
+  {
+    "id": "elite-v4-hane_at_head-030",
+    "title": "头上扳：压制出头方向的急所",
+    "category": "tesuji",
+    "patternType": "hane_at_head",
+    "scope": "local-shape",
+    "phase": [
+      "middlegame"
+    ],
+    "regions": [
+      "side",
+      "center",
+      "corner"
+    ],
+    "levels": [
+      "beginner",
+      "intermediate",
+      "advanced",
+      "dan"
+    ],
+    "tags": [
+      "头上扳",
+      "扳头",
+      "hane at head",
+      "压制"
+    ],
+    "aliases": [
+      "头上扳",
+      "扳头",
+      "hane at head",
+      "压制"
+    ],
+    "triggerSignals": [
+      "头上扳",
+      "扳头",
+      "hane at head",
+      "压制",
+      "hane_at_head"
+    ],
+    "negativeSignals": [],
+    "katagoSignals": [
+      "local_tactical_loss",
+      "shape_inefficiency",
+      "high_score_loss"
+    ],
+    "recognition": "头上扳常用于阻止对方出头，但必须确认自己不会被反断。",
+    "wrongThinking": "看到能扳就扳，没有看自己连接和气数。",
+    "correctThinking": "先看扳后对方是否能断，再看是否真正压住出头方向。",
+    "coachLines": [
+      "头上扳常用于阻止对方出头，但必须确认自己不会被反断。",
+      "先看扳后对方是否能断，再看是否真正压住出头方向。"
+    ],
+    "drillPrompt": "这手扳头后，对方最强反击是什么？",
+    "confidenceBoost": 3,
+    "sourceRefs": [
+      "goagent-curated-original",
+      "wikibooks-go"
+    ],
+    "sourceQuality": "curated-open-reference"
+  },
+  {
+    "id": "elite-v4-ladder_vs_net-031",
+    "title": "征子与枷：追杀方式要选对",
+    "category": "tesuji",
+    "patternType": "ladder_vs_net",
+    "scope": "local-shape",
+    "phase": [
+      "middlegame"
+    ],
+    "regions": [
+      "corner",
+      "side",
+      "center"
+    ],
+    "levels": [
+      "beginner",
+      "intermediate",
+      "advanced",
+      "dan"
+    ],
+    "tags": [
+      "征子",
+      "枷",
+      "ladder",
+      "net",
+      "geta"
+    ],
+    "aliases": [
+      "征子",
+      "枷",
+      "ladder",
+      "net",
+      "geta"
+    ],
+    "triggerSignals": [
+      "征子",
+      "枷",
+      "ladder",
+      "net",
+      "geta",
+      "ladder_vs_net"
+    ],
+    "negativeSignals": [],
+    "katagoSignals": [
+      "local_tactical_loss",
+      "shape_inefficiency",
+      "high_score_loss"
+    ],
+    "recognition": "能征就征，不能征要找枷；两者读法和全局影响不同。",
+    "wrongThinking": "以为在追吃，结果征子失败或枷不住。",
+    "correctThinking": "先检查征子路径，再看枷是否限制出路。",
+    "coachLines": [
+      "能征就征，不能征要找枷；两者读法和全局影响不同。",
+      "先检查征子路径，再看枷是否限制出路。"
+    ],
+    "drillPrompt": "这块棋是该征还是该枷？征子路上有没有障碍？",
+    "confidenceBoost": 3,
+    "sourceRefs": [
+      "goagent-curated-original",
+      "wikibooks-go"
+    ],
+    "sourceQuality": "curated-open-reference"
+  },
+  {
+    "id": "elite-v4-throw_in-032",
+    "title": "扑与倒扑：破眼/紧气的手筋",
+    "category": "tesuji",
+    "patternType": "throw_in",
+    "scope": "local-shape",
+    "phase": [
+      "middlegame",
+      "endgame"
+    ],
+    "regions": [
+      "corner",
+      "side",
+      "center"
+    ],
+    "levels": [
+      "beginner",
+      "intermediate",
+      "advanced",
+      "dan"
+    ],
+    "tags": [
+      "扑",
+      "倒扑",
+      "throw-in",
+      "snapback"
+    ],
+    "aliases": [
+      "扑",
+      "倒扑",
+      "throw-in",
+      "snapback"
+    ],
+    "triggerSignals": [
+      "扑",
+      "倒扑",
+      "throw-in",
+      "snapback",
+      "throw_in"
+    ],
+    "negativeSignals": [],
+    "katagoSignals": [
+      "local_tactical_loss",
+      "shape_inefficiency",
+      "high_score_loss"
+    ],
+    "recognition": "扑/倒扑常用于破眼、紧气或制造接不归。",
+    "wrongThinking": "只看自己送子，没看到送子后的强制效果。",
+    "correctThinking": "先问这颗子被吃后，对方形会不会变差。",
+    "coachLines": [
+      "扑/倒扑常用于破眼、紧气或制造接不归。",
+      "先问这颗子被吃后，对方形会不会变差。"
+    ],
+    "drillPrompt": "这手扑进去后，对方吃掉会发生什么？",
+    "confidenceBoost": 3,
+    "sourceRefs": [
+      "goagent-curated-original",
+      "wikibooks-go"
+    ],
+    "sourceQuality": "curated-open-reference"
+  },
+  {
+    "id": "elite-v4-shortage_of_liberties-033",
+    "title": "气紧手筋：让对方看似能连却连不上",
+    "category": "tesuji",
+    "patternType": "shortage_of_liberties",
+    "scope": "local-shape",
+    "phase": [
+      "middlegame",
+      "endgame"
+    ],
+    "regions": [
+      "corner",
+      "side",
+      "center"
+    ],
+    "levels": [
+      "beginner",
+      "intermediate",
+      "advanced",
+      "dan"
+    ],
+    "tags": [
+      "气紧",
+      "气不足",
+      "shortage of liberties"
+    ],
+    "aliases": [
+      "气紧",
+      "气不足",
+      "shortage of liberties"
+    ],
+    "triggerSignals": [
+      "气紧",
+      "气不足",
+      "shortage of liberties",
+      "shortage_of_liberties"
+    ],
+    "negativeSignals": [],
+    "katagoSignals": [
+      "local_tactical_loss",
+      "shape_inefficiency",
+      "high_score_loss"
+    ],
+    "recognition": "气紧手筋利用对方气数不足，让普通连接失效。",
+    "wrongThinking": "只看形状能连，没数连接过程的气。",
+    "correctThinking": "先数每个连接点的气，再看是否能制造打吃链。",
+    "coachLines": [
+      "气紧手筋利用对方气数不足，让普通连接失效。",
+      "先数每个连接点的气，再看是否能制造打吃链。"
+    ],
+    "drillPrompt": "这手之后对方为什么不能简单连接？",
+    "confidenceBoost": 3,
+    "sourceRefs": [
+      "goagent-curated-original",
+      "wikibooks-go"
+    ],
+    "sourceQuality": "curated-open-reference"
+  },
+  {
+    "id": "elite-v4-ladder_breaker-034",
+    "title": "引征/破征：全局石子会改变局部死活",
+    "category": "tesuji",
+    "patternType": "ladder_breaker",
+    "scope": "local-shape",
+    "phase": [
+      "opening",
+      "middlegame"
+    ],
+    "regions": [
+      "side",
+      "center",
+      "any"
+    ],
+    "levels": [
+      "beginner",
+      "intermediate",
+      "advanced",
+      "dan"
+    ],
+    "tags": [
+      "引征",
+      "破征",
+      "ladder breaker"
+    ],
+    "aliases": [
+      "引征",
+      "破征",
+      "ladder breaker"
+    ],
+    "triggerSignals": [
+      "引征",
+      "破征",
+      "ladder breaker",
+      "ladder_breaker"
+    ],
+    "negativeSignals": [],
+    "katagoSignals": [
+      "local_tactical_loss",
+      "shape_inefficiency",
+      "high_score_loss"
+    ],
+    "recognition": "征子不是局部问题，远处石子会改变追杀结果。",
+    "wrongThinking": "只看眼前几步，没有沿征子路线检查全盘。",
+    "correctThinking": "沿征子方向一路看到边，再判断是否有引征点。",
+    "coachLines": [
+      "征子不是局部问题，远处石子会改变追杀结果。",
+      "沿征子方向一路看到边，再判断是否有引征点。"
+    ],
+    "drillPrompt": "这条征子路上哪颗远处棋会影响结果？",
+    "confidenceBoost": 3,
+    "sourceRefs": [
+      "goagent-curated-original",
+      "wikibooks-go"
+    ],
+    "sourceQuality": "curated-open-reference"
+  },
+  {
+    "id": "elite-v4-peep_response-035",
+    "title": "窥的应法：补断、反击还是脱先",
+    "category": "tesuji",
+    "patternType": "peep_response",
+    "scope": "local-shape",
+    "phase": [
+      "middlegame"
+    ],
+    "regions": [
+      "corner",
+      "side",
+      "center"
+    ],
+    "levels": [
+      "beginner",
+      "intermediate",
+      "advanced",
+      "dan"
+    ],
+    "tags": [
+      "窥",
+      "peep",
+      "应窥",
+      "补断"
+    ],
+    "aliases": [
+      "窥",
+      "peep",
+      "应窥",
+      "补断"
+    ],
+    "triggerSignals": [
+      "窥",
+      "peep",
+      "应窥",
+      "补断",
+      "peep_response"
+    ],
+    "negativeSignals": [],
+    "katagoSignals": [
+      "local_tactical_loss",
+      "shape_inefficiency",
+      "high_score_loss"
+    ],
+    "recognition": "面对窥，不能自动补；要判断对方窥的目的和自己的反击可能。",
+    "wrongThinking": "一被窥就补，丢掉先手；或者该补不补被断。",
+    "correctThinking": "先问被断代价，再决定补、反击或脱先。",
+    "coachLines": [
+      "面对窥，不能自动补；要判断对方窥的目的和自己的反击可能。",
+      "先问被断代价，再决定补、反击或脱先。"
+    ],
+    "drillPrompt": "这次被窥，如果不补会怎样？",
+    "confidenceBoost": 3,
+    "sourceRefs": [
+      "goagent-curated-original",
+      "wikibooks-go"
+    ],
+    "sourceQuality": "curated-open-reference"
+  },
+  {
+    "id": "elite-v4-shoulder_hit-036",
+    "title": "肩冲目的：限制模样还是试探应手",
+    "category": "strategy",
+    "patternType": "shoulder_hit",
+    "scope": "whole-board",
+    "phase": [
+      "opening",
+      "middlegame"
+    ],
+    "regions": [
+      "side",
+      "center"
+    ],
+    "levels": [
+      "beginner",
+      "intermediate",
+      "advanced",
+      "dan"
+    ],
+    "tags": [
+      "肩冲",
+      "shoulder hit",
+      "压缩",
+      "试探"
+    ],
+    "aliases": [
+      "肩冲",
+      "shoulder hit",
+      "压缩",
+      "试探"
+    ],
+    "triggerSignals": [
+      "肩冲",
+      "shoulder hit",
+      "压缩",
+      "试探",
+      "shoulder_hit"
+    ],
+    "negativeSignals": [],
+    "katagoSignals": [
+      "global_direction_loss",
+      "local_tactical_loss",
+      "medium_score_loss"
+    ],
+    "recognition": "肩冲通常是限制模样、试探应手或争取先手，不是单纯局部便宜。",
+    "wrongThinking": "肩冲后没有后续计划，被对方顺势长厚。",
+    "correctThinking": "先说明肩冲想限制哪片模样，再准备对方不同应法。",
+    "coachLines": [
+      "肩冲通常是限制模样、试探应手或争取先手，不是单纯局部便宜。",
+      "先说明肩冲想限制哪片模样，再准备对方不同应法。"
+    ],
+    "drillPrompt": "肩冲后对方长出，你下一步计划是什么？",
+    "confidenceBoost": 3,
+    "sourceRefs": [
+      "goagent-curated-original",
+      "wikibooks-go"
+    ],
+    "sourceQuality": "curated-open-reference"
+  },
+  {
+    "id": "elite-v4-capping_move-037",
+    "title": "镇/盖帽：压出头方向而非直接杀棋",
+    "category": "strategy",
+    "patternType": "capping_move",
+    "scope": "whole-board",
+    "phase": [
+      "opening",
+      "middlegame"
+    ],
+    "regions": [
+      "side",
+      "center"
+    ],
+    "levels": [
+      "beginner",
+      "intermediate",
+      "advanced",
+      "dan"
+    ],
+    "tags": [
+      "镇",
+      "盖帽",
+      "cap",
+      "capping move"
+    ],
+    "aliases": [
+      "镇",
+      "盖帽",
+      "cap",
+      "capping move"
+    ],
+    "triggerSignals": [
+      "镇",
+      "盖帽",
+      "cap",
+      "capping move",
+      "capping_move"
+    ],
+    "negativeSignals": [],
+    "katagoSignals": [
+      "global_direction_loss",
+      "local_tactical_loss",
+      "medium_score_loss"
+    ],
+    "recognition": "镇的目标是限制出头方向，逼对方走重。",
+    "wrongThinking": "以为镇就能杀，后续追得太过。",
+    "correctThinking": "先看镇后对方往哪边逃，再决定自己围哪边。",
+    "coachLines": [
+      "镇的目标是限制出头方向，逼对方走重。",
+      "先看镇后对方往哪边逃，再决定自己围哪边。"
+    ],
+    "drillPrompt": "这手镇是想把对方赶向哪里？",
+    "confidenceBoost": 3,
+    "sourceRefs": [
+      "goagent-curated-original",
+      "wikibooks-go"
+    ],
+    "sourceQuality": "curated-open-reference"
+  },
+  {
+    "id": "elite-v4-bad_exchange_before_attack-038",
+    "title": "攻击前坏交换：先把对方走厚再攻不动",
+    "category": "strategy",
+    "patternType": "bad_exchange_before_attack",
+    "scope": "whole-board",
+    "phase": [
+      "middlegame"
+    ],
+    "regions": [
+      "corner",
+      "side",
+      "center"
+    ],
+    "levels": [
+      "beginner",
+      "intermediate",
+      "advanced",
+      "dan"
+    ],
+    "tags": [
+      "坏交换",
+      "攻击前交换",
+      "exchange before attack"
+    ],
+    "aliases": [
+      "坏交换",
+      "攻击前交换",
+      "exchange before attack"
+    ],
+    "triggerSignals": [
+      "坏交换",
+      "攻击前交换",
+      "exchange before attack",
+      "bad_exchange_before_attack"
+    ],
+    "negativeSignals": [],
+    "katagoSignals": [
+      "global_direction_loss",
+      "local_tactical_loss",
+      "medium_score_loss"
+    ],
+    "recognition": "攻击前的交换如果帮对方补强，会让后续攻击失去目标。",
+    "wrongThinking": "想先赚一点，结果让对方安定。",
+    "correctThinking": "攻击前不要随便交换，先保留对方弱点。",
+    "coachLines": [
+      "攻击前的交换如果帮对方补强，会让后续攻击失去目标。",
+      "攻击前不要随便交换，先保留对方弱点。"
+    ],
+    "drillPrompt": "这次交换后，对方哪一个弱点消失了？",
+    "confidenceBoost": 3,
+    "sourceRefs": [
+      "goagent-curated-original",
+      "wikibooks-go"
+    ],
+    "sourceQuality": "curated-open-reference"
+  },
+  {
+    "id": "elite-v4-safety_before_attack-039",
+    "title": "先补自己再攻击：攻防转换的底线",
+    "category": "strategy",
+    "patternType": "safety_before_attack",
+    "scope": "whole-board",
+    "phase": [
+      "middlegame"
+    ],
+    "regions": [
+      "corner",
+      "side",
+      "center"
+    ],
+    "levels": [
+      "beginner",
+      "intermediate",
+      "advanced",
+      "dan"
+    ],
+    "tags": [
+      "补强再攻",
+      "自己薄",
+      "safety before attack"
+    ],
+    "aliases": [
+      "补强再攻",
+      "自己薄",
+      "safety before attack"
+    ],
+    "triggerSignals": [
+      "补强再攻",
+      "自己薄",
+      "safety before attack",
+      "safety_before_attack"
+    ],
+    "negativeSignals": [],
+    "katagoSignals": [
+      "global_direction_loss",
+      "local_tactical_loss",
+      "medium_score_loss"
+    ],
+    "recognition": "如果自己也薄，强攻前常要先补关键弱点。",
+    "wrongThinking": "只看到对方弱，没有看到自己更危险。",
+    "correctThinking": "先比较双方弱点，若自己更急，先补强再攻。",
+    "coachLines": [
+      "如果自己也薄，强攻前常要先补关键弱点。",
+      "先比较双方弱点，若自己更急，先补强再攻。"
+    ],
+    "drillPrompt": "攻击前你自己哪块棋最危险？",
+    "confidenceBoost": 3,
+    "sourceRefs": [
+      "goagent-curated-original",
+      "wikibooks-go"
+    ],
+    "sourceQuality": "curated-open-reference"
+  },
+  {
+    "id": "elite-v4-winning_simplification-040",
+    "title": "大优防浪：减少复杂度而不是证明自己会杀",
+    "category": "strategy",
+    "patternType": "winning_simplification",
+    "scope": "whole-board",
+    "phase": [
+      "middlegame",
+      "endgame"
+    ],
+    "regions": [
+      "any"
+    ],
+    "levels": [
+      "beginner",
+      "intermediate",
+      "advanced",
+      "dan"
+    ],
+    "tags": [
+      "大优",
+      "防浪",
+      "简明",
+      "winning simplification"
+    ],
+    "aliases": [
+      "大优",
+      "防浪",
+      "简明",
+      "winning simplification"
+    ],
+    "triggerSignals": [
+      "大优",
+      "防浪",
+      "简明",
+      "winning simplification",
+      "winning_simplification"
+    ],
+    "negativeSignals": [],
+    "katagoSignals": [
+      "global_direction_loss",
+      "local_tactical_loss",
+      "medium_score_loss"
+    ],
+    "recognition": "大优势时最好的棋常是减少变化、保留目差，而不是追求最大杀伤。",
+    "wrongThinking": "领先时还想杀大龙，给对方逆转机会。",
+    "correctThinking": "选择能保留优势且风险最低的路线。",
+    "coachLines": [
+      "大优势时最好的棋常是减少变化、保留目差，而不是追求最大杀伤。",
+      "选择能保留优势且风险最低的路线。"
+    ],
+    "drillPrompt": "这盘领先时，哪手能最简明地收束？",
+    "confidenceBoost": 3,
+    "sourceRefs": [
+      "goagent-curated-original",
+      "wikibooks-go"
+    ],
+    "sourceQuality": "curated-open-reference"
+  }
+]

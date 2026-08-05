@@ -1602,6 +1602,7 @@ public class AnalysisEngine {
     request.put("includePVVisits", Lizzie.config.showPvVisits);
     request.put("includeOwnership", includeOwnership);
     request.put("includeMovesOwnership", includeOwnership && Lizzie.config.useMovesOwnership);
+    request.put("includeHumanPolicy", true);  // 对齐 GoAgent：KataGo 返回 humanPrior/humanPolicy 人类策略信号
     BoardHistoryNode snapshotAnchor = findSnapshotAnchor(analyzeNode);
     BoardHistoryNode initialStateAnchor = resolveInitialStateAnchor(snapshotAnchor);
     ArrayList<String[]> moveList = collectHistoryActions(analyzeNode, snapshotAnchor);

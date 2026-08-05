@@ -36,11 +36,21 @@ public class LLMClient {
     body.append("{\"model\":\"").append(escape(model)).append("\",\"stream\":true,\"messages\":[");
     for (int i = 0; i < messages.size(); i++) {
       if (i > 0) body.append(",");
-      body.append("{\"role\":\"")
-          .append(messages.get(i).role)
-          .append("\",\"content\":\"")
-          .append(escape(messages.get(i).content))
-          .append("\"}");
+      Message m = messages.get(i);
+      body.append("{\"role\":\"").append(m.role).append("\",\"content\":");
+      if (m.images == null || m.images.isEmpty()) {
+        body.append("\"").append(escape(m.content)).append("\"");
+      } else {
+        // OpenAI 多模态格式：content 为数组
+        body.append("[");
+        body.append("{\"type\":\"text\",\"text\":\"").append(escape(m.content)).append("\"}");
+        for (String img : m.images) {
+          body.append(",{\"type\":\"image_url\",\"image_url\":{\"url\":\"")
+              .append(escape(img)).append("\"}}");
+        }
+        body.append("]");
+      }
+      body.append("}");
     }
     body.append("]}");
 
@@ -132,10 +142,18 @@ public class LLMClient {
   public static class Message {
     public final String role;
     public final String content;
+    public final List<String> images; // base64 data URLs（vision），可为 null/空
 
     public Message(String role, String content) {
       this.role = role;
       this.content = content;
+      this.images = null;
+    }
+
+    public Message(String role, String content, List<String> images) {
+      this.role = role;
+      this.content = content;
+      this.images = images;
     }
   }
 }

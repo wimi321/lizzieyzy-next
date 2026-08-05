@@ -26,6 +26,8 @@ public class MoveData {
   public boolean isKataData;
   public boolean isSaiData;
   public int order;
+  public double humanPrior;
+  public double humanPolicy;
   public boolean isNextMove;
   public double bestWinrate;
   public double bestScoreMean;
@@ -93,6 +95,12 @@ public class MoveData {
         }
         if (key.equals("prior")) {
           result.policy = Integer.parseInt(value) / 100.0;
+        }
+        if (key.equals("humanPrior")) {
+          result.humanPrior = Integer.parseInt(value) / 100.0;
+        }
+        if (key.equals("humanPolicy")) {
+          result.humanPolicy = Integer.parseInt(value) / 100.0;
         }
 
         if (key.equals("winrate")) {
@@ -217,6 +225,10 @@ public class MoveData {
         result.lcb = tokens.fastDouble() * 100;
       } else if (tokens.matches(line, keyStart, keyEnd, "prior")) {
         result.policy = tokens.fastDouble() * 100;
+      } else if (tokens.matches(line, keyStart, keyEnd, "humanPrior")) {
+        result.humanPrior = tokens.fastDouble() * 100;
+      } else if (tokens.matches(line, keyStart, keyEnd, "humanPolicy")) {
+        result.humanPolicy = tokens.fastDouble() * 100;
       } else if (tokens.matches(line, keyStart, keyEnd, "winrate")) {
         result.winrate = tokens.fastDouble() * 100;
       } else if (tokens.matches(line, keyStart, keyEnd, "scoreLead")

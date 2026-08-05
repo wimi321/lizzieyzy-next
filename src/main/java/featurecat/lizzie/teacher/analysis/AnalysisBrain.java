@@ -1,4 +1,5 @@
 package featurecat.lizzie.teacher.analysis;
+import java.util.*;
 
 /**
  * GoAgent classifier.ts / pvConfidence.ts 的 Java 移植。 从 KataGo 分析（本仓库 BoardData + topMoves）派生每手的： -
@@ -57,6 +58,18 @@ public final class AnalysisBrain {
     public int pvLength;
     public Integer pvVisitsTotal;
     public String reason;
+    public Double winrate;        // 落子方胜率(%)
+    public Double scoreLead;      // 落子方目差(black-positive)
+    public Double prior;          // KataGo prior 概率(%)，无则 null
+    public Double humanPrior;     // 人类策略 prior
+    public Double humanPolicy;    // 人类策略 policy
+    public int edgeVisits;
+    public double[] ownership;
+    public Double scoreStdev;
+    public Double utility;
+    public Double lcb;
+    public List<Double> pvVisits = new ArrayList<>();
+    public List<String> pv = new ArrayList<>();
   }
 
   public static class PvReport {
@@ -282,15 +295,24 @@ public final class AnalysisBrain {
     boolean unstableRoot = deepenRecommended && qualityConfidence == Confidence.LOW;
     for (int i = 0; i < Math.min(5, topMoves.size()); i++) {
       KataGoCandidate c = topMoves.get(i);
-      report.candidates.add(
-          candidateLevel(
+      PvCandidate pc = candidateLevel(
               c.move,
               i + 1,
               bestVisits,
               c.visits,
               c.pv == null ? 0 : c.pv.length,
               c.pvVisits,
-              unstableRoot));
+              unstableRoot);
+      pc.winrate = c.winrate;
+      pc.scoreLead = c.scoreLead;
+      pc.prior = c.prior;
+      pc.humanPrior = c.humanPrior;
+      pc.humanPolicy = c.humanPolicy;
+      pc.edgeVisits = c.edgeVisits;
+      pc.ownership = c.ownership;
+      if (c.pv != null) pc.pv = new ArrayList<>(java.util.Arrays.asList(c.pv));
+      if (c.pvVisits != null) { for (int v : c.pvVisits) pc.pvVisits.add((double) v); pc.pvVisitsTotal = pc.pvVisits.stream().mapToInt(Double::intValue).sum(); }
+      report.candidates.add(pc);
     }
     if (report.candidates.isEmpty()) {
       report.overall = PvLevel.UNSTABLE;
@@ -332,6 +354,11 @@ public final class AnalysisBrain {
     public int[] pvVisits;
     public double winrate;
     public double scoreLead;
+    public Double prior;        // KataGo prior（来自 MoveData.policy）
+    public Double humanPrior;     // 人类策略 prior（来自 MoveData.humanPrior）
+    public Double humanPolicy;    // 人类策略 policy（来自 MoveData.humanPolicy）
+    public double[] ownership;  // KataGo ownership 数组（lizzieyzy 已解析）
+    public int edgeVisits;
 
     public double winrateOrZero() {
       return winrate;
