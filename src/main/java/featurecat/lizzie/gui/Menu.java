@@ -5480,21 +5480,21 @@ public class Menu extends JMenuBar {
     // Math.max(Lizzie.config.allFontSize, 12));
     this.add(engineMenu2);
 
-    // AI 解说（GoAgent 式）：点击直接打开解说面板
+    // AI 解说（GoAgent 式）：点击菜单直接打开解说面板
     JMenu teacherMenu = new JMenu("AI解说");
     teacherMenu.setFont(
         new Font(Config.sysDefaultFontName, Font.BOLD, Math.max(Config.frameFontSize, 15)));
-    teacherMenu.addMouseListener(
-        new java.awt.event.MouseAdapter() {
-          @Override
-          public void mouseClicked(java.awt.event.MouseEvent e) {
-            openTeacherPanel();
-          }
-          @Override
-          public void mousePressed(java.awt.event.MouseEvent e) {
-            openTeacherPanel();
-          }
+    teacherMenu.addMenuListener(new MenuListener() {
+      @Override public void menuSelected(MenuEvent e) {
+        javax.swing.SwingUtilities.invokeLater(() -> {
+          openTeacherPanel();
+          // 展开的下拉菜单自动关闭
+          teacherMenu.setPopupMenuVisible(false);
         });
+      }
+      @Override public void menuDeselected(MenuEvent e) {}
+      @Override public void menuCanceled(MenuEvent e) {}
+    });
     this.add(teacherMenu);
 
     playing = new ImageIcon();

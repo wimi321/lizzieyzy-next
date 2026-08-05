@@ -64,17 +64,16 @@ public class TeacherPanel extends JPanel {
       setLayout(new BorderLayout(8, 8));
       setBorder(
           BorderFactory.createTitledBorder(
-              BorderFactory.createEtchedBorder(), "AI 讲棋", TitledBorder.LEFT, TitledBorder.TOP));
+              BorderFactory.createEtchedBorder(), "AI 解说", TitledBorder.LEFT, TitledBorder.TOP));
       setPreferredSize(new Dimension(760, 560));
 
-      // 顶部：学生段位/年龄 + 老师风格 + 配置
+      // 顶部：段位/风格 + 术语密度/讲解节奏/变化细节 + 配置
       JPanel top = new JPanel(new FlowLayout(FlowLayout.LEFT));
-      top.add(new JLabel("学生:"));
       rankModeCombo = new JComboBox<>(new String[] {"级位", "段位"});
       top.add(rankModeCombo);
       rankNumField = new JTextField("5", 3);
       top.add(rankNumField);
-      top.add(new JLabel("老师:"));
+      top.add(new JLabel("解说:"));
       styleCombo = new JComboBox<>(new String[] {"平衡自然", "严谨细致", "亲切耐心", "严格专业", "风趣幽默"});
       top.add(styleCombo);
       top.add(new JLabel("术语:"));
@@ -120,7 +119,7 @@ public class TeacherPanel extends JPanel {
       mdArea.setEditable(false);
       JScrollPane mdScroll = new JScrollPane(mdArea);
       mdScroll.setPreferredSize(new Dimension(380, 360));
-      mdScroll.setBorder(BorderFactory.createTitledBorder("老师讲解"));
+      mdScroll.setBorder(BorderFactory.createTitledBorder("解说"));
       right.add(mdScroll, BorderLayout.CENTER);
 
       JPanel bottom = new JPanel(new BorderLayout(4, 4));
@@ -208,7 +207,7 @@ public class TeacherPanel extends JPanel {
         JOptionPane.showMessageDialog(
             this,
             "未配置 LLM（baseUrl / apiKey / model）。请点「配置 LLM」。",
-            "AI 讲棋",
+            "AI 解说",
             JOptionPane.WARNING_MESSAGE);
       }
     }
