@@ -22,6 +22,7 @@ R2_SIZE_LIMIT = 9_000_000_000
 DEFAULT_REPOSITORY = "wimi321/lizzieyzy-next"
 DEFAULT_BUCKET = "lizzieyzy-next-downloads"
 DEFAULT_PUBLIC_BASE = "https://download.goagent.top"
+DEFAULT_WEBSITE_DOWNLOAD_URL = "https://goagent.top/download/"
 DEFAULT_KEY_ID = "stable-2026-08"
 UPDATE_ENVELOPE_ASSET = "lizzieyzy-next-update-envelope.json"
 LEGACY_MANIFEST_ASSET = "lizzieyzy-next-update-manifest.json"
@@ -262,7 +263,10 @@ def build_legacy_manifest(manifest: dict[str, Any]) -> dict[str, Any]:
 
 
 def stable_release_body(
-    release: dict[str, Any], mirrored_assets: list[Asset], public_base: str
+    release: dict[str, Any],
+    mirrored_assets: list[Asset],
+    public_base: str,
+    website_download_url: str = DEFAULT_WEBSITE_DOWNLOAD_URL,
 ) -> str:
     """Keep GitHub asset links while recommending the official download page."""
     body = str(release.get("body") or "")
@@ -277,9 +281,9 @@ def stable_release_body(
     notice = (
         f"{RELEASE_NOTE_START}\n"
         "> [!IMPORTANT]\n"
-        f"> **国内用户建议从 [官网下载页面]({public_base.rstrip('/')}/) 下载；"
+        f"> **国内用户建议从 [官网下载页面]({website_download_url}) 下载；"
         f"Users in mainland China may prefer the "
-        f"[official download page]({public_base.rstrip('/')}/).**  \n"
+        f"[official download page]({website_download_url}).**  \n"
         "> 本页所有文件链接均保留 GitHub 原始地址。All file links on this Release "
         "remain on GitHub.\n"
         f"{RELEASE_NOTE_END}"
@@ -313,7 +317,11 @@ def catalog_label(asset: Asset) -> tuple[str, str, bool]:
 
 
 def build_catalog(
-    release: dict[str, Any], mirrored_assets: list[Asset], public_base: str
+    release: dict[str, Any],
+    mirrored_assets: list[Asset],
+    public_base: str,
+    *,
+    github_primary: bool = False,
 ) -> dict[str, Any]:
     entries = []
     for asset in mirrored_assets:
@@ -326,8 +334,12 @@ def build_catalog(
                 "arch": asset.arch,
                 "sizeBytes": asset.size,
                 "sha256": asset.sha256,
-                "downloadUrl": r2_url(public_base, asset),
-                "mirrorUrls": [asset.browser_url],
+                "downloadUrl": (
+                    asset.browser_url
+                    if github_primary
+                    else r2_url(public_base, asset)
+                ),
+                "mirrorUrls": [] if github_primary else [asset.browser_url],
                 "labelZh": zh_label,
                 "labelEn": en_label,
                 "advanced": advanced,
@@ -646,6 +658,33 @@ def render_index(catalog: dict[str, Any], *, maintenance: bool = False) -> str:
     <a class="footer-link" href="{history_url}">{decorative_icon("clock-history", "footer-icon")}历史版本</a>
   </footer>
 </main></body></html>
+"""
+
+
+def render_redirect_index(
+    website_download_url: str = DEFAULT_WEBSITE_DOWNLOAD_URL,
+) -> str:
+    parsed = urllib.parse.urlparse(website_download_url)
+    if parsed.scheme.lower() != "https" or not parsed.hostname:
+        raise ReleaseError("Official website download URL must use HTTPS")
+    escaped = html.escape(website_download_url, quote=True)
+    javascript_target = json.dumps(website_download_url, ensure_ascii=False).replace(
+        "<", "\\u003c"
+    )
+    return f"""<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta http-equiv="refresh" content="0; url={escaped}">
+  <link rel="canonical" href="{escaped}">
+  <title>正在前往 LizzieYzy Next 官网下载</title>
+</head>
+<body>
+  <p><a href="{escaped}">前往官网下载页面</a></p>
+  <script>window.location.replace({javascript_target});</script>
+</body>
+</html>
 """
 
 
@@ -1154,26 +1193,103 @@ def _verify_public_with_retry(requests, description: str, url: str, **kwargs) ->
             time.sleep(delay)
 
 
-def verify_public_homepage(public_base: str) -> None:
+def _verify_public_redirect(
+    requests, source_url: str, website_download_url: str
+) -> None:
+    response = requests.get(
+        source_url,
+        headers={
+            "Accept-Encoding": "identity",
+            "Cache-Control": "no-cache",
+            "Pragma": "no-cache",
+        },
+        allow_redirects=False,
+        timeout=60,
+    )
+    try:
+        if response.status_code != 301:
+            raise ReleaseError(
+                f"GET returned HTTP {response.status_code}, expected permanent redirect 301"
+            )
+        location = str(response.headers.get("Location") or "").strip()
+        if not location:
+            raise ReleaseError("redirect response has no Location header")
+        resolved = urllib.parse.urljoin(source_url, location)
+        actual = urllib.parse.urlparse(resolved)
+        expected = urllib.parse.urlparse(website_download_url)
+        if (
+            actual.scheme.lower(),
+            actual.netloc.lower(),
+            actual.path,
+        ) != (
+            expected.scheme.lower(),
+            expected.netloc.lower(),
+            expected.path,
+        ):
+            raise ReleaseError(
+                f"redirect target is {resolved!r}, expected {website_download_url!r}"
+            )
+        source_query = urllib.parse.urlparse(source_url).query
+        if source_query and actual.query != source_query:
+            raise ReleaseError("redirect did not preserve the verification query string")
+    finally:
+        response.close()
+
+
+def verify_public_download_redirects(
+    public_base: str, website_download_url: str
+) -> None:
     try:
         import requests
     except ImportError as exc:
         raise ReleaseError("requests is required for public R2 verification") from exc
     if not public_base.lower().startswith("https://"):
         raise ReleaseError("Public R2 base URL must use HTTPS")
+    if not website_download_url.lower().startswith("https://"):
+        raise ReleaseError("Official website download URL must use HTTPS")
+    base = public_base.rstrip("/")
+    for description, path in (
+        ("download backend root redirect", "/"),
+        ("download backend index redirect", "/index.html"),
+    ):
+        for attempt in range(1, PUBLIC_VERIFY_ATTEMPTS + 1):
+            request_url = _cache_busted_url(base + path, attempt)
+            try:
+                _verify_public_redirect(requests, request_url, website_download_url)
+                break
+            except (ReleaseError, requests.RequestException) as exc:
+                if attempt == PUBLIC_VERIFY_ATTEMPTS:
+                    raise ReleaseError(
+                        f"Public R2 verification failed for {description} after "
+                        f"{PUBLIC_VERIFY_ATTEMPTS} attempts: {exc}"
+                    ) from exc
+                delay = PUBLIC_VERIFY_BACKOFF_SECONDS[attempt - 1]
+                print(
+                    f"Public R2 verification retry {attempt}/"
+                    f"{PUBLIC_VERIFY_ATTEMPTS} for {description} in {delay}s: {exc}",
+                    file=sys.stderr,
+                )
+                time.sleep(delay)
+
+
+def verify_public_catalog(public_base: str, catalog_body: bytes) -> None:
+    try:
+        import requests
+    except ImportError as exc:
+        raise ReleaseError("requests is required for public R2 verification") from exc
     _verify_public_with_retry(
         requests,
-        "download homepage route",
-        public_base.rstrip("/") + "/",
-        expected_content_type="text/html",
-        required_marker=b"LizzieYzy Next",
+        "stable catalog",
+        public_base.rstrip("/") + "/channels/stable/catalog.json",
+        expected_content_type="application/json",
+        expected_body=catalog_body,
     )
 
 
 def verify_public_stable_channel(
     public_base: str,
     *,
-    index_body: bytes,
+    website_download_url: str,
     catalog_body: bytes,
     envelope_body: bytes,
 ) -> None:
@@ -1183,10 +1299,9 @@ def verify_public_stable_channel(
         raise ReleaseError("requests is required for public R2 verification") from exc
     if not public_base.lower().startswith("https://"):
         raise ReleaseError("Public R2 base URL must use HTTPS")
+    verify_public_download_redirects(public_base, website_download_url)
     base = public_base.rstrip("/")
     documents = (
-        ("download homepage", base + "/", "text/html", index_body),
-        ("download index", base + "/index.html", "text/html", index_body),
         (
             "stable catalog",
             base + "/channels/stable/catalog.json",
@@ -1214,6 +1329,7 @@ def verify_and_activate_stable_channel(
     client,
     bucket: str,
     public_base: str,
+    website_download_url: str,
     assets: Iterable[Asset],
     catalog: dict[str, Any],
     envelope: dict[str, Any],
@@ -1223,11 +1339,11 @@ def verify_and_activate_stable_channel(
     asset_list = list(assets)
     if not skip_public_verify:
         verify_public_objects(public_base, asset_list)
-        verify_public_homepage(public_base)
+        verify_public_download_redirects(public_base, website_download_url)
 
     catalog_body = json_bytes(catalog)
     envelope_body = json_bytes(envelope)
-    index_body = render_index(catalog).encode("utf-8")
+    index_body = render_redirect_index(website_download_url).encode("utf-8")
     put_bytes(
         client,
         bucket,
@@ -1254,11 +1370,41 @@ def verify_and_activate_stable_channel(
     if not skip_public_verify:
         verify_public_stable_channel(
             public_base,
-            index_body=index_body,
+            website_download_url=website_download_url,
             catalog_body=catalog_body,
             envelope_body=envelope_body,
         )
     return catalog_body, envelope_body
+
+
+def publish_maintenance_catalog(
+    client,
+    bucket: str,
+    public_base: str,
+    website_download_url: str,
+    catalog: dict[str, Any],
+    *,
+    skip_public_verify: bool,
+) -> bytes:
+    catalog_body = json_bytes(catalog)
+    put_bytes(
+        client,
+        bucket,
+        "channels/stable/catalog.json",
+        catalog_body,
+        cache_control="no-store",
+    )
+    put_bytes(
+        client,
+        bucket,
+        "index.html",
+        render_redirect_index(website_download_url).encode("utf-8"),
+        cache_control="no-store",
+    )
+    if not skip_public_verify:
+        verify_public_download_redirects(public_base, website_download_url)
+        verify_public_catalog(public_base, catalog_body)
+    return catalog_body
 
 
 def promote(args: argparse.Namespace) -> None:
@@ -1291,17 +1437,20 @@ def promote(args: argparse.Namespace) -> None:
     print(f"R2 promotion plan: {len(selected)} assets, {total:,} bytes")
     manifest = build_manifest(release, selected, args.public_base)
     catalog = build_catalog(release, selected, args.public_base)
+    maintenance_catalog = build_catalog(
+        release, selected, args.public_base, github_primary=True
+    )
     envelope = sign_manifest(manifest, private_key, args.key_id)
     legacy = build_legacy_manifest(manifest)
 
     client = r2_client(account_id, access_key, secret_key)
-    maintenance_html = render_index(catalog, maintenance=True).encode("utf-8")
-    put_bytes(
+    publish_maintenance_catalog(
         client,
         args.bucket,
-        "index.html",
-        maintenance_html,
-        cache_control="no-store",
+        args.public_base,
+        args.website_download_url,
+        maintenance_catalog,
+        skip_public_verify=args.skip_public_verify,
     )
     keep_keys = {asset.r2_key for asset in selected}
     abort_incomplete_release_uploads(client, args.bucket)
@@ -1313,6 +1462,7 @@ def promote(args: argparse.Namespace) -> None:
         client,
         args.bucket,
         args.public_base,
+        args.website_download_url,
         selected,
         catalog,
         envelope,
@@ -1322,7 +1472,12 @@ def promote(args: argparse.Namespace) -> None:
     replace_github_asset(session, release, CATALOG_ASSET, catalog_body, "application/json")
     replace_github_asset(session, release, LEGACY_MANIFEST_ASSET, json_bytes(legacy), "application/json")
 
-    release_body = stable_release_body(release, selected, args.public_base)
+    release_body = stable_release_body(
+        release,
+        selected,
+        args.public_base,
+        args.website_download_url,
+    )
     response = session.patch(
         release["url"],
         json={
@@ -1367,6 +1522,9 @@ def parser() -> argparse.ArgumentParser:
         command.add_argument("--repository", default=DEFAULT_REPOSITORY)
         command.add_argument("--tag", required=True)
         command.add_argument("--public-base", default=DEFAULT_PUBLIC_BASE)
+        command.add_argument(
+            "--website-download-url", default=DEFAULT_WEBSITE_DOWNLOAD_URL
+        )
         if name == "promote":
             command.add_argument("--bucket", default=DEFAULT_BUCKET)
             command.add_argument("--private-key", required=True)

@@ -1,7 +1,8 @@
 # Cloudflare R2 正式版下载与升级
 
-`download.goagent.top` 是 LizzieYzy Next 当前正式版的主下载源。GitHub Release 始终保留
-完整资产、安装器、Linux 包、历史版本和自动备用下载；pre-release 不上传 R2。
+用户唯一公开入口是 `https://goagent.top/download/`。`download.goagent.top` 只作为安装包、
+公开目录和软件更新接口的技术后台；GitHub Release 始终保留完整资产、安装器、Linux 包、
+历史版本和自动备用下载，pre-release 不上传 R2。
 
 ## 固定资源范围
 
@@ -20,16 +21,12 @@ Windows 安装器、Linux 包、pre-release 和历史版本不占用 R2。版本
 - `channels/stable/catalog.json`
 - `index.html`
 
-下载首页面向普通用户，只展示可直接安装的 Windows、macOS 和主程序小更新。Windows
-区直接列出 NVIDIA、RTX 50 CUDA、TensorRT、OpenCL、CPU 与无引擎版；TensorRT 只展示
-必须下载的两个 `.7z` 分卷，README、manifest 和 SHA-256 等发布元数据不进入用户界面。
-首页也不展示 R2、镜像切换或对象存储等实现细节。
-下载页图标来自 Bootstrap Icons（MIT），已随仓库保存并内联，不依赖第三方 CDN。
+完整的普通用户下载界面由 GoAgent 官网维护，动态读取 stable catalog。R2 的 `index.html`
+仅包含跳往 `https://goagent.top/download/` 的轻量兜底，不再生成第二套下载界面。
 
-R2 自定义域名本身不会把 `/` 自动映射到 `index.html`。Cloudflare URL 重写规则必须使用
-`URI Path equals /`，将路径重写为 `/index.html`，并保留原查询字符串。不要按完整 URL
-精确匹配，否则 `/?source=...` 这类正常链接会返回 404。发布器会用带缓存穿透参数的根地址
-验证这条规则。
+Cloudflare Redirect Rule 必须仅匹配 `download.goagent.top` 的 `/` 和 `/index.html`，以 301
+跳转到 `https://goagent.top/download/` 并保留查询字符串。`/releases/*` 与 `/channels/*`
+不能被重定向。发布器会同时验证两个根入口的 301，以及目录、更新清单和安装包接口。
 
 镜像资产总量不得超过 `9,000,000,000` 字节。门禁失败、旧版本对象清理失败或任一 SHA-256
 不一致时，GitHub Release 保持原状态，不会被晋升为正式版。
@@ -40,12 +37,12 @@ R2 自定义域名本身不会把 `/` 自动映射到 `index.html`。Cloudflare 
 完全相同的 release tag。工作流按以下顺序执行：
 
 1. 从 GitHub Release API 读取资产大小和 SHA-256，执行严格白名单与 9 GB 门禁。
-2. 先把下载首页切换到 GitHub 维护模式，再删除旧 R2 正式版对象。
+2. 先把 stable catalog 切换为 GitHub 原始文件地址并验证公网可用，再删除旧 R2 正式版对象。
 3. 使用 GitHub HTTP Range 与 R2 multipart 流式上传，不在 runner 保存完整大包。
 4. 上传过程中计算完整 SHA-256；上传后再核对 R2 对象大小和 SHA 元数据。
-5. 通过自定义域名检查 HTTPS、长度、Range、缓存、下载响应头和根首页重写。
-6. 发布 catalog 与下载首页，最后发布签名 envelope 作为稳定频道的激活指针。
-7. 使用缓存穿透参数逐字节核对公网首页、catalog 和 envelope 与本次上传内容一致。
+5. 通过自定义域名检查 HTTPS、长度、Range、缓存、下载响应头和根入口 301。
+6. 发布 R2 主链接 catalog 与轻量跳转页，最后发布签名 envelope 作为稳定频道的激活指针。
+7. 使用缓存穿透参数核对公网根入口、catalog 和 envelope 与本次发布一致。
 8. 将 v2 签名清单、catalog 和旧客户端使用的 v1 GitHub 清单上传到 Release。
 9. 最后才把 GitHub pre-release 改为正式版和 latest。
 
@@ -69,6 +66,9 @@ Variables：
 - `CLOUDFLARE_R2_BUCKET=lizzieyzy-next-downloads`
 - `R2_PUBLIC_BASE_URL=https://download.goagent.top`
 
+发布脚本中的用户入口独立固定为 `https://goagent.top/download/`，不能用
+`R2_PUBLIC_BASE_URL` 代替。前者供人访问，后者供目录、安装包和更新器使用。
+
 Ed25519 私钥只能存在于 GitHub Secret；应用内只包含公钥。更换签名密钥时必须先发布同时
 信任新旧公钥的客户端，再切换发布工作流，最后在旧客户端覆盖率足够后移除旧公钥。
 
@@ -89,10 +89,12 @@ GitHub 上的签名 v2 清单，签名、版本、大小或 SHA-256 不正确时
 
 除完整 Maven 测试和打包外，正式晋升后必须确认：
 
-- `https://download.goagent.top/` 显示正确 stable tag，且没有 pre-release。
+- `https://goagent.top/download/` 显示正确 stable tag，且没有 pre-release。
+- `https://www.goagent.top/download/`、`https://download.goagent.top/` 与
+  `https://download.goagent.top/index.html` 均以 301 跳到统一官网下载页。
 - 13 个对象均返回 HTTPS 200、正确 `Content-Length`、`Accept-Ranges: bytes`、
   `Content-Disposition: attachment` 和 immutable 缓存策略。
 - `Range: bytes=0-0` 返回 206 和正确 `Content-Range`。
 - R2 对象总量小于 9 GB，`releases/` 下不存在旧正式版目录。
 - Windows 断网续传与 R2 到 GitHub 切换、macOS 两种芯片 DMG、Linux GitHub 下载均通过真机验收。
-- Release 正文中的镜像资产以 R2 为主链接，并保留 GitHub 全量备用入口。
+- Release 正文顶部指向统一官网下载页，正文中的具体文件仍全部使用 GitHub 原始链接。

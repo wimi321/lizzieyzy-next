@@ -23,7 +23,7 @@
 <p align="center">
   <a href="https://goagent.top/"><strong>Official Website</strong></a>
   ·
-  <a href="https://download.goagent.top/"><strong>Stable Downloads</strong></a>
+  <a href="https://goagent.top/download/"><strong>Stable Downloads</strong></a>
   ·
   <a href="https://pan.baidu.com/s/1wthaL8YwGMxy_u0U7Mabpw?pwd=3i8w"><strong>Baidu Download</strong></a>
   ·
@@ -33,7 +33,7 @@
 </p>
 
 > [!NOTE]
-> Users in mainland China are encouraged to use the [official download page](https://download.goagent.top/) for stable builds. Installers, Linux packages, and older versions remain available from [GitHub Releases](https://github.com/wimi321/lizzieyzy-next/releases).
+> Users in mainland China are encouraged to use the [official download page](https://goagent.top/download/) for stable builds. Installers, Linux packages, and older versions remain available from [GitHub Releases](https://github.com/wimi321/lizzieyzy-next/releases).
 >
 > For users in mainland China, a public Baidu Netdisk download is available:
 > [https://pan.baidu.com/s/1wthaL8YwGMxy_u0U7Mabpw?pwd=3i8w](https://pan.baidu.com/s/1wthaL8YwGMxy_u0U7Mabpw?pwd=3i8w)
@@ -46,7 +46,7 @@
 
 > [!IMPORTANT]
 > If you only want the shortest possible answer, remember these 9 points:
-> - Most Windows users should open [Stable Downloads](https://download.goagent.top/) and download `*windows64.opencl.portable.zip`
+> - Most Windows users should open [Stable Downloads](https://goagent.top/download/) and download `*windows64.opencl.portable.zip`
 > - If your PC has an RTX 20/30/40 NVIDIA GPU and you want more speed, download `*windows64.nvidia.portable.zip`
 > - RTX 5070/5080/5090 users should try `*windows64.nvidia50.cuda.portable.zip` first; install TensorRT from the in-app KataGo Auto Setup only if needed
 > - TensorRT is not RTX 50-only: RTX 20/30/40/50 NVIDIA users can install it on demand; GTX 10 series and older cards should prefer CUDA/OpenCL
@@ -85,7 +85,7 @@ If you are searching for these things, this is the project to check first:
 
 ## What To Download First
 
-Users in mainland China are encouraged to choose common stable builds from the [official download page](https://download.goagent.top/). Installers, Linux packages, and older versions are available from [GitHub Releases](https://github.com/wimi321/lizzieyzy-next/releases).
+Users in mainland China are encouraged to choose common stable builds from the [official download page](https://goagent.top/download/). Installers, Linux packages, and older versions are available from [GitHub Releases](https://github.com/wimi321/lizzieyzy-next/releases).
 
 <p align="center">
   <img src="assets/package-guide.svg" alt="LizzieYzy Next package guide" width="100%" />
@@ -136,7 +136,7 @@ Quick rule:
 
 ## Start In 3 Steps
 
-1. Download the right stable package from [Stable Downloads](https://download.goagent.top/); use GitHub Releases for installers, Linux, or older versions.
+1. Download the right stable package from [Stable Downloads](https://goagent.top/download/); use GitHub Releases for installers, Linux, or older versions.
 2. Open `Fox Kifu` and enter a Fox nickname.
 3. Fetch the games, run fast full-game analysis, and use the graph plus overview to jump to important moves.
 

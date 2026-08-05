@@ -140,42 +140,45 @@ class R2ReleaseTest(unittest.TestCase):
         key.public_key().verify(signature, payload)
         self.assertEqual(manifest, json.loads(payload))
 
-    def test_download_page_has_beginner_friendly_direct_downloads(self):
+    def test_catalog_uses_github_during_maintenance_and_r2_after_activation(self):
         source = release()
         selected = r2_release.select_r2_assets(source, r2_release.DEFAULT_PUBLIC_BASE)
-        catalog = r2_release.build_catalog(source, selected, r2_release.DEFAULT_PUBLIC_BASE)
-        page = r2_release.render_index(catalog)
-        maintenance = r2_release.render_index(catalog, maintenance=True)
+        stable = r2_release.build_catalog(
+            source, selected, r2_release.DEFAULT_PUBLIC_BASE
+        )
+        maintenance = r2_release.build_catalog(
+            source,
+            selected,
+            r2_release.DEFAULT_PUBLIC_BASE,
+            github_primary=True,
+        )
 
-        self.assertIn("选择你的版本", page)
-        self.assertIn("NVIDIA 显卡", page)
-        self.assertIn("RTX 50 CUDA", page)
-        self.assertIn("TensorRT 高性能版", page)
-        self.assertIn("两个分卷都要下载", page)
-        self.assertIn("分卷 1", page)
-        self.assertIn("分卷 2", page)
-        self.assertIn("CPU 通用版", page)
-        self.assertIn("OpenCL 兼容版", page)
-        self.assertIn("下载小更新", page)
-        self.assertIn("data:image/png;base64,", page)
-        self.assertIn("data:image/webp;base64,", page)
-        self.assertIn("data:image/svg+xml;base64,", page)
-        self.assertEqual(10, page.count('class="download-action"'))
-        self.assertEqual(1, page.count('class="volume-actions"'))
-        self.assertEqual(1, page.count(".7z.001"))
-        self.assertEqual(1, page.count(".7z.002"))
-        self.assertNotIn("Cloudflare", page)
-        self.assertNotIn("GitHub 下载量", page)
-        self.assertNotIn("README.txt", page)
-        self.assertNotIn("manifest.json", page)
-        self.assertNotIn("sha256.txt", page)
-        self.assertNotIn("<details", page)
-        for hidden_suffix in ("README.txt", "manifest.json", "sha256.txt"):
-            hidden_entry = next(
-                entry for entry in catalog["assets"] if entry["name"].endswith(hidden_suffix)
+        self.assertTrue(
+            all(
+                entry["downloadUrl"].startswith("https://download.goagent.top/")
+                for entry in stable["assets"]
             )
-            self.assertNotIn(hidden_entry["downloadUrl"], page)
-        self.assertIn("下载页面正在更新，当前下载仍可正常使用", maintenance)
+        )
+        self.assertTrue(
+            all(
+                entry["downloadUrl"].startswith("https://github.com/")
+                for entry in maintenance["assets"]
+            )
+        )
+        self.assertTrue(all(entry["mirrorUrls"] for entry in stable["assets"]))
+        self.assertTrue(
+            all(entry["mirrorUrls"] == [] for entry in maintenance["assets"])
+        )
+
+    def test_backend_index_is_only_a_lightweight_official_site_redirect(self):
+        page = r2_release.render_redirect_index()
+
+        self.assertIn(r2_release.DEFAULT_WEBSITE_DOWNLOAD_URL, page)
+        self.assertIn('rel="canonical"', page)
+        self.assertIn("window.location.replace", page)
+        self.assertNotIn("选择你的版本", page)
+        self.assertNotIn("TensorRT", page)
+        self.assertNotIn("download-action", page)
 
     def test_stable_release_body_keeps_github_links_and_recommends_official_page(self):
         source = release()
@@ -187,10 +190,16 @@ class R2ReleaseTest(unittest.TestCase):
         )
 
         updated = r2_release.stable_release_body(
-            source, selected, r2_release.DEFAULT_PUBLIC_BASE
+            source,
+            selected,
+            r2_release.DEFAULT_PUBLIC_BASE,
+            r2_release.DEFAULT_WEBSITE_DOWNLOAD_URL,
         )
         repeated = r2_release.stable_release_body(
-            {**source, "body": updated}, selected, r2_release.DEFAULT_PUBLIC_BASE
+            {**source, "body": updated},
+            selected,
+            r2_release.DEFAULT_PUBLIC_BASE,
+            r2_release.DEFAULT_WEBSITE_DOWNLOAD_URL,
         )
 
         self.assertIn(linked.browser_url, updated)
@@ -200,7 +209,9 @@ class R2ReleaseTest(unittest.TestCase):
         self.assertNotIn("Cloudflare", updated)
         self.assertNotIn("R2 连接", updated)
         self.assertEqual(1, updated.count(r2_release.RELEASE_NOTE_START))
-        self.assertEqual(2, updated.count(r2_release.DEFAULT_PUBLIC_BASE + "/"))
+        self.assertEqual(
+            2, updated.count(r2_release.DEFAULT_WEBSITE_DOWNLOAD_URL)
+        )
         self.assertEqual(updated, repeated)
 
     def test_public_assets_are_verified_before_envelope_activation(self):
@@ -216,12 +227,14 @@ class R2ReleaseTest(unittest.TestCase):
             r2_release, "verify_public_objects", side_effect=verify
         ), mock.patch.object(
             r2_release,
-            "render_index",
-            return_value="<title>LizzieYzy Next</title>",
+            "render_redirect_index",
+            return_value="<title>Redirect</title>",
         ), mock.patch.object(
             r2_release,
-            "verify_public_homepage",
-            side_effect=lambda public_base: events.append(("verify-home", public_base)),
+            "verify_public_download_redirects",
+            side_effect=lambda public_base, website_url: events.append(
+                ("verify-redirect", public_base, website_url)
+            ),
         ), mock.patch.object(
             r2_release,
             "verify_public_stable_channel",
@@ -233,6 +246,7 @@ class R2ReleaseTest(unittest.TestCase):
                 object(),
                 "bucket",
                 r2_release.DEFAULT_PUBLIC_BASE,
+                r2_release.DEFAULT_WEBSITE_DOWNLOAD_URL,
                 [object()],
                 {"tag": TAG},
                 {"payload": "signed"},
@@ -240,7 +254,7 @@ class R2ReleaseTest(unittest.TestCase):
             )
 
         self.assertEqual("verify", events[0][0])
-        self.assertEqual("verify-home", events[1][0])
+        self.assertEqual("verify-redirect", events[1][0])
         self.assertEqual(
             "channels/stable/update-envelope.json",
             [event for event in events if event[0] == "put"][-1][1],
@@ -249,33 +263,93 @@ class R2ReleaseTest(unittest.TestCase):
         self.assertEqual({"tag": TAG}, json.loads(catalog_body))
         self.assertEqual({"payload": "signed"}, json.loads(envelope_body))
 
-    def test_public_homepage_route_accepts_cache_busting_query(self):
-        response = mock.Mock(
-            status_code=200,
-            url=r2_release.DEFAULT_PUBLIC_BASE + "/?r2-verify=1-1",
-            headers={"Content-Type": "text/html; charset=utf-8"},
+    def test_maintenance_catalog_is_public_before_release_assets_can_change(self):
+        source = release()
+        selected = r2_release.select_r2_assets(source, r2_release.DEFAULT_PUBLIC_BASE)
+        maintenance = r2_release.build_catalog(
+            source,
+            selected,
+            r2_release.DEFAULT_PUBLIC_BASE,
+            github_primary=True,
         )
-        response.iter_content.return_value = iter([b"<title>LizzieYzy Next</title>"])
+        events = []
+
+        def put(client, bucket, key, body, **kwargs):
+            events.append(("put", key, kwargs["cache_control"]))
+
+        with mock.patch.object(r2_release, "put_bytes", side_effect=put), mock.patch.object(
+            r2_release,
+            "verify_public_download_redirects",
+            side_effect=lambda public_base, website_url: events.append(
+                ("verify-redirect", public_base, website_url)
+            ),
+        ), mock.patch.object(
+            r2_release,
+            "verify_public_catalog",
+            side_effect=lambda public_base, body: events.append(
+                ("verify-catalog", public_base, json.loads(body))
+            ),
+        ):
+            body = r2_release.publish_maintenance_catalog(
+                object(),
+                "bucket",
+                r2_release.DEFAULT_PUBLIC_BASE,
+                r2_release.DEFAULT_WEBSITE_DOWNLOAD_URL,
+                maintenance,
+                skip_public_verify=False,
+            )
+
+        self.assertEqual("channels/stable/catalog.json", events[0][1])
+        self.assertEqual("no-store", events[0][2])
+        self.assertEqual("index.html", events[1][1])
+        self.assertEqual("verify-redirect", events[2][0])
+        self.assertEqual("verify-catalog", events[3][0])
+        self.assertTrue(
+            all(
+                entry["downloadUrl"].startswith("https://github.com/")
+                for entry in json.loads(body)["assets"]
+            )
+        )
+
+    def test_public_backend_roots_permanently_redirect_and_preserve_query(self):
+        def response_for(url, **kwargs):
+            query = url.split("?", 1)[1]
+            return mock.Mock(
+                status_code=301,
+                headers={
+                    "Location": r2_release.DEFAULT_WEBSITE_DOWNLOAD_URL + "?" + query
+                },
+            )
+
         requests = mock.Mock()
         requests.RequestException = RuntimeError
-        requests.get.return_value = response
+        requests.get.side_effect = response_for
 
         with mock.patch.dict(sys.modules, {"requests": requests}), mock.patch.object(
             r2_release.time, "time", return_value=1
         ):
-            r2_release.verify_public_homepage(r2_release.DEFAULT_PUBLIC_BASE)
+            r2_release.verify_public_download_redirects(
+                r2_release.DEFAULT_PUBLIC_BASE,
+                r2_release.DEFAULT_WEBSITE_DOWNLOAD_URL,
+            )
 
-        requested_url = requests.get.call_args.args[0]
+        self.assertEqual(2, requests.get.call_count)
         self.assertEqual(
-            r2_release.DEFAULT_PUBLIC_BASE + "/?r2-verify=1-1", requested_url
+            [
+                r2_release.DEFAULT_PUBLIC_BASE + "/?r2-verify=1-1",
+                r2_release.DEFAULT_PUBLIC_BASE + "/index.html?r2-verify=1-1",
+            ],
+            [call.args[0] for call in requests.get.call_args_list],
         )
-        self.assertTrue(requests.get.call_args.kwargs["stream"])
-        response.close.assert_called_once_with()
+        self.assertTrue(
+            all(
+                call.kwargs["allow_redirects"] is False
+                for call in requests.get.call_args_list
+            )
+        )
 
     def test_public_stable_channel_matches_exact_uploaded_bodies(self):
         bodies = {
-            r2_release.DEFAULT_PUBLIC_BASE + "/": b"<title>LizzieYzy Next</title>",
-            r2_release.DEFAULT_PUBLIC_BASE + "/index.html": b"<title>LizzieYzy Next</title>",
             r2_release.DEFAULT_PUBLIC_BASE
             + "/channels/stable/catalog.json": b'{"releaseTag":"test"}\n',
             r2_release.DEFAULT_PUBLIC_BASE
@@ -284,16 +358,20 @@ class R2ReleaseTest(unittest.TestCase):
 
         def response_for(url, **kwargs):
             base_url = url.split("?", 1)[0]
+            if base_url.endswith("/") or base_url.endswith("/index.html"):
+                query = url.split("?", 1)[1]
+                return mock.Mock(
+                    status_code=301,
+                    headers={
+                        "Location": r2_release.DEFAULT_WEBSITE_DOWNLOAD_URL
+                        + "?"
+                        + query
+                    },
+                )
             response = mock.Mock(
                 status_code=200,
                 url=url,
-                headers={
-                    "Content-Type": (
-                        "text/html; charset=utf-8"
-                        if base_url.endswith("/") or base_url.endswith("index.html")
-                        else "application/json; charset=utf-8"
-                    )
-                },
+                headers={"Content-Type": "application/json; charset=utf-8"},
             )
             response.iter_content.return_value = iter([bodies[base_url]])
             return response
@@ -306,7 +384,7 @@ class R2ReleaseTest(unittest.TestCase):
         ):
             r2_release.verify_public_stable_channel(
                 r2_release.DEFAULT_PUBLIC_BASE,
-                index_body=bodies[r2_release.DEFAULT_PUBLIC_BASE + "/"],
+                website_download_url=r2_release.DEFAULT_WEBSITE_DOWNLOAD_URL,
                 catalog_body=bodies[
                     r2_release.DEFAULT_PUBLIC_BASE + "/channels/stable/catalog.json"
                 ],
@@ -317,12 +395,21 @@ class R2ReleaseTest(unittest.TestCase):
             )
 
         self.assertEqual(4, requests.get.call_count)
-        self.assertTrue(
-            all("?r2-verify=2-1" in call.args[0] for call in requests.get.call_args_list)
-        )
+        self.assertTrue(all("?r2-verify=2-1" in call.args[0] for call in requests.get.call_args_list))
 
     def test_public_stable_channel_rejects_body_mismatch(self):
         def mismatched_response(url, **kwargs):
+            base_url = url.split("?", 1)[0]
+            if base_url.endswith("/") or base_url.endswith("/index.html"):
+                query = url.split("?", 1)[1]
+                return mock.Mock(
+                    status_code=301,
+                    headers={
+                        "Location": r2_release.DEFAULT_WEBSITE_DOWNLOAD_URL
+                        + "?"
+                        + query
+                    },
+                )
             response = mock.Mock(
                 status_code=200,
                 url=url,
@@ -337,16 +424,16 @@ class R2ReleaseTest(unittest.TestCase):
         with mock.patch.dict(sys.modules, {"requests": requests}), mock.patch.object(
             r2_release.time, "time", return_value=3
         ), mock.patch.object(r2_release.time, "sleep") as sleep, self.assertRaisesRegex(
-            r2_release.ReleaseError, "download homepage after 5 attempts"
+            r2_release.ReleaseError, "stable catalog after 5 attempts"
         ):
             r2_release.verify_public_stable_channel(
                 r2_release.DEFAULT_PUBLIC_BASE,
-                index_body=b"fresh homepage",
+                website_download_url=r2_release.DEFAULT_WEBSITE_DOWNLOAD_URL,
                 catalog_body=b"{}\n",
                 envelope_body=b"{}\n",
             )
 
-        self.assertEqual(r2_release.PUBLIC_VERIFY_ATTEMPTS, requests.get.call_count)
+        self.assertEqual(2 + r2_release.PUBLIC_VERIFY_ATTEMPTS, requests.get.call_count)
         self.assertEqual(r2_release.PUBLIC_VERIFY_ATTEMPTS - 1, sleep.call_count)
 
     def test_public_range_verification_retries_transient_failure(self):

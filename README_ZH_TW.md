@@ -23,7 +23,7 @@
 <p align="center">
   <a href="https://goagent.top/"><strong>官方網站</strong></a>
   ·
-  <a href="https://download.goagent.top/"><strong>正式版下載</strong></a>
+  <a href="https://goagent.top/download/"><strong>正式版下載</strong></a>
   ·
   <a href="docs/INSTALL.md"><strong>安裝說明</strong></a>
   ·
@@ -36,11 +36,11 @@
 > 歡迎交流使用問題、回報 bug、分享使用體驗，或者討論接下來最想加的功能。
 
 > [!NOTE]
-> 中國大陸使用者建議從 [官方下載頁面](https://download.goagent.top/) 下載正式版；需要安裝程式、Linux 套件或歷史版本時，可使用 [GitHub Releases](https://github.com/wimi321/lizzieyzy-next/releases)。
+> 中國大陸使用者建議從 [官方下載頁面](https://goagent.top/download/) 下載正式版；需要安裝程式、Linux 套件或歷史版本時，可使用 [GitHub Releases](https://github.com/wimi321/lizzieyzy-next/releases)。
 
 > [!IMPORTANT]
 > 如果你只想先下對版本，先記住這 6 句：
-> - Windows 大多數使用者：到 [正式版下載頁](https://download.goagent.top/) 下載 `*windows64.opencl.portable.zip`
+> - Windows 大多數使用者：到 [正式版下載頁](https://goagent.top/download/) 下載 `*windows64.opencl.portable.zip`
 > - 如果你的電腦有 NVIDIA 顯示卡並且想更快：下載 `*windows64.nvidia.portable.zip`
 > - 如果 OpenCL 在你的電腦上不穩定：下載 `*windows64.with-katago.portable.zip`
 > - 現在支援直接輸入野狐暱稱抓最近公開棋譜，不需要先查帳號數字
@@ -68,7 +68,7 @@
 
 ## 先下載哪個
 
-中國大陸使用者建議從 [官方下載頁面](https://download.goagent.top/) 選擇常用正式版；安裝程式、Linux 套件和歷史版本可在 [GitHub Releases](https://github.com/wimi321/lizzieyzy-next/releases) 下載。
+中國大陸使用者建議從 [官方下載頁面](https://goagent.top/download/) 選擇常用正式版；安裝程式、Linux 套件和歷史版本可在 [GitHub Releases](https://github.com/wimi321/lizzieyzy-next/releases) 下載。
 
 | 你的情況 | 到 Releases 裡找包含這個關鍵字的檔案 |
 | --- | --- |
@@ -83,7 +83,7 @@
 
 ## 三步開始
 
-1. 到 [正式版下載頁](https://download.goagent.top/) 下載適合自己系統的包；需要安裝程式、Linux 或歷史版本時使用 GitHub Releases。
+1. 到 [正式版下載頁](https://goagent.top/download/) 下載適合自己系統的包；需要安裝程式、Linux 或歷史版本時使用 GitHub Releases。
 2. 打開程式後，點擊 `野狐棋譜`，輸入野狐暱稱。
 3. 抓到棋譜後繼續做快速全盤分析，用主勝率圖和底部快速概覽直接定位關鍵手。
 

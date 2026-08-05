@@ -23,7 +23,7 @@
 <p align="center">
   <a href="https://goagent.top/"><strong>공식 웹사이트</strong></a>
   ·
-  <a href="https://download.goagent.top/"><strong>안정판 다운로드</strong></a>
+  <a href="https://goagent.top/download/"><strong>안정판 다운로드</strong></a>
   ·
   <a href="https://pan.baidu.com/s/1wthaL8YwGMxy_u0U7Mabpw?pwd=3i8w"><strong>Baidu 다운로드</strong></a>
   ·
@@ -33,7 +33,7 @@
 </p>
 
 > [!NOTE]
-> 중국 본토 사용자는 안정판을 [공식 다운로드 페이지](https://download.goagent.top/)에서 받는 것을 권장합니다. 설치형, Linux 패키지, 이전 버전은 [GitHub Releases](https://github.com/wimi321/lizzieyzy-next/releases)에서 받을 수 있습니다.
+> 중국 본토 사용자는 안정판을 [공식 다운로드 페이지](https://goagent.top/download/)에서 받는 것을 권장합니다. 설치형, Linux 패키지, 이전 버전은 [GitHub Releases](https://github.com/wimi321/lizzieyzy-next/releases)에서 받을 수 있습니다.
 >
 > 중국 본토 사용자라면 공개 Baidu Netdisk 다운로드도 바로 사용할 수 있습니다:
 > [https://pan.baidu.com/s/1wthaL8YwGMxy_u0U7Mabpw?pwd=3i8w](https://pan.baidu.com/s/1wthaL8YwGMxy_u0U7Mabpw?pwd=3i8w)
@@ -46,7 +46,7 @@
 
 > [!IMPORTANT]
 > 먼저 이 6가지만 기억하면 됩니다:
-> - 대부분의 Windows 사용자는 [안정판 다운로드](https://download.goagent.top/)에서 `*windows64.opencl.portable.zip` 을 받으면 가장 쉽습니다
+> - 대부분의 Windows 사용자는 [안정판 다운로드](https://goagent.top/download/)에서 `*windows64.opencl.portable.zip` 을 받으면 가장 쉽습니다
 > - NVIDIA GPU 가 있고 더 빠른 분석을 원하면 `*windows64.nvidia.portable.zip` 을 선택하면 됩니다
 > - OpenCL 이 잘 맞지 않으면 `*windows64.with-katago.portable.zip` 으로 바꿔 쓸 수 있습니다
 > - Fox 기보 가져오기는 닉네임 입력을 지원하므로, 많은 사용자는 계정 번호를 먼저 알 필요가 없습니다
@@ -82,7 +82,7 @@
 
 ## 먼저 무엇을 다운로드할까
 
-중국 본토 사용자는 일반 안정판을 [공식 다운로드 페이지](https://download.goagent.top/)에서 선택하는 것을 권장합니다. 설치형, Linux 패키지, 이전 버전은 [GitHub Releases](https://github.com/wimi321/lizzieyzy-next/releases)에서 받을 수 있습니다.
+중국 본토 사용자는 일반 안정판을 [공식 다운로드 페이지](https://goagent.top/download/)에서 선택하는 것을 권장합니다. 설치형, Linux 패키지, 이전 버전은 [GitHub Releases](https://github.com/wimi321/lizzieyzy-next/releases)에서 받을 수 있습니다.
 
 <p align="center">
   <img src="assets/package-guide.svg" alt="LizzieYzy Next package guide" width="100%" />
@@ -127,7 +127,7 @@
 
 ## 3단계로 시작
 
-1. [안정판 다운로드](https://download.goagent.top/)에서 환경에 맞는 패키지를 받고, 설치형, Linux 또는 이전 버전은 GitHub Releases를 사용합니다.
+1. [안정판 다운로드](https://goagent.top/download/)에서 환경에 맞는 패키지를 받고, 설치형, Linux 또는 이전 버전은 GitHub Releases를 사용합니다.
 2. `Fox Kifu` 를 열고 Fox 닉네임을 입력합니다.
 3. 기보를 가져온 뒤 빠른 전판 분석을 돌리고, 그래프와 개요에서 중요한 수로 바로 이동합니다.
 
