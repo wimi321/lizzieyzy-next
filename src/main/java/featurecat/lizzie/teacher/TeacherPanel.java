@@ -294,6 +294,18 @@ public class TeacherPanel extends JPanel {
           ma.ownership);
       String traceText = KatagoTraceTranslator.formatKataGoTraceForPrompt(trace);
       userText += "\n\n" + traceText;
+      // PV 变化路径（逐手追踪变化图的数据来源）
+      if (ma.pv != null && ma.pv.candidates != null) {
+        userText += "\n\n【各选点变化图（PV）】\n";
+        for (int i = 0; i < Math.min(3, ma.pv.candidates.size()); i++) {
+          var c = ma.pv.candidates.get(i);
+          String label = i == 0 ? "一选" : i == 1 ? "二选" : "三选";
+          userText += label + " " + c.move;
+          if (c.winrate != null) userText += " 胜率" + String.format("%.1f%%", c.winrate * 100);
+          if (c.scoreLead != null) userText += " 目差" + String.format("%.1f", c.scoreLead);
+          userText += " PV: " + String.join(" ", c.pv) + "\n";
+        }
+      }
     } catch (Exception ex) { /* trace 失败不阻断讲解 */ }
     // 棋理知识按需加载（GoAgent data/knowledge 的 39 篇 markdown 文档）
     try {
