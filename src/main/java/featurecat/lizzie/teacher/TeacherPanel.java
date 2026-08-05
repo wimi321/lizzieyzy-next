@@ -125,13 +125,12 @@ public class TeacherPanel extends JPanel {
 
       JPanel bottom = new JPanel(new BorderLayout(4, 4));
       JPanel actions = new JPanel(new FlowLayout(FlowLayout.LEFT));
-      JButton explainMove = new JButton("讲解此手");
+      JButton explainMove = new JButton("讲解");
+      explainMove.setToolTipText("分析当前手的好坏与改进");
       explainMove.addActionListener(this::explainCurrentMove);
       actions.add(explainMove);
-      JButton reviewLast = new JButton("复盘最后一手");
-      reviewLast.addActionListener(e -> explainCurrentMove(e, "review_last"));
-      actions.add(reviewLast);
       JButton compareAI = new JButton("对比AI最佳手");
+      compareAI.setToolTipText("对比实战手与AI一选/二选/三选");
       compareAI.addActionListener(e -> explainCurrentMove(e, "compare_ai"));
       actions.add(compareAI);
       JButton explainGame = new JButton("整盘复盘");
@@ -243,7 +242,7 @@ public class TeacherPanel extends JPanel {
   }
 
   /** 讲解当前手：派生分析 → 证据分区 + 讲解卡片 → 请求 LLM
-   * @param mode "explain"=讲解此手, "review_last"=复盘最后一手, "compare_ai"=对比AI最佳手
+   * @param mode "explain"=讲解当前手, "compare_ai"=对比AI最佳手
    */
   private void explainCurrentMove(ActionEvent e, String mode) {
     ensureSession();
@@ -337,14 +336,10 @@ public class TeacherPanel extends JPanel {
     // 结构化输出 + 防编造指令（对齐 ClaimVerifier.buildStructuredTeachingInstruction）
     userText += "\n\n" + ClaimVerifier.buildStructuredTeachingInstruction();
     userText += "\n\n请基于以上数据，按角色设定中的要求进行讲解。\n";
-    if ("review_last".equals(mode)) {
-      userText += "这是【复盘最后一手】模式：请分析棋盘上最后一手棋的意图、效果和后续变化。\n";
-      userText += "重点讲解：这手棋在做什么、为什么下在这里、后续实战进程、与AI推荐的差异。\n";
-    } else if ("compare_ai".equals(mode)) {
-      userText += "这是【对比AI最佳手】模式：请对比实战下一手与AI推荐的最佳选点。\n";
-      userText += "重点讲解：实战手 vs AI一选/二选/三选的差异、各选点的策略区别、目差和胜率对比。\n";
+    if ("compare_ai".equals(mode)) {
+      userText += "重点对比实战手与AI推荐选点的差异、各选点的策略区别、目差和胜率对比。\n";
     } else {
-      userText += "请对当前局面进行讲解，分析这手棋的好坏与改进方向。\n";
+      userText += "重点分析这手棋的意图、效果、后续变化，以及与AI推荐的差异。\n";
     }
     userText += "先给出整体结论，再逐手追踪变化图，然后对每个选点进行胜率目差解读、棋理分析和对比。\n";
     userText += "务必胜率和目差并列呈现，不要因微小差异制造虚假优劣感。\n";
@@ -388,7 +383,14 @@ public class TeacherPanel extends JPanel {
     String userText =
         "请对整盘棋做一次复盘。以下是 AI 逐手分析识别出的关键手（含判定与原因）：\n"
             + keyDetail
-            + "\n请点出 3 个最关键的手，结合胜率/目差曲线说明整盘局势走向，并给出总体评价与提升建议。";
+            + "\n请按以下格式分析：\n"
+            + "1. 先给出整盘整体结论\n"
+            + "2. 逐手追踪变化图（标注关键转折点）\n"
+            + "3. 对每个关键手进行胜率目差解读、棋理分析\n"
+            + "4. 说明各关键手的策略区别\n"
+            + "5. 结尾用对比表总结关键手差异\n"
+            + "务必胜率和目差并列呈现，不要因微小差异制造虚假优劣感。\n"
+            + "所有坐标和胜率必须来自证据，禁用编造。若数据不足，坦诚说明。";
     session.addUser(userText);
     runLlm(userText);
   }
@@ -425,7 +427,14 @@ public class TeacherPanel extends JPanel {
     String userText =
         "请对第 " + start + "-" + end + " 手这一段进行区间复盘（附棋盘图）。已识别关键手：\n"
             + keyDetail
-            + "\n请说明这段的关键转折、问题手与最佳应对，并给出针对性提升建议。";
+            + "\n请按以下格式分析：\n"
+            + "1. 先给出这段的整体结论\n"
+            + "2. 逐手追踪变化图（标注关键转折点）\n"
+            + "3. 对每个关键手进行胜率目差解读、棋理分析\n"
+            + "4. 说明各关键手的策略区别\n"
+            + "5. 结尾用对比表总结关键手差异\n"
+            + "务必胜率和目差并列呈现，不要因微小差异制造虚假优劣感。\n"
+            + "所有坐标和胜率必须来自证据，禁用编造。若数据不足，坦诚说明。";
     session.addUser(userText);
     String boardImg = BoardImageExporter.exportCurrentBoard(760);
     java.util.List<String> imgs = boardImg != null ? java.util.List.of(boardImg) : null;

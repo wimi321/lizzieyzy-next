@@ -1,0 +1,11 @@
+Config dir fallback: C:\Users\Public\Documents\LizzieYzyNext
+java version:17.0.10
+Menu presentation: mode=custom, desktopSession=unknown, java=17.0.10, os=Windows 11 10.0
+SLF4J(W): No SLF4J providers were found.
+SLF4J(W): Defaulting to no-operation (NOP) logger implementation
+SLF4J(W): See https://www.slf4j.org/codes.html#noProviders for further details.
+java.io.IOException: 请先在“远程算力中心”登录智子云算力。
+	at featurecat.lizzie.analysis.remote.ZhiziGtpTransport.fromSavedConfig(ZhiziGtpTransport.java:76)
+	at featurecat.lizzie.analysis.remote.RemoteComputeConfig.createTransportForCommand(RemoteComputeConfig.java:355)
+	at featurecat.lizzie.analysis.Leelaz.startEngine(Leelaz.java:687)
+	at featurecat.lizzie.analysis.EngineManager$1.run(EngineManager.java:127)
