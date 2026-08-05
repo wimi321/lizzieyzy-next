@@ -5481,7 +5481,7 @@ public class Menu extends JMenuBar {
     this.add(engineMenu2);
 
     // AI 解说（GoAgent 式）：点击直接打开解说面板
-    JMenu teacherMenu = new JMenu("AI解说");
+    JMenuItem teacherMenu = new JMenuItem("AI解说");
     teacherMenu.setFont(
         new Font(Config.sysDefaultFontName, Font.BOLD, Math.max(Config.frameFontSize, 15)));
     teacherMenu.addActionListener(
