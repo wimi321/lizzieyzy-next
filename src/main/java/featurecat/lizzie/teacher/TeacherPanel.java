@@ -128,6 +128,12 @@ public class TeacherPanel extends JPanel {
       JButton explainMove = new JButton("讲解此手");
       explainMove.addActionListener(this::explainCurrentMove);
       actions.add(explainMove);
+      JButton reviewLast = new JButton("复盘最后一手");
+      reviewLast.addActionListener(e -> explainCurrentMove(e, "review_last"));
+      actions.add(reviewLast);
+      JButton compareAI = new JButton("对比AI最佳手");
+      compareAI.addActionListener(e -> explainCurrentMove(e, "compare_ai"));
+      actions.add(compareAI);
       JButton explainGame = new JButton("整盘复盘");
       explainGame.addActionListener(this::explainWholeGame);
       actions.add(explainGame);
@@ -231,8 +237,15 @@ public class TeacherPanel extends JPanel {
     } catch (Exception e) { return new String[0]; }
   }
 
-  /** 讲解当前手：派生分析 → 证据分区 + 讲解卡片 → 请求 LLM */
+  /** 讲解当前手（默认模式） */
   private void explainCurrentMove(ActionEvent e) {
+    explainCurrentMove(e, "explain");
+  }
+
+  /** 讲解当前手：派生分析 → 证据分区 + 讲解卡片 → 请求 LLM
+   * @param mode "explain"=讲解此手, "review_last"=复盘最后一手, "compare_ai"=对比AI最佳手
+   */
+  private void explainCurrentMove(ActionEvent e, String mode) {
     ensureSession();
     ensureLLM();
     if (llm == null) return;
@@ -324,8 +337,17 @@ public class TeacherPanel extends JPanel {
     // 结构化输出 + 防编造指令（对齐 ClaimVerifier.buildStructuredTeachingInstruction）
     userText += "\n\n" + ClaimVerifier.buildStructuredTeachingInstruction();
     userText += "\n\n请基于以上数据，按角色设定中的要求进行讲解。\n";
+    if ("review_last".equals(mode)) {
+      userText += "这是【复盘最后一手】模式：请分析棋盘上最后一手棋的意图、效果和后续变化。\n";
+      userText += "重点讲解：这手棋在做什么、为什么下在这里、后续实战进程、与AI推荐的差异。\n";
+    } else if ("compare_ai".equals(mode)) {
+      userText += "这是【对比AI最佳手】模式：请对比实战下一手与AI推荐的最佳选点。\n";
+      userText += "重点讲解：实战手 vs AI一选/二选/三选的差异、各选点的策略区别、目差和胜率对比。\n";
+    } else {
+      userText += "请对当前局面进行讲解，分析这手棋的好坏与改进方向。\n";
+    }
     userText += "先给出整体结论，再逐手追踪变化图，然后对每个选点进行胜率目差解读、棋理分析和对比。\n";
-    userText += "务必胜率和目差并列呈现，不要因微小差异制造虚假优劣感。\\n";
+    userText += "务必胜率和目差并列呈现，不要因微小差异制造虚假优劣感。\n";
     userText += "所有坐标和胜率必须来自上方证据，禁用编造。若数据不足，坦诚说明。";
     session.addUser(userText);
     java.util.List<String> imgs = boardImg != null ? java.util.List.of(boardImg) : null;
