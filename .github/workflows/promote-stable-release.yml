@@ -91,6 +91,7 @@ jobs:
             --tag "$RELEASE_TAG"
             --bucket "${R2_BUCKET:-lizzieyzy-next-downloads}"
             --public-base "${R2_PUBLIC_BASE:-https://download.goagent.top}"
+            --website-download-url "https://goagent.top/download/"
             --private-key "$key_file"
             --key-id stable-2026-08
           )
