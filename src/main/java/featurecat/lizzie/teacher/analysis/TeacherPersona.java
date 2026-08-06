@@ -36,24 +36,24 @@ public final class TeacherPersona {
     }
 
     static String levelInstruction(Level level) {
-        if (level == Level.BEGINNER) return "学生是入门水平。少用术语，优先讲“这手下一次怎么想”、气、断点、连接、先后手和一两个可执行提醒。PV 不要展开太长。";
-        if (level == Level.INTERMEDIATE) return "学生是级位/中级水平。可以讲 1-2 个关键变化，重点解释棋形目的、目差代价和常见误区。";
-        if (level == Level.ADVANCED) return "学生是高级水平。可以比较候选点、方向、转换、ownership 和 PV，但仍要先讲判断顺序。";
-        return "学生是段位水平。可以讲更细的目差、候选分歧、PV 支撑、ownership 摆动和局面策略，但必须保持证据可追溯。";
+        if (level == Level.BEGINNER) return "当前用户是入门水平。少用术语，优先讲“这手下一次怎么想”、气、断点、连接、先后手和一两个可执行提醒。PV 不要展开太长。";
+        if (level == Level.INTERMEDIATE) return "当前用户是级位/中级水平。可以讲 1-2 个关键变化，重点解释棋形目的、目差代价和常见误区。";
+        if (level == Level.ADVANCED) return "当前用户是高级水平。可以比较候选点、方向、转换、ownership 和 PV，但仍要先讲判断顺序。";
+        return "当前用户是段位水平。可以讲更细的目差、候选分歧、PV 支撑、ownership 摆动和局面策略，但必须保持证据可追溯。";
     }
     static String rankInstruction(Rank rank) {
         if (rank == null) return "";
         switch (rank) {
-            case SUB1D: return "学生段位：1段以下。优先讲可执行的下一手判断、方向和基本形状，避免堆变化。";
-            case D1: return "学生段位：1段。可以比较候选点、方向和厚薄转换。";
-            case D2: return "学生段位：2段。可以讲关键变化、方向选择和攻防先后。";
-            case D3: return "学生段位：3段。可以讲更细的目差、PV 分歧和中盘攻防节奏。";
-            case D4: return "学生段位：4段。可以讲转换价值、局部收益与全局厚薄的权衡。";
-            case D5: return "学生段位：5段。可以讲高阶次序、交换价值、全局转换和局部读秒级判断。";
-            case D6: return "学生段位：6段。可以更直接比较复杂变化、劫材价值和战略转换。";
-            case D7: return "学生段位：7段。可以讲深层次序、细微目差和胜率风险控制。";
-            case D8: return "学生段位：8段。可以讲接近职业训练的候选点取舍和高精度转换。";
-            case D9: return "学生段位：9段。可以使用高密度术语、复杂 PV 对照和职业级证据链复盘。";
+            case SUB1D: return "当前用户段位：1段以下。优先讲可执行的下一手判断、方向和基本形状，避免堆变化。";
+            case D1: return "当前用户段位：1段。可以比较候选点、方向和厚薄转换。";
+            case D2: return "当前用户段位：2段。可以讲关键变化、方向选择和攻防先后。";
+            case D3: return "当前用户段位：3段。可以讲更细的目差、PV 分歧和中盘攻防节奏。";
+            case D4: return "当前用户段位：4段。可以讲转换价值、局部收益与全局厚薄的权衡。";
+            case D5: return "当前用户段位：5段。可以讲高阶次序、交换价值、全局转换和局部读秒级判断。";
+            case D6: return "当前用户段位：6段。可以更直接比较复杂变化、劫材价值和战略转换。";
+            case D7: return "当前用户段位：7段。可以讲深层次序、细微目差和胜率风险控制。";
+            case D8: return "当前用户段位：8段。可以讲接近职业训练的候选点取舍和高精度转换。";
+            case D9: return "当前用户段位：9段。可以使用高密度术语、复杂 PV 对照和职业级证据链复盘。";
         }
         return "";
     }

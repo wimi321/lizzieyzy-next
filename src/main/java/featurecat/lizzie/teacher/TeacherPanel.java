@@ -287,6 +287,7 @@ public class TeacherPanel extends JPanel {
    * @param mode "explain"=讲解当前手, "compare_ai"=对比AI最佳手
    */
   private void explainCurrentMove(ActionEvent e, String mode) {
+    saveSettingsToConfig();
     ensureSession();
     ensureLLM();
     if (llm == null) {
@@ -446,6 +447,7 @@ public class TeacherPanel extends JPanel {
   }
 
   private void explainWholeGame(ActionEvent e) {
+    saveSettingsToConfig();
     ensureSession();
     ensureLLM();
     if (llm == null) return;
@@ -484,6 +486,7 @@ public class TeacherPanel extends JPanel {
 
   /** 区间复盘：输入起止手数，遍历该区间逐手分类，挑关键手喂 LLM */
   private void explainMoveRange(ActionEvent e) {
+    saveSettingsToConfig();
     ensureSession();
     ensureLLM();
     if (llm == null) return;

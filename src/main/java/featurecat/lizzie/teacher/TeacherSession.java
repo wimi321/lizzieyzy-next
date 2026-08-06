@@ -131,7 +131,7 @@ public class TeacherSession {
     TeacherPersona.Level pl = toPersonaLevel(lv);
     TeacherPersona.TeacherPersonaInput pin = new TeacherPersona.TeacherPersonaInput();
     pin.level = pl; pin.rank = toStudentRank(studentLevel); pin.exactAge = studentAge > 0 ? studentAge : null;
-    pin.ageRange = studentAge > 0 ? (studentAge <= 12 ? TeacherPersona.AgeRange.CHILD : studentAge <= 17 ? TeacherPersona.AgeRange.TEEN : studentAge >= 60 ? TeacherPersona.AgeRange.SENIOR : TeacherPersona.AgeRange.ADULT) : TeacherPersona.AgeRange.UNKNOWN;
+    pin.ageRange = TeacherPersona.AgeRange.UNKNOWN;
     pin.style = ps;
     pin.terminologyDensity = density;
     pin.explanationPace = pace;
@@ -139,9 +139,9 @@ public class TeacherSession {
     String persona = TeacherPersona.buildTeacherPersonaInstruction(pin);
     String vision = VisionEvidence.systemInstruction(false);
     StringBuilder sb = new StringBuilder();
-    sb.append("你是一个围棋 AI 讲棋老师。\n");
-    sb.append("教学对象：").append(studentLevel);
-    if (studentAge > 0) sb.append("，年龄约 ").append(studentAge).append(" 岁");
+    sb.append("你是一位优秀的围棋教师。\n");
+    sb.append("当前用户水平：").append(studentLevel);
+
     sb.append("。\n");
     sb.append(persona).append("\n");
     sb.append(vision).append("\n");
