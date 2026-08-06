@@ -138,6 +138,10 @@ public class TeacherPanel extends JPanel {
       JButton rangeBtn = new JButton("区间复盘");
       rangeBtn.addActionListener(this::explainMoveRange);
       actions.add(rangeBtn);
+      JButton historyBtn = new JButton("历史");
+      historyBtn.setToolTipText("查看解说历史记录");
+      historyBtn.addActionListener(e -> showHistory());
+      actions.add(historyBtn);
       bottom.add(actions, BorderLayout.NORTH);
 
       JPanel inputRow = new JPanel(new BorderLayout(4, 4));
@@ -799,6 +803,8 @@ public class TeacherPanel extends JPanel {
                       stopBtn.setEnabled(false);
                       appendRaw("\n");
                     });
+                // 保存解说历史
+                try { saveHistory(mdAcc.toString()); } catch (Exception ignore) {}
               }
             })
         .start();
@@ -866,5 +872,58 @@ public class TeacherPanel extends JPanel {
     llm = null;
     session = null;
     ensureSession();
+  }
+
+  // ===== 解说历史保存/加载 =====
+  private static java.io.File historyFile() {
+    java.io.File d = new java.io.File(System.getProperty("user.home"), ".lizzieyzy-next");
+    if (!d.exists()) d.mkdirs();
+    return new java.io.File(d, "teacher_history.html");
+  }
+
+  /** 保存当前解说到历史文件（追加） */
+  private void saveHistory(String markdown) {
+    try {
+      java.io.File f = historyFile();
+      String timestamp = java.time.LocalDateTime.now().format(
+          java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
+      String htmlEntry = "<div style=\"border-bottom:1px solid #ddd;padding:8px 0\">"
+          + "<div style=\"color:#888;font-size:11px\">" + timestamp + "</div>"
+          + "<div>" + MarkdownText.toHtml(markdown) + "</div></div>";
+      if (f.exists()) {
+        // 读现有内容，在 body 结束前插入新条目
+        String content = new String(java.nio.file.Files.readAllBytes(f.toPath()), java.nio.charset.StandardCharsets.UTF_8);
+        int bodyEnd = content.lastIndexOf("</body>");
+        if (bodyEnd > 0) {
+          content = content.substring(0, bodyEnd) + htmlEntry + "\n" + content.substring(bodyEnd);
+        } else {
+          content += htmlEntry;
+        }
+        java.nio.file.Files.write(f.toPath(), content.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+      } else {
+        String full = "<html><head><meta charset=\"utf-8\"><title>AI解说历史</title>"
+            + "<style>body{font-family:sans-serif;font-size:14px;padding:12px;}</style></head>"
+            + "<body>" + htmlEntry + "</body></html>";
+        java.nio.file.Files.write(f.toPath(), full.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+      }
+    } catch (Exception ignored) {}
+  }
+
+  /** 打开历史窗口 */
+  private void showHistory() {
+    java.io.File f = historyFile();
+    if (!f.exists()) { javax.swing.JOptionPane.showMessageDialog(this, "暂无解说历史"); return; }
+    javax.swing.JDialog dlg = new javax.swing.JDialog(
+        (javax.swing.JFrame) javax.swing.SwingUtilities.getWindowAncestor(this),
+        "AI解说历史", false);
+    JEditorPane histPane = new JEditorPane("text/html", "");
+    histPane.setEditable(false);
+    try {
+      histPane.setText(new String(java.nio.file.Files.readAllBytes(f.toPath()), java.nio.charset.StandardCharsets.UTF_8));
+    } catch (Exception ignored) {}
+    dlg.getContentPane().add(new JScrollPane(histPane));
+    dlg.setSize(600, 500);
+    dlg.setLocationRelativeTo(this);
+    dlg.setVisible(true);
   }
 }
