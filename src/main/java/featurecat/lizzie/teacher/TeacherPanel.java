@@ -69,24 +69,30 @@ public class TeacherPanel extends JPanel {
 
       // 顶部：段位/风格 + 术语密度/讲解节奏/变化细节 + 配置
       JPanel top = new JPanel(new FlowLayout(FlowLayout.LEFT));
+      TeacherConfig.load();
       rankModeCombo = new JComboBox<>(new String[] {"级位", "段位"});
+      rankModeCombo.setSelectedIndex("段位".equals(TeacherConfig.rankMode) ? 1 : 0);
       top.add(rankModeCombo);
-      rankNumField = new JTextField("5", 3);
+      rankNumField = new JTextField(TeacherConfig.rankNum, 3);
       top.add(rankNumField);
       top.add(new JLabel("解说:"));
       styleCombo = new JComboBox<>(new String[] {"平衡自然", "严谨细致", "亲切耐心", "严格专业", "风趣幽默"});
+      styleCombo.setSelectedIndex(Math.max(0, Math.min(4, TeacherConfig.styleIndex)));
       top.add(styleCombo);
       top.add(new JLabel("术语:"));
       densityCombo = new JComboBox<>(new String[] {"少", "中", "多"});
+      densityCombo.setSelectedIndex(Math.max(0, Math.min(2, TeacherConfig.densityIndex)));
       top.add(densityCombo);
       top.add(new JLabel("节奏:"));
       paceCombo = new JComboBox<>(new String[] {"简洁", "标准", "细讲"});
+      paceCombo.setSelectedIndex(Math.max(0, Math.min(2, TeacherConfig.paceIndex)));
       top.add(paceCombo);
       top.add(new JLabel("变化:"));
       variationCombo = new JComboBox<>(new String[] {"少讲", "适中", "详细"});
+      variationCombo.setSelectedIndex(Math.max(0, Math.min(2, TeacherConfig.variationIndex)));
       top.add(variationCombo);
       JButton configBtn = new JButton("配置 LLM");
-      configBtn.addActionListener(this::openConfig);
+      configBtn.addActionListener(e -> { saveSettingsToConfig(); openConfig(e); });
       top.add(configBtn);
       add(top, BorderLayout.NORTH);
 
@@ -103,9 +109,11 @@ public class TeacherPanel extends JPanel {
 
       artifactHolder = new JPanel(new BorderLayout());
       artifactHolder.setBorder(BorderFactory.createTitledBorder("讲解卡片"));
-      artifactHolder.setPreferredSize(new Dimension(360, 230));
-      artifactHolder.setMinimumSize(new Dimension(360, 160));
-      left.add(artifactHolder);
+      JScrollPane artifactScroll = new JScrollPane(artifactHolder);
+      artifactScroll.setPreferredSize(new Dimension(360, 230));
+      artifactScroll.setMinimumSize(new Dimension(360, 120));
+      artifactScroll.setVerticalScrollBarPolicy(JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED);
+      left.add(artifactScroll);
 
       keyMoveHolder = new JPanel(new BorderLayout());
       keyMoveHolder.setBorder(BorderFactory.createTitledBorder("关键手"));
@@ -123,8 +131,8 @@ public class TeacherPanel extends JPanel {
       right.add(mdScroll, BorderLayout.CENTER);
 
       JPanel bottom = new JPanel(new BorderLayout(4, 4));
-      JPanel actions = new JPanel(new FlowLayout(FlowLayout.LEFT));
-      JButton explainMove = new JButton("讲解");
+      JPanel actions = new JPanel(new java.awt.GridLayout(0, 2, 6, 6));
+      JButton explainMove = new JButton("解说此手");
       explainMove.setToolTipText("分析当前手的好坏与改进");
       explainMove.addActionListener(this::explainCurrentMove);
       actions.add(explainMove);
@@ -138,10 +146,7 @@ public class TeacherPanel extends JPanel {
       JButton rangeBtn = new JButton("区间复盘");
       rangeBtn.addActionListener(this::explainMoveRange);
       actions.add(rangeBtn);
-      JButton historyBtn = new JButton("历史");
-      historyBtn.setToolTipText("查看解说历史记录");
-      historyBtn.addActionListener(e -> showHistory());
-      actions.add(historyBtn);
+
       bottom.add(actions, BorderLayout.NORTH);
 
       JPanel inputRow = new JPanel(new BorderLayout(4, 4));
@@ -168,6 +173,15 @@ public class TeacherPanel extends JPanel {
       add(split, BorderLayout.CENTER);
 
       ensureSession();
+      // 关闭面板时保存设置到 teacher.properties
+
+      // 面板显示时自动加载当前手的历史解说（若有）
+      addHierarchyListener(
+          e -> {
+            if ((e.getChangeFlags() & java.awt.event.HierarchyEvent.SHOWING_CHANGED) != 0 && isShowing()) {
+              java.awt.EventQueue.invokeLater(this::showCachedHistoryIfAny);
+            }
+          });
     } catch (Throwable t) {
       try (java.io.PrintWriter w = new java.io.PrintWriter("teacher_panel_err.log")) {
         t.printStackTrace(w);
@@ -177,7 +191,32 @@ public class TeacherPanel extends JPanel {
     }
   }
 
+  private void saveSettingsToConfig() {
+    TeacherConfig.rankMode = (String) rankModeCombo.getSelectedItem();
+    TeacherConfig.rankNum = rankNumField.getText().trim();
+    TeacherConfig.styleIndex = styleCombo.getSelectedIndex();
+    TeacherConfig.densityIndex = densityCombo.getSelectedIndex();
+    TeacherConfig.paceIndex = paceCombo.getSelectedIndex();
+    TeacherConfig.variationIndex = variationCombo.getSelectedIndex();
+    TeacherConfig.save();
+  }
+
   private JEditorPane mdState;
+
+  /** 面板显示时：若当前手已有解说历史，直接显示 */
+  private void showCachedHistoryIfAny() {
+    try {
+      MoveAnalysis ma = analyzeCurrent();
+      if (ma == null) return;
+      this.currentAnalysis = ma;
+      String cached = loadHistory(ma.moveNumber);
+      if (cached != null && !cached.isEmpty()) {
+        showEvidence(ma);
+        showArtifact(ma);
+        renderMarkdown(cached);
+      }
+    } catch (Exception ignored) {}
+  }
 
   private void ensureSession() {
     if (session == null) {
@@ -250,11 +289,47 @@ public class TeacherPanel extends JPanel {
   private void explainCurrentMove(ActionEvent e, String mode) {
     ensureSession();
     ensureLLM();
-    if (llm == null) return;
+    if (llm == null) {
+      javax.swing.JOptionPane.showMessageDialog(this,
+          "LLM 未配置。请点击「配置 LLM」设置 API Key 后再试。",
+          "LLM 未配置", javax.swing.JOptionPane.WARNING_MESSAGE);
+      return;
+    }
 
     MoveAnalysis ma = analyzeCurrent();
     if (ma == null) {
-      appendRaw("（无法获取当前局面分析）\n");
+      javax.swing.JOptionPane.showMessageDialog(this,
+          "无法获取当前局面分析。如果是空棋盘，请先落子。",
+          "无法分析", javax.swing.JOptionPane.WARNING_MESSAGE);
+      return;
+    }
+    this.currentAnalysis = ma; // 记录当前分析（供历史保存/防编造校验使用）
+    // 已有该手的历史解说——弹窗问是否重新生成
+    String cached = loadHistory(ma.moveNumber);
+    if (cached != null && !cached.isEmpty()) {
+      showEvidence(ma);
+      showArtifact(ma);
+      renderMarkdown(cached);
+      int choice = javax.swing.JOptionPane.showConfirmDialog(this,
+          "第 " + ma.moveNumber + " 手已有解说记录，是否重新生成？",
+          "已有解说", javax.swing.JOptionPane.YES_NO_OPTION);
+      if (choice != javax.swing.JOptionPane.YES_OPTION) {
+        return;
+      }
+      // 清除旧解说，重新生成
+      try {
+        var node = featurecat.lizzie.Lizzie.board.getHistory().getCurrentHistoryNode();
+        if (node != null) node.getData().comment = "";
+      } catch (Exception ignore) {}
+    }
+    // 没有 KataGo 分析数据时提醒先分析棋谱
+    boolean hasPvData = ma.pv != null && ma.pv.candidates != null && !ma.pv.candidates.isEmpty();
+    boolean hasValidClassification = ma.classification != null && ma.classification.severity != AnalysisBrain.Severity.UNCLEAR;
+    boolean hasKataData = hasPvData || hasValidClassification;
+    if (!hasKataData) {
+      javax.swing.JOptionPane.showMessageDialog(this,
+          "当前局面还没有 KataGo 分析数据。\n请先点击「AI 分析」或「自动分析」让引擎搜索棋谱，\n再进行解说。",
+          "需要先分析棋谱", javax.swing.JOptionPane.WARNING_MESSAGE);
       return;
     }
     showEvidence(ma);
@@ -310,13 +385,13 @@ public class TeacherPanel extends JPanel {
       String traceText = KatagoTraceTranslator.formatKataGoTraceForPrompt(trace);
       userText += "\n\n" + traceText;
       // PV 变化路径（逐手追踪变化图的数据来源）
-      if (ma.pv != null && ma.pv.candidates != null) {
+      if (ma.pv != null && ma.pv.candidates != null && !ma.pv.candidates.isEmpty()) {
         userText += "\n\n【各选点变化图（PV）】\n";
         for (int i = 0; i < Math.min(3, ma.pv.candidates.size()); i++) {
           var c = ma.pv.candidates.get(i);
           String label = i == 0 ? "一选" : i == 1 ? "二选" : "三选";
           userText += label + " " + c.move;
-          if (c.winrate != null) userText += " 胜率" + String.format("%.1f%%", c.winrate * 100);
+          if (c.winrate != null) userText += " 胜率" + String.format("%.1f%%", c.winrate);
           if (c.scoreLead != null) userText += " 目差" + String.format("%.1f", c.scoreLead);
           userText += " PV: " + String.join(" ", c.pv) + "\n";
         }
@@ -338,7 +413,14 @@ public class TeacherPanel extends JPanel {
     } catch (Exception ex) { /* 棋理知识注入失败不阻断讲解 */ }
     // 结构化输出 + 防编造指令（对齐 ClaimVerifier.buildStructuredTeachingInstruction）
     userText += "\n\n" + ClaimVerifier.buildStructuredTeachingInstruction();
-    userText += "\n\n请基于以上数据，按角色设定中的要求进行讲解。\n";
+    // 明确标注视角（避免 LLM 搞混黑白）
+    String perspectiveLabel = "实战手方";
+    userText += "\n\n【视角说明】\n"
+        + "以上所有胜率数据均为" + perspectiveLabel + "（落子方）视角（0-100%）。\n"
+        + "目差为黑正约定（黑棋领先为正数）。\n"
+        + "实战手方胜率 = KataGo 落子后局面轮到对手的胜率取反（100 - 对手胜率）。\n"
+        + "AI 首选的胜率/目差已统一到" + perspectiveLabel + "视角，可直接与实战手对比。\n\n"
+        + "请基于以上数据，按角色设定中的要求进行讲解。\n";
     if ("compare_ai".equals(mode)) {
       userText += "重点对比实战手与AI推荐选点的差异、各选点的策略区别、目差和胜率对比。\n";
     } else {
@@ -346,7 +428,8 @@ public class TeacherPanel extends JPanel {
     }
     userText += "先给出整体结论，再逐手追踪变化图，然后对每个选点进行胜率目差解读、棋理分析和对比。\n";
     userText += "务必胜率和目差并列呈现，不要因微小差异制造虚假优劣感。\n";
-    userText += "所有坐标和胜率必须来自上方证据，禁用编造。若数据不足，坦诚说明。";
+    userText += "所有坐标和胜率必须来自上方证据，禁用编造。若数据不足，坦诚说明。\n"
+        + "禁止在解说中输出 WEAK/STRONG/UNSTABLE/WEAKPV 等英文内部标签，用中文描述（如'变化图不太稳定'、'变化图较强'）代替。";
     session.addUser(userText);
     java.util.List<String> imgs = boardImg != null ? java.util.List.of(boardImg) : null;
     runLlm(userText, imgs);
@@ -461,13 +544,17 @@ public class TeacherPanel extends JPanel {
           if (refData.bestMoves != null && !refData.bestMoves.isEmpty()) {
             KataGoCandidate best = null;
             List<KataGoCandidate> top = new ArrayList<>();
+            boolean playedByBlack = (data.lastMoveColor == featurecat.lizzie.rules.Stone.BLACK);
             for (var m : refData.bestMoves) {
               KataGoCandidate kc = new KataGoCandidate();
-              kc.move = m.coordinate; kc.visits = m.playouts; kc.winrate = m.winrate; kc.scoreLead = m.scoreMean; kc.prior = m.policy; kc.humanPrior = m.humanPrior != 0 ? m.humanPrior : null; kc.humanPolicy = m.humanPolicy != 0 ? m.humanPolicy : null;
+              kc.move = m.coordinate; kc.visits = m.playouts; kc.winrate = m.winrate;
+              kc.scoreLead = ScorePerspective.scoreLeadForColor(m.scoreMean, playedByBlack);
+              kc.prior = m.policy; kc.humanPrior = m.humanPrior != 0 ? m.humanPrior : null; kc.humanPolicy = m.humanPolicy != 0 ? m.humanPolicy : null;
               top.add(kc);
             }
             if (!top.isEmpty()) best = top.get(0);
-            out.add(AnalysisBrain.classify(moveNumber, 1.0 - data.winrate, -data.scoreMean,
+            out.add(AnalysisBrain.classify(moveNumber, 100.0 - data.winrate,
+                ScorePerspective.scoreLeadForColor(data.scoreMean, playedByBlack),
                 refData.getPlayouts(), best == null ? null : best.winrate, best == null ? null : best.scoreLead,
                 best == null ? null : best.visits, null, null, false));
           }
@@ -527,7 +614,8 @@ public class TeacherPanel extends JPanel {
       boolean playedByBlack = (data.lastMoveColor == featurecat.lizzie.rules.Stone.BLACK);
       ma.actualWinrate = ScorePerspective.winrateFromAfterMove(data.winrate);
       ma.actualScoreLead = ScorePerspective.scoreLeadFromAfterMove(data.scoreMean, playedByBlack);
-      ma.beforeWinrate = ScorePerspective.winrateFromAfterMove(refData.winrate);
+      // refData（上一手节点）的 winrate 是 SIDETOMOVE = 实战手方视角，直接用；scoreMean 黑正须转实战手方
+      ma.beforeWinrate = refData.winrate;
       ma.beforeScoreLead = ScorePerspective.scoreLeadFromAfterMove(refData.scoreMean, playedByBlack);
       ma.afterWinrate = ma.actualWinrate;
       ma.afterScoreLead = ma.actualScoreLead;
@@ -543,10 +631,12 @@ public class TeacherPanel extends JPanel {
           KataGoCandidate kc = new KataGoCandidate();
           kc.move = m.coordinate;
           kc.visits = m.playouts;
+          // refData.bestMoves 的 winrate 是 SIDETOMOVE（轮到方=实战手方），与 actualWinrate 同视角，不用转
           kc.winrate = m.winrate;
-          kc.scoreLead = m.scoreMean;
+          // scoreMean 是"黑正"约定，须转到实战手方视角（与 actualScoreLead 同视角，否则 loss 方向反）
+          kc.scoreLead = ScorePerspective.scoreLeadForColor(m.scoreMean, playedByBlack);
           kc.prior = m.policy;
-          kc.pv = new String[0];
+          kc.pv = m.variation != null ? m.variation.toArray(new String[0]) : new String[0];
           topMoves.add(kc);
         }
         if (!topMoves.isEmpty()) ma.best = topMoves.get(0);
@@ -608,7 +698,9 @@ public class TeacherPanel extends JPanel {
           continue;
         }
         int moveNumber = data.moveNumber;
-        double aw = refData.winrate, as = refData.scoreMean;
+        boolean playedByBlack = (data.lastMoveColor == featurecat.lizzie.rules.Stone.BLACK);
+        double aw = refData.winrate;
+        double as = ScorePerspective.scoreLeadForColor(refData.scoreMean, playedByBlack);
         KataGoCandidate best = null;
         List<KataGoCandidate> top = new ArrayList<>();
         for (var m : refData.bestMoves) {
@@ -616,7 +708,7 @@ public class TeacherPanel extends JPanel {
           kc.move = m.coordinate;
           kc.visits = m.playouts;
           kc.winrate = m.winrate;
-          kc.scoreLead = m.scoreMean;
+          kc.scoreLead = ScorePerspective.scoreLeadForColor(m.scoreMean, playedByBlack);
           top.add(kc);
         }
         if (!top.isEmpty()) best = top.get(0);
@@ -748,6 +840,8 @@ public class TeacherPanel extends JPanel {
     sendBtn.setEnabled(false);
     stopBtn.setEnabled(true);
     appendRaw("你: " + userText + "\n");
+    final String[] statusHolder = {null};
+    SwingUtilities.invokeLater(() -> showStatus("📖 正在读取 KataGo 分析数据..."));
     // 把图片附加到最后一条 user 消息（多模态）
     if (images != null && !images.isEmpty()) {
       int n = session.messages().size();
@@ -762,13 +856,19 @@ public class TeacherPanel extends JPanel {
     new Thread(
             () -> {
               try {
+                SwingUtilities.invokeLater(() -> showStatus("📤 数据已发送，LLM 正在思考中（首次响应通常需要 10~30 秒，请耐心等待）..."));
+                SwingUtilities.invokeLater(() -> showStatus("🤖 LLM 正在读取数据并思考解说..."));
                 String full =
                     llm.chatStream(
                         session.messages(),
                         token -> {
+                          if (!running) throw new RuntimeException("用户停止");
                           mdAcc.append(token);
-                          SwingUtilities.invokeLater(() -> renderMarkdown(mdAcc.toString()));
+                          if (mdAcc.length() > 0) {
+                            SwingUtilities.invokeLater(() -> renderMarkdown(mdAcc.toString()));
+                          }
                         });
+
                 session.addAssistant(full);
                 final String f = full;
                 SwingUtilities.invokeLater(() -> refreshArtifactFromLlm(f));
@@ -803,8 +903,11 @@ public class TeacherPanel extends JPanel {
                       stopBtn.setEnabled(false);
                       appendRaw("\n");
                     });
-                // 保存解说历史
-                try { saveHistory(mdAcc.toString()); } catch (Exception ignore) {}
+                // 保存解说历史（按手数）
+                try {
+                  int mv = (currentAnalysis != null) ? currentAnalysis.moveNumber : -1;
+                  saveHistory(mv, mdAcc.toString());
+                } catch (Exception ignore) {}
               }
             })
         .start();
@@ -812,6 +915,13 @@ public class TeacherPanel extends JPanel {
 
   private void renderMarkdown(String md) {
     mdState.setText(MarkdownText.toHtml(md));
+    mdState.setCaretPosition(mdState.getDocument().getLength());
+  }
+
+  /** 显示状态提示（HTML 直设，不被 markdown 转义） */
+  private void showStatus(String text) {
+    mdState.setText("<html><body style=\"color:#888888;font-size:13px;font-family:sans-serif\">"
+        + "<p>" + text + "</p></body></html>");
     mdState.setCaretPosition(mdState.getDocument().getLength());
   }
 
@@ -874,56 +984,34 @@ public class TeacherPanel extends JPanel {
     ensureSession();
   }
 
-  // ===== 解说历史保存/加载 =====
-  private static java.io.File historyFile() {
-    java.io.File d = new java.io.File(System.getProperty("user.home"), ".lizzieyzy-next");
-    if (!d.exists()) d.mkdirs();
-    return new java.io.File(d, "teacher_history.html");
-  }
+  // ===== 解说历史保存/加载（按手数）=====
 
-  /** 保存当前解说到历史文件（追加） */
-  private void saveHistory(String markdown) {
+
+  private static final String TEACHER_MARKER = "[AI解说]\n";
+
+  /** 保存解说到当前节点的 SGF C[] 注释（带标记，可与 KataGo 注释区分） */
+  private void saveHistory(int moveNumber, String markdown) {
+    if (moveNumber <= 0 || markdown == null || markdown.isEmpty()) return;
     try {
-      java.io.File f = historyFile();
-      String timestamp = java.time.LocalDateTime.now().format(
-          java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
-      String htmlEntry = "<div style=\"border-bottom:1px solid #ddd;padding:8px 0\">"
-          + "<div style=\"color:#888;font-size:11px\">" + timestamp + "</div>"
-          + "<div>" + MarkdownText.toHtml(markdown) + "</div></div>";
-      if (f.exists()) {
-        // 读现有内容，在 body 结束前插入新条目
-        String content = new String(java.nio.file.Files.readAllBytes(f.toPath()), java.nio.charset.StandardCharsets.UTF_8);
-        int bodyEnd = content.lastIndexOf("</body>");
-        if (bodyEnd > 0) {
-          content = content.substring(0, bodyEnd) + htmlEntry + "\n" + content.substring(bodyEnd);
-        } else {
-          content += htmlEntry;
-        }
-        java.nio.file.Files.write(f.toPath(), content.getBytes(java.nio.charset.StandardCharsets.UTF_8));
-      } else {
-        String full = "<html><head><meta charset=\"utf-8\"><title>AI解说历史</title>"
-            + "<style>body{font-family:sans-serif;font-size:14px;padding:12px;}</style></head>"
-            + "<body>" + htmlEntry + "</body></html>";
-        java.nio.file.Files.write(f.toPath(), full.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+      var node = featurecat.lizzie.Lizzie.board.getHistory().getCurrentHistoryNode();
+      if (node != null) {
+        node.getData().comment = TEACHER_MARKER + markdown;
       }
     } catch (Exception ignored) {}
   }
 
-  /** 打开历史窗口 */
-  private void showHistory() {
-    java.io.File f = historyFile();
-    if (!f.exists()) { javax.swing.JOptionPane.showMessageDialog(this, "暂无解说历史"); return; }
-    javax.swing.JDialog dlg = new javax.swing.JDialog(
-        (javax.swing.JFrame) javax.swing.SwingUtilities.getWindowAncestor(this),
-        "AI解说历史", false);
-    JEditorPane histPane = new JEditorPane("text/html", "");
-    histPane.setEditable(false);
+  /** 读取某一手的解说（从 C[] 注释中提取，无标记则返回 null） */
+  private String loadHistory(int moveNumber) {
+    if (moveNumber <= 0) return null;
     try {
-      histPane.setText(new String(java.nio.file.Files.readAllBytes(f.toPath()), java.nio.charset.StandardCharsets.UTF_8));
+      var node = featurecat.lizzie.Lizzie.board.getHistory().getCurrentHistoryNode();
+      if (node != null && node.getData() != null) {
+        String c = node.getData().comment;
+        if (c != null && c.startsWith(TEACHER_MARKER)) {
+          return c.substring(TEACHER_MARKER.length());
+        }
+      }
     } catch (Exception ignored) {}
-    dlg.getContentPane().add(new JScrollPane(histPane));
-    dlg.setSize(600, 500);
-    dlg.setLocationRelativeTo(this);
-    dlg.setVisible(true);
+    return null;
   }
 }

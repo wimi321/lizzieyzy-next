@@ -32,6 +32,8 @@ import java.util.stream.Stream;
 import javax.swing.*;
 
 public class Board {
+  /** AI 解说面板打开时锁定棋谱导航（打开解说面板期间禁止前进/后退） */
+  public static volatile boolean teacherPanelOpen = false;
   public static int boardHeight = 19;
   public static int boardWidth = 19;
   public int insertoricurrentMoveNumber = 0;
@@ -2958,6 +2960,7 @@ public class Board {
 
   /** Goes to the next coordinate, thread safe */
   public boolean nextMove(boolean needRefresh) {
+    if (teacherPanelOpen) return false; // 解说面板打开时锁定导航
     // canGetBestMoves = false;
     markMoveNavigationForMovelistRefresh();
     synchronized (this) {
@@ -3706,6 +3709,7 @@ public class Board {
 
   /** Goes to the previous coordinate, thread safe */
   public boolean previousMove(boolean needRefresh) {
+    if (teacherPanelOpen) return false; // 解说面板打开时锁定导航
     markMoveNavigationForMovelistRefresh();
     synchronized (this) {
       modifyStart();

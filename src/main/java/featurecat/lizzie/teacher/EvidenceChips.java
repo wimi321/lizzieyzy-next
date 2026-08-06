@@ -61,7 +61,8 @@ public final class EvidenceChips {
     }
 
     if (actualMove != null && best != null && !actualMove.equals(best.move)) {
-      double loss = (best.winrateOrZero() - (actualWinrate == null ? 0 : actualWinrate)) * 100;
+      // winrate 已是百分比（0-100），差值就是百分点，不能再乘 100
+      double loss = best.winrateOrZero() - (actualWinrate == null ? 0 : actualWinrate);
       double scoreLoss = best.scoreLeadOrZero() - (actualScoreLead == null ? 0 : actualScoreLead);
       chips.add(
           new TeacherEvidenceChip(

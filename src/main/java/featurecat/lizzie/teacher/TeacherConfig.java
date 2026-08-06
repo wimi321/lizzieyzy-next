@@ -20,6 +20,13 @@ public class TeacherConfig {
   public static String baseUrl = "https://api.openai.com/v1";
   public static String apiKey = "";
   public static String model = "gpt-4o-mini";
+  // 解说设置
+  public static String rankMode = "级位";
+  public static String rankNum = "5";
+  public static int styleIndex = 0;   // 平衡自然
+  public static int densityIndex = 1; // 中
+  public static int paceIndex = 1;    // 标准
+  public static int variationIndex = 1; // 适中
 
   private static final String FILE = "teacher.properties";
 
@@ -36,6 +43,12 @@ public class TeacherConfig {
       baseUrl = p.getProperty("baseUrl", baseUrl);
       apiKey = p.getProperty("apiKey", apiKey);
       model = p.getProperty("model", model);
+      rankMode = p.getProperty("rankMode", rankMode);
+      rankNum = p.getProperty("rankNum", rankNum);
+      styleIndex = Integer.parseInt(p.getProperty("styleIndex", "0"));
+      densityIndex = Integer.parseInt(p.getProperty("densityIndex", "1"));
+      paceIndex = Integer.parseInt(p.getProperty("paceIndex", "1"));
+      variationIndex = Integer.parseInt(p.getProperty("variationIndex", "1"));
     } catch (Exception ignored) {}
   }
 
@@ -47,6 +60,12 @@ public class TeacherConfig {
       p.setProperty("baseUrl", baseUrl);
       p.setProperty("apiKey", apiKey);
       p.setProperty("model", model);
+      p.setProperty("rankMode", rankMode);
+      p.setProperty("rankNum", rankNum);
+      p.setProperty("styleIndex", String.valueOf(styleIndex));
+      p.setProperty("densityIndex", String.valueOf(densityIndex));
+      p.setProperty("paceIndex", String.valueOf(paceIndex));
+      p.setProperty("variationIndex", String.valueOf(variationIndex));
       try (FileOutputStream out = new FileOutputStream(new File(d, FILE))) { p.store(out, "AI Teacher config"); }
     } catch (Exception ignored) {}
   }

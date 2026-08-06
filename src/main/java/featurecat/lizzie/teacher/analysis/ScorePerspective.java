@@ -16,7 +16,8 @@ public final class ScorePerspective {
 
     /** 当前走棋方胜率 → 指定方胜率（对手方视角需 1 - winrate） */
     public static double winrateForColor(double currentMoverWinrate, boolean forCurrentMover) {
-        return forCurrentMover ? currentMoverWinrate : (1.0 - currentMoverWinrate);
+        // 百分比 0-100
+        return forCurrentMover ? currentMoverWinrate : (100.0 - currentMoverWinrate);
     }
 
     public static double round(double value, int digits) {
@@ -27,8 +28,9 @@ public final class ScorePerspective {
 
     /** 把"落子后局面（轮到对手）"的数据，转成"实战手（落子方）视角" */
     public static double winrateFromAfterMove(double afterMoveWinrate) {
-        // afterMoveWinrate 是落子后轮到对手的胜率（对手方视角）→ 实战手方 = 1 - it
-        return 1.0 - afterMoveWinrate;
+        // afterMoveWinrate 是落子后轮到对手的胜率（对手方视角，百分比 0-100）
+        // → 实战手方 = 100 - it
+        return 100.0 - afterMoveWinrate;
     }
 
     public static double scoreLeadFromAfterMove(double afterMoveBlackLead, boolean playedByBlack) {

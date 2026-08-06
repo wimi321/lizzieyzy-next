@@ -10282,8 +10282,17 @@ public class Menu extends JMenuBar {
 
   /** 打开 AI 解说面板对话框（AI解说菜单点击时调用） */
   private void openTeacherPanel() {
+    featurecat.lizzie.rules.Board.teacherPanelOpen = true; // 锁定棋谱导航（解说期间禁止前进/后退）
     javax.swing.JDialog dlg = new javax.swing.JDialog(Lizzie.frame, "AI 解说 · GoAgent", false);
+    dlg.setDefaultCloseOperation(javax.swing.JDialog.DISPOSE_ON_CLOSE); // 点 X 关闭时真正 dispose，触发 windowClosed 解锁导航
     dlg.getContentPane().add(new javax.swing.JScrollPane(new TeacherPanel()));
+    dlg.addWindowListener(
+        new java.awt.event.WindowAdapter() {
+          @Override
+          public void windowClosed(java.awt.event.WindowEvent e) {
+            featurecat.lizzie.rules.Board.teacherPanelOpen = false; // 关闭解说面板后解锁导航
+          }
+        });
     dlg.pack();
     if (dlg.getWidth() < 600) dlg.setSize(800, 620);
     dlg.setLocationRelativeTo(Lizzie.frame);

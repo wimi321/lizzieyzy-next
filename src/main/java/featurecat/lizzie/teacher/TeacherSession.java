@@ -66,34 +66,43 @@ public class TeacherSession {
 
   public static HumanWinrateCalibrator.Level toCalibratorLevel(String level) {
     if (level == null) return HumanWinrateCalibrator.Level.INTERMEDIATE;
-    if (level.contains("级") || level.contains("初段以下") || level.contains("入门"))
+    java.util.regex.Matcher m = java.util.regex.Pattern.compile("(\\d+)").matcher(level);
+    int num = 0;
+    if (m.find()) { try { num = Integer.parseInt(m.group(1)); } catch (Exception ignore) {} }
+    if (level.contains("级")) {
+      // 级位：数字越大水平越低
+      if (num >= 15) return HumanWinrateCalibrator.Level.BEGINNER;   // 15-18级 入门
+      if (num >= 8) return HumanWinrateCalibrator.Level.BEGINNER;    // 8-14级 初级
+      if (num >= 1) return HumanWinrateCalibrator.Level.INTERMEDIATE; // 1-7级 中级
       return HumanWinrateCalibrator.Level.BEGINNER;
-    if (level.contains("初段") || level.contains("2段") || level.contains("3段"))
-      return HumanWinrateCalibrator.Level.INTERMEDIATE;
-    if (level.contains("5段") || level.contains("7段"))
-      return HumanWinrateCalibrator.Level.ADVANCED;
-    if (level.contains("高段") || level.contains("段"))
-      return HumanWinrateCalibrator.Level.DAN;
-    return HumanWinrateCalibrator.Level.INTERMEDIATE;
+    }
+    // 段位：精确映射
+    if (num <= 3) return HumanWinrateCalibrator.Level.INTERMEDIATE;
+    if (num <= 6) return HumanWinrateCalibrator.Level.ADVANCED;
+    return HumanWinrateCalibrator.Level.DAN;
   }
 
   /** UI 段位选项 → GoAgent 学生段位 rank（sub1d~9d），供 rankInstruction 使用 */
   public static TeacherPersona.Rank toStudentRank(String level) {
     if (level == null) return null;
-    // 级位（任意数字级，含"业余X级"）：一律 sub1d
-    if (level.contains("级")) return TeacherPersona.Rank.SUB1D;
-    if (level.contains("初段")) return TeacherPersona.Rank.D1;
-    // 数字段位（业余X段 / 职业X段）：解析数字
-    java.util.regex.Matcher m = java.util.regex.Pattern.compile("(\\d+)\s*段").matcher(level);
-    if (m.find()) {
-      try {
-        int d = Integer.parseInt(m.group(1));
-        if (d <= 0) return TeacherPersona.Rank.SUB1D;
-        if (d >= 9) return TeacherPersona.Rank.D9;
-        return TeacherPersona.Rank.values()[d];  // D1=index1 ... D8=index8
-      } catch (Exception ignore) { /* fallthrough */ }
+    java.util.regex.Matcher m = java.util.regex.Pattern.compile("(\\d+)").matcher(level);
+    int num = 0;
+    if (m.find()) { try { num = Integer.parseInt(m.group(1)); } catch (Exception ignore) {} }
+    if (level.contains("级")) {
+      // 级位：统一 SUB1D（1段以下）
+      return TeacherPersona.Rank.SUB1D;
     }
-    if (level.contains("高段") || level.contains("段")) return TeacherPersona.Rank.D9;
+    // 段位：精确映射 D1-D9
+    if (num >= 9) return TeacherPersona.Rank.D9;
+    if (num == 8) return TeacherPersona.Rank.D8;
+    if (num == 7) return TeacherPersona.Rank.D7;
+    if (num == 6) return TeacherPersona.Rank.D6;
+    if (num == 5) return TeacherPersona.Rank.D5;
+    if (num == 4) return TeacherPersona.Rank.D4;
+    if (num == 3) return TeacherPersona.Rank.D3;
+    if (num == 2) return TeacherPersona.Rank.D2;
+    if (num == 1) return TeacherPersona.Rank.D1;
+    if (level.contains("段")) return TeacherPersona.Rank.D1;
     return null;
   }
 

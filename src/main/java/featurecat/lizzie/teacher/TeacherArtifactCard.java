@@ -70,12 +70,12 @@ public class TeacherArtifactCard extends JPanel {
       JPanel row = new JPanel(new BorderLayout(6, 2));
       JLabel label = new JLabel(f.label);
       label.setForeground(Color.GRAY);
-      JLabel value = new JLabel(f.value);
+      JLabel value = new JLabel("<html>" + escapeHtml(f.value) + "</html>");
       if (f.toneLoss) value.setForeground(new Color(0xCC, 0x33, 0x33));
       else value.setForeground(new Color(0x22, 0x22, 0x22));
       value.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 13));
       row.add(label, BorderLayout.WEST);
-      row.add(value, BorderLayout.EAST);
+      row.add(value, BorderLayout.CENTER);
       grid.add(row);
     }
 
@@ -83,12 +83,12 @@ public class TeacherArtifactCard extends JPanel {
       grid.add(sectionTitle("知识匹配"));
       for (RecognizedTeachingMotif km : knowledge) {
         JPanel row = new JPanel(new BorderLayout(6, 2));
-        JLabel label = new JLabel(km.motifType.toLowerCase());
+        JLabel label = new JLabel(motifTypeZh(km.motifType));
         label.setForeground(Color.GRAY);
         JLabel value = new JLabel(km.title + " (" + km.confidence.name() + ")");
         value.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 12));
         row.add(label, BorderLayout.WEST);
-        row.add(value, BorderLayout.EAST);
+        row.add(value, BorderLayout.CENTER);
         grid.add(row);
       }
     }
@@ -171,5 +171,24 @@ public class TeacherArtifactCard extends JPanel {
       this.value = value;
       this.toneLoss = toneLoss;
     }
+  }
+  /** motifType 英文枚举 → 中文显示 */
+  private static String motifTypeZh(String t) {
+    if (t == null) return "知识";
+    String l = t.toLowerCase();
+    if (l.contains("joseki")) return "定式";
+    if (l.contains("life") || l.contains("death")) return "死活";
+    if (l.contains("tesuji")) return "手筋";
+    if (l.contains("shape")) return "棋形";
+    if (l.contains("opening")) return "布局";
+    if (l.contains("endgame")) return "官子";
+    if (l.contains("fuseki")) return "布局";
+    return t;
+  }
+
+  /** HTML 转义（避免 < > & 破坏 JLabel HTML 渲染） */
+  private static String escapeHtml(String s) {
+    if (s == null) return "";
+    return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
   }
 }
