@@ -58,6 +58,15 @@ public final class JosekiSgfDatabase {
         josekle.familyByFile = new HashMap<>();
         josekle.familyByFile.put("dictionary.sgf", "Josekle joseki explorer dictionary");
         BUNDLED_SOURCES.add(josekle);
+        BundledJosekiSource aiJoseki = new BundledJosekiSource();
+        aiJoseki.id = "ai-joseki-daquan"; aiJoseki.dir = "ai-joseki";
+        aiJoseki.displayName = "AI围棋定式大全（江维杰）";
+        aiJoseki.license = "user-provided";
+        aiJoseki.sourceQuality = "user-provided-book";
+        aiJoseki.url = "";
+        aiJoseki.familyByFile = new HashMap<>();
+        aiJoseki.familyByFile.put("ai_joseki_daquan.sgf", "AI围棋定式大全");
+        BUNDLED_SOURCES.add(aiJoseki);
     }
 
     // ---- SGF 解析（对齐 extractMovePathsFromSgf）----
@@ -315,6 +324,7 @@ public final class JosekiSgfDatabase {
         // 已知文件名（来自 GoAgent data/knowledge/joseki-sgf）
         if (dir.contains("/pachi/")) return Arrays.asList("joseki_33.sgf", "joseki_34.sgf", "joseki_44.sgf", "joseki_54.sgf");
         if (dir.contains("/josekle/")) return Arrays.asList("dictionary.sgf");
+        if (dir.contains("/ai-joseki/")) return Arrays.asList("ai_joseki_daquan.sgf");
         return new ArrayList<>();
     }
 
