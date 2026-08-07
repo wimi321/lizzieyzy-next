@@ -58,6 +58,8 @@ public class TeacherPanel extends JPanel {
   private TeacherSession session;
   private volatile boolean running = false;
   private MoveAnalysis currentAnalysis;
+  /** 滑动窗口：同一 session 内保留的最大非 system 消息数（追问多轮时裁剪最旧的，防止上下文超限） */
+  private static final int MAX_HISTORY_MESSAGES = 10;
 
   public TeacherPanel() {
     try {
@@ -252,6 +254,46 @@ public class TeacherPanel extends JPanel {
           : variationCombo.getSelectedIndex() == 2 ? TeacherPersona.VariationDetail.MANY
           : TeacherPersona.VariationDetail.MODERATE;
       session = new TeacherSession(level, 0, style, density, pace, variation);
+    }
+  }
+
+  /**
+   * 发起新的解说请求（解说下一手/区间解说/整局解说）前调用：
+   * 每次都裁剪掉 session 里的全部历史轮次（user/assistant，含之前的解说与追问），只保留 system——
+   * ① 旧手的分析数据/结论不会污染新手解说（防 LLM 从历史借用数据瞎编）；
+   * ② 上下文始终只有 system + 当前解说请求，不会累积超限。
+   * session 实例不重建（system 消息对象与内容不变，服务端 prompt 缓存前缀稳定可命中、省成本）。
+   * 追问（inputField+send）不调用本方法，保留多轮历史，由 trimHistory 滑动窗口限制长度。
+   */
+  private void freshSessionForAnalysis() {
+    if (session == null) {
+      ensureSession();
+      return;
+    }
+    session.messages().removeIf(m -> !"system".equals(m.role));
+  }
+
+  /**
+   * 滑动窗口：LLM 回答追加到 session 后，限制同一 session 内的历史轮次数量。
+   * 超过 MAX_HISTORY_MESSAGES 条非 system 消息时，从最早的轮次开始裁剪，
+   * 保持 system 前缀不变（服务端 prompt 缓存稳定），避免长上下文导致
+   * 注意力稀释与从历史借用数据造成的编造风险。
+   */
+  private void trimHistory() {
+    if (session == null) return;
+    java.util.List<LLMClient.Message> msgs = session.messages();
+    int nonSystem = 0;
+    for (LLMClient.Message m : msgs) if (!"system".equals(m.role)) nonSystem++;
+    int toRemove = nonSystem - MAX_HISTORY_MESSAGES;
+    if (toRemove <= 0) return;
+    int removed = 0;
+    java.util.Iterator<LLMClient.Message> it = msgs.iterator();
+    while (it.hasNext() && removed < toRemove) {
+      LLMClient.Message m = it.next();
+      if (!"system".equals(m.role)) {
+        it.remove();
+        removed++;
+      }
     }
   }
 
@@ -553,6 +595,7 @@ public class TeacherPanel extends JPanel {
         + "解说中不要出现'证据''校验''内部数据''标签'等内部术语，直接给出结论和分析即可。\n"
         + "解说正文中严禁自称'围棋老师''围棋教师''教练'等称呼，也严禁称呼用户为'学生''棋友'——直接以'我'分析棋局即可。\n"
         + "禁止在解说中输出 WEAK/STRONG/UNSTABLE/WEAKPV 等英文内部标签，用中文描述（如'变化图不太稳定'、'变化图较强'）代替。";
+    freshSessionForAnalysis();
     session.addUser(userText);
     java.util.List<String> imgs = boardImg != null ? java.util.List.of(boardImg) : null;
     runLlm(userText, imgs);
@@ -600,6 +643,7 @@ public class TeacherPanel extends JPanel {
             + "5. 结尾用对比表总结关键手差异\n"
             + "务必胜率和目差并列呈现，不要因微小差异制造虚假优劣感。\n"
             + "所有坐标和胜率必须来自证据，禁用编造。若数据不足，坦诚说明。";
+    freshSessionForAnalysis();
     session.addUser(userText);
     runLlm(userText);
   }
@@ -646,6 +690,7 @@ public class TeacherPanel extends JPanel {
             + "5. 结尾用对比表总结关键手差异\n"
             + "务必胜率和目差并列呈现，不要因微小差异制造虚假优劣感。\n"
             + "所有坐标和胜率必须来自证据，禁用编造。若数据不足，坦诚说明。";
+    freshSessionForAnalysis();
     session.addUser(userText);
     String boardImg = BoardImageExporter.exportCurrentBoard(760);
     java.util.List<String> imgs = boardImg != null ? java.util.List.of(boardImg) : null;
@@ -1084,6 +1129,7 @@ public class TeacherPanel extends JPanel {
                         });
 
                 session.addAssistant(full);
+                trimHistory(); // 滑动窗口：限制 session 历史轮次，避免长上下文稀释注意力
                 final String f = full;
                 SwingUtilities.invokeLater(() -> refreshArtifactFromLlm(f));
                 // 完整防编造校验（对齐 GoAgent verifyTeacherMarkdown）：坐标/百分比/定式引用
