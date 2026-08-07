@@ -39,6 +39,7 @@ public final class AnalysisBrain {
   }
 
   public static class MoveClassification {
+    public int moveNumber;   // 真实手数（analyze 时设置，供关键手列表对齐）
     public Severity severity;
     public Confidence confidence;
     public Phase phase;

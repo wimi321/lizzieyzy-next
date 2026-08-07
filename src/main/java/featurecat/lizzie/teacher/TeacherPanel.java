@@ -132,15 +132,15 @@ public class TeacherPanel extends JPanel {
 
       JPanel bottom = new JPanel(new BorderLayout(4, 4));
       JPanel actions = new JPanel(new java.awt.GridLayout(0, 2, 6, 6));
-      JButton explainMove = new JButton("解说实战下一手");
-      explainMove.setToolTipText("解说实战下一手（KataGo已分析的局面）并对比AI最佳手前三选");
+      JButton explainMove = new JButton("解说下一手");
+      explainMove.setToolTipText("解说下一手（KataGo已分析的局面）并对比AI最佳手前三选");
       explainMove.addActionListener(this::explainCurrentMove);
       actions.add(explainMove);
 
-      JButton explainGame = new JButton("整盘复盘");
+      JButton explainGame = new JButton("整局解说");
       explainGame.addActionListener(this::explainWholeGame);
       actions.add(explainGame);
-      JButton rangeBtn = new JButton("区间复盘");
+      JButton rangeBtn = new JButton("区间解说");
       rangeBtn.addActionListener(this::explainMoveRange);
       actions.add(rangeBtn);
 
@@ -558,7 +558,7 @@ public class TeacherPanel extends JPanel {
     runLlm(userText, imgs);
   }
 
-  /** 整盘复盘：遍历历史节点，逐手分类，收集关键手，做一次整盘讲解 */
+  /** 整局解说：遍历历史节点，逐手分类，收集关键手，做一次整局讲解 */
 
   private static String actualMoveGtp(MoveAnalysis ma) {
     // 用分析目标的实战手（下一节点落子）；最后一手无实战手时返回 null
@@ -575,11 +575,10 @@ public class TeacherPanel extends JPanel {
     List<TeacherKeyMoveActions.KeyMoveItem> keyMoves =
         TeacherKeyMoveActions.fromClassifications(all);
     showKeyMoves(keyMoves);
-    // 拼关键手详情（severity + 简要），喂给 LLM 做整盘复盘 + 局势走向
+    // 拼关键手详情（severity + 简要），喂给 LLM 做整局解说 + 局势走向
     StringBuilder detail = new StringBuilder();
     for (TeacherKeyMoveActions.KeyMoveItem k : keyMoves) {
-      int idx = k.moveNumber - 1;
-      MoveClassification mc = idx >= 0 && idx < all.size() ? all.get(idx) : null;
+      MoveClassification mc = findClassificationByMove(all, k.moveNumber);
       detail.append("- 第").append(k.moveNumber).append("手：").append(k.severity);
       if (mc != null) {
         detail.append("（").append(mc.severity).append("/").append(mc.confidence).append("）");
@@ -588,11 +587,13 @@ public class TeacherPanel extends JPanel {
       detail.append("\n");
     }
     String keyDetail = detail.length() == 0 ? "无明显问题手。" : detail.toString();
+    String coverageNote = describeDataCoverage(0, 0);
     String userText =
-        "请对整盘棋做一次复盘。以下是 AI 逐手分析识别出的关键手（含判定与原因）：\n"
+        "请对整局棋做一次解说。以下是 AI 逐手分析识别出的关键手（含判定与原因）：\n"
             + keyDetail
+            + (coverageNote.isEmpty() ? "" : "\n" + coverageNote + "\n")
             + "\n请按以下格式分析：\n"
-            + "1. 先给出整盘整体结论\n"
+            + "1. 先给出整局整体结论\n"
             + "2. 逐手追踪变化图（标注关键转折点）\n"
             + "3. 对每个关键手进行胜率目差解读、棋理分析\n"
             + "4. 说明各关键手的策略区别\n"
@@ -604,13 +605,13 @@ public class TeacherPanel extends JPanel {
   }
 
 
-  /** 区间复盘：输入起止手数，遍历该区间逐手分类，挑关键手喂 LLM */
+  /** 区间解说：输入起止手数，遍历该区间逐手分类，挑关键手喂 LLM */
   private void explainMoveRange(ActionEvent e) {
     saveSettingsToConfig();
     ensureSession();
     ensureLLM();
     if (llm == null) return;
-    String input = JOptionPane.showInputDialog(this, "输入复盘区间（起-止，如 10-30）：", "区间复盘", JOptionPane.PLAIN_MESSAGE);
+    String input = JOptionPane.showInputDialog(this, "输入解说区间（起-止，如 10-30）：", "区间解说", JOptionPane.PLAIN_MESSAGE);
     if (input == null || input.trim().isEmpty()) return;
     int start, end;
     try {
@@ -618,7 +619,7 @@ public class TeacherPanel extends JPanel {
       start = Integer.parseInt(parts[0].trim());
       end = Integer.parseInt(parts[1].trim());
     } catch (Exception ex) {
-      JOptionPane.showMessageDialog(this, "格式错误，请用 起-止（如 10-30）", "区间复盘", JOptionPane.WARNING_MESSAGE);
+      JOptionPane.showMessageDialog(this, "格式错误，请用 起-止（如 10-30）", "区间解说", JOptionPane.WARNING_MESSAGE);
       return;
     }
     List<MoveClassification> range = analyzeRange(start, end);
@@ -626,16 +627,17 @@ public class TeacherPanel extends JPanel {
     showKeyMoves(keyMoves);
     StringBuilder detail = new StringBuilder();
     for (TeacherKeyMoveActions.KeyMoveItem k : keyMoves) {
-      int idx = k.moveNumber - 1;
-      MoveClassification mc = idx >= 0 && idx < range.size() ? range.get(idx) : null;
+      MoveClassification mc = findClassificationByMove(range, k.moveNumber);
       detail.append("- 第").append(k.moveNumber).append("手：").append(k.severity);
       if (mc != null) detail.append("（").append(mc.severity).append("/").append(mc.confidence).append("）");
       detail.append("\n");
     }
     String keyDetail = detail.length() == 0 ? "该区间无明显问题手。" : detail.toString();
+    String coverageNote = describeDataCoverage(start, end);
     String userText =
-        "请对第 " + start + "-" + end + " 手这一段进行区间复盘（附棋盘图）。已识别关键手：\n"
+        "请对第 " + start + "-" + end + " 手这一段进行区间解说（附棋盘图）。已识别关键手：\n"
             + keyDetail
+            + (coverageNote.isEmpty() ? "" : "\n" + coverageNote + "\n")
             + "\n请按以下格式分析：\n"
             + "1. 先给出这段的整体结论\n"
             + "2. 逐手追踪变化图（标注关键转折点）\n"
@@ -651,6 +653,70 @@ public class TeacherPanel extends JPanel {
   }
 
   /** 分析指定区间 [start,end] 的每一手（对齐 GoAgent moveRangeReview） */
+  /** 统计 [start,end]（end<=0 表示整局）范围内哪些手有 KataGo 分析数据，生成说明文本 */
+  private static String describeDataCoverage(int start, int end) {
+    try {
+      var history = featurecat.lizzie.Lizzie.board.getHistory();
+      java.util.List<Integer> has = new java.util.ArrayList<>();
+      java.util.List<Integer> missing = new java.util.ArrayList<>();
+      var node = history.root();
+      int idx = 0;
+      while (node != null && idx < 400) {
+        var data = node.getData();
+        int mn = data.moveNumber;
+        boolean inScope = (end <= 0) ? (mn >= 1) : (mn >= start && mn <= end);
+        if (inScope && data.lastMoveColor != null && data.lastMove.isPresent()) {
+          var prevNode = node.previous().orElse(null);
+          var refNode = (prevNode != null) ? prevNode : node;
+          var refData = refNode.getData();
+          boolean ok = refData.bestMoves != null && !refData.bestMoves.isEmpty();
+          (ok ? has : missing).add(mn);
+        }
+        node = node.next().orElse(null);
+        idx++;
+      }
+      if (has.isEmpty()) {
+        return "（注：范围内没有任何手有 KataGo 分析数据，无法提供基于数据的解说）";
+      }
+      if (missing.isEmpty()) {
+        return "（注：范围内所有手均有 KataGo 分析数据，以下解说完整覆盖）";
+      }
+      String hasStr = joinRanges(has);
+      String missStr = joinRanges(missing);
+      return "（注：范围内仅 "
+          + hasStr
+          + " 手有 KataGo 分析数据，其余（"
+          + missStr
+          + " 手）无数据，未纳入解说）";
+    } catch (Exception ex) {
+      return "";
+    }
+  }
+
+  /** 把手数列表压缩成区间串，如 [1,2,3,5,7,8] → "1-3、5、7-8" */
+  private static String joinRanges(java.util.List<Integer> nums) {
+    java.util.List<String> parts = new java.util.ArrayList<>();
+    int i = 0;
+    while (i < nums.size()) {
+      int j = i;
+      while (j + 1 < nums.size() && nums.get(j + 1) == nums.get(j) + 1) j++;
+      parts.add(
+          (j == i) ? String.valueOf(nums.get(i)) : nums.get(i) + "-" + nums.get(j));
+      i = j + 1;
+    }
+    return String.join("、", parts);
+  }
+
+  /** 按真实手数在分类结果里查找（分类列表可能跳过无分析数据的节点） */
+  private static MoveClassification findClassificationByMove(
+      List<MoveClassification> list, int moveNumber) {
+    if (list == null) return null;
+    for (MoveClassification mc : list) {
+      if (mc.moveNumber == moveNumber) return mc;
+    }
+    return null;
+  }
+
   private List<MoveClassification> analyzeRange(int start, int end) {
     List<MoveClassification> out = new ArrayList<>();
     try {
@@ -676,10 +742,12 @@ public class TeacherPanel extends JPanel {
               top.add(kc);
             }
             if (!top.isEmpty()) best = top.get(0);
-            out.add(AnalysisBrain.classify(moveNumber, 100.0 - data.winrate,
+            AnalysisBrain.MoveClassification mc1 = AnalysisBrain.classify(moveNumber, 100.0 - data.winrate,
                 ScorePerspective.scoreLeadForColor(data.scoreMean, playedByBlack),
                 refData.getPlayouts(), best == null ? null : best.winrate, best == null ? null : best.scoreLead,
-                best == null ? null : best.visits, null, null, false));
+                best == null ? null : best.visits, null, null, false);
+            mc1.moveNumber = moveNumber;  // 记录真实手数
+            out.add(mc1);
           }
         }
         node = node.next().orElse(null);
@@ -856,7 +924,7 @@ public class TeacherPanel extends JPanel {
           top.add(kc);
         }
         if (!top.isEmpty()) best = top.get(0);
-        out.add(
+        AnalysisBrain.MoveClassification mc2 =
             AnalysisBrain.classify(
                 moveNumber,
                 aw,
@@ -867,7 +935,9 @@ public class TeacherPanel extends JPanel {
                 best == null ? null : best.visits,
                 null,
                 null,
-                false));
+                false);
+        mc2.moveNumber = moveNumber;  // 记录真实手数
+        out.add(mc2);
         node = node.next().orElse(null);
         idx++;
       }
@@ -928,7 +998,7 @@ public class TeacherPanel extends JPanel {
   private void showKeyMoves(List<TeacherKeyMoveActions.KeyMoveItem> moves) {
     keyMoveHolder.removeAll();
     if (moves.isEmpty()) {
-      keyMoveHolder.add(new JLabel("（整盘无明显问题手）"), BorderLayout.CENTER);
+      keyMoveHolder.add(new JLabel("（整局无明显问题手）"), BorderLayout.CENTER);
     } else {
       keyMoveHolder.add(
           new TeacherKeyMoveActions(

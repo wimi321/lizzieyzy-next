@@ -81,13 +81,13 @@ public class TeacherKeyMoveActions extends JPanel {
   /** 从整盘分类结果里挑出值得讲的关键手（severity 非 good 且 shouldTeach） */
   public static List<KeyMoveItem> fromClassifications(List<MoveClassification> all) {
     List<KeyMoveItem> out = new ArrayList<>();
-    for (int i = 0; i < all.size(); i++) {
-      MoveClassification mc = all.get(i);
+    for (MoveClassification mc : all) {
       if (mc.shouldTeach && mc.severity != Severity.GOOD && mc.severity != Severity.UNCLEAR) {
+        int mn = mc.moveNumber > 0 ? mc.moveNumber : 0;
         out.add(
             new KeyMoveItem(
-                i + 1,
-                "第 " + (i + 1) + " 手",
+                mn,
+                "第 " + mn + " 手",
                 mc.severity + "/" + mc.confidence,
                 mc.severity.name()));
       }
