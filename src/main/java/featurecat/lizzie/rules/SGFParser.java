@@ -1280,9 +1280,14 @@ public class SGFParser {
           if (!EngineManager.isEngineGame && !Lizzie.board.isPkBoard) {
             BoardData data = curNode.getData();
             if (Lizzie.board.isGameBoard) {
-              if (data.getPlayouts() > 0 && curNode.next().isPresent())
+              // 仅当下一手节点没有 AI 解说标记时才覆盖（KataGo 胜率注释）
+              String nextComment = curNode.next().isPresent() ? curNode.next().get().getData().comment : null;
+              boolean nextHasTeacherMark =
+                  nextComment != null && nextComment.startsWith("[AI解说]");
+              if (data.getPlayouts() > 0 && curNode.next().isPresent() && !nextHasTeacherMark)
                 curNode.next().get().getData().comment = formatCommentForGame(curNode);
-              else if (curNode.next().isPresent()) curNode.next().get().getData().comment = "";
+              else if (curNode.next().isPresent() && !nextHasTeacherMark)
+                curNode.next().get().getData().comment = "";
             }
           }
         } catch (Exception e) {
@@ -1665,6 +1670,9 @@ public class SGFParser {
       throws IOException {
     prepareCommentForSave(node);
     String curComment = getSerializedComment(node);
+    if (curComment != null && curComment.startsWith("[AI解说]")) {
+      System.out.println("[SGF-SAVE] node.move=" + node.getData().moveNumber + " AI解说 len=" + curComment.length());
+    }
     if (shouldFormatSnapshotCommentForSave(node)) {
       curComment = formatSnapshotCommentForExport(node);
     }
@@ -1690,8 +1698,10 @@ public class SGFParser {
           if (data.isSnapshotNode()) {
             return;
           }
-          if (data.getPlayouts() > 0) data.comment = formatComment(node);
-          if (Lizzie.config.isDoubleEngineMode() && data.getPlayouts2() > 0) {
+          // 有 [AI解说] 标记的注释不被 KataGo 胜率注释覆盖
+          boolean hasTeacherMark = data.comment != null && data.comment.startsWith("[AI解说]");
+          if (data.getPlayouts() > 0 && !hasTeacherMark) data.comment = formatComment(node);
+          if (Lizzie.config.isDoubleEngineMode() && data.getPlayouts2() > 0 && !hasTeacherMark) {
             data.comment = formatComment2(node);
           }
         }
@@ -1704,9 +1714,11 @@ public class SGFParser {
   }
 
   private static void updateGameComment(BoardHistoryNode node, BoardData data) throws IOException {
-    if (data.getPlayouts() > 0 && node.next().isPresent()) {
+    String nextComment = node.next().isPresent() ? node.next().get().getData().comment : null;
+    boolean nextHasTeacherMark = nextComment != null && nextComment.startsWith("[AI解说]");
+    if (data.getPlayouts() > 0 && node.next().isPresent() && !nextHasTeacherMark) {
       node.next().get().getData().comment = formatCommentForGame(node);
-    } else if (node.next().isPresent()) {
+    } else if (node.next().isPresent() && !nextHasTeacherMark) {
       node.next().get().getData().comment = "";
     }
   }

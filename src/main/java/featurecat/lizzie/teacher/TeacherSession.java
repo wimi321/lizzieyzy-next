@@ -69,14 +69,14 @@ public class TeacherSession {
     java.util.regex.Matcher m = java.util.regex.Pattern.compile("(\\d+)").matcher(level);
     int num = 0;
     if (m.find()) { try { num = Integer.parseInt(m.group(1)); } catch (Exception ignore) {} }
-    if (level.contains("级")) {
-      // 级位：数字越大水平越低
-      if (num >= 15) return HumanWinrateCalibrator.Level.BEGINNER;   // 15-18级 入门
-      if (num >= 8) return HumanWinrateCalibrator.Level.BEGINNER;    // 8-14级 初级
-      if (num >= 1) return HumanWinrateCalibrator.Level.INTERMEDIATE; // 1-7级 中级
+    if (level.contains("级") || level.contains("k") || level.contains("K")) {
+      // 级位（网棋 18k~1k）：数字越大水平越低
+      if (num >= 15) return HumanWinrateCalibrator.Level.BEGINNER;   // 15-18k 入门
+      if (num >= 8) return HumanWinrateCalibrator.Level.BEGINNER;    // 8-14k 初级
+      if (num >= 1) return HumanWinrateCalibrator.Level.INTERMEDIATE; // 1-7k 中级
       return HumanWinrateCalibrator.Level.BEGINNER;
     }
-    // 段位：精确映射
+    // 段位（网棋 1d~9d）：精确映射
     if (num <= 3) return HumanWinrateCalibrator.Level.INTERMEDIATE;
     if (num <= 6) return HumanWinrateCalibrator.Level.ADVANCED;
     return HumanWinrateCalibrator.Level.DAN;
@@ -88,8 +88,8 @@ public class TeacherSession {
     java.util.regex.Matcher m = java.util.regex.Pattern.compile("(\\d+)").matcher(level);
     int num = 0;
     if (m.find()) { try { num = Integer.parseInt(m.group(1)); } catch (Exception ignore) {} }
-    if (level.contains("级")) {
-      // 级位：统一 SUB1D（1段以下）
+    if (level.contains("级") || level.contains("k") || level.contains("K")) {
+      // 级位（网棋 18k~1k）：统一 SUB1D（1段以下）
       return TeacherPersona.Rank.SUB1D;
     }
     // 段位：精确映射 D1-D9
@@ -140,9 +140,6 @@ public class TeacherSession {
     String vision = VisionEvidence.systemInstruction(false);
     StringBuilder sb = new StringBuilder();
     sb.append("你是一位优秀的围棋教师。\n");
-    sb.append("当前用户水平：").append(studentLevel);
-
-    sb.append("。\n");
     sb.append(persona).append("\n");
     sb.append(vision).append("\n");
     sb.append("请基于给出的 KataGo 分析数据（胜率、目差、AI 首选、损失、知识匹配等）进行讲解，");

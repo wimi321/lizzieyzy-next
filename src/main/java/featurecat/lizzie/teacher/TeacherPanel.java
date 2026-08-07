@@ -132,14 +132,11 @@ public class TeacherPanel extends JPanel {
 
       JPanel bottom = new JPanel(new BorderLayout(4, 4));
       JPanel actions = new JPanel(new java.awt.GridLayout(0, 2, 6, 6));
-      JButton explainMove = new JButton("解说此手");
-      explainMove.setToolTipText("分析当前手的好坏与改进");
+      JButton explainMove = new JButton("解说实战下一手");
+      explainMove.setToolTipText("解说实战下一手（KataGo已分析的局面）并对比AI最佳手前三选");
       explainMove.addActionListener(this::explainCurrentMove);
       actions.add(explainMove);
-      JButton compareAI = new JButton("对比AI最佳手");
-      compareAI.setToolTipText("对比实战手与AI一选/二选/三选");
-      compareAI.addActionListener(e -> explainCurrentMove(e, "compare_ai"));
-      actions.add(compareAI);
+
       JButton explainGame = new JButton("整盘复盘");
       explainGame.addActionListener(this::explainWholeGame);
       actions.add(explainGame);
@@ -235,7 +232,12 @@ public class TeacherPanel extends JPanel {
       String rankMode = (String) rankModeCombo.getSelectedItem();
       String rankNum = rankNumField.getText().trim();
       if (rankNum.isEmpty()) rankNum = "5";
-      String level = ("段位".equals(rankMode)) ? "业余" + rankNum + "段" : "业余" + rankNum + "级";
+      String level;
+      if ("段位".equals(rankMode)) {
+        level = rankNum + "d";          // 段位：1d~9d
+      } else {
+        level = rankNum + "k";          // 级位：18k~1k
+      }
       // 年龄不设置（age=0 → persona 走 UNKNOWN 年龄分支）；术语密度/讲解节奏/变化细节按 UI 选择
       TeacherPersona.TerminologyDensity density =
           densityCombo.getSelectedIndex() == 0 ? TeacherPersona.TerminologyDensity.LOW
@@ -424,8 +426,40 @@ public class TeacherPanel extends JPanel {
     }
     // PV 变化路径（逐手追踪变化图的数据来源）——独立保护，任何异常不吞 PV 数据
     try {
+      // 下一手方的颜色（refData 当前局面轮到谁走）
+      String nextColor = "黑";
+      try {
+        var cur = featurecat.lizzie.Lizzie.board.getHistory().getCurrentHistoryNode();
+        if (cur != null && cur.getData() != null && cur.getData().lastMoveColor == featurecat.lizzie.rules.Stone.BLACK) {
+          nextColor = "白";
+        }
+      } catch (Exception ignore) {}
+      // 实战手的后续变化（棋谱中已存在的下一手及其后续落子序列）
+      try {
+        var cur = featurecat.lizzie.Lizzie.board.getHistory().getCurrentHistoryNode();
+        var nxt = (cur != null) ? cur.next().orElse(null) : null;
+        if (nxt != null) {
+          java.util.List<String> actualSeq = new java.util.ArrayList<>();
+          var walk = nxt;
+          String col = nextColor;
+          while (walk != null && walk.getData() != null && walk.getData().lastMove.isPresent() && actualSeq.size() < 20) {
+            int[] xy = walk.getData().lastMove.get();
+            actualSeq.add(col + walk.getData().moveNumber + "=" + featurecat.lizzie.rules.Board.convertCoordinatesToName(xy[0], xy[1]));
+            col = col.equals("黑") ? "白" : "黑";
+            walk = walk.next().orElse(null);
+          }
+          if (!actualSeq.isEmpty()) {
+            userText += "\n\n【实战手后续变化（棋谱实走）】\n" + String.join(" → ", actualSeq) + "\n";
+            System.out.println("[ACTUAL-SEQ] " + actualSeq);
+          } else {
+            System.out.println("[ACTUAL-SEQ] empty; nxt.move=" + nxt.getData().moveNumber + " hasLastMove=" + nxt.getData().lastMove.isPresent());
+          }
+        } else {
+          System.out.println("[ACTUAL-SEQ] no next node");
+        }
+      } catch (Exception ignore) {}
       if (ma.pv != null && ma.pv.candidates != null && !ma.pv.candidates.isEmpty()) {
-        userText += "\n\n【各选点变化图（PV）】\n";
+        userText += "\n\n【AI 候选数据（KataGo）】\n";
         for (int i = 0; i < Math.min(3, ma.pv.candidates.size()); i++) {
           var c = ma.pv.candidates.get(i);
           String label = i == 0 ? "一选" : i == 1 ? "二选" : "三选";
@@ -433,7 +467,14 @@ public class TeacherPanel extends JPanel {
           if (c.winrate != null) userText += " 胜率" + String.format("%.1f%%", c.winrate);
           if (c.scoreLead != null) userText += " 目差" + String.format("%.1f", c.scoreLead);
           if (c.pv != null && !c.pv.isEmpty()) {
-            userText += " PV: " + String.join(" ", c.pv) + "\n";
+            // PV 序列标注黑白：候选点 = 下一手方颜色，之后交替
+            String col = nextColor;
+            java.util.List<String> colored = new java.util.ArrayList<>();
+            for (String mv : c.pv) {
+              colored.add(col + mv);
+              col = col.equals("黑") ? "白" : "黑";
+            }
+            userText += " PV: " + String.join(" ", colored) + "\n";
           } else {
             userText += " PV: (无变化序列)\n";
           }
@@ -461,19 +502,15 @@ public class TeacherPanel extends JPanel {
     // 明确标注视角（避免 LLM 搞混黑白）
     String perspectiveLabel = "实战手方";
     userText += "\n\n【视角说明】\n"
-        + "以上所有胜率数据均为" + perspectiveLabel + "（落子方）视角（0-100%）。\n"
-        + "目差为黑正约定（黑棋领先为正数）。\n"
-        + "实战手方胜率 = KataGo 落子后局面轮到对手的胜率取反（100 - 对手胜率）。\n"
-        + "AI 首选的胜率/目差已统一到" + perspectiveLabel + "视角，可直接与实战手对比。\n\n"
+        + "以下所有胜率均为" + perspectiveLabel + "视角（0-100%），是已经换算好的最终数值，直接使用，不要再做任何换算。\n"
+        + "目差为黑正约定（黑棋领先为正数、落后为负数）。\n"
+        + "AI 首选的胜率/目差与实战手同一视角，可直接对比。\n\n"
         + "请基于以上数据，按角色设定中的要求进行讲解。\n";
-    if ("compare_ai".equals(mode)) {
-      userText += "重点对比实战手与AI推荐选点的差异、各选点的策略区别、目差和胜率对比。\n";
-    } else {
-      userText += "重点分析这手棋的意图、效果、后续变化，以及与AI推荐的差异。\n";
-    }
-    userText += "先给出整体结论，再逐手追踪变化图，然后对每个选点进行胜率目差解读、棋理分析和对比。\n";
+    userText += "重点解说实战下一手的意图、效果、后续变化，并对比AI最佳手前三选（一选/二选/三选）的差异、策略区别、目差和胜率对比。\n";
+    userText += "先给出整体结论，再分析实战着手（含棋谱实走的后续变化），然后逐个分析AI候选：分析一选时追踪一选的PV变化序列，分析二选时追踪二选的PV变化序列，分析三选时追踪三选的PV变化序列，每个选点独立追踪其变化图，不要混在一起。\n";
     userText += "务必胜率和目差并列呈现，不要因微小差异制造虚假优劣感。\n";
-    userText += "所有坐标和胜率必须来自上方证据，禁用编造。若数据不足，坦诚说明。\n"
+    userText += "所有坐标和胜率必须来自上方数据，禁用编造。若数据不足，坦诚说明。\n"
+        + "解说中不要出现'证据''校验''内部数据''标签'等内部术语，直接给出结论和分析即可。\n"
         + "禁止在解说中输出 WEAK/STRONG/UNSTABLE/WEAKPV 等英文内部标签，用中文描述（如'变化图不太稳定'、'变化图较强'）代替。";
     session.addUser(userText);
     java.util.List<String> imgs = boardImg != null ? java.util.List.of(boardImg) : null;
@@ -642,26 +679,31 @@ public class TeacherPanel extends JPanel {
       var node = Lizzie.board.getHistory().getCurrentHistoryNode();
       var data = node.getData();
       MoveAnalysis ma = new MoveAnalysis();
-      ma.moveNumber = data.moveNumber;
+      // 解说目标 = 实战下一手：当前节点是"分析局面"（KataGo 已分析），实战手 = 下一节点落子
+      var nextNode = node.next().orElse(null);
+      var nextData = (nextNode != null) ? nextNode.getData() : null;
+      ma.moveNumber = (nextData != null) ? nextData.moveNumber : data.moveNumber + 1;
 
-      // 实战手坐标（当前节点已落子的手）
-      if (data.lastMove.isPresent()) {
-        int[] xy = data.lastMove.get();
+      // 实战手坐标（下一节点的落子；若棋谱没有下一手则无实战手，只解说 AI 推荐）
+      if (nextData != null && nextData.lastMove.isPresent()) {
+        int[] xy = nextData.lastMove.get();
         ma.actualMove = featurecat.lizzie.rules.Board.convertCoordinatesToName(xy[0], xy[1]);
       }
 
-      // 视角：取“上一手节点”的 bestMoves + winrate 作为“AI 对该实战手的首选/基准胜率”
-      // （当前节点的 bestMoves 是给下一手对手的推荐，不能直接当本手首选）
-      var prevNode = node.previous().orElse(null);
-      var refNode = (prevNode != null) ? prevNode : node;
-      var refData = refNode.getData();
-      // 视角统一为“实战手方”（对齐 GoAgent scorePerspective）：
-      // data.winrate 是落子后轮到对手的胜率 → 实战手方 = 1 - winrate
-      // data.scoreMean 是“黑正”约定落子后目差 → 实战手方 = scoreLeadForColor(..., 实战手是黑?)
-      boolean playedByBlack = (data.lastMoveColor == featurecat.lizzie.rules.Stone.BLACK);
-      ma.actualWinrate = ScorePerspective.winrateFromAfterMove(data.winrate);
-      ma.actualScoreLead = ScorePerspective.scoreLeadFromAfterMove(data.scoreMean, playedByBlack);
-      // refData（上一手节点）的 winrate 是 SIDETOMOVE = 实战手方视角，直接用；scoreMean 黑正须转实战手方
+      // refData = 当前节点：其 bestMoves 就是"下一手"的 AI 候选（KataGo 分析的是当前局面给下一手的推荐）
+      var refData = data;
+      boolean playedByBlack =
+          (nextData != null)
+              ? (nextData.lastMoveColor == featurecat.lizzie.rules.Stone.BLACK)
+              : (data.lastMoveColor != featurecat.lizzie.rules.Stone.BLACK);
+      if (nextData != null) {
+        ma.actualWinrate = ScorePerspective.winrateFromAfterMove(nextData.winrate);
+        ma.actualScoreLead = ScorePerspective.scoreLeadFromAfterMove(nextData.scoreMean, playedByBlack);
+      } else {
+        ma.actualWinrate = refData.winrate;
+        ma.actualScoreLead = ScorePerspective.scoreLeadFromAfterMove(refData.scoreMean, playedByBlack);
+      }
+      // refData 的 winrate 是 SIDETOMOVE = 实战手方视角，直接用；scoreMean 黑正须转实战手方
       ma.beforeWinrate = refData.winrate;
       ma.beforeScoreLead = ScorePerspective.scoreLeadFromAfterMove(refData.scoreMean, playedByBlack);
       ma.afterWinrate = ma.actualWinrate;
@@ -970,6 +1012,8 @@ public class TeacherPanel extends JPanel {
                 try {
                   int mv = (currentAnalysis != null) ? currentAnalysis.moveNumber : -1;
                   saveHistory(mv, mdAcc.toString());
+                  // 解说完毕自动保存 SGF（像 KataGo 分析数据一样自动写入）
+                  autoSaveSgf();
                 } catch (Exception ignore) {}
               }
             })
@@ -1052,18 +1096,36 @@ public class TeacherPanel extends JPanel {
 
   private static final String TEACHER_MARKER = "[AI解说]\n";
 
-  /** 保存解说到当前节点的 SGF C[] 注释（带标记，可与 KataGo 注释区分） */
+  /** 解说完毕自动保存当前 SGF（若有已打开的文件） */
+  private void autoSaveSgf() {
+    try {
+      var cur = featurecat.lizzie.gui.LizzieFrame.curFile;
+      if (cur != null && cur.getName().toLowerCase().endsWith(".sgf")) {
+        featurecat.lizzie.rules.SGFParser.save(featurecat.lizzie.Lizzie.board, cur.getPath());
+        System.out.println("[AUTO-SAVE-SGF] " + cur.getName());
+      }
+    } catch (Exception ex) {
+      System.out.println("[AUTO-SAVE-SGF] error: " + ex.getMessage());
+    }
+  }
+
+  /** 保存解说到当前棋谱节点的 SGF C[] 注释（带标记，可与 KataGo 注释区分） */
   private void saveHistory(int moveNumber, String markdown) {
     if (moveNumber <= 0 || markdown == null || markdown.isEmpty()) return;
     try {
       var node = featurecat.lizzie.Lizzie.board.getHistory().getCurrentHistoryNode();
       if (node != null) {
         node.getData().comment = TEACHER_MARKER + markdown;
+        System.out.println("[SAVE-HISTORY] move=" + moveNumber + " node.moveNumber=" + node.getData().moveNumber + " len=" + markdown.length() + " head=" + markdown.substring(0, Math.min(30, markdown.length())));
+      } else {
+        System.out.println("[SAVE-HISTORY] node null");
       }
-    } catch (Exception ignored) {}
+    } catch (Exception ex) {
+      System.out.println("[SAVE-HISTORY] error: " + ex.getMessage());
+    }
   }
 
-  /** 读取某一手的解说（从 C[] 注释中提取，无标记则返回 null） */
+  /** 读取当前棋谱节点的解说（从 C[] 注释中提取，无标记则返回 null） */
   private String loadHistory(int moveNumber) {
     if (moveNumber <= 0) return null;
     try {

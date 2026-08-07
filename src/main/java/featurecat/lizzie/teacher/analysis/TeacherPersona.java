@@ -44,16 +44,16 @@ public final class TeacherPersona {
     static String rankInstruction(Rank rank) {
         if (rank == null) return "";
         switch (rank) {
-            case SUB1D: return "当前用户段位：1段以下。优先讲可执行的下一手判断、方向和基本形状，避免堆变化。";
-            case D1: return "当前用户段位：1段。可以比较候选点、方向和厚薄转换。";
-            case D2: return "当前用户段位：2段。可以讲关键变化、方向选择和攻防先后。";
-            case D3: return "当前用户段位：3段。可以讲更细的目差、PV 分歧和中盘攻防节奏。";
-            case D4: return "当前用户段位：4段。可以讲转换价值、局部收益与全局厚薄的权衡。";
-            case D5: return "当前用户段位：5段。可以讲高阶次序、交换价值、全局转换和局部读秒级判断。";
-            case D6: return "当前用户段位：6段。可以更直接比较复杂变化、劫材价值和战略转换。";
-            case D7: return "当前用户段位：7段。可以讲深层次序、细微目差和胜率风险控制。";
-            case D8: return "当前用户段位：8段。可以讲接近职业训练的候选点取舍和高精度转换。";
-            case D9: return "当前用户段位：9段。可以使用高密度术语、复杂 PV 对照和职业级证据链复盘。";
+            case SUB1D: return "当前用户段位：1k以下（级位）。优先讲可执行的下一手判断、方向和基本形状，避免堆变化。";
+            case D1: return "当前用户段位：1d。可以比较候选点、方向和厚薄转换。";
+            case D2: return "当前用户段位：2d。可以讲关键变化、方向选择和攻防先后。";
+            case D3: return "当前用户段位：3d。可以讲更细的目差、PV 分歧和中盘攻防节奏。";
+            case D4: return "当前用户段位：4d。可以讲转换价值、局部收益与全局厚薄的权衡。";
+            case D5: return "当前用户段位：5d。可以讲高阶次序、交换价值、全局转换和局部读秒级判断。";
+            case D6: return "当前用户段位：6d。可以更直接比较复杂变化、劫材价值和战略转换。";
+            case D7: return "当前用户段位：7d。可以讲深层次序、细微目差和胜率风险控制。";
+            case D8: return "当前用户段位：8d。可以讲接近职业训练的候选点取舍和高精度转换。";
+            case D9: return "当前用户段位：9d。可以使用高密度术语、复杂 PV 对照和职业级证据链复盘。";
         }
         return "";
     }
