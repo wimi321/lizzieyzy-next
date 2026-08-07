@@ -125,6 +125,44 @@ public class TeacherSession {
     };
   }
 
+
+  /** 输出语言指令：跟随主程序当前界面语言（Lizzie.config.useLanguage），LLM 解说/追问按该语言输出。 */
+  private static String outputLanguageInstruction() {
+    String langName;
+    try {
+      featurecat.lizzie.AppLocale appLocale =
+          featurecat.lizzie.AppLocale.fromConfigValue(featurecat.lizzie.Lizzie.config.useLanguage);
+      java.util.Locale loc = appLocale.locale();
+      String language = loc.getLanguage();
+      String script = loc.getScript();
+      String country = loc.getCountry();
+      if ("zh".equalsIgnoreCase(language)) {
+        // 与主程序 AppLocale.fromSystemLocale 同判据：script=Hant 或 TW/HK/MO 地区视为繁体
+        langName = ("Hant".equalsIgnoreCase(script)
+                || "TW".equalsIgnoreCase(country)
+                || "HK".equalsIgnoreCase(country)
+                || "MO".equalsIgnoreCase(country))
+            ? "繁體中文"
+            : "中文";
+      } else if ("en".equalsIgnoreCase(language)) {
+        langName = "English";
+      } else if ("ja".equalsIgnoreCase(language)) {
+        langName = "日本語";
+      } else if ("ko".equalsIgnoreCase(language)) {
+        langName = "한국어";
+      } else if ("th".equalsIgnoreCase(language)) {
+        langName = "ไทย";
+      } else {
+        langName = "中文";
+      }
+    } catch (Exception ex) {
+      langName = "中文";
+    }
+    return "**输出语言：**请全程使用"
+        + langName
+        + "输出你的解说（包括标题、正文、对比表、训练建议、总结），不要混用其他语言。\n";
+  }
+
   private void buildSystem() {
     TeacherPersona.Style ps = toPersonaStyle(style);
     HumanWinrateCalibrator.Level lv = toCalibratorLevel(studentLevel);
@@ -144,6 +182,7 @@ public class TeacherSession {
     sb.append(vision).append("\n");
     sb.append("请基于给出的 KataGo 分析数据（胜率、目差、AI 首选、损失、知识匹配等）进行讲解，");
     sb.append("指出关键手、问题手与最佳应对，语言通俗易懂、结合具体坐标。\n");
+    sb.append(outputLanguageInstruction());
     sb.append("\\n");
     sb.append("**角色设定：**\\n");
     sb.append("你是一位世界顶尖围棋职业棋手，同时也是一位优秀的围棋教师。你的任务是帮助一位业余爱好者理解KataGo给出的分析结果，让他真正看懂每一步棋背后的逻辑。\\n");

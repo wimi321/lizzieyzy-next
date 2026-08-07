@@ -120,13 +120,13 @@ public final class TeachingArtifactBuilder {
         return ArtifactKind.FREEFORM;
     }
     static String formatWinrate(Double v) { if (v == null) return "—"; return String.format("%.1f%%", v); }
-    static String formatScore(Double v) { if (v == null) return "—"; return String.format("%.1f目", v); }
+    static String formatScore(Double v) { if (v == null) return "—"; return java.text.MessageFormat.format(featurecat.lizzie.teacher.TeacherI18n.t("TeachingArtifactBuilder.scoreLeadFormat", "{0}目"), String.format("%.1f", v)); }
 
     // ---- build ----
     static String candidateNote(String move, int rank, String playedMove) {
-        if (playedMove != null && playedMove.equals(move)) return "实战点";
-        if (rank == 1) return "KataGo 首选";
-        return "第 " + rank + " 选";
+        if (playedMove != null && playedMove.equals(move)) return featurecat.lizzie.teacher.TeacherI18n.t("TeachingArtifactBuilder.actualPoint", "实战点");
+        if (rank == 1) return featurecat.lizzie.teacher.TeacherI18n.t("TeachingArtifactBuilder.katagoBest", "KataGo 首选");
+        return java.text.MessageFormat.format(featurecat.lizzie.teacher.TeacherI18n.t("TeachingArtifactBuilder.choiceN", "第 {0} 选"), rank);
     }
 
     static List<TeacherArtifactCandidate> buildCandidates(MoveAnalysis analysis) {
@@ -163,7 +163,7 @@ public final class TeachingArtifactBuilder {
         for (TeacherArtifactCandidate c : candidates.stream().limit(3).toList()) {
             if (c.pv.isEmpty()) continue;
             TeacherArtifactVariation v = new TeacherArtifactVariation();
-            v.label = c.move; v.purpose = c.rank == 1 ? "首选变化" : ("第 " + c.rank + " 选变化");
+            v.label = c.move; v.purpose = c.rank == 1 ? featurecat.lizzie.teacher.TeacherI18n.t("TeachingArtifactBuilder.bestVariation", "首选变化") : (java.text.MessageFormat.format(featurecat.lizzie.teacher.TeacherI18n.t("TeachingArtifactBuilder.choiceVariation", "第 {0} 选变化"), c.rank));
             v.pv = c.pv; v.result = formatWinrate(c.winrate) + " · " + formatScore(c.scoreLead);
             v.confidence = c.rank == 1 ? "high" : "medium";
             out.add(v);
@@ -179,7 +179,7 @@ public final class TeachingArtifactBuilder {
             TeacherArtifactKeyMove km = new TeacherArtifactKeyMove();
             km.moveNumber = m.moveNumber; km.color = m.color; km.played = m.played;
             km.recommended = m.recommended; km.severity = m.severity; km.errorType = m.errorType;
-            km.summary = m.explanation != null ? m.explanation : (m.evidence != null ? m.evidence : "关键问题手");
+            km.summary = m.explanation != null ? m.explanation : (m.evidence != null ? m.evidence : featurecat.lizzie.teacher.TeacherI18n.t("TeachingArtifactBuilder.keyProblemMove", "关键问题手"));
             out.add(km);
         }
         return out.stream().limit(6).toList();
@@ -197,12 +197,12 @@ public final class TeachingArtifactBuilder {
         km.played = analysis.actualMove;
         km.recommended = analysis.best != null ? analysis.best.move : null;
         km.severity = judgement;
-        km.errorType = "good".equals(judgement) ? "好手" : "unknown".equals(judgement) ? "待判断" : "KataGo 标记的关键手";
-        String lossText = (loss > 0) ? "胜率损失约 " + String.format("%.1f", loss) + "%" : "胜率损失待确认";
-        String scoreText = (scoreLoss > 0) ? "，目差约 " + String.format("%.1f", scoreLoss) + "目" : "";
+        km.errorType = "good".equals(judgement) ? featurecat.lizzie.teacher.TeacherI18n.t("TeachingArtifactBuilder.goodMove", "好手") : "unknown".equals(judgement) ? featurecat.lizzie.teacher.TeacherI18n.t("TeachingArtifactBuilder.pending", "待判断") : featurecat.lizzie.teacher.TeacherI18n.t("TeachingArtifactBuilder.katagoKeyMove", "KataGo 标记的关键手");
+        String lossText = (loss > 0) ? java.text.MessageFormat.format(featurecat.lizzie.teacher.TeacherI18n.t("TeachingArtifactBuilder.winrateLossAbout", "胜率损失约 {0}%"), String.format("%.1f", loss)) : featurecat.lizzie.teacher.TeacherI18n.t("TeachingArtifactBuilder.winrateLossPending", "胜率损失待确认");
+        String scoreText = (scoreLoss > 0) ? java.text.MessageFormat.format(featurecat.lizzie.teacher.TeacherI18n.t("TeachingArtifactBuilder.scoreLeadAbout", "，目差约 {0}目"), String.format("%.1f", scoreLoss)) : "";
         km.summary = (km.recommended != null)
-            ? "实战 " + km.played + "，KataGo 首选 " + km.recommended + "；" + lossText + scoreText + "。"
-            : "实战 " + km.played + "；" + lossText + scoreText + "。";
+            ? java.text.MessageFormat.format(featurecat.lizzie.teacher.TeacherI18n.t("TeachingArtifactBuilder.playedVsBest", "实战 {0}，KataGo 首选 {1}；{2}{3}。"), km.played, km.recommended, lossText, scoreText)
+            : java.text.MessageFormat.format(featurecat.lizzie.teacher.TeacherI18n.t("TeachingArtifactBuilder.playedOnly", "实战 {0}；{1}{2}。"), km.played, lossText, scoreText);
         List<TeacherArtifactKeyMove> out = new ArrayList<>(); out.add(km); return out;
     }
 

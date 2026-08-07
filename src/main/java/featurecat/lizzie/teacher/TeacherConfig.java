@@ -22,6 +22,17 @@ public class TeacherConfig {
   public static String model = "gpt-4o-mini";
   // 解说设置
   public static String rankMode = "级位";
+  /** 多语言：读主程序当前语言 bundle（与主程序对齐），缺 key 时回退默认文本。 */
+  static String t(String key, String fallback) {
+    try {
+      if (featurecat.lizzie.Lizzie.resourceBundle != null && featurecat.lizzie.Lizzie.resourceBundle.containsKey(key)) {
+        return featurecat.lizzie.Lizzie.resourceBundle.getString(key);
+      }
+    } catch (Exception ignored) {
+    }
+    return fallback;
+  }
+
   public static String rankNum = "5";
   public static int styleIndex = 0;   // 平衡自然
   public static int densityIndex = 1; // 中
@@ -85,7 +96,7 @@ public class TeacherConfig {
     // 小眼睛：setEchoChar 切换
     JButton eyeBtn = new JButton("\uD83D\uDC41");
     eyeBtn.setMargin(new Insets(2, 4, 2, 4));
-    eyeBtn.setToolTipText("显示/隐藏 API Key");
+    eyeBtn.setToolTipText(t("TeacherConfig.showHideKey", "显示/隐藏 API Key"));
     eyeBtn.setFocusable(false);
     final boolean[] showing = {false};
     keyF.setEchoChar('\u25CF'); // 统一实心圆点
@@ -98,26 +109,26 @@ public class TeacherConfig {
     keyRow.add(eyeBtn, BorderLayout.EAST);
 
     // 刷新模型 + 测试连接
-    JButton refreshBtn = new JButton("刷新模型");
-    JButton testBtn = new JButton("测试连接");
+    JButton refreshBtn = new JButton(t("TeacherConfig.refreshModels", "刷新模型"));
+    JButton testBtn = new JButton(t("TeacherConfig.testConnection", "测试连接"));
     JLabel statusLabel = new JLabel(" ");
     statusLabel.setPreferredSize(new Dimension(320, 20));
 
     refreshBtn.addActionListener(ev -> {
       String url = baseUrlF.getText().trim();
       String key = new String(keyF.getPassword());
-      if (key.isEmpty()) { statusLabel.setText("请先输入 API Key"); return; }
+      if (key.isEmpty()) { statusLabel.setText(t("TeacherConfig.enterKeyFirst", "请先输入 API Key")); return; }
       refreshBtn.setEnabled(false);
-      refreshBtn.setText("加载中...");
+      refreshBtn.setText(t("TeacherConfig.loading", "加载中..."));
       new Thread(() -> {
         try {
           List<String> models = fetchModels(url, key);
           SwingUtilities.invokeLater(() -> {
             modelF.setText(models.isEmpty() ? model : models.get(0));
-            modelF.setToolTipText("可用: " + String.join(", ", models));
+            modelF.setToolTipText(java.text.MessageFormat.format(t("TeacherConfig.modelsAvailable", "可用: {0}"), String.join(", ", models)));
             refreshBtn.setEnabled(true);
-            refreshBtn.setText("刷新模型");
-            statusLabel.setText(models.isEmpty() ? "\u274c 未找到模型" : "\u2705 " + models.size() + " 个模型");
+            refreshBtn.setText(t("TeacherConfig.refreshModels", "刷新模型"));
+            statusLabel.setText(models.isEmpty() ? "\u274c " + t("TeacherConfig.noModels", "未找到模型") : "\u2705 " + java.text.MessageFormat.format(t("TeacherConfig.modelsCount", "{0} 个模型"), models.size()));
             statusLabel.revalidate();
           });
         } catch (Exception ex) {
@@ -133,10 +144,10 @@ public class TeacherConfig {
       String url = baseUrlF.getText().trim();
       String key = new String(keyF.getPassword());
       String mdl = modelF.getText().trim();
-      if (key.isEmpty()) { statusLabel.setText("请先输入 API Key"); return; }
+      if (key.isEmpty()) { statusLabel.setText(t("TeacherConfig.enterKeyFirst", "请先输入 API Key")); return; }
       testBtn.setEnabled(false);
-      testBtn.setText("测试中...");
-      statusLabel.setText("连接中...");
+      testBtn.setText(t("TeacherConfig.testing", "测试中..."));
+      statusLabel.setText(t("TeacherConfig.connecting", "连接中..."));
       new Thread(() -> {
         try {
           String b = normalizeUrl(url);
@@ -160,8 +171,8 @@ public class TeacherConfig {
             statusLabel.setText(fmsg);
             statusLabel.revalidate();
             testBtn.setEnabled(true);
-            testBtn.setText("测试连接");
-            JOptionPane.showMessageDialog(parent, fmsg, "测试连接", JOptionPane.INFORMATION_MESSAGE);
+            testBtn.setText(t("TeacherConfig.testConnection", "测试连接"));
+            JOptionPane.showMessageDialog(parent, fmsg, t("TeacherConfig.testConnectionTitle", "测试连接"), JOptionPane.INFORMATION_MESSAGE);
           });
         } catch (Exception ex) {
           String errMsg = ex.getMessage();
@@ -171,7 +182,7 @@ public class TeacherConfig {
             statusLabel.setText("\u274c " + fmsg);
             statusLabel.revalidate();
             testBtn.setEnabled(true);
-            testBtn.setText("测试连接");
+            testBtn.setText(t("TeacherConfig.testConnection", "测试连接"));
             JOptionPane.showMessageDialog(parent, "\u274c " + fmsg, "测试连接", JOptionPane.ERROR_MESSAGE);
           });
         }
@@ -186,11 +197,11 @@ public class TeacherConfig {
 
     JPanel p = new JPanel();
     p.setLayout(new GridLayout(0, 1, 0, 4));
-    p.add(new JLabel("Base URL (OpenAI 兼容):"));
+    p.add(new JLabel(t("TeacherConfig.baseUrlLabel", "Base URL (OpenAI 兼容):")));
     p.add(baseUrlF);
     p.add(new JLabel("API Key:"));
     p.add(keyRow);
-    p.add(new JLabel("模型:"));
+    p.add(new JLabel(t("TeacherConfig.modelLabel", "模型:")));
     p.add(modelF);
     p.add(btnRow);
 
@@ -201,8 +212,8 @@ public class TeacherConfig {
         : new JDialog((Frame) null, "AI 解说 LLM 配置", false);
     dlg.setDefaultCloseOperation(JDialog.DISPOSE_ON_CLOSE);
 
-    JButton okBtn = new JButton("保存");
-    JButton cancelBtn = new JButton("取消");
+    JButton okBtn = new JButton(t("TeacherConfig.save", "保存"));
+    JButton cancelBtn = new JButton(t("TeacherConfig.cancel", "取消"));
     JPanel dlgBtnRow = new JPanel(new FlowLayout(FlowLayout.RIGHT));
     dlgBtnRow.add(okBtn);
     dlgBtnRow.add(cancelBtn);

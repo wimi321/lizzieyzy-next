@@ -59,16 +59,16 @@ public final class EvidencePanelModel {
         new Section(
             "position",
             SectionKind.POSITION,
-            "当前局面",
+            featurecat.lizzie.teacher.TeacherI18n.t("EvidencePanelModel.currentPosition", "当前局面"),
             filterChips(chips, TeacherEvidenceChip.Kind.MOVE, TeacherEvidenceChip.Kind.COORDINATE),
-            "第 " + moveNumber + " 手，实战 " + (actualMove == null ? "未知" : actualMove) + "。",
+            java.text.MessageFormat.format(featurecat.lizzie.teacher.TeacherI18n.t("EvidencePanelModel.movePlayed", "第 {0} 手，实战 {1}。"), moveNumber, actualMove == null ? featurecat.lizzie.teacher.TeacherI18n.t("EvidencePanelModel.unknown", "未知") : actualMove),
             100));
 
     sections.add(
         new Section(
             "candidate",
             SectionKind.CANDIDATE,
-            "AI 候选",
+            featurecat.lizzie.teacher.TeacherI18n.t("EvidencePanelModel.aiCandidates", "AI 候选"),
             filterChips(chips, TeacherEvidenceChip.Kind.CANDIDATE),
             firstCandidateSummary(chips),
             90));
@@ -77,45 +77,45 @@ public final class EvidencePanelModel {
         new Section(
             "loss",
             SectionKind.LOSS,
-            "损失判断",
+            featurecat.lizzie.teacher.TeacherI18n.t("EvidencePanelModel.lossJudge", "损失判断"),
             filterChips(chips, TeacherEvidenceChip.Kind.LOSS, TeacherEvidenceChip.Kind.CONFIDENCE),
             classification != null
                 ? classification.severity
                     + "/"
                     + classification.confidence
                     + "。"
-                    + (classification.shouldDeepen ? "建议加深后再做最终结论。" : "证据可用于当前讲解。")
-                : "尚未生成结构化问题手分类。",
+                    + (classification.shouldDeepen ? featurecat.lizzie.teacher.TeacherI18n.t("EvidencePanelModel.deepenAdvice", "建议加深后再做最终结论。") : featurecat.lizzie.teacher.TeacherI18n.t("EvidencePanelModel.evidenceReady", "证据可用于当前讲解。"))
+                : featurecat.lizzie.teacher.TeacherI18n.t("EvidencePanelModel.noClassification", "尚未生成结构化问题手分类。"),
             80));
 
     sections.add(
         new Section(
             "pv",
             SectionKind.PV,
-            "变化可信度",
+            featurecat.lizzie.teacher.TeacherI18n.t("EvidencePanelModel.pvConfidence", "变化可信度"),
             filterChips(chips, TeacherEvidenceChip.Kind.PV),
-            pv != null ? pv.overall + ": " + pv.recommendedWording : "尚未生成 PV 可信度。",
+            pv != null ? pv.overall + ": " + pv.recommendedWording : featurecat.lizzie.teacher.TeacherI18n.t("EvidencePanelModel.noPvConfidence", "尚未生成 PV 可信度。"),
             70));
 
     sections.add(
         new Section(
             "knowledge",
             SectionKind.KNOWLEDGE,
-            "知识匹配",
+            featurecat.lizzie.teacher.TeacherI18n.t("EvidencePanelModel.knowledgeMatch", "知识匹配"),
             filterChips(chips, TeacherEvidenceChip.Kind.KNOWLEDGE),
-            "没有强知识匹配。",
+            featurecat.lizzie.teacher.TeacherI18n.t("EvidencePanelModel.noKnowledge", "没有强知识匹配。"),
             60));
 
     sections.add(
         new Section(
             "next-action",
             SectionKind.NEXT_ACTION,
-            "下一步",
+            featurecat.lizzie.teacher.TeacherI18n.t("EvidencePanelModel.nextStep", "下一步"),
             new ArrayList<>(),
             (classification != null && classification.shouldDeepen)
                     || (pv != null && pv.shouldDeepen)
-                ? "建议加深分析或只输出保守讲解。"
-                : "可以进入老师讲解、区间复盘或训练题推荐。",
+                ? featurecat.lizzie.teacher.TeacherI18n.t("EvidencePanelModel.deepenOrConservative", "建议加深分析或只输出保守讲解。")
+                : featurecat.lizzie.teacher.TeacherI18n.t("EvidencePanelModel.enterTeaching", "可以进入老师讲解、区间解说或训练题推荐。"),
             50));
 
     List<Section> result = new ArrayList<>();

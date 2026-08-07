@@ -5481,7 +5481,7 @@ public class Menu extends JMenuBar {
     this.add(engineMenu2);
 
     // AI 解说（GoAgent 式）：点击菜单直接打开解说面板
-    JMenu teacherMenu = new JMenu("AI解说");
+    JMenu teacherMenu = new JMenu(resourceBundle.getString("Menu.aiTeacher"));
     teacherMenu.setFont(
         new Font(Config.sysDefaultFontName, Font.BOLD, Math.max(Config.frameFontSize, 15)));
     teacherMenu.addMenuListener(new MenuListener() {
@@ -10283,7 +10283,7 @@ public class Menu extends JMenuBar {
   /** 打开 AI 解说面板对话框（AI解说菜单点击时调用） */
   private void openTeacherPanel() {
     featurecat.lizzie.rules.Board.teacherPanelOpen = true; // 锁定棋谱导航（解说期间禁止前进/后退）
-    javax.swing.JDialog dlg = new javax.swing.JDialog(Lizzie.frame, "AI 解说 · GoAgent", false);
+    javax.swing.JDialog dlg = new javax.swing.JDialog(Lizzie.frame, resourceBundle.getString("Menu.aiTeacherDialog"), false);
     dlg.setDefaultCloseOperation(javax.swing.JDialog.DISPOSE_ON_CLOSE); // 点 X 关闭时真正 dispose，触发 windowClosed 解锁导航
     featurecat.lizzie.teacher.TeacherPanel panel = new featurecat.lizzie.teacher.TeacherPanel();
     dlg.getContentPane().add(new javax.swing.JScrollPane(panel));

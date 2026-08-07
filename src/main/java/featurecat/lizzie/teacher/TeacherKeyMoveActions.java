@@ -15,6 +15,17 @@ import javax.swing.border.TitledBorder;
 
 /** 对齐 GoAgent 的 TeacherKeyMoveActions：关键手列表 + 跳转/重析按钮。 展示整盘或区间里被判定为问题手/失误的关键手，可一键跳转或重新分析。 */
 public class TeacherKeyMoveActions extends JPanel {
+  /** 多语言：读主程序当前语言 bundle（与主程序对齐），缺 key 时回退默认文本。 */
+  private static String t(String key, String fallback) {
+    try {
+      if (featurecat.lizzie.Lizzie.resourceBundle != null && featurecat.lizzie.Lizzie.resourceBundle.containsKey(key)) {
+        return featurecat.lizzie.Lizzie.resourceBundle.getString(key);
+      }
+    } catch (Exception ignored) {
+    }
+    return fallback;
+  }
+
   public interface Handler {
     void onJumpToMove(int moveNumber);
 
@@ -46,7 +57,7 @@ public class TeacherKeyMoveActions extends JPanel {
     for (KeyMoveItem m : moves.subList(0, Math.min(6, moves.size()))) {
       JPanel row = new JPanel(new BorderLayout(6, 2));
       JPanel info = new JPanel(new java.awt.GridLayout(0, 1));
-      JLabel title = new JLabel(m.title != null ? m.title : ("第 " + m.moveNumber + " 手"));
+      JLabel title = new JLabel(m.title != null ? m.title : java.text.MessageFormat.format(t("TeacherKeyMoveActions.moveTitle", "第 {0} 手"), m.moveNumber));
       title.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 13));
       info.add(title);
       if (m.summary != null && !m.summary.isEmpty()) {
@@ -64,10 +75,10 @@ public class TeacherKeyMoveActions extends JPanel {
       row.add(info, BorderLayout.CENTER);
 
       JPanel buttons = new JPanel(new FlowLayout(FlowLayout.RIGHT, 4, 0));
-      JButton jump = new JButton("跳转");
+      JButton jump = new JButton(t("TeacherKeyMoveActions.jump", "跳转"));
       jump.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 11));
       jump.addActionListener(e -> handler.onJumpToMove(m.moveNumber));
-      JButton reAnalyze = new JButton("重析");
+      JButton reAnalyze = new JButton(t("TeacherKeyMoveActions.reanalyze", "重析"));
       reAnalyze.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 11));
       reAnalyze.addActionListener(e -> handler.onAnalyzeMove(m.moveNumber));
       buttons.add(jump);

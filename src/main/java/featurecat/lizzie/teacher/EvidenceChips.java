@@ -31,8 +31,8 @@ public final class EvidenceChips {
         new TeacherEvidenceChip(
             "move-" + moveNumber,
             TeacherEvidenceChip.Kind.MOVE,
-            "第 " + moveNumber + " 手",
-            classification != null ? classification.reason : "当前局面分析",
+            java.text.MessageFormat.format(featurecat.lizzie.teacher.TeacherI18n.t("EvidenceChips.moveTitle", "第 {0} 手"), moveNumber),
+            classification != null ? classification.reason : featurecat.lizzie.teacher.TeacherI18n.t("EvidenceChips.currentAnalysis", "当前局面分析"),
             moveNumber,
             null));
 
@@ -41,8 +41,8 @@ public final class EvidenceChips {
           new TeacherEvidenceChip(
               "actual-" + moveNumber + "-" + actualMove,
               TeacherEvidenceChip.Kind.COORDINATE,
-              "实战 " + actualMove,
-              "实战点 " + actualMove,
+              java.text.MessageFormat.format(featurecat.lizzie.teacher.TeacherI18n.t("EvidenceChips.actualMove", "实战 {0}"), actualMove),
+              java.text.MessageFormat.format(featurecat.lizzie.teacher.TeacherI18n.t("EvidenceChips.actualPoint", "实战点 {0}"), actualMove),
               moveNumber,
               actualMove));
     }
@@ -52,9 +52,9 @@ public final class EvidenceChips {
           new TeacherEvidenceChip(
               "best-" + moveNumber + "-" + best.move,
               TeacherEvidenceChip.Kind.CANDIDATE,
-              "AI 首选 " + best.move,
-              String.format(
-                  "胜率 %.1f%%，目差 %.1f，搜索 %d",
+              java.text.MessageFormat.format(featurecat.lizzie.teacher.TeacherI18n.t("EvidenceChips.aiBest", "AI 首选 {0}"), best.move),
+              java.text.MessageFormat.format(
+                  featurecat.lizzie.teacher.TeacherI18n.t("EvidenceChips.winrateDetail", "胜率 {0}%，目差 {1}，搜索 {2}"),
                   best.winrateOrZero(), best.scoreLeadOrZero(), best.visits),
               moveNumber,
               best.move));
@@ -68,8 +68,8 @@ public final class EvidenceChips {
           new TeacherEvidenceChip(
               "loss-" + moveNumber,
               TeacherEvidenceChip.Kind.LOSS,
-              String.format("损失 %.1f%% / %.1f目", loss, scoreLoss),
-              String.format("胜率损失 %.1f%%，目差损失 %.1f目。", loss, scoreLoss),
+              java.text.MessageFormat.format(featurecat.lizzie.teacher.TeacherI18n.t("EvidenceChips.loss", "损失 {0}% / {1}目"), loss, scoreLoss),
+              java.text.MessageFormat.format(featurecat.lizzie.teacher.TeacherI18n.t("EvidenceChips.lossDetail", "胜率损失 {0}%，目差损失 {1}目。"), loss, scoreLoss),
               moveNumber,
               null));
     }
@@ -99,8 +99,8 @@ public final class EvidenceChips {
             new TeacherEvidenceChip(
                 "teach-" + moveNumber,
                 TeacherEvidenceChip.Kind.CONFIDENCE,
-                classification.shouldDeepen ? "建议加深后讲解" : "值得讲解",
-                classification.shouldDeepen ? "搜索不足，建议加深分析。" : "证据充分，可讲解。",
+                classification.shouldDeepen ? featurecat.lizzie.teacher.TeacherI18n.t("EvidenceChips.teachDeepen", "建议加深后讲解") : featurecat.lizzie.teacher.TeacherI18n.t("EvidenceChips.teachWorth", "值得讲解"),
+                classification.shouldDeepen ? featurecat.lizzie.teacher.TeacherI18n.t("EvidenceChips.teachDeepenDetail", "搜索不足，建议加深分析。") : featurecat.lizzie.teacher.TeacherI18n.t("EvidenceChips.teachWorthDetail", "证据充分，可讲解。"),
                 moveNumber,
                 null));
       }

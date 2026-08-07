@@ -59,7 +59,7 @@ public class TeacherArtifactCard extends JPanel {
     setBorder(
         BorderFactory.createTitledBorder(
             BorderFactory.createEtchedBorder(),
-            "第 " + moveNumber + " 手讲解",
+            java.text.MessageFormat.format(featurecat.lizzie.teacher.TeacherI18n.t("TeacherArtifactCard.titleMove", "第 {0} 手讲解"), moveNumber),
             TitledBorder.LEFT,
             TitledBorder.TOP,
             new Font(Font.SANS_SERIF, Font.BOLD, 13)));
@@ -80,7 +80,7 @@ public class TeacherArtifactCard extends JPanel {
     }
 
     if (knowledge != null && !knowledge.isEmpty()) {
-      grid.add(sectionTitle("知识匹配"));
+      grid.add(sectionTitle(featurecat.lizzie.teacher.TeacherI18n.t("TeacherArtifactCard.knowledge", "知识匹配")));
       for (RecognizedTeachingMotif km : knowledge) {
         JPanel row = new JPanel(new BorderLayout(6, 2));
         JLabel label = new JLabel(motifTypeZh(km.motifType));
@@ -94,7 +94,7 @@ public class TeacherArtifactCard extends JPanel {
     }
 
     if (variations != null && !variations.isEmpty()) {
-      grid.add(sectionTitle("关键变化 / 正确思路"));
+      grid.add(sectionTitle(featurecat.lizzie.teacher.TeacherI18n.t("TeacherArtifactCard.keyVariation", "关键变化 / 正确思路")));
       for (Variation v : variations) {
         JPanel row = new JPanel(new BorderLayout(6, 2));
         JLabel label = new JLabel(v.label);
@@ -111,7 +111,7 @@ public class TeacherArtifactCard extends JPanel {
     }
 
     if (trainingItems != null && !trainingItems.isEmpty()) {
-      grid.add(sectionTitle("练习建议"));
+      grid.add(sectionTitle(featurecat.lizzie.teacher.TeacherI18n.t("TeacherArtifactCard.practice", "练习建议")));
       for (TrainingItem t : trainingItems) {
         JPanel row = new JPanel(new BorderLayout(6, 2));
         JLabel label = new JLabel(t.kind);
@@ -142,17 +142,17 @@ public class TeacherArtifactCard extends JPanel {
       double actualWinrate,
       double actualScoreLead) {
     List<FactCell> facts = new ArrayList<>();
-    facts.add(new FactCell("实战点", actualMove == null ? "未知" : actualMove));
+    facts.add(new FactCell(featurecat.lizzie.teacher.TeacherI18n.t("TeacherArtifactCard.actualPoint", "实战点"), actualMove == null ? featurecat.lizzie.teacher.TeacherI18n.t("EvidencePanelModel.unknown", "未知") : actualMove));
     if (best != null) {
-      facts.add(new FactCell("AI 首选", best.move));
+      facts.add(new FactCell(featurecat.lizzie.teacher.TeacherI18n.t("TeacherArtifactCard.aiBest", "AI 首选"), best.move));
       double wrLoss = best.winrate - actualWinrate;  // 都是百分比(0-100)，差值就是百分点，不能再乘100
       double scLoss = best.scoreLead - actualScoreLead;
-      facts.add(new FactCell("胜率损失", String.format("%.1f%%", wrLoss), true));
-      facts.add(new FactCell("目差损失", String.format("%.1f 目", scLoss), true));
+      facts.add(new FactCell(featurecat.lizzie.teacher.TeacherI18n.t("TeacherArtifactCard.winrateLoss", "胜率损失"), String.format("%.1f%%", wrLoss), true));
+      facts.add(new FactCell(featurecat.lizzie.teacher.TeacherI18n.t("TeacherArtifactCard.scoreLoss", "目差损失"), String.format("%.1f 目", scLoss), true));
     }
     if (mc != null) {
-      facts.add(new FactCell("判定", mc.severity + " / " + mc.confidence));
-      facts.add(new FactCell("建议", mc.shouldDeepen ? "加深后讲解" : (mc.shouldTeach ? "值得讲解" : "可略过")));
+      facts.add(new FactCell(featurecat.lizzie.teacher.TeacherI18n.t("TeacherArtifactCard.judgment", "判定"), mc.severity + " / " + mc.confidence));
+      facts.add(new FactCell(featurecat.lizzie.teacher.TeacherI18n.t("TeacherArtifactCard.advice", "建议"), mc.shouldDeepen ? featurecat.lizzie.teacher.TeacherI18n.t("TeacherArtifactCard.deepenAdvice", "加深后讲解") : (mc.shouldTeach ? featurecat.lizzie.teacher.TeacherI18n.t("TeacherArtifactCard.worthTeaching", "值得讲解") : featurecat.lizzie.teacher.TeacherI18n.t("TeacherArtifactCard.skip", "可略过"))));
     }
     return facts;
   }
@@ -174,15 +174,15 @@ public class TeacherArtifactCard extends JPanel {
   }
   /** motifType 英文枚举 → 中文显示 */
   private static String motifTypeZh(String t) {
-    if (t == null) return "知识";
+    if (t == null) return featurecat.lizzie.teacher.TeacherI18n.t("Knowledge.type", "知识");
     String l = t.toLowerCase();
-    if (l.contains("joseki")) return "定式";
-    if (l.contains("life") || l.contains("death")) return "死活";
-    if (l.contains("tesuji")) return "手筋";
-    if (l.contains("shape")) return "棋形";
-    if (l.contains("opening")) return "布局";
-    if (l.contains("endgame")) return "官子";
-    if (l.contains("fuseki")) return "布局";
+    if (l.contains("joseki")) return featurecat.lizzie.teacher.TeacherI18n.t("Knowledge.joseki", "定式");
+    if (l.contains("life") || l.contains("death")) return featurecat.lizzie.teacher.TeacherI18n.t("Knowledge.lifeDeath", "死活");
+    if (l.contains("tesuji")) return featurecat.lizzie.teacher.TeacherI18n.t("Knowledge.tesuji", "手筋");
+    if (l.contains("shape")) return featurecat.lizzie.teacher.TeacherI18n.t("Knowledge.shape", "棋形");
+    if (l.contains("opening")) return featurecat.lizzie.teacher.TeacherI18n.t("Knowledge.opening", "布局");
+    if (l.contains("endgame")) return featurecat.lizzie.teacher.TeacherI18n.t("Knowledge.endgame", "官子");
+    if (l.contains("fuseki")) return featurecat.lizzie.teacher.TeacherI18n.t("Knowledge.opening", "布局");
     return t;
   }
 

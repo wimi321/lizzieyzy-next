@@ -66,34 +66,40 @@ public class TeacherPanel extends JPanel {
       setLayout(new BorderLayout(8, 8));
       setBorder(
           BorderFactory.createTitledBorder(
-              BorderFactory.createEtchedBorder(), "AI 解说", TitledBorder.LEFT, TitledBorder.TOP));
+              BorderFactory.createEtchedBorder(), t("TeacherPanel.title", "AI 解说"), TitledBorder.LEFT, TitledBorder.TOP));
       setPreferredSize(new Dimension(760, 560));
 
       // 顶部：段位/风格 + 术语密度/讲解节奏/变化细节 + 配置
       JPanel top = new JPanel(new FlowLayout(FlowLayout.LEFT));
       TeacherConfig.load();
-      rankModeCombo = new JComboBox<>(new String[] {"级位", "段位"});
+      rankModeCombo = new JComboBox<>(new String[] {t("TeacherPanel.rankKyu", "级位"), t("TeacherPanel.rankDan", "段位")});
       rankModeCombo.setSelectedIndex("段位".equals(TeacherConfig.rankMode) ? 1 : 0);
       top.add(rankModeCombo);
       rankNumField = new JTextField(TeacherConfig.rankNum, 3);
       top.add(rankNumField);
-      top.add(new JLabel("解说:"));
-      styleCombo = new JComboBox<>(new String[] {"平衡自然", "严谨细致", "亲切耐心", "严格专业", "风趣幽默"});
+      top.add(new JLabel(t("TeacherPanel.lblStyle", "解说:")));
+      styleCombo = new JComboBox<>(new String[] {
+          t("TeacherPanel.styleBalanced", "平衡自然"), t("TeacherPanel.styleRigorous", "严谨细致"),
+          t("TeacherPanel.stylePatient", "亲切耐心"), t("TeacherPanel.styleStrict", "严格专业"),
+          t("TeacherPanel.styleHumorous", "风趣幽默")});
       styleCombo.setSelectedIndex(Math.max(0, Math.min(4, TeacherConfig.styleIndex)));
       top.add(styleCombo);
-      top.add(new JLabel("术语:"));
-      densityCombo = new JComboBox<>(new String[] {"少", "中", "多"});
+      top.add(new JLabel(t("TeacherPanel.lblTerminology", "术语:")));
+      densityCombo = new JComboBox<>(new String[] {
+          t("TeacherPanel.densityLow", "少"), t("TeacherPanel.densityMedium", "中"), t("TeacherPanel.densityHigh", "多")});
       densityCombo.setSelectedIndex(Math.max(0, Math.min(2, TeacherConfig.densityIndex)));
       top.add(densityCombo);
-      top.add(new JLabel("节奏:"));
-      paceCombo = new JComboBox<>(new String[] {"简洁", "标准", "细讲"});
+      top.add(new JLabel(t("TeacherPanel.lblPace", "节奏:")));
+      paceCombo = new JComboBox<>(new String[] {
+          t("TeacherPanel.paceBrief", "简洁"), t("TeacherPanel.paceStandard", "标准"), t("TeacherPanel.paceDetailed", "细讲")});
       paceCombo.setSelectedIndex(Math.max(0, Math.min(2, TeacherConfig.paceIndex)));
       top.add(paceCombo);
-      top.add(new JLabel("变化:"));
-      variationCombo = new JComboBox<>(new String[] {"少讲", "适中", "详细"});
+      top.add(new JLabel(t("TeacherPanel.lblVariation", "变化:")));
+      variationCombo = new JComboBox<>(new String[] {
+          t("TeacherPanel.variationFew", "少讲"), t("TeacherPanel.variationModerate", "适中"), t("TeacherPanel.variationMany", "详细")});
       variationCombo.setSelectedIndex(Math.max(0, Math.min(2, TeacherConfig.variationIndex)));
       top.add(variationCombo);
-      JButton configBtn = new JButton("配置 LLM");
+      JButton configBtn = new JButton(t("TeacherPanel.configLlm", "配置 LLM"));
       configBtn.addActionListener(e -> { saveSettingsToConfig(); openConfig(e); });
       top.add(configBtn);
       add(top, BorderLayout.NORTH);
@@ -104,13 +110,13 @@ public class TeacherPanel extends JPanel {
       evidencePanel = new JPanel();
       evidencePanel.setLayout(new BoxLayout(evidencePanel, BoxLayout.Y_AXIS));
       JScrollPane evScroll = new JScrollPane(evidencePanel);
-      evScroll.setBorder(BorderFactory.createTitledBorder("本手证据（分区）"));
+      evScroll.setBorder(BorderFactory.createTitledBorder(t("TeacherPanel.evidenceTitle", "本手证据（分区）")));
       evScroll.setPreferredSize(new Dimension(360, 190));
       evScroll.setMinimumSize(new Dimension(360, 120));
       left.add(evScroll);
 
       artifactHolder = new JPanel(new BorderLayout());
-      artifactHolder.setBorder(BorderFactory.createTitledBorder("讲解卡片"));
+      artifactHolder.setBorder(BorderFactory.createTitledBorder(t("TeacherPanel.artifactTitle", "讲解卡片")));
       JScrollPane artifactScroll = new JScrollPane(artifactHolder);
       artifactScroll.setPreferredSize(new Dimension(360, 230));
       artifactScroll.setMinimumSize(new Dimension(360, 120));
@@ -118,7 +124,7 @@ public class TeacherPanel extends JPanel {
       left.add(artifactScroll);
 
       keyMoveHolder = new JPanel(new BorderLayout());
-      keyMoveHolder.setBorder(BorderFactory.createTitledBorder("关键手"));
+      keyMoveHolder.setBorder(BorderFactory.createTitledBorder(t("TeacherPanel.keyMovesTitle", "关键手")));
       keyMoveHolder.setPreferredSize(new Dimension(360, 150));
       keyMoveHolder.setMinimumSize(new Dimension(360, 100));
       left.add(keyMoveHolder);
@@ -129,20 +135,20 @@ public class TeacherPanel extends JPanel {
       mdArea.setEditable(false);
       JScrollPane mdScroll = new JScrollPane(mdArea);
       mdScroll.setPreferredSize(new Dimension(380, 360));
-      mdScroll.setBorder(BorderFactory.createTitledBorder("解说"));
+      mdScroll.setBorder(BorderFactory.createTitledBorder(t("TeacherPanel.explainTitle", "解说")));
       right.add(mdScroll, BorderLayout.CENTER);
 
       JPanel bottom = new JPanel(new BorderLayout(4, 4));
       JPanel actions = new JPanel(new java.awt.GridLayout(0, 2, 6, 6));
-      JButton explainMove = new JButton("解说下一手");
-      explainMove.setToolTipText("解说下一手（KataGo已分析的局面）并对比AI最佳手前三选");
+      JButton explainMove = new JButton(t("TeacherPanel.explainNext", "解说下一手"));
+      explainMove.setToolTipText(t("TeacherPanel.explainNextTip", "解说下一手（KataGo已分析的局面）并对比AI最佳手前三选"));
       explainMove.addActionListener(this::explainCurrentMove);
       actions.add(explainMove);
 
-      JButton explainGame = new JButton("整局解说");
+      JButton explainGame = new JButton(t("TeacherPanel.explainWhole", "整局解说"));
       explainGame.addActionListener(this::explainWholeGame);
       actions.add(explainGame);
-      JButton rangeBtn = new JButton("区间解说");
+      JButton rangeBtn = new JButton(t("TeacherPanel.explainRange", "区间解说"));
       rangeBtn.addActionListener(this::explainMoveRange);
       actions.add(rangeBtn);
 
@@ -152,13 +158,13 @@ public class TeacherPanel extends JPanel {
       inputField = new JTextField();
       inputField.addActionListener(e -> send(e));
       inputRow.add(inputField, BorderLayout.CENTER);
-      sendBtn = new JButton("发送");
+      sendBtn = new JButton(t("TeacherPanel.send", "发送"));
       sendBtn.addActionListener(this::send);
-      stopBtn = new JButton("停止");
+      stopBtn = new JButton(t("TeacherPanel.stop", "停止"));
       stopBtn.setEnabled(false);
       stopBtn.addActionListener(e -> {
         running = false;
-        SwingUtilities.invokeLater(() -> showStatus("⏹ 已停止"));
+        SwingUtilities.invokeLater(() -> showStatus(t("TeacherPanel.stopped", "⏹ 已停止")));
       });
       inputRow.add(sendBtn, BorderLayout.EAST);
       inputRow.add(stopBtn, BorderLayout.WEST);
@@ -201,13 +207,25 @@ public class TeacherPanel extends JPanel {
   }
 
   public void saveSettingsToConfig() {
-    TeacherConfig.rankMode = (String) rankModeCombo.getSelectedItem();
+    // rankMode 配置值保持稳定中文（"级位"/"段位"），与界面显示语言解耦，避免切换语言后配置错乱
+    TeacherConfig.rankMode = rankModeCombo.getSelectedIndex() == 1 ? "段位" : "级位";
     TeacherConfig.rankNum = rankNumField.getText().trim();
     TeacherConfig.styleIndex = styleCombo.getSelectedIndex();
     TeacherConfig.densityIndex = densityCombo.getSelectedIndex();
     TeacherConfig.paceIndex = paceCombo.getSelectedIndex();
     TeacherConfig.variationIndex = variationCombo.getSelectedIndex();
     TeacherConfig.save();
+  }
+
+  /** 多语言：读主程序当前语言 bundle（与主程序对齐，切换语言重启后生效），缺 key 时回退默认文本。 */
+  private static String t(String key, String fallback) {
+    try {
+      if (Lizzie.resourceBundle != null && Lizzie.resourceBundle.containsKey(key)) {
+        return Lizzie.resourceBundle.getString(key);
+      }
+    } catch (Exception ignored) {
+    }
+    return fallback;
   }
 
   private JEditorPane mdState;
@@ -231,7 +249,7 @@ public class TeacherPanel extends JPanel {
     if (session == null) {
       TeacherSession.TeacherStyle style =
           TeacherSession.TeacherStyle.values()[styleCombo.getSelectedIndex()];
-      String rankMode = (String) rankModeCombo.getSelectedItem();
+      String rankMode = rankModeCombo.getSelectedIndex() == 1 ? "段位" : "级位";
       String rankNum = rankNumField.getText().trim();
       if (rankNum.isEmpty()) rankNum = "5";
       String level;
@@ -303,8 +321,8 @@ public class TeacherPanel extends JPanel {
       if (llm == null) {
         JOptionPane.showMessageDialog(
             this,
-            "未配置 LLM（baseUrl / apiKey / model）。请点「配置 LLM」。",
-            "AI 解说",
+            t("TeacherPanel.llmNotConfiguredMsg", "未配置 LLM（baseUrl / apiKey / model）。请点「配置 LLM」。"),
+            t("TeacherPanel.llmNotConfiguredTitle", "AI 解说"),
             JOptionPane.WARNING_MESSAGE);
       }
     }
@@ -346,16 +364,16 @@ public class TeacherPanel extends JPanel {
     ensureLLM();
     if (llm == null) {
       javax.swing.JOptionPane.showMessageDialog(this,
-          "LLM 未配置。请点击「配置 LLM」设置 API Key 后再试。",
-          "LLM 未配置", javax.swing.JOptionPane.WARNING_MESSAGE);
+          t("TeacherPanel.llmNotConfiguredMsg2", "LLM 未配置。请点击「配置 LLM」设置 API Key 后再试。"),
+          t("TeacherPanel.llmNotConfiguredTitle2", "LLM 未配置"), javax.swing.JOptionPane.WARNING_MESSAGE);
       return;
     }
 
     MoveAnalysis ma = analyzeCurrent();
     if (ma == null) {
       javax.swing.JOptionPane.showMessageDialog(this,
-          "无法获取当前局面分析。如果是空棋盘，请先落子。",
-          "无法分析", javax.swing.JOptionPane.WARNING_MESSAGE);
+          t("TeacherPanel.cannotAnalyzeMsg", "无法获取当前局面分析。如果是空棋盘，请先落子。"),
+          t("TeacherPanel.cannotAnalyzeTitle", "无法分析"), javax.swing.JOptionPane.WARNING_MESSAGE);
       return;
     }
     this.currentAnalysis = ma; // 记录当前分析（供历史保存/防编造校验使用）
@@ -366,8 +384,8 @@ public class TeacherPanel extends JPanel {
       showArtifact(ma);
       renderMarkdown(cached);
       int choice = javax.swing.JOptionPane.showConfirmDialog(this,
-          "第 " + ma.moveNumber + " 手已有解说记录，是否重新生成？",
-          "已有解说", javax.swing.JOptionPane.YES_NO_OPTION);
+          java.text.MessageFormat.format(t("TeacherPanel.explainExistingMsg", "第 {0} 手已有解说记录，是否重新生成？"), ma.moveNumber),
+          t("TeacherPanel.explainExistingTitle", "已有解说"), javax.swing.JOptionPane.YES_NO_OPTION);
       if (choice != javax.swing.JOptionPane.YES_OPTION) {
         return;
       }
@@ -380,8 +398,8 @@ public class TeacherPanel extends JPanel {
     // PV 数据全为空时，提醒加深分析（避免 LLM 编造变化图）
     if (ma.pv == null || ma.pv.candidates == null || ma.pv.candidates.isEmpty()) {
       javax.swing.JOptionPane.showMessageDialog(this,
-          "当前局面还没有 KataGo 分析数据。\n请先点击「AI 分析」或「自动分析」让引擎搜索棋谱，\n再进行解说。",
-          "需要先分析棋谱", javax.swing.JOptionPane.WARNING_MESSAGE);
+          t("TeacherPanel.needAnalysisMsg", "当前局面还没有 KataGo 分析数据。\n请先点击「AI 分析」或「自动分析」让引擎搜索棋谱，\n再进行解说。"),
+          t("TeacherPanel.needAnalysisTitle", "需要先分析棋谱"), javax.swing.JOptionPane.WARNING_MESSAGE);
       return;
     }
     boolean anyPv = false;
@@ -390,15 +408,15 @@ public class TeacherPanel extends JPanel {
     }
     if (!anyPv) {
       javax.swing.JOptionPane.showMessageDialog(this,
-          "当前局面的 PV 变化序列为空（搜索深度不足）。\n请加深分析（增加搜索次数），让 KataGo 生成完整的变化路径，\n再进行解说。",
-          "PV 数据不足", javax.swing.JOptionPane.WARNING_MESSAGE);
+          t("TeacherPanel.pvInsufficientMsg", "当前局面的 PV 变化序列为空（搜索深度不足）。\n请加深分析（增加搜索次数），让 KataGo 生成完整的变化路径，\n再进行解说。"),
+          t("TeacherPanel.pvInsufficientTitle", "PV 数据不足"), javax.swing.JOptionPane.WARNING_MESSAGE);
       return;
     }
     // 检查 KataGo 分析数据是否存在（bestMoves 为空说明没有分析过或重新加载后丢失）
     if (ma.pv == null || ma.pv.candidates == null || ma.pv.candidates.isEmpty()) {
       javax.swing.JOptionPane.showMessageDialog(this,
-          "当前局面还没有 KataGo 分析数据。\n请先点击「AI 分析」或「自动分析」让引擎搜索棋谱，\n再进行解说。",
-          "需要先分析棋谱", javax.swing.JOptionPane.WARNING_MESSAGE);
+          t("TeacherPanel.needAnalysisMsg", "当前局面还没有 KataGo 分析数据。\n请先点击「AI 分析」或「自动分析」让引擎搜索棋谱，\n再进行解说。"),
+          t("TeacherPanel.needAnalysisTitle", "需要先分析棋谱"), javax.swing.JOptionPane.WARNING_MESSAGE);
       return;
     }
     // 没有 KataGo 分析数据时提醒先分析棋谱
@@ -407,8 +425,8 @@ public class TeacherPanel extends JPanel {
     boolean hasKataData = hasPvData || hasValidClassification;
     if (!hasKataData) {
       javax.swing.JOptionPane.showMessageDialog(this,
-          "当前局面还没有 KataGo 分析数据。\n请先点击「AI 分析」或「自动分析」让引擎搜索棋谱，\n再进行解说。",
-          "需要先分析棋谱", javax.swing.JOptionPane.WARNING_MESSAGE);
+          t("TeacherPanel.needAnalysisMsg", "当前局面还没有 KataGo 分析数据。\n请先点击「AI 分析」或「自动分析」让引擎搜索棋谱，\n再进行解说。"),
+          t("TeacherPanel.needAnalysisTitle", "需要先分析棋谱"), javax.swing.JOptionPane.WARNING_MESSAGE);
       return;
     }
     showEvidence(ma);
@@ -655,7 +673,7 @@ public class TeacherPanel extends JPanel {
     ensureSession();
     ensureLLM();
     if (llm == null) return;
-    String input = JOptionPane.showInputDialog(this, "输入解说区间（起-止，如 10-30）：", "区间解说", JOptionPane.PLAIN_MESSAGE);
+    String input = JOptionPane.showInputDialog(this, t("TeacherPanel.rangeInputMsg", "输入解说区间（起-止，如 10-30）："), t("TeacherPanel.rangeInputTitle", "区间解说"), JOptionPane.PLAIN_MESSAGE);
     if (input == null || input.trim().isEmpty()) return;
     int start, end;
     try {
@@ -663,7 +681,7 @@ public class TeacherPanel extends JPanel {
       start = Integer.parseInt(parts[0].trim());
       end = Integer.parseInt(parts[1].trim());
     } catch (Exception ex) {
-      JOptionPane.showMessageDialog(this, "格式错误，请用 起-止（如 10-30）", "区间解说", JOptionPane.WARNING_MESSAGE);
+      JOptionPane.showMessageDialog(this, t("TeacherPanel.rangeFormatError", "格式错误，请用 起-止（如 10-30）"), t("TeacherPanel.rangeInputTitle", "区间解说"), JOptionPane.WARNING_MESSAGE);
       return;
     }
     List<MoveClassification> range = analyzeRange(start, end);
@@ -1043,7 +1061,7 @@ public class TeacherPanel extends JPanel {
   private void showKeyMoves(List<TeacherKeyMoveActions.KeyMoveItem> moves) {
     keyMoveHolder.removeAll();
     if (moves.isEmpty()) {
-      keyMoveHolder.add(new JLabel("（整局无明显问题手）"), BorderLayout.CENTER);
+      keyMoveHolder.add(new JLabel(t("TeacherPanel.noKeyMovesWhole", "（整局无明显问题手）")), BorderLayout.CENTER);
     } else {
       keyMoveHolder.add(
           new TeacherKeyMoveActions(
@@ -1098,9 +1116,9 @@ public class TeacherPanel extends JPanel {
     running = true;
     sendBtn.setEnabled(false);
     stopBtn.setEnabled(true);
-    appendRaw("你: " + userText + "\n");
+    appendRaw(t("TeacherPanel.youPrefix", "你: ") + userText + "\n");
     final String[] statusHolder = {null};
-    SwingUtilities.invokeLater(() -> showStatus("📖 正在读取 KataGo 分析数据..."));
+    SwingUtilities.invokeLater(() -> showStatus(t("TeacherPanel.statusReading", "📖 正在读取 KataGo 分析数据...")));
     // 把图片附加到最后一条 user 消息（多模态）
     if (images != null && !images.isEmpty()) {
       int n = session.messages().size();
@@ -1115,13 +1133,13 @@ public class TeacherPanel extends JPanel {
     new Thread(
             () -> {
               try {
-                SwingUtilities.invokeLater(() -> showStatus("📤 数据已发送，LLM 正在思考中（首次响应通常需要 10~30 秒，请耐心等待）..."));
-                SwingUtilities.invokeLater(() -> showStatus("🤖 LLM 正在读取数据并思考解说..."));
+                SwingUtilities.invokeLater(() -> showStatus(t("TeacherPanel.statusThinking", "📤 数据已发送，LLM 正在思考中（首次响应通常需要 10~30 秒，请耐心等待）...")));
+                SwingUtilities.invokeLater(() -> showStatus(t("TeacherPanel.statusGenerating", "🤖 LLM 正在读取数据并思考解说...")));
                 String full =
                     llm.chatStream(
                         session.messages(),
                         token -> {
-                          if (!running) throw new RuntimeException("用户停止");
+                          if (!running) throw new RuntimeException(t("TeacherPanel.userStopped", "用户停止"));
                           mdAcc.append(token);
                           if (mdAcc.length() > 0) {
                             SwingUtilities.invokeLater(() -> renderMarkdown(mdAcc.toString()));
@@ -1135,16 +1153,16 @@ public class TeacherPanel extends JPanel {
                 // 完整防编造校验（对齐 GoAgent verifyTeacherMarkdown）：坐标/百分比/定式引用
                 if (currentAnalysis != null && currentAnalysis.teachingEvidence != null) {
                   TeachingEvidenceBuilder.MarkdownVerification v = TeachingEvidenceBuilder.verifyTeacherMarkdown(f, currentAnalysis.teachingEvidence);
-                  for (String w : v.warnings) appendRaw("\n> 防编造校验：" + w);
-                  for (String viol : v.violations) appendRaw("\n> 防编造违规：" + viol);
-                  if (v.ok) appendRaw("\n> 防编造校验：坐标与证据一致。");
+                  for (String w : v.warnings) appendRaw(t("TeacherPanel.verifyPrefix", "\n> 防编造校验：") + w);
+                  for (String viol : v.violations) appendRaw(t("TeacherPanel.verifyViolation", "\n> 防编造违规：") + viol);
+                  if (v.ok) appendRaw(t("TeacherPanel.verifyOk", "\n> 防编造校验：坐标与证据一致。"));
                   // claim 级防编造校验（对齐 GoAgent ClaimVerifier.verifyTeacherClaimsFromMarkdown）
                   ClaimVerifier.ClaimVerificationResult cv = ClaimVerifier.verifyTeacherClaimsFromMarkdown(f, currentAnalysis.teachingEvidence);
                   appendRaw("\n> " + ClaimVerifier.buildClaimVerificationNote(cv));
                   // 生成完整教学产物 HTML（对齐 GoAgent buildTeacherArtifact）
                   TeachingArtifactBuilder.BuildInput bi = new TeachingArtifactBuilder.BuildInput();
                   bi.id = "move-" + currentAnalysis.moveNumber;
-                  bi.title = "第 " + currentAnalysis.moveNumber + " 手讲解";
+                  bi.title = java.text.MessageFormat.format(t("TeacherPanel.artifactTitleMove", "第 {0} 手讲解"), currentAnalysis.moveNumber);
                   bi.intent = "current-move";
                   bi.markdown = f;
                   bi.analysis = currentAnalysis;
@@ -1154,7 +1172,7 @@ public class TeacherPanel extends JPanel {
                       TeachingArtifactBuilder.buildTeacherArtifact(bi));
                 }
               } catch (Exception ex) {
-                SwingUtilities.invokeLater(() -> appendRaw("\n[错误] " + ex.getMessage() + "\n"));
+                SwingUtilities.invokeLater(() -> appendRaw(t("TeacherPanel.errorPrefix", "\n[错误] ") + ex.getMessage() + "\n"));
               } finally {
                 running = false;
                 SwingUtilities.invokeLater(
