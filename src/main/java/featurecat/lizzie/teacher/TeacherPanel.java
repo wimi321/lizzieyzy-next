@@ -157,7 +157,10 @@ public class TeacherPanel extends JPanel {
       sendBtn.addActionListener(this::send);
       stopBtn = new JButton("停止");
       stopBtn.setEnabled(false);
-      stopBtn.addActionListener(e -> running = false);
+      stopBtn.addActionListener(e -> {
+        running = false;
+        SwingUtilities.invokeLater(() -> showStatus("⏹ 已停止"));
+      });
       inputRow.add(sendBtn, BorderLayout.EAST);
       inputRow.add(stopBtn, BorderLayout.WEST);
       bottom.add(inputRow, BorderLayout.SOUTH);
@@ -172,6 +175,13 @@ public class TeacherPanel extends JPanel {
       split.setDividerLocation(380);
       add(split, BorderLayout.CENTER);
 
+      // 设置控件改变时立即保存
+      rankModeCombo.addActionListener(e -> saveSettingsToConfig());
+      rankNumField.addActionListener(e -> saveSettingsToConfig());
+      styleCombo.addActionListener(e -> saveSettingsToConfig());
+      densityCombo.addActionListener(e -> saveSettingsToConfig());
+      paceCombo.addActionListener(e -> saveSettingsToConfig());
+      variationCombo.addActionListener(e -> saveSettingsToConfig());
       ensureSession();
       // 关闭面板时保存设置到 teacher.properties
 
@@ -191,7 +201,7 @@ public class TeacherPanel extends JPanel {
     }
   }
 
-  private void saveSettingsToConfig() {
+  public void saveSettingsToConfig() {
     TeacherConfig.rankMode = (String) rankModeCombo.getSelectedItem();
     TeacherConfig.rankNum = rankNumField.getText().trim();
     TeacherConfig.styleIndex = styleCombo.getSelectedIndex();
@@ -323,6 +333,30 @@ public class TeacherPanel extends JPanel {
         if (node != null) node.getData().comment = "";
       } catch (Exception ignore) {}
     }
+    // PV 数据全为空时，提醒加深分析（避免 LLM 编造变化图）
+    if (ma.pv == null || ma.pv.candidates == null || ma.pv.candidates.isEmpty()) {
+      javax.swing.JOptionPane.showMessageDialog(this,
+          "当前局面还没有 KataGo 分析数据。\n请先点击「AI 分析」或「自动分析」让引擎搜索棋谱，\n再进行解说。",
+          "需要先分析棋谱", javax.swing.JOptionPane.WARNING_MESSAGE);
+      return;
+    }
+    boolean anyPv = false;
+    for (var c : ma.pv.candidates) {
+      if (c.pv != null && !c.pv.isEmpty()) { anyPv = true; break; }
+    }
+    if (!anyPv) {
+      javax.swing.JOptionPane.showMessageDialog(this,
+          "当前局面的 PV 变化序列为空（搜索深度不足）。\n请加深分析（增加搜索次数），让 KataGo 生成完整的变化路径，\n再进行解说。",
+          "PV 数据不足", javax.swing.JOptionPane.WARNING_MESSAGE);
+      return;
+    }
+    // 检查 KataGo 分析数据是否存在（bestMoves 为空说明没有分析过或重新加载后丢失）
+    if (ma.pv == null || ma.pv.candidates == null || ma.pv.candidates.isEmpty()) {
+      javax.swing.JOptionPane.showMessageDialog(this,
+          "当前局面还没有 KataGo 分析数据。\n请先点击「AI 分析」或「自动分析」让引擎搜索棋谱，\n再进行解说。",
+          "需要先分析棋谱", javax.swing.JOptionPane.WARNING_MESSAGE);
+      return;
+    }
     // 没有 KataGo 分析数据时提醒先分析棋谱
     boolean hasPvData = ma.pv != null && ma.pv.candidates != null && !ma.pv.candidates.isEmpty();
     boolean hasValidClassification = ma.classification != null && ma.classification.severity != AnalysisBrain.Severity.UNCLEAR;
@@ -385,7 +419,11 @@ public class TeacherPanel extends JPanel {
           ma.ownership);
       String traceText = KatagoTraceTranslator.formatKataGoTraceForPrompt(trace);
       userText += "\n\n" + traceText;
-      // PV 变化路径（逐手追踪变化图的数据来源）
+    } catch (Exception ex) {
+      userText += "\n\n[KataGo Trace 生成失败: " + (ex.getMessage() == null ? ex.getClass().getSimpleName() : ex.getMessage()) + "]\n";
+    }
+    // PV 变化路径（逐手追踪变化图的数据来源）——独立保护，任何异常不吞 PV 数据
+    try {
       if (ma.pv != null && ma.pv.candidates != null && !ma.pv.candidates.isEmpty()) {
         userText += "\n\n【各选点变化图（PV）】\n";
         for (int i = 0; i < Math.min(3, ma.pv.candidates.size()); i++) {
@@ -394,10 +432,16 @@ public class TeacherPanel extends JPanel {
           userText += label + " " + c.move;
           if (c.winrate != null) userText += " 胜率" + String.format("%.1f%%", c.winrate);
           if (c.scoreLead != null) userText += " 目差" + String.format("%.1f", c.scoreLead);
-          userText += " PV: " + String.join(" ", c.pv) + "\n";
+          if (c.pv != null && !c.pv.isEmpty()) {
+            userText += " PV: " + String.join(" ", c.pv) + "\n";
+          } else {
+            userText += " PV: (无变化序列)\n";
+          }
         }
       }
-    } catch (Exception ex) { /* trace 失败不阻断讲解 */ }
+    } catch (Exception ex) {
+      userText += "\n\n[PV 输出失败: " + (ex.getMessage() == null ? ex.getClass().getSimpleName() : ex.getMessage()) + "]\n";
+    }
     // 棋理知识按需加载（GoAgent data/knowledge 的 39 篇 markdown 文档）
     try {
       java.util.List<String[]> mdHits = new java.util.ArrayList<>();
@@ -628,6 +672,19 @@ public class TeacherPanel extends JPanel {
         ma.ownership = own;
       }
 
+      // 诊断：输出 KataGo 原始数据
+      if (refData.bestMoves != null && !refData.bestMoves.isEmpty()) {
+        System.out.println("[KataGo诊断] bestMoves数量=" + refData.bestMoves.size());
+        for (int idx = 0; idx < Math.min(3, refData.bestMoves.size()); idx++) {
+          var bm = refData.bestMoves.get(idx);
+          System.out.println("[KataGo诊断] 候选" + idx + "=" + bm.coordinate 
+              + " visits=" + bm.playouts 
+              + " variation=" + (bm.variation == null ? "null" : "size=" + bm.variation.size())
+              + (bm.variation != null && !bm.variation.isEmpty() ? " pv=" + String.join(" ", bm.variation.subList(0, Math.min(5, bm.variation.size()))) : ""));
+        }
+      } else {
+        System.out.println("[KataGo诊断] bestMoves为空或null");
+      }
       List<KataGoCandidate> topMoves = new ArrayList<>();
       if (refData.bestMoves != null) {
         for (var m : refData.bestMoves) {
@@ -640,6 +697,9 @@ public class TeacherPanel extends JPanel {
           kc.scoreLead = ScorePerspective.scoreLeadForColor(m.scoreMean, playedByBlack);
           kc.prior = m.policy;
           kc.pv = m.variation != null ? m.variation.toArray(new String[0]) : new String[0];
+          if (kc.pv.length == 0 && topMoves.isEmpty()) {
+            System.out.println("[PV调试] 第一个候选 " + m.coordinate + " variation=" + (m.variation == null ? "null" : "size=" + m.variation.size()));
+          }
           topMoves.add(kc);
         }
         if (!topMoves.isEmpty()) ma.best = topMoves.get(0);

@@ -58,22 +58,22 @@ public final class TeacherPersona {
         return "";
     }
     static String ageInstruction(AgeRange ageRange) {
-        if (ageRange == AgeRange.CHILD) return "学生年龄偏小。句子要短，避免讽刺和过度批评，多用具体动作和小练习；不要用恐吓式语言。";
-        if (ageRange == AgeRange.TEEN) return "学生是青少年。可以直接指出问题，但要保留鼓励和下一步训练目标。";
-        if (ageRange == AgeRange.ADULT) return "学生是成年人。讲解可以更直接，重点给出复盘方法、判断顺序和训练安排。";
-        if (ageRange == AgeRange.SENIOR) return "学生是年长学习者。节奏放慢，少堆术语，多用清晰结构和复盘步骤。";
-        return "学生年龄未指定。按普通成人学习者讲解，避免过度假设。";
+        if (ageRange == AgeRange.CHILD) return "用户年龄偏小。句子要短，避免讽刺和过度批评，多用具体动作和小练习；不要用恐吓式语言。";
+        if (ageRange == AgeRange.TEEN) return "用户是青少年。可以直接指出问题，但要保留鼓励和下一步训练目标。";
+        if (ageRange == AgeRange.ADULT) return "用户是成年人。讲解可以更直接，重点给出复盘方法、判断顺序和训练安排。";
+        if (ageRange == AgeRange.SENIOR) return "用户是年长学习者。节奏放慢，少堆术语，多用清晰结构和复盘步骤。";
+        return "用户年龄未指定。按普通成人讲解，避免过度假设。";
     }
     static String exactAgeInstruction(Integer exactAge) {
         if (exactAge == null || exactAge < 1) return "";
-        return "学生年龄：" + exactAge + " 岁。年龄只用于调整表达节奏和训练建议，不能改变事实判断。";
+        return "用户年龄：" + exactAge + " 岁。年龄只用于调整表达节奏，不能改变事实判断。";
     }
     static String styleInstruction(Style style) {
-        if (style == Style.RIGOROUS) return "老师风格：严谨细致。结构清晰，证据完整，坐标、目差、置信度和变化分支要交代清楚。";
-        if (style == Style.GENTLE) return "老师风格：温柔和蔼。少用“恶手/崩了”等刺激词，多说“这里可以换个思路”，但不能淡化关键错误。";
-        if (style == Style.STRICT) return "老师风格：严格专业。可以直接指出问题和训练要求，但低置信度证据下仍禁止“唯一、必败、必杀、绝对”等强断言。";
-        if (style == Style.HUMOROUS) return "老师风格：风趣幽默。可以轻微比喻，但幽默只能服务理解，不能编故事、编棋理、编坐标、编胜率或牺牲准确性。";
-        return "老师风格：平衡自然。像正常人类教练一样先讲判断，再讲原因，最后给一个可执行提醒。";
+        if (style == Style.RIGOROUS) return "你的风格：严谨细致。结构清晰，证据完整，坐标、目差、置信度和变化分支要交代清楚。";
+        if (style == Style.GENTLE) return "你的风格：温柔和蔼。少用“恶手/崩了”等刺激词，多说“这里可以换个思路”，但不能淡化关键错误。";
+        if (style == Style.STRICT) return "你的风格：严格专业。可以直接指出问题和训练要求，但低置信度证据下仍禁止“唯一、必败、必杀、绝对”等强断言。";
+        if (style == Style.HUMOROUS) return "你的风格：风趣幽默。可以轻微比喻，但幽默只能服务理解，不能编故事、编棋理、编坐标、编胜率或牺牲准确性。";
+        return "你的风格：平衡自然。像正常人类教练一样先讲判断，再讲原因，最后给一个可执行提醒。";
     }
     static String densityInstruction(TerminologyDensity density) {
         if (density == TerminologyDensity.LOW) return "术语密度：少。每次最多引入少量术语，先用自然语言解释。";
@@ -94,7 +94,7 @@ public final class TeacherPersona {
     /** 对齐 buildTeacherPersonaInstruction */
     public static String buildTeacherPersonaInstruction(TeacherPersonaInput input) {
         java.util.List<String> parts = new java.util.ArrayList<>();
-        parts.add("【学生与老师风格设置】");
+        parts.add("【风格设置】");
         parts.add(levelInstruction(input.level));
         String r = rankInstruction(input.rank); if (!r.isEmpty()) parts.add(r);
         String e = exactAgeInstruction(input.exactAge); if (!e.isEmpty()) parts.add(e);

@@ -838,6 +838,10 @@ public class KataGoAnalysisWebSocketTransport implements EngineTransport {
   }
 
   private static void appendMoveInfo(StringBuilder line, JSONObject move, int fallbackOrder) {
+    java.util.Iterator<String> keys = move.keys();
+    StringBuilder dbg = new StringBuilder("[RemoteMoveKeys]");
+    while (keys.hasNext()) dbg.append(" ").append(keys.next());
+    System.out.println(dbg);
     line.append("move ").append(move.optString("move", "pass"));
     line.append(" visits ").append(Math.max(0, move.optInt("visits", 0)));
     if (move.has("winrate")) {
