@@ -458,6 +458,38 @@ public class TeacherPanel extends JPanel {
           System.out.println("[ACTUAL-SEQ] no next node");
         }
       } catch (Exception ignore) {}
+      // 实战手自己的数据（若不在前三选，也要提供其变化图）
+      try {
+        if (ma.actualMove != null) {
+          featurecat.lizzie.analysis.MoveData actualMd = null;
+          var curNode = featurecat.lizzie.Lizzie.board.getHistory().getCurrentHistoryNode();
+          if (curNode != null && curNode.getData() != null && curNode.getData().bestMoves != null) {
+            for (var bm : curNode.getData().bestMoves) {
+              if (bm.coordinate != null && bm.coordinate.equals(ma.actualMove)) { actualMd = bm; break; }
+            }
+          }
+          userText += "\n\n【实战手数据】\n";
+          if (actualMd != null) {
+            userText += "实战 " + ma.actualMove + " 胜率" + String.format("%.1f%%", actualMd.winrate)
+                + " 目差" + String.format("%.1f", actualMd.scoreMean);
+            if (actualMd.variation != null && !actualMd.variation.isEmpty()) {
+              String col = nextColor;
+              java.util.List<String> colored = new java.util.ArrayList<>();
+              for (String mv : actualMd.variation) {
+                colored.add(col + mv);
+                col = col.equals("黑") ? "白" : "黑";
+              }
+              userText += " PV: " + String.join(" ", colored) + "\n";
+            } else {
+              userText += " PV: (无变化序列)\n";
+            }
+          } else {
+            userText += "实战 " + ma.actualMove + "（不在 KataGo 候选列表内，仅提供棋谱实走变化）\n";
+          }
+        }
+      } catch (Exception ex) {
+        userText += "[实战手数据输出失败]\n";
+      }
       if (ma.pv != null && ma.pv.candidates != null && !ma.pv.candidates.isEmpty()) {
         userText += "\n\n【AI 候选数据（KataGo）】\n";
         for (int i = 0; i < Math.min(3, ma.pv.candidates.size()); i++) {
