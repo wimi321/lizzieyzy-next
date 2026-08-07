@@ -145,7 +145,7 @@ public class TeacherArtifactCard extends JPanel {
     facts.add(new FactCell("实战点", actualMove == null ? "未知" : actualMove));
     if (best != null) {
       facts.add(new FactCell("AI 首选", best.move));
-      double wrLoss = (best.winrate - actualWinrate) * 100;
+      double wrLoss = best.winrate - actualWinrate;  // 都是百分比(0-100)，差值就是百分点，不能再乘100
       double scLoss = best.scoreLead - actualScoreLead;
       facts.add(new FactCell("胜率损失", String.format("%.1f%%", wrLoss), true));
       facts.add(new FactCell("目差损失", String.format("%.1f 目", scLoss), true));
