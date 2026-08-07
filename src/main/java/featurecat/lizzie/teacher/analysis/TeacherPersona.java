@@ -73,7 +73,7 @@ public final class TeacherPersona {
         if (style == Style.GENTLE) return "你的风格：温柔和蔼。少用“恶手/崩了”等刺激词，多说“这里可以换个思路”，但不能淡化关键错误。";
         if (style == Style.STRICT) return "你的风格：严格专业。可以直接指出问题和训练要求，但低置信度证据下仍禁止“唯一、必败、必杀、绝对”等强断言。";
         if (style == Style.HUMOROUS) return "你的风格：风趣幽默。可以轻微比喻，但幽默只能服务理解，不能编故事、编棋理、编坐标、编胜率或牺牲准确性。";
-        return "你的风格：平衡自然。像正常人类教练一样先讲判断，再讲原因，最后给一个可执行提醒。";
+        return "你的风格：平衡自然。先讲判断，再讲原因，最后给一个可执行提醒。";
     }
     static String densityInstruction(TerminologyDensity density) {
         if (density == TerminologyDensity.LOW) return "术语密度：少。每次最多引入少量术语，先用自然语言解释。";

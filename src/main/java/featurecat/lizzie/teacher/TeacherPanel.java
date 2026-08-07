@@ -538,11 +538,20 @@ public class TeacherPanel extends JPanel {
         + "目差为黑正约定（黑棋领先为正数、落后为负数）。\n"
         + "AI 首选的胜率/目差与实战手同一视角，可直接对比。\n\n"
         + "请基于以上数据，按角色设定中的要求进行讲解。\n";
-    userText += "重点解说实战下一手的意图、效果、后续变化，并对比AI最佳手前三选（一选/二选/三选）的差异、策略区别、目差和胜率对比。\n";
-    userText += "先给出整体结论，再分析实战着手（含棋谱实走的后续变化），然后逐个分析AI候选：分析一选时追踪一选的PV变化序列，分析二选时追踪二选的PV变化序列，分析三选时追踪三选的PV变化序列，每个选点独立追踪其变化图，不要混在一起。\n";
+    boolean hasActual = ma.actualMove != null && !ma.actualMove.isEmpty();
+    if (hasActual) {
+      userText += "重点解说实战下一手（" + ma.actualMove + "）的意图、效果、后续变化，并对比AI最佳手前三选（一选/二选/三选）的差异、策略区别、目差和胜率对比。\n";
+      userText += "先给出整体结论，再分析实战着手（含棋谱实走的后续变化），然后逐个分析AI候选：分析一选时追踪一选的PV变化序列，分析二选时追踪二选的PV变化序列，分析三选时追踪三选的PV变化序列，每个选点独立追踪其变化图，不要混在一起。\n";
+    } else {
+      userText += "当前是棋谱最后一手，没有实战下一手。\n"
+          + "只解说AI最佳手前三选（一选/二选/三选）：推荐哪个选点、各选点的意图和后续变化、胜率目差对比、策略区别。\n"
+          + "严禁编造实战手或实战落子——实战下一手不存在，只能推荐AI选点。\n"
+          + "先给出整体结论，再逐个分析AI候选：分析一选时追踪一选的PV变化序列，分析二选时追踪二选的PV变化序列，分析三选时追踪三选的PV变化序列，每个选点独立追踪其变化图，不要混在一起。\n";
+    }
     userText += "务必胜率和目差并列呈现，不要因微小差异制造虚假优劣感。\n";
     userText += "所有坐标和胜率必须来自上方数据，禁用编造。若数据不足，坦诚说明。\n"
         + "解说中不要出现'证据''校验''内部数据''标签'等内部术语，直接给出结论和分析即可。\n"
+        + "解说正文中严禁自称'围棋老师''围棋教师''教练'等称呼，也严禁称呼用户为'学生''棋友'——直接以'我'分析棋局即可。\n"
         + "禁止在解说中输出 WEAK/STRONG/UNSTABLE/WEAKPV 等英文内部标签，用中文描述（如'变化图不太稳定'、'变化图较强'）代替。";
     session.addUser(userText);
     java.util.List<String> imgs = boardImg != null ? java.util.List.of(boardImg) : null;
@@ -552,11 +561,9 @@ public class TeacherPanel extends JPanel {
   /** 整盘复盘：遍历历史节点，逐手分类，收集关键手，做一次整盘讲解 */
 
   private static String actualMoveGtp(MoveAnalysis ma) {
-    try {
-      var data = featurecat.lizzie.Lizzie.board.getHistory().getEnd().getData();
-      if (data.lastMove.isPresent()) { int[] xy = data.lastMove.get(); return featurecat.lizzie.rules.Board.convertCoordinatesToName(xy[0], xy[1]); }
-    } catch (Exception e) {}
-    return null;
+    // 用分析目标的实战手（下一节点落子）；最后一手无实战手时返回 null
+    if (ma == null || ma.actualMove == null || ma.actualMove.isEmpty()) return null;
+    return ma.actualMove;
   }
 
   private void explainWholeGame(ActionEvent e) {
