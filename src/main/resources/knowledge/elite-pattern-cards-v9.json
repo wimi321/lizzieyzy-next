@@ -1,0 +1,582 @@
+[
+  {
+    "id": "internet-katago-ownership-field",
+    "title": "KataGo ownership 是厚薄/实地解释证据",
+    "category": "engine-evidence",
+    "patternType": "katago_ownership",
+    "scope": "teaching-quality",
+    "phase": [
+      "middlegame",
+      "endgame",
+      "any"
+    ],
+    "regions": [
+      "any"
+    ],
+    "levels": [
+      "beginner",
+      "intermediate",
+      "advanced",
+      "dan"
+    ],
+    "tags": [
+      "ownership",
+      "厚薄",
+      "实地",
+      "势力范围",
+      "证据链"
+    ],
+    "aliases": [
+      "地盘归属",
+      "territory swing",
+      "ownership delta"
+    ],
+    "triggerSignals": [
+      "ownership",
+      "includeOwnership",
+      "includeMovesOwnership",
+      "实地变化",
+      "厚薄变化"
+    ],
+    "negativeSignals": [],
+    "katagoSignals": [
+      "ownership",
+      "ownershipStdev",
+      "includeMovesOwnership"
+    ],
+    "recognition": "当候选手的胜率差不容易解释时，ownership 摆动可以帮助老师说明哪片区域的实地或厚薄发生变化。",
+    "wrongThinking": "只说胜率掉点，却不指出哪片区域变差，学生无法复现判断。",
+    "correctThinking": "先看 ownership 最大摆动区域，再把它翻译成“哪块棋变薄、哪片地被压缩、哪条攻击线失效”。",
+    "coachLines": [
+      "这手的核心不是坐标，而是它让哪片区域的归属发生变化。",
+      "ownership 只能辅助解释，最终仍要和 KataGo 候选、PV、棋盘形势一起使用。"
+    ],
+    "drillPrompt": "遮住胜率，只看 ownership 摆动，判断实战手让哪一片区域变差。",
+    "confidenceBoost": 4,
+    "sourceRefs": [
+      "katago-analysis-engine-docs"
+    ],
+    "sourceQuality": "primary-engine-doc"
+  },
+  {
+    "id": "internet-katago-policy-prior",
+    "title": "Policy / prior 解释“AI 第一感”和搜索后的差异",
+    "category": "engine-evidence",
+    "patternType": "katago_policy_prior",
+    "scope": "teaching-quality",
+    "phase": [
+      "opening",
+      "middlegame",
+      "any"
+    ],
+    "regions": [
+      "any"
+    ],
+    "levels": [
+      "beginner",
+      "intermediate",
+      "advanced",
+      "dan"
+    ],
+    "tags": [
+      "policy",
+      "prior",
+      "第一感",
+      "搜索",
+      "候选差异"
+    ],
+    "aliases": [
+      "raw policy",
+      "neural policy",
+      "先验"
+    ],
+    "triggerSignals": [
+      "includePolicy",
+      "policy",
+      "prior",
+      "raw policy",
+      "AI第一感"
+    ],
+    "negativeSignals": [],
+    "katagoSignals": [
+      "policy",
+      "prior",
+      "humanPrior"
+    ],
+    "recognition": "policy / prior 显示网络搜索前的直觉倾向；如果搜索后排序反转，老师应解释为什么局部读法或全局收益改变了第一感。",
+    "wrongThinking": "把 prior 高的手直接当最佳手，忽略搜索后候选排序和 PV。",
+    "correctThinking": "比较 prior 与最终 visits/scoreLead：prior 高但搜索后落后，通常说明局部陷阱、征子、后续应手或全局方向有问题。",
+    "coachLines": [
+      "prior 是 AI 第一感，不是最终答案。",
+      "搜索后变强的手，通常值得讲清楚后续收益。"
+    ],
+    "drillPrompt": "找一个 prior 高但不是第一选的手，说出它为什么被搜索否定。",
+    "confidenceBoost": 3,
+    "sourceRefs": [
+      "katago-analysis-engine-docs"
+    ],
+    "sourceQuality": "primary-engine-doc"
+  },
+  {
+    "id": "internet-katago-pv-visits-integrity",
+    "title": "PV visits 防止把低支撑变化讲成铁线",
+    "category": "engine-evidence",
+    "patternType": "pv_visit_integrity",
+    "scope": "teaching-quality",
+    "phase": [
+      "middlegame",
+      "endgame",
+      "any"
+    ],
+    "regions": [
+      "any"
+    ],
+    "levels": [
+      "beginner",
+      "intermediate",
+      "advanced",
+      "dan"
+    ],
+    "tags": [
+      "PV",
+      "pvVisits",
+      "变化",
+      "置信度",
+      "读秒"
+    ],
+    "aliases": [
+      "principal variation visits",
+      "变化支撑",
+      "PV串线"
+    ],
+    "triggerSignals": [
+      "pvVisits",
+      "includePVVisits",
+      "PV",
+      "变化",
+      "串线"
+    ],
+    "negativeSignals": [],
+    "katagoSignals": [
+      "pvVisits",
+      "pvEdgeVisits",
+      "analysisPVLen"
+    ],
+    "recognition": "PV visits 能提示一条变化在搜索树里有多少支撑；低支撑 PV 应作为示意变化，而不是确定结论。",
+    "wrongThinking": "把不同候选的 PV 串在一起，或把低 visits 的后半段说成必然结果。",
+    "correctThinking": "讲 PV 时标明它属于哪个候选手；后半段 visits 低或分歧大时，用“示意”而不是“必然”。",
+    "coachLines": [
+      "PV 是证据线，不是背答案。",
+      "每条 PV 都必须回到它的候选手。"
+    ],
+    "drillPrompt": "把两个候选的 PV 分开抄写，检查有没有串线。",
+    "confidenceBoost": 4,
+    "sourceRefs": [
+      "katago-analysis-engine-docs"
+    ],
+    "sourceQuality": "primary-engine-doc"
+  },
+  {
+    "id": "internet-sgf-setup-properties",
+    "title": "SGF setup stones 必须进入棋盘事实层",
+    "category": "format-correctness",
+    "patternType": "sgf_setup_properties",
+    "scope": "teaching-quality",
+    "phase": [
+      "any"
+    ],
+    "regions": [
+      "any"
+    ],
+    "levels": [
+      "beginner",
+      "intermediate",
+      "advanced",
+      "dan"
+    ],
+    "tags": [
+      "SGF",
+      "AB",
+      "AW",
+      "AE",
+      "PL",
+      "让子",
+      "初始摆子"
+    ],
+    "aliases": [
+      "setup node",
+      "initialStones",
+      "Add Black",
+      "Add White",
+      "Add Empty"
+    ],
+    "triggerSignals": [
+      "AB",
+      "AW",
+      "AE",
+      "PL",
+      "initialStones",
+      "setup"
+    ],
+    "negativeSignals": [],
+    "katagoSignals": [
+      "initialStones",
+      "boardStateWarnings"
+    ],
+    "recognition": "带 AB/AW/AE 的 SGF 不是空盘开局；老师分析前必须确认前端棋盘、BoardState、KataGo initialStones 一致。",
+    "wrongThinking": "把死活题、让子棋或定式题的 setup 局面当成普通主线，导致 KataGo 分析错局面。",
+    "correctThinking": "解析 root/setup node，先应用 AB/AW/AE，再走主线或变体；如果有冲突，报告 warning 并降级讲解。",
+    "coachLines": [
+      "棋盘事实错了，后面的讲解再漂亮也不可信。",
+      "setup stones 是证据链的第一层。"
+    ],
+    "drillPrompt": "导入一个 AB/AW 死活题，手动核对 BoardState 和棋盘截图是否一致。",
+    "confidenceBoost": 5,
+    "sourceRefs": [
+      "sgf-ff4-red-bean",
+      "sgfmill-ff4-properties"
+    ],
+    "sourceQuality": "primary-format-spec"
+  },
+  {
+    "id": "internet-sgf-variation-boundary",
+    "title": "SGF variation 只可作为分支上下文，不可混入主线事实",
+    "category": "format-correctness",
+    "patternType": "sgf_variation_boundary",
+    "scope": "teaching-quality",
+    "phase": [
+      "any"
+    ],
+    "regions": [
+      "any"
+    ],
+    "levels": [
+      "beginner",
+      "intermediate",
+      "advanced",
+      "dan"
+    ],
+    "tags": [
+      "SGF",
+      "variation",
+      "变体",
+      "主线",
+      "分支",
+      "复盘"
+    ],
+    "aliases": [
+      "game tree",
+      "variation path",
+      "SGF tree"
+    ],
+    "triggerSignals": [
+      "variation",
+      "game tree",
+      "变体",
+      "分支",
+      "主线"
+    ],
+    "negativeSignals": [],
+    "katagoSignals": [
+      "variationPath",
+      "moveNumber"
+    ],
+    "recognition": "SGF 是树结构；老师必须知道当前分析的是主线还是某条 variation path。",
+    "wrongThinking": "把变体里的手当作主线后续，或者把主线形势套到变体局面。",
+    "correctThinking": "每次分析都绑定 gameId、moveNumber、variationPath；如果 variationPath 不明确，只讲当前主线事实。",
+    "coachLines": [
+      "复盘变体时，先说明“我们现在看的是这条分支”。",
+      "不要把不同分支的 PV 混在一个结论里。"
+    ],
+    "drillPrompt": "选择一个有两条变化的 SGF，分别构建两个 BoardState 并比较差异。",
+    "confidenceBoost": 3,
+    "sourceRefs": [
+      "sgf-ff4-red-bean",
+      "sgfmill-ff4-properties"
+    ],
+    "sourceQuality": "primary-format-spec"
+  },
+  {
+    "id": "internet-sensei-terms-taxonomy",
+    "title": "术语覆盖来自 taxonomy，讲解文字必须原创",
+    "category": "source-policy",
+    "patternType": "terminology_taxonomy_reference",
+    "scope": "teaching-quality",
+    "phase": [
+      "any"
+    ],
+    "regions": [
+      "any"
+    ],
+    "levels": [
+      "beginner",
+      "intermediate",
+      "advanced",
+      "dan"
+    ],
+    "tags": [
+      "术语",
+      "taxonomy",
+      "Sensei",
+      "概念",
+      "许可证"
+    ],
+    "aliases": [
+      "Go terms",
+      "aji",
+      "sente",
+      "gote",
+      "sabaki",
+      "honte"
+    ],
+    "triggerSignals": [
+      "术语",
+      "Go Terms",
+      "taxonomy",
+      "概念覆盖"
+    ],
+    "negativeSignals": [],
+    "katagoSignals": [
+      "knowledgeCoverage",
+      "sourceRefs"
+    ],
+    "recognition": "大型围棋术语索引适合用来检查覆盖面，但 GoAgent 知识卡应使用原创教学文字，不能复制网页定义。",
+    "wrongThinking": "把网页术语解释直接复制进 MIT 项目，造成版权和风格风险。",
+    "correctThinking": "用术语索引查漏补缺；每张卡写成 GoAgent 原创识别句、误区、思路和练习。",
+    "coachLines": [
+      "来源用于覆盖检查，不是可复制答案。",
+      "每个术语必须落回当前局面证据。"
+    ],
+    "drillPrompt": "选 5 个术语，写出不引用原文的原创教学句。",
+    "confidenceBoost": 2,
+    "sourceRefs": [
+      "sensei-go-terms",
+      "goagent-curated-original"
+    ],
+    "sourceQuality": "taxonomy-reference-only"
+  },
+  {
+    "id": "internet-josekipedia-frequency-policy",
+    "title": "职业棋谱频率只能辅助定式常见度",
+    "category": "source-policy",
+    "patternType": "joseki_frequency_policy",
+    "scope": "teaching-quality",
+    "phase": [
+      "opening"
+    ],
+    "regions": [
+      "corner"
+    ],
+    "levels": [
+      "beginner",
+      "intermediate",
+      "advanced",
+      "dan"
+    ],
+    "tags": [
+      "定式",
+      "频率",
+      "职业棋谱",
+      "Josekipedia",
+      "来源策略"
+    ],
+    "aliases": [
+      "professional game collection",
+      "joseki frequency",
+      "main line only"
+    ],
+    "triggerSignals": [
+      "Josekipedia",
+      "职业棋谱",
+      "frequency",
+      "main line",
+      "comments discarded"
+    ],
+    "negativeSignals": [],
+    "katagoSignals": [
+      "josekiFrequency",
+      "sourceRefs"
+    ],
+    "recognition": "职业棋谱数据库可以帮助估计某个定式分支常见度，但不能替代当前局面的 KataGo 判断，也不能复制评论。",
+    "wrongThinking": "看到某分支常见，就说本局必须这样下；或者把外部评论当成本局证据。",
+    "correctThinking": "频率信息只回答“常不常见”，当前推荐仍由 KataGo 候选、全局配置和学生水平决定。",
+    "coachLines": [
+      "常见不等于本局最好。",
+      "频率数据不能压过 KataGo 当前局面证据。"
+    ],
+    "drillPrompt": "给一个常见定式分支，列出哪些全局条件会让它不适合本局。",
+    "confidenceBoost": 3,
+    "sourceRefs": [
+      "josekipedia-game-collection",
+      "josekipedia-copyright-policy"
+    ],
+    "sourceQuality": "future-frequency-mining-candidate"
+  },
+  {
+    "id": "internet-do-not-import-source-boundary",
+    "title": "版权不明来源只能做风险提醒",
+    "category": "source-policy",
+    "patternType": "do_not_import_boundary",
+    "scope": "teaching-quality",
+    "phase": [
+      "any"
+    ],
+    "regions": [
+      "any"
+    ],
+    "levels": [
+      "beginner",
+      "intermediate",
+      "advanced",
+      "dan"
+    ],
+    "tags": [
+      "版权",
+      "license",
+      "do-not-import",
+      "Kogo",
+      "题库"
+    ],
+    "aliases": [
+      "source risk",
+      "copyright warning",
+      "do not import"
+    ],
+    "triggerSignals": [
+      "do-not-import",
+      "copyright",
+      "license",
+      "Kogo",
+      "题库"
+    ],
+    "negativeSignals": [],
+    "katagoSignals": [
+      "sourceRegistry",
+      "licensePolicy"
+    ],
+    "recognition": "无明确授权、明确限制分发、或经典书籍题目来源，不应进入打包知识库。",
+    "wrongThinking": "因为网页能访问就把 SGF、题目、注释或书籍内容打包进项目。",
+    "correctThinking": "只登记为风险来源或人工校验参考；知识卡必须原创，训练题必须来自项目原创或明确许可数据。",
+    "coachLines": [
+      "能看到不代表能打包。",
+      "来源状态必须先过 gate，再进知识库。"
+    ],
+    "drillPrompt": "检查一张知识卡：sourceRefs 是否全部避开 do-not-import 状态。",
+    "confidenceBoost": 5,
+    "sourceRefs": [
+      "josekipedia-copyright-policy",
+      "goagent-curated-original"
+    ],
+    "sourceQuality": "source-risk-policy"
+  },
+  {
+    "id": "internet-wikibooks-concept-reference",
+    "title": "开放教材可做概念覆盖，不做逐字导入",
+    "category": "source-policy",
+    "patternType": "open_educational_concept_reference",
+    "scope": "teaching-quality",
+    "phase": [
+      "any"
+    ],
+    "regions": [
+      "any"
+    ],
+    "levels": [
+      "beginner",
+      "intermediate",
+      "advanced",
+      "dan"
+    ],
+    "tags": [
+      "Wikibooks",
+      "概念",
+      "教学覆盖",
+      "原创总结"
+    ],
+    "aliases": [
+      "open educational reference",
+      "concept coverage"
+    ],
+    "triggerSignals": [
+      "Wikibooks",
+      "concept",
+      "coverage",
+      "taxonomy"
+    ],
+    "negativeSignals": [],
+    "katagoSignals": [
+      "knowledgeCoverage",
+      "sourceRefs"
+    ],
+    "recognition": "开放教材适合检查基础概念是否覆盖，例如气、眼、劫、连接、征子、官子；GoAgent 仍应写原创讲解。",
+    "wrongThinking": "把开放教材段落直接搬进本地卡，导致许可证兼容和语气不统一问题。",
+    "correctThinking": "用概念源做 checklist，用 GoAgent 风格重写成当前局面可执行的教学卡。",
+    "coachLines": [
+      "概念参考不是复制来源。",
+      "每张教学卡必须能落到局面证据和学生训练。"
+    ],
+    "drillPrompt": "用一个外部概念标题，写一张只含原创 wording 的教学卡。",
+    "confidenceBoost": 2,
+    "sourceRefs": [
+      "wikibooks-go",
+      "goagent-curated-original"
+    ],
+    "sourceQuality": "concept-reference-only"
+  },
+  {
+    "id": "internet-source-citation-boundary",
+    "title": "sourceRefs 是追溯标签，不是网页引用",
+    "category": "source-policy",
+    "patternType": "source_ref_boundary",
+    "scope": "teaching-quality",
+    "phase": [
+      "any"
+    ],
+    "regions": [
+      "any"
+    ],
+    "levels": [
+      "beginner",
+      "intermediate",
+      "advanced",
+      "dan"
+    ],
+    "tags": [
+      "sourceRefs",
+      "引用",
+      "证据",
+      "网页搜索",
+      "追溯"
+    ],
+    "aliases": [
+      "traceability label",
+      "source boundary",
+      "citation"
+    ],
+    "triggerSignals": [
+      "sourceRefs",
+      "引用",
+      "according to",
+      "来源"
+    ],
+    "negativeSignals": [],
+    "katagoSignals": [
+      "sourceRefs",
+      "qualityGate"
+    ],
+    "recognition": "老师输出中的 sourceRefs 只表示知识卡来源策略和追溯标签；除非实际提供了源文本，否则不能说“某网页说”。",
+    "wrongThinking": "把 sourceRefs 当成可引用原文，向学生编造外部来源句子。",
+    "correctThinking": "讲解当前局面只引用 KataGo、棋盘、知识卡标题和本地证据；外部来源只在文档和审计里出现。",
+    "coachLines": [
+      "sourceRefs 不是课堂引用脚注。",
+      "没有源文本就不要声称网页说了什么。"
+    ],
+    "drillPrompt": "把一段带“据某网站”的讲解改成只说本地证据链。",
+    "confidenceBoost": 4,
+    "sourceRefs": [
+      "katago-analysis-engine-docs",
+      "goagent-curated-original"
+    ],
+    "sourceQuality": "traceability-policy"
+  }
+]

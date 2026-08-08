@@ -1,0 +1,435 @@
+[
+  {
+    "id": "joseki-hoshi-33-invasion-modern",
+    "name": "星位被三三侵入：现代三三定式族",
+    "family": "hoshi_33_invasion",
+    "boardSize": 19,
+    "sourceRefs": ["wikibooks-go", "kogo-joseki-dictionary", "goagent-curated-original"],
+    "sourceQuality": "curated-with-legacy-reference",
+    "requiredRelativeStones": ["4-4", "3-3"],
+    "sequenceSignals": ["星", "三三", "3-3", "san-san", "hoshi", "corner invasion"],
+    "variationCount": 6,
+    "commonNextMoves": [
+      { "relativeMove": "3-4", "label": "挡一边", "condition": "想要外势或要配合这一侧的全局方向时" },
+      { "relativeMove": "4-3", "label": "另一边挡", "condition": "另一侧更需要外势、联络或压迫时" },
+      { "relativeMove": "5-3", "label": "扳/压的后续", "condition": "进入常见爬二路与外势交换" }
+    ],
+    "variations": [
+      "外势优先：挡住对方出头方向，自己取得外势。",
+      "实地优先：允许对方外势较好，但自己保角更简明。",
+      "双方爬二路：适合外面已有配合时，否则容易送厚。",
+      "防夹击变化：周边有强弱关系时先看外侧棋的安全。",
+      "AI 短定式：现代 AI 常早期允许三三，但全局方向决定挡哪边。",
+      "脱先惩罚：对方在三三站稳后，周边外势价值会变化。"
+    ],
+    "recognition": "角上出现星位与三三侵入，重点不是背诵一条定式，而是决定挡哪一边以及外势给谁用。",
+    "wrongThinking": "只想把角守住，忽略挡边方向和外面厚势是否有用。",
+    "correctThinking": "先看外面哪一侧更需要厚势，再用 KataGo 候选手确认挡边方向；若候选差距小，应讲成方向选择。",
+    "drillPrompt": "遮住 AI 首选，只问：这次三三侵入应该挡向哪边，为什么？"
+  },
+  {
+    "id": "joseki-hoshi-low-approach-one-space",
+    "name": "星位小飞挂：一间低夹/一间低应定式族",
+    "family": "hoshi_low_approach",
+    "boardSize": 19,
+    "sourceRefs": ["wikibooks-go", "kogo-joseki-dictionary", "goagent-curated-original"],
+    "sourceQuality": "curated-with-legacy-reference",
+    "requiredRelativeStones": ["4-4", "4-6"],
+    "sequenceSignals": ["小飞挂", "低挂", "approach", "low approach", "星位挂角"],
+    "variationCount": 8,
+    "commonNextMoves": [
+      { "relativeMove": "6-4", "label": "小飞应", "condition": "简明防守，保留角与边的平衡" },
+      { "relativeMove": "5-4", "label": "靠/压方向", "condition": "想主动接触并限制挂角一方" },
+      { "relativeMove": "4-7", "label": "夹击", "condition": "外面有厚势或想攻击挂角棋" }
+    ],
+    "variations": [
+      "小飞应：简明、安全，适合多数局面。",
+      "一间低夹：强调攻击和边上主动权。",
+      "二间高夹：更重全局扩张与模样。",
+      "靠压变化：转入接触战，要求读清断点。",
+      "脱先：如果另一边有急所，可以不立即应，但要承担角上后续压力。",
+      "被反夹：周边棋强弱决定能否战斗。",
+      "AI 简明线：候选接近时不要讲成唯一。",
+      "防守线：领先时可选更稳的形。"
+    ],
+    "recognition": "星位被低挂时，定式选择取决于你要守角、夹击、还是借外势主动进攻。",
+    "wrongThinking": "把所有星位挂角都按同一个定式机械应对。",
+    "correctThinking": "先判断挂角棋是否可攻，再看自己外侧有没有厚势，最后比较 KataGo 首选与候选差距。",
+    "drillPrompt": "列出三种应法：小飞应、夹击、靠压；判断本局哪一种最符合全局方向。"
+  },
+  {
+    "id": "joseki-hoshi-high-approach-pincer",
+    "name": "星位高挂：夹击与靠压定式族",
+    "family": "hoshi_high_approach",
+    "boardSize": 19,
+    "sourceRefs": ["wikibooks-go", "kogo-joseki-dictionary", "goagent-curated-original"],
+    "sourceQuality": "curated-with-legacy-reference",
+    "requiredRelativeStones": ["4-4", "5-6"],
+    "sequenceSignals": ["高挂", "high approach", "星位高挂", "夹击", "pincer"],
+    "variationCount": 7,
+    "commonNextMoves": [
+      { "relativeMove": "6-4", "label": "小飞应", "condition": "简明保持角上形" },
+      { "relativeMove": "4-7", "label": "一间夹", "condition": "边上有支援，想主动攻击" },
+      { "relativeMove": "6-6", "label": "靠/碰", "condition": "希望快速定型或转入接触战" }
+    ],
+    "variations": [
+      "小飞应简明。",
+      "一间夹强调攻击。",
+      "二间夹强调模样。",
+      "靠压进入接触战。",
+      "对方反夹后看气数与断点。",
+      "AI 线可能更重全局脱先。",
+      "优势局面可避免复杂化。"
+    ],
+    "recognition": "高挂比低挂更强调边上空间和外势方向，夹击是否成立要看周边强弱。",
+    "wrongThinking": "只因为看到高挂就夹击，没有确认自己能不能承受反击。",
+    "correctThinking": "先看夹击后对方逃向哪里，再看自己攻击能得到空、厚势还是先手。",
+    "drillPrompt": "如果夹击，对方最自然的逃跑方向是哪边？你能得到什么？"
+  },
+  {
+    "id": "joseki-komoku-low-approach-kick",
+    "name": "小目低挂：托退/尖顶/拆边定式族",
+    "family": "komoku_low_approach",
+    "boardSize": 19,
+    "sourceRefs": ["wikibooks-go", "kogo-joseki-dictionary", "goagent-curated-original"],
+    "sourceQuality": "curated-with-legacy-reference",
+    "requiredRelativeStones": ["3-4", "3-6"],
+    "sequenceSignals": ["小目", "低挂", "小飞挂", "komoku", "low approach"],
+    "variationCount": 9,
+    "commonNextMoves": [
+      { "relativeMove": "4-3", "label": "尖顶/踢", "condition": "想简明保角并限制挂角棋" },
+      { "relativeMove": "5-3", "label": "小飞守", "condition": "稳健守角，保留边上余味" },
+      { "relativeMove": "3-7", "label": "夹击", "condition": "外侧有支援，想攻击低挂棋" }
+    ],
+    "variations": [
+      "尖顶后对方长出。",
+      "小飞守角。",
+      "一间低夹。",
+      "二间高夹。",
+      "托退变化。",
+      "双方拆边。",
+      "AI 脱先线。",
+      "反夹战斗。",
+      "优势简明线。"
+    ],
+    "recognition": "小目低挂的核心是守角、限制挂角棋、或选择夹击主动权。",
+    "wrongThinking": "只按记忆走小目定式，不看挂角一方下一步拆边是否很舒服。",
+    "correctThinking": "先看自己角上安全，再看边上拆点与外面棋强弱，最后决定守、夹、靠或脱先。",
+    "drillPrompt": "这次小目被挂，你是要保角还是夹击？说出全局理由。"
+  },
+  {
+    "id": "joseki-komoku-high-approach-pincer",
+    "name": "小目高挂：夹击/飞应/靠压定式族",
+    "family": "komoku_high_approach",
+    "boardSize": 19,
+    "sourceRefs": ["wikibooks-go", "kogo-joseki-dictionary", "goagent-curated-original"],
+    "sourceQuality": "curated-with-legacy-reference",
+    "requiredRelativeStones": ["3-4", "4-6"],
+    "sequenceSignals": ["小目高挂", "high approach", "komoku", "夹击"],
+    "variationCount": 8,
+    "commonNextMoves": [
+      { "relativeMove": "5-3", "label": "小飞应", "condition": "保持角上弹性" },
+      { "relativeMove": "3-7", "label": "夹击", "condition": "想让高挂棋难以安定" },
+      { "relativeMove": "4-4", "label": "靠/碰", "condition": "主动接触，快速定型" }
+    ],
+    "variations": ["小飞应", "一间夹", "二间夹", "靠压", "反夹", "飞压", "脱先", "AI 简明线"],
+    "recognition": "小目高挂常牵涉夹击与边上主动权，不能只看角上一手。",
+    "wrongThinking": "看到高挂就机械夹击，结果让自己的外侧棋反而变弱。",
+    "correctThinking": "先确认夹击后的战场是否对自己有利，再选择定型或战斗。",
+    "drillPrompt": "如果你夹击，对方反夹或靠出时，你的后续计划是什么？"
+  },
+  {
+    "id": "joseki-komoku-33-approach",
+    "name": "小目三三侵入：角上实地与外势交换",
+    "family": "komoku_33_invasion",
+    "boardSize": 19,
+    "sourceRefs": ["kogo-joseki-dictionary", "goagent-curated-original"],
+    "sourceQuality": "curated-with-legacy-reference",
+    "requiredRelativeStones": ["3-4", "3-3"],
+    "sequenceSignals": ["小目三三", "三三侵入", "komoku 3-3", "corner invasion"],
+    "variationCount": 5,
+    "commonNextMoves": [
+      { "relativeMove": "4-3", "label": "挡/压", "condition": "争取外势或限制角内成形" },
+      { "relativeMove": "3-4", "label": "既有小目石配合", "condition": "需要检查是否重复已有石位" },
+      { "relativeMove": "4-4", "label": "封锁方向", "condition": "外面厚势价值高时" }
+    ],
+    "variations": ["挡一边", "封锁外势", "弃角争外", "简明保角", "脱先惩罚"],
+    "recognition": "小目被三三侵入时，要判断角上实地和外面厚势哪个更有价值。",
+    "wrongThinking": "把角上每一目都看得太重，结果外面厚势没有用途。",
+    "correctThinking": "先看外面有没有可攻击对象或大模样，再决定是否强硬封锁。",
+    "drillPrompt": "这次三三侵入后，你得到的外势能用来攻击哪块棋？"
+  },
+  {
+    "id": "joseki-chinese-opening-approach-33",
+    "name": "中国流相关挂角：三三/低挂转化",
+    "family": "chinese_opening_joseki",
+    "boardSize": 19,
+    "sourceRefs": ["wikibooks-go", "goagent-curated-original"],
+    "sourceQuality": "curated-conceptual",
+    "requiredRelativeStones": ["4-4", "4-10"],
+    "sequenceSignals": ["中国流", "Chinese opening", "低中国流", "三三"],
+    "variationCount": 6,
+    "commonNextMoves": [
+      { "relativeMove": "3-3", "label": "三三侵入", "condition": "削弱模样、抢实地" },
+      { "relativeMove": "4-6", "label": "挂角", "condition": "限制边上扩张" },
+      { "relativeMove": "6-4", "label": "应角", "condition": "保持角上稳定" }
+    ],
+    "variations": ["三三削模样", "低挂限制边", "夹击构模样", "脱先抢先", "AI 简明线", "防反击线"],
+    "recognition": "中国流相关角上定式必须和边上模样一起看，局部正确不代表全局正确。",
+    "wrongThinking": "只记角上定式，不看对方中国流结构的边上价值。",
+    "correctThinking": "先判断是否要削弱边上模样，再决定三三、低挂或脱先。",
+    "drillPrompt": "对方有中国流结构时，你这次是抢角实地还是先限制边上？"
+  },
+  {
+    "id": "joseki-mini-chinese-approach",
+    "name": "迷你中国流相关挂角与反挂",
+    "family": "mini_chinese_joseki",
+    "boardSize": 19,
+    "sourceRefs": ["wikibooks-go", "goagent-curated-original"],
+    "sourceQuality": "curated-conceptual",
+    "requiredRelativeStones": ["4-4", "3-10"],
+    "sequenceSignals": ["迷你中国流", "mini chinese", "挂角", "反挂"],
+    "variationCount": 5,
+    "commonNextMoves": [
+      { "relativeMove": "4-6", "label": "挂角", "condition": "限制迷你中国流成型" },
+      { "relativeMove": "3-3", "label": "三三", "condition": "直接拿角并削弱外侧价值" },
+      { "relativeMove": "6-4", "label": "应角", "condition": "简明稳定角上" }
+    ],
+    "variations": ["挂角限制", "三三拿角", "夹击构模样", "反挂转战", "脱先抢点"],
+    "recognition": "迷你中国流的角上应法要服务于边上结构，不能只按单角定式背诵。",
+    "wrongThinking": "走出局部熟悉定式，却让对方模样自然展开。",
+    "correctThinking": "先看对方边上结构最想成什么，再选能限制它的角上变化。",
+    "drillPrompt": "这手如果按普通星位挂角应，对方边上会不会太舒服？"
+  },
+  {
+    "id": "joseki-nirensei-33-timing",
+    "name": "二连星对三三：早侵与迟侵",
+    "family": "nirensei_33_timing",
+    "boardSize": 19,
+    "sourceRefs": ["wikibooks-go", "goagent-curated-original"],
+    "sourceQuality": "curated-conceptual",
+    "requiredRelativeStones": ["4-4", "16-4"],
+    "sequenceSignals": ["二连星", "nirensei", "三三", "early 3-3"],
+    "variationCount": 4,
+    "commonNextMoves": [
+      { "relativeMove": "3-3", "label": "早三三", "condition": "抢角实地，允许对方外势" },
+      { "relativeMove": "4-6", "label": "先挂角", "condition": "限制边上联系" },
+      { "relativeMove": "10-4", "label": "分投/拆", "condition": "抢边上大场" }
+    ],
+    "variations": ["早三三", "挂角限制", "分投", "脱先大场"],
+    "recognition": "二连星下的三三时机，要比较角上实地和对方双星外势的成形速度。",
+    "wrongThinking": "看到三三就下，没看对方外势是否刚好发挥。",
+    "correctThinking": "先看对方外势有没有攻击对象；如果没有，早三三可能简明；如果有，要谨慎。",
+    "drillPrompt": "这次三三以后，对方外势会压迫哪块棋？"
+  },
+  {
+    "id": "joseki-attachment-against-hoshi",
+    "name": "星位碰/靠：接触战定式族",
+    "family": "hoshi_attachment",
+    "boardSize": 19,
+    "sourceRefs": ["kogo-joseki-dictionary", "goagent-curated-original"],
+    "sourceQuality": "curated-with-legacy-reference",
+    "requiredRelativeStones": ["4-4", "4-5"],
+    "sequenceSignals": ["碰", "靠", "attach", "attachment", "接触战"],
+    "variationCount": 7,
+    "commonNextMoves": [
+      { "relativeMove": "5-4", "label": "扳/压", "condition": "主动接触，争取外势或先手" },
+      { "relativeMove": "3-4", "label": "退/长", "condition": "简明安定角上" },
+      { "relativeMove": "4-6", "label": "反靠/长", "condition": "进入局部读法" }
+    ],
+    "variations": ["扳压", "长出", "反靠", "切断", "弃子转换", "简明定型", "复杂战斗"],
+    "recognition": "碰/靠星位通常会立刻进入接触战，关键是气数、断点和先后手。",
+    "wrongThinking": "只知道要扳，却没读清被断后的形。",
+    "correctThinking": "接触战先数气和断点，再比较哪一手能先手定型。",
+    "drillPrompt": "碰靠后先找断点：如果对方反扳，你哪块棋气紧？"
+  },
+  {
+    "id": "joseki-attachment-against-komoku",
+    "name": "小目碰/靠：托退与扳断定式族",
+    "family": "komoku_attachment",
+    "boardSize": 19,
+    "sourceRefs": ["kogo-joseki-dictionary", "goagent-curated-original"],
+    "sourceQuality": "curated-with-legacy-reference",
+    "requiredRelativeStones": ["3-4", "4-4"],
+    "sequenceSignals": ["小目碰", "托", "靠", "attach", "hane", "cut"],
+    "variationCount": 8,
+    "commonNextMoves": [
+      { "relativeMove": "5-4", "label": "扳", "condition": "争取主动但需读断点" },
+      { "relativeMove": "4-3", "label": "退/守角", "condition": "简明稳定角内" },
+      { "relativeMove": "5-3", "label": "长/压", "condition": "想取得外势" }
+    ],
+    "variations": ["托退", "扳断", "长出", "弃子", "两分", "夹击转化", "反击", "简明守角"],
+    "recognition": "小目碰靠定式常以托退、扳断、弃子转换为核心，不能只凭记忆走。",
+    "wrongThinking": "看到靠就习惯性扳，忽视对方切断后的读法。",
+    "correctThinking": "先读断点和征子，再决定强硬扳断还是简明退让。",
+    "drillPrompt": "这次靠后，如果你扳，对方切断是否成立？"
+  },
+  {
+    "id": "joseki-taisha-warning",
+    "name": "大斜相关：复杂定式警戒",
+    "family": "taisha_complex",
+    "boardSize": 19,
+    "sourceRefs": ["kogo-joseki-dictionary", "pachi-joseki-readme", "goagent-curated-original"],
+    "sourceQuality": "legacy-reference-plus-curated-warning",
+    "requiredRelativeStones": ["3-4", "5-3", "4-5"],
+    "sequenceSignals": ["大斜", "taisha", "复杂定式", "large avalanche"],
+    "variationCount": 20,
+    "commonNextMoves": [
+      { "relativeMove": "5-5", "label": "复杂战斗点", "condition": "高段/充分读法下才适合深入" },
+      { "relativeMove": "4-4", "label": "简明转化", "condition": "级位/优势时优先避免复杂化" },
+      { "relativeMove": "6-3", "label": "外侧作战", "condition": "外面有强支援时" }
+    ],
+    "variations": ["大斜主线", "弃子线", "扳断线", "反击线", "简化线", "AI 新型", "优势避战", "劣势求变", "读秒简化", "高段战斗线"],
+    "recognition": "局面进入大斜/大型复杂定式时，AI 老师应先提醒风险，不应假装背完所有变化。",
+    "wrongThinking": "为了走出熟悉名词而进入自己读不清的复杂变化。",
+    "correctThinking": "根据棋力、形势和时间选择：能读清才复杂化，优势和新手优先简明。",
+    "drillPrompt": "你能不能连续读出双方 6 手？不能的话，找简明定型手。"
+  },
+  {
+    "id": "joseki-avalanche-warning",
+    "name": "雪崩/小雪崩相关：复杂变化警戒",
+    "family": "avalanche_complex",
+    "boardSize": 19,
+    "sourceRefs": ["kogo-joseki-dictionary", "pachi-joseki-readme", "goagent-curated-original"],
+    "sourceQuality": "legacy-reference-plus-curated-warning",
+    "requiredRelativeStones": ["4-4", "4-6", "5-4", "5-5"],
+    "sequenceSignals": ["雪崩", "小雪崩", "avalanche", "复杂定式"],
+    "variationCount": 20,
+    "commonNextMoves": [
+      { "relativeMove": "6-4", "label": "主线方向", "condition": "双方都愿意复杂战斗" },
+      { "relativeMove": "3-3", "label": "简化/转换", "condition": "想避免复杂接触战时" },
+      { "relativeMove": "4-7", "label": "外侧战斗", "condition": "外侧厚势有支援" }
+    ],
+    "variations": ["小雪崩", "大雪崩", "弃子线", "简化线", "AI 新型", "劫争线", "外势线", "实地线", "优势避战", "劣势求变"],
+    "recognition": "雪崩类定式变化极多，教学上应先判断是否有必要进入复杂战斗。",
+    "wrongThinking": "背过几个变化就以为局面可控。",
+    "correctThinking": "先根据全局和棋力选择复杂度，再让 KataGo 验证具体点。",
+    "drillPrompt": "本局你是想简化、求战，还是转换？给出形势理由。"
+  },
+  {
+    "id": "joseki-shimari-approach-direction",
+    "name": "守角后的挂角方向：定式与全局方向",
+    "family": "shimari_approach_direction",
+    "boardSize": 19,
+    "sourceRefs": ["wikibooks-go", "goagent-curated-original"],
+    "sourceQuality": "curated-conceptual",
+    "requiredRelativeStones": ["3-4", "5-3"],
+    "sequenceSignals": ["守角", "小飞守", "大飞守", "挂角方向", "shimari"],
+    "variationCount": 6,
+    "commonNextMoves": [
+      { "relativeMove": "3-6", "label": "低挂", "condition": "想争边上实地或限制守角" },
+      { "relativeMove": "4-6", "label": "高挂", "condition": "想重视外势和边上空间" },
+      { "relativeMove": "6-4", "label": "碰靠", "condition": "想制造接触战或快速定型" }
+    ],
+    "variations": ["低挂", "高挂", "碰靠", "拆边", "三三", "脱先"],
+    "recognition": "对已有守角的挂角，关键是从哪边挂才能破坏对方整体结构。",
+    "wrongThinking": "只看单角定式，不看守角已经指向哪条边。",
+    "correctThinking": "先看对方守角想控制的方向，再从能破坏它的方向挂。",
+    "drillPrompt": "这个守角最想发展哪条边？你的挂角方向能不能限制它？"
+  },
+  {
+    "id": "joseki-corner-enclosure-timing",
+    "name": "守角时机：小飞守/大飞守/脱先",
+    "family": "corner_enclosure_timing",
+    "boardSize": 19,
+    "sourceRefs": ["wikibooks-go", "goagent-curated-original"],
+    "sourceQuality": "curated-conceptual",
+    "requiredRelativeStones": ["3-4"],
+    "sequenceSignals": ["守角", "小飞守", "大飞守", "shimari", "enclosure", "脱先"],
+    "variationCount": 5,
+    "commonNextMoves": [
+      { "relativeMove": "5-3", "label": "小飞守", "condition": "稳健保角，防低挂" },
+      { "relativeMove": "6-3", "label": "大飞守", "condition": "更大但留有被侵入余味" },
+      { "relativeMove": "10-4", "label": "脱先抢大场", "condition": "角上不急、全局大场更大时" }
+    ],
+    "variations": ["小飞守", "大飞守", "单关守", "脱先", "被挂角后应对"],
+    "recognition": "守角本身不等于好棋，要比较守角收益和全局大场/急所。",
+    "wrongThinking": "觉得角还没守就必须守，错过全局更大的点。",
+    "correctThinking": "先问不守角会不会立刻被惩罚；如果不会，再比较全局大场。",
+    "drillPrompt": "这手守角和另一边大场相比，哪一个更急？"
+  },
+  {
+    "id": "joseki-33-opening-followup",
+    "name": "三三开局后的边上展开",
+    "family": "33_opening_followup",
+    "boardSize": 19,
+    "sourceRefs": ["wikibooks-go", "goagent-curated-original"],
+    "sourceQuality": "curated-conceptual",
+    "requiredRelativeStones": ["3-3"],
+    "sequenceSignals": ["三三开局", "3-3 opening", "边上展开", "守角"],
+    "variationCount": 4,
+    "commonNextMoves": [
+      { "relativeMove": "5-3", "label": "边上展开", "condition": "补足三三角的外侧弱点" },
+      { "relativeMove": "3-5", "label": "另一侧展开", "condition": "配合另一边大场" },
+      { "relativeMove": "10-4", "label": "脱先大场", "condition": "角已安定但边上价值不高时" }
+    ],
+    "variations": ["边上展开", "双向展开", "脱先", "被压迫后补形"],
+    "recognition": "三三开局实地安定，但外势薄，后续要考虑边上展开和全局速度。",
+    "wrongThinking": "以为三三安全就不断补角，导致全局速度慢。",
+    "correctThinking": "角上安全后尽快看边上展开和大场，不要无意义补强。",
+    "drillPrompt": "三三已经活稳后，下一手该补角还是抢边？"
+  },
+  {
+    "id": "joseki-side-extension-after-corner",
+    "name": "角上定型后的拆边距离",
+    "family": "extension_after_joseki",
+    "boardSize": 19,
+    "sourceRefs": ["wikibooks-go", "goagent-curated-original"],
+    "sourceQuality": "curated-conceptual",
+    "requiredRelativeStones": ["4-4", "6-4"],
+    "sequenceSignals": ["拆边", "extension", "定式后续", "二间拆", "三间拆"],
+    "variationCount": 6,
+    "commonNextMoves": [
+      { "relativeMove": "10-4", "label": "三间/大拆", "condition": "边上开阔且没有被打入风险" },
+      { "relativeMove": "9-4", "label": "二间拆", "condition": "更稳，适合对方可攻击时" },
+      { "relativeMove": "4-10", "label": "换方向", "condition": "另一侧更大或有急所" }
+    ],
+    "variations": ["二间拆", "三间拆", "大拆", "跳出", "脱先", "反挂"],
+    "recognition": "定式后的拆边距离要看对方是否能打入和自己是否需要速度。",
+    "wrongThinking": "只凭固定距离拆边，不看对方下一手打入是否严厉。",
+    "correctThinking": "先看稳定性，再看速度；领先时稳，落后或抢模样时可大。",
+    "drillPrompt": "这次拆边选二间还是三间？对方打入是否严厉？"
+  },
+  {
+    "id": "joseki-tenuki-punishment",
+    "name": "定式中脱先：是否会被惩罚",
+    "family": "joseki_tenuki_punishment",
+    "boardSize": 19,
+    "sourceRefs": ["pachi-joseki-readme", "goagent-curated-original"],
+    "sourceQuality": "engineering-reference-plus-curated",
+    "requiredRelativeStones": ["4-4", "4-6"],
+    "sequenceSignals": ["脱先", "tenuki", "定式没走完", "后续", "惩罚"],
+    "variationCount": 6,
+    "commonNextMoves": [
+      { "relativeMove": "6-4", "label": "补完定式", "condition": "局部未安定且被惩罚严重" },
+      { "relativeMove": "10-10", "label": "脱先大场", "condition": "局部损失小且全局急所更大" },
+      { "relativeMove": "3-3", "label": "反击/转换", "condition": "对方也有角上弱点时" }
+    ],
+    "variations": ["补完", "脱先", "被逼住", "被切断", "反击", "交换后再脱先"],
+    "recognition": "定式中是否能脱先，不靠记忆，而看被对方下一手惩罚后的损失。",
+    "wrongThinking": "觉得定式必须走完，或反过来随便脱先。",
+    "correctThinking": "先找对方最严厉的惩罚手，再比较它和全局大场的价值。",
+    "drillPrompt": "如果你现在脱先，对方下一手最严厉的惩罚在哪里？"
+  },
+  {
+    "id": "joseki-bad-variation-warning",
+    "name": "定式疑似错型：AI 候选与常见变化冲突",
+    "family": "joseki_bad_variation",
+    "boardSize": 19,
+    "sourceRefs": ["pachi-joseki-readme", "katago-analysis-engine-docs", "goagent-curated-original"],
+    "sourceQuality": "engine-validated-curated",
+    "requiredRelativeStones": ["4-4"],
+    "sequenceSignals": ["错定式", "俗手", "bad joseki", "亏损", "疑问手"],
+    "variationCount": 4,
+    "commonNextMoves": [
+      { "relativeMove": "candidate-1", "label": "KataGo 首选", "condition": "必须以当前 KataGo 候选为准" },
+      { "relativeMove": "candidate-2", "label": "可选变化", "condition": "候选差距小于阈值时" },
+      { "relativeMove": "avoid", "label": "避免机械背定式", "condition": "若局部记忆与全局证据冲突" }
+    ],
+    "variations": ["AI 首选修正", "传统变化可行", "局部俗手", "全局例外"],
+    "recognition": "如果定式记忆与 KataGo 当前证据冲突，老师应优先解释当前局面为什么例外。",
+    "wrongThinking": "用定式名压过当前局面证据。",
+    "correctThinking": "先看 KataGo 候选和损失，再把定式当作解释背景而非裁判。",
+    "drillPrompt": "这一步为什么不是“照定式走”就行？找出全局例外条件。"
+  }
+]

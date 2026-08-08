@@ -36,6 +36,20 @@ public final class TeacherSettings {
   private boolean loaded;
   private char[] sessionApiKey = new char[0];
 
+  // ---- Teaching preferences (讲解设置：等级/风格/术语密度/节奏/变化细节) ----
+  /** "k"=级位（18k~1k），"d"=段位（1d~9d）。 */
+  private String rankMode = "k";
+  /** 数字部分：级位 1-18，段位 1-9。 */
+  private int rankNum = 5;
+  /** 0=平衡自然 1=严谨细致 2=亲切耐心 3=严格专业 4=风趣幽默。 */
+  private int styleIndex = 0;
+  /** 0=少 1=中 2=多。 */
+  private int densityIndex = 1;
+  /** 0=简洁 1=标准 2=细讲。 */
+  private int paceIndex = 1;
+  /** 0=少讲 1=适中 2=详细。 */
+  private int variationIndex = 1;
+
   public static TeacherSettings createDefault() {
     Path workDirectory = Config.resolvedWorkDirPath();
     CredentialStore store =
@@ -62,6 +76,12 @@ public final class TeacherSettings {
     baseUrl = validateBaseUrl(properties.getProperty("baseUrl", DEFAULT_BASE_URL));
     model = validateModel(properties.getProperty("model", DEFAULT_MODEL));
     rememberApiKey = Boolean.parseBoolean(properties.getProperty("rememberApiKey", "false"));
+    rankMode = "d".equals(properties.getProperty("teacher.rankMode", "k")) ? "d" : "k";
+    rankNum = clampInt(properties.getProperty("teacher.rankNum", "5"), 1, 18, 5);
+    styleIndex = clampInt(properties.getProperty("teacher.styleIndex", "0"), 0, 4, 0);
+    densityIndex = clampInt(properties.getProperty("teacher.densityIndex", "1"), 0, 2, 1);
+    paceIndex = clampInt(properties.getProperty("teacher.paceIndex", "1"), 0, 2, 1);
+    variationIndex = clampInt(properties.getProperty("teacher.variationIndex", "1"), 0, 2, 1);
 
     // Builds before this integration stored the key in plaintext. Keep it for this process only,
     // remove it from disk immediately, and let the user explicitly opt into native storage.
@@ -135,7 +155,41 @@ public final class TeacherSettings {
         rememberApiKey,
         sessionApiKey.length > 0,
         credentialStore.isAvailable(),
-        credentialStore.backendName());
+        credentialStore.backendName(),
+        rankMode,
+        rankNum,
+        styleIndex,
+        densityIndex,
+        paceIndex,
+        variationIndex);
+  }
+
+  /** 保存讲解设置（等级/风格/术语密度/节奏/变化细节），不触碰 LLM 凭据。 */
+  public synchronized void saveTeachingPreferences(
+      String requestedRankMode,
+      int requestedRankNum,
+      int requestedStyleIndex,
+      int requestedDensityIndex,
+      int requestedPaceIndex,
+      int requestedVariationIndex)
+      throws IOException {
+    rankMode = "d".equals(requestedRankMode) ? "d" : "k";
+    rankNum = clampInt(String.valueOf(requestedRankNum), 1, 18, 5);
+    styleIndex = clampInt(String.valueOf(requestedStyleIndex), 0, 4, 0);
+    densityIndex = clampInt(String.valueOf(requestedDensityIndex), 0, 2, 1);
+    paceIndex = clampInt(String.valueOf(requestedPaceIndex), 0, 2, 1);
+    variationIndex = clampInt(String.valueOf(requestedVariationIndex), 0, 2, 1);
+    loaded = true;
+    writeProperties(sanitizedProperties());
+  }
+
+  private static int clampInt(String value, int min, int max, int fallback) {
+    try {
+      int parsed = Integer.parseInt(value);
+      return Math.max(min, Math.min(max, parsed));
+    } catch (NumberFormatException ignored) {
+      return fallback;
+    }
   }
 
   public synchronized Optional<String> apiKey() {
@@ -155,6 +209,12 @@ public final class TeacherSettings {
     properties.setProperty("baseUrl", baseUrl);
     properties.setProperty("model", model);
     properties.setProperty("rememberApiKey", Boolean.toString(rememberApiKey));
+    properties.setProperty("teacher.rankMode", rankMode);
+    properties.setProperty("teacher.rankNum", String.valueOf(rankNum));
+    properties.setProperty("teacher.styleIndex", String.valueOf(styleIndex));
+    properties.setProperty("teacher.densityIndex", String.valueOf(densityIndex));
+    properties.setProperty("teacher.paceIndex", String.valueOf(paceIndex));
+    properties.setProperty("teacher.variationIndex", String.valueOf(variationIndex));
     return properties;
   }
 
@@ -253,6 +313,12 @@ public final class TeacherSettings {
     public final boolean hasApiKey;
     public final boolean secureStorageAvailable;
     public final String secureStorageBackend;
+    public final String rankMode;
+    public final int rankNum;
+    public final int styleIndex;
+    public final int densityIndex;
+    public final int paceIndex;
+    public final int variationIndex;
 
     Snapshot(
         String baseUrl,
@@ -260,13 +326,25 @@ public final class TeacherSettings {
         boolean rememberApiKey,
         boolean hasApiKey,
         boolean secureStorageAvailable,
-        String secureStorageBackend) {
+        String secureStorageBackend,
+        String rankMode,
+        int rankNum,
+        int styleIndex,
+        int densityIndex,
+        int paceIndex,
+        int variationIndex) {
       this.baseUrl = baseUrl;
       this.model = model;
       this.rememberApiKey = rememberApiKey;
       this.hasApiKey = hasApiKey;
       this.secureStorageAvailable = secureStorageAvailable;
       this.secureStorageBackend = secureStorageBackend;
+      this.rankMode = rankMode;
+      this.rankNum = rankNum;
+      this.styleIndex = styleIndex;
+      this.densityIndex = densityIndex;
+      this.paceIndex = paceIndex;
+      this.variationIndex = variationIndex;
     }
   }
 }

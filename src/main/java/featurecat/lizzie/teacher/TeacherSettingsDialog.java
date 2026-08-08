@@ -21,9 +21,12 @@ import javax.swing.JDialog;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.JPasswordField;
+import javax.swing.JScrollPane;
+import javax.swing.JSpinner;
 import javax.swing.JTextArea;
 import javax.swing.JTextField;
 import javax.swing.KeyStroke;
+import javax.swing.SpinnerNumberModel;
 import javax.swing.SwingUtilities;
 import javax.swing.SwingWorker;
 import javax.swing.UIManager;
@@ -39,6 +42,43 @@ final class TeacherSettingsDialog extends JDialog {
       new JCheckBox(TeacherStrings.get("Teacher.settings.showKey", "Show API key"));
   private final JCheckBox rememberApiKey =
       new JCheckBox(TeacherStrings.get("Teacher.settings.rememberKey", "Remember securely"));
+  private final JComboBox<String> rankModeBox =
+      new JComboBox<>(
+          new String[] {
+            TeacherStrings.get("Teacher.settings.rank.kyu", "Kyu"),
+            TeacherStrings.get("Teacher.settings.rank.dan", "Dan")
+          });
+  private final JSpinner rankNumSpinner = new JSpinner(new SpinnerNumberModel(5, 1, 18, 1));
+  private final JComboBox<String> styleBox =
+      new JComboBox<>(
+          new String[] {
+            TeacherStrings.get("Teacher.settings.style.balanced", "Balanced"),
+            TeacherStrings.get("Teacher.settings.style.rigorous", "Rigorous"),
+            TeacherStrings.get("Teacher.settings.style.patient", "Patient"),
+            TeacherStrings.get("Teacher.settings.style.strict", "Strict"),
+            TeacherStrings.get("Teacher.settings.style.humorous", "Humorous")
+          });
+  private final JComboBox<String> densityBox =
+      new JComboBox<>(
+          new String[] {
+            TeacherStrings.get("Teacher.settings.density.low", "Low"),
+            TeacherStrings.get("Teacher.settings.density.medium", "Medium"),
+            TeacherStrings.get("Teacher.settings.density.high", "High")
+          });
+  private final JComboBox<String> paceBox =
+      new JComboBox<>(
+          new String[] {
+            TeacherStrings.get("Teacher.settings.pace.brief", "Brief"),
+            TeacherStrings.get("Teacher.settings.pace.standard", "Standard"),
+            TeacherStrings.get("Teacher.settings.pace.detailed", "Detailed")
+          });
+  private final JComboBox<String> variationBox =
+      new JComboBox<>(
+          new String[] {
+            TeacherStrings.get("Teacher.settings.variation.few", "Few"),
+            TeacherStrings.get("Teacher.settings.variation.moderate", "Moderate"),
+            TeacherStrings.get("Teacher.settings.variation.many", "Many")
+          });
   private final JLabel status = new JLabel(" ");
   private final JButton refreshModels =
       new JButton(TeacherStrings.get("Teacher.settings.refreshModels", "Refresh models"));
@@ -107,8 +147,30 @@ final class TeacherSettingsDialog extends JDialog {
     modelRow.add(refreshModels, BorderLayout.EAST);
     addRow(form, constraints, 2, modelLabel, modelRow);
 
+    JLabel rankLabel = new JLabel(TeacherStrings.get("Teacher.settings.rankLevel", "Level"));
+    JLabel styleLabel = new JLabel(TeacherStrings.get("Teacher.settings.style", "Style"));
+    JLabel terminologyLabel =
+        new JLabel(TeacherStrings.get("Teacher.settings.terminology", "Terminology"));
+    JLabel paceLabel = new JLabel(TeacherStrings.get("Teacher.settings.pace", "Pace"));
+    JLabel variationLabel =
+        new JLabel(TeacherStrings.get("Teacher.settings.variation", "Variation"));
+    rankLabel.setLabelFor(rankNumSpinner);
+    styleLabel.setLabelFor(styleBox);
+    terminologyLabel.setLabelFor(densityBox);
+    paceLabel.setLabelFor(paceBox);
+    variationLabel.setLabelFor(variationBox);
+
+    JPanel rankRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 0));
+    rankRow.add(rankModeBox);
+    rankRow.add(rankNumSpinner);
+    addRow(form, constraints, 3, rankLabel, rankRow);
+    addRow(form, constraints, 4, styleLabel, styleBox);
+    addRow(form, constraints, 5, terminologyLabel, densityBox);
+    addRow(form, constraints, 6, paceLabel, paceBox);
+    addRow(form, constraints, 7, variationLabel, variationBox);
+
     constraints.gridx = 1;
-    constraints.gridy = 3;
+    constraints.gridy = 8;
     constraints.weightx = 1.0;
     form.add(rememberApiKey, constraints);
 
@@ -121,10 +183,10 @@ final class TeacherSettingsDialog extends JDialog {
                 + TeacherStrings.get(
                     "Teacher.settings.dataNotice",
                     "Only the selected KataGo analysis summary and your question are sent to this API; the complete SGF is not uploaded."));
-    constraints.gridy = 4;
+    constraints.gridy = 9;
     form.add(privacy, constraints);
 
-    constraints.gridy = 5;
+    constraints.gridy = 10;
     form.add(status, constraints);
 
     JPanel buttons = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 8));
@@ -192,6 +254,12 @@ final class TeacherSettingsDialog extends JDialog {
           modelBox.addItem(snapshot.model);
           modelBox.setSelectedItem(snapshot.model);
           rememberApiKey.setSelected(snapshot.rememberApiKey);
+          rankModeBox.setSelectedIndex("d".equals(snapshot.rankMode) ? 1 : 0);
+          rankNumSpinner.setValue(snapshot.rankNum);
+          styleBox.setSelectedIndex(clampIndex(snapshot.styleIndex, 4));
+          densityBox.setSelectedIndex(clampIndex(snapshot.densityIndex, 2));
+          paceBox.setSelectedIndex(clampIndex(snapshot.paceIndex, 2));
+          variationBox.setSelectedIndex(clampIndex(snapshot.variationIndex, 2));
           apiKeyField.setText(loaded.apiKey);
           if (!snapshot.secureStorageAvailable) {
             rememberApiKey.setToolTipText(
@@ -268,6 +336,13 @@ final class TeacherSettingsDialog extends JDialog {
     new SwingWorker<TeacherSettings.Snapshot, Void>() {
       @Override
       protected TeacherSettings.Snapshot doInBackground() throws Exception {
+        settings.saveTeachingPreferences(
+            rankModeBox.getSelectedIndex() == 1 ? "d" : "k",
+            ((Number) rankNumSpinner.getValue()).intValue(),
+            styleBox.getSelectedIndex(),
+            densityBox.getSelectedIndex(),
+            paceBox.getSelectedIndex(),
+            variationBox.getSelectedIndex());
         return settings.save(requestedBaseUrl, requestedModel, key, requestedRemember);
       }
 
@@ -294,8 +369,18 @@ final class TeacherSettingsDialog extends JDialog {
     modelBox.setEnabled(enabled);
     showApiKey.setEnabled(enabled);
     rememberApiKey.setEnabled(enabled);
+    rankModeBox.setEnabled(enabled);
+    rankNumSpinner.setEnabled(enabled);
+    styleBox.setEnabled(enabled);
+    densityBox.setEnabled(enabled);
+    paceBox.setEnabled(enabled);
+    variationBox.setEnabled(enabled);
     refreshModels.setEnabled(enabled);
     saveButton.setEnabled(enabled);
+  }
+
+  private static int clampIndex(int value, int max) {
+    return Math.max(0, Math.min(max, value));
   }
 
   private String selectedModel() {

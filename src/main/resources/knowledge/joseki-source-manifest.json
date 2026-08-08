@@ -1,0 +1,35 @@
+[
+  {
+    "id": "pachi-joseki-gpl2",
+    "title": "Pachi joseki SGF set",
+    "bundled": true,
+    "license": "GPL-2.0-only",
+    "sourceUrl": "https://github.com/pasky/pachi/tree/master/joseki",
+    "includedFiles": [
+      "joseki_33.sgf",
+      "joseki_34.sgf",
+      "joseki_44.sgf",
+      "joseki_54.sgf"
+    ],
+    "usePolicy": "Bundled as third-party GPL data with COPYING notice; preserve notices in release packages."
+  },
+  {
+    "id": "josekle-mit-dictionary",
+    "title": "Josekle dictionary SGF",
+    "bundled": true,
+    "license": "MIT",
+    "sourceUrl": "https://github.com/okonomichiyaki/josekle/tree/master/sgf",
+    "includedFiles": [
+      "dictionary.sgf"
+    ],
+    "usePolicy": "Bundled as third-party MIT data with license notice."
+  },
+  {
+    "id": "kogo-joseki-dictionary",
+    "title": "Kogo's Joseki Dictionary",
+    "bundled": false,
+    "license": "copyright notice requires permission before distribution",
+    "sourceUrl": "https://waterfire.us/joseki.htm",
+    "usePolicy": "Not bundled. The public SGF contains an explicit distribution warning and asks distributors to request permission."
+  }
+]

@@ -1,0 +1,1075 @@
+[
+  {
+    "id": "direction_local_gain_global_loss",
+    "title": "局部便宜不等于全局好",
+    "kind": "concept",
+    "phase": [
+      "opening",
+      "middlegame"
+    ],
+    "errorTypes": [
+      "direction"
+    ],
+    "tags": [
+      "方向感",
+      "大局观"
+    ],
+    "katagoSignals": [],
+    "boardSignals": [],
+    "summary": "很多失误不是局部算错，而是把注意力放在了不该优先的地方。",
+    "coachShort": "你这手的问题不在局部有没有便宜，而在全局方向走反了。",
+    "coachLong": "当对方外围已经厚，而你继续在局部小便宜上纠缠时，常会出现局部似乎没亏、全局其实更差。",
+    "drill": "复盘时先回答：盘上最大点在哪？对方最想走哪？我这手是在抢地、抢先手还是补效率？",
+    "related": []
+  },
+  {
+    "id": "direction_wrong_side",
+    "title": "方向错误比算错更常见",
+    "kind": "error_type",
+    "phase": [
+      "opening",
+      "middlegame"
+    ],
+    "errorTypes": [
+      "direction"
+    ],
+    "tags": [
+      "方向感",
+      "判断"
+    ],
+    "katagoSignals": [],
+    "boardSignals": [],
+    "summary": "业余棋中很多大损不是读秒内算错，而是从一开始就选错了战场。",
+    "coachShort": "这不是简单算错，是方向判断先出了问题。",
+    "coachLong": "方向错误会让后续每一步都在低效区域补救，KataGo 推荐远离局部时通常要先怀疑方向。",
+    "drill": "每盘只找一个方向错误，写下当时为什么被局部吸引。",
+    "related": []
+  },
+  {
+    "id": "direction_thickness_outside",
+    "title": "有厚走外，没厚走实",
+    "kind": "position_pattern",
+    "phase": [
+      "opening",
+      "middlegame"
+    ],
+    "errorTypes": [
+      "direction"
+    ],
+    "tags": [
+      "厚薄",
+      "方向感"
+    ],
+    "katagoSignals": [],
+    "boardSignals": [],
+    "summary": "厚势的价值在于向外控制和制造未来收益。",
+    "coachShort": "你有厚就该把力量兑现到外面，而不是继续在小地方打转。",
+    "coachLong": "有厚还回头补小处，会把厚势变成没有后续的重棋。",
+    "drill": "挑三盘自己有厚却没往外走的例子，标注当时应该看的外部点。",
+    "related": []
+  },
+  {
+    "id": "direction_against_thickness",
+    "title": "不要逆着对方厚势行棋",
+    "kind": "position_pattern",
+    "phase": [
+      "opening",
+      "middlegame"
+    ],
+    "errorTypes": [
+      "direction"
+    ],
+    "tags": [
+      "厚势",
+      "安全"
+    ],
+    "katagoSignals": [],
+    "boardSignals": [],
+    "summary": "逆着对方厚势行棋，容易让自己的棋变薄并被连续攻击。",
+    "coachShort": "这里不该往对方厚的地方硬撞。",
+    "coachLong": "对方厚的一侧意味着对方后续手段多，你若在那里开战，局部看似积极，整体风险很高。",
+    "drill": "复盘时把对方厚势标出来，问自己有没有主动走进对方力量范围。",
+    "related": []
+  },
+  {
+    "id": "direction_big_point_priority",
+    "title": "拆边与抢大场的优先级",
+    "kind": "concept",
+    "phase": [
+      "opening"
+    ],
+    "errorTypes": [
+      "direction"
+    ],
+    "tags": [
+      "布局",
+      "大场"
+    ],
+    "katagoSignals": [],
+    "boardSignals": [],
+    "summary": "布局阶段要比较拆边、挂角、守角、逼迫的全局价值。",
+    "coachShort": "这手小处处理过早，盘面更大的方向被放掉了。",
+    "coachLong": "开局阶段的失分常来自先后顺序错误，不是招法本身完全不能下。",
+    "drill": "复盘前 50 手时，每手只问：这是不是当时盘上最大方向？",
+    "related": []
+  },
+  {
+    "id": "direction_advantage_reduce_risk",
+    "title": "优势局先压缩风险",
+    "kind": "training",
+    "phase": [
+      "middlegame",
+      "endgame"
+    ],
+    "errorTypes": [
+      "advantage"
+    ],
+    "tags": [
+      "优势局",
+      "风险"
+    ],
+    "katagoSignals": [],
+    "boardSignals": [],
+    "summary": "优势局最重要的是避免给对方制造复杂化机会。",
+    "coachShort": "你已经领先了，这里不需要再主动制造新战场。",
+    "coachLong": "优势时应优先补最大风险点，而不是追求局部继续扩大收益。",
+    "drill": "把优势局错手单独记录，标注是贪、缓，还是开了不必要的战斗。",
+    "related": []
+  },
+  {
+    "id": "thickness_not_territory",
+    "title": "厚不是地，是未来的力量",
+    "kind": "concept",
+    "phase": [
+      "opening",
+      "middlegame"
+    ],
+    "errorTypes": [
+      "thickness"
+    ],
+    "tags": [
+      "厚薄",
+      "外势"
+    ],
+    "katagoSignals": [],
+    "boardSignals": [],
+    "summary": "厚势不能只按眼前实地计算，它是未来攻击、扩张、压迫的资本。",
+    "coachShort": "这块厚棋的价值不在这里马上围多少地，而在后续能压迫哪里。",
+    "coachLong": "如果把厚势只当成局部实地，就容易补得过重、方向走小。",
+    "drill": "每次复盘厚势时写下：它下一步能影响哪三处？",
+    "related": []
+  },
+  {
+    "id": "thickness_thin_no_fight",
+    "title": "薄棋不该主动找战斗",
+    "kind": "error_type",
+    "phase": [
+      "middlegame"
+    ],
+    "errorTypes": [
+      "thickness"
+    ],
+    "tags": [
+      "薄棋",
+      "战斗"
+    ],
+    "katagoSignals": [],
+    "boardSignals": [],
+    "summary": "自己薄时主动开战，经常会把局面复杂化到自己无法承受。",
+    "coachShort": "你这块还没安定，不该主动把战斗升级。",
+    "coachLong": "KataGo 若推荐先整形或脱先，通常说明继续战斗的收益不足以覆盖自身风险。",
+    "drill": "遇到薄棋先列出：逃、补、弃、转换四个选择。",
+    "related": []
+  },
+  {
+    "id": "attack_to_profit",
+    "title": "攻击的目的不是杀，而是得利",
+    "kind": "concept",
+    "phase": [
+      "middlegame"
+    ],
+    "errorTypes": [
+      "attack"
+    ],
+    "tags": [
+      "攻击",
+      "转换"
+    ],
+    "katagoSignals": [],
+    "boardSignals": [],
+    "summary": "攻击不是一定要杀棋，而是通过威胁获得实地、厚势或先手。",
+    "coachShort": "这里不要只想着杀，攻击的目标应该是顺势得利。",
+    "coachLong": "业余常见问题是把攻击理解成追杀，导致自己也走重。",
+    "drill": "复盘攻击时写下这次攻击实际想得到什么：地、厚、先手还是破坏。",
+    "related": []
+  },
+  {
+    "id": "attack_not_heavy",
+    "title": "攻击时别把自己走重",
+    "kind": "error_type",
+    "phase": [
+      "middlegame"
+    ],
+    "errorTypes": [
+      "attack"
+    ],
+    "tags": [
+      "攻击",
+      "重棋"
+    ],
+    "katagoSignals": [],
+    "boardSignals": [],
+    "summary": "攻击若每手都贴身追，可能把自己的棋也走成重棋。",
+    "coachShort": "你在攻击对方，但自己的棋也越来越重了。",
+    "coachLong": "好的攻击应该让对方难受，同时保持自己灵活，而不是双方一起变重。",
+    "drill": "找出一盘追杀失败的棋，标注哪一步开始自己也走重。",
+    "related": []
+  },
+  {
+    "id": "attack_borrow_force",
+    "title": "看到对方重，要先想借力",
+    "kind": "position_pattern",
+    "phase": [
+      "middlegame"
+    ],
+    "errorTypes": [
+      "attack"
+    ],
+    "tags": [
+      "攻击",
+      "借力"
+    ],
+    "katagoSignals": [],
+    "boardSignals": [],
+    "summary": "对方重棋是可被利用的资源，未必需要马上吃掉。",
+    "coachShort": "对方已经重了，你可以借它来扩张，而不是急着硬杀。",
+    "coachLong": "利用对方重棋可以获得外围、先手或官子价值。",
+    "drill": "练习把重棋旁边的可借力方向圈出来。",
+    "related": []
+  },
+  {
+    "id": "thin_shape_first",
+    "title": "看到自己薄，要先想整形",
+    "kind": "position_pattern",
+    "phase": [
+      "middlegame"
+    ],
+    "errorTypes": [
+      "thickness"
+    ],
+    "tags": [
+      "整形",
+      "薄棋"
+    ],
+    "katagoSignals": [],
+    "boardSignals": [],
+    "summary": "薄棋优先目标通常是整形和降低被攻击价值。",
+    "coachShort": "这手应该先让自己的棋变轻、变安全。",
+    "coachLong": "薄棋盲目抢利益会给对方攻击目标。",
+    "drill": "每盘记录一次薄棋处理，判断是补、逃、弃还是转换。",
+    "related": []
+  },
+  {
+    "id": "shape_bad_shape_cost",
+    "title": "愚形不是不能下，是代价高",
+    "kind": "concept",
+    "phase": [
+      "opening",
+      "middlegame"
+    ],
+    "errorTypes": [
+      "shape"
+    ],
+    "tags": [
+      "棋形",
+      "效率"
+    ],
+    "katagoSignals": [],
+    "boardSignals": [],
+    "summary": "愚形的问题是效率低，会让后续多花手数补救。",
+    "coachShort": "这手不是绝对不能下，而是效率太低。",
+    "coachLong": "KataGo 对形状的惩罚往往体现在后续主动权和补棋负担上。",
+    "drill": "复盘时把自己最难看的三个形标出来，问是否有更轻的形。",
+    "related": []
+  },
+  {
+    "id": "shape_connect_cut_efficiency",
+    "title": "粘与断的效率判断",
+    "kind": "concept",
+    "phase": [
+      "middlegame"
+    ],
+    "errorTypes": [
+      "shape"
+    ],
+    "tags": [
+      "棋形",
+      "连接"
+    ],
+    "katagoSignals": [],
+    "boardSignals": [],
+    "summary": "粘和断不是本能选择，要比较连接价值与先手价值。",
+    "coachShort": "这里不能只凭“怕断”就粘，要看粘完有没有后续价值。",
+    "coachLong": "过度连接常会损失先手；盲目断又可能让自己变薄。",
+    "drill": "做 10 个局面，只判断该粘、该断，还是该脱先。",
+    "related": []
+  },
+  {
+    "id": "shape_best_fix_point",
+    "title": "补棋要补在最有效的点",
+    "kind": "position_pattern",
+    "phase": [
+      "middlegame",
+      "endgame"
+    ],
+    "errorTypes": [
+      "shape"
+    ],
+    "tags": [
+      "补棋",
+      "效率"
+    ],
+    "katagoSignals": [],
+    "boardSignals": [],
+    "summary": "补棋不是越厚越好，而是用最少手数解决最大风险。",
+    "coachShort": "你这手补到了，但补得不够有效。",
+    "coachLong": "低效补棋会让你花一手却没有明显降低风险。",
+    "drill": "复盘每个补棋点，问它解决了哪一个具体问题。",
+    "related": []
+  },
+  {
+    "id": "shape_overdefense",
+    "title": "重复补强是常见失分点",
+    "kind": "error_type",
+    "phase": [
+      "middlegame",
+      "endgame"
+    ],
+    "errorTypes": [
+      "shape"
+    ],
+    "tags": [
+      "补强",
+      "过缓"
+    ],
+    "katagoSignals": [],
+    "boardSignals": [],
+    "summary": "已经安全的地方继续补，会把主动权送给对手。",
+    "coachShort": "这里已经够安全了，再补就是过缓。",
+    "coachLong": "KataGo 常会惩罚重复补强，因为它放掉了盘上更急的点。",
+    "drill": "标记三处自己连续补同一块的棋，判断第二手是否必要。",
+    "related": []
+  },
+  {
+    "id": "shape_good_shape_future",
+    "title": "好形不是漂亮，是有后续",
+    "kind": "concept",
+    "phase": [
+      "middlegame"
+    ],
+    "errorTypes": [
+      "shape"
+    ],
+    "tags": [
+      "棋形",
+      "后续"
+    ],
+    "katagoSignals": [],
+    "boardSignals": [],
+    "summary": "好形的标准是效率、弹性和后续，不只是看起来漂亮。",
+    "coachShort": "这手看着规矩，但后续不够好。",
+    "coachLong": "真正的好形应同时减少风险、保留主动和制造后续。",
+    "drill": "复盘时对每个形问：它下一手有什么后续？",
+    "related": []
+  },
+  {
+    "id": "shape_before_reading",
+    "title": "棋形问题常常先于算路",
+    "kind": "error_type",
+    "phase": [
+      "middlegame"
+    ],
+    "errorTypes": [
+      "shape"
+    ],
+    "tags": [
+      "棋形",
+      "算路"
+    ],
+    "katagoSignals": [],
+    "boardSignals": [],
+    "summary": "很多战斗读不清，其实是前面形状已埋下低效。",
+    "coachShort": "不是你这一步才读错，而是前面形状让你很难下。",
+    "coachLong": "形状差会让后续变化都变得被动。",
+    "drill": "找到死活前 5 手，判断是哪一步形状开始变差。",
+    "related": []
+  },
+  {
+    "id": "fight_light_heavy_first",
+    "title": "先分清轻重，再决定战斗强度",
+    "kind": "concept",
+    "phase": [
+      "middlegame"
+    ],
+    "errorTypes": [
+      "fight"
+    ],
+    "tags": [
+      "战斗",
+      "轻重"
+    ],
+    "katagoSignals": [],
+    "boardSignals": [],
+    "summary": "战斗前先判断哪些棋必须救，哪些可以弃。",
+    "coachShort": "你这里的问题是没先分清哪块棋重。",
+    "coachLong": "不分轻重就开战，容易两边都想要，最后全都被拖住。",
+    "drill": "复盘战斗时把每块棋标成重棋、轻棋、可弃子。",
+    "related": []
+  },
+  {
+    "id": "fight_liberty_count",
+    "title": "对杀前先数气",
+    "kind": "error_type",
+    "phase": [
+      "middlegame"
+    ],
+    "errorTypes": [
+      "fight"
+    ],
+    "tags": [
+      "对杀",
+      "读棋"
+    ],
+    "katagoSignals": [],
+    "boardSignals": [],
+    "summary": "对杀判断必须建立在数气和先后手上，不能凭感觉。",
+    "coachShort": "这里进入对杀前，需要先冷静数气。",
+    "coachLong": "很多对杀错觉来自忽略紧气顺序或先手做眼。",
+    "drill": "每天做 5 道只数气不落子的对杀判断。",
+    "related": []
+  },
+  {
+    "id": "fight_sacrifice_conversion",
+    "title": "打架时先看有没有弃子转换",
+    "kind": "position_pattern",
+    "phase": [
+      "middlegame"
+    ],
+    "errorTypes": [
+      "fight"
+    ],
+    "tags": [
+      "弃子",
+      "转换"
+    ],
+    "katagoSignals": [],
+    "boardSignals": [],
+    "summary": "战斗中不是每个子都要救，弃子换势常比硬救更好。",
+    "coachShort": "这里可以考虑弃掉小部分，换取外部主动。",
+    "coachLong": "硬救小块可能让全局变重；转换能把局部损失变成全局收益。",
+    "drill": "复盘时列出每次战斗的可弃子方案。",
+    "related": []
+  },
+  {
+    "id": "fight_split_priority",
+    "title": "分断后先想哪块更重要",
+    "kind": "concept",
+    "phase": [
+      "middlegame"
+    ],
+    "errorTypes": [
+      "fight"
+    ],
+    "tags": [
+      "分断",
+      "轻重"
+    ],
+    "katagoSignals": [],
+    "boardSignals": [],
+    "summary": "分断后不能两边平均用力，要先确定主次。",
+    "coachShort": "你被分断后，两边都想救，结果都变重。",
+    "coachLong": "优秀处理通常是保重要一边，另一边轻处理或转换。",
+    "drill": "找三处被分断局面，只写优先保护哪一块。",
+    "related": []
+  },
+  {
+    "id": "fight_cut_chance_not_must",
+    "title": "有冲断机会不代表必须开战",
+    "kind": "error_type",
+    "phase": [
+      "middlegame"
+    ],
+    "errorTypes": [
+      "fight"
+    ],
+    "tags": [
+      "冲断",
+      "克制"
+    ],
+    "katagoSignals": [],
+    "boardSignals": [],
+    "summary": "看到断点要判断收益和风险，不是有断就断。",
+    "coachShort": "这手断得很积极，但风险大于收益。",
+    "coachLong": "冲断若不能带来明确收益，反而会制造自己的薄味。",
+    "drill": "复盘每次冲断，写下断成功后实际得到什么。",
+    "related": []
+  },
+  {
+    "id": "fight_two_sides_problem",
+    "title": "战斗中最怕两边都想要",
+    "kind": "error_type",
+    "phase": [
+      "middlegame"
+    ],
+    "errorTypes": [
+      "fight"
+    ],
+    "tags": [
+      "战斗",
+      "取舍"
+    ],
+    "katagoSignals": [],
+    "boardSignals": [],
+    "summary": "战斗中最常见的大亏是没有取舍，什么都想保。",
+    "coachShort": "你这里最大的问题是没有取舍。",
+    "coachLong": "两边都想要会让棋越来越重，最后被对手连续利用。",
+    "drill": "训练时强制给每场战斗写一句：这块我可以弃吗？",
+    "related": []
+  },
+  {
+    "id": "life_alive_vs_settled",
+    "title": "活棋与净活的区别",
+    "kind": "concept",
+    "phase": [
+      "middlegame"
+    ],
+    "errorTypes": [
+      "life_death"
+    ],
+    "tags": [
+      "死活",
+      "净活"
+    ],
+    "katagoSignals": [],
+    "boardSignals": [],
+    "summary": "活了不等于局面好，净活与勉强活价值不同。",
+    "coachShort": "这块虽然能活，但活得太苦，外面损失太大。",
+    "coachLong": "KataGo 有时不急着做活，是因为可以更有效地净活或转换。",
+    "drill": "复盘死活时区分：净活、苦活、劫活、可弃。",
+    "related": []
+  },
+  {
+    "id": "life_sente_eye",
+    "title": "先手做眼和后手做眼价值差",
+    "kind": "concept",
+    "phase": [
+      "middlegame"
+    ],
+    "errorTypes": [
+      "life_death"
+    ],
+    "tags": [
+      "死活",
+      "先后手"
+    ],
+    "katagoSignals": [],
+    "boardSignals": [],
+    "summary": "同样做眼，先手和后手价值完全不同。",
+    "coachShort": "这手做活了，但把先手送掉了。",
+    "coachLong": "死活处理中最重要的不只是活不活，还包括谁拿到下一手。",
+    "drill": "做死活题时额外标注最后一步是先手还是后手。",
+    "related": []
+  },
+  {
+    "id": "life_misread_sente",
+    "title": "死活误判常来自忽略先手",
+    "kind": "error_type",
+    "phase": [
+      "middlegame",
+      "endgame"
+    ],
+    "errorTypes": [
+      "life_death"
+    ],
+    "tags": [
+      "死活",
+      "先手"
+    ],
+    "katagoSignals": [],
+    "boardSignals": [],
+    "summary": "很多死活错觉来自只看局部形，不看对方先手手段。",
+    "coachShort": "你这里误判了对方的先手收紧。",
+    "coachLong": "死活判断要把对方的逼迫手、紧气手和劫材价值一起看。",
+    "drill": "每道死活题先找对方最强先手，再判断。",
+    "related": []
+  },
+  {
+    "id": "tesuji_efficiency",
+    "title": "手筋是效率最高的一手",
+    "kind": "concept",
+    "phase": [
+      "middlegame"
+    ],
+    "errorTypes": [
+      "tesuji"
+    ],
+    "tags": [
+      "手筋",
+      "效率"
+    ],
+    "katagoSignals": [],
+    "boardSignals": [],
+    "summary": "手筋不是炫技，而是用最高效率解决局部问题。",
+    "coachShort": "这里需要找效率最高的处理，而不是普通补棋。",
+    "coachLong": "KataGo 推荐的看似奇怪点，很多是因为它同时解决多个问题。",
+    "drill": "做手筋题时写下这手同时解决了哪两个问题。",
+    "related": []
+  },
+  {
+    "id": "tesuji_common_frame",
+    "title": "断点扳挤靠的教学框架",
+    "kind": "concept",
+    "phase": [
+      "middlegame"
+    ],
+    "errorTypes": [
+      "tesuji"
+    ],
+    "tags": [
+      "手筋",
+      "局部"
+    ],
+    "katagoSignals": [],
+    "boardSignals": [],
+    "summary": "局部手筋常围绕断点、扳、挤、靠、顶这些效率手展开。",
+    "coachShort": "这里先别急着补，看看有没有利用断点的手筋。",
+    "coachLong": "手筋训练的目标是提升效率感，而不是背招法。",
+    "drill": "复盘时把 KataGo 第一推荐中的局部手筋类型标出来。",
+    "related": []
+  },
+  {
+    "id": "life_training_transfer",
+    "title": "死活题怎样迁移到实战",
+    "kind": "training",
+    "phase": [
+      "middlegame"
+    ],
+    "errorTypes": [
+      "life_death"
+    ],
+    "tags": [
+      "训练",
+      "死活"
+    ],
+    "katagoSignals": [],
+    "boardSignals": [],
+    "summary": "死活训练要迁移到实战，必须练识别触发场景。",
+    "coachShort": "不是只做题，而是要知道什么时候该进入死活计算。",
+    "coachLong": "实战死活通常和全局取舍绑定，不是孤立题目。",
+    "drill": "复盘每次死活失误时写下：我为什么没意识到这里需要精算？",
+    "related": []
+  },
+  {
+    "id": "endgame_not_last",
+    "title": "官子不是最后才重要",
+    "kind": "concept",
+    "phase": [
+      "middlegame",
+      "endgame"
+    ],
+    "errorTypes": [
+      "endgame"
+    ],
+    "tags": [
+      "官子",
+      "价值"
+    ],
+    "katagoSignals": [],
+    "boardSignals": [],
+    "summary": "官子意识从中盘后半就开始影响胜负。",
+    "coachShort": "这里不是小官子，它已经影响全盘收束。",
+    "coachLong": "很多优势局被追上，是因为中盘后半就开始放小价值。",
+    "drill": "复盘 120 手后每手估一个价值，训练官子感觉。",
+    "related": []
+  },
+  {
+    "id": "endgame_sente_double_sente",
+    "title": "先手官子和双先判断",
+    "kind": "concept",
+    "phase": [
+      "endgame"
+    ],
+    "errorTypes": [
+      "endgame"
+    ],
+    "tags": [
+      "官子",
+      "先手"
+    ],
+    "katagoSignals": [],
+    "boardSignals": [],
+    "summary": "官子价值不能只看目数，还要看先后手。",
+    "coachShort": "这手价值不只在目数，还在它是不是先手。",
+    "coachLong": "双先、单先、后手的价值差会改变收束顺序。",
+    "drill": "做官子题时先分类：双先、单先、后手。",
+    "related": []
+  },
+  {
+    "id": "endgame_big_before_small",
+    "title": "大官子优先于小便宜",
+    "kind": "error_type",
+    "phase": [
+      "endgame"
+    ],
+    "errorTypes": [
+      "endgame"
+    ],
+    "tags": [
+      "官子",
+      "价值"
+    ],
+    "katagoSignals": [],
+    "boardSignals": [],
+    "summary": "收束阶段贪小便宜会错过真正的大官子。",
+    "coachShort": "你这手拿了小便宜，但放掉了更大的官子。",
+    "coachLong": "官子顺序错误通常看似每手都合理，合起来却亏很多。",
+    "drill": "每盘官子阶段挑 5 手，重新按价值排序。",
+    "related": []
+  },
+  {
+    "id": "endgame_advantage_throwback",
+    "title": "优势局最怕官子送回去",
+    "kind": "error_type",
+    "phase": [
+      "endgame"
+    ],
+    "errorTypes": [
+      "endgame"
+    ],
+    "tags": [
+      "优势局",
+      "官子"
+    ],
+    "katagoSignals": [],
+    "boardSignals": [],
+    "summary": "优势局进入官子后，要避免连续小亏把优势送回去。",
+    "coachShort": "你前面优势够，但官子阶段开始送回去了。",
+    "coachLong": "领先时的官子原则是稳、准、少冒险。",
+    "drill": "找一盘优势被追近的棋，只复盘最后 80 手。",
+    "related": []
+  },
+  {
+    "id": "endgame_value_sense",
+    "title": "官子差往往是价值感弱",
+    "kind": "training",
+    "phase": [
+      "endgame"
+    ],
+    "errorTypes": [
+      "endgame"
+    ],
+    "tags": [
+      "训练",
+      "官子"
+    ],
+    "katagoSignals": [],
+    "boardSignals": [],
+    "summary": "官子弱常常不是不会算，而是没有价值排序习惯。",
+    "coachShort": "这里的问题不是不会下，而是没意识到它值这么多。",
+    "coachLong": "官子训练重点是估值和顺序，而不是记具体手段。",
+    "drill": "每天选 10 个官子点，先估值再看答案。",
+    "related": []
+  },
+  {
+    "id": "endgame_sente_sweep",
+    "title": "收束阶段防先手搜刮",
+    "kind": "position_pattern",
+    "phase": [
+      "endgame"
+    ],
+    "errorTypes": [
+      "endgame"
+    ],
+    "tags": [
+      "官子",
+      "防守"
+    ],
+    "katagoSignals": [],
+    "boardSignals": [],
+    "summary": "收束时要警惕对方用先手连续搜刮。",
+    "coachShort": "这里要先防对方的先手收束链。",
+    "coachLong": "如果放任对方连续先手，局部每次亏不大，但全盘会被持续压缩。",
+    "drill": "复盘官子时标出对方连续先手的链条。",
+    "related": []
+  },
+  {
+    "id": "advantage_no_complexity",
+    "title": "优势局不要主动复杂化",
+    "kind": "error_type",
+    "phase": [
+      "middlegame",
+      "endgame"
+    ],
+    "errorTypes": [
+      "advantage"
+    ],
+    "tags": [
+      "优势局",
+      "风险"
+    ],
+    "katagoSignals": [],
+    "boardSignals": [],
+    "summary": "领先时主动制造复杂局面，是最常见的翻车方式。",
+    "coachShort": "你已经领先，不需要主动把局面变复杂。",
+    "coachLong": "优势局的最佳策略往往是减少不确定性，而不是证明自己还能赢更多。",
+    "drill": "每盘优势局记录一次自己是否主动开新战场。",
+    "related": []
+  },
+  {
+    "id": "advantage_fix_danger",
+    "title": "优势局补最危险处",
+    "kind": "position_pattern",
+    "phase": [
+      "middlegame",
+      "endgame"
+    ],
+    "errorTypes": [
+      "advantage"
+    ],
+    "tags": [
+      "优势局",
+      "安全"
+    ],
+    "katagoSignals": [],
+    "boardSignals": [],
+    "summary": "优势局该补的不是最大收益点，而是最大风险点。",
+    "coachShort": "这里该先处理风险，而不是继续抢收益。",
+    "coachLong": "领先时只要最大风险消失，对手就很难逆转。",
+    "drill": "把盘面风险点按危险程度排序，不按目数排序。",
+    "related": []
+  },
+  {
+    "id": "behind_not_every_move_desperate",
+    "title": "劣势局不要每手搏命",
+    "kind": "error_type",
+    "phase": [
+      "middlegame",
+      "endgame"
+    ],
+    "errorTypes": [
+      "disadvantage"
+    ],
+    "tags": [
+      "劣势局",
+      "逆转"
+    ],
+    "katagoSignals": [],
+    "boardSignals": [],
+    "summary": "落后时每手都搏命，只会更快崩盘。",
+    "coachShort": "你落后了，但这里不能每手都硬拼。",
+    "coachLong": "劣势局要找结构性机会，而不是随机制造战斗。",
+    "drill": "复盘劣势局时写下真正的逆转点在哪里。",
+    "related": []
+  },
+  {
+    "id": "behind_structural_chance",
+    "title": "落后找结构性逆转点",
+    "kind": "position_pattern",
+    "phase": [
+      "middlegame",
+      "endgame"
+    ],
+    "errorTypes": [
+      "disadvantage"
+    ],
+    "tags": [
+      "劣势局",
+      "逆转"
+    ],
+    "katagoSignals": [],
+    "boardSignals": [],
+    "summary": "真正的逆转来自对方薄味、劫争、大龙、收束漏洞等结构性机会。",
+    "coachShort": "这里需要找对方结构里的漏洞，而不是盲目冲。",
+    "coachLong": "劣势局也要有计划地制造复杂，而不是无目标乱战。",
+    "drill": "每盘劣势局列出三个可能逆转资源。",
+    "related": []
+  },
+  {
+    "id": "big_lead_greed",
+    "title": "大优最怕贪",
+    "kind": "error_type",
+    "phase": [
+      "middlegame",
+      "endgame"
+    ],
+    "errorTypes": [
+      "advantage"
+    ],
+    "tags": [
+      "优势局",
+      "贪心"
+    ],
+    "katagoSignals": [],
+    "boardSignals": [],
+    "summary": "大优时继续贪局部利益，会给对手反击目标。",
+    "coachShort": "你这手太贪，给了对方制造复杂的机会。",
+    "coachLong": "大优时少赢一点没关系，重要是不给反击点。",
+    "drill": "优势局复盘时标记所有“想再多拿一点”的手。",
+    "related": []
+  },
+  {
+    "id": "big_behind_chaos",
+    "title": "大劣最怕乱",
+    "kind": "error_type",
+    "phase": [
+      "middlegame",
+      "endgame"
+    ],
+    "errorTypes": [
+      "disadvantage"
+    ],
+    "tags": [
+      "劣势局",
+      "混乱"
+    ],
+    "katagoSignals": [],
+    "boardSignals": [],
+    "summary": "大劣时乱战不等于有机会，常常只是加速输棋。",
+    "coachShort": "你这里不是在制造机会，而是在乱。",
+    "coachLong": "劣势时也要选择对方最难处理的矛盾点，而不是到处出手。",
+    "drill": "复盘大劣局，找出唯一最有希望的复杂化点。",
+    "related": []
+  },
+  {
+    "id": "review_turning_points_first",
+    "title": "单盘复盘先找转折点",
+    "kind": "review_method",
+    "phase": [
+      "opening",
+      "middlegame",
+      "endgame"
+    ],
+    "errorTypes": [],
+    "tags": [
+      "复盘",
+      "方法"
+    ],
+    "katagoSignals": [],
+    "boardSignals": [],
+    "summary": "复盘不该逐手念经，先找到真正改变胜负的转折点。",
+    "coachShort": "这盘先别每手都看，先抓最大转折点。",
+    "coachLong": "高效复盘要从最大损失点开始，再回看导致它的前因。",
+    "drill": "每盘只记录 3 个转折点：开局、中盘、官子。",
+    "related": []
+  },
+  {
+    "id": "review_one_or_two_issues",
+    "title": "一盘棋只抓一两个主问题",
+    "kind": "review_method",
+    "phase": [
+      "opening",
+      "middlegame",
+      "endgame"
+    ],
+    "errorTypes": [],
+    "tags": [
+      "复盘",
+      "训练"
+    ],
+    "katagoSignals": [],
+    "boardSignals": [],
+    "summary": "一次复盘抓太多问题，反而难以改进。",
+    "coachShort": "这盘最重要的不是所有错手，而是一个主问题。",
+    "coachLong": "老师应该帮助学生聚焦最能涨棋的问题。",
+    "drill": "复盘结束只写一句：下盘最优先改什么。",
+    "related": []
+  },
+  {
+    "id": "review_repeated_errors",
+    "title": "连续三盘同类错误才重点训练",
+    "kind": "review_method",
+    "phase": [
+      "opening",
+      "middlegame",
+      "endgame"
+    ],
+    "errorTypes": [],
+    "tags": [
+      "画像",
+      "训练"
+    ],
+    "katagoSignals": [],
+    "boardSignals": [],
+    "summary": "偶发失误不一定是长期弱点，重复出现才需要专项训练。",
+    "coachShort": "这个问题如果最近几盘都出现，就该进入训练重点。",
+    "coachLong": "学生画像要区分偶发错误和稳定模式。",
+    "drill": "最近 5 盘按错误类型做计数，超过 3 次才列为重点。",
+    "related": []
+  },
+  {
+    "id": "review_random_vs_stable",
+    "title": "区分偶发失误和稳定弱点",
+    "kind": "review_method",
+    "phase": [
+      "opening",
+      "middlegame",
+      "endgame"
+    ],
+    "errorTypes": [],
+    "tags": [
+      "画像",
+      "复盘"
+    ],
+    "katagoSignals": [],
+    "boardSignals": [],
+    "summary": "稳定弱点需要训练，偶发失误需要提醒但不必过度放大。",
+    "coachShort": "这手可能是偶发，但要看最近有没有重复。",
+    "coachLong": "顶级老师不会把每个错手都当成长期问题。",
+    "drill": "复盘报告里把问题分成偶发和稳定两栏。",
+    "related": []
+  },
+  {
+    "id": "review_mistake_book",
+    "title": "错题本要围绕模式",
+    "kind": "training",
+    "phase": [
+      "opening",
+      "middlegame",
+      "endgame"
+    ],
+    "errorTypes": [],
+    "tags": [
+      "错题本",
+      "训练"
+    ],
+    "katagoSignals": [],
+    "boardSignals": [],
+    "summary": "错题本不是收集局面，而是收集自己反复犯错的模式。",
+    "coachShort": "这类局面值得进错题本，因为它代表你的稳定模式。",
+    "coachLong": "只存局面不总结模式，很难真正涨棋。",
+    "drill": "每条错题必须写：我当时为什么会这样想。",
+    "related": []
+  },
+  {
+    "id": "review_weekly_plan",
+    "title": "一周训练围绕薄弱点",
+    "kind": "training",
+    "phase": [
+      "opening",
+      "middlegame",
+      "endgame"
+    ],
+    "errorTypes": [],
+    "tags": [
+      "训练计划",
+      "画像"
+    ],
+    "katagoSignals": [],
+    "boardSignals": [],
+    "summary": "训练计划应围绕最近稳定弱点，而不是随机刷题。",
+    "coachShort": "接下来一周不要泛泛练，围绕这个主问题安排。",
+    "coachLong": "画像统计出的高频问题，应该转成具体训练任务。",
+    "drill": "一周只定一个主题：三盘复盘、二十题专项、一次总结。",
+    "related": []
+  }
+]

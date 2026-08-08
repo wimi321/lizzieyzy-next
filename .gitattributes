@@ -1,0 +1,2 @@
+# 该文件历史上为混合行尾（CRLF/LF），禁止 autocrlf 规范化，保持与上游 blob 逐字节一致
+src/main/resources/l10n/DisplayStrings.properties -text

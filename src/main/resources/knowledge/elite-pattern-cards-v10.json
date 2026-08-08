@@ -1,0 +1,1137 @@
+[
+  {
+    "id": "deep-aji-management",
+    "title": "味与味消：保留潜在手段",
+    "category": "strategy",
+    "patternType": "aji_management",
+    "scope": "teaching-quality",
+    "phase": [
+      "middlegame",
+      "endgame"
+    ],
+    "regions": [
+      "any"
+    ],
+    "levels": [
+      "beginner",
+      "intermediate",
+      "advanced",
+      "dan"
+    ],
+    "tags": [
+      "味",
+      "味消",
+      "潜力",
+      "转换"
+    ],
+    "aliases": [
+      "aji",
+      "aji keshi",
+      "bad aji"
+    ],
+    "triggerSignals": [
+      "味",
+      "潜在",
+      "后续手段",
+      "过早定型"
+    ],
+    "negativeSignals": [],
+    "katagoSignals": [
+      "pv",
+      "scoreLead",
+      "candidateSpread"
+    ],
+    "recognition": "当一手棋让自己的后续手段消失，哪怕眼前不亏很多，也可能是味消。",
+    "wrongThinking": "只看当前局部便宜，提前把对方弱点补掉。",
+    "correctThinking": "先问这手之后我还剩哪些后续手段，再决定是否马上兑现。",
+    "coachLines": [
+      "不要急着把所有味道用完。",
+      "保留味是为了未来转换，不是拖延。"
+    ],
+    "drillPrompt": "列出当前局面至少两个潜在后续手段，再判断是否该马上动手。",
+    "confidenceBoost": 2,
+    "sourceRefs": [
+      "sensei-go-terms",
+      "goagent-curated-original"
+    ],
+    "sourceQuality": "taxonomy-reference-original-card"
+  },
+  {
+    "id": "deep-kikashi-probe",
+    "title": "试应手与利筋：问清回答再决定方向",
+    "category": "strategy",
+    "patternType": "probe_kikashi",
+    "scope": "teaching-quality",
+    "phase": [
+      "opening",
+      "middlegame"
+    ],
+    "regions": [
+      "any"
+    ],
+    "levels": [
+      "beginner",
+      "intermediate",
+      "advanced",
+      "dan"
+    ],
+    "tags": [
+      "试应手",
+      "利筋",
+      "应手",
+      "方向"
+    ],
+    "aliases": [
+      "probe",
+      "kikashi",
+      "forcing move"
+    ],
+    "triggerSignals": [
+      "试应手",
+      "probe",
+      "kikashi",
+      "对方回答"
+    ],
+    "negativeSignals": [],
+    "katagoSignals": [
+      "policy",
+      "pv",
+      "prior"
+    ],
+    "recognition": "试应手的价值在于观察对方回答后选择方向，而不是机械多下一手。",
+    "wrongThinking": "下了试应手却不根据对方回答调整计划。",
+    "correctThinking": "先问对方最自然的两种回答，再决定是否保留、转换或立刻定型。",
+    "coachLines": [
+      "试应手是提问，不是命令。",
+      "问完要根据答案改变计划。"
+    ],
+    "drillPrompt": "给一个试应手，写出对方两种回答和你的后续选择。",
+    "confidenceBoost": 2,
+    "sourceRefs": [
+      "sensei-go-terms",
+      "goagent-curated-original"
+    ],
+    "sourceQuality": "taxonomy-reference-original-card"
+  },
+  {
+    "id": "deep-sabaki-weak-stones",
+    "title": "轻灵处理弱棋：不以全救为目标",
+    "category": "strategy",
+    "patternType": "sabaki",
+    "scope": "teaching-quality",
+    "phase": [
+      "middlegame"
+    ],
+    "regions": [
+      "side",
+      "center",
+      "any"
+    ],
+    "levels": [
+      "beginner",
+      "intermediate",
+      "advanced",
+      "dan"
+    ],
+    "tags": [
+      "治孤",
+      "轻棋",
+      "弃子",
+      "腾挪"
+    ],
+    "aliases": [
+      "sabaki",
+      "light stones",
+      "weak group"
+    ],
+    "triggerSignals": [
+      "弱棋",
+      "治孤",
+      "轻灵",
+      "弃子"
+    ],
+    "negativeSignals": [],
+    "katagoSignals": [
+      "ownership",
+      "scoreLead",
+      "pv"
+    ],
+    "recognition": "弱棋处理的目标常常是减轻和换取先手，而不是每颗子都救。",
+    "wrongThinking": "把所有弱子都当必须救，越补越重。",
+    "correctThinking": "先分清哪些子是核心，哪些可以弃；用借用、靠、断点争取出路或转换。",
+    "coachLines": [
+      "治孤不是全救。",
+      "轻棋可以用一部分子换出路。"
+    ],
+    "drillPrompt": "标出一串弱棋中最重要的三颗子和可以弃的部分。",
+    "confidenceBoost": 3,
+    "sourceRefs": [
+      "sensei-go-terms",
+      "goagent-curated-original"
+    ],
+    "sourceQuality": "taxonomy-reference-original-card"
+  },
+  {
+    "id": "deep-honte-vs-greed",
+    "title": "本手与贪吃：先稳住形再谈收益",
+    "category": "shapes",
+    "patternType": "honte_vs_greed",
+    "scope": "teaching-quality",
+    "phase": [
+      "middlegame",
+      "endgame"
+    ],
+    "regions": [
+      "any"
+    ],
+    "levels": [
+      "beginner",
+      "intermediate",
+      "advanced",
+      "dan"
+    ],
+    "tags": [
+      "本手",
+      "贪吃",
+      "补形",
+      "稳健"
+    ],
+    "aliases": [
+      "honte",
+      "sound move",
+      "greed"
+    ],
+    "triggerSignals": [
+      "本手",
+      "贪",
+      "补强",
+      "稳"
+    ],
+    "negativeSignals": [],
+    "katagoSignals": [
+      "scoreLoss",
+      "pv",
+      "tacticalSignals"
+    ],
+    "recognition": "本手通常不华丽，但能消除最危险的反击点；贪吃如果留下断点，后续可能更亏。",
+    "wrongThinking": "只看到能吃几目或几子，忽略对方反击的最大点。",
+    "correctThinking": "先检查对方下一手最痛的反击，再决定是否有资格贪。",
+    "coachLines": [
+      "先问会不会被反击。",
+      "本手是为了让后续收益成立。"
+    ],
+    "drillPrompt": "找出当前局面一个看似小但能消除反击的本手。",
+    "confidenceBoost": 2,
+    "sourceRefs": [
+      "sensei-go-terms",
+      "goagent-curated-original"
+    ],
+    "sourceQuality": "taxonomy-reference-original-card"
+  },
+  {
+    "id": "deep-miai-value",
+    "title": "见合价值：两个同等目标不必都抢",
+    "category": "strategy",
+    "patternType": "miai",
+    "scope": "teaching-quality",
+    "phase": [
+      "opening",
+      "middlegame",
+      "endgame"
+    ],
+    "regions": [
+      "any"
+    ],
+    "levels": [
+      "beginner",
+      "intermediate",
+      "advanced",
+      "dan"
+    ],
+    "tags": [
+      "见合",
+      "选择",
+      "两边",
+      "价值"
+    ],
+    "aliases": [
+      "miai",
+      "paired options"
+    ],
+    "triggerSignals": [
+      "见合",
+      "两个选择",
+      "对方走一边我走另一边"
+    ],
+    "negativeSignals": [],
+    "katagoSignals": [
+      "candidateSpread",
+      "scoreLead",
+      "pv"
+    ],
+    "recognition": "当两个目标形成见合时，老师应讲清“对方拿一边，我拿另一边”而不是把其中一个说成唯一。",
+    "wrongThinking": "把见合中的一个点误判成必须立即抢的急所。",
+    "correctThinking": "比较两边价值是否接近；若接近，选择更符合全局方向的一边即可。",
+    "coachLines": [
+      "见合不是漏算，而是价值平衡。",
+      "对方拿一边时，你要知道自己拿哪一边。"
+    ],
+    "drillPrompt": "指出一个局面的两处见合点，并估计谁走哪边。",
+    "confidenceBoost": 2,
+    "sourceRefs": [
+      "sensei-go-terms",
+      "goagent-curated-original"
+    ],
+    "sourceQuality": "taxonomy-reference-original-card"
+  },
+  {
+    "id": "deep-thickness-conversion",
+    "title": "厚势要转化，不能只摆好看",
+    "category": "strategy",
+    "patternType": "thickness_conversion",
+    "scope": "teaching-quality",
+    "phase": [
+      "opening",
+      "middlegame"
+    ],
+    "regions": [
+      "side",
+      "center",
+      "any"
+    ],
+    "levels": [
+      "beginner",
+      "intermediate",
+      "advanced",
+      "dan"
+    ],
+    "tags": [
+      "厚势",
+      "转换",
+      "攻击",
+      "实地"
+    ],
+    "aliases": [
+      "thickness",
+      "influence conversion"
+    ],
+    "triggerSignals": [
+      "厚",
+      "外势",
+      "转换",
+      "攻击收益"
+    ],
+    "negativeSignals": [],
+    "katagoSignals": [
+      "ownership",
+      "scoreLead",
+      "pv"
+    ],
+    "recognition": "厚势的价值来自后续攻击、限制对方或围空；如果没有转化路线，就可能只是好看的形。",
+    "wrongThinking": "只因为形厚就继续补厚，忘了把厚势变成收益。",
+    "correctThinking": "问厚势面向哪里、能攻击谁、能围哪片空，再选择最大转化点。",
+    "coachLines": [
+      "厚势不是分数，转化后才是收益。",
+      "厚的一方要找利用厚势的方向。"
+    ],
+    "drillPrompt": "标出厚势面对的三个候选收益点：攻击、围空、限制。",
+    "confidenceBoost": 3,
+    "sourceRefs": [
+      "sensei-go-terms",
+      "goagent-curated-original"
+    ],
+    "sourceQuality": "taxonomy-reference-original-card"
+  },
+  {
+    "id": "deep-moyo-reduction-invasion",
+    "title": "浅消与打入：按周围厚薄选风险",
+    "category": "strategy",
+    "patternType": "moyo_reduction_invasion",
+    "scope": "teaching-quality",
+    "phase": [
+      "opening",
+      "middlegame"
+    ],
+    "regions": [
+      "side",
+      "center",
+      "any"
+    ],
+    "levels": [
+      "beginner",
+      "intermediate",
+      "advanced",
+      "dan"
+    ],
+    "tags": [
+      "模样",
+      "打入",
+      "浅消",
+      "厚薄"
+    ],
+    "aliases": [
+      "moyo",
+      "reduction",
+      "invasion"
+    ],
+    "triggerSignals": [
+      "模样",
+      "打入",
+      "浅消",
+      "外势"
+    ],
+    "negativeSignals": [],
+    "katagoSignals": [
+      "ownership",
+      "scoreLead",
+      "policy"
+    ],
+    "recognition": "面对模样时，打入争取直接破空，浅消降低风险；选择取决于外面厚薄和逃跑路线。",
+    "wrongThinking": "看到大模样就一律深打入，或只会浅消不争主动。",
+    "correctThinking": "先检查逃跑路线和外面厚薄，再决定深打入、浅消还是先补外面。",
+    "coachLines": [
+      "打入要有出路。",
+      "浅消要保留先手和安全。"
+    ],
+    "drillPrompt": "给一个模样局面，分别写出打入和浅消的风险。",
+    "confidenceBoost": 2,
+    "sourceRefs": [
+      "sensei-go-terms",
+      "goagent-curated-original"
+    ],
+    "sourceQuality": "taxonomy-reference-original-card"
+  },
+  {
+    "id": "deep-semeai-liberty-order",
+    "title": "对杀先数气，再看眼和手顺",
+    "category": "life-death",
+    "patternType": "semeai_liberty_order",
+    "scope": "teaching-quality",
+    "phase": [
+      "middlegame",
+      "endgame"
+    ],
+    "regions": [
+      "corner",
+      "side",
+      "any"
+    ],
+    "levels": [
+      "beginner",
+      "intermediate",
+      "advanced",
+      "dan"
+    ],
+    "tags": [
+      "对杀",
+      "气数",
+      "眼",
+      "手顺"
+    ],
+    "aliases": [
+      "semeai",
+      "capturing race",
+      "liberty count"
+    ],
+    "triggerSignals": [
+      "对杀",
+      "气",
+      "公气",
+      "有眼杀无眼"
+    ],
+    "negativeSignals": [],
+    "katagoSignals": [
+      "tacticalSignals",
+      "pv",
+      "scoreLead"
+    ],
+    "recognition": "对杀讲解必须先数双方气数、公气和眼位，再讲候选手。",
+    "wrongThinking": "只看打吃或冲断，不先数气，导致判断谁快一手错误。",
+    "correctThinking": "先分清外气、公气、眼位，再按手顺检查谁先紧气、是否要先破眼。",
+    "coachLines": [
+      "对杀不是感觉题，先数气。",
+      "有眼和无眼的气数价值不同。"
+    ],
+    "drillPrompt": "把双方气分成外气、公气、眼位三类再读三手。",
+    "confidenceBoost": 4,
+    "sourceRefs": [
+      "sensei-go-terms",
+      "wikibooks-go",
+      "goagent-curated-original"
+    ],
+    "sourceQuality": "concept-reference-original-card"
+  },
+  {
+    "id": "deep-seki-shared-liberties",
+    "title": "双活/共活：不能把不能吃的棋当死棋",
+    "category": "life-death",
+    "patternType": "seki_shared_liberties",
+    "scope": "teaching-quality",
+    "phase": [
+      "middlegame",
+      "endgame"
+    ],
+    "regions": [
+      "corner",
+      "side",
+      "any"
+    ],
+    "levels": [
+      "beginner",
+      "intermediate",
+      "advanced",
+      "dan"
+    ],
+    "tags": [
+      "双活",
+      "共活",
+      "公气",
+      "死活"
+    ],
+    "aliases": [
+      "seki",
+      "shared liberties"
+    ],
+    "triggerSignals": [
+      "双活",
+      "seki",
+      "公气",
+      "吃不掉"
+    ],
+    "negativeSignals": [],
+    "katagoSignals": [
+      "tacticalSignals",
+      "ownership",
+      "scoreLead"
+    ],
+    "recognition": "双活局面里双方都不能先动某些公气；老师必须避免说成净杀或必活。",
+    "wrongThinking": "看到对方没有两眼就说死，忽略先动会自损的公气。",
+    "correctThinking": "检查双方是否都不能安全先动；若是双活，就讲目数和后续官子，而不是杀棋。",
+    "coachLines": [
+      "无两眼不一定死。",
+      "双活的关键是先动者吃亏。"
+    ],
+    "drillPrompt": "找出哪些公气双方都不能先动。",
+    "confidenceBoost": 2,
+    "sourceRefs": [
+      "sensei-go-terms",
+      "wikibooks-go",
+      "goagent-curated-original"
+    ],
+    "sourceQuality": "concept-reference-original-card"
+  },
+  {
+    "id": "deep-approach-ko",
+    "title": "万年劫/缓气劫：劫争不只看当前一手",
+    "category": "life-death",
+    "patternType": "approach_ko",
+    "scope": "teaching-quality",
+    "phase": [
+      "middlegame",
+      "endgame"
+    ],
+    "regions": [
+      "corner",
+      "side",
+      "any"
+    ],
+    "levels": [
+      "beginner",
+      "intermediate",
+      "advanced",
+      "dan"
+    ],
+    "tags": [
+      "劫",
+      "劫材",
+      "缓气劫",
+      "万年劫"
+    ],
+    "aliases": [
+      "approach ko",
+      "yose-ko",
+      "ko threat"
+    ],
+    "triggerSignals": [
+      "劫",
+      "ko",
+      "劫材",
+      "缓气"
+    ],
+    "negativeSignals": [],
+    "katagoSignals": [
+      "tacticalSignals",
+      "scoreLead",
+      "pv"
+    ],
+    "recognition": "复杂劫争要看需要几手接近、双方劫材质量和局面整体价值。",
+    "wrongThinking": "只看能不能马上打劫，不比较劫材和劫的价值。",
+    "correctThinking": "先估劫的本身价值，再比较双方有效劫材；缓气劫要说明接近手数。",
+    "coachLines": [
+      "劫不是单点战术，是全盘资源交换。",
+      "没有劫材就不要轻易开大劫。"
+    ],
+    "drillPrompt": "列出双方各三个有效劫材，并估计哪个更大。",
+    "confidenceBoost": 2,
+    "sourceRefs": [
+      "sensei-go-terms",
+      "goagent-curated-original"
+    ],
+    "sourceQuality": "taxonomy-reference-original-card"
+  },
+  {
+    "id": "deep-double-sente-yose",
+    "title": "双先手官子：价值来自双方都想先走",
+    "category": "endgame",
+    "patternType": "double_sente_yose",
+    "scope": "teaching-quality",
+    "phase": [
+      "endgame"
+    ],
+    "regions": [
+      "any"
+    ],
+    "levels": [
+      "beginner",
+      "intermediate",
+      "advanced",
+      "dan"
+    ],
+    "tags": [
+      "双先手",
+      "官子",
+      "先手",
+      "目差"
+    ],
+    "aliases": [
+      "double sente",
+      "yose"
+    ],
+    "triggerSignals": [
+      "双先手",
+      "先手官子",
+      "官子"
+    ],
+    "negativeSignals": [],
+    "katagoSignals": [
+      "scoreLead",
+      "pv",
+      "candidateSpread"
+    ],
+    "recognition": "双先手官子通常优先级高，因为双方都希望先走并保留后续主动权。",
+    "wrongThinking": "只按当前收几目排序，忽略先手保留和后续权利。",
+    "correctThinking": "先判断先手/后手/逆收，再比较目数；双先手通常先处理。",
+    "coachLines": [
+      "官子不是只数眼前目数。",
+      "先手权本身有价值。"
+    ],
+    "drillPrompt": "给三个官子点，先标先后手，再排序。",
+    "confidenceBoost": 2,
+    "sourceRefs": [
+      "sensei-go-terms",
+      "goagent-curated-original"
+    ],
+    "sourceQuality": "taxonomy-reference-original-card"
+  },
+  {
+    "id": "deep-reverse-sente-yose",
+    "title": "逆收：抢掉对方先手价值",
+    "category": "endgame",
+    "patternType": "reverse_sente_yose",
+    "scope": "teaching-quality",
+    "phase": [
+      "endgame"
+    ],
+    "regions": [
+      "any"
+    ],
+    "levels": [
+      "beginner",
+      "intermediate",
+      "advanced",
+      "dan"
+    ],
+    "tags": [
+      "逆收",
+      "官子",
+      "后手",
+      "先手"
+    ],
+    "aliases": [
+      "reverse sente",
+      "yose"
+    ],
+    "triggerSignals": [
+      "逆收",
+      "reverse sente",
+      "官子"
+    ],
+    "negativeSignals": [],
+    "katagoSignals": [
+      "scoreLead",
+      "pv"
+    ],
+    "recognition": "逆收的价值常高于普通后手，因为它抢走了对方原本的先手收益。",
+    "wrongThinking": "把逆收当普通小后手，导致官子顺序错误。",
+    "correctThinking": "判断如果不走，对方是否能先手获利；若能，这手就是逆收候选。",
+    "coachLines": [
+      "逆收是抢对方的先手权。",
+      "比较的是双方下一手的权利。"
+    ],
+    "drillPrompt": "找一处对方先手官子，计算你逆收的价值。",
+    "confidenceBoost": 4,
+    "sourceRefs": [
+      "sensei-go-terms",
+      "goagent-curated-original"
+    ],
+    "sourceQuality": "taxonomy-reference-original-card"
+  },
+  {
+    "id": "deep-connection-shape-bamboo",
+    "title": "连接形：竹节、虎口、单接的取舍",
+    "category": "shapes",
+    "patternType": "connection_shape_choice",
+    "scope": "teaching-quality",
+    "phase": [
+      "middlegame"
+    ],
+    "regions": [
+      "any"
+    ],
+    "levels": [
+      "beginner",
+      "intermediate",
+      "advanced",
+      "dan"
+    ],
+    "tags": [
+      "连接",
+      "竹节",
+      "虎口",
+      "断点"
+    ],
+    "aliases": [
+      "bamboo joint",
+      "connection",
+      "cutting point"
+    ],
+    "triggerSignals": [
+      "竹节",
+      "连接",
+      "断点",
+      "虎口"
+    ],
+    "negativeSignals": [],
+    "katagoSignals": [
+      "tacticalSignals",
+      "pv"
+    ],
+    "recognition": "连接不是只要接上；不同接法影响效率、断点和后续先手。",
+    "wrongThinking": "看到断点就机械实接，浪费效率或留下另一处弱点。",
+    "correctThinking": "比较各种连接的后续断点、眼形和先手价值；能用形连接时不必总是实接。",
+    "coachLines": [
+      "连接要看效率。",
+      "好形连接同时减少后续负担。"
+    ],
+    "drillPrompt": "给一个断点，列出实接、虎口、竹节三种连接的利弊。",
+    "confidenceBoost": 2,
+    "sourceRefs": [
+      "sensei-go-terms",
+      "goagent-curated-original"
+    ],
+    "sourceQuality": "taxonomy-reference-original-card"
+  },
+  {
+    "id": "deep-empty-triangle-dango",
+    "title": "空三角与团子：形差来自效率低",
+    "category": "shapes",
+    "patternType": "shape_efficiency_bad_shape",
+    "scope": "teaching-quality",
+    "phase": [
+      "middlegame"
+    ],
+    "regions": [
+      "any"
+    ],
+    "levels": [
+      "beginner",
+      "intermediate",
+      "advanced",
+      "dan"
+    ],
+    "tags": [
+      "空三角",
+      "团子",
+      "效率",
+      "形差"
+    ],
+    "aliases": [
+      "empty triangle",
+      "dango",
+      "bad shape"
+    ],
+    "triggerSignals": [
+      "空三角",
+      "团子",
+      "效率",
+      "坏形"
+    ],
+    "negativeSignals": [],
+    "katagoSignals": [
+      "tacticalSignals",
+      "policy",
+      "scoreLead"
+    ],
+    "recognition": "坏形不是因为名字难听，而是同样棋子做的事太少、气和眼形都差。",
+    "wrongThinking": "只背“空三角不好”，却不知道本局坏在哪里。",
+    "correctThinking": "解释坏形时指出效率低的具体原因：少气、少眼位、不能限制对方或没有先手。",
+    "coachLines": [
+      "坏形要讲具体损失。",
+      "不是所有空三角都绝对错，证据不足要降级。"
+    ],
+    "drillPrompt": "找一个坏形，说明它具体少了哪种效率。",
+    "confidenceBoost": 2,
+    "sourceRefs": [
+      "sensei-go-terms",
+      "goagent-curated-original"
+    ],
+    "sourceQuality": "taxonomy-reference-original-card"
+  },
+  {
+    "id": "deep-peep-response",
+    "title": "应对窥：不是每个窥都必须立刻接",
+    "category": "shapes",
+    "patternType": "peep_response",
+    "scope": "teaching-quality",
+    "phase": [
+      "middlegame"
+    ],
+    "regions": [
+      "any"
+    ],
+    "levels": [
+      "beginner",
+      "intermediate",
+      "advanced",
+      "dan"
+    ],
+    "tags": [
+      "窥",
+      "连接",
+      "应对",
+      "先手"
+    ],
+    "aliases": [
+      "peep",
+      "connection",
+      "forcing"
+    ],
+    "triggerSignals": [
+      "窥",
+      "peep",
+      "接",
+      "断点"
+    ],
+    "negativeSignals": [],
+    "katagoSignals": [
+      "tacticalSignals",
+      "pv",
+      "candidateSpread"
+    ],
+    "recognition": "对方窥时，要判断这个窥是否真能断、是否是利筋、是否可以反击。",
+    "wrongThinking": "对方一窥就机械接，让对方白拿先手。",
+    "correctThinking": "先问不接会不会被断死；如果不会，考虑反击、脱先或更高效补法。",
+    "coachLines": [
+      "不是每个窥都要接。",
+      "先判断断点是否真实。"
+    ],
+    "drillPrompt": "列出对方窥后的三种应法：接、反击、脱先。",
+    "confidenceBoost": 2,
+    "sourceRefs": [
+      "sensei-go-terms",
+      "goagent-curated-original"
+    ],
+    "sourceQuality": "taxonomy-reference-original-card"
+  },
+  {
+    "id": "deep-ladder-net-choice",
+    "title": "征子与枷：追吃方向和外部棋子决定选择",
+    "category": "tesuji",
+    "patternType": "ladder_net_choice",
+    "scope": "teaching-quality",
+    "phase": [
+      "middlegame"
+    ],
+    "regions": [
+      "any"
+    ],
+    "levels": [
+      "beginner",
+      "intermediate",
+      "advanced",
+      "dan"
+    ],
+    "tags": [
+      "征子",
+      "枷",
+      "方向",
+      "外部棋子"
+    ],
+    "aliases": [
+      "ladder",
+      "geta",
+      "net"
+    ],
+    "triggerSignals": [
+      "征子",
+      "枷",
+      "逃跑路线",
+      "外部棋子"
+    ],
+    "negativeSignals": [],
+    "katagoSignals": [
+      "tacticalSignals",
+      "pv"
+    ],
+    "recognition": "征子要看外部接应，枷要看能否限制逃跑路线；两者不是同一种追吃。",
+    "wrongThinking": "只看到可以打吃就征，没看征子是否成立。",
+    "correctThinking": "先检查征子路线有没有对方接应；不成立时考虑枷或转换。",
+    "coachLines": [
+      "征子先看路线。",
+      "枷是限制逃跑，不是一路打吃。"
+    ],
+    "drillPrompt": "沿征子路线画出所有可能接应点。",
+    "confidenceBoost": 4,
+    "sourceRefs": [
+      "sensei-go-terms",
+      "goagent-curated-original"
+    ],
+    "sourceQuality": "taxonomy-reference-original-card"
+  },
+  {
+    "id": "deep-sacrifice-profit",
+    "title": "弃子转换：丢子要换到形势收益",
+    "category": "strategy",
+    "patternType": "sacrifice_profit",
+    "scope": "teaching-quality",
+    "phase": [
+      "middlegame"
+    ],
+    "regions": [
+      "any"
+    ],
+    "levels": [
+      "beginner",
+      "intermediate",
+      "advanced",
+      "dan"
+    ],
+    "tags": [
+      "弃子",
+      "转换",
+      "取利",
+      "厚势"
+    ],
+    "aliases": [
+      "sacrifice",
+      "profit",
+      "furikawari"
+    ],
+    "triggerSignals": [
+      "弃子",
+      "转换",
+      "换取",
+      "取利"
+    ],
+    "negativeSignals": [],
+    "katagoSignals": [
+      "scoreLead",
+      "ownership",
+      "pv"
+    ],
+    "recognition": "弃子不是放弃，而是用一部分棋子换取先手、厚势、实地或攻击目标。",
+    "wrongThinking": "把所有被吃的子都当亏，或随便弃子却没有换到收益。",
+    "correctThinking": "弃子前说明换到什么：先手、厚势、实地、眼形、攻击或官子。",
+    "coachLines": [
+      "弃子要有账。",
+      "能换到更大的东西才叫转换。"
+    ],
+    "drillPrompt": "计算一处弃子：丢几目，换到什么收益。",
+    "confidenceBoost": 2,
+    "sourceRefs": [
+      "sensei-go-terms",
+      "goagent-curated-original"
+    ],
+    "sourceQuality": "taxonomy-reference-original-card"
+  },
+  {
+    "id": "deep-attack-profit-not-capture",
+    "title": "攻击收益：目标是取利，不一定吃棋",
+    "category": "strategy",
+    "patternType": "attack_profit_not_capture",
+    "scope": "teaching-quality",
+    "phase": [
+      "middlegame"
+    ],
+    "regions": [
+      "side",
+      "center",
+      "any"
+    ],
+    "levels": [
+      "beginner",
+      "intermediate",
+      "advanced",
+      "dan"
+    ],
+    "tags": [
+      "攻击",
+      "取利",
+      "方向",
+      "孤棋"
+    ],
+    "aliases": [
+      "attack profit",
+      "attack direction"
+    ],
+    "triggerSignals": [
+      "攻击",
+      "取利",
+      "孤棋",
+      "方向"
+    ],
+    "negativeSignals": [],
+    "katagoSignals": [
+      "ownership",
+      "scoreLead",
+      "pv"
+    ],
+    "recognition": "攻击的目标通常是借对方弱棋围空、补强、分断或抢先手，不一定是杀掉。",
+    "wrongThinking": "攻击时只想吃棋，把对方赶向自己薄的方向。",
+    "correctThinking": "攻击前问：我要把对方赶向哪里？我攻击时得到什么？",
+    "coachLines": [
+      "攻击不是追杀游戏。",
+      "好攻击一边限制对方，一边让自己得利。"
+    ],
+    "drillPrompt": "选一个攻击方向，说出你想得到的具体收益。",
+    "confidenceBoost": 3,
+    "sourceRefs": [
+      "sensei-go-terms",
+      "goagent-curated-original"
+    ],
+    "sourceQuality": "taxonomy-reference-original-card"
+  },
+  {
+    "id": "deep-endgame-counting-risk",
+    "title": "官子读法：先后手与目数都要校验",
+    "category": "endgame",
+    "patternType": "endgame_counting_risk",
+    "scope": "teaching-quality",
+    "phase": [
+      "endgame"
+    ],
+    "regions": [
+      "any"
+    ],
+    "levels": [
+      "beginner",
+      "intermediate",
+      "advanced",
+      "dan"
+    ],
+    "tags": [
+      "官子",
+      "目数",
+      "先手",
+      "读法"
+    ],
+    "aliases": [
+      "yose",
+      "counting",
+      "sente"
+    ],
+    "triggerSignals": [
+      "官子",
+      "目差",
+      "先后手",
+      "收束"
+    ],
+    "negativeSignals": [],
+    "katagoSignals": [
+      "scoreLead",
+      "pv",
+      "candidateSpread"
+    ],
+    "recognition": "官子阶段胜率可能不敏感，目差和先后手顺序更能说明错误。",
+    "wrongThinking": "只看胜率变化，忽略 1-2 目的真实官子损失。",
+    "correctThinking": "用目差排序官子；先区分先手、后手、逆收，再比较大小。",
+    "coachLines": [
+      "官子讲目差比讲胜率更直观。",
+      "先后手顺序常比单点大小更重要。"
+    ],
+    "drillPrompt": "列出当前最大三个官子并说明先后手。",
+    "confidenceBoost": 2,
+    "sourceRefs": [
+      "katago-analysis-engine-docs",
+      "sensei-go-terms",
+      "goagent-curated-original"
+    ],
+    "sourceQuality": "engine-and-taxonomy-original-card"
+  },
+  {
+    "id": "deep-time-trouble-simplify",
+    "title": "优势方读秒简化：降低波动比追求最大更重要",
+    "category": "strategy",
+    "patternType": "time_trouble_simplification",
+    "scope": "teaching-quality",
+    "phase": [
+      "middlegame",
+      "endgame"
+    ],
+    "regions": [
+      "any"
+    ],
+    "levels": [
+      "beginner",
+      "intermediate",
+      "advanced",
+      "dan"
+    ],
+    "tags": [
+      "读秒",
+      "优势",
+      "简化",
+      "风险控制"
+    ],
+    "aliases": [
+      "time trouble",
+      "simplify",
+      "risk control"
+    ],
+    "triggerSignals": [
+      "读秒",
+      "优势",
+      "简化",
+      "风险"
+    ],
+    "negativeSignals": [],
+    "katagoSignals": [
+      "scoreLead",
+      "candidateSpread",
+      "pv"
+    ],
+    "recognition": "优势方在读秒或证据低置信时，稳定简化往往比追求最大收益更适合学生。",
+    "wrongThinking": "明明领先还选择复杂劫争或长战斗，给对方翻盘机会。",
+    "correctThinking": "先确认领先幅度，再选低波动、易执行、不会制造新弱点的路线。",
+    "coachLines": [
+      "优势方先控制风险。",
+      "学生训练中，可执行性也是准确性的一部分。"
+    ],
+    "drillPrompt": "给两个候选：最大收益和最稳收益，判断读秒时该选哪个。",
+    "confidenceBoost": 2,
+    "sourceRefs": [
+      "goagent-curated-original"
+    ],
+    "sourceQuality": "original-practical-coaching-card"
+  }
+]

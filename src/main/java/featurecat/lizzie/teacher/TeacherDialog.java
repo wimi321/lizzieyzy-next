@@ -300,7 +300,9 @@ public final class TeacherDialog extends JDialog {
               "This position has no KataGo candidates yet. Analyze it first."));
       return;
     }
-    lastEvidenceContext = TeacherPromptBuilder.forPosition(position.get(), TeacherStrings.locale());
+    lastEvidenceContext =
+        TeacherPromptBuilder.forPosition(
+            position.get(), TeacherStrings.locale(), settings.snapshot());
     startRequest(lastEvidenceContext, current);
   }
 
@@ -326,7 +328,10 @@ public final class TeacherDialog extends JDialog {
     }
     lastEvidenceContext =
         TeacherPromptBuilder.forRange(
-            evidence, TeacherPromptBuilder.Mode.RANGE, TeacherStrings.locale());
+            evidence,
+            TeacherPromptBuilder.Mode.RANGE,
+            TeacherStrings.locale(),
+            settings.snapshot());
     startRequest(lastEvidenceContext, currentNode());
   }
 
@@ -345,7 +350,10 @@ public final class TeacherDialog extends JDialog {
     }
     lastEvidenceContext =
         TeacherPromptBuilder.forRange(
-            evidence, TeacherPromptBuilder.Mode.WHOLE_GAME, TeacherStrings.locale());
+            evidence,
+            TeacherPromptBuilder.Mode.WHOLE_GAME,
+            TeacherStrings.locale(),
+            settings.snapshot());
     startRequest(lastEvidenceContext, root);
   }
 
@@ -368,16 +376,22 @@ public final class TeacherDialog extends JDialog {
         return;
       }
       lastEvidenceContext =
-          TeacherPromptBuilder.forPosition(position.get(), TeacherStrings.locale());
+          TeacherPromptBuilder.forPosition(
+              position.get(), TeacherStrings.locale(), settings.snapshot());
     }
     startRequest(
         TeacherPromptBuilder.forFollowUp(
-            lastEvidenceContext, output.getText(), question, TeacherStrings.locale()),
+            lastEvidenceContext,
+            output.getText(),
+            question,
+            TeacherStrings.locale(),
+            settings.snapshot()),
         currentNode());
     followUp.setText("");
   }
 
   private void startRequest(List<TeacherLlmClient.Message> messages, BoardHistoryNode targetNode) {
+    messages = appendKnowledge(messages, targetNode);
     TeacherLlmClient client = configuredClient();
     if (client == null) {
       return;
@@ -415,6 +429,30 @@ public final class TeacherDialog extends JDialog {
         });
   }
 
+  /** 把知识库匹配结果（定式/棋形）拼到最后一条 user 消息；无匹配不改动。 */
+  private static List<TeacherLlmClient.Message> appendKnowledge(
+      List<TeacherLlmClient.Message> messages, BoardHistoryNode node) {
+    if (messages == null || messages.isEmpty()) {
+      return messages;
+    }
+    String knowledge = TeacherEvidence.knowledgeMatchText(node);
+    if (knowledge.isEmpty()) {
+      return messages;
+    }
+    java.util.ArrayList<TeacherLlmClient.Message> out =
+        new java.util.ArrayList<>(messages);
+    int last = out.size() - 1;
+    TeacherLlmClient.Message message = out.get(last);
+    if ("user".equals(message.role)) {
+      out.set(
+          last,
+          new TeacherLlmClient.Message(
+              message.role,
+              message.content + "\n\n【Knowledge】\n" + knowledge));
+    }
+    return out;
+  }
+
   private TeacherLlmClient configuredClient() {
     try {
       TeacherSettings.Snapshot snapshot = settings.load();
@@ -445,6 +483,7 @@ public final class TeacherDialog extends JDialog {
     }
     output.setText(result);
     output.setCaretPosition(0);
+    appendVerifierNotes(result);
     if (writeToSgf.isSelected() && requestTarget != null && requestTarget.getData() != null) {
       requestTarget.getData().comment =
           TeacherCommentCodec.upsert(requestTarget.getData().comment, result, requestModel);
@@ -459,6 +498,65 @@ public final class TeacherDialog extends JDialog {
       setStatus(TeacherStrings.get("Teacher.status.completed", "Commentary completed."));
     }
     setRunning(false);
+  }
+
+  /** 防编造校验：轻量 TeacherVerifier + 重型 QualityGate（claim 级核对），附到输出末尾（不阻断显示）。 */
+  private void appendVerifierNotes(String result) {
+    try {
+      java.util.Optional<TeacherEvidence.Position> position =
+          requestTarget == null
+              ? java.util.Optional.empty()
+              : TeacherEvidence.current(requestTarget);
+      TeacherVerifier.Result verification =
+          TeacherVerifier.verify(result, position.orElse(null));
+      java.util.ArrayList<String> notes =
+          new java.util.ArrayList<>(verification.violations);
+      notes.addAll(verification.warnings);
+      appendQualityGateNotes(result, notes);
+      if (notes.isEmpty()) {
+        return;
+      }
+      java.util.ArrayList<String> shown = new java.util.ArrayList<>();
+      for (String note : notes) {
+        shown.add(note);
+        if (shown.size() >= 4) {
+          break;
+        }
+      }
+      StringBuilder builder =
+          new StringBuilder("\n\n> ")
+              .append(
+                  TeacherStrings.get(
+                      "Teacher.verify.note", "Verifier notes"))
+              .append(": ")
+              .append(String.join("; ", shown));
+      output.append(builder.toString());
+    } catch (Exception ignored) {
+      // 校验失败不阻断解说显示
+    }
+  }
+
+  /** 重型校验链：构建 MoveAnalysis → TeachingEvidence → QualityGate（结构化/claim 级核对）。 */
+  private void appendQualityGateNotes(String result, java.util.ArrayList<String> notes) {
+    if (requestTarget == null) {
+      return;
+    }
+    try {
+      MoveAnalysis analysis = TeacherEvidence.moveAnalysis(requestTarget);
+      TeachingEvidenceBuilder.TeachingEvidence evidence =
+          TeachingEvidenceBuilder.buildTeachingEvidence(
+              analysis, "", java.util.List.of(), java.util.List.of(), java.util.List.of());
+      featurecat.lizzie.teacher.analysis.QualityGate.TeacherQualityGateResult gate =
+          featurecat.lizzie.teacher.analysis.QualityGate.runTeacherQualityGate(
+              result, evidence, false);
+      notes.addAll(gate.violations);
+      notes.addAll(gate.warnings);
+      if (gate.note != null && !gate.note.isBlank()) {
+        notes.add(gate.note);
+      }
+    } catch (Exception ignored) {
+      // 重型校验失败不阻断解说显示
+    }
   }
 
   private void failRequest(Throwable error) {

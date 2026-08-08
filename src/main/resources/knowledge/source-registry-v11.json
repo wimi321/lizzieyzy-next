@@ -1,0 +1,29 @@
+[
+  {
+    "id": "gnu-go-pattern-docs",
+    "name": "GNU Go pattern code documentation",
+    "url": "https://www.gnu.org/software/gnugo/gnugo_9.html",
+    "license": "GNU documentation / project reference; used as engineering reference only",
+    "status": "engineering-reference-only",
+    "why": "Documents pattern transformations, constraints, helpers, and pattern database architecture. GoAgent uses it to design original matcher behavior, not to copy pattern data.",
+    "usedFor": ["local pattern matcher architecture", "symmetry and constraint design"]
+  },
+  {
+    "id": "gnu-go-eyes-docs",
+    "name": "GNU Go eyes and half-eyes documentation",
+    "url": "https://www.gnu.org/software/gnugo/gnugo_8.html",
+    "license": "GNU documentation / project reference; used as engineering reference only",
+    "status": "engineering-reference-only",
+    "why": "Documents eye spaces, half-eyes, false-eye topology, and local-game framing. GoAgent uses it as a checklist for original life-and-death shape teaching.",
+    "usedFor": ["eye-shape coverage", "false-eye recognition policy"]
+  },
+  {
+    "id": "kombilo-pattern-search",
+    "name": "Kombilo pattern search documentation",
+    "url": "https://dl.u-go.net/kombilo/doc/intro.html",
+    "license": "documentation reference; used as engineering reference only",
+    "status": "engineering-reference-only",
+    "why": "Documents Go database pattern search with whole-board, corner, side, symmetry, and color-switch search behavior. GoAgent uses it to validate matcher feature coverage.",
+    "usedFor": ["pattern search feature checklist", "symmetry and color-switch policy"]
+  }
+]

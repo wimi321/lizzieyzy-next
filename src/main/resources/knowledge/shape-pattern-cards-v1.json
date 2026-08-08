@@ -1,0 +1,210 @@
+[
+  {
+    "id": "shape-cut-point-diagonal-gap",
+    "title": "断点：斜邻之间的可切点",
+    "shapeType": "cut_point",
+    "category": "shape-recognition",
+    "anchorRole": "candidate",
+    "phase": ["middlegame", "endgame", "any"],
+    "regions": ["corner", "side", "center", "any"],
+    "tags": ["断点", "连接", "棋形", "cut"],
+    "sourceRefs": ["goagent-curated-original"],
+    "sourceQuality": "project-original-pattern",
+    "minScore": 18,
+    "points": [
+      { "dx": -1, "dy": 0, "state": "friendly" },
+      { "dx": 0, "dy": -1, "state": "friendly" },
+      { "dx": -1, "dy": -1, "state": "enemy", "required": false },
+      { "dx": 0, "dy": 0, "state": "empty" }
+    ],
+    "constraints": [{ "type": "anchor-empty", "value": 1 }],
+    "antiPatterns": [{ "dx": 1, "dy": 1, "state": "friendly" }],
+    "teaching": {
+      "recognition": "两个己方棋子斜邻但中间连接点未补，候选点可能是连接或反切的关键。",
+      "wrongThinking": "只看两块棋都还没死，忽略对方下一手切开后局部会变成两处负担。",
+      "correctThinking": "先判断这个点被谁占到会改变几块棋的气数和出路，再决定是补、断还是弃。",
+      "drillPrompt": "遮住连接点，问自己：对方下一手切开后，我要同时救几块？"
+    }
+  },
+  {
+    "id": "shape-bamboo-joint-connection",
+    "title": "竹节：稳定连接形",
+    "shapeType": "bamboo_joint",
+    "category": "shape-recognition",
+    "anchorRole": "either",
+    "phase": ["middlegame", "endgame", "any"],
+    "regions": ["side", "center", "any"],
+    "tags": ["竹节", "连接", "好形"],
+    "sourceRefs": ["goagent-curated-original"],
+    "sourceQuality": "project-original-pattern",
+    "minScore": 18,
+    "points": [
+      { "dx": -1, "dy": -1, "state": "friendly" },
+      { "dx": 1, "dy": -1, "state": "friendly" },
+      { "dx": -1, "dy": 1, "state": "friendly" },
+      { "dx": 1, "dy": 1, "state": "friendly" },
+      { "dx": 0, "dy": 0, "state": "empty", "required": false }
+    ],
+    "constraints": [{ "type": "min-friendly-liberties", "value": 2 }],
+    "teaching": {
+      "recognition": "局部呈现竹节连接，通常说明连接稳固，老师应比较是否需要继续补强。",
+      "wrongThinking": "看到连接就继续补，结果把厚棋补成缓手。",
+      "correctThinking": "竹节已经稳定时，应转而看外面是否有更急的攻击、官子或大场。",
+      "drillPrompt": "判断这个竹节是否已经不怕断；如果不怕，找全盘更大的点。"
+    }
+  },
+  {
+    "id": "shape-empty-triangle",
+    "title": "空三角：棋形效率低",
+    "shapeType": "empty_triangle",
+    "category": "shape-recognition",
+    "anchorRole": "actual",
+    "phase": ["middlegame", "endgame", "any"],
+    "regions": ["corner", "side", "center", "any"],
+    "tags": ["空三角", "效率", "坏形"],
+    "sourceRefs": ["goagent-curated-original"],
+    "sourceQuality": "project-original-pattern",
+    "minScore": 17,
+    "points": [
+      { "dx": 0, "dy": 0, "state": "friendly" },
+      { "dx": 1, "dy": 0, "state": "friendly" },
+      { "dx": 0, "dy": 1, "state": "friendly" },
+      { "dx": 1, "dy": 1, "state": "empty", "required": false }
+    ],
+    "teaching": {
+      "recognition": "三颗己方棋子挤成三角形，常见问题是效率低、出头慢、让对方先手。",
+      "wrongThinking": "只想把棋补厚，却没看这手是否增加眼位、出路或攻击收益。",
+      "correctThinking": "如果补强不带来气数、眼位或先手收益，就要优先找更舒展的一间跳、尖、飞。",
+      "drillPrompt": "看到空三角时，找一个更舒展的替代点，并说明它多得到什么。"
+    }
+  },
+  {
+    "id": "shape-eye-false-eye-risk",
+    "title": "假眼风险：眼位旁有断点",
+    "shapeType": "false_eye_risk",
+    "category": "life-death-shape",
+    "anchorRole": "candidate",
+    "phase": ["middlegame", "endgame", "any"],
+    "regions": ["corner", "side"],
+    "tags": ["假眼", "眼形", "死活"],
+    "sourceRefs": ["goagent-curated-original"],
+    "sourceQuality": "project-original-pattern",
+    "minScore": 19,
+    "points": [
+      { "dx": 0, "dy": 0, "state": "empty" },
+      { "dx": -1, "dy": 0, "state": "friendly" },
+      { "dx": 1, "dy": 0, "state": "friendly" },
+      { "dx": 0, "dy": -1, "state": "enemy", "required": false },
+      { "dx": 0, "dy": 1, "state": "enemy", "required": false }
+    ],
+    "constraints": [{ "type": "edge-distance", "value": 4 }],
+    "teaching": {
+      "recognition": "眼位看似存在，但旁边有断点或敌子压力，可能是假眼或需要先补断。",
+      "wrongThinking": "只数空点数量，不看眼位周围是否会被切断或扑入。",
+      "correctThinking": "死活先判断真眼/假眼，再读对方最强的扑、断、点眼。",
+      "drillPrompt": "把这个眼位当作对方先手，读对方点入后是否还能形成两个真眼。"
+    }
+  },
+  {
+    "id": "shape-net-surrounding-cage",
+    "title": "枷：限制逃跑路线",
+    "shapeType": "net",
+    "category": "tesuji-shape",
+    "anchorRole": "candidate",
+    "phase": ["middlegame", "any"],
+    "regions": ["side", "center", "any"],
+    "tags": ["枷", "网", "限制", "手筋"],
+    "sourceRefs": ["goagent-curated-original"],
+    "sourceQuality": "project-original-pattern",
+    "minScore": 18,
+    "points": [
+      { "dx": 0, "dy": 0, "state": "empty" },
+      { "dx": -1, "dy": -1, "state": "friendly" },
+      { "dx": 1, "dy": -1, "state": "friendly" },
+      { "dx": 0, "dy": 1, "state": "enemy" }
+    ],
+    "teaching": {
+      "recognition": "候选点像枷，不是直接打吃，而是封住对方逃跑路线。",
+      "wrongThinking": "只找打吃，忽略能一手限制对方所有出路的网。",
+      "correctThinking": "如果征子不清楚，先看是否有枷能让对方越跑越重。",
+      "drillPrompt": "不要先打吃，先找一个能让对方没有好逃路的落点。"
+    }
+  },
+  {
+    "id": "shape-throw-in-snapback-window",
+    "title": "扑入 / 倒扑窗口",
+    "shapeType": "throw_in_snapback",
+    "category": "tesuji-shape",
+    "anchorRole": "candidate",
+    "phase": ["middlegame", "endgame", "any"],
+    "regions": ["corner", "side"],
+    "tags": ["扑入", "倒扑", "手筋", "气数"],
+    "sourceRefs": ["goagent-curated-original"],
+    "sourceQuality": "project-original-pattern",
+    "minScore": 18,
+    "points": [
+      { "dx": 0, "dy": 0, "state": "empty" },
+      { "dx": -1, "dy": 0, "state": "enemy" },
+      { "dx": 1, "dy": 0, "state": "enemy" },
+      { "dx": 0, "dy": 1, "state": "friendly" }
+    ],
+    "teaching": {
+      "recognition": "空点夹在对方棋子之间并有己方支撑，可能存在扑入、倒扑或收气手筋。",
+      "wrongThinking": "只想直接提子，没读对方提回后是否形成倒扑。",
+      "correctThinking": "先读一手扑入、对方提、再吃回的三步结构。",
+      "drillPrompt": "读三步：我扑、对方提、我是否能吃回或破眼。"
+    }
+  },
+  {
+    "id": "shape-semeai-liberty-race",
+    "title": "对杀：先数外气与公气",
+    "shapeType": "semeai_liberty_race",
+    "category": "life-death-shape",
+    "anchorRole": "either",
+    "phase": ["middlegame", "endgame", "any"],
+    "regions": ["corner", "side", "center", "any"],
+    "tags": ["对杀", "气数", "公气", "死活"],
+    "sourceRefs": ["goagent-curated-original"],
+    "sourceQuality": "project-original-pattern",
+    "minScore": 18,
+    "points": [
+      { "dx": 0, "dy": 0, "state": "empty" },
+      { "dx": -1, "dy": 0, "state": "friendly" },
+      { "dx": 1, "dy": 0, "state": "enemy" },
+      { "dx": 0, "dy": -1, "state": "friendly", "required": false },
+      { "dx": 0, "dy": 1, "state": "enemy", "required": false }
+    ],
+    "teaching": {
+      "recognition": "敌我棋块贴近且共享空点，讲解应先数气，再谈形状。",
+      "wrongThinking": "看到能打吃就下，没有区分外气、公气和谁先手收气。",
+      "correctThinking": "对杀先数外气，再数公气，最后读对方最强收气次序。",
+      "drillPrompt": "把敌我两块分别标出外气和公气，再判断谁先动更有利。"
+    }
+  },
+  {
+    "id": "shape-ko-mouth-risk",
+    "title": "劫形入口：提劫与补劫价值",
+    "shapeType": "ko_shape",
+    "category": "life-death-shape",
+    "anchorRole": "candidate",
+    "phase": ["middlegame", "endgame", "any"],
+    "regions": ["corner", "side"],
+    "tags": ["劫", "劫材", "死活", "官子"],
+    "sourceRefs": ["goagent-curated-original"],
+    "sourceQuality": "project-original-pattern",
+    "minScore": 17,
+    "points": [
+      { "dx": 0, "dy": 0, "state": "empty" },
+      { "dx": -1, "dy": 0, "state": "enemy" },
+      { "dx": 1, "dy": 0, "state": "friendly" },
+      { "dx": 0, "dy": -1, "state": "friendly" },
+      { "dx": 0, "dy": 1, "state": "enemy" }
+    ],
+    "teaching": {
+      "recognition": "局部呈现劫形入口，不能只说能杀或能活，要看劫材和全局价值。",
+      "wrongThinking": "把劫当成本地死活题，忽略全盘有没有足够劫材。",
+      "correctThinking": "先判断劫的本地价值，再比较双方可用劫材，最后决定开劫还是简化。",
+      "drillPrompt": "列出双方各两个劫材，再决定这劫是否值得开。"
+    }
+  }
+]

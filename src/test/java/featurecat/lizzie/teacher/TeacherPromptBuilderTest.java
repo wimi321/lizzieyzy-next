@@ -24,7 +24,7 @@ class TeacherPromptBuilderTest {
                 new TeacherEvidence.Candidate(2, "D4", 59.9, 1.4, 600, List.of("D4", "Q16"))));
 
     List<TeacherLlmClient.Message> messages =
-        TeacherPromptBuilder.forPosition(position, Locale.SIMPLIFIED_CHINESE);
+        TeacherPromptBuilder.forPosition(position, Locale.SIMPLIFIED_CHINESE, null);
     String system = messages.get(0).content;
     String evidence = messages.get(1).content;
 
@@ -45,7 +45,7 @@ class TeacherPromptBuilderTest {
 
     List<TeacherLlmClient.Message> followUp =
         TeacherPromptBuilder.forFollowUp(
-            evidenceContext, "previous answer", "Why was move 12 important?", Locale.ENGLISH);
+            evidenceContext, "previous answer", "Why was move 12 important?", Locale.ENGLISH, null);
 
     assertEquals(4, followUp.size());
     assertEquals("move 12 evidence\nmove 38 evidence", followUp.get(1).content);

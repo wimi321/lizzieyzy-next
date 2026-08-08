@@ -1,0 +1,353 @@
+[
+  {
+    "id": "joseki-star-approach",
+    "file": "joseki/star-point.md",
+    "category": "joseki",
+    "phase": "opening",
+    "levels": ["intermediate", "advanced", "dan"],
+    "tags": ["星位", "挂角", "小飞挂", "大飞挂", "定式"],
+    "regions": ["corner"]
+  },
+  {
+    "id": "joseki-34-point",
+    "file": "joseki/34-point.md",
+    "category": "joseki",
+    "phase": "opening",
+    "levels": ["intermediate", "advanced", "dan"],
+    "tags": ["小目", "定式", "一间高挂", "小飞挂"],
+    "regions": ["corner"]
+  },
+  {
+    "id": "joseki-33-invasion",
+    "file": "joseki/33-invasion.md",
+    "category": "joseki",
+    "phase": "opening",
+    "levels": ["intermediate", "advanced", "dan"],
+    "tags": ["三三", "点三三", "侵入", "定式"],
+    "regions": ["corner"]
+  },
+  {
+    "id": "joseki-high-approach",
+    "file": "joseki/high-approach.md",
+    "category": "joseki",
+    "phase": "opening",
+    "levels": ["intermediate", "advanced", "dan"],
+    "tags": ["高挂", "一间高挂", "定式", "挂角"],
+    "regions": ["corner"]
+  },
+  {
+    "id": "tesuji-cutting",
+    "file": "tesuji/cutting.md",
+    "category": "tesuji",
+    "phase": "middle",
+    "levels": ["beginner", "intermediate", "advanced", "dan"],
+    "tags": ["切断", "断", "分断", "手筋"],
+    "regions": ["any"]
+  },
+  {
+    "id": "tesuji-sacrifice",
+    "file": "tesuji/sacrifice.md",
+    "category": "tesuji",
+    "phase": "middle",
+    "levels": ["intermediate", "advanced", "dan"],
+    "tags": ["弃子", "舍", "弃子手筋", "转换"],
+    "regions": ["any"]
+  },
+  {
+    "id": "tesuji-common",
+    "file": "tesuji/common-tesuji.md",
+    "category": "tesuji",
+    "phase": "middle",
+    "levels": ["beginner", "intermediate", "advanced"],
+    "tags": ["手筋", "扑", "接不归", "倒扑", "征子", "枷"],
+    "regions": ["any"]
+  },
+  {
+    "id": "tesuji-peep-probe",
+    "file": "tesuji/peep-probe.md",
+    "category": "tesuji",
+    "phase": "middle",
+    "levels": ["intermediate", "advanced", "dan"],
+    "tags": ["窥", "试探", "先手利", "手筋", "探り"],
+    "regions": ["any"]
+  },
+  {
+    "id": "shapes-good-bad",
+    "file": "shapes/good-bad-shapes.md",
+    "category": "shapes",
+    "phase": "any",
+    "levels": ["beginner", "intermediate", "advanced"],
+    "tags": ["好形", "愚形", "形状", "效率", "空三角"],
+    "regions": ["any"]
+  },
+  {
+    "id": "shapes-connections",
+    "file": "shapes/connections.md",
+    "category": "shapes",
+    "phase": "any",
+    "levels": ["beginner", "intermediate"],
+    "tags": ["连接", "虎", "飞", "跳", "尖"],
+    "regions": ["any"]
+  },
+  {
+    "id": "shapes-eye-shapes",
+    "file": "shapes/eye-shapes.md",
+    "category": "shapes",
+    "phase": "any",
+    "levels": ["beginner", "intermediate", "advanced"],
+    "tags": ["眼形", "做活", "真眼", "直三", "弯三", "直四", "弯四"],
+    "regions": ["any"]
+  },
+  {
+    "id": "life-death-basics",
+    "file": "life-death/basics.md",
+    "category": "life-death",
+    "phase": "any",
+    "levels": ["beginner", "intermediate"],
+    "tags": ["死活", "眼", "做活", "杀棋", "两眼活"],
+    "regions": ["corner", "side"]
+  },
+  {
+    "id": "life-death-corner-patterns",
+    "file": "life-death/corner-patterns.md",
+    "category": "life-death",
+    "phase": "middle",
+    "levels": ["intermediate", "advanced", "dan"],
+    "tags": ["角部死活", "角部做活", "角部杀棋", "曲四"],
+    "regions": ["corner"]
+  },
+  {
+    "id": "life-death-side-patterns",
+    "file": "life-death/side-patterns.md",
+    "category": "life-death",
+    "phase": "middle",
+    "levels": ["intermediate", "advanced", "dan"],
+    "tags": ["边上死活", "边上做活", "一线", "二线"],
+    "regions": ["side"]
+  },
+  {
+    "id": "life-death-seki",
+    "file": "life-death/seki.md",
+    "category": "life-death",
+    "phase": "any",
+    "levels": ["intermediate", "advanced", "dan"],
+    "tags": ["双活", "seki", "公气", "无眼双活"],
+    "regions": ["any"]
+  },
+  {
+    "id": "ko-basics",
+    "file": "ko/basics.md",
+    "category": "ko",
+    "phase": "any",
+    "levels": ["beginner", "intermediate", "advanced", "dan"],
+    "tags": ["劫", "ko", "劫材", "劫禁", "打劫", "本身劫", "缓气劫"],
+    "regions": ["any"]
+  },
+  {
+    "id": "ko-fights",
+    "file": "ko/ko-fights.md",
+    "category": "ko",
+    "phase": "middle",
+    "levels": ["intermediate", "advanced", "dan"],
+    "tags": ["劫争", "劫材", "开劫", "消劫", "打劫技巧"],
+    "regions": ["any"]
+  },
+  {
+    "id": "strategy-semeai",
+    "file": "strategy/semeai.md",
+    "category": "strategy",
+    "phase": "middle",
+    "levels": ["intermediate", "advanced", "dan"],
+    "tags": ["对杀", "紧气", "数气", "公气", "有眼杀无眼"],
+    "regions": ["any"]
+  },
+  {
+    "id": "strategy-counting",
+    "file": "strategy/counting.md",
+    "category": "strategy",
+    "phase": "any",
+    "levels": ["intermediate", "advanced", "dan"],
+    "tags": ["形势判断", "数目", "目差", "胜率", "贴目"],
+    "regions": ["any"]
+  },
+  {
+    "id": "strategy-sabaki",
+    "file": "strategy/sabaki.md",
+    "category": "strategy",
+    "phase": "middle",
+    "levels": ["advanced", "dan"],
+    "tags": ["腾挪", "轻处理", "弃子", "靠", "肩冲"],
+    "regions": ["any"]
+  },
+  {
+    "id": "strategy-moyo",
+    "file": "strategy/moyo.md",
+    "category": "strategy",
+    "phase": "middle",
+    "levels": ["intermediate", "advanced", "dan"],
+    "tags": ["模样", "打入", "消", "大模样", "框架"],
+    "regions": ["center", "side"]
+  },
+  {
+    "id": "strategy-invasion-reduction",
+    "file": "strategy/invasion-reduction.md",
+    "category": "strategy",
+    "phase": "middle",
+    "levels": ["intermediate", "advanced", "dan"],
+    "tags": ["打入", "消", "侵消", "浅消", "肩冲", "帽"],
+    "regions": ["any"]
+  },
+  {
+    "id": "strategy-influence-territory",
+    "file": "strategy/influence-territory.md",
+    "category": "strategy",
+    "phase": "any",
+    "levels": ["intermediate", "advanced", "dan"],
+    "tags": ["厚势", "实地", "平衡", "厚薄"],
+    "regions": ["any"]
+  },
+  {
+    "id": "strategy-attack-defense",
+    "file": "strategy/attack-defense.md",
+    "category": "strategy",
+    "phase": "middle",
+    "levels": ["beginner", "intermediate", "advanced", "dan"],
+    "tags": ["攻击", "防守", "攻防", "宽攻", "封锁", "做活"],
+    "regions": ["any"]
+  },
+  {
+    "id": "strategy-handicap",
+    "file": "strategy/handicap.md",
+    "category": "strategy",
+    "phase": "opening",
+    "levels": ["beginner", "intermediate", "advanced"],
+    "tags": ["让子棋", "让先", "handicap", "打入"],
+    "regions": ["any"]
+  },
+  {
+    "id": "strategy-reading",
+    "file": "strategy/reading.md",
+    "category": "strategy",
+    "phase": "any",
+    "levels": ["beginner", "intermediate", "advanced", "dan"],
+    "tags": ["计算", "读棋", "死活题", "PV", "变化"],
+    "regions": ["any"]
+  },
+  {
+    "id": "strategy-fuseki-systems",
+    "file": "strategy/fuseki-systems.md",
+    "category": "strategy",
+    "phase": "opening",
+    "levels": ["intermediate", "advanced", "dan"],
+    "tags": ["布局体系", "中国流", "小林流", "三连星", "迷你中国流"],
+    "regions": ["any"]
+  },
+  {
+    "id": "proverbs-opening",
+    "file": "proverbs/opening.md",
+    "category": "proverbs",
+    "phase": "opening",
+    "levels": ["beginner", "intermediate", "advanced"],
+    "tags": ["布局", "格言", "开局", "方向"],
+    "regions": ["any"]
+  },
+  {
+    "id": "proverbs-middle",
+    "file": "proverbs/middle-game.md",
+    "category": "proverbs",
+    "phase": "middle",
+    "levels": ["beginner", "intermediate", "advanced"],
+    "tags": ["中盘", "格言", "战斗", "攻防"],
+    "regions": ["any"]
+  },
+  {
+    "id": "proverbs-endgame",
+    "file": "proverbs/endgame.md",
+    "category": "proverbs",
+    "phase": "endgame",
+    "levels": ["intermediate", "advanced", "dan"],
+    "tags": ["收官", "官子", "格言", "先手"],
+    "regions": ["any"]
+  },
+  {
+    "id": "proverbs-direction-thickness",
+    "file": "proverbs/direction-thickness.md",
+    "category": "proverbs",
+    "phase": "any",
+    "levels": ["intermediate", "advanced", "dan"],
+    "tags": ["厚势", "厚薄", "方向", "不要靠近厚势"],
+    "regions": ["any"]
+  },
+  {
+    "id": "proverbs-ai-insights",
+    "file": "proverbs/ai-insights.md",
+    "category": "proverbs",
+    "phase": "any",
+    "levels": ["beginner", "intermediate", "advanced", "dan"],
+    "tags": ["AI", "KataGo", "AlphaGo", "现代围棋", "弃子", "脱先"],
+    "regions": ["any"]
+  },
+  {
+    "id": "endgame-tesuji",
+    "file": "endgame/endgame-tesuji.md",
+    "category": "endgame",
+    "phase": "endgame",
+    "levels": ["intermediate", "advanced", "dan"],
+    "tags": ["官子手筋", "先手利", "双先", "扳粘", "猴子翻跟斗"],
+    "regions": ["any"]
+  },
+  {
+    "id": "endgame-counting",
+    "file": "endgame/counting-endgame.md",
+    "category": "endgame",
+    "phase": "endgame",
+    "levels": ["advanced", "dan"],
+    "tags": ["官子计算", "逆收目数", "出入计算", "先后手判断"],
+    "regions": ["any"]
+  },
+  {
+    "id": "strategy-sente-gote",
+    "file": "strategy/sente-gote.md",
+    "category": "strategy",
+    "phase": "any",
+    "levels": ["beginner", "intermediate", "advanced", "dan"],
+    "tags": ["先手", "后手", "先手利", "逆先手", "双先", "弃子争先", "官子"],
+    "regions": ["any"]
+  },
+  {
+    "id": "strategy-big-urgent",
+    "file": "strategy/big-urgent.md",
+    "category": "strategy",
+    "phase": "any",
+    "levels": ["beginner", "intermediate", "advanced", "dan"],
+    "tags": ["大场", "急场", "急所", "要点", "方向"],
+    "regions": ["any"]
+  },
+  {
+    "id": "strategy-heavy-light",
+    "file": "strategy/heavy-light.md",
+    "category": "strategy",
+    "phase": "middle",
+    "levels": ["intermediate", "advanced", "dan"],
+    "tags": ["轻重", "轻处理", "重", "弃子", "效率"],
+    "regions": ["any"]
+  },
+  {
+    "id": "strategy-vital-expendable",
+    "file": "strategy/vital-expendable.md",
+    "category": "strategy",
+    "phase": "middle",
+    "levels": ["intermediate", "advanced", "dan"],
+    "tags": ["棋筋", "废子", "弃子", "要点", "连接"],
+    "regions": ["any"]
+  },
+  {
+    "id": "strategy-aji",
+    "file": "strategy/aji.md",
+    "category": "strategy",
+    "phase": "any",
+    "levels": ["intermediate", "advanced", "dan"],
+    "tags": ["味", "aji", "味消", "潜在", "劫材", "薄味"],
+    "regions": ["any"]
+  }
+]
