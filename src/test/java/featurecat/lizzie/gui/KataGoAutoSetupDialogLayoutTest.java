@@ -24,6 +24,14 @@ class KataGoAutoSetupDialogLayoutTest {
   }
 
   @Test
+  void windowsGpuDetectionDoesNotDependOnTensorRtInstallEligibility() {
+    assertTrue(KataGoAutoSetupDialog.shouldStartNvidiaGpuDetection("Windows 11", false, false));
+    assertFalse(KataGoAutoSetupDialog.shouldStartNvidiaGpuDetection("Windows 11", true, false));
+    assertFalse(KataGoAutoSetupDialog.shouldStartNvidiaGpuDetection("Windows 11", false, true));
+    assertFalse(KataGoAutoSetupDialog.shouldStartNvidiaGpuDetection("Mac OS X", false, false));
+  }
+
+  @Test
   void sidebarRendererFontDoesNotGrowAcrossRepaints() {
     Font listFont = new Font(Font.DIALOG, Font.PLAIN, 13);
 

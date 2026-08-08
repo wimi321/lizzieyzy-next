@@ -1896,6 +1896,7 @@ public class KataGoAutoSetupDialog extends JDialog {
   }
 
   private void updateTensorRtInfo() {
+    maybeStartNvidiaGpuDetection();
     KataGoRuntimeHelper.TensorRtInstallStatus status =
         snapshot == null
             ? null
@@ -1909,10 +1910,10 @@ public class KataGoAutoSetupDialog extends JDialog {
       btnSwitchBackCuda.setToolTipText(null);
       btnSwitchBackCuda.setEnabled(false);
       updateTensorRtCacheButton();
-      updateNvidiaGpuInfo(null);
+      updateNvidiaGpuInfo();
       return;
     }
-    updateNvidiaGpuInfo(status);
+    updateNvidiaGpuInfo();
     if (!status.applicable) {
       String notApplicable = text("AutoSetup.tensorRtNotApplicable");
       setTensorRtLabel(lblTensorRtDownloadValue, notApplicable, Color.DARK_GRAY, status.detailText);
@@ -1925,7 +1926,6 @@ public class KataGoAutoSetupDialog extends JDialog {
       updateTensorRtCacheButton();
       return;
     }
-    maybeStartNvidiaGpuDetection(status);
     setTensorRtLabel(
         lblTensorRtDownloadValue,
         status.downloaded
@@ -1997,15 +1997,13 @@ public class KataGoAutoSetupDialog extends JDialog {
     label.revalidate();
   }
 
-  private void maybeStartNvidiaGpuDetection(KataGoRuntimeHelper.TensorRtInstallStatus status) {
-    if (status == null
-        || !status.applicable
-        || nvidiaGpuDetection != null
-        || nvidiaGpuDetectionRunning) {
+  private void maybeStartNvidiaGpuDetection() {
+    if (!shouldStartNvidiaGpuDetection(
+        System.getProperty("os.name", ""), nvidiaGpuDetection != null, nvidiaGpuDetectionRunning)) {
       return;
     }
     nvidiaGpuDetectionRunning = true;
-    updateNvidiaGpuInfo(status);
+    updateNvidiaGpuInfo();
     Thread worker =
         new Thread(
             () -> {
@@ -2022,23 +2020,32 @@ public class KataGoAutoSetupDialog extends JDialog {
     worker.start();
   }
 
-  private void updateNvidiaGpuInfo(KataGoRuntimeHelper.TensorRtInstallStatus status) {
+  static boolean shouldStartNvidiaGpuDetection(
+      String osName, boolean detectionAvailable, boolean detectionRunning) {
+    return osName != null
+        && osName.toLowerCase(Locale.ROOT).contains("win")
+        && !detectionAvailable
+        && !detectionRunning;
+  }
+
+  private void updateNvidiaGpuInfo() {
     if (nvidiaGpuDetectionRunning) {
       lblNvidiaGpuValue.setText(text("AutoSetup.gpuDetecting"));
       lblNvidiaGpuValue.setToolTipText(null);
       lblNvidiaGpuValue.setForeground(TEXT_SECONDARY);
       return;
     }
-    if (status == null || status.gpuDetection == null) {
+    if (nvidiaGpuDetection == null || !nvidiaGpuDetection.detected) {
       lblNvidiaGpuValue.setText(text("AutoSetup.gpuDetectNotFound"));
       lblNvidiaGpuValue.setToolTipText(null);
       lblNvidiaGpuValue.setForeground(Color.DARK_GRAY);
       return;
     }
-    String summary = status.gpuDetection.summaryText;
+    String summary = nvidiaGpuDetection.summaryText;
     lblNvidiaGpuValue.setText(compactInfoText(summary, GPU_INFO_TEXT_LENGTH));
     lblNvidiaGpuValue.setToolTipText(summary);
-    lblNvidiaGpuValue.setForeground(tensorRtGpuStatusColor(status.gpuRecommendation));
+    lblNvidiaGpuValue.setForeground(
+        tensorRtGpuStatusColor(nvidiaGpuDetection.recommendation));
   }
 
   private Color tensorRtGpuStatusColor(NvidiaGpuDetector.TensorRtRecommendation recommendation) {
