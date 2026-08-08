@@ -55,7 +55,13 @@ class ZhiziServerCatalogClientTest {
             new ZhiziApiClient.ConnectAccount("zz-player@example.com", "temporary-password"));
 
     assertEquals("28bnbt", catalog.defaultWeight());
-    assertEquals(6, catalog.weights().size());
+    assertEquals(7, catalog.weights().size());
+    assertTrue(catalog.containsWeight("11b768t"));
+    assertTrue(
+        catalog.weights().stream()
+            .allMatch(
+                option ->
+                    option.source() == ZhiziEngineCatalog.DiscoverySource.SERVER_CAPABILITIES));
     assertEquals("worker.example:2222:ssh-player:temporary-password:query-server", sshCall.get());
     assertTrue(accountPath.get().contains("zz-player%40example.com.ssh.json"));
   }
@@ -91,7 +97,8 @@ class ZhiziServerCatalogClientTest {
 
   private static JSONObject liveCatalog() {
     JSONArray weights = new JSONArray();
-    for (String name : new String[] {"18bnbt", "28bnbt", "fdx", "60b", "40b", "20b"}) {
+    for (String name :
+        new String[] {"18bnbt", "28bnbt", "fdx", "20b", "10b384t", "10b512t", "11b768t"}) {
       weights.put(new JSONObject().put("name", name).put("description", name + " weight"));
     }
     return new JSONObject()

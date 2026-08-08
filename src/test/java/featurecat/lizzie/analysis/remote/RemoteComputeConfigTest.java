@@ -74,7 +74,7 @@ class RemoteComputeConfigTest {
 
   @Test
   void everyConfirmedZhiziWeightUsesTheExactServerArgumentAndReadableLabel() {
-    String[] weights = {"18bnbt", "28bnbt", "fdx", "60b", "40b", "20b"};
+    String[] weights = {"18bnbt", "28bnbt", "fdx", "20b", "10b384t", "10b512t", "11b768t"};
     for (String weight : weights) {
       String args =
           RemoteComputeConfig.withKataWeight(RemoteComputeConfig.DEFAULT_ZHIZI_ARGS, weight);
@@ -94,6 +94,12 @@ class RemoteComputeConfigTest {
         () -> {
           assertEquals("超大权重", RemoteComputeConfig.hintForZhiziWeight("fdx"));
           assertEquals("让子棋常用", RemoteComputeConfig.hintForZhiziWeight("20b"));
+          assertEquals(
+              "Transformer 10B · 轻量版", RemoteComputeConfig.displayNameForZhiziWeight("10b384t"));
+          assertEquals(
+              "Transformer 10B · 均衡版", RemoteComputeConfig.displayNameForZhiziWeight("10b512t"));
+          assertEquals(
+              "Transformer 11B · 旗舰版", RemoteComputeConfig.displayNameForZhiziWeight("11b768t"));
         });
   }
 
@@ -106,10 +112,10 @@ class RemoteComputeConfigTest {
     assertEquals("28bnbt", RemoteComputeConfig.kataWeightForArgs(selected));
     assertEquals("1x", RemoteComputeConfig.gpuTypeForArgs(selected));
 
-    String unsupported =
+    String futureServerModel =
         RemoteComputeConfig.withKataWeight(
             RemoteComputeConfig.ON_DEMAND_1X_ZHIZI_ARGS, "future-net");
-    assertEquals("28bnbt", RemoteComputeConfig.kataWeightForArgs(unsupported));
+    assertEquals("future-net", RemoteComputeConfig.kataWeightForArgs(futureServerModel));
   }
 
   @Test
@@ -130,10 +136,11 @@ class RemoteComputeConfigTest {
 
           RemoteComputeConfig.State restored = RemoteComputeConfig.load();
           assertEquals("28bnbt", restored.zhiziCatalog.defaultWeight());
-          assertEquals(4, restored.zhiziCatalog.weights().size());
+          assertEquals(8, restored.zhiziCatalog.weights().size());
           assertTrue(restored.zhiziCatalog.containsWeight("18bnbt"));
           assertTrue(restored.zhiziCatalog.containsWeight("fdx"));
-          assertFalse(restored.zhiziCatalog.containsWeight("20b"));
+          assertTrue(restored.zhiziCatalog.containsWeight("20b"));
+          assertTrue(restored.zhiziCatalog.containsWeight("10b512t"));
           assertFalse(restored.zhiziCatalog.containsWeight("60b"));
           assertFalse(
               RemoteComputeConfig.shouldRefreshZhiziCatalog(

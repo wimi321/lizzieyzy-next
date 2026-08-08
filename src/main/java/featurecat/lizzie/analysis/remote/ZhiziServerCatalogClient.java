@@ -17,12 +17,12 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 
 /**
- * Legacy iKataGo SSH catalog reader.
+ * iKataGo compatibility catalog reader.
  *
- * <p>This is retained only for compatibility tests and explicit migration tooling. The normal UI
- * must not request connection credentials or use this private SSH path.
+ * <p>The public Zhizi API does not currently expose engine capabilities. This reader uses the
+ * temporary connection account returned for the signed-in session, never persists it, and is only
+ * invoked by the background model refresh flow.
  */
-@Deprecated
 final class ZhiziServerCatalogClient {
   static final URI DEFAULT_WORLD_URI =
       URI.create("https://ikatago-fairyland.oss-cn-beijing.aliyuncs.com/world.json");
@@ -60,7 +60,7 @@ final class ZhiziServerCatalogClient {
     String response =
         sshQuery.query(
             endpoint.host, endpoint.port, endpoint.username, account.password, "query-server");
-    return ZhiziEngineCatalog.fromJson(response).withDocumentedWeights();
+    return ZhiziEngineCatalog.fromServerCapabilities(response);
   }
 
   private JSONObject getJson(URI uri) throws IOException, InterruptedException {

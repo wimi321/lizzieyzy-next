@@ -12,6 +12,7 @@ import featurecat.lizzie.analysis.remote.ZhiziAccountService;
 import featurecat.lizzie.analysis.remote.ZhiziApiClient;
 import featurecat.lizzie.analysis.remote.ZhiziApiException;
 import featurecat.lizzie.analysis.remote.ZhiziEngineCatalog;
+import featurecat.lizzie.analysis.remote.ZhiziEngineCatalogService;
 import java.awt.BasicStroke;
 import java.awt.BorderLayout;
 import java.awt.CardLayout;
@@ -88,6 +89,7 @@ public class RemoteComputeDialog extends JDialog {
 
   private final ZhiziApiClient apiClient;
   private final ZhiziAccountService accountService;
+  private final ZhiziEngineCatalogService catalogService;
   private final CardLayout pageLayout = new CardLayout();
   private final JPanel pageCards = transparent(pageLayout);
   private final JButton zhiziTab = tabButton(text("RemoteCompute.zhizi", "Zhizi Cloud"));
@@ -175,12 +177,14 @@ public class RemoteComputeDialog extends JDialog {
   private Timer verificationCooldownTimer;
   private int verificationCooldownSeconds;
   private SwingWorker<ZhiziAccountService.Overview, Void> accountOverviewWorker;
+  private SwingWorker<ZhiziEngineCatalog, Void> catalogWorker;
   private ZhiziAccountService.Overview lastAccountOverview;
 
   public RemoteComputeDialog(Frame owner) throws IOException {
     super(owner, text("RemoteCompute.title", "Remote Compute"), false);
     apiClient = new ZhiziApiClient();
     accountService = new ZhiziAccountService(apiClient);
+    catalogService = new ZhiziEngineCatalogService(apiClient);
     setDefaultCloseOperation(DISPOSE_ON_CLOSE);
     setMinimumSize(new Dimension(1040, 680));
     setPreferredSize(new Dimension(1120, 740));
@@ -785,7 +789,13 @@ public class RemoteComputeDialog extends JDialog {
           false);
     }
     if (!state.zhiziAccountToken.trim().isEmpty()) {
-      SwingUtilities.invokeLater(() -> refreshAccountOverview(false));
+      SwingUtilities.invokeLater(
+          () -> {
+            refreshAccountOverview(false);
+            if (RemoteComputeConfig.shouldRefreshZhiziCatalog(state, System.currentTimeMillis())) {
+              refreshZhiziWeightOptions(false);
+            }
+          });
     }
   }
 
@@ -1080,7 +1090,13 @@ public class RemoteComputeDialog extends JDialog {
         weightBox.addItem(WeightItem.preserved(preferred));
       }
       for (ZhiziEngineCatalog.Option option : safeCatalog.weights()) {
-        if (!ZhiziEngineCatalog.isSelectableWeight(option.name())) {
+        boolean preferredOption = option.name().equalsIgnoreCase(preferred);
+        boolean confirmedOption =
+            option.source() == ZhiziEngineCatalog.DiscoverySource.OFFICIAL_DOCUMENTED
+                || option.source() == ZhiziEngineCatalog.DiscoverySource.BUILT_IN_CURRENT
+                || option.source() == ZhiziEngineCatalog.DiscoverySource.SERVER_CAPABILITIES;
+        if (!ZhiziEngineCatalog.isSelectableWeight(option.name())
+            || (!confirmedOption && !preferredOption)) {
           continue;
         }
         weightBox.addItem(
@@ -1109,18 +1125,78 @@ public class RemoteComputeDialog extends JDialog {
 
   private void refreshZhiziWeightOptions(boolean userInitiated) {
     RemoteComputeConfig.State state = RemoteComputeConfig.load();
-    String preferredWeight = selectedWeightName();
-    ZhiziEngineCatalog catalog = state.zhiziCatalog.withDocumentedWeights();
-    state.zhiziCatalog = catalog;
-    RemoteComputeConfig.save(state);
-    populateWeightOptions(catalog, preferredWeight);
-    if (userInitiated) {
-      updateStatus(
-          text(
-              "RemoteCompute.status.weightsDocumented",
-              "Loaded the public Zhizi weight list. Legacy choices remain available but are not server-confirmed."),
-          true);
+    String token = state.zhiziAccountToken == null ? "" : state.zhiziAccountToken.trim();
+    if (token.isEmpty()) {
+      if (userInitiated) {
+        updateStatus(
+            text(
+                "RemoteCompute.error.loginBeforeRefresh",
+                "Sign in to Zhizi Cloud before refreshing models."),
+            false);
+      }
+      return;
     }
+    if (catalogWorker != null && !catalogWorker.isDone()) {
+      return;
+    }
+    String preferredWeight = selectedWeightName();
+    refreshWeightsButton.setRefreshing(true);
+    updateStatus(
+        text("RemoteCompute.status.refreshingWeights", "Refreshing the available Zhizi models..."),
+        true);
+    catalogWorker =
+        new SwingWorker<ZhiziEngineCatalog, Void>() {
+          @Override
+          protected ZhiziEngineCatalog doInBackground() throws Exception {
+            return catalogService.refresh(token);
+          }
+
+          @Override
+          protected void done() {
+            if (catalogWorker != this) {
+              return;
+            }
+            catalogWorker = null;
+            refreshWeightsButton.setRefreshing(false);
+            updateWeightControlState();
+            if (isCancelled()) {
+              return;
+            }
+            try {
+              ZhiziEngineCatalog refreshed = get();
+              RemoteComputeConfig.State latest = RemoteComputeConfig.load();
+              latest.zhiziCatalog = refreshed;
+              latest.zhiziCatalogUpdatedAt = System.currentTimeMillis();
+              RemoteComputeConfig.save(latest);
+              populateWeightOptions(refreshed, preferredWeight);
+              updateStatus(
+                  format(
+                      "RemoteCompute.status.weightsRefreshed",
+                      "Refreshed {0} models from Zhizi.",
+                      refreshed.weights().size()),
+                  true);
+            } catch (Exception error) {
+              Throwable cause = error.getCause() == null ? error : error.getCause();
+              ZhiziApiException apiError = findZhiziApiException(cause);
+              if (apiError != null && apiError.isUnauthorized()) {
+                RemoteComputeConfig.invalidateZhiziToken();
+                updateLoginMode();
+                updateCurrentStatus();
+              }
+              if (userInitiated) {
+                updateStatus(
+                    text(
+                        "RemoteCompute.status.weightsRefreshFailed",
+                        "Could not refresh models. The saved list is still available."),
+                    false);
+              } else if (apiError == null || !apiError.isUnauthorized()) {
+                updateCurrentStatus();
+              }
+            }
+          }
+        };
+    updateWeightControlState();
+    catalogWorker.execute();
   }
 
   private void selectOfficialBaseline() {
@@ -1145,8 +1221,9 @@ public class RemoteComputeDialog extends JDialog {
   }
 
   private void updateWeightControlState() {
-    weightBox.setEnabled(!busy && weightBox.getItemCount() > 0);
-    refreshWeightsButton.setEnabled(!busy);
+    boolean refreshing = catalogWorker != null && !catalogWorker.isDone();
+    weightBox.setEnabled(!busy && !refreshing && weightBox.getItemCount() > 0);
+    refreshWeightsButton.setEnabled(!busy && !refreshing);
     updateOfficialBaselineButton();
   }
 
@@ -1623,6 +1700,10 @@ public class RemoteComputeDialog extends JDialog {
   public void dispose() {
     stopZhiziStartupMonitor();
     cancelAccountOverviewRefresh();
+    if (catalogWorker != null) {
+      catalogWorker.cancel(true);
+      catalogWorker = null;
+    }
     if (verificationCooldownTimer != null) {
       verificationCooldownTimer.stop();
     }
@@ -2272,6 +2353,7 @@ public class RemoteComputeDialog extends JDialog {
 
     boolean isConfirmed() {
       return source == ZhiziEngineCatalog.DiscoverySource.OFFICIAL_DOCUMENTED
+          || source == ZhiziEngineCatalog.DiscoverySource.BUILT_IN_CURRENT
           || source == ZhiziEngineCatalog.DiscoverySource.SERVER_CAPABILITIES;
     }
 
@@ -2329,6 +2411,8 @@ public class RemoteComputeDialog extends JDialog {
       switch (source) {
         case OFFICIAL_DOCUMENTED:
           return text("RemoteCompute.weightSource.official", "Official documentation");
+        case BUILT_IN_CURRENT:
+          return text("RemoteCompute.weightSource.builtin", "Current built-in catalog");
         case SERVER_CAPABILITIES:
           return text("RemoteCompute.weightSource.server", "Server confirmed");
         case USER_PRESERVED:

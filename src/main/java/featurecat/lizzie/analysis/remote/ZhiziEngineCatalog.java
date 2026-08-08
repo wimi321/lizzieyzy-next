@@ -17,16 +17,24 @@ public final class ZhiziEngineCatalog {
   private static final Pattern SAFE_OPTION_NAME =
       Pattern.compile("[A-Za-z0-9][A-Za-z0-9._+-]{0,63}");
   private static final int MAX_DESCRIPTION_LENGTH = 180;
-  private static final List<Option> OFFICIAL_DOCUMENTED_WEIGHTS =
+  private static final List<Option> CURRENT_BUILT_IN_WEIGHTS =
       List.of(
+          new Option("18bnbt", "weight for 18bnbt", DiscoverySource.OFFICIAL_DOCUMENTED),
+          new Option("28bnbt", "weight for 28bnbt", DiscoverySource.OFFICIAL_DOCUMENTED),
+          new Option("fdx", "40B NBT extra-large weight", DiscoverySource.OFFICIAL_DOCUMENTED),
           new Option(
-              "18bnbt", "weight for 18bnbt", DiscoverySource.OFFICIAL_DOCUMENTED),
+              "20b", "20B, commonly used for handicap games", DiscoverySource.BUILT_IN_CURRENT),
           new Option(
-              "28bnbt", "weight for 28bnbt", DiscoverySource.OFFICIAL_DOCUMENTED),
+              "10b384t", "v1.17 small Transformer, b10c384", DiscoverySource.BUILT_IN_CURRENT),
           new Option(
-              "fdx", "40B NBT extra-large weight", DiscoverySource.OFFICIAL_DOCUMENTED));
-  private static final List<String> LEGACY_COMPATIBLE_WEIGHTS =
-      List.of("60b", "40b", "20b");
+              "10b512t", "v1.17 medium Transformer, b10c512", DiscoverySource.BUILT_IN_CURRENT),
+          new Option(
+              "11b768t", "v1.17 large Transformer, b11c768", DiscoverySource.BUILT_IN_CURRENT));
+  private static final List<Option> OFFICIAL_DOCUMENTED_WEIGHTS =
+      CURRENT_BUILT_IN_WEIGHTS.stream()
+          .filter(option -> option.source == DiscoverySource.OFFICIAL_DOCUMENTED)
+          .toList();
+  private static final List<String> LEGACY_COMPATIBLE_WEIGHTS = List.of("60b", "40b");
 
   private final String serverVersion;
   private final String defaultWeight;
@@ -44,8 +52,7 @@ public final class ZhiziEngineCatalog {
     }
     String preferred = safeName(defaultWeight);
     if (!preferred.isEmpty() && !unique.containsKey(preferred)) {
-      unique.put(
-          preferred, new Option(preferred, "", DiscoverySource.USER_PRESERVED));
+      unique.put(preferred, new Option(preferred, "", DiscoverySource.USER_PRESERVED));
     }
     if (unique.isEmpty()) {
       throw new IOException("Zhizi did not report any usable KataGo weights.");
@@ -77,8 +84,16 @@ public final class ZhiziEngineCatalog {
     return false;
   }
 
-  /** Adds the public-document baseline while retaining compatible cached or user choices. */
+  /**
+   * Adds the most recently verified built-in baseline to old caches.
+   *
+   * <p>A live server response is authoritative and is therefore never padded with a potentially
+   * stale built-in option.
+   */
   public ZhiziEngineCatalog withDocumentedWeights() {
+    if (weights.stream().anyMatch(option -> option.source == DiscoverySource.SERVER_CAPABILITIES)) {
+      return this;
+    }
     Map<String, Option> reported = new LinkedHashMap<>();
     for (Option option : weights) {
       reported.putIfAbsent(option.name.toLowerCase(Locale.ROOT), option);
@@ -86,17 +101,17 @@ public final class ZhiziEngineCatalog {
     Option reportedDefault = reported.get(safeName(defaultWeight).toLowerCase(Locale.ROOT));
 
     List<Option> merged = new ArrayList<>();
-    for (Option documented : OFFICIAL_DOCUMENTED_WEIGHTS) {
-      Option cachedOption = reported.remove(documented.name.toLowerCase(Locale.ROOT));
+    for (Option builtIn : CURRENT_BUILT_IN_WEIGHTS) {
+      Option cachedOption = reported.remove(builtIn.name.toLowerCase(Locale.ROOT));
       merged.add(
           cachedOption == null
-              ? documented
+              ? builtIn
               : new Option(
-                  documented.name,
+                  builtIn.name,
                   cachedOption.description.isEmpty()
-                      ? documented.description
+                      ? builtIn.description
                       : cachedOption.description,
-                  DiscoverySource.OFFICIAL_DOCUMENTED));
+                  builtIn.source));
     }
     for (Option option : reported.values()) {
       DiscoverySource source = option.source;
@@ -110,7 +125,7 @@ public final class ZhiziEngineCatalog {
         reportedDefault != null
                 && reportedDefault.source == DiscoverySource.SERVER_CAPABILITIES
                 && isSelectableWeight(defaultWeight)
-            ? canonicalDocumentedName(defaultWeight)
+            ? canonicalKnownName(defaultWeight)
             : "28bnbt";
     try {
       return new ZhiziEngineCatalog(serverVersion, preferred, merged);
@@ -169,9 +184,20 @@ public final class ZhiziEngineCatalog {
     }
   }
 
+  /** Parses an authoritative catalog returned by the currently connected Zhizi service. */
+  public static ZhiziEngineCatalog fromServerCapabilities(String json) throws IOException {
+    ZhiziEngineCatalog parsed = fromJson(json);
+    List<Option> confirmed = new ArrayList<>();
+    for (Option option : parsed.weights) {
+      confirmed.add(
+          new Option(option.name, option.description, DiscoverySource.SERVER_CAPABILITIES));
+    }
+    return new ZhiziEngineCatalog(parsed.serverVersion, parsed.defaultWeight, confirmed);
+  }
+
   public static ZhiziEngineCatalog fallback() {
     try {
-      return new ZhiziEngineCatalog("", "28bnbt", OFFICIAL_DOCUMENTED_WEIGHTS);
+      return new ZhiziEngineCatalog("", "28bnbt", CURRENT_BUILT_IN_WEIGHTS);
     } catch (IOException impossible) {
       throw new IllegalStateException(impossible);
     }
@@ -201,8 +227,18 @@ public final class ZhiziEngineCatalog {
     return false;
   }
 
+  public static boolean isCurrentBuiltInWeight(String value) {
+    String safeValue = safeName(value);
+    for (Option option : CURRENT_BUILT_IN_WEIGHTS) {
+      if (option.name.equalsIgnoreCase(safeValue)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   public static boolean isSelectableWeight(String value) {
-    return isDocumentedWeight(value) || isLegacyCompatibleWeight(value);
+    return !safeName(value).isEmpty();
   }
 
   private static String safeName(String value) {
@@ -210,11 +246,11 @@ public final class ZhiziEngineCatalog {
     return isSafeOptionName(name) ? name : "";
   }
 
-  private static String canonicalDocumentedName(String value) {
+  private static String canonicalKnownName(String value) {
     String safeValue = safeName(value);
-    for (Option documented : OFFICIAL_DOCUMENTED_WEIGHTS) {
-      if (documented.name.equalsIgnoreCase(safeValue)) {
-        return documented.name;
+    for (Option known : CURRENT_BUILT_IN_WEIGHTS) {
+      if (known.name.equalsIgnoreCase(safeValue)) {
+        return known.name;
       }
     }
     return safeValue;
@@ -229,6 +265,7 @@ public final class ZhiziEngineCatalog {
 
   public enum DiscoverySource {
     OFFICIAL_DOCUMENTED,
+    BUILT_IN_CURRENT,
     SERVER_CAPABILITIES,
     CACHED_LEGACY,
     USER_PRESERVED;

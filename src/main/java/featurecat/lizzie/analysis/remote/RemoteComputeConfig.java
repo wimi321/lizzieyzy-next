@@ -522,6 +522,15 @@ public final class RemoteComputeConfig {
     if ("fdx".equalsIgnoreCase(normalized)) {
       return "FDX · 40B NBT";
     }
+    if ("10b384t".equalsIgnoreCase(normalized)) {
+      return localizedText("RemoteCompute.weightName.10b384t", "Transformer 10B - Lightweight");
+    }
+    if ("10b512t".equalsIgnoreCase(normalized)) {
+      return localizedText("RemoteCompute.weightName.10b512t", "Transformer 10B - Balanced");
+    }
+    if ("11b768t".equalsIgnoreCase(normalized)) {
+      return localizedText("RemoteCompute.weightName.11b768t", "Transformer 11B - Flagship");
+    }
     if (normalized.matches("(?i)\\d+b")) {
       return normalized.toUpperCase();
     }
