@@ -1882,6 +1882,78 @@ class EngineManagerLifecycleReservationTest {
   }
 
   @Test
+  void retainedNewGameReservationCanBeReusedForTheSameForegroundSwitch() throws Exception {
+    Leelaz previousEngine = Lizzie.leelaz;
+    Board previousBoard = Lizzie.board;
+    Config previousConfig = Lizzie.config;
+    boolean previousEmpty = EngineManager.isEmpty;
+    int previousEngineNo = EngineManager.currentEngineNo;
+    Leelaz current = new Leelaz("");
+    Leelaz target = new Leelaz("");
+    DeferredSwitchEngineManager manager = new DeferredSwitchEngineManager(List.of(current, target));
+    Leelaz.EngineModeReservation retainedReservation = null;
+    try {
+      Config config = allocate(Config.class);
+      config.extraMode = ExtraMode.Normal;
+      Lizzie.config = config;
+      Lizzie.board = preparedRestoreBoard();
+      Lizzie.leelaz = current;
+      EngineManager.isEmpty = false;
+      EngineManager.currentEngineNo = 0;
+      retainedReservation = current.beginEngineModeReservation();
+      assertNotNull(retainedReservation);
+
+      assertTrue(manager.switchEngineIfAvailable(1, true, retainedReservation));
+
+      assertEquals(1, manager.switchCount);
+      assertTrue(current.hasExclusiveGtpWorkInProgress());
+      assertTrue(target.hasExclusiveGtpWorkInProgress());
+      manager.afterSync.run();
+      assertTrue(
+          current.hasExclusiveGtpWorkInProgress(),
+          "the retained new-game reservation must remain active until its dialog flow exits");
+      assertFalse(target.hasExclusiveGtpWorkInProgress());
+    } finally {
+      if (manager.afterSync != null) {
+        manager.afterSync.run();
+      }
+      if (retainedReservation != null) {
+        retainedReservation.close();
+      }
+      Lizzie.leelaz = previousEngine;
+      Lizzie.board = previousBoard;
+      Lizzie.config = previousConfig;
+      EngineManager.isEmpty = previousEmpty;
+      EngineManager.currentEngineNo = previousEngineNo;
+    }
+  }
+
+  @Test
+  void retainedReservationFromAnotherEngineCannotBypassSwitchExclusion() throws Exception {
+    Leelaz previousEngine = Lizzie.leelaz;
+    Leelaz current = new Leelaz("");
+    Leelaz target = new Leelaz("");
+    Leelaz unrelated = new Leelaz("");
+    DeferredSwitchEngineManager manager = new DeferredSwitchEngineManager(List.of(current, target));
+    Leelaz.EngineModeReservation unrelatedReservation = unrelated.beginEngineModeReservation();
+    try {
+      Lizzie.leelaz = current;
+
+      assertFalse(manager.switchEngineIfAvailable(1, true, unrelatedReservation));
+
+      assertEquals(1, manager.conflictCount);
+      assertEquals(0, manager.switchCount);
+      assertFalse(current.hasExclusiveGtpWorkInProgress());
+      assertFalse(target.hasExclusiveGtpWorkInProgress());
+    } finally {
+      if (unrelatedReservation != null) {
+        unrelatedReservation.close();
+      }
+      Lizzie.leelaz = previousEngine;
+    }
+  }
+
+  @Test
   void switchReservesDistinctTargetBeforeTouchingCurrentOwner() throws Exception {
     Leelaz previousEngine = Lizzie.leelaz;
     List<String> reservationOrder = new java.util.ArrayList<>();

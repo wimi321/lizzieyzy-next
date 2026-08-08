@@ -2585,10 +2585,32 @@ public class EngineManager {
    * can report failure in their own status area instead of claiming that a switch succeeded.
    */
   public boolean switchEngineIfAvailable(int index, boolean isMain) {
-    return switchEngineIfAvailable(index, isMain, false);
+    return switchEngineIfAvailable(index, isMain, false, null);
+  }
+
+  /**
+   * Switches an engine as part of a UI flow that already owns the foreground engine mode.
+   *
+   * <p>The retained reservation is accepted only for the current foreground engine. It allows the
+   * same new-game flow to deepen its lifecycle reservation without weakening exclusion against any
+   * unrelated task.
+   */
+  public boolean switchEngineIfAvailable(
+      int index,
+      boolean isMain,
+      Leelaz.EngineModeReservation retainedForegroundReservation) {
+    return switchEngineIfAvailable(index, isMain, true, retainedForegroundReservation);
   }
 
   private boolean switchEngineIfAvailable(int index, boolean isMain, boolean showConflict) {
+    return switchEngineIfAvailable(index, isMain, showConflict, null);
+  }
+
+  private boolean switchEngineIfAvailable(
+      int index,
+      boolean isMain,
+      boolean showConflict,
+      Leelaz.EngineModeReservation retainedForegroundReservation) {
     if (engineList == null || index < 0 || index >= engineList.size()) {
       return false;
     }
@@ -2596,10 +2618,23 @@ public class EngineManager {
       return false;
     }
     Leelaz currentForegroundEngine = Lizzie.leelaz;
+    Object retainedLifecycleOwner = null;
+    if (retainedForegroundReservation != null) {
+      retainedLifecycleOwner =
+          retainedForegroundReservation.lifecycleOwnerFor(currentForegroundEngine);
+      if (!isMain || currentForegroundEngine == null || retainedLifecycleOwner == null) {
+        if (showConflict) {
+          showForegroundEngineLeaseInUse();
+        }
+        return false;
+      }
+    }
     boolean foregroundActivation = isMain && isEmpty && currentEngineNo < 0;
     PreparedEngineSwitch preparedSwitch;
     try {
-      preparedSwitch = prepareEngineSwitch(index, isMain, false, foregroundActivation);
+      preparedSwitch =
+          prepareEngineSwitch(
+              index, isMain, false, foregroundActivation, retainedLifecycleOwner);
     } catch (Leelaz.ExactSnapshotRestoreAdmissionException conflict) {
       if (showConflict) {
         showForegroundEngineLeaseInUse();
@@ -2935,6 +2970,15 @@ public class EngineManager {
 
   private PreparedEngineSwitch prepareEngineSwitch(
       int index, boolean isMain, boolean explicitRestart, boolean foregroundActivation) {
+    return prepareEngineSwitch(index, isMain, explicitRestart, foregroundActivation, null);
+  }
+
+  private PreparedEngineSwitch prepareEngineSwitch(
+      int index,
+      boolean isMain,
+      boolean explicitRestart,
+      boolean foregroundActivation,
+      Object retainedLifecycleOwner) {
     Board restoreBoard = Lizzie.board;
     if (restoreBoard == null) {
       return null;
@@ -2968,7 +3012,8 @@ public class EngineManager {
             history.getCurrentHistoryNode(),
             currentGameKomi,
             rootMoves,
-            resumePonder);
+            resumePonder,
+            retainedLifecycleOwner);
     float targetKomi =
         !isMain || history.getGameInfo().changedKomi || lifecycleRestore.exactRestore.isPresent()
             ? (float) currentGameKomi
@@ -3197,10 +3242,30 @@ public class EngineManager {
         Double komi,
         ArrayList<Movelist> rootMoves,
         boolean resumePonder) {
+      return capture(
+          previousEngine,
+          targetEngine,
+          mirrorEngine,
+          historyTarget,
+          komi,
+          rootMoves,
+          resumePonder,
+          null);
+    }
+
+    private static PreparedLifecycleRestore capture(
+        Leelaz previousEngine,
+        Leelaz targetEngine,
+        Leelaz mirrorEngine,
+        BoardHistoryNode historyTarget,
+        Double komi,
+        ArrayList<Movelist> rootMoves,
+        boolean resumePonder,
+        Object retainedLifecycleOwner) {
       if (targetEngine == null) {
         throw new IllegalArgumentException("targetEngine");
       }
-      Object owner = new Object();
+      Object owner = retainedLifecycleOwner == null ? new Object() : retainedLifecycleOwner;
       Leelaz.ExactSnapshotRestoreAdmission admission =
           targetEngine.captureExactSnapshotRestoreAdmission(
               Leelaz.ExactSnapshotRestoreOwner.LIFECYCLE, owner, mirrorEngine);

@@ -3995,7 +3995,7 @@ public class LizzieFrame extends JFrame {
       Lizzie.leelaz.togglePonder();
       isPondering = true;
     }
-    NewGameDialog newGameDialog = createNewGameDialog();
+    NewGameDialog newGameDialog = createNewGameDialog(activeNewGameModeReservation);
     newGameDialog.setVisible(true);
     boolean playerIsBlack = newGameDialog.playerIsBlack();
     newGameDialog.dispose();
@@ -4092,6 +4092,24 @@ public class LizzieFrame extends JFrame {
 
   protected NewGameDialog createNewGameDialog() {
     return new NewGameDialog(this);
+  }
+
+  private transient Leelaz.EngineModeReservation activeNewGameModeReservation;
+
+  protected void startNewGameReserved(Leelaz.EngineModeReservation reservation) {
+    Leelaz.EngineModeReservation previousReservation = activeNewGameModeReservation;
+    activeNewGameModeReservation = reservation;
+    try {
+      startNewGameReserved();
+    } finally {
+      activeNewGameModeReservation = previousReservation;
+    }
+  }
+
+  protected NewGameDialog createNewGameDialog(Leelaz.EngineModeReservation reservation) {
+    NewGameDialog dialog = createNewGameDialog();
+    dialog.setRetainedEngineModeReservation(reservation);
+    return dialog;
   }
 
   protected void showForegroundEngineLeaseConflict() {
@@ -13997,7 +14015,7 @@ public class LizzieFrame extends JFrame {
   private void startRetainedEngineMode(RetainedEngineModeTarget target) {
     Leelaz currentForegroundEngine = target.engine;
     if (currentForegroundEngine == null) {
-      target.runWithoutTracking();
+      target.runWithoutTracking(null);
       return;
     }
     Leelaz.TrackingHandoffClaim claim = currentForegroundEngine.claimTrackingHandoff(target);
@@ -14014,7 +14032,7 @@ public class LizzieFrame extends JFrame {
       return;
     }
     try {
-      target.runWithoutTracking();
+      target.runWithoutTracking(reservation);
     } finally {
       reservation.close();
     }
@@ -14127,7 +14145,7 @@ public class LizzieFrame extends JFrame {
               return false;
             }
             try {
-              runAction();
+              runAction(reservation);
             } finally {
               reservation.close();
             }
@@ -14145,16 +14163,16 @@ public class LizzieFrame extends JFrame {
       }
     }
 
-    private void runWithoutTracking() {
+    private void runWithoutTracking(Leelaz.EngineModeReservation reservation) {
       if (settled.compareAndSet(false, true)) {
-        runAction();
+        runAction(reservation);
       }
     }
 
-    private void runAction() {
+    private void runAction(Leelaz.EngineModeReservation reservation) {
       switch (action) {
         case START_NEW_GAME:
-          frame.startNewGameReserved();
+          frame.startNewGameReserved(reservation);
           break;
         case START_ANALYZE_GAME:
           frame.startAnalyzeGameDialogReserved();

@@ -63,6 +63,7 @@ public class NewGameDialog extends JDialog {
   JFontComboBox<String> kataTimeComboBox;
 
   private boolean cancelled = true;
+  private Leelaz.EngineModeReservation retainedEngineModeReservation;
   public GameInfo gameInfo = new GameInfo();
 
   public NewGameDialog(Window owner) {
@@ -926,18 +927,19 @@ public class NewGameDialog extends JDialog {
       DesktopTimeControl.Mode timeMode =
           DesktopTimeControl.selectedMode(chkUseAdvTime.isSelected(), chkKataTime.isSelected());
       Leelaz selectedEngine = Lizzie.engineManager.engineList.get(engine.getSelectedIndex());
-      if (!DesktopTimeControl.submitHumanSelection(
-          Lizzie.config,
-          selectedEngine,
-          timeMode,
-          kataTimeComboBox.getSelectedIndex(),
-          chkNoTime.isSelected(),
-          Lizzie.frame::showUnsupportedWebSocketAdvancedClock)) {
+      if (DesktopTimeControl.rejectsHumanGame(
+          selectedEngine, timeMode, chkNoTime.isSelected())) {
+        Lizzie.frame.showUnsupportedWebSocketAdvancedClock();
         return;
       }
+      if (EngineManager.currentEngineNo != engine.getSelectedIndex()
+          && !Lizzie.engineManager.switchEngineIfAvailable(
+              engine.getSelectedIndex(), true, retainedEngineModeReservation)) {
+        return;
+      }
+      DesktopTimeControl.commitHumanSelection(
+          Lizzie.config, timeMode, kataTimeComboBox.getSelectedIndex());
       Lizzie.frame.isPlayingAgainstLeelaz = false;
-      if (EngineManager.currentEngineNo != engine.getSelectedIndex())
-        Lizzie.engineManager.switchEngine(engine.getSelectedIndex(), true);
       double komi = 7.5;
       int handicap = 0;
       try {
@@ -1047,5 +1049,9 @@ public class NewGameDialog extends JDialog {
 
   public boolean isCancelled() {
     return cancelled;
+  }
+
+  void setRetainedEngineModeReservation(Leelaz.EngineModeReservation reservation) {
+    retainedEngineModeReservation = reservation;
   }
 }

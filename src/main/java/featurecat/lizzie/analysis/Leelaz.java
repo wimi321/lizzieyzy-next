@@ -8697,6 +8697,12 @@ public class Leelaz {
       this.owner = owner;
     }
 
+    Object lifecycleOwnerFor(Leelaz expectedEngine) {
+      synchronized (this) {
+        return engine == expectedEngine ? owner : null;
+      }
+    }
+
     @Override
     public void close() {
       Leelaz reservedEngine;
