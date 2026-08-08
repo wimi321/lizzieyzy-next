@@ -40,6 +40,9 @@ public final class PlatformCredentialStore {
       return new MacKeychainStore(runner);
     }
     if (os.contains("windows")) {
+      if (credentialDirectory == null) {
+        return new UnavailableStore("session-only");
+      }
       return new WindowsDpapiStore(credentialDirectory, runner);
     }
     if (os.contains("linux")) {
@@ -279,7 +282,7 @@ public final class PlatformCredentialStore {
 
     WindowsDpapiStore(Path directory, CredentialCommandRunner runner) {
       super(runner);
-      this.directory = directory == null ? Path.of("secure-credentials") : directory;
+      this.directory = directory;
     }
 
     @Override

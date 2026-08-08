@@ -1,5 +1,6 @@
 package featurecat.lizzie.analysis.remote;
 
+import featurecat.lizzie.Config;
 import featurecat.lizzie.Lizzie;
 import featurecat.lizzie.gui.EngineData;
 import featurecat.lizzie.rules.Board;
@@ -7,10 +8,15 @@ import featurecat.lizzie.util.Utils;
 import java.io.IOException;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Base64;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import org.json.JSONObject;
 
@@ -977,25 +983,93 @@ public final class RemoteComputeConfig {
     }
     Path directory = credentialDirectory();
     CredentialStore cached = systemCredentialStore;
-    if (cached != null && directory.equals(systemCredentialDirectory)) {
+    if (cached != null && Objects.equals(directory, systemCredentialDirectory)) {
       return cached;
     }
     synchronized (CREDENTIAL_LOCK) {
-      if (systemCredentialStore == null || !directory.equals(systemCredentialDirectory)) {
+      if (systemCredentialStore == null
+          || !Objects.equals(directory, systemCredentialDirectory)) {
         systemCredentialDirectory = directory;
-        systemCredentialStore = PlatformCredentialStore.create(directory);
+        systemCredentialStore = createCredentialStore(directory);
       }
       return systemCredentialStore;
     }
   }
 
   private static Path credentialDirectory() {
-    if (Lizzie.config != null && Lizzie.config.getWorkDirectory() != null) {
-      return Lizzie.config.getWorkDirectory().toPath().resolve("secure-credentials").normalize();
+    return credentialDirectory(
+        System.getProperty("os.name", ""), System.getenv(), System.getProperty("user.home", ""));
+  }
+
+  static Path credentialDirectoryForTests(
+      String osName, Map<String, String> environment, String userHome) {
+    return credentialDirectory(osName, environment, userHome);
+  }
+
+  private static Path credentialDirectory(
+      String osName, Map<String, String> environment, String userHome) {
+    String os = osName == null ? "" : osName.toLowerCase(Locale.ROOT);
+    Map<String, String> env = environment == null ? Map.of() : environment;
+    String home = userHome == null ? "" : userHome.trim();
+    Path base = null;
+    if (os.contains("windows")) {
+      String appData = env.getOrDefault("APPDATA", "").trim();
+      if (!appData.isEmpty()) {
+        base = Path.of(appData);
+      } else if (!home.isEmpty()) {
+        base = Path.of(home, "AppData", "Roaming");
+      }
+    } else if (os.contains("mac")) {
+      if (!home.isEmpty()) {
+        base = Path.of(home, "Library", "Application Support");
+      }
+    } else if (os.contains("linux")) {
+      String xdgConfig = env.getOrDefault("XDG_CONFIG_HOME", "").trim();
+      if (!xdgConfig.isEmpty()) {
+        base = Path.of(xdgConfig);
+      } else if (!home.isEmpty()) {
+        base = Path.of(home, ".config");
+      }
+    } else if (!home.isEmpty()) {
+      base = Path.of(home, ".config");
     }
-    return Path.of(System.getProperty("user.dir", "."), "secure-credentials")
-        .toAbsolutePath()
-        .normalize();
+    return base == null
+        ? null
+        : base.resolve("LizzieYzy Next").resolve("secure-credentials").toAbsolutePath().normalize();
+  }
+
+  private static CredentialStore createCredentialStore(Path systemDirectory) {
+    CredentialStore primary = PlatformCredentialStore.create(systemDirectory);
+    if (!isWindows()) {
+      return primary;
+    }
+    LinkedHashSet<Path> legacyDirectories = new LinkedHashSet<>();
+    if (Lizzie.config != null && Lizzie.config.getWorkDirectory() != null) {
+      legacyDirectories.add(
+          Lizzie.config
+              .getWorkDirectory()
+              .toPath()
+              .resolve("secure-credentials")
+              .toAbsolutePath()
+              .normalize());
+    }
+    legacyDirectories.addAll(Config.legacyWindowsCredentialDirectories());
+    List<CredentialStore> legacyStores = new ArrayList<>();
+    for (Path legacyDirectory : legacyDirectories) {
+      if (legacyDirectory == null
+          || !Files.isDirectory(legacyDirectory)
+          || Objects.equals(legacyDirectory, systemDirectory)) {
+        continue;
+      }
+      legacyStores.add(PlatformCredentialStore.create(legacyDirectory));
+    }
+    return legacyStores.isEmpty()
+        ? primary
+        : new MigratingCredentialStore(primary, legacyStores);
+  }
+
+  private static boolean isWindows() {
+    return System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("windows");
   }
 
   private static SecretLoad loadSecret(

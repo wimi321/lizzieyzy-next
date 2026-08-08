@@ -27,6 +27,37 @@ import org.junit.jupiter.api.Test;
 
 class RemoteComputeConfigTest {
   @Test
+  void windowsCredentialsUsePerUserAppDataInsteadOfPortableWorkDirectory() {
+    Path directory =
+        RemoteComputeConfig.credentialDirectoryForTests(
+            "Windows 11", Map.of("APPDATA", "/users/test/AppData/Roaming"), "/users/test");
+
+    assertEquals(
+        Path.of("/users/test/AppData/Roaming", "LizzieYzy Next", "secure-credentials")
+            .toAbsolutePath()
+            .normalize(),
+        directory);
+  }
+
+  @Test
+  void windowsCredentialsFallBackToUserRoamingProfileWhenAppDataIsUnavailable() {
+    Path directory =
+        RemoteComputeConfig.credentialDirectoryForTests(
+            "Windows 11", Map.of(), "/users/test");
+
+    assertEquals(
+        Path.of(
+                "/users/test",
+                "AppData",
+                "Roaming",
+                "LizzieYzy Next",
+                "secure-credentials")
+            .toAbsolutePath()
+            .normalize(),
+        directory);
+  }
+
+  @Test
   void displayNameIncludesZhiziGpuType() {
     withResourceBundle(
         AppLocale.SIMPLIFIED_CHINESE.loadBundle(),

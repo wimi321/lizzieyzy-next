@@ -4,10 +4,13 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import featurecat.lizzie.analysis.remote.RemoteComputeConfig;
 import featurecat.lizzie.util.KataGoAutoSetupHelper;
 import java.lang.reflect.Method;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.FileTime;
+import java.util.List;
 import org.json.JSONArray;
 import org.json.JSONObject;
 import org.junit.jupiter.api.Test;
@@ -22,7 +25,8 @@ public class ConfigBundledKataGoDefaultsTest {
     Path portableRoot = Files.createDirectories(tempRoot.resolve("LizzieYzy Next 围棋"));
     Files.writeString(portableRoot.resolve(".lizzie-portable"), "portable");
     Files.createDirectories(portableRoot.resolve("app"));
-    Files.writeString(portableRoot.resolve("config.txt"), "{\"legacy\":true}");
+    Files.writeString(
+        portableRoot.resolve("config.txt"), "{\"ui\":{},\"leelaz\":{\"legacy\":true}}");
 
     Path foundRoot =
         Config.findWindowsPortablePackageRootForTests(portableRoot.resolve("app")).orElseThrow();
@@ -36,6 +40,202 @@ public class ConfigBundledKataGoDefaultsTest {
   }
 
   @Test
+  void windowsPortableUpgradeMigratesConfigAndSavesButLeavesCredentialsForSecureMigration()
+      throws Exception {
+    Path parent = Files.createTempDirectory("lizzie-portable-upgrade");
+    Path previousRoot = Files.createDirectories(parent.resolve("2026-08-01-windows64.nvidia"));
+    Path previousData = Files.createDirectories(previousRoot.resolve("user-data"));
+    Files.writeString(previousRoot.resolve(".lizzie-portable"), "portable");
+    Files.writeString(previousData.resolve("config.txt"), richPortableConfig().toString(2));
+    Files.writeString(previousData.resolve("persist"), "{\"ui-persist\":{}}");
+    Path previousCredentials = Files.createDirectories(previousData.resolve("secure-credentials"));
+    Files.writeString(previousCredentials.resolve("account-token-user.dpapi"), "encrypted-token");
+    Files.writeString(previousCredentials.resolve("password-user.dpapi"), "encrypted-password");
+
+    Path decoyRoot = Files.createDirectories(parent.resolve("2026-08-07-windows64.nvidia"));
+    Path decoyData = Files.createDirectories(decoyRoot.resolve("user-data"));
+    Files.writeString(decoyRoot.resolve(".lizzie-portable"), "portable");
+    Files.writeString(decoyData.resolve("config.txt"), freshPortableConfig().toString(2));
+
+    Path currentRoot = Files.createDirectories(parent.resolve("2026-08-08-windows64.nvidia"));
+    Files.writeString(currentRoot.resolve(".lizzie-portable"), "portable");
+    Path currentSave = Files.createDirectories(currentRoot.resolve("user-data").resolve("save"));
+    Files.writeString(currentSave.resolve("unfinished-game.sgf"), "(;GM[1])");
+
+    Path workDir =
+        Config.prepareWindowsPortableWorkDirWithSourcesForTests(
+            currentRoot, decoyData, previousData);
+
+    JSONObject migrated = new JSONObject(Files.readString(workDir.resolve("config.txt")));
+    JSONArray engines = migrated.getJSONObject("leelaz").getJSONArray("engine-settings-list");
+    assertEquals(2, engines.length());
+    assertEquals(
+        RemoteComputeConfig.PROVIDER_ZHIZI,
+        migrated
+            .getJSONObject("leelaz")
+            .getJSONObject(RemoteComputeConfig.CONFIG_KEY)
+            .getString("provider"));
+    assertFalse(Files.exists(workDir.resolve("secure-credentials")));
+    assertTrue(
+        Config.windowsPortableCredentialDirectoriesForTests(currentRoot)
+            .contains(previousCredentials.toAbsolutePath().normalize()));
+    assertEquals("(;GM[1])", Files.readString(currentSave.resolve("unfinished-game.sgf")));
+  }
+
+  @Test
+  void windowsPortableUpgradeDiscoversSiblingUserData() throws Exception {
+    Path parent = Files.createTempDirectory("lizzie-portable-sibling-discovery");
+    Path previousRoot = Files.createDirectories(parent.resolve("previous"));
+    Path previousData = Files.createDirectories(previousRoot.resolve("user-data"));
+    Files.writeString(previousRoot.resolve(".lizzie-portable"), "portable");
+    Files.writeString(previousData.resolve("config.txt"), richPortableConfig().toString(2));
+    Path currentRoot = Files.createDirectories(parent.resolve("current"));
+    Files.writeString(currentRoot.resolve(".lizzie-portable"), "portable");
+
+    assertTrue(
+        Config.windowsPortableMigrationSourcesForTests(currentRoot)
+            .contains(previousData.toAbsolutePath().normalize()));
+  }
+
+  @Test
+  void windowsPortableUpgradeKeepsConfigFromNewestMeaningfulProfile() throws Exception {
+    Path parent = Files.createTempDirectory("lizzie-portable-newest-profile");
+    Path olderRoot = Files.createDirectories(parent.resolve("older"));
+    Files.writeString(olderRoot.resolve(".lizzie-portable"), "portable");
+    Path olderData = Files.createDirectories(olderRoot.resolve("user-data"));
+    JSONObject olderConfig = richPortableConfig();
+    olderConfig
+        .getJSONObject("leelaz")
+        .getJSONObject(RemoteComputeConfig.CONFIG_KEY)
+        .put("zhizi-identifier", "older-user");
+    olderConfig
+        .getJSONObject("leelaz")
+        .getJSONArray("engine-settings-list")
+        .put(
+            new JSONObject()
+                .put("name", "Another Old Engine")
+                .put("command", "D:/old/katago.exe gtp"));
+    Path olderConfigFile = olderData.resolve("config.txt");
+    Files.writeString(olderConfigFile, olderConfig.toString(2));
+    Path olderCredentials = Files.createDirectories(olderData.resolve("secure-credentials"));
+    Files.writeString(olderCredentials.resolve("account-token-user.dpapi"), "older-token");
+    Files.setLastModifiedTime(olderConfigFile, FileTime.fromMillis(1_000));
+
+    Path newerRoot = Files.createDirectories(parent.resolve("newer"));
+    Files.writeString(newerRoot.resolve(".lizzie-portable"), "portable");
+    Path newerData = Files.createDirectories(newerRoot.resolve("user-data"));
+    JSONObject newerConfig = richPortableConfig();
+    newerConfig
+        .getJSONObject("leelaz")
+        .getJSONObject(RemoteComputeConfig.CONFIG_KEY)
+        .put("zhizi-identifier", "newer-user");
+    Path newerConfigFile = newerData.resolve("config.txt");
+    Files.writeString(newerConfigFile, newerConfig.toString(2));
+    Path newerCredentials = Files.createDirectories(newerData.resolve("secure-credentials"));
+    Files.writeString(newerCredentials.resolve("account-token-user.dpapi"), "newer-token");
+    Files.setLastModifiedTime(newerConfigFile, FileTime.fromMillis(2_000));
+
+    Path currentRoot = Files.createDirectories(parent.resolve("current"));
+    Files.writeString(currentRoot.resolve(".lizzie-portable"), "portable");
+    Path workDir =
+        Config.prepareWindowsPortableWorkDirWithSourcesForTests(
+            currentRoot, olderData, newerData);
+
+    JSONObject migrated = new JSONObject(Files.readString(workDir.resolve("config.txt")));
+    assertEquals(
+        "newer-user",
+        migrated
+            .getJSONObject("leelaz")
+            .getJSONObject(RemoteComputeConfig.CONFIG_KEY)
+            .getString("zhizi-identifier"));
+    assertFalse(Files.exists(workDir.resolve("secure-credentials")));
+    List<Path> legacyCredentials =
+        Config.windowsPortableCredentialDirectoriesForTests(currentRoot);
+    assertTrue(legacyCredentials.contains(olderCredentials.toAbsolutePath().normalize()));
+    assertTrue(legacyCredentials.contains(newerCredentials.toAbsolutePath().normalize()));
+  }
+
+  @Test
+  void windowsPortableUpgradeBacksUpUnreadableTargetBeforeRecovery() throws Exception {
+    Path parent = Files.createTempDirectory("lizzie-portable-broken-target");
+    Path previousData = Files.createDirectories(parent.resolve("previous").resolve("user-data"));
+    Files.writeString(previousData.resolve("config.txt"), richPortableConfig().toString(2));
+    Path currentRoot = Files.createDirectories(parent.resolve("current"));
+    Files.writeString(currentRoot.resolve(".lizzie-portable"), "portable");
+    Path currentData = Files.createDirectories(currentRoot.resolve("user-data"));
+    Files.writeString(currentData.resolve("config.txt"), "{broken-json");
+
+    Config.prepareWindowsPortableWorkDirWithSourcesForTests(currentRoot, previousData);
+
+    assertEquals(
+        "{broken-json",
+        Files.readString(currentData.resolve("config.txt.unreadable-backup")));
+    JSONObject recovered = new JSONObject(Files.readString(currentData.resolve("config.txt")));
+    assertEquals(
+        2, recovered.getJSONObject("leelaz").getJSONArray("engine-settings-list").length());
+  }
+
+  @Test
+  void windowsPortableUpgradeRecoversUserStateFromGeneratedDefaultOnce() throws Exception {
+    Path parent = Files.createTempDirectory("lizzie-portable-recovery");
+    Path previousData = Files.createDirectories(parent.resolve("previous").resolve("user-data"));
+    Files.writeString(previousData.resolve("config.txt"), richPortableConfig().toString(2));
+    Path currentRoot = Files.createDirectories(parent.resolve("current"));
+    Files.writeString(currentRoot.resolve(".lizzie-portable"), "portable");
+    Path currentData = Files.createDirectories(currentRoot.resolve("user-data"));
+    Files.writeString(currentData.resolve("config.txt"), freshPortableConfig().toString(2));
+
+    Config.prepareWindowsPortableWorkDirWithSourcesForTests(currentRoot, previousData);
+
+    JSONObject recovered = new JSONObject(Files.readString(currentData.resolve("config.txt")));
+    assertEquals(
+        2, recovered.getJSONObject("leelaz").getJSONArray("engine-settings-list").length());
+    assertEquals(1, recovered.getJSONObject("ui").getInt("default-engine"));
+    assertTrue(recovered.getJSONObject("ui").getBoolean("migrated-windows-portable-user-state-v2"));
+    assertTrue(Files.isRegularFile(currentData.resolve("config.before-portable-recovery.txt")));
+
+    JSONObject userEdited = new JSONObject(Files.readString(currentData.resolve("config.txt")));
+    userEdited.getJSONObject("ui").put("default-engine", 0);
+    Files.writeString(currentData.resolve("config.txt"), userEdited.toString(2));
+    Config.prepareWindowsPortableWorkDirWithSourcesForTests(currentRoot, previousData);
+    JSONObject secondLaunch = new JSONObject(Files.readString(currentData.resolve("config.txt")));
+    assertEquals(0, secondLaunch.getJSONObject("ui").getInt("default-engine"));
+  }
+
+  @Test
+  void windowsPortableUpgradeNeverOverwritesAnExistingCustomConfig() throws Exception {
+    Path parent = Files.createTempDirectory("lizzie-portable-custom-config");
+    Path previousData = Files.createDirectories(parent.resolve("previous").resolve("user-data"));
+    Files.writeString(previousData.resolve("config.txt"), richPortableConfig().toString(2));
+    Path currentRoot = Files.createDirectories(parent.resolve("current"));
+    Files.writeString(currentRoot.resolve(".lizzie-portable"), "portable");
+    Path currentData = Files.createDirectories(currentRoot.resolve("user-data"));
+    JSONObject custom = freshPortableConfig();
+    custom
+        .getJSONObject("leelaz")
+        .put(
+            "engine-settings-list",
+            new JSONArray()
+                .put(
+                    new JSONObject()
+                        .put("name", "My External KataGo")
+                        .put("command", "D:/KataGo/katago.exe gtp -model D:/models/my.bin.gz")));
+    Files.writeString(currentData.resolve("config.txt"), custom.toString(2));
+
+    Config.prepareWindowsPortableWorkDirWithSourcesForTests(currentRoot, previousData);
+
+    JSONObject preserved = new JSONObject(Files.readString(currentData.resolve("config.txt")));
+    assertEquals(
+        "My External KataGo",
+        preserved
+            .getJSONObject("leelaz")
+            .getJSONArray("engine-settings-list")
+            .getJSONObject(0)
+            .getString("name"));
+    assertFalse(Files.exists(currentData.resolve("config.before-portable-recovery.txt")));
+  }
+
+  @Test
   void defaultConfigHidesBlunderBarWhileKeepingAutoQuickAnalyzeOnLoad() throws Exception {
     Path tempRoot = Files.createTempDirectory("lizzie-config-default-ui");
     Config config = ConfigTestHelper.createForTests(tempRoot);
@@ -46,6 +246,52 @@ public class ConfigBundledKataGoDefaultsTest {
     assertFalse(ui.getBoolean("show-blunder-bar"));
     assertTrue(ui.getBoolean("auto-quick-analyze-on-load"));
     assertFalse(ui.getBoolean("quick-analysis-lightweight-model-enabled"));
+  }
+
+  @Test
+  void configSchemaRepairKeepsExistingEngineSettings() throws Exception {
+    Path tempRoot = Files.createTempDirectory("lizzie-config-schema-repair");
+    Config config = ConfigTestHelper.createForTests(tempRoot);
+    JSONObject customEngine =
+        new JSONObject()
+            .put("name", "External KataGo")
+            .put("command", "D:/KataGo/katago.exe gtp -model D:/models/custom.bin.gz");
+    JSONObject existingLeelaz =
+        new JSONObject()
+            .put("engine-settings-list", new JSONArray().put(customEngine))
+            .put("analysis-engine-ssh-info", "legacy-invalid-value");
+    JSONObject existing =
+        new JSONObject().put("ui", new JSONObject()).put("leelaz", existingLeelaz);
+    JSONObject defaults =
+        new JSONObject()
+            .put("ui", new JSONObject().put("show-status", true))
+            .put(
+                "leelaz",
+                new JSONObject()
+                    .put("analysis-engine-ssh-info", new JSONObject().put("useJavaSSH", false)));
+
+    assertTrue(config.mergeDefaults(existing, defaults));
+
+    assertEquals(
+        "External KataGo",
+        existingLeelaz.getJSONArray("engine-settings-list").getJSONObject(0).getString("name"));
+    assertFalse(existingLeelaz.getJSONObject("analysis-engine-ssh-info").getBoolean("useJavaSSH"));
+    assertTrue(existing.getJSONObject("ui").getBoolean("show-status"));
+  }
+
+  @Test
+  void unreadableConfigIsBackedUpBesideOriginal() throws Exception {
+    Path tempRoot = Files.createTempDirectory("lizzie-config-unreadable-backup");
+    Path configFile = tempRoot.resolve("config.txt");
+    Files.writeString(configFile, "{broken-json");
+    Method method = Config.class.getDeclaredMethod("backupUnreadableConfig", java.io.File.class);
+    method.setAccessible(true);
+
+    method.invoke(null, configFile.toFile());
+
+    Path backup = tempRoot.resolve("config.txt.unreadable-backup");
+    assertTrue(Files.isRegularFile(backup));
+    assertEquals("{broken-json", Files.readString(backup));
   }
 
   @Test
@@ -528,6 +774,57 @@ public class ConfigBundledKataGoDefaultsTest {
     Method method = Config.class.getDeclaredMethod("hideBlunderBarDefaultOnce");
     method.setAccessible(true);
     method.invoke(config);
+  }
+
+  private static JSONObject richPortableConfig() {
+    JSONObject localEngine =
+        new JSONObject()
+            .put("name", "My KataGo")
+            .put("command", "D:/KataGo/katago.exe gtp -model D:/models/custom.bin.gz")
+            .put("isDefault", false);
+    JSONObject zhiziEngine =
+        new JSONObject()
+            .put("name", "Zhizi Cloud")
+            .put("command", RemoteComputeConfig.COMMAND_ZHIZI)
+            .put("isDefault", true);
+    JSONObject remote =
+        new JSONObject()
+            .put("provider", RemoteComputeConfig.PROVIDER_ZHIZI)
+            .put("zhizi-identifier", "saved-user")
+            .put("remember-zhizi-token", true)
+            .put("remember-zhizi-password", true);
+    JSONObject leelaz =
+        new JSONObject()
+            .put("engine-settings-list", new JSONArray().put(localEngine).put(zhiziEngine))
+            .put(RemoteComputeConfig.CONFIG_KEY, remote);
+    JSONObject ui =
+        new JSONObject()
+            .put("first-time-load", false)
+            .put("autoload-default", true)
+            .put("autoload-last", false)
+            .put("autoload-empty", false)
+            .put("default-engine", 1)
+            .put("last-engine", 1);
+    return new JSONObject().put("ui", ui).put("leelaz", leelaz);
+  }
+
+  private static JSONObject freshPortableConfig() {
+    JSONObject bundled =
+        new JSONObject()
+            .put("name", "KataGo Bundled")
+            .put(
+                "command",
+                "app/engines/katago/windows-x64/katago.exe gtp"
+                    + " -model app/weights/default.bin.gz")
+            .put("isDefault", true);
+    JSONObject leelaz = new JSONObject().put("engine-settings-list", new JSONArray().put(bundled));
+    JSONObject ui =
+        new JSONObject()
+            .put("first-time-load", false)
+            .put("autoload-default", true)
+            .put("default-engine", 0)
+            .put("last-engine", 0);
+    return new JSONObject().put("ui", ui).put("leelaz", leelaz);
   }
 
   private static void withUserDir(Path userDir, ThrowingRunnable action) throws Exception {
