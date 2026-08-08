@@ -113,7 +113,7 @@ public class HumanSlAnalysisRunner implements AutoCloseable {
     }
   }
 
-  /** Samples a move from the HumanSL policy for the requested profile. */
+  /** Selects a plausible move from the HumanSL policy for the requested profile. */
   public Optional<String> bestHumanMove(
       BoardHistoryNode positionNode, String profile, Duration timeout) {
     if (positionNode == null || profile == null) {
@@ -124,8 +124,8 @@ public class HumanSlAnalysisRunner implements AutoCloseable {
     }
     String requestId = "humansl-genmove-" + nextRequestId.getAndIncrement();
     boolean allowPass = shouldAllowPass(positionNode);
-    int visits = allowPass ? HUMAN_LIKE_PLAY_VISITS : 1;
-    JSONObject request = buildHumanSlRequest(requestId, positionNode, profile, visits);
+    JSONObject request =
+        buildHumanSlRequest(requestId, positionNode, profile, HUMAN_LIKE_PLAY_VISITS);
     try {
       JSONObject response = request(request, timeout == null ? Duration.ofSeconds(30) : timeout);
       if (allowPass && isSearchTopMovePass(response)) {
@@ -135,14 +135,16 @@ public class HumanSlAnalysisRunner implements AutoCloseable {
       if (policy == null) {
         return Optional.empty();
       }
+      List<HumanLikeMoveSelector.Candidate> legalMoves =
+          policyMoves(
+              policy, Board.boardWidth, Board.boardHeight, positionNode.getData().stones, false);
       return Optional.ofNullable(
-          samplePolicyMove(
-              policy,
-              Board.boardWidth,
-              Board.boardHeight,
-              positionNode.getData().stones,
-              ThreadLocalRandom.current().nextDouble(),
-              allowPass));
+          HumanLikeMoveSelector.select(
+              legalMoves,
+              response.optJSONArray("moveInfos"),
+              positionNode.getData().moveNumber,
+              profile,
+              ThreadLocalRandom.current().nextDouble()));
     } catch (TimeoutException | IOException e) {
       return Optional.empty();
     }
@@ -160,12 +162,14 @@ public class HumanSlAnalysisRunner implements AutoCloseable {
       Stone[] stones,
       double randomValue,
       boolean allowPass) {
-    List<PolicyMove> moves = policyMoves(policy, boardWidth, boardHeight, stones, allowPass);
+    List<HumanLikeMoveSelector.Candidate> moves =
+        policyMoves(policy, boardWidth, boardHeight, stones, allowPass);
     if (moves.isEmpty()) {
-      return argmaxPolicyMove(policy, boardWidth, boardHeight);
+      String fallback = argmaxPolicyMove(policy, boardWidth, boardHeight);
+      return !allowPass && "pass".equalsIgnoreCase(fallback) ? null : fallback;
     }
     double total = 0.0;
-    for (PolicyMove move : moves) {
+    for (HumanLikeMoveSelector.Candidate move : moves) {
       total += move.probability;
     }
     if (total <= 0.0 || Double.isNaN(total)) {
@@ -173,7 +177,7 @@ public class HumanSlAnalysisRunner implements AutoCloseable {
     }
     double target = Math.max(0.0, Math.min(0.999999999999, randomValue)) * total;
     double cumulative = 0.0;
-    for (PolicyMove move : moves) {
+    for (HumanLikeMoveSelector.Candidate move : moves) {
       cumulative += move.probability;
       if (target < cumulative) {
         return move.move;
@@ -346,6 +350,7 @@ public class HumanSlAnalysisRunner implements AutoCloseable {
     }
     overrideSettings.put("humanSLProfile", profile);
     overrideSettings.put("ignorePreRootHistory", false);
+    overrideSettings.put("humanSLRootExploreProbWeightless", 0.5);
     request.put("overrideSettings", overrideSettings);
     return request;
   }
@@ -383,14 +388,15 @@ public class HumanSlAnalysisRunner implements AutoCloseable {
     return null;
   }
 
-  private static List<PolicyMove> policyMoves(
+  private static List<HumanLikeMoveSelector.Candidate> policyMoves(
       Object policy, int boardWidth, int boardHeight, boolean allowPass) {
     return policyMoves(policy, boardWidth, boardHeight, null, allowPass);
   }
 
-  private static List<PolicyMove> policyMoves(
+  private static List<HumanLikeMoveSelector.Candidate> policyMoves(
       Object policy, int boardWidth, int boardHeight, Stone[] stones, boolean allowPass) {
-    ArrayList<PolicyMove> moves = new ArrayList<PolicyMove>();
+    ArrayList<HumanLikeMoveSelector.Candidate> moves =
+        new ArrayList<HumanLikeMoveSelector.Candidate>();
     if (policy instanceof JSONArray) {
       JSONArray array = (JSONArray) policy;
       if (isNumericPolicy(array)) {
@@ -446,12 +452,13 @@ public class HumanSlAnalysisRunner implements AutoCloseable {
     return moves;
   }
 
-  private static void addPolicyMove(List<PolicyMove> moves, String move, Object rawProbability) {
+  private static void addPolicyMove(
+      List<HumanLikeMoveSelector.Candidate> moves, String move, Object rawProbability) {
     Double probability = coerceProbability(rawProbability);
     if (move == null || move.trim().isEmpty() || probability == null || probability <= 0.0) {
       return;
     }
-    moves.add(new PolicyMove(move.trim(), probability.doubleValue()));
+    moves.add(new HumanLikeMoveSelector.Candidate(move.trim(), probability.doubleValue()));
   }
 
   private boolean ensureStarted() {
@@ -513,7 +520,7 @@ public class HumanSlAnalysisRunner implements AutoCloseable {
     if (Double.isNaN(probability) || probability < 0.0) {
       return null;
     }
-    return Math.max(probability, 1.0e-12);
+    return probability;
   }
 
   private static int[] policyIndexToCoords(int index, int boardWidth, int boardHeight) {
@@ -552,15 +559,5 @@ public class HumanSlAnalysisRunner implements AutoCloseable {
 
   interface ProcessStarter {
     Process start(ProcessBuilder processBuilder) throws IOException;
-  }
-
-  private static final class PolicyMove {
-    private final String move;
-    private final double probability;
-
-    private PolicyMove(String move, double probability) {
-      this.move = move;
-      this.probability = probability;
-    }
   }
 }

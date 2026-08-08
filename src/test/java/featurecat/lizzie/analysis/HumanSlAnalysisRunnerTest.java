@@ -59,6 +59,10 @@ class HumanSlAnalysisRunnerTest {
       assertEquals(
           "rank_1d", request.getJSONObject("overrideSettings").getString("humanSLProfile"));
       assertFalse(request.getJSONObject("overrideSettings").getBoolean("ignorePreRootHistory"));
+      assertEquals(
+          0.5,
+          request.getJSONObject("overrideSettings").getDouble("humanSLRootExploreProbWeightless"),
+          0.0001);
       assertEquals(BOARD_SIZE, request.getInt("boardXSize"));
       assertEquals(BOARD_SIZE, request.getInt("boardYSize"));
     }
@@ -159,13 +163,102 @@ class HumanSlAnalysisRunnerTest {
 
       assertTrue(best.isPresent());
       assertFalse("pass".equals(best.get()));
-      assertEquals(1, process.sentRequests.get(0).getInt("maxVisits"));
+      assertEquals(64, process.sentRequests.get(0).getInt("maxVisits"));
+      assertFalse(process.sentRequests.get(0).has("maxTime"));
       assertFalse(
           process
               .sentRequests
               .get(0)
               .getJSONObject("overrideSettings")
               .getBoolean("ignorePreRootHistory"));
+      runner.close();
+    }
+  }
+
+  @Test
+  void bestHumanMove_doesNotInventAMoveFromAnEmptyPolicy() throws Exception {
+    try (TestEnvironment env = TestEnvironment.open()) {
+      BoardHistoryList history = new BoardHistoryList(BoardData.empty(BOARD_SIZE, BOARD_SIZE));
+      boardWithHistory(history);
+      JSONArray emptyPolicy = new JSONArray();
+      for (int i = 0; i < BOARD_AREA + 1; i++) {
+        emptyPolicy.put(0.0);
+      }
+      FakeProcess process =
+          new FakeProcess(
+              request ->
+                  new JSONObject()
+                      .put("id", request.getString("id"))
+                      .put("humanPolicy", emptyPolicy)
+                      .put("moveInfos", new JSONArray()));
+      HumanSlAnalysisRunner runner =
+          new HumanSlAnalysisRunner(List.of("katago", "analysis"), ignored -> process);
+
+      java.util.Optional<String> best =
+          runner.bestHumanMove(history.getCurrentHistoryNode(), "rank_3k", Duration.ofSeconds(1));
+
+      assertTrue(best.isEmpty());
+      runner.close();
+    }
+  }
+
+  @Test
+  void bestHumanMove_acceptsPassOnlyWhenEndgameSearchSelectsIt() throws Exception {
+    try (TestEnvironment env = TestEnvironment.open()) {
+      BoardHistoryList history = endgameHistory();
+      boardWithHistory(history);
+      FakeProcess process =
+          new FakeProcess(
+              request ->
+                  new JSONObject()
+                      .put("id", request.getString("id"))
+                      .put("humanPolicy", new JSONObject().put("C3", 0.9).put("pass", 0.1))
+                      .put(
+                          "moveInfos",
+                          new JSONArray()
+                              .put(
+                                  new JSONObject()
+                                      .put("move", "pass")
+                                      .put("order", 0)
+                                      .put("utility", 0.8))));
+      HumanSlAnalysisRunner runner =
+          new HumanSlAnalysisRunner(List.of("katago", "analysis"), ignored -> process);
+
+      java.util.Optional<String> best =
+          runner.bestHumanMove(history.getCurrentHistoryNode(), "rank_3k", Duration.ofSeconds(1));
+
+      assertEquals(java.util.Optional.of("pass"), best);
+      assertEquals(64, process.sentRequests.get(0).getInt("maxVisits"));
+      runner.close();
+    }
+  }
+
+  @Test
+  void bestHumanMove_excludesPolicyPassWhenSearchPrefersARealMove() throws Exception {
+    try (TestEnvironment env = TestEnvironment.open()) {
+      BoardHistoryList history = endgameHistory();
+      boardWithHistory(history);
+      FakeProcess process =
+          new FakeProcess(
+              request ->
+                  new JSONObject()
+                      .put("id", request.getString("id"))
+                      .put("humanPolicy", new JSONObject().put("C3", 0.1).put("pass", 100.0))
+                      .put(
+                          "moveInfos",
+                          new JSONArray()
+                              .put(
+                                  new JSONObject()
+                                      .put("move", "C3")
+                                      .put("order", 0)
+                                      .put("utility", 0.5))));
+      HumanSlAnalysisRunner runner =
+          new HumanSlAnalysisRunner(List.of("katago", "analysis"), ignored -> process);
+
+      java.util.Optional<String> best =
+          runner.bestHumanMove(history.getCurrentHistoryNode(), "rank_3k", Duration.ofSeconds(1));
+
+      assertEquals(java.util.Optional.of("C3"), best);
       runner.close();
     }
   }
@@ -177,6 +270,13 @@ class HumanSlAnalysisRunnerTest {
     board.setHistory(history);
     Lizzie.board = board;
     return board;
+  }
+
+  private static BoardHistoryList endgameHistory() {
+    Stone[] position = stones(placement(0, 0, Stone.BLACK));
+    BoardHistoryList history = new BoardHistoryList(BoardData.empty(BOARD_SIZE, BOARD_SIZE));
+    history.add(moveNode(position, new int[] {0, 0}, Stone.BLACK, false, 200));
+    return history;
   }
 
   private static BoardData moveNode(
