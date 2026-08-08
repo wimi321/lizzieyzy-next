@@ -515,6 +515,19 @@ class ReadBoardShutdownTest {
         int maxVisits,
         boolean ponder,
         TrackingHandoffActivation activation) {
+      activateReadBoardGmaAfterTracking(
+          target, color, maxTimeSeconds, maxVisits, ponder, activation, null);
+    }
+
+    @Override
+    void activateReadBoardGmaAfterTracking(
+        TrackingHandoffTarget target,
+        String color,
+        int maxTimeSeconds,
+        int maxVisits,
+        boolean ponder,
+        TrackingHandoffActivation activation,
+        Leelaz.ReadBoardGmaSessionAdmission sessionAdmission) {
       activationCount.incrementAndGet();
       activationEntered.countDown();
       try {

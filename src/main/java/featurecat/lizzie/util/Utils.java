@@ -1011,7 +1011,9 @@ public class Utils {
   }
 
   public static void showMsg(String message) {
-    if (GraphicsEnvironment.isHeadless()) return;
+    if (GraphicsEnvironment.isHeadless() || Lizzie.frame == null || !Lizzie.frame.isDisplayable()) {
+      return;
+    }
     //  Message msg = new Message();
     //    msg.setMessage(message);
     HtmlMessage htmlMessage =

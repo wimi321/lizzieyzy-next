@@ -30,6 +30,32 @@ public final class ExactSnapshotEngineRestore {
 
   private ExactSnapshotEngineRestore() {}
 
+  enum FailureCategory {
+    ADMISSION_STALE,
+    SEND_FAILED,
+    GTP_ERROR,
+    TIMEOUT,
+    TAIL_REJECTED
+  }
+
+  static final class Failure extends IllegalStateException {
+    private final FailureCategory category;
+
+    Failure(FailureCategory category, String detail) {
+      super(detail);
+      this.category = category;
+    }
+
+    Failure(FailureCategory category, String detail, Throwable cause) {
+      super(detail, cause);
+      this.category = category;
+    }
+
+    FailureCategory category() {
+      return category;
+    }
+  }
+
   public static Optional<PreparedRestore> prepare(
       Leelaz.ExactSnapshotRestoreAdmission admission, BoardHistoryNode target) {
     return RestorePlan.capture(admission, target).map(PreparedRestore::new);
@@ -132,7 +158,8 @@ public final class ExactSnapshotEngineRestore {
         () -> {
           if (!target.sendCommandToCapturedRestoreTarget(command, plan.admission)) {
             failure[0] =
-                new IllegalStateException(
+                new Failure(
+                    FailureCategory.TAIL_REJECTED,
                     "Exact snapshot restore " + phase + " command was rejected: " + command);
           }
         });

@@ -82,6 +82,8 @@ play>black>5 1000 0 gma
 - 旧 GMA 的最终 `play` 或错误终态到达后，消费其输出但不落子；对于外部点击失败、`pass` 或 `resign` 则在得知该结果后立即开始隔离；两种情况均随后以最新权威快照执行唯一一次 exact engine restore。
 - 仅当 restore 完成后才解除引擎命令冻结并允许后续普通同步命令或下一次 GMA。
 
+实现约束：GMA 会话的 runtime ACK barrier 必须在 ACK 聚合完成后保留会话 reservation，直到 exact restore（如有延迟权威局面）也完成；terminal 消费路径不得在 GTP 响应线程同步等待 `loadsgf`。terminal effect 使用 admission 时捕获的引擎与 reservation capability 释放资源，不能从可变的当前引擎引用释放替代引擎的 reservation。
+
 这条规则同时适用于 `stopAutoPlay` 后对手立即走棋的场景，避免 KataGo 先在过期根局面落子、再消费一条错误根局面的普通 `play`。
 
 ## 后台思考

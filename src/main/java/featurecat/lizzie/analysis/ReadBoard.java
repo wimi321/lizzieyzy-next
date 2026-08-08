@@ -175,6 +175,50 @@ public class ReadBoard implements ReadBoardTrackingEligibilityAdapter.Eligibilit
   private volatile boolean readBoardGmaEngineRestorePending = false;
   private volatile boolean readBoardGmaEngineRestoreInProgress = false;
   private volatile BoardHistoryNode readBoardGmaDeferredRestoreNode = null;
+  private volatile ReadBoardGmaSessionBinding readBoardGmaSessionBinding = null;
+  private boolean retainReadBoardGmaNativePonderAfterTerminal = false;
+
+  /** Atomically published ownership tuple for one admitted physical GMA request. */
+  private static final class ReadBoardGmaSessionBinding {
+    private final ReadBoardGmaSession session;
+    private final ReadBoardGmaSession.GmaTerminalCapability terminalCapability;
+    private final Leelaz engine;
+    private ReadBoardGmaSession.GmaTerminal stagedTerminal;
+    private Object stagedRestoreIntent;
+
+    private ReadBoardGmaSessionBinding(
+        ReadBoardGmaSession session,
+        ReadBoardGmaSession.GmaTerminalCapability terminalCapability,
+        Leelaz engine) {
+      this.session = session;
+      this.terminalCapability = terminalCapability;
+      this.engine = engine;
+    }
+
+    private synchronized boolean stageTerminal(
+        ReadBoardGmaSession.GmaTerminal terminal, Object restoreIntent) {
+      if (stagedTerminal != null) {
+        return true;
+      }
+      stagedTerminal = terminal;
+      stagedRestoreIntent = restoreIntent;
+      return true;
+    }
+
+    private void dispatchStagedTerminal() {
+      ReadBoardGmaSession.GmaTerminal terminal;
+      Object restoreIntent;
+      synchronized (this) {
+        terminal = stagedTerminal;
+        restoreIntent = stagedRestoreIntent;
+        stagedTerminal = null;
+        stagedRestoreIntent = null;
+      }
+      if (terminal != null) {
+        session.consumeGmaTerminal(terminalCapability, terminal, restoreIntent);
+      }
+    }
+  }
   private boolean readBoardTurnTrusted = false;
   // private long startTime;
   private boolean waitSocket = true;
@@ -3763,7 +3807,374 @@ public class ReadBoard implements ReadBoardTrackingEligibilityAdapter.Eligibilit
     return readBoardGmaAutoPlayActive
         || readBoardGmaPending
         || readBoardGmaEngineRestorePending
-        || readBoardGmaEngineRestoreInProgress;
+        || readBoardGmaEngineRestoreInProgress
+        || isReadBoardGmaSessionBusy();
+  }
+
+  /** Whether an admitted GMA session has not yet reached its terminal. */
+  private boolean isReadBoardGmaSessionBusy() {
+    ReadBoardGmaSessionBinding binding = readBoardGmaSessionBinding;
+    return binding != null
+        && !(binding.session.state() instanceof ReadBoardGmaSession.Terminal);
+  }
+
+  /**
+   * Session admission callback invoked by Leelaz after the GMA reservation exists and before the
+   * physical {@code kata-genmove_analyze} command is written: creates the ports, creates the
+   * session, binds the ports to the session exactly once, captures the frozen authoritative
+   * restore intent, and admits the GMA request before publishing the outer session fields. A
+   * failure (for example a double-engine mirror admission conflict) throws and makes Leelaz
+   * reject the hand fail-closed.
+   */
+  private void admitReadBoardGmaSession() {
+    synchronized (this) {
+      if (readBoardGmaSessionBinding != null || Lizzie.leelaz == null) {
+        return;
+      }
+      Leelaz engine = Lizzie.leelaz;
+      ReadBoardGmaSessionPorts ports = new ReadBoardGmaSessionPorts(engine);
+      Object reservation = engine.currentReadBoardGmaReservation();
+      if (reservation == null) {
+        throw new IllegalStateException("ReadBoard GMA reservation is not established");
+      }
+      BoardHistoryNode restoreNode =
+          readBoardGmaEngineRestorePending && readBoardGmaDeferredRestoreNode != null
+              ? readBoardGmaDeferredRestoreNode
+              : Lizzie.board == null || Lizzie.board.getHistory() == null
+                  ? null
+                  : Lizzie.board.getHistory().getCurrentHistoryNode();
+      Object restoreIntent = captureReadBoardGmaRestoreIntent(engine, reservation, restoreNode);
+      ReadBoardGmaSession session =
+          ReadBoardGmaSession.create(engine.currentEngineIncarnation(), reservation, ports);
+      ports.bind(session);
+      ReadBoardGmaSession.GmaTerminalCapability terminalCapability =
+          session.admitGma(
+              session.helperCapability(),
+              restoreIntent,
+              engine.captureReadBoardGmaRuntimeSnapshot());
+      readBoardGmaSessionBinding =
+          new ReadBoardGmaSessionBinding(session, terminalCapability, engine);
+      // Admission freezes the latest authority inside the session. The legacy pending flags must
+      // not launch a second restore after the session terminal, especially on participant failure.
+      readBoardGmaEngineRestorePending = false;
+      readBoardGmaDeferredRestoreNode = null;
+    }
+  }
+
+  /**
+   * Captures the frozen authoritative restore intent for the given history node: the {@code
+   * ExactSnapshotEngineRestore.PreparedRestore} whose execution consumes {@code loadsgf} and
+   * accepts the captured {@code MOVE/PASS} tail into the ordinary queue. Without a usable static
+   * snapshot anchor the current position is materialized; GMA recovery never falls back to root
+   * replay.
+   */
+  private Object captureReadBoardGmaRestoreIntent(
+      Leelaz engine, Object reservation, BoardHistoryNode restoreNode) {
+    if (restoreNode == null) {
+      throw new IllegalStateException("ReadBoard GMA restore node is not available");
+    }
+    Leelaz.ExactSnapshotRestoreAdmission admission =
+        engine.captureExactSnapshotRestoreAdmission(
+            Leelaz.ExactSnapshotRestoreOwner.READ_BOARD_GMA,
+            reservation,
+            engine.resolveLoadSgfMirrorEngine());
+    return ExactSnapshotEngineRestore.prepare(admission, restoreNode)
+        .orElseGet(
+            () ->
+                ExactSnapshotEngineRestore.prepareCurrentPosition(
+                    admission, restoreNode.getData()));
+  }
+
+  /**
+   * Stages the physical GMA terminal on the atomic session binding. The parser dispatches it only
+   * after consuming terminal response bookkeeping; accepted PLAYED completes directly, while an
+   * isolation variant starts the captured exact restore. Stale/duplicate/late events are absorbed.
+   * Returns whether a session consumed the terminal.
+   */
+  private boolean isCurrentReadBoardGmaSessionBinding(ReadBoardGmaSessionBinding binding) {
+    return binding != null
+        && readBoardGmaSessionBinding == binding
+        && binding.engine != null
+        && Lizzie.leelaz == binding.engine
+        && binding.engine.currentEngineIncarnation() == binding.session.engineIncarnation();
+  }
+
+  private boolean consumeReadBoardGmaSessionTerminal(ReadBoardGmaSession.GmaTerminal terminal) {
+    ReadBoardGmaSessionBinding binding = readBoardGmaSessionBinding;
+    if (binding == null) {
+      return false;
+    }
+    ReadBoardGmaSession session = binding.session;
+    ReadBoardGmaSession.GmaTerminalCapability capability = binding.terminalCapability;
+    Leelaz engine = binding.engine;
+    if (!isCurrentReadBoardGmaSessionBinding(binding)) {
+      localMoveSyncDebug("ReadBoard GMA terminal arrived for a stale engine incarnation");
+      session.retire(session.helperCapability());
+      readBoardGmaPendingLogicallyInvalid = true;
+      readBoardGmaAwaitingSyncedBoard = true;
+      return binding.stageTerminal(ReadBoardGmaSession.GmaTerminal.REQUEST_ERROR, null);
+    }
+    readBoardGmaAwaitingSyncedBoard = true;
+    return binding.stageTerminal(terminal, null);
+  }
+
+  /**
+   * Routes captured-engine termination through the admitted session so failure publication and
+   * reservation release remain exactly once and session-owned.
+   */
+  boolean failReadBoardGmaSessionForEngineTermination(Leelaz expectedEngine, String detail) {
+    ReadBoardGmaSessionBinding binding = readBoardGmaSessionBinding;
+    if (binding == null || binding.engine != expectedEngine) {
+      return false;
+    }
+    return binding.session.failEngineProcess(binding.terminalCapability, detail);
+  }
+
+  /**
+   * Drops the session-bound adapter state when the physical GMA hand can no longer converge through
+   * a terminal (transport death, preparation/restore failure, helper retirement). The legacy
+   * fail-closed paths already own the quarantine and reservation release for those cases; the
+   * abandoned session record is unreachable and gets collected.
+   */
+  void abandonReadBoardGmaSession(Leelaz expectedEngine, String reason) {
+    ReadBoardGmaSessionBinding binding = readBoardGmaSessionBinding;
+    if (binding != null && binding.engine != expectedEngine) {
+      return;
+    }
+    localMoveSyncDebug("ReadBoard GMA session abandoned reason=" + reason);
+    readBoardGmaSessionBinding = null;
+  }
+
+  /**
+   * Retires logical authorization while preserving the physical GMA hand for terminal convergence.
+   */
+  boolean retireReadBoardGmaSession() {
+    ReadBoardGmaSessionBinding binding = readBoardGmaSessionBinding;
+    if (binding == null
+        || binding.session.state() instanceof ReadBoardGmaSession.Terminal) {
+      return false;
+    }
+    binding.session.retire(binding.session.helperCapability());
+    return true;
+  }
+
+  /**
+   * The session module's narrow ports, implemented by the ReadBoard adapter. The ports capture the
+   * admitting engine and bind the admitted session exactly once: every participant start, terminal
+   * publication, and reservation release uses the bound session, never the mutable outer session
+   * field, so a stale ports instance cannot start or release a replacement session's reservation.
+   */
+  private final class ReadBoardGmaSessionPorts implements ReadBoardGmaSession.Ports {
+    private final Leelaz engine;
+    private volatile ReadBoardGmaSession boundSession;
+
+    private ReadBoardGmaSessionPorts(Leelaz engine) {
+      this.engine = engine;
+    }
+
+    /**
+     * Binds this ports instance to its session exactly once; duplicate or null binding fails fast.
+     */
+    private void bind(ReadBoardGmaSession session) {
+      if (boundSession != null) {
+        throw new IllegalStateException("ReadBoard GMA ports are already bound to a session");
+      }
+      boundSession = java.util.Objects.requireNonNull(session, "session");
+    }
+
+    private volatile boolean continuationAfterRelease;
+
+    @Override
+    public void startExact(
+        ReadBoardGmaSession.ExactParticipantCapability capability, Object restoreIntent) {
+      if (engine.currentEngineIncarnation() != boundSession.engineIncarnation()) {
+        boundSession.completeExact(
+            capability,
+            new ReadBoardGmaSession.ParticipantResult.Failed(
+                new ReadBoardGmaSession.ParticipantFailure(
+                    ReadBoardGmaSession.FailureCategory.ADMISSION_STALE,
+                    boundSession.engineIncarnation(),
+                    "ReadBoard GMA exact participant belongs to a stale engine incarnation")));
+        return;
+      }
+      ReadBoardGmaExactParticipant.start(
+          boundSession,
+          capability,
+          () -> ((ExactSnapshotEngineRestore.PreparedRestore) restoreIntent).execute());
+    }
+
+    @Override
+    public void startRuntime(
+        ReadBoardGmaSession.RuntimeParticipantCapability capability,
+        ReadBoardGmaSession.RuntimeSnapshot runtimeSnapshot) {
+      ReadBoardGmaSession session = boundSession;
+      if (session == null || engine == null) {
+        throw new IllegalStateException(
+            "ReadBoard GMA runtime participant has no session or engine to restore");
+      }
+      engine.startReadBoardGmaRuntimeParticipant(session, capability, runtimeSnapshot);
+    }
+
+    @Override
+    public void publishTerminal(ReadBoardGmaSession.Terminal terminal) {
+      ReadBoardGmaSession.ReservationReleaseCapability releaseCapability =
+          boundSession.reservationReleaseCapability();
+      if (terminal.outcome() == ReadBoardGmaSession.SessionOutcome.SUCCEEDED
+          && readBoardGmaEngineRestorePending) {
+        // Never block the GTP parser while consuming the terminal. The deferred restore owns the
+        // reservation until it converges, then releases the captured reservation capability.
+        Thread restoreThread =
+            new Thread(
+                () -> {
+                  try {
+                    flushReadBoardGmaEngineRestoreIfReady("gma-session-terminal");
+                  } catch (RuntimeException failure) {
+                    localMoveSyncDebug(
+                        "ReadBoard GMA deferred restore failed: " + failure.getMessage());
+                  } finally {
+                    engine.requestReadBoardGmaReservationRelease(releaseCapability);
+                    if (continuationAfterRelease) {
+                      continuationAfterRelease = false;
+                      scheduleReadBoardGmaIfNeeded("gma-session-deferred-release");
+                    }
+                  }
+                },
+                "readboard-gma-deferred-restore");
+        restoreThread.setDaemon(true);
+        restoreThread.start();
+      }
+      ReadBoardGmaSessionBinding binding = readBoardGmaSessionBinding;
+      if (binding != null && binding.session == boundSession) {
+        readBoardGmaSessionBinding = null;
+      }
+    }
+
+    @Override
+    public void handleFailure(ReadBoardGmaSession.ParticipantFailure firstFailure) {
+      discardReadBoardGmaLegacyRestoreIntent();
+      if (engine != null
+          && firstFailure.category() != ReadBoardGmaSession.FailureCategory.ADMISSION_STALE) {
+        engine.quarantineSessionOwnedReadBoardGmaFailure(firstFailure.detail());
+      }
+    }
+
+    @Override
+    public void continueNormal() {
+      if (readBoardGmaAutoPlayActive) {
+        continuationAfterRelease = true;
+      }
+      // Exact restore is complete; active autoplay intentionally retains runtime settings.
+    }
+
+    @Override
+    public void requestReservationRelease(
+        ReadBoardGmaSession.ReservationReleaseCapability capability) {
+      if (readBoardGmaEngineRestorePending) {
+        return;
+      }
+      if (engine != null) {
+        engine.requestReadBoardGmaReservationRelease(capability);
+        if (continuationAfterRelease) {
+          continuationAfterRelease = false;
+          scheduleReadBoardGmaIfNeeded("gma-session-release");
+        }
+      }
+    }
+  }
+
+  /**
+   * Exact snapshot restore participant adapter — the session-typed seam between the narrow {@link
+   * ReadBoardGmaSession} module and {@link ExactSnapshotEngineRestore}.
+   *
+   * <p>The adapter executes one frozen restore operation on a daemon worker thread and reports the
+   * aggregate result through the exact participant capability exactly once. The operation is the
+   * ReadBoard-captured {@code ExactSnapshotEngineRestore.PreparedRestore}: its {@code execute()}
+   * blocks until every captured target consumed the {@code loadsgf} and accepted the captured
+   * {@code MOVE/PASS} tail into the ordinary queue, so success is never reported before that
+   * completion boundary. Tail GTP ACKs are NOT awaited — the module completion boundary is the
+   * queue acceptance, and the per-command response lifecycle stays with Leelaz.
+   *
+   * <p>Any {@link RuntimeException} from the operation fails the participant closed with a stable
+   * {@link ReadBoardGmaSession.FailureCategory}; the session then locks the first failure and never
+   * starts the runtime participant. Temporary-SGF cleanup, dispatch retirement and late-response
+   * isolation remain inside {@code ExactSnapshotEngineRestore}/{@code Leelaz} and are not
+   * duplicated here.
+   */
+  static final class ReadBoardGmaExactParticipant {
+    /**
+     * One frozen exact restore operation. Blocks until every captured target reached the completion
+     * boundary (loadsgf consumed and captured tail accepted into the ordinary queue) or throws a
+     * {@link RuntimeException} for a restore failure.
+     */
+    @FunctionalInterface
+    interface RestoreOperation {
+      void execute();
+    }
+
+    private final ReadBoardGmaSession session;
+    private final ReadBoardGmaSession.ExactParticipantCapability capability;
+    private final RestoreOperation operation;
+
+    private ReadBoardGmaExactParticipant(
+        ReadBoardGmaSession session,
+        ReadBoardGmaSession.ExactParticipantCapability capability,
+        RestoreOperation operation) {
+      this.session = session;
+      this.capability = capability;
+      this.operation = operation;
+    }
+
+    /**
+     * Starts the participant on a daemon worker thread. The session module already guards the
+     * capability (session identity, phase, attempt, incarnation), so a duplicate or stale report is
+     * absorbed with zero state change.
+     */
+    static void start(
+        ReadBoardGmaSession session,
+        ReadBoardGmaSession.ExactParticipantCapability capability,
+        RestoreOperation operation) {
+      java.util.Objects.requireNonNull(session, "session");
+      java.util.Objects.requireNonNull(capability, "capability");
+      java.util.Objects.requireNonNull(operation, "operation");
+      ReadBoardGmaExactParticipant participant =
+          new ReadBoardGmaExactParticipant(session, capability, operation);
+      Thread thread = new Thread(participant::run, "ReadBoard-GMA-exact-restore");
+      thread.setDaemon(true);
+      thread.start();
+    }
+
+    /** Runs the frozen restore and reports the aggregate result exactly once. */
+    private void run() {
+      try {
+        operation.execute();
+        session.completeExact(capability, new ReadBoardGmaSession.ParticipantResult.Succeeded());
+      } catch (RuntimeException failure) {
+        session.completeExact(
+            capability, new ReadBoardGmaSession.ParticipantResult.Failed(classifyFailure(failure)));
+      }
+    }
+
+    private ReadBoardGmaSession.ParticipantFailure classifyFailure(RuntimeException failure) {
+      String detail = failure.getMessage();
+      String detailText = detail == null ? String.valueOf(failure) : detail;
+      ReadBoardGmaSession.FailureCategory category =
+          failure instanceof ExactSnapshotEngineRestore.Failure exactFailure
+              ? mapCategory(exactFailure.category())
+              : ReadBoardGmaSession.FailureCategory.SEND_FAILED;
+      return new ReadBoardGmaSession.ParticipantFailure(
+          category, session.engineIncarnation(), detailText);
+    }
+
+    private static ReadBoardGmaSession.FailureCategory mapCategory(
+        ExactSnapshotEngineRestore.FailureCategory category) {
+      return switch (category) {
+        case ADMISSION_STALE -> ReadBoardGmaSession.FailureCategory.ADMISSION_STALE;
+        case SEND_FAILED -> ReadBoardGmaSession.FailureCategory.SEND_FAILED;
+        case GTP_ERROR -> ReadBoardGmaSession.FailureCategory.GTP_ERROR;
+        case TIMEOUT -> ReadBoardGmaSession.FailureCategory.TIMEOUT;
+        case TAIL_REJECTED -> ReadBoardGmaSession.FailureCategory.TAIL_REJECTED;
+      };
+    }
   }
 
   public void onReadBoardGmaCapabilityReady() {
@@ -3793,6 +4204,9 @@ public class ReadBoard implements ReadBoardTrackingEligibilityAdapter.Eligibilit
       invalidateReadBoardGmaPhysicalRequestIfPending(reason);
       return;
     }
+    if (retireReadBoardGmaSession()) {
+      return;
+    }
     if (Lizzie.leelaz != null) {
       Lizzie.leelaz.restoreReadBoardGmaRuntimeSettingsIfNeeded();
     }
@@ -3801,6 +4215,7 @@ public class ReadBoard implements ReadBoardTrackingEligibilityAdapter.Eligibilit
   private void disableReadBoardGmaPonderIfIdle() {
     if (!readBoardGmaAutoPlayActive
         || readBoardGmaPending
+        || isReadBoardGmaSessionBusy()
         || Lizzie.leelaz == null
         || !Lizzie.leelaz.supportsReadBoardGma()) {
       return;
@@ -3811,6 +4226,9 @@ public class ReadBoard implements ReadBoardTrackingEligibilityAdapter.Eligibilit
 
   private void invalidateReadBoardGmaPhysicalRequestIfPending(String reason) {
     if (!readBoardGmaPending) {
+      if (retireReadBoardGmaSession()) {
+        return;
+      }
       if (Lizzie.leelaz != null && !readBoardGmaAutoPlayActive) {
         Lizzie.leelaz.restoreReadBoardGmaRuntimeSettingsIfNeeded();
       }
@@ -3821,6 +4239,15 @@ public class ReadBoard implements ReadBoardTrackingEligibilityAdapter.Eligibilit
       readBoardGmaPending = false;
       readBoardGmaPendingLogicallyInvalid = false;
       localMoveSyncDebug("ReadBoard GMA cancel parameter preparation reason=" + reason);
+      return;
+    }
+    ReadBoardGmaSessionBinding binding = readBoardGmaSessionBinding;
+    ReadBoardGmaSession session = binding == null ? null : binding.session;
+    if (session != null && !(session.state() instanceof ReadBoardGmaSession.Terminal)) {
+      // The session keeps converging: retirement revokes logical authorization and causes the
+      // captured runtime settings to restore after the physical terminal and exact participant.
+      session.retire(session.helperCapability());
+      readBoardGmaPendingLogicallyInvalid = true;
       return;
     }
     readBoardGmaPendingLogicallyInvalid = true;
@@ -3848,6 +4275,9 @@ public class ReadBoard implements ReadBoardTrackingEligibilityAdapter.Eligibilit
       }
       return;
     }
+    if (routeReadBoardGmaRestoreIntent(restoreNode)) {
+      return;
+    }
     if (readBoardGmaPending) {
       readBoardGmaPendingLogicallyInvalid = true;
     }
@@ -3865,8 +4295,81 @@ public class ReadBoard implements ReadBoardTrackingEligibilityAdapter.Eligibilit
     }
   }
 
+  /**
+   * Updates the session's latest-wins authoritative restore intent from the current engine
+   * reservation. A capture conflict keeps the previously frozen intent; the next sync frame
+   * converges any mismatch.
+   */
+  private void updateReadBoardGmaRestoreIntent(BoardHistoryNode restoreNode) {
+    ReadBoardGmaSessionBinding binding = readBoardGmaSessionBinding;
+    ReadBoardGmaSession session = binding == null ? null : binding.session;
+    Leelaz engine = binding == null ? null : binding.engine;
+    if (session == null || engine == null) {
+      return;
+    }
+    Object reservation = engine.currentReadBoardGmaReservation();
+    if (reservation == null) {
+      return;
+    }
+    try {
+      session.updateRestoreIntent(
+          session.helperCapability(),
+          captureReadBoardGmaRestoreIntent(engine, reservation, restoreNode));
+    } catch (RuntimeException failure) {
+      localMoveSyncDebug("ReadBoard GMA restore intent update failed: " + failure.getMessage());
+    }
+  }
+
+  /**
+   * Routes an authoritative board change to the active GMA session: while the request is in flight
+   * the latest-wins restore intent is updated (the restore itself runs after the terminal is
+   * consumed); while the session restore is already converging the newer node is deferred and
+   * re-restored when the session terminal fires. Returns whether the session consumed the change.
+   */
+  private boolean routeReadBoardGmaRestoreIntent(BoardHistoryNode restoreNode) {
+    ReadBoardGmaSessionBinding binding = readBoardGmaSessionBinding;
+    ReadBoardGmaSession session = binding == null ? null : binding.session;
+    if (session == null) {
+      return false;
+    }
+    if (session.state() instanceof ReadBoardGmaSession.Terminal terminal
+        && terminal.outcome() == ReadBoardGmaSession.SessionOutcome.FAILED) {
+      // A failed session owns the terminal path; do not recreate a legacy restore race while
+      // failure quarantine is being applied.
+      return true;
+    }
+    if (session.state() instanceof ReadBoardGmaSession.GmaInFlight) {
+      updateReadBoardGmaRestoreIntent(restoreNode);
+      return true;
+    }
+    if (session.state() instanceof ReadBoardGmaSession.RestoringExact
+        || session.state() instanceof ReadBoardGmaSession.RestoringRuntime) {
+      try {
+        Object restoreIntent =
+            captureReadBoardGmaRestoreIntent(
+                binding.engine,
+                session.reservationReleaseCapability().reservationOwner(),
+                restoreNode);
+        boolean deferred = session.deferExactRestore(binding.terminalCapability, restoreIntent);
+        if (deferred) {
+          return true;
+        }
+        return session.state() instanceof ReadBoardGmaSession.Terminal terminal
+            && terminal.outcome() == ReadBoardGmaSession.SessionOutcome.FAILED;
+      } catch (RuntimeException failure) {
+        binding.engine.failReadBoardGmaEngineRestore(
+            "ReadBoard GMA deferred exact capture failed: " + failure.getMessage());
+        return true;
+      }
+    }
+    return false;
+  }
+
   private boolean deferReadBoardGmaEngineRestoreIfPending(
       String reason, BoardHistoryNode restoreNode) {
+    if (routeReadBoardGmaRestoreIntent(restoreNode)) {
+      return true;
+    }
     if (!readBoardGmaPending
         && !readBoardGmaEngineRestorePending
         && !readBoardGmaEngineRestoreInProgress) {
@@ -3883,6 +4386,11 @@ public class ReadBoard implements ReadBoardTrackingEligibilityAdapter.Eligibilit
             + " node="
             + historyNodeSummary(restoreNode));
     return true;
+  }
+
+  private synchronized void discardReadBoardGmaLegacyRestoreIntent() {
+    readBoardGmaEngineRestorePending = false;
+    readBoardGmaDeferredRestoreNode = null;
   }
 
   private boolean flushReadBoardGmaEngineRestoreIfReady(String reason) {
@@ -3960,6 +4468,10 @@ public class ReadBoard implements ReadBoardTrackingEligibilityAdapter.Eligibilit
       localMoveSyncDebug("ReadBoard GMA skip pending engine restore reason=" + reason);
       return true;
     }
+    if (isReadBoardGmaSessionBusy()) {
+      localMoveSyncDebug("ReadBoard GMA skip active session reason=" + reason);
+      return true;
+    }
     if (readBoardGmaPending) {
       localMoveSyncDebug("ReadBoard GMA skip pending reason=" + reason);
       return true;
@@ -3989,7 +4501,9 @@ public class ReadBoard implements ReadBoardTrackingEligibilityAdapter.Eligibilit
       localMoveSyncDebug("ReadBoard GMA wait synced board reason=" + reason);
       return true;
     }
-    if (!Lizzie.frame.bothSync || EngineManager.isEngineGame()) {
+    if (!Lizzie.frame.bothSync
+        || EngineManager.isEngineGame()
+        || (Lizzie.config != null && Lizzie.config.isDoubleEngineMode())) {
       showReadBoardGmaUnsupportedOnce();
       return true;
     }
@@ -4086,11 +4600,16 @@ public class ReadBoard implements ReadBoardTrackingEligibilityAdapter.Eligibilit
     if (handoff.availability() == Leelaz.TrackingHandoffAvailability.ACCEPTED_PENDING) {
       readBoardGmaHandoffClaim = handoff;
     }
+    Lizzie.leelaz.setReadBoardGmaSessionAdmission(this::admitReadBoardGmaSession);
     boolean accepted =
         handoff.availability() == Leelaz.TrackingHandoffAvailability.ACCEPTED_PENDING
             || (handoff.availability() == Leelaz.TrackingHandoffAvailability.NOT_TRACKING
                 && Lizzie.leelaz.genmoveAnalyzeForReadBoard(
                     color, readBoardGmaTimeSeconds, readBoardGmaMaxVisits, ponder));
+    if (handoff.availability() == Leelaz.TrackingHandoffAvailability.ACCEPTED_PENDING) {
+      // The handoff activation delivers the session admission through the tracking callback.
+      Lizzie.leelaz.setReadBoardGmaSessionAdmission(null);
+    }
     if (!accepted) {
       readBoardGmaPending = false;
       readBoardGmaPendingLogicallyInvalid = false;
@@ -4151,7 +4670,13 @@ public class ReadBoard implements ReadBoardTrackingEligibilityAdapter.Eligibilit
           return;
         }
         engine.activateReadBoardGmaAfterTracking(
-            this, color, maxTimeSeconds, maxVisits, ponder, activation);
+            this,
+            color,
+            maxTimeSeconds,
+            maxVisits,
+            ponder,
+            activation,
+            ReadBoard.this::admitReadBoardGmaSession);
         readBoardGmaHandoffClaim = null;
       }
     }
@@ -4213,6 +4738,7 @@ public class ReadBoard implements ReadBoardTrackingEligibilityAdapter.Eligibilit
 
   public synchronized boolean handleReadBoardGmaEnginePlay(
       Object identity, long generation, String move) {
+    retainReadBoardGmaNativePonderAfterTerminal = false;
     if (!readBoardGmaPending) {
       if (!retiredReadBoardGmaTerminalPending
           || retiredReadBoardGmaIdentity != identity
@@ -4234,10 +4760,13 @@ public class ReadBoard implements ReadBoardTrackingEligibilityAdapter.Eligibilit
     readBoardGmaPendingLogicallyInvalid = false;
     if (staleResult) {
       localMoveSyncDebug("ReadBoard GMA consume stale play move=" + move);
+      consumeReadBoardGmaSessionTerminal(ReadBoardGmaSession.GmaTerminal.REQUEST_ERROR);
       return true;
     }
     if (move == null) {
-      requestReadBoardGmaEngineRestoreAfterTerminalResult("null-final-play");
+      if (!consumeReadBoardGmaSessionTerminal(ReadBoardGmaSession.GmaTerminal.REQUEST_ERROR)) {
+        requestReadBoardGmaEngineRestoreAfterTerminalResult("null-final-play");
+      }
       return true;
     }
     String normalizedMove = move.trim();
@@ -4245,11 +4774,23 @@ public class ReadBoard implements ReadBoardTrackingEligibilityAdapter.Eligibilit
         || normalizedMove.toLowerCase(Locale.ROOT).startsWith("resign")
         || normalizedMove.equalsIgnoreCase("cancelled")) {
       localMoveSyncDebug("ReadBoard GMA final non-board move=" + normalizedMove);
-      requestReadBoardGmaEngineRestoreAfterTerminalResult("non-board-final-play");
+      ReadBoardGmaSession.GmaTerminal terminal;
+      if (normalizedMove.equalsIgnoreCase("pass")) {
+        terminal = ReadBoardGmaSession.GmaTerminal.PASS;
+      } else if (normalizedMove.toLowerCase(Locale.ROOT).startsWith("resign")) {
+        terminal = ReadBoardGmaSession.GmaTerminal.RESIGN;
+      } else {
+        terminal = ReadBoardGmaSession.GmaTerminal.REQUEST_ERROR;
+      }
+      if (!consumeReadBoardGmaSessionTerminal(terminal)) {
+        requestReadBoardGmaEngineRestoreAfterTerminalResult("non-board-final-play");
+      }
       return true;
     }
     if (Lizzie.board == null || Lizzie.leelaz == null) {
-      requestReadBoardGmaEngineRestoreAfterTerminalResult("missing-app-state-final-play");
+      if (!consumeReadBoardGmaSessionTerminal(ReadBoardGmaSession.GmaTerminal.REQUEST_ERROR)) {
+        requestReadBoardGmaEngineRestoreAfterTerminalResult("missing-app-state-final-play");
+      }
       return true;
     }
     boolean blacksTurn = Lizzie.board.getHistory().isBlacksTurn();
@@ -4262,7 +4803,9 @@ public class ReadBoard implements ReadBoardTrackingEligibilityAdapter.Eligibilit
               + blacksTurn
               + " color="
               + color);
-      requestReadBoardGmaEngineRestoreAfterTerminalResult("turn-mismatch-final-play");
+      if (!consumeReadBoardGmaSessionTerminal(ReadBoardGmaSession.GmaTerminal.REQUEST_ERROR)) {
+        requestReadBoardGmaEngineRestoreAfterTerminalResult("turn-mismatch-final-play");
+      }
       return true;
     }
     int[] coords = Board.convertNameToCoordinates(normalizedMove);
@@ -4273,7 +4816,14 @@ public class ReadBoard implements ReadBoardTrackingEligibilityAdapter.Eligibilit
         || coords[0] >= Board.boardWidth
         || coords[1] >= Board.boardHeight) {
       localMoveSyncDebug("ReadBoard GMA final invalid move=" + normalizedMove);
-      requestReadBoardGmaEngineRestoreAfterTerminalResult("invalid-final-play");
+      if (!consumeReadBoardGmaSessionTerminal(ReadBoardGmaSession.GmaTerminal.REQUEST_ERROR)) {
+        requestReadBoardGmaEngineRestoreAfterTerminalResult("invalid-final-play");
+      }
+      return true;
+    }
+    ReadBoardGmaSessionBinding terminalBinding = readBoardGmaSessionBinding;
+    if (terminalBinding != null && !isCurrentReadBoardGmaSessionBinding(terminalBinding)) {
+      consumeReadBoardGmaSessionTerminal(ReadBoardGmaSession.GmaTerminal.PLAYED);
       return true;
     }
     boolean oldInputCommand = Lizzie.leelaz.isInputCommand;
@@ -4283,10 +4833,33 @@ public class ReadBoard implements ReadBoardTrackingEligibilityAdapter.Eligibilit
     } finally {
       Lizzie.leelaz.isInputCommand = oldInputCommand;
     }
+    ReadBoardGmaSessionBinding binding = readBoardGmaSessionBinding;
+    retainReadBoardGmaNativePonderAfterTerminal =
+        Lizzie.config != null
+            && Lizzie.config.readBoardPonder
+            && binding != null
+            && binding.engine.supportsReadBoardGmaPondering();
+    if (!consumeReadBoardGmaSessionTerminal(ReadBoardGmaSession.GmaTerminal.PLAYED)) {
+      requestReadBoardGmaEngineRestoreAfterTerminalResult("played-final-play");
+    }
     return true;
+  }
+  synchronized boolean consumeReadBoardGmaNativePonderRetention() {
+    boolean retainNativePonder = retainReadBoardGmaNativePonderAfterTerminal;
+    retainReadBoardGmaNativePonderAfterTerminal = false;
+    return retainNativePonder;
   }
 
   public void afterReadBoardGmaTerminalResponseConsumed(String reason) {
+    ReadBoardGmaSessionBinding binding = readBoardGmaSessionBinding;
+    if (binding != null) {
+      binding.dispatchStagedTerminal();
+    }
+    if (isReadBoardGmaSessionBusy()) {
+      // The session owns the exact restore and the terminal continuation; the legacy flush and
+      // runtime restore must not race an in-flight session restore.
+      return;
+    }
     if (readBoardGmaEngineRestorePending) {
       Thread restoreThread =
           new Thread(
@@ -4340,7 +4913,8 @@ public class ReadBoard implements ReadBoardTrackingEligibilityAdapter.Eligibilit
     readBoardGmaPendingIdentity = null;
     readBoardGmaPendingLogicallyInvalid = false;
     localMoveSyncDebug("ReadBoard GMA terminal error line=" + line);
-    if (readBoardGmaAutoPlayActive) {
+    if (!consumeReadBoardGmaSessionTerminal(ReadBoardGmaSession.GmaTerminal.REQUEST_ERROR)
+        && readBoardGmaAutoPlayActive) {
       requestReadBoardGmaEngineRestoreAfterTerminalResult("terminal-error");
     }
     return true;
@@ -5381,6 +5955,12 @@ public class ReadBoard implements ReadBoardTrackingEligibilityAdapter.Eligibilit
   private void retireTrackingEligibility() {
     Runnable listener;
     Leelaz.TrackingHandoffClaim handoff;
+    if (retireReadBoardGmaSession()) {
+      readBoardGmaAutoPlayActive = false;
+      readBoardGmaPendingLogicallyInvalid = true;
+      invalidateTrackingEligibility(ReadBoardTrackingEligibilityAdapter.Reason.RETIRED);
+      return;
+    }
     Object retiredGmaIdentity;
     long retiredGmaGeneration;
     synchronized (this) {
@@ -5406,6 +5986,7 @@ public class ReadBoard implements ReadBoardTrackingEligibilityAdapter.Eligibilit
       readBoardGmaEngineRestorePending = false;
       readBoardGmaEngineRestoreInProgress = false;
       readBoardGmaDeferredRestoreNode = null;
+      readBoardGmaSessionBinding = null;
       handoff = readBoardGmaHandoffClaim;
       readBoardGmaHandoffClaim = null;
     }

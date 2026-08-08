@@ -2,6 +2,10 @@ package featurecat.lizzie.analysis;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -10,11 +14,16 @@ import featurecat.lizzie.Config;
 import featurecat.lizzie.ExtraMode;
 import featurecat.lizzie.Lizzie;
 import featurecat.lizzie.analysis.remote.RemoteComputeConfig;
+import featurecat.lizzie.gui.BoardRenderer;
 import featurecat.lizzie.gui.GtpConsolePane;
 import featurecat.lizzie.gui.LizzieFrame;
 import featurecat.lizzie.gui.Menu;
 import featurecat.lizzie.rules.Board;
+import featurecat.lizzie.rules.BoardData;
+import featurecat.lizzie.rules.BoardHistoryList;
+import featurecat.lizzie.rules.BoardHistoryNode;
 import featurecat.lizzie.rules.Stone;
+import featurecat.lizzie.rules.Zobrist;
 import java.awt.Window;
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -24,9 +33,11 @@ import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -544,7 +555,59 @@ class LeelazReadBoardGmaTest {
       RecordingOutputStream output = new RecordingOutputStream();
       setOutputStream(engine, output);
 
-      engine.genmoveAnalyzeForReadBoard("B", 5, 1000, true);
+      assertTrue(engine.genmoveAnalyzeForReadBoard("B", 5, 1000, true));
+      assertEquals(
+          List.of("kata-get-param ponderingEnabled"),
+          output.commands(),
+          "the acknowledged preparation must send one command at a time");
+      assertFalse(
+          output.commands().stream().anyMatch(command -> command.startsWith("kata-genmove_analyze")),
+          "the genmove must not be sent before every required get/set ACK");
+
+      invokeProcessCommandResponseLine(
+          engine, parameterValueResponseFor(output.rawCommands(), "ponderingEnabled", "true"));
+      assertEquals(
+          List.of("kata-get-param ponderingEnabled", "kata-set-param ponderingEnabled true"),
+          output.commands());
+      invokeProcessCommandResponseLine(
+          engine, successResponseFor(output.rawCommands(), "ponderingEnabled"));
+      assertEquals(
+          List.of(
+              "kata-get-param ponderingEnabled",
+              "kata-set-param ponderingEnabled true",
+              "kata-get-param maxTime"),
+          output.commands());
+      invokeProcessCommandResponseLine(
+          engine, parameterValueResponseFor(output.rawCommands(), "maxTime", "2"));
+      assertEquals(
+          List.of(
+              "kata-get-param ponderingEnabled",
+              "kata-set-param ponderingEnabled true",
+              "kata-get-param maxTime",
+              "kata-set-param maxTime 5"),
+          output.commands());
+      invokeProcessCommandResponseLine(engine, successResponseFor(output.rawCommands(), "maxTime"));
+      assertEquals(
+          List.of(
+              "kata-get-param ponderingEnabled",
+              "kata-set-param ponderingEnabled true",
+              "kata-get-param maxTime",
+              "kata-set-param maxTime 5",
+              "kata-get-param maxVisits"),
+          output.commands());
+      invokeProcessCommandResponseLine(
+          engine, parameterValueResponseFor(output.rawCommands(), "maxVisits", "800"));
+      assertEquals(
+          List.of(
+              "kata-get-param ponderingEnabled",
+              "kata-set-param ponderingEnabled true",
+              "kata-get-param maxTime",
+              "kata-set-param maxTime 5",
+              "kata-get-param maxVisits",
+              "kata-set-param maxVisits 1000"),
+          output.commands());
+      invokeProcessCommandResponseLine(
+          engine, successResponseFor(output.rawCommands(), "maxVisits"));
 
       assertEquals(
           List.of(
@@ -569,12 +632,43 @@ class LeelazReadBoardGmaTest {
       RecordingOutputStream output = new RecordingOutputStream();
       setOutputStream(engine, output);
 
-      engine.genmoveAnalyzeForReadBoard("W", 0, 0, false);
+      assertTrue(engine.genmoveAnalyzeForReadBoard("W", 0, 0, false));
+      assertEquals(
+          List.of("kata-get-param ponderingEnabled"),
+          output.commands(),
+          "the acknowledged preparation must send one command at a time");
+
+      invokeProcessCommandResponseLine(
+          engine, parameterValueResponseFor(output.rawCommands(), "ponderingEnabled", "true"));
+      assertEquals(
+          List.of("kata-get-param ponderingEnabled", "kata-set-param ponderingEnabled false"),
+          output.commands());
+      invokeProcessCommandResponseLine(
+          engine, successResponseFor(output.rawCommands(), "ponderingEnabled"));
+      assertEquals(
+          List.of(
+              "kata-get-param ponderingEnabled",
+              "kata-set-param ponderingEnabled false",
+              "kata-get-param maxTime"),
+          output.commands());
+      invokeProcessCommandResponseLine(
+          engine, parameterValueResponseFor(output.rawCommands(), "maxTime", "2"));
+      assertEquals(
+          List.of(
+              "kata-get-param ponderingEnabled",
+              "kata-set-param ponderingEnabled false",
+              "kata-get-param maxTime",
+              "kata-get-param maxVisits"),
+          output.commands());
+      invokeProcessCommandResponseLine(
+          engine, parameterValueResponseFor(output.rawCommands(), "maxVisits", "800"));
 
       assertEquals(
           List.of(
               "kata-get-param ponderingEnabled",
               "kata-set-param ponderingEnabled false",
+              "kata-get-param maxTime",
+              "kata-get-param maxVisits",
               "kata-genmove_analyze W 10"),
           output.commands());
     }
@@ -590,10 +684,25 @@ class LeelazReadBoardGmaTest {
       setOutputStream(engine, output);
 
       assertTrue(engine.genmoveAnalyzeForReadBoard("B", 0, 0, false));
+      assertEquals(
+          List.of("kata-get-param ponderingEnabled"),
+          output.commands(),
+          "the acknowledged preparation must send one command at a time");
       invokeProcessCommandResponseLine(
           engine, parameterValueResponseFor(output.rawCommands(), "ponderingEnabled", "true"));
+      assertEquals(
+          List.of("kata-get-param ponderingEnabled", "kata-set-param ponderingEnabled false"),
+          output.commands());
       engine.isThinking = false;
       engine.restoreReadBoardGmaRuntimeSettingsIfNeeded();
+      // The stop-restore waits for the acknowledged override: the restore of the captured
+      // original value is dispatched only after the preparation's set ACK arrives.
+      assertFalse(
+          output.commands().stream()
+              .anyMatch(command -> command.startsWith("kata-set-param ponderingEnabled true")),
+          "the restore must not be dispatched before the acknowledged override completes");
+      invokeProcessCommandResponseLine(
+          engine, successResponseFor(output.rawCommands(), "ponderingEnabled"));
 
       assertTrue(output.commands().contains("kata-set-param ponderingEnabled true"));
       assertFalse(
@@ -614,7 +723,34 @@ class LeelazReadBoardGmaTest {
       RecordingOutputStream output = new RecordingOutputStream();
       setOutputStream(engine, output);
 
-      engine.genmoveAnalyzeForReadBoard("W", 0, 0, false);
+      assertTrue(engine.genmoveAnalyzeForReadBoard("W", 0, 0, false));
+      assertEquals(
+          List.of("kata-get-param ponderingEnabled"),
+          output.commands(),
+          "the acknowledged preparation must send one command at a time");
+
+      invokeProcessCommandResponseLine(
+          engine, parameterValueResponseFor(output.rawCommands(), "ponderingEnabled", "true"));
+      invokeProcessCommandResponseLine(
+          engine, successResponseFor(output.rawCommands(), "ponderingEnabled"));
+      assertEquals(
+          List.of(
+              "kata-get-param ponderingEnabled",
+              "kata-set-param ponderingEnabled false",
+              "kata-set-param maxTime 2"),
+          output.commands(),
+          "a zero limit must restore the previously acknowledged override instead of re-snapshotting");
+      invokeProcessCommandResponseLine(
+          engine, successResponseFor(output.rawCommands(), "maxTime"));
+      assertEquals(
+          List.of(
+              "kata-get-param ponderingEnabled",
+              "kata-set-param ponderingEnabled false",
+              "kata-set-param maxTime 2",
+              "kata-set-param maxVisits 800"),
+          output.commands());
+      invokeProcessCommandResponseLine(
+          engine, successResponseFor(output.rawCommands(), "maxVisits"));
 
       assertEquals(
           List.of(
@@ -639,11 +775,18 @@ class LeelazReadBoardGmaTest {
 
       assertTrue(engine.genmoveAnalyzeForReadBoard("W", 0, 0, false));
       invokeProcessCommandResponseLine(
+          engine, parameterValueResponseFor(output.rawCommands(), "ponderingEnabled", "true"));
+      invokeProcessCommandResponseLine(
+          engine, successResponseFor(output.rawCommands(), "ponderingEnabled"));
+      invokeProcessCommandResponseLine(
           engine, errorResponseFor(output.rawCommands(), "maxTime", "restore failed"));
 
       assertEquals(
           Leelaz.ExclusiveGtpLeaseAvailability.ENGINE_STATE_UNRESTORED,
           engine.previewForegroundAnalysisLeaseAvailability());
+      assertFalse(
+          output.commands().stream().anyMatch(command -> command.startsWith("kata-genmove_analyze")),
+          "a preparation restore failure must never admit the session or send the genmove");
     }
   }
 
@@ -659,16 +802,41 @@ class LeelazReadBoardGmaTest {
 
       engine.genmoveAnalyzeForReadBoard("B", 5, 1000, true);
       engine.restoreReadBoardGmaSearchLimitsIfNeeded();
+      assertFalse(
+          output.commands().stream()
+              .anyMatch(command -> command.startsWith("kata-set-param maxTime")),
+          "an early stop restore must not dispatch overrides that are not yet acknowledged");
       invokeProcessCommandResponseLine(
           engine, parameterValueResponseFor(output.rawCommands(), "ponderingEnabled", "true"));
       invokeProcessCommandResponseLine(
           engine, successResponseFor(output.rawCommands(), "ponderingEnabled"));
+      assertEquals(
+          List.of(
+              "kata-get-param ponderingEnabled",
+              "kata-set-param ponderingEnabled true",
+              "kata-get-param maxTime"),
+          output.commands());
       invokeProcessCommandResponseLine(
           engine, parameterValueResponseFor(output.rawCommands(), "maxTime", "2"));
       invokeProcessCommandResponseLine(
           engine, successResponseFor(output.rawCommands(), "maxTime"));
       invokeProcessCommandResponseLine(
           engine, parameterValueResponseFor(output.rawCommands(), "maxVisits", "800"));
+      invokeProcessCommandResponseLine(
+          engine, successResponseFor(output.rawCommands(), "maxVisits"));
+      assertEquals(
+          List.of(
+              "kata-get-param ponderingEnabled",
+              "kata-set-param ponderingEnabled true",
+              "kata-get-param maxTime",
+              "kata-set-param maxTime 5",
+              "kata-get-param maxVisits",
+              "kata-set-param maxVisits 1000",
+              "kata-genmove_analyze B 10"),
+          output.commands(),
+          "the early stop restore must stay a no-op through the acknowledged hand");
+      engine.isThinking = false;
+      engine.restoreReadBoardGmaSearchLimitsIfNeeded();
 
       assertEquals(
           List.of(
@@ -681,7 +849,8 @@ class LeelazReadBoardGmaTest {
               "kata-genmove_analyze B 10",
               "kata-set-param maxTime 2",
               "kata-set-param maxVisits 800"),
-          output.commands());
+          output.commands(),
+          "a stop restore after the acknowledged hand must restore the captured originals");
     }
   }
 
@@ -695,16 +864,41 @@ class LeelazReadBoardGmaTest {
       RecordingOutputStream output = new RecordingOutputStream();
       setOutputStream(engine, output);
 
-      engine.genmoveAnalyzeForReadBoard("B", 5, 0, true);
+      assertTrue(engine.genmoveAnalyzeForReadBoard("B", 5, 0, true));
       engine.restoreReadBoardGmaSearchLimitsIfNeeded();
-      engine.isThinking = false;
-      engine.genmoveAnalyzeForReadBoard("W", 6, 0, true);
+      assertFalse(
+          output.commands().stream()
+              .anyMatch(command -> command.startsWith("kata-set-param maxTime")),
+          "an early stop restore must not dispatch overrides that are not yet acknowledged");
+      // The first hand's acknowledged preparation: the original values arrive through the
+      // snapshot ACKs, never through a standalone restore dispatch.
       invokeProcessCommandResponseLine(
           engine, parameterValueResponseFor(output.rawCommands(), "ponderingEnabled", "true"));
       invokeProcessCommandResponseLine(
           engine, successResponseFor(output.rawCommands(), "ponderingEnabled"));
       invokeProcessCommandResponseLine(
           engine, parameterValueResponseFor(output.rawCommands(), "maxTime", "2"));
+      invokeProcessCommandResponseLine(
+          engine, successResponseFor(output.rawCommands(), "maxTime"));
+      invokeProcessCommandResponseLine(
+          engine, parameterValueResponseFor(output.rawCommands(), "maxVisits", "800"));
+      assertEquals(
+          List.of(
+              "kata-get-param ponderingEnabled",
+              "kata-set-param ponderingEnabled true",
+              "kata-get-param maxTime",
+              "kata-set-param maxTime 5",
+              "kata-get-param maxVisits",
+              "kata-genmove_analyze B 10"),
+          output.commands());
+      engine.isThinking = false;
+      assertTrue(engine.genmoveAnalyzeForReadBoard("W", 6, 0, true));
+      // The new positive hand cancels the early stop restore: it reuses the acknowledged
+      // snapshots (no re-snapshotting) and applies its own overrides instead.
+      invokeProcessCommandResponseLine(
+          engine, successResponseFor(output.rawCommands(), "ponderingEnabled"));
+      invokeProcessCommandResponseLine(
+          engine, successResponseFor(output.rawCommands(), "maxTime"));
 
       assertEquals(
           List.of(
@@ -712,6 +906,7 @@ class LeelazReadBoardGmaTest {
               "kata-set-param ponderingEnabled true",
               "kata-get-param maxTime",
               "kata-set-param maxTime 5",
+              "kata-get-param maxVisits",
               "kata-genmove_analyze B 10",
               "kata-set-param ponderingEnabled true",
               "kata-set-param maxTime 6",
@@ -730,20 +925,25 @@ class LeelazReadBoardGmaTest {
       RecordingOutputStream output = new RecordingOutputStream();
       setOutputStream(engine, output);
 
-      engine.genmoveAnalyzeForReadBoard("B", 0, 0, false);
+      assertTrue(engine.genmoveAnalyzeForReadBoard("B", 0, 0, false));
+      assertEquals(
+          List.of("kata-get-param ponderingEnabled"),
+          output.commands(),
+          "the acknowledged preparation must send one command at a time");
       invokeRestoreReadBoardGmaRuntimeSettingsIfNeeded(engine);
+      assertFalse(
+          output.commands().stream()
+              .anyMatch(command -> command.startsWith("kata-set-param ponderingEnabled true")),
+          "the stop restore must wait for the acknowledged override before restoring");
       invokeProcessCommandResponseLine(
           engine, parameterValueResponseFor(output.rawCommands(), "ponderingEnabled", "true"));
-      invokeProcessCommandResponseLine(
-          engine, successResponseFor(output.rawCommands(), "ponderingEnabled"));
-
       assertEquals(
-          List.of(
-              "kata-get-param ponderingEnabled",
-              "kata-set-param ponderingEnabled false",
-              "kata-genmove_analyze B 10",
-              "kata-set-param ponderingEnabled true"),
-          output.commands());
+          List.of("kata-get-param ponderingEnabled"),
+          output.commands(),
+          "cancellation after the snapshot must skip the override and release without genmove");
+      assertNull(
+          engine.currentReadBoardGmaReservation(),
+          "cancellation after a snapshot-only preparation must release the GMA reservation");
     }
   }
 
@@ -757,29 +957,46 @@ class LeelazReadBoardGmaTest {
       RecordingOutputStream output = new RecordingOutputStream();
       setOutputStream(engine, output);
 
-      engine.genmoveAnalyzeForReadBoard("B", 0, 0, false);
+      assertTrue(engine.genmoveAnalyzeForReadBoard("B", 0, 0, false));
       invokeProcessCommandResponseLine(
           engine, parameterValueResponseFor(output.rawCommands(), "ponderingEnabled", "true"));
       invokeProcessCommandResponseLine(
           engine, successResponseFor(output.rawCommands(), "ponderingEnabled"));
+      invokeProcessCommandResponseLine(
+          engine, parameterValueResponseFor(output.rawCommands(), "maxTime", "2"));
+      invokeProcessCommandResponseLine(
+          engine, parameterValueResponseFor(output.rawCommands(), "maxVisits", "800"));
       invokeProcessCommandResponseLine(engine, "=");
       invokeRestoreReadBoardGmaRuntimeSettingsIfNeeded(engine);
       invokeProcessCommandResponseLine(
           engine, successResponseFor(output.rawCommands(), "ponderingEnabled"));
 
       engine.isThinking = false;
-      engine.genmoveAnalyzeForReadBoard("W", 0, 0, false);
+      assertTrue(engine.genmoveAnalyzeForReadBoard("W", 0, 0, false));
+      invokeProcessCommandResponseLine(
+          engine, parameterValueResponseFor(output.rawCommands(), "ponderingEnabled", "true"));
+      invokeProcessCommandResponseLine(
+          engine, successResponseFor(output.rawCommands(), "ponderingEnabled"));
+      invokeProcessCommandResponseLine(
+          engine, parameterValueResponseFor(output.rawCommands(), "maxTime", "2"));
+      invokeProcessCommandResponseLine(
+          engine, parameterValueResponseFor(output.rawCommands(), "maxVisits", "800"));
 
       assertEquals(
           List.of(
               "kata-get-param ponderingEnabled",
               "kata-set-param ponderingEnabled false",
+              "kata-get-param maxTime",
+              "kata-get-param maxVisits",
               "kata-genmove_analyze B 10",
               "kata-set-param ponderingEnabled true",
               "kata-get-param ponderingEnabled",
               "kata-set-param ponderingEnabled false",
+              "kata-get-param maxTime",
+              "kata-get-param maxVisits",
               "kata-genmove_analyze W 10"),
-          output.commands());
+          output.commands(),
+          "the completed restore must clear the snapshots so the next session recaptures them");
     }
   }
 
@@ -853,14 +1070,18 @@ class LeelazReadBoardGmaTest {
       assertFalse(genmoveThread.isAlive());
       assertEquals(null, failure.get());
       engine.isThinking = false;
+      // The restore raced the in-flight snapshot command: the override was never applied, so the
+      // snapshot ACK alone completes the empty cancellation barrier and releases the reservation.
+      // The preparation's set command is never sent, so there is no set ACK to deliver.
       invokeProcessCommandResponseLine(
           engine,
           parameterValueResponseFor(output.rawCommands(), "ponderingEnabled", "true"));
-      invokeProcessCommandResponseLine(
-          engine, successResponseFor(output.rawCommands(), "ponderingEnabled"));
       assertEquals(
           Leelaz.ExclusiveGtpLeaseAvailability.AVAILABLE,
           engine.previewForegroundAnalysisLeaseAvailability());
+      assertFalse(
+          output.rawCommands().stream().anyMatch(command -> command.startsWith("kata-set-param")),
+          "the cancelled hand must not apply an override after the restore raced its snapshot");
     }
   }
 
@@ -985,6 +1206,10 @@ class LeelazReadBoardGmaTest {
           engine, parameterValueResponseFor(output.rawCommands(), "ponderingEnabled", "true"));
       invokeProcessCommandResponseLine(
           engine, successResponseFor(output.rawCommands(), "ponderingEnabled"));
+      invokeProcessCommandResponseLine(
+          engine, parameterValueResponseFor(output.rawCommands(), "maxTime", "2"));
+      invokeProcessCommandResponseLine(
+          engine, parameterValueResponseFor(output.rawCommands(), "maxVisits", "800"));
       invokeProcessCommandResponseLine(engine, "=");
       engine.isThinking = false;
       AtomicInteger successes = new AtomicInteger();
@@ -2050,6 +2275,14 @@ class LeelazReadBoardGmaTest {
       assertEquals(1, pendingResponseHandlerCount(engine));
 
       invokeParseLine(engine, "play D4");
+      assertEquals(
+          1,
+          pendingResponseHandlerCount(engine),
+          "a terminal play line must not retire the outstanding acknowledged preparation command");
+      invokeProcessCommandResponseLine(
+          engine, parameterValueResponseFor(output.rawCommands(), "maxTime", "2"));
+      // The terminal requested cancellation, so the maxTime snapshot ACK starts restoration of
+      // the already-acknowledged pondering override without sending maxVisits or genmove.
       invokeProcessCommandResponseLine(
           engine, successResponseFor(output.rawCommands(), "ponderingEnabled"));
 
@@ -2080,7 +2313,13 @@ class LeelazReadBoardGmaTest {
 
       readBoard.parseLine("nobothSync");
       invokeParseLine(engine, "play D4");
-      invokeProcessCommandResponseLine(engine, "=");
+      // The logical cancel waits for the outstanding snapshot ACK: the captured original is then
+      // restored through the cancellation barrier.
+      invokeProcessCommandResponseLine(
+          engine, parameterValueResponseFor(output.rawCommands(), "maxTime", "2"));
+      assertEquals(1, pendingResponseHandlerCount(engine));
+      invokeProcessCommandResponseLine(
+          engine, successResponseFor(output.rawCommands(), "ponderingEnabled"));
 
       assertEquals(0, pendingResponseHandlerCount(engine));
       assertFalse(getBooleanField(engine, "isCommandLine"));
@@ -2108,10 +2347,18 @@ class LeelazReadBoardGmaTest {
       assertEquals(1, pendingResponseHandlerCount(engine));
 
       invokeParseLine(engine, "? engine failed");
+      assertEquals(
+          1,
+          pendingResponseHandlerCount(engine),
+          "an unowned error line must not retire the outstanding acknowledged preparation command");
+      invokeProcessCommandResponseLine(
+          engine, parameterValueResponseFor(output.rawCommands(), "maxTime", "2"));
+      invokeProcessCommandResponseLine(
+          engine, parameterValueResponseFor(output.rawCommands(), "maxVisits", "800"));
+      // The genmove response settles the final outstanding handler.
+      invokeProcessCommandResponseLine(engine, "=");
 
       assertEquals(0, pendingResponseHandlerCount(engine));
-      assertFalse(getBooleanField(readBoard, "readBoardGmaPending"));
-      assertFalse(getBooleanField(engine, "isCommandLine"));
     }
   }
 
@@ -2149,6 +2396,1402 @@ class LeelazReadBoardGmaTest {
 
     assertTrue(readBoard.handleReadBoardGmaEnginePlay(currentIdentity, 12L, "D4"));
     assertFalse(getBooleanField(readBoard, "readBoardGmaPending"));
+  }
+
+  @Test
+  void engineTerminationDuringGmaInFlightFailsSessionAndReleasesCapturedReservation()
+      throws Exception {
+    try (Harness harness = Harness.open()) {
+      EngineTerminationGmaFixture fixture = openEngineTerminationGmaFixture();
+      CountingReleaseLeelaz engine = fixture.engine();
+      RecordingOutputStream output = fixture.output();
+      ReadBoard readBoard = fixture.readBoard();
+      ReadBoardGmaSession session = fixture.session();
+
+      assertTrue(
+          readBoard.failReadBoardGmaSessionForEngineTermination(engine, "engine transport closed"));
+      assertFalse(
+          readBoard.failReadBoardGmaSessionForEngineTermination(engine, "duplicate transport close"));
+
+      ReadBoardGmaSession.Terminal terminal =
+          assertInstanceOf(ReadBoardGmaSession.Terminal.class, session.state());
+      assertEquals(ReadBoardGmaSession.SessionOutcome.FAILED, terminal.outcome());
+      assertEquals(
+          ReadBoardGmaSession.FailureCategory.PROCESS_TERMINATED,
+          terminal.firstFailure().category());
+      assertTrue(engine.hasUnrestoredReadBoardGmaState());
+      assertTrue(
+          waitForReleaseRequests(engine.releaseRequests, 1, 1, TimeUnit.SECONDS),
+          "transport termination must release through the session capability");
+      assertNull(engine.currentReadBoardGmaReservation());
+      assertNull(boundReadBoardGmaSession(readBoard));
+    }
+  }
+
+  @Test
+  void engineTerminationDuringExactRestoreFailsSessionAndCancelsLateCompletion() throws Exception {
+    try (Harness harness = Harness.open()) {
+      EngineTerminationGmaFixture fixture = openEngineTerminationGmaFixture();
+      CountingReleaseLeelaz engine = fixture.engine();
+      RecordingOutputStream output = fixture.output();
+      ReadBoard readBoard = fixture.readBoard();
+      ReadBoardGmaSession session = fixture.session();
+      ExactSnapshotRestoreProtocolFixture.Transport transport =
+          ExactSnapshotRestoreProtocolFixture.install(engine, command -> null);
+
+      invokeParseLine(engine, "play pass");
+      assertTrue(
+          waitForSessionState(
+              session, ReadBoardGmaSession.RestoringExact.class, 1, TimeUnit.SECONDS));
+      assertTrue(
+          waitForCommandCount(transport, "loadsgf ", 1, 1, TimeUnit.SECONDS),
+          "the exact participant must have a physical loadsgf in flight");
+
+      assertTrue(
+          readBoard.failReadBoardGmaSessionForEngineTermination(
+              engine, "engine exited during exact"));
+
+      ReadBoardGmaSession.Terminal terminal =
+          assertInstanceOf(ReadBoardGmaSession.Terminal.class, session.state());
+      assertEquals(
+          ReadBoardGmaSession.FailureCategory.PROCESS_TERMINATED,
+          terminal.firstFailure().category());
+      assertTrue(engine.hasUnrestoredReadBoardGmaState());
+      assertTrue(
+          waitForReleaseRequests(engine.releaseRequests, 1, 1, TimeUnit.SECONDS),
+          "exact termination must release through the session capability");
+      assertNull(engine.currentReadBoardGmaReservation());
+      assertNull(boundReadBoardGmaSession(readBoard));
+    }
+  }
+
+  @Test
+  void engineTerminationDuringRuntimeRestoreFailsSessionAndAbsorbsLateAck() throws Exception {
+    try (Harness harness = Harness.open()) {
+      EngineTerminationGmaFixture fixture = openEngineTerminationGmaFixture();
+      CountingReleaseLeelaz engine = fixture.engine();
+      RecordingOutputStream output = fixture.output();
+      ReadBoard readBoard = fixture.readBoard();
+      ReadBoardGmaSession session = fixture.session();
+      engine.retireReadBoardGmaSession();
+      ExactSnapshotRestoreProtocolFixture.install(
+          engine,
+          command ->
+              command.startsWith("loadsgf ")
+                  ? ExactSnapshotRestoreProtocolFixture.Response.success()
+                  : null);
+
+      invokeParseLine(engine, "play pass");
+      assertTrue(
+          waitForSessionState(
+              session, ReadBoardGmaSession.RestoringRuntime.class, 1, TimeUnit.SECONDS));
+      assertTrue(
+          waitForRawCommandPrefix(
+              output, "kata-set-param ponderingEnabled", 1, TimeUnit.SECONDS),
+          "the runtime participant must have a physical ACK pending");
+
+      assertTrue(
+          readBoard.failReadBoardGmaSessionForEngineTermination(
+              engine, "engine exited during runtime"));
+      invokeProcessCommandResponseLine(
+          engine, successResponseFor(output.rawCommands(), "ponderingEnabled"));
+
+      ReadBoardGmaSession.Terminal terminal =
+          assertInstanceOf(ReadBoardGmaSession.Terminal.class, session.state());
+      assertEquals(
+          ReadBoardGmaSession.FailureCategory.PROCESS_TERMINATED,
+          terminal.firstFailure().category());
+      assertTrue(engine.hasUnrestoredReadBoardGmaState());
+      assertTrue(
+          waitForReleaseRequests(engine.releaseRequests, 1, 1, TimeUnit.SECONDS),
+          "runtime termination must release through the session capability");
+      assertEquals(1, engine.releaseRequests.get());
+      assertNull(engine.currentReadBoardGmaReservation());
+      assertNull(boundReadBoardGmaSession(readBoard));
+    }
+  }
+
+  @Test
+  void readBoardGmaSessionExactParticipantRestoresBoardAndReleasesReservation() throws Exception {
+    try (Harness harness = Harness.open()) {
+      Leelaz engine = readyReadBoardGmaEngine();
+      RecordingOutputStream output = new RecordingOutputStream();
+      setOutputStream(engine, output);
+      ReadBoard readBoard = allocate(ReadBoard.class);
+      ReadBoardGmaSession session = beginReadBoardGmaSessionHand(readBoard, engine, output, Stone.BLACK, null);
+      // An isolation terminal (pass) runs the exact participant; an authorized PLAYED would
+      // complete the session directly without any exact restore. A retired session then runs the
+      // runtime participant after exact success; an active session keeps its runtime settings
+      // between hands and reaches the terminal directly.
+      engine.retireReadBoardGmaSession();
+      AtomicReference<ReadBoardGmaSession> sessionRef = new AtomicReference<>(session);
+      ExactSnapshotRestoreProtocolFixture.Transport transport =
+          ExactSnapshotRestoreProtocolFixture.install(
+              engine,
+              command ->
+                  command.startsWith("loadsgf ")
+                      ? ExactSnapshotRestoreProtocolFixture.Response.success()
+                      : null);
+
+      invokeParseLine(engine, "play pass");
+
+      assertTrue(
+          waitForFixtureCommandPrefix(transport, "kata-set-param ", 1, TimeUnit.SECONDS),
+          "the runtime participant must restore the captured parameters after exact success");
+      int loadSgfIndex =
+          indexOfCommandStartingWith(transport.commands(), "loadsgf ");
+      int runtimeRestoreIndex =
+          indexOfCommandStartingWith(transport.commands(), "kata-set-param ");
+      assertTrue(
+          loadSgfIndex >= 0 && runtimeRestoreIndex > loadSgfIndex,
+          "no runtime restore may start before the exact participant consumed loadsgf; commands="
+              + transport.commands());
+      assertInstanceOf(ReadBoardGmaSession.RestoringRuntime.class, sessionRef.get().state());
+      acknowledgeReadBoardGmaRuntimeRestore(engine, transport);
+
+      ReadBoardGmaSession.Terminal terminal = awaitGmaSessionTerminal(sessionRef);
+      assertEquals(ReadBoardGmaSession.SessionOutcome.SUCCEEDED, terminal.outcome());
+      assertNull(
+          engine.currentReadBoardGmaReservation(),
+          "the session terminal must release the captured reservation exactly once");
+      assertNull(boundReadBoardGmaSession(readBoard));
+      assertEquals(
+          1,
+          transport.commands().stream().filter(command -> command.startsWith("loadsgf ")).count(),
+          "the exact participant must consume exactly one loadsgf per session");
+    }
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"play pass", "play resign", "? engine failed"})
+  void readBoardGmaSessionConsumesEveryRecoveryTerminalVariantThroughTheSession(String terminalLine)
+      throws Exception {
+    try (Harness harness = Harness.open()) {
+      // An authorized PLAYED completes directly without exact restore and is covered by the
+      // success test; every isolation/recovery terminal runs the exact-then-runtime contract.
+      Leelaz engine = readyReadBoardGmaEngine();
+      RecordingOutputStream output = new RecordingOutputStream();
+      setOutputStream(engine, output);
+      ReadBoard readBoard = allocate(ReadBoard.class);
+      ReadBoardGmaSession session = beginReadBoardGmaSessionHand(readBoard, engine, output, Stone.BLACK, null);
+      // A retired session runs the runtime participant after exact success.
+      engine.retireReadBoardGmaSession();
+      AtomicReference<ReadBoardGmaSession> sessionRef = new AtomicReference<>(session);
+      ExactSnapshotRestoreProtocolFixture.Transport transport =
+          ExactSnapshotRestoreProtocolFixture.install(
+              engine,
+              command ->
+                  command.startsWith("loadsgf ")
+                      ? ExactSnapshotRestoreProtocolFixture.Response.success()
+                      : null);
+
+      invokeParseLine(engine, terminalLine);
+
+      assertTrue(
+          waitForFixtureCommandPrefix(transport, "kata-set-param ", 1, TimeUnit.SECONDS),
+          "every recovery terminal variant must run the exact-then-runtime recovery contract");
+      acknowledgeReadBoardGmaRuntimeRestore(engine, transport);
+
+      assertEquals(
+          ReadBoardGmaSession.SessionOutcome.SUCCEEDED,
+          awaitGmaSessionTerminal(sessionRef).outcome());
+      assertNull(engine.currentReadBoardGmaReservation());
+    }
+  }
+
+  @Test
+  void readBoardGmaSessionHoldsSuccessUntilEveryTargetConsumedLoadSgf() throws Exception {
+    try (Harness harness = Harness.open()) {
+      Leelaz engine = readyReadBoardGmaEngine();
+      RecordingOutputStream output = new RecordingOutputStream();
+      setOutputStream(engine, output);
+      ReadBoard readBoard = allocate(ReadBoard.class);
+      ReadBoardGmaSession session = beginReadBoardGmaSessionHand(readBoard, engine, output, Stone.BLACK, null);
+      // A retired session runs the runtime participant after exact success.
+      engine.retireReadBoardGmaSession();
+      AtomicReference<ReadBoardGmaSession> sessionRef = new AtomicReference<>(session);
+      CountDownLatch loadSgfArrived = new CountDownLatch(1);
+      CountDownLatch releaseLoadSgf = new CountDownLatch(1);
+      ExactSnapshotRestoreProtocolFixture.Transport transport =
+          ExactSnapshotRestoreProtocolFixture.install(
+              engine,
+              command -> {
+                if (command.startsWith("loadsgf ")) {
+                  loadSgfArrived.countDown();
+                  awaitLatch(releaseLoadSgf);
+                  return ExactSnapshotRestoreProtocolFixture.Response.success();
+                }
+                return null;
+              });
+
+      invokeParseLine(engine, "play pass");
+
+      assertTrue(
+          loadSgfArrived.await(1, TimeUnit.SECONDS),
+          "the exact participant must send loadsgf to every captured target");
+      assertInstanceOf(ReadBoardGmaSession.RestoringExact.class, sessionRef.get().state());
+      assertNotNull(
+          engine.currentReadBoardGmaReservation(),
+          "the reservation must be held while the exact participant has not consumed loadsgf");
+      // The session state alone gates the runtime participant: while loadsgf has not been
+      // consumed the module cannot emit the runtime start effect (the writer thread is blocked
+      // inside the fixture, so the transport cannot be read here).
+
+      releaseLoadSgf.countDown();
+
+      assertTrue(
+          waitForFixtureCommandPrefix(transport, "kata-set-param ", 1, TimeUnit.SECONDS),
+          "the runtime participant must start exactly once after exact success");
+      assertInstanceOf(ReadBoardGmaSession.RestoringRuntime.class, sessionRef.get().state());
+      acknowledgeReadBoardGmaRuntimeRestore(engine, transport);
+
+      assertEquals(
+          ReadBoardGmaSession.SessionOutcome.SUCCEEDED,
+          awaitGmaSessionTerminal(sessionRef).outcome());
+      assertNull(engine.currentReadBoardGmaReservation());
+    }
+  }
+
+  @Test
+  void readBoardGmaSessionLoadSgfErrorFailsClosedWithoutRuntimeRestore() throws Exception {
+    try (Harness harness = Harness.open()) {
+      Leelaz engine = readyReadBoardGmaEngine();
+      RecordingOutputStream output = new RecordingOutputStream();
+      setOutputStream(engine, output);
+      ReadBoard readBoard = allocate(ReadBoard.class);
+      ReadBoardGmaSession session = beginReadBoardGmaSessionHand(readBoard, engine, output, Stone.BLACK, null);
+      AtomicReference<ReadBoardGmaSession> sessionRef = new AtomicReference<>(session);
+      ExactSnapshotRestoreProtocolFixture.Transport transport =
+          ExactSnapshotRestoreProtocolFixture.install(
+              engine,
+              command ->
+                  command.startsWith("loadsgf ")
+                      ? ExactSnapshotRestoreProtocolFixture.Response.error(
+                          "controlled board restore failure")
+                      : null);
+
+      invokeParseLine(engine, "play pass");
+
+      ReadBoardGmaSession.Terminal terminal = awaitGmaSessionTerminal(sessionRef);
+      assertEquals(ReadBoardGmaSession.SessionOutcome.FAILED, terminal.outcome());
+      assertEquals(
+          ReadBoardGmaSession.FailureCategory.GTP_ERROR, terminal.firstFailure().category());
+      assertNull(engine.currentReadBoardGmaReservation());
+      assertTrue(
+          engine.hasUnrestoredReadBoardGmaState(),
+          "an exact participant failure must quarantine the engine fail-closed");
+      assertNull(boundReadBoardGmaSession(readBoard));
+      assertTrue(
+          transport.commands().stream().noneMatch(command -> command.startsWith("play ")),
+          "no captured tail replay may start after a loadsgf failure");
+      assertTrue(
+          transport.commands().stream().noneMatch(command -> command.startsWith("kata-set-param")),
+          "no runtime restore may start after an exact participant failure");
+    }
+  }
+
+  @Test
+  void readBoardGmaSessionFailureSkipsPreAdmissionDeferredRestore() throws Exception {
+    try (Harness harness = Harness.open()) {
+      BlockedFailureQuarantineLeelaz engine = new BlockedFailureQuarantineLeelaz();
+      configureReadyReadBoardGmaEngine(engine);
+      RecordingOutputStream output = new RecordingOutputStream();
+      setOutputStream(engine, output);
+      ReadBoard readBoard = allocate(ReadBoard.class);
+      // Arm the hand exactly like beginReadBoardGmaSessionHand, but register the deferred engine
+      // restore after the schedule and before the acknowledged preparation: the production
+      // deferral path records the restore while the hand is still pending, so the restore is
+      // already deferred when the session is admitted.
+      Lizzie.leelaz = engine;
+      Lizzie.frame.bothSync = true;
+      LizzieFrame.boardRenderer = new BoardRenderer(false);
+      Lizzie.board = new SilentPlacementBoard();
+      setBooleanField(readBoard, "readBoardGmaAutoPlayActive", true);
+      setObjectField(readBoard, "readBoardGmaAutoPlayColor", Stone.BLACK);
+      setBooleanField(readBoard, "readBoardTurnTrusted", true);
+      setIntField(readBoard, "readBoardGmaTimeSeconds", 5);
+      setIntField(readBoard, "readBoardGmaMaxVisits", 1000);
+      setBooleanField(readBoard, "readBoardWebSocketPonderingNoticeAcknowledged", true);
+      Object identity = new Object();
+      setObjectField(readBoard, "trackingEligibilityIdentity", identity);
+      setLongField(readBoard, "readBoardGmaSessionGeneration", 1L);
+      Lizzie.frame.readBoard = readBoard;
+
+      boolean scheduled = invokeScheduleReadBoardGmaIfNeeded(readBoard, "test");
+      assertTrue(
+          scheduled && !output.commands().isEmpty(),
+          "the GMA hand must be scheduled and its preparation commands sent; scheduled="
+              + scheduled
+              + " commands="
+              + output.commands());
+      assertEquals(
+          "kata-get-param ponderingEnabled",
+          output.commands().get(0),
+          "the acknowledged preparation must start with the pondering snapshot");
+      assertNull(
+          boundReadBoardGmaSession(readBoard),
+          "the session must not be admitted before every matching get/set ACK");
+      assertFalse(
+          output.commands().stream().anyMatch(command -> command.startsWith("kata-genmove_analyze")),
+          "the genmove must not be sent before every required get/set ACK");
+
+      // Pre-admission deferred restore: the helper owes one engine restore for the current node
+      // while the hand is still preparing; the restore stays deferred across session admission.
+      setBooleanField(readBoard, "readBoardGmaEngineRestorePending", true);
+      setObjectField(
+          readBoard,
+          "readBoardGmaDeferredRestoreNode",
+          Lizzie.board.getHistory().getCurrentHistoryNode());
+
+      acknowledgeInitialGmaCommands(engine, output);
+
+      ReadBoardGmaSession session = boundReadBoardGmaSession(readBoard);
+      assertNotNull(
+          session,
+          "the GMA hand must admit a session after the acknowledged preparation");
+      assertTrue(
+          output.commands().stream()
+              .anyMatch(command -> command.startsWith("kata-genmove_analyze ")),
+          "the admitted session must send the genmove only after the acknowledged preparation; commands="
+              + output.commands());
+      AtomicReference<ReadBoardGmaSession> sessionRef = new AtomicReference<>(session);
+      ExactSnapshotRestoreProtocolFixture.Transport transport =
+          ExactSnapshotRestoreProtocolFixture.install(
+              engine,
+              command ->
+                  command.startsWith("loadsgf ")
+                      ? ExactSnapshotRestoreProtocolFixture.Response.error(
+                          "controlled board restore failure")
+                      : null);
+
+      invokeParseLine(engine, "play pass");
+      try {
+        // The exact participant's loadsgf fails and the session locks its failure; the failure
+        // handling is blocked so the quarantine cannot clear the reservation yet. The legacy
+        // terminal worker must not replay the pre-admission deferred restore (a second loadsgf)
+        // inside that window.
+        assertTrue(
+            engine.failureArrived.await(1, TimeUnit.SECONDS),
+            "the failed session must reach its failure handling");
+        assertTrue(
+            waitForCommandCount(transport, "loadsgf ", 1, 1, TimeUnit.SECONDS),
+            "the exact participant must send its own loadsgf");
+        assertFalse(
+            waitForCommandCount(transport, "loadsgf ", 2, 300, TimeUnit.MILLISECONDS),
+            "the legacy deferred-restore worker must not send a second loadsgf while the "
+                + "session failure handling is blocked; commands="
+                + transport.commands());
+
+        engine.releaseFailure.countDown();
+
+        assertTrue(
+            waitForReleaseRequests(engine.releaseRequests, 1, 1, TimeUnit.SECONDS),
+            "the failed session must request its reservation release");
+        assertNull(
+            engine.currentReadBoardGmaReservation(),
+            "the failed session must release its captured reservation");
+        assertTrue(
+            engine.hasUnrestoredReadBoardGmaState(),
+            "an exact participant failure must quarantine the engine fail-closed");
+
+        ReadBoardGmaSession.Terminal terminal = awaitGmaSessionTerminal(sessionRef);
+        assertEquals(ReadBoardGmaSession.SessionOutcome.FAILED, terminal.outcome());
+        assertEquals(
+            ReadBoardGmaSession.FailureCategory.GTP_ERROR, terminal.firstFailure().category());
+        assertEquals(
+            1,
+            transport.commands().stream()
+                .filter(command -> command.startsWith("loadsgf "))
+                .count(),
+            "the failed session must consume exactly one loadsgf and never retry it; commands="
+                + transport.commands());
+        assertTrue(
+            transport.commands().stream()
+                .noneMatch(command -> command.startsWith("kata-set-param")),
+            "no runtime restore may start after an exact participant failure");
+        assertTrue(
+            transport.commands().stream()
+                .noneMatch(command -> command.startsWith("kata-genmove_analyze")),
+            "no continuation hand may start after a failed session");
+        assertEquals(
+            1,
+            output.commands().stream()
+                .filter(command -> command.startsWith("kata-genmove_analyze "))
+                .count(),
+            "the failed session must not schedule another genmove");
+        assertEquals(
+            1,
+            engine.releaseRequests.get(),
+            "the failed session must release its reservation exactly once");
+        assertNull(
+            boundReadBoardGmaSession(readBoard),
+            "the failed session terminal must clear the published binding");
+      } finally {
+        engine.releaseFailure.countDown();
+      }
+    }
+  }
+
+  @Test
+  void readBoardGmaSessionFailureDefersRestoreRequestedDuringBlockedQuarantine() throws Exception {
+    try (Harness harness = Harness.open()) {
+      BlockedFailureQuarantineLeelaz engine = new BlockedFailureQuarantineLeelaz();
+      configureReadyReadBoardGmaEngine(engine);
+      RecordingOutputStream output = new RecordingOutputStream();
+      setOutputStream(engine, output);
+      ReadBoard readBoard = allocate(ReadBoard.class);
+      ReadBoardGmaSession session = beginReadBoardGmaSessionHand(readBoard, engine, output, Stone.BLACK, null);
+      AtomicReference<ReadBoardGmaSession> sessionRef = new AtomicReference<>(session);
+      ExactSnapshotRestoreProtocolFixture.Transport transport =
+          ExactSnapshotRestoreProtocolFixture.install(
+              engine,
+              command ->
+                  command.startsWith("loadsgf ")
+                      ? ExactSnapshotRestoreProtocolFixture.Response.error(
+                          "controlled board restore failure")
+                      : null);
+
+      invokeParseLine(engine, "play pass");
+      try {
+        // The exact participant's loadsgf fails and the session locks its failure; the failure
+        // handling is blocked so the quarantine cannot clear the reservation yet.
+        assertTrue(
+            engine.failureArrived.await(1, TimeUnit.SECONDS),
+            "the failed session must reach its blocked failure handling");
+        assertTrue(
+            waitForCommandCount(transport, "loadsgf ", 1, 1, TimeUnit.SECONDS),
+            "the exact participant must send its own loadsgf");
+
+        // A real authoritative restore request lands while the failure handling is still
+        // blocked: the legacy flush must not send a second loadsgf into the engine before the
+        // quarantine clears the reservation.
+        BoardHistoryNode restoreNode = Lizzie.board.getHistory().getCurrentHistoryNode();
+        AtomicReference<Throwable> restoreFailure = new AtomicReference<>();
+        Thread restoreThread =
+            new Thread(
+                () -> {
+                  try {
+                    invokeRequestReadBoardGmaEngineRestore(
+                        readBoard, "test-failure-window", restoreNode);
+                  } catch (Throwable failure) {
+                    restoreFailure.set(failure);
+                  }
+                },
+                "readboard-gma-failure-window-restore-test");
+        restoreThread.setDaemon(true);
+        restoreThread.start();
+        assertFalse(
+            waitForCommandCount(transport, "loadsgf ", 2, 500, TimeUnit.MILLISECONDS),
+            "a restore request during the blocked failure handling must not send a second "
+                + "loadsgf; commands="
+                + transport.commands());
+
+        engine.releaseFailure.countDown();
+        restoreThread.join(1000L);
+        assertFalse(restoreThread.isAlive());
+        assertNull(
+            restoreFailure.get(),
+            "the deferred restore request must converge without failing the engine again");
+
+        assertTrue(
+            waitForReleaseRequests(engine.releaseRequests, 1, 1, TimeUnit.SECONDS),
+            "the failed session must request its reservation release");
+        assertNull(
+            engine.currentReadBoardGmaReservation(),
+            "the failed session must release its captured reservation");
+        assertTrue(
+            engine.hasUnrestoredReadBoardGmaState(),
+            "an exact participant failure must quarantine the engine fail-closed");
+
+        ReadBoardGmaSession.Terminal terminal = awaitGmaSessionTerminal(sessionRef);
+        assertEquals(ReadBoardGmaSession.SessionOutcome.FAILED, terminal.outcome());
+        assertEquals(
+            ReadBoardGmaSession.FailureCategory.GTP_ERROR, terminal.firstFailure().category());
+        assertEquals(
+            1,
+            transport.commands().stream()
+                .filter(command -> command.startsWith("loadsgf "))
+                .count(),
+            "the failed session must consume exactly one loadsgf and never retry it; commands="
+                + transport.commands());
+        assertTrue(
+            transport.commands().stream()
+                .noneMatch(command -> command.startsWith("kata-set-param")),
+            "no runtime restore may start after an exact participant failure");
+        assertTrue(
+            transport.commands().stream()
+                .noneMatch(command -> command.startsWith("kata-genmove_analyze")),
+            "no continuation hand may start after a failed session");
+        assertEquals(
+            1,
+            output.commands().stream()
+                .filter(command -> command.startsWith("kata-genmove_analyze "))
+                .count(),
+            "the failed session must not schedule another genmove");
+        assertEquals(
+            1,
+            engine.releaseRequests.get(),
+            "the failed session must release its reservation exactly once");
+        assertNull(
+            boundReadBoardGmaSession(readBoard),
+            "the failed session terminal must clear the published binding");
+      } finally {
+        engine.releaseFailure.countDown();
+      }
+    }
+  }
+
+  @Test
+  void readBoardGmaSessionFailureToctouRestoreRoutingSkipsLegacyRetry() throws Exception {
+    try (Harness harness = Harness.open()) {
+      BlockedCaptureRestoreLeelaz engine = new BlockedCaptureRestoreLeelaz();
+      configureReadyReadBoardGmaEngine(engine);
+      RecordingOutputStream output = new RecordingOutputStream();
+      setOutputStream(engine, output);
+      ReadBoard readBoard = allocate(ReadBoard.class);
+      ReadBoardGmaSession session = beginReadBoardGmaSessionHand(readBoard, engine, output, Stone.BLACK, null);
+      AtomicReference<ReadBoardGmaSession> sessionRef = new AtomicReference<>(session);
+      // The transport holds every loadsgf response: the exact participant stays RestoringExact
+      // until the test settles the response manually.
+      ExactSnapshotRestoreProtocolFixture.Transport transport =
+          ExactSnapshotRestoreProtocolFixture.install(engine, command -> null);
+      // Only the post-admission captures block; the admission-time capture already passed.
+      engine.blockRestoreCapture = true;
+
+      AtomicReference<Throwable> playFailure = new AtomicReference<>();
+      Thread playThread =
+          new Thread(
+              () -> {
+                try {
+                  invokeParseLine(engine, "play pass");
+                } catch (Throwable failure) {
+                  playFailure.set(failure);
+                }
+              },
+              "readboard-gma-toctou-play-test");
+      playThread.setDaemon(true);
+      playThread.start();
+      try {
+        assertTrue(
+            waitForCommandCount(transport, "loadsgf ", 1, 1, TimeUnit.SECONDS),
+            "the exact participant must send its held loadsgf");
+        playThread.join(1000L);
+        assertFalse(playThread.isAlive());
+        assertNull(playFailure.get());
+
+        // A real authoritative restore request routes through the session while it is still
+        // RestoringExact; its admission capture is latch-blocked inside the routing.
+        BoardHistoryNode restoreNode = Lizzie.board.getHistory().getCurrentHistoryNode();
+        AtomicReference<Throwable> restoreFailure = new AtomicReference<>();
+        Thread restoreThread =
+            new Thread(
+                () -> {
+                  try {
+                    invokeRequestReadBoardGmaEngineRestore(
+                        readBoard, "test-toctou-window", restoreNode);
+                  } catch (Throwable failure) {
+                    restoreFailure.set(failure);
+                  }
+                },
+                "readboard-gma-toctou-restore-test");
+        restoreThread.setDaemon(true);
+        restoreThread.start();
+        assertTrue(
+            engine.captureStarted.await(1, TimeUnit.SECONDS),
+            "the routed restore request must block inside its admission capture");
+
+        // The session fails while the routed capture is still blocked: the terminal transition
+        // and failure handling run first, so the routing's deferExactRestore lands after the
+        // terminal and the legacy fallback must not retry the restore.
+        ReadBoardGmaSession.RestoringExact restoring =
+            assertInstanceOf(ReadBoardGmaSession.RestoringExact.class, sessionRef.get().state());
+        ReadBoardGmaSession.ExactParticipantCapability exactCapability =
+            restoring.capturedExactOperation().capability();
+        AtomicReference<Throwable> failThreadFailure = new AtomicReference<>();
+        Thread failThread =
+            new Thread(
+                () -> {
+                  try {
+                    session.completeExact(
+                        exactCapability,
+                        new ReadBoardGmaSession.ParticipantResult.Failed(
+                            new ReadBoardGmaSession.ParticipantFailure(
+                                ReadBoardGmaSession.FailureCategory.GTP_ERROR,
+                                engine.currentEngineIncarnation(),
+                                "controlled board restore failure")));
+                  } catch (Throwable failure) {
+                    failThreadFailure.set(failure);
+                  }
+                },
+                "readboard-gma-toctou-fail-test");
+        failThread.setDaemon(true);
+        failThread.start();
+        assertTrue(
+            engine.failureArrived.await(1, TimeUnit.SECONDS),
+            "the failed session must reach its blocked failure handling");
+
+        engine.releaseCapture.countDown();
+        assertFalse(
+            waitForCommandCount(transport, "loadsgf ", 2, 500, TimeUnit.MILLISECONDS),
+            "a routed restore request whose deferral landed after the terminal failure must not "
+                + "fall back to a second loadsgf; commands="
+                + transport.commands());
+
+        engine.releaseFailure.countDown();
+        failThread.join(1000L);
+        assertFalse(failThread.isAlive());
+        assertNull(failThreadFailure.get());
+
+        assertTrue(
+            waitForReleaseRequests(engine.releaseRequests, 1, 1, TimeUnit.SECONDS),
+            "the failed session must request its reservation release");
+        assertNull(
+            engine.currentReadBoardGmaReservation(),
+            "the failed session must release its captured reservation");
+        assertTrue(
+            engine.hasUnrestoredReadBoardGmaState(),
+            "an exact participant failure must quarantine the engine fail-closed");
+
+        ReadBoardGmaSession.Terminal terminal = awaitGmaSessionTerminal(sessionRef);
+        assertEquals(ReadBoardGmaSession.SessionOutcome.FAILED, terminal.outcome());
+        assertEquals(
+            ReadBoardGmaSession.FailureCategory.GTP_ERROR, terminal.firstFailure().category());
+        assertEquals(
+            1,
+            transport.commands().stream()
+                .filter(command -> command.startsWith("loadsgf "))
+                .count(),
+            "the failed session must consume exactly one loadsgf and never retry it; commands="
+                + transport.commands());
+        assertTrue(
+            transport.commands().stream()
+                .noneMatch(command -> command.startsWith("kata-set-param")),
+            "no runtime restore may start after an exact participant failure");
+        assertTrue(
+            transport.commands().stream()
+                .noneMatch(command -> command.startsWith("kata-genmove_analyze")),
+            "no continuation hand may start after a failed session");
+        assertEquals(
+            1,
+            output.commands().stream()
+                .filter(command -> command.startsWith("kata-genmove_analyze "))
+                .count(),
+            "the failed session must not schedule another genmove");
+        assertEquals(
+            1,
+            engine.releaseRequests.get(),
+            "the failed session must release its reservation exactly once");
+        assertNull(
+            boundReadBoardGmaSession(readBoard),
+            "the failed session terminal must clear the published binding");
+
+        // Cleanup: settle every held loadsgf with the controlled error so the exact participant
+        // and any legacy restore worker converge before the harness closes.
+        for (String rawCommand : transport.rawCommands()) {
+          int firstSpace = rawCommand.indexOf(' ');
+          if (firstSpace > 0
+              && rawCommand.substring(firstSpace + 1).startsWith("loadsgf ")
+              && rawCommand.substring(0, firstSpace).chars().allMatch(Character::isDigit)) {
+            invokeProcessCommandResponseLine(
+                engine,
+                "?" + rawCommand.substring(0, firstSpace) + " controlled board restore failure");
+          }
+        }
+        restoreThread.join(1000L);
+        assertFalse(restoreThread.isAlive());
+        assertNull(
+            restoreFailure.get(),
+            "the routed restore request must converge without failing the engine again");
+      } finally {
+        engine.releaseCapture.countDown();
+        engine.releaseFailure.countDown();
+      }
+    }
+  }
+
+
+  @Test
+  void readBoardGmaSessionTailEnqueuedBeforeSuccessAndAckNotWaited() throws Exception {
+    try (Harness harness = Harness.open()) {
+      // An anchored board (usable snapshot root with a stone, black to play) makes the session
+      // capture a real MOVE tail for the black final play.
+      Leelaz engine = readyReadBoardGmaEngine();
+      Lizzie.leelaz = engine;
+      Board board = new SilentPlacementBoard();
+      Stone[] stones = new Stone[Board.boardWidth * Board.boardHeight];
+      Arrays.fill(stones, Stone.EMPTY);
+      stones[Board.getIndex(0, 0)] = Stone.BLACK;
+      Zobrist zobrist = new Zobrist();
+      zobrist.toggleStone(0, 0, Stone.BLACK);
+      board.setHistory(
+          new BoardHistoryList(
+              BoardData.snapshot(
+                  stones,
+                  Optional.empty(),
+                  Stone.EMPTY,
+                  true,
+                  zobrist,
+                  0,
+                  new int[Board.boardWidth * Board.boardHeight],
+                  0,
+                  0,
+                  0,
+                  0)));
+      Lizzie.board = board;
+      RecordingOutputStream output = new RecordingOutputStream();
+      setOutputStream(engine, output);
+      ReadBoard readBoard = allocate(ReadBoard.class);
+      ReadBoardGmaSession session =
+          beginReadBoardGmaSessionHand(readBoard, engine, output, Stone.BLACK, board);
+      AtomicReference<ReadBoardGmaSession> sessionRef = new AtomicReference<>(session);
+      CountDownLatch tailEnqueued = new CountDownLatch(1);
+      ExactSnapshotRestoreProtocolFixture.Transport transport =
+          ExactSnapshotRestoreProtocolFixture.install(
+              engine,
+              command -> {
+                if (command.startsWith("loadsgf ")) {
+                  return ExactSnapshotRestoreProtocolFixture.Response.success();
+                }
+                if (command.startsWith("play ")) {
+                  // The captured tail is accepted into the ordinary queue; its ordinary GTP ACK
+                  // is deliberately never delivered by the fixture.
+                  tailEnqueued.countDown();
+                  return null;
+                }
+                return null;
+              });
+
+      // The final play advances the authoritative board while the request is still in flight; the
+      // latest-wins restore intent is re-captured from the advanced node, so the isolation
+      // terminal's exact restore replays the captured MOVE tail for the black final play.
+      int[] coords = Board.convertNameToCoordinates("D4");
+      Lizzie.board.placeFromReadBoardGma(coords[0], coords[1], Stone.BLACK);
+      invokeUpdateReadBoardGmaRestoreIntent(
+          readBoard, Lizzie.board.getHistory().getCurrentHistoryNode());
+      // A retired session runs the runtime participant after exact success.
+      engine.retireReadBoardGmaSession();
+
+      invokeParseLine(engine, "play pass");
+
+      assertTrue(
+          tailEnqueued.await(1, TimeUnit.SECONDS),
+          "the captured MOVE/PASS tail must be enqueued before exact success is reported; commands="
+              + transport.commands());
+      assertTrue(
+          waitForFixtureCommandPrefix(transport, "kata-set-param ", 1, TimeUnit.SECONDS),
+          "the runtime participant must start after exact success");
+      acknowledgeReadBoardGmaRuntimeRestore(engine, transport);
+      ReadBoardGmaSession.Terminal terminal = awaitGmaSessionTerminal(sessionRef);
+      assertEquals(
+          ReadBoardGmaSession.SessionOutcome.SUCCEEDED, terminal.outcome(),
+          "exact success must not wait for the tail's ordinary GTP ACK");
+      assertTrue(
+          transport.commands().stream().anyMatch(command -> command.equals("play B D4")),
+          "the captured tail command must have been accepted into the ordinary queue");
+      assertNull(engine.currentReadBoardGmaReservation());
+
+      // A late ordinary tail ACK arrives after the session terminal: it must be absorbed with no
+      // state change, no re-publication and no re-release.
+      invokeProcessCommandResponseLine(engine, "=");
+      // A late duplicate runtime restore ACK is absorbed the same way.
+      invokeProcessCommandResponseLine(
+          engine, successResponseFor(transport.rawCommands(), "maxTime"));
+      assertEquals(
+          ReadBoardGmaSession.SessionOutcome.SUCCEEDED, awaitGmaSessionTerminal(sessionRef).outcome());
+      assertNull(engine.currentReadBoardGmaReservation());
+    }
+  }
+
+  @Test
+  void readBoardGmaSessionTailRejectionFailsClosed() throws Exception {
+    try (Harness harness = Harness.open()) {
+      // An anchored board (usable snapshot root with a stone, black to play) makes the session
+      // capture a real MOVE tail for the black final play.
+      Leelaz engine = readyReadBoardGmaEngine();
+      Lizzie.leelaz = engine;
+      Board board = new SilentPlacementBoard();
+      Stone[] stones = new Stone[Board.boardWidth * Board.boardHeight];
+      Arrays.fill(stones, Stone.EMPTY);
+      stones[Board.getIndex(0, 0)] = Stone.BLACK;
+      Zobrist zobrist = new Zobrist();
+      zobrist.toggleStone(0, 0, Stone.BLACK);
+      board.setHistory(
+          new BoardHistoryList(
+              BoardData.snapshot(
+                  stones,
+                  Optional.empty(),
+                  Stone.EMPTY,
+                  true,
+                  zobrist,
+                  0,
+                  new int[Board.boardWidth * Board.boardHeight],
+                  0,
+                  0,
+                  0,
+                  0)));
+      Lizzie.board = board;
+      RecordingOutputStream output = new RecordingOutputStream();
+      setOutputStream(engine, output);
+      ReadBoard readBoard = allocate(ReadBoard.class);
+      ReadBoardGmaSession session = beginReadBoardGmaSessionHand(readBoard, engine, output, Stone.BLACK, board);
+      AtomicReference<ReadBoardGmaSession> sessionRef = new AtomicReference<>(session);
+      ExactSnapshotRestoreProtocolFixture.Transport transport =
+          ExactSnapshotRestoreProtocolFixture.install(
+              engine,
+              command -> {
+                if (command.startsWith("loadsgf ")) {
+                  // The engine becomes unrecoverable after the loadsgf consumed: the captured
+                  // tail replay is then rejected by the arbitration admission fail-closed.
+                  setBooleanField(engine, "engineStateUnrestored", true);
+                  return ExactSnapshotRestoreProtocolFixture.Response.success();
+                }
+                return null;
+              });
+
+      // The final play advances the authoritative board while the request is still in flight; the
+      // latest-wins restore intent is re-captured from the advanced node, so the isolation
+      // terminal's exact restore captures the real MOVE tail for the black final play.
+      int[] coords = Board.convertNameToCoordinates("D4");
+      Lizzie.board.placeFromReadBoardGma(coords[0], coords[1], Stone.BLACK);
+      invokeUpdateReadBoardGmaRestoreIntent(
+          readBoard, Lizzie.board.getHistory().getCurrentHistoryNode());
+
+      invokeParseLine(engine, "play pass");
+
+      ReadBoardGmaSession.Terminal terminal = awaitGmaSessionTerminal(sessionRef);
+      assertEquals(ReadBoardGmaSession.SessionOutcome.FAILED, terminal.outcome());
+      assertEquals(
+          ReadBoardGmaSession.FailureCategory.TAIL_REJECTED, terminal.firstFailure().category());
+      assertNull(engine.currentReadBoardGmaReservation());
+      assertTrue(engine.hasUnrestoredReadBoardGmaState());
+      assertTrue(
+          transport.commands().stream().anyMatch(command -> command.equals("play B D4")),
+          "the rejected captured tail must be attempted before the exact participant fails");
+    }
+  }
+
+  @Test
+  void readBoardGmaSessionRuntimeParticipantHoldsSuccessUntilEveryMatchingAck() throws Exception {
+    try (Harness harness = Harness.open()) {
+      Leelaz engine = readyReadBoardGmaEngine();
+      RecordingOutputStream output = new RecordingOutputStream();
+      setOutputStream(engine, output);
+      ReadBoard readBoard = allocate(ReadBoard.class);
+      ReadBoardGmaSession session = beginReadBoardGmaSessionHand(readBoard, engine, output, Stone.BLACK, null);
+      // A retired session runs the runtime participant after exact success.
+      engine.retireReadBoardGmaSession();
+      AtomicReference<ReadBoardGmaSession> sessionRef = new AtomicReference<>(session);
+      ExactSnapshotRestoreProtocolFixture.Transport transport =
+          ExactSnapshotRestoreProtocolFixture.install(
+              engine,
+              command ->
+                  command.startsWith("loadsgf ")
+                      ? ExactSnapshotRestoreProtocolFixture.Response.success()
+                      : null);
+
+      invokeParseLine(engine, "play pass");
+
+      assertTrue(
+          waitForFixtureCommandPrefix(transport, "kata-set-param maxVisits 800", 1, TimeUnit.SECONDS),
+          "the runtime participant must dispatch every captured parameter restore");
+      assertInstanceOf(ReadBoardGmaSession.RestoringRuntime.class, sessionRef.get().state());
+      assertNotNull(
+          engine.currentReadBoardGmaReservation(),
+          "the reservation must be held while the runtime participant awaits its ACKs");
+
+      // Partial ACKs keep the participant pending: only every matching ACK reaches success.
+      invokeProcessCommandResponseLine(
+          engine, successResponseFor(transport.rawCommands(), "maxTime"));
+      assertInstanceOf(ReadBoardGmaSession.RestoringRuntime.class, sessionRef.get().state());
+      invokeProcessCommandResponseLine(
+          engine, successResponseFor(transport.rawCommands(), "maxVisits"));
+      assertInstanceOf(ReadBoardGmaSession.RestoringRuntime.class, sessionRef.get().state());
+      invokeProcessCommandResponseLine(
+          engine, successResponseFor(transport.rawCommands(), "ponderingEnabled"));
+
+      ReadBoardGmaSession.Terminal terminal = awaitGmaSessionTerminal(sessionRef);
+      assertEquals(ReadBoardGmaSession.SessionOutcome.SUCCEEDED, terminal.outcome());
+      assertNull(
+          engine.currentReadBoardGmaReservation(),
+          "the session terminal must release the captured reservation exactly once");
+      assertNull(boundReadBoardGmaSession(readBoard));
+
+      // A late duplicate restore ACK after the terminal is absorbed with no re-publication and no
+      // re-release.
+      invokeProcessCommandResponseLine(
+          engine, successResponseFor(transport.rawCommands(), "maxTime"));
+      assertEquals(
+          ReadBoardGmaSession.SessionOutcome.SUCCEEDED, awaitGmaSessionTerminal(sessionRef).outcome());
+      assertNull(engine.currentReadBoardGmaReservation());
+    }
+  }
+
+  @Test
+  void readBoardGmaSessionRuntimeAckFromStaleReaderBindingCannotAdvanceBarrier()
+      throws Exception {
+    try (Harness harness = Harness.open()) {
+      Leelaz engine = readyReadBoardGmaEngine();
+      RecordingOutputStream output = new RecordingOutputStream();
+      setOutputStream(engine, output);
+      ReadBoard readBoard = allocate(ReadBoard.class);
+      ReadBoardGmaSession session =
+          beginReadBoardGmaSessionHand(readBoard, engine, output, Stone.BLACK, null);
+      engine.retireReadBoardGmaSession();
+      AtomicReference<ReadBoardGmaSession> sessionRef = new AtomicReference<>(session);
+      ExactSnapshotRestoreProtocolFixture.Transport transport =
+          ExactSnapshotRestoreProtocolFixture.install(
+              engine,
+              command ->
+                  command.startsWith("loadsgf ")
+                      ? ExactSnapshotRestoreProtocolFixture.Response.success()
+                      : null);
+
+      invokeParseLine(engine, "play pass");
+
+      assertTrue(
+          waitForFixtureCommandPrefix(transport, "kata-set-param maxVisits 800", 1, TimeUnit.SECONDS));
+      assertInstanceOf(ReadBoardGmaSession.RestoringRuntime.class, sessionRef.get().state());
+      String staleAck = successResponseFor(transport.rawCommands(), "maxTime");
+      Object staleBinding = replaceReaderStreamBinding(engine);
+      assertSame(
+          staleBinding,
+          pendingResponseBindingFor(engine, staleAck),
+          "runtime ACK handlers must capture the stream that emitted the command");
+
+      invokeProcessCommandResponseLine(engine, staleAck, staleBinding);
+
+      assertInstanceOf(ReadBoardGmaSession.RestoringRuntime.class, sessionRef.get().state());
+      assertSame(
+          staleBinding,
+          pendingResponseBindingFor(engine, staleAck),
+          "a stale response must leave the current GMA ACK handler pending");
+      assertTrue(
+          readBoard.failReadBoardGmaSessionForEngineTermination(
+              engine, "engine replaced before runtime restore ACK"));
+      ReadBoardGmaSession.Terminal terminal = awaitGmaSessionTerminal(sessionRef);
+      assertEquals(ReadBoardGmaSession.SessionOutcome.FAILED, terminal.outcome());
+      assertEquals(
+          ReadBoardGmaSession.FailureCategory.PROCESS_TERMINATED,
+          terminal.firstFailure().category());
+      assertNull(engine.currentReadBoardGmaReservation());
+    }
+  }
+
+  @Test
+  void readBoardGmaSessionStaleExactResponseCannotAdvanceSession() throws Exception {
+    try (Harness harness = Harness.open()) {
+      Leelaz engine = readyReadBoardGmaEngine();
+      RecordingOutputStream output = new RecordingOutputStream();
+      setOutputStream(engine, output);
+      ReadBoard readBoard = allocate(ReadBoard.class);
+      ReadBoardGmaSession session =
+          beginReadBoardGmaSessionHand(readBoard, engine, output, Stone.BLACK, null);
+      engine.retireReadBoardGmaSession();
+      AtomicReference<ReadBoardGmaSession> sessionRef = new AtomicReference<>(session);
+      ExactSnapshotRestoreProtocolFixture.Transport transport =
+          ExactSnapshotRestoreProtocolFixture.install(engine, command -> null);
+
+      invokeParseLine(engine, "play pass");
+
+      assertTrue(
+          waitForFixtureCommandPrefix(transport, "loadsgf ", 1, TimeUnit.SECONDS),
+          "the exact restore command must be written before the stream is replaced");
+      String staleResponse = successResponseForPrefix(transport.rawCommands(), "loadsgf ");
+      Object staleBinding = pendingResponseBindingFor(engine, staleResponse);
+      assertNotNull(staleBinding, "the exact restore response must be bound to its stream");
+
+      replaceReaderStreamBinding(engine);
+      invokeProcessCommandResponseLine(engine, staleResponse, staleBinding);
+
+      assertInstanceOf(ReadBoardGmaSession.RestoringExact.class, sessionRef.get().state());
+      assertSame(
+          staleBinding,
+          pendingResponseBindingFor(engine, staleResponse),
+          "a stale exact response must leave the current restore handler pending");
+      assertTrue(
+          readBoard.failReadBoardGmaSessionForEngineTermination(
+              engine, "engine replaced before exact restore response"));
+      ReadBoardGmaSession.Terminal terminal = awaitGmaSessionTerminal(sessionRef);
+      assertEquals(ReadBoardGmaSession.SessionOutcome.FAILED, terminal.outcome());
+      assertEquals(
+          ReadBoardGmaSession.FailureCategory.PROCESS_TERMINATED,
+          terminal.firstFailure().category());
+      assertTrue(
+          transport.commands().stream().noneMatch(command -> command.startsWith("kata-set-param ")),
+          "a stale exact response must not advance to runtime restore");
+      assertNull(engine.currentReadBoardGmaReservation());
+    }
+  }
+
+  @Test
+  void readBoardGmaSessionStaleRuntimeDispatchDoesNotSendOnReplacement() throws Exception {
+    try (Harness harness = Harness.open()) {
+      Leelaz engine = readyReadBoardGmaEngine();
+      RecordingOutputStream output = new RecordingOutputStream();
+      setOutputStream(engine, output);
+      ReadBoard readBoard = allocate(ReadBoard.class);
+      ReadBoardGmaSession session =
+          beginReadBoardGmaSessionHand(readBoard, engine, output, Stone.BLACK, null);
+      engine.retireReadBoardGmaSession();
+      AtomicReference<ReadBoardGmaSession> sessionRef = new AtomicReference<>(session);
+      ExactSnapshotRestoreProtocolFixture.Transport transport =
+          ExactSnapshotRestoreProtocolFixture.install(engine, command -> null);
+
+      invokeParseLine(engine, "play pass");
+      assertTrue(
+          waitForFixtureCommandPrefix(transport, "loadsgf ", 1, TimeUnit.SECONDS),
+          "the exact restore command must be written before dispatch is interposed");
+      String exactResponse = successResponseForPrefix(transport.rawCommands(), "loadsgf ");
+
+      Field barrierField = Leelaz.class.getDeclaredField("readBoardGmaRestoreBarrier");
+      barrierField.setAccessible(true);
+      java.lang.reflect.Method lockMethod =
+          Leelaz.class.getDeclaredMethod("engineArbitrationLock");
+      lockMethod.setAccessible(true);
+      Object arbitrationLock = lockMethod.invoke(engine);
+      AtomicReference<Throwable> responseFailure = new AtomicReference<>();
+      AtomicReference<Boolean> responseConsumed = new AtomicReference<>(false);
+      Thread responseThread =
+          new Thread(
+              () -> {
+                try {
+                  responseConsumed.set(engine.runPendingResponseHandlerForTest(exactResponse));
+                } catch (Throwable failure) {
+                  responseFailure.set(failure);
+                }
+              },
+              "readboard-gma-stale-runtime-dispatch-test");
+
+      boolean barrierObserved = false;
+      synchronized (arbitrationLock) {
+        responseThread.start();
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(1);
+        while (System.nanoTime() < deadline) {
+          if (barrierField.get(engine) != null) {
+            barrierObserved = true;
+            replaceReaderStreamBinding(engine);
+            break;
+          }
+          Thread.onSpinWait();
+        }
+      }
+      responseThread.join(1000L);
+      assertTrue(barrierObserved, "the runtime barrier must be created while dispatch is blocked");
+      assertFalse(responseThread.isAlive(), "the exact response worker must converge");
+      assertTrue(Boolean.TRUE.equals(responseConsumed.get()));
+      assertNull(responseFailure.get());
+
+      ReadBoardGmaSession.Terminal terminal = awaitGmaSessionTerminal(sessionRef);
+      assertEquals(ReadBoardGmaSession.SessionOutcome.FAILED, terminal.outcome());
+      assertEquals(
+          ReadBoardGmaSession.FailureCategory.ADMISSION_STALE,
+          terminal.firstFailure().category());
+      assertTrue(
+          transport.commands().stream().noneMatch(command -> command.startsWith("kata-set-param ")),
+          "runtime dispatch must not send a restore command on the replacement incarnation");
+      assertFalse(
+          engine.hasUnrestoredReadBoardGmaState(),
+          "stale runtime dispatch must not quarantine the replacement incarnation");
+      assertNull(engine.currentReadBoardGmaReservation());
+    }
+  }
+
+  @Test
+  void readBoardGmaSessionTerminatedRuntimeBindingFailsClosed() throws Exception {
+    try (Harness harness = Harness.open()) {
+      Leelaz engine = readyReadBoardGmaEngine();
+      RecordingOutputStream output = new RecordingOutputStream();
+      setOutputStream(engine, output);
+      ReadBoard readBoard = allocate(ReadBoard.class);
+      ReadBoardGmaSession session =
+          beginReadBoardGmaSessionHand(readBoard, engine, output, Stone.BLACK, null);
+      engine.retireReadBoardGmaSession();
+      AtomicReference<ReadBoardGmaSession> sessionRef = new AtomicReference<>(session);
+      ExactSnapshotRestoreProtocolFixture.Transport transport =
+          ExactSnapshotRestoreProtocolFixture.install(engine, command -> null);
+
+      invokeParseLine(engine, "play pass");
+      assertTrue(
+          waitForFixtureCommandPrefix(transport, "loadsgf ", 1, TimeUnit.SECONDS),
+          "the exact restore command must be written before dispatch is interposed");
+      String exactResponse = successResponseForPrefix(transport.rawCommands(), "loadsgf ");
+
+      Field barrierField = Leelaz.class.getDeclaredField("readBoardGmaRestoreBarrier");
+      barrierField.setAccessible(true);
+      java.lang.reflect.Method lockMethod =
+          Leelaz.class.getDeclaredMethod("engineArbitrationLock");
+      lockMethod.setAccessible(true);
+      Object arbitrationLock = lockMethod.invoke(engine);
+      AtomicReference<Throwable> responseFailure = new AtomicReference<>();
+      Thread responseThread =
+          new Thread(
+              () -> {
+                try {
+                  engine.runPendingResponseHandlerForTest(exactResponse);
+                } catch (Throwable failure) {
+                  responseFailure.set(failure);
+                }
+              },
+              "readboard-gma-terminated-runtime-test");
+
+      boolean barrierObserved = false;
+      synchronized (arbitrationLock) {
+        responseThread.start();
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(1);
+        while (System.nanoTime() < deadline) {
+          if (barrierField.get(engine) != null) {
+            barrierObserved = true;
+            Object binding =
+                getObjectField(engine, "readerStreamBinding");
+            setBooleanField(binding, "terminated", true);
+            break;
+          }
+          Thread.onSpinWait();
+        }
+      }
+      responseThread.join(1000L);
+      assertTrue(barrierObserved, "the runtime barrier must be created while dispatch is blocked");
+      assertFalse(responseThread.isAlive(), "the exact response worker must converge");
+      assertNull(responseFailure.get());
+
+      ReadBoardGmaSession.Terminal terminal = awaitGmaSessionTerminal(sessionRef);
+      assertEquals(ReadBoardGmaSession.SessionOutcome.FAILED, terminal.outcome());
+      assertEquals(
+          ReadBoardGmaSession.FailureCategory.PROCESS_TERMINATED,
+          terminal.firstFailure().category());
+      assertTrue(
+          transport.commands().stream().noneMatch(command -> command.startsWith("kata-set-param ")),
+          "a terminated runtime binding must not send another restore command");
+      assertTrue(engine.hasUnrestoredReadBoardGmaState());
+      assertNull(engine.currentReadBoardGmaReservation());
+    }
+  }
+
+  @Test
+  void readBoardGmaSessionRuntimeRestoreErrorFailsClosed() throws Exception {
+    try (Harness harness = Harness.open()) {
+      Leelaz engine = readyReadBoardGmaEngine();
+      RecordingOutputStream output = new RecordingOutputStream();
+      setOutputStream(engine, output);
+      ReadBoard readBoard = allocate(ReadBoard.class);
+      ReadBoardGmaSession session = beginReadBoardGmaSessionHand(readBoard, engine, output, Stone.BLACK, null);
+      // A retired session runs the runtime participant after exact success.
+      engine.retireReadBoardGmaSession();
+      AtomicReference<ReadBoardGmaSession> sessionRef = new AtomicReference<>(session);
+      ExactSnapshotRestoreProtocolFixture.Transport transport =
+          ExactSnapshotRestoreProtocolFixture.install(
+              engine,
+              command ->
+                  command.startsWith("loadsgf ")
+                      ? ExactSnapshotRestoreProtocolFixture.Response.success()
+                      : null);
+
+      invokeParseLine(engine, "play pass");
+
+      assertTrue(
+          waitForFixtureCommandPrefix(transport, "kata-set-param maxTime 2", 1, TimeUnit.SECONDS),
+          "the runtime participant must dispatch its restore commands");
+      invokeProcessCommandResponseLine(
+          engine,
+          errorResponseFor(transport.rawCommands(), "maxTime", "controlled restore failure"));
+
+      ReadBoardGmaSession.Terminal terminal = awaitGmaSessionTerminal(sessionRef);
+      assertEquals(ReadBoardGmaSession.SessionOutcome.FAILED, terminal.outcome());
+      assertEquals(
+          ReadBoardGmaSession.FailureCategory.GTP_ERROR, terminal.firstFailure().category());
+      assertNull(engine.currentReadBoardGmaReservation());
+      assertTrue(
+          engine.hasUnrestoredReadBoardGmaState(),
+          "a runtime participant failure must quarantine the engine fail-closed");
+      assertNull(boundReadBoardGmaSession(readBoard));
+
+      // Late matching success cannot rewrite the locked failure or release anything again.
+      invokeProcessCommandResponseLine(
+          engine, successResponseFor(transport.rawCommands(), "maxVisits"));
+      assertEquals(
+          ReadBoardGmaSession.SessionOutcome.FAILED, awaitGmaSessionTerminal(sessionRef).outcome());
+      assertNull(engine.currentReadBoardGmaReservation());
+    }
+  }
+
+  @Test
+  void readBoardGmaSessionStaleEngineIncarnationCannotStartExactRestore() throws Exception {
+    try (Harness harness = Harness.open()) {
+      Leelaz engine = readyReadBoardGmaEngine();
+      RecordingOutputStream output = new RecordingOutputStream();
+      setOutputStream(engine, output);
+      ReadBoard readBoard = allocate(ReadBoard.class);
+      ReadBoardGmaSession session = beginReadBoardGmaSessionHand(readBoard, engine, output, Stone.BLACK, null);
+      AtomicReference<ReadBoardGmaSession> sessionRef = new AtomicReference<>(session);
+      ExactSnapshotRestoreProtocolFixture.Transport transport =
+          ExactSnapshotRestoreProtocolFixture.install(
+              engine,
+              command ->
+                  command.startsWith("loadsgf ")
+                      ? ExactSnapshotRestoreProtocolFixture.Response.success()
+                      : null);
+
+      // The engine process is replaced while the request is in flight: the stale-incarnation
+      // guard converts the authorized play into an isolation REQUEST_ERROR terminal, and the new
+      // incarnation must reject the old session before any exact or runtime restore command.
+      replaceReaderStreamBinding(engine);
+      BoardHistoryNode authoritativeNode = Lizzie.board.getHistory().getCurrentHistoryNode();
+
+      invokeParseLine(engine, "play D4");
+      assertSame(
+          authoritativeNode,
+          Lizzie.board.getHistory().getCurrentHistoryNode(),
+          "a stale terminal must not place a local move or request an external click");
+
+      ReadBoardGmaSession.Terminal terminal = awaitGmaSessionTerminal(sessionRef);
+      assertEquals(ReadBoardGmaSession.SessionOutcome.FAILED, terminal.outcome());
+      assertEquals(
+          ReadBoardGmaSession.FailureCategory.ADMISSION_STALE, terminal.firstFailure().category());
+      assertTrue(
+          transport.commands().stream().noneMatch(command -> command.startsWith("loadsgf ")),
+          "no exact restore command may run on a replacement engine incarnation");
+      assertTrue(
+          transport.commands().stream().noneMatch(command -> command.startsWith("kata-set-param")),
+          "no runtime restore command may run on a replacement engine incarnation");
+      assertFalse(
+          engine.hasUnrestoredReadBoardGmaState(),
+          "zero-side-effect stale admission must not quarantine the replacement incarnation");
+      assertNull(engine.currentReadBoardGmaReservation());
+      assertNull(boundReadBoardGmaSession(readBoard));
+    }
+  }
+
+  @Test
+  void readBoardGmaSessionRuntimeRestoreTimeoutFailsClosed() throws Exception {
+    try (Harness harness = Harness.open()) {
+      Leelaz engine = new ShortGmaRestoreTimeoutLeelaz();
+      configureReadyReadBoardGmaEngine(engine);
+      RecordingOutputStream output = new RecordingOutputStream();
+      setOutputStream(engine, output);
+      ReadBoard readBoard = allocate(ReadBoard.class);
+      ReadBoardGmaSession session = beginReadBoardGmaSessionHand(readBoard, engine, output, Stone.BLACK, null);
+      // A retired session runs the runtime participant after exact success.
+      engine.retireReadBoardGmaSession();
+      AtomicReference<ReadBoardGmaSession> sessionRef = new AtomicReference<>(session);
+      ExactSnapshotRestoreProtocolFixture.Transport transport =
+          ExactSnapshotRestoreProtocolFixture.install(
+              engine,
+              command ->
+                  command.startsWith("loadsgf ")
+                      ? ExactSnapshotRestoreProtocolFixture.Response.success()
+                      : null);
+
+      invokeParseLine(engine, "play pass");
+
+      assertTrue(
+          waitForFixtureCommandPrefix(transport, "kata-set-param maxVisits 800", 1, TimeUnit.SECONDS),
+          "the runtime participant must dispatch its restore commands");
+
+      ReadBoardGmaSession.Terminal terminal = awaitGmaSessionTerminal(sessionRef);
+      assertEquals(ReadBoardGmaSession.SessionOutcome.FAILED, terminal.outcome());
+      assertEquals(
+          ReadBoardGmaSession.FailureCategory.TIMEOUT, terminal.firstFailure().category());
+      assertNull(engine.currentReadBoardGmaReservation());
+      assertTrue(
+          engine.hasUnrestoredReadBoardGmaState(),
+          "a missing ACK before the timeout must quarantine the engine fail-closed");
+      assertEquals(0, pendingResponseHandlerCount(engine));
+    }
+  }
+
+  @Test
+  void readBoardGmaSessionSuccessPublishesContinuesAndReleasesExactlyOnce() throws Exception {
+    try (Harness harness = Harness.open()) {
+      CountingReleaseLeelaz engine = new CountingReleaseLeelaz();
+      configureReadyReadBoardGmaEngine(engine);
+      RecordingOutputStream output = new RecordingOutputStream();
+      setOutputStream(engine, output);
+      Lizzie.config.readBoardPonder = true;
+      Lizzie.frame.isPlayingAgainstLeelaz = true;
+      ReadBoard readBoard = allocate(ReadBoard.class);
+      ReadBoardGmaSession session = beginReadBoardGmaSessionHand(readBoard, engine, output, Stone.BLACK, null);
+      AtomicReference<ReadBoardGmaSession> sessionRef = new AtomicReference<>(session);
+      ExactSnapshotRestoreProtocolFixture.Transport transport =
+          ExactSnapshotRestoreProtocolFixture.install(
+              engine,
+              command ->
+                  command.startsWith("loadsgf ")
+                      ? ExactSnapshotRestoreProtocolFixture.Response.error("unexpected loadsgf")
+                      : null);
+
+      // An authorized accepted play completes the active session directly: no exact restore is
+      // staged, the runtime settings persist between hands, and the captured reservation is
+      // released exactly once.
+      engine.Pondering();
+      invokeParseLine(engine, "play D4");
+
+      ReadBoardGmaSession.Terminal terminal = awaitGmaSessionTerminal(sessionRef);
+      assertEquals(ReadBoardGmaSession.SessionOutcome.SUCCEEDED, terminal.outcome());
+      assertTrue(
+          engine.isPondering(),
+          "an authorized PLAYED must preserve the native GMA ponder stream");
+      assertEquals(1, engine.releaseRequests.get());
+      assertNull(
+          engine.currentReadBoardGmaReservation(),
+          "the session terminal must release the captured reservation exactly once");
+      assertNull(
+          boundReadBoardGmaSession(readBoard),
+          "the success terminal must clear the published binding");
+      assertTrue(
+          transport.commands().stream().noneMatch(command -> command.startsWith("loadsgf ")),
+          "an authorized PLAYED must not run any exact board restore");
+      assertTrue(
+          transport.commands().stream().noneMatch(command -> command.startsWith("kata-set-param")),
+          "an active session must keep its runtime settings between hands without restoring them");
+
+      // The server's next play-params flip the autoplay color and clear the synced-board wait;
+      // the next hand then reuses the acknowledged overrides without re-snapshotting.
+      setBooleanField(readBoard, "readBoardGmaAwaitingSyncedBoard", false);
+      setObjectField(readBoard, "readBoardGmaAutoPlayColor", Stone.WHITE);
+      assertTrue(invokeScheduleReadBoardGmaIfNeeded(readBoard, "test-next-hand"));
+      assertTrue(
+          waitForFixtureCommandPrefix(
+              transport, "kata-set-param ponderingEnabled true", 1, TimeUnit.SECONDS),
+          "the continued hand must reuse the acknowledged overrides without re-snapshotting");
+      assertTrue(
+          transport.commands().stream().noneMatch(command -> command.startsWith("kata-get-param")),
+          "the continued hand must reuse the acknowledged snapshots instead of re-snapshotting");
+      invokeProcessCommandResponseLine(
+          engine, successResponseFor(transport.rawCommands(), "ponderingEnabled"));
+      assertTrue(
+          waitForFixtureCommandPrefix(transport, "kata-set-param maxTime ", 1, TimeUnit.SECONDS));
+      String maxTimeAck = successResponseFor(transport.rawCommands(), "maxTime");
+      invokeProcessCommandResponseLine(
+          engine, successResponseFor(transport.rawCommands(), "maxTime"));
+      assertTrue(
+          waitForFixtureCommandPrefix(transport, "kata-set-param maxVisits ", 1, TimeUnit.SECONDS));
+      invokeProcessCommandResponseLine(
+          engine, successResponseFor(transport.rawCommands(), "maxVisits"));
+
+      assertTrue(
+          waitForFixtureCommandPrefix(transport, "kata-genmove_analyze ", 1, TimeUnit.SECONDS),
+          "the continued hand must start the next autoplay hand");
+      assertNotNull(
+          engine.currentReadBoardGmaReservation(),
+          "the continued hand must hold a fresh reservation after the session released its own");
+      assertNotSame(session, boundReadBoardGmaSession(readBoard));
+      long continuedHands =
+          transport.commands().stream()
+              .filter(command -> command.startsWith("kata-genmove_analyze "))
+              .count();
+      assertEquals(1, continuedHands, "the next hand must be scheduled exactly once");
+
+      // A duplicate late preparation ACK does not re-publish, re-continue, or re-release: the
+      // terminal stays the same absorbing instance and no new hand or release request appears.
+      invokeProcessCommandResponseLine(engine, maxTimeAck);
+      assertSame(terminal, awaitGmaSessionTerminal(sessionRef));
+      assertEquals(1, engine.releaseRequests.get());
+      assertEquals(
+          1,
+          transport.commands().stream()
+              .filter(command -> command.startsWith("kata-genmove_analyze "))
+              .count());
+    }
   }
 
   private static Leelaz readyReadBoardGmaEngine() throws Exception {
@@ -2244,7 +3887,10 @@ class LeelazReadBoardGmaTest {
 
   private static String parameterValueResponseFor(
       List<String> commands, String paramName, String value) {
-    for (String command : commands) {
+    // The latest snapshot command matches: a later hand re-snapshots the same parameter, and the
+    // stale command id is already settled by the response lifecycle.
+    for (int index = commands.size() - 1; index >= 0; index--) {
+      String command = commands.get(index);
       if (!command.contains("kata-get-param " + paramName)) {
         continue;
       }
@@ -2289,6 +3935,45 @@ class LeelazReadBoardGmaTest {
       }
     }
     throw new IllegalArgumentException("Missing command prefix " + commandPrefix);
+  }
+
+  /**
+   * Replaces the engine's reader stream binding with a fresh one, simulating an engine process
+   * replacement that produces a new engine incarnation for the same Leelaz instance.
+   */
+  private static Object replaceReaderStreamBinding(Leelaz engine) throws Exception {
+    Field bindingField = Leelaz.class.getDeclaredField("readerStreamBinding");
+    bindingField.setAccessible(true);
+    Object current = bindingField.get(engine);
+    Class<?> bindingClass = current.getClass();
+    Field stdout = bindingClass.getDeclaredField("stdout");
+    Field stderr = bindingClass.getDeclaredField("stderr");
+    Field process = bindingClass.getDeclaredField("process");
+    Field remoteTransport = bindingClass.getDeclaredField("remoteTransport");
+    Field javaSSH = bindingClass.getDeclaredField("javaSSH");
+    Field incarnation = bindingClass.getDeclaredField("incarnation");
+    for (Field field : List.of(stdout, stderr, process, remoteTransport, javaSSH, incarnation)) {
+      field.setAccessible(true);
+    }
+    java.lang.reflect.Constructor<?> constructor =
+        bindingClass.getDeclaredConstructor(
+            stdout.getType(),
+            stderr.getType(),
+            process.getType(),
+            remoteTransport.getType(),
+            javaSSH.getType(),
+            long.class);
+    constructor.setAccessible(true);
+    Object replacement =
+        constructor.newInstance(
+            stdout.get(current),
+            stderr.get(current),
+            process.get(current),
+            remoteTransport.get(current),
+            javaSSH.get(current),
+            incarnation.getLong(current) + 1L);
+    bindingField.set(engine, replacement);
+    return current;
   }
 
   private static boolean waitForRawCommand(
@@ -2347,6 +4032,57 @@ class LeelazReadBoardGmaTest {
     }
     return false;
   }
+
+  private static boolean waitForCommandCount(
+      ExactSnapshotRestoreProtocolFixture.Transport transport,
+      String commandPrefix,
+      int minimumCount,
+      long timeout,
+      TimeUnit unit)
+      throws InterruptedException {
+    long deadline = System.nanoTime() + unit.toNanos(timeout);
+    while (System.nanoTime() < deadline) {
+      long count =
+          transport.commands().stream()
+              .filter(command -> command.startsWith(commandPrefix))
+              .count();
+      if (count >= minimumCount) {
+        return true;
+      }
+      Thread.sleep(10L);
+    }
+    return false;
+  }
+
+  private static boolean waitForReleaseRequests(
+      AtomicInteger releaseRequests, int minimumCount, long timeout, TimeUnit unit)
+      throws InterruptedException {
+    long deadline = System.nanoTime() + unit.toNanos(timeout);
+    while (System.nanoTime() < deadline) {
+      if (releaseRequests.get() >= minimumCount) {
+        return true;
+      }
+      Thread.sleep(10L);
+    }
+    return false;
+  }
+  private static boolean waitForSessionState(
+      ReadBoardGmaSession session,
+      Class<? extends ReadBoardGmaSession.State> stateType,
+      long timeout,
+      TimeUnit unit)
+      throws InterruptedException {
+    long deadline = System.nanoTime() + unit.toNanos(timeout);
+    while (System.nanoTime() < deadline) {
+      if (stateType.isInstance(session.state())) {
+        return true;
+      }
+      Thread.sleep(10L);
+    }
+    return false;
+  }
+
+
 
   private static boolean waitForRawCommandPrefix(
       BlockingFirstFlushOutputStream output, String commandPrefix, long timeout, TimeUnit unit)
@@ -2453,29 +4189,40 @@ class LeelazReadBoardGmaTest {
     field.set(engine, new BufferedReader(new StringReader(input)));
   }
 
+  private static Field findField(Class<?> type, String fieldName) throws NoSuchFieldException {
+    for (Class<?> current = type; current != null; current = current.getSuperclass()) {
+      try {
+        return current.getDeclaredField(fieldName);
+      } catch (NoSuchFieldException ignored) {
+        // Continue through the fixture superclass hierarchy.
+      }
+    }
+    throw new NoSuchFieldException(fieldName);
+  }
+
   private static void setObjectField(Object target, String fieldName, Object value)
       throws Exception {
-    Field field = target.getClass().getDeclaredField(fieldName);
+    Field field = findField(target.getClass(), fieldName);
     field.setAccessible(true);
     field.set(target, value);
   }
 
   private static void setBooleanField(Object target, String fieldName, boolean value)
       throws Exception {
-    Field field = target.getClass().getDeclaredField(fieldName);
+    Field field = findField(target.getClass(), fieldName);
     field.setAccessible(true);
     field.setBoolean(target, value);
   }
 
   private static void setLongField(Object target, String fieldName, long value) throws Exception {
-    Field field = target.getClass().getDeclaredField(fieldName);
+    Field field = findField(target.getClass(), fieldName);
     field.setAccessible(true);
     field.setLong(target, value);
   }
 
   private static void setStringField(Object target, String fieldName, String value)
       throws Exception {
-    Field field = target.getClass().getDeclaredField(fieldName);
+    Field field = findField(target.getClass(), fieldName);
     field.setAccessible(true);
     field.set(target, value);
   }
@@ -2488,18 +4235,69 @@ class LeelazReadBoardGmaTest {
     Object param = field.get(engine);
     setStringField(param, "originalValue", originalValue);
     setBooleanField(param, "overridden", overridden);
+    // The acknowledged preparation only reuses a captured original when the snapshot was already
+    // requested by an earlier hand; a fresh hand always snapshots first.
+    setBooleanField(param, "snapshotRequested", true);
   }
 
   private static boolean getBooleanField(Object target, String fieldName) throws Exception {
-    Field field = target.getClass().getDeclaredField(fieldName);
+    Field field = findField(target.getClass(), fieldName);
     field.setAccessible(true);
     return field.getBoolean(target);
   }
 
+  private static Object getObjectField(Object target, String fieldName) throws Exception {
+    Field field = findField(target.getClass(), fieldName);
+    field.setAccessible(true);
+    return field.get(target);
+  }
+
+  /**
+   * The session currently published through the atomic {@code readBoardGmaSessionBinding}. The
+   * removed {@code readBoardGmaSession} field is replaced by the binding's private session slot;
+   * the binding is cleared by the session terminal publication, so this returns {@code null} after
+   * a terminal (or before admission).
+   */
+  private static ReadBoardGmaSession boundReadBoardGmaSession(ReadBoard readBoard)
+      throws Exception {
+    Object binding = getObjectField(readBoard, "readBoardGmaSessionBinding");
+    if (binding == null) {
+      return null;
+    }
+    return (ReadBoardGmaSession) getObjectField(binding, "session");
+  }
+
+  /**
+   * Routes the current authoritative board state into the active GMA session while its request is
+   * in flight: the latest-wins restore intent is re-captured from the given history node (the
+   * production entry used by sync/rebuild recovery), so a later isolation terminal restores
+   * through the advanced position and replays the captured MOVE tail.
+   */
+  private static void invokeUpdateReadBoardGmaRestoreIntent(
+      ReadBoard readBoard, BoardHistoryNode restoreNode) throws Exception {
+    java.lang.reflect.Method method =
+        ReadBoard.class.getDeclaredMethod(
+            "updateReadBoardGmaRestoreIntent", BoardHistoryNode.class);
+    method.setAccessible(true);
+    method.invoke(readBoard, restoreNode);
+  }
+
+  private static void setIntField(Object target, String fieldName, int value) throws Exception {
+    Field field = findField(target.getClass(), fieldName);
+    field.setAccessible(true);
+    field.setInt(target, value);
+  }
+
   private static int getIntField(Object target, String fieldName) throws Exception {
-    Field field = target.getClass().getDeclaredField(fieldName);
+    Field field = findField(target.getClass(), fieldName);
     field.setAccessible(true);
     return field.getInt(target);
+  }
+
+  private static long getLongField(Object target, String fieldName) throws Exception {
+    Field field = findField(target.getClass(), fieldName);
+    field.setAccessible(true);
+    return field.getLong(target);
   }
 
   private static String getReadBoardGmaParamOriginalValue(Leelaz engine, String paramFieldName)
@@ -2518,6 +4316,40 @@ class LeelazReadBoardGmaTest {
         Leelaz.class.getDeclaredMethod("processCommandResponseLine", String.class);
     method.setAccessible(true);
     method.invoke(engine, line);
+  }
+  private static void invokeProcessCommandResponseLine(
+      Leelaz engine, String line, Object responseBinding) throws Exception {
+    java.lang.reflect.Method method =
+        Leelaz.class.getDeclaredMethod(
+            "processCommandResponseLine", String.class, responseBinding.getClass());
+    method.setAccessible(true);
+    method.invoke(engine, line, responseBinding);
+  }
+
+  private static Object pendingResponseBindingFor(Leelaz engine, String responseLine)
+      throws Exception {
+    String trimmed = responseLine.trim();
+    int responseCommandId = 1;
+    while (responseCommandId < trimmed.length()
+        && Character.isDigit(trimmed.charAt(responseCommandId))) {
+      responseCommandId++;
+    }
+    responseCommandId = Integer.parseInt(trimmed.substring(1, responseCommandId));
+    Field handlersField = Leelaz.class.getDeclaredField("pendingResponseHandlers");
+    handlersField.setAccessible(true);
+    Iterable<?> handlers = (Iterable<?>) handlersField.get(engine);
+    Field idField = Class.forName("featurecat.lizzie.analysis.Leelaz$PendingResponseHandler")
+        .getDeclaredField("responseCommandId");
+    Field bindingField = Class.forName("featurecat.lizzie.analysis.Leelaz$PendingResponseHandler")
+        .getDeclaredField("responseBinding");
+    idField.setAccessible(true);
+    bindingField.setAccessible(true);
+    for (Object handler : handlers) {
+      if (idField.getInt(handler) == responseCommandId) {
+        return bindingField.get(handler);
+      }
+    }
+    throw new IllegalArgumentException("Missing pending response handler " + responseCommandId);
   }
 
   private static void invokeParseLine(Leelaz engine, String line) throws Exception {
@@ -2539,6 +4371,138 @@ class LeelazReadBoardGmaTest {
             "flushReadBoardGmaEngineRestoreIfReady", String.class);
     method.setAccessible(true);
     method.invoke(readBoard, "test");
+  }
+
+  private static void invokeRequestReadBoardGmaEngineRestore(
+      ReadBoard readBoard, String reason, BoardHistoryNode restoreNode) throws Exception {
+    java.lang.reflect.Method method =
+        ReadBoard.class.getDeclaredMethod(
+            "requestReadBoardGmaEngineRestore", String.class, BoardHistoryNode.class);
+    method.setAccessible(true);
+    method.invoke(readBoard, reason, restoreNode);
+  }
+
+  private static boolean invokeScheduleReadBoardGmaIfNeeded(ReadBoard readBoard, String reason)
+      throws Exception {
+    java.lang.reflect.Method method =
+        ReadBoard.class.getDeclaredMethod("scheduleReadBoardGmaIfNeeded", String.class);
+    method.setAccessible(true);
+    return (Boolean) method.invoke(readBoard, reason);
+  }
+
+  /**
+   * Arms the ReadBoard helper for one GMA hand and schedules it through the production entry,
+   * then completes the acknowledged preparation (snapshots, overrides, genmove response) so the
+   * session is admitted with the frozen authoritative restore intent. The caller then drives the
+   * terminal line and the exact/runtime restore protocol.
+   */
+  private static ReadBoardGmaSession beginReadBoardGmaSessionHand(
+      ReadBoard readBoard,
+      Leelaz engine,
+      RecordingOutputStream output,
+      Stone autoPlayColor,
+      Board board)
+      throws Exception {
+    return armReadBoardGmaSessionHand(readBoard, engine, output, autoPlayColor, board);
+  }
+
+  /**
+   * Arms the ReadBoard helper for one GMA hand and schedules it through the production entry,
+   * then feeds the matching snapshot and success responses in order so the fixture observes each
+   * next preparation command and finally the admitted session and genmove. Admission happens only
+   * after every required get/set ACK, so the helper must not expect the session (or the genmove)
+   * before the acknowledged preparation completes.
+   */
+  private static ReadBoardGmaSession armReadBoardGmaSessionHand(
+      ReadBoard readBoard,
+      Leelaz engine,
+      RecordingOutputStream output,
+      Stone autoPlayColor,
+      Board board)
+      throws Exception {
+    Lizzie.leelaz = engine;
+    Lizzie.frame.bothSync = true;
+    LizzieFrame.boardRenderer = new BoardRenderer(false);
+    Lizzie.board = board == null ? new SilentPlacementBoard() : board;
+    setBooleanField(readBoard, "readBoardGmaAutoPlayActive", true);
+    setObjectField(readBoard, "readBoardGmaAutoPlayColor", autoPlayColor);
+    setBooleanField(readBoard, "readBoardTurnTrusted", true);
+    setIntField(readBoard, "readBoardGmaTimeSeconds", 5);
+    setIntField(readBoard, "readBoardGmaMaxVisits", 1000);
+    setBooleanField(readBoard, "readBoardWebSocketPonderingNoticeAcknowledged", true);
+    Object identity = new Object();
+    setObjectField(readBoard, "trackingEligibilityIdentity", identity);
+    setLongField(readBoard, "readBoardGmaSessionGeneration", 1L);
+    Lizzie.frame.readBoard = readBoard;
+
+    boolean scheduled = invokeScheduleReadBoardGmaIfNeeded(readBoard, "test");
+    assertTrue(
+        scheduled && !output.commands().isEmpty(),
+        "the GMA hand must be scheduled and its preparation commands sent; scheduled="
+            + scheduled
+            + " commands="
+            + output.commands());
+    assertEquals(
+        "kata-get-param ponderingEnabled",
+        output.commands().get(0),
+        "the acknowledged preparation must start with the pondering snapshot");
+    assertNull(
+        boundReadBoardGmaSession(readBoard),
+        "the session must not be admitted before every matching get/set ACK");
+    assertFalse(
+        output.commands().stream().anyMatch(command -> command.startsWith("kata-genmove_analyze")),
+        "the genmove must not be sent before every required get/set ACK");
+
+    acknowledgeInitialGmaCommands(engine, output);
+
+    ReadBoardGmaSession session = boundReadBoardGmaSession(readBoard);
+    assertNotNull(
+        session,
+        "the GMA hand must admit a session after the acknowledged preparation; pending="
+            + getBooleanField(readBoard, "readBoardGmaPending")
+            + " failedGen="
+            + getLongField(readBoard, "readBoardGmaFailedGeneration")
+            + " commands="
+            + output.commands());
+    assertTrue(
+        output.commands().stream().anyMatch(command -> command.startsWith("kata-genmove_analyze ")),
+        "the admitted session must send the genmove only after the acknowledged preparation; commands="
+            + output.commands());
+    return session;
+  }
+
+  /**
+   * Acknowledges every restore command of the runtime participant of a standard hand: pondering,
+   * maxTime and maxVisits originals are all overridden and captured, and their restores are
+   * dispatched in that order. Waits until all three commands reached the transport so the ACKs
+   * cannot race the asynchronous dispatch.
+   */
+  private static void acknowledgeReadBoardGmaRuntimeRestore(
+      Leelaz engine, ExactSnapshotRestoreProtocolFixture.Transport transport) throws Exception {
+    assertTrue(
+        waitForFixtureCommandPrefix(
+            transport, "kata-set-param ponderingEnabled true", 1, TimeUnit.SECONDS));
+    assertTrue(
+        waitForFixtureCommandPrefix(transport, "kata-set-param maxTime 2", 1, TimeUnit.SECONDS));
+    assertTrue(
+        waitForFixtureCommandPrefix(transport, "kata-set-param maxVisits 800", 1, TimeUnit.SECONDS));
+    invokeProcessCommandResponseLine(
+        engine, successResponseFor(transport.rawCommands(), "ponderingEnabled"));
+    invokeProcessCommandResponseLine(engine, successResponseFor(transport.rawCommands(), "maxTime"));
+    invokeProcessCommandResponseLine(engine, successResponseFor(transport.rawCommands(), "maxVisits"));
+  }
+
+  private static ReadBoardGmaSession.Terminal awaitGmaSessionTerminal(
+      AtomicReference<ReadBoardGmaSession> sessionRef) throws InterruptedException {
+    long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
+    while (System.nanoTime() < deadline) {
+      ReadBoardGmaSession session = sessionRef.get();
+      if (session != null && session.state() instanceof ReadBoardGmaSession.Terminal terminal) {
+        return terminal;
+      }
+      Thread.sleep(10L);
+    }
+    throw new AssertionError("GMA session did not reach its terminal");
   }
 
   private static int pendingResponseHandlerCount(Leelaz engine) throws Exception {
@@ -2564,6 +4528,24 @@ class LeelazReadBoardGmaTest {
     config.analyzeUpdateIntervalCentisecSSH = 10;
     return config;
   }
+  private record EngineTerminationGmaFixture(
+      CountingReleaseLeelaz engine,
+      RecordingOutputStream output,
+      ReadBoard readBoard,
+      ReadBoardGmaSession session) {}
+
+  private static EngineTerminationGmaFixture openEngineTerminationGmaFixture()
+      throws Exception {
+    CountingReleaseLeelaz engine = new CountingReleaseLeelaz();
+    configureReadyReadBoardGmaEngine(engine);
+    RecordingOutputStream output = new RecordingOutputStream();
+    setOutputStream(engine, output);
+    ReadBoard readBoard = allocate(ReadBoard.class);
+    ReadBoardGmaSession session =
+        beginReadBoardGmaSessionHand(readBoard, engine, output, Stone.BLACK, null);
+    return new EngineTerminationGmaFixture(engine, output, readBoard, session);
+  }
+
 
   private static final class Harness implements AutoCloseable {
     private final Config previousConfig;
@@ -2627,6 +4609,17 @@ class LeelazReadBoardGmaTest {
       Lizzie.board = previousBoard;
       LizzieFrame.menu = previousMenu;
       EngineManager.isEngineGame = previousEngineGameFlag;
+    }
+  }
+
+  /**
+   * Board whose {@code clearAfterMove} is a no-op, so local placements (GMA final plays) do not
+   * touch UI statics that are absent on the allocated test frame.
+   */
+  private static final class SilentPlacementBoard extends Board {
+    @Override
+    public void clearAfterMove() {
+      // No UI side effects in these protocol tests.
     }
   }
 
@@ -2817,6 +4810,78 @@ class LeelazReadBoardGmaTest {
     @Override
     protected long readBoardGmaRestoreResponseTimeoutMillis() {
       return 25L;
+    }
+  }
+
+  private static final class CountingReleaseLeelaz extends Leelaz {
+    private final AtomicInteger releaseRequests = new AtomicInteger();
+
+    private CountingReleaseLeelaz() throws IOException {
+      super("");
+    }
+
+    @Override
+    void requestReadBoardGmaReservationRelease(
+        ReadBoardGmaSession.ReservationReleaseCapability capability) {
+      releaseRequests.incrementAndGet();
+      super.requestReadBoardGmaReservationRelease(capability);
+    }
+  }
+
+  /**
+   * Engine whose failure/quarantine handling is latch-blocked so the test can observe whether
+   * the legacy deferred-restore worker issues a second loadsgf while the session failure is
+   * still pending, before the quarantine clears the reservation. Owns its own release counter
+   * because {@link CountingReleaseLeelaz} is final.
+   */
+  private static class BlockedFailureQuarantineLeelaz extends Leelaz {
+    final AtomicInteger releaseRequests = new AtomicInteger();
+    final CountDownLatch failureArrived = new CountDownLatch(1);
+    final CountDownLatch releaseFailure = new CountDownLatch(1);
+
+    private BlockedFailureQuarantineLeelaz() throws IOException {
+      super("");
+    }
+
+    @Override
+    void quarantineSessionOwnedReadBoardGmaFailure(String detail) {
+      failureArrived.countDown();
+      awaitLatch(releaseFailure);
+      super.quarantineSessionOwnedReadBoardGmaFailure(detail);
+    }
+
+    @Override
+    void requestReadBoardGmaReservationRelease(
+        ReadBoardGmaSession.ReservationReleaseCapability capability) {
+      releaseRequests.incrementAndGet();
+      super.requestReadBoardGmaReservationRelease(capability);
+    }
+  }
+
+  /**
+   * Engine that additionally latch-blocks the first post-admission READ_BOARD_GMA admission
+   * capture, exposing the TOCTOU window between a routed restore request's capture and the
+   * session terminal failure. The block is armed only after session admission so the
+   * admission-time capture passes through; once the release latch is open every later capture
+   * passes through too.
+   */
+  private static final class BlockedCaptureRestoreLeelaz extends BlockedFailureQuarantineLeelaz {
+    private final CountDownLatch captureStarted = new CountDownLatch(1);
+    private final CountDownLatch releaseCapture = new CountDownLatch(1);
+    private volatile boolean blockRestoreCapture = false;
+
+    private BlockedCaptureRestoreLeelaz() throws IOException {
+      super();
+    }
+
+    @Override
+    Leelaz.ExactSnapshotRestoreAdmission captureExactSnapshotRestoreAdmission(
+        Leelaz.ExactSnapshotRestoreOwner owner, Object ownerIdentity, Leelaz mirror) {
+      if (owner == Leelaz.ExactSnapshotRestoreOwner.READ_BOARD_GMA && blockRestoreCapture) {
+        captureStarted.countDown();
+        awaitLatch(releaseCapture);
+      }
+      return super.captureExactSnapshotRestoreAdmission(owner, ownerIdentity, mirror);
     }
   }
 
