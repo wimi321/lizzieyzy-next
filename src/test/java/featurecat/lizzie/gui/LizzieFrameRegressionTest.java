@@ -319,10 +319,11 @@ class LizzieFrameRegressionTest {
   void quickAnalysisWarmupWaitsForRemotePrimaryEngine() {
     assertFalse(LizzieFrame.shouldDiscardQuickAnalysisWarmup(7L, 7L));
     assertTrue(LizzieFrame.shouldDiscardQuickAnalysisWarmup(7L, 8L));
-    assertTrue(LizzieFrame.quickAnalysisDependsOnPrimary(true, false, false));
-    assertTrue(LizzieFrame.quickAnalysisDependsOnPrimary(false, true, false));
-    assertTrue(LizzieFrame.quickAnalysisDependsOnPrimary(false, false, true));
-    assertFalse(LizzieFrame.quickAnalysisDependsOnPrimary(false, false, false));
+    assertTrue(LizzieFrame.quickAnalysisDependsOnPrimary(true, false, false, false));
+    assertTrue(LizzieFrame.quickAnalysisDependsOnPrimary(false, true, false, false));
+    assertTrue(LizzieFrame.quickAnalysisDependsOnPrimary(false, false, true, false));
+    assertTrue(LizzieFrame.quickAnalysisDependsOnPrimary(false, false, false, true));
+    assertFalse(LizzieFrame.quickAnalysisDependsOnPrimary(false, false, false, false));
     assertEquals(
         LizzieFrame.QuickAnalysisWarmupAction.START,
         LizzieFrame.decideQuickAnalysisWarmup(true, false, false, false));
@@ -342,11 +343,88 @@ class LizzieFrameRegressionTest {
 
   @Test
   void automaticQuickAnalysisDoesNotReuseTheWrongModelBackend() {
-    assertTrue(LizzieFrame.shouldReplaceAutomaticQuickAnalysisEngine(true, false, false));
-    assertFalse(LizzieFrame.shouldReplaceAutomaticQuickAnalysisEngine(true, true, false));
-    assertFalse(LizzieFrame.shouldReplaceAutomaticQuickAnalysisEngine(false, false, false));
-    assertTrue(LizzieFrame.shouldReplaceAutomaticQuickAnalysisEngine(false, true, false));
-    assertTrue(LizzieFrame.shouldReplaceAutomaticQuickAnalysisEngine(false, true, true));
+    assertTrue(
+        LizzieFrame.shouldReplaceAutomaticQuickAnalysisEngine(
+            true, false, false, false, true, false));
+    assertFalse(
+        LizzieFrame.shouldReplaceAutomaticQuickAnalysisEngine(
+            true, true, false, false, true, false));
+    assertFalse(
+        LizzieFrame.shouldReplaceAutomaticQuickAnalysisEngine(
+            false, false, false, false, true, false));
+    assertTrue(
+        LizzieFrame.shouldReplaceAutomaticQuickAnalysisEngine(
+            false, true, false, false, true, false));
+    assertTrue(
+        LizzieFrame.shouldReplaceAutomaticQuickAnalysisEngine(
+            false, true, false, false, true, true));
+    assertTrue(
+        LizzieFrame.shouldReplaceAutomaticQuickAnalysisEngine(
+            false, false, true, false, true, false));
+    assertTrue(
+        LizzieFrame.shouldReplaceAutomaticQuickAnalysisEngine(
+            false, false, false, true, true, false));
+    assertTrue(
+        LizzieFrame.shouldReplaceAutomaticQuickAnalysisEngine(
+            false, false, true, true, false, false));
+  }
+
+  @Test
+  void replacingBusyQuickAnalysisWaitsForForegroundRestoreBeforeContinuing() throws Exception {
+    TestEnvironment env = TestEnvironment.open();
+    try {
+      Lizzie.config = configWithAutoQuickAnalyze();
+      LizzieFrame frame = allocate(LizzieFrame.class);
+      ResourceTrackingAnalysisEngine engine = allocate(ResourceTrackingAnalysisEngine.class);
+      engine.analysisInProgress = true;
+      frame.analysisEngine = engine;
+      AtomicInteger continuations = new AtomicInteger();
+
+      assertTrue(
+          invokeStopBusyQuickAnalysisEngineBeforeLoadedKifuAnalysis(
+              frame, continuations::incrementAndGet));
+
+      assertNull(frame.analysisEngine);
+      assertEquals(1, engine.normalQuitCount);
+      assertEquals(0, continuations.get());
+
+      engine.completeExit();
+      assertEquals(1, continuations.get());
+    } finally {
+      env.close();
+    }
+  }
+
+  @Test
+  void openingKifuWaitsForSharedAutomaticQuickAnalysisRestore() throws Exception {
+    TestEnvironment env = TestEnvironment.open();
+    try {
+      Lizzie.config = configWithAutoQuickAnalyze();
+      Lizzie.board = boardWith(historyWithUnanalyzedMove());
+      LizzieFrame frame = allocate(LizzieFrame.class);
+      ResourceTrackingAnalysisEngine engine = allocate(ResourceTrackingAnalysisEngine.class);
+      engine.shared = true;
+      engine.automatic = true;
+      engine.requestLifecycleInProgress = true;
+      frame.analysisEngine = engine;
+      setField(frame, "loadedGameQuickAnalysisActive", true);
+      AtomicInteger continuations = new AtomicInteger();
+
+      assertTrue(invokeDeferKifuOpen(frame, continuations::incrementAndGet));
+
+      assertNull(frame.analysisEngine);
+      assertFalse((boolean) getField(frame, "loadedGameQuickAnalysisActive"));
+      assertEquals(1, engine.normalQuitCount);
+      assertEquals(0, continuations.get());
+      assertTrue(invokeDeferKifuOpen(frame, continuations::incrementAndGet));
+
+      engine.completeExit();
+      drainEdt();
+      assertEquals(1, continuations.get());
+      assertFalse((boolean) getField(frame, "kifuOpenWaitingForQuickAnalysisRestore"));
+    } finally {
+      env.close();
+    }
   }
 
   @Test
@@ -2063,6 +2141,38 @@ class LizzieFrameRegressionTest {
     SwingUtilities.invokeAndWait(() -> invokeReflective(method, frame));
   }
 
+  private static boolean invokeStopBusyQuickAnalysisEngineBeforeLoadedKifuAnalysis(
+      LizzieFrame frame, Runnable continuation) throws Exception {
+    Method method =
+        LizzieFrame.class.getDeclaredMethod(
+            "stopBusyQuickAnalysisEngineBeforeLoadedKifuAnalysis", Runnable.class);
+    method.setAccessible(true);
+    AtomicBoolean stopped = new AtomicBoolean(false);
+    SwingUtilities.invokeAndWait(
+        () -> stopped.set((boolean) invokeReflectiveResult(method, frame, continuation)));
+    return stopped.get();
+  }
+
+  private static boolean invokeDeferKifuOpen(LizzieFrame frame, Runnable continuation)
+      throws Exception {
+    Method method =
+        LizzieFrame.class.getDeclaredMethod(
+            "deferKifuOpenUntilAutomaticQuickAnalysisRestored", Runnable.class);
+    method.setAccessible(true);
+    AtomicBoolean deferred = new AtomicBoolean(false);
+    SwingUtilities.invokeAndWait(
+        () -> deferred.set((boolean) invokeReflectiveResult(method, frame, continuation)));
+    return deferred.get();
+  }
+
+  private static Object invokeReflectiveResult(Method method, Object target, Object... arguments) {
+    try {
+      return method.invoke(target, arguments);
+    } catch (ReflectiveOperationException e) {
+      throw new AssertionError(e);
+    }
+  }
+
   private static void invokeReflective(Method method, Object target) {
     try {
       method.invoke(target);
@@ -2542,7 +2652,9 @@ class LizzieFrameRegressionTest {
     private boolean analysisInProgress;
     private boolean automatic;
     private boolean reusable;
+    private boolean requestLifecycleInProgress;
     private int normalQuitCount;
+    private Runnable exitContinuation;
 
     @SuppressWarnings("unused")
     private ResourceTrackingAnalysisEngine() throws java.io.IOException {
@@ -2580,6 +2692,11 @@ class LizzieFrameRegressionTest {
     }
 
     @Override
+    public synchronized boolean hasRequestLifecycleInProgress() {
+      return requestLifecycleInProgress || analysisInProgress;
+    }
+
+    @Override
     public boolean isAutomaticBackgroundTask() {
       return automatic;
     }
@@ -2590,6 +2707,20 @@ class LizzieFrameRegressionTest {
     @Override
     public void normalQuit() {
       normalQuitCount++;
+    }
+
+    @Override
+    public void normalQuit(Runnable afterRestore) {
+      normalQuitCount++;
+      exitContinuation = afterRestore;
+    }
+
+    private void completeExit() {
+      Runnable continuation = exitContinuation;
+      exitContinuation = null;
+      if (continuation != null) {
+        continuation.run();
+      }
     }
   }
 

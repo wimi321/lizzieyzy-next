@@ -156,6 +156,8 @@ public class AnalysisEngine {
   private long remoteGtpStopAckGeneration;
   private long remoteGtpLastCompletionActivityMillis;
   private Leelaz sharedForegroundEngine;
+  private boolean automaticTensorRtForegroundReuse;
+  private String automaticTensorRtForegroundCommand;
   private boolean sharedForegroundLeaseStarting;
   private boolean sharedForegroundLeaseActive;
   private Leelaz.ForegroundAnalysisLease sharedForegroundLease;
@@ -215,15 +217,25 @@ public class AnalysisEngine {
     this.purpose =
         purpose == null ? AnalysisResourceCoordinator.Purpose.OTHER : purpose;
     this.persistentPreload = persistentPreload;
+    automaticTensorRtForegroundReuse =
+        shouldAutomaticallyReuseTensorRtForeground(
+            this.purpose,
+            KataGoRuntimeHelper.isBundledTensorRtCommand(
+                Lizzie.leelaz == null ? null : Lizzie.leelaz.engineCommand()));
     this.dedicatedLightweightQuickModel =
         this.purpose == AnalysisResourceCoordinator.Purpose.AUTO_QUICK_ANALYSIS
+            && !automaticTensorRtForegroundReuse
             && commandOverride != null
             && !commandOverride.trim().isEmpty();
     this.dedicatedLightweightQuickModelCommand =
         this.dedicatedLightweightQuickModel ? commandOverride.trim() : "";
-    if (Lizzie.config.analysisReuseCurrentEngine) {
+    if (Lizzie.config.analysisReuseCurrentEngine || automaticTensorRtForegroundReuse) {
       useRemoteCompute = true;
       sharedForegroundEngine = Lizzie.leelaz;
+      automaticTensorRtForegroundCommand =
+          automaticTensorRtForegroundReuse && sharedForegroundEngine != null
+              ? sharedForegroundEngine.engineCommand()
+              : null;
       foregroundLeaseAvailability =
           sharedForegroundEngine == null
               ? Leelaz.ExclusiveGtpLeaseAvailability.NO_FOREGROUND_ENGINE
@@ -265,6 +277,12 @@ public class AnalysisEngine {
     return commandOverride == null || commandOverride.trim().isEmpty()
         ? Lizzie.config.analysisEngineCommand
         : commandOverride;
+  }
+
+  static boolean shouldAutomaticallyReuseTensorRtForeground(
+      AnalysisResourceCoordinator.Purpose purpose, boolean bundledTensorRtPrimary) {
+    return purpose == AnalysisResourceCoordinator.Purpose.AUTO_QUICK_ANALYSIS
+        && bundledTensorRtPrimary;
   }
 
   static boolean shouldShowGeneratedConfigNotice(boolean isPreLoad, boolean generatedConfig) {
@@ -1056,16 +1074,24 @@ public class AnalysisEngine {
   }
 
   public void normalQuit() {
-    // TODO Auto-generated method stub
+    normalQuit(null);
+  }
+
+  /** Stops this worker and runs {@code afterRestore} once any shared foreground lease is restored. */
+  public void normalQuit(Runnable afterRestore) {
     requestShutdown();
     isNormalEnd = true;
     AnalysisResourceCoordinator.processStopped(this, purpose, process);
     shutdownRemoteGtpSetupAckTimeoutExecutor();
     if (sharedForegroundEngine != null) {
       requestDispatchFailed = true;
-      finishFailedRequestDispatch(false);
+      finishFailedRequestDispatch(false, afterRestore);
     } else {
-      releaseSharedForegroundLease();
+      boolean restorePending =
+          releaseSharedForegroundLease(afterRestore, afterRestore);
+      if (!restorePending && afterRestore != null) {
+        afterRestore.run();
+      }
     }
     if (this.useJavaSSH) {
       if (this.javaSSH != null) this.javaSSH.close();
@@ -1568,6 +1594,11 @@ public class AnalysisEngine {
   }
 
   private void finishFailedRequestDispatch(boolean showProgressDialog) {
+    finishFailedRequestDispatch(showProgressDialog, null);
+  }
+
+  private void finishFailedRequestDispatch(
+      boolean showProgressDialog, Runnable afterForegroundRestore) {
     Runnable failedRequestCallback = failureCallback;
     analyzeMap.clear();
     remoteGtpQueue().clear();
@@ -1593,7 +1624,8 @@ public class AnalysisEngine {
         failedRequestCallback == null
             ? null
             : () -> javax.swing.SwingUtilities.invokeLater(failedRequestCallback);
-    boolean restorePending = releaseSharedForegroundLease(deliverFailure, deliverFailure);
+    Runnable finishRestore = chainCallbacks(deliverFailure, afterForegroundRestore);
+    boolean restorePending = releaseSharedForegroundLease(finishRestore, finishRestore);
     resumeForegroundAnalysisIfRequested();
     if (Lizzie.frame.isBatchAnalysisMode) Lizzie.frame.isBatchAnalysisMode = false;
     if (waitFrame != null || showProgressDialog) {
@@ -1615,9 +1647,25 @@ public class AnalysisEngine {
             }
           });
     }
-    if (!restorePending && deliverFailure != null) {
-      deliverFailure.run();
+    if (!restorePending && finishRestore != null) {
+      finishRestore.run();
     }
+  }
+
+  private static Runnable chainCallbacks(Runnable first, Runnable second) {
+    if (first == null) {
+      return second;
+    }
+    if (second == null) {
+      return first;
+    }
+    return () -> {
+      try {
+        first.run();
+      } finally {
+        second.run();
+      }
+    };
   }
 
   public boolean sendRequest(BoardHistoryNode analyzeNode) {
@@ -2417,7 +2465,13 @@ public class AnalysisEngine {
           .isPresent();
     }
     if (sharedForegroundEngine != null) {
-      return Lizzie.config.analysisReuseCurrentEngine && sharedForegroundEngine == Lizzie.leelaz;
+      boolean automaticReuseStillMatches =
+          automaticTensorRtForegroundReuse
+              && Lizzie.leelaz != null
+              && automaticTensorRtForegroundCommand != null
+              && automaticTensorRtForegroundCommand.equals(Lizzie.leelaz.engineCommand());
+      return (Lizzie.config.analysisReuseCurrentEngine || automaticReuseStillMatches)
+          && sharedForegroundEngine == Lizzie.leelaz;
     }
     if (Lizzie.config.analysisReuseCurrentEngine) {
       return false;
@@ -2429,6 +2483,10 @@ public class AnalysisEngine {
 
   public boolean usesSharedForegroundEngine() {
     return sharedForegroundEngine != null;
+  }
+
+  public boolean usesAutomaticTensorRtForegroundReuse() {
+    return automaticTensorRtForegroundReuse;
   }
 
   public AnalysisResourceCoordinator.Purpose purpose() {

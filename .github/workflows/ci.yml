@@ -91,6 +91,7 @@ jobs:
         run: |
           python3 -m py_compile \
             scripts/audit_katago_binary_version.py \
+            scripts/audit_katago_package_metadata.py \
             scripts/generate_release_notes.py \
             scripts/macos_bundle_version.py \
             scripts/macos_katago_bundle.py \
@@ -101,6 +102,7 @@ jobs:
             scripts/summarize_jfr.py \
             scripts/test_generate_release_notes.py \
             scripts/test_audit_katago_binary_version.py \
+            scripts/test_audit_katago_package_metadata.py \
             scripts/test_macos_drag_dmg_script.py \
             scripts/test_macos_bundle_version.py \
             scripts/test_macos_katago_bundle.py \
@@ -109,6 +111,7 @@ jobs:
             scripts/test_windows_launcher_packaging.py
           python3 scripts/test_generate_release_notes.py
           python3 scripts/test_audit_katago_binary_version.py
+          python3 scripts/test_audit_katago_package_metadata.py
           python3 scripts/test_macos_drag_dmg_script.py
           python3 scripts/test_macos_bundle_version.py
           python3 scripts/test_macos_katago_bundle.py

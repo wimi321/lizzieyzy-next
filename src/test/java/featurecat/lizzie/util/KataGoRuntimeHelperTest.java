@@ -201,6 +201,42 @@ public class KataGoRuntimeHelperTest {
   }
 
   @Test
+  void bundledTensorRtDetectionAcceptsPackageDirectoryAndBackendMarker() throws Exception {
+    withOsName(
+        WINDOWS_OS_NAME,
+        () -> {
+          Path tempRoot = Files.createTempDirectory("katago-helper-tensorrt-detection");
+          Path namedEngine =
+              touch(
+                  tempRoot
+                      .resolve("engines")
+                      .resolve("katago")
+                      .resolve("windows-x64-nvidia-tensorrt")
+                      .resolve("katago.exe"));
+          Path markedDir =
+              Files.createDirectories(
+                  tempRoot.resolve("app").resolve("engines").resolve("katago").resolve("windows-x64"));
+          Path markedEngine = touch(markedDir.resolve("katago.exe"));
+          Files.writeString(
+              markedDir.resolve("lizzieyzy-next-engine-backend.txt"), "nvidia-tensorrt\n");
+
+          assertTrue(KataGoRuntimeHelper.isBundledTensorRtPath(namedEngine));
+          assertTrue(KataGoRuntimeHelper.isBundledTensorRtPath(markedEngine));
+          assertTrue(
+              KataGoRuntimeHelper.isBundledTensorRtCommand(
+                  "\""
+                      + markedEngine
+                      + "\" gtp -model \""
+                      + tempRoot.resolve("weight.bin.gz")
+                      + "\""));
+
+          Files.writeString(
+              markedDir.resolve("lizzieyzy-next-engine-backend.txt"), "nvidia50-cuda\n");
+          assertFalse(KataGoRuntimeHelper.isBundledTensorRtPath(markedEngine));
+        });
+  }
+
+  @Test
   void bundledNvidiaEnginePrependsRuntimePath() throws Exception {
     withOsName(
         WINDOWS_OS_NAME,

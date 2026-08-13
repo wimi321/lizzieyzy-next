@@ -101,8 +101,14 @@ public class Lizzie {
   private static Image applicationIcon;
   private static boolean firstLaunchSession;
   private static volatile boolean startupProfileSaveFailed;
-  public static Float sysScaleFactor =
-      OS.isWindows() ? (java.awt.Toolkit.getDefaultToolkit().getScreenResolution() / 96.0f) : 1.0f;
+  public static Float sysScaleFactor = initialSystemScaleFactor();
+
+  static float initialSystemScaleFactor() {
+    if (!OS.isWindows() || GraphicsEnvironment.isHeadless()) {
+      return 1.0f;
+    }
+    return java.awt.Toolkit.getDefaultToolkit().getScreenResolution() / 96.0f;
+  }
 
   /** Launches the game window, and runs the game. */
   public static void main(String[] args) throws IOException {

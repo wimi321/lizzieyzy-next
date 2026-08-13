@@ -1556,6 +1556,9 @@ public class KataGoAutoSetupHelperTest {
           autoSetupEngine.initialCommand = "kata-set-rules chinese";
           engines.add(autoSetupEngine);
           Utils.saveEngineSettings(engines);
+          Lizzie.config.uiConfig.put("autoload-default", false);
+          Lizzie.config.uiConfig.put("autoload-empty", false);
+          Lizzie.config.uiConfig.put("autoload-last", false);
 
           KataGoAutoSetupHelper.applyAutoSetup(KataGoAutoSetupHelper.inspectLocalSetup(), false);
 
@@ -1568,6 +1571,113 @@ public class KataGoAutoSetupHelperTest {
           assertEquals("kata-set-rules chinese", refreshed.initialCommand);
           assertFalse(refreshed.isDefault);
         });
+  }
+
+  @Test
+  void implicitStartupModePersistsAUsableDefaultDuringTheFirstAutoSetup() throws Exception {
+    Path tempRoot = Files.createTempDirectory("katago-first-auto-setup-default");
+    Path engine =
+        touch(
+            tempRoot
+                .resolve("engines")
+                .resolve("katago")
+                .resolve(detectTestPlatformDir())
+                .resolve(testKataGoBinaryName()));
+    Path configDir =
+        Files.createDirectories(tempRoot.resolve("engines").resolve("katago").resolve("configs"));
+    Path gtpConfig = touch(configDir.resolve("gtp.cfg"));
+    touch(configDir.resolve("analysis.cfg"));
+    touch(configDir.resolve("estimate.cfg"));
+    Path weight = touch(tempRoot.resolve("weights").resolve("default.bin.gz"));
+
+    withUserDirAndConfig(
+        tempRoot,
+        () -> {
+          EngineData existing =
+              engineData(
+                  KataGoAutoSetupHelper.getAutoSetupEngineName(),
+                  engine,
+                  gtpConfig,
+                  weight,
+                  false);
+          Utils.saveEngineSettings(new ArrayList<>(List.of(existing)));
+          Lizzie.config.uiConfig.remove("autoload-default");
+          Lizzie.config.uiConfig.remove("autoload-empty");
+          Lizzie.config.uiConfig.remove("autoload-last");
+          Lizzie.config.uiConfig.put("default-engine", -1);
+          Lizzie.config.config
+              .put("ui", Lizzie.config.uiConfig)
+              .put("leelaz", Lizzie.config.leelazConfig);
+
+          KataGoAutoSetupHelper.SetupResult result =
+              KataGoAutoSetupHelper.applyAutoSetup(
+                  KataGoAutoSetupHelper.inspectLocalSetup(), false);
+
+          ArrayList<EngineData> saved = Utils.getEngineData();
+          assertEquals(0, result.engineIndex);
+          assertEquals(0, Lizzie.config.uiConfig.optInt("default-engine", -1));
+          assertTrue(Lizzie.config.uiConfig.optBoolean("autoload-default"));
+          assertFalse(Lizzie.config.uiConfig.optBoolean("autoload-empty"));
+          assertFalse(Lizzie.config.uiConfig.optBoolean("autoload-last"));
+          assertTrue(saved.get(0).isDefault);
+
+          org.json.JSONObject persisted =
+              new org.json.JSONObject(Files.readString(Path.of(Lizzie.config.getConfigFilePath())));
+          assertEquals(0, persisted.getJSONObject("ui").getInt("default-engine"));
+          assertTrue(persisted.getJSONObject("ui").getBoolean("autoload-default"));
+          assertTrue(
+              persisted
+                  .getJSONObject("leelaz")
+                  .getJSONArray("engine-settings-list")
+                  .getJSONObject(0)
+                  .getBoolean("isDefault"));
+        });
+  }
+
+  @Test
+  void explicitStartupModesRemainUntouchedByBackgroundAutoSetupRepair() throws Exception {
+    for (boolean[] mode :
+        List.of(
+            new boolean[] {true, false, false},
+            new boolean[] {false, true, false},
+            new boolean[] {false, false, false},
+            new boolean[] {false, false, true})) {
+      Path tempRoot = Files.createTempDirectory("katago-explicit-startup-mode");
+      Path engine =
+          touch(
+              tempRoot
+                  .resolve("engines")
+                  .resolve("katago")
+                  .resolve(detectTestPlatformDir())
+                  .resolve(testKataGoBinaryName()));
+      Path configDir =
+          Files.createDirectories(
+              tempRoot.resolve("engines").resolve("katago").resolve("configs"));
+      Path gtpConfig = touch(configDir.resolve("gtp.cfg"));
+      touch(configDir.resolve("analysis.cfg"));
+      touch(configDir.resolve("estimate.cfg"));
+      Path weight = touch(tempRoot.resolve("weights").resolve("default.bin.gz"));
+
+      withUserDirAndConfig(
+          tempRoot,
+          () -> {
+            EngineData existing =
+                engineData("Custom default", engine, gtpConfig, weight, true);
+            Lizzie.config.uiConfig.put("autoload-default", mode[0]);
+            Lizzie.config.uiConfig.put("autoload-empty", mode[1]);
+            Lizzie.config.uiConfig.put("autoload-last", mode[2]);
+            Lizzie.config.uiConfig.put("default-engine", 0);
+            Utils.saveEngineSettings(new ArrayList<>(List.of(existing)));
+
+            KataGoAutoSetupHelper.applyAutoSetup(
+                KataGoAutoSetupHelper.inspectLocalSetup(), false);
+
+            assertEquals(mode[0], Lizzie.config.uiConfig.optBoolean("autoload-default"));
+            assertEquals(mode[1], Lizzie.config.uiConfig.optBoolean("autoload-empty"));
+            assertEquals(mode[2], Lizzie.config.uiConfig.optBoolean("autoload-last"));
+            assertEquals(0, Lizzie.config.uiConfig.optInt("default-engine"));
+          });
+    }
   }
 
   @Test

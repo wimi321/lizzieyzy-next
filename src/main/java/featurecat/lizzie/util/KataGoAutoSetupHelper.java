@@ -1787,6 +1787,13 @@ public final class KataGoAutoSetupHelper {
             + quoteCommandPath(snapshot.workingDir, estimateConfig);
 
     ArrayList<EngineData> engines = Utils.getEngineData();
+    // Treat an entirely unspecified startup mode as part of this setup transaction. The engine
+    // flags and default index must be valid before saveEngineSettings normalizes and persists them.
+    boolean firstRunSetup =
+        !Lizzie.config.uiConfig.has("autoload-default")
+            && !Lizzie.config.uiConfig.has("autoload-empty")
+            && !Lizzie.config.uiConfig.has("autoload-last");
+    boolean selectAsDefault = makeDefault || firstRunSetup;
     String resolvedEngineName =
         Utils.isBlank(engineName) ? AUTO_SETUP_ENGINE_NAME : engineName.trim();
     int engineIndex =
@@ -1806,7 +1813,7 @@ public final class KataGoAutoSetupHelper {
     for (int i = 0; i < engines.size(); i++) {
       EngineData existing = engines.get(i);
       existing.index = i;
-      if (makeDefault) {
+      if (selectAsDefault) {
         existing.isDefault = false;
       }
     }
@@ -1818,7 +1825,7 @@ public final class KataGoAutoSetupHelper {
     engineData.width = normalizeBoardSize(createdEngine ? 19 : engineData.width);
     engineData.height = normalizeBoardSize(createdEngine ? 19 : engineData.height);
     engineData.komi = normalizeKomi(createdEngine ? 7.5F : engineData.komi);
-    engineData.isDefault = makeDefault || engineData.isDefault;
+    engineData.isDefault = selectAsDefault || engineData.isDefault;
     engineData.useJavaSSH = false;
     engineData.ip = "";
     engineData.port = "";
@@ -1828,21 +1835,18 @@ public final class KataGoAutoSetupHelper {
     engineData.keyGenPath = "";
     engineData.initialCommand = createdEngine ? "" : safeString(engineData.initialCommand);
 
-    Utils.saveEngineSettings(engines);
-    rememberPreferredWeight(snapshot.activeWeightPath);
     // Only force autoload=default on a truly fresh install. Once the user has picked
     // "start with no engine" or "pick manually", respect that choice across setup runs.
-    boolean firstRunSetup =
-        !Lizzie.config.uiConfig.has("autoload-default")
-            && !Lizzie.config.uiConfig.has("autoload-empty")
-            && !Lizzie.config.uiConfig.has("autoload-last");
     if (firstRunSetup) {
       Lizzie.config.uiConfig.put("autoload-default", true);
       Lizzie.config.uiConfig.put("autoload-empty", false);
+      Lizzie.config.uiConfig.put("autoload-last", false);
     }
-    if (makeDefault) {
+    if (selectAsDefault) {
       Lizzie.config.uiConfig.put("default-engine", engineIndex);
     }
+    Utils.saveEngineSettings(engines);
+    rememberPreferredWeight(snapshot.activeWeightPath);
     if (!Lizzie.config.analysisEngineCommandCustomized) {
       Lizzie.config.analysisEngineCommand = analysisCommand;
       Lizzie.config.uiConfig.put("analysis-engine-command", analysisCommand);

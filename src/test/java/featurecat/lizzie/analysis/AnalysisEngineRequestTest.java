@@ -126,6 +126,82 @@ class AnalysisEngineRequestTest {
   }
 
   @Test
+  void onlyAutomaticQuickAnalysisOptsIntoTensorRtForegroundReuse() {
+    assertTrue(
+        AnalysisEngine.shouldAutomaticallyReuseTensorRtForeground(
+            AnalysisResourceCoordinator.Purpose.AUTO_QUICK_ANALYSIS, true));
+    assertFalse(
+        AnalysisEngine.shouldAutomaticallyReuseTensorRtForeground(
+            AnalysisResourceCoordinator.Purpose.USER_QUICK_ANALYSIS, true));
+    assertFalse(
+        AnalysisEngine.shouldAutomaticallyReuseTensorRtForeground(
+            AnalysisResourceCoordinator.Purpose.WHOLE_GAME_ANALYSIS, true));
+    assertFalse(
+        AnalysisEngine.shouldAutomaticallyReuseTensorRtForeground(
+            AnalysisResourceCoordinator.Purpose.AUTO_QUICK_ANALYSIS, false));
+  }
+
+  @Test
+  void automaticTensorRtForegroundReuseInvalidatesWhenThePrimaryEngineChanges() throws Exception {
+    try (TestEnvironment env = TestEnvironment.open()) {
+      Leelaz firstForeground = reusableForegroundEngine(true);
+      Leelaz secondForeground = reusableForegroundEngine(true);
+      TrackingAnalysisEngine engine = TrackingAnalysisEngine.create();
+      Lizzie.config.analysisReuseCurrentEngine = false;
+      Lizzie.leelaz = firstForeground;
+      setField(
+          AnalysisEngine.class,
+          engine,
+          "purpose",
+          AnalysisResourceCoordinator.Purpose.AUTO_QUICK_ANALYSIS);
+      setField(AnalysisEngine.class, engine, "sharedForegroundEngine", firstForeground);
+      setField(AnalysisEngine.class, engine, "automaticTensorRtForegroundReuse", true);
+      setField(
+          AnalysisEngine.class,
+          engine,
+          "automaticTensorRtForegroundCommand",
+          firstForeground.engineCommand());
+
+      assertTrue(engine.matchesCurrentAnalysisBackend());
+      assertFalse(Lizzie.config.analysisReuseCurrentEngine);
+
+      Lizzie.leelaz = secondForeground;
+
+      assertFalse(engine.matchesCurrentAnalysisBackend());
+    }
+  }
+
+  @Test
+  void automaticTensorRtForegroundReuseInvalidatesWhenTheSameEngineObjectChangesCommand()
+      throws Exception {
+    try (TestEnvironment env = TestEnvironment.open()) {
+      Leelaz foreground = reusableForegroundEngine(true);
+      foreground.setEngineCommand("bundled-tensorrt-command");
+      TrackingAnalysisEngine engine = TrackingAnalysisEngine.create();
+      Lizzie.config.analysisReuseCurrentEngine = false;
+      Lizzie.leelaz = foreground;
+      setField(
+          AnalysisEngine.class,
+          engine,
+          "purpose",
+          AnalysisResourceCoordinator.Purpose.AUTO_QUICK_ANALYSIS);
+      setField(AnalysisEngine.class, engine, "sharedForegroundEngine", foreground);
+      setField(AnalysisEngine.class, engine, "automaticTensorRtForegroundReuse", true);
+      setField(
+          AnalysisEngine.class,
+          engine,
+          "automaticTensorRtForegroundCommand",
+          foreground.engineCommand());
+
+      assertTrue(engine.matchesCurrentAnalysisBackend());
+
+      foreground.setEngineCommand("different-engine-command");
+
+      assertFalse(engine.matchesCurrentAnalysisBackend());
+    }
+  }
+
+  @Test
   void reuseModeRejectsNonKatagoWithoutFallingBackToDedicatedProcess() throws Exception {
     try (TestEnvironment env = TestEnvironment.open()) {
       Leelaz foreground = reusableForegroundEngine(false);
@@ -1134,6 +1210,40 @@ class AnalysisEngineRequestTest {
       javax.swing.SwingUtilities.invokeAndWait(() -> {});
 
       assertEquals(1, failures.get());
+    }
+  }
+
+  @Test
+  void normalQuitContinuationWaitsForSharedForegroundRestore() throws Exception {
+    try (TestEnvironment env = TestEnvironment.open()) {
+      TrackingAnalysisEngine engine = TrackingAnalysisEngine.create();
+      DeferredRestoreLeelaz foreground = new DeferredRestoreLeelaz();
+      AtomicInteger continuations = new AtomicInteger();
+      setField(AnalysisEngine.class, engine, "sharedForegroundEngine", foreground);
+      setField(AnalysisEngine.class, engine, "sharedForegroundLease", foregroundLease(foreground));
+
+      engine.normalQuit(continuations::incrementAndGet);
+
+      assertEquals(0, continuations.get());
+      foreground.completeRestore();
+      assertEquals(1, continuations.get());
+    }
+  }
+
+  @Test
+  void normalQuitContinuationAlsoRunsOnceWhenSharedRestoreFails() throws Exception {
+    try (TestEnvironment env = TestEnvironment.open()) {
+      TrackingAnalysisEngine engine = TrackingAnalysisEngine.create();
+      DeferredRestoreLeelaz foreground = new DeferredRestoreLeelaz();
+      AtomicInteger continuations = new AtomicInteger();
+      setField(AnalysisEngine.class, engine, "sharedForegroundEngine", foreground);
+      setField(AnalysisEngine.class, engine, "sharedForegroundLease", foregroundLease(foreground));
+
+      engine.normalQuit(continuations::incrementAndGet);
+
+      assertEquals(0, continuations.get());
+      foreground.failRestore();
+      assertEquals(1, continuations.get());
     }
   }
 

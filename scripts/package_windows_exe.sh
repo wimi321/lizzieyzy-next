@@ -477,7 +477,65 @@ copy_bundle_engine_assets() {
     printf '%s\n' "$engine_backend" \
       >"$input_dir/engines/katago/$engine_target_dir/$ENGINE_BACKEND_MARKER_NAME"
   fi
+  if [[ "$engine_backend" == *tensorrt* ]]; then
+    write_tensorrt_version_file "$input_dir" "$engine_target_dir"
+  fi
   cp "$ROOT_DIR/weights/default.bin.gz" "$input_dir/weights/default.bin.gz"
+}
+
+write_tensorrt_version_file() {
+  local input_dir="$1"
+  local engine_target_dir="$2"
+  local version_file="$input_dir/engines/katago/VERSION.txt"
+  local engine_manifest="$input_dir/engines/katago/$engine_target_dir/$TENSORRT_ENGINE_MANIFEST_NAME"
+
+  if [[ ! -f "$engine_manifest" ]]; then
+    echo "TensorRT KataGo engine manifest not found: $engine_manifest"
+    exit 1
+  fi
+  resolve_python_bin
+  "$PYTHON_BIN" - "$version_file" "$engine_manifest" <<'PY'
+from datetime import datetime, timezone
+from pathlib import Path
+import sys
+
+version_path = Path(sys.argv[1])
+engine_manifest_path = Path(sys.argv[2])
+
+def parse_metadata(path):
+    result = {}
+    if not path.is_file():
+        return result
+    for raw_line in path.read_text(encoding="utf-8").splitlines():
+        key, separator, value = raw_line.partition(":")
+        if separator and key.strip() and value.strip():
+            result[key.strip()] = value.strip()
+    return result
+
+base = parse_metadata(version_path)
+engine = parse_metadata(engine_manifest_path)
+release = engine.get("KataGo release", "").strip()
+asset = engine.get("Asset", "").strip()
+if not release or not asset:
+    raise SystemExit(f"Incomplete TensorRT engine manifest: {engine_manifest_path}")
+
+lines = [
+    f"KataGo release: {release}",
+    f"Windows TensorRT bundle: {asset}",
+]
+for key in (
+    "Model source",
+    "Model SHA-256",
+    "Model size",
+    "Model architecture",
+    "Minimum KataGo version",
+):
+    value = base.get(key, "").strip()
+    if value:
+        lines.append(f"{key}: {value}")
+lines.append(f"Prepared at: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S +0000')}")
+version_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+PY
 }
 
 prepare_bundled_nvidia_runtime_assets() {

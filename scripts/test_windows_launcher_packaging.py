@@ -91,11 +91,18 @@ def main() -> None:
         "scripts/audit_katago_binary_version.py",
         "build-windows-release.yml",
     )
+    require(
+        workflow,
+        "scripts/audit_katago_package_metadata.py",
+        "build-windows-release.yml",
+    )
     require(workflow, 'runnable_engines=(', "build-windows-release.yml")
     require(workflow, 'standard_packaged_engines=(', "build-windows-release.yml")
     require(workflow, 'tensorrt_engine=', "build-windows-release.yml")
     require(workflow, "--expected-version 1.17.1", "build-windows-release.yml")
     require(workflow, "--expected-version 1.17.2", "build-windows-release.yml")
+    require(package_script, "write_tensorrt_version_file", "package_windows_exe.sh")
+    require(package_script, "Windows TensorRT bundle", "package_windows_exe.sh")
     require(workflow, "GitHub-hosted Windows runners do not have an NVIDIA display driver", "build-windows-release.yml")
     require(
         workflow,

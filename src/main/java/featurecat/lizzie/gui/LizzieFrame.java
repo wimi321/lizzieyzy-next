@@ -422,6 +422,7 @@ public class LizzieFrame extends JFrame {
   private volatile boolean loadedGameQuickAnalysisRunning;
   private volatile long loadedGameQuickAnalysisDispatchStartedAt;
   private int loadedGameQuickAnalysisFailureCount;
+  private boolean kifuOpenWaitingForQuickAnalysisRestore;
   private static final int LOADED_GAME_QUICK_ANALYSIS_RETRY_MS = 1800;
   private static final int LOADED_GAME_QUICK_ANALYSIS_MAX_RETRY_MS = 30_000;
   private static final int LOADED_GAME_QUICK_ANALYSIS_WATCHDOG_MS = 30_000;
@@ -4400,6 +4401,13 @@ public class LizzieFrame extends JFrame {
   }
 
   public void openFile() {
+    if (!SwingUtilities.isEventDispatchThread()) {
+      SwingUtilities.invokeLater(this::openFile);
+      return;
+    }
+    if (deferKifuOpenUntilAutomaticQuickAnalysisRestored(this::openFile)) {
+      return;
+    }
     boolean ponder = false;
     if (Lizzie.leelaz.isPondering() || !Lizzie.leelaz.isLoaded) {
       ponder = true;
@@ -4425,6 +4433,34 @@ public class LizzieFrame extends JFrame {
     if (Lizzie.leelaz.isheatmap) Lizzie.leelaz.setHeatmap();
     this.setAlwaysOnTop(Lizzie.config.mainsalwaysontop);
     refresh();
+  }
+
+  private boolean deferKifuOpenUntilAutomaticQuickAnalysisRestored(Runnable continuation) {
+    if (kifuOpenWaitingForQuickAnalysisRestore) {
+      return true;
+    }
+    AnalysisEngine currentEngine = analysisEngine;
+    if (currentEngine == null
+        || !currentEngine.isAutomaticBackgroundTask()
+        || !currentEngine.usesSharedForegroundEngine()
+        || !currentEngine.hasRequestLifecycleInProgress()) {
+      return false;
+    }
+    kifuOpenWaitingForQuickAnalysisRestore = true;
+    stopQuickAnalysisNavigationResumeTimer();
+    stopLoadedGameQuickAnalysisRetry();
+    analysisEngine = null;
+    currentEngine.clearRequestCallbacks();
+    currentEngine.normalQuit(
+        () ->
+            SwingUtilities.invokeLater(
+                () -> {
+                  kifuOpenWaitingForQuickAnalysisRestore = false;
+                  if (continuation != null) {
+                    continuation.run();
+                  }
+                }));
+    return true;
   }
 
   public void openSgfStart() {
@@ -14510,48 +14546,60 @@ public class LizzieFrame extends JFrame {
             ? loadedGameQuickAnalysisGeneration
             : beginLoadedGameQuickAnalysis();
     BoardHistoryNode root = loadedGameQuickAnalysisRoot;
-    stopBusyQuickAnalysisEngineBeforeLoadedKifuAnalysis();
-    Runnable startRequests =
+    Runnable startWhenPreviousEngineRestored =
         new Runnable() {
           public void run() {
             if (!isCurrentLoadedGameQuickAnalysis(generation, root)) {
               return;
             }
+            Runnable startRequests =
+                new Runnable() {
+                  public void run() {
+                    if (!isCurrentLoadedGameQuickAnalysis(generation, root)) {
+                      return;
+                    }
+                    if (!isAnalysisEngineReusable(analysisEngine)) {
+                      finishLoadedGameQuickAnalysisAttempt(generation, root, true);
+                      return;
+                    }
+                    AnalysisEngine targetEngine = analysisEngine;
+                    targetEngine.setCompletionCallback(
+                        () -> finishLoadedGameQuickAnalysisAttempt(generation, root, false));
+                    targetEngine.setFailureCallback(
+                        () -> finishLoadedGameQuickAnalysisAttempt(generation, root, true));
+                    Thread requestSender =
+                        new Thread(
+                            () -> {
+                              if (!isCurrentLoadedGameQuickAnalysis(generation, root)
+                                  || targetEngine != analysisEngine) {
+                                return;
+                              }
+                              int requestCount = targetEngine.startRequestMissingMainline(false);
+                              if (requestCount < 0) {
+                                targetEngine.clearRequestCallbacks();
+                                finishLoadedGameQuickAnalysisAttempt(generation, root, true);
+                              } else if (requestCount == 0) {
+                                targetEngine.clearRequestCallbacks();
+                                finishLoadedGameQuickAnalysisAttempt(generation, root, false);
+                              }
+                            },
+                            "loaded-game-quick-analysis-request");
+                    requestSender.setDaemon(true);
+                    requestSender.start();
+                  }
+                };
             if (!isAnalysisEngineReusable(analysisEngine)) {
-              finishLoadedGameQuickAnalysisAttempt(generation, root, true);
+              ensureQuickAnalysisEngineAsync(startRequests, false);
               return;
             }
-            AnalysisEngine targetEngine = analysisEngine;
-            targetEngine.setCompletionCallback(
-                () -> finishLoadedGameQuickAnalysisAttempt(generation, root, false));
-            targetEngine.setFailureCallback(
-                () -> finishLoadedGameQuickAnalysisAttempt(generation, root, true));
-            Thread requestSender =
-                new Thread(
-                    () -> {
-                      if (!isCurrentLoadedGameQuickAnalysis(generation, root)
-                          || targetEngine != analysisEngine) {
-                        return;
-                      }
-                      int requestCount = targetEngine.startRequestMissingMainline(false);
-                      if (requestCount < 0) {
-                        targetEngine.clearRequestCallbacks();
-                        finishLoadedGameQuickAnalysisAttempt(generation, root, true);
-                      } else if (requestCount == 0) {
-                        targetEngine.clearRequestCallbacks();
-                        finishLoadedGameQuickAnalysisAttempt(generation, root, false);
-                      }
-                    },
-                    "loaded-game-quick-analysis-request");
-            requestSender.setDaemon(true);
-            requestSender.start();
+            startRequests.run();
           }
         };
-    if (isAnalysisEngineReusable(analysisEngine)) {
-      startRequests.run();
+    if (stopBusyQuickAnalysisEngineBeforeLoadedKifuAnalysis(
+        () -> SwingUtilities.invokeLater(startWhenPreviousEngineRestored))) {
       return;
     }
-    ensureQuickAnalysisEngineAsync(startRequests, false);
+    startWhenPreviousEngineRestored.run();
   }
 
   private void finishLoadedGameQuickAnalysisAttempt(
@@ -14603,27 +14651,48 @@ public class LizzieFrame extends JFrame {
   }
 
   private void stopBusyQuickAnalysisEngineBeforeLoadedKifuAnalysis() {
+    stopBusyQuickAnalysisEngineBeforeLoadedKifuAnalysis(null);
+  }
+
+  private boolean stopBusyQuickAnalysisEngineBeforeLoadedKifuAnalysis(Runnable afterRestore) {
     if (analysisEngine == null) {
-      return;
+      return false;
     }
     boolean needsDedicatedLightweightModel =
-        KataGoAutoSetupHelper.resolveQuickAnalysisEngineCommand().isPresent();
+        !isCurrentPrimaryEngineBundledTensorRt()
+            && KataGoAutoSetupHelper.resolveQuickAnalysisEngineCommand().isPresent();
+    boolean needsAutomaticTensorRtForegroundReuse = isCurrentPrimaryEngineBundledTensorRt();
     if (shouldReplaceAutomaticQuickAnalysisEngine(
         needsDedicatedLightweightModel,
         analysisEngine.usesDedicatedLightweightQuickModel(),
+        needsAutomaticTensorRtForegroundReuse,
+        analysisEngine.usesAutomaticTensorRtForegroundReuse(),
+        analysisEngine.matchesCurrentAnalysisBackend(),
         analysisEngine.isAnalysisInProgress())) {
-      analysisEngine.clearRequestCallbacks();
-      analysisEngine.normalQuit();
+      AnalysisEngine staleEngine = analysisEngine;
       analysisEngine = null;
+      staleEngine.clearRequestCallbacks();
+      if (afterRestore == null) {
+        staleEngine.normalQuit();
+      } else {
+        staleEngine.normalQuit(afterRestore);
+      }
+      return true;
     }
+    return false;
   }
 
   static boolean shouldReplaceAutomaticQuickAnalysisEngine(
       boolean wantsDedicatedLightweightModel,
       boolean currentUsesDedicatedLightweightModel,
+      boolean wantsAutomaticTensorRtForegroundReuse,
+      boolean currentUsesAutomaticTensorRtForegroundReuse,
+      boolean currentMatchesBackend,
       boolean currentAnalysisInProgress) {
     return currentAnalysisInProgress
-        || wantsDedicatedLightweightModel != currentUsesDedicatedLightweightModel;
+        || !currentMatchesBackend
+        || wantsDedicatedLightweightModel != currentUsesDedicatedLightweightModel
+        || wantsAutomaticTensorRtForegroundReuse != currentUsesAutomaticTensorRtForegroundReuse;
   }
 
   private void releaseDedicatedLightweightQuickAnalysisEngine() {
@@ -19003,11 +19072,17 @@ public class LizzieFrame extends JFrame {
     }
   }
 
+  private boolean isCurrentPrimaryEngineBundledTensorRt() {
+    return Lizzie.leelaz != null
+        && KataGoRuntimeHelper.isBundledTensorRtCommand(Lizzie.leelaz.engineCommand());
+  }
+
   private QuickAnalysisWarmupAction currentQuickAnalysisWarmupAction(boolean requiresAutoAnalyze) {
     boolean dependsOnPrimary =
         quickAnalysisDependsOnPrimary(
             isCurrentPrimaryEngineRemote(),
             isCurrentPrimaryEngineBundledOpenCl(),
+            isCurrentPrimaryEngineBundledTensorRt(),
             Lizzie.config != null && Lizzie.config.analysisReuseCurrentEngine);
     boolean primaryLoaded =
         !dependsOnPrimary || (Lizzie.leelaz != null && Lizzie.leelaz.isLoaded());
@@ -19024,19 +19099,22 @@ public class LizzieFrame extends JFrame {
   }
 
   static boolean quickAnalysisDependsOnPrimary(
-      boolean remotePrimary, boolean bundledOpenClPrimary, boolean reusePrimary) {
-    return remotePrimary || bundledOpenClPrimary || reusePrimary;
+      boolean remotePrimary,
+      boolean bundledOpenClPrimary,
+      boolean bundledTensorRtPrimary,
+      boolean reusePrimary) {
+    return remotePrimary || bundledOpenClPrimary || bundledTensorRtPrimary || reusePrimary;
   }
 
   static QuickAnalysisWarmupAction decideQuickAnalysisWarmup(
       boolean contextEligible,
-      boolean remotePrimary,
+      boolean dependsOnPrimary,
       boolean primaryLoaded,
       boolean primaryFailed) {
-    if (!contextEligible || (remotePrimary && primaryFailed)) {
+    if (!contextEligible || (dependsOnPrimary && primaryFailed)) {
       return QuickAnalysisWarmupAction.STOP;
     }
-    if (remotePrimary && !primaryLoaded) {
+    if (dependsOnPrimary && !primaryLoaded) {
       return QuickAnalysisWarmupAction.WAIT_FOR_PRIMARY;
     }
     return QuickAnalysisWarmupAction.START;
