@@ -27,8 +27,6 @@ import java.awt.event.*;
 import java.io.File;
 import java.io.IOException;
 import java.net.URI;
-import java.time.Duration;
-import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Locale;
 import java.util.Optional;
@@ -5907,7 +5905,7 @@ public class Menu extends JMenuBar {
     btnKomiDown.setFocusable(false);
     btnKomiDown.setToolTipText(resourceBundle.getString("Accessibility.decreaseKomi"));
 
-    btnKomiUp.addActionListener(
+    ActionListener increaseKomi =
         new ActionListener() {
           public void actionPerformed(ActionEvent e) {
             if (txtKomi.getText().trim().equals("")) return;
@@ -5927,9 +5925,15 @@ public class Menu extends JMenuBar {
             Lizzie.board.getHistory().getGameInfo().changeKomi();
             Lizzie.frame.refresh();
           }
-        });
+        };
+    btnKomiUp.addActionListener(increaseKomi);
+    KomiHoldSession.attach(
+        btnKomiUp,
+        () ->
+            increaseKomi.actionPerformed(
+                new ActionEvent(btnKomiUp, ActionEvent.ACTION_PERFORMED, "hold")));
 
-    btnKomiDown.addActionListener(
+    ActionListener decreaseKomi =
         new ActionListener() {
           public void actionPerformed(ActionEvent e) {
             if (txtKomi.getText().trim().equals("")) return;
@@ -5949,117 +5953,13 @@ public class Menu extends JMenuBar {
             Lizzie.board.getHistory().getGameInfo().changeKomi();
             Lizzie.frame.refresh();
           }
-        });
-
-    btnKomiUp.addMouseListener(
-        new MouseAdapter() {
-          Instant start;
-          boolean pressed = false;
-
-          @Override
-          public void mousePressed(MouseEvent e) {
-            start = Instant.now();
-            pressed = true;
-            Runnable runnable =
-                new Runnable() {
-                  public void run() {
-                    boolean started = false;
-                    while (pressed) {
-                      try {
-                        Thread.sleep(10);
-                      } catch (InterruptedException e) {
-                        // TODO Auto-generated catch block
-                        e.printStackTrace();
-                      }
-                      if ((started && Duration.between(start, Instant.now()).toMillis() > 150)
-                          || (!started
-                              && Duration.between(start, Instant.now()).toMillis() > 400)) {
-                        started = true;
-                        if (txtKomi.getText().trim().equals("")) return;
-                        double newKomi = Double.parseDouble(txtKomi.getText().trim()) + 0.5;
-                        if (EngineManager.isEngineGame) {
-                          Lizzie.engineManager
-                              .engineList
-                              .get(EngineManager.engineGameInfo.firstEngineIndex)
-                              .sendCommand("komi " + (newKomi == 0.0 ? "0" : newKomi));
-                          Lizzie.engineManager
-                              .engineList
-                              .get(EngineManager.engineGameInfo.secondEngineIndex)
-                              .sendCommand("komi " + (newKomi == 0.0 ? "0" : newKomi));
-                          if (Lizzie.leelaz.isPondering()) Lizzie.leelaz.ponder();
-                          Lizzie.board.getHistory().getGameInfo().setKomi(newKomi);
-                        } else Lizzie.leelaz.komi(newKomi);
-                        Lizzie.board.getHistory().getGameInfo().changeKomi();
-                        start = Instant.now();
-                      }
-                    }
-                  }
-                };
-            Thread thread = new Thread(runnable);
-            thread.start();
-          }
-
-          @Override
-          public void mouseReleased(MouseEvent e) {
-            pressed = false;
-            Lizzie.frame.refresh();
-          }
-        });
-
-    btnKomiDown.addMouseListener(
-        new MouseAdapter() {
-          Instant start;
-          boolean pressed = false;
-
-          @Override
-          public void mousePressed(MouseEvent e) {
-            start = Instant.now();
-            pressed = true;
-            Runnable runnable =
-                new Runnable() {
-                  public void run() {
-                    boolean started = false;
-                    while (pressed) {
-                      try {
-                        Thread.sleep(10);
-                      } catch (InterruptedException e) {
-                        // TODO Auto-generated catch block
-                        e.printStackTrace();
-                      }
-                      if ((started && Duration.between(start, Instant.now()).toMillis() > 150)
-                          || (!started
-                              && Duration.between(start, Instant.now()).toMillis() > 400)) {
-                        started = true;
-                        if (txtKomi.getText().trim().equals("")) return;
-                        double newKomi = Double.parseDouble(txtKomi.getText().trim()) - 0.5;
-                        if (EngineManager.isEngineGame) {
-                          Lizzie.engineManager
-                              .engineList
-                              .get(EngineManager.engineGameInfo.firstEngineIndex)
-                              .sendCommand("komi " + (newKomi == 0.0 ? "0" : newKomi));
-                          Lizzie.engineManager
-                              .engineList
-                              .get(EngineManager.engineGameInfo.secondEngineIndex)
-                              .sendCommand("komi " + (newKomi == 0.0 ? "0" : newKomi));
-                          if (Lizzie.leelaz.isPondering()) Lizzie.leelaz.ponder();
-                          Lizzie.board.getHistory().getGameInfo().setKomi(newKomi);
-                        } else Lizzie.leelaz.komi(newKomi);
-                        Lizzie.board.getHistory().getGameInfo().changeKomi();
-                        start = Instant.now();
-                      }
-                    }
-                  }
-                };
-            Thread thread = new Thread(runnable);
-            thread.start();
-          }
-
-          @Override
-          public void mouseReleased(MouseEvent e) {
-            pressed = false;
-            Lizzie.frame.refresh();
-          }
-        });
+        };
+    btnKomiDown.addActionListener(decreaseKomi);
+    KomiHoldSession.attach(
+        btnKomiDown,
+        () ->
+            decreaseKomi.actionPerformed(
+                new ActionEvent(btnKomiDown, ActionEvent.ACTION_PERFORMED, "hold")));
 
     if (!Lizzie.config.shouldWidenCheckBox && Config.isScaled) {
       btnKomiUp.addMouseListener(
