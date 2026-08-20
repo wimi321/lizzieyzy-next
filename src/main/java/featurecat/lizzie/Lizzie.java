@@ -16,6 +16,9 @@ import featurecat.lizzie.gui.LizzieFrame;
 import featurecat.lizzie.gui.LoadEngine;
 import featurecat.lizzie.gui.Menu;
 import featurecat.lizzie.gui.web.WebBoardManager;
+import featurecat.lizzie.logging.LoggingRuntime;
+import featurecat.lizzie.logging.WorkDirectoryResolution;
+import featurecat.lizzie.logging.WorkDirectoryResolver;
 import featurecat.lizzie.rules.Board;
 import featurecat.lizzie.rules.BoardHistoryNode;
 import featurecat.lizzie.util.KataGoAutoSetupHelper;
@@ -41,6 +44,7 @@ import java.nio.file.Path;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.List;
+import java.util.function.IntConsumer;
 import java.util.Locale;
 import java.util.ResourceBundle;
 import java.util.concurrent.Callable;
@@ -151,8 +155,22 @@ public class Lizzie {
     if (System.getProperty("swing.aatext") == null) {
       System.setProperty("swing.aatext", "true");
     }
-    ensureWritableWorkingDir();
+    WorkDirectoryResolution workDirectory = WorkDirectoryResolver.resolve();
+    try {
+      Path cwd = Path.of(System.getProperty("user.dir")).toAbsolutePath();
+      if (!Files.isWritable(cwd)) {
+        System.setProperty("user.dir", workDirectory.directory().toString());
+      }
+    } catch (Exception ignored) {
+    }
+    try {
+      LoggingRuntime.initialize(workDirectory);
+    } catch (Throwable t) {
+      System.err.println(
+          LoggingRuntime.STDERR_PREFIX + "bootstrap " + t.getClass().getSimpleName());
+    }
     config = new Config();
+    LoggingRuntime.current().ifPresent(runtime -> runtime.applySettings(config.loggingSettings));
     firstLaunchSession = config.isNewProfile() || config.firstTimeLoad;
     resourceBundle = AppLocale.loadBundle(config.useLanguage);
     NetworkProxy.installSystemProxyPropertyFromSavedConfig();
@@ -560,21 +578,6 @@ public class Lizzie {
     }
     String trimmed = value.trim();
     return trimmed.isEmpty() ? null : trimmed;
-  }
-
-  private static void ensureWritableWorkingDir() {
-    try {
-      Path cwd = Path.of(System.getProperty("user.dir")).toAbsolutePath();
-      if (Files.isWritable(cwd)) {
-        return;
-      }
-      Path fallback = Config.resolveWritableFallbackDir();
-      System.setProperty("user.dir", fallback.toString());
-      System.out.println("switch user.dir to writable path: " + fallback);
-    } catch (Exception e) {
-      // Keep default behavior if we fail to switch directory.
-      e.printStackTrace();
-    }
   }
 
   private static void installApplicationIcon() {
@@ -1077,7 +1080,15 @@ public class Lizzie {
         e.printStackTrace();
       }
     }
-    System.exit(0);
+    shutdownLoggingThenExit(System::exit);
+  }
+
+  public static void shutdownLoggingThenExit(IntConsumer exit) {
+    try {
+      LoggingRuntime.current().ifPresent(LoggingRuntime::shutdown);
+    } catch (RuntimeException ignored) {
+    }
+    exit.accept(0);
   }
 
   public static void resetAllHints() {

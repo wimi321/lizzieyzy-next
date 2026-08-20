@@ -3,6 +3,8 @@ package featurecat.lizzie;
 import featurecat.lizzie.analysis.EngineManager;
 import featurecat.lizzie.analysis.MoveRankEvaluationMode;
 import featurecat.lizzie.gui.LizzieFrame;
+import featurecat.lizzie.logging.LoggingSettings;
+import featurecat.lizzie.logging.WorkDirectoryResolver;
 import featurecat.lizzie.theme.Theme;
 import featurecat.lizzie.util.AnalysisEngineCommandHelper;
 import featurecat.lizzie.util.KataGoAutoSetupHelper;
@@ -19,7 +21,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.*;
-import java.util.stream.Stream;
 import javax.swing.*;
 import org.jdesktop.swingx.util.OS;
 import org.json.*;
@@ -148,23 +149,14 @@ public class Config {
   public JSONObject saveBoard;
   public JSONObject saveBoardConfig;
 
-  private static final String USER_WORK_DIR_NAME = ".lizzieyzy-next";
-  private static final String LEGACY_USER_WORK_DIR_NAME = ".lizzieyzy-next-foxuid";
-  private static final String WINDOWS_SHARED_WORK_DIR_NAME = "LizzieYzyNext";
   private static final String WINDOWS_PORTABLE_MARKER_NAME = ".lizzie-portable";
-  private static final String WINDOWS_PORTABLE_WORK_DIR_NAME = "user-data";
-  private static final String WINDOWS_PORTABLE_STATE_MIGRATION_KEY =
-      "migrated-windows-portable-user-state-v2";
-  private static final String WINDOWS_PORTABLE_RECOVERY_BACKUP_NAME =
-      "config.before-portable-recovery.txt";
-  private static final String WORK_DIR_PROPERTY = "lizzie.work.dir";
   private static final String HIDE_SUBBOARD_DEFAULT_MIGRATION_KEY =
       "migrated-hide-subboard-default-v1";
   private static final String RESTORE_SUBBOARD_DEFAULT_MIGRATION_KEY =
       "restored-show-subboard-default-v2";
   private static final String HIDE_BLUNDER_BAR_DEFAULT_MIGRATION_KEY =
       "migrated-hide-blunder-bar-default-v1";
-  private static final String WORK_DIR = resolveWorkDir();
+  private static final String WORK_DIR = WorkDirectoryResolver.resolve().directory().toString();
   private static final String RUNTIME_WORK_DIR = "runtime";
   private static final String BUNDLED_ENGINE_NAME = "KataGo Bundled";
   private static final String BUNDLED_ENGINE_ROOT = "engines";
@@ -284,679 +276,39 @@ public class Config {
     }
   }
 
-  private static String resolveWorkDir() {
-    try {
-      Path explicitWorkDir = resolveExplicitWorkDir();
-      if (explicitWorkDir != null) {
-        return explicitWorkDir.toString();
-      }
-    } catch (Exception e) {
-      e.printStackTrace();
-    }
-
-    if (OS.isWindows()) {
-      try {
-        Optional<Path> portableRoot = findWindowsPortablePackageRoot();
-        if (portableRoot.isPresent()) {
-          Path portableWorkDir = prepareWindowsPortableWorkDir(portableRoot.get());
-          if (portableWorkDir != null) {
-            return portableWorkDir.toString();
-          }
-        }
-      } catch (Exception e) {
-        e.printStackTrace();
-      }
-      try {
-        Path cwd = Path.of(System.getProperty("user.dir")).toAbsolutePath().normalize();
-        if (shouldUsePortableWindowsWorkDir(cwd)) {
-          return cwd.toString();
-        }
-      } catch (Exception e) {
-        e.printStackTrace();
-      }
-      try {
-        Path fallback = resolveWritableFallbackDir();
-        System.out.println("Config dir fallback: " + fallback);
-        return fallback.toString();
-      } catch (Exception e) {
-        e.printStackTrace();
-      }
-    }
-
-    try {
-      Path cwd = Path.of(System.getProperty("user.dir")).toAbsolutePath();
-      if (Files.isWritable(cwd)) {
-        return cwd.toString();
-      }
-    } catch (Exception e) {
-      e.printStackTrace();
-    }
-
-    try {
-      Path fallback = resolveWritableFallbackDir();
-      System.out.println("Config dir fallback: " + fallback);
-      return fallback.toString();
-    } catch (Exception e) {
-      e.printStackTrace();
-      return System.getProperty("user.home");
-    }
-  }
-
-  private static Path resolveExplicitWorkDir() throws IOException {
-    String configured = System.getProperty(WORK_DIR_PROPERTY, "").trim();
-    if (configured.isEmpty()) {
-      return null;
-    }
-    Path path = Path.of(configured).toAbsolutePath().normalize();
-    Files.createDirectories(path.resolve("save"));
-    return path;
-  }
-
   public static Path resolveWritableFallbackDir() throws IOException {
-    if (OS.isWindows()) {
-      return resolveWindowsWorkDir();
-    }
-
-    Path preferred = Path.of(System.getProperty("user.home"), USER_WORK_DIR_NAME);
-    Path legacy = Path.of(System.getProperty("user.home"), LEGACY_USER_WORK_DIR_NAME);
-
-    if (!Files.exists(preferred) && Files.isDirectory(legacy)) {
-      try {
-        Files.move(legacy, preferred);
-        System.out.println("Migrated config dir to " + preferred);
-      } catch (Exception moveError) {
-        System.out.println("Config dir migration skipped: " + moveError.getMessage());
-        Files.createDirectories(legacy.resolve("save"));
-        return legacy;
-      }
-    }
-
-    Files.createDirectories(preferred.resolve("save"));
-    return preferred;
-  }
-
-  private static Path resolveWindowsWorkDir() throws IOException {
-    Path preferred = Path.of(System.getProperty("user.home"), USER_WORK_DIR_NAME);
-    Path legacy = Path.of(System.getProperty("user.home"), LEGACY_USER_WORK_DIR_NAME);
-    Path target = resolveWindowsSharedWorkDirCandidate();
-
-    migrateWorkDirIfNeeded(target, preferred, legacy);
-
-    try {
-      Path cwd = Path.of(System.getProperty("user.dir")).toAbsolutePath().normalize();
-      if (!target.equals(cwd)) {
-        migrateWorkDirIfNeeded(target, cwd);
-      }
-    } catch (Exception e) {
-      e.printStackTrace();
-    }
-
-    Files.createDirectories(target.resolve("save"));
-    return target;
-  }
-
-  private static Path resolveWindowsSharedWorkDirCandidate() throws IOException {
-    List<Path> candidates = windowsSharedWorkDirCandidates();
-
-    for (Path candidate : candidates) {
-      if (candidate == null || !isAsciiSafePath(candidate)) {
-        continue;
-      }
-      try {
-        Files.createDirectories(candidate.resolve("save"));
-        if (Files.isWritable(candidate)) {
-          return candidate;
-        }
-      } catch (IOException e) {
-        e.printStackTrace();
-      }
-    }
-
-    Path preferred = Path.of(System.getProperty("user.home"), USER_WORK_DIR_NAME);
-    Files.createDirectories(preferred.resolve("save"));
-    return preferred;
-  }
-
-  private static List<Path> windowsSharedWorkDirCandidates() {
-    List<Path> candidates = new ArrayList<Path>();
-    addWindowsWorkDirCandidate(
-        candidates, System.getenv("PUBLIC"), "Documents", WINDOWS_SHARED_WORK_DIR_NAME);
-    addWindowsWorkDirCandidate(candidates, System.getenv("PUBLIC"), WINDOWS_SHARED_WORK_DIR_NAME);
-    addWindowsWorkDirCandidate(
-        candidates, System.getenv("PROGRAMDATA"), WINDOWS_SHARED_WORK_DIR_NAME);
-    return candidates;
-  }
-
-  private static void addWindowsWorkDirCandidate(
-      List<Path> candidates, String root, String... children) {
-    if (root == null || root.trim().isEmpty()) {
-      return;
-    }
-    try {
-      Path candidate = Path.of(root, children).toAbsolutePath().normalize();
-      candidates.add(candidate);
-    } catch (Exception e) {
-      e.printStackTrace();
-    }
+    return WorkDirectoryResolver.resolveWritableFallbackDir();
   }
 
   static Optional<Path> findWindowsPortablePackageRootForTests(Path seedPath) {
-    if (seedPath == null) {
-      return Optional.empty();
-    }
-    return findWindowsPortablePackageRoot(Collections.singleton(seedPath));
+    return WorkDirectoryResolver.findWindowsPortablePackageRootForTests(seedPath);
   }
 
   static Path prepareWindowsPortableWorkDirForTests(Path portableRoot) throws IOException {
-    return prepareWindowsPortableWorkDir(portableRoot, Collections.singletonList(portableRoot));
+    return WorkDirectoryResolver.prepareWindowsPortableWorkDirForTests(portableRoot);
   }
 
   static Path prepareWindowsPortableWorkDirWithSourcesForTests(
       Path portableRoot, Path... migrationSources) throws IOException {
-    return prepareWindowsPortableWorkDir(portableRoot, Arrays.asList(migrationSources));
+    return WorkDirectoryResolver.prepareWindowsPortableWorkDirWithSourcesForTests(
+        portableRoot, migrationSources);
   }
 
   static List<Path> windowsPortableMigrationSourcesForTests(Path portableRoot) {
-    return windowsPortableMigrationSources(portableRoot);
+    return WorkDirectoryResolver.windowsPortableMigrationSourcesForTests(portableRoot);
   }
 
   static List<Path> windowsPortableCredentialDirectoriesForTests(Path portableRoot) {
-    return windowsPortableCredentialDirectories(portableRoot);
+    return WorkDirectoryResolver.windowsPortableCredentialDirectoriesForTests(portableRoot);
   }
 
   /** Returns existing portable credential directories that may need one-time DPAPI migration. */
   public static List<Path> legacyWindowsCredentialDirectories() {
-    Optional<Path> portableRoot = findWindowsPortablePackageRoot();
-    if (portableRoot.isPresent()) {
-      return windowsPortableCredentialDirectories(portableRoot.get());
-    }
-    Path credentials =
-        resolvedWorkDirPath().resolve("secure-credentials").toAbsolutePath().normalize();
-    return Files.isDirectory(credentials)
-        ? Collections.singletonList(credentials)
-        : Collections.emptyList();
+    return WorkDirectoryResolver.legacyWindowsCredentialDirectories();
   }
 
   public static Path resolvedWorkDirPath() {
-    return Path.of(WORK_DIR).toAbsolutePath().normalize();
-  }
-
-  private static Optional<Path> findWindowsPortablePackageRoot() {
-    LinkedHashSet<Path> seedPaths = new LinkedHashSet<>();
-    try {
-      File codeSource =
-          new File(Config.class.getProtectionDomain().getCodeSource().getLocation().toURI());
-      seedPaths.add((codeSource.isFile() ? codeSource.toPath().getParent() : codeSource.toPath()));
-    } catch (Exception e) {
-      e.printStackTrace();
-    }
-    try {
-      seedPaths.add(Path.of("").toAbsolutePath().normalize());
-    } catch (Exception e) {
-      e.printStackTrace();
-    }
-    try {
-      seedPaths.add(Path.of(System.getProperty("user.dir")).toAbsolutePath().normalize());
-    } catch (Exception e) {
-      e.printStackTrace();
-    }
-    return findWindowsPortablePackageRoot(seedPaths);
-  }
-
-  private static Optional<Path> findWindowsPortablePackageRoot(Collection<Path> seedPaths) {
-    if (seedPaths == null) {
-      return Optional.empty();
-    }
-    for (Path seedPath : seedPaths) {
-      if (seedPath == null) {
-        continue;
-      }
-      Path current = seedPath.toAbsolutePath().normalize();
-      for (int depth = 0; current != null && depth < 8; depth++) {
-        if (Files.isRegularFile(current.resolve(WINDOWS_PORTABLE_MARKER_NAME))) {
-          return Optional.of(current);
-        }
-        current = current.getParent();
-      }
-    }
-    return Optional.empty();
-  }
-
-  private static Path prepareWindowsPortableWorkDir(Path portableRoot) throws IOException {
-    return prepareWindowsPortableWorkDir(
-        portableRoot, windowsPortableMigrationSources(portableRoot));
-  }
-
-  private static Path prepareWindowsPortableWorkDir(
-      Path portableRoot, Collection<Path> migrationSources) throws IOException {
-    if (portableRoot == null || !Files.isDirectory(portableRoot)) {
-      return null;
-    }
-    Path workDir =
-        portableRoot.resolve(WINDOWS_PORTABLE_WORK_DIR_NAME).toAbsolutePath().normalize();
-    Files.createDirectories(workDir.resolve("save"));
-    if (!Files.isWritable(workDir)) {
-      return null;
-    }
-    Collection<Path> safeSources =
-        migrationSources == null ? Collections.emptyList() : migrationSources;
-    migrateWorkDirIfNeeded(workDir, safeSources.toArray(new Path[0]));
-    return workDir;
-  }
-
-  private static List<Path> windowsPortableMigrationSources(Path portableRoot) {
-    LinkedHashSet<Path> sources = new LinkedHashSet<>();
-    addMigrationSource(sources, portableRoot);
-    addMigrationSource(sources, portableRoot.resolve("app"));
-
-    Path parent = portableRoot.getParent();
-    if (parent != null && Files.isDirectory(parent)) {
-      try (Stream<Path> stream = Files.list(parent)) {
-        for (Path sibling : (Iterable<Path>) stream::iterator) {
-          if (!Files.isDirectory(sibling)
-              || sibling.toAbsolutePath().normalize().equals(portableRoot)) {
-            continue;
-          }
-          if (hasAppRootMarker(sibling)) {
-            addMigrationSource(sources, sibling.resolve(WINDOWS_PORTABLE_WORK_DIR_NAME));
-            addMigrationSource(sources, sibling);
-            addMigrationSource(
-                sources, sibling.resolve("app").resolve(WINDOWS_PORTABLE_WORK_DIR_NAME));
-            addMigrationSource(sources, sibling.resolve("app"));
-          }
-        }
-      } catch (IOException e) {
-        System.out.println("Portable sibling scan skipped: " + e.getMessage());
-      }
-    }
-
-    for (Path shared : windowsSharedWorkDirCandidates()) {
-      addMigrationSource(sources, shared);
-    }
-    String userHome = System.getProperty("user.home", "").trim();
-    if (!userHome.isEmpty()) {
-      addMigrationSource(sources, Path.of(userHome, USER_WORK_DIR_NAME));
-      addMigrationSource(sources, Path.of(userHome, LEGACY_USER_WORK_DIR_NAME));
-    }
-    return new ArrayList<>(sources);
-  }
-
-  private static List<Path> windowsPortableCredentialDirectories(Path portableRoot) {
-    LinkedHashSet<Path> directories = new LinkedHashSet<>();
-    addExistingCredentialDirectory(
-        directories, portableRoot.resolve(WINDOWS_PORTABLE_WORK_DIR_NAME));
-    for (Path source : windowsPortableMigrationSources(portableRoot)) {
-      addExistingCredentialDirectory(directories, source);
-    }
-    return new ArrayList<>(directories);
-  }
-
-  private static void addExistingCredentialDirectory(Collection<Path> directories, Path source) {
-    if (directories == null || source == null) {
-      return;
-    }
-    try {
-      Path credentialDirectory =
-          source.resolve("secure-credentials").toAbsolutePath().normalize();
-      if (Files.isDirectory(credentialDirectory)) {
-        directories.add(credentialDirectory);
-      }
-    } catch (Exception ignored) {
-    }
-  }
-
-  private static void addMigrationSource(Collection<Path> sources, Path source) {
-    if (sources == null || source == null) {
-      return;
-    }
-    try {
-      sources.add(source.toAbsolutePath().normalize());
-    } catch (Exception ignored) {
-    }
-  }
-
-  private static boolean shouldUsePortableWindowsWorkDir(Path cwd) {
-    if (cwd == null || !Files.isDirectory(cwd) || !Files.isWritable(cwd) || !isAsciiSafePath(cwd)) {
-      return false;
-    }
-    return hasBundledAssets(cwd) || hasExistingWorkDirData(cwd);
-  }
-
-  private static boolean hasBundledAssets(Path dir) {
-    return dir != null
-        && Files.isDirectory(dir.resolve(BUNDLED_ENGINE_ROOT))
-        && Files.isDirectory(dir.resolve(BUNDLED_WEIGHT_ROOT));
-  }
-
-  private static boolean hasExistingWorkDirData(Path dir) {
-    if (dir == null) {
-      return false;
-    }
-    if (Files.isRegularFile(dir.resolve("config.txt"))
-        || Files.isRegularFile(dir.resolve("persist"))) {
-      return true;
-    }
-    Path saveDir = dir.resolve("save");
-    if (!Files.isDirectory(saveDir)) {
-      return false;
-    }
-    try (Stream<Path> stream = Files.list(saveDir)) {
-      return stream.findFirst().isPresent();
-    } catch (IOException e) {
-      return false;
-    }
-  }
-
-  private static void migrateWorkDirIfNeeded(Path target, Path... sources) throws IOException {
-    if (target == null) {
-      return;
-    }
-    Path normalizedTarget = target.toAbsolutePath().normalize();
-    Files.createDirectories(normalizedTarget);
-    List<Path> candidates = normalizedMigrationSources(normalizedTarget, sources);
-    Path configSource = selectBestConfigSource(candidates);
-    Path targetConfigFile = normalizedTarget.resolve("config.txt");
-    boolean targetHadConfig = hasUsableConfig(targetConfigFile);
-    boolean recovered = false;
-
-    if (targetHadConfig && configSource != null) {
-      recovered = recoverPortableUserStateIfNeeded(normalizedTarget, configSource);
-    } else if (!targetHadConfig && configSource != null) {
-      backupUnreadableConfig(targetConfigFile.toFile());
-      copyIfExists(
-          configSource.resolve("config.txt"), targetConfigFile, true);
-    }
-
-    Path primarySource =
-        configSource != null ? configSource : candidates.stream().findFirst().orElse(null);
-    if (primarySource != null) {
-      copyIfExists(primarySource.resolve("persist"), normalizedTarget.resolve("persist"), false);
-      Path sourceSave = primarySource.resolve("save");
-      if (Files.isDirectory(sourceSave)) {
-        copyDirectoryContents(sourceSave, normalizedTarget.resolve("save"), false);
-      }
-    }
-
-    if (configSource != null && (!targetHadConfig || recovered)) {
-      System.out.println("Migrated config dir to " + normalizedTarget + " from " + configSource);
-    }
-  }
-
-  private static List<Path> normalizedMigrationSources(Path target, Path... sources) {
-    LinkedHashSet<Path> candidates = new LinkedHashSet<>();
-    if (sources == null) {
-      return new ArrayList<>();
-    }
-    for (Path source : sources) {
-      if (source == null) {
-        continue;
-      }
-      try {
-        Path normalized = source.toAbsolutePath().normalize();
-        if (!normalized.equals(target) && hasMigratableWorkDirData(normalized)) {
-          candidates.add(normalized);
-        }
-      } catch (Exception ignored) {
-      }
-    }
-    return new ArrayList<>(candidates);
-  }
-
-  private static boolean hasMigratableWorkDirData(Path directory) {
-    return hasExistingWorkDirData(directory);
-  }
-
-  private static Path selectBestConfigSource(List<Path> candidates) {
-    Path selected = null;
-    int selectedTier = Integer.MIN_VALUE;
-    long selectedModified = Long.MIN_VALUE;
-    for (Path candidate : candidates) {
-      Path configFile = candidate.resolve("config.txt");
-      if (!hasUsableConfig(configFile)) {
-        continue;
-      }
-      int tier;
-      try {
-        tier = configUserStateTier(readJsonObject(configFile));
-      } catch (Exception e) {
-        continue;
-      }
-      long modified = Long.MIN_VALUE;
-      try {
-        modified = Files.getLastModifiedTime(configFile).toMillis();
-      } catch (IOException ignored) {
-      }
-      if (selected == null
-          || tier > selectedTier
-          || (tier == selectedTier && modified > selectedModified)) {
-        selected = candidate;
-        selectedTier = tier;
-        selectedModified = modified;
-      }
-    }
-    return selected;
-  }
-
-  private static int configUserStateTier(JSONObject root) {
-    JSONObject leelaz = root.optJSONObject("leelaz");
-    if (leelaz == null) {
-      return 0;
-    }
-    if (hasConfiguredRemoteProvider(leelaz)) {
-      return 2;
-    }
-    JSONArray engines = leelaz.optJSONArray("engine-settings-list");
-    if (engines != null) {
-      for (int i = 0; i < engines.length(); i++) {
-        JSONObject engine = engines.optJSONObject(i);
-        if (engine != null && !looksLikeManagedBundledEngine(engine)) {
-          return 2;
-        }
-      }
-    }
-    JSONArray legacyCommands = leelaz.optJSONArray("engine-command-list");
-    if (legacyCommands != null && legacyCommands.length() > 0) {
-      return 2;
-    }
-    return engines != null && engines.length() > 0 ? 1 : 0;
-  }
-
-  private static boolean hasUsableConfig(Path configFile) {
-    if (!Files.isRegularFile(configFile)) {
-      return false;
-    }
-    try {
-      JSONObject parsed = readJsonObject(configFile);
-      return parsed.optJSONObject("ui") != null || parsed.optJSONObject("leelaz") != null;
-    } catch (Exception e) {
-      return false;
-    }
-  }
-
-  private static boolean recoverPortableUserStateIfNeeded(Path target, Path source)
-      throws IOException {
-    Path targetConfigFile = target.resolve("config.txt");
-    Path sourceConfigFile = source.resolve("config.txt");
-    try {
-      JSONObject targetConfig = readJsonObject(targetConfigFile);
-      JSONObject sourceConfig = readJsonObject(sourceConfigFile);
-      JSONObject targetUi = targetConfig.optJSONObject("ui");
-      if (targetUi != null && targetUi.optBoolean(WINDOWS_PORTABLE_STATE_MIGRATION_KEY, false)) {
-        return false;
-      }
-      if (!looksLikeFreshPortableConfig(targetConfig)
-          || !containsRecoverableUserState(sourceConfig, targetConfig)) {
-        return false;
-      }
-
-      Path backup = target.resolve(WINDOWS_PORTABLE_RECOVERY_BACKUP_NAME);
-      copyIfExists(targetConfigFile, backup, false);
-      JSONObject recovered = new JSONObject(sourceConfig.toString());
-      mergeMissingJsonValues(recovered, targetConfig);
-      JSONObject recoveredUi = recovered.optJSONObject("ui");
-      if (recoveredUi == null) {
-        recoveredUi = new JSONObject();
-        recovered.put("ui", recoveredUi);
-      }
-      recoveredUi.put(WINDOWS_PORTABLE_STATE_MIGRATION_KEY, true);
-      writeJsonAtomically(targetConfigFile, recovered);
-      return true;
-    } catch (JSONException e) {
-      return false;
-    }
-  }
-
-  private static boolean looksLikeFreshPortableConfig(JSONObject root) {
-    JSONObject leelaz = root.optJSONObject("leelaz");
-    if (leelaz == null || hasConfiguredRemoteProvider(leelaz)) {
-      return false;
-    }
-    JSONArray engines = leelaz.optJSONArray("engine-settings-list");
-    if (engines == null || engines.length() == 0) {
-      return true;
-    }
-    if (engines.length() != 1) {
-      return false;
-    }
-    JSONObject engine = engines.optJSONObject(0);
-    if (engine == null) {
-      return true;
-    }
-    return looksLikeManagedBundledEngine(engine);
-  }
-
-  private static boolean looksLikeManagedBundledEngine(JSONObject engine) {
-    String name = engine.optString("name", "").trim();
-    String command = engine.optString("command", "").replace('\\', '/').toLowerCase(Locale.ROOT);
-    return (BUNDLED_ENGINE_NAME.equals(name) || "KataGo Auto Setup".equals(name))
-        && (command.isEmpty()
-            || command.contains("weights/default.bin.gz")
-            || command.contains("engines/katago/"));
-  }
-
-  private static boolean containsRecoverableUserState(JSONObject source, JSONObject target) {
-    JSONObject sourceLeelaz = source.optJSONObject("leelaz");
-    JSONObject targetLeelaz = target.optJSONObject("leelaz");
-    if (sourceLeelaz == null) {
-      return false;
-    }
-    if (hasConfiguredRemoteProvider(sourceLeelaz)
-        && (targetLeelaz == null || !hasConfiguredRemoteProvider(targetLeelaz))) {
-      return true;
-    }
-    Set<String> targetEngines = engineIdentities(targetLeelaz);
-    for (String sourceEngine : engineIdentities(sourceLeelaz)) {
-      if (!targetEngines.contains(sourceEngine)) {
-        return true;
-      }
-    }
-    JSONArray legacyCommands = sourceLeelaz.optJSONArray("engine-command-list");
-    return legacyCommands != null && legacyCommands.length() > 0;
-  }
-
-  private static boolean hasConfiguredRemoteProvider(JSONObject leelaz) {
-    if (leelaz == null) {
-      return false;
-    }
-    JSONObject remote = leelaz.optJSONObject("remote-compute");
-    if (remote == null) {
-      return false;
-    }
-    return !"local".equalsIgnoreCase(remote.optString("provider", "local"))
-        || !remote.optString("zhizi-identifier", "").isBlank()
-        || !remote.optString("custom-remote-code", "").isBlank();
-  }
-
-  private static Set<String> engineIdentities(JSONObject leelaz) {
-    LinkedHashSet<String> identities = new LinkedHashSet<>();
-    if (leelaz == null) {
-      return identities;
-    }
-    JSONArray engines = leelaz.optJSONArray("engine-settings-list");
-    if (engines == null) {
-      return identities;
-    }
-    for (int i = 0; i < engines.length(); i++) {
-      JSONObject engine = engines.optJSONObject(i);
-      if (engine == null) {
-        continue;
-      }
-      String command = engine.optString("command", "").trim().toLowerCase(Locale.ROOT);
-      String name = engine.optString("name", "").trim().toLowerCase(Locale.ROOT);
-      identities.add(command.isEmpty() ? "name:" + name : "command:" + command);
-    }
-    return identities;
-  }
-
-  private static void mergeMissingJsonValues(JSONObject target, JSONObject fallback) {
-    for (String key : fallback.keySet()) {
-      Object fallbackValue = fallback.get(key);
-      if (!target.has(key)) {
-        target.put(key, fallbackValue);
-      } else if (target.opt(key) instanceof JSONObject && fallbackValue instanceof JSONObject) {
-        mergeMissingJsonValues(target.getJSONObject(key), (JSONObject) fallbackValue);
-      }
-    }
-  }
-
-  private static void writeJsonAtomically(Path target, JSONObject value) throws IOException {
-    Files.createDirectories(target.getParent());
-    Path temporary = Files.createTempFile(target.getParent(), ".config-recovery-", ".tmp");
-    try {
-      Files.writeString(temporary, value.toString(2));
-      try {
-        Files.move(
-            temporary, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
-      } catch (AtomicMoveNotSupportedException e) {
-        Files.move(temporary, target, StandardCopyOption.REPLACE_EXISTING);
-      }
-    } finally {
-      Files.deleteIfExists(temporary);
-    }
-  }
-
-  private static void copyDirectoryContents(Path source, Path target, boolean replace)
-      throws IOException {
-    Files.createDirectories(target);
-    try (Stream<Path> stream = Files.list(source)) {
-      for (Path child : (Iterable<Path>) stream::iterator) {
-        Path destination = target.resolve(child.getFileName().toString());
-        if (Files.isDirectory(child)) {
-          copyDirectoryContents(child, destination, replace);
-        } else {
-          copyIfExists(child, destination, replace);
-        }
-      }
-    }
-  }
-
-  private static void copyIfExists(Path source, Path destination, boolean replace)
-      throws IOException {
-    if (!Files.exists(source) || Files.isDirectory(source)) {
-      return;
-    }
-    if (!replace && Files.exists(destination)) {
-      return;
-    }
-    Files.createDirectories(destination.getParent());
-    if (replace) {
-      Files.copy(source, destination, StandardCopyOption.REPLACE_EXISTING);
-    } else {
-      Files.copy(source, destination);
-    }
-  }
-
-  private static boolean isAsciiSafePath(Path path) {
-    if (path == null) {
-      return false;
-    }
-    String text = path.toAbsolutePath().normalize().toString();
-    for (int i = 0; i < text.length(); i++) {
-      if (text.charAt(i) > 127) {
-        return false;
-      }
-    }
-    return true;
+    return WorkDirectoryResolver.resolve().directory();
   }
 
   private static Optional<Path> findBundledAppRoot() {
@@ -1860,6 +1212,7 @@ public class Config {
   public boolean disableMoveRankInOrigin = false;
   public boolean logConsoleToFile = false;
   public boolean logGtpToFile = false;
+  public LoggingSettings loggingSettings = LoggingSettings.defaults();
   public boolean enableStartupBenchmark = true;
   public boolean readBoardPonder = false;
   public boolean suppressReadBoardWebSocketPonderingNotice = false;
@@ -2221,6 +1574,10 @@ public class Config {
     saveBoardConfig = saveBoard.getJSONObject("save");
     uiConfig = config.getJSONObject("ui");
     persistedUi = persisted.getJSONObject("ui-persist");
+    loggingSettings = LoggingSettings.fromJson(config.optJSONObject(LoggingSettings.CONFIG_KEY));
+    if (!config.has(LoggingSettings.CONFIG_KEY)) {
+      config.put(LoggingSettings.CONFIG_KEY, loggingSettings.toJson());
+    }
     applyFirstLaunchDefaults(uiConfig, newProfile);
 
     restoreSubBoardDefaultOnce();
@@ -3571,6 +2928,7 @@ public class Config {
     ui.put("replay-branch-interval-seconds", 0.9);
     //   ui.put("gtp-console-style", defaultGtpConsoleStyle);
     config.put("ui", ui);
+    config.put(LoggingSettings.CONFIG_KEY, LoggingSettings.defaults().toJson());
     return config;
   }
 
@@ -4184,6 +3542,16 @@ public class Config {
     this.config = candidateRoot;
     this.uiConfig = candidateRoot.getJSONObject("ui");
     this.leelazConfig = candidateRoot.getJSONObject("leelaz");
+  }
+
+  public void saveLoggingSettings(LoggingSettings settings) throws IOException {
+    JSONObject candidateRoot = new JSONObject(this.config.toString());
+    candidateRoot.put(LoggingSettings.CONFIG_KEY, settings.toJson());
+    writeConfig(candidateRoot, new File(configFilename));
+    this.config = candidateRoot;
+    this.uiConfig = candidateRoot.getJSONObject("ui");
+    this.leelazConfig = candidateRoot.getJSONObject("leelaz");
+    this.loggingSettings = settings;
   }
 
   public void saveTempBoard() throws IOException {
