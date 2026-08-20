@@ -713,8 +713,8 @@ public class LizzieFrame extends JFrame {
   public boolean ponderStatusBeforeScore = false;
   private KeyListener gtpShortKey;
 
-  private boolean WRNStatusBeforeGame = Lizzie.config.chkKataEngineWRN;
-  private boolean autoWRNStatusBeforeGame = Lizzie.config.autoLoadKataEngineWRN;
+  private boolean WRNStatusBeforeGame = false;
+  private boolean autoWRNStatusBeforeGame = false;
   private double WRNValueBeforeGenmove = 0;
   private boolean WRNSelectedBeforeGenmove = false;
 
@@ -19003,6 +19003,10 @@ public class LizzieFrame extends JFrame {
         }
       }
     }
+  }
+
+  public void discardWRNRestoreSnapshot() {
+    WRNStatusBeforeGame = false;
   }
 
   public void restoreWRN(boolean isGenmove) {

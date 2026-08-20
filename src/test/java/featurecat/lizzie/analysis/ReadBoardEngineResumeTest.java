@@ -11,6 +11,8 @@ import featurecat.lizzie.Config;
 import featurecat.lizzie.Lizzie;
 import featurecat.lizzie.gui.BoardRenderer;
 import featurecat.lizzie.gui.BottomToolbar;
+import featurecat.lizzie.gui.JFontCheckBox;
+import featurecat.lizzie.gui.JFontTextField;
 import featurecat.lizzie.gui.LizzieFrame;
 import featurecat.lizzie.gui.Menu;
 import featurecat.lizzie.rules.Board;
@@ -1005,6 +1007,27 @@ class ReadBoardEngineResumeTest {
       assertEquals(0, harness.frame.flashAnalyzeGameCount);
     }
   }
+
+  @Test
+  void readBoardPlayLineKeepsAnalysisWideRootNoiseEnabled() throws Exception {
+    assertPlayLineKeepsAnalysisWideRootNoise("play>black>5 1000 0", false);
+  }
+
+  @Test
+  void readBoardGmaPlayLineKeepsAnalysisWideRootNoiseEnabled() throws Exception {
+    assertPlayLineKeepsAnalysisWideRootNoise("play>white>5 1000 0 gma", true);
+  }
+
+  @Test
+  void readBoardEndsyncLeavesWRNOffAfterUserUnchecks() throws Exception {
+    assertEndsyncKeepsUserWRNChoice(true);
+  }
+
+  @Test
+  void readBoardEndsyncLeavesWRNOnIfStillOn() throws Exception {
+    assertEndsyncKeepsUserWRNChoice(false);
+  }
+
 
   @Test
   void readBoardGmaPlayLineWaitsForSyncedBoardBeforeStartingEngineDecision() throws Exception {
@@ -2110,6 +2133,82 @@ class ReadBoardEngineResumeTest {
     return new Placement(x, y, color);
   }
 
+  private static void assertPlayLineKeepsAnalysisWideRootNoise(String playLine, boolean gma)
+      throws Exception {
+    Menu previousMenu = LizzieFrame.menu;
+    try (EngineResumeHarness harness =
+        EngineResumeHarness.create(rootHistory(emptyStones(), true))) {
+      LizzieFrame.menu = allocate(SilentMenu.class);
+      JFontCheckBox chkWRN = new JFontCheckBox();
+      setField(LizzieFrame.menu, "chkWRN", chkWRN);
+      LizzieFrame.menu.txtWRN = new JFontTextField("0.04");
+      chkWRN.setSelected(true);
+      LizzieFrame.menu.txtWRN.setEnabled(true);
+      Lizzie.config.disableWRNInGame = true;
+      Lizzie.config.chkKataEngineWRN = true;
+      harness.leelaz.isKatago = true;
+      harness.leelaz.wrn = 0.04;
+      if (gma) {
+        harness.leelaz.enableReadBoardGmaSupport();
+      }
+
+      harness.readBoard.parseLine(playLine);
+
+      assertTrue(harness.frame.isAnaPlayingAgainstLeelaz);
+      assertTrue(LizzieFrame.toolbar.isAutoPlay);
+      assertTrue(chkWRN.isSelected(), "ReadBoard play> must not uncheck WRN");
+      assertTrue(LizzieFrame.menu.txtWRN.isEnabled());
+      assertTrue(Lizzie.config.chkKataEngineWRN);
+      assertEquals(0.04, harness.leelaz.wrn);
+      assertFalse(
+          harness.leelaz.sentCommands.stream()
+              .anyMatch(command -> command.startsWith("kata-set-param analysisWideRootNoise")),
+          "ReadBoard play> must not reset analysisWideRootNoise");
+    } finally {
+      LizzieFrame.menu = previousMenu;
+    }
+  }
+
+  private static void assertEndsyncKeepsUserWRNChoice(boolean uncheckAfterPlay) throws Exception {
+    Menu previousMenu = LizzieFrame.menu;
+    try (EngineResumeHarness harness =
+        EngineResumeHarness.create(rootHistory(emptyStones(), true))) {
+      LizzieFrame.menu = allocate(SilentMenu.class);
+      JFontCheckBox chkWRN = new JFontCheckBox();
+      setField(LizzieFrame.menu, "chkWRN", chkWRN);
+      LizzieFrame.menu.txtWRN = new JFontTextField("0.04");
+      chkWRN.setSelected(true);
+      LizzieFrame.menu.txtWRN.setEnabled(true);
+      Lizzie.config.disableWRNInGame = true;
+      Lizzie.config.chkKataEngineWRN = true;
+      harness.leelaz.isKatago = true;
+      harness.leelaz.wrn = 0.04;
+      setField(harness.frame, "WRNStatusBeforeGame", true);
+
+      harness.readBoard.parseLine("play>black>5 1000 0");
+      assertFalse(getBooleanField(harness.frame, "WRNStatusBeforeGame"));
+
+      if (uncheckAfterPlay) {
+        chkWRN.setSelected(false);
+        LizzieFrame.menu.txtWRN.setEnabled(false);
+        Lizzie.config.chkKataEngineWRN = false;
+      }
+      harness.leelaz.sentCommands.clear();
+
+      harness.readBoard.parseLine("endsync");
+
+      assertEquals(!uncheckAfterPlay, chkWRN.isSelected());
+      assertEquals(!uncheckAfterPlay, Lizzie.config.chkKataEngineWRN);
+      assertFalse(
+          harness.leelaz.sentCommands.stream()
+              .anyMatch(command -> command.startsWith("kata-set-param analysisWideRootNoise")),
+          "endsync must not restore WRN that ReadBoard play> never cleared");
+    } finally {
+      LizzieFrame.menu = previousMenu;
+    }
+  }
+
+
   @SuppressWarnings("unchecked")
   private static <T> T allocate(Class<T> type) throws Exception {
     return (T) UnsafeHolder.UNSAFE.allocateInstance(type);
@@ -2594,6 +2693,11 @@ class ReadBoardEngineResumeTest {
     public boolean stopAiPlayingAndPolicy() {
       stopAiPlayingAndPolicyCount++;
       boolean wasGaming = isPlayingAgainstLeelaz || isAnaPlayingAgainstLeelaz;
+      if (isAnaPlayingAgainstLeelaz
+          && LizzieFrame.menu != null
+          && LizzieFrame.menu.txtWRN != null) {
+        restoreWRN(false);
+      }
       isPlayingAgainstLeelaz = false;
       isAnaPlayingAgainstLeelaz = false;
       if (Lizzie.leelaz != null) {
