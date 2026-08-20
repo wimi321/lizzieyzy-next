@@ -23,6 +23,7 @@ import java.awt.FontMetrics;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
 import java.awt.Insets;
+import java.awt.FlowLayout;
 import java.awt.event.*;
 import java.io.File;
 import java.io.IOException;
@@ -149,10 +150,12 @@ public class Menu extends JMenuBar {
   JFontButton setBoardSize;
   JFontButton saveLoad;
   JFontLabel lblWRN;
-  // JFontLabel lblWRNForDouble;
+  JFontLabel lblWRNForDouble;
   public JFontTextField txtWRN;
   JFontCheckBox chkWRN;
-  // JFontLabel lblGfPDAForDouble;
+  JFontLabel lblGfPDAForDouble;
+  JPanel pdaFieldPanel;
+  JPanel wrnFieldPanel;
   JFontCheckBox chkPDA;
   JFontLabel lblGfPDA;
   public JFontTextField txtGfPDA;
@@ -7810,6 +7813,57 @@ public class Menu extends JMenuBar {
     if (!first) doubleMenu(false);
   }
 
+
+  static String withTrailingColon(String text) {
+    if (text == null || text.isEmpty()) {
+      return ":";
+    }
+    if (text.endsWith(":") || text.endsWith("：")) {
+      return text;
+    }
+    return text + ":";
+  }
+
+  static JPanel attachDoubleMenuLabeledField(
+      AbstractButton enable, JLabel label, JTextField field, String labelText) {
+    enable.setText("");
+    enable.setIconTextGap(0);
+    enable.setMargin(new Insets(0, 0, 0, 0));
+    int iconWidth = enable.getIcon() == null ? 16 : enable.getIcon().getIconWidth();
+    Insets checkInsets = enable.getInsets();
+    Dimension checkSize =
+        new Dimension(
+            iconWidth + checkInsets.left + checkInsets.right, Config.menuHeight - 3);
+    enable.setPreferredSize(checkSize);
+    enable.setMinimumSize(checkSize);
+    enable.setMaximumSize(checkSize);
+    label.setText(withTrailingColon(labelText));
+    int labelWidth = label.getFontMetrics(label.getFont()).stringWidth(label.getText()) + 2;
+    label.setPreferredSize(new Dimension(labelWidth, 18));
+    boolean small = Lizzie.config == null || Lizzie.config.isFrameFontSmall();
+    boolean middle = Lizzie.config != null && Lizzie.config.isFrameFontMiddle();
+    Dimension fieldSize =
+        new Dimension(
+            small ? 48 : (middle ? 54 : 62),
+            small
+                ? (Lizzie.config != null && Lizzie.config.useJavaLooks ? 20 : 19)
+                : (middle
+                    ? (Lizzie.config != null && Lizzie.config.useJavaLooks ? 22 : 21)
+                    : (Lizzie.config != null && Lizzie.config.useJavaLooks ? 26 : 25)));
+    field.setHorizontalAlignment(JTextField.CENTER);
+    field.setPreferredSize(fieldSize);
+    field.setMinimumSize(fieldSize);
+    field.setMaximumSize(fieldSize);
+    JPanel panel = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
+    panel.setOpaque(false);
+    panel.setBorder(new EmptyBorder(0, 0, 0, 0));
+    panel.add(enable);
+    panel.add(label);
+    panel.add(field);
+    AccessibilitySupport.labelFor(label, field, label.getText());
+    return panel;
+  }
+
   public void doubleMenu(boolean first) {
     if (!Lizzie.config.showDoubleMenu) {
       Lizzie.frame.topPanel.setVisible(false);
@@ -9199,29 +9253,20 @@ public class Menu extends JMenuBar {
             Lizzie.config.isFrameFontSmall() ? 52 : (Lizzie.config.isFrameFontMiddle() ? 60 : 72),
             Lizzie.config.isFrameFontSmall() ? 18 : (Lizzie.config.isFrameFontMiddle() ? 21 : 24)));
 
-    Lizzie.frame.topPanel.add(chkPDA);
-    chkPDA.setText(resourceBundle.getString("Menu.separateLblPda"));
-    chkPDA.setPreferredSize(
-        new Dimension((int) chkPDA.getPreferredSize().getWidth(), Config.menuHeight - 3));
-    // lblGfPDAForDouble = new JFontLabel(resourceBundle.getString("Menu.separateLblPda"));
-    // Lizzie.frame.topPanel.add(lblGfPDAForDouble);
-    Lizzie.frame.topPanel.add(txtGfPDA);
-    txtGfPDA.setPreferredSize(
-        new Dimension(
-            Lizzie.config.isFrameFontSmall() ? 46 : (Lizzie.config.isFrameFontMiddle() ? 50 : 56),
-            Lizzie.config.isFrameFontSmall() ? 18 : (Lizzie.config.isFrameFontMiddle() ? 21 : 23)));
-
-    Lizzie.frame.topPanel.add(chkWRN);
-    chkWRN.setText(resourceBundle.getString("Menu.separateLblWrn"));
-    chkWRN.setPreferredSize(
-        new Dimension((int) chkWRN.getPreferredSize().getWidth(), Config.menuHeight - 3));
-    // lblWRNForDouble = new JFontLabel(resourceBundle.getString("Menu.separateLblWrn"));
-    // Lizzie.frame.topPanel.add(lblWRNForDouble);
-    Lizzie.frame.topPanel.add(txtWRN);
-    txtWRN.setPreferredSize(
-        new Dimension(
-            Lizzie.config.isFrameFontSmall() ? 46 : (Lizzie.config.isFrameFontMiddle() ? 52 : 60),
-            Lizzie.config.isFrameFontSmall() ? 18 : (Lizzie.config.isFrameFontMiddle() ? 21 : 23)));
+    if (lblGfPDAForDouble == null) {
+      lblGfPDAForDouble = new JFontLabel();
+    }
+    if (lblWRNForDouble == null) {
+      lblWRNForDouble = new JFontLabel();
+    }
+    pdaFieldPanel =
+        attachDoubleMenuLabeledField(
+            chkPDA, lblGfPDAForDouble, txtGfPDA, resourceBundle.getString("Menu.separateLblPda"));
+    wrnFieldPanel =
+        attachDoubleMenuLabeledField(
+            chkWRN, lblWRNForDouble, txtWRN, resourceBundle.getString("Menu.separateLblWrn"));
+    Lizzie.frame.topPanel.add(pdaFieldPanel);
+    Lizzie.frame.topPanel.add(wrnFieldPanel);
 
     setPdaAndWrnByEngineForDouble();
 
@@ -9497,7 +9542,9 @@ public class Menu extends JMenuBar {
       txtPDA.setVisible(true);
       more2.setVisible(true);
       customPDAMorePanel.setVisible(true);
-      // lblGfPDAForDouble.setVisible(false);
+      if (pdaFieldPanel != null) {
+        pdaFieldPanel.setVisible(false);
+      }
       chkPDA.setVisible(false);
       txtGfPDA.setVisible(false);
       needRemoveS = false;
@@ -9510,12 +9557,16 @@ public class Menu extends JMenuBar {
           && !isEngineGame()
           && Lizzie.leelaz != null
           && Lizzie.leelaz.isKatago) {
+        if (pdaFieldPanel != null) {
+          pdaFieldPanel.setVisible(true);
+        }
         chkPDA.setVisible(true);
-        // lblGfPDAForDouble.setVisible(true);
         txtGfPDA.setVisible(true);
         needRemoveS = false;
       } else {
-        //  lblGfPDAForDouble.setVisible(false);
+        if (pdaFieldPanel != null) {
+          pdaFieldPanel.setVisible(false);
+        }
         chkPDA.setVisible(false);
         txtGfPDA.setVisible(false);
       }
@@ -9526,11 +9577,15 @@ public class Menu extends JMenuBar {
         && Lizzie.leelaz != null
         && Lizzie.leelaz.isKatago) {
       needRemoveS = false;
-      // lblWRNForDouble.setVisible(true);
+      if (wrnFieldPanel != null) {
+        wrnFieldPanel.setVisible(true);
+      }
       chkWRN.setVisible(true);
       txtWRN.setVisible(true);
     } else {
-      // lblWRNForDouble.setVisible(false);
+      if (wrnFieldPanel != null) {
+        wrnFieldPanel.setVisible(false);
+      }
       chkWRN.setVisible(false);
       txtWRN.setVisible(false);
     }
