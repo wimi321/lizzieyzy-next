@@ -946,7 +946,6 @@ public class ReadBoard implements ReadBoardTrackingEligibilityAdapter.Eligibilit
           Lizzie.config.UsePureNetInGame = false;
           Lizzie.frame.isAnaPlayingAgainstLeelaz = true;
           LizzieFrame.toolbar.isAutoPlay = true;
-          Lizzie.frame.clearWRNforGame(false);
         } else if (params[1].equals("white")) {
           LizzieFrame.toolbar.chkAutoPlayBlack.setSelected(false);
           LizzieFrame.toolbar.chkAutoPlayWhite.setSelected(true);
@@ -956,7 +955,6 @@ public class ReadBoard implements ReadBoardTrackingEligibilityAdapter.Eligibilit
           Lizzie.config.UsePureNetInGame = false;
           Lizzie.frame.isAnaPlayingAgainstLeelaz = true;
           LizzieFrame.toolbar.isAutoPlay = true;
-          Lizzie.frame.clearWRNforGame(false);
         }
         if (!readBoardGmaAutoPlayActive) {
           Lizzie.leelaz.ponder();
