@@ -2,17 +2,14 @@ package featurecat.lizzie.gui;
 
 import featurecat.lizzie.Config;
 import featurecat.lizzie.Lizzie;
-import featurecat.lizzie.util.MultiOutputStream;
 import featurecat.lizzie.util.Utils;
 import featurecat.lizzie.util.YikeSyncDebugLog;
 import java.awt.*;
 import java.awt.event.*;
 import java.io.File;
 import java.io.FileInputStream;
-import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStreamReader;
-import java.io.PrintStream;
 import java.security.CodeSource;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
@@ -129,14 +126,6 @@ public class BrowserFrame extends JFrame {
     //     instance.
     cefApp_ = builder.build();
     Lizzie.config.browserInitiazed = true;
-    if (Lizzie.config.logConsoleToFile) {
-      PrintStream oldErrorPrintStream = System.err;
-      FileOutputStream bosError =
-          new FileOutputStream("LastErrorLogs_" + Lizzie.nextVersion + ".txt", true);
-      MultiOutputStream multiError =
-          new MultiOutputStream(new PrintStream(bosError), oldErrorPrintStream);
-      System.setErr(new PrintStream(multiError));
-    }
     // (2) JCEF can handle one to many browser instances simultaneous. These
     //     browser instances are logically grouped together by an instance of
     //     the class CefClient. In your application you can create one to many

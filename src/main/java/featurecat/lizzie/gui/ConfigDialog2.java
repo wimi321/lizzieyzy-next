@@ -8,6 +8,7 @@ import static java.lang.Math.max;
 import featurecat.lizzie.Config;
 import featurecat.lizzie.Lizzie;
 import featurecat.lizzie.gui.LizzieFrame.HtmlKit;
+import featurecat.lizzie.logging.LogCategories;
 import featurecat.lizzie.rules.Board;
 import featurecat.lizzie.theme.Theme;
 import featurecat.lizzie.util.DigitOnlyFilter;
@@ -117,8 +118,11 @@ import javax.swing.text.html.HTMLDocument;
 import javax.swing.text.html.StyleSheet;
 import org.json.JSONArray;
 import org.json.JSONObject;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class ConfigDialog2 extends JDialog {
+  private static final Logger LOG = LoggerFactory.getLogger(LogCategories.CONFIG);
   private static final Color SETTINGS_BG = new Color(247, 241, 229);
   private static final Color SETTINGS_SURFACE = new Color(255, 252, 245);
   private static final Color SETTINGS_SURFACE_STRONG = new Color(255, 255, 250);
@@ -222,7 +226,6 @@ public class ConfigDialog2 extends JDialog {
   private JCheckBox chkAlwaysOnTop;
   private JCheckBox chkShowQuickLinks;
 
-  private JCheckBox chkLogConsoleToFile;
   private JCheckBox chkLogGtpToFile;
 
   //  public JCheckBox chkHoldBestMovesToSgf;
@@ -1908,20 +1911,6 @@ public class ConfigDialog2 extends JDialog {
     uiTab.add(lblLogGtpToFile);
     lblLogGtpToFile.setToolTipText(
         resourceBundle.getString("LizzieConfig.lblLogGtpToFile.tooltips"));
-
-    JLabel lblLogConsoleToFile =
-        new JLabel(resourceBundle.getString("LizzieConfig.lblLogConsoleToFile")); // ("记录控制台日志到文件");
-    lblLogConsoleToFile.setBounds(608, 550, 205, 15);
-    uiTab.add(lblLogConsoleToFile);
-    lblLogConsoleToFile.setToolTipText(
-        resourceBundle.getString("LizzieConfig.lblLogConsoleToFile.tooltips"));
-
-    chkLogConsoleToFile = new JCheckBox();
-    chkLogConsoleToFile.setBounds(837, 547, 26, 23);
-    uiTab.add(chkLogConsoleToFile);
-    chkLogConsoleToFile.setToolTipText(
-        resourceBundle.getString("LizzieConfig.lblLogConsoleToFile.tooltips"));
-    chkLogConsoleToFile.setSelected(Lizzie.config.logConsoleToFile);
 
     chkLogGtpToFile = new JCheckBox();
     chkLogGtpToFile.setBounds(837, 577, 26, 23);
@@ -5853,9 +5842,7 @@ public class ConfigDialog2 extends JDialog {
     Lizzie.config.uiConfig.put(NetworkProxy.KEY_PROXY_PORT, savedNetworkProxyPort());
     Lizzie.config.showScoreAsDiff = chkShowScoreAsLead.isSelected();
     Lizzie.config.uiConfig.put("show-score-as-diff", Lizzie.config.showScoreAsDiff);
-    Lizzie.config.logConsoleToFile = chkLogConsoleToFile.isSelected();
     Lizzie.config.logGtpToFile = chkLogGtpToFile.isSelected();
-    Lizzie.config.uiConfig.put("log-console-to-file", Lizzie.config.logConsoleToFile);
     Lizzie.config.uiConfig.put("log-gtp-to-file", Lizzie.config.logGtpToFile);
     Lizzie.config.enableStartupBenchmark = chkEnableStartupBenchmark.isSelected();
     Lizzie.config.uiConfig.put("enable-startup-benchmark", Lizzie.config.enableStartupBenchmark);
@@ -6255,7 +6242,9 @@ public class ConfigDialog2 extends JDialog {
       }
       Lizzie.config.save();
     } catch (IOException e) {
-      e.printStackTrace();
+      if (LOG.isErrorEnabled()) {
+        LOG.error("config operation={} source={} outcome={}", "save", "dialog", "failed", e);
+      }
       return false;
     }
     LizzieFrame.menu.updateFastLinks();

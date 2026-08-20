@@ -17,6 +17,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Locale;
 import java.util.ResourceBundle;
+import java.util.function.IntConsumer;
 import javax.imageio.ImageIO;
 import javax.swing.*;
 import javax.swing.table.AbstractTableModel;
@@ -27,6 +28,14 @@ import javax.swing.table.TableModel;
 import javax.swing.table.TableColumn;
 
 public class LoadEngine extends JPanel {
+
+  public static void requestNormalExit() {
+    requestNormalExit(System::exit);
+  }
+
+  public static void requestNormalExit(IntConsumer exit) {
+    Lizzie.shutdownLoggingThenExit(exit);
+  }
   public static Config config;
   public TableModel dataModel;
   JPanel tablepanel;
@@ -240,7 +249,7 @@ public class LoadEngine extends JPanel {
           @Override
           public void actionPerformed(ActionEvent e) {
             // TODO Auto-generated method stub
-            System.exit(0);
+            requestNormalExit();
           }
         });
     noEngine.addActionListener(
@@ -551,7 +560,8 @@ public class LoadEngine extends JPanel {
         Lizzie.resourceBundle.getString("loadEngine.title"),
         Lizzie.resourceBundle.getString("loadEngine.title"));
     AccessibilitySupport.applyToTree(newContentPane);
-    AccessibilitySupport.installEscapeAction(engjf.getRootPane(), engjf, () -> System.exit(0));
+    AccessibilitySupport.installEscapeAction(
+        engjf.getRootPane(), engjf, LoadEngine::requestNormalExit);
     engjf.setModal(true);
     // Display the window.
     // jf.setSize(521, 320);
@@ -560,7 +570,7 @@ public class LoadEngine extends JPanel {
     engjf.addWindowListener(
         new WindowAdapter() {
           public void windowClosing(WindowEvent e) {
-            System.exit(0);
+            requestNormalExit();
           }
         });
 
