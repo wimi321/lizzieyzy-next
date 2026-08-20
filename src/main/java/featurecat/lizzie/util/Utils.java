@@ -4,6 +4,7 @@ import static java.lang.Math.round;
 
 import featurecat.lizzie.Config;
 import featurecat.lizzie.Lizzie;
+import featurecat.lizzie.analysis.CaptureTsumeGo;
 import featurecat.lizzie.analysis.MoveData;
 import featurecat.lizzie.gui.EngineData;
 import featurecat.lizzie.gui.HtmlMessage;
@@ -1380,13 +1381,31 @@ public class Utils {
     }
   }
 
-  public static void copyCaptureTsumeGo() {
-    // TODO Auto-generated method stub
-    try {
-      copy("/assets/captureTsumeGo/CaptureTsumeGo1.2.jar", "captureTsumeGo");
-    } catch (IOException e) {
-      // TODO Auto-generated catch block
-      e.printStackTrace();
+  public static void copyCaptureTsumeGo() throws IOException {
+    if (Lizzie.config == null) {
+      throw new IOException("App work directory is not available for CaptureTsumeGo extract");
+    }
+    copyCaptureTsumeGo(Lizzie.config.getWorkDirectory());
+  }
+
+  public static void copyCaptureTsumeGo(File workDirectory) throws IOException {
+    copyResourceToFile(
+        "/assets/captureTsumeGo/CaptureTsumeGo1.2.jar",
+        CaptureTsumeGo.helperJarFile(workDirectory));
+  }
+
+  private static void copyResourceToFile(String resource, File destFile) throws IOException {
+    try (InputStream in = Utils.class.getResourceAsStream(resource)) {
+      if (in == null) {
+        throw new IOException("Missing bundled resource: " + resource);
+      }
+      File parent = destFile.getParentFile();
+      if (parent != null) {
+        Files.createDirectories(parent.toPath());
+      }
+      Path dest = destFile.toPath();
+      Files.deleteIfExists(dest);
+      Files.copy(in, dest);
     }
   }
 

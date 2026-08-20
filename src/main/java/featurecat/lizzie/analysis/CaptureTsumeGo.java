@@ -17,6 +17,9 @@ import java.util.concurrent.ScheduledExecutorService;
 import javax.swing.JFrame;
 
 public class CaptureTsumeGo {
+  static final String HELPER_DIR_NAME = "captureTsumeGo";
+  static final String HELPER_JAR_NAME = "CaptureTsumeGo1.2.jar";
+
   private static boolean macPermissionHintShown = false;
 
   private Process process;
@@ -47,10 +50,31 @@ public class CaptureTsumeGo {
     }
   }
 
+  public static File helperJarFile(File workDirectory) {
+    if (workDirectory == null) {
+      throw new IllegalArgumentException("workDirectory");
+    }
+    return workDirectory
+        .toPath()
+        .toAbsolutePath()
+        .normalize()
+        .resolve(HELPER_DIR_NAME)
+        .resolve(HELPER_JAR_NAME)
+        .toFile();
+  }
+
   private boolean start() {
-    String jarName = "CaptureTsumeGo1.2.jar";
-    File jarFile = new File("captureTsumeGo" + File.separator + jarName);
-    if (!jarFile.exists()) Utils.copyCaptureTsumeGo();
+    File workDirectory = Lizzie.config.getWorkDirectory();
+    File jarFile = helperJarFile(workDirectory);
+    if (!jarFile.exists()) {
+      try {
+        Utils.copyCaptureTsumeGo(workDirectory);
+      } catch (IOException e) {
+        e.printStackTrace();
+        Utils.showMsg("无法提取抓死活棋辅助程序到 " + jarFile.getAbsolutePath() + "：" + e.getLocalizedMessage());
+        return false;
+      }
+    }
     if (!jarFile.exists()) {
       Utils.showMsg("找不到 " + jarFile.getAbsolutePath() + "，抓死活棋功能无法启动。");
       return false;
