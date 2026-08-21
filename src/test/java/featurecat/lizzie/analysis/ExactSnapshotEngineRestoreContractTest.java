@@ -25,7 +25,9 @@ import java.lang.reflect.Field;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
@@ -69,6 +71,67 @@ class ExactSnapshotEngineRestoreContractTest {
           collectPlayCommands(output.commands()),
           "history restore should replay only real MOVE/PASS nodes after the nearest snapshot.");
     }
+  }
+
+  @Test
+  void remoteComputeSnapshotAnchorRestoreDoesNotEmitHostLoadSgf() throws Exception {
+    try (TestHarness harness = TestHarness.open(false)) {
+      Board board = allocate(Board.class);
+      board.startStonelist = new ArrayList<>();
+      board.hasStartStone = false;
+      BoardHistoryList history = new BoardHistoryList(snapshotRoot());
+      history.add(moveNode(2, 2, Stone.BLACK, true, 4));
+      board.setHistory(history);
+      Lizzie.board = board;
+
+      Leelaz engine = new Leelaz("");
+      engine.useRemoteCompute = true;
+      ExactSnapshotRestoreProtocolFixture.Transport transport =
+          ExactSnapshotRestoreProtocolFixture.install(
+              engine, command -> ExactSnapshotRestoreProtocolFixture.Response.success());
+
+      board.resendMoveToEngine(engine, false);
+
+      List<String> commands = transport.commands();
+      assertTrue(
+          commands.stream().noneMatch(ExactSnapshotEngineRestoreContractTest::isHostLoadSgfCommand),
+          "remote snapshot-anchor restore must not emit a host-only loadsgf path: " + commands);
+
+      String setPosition =
+          commands.stream()
+              .filter(ExactSnapshotEngineRestoreContractTest::isSetPositionCommand)
+              .findFirst()
+              .orElseThrow(
+                  () ->
+                      new AssertionError(
+                          "remote snapshot restore must represent setup stones in-band: "
+                              + commands));
+      Set<String> placed = setPositionPlacements(setPosition);
+      assertTrue(
+          placed.contains("B " + Board.convertCoordinatesToName(0, 0)),
+          "black setup stone missing from in-band restore: " + setPosition);
+      assertTrue(
+          placed.contains("W " + Board.convertCoordinatesToName(1, 0)),
+          "white setup stone missing from in-band restore: " + setPosition);
+      assertTrue(
+          commands.stream()
+              .noneMatch(ExactSnapshotEngineRestoreContractTest::isGoguiSetupPlayerCommand),
+          "remote restore must not emit gogui-setup_player: " + commands);
+      assertEquals(
+          List.of("play B " + Board.convertCoordinatesToName(2, 2)),
+          collectPlayCommands(commands),
+          "sequential tail after the snapshot must still be replayed with play");
+    }
+  }
+
+  @Test
+  void remoteComputeEmptyTailWhiteToPlaySnapshotRestoreSetsEngineSideToPlay() throws Exception {
+    assertRemoteEmptyTailRestoreSideToPlay(false);
+  }
+
+  @Test
+  void remoteComputeEmptyTailBlackToPlaySnapshotRestoreSetsEngineSideToPlay() throws Exception {
+    assertRemoteEmptyTailRestoreSideToPlay(true);
   }
 
   @Test
@@ -1381,6 +1444,84 @@ class ExactSnapshotEngineRestoreContractTest {
     return prepareCurrentPositionRestore(engine, positionData).execute();
   }
 
+  private static void assertRemoteEmptyTailRestoreSideToPlay(boolean blackToPlay) throws Exception {
+    try (TestHarness harness = TestHarness.open(false)) {
+      Board board = allocate(Board.class);
+      board.startStonelist = new ArrayList<>();
+      board.hasStartStone = false;
+      BoardHistoryList history = new BoardHistoryList(snapshotRoot(blackToPlay));
+      board.setHistory(history);
+      Lizzie.board = board;
+
+      Leelaz engine = new Leelaz("");
+      engine.useRemoteCompute = true;
+      ExactSnapshotRestoreProtocolFixture.Transport transport =
+          ExactSnapshotRestoreProtocolFixture.install(
+              engine, command -> ExactSnapshotRestoreProtocolFixture.Response.success());
+
+      board.resendMoveToEngine(engine, false);
+
+      List<String> commands = transport.commands();
+      assertTrue(
+          commands.stream().noneMatch(ExactSnapshotEngineRestoreContractTest::isHostLoadSgfCommand),
+          "remote snapshot-anchor restore must not emit a host-only loadsgf path: " + commands);
+      assertTrue(
+          commands.stream()
+              .noneMatch(ExactSnapshotEngineRestoreContractTest::isGoguiSetupPlayerCommand),
+          "remote restore must not emit gogui-setup_player: " + commands);
+      assertEquals(
+          blackToPlay ? List.of() : List.of("play B pass"),
+          collectPlayCommands(commands),
+          blackToPlay
+              ? "B-to-play empty-tail must not send play B pass: " + commands
+              : "W-to-play empty-tail must send exactly one play B pass: " + commands);
+
+      String setPosition =
+          commands.stream()
+              .filter(ExactSnapshotEngineRestoreContractTest::isSetPositionCommand)
+              .findFirst()
+              .orElseThrow(
+                  () ->
+                      new AssertionError(
+                          "remote snapshot restore must represent setup stones in-band: "
+                              + commands));
+      Set<String> placed = setPositionPlacements(setPosition);
+      assertTrue(
+          placed.contains("B " + Board.convertCoordinatesToName(0, 0)),
+          "black setup stone missing from in-band restore: " + setPosition);
+      assertTrue(
+          placed.contains("W " + Board.convertCoordinatesToName(1, 0)),
+          "white setup stone missing from in-band restore: " + setPosition);
+      assertEquals(
+          blackToPlay,
+          replayRemoteEngineBlackToPlay(commands),
+          "empty-tail remote restore must leave engine side-to-play matching snapshot PL: "
+              + commands);
+    }
+  }
+
+  private static boolean replayRemoteEngineBlackToPlay(List<String> commands) {
+    boolean engineBlackToPlay = true;
+    for (String command : commands) {
+      if (command == null) {
+        continue;
+      }
+      if (command.equals("clear_board")
+          || command.startsWith("boardsize ")
+          || command.startsWith("rectangular_boardsize ")) {
+        engineBlackToPlay = true;
+      } else if (isSetPositionCommand(command)) {
+        engineBlackToPlay = true;
+      } else if (command.startsWith("play ")) {
+        String[] parts = command.split("\\s+");
+        if (parts.length >= 2) {
+          engineBlackToPlay = "W".equalsIgnoreCase(parts[1]);
+        }
+      }
+    }
+    return engineBlackToPlay;
+  }
+
   private static List<Path> snapshotSgfFiles(Path tempDirectory) throws IOException {
     try (var files = Files.list(tempDirectory)) {
       return files
@@ -1391,6 +1532,10 @@ class ExactSnapshotEngineRestoreContractTest {
   }
 
   private static BoardData snapshotRoot() {
+    return snapshotRoot(false);
+  }
+
+  private static BoardData snapshotRoot(boolean blackToPlay) {
     Stone[] stones = emptyStones();
     stones[Board.getIndex(0, 0)] = Stone.BLACK;
     stones[Board.getIndex(1, 0)] = Stone.WHITE;
@@ -1401,7 +1546,7 @@ class ExactSnapshotEngineRestoreContractTest {
         stones,
         java.util.Optional.of(new int[] {1, 0}),
         Stone.WHITE,
-        false,
+        blackToPlay,
         zobrist(stones),
         3,
         moveNumberList,
@@ -1476,6 +1621,35 @@ class ExactSnapshotEngineRestoreContractTest {
 
   private static boolean isLoadSgfCommand(String command) {
     return command != null && command.contains("loadsgf ");
+  }
+
+  private static boolean isHostLoadSgfCommand(String command) {
+    if (!isLoadSgfCommand(command)) {
+      return false;
+    }
+    String argument = command.substring(command.indexOf("loadsgf ") + "loadsgf ".length()).trim();
+    return argument.contains("/") || argument.contains("\\") || argument.contains(":");
+  }
+
+  private static boolean isSetPositionCommand(String command) {
+    return command != null
+        && (command.equals("set_position") || command.startsWith("set_position "));
+  }
+
+  private static boolean isGoguiSetupPlayerCommand(String command) {
+    return command != null
+        && (command.equals("gogui-setup_player") || command.startsWith("gogui-setup_player "));
+  }
+
+  private static Set<String> setPositionPlacements(String command) {
+    String payload =
+        command.startsWith("set_position") ? command.substring("set_position".length()).trim() : "";
+    String[] tokens = payload.isEmpty() ? new String[0] : payload.split("\\s+");
+    Set<String> placements = new LinkedHashSet<>();
+    for (int index = 0; index + 1 < tokens.length; index += 2) {
+      placements.add(tokens[index] + " " + tokens[index + 1]);
+    }
+    return placements;
   }
 
   private static List<String> collectPlayCommands(List<String> commands) {

@@ -5016,6 +5016,32 @@ public class Leelaz {
       ExactSnapshotRestoreAdmission admission,
       Runnable afterConsumed,
       Runnable onDispatchStarted) {
+    restoreExactSnapshotPosition(
+        "loadsgf " + sgfFile.toAbsolutePath(),
+        sgfFile,
+        mirroredEngine,
+        admission,
+        afterConsumed,
+        onDispatchStarted);
+  }
+
+  final void restoreInBandForExactSnapshotRestore(
+      String command,
+      Leelaz mirroredEngine,
+      ExactSnapshotRestoreAdmission admission,
+      Runnable afterConsumed,
+      Runnable onDispatchStarted) {
+    restoreExactSnapshotPosition(
+        command, null, mirroredEngine, admission, afterConsumed, onDispatchStarted);
+  }
+
+  private void restoreExactSnapshotPosition(
+      String command,
+      Path sgfFile,
+      Leelaz mirroredEngine,
+      ExactSnapshotRestoreAdmission admission,
+      Runnable afterConsumed,
+      Runnable onDispatchStarted) {
     if (afterConsumed == null) {
       throw new IllegalArgumentException("afterConsumed");
     }
@@ -5032,7 +5058,7 @@ public class Leelaz {
           if (onDispatchStarted != null) {
             onDispatchStarted.run();
           }
-          loadTrackedSgf(sgfFile, mirroredEngine, afterConsumed, admission);
+          loadTrackedSnapshotCommand(command, sgfFile, mirroredEngine, afterConsumed, admission);
         });
   }
 
@@ -5041,13 +5067,27 @@ public class Leelaz {
       Leelaz mirroredEngine,
       Runnable afterConsumed,
       ExactSnapshotRestoreAdmission admission) {
+    loadTrackedSnapshotCommand(
+        "loadsgf " + sgfFile.toAbsolutePath(),
+        sgfFile,
+        mirroredEngine,
+        afterConsumed,
+        admission);
+  }
+
+  private void loadTrackedSnapshotCommand(
+      String command,
+      Path sgfFile,
+      Leelaz mirroredEngine,
+      Runnable afterConsumed,
+      ExactSnapshotRestoreAdmission admission) {
     LoadSgfDispatch dispatch = new LoadSgfDispatch(afterConsumed);
     RuntimeException sendFailure =
-        sendTrackedLoadSgfCommand(this, sgfFile, dispatch, admission);
+        sendTrackedSnapshotCommand(this, command, sgfFile, dispatch, admission);
     RuntimeException mirroredSendFailure = null;
     if (mirroredEngine != null) {
       mirroredSendFailure =
-          sendTrackedLoadSgfCommand(mirroredEngine, sgfFile, dispatch, admission);
+          sendTrackedSnapshotCommand(mirroredEngine, command, sgfFile, dispatch, admission);
     }
     if (sendFailure == null) {
       sendFailure = mirroredSendFailure;
@@ -5091,47 +5131,46 @@ public class Leelaz {
       Path sgfFile,
       Runnable onResponse,
       CommandSendFailureHandler onSendFailure) {
-    sendLoadSgfCommand(targetEngine, sgfFile, onResponse, onSendFailure, null);
+    sendSnapshotRestoreCommand(
+        targetEngine,
+        "loadsgf " + sgfFile.toAbsolutePath(),
+        onResponse,
+        onSendFailure,
+        null);
   }
 
-  private void sendLoadSgfCommand(
+  private void sendSnapshotRestoreCommand(
       Leelaz targetEngine,
-      Path sgfFile,
+      String command,
       Runnable onResponse,
       CommandSendFailureHandler onSendFailure,
       ExactSnapshotRestoreAdmission admission) {
     if (admission != null) {
-      String command = "loadsgf " + sgfFile.toAbsolutePath();
       if (!targetEngine.sendExactSnapshotRestoreCommand(
           command, onResponse, onSendFailure, admission)) {
         throw new ExactSnapshotEngineRestore.Failure(
             ExactSnapshotEngineRestore.FailureCategory.SEND_FAILED,
-            "Exact snapshot restore loadsgf command was rejected: " + command);
+            "Exact snapshot restore command was rejected: " + command);
       }
       return;
     }
-    targetEngine.sendCommand(
-        "loadsgf " + sgfFile.toAbsolutePath(), onResponse, onSendFailure, true, false);
+    targetEngine.sendCommand(command, onResponse, onSendFailure, true, false);
   }
 
-  private RuntimeException sendTrackedLoadSgfCommand(
-      Leelaz targetEngine, Path sgfFile, LoadSgfDispatch dispatch) {
-    return sendTrackedLoadSgfCommand(targetEngine, sgfFile, dispatch, null);
-  }
-
-  private RuntimeException sendTrackedLoadSgfCommand(
+  private RuntimeException sendTrackedSnapshotCommand(
       Leelaz targetEngine,
+      String command,
       Path sgfFile,
       LoadSgfDispatch dispatch,
       ExactSnapshotRestoreAdmission admission) {
     TrackedLoadSgfConsumer trackedConsumer =
-        new TrackedLoadSgfConsumer(targetEngine, sgfFile, dispatch);
+        new TrackedLoadSgfConsumer(targetEngine, sgfFile, command, dispatch);
     try {
       Runnable send =
           () ->
-              sendLoadSgfCommand(
+              sendSnapshotRestoreCommand(
                   targetEngine,
-                  sgfFile,
+                  command,
                   trackedConsumer.responseHandler(),
                   trackedConsumer.sendFailureHandler(),
                   admission);
@@ -5147,13 +5186,18 @@ public class Leelaz {
     }
   }
 
-  private RuntimeException buildLoadSgfResponseFailure(Path sgfFile, String responseLine) {
+  private RuntimeException buildSnapshotRestoreResponseFailure(
+      String command, Path sgfFile, String responseLine) {
     String line = responseLine == null ? "" : responseLine.trim();
-    String detail = line.isEmpty() ? "? loadsgf failed" : line;
-    String message =
-        "GTP loadsgf failed for '" + sgfFile.toAbsolutePath() + "' with response: " + detail;
+    String detail = line.isEmpty() ? "? snapshot restore failed" : line;
+    if (sgfFile != null) {
+      return new ExactSnapshotEngineRestore.Failure(
+          ExactSnapshotEngineRestore.FailureCategory.GTP_ERROR,
+          "GTP loadsgf failed for '" + sgfFile.toAbsolutePath() + "' with response: " + detail);
+    }
     return new ExactSnapshotEngineRestore.Failure(
-        ExactSnapshotEngineRestore.FailureCategory.GTP_ERROR, message);
+        ExactSnapshotEngineRestore.FailureCategory.GTP_ERROR,
+        "GTP snapshot restore failed for '" + command + "' with response: " + detail);
   }
 
   private static Thread newLoadSgfCleanupThread(Runnable runnable) {
@@ -5755,9 +5799,15 @@ public class Leelaz {
   }
 
 
-  private boolean isExactSnapshotLoadSgf(String command, Runnable handler) {
+  private static boolean isExactSnapshotPositionCommand(String command) {
     return command != null
-        && command.startsWith("loadsgf ")
+        && (command.startsWith("loadsgf ")
+            || command.equals("set_position")
+            || command.startsWith("set_position "));
+  }
+
+  private boolean isExactSnapshotLoadSgf(String command, Runnable handler) {
+    return isExactSnapshotPositionCommand(command)
         && handler != NO_OP_RESPONSE_HANDLER
         && isExactSnapshotRestoreAdmissionContextActive();
   }
@@ -5774,6 +5824,9 @@ public class Leelaz {
 
   private int nextResponseCommandId(String command, Runnable handler) {
     if (command != null && command.startsWith("loadsgf ")) {
+      return loadSgfResponseCommandIds.getAndIncrement();
+    }
+    if (isExactSnapshotLoadSgf(command, handler)) {
       return loadSgfResponseCommandIds.getAndIncrement();
     }
     if (handler instanceof BoardSynchronizationResponseHandler) {
@@ -5887,7 +5940,7 @@ public class Leelaz {
         if (queuedCommand.onResponse != handler) {
           continue;
         }
-        if (queuedCommand.command == null || !queuedCommand.command.startsWith("loadsgf ")) {
+        if (!isExactSnapshotPositionCommand(queuedCommand.command)) {
           continue;
         }
         iterator.remove();
@@ -8809,7 +8862,7 @@ public class Leelaz {
     }
 
     private boolean isTrackedLoadSgf() {
-      return command != null && command.startsWith("loadsgf ") && queuedCommand.isTrackedLoadSgf();
+      return isExactSnapshotPositionCommand(command) && queuedCommand.isTrackedLoadSgf();
     }
 
     private boolean isOutstandingResponseRetired() {
@@ -10186,6 +10239,7 @@ public class Leelaz {
   private static final class TrackedLoadSgfConsumer {
     private final Leelaz targetEngine;
     private final Path sgfFile;
+    private final String command;
     private final LoadSgfDispatch dispatch;
     private final AtomicBoolean settled = new AtomicBoolean(false);
     private final Runnable responseHandler = this::onResponse;
@@ -10202,9 +10256,11 @@ public class Leelaz {
           }
         };
 
-    private TrackedLoadSgfConsumer(Leelaz targetEngine, Path sgfFile, LoadSgfDispatch dispatch) {
+    private TrackedLoadSgfConsumer(
+        Leelaz targetEngine, Path sgfFile, String command, LoadSgfDispatch dispatch) {
       this.targetEngine = targetEngine;
       this.sgfFile = sgfFile;
+      this.command = command;
       this.dispatch = dispatch;
       this.dispatch.registerPendingConsumer(this);
     }
@@ -10220,8 +10276,8 @@ public class Leelaz {
     private void onResponse() {
       if (targetEngine.isCurrentCommandResponseError()) {
         failFromResponse(
-            targetEngine.buildLoadSgfResponseFailure(
-                sgfFile, targetEngine.currentCommandResponseLine()));
+            targetEngine.buildSnapshotRestoreResponseFailure(
+                command, sgfFile, targetEngine.currentCommandResponseLine()));
         return;
       }
       complete();
@@ -10480,7 +10536,7 @@ public class Leelaz {
     }
 
     private boolean isTrackedLoadSgf() {
-      return command != null && command.startsWith("loadsgf ") && onSendFailure != null;
+      return isExactSnapshotPositionCommand(command) && onSendFailure != null;
     }
 
     private boolean requiresStateReset() {

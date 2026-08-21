@@ -1384,7 +1384,12 @@ class LeelazAutomaticRestartConvergenceTest {
   }
 
   private static void invokeLoadSgfResponse(ConvergingRestartLeelaz engine) throws Exception {
-    String response = numberedResponseFor(engine.transport.rawCommands(), "loadsgf ");
+    String response;
+    try {
+      response = numberedResponseFor(engine.transport.rawCommands(), "loadsgf ");
+    } catch (IllegalArgumentException missingLoadSgf) {
+      response = numberedResponseFor(engine.transport.rawCommands(), "set_position");
+    }
     engine.processCommandResponseLineForTest(response);
   }
 
@@ -1651,11 +1656,11 @@ class LeelazAutomaticRestartConvergenceTest {
   private static void assertEngineMatchesBoard(
       ConvergingRestartLeelaz engine, Board board, int expectedWidth, int expectedHeight) {
     BoardData application = board.getHistory().getData();
-    assertEquals(application.blackToPlay, engine.engineBlackToPlay, "side-to-play must match");
     assertEquals(expectedWidth, engine.engineBoardWidth, "board width must match");
     assertEquals(expectedHeight, engine.engineBoardHeight, "board height must match");
     assertEquals(
         board.getHistory().getGameInfo().getKomi(), engine.engineKomi, 0.0001, "komi must match");
+    assertEquals(application.blackToPlay, engine.engineBlackToPlay, "side-to-play must match");
     for (int x = 0; x < expectedWidth; x++) {
       for (int y = 0; y < expectedHeight; y++) {
         assertEquals(
@@ -1767,15 +1772,21 @@ class LeelazAutomaticRestartConvergenceTest {
                   engineBlackToPlay = true;
                 } else if (command.startsWith("komi ")) {
                   engineKomi = Double.parseDouble(command.substring("komi ".length()).trim());
-                } else if (command.startsWith("loadsgf ")) {
+                } else if (command.startsWith("loadsgf ")
+                    || command.equals("set_position")
+                    || command.startsWith("set_position ")) {
                   int count = loadSgfCount.incrementAndGet();
                   if (count >= failLoadSgfAt) {
                     return ExactSnapshotRestoreProtocolFixture.Response.error(
                         "controlled catch-up restore failure");
                   }
-                  String sgfPath = command.substring("loadsgf ".length()).trim();
-                  String sgf = Files.readString(Path.of(sgfPath));
-                  applySnapshotSgf(sgf);
+                  if (command.startsWith("loadsgf ")) {
+                    String sgfPath = command.substring("loadsgf ".length()).trim();
+                    String sgf = Files.readString(Path.of(sgfPath));
+                    applySnapshotSgf(sgf);
+                  } else {
+                    applySetPosition(command);
+                  }
                   if (blockFirstLoadSgf && count == 1) {
                     // Hold the frozen route in flight so the test can navigate deterministically.
                     return null;
@@ -1882,6 +1893,24 @@ class LeelazAutomaticRestartConvergenceTest {
     private Stone stoneAt(int x, int y) {
       return engineStones.getOrDefault(
           Board.convertCoordinatesToName(x, y).toUpperCase(Locale.ROOT), Stone.EMPTY);
+    }
+
+    private void applySetPosition(String command) {
+      engineStones.clear();
+      engineBlackToPlay = true;
+      String payload =
+          command.startsWith("set_position")
+              ? command.substring("set_position".length()).trim()
+              : "";
+      if (payload.isEmpty()) {
+        return;
+      }
+      String[] tokens = payload.split("\\s+");
+      for (int index = 0; index + 1 < tokens.length; index += 2) {
+        engineStones.put(
+            tokens[index + 1].toUpperCase(Locale.ROOT),
+            "B".equalsIgnoreCase(tokens[index]) ? Stone.BLACK : Stone.WHITE);
+      }
     }
 
     private void applySnapshotSgf(String sgf) {
