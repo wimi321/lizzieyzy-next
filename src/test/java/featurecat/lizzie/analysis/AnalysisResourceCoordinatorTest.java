@@ -4,15 +4,22 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import featurecat.lizzie.logging.DiagnosticModule;
+import featurecat.lizzie.logging.EngineObservation;
+import featurecat.lizzie.logging.LoggingLimits;
+import featurecat.lizzie.logging.LoggingRuntime;
+import featurecat.lizzie.logging.LoggingSettings;
+import featurecat.lizzie.logging.WorkDirectoryResolution;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.lang.reflect.Method;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
-import org.json.JSONObject;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -87,6 +94,34 @@ class AnalysisResourceCoordinatorTest {
   }
 
   @Test
+  void foregroundThroughputUsesNamedPlayoutFields() throws Exception {
+    LoggingRuntime runtime =
+        LoggingRuntime.initialize(
+            new WorkDirectoryResolution(tempDir, List.of()),
+            new LoggingLimits(64, 32, 32, 32, 7, 1_000_000, 256_000));
+    runtime.applySettings(
+        LoggingSettings.defaults()
+            .withDiagnosticsEnabled(true)
+            .withDiagnosticModules(EnumSet.of(DiagnosticModule.ENGINE)));
+    Object owner = new Object();
+    AnalysisResourceCoordinator.processStarted(
+        owner, AnalysisResourceCoordinator.Purpose.MAIN_BOARD, "katago gtp", null);
+    AnalysisResourceCoordinator.foregroundPlayoutSample(owner, 40);
+    Thread.sleep(260L);
+    AnalysisResourceCoordinator.foregroundPlayoutSample(owner, 90);
+    Method awaitIdle = LoggingRuntime.class.getDeclaredMethod("awaitIdle");
+    awaitIdle.setAccessible(true);
+    awaitIdle.invoke(runtime);
+    String app = Files.readString(tempDir.resolve("logs/app.log"), StandardCharsets.UTF_8);
+    assertTrue(app.contains("engine event=foreground-throughput playouts=90"), app);
+    assertTrue(app.contains("playoutsPerSecond="), app);
+    int throughput = app.indexOf("engine event=foreground-throughput");
+    String line = app.substring(throughput, app.indexOf('\n', throughput));
+    assertFalse(line.contains("pid="), line);
+    runtime.shutdown();
+  }
+
+  @Test
   void localComputeRegistryTracksAliveProcessesWithoutDiagnostics() {
     Object owner = new Object();
     ControllableProcess process = new ControllableProcess();
@@ -110,48 +145,83 @@ class AnalysisResourceCoordinatorTest {
 
   @Test
   void optInDiagnosticsAreStructuredAndNeverPersistSecrets() throws Exception {
-    Path output = tempDir.resolve("analysis-resource-diagnostics.jsonl");
-    System.setProperty("lizzie.analysis.diagnostics", "true");
-    System.setProperty("lizzie.analysis.diagnostics.path", output.toString());
+    Path jsonl = tempDir.resolve("analysis-resource-diagnostics.jsonl");
+    LoggingRuntime runtime =
+        LoggingRuntime.initialize(
+            new WorkDirectoryResolution(tempDir, List.of()),
+            new LoggingLimits(64, 32, 32, 32, 7, 1_000_000, 256_000));
+    runtime.applySettings(
+        LoggingSettings.defaults()
+            .withDiagnosticsEnabled(true)
+            .withDiagnosticModules(EnumSet.of(DiagnosticModule.ENGINE)));
     Object owner = new Object();
-    try {
-      AnalysisResourceCoordinator.processStarted(
-          owner,
-          AnalysisResourceCoordinator.Purpose.MAIN_BOARD,
-          "/Users/private-user/KataGo/katago gtp --token=private-value "
-              + "-model /Users/private-user/weights/model.bin.gz",
-          null);
-      AnalysisResourceCoordinator.commandSent(
-          owner,
-          AnalysisResourceCoordinator.Purpose.MAIN_BOARD,
-          "kata-set-param numSearchThreads 12");
-      AnalysisResourceCoordinator.foregroundPausedForAuxiliary(
-          owner, AnalysisResourceCoordinator.Purpose.AUTO_QUICK_ANALYSIS);
-      AnalysisResourceCoordinator.processStopped(
-          owner, AnalysisResourceCoordinator.Purpose.MAIN_BOARD, null);
+    AnalysisResourceCoordinator.processStarted(
+        owner,
+        AnalysisResourceCoordinator.Purpose.MAIN_BOARD,
+        "/Users/private-user/KataGo/katago gtp --token=private-value "
+            + "-model /Users/private-user/weights/model.bin.gz",
+        null);
+    AnalysisResourceCoordinator.commandSent(
+        owner,
+        AnalysisResourceCoordinator.Purpose.MAIN_BOARD,
+        "kata-set-param numSearchThreads 12");
+    AnalysisResourceCoordinator.foregroundPausedForAuxiliary(
+        owner, AnalysisResourceCoordinator.Purpose.AUTO_QUICK_ANALYSIS);
+    AnalysisResourceCoordinator.processStopped(
+        owner, AnalysisResourceCoordinator.Purpose.MAIN_BOARD, null);
+    Method awaitIdle = LoggingRuntime.class.getDeclaredMethod("awaitIdle");
+    awaitIdle.setAccessible(true);
+    awaitIdle.invoke(runtime);
 
-      String diagnostics = Files.readString(output, StandardCharsets.UTF_8);
-      assertTrue(diagnostics.contains("process-started"));
-      assertTrue(diagnostics.contains("dynamic-parameter"));
-      assertTrue(diagnostics.contains("foreground-paused"));
-      assertTrue(diagnostics.contains("AUTO_QUICK_ANALYSIS"));
-      assertTrue(diagnostics.contains("process-stopped"));
-      assertTrue(diagnostics.contains("numSearchThreads"));
-      assertFalse(diagnostics.contains("private-value"));
-      assertFalse(diagnostics.contains("private-user"));
-    } finally {
-      System.clearProperty("lizzie.analysis.diagnostics");
-      System.clearProperty("lizzie.analysis.diagnostics.path");
-    }
+    String app = Files.readString(tempDir.resolve("logs/app.log"), StandardCharsets.UTF_8);
+    assertTrue(app.contains("engine event=started"), app);
+    assertTrue(app.contains("engine event=process-started"), app);
+    assertTrue(app.contains("engine event=dynamic-parameter"), app);
+    assertTrue(app.contains("numSearchThreads=12"), app);
+    assertTrue(app.contains("engine event=foreground-paused"), app);
+    assertTrue(app.contains("AUTO_QUICK_ANALYSIS"), app);
+    assertTrue(app.contains("engine event=stopped"), app);
+    assertFalse(app.contains("private-value"), app);
+    assertFalse(app.contains("private-user"), app);
+    assertFalse(Files.exists(jsonl));
+    runtime.shutdown();
+  }
+
+  @Test
+  void remoteStartThenPonderKeepsIdentity() throws Exception {
+    LoggingRuntime runtime =
+        LoggingRuntime.initialize(
+            new WorkDirectoryResolution(tempDir, List.of()),
+            new LoggingLimits(64, 32, 32, 32, 7, 1_000_000, 256_000));
+    runtime.applySettings(
+        LoggingSettings.defaults()
+            .withDiagnosticsEnabled(true)
+            .withDiagnosticModules(EnumSet.of(DiagnosticModule.ENGINE)));
+    Object owner = new Object();
+    String id = EngineObservation.ensureStarted(owner, "MAIN_BOARD");
+    AnalysisResourceCoordinator.processStarted(
+        owner, AnalysisResourceCoordinator.Purpose.MAIN_BOARD, "ssh katago", null);
+    AnalysisResourceCoordinator.processStarted(
+        owner, AnalysisResourceCoordinator.Purpose.MAIN_BOARD, "ssh katago", null);
+    Method awaitIdle = LoggingRuntime.class.getDeclaredMethod("awaitIdle");
+    awaitIdle.setAccessible(true);
+    awaitIdle.invoke(runtime);
+    assertEquals(id, EngineObservation.identityFor(owner));
+    String app = Files.readString(tempDir.resolve("logs/app.log"), StandardCharsets.UTF_8);
+    assertFalse(app.contains("reason=replaced"), app);
+    runtime.shutdown();
   }
 
   @Test
   void staleProcessStopCannotRemoveReplacementDiagnosticsRegistration() throws Exception {
-    Path output = tempDir.resolve("generation-safe-diagnostics.jsonl");
-    String previousEnabled = System.getProperty("lizzie.analysis.diagnostics");
-    String previousPath = System.getProperty("lizzie.analysis.diagnostics.path");
-    System.setProperty("lizzie.analysis.diagnostics", "true");
-    System.setProperty("lizzie.analysis.diagnostics.path", output.toString());
+    LoggingRuntime runtime =
+        LoggingRuntime.initialize(
+            new WorkDirectoryResolution(tempDir, List.of()),
+            new LoggingLimits(64, 32, 32, 32, 7, 1_000_000, 256_000));
+    runtime.applySettings(
+        LoggingSettings.defaults()
+            .withDiagnosticsEnabled(true)
+            .withDiagnosticModules(EnumSet.of(DiagnosticModule.ENGINE)));
     Object owner = new Object();
     ControllableProcess retired = new ControllableProcess(101L);
     ControllableProcess replacement = new ControllableProcess(202L);
@@ -167,20 +237,18 @@ class AnalysisResourceCoordinatorTest {
       replacement.destroy();
       AnalysisResourceCoordinator.processStopped(
           owner, AnalysisResourceCoordinator.Purpose.MAIN_BOARD, replacement);
+      Method awaitIdle = LoggingRuntime.class.getDeclaredMethod("awaitIdle");
+      awaitIdle.setAccessible(true);
+      awaitIdle.invoke(runtime);
 
-      List<JSONObject> stoppedEvents =
-          Files.readAllLines(output, StandardCharsets.UTF_8).stream()
-              .map(JSONObject::new)
-              .filter(event -> "process-stopped".equals(event.getString("event")))
-              .toList();
-      assertEquals(1, stoppedEvents.size());
-      assertEquals(202L, stoppedEvents.get(0).getJSONObject("details").getLong("pid"));
+      String app = Files.readString(tempDir.resolve("logs/app.log"), StandardCharsets.UTF_8);
+      assertTrue(app.contains("pid=202"), app);
+      assertFalse(app.contains("event=process-stopped purpose=MAIN_BOARD pid=101"), app);
     } finally {
       retired.destroy();
       replacement.destroy();
       AnalysisResourceCoordinator.activeLocalComputeProcessCount();
-      restoreSystemProperty("lizzie.analysis.diagnostics", previousEnabled);
-      restoreSystemProperty("lizzie.analysis.diagnostics.path", previousPath);
+      runtime.shutdown();
     }
   }
 

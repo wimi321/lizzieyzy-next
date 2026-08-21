@@ -1,5 +1,7 @@
 package featurecat.lizzie.analysis.remote;
 
+import featurecat.lizzie.logging.NetworkEndpointCategory;
+import featurecat.lizzie.logging.NetworkObservation;
 import featurecat.lizzie.util.NetworkProxy;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -123,6 +125,8 @@ public class KataGoAnalysisWebSocketTransport implements EngineTransport {
 
   @Override
   public void start() throws IOException {
+    long started = System.nanoTime();
+    boolean recorded = false;
     try {
       WebSocket connected =
           httpClient
@@ -136,14 +140,21 @@ public class KataGoAnalysisWebSocketTransport implements EngineTransport {
             connected.sendClose(WebSocket.NORMAL_CLOSURE, "closed during connect");
           } catch (Exception ignored) {
           }
+          recordConnect("failed", started);
+          recorded = true;
           throw new IOException("自建算力在连接完成前已断开。");
         }
         webSocket = connected;
         open.set(true);
+        recordConnect("ok", started);
+        recorded = true;
         writeStderrLine("自建算力已连接：" + remoteUri);
       }
     } catch (Exception e) {
       open.set(false);
+      if (!recorded) {
+        recordConnect("failed", started);
+      }
       throw new IOException("连接自建算力失败，请检查 ws/wss 链接是否可用。", e);
     }
   }
@@ -335,8 +346,10 @@ public class KataGoAnalysisWebSocketTransport implements EngineTransport {
         buildAnalysisQuery(
             queryId, genmove, ownership, intervalCentisec, player, queryContext.parameterSnapshot);
     try {
+      String payload = query.toString();
+      NetworkObservation.tracePayload(NetworkEndpointCategory.PROTOCOL, "send", () -> payload);
       current
-          .sendText(query.toString(), true)
+          .sendText(payload, true)
           .whenComplete((ignored, failure) -> completeAnalysisSend(queryContext, failure));
     } catch (RuntimeException failure) {
       failActiveQuery(queryContext, "发送分析请求失败：" + summarize(failure.getMessage()));
@@ -895,8 +908,10 @@ public class KataGoAnalysisWebSocketTransport implements EngineTransport {
       terminate.put("action", "terminate");
       terminate.put("terminateId", query.queryId);
       try {
+        String payload = terminate.toString();
+        NetworkObservation.tracePayload(NetworkEndpointCategory.PROTOCOL, "send", () -> payload);
         current
-            .sendText(terminate.toString(), true)
+            .sendText(payload, true)
             .whenComplete((ignored, failure) -> completeTerminateSend(query, failure));
       } catch (RuntimeException failure) {
         completeTerminateSend(query, failure);
@@ -1011,6 +1026,17 @@ public class KataGoAnalysisWebSocketTransport implements EngineTransport {
 
   private void writeStderrLine(String line) {
     stderr.append(("[remote-ws] " + line + "\n").getBytes(StandardCharsets.UTF_8));
+  }
+
+  private void recordConnect(String outcome, long startedNanos) {
+    NetworkObservation.recordNetwork(
+        "WS",
+        remoteUri.getHost(),
+        NetworkEndpointCategory.PROTOCOL,
+        null,
+        Math.max(0L, TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startedNanos)),
+        outcome,
+        NetworkObservation.newRequestIdentity());
   }
 
   private static String safeResponseId(String responseId) {
@@ -1216,6 +1242,7 @@ public class KataGoAnalysisWebSocketTransport implements EngineTransport {
         if (last) {
           String message = incomingText.toString();
           incomingText.setLength(0);
+          NetworkObservation.tracePayload(NetworkEndpointCategory.PROTOCOL, "recv", () -> message);
           handleWebSocketMessage(message);
         }
       }

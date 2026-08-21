@@ -12,21 +12,20 @@ import featurecat.lizzie.rules.ExtraStones;
 import featurecat.lizzie.rules.Movelist;
 import featurecat.lizzie.rules.Stone;
 import featurecat.lizzie.rules.Zobrist;
+import featurecat.lizzie.logging.EngineObservation;
+import featurecat.lizzie.logging.ReadBoardObservation;
 import featurecat.lizzie.util.Utils;
 import featurecat.lizzie.util.YikeSyncDebugLog;
 import java.io.BufferedOutputStream;
 import java.io.Closeable;
 import java.io.File;
-import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.UnsupportedEncodingException;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.URISyntaxException;
-import java.text.SimpleDateFormat;
 import java.util.ArrayList;
-import java.util.Date;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
@@ -50,14 +49,6 @@ public class ReadBoard implements ReadBoardTrackingEligibilityAdapter.Eligibilit
   private static final long LOCAL_MOVE_PLACE_RETRY_INTERVAL_MS = 350L;
   private static final long PENDING_LOCAL_MOVE_ACK_TIMEOUT_MS = 3000L;
   private static final long FAILED_LOCAL_MOVE_OBSERVATION_GRACE_MS = 1000L;
-  private static final boolean LOCAL_MOVE_SYNC_LOG_ENABLED =
-      Boolean.parseBoolean(
-          System.getProperty(
-              "lizzie.localMoveSyncLog.enabled",
-              System.getProperty("surefire.test.class.path") == null ? "true" : "false"));
-  private static final String LOCAL_MOVE_SYNC_LOG_PATH =
-      System.getProperty("lizzie.localMoveSyncLog", "runtime/readboard-local-move-debug.log");
-  private static final long LOCAL_MOVE_SYNC_LOG_MAX_BYTES = 2_000_000L;
   private static final String READBOARD_UPDATE_SUPPORTED_COMMAND = "readboardUpdateSupported";
   private static final String READBOARD_UPDATE_PACKAGE_V2_SUPPORTED_COMMAND =
       "readboardUpdatePackageV2Supported";
@@ -86,44 +77,17 @@ public class ReadBoard implements ReadBoardTrackingEligibilityAdapter.Eligibilit
     return isExactReadBoardCommand(line, YIKE_SYNC_START_COMMAND);
   }
 
-  public static void localMoveSyncDebug(String message) {
-    if (!LOCAL_MOVE_SYNC_LOG_ENABLED) {
-      return;
-    }
-    synchronized (ReadBoard.class) {
-      try {
-        File file = new File(LOCAL_MOVE_SYNC_LOG_PATH);
-        File parent = file.getParentFile();
-        if (parent != null && !parent.exists()) {
-          parent.mkdirs();
-        }
-        rotateLocalMoveSyncLogIfNeeded(file);
-        try (FileWriter writer = new FileWriter(file, true)) {
-          writer.write(
-              "["
-                  + new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS").format(new Date())
-                  + "] "
-                  + Thread.currentThread().getName()
-                  + " "
-                  + message
-                  + System.lineSeparator());
-        }
-      } catch (IOException ignored) {
-      }
-    }
+  public static void localMoveSyncDebug(String message) {}
+
+  private void observe(Runnable action) {
+    ReadBoardGmaSessionBinding binding = readBoardGmaSessionBinding;
+    observe(binding == null ? Lizzie.leelaz : binding.engine, binding == null ? null : binding.loggingId, action);
   }
 
-  private static void rotateLocalMoveSyncLogIfNeeded(File file) {
-    if (!file.exists() || file.length() <= LOCAL_MOVE_SYNC_LOG_MAX_BYTES) {
-      return;
-    }
-    File rotated = new File(file.getParentFile(), file.getName() + ".1");
-    if (rotated.exists()) {
-      rotated.delete();
-    }
-    file.renameTo(rotated);
+  private void observe(Leelaz engine, String gmaId, Runnable action) {
+    ReadBoardObservation.inContext(
+        EngineObservation.identityFor(engine), gmaId, null, action);
   }
-
   static boolean isYikeSyncStopCommand(String line) {
     return isExactReadBoardCommand(line, YIKE_SYNC_STOP_COMMAND);
   }
@@ -183,16 +147,19 @@ public class ReadBoard implements ReadBoardTrackingEligibilityAdapter.Eligibilit
     private final ReadBoardGmaSession session;
     private final ReadBoardGmaSession.GmaTerminalCapability terminalCapability;
     private final Leelaz engine;
+    private final String loggingId;
     private ReadBoardGmaSession.GmaTerminal stagedTerminal;
     private Object stagedRestoreIntent;
 
     private ReadBoardGmaSessionBinding(
         ReadBoardGmaSession session,
         ReadBoardGmaSession.GmaTerminalCapability terminalCapability,
-        Leelaz engine) {
+        Leelaz engine,
+        String loggingId) {
       this.session = session;
       this.terminalCapability = terminalCapability;
       this.engine = engine;
+      this.loggingId = loggingId;
     }
 
     private synchronized boolean stageTerminal(
@@ -472,7 +439,7 @@ public class ReadBoard implements ReadBoardTrackingEligibilityAdapter.Eligibilit
       } catch (Exception e1) {
         e1.printStackTrace();
       }
-      e.printStackTrace();
+      observe(() -> ReadBoardObservation.recordFailure("socket-listen", e));
     }
   }
 
@@ -520,7 +487,6 @@ public class ReadBoard implements ReadBoardTrackingEligibilityAdapter.Eligibilit
     File nativeReadBoardDirectory = legacyNativeReadBoardDirectory();
     ProcessBuilder processBuilder =
         buildLegacyNativeReadBoardProcessBuilder(nativeReadBoardDirectory, usePipe, commands);
-    logNativeReadBoardLaunch(processBuilder);
     try {
       process = processBuilder.start();
     } catch (IOException e) {
@@ -535,6 +501,7 @@ public class ReadBoard implements ReadBoardTrackingEligibilityAdapter.Eligibilit
         throw new Exception("Start native board synchronization failed", e);
       }
     }
+    logNativeReadBoardLaunch(processBuilder);
     if (usePipe) {
       initializeStreams();
       executor = Executors.newSingleThreadScheduledExecutor();
@@ -546,52 +513,53 @@ public class ReadBoard implements ReadBoardTrackingEligibilityAdapter.Eligibilit
     inputStream = new InputStreamReader(process.getInputStream(), "UTF-8");
     outputStream = new BufferedOutputStream(process.getOutputStream());
   }
-
   private void logNativeReadBoardLaunch(ProcessBuilder processBuilder) {
     List<String> command = processBuilder.command();
     File workingDirectory = processBuilder.directory();
-    System.out.println("Starting native board synchronization tool.");
-    System.out.println(
-        "  executable: " + (command.isEmpty() ? "" : new File(command.get(0)).getAbsolutePath()));
-    System.out.println(
-        "  working directory: "
-            + (workingDirectory == null ? "" : workingDirectory.getAbsolutePath()));
-    System.out.println("  command: " + command);
+    String executable =
+        command.isEmpty() ? "" : new File(command.get(0)).getName();
+    observe(
+        () ->
+            ReadBoardObservation.recordLifecycle(
+                "started",
+                "executable="
+                    + executable
+                    + " dir="
+                    + (workingDirectory == null ? "" : workingDirectory.getName())));
   }
 
   private void logNativeReadBoardStartFailure(
       ProcessBuilder processBuilder, IOException exception) {
-    System.err.println("Failed to start native board synchronization tool.");
-    logNativeReadBoardLaunch(processBuilder);
-    System.err.println("  start exception: " + exception.getClass().getName());
-    System.err.println("  message: " + exception.getLocalizedMessage());
+    observe(() -> ReadBoardObservation.recordFailure("native-start", exception));
   }
 
   private void logReadBoardOutputLine(String rawLine) {
-    if (startupOutputLineCount >= STARTUP_OUTPUT_LOG_LIMIT) {
+    if (!ReadBoardObservation.traceEnabled()
+        || startupOutputLineCount >= STARTUP_OUTPUT_LOG_LIMIT) {
       return;
     }
     startupOutputLineCount++;
     String line = rawLine.replace("\r", "\\r").replace("\n", "\\n");
-    System.out.println("Native board synchronization output: " + line);
+    observe(() -> ReadBoardObservation.traceProtocol("native-output " + line));
   }
 
   private void logReadBoardExit() {
     Process currentProcess = process;
     if (currentProcess == null) {
-      System.out.println("Native board synchronization process handle is already cleared.");
+      observe(() -> ReadBoardObservation.recordLifecycle("stopped", "handle-cleared"));
       return;
     }
     try {
       if (currentProcess.waitFor(PROCESS_DESTROY_WAIT_TIMEOUT_MS, TimeUnit.MILLISECONDS)) {
-        System.out.println(
-            "Native board synchronization process exit code: " + currentProcess.exitValue());
+        int code = currentProcess.exitValue();
+        observe(
+            () -> ReadBoardObservation.recordLifecycle("stopped", "exitCode=" + code));
       } else {
-        System.out.println("Native board synchronization stdout closed before process exit.");
+        observe(() -> ReadBoardObservation.recordLifecycle("stopped", "stdout-closed"));
       }
     } catch (InterruptedException ex) {
       Thread.currentThread().interrupt();
-      System.out.println("Interrupted while checking board synchronization exit code.");
+      observe(() -> ReadBoardObservation.recordLifecycle("stopped", "interrupted"));
     }
   }
 
@@ -612,7 +580,7 @@ public class ReadBoard implements ReadBoardTrackingEligibilityAdapter.Eligibilit
               handleReady();
             }
           } catch (Exception ex) {
-            ex.printStackTrace();
+            observe(() -> ReadBoardObservation.recordFailure("parse-line", ex));
           }
           line = new StringBuilder();
         }
@@ -623,13 +591,13 @@ public class ReadBoard implements ReadBoardTrackingEligibilityAdapter.Eligibilit
       if (Lizzie.frame.floatBoard != null) {
         Lizzie.frame.floatBoard.setVisible(false);
       }
-      System.out.println("Board synchronization tool process ended.");
+      observe(() -> ReadBoardObservation.recordLifecycle("stopped", "process-ended"));
       logReadBoardExit();
       shutdownAfterProcessEnd();
       // Do no exit for switching weights
       // System.exit(-1);
     } catch (IOException e) {
-      e.printStackTrace();
+      observe(() -> ReadBoardObservation.recordFailure("reader", e));
       if (Lizzie.frame != null) {
         Lizzie.frame.bothSync = false;
         Lizzie.frame.syncBoard = false;
@@ -1130,6 +1098,9 @@ public class ReadBoard implements ReadBoardTrackingEligibilityAdapter.Eligibilit
   }
 
   private boolean handlePendingLocalMovePlacementFailure(String reason) {
+    if (ReadBoardObservation.diagnosticsEnabled()) {
+      observe(() -> ReadBoardObservation.recordLocalMove("failed", reason));
+    }
     localMoveSyncDebug(
         "pending local move placement failure reason="
             + reason
@@ -1267,11 +1238,14 @@ public class ReadBoard implements ReadBoardTrackingEligibilityAdapter.Eligibilit
   private void recordProtocolLine(String line) {
     lastProtocolLineSummary = summarizeProtocolLine(line);
     lastProtocolTimestampMillis = System.currentTimeMillis();
-    SyncDiagnosticsRecorder recorder = SyncDiagnosticsRecorder.getDefault();
-    recorder.recordProtocolEvent(
-        SyncProtocolDiagnosticEvent.of(
-            lastProtocolTimestampMillis, lastProtocolLineSummary, "ReadBoard"));
-    publishReadBoardDiagnosticsSnapshot(recorder.snapshot().getLatestDecisionTrace());
+    observe(
+        () -> {
+          SyncDiagnosticsRecorder recorder = SyncDiagnosticsRecorder.getDefault();
+          recorder.recordProtocolEvent(
+              SyncProtocolDiagnosticEvent.of(
+                  lastProtocolTimestampMillis, lastProtocolLineSummary, "ReadBoard"));
+          publishReadBoardDiagnosticsSnapshot(recorder.snapshot().getLatestDecisionTrace());
+        });
   }
 
   private String summarizeProtocolLine(String line) {
@@ -1343,9 +1317,11 @@ public class ReadBoard implements ReadBoardTrackingEligibilityAdapter.Eligibilit
             .timestampMillis(System.currentTimeMillis())
             .epoch(syncAnalysisEpoch)
             .build();
-    SyncDiagnosticsRecorder recorder = SyncDiagnosticsRecorder.getDefault();
-    recorder.updateLatestDecision(trace);
-    publishReadBoardDiagnosticsSnapshot(trace);
+    observe(
+        () -> {
+          SyncDiagnosticsRecorder.getDefault().updateLatestDecision(trace);
+          publishReadBoardDiagnosticsSnapshot(trace);
+        });
     return trace;
   }
 
@@ -1753,8 +1729,7 @@ public class ReadBoard implements ReadBoardTrackingEligibilityAdapter.Eligibilit
             try {
               Thread.sleep(500);
             } catch (InterruptedException e1) {
-              // TODO Auto-generated catch block
-              e1.printStackTrace();
+              observe(() -> ReadBoardObservation.recordFailure("first-sync-sleep", e1));
             }
             lastMoveWithoutTracking();
           }
@@ -3861,12 +3836,14 @@ public class ReadBoard implements ReadBoardTrackingEligibilityAdapter.Eligibilit
               session.helperCapability(),
               restoreIntent,
               engine.captureReadBoardGmaRuntimeSnapshot());
+      String loggingId = "gma-" + Long.toUnsignedString(readBoardGmaSessionGeneration, 16);
       readBoardGmaSessionBinding =
-          new ReadBoardGmaSessionBinding(session, terminalCapability, engine);
+          new ReadBoardGmaSessionBinding(session, terminalCapability, engine, loggingId);
       // Admission freezes the latest authority inside the session. The legacy pending flags must
       // not launch a second restore after the session terminal, especially on participant failure.
       readBoardGmaEngineRestorePending = false;
       readBoardGmaDeferredRestoreNode = null;
+      observe(engine, loggingId, () -> ReadBoardObservation.recordGma("admit", "in-flight"));
     }
   }
 
@@ -3918,12 +3895,22 @@ public class ReadBoard implements ReadBoardTrackingEligibilityAdapter.Eligibilit
     Leelaz engine = binding.engine;
     if (!isCurrentReadBoardGmaSessionBinding(binding)) {
       localMoveSyncDebug("ReadBoard GMA terminal arrived for a stale engine incarnation");
+      observe(
+          engine,
+          binding.loggingId,
+          () -> ReadBoardObservation.recordGma("outcome", "stale"));
       session.retire(session.helperCapability());
       readBoardGmaPendingLogicallyInvalid = true;
       readBoardGmaAwaitingSyncedBoard = true;
       return binding.stageTerminal(ReadBoardGmaSession.GmaTerminal.REQUEST_ERROR, null);
     }
     readBoardGmaAwaitingSyncedBoard = true;
+    observe(
+        engine,
+        binding.loggingId,
+        () ->
+            ReadBoardObservation.recordGma(
+                "outcome", terminal == null ? "unknown" : terminal.name()));
     return binding.stageTerminal(terminal, null);
   }
 

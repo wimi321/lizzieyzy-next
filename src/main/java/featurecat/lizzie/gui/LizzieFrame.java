@@ -31,6 +31,7 @@ import featurecat.lizzie.analysis.TrackingAnalysisController;
 import featurecat.lizzie.analysis.WholeGameAnalysisPlan;
 import featurecat.lizzie.analysis.WholeGameAnalysisSession;
 import featurecat.lizzie.analysis.remote.RemoteComputeConfig;
+import featurecat.lizzie.logging.SgfObservation;
 import featurecat.lizzie.rules.Board;
 import featurecat.lizzie.rules.BoardData;
 import featurecat.lizzie.rules.BoardHistoryList;
@@ -4269,8 +4270,7 @@ public class LizzieFrame extends JFrame {
       try {
         SGFParser.save(Lizzie.board, curFile.getPath());
       } catch (IOException e) {
-        // TODO Auto-generated catch block
-        e.printStackTrace();
+        // SgfObservation already recorded the save failure.
       }
     } else {
       saveFile(false);
@@ -4830,7 +4830,7 @@ public class LizzieFrame extends JFrame {
               }
             });
       } catch (Exception e) {
-        e.printStackTrace();
+        SgfObservation.record("import", "failed", null, e);
         showKifuLoadError(e);
       }
       return loaded[0];
@@ -4868,7 +4868,7 @@ public class LizzieFrame extends JFrame {
       }
       return true;
     } catch (Exception e) {
-      e.printStackTrace();
+      SgfObservation.record("import", "failed", null, e);
       if (showFeedback) {
         failKifuLoad(kifuLoadText("KifuLoad.failed") + e.getMessage());
       } else {
@@ -9366,15 +9366,13 @@ public class LizzieFrame extends JFrame {
 
   public void copySgf() {
     try {
-      // Get sgf content from game
       String sgfContent = SGFParser.saveToString(false);
-
-      // Save to clipboard
       Clipboard clipboard = Toolkit.getDefaultToolkit().getSystemClipboard();
       Transferable transferableString = new StringSelection(sgfContent);
       clipboard.setContents(transferableString, null);
+      SgfObservation.record("export", "ok", "clipboard", null);
     } catch (Exception e) {
-      e.printStackTrace();
+      SgfObservation.record("export", "failed", "clipboard", e);
     }
   }
 

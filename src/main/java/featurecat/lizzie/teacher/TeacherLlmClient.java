@@ -1,5 +1,7 @@
 package featurecat.lizzie.teacher;
 
+import featurecat.lizzie.logging.NetworkEndpointCategory;
+import featurecat.lizzie.logging.NetworkObservation;
 import featurecat.lizzie.util.NetworkProxy;
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -16,6 +18,7 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 import java.util.concurrent.CancellationException;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 import org.json.JSONArray;
@@ -52,12 +55,21 @@ public final class TeacherLlmClient {
   }
 
   public List<String> listModels() throws IOException, InterruptedException {
+    long started = System.nanoTime();
     HttpRequest request = requestBuilder(endpoint("models"), Duration.ofSeconds(30)).GET().build();
-    HttpResponse<String> response =
-        httpClient.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+    HttpResponse<String> response;
+    try {
+      response =
+          httpClient.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+    } catch (IOException failure) {
+      observe(request, 0, started, "failed");
+      throw failure;
+    }
     if (response.statusCode() / 100 != 2) {
+      observe(request, response.statusCode(), started, "failed");
       throw httpFailure(response.statusCode(), response.body());
     }
+    observe(request, response.statusCode(), started, "ok");
     JSONObject root = new JSONObject(response.body());
     JSONArray data = root.optJSONArray("data");
     if (data == null) {
@@ -103,12 +115,37 @@ public final class TeacherLlmClient {
 
   private HttpResponse<InputStream> sendStreaming(URI endpoint, JSONObject body)
       throws IOException, InterruptedException {
+    long started = System.nanoTime();
     HttpRequest request =
         requestBuilder(endpoint, Duration.ofMinutes(5))
             .header("Accept", "text/event-stream")
             .POST(HttpRequest.BodyPublishers.ofString(body.toString(), StandardCharsets.UTF_8))
             .build();
-    return httpClient.send(request, HttpResponse.BodyHandlers.ofInputStream());
+    HttpResponse<InputStream> response;
+    try {
+      response = httpClient.send(request, HttpResponse.BodyHandlers.ofInputStream());
+    } catch (IOException failure) {
+      observe(request, 0, started, "failed");
+      throw failure;
+    }
+    observe(
+        request,
+        response.statusCode(),
+        started,
+        response.statusCode() / 100 == 2 ? "ok" : "failed");
+    return response;
+  }
+
+  private static void observe(HttpRequest request, int status, long startedNanos, String outcome) {
+    URI uri = request.uri();
+    NetworkObservation.recordNetwork(
+        request.method(),
+        uri == null ? "unknown" : uri.getHost(),
+        NetworkEndpointCategory.OTHER,
+        status,
+        Math.max(0L, TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startedNanos)),
+        outcome,
+        NetworkObservation.newRequestIdentity());
   }
 
   private HttpRequest.Builder requestBuilder(URI endpoint, Duration timeout) {

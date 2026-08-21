@@ -1,5 +1,7 @@
 package featurecat.lizzie.analysis.remote;
 
+import featurecat.lizzie.logging.NetworkEndpointCategory;
+import featurecat.lizzie.logging.NetworkObservation;
 import featurecat.lizzie.util.NetworkProxy;
 import java.io.IOException;
 import java.math.BigDecimal;
@@ -18,19 +20,17 @@ import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 import org.json.JSONTokener;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 public class ZhiziApiClient {
   public static final URI DEFAULT_BASE_URI = URI.create("https://www.zhizigo.com");
   public static final List<Long> BALANCE_TOP_UP_PRESETS_FEN = List.of(1000L, 3000L, 5000L, 10000L);
   private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(20);
   private static final long DEFAULT_CODE_COOLDOWN_SECONDS = 60L;
-  private static final Logger LOGGER = LoggerFactory.getLogger(ZhiziApiClient.class);
 
   private final URI baseUri;
   private final HttpClient httpClient;
@@ -350,17 +350,21 @@ public class ZhiziApiClient {
   private JsonValueResponse sendJsonValue(
       HttpRequest request, ZhiziApiException.Operation operation, boolean allowEmpty)
       throws IOException, InterruptedException {
+    long started = System.nanoTime();
+    String requestId = NetworkObservation.newRequestIdentity();
     HttpResponse<String> response;
     try {
       response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
     } catch (IOException firstFailure) {
       if (!operation.isIdempotent()) {
+        observe(request, operation, 0, started, requestId, "failed");
         throw networkException(operation, firstFailure);
       }
       Thread.sleep(650L);
       try {
         response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
       } catch (IOException retryFailure) {
+        observe(request, operation, 0, started, requestId, "failed");
         throw networkException(operation, retryFailure);
       }
     }
@@ -368,24 +372,24 @@ public class ZhiziApiClient {
     int status = response.statusCode();
     String responseBody = response.body() == null ? "" : response.body();
     long retryAfter = parseRetryAfter(response);
-    String requestId = requestId(response);
+    String headerId = requestId(response);
+    if (!headerId.isEmpty()) {
+      requestId = headerId;
+    }
     if (status < 200 || status >= 300) {
       String errorKey = errorKey(responseBody, status, operation);
       boolean retryable =
           operation.isIdempotent()
               && (status == 408 || status == 425 || status == 429 || status >= 500);
-      LOGGER.warn(
-          "Zhizi request failed: operation={}, status={}, key={}, requestId={}",
-          operation,
-          status,
-          errorKey,
-          requestId);
+      observe(request, operation, status, started, requestId, "failed");
       throw new ZhiziApiException(status, errorKey, requestId, retryAfter, retryable, operation);
     }
     if (responseBody.trim().isEmpty()) {
       if (!allowEmpty) {
+        observe(request, operation, status, started, requestId, "failed");
         throw invalidResponse(operation);
       }
+      observe(request, operation, status, started, requestId, "ok");
       return new JsonValueResponse(new JSONObject(), retryAfter);
     }
     try {
@@ -393,10 +397,58 @@ public class ZhiziApiClient {
       if (!(parsed instanceof JSONObject) && !(parsed instanceof JSONArray)) {
         throw new JSONException("JSON response must be an object or array");
       }
+      observe(request, operation, status, started, requestId, "ok");
       return new JsonValueResponse(parsed, retryAfter);
     } catch (JSONException invalidJson) {
+      observe(request, operation, status, started, requestId, "failed");
       throw new ZhiziApiException(
           status, "invalid_response", requestId, retryAfter, false, operation, invalidJson);
+    }
+  }
+
+  private void observe(
+      HttpRequest request,
+      ZhiziApiException.Operation operation,
+      Integer status,
+      long startedNanos,
+      String requestId,
+      String outcome) {
+    URI uri = request == null ? baseUri : request.uri();
+    String host = uri == null || uri.getHost() == null ? baseUri.getHost() : uri.getHost();
+    NetworkObservation.recordRemote(
+        request == null ? "UNKNOWN" : request.method(),
+        host,
+        category(operation),
+        status,
+        Math.max(0L, TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startedNanos)),
+        outcome,
+        requestId);
+  }
+
+  static NetworkEndpointCategory category(ZhiziApiException.Operation operation) {
+    if (operation == null) {
+      return NetworkEndpointCategory.OTHER;
+    }
+    switch (operation) {
+      case LOGIN:
+      case FAST_LOGIN:
+      case SEND_CODE:
+      case RESET_PASSWORD:
+        return NetworkEndpointCategory.AUTHENTICATION;
+      case FETCH_SOCKET_TOKEN:
+      case FETCH_CONNECT_ACCOUNT:
+        return NetworkEndpointCategory.CREDENTIAL;
+      case FETCH_ACCOUNT:
+      case FETCH_BALANCE:
+      case FETCH_USAGE:
+      case FETCH_CREDITS:
+        return NetworkEndpointCategory.ACCOUNT;
+      case FETCH_PRODUCTS:
+      case CREATE_ORDER:
+      case FETCH_ORDER:
+        return NetworkEndpointCategory.PAYMENT;
+      default:
+        return NetworkEndpointCategory.OTHER;
     }
   }
 

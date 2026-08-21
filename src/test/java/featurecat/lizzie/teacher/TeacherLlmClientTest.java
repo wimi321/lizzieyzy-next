@@ -7,9 +7,20 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
+import featurecat.lizzie.logging.DiagnosticModule;
+import featurecat.lizzie.logging.LoggingLimits;
+import featurecat.lizzie.logging.LoggingRuntime;
+import featurecat.lizzie.logging.LoggingSettings;
+import featurecat.lizzie.logging.WorkDirectoryResolution;
 import java.io.IOException;
 import java.net.InetSocketAddress;
+import java.net.ServerSocket;
+import java.net.http.HttpClient;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.time.Duration;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
@@ -21,6 +32,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 class TeacherLlmClientTest {
   private HttpServer server;
@@ -37,6 +49,7 @@ class TeacherLlmClientTest {
     if (server != null) {
       server.stop(0);
     }
+    LoggingRuntime.current().ifPresent(LoggingRuntime::shutdown);
   }
 
   @Test
@@ -212,6 +225,84 @@ class TeacherLlmClientTest {
     assertTrue(error.getMessage().contains("quota exhausted"));
     assertFalse(error.getMessage().contains("private-token"));
     assertFalse(error.getMessage().contains("secret-value"));
+  }
+
+  @Test
+  void recordsSuccessfulModelListAsOtherNotCredential(@TempDir Path tempDir) throws Exception {
+    LoggingRuntime runtime = startNetworkDiagnostics(tempDir);
+    server.createContext(
+        "/v1/models", exchange -> respond(exchange, 200, "{\"data\":[{\"id\":\"a-model\"}]}"));
+    server.start();
+    try {
+      assertEquals(
+          List.of("a-model"),
+          new TeacherLlmClient(baseUrl, "secret-value", "a-model").listModels());
+      runtime.shutdown();
+      String app = Files.readString(tempDir.resolve("logs/app.log"), StandardCharsets.UTF_8);
+      assertTrue(app.contains("network event=http"), app);
+      assertTrue(app.contains("method=GET"), app);
+      assertTrue(app.contains("category=other"), app);
+      assertTrue(app.contains("outcome=ok"), app);
+      assertFalse(app.contains("category=credential"), app);
+      assertFalse(app.contains("secret-value"), app);
+    } finally {
+      LoggingRuntime.current().ifPresent(LoggingRuntime::shutdown);
+    }
+  }
+
+  @Test
+  void recordsTransportFailureWithoutLeakingKeyOrPrompt(@TempDir Path tempDir) throws Exception {
+    LoggingRuntime runtime = startNetworkDiagnostics(tempDir);
+    int port;
+    try (ServerSocket socket = new ServerSocket()) {
+      socket.bind(new InetSocketAddress("127.0.0.1", 0));
+      port = socket.getLocalPort();
+    }
+    HttpClient httpClient =
+        HttpClient.newBuilder()
+            .connectTimeout(Duration.ofSeconds(1))
+            .followRedirects(HttpClient.Redirect.NEVER)
+            .build();
+    try {
+      assertThrows(
+          IOException.class,
+          () ->
+              new TeacherLlmClient(
+                      httpClient,
+                      "http://127.0.0.1:" + port + "/v1",
+                      "T05_TEACHER_KEY_CANARY",
+                      "model")
+                  .stream(
+                      List.of(
+                          new TeacherLlmClient.Message("user", "T05_TEACHER_PROMPT_CANARY")),
+                      new TeacherLlmClient.Cancellation(),
+                      ignored -> {}));
+      runtime.shutdown();
+      String app = Files.readString(tempDir.resolve("logs/app.log"), StandardCharsets.UTF_8);
+      assertTrue(app.contains("network event=http"), app);
+      assertTrue(app.contains("method=POST"), app);
+      assertTrue(app.contains("category=other"), app);
+      assertTrue(app.contains("status=0"), app);
+      assertTrue(app.contains("outcome=failed"), app);
+      assertFalse(app.contains("category=credential"), app);
+      assertFalse(app.contains("T05_TEACHER_KEY_CANARY"), app);
+      assertFalse(app.contains("T05_TEACHER_PROMPT_CANARY"), app);
+    } finally {
+      LoggingRuntime.current().ifPresent(LoggingRuntime::shutdown);
+    }
+  }
+
+  private static LoggingRuntime startNetworkDiagnostics(Path tempDir) {
+    LoggingRuntime.current().ifPresent(LoggingRuntime::shutdown);
+    LoggingRuntime runtime =
+        LoggingRuntime.initialize(
+            new WorkDirectoryResolution(tempDir, List.of()),
+            new LoggingLimits(64, 32, 32, 32, 7, 1_000_000, 256_000));
+    runtime.applySettings(
+        LoggingSettings.defaults()
+            .withDiagnosticsEnabled(true)
+            .withDiagnosticModules(EnumSet.of(DiagnosticModule.NETWORK_REMOTE)));
+    return runtime;
   }
 
   private static void respond(HttpExchange exchange, int status, String body) throws IOException {
