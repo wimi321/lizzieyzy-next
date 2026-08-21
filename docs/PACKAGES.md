@@ -123,12 +123,14 @@
 - 默认权重：官方中型 Transformer `b10c512h8nbt3tflrs-fson-silu-rsnh.bin.gz`，界面显示为“Transformer 10B 均衡版”
 - 默认权重大小：`94,281,753` 字节（约 94 MB），SHA-256：`c04db4a503721d948bb720324f3cbdac6088cc9eb243632f020e4b6846f58995`
 - Windows 普通 NVIDIA 包：CUDA `12.1` + cuDNN `9.8`；RTX 50 CUDA 包：CUDA `12.8` + cuDNN `9.8`
+- Windows NVIDIA 运行时同时携带对应版本的 NVRTC 编译器与 builtins，供 cuDNN 在新显卡上生成运行时内核；发布审计会同时检查这两组 DLL，避免解压即引擎启动失败
 - GTX 10 系属于 Pascal。根据 [NVIDIA cuDNN 9.8 支持矩阵](https://docs.nvidia.com/deeplearning/cudnn/backend/v9.8.0/reference/support-matrix.html)，Windows CUDA 12 需要 `527.41` 或更高驱动；如果更新驱动后仍无法启动，使用 `windows64.opencl` 包
 - Transformer 在 CUDA、Metal 上性能更好；OpenCL 仍可离线使用，但通常更慢
 - `core-update.zip` 只更新主程序，不包含 KataGo 1.17 或新权重；从旧默认模型升级必须安装最新完整包
 - 完整包升级只迁移仍使用旧内置 `zhizi 28B` / `default.bin.gz` 的托管引擎；自定义权重、远程算力和启动方式不会被覆盖
 - 快速曲线轻量模型：可在 `KataGo 一键设置 -> 权重管理` 按需下载官方 `b10c384h6nbttflrs.bin.gz`（约 38 MB），不进入完整包或普通引擎列表。它只补齐已加载棋谱的缺失曲线，主棋盘分析、对局或整盘精析开始时会退出并释放显存
 - TensorRT 加速：普通用户在软件内 `KataGo 一键设置` 中按需安装，支持断点续传；Release 上的 TensorRT 分卷包只作为高级可选离线路径
+- TensorRT 预装包保留 TensorRT 作为主分析后端，并内置轻量 CUDA 伴随引擎供 AI 陪练加载 HumanSL；准备陪练时会暂时释放前台持续分析的 GPU 计算资源，退出或失败后恢复用户原状态
 - RTX 50 仍优先使用 `windows64.nvidia50.cuda` 主包，TensorRT 作为新架构按需加速项
 - TensorRT 安装界面会用 `nvidia-smi` 检测本机 NVIDIA GPU，并在无法读取 Compute Capability 时使用轻量型号映射作为 fallback
 - TensorRT 一键安装完成后会自动删除完整下载包；如果旧版本曾留下缓存，可在 `KataGo 一键设置` 里使用“清理 TensorRT 缓存”

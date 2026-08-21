@@ -20,6 +20,7 @@ import featurecat.lizzie.training.HumanSlTrainingConfig;
 import featurecat.lizzie.training.HumanSlTrainingSession;
 import java.awt.Window;
 import java.awt.event.KeyEvent;
+import java.io.IOException;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -116,6 +117,27 @@ class HumanSlGameControllerIntegrationTest {
       assertNull(frame.humanSlGame);
       assertFalse(frame.isPlayingAgainstLeelaz);
       assertFalse(frame.isAnaPlayingAgainstLeelaz);
+    }
+  }
+
+  @Test
+  void analysisPausedDuringPreparationIsRestoredWhenCoachEnds() throws Exception {
+    try (CoachEnvironment env = CoachEnvironment.open()) {
+      TrackingLeelaz engine = new TrackingLeelaz();
+      Lizzie.leelaz = engine;
+      HumanSlGameController controller =
+          new HumanSlGameController(
+              new BlockingHumanSlRunner(),
+              coachConfig(HumanSlTrainingConfig.PlayerColor.BLACK),
+              new HumanSlTrainingSession());
+
+      controller.start(true);
+      assertFalse(engine.pondering);
+
+      controller.abort();
+
+      assertTrue(engine.pondering);
+      assertEquals(1, engine.resumeCount.get());
     }
   }
 
@@ -308,6 +330,26 @@ class HumanSlGameControllerIntegrationTest {
   private static final class CoachBoard extends Board {
     @Override
     public void clearAfterMove() {}
+  }
+
+  private static final class TrackingLeelaz extends Leelaz {
+    private final AtomicInteger resumeCount = new AtomicInteger();
+    private boolean pondering;
+
+    private TrackingLeelaz() throws IOException {
+      super("");
+    }
+
+    @Override
+    public boolean isPondering() {
+      return pondering;
+    }
+
+    @Override
+    public void ponder() {
+      pondering = true;
+      resumeCount.incrementAndGet();
+    }
   }
 
   private static final class ModeTransitionFrame extends CoachFrame {

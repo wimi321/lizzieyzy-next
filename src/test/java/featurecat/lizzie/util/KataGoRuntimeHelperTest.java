@@ -11,6 +11,7 @@ import featurecat.lizzie.Config;
 import featurecat.lizzie.ConfigTestHelper;
 import featurecat.lizzie.Lizzie;
 import featurecat.lizzie.gui.EngineData;
+import featurecat.lizzie.rules.Board;
 import featurecat.lizzie.util.KataGoAutoSetupHelper.DownloadCancelledException;
 import featurecat.lizzie.util.KataGoAutoSetupHelper.DownloadSession;
 import featurecat.lizzie.util.KataGoAutoSetupHelper.SetupResult;
@@ -34,6 +35,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
+import org.json.JSONArray;
 import org.json.JSONObject;
 import org.junit.jupiter.api.Test;
 
@@ -242,6 +244,109 @@ public class KataGoRuntimeHelperTest {
           assertFalse(KataGoRuntimeHelper.isBundledTensorRtPath(markedEngine));
           assertTrue(KataGoRuntimeHelper.isBundledNvidiaCommand(markedEngine.toString()));
         });
+  }
+
+  @Test
+  void humanSlTensorRtLaunchUsesPackagedCudaCompanionAndLightweightProfile() throws Exception {
+    withOsName(
+        WINDOWS_OS_NAME,
+        () -> {
+          Path tempRoot = Files.createTempDirectory("katago-helper-humansl-companion");
+          Path engineDir =
+              Files.createDirectories(
+                  tempRoot
+                      .resolve("engines")
+                      .resolve("katago")
+                      .resolve("windows-x64-nvidia-tensorrt"));
+          Path tensorRtEngine = touch(engineDir.resolve("katago.exe"));
+          Path companion =
+              touch(engineDir.resolve(KataGoRuntimeHelper.HUMAN_SL_CUDA_COMPANION_NAME));
+          Path runtimeWorkDirectory = Files.createDirectories(tempRoot.resolve("runtime-root"));
+          int originalWidth = Board.boardWidth;
+          int originalHeight = Board.boardHeight;
+          try {
+            Board.boardWidth = 19;
+            Board.boardHeight = 19;
+            withConfig(
+                runtimeWorkDirectory,
+                () -> {
+                  List<String> command =
+                      KataGoRuntimeHelper.prepareBundledLaunchCommand(
+                          Arrays.asList(
+                              tensorRtEngine.toString(),
+                              "analysis",
+                              "-config",
+                              "analysis.cfg",
+                              "-override-config",
+                              "nnMaxBatchSize=64,numAnalysisThreads=2"),
+                          tensorRtEngine,
+                          KataGoRuntimeHelper.LaunchPurpose.HUMAN_SL);
+
+                  assertEquals(normalize(companion).toString(), normalize(Path.of(command.get(0))).toString());
+                  String overrides = command.get(command.indexOf("-override-config") + 1);
+                  assertTrue(overrides.contains("numAnalysisThreads=1"));
+                  assertTrue(overrides.contains("numSearchThreadsPerAnalysisThread=8"));
+                  assertTrue(overrides.contains("nnMaxBatchSize=8"));
+                  assertTrue(overrides.contains("nnCacheSizePowerOfTwo=20"));
+                  assertTrue(overrides.contains("maxBoardXSizeForNNBuffer=19"));
+                  assertTrue(overrides.contains("maxBoardYSizeForNNBuffer=19"));
+                  assertTrue(overrides.contains("requireMaxBoardSize=true"));
+                  assertFalse(KataGoRuntimeHelper.isBundledTensorRtPath(companion));
+                });
+          } finally {
+            Board.boardWidth = originalWidth;
+            Board.boardHeight = originalHeight;
+          }
+        });
+  }
+
+  @Test
+  void humanSlTensorRtLaunchCanReuseConfiguredBundledCudaEngine() throws Exception {
+    withOsName(
+        WINDOWS_OS_NAME,
+        () -> {
+          Path tempRoot = Files.createTempDirectory("katago-helper-humansl-configured-cuda");
+          Path tensorRtEngine =
+              touch(
+                  tempRoot
+                      .resolve("engines")
+                      .resolve("katago")
+                      .resolve("windows-x64-nvidia-tensorrt")
+                      .resolve("katago.exe"));
+          Path cudaEngine =
+              touch(
+                  tempRoot
+                      .resolve("engines")
+                      .resolve("katago")
+                      .resolve("windows-x64-nvidia50-cuda")
+                      .resolve("katago.exe"));
+          Path runtimeWorkDirectory = Files.createDirectories(tempRoot.resolve("runtime-root"));
+
+          withConfig(
+              runtimeWorkDirectory,
+              () -> {
+                Lizzie.config.leelazConfig.put(
+                    "engine-settings-list",
+                    new JSONArray()
+                        .put(new JSONObject().put("command", tensorRtEngine + " gtp"))
+                        .put(new JSONObject().put("command", cudaEngine + " gtp")));
+
+                assertEquals(
+                    normalize(cudaEngine),
+                    normalize(KataGoRuntimeHelper.resolveHumanSlCudaCompanion(tensorRtEngine)));
+              });
+        });
+  }
+
+  @Test
+  void rtx50CudaRuntimeRequiresNvrtcCompilerAndBuiltins() throws Exception {
+    List<List<String>> required =
+        KataGoRuntimeHelper.requiredRuntimeDllGroups(
+            Path.of("engines/katago/windows-x64-nvidia50-cuda/katago.exe"),
+            "nvidia50-cuda");
+
+    assertTrue(required.contains(List.of("nvrtc64_*.dll")));
+    assertTrue(required.contains(List.of("nvrtc-builtins64_*.dll")));
   }
 
   @Test
@@ -620,7 +725,7 @@ public class KataGoRuntimeHelperTest {
                     "be09c4ecc02028e2bdf98ff489683840bc9be480ba94f1cfe6f7e15018e36be6",
                     spec.katagoSha256);
                 assertEquals(7_678_930L, spec.katagoSizeBytes);
-                assertEquals(5, spec.runtimePackageCount);
+                assertEquals(6, spec.runtimePackageCount);
                 assertTrue(spec.totalDownloadBytes > 3_000_000_000L);
                 assertEquals(
                     normalize(
@@ -1810,6 +1915,8 @@ public class KataGoRuntimeHelperTest {
     touch(directory.resolve("cublas64_12.dll"));
     touch(directory.resolve("cublasLt64_12.dll"));
     touch(directory.resolve("nvJitLink64_12.dll"));
+    touch(directory.resolve("nvrtc64_120_0.dll"));
+    touch(directory.resolve("nvrtc-builtins64_128.dll"));
   }
 
   private static void touchRequiredCuda12_8Dlls(Path directory) throws IOException {

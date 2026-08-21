@@ -8,6 +8,7 @@ import featurecat.lizzie.analysis.EngineManager;
 import featurecat.lizzie.analysis.KataEstimate;
 import featurecat.lizzie.analysis.Leelaz;
 import featurecat.lizzie.gui.EngineData;
+import featurecat.lizzie.rules.Board;
 import featurecat.lizzie.util.KataGoAutoSetupHelper.DownloadCancelledException;
 import featurecat.lizzie.util.KataGoAutoSetupHelper.DownloadSession;
 import featurecat.lizzie.util.KataGoAutoSetupHelper.ProgressListener;
@@ -81,6 +82,7 @@ import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.JProgressBar;
 import javax.swing.SwingUtilities;
+import org.json.JSONArray;
 import org.json.JSONObject;
 
 public final class KataGoRuntimeHelper {
@@ -104,6 +106,7 @@ public final class KataGoRuntimeHelper {
   private static final String NVIDIA50_CUDA_BACKEND = "nvidia50-cuda";
   private static final String NVIDIA_TRT_BACKEND = "nvidia-tensorrt";
   private static final String NVIDIA50_TRT_BACKEND = "nvidia50-trt";
+  static final String HUMAN_SL_CUDA_COMPANION_NAME = "katago-human-sl-cuda.exe";
   private static final String OPENCL_BACKEND = "opencl";
   private static final String ENGINE_BACKEND_MARKER_NAME = "lizzieyzy-next-engine-backend.txt";
   private static final String NVIDIA_RUNTIME_ROOT = "nvidia-runtime";
@@ -157,6 +160,7 @@ public final class KataGoRuntimeHelper {
   private static final long CUDA_12_8_CUDART_SIZE_BYTES = 3034859L;
   private static final long CUDA_12_8_CUBLAS_SIZE_BYTES = 574528660L;
   private static final long CUDA_12_8_NVJITLINK_SIZE_BYTES = 257312022L;
+  private static final long CUDA_12_8_NVRTC_SIZE_BYTES = 305553480L;
   private static final long CUDNN_9_SIZE_BYTES = 675349654L;
   private static final long TENSORRT_RUNTIME_SIZE_BYTES = 1845842538L;
   private static final int TENSORRT_MIRROR_PROBE_BYTES = 512 * 1024;
@@ -199,6 +203,8 @@ public final class KataGoRuntimeHelper {
           Arrays.asList("cublasLt64_12.dll"),
           Arrays.asList("cudnn64_9.dll"),
           Arrays.asList("nvJitLink*.dll"),
+          Arrays.asList("nvrtc64_*.dll"),
+          Arrays.asList("nvrtc-builtins64_*.dll"),
           Arrays.asList("zlibwapi.dll", "libz.dll", "z.dll"));
   private static final List<List<String>> REQUIRED_NVIDIA_TRT10_9_RUNTIME_DLL_GROUPS =
       Arrays.asList(
@@ -643,6 +649,11 @@ public final class KataGoRuntimeHelper {
     if (enginePath == null) {
       return null;
     }
+    Path fileName = enginePath.getFileName();
+    if (fileName != null
+        && HUMAN_SL_CUDA_COMPANION_NAME.equalsIgnoreCase(fileName.toString())) {
+      return NVIDIA50_CUDA_BACKEND;
+    }
     String normalized = enginePath.toAbsolutePath().normalize().toString().replace('\\', '/');
     String normalizedLower = normalized.toLowerCase(Locale.ROOT);
     if (normalizedLower.contains("/" + NVIDIA_TRT_ENGINE_DIR + "/")) {
@@ -745,6 +756,13 @@ public final class KataGoRuntimeHelper {
       return launchCommand;
     }
 
+    if (purpose == LaunchPurpose.HUMAN_SL && isBundledTensorRtPath(enginePath)) {
+      Path companion = resolveHumanSlCudaCompanion(enginePath);
+      if (companion != null && !launchCommand.isEmpty()) {
+        launchCommand.set(0, companion.toString());
+      }
+    }
+
     boolean openClFp32Compatibility = shouldUseOpenClFp32Compatibility(launchCommand, enginePath);
     Path homeDataDir =
         openClFp32Compatibility ? getOpenClFp32HomeDataDir() : getBundledHomeDataDir();
@@ -767,10 +785,70 @@ public final class KataGoRuntimeHelper {
           enginePath, resolveEffectiveHomeDataDir(launchCommand, homeDataDir));
     }
     appendAnalysisPvLenOverride(launchCommand);
+    if (purpose == LaunchPurpose.HUMAN_SL) {
+      applyHumanSlLaunchProfile(launchCommand);
+    }
     if (purpose == LaunchPurpose.MAIN_GTP) {
       launchCommand = applyStoredAppleTuningProfile(launchCommand, enginePath);
     }
     return launchCommand;
+  }
+
+  static Path resolveHumanSlCudaCompanion(Path tensorRtEnginePath) {
+    if (tensorRtEnginePath == null || !isBundledTensorRtPath(tensorRtEnginePath)) {
+      return null;
+    }
+    Path engineDir = tensorRtEnginePath.toAbsolutePath().normalize().getParent();
+    if (engineDir != null) {
+      Path packagedCompanion = engineDir.resolve(HUMAN_SL_CUDA_COMPANION_NAME);
+      if (Files.isRegularFile(packagedCompanion)) {
+        return packagedCompanion.toAbsolutePath().normalize();
+      }
+    }
+    if (Lizzie.config == null || Lizzie.config.leelazConfig == null) {
+      return null;
+    }
+    JSONArray engines = Lizzie.config.leelazConfig.optJSONArray("engine-settings-list");
+    if (engines == null) {
+      return null;
+    }
+    for (int index = 0; index < engines.length(); index++) {
+      JSONObject engine = engines.optJSONObject(index);
+      String command = engine == null ? "" : engine.optString("command", "").trim();
+      if (command.isEmpty()) {
+        continue;
+      }
+      Path candidate;
+      try {
+        candidate = resolveCommandExecutable(Utils.splitCommand(command));
+      } catch (RuntimeException e) {
+        continue;
+      }
+      if (candidate == null
+          || candidate.toAbsolutePath().normalize().equals(tensorRtEnginePath.toAbsolutePath().normalize())
+          || !Files.isRegularFile(candidate)
+          || !Config.isBundledKataGoExecutable(candidate)) {
+        continue;
+      }
+      String backend = resolveNvidiaBackend(candidate);
+      if (NVIDIA_BACKEND.equalsIgnoreCase(backend)
+          || NVIDIA50_CUDA_BACKEND.equalsIgnoreCase(backend)) {
+        return candidate.toAbsolutePath().normalize();
+      }
+    }
+    return null;
+  }
+
+  private static void applyHumanSlLaunchProfile(List<String> command) {
+    setOverrideConfig(command, "numAnalysisThreads=1");
+    setOverrideConfig(command, "numSearchThreadsPerAnalysisThread=8");
+    setOverrideConfig(command, "nnMaxBatchSize=8");
+    setOverrideConfig(command, "nnCacheSizePowerOfTwo=20");
+    if (Board.boardWidth == 19 && Board.boardHeight == 19) {
+      setOverrideConfig(command, "maxBoardXSizeForNNBuffer=19");
+      setOverrideConfig(command, "maxBoardYSizeForNNBuffer=19");
+      setOverrideConfig(command, "requireMaxBoardSize=true");
+    }
   }
 
   static List<String> applyStoredAppleTuningProfile(List<String> command, Path enginePath) {
@@ -4214,7 +4292,7 @@ public final class KataGoRuntimeHelper {
     return false;
   }
 
-  private static List<List<String>> requiredRuntimeDllGroups(Path enginePath, String backend) {
+  static List<List<String>> requiredRuntimeDllGroups(Path enginePath, String backend) {
     if (isTensorRtBackend(backend)) {
       return REQUIRED_NVIDIA_TRT10_9_RUNTIME_DLL_GROUPS;
     }
@@ -4368,6 +4446,7 @@ public final class KataGoRuntimeHelper {
             + CUDA_12_8_CUDART_SIZE_BYTES
             + CUDA_12_8_CUBLAS_SIZE_BYTES
             + CUDA_12_8_NVJITLINK_SIZE_BYTES
+            + CUDA_12_8_NVRTC_SIZE_BYTES
             + CUDNN_9_SIZE_BYTES
             + TENSORRT_RUNTIME_SIZE_BYTES;
     return new TensorRtInstallSpec(
@@ -4377,7 +4456,7 @@ public final class KataGoRuntimeHelper {
         System.getProperty(TENSORRT_KATAGO_SHA256_PROPERTY, TENSORRT_KATAGO_SHA256),
         katagoSize,
         total,
-        Boolean.getBoolean(TENSORRT_SKIP_RUNTIME_FOR_TESTS_PROPERTY) ? 0 : 5);
+        Boolean.getBoolean(TENSORRT_SKIP_RUNTIME_FOR_TESTS_PROPERTY) ? 0 : 6);
   }
 
   private static Path findExistingTensorRtEnginePath(SetupSnapshot snapshot, Path runtimeRoot) {
@@ -4752,6 +4831,9 @@ public final class KataGoRuntimeHelper {
     packages.add(
         readPackageSpec(
             cudaManifest, cudaManifestUrl, "libnvjitlink", "windows-x86_64", "CUDA nvJitLink"));
+    packages.add(
+        readPackageSpec(
+            cudaManifest, cudaManifestUrl, "cuda_nvrtc", "windows-x86_64", "CUDA NVRTC"));
     packages.add(
         readNestedPackageSpec(
             cudnnManifest, cudnnManifestUrl, "cudnn", "windows-x86_64", "cuda12", "NVIDIA cuDNN"));

@@ -213,6 +213,8 @@ jobs:
           test -f "dist/windows/input-nvidia/engines/katago/windows-x64/lizzieyzy-next-nvidia-runtime-manifest.txt"
           grep -q "Profile: cuda12.1-cudnn9" "dist/windows/input-nvidia/engines/katago/windows-x64/lizzieyzy-next-nvidia-runtime-manifest.txt"
           find "dist/windows/input-nvidia/engines/katago/windows-x64" -maxdepth 1 -type f -name 'nvJitLink*.dll' | grep -q .
+          find "dist/windows/input-nvidia/engines/katago/windows-x64" -maxdepth 1 -type f -name 'nvrtc64_*.dll' | grep -q .
+          find "dist/windows/input-nvidia/engines/katago/windows-x64" -maxdepth 1 -type f -name 'nvrtc-builtins64_*.dll' | grep -q .
           grep -qx "nvidia" "dist/windows/input-nvidia/engines/katago/windows-x64/lizzieyzy-next-engine-backend.txt"
           test -f "dist/windows/app-image-nvidia/LizzieYzy Next NVIDIA/app/engines/katago/windows-x64/cudart64_12.dll"
           test -f "dist/windows/app-image-nvidia/LizzieYzy Next NVIDIA/app/engines/katago/windows-x64/cublas64_12.dll"
@@ -220,6 +222,8 @@ jobs:
           test -f "dist/windows/app-image-nvidia/LizzieYzy Next NVIDIA/app/engines/katago/windows-x64/cudnn64_9.dll"
           test -f "dist/windows/app-image-nvidia/LizzieYzy Next NVIDIA/app/engines/katago/windows-x64/z.dll"
           find "dist/windows/app-image-nvidia/LizzieYzy Next NVIDIA/app/engines/katago/windows-x64" -maxdepth 1 -type f -name 'nvJitLink*.dll' | grep -q .
+          find "dist/windows/app-image-nvidia/LizzieYzy Next NVIDIA/app/engines/katago/windows-x64" -maxdepth 1 -type f -name 'nvrtc64_*.dll' | grep -q .
+          find "dist/windows/app-image-nvidia/LizzieYzy Next NVIDIA/app/engines/katago/windows-x64" -maxdepth 1 -type f -name 'nvrtc-builtins64_*.dll' | grep -q .
           test -f "dist/windows/app-image-nvidia50.cuda/LizzieYzy Next NVIDIA 50 CUDA/LizzieYzy Next NVIDIA 50 CUDA.exe"
           test -f "dist/windows/app-image-nvidia50.cuda/LizzieYzy Next NVIDIA 50 CUDA/app/PROJECT_INFO.txt"
           grep -q "java-options=-Dlizzie.next.version=$RELEASE_TAG" "dist/windows/app-image-nvidia50.cuda/LizzieYzy Next NVIDIA 50 CUDA/app/LizzieYzy Next NVIDIA 50 CUDA.cfg"
@@ -237,6 +241,8 @@ jobs:
           test -f "dist/windows/input-nvidia50.cuda/engines/katago/windows-x64/lizzieyzy-next-nvidia-runtime-manifest.txt"
           grep -q "Profile: cuda12.8-cudnn9" "dist/windows/input-nvidia50.cuda/engines/katago/windows-x64/lizzieyzy-next-nvidia-runtime-manifest.txt"
           find "dist/windows/input-nvidia50.cuda/engines/katago/windows-x64" -maxdepth 1 -type f -name 'nvJitLink*.dll' | grep -q .
+          find "dist/windows/input-nvidia50.cuda/engines/katago/windows-x64" -maxdepth 1 -type f -name 'nvrtc64_*.dll' | grep -q .
+          find "dist/windows/input-nvidia50.cuda/engines/katago/windows-x64" -maxdepth 1 -type f -name 'nvrtc-builtins64_*.dll' | grep -q .
           grep -qx "nvidia50-cuda" "dist/windows/input-nvidia50.cuda/engines/katago/windows-x64/lizzieyzy-next-engine-backend.txt"
           test -f "dist/windows/app-image-nvidia50.cuda/LizzieYzy Next NVIDIA 50 CUDA/app/engines/katago/windows-x64/cudart64_12.dll"
           test -f "dist/windows/app-image-nvidia50.cuda/LizzieYzy Next NVIDIA 50 CUDA/app/engines/katago/windows-x64/cublas64_12.dll"
@@ -244,15 +250,23 @@ jobs:
           test -f "dist/windows/app-image-nvidia50.cuda/LizzieYzy Next NVIDIA 50 CUDA/app/engines/katago/windows-x64/cudnn64_9.dll"
           test -f "dist/windows/app-image-nvidia50.cuda/LizzieYzy Next NVIDIA 50 CUDA/app/engines/katago/windows-x64/z.dll"
           find "dist/windows/app-image-nvidia50.cuda/LizzieYzy Next NVIDIA 50 CUDA/app/engines/katago/windows-x64" -maxdepth 1 -type f -name 'nvJitLink*.dll' | grep -q .
+          find "dist/windows/app-image-nvidia50.cuda/LizzieYzy Next NVIDIA 50 CUDA/app/engines/katago/windows-x64" -maxdepth 1 -type f -name 'nvrtc64_*.dll' | grep -q .
+          find "dist/windows/app-image-nvidia50.cuda/LizzieYzy Next NVIDIA 50 CUDA/app/engines/katago/windows-x64" -maxdepth 1 -type f -name 'nvrtc-builtins64_*.dll' | grep -q .
           test -f "dist/release/${RELEASE_DATE_TAG}-windows64.nvidia.tensorrt.portable.7z.001"
           test -f "dist/release/${RELEASE_DATE_TAG}-windows64.nvidia.tensorrt.portable.README.txt"
           test -f "dist/release/${RELEASE_DATE_TAG}-windows64.nvidia.tensorrt.portable.manifest.json"
           test -f "dist/release/${RELEASE_DATE_TAG}-windows64.nvidia.tensorrt.portable.sha256.txt"
           test -f "engines/katago/windows-x64-nvidia-tensorrt/lizzieyzy-next-katago-engine-manifest.txt"
+          test -f "engines/katago/windows-x64-nvidia-tensorrt/katago-human-sl-cuda.exe"
           grep -qx "KataGo release: v1.17.2" \
             "engines/katago/windows-x64-nvidia-tensorrt/lizzieyzy-next-katago-engine-manifest.txt"
           grep -qx "Asset SHA-256: be09c4ecc02028e2bdf98ff489683840bc9be480ba94f1cfe6f7e15018e36be6" \
             "engines/katago/windows-x64-nvidia-tensorrt/lizzieyzy-next-katago-engine-manifest.txt"
+          grep -qx "HumanSL companion: katago-human-sl-cuda.exe" \
+            "engines/katago/windows-x64-nvidia-tensorrt/lizzieyzy-next-katago-engine-manifest.txt"
+          test -f "dist/windows/app-image-nvidia.tensorrt/LizzieYzy Next NVIDIA TensorRT/app/engines/katago/windows-x64/katago-human-sl-cuda.exe"
+          find "dist/windows/app-image-nvidia.tensorrt/LizzieYzy Next NVIDIA TensorRT/app/engines/katago/windows-x64" -maxdepth 1 -type f -name 'nvrtc64_*.dll' | grep -q .
+          find "dist/windows/app-image-nvidia.tensorrt/LizzieYzy Next NVIDIA TensorRT/app/engines/katago/windows-x64" -maxdepth 1 -type f -name 'nvrtc-builtins64_*.dll' | grep -q .
           grep -qx "KataGo release: v1.17.2" \
             "dist/windows/input-nvidia.tensorrt/engines/katago/VERSION.txt"
           grep -qx "Windows TensorRT bundle: katago-v1.17.2-trt10.9.0-cuda12.8-windows-x64.zip" \
@@ -350,6 +364,7 @@ jobs:
             "${runnable_engines[@]}"
             "dist/windows/app-image-nvidia/LizzieYzy Next NVIDIA/app/engines/katago/windows-x64/katago.exe"
             "dist/windows/app-image-nvidia50.cuda/LizzieYzy Next NVIDIA 50 CUDA/app/engines/katago/windows-x64/katago.exe"
+            "dist/windows/app-image-nvidia.tensorrt/LizzieYzy Next NVIDIA TensorRT/app/engines/katago/windows-x64/katago-human-sl-cuda.exe"
           )
           tensorrt_engine="dist/windows/app-image-nvidia.tensorrt/LizzieYzy Next NVIDIA TensorRT/app/engines/katago/windows-x64/katago.exe"
           for engine in "${runnable_engines[@]}"; do

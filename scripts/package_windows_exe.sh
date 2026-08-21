@@ -65,6 +65,7 @@ TENSORRT_KATAGO_ASSET="${TENSORRT_KATAGO_ASSET:-katago-${TENSORRT_KATAGO_TAG}-tr
 TENSORRT_KATAGO_SHA256="${TENSORRT_KATAGO_SHA256:-be09c4ecc02028e2bdf98ff489683840bc9be480ba94f1cfe6f7e15018e36be6}"
 TENSORRT_KATAGO_URL="${TENSORRT_KATAGO_URL:-https://github.com/lightvector/KataGo/releases/download/${TENSORRT_KATAGO_TAG}/${TENSORRT_KATAGO_ASSET}}"
 TENSORRT_ENGINE_MANIFEST_NAME="lizzieyzy-next-katago-engine-manifest.txt"
+HUMAN_SL_CUDA_COMPANION_NAME="katago-human-sl-cuda.exe"
 TENSORRT_KATAGO_CACHE_DIR="$ROOT_DIR/.cache/katago/tensorrt"
 JCEF_BUNDLE_PREPARE_SCRIPT="$ROOT_DIR/scripts/prepare_bundled_jcef.py"
 JCEF_BUNDLE_STAGE_DIR="$DIST_DIR/jcef-bundle"
@@ -576,6 +577,14 @@ copy_bundle_nvidia_runtime_assets() {
 prepare_bundled_tensorrt_engine_assets() {
   resolve_python_bin
   local output_dir="$ROOT_DIR/engines/katago/$NVIDIA_TRT_ENGINE_PLATFORM_DIR"
+  local companion_source="$ROOT_DIR/engines/katago/$NVIDIA50_CUDA_ENGINE_PLATFORM_DIR/katago.exe"
+  if [[ ! -f "$companion_source" ]]; then
+    companion_source="$ROOT_DIR/engines/katago/$NVIDIA_ENGINE_PLATFORM_DIR/katago.exe"
+  fi
+  if [[ ! -f "$companion_source" ]]; then
+    echo "TensorRT HumanSL CUDA companion source is missing: $companion_source" >&2
+    exit 1
+  fi
   log_step "Preparing optional TensorRT KataGo engine [$TENSORRT_KATAGO_ASSET]"
   "$PYTHON_BIN" - \
     "$TENSORRT_KATAGO_URL" \
@@ -584,7 +593,9 @@ prepare_bundled_tensorrt_engine_assets() {
     "$TENSORRT_KATAGO_ASSET" \
     "$TENSORRT_KATAGO_SHA256" \
     "$TENSORRT_KATAGO_TAG" \
-    "$TENSORRT_ENGINE_MANIFEST_NAME" <<'PY'
+    "$TENSORRT_ENGINE_MANIFEST_NAME" \
+    "$companion_source" \
+    "$HUMAN_SL_CUDA_COMPANION_NAME" <<'PY'
 import hashlib
 import os
 import shutil
@@ -594,7 +605,17 @@ import tempfile
 import urllib.request
 import zipfile
 
-url, cache_dir, output_dir, asset_name, expected_sha256, release_tag, manifest_name = sys.argv[1:8]
+(
+    url,
+    cache_dir,
+    output_dir,
+    asset_name,
+    expected_sha256,
+    release_tag,
+    manifest_name,
+    companion_source,
+    companion_name,
+) = sys.argv[1:10]
 expected_sha256 = expected_sha256.lower().replace("sha256:", "")
 archive_path = os.path.join(cache_dir, asset_name)
 part_path = archive_path + ".part"
@@ -675,11 +696,16 @@ try:
     with zipfile.ZipFile(archive_path) as archive:
         archive.extractall(temp_dir)
     copy_engine_files(find_katago_root(temp_dir), output_dir)
+    companion_target = os.path.join(output_dir, companion_name)
+    shutil.copy2(companion_source, companion_target)
+    companion_sha256 = file_sha256(companion_target)
     with open(os.path.join(output_dir, manifest_name), "w", encoding="utf-8") as manifest:
         manifest.write(
             f"KataGo release: {release_tag}\n"
             f"Asset: {asset_name}\n"
             f"Asset SHA-256: {expected_sha256}\n"
+            f"HumanSL companion: {companion_name}\n"
+            f"HumanSL companion SHA-256: {companion_sha256}\n"
         )
 finally:
     shutil.rmtree(temp_dir, ignore_errors=True)

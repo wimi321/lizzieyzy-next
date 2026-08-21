@@ -330,6 +330,55 @@ class HumanSlAnalysisRunnerTest {
   }
 
   @Test
+  void startupProgressClassifiesKatagoModelAndGpuStages() {
+    assertEquals(
+        HumanSlAnalysisRunner.StartupStage.LOADING_MODELS,
+        HumanSlAnalysisRunner.startupStageForLine("Analysis Engine starting..."));
+    assertEquals(
+        HumanSlAnalysisRunner.StartupStage.OPTIMIZING_GPU,
+        HumanSlAnalysisRunner.startupStageForLine(
+            "Initializing (may take a long time) TensorRT backend"));
+    assertEquals(
+        HumanSlAnalysisRunner.StartupStage.CACHE_READY,
+        HumanSlAnalysisRunner.startupStageForLine("Saved new timing cache"));
+    assertEquals(
+        HumanSlAnalysisRunner.StartupStage.READY,
+        HumanSlAnalysisRunner.startupStageForLine("Started, ready to begin handling requests"));
+  }
+
+  @Test
+  void readinessTimeoutIncludesRecentKatagoDiagnosticsAndReportsProgress() throws Exception {
+    try (TestEnvironment env = TestEnvironment.open()) {
+      BoardHistoryList history = new BoardHistoryList(BoardData.empty(BOARD_SIZE, BOARD_SIZE));
+      boardWithHistory(history);
+      FakeProcess process = new FakeProcess(request -> null);
+      List<HumanSlAnalysisRunner.StartupStage> stages =
+          java.util.Collections.synchronizedList(
+              new ArrayList<HumanSlAnalysisRunner.StartupStage>());
+      HumanSlAnalysisRunner runner =
+          new HumanSlAnalysisRunner(List.of("katago", "analysis"), ignored -> process);
+      runner.setStartupListener((stage, detail) -> stages.add(stage));
+
+      assertTrue(runner.start());
+      process.emitLine("Initializing (may take a long time) TensorRT backend");
+      long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(1);
+      while (!stages.contains(HumanSlAnalysisRunner.StartupStage.OPTIMIZING_GPU)
+          && System.nanoTime() < deadline) {
+        Thread.sleep(5L);
+      }
+
+      assertFalse(
+          runner.verifyReady(
+              history.getCurrentHistoryNode(), "rank_3k", Duration.ofMillis(40)));
+      assertTrue(stages.contains(HumanSlAnalysisRunner.StartupStage.STARTING));
+      assertTrue(stages.contains(HumanSlAnalysisRunner.StartupStage.OPTIMIZING_GPU));
+      assertTrue(runner.getUnavailableReason().contains("Timed out"));
+      assertTrue(runner.getUnavailableReason().contains("Initializing (may take a long time)"));
+      runner.close();
+    }
+  }
+
+  @Test
   void cancelActiveRequests_unblocksAndAllowsCleanRestart() throws Exception {
     try (TestEnvironment env = TestEnvironment.open()) {
       BoardHistoryList history = new BoardHistoryList(BoardData.empty(BOARD_SIZE, BOARD_SIZE));
@@ -579,6 +628,11 @@ class HumanSlAnalysisRunnerTest {
               }
             }
           };
+    }
+
+    private synchronized void emitLine(String line) throws IOException {
+      stdoutWriter.write(((line == null ? "" : line) + "\n").getBytes(StandardCharsets.UTF_8));
+      stdoutWriter.flush();
     }
 
     @Override

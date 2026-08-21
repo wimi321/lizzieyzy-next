@@ -32,11 +32,13 @@ CUDA_12_1_SPECS = (
     ("CUDA Runtime", CUDA_12_1_MANIFEST_URL, "cuda_cudart", "windows-x86_64"),
     ("CUDA cuBLAS", CUDA_12_1_MANIFEST_URL, "libcublas", "windows-x86_64"),
     ("CUDA nvJitLink", CUDA_12_1_MANIFEST_URL, "libnvjitlink", "windows-x86_64"),
+    ("CUDA NVRTC", CUDA_12_1_MANIFEST_URL, "cuda_nvrtc", "windows-x86_64"),
 )
 CUDA_12_8_SPECS = (
     ("CUDA Runtime", CUDA_12_8_MANIFEST_URL, "cuda_cudart", "windows-x86_64"),
     ("CUDA cuBLAS", CUDA_12_8_MANIFEST_URL, "libcublas", "windows-x86_64"),
     ("CUDA nvJitLink", CUDA_12_8_MANIFEST_URL, "libnvjitlink", "windows-x86_64"),
+    ("CUDA NVRTC", CUDA_12_8_MANIFEST_URL, "cuda_nvrtc", "windows-x86_64"),
 )
 RUNTIME_PROFILES = {
     "cuda12.1-cudnn8": {

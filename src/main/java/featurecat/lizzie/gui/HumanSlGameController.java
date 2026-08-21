@@ -146,6 +146,11 @@ public final class HumanSlGameController {
 
   /** Sets up the board and starts the game. Must be called on the EDT. */
   public void start() {
+    start(false);
+  }
+
+  /** Starts after setup has already paused foreground analysis to free GPU resources. */
+  void start(boolean analysisWasPonderingBeforePreparation) {
     if (config.fromCurrentPosition) {
       // Keep the original SGF metadata and main line untouched. The first training move is forced
       // into a variation from this node, including after "retry this move" returns here.
@@ -161,6 +166,7 @@ public final class HumanSlGameController {
       configurePlayerNames();
     }
     hideAnalysisVisuals();
+    ponderingBefore = ponderingBefore || analysisWasPonderingBeforePreparation;
     Lizzie.frame.humanSlGame = this;
     trainingSession.setState(HumanSlTrainingSession.State.PLAYING);
     turnStartedAt = System.currentTimeMillis();

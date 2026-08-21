@@ -52,6 +52,7 @@ import javax.swing.JToggleButton;
 import javax.swing.KeyStroke;
 import javax.swing.SpinnerNumberModel;
 import javax.swing.SwingUtilities;
+import javax.swing.Timer;
 import javax.swing.WindowConstants;
 
 /** Product-focused setup for one HumanSL AI coaching game. */
@@ -90,6 +91,10 @@ public final class NewHumanSlGameDialog extends JDialog {
   private volatile boolean closeRequested;
   private boolean downloadPaused;
   private boolean cancelled = true;
+  private Timer startupElapsedTimer;
+  private long startupStartedNanos;
+  private String startupStageText = "";
+  private ForegroundAnalysisPause foregroundAnalysisPause = ForegroundAnalysisPause.inactive();
 
   public NewHumanSlGameDialog(Window owner, HumanSlTrainingSession session) {
     super(owner);
@@ -496,7 +501,12 @@ public final class NewHumanSlGameDialog extends JDialog {
   private void packForContent() {
     Dimension current = getSize();
     pack();
-    int contentHeight = moreButton.isSelected() || downloading ? 500 : 410;
+    int contentHeight =
+        moreButton.isSelected()
+                || downloading
+                || session.state() == HumanSlTrainingSession.State.PREPARING
+            ? 500
+            : 410;
     fitToScreen(current, contentHeight);
   }
 
@@ -569,6 +579,9 @@ public final class NewHumanSlGameDialog extends JDialog {
     session.setState(HumanSlTrainingSession.State.PREPARING);
     setFormEnabled(false);
     downloadPanel.setVisible(true);
+    pauseDownloadButton.setVisible(true);
+    cancelDownloadButton.setVisible(true);
+    downloadProgress.setIndeterminate(false);
     downloadProgress.setValue(0);
     downloadProgress.setString("0%");
     setStatusText(text("HumanSlTraining.download.starting", "Preparing HumanSL download..."));
@@ -689,9 +702,11 @@ public final class NewHumanSlGameDialog extends JDialog {
     String command = commandResult.getCommand();
     setFormEnabled(false);
     session.setState(HumanSlTrainingSession.State.PREPARING);
-    setStatusText(text("HumanSlTraining.preparing", "Starting the AI coach..."));
+    foregroundAnalysisPause.restore();
+    foregroundAnalysisPause = ForegroundAnalysisPause.pauseCurrent();
     HumanSlAnalysisRunner runner = new HumanSlAnalysisRunner(command, modelPath);
     preparingRunner = runner;
+    beginEngineStartup(runner);
     Thread worker =
         new Thread(
             () -> {
@@ -712,30 +727,127 @@ public final class NewHumanSlGameDialog extends JDialog {
                       return;
                     }
                     if (!started) {
+                      String failureReason = runner.getUnavailableReason();
                       try {
                         runner.close();
                       } catch (Exception ignored) {
                       }
                       session.setState(HumanSlTrainingSession.State.IDLE);
+                      foregroundAnalysisPause.restore();
+                      foregroundAnalysisPause = ForegroundAnalysisPause.inactive();
+                      finishEngineStartup(runner);
                       setFormEnabled(true);
                       showInlineError(
                           MessageFormat.format(
                               text(
                                   "HumanSlGame.error.startFailed",
                                   "Failed to start HumanSL engine: {0}"),
-                              runner.getUnavailableReason()));
+                              Utils.isBlank(failureReason)
+                                  ? text(
+                                      "HumanSlTraining.preparing.failedDetail",
+                                      "The engine did not return a readiness response.")
+                                  : failureReason));
                       return;
                     }
+                    finishEngineStartup(runner);
                     HumanSlGameController controller =
                         new HumanSlGameController(runner, config, session);
+                    boolean resumeAnalysisAfterGame =
+                        foregroundAnalysisPause.transferRestoreResponsibility();
+                    foregroundAnalysisPause = ForegroundAnalysisPause.inactive();
                     cancelled = false;
                     setVisible(false);
-                    controller.start();
+                    controller.start(resumeAnalysisAfterGame);
                   });
             },
             "humansl-coach-start");
     worker.setDaemon(true);
     worker.start();
+  }
+
+  private void beginEngineStartup(HumanSlAnalysisRunner runner) {
+    startupStartedNanos = System.nanoTime();
+    startupStageText = text("HumanSlTraining.preparing", "Starting the AI coach...");
+    downloadPanel.setVisible(true);
+    pauseDownloadButton.setVisible(false);
+    cancelDownloadButton.setVisible(false);
+    downloadProgress.setIndeterminate(true);
+    downloadProgress.setValue(0);
+    downloadProgress.getAccessibleContext().setAccessibleName(startupStageText);
+    updateEngineStartupText();
+    runner.setStartupListener(
+        (stage, detail) ->
+            SwingUtilities.invokeLater(
+                () -> {
+                  if (preparingRunner == runner && !closeRequested) {
+                    updateEngineStartupStage(stage);
+                  }
+                }));
+    if (startupElapsedTimer != null) {
+      startupElapsedTimer.stop();
+    }
+    startupElapsedTimer = new Timer(1000, event -> updateEngineStartupText());
+    startupElapsedTimer.start();
+    packForContent();
+  }
+
+  private void updateEngineStartupStage(HumanSlAnalysisRunner.StartupStage stage) {
+    if (stage == null) {
+      return;
+    }
+    switch (stage) {
+      case LOADING_MODELS:
+        startupStageText =
+            text("HumanSlTraining.preparing.loading", "Loading the AI and HumanSL models...");
+        break;
+      case OPTIMIZING_GPU:
+        startupStageText =
+            text(
+                "HumanSlTraining.preparing.optimizing",
+                "Optimizing GPU kernels for this model; the first run may take longer...");
+        break;
+      case CACHE_READY:
+        startupStageText =
+            text("HumanSlTraining.preparing.cacheReady", "GPU cache is ready; verifying the model...");
+        break;
+      case READY:
+        startupStageText = text("HumanSlTraining.preparing.ready", "AI coach is ready.");
+        break;
+      case STARTING:
+      default:
+        startupStageText = text("HumanSlTraining.preparing", "Starting the AI coach...");
+        break;
+    }
+    updateEngineStartupText();
+  }
+
+  private void updateEngineStartupText() {
+    long elapsedSeconds =
+        startupStartedNanos <= 0L
+            ? 0L
+            : Math.max(0L, (System.nanoTime() - startupStartedNanos) / 1_000_000_000L);
+    setStatusText(startupStageText);
+    downloadProgress.setString(
+        MessageFormat.format(
+            text("HumanSlTraining.preparing.elapsed", "Elapsed {0} s"), elapsedSeconds));
+    downloadProgress.getAccessibleContext().setAccessibleDescription(startupStageText);
+  }
+
+  private void finishEngineStartup(HumanSlAnalysisRunner runner) {
+    if (runner != null) {
+      runner.setStartupListener(null);
+    }
+    if (startupElapsedTimer != null) {
+      startupElapsedTimer.stop();
+      startupElapsedTimer = null;
+    }
+    startupStartedNanos = 0L;
+    startupStageText = "";
+    downloadProgress.setIndeterminate(false);
+    downloadPanel.setVisible(false);
+    pauseDownloadButton.setVisible(true);
+    cancelDownloadButton.setVisible(true);
+    packForContent();
   }
 
   private HumanSlTrainingConfig selectedConfig() {
@@ -850,6 +962,9 @@ public final class NewHumanSlGameDialog extends JDialog {
     }
     HumanSlAnalysisRunner preparing = preparingRunner;
     preparingRunner = null;
+    foregroundAnalysisPause.restore();
+    foregroundAnalysisPause = ForegroundAnalysisPause.inactive();
+    finishEngineStartup(preparing);
     if (preparing != null) {
       Thread closer =
           new Thread(
