@@ -22,6 +22,7 @@ import featurecat.lizzie.util.KataGoAutoSetupHelper;
 import featurecat.lizzie.util.KataGoRuntimeHelper;
 import featurecat.lizzie.util.Utils;
 import featurecat.lizzie.util.YikeSyncDebugLog;
+import featurecat.lizzie.logging.EngineObservation;
 import java.awt.Component;
 import java.awt.GraphicsEnvironment;
 import java.io.BufferedOutputStream;
@@ -300,6 +301,7 @@ public class Leelaz {
   private volatile TrackingHandoffClaim trackingHandoffGate;
   private final ArrayDeque<String> recentStdoutLines = new ArrayDeque<String>();
   private final ArrayDeque<String> recentStderrLines = new ArrayDeque<String>();
+  private volatile String loggingEngineId;
 
   // public Board board;
   private List<MoveData> bestMoves;
@@ -708,6 +710,7 @@ public class Leelaz {
       } catch (IOException e) {
         isDownWithError = true;
         rememberRecentLine(recentStderrLines, e.getLocalizedMessage());
+        noteEngineFailed(e.getLocalizedMessage());
         try {
           tryToDignostic(
               Lizzie.resourceBundle.getString("Leelaz.engineFailed")
@@ -738,6 +741,7 @@ public class Leelaz {
             this.javaSSH.getStdout(), this.javaSSH.getStdin(), this.javaSSH.getSterr());
       } else {
         isDownWithError = true;
+        noteEngineFailed("ssh login failed");
         return;
       }
     } else {
@@ -784,6 +788,7 @@ public class Leelaz {
             isDownWithError = true;
           }
           isDownWithError = true;
+          noteEngineFailed(e.getLocalizedMessage());
           return;
         }
       }
@@ -835,6 +840,7 @@ public class Leelaz {
           e1.printStackTrace();
           isDownWithError = true;
         }
+        noteEngineFailed(err);
         return;
       }
       initializeStreams();
@@ -1316,6 +1322,7 @@ public class Leelaz {
       shutdown(binding, executors);
     }
     markReaderBindingStoppedIfCurrent(binding);
+    noteEngineStopped();
   }
 
   private void sendQuitToBinding(ReaderStreamBinding binding) {
@@ -1433,6 +1440,7 @@ public class Leelaz {
     ReaderExecutorSnapshot executors = requestReaderShutdown(binding, true);
     AnalysisResourceCoordinator.processStopped(
         this, AnalysisResourceCoordinator.Purpose.MAIN_BOARD, binding.process);
+    noteEngineStopped();
     boolean currentBinding = markReaderBindingNormalExitIfCurrent(binding);
     markReaderBindingStoppedIfCurrent(binding);
     //		if(isScreen)
@@ -1654,6 +1662,43 @@ public class Leelaz {
     }
     if (interrupted) {
       Thread.currentThread().interrupt();
+    }
+    noteEngineStarted();
+  }
+
+  private void noteEngineStarted() {
+    String id = EngineObservation.identityFor(this);
+    if (id == null) {
+      id = EngineObservation.ensureStarted(this, "MAIN_BOARD");
+    }
+    loggingEngineId = id;
+  }
+
+  private void noteEngineStopped() {
+    if (EngineObservation.engineDiagnosticsEnabled()) {
+      EngineObservation.recordRecentStderr(
+          loggingEngineId, snapshotRecentLines(recentStderrLines));
+    }
+    EngineObservation.ensureStopped(this, "stopped");
+    loggingEngineId = null;
+  }
+
+  private void noteEngineFailed(String reason) {
+    loggingEngineId = EngineObservation.mintIdentity(this);
+    if (EngineObservation.engineDiagnosticsEnabled()) {
+      EngineObservation.recordRecentStderr(
+          loggingEngineId, snapshotRecentLines(recentStderrLines));
+    }
+    EngineObservation.recordFailed(loggingEngineId, reason);
+    EngineObservation.discardIdentity(this);
+    loggingEngineId = null;
+  }
+
+  private void markEngineLoaded() {
+    boolean already = isLoaded;
+    isLoaded = true;
+    if (!already) {
+      EngineObservation.recordReady(loggingEngineId);
     }
   }
 
@@ -2422,7 +2467,7 @@ public class Leelaz {
       }
       if (params[1].equals("Leela") && params.length == 2) {
         isLeela0110 = true;
-        isLoaded = true;
+        markEngineLoaded();
         closeBundledStartupDialog();
       }
       //						if (params[1].startsWith("KataGoYm"))
@@ -2445,7 +2490,7 @@ public class Leelaz {
         if (this.currentEngineN == EngineManager.currentEngineNo) {
           Lizzie.config.leelaversion = version;
         }
-        isLoaded = true;
+        markEngineLoaded();
         closeBundledStartupDialog();
         isTuning = false;
         if (Lizzie.leelaz2 != null && this == Lizzie.leelaz2) {
@@ -2456,7 +2501,7 @@ public class Leelaz {
           else LizzieFrame.menu.changeEngineIcon(currentEngineN, 2);
         }
       } else {
-        isLoaded = true;
+        markEngineLoaded();
         closeBundledStartupDialog();
         isTuning = false;
         isKatago = false;
@@ -2503,7 +2548,7 @@ public class Leelaz {
           version = 17;
         }
         isCheckingVersion = false;
-        isLoaded = true;
+        markEngineLoaded();
         closeBundledStartupDialog();
         isTuning = false;
         // Lizzie.initializeAfterVersionCheck();
@@ -2595,6 +2640,7 @@ public class Leelaz {
     StartupCommandAction startupCommandAction = StartupCommandAction.NONE;
     synchronized (this) {
       if (line.startsWith("info")) {
+        EngineObservation.traceRawStream(loggingEngineId, null, line);
         boolean upToDate = isResponseUpToDate();
         if (this == Lizzie.leelaz) {
           YikeSyncDebugLog.log(
@@ -5507,6 +5553,7 @@ public class Leelaz {
           currentOutputStream.write((commandLine + "\n").getBytes());
           currentOutputStream.flush();
         }
+        noteCommandSent(pendingHandler, commandLine);
       } catch (Exception e) {
         boolean pollutedStreamDetected =
             clearBufferedCommandBytesAfterSendFailure(currentOutputStream);
@@ -5529,6 +5576,7 @@ public class Leelaz {
           throw commandFailure;
         }
         deferredResponse = queuedCommand.onResponse;
+        noteCommandFailed(pendingHandler);
       }
       if (EngineManager.isEngineGame()) {
         Lizzie.gtpConsole.addCommandForEngineGame(
@@ -5556,6 +5604,7 @@ public class Leelaz {
         throw commandFailure;
       }
       deferredResponse = queuedCommand.onResponse;
+      noteCommandFailed(pendingHandler);
     }
     if (canSetNotPlayed) {
       canSetNotPlayed = false;
@@ -5744,14 +5793,49 @@ public class Leelaz {
       String command, Runnable handler, QueuedCommand queuedCommand) {
     boolean exactLoadSgf = isExactSnapshotLoadSgf(command, handler);
     ReaderStreamBinding responseBinding = queuedCommand.readBoardGmaResponseBinding;
+    int protocolId = nextResponseCommandId(command, handler);
+    String engineId =
+        loggingEngineId != null ? loggingEngineId : EngineObservation.identityFor(this);
     return new PendingResponseHandler(
         command,
         handler,
         queuedCommand,
-        nextResponseCommandId(command, handler),
+        protocolId,
         requiresMatchingResponseCommandId(command, handler, exactLoadSgf),
         exactLoadSgf,
-        responseBinding);
+        responseBinding,
+        engineId,
+        EngineObservation.commandIdentity(protocolId),
+        EngineObservation.commandName(command),
+        System.nanoTime());
+  }
+
+  private void noteCommandSent(PendingResponseHandler pendingHandler, String commandLine) {
+    int depth;
+    int inFlight;
+    synchronized (commandQueue()) {
+      depth = commandQueue().size();
+    }
+    synchronized (pendingResponseHandlers()) {
+      inFlight = pendingResponseHandlers().size();
+    }
+    EngineObservation.recordCommandSent(
+        pendingHandler.loggingEngineId,
+        pendingHandler.loggingCommandId,
+        pendingHandler.commandName,
+        depth,
+        inFlight);
+    EngineObservation.traceRawCommand(
+        pendingHandler.loggingEngineId, pendingHandler.loggingCommandId, commandLine);
+  }
+
+  private void noteCommandFailed(PendingResponseHandler pendingHandler) {
+    EngineObservation.recordCommandOutcome(
+        pendingHandler.loggingEngineId,
+        pendingHandler.loggingCommandId,
+        pendingHandler.commandName,
+        "failed",
+        0L);
   }
 
 
@@ -6112,6 +6196,20 @@ public class Leelaz {
           failForegroundRestore(foregroundRestoreSession, "restore command failed: " + line.trim());
         }
         if (matchedPendingHandler != null) {
+          String outcome = currentCommandResponseError ? "error" : "ok";
+          long latencyMs =
+              TimeUnit.NANOSECONDS.toMillis(
+                  System.nanoTime() - matchedPendingHandler.sentAtNanos);
+          EngineObservation.recordCommandOutcome(
+              matchedPendingHandler.loggingEngineId,
+              matchedPendingHandler.loggingCommandId,
+              matchedPendingHandler.commandName,
+              outcome,
+              latencyMs);
+          EngineObservation.traceRawResponse(
+              matchedPendingHandler.loggingEngineId,
+              matchedPendingHandler.loggingCommandId,
+              line);
           matchedPendingHandler.run();
         }
       }
@@ -8773,6 +8871,10 @@ public class Leelaz {
     private final int responseCommandId;
     private final boolean exactSnapshotLoadSgf;
     private final ReaderStreamBinding responseBinding;
+    private final String loggingEngineId;
+    private final String loggingCommandId;
+    private final String commandName;
+    private final long sentAtNanos;
     private boolean requiresMatchingResponseCommandId;
 
     private PendingResponseHandler(
@@ -8782,7 +8884,11 @@ public class Leelaz {
         int responseCommandId,
         boolean requiresMatchingResponseCommandId,
         boolean exactSnapshotLoadSgf,
-        ReaderStreamBinding responseBinding) {
+        ReaderStreamBinding responseBinding,
+        String loggingEngineId,
+        String loggingCommandId,
+        String commandName,
+        long sentAtNanos) {
       this.command = command;
       this.handler = handler;
       this.queuedCommand = queuedCommand;
@@ -8790,6 +8896,10 @@ public class Leelaz {
       this.requiresMatchingResponseCommandId = requiresMatchingResponseCommandId;
       this.exactSnapshotLoadSgf = exactSnapshotLoadSgf;
       this.responseBinding = responseBinding;
+      this.loggingEngineId = loggingEngineId;
+      this.loggingCommandId = loggingCommandId;
+      this.commandName = commandName;
+      this.sentAtNanos = sentAtNanos;
     }
 
     private boolean isStaleResponseBinding(

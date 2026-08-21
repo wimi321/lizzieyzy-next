@@ -1,5 +1,7 @@
 package featurecat.lizzie.analysis;
 
+import featurecat.lizzie.logging.ReadBoardObservation;
+
 public final class SyncDiagnosticsRecorder {
   static final int PROTOCOL_EVENT_CAPACITY = 100;
   static final int DECISION_TRACE_CAPACITY = 50;
@@ -29,26 +31,49 @@ public final class SyncDiagnosticsRecorder {
   }
 
   public void updateYikeSession(YikeSessionDiagnosticsSnapshot value) {
+    YikeSessionDiagnosticsSnapshot logged;
     synchronized (lock) {
       yike = value == null ? YikeSessionDiagnosticsSnapshot.empty() : value;
-      if (!isEmptyYikeSnapshot(yike)) {
-        yikeEvents.add(yike);
+      logged = yike;
+      if (!isEmptyYikeSnapshot(logged)) {
+        yikeEvents.add(logged);
       }
+    }
+    if (!isEmptyYikeSnapshot(logged)) {
+      String reason = logged.getLastSessionSwitchReason();
+      if ("none".equals(reason)) {
+        reason = logged.getSummary();
+      }
+      ReadBoardObservation.recordYikeSession(
+          reason,
+          logged.getActiveSessionKey(),
+          logged.getActiveSyncReady(),
+          logged.getActiveGeometryReady(),
+          logged.getPendingSessionKey());
     }
   }
 
   public void updateLatestDecision(SyncDecisionTrace value) {
+    SyncDecisionTrace logged;
     synchronized (lock) {
       latestDecision = value == null ? SyncDecisionTrace.empty() : value;
-      if (!latestDecision.isEmpty()) {
-        decisionTraces.add(latestDecision);
+      logged = latestDecision;
+      if (!logged.isEmpty()) {
+        decisionTraces.add(logged);
       }
+    }
+    if (!logged.isEmpty()) {
+      ReadBoardObservation.recordDecision(
+          logged.getResult(), logged.getReasonCode(), logged.getEpoch(), logged.getPlatform());
     }
   }
 
   public void recordProtocolEvent(SyncProtocolDiagnosticEvent event) {
     synchronized (lock) {
       protocolEvents.add(event);
+    }
+    if (event != null) {
+      ReadBoardObservation.traceProtocol(event.getSummary());
     }
   }
 
