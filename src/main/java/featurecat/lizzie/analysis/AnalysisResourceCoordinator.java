@@ -1,14 +1,11 @@
 package featurecat.lizzie.analysis;
 
-import featurecat.lizzie.Lizzie;
+import featurecat.lizzie.logging.EngineObservation;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardOpenOption;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
-import java.time.Instant;
 import java.util.Collections;
 import java.util.IdentityHashMap;
 import java.util.Iterator;
@@ -18,7 +15,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import org.json.JSONObject;
 
 /** Coordinates foreground and auxiliary KataGo processes and emits opt-in diagnostics. */
 public final class AnalysisResourceCoordinator {
@@ -39,8 +35,6 @@ public final class AnalysisResourceCoordinator {
     SHARED_ENGINE
   }
 
-  private static final String DIAGNOSTICS_PROPERTY = "lizzie.analysis.diagnostics";
-  private static final String DIAGNOSTICS_PATH_PROPERTY = "lizzie.analysis.diagnostics.path";
   private static final Pattern SENSITIVE_ARGUMENT =
       Pattern.compile(
           "(?i)(password|passwd|token|secret|authorization|session|cookie)(\\s*[=:]\\s*|\\s+)([^\\s]+)");
@@ -54,7 +48,6 @@ public final class AnalysisResourceCoordinator {
   private static final Pattern HOME_DATA_DIR = Pattern.compile("(?i)(homeDataDir=)([^,\\s]+)");
   private static final Pattern LEADING_EXECUTABLE =
       Pattern.compile("^(\\s*)(\\\"[^\\\"]*\\\"|'[^']*'|[^\\s]+)");
-  private static final Object DIAGNOSTIC_LOCK = new Object();
   private static final Map<Object, Sample> FOREGROUND_SAMPLES = new java.util.WeakHashMap<>();
   private static final Map<Object, Long> REGISTERED_PROCESSES = new java.util.WeakHashMap<>();
   private static final Set<Process> ACTIVE_LOCAL_COMPUTE_PROCESSES =
@@ -89,7 +82,17 @@ public final class AnalysisResourceCoordinator {
         ACTIVE_LOCAL_COMPUTE_PROCESSES.add(process);
       }
     }
-    if (!diagnosticsEnabled()) {
+    String purposeName = normalizedPurpose(purpose).name();
+    if (process == null) {
+      EngineObservation.ensureStarted(owner, purposeName);
+      if (EngineObservation.engineDiagnosticsEnabled()) {
+        EngineObservation.recordProcessDetails(
+            EngineObservation.identityFor(owner),
+            "process-started",
+            purposeName,
+            -1L,
+            diagnosticCommand(command));
+      }
       return;
     }
     long pid = processId(process);
@@ -100,13 +103,12 @@ public final class AnalysisResourceCoordinator {
       }
       REGISTERED_PROCESSES.put(owner, pid);
     }
-    JSONObject details = processDetails(owner, purpose, command, process);
-    Path config = commandPath(command, "-config");
-    Path model = commandPath(command, "-model");
-    details.put("config", config == null ? JSONObject.NULL : diagnosticFileName(config.toString()));
-    details.put("configSha256", fileSha256(config));
-    details.put("model", model == null ? JSONObject.NULL : model.getFileName().toString());
-    appendEvent("process-started", details);
+    String engineId = EngineObservation.restartInstance(owner, purposeName);
+    if (!EngineObservation.engineDiagnosticsEnabled()) {
+      return;
+    }
+    EngineObservation.recordProcessDetails(
+        engineId, "process-started", purposeName, pid, diagnosticCommand(command));
   }
 
   public static void processStopped(Object owner, Purpose purpose, Process process) {
@@ -125,7 +127,15 @@ public final class AnalysisResourceCoordinator {
         }
       }
     }
-    if (!diagnosticsEnabled()) {
+    if (process == null) {
+      String purposeName = normalizedPurpose(purpose).name();
+      String engineId = EngineObservation.identityFor(owner);
+      EngineObservation.recordProcessDetails(
+          engineId, "process-stopped", purposeName, -1L, null);
+      EngineObservation.ensureStopped(owner, "stopped");
+      synchronized (FOREGROUND_SAMPLES) {
+        FOREGROUND_SAMPLES.remove(owner);
+      }
       return;
     }
     long stoppedPid = processId(process);
@@ -136,11 +146,11 @@ public final class AnalysisResourceCoordinator {
       }
       REGISTERED_PROCESSES.remove(owner);
     }
-    JSONObject details = new JSONObject();
-    details.put("owner", ownerId(owner));
-    details.put("purpose", normalizedPurpose(purpose).name());
-    details.put("pid", stoppedPid);
-    appendEvent("process-stopped", details);
+    String purposeName = normalizedPurpose(purpose).name();
+    String engineId = EngineObservation.identityFor(owner);
+    EngineObservation.recordProcessDetails(
+        engineId, "process-stopped", purposeName, stoppedPid, null);
+    EngineObservation.ensureStopped(owner, "stopped");
     synchronized (FOREGROUND_SAMPLES) {
       FOREGROUND_SAMPLES.remove(owner);
     }
@@ -188,39 +198,43 @@ public final class AnalysisResourceCoordinator {
   }
 
   public static void commandSent(Object owner, Purpose purpose, String command) {
-    if (!diagnosticsEnabled() || command == null) {
+    if (!EngineObservation.engineDiagnosticsEnabled() || command == null) {
       return;
     }
     Matcher matcher = SET_PARAM.matcher(command);
     if (!matcher.matches() && !command.trim().toLowerCase(Locale.ROOT).startsWith("kata-analyze")) {
       return;
     }
-    JSONObject details = new JSONObject();
-    details.put("owner", ownerId(owner));
-    details.put("purpose", normalizedPurpose(purpose).name());
+    String purposeName = normalizedPurpose(purpose).name();
+    String engineId = EngineObservation.identityFor(owner);
     if (matcher.matches()) {
-      details.put("parameter", matcher.group(1));
-      details.put("value", redactCommand(matcher.group(2)));
-      appendEvent("dynamic-parameter", details);
+      EngineObservation.recordProcessDetails(
+          engineId,
+          "dynamic-parameter",
+          purposeName,
+          -1L,
+          matcher.group(1) + "=" + redactCommand(matcher.group(2)));
     } else {
-      details.put("command", redactCommand(command));
-      appendEvent("analysis-started", details);
+      EngineObservation.recordProcessDetails(
+          engineId, "analysis-started", purposeName, -1L, EngineObservation.commandName(command));
     }
   }
 
   public static void foregroundPausedForAuxiliary(
       Object foregroundOwner, Purpose auxiliaryPurpose) {
-    if (!diagnosticsEnabled()) {
+    if (!EngineObservation.engineDiagnosticsEnabled()) {
       return;
     }
-    JSONObject details = new JSONObject();
-    details.put("foregroundOwner", ownerId(foregroundOwner));
-    details.put("auxiliaryPurpose", normalizedPurpose(auxiliaryPurpose).name());
-    appendEvent("foreground-paused", details);
+    EngineObservation.recordProcessDetails(
+        EngineObservation.identityFor(foregroundOwner),
+        "foreground-paused",
+        normalizedPurpose(auxiliaryPurpose).name(),
+        -1L,
+        null);
   }
 
   public static void foregroundPlayoutSample(Object owner, int playouts) {
-    if (!diagnosticsEnabled() || owner == null || playouts < 0) {
+    if (!EngineObservation.engineDiagnosticsEnabled() || owner == null || playouts < 0) {
       return;
     }
     long now = System.nanoTime();
@@ -236,13 +250,10 @@ public final class AnalysisResourceCoordinator {
       }
       FOREGROUND_SAMPLES.put(owner, new Sample(playouts, now));
     }
-    double elapsedSeconds = elapsedSeconds(previous.nanoTime, now);
-    JSONObject details = new JSONObject();
-    details.put("owner", ownerId(owner));
-    details.put("purpose", Purpose.MAIN_BOARD.name());
-    details.put("playouts", playouts);
-    details.put("playoutsPerSecond", (playouts - previous.playouts) / elapsedSeconds);
-    appendEvent("foreground-throughput", details);
+    EngineObservation.recordThroughput(
+        EngineObservation.identityFor(owner),
+        playouts,
+        (playouts - previous.playouts) / elapsedSeconds(previous.nanoTime, now));
   }
 
   static double elapsedSeconds(long previousNanoTime, long currentNanoTime) {
@@ -318,27 +329,10 @@ public final class AnalysisResourceCoordinator {
     }
   }
 
-  private static JSONObject processDetails(
-      Object owner, Purpose purpose, String command, Process process) {
-    JSONObject details = new JSONObject();
-    details.put("owner", ownerId(owner));
-    details.put("purpose", normalizedPurpose(purpose).name());
-    details.put("pid", processId(process));
-    details.put("command", diagnosticCommand(command));
-    return details;
-  }
-
   private static Purpose normalizedPurpose(Purpose purpose) {
     return purpose == null ? Purpose.OTHER : purpose;
   }
 
-  private static String ownerId(Object owner) {
-    return owner == null
-        ? "unknown"
-        : owner.getClass().getSimpleName()
-            + "@"
-            + Integer.toHexString(System.identityHashCode(owner));
-  }
 
   private static long processId(Process process) {
     try {
@@ -373,60 +367,6 @@ public final class AnalysisResourceCoordinator {
         : value;
   }
 
-  private static Path commandPath(String command, String option) {
-    if (command == null || option == null) {
-      return null;
-    }
-    java.util.List<String> parts = featurecat.lizzie.util.Utils.splitCommand(command);
-    for (int i = 0; i + 1 < parts.size(); i++) {
-      if (option.equalsIgnoreCase(parts.get(i))) {
-        try {
-          Path path = Path.of(parts.get(i + 1));
-          return path.isAbsolute() ? path.normalize() : Path.of(".").resolve(path).normalize();
-        } catch (RuntimeException e) {
-          return null;
-        }
-      }
-    }
-    return null;
-  }
-
-  private static boolean diagnosticsEnabled() {
-    return Boolean.getBoolean(DIAGNOSTICS_PROPERTY);
-  }
-
-  private static Path diagnosticsPath() {
-    String configured = System.getProperty(DIAGNOSTICS_PATH_PROPERTY, "").trim();
-    if (!configured.isEmpty()) {
-      return Path.of(configured).toAbsolutePath().normalize();
-    }
-    Path workDirectory =
-        Lizzie.config != null
-            ? Lizzie.config.getWorkDirectory().toPath()
-            : Path.of(System.getProperty("user.dir", "."));
-    return workDirectory.resolve("analysis_logs").resolve("analysis-resource-diagnostics.jsonl");
-  }
-
-  private static void appendEvent(String event, JSONObject details) {
-    JSONObject line = new JSONObject();
-    line.put("timestamp", Instant.now().toString());
-    line.put("event", event);
-    line.put("details", details == null ? new JSONObject() : details);
-    synchronized (DIAGNOSTIC_LOCK) {
-      try {
-        Path output = diagnosticsPath();
-        Files.createDirectories(output.getParent());
-        Files.writeString(
-            output,
-            line.toString() + System.lineSeparator(),
-            StandardCharsets.UTF_8,
-            StandardOpenOption.CREATE,
-            StandardOpenOption.APPEND);
-      } catch (IOException | RuntimeException e) {
-        // Diagnostics must never affect analysis availability.
-      }
-    }
-  }
 
   private static final class Sample {
     private final int playouts;

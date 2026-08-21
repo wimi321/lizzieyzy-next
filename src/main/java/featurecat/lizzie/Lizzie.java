@@ -16,13 +16,17 @@ import featurecat.lizzie.gui.LizzieFrame;
 import featurecat.lizzie.gui.LoadEngine;
 import featurecat.lizzie.gui.Menu;
 import featurecat.lizzie.gui.web.WebBoardManager;
+import featurecat.lizzie.logging.CrashHandlers;
+import featurecat.lizzie.logging.LogCategories;
+import featurecat.lizzie.logging.LoggingRuntime;
+import featurecat.lizzie.logging.WorkDirectoryResolution;
+import featurecat.lizzie.logging.WorkDirectoryResolver;
 import featurecat.lizzie.rules.Board;
 import featurecat.lizzie.rules.BoardHistoryNode;
 import featurecat.lizzie.util.KataGoAutoSetupHelper;
 import featurecat.lizzie.util.KataGoAutoSetupHelper.SetupSnapshot;
 import featurecat.lizzie.util.KataGoRuntimeHelper;
 import featurecat.lizzie.util.LocaleFontSupport;
-import featurecat.lizzie.util.MultiOutputStream;
 import featurecat.lizzie.util.NetworkProxy;
 import featurecat.lizzie.util.Utils;
 import java.awt.Font;
@@ -31,16 +35,13 @@ import java.awt.Image;
 import java.awt.Window;
 import java.awt.geom.AffineTransform;
 import java.io.File;
-import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.text.SimpleDateFormat;
-import java.util.Date;
 import java.util.List;
+import java.util.function.IntConsumer;
 import java.util.Locale;
 import java.util.ResourceBundle;
 import java.util.concurrent.Callable;
@@ -51,6 +52,8 @@ import javax.swing.*;
 import javax.swing.plaf.FontUIResource;
 import org.jdesktop.swingx.util.OS;
 import org.json.JSONException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /** Main class. */
 public class Lizzie {
@@ -60,6 +63,8 @@ public class Lizzie {
     // scanners out of the image loading path.
     ImageIO.setUseCache(false);
   }
+
+  private static final Logger APP = LoggerFactory.getLogger(LogCategories.APP);
 
   public static ResourceBundle resourceBundle = ResourceBundle.getBundle("l10n.DisplayStrings");
   public static final EngineStartupStatus engineStartupStatus = new EngineStartupStatus();
@@ -151,28 +156,14 @@ public class Lizzie {
     if (System.getProperty("swing.aatext") == null) {
       System.setProperty("swing.aatext", "true");
     }
-    ensureWritableWorkingDir();
+    bootstrapLogging();
     config = new Config();
+    LoggingRuntime.current().ifPresent(runtime -> runtime.applySettings(config.loggingSettings));
+    logPersistedLoggingSettingsApplied();
     firstLaunchSession = config.isNewProfile() || config.firstTimeLoad;
     resourceBundle = AppLocale.loadBundle(config.useLanguage);
     NetworkProxy.installSystemProxyPropertyFromSavedConfig();
     Utils.applyMaintainedDefaultSettings();
-    if (config.logConsoleToFile) {
-      PrintStream oldPrintStream = System.out;
-      FileOutputStream bos = new FileOutputStream("LastConsoleLogs_" + nextVersion + ".txt", true);
-      MultiOutputStream multi = new MultiOutputStream(new PrintStream(bos), oldPrintStream);
-      System.setOut(new PrintStream(multi));
-
-      PrintStream oldErrorPrintStream = System.err;
-      FileOutputStream bosError =
-          new FileOutputStream("LastErrorLogs_" + nextVersion + ".txt", true);
-      MultiOutputStream multiError =
-          new MultiOutputStream(new PrintStream(bosError), oldErrorPrintStream);
-      System.setErr(new PrintStream(multiError));
-      String sf = new SimpleDateFormat("yyyy-MM-dd-HH:mm:ss").format(new Date());
-      bos.write((sf + "\n").getBytes());
-      bosError.write((sf + "\n").getBytes());
-    }
     // -Dsun.java2d.uiScale.enabled=false
     // -Dsun.java2d.win.uiScaleX=1.25 -Dsun.java2d.win.uiScaleY=1.25
     // -Dsun.java2d.win.uiScaleX=125% -Dsun.java2d.win.uiScaleY=125%
@@ -194,7 +185,6 @@ public class Lizzie {
     } catch (Exception e) {
       javaVersion = 8;
     }
-    System.out.println("java version:" + javaVersionString);
     installApplicationIcon();
     leelaz = new Leelaz("");
     isMultiScreen = GraphicsEnvironment.getLocalGraphicsEnvironment().getScreenDevices().length > 1;
@@ -286,6 +276,7 @@ public class Lizzie {
         startConfiguredEngine(defaultEngine, true);
       } else {
         loadEngine = LoadEngine.createDialog();
+        APP.info("application startup engine-selection");
         loadEngine.setVisible(true);
       }
     }
@@ -294,6 +285,61 @@ public class Lizzie {
     scheduleAutoSetupSmokeProbe();
     scheduleYikeWebSmokeProbe();
     scheduleRemoteComputeSmokeProbe();
+  }
+
+  public static WorkDirectoryResolution bootstrapLogging() {
+    WorkDirectoryResolution workDirectory = WorkDirectoryResolver.resolve();
+    try {
+      Path cwd = Path.of(System.getProperty("user.dir")).toAbsolutePath();
+      if (!Files.isWritable(cwd)) {
+        System.setProperty("user.dir", workDirectory.directory().toString());
+      }
+    } catch (Exception ignored) {
+    }
+    try {
+      LoggingRuntime.initialize(workDirectory);
+    } catch (Throwable t) {
+      System.err.println(
+          LoggingRuntime.STDERR_PREFIX + "bootstrap " + t.getClass().getSimpleName());
+    }
+    CrashHandlers.install();
+    logStartupIdentity();
+    return workDirectory;
+  }
+
+  public static void logStartupIdentity() {
+    if (!APP.isInfoEnabled()) {
+      return;
+    }
+    APP.info(
+        "application version={} java.vendor={} java.version={} java.runtime={}",
+        nextVersion,
+        System.getProperty("java.vendor"),
+        System.getProperty("java.version"),
+        System.getProperty("java.runtime.version"));
+  }
+
+  public static void logPersistedLoggingSettingsApplied() {
+    LoggingRuntime.current()
+        .ifPresent(
+            runtime -> {
+              if (!APP.isInfoEnabled()) {
+                return;
+              }
+              APP.info(
+                  "persisted logging settings applied diagnostics={} modules={} scopes={}",
+                  runtime.settings().diagnosticsEnabled(),
+                  runtime.settings().diagnosticModules().size(),
+                  runtime.settings().preferredTraceScopes().size());
+            });
+  }
+
+  public static void logApplicationReady() {
+    APP.info("application ready");
+  }
+
+  public static void logShutdownRequested() {
+    APP.info("application shutdown requested");
   }
 
   /**
@@ -562,21 +608,6 @@ public class Lizzie {
     return trimmed.isEmpty() ? null : trimmed;
   }
 
-  private static void ensureWritableWorkingDir() {
-    try {
-      Path cwd = Path.of(System.getProperty("user.dir")).toAbsolutePath();
-      if (Files.isWritable(cwd)) {
-        return;
-      }
-      Path fallback = Config.resolveWritableFallbackDir();
-      System.setProperty("user.dir", fallback.toString());
-      System.out.println("switch user.dir to writable path: " + fallback);
-    } catch (Exception e) {
-      // Keep default behavior if we fail to switch directory.
-      e.printStackTrace();
-    }
-  }
-
   private static void installApplicationIcon() {
     if (!System.getProperty("os.name", "").contains("Mac")) {
       return;
@@ -602,7 +633,7 @@ public class Lizzie {
       applicationIcon = ImageIO.read(iconStream);
       return applicationIcon;
     } catch (IOException e) {
-      e.printStackTrace();
+      APP.error("failed to load application icon", e);
       return null;
     }
   }
@@ -727,7 +758,7 @@ public class Lizzie {
       }
       return false;
     } catch (Exception e) {
-      e.printStackTrace();
+      APP.error("failed to read configured engines", e);
       return false;
     }
   }
@@ -743,7 +774,7 @@ public class Lizzie {
         KataGoAutoSetupHelper.applyAutoSetup(snapshot.withActiveWeight(snapshot.activeWeightPath));
       }
     } catch (Exception e) {
-      e.printStackTrace();
+      APP.error("automatic engine profile setup failed", e);
     }
   }
 
@@ -756,7 +787,7 @@ public class Lizzie {
       config.save();
       return true;
     } catch (IOException e) {
-      e.printStackTrace();
+      APP.error("failed to save first-run profile", e);
       return false;
     }
   }
@@ -768,6 +799,7 @@ public class Lizzie {
     LizzieFrame.menu.doubleMenu(true);
     frame.reSetLoc();
     frame.showMainPanel();
+    logApplicationReady();
     frame.addResizeLis();
     // 引擎跟随控制器：试下期间让引擎跟随 displayNode 实时分析
     EngineCommandSink sink = new LeelazEngineCommandSink();
@@ -885,14 +917,8 @@ public class Lizzie {
       }
       AppleStyleSupport.applyUiDefaults();
       applyOptionPaneLocalization(resourceBundle);
-    } catch (IllegalAccessException e) {
-      e.printStackTrace();
-    } catch (ClassNotFoundException e) {
-      e.printStackTrace();
-    } catch (InstantiationException e) {
-      e.printStackTrace();
-    } catch (UnsupportedLookAndFeelException e) {
-      e.printStackTrace();
+    } catch (ReflectiveOperationException | UnsupportedLookAndFeelException e) {
+      APP.error("failed to set look and feel", e);
     }
   }
 
@@ -907,14 +933,8 @@ public class Lizzie {
       }
       AppleStyleSupport.applyUiDefaults();
       applyOptionPaneLocalization(resourceBundle);
-    } catch (IllegalAccessException e) {
-      e.printStackTrace();
-    } catch (ClassNotFoundException e) {
-      e.printStackTrace();
-    } catch (InstantiationException e) {
-      e.printStackTrace();
-    } catch (UnsupportedLookAndFeelException e) {
-      e.printStackTrace();
+    } catch (ReflectiveOperationException | UnsupportedLookAndFeelException e) {
+      APP.error("failed to reset look and feel", e);
     }
   }
 
@@ -1003,17 +1023,7 @@ public class Lizzie {
   }
 
   public static void shutdown() {
-    //    if (config.config.getJSONObject("ui").getBoolean("confirm-exit")) {
-    //      int ret =
-    //          JOptionPane.showConfirmDialog(
-    //              Lizzie.frame,
-    //              resourceBundle.getString("Lizzie.askOnExit1"),
-    //              resourceBundle.getString("Lizzie.askOnExit2"),
-    //              JOptionPane.OK_CANCEL_OPTION);
-    //      if (ret == JOptionPane.OK_OPTION) {
-    //        frame.saveFile(false);
-    //      }
-    //    }
+    logShutdownRequested();
     if (config.autoSaveOnExit) frame.saveAutoGame(1);
     if (Lizzie.config.uiConfig.optBoolean("autoload-last", false)) {
       Lizzie.config.uiConfig.put("last-engine", EngineManager.currentEngineNo);
@@ -1032,7 +1042,7 @@ public class Lizzie {
               + resourceBundle.getString("Lizzie.save.path")
               + config.getPersistFilePath()
               + "</html>");
-      e.printStackTrace();
+      APP.error("failed to persist UI state", e);
     }
     try {
       config.save();
@@ -1045,7 +1055,7 @@ public class Lizzie {
               + resourceBundle.getString("Lizzie.save.path")
               + config.getConfigFilePath()
               + "</html>");
-      e.printStackTrace();
+      APP.error("failed to save config on shutdown", e);
     }
     try {
       frame.closeContributeEngine();
@@ -1066,7 +1076,7 @@ public class Lizzie {
     try {
       frame.shutdownClockHelper();
     } catch (Exception e) {
-      e.printStackTrace();
+      APP.error("failed to shut down clock helper", e);
     }
     Lizzie.frame.destroyEstimateEngine();
     Lizzie.frame.destroyAnalysisEngine();
@@ -1077,7 +1087,22 @@ public class Lizzie {
         e.printStackTrace();
       }
     }
-    System.exit(0);
+    shutdownLoggingThenExit(System::exit);
+  }
+
+  public static void shutdownLoggingThenExit(IntConsumer exit) {
+    try {
+      LoggingRuntime.current()
+          .ifPresent(
+              runtime -> {
+                if (APP.isInfoEnabled()) {
+                  APP.info("logging shutdown begin");
+                }
+                runtime.shutdown();
+              });
+    } catch (RuntimeException ignored) {
+    }
+    exit.accept(0);
   }
 
   public static void resetAllHints() {
