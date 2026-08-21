@@ -24,7 +24,8 @@ public final class GraphicsDriverDiagnostics {
             () -> {
               String result = probeNvidiaDriver();
               SUMMARY.set(result);
-              System.out.println("Graphics driver diagnostics: " + result);
+              org.slf4j.LoggerFactory.getLogger(featurecat.lizzie.logging.LogCategories.DIAGNOSTICS)
+                  .info("Graphics driver diagnostics: {}", result);
             },
             "linux-graphics-driver-diagnostics");
     probe.setDaemon(true);

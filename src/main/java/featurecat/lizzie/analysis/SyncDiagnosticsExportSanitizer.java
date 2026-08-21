@@ -58,6 +58,10 @@ public final class SyncDiagnosticsExportSanitizer {
         });
   }
 
+  public Map<String, String> aliases() {
+    return Map.copyOf(sessionAliases);
+  }
+
   public String text(String value) {
     String safe = unescapeDiagnosticSeparators(normalize(value, "none"));
     safe = SGF_PAYLOAD.matcher(safe).replaceAll("<redacted-sgf>");

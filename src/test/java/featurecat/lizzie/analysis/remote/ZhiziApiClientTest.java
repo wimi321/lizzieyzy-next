@@ -7,6 +7,12 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
+import featurecat.lizzie.logging.DiagnosticModule;
+import featurecat.lizzie.logging.LoggingLimits;
+import featurecat.lizzie.logging.LoggingRuntime;
+import featurecat.lizzie.logging.LoggingSettings;
+import featurecat.lizzie.logging.TraceScope;
+import featurecat.lizzie.logging.WorkDirectoryResolution;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.math.BigDecimal;
@@ -14,7 +20,10 @@ import java.net.InetSocketAddress;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Instant;
+import java.util.EnumSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -22,6 +31,7 @@ import org.json.JSONObject;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 class ZhiziApiClientTest {
   private HttpServer server;
@@ -543,6 +553,41 @@ class ZhiziApiClientTest {
     assertEquals(600L, failure.retryAfterSeconds());
     assertFalse(failure.isRetryable());
     assertEquals(1, requestCount, "the client must not blindly retry send-code");
+  }
+
+  @Test
+  void failedLoginDoesNotPersistPasswordCanary(@TempDir Path tempDir) throws Exception {
+    LoggingRuntime.current().ifPresent(LoggingRuntime::shutdown);
+    LoggingRuntime runtime =
+        LoggingRuntime.initialize(
+            new WorkDirectoryResolution(tempDir, List.of()),
+            new LoggingLimits(64, 32, 32, 32, 7, 1_000_000, 256_000));
+    try {
+      runtime.applySettings(
+          LoggingSettings.defaults()
+              .withDiagnosticsEnabled(true)
+              .withDiagnosticModules(EnumSet.of(DiagnosticModule.NETWORK_REMOTE)));
+      runtime.startFullTrace(EnumSet.of(TraceScope.NETWORK_WEBSOCKET));
+      responseStatus = 401;
+      responseBody = "Not Authorized";
+      assertThrows(
+          ZhiziApiException.class,
+          () -> client().login("player@example.com", "T05_ZHIZI_PASSWORD_CANARY"));
+      runtime.shutdown();
+      String app = Files.readString(tempDir.resolve("logs/app.log"), StandardCharsets.UTF_8);
+      assertTrue(app.contains("remote event=http"), app);
+      assertTrue(app.contains("category=authentication"), app);
+      assertTrue(app.contains("outcome=failed"), app);
+      assertFalse(app.contains("T05_ZHIZI_PASSWORD_CANARY"), app);
+      assertFalse(app.contains("/api/cluster/account/login"), app);
+      Path trace = tempDir.resolve("logs/network-trace.log");
+      if (Files.isRegularFile(trace)) {
+        assertFalse(
+            Files.readString(trace).contains("T05_ZHIZI_PASSWORD_CANARY"), Files.readString(trace));
+      }
+    } finally {
+      LoggingRuntime.current().ifPresent(LoggingRuntime::shutdown);
+    }
   }
 
   private ZhiziApiClient client() {

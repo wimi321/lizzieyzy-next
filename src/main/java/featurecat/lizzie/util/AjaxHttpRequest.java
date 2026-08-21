@@ -1,5 +1,7 @@
 package featurecat.lizzie.util;
 
+import featurecat.lizzie.logging.NetworkEndpointCategory;
+import featurecat.lizzie.logging.NetworkObservation;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -13,6 +15,7 @@ import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.StringTokenizer;
+import java.util.concurrent.TimeUnit;
 
 public class AjaxHttpRequest {
 
@@ -161,7 +164,14 @@ public class AjaxHttpRequest {
       try {
         c.getInputStream().close();
       } catch (IOException ioe) {
-        ioe.printStackTrace();
+        NetworkObservation.recordNetwork(
+            "GET",
+            requestURL == null ? "unknown" : requestURL.getHost(),
+            NetworkEndpointCategory.OTHER,
+            0,
+            0L,
+            "failed",
+            NetworkObservation.newRequestIdentity());
       }
     }
   }
@@ -170,6 +180,11 @@ public class AjaxHttpRequest {
     if (sent) {
       return;
     }
+    long started = System.nanoTime();
+    String requestId = NetworkObservation.newRequestIdentity();
+    String method = this.requestMethod == null ? DEFAULT_REQUEST_METHOD : this.requestMethod;
+    String host = this.requestURL == null ? "unknown" : this.requestURL.getHost();
+    int istatus = 0;
     try {
       URLConnection c;
       synchronized (this) {
@@ -180,13 +195,10 @@ public class AjaxHttpRequest {
       }
       sent = true;
       initConnectionRequestHeader(c);
-      int istatus;
       String istatusText;
       InputStream err;
       if (c instanceof HttpURLConnection) {
         HttpURLConnection hc = (HttpURLConnection) c;
-        String method = this.requestMethod == null ? DEFAULT_REQUEST_METHOD : this.requestMethod;
-
         method = method.toUpperCase();
         hc.setRequestMethod(method);
         if ("POST".equals(method) && content != null) {
@@ -204,7 +216,6 @@ public class AjaxHttpRequest {
         istatusText = hc.getResponseMessage();
         err = hc.getErrorStream();
       } else {
-        istatus = 0;
         istatusText = "";
         err = null;
       }
@@ -219,12 +230,28 @@ public class AjaxHttpRequest {
       this.changeState(AjaxHttpRequest.STATE_INTERACTIVE, istatus, istatusText, null);
       byte[] bytes = loadStream(in, contentLength == -1 ? 4096 : contentLength);
       this.changeState(AjaxHttpRequest.STATE_COMPLETE, istatus, istatusText, bytes);
+      observeAjax(method, host, istatus, started, requestId, istatus >= 400 ? "failed" : "ok");
+    } catch (IOException e) {
+      observeAjax(method, host, istatus, started, requestId, "failed");
+      throw e;
     } finally {
       synchronized (this) {
         this.connection = null;
         sent = false;
       }
     }
+  }
+
+  private static void observeAjax(
+      String method, String host, int status, long startedNanos, String requestId, String outcome) {
+    NetworkObservation.recordNetwork(
+        method,
+        host,
+        NetworkEndpointCategory.OTHER,
+        status,
+        Math.max(0L, TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startedNanos)),
+        outcome,
+        requestId);
   }
 
   protected void changeState(int readyState, int status, String statusMessage, byte[] bytes) {

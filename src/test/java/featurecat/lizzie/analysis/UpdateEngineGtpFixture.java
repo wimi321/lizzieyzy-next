@@ -2,12 +2,14 @@ package featurecat.lizzie.analysis;
 
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
+import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.util.concurrent.TimeUnit;
 
 /** Cross-platform fake GTP process used by engine lifecycle integration tests. */
 public final class UpdateEngineGtpFixture {
@@ -40,7 +42,7 @@ public final class UpdateEngineGtpFixture {
           append(
               log,
               "SGF:"
-                  + stripTrailingNewlines(Files.readString(sgf, StandardCharsets.UTF_8)));
+                  + stripTrailingNewlines(readWithRetry(sgf)));
           if (Files.isRegularFile(loadSgfFailure)) {
             writeResponse(output, parsed.id, false, "controlled restore failure");
             continue;
@@ -89,12 +91,38 @@ public final class UpdateEngineGtpFixture {
   }
 
   private static void append(Path log, String line) throws Exception {
-    Files.writeString(
-        log,
-        line + "\n",
-        StandardCharsets.UTF_8,
-        StandardOpenOption.CREATE,
-        StandardOpenOption.APPEND);
+    byte[] bytes = (line + "\n").getBytes(StandardCharsets.UTF_8);
+    writeWithRetry(log, bytes, StandardOpenOption.CREATE, StandardOpenOption.APPEND);
+  }
+
+  private static String readWithRetry(Path path) throws Exception {
+    long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+    while (true) {
+      try {
+        return Files.readString(path, StandardCharsets.UTF_8);
+      } catch (IOException ex) {
+        if (System.nanoTime() >= deadline) {
+          throw ex;
+        }
+        Thread.sleep(10L);
+      }
+    }
+  }
+
+  private static void writeWithRetry(Path path, byte[] bytes, StandardOpenOption... options)
+      throws Exception {
+    long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+    while (true) {
+      try {
+        Files.write(path, bytes, options);
+        return;
+      } catch (IOException ex) {
+        if (System.nanoTime() >= deadline) {
+          throw ex;
+        }
+        Thread.sleep(10L);
+      }
+    }
   }
 
   private static void writeResponse(

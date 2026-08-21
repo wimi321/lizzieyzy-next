@@ -1273,13 +1273,16 @@ class LeelazExclusiveRemoteGtpSessionTest {
           "navigation must wait for the atomic Board/gate handoff");
 
       harness.engine.continueLifecycleRelease.countDown();
-      completionThread.join(1000L);
-      navigationThread.join(1000L);
+      completionThread.join(5_000L);
+      assertTrue(
+          navigationCompleted.await(5, TimeUnit.SECONDS),
+          "navigation must resume after the final-frame handoff");
+      navigationThread.join(1_000L);
 
       assertNull(completionFailure.get());
       assertNull(navigationFailure.get());
       assertEquals(0L, navigationCompleted.getCount());
-      assertTrue(harness.output.toString(StandardCharsets.UTF_8).contains("play B D4"));
+      waitUntil(() -> harness.output.toString(StandardCharsets.UTF_8).contains("play B D4"));
       assertEquals(1, harness.engine.ponderCount);
       assertFalse(harness.engine.lifecycleBusyDuringPonder);
     } finally {

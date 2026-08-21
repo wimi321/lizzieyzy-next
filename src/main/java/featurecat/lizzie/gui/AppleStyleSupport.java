@@ -85,6 +85,12 @@ public final class AppleStyleSupport {
     }
   }
 
+  public static void markRest(AbstractButton button) {
+    if (button != null) {
+      button.putClientProperty(BUTTON_ROLE, null);
+    }
+  }
+
   static void copyButtonRole(AbstractButton source, AbstractButton target) {
     if (source == null || target == null) {
       return;

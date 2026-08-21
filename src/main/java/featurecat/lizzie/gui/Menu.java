@@ -14,6 +14,7 @@ import featurecat.lizzie.theme.Theme;
 import featurecat.lizzie.training.HumanSlTrainingSession;
 import featurecat.lizzie.update.WindowsUpdateController;
 import featurecat.lizzie.util.Utils;
+import featurecat.lizzie.logging.LoggingRuntime;
 import java.awt.Color;
 import java.awt.Component;
 import java.awt.Desktop;
@@ -5172,6 +5173,44 @@ public class Menu extends JMenuBar {
     helpMenu.setFont(baseMenuFont);
     // helpMenu.setFont(headFont);
     this.add(helpMenu);
+
+    final JFontMenuItem diagnosticsAndLogs =
+        new JFontMenuItem(resourceBundle.getString("Menu.diagnosticsAndLogs"));
+    helpMenu.add(diagnosticsAndLogs);
+    diagnosticsAndLogs.addActionListener(
+        e ->
+            LoggingRuntime.current()
+                .ifPresent(
+                    runtime -> DiagnosticsDialog.open(Lizzie.frame, runtime, Lizzie.config)));
+    final JFontMenuItem stopFullTrace =
+        new JFontMenuItem(resourceBundle.getString("Menu.stopFullTrace"));
+    helpMenu.add(stopFullTrace);
+    stopFullTrace.addActionListener(
+        e ->
+            LoggingRuntime.current()
+                .ifPresent(
+                    runtime -> {
+                      runtime.stopFullTrace();
+                      if (Lizzie.frame != null) {
+                        Lizzie.frame.updateTitle();
+                      }
+                      DiagnosticsDialog.notifyRuntimeChanged();
+                    }));
+    helpMenu.addMenuListener(
+        new MenuListener() {
+          @Override
+          public void menuSelected(MenuEvent e) {
+            stopFullTrace.setEnabled(
+                LoggingRuntime.current().map(LoggingRuntime::fullTraceActive).orElse(false));
+          }
+
+          @Override
+          public void menuDeselected(MenuEvent e) {}
+
+          @Override
+          public void menuCanceled(MenuEvent e) {}
+        });
+    helpMenu.addSeparator();
 
     final JFontMenuItem about =
         new JFontMenuItem(resourceBundle.getString("Menu.about")); // ("关于");

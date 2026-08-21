@@ -750,7 +750,7 @@ public class FirstUseSettings extends JDialog {
       addWindowListener(
           new WindowAdapter() {
             public void windowClosing(WindowEvent e) {
-              System.exit(0);
+              Lizzie.shutdownLoggingThenExit(System::exit);
             }
           });
     }

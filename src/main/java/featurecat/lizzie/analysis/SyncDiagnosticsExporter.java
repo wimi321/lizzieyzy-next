@@ -52,14 +52,7 @@ public final class SyncDiagnosticsExporter {
                 + ".zip");
     SyncDiagnosticsExportSanitizer sanitizer = new SyncDiagnosticsExportSanitizer();
     try (ZipOutputStream out = new ZipOutputStream(Files.newOutputStream(zip))) {
-      writeEntry(out, "summary.txt", renderSummary(value, sanitizer));
-      writeEntry(out, "sync-context.json", renderSyncContext(value.getReport(), sanitizer));
-      writeEntry(
-          out, "yike-session.json", renderYike(value.getReport().getYikeSnapshot(), sanitizer));
-      writeEntry(out, "recent-decisions.jsonl", renderDecisions(value, sanitizer));
-      writeEntry(out, "readboard-protocol.log", renderProtocolLog(value, sanitizer));
-      writeEntry(out, "yike-events.jsonl", renderYikeEvents(value, sanitizer));
-      writeEntry(out, "environment.txt", renderEnvironment(value.getEnvironment(), sanitizer));
+      writeSnapshotEntries(out, value, sanitizer);
     }
     return zip;
   }
@@ -68,6 +61,21 @@ public final class SyncDiagnosticsExporter {
     out.putNextEntry(new ZipEntry(name));
     out.write(text.getBytes(StandardCharsets.UTF_8));
     out.closeEntry();
+  }
+
+  public static void writeSnapshotEntries(
+      ZipOutputStream out,
+      SyncDiagnosticsExportSnapshot snapshot,
+      SyncDiagnosticsExportSanitizer sanitizer)
+      throws IOException {
+    writeEntry(out, "summary.txt", renderSummary(snapshot, sanitizer));
+    writeEntry(out, "sync-context.json", renderSyncContext(snapshot.getReport(), sanitizer));
+    writeEntry(
+        out, "yike-session.json", renderYike(snapshot.getReport().getYikeSnapshot(), sanitizer));
+    writeEntry(out, "recent-decisions.jsonl", renderDecisions(snapshot, sanitizer));
+    writeEntry(out, "readboard-protocol.log", renderProtocolLog(snapshot, sanitizer));
+    writeEntry(out, "yike-events.jsonl", renderYikeEvents(snapshot, sanitizer));
+    writeEntry(out, "environment.txt", renderEnvironment(snapshot.getEnvironment(), sanitizer));
   }
 
   private static Path defaultWorkDirectory() {
