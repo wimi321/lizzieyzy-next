@@ -4,7 +4,9 @@ import java.io.BufferedOutputStream;
 import java.io.BufferedReader;
 import java.io.Closeable;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.io.UnsupportedEncodingException;
 import java.net.Socket;
 import org.json.JSONException;
 
@@ -20,12 +22,30 @@ public class ReadBoardStream extends Thread implements Closeable {
     this.owner = owner;
     socket = s;
     try {
-      in = new BufferedReader(new InputStreamReader(socket.getInputStream(), "UTF-8"));
+      in = utf8Reader(socket.getInputStream());
       out = new BufferedOutputStream(socket.getOutputStream());
       start();
     } catch (Exception e) {
       e.printStackTrace();
     }
+  }
+
+  /**
+   * Test constructor: bind a UTF-8 byte stream without a socket or reader thread. {@link #run()}
+   * still performs the production line-framing loop.
+   */
+  ReadBoardStream(ReadBoard owner, InputStream rawInput) {
+    this.owner = owner;
+    try {
+      in = utf8Reader(rawInput);
+    } catch (UnsupportedEncodingException e) {
+      throw new IllegalStateException(e);
+    }
+  }
+
+  private static BufferedReader utf8Reader(InputStream rawInput)
+      throws UnsupportedEncodingException {
+    return new BufferedReader(new InputStreamReader(rawInput, "UTF-8"));
   }
 
   @Override
