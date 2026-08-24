@@ -948,6 +948,61 @@ public class NewEngineGameDialog extends JDialog {
     dialogPane.add(buttonBar, BorderLayout.SOUTH);
   }
 
+  /**
+   * Apply-path result for 让子. Empty/blank continues as even game (0). Illegal non-empty text
+   * yields a visible error key parented to this dialog; it must not be swallowed.
+   */
+  static final class EngineGameHandicapApply {
+    static final String ERROR_RESOURCE_KEY = "Menu.inputIntegerHint";
+
+    private final int handicap;
+    private final String errorResourceKey;
+
+    private EngineGameHandicapApply(int handicap, String errorResourceKey) {
+      this.handicap = handicap;
+      this.errorResourceKey = errorResourceKey;
+    }
+
+    int handicap() {
+      return handicap;
+    }
+
+    String errorResourceKey() {
+      return errorResourceKey;
+    }
+
+    boolean continues() {
+      return errorResourceKey == null;
+    }
+
+    boolean showsVisibleError() {
+      return errorResourceKey != null;
+    }
+
+    static EngineGameHandicapApply fromField(boolean fieldEnabled, String text) {
+      try {
+        return new EngineGameHandicapApply(parseEngineGameHandicap(fieldEnabled, text), null);
+      } catch (ParseException e) {
+        return new EngineGameHandicapApply(0, ERROR_RESOURCE_KEY);
+      }
+    }
+  }
+
+  /**
+   * Parses 让子 for {@link #apply()}. A disabled field is 0, matching continue-play / SGF start.
+   * Empty or whitespace-only text is even game (0); {@code EngineManager} only places stones when
+   * {@code handicap >= 2}. Illegal non-empty text throws rather than stalling OK.
+   */
+  static int parseEngineGameHandicap(boolean fieldEnabled, String text) throws ParseException {
+    if (!fieldEnabled) {
+      return 0;
+    }
+    if (text == null || text.trim().isEmpty()) {
+      return 0;
+    }
+    return FORMAT_HANDICAP.parse(text.trim()).intValue();
+  }
+
   public void apply() {
     try {
       // validate data
@@ -983,13 +1038,12 @@ public class NewEngineGameDialog extends JDialog {
       double komi = 7.5;
       try {
         komi = FORMAT_KOMI.parse(textFieldKomi.getText()).doubleValue();
-      } catch (NumberFormatException e) {
-        e.printStackTrace();
+      } catch (ParseException | NumberFormatException e) {
+        Utils.showMsg(Lizzie.resourceBundle.getString("Menu.inputDoubleTip"), this);
+        return;
       }
       int handicap =
-          !textFieldHandicap.isEnabled()
-              ? 0
-              : FORMAT_HANDICAP.parse(textFieldHandicap.getText()).intValue();
+          parseEngineGameHandicap(textFieldHandicap.isEnabled(), textFieldHandicap.getText());
       DesktopTimeControl.commitEngineGameSelection(Lizzie.config, blackTimeMode, whiteTimeMode);
       try {
         Lizzie.config.firstEngineResignMoveCounts =
@@ -1063,7 +1117,8 @@ public class NewEngineGameDialog extends JDialog {
       LizzieFrame.toolbar.chkenginePk.setSelected(true);
       if (LizzieFrame.toolbar.startEngineGame()) setVisible(false);
     } catch (ParseException e) {
-      // hide input mistakes.
+      Utils.showMsg(
+          Lizzie.resourceBundle.getString(EngineGameHandicapApply.ERROR_RESOURCE_KEY), this);
     }
   }
 
