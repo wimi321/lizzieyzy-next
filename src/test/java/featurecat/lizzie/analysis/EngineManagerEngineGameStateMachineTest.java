@@ -4431,10 +4431,15 @@ class EngineManagerEngineGameStateMachineTest {
   private static void awaitNoEngineGameOperations(
       EngineManager.EngineGameTransaction transaction) {
     long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2L);
-    while (transaction.operationsInFlightForTest() != 0 && System.nanoTime() < deadline) {
+    while (System.nanoTime() < deadline
+        && (transaction.operationsInFlightForTest() != 0
+            || !transaction.retirementFinishedForTest())) {
       Thread.onSpinWait();
     }
     assertEquals(0, transaction.operationsInFlightForTest());
+    assertTrue(
+        transaction.retirementFinishedForTest(),
+        "fallback watchdog retirement must finish before a successor can be admitted");
   }
 
   @SuppressWarnings("unchecked")

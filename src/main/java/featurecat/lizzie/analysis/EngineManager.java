@@ -273,6 +273,10 @@ public class EngineManager {
       return operationsInFlight.get();
     }
 
+    boolean retirementFinishedForTest() {
+      return retirementFinished.get();
+    }
+
     int openPhysicalRequestsForTest() {
       int open = 0;
       for (EngineGamePhysicalRequestLease request : physicalRequests) {
