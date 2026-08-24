@@ -6,9 +6,9 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.io.InputStream;
 import java.text.ParseException;
-import java.util.Locale;
-import java.util.ResourceBundle;
+import java.util.Properties;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.NullAndEmptySource;
@@ -91,8 +91,11 @@ class NewEngineGameDialogHandicapApplyTest {
     assertTrue(apply.showsVisibleError(), "illegal non-empty 让子 must show a visible in-dialog error");
     assertEquals(
         NewEngineGameDialog.EngineGameHandicapApply.ERROR_RESOURCE_KEY, apply.errorResourceKey());
-
-    ResourceBundle bundle = ResourceBundle.getBundle("l10n.DisplayStrings", Locale.US);
-    assertFalse(bundle.getString(apply.errorResourceKey()).isBlank());
+    try (InputStream in =
+        NewEngineGameDialog.class.getResourceAsStream("/l10n/DisplayStrings.properties")) {
+      Properties properties = new Properties();
+      properties.load(in);
+      assertFalse(properties.getProperty(apply.errorResourceKey()).isBlank());
+    }
   }
 }
