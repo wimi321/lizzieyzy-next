@@ -33,12 +33,17 @@ import java.util.Locale;
 import java.util.Optional;
 import java.util.OptionalInt;
 import java.util.Set;
+import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import javax.swing.SwingUtilities;
 
 public class ReadBoard implements ReadBoardTrackingEligibilityAdapter.EligibilitySource {
+  private static final AtomicInteger PLACE_COMMAND_DISPATCH_THREAD_SEQUENCE = new AtomicInteger();
+  private static final Executor PLACE_COMMAND_DISPATCH_EXECUTOR =
+      Executors.newCachedThreadPool(ReadBoard::newPlaceCommandDispatchThread);
   private static final long PROCESS_EXIT_WAIT_TIMEOUT_MS = 1000L;
   private static final long PROCESS_DESTROY_WAIT_TIMEOUT_MS = 200L;
   private static final String LEGACY_NATIVE_READBOARD_EXE = "readboard.exe";
@@ -6123,9 +6128,15 @@ public class ReadBoard implements ReadBoardTrackingEligibilityAdapter.Eligibilit
     if (currentOutputStream == null) {
       return;
     }
+    sendCommandTo(currentOutputStream, command);
+  }
+
+  private static void sendCommandTo(BufferedOutputStream target, String command) {
     try {
-      currentOutputStream.write((command + "\n").getBytes());
-      currentOutputStream.flush();
+      synchronized (target) {
+        target.write((command + "\n").getBytes());
+        target.flush();
+      }
     } catch (IOException e) {
       // e.printStackTrace();
     }
@@ -6170,9 +6181,39 @@ public class ReadBoard implements ReadBoardTrackingEligibilityAdapter.Eligibilit
       if (Lizzie.frame.isPlayingAgainstLeelaz) needGenmove = true;
       localMoveSyncDebug("sendCommand external place after tracking " + pendingLocalMoveState());
     }
+    if (command.startsWith("place ") && SwingUtilities.isEventDispatchThread()) {
+      dispatchPlaceCommandOffEventThread(command);
+      return;
+    }
     if (usePipe) {
       sendCommandTo(command);
     } else if (readBoardStream != null) readBoardStream.sendCommand(command);
+  }
+
+  private void dispatchPlaceCommandOffEventThread(String command) {
+    BufferedOutputStream pipeTarget = usePipe ? outputStream : null;
+    ReadBoardStream socketTarget = usePipe ? null : readBoardStream;
+    if (pipeTarget == null && socketTarget == null) {
+      return;
+    }
+    PLACE_COMMAND_DISPATCH_EXECUTOR.execute(
+        () -> {
+          if (pipeTarget != null) {
+            sendCommandTo(pipeTarget, command);
+          } else {
+            socketTarget.sendCommand(command);
+          }
+        });
+  }
+
+  private static Thread newPlaceCommandDispatchThread(Runnable runnable) {
+    Thread thread =
+        new Thread(
+            runnable,
+            "readboard-place-command-dispatch-"
+                + PLACE_COMMAND_DISPATCH_THREAD_SEQUENCE.incrementAndGet());
+    thread.setDaemon(true);
+    return thread;
   }
 
   private void clearFailedLocalMoveStateIfOutgoingPlaceDiffers(String command) {

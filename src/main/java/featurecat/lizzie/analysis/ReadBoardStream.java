@@ -77,8 +77,10 @@ public class ReadBoardStream extends Thread implements Closeable {
       return;
     }
     try {
-      out.write((command + "\n").getBytes());
-      out.flush();
+      synchronized (out) {
+        out.write((command + "\n").getBytes());
+        out.flush();
+      }
     } catch (IOException e) {
       // TODO Auto-generated catch block
       //  e.printStackTrace();

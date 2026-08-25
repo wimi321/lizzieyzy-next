@@ -47,6 +47,7 @@ import java.util.Random;
 import java.util.Timer;
 import java.util.TimerTask;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -74,6 +75,9 @@ import org.json.JSONObject;
  */
 public class Leelaz {
   private static final AtomicLong ENGINE_ARBITRATION_ORDER_SEQUENCE = new AtomicLong();
+  private static final AtomicInteger COMMAND_DISPATCH_THREAD_SEQUENCE = new AtomicInteger();
+  private static final Executor COMMAND_DISPATCH_EXECUTOR =
+      Executors.newCachedThreadPool(Leelaz::newCommandDispatchThread);
 
   public enum ExclusiveGtpLeaseAvailability {
     AVAILABLE,
@@ -318,6 +322,8 @@ public class Leelaz {
   private ArrayDeque<QueuedCommand> foregroundRestoreQueue;
   private volatile boolean normalCommandSendInProgress;
   private QueuedCommand normalCommandBeingSent;
+  private final AtomicLong eventDispatchCommandRequests = new AtomicLong();
+  private final AtomicBoolean eventDispatchCommandScheduled = new AtomicBoolean();
   private final ThreadLocal<ExclusiveGtpSession> foregroundRestoreCommandSession =
       new ThreadLocal<>();
   private static final ThreadLocal<ExactSnapshotRestoreAdmission>
@@ -11460,6 +11466,84 @@ public class Leelaz {
 
   /** Sends a command from command queue for leelaz to execute if it is ready */
   private void trySendCommandFromQueue() {
+    if (SwingUtilities.isEventDispatchThread() && canDispatchOrdinaryCommandOffEventThread()) {
+      requestCommandDispatchOffEventThread();
+      return;
+    }
+    trySendCommandFromQueueNow();
+  }
+
+  private boolean canDispatchOrdinaryCommandOffEventThread() {
+    if (foregroundRestoreCommandSession.get() != null
+        || isExactSnapshotRestoreAdmissionContextActive()
+        || lifecycleCompletionCommandContext.get() != null
+        || ordinaryLiveBoardForwardingContext.get() != null
+        || engineGameStartupCommandContext.get() != null
+        || Boolean.TRUE.equals(deferredEngineGameRecoveryStartupContext.get())
+        || updateEngineStartAttemptContext.get() != null
+        || analysisOutputRecoveryTokenContext.get() != null
+        || startupPostActionCommandContext.get() != null
+        || restartBootstrapReceiptContext.get() != null) {
+      return false;
+    }
+    synchronized (commandQueue()) {
+      ArrayDeque<QueuedCommand> targetQueue =
+          foregroundRestoreInProgress ? foregroundRestoreCommandQueue() : commandQueue();
+      QueuedCommand queueHead = targetQueue.peekFirst();
+      return queueHead != null
+          && !queueHead.failOnSendError
+          && queueHead.onSendFailure == null
+          && queueHead.internalSendFailureHandler == null
+          && queueHead.settlement == null
+          && queueHead.restartBootstrapReceipt == null
+          && queueHead.readBoardGmaResponseBinding == null
+          && queueHead.expectedLeela0110StateToken == null
+          && !queueHead.foregroundRestoreCommand;
+    }
+  }
+
+  private void requestCommandDispatchOffEventThread() {
+    eventDispatchCommandRequests.incrementAndGet();
+    scheduleCommandDispatchOffEventThread();
+  }
+
+  private void scheduleCommandDispatchOffEventThread() {
+    if (!eventDispatchCommandScheduled.compareAndSet(false, true)) {
+      return;
+    }
+    COMMAND_DISPATCH_EXECUTOR.execute(
+        () -> {
+          long handledRequest = eventDispatchCommandRequests.get();
+          try {
+            trySendCommandFromQueueNow();
+          } catch (RuntimeException | Error failure) {
+            String detail =
+                "Asynchronous GTP command dispatch failed: "
+                    + safeFailureDetail(failure, failure.getClass().getSimpleName());
+            rememberRecentLine(recentStderrLines, detail);
+            System.err.println(detail);
+            if (failure instanceof Error) {
+              throw (Error) failure;
+            }
+          } finally {
+            eventDispatchCommandScheduled.set(false);
+            if (eventDispatchCommandRequests.get() != handledRequest) {
+              scheduleCommandDispatchOffEventThread();
+            }
+          }
+        });
+  }
+
+  private static Thread newCommandDispatchThread(Runnable runnable) {
+    Thread thread =
+        new Thread(
+            runnable,
+            "lizzie-gtp-command-dispatch-" + COMMAND_DISPATCH_THREAD_SEQUENCE.incrementAndGet());
+    thread.setDaemon(true);
+    return thread;
+  }
+
+  private void trySendCommandFromQueueNow() {
     // Defer sending "lz-analyze" if leelaz is not ready yet.
     // Though all commands should be deferred theoretically,
     // only "lz-analyze" is differed here for fear of

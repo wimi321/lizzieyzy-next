@@ -9,7 +9,10 @@ import java.io.IOException;
 import featurecat.lizzie.ConfigTestHelper;
 import featurecat.lizzie.Lizzie;
 import java.nio.file.Path;
+import java.util.Locale;
+import java.util.ResourceBundle;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.io.TempDir;
 import org.json.JSONObject;
 import org.junit.jupiter.api.Test;
@@ -17,9 +20,21 @@ import org.junit.jupiter.api.Test;
 class UpdateAdmissionTest {
   @TempDir Path tempDir;
 
+  private featurecat.lizzie.Config previousConfig;
+  private ResourceBundle previousResourceBundle;
+
+  @BeforeEach
+  void setUp() {
+    previousConfig = Lizzie.config;
+    previousResourceBundle = Lizzie.resourceBundle;
+    Lizzie.config = null;
+    Lizzie.resourceBundle = ResourceBundle.getBundle("l10n.DisplayStrings", Locale.US);
+  }
+
   @AfterEach
   void tearDown() {
-    Lizzie.config = null;
+    Lizzie.config = previousConfig;
+    Lizzie.resourceBundle = previousResourceBundle;
   }
 
   private static final String INSTALLED = "next-2026-08-01.1";
