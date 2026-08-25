@@ -4,6 +4,13 @@
 公开目录和软件更新接口的技术后台；GitHub Release 始终保留完整资产、安装器、Linux 包、
 历史版本和自动备用下载，pre-release 不上传 R2。
 
+测试通道不走 R2。签名测试清单只发布到 GitHub：版本化 pre-release 上的
+`lizzieyzy-next-update-envelope.json`，以及固定 tag `channel-beta` 上的同名指针。
+客户端稳定地址是
+`https://github.com/wimi321/lizzieyzy-next/releases/download/channel-beta/lizzieyzy-next-update-envelope.json`。
+`channel-beta` 不是打包版本，只托管这份 envelope，保持 pre-release，不得 `make_latest`，
+也不得带安装包。正式晋升不得改写该指针，也不得把测试安装包或测试指针上传到 R2。
+
 ## 固定资源范围
 
 R2 桶名固定为 `lizzieyzy-next-downloads`，只保留一个正式版。发布脚本要求每个正式版恰好
@@ -74,8 +81,14 @@ Ed25519 私钥只能存在于 GitHub Secret；应用内只包含公钥。更换�
 
 ## 客户端行为
 
-应用只在用户手动点击“检查更新”时联网，不在启动时自动检查。新客户端依次读取 R2 与
-GitHub 上的签名 v2 清单，签名、版本、大小或 SHA-256 不正确时拒绝安装。
+帮助菜单的「检查更新」只打开检查更新页，不联网。用户在页上选择更新通道和更新源后点「检查更新」
+才取清单。默认正式通道、官网源。正式通道只读取用户选择的那一个签名 v2 清单：官网
+`download.goagent.top` 或 GitHub `releases/latest`，失败不会改试另一源。选择写入
+`update-source=official|github`，缺省官网。测试通道只读固定指针
+`https://github.com/wimi321/lizzieyzy-next/releases/download/channel-beta/lizzieyzy-next-update-envelope.json`，
+页面显示 GitHub 为固定有效源，但不覆盖已记住的正式源；没有官网回退，也不扫 Releases API。
+签名、通道、版本、大小或 SHA-256 不正确时拒绝安装。
+通道选择写入 `update-channel`，缺省为正式；切换通道不改已安装文件，也不自动降级。
 
 - Windows 使用 `core-update` 原位更新并保留用户数据、引擎和权重。
 - macOS 按 CPU 架构下载并校验 DMG，随后打开 DMG，不直接修改已签名 App。

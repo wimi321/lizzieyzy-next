@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Mirror one stable LizzieYzy Next release to R2 and publish signed update metadata."""
+"""Publish signed update metadata for official R2 promotion and the GitHub test channel."""
 
 from __future__ import annotations
 
@@ -27,6 +27,8 @@ DEFAULT_KEY_ID = "stable-2026-08"
 UPDATE_ENVELOPE_ASSET = "lizzieyzy-next-update-envelope.json"
 LEGACY_MANIFEST_ASSET = "lizzieyzy-next-update-manifest.json"
 CATALOG_ASSET = "lizzieyzy-next-download-catalog.json"
+TEST_CHANNEL_POINTER_TAG = "channel-beta"
+PACKAGED_RELEASE_TAG = re.compile(r"^next-\d{4}-\d{2}-\d{2}\.[1-9]\d*$")
 RELEASE_NOTE_START = "<!-- lizzie-r2-stable-downloads:start -->"
 RELEASE_NOTE_END = "<!-- lizzie-r2-stable-downloads:end -->"
 MULTIPART_PART_SIZE = 64 * 1024 * 1024
@@ -92,6 +94,19 @@ class Asset:
         )
 
 
+@dataclasses.dataclass(frozen=True)
+class TestChannelPublishPlan:
+    source_tag: str
+    pointer_tag: str
+    asset_name: str
+    envelope: dict[str, Any]
+    upload_targets: tuple[tuple[str, str], ...]
+    pointer_prerelease: bool
+    pointer_make_latest: str
+    pointer_allowed_assets: tuple[str, ...]
+    r2_keys: tuple[str, ...]
+
+
 def release_assets(release: dict[str, Any]) -> list[dict[str, Any]]:
     assets = release.get("assets")
     if not isinstance(assets, list):
@@ -99,7 +114,9 @@ def release_assets(release: dict[str, Any]) -> list[dict[str, Any]]:
     return assets
 
 
-def select_r2_assets(release: dict[str, Any], public_base: str) -> list[Asset]:
+def select_r2_assets(
+    release: dict[str, Any], public_base: str, *, enforce_size_limit: bool = True
+) -> list[Asset]:
     tag = str(release.get("tag_name") or "").strip()
     if not tag:
         raise ReleaseError("Release tag is missing")
@@ -147,7 +164,7 @@ def select_r2_assets(release: dict[str, Any], public_base: str) -> list[Asset]:
     if len(names) != len(set(names)):
         raise ReleaseError("R2 asset whitelist contains duplicate names")
     total = sum(asset.size for asset in selected)
-    if total > R2_SIZE_LIMIT:
+    if enforce_size_limit and total > R2_SIZE_LIMIT:
         raise ReleaseError(
             f"R2 stable assets total {total:,} bytes, above the {R2_SIZE_LIMIT:,}-byte hard limit"
         )
@@ -204,25 +221,32 @@ def package_entry(asset: Asset, public_base: str, *, mirrored: bool) -> dict[str
 
 
 def build_manifest(
-    release: dict[str, Any], mirrored_assets: list[Asset], public_base: str
+    release: dict[str, Any],
+    mirrored_assets: list[Asset],
+    public_base: str,
+    *,
+    prerelease: bool = False,
+    github_only: bool = False,
 ) -> dict[str, Any]:
     tag = str(release["tag_name"])
     core = next(asset for asset in mirrored_assets if asset.category == "windows-core-update")
     packages = [
-        package_entry(asset, public_base, mirrored=True)
+        package_entry(asset, public_base, mirrored=not github_only)
         for asset in mirrored_assets
         if asset.category in {"windows-portable", "macos-dmg"}
     ]
     packages.extend(
         package_entry(asset, public_base, mirrored=False) for asset in select_linux_assets(release)
     )
+    core_url = core.browser_url if github_only else r2_url(public_base, core)
+    core_mirrors: list[str] = [] if github_only else [core.browser_url]
     return {
         "schemaVersion": 2,
         "releaseTag": tag,
         "publishedAt": str(release.get("published_at") or release.get("created_at") or ""),
         "notesUrl": str(release.get("html_url") or f"https://github.com/{DEFAULT_REPOSITORY}/releases/tag/{tag}"),
         "minUpdaterVersion": "2",
-        "prerelease": False,
+        "prerelease": prerelease,
         "components": [
             {
                 "id": "core",
@@ -230,12 +254,12 @@ def build_manifest(
                 "flavor": "all",
                 "version": tag,
                 "assetName": core.name,
-                "downloadUrl": r2_url(public_base, core),
+                "downloadUrl": core_url,
                 "sizeBytes": core.size,
                 "sha256": core.sha256,
                 "installAction": "replace-core",
                 "defaultSelectedIfChanged": True,
-                "mirrorUrls": [core.browser_url],
+                "mirrorUrls": core_mirrors,
             }
         ],
         "packages": sorted(
@@ -245,6 +269,42 @@ def build_manifest(
             ),
         ),
     }
+
+
+def build_test_manifest(release: dict[str, Any]) -> dict[str, Any]:
+    selected = select_r2_assets(
+        release, DEFAULT_PUBLIC_BASE, enforce_size_limit=False
+    )
+    return build_manifest(
+        release,
+        selected,
+        DEFAULT_PUBLIC_BASE,
+        prerelease=True,
+        github_only=True,
+    )
+
+
+def plan_test_channel_publish(
+    release: dict[str, Any], private_key_pem: bytes, key_id: str
+) -> TestChannelPublishPlan:
+    tag = str(release.get("tag_name") or "").strip()
+    if not PACKAGED_RELEASE_TAG.fullmatch(tag):
+        raise ReleaseError(f"Test-channel source must be a packaged next-* tag, got {tag!r}")
+    envelope = sign_manifest(build_test_manifest(release), private_key_pem, key_id)
+    return TestChannelPublishPlan(
+        source_tag=tag,
+        pointer_tag=TEST_CHANNEL_POINTER_TAG,
+        asset_name=UPDATE_ENVELOPE_ASSET,
+        envelope=envelope,
+        upload_targets=(
+            (tag, UPDATE_ENVELOPE_ASSET),
+            (TEST_CHANNEL_POINTER_TAG, UPDATE_ENVELOPE_ASSET),
+        ),
+        pointer_prerelease=True,
+        pointer_make_latest="false",
+        pointer_allowed_assets=(UPDATE_ENVELOPE_ASSET,),
+        r2_keys=(),
+    )
 
 
 def build_legacy_manifest(manifest: dict[str, Any]) -> dict[str, Any]:
@@ -733,11 +793,106 @@ def github_session(token: str):
     return session
 
 
-def fetch_release(session, repository: str, tag: str) -> dict[str, Any]:
-    response = session.get(f"https://api.github.com/repos/{repository}/releases/tags/{tag}", timeout=60)
+def fetch_release_if_present(session, repository: str, tag: str) -> dict[str, Any] | None:
+    response = session.get(
+        f"https://api.github.com/repos/{repository}/releases/tags/{tag}", timeout=60
+    )
+    if response.status_code == 404:
+        return None
     if response.status_code != 200:
-        raise ReleaseError(f"GitHub release lookup failed: HTTP {response.status_code} {response.text[:300]}")
+        raise ReleaseError(
+            f"GitHub release lookup failed: HTTP {response.status_code} {response.text[:300]}"
+        )
     return response.json()
+
+
+def fetch_release(session, repository: str, tag: str) -> dict[str, Any]:
+    release = fetch_release_if_present(session, repository, tag)
+    if release is None:
+        raise ReleaseError(f"GitHub release lookup failed: HTTP 404 {tag}")
+    return release
+
+
+def unexpected_pointer_assets(release: dict[str, Any]) -> list[str]:
+    return sorted(
+        name
+        for raw in release_assets(release)
+        if (name := str(raw.get("name") or "")) and name != UPDATE_ENVELOPE_ASSET
+    )
+
+
+def pointer_release_payload(
+    source: dict[str, Any], *, include_target: bool = False
+) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "tag_name": TEST_CHANNEL_POINTER_TAG,
+        "name": "LizzieYzy Next test channel pointer",
+        "body": (
+            "Signed test-channel pointer. This release is not a packaged version, "
+            "must stay a pre-release, and must never be made latest."
+        ),
+        "draft": False,
+        "prerelease": True,
+        "make_latest": "false",
+    }
+    if include_target:
+        target = str(source.get("target_commitish") or "").strip()
+        if target:
+            payload["target_commitish"] = target
+    return payload
+
+
+def upsert_test_channel_pointer(session, repository: str, source: dict[str, Any]) -> dict[str, Any]:
+    existing = fetch_release_if_present(session, repository, TEST_CHANNEL_POINTER_TAG)
+    payload = pointer_release_payload(source, include_target=existing is None)
+    if existing is None:
+        response = session.post(
+            f"https://api.github.com/repos/{repository}/releases",
+            json=payload,
+            timeout=60,
+        )
+        if response.status_code != 201:
+            raise ReleaseError(
+                "Could not create test-channel pointer release: "
+                f"HTTP {response.status_code} {response.text[:300]}"
+            )
+        return response.json()
+    unexpected = unexpected_pointer_assets(existing)
+    if unexpected:
+        raise ReleaseError(
+            "Test-channel pointer release has installers or extra assets: "
+            + ", ".join(unexpected)
+        )
+    response = session.patch(existing["url"], json=payload, timeout=60)
+    if response.status_code != 200:
+        raise ReleaseError(
+            "Could not update test-channel pointer release: "
+            f"HTTP {response.status_code} {response.text[:300]}"
+        )
+    return response.json()
+
+
+def publish_test_channel(args: argparse.Namespace) -> None:
+    token = os.environ.get("GITHUB_TOKEN", "").strip()
+    if not token:
+        raise ReleaseError("GITHUB_TOKEN is required to publish the test-channel pointer")
+    private_key = Path(args.private_key).read_bytes()
+    session = github_session(token)
+    release = fetch_release(session, args.repository, args.tag)
+    if release.get("draft"):
+        raise ReleaseError("Draft releases cannot publish a test-channel pointer")
+    if release.get("prerelease") is not True:
+        raise ReleaseError("Test-channel pointer requires a published pre-release")
+    plan = plan_test_channel_publish(release, private_key, args.key_id)
+    envelope_body = json_bytes(plan.envelope)
+    replace_github_asset(session, release, plan.asset_name, envelope_body, "application/json")
+    pointer = upsert_test_channel_pointer(session, args.repository, release)
+    replace_github_asset(session, pointer, plan.asset_name, envelope_body, "application/json")
+    print(
+        "Test-channel pointer published: "
+        f"https://github.com/{args.repository}/releases/download/"
+        f"{TEST_CHANNEL_POINTER_TAG}/{UPDATE_ENVELOPE_ASSET}"
+    )
 
 
 def content_type(name: str) -> str:
@@ -1523,6 +1678,11 @@ def parser() -> argparse.ArgumentParser:
             command.add_argument("--key-id", default=DEFAULT_KEY_ID)
             command.add_argument("--allow-stable", action="store_true")
             command.add_argument("--skip-public-verify", action="store_true")
+    test_channel = subcommands.add_parser("publish-test-channel")
+    test_channel.add_argument("--repository", default=DEFAULT_REPOSITORY)
+    test_channel.add_argument("--tag", required=True)
+    test_channel.add_argument("--private-key", required=True)
+    test_channel.add_argument("--key-id", default=DEFAULT_KEY_ID)
     return root
 
 
@@ -1531,6 +1691,8 @@ def main() -> int:
     try:
         if args.command == "plan":
             plan(args)
+        elif args.command == "publish-test-channel":
+            publish_test_channel(args)
         else:
             promote(args)
         return 0

@@ -1492,6 +1492,12 @@ public class Config {
     return new Config(runtimeWorkDirectory);
   }
 
+  static Config createBootstrappedForTests(File runtimeWorkDirectory) throws IOException {
+    Config config = new Config(runtimeWorkDirectory);
+    config.initializeFromWorkDirectory();
+    return config;
+  }
+
   private Config(File runtimeWorkDirectory) {
     this.runtimeWorkDirectoryOverride =
         Objects.requireNonNull(runtimeWorkDirectory, "runtimeWorkDirectory").getAbsoluteFile();
@@ -1505,6 +1511,10 @@ public class Config {
   public Config() throws IOException {
     this.runtimeWorkDirectoryOverride = null;
     this.newProfile = !new File(configFilename).isFile();
+    initializeFromWorkDirectory();
+  }
+
+  private void initializeFromWorkDirectory() throws IOException {
     JSONObject defaultConfig = createDefaultConfig();
     JSONObject persistConfig = createPersistConfig();
     JSONObject saveBoardConf = createSaveBoardConfig();

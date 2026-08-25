@@ -18,38 +18,56 @@ public final class PlatformUpdateService {
 
   private final UpdateManifestClient manifestClient;
   private final ResumableDownloader downloader;
+  private final UpdateChannel channel;
 
   public PlatformUpdateService() {
-    this(new UpdateManifestClient(), new ResumableDownloader());
+    this(UpdateChannel.current(), UpdateSource.current());
+  }
+
+  public PlatformUpdateService(UpdateChannel channel, UpdateSource source) {
+    this(new UpdateManifestClient(channel, source), new ResumableDownloader(), channel);
   }
 
   PlatformUpdateService(UpdateManifestClient manifestClient, ResumableDownloader downloader) {
+    this(manifestClient, downloader, UpdateChannel.STABLE);
+  }
+
+  PlatformUpdateService(
+      UpdateManifestClient manifestClient,
+      ResumableDownloader downloader,
+      UpdateChannel channel) {
     this.manifestClient = manifestClient;
     this.downloader = downloader;
+    this.channel = channel == null ? UpdateChannel.STABLE : channel;
   }
 
   public Optional<PackageUpdatePlan> checkForUpdate() throws IOException {
-    if (UpdateVersion.shouldSkipAutomaticCheck(Lizzie.nextVersion)) {
+    if (!UpdateAdmission.shouldFetch(Lizzie.nextVersion)) {
       return Optional.empty();
     }
     String platform = currentPlatform();
     if (!"macos".equals(platform) && !"linux".equals(platform)) {
       return Optional.empty();
     }
-    UpdateManifest manifest = manifestClient.fetchLatest().manifest;
-    if (manifest.prerelease
-        || !UpdateVersion.isNewerThan(manifest.releaseTag, Lizzie.nextVersion)) {
+    UpdateAdmission.Result admission =
+        UpdateAdmission.evaluateClient(channel, Lizzie.nextVersion, manifestClient);
+    if (admission.kind == UpdateAdmission.Kind.ERROR) {
+      throw new IOException(admission.message);
+    }
+    if (admission.kind == UpdateAdmission.Kind.NO_UPDATE || admission.manifest == null) {
       return Optional.empty();
     }
     String arch = currentArch();
     String flavor = currentFlavor(platform);
-    UpdateManifest.PackageAsset selected = selectPackage(manifest, platform, arch, flavor);
+    UpdateManifest.PackageAsset selected =
+        selectPackage(admission.manifest, platform, arch, flavor);
     if (selected == null) {
       throw new IOException(
-          "The stable manifest has no package for " + platform + "/" + arch + "/" + flavor + ".");
+          "The update manifest has no package for " + platform + "/" + arch + "/" + flavor + ".");
     }
     return Optional.of(
-        new PackageUpdatePlan(manifest, selected, Lizzie.nextVersion, platform, arch, flavor));
+        new PackageUpdatePlan(
+            admission.manifest, selected, Lizzie.nextVersion, platform, arch, flavor));
   }
 
   public Path download(

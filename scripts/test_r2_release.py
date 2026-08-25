@@ -515,6 +515,131 @@ class R2ReleaseTest(unittest.TestCase):
         self.assertEqual(r2_release.PUBLIC_VERIFY_ATTEMPTS, failed_range.close.call_count)
         self.assertEqual(r2_release.PUBLIC_VERIFY_ATTEMPTS - 1, sleep.call_count)
 
+    def test_test_channel_plan_signs_v2_github_only_prerelease(self):
+        from cryptography.hazmat.primitives import serialization
+        from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+
+        key = Ed25519PrivateKey.generate()
+        private_pem = key.private_bytes(
+            serialization.Encoding.PEM,
+            serialization.PrivateFormat.PKCS8,
+            serialization.NoEncryption(),
+        )
+        source = release()
+        source["assets"].append(asset(r2_release.UPDATE_ENVELOPE_ASSET))
+
+        plan = r2_release.plan_test_channel_publish(
+            source, private_pem, r2_release.DEFAULT_KEY_ID
+        )
+        payload = json.loads(base64.b64decode(plan.envelope["payload"]))
+        key.public_key().verify(
+            base64.b64decode(plan.envelope["signature"]),
+            base64.b64decode(plan.envelope["payload"]),
+        )
+
+        self.assertEqual(2, payload["schemaVersion"])
+        self.assertTrue(payload["prerelease"])
+        self.assertEqual(TAG, payload["releaseTag"])
+        self.assertEqual(r2_release.DEFAULT_KEY_ID, plan.envelope["keyId"])
+        self.assertEqual(TAG, plan.source_tag)
+        self.assertEqual("channel-beta", plan.pointer_tag)
+        self.assertEqual(r2_release.UPDATE_ENVELOPE_ASSET, plan.asset_name)
+        self.assertEqual(
+            (
+                (TAG, r2_release.UPDATE_ENVELOPE_ASSET),
+                ("channel-beta", r2_release.UPDATE_ENVELOPE_ASSET),
+            ),
+            plan.upload_targets,
+        )
+        self.assertTrue(plan.pointer_prerelease)
+        self.assertEqual("false", plan.pointer_make_latest)
+        self.assertEqual((r2_release.UPDATE_ENVELOPE_ASSET,), plan.pointer_allowed_assets)
+        self.assertEqual((), plan.r2_keys)
+
+        urls = [payload["components"][0]["downloadUrl"]]
+        urls.extend(payload["components"][0]["mirrorUrls"])
+        for package in payload["packages"]:
+            urls.append(package["downloadUrl"])
+            urls.extend(package["mirrorUrls"])
+        self.assertTrue(urls)
+        self.assertTrue(all(url.startswith("https://github.com/") for url in urls))
+        self.assertFalse(any("download.goagent.top" in url for url in urls))
+        self.assertEqual([], payload["components"][0]["mirrorUrls"])
+        self.assertTrue(all(package["mirrorUrls"] == [] for package in payload["packages"]))
+
+    def test_official_selection_ignores_test_envelope_and_stays_off_beta_r2(self):
+        source = release()
+        source["assets"].append(asset(r2_release.UPDATE_ENVELOPE_ASSET))
+        selected = r2_release.select_r2_assets(source, r2_release.DEFAULT_PUBLIC_BASE)
+        manifest = r2_release.build_manifest(
+            source, selected, r2_release.DEFAULT_PUBLIC_BASE
+        )
+
+        baseline = r2_release.select_r2_assets(release(), r2_release.DEFAULT_PUBLIC_BASE)
+        self.assertEqual(len(baseline), len(selected))
+        self.assertFalse(
+            any(entry.name == r2_release.UPDATE_ENVELOPE_ASSET for entry in selected)
+        )
+        self.assertFalse(manifest["prerelease"])
+        self.assertTrue(
+            all(
+                entry.r2_key.startswith(f"releases/{TAG}/")
+                and not entry.r2_key.startswith("channels/")
+                for entry in selected
+            )
+        )
+        self.assertTrue(
+            manifest["components"][0]["downloadUrl"].startswith(
+                "https://download.goagent.top/releases/"
+            )
+        )
+        self.assertFalse(
+            any(
+                "channels/beta" in entry.r2_key or "channel-beta" in entry.r2_key
+                for entry in selected
+            )
+        )
+
+    def test_test_channel_plan_ignores_official_r2_size_cap(self):
+        from cryptography.hazmat.primitives import serialization
+        from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+
+        source = release()
+        source["assets"][0]["size"] = r2_release.R2_SIZE_LIMIT
+        with self.assertRaisesRegex(r2_release.ReleaseError, "R2 stable assets total"):
+            r2_release.select_r2_assets(source, r2_release.DEFAULT_PUBLIC_BASE)
+
+        key = Ed25519PrivateKey.generate()
+        private_pem = key.private_bytes(
+            serialization.Encoding.PEM,
+            serialization.PrivateFormat.PKCS8,
+            serialization.NoEncryption(),
+        )
+        plan = r2_release.plan_test_channel_publish(
+            source, private_pem, r2_release.DEFAULT_KEY_ID
+        )
+        payload = json.loads(base64.b64decode(plan.envelope["payload"]))
+
+        self.assertTrue(payload["prerelease"])
+        self.assertEqual((), plan.r2_keys)
+        self.assertTrue(
+            payload["components"][0]["downloadUrl"].startswith("https://github.com/")
+        )
+
+
+    def test_pointer_release_rejects_installers(self):
+        pointer = {
+            "assets": [
+                asset(r2_release.UPDATE_ENVELOPE_ASSET),
+                asset(f"{DATE}-windows64.opencl.installer.exe"),
+            ]
+        }
+
+        self.assertEqual(
+            [f"{DATE}-windows64.opencl.installer.exe"],
+            r2_release.unexpected_pointer_assets(pointer),
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

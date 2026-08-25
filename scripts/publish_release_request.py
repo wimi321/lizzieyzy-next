@@ -30,6 +30,7 @@ except ModuleNotFoundError:  # Direct execution: python scripts/publish_release_
 
 
 API_VERSION = "2026-03-10"
+SIGNED_UPDATE_ENVELOPE_ASSET = "lizzieyzy-next-update-envelope.json"
 TAG_PATTERN = re.compile(r"^next-(\d{4}-\d{2}-\d{2})\.(\d+)$")
 LOCALIZED_NOTE_HEADINGS = (
     "## 中文",
@@ -1258,7 +1259,7 @@ class ReleasePublisher:
                 by_name[name] = asset
             actual = set(by_name)
             missing = sorted(expected - actual)
-            unexpected = sorted(actual - expected)
+            unexpected = sorted((actual - expected) - {SIGNED_UPDATE_ENVELOPE_ASSET})
             mismatches: list[str] = []
             for name in sorted(expected.intersection(actual)):
                 remote = by_name[name]

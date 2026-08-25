@@ -1440,6 +1440,18 @@ class ReleasePublisherTest(unittest.TestCase):
         assert client.release is not None
         self.assertTrue(client.release["draft"])
 
+    def test_signed_update_envelope_is_ignored_by_public_asset_inventory(self) -> None:
+        client = FakeClient()
+        client.assets = all_asset_names() + ["lizzieyzy-next-update-envelope.json"]
+        self.seed_successful_workflows(client)
+
+        release = self.publisher(client).publish()
+
+        self.assertFalse(release["draft"])
+        self.assertTrue(release["prerelease"])
+        self.assertIn("lizzieyzy-next-update-envelope.json", client.assets)
+
+
     def test_missing_expected_release_asset_fails_closed(self) -> None:
         client = FakeClient()
         client.assets = [

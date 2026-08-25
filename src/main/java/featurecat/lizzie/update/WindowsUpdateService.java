@@ -23,14 +23,27 @@ public final class WindowsUpdateService {
 
   private final UpdateManifestClient manifestClient;
   private final ResumableDownloader downloader;
+  private final UpdateChannel channel;
 
   public WindowsUpdateService() {
-    this(new UpdateManifestClient(), new ResumableDownloader());
+    this(UpdateChannel.current(), UpdateSource.current());
+  }
+
+  public WindowsUpdateService(UpdateChannel channel, UpdateSource source) {
+    this(new UpdateManifestClient(channel, source), new ResumableDownloader(), channel);
   }
 
   WindowsUpdateService(UpdateManifestClient manifestClient, ResumableDownloader downloader) {
+    this(manifestClient, downloader, UpdateChannel.STABLE);
+  }
+
+  WindowsUpdateService(
+      UpdateManifestClient manifestClient,
+      ResumableDownloader downloader,
+      UpdateChannel channel) {
     this.manifestClient = manifestClient;
     this.downloader = downloader;
+    this.channel = channel == null ? UpdateChannel.STABLE : channel;
   }
 
   public interface ProgressListener {
@@ -38,19 +51,25 @@ public final class WindowsUpdateService {
   }
 
   public Optional<WindowsUpdatePlan> checkForUpdate() throws IOException {
-    if (!WindowsUpdatePaths.isWindowsRuntime()
-        || UpdateVersion.shouldSkipAutomaticCheck(Lizzie.nextVersion)) {
+    if (!WindowsUpdatePaths.isWindowsRuntime()) {
+      return Optional.empty();
+    }
+    if (!UpdateAdmission.shouldFetch(Lizzie.nextVersion)) {
+      return Optional.empty();
+    }
+    UpdateAdmission.Result admission =
+        UpdateAdmission.evaluateClient(channel, Lizzie.nextVersion, manifestClient);
+    if (admission.kind == UpdateAdmission.Kind.ERROR) {
+      throw new IOException(admission.message);
+    }
+    if (admission.kind == UpdateAdmission.Kind.NO_UPDATE || admission.manifest == null) {
       return Optional.empty();
     }
     WindowsUpdatePaths paths = WindowsUpdatePaths.detect();
-    UpdateManifest manifest = fetchLatestManifest();
-    if (!isStableRelease(manifest)) {
-      return Optional.empty();
-    }
     InstalledUpdateState installed =
         InstalledUpdateState.read(paths.appDir, Lizzie.nextVersion, paths.flavor);
     WindowsUpdatePlan plan =
-        WindowsUpdatePlan.create(manifest, installed, Lizzie.nextVersion, paths.flavor);
+        WindowsUpdatePlan.create(admission.manifest, installed, Lizzie.nextVersion, paths.flavor);
     return plan.hasUpdate() ? Optional.of(plan) : Optional.empty();
   }
 

@@ -59,6 +59,10 @@ manifest、SHA-256 文件仍是缺一不可的强制资产。
 `windows64-install.txt`、`mac-apple-silicon-install.txt`、`mac-intel-install.txt` 等安装说明
 属于构建元数据，不在当前 GitHub Release 公开上传白名单中，不要把它们写成公开资产。
 
+签名 v2 清单 `lizzieyzy-next-update-envelope.json` 不是打包 provenance。测试通道指针任务
+可以把它附到版本化 pre-release；预发布器必须忽略它，不能因为多了这份 JSON 而 fail-closed。
+`channel-beta` 只托管这一份 envelope，不进入上述公开安装包集合。
+
 不再建议重新上传的旧思路：
 
 - `windows64.with-katago.zip`
@@ -93,6 +97,7 @@ GitHub Actions：
 - `.github/workflows/build-macos-amd64-release.yml`
 - `.github/workflows/update-release-notes.yml`
 - `.github/workflows/promote-stable-release.yml`
+- `.github/workflows/publish-test-channel-pointer.yml`
 
 ## 四、构建前检查
 
@@ -246,6 +251,12 @@ gh workflow run update-release-notes.yml \
 pre-release 经过各平台真机验收后，不要直接在 GitHub 页面手工改成正式版。使用
 `Promote Stable Release to R2` 工作流，输入两次相同 tag。该工作流会先验证并镜像白名单
 资产，最后发布签名更新清单并晋升 GitHub Release；R2 失败时 GitHub 状态不会改变。
+
+测试版发布成功后，`Publish Requested Pre-release` 会再 dispatch `Publish Test Channel Pointer`。
+该任务只在 `stable-release` environment 里用现有 `stable-2026-08` 密钥签名 schema-v2、
+`prerelease: true`、仅 GitHub 下载地址的清单，写到版本化 pre-release 和固定指针
+`channel-beta`。也可对已发布测试 tag 手工 `workflow_dispatch`。不要把测试安装包或测试指针
+上传到 R2，也不要把 `channel-beta` 标成 latest。
 
 R2 只保留当前正式版且设有 `9,000,000,000` 字节硬门禁。完整配置、Secrets、恢复方式和
 发布后验收见 [Cloudflare R2 正式版下载与升级](R2_RELEASES.md)。单独更新 Release notes

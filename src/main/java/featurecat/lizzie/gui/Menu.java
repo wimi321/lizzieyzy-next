@@ -5204,7 +5204,7 @@ public class Menu extends JMenuBar {
     final JFontMenuItem checkUpdate =
         new JFontMenuItem(resourceBundle.getString("Menu.checkUpdate"));
     helpMenu.add(checkUpdate);
-    checkUpdate.addActionListener(e -> WindowsUpdateController.checkForUpdate(Lizzie.frame));
+    checkUpdate.addActionListener(e -> WindowsUpdateController.openCheckUpdatePage(Lizzie.frame));
 
     helpMenu.addSeparator();
     final JFontMenuItem clearUserData = new JFontMenuItem("清除所有个人数据");

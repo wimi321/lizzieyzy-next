@@ -18,6 +18,8 @@ import java.util.List;
 import java.util.Map;
 import org.json.JSONObject;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.AfterEach;
+
 
 class UpdateManifestClientTest {
   @Test
@@ -63,6 +65,64 @@ class UpdateManifestClientTest {
       assertTrue(error.getMessage().contains("unexpectedly large"));
     }
   }
+
+  @AfterEach
+  void tearDown() {
+    System.clearProperty(UpdateManifestClient.ENVELOPE_URLS_PROPERTY);
+    System.clearProperty(UpdateManifestClient.LEGACY_MANIFEST_URL_PROPERTY);
+  }
+
+  @Test
+  void officialChannelOfficialSourceUsesOnlyR2Envelope() {
+    assertEquals(
+        List.of(UpdateManifestClient.R2_ENVELOPE_URL),
+        UpdateManifestClient.envelopeUrlsFor(
+            UpdateChannel.STABLE, UpdateSource.OFFICIAL_SITE));
+  }
+
+  @Test
+  void officialChannelGithubSourceUsesOnlyGithubEnvelope() {
+    assertEquals(
+        List.of(UpdateManifestClient.GITHUB_ENVELOPE_URL),
+        UpdateManifestClient.envelopeUrlsFor(UpdateChannel.STABLE, UpdateSource.GITHUB));
+  }
+
+  @Test
+  void testChannelIgnoresSourceAndOfficialEnvelopeOverride() {
+    System.setProperty(
+        UpdateManifestClient.ENVELOPE_URLS_PROPERTY,
+        UpdateManifestClient.R2_ENVELOPE_URL + "," + UpdateManifestClient.GITHUB_ENVELOPE_URL);
+
+    assertEquals(
+        List.of(UpdateManifestClient.TEST_CHANNEL_POINTER_URL),
+        UpdateManifestClient.envelopeUrlsFor(
+            UpdateChannel.BETA, UpdateSource.OFFICIAL_SITE));
+    assertEquals(
+        List.of(UpdateManifestClient.TEST_CHANNEL_POINTER_URL),
+        UpdateManifestClient.envelopeUrlsFor(UpdateChannel.BETA, UpdateSource.GITHUB));
+    assertEquals(
+        "https://github.com/wimi321/lizzieyzy-next/releases/download/channel-beta/"
+            + "lizzieyzy-next-update-envelope.json",
+        UpdateManifestClient.TEST_CHANNEL_POINTER_URL);
+  }
+
+  @Test
+  void officialEnvelopeOverrideTakesPrecedenceOverSelectedSource() {
+    System.setProperty(
+        UpdateManifestClient.ENVELOPE_URLS_PROPERTY,
+        "http://example.test/primary.json,http://example.test/secondary.json");
+
+    assertEquals(
+        List.of("http://example.test/primary.json", "http://example.test/secondary.json"),
+        UpdateManifestClient.envelopeUrlsFor(UpdateChannel.STABLE, UpdateSource.GITHUB));
+
+    System.clearProperty(UpdateManifestClient.ENVELOPE_URLS_PROPERTY);
+
+    assertEquals(
+        List.of(UpdateManifestClient.GITHUB_ENVELOPE_URL),
+        UpdateManifestClient.envelopeUrlsFor(UpdateChannel.STABLE, UpdateSource.GITHUB));
+  }
+
 
   private static JSONObject signedEnvelope(JSONObject payload, KeyPair pair) throws Exception {
     byte[] bytes = payload.toString().getBytes(StandardCharsets.UTF_8);
