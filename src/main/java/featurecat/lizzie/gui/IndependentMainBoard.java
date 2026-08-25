@@ -61,6 +61,7 @@ public class IndependentMainBoard extends JFrame {
   private JButton lockUnlock;
   private JButton btnClose;
   public int[] mouseOverCoordinate = LizzieFrame.outOfBoundCoordinate;
+  private transient SuggestionHoverIntent suggestionHoverIntent;
   public Optional<List<String>> variationOpt;
   private int curSuggestionMoveOrderByNumber = -1;
   private Stone draggedstone;
@@ -311,6 +312,7 @@ public class IndependentMainBoard extends JFrame {
           }
 
           public void mousePressed(MouseEvent e) {
+            cancelPendingSuggestionHoverPreview();
             origin.x = e.getX();
             origin.y = e.getY();
 
@@ -431,6 +433,7 @@ public class IndependentMainBoard extends JFrame {
     addMouseListener(
         new MouseAdapter() {
           public void mouseExited(MouseEvent e) {
+            cancelPendingSuggestionHoverPreview();
             btnClose.setVisible(false);
             lockUnlock.setVisible(false);
             topUntop.setVisible(false);
@@ -566,6 +569,7 @@ public class IndependentMainBoard extends JFrame {
                     clearMoved();
                     needRepaint = true;
                     isMouseOver = true;
+                    armSuggestionHoverPreview(curCoords[0], curCoords[1]);
                     if (Lizzie.config.autoReplayBranch) {
                       Lizzie.frame.mouseOverChanged = true;
                       boardRenderer.setDisplayedBranchLength(1);
@@ -586,6 +590,7 @@ public class IndependentMainBoard extends JFrame {
                 }
                 Lizzie.board.clearPressStoneInfo(curCoords);
               } else {
+                cancelPendingSuggestionHoverPreview();
                 if (isMouseOver) {
                   mouseOverCoordinate = LizzieFrame.outOfBoundCoordinate;
                   isMouseOver = false;
@@ -665,11 +670,33 @@ public class IndependentMainBoard extends JFrame {
   }
 
   public void clearMoved() {
+    cancelPendingSuggestionHoverPreview();
     isReplayVariation = false;
     isMouseOver = false;
     boardRenderer.startNormalBoard();
     boardRenderer.clearBranch();
     boardRenderer.notShowingBranch();
+  }
+
+  private SuggestionHoverIntent suggestionHoverIntent() {
+    if (suggestionHoverIntent == null) {
+      suggestionHoverIntent = new SuggestionHoverIntent(this::refresh);
+    }
+    return suggestionHoverIntent;
+  }
+
+  private void armSuggestionHoverPreview(int x, int y) {
+    suggestionHoverIntent().arm(x, y);
+  }
+
+  private void cancelPendingSuggestionHoverPreview() {
+    if (suggestionHoverIntent != null) {
+      suggestionHoverIntent.cancel();
+    }
+  }
+
+  boolean isSuggestionHoverPreviewReady(int x, int y) {
+    return suggestionHoverIntent == null || suggestionHoverIntent.permits(x, y);
   }
 
   private void paintMianPanel(Graphics g) {
@@ -777,6 +804,7 @@ public class IndependentMainBoard extends JFrame {
   }
 
   private void onClicked(int x, int y) {
+    cancelPendingSuggestionHoverPreview();
     if (Lizzie.frame.isContributing) return;
     // Check for board click
     Optional<int[]> boardCoordinates;
@@ -837,6 +865,7 @@ public class IndependentMainBoard extends JFrame {
   }
 
   public void setMouseOverCoords(int index) {
+    cancelPendingSuggestionHoverPreview();
     List<MoveData> bestMoves = Lizzie.board.getHistory().getData().bestMoves;
     if (bestMoves == null || bestMoves.isEmpty()) return;
     if (index >= bestMoves.size()) return;

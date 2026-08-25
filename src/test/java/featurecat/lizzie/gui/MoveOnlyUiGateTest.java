@@ -399,6 +399,52 @@ class MoveOnlyUiGateTest {
   }
 
   @Test
+  void boardRendererDefersHeavyBranchUntilCandidateHoverSettles() throws Exception {
+    TestEnvironment env = TestEnvironment.open();
+    try {
+      Lizzie.config.showBranch = true;
+      Lizzie.config.showSuggestionVariations = true;
+      Lizzie.config.showBlackCandidates = true;
+      Lizzie.config.showWhiteCandidates = true;
+      Lizzie.config.noRefreshOnMouseMove = true;
+      Lizzie.config.usePureStone = true;
+      TrackingLizzieFrame frame = configuredFrame();
+      frame.priorityMoveCoords = new ArrayList<>();
+      Lizzie.frame = frame;
+      BoardData current = currentData();
+      MoveData suggested = current.bestMoves.get(0);
+      suggested.variation = List.of(suggested.coordinate, Board.convertCoordinatesToName(1, 1));
+      Lizzie.board = boardWith(historyForCurrentNode(current));
+      LizzieFrame.boardRenderer = new CoordinateBoardRenderer(new int[] {0, 1});
+      BoardRenderer renderer = configuredBranchRenderer();
+
+      frame.onMouseMoved(0, 0);
+      invokeDrawBranch(renderer);
+
+      Object emptyImage = getField(BoardRenderer.class, null, "emptyImage");
+      assertTrue(frame.isMouseOver, "candidate marker should still react immediately.");
+      assertFalse(frame.isSuggestionHoverPreviewReady(0, 1));
+      assertSame(
+          emptyImage,
+          getField(BoardRenderer.class, renderer, "branchStonesImage"),
+          "the expensive variation image must not be built during a quick candidate click.");
+
+      SuggestionHoverIntent intent =
+          (SuggestionHoverIntent)
+              getField(LizzieFrame.class, frame, "suggestionHoverIntent");
+      intent.reveal();
+      invokeDrawBranch(renderer);
+
+      BufferedImage branchImage =
+          (BufferedImage) getField(BoardRenderer.class, renderer, "branchStonesImage");
+      assertNotSame(emptyImage, branchImage, "settled hover should keep the full variation preview.");
+      assertTrue(hasVisiblePaint(branchImage));
+    } finally {
+      env.close();
+    }
+  }
+
+  @Test
   void boardRendererRedrawsBranchImagesAfterClearingSameHover() throws Exception {
     TestEnvironment env = TestEnvironment.open();
     try {
@@ -472,6 +518,7 @@ class MoveOnlyUiGateTest {
       invokeDrawBranch(renderer);
 
       Optional<List<String>> firstPreview = boardRendererVariationOpt(renderer);
+      Object firstBranch = getField(BoardRenderer.class, renderer, "branch");
       assertTrue(firstPreview.isPresent());
       assertIterableEquals(firstPv, firstPreview.get());
       assertNotSame(
@@ -485,6 +532,10 @@ class MoveOnlyUiGateTest {
 
       Optional<List<String>> secondPreview = boardRendererVariationOpt(renderer);
       assertTrue(secondPreview.isPresent());
+      assertSame(
+          firstBranch,
+          getField(BoardRenderer.class, renderer, "branch"),
+          "engine repaints must reuse the frozen branch instead of replaying the PV on the EDT.");
       assertIterableEquals(
           List.of(suggested.coordinate, Board.convertCoordinatesToName(1, 1)),
           secondPreview.get(),

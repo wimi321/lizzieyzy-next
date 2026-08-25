@@ -44,6 +44,7 @@ public class FloatBoard extends JDialog {
   private boolean isReplayVariation = false;
   // private JButton lockUnlock;
   public int[] mouseOverCoordinate = LizzieFrame.outOfBoundCoordinate;
+  private transient SuggestionHoverIntent suggestionHoverIntent;
   public Optional<List<String>> variationOpt;
   private int curSuggestionMoveOrderByNumber = -1;
   public int selectCoordsX1;
@@ -311,6 +312,7 @@ public class FloatBoard extends JDialog {
     addMouseListener(
         new MouseAdapter() {
           public void mousePressed(MouseEvent e) {
+            cancelPendingSuggestionHoverPreview();
             if (e.getButton() == MouseEvent.BUTTON1) // left click
             {
               onClicked(Utils.zoomOut(e.getX()), Utils.zoomOut(e.getY()));
@@ -321,6 +323,7 @@ public class FloatBoard extends JDialog {
     addMouseListener(
         new MouseAdapter() {
           public void mouseExited(MouseEvent e) {
+            cancelPendingSuggestionHoverPreview();
             //            btnClose.setVisible(false);
             //            lockUnlock.setVisible(false);
             //            topUntop.setVisible(false);
@@ -389,6 +392,7 @@ public class FloatBoard extends JDialog {
                   clearMoved();
                   needRepaint = true;
                   isMouseOver = true;
+                  armSuggestionHoverPreview(curCoords[0], curCoords[1]);
                   if (Lizzie.config.autoReplayBranch) {
                     Lizzie.frame.mouseOverChanged = true;
                     if (!Lizzie.config.autoReplayDisplayEntireVariationsFirst)
@@ -403,6 +407,7 @@ public class FloatBoard extends JDialog {
                 }
               }
             } else {
+              cancelPendingSuggestionHoverPreview();
               mouseOverCoordinate = LizzieFrame.outOfBoundCoordinate;
               if (isMouseOver) {
                 isMouseOver = false;
@@ -498,11 +503,33 @@ public class FloatBoard extends JDialog {
   }
 
   public void clearMoved() {
+    cancelPendingSuggestionHoverPreview();
     isReplayVariation = false;
     isMouseOver = false;
     boardRenderer.startNormalBoard();
     boardRenderer.clearBranch();
     boardRenderer.notShowingBranch();
+  }
+
+  private SuggestionHoverIntent suggestionHoverIntent() {
+    if (suggestionHoverIntent == null) {
+      suggestionHoverIntent = new SuggestionHoverIntent(this::refreshByLis);
+    }
+    return suggestionHoverIntent;
+  }
+
+  private void armSuggestionHoverPreview(int x, int y) {
+    suggestionHoverIntent().arm(x, y);
+  }
+
+  private void cancelPendingSuggestionHoverPreview() {
+    if (suggestionHoverIntent != null) {
+      suggestionHoverIntent.cancel();
+    }
+  }
+
+  boolean isSuggestionHoverPreviewReady(int x, int y) {
+    return suggestionHoverIntent == null || suggestionHoverIntent.permits(x, y);
   }
 
   private void paintMianPanel(Graphics g) {
@@ -579,6 +606,7 @@ public class FloatBoard extends JDialog {
   //  }
 
   public void setMouseOverCoords(int index) {
+    cancelPendingSuggestionHoverPreview();
     List<MoveData> bestMoves = Lizzie.board.getHistory().getData().bestMoves;
     if (bestMoves == null || bestMoves.isEmpty()) return;
     if (index >= bestMoves.size()) return;
@@ -682,6 +710,7 @@ public class FloatBoard extends JDialog {
   //  }
 
   private void onClicked(int x, int y) {
+    cancelPendingSuggestionHoverPreview();
     // Check for board click
     Optional<int[]> boardCoordinates;
 

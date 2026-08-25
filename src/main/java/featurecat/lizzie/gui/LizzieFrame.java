@@ -468,6 +468,7 @@ public class LizzieFrame extends JFrame {
   public int[] suggestionclick = outOfBoundCoordinate;
   public int[] clickbadmove = outOfBoundCoordinate;
   public int[] mouseOverCoordinate = outOfBoundCoordinate;
+  private transient SuggestionHoverIntent suggestionHoverIntent;
   private int curSuggestionMoveOrderByNumber = -1;
   public boolean showControls = false;
   private long showControlTime;
@@ -7999,6 +8000,7 @@ public class LizzieFrame extends JFrame {
   }
 
   public void onClicked(int x, int y) {
+    cancelPendingSuggestionHoverPreview();
     if (isTrialActive()) {
       showTrialBlockedHint();
       return;
@@ -8263,6 +8265,7 @@ public class LizzieFrame extends JFrame {
   }
 
   public void onMouseExited() {
+    cancelPendingSuggestionHoverPreview();
     boolean needRepaint = false;
     if (Lizzie.config.isFourSubMode()) {
       if (Lizzie.frame.subBoardRenderer2.isMouseOver) {
@@ -8478,6 +8481,7 @@ public class LizzieFrame extends JFrame {
           clearMoved();
           needRepaint = true;
           isMouseOver = true;
+          armSuggestionHoverPreview(curCoords[0], curCoords[1]);
           if (Lizzie.config.autoReplayBranch) {
             mouseOverChanged = true;
             if (!Lizzie.config.autoReplayDisplayEntireVariationsFirst)
@@ -8512,6 +8516,7 @@ public class LizzieFrame extends JFrame {
       }
 
     } else {
+      cancelPendingSuggestionHoverPreview();
       mouseOverCoordinate = outOfBoundCoordinate;
       if (isMouseOver) {
         isMouseOver = false;
@@ -8536,6 +8541,7 @@ public class LizzieFrame extends JFrame {
   }
 
   public void clearMoved() {
+    cancelPendingSuggestionHoverPreview();
     isReplayVariation = false;
     Lizzie.frame.isMouseOver = false;
     clearBoardBranchPreview();
@@ -8546,6 +8552,7 @@ public class LizzieFrame extends JFrame {
   }
 
   void clearSuggestionTablePreview() {
+    cancelPendingSuggestionHoverPreview();
     clickOrder = -1;
     selectedorder = -1;
     currentRow = -1;
@@ -8557,6 +8564,7 @@ public class LizzieFrame extends JFrame {
 
   /** Clears transient analysis overlays while editing a static starting position. */
   private void clearSetupOverlayState() {
+    cancelPendingSuggestionHoverPreview();
     isReplayVariation = false;
     isMouseOver = false;
     clickOrder = -1;
@@ -8589,6 +8597,27 @@ public class LizzieFrame extends JFrame {
       boardRenderer2.startNormalBoard();
       boardRenderer2.clearBranch();
     }
+  }
+
+  private SuggestionHoverIntent suggestionHoverIntent() {
+    if (suggestionHoverIntent == null) {
+      suggestionHoverIntent = new SuggestionHoverIntent(this::refresh);
+    }
+    return suggestionHoverIntent;
+  }
+
+  private void armSuggestionHoverPreview(int x, int y) {
+    suggestionHoverIntent().arm(x, y);
+  }
+
+  public void cancelPendingSuggestionHoverPreview() {
+    if (suggestionHoverIntent != null) {
+      suggestionHoverIntent.cancel();
+    }
+  }
+
+  boolean isSuggestionHoverPreviewReady(int x, int y) {
+    return suggestionHoverIntent == null || suggestionHoverIntent.permits(x, y);
   }
 
   //  public void clearMoved2() {
@@ -12397,6 +12426,7 @@ public class LizzieFrame extends JFrame {
   }
 
   public void setMouseOverCoords(int index) {
+    cancelPendingSuggestionHoverPreview();
     if (Lizzie.config.isFloatBoardMode()) {
       this.independentMainBoard.setMouseOverCoords(index);
       return;
@@ -12418,6 +12448,7 @@ public class LizzieFrame extends JFrame {
   }
 
   private void handleTableClick(int row, int col) {
+    cancelPendingSuggestionHoverPreview();
     LizzieFrame.boardRenderer.startNormalBoard();
     if (listTable.getValueAt(row, 1).toString().startsWith("pass")) return;
     int[] coords = Board.convertNameToCoordinates(listTable.getValueAt(row, 1).toString());
@@ -18630,6 +18661,7 @@ public class LizzieFrame extends JFrame {
       if (independentMainBoard != null)
         independentMainBoard.mouseOverCoordinate = outOfBoundCoordinate;
     } else {
+      cancelPendingSuggestionHoverPreview();
       mouseOverCoordinate = outOfBoundCoordinate;
     }
   }

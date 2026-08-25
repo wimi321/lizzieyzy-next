@@ -26,6 +26,7 @@ public class Input implements MouseListener, KeyListener, MouseWheelListener, Mo
 
   @Override
   public void mousePressed(MouseEvent e) {
+    Lizzie.frame.cancelPendingSuggestionHoverPreview();
     boolean boardButton =
         e.getButton() == MouseEvent.BUTTON1 || e.getButton() == MouseEvent.BUTTON3;
     if (boardButton && Lizzie.frame.hasActiveHumanSlGame()) {

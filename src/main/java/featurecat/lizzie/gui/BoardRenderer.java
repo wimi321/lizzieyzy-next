@@ -1585,6 +1585,10 @@ public class BoardRenderer {
       return;
     }
 
+    if (!isSuggestionHoverPreviewReady()) {
+      return;
+    }
+
     Optional<MoveData> suggestedMove = mouseOveredMove();
     if (!suggestedMove.isPresent()
         || Lizzie.frame.shouldShowPolicyFor(Lizzie.frame.getDisplayNode())
@@ -1654,6 +1658,19 @@ public class BoardRenderer {
       pvVistis = branchPreviewList(suggestedMove.get().pvVisits);
     }
     if (variation == null) {
+      return;
+    }
+    if (Lizzie.config.noRefreshOnMouseMove
+        && notChangedMouseOverMove
+        && variation == cachedVariation
+        && displayedBranchLength == cachedDisplayedBranchLengthFroBranch
+        && !changedSize
+        && branch != null
+        && hasRenderedBranchImages()) {
+      mouseOverCoords = suggestedMove.get().coordinate;
+      branchOpt = Optional.of(branch);
+      variationOpt = Optional.of(variation);
+      isShowingBranch = true;
       return;
     }
     branch = null;
@@ -1781,6 +1798,19 @@ public class BoardRenderer {
     gShadow.dispose();
     branchStonesImage = tempBranchStonesImage;
     branchStonesShadowImage = tempBranchStonesShadowImage;
+  }
+
+  private boolean isSuggestionHoverPreviewReady() {
+    if (isIndependBoard) {
+      IndependentMainBoard board = Lizzie.frame.independentMainBoard;
+      if (board == null) {
+        return true;
+      }
+      int[] coords = board.mouseOverCoordinate;
+      return board.isSuggestionHoverPreviewReady(coords[0], coords[1]);
+    }
+    int[] coords = Lizzie.frame.mouseOverCoordinate;
+    return Lizzie.frame.isSuggestionHoverPreviewReady(coords[0], coords[1]);
   }
 
   private boolean compareVariationListEquals(List<String> variation, List<String> variation2) {

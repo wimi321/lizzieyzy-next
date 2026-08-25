@@ -694,6 +694,7 @@ public class FloatBoardRenderer {
       cachedBoardHeight = boardHeight;
       cachedShadow = null;
       cachedGhostShadow2 = null;
+      invalidateBranchImageCache();
     }
     showingBranch = false;
     branchOpt = Optional.empty();
@@ -714,6 +715,10 @@ public class FloatBoardRenderer {
     variationOpt = Optional.empty();
 
     if ((isShowingRawBoard() || !Lizzie.config.showBranchNow())) {
+      return;
+    }
+
+    if (!isSuggestionHoverPreviewReady()) {
       return;
     }
 
@@ -770,6 +775,19 @@ public class FloatBoardRenderer {
       pvVistis = branchPreviewList(suggestedMove.get().pvVisits);
     }
     if (variation == null) {
+      return;
+    }
+    if (Lizzie.config.noRefreshOnMouseMove
+        && notChangedMouseOverMove
+        && variation == cachedVariation
+        && displayedBranchLength == cachedDisplayedBranchLengthFroBranch
+        && branch != null
+        && hasRenderedBranchImages()) {
+      mouseOverCoords = suggestedMove.get().coordinate;
+      branchOpt = Optional.of(branch);
+      variationOpt = Optional.of(variation);
+      showingBranch = true;
+      isShowingBranch = true;
       return;
     }
     branch = null;
@@ -873,6 +891,15 @@ public class FloatBoardRenderer {
     gShadow.dispose();
     branchStonesImage = tempBranchStonesImage;
     branchStonesShadowImage = tempBranchStonesShadowImage;
+  }
+
+  private boolean isSuggestionHoverPreviewReady() {
+    FloatBoard board = Lizzie.frame.floatBoard;
+    if (board == null) {
+      return true;
+    }
+    int[] coords = board.mouseOverCoordinate;
+    return board.isSuggestionHoverPreviewReady(coords[0], coords[1]);
   }
 
   private boolean compareVariationListEquals(List<String> variation, List<String> variation2) {
