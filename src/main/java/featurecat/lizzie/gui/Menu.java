@@ -4447,27 +4447,43 @@ public class Menu extends JMenuBar {
 
     final JFontCheckBoxMenuItem bottomToolbarVisible =
         new JFontCheckBoxMenuItem(resourceBundle.getString("Menu.visible"));
+    final JFontCheckBoxMenuItem bottomToolbarInVisible =
+        new JFontCheckBoxMenuItem(resourceBundle.getString("Menu.inVisible"));
+    final JFontCheckBoxMenuItem showDetailedBar = new JFontCheckBoxMenuItem("使用详细工具栏");
+    final Runnable syncBottomToolbarMarks =
+        new Runnable() {
+          public void run() {
+            boolean toolbarVisible =
+                LizzieFrame.toolbar != null && LizzieFrame.toolbar.isVisible();
+            syncBottomToolbarMenuMarks(
+                bottomToolbarVisible,
+                bottomToolbarInVisible,
+                showDetailedBar,
+                Lizzie.frame.toolbarHeight,
+                toolbarVisible);
+          }
+        };
     bottomToolBar.add(bottomToolbarVisible);
 
     bottomToolbarVisible.addActionListener(
         new ActionListener() {
           public void actionPerformed(ActionEvent e) {
-            Lizzie.frame.toolbarHeight = 26;
+            Lizzie.frame.toolbarHeight = BOTTOM_TOOLBAR_SHOWN_HEIGHT;
             LizzieFrame.toolbar.setVisible(true);
+            syncBottomToolbarMarks.run();
             if (Lizzie.config.showDoubleMenu) doubleMenu(false);
             Lizzie.frame.reSetLoc();
           }
         });
 
-    final JFontCheckBoxMenuItem bottomToolbarInVisible =
-        new JFontCheckBoxMenuItem(resourceBundle.getString("Menu.inVisible"));
     bottomToolBar.add(bottomToolbarInVisible);
 
     bottomToolbarInVisible.addActionListener(
         new ActionListener() {
           public void actionPerformed(ActionEvent e) {
-            Lizzie.frame.toolbarHeight = 0;
+            Lizzie.frame.toolbarHeight = BOTTOM_TOOLBAR_HIDDEN_HEIGHT;
             LizzieFrame.toolbar.setVisible(false);
+            syncBottomToolbarMarks.run();
             if (Lizzie.config.showDoubleMenu) doubleMenu(false);
             Lizzie.frame.reSetLoc();
           }
@@ -4476,13 +4492,12 @@ public class Menu extends JMenuBar {
     final JMenu detailedBar = new JFontMenu("详细工具栏(过时的)(仅中文)"); // ("详细工具栏(过时的)(仅中文)");
     if (Lizzie.config.isChinese) bottomToolBar.add(detailedBar);
 
-    final JFontCheckBoxMenuItem showDetailedBar = new JFontCheckBoxMenuItem("使用详细工具栏");
     detailedBar.add(showDetailedBar);
 
     showDetailedBar.addActionListener(
         new ActionListener() {
           public void actionPerformed(ActionEvent e) {
-            if (Lizzie.frame.toolbarHeight != 70) {
+            if (Lizzie.frame.toolbarHeight != BOTTOM_TOOLBAR_DETAILED_HEIGHT) {
               SwingUtilities.invokeLater(
                   new Runnable() {
                     public void run() {
@@ -4493,16 +4508,19 @@ public class Menu extends JMenuBar {
                               "确定使用详细工具栏?",
                               JOptionPane.YES_NO_OPTION);
                       if (ret == JOptionPane.NO_OPTION) {
+                        syncBottomToolbarMarks.run();
                         return;
                       }
-                      Lizzie.frame.toolbarHeight = 70;
+                      Lizzie.frame.toolbarHeight = BOTTOM_TOOLBAR_DETAILED_HEIGHT;
                       LizzieFrame.toolbar.setVisible(true);
+                      syncBottomToolbarMarks.run();
                       Lizzie.frame.reSetLoc();
                     }
                   });
             } else {
-              Lizzie.frame.toolbarHeight = 26;
+              Lizzie.frame.toolbarHeight = BOTTOM_TOOLBAR_SHOWN_HEIGHT;
               LizzieFrame.toolbar.setVisible(true);
+              syncBottomToolbarMarks.run();
               Lizzie.frame.reSetLoc();
             }
           }
@@ -4537,19 +4555,7 @@ public class Menu extends JMenuBar {
         new MenuListener() {
 
           public void menuSelected(MenuEvent e) {
-            if (Lizzie.frame.toolbarHeight == 0) {
-              bottomToolbarInVisible.setState(true);
-              bottomToolbarVisible.setState(false);
-              showDetailedBar.setState(false);
-            } else if (Lizzie.frame.toolbarHeight == 70) {
-              showDetailedBar.setState(true);
-              bottomToolbarInVisible.setState(false);
-              bottomToolbarVisible.setState(false);
-            } else {
-              bottomToolbarInVisible.setState(false);
-              bottomToolbarVisible.setState(true);
-              showDetailedBar.setState(false);
-            }
+            syncBottomToolbarMarks.run();
             if (Lizzie.config.showDetailedToolbarMenu) showDetailedMenu.setState(true);
             else showDetailedMenu.setState(false);
           }
@@ -10083,6 +10089,44 @@ public class Menu extends JMenuBar {
         stop,
         activeEngineAvailable,
         switching);
+  }
+
+  static final int BOTTOM_TOOLBAR_SHOWN_HEIGHT = 26;
+  static final int BOTTOM_TOOLBAR_HIDDEN_HEIGHT = 0;
+  static final int BOTTOM_TOOLBAR_DETAILED_HEIGHT = 70;
+
+  enum BottomToolbarMenuMark {
+    VISIBLE,
+    INVISIBLE,
+    DETAILED
+  }
+
+  static BottomToolbarMenuMark bottomToolbarMenuMark(int toolbarHeight, boolean toolbarVisible) {
+    if (!toolbarVisible || toolbarHeight == BOTTOM_TOOLBAR_HIDDEN_HEIGHT) {
+      return BottomToolbarMenuMark.INVISIBLE;
+    }
+    if (toolbarHeight == BOTTOM_TOOLBAR_DETAILED_HEIGHT) {
+      return BottomToolbarMenuMark.DETAILED;
+    }
+    return BottomToolbarMenuMark.VISIBLE;
+  }
+
+  static void syncBottomToolbarMenuMarks(
+      JCheckBoxMenuItem visibleItem,
+      JCheckBoxMenuItem invisibleItem,
+      JCheckBoxMenuItem detailedItem,
+      int toolbarHeight,
+      boolean toolbarVisible) {
+    BottomToolbarMenuMark mark = bottomToolbarMenuMark(toolbarHeight, toolbarVisible);
+    if (visibleItem != null) {
+      visibleItem.setState(mark == BottomToolbarMenuMark.VISIBLE);
+    }
+    if (invisibleItem != null) {
+      invisibleItem.setState(mark == BottomToolbarMenuMark.INVISIBLE);
+    }
+    if (detailedItem != null) {
+      detailedItem.setState(mark == BottomToolbarMenuMark.DETAILED);
+    }
   }
 
   static void applyEngineSwitchPresentation(

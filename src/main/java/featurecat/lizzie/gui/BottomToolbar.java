@@ -550,6 +550,13 @@ public class BottomToolbar extends JPanel {
     return Lizzie.frame != null && Lizzie.frame.toolbarHeight > MAIN_BAR_HEIGHT;
   }
 
+  static int reconcilePersistedToolbarHeight(int currentHeight, int layoutDesiredHeight) {
+    if (currentHeight == 0) {
+      return 0;
+    }
+    return layoutDesiredHeight;
+  }
+
   private int layoutDetailPanels() {
     if (!isDetailExpanded()) {
       anaPanel.setVisible(false);
@@ -5107,7 +5114,8 @@ public class BottomToolbar extends JPanel {
       rebuildMoreActionsPopup(overflowButtons);
     }
 
-    int desiredHeight = layoutDetailPanels();
+    int desiredHeight =
+        reconcilePersistedToolbarHeight(Lizzie.frame.toolbarHeight, layoutDetailPanels());
     if (Lizzie.frame.toolbarHeight != desiredHeight) {
       Lizzie.frame.toolbarHeight = desiredHeight;
       javax.swing.SwingUtilities.invokeLater(
