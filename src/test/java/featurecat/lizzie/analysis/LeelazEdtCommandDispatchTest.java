@@ -6,9 +6,13 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import featurecat.lizzie.Config;
 import featurecat.lizzie.ConfigTestHelper;
 import featurecat.lizzie.Lizzie;
+import featurecat.lizzie.gui.LizzieFrame;
+import featurecat.lizzie.rules.Stone;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.lang.reflect.Field;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -23,12 +27,14 @@ class LeelazEdtCommandDispatchTest {
   private Config previousConfig;
   private Leelaz previousPrimary;
   private Leelaz previousSecondary;
+  private LizzieFrame previousFrame;
 
   @AfterEach
   void tearDown() {
     Lizzie.config = previousConfig;
     Lizzie.setPrimaryEngine(previousPrimary);
     Lizzie.leelaz2 = previousSecondary;
+    Lizzie.frame = previousFrame;
   }
 
   @Test
@@ -64,12 +70,46 @@ class LeelazEdtCommandDispatchTest {
     }
   }
 
+  @Test
+  void queuedLocalPlayRetiresOldAnalysisBeforePhysicalWriteCompletes() throws Exception {
+    installGlobals();
+    BlockingOutput output = new BlockingOutput();
+    Leelaz engine = new Leelaz("");
+    engine.installCommandOutputForTest(output);
+    Lizzie.setPrimaryEngine(engine);
+    MoveData staleMove = new MoveData();
+    staleMove.coordinate = "D4";
+    staleMove.playouts = 100;
+    engine.setBestMovesForEngineGameTest(List.of(staleMove));
+
+    try {
+      SwingUtilities.invokeAndWait(() -> engine.playMove(Stone.BLACK, "D4"));
+
+      assertTrue(output.writeEntered.await(2, TimeUnit.SECONDS), "play write never started");
+      assertTrue(
+          engine.getBestMoves().isEmpty(),
+          "the previous streaming payload remained visible while play was queued");
+    } finally {
+      output.releaseWrite.countDown();
+      output.writeCompleted.await(2, TimeUnit.SECONDS);
+    }
+  }
+
   private void installGlobals() throws Exception {
     previousConfig = Lizzie.config;
     previousPrimary = Lizzie.leelaz;
     previousSecondary = Lizzie.leelaz2;
+    previousFrame = Lizzie.frame;
     Lizzie.config = ConfigTestHelper.createForTests(tempDir);
     Lizzie.leelaz2 = null;
+    Lizzie.frame = allocate(LizzieFrame.class);
+  }
+
+  @SuppressWarnings("unchecked")
+  private static <T> T allocate(Class<T> type) throws Exception {
+    Field field = sun.misc.Unsafe.class.getDeclaredField("theUnsafe");
+    field.setAccessible(true);
+    return (T) ((sun.misc.Unsafe) field.get(null)).allocateInstance(type);
   }
 
   private static final class BlockingOutput extends OutputStream {

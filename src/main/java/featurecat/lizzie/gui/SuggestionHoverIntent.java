@@ -5,7 +5,7 @@ import javax.swing.Timer;
 
 /** Delays expensive variation rendering until the pointer has settled on a candidate. */
 final class SuggestionHoverIntent {
-  static final int DEFAULT_DELAY_MS = 120;
+  static final int DEFAULT_DELAY_MS = 200;
 
   private final Runnable onReady;
   private final Timer timer;

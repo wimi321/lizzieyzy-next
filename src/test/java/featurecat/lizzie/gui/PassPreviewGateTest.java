@@ -1,6 +1,7 @@
 package featurecat.lizzie.gui;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -109,6 +110,32 @@ class PassPreviewGateTest {
     TestEnvironment env = TestEnvironment.open();
     try {
       assertBranchPassPreviewRendersThroughDrawPath(node -> node.addExtraStones(1, 1, true));
+    } finally {
+      env.close();
+    }
+  }
+
+  @Test
+  void subBoardSkipsRenderingWhenRepaintClipDoesNotIntersectIt() throws Exception {
+    TestEnvironment env = TestEnvironment.open();
+    try {
+      SubBoardRenderer subBoard = new SubBoardRenderer(false);
+      configurePassPreviewRenderer(subBoard);
+      Lizzie.board = null;
+      BufferedImage image =
+          new BufferedImage(
+              PREVIEW_CANVAS_SIZE + 20,
+              PREVIEW_CANVAS_SIZE + 20,
+              BufferedImage.TYPE_INT_ARGB);
+      Graphics2D graphics = image.createGraphics();
+      try {
+        graphics.setClip(PREVIEW_CANVAS_SIZE + 5, PREVIEW_CANVAS_SIZE + 5, 10, 10);
+        assertDoesNotThrow(
+            () -> subBoard.draw(graphics),
+            "a main-board-only repaint must not run the sub-board rendering pipeline.");
+      } finally {
+        graphics.dispose();
+      }
     } finally {
       env.close();
     }

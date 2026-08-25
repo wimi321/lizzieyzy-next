@@ -419,6 +419,10 @@ class MoveOnlyUiGateTest {
       BoardRenderer renderer = configuredBranchRenderer();
 
       frame.onMouseMoved(0, 0);
+      assertEquals(
+          0,
+          frame.fullRefreshes,
+          "candidate hover must not rebuild comments and the problem list on the EDT.");
       invokeDrawBranch(renderer);
 
       Object emptyImage = getField(BoardRenderer.class, null, "emptyImage");
@@ -433,6 +437,10 @@ class MoveOnlyUiGateTest {
           (SuggestionHoverIntent)
               getField(LizzieFrame.class, frame, "suggestionHoverIntent");
       intent.reveal();
+      assertEquals(
+          0,
+          frame.fullRefreshes,
+          "revealing a settled preview must remain a board-only repaint.");
       invokeDrawBranch(renderer);
 
       BufferedImage branchImage =
@@ -442,6 +450,100 @@ class MoveOnlyUiGateTest {
     } finally {
       env.close();
     }
+  }
+
+  @Test
+  void engineAnalysisRefreshSelectsIncrementalBoardAndWinratePainting() throws Exception {
+    TestEnvironment env = TestEnvironment.open();
+    try {
+      TrackingLizzieFrame frame = configuredFrame();
+      Lizzie.frame = frame;
+
+      frame.refresh(1);
+
+      assertTrue((boolean) getField(LizzieFrame.class, frame, "redrawBoardSurfacesOnly"));
+      assertTrue((boolean) getField(LizzieFrame.class, frame, "redrawWinratePaneOnly"));
+      assertEquals(
+          0,
+          frame.fullRefreshes,
+          "engine output must not route through the full-frame refresh used for layout changes.");
+    } finally {
+      env.close();
+    }
+  }
+
+  @Test
+  void committedMoveDefersFullUiMaintenanceUntilAfterImmediateBoardRepaint() throws Exception {
+    TestEnvironment env = TestEnvironment.open();
+    try {
+      TrackingLizzieFrame frame = configuredFrame();
+      Lizzie.frame = frame;
+
+      javax.swing.SwingUtilities.invokeAndWait(frame::refreshAfterMove);
+
+      assertTrue((boolean) getField(LizzieFrame.class, frame, "redrawBoardSurfacesOnly"));
+      assertEquals(
+          0,
+          frame.fullRefreshes,
+          "comments and layout work must not run in the move's input event.");
+
+      Thread.sleep(260L);
+      javax.swing.SwingUtilities.invokeAndWait(() -> {});
+      assertEquals(1, frame.fullRefreshes, "secondary move UI should still refresh after input.");
+    } finally {
+      env.close();
+    }
+  }
+
+  @Test
+  void boardClickClearsSettledSuggestionBeforeMoveRendering() throws Exception {
+    TestEnvironment env = TestEnvironment.open();
+    try {
+      TrackingLizzieFrame frame = configuredFrame();
+      Lizzie.frame = frame;
+      frame.isMouseOver = true;
+      frame.mouseOverCoordinate = new int[] {0, 1};
+      frame.suggestionclick = new int[] {0, 1};
+
+      frame.clearSuggestionPreviewBeforeBoardClick();
+
+      assertFalse(frame.isMouseOver);
+      assertSame(LizzieFrame.outOfBoundCoordinate, frame.mouseOverCoordinate);
+      assertSame(LizzieFrame.outOfBoundCoordinate, frame.suggestionclick);
+      assertEquals(
+          1,
+          frame.clearedMovePreviews,
+          "the visible PV must be cleared before the clicked stone is rendered.");
+    } finally {
+      env.close();
+    }
+  }
+
+  @Test
+  void incrementalBranchOverlayRequiresExistingStonesToRemainUnchanged() {
+    Stone[] source = {Stone.BLACK, Stone.EMPTY, Stone.WHITE};
+    Stone[] branch = {Stone.BLACK, Stone.WHITE, Stone.WHITE};
+    boolean[] newStones = {false, true, false};
+
+    assertTrue(BoardRenderer.branchPreservesExistingStones(source, branch, newStones));
+
+    branch[0] = Stone.BLACK_CAPTURED;
+    assertFalse(
+        BoardRenderer.branchPreservesExistingStones(source, branch, newStones),
+        "a captured existing stone requires a complete branch image redraw.");
+
+    newStones[0] = true;
+    assertFalse(
+        BoardRenderer.branchPreservesExistingStones(source, branch, newStones),
+        "an existing stone may not disappear even if a malformed branch marks it as new.");
+  }
+
+  @Test
+  void incrementalBranchOverlayRejectsMalformedBranchBuffers() {
+    assertFalse(
+        BoardRenderer.branchPreservesExistingStones(
+            new Stone[] {Stone.BLACK}, new Stone[] {Stone.BLACK, Stone.WHITE}, new boolean[] {false}));
+    assertFalse(BoardRenderer.branchPreservesExistingStones(null, null, null));
   }
 
   @Test
@@ -990,6 +1092,9 @@ class MoveOnlyUiGateTest {
   }
 
   private static final class TrackingLizzieFrame extends LizzieFrame {
+    private int fullRefreshes;
+    private int clearedMovePreviews;
+
     @Override
     public boolean isInPlayMode() {
       return false;
@@ -1001,10 +1106,14 @@ class MoveOnlyUiGateTest {
     }
 
     @Override
-    public void refresh() {}
+    public void refresh() {
+      fullRefreshes++;
+    }
 
     @Override
-    public void clearMoved() {}
+    public void clearMoved() {
+      clearedMovePreviews++;
+    }
 
     @Override
     public void repaint() {}

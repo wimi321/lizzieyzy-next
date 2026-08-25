@@ -74,6 +74,17 @@ public class SubBoardRenderer {
   private BufferedImage cachedHeatImage = emptyImage;
 
   private BufferedImage branchStonesImage = emptyImage;
+  private BoardHistoryNode cachedBranchNode;
+  private Zobrist cachedBranchZhash;
+  private List<String> cachedBranchVariation = Collections.emptyList();
+  private int cachedBranchBestMove = -1;
+  private int cachedBranchDisplayedLength = Integer.MIN_VALUE;
+  private int cachedBranchBoardWidth = -1;
+  private int cachedBranchBoardHeight = -1;
+  private int cachedBranchStoneRadius = -1;
+  private boolean cachedBranchBlackToPlay;
+  private boolean cachedBranchRemovesDead;
+  private boolean cachedBranchNoCapture;
   //  private BufferedImage branchStonesShadowImage;
   // Reusable buffers for drawBranch, which runs on every engine update and otherwise
   // allocates a board-sized ARGB image each time. acquire always returns the buffer
@@ -140,6 +151,7 @@ public class SubBoardRenderer {
     cachedBackgroundImage = emptyImage;
     cachedBoardWidth = 0;
     cachedBoardHeight = 0;
+    invalidateBranchCache();
   }
 
   public void setOrder(int order) {
@@ -161,6 +173,7 @@ public class SubBoardRenderer {
 
   public void reDrawGobanAnyway() {
     cachedBoardWidth = -1;
+    invalidateBranchCache();
   }
 
   public void reDrawBackgroundAnyway() {
@@ -178,6 +191,13 @@ public class SubBoardRenderer {
 
   /** Draw a go board */
   public void draw(Graphics2D g) {
+    Rectangle clip = g.getClipBounds();
+    if (clip != null
+        && boardWidth > 0
+        && boardHeight > 0
+        && !clip.intersects(x, y, boardWidth, boardHeight)) {
+      return;
+    }
     Shape oldClip = g.getClip();
     g.clipRect(x, y, boardWidth, boardHeight);
     try {
@@ -325,6 +345,10 @@ public class SubBoardRenderer {
 
   public void clearBranch() {
     branchStonesImage = new BufferedImage(boardWidth, boardHeight, TYPE_INT_ARGB);
+    branchOpt = Optional.empty();
+    variationOpt = Optional.empty();
+    showingBranch = false;
+    invalidateBranchCache();
   }
 
   /**
@@ -831,24 +855,11 @@ public class SubBoardRenderer {
   /** Draw the 'ghost stones' which show a variationOpt Leelaz is thinking about */
   private void drawBranch() {
     showingBranch = false;
-    BufferedImage newImage = acquireBranchStoneBuffer(boardWidth, boardHeight);
-    // branchStonesImage = new BufferedImage(boardWidth, boardHeight, TYPE_INT_ARGB);
-    // branchStonesShadowImage = new BufferedImage(boardWidth, boardHeight, TYPE_INT_ARGB);
-    branchOpt = Optional.empty();
-
-    //    if (Lizzie.frame.isPlayingAgainstLeelaz) {
-    //      branchStonesImage = newImage;
-    //      return;
-    //    }
-
-    // Leela Zero isn't connected yet
     if (Lizzie.leelaz == null) {
-      branchStonesImage = newImage;
+      publishEmptyBranch();
       return;
     }
-    // calculate best moves and branch
-    //  if (Lizzie.frame.toolbar.isEnginePk && Lizzie.frame.toolbar.isGenmove) {
-    // reverseBestmoves = false;
+
     if (!isMouseOver) {
       BoardHistoryNode bestMoveNode;
       if (!Lizzie.board.getHistory().getCurrentHistoryNode().getData().bestMoves.isEmpty()) {
@@ -874,46 +885,41 @@ public class SubBoardRenderer {
       } else preEstimateArray = null;
     }
 
-    variationOpt = Optional.empty();
-
-    Graphics2D g = (Graphics2D) newImage.getGraphics();
-    g.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
-    //  Graphics2D gShadow = (Graphics2D) branchStonesShadowImage.getGraphics();
-    //   gShadow.setRenderingHint(RenderingHints.KEY_RENDERING,
-    // RenderingHints.VALUE_RENDER_QUALITY);
-
     Optional<MoveData> suggestedMove = getBestMove();
     if (Lizzie.config.useMovesOwnership) {
       List<Double> array = getEstimateArray();
       if (array != null) estimateArray = array;
     }
     if (!suggestedMove.isPresent()) {
-      g.setColor(new Color(0, 0, 0, 255));
-      g.setFont(new Font(Config.sysDefaultFontName, Font.BOLD, stoneRadius * 3 / 2));
-      g.drawString(
-          "" + (this.bestmovesNum + 1),
-          boardWidth - stoneRadius * 9 / 5,
-          boardHeight - stoneRadius * 1 / 5);
-
-      branchStonesImage = newImage;
+      publishUnavailableBranchNumber();
       return;
     }
 
     if (!isMouseOver || (statChanged && !wheeled)) {
       if (!isMouseOver) stonesTemp = Lizzie.board.getData().stones;
-      if (suggestedMove.isPresent()) variation = suggestedMove.get().variation;
-      //  variationBlackToPlay =
-      //       Lizzie.board.getHistory().getCurrentHistoryNode().getData().blackToPlay;
+      variation = suggestedMove.get().variation;
       if (statChanged) {
         setDisplayedBranchLength(-2);
         statChanged = false;
       }
     }
     if (variation == null) {
+      publishEmptyBranch();
       return;
     }
-    //  if (!wheeled) oldBlackToPlay = Lizzie.board.getData().blackToPlay;
-    // branch = null;
+
+    BoardHistoryNode branchNode = Lizzie.board.getHistory().getCurrentHistoryNode();
+    if (canReuseBranch(branchNode, variation)) {
+      branchOpt = Optional.of(branch);
+      variationOpt = Optional.of(variation);
+      showingBranch = true;
+      return;
+    }
+
+    BufferedImage newImage = acquireBranchStoneBuffer(boardWidth, boardHeight);
+    Graphics2D g = newImage.createGraphics();
+    g.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
+    g.setRenderingHint(KEY_ANTIALIASING, VALUE_ANTIALIAS_ON);
     branch =
         new Branch(
             Lizzie.board,
@@ -925,83 +931,134 @@ public class SubBoardRenderer {
             stonesTemp,
             false,
             null);
-    //    mouseOverCoords = suggestedMove.get().coordinate;
     branchOpt = Optional.of(branch);
     variationOpt = Optional.of(variation);
-
-    //
-    //    List<String> variation = suggestedMove.get().variation;
-    //    Branch branch = null;
-    //    if (Lizzie.frame.toolbar.isEnginePk && Lizzie.frame.toolbar.isGenmove)
-    //      branch =
-    //          new Branch(
-    //              Lizzie.board,
-    //              variation,
-    //              true,
-    //              this.displayedBranchLength > 0 ? displayedBranchLength : 199);
-    //    else
-    //      branch =
-    //          new Branch(
-    //              Lizzie.board,
-    //              variation,
-    //              reverseBestmoves,
-    //              this.displayedBranchLength > 0 ? displayedBranchLength : 199);
-    //    branchOpt = Optional.of(branch);
-    //    variationOpt = Optional.of(variation);
     showingBranch = true;
 
-    g.setRenderingHint(KEY_ANTIALIASING, VALUE_ANTIALIAS_ON);
+    try {
+      for (int i = 0; i < Board.boardWidth; i++) {
+        for (int j = 0; j < Board.boardHeight; j++) {
+          int index = Board.getIndex(i, j);
+          Stone stone = branch.data.stones[index];
+          if (stonesTemp != null && stonesTemp[index] != Stone.EMPTY) {
+            if (stone == Stone.BLACK_CAPTURED || stone == Stone.WHITE_CAPTURED) {
+              int stoneX = scaledMarginWidth + squareWidth * i;
+              int stoneY = scaledMarginHeight + squareHeight * j;
+              g.setPaint(paint);
+              fillCircle(g, stoneX, stoneY, stoneRadius + 1);
+              g.setColor(Color.BLACK);
+              g.setStroke(new BasicStroke(1));
+              g.drawLine(
+                  stoneX - (i == 0 ? 0 : (stoneRadius + 1)),
+                  stoneY,
+                  stoneX + (i == Board.boardWidth - 1 ? 0 : (stoneRadius + 1)),
+                  stoneY);
+              g.drawLine(
+                  stoneX,
+                  stoneY - (j == 0 ? 0 : (stoneRadius + 1)),
+                  stoneX,
+                  stoneY + (j == Board.boardHeight - 1 ? 0 : (stoneRadius + 1)));
+              drawCapturedStone(g, stoneX, stoneY, stone);
+              continue;
+            }
+          }
+          if (branch.data.moveNumberList[index] > maxBranchMoves()) continue;
 
-    for (int i = 0; i < Board.boardWidth; i++) {
-      for (int j = 0; j < Board.boardHeight; j++) {
-        // Display latest stone for ghost dead stone
-        int index = Board.getIndex(i, j);
-        Stone stone = branch.data.stones[index];
-        if (stonesTemp != null && stonesTemp[index] != Stone.EMPTY) {
+          int stoneX = scaledMarginWidth + squareWidth * i;
+          int stoneY = scaledMarginHeight + squareHeight * j;
           if (stone == Stone.BLACK_CAPTURED || stone == Stone.WHITE_CAPTURED) {
-            int stoneX = scaledMarginWidth + squareWidth * i;
-            int stoneY = scaledMarginHeight + squareHeight * j;
             g.setPaint(paint);
             fillCircle(g, stoneX, stoneY, stoneRadius + 1);
-            g.setColor(Color.BLACK);
-            g.setStroke(new BasicStroke(1));
-            g.drawLine(
-                stoneX - (i == 0 ? 0 : (stoneRadius + 1)),
-                stoneY,
-                stoneX + (i == Board.boardWidth - 1 ? 0 : (stoneRadius + 1)),
-                stoneY);
-            g.drawLine(
-                stoneX,
-                stoneY - (j == 0 ? 0 : (stoneRadius + 1)),
-                stoneX,
-                stoneY + (j == Board.boardHeight - 1 ? 0 : (stoneRadius + 1)));
             drawCapturedStone(g, stoneX, stoneY, stone);
-            continue;
-          }
+          } else drawStone(g, stoneX, stoneY, stone.unGhosted(), i, j);
         }
-        if (branch.data.moveNumberList[index] > maxBranchMoves()) continue;
-
-        int stoneX = scaledMarginWidth + squareWidth * i;
-        int stoneY = scaledMarginHeight + squareHeight * j;
-        if (stone == Stone.BLACK_CAPTURED || stone == Stone.WHITE_CAPTURED) {
-          g.setPaint(paint);
-          fillCircle(g, stoneX, stoneY, stoneRadius + 1);
-          drawCapturedStone(g, stoneX, stoneY, stone);
-        } else drawStone(g, stoneX, stoneY, stone.unGhosted(), i, j);
       }
+      g.setColor(new Color(0, 0, 0, 255));
+      g.setFont(new Font(Config.sysDefaultFontName, Font.BOLD, stoneRadius * 3 / 2));
+      g.drawString(
+          String.valueOf(this.bestmovesNum + 1),
+          boardWidth - stoneRadius * 9 / 5,
+          boardHeight - stoneRadius * 1 / 5);
+    } finally {
+      g.dispose();
     }
-    g = (Graphics2D) newImage.getGraphics();
-    g.setColor(new Color(0, 0, 0, 255));
-    // g.setFont(new Font("幼圆", Font.BOLD, stoneRadius * 5 / 4));
-    //  g.drawString("变化", boardWidth - stoneRadius * 14 / 3, boardWidth - stoneRadius * 2 / 7);
-    g.setFont(new Font(Config.sysDefaultFontName, Font.BOLD, stoneRadius * 3 / 2));
-    g.drawString(
-        String.valueOf(this.bestmovesNum + 1),
-        boardWidth - stoneRadius * 9 / 5,
-        boardHeight - stoneRadius * 1 / 5);
     branchStonesImage = newImage;
-    g.dispose();
-    //   gShadow.dispose();
+    rememberBranch(branchNode, variation);
+  }
+
+  private void publishEmptyBranch() {
+    branchStonesImage = acquireBranchStoneBuffer(boardWidth, boardHeight);
+    branchOpt = Optional.empty();
+    variationOpt = Optional.empty();
+    invalidateBranchCache();
+  }
+
+  private void publishUnavailableBranchNumber() {
+    BufferedImage newImage = acquireBranchStoneBuffer(boardWidth, boardHeight);
+    Graphics2D g = newImage.createGraphics();
+    try {
+      g.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
+      g.setColor(new Color(0, 0, 0, 255));
+      g.setFont(new Font(Config.sysDefaultFontName, Font.BOLD, stoneRadius * 3 / 2));
+      g.drawString(
+          String.valueOf(this.bestmovesNum + 1),
+          boardWidth - stoneRadius * 9 / 5,
+          boardHeight - stoneRadius * 1 / 5);
+    } finally {
+      g.dispose();
+    }
+    branchStonesImage = newImage;
+    branchOpt = Optional.empty();
+    variationOpt = Optional.empty();
+    invalidateBranchCache();
+  }
+
+  private boolean canReuseBranch(BoardHistoryNode node, List<String> candidateVariation) {
+    return !isMouseOver
+        && branch != null
+        && branchOpt.isPresent()
+        && branchStonesImage != emptyImage
+        && cachedBranchNode == node
+        && cachedBranchZhash != null
+        && cachedBranchZhash.equals(node.getData().zobrist)
+        && cachedBranchVariation.equals(candidateVariation)
+        && cachedBranchBestMove == bestmovesNum
+        && cachedBranchDisplayedLength == displayedBranchLength
+        && cachedBranchBoardWidth == boardWidth
+        && cachedBranchBoardHeight == boardHeight
+        && cachedBranchStoneRadius == stoneRadius
+        && cachedBranchBlackToPlay == variationBlackToPlay
+        && cachedBranchRemovesDead == Lizzie.config.removeDeadChainInVariation
+        && cachedBranchNoCapture == Lizzie.config.noCapture;
+  }
+
+  private void rememberBranch(BoardHistoryNode node, List<String> candidateVariation) {
+    if (isMouseOver) {
+      invalidateBranchCache();
+      return;
+    }
+    cachedBranchNode = node;
+    cachedBranchZhash = node.getData().zobrist.clone();
+    cachedBranchVariation = new ArrayList<>(candidateVariation);
+    cachedBranchBestMove = bestmovesNum;
+    cachedBranchDisplayedLength = displayedBranchLength;
+    cachedBranchBoardWidth = boardWidth;
+    cachedBranchBoardHeight = boardHeight;
+    cachedBranchStoneRadius = stoneRadius;
+    cachedBranchBlackToPlay = variationBlackToPlay;
+    cachedBranchRemovesDead = Lizzie.config.removeDeadChainInVariation;
+    cachedBranchNoCapture = Lizzie.config.noCapture;
+  }
+
+  private void invalidateBranchCache() {
+    cachedBranchNode = null;
+    cachedBranchZhash = null;
+    cachedBranchVariation = Collections.emptyList();
+    cachedBranchBestMove = -1;
+    cachedBranchDisplayedLength = Integer.MIN_VALUE;
+    cachedBranchBoardWidth = -1;
+    cachedBranchBoardHeight = -1;
+    cachedBranchStoneRadius = -1;
   }
 
   private Optional<MoveData> getBestMove() {

@@ -4533,6 +4533,10 @@ public class Leelaz {
         || target.displayNode == null) {
       return;
     }
+    BoardData displayData = target.displayNode.getData();
+    if (!AnalysisCandidateValidator.allCandidatesOnEmptyPoints(parsed.moves, displayData)) {
+      return;
+    }
     boolean secondaryDisplay =
         Lizzie.config.isDoubleEngineMode() && Lizzie.leelaz2 != null && this == Lizzie.leelaz2;
     boolean engineGameParticipantToMove = true;
@@ -4551,7 +4555,6 @@ public class Leelaz {
       return;
     }
     List<MoveData> boardMoves = new ArrayList<>(parsed.moves);
-    BoardData displayData = target.displayNode.getData();
     if (secondaryDisplay) {
       if (parsed.kata) {
         displayData.tryToSetBestMoves2FromEngine(
@@ -6281,6 +6284,11 @@ public class Leelaz {
   private void invalidateAnalysisInfoPayloadForLocalStateChange(boolean resetScore) {
     analysisOutputGeneration.incrementAndGet();
     resetAnalysisInfoPayload(resetScore);
+  }
+
+  /** Quarantines the old streaming owner before an asynchronously dispatched local play. */
+  private void retireAnalysisInfoBeforeQueuedPlay() {
+    invalidateAnalysisInfoPayloadForLocalStateChange(false);
   }
 
   private void applyAnalysisStateMutation(AnalysisStateMutation mutation) {
@@ -18618,6 +18626,7 @@ public class Leelaz {
                 || ((Lizzie.config.analyzeBlack && color == Stone.WHITE)
                     || (Lizzie.config.analyzeWhite && color == Stone.BLACK)));
     boolean settleTrackingPonder = hasTrackingStreamSession() && ponderAfterMove;
+    retireAnalysisInfoBeforeQueuedPlay();
     sendCommand(
         "play " + colorString + " " + move,
         settleTrackingPonder ? this::settleTrackingPonderAfterPlayResponse : null);

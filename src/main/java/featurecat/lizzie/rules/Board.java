@@ -2815,7 +2815,7 @@ public class Board {
                   + " "
                   + localMovePlaceState(forSync));
         }
-        Lizzie.frame.refresh();
+        Lizzie.frame.refreshAfterMove();
         return;
       }
       // load a copy of the data at the current node of history
@@ -3011,7 +3011,7 @@ public class Board {
       if (needGenmove) Lizzie.leelaz.genmove((color.isWhite() ? "B" : "W"));
       //   modifyEnd(false);
       if (Lizzie.config.playSound) Utils.playVoiceFile();
-      if (!forSync) Lizzie.frame.refresh();
+      if (!forSync) Lizzie.frame.refreshAfterMove();
     }
   }
 

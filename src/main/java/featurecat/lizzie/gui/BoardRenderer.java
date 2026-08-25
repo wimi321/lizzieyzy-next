@@ -8,6 +8,7 @@ import static java.lang.Math.min;
 import static java.lang.Math.round;
 
 import featurecat.lizzie.Lizzie;
+import featurecat.lizzie.analysis.AnalysisCandidateValidator;
 import featurecat.lizzie.analysis.Branch;
 import featurecat.lizzie.analysis.EngineManager;
 import featurecat.lizzie.analysis.Leelaz;
@@ -1573,6 +1574,11 @@ public class BoardRenderer {
         } else preEstimateArray = null;
       }
     }
+    if (!shouldShowPreviousBestMoves()) {
+      bestMoves =
+          AnalysisCandidateValidator.withoutOccupiedCandidates(
+              bestMoves, Lizzie.frame.getDisplayNode().getData());
+    }
 
     //    if ((Lizzie.board.getHistory().isBlacksTurn()
     //            && !Lizzie.frame.toolbar.chkShowBlack.isSelected())
@@ -1729,11 +1735,18 @@ public class BoardRenderer {
 
     g.setRenderingHint(KEY_ANTIALIASING, VALUE_ANTIALIAS_ON);
     drawShadowCache();
+    boolean overlayOnCachedStones =
+        canOverlayBranchOnCachedStones(Lizzie.frame.getDisplayNode().getData(), branch);
+    if (overlayOnCachedStones) {
+      g.drawImage(cachedStonesImage, 0, 0, null);
+      gShadow.drawImage(cachedStonesShadowImage, 0, 0, null);
+    }
     if (Lizzie.config.usePureStone) {
       for (int i = 0; i < Board.boardWidth; i++) {
         for (int j = 0; j < Board.boardHeight; j++) {
           // Display latest stone for ghost dead stone
           int index = Board.getIndex(i, j);
+          if (overlayOnCachedStones && !branch.isNewStone[index]) continue;
           Stone stone = branch.data.stones[index];
           if (!Lizzie.config.removeDeadChainInVariation && !shouldShowPreviousBestMoves())
             if (Lizzie.board.getData().stones[index] != Stone.EMPTY) continue;
@@ -1765,6 +1778,7 @@ public class BoardRenderer {
       for (int i = 0; i < Board.boardWidth; i++) {
         for (int j = 0; j < Board.boardHeight; j++) {
           int index = Board.getIndex(i, j);
+          if (overlayOnCachedStones && !branch.isNewStone[index]) continue;
           Stone stone = branch.data.stones[index];
           if (!Lizzie.config.removeDeadChainInVariation && !shouldShowPreviousBestMoves())
             if (Lizzie.board.getData().stones[index] != Stone.EMPTY) continue;
@@ -1798,6 +1812,39 @@ public class BoardRenderer {
     gShadow.dispose();
     branchStonesImage = tempBranchStonesImage;
     branchStonesShadowImage = tempBranchStonesShadowImage;
+  }
+
+  private boolean canOverlayBranchOnCachedStones(BoardData sourceData, Branch candidateBranch) {
+    return Lizzie.config.removeDeadChainInVariation
+        && !shouldShowPreviousBestMoves()
+        && cachedStonesImage.getWidth() == boardWidth
+        && cachedStonesImage.getHeight() == boardHeight
+        && cachedStonesShadowImage.getWidth() == boardWidth
+        && cachedStonesShadowImage.getHeight() == boardHeight
+        && cachedZhash.equals(sourceData.zobrist)
+        && branchPreservesExistingStones(
+            sourceData.stones, candidateBranch.data.stones, candidateBranch.isNewStone);
+  }
+
+  static boolean branchPreservesExistingStones(
+      Stone[] sourceStones, Stone[] branchStones, boolean[] newStones) {
+    if (sourceStones == null
+        || branchStones == null
+        || newStones == null
+        || sourceStones.length != branchStones.length
+        || sourceStones.length != newStones.length) {
+      return false;
+    }
+    for (int index = 0; index < sourceStones.length; index++) {
+      boolean changedExistingStone =
+          sourceStones[index] != Stone.EMPTY && sourceStones[index] != branchStones[index];
+      boolean untrackedChange =
+          !newStones[index] && sourceStones[index] != branchStones[index];
+      if (changedExistingStone || untrackedChange) {
+        return false;
+      }
+    }
+    return true;
   }
 
   private boolean isSuggestionHoverPreviewReady() {
@@ -2321,6 +2368,10 @@ public class BoardRenderer {
         if (heatcount.get(i) > 0) {
           int y1 = i / Board.boardWidth;
           int x1 = i % Board.boardWidth;
+          if (!AnalysisCandidateValidator.isEmptyPoint(
+              displayNode.getData(), new int[] {x1, y1})) {
+            continue;
+          }
           int suggestionX = x + scaledMarginWidth + squareWidth * x1;
           int suggestionY = y + scaledMarginHeight + squareHeight * y1;
           double percent = ((double) heatcount.get(i)) / maxPolicy;
@@ -4731,6 +4782,10 @@ public class BoardRenderer {
 
   public boolean isInside(int x1, int y1) {
     return x <= x1 && x1 < x + boardWidth && y <= y1 && y1 < y + boardHeight;
+  }
+
+  Rectangle getBoardBounds() {
+    return new Rectangle(x, y, boardWidth, boardHeight);
   }
 
   private boolean showCoordinates() {
