@@ -23,6 +23,7 @@ import featurecat.lizzie.rules.Stone;
 import featurecat.lizzie.rules.Zobrist;
 import featurecat.lizzie.training.HumanSlTrainingConfig;
 import featurecat.lizzie.training.HumanSlTrainingSession;
+import featurecat.lizzie.training.TrainingMode;
 import java.awt.Window;
 import java.awt.event.KeyEvent;
 import java.io.IOException;
@@ -156,6 +157,99 @@ class HumanSlGameControllerIntegrationTest {
 
       assertTrue(engine.pondering);
       assertEquals(1, engine.resumeCount.get());
+    }
+  }
+
+  @Test
+  void liveAnalysisResumesThePrimaryAndForwardsMovesWithoutCorrectionDelay() throws Exception {
+    try (CoachEnvironment env = CoachEnvironment.open()) {
+      TrackingLeelaz engine = new TrackingLeelaz();
+      Lizzie.leelaz = engine;
+      engine.pondering = true;
+      Lizzie.config.showBlackCandidates = false;
+      Lizzie.config.showWhiteCandidates = false;
+      Lizzie.config.analyzeBlack = false;
+      Lizzie.config.analyzeWhite = false;
+      ForegroundAnalysisPause pause =
+          ForegroundAnalysisPause.acquire(
+              () -> Lizzie.leelaz == engine,
+              engine::isPondering,
+              engine::notPondering,
+              engine::ponder);
+      BlockingHumanSlRunner runner = new BlockingHumanSlRunner();
+      HumanSlGameController controller =
+          new HumanSlGameController(
+              runner,
+              HumanSlTrainingConfig.builder()
+                  .mode(TrainingMode.LIVE_ANALYSIS)
+                  .playerColor(HumanSlTrainingConfig.PlayerColor.BLACK)
+                  .fromCurrentPosition(true)
+                  .moveTimeSeconds(2)
+                  .build(),
+              new HumanSlTrainingSession());
+      AtomicInteger resyncs = new AtomicInteger();
+      controller.setExitLifecyclePreparationForTesting(
+          Runnable::run,
+          Runnable::run,
+          () -> {
+            resyncs.incrementAndGet();
+            return () -> true;
+          },
+          null);
+
+      controller.start(pause.transferRestoreResponsibility());
+
+      assertTrue(engine.pondering);
+      assertEquals(1, engine.resumeCount.get());
+      assertEquals(1, resyncs.get());
+      assertTrue(Lizzie.config.showBlackCandidates);
+      assertTrue(Lizzie.config.showWhiteCandidates);
+      assertTrue(Lizzie.config.analyzeBlack);
+      assertTrue(Lizzie.config.analyzeWhite);
+
+      controller.humanPass();
+
+      assertTrue(runner.awaitRequest(), "the human move must proceed straight to the AI turn");
+      assertEquals(1, engine.forwardedMoves.get());
+      assertEquals(1, Lizzie.board.getHistory().getMoveNumber());
+
+      controller.abort();
+
+      assertEquals(2, resyncs.get());
+      assertTrue(engine.pondering, "analysis that was active before AI Coach must stay active");
+      assertFalse(Lizzie.config.showBlackCandidates);
+      assertFalse(Lizzie.config.showWhiteCandidates);
+      assertFalse(Lizzie.config.analyzeBlack);
+      assertFalse(Lizzie.config.analyzeWhite);
+    }
+  }
+
+  @Test
+  void liveAnalysisStartedForAnIdlePrimaryIsStoppedAgainOnExit() throws Exception {
+    try (CoachEnvironment env = CoachEnvironment.open()) {
+      TrackingLeelaz engine = new TrackingLeelaz();
+      Lizzie.leelaz = engine;
+      HumanSlGameController controller =
+          new HumanSlGameController(
+              new BlockingHumanSlRunner(),
+              HumanSlTrainingConfig.builder()
+                  .mode(TrainingMode.LIVE_ANALYSIS)
+                  .playerColor(HumanSlTrainingConfig.PlayerColor.BLACK)
+                  .fromCurrentPosition(true)
+                  .moveTimeSeconds(2)
+                  .build(),
+              new HumanSlTrainingSession());
+      controller.setExitLifecycleForTesting(
+          Runnable::run, Runnable::run, () -> true, null);
+
+      controller.start(ForegroundAnalysisPause.RestoreLease.inactive());
+
+      assertTrue(engine.pondering);
+      assertEquals(1, engine.resumeCount.get());
+
+      controller.abort();
+
+      assertFalse(engine.pondering, "AI Coach must restore an originally idle primary");
     }
   }
 
@@ -763,7 +857,7 @@ class HumanSlGameControllerIntegrationTest {
   }
 
   @Test
-  void resignReturnsToMainBoardWithResultAndWithoutReportState() throws Exception {
+  void legacyResignAliasHasTheSameResultAsFinish() throws Exception {
     try (CoachEnvironment env = CoachEnvironment.open()) {
       HumanSlTrainingSession session = new HumanSlTrainingSession();
       List<HumanSlTrainingSession.State> sessionStates = new ArrayList<>();
@@ -780,15 +874,15 @@ class HumanSlGameControllerIntegrationTest {
       controller.setExitLifecycleForTesting(Runnable::run, Runnable::run, () -> true, null);
       session.setState(HumanSlTrainingSession.State.PLAYING);
       Lizzie.frame.humanSlGame = controller;
+      String resultBefore = Lizzie.board.getHistory().getGameInfo().getResult();
 
       controller.humanResign();
 
       assertTrue(controller.isFinished());
       assertNull(Lizzie.frame.humanSlGame);
       assertEquals(HumanSlTrainingSession.State.FINISHED, session.state());
-      assertFalse(controller.gameResult().isBlank());
-      assertEquals(
-          controller.gameResult(), Lizzie.board.getHistory().getGameInfo().getResult());
+      assertTrue(controller.gameResult().isBlank());
+      assertEquals(resultBefore, Lizzie.board.getHistory().getGameInfo().getResult());
       assertFalse(sessionStates.contains(HumanSlTrainingSession.State.REVIEWING));
       assertFalse(sessionStates.contains(HumanSlTrainingSession.State.REPORT_READY));
     }
@@ -1578,9 +1672,6 @@ class HumanSlGameControllerIntegrationTest {
     public void hideHumanSlTrainingBar(HumanSlGameController controller) {}
 
     @Override
-    public void hideHumanSlCorrection(HumanSlGameController controller) {}
-
-    @Override
     public void updateHumanSlTrainingBar() {}
 
     @Override
@@ -1685,6 +1776,7 @@ class HumanSlGameControllerIntegrationTest {
 
   private static final class TrackingLeelaz extends Leelaz {
     private final AtomicInteger resumeCount = new AtomicInteger();
+    private final AtomicInteger forwardedMoves = new AtomicInteger();
     private final List<String> lifecycleEvents;
     private boolean pondering;
 
@@ -1695,6 +1787,16 @@ class HumanSlGameControllerIntegrationTest {
     private TrackingLeelaz(List<String> lifecycleEvents) throws IOException {
       super("");
       this.lifecycleEvents = lifecycleEvents;
+    }
+
+    @Override
+    public boolean isStarted() {
+      return true;
+    }
+
+    @Override
+    public boolean isLoaded() {
+      return true;
     }
 
     @Override
@@ -1714,6 +1816,11 @@ class HumanSlGameControllerIntegrationTest {
     @Override
     public void notPondering() {
       pondering = false;
+    }
+
+    @Override
+    public void playMove(Stone color, String move) {
+      forwardedMoves.incrementAndGet();
     }
 
     @Override

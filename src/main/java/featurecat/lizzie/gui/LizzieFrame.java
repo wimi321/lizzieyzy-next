@@ -45,7 +45,6 @@ import featurecat.lizzie.rules.Stone;
 import featurecat.lizzie.rules.Zobrist;
 import featurecat.lizzie.theme.MorandiPalette;
 import featurecat.lizzie.teacher.CommentDisplayRenderer;
-import featurecat.lizzie.training.HumanMoveDecision;
 import featurecat.lizzie.training.HumanSlTrainingSession;
 import featurecat.lizzie.util.GraphicsDriverDiagnostics;
 import featurecat.lizzie.util.KataGoAutoSetupHelper;
@@ -477,7 +476,6 @@ public class LizzieFrame extends JFrame {
   public HumanSlGameController humanSlGame = null;
   private HumanSlTrainingSession humanSlTrainingSession = new HumanSlTrainingSession();
   private HumanSlTrainingBar humanSlTrainingBar;
-  private HumanSlCorrectionPanel humanSlCorrectionPanel;
   private NewHumanSlGameDialog humanSlSetupDialog;
   private boolean startHumanSlAtCurrentRequested;
   public boolean playerIsBlack = true;
@@ -854,7 +852,6 @@ public class LizzieFrame extends JFrame {
     topPanel = new TopHeaderPanel();
     menu = new Menu();
     humanSlTrainingBar = new HumanSlTrainingBar();
-    humanSlCorrectionPanel = new HumanSlCorrectionPanel();
     menuPresentationMode = MenuPresentationMode.detectCurrent();
     windowMenuStrip = new WindowMenuStrip(menu);
     RightClickMenu = new RightClickMenu();
@@ -1928,7 +1925,6 @@ public class LizzieFrame extends JFrame {
           }
         });
     basePanel.add(engineStartupStatusButton, Integer.valueOf(12));
-    basePanel.add(humanSlCorrectionPanel, Integer.valueOf(14));
     basePanel.add(humanSlTrainingBar, Integer.valueOf(13));
     basePanel.add(commentBlunderControlPane, Integer.valueOf(10));
     basePanel.add(tempGamePanelAll, Integer.valueOf(9));
@@ -11516,17 +11512,6 @@ public class LizzieFrame extends JFrame {
     }
   }
 
-  public void showHumanSlCorrection(
-      HumanSlGameController controller, HumanMoveDecision decision) {
-    humanSlCorrectionPanel.showDecision(controller, decision);
-    reSetLoc();
-  }
-
-  public void hideHumanSlCorrection(HumanSlGameController controller) {
-    humanSlCorrectionPanel.dismiss(controller);
-    repaint();
-  }
-
   public void startEngineGameDialog() {
     if (deferUntilHumanSlExit(this::startEngineGameDialog)) {
       return;
@@ -12432,7 +12417,6 @@ public class LizzieFrame extends JFrame {
                     - toolbarHeight,
                 width,
                 toolbarHeight);
-            layoutHumanSlCorrection(width, trainingBarHeight);
             layoutEngineStartupStatus(width);
             if (toolbar.showDetail) toolbar.setDetailIcon();
             toolbar.reSetButtonLocation();
@@ -12445,19 +12429,6 @@ public class LizzieFrame extends JFrame {
             }
           }
         });
-  }
-
-  private void layoutHumanSlCorrection(int contentWidth, int trainingBarHeight) {
-    if (humanSlCorrectionPanel == null || !humanSlCorrectionPanel.isVisible()) {
-      return;
-    }
-    int width = Math.min(330, Math.max(270, contentWidth / 4));
-    int height = 205;
-    int x = Math.max(12, contentWidth - width - 22);
-    int contentHeight =
-        getHeight() - getInsets().top - getInsets().bottom - toolbarHeight - trainingBarHeight;
-    int y = Math.max(windowMenuHeight + topPanelHeight + 16, (contentHeight - height) / 2);
-    humanSlCorrectionPanel.setBounds(x, y, width, height);
   }
 
   public void testFilter(Integer txtFieldIntValue) {

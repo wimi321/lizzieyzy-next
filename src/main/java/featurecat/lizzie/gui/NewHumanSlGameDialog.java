@@ -196,7 +196,7 @@ public final class NewHumanSlGameDialog extends JDialog {
     String subtitleText =
         text(
             "HumanSlTraining.subtitle",
-            "Choose an opponent that matches your level, then review the important positions.");
+            "Choose a fitting human-style opponent, play on the main board, and review the game there afterward.");
     JLabel subtitle = new JFontLabel(subtitleText);
     subtitle.setFont(
         HumanSlTrainingStyle.fontForText(
@@ -277,7 +277,7 @@ public final class NewHumanSlGameDialog extends JDialog {
 
   private void populateControls() {
     trainingModeBox.addItem(text("HumanSlTraining.mode.review", "Post-game review"));
-    trainingModeBox.addItem(text("HumanSlTraining.mode.live", "Coach while playing"));
+    trainingModeBox.addItem(text("HumanSlTraining.mode.live", "Live analysis"));
 
     rankPresetButton.setText(text("HumanSlTraining.opponent.rank", "By rank"));
     proPresetButton.setText(text("HumanSlTraining.opponent.pro", "Pro style"));
@@ -595,8 +595,8 @@ public final class NewHumanSlGameDialog extends JDialog {
                     ? "HumanSlTraining.summary.live"
                     : "HumanSlTraining.summary.review",
                 trainingModeBox.getSelectedIndex() == 1
-                    ? "Play {0} at {1}; clear mistakes are shown without interrupting the game."
-                    : "Play {0} at {1}; review the key positions after the game."),
+                    ? "Play {0} at {1} with live candidate suggestions on the board."
+                    : "Play {0} at {1}, then review the game on the main board."),
             opponent,
             time));
   }
@@ -1700,7 +1700,10 @@ public final class NewHumanSlGameDialog extends JDialog {
     int handicap = selectedHandicap();
     double komi = Utils.parseTextToDouble(komiField, handicap >= 2 ? 0.0 : 7.5);
     return HumanSlTrainingConfig.builder()
-        .mode(trainingModeBox.getSelectedIndex() == 1 ? TrainingMode.LIVE_CORRECTION : TrainingMode.POST_GAME_REVIEW)
+        .mode(
+            trainingModeBox.getSelectedIndex() == 1
+                ? TrainingMode.LIVE_ANALYSIS
+                : TrainingMode.POST_GAME_REVIEW)
         .opponentPreset(preset)
         .rank(((Number) rankSpinner.getValue()).intValue(), danButton.isSelected())
         .playerColor(color)
