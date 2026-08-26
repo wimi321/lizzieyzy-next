@@ -2090,7 +2090,9 @@ public class KataGoRuntimeHelperTest {
     Path root = Files.createTempDirectory("katago-cuda-probe-command");
     Path engine = Files.writeString(root.resolve("katago.exe"), "engine");
     Path model = Files.writeString(root.resolve("model.bin.gz"), "model");
-    Path config = Files.writeString(root.resolve("gtp.cfg"), "config");
+    Path config =
+        Files.writeString(
+            root.resolve("analysis.cfg"), "numSearchThreadsPerAnalysisThread = 16\n");
     KataGoRuntimeHelper.CudaCompatibilityProbeInputs inputs =
         KataGoRuntimeHelper.resolveCudaCompatibilityProbeInputs(
             engine,
@@ -2110,6 +2112,9 @@ public class KataGoRuntimeHelperTest {
     assertEquals("1", command.get(command.indexOf("-t") + 1));
     assertTrue(command.contains("-no-server-thread-test"));
     assertTrue(command.contains("-no-half-batch-size-test"));
+    assertTrue(
+        command.get(command.indexOf("-override-config") + 1).contains("numSearchThreads=1"),
+        "KataGo benchmark requires numSearchThreads even when the source is an analysis config.");
   }
 
   @Test

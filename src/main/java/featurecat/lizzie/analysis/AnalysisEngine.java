@@ -1152,6 +1152,7 @@ public class AnalysisEngine {
       return;
     }
     startRequestAllBranchesNow(showProgressDialog);
+    finishSuccessfulEmptyRequestIfNeeded();
   }
 
   private void startRequestAllBranchesNow(boolean showProgressDialog) {
@@ -1184,6 +1185,7 @@ public class AnalysisEngine {
       return;
     }
     startRequestNow(startMove, endMove, showProgressDialog);
+    finishSuccessfulEmptyRequestIfNeeded();
   }
 
   private void startRequestNow(int startMove, int endMove, boolean showProgressDialog) {
@@ -1274,7 +1276,7 @@ public class AnalysisEngine {
       startRequestNow(target.startMove, target.endMove, target.showProgressDialog);
     }
     if (!requestDispatchFailed && analyzeMap.isEmpty()) {
-      finishSuccessfulEmptyForegroundRequest();
+      finishSuccessfulEmptyRequest();
       return true;
     }
     if (!beginSharedForegroundRulesCapture()) {
@@ -1284,13 +1286,31 @@ public class AnalysisEngine {
     return true;
   }
 
-  private void finishSuccessfulEmptyForegroundRequest() {
+  private void finishSuccessfulEmptyRequestIfNeeded() {
+    if (!requestDispatchFailed
+        && analyzeMap.isEmpty()
+        && !Lizzie.frame.isBatchAnalysisMode) {
+      finishSuccessfulEmptyRequest();
+    }
+  }
+
+  private void finishSuccessfulEmptyRequest() {
     Runnable finishSuccessfulRequest =
         () -> {
           WaitForAnalysis completedFrame = waitFrame;
           if (completedFrame != null) {
             javax.swing.SwingUtilities.invokeLater(() -> completedFrame.setVisible(false));
           }
+          boolean shouldKeepAlive =
+              !isAutomaticBackgroundTask() && (persistentPreload || keepAliveAfterCurrentRequest);
+          keepAliveAfterCurrentRequest = false;
+          if ((Lizzie.config.analysisAutoQuit || isAutomaticBackgroundTask())
+              && !Lizzie.frame.isBatchAna
+              && !shouldKeepAlive
+              && sharedForegroundEngine == null) {
+            normalQuit();
+          }
+          resumeForegroundAnalysisIfRequested();
           runCompletionCallback();
         };
     if (!releaseSharedForegroundLease(

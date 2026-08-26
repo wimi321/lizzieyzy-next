@@ -953,6 +953,9 @@ public final class KataGoRuntimeHelper {
     return KataGoCommandSpec.parse(command)
         .withForcedOverrides(
             Map.of(
+                // The benchmark subcommand requires this GTP key even when -t limits the probe.
+                // Analysis configs normally provide only numSearchThreadsPerAnalysisThread.
+                "numSearchThreads", "1",
                 "logToStderr", "false",
                 "logAllGTPCommunication", "false",
                 "logSearchInfo", "false"));

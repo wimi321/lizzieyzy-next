@@ -1468,6 +1468,40 @@ class AnalysisEngineRequestTest {
   }
 
   @Test
+  void visibleMainlineRequestWithNoPendingPositionsClosesAndRestoresForeground()
+      throws Exception {
+    try (TestEnvironment env = TestEnvironment.open()) {
+      Lizzie.config.analysisAutoQuit = false;
+      boardWithHistory(new BoardHistoryList(BoardData.empty(BOARD_SIZE, BOARD_SIZE)));
+      PonderTrackingLeelaz foreground = allocate(PonderTrackingLeelaz.class);
+      foreground.pondering = true;
+      Lizzie.leelaz = foreground;
+      TrackingAnalysisEngine engine = TrackingAnalysisEngine.create();
+      setField(
+          AnalysisEngine.class,
+          engine,
+          "purpose",
+          AnalysisResourceCoordinator.Purpose.USER_QUICK_ANALYSIS);
+      TrackingWaitForAnalysis waitFrame = allocate(TrackingWaitForAnalysis.class);
+      waitFrame.setVisible(true);
+      engine.waitFrame = waitFrame;
+      AtomicInteger completions = new AtomicInteger();
+      engine.setCompletionCallback(completions::incrementAndGet);
+
+      engine.startRequest(-1, -1, true);
+      javax.swing.SwingUtilities.invokeAndWait(() -> {});
+
+      assertEquals(0, engine.requestCount());
+      assertEquals(2, waitFrame.visibilityCalls);
+      assertFalse(waitFrame.lastVisible);
+      assertEquals(1, completions.get());
+      assertEquals(1, foreground.notPonderingCalls);
+      assertEquals(1, foreground.ponderCalls);
+      assertTrue(foreground.pondering);
+    }
+  }
+
+  @Test
   void startRequestSkipsSnapshotRootOnlyHistory() throws Exception {
     try (TestEnvironment env = TestEnvironment.open()) {
       BoardHistoryList history =
