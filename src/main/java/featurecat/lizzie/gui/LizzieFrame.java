@@ -15950,22 +15950,7 @@ public class LizzieFrame extends JFrame {
   }
 
   private static String playerStrengthRankValueText(double rankValue) {
-    boolean chinese = Lizzie.config != null && Lizzie.config.isChinese;
-    double value = Math.max(-18.0, Math.min(12.0, rankValue));
-    if (value >= 12.0) {
-      return String.format(
-          Locale.US, "%.1f %s", value, chinese ? "\u534a\u795e/AI" : "semi-god/AI");
-    }
-    if (value >= 11.0) {
-      return String.format(
-          Locale.US, "%.1f %s", value, chinese ? "\u4e00\u7ebf\u804c\u4e1a" : "top pro");
-    }
-    if (value >= 10.0) {
-      return String.format(Locale.US, "%.1f %s", value, chinese ? "\u804c\u4e1a" : "pro");
-    }
-    return chinese
-        ? String.format(Locale.US, "%.1f\u6bb5", Math.max(1.0, value))
-        : String.format(Locale.US, "Fox %.1f dan", Math.max(1.0, value));
+    return PlayerStrengthRankFormatter.format(rankValue, Lizzie.resourceBundle);
   }
 
   private static String playerStrengthRankRangeText(String raw, String type, boolean chinese) {
