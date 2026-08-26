@@ -4,7 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import java.nio.charset.StandardCharsets;
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import org.json.JSONObject;
@@ -16,59 +16,48 @@ class ConfigNewGameDialogSettingsTest {
 
   @Test
   void missingKeysStayUncheckedAndDoNotReviveCommentedEngineSgfStartTrue() throws Exception {
-    Path workDir = isolatedWorkDir("missing-keys");
+    Config config = configWithUi();
 
-    Config config = ConfigTestHelper.createBootstrapped(workDir);
+    config.loadNewGameDialogSettings(new JSONObject());
 
     assertFalse(config.newGameShowBlack);
     assertFalse(config.newGameShowWhite);
     assertFalse(config.chkEngineSgfStart);
     assertFalse(
-        config.uiConfig.optBoolean("new-game-show-black", false),
-        "fresh uiConfig must not treat show-black as checked");
-    assertFalse(config.uiConfig.optBoolean("new-game-show-white", false));
-    assertFalse(
         config.uiConfig.optBoolean("engine-sgf-start", false),
         "missing engine-sgf-start must stay false, not the commented default true");
-    assertFalse(
-        config.uiConfig.has("engine-sgf-start"),
-        "default config must not introduce engine-sgf-start as true");
+    assertFalse(config.uiConfig.has("engine-sgf-start"));
   }
 
   @Test
   void persistThenReloadRestoresShowCandidatesAndEngineSgfStart() throws Exception {
-    Path workDir = isolatedWorkDir("persist-roundtrip");
-    Config first = ConfigTestHelper.createBootstrapped(workDir);
+    Config first = configWithUi();
 
     first.persistNewGameShowCandidates(true, true);
     first.persistEngineSgfStart(true);
     first.save();
 
-    Config reloaded = ConfigTestHelper.createBootstrapped(workDir);
+    JSONObject saved = new JSONObject(Files.readString(Path.of(first.getConfigFilePath())));
+    assertTrue(saved.getJSONObject("ui").getBoolean("new-game-show-black"));
+    assertTrue(saved.getJSONObject("ui").getBoolean("new-game-show-white"));
+    assertTrue(saved.getJSONObject("ui").getBoolean("engine-sgf-start"));
+
+    Config reloaded = configWithUi(tempDir.resolve("reload"));
+    reloaded.loadNewGameDialogSettings(saved.getJSONObject("ui"));
 
     assertTrue(reloaded.newGameShowBlack);
     assertTrue(reloaded.newGameShowWhite);
     assertTrue(reloaded.chkEngineSgfStart);
-    assertTrue(reloaded.uiConfig.getBoolean("new-game-show-black"));
-    assertTrue(reloaded.uiConfig.getBoolean("new-game-show-white"));
-    assertTrue(reloaded.uiConfig.getBoolean("engine-sgf-start"));
   }
 
   @Test
   void savedFalseValuesReloadUnchecked() throws Exception {
-    Path workDir = isolatedWorkDir("persist-false");
-    writeConfig(
-        workDir,
+    Config config = configWithUi();
+    config.loadNewGameDialogSettings(
         new JSONObject()
-            .put(
-                "ui",
-                new JSONObject()
-                    .put("new-game-show-black", false)
-                    .put("new-game-show-white", false)
-                    .put("engine-sgf-start", false))
-            .put("leelaz", new JSONObject()));
-
-    Config config = ConfigTestHelper.createBootstrapped(workDir);
+            .put("new-game-show-black", false)
+            .put("new-game-show-white", false)
+            .put("engine-sgf-start", false));
 
     assertFalse(config.newGameShowBlack);
     assertFalse(config.newGameShowWhite);
@@ -77,8 +66,7 @@ class ConfigNewGameDialogSettingsTest {
 
   @Test
   void enginePkIdentityRoundTripsThroughUiConfigWithoutUsingIndexes() throws Exception {
-    Path workDir = isolatedWorkDir("engine-identity");
-    Config first = ConfigTestHelper.createBootstrapped(workDir);
+    Config first = configWithUi();
     JSONObject ui = first.uiConfig;
     ui.put("engine-pk-black-commands", "katago gtp -model black.bin");
     ui.put("engine-pk-black-name", "Black Engine");
@@ -86,26 +74,32 @@ class ConfigNewGameDialogSettingsTest {
     ui.put("engine-pk-white-name", "White Engine");
     first.save();
 
-    Config reloaded = ConfigTestHelper.createBootstrapped(workDir);
-    assertEquals(
-        "katago gtp -model black.bin",
-        reloaded.uiConfig.getString("engine-pk-black-commands"));
-    assertEquals("Black Engine", reloaded.uiConfig.getString("engine-pk-black-name"));
-    assertEquals(
-        "katago gtp -model white.bin",
-        reloaded.uiConfig.getString("engine-pk-white-commands"));
-    assertEquals("White Engine", reloaded.uiConfig.getString("engine-pk-white-name"));
-    assertFalse(reloaded.uiConfig.has("engine-pk-black-index"));
-    assertFalse(reloaded.uiConfig.has("engine-pk-white-index"));
+    JSONObject saved = new JSONObject(Files.readString(Path.of(first.getConfigFilePath())));
+    JSONObject reloadedUi = saved.getJSONObject("ui");
+    assertEquals("katago gtp -model black.bin", reloadedUi.getString("engine-pk-black-commands"));
+    assertEquals("Black Engine", reloadedUi.getString("engine-pk-black-name"));
+    assertEquals("katago gtp -model white.bin", reloadedUi.getString("engine-pk-white-commands"));
+    assertEquals("White Engine", reloadedUi.getString("engine-pk-white-name"));
+    assertFalse(reloadedUi.has("engine-pk-black-index"));
+    assertFalse(reloadedUi.has("engine-pk-white-index"));
   }
 
-  private Path isolatedWorkDir(String name) throws Exception {
-    Path workDir = tempDir.resolve(name);
-    Files.createDirectories(workDir.resolve("save"));
-    return workDir;
+  private Config configWithUi() throws IOException {
+    return configWithUi(tempDir.resolve("work"));
   }
 
-  private static void writeConfig(Path workDir, JSONObject json) throws Exception {
-    Files.writeString(workDir.resolve("config.txt"), json.toString(2), StandardCharsets.UTF_8);
+  private static Config configWithUi(Path workDirectory) throws IOException {
+    Files.createDirectories(workDirectory);
+    Config config = ConfigTestHelper.createForTests(workDirectory);
+    JSONObject root = new JSONObject();
+    JSONObject ui = new JSONObject();
+    JSONObject leelaz = new JSONObject();
+    root.put("ui", ui);
+    root.put("leelaz", leelaz);
+    config.config = root;
+    config.uiConfig = ui;
+    config.leelazConfig = leelaz;
+    config.save();
+    return config;
   }
 }

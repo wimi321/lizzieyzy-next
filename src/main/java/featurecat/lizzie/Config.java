@@ -1696,8 +1696,7 @@ public class Config {
 
     checkPlayBlack = uiConfig.optBoolean("check-play-black", true);
     checkContinuePlay = uiConfig.optBoolean("check-continue-play", false);
-    newGameShowBlack = uiConfig.optBoolean("new-game-show-black", false);
-    newGameShowWhite = uiConfig.optBoolean("new-game-show-white", false);
+    loadNewGameDialogSettings(uiConfig);
     genmoveGameNoTime = uiConfig.optBoolean("genmove-game-notime", false);
     newGameKomi = uiConfig.optDouble("new-game-komi", 7.5);
     newGameHandicap = uiConfig.optInt("new-game-handicap", 0);
@@ -2089,8 +2088,8 @@ public class Config {
     useTerritoryInScore = uiConfig.optBoolean("use-territory-in-score", false);
 
     // Missing-key default must stay false / unchecked. Do not revive the old
-    // commented default of true: chkEngineSgfStart = uiConfig.optBoolean("engine-sgf-start", true);
-    chkEngineSgfStart = uiConfig.optBoolean("engine-sgf-start", false);
+    // commented default of true: chkEngineSgfStart = uiConfig.optBoolean("engine-sgf-start", true).
+    // chkEngineSgfStart is loaded in loadNewGameDialogSettings().
     engineSgfStartRandom = uiConfig.optBoolean("engine-sgf-random", true);
 
 
@@ -3487,6 +3486,22 @@ public class Config {
     if (uiConfig != null) {
       uiConfig.put("engine-sgf-start", enabled);
     }
+  }
+
+  /**
+   * Loads New Game dialog settings from {@code ui}. Missing keys stay unchecked / false, including
+   * {@code engine-sgf-start} (do not use the old commented default of {@code true}).
+   */
+  void loadNewGameDialogSettings(JSONObject ui) {
+    if (ui == null) {
+      newGameShowBlack = false;
+      newGameShowWhite = false;
+      chkEngineSgfStart = false;
+      return;
+    }
+    newGameShowBlack = ui.optBoolean("new-game-show-black", false);
+    newGameShowWhite = ui.optBoolean("new-game-show-white", false);
+    chkEngineSgfStart = ui.optBoolean("engine-sgf-start", false);
   }
 
   public void save() throws IOException {
