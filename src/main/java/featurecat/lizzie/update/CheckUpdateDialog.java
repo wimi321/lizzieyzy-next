@@ -13,6 +13,8 @@ import java.awt.Font;
 import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
 import java.awt.Insets;
+import java.awt.event.WindowAdapter;
+import java.awt.event.WindowEvent;
 import javax.swing.BorderFactory;
 import javax.swing.Box;
 import javax.swing.BoxLayout;
@@ -24,7 +26,7 @@ import javax.swing.SwingConstants;
 import javax.swing.SwingUtilities;
 
 /** 检查更新页: current version, 更新通道, 更新源, and Check. Opening the page does not use the network. */
-public final class CheckUpdateDialog extends JDialog {
+public final class CheckUpdateDialog extends JDialog implements UpdateCheckCoordinator.Page {
   private static final Color PAGE_BACKGROUND = new Color(246, 247, 249);
   private static final Color MUTED_TEXT = new Color(90, 96, 104);
 
@@ -36,6 +38,10 @@ public final class CheckUpdateDialog extends JDialog {
       channelRadio(UpdateText.tr("WindowsUpdate.source.official", "官网", "Official site"));
   private final JRadioButton githubSourceButton =
       channelRadio(UpdateText.tr("WindowsUpdate.source.github", "GitHub", "GitHub"));
+  private final JFontButton checkButton =
+      new JFontButton(UpdateText.tr("WindowsUpdate.btnCheck", "检查更新", "Check update"));
+  private final JFontLabel resultLabel = new JFontLabel(" ");
+  private boolean closeAllowed = true;
 
   public CheckUpdateDialog(Component parent) {
     super(
@@ -46,7 +52,16 @@ public final class CheckUpdateDialog extends JDialog {
   }
 
   private void buildUi(Component parent) {
-    setDefaultCloseOperation(DISPOSE_ON_CLOSE);
+    setDefaultCloseOperation(DO_NOTHING_ON_CLOSE);
+    addWindowListener(
+        new WindowAdapter() {
+          @Override
+          public void windowClosing(WindowEvent e) {
+            if (closeAllowed) {
+              dispose();
+            }
+          }
+        });
     JPanel root = new JPanel(new BorderLayout(0, 16));
     root.setBorder(BorderFactory.createEmptyBorder(18, 20, 16, 20));
     root.setBackground(PAGE_BACKGROUND);
@@ -94,12 +109,12 @@ public final class CheckUpdateDialog extends JDialog {
     group.add(betaButton);
     stableButton.addActionListener(
         e -> {
-          UpdateChannel.persist(UpdateChannel.STABLE);
+          persistSelection(UpdateChannel.STABLE, UpdateSource.current());
           refreshSourceState();
         });
     betaButton.addActionListener(
         e -> {
-          UpdateChannel.persist(UpdateChannel.BETA);
+          persistSelection(UpdateChannel.BETA, selectedSource());
           refreshSourceState();
         });
 
@@ -135,17 +150,9 @@ public final class CheckUpdateDialog extends JDialog {
 
     refreshSourceState();
     officialSourceButton.addActionListener(
-        e -> {
-          if (selectedChannel() == UpdateChannel.STABLE) {
-            UpdateSource.persist(UpdateSource.OFFICIAL_SITE);
-          }
-        });
+        e -> persistSelection(selectedChannel(), UpdateSource.OFFICIAL_SITE));
     githubSourceButton.addActionListener(
-        e -> {
-          if (selectedChannel() == UpdateChannel.STABLE) {
-            UpdateSource.persist(UpdateSource.GITHUB);
-          }
-        });
+        e -> persistSelection(selectedChannel(), UpdateSource.GITHUB));
 
     JPanel sourceRow = new JPanel();
     sourceRow.setOpaque(false);
@@ -165,23 +172,57 @@ public final class CheckUpdateDialog extends JDialog {
     constraints.gridy = 3;
     constraints.fill = GridBagConstraints.HORIZONTAL;
     constraints.weightx = 1;
-    constraints.insets = new Insets(0, 0, 0, 0);
+    constraints.insets = new Insets(0, 0, 14, 0);
     form.add(sourceRow, constraints);
+
+    resultLabel.setForeground(mutedText());
+    constraints.gridy = 4;
+    constraints.insets = new Insets(0, 0, 0, 0);
+    form.add(resultLabel, constraints);
     return form;
   }
 
   private JPanel buildFooter() {
     JPanel footer = new JPanel(new FlowLayout(FlowLayout.RIGHT, 0, 0));
     footer.setOpaque(false);
-    JFontButton checkButton =
-        new JFontButton(UpdateText.tr("WindowsUpdate.btnCheck", "检查更新", "Check update"));
-    checkButton.addActionListener(
-        e ->
-            WindowsUpdateController.checkForUpdate(
-                this, selectedChannel(), selectedSource()));
+    checkButton.addActionListener(e -> startCheck());
     footer.add(checkButton);
     getRootPane().setDefaultButton(checkButton);
     return footer;
+  }
+
+  static void persistSelection(UpdateChannel channel, UpdateSource source) {
+    UpdateChannel.persist(channel);
+    if (channel != UpdateChannel.BETA) {
+      UpdateSource.persist(source);
+    }
+  }
+
+  private void startCheck() {
+    WindowsUpdateController.checkForUpdate(
+        this,
+        UpdateCheckSelection.of(selectedChannel(), selectedSource(), Lizzie.nextVersion));
+  }
+
+  @Override
+  public void setCheckEnabled(boolean enabled) {
+    checkButton.setEnabled(enabled);
+  }
+
+  @Override
+  public void setCloseAllowed(boolean allowed) {
+    closeAllowed = allowed;
+  }
+
+  @Override
+  public void showStayOnPage(UpdateCheckResult result, UpdateCheckSelection snapshot) {
+    resultLabel.setText(
+        UpdateCheckFeedback.message(result, snapshot == null ? selectedChannel() : snapshot.channel));
+  }
+
+  @Override
+  public void disposeForOffer() {
+    dispose();
   }
 
   private UpdateChannel selectedChannel() {

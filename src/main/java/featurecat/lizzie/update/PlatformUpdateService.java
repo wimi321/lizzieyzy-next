@@ -1,7 +1,6 @@
 package featurecat.lizzie.update;
 
 import featurecat.lizzie.Config;
-import featurecat.lizzie.Lizzie;
 import java.awt.Desktop;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -16,58 +15,14 @@ import org.json.JSONObject;
 public final class PlatformUpdateService {
   public static final String DOWNLOAD_DIR_PROPERTY = "lizzie.update.downloadDir";
 
-  private final UpdateManifestClient manifestClient;
   private final ResumableDownloader downloader;
-  private final UpdateChannel channel;
 
   public PlatformUpdateService() {
-    this(UpdateChannel.current(), UpdateSource.current());
+    this(new ResumableDownloader());
   }
 
-  public PlatformUpdateService(UpdateChannel channel, UpdateSource source) {
-    this(new UpdateManifestClient(channel, source), new ResumableDownloader(), channel);
-  }
-
-  PlatformUpdateService(UpdateManifestClient manifestClient, ResumableDownloader downloader) {
-    this(manifestClient, downloader, UpdateChannel.STABLE);
-  }
-
-  PlatformUpdateService(
-      UpdateManifestClient manifestClient,
-      ResumableDownloader downloader,
-      UpdateChannel channel) {
-    this.manifestClient = manifestClient;
+  PlatformUpdateService(ResumableDownloader downloader) {
     this.downloader = downloader;
-    this.channel = channel == null ? UpdateChannel.STABLE : channel;
-  }
-
-  public Optional<PackageUpdatePlan> checkForUpdate() throws IOException {
-    if (!UpdateAdmission.shouldFetch(Lizzie.nextVersion)) {
-      return Optional.empty();
-    }
-    String platform = currentPlatform();
-    if (!"macos".equals(platform) && !"linux".equals(platform)) {
-      return Optional.empty();
-    }
-    UpdateAdmission.Result admission =
-        UpdateAdmission.evaluateClient(channel, Lizzie.nextVersion, manifestClient);
-    if (admission.kind == UpdateAdmission.Kind.ERROR) {
-      throw new IOException(admission.message);
-    }
-    if (admission.kind == UpdateAdmission.Kind.NO_UPDATE || admission.manifest == null) {
-      return Optional.empty();
-    }
-    String arch = currentArch();
-    String flavor = currentFlavor(platform);
-    UpdateManifest.PackageAsset selected =
-        selectPackage(admission.manifest, platform, arch, flavor);
-    if (selected == null) {
-      throw new IOException(
-          "The update manifest has no package for " + platform + "/" + arch + "/" + flavor + ".");
-    }
-    return Optional.of(
-        new PackageUpdatePlan(
-            admission.manifest, selected, Lizzie.nextVersion, platform, arch, flavor));
   }
 
   public Path download(
