@@ -398,7 +398,14 @@ public class BoardData {
       if (!(totalplayouts > playouts
           || isChanged
           || (metadataEngine != null && pda != metadataEngine.pda))) {
-        if (estimateArray == null || this.estimateArray != null) return false;
+        if (totalplayouts < playouts) {
+          // Requesting ownership restarts KataGo's stream at low visits. Backfill only the map.
+          if (estimateArray == null || estimateArray.isEmpty()) return false;
+          this.estimateArray = compactEstimateArray(estimateArray);
+          return true;
+        }
+        if (estimateArray == null || estimateArray.isEmpty() || this.estimateArray != null)
+          return false;
       }
     }
     // added for change bestmoves when playouts is not increased
@@ -529,7 +536,13 @@ public class BoardData {
       if (!(totalplayouts > playouts2
           || isChanged2
           || (metadataEngine != null && pda2 != metadataEngine.pda))) { // ||Lizzie.frame.urlSgf
-        if (estimateArray == null || this.estimateArray2 != null) return;
+        if (totalplayouts < playouts2) {
+          // Keep the stronger secondary analysis while accepting its restarted ownership stream.
+          if (estimateArray == null || estimateArray.isEmpty()) return;
+          this.estimateArray2 = compactEstimateArray(estimateArray);
+          return;
+        }
+        if (estimateArray == null || estimateArray.isEmpty() || this.estimateArray2 != null) return;
       }
     }
     if (totalplayouts < playouts2) isChanged2 = false;

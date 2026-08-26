@@ -141,6 +141,66 @@ class BoardNodeKindHistoryPipelineTest {
   }
 
   @Test
+  void lowerVisitOwnershipBackfillPreservesStrongerCachedAnalysis() throws Exception {
+    TestEnvironment env = TestEnvironment.open();
+    boolean previousEngineGame = EngineManager.isEngineGame;
+    try {
+      EngineManager.isEngineGame = false;
+      Lizzie.config.enableLizzieCache = true;
+      Lizzie.config.isAutoAna = false;
+      Leelaz source = allocate(TrackingLeelaz.class);
+      source.pda = 0;
+
+      MoveData cachedMove = new MoveData();
+      cachedMove.coordinate = "A1";
+      cachedMove.playouts = 10_000;
+      cachedMove.winrate = 44.0;
+      MoveData ownershipMove = new MoveData();
+      ownershipMove.coordinate = "B1";
+      ownershipMove.playouts = 50;
+      ownershipMove.winrate = 70.0;
+      List<Double> ownership = List.of(0.9, -0.8, 0.7, -0.6);
+
+      BoardData primary = BoardData.empty(BOARD_SIZE, BOARD_SIZE);
+      primary.setPlayouts(10_000);
+      primary.bestMoves = new ArrayList<>(List.of(cachedMove));
+      primary.winrate = cachedMove.winrate;
+
+      assertTrue(
+          primary.tryToSetBestMovesFromEngine(
+              new ArrayList<>(List.of(ownershipMove)),
+              "restarted-stream",
+              source,
+              50,
+              ownership,
+              false));
+      assertEquals(10_000, primary.getPlayouts());
+      assertEquals("A1", primary.bestMoves.get(0).coordinate);
+      assertEquals(44.0, primary.winrate, 0.0001);
+      assertEquals(ownership, primary.estimateArray);
+
+      BoardData secondary = BoardData.empty(BOARD_SIZE, BOARD_SIZE);
+      secondary.setPlayouts2(10_000);
+      secondary.bestMoves2 = new ArrayList<>(List.of(cachedMove));
+      secondary.winrate2 = cachedMove.winrate;
+
+      secondary.tryToSetBestMoves2FromEngine(
+          new ArrayList<>(List.of(ownershipMove)),
+          "restarted-secondary-stream",
+          source,
+          50,
+          ownership);
+      assertEquals(10_000, secondary.getPlayouts2());
+      assertEquals("A1", secondary.bestMoves2.get(0).coordinate);
+      assertEquals(44.0, secondary.winrate2, 0.0001);
+      assertEquals(ownership, secondary.estimateArray2);
+    } finally {
+      EngineManager.isEngineGame = previousEngineGame;
+      env.close();
+    }
+  }
+
+  @Test
   void addOrGotoKeepsPassAndSnapshotAsSeparateChildren() throws Exception {
     TestEnvironment env = TestEnvironment.open();
     try {
