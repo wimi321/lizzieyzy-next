@@ -273,6 +273,10 @@ class TopologyDeletionTest(unittest.TestCase):
 class LinuxValidatorSmokeTest(unittest.TestCase):
     validator = Path(__file__).with_name("validate_release_assets.sh")
 
+    def test_validator_stays_compatible_with_macos_bash_3(self) -> None:
+        validator_text = self.validator.read_text(encoding="utf-8")
+        self.assertNotRegex(validator_text, r"\b(?:mapfile|readarray)\b")
+
     def run_validator(self, release_dir: Path) -> subprocess.CompletedProcess[str]:
         return subprocess.run(
             [

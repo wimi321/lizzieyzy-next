@@ -24,7 +24,12 @@ if ! command -v "$PYTHON_BIN" >/dev/null 2>&1; then
 fi
 
 expected_output="$("$PYTHON_BIN" "$SCRIPT_DIR/release_asset_topology.py" expected-names --platform "$PLATFORM" --date-tag "$DATE_TAG")"
-mapfile -t expected <<< "$expected_output"
+expected=()
+while IFS= read -r expected_name; do
+  # Keep macOS Bash 3.2 compatibility and strip CR from native Windows Python.
+  expected_name="${expected_name%$'\r'}"
+  [[ -n "$expected_name" ]] && expected+=("$expected_name")
+done <<< "$expected_output"
 if [[ "${#expected[@]}" -eq 0 ]]; then
   echo "No expected public release assets for $PLATFORM"
   exit 1
