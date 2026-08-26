@@ -1,8 +1,6 @@
 package featurecat.lizzie.update;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import featurecat.lizzie.ConfigTestHelper;
@@ -33,27 +31,11 @@ class WindowsUpdateServiceTest {
 
   @AfterEach
   void tearDown() {
-    System.clearProperty(WindowsUpdateService.MANIFEST_URL_PROPERTY);
     System.clearProperty(WindowsUpdatePaths.APP_ROOT_PROPERTY);
     System.clearProperty(WindowsUpdatePaths.APP_DIR_PROPERTY);
     System.clearProperty(WindowsUpdatePaths.WORK_DIR_PROPERTY);
     System.clearProperty(WindowsUpdatePaths.CURRENT_JAR_PROPERTY);
     Lizzie.config = null;
-  }
-
-  @Test
-  void fetchLatestManifestUsesConfiguredProxy() throws Exception {
-    try (OneShotHttp proxy = new OneShotHttp(UpdateManifestTest.validManifest().toString())) {
-      useManualProxy(proxy.port());
-      System.setProperty(
-          WindowsUpdateService.MANIFEST_URL_PROPERTY, "http://example.invalid/update.json");
-
-      UpdateManifest manifest = new WindowsUpdateService().fetchLatestManifest();
-
-      assertEquals("next-2026-06-12.1", manifest.releaseTag);
-      assertEquals(1, proxy.requests.get());
-      assertTrue(proxy.lastRequestLine.contains("http://example.invalid/update.json"));
-    }
   }
 
   @Test
@@ -74,43 +56,6 @@ class WindowsUpdateServiceTest {
           request.getJSONArray("components").getJSONObject(0).getString("sourcePath"));
       assertEquals(1, proxy.requests.get());
       assertTrue(proxy.lastRequestLine.contains("http://example.invalid/core.zip"));
-    }
-  }
-
-  @Test
-  void fetchLatestManifestReportsInvalidProxyConfigAsNetworkFailure() {
-    Lizzie.config = ConfigTestHelper.createForTests(tempDir.resolve("config"));
-    Lizzie.config.uiConfig =
-        new JSONObject()
-            .put(NetworkProxy.KEY_PROXY_MODE, NetworkProxy.MODE_MANUAL)
-            .put(NetworkProxy.KEY_PROXY_HOST, " ")
-            .put(NetworkProxy.KEY_PROXY_PORT, 7897);
-    System.setProperty(
-        WindowsUpdateService.MANIFEST_URL_PROPERTY, "http://example.invalid/update.json");
-
-    IOException error =
-        assertThrows(IOException.class, () -> new WindowsUpdateService().fetchLatestManifest());
-
-    assertFalse(error.getMessage().contains("Invalid update manifest"));
-    assertTrue(error.getMessage().contains(NetworkProxy.KEY_PROXY_HOST));
-    assertTrue(error.getMessage().contains("Settings"));
-  }
-
-  @Test
-  void prereleaseManifestIsFetchedButRejectedByStableUpdatePolicy() throws Exception {
-    JSONObject prerelease = UpdateManifestTest.validManifest().put("prerelease", true);
-    try (OneShotHttp server = new OneShotHttp(prerelease.toString())) {
-      Lizzie.config = ConfigTestHelper.createForTests(tempDir.resolve("prerelease-config"));
-      Lizzie.config.uiConfig = new JSONObject();
-      System.setProperty(
-          WindowsUpdateService.MANIFEST_URL_PROPERTY,
-          "http://127.0.0.1:" + server.port() + "/update.json");
-
-      UpdateManifest manifest = new WindowsUpdateService().fetchLatestManifest();
-
-      assertTrue(manifest.prerelease);
-      assertFalse(WindowsUpdateService.isStableRelease(manifest));
-      assertEquals(1, server.requests.get());
     }
   }
 

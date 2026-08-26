@@ -176,6 +176,7 @@ public class ConfigDialog2 extends JDialog {
   private JRadioButton rdoShowMoveRect;
   private JRadioButton rdoShowMoveRectOnPlay;
   private JRadioButton rdoNoShowMoveRect;
+  private JComboBox<String> comboShowMoveRect;
 
   private JLabel lblBoardSign;
   private JTextField txtBoardWidth;
@@ -213,6 +214,7 @@ public class ConfigDialog2 extends JDialog {
   private JCheckBox chkShowMoveAllInBranch;
   private JCheckBox chkShowBlunderBar;
   private JComboBox<String> chkShowWhiteSuggWhite;
+  private JComboBox<String> comboSuggestionColorRatio;
 
   private JRadioButton rdoShowWinrateBlack;
   private JRadioButton rdoShowWinrateBoth;
@@ -287,6 +289,7 @@ public class ConfigDialog2 extends JDialog {
 
   private JRadioButton rdoRightClickBack;
   private JRadioButton rdoRightClickMenu;
+  private JComboBox<String> comboRightClick;
   private JRadioButton rdoBranchMoveContinue;
   private JRadioButton rdoBranchMoveOne;
   private JCheckBox chkShowVarMove;
@@ -772,20 +775,20 @@ public class ConfigDialog2 extends JDialog {
                 "LizzieConfig.lblSuggestionMoveColorConcentration")); // ("选点颜色集中程度");
     lblSuggestionMoveColorConcentration.setBounds(10, 398, 222, 16);
     uiTab.add(lblSuggestionMoveColorConcentration);
-    JComboBox<String> SuggestionColorRatio = new JComboBox<String>();
-    SuggestionColorRatio.addItem(
+    comboSuggestionColorRatio = new JComboBox<String>();
+    comboSuggestionColorRatio.addItem(
         resourceBundle.getString("LizzieConfig.SuggestionMoveColorConcentration1")); // ("集中");
-    SuggestionColorRatio.addItem(
+    comboSuggestionColorRatio.addItem(
         resourceBundle.getString("LizzieConfig.SuggestionMoveColorConcentration2")); // ("一般");
-    SuggestionColorRatio.addItem(
+    comboSuggestionColorRatio.addItem(
         resourceBundle.getString("LizzieConfig.SuggestionMoveColorConcentration3")); // ("分散");
-    SuggestionColorRatio.setBounds(Lizzie.config.isChinese ? 201 : 221, 395, 66, 23);
-    uiTab.add(SuggestionColorRatio);
-    SuggestionColorRatio.setSelectedIndex(Lizzie.config.suggestionColorRatio - 1);
-    SuggestionColorRatio.addItemListener(
+    comboSuggestionColorRatio.setBounds(Lizzie.config.isChinese ? 201 : 221, 395, 66, 23);
+    uiTab.add(comboSuggestionColorRatio);
+    comboSuggestionColorRatio.setSelectedIndex(Lizzie.config.suggestionColorRatio - 1);
+    comboSuggestionColorRatio.addItemListener(
         new ItemListener() {
           public void itemStateChanged(final ItemEvent e) {
-            Lizzie.config.suggestionColorRatio = SuggestionColorRatio.getSelectedIndex() + 1;
+            Lizzie.config.suggestionColorRatio = comboSuggestionColorRatio.getSelectedIndex() + 1;
             Lizzie.config.uiConfig.put(
                 "suggestion-color-ratio", Lizzie.config.suggestionColorRatio);
           }
@@ -1469,6 +1472,9 @@ public class ConfigDialog2 extends JDialog {
     } else {
       rdoRightClickBack.setSelected(true);
     }
+    comboShowMoveRect =
+        comboFromRadios(rdoShowMoveRect, rdoShowMoveRectOnPlay, rdoNoShowMoveRect);
+    comboRightClick = comboFromRadios(rdoRightClickMenu, rdoRightClickBack);
 
     JLabel lblKifuLoadLast =
         new JLabel(
@@ -2713,9 +2719,20 @@ public class ConfigDialog2 extends JDialog {
     uiTab.repaint();
   }
 
+  private void addModernCard(JPanel content, JPanel card) {
+    if (content.getComponentCount() > 0) {
+      content.add(javax.swing.Box.createVerticalStrut(12));
+    }
+    content.add(card);
+  }
+
   private JPanel createDisplaySection(int navIndex) {
     switch (navIndex) {
-      case MODERN_NAV_KIFU:
+      case MODERN_NAV_KIFU: {
+        JPanel content = new JPanel();
+        content.setOpaque(false);
+        content.setLayout(new javax.swing.BoxLayout(content, javax.swing.BoxLayout.Y_AXIS));
+        content.setAlignmentX(Component.LEFT_ALIGNMENT);
         JPanel sgf =
             createDesignSettingsCard(
                 configText("ConfigDialog2.modern.kifu.title", "打开 SGF 后行为"),
@@ -2737,8 +2754,14 @@ public class ConfigDialog2 extends JDialog {
             configText("ConfigDialog2.modern.kifu.readKomi", "读取棋谱贴目"),
             configText("ConfigDialog2.modern.kifu.readKomiSub", "打开棋谱时同步读取 SGF 中的贴目"),
             chkLoadKomi);
-        return sgf;
-      case MODERN_NAV_ENGINE:
+        addModernCard(content, sgf);
+        return content;
+      }
+      case MODERN_NAV_ENGINE: {
+        JPanel content = new JPanel();
+        content.setOpaque(false);
+        content.setLayout(new javax.swing.BoxLayout(content, javax.swing.BoxLayout.Y_AXIS));
+        content.setAlignmentX(Component.LEFT_ALIGNMENT);
         JPanel analysis =
             createDesignSettingsCard(
                 configText("ConfigDialog2.modern.analysis.title", "分析与胜率曲线"),
@@ -2791,8 +2814,78 @@ public class ConfigDialog2 extends JDialog {
             configText("ConfigDialog2.modern.analysis.variationLimitSub", "限制推荐变化图的展示长度"),
             txtLimitBranchLength,
             configText("ConfigDialog2.modern.unit.moves", "手"));
-        return analysis;
-      case MODERN_NAV_PLAY:
+        addModernCard(content, analysis);
+        JPanel candidates =
+            createDesignSettingsCard(
+                configText("ConfigDialog2.modern.candidates.title", "候选点外观与过滤"),
+                configText(
+                    "ConfigDialog2.modern.candidates.subtitle",
+                    "控制最佳选点高亮、颜色集中度、超限圆圈和低计算量过滤。"));
+        addToggleRow(
+            candidates,
+            configText("ConfigDialog2.modern.candidates.blueRing", "最佳选点显示蓝圈"),
+            configText("ConfigDialog2.modern.candidates.blueRingSub", "在第一推荐选点外画蓝色圆环"),
+            chkShowBlueRing);
+        addComboRow(
+            candidates,
+            configText("ConfigDialog2.modern.candidates.colorRatio", "选点颜色集中程度"),
+            configText(
+                "ConfigDialog2.modern.candidates.colorRatioSub",
+                "候选点颜色向第一选点集中或分散的程度"),
+            comboSuggestionColorRatio);
+        addComboRow(
+            candidates,
+            configText("ConfigDialog2.modern.candidates.whiteStyle", "轮白下的选点颜色"),
+            configText(
+                "ConfigDialog2.modern.candidates.whiteStyleSub",
+                "轮白下棋时，选点文字、角标使用白色、两者都用或都不用"),
+            chkShowWhiteSuggWhite);
+        addToggleRow(
+            candidates,
+            configText("ConfigDialog2.modern.candidates.noSuggCircle", "超限选点仍显示圆圈"),
+            configText(
+                "ConfigDialog2.modern.candidates.noSuggCircleSub",
+                "超出数量上限或计算量较低的选点仍然画圈"),
+            chkShowNoSuggCircle);
+        addInputRow(
+            candidates,
+            configText("ConfigDialog2.modern.candidates.minPlayoutRatio", "隐藏低于该比例的低计算量选点"),
+            configText(
+                "ConfigDialog2.modern.candidates.minPlayoutRatioSub",
+                "计算量低于第一选点该百分比的候选点视为计算不足"),
+            txtMinPlayoutRatioForStats,
+            configText("ConfigDialog2.modern.unit.percent", "%"));
+        addModernCard(content, candidates);
+        JPanel pv =
+            createDesignSettingsCard(
+                configText("ConfigDialog2.modern.pv.title", "变化图与 PV 访问"),
+                configText(
+                    "ConfigDialog2.modern.pv.subtitle",
+                    "控制变化图上的 PV 访问次数显示，以及是否去掉死子。"));
+        addComboRow(
+            pv,
+            configText("ConfigDialog2.modern.pv.mode", "显示 PV 访问次数"),
+            configText("ConfigDialog2.modern.pv.modeSub", "关闭、仅最后一手，或变化图每一手"),
+            comboBoxPvVisits);
+        addInputRow(
+            pv,
+            configText("ConfigDialog2.modern.pv.limit", "PV 访问次数阈值"),
+            configText("ConfigDialog2.modern.pv.limitSub", "达到该计算量后才绘制访问次数"),
+            txtPvVisitsLimit,
+            configText("ConfigDialog2.modern.unit.visits", "次"));
+        addToggleRow(
+            pv,
+            configText("ConfigDialog2.modern.pv.removeDead", "变化图中去掉死子"),
+            configText("ConfigDialog2.modern.pv.removeDeadSub", "变化图叠加时提掉已被吃掉的棋串"),
+            chkVariationRemoveDeadChain);
+        addModernCard(content, pv);
+        return content;
+      }
+      case MODERN_NAV_PLAY: {
+        JPanel content = new JPanel();
+        content.setOpaque(false);
+        content.setLayout(new javax.swing.BoxLayout(content, javax.swing.BoxLayout.Y_AXIS));
+        content.setAlignmentX(Component.LEFT_ALIGNMENT);
         JPanel operation =
             createDesignSettingsCard(
                 configText("ConfigDialog2.modern.play.title", "对局与操作"),
@@ -2804,8 +2897,38 @@ public class ConfigDialog2 extends JDialog {
         addToggleRow(operation, configText("ConfigDialog2.modern.play.hidePanelControls", "隐藏面板顶部控制条"), configText("ConfigDialog2.modern.play.hidePanelControlsSub", "隐藏评论/问题手面板上方的小按钮和筛选条"), chkHideCommentControlPane);
         addToggleRow(operation, configText("ConfigDialog2.modern.play.coordinates", "显示坐标"), configText("ConfigDialog2.modern.play.coordinatesSub", "在棋盘边缘显示坐标"), chkShowCoordinates);
         addToggleRow(operation, configText("ConfigDialog2.modern.play.freezeSubBoard", "小棋盘不跟随刷新"), configText("ConfigDialog2.modern.play.freezeSubBoardSub", "鼠标经过小棋盘时保持当前局部预览"), chkNoRefreshSub);
-        return operation;
-      case MODERN_NAV_ADVANCED:
+        addModernCard(content, operation);
+        JPanel interaction =
+            createDesignSettingsCard(
+                configText("ConfigDialog2.modern.interaction.title", "鼠标交互与坐标格式"),
+                configText(
+                    "ConfigDialog2.modern.interaction.subtitle",
+                    "落子矩形、右键行为，以及坐标编号方式。"));
+        addComboRow(
+            interaction,
+            configText("ConfigDialog2.modern.interaction.moveRect", "显示落子矩形"),
+            configText("ConfigDialog2.modern.interaction.moveRectSub", "始终显示、仅对局时显示，或不显示"),
+            comboShowMoveRect);
+        addComboRow(
+            interaction,
+            configText("ConfigDialog2.modern.interaction.rightClick", "右键行为"),
+            configText("ConfigDialog2.modern.interaction.rightClickSub", "弹出菜单，或悔一手"),
+            comboRightClick);
+        addComboRow(
+            interaction,
+            configText("ConfigDialog2.modern.interaction.specialCoords", "坐标格式"),
+            configText(
+                "ConfigDialog2.modern.interaction.specialCoordsSub",
+                "普通、含 I、野狐风格，或从上/从下数字坐标"),
+            SpecialCoordsCbx);
+        addModernCard(content, interaction);
+        return content;
+      }
+      case MODERN_NAV_ADVANCED: {
+        JPanel content = new JPanel();
+        content.setOpaque(false);
+        content.setLayout(new javax.swing.BoxLayout(content, javax.swing.BoxLayout.Y_AXIS));
+        content.setAlignmentX(Component.LEFT_ALIGNMENT);
         JPanel advanced = createDesignSettingsCard(configText("ConfigDialog2.modern.advanced.title", "高级与性能"), configText("ConfigDialog2.modern.advanced.subtitle", "调整后台分析、缓存和启动测速等偏高级选项。"));
         addToggleRow(advanced, configText("ConfigDialog2.modern.advanced.ponder", "对局时后台计算"), configText("ConfigDialog2.modern.advanced.ponderSub", "人机对局时保持后台分析"), chkPonder);
         addToggleRow(advanced, configText("ConfigDialog2.modern.advanced.fastSwitch", "启用引擎快速切换"), configText("ConfigDialog2.modern.advanced.fastSwitchSub", "在多个引擎之间更快切换"), chkFastSwtich);
@@ -2814,15 +2937,53 @@ public class ConfigDialog2 extends JDialog {
         addToggleRow(advanced, configText("ConfigDialog2.modern.advanced.firstBenchmark", "首次启动智能测速"), configText("ConfigDialog2.modern.advanced.firstBenchmarkSub", "首次启动时引导运行智能测速优化"), chkEnableStartupBenchmark);
         addToggleRow(advanced, configText("ConfigDialog2.modern.advanced.noCapture", "五子棋无提子规则"), configText("ConfigDialog2.modern.advanced.noCaptureSub", "五子棋模式下禁用提子逻辑"), chkNoCapture);
         addNetworkProxyRows(advanced);
-        return advanced;
+        addModernCard(content, advanced);
+        JPanel engineHealth =
+            createDesignSettingsCard(
+                configText("ConfigDialog2.modern.engineHealth.title", "日志与分析刷新"),
+                configText(
+                    "ConfigDialog2.modern.engineHealth.subtitle",
+                    "GTP 日志、引擎存活检测和分析结果刷新间隔。"));
+        addToggleRow(
+            engineHealth,
+            configText("ConfigDialog2.modern.engineHealth.alwaysGtp", "控制台隐藏时仍记录 GTP"),
+            configText("ConfigDialog2.modern.engineHealth.alwaysGtpSub", "即使 GTP 控制台不可见也继续记录输出"),
+            chkAlwaysGtp);
+        addToggleRow(
+            engineHealth,
+            configText("ConfigDialog2.modern.engineHealth.checkAlive", "自动检测引擎是否存活"),
+            configText("ConfigDialog2.modern.engineHealth.checkAliveSub", "每隔数秒检查运行中的引擎并发现崩溃"),
+            chkCheckEngineAlive);
+        addInputRow(
+            engineHealth,
+            configText("ConfigDialog2.modern.engineHealth.interval", "本地分析刷新间隔"),
+            configText("ConfigDialog2.modern.engineHealth.intervalSub", "本地引擎发送分析更新的频率"),
+            txtAnalyzeUpdateInterval,
+            configText("LizzieConfig.title.centisecond", "百分之一秒"));
+        addInputRow(
+            engineHealth,
+            configText("ConfigDialog2.modern.engineHealth.intervalSsh", "SSH 分析刷新间隔"),
+            configText("ConfigDialog2.modern.engineHealth.intervalSshSub", "SSH 引擎发送分析更新的频率"),
+            txtAnalyzeUpdateIntervalSSH,
+            configText("LizzieConfig.title.centisecond", "百分之一秒"));
+        addModernCard(content, engineHealth);
+        return content;
+      }
       case MODERN_NAV_DISPLAY:
-      default:
+      default: {
+        JPanel content = new JPanel();
+        content.setOpaque(false);
+        content.setLayout(new javax.swing.BoxLayout(content, javax.swing.BoxLayout.Y_AXIS));
+        content.setAlignmentX(Component.LEFT_ALIGNMENT);
         JPanel startup = createDesignSettingsCard(configText("ConfigDialog2.modern.display.title", "启动时加载"), configText("ConfigDialog2.modern.display.subtitle", "控制窗口、快捷入口和启动后常用面板的显示方式。"));
         addToggleRow(startup, configText("ConfigDialog2.modern.display.alwaysOnTop", "窗口总在最前"), configText("ConfigDialog2.modern.display.alwaysOnTopSub", "主窗口保持在其他窗口上方"), chkAlwaysOnTop);
         addToggleRow(startup, configText("ConfigDialog2.modern.display.quickLinks", "显示快速启动"), configText("ConfigDialog2.modern.display.quickLinksSub", "保留底部常用入口，方便快速访问"), chkShowQuickLinks);
         addToggleRow(startup, configText("ConfigDialog2.modern.display.status", "显示状态面板"), configText("ConfigDialog2.modern.display.statusSub", "在主界面显示分析状态与提示"), chkShowStatus);
         addToggleRow(startup, configText("ConfigDialog2.modern.display.subBoard", "显示小棋盘"), configText("ConfigDialog2.modern.display.subBoardSub", "展示右侧小棋盘和局部预览"), chkShowSubBoard);
-        return startup;
+        addToggleRow(startup, configText("ConfigDialog2.modern.display.titleWr", "窗口标题显示胜率"), configText("ConfigDialog2.modern.display.titleWrSub", "在主窗口标题中显示胜率等分析信息"), chkShowTitleWr);
+        addModernCard(content, startup);
+        return content;
+      }
     }
   }
 
@@ -2903,6 +3064,40 @@ public class ConfigDialog2 extends JDialog {
     input.add(suffix);
     addDesignRowControl(row, input);
     card.add(row);
+  }
+
+  private void addComboRow(JPanel card, String title, String subtitle, JComboBox<?> combo) {
+    addComboRow(card, title, subtitle, combo, 180);
+  }
+
+  private void addComboRow(
+      JPanel card, String title, String subtitle, JComboBox<?> combo, int width) {
+    JPanel row = createDesignRow(title, subtitle);
+    JPanel input = new JPanel(new FlowLayout(FlowLayout.RIGHT, 0, 0));
+    input.setOpaque(false);
+    JComboBox<?> detached = (JComboBox<?>) detachComponent(combo);
+    AccessibilitySupport.named(detached, title, subtitle);
+    detached.setPreferredSize(new Dimension(width, 30));
+    input.add(detached);
+    addDesignRowControl(row, input);
+    card.add(row);
+  }
+
+  private JComboBox<String> comboFromRadios(JRadioButton... radios) {
+    JComboBox<String> combo = new JComboBox<String>();
+    int selected = 0;
+    for (int i = 0; i < radios.length; i++) {
+      combo.addItem(radios[i].getText());
+      if (radios[i].isSelected()) selected = i;
+    }
+    combo.setSelectedIndex(selected);
+    combo.addItemListener(
+        e -> {
+          if (e.getStateChange() != ItemEvent.SELECTED) return;
+          int index = combo.getSelectedIndex();
+          if (index >= 0 && index < radios.length) radios[index].setSelected(true);
+        });
+    return combo;
   }
 
   private void initNetworkProxyControls() {
@@ -3123,7 +3318,7 @@ public class ConfigDialog2 extends JDialog {
     textConstraints.insets = new Insets(0, 0, 0, 22);
     row.add(text, textConstraints);
 
-    JPanel controlHost = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
+    JPanel controlHost = new JPanel(new FlowLayout(FlowLayout.RIGHT, 0, 0));
     controlHost.setOpaque(false);
     controlHost.setMinimumSize(new Dimension(280, 34));
     row.putClientProperty(CLIENT_DESIGN_ROW_CONTROL_HOST, controlHost);
@@ -3222,9 +3417,21 @@ public class ConfigDialog2 extends JDialog {
 
     JPanel strokes = createDesignSettingsCard(configText("ConfigDialog2.modern.theme.lines", "线条与字体"), configText("ConfigDialog2.modern.theme.linesSub", "调整胜率曲线、目数曲线、阴影和界面字体。"));
     addComponentRow(
-        strokes, configText("ConfigDialog2.modern.theme.winrateWidth", "胜率曲线宽度"), configText("ConfigDialog2.modern.theme.winrateWidthSub", "控制胜率曲线线条粗细"), rowOf(spnWinrateStrokeWidth, spnScoreLeadStrokeWidth));
-    addComponentRow(strokes, configText("ConfigDialog2.modern.theme.blunderWidth", "柱状失误条最小宽度"), configText("ConfigDialog2.modern.theme.blunderWidthSub", "让失误条在不同窗口尺寸下更清晰"), spnMinimumBlunderBarWidth);
-    addToggleInputRow(strokes, configText("ConfigDialog2.modern.theme.shadow", "棋子阴影大小"), configText("ConfigDialog2.modern.theme.shadowSub", "开启后调整棋子阴影强度"), chkShowStoneShaow, spnShadowSize);
+        strokes,
+        configText("ConfigDialog2.modern.theme.winrateWidth", "胜率曲线宽度"),
+        configText("ConfigDialog2.modern.theme.winrateWidthSub", "控制胜率曲线线条粗细"),
+        rightControlSlot(spnWinrateStrokeWidth, spnScoreLeadStrokeWidth));
+    addComponentRow(
+        strokes,
+        configText("ConfigDialog2.modern.theme.blunderWidth", "柱状失误条最小宽度"),
+        configText("ConfigDialog2.modern.theme.blunderWidthSub", "让失误条在不同窗口尺寸下更清晰"),
+        rightControlSlot(spnMinimumBlunderBarWidth));
+    addToggleInputRow(
+        strokes,
+        configText("ConfigDialog2.modern.theme.shadow", "棋子阴影大小"),
+        configText("ConfigDialog2.modern.theme.shadowSub", "开启后调整棋子阴影强度"),
+        chkShowStoneShaow,
+        spnShadowSize);
     addComponentRow(strokes, configText("ConfigDialog2.modern.theme.infoFont", "计算量及其他字体"), configText("ConfigDialog2.modern.theme.infoFontSub", "棋盘外信息与分析面板字体"), cmbFontName);
     addComponentRow(strokes, configText("ConfigDialog2.modern.theme.uiFont", "UI 字体"), configText("ConfigDialog2.modern.theme.uiFontSub", "菜单、按钮和设置窗口字体"), cmbUiFontName);
     addComponentRow(strokes, configText("ConfigDialog2.modern.theme.winrateFont", "胜率目数字体"), configText("ConfigDialog2.modern.theme.winrateFontSub", "胜率条和目差显示字体"), cmbWinrateFontName);
@@ -3346,6 +3553,22 @@ public class ConfigDialog2 extends JDialog {
     return row;
   }
 
+  private JPanel rightControlSlot(Component... components) {
+    JPanel slot = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
+    slot.setOpaque(false);
+    slot.setPreferredSize(new Dimension(220, 30));
+    slot.setMinimumSize(new Dimension(220, 30));
+    for (Component component : components) {
+      if (component == null) continue;
+      Component detached = detachComponent(component);
+      if (detached instanceof JSpinner) {
+        detached.setPreferredSize(new Dimension(76, 30));
+      }
+      slot.add(detached);
+    }
+    return slot;
+  }
+
   private void addComponentRow(JPanel card, String title, String subtitle, Component component) {
     JPanel row = createDesignRow(title, subtitle);
     Component detached = detachComponent(component);
@@ -3442,10 +3665,16 @@ public class ConfigDialog2 extends JDialog {
     JPanel row = createDesignRow(title, subtitle);
     AccessibilitySupport.button(toggle, title, subtitle);
     nameInteractiveComponents(input, title, subtitle);
-    JPanel controls = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 0));
+    JPanel controls = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
     controls.setOpaque(false);
+    controls.setPreferredSize(new Dimension(220, 30));
+    controls.setMinimumSize(new Dimension(220, 30));
+    Component detachedInput = detachComponent(input);
+    if (detachedInput instanceof JSpinner) {
+      detachedInput.setPreferredSize(new Dimension(76, 30));
+    }
     controls.add(prepareDesignSwitch(toggle));
-    controls.add(detachComponent(input));
+    controls.add(detachedInput);
     addDesignRowControl(row, controls);
     card.add(row);
   }
@@ -6070,7 +6299,7 @@ public class ConfigDialog2 extends JDialog {
               : 0;
       Lizzie.config.uiConfig.put("show-move-number", Lizzie.config.showMoveNumber);
       Lizzie.config.uiConfig.put("only-last-move-number", Lizzie.config.onlyLastMoveNumber);
-      Lizzie.config.uiConfig.put("allow-move-number", Lizzie.config.onlyLastMoveNumber);
+      Lizzie.config.uiConfig.put("allow-move-number", Lizzie.config.allowMoveNumber);
 
       if (this.rdoShowWinrateBlack.isSelected()) LizzieFrame.winrateGraph.mode = 0;
       if (this.rdoShowWinrateBoth.isSelected()) LizzieFrame.winrateGraph.mode = 1;

@@ -5708,11 +5708,14 @@ public class Menu extends JMenuBar {
 
     updateEngineMenuone();
     ArrayList<EngineData> engineData = Utils.getEngineData();
+    LizzieFrame.toolbar.removeEngineLis();
     for (int i = 0; i < engineData.size(); i++) {
       EngineData engineDt = engineData.get(i);
       LizzieFrame.toolbar.enginePkBlack.addItem("[" + (i + 1) + "]" + engineDt.name);
       LizzieFrame.toolbar.enginePkWhite.addItem("[" + (i + 1) + "]" + engineDt.name);
     }
+    EnginePkIdentity.restoreToolbarSelection(engineData, Lizzie.config, LizzieFrame.toolbar);
+    LizzieFrame.toolbar.addEngineLis();
 
     engineMenu.addSeparator();
 

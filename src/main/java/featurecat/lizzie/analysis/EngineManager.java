@@ -5,6 +5,7 @@ import featurecat.lizzie.EngineStartupStatus;
 import featurecat.lizzie.Lizzie;
 import featurecat.lizzie.gui.DesktopTimeControl;
 import featurecat.lizzie.gui.EngineData;
+import featurecat.lizzie.gui.EnginePkIdentity;
 import featurecat.lizzie.gui.LizzieFrame;
 import featurecat.lizzie.gui.Menu;
 import featurecat.lizzie.gui.SgfWinLossList;
@@ -3626,20 +3627,7 @@ public class EngineManager {
         switchEngine(preIndex, true);
       }
 
-      int j = LizzieFrame.toolbar.enginePkBlack.getItemCount();
-      LizzieFrame.toolbar.removeEngineLis();
-      for (int i = 0; i < j; i++) {
-        LizzieFrame.toolbar.enginePkBlack.removeItemAt(0);
-        LizzieFrame.toolbar.enginePkWhite.removeItemAt(0);
-      }
-      for (int i = 0; i < engineData.size(); i++) {
-        EngineData engineDt = engineData.get(i);
-        LizzieFrame.toolbar.enginePkBlack.addItem("[" + (i + 1) + "]" + engineDt.name);
-        LizzieFrame.toolbar.enginePkWhite.addItem("[" + (i + 1) + "]" + engineDt.name);
-      }
-      LizzieFrame.toolbar.engineBlackToolbar = 0;
-      LizzieFrame.toolbar.engineWhiteToolbar = 0;
-      LizzieFrame.toolbar.addEngineLis();
+      refreshEnginePkCombos(engineData);
       LizzieFrame.menu.updateEngineMenu();
       if (!isEmpty) {
         Menu.engineMenu.setText(
@@ -3993,6 +3981,18 @@ public class EngineManager {
   }
 
   private void refreshEngineSelectionControls(ArrayList<EngineData> engineData) {
+    refreshEnginePkCombos(engineData);
+  }
+
+  private void refreshEnginePkCombos(ArrayList<EngineData> engineData) {
+    if (LizzieFrame.toolbar == null
+        || LizzieFrame.toolbar.enginePkBlack == null
+        || LizzieFrame.toolbar.enginePkWhite == null) {
+      return;
+    }
+    if (engineData == null) {
+      engineData = new ArrayList<EngineData>();
+    }
     int j = LizzieFrame.toolbar.enginePkBlack.getItemCount();
     LizzieFrame.toolbar.removeEngineLis();
     for (int i = 0; i < j; i++) {
@@ -4004,8 +4004,7 @@ public class EngineManager {
       LizzieFrame.toolbar.enginePkBlack.addItem("[" + (i + 1) + "]" + engineDt.name);
       LizzieFrame.toolbar.enginePkWhite.addItem("[" + (i + 1) + "]" + engineDt.name);
     }
-    LizzieFrame.toolbar.engineBlackToolbar = 0;
-    LizzieFrame.toolbar.engineWhiteToolbar = 0;
+    EnginePkIdentity.restoreToolbarSelection(engineData, Lizzie.config, LizzieFrame.toolbar);
     LizzieFrame.toolbar.addEngineLis();
   }
 

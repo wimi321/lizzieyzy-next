@@ -338,7 +338,7 @@ public class NewEngineGameDialog extends JDialog {
             LizzieFrame.toolbar.chkenginePkContinue.setSelected(chkContinuePlay.isSelected());
             if (chkContinuePlay.isSelected()) {
               chkSGFstart.setSelected(false);
-              Lizzie.config.chkEngineSgfStart = false;
+              Lizzie.config.persistEngineSgfStart(false);
               btnSGFstart.setEnabled(false);
               cbxRandomSgf.setEnabled(false);
               handicap.setEnabled(false);
@@ -447,13 +447,13 @@ public class NewEngineGameDialog extends JDialog {
           public void actionPerformed(ActionEvent e) {
             if (chkSGFstart.isSelected()) {
               chkContinuePlay.setSelected(false);
-              Lizzie.config.chkEngineSgfStart = true;
+              Lizzie.config.persistEngineSgfStart(true);
               btnSGFstart.setEnabled(true);
               cbxRandomSgf.setEnabled(true);
               handicap.setEnabled(false);
               textFieldHandicap.setEnabled(false);
             } else {
-              Lizzie.config.chkEngineSgfStart = false;
+              Lizzie.config.persistEngineSgfStart(false);
               btnSGFstart.setEnabled(false);
               cbxRandomSgf.setEnabled(false);
               handicap.setEnabled(true);
@@ -1084,6 +1084,12 @@ public class NewEngineGameDialog extends JDialog {
       Lizzie.config.newEngineGameKomi = komi;
       Lizzie.config.uiConfig.put("new-engine-game-komi", Lizzie.config.newEngineGameKomi);
       Lizzie.config.uiConfig.put("new-engine-game-handicap", Lizzie.config.newEngineGameHandicap);
+      Lizzie.config.persistEngineSgfStart(chkSGFstart.isSelected());
+      EnginePkIdentity.persistSelection(
+          Lizzie.config,
+          Utils.getEngineData(),
+          LizzieFrame.toolbar.engineBlackToolbar,
+          LizzieFrame.toolbar.engineWhiteToolbar);
 
       Lizzie.config.uiConfig.put(
           "first-engine-resign-move-counts", Lizzie.config.firstEngineResignMoveCounts);

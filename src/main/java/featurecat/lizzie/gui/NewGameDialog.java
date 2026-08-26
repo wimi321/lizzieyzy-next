@@ -812,8 +812,8 @@ public class NewGameDialog extends JDialog {
     gbc_chckbxNewCheckBox_1.gridy = 14;
     contentPanel.add(chkShowWhite, gbc_chckbxNewCheckBox_1);
     AccessibilitySupport.labelFor(lblShowWhite, chkShowWhite, lblShowWhite.getText());
-    chkShowBlack.setSelected(false);
-    chkShowWhite.setSelected(false);
+    chkShowBlack.setSelected(Lizzie.config.newGameShowBlack);
+    chkShowWhite.setSelected(Lizzie.config.newGameShowWhite);
 
     JLabel lblAutoSave =
         new JFontLabel(resourceBundle.getString("NewAnaGameDialog.lblAutoSave")); // ("自动保存棋谱");
@@ -986,6 +986,8 @@ public class NewGameDialog extends JDialog {
       Lizzie.config.uiConfig.put("kata-visits-txt", Lizzie.config.kataVisits);
       Lizzie.config.uiConfig.put("kata-playouts-txt", Lizzie.config.kataPlayouts);
 
+      Lizzie.config.persistNewGameShowCandidates(
+          chkShowBlack.isSelected(), chkShowWhite.isSelected());
       LizzieFrame.toolbar.setChkShowBlack(chkShowBlack.isSelected());
       LizzieFrame.toolbar.setChkShowWhite(chkShowWhite.isSelected());
       LizzieFrame.menu.setChkShowBlack(chkShowBlack.isSelected());

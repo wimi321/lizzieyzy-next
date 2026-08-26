@@ -3874,19 +3874,34 @@ public class BottomToolbar extends JPanel {
     enginePkBlackLis =
         new ItemListener() {
           public void itemStateChanged(final ItemEvent e) {
+            if (e.getStateChange() != ItemEvent.SELECTED) {
+              return;
+            }
             engineBlackToolbar = enginePkBlack.getSelectedIndex();
+            persistEnginePkIdentity(true, engineBlackToolbar);
             setTxtUnfocuse();
           }
         };
     enginePkWhiteLis =
         new ItemListener() {
           public void itemStateChanged(final ItemEvent e) {
+            if (e.getStateChange() != ItemEvent.SELECTED) {
+              return;
+            }
             engineWhiteToolbar = enginePkWhite.getSelectedIndex();
+            persistEnginePkIdentity(false, engineWhiteToolbar);
             setTxtUnfocuse();
           }
         };
     enginePkBlack.addItemListener(enginePkBlackLis);
     enginePkWhite.addItemListener(enginePkWhiteLis);
+  }
+
+  private void persistEnginePkIdentity(boolean black, int index) {
+    if (Lizzie.config == null || Lizzie.config.leelazConfig == null) {
+      return;
+    }
+    EnginePkIdentity.persistSide(Lizzie.config, Utils.getEngineData(), black, index);
   }
 
   public void removeEngineLis() {

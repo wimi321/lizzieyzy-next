@@ -119,7 +119,7 @@ class TrackingConfigMigrationTest {
     String dialog =
         Files.readString(Path.of("src/main/java/featurecat/lizzie/gui/ConfigDialog2.java"));
     int engineSectionStart = dialog.indexOf("case MODERN_NAV_ENGINE:");
-    int engineSectionEnd = dialog.indexOf("return analysis;", engineSectionStart);
+    int engineSectionEnd = dialog.indexOf("return content;", engineSectionStart);
 
     assertTrue(engineSectionStart >= 0);
     assertTrue(engineSectionEnd > engineSectionStart);
