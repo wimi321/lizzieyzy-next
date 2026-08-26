@@ -65,6 +65,7 @@ class HumanSlGameControllerIntegrationTest {
 
       controller.abort();
       assertTrue(controller.isFinished());
+      assertFalse(WinrateGraph.shouldSuppressForActiveHumanSlGame(controller));
     }
   }
 
