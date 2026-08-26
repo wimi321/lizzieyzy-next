@@ -980,6 +980,8 @@ public class Config {
 
   public boolean checkPlayBlack = true;
   public boolean checkContinuePlay = false;
+  public boolean newGameShowBlack = false;
+  public boolean newGameShowWhite = false;
   public boolean genmoveGameNoTime = false;
   public Double newGameKomi = 7.5;
   public int newGameHandicap = 0;
@@ -1694,6 +1696,8 @@ public class Config {
 
     checkPlayBlack = uiConfig.optBoolean("check-play-black", true);
     checkContinuePlay = uiConfig.optBoolean("check-continue-play", false);
+    newGameShowBlack = uiConfig.optBoolean("new-game-show-black", false);
+    newGameShowWhite = uiConfig.optBoolean("new-game-show-white", false);
     genmoveGameNoTime = uiConfig.optBoolean("genmove-game-notime", false);
     newGameKomi = uiConfig.optDouble("new-game-komi", 7.5);
     newGameHandicap = uiConfig.optInt("new-game-handicap", 0);
@@ -2084,7 +2088,9 @@ public class Config {
     noRefreshOnSub = uiConfig.optBoolean("no-refresh-on-sub", true);
     useTerritoryInScore = uiConfig.optBoolean("use-territory-in-score", false);
 
-    // chkEngineSgfStart = uiConfig.optBoolean("engine-sgf-start", true);
+    // Missing-key default must stay false / unchecked. Do not revive the old
+    // commented default of true: chkEngineSgfStart = uiConfig.optBoolean("engine-sgf-start", true);
+    chkEngineSgfStart = uiConfig.optBoolean("engine-sgf-start", false);
     engineSgfStartRandom = uiConfig.optBoolean("engine-sgf-random", true);
 
 
@@ -3465,6 +3471,22 @@ public class Config {
     int b_ = 255 - b;
     Color newColor = new Color(r_, g_, b_);
     return newColor;
+  }
+
+  public void persistNewGameShowCandidates(boolean showBlack, boolean showWhite) {
+    newGameShowBlack = showBlack;
+    newGameShowWhite = showWhite;
+    if (uiConfig != null) {
+      uiConfig.put("new-game-show-black", showBlack);
+      uiConfig.put("new-game-show-white", showWhite);
+    }
+  }
+
+  public void persistEngineSgfStart(boolean enabled) {
+    chkEngineSgfStart = enabled;
+    if (uiConfig != null) {
+      uiConfig.put("engine-sgf-start", enabled);
+    }
   }
 
   public void save() throws IOException {

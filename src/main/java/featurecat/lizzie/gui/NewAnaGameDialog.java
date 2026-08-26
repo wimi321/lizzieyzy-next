@@ -634,7 +634,7 @@ public class NewAnaGameDialog extends JDialog {
     JFontLabel label_10 = new JFontLabel(resourceBundle.getString("NewAnaGameDialog.showBlack"));
     contentPanel.add(label_10, gbc_10); // ("显示分析结果(黑)"));
     chkShowBlack = new JFontCheckBox();
-    chkShowBlack.setSelected(false);
+    chkShowBlack.setSelected(Lizzie.config.newGameShowBlack);
     GridBagConstraints gbc_chkShowBlack = new GridBagConstraints();
     gbc_chkShowBlack.fill = GridBagConstraints.BOTH;
     gbc_chkShowBlack.insets = new Insets(0, 0, 5, 0);
@@ -653,7 +653,7 @@ public class NewAnaGameDialog extends JDialog {
 
     dialogPane.add(contentPanel, BorderLayout.CENTER);
     chkShowWhite = new JFontCheckBox();
-    chkShowWhite.setSelected(false);
+    chkShowWhite.setSelected(Lizzie.config.newGameShowWhite);
     GridBagConstraints gbc_chkShowWhite = new GridBagConstraints();
     gbc_chkShowWhite.insets = new Insets(0, 0, 5, 0);
     gbc_chkShowWhite.fill = GridBagConstraints.BOTH;
@@ -854,6 +854,8 @@ public class NewAnaGameDialog extends JDialog {
       Lizzie.config.uiConfig.put("anagame-resign-start-move", Lizzie.config.anaGameResignStartMove);
       Lizzie.config.uiConfig.put("anagame-resign-move", Lizzie.config.anaGameResignMove);
       Lizzie.config.uiConfig.put("anagame-resign-percent", Lizzie.config.anaGameResignPercent);
+      Lizzie.config.persistNewGameShowCandidates(
+          chkShowBlack.isSelected(), chkShowWhite.isSelected());
 
       // close window
       cancelled = false;
