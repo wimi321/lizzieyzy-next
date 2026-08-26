@@ -37,8 +37,8 @@ final class TeacherRequestController implements AutoCloseable {
 
   synchronized void start(
       TeacherLlmClient client, List<TeacherLlmClient.Message> messages, Listener listener) {
-    cancelLocked(false);
     long requestGeneration = generation.incrementAndGet();
+    cancelLocked(false);
     TeacherLlmClient.Cancellation requestCancellation = new TeacherLlmClient.Cancellation();
     cancellation = requestCancellation;
     future =

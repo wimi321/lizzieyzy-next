@@ -15,10 +15,6 @@ public class GIBParser {
   };
 
   public static boolean load(String filename) throws IOException {
-    // Clear the board
-    boolean oriEmpty = EngineManager.isEmpty;
-    Lizzie.board.clear(false);
-    EngineManager.isEmpty = true;
     File file = new File(filename);
     if (!file.exists() || !file.canRead()) {
       return false;
@@ -36,10 +32,12 @@ public class GIBParser {
       value = builder.toString();
     }
     if (value.isEmpty()) {
-      EngineManager.isEmpty = oriEmpty;
       return false;
     }
 
+    boolean oriEmpty = EngineManager.isEmpty;
+    Lizzie.board.clear(false);
+    EngineManager.isEmpty = true;
     boolean returnValue = parse(value);
     EngineManager.isEmpty = oriEmpty;
     return returnValue;
@@ -122,6 +120,6 @@ public class GIBParser {
     Lizzie.board.clearAfterMove();
     Lizzie.frame.refresh();
     Lizzie.config.playSound = oriPlaySound;
-    return false;
+    return true;
   }
 }

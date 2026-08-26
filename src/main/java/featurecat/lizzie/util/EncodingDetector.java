@@ -2,7 +2,6 @@ package featurecat.lizzie.util;
 
 import java.io.ByteArrayOutputStream;
 import java.io.FileInputStream;
-import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
 import org.mozilla.universalchardet.UniversalDetector;
@@ -11,9 +10,9 @@ public class EncodingDetector {
 
   public static String detect(String fileName) {
     String encoding = "UTF-8";
-    try {
-      encoding = detect(new FileInputStream(fileName));
-    } catch (FileNotFoundException e) {
+    try (FileInputStream fis = new FileInputStream(fileName)) {
+      encoding = detect(fis);
+    } catch (IOException e) {
     }
     return encoding;
   }
