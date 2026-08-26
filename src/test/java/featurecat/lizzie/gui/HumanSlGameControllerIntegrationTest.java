@@ -61,6 +61,7 @@ class HumanSlGameControllerIntegrationTest {
       assertEquals(1, Lizzie.board.getHistory().getMoveNumber());
       assertTrue(controller.isAiThinking());
       assertSame(controller, Lizzie.frame.humanSlGame);
+      assertTrue(WinrateGraph.shouldSuppressForActiveHumanSlGame(controller));
 
       controller.abort();
       assertTrue(controller.isFinished());
@@ -200,6 +201,8 @@ class HumanSlGameControllerIntegrationTest {
       controller.start(pause.transferRestoreResponsibility());
 
       assertTrue(engine.pondering);
+      assertTrue(controller.isLiveAnalysisMode());
+      assertFalse(WinrateGraph.shouldSuppressForActiveHumanSlGame(controller));
       assertEquals(1, engine.resumeCount.get());
       assertEquals(1, resyncs.get());
       assertTrue(Lizzie.config.showBlackCandidates);

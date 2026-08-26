@@ -259,6 +259,10 @@ public final class HumanSlGameController {
     return trainingSession.state() == HumanSlTrainingSession.State.REVIEWING;
   }
 
+  public boolean isLiveAnalysisMode() {
+    return config.mode.isLiveAnalysis();
+  }
+
   public long humanElapsedMillis() {
     return humanElapsedMillis + liveElapsed(true);
   }

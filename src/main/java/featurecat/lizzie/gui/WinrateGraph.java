@@ -367,7 +367,7 @@ public class WinrateGraph {
       gBackground.drawLine(posx, y, posx + width, y);
     }
     if (Lizzie.frame.isInPlayMode()) return;
-    if (Lizzie.frame.humanSlGame != null && !Lizzie.frame.humanSlGame.isFinished()) return;
+    if (shouldSuppressForActiveHumanSlGame(Lizzie.frame.humanSlGame)) return;
     //    if(Lizzie.frame.extraMode==8)
     //    	{if(width>65)width=width-12;
     //    	else width=width*85/100;}
@@ -1495,6 +1495,10 @@ public class WinrateGraph {
     QuickOverviewLayout quickOverviewLayout =
         drawQuickOverview(g, gBlunder, gBackground, graphBaseNode, posx, width, numMoves);
     rememberRenderedPointSources(quickOverviewLayout, renderedAnchors);
+  }
+
+  static boolean shouldSuppressForActiveHumanSlGame(HumanSlGameController controller) {
+    return controller != null && !controller.isFinished() && !controller.isLiveAnalysisMode();
   }
 
   private void drawLineLegend(Graphics2D g, int graphX, int graphY, int graphWidth) {

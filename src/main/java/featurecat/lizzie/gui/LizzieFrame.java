@@ -8807,6 +8807,9 @@ public class LizzieFrame extends JFrame {
   private boolean winrateGraphDragScheduled;
 
   public void onMouseDragged(int x, int y) {
+    if (hasActiveHumanSlGame()) {
+      return;
+    }
     BoardHistoryNode targetNode = canGoAfterload ? resolveWinrateGraphTargetNode(x, y) : null;
     if (!SwingUtilities.isEventDispatchThread()) {
       if (targetNode != null) {
