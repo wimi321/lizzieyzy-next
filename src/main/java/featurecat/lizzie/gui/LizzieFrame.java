@@ -479,7 +479,6 @@ public class LizzieFrame extends JFrame {
   private HumanSlTrainingBar humanSlTrainingBar;
   private HumanSlCorrectionPanel humanSlCorrectionPanel;
   private NewHumanSlGameDialog humanSlSetupDialog;
-  private HumanSlTrainingReportDialog humanSlTrainingReportDialog;
   private boolean startHumanSlAtCurrentRequested;
   public boolean playerIsBlack = true;
   public static boolean canGoAfterload = true;
@@ -11467,11 +11466,6 @@ public class LizzieFrame extends JFrame {
       humanSlSetupDialog.toFront();
       return;
     }
-    if (humanSlTrainingSession.state() == HumanSlTrainingSession.State.REPORT_READY
-        && humanSlTrainingReportDialog != null) {
-      humanSlTrainingReportDialog.showReport();
-      return;
-    }
     startHumanSlGameDialog();
   }
 
@@ -11531,10 +11525,6 @@ public class LizzieFrame extends JFrame {
   public void hideHumanSlCorrection(HumanSlGameController controller) {
     humanSlCorrectionPanel.dismiss(controller);
     repaint();
-  }
-
-  public void setHumanSlTrainingReport(HumanSlTrainingReportDialog dialog) {
-    humanSlTrainingReportDialog = dialog;
   }
 
   public void startEngineGameDialog() {

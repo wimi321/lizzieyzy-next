@@ -135,7 +135,7 @@ public final class HumanSlTrainingBar extends JPanel {
     passButton.setText(text("HumanSlGame.btn.pass", "Pass"));
     resignButton.setText(text("HumanSlGame.btn.resign", "Resign"));
     retryButton.setText(text("HumanSlTraining.retryAi", "Retry AI"));
-    finishButton.setText(text("HumanSlTraining.finishReview", "Finish and review"));
+    finishButton.setText(text("HumanSlTraining.finishReview", "Finish and review on board"));
     HumanSlTrainingStyle.styleSecondary(passButton);
     HumanSlTrainingStyle.styleSecondary(resignButton);
     HumanSlTrainingStyle.stylePrimary(retryButton);
@@ -152,7 +152,7 @@ public final class HumanSlTrainingBar extends JPanel {
                   } else if (active.isReviewing()) {
                     active.abort();
                   } else {
-                    active.finishAndReview();
+                    active.finishAndReturnToBoard();
                   }
                 }));
     panel.add(passButton);
@@ -217,7 +217,7 @@ public final class HumanSlTrainingBar extends JPanel {
       finishFallback = "Stop and return";
     } else {
       finishKey = "HumanSlTraining.finishReview";
-      finishFallback = "Finish and review";
+      finishFallback = "Finish and review on board";
     }
     finishButton.setText(text(finishKey, finishFallback));
     finishButton.setEnabled(!active.isExitInProgress());

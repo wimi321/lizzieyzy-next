@@ -23,7 +23,6 @@ import featurecat.lizzie.rules.Stone;
 import featurecat.lizzie.rules.Zobrist;
 import featurecat.lizzie.training.HumanSlTrainingConfig;
 import featurecat.lizzie.training.HumanSlTrainingSession;
-import featurecat.lizzie.training.TrainingSessionReport;
 import java.awt.Window;
 import java.awt.event.KeyEvent;
 import java.io.IOException;
@@ -687,9 +686,10 @@ class HumanSlGameControllerIntegrationTest {
   }
 
   @Test
-  void abortAndReviewExitCloseThenResyncThenResumeForNewAndCurrentGames() throws Exception {
+  void abortAndFinishReturnToBoardCloseThenResyncThenResumeForNewAndCurrentGames()
+      throws Exception {
     for (boolean fromCurrent : List.of(false, true)) {
-      for (boolean reviewExit : List.of(false, true)) {
+      for (boolean finishFromToolbar : List.of(false, true)) {
         try (CoachEnvironment env = CoachEnvironment.open()) {
           if (fromCurrent) {
             Lizzie.board.getHistory().place(0, 0, Stone.BLACK);
@@ -706,6 +706,8 @@ class HumanSlGameControllerIntegrationTest {
                   engine::ponder);
           BlockingHumanSlRunner runner = new BlockingHumanSlRunner(events);
           HumanSlTrainingSession session = new HumanSlTrainingSession();
+          List<HumanSlTrainingSession.State> sessionStates = new ArrayList<>();
+          session.addListener(sessionStates::add);
           HumanSlGameController controller =
               new HumanSlGameController(
                   runner,
@@ -736,9 +738,8 @@ class HumanSlGameControllerIntegrationTest {
           // final position that must be replayed before foreground analysis resumes.
           Lizzie.board.getHistory().place(1, 1, next);
 
-          if (reviewExit) {
-            controller.completeReview(
-                new TrainingSessionReport(List.of()), "test result", 0L);
+          if (finishFromToolbar) {
+            controller.finishAndReturnToBoard();
           } else {
             controller.abort();
           }
@@ -753,13 +754,43 @@ class HumanSlGameControllerIntegrationTest {
           assertEquals(fromCurrent ? 2 : 1, resyncedMoveNumber.get());
           assertTrue(engine.pondering);
           assertFalse(controller.isExitRecoveryPending());
-          assertEquals(
-              reviewExit
-                  ? HumanSlTrainingSession.State.REPORT_READY
-                  : HumanSlTrainingSession.State.FINISHED,
-              session.state());
+          assertEquals(HumanSlTrainingSession.State.FINISHED, session.state());
+          assertFalse(sessionStates.contains(HumanSlTrainingSession.State.REVIEWING));
+          assertFalse(sessionStates.contains(HumanSlTrainingSession.State.REPORT_READY));
         }
       }
+    }
+  }
+
+  @Test
+  void resignReturnsToMainBoardWithResultAndWithoutReportState() throws Exception {
+    try (CoachEnvironment env = CoachEnvironment.open()) {
+      HumanSlTrainingSession session = new HumanSlTrainingSession();
+      List<HumanSlTrainingSession.State> sessionStates = new ArrayList<>();
+      session.addListener(sessionStates::add);
+      HumanSlGameController controller =
+          new HumanSlGameController(
+              new BlockingHumanSlRunner(),
+              HumanSlTrainingConfig.builder()
+                  .playerColor(HumanSlTrainingConfig.PlayerColor.BLACK)
+                  .fromCurrentPosition(false)
+                  .moveTimeSeconds(2)
+                  .build(),
+              session);
+      controller.setExitLifecycleForTesting(Runnable::run, Runnable::run, () -> true, null);
+      session.setState(HumanSlTrainingSession.State.PLAYING);
+      Lizzie.frame.humanSlGame = controller;
+
+      controller.humanResign();
+
+      assertTrue(controller.isFinished());
+      assertNull(Lizzie.frame.humanSlGame);
+      assertEquals(HumanSlTrainingSession.State.FINISHED, session.state());
+      assertFalse(controller.gameResult().isBlank());
+      assertEquals(
+          controller.gameResult(), Lizzie.board.getHistory().getGameInfo().getResult());
+      assertFalse(sessionStates.contains(HumanSlTrainingSession.State.REVIEWING));
+      assertFalse(sessionStates.contains(HumanSlTrainingSession.State.REPORT_READY));
     }
   }
 
