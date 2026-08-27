@@ -310,7 +310,7 @@ class WholeGameAnalysisSessionTest {
                   && lastSnapshot(fixture).state == WholeGameAnalysisSession.State.COMPLETE,
           "session should reach COMPLETE");
       assertTrue(engine.quitCalled.await(2, TimeUnit.SECONDS));
-      drainEdt();
+      waitForFinished(fixture);
 
       List<WholeGameAnalysisSession.State> states = snapshotStates(fixture);
       assertEquals(WholeGameAnalysisSession.State.PREPARING, states.get(0));
@@ -355,7 +355,7 @@ class WholeGameAnalysisSessionTest {
                   && !fixture.snapshots.isEmpty()
                   && lastSnapshot(fixture).state == WholeGameAnalysisSession.State.COMPLETE,
           "pre-analyzed session should complete");
-      drainEdt();
+      waitForFinished(fixture);
 
       assertEquals(0, engine.requestCount);
       assertEquals(WholeGameAnalysisSession.State.COMPLETE, fixture.session.state());
@@ -378,7 +378,7 @@ class WholeGameAnalysisSessionTest {
       assertTrue(fixture.session.isRunning());
 
       fixture.session.cancel();
-      drainEdt();
+      waitForFinished(fixture);
 
       assertEquals(WholeGameAnalysisSession.State.CANCELLED, fixture.session.state());
       WholeGameAnalysisSession.Snapshot cancelled = lastSnapshot(fixture);
@@ -523,7 +523,7 @@ class WholeGameAnalysisSessionTest {
                   && !fixture.snapshots.isEmpty()
                   && lastSnapshot(fixture).state == WholeGameAnalysisSession.State.FAILED,
           "factory failure should fail the session");
-      drainEdt();
+      waitForFinished(fixture);
 
       assertEquals("WholeGameAnalysis.error.engine", lastSnapshot(fixture).detailKey);
       assertEquals(0, fixture.frame.attachCount);
@@ -549,7 +549,7 @@ class WholeGameAnalysisSessionTest {
           () -> fixture.session.state() == WholeGameAnalysisSession.State.FAILED,
           "unloaded engine should fail");
       assertTrue(engine.quitCalled.await(2, TimeUnit.SECONDS));
-      drainEdt();
+      waitForFinished(fixture);
 
       assertEquals("WholeGameAnalysis.error.engine", lastSnapshot(fixture).detailKey);
       assertEquals(0, fixture.frame.attachCount);
@@ -717,6 +717,12 @@ class WholeGameAnalysisSessionTest {
     }
     drainEdt();
     assertTrue(condition.getAsBoolean(), message);
+  }
+
+  private static void waitForFinished(SessionFixture fixture) throws Exception {
+    waitUntil(
+        () -> fixture.frame.finishedCount == 1,
+        "session should notify its frame exactly once");
   }
 
   private static Object getObjectField(Object target, String name) throws Exception {
