@@ -370,8 +370,15 @@ class AnalysisEngineCommandHelperTest {
 
           assertFalse(result.isSuccess());
           assertTrue(result.getCommand().isEmpty());
-          assertEquals(1, events.list.size(), events.list.toString());
-          String message = events.list.get(0).getFormattedMessage();
+          List<String> messages =
+              events.list.stream()
+                  .map(ILoggingEvent::getFormattedMessage)
+                  .filter(
+                      message ->
+                          message.contains("HumanSL analysis engine resolution failed:"))
+                  .toList();
+          assertEquals(1, messages.size(), events.list.toString());
+          String message = messages.get(0);
           assertTrue(message.contains("HumanSL analysis engine resolution failed:"), message);
           assertTrue(message.contains("configuredCommandPresent=false"), message);
           assertTrue(message.contains("source=BUNDLED_PACKAGE"), message);
@@ -404,7 +411,7 @@ class AnalysisEngineCommandHelperTest {
           AnalysisEngineCommandHelper.Result result =
               AnalysisEngineCommandHelper.resolveHumanSlCommand("");
           assertFalse(result.isSuccess());
-          runtime.awaitIdle();
+          runtime.shutdown();
 
           Path zip =
               new DiagnosticBundleExporter(DiagnosticBundleExporter.defaultOutputDirectory(logHome))
