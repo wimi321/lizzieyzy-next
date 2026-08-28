@@ -3,6 +3,7 @@ package featurecat.lizzie.util;
 import featurecat.lizzie.Config;
 import featurecat.lizzie.Lizzie;
 import featurecat.lizzie.gui.EngineData;
+import featurecat.lizzie.logging.LogCategories;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
@@ -12,11 +13,14 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.MissingResourceException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public final class AnalysisEngineCommandHelper {
   static final String TEMPLATE_RESOURCE = "katago/analysis_example.cfg";
   public static final String DEFAULT_ANALYSIS_COMMAND =
       "katago analysis -model model.bin.gz -config analysis.cfg -quit-without-waiting";
+  private static final Logger LOG = LoggerFactory.getLogger(LogCategories.ENGINE);
 
   private AnalysisEngineCommandHelper() {}
 
@@ -99,11 +103,16 @@ public final class AnalysisEngineCommandHelper {
    */
   public static Result resolveHumanSlCommand(String configuredCommand) {
     KataGoAutoSetupHelper.SetupSnapshot snapshot = KataGoAutoSetupHelper.inspectLocalSetup();
-    return resolveHumanSlCommand(
-        configuredCommand,
-        snapshot == null ? null : snapshot.enginePath,
-        snapshot == null ? null : snapshot.analysisConfigPath,
-        snapshot == null ? null : snapshot.activeWeightPath);
+    Result result =
+        resolveHumanSlCommand(
+            configuredCommand,
+            snapshot == null ? null : snapshot.enginePath,
+            snapshot == null ? null : snapshot.analysisConfigPath,
+            snapshot == null ? null : snapshot.activeWeightPath);
+    if (!result.isSuccess()) {
+      logHumanSlResolutionFailure(configuredCommand, snapshot);
+    }
+    return result;
   }
 
   static Result resolveHumanSlCommand(
@@ -139,6 +148,123 @@ public final class AnalysisEngineCommandHelper {
       parts.add("-quit-without-waiting");
     }
     return Result.success(buildCommandLine(parts), "", false, analysisConfigPath);
+  }
+
+  static void logHumanSlResolutionFailure(
+      String configuredCommand, KataGoAutoSetupHelper.SetupSnapshot snapshot) {
+    try {
+      LOG.warn("{}", formatHumanSlResolutionFailure(configuredCommand, snapshot));
+    } catch (RuntimeException | Error ignored) {
+      // A logging backend failure must not change resolve success or failure.
+    }
+  }
+
+  static String formatHumanSlResolutionFailure(
+      String configuredCommand, KataGoAutoSetupHelper.SetupSnapshot snapshot) {
+    boolean configuredCommandPresent =
+        configuredCommand != null && !configuredCommand.trim().isEmpty();
+    String source = KataGoAutoSetupHelper.DiscoverySource.NONE.name();
+    String packageFlavor = KataGoAutoSetupHelper.PackageFlavor.UNKNOWN.name();
+    boolean engine = false;
+    boolean analysisConfig = false;
+    boolean weight = false;
+    String missingComponents = "[]";
+    String diagnostics = "[]";
+    if (snapshot != null) {
+      engine = isRegularFile(snapshot.enginePath);
+      analysisConfig = isRegularFile(snapshot.analysisConfigPath);
+      weight = isRegularFile(snapshot.activeWeightPath);
+      KataGoAutoSetupHelper.LocalKataGoDiscoveryResult discovery = snapshot.discovery;
+      if (discovery != null) {
+        source = discovery.source.name();
+        packageFlavor = discovery.packageFlavor.name();
+        missingComponents = formatSafeList(discovery.missingComponents, snapshot);
+        diagnostics = formatSafeList(discovery.diagnostics, snapshot);
+      }
+    }
+    return "HumanSL analysis engine resolution failed:"
+        + " configuredCommandPresent="
+        + configuredCommandPresent
+        + " source="
+        + source
+        + " packageFlavor="
+        + packageFlavor
+        + " engine="
+        + engine
+        + " analysisConfig="
+        + analysisConfig
+        + " weight="
+        + weight
+        + " missingComponents="
+        + missingComponents
+        + " diagnostics="
+        + diagnostics;
+  }
+
+  private static String formatSafeList(
+      List<?> values, KataGoAutoSetupHelper.SetupSnapshot snapshot) {
+    if (values == null || values.isEmpty()) {
+      return "[]";
+    }
+    StringBuilder builder = new StringBuilder("[");
+    for (int i = 0; i < values.size(); i++) {
+      if (i > 0) {
+        builder.append(", ");
+      }
+      Object value = values.get(i);
+      builder.append(redactSnapshotPaths(value == null ? "" : String.valueOf(value), snapshot));
+    }
+    builder.append(']');
+    return builder.toString();
+  }
+
+  private static String redactSnapshotPaths(
+      String text, KataGoAutoSetupHelper.SetupSnapshot snapshot) {
+    if (text == null || text.isEmpty() || snapshot == null) {
+      return text == null ? "" : text;
+    }
+    String safe = text;
+    safe = replacePathWithFileName(safe, snapshot.enginePath);
+    safe = replacePathWithFileName(safe, snapshot.gtpConfigPath);
+    safe = replacePathWithFileName(safe, snapshot.analysisConfigPath);
+    safe = replacePathWithFileName(safe, snapshot.activeWeightPath);
+    safe = replacePathWithFileName(safe, snapshot.workingDir);
+    safe = replacePathWithFileName(safe, snapshot.appRoot);
+    if (snapshot.discovery != null) {
+      safe = replacePathWithFileName(safe, snapshot.discovery.sourceCommand);
+    }
+    return safe;
+  }
+
+  private static String replacePathWithFileName(String text, Path path) {
+    if (text == null || text.isEmpty() || path == null) {
+      return text == null ? "" : text;
+    }
+    return replaceLiteralWithFileName(text, path.toString(), path.getFileName());
+  }
+
+  private static String replacePathWithFileName(String text, String pathText) {
+    if (text == null || text.isEmpty() || pathText == null || pathText.isEmpty()) {
+      return text == null ? "" : text;
+    }
+    Path fileName;
+    try {
+      fileName = Path.of(pathText).getFileName();
+    } catch (RuntimeException e) {
+      fileName = null;
+    }
+    return replaceLiteralWithFileName(text, pathText, fileName);
+  }
+
+  private static String replaceLiteralWithFileName(String text, String literal, Path fileName) {
+    if (literal == null || literal.isEmpty() || !text.contains(literal)) {
+      return text;
+    }
+    String replacement = fileName == null ? "file" : fileName.toString();
+    if (replacement.isEmpty() || replacement.equals(literal)) {
+      return text.replace(literal, "file");
+    }
+    return text.replace(literal, replacement);
   }
 
   public static Path ensureAnalysisConfig(Path gtpConfigPath) throws IOException {

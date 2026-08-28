@@ -5,17 +5,46 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
+import featurecat.lizzie.Config;
+import featurecat.lizzie.ConfigTestHelper;
+import featurecat.lizzie.Lizzie;
+import featurecat.lizzie.analysis.SyncDiagnosticsExportSnapshot;
 import featurecat.lizzie.gui.EngineData;
+import featurecat.lizzie.logging.DiagnosticBundleExporter;
+import featurecat.lizzie.logging.DiagnosticBundleRequest;
+import featurecat.lizzie.logging.LogCategories;
+import featurecat.lizzie.logging.LoggingLimits;
+import featurecat.lizzie.logging.LoggingRuntime;
+import featurecat.lizzie.logging.TraceScope;
+import featurecat.lizzie.logging.WorkDirectoryResolution;
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.EnumSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipInputStream;
+import org.json.JSONObject;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.slf4j.LoggerFactory;
 
 class AnalysisEngineCommandHelperTest {
   @TempDir Path tempDir;
+
+  @AfterEach
+  void tearDownLoggingRuntime() {
+    LoggingRuntime.resetForTests();
+  }
 
   @Test
   void convertsSavedKataGoEngineAndCreatesMissingAnalysisConfig() throws Exception {
@@ -327,6 +356,114 @@ class AnalysisEngineCommandHelperTest {
   }
 
   @Test
+  void humanSlFailedResolveLogsSourceFlavorAndMissingComponentsWithoutFullPaths()
+      throws Exception {
+    Path root = tempDir.resolve("secret-katago-home-368");
+    Path engine = writeIncompleteOpenClBundleMissingAnalysisConfig(root);
+    ListAppender<ILoggingEvent> events = attachEngineLog();
+
+    withUserDirAndConfig(
+        root,
+        () -> {
+          AnalysisEngineCommandHelper.Result result =
+              AnalysisEngineCommandHelper.resolveHumanSlCommand("");
+
+          assertFalse(result.isSuccess());
+          assertTrue(result.getCommand().isEmpty());
+          assertEquals(1, events.list.size(), events.list.toString());
+          String message = events.list.get(0).getFormattedMessage();
+          assertTrue(message.contains("HumanSL analysis engine resolution failed:"), message);
+          assertTrue(message.contains("configuredCommandPresent=false"), message);
+          assertTrue(message.contains("source=BUNDLED_PACKAGE"), message);
+          assertTrue(message.contains("packageFlavor=INCOMPLETE_BUNDLE"), message);
+          assertTrue(message.contains("engine=true"), message);
+          assertTrue(message.contains("analysisConfig=false"), message);
+          assertTrue(message.contains("weight=true"), message);
+          assertTrue(message.contains("missingComponents=[ANALYSIS_CONFIG]"), message);
+          assertTrue(message.contains("diagnostics="), message);
+          assertFalse(message.contains(root.toAbsolutePath().normalize().toString()), message);
+          assertFalse(message.contains(engine.toString()), message);
+        });
+  }
+
+  @Test
+  void humanSlFailedResolveDiagnosticAppearsInDiagnosticPackage() throws Exception {
+    Path logHome = tempDir.resolve("logging-home");
+    Path root = tempDir.resolve("secret-katago-home-368-package");
+    Path engine = writeIncompleteOpenClBundleMissingAnalysisConfig(root);
+    Files.createDirectories(logHome);
+    LoggingRuntime.resetForTests();
+    LoggingRuntime runtime =
+        LoggingRuntime.initialize(
+            new WorkDirectoryResolution(logHome, List.of()),
+            new LoggingLimits(64, 32, 32, 32, 7, 1_000_000, 256_000));
+
+    withUserDirAndConfig(
+        root,
+        () -> {
+          AnalysisEngineCommandHelper.Result result =
+              AnalysisEngineCommandHelper.resolveHumanSlCommand("");
+          assertFalse(result.isSuccess());
+          runtime.awaitIdle();
+
+          Path zip =
+              new DiagnosticBundleExporter(DiagnosticBundleExporter.defaultOutputDirectory(logHome))
+                  .export(
+                      new DiagnosticBundleRequest(
+                          runtime,
+                          EnumSet.noneOf(TraceScope.class),
+                          new JSONObject(),
+                          emptySnapshot(),
+                          "next-dev"));
+          Map<String, String> entries = unzipTextEntries(zip);
+          String appLog = entries.getOrDefault("logs/lizzie/app.log", "");
+          String diagnosticLine = humanSlResolutionFailureLine(appLog);
+          assertFalse(diagnosticLine.isEmpty(), appLog);
+          assertTrue(diagnosticLine.contains("source=BUNDLED_PACKAGE"), diagnosticLine);
+          assertTrue(diagnosticLine.contains("packageFlavor=INCOMPLETE_BUNDLE"), diagnosticLine);
+          assertTrue(diagnosticLine.contains("missingComponents=[ANALYSIS_CONFIG]"), diagnosticLine);
+          assertTrue(diagnosticLine.contains("engine=true"), diagnosticLine);
+          assertTrue(diagnosticLine.contains("analysisConfig=false"), diagnosticLine);
+          assertTrue(diagnosticLine.contains("weight=true"), diagnosticLine);
+          assertFalse(
+              diagnosticLine.contains(root.toAbsolutePath().normalize().toString()),
+              diagnosticLine);
+          assertFalse(diagnosticLine.contains(engine.toString()), diagnosticLine);
+        });
+  }
+
+  @Test
+  void humanSlSuccessfulResolveDoesNotLogResolutionFailure() throws Exception {
+    Path engine = writeFile(tempDir.resolve("自定义引擎/katago"));
+    Path config = writeFile(tempDir.resolve("自定义引擎/analysis.cfg"));
+    Path weight = writeFile(tempDir.resolve("自定义权重/model.bin.gz"));
+    String customCommand =
+        quote(engine)
+            + " analysis -model "
+            + quote(weight)
+            + " -config "
+            + quote(config);
+    ListAppender<ILoggingEvent> events = attachEngineLog();
+
+    withUserDirAndConfig(
+        tempDir.resolve("unused-bundle"),
+        () -> {
+          AnalysisEngineCommandHelper.Result result =
+              AnalysisEngineCommandHelper.resolveHumanSlCommand(customCommand);
+
+          assertTrue(result.isSuccess(), result.getMessage());
+          assertEquals(customCommand, result.getCommand());
+          assertTrue(
+              events.list.stream()
+                  .noneMatch(
+                      event ->
+                          event.getFormattedMessage()
+                              .contains("HumanSL analysis engine resolution failed:")),
+              events.list.toString());
+        });
+  }
+
+  @Test
   void bundledAnalysisConfigTemplateIsAvailable() throws Exception {
     assertNotNull(
         AnalysisEngineCommandHelperTest.class
@@ -348,5 +485,105 @@ class AnalysisEngineCommandHelperTest {
   private static Path writeFile(Path path) throws Exception {
     Files.createDirectories(path.getParent());
     return Files.write(path, new byte[] {1});
+  }
+
+  private static Path writeIncompleteOpenClBundleMissingAnalysisConfig(Path root) throws Exception {
+    Files.createDirectories(root);
+    Files.writeString(
+        root.resolve("lizzieyzy-next-installed-manifest.json"),
+        "{\"platform\":\"linux\",\"flavor\":\"opencl\"}");
+    Path engine =
+        writeFile(
+            root.resolve("engines")
+                .resolve("katago")
+                .resolve(detectTestPlatformDir())
+                .resolve(testKataGoBinaryName()));
+    Files.createDirectories(root.resolve("engines").resolve("katago").resolve("configs"));
+    writeFile(root.resolve("engines").resolve("katago").resolve("configs").resolve("gtp.cfg"));
+    writeFile(root.resolve("weights").resolve("default.bin.gz"));
+    return engine.toAbsolutePath().normalize();
+  }
+
+  private static ListAppender<ILoggingEvent> attachEngineLog() {
+    LoggingRuntime.resetForTests();
+    Logger engine = (Logger) LoggerFactory.getLogger(LogCategories.ENGINE);
+    engine.setLevel(Level.INFO);
+    ListAppender<ILoggingEvent> appender = new ListAppender<>();
+    appender.start();
+    engine.addAppender(appender);
+    return appender;
+  }
+
+  private static void withUserDirAndConfig(Path userDir, ThrowingRunnable action) throws Exception {
+    Files.createDirectories(userDir);
+    String previousUserDir = System.getProperty("user.dir");
+    Config previousConfig = Lizzie.config;
+    try {
+      System.setProperty("user.dir", userDir.toString());
+      Lizzie.config = ConfigTestHelper.createForTests(userDir);
+      Lizzie.config.config = new JSONObject();
+      Lizzie.config.leelazConfig = new JSONObject();
+      Lizzie.config.uiConfig = new JSONObject();
+      action.run();
+    } finally {
+      if (previousUserDir == null) {
+        System.clearProperty("user.dir");
+      } else {
+        System.setProperty("user.dir", previousUserDir);
+      }
+      Lizzie.config = previousConfig;
+    }
+  }
+
+  private static String detectTestPlatformDir() {
+    String osName = System.getProperty("os.name", "").toLowerCase();
+    String arch = System.getProperty("os.arch", "").toLowerCase();
+    boolean isArm = arch.contains("aarch64") || arch.contains("arm64");
+    boolean is64 = arch.contains("64");
+    if (osName.contains("win")) {
+      return is64 ? "windows-x64" : "windows-x86";
+    }
+    if (osName.contains("mac") || osName.contains("darwin")) {
+      return isArm ? "macos-arm64" : "macos-amd64";
+    }
+    return is64 ? "linux-x64" : "linux-x86";
+  }
+
+  private static String testKataGoBinaryName() {
+    return System.getProperty("os.name", "").toLowerCase().contains("win")
+        ? "katago.exe"
+        : "katago";
+  }
+
+  private static SyncDiagnosticsExportSnapshot emptySnapshot() {
+    return new SyncDiagnosticsExportSnapshot(
+        1L, null, List.of(), List.of(), List.of(), null);
+  }
+
+  private static String humanSlResolutionFailureLine(String appLog) {
+    if (appLog == null || appLog.isEmpty()) {
+      return "";
+    }
+    for (String line : appLog.split("\\R")) {
+      if (line.contains("HumanSL analysis engine resolution failed:")) {
+        return line;
+      }
+    }
+    return "";
+  }
+
+  private static Map<String, String> unzipTextEntries(Path zip) throws IOException {
+    Map<String, String> entries = new LinkedHashMap<>();
+    try (ZipInputStream input = new ZipInputStream(Files.newInputStream(zip))) {
+      ZipEntry entry;
+      while ((entry = input.getNextEntry()) != null) {
+        entries.put(entry.getName(), new String(input.readAllBytes(), StandardCharsets.UTF_8));
+      }
+    }
+    return entries;
+  }
+
+  private interface ThrowingRunnable {
+    void run() throws Exception;
   }
 }
