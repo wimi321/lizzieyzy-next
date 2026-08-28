@@ -33,7 +33,7 @@ import java.util.Map;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 import org.json.JSONObject;
-import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.slf4j.LoggerFactory;
@@ -41,9 +41,11 @@ import org.slf4j.LoggerFactory;
 class AnalysisEngineCommandHelperTest {
   @TempDir Path tempDir;
 
-  @AfterEach
-  void tearDownLoggingRuntime() {
-    LoggingRuntime.resetForTests();
+  @BeforeAll
+  static void loadRuntimeClasses() throws ClassNotFoundException {
+    Class.forName(KataGoAutoSetupHelper.class.getName());
+    Class.forName(KataGoRuntimeHelper.class.getName());
+    Class.forName(Lizzie.class.getName());
   }
 
   @Test
@@ -399,44 +401,58 @@ class AnalysisEngineCommandHelperTest {
     Path root = tempDir.resolve("secret-katago-home-368-package");
     Path engine = writeIncompleteOpenClBundleMissingAnalysisConfig(root);
     Files.createDirectories(logHome);
-    LoggingRuntime.resetForTests();
-    LoggingRuntime runtime =
-        LoggingRuntime.initialize(
-            new WorkDirectoryResolution(logHome, List.of()),
-            new LoggingLimits(64, 32, 32, 32, 7, 1_000_000, 256_000));
+    ClassLoader previousLoader = Thread.currentThread().getContextClassLoader();
+    LoggingRuntime runtime = null;
+    try {
+      LoggingRuntime.resetForTests();
+      runtime =
+          LoggingRuntime.initialize(
+              new WorkDirectoryResolution(logHome, List.of()),
+              new LoggingLimits(64, 32, 32, 32, 7, 1_000_000, 256_000));
 
-    withUserDirAndConfig(
-        root,
-        () -> {
-          AnalysisEngineCommandHelper.Result result =
-              AnalysisEngineCommandHelper.resolveHumanSlCommand("");
-          assertFalse(result.isSuccess());
-          runtime.shutdown();
+      LoggingRuntime loggingRuntime = runtime;
+      withUserDirAndConfig(
+          root,
+          () -> {
+            AnalysisEngineCommandHelper.Result result =
+                AnalysisEngineCommandHelper.resolveHumanSlCommand("");
+            assertFalse(result.isSuccess());
+            loggingRuntime.shutdown();
 
-          Path zip =
-              new DiagnosticBundleExporter(DiagnosticBundleExporter.defaultOutputDirectory(logHome))
-                  .export(
-                      new DiagnosticBundleRequest(
-                          runtime,
-                          EnumSet.noneOf(TraceScope.class),
-                          new JSONObject(),
-                          emptySnapshot(),
-                          "next-dev"));
-          Map<String, String> entries = unzipTextEntries(zip);
-          String appLog = entries.getOrDefault("logs/lizzie/app.log", "");
-          String diagnosticLine = humanSlResolutionFailureLine(appLog);
-          assertFalse(diagnosticLine.isEmpty(), appLog);
-          assertTrue(diagnosticLine.contains("source=BUNDLED_PACKAGE"), diagnosticLine);
-          assertTrue(diagnosticLine.contains("packageFlavor=INCOMPLETE_BUNDLE"), diagnosticLine);
-          assertTrue(diagnosticLine.contains("missingComponents=[ANALYSIS_CONFIG]"), diagnosticLine);
-          assertTrue(diagnosticLine.contains("engine=true"), diagnosticLine);
-          assertTrue(diagnosticLine.contains("analysisConfig=false"), diagnosticLine);
-          assertTrue(diagnosticLine.contains("weight=true"), diagnosticLine);
-          assertFalse(
-              diagnosticLine.contains(root.toAbsolutePath().normalize().toString()),
-              diagnosticLine);
-          assertFalse(diagnosticLine.contains(engine.toString()), diagnosticLine);
-        });
+            Path zip =
+                new DiagnosticBundleExporter(
+                        DiagnosticBundleExporter.defaultOutputDirectory(logHome))
+                    .export(
+                        new DiagnosticBundleRequest(
+                            loggingRuntime,
+                            EnumSet.noneOf(TraceScope.class),
+                            new JSONObject(),
+                            emptySnapshot(),
+                            "next-dev"));
+            Map<String, String> entries = unzipTextEntries(zip);
+            String appLog = entries.getOrDefault("logs/lizzie/app.log", "");
+            String diagnosticLine = humanSlResolutionFailureLine(appLog);
+            assertFalse(diagnosticLine.isEmpty(), appLog);
+            assertTrue(diagnosticLine.contains("source=BUNDLED_PACKAGE"), diagnosticLine);
+            assertTrue(
+                diagnosticLine.contains("packageFlavor=INCOMPLETE_BUNDLE"), diagnosticLine);
+            assertTrue(
+                diagnosticLine.contains("missingComponents=[ANALYSIS_CONFIG]"), diagnosticLine);
+            assertTrue(diagnosticLine.contains("engine=true"), diagnosticLine);
+            assertTrue(diagnosticLine.contains("analysisConfig=false"), diagnosticLine);
+            assertTrue(diagnosticLine.contains("weight=true"), diagnosticLine);
+            assertFalse(
+                diagnosticLine.contains(root.toAbsolutePath().normalize().toString()),
+                diagnosticLine);
+            assertFalse(diagnosticLine.contains(engine.toString()), diagnosticLine);
+          });
+    } finally {
+      if (runtime != null) {
+        runtime.shutdown();
+      }
+      LoggingRuntime.resetForTests();
+      Thread.currentThread().setContextClassLoader(previousLoader);
+    }
   }
 
   @Test
@@ -512,7 +528,6 @@ class AnalysisEngineCommandHelperTest {
   }
 
   private static ListAppender<ILoggingEvent> attachEngineLog() {
-    LoggingRuntime.resetForTests();
     Logger engine = (Logger) LoggerFactory.getLogger(LogCategories.ENGINE);
     engine.setLevel(Level.INFO);
     ListAppender<ILoggingEvent> appender = new ListAppender<>();
