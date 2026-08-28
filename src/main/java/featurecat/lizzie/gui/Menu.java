@@ -10625,10 +10625,19 @@ public class Menu extends JMenuBar {
   }
 
   private void configureAiFeatureButton(JFontButton button) {
-    Dimension natural = button.getPreferredSize();
-    int minWidth = Lizzie.config.isChinese ? Config.menuHeight * 4 : Config.menuHeight * 5;
+    configureAiFeatureButton(button, Lizzie.config.isChinese, Config.menuHeight);
+  }
+
+  static void configureAiFeatureButton(
+      JFontButton button, boolean useCompactMinimum, int menuHeight) {
+    Dimension natural =
+        button.getUI() == null ? null : button.getUI().getPreferredSize(button);
+    if (natural == null) {
+      natural = button.getMinimumSize();
+    }
+    int minWidth = useCompactMinimum ? menuHeight * 4 : menuHeight * 5;
     button.setPreferredSize(
-        new Dimension(Math.max(minWidth, natural.width + 14), Math.max(26, Config.menuHeight - 2)));
+        new Dimension(Math.max(minWidth, natural.width + 14), Math.max(26, menuHeight - 2)));
     button.setMinimumSize(new Dimension(Math.min(84, button.getPreferredSize().width), 24));
   }
 
