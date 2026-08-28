@@ -82,6 +82,24 @@ public final class ExactSnapshotEngineRestore {
     }
   }
 
+  /**
+   * Captures an exact restore plan for a displayed history position.
+   *
+   * <p>Unlike {@link #prepare(Leelaz.ExactSnapshotRestoreAdmission, BoardHistoryNode)}, this
+   * variant treats an ordinary empty history root as a replay origin. That gives remote engines a
+   * real move tail that preserves side-to-play without inventing a pass, while retaining strict
+   * GTP acknowledgements for resource handoffs.
+   */
+  public static PreparedRestore prepareCurrentHistoryPosition(
+      Leelaz.ExactSnapshotRestoreAdmission admission, BoardHistoryNode target) {
+    try {
+      return new PreparedRestore(RestorePlan.captureCurrentHistory(admission, target));
+    } catch (RuntimeException | Error failure) {
+      admission.completeBoardSync();
+      throw failure;
+    }
+  }
+
   private static void validateCurrentPosition(BoardData sourceData) {
     if (sourceData == null) {
       throw new IllegalArgumentException("positionData");
@@ -561,9 +579,22 @@ public final class ExactSnapshotEngineRestore {
     private static Optional<RestorePlan> capture(
         Leelaz.ExactSnapshotRestoreAdmission admission,
         BoardHistoryNode target) {
+      return capture(admission, target, false);
+    }
+
+    private static RestorePlan captureCurrentHistory(
+        Leelaz.ExactSnapshotRestoreAdmission admission, BoardHistoryNode target) {
+      return capture(admission, target, true)
+          .orElseThrow(() -> new IllegalStateException("History position has no replay origin."));
+    }
+
+    private static Optional<RestorePlan> capture(
+        Leelaz.ExactSnapshotRestoreAdmission admission,
+        BoardHistoryNode target,
+        boolean allowHistoryOrigin) {
       if (admission == null) {
         throw new IllegalArgumentException("admission");
-    }
+      }
       Leelaz engine = admission.authority();
       Leelaz mirrorEngine = admission.mirror();
       requireEngine(engine);
@@ -572,6 +603,12 @@ public final class ExactSnapshotEngineRestore {
         throw new IllegalArgumentException("target");
       }
       SnapshotAnchor anchor = findSnapshotAnchor(target);
+      if (anchor == null && allowHistoryOrigin) {
+        BoardHistoryNode origin = findHistoryOrigin(target);
+        BoardData originData = origin.getData();
+        validateCurrentPosition(originData);
+        anchor = new SnapshotAnchor(origin, originData);
+      }
       if (anchor == null) {
         return Optional.empty();
       }
@@ -582,6 +619,14 @@ public final class ExactSnapshotEngineRestore {
       Double restoreKomi = captureHistoryKomi();
       return Optional.of(
           new RestorePlan(engine, mirrorEngine, snapshotData, tail, restoreKomi, admission));
+    }
+
+    private static BoardHistoryNode findHistoryOrigin(BoardHistoryNode target) {
+      BoardHistoryNode origin = target;
+      while (origin.previous().isPresent()) {
+        origin = origin.previous().get();
+      }
+      return origin;
     }
 
     private static RestorePlan capture(

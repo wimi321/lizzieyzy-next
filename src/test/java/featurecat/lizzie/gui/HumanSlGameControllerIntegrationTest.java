@@ -893,6 +893,91 @@ class HumanSlGameControllerIntegrationTest {
   }
 
   @Test
+  void postGameReviewStartsNormalAnalysisOnlyAfterSuccessfulDetach() throws Exception {
+    try (CoachEnvironment env = CoachEnvironment.open()) {
+      CoachFrame frame = (CoachFrame) Lizzie.frame;
+      HumanSlTrainingSession session = new HumanSlTrainingSession();
+      HumanSlGameController controller =
+          new HumanSlGameController(
+              new BlockingHumanSlRunner(),
+              HumanSlTrainingConfig.builder()
+                  .mode(TrainingMode.POST_GAME_REVIEW)
+                  .playerColor(HumanSlTrainingConfig.PlayerColor.BLACK)
+                  .fromCurrentPosition(false)
+                  .moveTimeSeconds(2)
+                  .build(),
+              session);
+      controller.setExitLifecycleForTesting(Runnable::run, Runnable::run, () -> true, null);
+      session.setState(HumanSlTrainingSession.State.PLAYING);
+      frame.humanSlGame = controller;
+
+      controller.finishAndReturnToBoard();
+      SwingUtilities.invokeAndWait(() -> {});
+
+      assertTrue(controller.isFinished());
+      assertNull(frame.humanSlGame);
+      assertEquals(1, frame.analysisResumeRequests);
+      assertTrue(frame.detachedWhenAnalysisResumed);
+    }
+  }
+
+  @Test
+  void liveAnalysisFinishDoesNotStartPostGameCurve() throws Exception {
+    try (CoachEnvironment env = CoachEnvironment.open()) {
+      CoachFrame frame = (CoachFrame) Lizzie.frame;
+      HumanSlTrainingSession session = new HumanSlTrainingSession();
+      HumanSlGameController controller =
+          new HumanSlGameController(
+              new BlockingHumanSlRunner(),
+              HumanSlTrainingConfig.builder()
+                  .mode(TrainingMode.LIVE_ANALYSIS)
+                  .playerColor(HumanSlTrainingConfig.PlayerColor.BLACK)
+                  .fromCurrentPosition(false)
+                  .moveTimeSeconds(2)
+                  .build(),
+              session);
+      controller.setExitLifecycleForTesting(Runnable::run, Runnable::run, () -> true, null);
+      session.setState(HumanSlTrainingSession.State.PLAYING);
+      frame.humanSlGame = controller;
+
+      controller.finishAndReturnToBoard();
+      SwingUtilities.invokeAndWait(() -> {});
+
+      assertTrue(controller.isFinished());
+      assertEquals(0, frame.analysisResumeRequests);
+    }
+  }
+
+  @Test
+  void modeTransitionAfterCoachExitDoesNotStartPostGameCurve() throws Exception {
+    try (CoachEnvironment env = CoachEnvironment.open()) {
+      CoachFrame frame = (CoachFrame) Lizzie.frame;
+      HumanSlTrainingSession session = new HumanSlTrainingSession();
+      HumanSlGameController controller =
+          new HumanSlGameController(
+              new BlockingHumanSlRunner(),
+              HumanSlTrainingConfig.builder()
+                  .mode(TrainingMode.POST_GAME_REVIEW)
+                  .playerColor(HumanSlTrainingConfig.PlayerColor.BLACK)
+                  .fromCurrentPosition(false)
+                  .moveTimeSeconds(2)
+                  .build(),
+              session);
+      controller.setExitLifecycleForTesting(Runnable::run, Runnable::run, () -> true, null);
+      session.setState(HumanSlTrainingSession.State.PLAYING);
+      frame.humanSlGame = controller;
+      AtomicInteger transitions = new AtomicInteger();
+
+      controller.abortAndThen(transitions::incrementAndGet);
+      SwingUtilities.invokeAndWait(() -> {});
+
+      assertTrue(controller.isFinished());
+      assertEquals(1, transitions.get());
+      assertEquals(0, frame.analysisResumeRequests);
+    }
+  }
+
+  @Test
   void exitFailuresKeepForegroundLeasePendingAndNeverResumeEarly() throws Exception {
     for (String failingPhase : List.of("close", "resync", "restore")) {
       try (CoachEnvironment env = CoachEnvironment.open()) {
@@ -1665,6 +1750,9 @@ class HumanSlGameControllerIntegrationTest {
   }
 
   private static class CoachFrame extends LizzieFrame {
+    private int analysisResumeRequests;
+    private boolean detachedWhenAnalysisResumed;
+
     @Override
     public void clearKataEstimate() {}
 
@@ -1694,6 +1782,13 @@ class HumanSlGameControllerIntegrationTest {
 
     @Override
     public void setResult(String result) {}
+
+    @Override
+    public boolean ensureAnalysisResumedAfterLoad() {
+      analysisResumeRequests++;
+      detachedWhenAnalysisResumed = humanSlGame == null;
+      return true;
+    }
   }
 
   private static final class ThrowingStartCoachFrame extends CoachFrame {

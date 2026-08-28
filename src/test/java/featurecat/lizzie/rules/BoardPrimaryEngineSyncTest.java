@@ -8,6 +8,7 @@ import featurecat.lizzie.Config;
 import featurecat.lizzie.ExtraMode;
 import featurecat.lizzie.Lizzie;
 import featurecat.lizzie.analysis.EngineManager;
+import featurecat.lizzie.analysis.ExactSnapshotRestoreProtocolFixture;
 import featurecat.lizzie.analysis.Leelaz;
 import featurecat.lizzie.gui.GtpConsolePane;
 import featurecat.lizzie.gui.LizzieFrame;
@@ -290,6 +291,34 @@ class BoardPrimaryEngineSyncTest {
               .recaptureCurrentPositionForSamePrimary()
               .orElseThrow()
               .matchesCurrentBoardAndPrimary());
+    }
+  }
+
+  @Test
+  void frozenExactRestorePreservesRemoteWhiteToPlayWithRealHistoryTail() throws Exception {
+    try (TestHarness harness = TestHarness.open()) {
+      Board board = Lizzie.board;
+      BoardHistoryList history = new BoardHistoryList(BoardData.empty(BOARD_SIZE, BOARD_SIZE));
+      history.add(moveNode(0, 0, Stone.BLACK, false, 1));
+      board.setHistory(history);
+
+      Leelaz engine = new Leelaz("");
+      engine.useRemoteCompute = true;
+      engine.isLoaded = true;
+      setStarted(engine, true);
+      ExactSnapshotRestoreProtocolFixture.Transport transport =
+          ExactSnapshotRestoreProtocolFixture.install(
+              engine, command -> ExactSnapshotRestoreProtocolFixture.Response.success());
+      Lizzie.leelaz = engine;
+
+      Board.FrozenPrimaryPosition frozen =
+          board.freezeCurrentPositionForPrimaryEngineExactRestore().orElseThrow();
+
+      assertTrue(frozen.execute());
+      assertEquals(
+          List.of("play B A3"),
+          transport.commands().stream().filter(command -> command.startsWith("play ")).toList());
+      assertTrue(frozen.matchesCurrentBoardAndPrimary());
     }
   }
 

@@ -686,6 +686,38 @@ class ExactSnapshotEngineRestoreContractTest {
   }
 
   @Test
+  void currentHistoryRestoreReplaysRealTailToPreserveRemoteWhiteToPlay() throws Exception {
+    try (TestHarness harness = TestHarness.open(false)) {
+      BoardHistoryList history = new BoardHistoryList(BoardData.empty(BOARD_SIZE, BOARD_SIZE));
+      history.add(moveNode(2, 2, Stone.BLACK, false, 1));
+      Lizzie.board.setHistory(history);
+
+      Leelaz engine = new Leelaz("");
+      engine.useRemoteCompute = true;
+      ExactSnapshotRestoreProtocolFixture.Transport transport =
+          ExactSnapshotRestoreProtocolFixture.install(
+              engine, command -> ExactSnapshotRestoreProtocolFixture.Response.success());
+      Leelaz.ExactSnapshotRestoreAdmission admission =
+          engine.captureExactSnapshotRestoreAdmission(
+              Leelaz.ExactSnapshotRestoreOwner.ORDINARY,
+              null,
+              engine.resolveLoadSgfMirrorEngine());
+
+      ExactSnapshotEngineRestore.prepareCurrentHistoryPosition(
+              admission, history.getCurrentHistoryNode())
+          .execute();
+
+      assertTrue(
+          transport.commands().stream()
+              .anyMatch(ExactSnapshotEngineRestoreContractTest::isSetPositionCommand));
+      assertEquals(
+          List.of("play B " + Board.convertCoordinatesToName(2, 2)),
+          collectPlayCommands(transport.commands()),
+          "remote restore must use the real move tail to establish white-to-play");
+    }
+  }
+
+  @Test
   void historyTargetCaptureUsesCurrentGameKomi() throws Exception {
     try (TestHarness harness = TestHarness.open(false)) {
       BoardHistoryList history = new BoardHistoryList(snapshotRoot());

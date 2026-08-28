@@ -753,10 +753,10 @@ public final class HumanSlGameController {
     Runnable uiCompletion =
         () -> {
           Lizzie.frame.hideHumanSlTrainingBar(this);
-          Lizzie.frame.refresh();
           if (Lizzie.frame.humanSlGame == this) {
             Lizzie.frame.humanSlGame = null;
           }
+          Lizzie.frame.refresh();
         };
     Runnable completionOverride = successfulExitCompletionOverride;
     beginExitLifecycle(
@@ -982,6 +982,34 @@ public final class HumanSlGameController {
     }
     if (continuation != null) {
       runExitContinuation(continuation);
+    } else {
+      startPostGameAnalysisAfterSuccessfulExit();
+    }
+  }
+
+  private void startPostGameAnalysisAfterSuccessfulExit() {
+    if (config.mode.isLiveAnalysis() || Lizzie.frame == null) {
+      return;
+    }
+    Runnable start =
+        () -> {
+          if (Lizzie.frame == null || Lizzie.frame.humanSlGame != null) {
+            return;
+          }
+          try {
+            Lizzie.frame.ensureAnalysisResumedAfterLoad();
+          } catch (RuntimeException | Error failure) {
+            logExitFailure("post-game analysis start", failure);
+          }
+        };
+    if (SwingUtilities.isEventDispatchThread()) {
+      start.run();
+    } else {
+      try {
+        SwingUtilities.invokeLater(start);
+      } catch (RuntimeException | Error failure) {
+        logExitFailure("post-game analysis dispatch", failure);
+      }
     }
   }
 

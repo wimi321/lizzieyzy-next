@@ -1973,7 +1973,10 @@ public class Board {
       Leelaz.ExactSnapshotRestoreAdmission admission =
           engine.captureHistoryNavigationExactSnapshotRestoreAdmission();
       ExactSnapshotEngineRestore.PreparedRestore prepared =
-          ExactSnapshotEngineRestore.prepareCurrentPosition(admission, position);
+          engine.useRemoteCompute
+              ? ExactSnapshotEngineRestore.prepareCurrentHistoryPosition(
+                  admission, capturedCurrentNode)
+              : ExactSnapshotEngineRestore.prepareCurrentPosition(admission, position);
       if (Lizzie.board != owner
           || Lizzie.capturePrimaryEngineGeneration(engine) != primaryGeneration) {
         prepared.discard();
