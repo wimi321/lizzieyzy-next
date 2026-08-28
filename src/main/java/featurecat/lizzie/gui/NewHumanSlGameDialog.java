@@ -9,6 +9,7 @@ import featurecat.lizzie.rules.BoardData;
 import featurecat.lizzie.rules.BoardHistoryList;
 import featurecat.lizzie.rules.BoardHistoryNode;
 import featurecat.lizzie.training.HumanSlTrainingConfig;
+import featurecat.lizzie.training.HumanSlTrainingPreferences;
 import featurecat.lizzie.training.HumanSlTrainingSession;
 import featurecat.lizzie.training.OpponentPreset;
 import featurecat.lizzie.training.TrainingMode;
@@ -32,6 +33,7 @@ import java.awt.event.KeyEvent;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import java.io.IOException;
+import java.math.BigDecimal;
 import java.nio.file.Path;
 import java.text.MessageFormat;
 import java.time.Duration;
@@ -160,6 +162,7 @@ public final class NewHumanSlGameDialog extends JDialog {
     contentScroll.setHorizontalScrollBarPolicy(JScrollPane.HORIZONTAL_SCROLLBAR_AS_NEEDED);
     contentScroll.setVerticalScrollBarPolicy(JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED);
     setContentPane(contentScroll);
+    restoreLastStartedSettings();
     installBehavior();
     refreshModelStatus();
     pack();
@@ -608,6 +611,54 @@ public final class NewHumanSlGameDialog extends JDialog {
     komiField.setText(handicap >= 2 ? "0" : "7.5");
   }
 
+  private void restoreLastStartedSettings() {
+    HumanSlTrainingPreferences.SavedSettings saved =
+        HumanSlTrainingPreferences.load(Lizzie.config == null ? null : Lizzie.config.uiConfig);
+    HumanSlTrainingConfig config = saved.config();
+
+    trainingModeBox.setSelectedIndex(config.mode.isLiveAnalysis() ? 1 : 0);
+    boolean rankPreset = config.opponentPreset == OpponentPreset.RANK;
+    rankPresetButton.setSelected(rankPreset);
+    proPresetButton.setSelected(!rankPreset);
+    showOpponentCard(rankPreset ? "rank" : "pro");
+
+    danButton.setSelected(config.danRank);
+    kyuButton.setSelected(!config.danRank);
+    updateRankModel(config.danRank);
+    rankSpinner.setValue(config.rank);
+    proStyleBox.setSelectedIndex(config.opponentPreset == OpponentPreset.ONLINE_9D ? 1 : 0);
+
+    colorBox.setSelectedIndex(playerColorIndex(config.playerColor));
+    timeBox.setSelectedIndex(moveTimeIndex(config.moveTimeSeconds));
+    handicapBox.setSelectedItem(config.handicap);
+    komiField.setText(BigDecimal.valueOf(config.komi).stripTrailingZeros().toPlainString());
+    moreButton.setSelected(saved.advancedVisible());
+    updateTrainingSummary();
+  }
+
+  private static int moveTimeIndex(int seconds) {
+    if (seconds == 30) {
+      return 1;
+    }
+    if (seconds == 60) {
+      return 2;
+    }
+    if (seconds == 24 * 60 * 60) {
+      return 3;
+    }
+    return 0;
+  }
+
+  private static int playerColorIndex(HumanSlTrainingConfig.PlayerColor color) {
+    if (color == HumanSlTrainingConfig.PlayerColor.BLACK) {
+      return 1;
+    }
+    if (color == HumanSlTrainingConfig.PlayerColor.WHITE) {
+      return 2;
+    }
+    return 0;
+  }
+
   private void onPrimaryAction() {
     if (downloading) {
       return;
@@ -759,6 +810,7 @@ public final class NewHumanSlGameDialog extends JDialog {
       return;
     }
     HumanSlTrainingConfig config = selectedConfig();
+    boolean advancedVisible = moreButton.isSelected();
     BoardHistoryNode readinessNode =
         config.fromCurrentPosition
             ? Lizzie.board.getHistory().getCurrentHistoryNode()
@@ -797,11 +849,14 @@ public final class NewHumanSlGameDialog extends JDialog {
                         ENGINE_READY_TIMEOUT,
                         pauseSettled);
                 dispatchRunnerPreparationCompletion(
-                    () -> completeRunnerPreparation(preparedRunner, config, outcome),
+                    () ->
+                        completeRunnerPreparation(
+                            preparedRunner, config, advancedVisible, outcome),
                     dispatchFailure ->
                         completeRunnerPreparation(
                             preparedRunner,
                             config,
+                            advancedVisible,
                             new RunnerPreparationOutcome(
                                 false, appendFailure(outcome.failure(), dispatchFailure))),
                     SwingUtilities::invokeLater);
@@ -1015,6 +1070,7 @@ public final class NewHumanSlGameDialog extends JDialog {
   private void completeRunnerPreparation(
       HumanSlAnalysisRunner runner,
       HumanSlTrainingConfig config,
+      boolean advancedVisible,
       RunnerPreparationOutcome outcome) {
     // closeDialog or an earlier completion may already own this runner's one-shot cleanup.
     if (preparingRunner != runner || !runnerCleanupClaim.claim()) {
@@ -1063,6 +1119,7 @@ public final class NewHumanSlGameDialog extends JDialog {
             });
     if (handoffFailure == null) {
       cancelled = false;
+      rememberLastStartedSettings(config, advancedVisible);
       return;
     }
 
@@ -1086,6 +1143,20 @@ public final class NewHumanSlGameDialog extends JDialog {
                 return null;
               });
       logLifecycleFailure("failed handoff dialog restore", visibilityFailure);
+    }
+  }
+
+  private void rememberLastStartedSettings(
+      HumanSlTrainingConfig config, boolean advancedVisible) {
+    if (Lizzie.config == null || Lizzie.config.uiConfig == null) {
+      return;
+    }
+    try {
+      HumanSlTrainingPreferences.store(Lizzie.config.uiConfig, config, advancedVisible);
+      Lizzie.config.save();
+    } catch (IOException | RuntimeException failure) {
+      // A preference write must never turn a successfully started coaching game into a failure.
+      LOG.warn("Failed to remember the last AI Coach settings", failure);
     }
   }
 
