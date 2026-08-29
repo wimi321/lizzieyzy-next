@@ -7,6 +7,7 @@ import featurecat.lizzie.analysis.AnalysisResourceCoordinator;
 import featurecat.lizzie.analysis.EngineManager;
 import featurecat.lizzie.analysis.Leelaz;
 import featurecat.lizzie.gui.EngineData;
+import featurecat.lizzie.logging.MaintenanceObservation;
 import featurecat.lizzie.rules.Board;
 import featurecat.lizzie.util.KataGoAutoSetupHelper.DownloadCancelledException;
 import featurecat.lizzie.util.KataGoAutoSetupHelper.DownloadSession;
@@ -1669,6 +1670,7 @@ public final class KataGoRuntimeHelper {
     DownloadSession activeSession = session != null ? session : new DownloadSession();
     Path runtimeDir = getNvidiaRuntimeDir();
     Files.createDirectories(runtimeDir);
+    long lockStarted = System.nanoTime();
     try (FileChannel lockChannel =
             FileChannel.open(
                 runtimeDir.resolve(TENSORRT_INSTALL_LOCK_NAME),
@@ -1676,11 +1678,31 @@ public final class KataGoRuntimeHelper {
                 StandardOpenOption.WRITE);
         FileLock installLock = lockChannel.tryLock()) {
       if (installLock == null) {
-        throw new IOException(tensorRtInstallAlreadyRunningMessage());
+        IOException error = new IOException(tensorRtInstallAlreadyRunningMessage());
+        MaintenanceObservation.record(
+            MaintenanceObservation.OPERATION_TENSORRT_SETUP,
+            MaintenanceObservation.STAGE_LOCK,
+            MaintenanceObservation.OUTCOME_FAILED,
+            MaintenanceObservation.elapsedMillis(lockStarted),
+            MaintenanceObservation.REASON_FILE_LOCKED);
+        throw error;
       }
+      MaintenanceObservation.record(
+          MaintenanceObservation.OPERATION_TENSORRT_SETUP,
+          MaintenanceObservation.STAGE_LOCK,
+          MaintenanceObservation.OUTCOME_SUCCESS,
+          MaintenanceObservation.elapsedMillis(lockStarted),
+          null);
       return downloadAndInstallTensorRtLocked(snapshot, listener, activeSession, spec, runtimeDir);
     } catch (OverlappingFileLockException e) {
-      throw new IOException(tensorRtInstallAlreadyRunningMessage(), e);
+      IOException error = new IOException(tensorRtInstallAlreadyRunningMessage(), e);
+      MaintenanceObservation.record(
+          MaintenanceObservation.OPERATION_TENSORRT_SETUP,
+          MaintenanceObservation.STAGE_LOCK,
+          MaintenanceObservation.OUTCOME_FAILED,
+          MaintenanceObservation.elapsedMillis(lockStarted),
+          MaintenanceObservation.REASON_FILE_LOCKED);
+      throw error;
     }
   }
 
@@ -1794,7 +1816,9 @@ public final class KataGoRuntimeHelper {
           resource("AutoSetup.tensorRtReady", "TensorRT acceleration is installed."),
           spec.totalDownloadBytes,
           spec.totalDownloadBytes);
-      return applyTensorRtEngineProfile(snapshot, spec);
+      return observeTensorRtStage(
+          MaintenanceObservation.STAGE_APPLY_CONFIG,
+          () -> applyTensorRtEngineProfile(snapshot, spec));
     }
     if (humanSlCompanionSource == null
         && resolveConfiguredHumanSlCudaFallback(spec.targetEnginePath) == null) {
@@ -1858,7 +1882,9 @@ public final class KataGoRuntimeHelper {
                 + runtimePackage.displayName,
             Math.min(completedBytes, effectiveTotalBytes),
             effectiveTotalBytes);
-        extractRuntimePackage(runtimePackage, archivePath, runtimeDir, licenseDir);
+        observeTensorRtStage(
+            MaintenanceObservation.STAGE_EXTRACT,
+            () -> extractRuntimePackage(runtimePackage, archivePath, runtimeDir, licenseDir));
       }
       writeRuntimeManifest(runtimeDir, runtimePackages);
     }
@@ -1877,13 +1903,18 @@ public final class KataGoRuntimeHelper {
       throw new IOException(tensorRtCompanionMissingMessage());
     }
 
-    SetupResult result = applyTensorRtEngineProfile(snapshot, spec);
+    SetupResult result =
+        observeTensorRtStage(
+            MaintenanceObservation.STAGE_APPLY_CONFIG,
+            () -> applyTensorRtEngineProfile(snapshot, spec));
     notifyProgress(
         listener,
         resource("AutoSetup.tensorRtCleaningCache", "Cleaning TensorRT download cache..."),
         effectiveTotalBytes,
         effectiveTotalBytes);
-    cleanupCompletedTensorRtDownloadArchives(cacheDir, completedArchives);
+    observeTensorRtStage(
+        MaintenanceObservation.STAGE_CACHE_CLEANUP,
+        () -> cleanupCompletedTensorRtDownloadArchives(cacheDir, completedArchives));
     notifyProgress(
         listener,
         resource("AutoSetup.tensorRtInstallDone", "TensorRT acceleration installed."),
@@ -1896,6 +1927,29 @@ public final class KataGoRuntimeHelper {
       SetupSnapshot snapshot, TensorRtInstallSpec spec) throws IOException {
     SetupSnapshot tensorRtSnapshot = snapshot.withEnginePath(spec.targetEnginePath);
     return KataGoAutoSetupHelper.applyEngineProfile(tensorRtSnapshot, TENSORRT_ENGINE_NAME, true);
+  }
+
+  private static void observeTensorRtStage(String stage, MaintenanceObservation.IoTask task)
+      throws IOException {
+    MaintenanceObservation.runStage(
+        MaintenanceObservation.OPERATION_TENSORRT_SETUP, stage, task);
+  }
+
+  private static <T> T observeTensorRtStage(String stage, MaintenanceObservation.IoCall<T> task)
+      throws IOException {
+    return MaintenanceObservation.callStage(
+        MaintenanceObservation.OPERATION_TENSORRT_SETUP, stage, task);
+  }
+
+  private static void recordTensorRt(
+      String stage, String outcome, long durationMs, String reason) {
+    MaintenanceObservation.record(
+        MaintenanceObservation.OPERATION_TENSORRT_SETUP, stage, outcome, durationMs, reason);
+  }
+
+  private static void recordTensorRtFailure(String stage, long durationMs, Throwable error) {
+    MaintenanceObservation.recordFailure(
+        MaintenanceObservation.OPERATION_TENSORRT_SETUP, stage, durationMs, error);
   }
 
   private static String tensorRtInstallAlreadyRunningMessage() {
@@ -5298,46 +5352,62 @@ public final class KataGoRuntimeHelper {
     Path backupDir = parent.resolve(targetEngineDir.getFileName().toString() + ".backup-" + suffix);
     try {
       Files.createDirectories(stagingDir);
-      extractKatagoEnginePackage(archivePath, stagingDir);
+      observeTensorRtStage(
+          MaintenanceObservation.STAGE_EXTRACT,
+          () -> extractKatagoEnginePackage(archivePath, stagingDir));
       session.throwIfCancelled();
-      Files.write(
-          stagingDir.resolve(ENGINE_BACKEND_MARKER_NAME),
-          (NVIDIA_TRT_BACKEND + "\n").getBytes(StandardCharsets.UTF_8));
-      String engineManifest = tensorRtEngineManifestText();
-      if (humanSlCompanionSource != null) {
-        requirePinnedTensorRtCompanionSource(humanSlCompanionSource);
-        Path companionTarget = stagingDir.resolve(HUMAN_SL_CUDA_COMPANION_NAME);
-        Files.copy(
-            humanSlCompanionSource, companionTarget, StandardCopyOption.REPLACE_EXISTING);
-        if (!isPinnedHumanSlCudaExecutable(companionTarget)) {
-          throw new IOException("HumanSL companion changed while it was being installed.");
-        }
-        engineManifest +=
-            "HumanSL companion: "
-                + HUMAN_SL_CUDA_COMPANION_NAME
-                + "\nHumanSL companion SHA-256: "
-                + expectedHumanSlCompanionSha256()
-                + "\n";
-      }
-      Files.writeString(
-          stagingDir.resolve(TENSORRT_ENGINE_MANIFEST_NAME),
-          engineManifest,
-          StandardCharsets.UTF_8);
-      if (!Files.isRegularFile(stagingDir.resolve("katago.exe"))) {
-        throw new IOException("KataGo TensorRT package did not contain katago.exe");
-      }
-      if (Files.exists(targetEngineDir)) {
-        Files.move(targetEngineDir, backupDir, StandardCopyOption.REPLACE_EXISTING);
-      }
+      long installStarted = System.nanoTime();
       try {
-        Files.move(stagingDir, targetEngineDir, StandardCopyOption.REPLACE_EXISTING);
-      } catch (IOException e) {
-        if (Files.exists(backupDir) && !Files.exists(targetEngineDir)) {
-          Files.move(backupDir, targetEngineDir, StandardCopyOption.REPLACE_EXISTING);
+        Files.write(
+            stagingDir.resolve(ENGINE_BACKEND_MARKER_NAME),
+            (NVIDIA_TRT_BACKEND + "\n").getBytes(StandardCharsets.UTF_8));
+        String engineManifest = tensorRtEngineManifestText();
+        if (humanSlCompanionSource != null) {
+          requirePinnedTensorRtCompanionSource(humanSlCompanionSource);
+          Path companionTarget = stagingDir.resolve(HUMAN_SL_CUDA_COMPANION_NAME);
+          Files.copy(
+              humanSlCompanionSource, companionTarget, StandardCopyOption.REPLACE_EXISTING);
+          if (!isPinnedHumanSlCudaExecutable(companionTarget)) {
+            throw new IOException("HumanSL companion changed while it was being installed.");
+          }
+          engineManifest +=
+              "HumanSL companion: "
+                  + HUMAN_SL_CUDA_COMPANION_NAME
+                  + "\nHumanSL companion SHA-256: "
+                  + expectedHumanSlCompanionSha256()
+                  + "\n";
         }
+        Files.writeString(
+            stagingDir.resolve(TENSORRT_ENGINE_MANIFEST_NAME),
+            engineManifest,
+            StandardCharsets.UTF_8);
+        if (!Files.isRegularFile(stagingDir.resolve("katago.exe"))) {
+          throw new IOException("KataGo TensorRT package did not contain katago.exe");
+        }
+        if (Files.exists(targetEngineDir)) {
+          Files.move(targetEngineDir, backupDir, StandardCopyOption.REPLACE_EXISTING);
+        }
+        try {
+          Files.move(stagingDir, targetEngineDir, StandardCopyOption.REPLACE_EXISTING);
+        } catch (IOException e) {
+          if (Files.exists(backupDir) && !Files.exists(targetEngineDir)) {
+            Files.move(backupDir, targetEngineDir, StandardCopyOption.REPLACE_EXISTING);
+          }
+          throw e;
+        }
+        deleteRecursively(backupDir);
+        recordTensorRt(
+            MaintenanceObservation.STAGE_INSTALL,
+            MaintenanceObservation.OUTCOME_SUCCESS,
+            MaintenanceObservation.elapsedMillis(installStarted),
+            null);
+      } catch (IOException e) {
+        recordTensorRtFailure(
+            MaintenanceObservation.STAGE_INSTALL,
+            MaintenanceObservation.elapsedMillis(installStarted),
+            e);
         throw e;
       }
-      deleteRecursively(backupDir);
     } catch (IOException e) {
       deleteRecursively(stagingDir);
       throw e;
@@ -5723,17 +5793,30 @@ public final class KataGoRuntimeHelper {
       RuntimePackageSpec spec, Path archivePath, DownloadSession session, ProgressListener listener)
       throws IOException {
     if (!isValidSha256(spec.sha256)) {
-      throw new CorruptRuntimePackageDownloadException(
-          "Missing or invalid trusted SHA-256 for " + spec.displayName);
+      CorruptRuntimePackageDownloadException error =
+          new CorruptRuntimePackageDownloadException(
+              "Missing or invalid trusted SHA-256 for " + spec.displayName);
+      recordTensorRtFailure(MaintenanceObservation.STAGE_VERIFY, 0L, error);
+      throw error;
     }
     if (isRuntimePackageFileValid(spec, archivePath)) {
       notifyRuntimePackageComplete(spec, listener);
+      recordTensorRt(
+          MaintenanceObservation.STAGE_VERIFY,
+          MaintenanceObservation.OUTCOME_SUCCESS,
+          0L,
+          null);
       return;
     }
 
     Files.createDirectories(archivePath.getParent());
     Path tempPath = archivePath.resolveSibling(archivePath.getFileName().toString() + ".part");
     if (promoteCompletedRuntimePackagePartial(spec, tempPath, archivePath, listener)) {
+      recordTensorRt(
+          MaintenanceObservation.STAGE_VERIFY,
+          MaintenanceObservation.OUTCOME_SUCCESS,
+          0L,
+          null);
       return;
     }
 
@@ -5743,6 +5826,8 @@ public final class KataGoRuntimeHelper {
     while (true) {
       URLConnection conn = null;
       HttpURLConnection httpConn = null;
+      boolean downloadCompleted = false;
+      long downloadStarted = System.nanoTime();
       try {
         session.throwIfCancelled();
         long existingBytes = resumeBytes;
@@ -5770,6 +5855,11 @@ public final class KataGoRuntimeHelper {
               appendToPartial = false;
             } else if (responseCode == HTTP_RANGE_NOT_SATISFIABLE) {
               if (promoteCompletedRuntimePackagePartial(spec, tempPath, archivePath, listener)) {
+                recordTensorRt(
+                    MaintenanceObservation.STAGE_VERIFY,
+                    MaintenanceObservation.OUTCOME_SUCCESS,
+                    0L,
+                    null);
                 return;
               }
               Files.deleteIfExists(tempPath);
@@ -5829,12 +5919,46 @@ public final class KataGoRuntimeHelper {
           }
         }
 
+        recordTensorRt(
+            MaintenanceObservation.STAGE_DOWNLOAD,
+            MaintenanceObservation.OUTCOME_SUCCESS,
+            MaintenanceObservation.elapsedMillis(downloadStarted),
+            null);
+        downloadCompleted = true;
         session.throwIfCancelled();
-        validateRuntimePackageDownload(spec, tempPath);
+        long verifyStarted = System.nanoTime();
+        try {
+          validateRuntimePackageDownload(spec, tempPath);
+          recordTensorRt(
+              MaintenanceObservation.STAGE_VERIFY,
+              MaintenanceObservation.OUTCOME_SUCCESS,
+              MaintenanceObservation.elapsedMillis(verifyStarted),
+              null);
+        } catch (IOException e) {
+          recordTensorRtFailure(
+              MaintenanceObservation.STAGE_VERIFY,
+              MaintenanceObservation.elapsedMillis(verifyStarted),
+              e);
+          throw e;
+        }
         moveRuntimePackageIntoCache(tempPath, archivePath);
         notifyRuntimePackageComplete(spec, listener);
         return;
       } catch (IOException e) {
+        if (!downloadCompleted) {
+          if (session.isCancelled()) {
+            recordTensorRt(
+                MaintenanceObservation.STAGE_DOWNLOAD,
+                MaintenanceObservation.OUTCOME_FAILED,
+                MaintenanceObservation.elapsedMillis(downloadStarted),
+                MaintenanceObservation.REASON_CANCELLED);
+          } else {
+            recordTensorRtFailure(
+                MaintenanceObservation.STAGE_DOWNLOAD,
+                MaintenanceObservation.elapsedMillis(downloadStarted),
+                e);
+          }
+        }
         if (e instanceof CorruptRuntimePackageDownloadException) {
           Files.deleteIfExists(tempPath);
         }

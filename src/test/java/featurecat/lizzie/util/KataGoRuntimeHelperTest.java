@@ -5,12 +5,19 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import featurecat.lizzie.Config;
 import featurecat.lizzie.ConfigTestHelper;
 import featurecat.lizzie.Lizzie;
 import featurecat.lizzie.gui.EngineData;
+import featurecat.lizzie.logging.LogCategories;
+import featurecat.lizzie.logging.LoggingLimits;
+import featurecat.lizzie.logging.LoggingRuntime;
+import featurecat.lizzie.logging.WorkDirectoryResolution;
 import featurecat.lizzie.rules.Board;
 import featurecat.lizzie.util.KataGoAutoSetupHelper.DownloadCancelledException;
 import featurecat.lizzie.util.KataGoAutoSetupHelper.DownloadSession;
@@ -40,6 +47,7 @@ import org.json.JSONObject;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.slf4j.LoggerFactory;
 
 public class KataGoRuntimeHelperTest {
   private static final String OS_NAME_PROPERTY = "os.name";
@@ -1064,6 +1072,105 @@ public class KataGoRuntimeHelperTest {
                             "Successful TensorRT installs should remove the completed installer archive.");
                       }));
         });
+  }
+
+  @Test
+  void tensorRtInstallEmitsSuccessfulStageDiagnostics() throws Exception {
+    Path logDir = Files.createTempDirectory("katago-tensorrt-success-logs");
+    LoggingRuntime.initialize(
+        new WorkDirectoryResolution(logDir, List.of()),
+        new LoggingLimits(64, 32, 32, 32, 7, 1_000_000, 256_000));
+    try {
+      ListAppender<ILoggingEvent> events = attachDiagnostics();
+      withOsName(
+          WINDOWS_OS_NAME,
+          () -> {
+            Path tempRoot = Files.createTempDirectory("katago-helper-tensorrt-diag-success");
+            Path runtimeWorkDirectory = Files.createDirectories(tempRoot.resolve("runtime-root"));
+            SetupSnapshot snapshot = createUnifiedNvidiaSnapshot(tempRoot);
+            Path fixtureZip =
+                createTensorRtFixtureZip(tempRoot.resolve("fixture").resolve("katago-trt.zip"));
+            withTensorRtFixtureProperties(
+                fixtureZip.toUri().toString(),
+                sha256(fixtureZip),
+                Files.size(fixtureZip),
+                () ->
+                    withConfig(
+                        runtimeWorkDirectory,
+                        () -> {
+                          SetupResult result =
+                              KataGoRuntimeHelper.downloadAndInstallTensorRt(
+                                  snapshot, null, new DownloadSession());
+                          assertEquals("KataGo TensorRT", result.engineName);
+                        }));
+          });
+      String logs = formattedDiagnostics(events);
+      assertTrue(logs.contains("operation=tensorrt-setup"), logs);
+      assertTrue(logs.contains("stage=lock outcome=success"), logs);
+      assertTrue(logs.contains("stage=download outcome=success"), logs);
+      assertTrue(logs.contains("stage=verify outcome=success"), logs);
+      assertTrue(logs.contains("stage=extract outcome=success"), logs);
+      assertTrue(logs.contains("stage=install outcome=success"), logs);
+      assertTrue(logs.contains("stage=apply-config outcome=success"), logs);
+      assertTrue(logs.contains("stage=cache-cleanup outcome=success"), logs);
+      assertFalse(logs.contains("outcome=failed"), logs);
+      assertFalse(logs.contains("reason="), logs);
+    } finally {
+      LoggingRuntime.resetForTests();
+    }
+  }
+
+  @Test
+  void tensorRtInstallLockConflictStopsAtLockStage() throws Exception {
+    Path logDir = Files.createTempDirectory("katago-tensorrt-lock-logs");
+    LoggingRuntime.initialize(
+        new WorkDirectoryResolution(logDir, List.of()),
+        new LoggingLimits(64, 32, 32, 32, 7, 1_000_000, 256_000));
+    try {
+      ListAppender<ILoggingEvent> events = attachDiagnostics();
+      withOsName(
+          WINDOWS_OS_NAME,
+          () -> {
+            Path tempRoot = Files.createTempDirectory("katago-helper-tensorrt-diag-lock");
+            Path runtimeWorkDirectory = Files.createDirectories(tempRoot.resolve("runtime-root"));
+            SetupSnapshot snapshot = createUnifiedNvidiaSnapshot(tempRoot);
+            Path fixtureZip =
+                createTensorRtFixtureZip(tempRoot.resolve("fixture").resolve("katago-trt.zip"));
+            withTensorRtFixtureProperties(
+                fixtureZip.toUri().toString(),
+                sha256(fixtureZip),
+                Files.size(fixtureZip),
+                () ->
+                    withConfig(
+                        runtimeWorkDirectory,
+                        () -> {
+                          Path runtimeDir =
+                              Files.createDirectories(
+                                  runtimeWorkDirectory.resolve("nvidia-runtime"));
+                          Path lockPath = runtimeDir.resolve("tensorrt-install.lock");
+                          try (FileChannel lockChannel =
+                                  FileChannel.open(
+                                      lockPath,
+                                      StandardOpenOption.CREATE,
+                                      StandardOpenOption.WRITE);
+                              FileLock ignored = lockChannel.lock()) {
+                            assertThrows(
+                                IOException.class,
+                                () ->
+                                    KataGoRuntimeHelper.downloadAndInstallTensorRt(
+                                        snapshot, null, new DownloadSession()));
+                          }
+                        }));
+          });
+      String logs = formattedDiagnostics(events);
+      assertTrue(logs.contains("operation=tensorrt-setup"), logs);
+      assertTrue(logs.contains("stage=lock outcome=failed"), logs);
+      assertTrue(logs.contains("reason=file-locked"), logs);
+      assertFalse(logs.contains("stage=download"), logs);
+      assertFalse(logs.contains("stage=install outcome=success"), logs);
+    } finally {
+      LoggingRuntime.resetForTests();
+    }
   }
 
   @Test
@@ -2659,6 +2766,22 @@ public class KataGoRuntimeHelperTest {
       restoreProperty("lizzie.tensorrt.katago.size", previousSize);
       restoreProperty("lizzie.tensorrt.skipRuntimePackagesForTests", previousSkip);
     }
+  }
+
+  private static ListAppender<ILoggingEvent> attachDiagnostics() {
+    ListAppender<ILoggingEvent> appender = new ListAppender<>();
+    appender.start();
+    Logger logger = (Logger) LoggerFactory.getLogger(LogCategories.DIAGNOSTICS);
+    logger.addAppender(appender);
+    return appender;
+  }
+
+  private static String formattedDiagnostics(ListAppender<ILoggingEvent> events) {
+    StringBuilder text = new StringBuilder();
+    for (ILoggingEvent event : events.list) {
+      text.append(event.getFormattedMessage()).append('\n');
+    }
+    return text.toString();
   }
 
   private static void restoreProperty(String key, String previousValue) {

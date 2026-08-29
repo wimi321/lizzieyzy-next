@@ -9,11 +9,18 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assumptions.assumeFalse;
 
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import com.sun.net.httpserver.HttpServer;
 import featurecat.lizzie.Config;
 import featurecat.lizzie.ConfigTestHelper;
 import featurecat.lizzie.Lizzie;
 import featurecat.lizzie.gui.EngineData;
+import featurecat.lizzie.logging.LogCategories;
+import featurecat.lizzie.logging.LoggingLimits;
+import featurecat.lizzie.logging.LoggingRuntime;
+import featurecat.lizzie.logging.WorkDirectoryResolution;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
@@ -26,6 +33,7 @@ import java.util.Locale;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import org.junit.jupiter.api.Test;
+import org.slf4j.LoggerFactory;
 
 public class KataGoAutoSetupHelperTest {
   @Test
@@ -901,6 +909,86 @@ public class KataGoAutoSetupHelperTest {
             assertFalse(Files.exists(tempRoot.resolve("weights").resolve("model.bin.gz")));
             assertFalse(Files.exists(tempRoot.resolve("weights").resolve("model.bin.gz.part")));
           });
+    }
+  }
+
+  @Test
+  void existingVerifiedWeightEmitsSuccessfulExistingFileStage() throws Exception {
+    Path tempRoot = Files.createTempDirectory("katago-weight-existing-diag");
+    Path logDir = Files.createTempDirectory("katago-weight-existing-logs");
+    byte[] modelBytes = repeatedBytes(16 * 1024, (byte) 19);
+    LoggingRuntime.initialize(
+        new WorkDirectoryResolution(logDir, List.of()),
+        new LoggingLimits(64, 32, 32, 32, 7, 1_000_000, 256_000));
+    try {
+      ListAppender<ILoggingEvent> events = attachDiagnostics();
+      withUserDirAndConfig(
+          tempRoot,
+          () -> {
+            Path weightsDir = Files.createDirectories(tempRoot.resolve("weights"));
+            Files.write(weightsDir.resolve("model.bin.gz"), modelBytes);
+            KataGoAutoSetupHelper.RemoteWeightInfo info =
+                transformerFixtureWeight("http://127.0.0.1:1/model.bin.gz", modelBytes);
+
+            Path downloaded = KataGoAutoSetupHelper.downloadWeight(info, null);
+
+            assertEquals(
+                weightsDir.resolve("model.bin.gz").toAbsolutePath().normalize(),
+                downloaded.toAbsolutePath().normalize());
+            assertArrayEquals(modelBytes, Files.readAllBytes(downloaded));
+          });
+      String logs = formattedDiagnostics(events);
+      assertTrue(logs.contains("operation=weight-download"), logs);
+      assertTrue(logs.contains("stage=existing-file"), logs);
+      assertTrue(logs.contains("outcome=success"), logs);
+      assertTrue(logs.contains("durationMs="), logs);
+      assertFalse(logs.contains("outcome=failed"), logs);
+      assertFalse(logs.contains("stage=http-download"), logs);
+      assertFalse(logs.contains("stage=move"), logs);
+    } finally {
+      LoggingRuntime.resetForTests();
+    }
+  }
+
+  @Test
+  void weightChecksumFailureStopsAtVerifyStage() throws Exception {
+    Path tempRoot = Files.createTempDirectory("katago-weight-verify-diag");
+    Path logDir = Files.createTempDirectory("katago-weight-verify-logs");
+    byte[] modelBytes = repeatedBytes(16 * 1024, (byte) 31);
+    LoggingRuntime.initialize(
+        new WorkDirectoryResolution(logDir, List.of()),
+        new LoggingLimits(64, 32, 32, 32, 7, 1_000_000, 256_000));
+    try (FixtureServer server = FixtureServer.start(modelBytes)) {
+      ListAppender<ILoggingEvent> events = attachDiagnostics();
+      withUserDirAndConfig(
+          tempRoot,
+          () -> {
+            KataGoAutoSetupHelper.RemoteWeightInfo info =
+                new KataGoAutoSetupHelper.RemoteWeightInfo(
+                    "Transformer",
+                    "fixture-transformer",
+                    server.url(),
+                    "2026-07-29",
+                    "",
+                    true,
+                    true,
+                    "0000000000000000000000000000000000000000000000000000000000000000",
+                    modelBytes.length,
+                    "1.17.0",
+                    KataGoAutoSetupHelper.TransformerTier.BALANCED);
+
+            assertThrows(IOException.class, () -> KataGoAutoSetupHelper.downloadWeight(info, null));
+          });
+      String logs = formattedDiagnostics(events);
+      assertTrue(logs.contains("operation=weight-download"), logs);
+      assertTrue(logs.contains("stage=http-download outcome=success"), logs);
+      assertTrue(logs.contains("stage=verify outcome=failed"), logs);
+      assertTrue(logs.contains("reason=checksum-mismatch"), logs);
+      assertFalse(logs.contains("stage=move"), logs);
+      assertFalse(logs.contains("0000000000000000"), logs);
+      assertFalse(logs.contains(server.url()), logs);
+    } finally {
+      LoggingRuntime.resetForTests();
     }
   }
 
@@ -1927,6 +2015,22 @@ public class KataGoAutoSetupHelperTest {
       restoreProperty("lizzie.quick-analysis.model.sha256", previousSha);
       restoreProperty("lizzie.quick-analysis.model.size", previousSize);
     }
+  }
+
+  private static ListAppender<ILoggingEvent> attachDiagnostics() {
+    ListAppender<ILoggingEvent> appender = new ListAppender<>();
+    appender.start();
+    Logger logger = (Logger) LoggerFactory.getLogger(LogCategories.DIAGNOSTICS);
+    logger.addAppender(appender);
+    return appender;
+  }
+
+  private static String formattedDiagnostics(ListAppender<ILoggingEvent> events) {
+    StringBuilder text = new StringBuilder();
+    for (ILoggingEvent event : events.list) {
+      text.append(event.getFormattedMessage()).append('\n');
+    }
+    return text.toString();
   }
 
   private static void restoreProperty(String key, String previousValue) {

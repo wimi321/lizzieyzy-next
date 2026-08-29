@@ -4,6 +4,7 @@ import featurecat.lizzie.Config;
 import featurecat.lizzie.Lizzie;
 import featurecat.lizzie.analysis.EngineManager;
 import featurecat.lizzie.gui.EngineData;
+import featurecat.lizzie.logging.MaintenanceObservation;
 import java.io.BufferedInputStream;
 import java.io.BufferedReader;
 import java.io.ByteArrayOutputStream;
@@ -1280,7 +1281,13 @@ public final class KataGoAutoSetupHelper {
     activeSession.throwIfCancelled();
 
     Path target = weightsDir.resolve(info.fileName());
+    long existingStarted = System.nanoTime();
     if (isDownloadedWeightValid(target, info)) {
+      recordWeightDownload(
+          MaintenanceObservation.STAGE_EXISTING_FILE,
+          MaintenanceObservation.OUTCOME_SUCCESS,
+          MaintenanceObservation.elapsedMillis(existingStarted),
+          null);
       if (listener != null) {
         listener.onProgress(info.modelName, Files.size(target), Files.size(target));
       }
@@ -1290,15 +1297,31 @@ public final class KataGoAutoSetupHelper {
 
     Path temp = weightsDir.resolve(info.fileName() + ".part");
     HttpURLConnection conn = null;
+    String currentStage = null;
+    long stageStarted = 0L;
     try {
       if (isDownloadedWeightValid(temp, info)) {
+        recordWeightDownload(
+            MaintenanceObservation.STAGE_EXISTING_FILE,
+            MaintenanceObservation.OUTCOME_SUCCESS,
+            0L,
+            null);
+        currentStage = MaintenanceObservation.STAGE_MOVE;
+        stageStarted = System.nanoTime();
         Files.move(temp, target, StandardCopyOption.REPLACE_EXISTING);
+        recordWeightDownload(
+            MaintenanceObservation.STAGE_MOVE,
+            MaintenanceObservation.OUTCOME_SUCCESS,
+            MaintenanceObservation.elapsedMillis(stageStarted),
+            null);
         return target;
       }
       if (Files.isRegularFile(temp) && info.sizeBytes > 0L && Files.size(temp) > info.sizeBytes) {
         Files.delete(temp);
       }
       long resumeFrom = Files.isRegularFile(temp) ? Files.size(temp) : 0L;
+      currentStage = MaintenanceObservation.STAGE_HTTP_DOWNLOAD;
+      stageStarted = System.nanoTime();
       while (true) {
         conn =
             (HttpURLConnection) NetworkProxy.openConnection(URI.create(info.downloadUrl).toURL());
@@ -1373,19 +1396,53 @@ public final class KataGoAutoSetupHelper {
         }
         break;
       }
+      recordWeightDownload(
+          MaintenanceObservation.STAGE_HTTP_DOWNLOAD,
+          MaintenanceObservation.OUTCOME_SUCCESS,
+          MaintenanceObservation.elapsedMillis(stageStarted),
+          null);
+      currentStage = MaintenanceObservation.STAGE_VERIFY;
+      stageStarted = System.nanoTime();
       activeSession.throwIfCancelled();
       verifyDownloadedWeight(temp, info);
+      recordWeightDownload(
+          MaintenanceObservation.STAGE_VERIFY,
+          MaintenanceObservation.OUTCOME_SUCCESS,
+          MaintenanceObservation.elapsedMillis(stageStarted),
+          null);
+      currentStage = MaintenanceObservation.STAGE_MOVE;
+      stageStarted = System.nanoTime();
       try {
         Files.move(
             temp, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
       } catch (AtomicMoveNotSupportedException e) {
         Files.move(temp, target, StandardCopyOption.REPLACE_EXISTING);
       }
+      recordWeightDownload(
+          MaintenanceObservation.STAGE_MOVE,
+          MaintenanceObservation.OUTCOME_SUCCESS,
+          MaintenanceObservation.elapsedMillis(stageStarted),
+          null);
       if (listener != null) {
         listener.onProgress(info.modelName, Files.size(target), Files.size(target));
       }
       return target;
     } catch (IOException e) {
+      if (currentStage != null) {
+        if (activeSession.isCancelled()) {
+          recordWeightDownload(
+              currentStage,
+              MaintenanceObservation.OUTCOME_FAILED,
+              MaintenanceObservation.elapsedMillis(stageStarted),
+              MaintenanceObservation.REASON_CANCELLED);
+        } else {
+          MaintenanceObservation.recordFailure(
+              MaintenanceObservation.OPERATION_WEIGHT_DOWNLOAD,
+              currentStage,
+              MaintenanceObservation.elapsedMillis(stageStarted),
+              e);
+        }
+      }
       if (shouldDiscardWeightPartial(e)) {
         Files.deleteIfExists(temp);
       }
@@ -1400,6 +1457,12 @@ public final class KataGoAutoSetupHelper {
       }
       activeSession.clear();
     }
+  }
+
+  private static void recordWeightDownload(
+      String stage, String outcome, long durationMs, String reason) {
+    MaintenanceObservation.record(
+        MaintenanceObservation.OPERATION_WEIGHT_DOWNLOAD, stage, outcome, durationMs, reason);
   }
 
   private static boolean isDownloadedWeightValid(Path path, RemoteWeightInfo info) {
