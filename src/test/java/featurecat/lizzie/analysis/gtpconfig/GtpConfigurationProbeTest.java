@@ -5,12 +5,23 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import featurecat.lizzie.analysis.AnalysisResourceCoordinator;
 import featurecat.lizzie.analysis.AnalysisResourceCoordinatorTestAccess;
+import featurecat.lizzie.logging.LogCategories;
+import featurecat.lizzie.logging.LoggingLimits;
+import featurecat.lizzie.logging.LoggingRuntime;
+import featurecat.lizzie.logging.LoggingSettings;
+import featurecat.lizzie.logging.ObservationText;
+import featurecat.lizzie.logging.WorkDirectoryResolution;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.PrintWriter;
+import java.io.Reader;
+import java.lang.reflect.Method;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.FileSystems;
 import java.nio.file.Files;
@@ -39,6 +50,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import org.json.JSONObject;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.slf4j.LoggerFactory;
 
 class GtpConfigurationProbeTest {
   private static final long REAL_PROCESS_HANDSHAKE_TIMEOUT_SECONDS = 10L;
@@ -160,6 +172,173 @@ class GtpConfigurationProbeTest {
             IOException.class,
             () -> probe.inspect(fakeEngineCommand(true), Duration.ofMillis(200)));
     assertTrue(timeout.getMessage().contains("Timed out"));
+  }
+
+  @Test
+  void successfulRealProbeLeavesStructuredEventsWithoutChangingResult() throws Exception {
+    LoggingRuntime runtime = startProbeDiagnostics();
+    try {
+      ListAppender<ILoggingEvent> events = attachEngine();
+      String command = fakeEngineCommand();
+      GtpConfigurationProbe probe = new GtpConfigurationProbe();
+
+      GtpConfigurationProbe.Inspection inspection = probe.inspect(command, Duration.ofSeconds(2));
+
+      assertTrue(inspection.supported());
+      assertEquals("zengtp-config", inspection.schema().protocol());
+      String logs = formatted(events);
+      assertTrue(logs.contains("probe event=started"), logs);
+      assertTrue(logs.contains("probe event=capability-check outcome=success"), logs);
+      assertFalse(logs.contains("probe event=failed"), logs);
+      assertFalse(logs.contains("probe event=stderr"), logs);
+      awaitLogs(runtime);
+    } finally {
+      runtime.shutdown();
+    }
+  }
+
+  @Test
+  void stderrOnSuccessfulProbeDoesNotChangeInspectResult() throws Exception {
+    LoggingRuntime runtime = startProbeDiagnostics();
+    try {
+      ListAppender<ILoggingEvent> events = attachEngine();
+      GtpConfigurationProbe.Inspection inspection =
+          new GtpConfigurationProbe().inspect(fakeEngineCommand("stderr"), Duration.ofSeconds(2));
+
+      assertTrue(inspection.supported());
+      String logs = formatted(events);
+      assertTrue(logs.contains("probe event=started"), logs);
+      assertTrue(logs.contains("probe event=capability-check outcome=success"), logs);
+      assertFalse(logs.contains("probe event=failed"), logs);
+      awaitLogs(runtime);
+    } finally {
+      runtime.shutdown();
+    }
+  }
+
+  @Test
+  void hugeStderrStaysBoundedAndDoesNotBlockSuccessfulProbe() throws Exception {
+    GtpConfigurationProbe.ProbeStderrTail tail = new GtpConfigurationProbe.ProbeStderrTail();
+    for (int i = 0; i < 50_000; i++) {
+      tail.add("line-" + i + "-" + "x".repeat(80));
+    }
+    tail.add("y".repeat(1_000_000));
+    assertTrue(tail.lineCount() <= GtpConfigurationProbe.ProbeStderrTail.MAX_LINES);
+    assertTrue(tail.utf8ByteCount() <= ObservationText.RAW_EVENT_MAX_UTF8_BYTES);
+    assertTrue(
+        tail.snapshot().getBytes(StandardCharsets.UTF_8).length
+            <= ObservationText.RAW_EVENT_MAX_UTF8_BYTES + 64);
+
+    LoggingRuntime runtime = startProbeDiagnostics();
+    try {
+      ListAppender<ILoggingEvent> events = attachEngine();
+      GtpConfigurationProbe.Inspection inspection =
+          new GtpConfigurationProbe()
+              .inspect(fakeEngineCommand("stderr-huge"), Duration.ofSeconds(5));
+
+      assertTrue(inspection.supported());
+      String logs = formatted(events);
+      assertTrue(logs.contains("probe event=capability-check outcome=success"), logs);
+      assertFalse(logs.contains("probe event=failed"), logs);
+      awaitLogs(runtime);
+    } finally {
+      runtime.shutdown();
+    }
+  }
+
+  @Test
+  void earlyExitStillThrowsAndRecordsBoundedStderrSummary() throws Exception {
+    LoggingRuntime runtime = startProbeDiagnostics();
+    try {
+      ListAppender<ILoggingEvent> events = attachEngine();
+
+      IOException exited =
+          assertThrows(
+              IOException.class,
+              () ->
+                  new GtpConfigurationProbe()
+                      .inspect(fakeEngineCommand("stderr", "exit"), Duration.ofSeconds(2)));
+
+      assertTrue(
+          exited.getMessage().contains("Engine exited before configuration completed"),
+          exited.getMessage());
+      assertFalse(exited.getMessage().contains("probe-stderr"), exited.getMessage());
+      assertFalse(exited.getMessage().contains("probe-secret-token"), exited.getMessage());
+      String logs = formatted(events);
+      assertTrue(logs.contains("probe event=started"), logs);
+      assertTrue(logs.contains("probe event=failed stage=exited"), logs);
+      assertTrue(logs.contains("probe event=stderr facts="), logs);
+      assertTrue(logs.contains("probe-stderr"), logs);
+      awaitLogs(runtime);
+      String app = Files.readString(tempDir.resolve("logs/app.log"), StandardCharsets.UTF_8);
+      assertFalse(app.contains("probe-secret-token"), app);
+      assertTrue(app.contains("probe event=stderr"), app);
+    } finally {
+      runtime.shutdown();
+    }
+  }
+
+  @Test
+  void probeTimeoutStillThrowsAndRecordsStderrSummary() throws Exception {
+    LoggingRuntime runtime = startProbeDiagnostics();
+    try {
+      ListAppender<ILoggingEvent> events = attachEngine();
+
+      IOException timeout =
+          assertThrows(
+              IOException.class,
+              () ->
+                  new GtpConfigurationProbe()
+                      .inspect(fakeEngineCommand("stderr", "hang"), Duration.ofMillis(200)));
+
+      assertTrue(
+          timeout.getMessage().contains("Timed out waiting for the engine configuration response"),
+          timeout.getMessage());
+      assertFalse(timeout.getMessage().contains("probe-stderr"), timeout.getMessage());
+      String logs = formatted(events);
+      assertTrue(logs.contains("probe event=started"), logs);
+      assertTrue(logs.contains("probe event=failed stage=timeout"), logs);
+      assertTrue(logs.contains("probe event=stderr facts="), logs);
+      assertTrue(logs.contains("probe-stderr"), logs);
+      awaitLogs(runtime);
+    } finally {
+      runtime.shutdown();
+    }
+  }
+
+  @Test
+  void stderrReaderFailureDoesNotPropagateToCaller() throws Exception {
+    LoggingRuntime runtime = startProbeDiagnostics();
+    try {
+      ListAppender<ILoggingEvent> events = attachEngine();
+      BufferedReader throwing =
+          new BufferedReader(
+              new Reader() {
+                @Override
+                public int read(char[] cbuf, int off, int len) {
+                  throw new IllegalStateException("stderr exploded");
+                }
+
+                @Override
+                public void close() {}
+              });
+
+      GtpConfigurationProbe.drainProbeStderr(
+          throwing, new GtpConfigurationProbe.ProbeStderrTail(), () -> "eng-test");
+
+      GtpConfigurationProbe.Inspection inspection =
+          new GtpConfigurationProbe(new ScriptedFactory(response(true, "false")))
+              .inspect("fake-engine", Duration.ofSeconds(1));
+      assertFalse(inspection.supported());
+      String logs = formatted(events);
+      assertTrue(logs.contains("engine event=transport-failure"), logs);
+      assertTrue(logs.contains("stream=stderr"), logs);
+      assertTrue(logs.contains("reason=reader-error"), logs);
+      assertFalse(logs.contains("stderr exploded"), logs);
+      awaitLogs(runtime);
+    } finally {
+      runtime.shutdown();
+    }
   }
 
   @Test
@@ -458,6 +637,10 @@ class GtpConfigurationProbeTest {
   }
 
   private static String fakeEngineCommand(boolean hangOnSchema) {
+    return hangOnSchema ? fakeEngineCommand("hang") : fakeEngineCommand();
+  }
+
+  private static String fakeEngineCommand(String... extras) {
     String executable =
         Path.of(
                 System.getProperty("java.home"),
@@ -466,12 +649,19 @@ class GtpConfigurationProbeTest {
             .toAbsolutePath()
             .toString();
     String classes = Path.of("target", "test-classes").toAbsolutePath().toString();
-    return quote(executable)
-        + " -cp "
-        + quote(classes)
-        + " "
-        + FakeGtpEngine.class.getName()
-        + (hangOnSchema ? " hang" : "");
+    StringBuilder command =
+        new StringBuilder()
+            .append(quote(executable))
+            .append(" -cp ")
+            .append(quote(classes))
+            .append(' ')
+            .append(FakeGtpEngine.class.getName());
+    for (String extra : extras) {
+      if (extra != null && !extra.isEmpty()) {
+        command.append(' ').append(extra);
+      }
+    }
+    return command.toString();
   }
 
   private static String fakeEngineCommand(Path schemaGate) {
@@ -484,6 +674,37 @@ class GtpConfigurationProbeTest {
 
   private static GtpConfigurationProbe.Response response(boolean success, String payload) {
     return new GtpConfigurationProbe.Response(success, payload);
+  }
+
+  private LoggingRuntime startProbeDiagnostics() {
+    LoggingRuntime runtime =
+        LoggingRuntime.initialize(
+            new WorkDirectoryResolution(tempDir, List.of()),
+            new LoggingLimits(64, 32, 32, 32, 7, 1_000_000, 256_000));
+    runtime.applySettings(LoggingSettings.defaults().withDiagnosticsEnabled(false));
+    return runtime;
+  }
+
+  private static ListAppender<ILoggingEvent> attachEngine() {
+    Logger engine = (Logger) LoggerFactory.getLogger(LogCategories.ENGINE);
+    ListAppender<ILoggingEvent> appender = new ListAppender<>();
+    appender.start();
+    engine.addAppender(appender);
+    return appender;
+  }
+
+  private static String formatted(ListAppender<ILoggingEvent> events) {
+    StringBuilder text = new StringBuilder();
+    for (ILoggingEvent event : events.list) {
+      text.append(event.getFormattedMessage()).append('\n');
+    }
+    return text.toString();
+  }
+
+  private static void awaitLogs(LoggingRuntime runtime) throws Exception {
+    Method awaitIdle = LoggingRuntime.class.getDeclaredMethod("awaitIdle");
+    awaitIdle.setAccessible(true);
+    awaitIdle.invoke(runtime);
   }
 
   private static final class ScriptedFactory implements GtpConfigurationProbe.SessionFactory {
@@ -539,8 +760,35 @@ class GtpConfigurationProbeTest {
     private FakeGtpEngine() {}
 
     public static void main(String[] args) throws Exception {
-      boolean hangOnSchema = args.length > 0 && "hang".equals(args[0]);
-      Path schemaGate = args.length > 1 && "gate".equals(args[0]) ? Path.of(args[1]) : null;
+      boolean hangOnSchema = false;
+      boolean exitBeforeHandshake = false;
+      Path schemaGate = null;
+      int stderrLines = 0;
+      for (int i = 0; i < args.length; i++) {
+        String arg = args[i];
+        if ("hang".equals(arg)) {
+          hangOnSchema = true;
+        } else if ("exit".equals(arg)) {
+          exitBeforeHandshake = true;
+        } else if ("stderr".equals(arg)) {
+          stderrLines = Math.max(stderrLines, 4);
+        } else if ("stderr-huge".equals(arg)) {
+          stderrLines = Math.max(stderrLines, 20_000);
+        } else if ("gate".equals(arg) && i + 1 < args.length) {
+          schemaGate = Path.of(args[++i]);
+        }
+      }
+      if (stderrLines > 0) {
+        PrintWriter err = new PrintWriter(System.err, true, StandardCharsets.UTF_8);
+        err.println("CUDA error: fake backend failed token=probe-secret-token");
+        for (int n = 0; n < stderrLines; n++) {
+          err.println("probe-stderr " + n);
+        }
+        err.flush();
+      }
+      if (exitBeforeHandshake) {
+        return;
+      }
       String profile = "{}";
       try (BufferedReader input =
               new BufferedReader(new InputStreamReader(System.in, StandardCharsets.UTF_8));

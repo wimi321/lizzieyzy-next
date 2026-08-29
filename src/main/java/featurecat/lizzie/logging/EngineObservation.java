@@ -245,6 +245,69 @@ public final class EngineObservation {
     inContext(engineId, null, () -> ENGINE.debug("engine event=stderr facts={}", facts));
   }
 
+  public static void recordProbeStarted(String engineId) {
+    try {
+      if (!runtimeActive() || !ENGINE.isInfoEnabled()) {
+        return;
+      }
+      inContext(engineId, null, () -> ENGINE.info("probe event=started"));
+    } catch (RuntimeException ignored) {
+    }
+  }
+
+  public static void recordProbeCapabilityCheck(String engineId, boolean success) {
+    try {
+      if (!runtimeActive() || !ENGINE.isInfoEnabled()) {
+        return;
+      }
+      inContext(
+          engineId,
+          null,
+          () ->
+              ENGINE.info(
+                  "probe event=capability-check outcome={}", success ? "success" : "failure"));
+    } catch (RuntimeException ignored) {
+    }
+  }
+
+  public static void recordProbeFailed(String engineId, String stage) {
+    try {
+      if (!runtimeActive() || !ENGINE.isWarnEnabled()) {
+        return;
+      }
+      String safeStage = safeProbeStage(stage);
+      inContext(engineId, null, () -> ENGINE.warn("probe event=failed stage={}", safeStage));
+    } catch (RuntimeException ignored) {
+    }
+  }
+
+  public static void recordProbeStderr(String engineId, String facts) {
+    try {
+      if (!runtimeActive() || !ENGINE.isWarnEnabled() || facts == null || facts.isEmpty()) {
+        return;
+      }
+      String bounded = ObservationText.boundedRawEvent(facts);
+      inContext(engineId, null, () -> ENGINE.warn("probe event=stderr facts={}", bounded));
+    } catch (RuntimeException ignored) {
+    }
+  }
+
+  private static String safeProbeStage(String stage) {
+    return switch (stage == null ? "" : stage) {
+      case "start",
+          "capability",
+          "schema",
+          "handshake",
+          "timeout",
+          "exited",
+          "apply",
+          "interrupted",
+          "reader" ->
+          stage;
+      default -> "unknown";
+    };
+  }
+
   public static void recordThroughput(String engineId, int playouts, double playoutsPerSecond) {
     if (!engineDiagnosticsEnabled()) {
       return;

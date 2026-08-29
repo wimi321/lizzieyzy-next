@@ -1,6 +1,8 @@
 package featurecat.lizzie.analysis.gtpconfig;
 
 import featurecat.lizzie.analysis.AnalysisResourceCoordinator;
+import featurecat.lizzie.logging.EngineObservation;
+import featurecat.lizzie.logging.ObservationText;
 import featurecat.lizzie.util.CommandLaunchHelper;
 import featurecat.lizzie.util.KataGoRuntimeHelper;
 import featurecat.lizzie.util.Utils;
@@ -11,6 +13,7 @@ import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.ArrayDeque;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
@@ -19,6 +22,8 @@ import java.util.concurrent.Future;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Supplier;
 import org.json.JSONObject;
 
 /** Detects and updates optional engine-owned configuration through an isolated GTP process. */
@@ -46,26 +51,34 @@ public final class GtpConfigurationProbe {
 
   Inspection inspect(String engineCommand, Duration timeout) throws IOException {
     try (Session session = sessionFactory.open(engineCommand, timeout)) {
-      Response capability = session.request("known_command " + ZENGTP_SCHEMA_COMMAND);
-      if (!capability.success() || !"true".equalsIgnoreCase(capability.payload().trim())) {
-        return Inspection.unsupported();
+      try {
+        Response capability = session.request("known_command " + ZENGTP_SCHEMA_COMMAND);
+        boolean supported =
+            capability.success() && "true".equalsIgnoreCase(capability.payload().trim());
+        noteCapabilityCheck(session, supported);
+        if (!supported) {
+          return Inspection.unsupported();
+        }
+        Response schemaResponse = session.request(ZENGTP_SCHEMA_COMMAND);
+        if (!schemaResponse.success()) {
+          noteProbeFailed(session, "schema");
+          throw protocolError(schemaResponse);
+        }
+        GtpConfigurationSchema schema =
+            GtpConfigurationSchema.parse(new JSONObject(schemaResponse.payload()));
+        if (!ZENGTP_PROTOCOL.equals(schema.protocol()) || schema.version() != 1) {
+          noteProbeFailed(session, "schema");
+          throw new IOException(
+              "Unsupported GTP configuration protocol: "
+                  + schema.protocol()
+                  + " v"
+                  + schema.version());
+        }
+        return Inspection.supported(schema);
+      } catch (IllegalArgumentException error) {
+        noteProbeFailed(session, "schema");
+        throw new IOException("Invalid GTP configuration schema: " + error.getMessage(), error);
       }
-      Response schemaResponse = session.request(ZENGTP_SCHEMA_COMMAND);
-      if (!schemaResponse.success()) {
-        throw protocolError(schemaResponse);
-      }
-      GtpConfigurationSchema schema =
-          GtpConfigurationSchema.parse(new JSONObject(schemaResponse.payload()));
-      if (!ZENGTP_PROTOCOL.equals(schema.protocol()) || schema.version() != 1) {
-        throw new IOException(
-            "Unsupported GTP configuration protocol: "
-                + schema.protocol()
-                + " v"
-                + schema.version());
-      }
-      return Inspection.supported(schema);
-    } catch (IllegalArgumentException error) {
-      throw new IOException("Invalid GTP configuration schema: " + error.getMessage(), error);
     }
   }
 
@@ -79,48 +92,61 @@ public final class GtpConfigurationProbe {
       throw new IllegalArgumentException("profile must not be null");
     }
     try (Session session = sessionFactory.open(engineCommand, timeout)) {
-      Response capability = session.request("known_command " + ZENGTP_SCHEMA_COMMAND);
-      if (!capability.success() || !"true".equalsIgnoreCase(capability.payload().trim())) {
-        throw new IOException("The selected engine does not support visual configuration");
-      }
-      Response schemaResponse = session.request(ZENGTP_SCHEMA_COMMAND);
-      if (!schemaResponse.success()) {
-        throw protocolError(schemaResponse);
-      }
-      GtpConfigurationSchema schema =
-          GtpConfigurationSchema.parse(new JSONObject(schemaResponse.payload()));
-      if (!ZENGTP_PROTOCOL.equals(schema.protocol()) || schema.version() != 1) {
-        throw new IOException(
-            "Unsupported GTP configuration protocol: "
-                + schema.protocol()
-                + " v"
-                + schema.version());
-      }
-      for (String key : profile.keySet()) {
-        GtpConfigurationSchema.Field field = schema.field(key);
-        if (field == null || !field.accepts(profile.opt(key))) {
-          throw new IOException("Invalid engine configuration value: " + key);
+      try {
+        Response capability = session.request("known_command " + ZENGTP_SCHEMA_COMMAND);
+        boolean supported =
+            capability.success() && "true".equalsIgnoreCase(capability.payload().trim());
+        noteCapabilityCheck(session, supported);
+        if (!supported) {
+          noteProbeFailed(session, "capability");
+          throw new IOException("The selected engine does not support visual configuration");
         }
+        Response schemaResponse = session.request(ZENGTP_SCHEMA_COMMAND);
+        if (!schemaResponse.success()) {
+          noteProbeFailed(session, "schema");
+          throw protocolError(schemaResponse);
+        }
+        GtpConfigurationSchema schema =
+            GtpConfigurationSchema.parse(new JSONObject(schemaResponse.payload()));
+        if (!ZENGTP_PROTOCOL.equals(schema.protocol()) || schema.version() != 1) {
+          noteProbeFailed(session, "schema");
+          throw new IOException(
+              "Unsupported GTP configuration protocol: "
+                  + schema.protocol()
+                  + " v"
+                  + schema.version());
+        }
+        for (String key : profile.keySet()) {
+          GtpConfigurationSchema.Field field = schema.field(key);
+          if (field == null || !field.accepts(profile.opt(key))) {
+            noteProbeFailed(session, "schema");
+            throw new IOException("Invalid engine configuration value: " + key);
+          }
+        }
+        Response setResponse = session.request(ZENGTP_SET_COMMAND + " " + profile.toString());
+        if (!setResponse.success()) {
+          noteProbeFailed(session, "apply");
+          throw protocolError(setResponse);
+        }
+        Response saveResponse = session.request(ZENGTP_SAVE_COMMAND);
+        if (!saveResponse.success()) {
+          noteProbeFailed(session, "apply");
+          throw protocolError(saveResponse);
+        }
+        JSONObject payload = new JSONObject(saveResponse.payload());
+        JSONObject savedProfile = payload.optJSONObject("profile");
+        JSONObject state = payload.optJSONObject("state");
+        if (savedProfile == null) {
+          noteProbeFailed(session, "apply");
+          throw new IOException("Engine did not return a saved configuration profile");
+        }
+        return new ApplyResult(
+            new JSONObject(savedProfile.toString()),
+            state == null ? new JSONObject() : new JSONObject(state.toString()));
+      } catch (IllegalArgumentException error) {
+        noteProbeFailed(session, "schema");
+        throw new IOException("Invalid engine configuration response: " + error.getMessage(), error);
       }
-      Response setResponse = session.request(ZENGTP_SET_COMMAND + " " + profile.toString());
-      if (!setResponse.success()) {
-        throw protocolError(setResponse);
-      }
-      Response saveResponse = session.request(ZENGTP_SAVE_COMMAND);
-      if (!saveResponse.success()) {
-        throw protocolError(saveResponse);
-      }
-      JSONObject payload = new JSONObject(saveResponse.payload());
-      JSONObject savedProfile = payload.optJSONObject("profile");
-      JSONObject state = payload.optJSONObject("state");
-      if (savedProfile == null) {
-        throw new IOException("Engine did not return a saved configuration profile");
-      }
-      return new ApplyResult(
-          new JSONObject(savedProfile.toString()),
-          state == null ? new JSONObject() : new JSONObject(state.toString()));
-    } catch (IllegalArgumentException error) {
-      throw new IOException("Invalid engine configuration response: " + error.getMessage(), error);
     }
   }
 
@@ -139,6 +165,98 @@ public final class GtpConfigurationProbe {
       // Fall through to the raw GTP payload when the engine did not return structured JSON.
     }
     return new IOException("Engine rejected the configuration: " + response.payload());
+  }
+
+  private static void noteCapabilityCheck(Session session, boolean success) {
+    try {
+      if (session instanceof ProcessSession processSession) {
+        processSession.recordCapabilityCheck(success);
+      }
+    } catch (RuntimeException ignored) {
+    }
+  }
+
+  private static void noteProbeFailed(Session session, String stage) {
+    try {
+      if (session instanceof ProcessSession processSession) {
+        processSession.noteProbeFailed(stage);
+      }
+    } catch (RuntimeException ignored) {
+    }
+  }
+
+  static void drainProbeStderr(
+      BufferedReader stderr, ProbeStderrTail tail, Supplier<String> engineId) {
+    if (stderr == null) {
+      return;
+    }
+    try {
+      String line;
+      while ((line = stderr.readLine()) != null) {
+        try {
+          if (tail != null) {
+            tail.add(line);
+          }
+        } catch (RuntimeException ignored) {
+        }
+      }
+    } catch (IOException ignored) {
+    } catch (RuntimeException error) {
+      try {
+        String id = engineId == null ? null : engineId.get();
+        EngineObservation.recordTransportFailure(id, "stderr", "reader-error", error);
+      } catch (RuntimeException ignored) {
+      }
+    }
+  }
+
+  static final class ProbeStderrTail {
+    static final int MAX_LINES = 40;
+    private final ArrayDeque<String> lines = new ArrayDeque<>();
+    private int utf8Bytes;
+
+    synchronized void add(String line) {
+      if (line == null || line.isEmpty()) {
+        return;
+      }
+      String bounded =
+          ObservationText.boundedUtf8(line, ObservationText.RAW_EVENT_MAX_UTF8_BYTES, 1);
+      int bytes = utf8ByteLength(bounded);
+      while (!lines.isEmpty()
+          && (lines.size() >= MAX_LINES
+              || utf8Bytes + bytes > ObservationText.RAW_EVENT_MAX_UTF8_BYTES)) {
+        String removed = lines.removeFirst();
+        utf8Bytes = Math.max(0, utf8Bytes - utf8ByteLength(removed));
+      }
+      lines.addLast(bounded);
+      utf8Bytes += bytes;
+    }
+
+    synchronized String snapshot() {
+      StringBuilder builder = new StringBuilder();
+      for (String line : lines) {
+        if (line == null || line.isEmpty()) {
+          continue;
+        }
+        if (builder.length() > 0) {
+          builder.append('\n');
+        }
+        builder.append(line);
+      }
+      return builder.toString();
+    }
+
+    synchronized int lineCount() {
+      return lines.size();
+    }
+
+    synchronized int utf8ByteCount() {
+      return utf8Bytes;
+    }
+
+    private static int utf8ByteLength(String value) {
+      return value.getBytes(StandardCharsets.UTF_8).length;
+    }
   }
 
   interface SessionFactory {
@@ -220,6 +338,9 @@ public final class GtpConfigurationProbe {
     private final BufferedWriter writer;
     private final Duration timeout;
     private final ExecutorService readerExecutor;
+    private final ProbeStderrTail stderrTail = new ProbeStderrTail();
+    private final AtomicReference<String> pendingFailureStage = new AtomicReference<>();
+    private final Thread stderrDrainer;
     private int nextCommandId = 1;
 
     private ProcessSession(Process process, Duration timeout) {
@@ -233,17 +354,15 @@ public final class GtpConfigurationProbe {
               new OutputStreamWriter(process.getOutputStream(), StandardCharsets.UTF_8));
       this.readerExecutor =
           Executors.newSingleThreadExecutor(daemonThreadFactory("gtp-configuration-probe-reader"));
-      Thread stderrDrainer =
+      this.stderrDrainer =
           new Thread(
               () -> {
                 try (BufferedReader stderr =
                     new BufferedReader(
                         new InputStreamReader(process.getErrorStream(), StandardCharsets.UTF_8))) {
-                  while (stderr.readLine() != null) {
-                    // Keep stderr drained so an engine cannot block on a full error pipe.
-                  }
-                } catch (IOException ignored) {
-                  // Closing the process normally closes this stream.
+                  drainProbeStderr(
+                      stderr, stderrTail, () -> EngineObservation.identityFor(this));
+                } catch (IOException | RuntimeException ignored) {
                 }
               },
               "gtp-configuration-probe-stderr");
@@ -271,31 +390,44 @@ public final class GtpConfigurationProbe {
       ProcessSession session = new ProcessSession(builder.start(), timeout);
       AnalysisResourceCoordinator.processStarted(
           session, AnalysisResourceCoordinator.Purpose.OTHER, engineCommand, session.process);
+      session.recordStartedQuietly();
       return session;
     }
 
     @Override
     public synchronized Response request(String command) throws IOException {
       if (!process.isAlive()) {
+        noteProbeFailed("exited");
         throw new IOException("Engine exited before configuration completed");
       }
       int commandId = nextCommandId++;
-      writer.write(commandId + " " + command);
-      writer.newLine();
-      writer.flush();
+      try {
+        writer.write(commandId + " " + command);
+        writer.newLine();
+        writer.flush();
+      } catch (IOException error) {
+        noteProbeFailed(process.isAlive() ? "handshake" : "exited");
+        if (!process.isAlive()) {
+          throw new IOException("Engine exited before configuration completed", error);
+        }
+        throw error;
+      }
       Future<Response> future =
           readerExecutor.submit((Callable<Response>) () -> readResponse(commandId));
       try {
         return future.get(Math.max(1, timeout.toMillis()), TimeUnit.MILLISECONDS);
       } catch (TimeoutException error) {
         future.cancel(true);
+        noteProbeFailed("timeout");
         throw new IOException("Timed out waiting for the engine configuration response", error);
       } catch (InterruptedException error) {
         Thread.currentThread().interrupt();
+        noteProbeFailed("interrupted");
         throw new IOException(
             "Interrupted while waiting for the engine configuration response", error);
       } catch (ExecutionException error) {
         Throwable cause = error.getCause();
+        noteProbeFailed(process.isAlive() ? "handshake" : "exited");
         if (cause instanceof IOException) {
           throw (IOException) cause;
         }
@@ -329,7 +461,50 @@ public final class GtpConfigurationProbe {
         }
         payload.append(line);
       }
+      try {
+        process.waitFor(200, TimeUnit.MILLISECONDS);
+      } catch (InterruptedException error) {
+        Thread.currentThread().interrupt();
+      }
+      if (!process.isAlive()) {
+        throw new IOException("Engine exited before configuration completed");
+      }
       throw new IOException("Engine closed its output before completing the GTP response");
+    }
+
+    private void recordStartedQuietly() {
+      try {
+        EngineObservation.recordProbeStarted(EngineObservation.identityFor(this));
+      } catch (RuntimeException ignored) {
+      }
+    }
+
+    private void recordCapabilityCheck(boolean success) {
+      try {
+        EngineObservation.recordProbeCapabilityCheck(
+            EngineObservation.identityFor(this), success);
+      } catch (RuntimeException ignored) {
+      }
+    }
+
+    private void noteProbeFailed(String stage) {
+      pendingFailureStage.compareAndSet(null, stage);
+    }
+
+    private void emitPendingFailureDiagnostics() {
+      try {
+        String stage = pendingFailureStage.get();
+        if (stage == null) {
+          return;
+        }
+        String id = EngineObservation.identityFor(this);
+        EngineObservation.recordProbeFailed(id, stage);
+        String facts = stderrTail.snapshot();
+        if (!facts.isEmpty()) {
+          EngineObservation.recordProbeStderr(id, facts);
+        }
+      } catch (RuntimeException ignored) {
+      }
     }
 
     @Override
@@ -354,8 +529,17 @@ public final class GtpConfigurationProbe {
         process.destroyForcibly();
       }
       readerExecutor.shutdownNow();
-      AnalysisResourceCoordinator.processStopped(
-          this, AnalysisResourceCoordinator.Purpose.OTHER, process);
+      try {
+        stderrDrainer.join(200);
+      } catch (InterruptedException error) {
+        Thread.currentThread().interrupt();
+      }
+      try {
+        emitPendingFailureDiagnostics();
+      } finally {
+        AnalysisResourceCoordinator.processStopped(
+            this, AnalysisResourceCoordinator.Purpose.OTHER, process);
+      }
     }
   }
 

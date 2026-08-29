@@ -43,6 +43,8 @@ class LoggingRuntimeTest {
     LoggingRuntime runtime = start();
 
     runtime.awaitIdle();
+    assertEquals(tempDir, runtime.workDirectory());
+    assertEquals(tempDir.resolve("logs"), runtime.logsDirectory());
     String appLog = read("logs/app.log");
     assertTrue(appLog.contains("application log session started"));
     assertTrue(appLog.contains(runtime.applicationLogSessionId()));

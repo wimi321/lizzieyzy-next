@@ -160,6 +160,10 @@ public final class LoggingRuntime {
     return logsDirectory;
   }
 
+  public Path workDirectory() {
+    return workDirectory;
+  }
+
   public LoggingSettings settings() {
     return settings;
   }

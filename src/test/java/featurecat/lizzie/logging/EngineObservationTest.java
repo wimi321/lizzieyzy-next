@@ -46,6 +46,10 @@ class EngineObservationTest {
     EngineObservation.recordBootstrap("eng-1", EngineBootstrapFacts.unknown("MAIN_BOARD"));
     EngineObservation.recordQueue("eng-1", 1, 1);
     EngineObservation.recordCommandSent("eng-1", "cmd-1", "play", 0, 1);
+    EngineObservation.recordProbeStarted("eng-1");
+    EngineObservation.recordProbeCapabilityCheck("eng-1", true);
+    EngineObservation.recordProbeFailed("eng-1", "exited");
+    EngineObservation.recordProbeStderr("eng-1", "cuda failed");
     EngineObservation.traceRawCommand("eng-1", "cmd-1", "play B D4");
 
     assertTrue(engineEvents.list.isEmpty(), engineEvents.list.toString());
@@ -168,6 +172,50 @@ class EngineObservationTest {
     assertTrue(failedLogs.contains("event=bootstrap"), failedLogs);
     assertTrue(failedLogs.contains("event=failed reason=process start failed"), failedLogs);
     assertFalse(failedLogs.contains("event=started"), failedLogs);
+  }
+
+  @Test
+  void probeEventsStayVisibleWithoutEngineDiagnosticsDebugAndBoundStderr() {
+    LoggingRuntime runtime =
+        LoggingRuntime.initialize(
+            new WorkDirectoryResolution(tempDir, List.of()),
+            new LoggingLimits(64, 32, 32, 32, 7, 1_000_000, 256_000));
+    runtime.applySettings(LoggingSettings.defaults().withDiagnosticsEnabled(false));
+    Logger engine = (Logger) LoggerFactory.getLogger(LogCategories.ENGINE);
+    ListAppender<ILoggingEvent> events = attach(engine);
+
+    EngineObservation.recordRecentStderr("eng-1", "debug-only-stderr");
+    EngineObservation.recordProbeStarted("eng-1");
+    EngineObservation.recordProbeCapabilityCheck("eng-1", false);
+    EngineObservation.recordProbeFailed("eng-1", "exited");
+    EngineObservation.recordProbeFailed("eng-1", "free-form exception text");
+    EngineObservation.recordProbeStderr("eng-1", "x".repeat(100_000));
+
+    String logs = formatted(events);
+    assertFalse(logs.contains("debug-only-stderr"), logs);
+    assertFalse(logs.contains("engine event=stderr"), logs);
+    assertTrue(logs.contains("probe event=started"), logs);
+    assertTrue(logs.contains("probe event=capability-check outcome=failure"), logs);
+    assertTrue(logs.contains("probe event=failed stage=exited"), logs);
+    assertTrue(logs.contains("probe event=failed stage=unknown"), logs);
+    assertFalse(logs.contains("free-form exception text"), logs);
+    ILoggingEvent stderrEvent = null;
+    for (ILoggingEvent event : events.list) {
+      if (event.getFormattedMessage().contains("probe event=failed stage=exited")) {
+        assertEquals(Level.WARN, event.getLevel(), event.getFormattedMessage());
+      }
+      if (event.getFormattedMessage().contains("probe event=stderr facts=")) {
+        stderrEvent = event;
+      }
+    }
+    assertTrue(stderrEvent != null, logs);
+    assertEquals(Level.WARN, stderrEvent.getLevel());
+    String stderrMessage = stderrEvent.getFormattedMessage();
+    String facts = stderrMessage.substring(stderrMessage.indexOf("facts=") + "facts=".length());
+    assertTrue(
+        facts.getBytes(StandardCharsets.UTF_8).length <= ObservationText.RAW_EVENT_MAX_UTF8_BYTES,
+        Integer.toString(facts.getBytes(StandardCharsets.UTF_8).length));
+    assertTrue(facts.endsWith(" [truncated]"), facts);
   }
 
   @Test

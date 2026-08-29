@@ -94,12 +94,18 @@ public final class DiagnosticBundleExporter {
     String capture(ExportSanitizer sanitizer);
   }
 
+  @FunctionalInterface
+  interface RuntimeSnapshotSource {
+    String capture(Path workDirectory, ExportSanitizer sanitizer);
+  }
+
   private final Path outputDirectory;
   private final DiagnosticBundleLimits limits;
   private final PartialFileObserver partialFileObserver;
   private final BundleNameSupplier bundleNameSupplier;
   private final PartialFileCleanupStrategy partialFileCleanupStrategy;
   private ThreadSnapshotSource threadSnapshotSource = ThreadSnapshot::capture;
+  private RuntimeSnapshotSource runtimeSnapshotSource = RuntimeSnapshot::capture;
 
   public DiagnosticBundleExporter(Path outputDirectory) {
     this(outputDirectory, DiagnosticBundleLimits.production());
@@ -169,6 +175,10 @@ public final class DiagnosticBundleExporter {
 
   void setThreadSnapshotSourceForTests(ThreadSnapshotSource source) {
     this.threadSnapshotSource = source == null ? ThreadSnapshot::capture : source;
+  }
+
+  void setRuntimeSnapshotSourceForTests(RuntimeSnapshotSource source) {
+    this.runtimeSnapshotSource = source == null ? RuntimeSnapshot::capture : source;
   }
 
   public static Path defaultOutputDirectory(Path workDirectory) {
@@ -721,6 +731,7 @@ public final class DiagnosticBundleExporter {
     versions.put("host", sanitizer.sanitizeText(request.appVersion()));
     versions.put("readboard", sanitizer.sanitizeText(request.readBoardVersion()));
     writeTextEntry(out, NS_SNAPSHOTS + "versions.json", versions.toString(2));
+    writeRuntimeSnapshot(out, request, sanitizer);
     writeTextEntry(
         out,
         NS_SNAPSHOTS + "readboard-observed.json",
@@ -757,6 +768,37 @@ public final class DiagnosticBundleExporter {
             hostSession,
             "",
             false));
+  }
+
+  private void writeRuntimeSnapshot(
+      ZipOutputStream out, DiagnosticBundleRequest request, ExportSanitizer sanitizer)
+      throws IOException {
+    String text;
+    try {
+      text = runtimeSnapshotSource.capture(resolveWorkDirectory(request), sanitizer);
+      if (text == null || text.isBlank()) {
+        text = RuntimeSnapshot.unavailableJson();
+      }
+    } catch (RuntimeException | Error ignored) {
+      text = RuntimeSnapshot.unavailableJson();
+    }
+    writeTextEntry(out, NS_SNAPSHOTS + RuntimeSnapshot.ENTRY_NAME, text);
+  }
+
+  private static Path resolveWorkDirectory(DiagnosticBundleRequest request) {
+    try {
+      Path work = request.runtime().workDirectory();
+      if (work != null) {
+        return work;
+      }
+    } catch (RuntimeException ignored) {
+    }
+    try {
+      Path logs = request.runtime().logsDirectory();
+      return logs == null ? null : logs.getParent();
+    } catch (RuntimeException ignored) {
+      return null;
+    }
   }
 
   private void writeThreadSnapshot(
