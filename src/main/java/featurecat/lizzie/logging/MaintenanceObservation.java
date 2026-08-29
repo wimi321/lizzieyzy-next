@@ -78,10 +78,10 @@ public final class MaintenanceObservation {
       Pattern.compile("(?i)\\b[a-z][a-z0-9+.-]*://\\S+");
   private static final Pattern WINDOWS_ABS_PATH =
       Pattern.compile(
-          "(?:[A-Za-z]:[\\\\/]|\\\\\\\\)(?:[^]<>:\"|?*\\r\\n\\\\/]+[\\\\/])*[^]<>:\"|?*\\r\\n\\\\/\\s]+");
+          "(?:[A-Za-z]:\\\\|\\\\\\\\)(?:[^]\\\\<>:\"|?*\\r\\n\\\\]+\\\\)*[^]\\\\<>:\"|?*\\r\\n\\\\\\s]+|[A-Za-z]:/[^\\s\\]]+");
   private static final Pattern UNIX_ABS_PATH =
       Pattern.compile(
-          "(?<![A-Za-z0-9:])(/(?:[^]/<>:\"|?*\\r\\n]+/)+[^]/<>:\"|?*\\r\\n\\s]+)");
+          "(?<![A-Za-z0-9:])(/(?:[^/<>:\"|?*\\r\\n]+/)+[^/<>:\"|?*\\r\\n\\s]+)");
 
   private MaintenanceObservation() {}
 
