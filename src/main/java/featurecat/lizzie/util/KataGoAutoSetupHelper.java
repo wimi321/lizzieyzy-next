@@ -1435,6 +1435,15 @@ public final class KataGoAutoSetupHelper {
               MaintenanceObservation.OUTCOME_FAILED,
               MaintenanceObservation.elapsedMillis(stageStarted),
               MaintenanceObservation.REASON_CANCELLED);
+        } else if (e instanceof WeightIntegrityException) {
+          WeightIntegrityException integrity = (WeightIntegrityException) e;
+          recordWeightDownload(
+              currentStage,
+              MaintenanceObservation.OUTCOME_FAILED,
+              MaintenanceObservation.elapsedMillis(stageStarted),
+              integrity.discardPartial
+                  ? MaintenanceObservation.REASON_CHECKSUM_MISMATCH
+                  : MaintenanceObservation.REASON_INCOMPLETE);
         } else {
           MaintenanceObservation.recordFailure(
               MaintenanceObservation.OPERATION_WEIGHT_DOWNLOAD,

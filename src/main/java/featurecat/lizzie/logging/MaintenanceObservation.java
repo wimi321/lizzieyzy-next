@@ -199,7 +199,8 @@ public final class MaintenanceObservation {
     }
     if (containsIgnoreCase(message, "checksum")
         || containsIgnoreCase(message, "sha-256")
-        || containsIgnoreCase(message, "sha256")) {
+        || containsIgnoreCase(message, "sha256")
+        || containsIgnoreCase(message, "verification failed")) {
       return REASON_CHECKSUM_MISMATCH;
     }
     if (containsIgnoreCase(message, "incomplete")) {
