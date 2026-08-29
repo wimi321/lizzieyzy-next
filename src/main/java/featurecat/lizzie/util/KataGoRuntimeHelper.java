@@ -5827,7 +5827,10 @@ public final class KataGoRuntimeHelper {
       URLConnection conn = null;
       HttpURLConnection httpConn = null;
       boolean downloadCompleted = false;
+      boolean verifyFailureRecorded = false;
+      String currentStage = MaintenanceObservation.STAGE_DOWNLOAD;
       long downloadStarted = System.nanoTime();
+      long stageStarted = downloadStarted;
       try {
         session.throwIfCancelled();
         long existingBytes = resumeBytes;
@@ -5925,22 +5928,26 @@ public final class KataGoRuntimeHelper {
             MaintenanceObservation.elapsedMillis(downloadStarted),
             null);
         downloadCompleted = true;
+        currentStage = MaintenanceObservation.STAGE_VERIFY;
+        stageStarted = System.nanoTime();
         session.throwIfCancelled();
-        long verifyStarted = System.nanoTime();
         try {
           validateRuntimePackageDownload(spec, tempPath);
           recordTensorRt(
               MaintenanceObservation.STAGE_VERIFY,
               MaintenanceObservation.OUTCOME_SUCCESS,
-              MaintenanceObservation.elapsedMillis(verifyStarted),
+              MaintenanceObservation.elapsedMillis(stageStarted),
               null);
         } catch (IOException e) {
+          verifyFailureRecorded = true;
           recordTensorRtFailure(
               MaintenanceObservation.STAGE_VERIFY,
-              MaintenanceObservation.elapsedMillis(verifyStarted),
+              MaintenanceObservation.elapsedMillis(stageStarted),
               e);
           throw e;
         }
+        currentStage = MaintenanceObservation.STAGE_MOVE;
+        stageStarted = System.nanoTime();
         moveRuntimePackageIntoCache(tempPath, archivePath);
         notifyRuntimePackageComplete(spec, listener);
         return;
@@ -5957,6 +5964,17 @@ public final class KataGoRuntimeHelper {
                 MaintenanceObservation.STAGE_DOWNLOAD,
                 MaintenanceObservation.elapsedMillis(downloadStarted),
                 e);
+          }
+        } else if (!verifyFailureRecorded) {
+          if (session.isCancelled()) {
+            recordTensorRt(
+                currentStage,
+                MaintenanceObservation.OUTCOME_FAILED,
+                MaintenanceObservation.elapsedMillis(stageStarted),
+                MaintenanceObservation.REASON_CANCELLED);
+          } else {
+            recordTensorRtFailure(
+                currentStage, MaintenanceObservation.elapsedMillis(stageStarted), e);
           }
         }
         if (e instanceof CorruptRuntimePackageDownloadException) {

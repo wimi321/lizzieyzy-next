@@ -144,6 +144,39 @@ class MaintenanceObservationTest {
   }
 
   @Test
+  void spacedAbsolutePathsAreFullyRedactedFromFailureReason() {
+    initializeRuntime();
+    ListAppender<ILoggingEvent> events = attachDiagnostics();
+    String windowsSpaced =
+        "C:\\Users\\Jake Smith\\AppData\\Local\\Lizzie\\engine\\nvidia-runtime\\downloads\\katago-trt.zip";
+    String unixSpaced = "/home/Jake Smith/.local/share/Lizzie/weights/model.bin.gz";
+    String reason =
+        "TensorRT install failed: "
+            + windowsSpaced
+            + " (sharing violation) also "
+            + unixSpaced;
+
+    MaintenanceObservation.record(
+        MaintenanceObservation.OPERATION_TENSORRT_SETUP,
+        MaintenanceObservation.STAGE_INSTALL,
+        MaintenanceObservation.OUTCOME_FAILED,
+        18L,
+        reason);
+
+    assertEquals(1, events.list.size(), events.list.toString());
+    String message = events.list.get(0).getFormattedMessage();
+    assertTrue(message.contains("reason="), message);
+    assertTrue(message.contains("<redacted-path>"), message);
+    assertTrue(message.contains("(sharing violation)"), message);
+    assertFalse(message.contains(windowsSpaced), message);
+    assertFalse(message.contains(unixSpaced), message);
+    assertFalse(message.contains("Jake Smith"), message);
+    assertFalse(message.contains("Smith\\AppData"), message);
+    assertFalse(message.contains("Smith/.local"), message);
+    assertFalse(message.contains("AppData\\Local\\Lizzie"), message);
+  }
+
+  @Test
   void unknownTokensAreCoercedToUnknown() {
     initializeRuntime();
     ListAppender<ILoggingEvent> events = attachDiagnostics();

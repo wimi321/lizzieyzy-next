@@ -38,6 +38,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.zip.ZipEntry;
@@ -1167,6 +1168,110 @@ public class KataGoRuntimeHelperTest {
       assertTrue(logs.contains("stage=lock outcome=failed"), logs);
       assertTrue(logs.contains("reason=file-locked"), logs);
       assertFalse(logs.contains("stage=download"), logs);
+      assertFalse(logs.contains("stage=install outcome=success"), logs);
+    } finally {
+      LoggingRuntime.resetForTests();
+    }
+  }
+
+  @Test
+  void tensorRtInstallRecordsFailedStageWhenCancelledAfterDownload() throws Exception {
+    Path logDir = Files.createTempDirectory("katago-tensorrt-cancel-after-download-logs");
+    LoggingRuntime.initialize(
+        new WorkDirectoryResolution(logDir, List.of()),
+        new LoggingLimits(64, 32, 32, 32, 7, 1_000_000, 256_000));
+    try {
+      ListAppender<ILoggingEvent> events = attachDiagnostics();
+      withOsName(
+          WINDOWS_OS_NAME,
+          () -> {
+            Path tempRoot =
+                Files.createTempDirectory("katago-helper-tensorrt-diag-cancel-after-download");
+            Path runtimeWorkDirectory = Files.createDirectories(tempRoot.resolve("runtime-root"));
+            SetupSnapshot snapshot = createUnifiedNvidiaSnapshot(tempRoot);
+            Path fixtureZip =
+                createTensorRtFixtureZip(tempRoot.resolve("fixture").resolve("katago-trt.zip"));
+            long fixtureSize = Files.size(fixtureZip);
+            DownloadSession session = new DownloadSession();
+            AtomicBoolean cancelledAtDownloadEnd = new AtomicBoolean();
+            withTensorRtFixtureProperties(
+                fixtureZip.toUri().toString(),
+                sha256(fixtureZip),
+                fixtureSize,
+                () ->
+                    withConfig(
+                        runtimeWorkDirectory,
+                        () ->
+                            assertThrows(
+                                DownloadCancelledException.class,
+                                () ->
+                                    KataGoRuntimeHelper.downloadAndInstallTensorRt(
+                                        snapshot,
+                                        (status, downloaded, total) -> {
+                                          if (status != null
+                                              && status.contains("KataGo TensorRT")
+                                              && downloaded >= fixtureSize
+                                              && cancelledAtDownloadEnd.compareAndSet(
+                                                  false, true)) {
+                                            session.cancel();
+                                          }
+                                        },
+                                        session))));
+          });
+      String logs = formattedDiagnostics(events);
+      assertTrue(logs.contains("operation=tensorrt-setup"), logs);
+      assertTrue(logs.contains("stage=download outcome=success"), logs);
+      assertTrue(logs.contains("outcome=failed"), logs);
+      assertTrue(logs.contains("reason=cancelled"), logs);
+      assertFalse(logs.contains("stage=install outcome=success"), logs);
+    } finally {
+      LoggingRuntime.resetForTests();
+    }
+  }
+
+  @Test
+  void tensorRtInstallRecordsFailedMoveWhenCachePromotionFails() throws Exception {
+    Path logDir = Files.createTempDirectory("katago-tensorrt-move-fail-logs");
+    LoggingRuntime.initialize(
+        new WorkDirectoryResolution(logDir, List.of()),
+        new LoggingLimits(64, 32, 32, 32, 7, 1_000_000, 256_000));
+    try {
+      ListAppender<ILoggingEvent> events = attachDiagnostics();
+      withOsName(
+          WINDOWS_OS_NAME,
+          () -> {
+            Path tempRoot = Files.createTempDirectory("katago-helper-tensorrt-diag-move-fail");
+            Path runtimeWorkDirectory = Files.createDirectories(tempRoot.resolve("runtime-root"));
+            SetupSnapshot snapshot = createUnifiedNvidiaSnapshot(tempRoot);
+            Path fixtureZip =
+                createTensorRtFixtureZip(tempRoot.resolve("fixture").resolve("katago-trt.zip"));
+            withTensorRtFixtureProperties(
+                fixtureZip.toUri().toString(),
+                sha256(fixtureZip),
+                Files.size(fixtureZip),
+                () ->
+                    withConfig(
+                        runtimeWorkDirectory,
+                        () -> {
+                          Path archiveDir =
+                              Files.createDirectories(
+                                  runtimeWorkDirectory
+                                      .resolve("nvidia-runtime")
+                                      .resolve("downloads")
+                                      .resolve("katago-trt.zip"));
+                          Files.writeString(archiveDir.resolve("blocker.txt"), "not-an-archive");
+                          assertThrows(
+                              IOException.class,
+                              () ->
+                                  KataGoRuntimeHelper.downloadAndInstallTensorRt(
+                                      snapshot, null, new DownloadSession()));
+                        }));
+          });
+      String logs = formattedDiagnostics(events);
+      assertTrue(logs.contains("operation=tensorrt-setup"), logs);
+      assertTrue(logs.contains("stage=download outcome=success"), logs);
+      assertTrue(logs.contains("stage=verify outcome=success"), logs);
+      assertTrue(logs.contains("stage=move outcome=failed"), logs);
       assertFalse(logs.contains("stage=install outcome=success"), logs);
     } finally {
       LoggingRuntime.resetForTests();
