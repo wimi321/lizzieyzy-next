@@ -27,27 +27,6 @@ jobs:
         with:
           python-version: '3.x'
 
-      - name: Verify clean Windows checkout
-        shell: pwsh
-        run: |
-          $changes = git status --porcelain
-          if ($changes) {
-            $changes | Write-Error
-            throw 'Checkout is dirty; verify .gitattributes normalization.'
-          }
-
-      - name: Verify repository line endings
-        shell: pwsh
-        run: python scripts/check_line_endings.py
-
-      - name: Verify bundled JCEF logic on Windows
-        shell: pwsh
-        run: python scripts/test_prepare_bundled_jcef.py
-
-      - name: Verify bundled NVIDIA runtime packaging
-        shell: pwsh
-        run: python scripts/test_prepare_bundled_nvidia_runtime.py
-
       - name: Set up Java 21
         uses: actions/setup-java@v5
         with:
@@ -55,40 +34,17 @@ jobs:
           java-version: '21'
           cache: maven
 
-      - name: Parse RTX 50 benchmark script
+      - name: Run Windows CI preflight
         shell: pwsh
-        run: |
-          $tokens = $null
-          $errors = $null
-          [System.Management.Automation.Language.Parser]::ParseFile(
-            (Resolve-Path 'scripts/windows_rtx50_analysis_benchmark.ps1'),
-            [ref]$tokens,
-            [ref]$errors
-          ) | Out-Null
-          if ($errors.Count -gt 0) {
-            $errors | Format-List | Out-String | Write-Error
-            exit 1
-          }
+        run: python scripts/run_local_ci.py --profile windows --require-clean --summary-dir target/local-ci/windows
 
-      - name: Verify Windows credential persistence
-        shell: pwsh
-        run: >-
-          mvn -B "-Dfmt.skip=true"
-          "-Dlizzie.work.dir=$env:RUNNER_TEMP\lizzieyzy-next-credential-tests"
-          "-Dtest=PlatformCredentialStoreTest,RemoteComputeConfigTest,MigratingCredentialStoreTest"
-          test
-
-      - name: Run full Windows verification gate
-        shell: pwsh
-        run: >-
-          mvn -B "-Dfmt.skip=true"
-          "-Djava.awt.headless=true"
-          "-Dlizzie.work.dir=$env:RUNNER_TEMP\lizzieyzy-next-full-tests"
-          "-DskipTests=false"
-          "-DskipITs=false"
-          "-Dit.test=LoggingProviderSmokeIT"
-          "-Dfailsafe.failIfNoSpecifiedTests=true"
-          verify
+      - name: Upload local CI summary
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: local-ci-summary-windows
+          path: target/local-ci/windows
+          if-no-files-found: warn
 
       - name: Upload JaCoCo coverage report
         uses: actions/upload-artifact@v6
@@ -105,11 +61,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
 
-      - name: Verify repository line endings
-        run: |
-          python3 scripts/test_check_line_endings.py
-          python3 scripts/check_line_endings.py
-
       - name: Set up Java 21
         uses: actions/setup-java@v5
         with:
@@ -117,84 +68,16 @@ jobs:
           java-version: '21'
           cache: maven
 
-      - name: Verify local markdown links
-        run: python3 scripts/check_markdown_links.py
+      - name: Run portable CI preflight
+        run: python3 scripts/run_local_ci.py --profile portable --require-clean --summary-dir target/local-ci/portable
 
-      - name: Verify release packaging helpers
-        run: |
-          python3 -m py_compile \
-            scripts/audit_katago_binary_version.py \
-            scripts/audit_katago_package_metadata.py \
-            scripts/generate_release_notes.py \
-            scripts/macos_bundle_version.py \
-            scripts/macos_katago_bundle.py \
-            scripts/package_runtime_tools.py \
-            scripts/prepare_bundled_jcef.py \
-            scripts/prepare_bundled_nvidia_runtime.py \
-            scripts/publish_release_request.py \
-            scripts/r2_release.py \
-            scripts/summarize_jfr.py \
-            scripts/test_generate_release_notes.py \
-            scripts/test_audit_katago_binary_version.py \
-            scripts/test_audit_katago_package_metadata.py \
-            scripts/test_macos_drag_dmg_script.py \
-            scripts/test_macos_bundle_version.py \
-            scripts/test_macos_katago_bundle.py \
-            scripts/test_prepare_bundled_nvidia_runtime.py \
-            scripts/test_publish_release_request.py \
-            scripts/release_asset_provenance.py \
-            scripts/release_asset_topology.py \
-            scripts/test_release_asset_topology.py \
-            scripts/test_release_asset_provenance.py \
-            scripts/validate_release_notes.py \
-            scripts/test_validate_release_notes.py \
-            scripts/test_macos_signing_security.py \
-            scripts/test_r2_release.py \
-            scripts/test_windows_launcher_packaging.py \
-            scripts/test_validate_windows_release_assets.py \
-            scripts/validate_windows_release_assets.py \
-            scripts/test_validate_release_workflow_identity.py \
-            scripts/validate_release_workflow_identity.py
-          python3 scripts/test_generate_release_notes.py
-          python3 scripts/test_audit_katago_binary_version.py
-          python3 scripts/test_audit_katago_package_metadata.py
-          python3 scripts/test_macos_drag_dmg_script.py
-          python3 scripts/test_macos_bundle_version.py
-          python3 scripts/test_macos_katago_bundle.py
-          bash scripts/test_prepare_bundled_katago.sh
-          python3 scripts/test_prepare_bundled_jcef.py
-          python3 scripts/test_prepare_bundled_nvidia_runtime.py
-          python3 -m unittest scripts.test_publish_release_request
-          python3 -m unittest scripts.test_release_asset_provenance
-          python3 -m unittest scripts.test_release_asset_topology
-          python3 -m unittest scripts.test_validate_release_notes
-          python3 -m unittest scripts.test_macos_signing_security
-          python3 -m unittest scripts.test_r2_release
-          python3 scripts/test_windows_launcher_packaging.py
-          python3 -m unittest scripts.test_validate_windows_release_assets
-          python3 -m unittest scripts.test_validate_release_workflow_identity
-          bash -n \
-            scripts/create_macos_drag_dmg.sh \
-            scripts/prepare_bundled_katago.sh \
-            scripts/test_prepare_bundled_katago.sh \
-            scripts/package_macos_dmg.sh \
-            scripts/validate_macos_dmg_layout.sh \
-            scripts/package_release.sh \
-            scripts/package_windows_exe.sh \
-            scripts/run_jfr_benchmark.sh \
-            scripts/sign_macos_release.sh \
-            scripts/sign_macos_release_with_retry.sh \
-            scripts/validate_release_assets.sh
-
-      - name: Run full Linux verification gate
-        run: >-
-          mvn -B -Dfmt.skip=true
-          -Djava.awt.headless=true
-          -DskipTests=false
-          -DskipITs=false
-          -Dit.test=LoggingProviderSmokeIT
-          -Dfailsafe.failIfNoSpecifiedTests=true
-          verify
+      - name: Upload local CI summary
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: local-ci-summary-linux
+          path: target/local-ci/portable
+          if-no-files-found: warn
 
       - name: Upload JaCoCo coverage report
         uses: actions/upload-artifact@v6

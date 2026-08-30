@@ -8,7 +8,7 @@
 
 - 这是一个持续维护中的 LizzieYzy 分支，不是一次性补丁仓库。
 - 当前最重要的用户链路是：能装、能开、能通过 **野狐昵称** 获取最新公开棋谱、能正常分析。
-- 这个项目现在没有完整自动化测试体系，当前维护基线主要是：本地构建、文档检查、定向手工验证。
+- 项目已有 Java 回归、发布脚本和多平台 CI 门禁；真实 GUI、显卡后端和签名安装包仍需对应平台手工验收。
 
 ## 本地构建
 
@@ -40,21 +40,36 @@ mvn -B -DskipTests package
 - `target/lizzie-yzy2.5.3.jar`
 - `target/lizzie-yzy2.5.3-shaded.jar`
 
-## 当前建议的本地校验
+## 本地一键 CI 预检
 
-提交前，至少建议做这些检查：
+提交前建议运行与 GitHub Actions 同源的本地预检。它会校验 JDK 21、执行完整
+Maven `verify`、打包辅助脚本、换行和链接检查，并把准确的 JUnit 数量写入
+`target/local-ci/`。
 
-```bash
-python3 scripts/check_line_endings.py
-python3 scripts/check_markdown_links.py
-git diff --check
+Windows：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/run_local_ci.ps1 -Profile All
 ```
 
-如果你改了 Java 代码，再跑一次：
+macOS / Linux：
 
 ```bash
-mvn -B -DskipTests package
+bash scripts/run_local_ci.sh --profile portable
 ```
+
+推送前的干净工作树复核：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/run_local_ci.ps1 -Profile All -RequireClean
+```
+
+可用 profile 为 `Windows`、`Portable` 和 `All`；加 `-DryRun` / `--dry-run`
+可只查看计划执行的步骤。`LIZZIE_PYTHON`、`LIZZIE_MAVEN`、`LIZZIE_BASH`
+和 `LIZZIE_POWERSHELL` 可用于指定工具路径。
+
+本地预检用于在推送前尽早发现问题，不能代替受保护分支上的干净 Windows 和
+Ubuntu runner，也不能代替 macOS 签名、公证与多平台发布资产审计。
 
 如果你改了打包、引擎路径、首次启动流程、野狐抓谱流程，建议再做对应平台的手工验证。
 

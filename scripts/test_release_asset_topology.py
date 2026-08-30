@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -278,17 +280,42 @@ class LinuxValidatorSmokeTest(unittest.TestCase):
         self.assertNotRegex(validator_text, r"\b(?:mapfile|readarray)\b")
 
     def run_validator(self, release_dir: Path) -> subprocess.CompletedProcess[str]:
-        return subprocess.run(
-            [
-                "bash",
+        bash = os.environ.get("LIZZIE_BASH") or shutil.which("bash") or "bash"
+        env = os.environ.copy()
+        if os.name == "nt" and Path(bash).is_absolute():
+            env.update(
+                {
+                    "DATE_TAG": DATE_TAG,
+                    "LIZZIE_PYTHON": os.environ.get("LIZZIE_PYTHON", sys.executable),
+                    "RELEASE_DIR_PATH": str(release_dir),
+                    "VALIDATOR_PATH": str(self.validator),
+                }
+            )
+            command = [
+                bash,
+                "-lc",
+                (
+                    'export PYTHON_BIN="$(cygpath -u "$LIZZIE_PYTHON")"; '
+                    'bash "$(cygpath -u "$VALIDATOR_PATH")" linux '
+                    '"$(cygpath -u "$RELEASE_DIR_PATH")" "$DATE_TAG"'
+                ),
+            ]
+        else:
+            command = [
+                bash,
                 str(self.validator),
                 "linux",
                 str(release_dir),
                 DATE_TAG,
-            ],
+            ]
+        return subprocess.run(
+            command,
             check=False,
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
+            env=env,
         )
 
     def write_linux_inventory(self, release_dir: Path, names: tuple[str, ...]) -> None:

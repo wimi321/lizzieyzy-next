@@ -293,19 +293,13 @@ class WindowsReleaseValidationWiringTest(unittest.TestCase):
 
     def test_windows_ci_runs_jcef_tests_with_isolated_work_directories(self) -> None:
         workflow = (self.root / ".github/workflows/ci.yml").read_text(encoding="utf-8")
-        self.assertIn("python scripts/test_prepare_bundled_jcef.py", workflow)
-        self.assertIn(
-            "python3 -m unittest scripts.test_validate_windows_release_assets",
-            workflow,
-        )
-        self.assertIn(
-            "-Dlizzie.work.dir=$env:RUNNER_TEMP\\lizzieyzy-next-credential-tests",
-            workflow,
-        )
-        self.assertIn(
-            "-Dlizzie.work.dir=$env:RUNNER_TEMP\\lizzieyzy-next-full-tests",
-            workflow,
-        )
+        local_ci = (self.root / "scripts/run_local_ci.py").read_text(encoding="utf-8")
+        self.assertIn("scripts/run_local_ci.py --profile windows", workflow)
+        self.assertIn('"scripts/test_prepare_bundled_jcef.py"', local_ci)
+        self.assertIn('"scripts.test_validate_windows_release_assets"', local_ci)
+        self.assertIn("tempfile.gettempdir()", local_ci)
+        self.assertIn("temp / 'credential-tests'", local_ci)
+        self.assertIn("temp / 'full-tests'", local_ci)
 
 
 if __name__ == "__main__":
