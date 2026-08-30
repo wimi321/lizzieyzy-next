@@ -12,6 +12,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.slf4j.LoggerFactory;
 
 class CrashPersistenceBarrierTest {
@@ -23,17 +25,17 @@ class CrashPersistenceBarrierTest {
     LoggingRuntime.resetForTests();
   }
 
-  @Test
-  void fatalBarrierWaitsThroughDequeueHandoff() throws Exception {
+  @ParameterizedTest
+  @EnumSource(value = LogStream.class, names = {"APP", "CRASH"})
+  void fatalBarrierWaitsThroughDequeueHandoff(LogStream pausedStream) throws Exception {
     LoggingRuntime runtime =
         LoggingRuntime.initialize(
             new WorkDirectoryResolution(tempDir, List.of()),
             new LoggingLimits(64, 32, 32, 32, 7, 1_000_000, 256_000));
     CrashHandlers.install();
-    CountDownLatch entered = new CountDownLatch(2);
+    CountDownLatch entered = new CountDownLatch(1);
     CountDownLatch hold = new CountDownLatch(1);
-    runtime.pauseHandoffForTests(LogStream.APP, entered, hold);
-    runtime.pauseHandoffForTests(LogStream.CRASH, entered, hold);
+    runtime.pauseHandoffForTests(pausedStream, entered, hold);
 
     AtomicBoolean returned = new AtomicBoolean();
     Thread waiter =
