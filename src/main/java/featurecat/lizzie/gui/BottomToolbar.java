@@ -2685,14 +2685,13 @@ public class BottomToolbar extends JPanel {
     chkAutoAnalyse.setSelected(false);
     start.setText(text("BottomToolbar.detail.start", "开始"));
     if (Lizzie.leelaz.isPondering()) Lizzie.leelaz.togglePonder();
+    boolean completed = !isForceStop;
     if (Lizzie.frame.isBatchAna || LizzieFrame.toolbar.chkAnaAutoSave.isSelected()) {
-      autoAnaSaveAndLoad();
+      autoAnaSaveAndLoad(completed);
     } else {
       if (Lizzie.config.analyzeAllBranch)
         if (threadAnalyzeAllNode != null) threadAnalyzeAllNode.interrupt();
-      Utils.showMsgNoModal(
-          Lizzie.resourceBundle.getString(
-              "BottomToolbar.stopAutoAnaHint")); // (BottomToolbar.stopAutoAnaHint);
+      Utils.showMsgNoModal(Lizzie.resourceBundle.getString(autoAnalyzeStatusKey(completed)));
       //      if (msg == null || !msg.isVisible()) {
       //        msg = new Message();
       //        msg.setMessage("自动分析已完毕");
@@ -2701,12 +2700,37 @@ public class BottomToolbar extends JPanel {
     }
   }
 
-  private void autoAnaSaveAndLoad() {
+  static String autoAnalyzeStatusKey(boolean completed) {
+    return completed
+        ? "BottomToolbar.stopAutoAnaHint"
+        : "BottomToolbar.stopAutoAnaStoppedHint";
+  }
+
+  static String autoAnalyzeSavedStatusKey(boolean completed) {
+    return completed ? "Leelaz.autoAnalyzeComplete" : "Leelaz.autoAnalyzeStoppedSaved";
+  }
+
+  static String batchAutoAnalyzeStatusKey(boolean completed) {
+    return completed
+        ? "Leelaz.batchAutoAnalyzeComplete"
+        : "Leelaz.batchAutoAnalyzeStopped";
+  }
+
+  static boolean shouldContinueBatchAutoAnalysis(
+      boolean completed, int batchSize, int batchIndex) {
+    return completed && batchIndex >= 0 && batchSize > batchIndex + 1;
+  }
+
+  private void autoAnaSaveAndLoad(boolean completed) {
     if (Lizzie.leelaz.autoAnalysed) SGFParser.appendAiScoreBlunder();
     if (!Lizzie.frame.isBatchAna) {
       if (!Lizzie.leelaz.autoAnalysed) {
         if (Lizzie.config.analyzeAllBranch)
           if (threadAnalyzeAllNode != null) threadAnalyzeAllNode.interrupt();
+        if (!completed) {
+          Utils.showMsgNoModal(
+              resourceBundle.getString("BottomToolbar.stopAutoAnaStoppedHint"));
+        }
         return;
       }
       if (LizzieFrame.curFile != null) {
@@ -2734,7 +2758,8 @@ public class BottomToolbar extends JPanel {
         }
         if (msg == null || !msg.isVisible()) {
           msg = new Message();
-          msg.setMessageNoModal(resourceBundle.getString("Leelaz.autoAnalyzeComplete") + path);
+          msg.setMessageNoModal(
+              resourceBundle.getString(autoAnalyzeSavedStatusKey(completed)) + path);
         }
       } else {
         File file = new File("");
@@ -2761,7 +2786,7 @@ public class BottomToolbar extends JPanel {
         if (msg == null || !msg.isVisible()) {
           msg = new Message();
           msg.setMessageNoModal(
-              resourceBundle.getString("Leelaz.autoAnalyzeComplete")
+              resourceBundle.getString(autoAnalyzeSavedStatusKey(completed))
                   + courseFile
                   + File.separator
                   + "AnalyzedGames");
@@ -2771,6 +2796,13 @@ public class BottomToolbar extends JPanel {
         if (threadAnalyzeAllNode != null) threadAnalyzeAllNode.interrupt();
       return;
     } else {
+      if (Lizzie.frame.Batchfiles == null
+          || Lizzie.frame.Batchfiles.isEmpty()
+          || Lizzie.frame.BatchAnaNum < 0
+          || Lizzie.frame.BatchAnaNum >= Lizzie.frame.Batchfiles.size()) {
+        finishBatchAutoAnalysis(completed);
+        return;
+      }
       String name = Lizzie.frame.Batchfiles.get(Lizzie.frame.BatchAnaNum).getName();
       String path = Lizzie.frame.Batchfiles.get(Lizzie.frame.BatchAnaNum).getParent();
       String df = new SimpleDateFormat("yyyyMMddHHmmss").format(new Date());
@@ -2793,7 +2825,8 @@ public class BottomToolbar extends JPanel {
         // TODO Auto-generated catch block
         e.printStackTrace();
       }
-      if (Lizzie.frame.Batchfiles.size() > (Lizzie.frame.BatchAnaNum + 1)) {
+      if (shouldContinueBatchAutoAnalysis(
+          completed, Lizzie.frame.Batchfiles.size(), Lizzie.frame.BatchAnaNum)) {
         // double komi = Lizzie.board.getHistory().getGameInfo().getKomi();
         loadAutoBatchFile();
         // Lizzie.leelaz.komi(komi);
@@ -2801,23 +2834,26 @@ public class BottomToolbar extends JPanel {
           if (threadAnalyzeAllNode != null) threadAnalyzeAllNode.interrupt();
         startAutoAna();
       } else {
-        Lizzie.frame.isBatchAna = false;
-        LizzieFrame.toolbar.chkAnaAutoSave.setEnabled(true);
-        //	isSaving = false;
-        Lizzie.frame.Batchfiles = new ArrayList<File>();
-        Lizzie.frame.BatchAnaNum = 0;
-        Lizzie.frame.addInput(true);
-        if (Lizzie.frame.analysisTable != null && Lizzie.frame.analysisTable.frame.isVisible()) {
-          Lizzie.frame.analysisTable.refreshTable();
-        }
-        if (Lizzie.config.analyzeAllBranch)
-          if (threadAnalyzeAllNode != null) threadAnalyzeAllNode.interrupt();
-        if (msg == null || !msg.isVisible()) {
-          msg = new Message();
-          msg.setMessageNoModal(resourceBundle.getString("Leelaz.batchAutoAnalyzeComplete"));
-        }
+        finishBatchAutoAnalysis(completed);
         return;
       }
+    }
+  }
+
+  private void finishBatchAutoAnalysis(boolean completed) {
+    Lizzie.frame.isBatchAna = false;
+    LizzieFrame.toolbar.chkAnaAutoSave.setEnabled(true);
+    Lizzie.frame.Batchfiles = new ArrayList<File>();
+    Lizzie.frame.BatchAnaNum = 0;
+    Lizzie.frame.addInput(true);
+    if (Lizzie.frame.analysisTable != null && Lizzie.frame.analysisTable.frame.isVisible()) {
+      Lizzie.frame.analysisTable.refreshTable();
+    }
+    if (Lizzie.config.analyzeAllBranch)
+      if (threadAnalyzeAllNode != null) threadAnalyzeAllNode.interrupt();
+    if (msg == null || !msg.isVisible()) {
+      msg = new Message();
+      msg.setMessageNoModal(resourceBundle.getString(batchAutoAnalyzeStatusKey(completed)));
     }
   }
 
