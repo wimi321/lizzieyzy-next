@@ -1,5 +1,6 @@
 package featurecat.lizzie;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -18,6 +19,18 @@ import javax.swing.SwingUtilities;
 import org.junit.jupiter.api.Test;
 
 class EngineStartupStatusTest {
+  @Test
+  void startupStatusLayoutToleratesFrameBeforeRootPaneInstallation() throws Exception {
+    CountingLizzieFrame frame = allocate(CountingLizzieFrame.class);
+    CountingLayeredPane basePanel = new CountingLayeredPane();
+    JFontButton statusButton = new JFontButton();
+    statusButton.setVisible(true);
+    setField(LizzieFrame.class, frame, "basePanel", basePanel);
+    setField(LizzieFrame.class, frame, "engineStartupStatusButton", statusButton);
+
+    assertDoesNotThrow(() -> invokeStatusLayout(frame, 800));
+  }
+
   @Test
   void staleReadyListenerCannotOverwriteNewerFailureOnTheEdt() throws Exception {
     CountingLizzieFrame frame = allocate(CountingLizzieFrame.class);
@@ -127,6 +140,17 @@ class EngineStartupStatusTest {
               "updateEngineStartupStatus", EngineStartupStatus.Snapshot.class);
       update.setAccessible(true);
       update.invoke(frame, snapshot);
+    } catch (ReflectiveOperationException failure) {
+      throw new AssertionError(failure);
+    }
+  }
+
+  private static void invokeStatusLayout(LizzieFrame frame, int availableWidth) {
+    try {
+      Method layout =
+          LizzieFrame.class.getDeclaredMethod("layoutEngineStartupStatus", int.class);
+      layout.setAccessible(true);
+      layout.invoke(frame, availableWidth);
     } catch (ReflectiveOperationException failure) {
       throw new AssertionError(failure);
     }

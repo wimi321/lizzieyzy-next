@@ -12653,11 +12653,15 @@ public class LizzieFrame extends JFrame {
   }
 
   private int currentNativeMenuBarReserve() {
-    JMenuBar bar = getJMenuBar();
+    JRootPane rootPane = getRootPane();
+    JMenuBar bar = rootPane == null ? null : rootPane.getJMenuBar();
     int height = bar == null ? 0 : bar.getHeight();
     int preferred =
         bar == null || bar.getPreferredSize() == null ? 0 : bar.getPreferredSize().height;
-    return nativeMenuBarReserve(menuPresentationMode.usesNativeMenuBar(), height, preferred);
+    return nativeMenuBarReserve(
+        menuPresentationMode != null && menuPresentationMode.usesNativeMenuBar(),
+        height,
+        preferred);
   }
 
   public void reSetLoc() {
@@ -15708,15 +15712,22 @@ public class LizzieFrame extends JFrame {
   }
 
   private void layoutEngineStartupStatus(int availableWidth) {
-    if (engineStartupStatusButton == null || !engineStartupStatusButton.isVisible()) {
+    if (engineStartupStatusButton == null
+        || !engineStartupStatusButton.isVisible()
+        || basePanel == null) {
       return;
     }
     Dimension preferred = engineStartupStatusButton.getPreferredSize();
     int width = Math.min(Math.max(180, preferred.width + 8), Math.max(180, availableWidth - 20));
     Insets insets = getInsets();
+    JRootPane rootPane = getRootPane();
+    int contentPaneHeight =
+        rootPane == null || rootPane.getContentPane() == null
+            ? 0
+            : rootPane.getContentPane().getHeight();
     int contentHeight =
         resolvedContentLength(
-            preferLaidOutLength(basePanel.getHeight(), getContentPane().getHeight()),
+            preferLaidOutLength(basePanel.getHeight(), contentPaneHeight),
             getHeight(),
             insets.top,
             insets.bottom,
