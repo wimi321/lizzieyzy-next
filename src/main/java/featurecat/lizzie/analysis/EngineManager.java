@@ -4050,11 +4050,18 @@ public class EngineManager {
     currentEngineNo2 = -1;
     currentEngineNo = -1;
     isEmpty = true;
-    Lizzie.leelaz.notPondering();
-    Lizzie.leelaz.isLoaded = true;
-    Menu.engineMenu.setText(resourceBundle.getString("Menu.noEngine"));
-    Lizzie.frame.invalidateTrackingAnalysis();
-    Lizzie.frame.refresh();
+    Leelaz primaryEngine = Lizzie.leelaz;
+    if (primaryEngine != null) {
+      primaryEngine.notPondering();
+      primaryEngine.isLoaded = true;
+    }
+    if (Menu.engineMenu != null) {
+      Menu.engineMenu.setText(resourceBundle.getString("Menu.noEngine"));
+    }
+    if (Lizzie.frame != null) {
+      Lizzie.frame.invalidateTrackingAnalysis();
+      Lizzie.frame.refresh();
+    }
   }
 
   public void forceKillAllEngines() {
@@ -4067,7 +4074,8 @@ public class EngineManager {
         }
       }
     }
-    Lizzie.leelaz.notPondering();
+    Leelaz primaryEngine = Lizzie.leelaz;
+    if (primaryEngine != null) primaryEngine.notPondering();
   }
 
   public void reStartEngine() {

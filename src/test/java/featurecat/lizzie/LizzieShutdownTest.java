@@ -1,5 +1,6 @@
 package featurecat.lizzie;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -15,6 +16,14 @@ import org.json.JSONObject;
 import org.junit.jupiter.api.Test;
 
 class LizzieShutdownTest {
+  @Test
+  void forceKillAllowsAnAlreadyMissingPrimaryEngine() throws Exception {
+    try (Harness harness = Harness.open()) {
+      assertDoesNotThrow(() -> Lizzie.engineManager.forceKillAllEngines());
+      assertEquals(1, harness.engine.forceQuitCount);
+    }
+  }
+
   @Test
   void autosaveRuntimeFailureStillPersistsConfigKillsEnginesAndExits() throws Exception {
     try (Harness harness = Harness.open()) {

@@ -1,5 +1,6 @@
 package featurecat.lizzie.gui;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertSame;
@@ -20,6 +21,12 @@ import org.junit.jupiter.api.Test;
 
 class MenuEngineSwitchUiStateTest {
   private static final String SWITCHING_KEY = "LizzieFrame.prompt.switching";
+
+  @Test
+  void engineStatusUpdateAllowsAnalysisButtonToStillBeUnderConstruction() {
+    assertDoesNotThrow(() -> Menu.updateAnalysisToolbarButton(null, true));
+    assertDoesNotThrow(() -> Menu.updateAnalysisToolbarButton(null, false));
+  }
 
   @Test
   void partiallyInitializedMenuUsesApplicationBundleOrSafeFallback() {
