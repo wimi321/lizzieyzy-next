@@ -252,7 +252,7 @@ public class TensorRtDirectedRepairTest {
   }
 
   @Test
-  void staleMovedEscapedOrSymlinkedTargetsFailClosedAndClearDirectedMode() throws Exception {
+  void staleMovedOrEscapedTargetsFailClosedAndClearDirectedMode() throws Exception {
     withOsName(
         WINDOWS_OS_NAME,
         () -> {
@@ -325,7 +325,25 @@ public class TensorRtDirectedRepairTest {
                 assertThrows(
                     TensorRtTargetInvalidException.class,
                     () -> KataGoRuntimeHelper.requireValidDirectedTensorRtTarget(traversalContext));
+              });
+        });
+  }
 
+  @Test
+  void symlinkedTargetsFailClosedAndClearDirectedMode() throws Exception {
+    withOsName(
+        WINDOWS_OS_NAME,
+        () -> {
+          Path tempRoot = Files.createTempDirectory("tensorrt-directed-symlink");
+          assumeTrue(
+              supportsSymbolicLinks(tempRoot),
+              "symbolic links require Windows Developer Mode or elevated privileges");
+          Path runtimeWorkDirectory = Files.createDirectories(tempRoot.resolve("runtime-root"));
+          Path escapedEngine = touch(tempRoot.resolve("outside").resolve("katago.exe"));
+
+          withConfig(
+              runtimeWorkDirectory,
+              () -> {
                 Path managedDir =
                     Files.createDirectories(
                         runtimeWorkDirectory
@@ -333,7 +351,6 @@ public class TensorRtDirectedRepairTest {
                             .resolve("katago")
                             .resolve("windows-x64-nvidia-tensorrt"));
                 Path symlinkEngine = managedDir.resolve("katago.exe");
-                Files.deleteIfExists(symlinkEngine);
                 Files.createSymbolicLink(symlinkEngine, escapedEngine.toAbsolutePath());
                 TensorRtRepairContext symlinkContext =
                     TensorRtRepairContext.of(
@@ -346,6 +363,7 @@ public class TensorRtDirectedRepairTest {
                 assertThrows(
                     TensorRtTargetInvalidException.class,
                     () -> KataGoRuntimeHelper.requireValidDirectedTensorRtTarget(symlinkContext));
+                TensorRtRepairSession session = new TensorRtRepairSession();
                 session.apply(symlinkContext);
                 assertTrue(session.clearIfTargetInvalid());
                 assertFalse(session.isDirected());
@@ -1174,6 +1192,20 @@ public class TensorRtDirectedRepairTest {
   private static Path touch(Path file) throws IOException {
     Files.createDirectories(file.getParent());
     return Files.write(file, new byte[0]);
+  }
+
+  private static boolean supportsSymbolicLinks(Path directory) throws IOException {
+    Path target = touch(directory.resolve("symlink-capability-target"));
+    Path link = directory.resolve("symlink-capability-link");
+    try {
+      Files.createSymbolicLink(link, target.toAbsolutePath());
+      return Files.isSymbolicLink(link);
+    } catch (IOException | UnsupportedOperationException | SecurityException e) {
+      return false;
+    } finally {
+      Files.deleteIfExists(link);
+      Files.deleteIfExists(target);
+    }
   }
 
   private static void withConfig(Path runtimeWorkDirectory, ThrowingRunnable action)
