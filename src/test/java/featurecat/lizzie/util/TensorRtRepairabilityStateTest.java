@@ -105,7 +105,8 @@ public class TensorRtRepairabilityStateTest {
 
 
   @Test
-  void gpuAdviceChangesDoNotBlockRepairOnWindows() throws Exception {
+  void gpuEligibilityBlocksMissingAndOldHardwareWithoutBlockingModernOrUnknownNvidia()
+      throws Exception {
     withOsName(
         WINDOWS_OS_NAME,
         () -> {
@@ -118,6 +119,10 @@ public class TensorRtRepairabilityStateTest {
               () -> {
                 TensorRtInstallStatus pending =
                     KataGoRuntimeHelper.inspectTensorRtInstall(snapshot, null);
+                DetectionResult noGpuDetection =
+                    detection(null, TensorRtRecommendation.UNKNOWN, UNKNOWN_TEXT);
+                TensorRtInstallStatus noGpu =
+                    KataGoRuntimeHelper.inspectTensorRtInstall(snapshot, noGpuDetection);
                 TensorRtInstallStatus notRecommended =
                     KataGoRuntimeHelper.inspectTensorRtInstall(
                         snapshot,
@@ -125,20 +130,66 @@ public class TensorRtRepairabilityStateTest {
                             new GpuInfo("NVIDIA GeForce RTX 4090", 8, 9, "570.65", 24576L, "test"),
                             TensorRtRecommendation.NOT_RECOMMENDED,
                             NOT_RECOMMENDED_TEXT));
-                TensorRtInstallStatus unknown =
+                DetectionResult unknownComputeDetection =
+                    detection(
+                        new GpuInfo("NVIDIA GPU", 0, 0, "570.65", 8192L, "test"),
+                        TensorRtRecommendation.UNKNOWN,
+                        UNKNOWN_TEXT);
+                TensorRtInstallStatus unknownCompute =
                     KataGoRuntimeHelper.inspectTensorRtInstall(
-                        snapshot,
-                        detection(null, TensorRtRecommendation.UNKNOWN, UNKNOWN_TEXT));
+                        snapshot, unknownComputeDetection);
+                DetectionResult oldGpuDetection =
+                    detection(
+                        new GpuInfo("NVIDIA GeForce GTX 1080", 6, 1, "570.65", 8192L, "test"),
+                        TensorRtRecommendation.NOT_RECOMMENDED,
+                        "Unsupported TensorRT hardware");
+                TensorRtInstallStatus oldGpu =
+                    KataGoRuntimeHelper.inspectTensorRtInstall(snapshot, oldGpuDetection);
 
                 assertEquals(TensorRtRecommendation.UNKNOWN, pending.gpuRecommendation);
                 assertFalse(pending.gpuRecommendationText.isBlank());
                 assertEquals(NOT_RECOMMENDED_TEXT, notRecommended.gpuRecommendationText);
-                assertEquals(UNKNOWN_TEXT, unknown.gpuRecommendationText);
+                assertEquals(UNKNOWN_TEXT, unknownCompute.gpuRecommendationText);
                 assertNotEquals(pending.gpuRecommendationText, notRecommended.gpuRecommendationText);
-                assertNotEquals(pending.gpuRecommendationText, unknown.gpuRecommendationText);
+                assertNotEquals(pending.gpuRecommendationText, unknownCompute.gpuRecommendationText);
+
+                assertFalse(pending.gpuDetectionComplete);
+                assertFalse(pending.gpuDetected);
+                assertFalse(pending.hardwareEligible);
                 assertTrue(pending.repairable);
+                assertTrue(noGpu.gpuDetectionComplete);
+                assertFalse(noGpu.gpuDetected);
+                assertFalse(noGpu.hardwareEligible);
+                assertTrue(
+                    noGpu.activationMissingItems.contains(
+                        TensorRtInstallStatus.MISSING_NVIDIA_GPU));
+
+                assertTrue(notRecommended.gpuDetectionComplete);
+                assertTrue(notRecommended.gpuDetected);
+                assertTrue(notRecommended.hardwareEligible);
                 assertTrue(notRecommended.repairable);
-                assertTrue(unknown.repairable);
+                assertTrue(unknownCompute.gpuDetected);
+                assertTrue(unknownCompute.hardwareEligible);
+                assertTrue(unknownCompute.repairable);
+                assertTrue(oldGpu.gpuDetected);
+                assertFalse(oldGpu.hardwareEligible);
+
+                assertFalse(
+                    KataGoRuntimeHelper.canRepairTensorRt(snapshot, noGpuDetection, null));
+                assertTrue(
+                    KataGoRuntimeHelper.canRepairTensorRt(
+                        snapshot,
+                        detection(
+                            new GpuInfo(
+                                "NVIDIA GeForce RTX 4090", 8, 9, "570.65", 24576L, "test"),
+                            TensorRtRecommendation.NOT_RECOMMENDED,
+                            NOT_RECOMMENDED_TEXT),
+                        null));
+                assertTrue(
+                    KataGoRuntimeHelper.canRepairTensorRt(
+                        snapshot, unknownComputeDetection, null));
+                assertFalse(
+                    KataGoRuntimeHelper.canRepairTensorRt(snapshot, oldGpuDetection, null));
                 assertFalse(pending.applicable);
                 assertFalse(KataGoRuntimeHelper.canInstallTensorRt(snapshot));
               });

@@ -381,6 +381,14 @@ public final class NvidiaGpuDetector {
     return TensorRtRecommendation.ALLOWED;
   }
 
+  static boolean supportsTensorRtHardware(DetectionResult detection) {
+    if (detection == null || !detection.detected || detection.bestGpu == null) {
+      return false;
+    }
+    GpuInfo gpu = detection.bestGpu;
+    return !gpu.hasComputeCapability() || gpu.computeRank() >= 75;
+  }
+
   public static CudaCompatibility cudaCompatibility(String driverVersion) {
     int[] parsed = parseDriverVersion(driverVersion);
     if (parsed[0] <= 0) {

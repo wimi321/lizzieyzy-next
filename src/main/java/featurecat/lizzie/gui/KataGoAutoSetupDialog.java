@@ -2194,7 +2194,7 @@ public class KataGoAutoSetupDialog extends JDialog {
                     ? NvidiaGpuDetector.TensorRtRecommendation.UNKNOWN
                     : status.gpuRecommendation);
     String gpuTooltip = text(view.gpuAdviceKey);
-    if (status != null && !Utils.isBlank(status.gpuRecommendationText)) {
+    if (status != null && status.gpuDetected && !Utils.isBlank(status.gpuRecommendationText)) {
       gpuTooltip = status.gpuRecommendationText;
     }
     if (nvidiaGpuDetection != null && nvidiaGpuDetection.detected) {
@@ -2231,7 +2231,7 @@ public class KataGoAutoSetupDialog extends JDialog {
     AccessibilitySupport.named(
         lblNvidiaGpuValue,
         text(view.gpuAccessibleNameKey),
-        text(view.gpuAccessibleDescriptionKey));
+        gpuTooltip);
     AccessibilitySupport.named(
         lblTensorRtRuntimeValue,
         text(view.runtimeAccessibleNameKey),
@@ -2987,7 +2987,7 @@ public class KataGoAutoSetupDialog extends JDialog {
     }
     if (!canRepairTensorRt()) {
       lblStatus.setText(status.detailText);
-      lblStatus.setForeground(OK_COLOR);
+      lblStatus.setForeground(status.hardwareEligible ? OK_COLOR : WARN_COLOR);
       updateTensorRtInfo();
       return;
     }
@@ -3967,14 +3967,15 @@ public class KataGoAutoSetupDialog extends JDialog {
     if (snapshot == null) {
       return false;
     }
-    return KataGoRuntimeHelper.canRepairTensorRt(snapshot, tensorRtRepairSession.context());
+    return KataGoRuntimeHelper.canRepairTensorRt(
+        snapshot, nvidiaGpuDetection, tensorRtRepairSession.context());
   }
 
   private boolean canActivateTensorRt() {
     if (snapshot == null) {
       return false;
     }
-    return KataGoRuntimeHelper.canActivateTensorRt(snapshot);
+    return KataGoRuntimeHelper.canActivateTensorRt(snapshot, nvidiaGpuDetection);
   }
 
   private boolean canInstallExperimentalBackend() {

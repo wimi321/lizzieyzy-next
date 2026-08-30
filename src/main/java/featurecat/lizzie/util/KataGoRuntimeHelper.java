@@ -377,6 +377,8 @@ public final class KataGoRuntimeHelper {
   }
 
   public static final class TensorRtInstallStatus {
+    public static final String MISSING_GPU_DETECTION = "gpu-detection";
+    public static final String MISSING_NVIDIA_GPU = "nvidia-gpu";
     public static final String MISSING_RUNTIME = "runtime";
     public static final String MISSING_COMPANION = "companion";
     public static final String MISSING_ENGINE = "engine";
@@ -395,6 +397,9 @@ public final class KataGoRuntimeHelper {
     public final NvidiaGpuDetector.DetectionResult gpuDetection;
     public final NvidiaGpuDetector.TensorRtRecommendation gpuRecommendation;
     public final String gpuRecommendationText;
+    public final boolean gpuDetectionComplete;
+    public final boolean gpuDetected;
+    public final boolean hardwareEligible;
     public final boolean platformSupported;
     public final boolean managedTargetAvailable;
     public final boolean runtimeReady;
@@ -418,6 +423,9 @@ public final class KataGoRuntimeHelper {
         NvidiaGpuDetector.DetectionResult gpuDetection,
         NvidiaGpuDetector.TensorRtRecommendation gpuRecommendation,
         String gpuRecommendationText,
+        boolean gpuDetectionComplete,
+        boolean gpuDetected,
+        boolean hardwareEligible,
         boolean platformSupported,
         boolean managedTargetAvailable,
         boolean runtimeReady,
@@ -442,6 +450,9 @@ public final class KataGoRuntimeHelper {
               ? NvidiaGpuDetector.TensorRtRecommendation.UNKNOWN
               : gpuRecommendation;
       this.gpuRecommendationText = gpuRecommendationText == null ? "" : gpuRecommendationText;
+      this.gpuDetectionComplete = gpuDetectionComplete;
+      this.gpuDetected = gpuDetected;
+      this.hardwareEligible = hardwareEligible;
       this.platformSupported = platformSupported;
       this.managedTargetAvailable = managedTargetAvailable;
       this.runtimeReady = runtimeReady;
@@ -2052,6 +2063,9 @@ public final class KataGoRuntimeHelper {
       TensorRtInstallSpec spec = buildTensorRtInstallSpec(snapshot, context);
     boolean platformSupported = isWindowsPlatform();
     boolean managedTargetAvailable = spec.targetEnginePath != null;
+    boolean gpuDetectionComplete = gpuDetection != null;
+    boolean gpuDetected = gpuDetectionComplete && gpuDetection.detected;
+    boolean hardwareEligible = NvidiaGpuDetector.supportsTensorRtHardware(gpuDetection);
     boolean sourceAllowed = isTensorRtSourceProfileAllowed(snapshot);
     boolean enginePresent =
         spec.targetEnginePath != null && Files.isRegularFile(spec.targetEnginePath);
@@ -2070,6 +2084,9 @@ public final class KataGoRuntimeHelper {
             && snapshot.gtpConfigPath != null
             && Files.isRegularFile(snapshot.gtpConfigPath);
     List<String> activationMissingItems = new ArrayList<String>();
+    if (gpuDetectionComplete && !hardwareEligible) {
+      activationMissingItems.add(TensorRtInstallStatus.MISSING_NVIDIA_GPU);
+    }
     if (!runtimeReady) {
       activationMissingItems.add(TensorRtInstallStatus.MISSING_RUNTIME);
     }
@@ -2094,7 +2111,7 @@ public final class KataGoRuntimeHelper {
             : gpuDetection.recommendation;
     String recommendationText = tensorRtRecommendationText(gpuDetection);
     long requiredDownloadBytes =
-        applicable && runtimeReady
+        runtimeReady
             ? (engineCurrent ? 0L : spec.katagoSizeBytes)
                 + (spec.companionDownloadNeeded ? spec.companionSizeBytes : 0L)
             : spec.totalDownloadBytes;
@@ -2104,7 +2121,14 @@ public final class KataGoRuntimeHelper {
           resource(
               "AutoSetup.tensorRtNotApplicable",
               "TensorRT acceleration is only available on Windows NVIDIA packages.");
-    } else if (!sourceAllowed) {
+    } else if (gpuDetectionComplete && !gpuDetected) {
+      detail =
+          resource(
+              "AutoSetup.gpuDetectNotFound",
+              "No NVIDIA GPU detected, or NVIDIA driver information is unavailable.");
+    } else if (gpuDetectionComplete && !hardwareEligible) {
+      detail = recommendationText;
+    } else if (!sourceAllowed && !gpuDetectionComplete) {
       detail =
           resource(
               "AutoSetup.tensorRtNeedNvidia",
@@ -2157,6 +2181,9 @@ public final class KataGoRuntimeHelper {
         gpuDetection,
         recommendation,
         recommendationText,
+        gpuDetectionComplete,
+        gpuDetected,
+        hardwareEligible,
         platformSupported,
         managedTargetAvailable,
         runtimeReady,
@@ -2191,6 +2218,24 @@ public final class KataGoRuntimeHelper {
             || !status.engineCurrent);
   }
 
+  public static boolean canRepairTensorRt(
+      SetupSnapshot snapshot,
+      NvidiaGpuDetector.DetectionResult gpuDetection,
+      TensorRtRepairContext context) {
+    if (context != null && !isValidDirectedTensorRtTarget(context)) {
+      return false;
+    }
+    TensorRtInstallStatus status =
+        inspectTensorRtInstallUnchecked(snapshot, gpuDetection, context);
+    return status.gpuDetectionComplete
+        && status.hardwareEligible
+        && status.repairable
+        && (!status.runtimeReady
+            || !status.companionReady
+            || !status.enginePresent
+            || !status.engineCurrent);
+  }
+
   public static boolean shouldStartTensorRtComponentRepair(TensorRtRepairContext contextAtClick) {
     return contextAtClick == null || isValidDirectedTensorRtTarget(contextAtClick);
   }
@@ -2198,6 +2243,15 @@ public final class KataGoRuntimeHelper {
   public static boolean canActivateTensorRt(SetupSnapshot snapshot) {
     TensorRtInstallStatus status = inspectTensorRtInstall(snapshot);
     return status.activatable && !status.profileActive;
+  }
+
+  public static boolean canActivateTensorRt(
+      SetupSnapshot snapshot, NvidiaGpuDetector.DetectionResult gpuDetection) {
+    TensorRtInstallStatus status = inspectTensorRtInstall(snapshot, gpuDetection);
+    return status.gpuDetectionComplete
+        && status.hardwareEligible
+        && status.activatable
+        && !status.profileActive;
   }
 
   public static boolean canSwitchBackToCuda(SetupSnapshot snapshot) {

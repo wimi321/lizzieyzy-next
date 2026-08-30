@@ -9,6 +9,7 @@ import java.util.function.Function;
 
 final class TensorRtAccelerationView {
   static final String GPU_DETECTING_KEY = "AutoSetup.gpuDetecting";
+  static final String GPU_NOT_FOUND_KEY = "AutoSetup.gpuDetectNotFound";
   static final String GPU_RECOMMENDED_KEY = "AutoSetup.gpuRecommendTensorRt";
   static final String GPU_ALLOWED_KEY = "AutoSetup.gpuAllowTensorRt";
   static final String GPU_NOT_RECOMMENDED_KEY = "AutoSetup.gpuNotRecommendTensorRt";
@@ -109,6 +110,9 @@ final class TensorRtAccelerationView {
     if (status == null) {
       return present(
           gpuDetectionPending,
+          false,
+          false,
+          false,
           TensorRtRecommendation.UNKNOWN,
           false,
           false,
@@ -125,6 +129,9 @@ final class TensorRtAccelerationView {
     }
     return present(
         gpuDetectionPending,
+        status.gpuDetectionComplete,
+        status.gpuDetected,
+        status.hardwareEligible,
         status.gpuRecommendation,
         status.platformSupported,
         status.managedTargetAvailable,
@@ -142,6 +149,9 @@ final class TensorRtAccelerationView {
 
   static TensorRtAccelerationView present(
       boolean gpuDetectionPending,
+      boolean gpuDetectionComplete,
+      boolean gpuDetected,
+      boolean hardwareEligible,
       TensorRtRecommendation recommendation,
       boolean platformSupported,
       boolean managedTargetAvailable,
@@ -155,7 +165,12 @@ final class TensorRtAccelerationView {
       List<String> activationMissingItems,
       Path targetEnginePath,
       boolean idle) {
-    String gpuAdviceKey = gpuAdviceKey(gpuDetectionPending, recommendation);
+    String gpuAdviceKey =
+        gpuAdviceKey(
+            gpuDetectionPending,
+            gpuDetectionComplete,
+            gpuDetected,
+            recommendation);
     boolean showComponents = platformSupported && managedTargetAvailable;
     String runtimeStatusKey =
         showComponents
@@ -174,11 +189,21 @@ final class TensorRtAccelerationView {
             ? activationStatusKey(
                 profileActive, runtimeReady, companionReady, enginePresent, engineCurrent)
             : notApplicableOrMissing(platformSupported);
-    List<String> missingKeys = missingKeys(activationMissingItems);
+    List<String> effectiveMissingItems = new ArrayList<String>();
+    if (activationMissingItems != null) {
+      effectiveMissingItems.addAll(activationMissingItems);
+    }
+    if (!gpuDetectionComplete) {
+      addMissingFirst(effectiveMissingItems, TensorRtInstallStatus.MISSING_GPU_DETECTION);
+    } else if (!hardwareEligible) {
+      addMissingFirst(effectiveMissingItems, TensorRtInstallStatus.MISSING_NVIDIA_GPU);
+    }
+    List<String> missingKeys = missingKeys(effectiveMissingItems);
     boolean needsComponentRepair =
         !runtimeReady || !companionReady || !enginePresent || !engineCurrent;
-    boolean repairEnabled = idle && repairable && needsComponentRepair;
-    boolean enableEnabled = idle && activatable && !profileActive;
+    boolean hardwareReady = gpuDetectionComplete && gpuDetected && hardwareEligible;
+    boolean repairEnabled = idle && hardwareReady && repairable && needsComponentRepair;
+    boolean enableEnabled = idle && hardwareReady && activatable && !profileActive;
     String target = targetEnginePath == null ? "" : targetEnginePath.toString();
     return new TensorRtAccelerationView(
         gpuAdviceKey,
@@ -196,9 +221,15 @@ final class TensorRtAccelerationView {
   }
 
   private static String gpuAdviceKey(
-      boolean gpuDetectionPending, TensorRtRecommendation recommendation) {
-    if (gpuDetectionPending) {
+      boolean gpuDetectionPending,
+      boolean gpuDetectionComplete,
+      boolean gpuDetected,
+      TensorRtRecommendation recommendation) {
+    if (gpuDetectionPending || !gpuDetectionComplete) {
       return GPU_DETECTING_KEY;
+    }
+    if (!gpuDetected) {
+      return GPU_NOT_FOUND_KEY;
     }
     if (recommendation == TensorRtRecommendation.RECOMMENDED) {
       return GPU_RECOMMENDED_KEY;
@@ -210,6 +241,12 @@ final class TensorRtAccelerationView {
       return GPU_NOT_RECOMMENDED_KEY;
     }
     return GPU_UNKNOWN_KEY;
+  }
+
+  private static void addMissingFirst(List<String> items, String item) {
+    if (!items.contains(item)) {
+      items.add(0, item);
+    }
   }
 
   private static String engineStatusKey(boolean enginePresent, boolean engineCurrent) {
@@ -270,7 +307,11 @@ final class TensorRtAccelerationView {
       return keys;
     }
     for (String item : activationMissingItems) {
-      if (TensorRtInstallStatus.MISSING_RUNTIME.equals(item)) {
+      if (TensorRtInstallStatus.MISSING_GPU_DETECTION.equals(item)) {
+        keys.add("AutoSetup.tensorRtMissingGpuDetection");
+      } else if (TensorRtInstallStatus.MISSING_NVIDIA_GPU.equals(item)) {
+        keys.add("AutoSetup.tensorRtMissingNvidiaGpu");
+      } else if (TensorRtInstallStatus.MISSING_RUNTIME.equals(item)) {
         keys.add("AutoSetup.tensorRtMissingRuntime");
       } else if (TensorRtInstallStatus.MISSING_COMPANION.equals(item)) {
         keys.add("AutoSetup.tensorRtMissingCompanion");
