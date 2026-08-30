@@ -162,7 +162,9 @@ class LoggingRuntimeTest {
     for (int i = 0; i < 40; i++) {
       app.info("rolling-payload-{}", "x".repeat(80) + i);
     }
-    runtime.awaitIdle(80);
+    assertTrue(
+        runtime.awaitIdle(10, TimeUnit.SECONDS),
+        "logging worker did not finish the rollover workload");
     assertTrue(Files.isRegularFile(tempDir.resolve("logs/app.log")));
     List<String> archiveNames = awaitAppArchiveNames(tempDir.resolve("logs/archive"));
     assertTrue(

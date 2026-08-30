@@ -532,6 +532,22 @@ public final class LoggingRuntime {
     }
   }
 
+  boolean awaitIdle(long timeout, TimeUnit unit) {
+    Objects.requireNonNull(unit, "unit");
+    long deadline = System.nanoTime() + unit.toNanos(Math.max(0L, timeout));
+    List<BoundedAsyncAppender> activeAppenders = new ArrayList<>(appenders.values());
+    long[] submitted = new long[activeAppenders.size()];
+    for (int i = 0; i < activeAppenders.size(); i++) {
+      submitted[i] = activeAppenders.get(i).submittedCount();
+    }
+    for (int i = 0; i < activeAppenders.size(); i++) {
+      if (!activeAppenders.get(i).awaitSubmitted(submitted[i], deadline)) {
+        return false;
+      }
+    }
+    return true;
+  }
+
   private void bootstrap(WorkDirectoryResolution resolution) {
     try {
       context.reset();
