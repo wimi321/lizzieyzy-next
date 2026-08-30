@@ -27,6 +27,7 @@ import javax.swing.JButton;
 import javax.swing.JComboBox;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
+import javax.swing.JTextArea;
 import javax.swing.SwingUtilities;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -314,14 +315,46 @@ class KataGoAutoSetupDialogLayoutTest {
   @Test
   void longStatusWrapsAndKeepsPlainAccessibleName() {
     JLabel label = new JLabel();
-    String status =
-        "TensorRT acceleration is available only in the Windows NVIDIA package and must not be clipped";
+    label.setPreferredSize(new Dimension(390, 30));
+    String status = "Ready | C:\\ailearn3\\" + "very-long-runtime-path\\".repeat(12);
 
     KataGoAutoSetupDialog.setWrappedInfoText(label, status);
 
     assertTrue(label.getText().startsWith("<html>"));
-    assertTrue(label.getPreferredSize().height > 30);
+    assertTrue(
+        label.getPreferredSize().height >= label.getFontMetrics(label.getFont()).getHeight() * 3,
+        "a later long backend path must replace the label's old one-line height");
     assertTrue(label.getAccessibleContext().getAccessibleName().equals(status));
+  }
+
+  @Test
+  void wrappedStatusCanShrinkAgainAfterBackendSwitch() {
+    JLabel label = new JLabel();
+
+    KataGoAutoSetupDialog.setWrappedInfoText(label, "Ready");
+    int shortHeight = label.getPreferredSize().height;
+    KataGoAutoSetupDialog.setWrappedInfoText(label, "runtime-path-without-spaces-".repeat(18));
+    int longHeight = label.getPreferredSize().height;
+    KataGoAutoSetupDialog.setWrappedInfoText(label, "Ready");
+
+    assertTrue(longHeight > shortHeight);
+    assertEquals(shortHeight, label.getPreferredSize().height);
+  }
+
+  @Test
+  void tensorRtRepairSummaryWrapsInsideABoundedKeyboardDialog() {
+    String summary =
+        "Repaired C:\\ailearn3\\"
+            + "long-managed-tensorrt-path\\".repeat(14)
+            + ". Runtime ready.";
+
+    JTextArea textArea = KataGoAutoSetupDialog.createTensorRtRepairSummaryText(summary);
+
+    assertTrue(textArea.getLineWrap());
+    assertTrue(textArea.getWrapStyleWord());
+    assertFalse(textArea.isEditable());
+    assertTrue(textArea.getPreferredSize().width < 900);
+    assertEquals(summary, textArea.getAccessibleContext().getAccessibleName());
   }
 
   @Test

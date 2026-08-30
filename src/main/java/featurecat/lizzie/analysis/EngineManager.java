@@ -10346,6 +10346,34 @@ public class EngineManager {
   }
 
   /**
+   * Retries the primary engine selected immediately before startup failed.
+   *
+   * <p>The main analysis toggle remains available while startup diagnostics or a directed repair
+   * are open. Once the failed binary has been repaired there is no live {@link Leelaz} to toggle,
+   * so recover the exact failed catalog target instead of requiring an application restart.
+   */
+  public boolean retryUnavailablePrimaryEngine() {
+    if (Lizzie.leelaz != null || !isEmpty || engineList == null || engineList.isEmpty()) {
+      return false;
+    }
+    EngineSwitchUiSnapshot lastAttempt = engineSwitchUiTracker.current(true);
+    int retryIndex =
+        lastAttempt.phase() == EngineSwitchUiPhase.FAILED ? lastAttempt.targetIndex() : engineNo;
+    if (retryIndex < 0 || retryIndex >= engineList.size()) {
+      retryIndex = engineNo;
+    }
+    if ((retryIndex < 0 || retryIndex >= engineList.size())
+        && Lizzie.config != null
+        && Lizzie.config.uiConfig != null) {
+      retryIndex = Lizzie.config.uiConfig.optInt("default-engine", -1);
+    }
+    if (retryIndex < 0 || retryIndex >= engineList.size()) {
+      return false;
+    }
+    return switchEngineIfAvailable(retryIndex, true);
+  }
+
+  /**
    * Attempts an engine switch without showing the generic exclusive-task popup.
    *
    * <p>Configuration workflows use this after coordinating any interruptible quick analysis so they

@@ -3,6 +3,7 @@ package featurecat.lizzie.gui;
 import featurecat.lizzie.Config;
 import featurecat.lizzie.Lizzie;
 import featurecat.lizzie.analysis.EngineManager;
+import featurecat.lizzie.analysis.Leelaz;
 import featurecat.lizzie.enginegame.EngineGameBatchSpecFactory;
 import featurecat.lizzie.enginegame.Acceptance;
 import featurecat.lizzie.enginegame.StartFailure;
@@ -1240,7 +1241,10 @@ public class BottomToolbar extends JPanel {
     heatMap.addActionListener(
         new ActionListener() {
           public void actionPerformed(ActionEvent e) {
-            Lizzie.leelaz.toggleHeatmap(false);
+            Leelaz activeEngine = Lizzie.leelaz;
+            if (activeEngine != null) {
+              activeEngine.toggleHeatmap(false);
+            }
           }
         });
     detail.addActionListener(
@@ -1258,9 +1262,7 @@ public class BottomToolbar extends JPanel {
     analyse.addActionListener(
         new ActionListener() {
           public void actionPerformed(ActionEvent e) {
-            Lizzie.frame.togglePonderMannul();
-            if (!Lizzie.leelaz.isPondering()) Lizzie.frame.refresh();
-            setTxtUnfocuse();
+            toggleAnalysisFromToolbar();
           }
         });
     forward10.addActionListener(
@@ -3617,6 +3619,15 @@ public class BottomToolbar extends JPanel {
     }
   }
 
+  void toggleAnalysisFromToolbar() {
+    Lizzie.frame.togglePonderMannul();
+    Leelaz activeEngine = Lizzie.leelaz;
+    if (activeEngine == null || !activeEngine.isPondering()) {
+      Lizzie.frame.refresh();
+    }
+    setTxtUnfocuse();
+  }
+
   class UI extends javax.swing.plaf.basic.BasicComboBoxUI {
     protected javax.swing.plaf.basic.ComboPopup createPopup() {
       Popup popup = new Popup(comboBox);
@@ -4491,9 +4502,11 @@ public class BottomToolbar extends JPanel {
                   e.printStackTrace();
                 }
                 displayedSubBoardBranchLength = displayedSubBoardBranchLength + 1;
+                Leelaz activeEngine = Lizzie.leelaz;
                 if (EngineManager.isEmpty
-                    || !Lizzie.leelaz.isLoaded()
-                    || !Lizzie.leelaz.isPondering()) Lizzie.frame.refresh();
+                    || activeEngine == null
+                    || !activeEngine.isLoaded()
+                    || !activeEngine.isPondering()) Lizzie.frame.refresh();
               }
               isAutoPlaySub = false;
             }

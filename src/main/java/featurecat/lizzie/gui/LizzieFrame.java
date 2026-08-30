@@ -12359,7 +12359,13 @@ public class LizzieFrame extends JFrame {
   }
 
   public void togglePonderMannul() {
-    if (stopAiPlayingAndPolicy() || Lizzie.leelaz == null) {
+    if (Lizzie.leelaz == null) {
+      if (Lizzie.engineManager != null) {
+        Lizzie.engineManager.retryUnavailablePrimaryEngine();
+      }
+      return;
+    }
+    if (stopAiPlayingAndPolicy()) {
       return;
     }
     if (!Lizzie.leelaz.isPondering()) {
@@ -12461,6 +12467,9 @@ public class LizzieFrame extends JFrame {
       // engine modes, but defer every mutation when AI Coach still owns a companion/restore lease.
       deferUntilHumanSlExit(this::stopAiPlayingAndPolicy);
       return true;
+    }
+    if (Lizzie.leelaz == null) {
+      return false;
     }
     Lizzie.leelaz.isGamePaused = false;
     boolean isGaming =

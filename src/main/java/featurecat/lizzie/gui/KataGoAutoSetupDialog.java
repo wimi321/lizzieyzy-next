@@ -123,6 +123,8 @@ public class KataGoAutoSetupDialog extends JDialog {
   private static final String INFO_HTML_PREFIX = "<html><div style='width: 360px'>";
   private static final String INFO_HTML_SUFFIX = "</div></html>";
   private static final int MAX_INFO_TEXT_LENGTH = 104;
+  private static final int TENSORRT_SUMMARY_COLUMNS = 54;
+  private static final int TENSORRT_SUMMARY_ROWS = 5;
   private static final int DIALOG_WIDTH = 1200;
   private static final int DIALOG_HEIGHT = 900;
   private static final int SIDEBAR_MIN_WIDTH = 218;
@@ -1493,7 +1495,7 @@ public class KataGoAutoSetupDialog extends JDialog {
     valueComponent.setMinimumSize(new Dimension(260, height));
   }
 
-  private int estimateWrappedTextHeight(String text, FontMetrics metrics, int width) {
+  private static int estimateWrappedTextHeight(String text, FontMetrics metrics, int width) {
     if (metrics == null) {
       return 64;
     }
@@ -1506,7 +1508,8 @@ public class KataGoAutoSetupDialog extends JDialog {
     return lineCount * metrics.getHeight() + 8;
   }
 
-  private int estimateWrappedLineCount(String text, FontMetrics metrics, int availableWidth) {
+  private static int estimateWrappedLineCount(
+      String text, FontMetrics metrics, int availableWidth) {
     if (text == null || text.trim().isEmpty()) {
       return 1;
     }
@@ -2133,13 +2136,19 @@ public class KataGoAutoSetupDialog extends JDialog {
       setWrappedInfoText(lblNvidiaRuntimeValue, text("AutoSetup.nvidiaRuntimeNotApplicable"));
       lblNvidiaRuntimeValue.setToolTipText(null);
       lblNvidiaRuntimeValue.setForeground(Color.DARK_GRAY);
+      AccessibilitySupport.named(
+          lblNvidiaRuntimeValue,
+          text("AutoSetup.nvidiaRuntime"),
+          text("AutoSetup.nvidiaRuntimeNotApplicable"));
       btnInstallNvidiaRuntime.setEnabled(false);
       updateTensorRtInfo();
       return;
     }
-    setWrappedInfoText(lblNvidiaRuntimeValue, status.detailText);
+    setWrappedInfoText(lblNvidiaRuntimeValue, compactInfoText(status.detailText, 76));
     lblNvidiaRuntimeValue.setToolTipText(status.detailText);
     lblNvidiaRuntimeValue.setForeground(status.ready ? OK_COLOR : WARN_COLOR);
+    AccessibilitySupport.named(
+        lblNvidiaRuntimeValue, text("AutoSetup.nvidiaRuntime"), status.detailText);
     btnInstallNvidiaRuntime.setEnabled(activeDownloadSession == null && !status.ready);
     updateTensorRtInfo();
   }
@@ -2288,6 +2297,29 @@ public class KataGoAutoSetupDialog extends JDialog {
         text(view.engineSummaryKey));
   }
 
+  private void showTensorRtRepairSummary(TensorRtAccelerationView view) {
+    JOptionPane.showMessageDialog(
+        this,
+        createTensorRtRepairSummaryText(formatTensorRtRepairSummary(view)),
+        text("AutoSetup.tensorRtRepairDone"),
+        JOptionPane.INFORMATION_MESSAGE);
+  }
+
+  static JTextArea createTensorRtRepairSummaryText(String summary) {
+    String message = summary == null ? "" : summary;
+    JTextArea textArea =
+        new JTextArea(message, TENSORRT_SUMMARY_ROWS, TENSORRT_SUMMARY_COLUMNS);
+    textArea.setEditable(false);
+    textArea.setLineWrap(true);
+    textArea.setWrapStyleWord(true);
+    textArea.setOpaque(false);
+    textArea.setFont(new JLabel().getFont());
+    textArea.setBorder(BorderFactory.createEmptyBorder(2, 2, 2, 2));
+    textArea.setCaretPosition(0);
+    textArea.getAccessibleContext().setAccessibleName(message);
+    return textArea;
+  }
+
   private void makeTensorRtStatusRowsKeyboardReachable() {
     JLabel[] labels = {
       lblNvidiaGpuValue,
@@ -2354,10 +2386,20 @@ public class KataGoAutoSetupDialog extends JDialog {
             .replace(">", "&gt;")
             .replace("\r\n", "<br>")
             .replace("\n", "<br>");
+    // Backend switches can replace a one-line status with a long runtime path in the same label.
+    // Clear explicit dimensions so the HTML view measures the new content instead of reusing them.
+    label.setPreferredSize(null);
+    label.setMinimumSize(null);
     label.setText(INFO_HTML_PREFIX + escaped + INFO_HTML_SUFFIX);
     label.getAccessibleContext().setAccessibleName(plainText);
-    int twoLineHeight = Math.max(32, label.getFontMetrics(label.getFont()).getHeight() * 2 + 4);
-    int height = Math.max(twoLineHeight, label.getPreferredSize().height);
+    FontMetrics metrics = label.getFontMetrics(label.getFont());
+    int twoLineHeight = Math.max(32, metrics.getHeight() * 2 + 4);
+    int measuredTextHeight =
+        estimateWrappedTextHeight(plainText, metrics, 360)
+            + label.getInsets().top
+            + label.getInsets().bottom;
+    int height =
+        Math.max(twoLineHeight, Math.max(label.getPreferredSize().height, measuredTextHeight));
     label.setPreferredSize(new Dimension(VALUE_COLUMN_WIDTH, height));
     label.setMinimumSize(new Dimension(260, height));
     label.revalidate();
@@ -3026,10 +3068,8 @@ public class KataGoAutoSetupDialog extends JDialog {
                       updateDirectedTargetBanner();
                       renderSnapshot();
                       setBusy(false, text("AutoSetup.tensorRtRepairDone"), 0, 0);
-                      Utils.showMsg(
-                          formatTensorRtRepairSummary(
-                              TensorRtAccelerationView.from(repaired, false, true)),
-                          this);
+                      showTensorRtRepairSummary(
+                          TensorRtAccelerationView.from(repaired, false, true));
                     });
               } catch (TensorRtTargetInvalidException e) {
                 SwingUtilities.invokeLater(

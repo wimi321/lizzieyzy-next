@@ -1188,6 +1188,54 @@ class EngineManagerInitialStartupSynchronizationTest {
   }
 
   @Test
+  void failedInitialPrimaryCanBeRetriedAfterItsBinaryIsRepaired() throws Exception {
+    try (StartupTestEnvironment env = StartupTestEnvironment.open()) {
+      FailOnceSelectedInitialStartupLeelaz engine =
+          new FailOnceSelectedInitialStartupLeelaz();
+      Lizzie.board = boardWithHistory(emptyRootHistory(0));
+      Lizzie.leelaz = null;
+      EngineManager.isEmpty = true;
+      EngineManager.currentEngineNo = -1;
+      EngineManager manager =
+          new EngineManager(
+              Lizzie.config,
+              0,
+              false,
+              new ArrayList<>(List.of(engineData(31, "repairable-selected-startup", false))),
+              command -> engine);
+      Lizzie.engineManager = manager;
+
+      assertTrue(engine.firstStartCompleted.await(2, TimeUnit.SECONDS));
+      long failureDeadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
+      while ((manager.engineSwitchUiSnapshot(true).phase()
+                  != EngineManager.EngineSwitchUiPhase.FAILED
+              || Lizzie.leelaz != null)
+          && System.nanoTime() < failureDeadline) {
+        Thread.sleep(10L);
+      }
+      assertNull(Lizzie.leelaz);
+      assertTrue(EngineManager.isEmpty);
+      assertEquals(-1, EngineManager.currentEngineNo);
+
+      assertTrue(manager.retryUnavailablePrimaryEngine());
+      assertTrue(engine.secondStartCompleted.await(2, TimeUnit.SECONDS));
+      assertTrue(((StartupSyncLeelaz) engine).analysisStarted.await(2, TimeUnit.SECONDS));
+      long activeDeadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
+      while (manager.engineSwitchUiSnapshot(true).phase()
+                  != EngineManager.EngineSwitchUiPhase.ACTIVE
+              && System.nanoTime() < activeDeadline) {
+        Thread.sleep(10L);
+      }
+      assertSame(engine, Lizzie.leelaz);
+      assertEquals(0, EngineManager.currentEngineNo);
+      assertFalse(EngineManager.isEmpty);
+      assertEquals(
+          EngineManager.EngineSwitchUiPhase.ACTIVE,
+          manager.engineSwitchUiSnapshot(true).phase());
+    }
+  }
+
+  @Test
   void selectedInitialStartupFailurePreservesAReplacementReboundAfterCleanupClaim()
       throws Exception {
     try (StartupTestEnvironment env = StartupTestEnvironment.open()) {
@@ -7116,6 +7164,27 @@ class EngineManagerInitialStartupSynchronizationTest {
     public void startEngine(int index) {
       super.startEngine(index);
       throw startFailure;
+    }
+  }
+
+  private static final class FailOnceSelectedInitialStartupLeelaz extends StartupSyncLeelaz {
+    private final AssertionError firstStartFailure =
+        new AssertionError("controlled repairable selected-startup failure");
+    private final AtomicInteger startAttempts = new AtomicInteger();
+    private final CountDownLatch firstStartCompleted = new CountDownLatch(1);
+    private final CountDownLatch secondStartCompleted = new CountDownLatch(1);
+
+    private FailOnceSelectedInitialStartupLeelaz() throws Exception {}
+
+    @Override
+    public void startEngine(int index) {
+      int attempt = startAttempts.incrementAndGet();
+      super.startEngine(index);
+      if (attempt == 1) {
+        firstStartCompleted.countDown();
+        throw firstStartFailure;
+      }
+      secondStartCompleted.countDown();
     }
   }
 
