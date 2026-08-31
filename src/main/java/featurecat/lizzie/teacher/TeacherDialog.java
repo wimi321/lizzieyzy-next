@@ -2,14 +2,7 @@ package featurecat.lizzie.teacher;
 
 import featurecat.lizzie.Lizzie;
 import featurecat.lizzie.rules.BoardHistoryNode;
-import java.awt.BorderLayout;
-import java.awt.Color;
 import java.awt.Dimension;
-import java.awt.FlowLayout;
-import java.awt.Font;
-import java.awt.GridBagConstraints;
-import java.awt.GridBagLayout;
-import java.awt.Insets;
 import java.awt.Window;
 import java.awt.event.KeyEvent;
 import java.awt.event.WindowAdapter;
@@ -17,28 +10,19 @@ import java.awt.event.WindowEvent;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentLinkedQueue;
-import javax.accessibility.AccessibleContext;
-import javax.swing.BorderFactory;
 import javax.swing.JButton;
 import javax.swing.JCheckBox;
 import javax.swing.JComponent;
 import javax.swing.JDialog;
 import javax.swing.JEditorPane;
-import javax.swing.JLabel;
-import javax.swing.JPanel;
-import javax.swing.JProgressBar;
-import javax.swing.JScrollPane;
 import javax.swing.JSpinner;
 import javax.swing.JTextField;
+import javax.swing.JToggleButton;
 import javax.swing.KeyStroke;
 import javax.swing.SpinnerNumberModel;
-import javax.swing.SwingConstants;
 import javax.swing.SwingUtilities;
 import javax.swing.SwingWorker;
 import javax.swing.Timer;
-import javax.swing.UIManager;
-import javax.swing.text.html.HTMLEditorKit;
-import javax.swing.text.html.StyleSheet;
 
 /** Non-modal AI commentary window backed only by existing KataGo analysis evidence. */
 public final class TeacherDialog extends JDialog {
@@ -49,27 +33,19 @@ public final class TeacherDialog extends JDialog {
   private final ConcurrentLinkedQueue<String> pendingText = new ConcurrentLinkedQueue<>();
   private final Timer textFlushTimer;
 
-  private final JEditorPane output = new JEditorPane();
+  private final TeacherDialogView view = new TeacherDialogView();
+  private final JEditorPane output = view.output();
   private final StringBuilder rawOutput = new StringBuilder();
-  private final JLabel status = new JLabel(" ");
-  private final JLabel modelStatus = new JLabel(" ", SwingConstants.RIGHT);
-  private final JButton explainNext =
-      new JButton(TeacherStrings.get("Teacher.action.next", "Explain next move"));
-  private final JButton explainRange =
-      new JButton(TeacherStrings.get("Teacher.action.range", "Explain range"));
-  private final JButton explainWhole =
-      new JButton(TeacherStrings.get("Teacher.action.whole", "Explain whole game"));
-  private final JButton stop = new JButton(TeacherStrings.get("Teacher.action.stop", "Stop"));
-  private final JButton settingsButton =
-      new JButton(TeacherStrings.get("Teacher.action.settings", "Settings"));
-  private final JButton ask = new JButton(TeacherStrings.get("Teacher.action.ask", "Ask"));
-  private final JCheckBox writeToSgf =
-      new JCheckBox(
-          TeacherStrings.get("Teacher.writeToSgf", "Write result to the SGF comment"), true);
-  private final JTextField followUp = new JTextField();
-  private final JSpinner rangeStart = new JSpinner();
-  private final JSpinner rangeEnd = new JSpinner();
-  private final JProgressBar progressBar = new JProgressBar();
+  private final JToggleButton explainNext = view.explainNext();
+  private final JToggleButton explainRange = view.explainRange();
+  private final JToggleButton explainWhole = view.explainWhole();
+  private final JButton stop = view.stop();
+  private final JButton settingsButton = view.settingsButton();
+  private final JButton ask = view.ask();
+  private final JCheckBox writeToSgf = view.writeToSgf();
+  private final JTextField followUp = view.followUp();
+  private final JSpinner rangeStart = view.rangeStart();
+  private final JSpinner rangeEnd = view.rangeEnd();
 
   private BoardHistoryNode requestTarget;
   private List<TeacherLlmClient.Message> lastEvidenceContext = List.of();
@@ -85,17 +61,25 @@ public final class TeacherDialog extends JDialog {
       activeDialog.refreshFromBoard();
       activeDialog.setVisible(true);
       activeDialog.toFront();
-      activeDialog.requestFocus();
+      SwingUtilities.invokeLater(activeDialog::focusPrimaryControl);
       return;
     }
     activeDialog = new TeacherDialog(owner);
     activeDialog.setVisible(true);
+    SwingUtilities.invokeLater(activeDialog::focusPrimaryControl);
+  }
+
+  private void focusPrimaryControl() {
+    if (isDisplayable() && explainNext.isEnabled()) {
+      explainNext.requestFocusInWindow();
+    }
   }
 
   private TeacherDialog(Window owner) {
     super(owner, TeacherStrings.get("Teacher.title", "AI commentary"), ModalityType.MODELESS);
     setDefaultCloseOperation(DISPOSE_ON_CLOSE);
-    setContentPane(buildContent());
+    setContentPane(view);
+    bindActions();
     setMinimumSize(new Dimension(760, 540));
     setSize(new Dimension(900, 680));
     setLocationRelativeTo(owner);
@@ -124,145 +108,22 @@ public final class TeacherDialog extends JDialog {
     refreshSettingsStatus();
   }
 
-  private JPanel buildContent() {
-    JPanel content = new JPanel(new BorderLayout(0, 12));
-    content.setBorder(BorderFactory.createEmptyBorder(18, 20, 16, 20));
-
-    JLabel title = new JLabel(TeacherStrings.get("Teacher.title", "AI commentary"));
-    title.setFont(title.getFont().deriveFont(Font.BOLD, title.getFont().getSize2D() + 7f));
-    JLabel subtitle =
-        new JLabel(
-            TeacherStrings.get(
-                "Teacher.subtitle",
-                "Uses existing KataGo analysis; missing evidence is never invented."));
-    subtitle.setForeground(mutedText());
-    JPanel headingText = new JPanel(new GridBagLayout());
-    GridBagConstraints headingConstraints = new GridBagConstraints();
-    headingConstraints.gridx = 0;
-    headingConstraints.gridy = 0;
-    headingConstraints.weightx = 1.0;
-    headingConstraints.anchor = GridBagConstraints.WEST;
-    headingConstraints.fill = GridBagConstraints.HORIZONTAL;
-    headingText.add(title, headingConstraints);
-    headingConstraints.gridy = 1;
-    headingConstraints.insets = new Insets(4, 0, 0, 0);
-    headingText.add(subtitle, headingConstraints);
-
-    JPanel heading = new JPanel(new BorderLayout(12, 0));
-    heading.add(headingText, BorderLayout.CENTER);
-    heading.add(settingsButton, BorderLayout.EAST);
-
-    JPanel rangePanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 0));
-    JLabel from = new JLabel(TeacherStrings.get("Teacher.range.from", "From"));
-    JLabel to = new JLabel(TeacherStrings.get("Teacher.range.to", "to"));
-    from.setLabelFor(rangeStart);
-    to.setLabelFor(rangeEnd);
-    rangePanel.add(from);
-    rangePanel.add(rangeStart);
-    rangePanel.add(to);
-    rangePanel.add(rangeEnd);
-
-    JPanel actions = new JPanel(new BorderLayout(10, 0));
-    JPanel primaryActions = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
-    primaryActions.add(explainNext);
-    primaryActions.add(explainRange);
-    primaryActions.add(explainWhole);
-    primaryActions.add(stop);
-    actions.add(primaryActions, BorderLayout.WEST);
-    actions.add(rangePanel, BorderLayout.EAST);
-
-    JPanel header = new JPanel(new BorderLayout(0, 14));
-    header.add(heading, BorderLayout.NORTH);
-    header.add(actions, BorderLayout.SOUTH);
-    content.add(header, BorderLayout.NORTH);
-
-    output.setContentType("text/html");
-    output.setEditable(false);
-    output.putClientProperty(JEditorPane.HONOR_DISPLAY_PROPERTIES, Boolean.TRUE);
-    Color outputForeground = uiColor("TextPane.foreground", output.getForeground());
-    Color outputBackground = uiColor("TextPane.background", output.getBackground());
-    Color secondaryBackground = uiColor("TextField.background", outputBackground);
-    output.setForeground(outputForeground);
-    output.setBackground(outputBackground);
-    HTMLEditorKit kit = new HTMLEditorKit();
-    StyleSheet style = kit.getStyleSheet();
-    String fontFamily = output.getFont().getFamily().replace("'", "\\'");
-    style.addRule(
-        "body { font-family: '"
-            + fontFamily
-            + "', sans-serif; font-size: 14px; margin: 14px; color: "
-            + cssColor(outputForeground)
-            + "; background-color: "
-            + cssColor(outputBackground)
-            + "; }");
-    style.addRule("h1 { font-size: 22px; margin: 14px 0 6px 0; }");
-    style.addRule("h2 { font-size: 19px; margin: 13px 0 5px 0; }");
-    style.addRule("h3 { font-size: 16px; margin: 12px 0 4px 0; }");
-    style.addRule("b, strong { font-weight: bold; }");
-    style.addRule(
-        "code { background-color: "
-            + cssColor(secondaryBackground)
-            + "; padding: 1px 4px; font-family: monospace; }");
-    style.addRule(
-        "pre { background-color: "
-            + cssColor(secondaryBackground)
-            + "; padding: 8px; border: 1px solid "
-            + cssColor(borderColor())
-            + "; font-family: monospace; }");
-    style.addRule("ul { margin: 4px 0; padding-left: 20px; }");
-    style.addRule("ol { margin: 4px 0; padding-left: 24px; }");
-    style.addRule(
-        "blockquote { color: "
-            + cssColor(mutedText())
-            + "; border-left: 3px solid "
-            + cssColor(borderColor())
-            + "; margin: 8px 0; padding-left: 10px; }");
-    output.setEditorKit(kit);
-    output.setText("<html><body></body></html>");
-    output
-        .getAccessibleContext()
-        .setAccessibleName(TeacherStrings.get("Teacher.output", "AI commentary result"));
-    JScrollPane outputScroll = new JScrollPane(output);
-    outputScroll.setBorder(BorderFactory.createLineBorder(borderColor()));
-    content.add(outputScroll, BorderLayout.CENTER);
-
-    JPanel statusRow = new JPanel(new BorderLayout(12, 0));
-    status.setForeground(mutedText());
-    modelStatus.setForeground(mutedText());
-    status
-        .getAccessibleContext()
-        .setAccessibleName(TeacherStrings.get("Teacher.status.accessible", "Commentary status"));
-    modelStatus
-        .getAccessibleContext()
-        .setAccessibleName(TeacherStrings.get("Teacher.model.accessible", "Selected AI model"));
-    statusRow.add(status, BorderLayout.CENTER);
-    statusRow.add(modelStatus, BorderLayout.EAST);
-
-    JLabel followUpLabel = new JLabel(TeacherStrings.get("Teacher.followUp", "Follow-up question"));
-    followUpLabel.setLabelFor(followUp);
-    JPanel followUpRow = new JPanel(new BorderLayout(8, 0));
-    followUpRow.add(followUpLabel, BorderLayout.WEST);
-    followUpRow.add(followUp, BorderLayout.CENTER);
-    followUpRow.add(ask, BorderLayout.EAST);
-
-    JPanel footer = new JPanel(new BorderLayout(0, 8));
-    progressBar.setIndeterminate(true);
-    progressBar.setVisible(false);
-    progressBar
-        .getAccessibleContext()
-        .setAccessibleName(
-            TeacherStrings.get("Teacher.progress.accessible", "Commentary generation progress"));
-    JPanel bottomPanel = new JPanel(new java.awt.BorderLayout(0, 4));
-    bottomPanel.add(followUpRow, java.awt.BorderLayout.NORTH);
-    bottomPanel.add(writeToSgf, java.awt.BorderLayout.SOUTH);
-    footer.add(statusRow, java.awt.BorderLayout.NORTH);
-    footer.add(progressBar, java.awt.BorderLayout.CENTER);
-    footer.add(bottomPanel, java.awt.BorderLayout.SOUTH);
-    content.add(footer, BorderLayout.SOUTH);
-
-    explainNext.addActionListener(event -> explainNextMove());
-    explainRange.addActionListener(event -> explainRange());
-    explainWhole.addActionListener(event -> explainWholeGame());
+  private void bindActions() {
+    explainNext.addActionListener(
+        event -> {
+          view.selectMode(TeacherDialogView.Mode.NEXT);
+          explainNextMove();
+        });
+    explainRange.addActionListener(
+        event -> {
+          view.selectMode(TeacherDialogView.Mode.RANGE);
+          explainRange();
+        });
+    explainWhole.addActionListener(
+        event -> {
+          view.selectMode(TeacherDialogView.Mode.WHOLE);
+          explainWholeGame();
+        });
     stop.addActionListener(event -> stopRequest());
     settingsButton.addActionListener(
         event -> {
@@ -272,29 +133,27 @@ public final class TeacherDialog extends JDialog {
         });
     ask.addActionListener(event -> askFollowUp());
     followUp.addActionListener(event -> askFollowUp());
-
-    explainNext
-        .getAccessibleContext()
-        .setAccessibleDescription(
-            TeacherStrings.get(
-                "Teacher.action.next.description",
-                "Compare the recorded next move with KataGo's top candidates."));
-    stop.getAccessibleContext()
-        .setAccessibleDescription(
-            TeacherStrings.get(
-                "Teacher.action.stop.description", "Cancel the active network request."));
-    return content;
   }
 
   private void refreshFromBoard() {
     if (Lizzie.board == null || Lizzie.board.getHistory() == null) {
-      setStatus(TeacherStrings.get("Teacher.status.noGame", "No game is loaded."));
+      if (!requests.isRunning()) {
+        clearOutputForEmptyState();
+      }
+      view.setCurrentMove(0);
+      setStatus(
+          TeacherStrings.get("Teacher.status.noGame", "No game is loaded."),
+          TeacherDialogView.StatusTone.WARNING);
       return;
     }
     BoardHistoryNode current = Lizzie.board.getHistory().getCurrentHistoryNode();
+    int currentMove = current.getData() == null ? 0 : current.getData().moveNumber;
+    view.setCurrentMove(currentMove);
     int lastMove = Math.max(1, Lizzie.board.getHistory().getStart().getLast().getData().moveNumber);
     rangeStart.setModel(new SpinnerNumberModel(1, 1, lastMove, 1));
     rangeEnd.setModel(new SpinnerNumberModel(lastMove, 1, lastMove, 1));
+    TeacherDialogStyle.styleSpinner(rangeStart);
+    TeacherDialogStyle.styleSpinner(rangeEnd);
     Optional<String> saved = TeacherCommentCodec.extract(current.getData().comment);
     if (!requests.isRunning() && saved.isPresent()) {
       lastEvidenceContext = List.of();
@@ -303,21 +162,36 @@ public final class TeacherDialog extends JDialog {
       rawOutput.append(saved.get());
       output.setText(markdownToHtml(rawOutput.toString()));
       output.setCaretPosition(0);
+      view.showOutput();
       setStatus(
           TeacherStrings.get(
-              "Teacher.status.savedLoaded", "Loaded saved commentary from this SGF node."));
+              "Teacher.status.savedLoaded", "Loaded saved commentary from this SGF node."),
+          TeacherDialogView.StatusTone.SUCCESS);
     } else if (!requests.isRunning()) {
       lastEvidenceContext = List.of();
       lastEvidencePositions = List.of();
-      setStatus(evidenceStatus(current));
+      clearOutputForEmptyState();
+      boolean hasEvidence = TeacherEvidence.current(current).isPresent();
+      setStatus(
+          evidenceStatus(current),
+          hasEvidence
+              ? TeacherDialogView.StatusTone.NEUTRAL
+              : TeacherDialogView.StatusTone.WARNING);
     }
+  }
+
+  private void clearOutputForEmptyState() {
+    rawOutput.setLength(0);
+    output.setText("<html><body></body></html>");
+    view.resetEmptyTitle();
+    view.showEmpty();
   }
 
   private void refreshSettingsStatus() {
     settingsLoaded = false;
     settingsUsable = false;
     updateControlState();
-    modelStatus.setText(
+    view.setModelStatus(
         TeacherStrings.get("Teacher.status.loadingSettings", "Loading secure settings..."));
     new SwingWorker<TeacherSettings.Snapshot, Void>() {
       @Override
@@ -331,16 +205,17 @@ public final class TeacherDialog extends JDialog {
         try {
           TeacherSettings.Snapshot snapshot = get();
           settingsUsable = true;
-          modelStatus.setText(
+          view.setModelStatus(
               snapshot.hasApiKey
                   ? TeacherStrings.format("Teacher.status.modelReady", "Model: {0}", snapshot.model)
                   : TeacherStrings.get(
                       "Teacher.status.needsKey", "Configure an API key before use"));
         } catch (Exception error) {
           settingsUsable = false;
-          modelStatus.setText(localError(error));
+          view.setModelStatus(localError(error));
         }
         updateControlState();
+        SwingUtilities.invokeLater(TeacherDialog.this::focusPrimaryControl);
       }
     }.execute();
   }
@@ -355,7 +230,8 @@ public final class TeacherDialog extends JDialog {
       setStatus(
           TeacherStrings.get(
               "Teacher.status.needsAnalysis",
-              "This position has no KataGo candidates yet. Analyze it first."));
+              "This position has no KataGo candidates yet. Analyze it first."),
+          TeacherDialogView.StatusTone.WARNING);
       return;
     }
     lastEvidenceContext =
@@ -382,7 +258,8 @@ public final class TeacherDialog extends JDialog {
       setStatus(
           TeacherStrings.get(
               "Teacher.status.rangeNeedsAnalysis",
-              "No analyzed positions were found in this range."));
+              "No analyzed positions were found in this range."),
+          TeacherDialogView.StatusTone.WARNING);
       return;
     }
     lastEvidenceContext =
@@ -413,7 +290,8 @@ public final class TeacherDialog extends JDialog {
       setStatus(
           TeacherStrings.get(
               "Teacher.status.rangeNeedsAnalysis",
-              "No analyzed positions were found in this game."));
+              "No analyzed positions were found in this game."),
+          TeacherDialogView.StatusTone.WARNING);
       return;
     }
     lastEvidenceContext =
@@ -449,7 +327,8 @@ public final class TeacherDialog extends JDialog {
         setStatus(
             TeacherStrings.get(
                 "Teacher.status.needsAnalysis",
-                "This position has no KataGo candidates yet. Analyze it first."));
+                "This position has no KataGo candidates yet. Analyze it first."),
+            TeacherDialogView.StatusTone.WARNING);
         return;
       }
       lastEvidenceContext =
@@ -489,8 +368,9 @@ public final class TeacherDialog extends JDialog {
     pendingText.clear();
     rawOutput.setLength(0);
     output.setText("<html><body></body></html>");
+    view.showLoading(runningStatus);
     setRunning(true);
-    setStatus(runningStatus);
+    setStatus(runningStatus, TeacherDialogView.StatusTone.RUNNING);
     requests.start(
         client,
         messages,
@@ -550,7 +430,9 @@ public final class TeacherDialog extends JDialog {
       }
       Optional<String> apiKey = settings.apiKey();
       if (apiKey.isEmpty()) {
-        setStatus(TeacherStrings.get("Teacher.status.needsKey", "Configure an API key before use"));
+        setStatus(
+            TeacherStrings.get("Teacher.status.needsKey", "Configure an API key before use"),
+            TeacherDialogView.StatusTone.WARNING);
         return null;
       }
       return new TeacherLlmClient(snapshot.baseUrl, apiKey.get(), snapshot.model);
@@ -571,6 +453,7 @@ public final class TeacherDialog extends JDialog {
     rawOutput.append(result);
     output.setText(markdownToHtml(result));
     output.setCaretPosition(0);
+    view.showOutput();
     appendVerifierNotes(result);
     if (writeToSgf.isSelected() && requestTarget != null && requestTarget.getData() != null) {
       requestTarget.getData().comment =
@@ -581,9 +464,12 @@ public final class TeacherDialog extends JDialog {
       setStatus(
           TeacherStrings.get(
               "Teacher.status.completedSaved",
-              "Commentary completed and added to the SGF comment."));
+              "Commentary completed and added to the SGF comment."),
+          TeacherDialogView.StatusTone.SUCCESS);
     } else {
-      setStatus(TeacherStrings.get("Teacher.status.completed", "Commentary completed."));
+      setStatus(
+          TeacherStrings.get("Teacher.status.completed", "Commentary completed."),
+          TeacherDialogView.StatusTone.SUCCESS);
     }
     setRunning(false);
   }
@@ -642,15 +528,25 @@ public final class TeacherDialog extends JDialog {
 
   private void failRequest(Throwable error) {
     flushPendingText();
+    if (rawOutput.length() == 0) {
+      view.resetEmptyTitle();
+      view.showEmpty();
+    }
     setStatus(
-        TeacherStrings.format(
-            "Teacher.status.failed", "Commentary failed: {0}", localError(error)));
+        TeacherStrings.format("Teacher.status.failed", "Commentary failed: {0}", localError(error)),
+        TeacherDialogView.StatusTone.ERROR);
     setRunning(false);
   }
 
   private void cancelledRequest() {
     flushPendingText();
-    setStatus(TeacherStrings.get("Teacher.status.cancelled", "Commentary stopped."));
+    if (rawOutput.length() == 0) {
+      view.resetEmptyTitle();
+      view.showEmpty();
+    }
+    setStatus(
+        TeacherStrings.get("Teacher.status.cancelled", "Commentary stopped."),
+        TeacherDialogView.StatusTone.WARNING);
     setRunning(false);
   }
 
@@ -672,12 +568,13 @@ public final class TeacherDialog extends JDialog {
       rawOutput.append(addition);
       output.setText(markdownToHtml(rawOutput.toString()));
       output.setCaretPosition(output.getDocument().getLength());
+      view.showOutput();
     }
   }
 
   private void setRunning(boolean running) {
     requestRunning = running;
-    progressBar.setVisible(running);
+    view.setRunning(running);
     if (!running) {
       textFlushTimer.stop();
     }
@@ -741,13 +638,11 @@ public final class TeacherDialog extends JDialog {
   }
 
   private void setStatus(String message) {
-    String previous = status.getText();
-    String next = message == null || message.isBlank() ? " " : message;
-    status.setText(next);
-    status.setToolTipText(status.getText());
-    status
-        .getAccessibleContext()
-        .firePropertyChange(AccessibleContext.ACCESSIBLE_DESCRIPTION_PROPERTY, previous, next);
+    setStatus(message, TeacherDialogView.StatusTone.NEUTRAL);
+  }
+
+  private void setStatus(String message, TeacherDialogView.StatusTone tone) {
+    view.setStatus(message, tone);
   }
 
   private static String localError(Throwable error) {
@@ -761,27 +656,7 @@ public final class TeacherDialog extends JDialog {
         : message;
   }
 
-  private static Color mutedText() {
-    Color color = UIManager.getColor("Label.disabledForeground");
-    return color == null ? Color.GRAY : color;
-  }
-
-  private static Color borderColor() {
-    Color color = UIManager.getColor("Separator.foreground");
-    return color == null ? new Color(190, 190, 190) : color;
-  }
-
   static String markdownToHtml(String markdown) {
     return SafeMarkdownRenderer.toHtml(markdown);
-  }
-
-  private static Color uiColor(String key, Color fallback) {
-    Color color = UIManager.getColor(key);
-    return color == null ? fallback : color;
-  }
-
-  private static String cssColor(Color color) {
-    Color safe = color == null ? Color.BLACK : color;
-    return String.format("#%02x%02x%02x", safe.getRed(), safe.getGreen(), safe.getBlue());
   }
 }
