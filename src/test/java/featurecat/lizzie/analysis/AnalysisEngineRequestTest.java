@@ -1178,6 +1178,19 @@ class AnalysisEngineRequestTest {
   }
 
   @Test
+  void onlyAutomaticQuickAnalysisSuppressesForegroundRestoreFailurePopup() {
+    assertFalse(
+        AnalysisEngine.shouldReportSharedForegroundRestoreFailure(
+            AnalysisResourceCoordinator.Purpose.AUTO_QUICK_ANALYSIS));
+    assertTrue(
+        AnalysisEngine.shouldReportSharedForegroundRestoreFailure(
+            AnalysisResourceCoordinator.Purpose.USER_QUICK_ANALYSIS));
+    assertTrue(
+        AnalysisEngine.shouldReportSharedForegroundRestoreFailure(
+            AnalysisResourceCoordinator.Purpose.WHOLE_GAME_ANALYSIS));
+  }
+
+  @Test
   void sharedBatchRestoreFailureDoesNotRunFinalProgressOrSuccessCallback() throws Exception {
     try (TestEnvironment env = TestEnvironment.open()) {
       boardWithHistory(new BoardHistoryList(BoardData.empty(BOARD_SIZE, BOARD_SIZE)));

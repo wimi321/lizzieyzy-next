@@ -520,6 +520,48 @@ class LizzieFrameRegressionTest {
   }
 
   @Test
+  void engineSwitchWaitsForAutomaticQuickAnalysisLeaseRestore() throws Exception {
+    LizzieFrame frame = allocate(LizzieFrame.class);
+    ResourceTrackingAnalysisEngine engine = allocate(ResourceTrackingAnalysisEngine.class);
+    engine.shared = true;
+    engine.automatic = true;
+    engine.requestLifecycleInProgress = true;
+    frame.analysisEngine = engine;
+    setField(frame, "quickAnalysisEngineGeneration", new AtomicLong());
+    setField(frame, "loadedGameQuickAnalysisActive", true);
+    AtomicInteger continuations = new AtomicInteger();
+
+    SwingUtilities.invokeAndWait(
+        () -> frame.runAfterAutomaticQuickAnalysisReleased(continuations::incrementAndGet));
+
+    assertNull(frame.analysisEngine);
+    assertFalse((boolean) getField(frame, "loadedGameQuickAnalysisActive"));
+    assertEquals(1, engine.normalQuitCount);
+    assertEquals(0, continuations.get());
+
+    engine.completeExit();
+    drainEdt();
+
+    assertEquals(1, continuations.get());
+  }
+
+  @Test
+  void engineSwitchDoesNotCancelUserStartedAnalysis() throws Exception {
+    LizzieFrame frame = allocate(LizzieFrame.class);
+    ResourceTrackingAnalysisEngine engine = allocate(ResourceTrackingAnalysisEngine.class);
+    engine.analysisInProgress = true;
+    frame.analysisEngine = engine;
+    AtomicInteger continuations = new AtomicInteger();
+
+    SwingUtilities.invokeAndWait(
+        () -> frame.runAfterAutomaticQuickAnalysisReleased(continuations::incrementAndGet));
+
+    assertSame(engine, frame.analysisEngine);
+    assertEquals(0, engine.normalQuitCount);
+    assertEquals(1, continuations.get());
+  }
+
+  @Test
   void rapidDownloadedKifuSwitchKeepsOnlyLatestDeferredLoad() throws Exception {
     TestEnvironment env = TestEnvironment.open();
     try {

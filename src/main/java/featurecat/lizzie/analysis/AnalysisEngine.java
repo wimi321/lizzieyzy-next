@@ -2095,7 +2095,8 @@ public class AnalysisEngine {
                 requestDispatchFailed = true;
                 finishFailedRequestDispatch(!silentProgress);
               }
-            });
+            },
+            shouldReportSharedForegroundRestoreFailure(purpose()));
     Leelaz.ExclusiveGtpLeaseAvailability availability = acquisition.availability();
     sharedForegroundLease = acquisition.lease();
     foregroundLeaseAvailability = availability;
@@ -2104,6 +2105,11 @@ public class AnalysisEngine {
       sharedForegroundLease = null;
     }
     return availability == Leelaz.ExclusiveGtpLeaseAvailability.AVAILABLE;
+  }
+
+  static boolean shouldReportSharedForegroundRestoreFailure(
+      AnalysisResourceCoordinator.Purpose purpose) {
+    return purpose != AnalysisResourceCoordinator.Purpose.AUTO_QUICK_ANALYSIS;
   }
 
   private synchronized void releaseSharedForegroundLease() {

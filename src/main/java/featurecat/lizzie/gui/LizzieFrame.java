@@ -4407,6 +4407,38 @@ public class LizzieFrame extends JFrame {
     return true;
   }
 
+  /**
+   * Releases an interruptible automatic quick-analysis worker before changing the foreground
+   * engine.
+   *
+   * <p>A shared foreground worker restores its exclusive GTP lease asynchronously. Engine switches
+   * submitted before that restoration completes are correctly rejected by {@code EngineManager},
+   * so configuration dialogs must wait for the restore instead of reporting a switch that never
+   * became active.
+   */
+  public void runAfterAutomaticQuickAnalysisReleased(Runnable continuation) {
+    if (continuation == null) {
+      return;
+    }
+    if (!SwingUtilities.isEventDispatchThread()) {
+      SwingUtilities.invokeLater(() -> runAfterAutomaticQuickAnalysisReleased(continuation));
+      return;
+    }
+    AnalysisEngine currentEngine = analysisEngine;
+    if (currentEngine == null || !currentEngine.isAutomaticBackgroundTask()) {
+      continuation.run();
+      return;
+    }
+    quickAnalysisEngineGeneration.incrementAndGet();
+    stopQuickAnalysisWarmupTimer();
+    stopQuickAnalysisNavigationResumeTimer();
+    stopLoadedGameQuickAnalysisRetry();
+    clearPendingQuickAnalysisCallback();
+    analysisEngine = null;
+    currentEngine.clearRequestCallbacks();
+    currentEngine.normalQuit(() -> SwingUtilities.invokeLater(continuation));
+  }
+
   private static final class DeferredKifuOpen {
     private final Runnable continuation;
     private final Runnable superseded;
