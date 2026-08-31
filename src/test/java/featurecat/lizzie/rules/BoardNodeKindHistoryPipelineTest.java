@@ -632,6 +632,41 @@ class BoardNodeKindHistoryPipelineTest {
   }
 
   @Test
+  void deferredLoadAtLastMoveDoesNotForwardPartialPositionToPreviousPrimary() throws Exception {
+    TestEnvironment env = TestEnvironment.open();
+    BoardRenderer previousBoardRenderer = LizzieFrame.boardRenderer;
+    try {
+      LizzieFrame.boardRenderer = new BoardRenderer(false);
+      TrackingLeelaz engine = (TrackingLeelaz) Lizzie.leelaz;
+      activatePrimaryEngine(engine);
+      Lizzie.config.loadSgfLast = true;
+      engine.recordedCommands().clear();
+
+      assertTrue(
+          SGFParser.loadFromString("(;SZ[3];B[aa];W[ba]AE[aa]AB[cc];B[bb])", false));
+
+      assertEquals(3, Lizzie.board.getHistory().getData().moveNumber);
+      assertTrue(
+          engine.recordedCommands().isEmpty(),
+          "deferred SGF loading must not replay moves or snapshots onto the previous primary: "
+              + engine.recordedCommands());
+
+      assertTrue(
+          Lizzie.board.restoreCurrentPositionToPrimaryEngineExact(),
+          "the caller's post-load exact restore should remain available");
+      assertEquals("clear_board", engine.recordedCommands().get(0));
+      assertArrayEquals(Lizzie.board.getHistory().getData().stones, engine.copyStones());
+      assertEquals(
+          Lizzie.board.getHistory().getData().blackToPlay,
+          engine.isBlackToPlay(),
+          "the post-load restore must publish only the final side to play");
+    } finally {
+      LizzieFrame.boardRenderer = previousBoardRenderer;
+      env.close();
+    }
+  }
+
+  @Test
   void preFirstMoveStandaloneSetupNodeStaysIndependentSnapshot() throws Exception {
     TestEnvironment env = TestEnvironment.open();
     try {

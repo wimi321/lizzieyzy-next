@@ -4088,6 +4088,10 @@ public class Board {
     return engine != null && Lizzie.leelaz == engine && isPrimaryEngineReady();
   }
 
+  private boolean shouldForwardHistoryNavigationToPrimaryEngine() {
+    return !isLoadingFile && isPrimaryEngineReady();
+  }
+
   private HistoryNavigationRestore prepareHistoryNavigationRestore(boolean stepIn) {
     Leelaz engine = Lizzie.leelaz;
     long primaryEngineGeneration = Lizzie.capturePrimaryEngineGeneration(engine);
@@ -4194,7 +4198,7 @@ public class Board {
         return HistoryNavigationMutation.NOT_MOVED;
       }
       if (Lizzie.config.playSound) Utils.playVoiceFile();
-      if (isPrimaryEngineReady() && data.get().isMoveNode()) {
+      if (shouldForwardHistoryNavigationToPrimaryEngine() && data.get().isMoveNode()) {
         int[] lastMove = data.get().lastMove.get();
         String name = convertCoordinatesToName(lastMove[0], lastMove[1]);
         submitOrdinaryEngineForwarding(
@@ -4203,7 +4207,7 @@ public class Board {
               Lizzie.leelaz.playMove(data.get().lastMoveColor, name, true, data.get().blackToPlay);
               return true;
             });
-      } else if (isPrimaryEngineReady() && isKnownPass(data.get())) {
+      } else if (shouldForwardHistoryNavigationToPrimaryEngine() && isKnownPass(data.get())) {
         submitOrdinaryEngineForwarding(
             Lizzie.leelaz,
             () -> {
@@ -4220,12 +4224,12 @@ public class Board {
       boolean needSync =
           history.getCurrentHistoryNode().hasRemovedStone()
               || history.getCurrentHistoryNode().getData().isSnapshotNode();
-      if (!needSync && isPrimaryEngineReady()) {
+      if (!needSync && shouldForwardHistoryNavigationToPrimaryEngine()) {
         history.getCurrentHistoryNode().placeExtraStones();
       }
       HistoryNavigationRestore engineRestore = null;
       RuntimeException restorePreparationFailure = null;
-      if (needSync) {
+      if (needSync && shouldForwardHistoryNavigationToPrimaryEngine()) {
         try {
           engineRestore = prepareHistoryNavigationRestore(true);
         } catch (RuntimeException failure) {
@@ -5342,8 +5346,7 @@ public class Board {
       if (!needSync
           && isHistoryAction
           && history.getData().lastMoveColor != Stone.EMPTY
-          && !Lizzie.board.isLoadingFile
-          && isPrimaryEngineReady()) {
+          && shouldForwardHistoryNavigationToPrimaryEngine()) {
         boolean nopass = false;
         if (!Lizzie.leelaz.isKatago || Lizzie.leelaz.isSai) {
           if (isPass && history.getCurrentHistoryNode().previous().isPresent()) nopass = true;
@@ -5358,14 +5361,14 @@ public class Board {
         }
         else modifyEnd();
       }
-      if (!needSync && isPrimaryEngineReady()) {
+      if (!needSync && shouldForwardHistoryNavigationToPrimaryEngine()) {
         history.getCurrentHistoryNode().undoExtraStones();
       }
       history.previous();
       advanceContextRevision();
       HistoryNavigationRestore engineRestore = null;
       RuntimeException restorePreparationFailure = null;
-      if (needSync) {
+      if (needSync && shouldForwardHistoryNavigationToPrimaryEngine()) {
         try {
           engineRestore = prepareHistoryNavigationRestore(false);
         } catch (RuntimeException failure) {
