@@ -13296,7 +13296,16 @@ public class Leelaz {
       Consumer<String> lineConsumer,
       Consumer<ForegroundAnalysisLease> onReady,
       Consumer<ForegroundAnalysisLease> onClosed) {
-    ForegroundAnalysisLease lease = new ForegroundAnalysisLease(this);
+    return acquireForegroundAnalysisLease(lineConsumer, onReady, onClosed, true);
+  }
+
+  public ForegroundAnalysisLeaseAcquisition acquireForegroundAnalysisLease(
+      Consumer<String> lineConsumer,
+      Consumer<ForegroundAnalysisLease> onReady,
+      Consumer<ForegroundAnalysisLease> onClosed,
+      boolean reportRestoreFailureToUser) {
+    ForegroundAnalysisLease lease =
+        new ForegroundAnalysisLease(this, reportRestoreFailureToUser);
     ExclusiveGtpLeaseAvailability availability =
         beginForegroundAnalysisLease(
             lease,
@@ -14899,13 +14908,20 @@ public class Leelaz {
     String message = "Failed to restore foreground engine after flash analysis: " + detail;
     rememberRecentLine(recentStderrLines, message);
     System.err.println(message);
-    if (Lizzie.frame != null && Lizzie.resourceBundle != null) {
+    if (shouldReportForegroundRestoreFailure(session.owner)
+        && Lizzie.frame != null
+        && Lizzie.resourceBundle != null) {
       SwingUtilities.invokeLater(
           () ->
               Utils.showMsg(
                   Lizzie.resourceBundle.getString("AnalysisEngine.foregroundRestoreFailed")));
     }
     return true;
+  }
+
+  static boolean shouldReportForegroundRestoreFailure(Object owner) {
+    return !(owner instanceof ForegroundAnalysisLease)
+        || ((ForegroundAnalysisLease) owner).reportRestoreFailureToUser;
   }
 
   private void completeForegroundRestore(ExclusiveGtpSession session) {
@@ -16596,11 +16612,17 @@ public class Leelaz {
 
   public static final class ForegroundAnalysisLease {
     private final Leelaz engine;
+    private final boolean reportRestoreFailureToUser;
     private final AtomicReference<ForegroundAnalysisLeaseFailure> failureReason =
         new AtomicReference<>();
 
     private ForegroundAnalysisLease(Leelaz engine) {
+      this(engine, true);
+    }
+
+    private ForegroundAnalysisLease(Leelaz engine, boolean reportRestoreFailureToUser) {
       this.engine = engine;
+      this.reportRestoreFailureToUser = reportRestoreFailureToUser;
     }
 
     public boolean isOwned() {

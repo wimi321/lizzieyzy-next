@@ -1371,7 +1371,7 @@ public class AnalysisEngine {
   }
 
   public int startRequestMissingMainline(boolean showProgressDialog) {
-    if (!isLoaded) return 0;
+    if (!isLoaded || shutdownRequested) return -1;
     int requestCount = countMissingMainlineRequests();
     if (requestCount > 0) {
       ForegroundRequestTarget target =
@@ -1384,6 +1384,7 @@ public class AnalysisEngine {
   }
 
   private int startRequestMissingMainlineNow(boolean showProgressDialog) {
+    if (!isLoaded || shutdownRequested) return -1;
     prepareRequestState(showProgressDialog);
     captureCurrentGameIdentity();
     if (useRemoteCompute) {
@@ -2094,7 +2095,8 @@ public class AnalysisEngine {
                 requestDispatchFailed = true;
                 finishFailedRequestDispatch(!silentProgress);
               }
-            });
+            },
+            shouldReportSharedForegroundRestoreFailure(purpose()));
     Leelaz.ExclusiveGtpLeaseAvailability availability = acquisition.availability();
     sharedForegroundLease = acquisition.lease();
     foregroundLeaseAvailability = availability;
@@ -2103,6 +2105,11 @@ public class AnalysisEngine {
       sharedForegroundLease = null;
     }
     return availability == Leelaz.ExclusiveGtpLeaseAvailability.AVAILABLE;
+  }
+
+  static boolean shouldReportSharedForegroundRestoreFailure(
+      AnalysisResourceCoordinator.Purpose purpose) {
+    return purpose != AnalysisResourceCoordinator.Purpose.AUTO_QUICK_ANALYSIS;
   }
 
   private synchronized void releaseSharedForegroundLease() {

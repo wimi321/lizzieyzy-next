@@ -1178,6 +1178,19 @@ class AnalysisEngineRequestTest {
   }
 
   @Test
+  void onlyAutomaticQuickAnalysisSuppressesForegroundRestoreFailurePopup() {
+    assertFalse(
+        AnalysisEngine.shouldReportSharedForegroundRestoreFailure(
+            AnalysisResourceCoordinator.Purpose.AUTO_QUICK_ANALYSIS));
+    assertTrue(
+        AnalysisEngine.shouldReportSharedForegroundRestoreFailure(
+            AnalysisResourceCoordinator.Purpose.USER_QUICK_ANALYSIS));
+    assertTrue(
+        AnalysisEngine.shouldReportSharedForegroundRestoreFailure(
+            AnalysisResourceCoordinator.Purpose.WHOLE_GAME_ANALYSIS));
+  }
+
+  @Test
   void sharedBatchRestoreFailureDoesNotRunFinalProgressOrSuccessCallback() throws Exception {
     try (TestEnvironment env = TestEnvironment.open()) {
       boardWithHistory(new BoardHistoryList(BoardData.empty(BOARD_SIZE, BOARD_SIZE)));
@@ -2202,6 +2215,22 @@ class AnalysisEngineRequestTest {
       assertEquals(0, engine.pendingRequestCount());
       assertFalse(engine.isAnalysisInProgress());
       assertNull(engine.completionCallback());
+    }
+  }
+
+  @Test
+  void stoppedEngineRejectsLateMissingMainlineRequest() throws Exception {
+    try (TestEnvironment env = TestEnvironment.open()) {
+      BoardHistoryList history = new BoardHistoryList(BoardData.empty(BOARD_SIZE, BOARD_SIZE));
+      history.add(
+          moveNode(stones(placement(0, 0, Stone.BLACK)), new int[] {0, 0}, Stone.BLACK, false, 1));
+      boardWithHistory(history);
+      TrackingAnalysisEngine engine = TrackingAnalysisEngine.create();
+      engine.requestShutdown();
+
+      assertEquals(-1, engine.startRequestMissingMainline(false));
+      assertEquals(0, engine.pendingRequestCount());
+      assertTrue(engine.sentCommands.isEmpty());
     }
   }
 

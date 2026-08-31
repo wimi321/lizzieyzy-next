@@ -77,6 +77,25 @@ class LocalizationResourceParityTest {
     }
   }
 
+  @Test
+  void allChineseRemoteComputeBundlesRejectMisspelledZhiziBrand() throws IOException {
+    for (String name :
+        List.of(
+            "DisplayStrings_zh_CN.properties",
+            "DisplayStrings_zh_TW.properties",
+            "DisplayStrings_zh_HK.properties")) {
+      ResourceFile bundle = read(ROOT.resolve(name));
+      for (Map.Entry<String, String> entry : bundle.values.entrySet()) {
+        if (!entry.getKey().startsWith("RemoteCompute.")) {
+          continue;
+        }
+        assertFalse(
+            entry.getValue().contains("知子") || entry.getValue().contains("\\u77E5\\u5B50"),
+            name + " contains the misspelled Zhizi brand at " + entry.getKey());
+      }
+    }
+  }
+
   private static ResourceFile read(Path path) throws IOException {
     Map<String, String> values = new LinkedHashMap<>();
     List<String> duplicates = new ArrayList<>();

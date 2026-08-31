@@ -6,6 +6,7 @@ import com.google.zxing.Result;
 import com.google.zxing.client.j2se.BufferedImageLuminanceSource;
 import com.google.zxing.common.HybridBinarizer;
 import featurecat.lizzie.Lizzie;
+import featurecat.lizzie.analysis.EngineManager;
 import featurecat.lizzie.analysis.Leelaz;
 import featurecat.lizzie.analysis.remote.RemoteComputeConfig;
 import featurecat.lizzie.analysis.remote.ZhiziAccountService;
@@ -44,6 +45,7 @@ import java.net.URI;
 import java.text.MessageFormat;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
+import java.util.Optional;
 import javax.imageio.ImageIO;
 import javax.swing.BorderFactory;
 import javax.swing.Box;
@@ -173,7 +175,7 @@ public class RemoteComputeDialog extends JDialog {
   private char passwordEchoChar;
   private boolean busy;
   private boolean updatingWeightOptions;
-  private Timer zhiziStartupMonitor;
+  private Timer engineSwitchMonitor;
   private Timer verificationCooldownTimer;
   private int verificationCooldownSeconds;
   private SwingWorker<ZhiziAccountService.Overview, Void> accountOverviewWorker;
@@ -1455,83 +1457,26 @@ public class RemoteComputeDialog extends JDialog {
     state.rememberZhiziToken = rememberToken.isSelected();
     RemoteComputeConfig.save(state);
     int index = RemoteComputeConfig.createOrUpdateZhiziEngine(true);
-    stopZhiziStartupMonitor();
-    updateStatus(
+    Object selected = weightBox.getSelectedItem();
+    boolean unconfirmed = selected instanceof WeightItem && !((WeightItem) selected).isConfirmed();
+    switchPrimaryEngine(
+        index,
         text(
             "RemoteCompute.status.startingZhizi",
             "Starting Zhizi Cloud. The connection will retry automatically if needed."),
-        true);
-    if (Lizzie.engineManager != null) {
-      SwingUtilities.invokeLater(
-          () -> {
-            Lizzie.engineManager.switchEngine(index, true);
-            monitorZhiziEngineStartup(index);
-          });
-    } else {
-      warmQuickAnalysisAfterRemoteSwitch();
-    }
+        format(
+            "RemoteCompute.status.zhiziConnected",
+            "Zhizi Cloud connected: {0}",
+            RemoteComputeConfig.displayNameForZhiziArgs(currentArgs())),
+        unconfirmed
+            ? text(
+                "RemoteCompute.error.unconfirmedWeightRejected",
+                "This legacy weight is not confirmed by the public API. Choose the official recommended weight and reconnect.")
+            : text(
+                "RemoteCompute.error.zhiziRestartFailed",
+                "Zhizi Cloud still did not load after retrying. Check the login, plan, and network."),
+        this::warmQuickAnalysisAfterRemoteSwitch);
     updateCurrentStatus();
-  }
-
-  private void monitorZhiziEngineStartup(int engineIndex) {
-    stopZhiziStartupMonitor();
-    zhiziStartupMonitor =
-        new Timer(
-            500,
-            event -> {
-              if (Lizzie.engineManager == null
-                  || engineIndex < 0
-                  || engineIndex >= Lizzie.engineManager.engineList.size()) {
-                stopZhiziStartupMonitor();
-                return;
-              }
-              Leelaz engine = Lizzie.engineManager.engineList.get(engineIndex);
-              if (Lizzie.leelaz != engine
-                  || !RemoteComputeConfig.isZhiziEngineCommand(engine.getEngineCommand())) {
-                stopZhiziStartupMonitor();
-                updateCurrentStatus();
-                return;
-              }
-              if (engine.isLoaded()) {
-                stopZhiziStartupMonitor();
-                warmQuickAnalysisAfterRemoteSwitch();
-                updateCurrentStatus();
-                updateStatus(
-                    format(
-                        "RemoteCompute.status.zhiziConnected",
-                        "Zhizi Cloud connected: {0}",
-                        RemoteComputeConfig.displayNameForZhiziArgs(currentArgs())),
-                    true);
-                return;
-              }
-              if (engine.isDownWithError && !engine.isStarted()) {
-                stopZhiziStartupMonitor();
-                updateCurrentStatus();
-                Object selected = weightBox.getSelectedItem();
-                boolean unconfirmed =
-                    selected instanceof WeightItem && !((WeightItem) selected).isConfirmed();
-                updateStatus(
-                    unconfirmed
-                        ? text(
-                            "RemoteCompute.error.unconfirmedWeightRejected",
-                            "This legacy weight is not confirmed by the public API. Choose the official recommended weight and reconnect.")
-                        : text(
-                            "RemoteCompute.error.zhiziRestartFailed",
-                            "Zhizi Cloud still did not load after retrying. Check the login, plan, and network."),
-                    false);
-                return;
-              }
-              updateZhiziActionButtonState();
-            });
-    zhiziStartupMonitor.setInitialDelay(0);
-    zhiziStartupMonitor.start();
-  }
-
-  private void stopZhiziStartupMonitor() {
-    if (zhiziStartupMonitor != null) {
-      zhiziStartupMonitor.stop();
-      zhiziStartupMonitor = null;
-    }
   }
 
   private void warmQuickAnalysisAfterRemoteSwitch() {
@@ -1541,7 +1486,7 @@ public class RemoteComputeDialog extends JDialog {
   }
 
   private void logout() {
-    stopZhiziStartupMonitor();
+    stopEngineSwitchMonitor();
     cancelAccountOverviewRefresh();
     accountService.clear();
     lastAccountOverview = null;
@@ -1657,35 +1602,34 @@ public class RemoteComputeDialog extends JDialog {
     RemoteComputeConfig.save(state);
     linkCodeField.setText(code);
     int index = RemoteComputeConfig.createOrUpdateCustomWebSocketEngine(true);
-    if (Lizzie.engineManager != null) {
-      SwingUtilities.invokeLater(
-          () -> {
-            Lizzie.engineManager.switchEngine(index, true);
-            warmQuickAnalysisAfterRemoteSwitch();
-          });
-    } else {
-      warmQuickAnalysisAfterRemoteSwitch();
-    }
-    showPage(RemoteComputeConfig.PROVIDER_CUSTOM);
-    updateCurrentStatus();
-    updateStatus(
+    switchPrimaryEngine(
+        index,
+        text("RemoteCompute.status.startingCustom", "Switching to custom compute..."),
         format(
             "RemoteCompute.status.customEnabled",
             "Custom compute enabled: {0}",
             RemoteComputeConfig.displayNameForCustomWebSocketUrl(code)),
-        true);
+        text(
+            "RemoteCompute.error.engineSwitchFailed",
+            "The engine switch did not complete. Finish the current game or other exclusive task and try again."),
+        this::warmQuickAnalysisAfterRemoteSwitch);
+    showPage(RemoteComputeConfig.PROVIDER_CUSTOM);
+    updateCurrentStatus();
   }
 
   private void switchToLocalProvider() {
-    stopZhiziStartupMonitor();
     int localEngineIndex = RemoteComputeConfig.saveLocalProviderAndDefaultEngine();
     if (localEngineIndex >= 0 && Lizzie.engineManager != null) {
-      SwingUtilities.invokeLater(() -> Lizzie.engineManager.switchEngine(localEngineIndex, true));
-      updateStatus(
+      switchPrimaryEngine(
+          localEngineIndex,
+          text("RemoteCompute.status.startingLocal", "Switching to the local engine..."),
           text(
               "RemoteCompute.status.localEnabled",
               "Switched to the local engine. It will remain selected next time."),
-          true);
+          text(
+              "RemoteCompute.error.engineSwitchFailed",
+              "The engine switch did not complete. Finish the current game or other exclusive task and try again."),
+          this::warmQuickAnalysisAfterRemoteSwitch);
     } else {
       updateStatus(
           text(
@@ -1696,9 +1640,106 @@ public class RemoteComputeDialog extends JDialog {
     updateCurrentStatus();
   }
 
+  private void switchPrimaryEngine(
+      int engineIndex,
+      String startingMessage,
+      String successMessage,
+      String failureMessage,
+      Runnable afterActivation) {
+    stopEngineSwitchMonitor();
+    setBusy(true);
+    updateStatus(startingMessage, true);
+    Runnable submit =
+        () -> {
+          EngineManager manager = Lizzie.engineManager;
+          if (manager == null
+              || engineIndex < 0
+              || engineIndex >= manager.engineList.size()) {
+            finishEngineSwitch(false, failureMessage, null);
+            return;
+          }
+          Leelaz target = manager.engineList.get(engineIndex);
+          if (Lizzie.leelaz == target && target != null && target.isLoaded()) {
+            finishEngineSwitch(true, successMessage, afterActivation);
+            return;
+          }
+          Optional<EngineManager.EngineSwitchUiSnapshot> submitted =
+              manager.switchEngineTrackedIfAvailable(engineIndex, true);
+          if (submitted.isEmpty()) {
+            finishEngineSwitch(false, failureMessage, null);
+            return;
+          }
+          monitorEngineSwitch(
+              manager,
+              submitted.orElseThrow().token(),
+              engineIndex,
+              successMessage,
+              failureMessage,
+              afterActivation);
+        };
+    if (Lizzie.frame != null) {
+      Lizzie.frame.runAfterAutomaticQuickAnalysisReleased(submit);
+    } else {
+      SwingUtilities.invokeLater(submit);
+    }
+  }
+
+  private void monitorEngineSwitch(
+      EngineManager manager,
+      long token,
+      int engineIndex,
+      String successMessage,
+      String failureMessage,
+      Runnable afterActivation) {
+    engineSwitchMonitor =
+        new Timer(
+            250,
+            event -> {
+              if (Lizzie.engineManager != manager) {
+                finishEngineSwitch(false, failureMessage, null);
+                return;
+              }
+              EngineManager.EngineSwitchUiSnapshot snapshot =
+                  manager.engineSwitchUiSnapshot(true);
+              if (snapshot.token() != token) {
+                finishEngineSwitch(false, failureMessage, null);
+                return;
+              }
+              if (snapshot.phase() == EngineManager.EngineSwitchUiPhase.ACTIVE
+                  && snapshot.activeIndex() == engineIndex) {
+                finishEngineSwitch(true, successMessage, afterActivation);
+              } else if (snapshot.phase() == EngineManager.EngineSwitchUiPhase.FAILED) {
+                String detail = snapshot.failureDetail().trim();
+                finishEngineSwitch(
+                    false,
+                    detail.isEmpty() ? failureMessage : failureMessage + " " + detail,
+                    null);
+              }
+            });
+    engineSwitchMonitor.setInitialDelay(0);
+    engineSwitchMonitor.start();
+  }
+
+  private void finishEngineSwitch(boolean success, String message, Runnable afterActivation) {
+    stopEngineSwitchMonitor();
+    setBusy(false);
+    updateCurrentStatus();
+    if (success && afterActivation != null) {
+      afterActivation.run();
+    }
+    updateStatus(message, success);
+  }
+
+  private void stopEngineSwitchMonitor() {
+    if (engineSwitchMonitor != null) {
+      engineSwitchMonitor.stop();
+      engineSwitchMonitor = null;
+    }
+  }
+
   @Override
   public void dispose() {
-    stopZhiziStartupMonitor();
+    stopEngineSwitchMonitor();
     cancelAccountOverviewRefresh();
     if (catalogWorker != null) {
       catalogWorker.cancel(true);
@@ -1721,14 +1762,15 @@ public class RemoteComputeDialog extends JDialog {
 
   private void updateCurrentStatus() {
     RemoteComputeConfig.State state = RemoteComputeConfig.load();
-    if (RemoteComputeConfig.PROVIDER_ZHIZI.equals(state.provider)) {
+    String activeProvider = activeProviderForStatus(Lizzie.leelaz, state);
+    if (RemoteComputeConfig.PROVIDER_ZHIZI.equals(activeProvider)) {
       String fullName = RemoteComputeConfig.displayNameForZhiziArgs(state.zhiziArgs);
       currentStatusLabel.setText(
           text("RemoteCompute.current.zhizi", "Currently using: Zhizi Cloud"));
       currentStatusLabel.setToolTipText(
           format("RemoteCompute.currentValue", "Currently using: {0}", fullName));
       statusDot.setColor(GREEN);
-    } else if (RemoteComputeConfig.PROVIDER_CUSTOM.equals(state.provider)) {
+    } else if (RemoteComputeConfig.PROVIDER_CUSTOM.equals(activeProvider)) {
       String fullName =
           RemoteComputeConfig.displayNameForCustomWebSocketUrl(state.customRemoteCode);
       currentStatusLabel.setText(
@@ -1749,6 +1791,22 @@ public class RemoteComputeDialog extends JDialog {
         currentStatusLabel.getToolTipText());
     updateZhiziActionButtonState();
     updateCustomActionButtonState();
+  }
+
+  static String activeProviderForStatus(Leelaz engine, RemoteComputeConfig.State configuredState) {
+    if (engine != null) {
+      String command = engine.getEngineCommand();
+      if (RemoteComputeConfig.isZhiziEngineCommand(command)) {
+        return RemoteComputeConfig.PROVIDER_ZHIZI;
+      }
+      if (RemoteComputeConfig.isCustomWebSocketEngineCommand(command)) {
+        return RemoteComputeConfig.PROVIDER_CUSTOM;
+      }
+      return RemoteComputeConfig.PROVIDER_LOCAL;
+    }
+    return configuredState == null || configuredState.provider == null
+        ? RemoteComputeConfig.PROVIDER_LOCAL
+        : configuredState.provider;
   }
 
   private void updateZhiziActionButtonState() {

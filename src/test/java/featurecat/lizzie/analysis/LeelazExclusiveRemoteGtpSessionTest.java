@@ -150,6 +150,32 @@ class LeelazExclusiveRemoteGtpSessionTest {
   }
 
   @Test
+  void foregroundLeaseRestoreFailureNotificationPolicyDefaultsToInteractive() throws Exception {
+    Leelaz engine = reusableKatagoEngine(false, false);
+    installOutput(engine);
+    try (ForegroundLeaseGlobalState ignored = ForegroundLeaseGlobalState.install(engine)) {
+      Leelaz.ForegroundAnalysisLeaseAcquisition interactive =
+          engine.acquireForegroundAnalysisLease(line -> {}, lease -> {}, lease -> {});
+
+      assertEquals(Leelaz.ExclusiveGtpLeaseAvailability.AVAILABLE, interactive.availability());
+      assertTrue(Leelaz.shouldReportForegroundRestoreFailure(interactive.lease()));
+    }
+  }
+
+  @Test
+  void automaticForegroundLeaseCanSuppressRestoreFailurePopup() throws Exception {
+    Leelaz engine = reusableKatagoEngine(false, false);
+    installOutput(engine);
+    try (ForegroundLeaseGlobalState ignored = ForegroundLeaseGlobalState.install(engine)) {
+      Leelaz.ForegroundAnalysisLeaseAcquisition automatic =
+          engine.acquireForegroundAnalysisLease(line -> {}, lease -> {}, lease -> {}, false);
+
+      assertEquals(Leelaz.ExclusiveGtpLeaseAvailability.AVAILABLE, automatic.availability());
+      assertFalse(Leelaz.shouldReportForegroundRestoreFailure(automatic.lease()));
+    }
+  }
+
+  @Test
   void foregroundLeaseInitialStopHeaderWithoutBoundaryTimesOut() throws Exception {
     RecordingRestoreLeelaz engine = recordingRestoreEngine();
     engine.initialStopTimeoutMillis = 25L;

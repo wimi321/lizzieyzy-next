@@ -1,15 +1,21 @@
 package featurecat.lizzie.gui;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Locale;
 import java.util.ResourceBundle;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 class BottomToolbarAutoAnalyzeStopTest {
+
+  @TempDir Path tempDir;
 
   @Test
   void manualStopNeverLooksLikeSuccessfulCompletion() {
@@ -62,6 +68,31 @@ class BottomToolbarAutoAnalyzeStopTest {
           BottomToolbar.batchAutoAnalyzeStatusKey(false),
           locale);
     }
+  }
+
+  @Test
+  void untitledAutoAnalysisUsesTheApplicationWorkDirectory() throws Exception {
+    Path workDirectory = Files.createDirectories(tempDir.resolve("portable user-data"));
+
+    Path output =
+        BottomToolbar.resolveAutoAnalyzeOutput(
+            null, workDirectory.toFile(), "analyzed", "20260831143000");
+
+    assertEquals(
+        workDirectory.resolve("AnalyzedGames").resolve("20260831143000.sgf"), output);
+    assertTrue(Files.isDirectory(output.getParent()));
+  }
+
+  @Test
+  void namedAutoAnalysisStaysBesideTheSourceAndHandlesExtensionlessNames() throws Exception {
+    Path sourceDirectory = Files.createDirectories(tempDir.resolve("kifu with spaces"));
+    Path source = sourceDirectory.resolve("training-game");
+
+    Path output =
+        BottomToolbar.resolveAutoAnalyzeOutput(
+            source.toFile(), tempDir.toFile(), "analyzed", "20260831143100");
+
+    assertEquals(sourceDirectory.resolve("training-game_analyzed_20260831143100.sgf"), output);
   }
 
   private static void assertDistinctAndPresent(

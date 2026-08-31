@@ -4,6 +4,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import featurecat.lizzie.analysis.Leelaz;
+import featurecat.lizzie.analysis.remote.RemoteComputeConfig;
 import java.awt.Component;
 import java.awt.Container;
 import java.awt.Dimension;
@@ -15,6 +17,23 @@ import javax.swing.JPanel;
 import org.junit.jupiter.api.Test;
 
 class RemoteComputeDialogLayoutTest {
+  @Test
+  void currentProviderStatusUsesTheActiveEngineInsteadOfSavedPreference() throws Exception {
+    RemoteComputeConfig.State state = new RemoteComputeConfig.State();
+    state.provider = RemoteComputeConfig.PROVIDER_LOCAL;
+    Leelaz activeZhizi = new Leelaz(RemoteComputeConfig.COMMAND_ZHIZI);
+
+    assertEquals(
+        RemoteComputeConfig.PROVIDER_ZHIZI,
+        RemoteComputeDialog.activeProviderForStatus(activeZhizi, state));
+
+    state.provider = RemoteComputeConfig.PROVIDER_ZHIZI;
+    Leelaz activeLocal = new Leelaz("katago analysis -config analysis.cfg");
+    assertEquals(
+        RemoteComputeConfig.PROVIDER_LOCAL,
+        RemoteComputeDialog.activeProviderForStatus(activeLocal, state));
+  }
+
   @Test
   void localizedButtonIncludesFractionalDpiSafetyPadding() {
     JButton button = new JButton("Open official website");
