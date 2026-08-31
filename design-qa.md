@@ -2,9 +2,9 @@
 
 ## Comparison Target
 
-- Source visual truth: `target/design-audit/reference-option-1.png`
-- Final implementation capture: `target/design-qa/candidate-ai-commentary-150-v4.png`
-- Full-view comparison: `target/design-qa/comparison-option1-vs-candidate-v4.png`
+- Source visual truth: left half of `docs/qa/ai-commentary-redesign/option-1-comparison.png`.
+- Final implementation capture: right half of `docs/qa/ai-commentary-redesign/option-1-comparison.png`.
+- Full-view comparison: `docs/qa/ai-commentary-redesign/option-1-comparison.png`.
 - State: Simplified Chinese, light application theme, ready empty state, no commentary API key configured.
 - Source pixels: `1443 x 1090`.
 - Implementation pixels: `1350 x 1020`, representing a `900 x 680` logical Swing window at Windows/Java UI scale `1.5`.
@@ -24,16 +24,16 @@ Required fidelity surfaces:
 
 ## Focused Evidence
 
-- Saved commentary output: `target/design-qa/candidate-ai-commentary-output-root-150.png`
+- Saved commentary output: `docs/qa/ai-commentary-redesign/saved-output-150.png`
   - Markdown heading, paragraphs, bold text, bullets, blockquote, status, and scrolling render correctly in the real Windows EXE.
-- Minimum window: `target/design-qa/candidate-ai-commentary-minimum-150.png`
+- Minimum window: `docs/qa/ai-commentary-redesign/minimum-window-150.png`
   - `1140 x 810` physical / `760 x 540` logical; persistent controls remain visible and long content scrolls inside the reader.
-- Keyboard focus: `target/design-qa/candidate-ai-commentary-minimum-150-tab.png`
+- Keyboard focus: `docs/qa/ai-commentary-redesign/keyboard-focus-150.png`
   - Tab focus is visible in the range spinner without resizing the layout.
 - Scale captures:
-  - 100%: `target/design-qa/candidate-ai-commentary-output-100.png` (`900 x 680`).
-  - 150%: `target/design-qa/candidate-ai-commentary-150-v4.png` (`1350 x 1020`).
-  - 200%: `target/design-qa/candidate-ai-commentary-output-200.png` (`1800 x 1360`).
+  - 100%: `docs/qa/ai-commentary-redesign/output-100.png` (`900 x 680`).
+  - 150%: implementation half of `docs/qa/ai-commentary-redesign/option-1-comparison.png` (`1350 x 1020`).
+  - 200%: `docs/qa/ai-commentary-redesign/output-200.png` (`1800 x 1360`).
 
 ## Comparison History
 
