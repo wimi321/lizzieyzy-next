@@ -123,6 +123,30 @@ public class KataGoRuntimeHelperTest {
   }
 
   @Test
+  void benchmarkBackendFallsBackToAuditedPackageMarker() throws Exception {
+    Path tempRoot = Files.createTempDirectory("katago-benchmark-backend");
+
+    assertEquals("CUDA", benchmarkBackend(tempRoot, "nvidia"));
+    assertEquals("TensorRT", benchmarkBackend(tempRoot, "nvidia-tensorrt"));
+    assertEquals("OpenCL", benchmarkBackend(tempRoot, "opencl"));
+    assertEquals("Metal", benchmarkBackend(tempRoot, "metal"));
+    assertEquals("DirectML", benchmarkBackend(tempRoot, "directml"));
+    assertEquals("OpenVINO", benchmarkBackend(tempRoot, "openvino"));
+    assertEquals("ROCm", benchmarkBackend(tempRoot, "rocm-gfx110x"));
+    assertEquals("Eigen (CPU)", benchmarkBackend(tempRoot, "cpu"));
+  }
+
+  @Test
+  void benchmarkBackendPrefersKataGoReportedValue() throws Exception {
+    Path tempRoot = Files.createTempDirectory("katago-benchmark-reported-backend");
+    Path enginePath = benchmarkEngine(tempRoot, "nvidia");
+
+    assertEquals(
+        "CUDA graphs",
+        KataGoRuntimeHelper.resolveBenchmarkBackendLabel(enginePath, " CUDA graphs "));
+  }
+
+  @Test
   void bundledEngineUnderSpacedUnicodePathKeepsRuntimeStateOutOfEngineDirectory() throws Exception {
     Path tempRoot = Files.createTempDirectory("katago-helper-spaced-path");
     Path portableRoot = Files.createDirectories(tempRoot.resolve("LizzieYzy Next 测试 portable"));
@@ -2921,6 +2945,18 @@ public class KataGoRuntimeHelperTest {
 
   private static Path normalize(Path path) {
     return path.toAbsolutePath().normalize();
+  }
+
+  private static String benchmarkBackend(Path tempRoot, String marker) throws Exception {
+    return KataGoRuntimeHelper.resolveBenchmarkBackendLabel(
+        benchmarkEngine(tempRoot.resolve(marker), marker), "");
+  }
+
+  private static Path benchmarkEngine(Path tempRoot, String marker) throws Exception {
+    Path enginePath = touch(tempRoot.resolve("windows-x64").resolve("katago.exe"));
+    Files.writeString(
+        enginePath.getParent().resolve("lizzieyzy-next-engine-backend.txt"), marker + "\n");
+    return enginePath;
   }
 
   private static SetupSnapshot setupSnapshot(

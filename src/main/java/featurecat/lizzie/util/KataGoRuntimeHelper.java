@@ -2730,6 +2730,7 @@ public final class KataGoRuntimeHelper {
     if (expectedSignature.isEmpty() || !expectedSignature.equals(storedSignature)) {
       return null;
     }
+    stored = withResolvedBenchmarkBackend(stored, snapshot);
     if (!isAppleSiliconOptimizationEligible(snapshot)) {
       return stored;
     }
@@ -2753,7 +2754,68 @@ public final class KataGoRuntimeHelper {
     if (result == null) {
       throw benchmarkFailedException();
     }
-    return result;
+    return withResolvedBenchmarkBackend(result, snapshot);
+  }
+
+  private static BenchmarkResult withResolvedBenchmarkBackend(
+      BenchmarkResult result, SetupSnapshot snapshot) {
+    if (result == null) {
+      return null;
+    }
+    String resolved =
+        resolveBenchmarkBackendLabel(
+            snapshot == null ? null : snapshot.enginePath, result.backendLabel);
+    if (resolved.equals(result.backendLabel)) {
+      return result;
+    }
+    return new BenchmarkResult(
+        result.recommendedThreads,
+        result.currentThreads,
+        resolved,
+        result.summary,
+        result.completedAtMillis,
+        result.topologyLabel,
+        result.nnServerThreadsPerModel,
+        result.maxBatchSize,
+        result.visitsPerSecond,
+        result.nnEvalsPerSecond,
+        result.averageBatchSize,
+        result.tuningProfile);
+  }
+
+  static String resolveBenchmarkBackendLabel(Path enginePath, String reportedBackend) {
+    String reported = reportedBackend == null ? "" : reportedBackend.trim();
+    if (!reported.isEmpty()) {
+      return reported;
+    }
+
+    String nvidiaBackend = resolveNvidiaBackend(enginePath);
+    if (isTensorRtBackend(nvidiaBackend)) {
+      return "TensorRT";
+    }
+    if (!Utils.isBlank(nvidiaBackend)) {
+      return "CUDA";
+    }
+
+    String marker = readEngineBackendMarker(enginePath).trim().toLowerCase(Locale.ROOT);
+    if (marker.startsWith("rocm")) {
+      return "ROCm";
+    }
+    switch (marker) {
+      case "opencl":
+        return "OpenCL";
+      case "metal":
+        return "Metal";
+      case "directml":
+        return "DirectML";
+      case "openvino":
+        return "OpenVINO";
+      case "cpu":
+      case "eigen":
+        return "Eigen (CPU)";
+      default:
+        return "";
+    }
   }
 
   private static void validateBenchmarkSnapshot(SetupSnapshot snapshot) throws IOException {
@@ -3350,6 +3412,7 @@ public final class KataGoRuntimeHelper {
         parsed.backendLabel == null || parsed.backendLabel.isEmpty()
             ? observation.backend()
             : parsed.backendLabel;
+    backend = resolveBenchmarkBackendLabel(snapshot.enginePath, backend);
     long completedAt = System.currentTimeMillis();
     KataGoTuningProfile profile =
         KataGoTuningProfile.officialThreads(

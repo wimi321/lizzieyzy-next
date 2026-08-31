@@ -9,6 +9,7 @@ import featurecat.lizzie.Lizzie;
 import featurecat.lizzie.analysis.EngineManager;
 import featurecat.lizzie.util.KataGoAutoSetupHelper;
 import featurecat.lizzie.util.KataGoAutoSetupHelper.SetupSnapshot;
+import java.awt.BorderLayout;
 import java.awt.CardLayout;
 import java.awt.Dimension;
 import java.awt.FlowLayout;
@@ -410,6 +411,19 @@ class KataGoAutoSetupDialogLayoutTest {
   void benchmarkReportAvoidsTallEmptyCardsOnWideWindows() {
     assertEquals(214, KataGoAutoSetupDialog.BenchmarkReportBody.preferredHeightForWidth(840));
     assertEquals(292, KataGoAutoSetupDialog.BenchmarkReportBody.preferredHeightForWidth(620));
+  }
+
+  @Test
+  void benchmarkReportUsesCompactPreferredAndMinimumHeightInsideNarrowParent() {
+    JPanel parent = new JPanel(new BorderLayout());
+    KataGoAutoSetupDialog.BenchmarkReportBody report =
+        new KataGoAutoSetupDialog.BenchmarkReportBody(
+            new JPanel(), new JPanel(), new JPanel());
+    parent.add(report, BorderLayout.CENTER);
+    parent.setSize(620, 420);
+
+    assertEquals(292, report.getPreferredSize().height);
+    assertEquals(292, report.getMinimumSize().height);
   }
 
   @Test

@@ -6272,12 +6272,24 @@ public class KataGoAutoSetupDialog extends JDialog {
 
     @Override
     public Dimension getPreferredSize() {
-      return new Dimension(760, preferredHeightForWidth(getWidth()));
+      return new Dimension(760, preferredHeightForWidth(preferredLayoutWidth()));
     }
 
     @Override
     public Dimension getMinimumSize() {
-      return new Dimension(420, WIDE_HEIGHT);
+      return new Dimension(420, COMPACT_HEIGHT);
+    }
+
+    private int preferredLayoutWidth() {
+      if (getWidth() > 0) {
+        return getWidth();
+      }
+      Container parent = getParent();
+      if (parent != null && parent.getWidth() > 0) {
+        Insets parentInsets = parent.getInsets();
+        return Math.max(0, parent.getWidth() - parentInsets.left - parentInsets.right);
+      }
+      return 760;
     }
 
     static int preferredHeightForWidth(int width) {
