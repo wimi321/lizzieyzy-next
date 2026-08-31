@@ -1133,11 +1133,6 @@ public class LizzieFrame extends JFrame {
       }
       if (Lizzie.config.persistedUi.getBoolean("window-maximized"))
         setExtendedState(Frame.MAXIMIZED_BOTH);
-      if (Lizzie.config.persistedUi.optJSONArray("winrate-graph") != null
-          && Lizzie.config.persistedUi.optJSONArray("winrate-graph").length() == 1) {
-        JSONArray winrateG = Lizzie.config.persistedUi.getJSONArray("winrate-graph");
-        winrateGraph.mode = winrateG.getInt(0);
-      }
       this.BoardPositionProportion =
           Lizzie.config.persistedUi.optInt("board-postion-propotion", this.BoardPositionProportion);
       if (Lizzie.config.persistedUi.has("leftover-left-share")

@@ -44,6 +44,8 @@ public class BoardData {
   public String engineName2 = "";
   public boolean isSaiData;
   public boolean isSaiData2;
+  public boolean scoreMeanIsBlackPerspective;
+  public boolean scoreMeanIsBlackPerspective2;
   public boolean isKataData;
   public boolean isKataData2;
   public int analysisHeaderSlots;
@@ -419,6 +421,7 @@ public class BoardData {
       isKataData = true;
     } else isKataData = false;
     isSaiData = moves.get(0).isSaiData;
+    scoreMeanIsBlackPerspective = moves.get(0).scoreMeanIsBlackPerspective;
     engineName = engName;
     komi = Lizzie.board.getHistory().getGameInfo().getKomi();
     if (sourceEngine != null) {
@@ -553,6 +556,7 @@ public class BoardData {
       isKataData2 = true;
     } else isKataData2 = false;
     isSaiData2 = moves.get(0).isSaiData;
+    scoreMeanIsBlackPerspective2 = moves.get(0).scoreMeanIsBlackPerspective;
     engineName2 = engName;
     if (isFromLeelaz) {
       if (metadataEngine != null && (metadataEngine.isDymPda || metadataEngine.pda != 0)) {
@@ -782,6 +786,7 @@ public class BoardData {
     bestMovesOutOfRange = new ArrayList<MoveData>();
     estimateArray = null;
     isSaiData = false;
+    scoreMeanIsBlackPerspective = false;
     isKataData = false;
     isChanged = false;
     playoutsChanged = false;
@@ -799,6 +804,7 @@ public class BoardData {
     bestMoves2OutOfRange = new ArrayList<MoveData>();
     estimateArray2 = null;
     isSaiData2 = false;
+    scoreMeanIsBlackPerspective2 = false;
     isKataData2 = false;
     isChanged2 = false;
     analysisHeaderSlots2 = 0;
@@ -854,6 +860,8 @@ public class BoardData {
     this.engineName2 = data.engineName2;
     this.isSaiData = data.isSaiData;
     this.isSaiData2 = data.isSaiData2;
+    this.scoreMeanIsBlackPerspective = data.scoreMeanIsBlackPerspective;
+    this.scoreMeanIsBlackPerspective2 = data.scoreMeanIsBlackPerspective2;
     this.isKataData = data.isKataData;
     this.isKataData2 = data.isKataData2;
     this.analysisHeaderSlots = data.analysisHeaderSlots;

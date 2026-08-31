@@ -25,6 +25,7 @@ public class MoveData {
   public double scoreStdev;
   public boolean isKataData;
   public boolean isSaiData;
+  public boolean scoreMeanIsBlackPerspective;
   public int order;
   public boolean isNextMove;
   public double bestWinrate;
@@ -191,6 +192,7 @@ public class MoveData {
     }
     result.isKataData = true;
     result.isSaiData = true;
+    result.scoreMeanIsBlackPerspective = !isSayuri;
     return result;
   }
 
@@ -606,6 +608,7 @@ public class MoveData {
       result.variation = Arrays.asList(match.group(6).split(" ", Lizzie.config.limitBranchLength));
       result.isKataData = true;
       result.isSaiData = true;
+      result.scoreMeanIsBlackPerspective = true;
       return result;
     } else {
       Lizzie.gtpConsole.addLine("Summary err");

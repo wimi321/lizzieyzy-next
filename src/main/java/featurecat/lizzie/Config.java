@@ -1051,6 +1051,7 @@ public class Config {
   public boolean analysisRecentIsAllBranches = false;
   public boolean showScoreLeadLine = true;
   public boolean showWinrateLine = true;
+  public boolean showWinrateGraphFill = true;
   public boolean showMouseOverWinrateGraph = true;
   public boolean isChinese;
 
@@ -1833,6 +1834,7 @@ public class Config {
     analysisSpecificRules = uiConfig.optString("analysis-specific-rules", "");
     showScoreLeadLine = uiConfig.optBoolean("show-score-lead-line", true);
     showWinrateLine = uiConfig.optBoolean("show-win-rate-line", true);
+    showWinrateGraphFill = uiConfig.optBoolean("show-winrate-graph-fill", true);
     showMouseOverWinrateGraph = uiConfig.optBoolean("show-mouse-over-winrate-graph", true);
     frameFontSize = uiConfig.optInt("frame-font-size", 12);
     menuHeight = isFrameFontSmall() ? 20 : (isFrameFontMiddle() ? 25 : 30);
@@ -3014,6 +3016,12 @@ public class Config {
     }
   }
 
+  void dropPersistedWinrateGraphMode() {
+    if (persistedUi != null) {
+      persistedUi.remove("winrate-graph");
+    }
+  }
+
   public void persist() throws IOException {
     if (deletedPersist) return;
     boolean windowIsMaximized = Lizzie.frame.getExtendedState() == JFrame.MAXIMIZED_BOTH;
@@ -3380,9 +3388,7 @@ public class Config {
     persistedUi.put("toolbar-parameter", toolbarParameter);
 
 
-    JSONArray winrateGraph = new JSONArray();
-    winrateGraph.put(LizzieFrame.winrateGraph.mode);
-    persistedUi.put("winrate-graph", winrateGraph);
+    dropPersistedWinrateGraphMode();
 
     if (Lizzie.frame.independentSubBoard != null) {
       JSONArray independentSub = new JSONArray();

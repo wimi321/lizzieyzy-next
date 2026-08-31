@@ -216,8 +216,6 @@ public class ConfigDialog2 extends JDialog {
   private JComboBox<String> chkShowWhiteSuggWhite;
   private JComboBox<String> comboSuggestionColorRatio;
 
-  private JRadioButton rdoShowWinrateBlack;
-  private JRadioButton rdoShowWinrateBoth;
   private JCheckBox chkAppendWinrateToComment;
   private JCheckBox chkShowSuggLabel;
   private JCheckBox chkMaxValueReverseColor;
@@ -321,6 +319,7 @@ public class ConfigDialog2 extends JDialog {
   private JCheckBox chkVariationRemoveDeadChain;
   private JComboBox<String> cbxShowWinrateOrScoreLeadLine;
   private JCheckBox chkShowMouseOverWinrateGraph;
+  private JCheckBox chkShowWinrateGraphFill;
   private JCheckBox chkShowScoreAsLead;
   private JComboBox<String> comboBoxPvVisits;
   private JComboBox<String> chkShowIndependentSubBoard;
@@ -425,7 +424,6 @@ public class ConfigDialog2 extends JDialog {
     nf.setGroupingUsed(false);
     ButtonGroup showMoveGroup = new ButtonGroup();
 
-    ButtonGroup ShowWinratGroup = new ButtonGroup();
 
     uiTab = new SettingsContentPanel(SettingsContentPanel.Mode.UI);
     tabbedPane.addTab(
@@ -733,22 +731,6 @@ public class ConfigDialog2 extends JDialog {
     chkShowBlunderBar.setBounds(837, 233, 26, 23);
     uiTab.add(chkShowBlunderBar);
 
-    JLabel lblWinratePerspective =
-        new JLabel(
-            resourceBundle.getString(
-                "LizzieConfig.lblWinratePerspective")); // ("胜率图视角"); //$NON-NLS-1$
-    lblWinratePerspective.setBounds(10, 236, 184, 16);
-    uiTab.add(lblWinratePerspective);
-
-    rdoShowWinrateBlack =
-        new JRadioButton(resourceBundle.getString("LizzieConfig.rdoShowWinrateBlack")); // ("黑方视角");
-    rdoShowWinrateBlack.setBounds(Lizzie.config.isChinese ? 155 : 162, 234, 60, 23);
-    uiTab.add(rdoShowWinrateBlack);
-
-    rdoShowWinrateBoth =
-        new JRadioButton(resourceBundle.getString("LizzieConfig.rdoShowWinrateBoth")); // ("双方视角");
-    rdoShowWinrateBoth.setBounds(225, 234, 78, 23);
-    uiTab.add(rdoShowWinrateBoth);
 
     JLabel lblShowWhiteSuggestionWhite =
         new JLabel(
@@ -766,8 +748,6 @@ public class ConfigDialog2 extends JDialog {
         resourceBundle.getString("LizzieConfig.chkShowWhiteSuggWhite4")); // ("全部");
     chkShowWhiteSuggWhite.setBounds(504, 286, 67, 23);
     uiTab.add(chkShowWhiteSuggWhite);
-    ShowWinratGroup.add(rdoShowWinrateBlack);
-    ShowWinratGroup.add(rdoShowWinrateBoth);
 
     JLabel lblSuggestionMoveColorConcentration =
         new JLabel(
@@ -1679,6 +1659,9 @@ public class ConfigDialog2 extends JDialog {
 
     chkShowMouseOverWinrateGraph.setSelected(Lizzie.config.showMouseOverWinrateGraph);
 
+    chkShowWinrateGraphFill = new JCheckBox();
+    chkShowWinrateGraphFill.setSelected(Lizzie.config.showWinrateGraphFill);
+
     chkShowScoreAsLead = new JCheckBox(resourceBundle.getString("Menu.showScoreAsDiff"));
     chkShowScoreAsLead.setBounds(295, 368, 110, 23); // 216, 368, 86, 23
     uiTab.add(chkShowScoreAsLead);
@@ -1987,7 +1970,6 @@ public class ConfigDialog2 extends JDialog {
     //  new ComsWorker(this).execute();
     setBoardSize();
     setShowMoveNumber();
-    setShowWinrateSide();
     rebuildDisplayTabLikeDesign();
     SwingUtilities.invokeLater(() -> rebuildDisplayTabLikeDesign(activeModernNavIndex));
     syncModernTabSelection();
@@ -2787,6 +2769,12 @@ public class ConfigDialog2 extends JDialog {
             configText("ConfigDialog2.modern.analysis.hover", "鼠标悬停胜率图"),
             configText("ConfigDialog2.modern.analysis.hoverSub", "鼠标经过胜率图时显示局面信息"),
             chkShowMouseOverWinrateGraph);
+        addToggleRow(
+            analysis,
+            configText("ConfigDialog2.modern.analysis.graphFill", "单曲线模式使用面积填充"),
+            configText(
+                "ConfigDialog2.modern.analysis.graphFillSub", "仅当图上只有一条曲线时，填充到 50% / 0 中线"),
+            chkShowWinrateGraphFill);
         addToggleRow(
             analysis,
             configText("ConfigDialog2.modern.analysis.maxRed", "候选点最高值红色高亮"),
@@ -5591,13 +5579,6 @@ public class ConfigDialog2 extends JDialog {
     }
   }
 
-  private void setShowWinrateSide() {
-    if (LizzieFrame.winrateGraph.mode == 0) {
-      rdoShowWinrateBlack.setSelected(true);
-    } else {
-      rdoShowWinrateBoth.setSelected(true);
-    }
-  }
 
   private void setStoneIndicatorType(int type) {
     switch (type) {
@@ -6070,6 +6051,8 @@ public class ConfigDialog2 extends JDialog {
     }
     Lizzie.config.uiConfig.put("show-score-lead-line", Lizzie.config.showScoreLeadLine);
     Lizzie.config.uiConfig.put("show-win-rate-line", Lizzie.config.showWinrateLine);
+    Lizzie.config.showWinrateGraphFill = chkShowWinrateGraphFill.isSelected();
+    Lizzie.config.uiConfig.put("show-winrate-graph-fill", Lizzie.config.showWinrateGraphFill);
     Lizzie.config.removeDeadChainInVariation = chkVariationRemoveDeadChain.isSelected();
     Lizzie.config.uiConfig.put(
         "remove-dead-in-variation", Lizzie.config.removeDeadChainInVariation);
@@ -6301,8 +6284,6 @@ public class ConfigDialog2 extends JDialog {
       Lizzie.config.uiConfig.put("only-last-move-number", Lizzie.config.onlyLastMoveNumber);
       Lizzie.config.uiConfig.put("allow-move-number", Lizzie.config.allowMoveNumber);
 
-      if (this.rdoShowWinrateBlack.isSelected()) LizzieFrame.winrateGraph.mode = 0;
-      if (this.rdoShowWinrateBoth.isSelected()) LizzieFrame.winrateGraph.mode = 1;
       Lizzie.config.showBlunderBar = chkShowBlunderBar.isSelected();
       Lizzie.config.uiConfig.putOpt("show-blunder-bar", Lizzie.config.showBlunderBar);
 
