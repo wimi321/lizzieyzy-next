@@ -35,6 +35,8 @@ import java.awt.event.MouseEvent;
 import java.awt.event.MouseListener;
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.text.NumberFormat;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
@@ -2734,63 +2736,9 @@ public class BottomToolbar extends JPanel {
         return;
       }
       if (LizzieFrame.curFile != null) {
-        String name = LizzieFrame.curFile.getName();
-        String path = LizzieFrame.curFile.getParent();
-        String df = new SimpleDateFormat("yyyyMMddHHmmss").format(new Date());
-        String prefix = name.substring(name.lastIndexOf("."));
-        int num = prefix.length();
-        String fileOtherName = name.substring(0, name.length() - num);
-        String filename =
-            path
-                + File.separator
-                + fileOtherName
-                + "_"
-                + resourceBundle.getString("Leelaz.analyzed")
-                + "_"
-                + df
-                + ".sgf";
-        File autoSaveFile = new File(filename);
-        try {
-          SGFParser.save(Lizzie.board, autoSaveFile.getPath());
-        } catch (IOException e) {
-          // TODO Auto-generated catch block
-          e.printStackTrace();
-        }
-        if (msg == null || !msg.isVisible()) {
-          msg = new Message();
-          msg.setMessageNoModal(
-              resourceBundle.getString(autoAnalyzeSavedStatusKey(completed)) + path);
-        }
+        saveAutoAnalyzeResult(completed, LizzieFrame.curFile);
       } else {
-        File file = new File("");
-        String courseFile = "";
-        try {
-          courseFile = file.getCanonicalPath();
-        } catch (IOException e) {
-          // TODO Auto-generated catch block
-          e.printStackTrace();
-        }
-        String df = new SimpleDateFormat("yyyyMMddHHmmss").format(new Date());
-        File autoSaveFile =
-            new File(courseFile + File.separator + "AnalyzedGames" + File.separator + df + ".sgf");
-        File fileParent = autoSaveFile.getParentFile();
-        if (!fileParent.exists()) {
-          fileParent.mkdirs();
-        }
-        try {
-          SGFParser.save(Lizzie.board, autoSaveFile.getPath());
-        } catch (IOException e) {
-          // TODO Auto-generated catch block
-          e.printStackTrace();
-        }
-        if (msg == null || !msg.isVisible()) {
-          msg = new Message();
-          msg.setMessageNoModal(
-              resourceBundle.getString(autoAnalyzeSavedStatusKey(completed))
-                  + courseFile
-                  + File.separator
-                  + "AnalyzedGames");
-        }
+        saveAutoAnalyzeResult(completed, null);
       }
       if (Lizzie.config.analyzeAllBranch)
         if (threadAnalyzeAllNode != null) threadAnalyzeAllNode.interrupt();
@@ -2838,6 +2786,58 @@ public class BottomToolbar extends JPanel {
         return;
       }
     }
+  }
+
+  private boolean saveAutoAnalyzeResult(boolean completed, File sourceFile) {
+    Path output;
+    try {
+      output =
+          resolveAutoAnalyzeOutput(
+              sourceFile,
+              Lizzie.config.getWorkDirectory(),
+              resourceBundle.getString("Leelaz.analyzed"),
+              new SimpleDateFormat("yyyyMMddHHmmss").format(new Date()));
+      SGFParser.save(Lizzie.board, output.toString());
+    } catch (IOException | RuntimeException failure) {
+      failure.printStackTrace();
+      Utils.showMsgNoModal(resourceBundle.getString("LizzieFrame.saveFileFailed"));
+      return false;
+    }
+    if (msg == null || !msg.isVisible()) {
+      msg = new Message();
+      msg.setMessageNoModal(
+          resourceBundle.getString(autoAnalyzeSavedStatusKey(completed)) + output.getParent());
+    }
+    return true;
+  }
+
+  static Path resolveAutoAnalyzeOutput(
+      File sourceFile, File workDirectory, String analyzedLabel, String timestamp)
+      throws IOException {
+    if (workDirectory == null) {
+      throw new IOException("Application work directory is unavailable");
+    }
+    Path directory;
+    String filename;
+    if (sourceFile == null) {
+      directory = workDirectory.toPath().toAbsolutePath().normalize().resolve("AnalyzedGames");
+      filename = timestamp + ".sgf";
+    } else {
+      Path source = sourceFile.toPath().toAbsolutePath().normalize();
+      directory = source.getParent();
+      if (directory == null) {
+        directory = workDirectory.toPath().toAbsolutePath().normalize();
+      }
+      String name = sourceFile.getName();
+      int extension = name.lastIndexOf('.');
+      String stem = extension > 0 ? name.substring(0, extension) : name;
+      filename = stem + "_" + analyzedLabel + "_" + timestamp + ".sgf";
+    }
+    Files.createDirectories(directory);
+    if (!Files.isDirectory(directory) || !Files.isWritable(directory)) {
+      throw new IOException("Auto-analysis directory is not writable: " + directory);
+    }
+    return directory.resolve(filename);
   }
 
   private void finishBatchAutoAnalysis(boolean completed) {

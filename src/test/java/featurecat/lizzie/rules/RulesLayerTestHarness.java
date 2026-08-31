@@ -221,6 +221,9 @@ final class RulesLayerTestHarness implements AutoCloseable {
     }
 
     @Override
+    public void clearAfterMove() {}
+
+    @Override
     public void removedrawmovestone() {}
   }
 
@@ -243,6 +246,12 @@ final class RulesLayerTestHarness implements AutoCloseable {
 
     @Override
     public void clearBestMoves() {}
+
+    @Override
+    public boolean forwardBoardClearWithKomi(
+        String komiCommand, double komi, boolean applyKomiSideEffects) {
+      return true;
+    }
 
     @Override
     public void maybeAjustPDA(BoardHistoryNode node) {}

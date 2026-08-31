@@ -5046,6 +5046,19 @@ public class Board {
   }
 
   /**
+   * Clears board-owned state for an SGF load while allowing the caller to defer primary-engine
+   * synchronization. Downloaded and local SGF loaders use the deferred form so parsing never
+   * queues a partial clear before the immutable post-load snapshot is ready.
+   */
+  void clearForSgfLoadWithoutPrimaryEngineForwarding() {
+    EngineForwardingPlan forwarding;
+    synchronized (this) {
+      forwarding = clearBoardState(false);
+    }
+    forwarding.runDeferredActions();
+  }
+
+  /**
    * Atomically applies an initial engine's board shape and clears board-owned state. Engine and
    * ReadBoard forwarding deliberately runs after releasing the Board monitor.
    */
@@ -5197,6 +5210,10 @@ public class Board {
           Lizzie.leelaz.submitOrdinaryLiveBoardForwarding(resizeIntent);
         }
       }
+      runDeferredActions();
+    }
+
+    private void runDeferredActions() {
       for (Runnable action : deferredActions) {
         action.run();
       }

@@ -1476,6 +1476,11 @@ public class Lizzie {
       e.printStackTrace();
     }
     try {
+      frame.shutdownKifuEngineSyncCoordinator();
+    } catch (Exception e) {
+      APP.error("failed to shut down kifu engine synchronization", e);
+    }
+    try {
       if (engineManager != null) engineManager.forceKillAllEngines();
     } catch (Exception e) {
       e.printStackTrace();

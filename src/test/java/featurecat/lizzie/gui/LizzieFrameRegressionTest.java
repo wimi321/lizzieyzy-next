@@ -416,6 +416,10 @@ class LizzieFrameRegressionTest {
     assertEquals(
         LizzieFrame.QuickAnalysisWarmupAction.STOP,
         LizzieFrame.decideQuickAnalysisWarmup(false, false, true, false));
+    assertEquals(
+        LizzieFrame.QuickAnalysisWarmupAction.WAIT_FOR_PRIMARY,
+        LizzieFrame.decideQuickAnalysisWarmup(true, false, true, false, true),
+        "a loaded primary must not start quick analysis before the new record is synchronized");
   }
 
   @Test
@@ -516,6 +520,42 @@ class LizzieFrameRegressionTest {
   }
 
   @Test
+  void rapidDownloadedKifuSwitchKeepsOnlyLatestDeferredLoad() throws Exception {
+    TestEnvironment env = TestEnvironment.open();
+    try {
+      Lizzie.config = configWithAutoQuickAnalyze();
+      Lizzie.board = boardWith(historyWithUnanalyzedMove());
+      LizzieFrame frame = allocate(LizzieFrame.class);
+      ResourceTrackingAnalysisEngine engine = allocate(ResourceTrackingAnalysisEngine.class);
+      engine.shared = true;
+      engine.automatic = true;
+      engine.requestLifecycleInProgress = true;
+      frame.analysisEngine = engine;
+      AtomicInteger firstRuns = new AtomicInteger();
+      AtomicInteger firstSuperseded = new AtomicInteger();
+      AtomicInteger secondRuns = new AtomicInteger();
+
+      assertTrue(
+          invokeDeferKifuOpen(
+              frame, firstRuns::incrementAndGet, firstSuperseded::incrementAndGet));
+      assertTrue(invokeDeferKifuOpen(frame, secondRuns::incrementAndGet, null));
+
+      assertEquals(1, firstSuperseded.get());
+      assertEquals(0, firstRuns.get());
+      assertEquals(0, secondRuns.get());
+
+      engine.completeExit();
+      drainEdt();
+
+      assertEquals(0, firstRuns.get());
+      assertEquals(1, secondRuns.get());
+      assertFalse((boolean) getField(frame, "kifuOpenWaitingForQuickAnalysisRestore"));
+    } finally {
+      env.close();
+    }
+  }
+
+  @Test
   void foregroundAnalysisReleasesIdleDedicatedQuickEngine() throws Exception {
     LizzieFrame frame = allocate(LizzieFrame.class);
     ResourceTrackingAnalysisEngine engine = allocate(ResourceTrackingAnalysisEngine.class);
@@ -556,6 +596,31 @@ class LizzieFrameRegressionTest {
         frame.releaseSecondaryAnalysisResourcesForForeground());
     assertSame(userTask, frame.analysisEngine);
     assertEquals(0, userTask.normalQuitCount);
+  }
+
+  @Test
+  void mainPonderCannotPreemptActiveLoadedGameQuickAnalysis() throws Exception {
+    TestEnvironment env = TestEnvironment.open();
+    try {
+      Lizzie.config = configWithAutoQuickAnalyze();
+      Lizzie.board = boardWith(historyWithUnanalyzedMove());
+      LizzieFrame frame = allocate(LizzieFrame.class);
+      ResourceTrackingAnalysisEngine automatic = allocate(ResourceTrackingAnalysisEngine.class);
+      automatic.localDedicated = true;
+      automatic.analysisInProgress = true;
+      automatic.automatic = true;
+      frame.analysisEngine = automatic;
+      setField(frame, "loadedGameQuickAnalysisActive", true);
+      setField(frame, "loadedGameQuickAnalysisRunning", true);
+      setField(frame, "loadedGameQuickAnalysisRoot", Lizzie.board.getHistory().getStart());
+
+      frame.onMainEnginePonder();
+
+      assertSame(automatic, frame.analysisEngine);
+      assertEquals(0, automatic.normalQuitCount);
+    } finally {
+      env.close();
+    }
   }
 
   @Test
@@ -1861,6 +1926,38 @@ class LizzieFrameRegressionTest {
   }
 
   @Test
+  void failedLoadedGameQuickAnalysisResumesForegroundWithoutCancellingRetry() throws Exception {
+    TestEnvironment env = TestEnvironment.open();
+    try {
+      Lizzie.config = configWithAutoQuickAnalyze();
+      AnalysisSyncBoard board = analysisSyncBoardWith(historyWithUnanalyzedMove());
+      Lizzie.board = board;
+      TrackingLeelaz leelaz = allocate(TrackingLeelaz.class);
+      Lizzie.leelaz = leelaz;
+      EngineManager.isEmpty = false;
+      AnalysisResumeTrackingFrame frame = allocate(AnalysisResumeTrackingFrame.class);
+      Lizzie.frame = frame;
+      BoardHistoryNode root = Lizzie.board.getHistory().getStart();
+      setField(frame, "loadedGameQuickAnalysisGeneration", 17L);
+      setField(frame, "loadedGameQuickAnalysisRoot", root);
+      setField(frame, "loadedGameQuickAnalysisActive", true);
+      setField(frame, "loadedGameQuickAnalysisRunning", true);
+
+      invokeFinishLoadedGameQuickAnalysisAttempt(frame, 17L, root, true);
+
+      assertTrue((boolean) getField(frame, "loadedGameQuickAnalysisActive"));
+      assertEquals(
+          1,
+          leelaz.ponderCount,
+          "users should retain current-position analysis while the curve waits to retry.");
+      assertEquals(1, board.syncCount);
+      invokeStopLoadedGameQuickAnalysisRetry(frame);
+    } finally {
+      env.close();
+    }
+  }
+
+  @Test
   void finishKifuLoadDoesNotRefreshAgainBeforeHidingOverlay() throws Exception {
     TestEnvironment env = TestEnvironment.open();
     try {
@@ -2287,6 +2384,19 @@ class LizzieFrameRegressionTest {
     SwingUtilities.invokeAndWait(() -> invokeReflective(method, frame));
   }
 
+  private static void invokeFinishLoadedGameQuickAnalysisAttempt(
+      LizzieFrame frame, long generation, BoardHistoryNode root, boolean failed) throws Exception {
+    Method method =
+        LizzieFrame.class.getDeclaredMethod(
+            "finishLoadedGameQuickAnalysisAttempt",
+            long.class,
+            BoardHistoryNode.class,
+            boolean.class);
+    method.setAccessible(true);
+    SwingUtilities.invokeAndWait(
+        () -> invokeReflectiveResult(method, frame, generation, root, failed));
+  }
+
   private static boolean invokeStopBusyQuickAnalysisEngineBeforeLoadedKifuAnalysis(
       LizzieFrame frame, Runnable continuation) throws Exception {
     Method method =
@@ -2308,6 +2418,22 @@ class LizzieFrameRegressionTest {
     AtomicBoolean deferred = new AtomicBoolean(false);
     SwingUtilities.invokeAndWait(
         () -> deferred.set((boolean) invokeReflectiveResult(method, frame, continuation)));
+    return deferred.get();
+  }
+
+  private static boolean invokeDeferKifuOpen(
+      LizzieFrame frame, Runnable continuation, Runnable superseded) throws Exception {
+    Method method =
+        LizzieFrame.class.getDeclaredMethod(
+            "deferKifuOpenUntilAutomaticQuickAnalysisRestored",
+            Runnable.class,
+            Runnable.class);
+    method.setAccessible(true);
+    AtomicBoolean deferred = new AtomicBoolean(false);
+    SwingUtilities.invokeAndWait(
+        () ->
+            deferred.set(
+                (boolean) invokeReflectiveResult(method, frame, continuation, superseded)));
     return deferred.get();
   }
 

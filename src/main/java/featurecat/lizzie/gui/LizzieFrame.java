@@ -537,6 +537,8 @@ public class LizzieFrame extends JFrame {
   private long kifuLoadVisibleSince;
   private volatile int kifuMovelistRefreshGeneration = 0;
   private volatile int kifuAnalysisResumeGeneration = 0;
+  private transient KifuEngineSyncCoordinator kifuEngineSyncCoordinator;
+  private volatile BoardHistoryNode pendingKifuEngineSyncRoot;
   private javax.swing.Timer quickAnalysisLoadRetryTimer;
   private volatile long loadedGameQuickAnalysisGeneration;
   private volatile BoardHistoryNode loadedGameQuickAnalysisRoot;
@@ -545,6 +547,7 @@ public class LizzieFrame extends JFrame {
   private volatile long loadedGameQuickAnalysisDispatchStartedAt;
   private int loadedGameQuickAnalysisFailureCount;
   private boolean kifuOpenWaitingForQuickAnalysisRestore;
+  private DeferredKifuOpen pendingKifuOpen;
   private static final int LOADED_GAME_QUICK_ANALYSIS_RETRY_MS = 1800;
   private static final int LOADED_GAME_QUICK_ANALYSIS_MAX_RETRY_MS = 30_000;
   private static final int LOADED_GAME_QUICK_ANALYSIS_WATCHDOG_MS = 30_000;
@@ -4369,7 +4372,17 @@ public class LizzieFrame extends JFrame {
   }
 
   private boolean deferKifuOpenUntilAutomaticQuickAnalysisRestored(Runnable continuation) {
+    return deferKifuOpenUntilAutomaticQuickAnalysisRestored(continuation, null);
+  }
+
+  private boolean deferKifuOpenUntilAutomaticQuickAnalysisRestored(
+      Runnable continuation, Runnable superseded) {
     if (kifuOpenWaitingForQuickAnalysisRestore) {
+      DeferredKifuOpen previous = pendingKifuOpen;
+      pendingKifuOpen = new DeferredKifuOpen(continuation, superseded);
+      if (previous != null) {
+        previous.notifySuperseded();
+      }
       return true;
     }
     AnalysisEngine currentEngine = analysisEngine;
@@ -4380,6 +4393,7 @@ public class LizzieFrame extends JFrame {
       return false;
     }
     kifuOpenWaitingForQuickAnalysisRestore = true;
+    pendingKifuOpen = new DeferredKifuOpen(continuation, superseded);
     stopQuickAnalysisNavigationResumeTimer();
     stopLoadedGameQuickAnalysisRetry();
     analysisEngine = null;
@@ -4389,11 +4403,35 @@ public class LizzieFrame extends JFrame {
             SwingUtilities.invokeLater(
                 () -> {
                   kifuOpenWaitingForQuickAnalysisRestore = false;
-                  if (continuation != null) {
-                    continuation.run();
+                  DeferredKifuOpen deferred = pendingKifuOpen;
+                  pendingKifuOpen = null;
+                  if (deferred != null) {
+                    deferred.run();
                   }
                 }));
     return true;
+  }
+
+  private static final class DeferredKifuOpen {
+    private final Runnable continuation;
+    private final Runnable superseded;
+
+    private DeferredKifuOpen(Runnable continuation, Runnable superseded) {
+      this.continuation = continuation;
+      this.superseded = superseded;
+    }
+
+    private void run() {
+      if (continuation != null) {
+        continuation.run();
+      }
+    }
+
+    private void notifySuperseded() {
+      if (superseded != null) {
+        superseded.run();
+      }
+    }
   }
 
   public void openSgfStart() {
@@ -4803,6 +4841,21 @@ public class LizzieFrame extends JFrame {
       // Legacy callers treat teardown handling as true; completion distinguishes actual outcome.
       return true;
     }
+    if (deferKifuOpenUntilAutomaticQuickAnalysisRestored(
+        () ->
+            loadSgfStringInternal(
+                sgfContent,
+                initialMessage,
+                resumeDelayMillis,
+                readKomi,
+                resetAnalysisWindows,
+                afterLoad,
+                showFeedback,
+                forceAutoQuickAnalyzeAfterLoad,
+                completion),
+        () -> notifySgfLoadCompletion(completion, false))) {
+      return true;
+    }
     if (showFeedback) {
       beginKifuLoad(initialMessage);
     }
@@ -4813,7 +4866,7 @@ public class LizzieFrame extends JFrame {
         updateKifuLoad(kifuLoadText("KifuLoad.parsing"));
       }
       Lizzie.config.readKomi = readKomi;
-      if (!SGFParser.loadFromString(sgfContent)) {
+      if (!SGFParser.loadFromString(sgfContent, false)) {
         if (showFeedback) {
           failKifuLoad(kifuLoadText("KifuLoad.failed"));
         } else {
@@ -4828,12 +4881,11 @@ public class LizzieFrame extends JFrame {
           resetMovelistFrameandAnalysisFrame();
         }
         setVisible(true);
-        if (forceAutoQuickAnalyzeAfterLoad) {
-          scheduleResumeAnalysisAfterLoad(
-              resumeDelayMillis, this::resumeAnalysisAfterDownloadedKifuLoad);
-        } else {
-          scheduleResumeAnalysisAfterLoad(resumeDelayMillis);
-        }
+        scheduleEngineSyncAndResumeAfterKifuLoad(
+            resumeDelayMillis,
+            forceAutoQuickAnalyzeAfterLoad
+                ? this::resumeAnalysisAfterDownloadedKifuLoad
+                : this::resumeAnalysisAfterLoad);
         refresh();
         if (showFeedback) {
           finishKifuLoad(afterLoad);
@@ -4995,10 +5047,11 @@ public class LizzieFrame extends JFrame {
     try {
       // System.out.println(file.getPath());
       boolean loaded;
-      if (file.getPath().toLowerCase().endsWith(".gib")) {
+      boolean sgfFile = !file.getPath().toLowerCase().endsWith(".gib");
+      if (!sgfFile) {
         loaded = GIBParser.load(file.getPath());
       } else {
-        loaded = SGFParser.load(file.getPath(), showHint);
+        loaded = SGFParser.load(file.getPath(), showHint, false);
       }
       if (!loaded) {
         restoreKifuLoadTemporaryState(oriSound, originalCanGoAfterload);
@@ -5029,7 +5082,14 @@ public class LizzieFrame extends JFrame {
     Lizzie.config.playSound = oriSound;
     fileNameTitle = file.getName();
     updateTitle();
-    scheduleResumeAnalysisAfterLoad(0);
+    if (file.getPath().toLowerCase().endsWith(".gib")) {
+      scheduleResumeAnalysisAfterLoad(0);
+    } else {
+      // SGFParser finalizes last-move navigation on the next EDT turn. Queue the immutable
+      // snapshot capture after that work, then restore the engine away from the UI thread.
+      SwingUtilities.invokeLater(
+          () -> scheduleEngineSyncAndResumeAfterKifuLoad(0, this::resumeAnalysisAfterLoad));
+    }
     refresh();
   }
 
@@ -5099,6 +5159,99 @@ public class LizzieFrame extends JFrame {
     Thread thread = new Thread(runnable, "lizzie-post-load-analysis");
     thread.setDaemon(true);
     thread.start();
+  }
+
+  private void scheduleEngineSyncAndResumeAfterKifuLoad(int delayMillis, Runnable action) {
+    BoardHistoryNode root = currentHistoryRoot();
+    if (root == null) {
+      cancelPendingKifuEngineSync();
+      scheduleResumeAnalysisAfterLoad(delayMillis, action);
+      return;
+    }
+    // Parsing is complete, so board navigation stays responsive while the engine catches up.
+    canGoAfterload = true;
+    pendingKifuEngineSyncRoot = root;
+    stopLoadedGameQuickAnalysisRetry();
+    Runnable submit = () -> submitKifuEngineSync(root, delayMillis, action);
+    if (stopBusyQuickAnalysisEngineBeforeLoadedKifuAnalysis(
+        () -> SwingUtilities.invokeLater(submit))) {
+      return;
+    }
+    submit.run();
+  }
+
+  private void submitKifuEngineSync(BoardHistoryNode root, int delayMillis, Runnable action) {
+    if (root == null
+        || root != currentHistoryRoot()
+        || pendingKifuEngineSyncRoot != root) {
+      return;
+    }
+    kifuEngineSyncCoordinator()
+        .submit(
+            new KifuEngineSyncCoordinator.Request() {
+              @Override
+              public boolean isCurrent() {
+                return root == currentHistoryRoot();
+              }
+
+              @Override
+              public KifuEngineSyncCoordinator.AttemptResult synchronize() {
+                if (Lizzie.board == null || Lizzie.leelaz == null || EngineManager.isEmpty) {
+                  return KifuEngineSyncCoordinator.AttemptResult.COMPLETE;
+                }
+                Optional<Board.FrozenPrimaryPosition> frozen =
+                    Lizzie.board.freezeCurrentPositionForPrimaryEngineExactRestore();
+                if (frozen.isEmpty()) {
+                  return KifuEngineSyncCoordinator.AttemptResult.RETRY;
+                }
+                Board.FrozenPrimaryPosition position = frozen.get();
+                return position.execute() && position.matchesCurrentBoardAndPrimary()
+                    ? KifuEngineSyncCoordinator.AttemptResult.COMPLETE
+                    : KifuEngineSyncCoordinator.AttemptResult.RETRY;
+              }
+
+              @Override
+              public void onRetry(RuntimeException failure, int retryCount) {
+                if (retryCount == 0) {
+                  SgfObservation.record("engine-sync", "retry", null, failure);
+                }
+              }
+
+              @Override
+              public void onSynchronized() {
+                SwingUtilities.invokeLater(
+                    () -> {
+                      if (root == currentHistoryRoot()
+                          && pendingKifuEngineSyncRoot == root) {
+                        pendingKifuEngineSyncRoot = null;
+                        stopQuickAnalysisWarmupTimer();
+                        scheduleResumeAnalysisAfterLoad(delayMillis, action);
+                      }
+                    });
+              }
+            });
+  }
+
+  private synchronized KifuEngineSyncCoordinator kifuEngineSyncCoordinator() {
+    if (kifuEngineSyncCoordinator == null) {
+      kifuEngineSyncCoordinator = new KifuEngineSyncCoordinator();
+    }
+    return kifuEngineSyncCoordinator;
+  }
+
+  private synchronized void cancelPendingKifuEngineSync() {
+    pendingKifuEngineSyncRoot = null;
+    if (kifuEngineSyncCoordinator != null) {
+      kifuEngineSyncCoordinator.cancel();
+    }
+  }
+
+  public synchronized void shutdownKifuEngineSyncCoordinator() {
+    pendingKifuEngineSyncRoot = null;
+    if (kifuEngineSyncCoordinator != null) {
+      kifuEngineSyncCoordinator.close();
+      kifuEngineSyncCoordinator = null;
+    }
   }
 
   private BufferedImage cachedImage;
@@ -15144,6 +15297,9 @@ public class LizzieFrame extends JFrame {
   }
 
   public void onMainEnginePonder() {
+    if (loadedGameQuickAnalysisOwnsAnalysisResources()) {
+      return;
+    }
     releaseSecondaryAnalysisResourcesForForeground();
     TrackingAnalysisController controller = trackingAnalysisController;
     if (controller == null) {
@@ -19902,7 +20058,9 @@ public class LizzieFrame extends JFrame {
         isQuickAnalysisWarmupContextEligible(requiresAutoAnalyze),
         dependsOnPrimary,
         primaryLoaded,
-        primaryFailed);
+        primaryFailed,
+        pendingKifuEngineSyncRoot != null
+            && pendingKifuEngineSyncRoot == currentHistoryRoot());
   }
 
   static boolean quickAnalysisDependsOnPrimary(
@@ -19918,10 +20076,20 @@ public class LizzieFrame extends JFrame {
       boolean dependsOnPrimary,
       boolean primaryLoaded,
       boolean primaryFailed) {
+    return decideQuickAnalysisWarmup(
+        contextEligible, dependsOnPrimary, primaryLoaded, primaryFailed, false);
+  }
+
+  static QuickAnalysisWarmupAction decideQuickAnalysisWarmup(
+      boolean contextEligible,
+      boolean dependsOnPrimary,
+      boolean primaryLoaded,
+      boolean primaryFailed,
+      boolean kifuEngineSyncPending) {
     if (!contextEligible || (dependsOnPrimary && primaryFailed)) {
       return QuickAnalysisWarmupAction.STOP;
     }
-    if (dependsOnPrimary && !primaryLoaded) {
+    if (kifuEngineSyncPending || (dependsOnPrimary && !primaryLoaded)) {
       return QuickAnalysisWarmupAction.WAIT_FOR_PRIMARY;
     }
     return QuickAnalysisWarmupAction.START;
@@ -20141,6 +20309,14 @@ public class LizzieFrame extends JFrame {
       return;
     }
     resumeForegroundAnalysisForCurrentPosition();
+  }
+
+  private boolean loadedGameQuickAnalysisOwnsAnalysisResources() {
+    BoardHistoryNode root = loadedGameQuickAnalysisRoot;
+    return loadedGameQuickAnalysisActive
+        && root != null
+        && root == currentHistoryRoot()
+        && shouldAutoQuickAnalyzeLoadedGame();
   }
 
   public boolean ensureAnalysisResumedAfterSyncLoad() {

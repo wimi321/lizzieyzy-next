@@ -49,10 +49,19 @@ public class SGFParser {
   // static boolean oriEmpty = false;
 
   public static boolean load(String filename, boolean showHint) throws IOException {
+    return load(filename, showHint, true);
+  }
+
+  public static boolean load(String filename, boolean showHint, boolean syncPrimaryEngine)
+      throws IOException {
     // Clear the board
     isExtraMode2 = false;
     Lizzie.board.isLoadingFile = true;
-    Lizzie.board.clear(false);
+    if (syncPrimaryEngine) {
+      Lizzie.board.clear(false);
+    } else {
+      Lizzie.board.clearForSgfLoadWithoutPrimaryEngineForwarding();
+    }
     File file = new File(filename);
     if (!file.exists() || !file.canRead()) {
       SgfObservation.record("open", "unreadable", filename, null);
@@ -89,7 +98,7 @@ public class SGFParser {
             if (Lizzie.config.loadSgfLast)
               while (Lizzie.board.nextMove(false))
                 ;
-            if (returnValue) syncPrimaryEngineAfterSgfLoad();
+            if (returnValue && syncPrimaryEngine) syncPrimaryEngineAfterSgfLoad();
             Lizzie.board.clearAfterMove();
             if (isExtraMode2
                 && !Lizzie.config.isDoubleEngineMode()
@@ -112,8 +121,16 @@ public class SGFParser {
   }
 
   public static boolean loadFromString(String sgfString) {
+    return loadFromString(sgfString, true);
+  }
+
+  public static boolean loadFromString(String sgfString, boolean syncPrimaryEngine) {
     // Clear the board
-    Lizzie.board.clear(false);
+    if (syncPrimaryEngine) {
+      Lizzie.board.clear(false);
+    } else {
+      Lizzie.board.clearForSgfLoadWithoutPrimaryEngineForwarding();
+    }
     isExtraMode2 = false;
     Lizzie.board.isLoadingFile = true;
     boolean result = parse(sgfString);
@@ -125,7 +142,7 @@ public class SGFParser {
     if (Lizzie.config.loadSgfLast)
       while (Lizzie.board.nextMove(false))
         ;
-    if (result) syncPrimaryEngineAfterSgfLoad();
+    if (result && syncPrimaryEngine) syncPrimaryEngineAfterSgfLoad();
     Lizzie.board.isLoadingFile = false;
     if (isExtraMode2 && !Lizzie.config.isDoubleEngineMode() && !Lizzie.config.isAutoAna) {
       int ret =
