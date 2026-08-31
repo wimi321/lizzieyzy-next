@@ -667,6 +667,72 @@ class BoardNodeKindHistoryPipelineTest {
   }
 
   @Test
+  void deferredFileLoadKeepsNavigationIsolatedUntilAsyncFinalization() throws Exception {
+    TestEnvironment env = TestEnvironment.open();
+    BoardRenderer previousBoardRenderer = LizzieFrame.boardRenderer;
+    Path sgf = Files.createTempFile("lizzie-deferred-last-move-", ".sgf");
+    try {
+      LizzieFrame.boardRenderer = new BoardRenderer(false);
+      TrackingLeelaz engine = (TrackingLeelaz) Lizzie.leelaz;
+      activatePrimaryEngine(engine);
+      Lizzie.config.loadSgfLast = true;
+      Files.writeString(sgf, "(;SZ[3];B[aa];W[ba];B[bb])");
+      engine.recordedCommands().clear();
+
+      assertTrue(SGFParser.load(sgf.toString(), false, false));
+      SwingUtilities.invokeAndWait(() -> {});
+
+      assertEquals(3, Lizzie.board.getHistory().getData().moveNumber);
+      assertFalse(Lizzie.board.isLoadingFile, "the asynchronous file finalizer must close loading");
+      assertTrue(
+          engine.recordedCommands().isEmpty(),
+          "deferred file loading must not replay last-move navigation onto the previous engine: "
+              + engine.recordedCommands());
+    } finally {
+      Files.deleteIfExists(sgf);
+      LizzieFrame.boardRenderer = previousBoardRenderer;
+      env.close();
+    }
+  }
+
+  @Test
+  void failedDeferredLoadsRestorePreviousBoardWithoutTouchingPrimaryEngine() throws Exception {
+    TestEnvironment env = TestEnvironment.open();
+    BoardRenderer previousBoardRenderer = LizzieFrame.boardRenderer;
+    try {
+      LizzieFrame.boardRenderer = new BoardRenderer(false);
+      TrackingLeelaz engine = (TrackingLeelaz) Lizzie.leelaz;
+      activatePrimaryEngine(engine);
+      BoardHistoryList previous = SGFParser.parseSgf("(;SZ[3];B[aa];W[bb])", false);
+      while (previous.next().isPresent()) {}
+      BoardHistoryNode previousNode = previous.getCurrentHistoryNode();
+      Lizzie.board.setHistory(previous);
+      engine.recordedCommands().clear();
+
+      assertFalse(SGFParser.loadFromString("not an sgf", false));
+      assertSame(previous, Lizzie.board.getHistory());
+      assertSame(previousNode, Lizzie.board.getHistory().getCurrentHistoryNode());
+      assertFalse(Lizzie.board.isLoadingFile);
+      assertTrue(engine.recordedCommands().isEmpty());
+
+      Path missing =
+          Path.of(
+              System.getProperty("java.io.tmpdir"),
+              "lizzie-missing-" + System.nanoTime() + ".sgf");
+      assertFalse(SGFParser.load(missing.toString(), false, false));
+      assertSame(previous, Lizzie.board.getHistory());
+      assertSame(previousNode, Lizzie.board.getHistory().getCurrentHistoryNode());
+      assertFalse(Lizzie.board.isLoadingFile);
+      assertTrue(
+          engine.recordedCommands().isEmpty(),
+          "a failed deferred load must leave the previous primary position untouched");
+    } finally {
+      LizzieFrame.boardRenderer = previousBoardRenderer;
+      env.close();
+    }
+  }
+
+  @Test
   void preFirstMoveStandaloneSetupNodeStaysIndependentSnapshot() throws Exception {
     TestEnvironment env = TestEnvironment.open();
     try {

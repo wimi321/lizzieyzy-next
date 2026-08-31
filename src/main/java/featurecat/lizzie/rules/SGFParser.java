@@ -54,70 +54,85 @@ public class SGFParser {
 
   public static boolean load(String filename, boolean showHint, boolean syncPrimaryEngine)
       throws IOException {
-    // Clear the board
     isExtraMode2 = false;
+    Board.ClearStateSnapshot rollbackState =
+        syncPrimaryEngine ? null : Lizzie.board.captureClearState();
+    boolean finalizerScheduled = false;
     Lizzie.board.isLoadingFile = true;
-    if (syncPrimaryEngine) {
-      Lizzie.board.clear(false);
-    } else {
-      Lizzie.board.clearForSgfLoadWithoutPrimaryEngineForwarding();
-    }
-    File file = new File(filename);
-    if (!file.exists() || !file.canRead()) {
-      SgfObservation.record("open", "unreadable", filename, null);
-      return false;
-    }
-
-    String encoding = EncodingDetector.detect(filename);
-    String value;
-    try (FileInputStream fp = new FileInputStream(file);
-        InputStreamReader reader =
-            new InputStreamReader(fp, encoding.equals("WINDOWS-1252") ? "GB18030" : encoding)) {
-      StringBuilder builder = new StringBuilder();
-      while (reader.ready()) {
-        builder.append((char) reader.read());
+    try {
+      if (syncPrimaryEngine) {
+        Lizzie.board.clear(false);
+      } else {
+        Lizzie.board.clearForSgfLoadWithoutPrimaryEngineForwarding();
       }
-      value = builder.toString();
-    }
-    if (value.isEmpty()) {
-      Lizzie.board.isLoadingFile = false;
-      SgfObservation.record("open", "empty", filename, null);
-      return false;
-    }
+      File file = new File(filename);
+      if (!file.exists() || !file.canRead()) {
+        SgfObservation.record("open", "unreadable", filename, null);
+        return false;
+      }
 
-    boolean returnValue = parse(value);
-    SgfObservation.record("open", returnValue ? "ok" : "failed", filename, null);
-    if (returnValue) {
+      String encoding = EncodingDetector.detect(filename);
+      String value;
+      try (FileInputStream fp = new FileInputStream(file);
+          InputStreamReader reader =
+              new InputStreamReader(fp, encoding.equals("WINDOWS-1252") ? "GB18030" : encoding)) {
+        StringBuilder builder = new StringBuilder();
+        while (reader.ready()) {
+          builder.append((char) reader.read());
+        }
+        value = builder.toString();
+      }
+      if (value.isEmpty()) {
+        SgfObservation.record("open", "empty", filename, null);
+        return false;
+      }
+
+      boolean returnValue = parse(value);
+      SgfObservation.record("open", returnValue ? "ok" : "failed", filename, null);
+      if (!returnValue) {
+        return false;
+      }
       applySgfKomiForSetupGameWhenReadKomiDisabled();
       discardImportedAnalysisIfGameKomiDiffersFromEngineDefault();
-    }
-    Lizzie.board.isLoadingFile = false;
-    SwingUtilities.invokeLater(
-        new Runnable() {
-          public void run() {
-            if (Lizzie.config.loadSgfLast)
-              while (Lizzie.board.nextMove(false))
-                ;
-            if (returnValue && syncPrimaryEngine) syncPrimaryEngineAfterSgfLoad();
-            Lizzie.board.clearAfterMove();
-            if (isExtraMode2
-                && !Lizzie.config.isDoubleEngineMode()
-                && !Lizzie.config.isAutoAna
-                && showHint) {
-              int ret =
-                  JOptionPane.showConfirmDialog(
-                      Lizzie.frame,
-                      Lizzie.resourceBundle.getString("SGFParse.doubleEngineHint"),
-                      Lizzie.resourceBundle.getString("SGFParse.doubleEngineHintTitle"),
-                      JOptionPane.OK_CANCEL_OPTION);
-              if (ret == JOptionPane.OK_OPTION) {
-                Lizzie.config.toggleExtraMode(2);
+
+      SwingUtilities.invokeLater(
+          new Runnable() {
+            public void run() {
+              try {
+                if (Lizzie.config.loadSgfLast)
+                  while (Lizzie.board.nextMove(false))
+                    ;
+                if (syncPrimaryEngine) syncPrimaryEngineAfterSgfLoad();
+                Lizzie.board.clearAfterMove();
+                if (isExtraMode2
+                    && !Lizzie.config.isDoubleEngineMode()
+                    && !Lizzie.config.isAutoAna
+                    && showHint) {
+                  int ret =
+                      JOptionPane.showConfirmDialog(
+                          Lizzie.frame,
+                          Lizzie.resourceBundle.getString("SGFParse.doubleEngineHint"),
+                          Lizzie.resourceBundle.getString("SGFParse.doubleEngineHintTitle"),
+                          JOptionPane.OK_CANCEL_OPTION);
+                  if (ret == JOptionPane.OK_OPTION) {
+                    Lizzie.config.toggleExtraMode(2);
+                  }
+                }
+              } finally {
+                Lizzie.board.isLoadingFile = false;
               }
             }
-          }
-        });
-
-    return returnValue;
+          });
+      finalizerScheduled = true;
+      return true;
+    } finally {
+      if (!finalizerScheduled) {
+        if (rollbackState != null) {
+          Lizzie.board.restoreClearState(rollbackState);
+        }
+        Lizzie.board.isLoadingFile = false;
+      }
+    }
   }
 
   public static boolean loadFromString(String sgfString) {
@@ -125,37 +140,49 @@ public class SGFParser {
   }
 
   public static boolean loadFromString(String sgfString, boolean syncPrimaryEngine) {
-    // Clear the board
-    if (syncPrimaryEngine) {
-      Lizzie.board.clear(false);
-    } else {
-      Lizzie.board.clearForSgfLoadWithoutPrimaryEngineForwarding();
-    }
     isExtraMode2 = false;
+    Board.ClearStateSnapshot rollbackState =
+        syncPrimaryEngine ? null : Lizzie.board.captureClearState();
+    boolean result = false;
+    boolean committed = false;
     Lizzie.board.isLoadingFile = true;
-    boolean result = parse(sgfString);
-    SgfObservation.record("import", result ? "ok" : "failed", null, null);
-    if (result) {
+    try {
+      if (syncPrimaryEngine) {
+        Lizzie.board.clear(false);
+      } else {
+        Lizzie.board.clearForSgfLoadWithoutPrimaryEngineForwarding();
+      }
+      result = parse(sgfString);
+      SgfObservation.record("import", result ? "ok" : "failed", null, null);
+      if (!result) {
+        return false;
+      }
       applySgfKomiForSetupGameWhenReadKomiDisabled();
       discardImportedAnalysisIfGameKomiDiffersFromEngineDefault();
-    }
-    if (Lizzie.config.loadSgfLast)
-      while (Lizzie.board.nextMove(false))
-        ;
-    if (result && syncPrimaryEngine) syncPrimaryEngineAfterSgfLoad();
-    Lizzie.board.isLoadingFile = false;
-    if (isExtraMode2 && !Lizzie.config.isDoubleEngineMode() && !Lizzie.config.isAutoAna) {
-      int ret =
-          JOptionPane.showConfirmDialog(
-              Lizzie.frame,
-              Lizzie.resourceBundle.getString("SGFParse.doubleEngineHint"),
-              Lizzie.resourceBundle.getString("SGFParse.doubleEngineHintTitle"),
-              JOptionPane.OK_CANCEL_OPTION);
-      if (ret == JOptionPane.OK_OPTION) {
-        Lizzie.config.toggleExtraMode(2);
+      if (Lizzie.config.loadSgfLast)
+        while (Lizzie.board.nextMove(false))
+          ;
+      if (syncPrimaryEngine) syncPrimaryEngineAfterSgfLoad();
+      Lizzie.board.isLoadingFile = false;
+      committed = true;
+      if (isExtraMode2 && !Lizzie.config.isDoubleEngineMode() && !Lizzie.config.isAutoAna) {
+        int ret =
+            JOptionPane.showConfirmDialog(
+                Lizzie.frame,
+                Lizzie.resourceBundle.getString("SGFParse.doubleEngineHint"),
+                Lizzie.resourceBundle.getString("SGFParse.doubleEngineHintTitle"),
+                JOptionPane.OK_CANCEL_OPTION);
+        if (ret == JOptionPane.OK_OPTION) {
+          Lizzie.config.toggleExtraMode(2);
+        }
       }
+      return true;
+    } finally {
+      if (!committed && rollbackState != null) {
+        Lizzie.board.restoreClearState(rollbackState);
+      }
+      Lizzie.board.isLoadingFile = false;
     }
-    return result;
   }
 
   private static void syncPrimaryEngineAfterSgfLoad() {

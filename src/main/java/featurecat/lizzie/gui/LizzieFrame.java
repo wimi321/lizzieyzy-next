@@ -4339,12 +4339,6 @@ public class LizzieFrame extends JFrame {
     if (deferKifuOpenUntilAutomaticQuickAnalysisRestored(this::openFile)) {
       return;
     }
-    boolean ponder = false;
-    if (Lizzie.leelaz.isPondering() || !Lizzie.leelaz.isLoaded) {
-      ponder = true;
-      Lizzie.leelaz.togglePonder();
-    }
-
     JSONObject filesystem = Lizzie.config.persisted.getJSONObject("filesystem");
     this.setAlwaysOnTop(false);
     File[] file =
@@ -4353,13 +4347,16 @@ public class LizzieFrame extends JFrame {
             filesystem.getString("last-folder"),
             false);
 
-    if (file.length > 0) loadFile(file[0], false, true);
     if (file.length > 0) {
-      curFile = file[0];
-    }
-
-    if (ponder) {
-      Lizzie.leelaz.ponder();
+      boolean resumePonder = Lizzie.leelaz.isLoaded && Lizzie.leelaz.isPondering();
+      if (resumePonder) {
+        Lizzie.leelaz.togglePonder();
+      }
+      if (loadFile(file[0], false, true)) {
+        curFile = file[0];
+      } else if (resumePonder && !Lizzie.leelaz.isPondering()) {
+        Lizzie.leelaz.ponder();
+      }
     }
     if (Lizzie.leelaz.isheatmap) Lizzie.leelaz.setHeatmap();
     this.setAlwaysOnTop(Lizzie.config.mainsalwaysontop);
@@ -4457,6 +4454,44 @@ public class LizzieFrame extends JFrame {
     private void notifySuperseded() {
       if (superseded != null) {
         superseded.run();
+      }
+    }
+  }
+
+  private static final class KifuLoadRollbackState {
+    private final File currentFile;
+    private final String title;
+    private final ReadBoard readBoard;
+    private final boolean readBoardFirstSync;
+    private final WinrateGraph winrateGraph;
+    private final double maxScoreLead;
+
+    private KifuLoadRollbackState() {
+      currentFile = curFile;
+      title = fileNameTitle;
+      readBoard = Lizzie.frame == null ? null : Lizzie.frame.readBoard;
+      readBoardFirstSync = readBoard != null && readBoard.firstSync;
+      winrateGraph = LizzieFrame.winrateGraph;
+      maxScoreLead =
+          winrateGraph == null ? 0.0 : winrateGraph.maxScoreLeadForModeHandoff();
+    }
+
+    private static KifuLoadRollbackState capture() {
+      return new KifuLoadRollbackState();
+    }
+
+    private void restore() {
+      curFile = currentFile;
+      fileNameTitle = title;
+      if (readBoard != null && Lizzie.frame != null && Lizzie.frame.readBoard == readBoard) {
+        readBoard.firstSync = readBoardFirstSync;
+      }
+      if (winrateGraph != null && LizzieFrame.winrateGraph == winrateGraph) {
+        winrateGraph.restoreMaxScoreLeadAfterFailedModeHandoff(maxScoreLead);
+      }
+      if (Lizzie.frame != null) {
+        Lizzie.frame.updateTitle();
+        Lizzie.frame.refresh();
       }
     }
   }
@@ -4888,18 +4923,22 @@ public class LizzieFrame extends JFrame {
     }
     boolean oriReadKomi = Lizzie.config.readKomi;
     boolean loaded = false;
+    boolean boardLoaded = false;
+    KifuLoadRollbackState rollbackState = KifuLoadRollbackState.capture();
     try {
       if (showFeedback) {
         updateKifuLoad(kifuLoadText("KifuLoad.parsing"));
       }
       Lizzie.config.readKomi = readKomi;
       if (!SGFParser.loadFromString(sgfContent, false)) {
+        rollbackState.restore();
         if (showFeedback) {
           failKifuLoad(kifuLoadText("KifuLoad.failed"));
         } else {
           showKifuLoadError(null);
         }
       } else {
+        boardLoaded = true;
         if (showFeedback) {
           updateKifuLoad(kifuLoadText("KifuLoad.refreshing"));
         }
@@ -4922,6 +4961,9 @@ public class LizzieFrame extends JFrame {
         loaded = true;
       }
     } catch (Exception e) {
+      if (!boardLoaded) {
+        rollbackState.restore();
+      }
       SgfObservation.record("import", "failed", null, e);
       if (showFeedback) {
         failKifuLoad(kifuLoadText("KifuLoad.failed") + e.getMessage());
@@ -5054,13 +5096,13 @@ public class LizzieFrame extends JFrame {
     }
   }
 
-  public void loadFile(File file, boolean fromTemp, boolean showHint) {
+  public boolean loadFile(File file, boolean fromTemp, boolean showHint) {
     if (EngineGamePresentation.current().startingOrPlaying() || isPlayingAgainstLeelaz || isAnaPlayingAgainstLeelaz) {
       Utils.showMsg(Lizzie.resourceBundle.getString("LizzieFrame.openFileFailed.inGame"));
-      return;
+      return false;
     }
     if (deferUntilHumanSlExit(() -> loadFile(file, fromTemp, showHint))) {
-      return;
+      return true;
     }
     boolean oriSound = Lizzie.config.playSound;
     boolean originalCanGoAfterload = canGoAfterload;
@@ -5071,6 +5113,7 @@ public class LizzieFrame extends JFrame {
     //        || file.getPath().toLowerCase().endsWith(".gib"))) {
     //      file = new File(file.getPath() + ".sgf");
     //    }
+    KifuLoadRollbackState rollbackState = null;
     try {
       // System.out.println(file.getPath());
       boolean loaded;
@@ -5078,12 +5121,16 @@ public class LizzieFrame extends JFrame {
       if (!sgfFile) {
         loaded = GIBParser.load(file.getPath());
       } else {
+        rollbackState = KifuLoadRollbackState.capture();
         loaded = SGFParser.load(file.getPath(), showHint, false);
       }
       if (!loaded) {
+        if (rollbackState != null) {
+          rollbackState.restore();
+        }
         restoreKifuLoadTemporaryState(oriSound, originalCanGoAfterload);
         showOpenFileFailedMessageLater();
-        return;
+        return false;
       }
 
       if (!fromTemp) {
@@ -5093,10 +5140,13 @@ public class LizzieFrame extends JFrame {
           filesystem.put("last-folder", file.getParent());
         }
       }
-    } catch (IOException err) {
+    } catch (IOException | RuntimeException err) {
+      if (rollbackState != null) {
+        rollbackState.restore();
+      }
       restoreKifuLoadTemporaryState(oriSound, originalCanGoAfterload);
       showOpenFileFailedMessageLater();
-      return;
+      return false;
     }
     scheduleMovelistRefreshAfterKifuLoad();
     requestProblemListRefresh();
@@ -5118,6 +5168,7 @@ public class LizzieFrame extends JFrame {
           () -> scheduleEngineSyncAndResumeAfterKifuLoad(0, this::resumeAnalysisAfterLoad));
     }
     refresh();
+    return true;
   }
 
   public void scheduleResumeAnalysisAfterLoad() {
