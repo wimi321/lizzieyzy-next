@@ -16,4 +16,8 @@ public final class ConfigTestHelper {
     return Config.createBootstrappedForTests(
         Objects.requireNonNull(runtimeWorkDirectory, "runtimeWorkDirectory").toFile());
   }
+
+  public static void dropPersistedWinrateGraphMode(Config config) {
+    Objects.requireNonNull(config, "config").dropPersistedWinrateGraphMode();
+  }
 }

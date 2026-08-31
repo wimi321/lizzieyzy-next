@@ -1,9 +1,11 @@
 package featurecat.lizzie.analysis;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import featurecat.lizzie.Config;
 import featurecat.lizzie.Lizzie;
@@ -49,6 +51,19 @@ class MoveDataParseTest {
     assertNull(move.movesEstimateArray);
     assertInstanceOf(ArrayList.class, move.variation, "variation must not be a subList view");
     assertInstanceOf(ArrayList.class, move.pvVisits, "pvVisits must not be a subList view");
+  }
+
+  @Test
+  void distinguishesSaiAndSayuriScorePerspectives() {
+    MoveData sai =
+        MoveData.fromInfoSai("move D4 visits 1 winrate 5000 prior 1000 order 0 pv D4", false);
+    MoveData sayuri =
+        MoveData.fromInfoSai(
+            "move D4 visits 1 winrate 5000 scoreLead 4.0 prior 1000 order 0 pv D4", true);
+
+    assertTrue(sai.scoreMeanIsBlackPerspective);
+    assertFalse(sayuri.scoreMeanIsBlackPerspective);
+    assertEquals(4.0, sayuri.scoreMean, 1e-9);
   }
 
   @Test

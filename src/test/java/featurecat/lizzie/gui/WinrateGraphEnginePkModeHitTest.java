@@ -1,11 +1,13 @@
 package featurecat.lizzie.gui;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import featurecat.lizzie.AppLocale;
 import featurecat.lizzie.Config;
 import featurecat.lizzie.Lizzie;
 import featurecat.lizzie.analysis.Leelaz;
@@ -100,7 +102,7 @@ class WinrateGraphEnginePkModeHitTest {
   }
 
   @Test
-  void pendingCurrentMoveUsesItsOwnColumnWithoutVerticalGuideInDualCurveMode()
+  void pendingCurrentMoveUsesItsOwnColumnWithoutVerticalGuide()
       throws Exception {
     TestEnvironment env = TestEnvironment.open();
     try {
@@ -185,49 +187,12 @@ class WinrateGraphEnginePkModeHitTest {
     }
   }
 
-  @Test
-  void modeOneClickAndDragUseRenderedWhiteDotPixel() throws Exception {
-    TestEnvironment env = TestEnvironment.open();
-    try {
-      RenderFixture fixture = modeOneFixture();
-      EngineGameSnapshotFixtures.publishIdle();
-      fixture.board.isPkBoard = false;
-
-      int[] pixel =
-          renderedModeOneWhiteDotPixel(fixture.graph, fixture.target, fixture.whiteDotWinrate);
-      clickAndDragShouldReachTarget(fixture, pixel);
-    } finally {
-      env.close();
-    }
-  }
-
-  @Test
-  void modeOneHoverUsesRenderedWhiteDotPixel() throws Exception {
-    TestEnvironment env = TestEnvironment.open();
-    try {
-      RenderFixture fixture = modeOneFixture();
-      EngineGameSnapshotFixtures.publishIdle();
-      fixture.board.isPkBoard = false;
-
-      int[] pixel =
-          renderedModeOneWhiteDotPixel(fixture.graph, fixture.target, fixture.whiteDotWinrate);
-      boolean handled = fixture.frame.processMouseMoveOnWinrateGraph(pixel[0], pixel[1]);
-
-      assertTrue(handled, "hover should consume the rendered white-dot pixel in mode 1.");
-      assertSame(
-          fixture.target,
-          fixture.graph.mouseOverNode,
-          "hover should resolve the same rendered white-dot target node as click and drag.");
-    } finally {
-      env.close();
-    }
-  }
 
   @Test
   void engineGameSnapshotGapBoundaryUsesRealColumnsAndConsistentHit() throws Exception {
     TestEnvironment env = TestEnvironment.open();
     try {
-      SnapshotGapFixture fixture = snapshotGapFixture(0);
+      SnapshotGapFixture fixture = snapshotGapFixture();
       fixture.renderFixture.board.isPkBoard = false;
       EngineGameSnapshotFixtures.publishPlaying();
       assertSnapshotGapBoundaryHitConsistency(fixture, "engine game");
@@ -240,7 +205,7 @@ class WinrateGraphEnginePkModeHitTest {
   void pkSnapshotGapBoundaryUsesRealColumnsAndConsistentHit() throws Exception {
     TestEnvironment env = TestEnvironment.open();
     try {
-      SnapshotGapFixture fixture = snapshotGapFixture(0);
+      SnapshotGapFixture fixture = snapshotGapFixture();
       fixture.renderFixture.board.isPkBoard = true;
       EngineGameSnapshotFixtures.publishIdle();
       assertSnapshotGapBoundaryHitConsistency(fixture, "pk");
@@ -250,37 +215,37 @@ class WinrateGraphEnginePkModeHitTest {
   }
 
   @Test
-  void modeOneSnapshotGapBoundaryUsesRealColumnsAndConsistentHit() throws Exception {
+  void ordinaryAnalysisSnapshotGapBoundaryUsesRealColumnsAndConsistentHit() throws Exception {
     TestEnvironment env = TestEnvironment.open();
     try {
-      SnapshotGapFixture fixture = snapshotGapFixture(1);
+      SnapshotGapFixture fixture = snapshotGapFixture();
       fixture.renderFixture.board.isPkBoard = false;
       EngineGameSnapshotFixtures.publishIdle();
-      assertSnapshotGapBoundaryHitConsistency(fixture, "mode 1");
+      assertSnapshotGapBoundaryHitConsistency(fixture, "ordinary analysis");
     } finally {
       env.close();
     }
   }
 
   @Test
-  void modeOneZeroPlayoutSnapshotBlankPixelsStillScrubToBoundaryColumn() throws Exception {
+  void ordinaryAnalysisZeroPlayoutSnapshotBlankPixelsStillScrubToBoundaryColumn() throws Exception {
     TestEnvironment env = TestEnvironment.open();
     try {
-      SnapshotGapFixture fixture = snapshotGapFixture(1);
+      SnapshotGapFixture fixture = snapshotGapFixture();
       fixture.renderFixture.board.isPkBoard = false;
       EngineGameSnapshotFixtures.publishIdle();
       WinrateGraph graph = fixture.renderFixture.graph;
       BufferedImage layer = renderGraphLayer(graph);
       int[] anchor =
-          renderedModeOneWhiteDotPixel(
-              graph, fixture.snapshotBoundary, fixture.renderFixture.whiteDotWinrate);
-      assertNotNull(anchor, "mode 1 should keep a snapshot boundary anchor point.");
+          renderedModeZeroDotPixel(
+              graph, fixture.snapshotBoundary, fixture.renderFixture.targetWinrate);
+      assertNotNull(anchor, "ordinary analysis should keep a snapshot boundary anchor point.");
       int[] blankPixel =
           blankPixelResolvingToNode(graph, fixture.snapshotBoundary, layer, anchor, 8);
       assertSame(
           fixture.snapshotBoundary,
           graph.resolveMoveTargetNode(blankPixel[0], blankPixel[1]),
-          "mode 1 zero-playout snapshot should scrub from blank graph pixels to its boundary column.");
+          "ordinary analysis zero-playout snapshot should scrub from blank graph pixels to its boundary column.");
     } finally {
       env.close();
     }
@@ -384,20 +349,149 @@ class WinrateGraphEnginePkModeHitTest {
     }
   }
 
+
   @Test
-  void customMissColorPaintsModeOneWhiteLineAndDot() throws Exception {
+  void engineGameInterleavedWinrateLinesDoNotUseSingleCurveAreaFill() throws Exception {
     TestEnvironment env = TestEnvironment.open();
     try {
-      Lizzie.config.winrateMissLineColor = CUSTOM_MISS_COLOR;
-      RenderFixture fixture = modeOneFixture();
+      RenderFixture fixture = modeZeroFixture();
+      fixture.board.isPkBoard = false;
+      EngineGameSnapshotFixtures.publishPlaying();
+
+      Lizzie.config.showWinrateGraphFill = true;
+      BufferedImage fillOn = renderLayers(fixture.graph).background;
+      Lizzie.config.showWinrateGraphFill = false;
+      BufferedImage fillOff = renderLayers(fixture.graph).background;
+
+      assertArrayEquals(
+          fillOff.getRGB(0, 0, RENDER_WIDTH, RENDER_HEIGHT, null, 0, RENDER_WIDTH),
+          fillOn.getRGB(0, 0, RENDER_WIDTH, RENDER_HEIGHT, null, 0, RENDER_WIDTH),
+          "two interleaved engine polylines should stay unfilled.");
+    } finally {
+      env.close();
+    }
+  }
+
+  @Test
+  void ordinaryScoreLeadGapConnectorDoesNotFillWhileAdjacentAnalyzedConnectorDoes()
+      throws Exception {
+    TestEnvironment env = TestEnvironment.open();
+    try {
+      RenderFixture fixture = ordinaryScoreLeadGapFixture();
       fixture.board.isPkBoard = false;
       EngineGameSnapshotFixtures.publishIdle();
+      Lizzie.leelaz.isKatago = true;
+      Lizzie.config.showWinrateLine = false;
+      Lizzie.config.showScoreLeadLine = true;
+      Lizzie.config.showWinrateGraphFill = true;
+      Lizzie.config.scoreMeanLineColor = new Color(255, 220, 80);
+      Lizzie.config.scoreLeadStrokeWidth = 2.0f;
 
-      RenderLayers layers = renderLayers(fixture.graph);
-      int[] dot =
-          renderedModeOneWhiteDotPixel(fixture.graph, fixture.target, fixture.whiteDotWinrate);
+      BufferedImage fillOn = renderLayers(fixture.graph).background;
+      int xMove1 = graphPointX(fixture.graph, 1);
+      int xMove2 = graphPointX(fixture.graph, 2);
+      int xMove8 = graphPointX(fixture.graph, 8);
 
-      assertColorNear(layers.winrate, dot, CUSTOM_MISS_COLOR, 3);
+      Lizzie.config.showWinrateGraphFill = false;
+      BufferedImage fillOff = renderLayers(fixture.graph).background;
+
+      assertTrue(
+          backgroundDiffersBetweenX(fillOn, fillOff, xMove1, xMove2),
+          "adjacent analyzed score segment should still fill.");
+      assertFalse(
+          backgroundDiffersBetweenX(fillOn, fillOff, xMove2, xMove8),
+          "score connector that spans a missing-analysis gap should stay unfilled.");
+    } finally {
+      env.close();
+    }
+  }
+
+  @Test
+  void whiteKataGoPkWhiteToPlayRawScoreLeadRendersFromBlackPerspective() throws Exception {
+    TestEnvironment env = TestEnvironment.open();
+    try {
+      RenderFixture fixture = whiteKataGoPkWhiteToPlayScoreFixture(4.0, false);
+      EngineGameSnapshotFixtures.publishIdle();
+      Lizzie.config.showScoreLeadLine = true;
+      Lizzie.config.showWinrateLine = false;
+      Lizzie.config.showKataGoScoreLeadWithKomi = false;
+      Lizzie.config.scoreMeanLineColor = new Color(220, 70, 190);
+      Lizzie.config.scoreLeadStrokeWidth = 2.0f;
+
+      assertRenderedScoreLeadIsBlackPerspective(
+          fixture.graph, fixture.current.getData(), -4.0, "W+4.0");
+    } finally {
+      env.close();
+    }
+  }
+
+  @Test
+  void saiWhiteToPlayScoreLeadIsNotNegatedTwice() throws Exception {
+    TestEnvironment env = TestEnvironment.open();
+    try {
+      BoardData sai = scoreMoveNode(0, 0, Stone.BLACK, false, 1, 1, -4.0);
+      sai.isSaiData = true;
+      sai.scoreMeanIsBlackPerspective = true;
+      assertEquals(-4.0, WinrateGraph.blackPerspectiveScoreMean(sai), 1e-9);
+
+      RenderFixture fixture = ordinaryWhiteToPlaySaiScoreFixture(-4.0);
+      EngineGameSnapshotFixtures.publishIdle();
+      Lizzie.leelaz.isKatago = true;
+      Lizzie.config.showScoreLeadLine = true;
+      Lizzie.config.showWinrateLine = false;
+      Lizzie.config.showKataGoScoreLeadWithKomi = false;
+
+      assertRenderedScoreLeadIsBlackPerspective(
+          fixture.graph, fixture.current.getData(), -4.0, "W+4.0");
+    } finally {
+      env.close();
+    }
+  }
+
+  @Test
+  void sayuriWhiteToPlayRawScoreLeadIsNegatedToBlackPerspective() throws Exception {
+    TestEnvironment env = TestEnvironment.open();
+    try {
+      BoardData sayuri = scoreMoveNode(0, 0, Stone.BLACK, false, 1, 1, 4.0);
+      sayuri.isSaiData = true;
+      sayuri.scoreMeanIsBlackPerspective = false;
+      assertEquals(-4.0, WinrateGraph.blackPerspectiveScoreMean(sayuri), 1e-9);
+
+      RenderFixture fixture = ordinaryWhiteToPlaySayuriScoreFixture(4.0);
+      EngineGameSnapshotFixtures.publishIdle();
+      Lizzie.leelaz.isKatago = true;
+      Lizzie.config.showScoreLeadLine = true;
+      Lizzie.config.showWinrateLine = false;
+      Lizzie.config.showKataGoScoreLeadWithKomi = false;
+
+      assertRenderedScoreLeadIsBlackPerspective(
+          fixture.graph, fixture.current.getData(), -4.0, "W+4.0");
+    } finally {
+      env.close();
+    }
+  }
+
+  @Test
+  void analysisCopiesPreserveScoreMeanBlackPerspective() throws Exception {
+    TestEnvironment env = TestEnvironment.open();
+    try {
+      BoardData source = scoreMoveNode(0, 0, Stone.BLACK, false, 1, 1, -4.0);
+      source.scoreMeanIsBlackPerspective = true;
+      source.scoreMeanIsBlackPerspective2 = true;
+
+      BoardData cloned = source.clone();
+      assertTrue(cloned.scoreMeanIsBlackPerspective);
+      assertTrue(cloned.scoreMeanIsBlackPerspective2);
+
+      BoardData synced = scoreMoveNode(1, 0, Stone.WHITE, true, 2, 1, 0.0);
+      synced.sync(source);
+      assertTrue(synced.scoreMeanIsBlackPerspective);
+      assertTrue(synced.scoreMeanIsBlackPerspective2);
+
+      BoardData payload = scoreMoveNode(2, 0, Stone.BLACK, false, 3, 1, 0.0);
+      payload.copyAnalysisPayloadFrom(source);
+      assertTrue(payload.scoreMeanIsBlackPerspective);
+      assertTrue(payload.scoreMeanIsBlackPerspective2);
     } finally {
       env.close();
     }
@@ -472,13 +566,13 @@ class WinrateGraphEnginePkModeHitTest {
   }
 
   @Test
-  void modeOneBlankGraphBackgroundScrubsToNearestVisibleColumn() throws Exception {
+  void ordinaryAnalysisBlankGraphBackgroundScrubsToNearestVisibleColumn() throws Exception {
     TestEnvironment env = TestEnvironment.open();
     try {
       RenderFixture fixture = modeOneFixture();
       fixture.board.isPkBoard = false;
       EngineGameSnapshotFixtures.publishIdle();
-      assertBlankGraphBackgroundScrubsToNearestVisibleColumn(fixture, "mode 1");
+      assertBlankGraphBackgroundScrubsToNearestVisibleColumn(fixture, "ordinary analysis");
     } finally {
       env.close();
     }
@@ -650,7 +744,79 @@ class WinrateGraphEnginePkModeHitTest {
     history.setHead(current);
     board.setHistory(history);
 
-    return setupGraph(board, current, target, 82, 0, 0);
+    return setupGraph(board, current, target, 82);
+  }
+
+  private static RenderFixture ordinaryScoreLeadGapFixture() throws Exception {
+    TrackingBoard board = allocate(TrackingBoard.class);
+    board.startStonelist = new ArrayList<>();
+    board.hasStartStone = false;
+    board.isKataBoard = true;
+
+    BoardHistoryList history = new BoardHistoryList(BoardData.empty(BOARD_SIZE, BOARD_SIZE));
+    history.add(scoreMoveNode(0, 0, Stone.BLACK, false, 1, 1, -8.0));
+    history.add(scoreMoveNode(1, 0, Stone.WHITE, true, 2, 1, 8.0));
+    history.add(scoreMoveNode(2, 0, Stone.BLACK, false, 3, 0, 0.0));
+    history.add(scoreMoveNode(0, 1, Stone.WHITE, true, 4, 0, 0.0));
+    history.add(scoreMoveNode(1, 1, Stone.BLACK, false, 5, 0, 0.0));
+    history.add(scoreMoveNode(2, 1, Stone.WHITE, true, 6, 0, 0.0));
+    history.add(scoreMoveNode(0, 2, Stone.BLACK, false, 7, 0, 0.0));
+    history.add(scoreMoveNode(1, 2, Stone.WHITE, true, 8, 1, 8.0));
+    BoardHistoryNode current = history.getCurrentHistoryNode();
+    history.setHead(current);
+    board.setHistory(history);
+
+    return setupGraph(board, current, current, 50);
+  }
+
+  private static RenderFixture whiteKataGoPkWhiteToPlayScoreFixture(
+      double rawScoreMean, boolean saiData) throws Exception {
+    TrackingBoard board = allocate(TrackingBoard.class);
+    board.startStonelist = new ArrayList<>();
+    board.hasStartStone = false;
+
+    BoardHistoryList history = new BoardHistoryList(BoardData.empty(BOARD_SIZE, BOARD_SIZE));
+    history.add(scoreMoveNode(0, 0, Stone.BLACK, false, 1, 1, 1.0));
+    history.add(scoreMoveNode(1, 0, Stone.WHITE, true, 2, 1, 1.0));
+    history.add(scoreMoveNode(2, 0, Stone.BLACK, false, 3, 1, rawScoreMean));
+    BoardHistoryNode current = history.getCurrentHistoryNode();
+    current.getData().isSaiData = saiData;
+    history.setHead(current);
+    board.setHistory(history);
+    board.isPkBoard = true;
+    board.isPkBoardKataW = true;
+
+    return setupGraph(board, current, current, 50);
+  }
+
+  private static RenderFixture ordinaryWhiteToPlaySaiScoreFixture(double rawScoreMean)
+      throws Exception {
+    return ordinaryWhiteToPlaySaiLikeScoreFixture(rawScoreMean, true);
+  }
+
+  private static RenderFixture ordinaryWhiteToPlaySayuriScoreFixture(double rawScoreMean)
+      throws Exception {
+    return ordinaryWhiteToPlaySaiLikeScoreFixture(rawScoreMean, false);
+  }
+
+  private static RenderFixture ordinaryWhiteToPlaySaiLikeScoreFixture(
+      double rawScoreMean, boolean scoreMeanIsBlackPerspective) throws Exception {
+    TrackingBoard board = allocate(TrackingBoard.class);
+    board.startStonelist = new ArrayList<>();
+    board.hasStartStone = false;
+    board.isKataBoard = true;
+
+    BoardHistoryList history = new BoardHistoryList(BoardData.empty(BOARD_SIZE, BOARD_SIZE));
+    history.add(scoreMoveNode(0, 0, Stone.BLACK, false, 1, 1, 1.0));
+    history.add(scoreMoveNode(1, 0, Stone.WHITE, true, 2, 1, 1.0));
+    history.add(scoreMoveNode(2, 0, Stone.BLACK, false, 3, 1, rawScoreMean));
+    BoardHistoryNode current = history.getCurrentHistoryNode();
+    current.getData().isSaiData = true;
+    current.getData().scoreMeanIsBlackPerspective = scoreMeanIsBlackPerspective;
+    history.setHead(current);
+    board.setHistory(history);
+
+    return setupGraph(board, current, current, 50);
   }
 
   private static RenderFixture modeOneFixture() throws Exception {
@@ -670,7 +836,7 @@ class WinrateGraphEnginePkModeHitTest {
     history.setHead(current);
     board.setHistory(history);
 
-    return setupGraph(board, current, target, 80, 1, 80);
+    return setupGraph(board, current, target, 80);
   }
 
   private static RenderFixture modeZeroDuplicatedColumnFixture() throws Exception {
@@ -690,10 +856,10 @@ class WinrateGraphEnginePkModeHitTest {
     history.setHead(current);
     board.setHistory(history);
 
-    return setupGraph(board, current, target, 82, 0, 0);
+    return setupGraph(board, current, target, 82);
   }
 
-  private static SnapshotGapFixture snapshotGapFixture(int mode) throws Exception {
+  private static SnapshotGapFixture snapshotGapFixture() throws Exception {
     TrackingBoard board = allocate(TrackingBoard.class);
     board.startStonelist = new ArrayList<>();
     board.hasStartStone = false;
@@ -708,7 +874,7 @@ class WinrateGraphEnginePkModeHitTest {
     history.setHead(current);
     board.setHistory(history);
 
-    RenderFixture renderFixture = setupGraph(board, current, snapshotBoundary, 50, mode, 50);
+    RenderFixture renderFixture = setupGraph(board, current, snapshotBoundary, 50);
     return new SnapshotGapFixture(renderFixture, snapshotBoundary, preGapMove);
   }
 
@@ -716,12 +882,9 @@ class WinrateGraphEnginePkModeHitTest {
       TrackingBoard board,
       BoardHistoryNode current,
       BoardHistoryNode target,
-      double targetWinrate,
-      int mode,
-      double whiteDotWinrate)
+      double targetWinrate)
       throws Exception {
     WinrateGraph graph = new WinrateGraph();
-    graph.mode = mode;
     TrackingFrame frame = allocate(TrackingFrame.class);
     javax.swing.JScrollPane commentEditPane = new javax.swing.JScrollPane();
     commentEditPane.setVisible(false);
@@ -732,13 +895,10 @@ class WinrateGraphEnginePkModeHitTest {
     Lizzie.frame = frame;
     LizzieFrame.winrateGraph = graph;
 
-    return new RenderFixture(board, frame, graph, current, target, targetWinrate, whiteDotWinrate);
+    return new RenderFixture(board, frame, graph, current, target, targetWinrate);
   }
 
   private static int[] renderedPrimaryGraphPixel(RenderFixture fixture) throws Exception {
-    if (fixture.graph.mode == 1) {
-      return renderedModeOneWhiteDotPixel(fixture.graph, fixture.target, fixture.whiteDotWinrate);
-    }
     return renderedModeZeroDotPixel(fixture.graph, fixture.target, fixture.targetWinrate);
   }
 
@@ -750,13 +910,6 @@ class WinrateGraphEnginePkModeHitTest {
     return renderedGraphPointMatchingY(graph, target, expectedY);
   }
 
-  private static int[] renderedModeOneWhiteDotPixel(
-      WinrateGraph graph, BoardHistoryNode target, double whiteDotWinrate) throws Exception {
-    renderGraphLayer(graph);
-    int[] params = (int[]) getField(graph, "params");
-    int expectedY = graphCenterY(params, whiteDotWinrate);
-    return renderedGraphPointMatchingY(graph, target, expectedY);
-  }
 
   @SuppressWarnings("unchecked")
   private static int[] renderedGraphPointMatchingY(
@@ -894,6 +1047,39 @@ class WinrateGraphEnginePkModeHitTest {
       }
     }
     throw new AssertionError("expected color in image: " + expected);
+  }
+
+  private static boolean backgroundDiffersBetweenX(
+      BufferedImage fillOn, BufferedImage fillOff, int x1, int x2) {
+    int left = Math.min(x1, x2) + 1;
+    int right = Math.max(x1, x2) - 1;
+    if (right < left) {
+      return false;
+    }
+    int minX = Math.max(0, left);
+    int maxX = Math.min(fillOn.getWidth() - 1, right);
+    int height = Math.min(fillOn.getHeight(), fillOff.getHeight());
+    for (int y = 0; y < height; y++) {
+      for (int x = minX; x <= maxX; x++) {
+        if (fillOn.getRGB(x, y) != fillOff.getRGB(x, y)) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  private static BoardData scoreMoveNode(
+      int x,
+      int y,
+      Stone color,
+      boolean blackToPlay,
+      int moveNumber,
+      int playouts,
+      double scoreMean) {
+    BoardData data = moveNode(x, y, color, blackToPlay, moveNumber, 50, playouts);
+    data.setScoreMean(scoreMean);
+    return data;
   }
 
   private static boolean hasOpaquePixel(BufferedImage image) {
@@ -1098,6 +1284,40 @@ class WinrateGraphEnginePkModeHitTest {
     return zobrist;
   }
 
+  private static void assertRenderedScoreLeadIsBlackPerspective(
+      WinrateGraph graph, BoardData data, double expectedMean, String expectedLabel)
+      throws Exception {
+    RenderLayers layers = renderLayers(graph);
+    double mean = WinrateGraph.blackPerspectiveScoreMean(data);
+    assertEquals(expectedMean, mean, 1e-9);
+    int[] params = (int[]) getField(graph, "params");
+    int midline = params[1] + params[3] / 2;
+    assertTrue(
+        hasColorInYRange(
+            layers.winrate,
+            CURRENT_SCORE_MARKER_COLOR,
+            midline + 1,
+            layers.winrate.getHeight() - 1),
+        "black-perspective white lead marker should sit below the 0 line.");
+    assertFalse(
+        hasColorInYRange(layers.winrate, CURRENT_SCORE_MARKER_COLOR, 0, midline),
+        "black-perspective white lead marker should not sit above the 0 line.");
+    assertEquals(
+        expectedLabel, WinrateGraph.formatScoreLead(mean, AppLocale.ENGLISH.loadBundle()));
+  }
+
+  private static boolean hasColorInYRange(
+      BufferedImage image, Color expected, int startY, int endY) {
+    for (int y = Math.max(0, startY); y <= Math.min(image.getHeight() - 1, endY); y++) {
+      for (int x = 0; x < image.getWidth(); x++) {
+        if (sameRgb(new Color(image.getRGB(x, y), true), expected)) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
   private static Object getField(Object target, String fieldName) throws Exception {
     Field field = target.getClass().getDeclaredField(fieldName);
     field.setAccessible(true);
@@ -1123,7 +1343,6 @@ class WinrateGraphEnginePkModeHitTest {
     private final BoardHistoryNode current;
     private final BoardHistoryNode target;
     private final double targetWinrate;
-    private final double whiteDotWinrate;
 
     private RenderFixture(
         TrackingBoard board,
@@ -1131,15 +1350,13 @@ class WinrateGraphEnginePkModeHitTest {
         WinrateGraph graph,
         BoardHistoryNode current,
         BoardHistoryNode target,
-        double targetWinrate,
-        double whiteDotWinrate) {
+        double targetWinrate) {
       this.board = board;
       this.frame = frame;
       this.graph = graph;
       this.current = current;
       this.target = target;
       this.targetWinrate = targetWinrate;
-      this.whiteDotWinrate = whiteDotWinrate;
     }
   }
 

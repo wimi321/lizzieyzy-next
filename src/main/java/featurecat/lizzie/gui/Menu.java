@@ -1370,30 +1370,6 @@ public class Menu extends JMenuBar {
     panel.add(restoreDefaultPanelSizes);
 
 
-    final JFontCheckBoxMenuItem winrateMode0 =
-        new JFontCheckBoxMenuItem(resourceBundle.getString("Menu.winrateMode0")); // ("黑方视角");
-    winrateMode0.addActionListener(
-        new ActionListener() {
-          @Override
-          public void actionPerformed(ActionEvent e) {
-            LizzieFrame.winrateGraph.mode = 0;
-            Lizzie.frame.repaint();
-          }
-        });
-    winrate.add(winrateMode0);
-
-    final JFontCheckBoxMenuItem winrateMode1 =
-        new JFontCheckBoxMenuItem(resourceBundle.getString("Menu.winrateMode1")); // ("双方视角");
-    winrateMode1.addActionListener(
-        new ActionListener() {
-          @Override
-          public void actionPerformed(ActionEvent e) {
-            LizzieFrame.winrateGraph.mode = 1;
-            Lizzie.frame.repaint();
-          }
-        });
-    winrate.add(winrateMode1);
-    winrate.addSeparator();
 
     final JFontCheckBoxMenuItem showSuggestionOrder =
         new JFontCheckBoxMenuItem(
@@ -1536,6 +1512,20 @@ public class Menu extends JMenuBar {
           }
         });
     showWinRateOrScoreLeadLine.add(showBothLine);
+
+    final JFontCheckBoxMenuItem showWinrateGraphFill =
+        new JFontCheckBoxMenuItem(resourceBundle.getString("Menu.showWinrateGraphFill"));
+    showWinrateGraphFill.addActionListener(
+        new ActionListener() {
+          @Override
+          public void actionPerformed(ActionEvent e) {
+            Lizzie.config.showWinrateGraphFill = !Lizzie.config.showWinrateGraphFill;
+            Lizzie.config.uiConfig.put(
+                "show-winrate-graph-fill", Lizzie.config.showWinrateGraphFill);
+            Lizzie.frame.refresh();
+          }
+        });
+    winrate.add(showWinrateGraphFill);
 
     final JFontCheckBoxMenuItem showBlunderBar =
         new JFontCheckBoxMenuItem(resourceBundle.getString("Menu.showBlunderBar"));
@@ -2688,13 +2678,6 @@ public class Menu extends JMenuBar {
             else showVariationOnMouse.setState(false);
             if (Lizzie.config.noRefreshOnMouseMove) noRefreshOnMouse.setState(true);
             else noRefreshOnMouse.setState(false);
-            if (LizzieFrame.winrateGraph.mode == 1) {
-              winrateMode1.setState(true);
-              winrateMode0.setState(false);
-            } else {
-              winrateMode1.setState(false);
-              winrateMode0.setState(true);
-            }
             if (Lizzie.config.showBlunderBar) showBlunderBar.setState(true);
             else showBlunderBar.setState(false);
 
@@ -2713,6 +2696,8 @@ public class Menu extends JMenuBar {
             }
             if (Lizzie.config.showMouseOverWinrateGraph) showMouseOverWinrateGraph.setState(true);
             else showMouseOverWinrateGraph.setState(false);
+            if (Lizzie.config.showWinrateGraphFill) showWinrateGraphFill.setState(true);
+            else showWinrateGraphFill.setState(false);
             if (Lizzie.config.showWinrateGraph && Lizzie.config.showLargeWinrate())
               largeWinrateGraph.setState(true);
             else largeWinrateGraph.setState(false);
