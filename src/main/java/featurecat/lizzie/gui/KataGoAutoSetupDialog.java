@@ -63,6 +63,7 @@ import java.lang.reflect.InvocationTargetException;
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
@@ -144,6 +145,8 @@ public class KataGoAutoSetupDialog extends JDialog {
   private static final int WEIGHT_RECOMMENDATION_CARD_HEIGHT = 150;
   private static final DateTimeFormatter LOCAL_WEIGHT_DATE_FORMAT =
       DateTimeFormatter.ofPattern("yyyy-MM-dd");
+  private static final DateTimeFormatter BENCHMARK_TIME_FORMAT =
+      DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm").withZone(ZoneId.systemDefault());
   private static final Pattern ELO_VALUE_PATTERN = Pattern.compile("[-+]?\\d[\\d,]*(?:\\.\\d+)?");
   private static final long ERROR_POPUP_DEDUP_MILLIS = 5000L;
   private static final int WEIGHT_SWITCH_POLL_MILLIS = 100;
@@ -189,7 +192,17 @@ public class KataGoAutoSetupDialog extends JDialog {
   private final JLabel lblTensorRtEngineValue = new JFontLabel();
   private final JLabel lblTensorRtActivationValue = new JFontLabel();
   private final JLabel lblExperimentalBackendValue = new JFontLabel();
-  private final JLabel lblBenchmarkValue = new JFontLabel();
+  private final JLabel lblBenchmarkNnValue = new JFontLabel();
+  private final JLabel lblBenchmarkNnUnit = new JFontLabel();
+  private final JLabel lblBenchmarkNnTechnical = new JFontLabel();
+  private final JLabel lblBenchmarkVisitsValue = new JFontLabel();
+  private final JLabel lblBenchmarkVisitsUnit = new JFontLabel();
+  private final JLabel lblBenchmarkVisitsTechnical = new JFontLabel();
+  private final JLabel lblBenchmarkThreadsValue = new JFontLabel();
+  private final JLabel lblBenchmarkModelValue = new JFontLabel();
+  private final JLabel lblBenchmarkBackendValue = new JFontLabel();
+  private final JLabel lblBenchmarkTimeValue = new JFontLabel();
+  private final JLabel lblBenchmarkReportStatus = new JFontLabel();
   private final JLabel lblSelectedWeightName = new JFontLabel();
   private final JLabel lblSelectedWeightMeta = new JFontLabel();
   private final JLabel lblCurrentWeightName = new JFontLabel();
@@ -282,6 +295,8 @@ public class KataGoAutoSetupDialog extends JDialog {
   private final JFontButton btnStopDownload = new JFontButton();
   private final JFontButton btnClose = new JFontButton();
   private WeightCatalogMode weightCatalogMode = WeightCatalogMode.OFFICIAL;
+  private BenchmarkDisplayState benchmarkDisplayState = BenchmarkDisplayState.IDLE;
+  private String benchmarkTransientStatus = "";
 
   public KataGoAutoSetupDialog(Window owner) {
     super(owner);
@@ -473,6 +488,8 @@ public class KataGoAutoSetupDialog extends JDialog {
 
 
   public void refreshState() {
+    benchmarkDisplayState = BenchmarkDisplayState.IDLE;
+    benchmarkTransientStatus = "";
     if (!nvidiaGpuDetectionRunning) {
       nvidiaGpuDetection = null;
     }
@@ -541,8 +558,20 @@ public class KataGoAutoSetupDialog extends JDialog {
     btnCustomWeightTab.setText(text("AutoSetup.customWeightTab"));
 
     styleButton(btnDownloadWeight, true);
-    styleButton(btnOptimizePerformance, true);
-    styleButton(btnExperimentalPerformance, false);
+    styleWeightButton(btnOptimizePerformance, WeightButtonStyle.GOLD);
+    styleWeightButton(btnExperimentalPerformance, WeightButtonStyle.OUTLINE);
+    btnOptimizePerformance.setFont(
+        btnOptimizePerformance
+            .getFont()
+            .deriveFont(Font.BOLD, btnOptimizePerformance.getFont().getSize2D() + 1f));
+    btnExperimentalPerformance.setFont(
+        btnExperimentalPerformance
+            .getFont()
+            .deriveFont(Font.BOLD, btnExperimentalPerformance.getFont().getSize2D() + 1f));
+    Dimension experimentalBenchmarkSize =
+        localizedButtonSize(btnExperimentalPerformance, 184, 46);
+    btnExperimentalPerformance.setPreferredSize(experimentalBenchmarkSize);
+    btnExperimentalPerformance.setMinimumSize(experimentalBenchmarkSize);
     styleButton(btnRefresh, false);
     styleButton(btnChooseLocalEngine, true);
     styleButton(btnRepairAnalysisConfig, false);
@@ -725,7 +754,10 @@ public class KataGoAutoSetupDialog extends JDialog {
     button.setBorderPainted(false);
     button.setOpaque(false);
     button.setRolloverEnabled(true);
-    button.setForeground(style == WeightButtonStyle.PRIMARY ? Color.WHITE : TEXT_PRIMARY);
+    button.setForeground(
+        style == WeightButtonStyle.PRIMARY || style == WeightButtonStyle.GOLD
+            ? Color.WHITE
+            : TEXT_PRIMARY);
     int height = style == WeightButtonStyle.ICON ? 42 : 40;
     int width = style == WeightButtonStyle.ICON ? 42 : button.getPreferredSize().width;
     Dimension size = new Dimension(width, height);
@@ -1259,17 +1291,186 @@ public class KataGoAutoSetupDialog extends JDialog {
   }
 
   private JPanel createBenchmarkSection() {
-    JPanel rows = createRowsPanel();
-    GridBagConstraints gbc = createRowConstraints();
-    addInfoRow(rows, gbc, text("AutoSetup.performance"), lblBenchmarkValue);
+    JPanel section = new JPanel(new BorderLayout(0, 32));
+    section.setOpaque(false);
+    section.setBorder(BorderFactory.createEmptyBorder(28, 0, 0, 0));
 
-    JTextArea benchmarkHint = createHintText(text("AutoSetup.benchmarkHint"));
-    addComponentRow(rows, gbc, text("AutoSetup.benchmarkAbout"), benchmarkHint);
+    JPanel heading = new JPanel(new BorderLayout(0, 7));
+    heading.setOpaque(false);
+    JFontLabel title = new JFontLabel(text("AutoSetup.benchmarkTitle"));
+    title.setForeground(TEXT_PRIMARY);
+    title.setFont(title.getFont().deriveFont(Font.BOLD, title.getFont().getSize2D() + 14f));
+    JTextArea subtitle = createHintText(text("AutoSetup.benchmarkSubtitle"));
+    subtitle.setFont(subtitle.getFont().deriveFont(subtitle.getFont().getSize2D() + 2f));
+    heading.add(title, BorderLayout.NORTH);
+    heading.add(subtitle, BorderLayout.CENTER);
+    section.add(heading, BorderLayout.NORTH);
 
-    JPanel actions =
-        createActionBar(FlowLayout.RIGHT, btnExperimentalPerformance, btnOptimizePerformance);
-    return createSectionCard(
-        text("AutoSetup.benchmarkTitle"), text("AutoSetup.benchmarkSubtitle"), rows, actions);
+    JPanel content = new JPanel(new BorderLayout(0, 18));
+    content.setOpaque(false);
+
+    RoundedSurfacePanel report =
+        new RoundedSurfacePanel(CARD_BG, new Color(218, 203, 177), 14, false);
+    report.setLayout(new BorderLayout(0, 10));
+    report.setBorder(BorderFactory.createEmptyBorder(18, 24, 20, 24));
+
+    JPanel statusRow = new JPanel(new BorderLayout());
+    statusRow.setOpaque(false);
+    lblBenchmarkReportStatus.setFont(
+        lblBenchmarkReportStatus
+            .getFont()
+            .deriveFont(Font.BOLD, lblBenchmarkReportStatus.getFont().getSize2D() + 2f));
+    lblBenchmarkReportStatus.setHorizontalAlignment(SwingConstants.RIGHT);
+    statusRow.add(lblBenchmarkReportStatus, BorderLayout.EAST);
+    report.add(statusRow, BorderLayout.NORTH);
+
+    JPanel nnMetric =
+        createBenchmarkMetric(
+            text("AutoSetup.benchmarkNnSpeed"),
+            lblBenchmarkNnValue,
+            lblBenchmarkNnUnit,
+            lblBenchmarkNnTechnical,
+            text("AutoSetup.benchmarkNnSpeedDescription"));
+    JPanel visitsMetric =
+        createBenchmarkMetric(
+            text("AutoSetup.benchmarkSearchSpeed"),
+            lblBenchmarkVisitsValue,
+            lblBenchmarkVisitsUnit,
+            lblBenchmarkVisitsTechnical,
+            text("AutoSetup.benchmarkSearchSpeedDescription"));
+    JPanel metadata = createBenchmarkMetadataPanel();
+    BenchmarkReportBody reportBody = new BenchmarkReportBody(nnMetric, visitsMetric, metadata);
+    report.add(reportBody, BorderLayout.CENTER);
+    content.add(report, BorderLayout.NORTH);
+
+    JPanel explanationStack = new JPanel(new BorderLayout(0, 10));
+    explanationStack.setOpaque(false);
+    JPanel explanation = new JPanel(new BorderLayout(10, 0));
+    explanation.setOpaque(false);
+    JLabel explanationIcon = new JLabel(new BenchmarkInfoIcon(ACCENT_GOLD));
+    explanationIcon.setVerticalAlignment(SwingConstants.TOP);
+    JTextArea explanationText = createHintText(text("AutoSetup.benchmarkSpeedExplanation"));
+    explanationText.setForeground(TEXT_PRIMARY);
+    explanationText.setFont(
+        explanationText.getFont().deriveFont(explanationText.getFont().getSize2D() + 1f));
+    explanation.add(explanationIcon, BorderLayout.WEST);
+    explanation.add(explanationText, BorderLayout.CENTER);
+    explanationStack.add(explanation, BorderLayout.NORTH);
+
+    JPanel comparisonNote = new JPanel(new BorderLayout(10, 0));
+    comparisonNote.setOpaque(false);
+    comparisonNote.setBorder(BorderFactory.createMatteBorder(1, 0, 0, 0, new Color(225, 213, 191)));
+    JLabel noteIcon = new JLabel(new BenchmarkInfoIcon(new Color(139, 137, 129)));
+    noteIcon.setBorder(BorderFactory.createEmptyBorder(10, 0, 0, 0));
+    JTextArea noteText = createHintText(text("AutoSetup.benchmarkComparisonNote"));
+    noteText.setFont(noteText.getFont().deriveFont(noteText.getFont().getSize2D() + 1f));
+    noteText.setBorder(BorderFactory.createEmptyBorder(10, 0, 0, 0));
+    comparisonNote.add(noteIcon, BorderLayout.WEST);
+    comparisonNote.add(noteText, BorderLayout.CENTER);
+    explanationStack.add(comparisonNote, BorderLayout.CENTER);
+
+    JPanel lower = new JPanel(new BorderLayout(0, 64));
+    lower.setOpaque(false);
+    lower.add(explanationStack, BorderLayout.CENTER);
+    lower.add(
+        createActionBar(FlowLayout.RIGHT, btnExperimentalPerformance, btnOptimizePerformance),
+        BorderLayout.SOUTH);
+    content.add(lower, BorderLayout.CENTER);
+    section.add(content, BorderLayout.CENTER);
+    return section;
+  }
+
+  private JPanel createBenchmarkMetric(
+      String title, JLabel value, JLabel unit, JLabel technical, String descriptionText) {
+    JPanel metric = new JPanel(new GridBagLayout());
+    metric.setOpaque(false);
+    GridBagConstraints gbc = new GridBagConstraints();
+    gbc.gridx = 0;
+    gbc.gridy = 0;
+    gbc.gridwidth = 2;
+    gbc.weightx = 1;
+    gbc.fill = GridBagConstraints.HORIZONTAL;
+    gbc.anchor = GridBagConstraints.WEST;
+
+    JFontLabel titleLabel = new JFontLabel(title);
+    titleLabel.setForeground(new Color(146, 99, 27));
+    titleLabel.setFont(
+        titleLabel.getFont().deriveFont(Font.BOLD, titleLabel.getFont().getSize2D() + 3f));
+    metric.add(titleLabel, gbc);
+
+    gbc.gridy++;
+    gbc.gridwidth = 1;
+    gbc.weightx = 0;
+    gbc.insets = new Insets(12, 0, 0, 0);
+    value.setForeground(TEXT_PRIMARY);
+    value.setFont(value.getFont().deriveFont(Font.BOLD, value.getFont().getSize2D() + 32f));
+    metric.add(value, gbc);
+
+    gbc.gridx = 1;
+    gbc.weightx = 1;
+    gbc.anchor = GridBagConstraints.SOUTHWEST;
+    gbc.insets = new Insets(12, 8, 6, 0);
+    unit.setForeground(TEXT_PRIMARY);
+    unit.setFont(unit.getFont().deriveFont(unit.getFont().getSize2D() + 2f));
+    metric.add(unit, gbc);
+
+    gbc.gridx = 0;
+    gbc.gridy++;
+    gbc.gridwidth = 2;
+    gbc.weightx = 1;
+    gbc.insets = new Insets(5, 0, 0, 0);
+    gbc.anchor = GridBagConstraints.WEST;
+    technical.setForeground(TEXT_SECONDARY);
+    technical.setFont(technical.getFont().deriveFont(technical.getFont().getSize2D() + 1f));
+    metric.add(technical, gbc);
+
+    gbc.gridy++;
+    gbc.insets = new Insets(10, 0, 0, 0);
+    JTextArea description = createHintText(descriptionText);
+    description.setFont(description.getFont().deriveFont(description.getFont().getSize2D() + 1f));
+    description.setPreferredSize(new Dimension(190, 38));
+    metric.add(description, gbc);
+    return metric;
+  }
+
+  private JPanel createBenchmarkMetadataPanel() {
+    JPanel metadata = new JPanel(new GridBagLayout());
+    metadata.setOpaque(false);
+    GridBagConstraints gbc = new GridBagConstraints();
+    gbc.gridx = 0;
+    gbc.gridy = 0;
+    gbc.anchor = GridBagConstraints.WEST;
+    gbc.fill = GridBagConstraints.HORIZONTAL;
+    gbc.weightx = 0;
+    addBenchmarkMetadataRow(
+        metadata, gbc, text("AutoSetup.benchmarkRecommended"), lblBenchmarkThreadsValue);
+    addBenchmarkMetadataRow(
+        metadata, gbc, text("AutoSetup.benchmarkCurrentModel"), lblBenchmarkModelValue);
+    addBenchmarkMetadataRow(
+        metadata, gbc, text("AutoSetup.benchmarkBackend"), lblBenchmarkBackendValue);
+    addBenchmarkMetadataRow(metadata, gbc, text("AutoSetup.benchmarkTime"), lblBenchmarkTimeValue);
+    return metadata;
+  }
+
+  private void addBenchmarkMetadataRow(
+      JPanel panel, GridBagConstraints base, String title, JLabel value) {
+    GridBagConstraints labelConstraints = (GridBagConstraints) base.clone();
+    labelConstraints.gridx = 0;
+    labelConstraints.weightx = 0;
+    labelConstraints.insets = new Insets(base.gridy == 0 ? 0 : 10, 0, 0, 14);
+    JFontLabel label = new JFontLabel(title);
+    label.setForeground(TEXT_PRIMARY);
+    label.setFont(label.getFont().deriveFont(Font.BOLD, label.getFont().getSize2D() + 2f));
+    panel.add(label, labelConstraints);
+
+    GridBagConstraints valueConstraints = (GridBagConstraints) base.clone();
+    valueConstraints.gridx = 1;
+    valueConstraints.weightx = 1;
+    valueConstraints.insets = new Insets(base.gridy == 0 ? 0 : 10, 0, 0, 0);
+    value.setForeground(TEXT_PRIMARY);
+    value.setFont(value.getFont().deriveFont(value.getFont().getSize2D() + 2f));
+    panel.add(value, valueConstraints);
+    base.gridy++;
   }
 
   private JPanel createFooterPanel() {
@@ -2455,24 +2656,24 @@ public class KataGoAutoSetupDialog extends JDialog {
         || !snapshot.hasEngine()
         || !snapshot.hasConfigs()
         || !snapshot.hasWeight()) {
-      lblBenchmarkValue.setText(text("AutoSetup.benchmarkUnavailable"));
-      lblBenchmarkValue.setToolTipText(null);
-      lblBenchmarkValue.setForeground(ERROR_COLOR);
+      renderBenchmarkReport(null, BenchmarkDisplayState.UNAVAILABLE, "");
       btnOptimizePerformance.setEnabled(false);
       btnExperimentalPerformance.setEnabled(false);
       return;
     }
     KataGoRuntimeHelper.BenchmarkResult result =
         KataGoRuntimeHelper.getStoredBenchmarkResult(snapshot);
-    if (result == null) {
-      lblBenchmarkValue.setText(text("AutoSetup.benchmarkMissing"));
-      lblBenchmarkValue.setToolTipText(null);
-      lblBenchmarkValue.setForeground(WARN_COLOR);
-    } else {
-      lblBenchmarkValue.setText(KataGoRuntimeHelper.formatBenchmarkResult(result));
-      lblBenchmarkValue.setToolTipText(result.summary);
-      lblBenchmarkValue.setForeground(OK_COLOR);
+    BenchmarkDisplayState displayState = benchmarkDisplayState;
+    if (displayState == BenchmarkDisplayState.IDLE) {
+      if (result == null) {
+        displayState = BenchmarkDisplayState.EMPTY;
+      } else if (result.nnEvalsPerSecond > 0.0 && result.visitsPerSecond > 0.0) {
+        displayState = BenchmarkDisplayState.COMPLETE;
+      } else {
+        displayState = BenchmarkDisplayState.LEGACY;
+      }
     }
+    renderBenchmarkReport(result, displayState, benchmarkTransientStatus);
     btnOptimizePerformance.setEnabled(
         canRunBenchmark() && activeWorkerThread == null && activeDownloadSession == null);
     btnExperimentalPerformance.setEnabled(
@@ -2480,6 +2681,152 @@ public class KataGoAutoSetupDialog extends JDialog {
             && canRunBenchmark()
             && activeWorkerThread == null
             && activeDownloadSession == null);
+  }
+
+  private void renderBenchmarkReport(
+      KataGoRuntimeHelper.BenchmarkResult result,
+      BenchmarkDisplayState displayState,
+      String transientStatus) {
+    boolean hasNn = result != null && result.nnEvalsPerSecond > 0.0;
+    boolean hasVisits = result != null && result.visitsPerSecond > 0.0;
+    renderBenchmarkMetric(
+        lblBenchmarkNnValue,
+        lblBenchmarkNnUnit,
+        lblBenchmarkNnTechnical,
+        result == null ? 0.0 : result.nnEvalsPerSecond,
+        "nnEvals/s",
+        hasNn);
+    renderBenchmarkMetric(
+        lblBenchmarkVisitsValue,
+        lblBenchmarkVisitsUnit,
+        lblBenchmarkVisitsTechnical,
+        result == null ? 0.0 : result.visitsPerSecond,
+        "visits/s",
+        hasVisits);
+
+    lblBenchmarkThreadsValue.setText(
+        result != null && result.recommendedThreads > 0
+            ? String.valueOf(result.recommendedThreads)
+            : benchmarkMissingValue());
+    String model =
+        snapshot != null && snapshot.hasWeight()
+            ? formatWeightModel(snapshot)
+            : text("AutoSetup.notFound");
+    lblBenchmarkModelValue.setText(compactInfoText(model, 30));
+    lblBenchmarkModelValue.setToolTipText(model);
+    String backend =
+        result != null && !Utils.isBlank(result.backendLabel)
+            ? result.backendLabel
+            : text("AutoSetup.benchmarkCurrentBackend");
+    lblBenchmarkBackendValue.setText(compactInfoText(backend, 22));
+    lblBenchmarkBackendValue.setToolTipText(backend);
+    lblBenchmarkTimeValue.setText(
+        result != null && result.completedAtMillis > 0L
+            ? BENCHMARK_TIME_FORMAT.format(Instant.ofEpochMilli(result.completedAtMillis))
+            : benchmarkMissingValue());
+
+    String statusText = benchmarkStatusText(displayState, transientStatus);
+    Color statusColor = benchmarkStatusColor(displayState);
+    lblBenchmarkReportStatus.setText(statusText);
+    lblBenchmarkReportStatus.setForeground(statusColor);
+    lblBenchmarkReportStatus.setIcon(
+        displayState == BenchmarkDisplayState.COMPLETE
+            ? new WeightActionIcon(WeightActionIcon.USE)
+            : null);
+    lblBenchmarkReportStatus.setIconTextGap(7);
+    updateBenchmarkOptimizeButton(displayState);
+    String accessibleSummary =
+        statusText
+            + ", "
+            + text("AutoSetup.benchmarkNnSpeed")
+            + " "
+            + lblBenchmarkNnValue.getText()
+            + ", "
+            + text("AutoSetup.benchmarkSearchSpeed")
+            + " "
+            + lblBenchmarkVisitsValue.getText();
+    lblBenchmarkReportStatus.getAccessibleContext().setAccessibleName(accessibleSummary);
+  }
+
+  private void updateBenchmarkOptimizeButton(BenchmarkDisplayState displayState) {
+    String buttonText =
+        displayState == BenchmarkDisplayState.COMPLETE
+                || displayState == BenchmarkDisplayState.LEGACY
+            ? text("AutoSetup.optimizePerformanceAgain")
+            : text("AutoSetup.optimizePerformance");
+    if (!buttonText.equals(btnOptimizePerformance.getText())) {
+      btnOptimizePerformance.setText(buttonText);
+    }
+    Dimension preferred = localizedButtonSize(btnOptimizePerformance, 204, 46);
+    btnOptimizePerformance.setPreferredSize(preferred);
+    btnOptimizePerformance.setMinimumSize(preferred);
+  }
+
+  private void renderBenchmarkMetric(
+      JLabel value,
+      JLabel unit,
+      JLabel technical,
+      double speed,
+      String technicalName,
+      boolean available) {
+    value.setText(
+        available ? formatBenchmarkSpeed(speed, Locale.getDefault()) : benchmarkMissingValue());
+    unit.setText(available ? text("AutoSetup.benchmarkPerSecond") : "");
+    technical.setText(available ? technicalName : text("AutoSetup.benchmarkMetricUnavailable"));
+    technical.setForeground(available ? TEXT_SECONDARY : WARN_COLOR);
+  }
+
+  static String formatBenchmarkSpeed(double speed, Locale locale) {
+    if (!Double.isFinite(speed) || speed <= 0.0) {
+      return "\u2014";
+    }
+    return String.format(locale == null ? Locale.ROOT : locale, "%,.1f", speed);
+  }
+
+  private String benchmarkMissingValue() {
+    return "\u2014";
+  }
+
+  private String benchmarkStatusText(BenchmarkDisplayState displayState, String transientStatus) {
+    if (!Utils.isBlank(transientStatus)) {
+      return transientStatus;
+    }
+    switch (displayState) {
+      case COMPLETE:
+        return text("AutoSetup.benchmarkDone");
+      case LEGACY:
+        return text("AutoSetup.benchmarkLegacyResult");
+      case RUNNING:
+        return text("AutoSetup.benchmarking");
+      case CANCELLED:
+        return text("AutoSetup.benchmarkCancelled");
+      case FAILED:
+        return text("AutoSetup.benchmarkFailed");
+      case UNAVAILABLE:
+        return text("AutoSetup.benchmarkUnavailableShort");
+      case EMPTY:
+      case IDLE:
+      default:
+        return text("AutoSetup.benchmarkNotRun");
+    }
+  }
+
+  private Color benchmarkStatusColor(BenchmarkDisplayState displayState) {
+    switch (displayState) {
+      case COMPLETE:
+        return OK_COLOR;
+      case FAILED:
+      case UNAVAILABLE:
+        return ERROR_COLOR;
+      case LEGACY:
+      case RUNNING:
+      case CANCELLED:
+        return WARN_COLOR;
+      case EMPTY:
+      case IDLE:
+      default:
+        return TEXT_SECONDARY;
+    }
   }
 
   private void loadRemoteWeightInfo() {
@@ -3300,6 +3647,9 @@ public class KataGoAutoSetupDialog extends JDialog {
     final boolean analysisWasPondering = pauseResult.analysisWasPondering();
     final DownloadSession session = new DownloadSession();
     activeDownloadSession = session;
+    benchmarkDisplayState = BenchmarkDisplayState.RUNNING;
+    benchmarkTransientStatus = "";
+    updateBenchmarkInfo();
     btnStopDownload.setText(text("AutoSetup.stopBenchmark"));
     setBusy(true, text("AutoSetup.benchmarkPreparing"), 30, 1000);
     Thread worker =
@@ -3332,6 +3682,8 @@ public class KataGoAutoSetupDialog extends JDialog {
                 applyBenchmarkToRunningEngine(result);
                 SwingUtilities.invokeLater(
                     () -> {
+                      benchmarkDisplayState = BenchmarkDisplayState.COMPLETE;
+                      benchmarkTransientStatus = "";
                       setBusy(false, text("AutoSetup.benchmarkDone"), 0, 0);
                       snapshot = KataGoAutoSetupHelper.inspectLocalSetup();
                       renderSnapshot();
@@ -3345,7 +3697,7 @@ public class KataGoAutoSetupDialog extends JDialog {
               } catch (DownloadCancelledException e) {
                 SwingUtilities.invokeLater(() -> onBenchmarkCancelled());
               } catch (IOException e) {
-                SwingUtilities.invokeLater(() -> onBackgroundError(e));
+                SwingUtilities.invokeLater(() -> onBenchmarkFailed(e));
               } finally {
                 KataGoRuntimeHelper.restoreAnalysisAfterBenchmark(analysisWasPondering);
                 clearActiveDownload(session, Thread.currentThread());
@@ -3842,10 +4194,18 @@ public class KataGoAutoSetupDialog extends JDialog {
   }
 
   private void onBenchmarkCancelled() {
+    benchmarkDisplayState = BenchmarkDisplayState.CANCELLED;
+    benchmarkTransientStatus = "";
     setBusy(false, text("AutoSetup.benchmarkCancelled"), 0, 0);
     renderSnapshot();
     lblStatus.setText(text("AutoSetup.benchmarkCancelled"));
     lblStatus.setForeground(WARN_COLOR);
+  }
+
+  private void onBenchmarkFailed(IOException error) {
+    benchmarkDisplayState = BenchmarkDisplayState.FAILED;
+    benchmarkTransientStatus = "";
+    onBackgroundError(error);
   }
 
   private void closeOrCancelActiveTask() {
@@ -5875,8 +6235,142 @@ public class KataGoAutoSetupDialog extends JDialog {
     return "AI";
   }
 
+  private enum BenchmarkDisplayState {
+    IDLE,
+    EMPTY,
+    LEGACY,
+    RUNNING,
+    COMPLETE,
+    CANCELLED,
+    FAILED,
+    UNAVAILABLE
+  }
+
+  static final class BenchmarkReportBody extends JPanel {
+    private static final int COMPACT_BREAKPOINT = 720;
+    private static final int GAP = 28;
+    private static final int WIDE_HEIGHT = 214;
+    private static final int COMPACT_HEIGHT = 292;
+    private final Component nnMetric;
+    private final Component visitsMetric;
+    private final Component metadata;
+
+    BenchmarkReportBody(Component nnMetric, Component visitsMetric, Component metadata) {
+      this.nnMetric = nnMetric;
+      this.visitsMetric = visitsMetric;
+      this.metadata = metadata;
+      setLayout(null);
+      setOpaque(false);
+      add(nnMetric);
+      add(visitsMetric);
+      add(metadata);
+    }
+
+    static boolean useCompactLayout(int width) {
+      return width < COMPACT_BREAKPOINT;
+    }
+
+    @Override
+    public Dimension getPreferredSize() {
+      return new Dimension(760, preferredHeightForWidth(getWidth()));
+    }
+
+    @Override
+    public Dimension getMinimumSize() {
+      return new Dimension(420, WIDE_HEIGHT);
+    }
+
+    static int preferredHeightForWidth(int width) {
+      return width > 0 && useCompactLayout(width) ? COMPACT_HEIGHT : WIDE_HEIGHT;
+    }
+
+    @Override
+    public void doLayout() {
+      Insets insets = getInsets();
+      int width = Math.max(0, getWidth() - insets.left - insets.right);
+      int height = Math.max(0, getHeight() - insets.top - insets.bottom);
+      if (useCompactLayout(width)) {
+        int topHeight = Math.min(150, Math.max(116, height * 52 / 100));
+        int metricWidth = Math.max(0, (width - GAP) / 2);
+        nnMetric.setBounds(insets.left, insets.top, metricWidth, topHeight);
+        visitsMetric.setBounds(insets.left + metricWidth + GAP, insets.top, metricWidth, topHeight);
+        int metadataY = insets.top + topHeight + GAP;
+        metadata.setBounds(
+            insets.left, metadataY, width, Math.max(0, insets.top + height - metadataY));
+        return;
+      }
+
+      int metadataWidth = Math.max(252, Math.min(330, width * 34 / 100));
+      int metricWidth = Math.max(0, (width - metadataWidth - GAP * 2) / 2);
+      int visitsWidth = Math.max(0, width - metadataWidth - GAP * 2 - metricWidth);
+      nnMetric.setBounds(insets.left, insets.top, metricWidth, height);
+      visitsMetric.setBounds(insets.left + metricWidth + GAP, insets.top, visitsWidth, height);
+      metadata.setBounds(
+          insets.left + metricWidth + visitsWidth + GAP * 2, insets.top, metadataWidth, height);
+    }
+
+    @Override
+    protected void paintComponent(Graphics graphics) {
+      super.paintComponent(graphics);
+      Graphics2D g2 = (Graphics2D) graphics.create();
+      try {
+        g2.setColor(new Color(226, 214, 193));
+        g2.setStroke(new BasicStroke(1f));
+        if (useCompactLayout(getWidth())) {
+          int separatorX = (nnMetric.getX() + nnMetric.getWidth() + visitsMetric.getX()) / 2;
+          g2.drawLine(separatorX, 8, separatorX, Math.max(8, nnMetric.getHeight() - 8));
+          int separatorY = (nnMetric.getY() + nnMetric.getHeight() + metadata.getY()) / 2;
+          g2.drawLine(0, separatorY, getWidth(), separatorY);
+        } else {
+          int firstX = (nnMetric.getX() + nnMetric.getWidth() + visitsMetric.getX()) / 2;
+          int secondX = (visitsMetric.getX() + visitsMetric.getWidth() + metadata.getX()) / 2;
+          g2.drawLine(firstX, 8, firstX, Math.max(8, getHeight() - 8));
+          g2.drawLine(secondX, 8, secondX, Math.max(8, getHeight() - 8));
+        }
+      } finally {
+        g2.dispose();
+      }
+    }
+  }
+
+  private static final class BenchmarkInfoIcon implements Icon {
+    private static final int SIZE = 18;
+    private final Color color;
+
+    private BenchmarkInfoIcon(Color color) {
+      this.color = color;
+    }
+
+    @Override
+    public int getIconWidth() {
+      return SIZE;
+    }
+
+    @Override
+    public int getIconHeight() {
+      return SIZE;
+    }
+
+    @Override
+    public void paintIcon(Component component, Graphics graphics, int x, int y) {
+      Graphics2D g2 = (Graphics2D) graphics.create();
+      try {
+        g2.translate(x, y);
+        g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+        g2.setColor(color);
+        g2.setStroke(new BasicStroke(1.5f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+        g2.drawOval(1, 1, SIZE - 3, SIZE - 3);
+        g2.drawLine(SIZE / 2, 7, SIZE / 2, 13);
+        g2.fillOval(SIZE / 2 - 1, 4, 2, 2);
+      } finally {
+        g2.dispose();
+      }
+    }
+  }
+
   private enum WeightButtonStyle {
     PRIMARY,
+    GOLD,
     OUTLINE,
     ICON
   }
@@ -6037,6 +6531,9 @@ public class KataGoAutoSetupDialog extends JDialog {
         } else if (style == WeightButtonStyle.PRIMARY) {
           fill = pressed ? new Color(7, 79, 74) : hover ? ACCENT_TEAL_HOVER : ACCENT_TEAL;
           border = fill.darker();
+        } else if (style == WeightButtonStyle.GOLD) {
+          fill = pressed ? new Color(165, 109, 20) : hover ? new Color(207, 151, 47) : ACCENT_GOLD;
+          border = new Color(164, 108, 22);
         } else {
           fill = hover ? new Color(255, 249, 237) : new Color(255, 253, 248);
           border = hover ? ACCENT_GOLD : new Color(213, 179, 119);
