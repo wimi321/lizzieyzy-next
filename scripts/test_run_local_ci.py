@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 
 from pathlib import Path
+import os
+import subprocess
 import tempfile
 import unittest
 
@@ -8,6 +10,42 @@ from scripts import run_local_ci
 
 
 class RunLocalCiTest(unittest.TestCase):
+    def test_shell_wrapper_accepts_profile_without_optional_arguments(self):
+        repository = Path(__file__).resolve().parents[1]
+        with tempfile.TemporaryDirectory() as temporary:
+            temporary_path = Path(temporary)
+            fake_python = temporary_path / "python"
+            captured_arguments = temporary_path / "arguments.txt"
+            fake_python.write_text(
+                '#!/usr/bin/env bash\nprintf "%s\\n" "$@" > "$LIZZIE_WRAPPER_ARGS"\n',
+                encoding="utf-8",
+            )
+            fake_python.chmod(0o755)
+            environment = os.environ.copy()
+            environment.update(
+                {
+                    "LIZZIE_PYTHON": str(fake_python),
+                    "LIZZIE_MAVEN": "/usr/bin/true",
+                    "LIZZIE_WRAPPER_ARGS": str(captured_arguments),
+                }
+            )
+
+            completed = subprocess.run(
+                ["/bin/bash", "scripts/run_local_ci.sh", "--profile", "all"],
+                cwd=repository,
+                env=environment,
+                capture_output=True,
+                text=True,
+                timeout=10,
+                check=False,
+            )
+
+            self.assertEqual(0, completed.returncode, completed.stderr)
+            self.assertEqual(
+                ["scripts/run_local_ci.py", "--profile", "all"],
+                captured_arguments.read_text(encoding="utf-8").splitlines(),
+            )
+
     def test_all_profile_keeps_one_maven_verification(self):
         steps = run_local_ci.build_steps("all", "mvn", "bash", "pwsh")
         verify_steps = [step for step in steps if "verification gate" in step.name]

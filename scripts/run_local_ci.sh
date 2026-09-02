@@ -45,4 +45,7 @@ if [[ -z "${LIZZIE_MAVEN:-}" ]]; then
 fi
 
 cd "$repo_root"
-exec "$python_bin" scripts/run_local_ci.py --profile "$profile" "${extra_args[@]}"
+if [[ ${#extra_args[@]} -gt 0 ]]; then
+  exec "$python_bin" scripts/run_local_ci.py --profile "$profile" "${extra_args[@]}"
+fi
+exec "$python_bin" scripts/run_local_ci.py --profile "$profile"
