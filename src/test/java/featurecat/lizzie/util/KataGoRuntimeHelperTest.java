@@ -13,6 +13,7 @@ import com.sun.net.httpserver.HttpServer;
 import featurecat.lizzie.Config;
 import featurecat.lizzie.ConfigTestHelper;
 import featurecat.lizzie.Lizzie;
+import featurecat.lizzie.analysis.remote.RemoteComputeConfig;
 import featurecat.lizzie.gui.EngineData;
 import featurecat.lizzie.logging.LogCategories;
 import featurecat.lizzie.logging.LoggingLimits;
@@ -2508,6 +2509,44 @@ public class KataGoRuntimeHelperTest {
                     "Fresh Apple Silicon setup should still offer the first auto benchmark.");
               });
         });
+  }
+
+  @Test
+  void automaticStartupBenchmarkOnlyAcceptsLocalEngineCommands() {
+    assertTrue(
+        KataGoRuntimeHelper.isEngineEligibleForAutomaticStartupBenchmark(
+            "katago gtp -model weights/default.bin.gz -config gtp.cfg",
+            false,
+            false,
+            false));
+
+    assertFalse(
+        KataGoRuntimeHelper.isEngineEligibleForAutomaticStartupBenchmark(
+            RemoteComputeConfig.COMMAND_ZHIZI, false, false, false),
+        "Zhizi must not trigger a local benchmark during application startup.");
+    assertFalse(
+        KataGoRuntimeHelper.isEngineEligibleForAutomaticStartupBenchmark(
+            RemoteComputeConfig.COMMAND_CUSTOM_WS, false, false, false),
+        "Self-hosted remote compute must not trigger a local startup benchmark.");
+    assertFalse(
+        KataGoRuntimeHelper.isEngineEligibleForAutomaticStartupBenchmark(
+            "katago gtp -model weights/default.bin.gz -config gtp.cfg",
+            true,
+            false,
+            false),
+        "The runtime remote flag must win even if a command string looks local.");
+    assertFalse(
+        KataGoRuntimeHelper.isEngineEligibleForAutomaticStartupBenchmark(
+            "katago gtp", false, true, false),
+        "Java SSH engines are remote and must not trigger local startup tuning.");
+    assertFalse(
+        KataGoRuntimeHelper.isEngineEligibleForAutomaticStartupBenchmark(
+            "ssh host katago gtp", false, false, true),
+        "Legacy SSH engines are remote and must not trigger local startup tuning.");
+    assertFalse(
+        KataGoRuntimeHelper.isEngineEligibleForAutomaticStartupBenchmark(
+            "", false, false, false),
+        "No-engine startup must remain silent.");
   }
 
   @Test

@@ -6,6 +6,7 @@ import featurecat.lizzie.analysis.AnalysisEngine;
 import featurecat.lizzie.analysis.AnalysisResourceCoordinator;
 import featurecat.lizzie.analysis.EngineManager;
 import featurecat.lizzie.analysis.Leelaz;
+import featurecat.lizzie.analysis.remote.RemoteComputeConfig;
 import featurecat.lizzie.gui.EngineData;
 import featurecat.lizzie.logging.MaintenanceObservation;
 import featurecat.lizzie.rules.Board;
@@ -268,7 +269,7 @@ public final class KataGoRuntimeHelper {
   private static final int BENCHMARK_PROGRESS_VISIBLE_CAP = 995;
   private static final int APPLE_AUTO_OPTIMIZE_VERSION = 5;
   private static final int APPLE_AUTO_OPTIMIZE_DELAY_MILLIS = 8000;
-  private static final int APPLE_AUTO_OPTIMIZE_READY_TIMEOUT_MILLIS = 45000;
+  private static final int AUTO_BENCHMARK_READY_TIMEOUT_MILLIS = 45000;
   private static final long BENCHMARK_AUXILIARY_SHUTDOWN_WAIT_MILLIS = 2000L;
   private static final int MAX_APPLE_ANALYSIS_THREADS = 8;
   private static final String BENCHMARK_SIGNATURE_KEY = "katago-benchmark-signature";
@@ -4113,12 +4114,17 @@ public final class KataGoRuntimeHelper {
                   return;
                 }
 
-                snapshot = KataGoAutoSetupHelper.inspectLocalSetup();
-                if (!shouldRunAppleSiliconAutoBenchmark(snapshot)) {
+                if (!waitForPrimaryEngineReadyBeforeBenchmark(
+                    AUTO_BENCHMARK_READY_TIMEOUT_MILLIS)) {
                   return;
                 }
-                if (!waitForPrimaryEngineReadyBeforeBenchmark(
-                    APPLE_AUTO_OPTIMIZE_READY_TIMEOUT_MILLIS)) {
+                if (!isCurrentPrimaryEngineEligibleForAutomaticBenchmark()) {
+                  return;
+                }
+
+                snapshot = KataGoAutoSetupHelper.inspectLocalSetup();
+                if (!shouldRunAppleSiliconAutoBenchmark(snapshot)
+                    || !isCurrentPrimaryEngineEligibleForAutomaticBenchmark()) {
                   return;
                 }
 
@@ -4580,6 +4586,13 @@ public final class KataGoRuntimeHelper {
                 Thread.currentThread().interrupt();
                 return;
               }
+              if (!waitForPrimaryEngineReadyBeforeBenchmark(
+                  AUTO_BENCHMARK_READY_TIMEOUT_MILLIS)) {
+                return;
+              }
+              if (!isCurrentPrimaryEngineEligibleForAutomaticBenchmark()) {
+                return;
+              }
               SetupSnapshot snapshot;
               try {
                 snapshot = KataGoAutoSetupHelper.inspectLocalSetup();
@@ -4594,6 +4607,7 @@ public final class KataGoRuntimeHelper {
               }
               if (getStoredBenchmarkResult(snapshot) != null) return;
               if (isStartupBenchmarkDismissed(snapshot)) return;
+              if (!isCurrentPrimaryEngineEligibleForAutomaticBenchmark()) return;
 
               final DownloadSession benchmarkSession = new DownloadSession();
               final javax.swing.JDialog notice =
@@ -4648,6 +4662,23 @@ public final class KataGoRuntimeHelper {
             "katago-first-run-benchmark");
     worker.setDaemon(true);
     worker.start();
+  }
+
+  private static boolean isCurrentPrimaryEngineEligibleForAutomaticBenchmark() {
+    Leelaz engine = Lizzie.leelaz;
+    return engine != null
+        && isEngineEligibleForAutomaticStartupBenchmark(
+            engine.engineCommand(), engine.useRemoteCompute, engine.useJavaSSH, engine.isSSH);
+  }
+
+  static boolean isEngineEligibleForAutomaticStartupBenchmark(
+      String command, boolean usesRemoteCompute, boolean usesJavaSsh, boolean usesSsh) {
+    String normalizedCommand = command == null ? "" : command.trim();
+    return !normalizedCommand.isEmpty()
+        && !usesRemoteCompute
+        && !usesJavaSsh
+        && !usesSsh
+        && !RemoteComputeConfig.isRemoteComputeEngineCommand(normalizedCommand);
   }
 
   public static String optimizeAnalysisEngineCommand(
