@@ -2866,12 +2866,41 @@ public class Leelaz {
    * rebind from crossing the callback-time incarnation check while non-modal UI is constructed.
    */
   EngineRuntimeUiLease claimEngineRuntimeUiLeaseIfCurrent(Object expectedIncarnation) {
+    return claimEngineRuntimeUiLeaseIfCurrent(expectedIncarnation, false, false);
+  }
+
+  /**
+   * Pins one exact runtime for a global engine-status presentation without retaining the endpoint
+   * monitor while Swing selection state is inspected. Ready presentations additionally require an
+   * idle, fully live parser at lease-acquisition time.
+   */
+  EngineRuntimeUiLease claimEnginePresentationLeaseIfCurrent(
+      Object expectedIncarnation, boolean requireParserReady) {
+    return claimEngineRuntimeUiLeaseIfCurrent(expectedIncarnation, true, requireParserReady);
+  }
+
+  private EngineRuntimeUiLease claimEngineRuntimeUiLeaseIfCurrent(
+      Object expectedIncarnation,
+      boolean requireGlobalPresentation,
+      boolean requireParserReady) {
     if (!(expectedIncarnation instanceof ReaderStreamBinding)) {
       return null;
     }
     synchronized (engineArbitrationLock()) {
       ReaderStreamBinding expectedBinding = (ReaderStreamBinding) expectedIncarnation;
       if (readerStreamBinding != expectedBinding || readerStreamRebindInProgress) {
+        return null;
+      }
+      if (requireGlobalPresentation
+          && (expectedBinding.suppressGlobalEnginePresentation
+              || expectedBinding.deferredEngineGameRecoveryPresentationSuppressed)) {
+        return null;
+      }
+      if (requireParserReady
+          && (!isCurrentLiveEngineIncarnationLocked(expectedIncarnation)
+              || isOrdinaryForwardingOccupied()
+              || hasLifecycleCompletionLocked()
+              || activeUpdateEngineStartAttempt != null)) {
         return null;
       }
       expectedBinding.runtimeUiPresentationsInProgress++;

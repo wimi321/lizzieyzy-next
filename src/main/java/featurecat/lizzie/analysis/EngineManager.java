@@ -6154,7 +6154,7 @@ public class EngineManager {
       }
     }
 
-    Runnable update =
+    Runnable iconMutation =
         () -> {
           synchronized (ENGINE_SELECTION_STATE_LOCK) {
             if (Lizzie.engineManager != expectedManager
@@ -6163,29 +6163,30 @@ public class EngineManager {
                 || !isExactCatalogSlot(expectedManager, expectedIndex, engine)) {
               return;
             }
-            // Lock order is selection -> engine arbitration. Catalog/owner publication never
-            // acquires these locks in the reverse order. Holding both across the icon mutation
-            // prevents a same-object rebind from publishing its running icon between the final
-            // incarnation check and this stale stopped-icon write.
-            engine.runIfCurrentEngineIncarnation(
-                expectedIncarnation,
-                () -> {
-                  Menu currentMenu = LizzieFrame.menu;
-                  if (currentMenu != null) {
-                    if (main) {
-                      currentMenu.changeEngineIcon(expectedIndex, 0);
-                    } else {
-                      currentMenu.changeEngineIcon2(expectedIndex, 0);
-                    }
-                  }
-                });
+            Menu currentMenu = LizzieFrame.menu;
+            if (currentMenu != null) {
+              if (main) {
+                currentMenu.changeEngineIcon(expectedIndex, 0);
+              } else {
+                currentMenu.changeEngineIcon2(expectedIndex, 0);
+              }
+            }
           }
         };
-    if (SwingUtilities.isEventDispatchThread()) {
-      update.run();
-    } else {
-      SwingUtilities.invokeLater(update);
-    }
+    Runnable update =
+        () -> {
+          Leelaz.EngineRuntimeUiLease lease =
+              engine.claimEngineRuntimeUiLeaseIfCurrent(expectedIncarnation);
+          if (lease == null) {
+            return;
+          }
+          try {
+            iconMutation.run();
+          } finally {
+            lease.close();
+          }
+        };
+    dispatchEnginePresentationUpdate(update);
   }
 
   static void publishStartedEngineIconIfCurrent(Leelaz engine, Object expectedIncarnation) {
@@ -6223,13 +6224,8 @@ public class EngineManager {
       if (!isExactCatalogSlot(expectedManager, expectedIndex, engine)) {
         return;
       }
-      if (iconMode == 2
-          && !engine.runIfCurrentParserReadyPresentationIncarnation(
-              expectedIncarnation, () -> {})) {
-        return;
-      }
     }
-    Runnable update =
+    Runnable iconMutation =
         () -> {
           synchronized (ENGINE_SELECTION_STATE_LOCK) {
             if (Lizzie.engineManager != expectedManager
@@ -6238,26 +6234,38 @@ public class EngineManager {
                 || !isExactCatalogSlot(expectedManager, expectedIndex, engine)) {
               return;
             }
-            Runnable iconMutation =
-                () -> {
-                  Menu currentMenu = LizzieFrame.menu;
-                  if (currentMenu != null) {
-                    if (main) {
-                      currentMenu.changeEngineIcon(expectedIndex, iconMode);
-                    } else {
-                      currentMenu.changeEngineIcon2(expectedIndex, iconMode);
-                    }
-                  }
-                };
-            if (iconMode == 2) {
-              engine.runIfCurrentParserReadyPresentationIncarnation(
-                  expectedIncarnation, iconMutation);
-            } else {
-              engine.runIfCurrentEngineIncarnation(expectedIncarnation, iconMutation);
+            Menu currentMenu = LizzieFrame.menu;
+            if (currentMenu != null) {
+              if (main) {
+                currentMenu.changeEngineIcon(expectedIndex, iconMode);
+              } else {
+                currentMenu.changeEngineIcon2(expectedIndex, iconMode);
+              }
             }
           }
         };
-    if (SwingUtilities.isEventDispatchThread()) {
+    Runnable update =
+        () -> {
+          Leelaz.EngineRuntimeUiLease lease =
+              engine.claimEnginePresentationLeaseIfCurrent(expectedIncarnation, iconMode == 2);
+          if (lease == null) {
+            return;
+          }
+          try {
+            iconMutation.run();
+          } finally {
+            lease.close();
+          }
+        };
+    dispatchEnginePresentationUpdate(update);
+  }
+
+  private static void dispatchEnginePresentationUpdate(Runnable update) {
+    // Presentation callbacks claim a non-blocking incarnation lease before inspecting selection
+    // state, but never retain the endpoint monitor while doing so. Deferring an EDT caller that
+    // already owns selection state prevents either monitor from being nested in the other order.
+    if (SwingUtilities.isEventDispatchThread()
+        && !Thread.holdsLock(ENGINE_SELECTION_STATE_LOCK)) {
       update.run();
     } else {
       SwingUtilities.invokeLater(update);
@@ -12302,7 +12310,7 @@ public class EngineManager {
     if (engine == null || expectedIncarnation == null) {
       return;
     }
-    Runnable update =
+    Runnable menuMutation =
         () -> {
           synchronized (ENGINE_SELECTION_STATE_LOCK) {
             if (Lizzie.engineManager != this
@@ -12312,24 +12320,29 @@ public class EngineManager {
                 || !isExactCatalogSlot(this, expectedIndex, engine)) {
               return;
             }
-            engine.runIfCurrentEngineIncarnation(
-                expectedIncarnation,
-                () -> {
-                  if (Menu.engineMenu != null) {
-                    Menu.engineMenu.setText(title);
-                  }
-                  Menu currentMenu = LizzieFrame.menu;
-                  if (currentMenu != null) {
-                    currentMenu.changeEngineIcon(expectedIndex, iconMode);
-                  }
-                });
+            if (Menu.engineMenu != null) {
+              Menu.engineMenu.setText(title);
+            }
+            Menu currentMenu = LizzieFrame.menu;
+            if (currentMenu != null) {
+              currentMenu.changeEngineIcon(expectedIndex, iconMode);
+            }
           }
         };
-    if (SwingUtilities.isEventDispatchThread()) {
-      update.run();
-    } else {
-      SwingUtilities.invokeLater(update);
-    }
+    Runnable update =
+        () -> {
+          Leelaz.EngineRuntimeUiLease lease =
+              engine.claimEngineRuntimeUiLeaseIfCurrent(expectedIncarnation);
+          if (lease == null) {
+            return;
+          }
+          try {
+            menuMutation.run();
+          } finally {
+            lease.close();
+          }
+        };
+    dispatchEnginePresentationUpdate(update);
   }
 
   protected void synchronizeEngineWhenReady(

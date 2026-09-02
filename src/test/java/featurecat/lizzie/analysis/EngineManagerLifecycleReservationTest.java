@@ -2649,6 +2649,51 @@ class EngineManagerLifecycleReservationTest {
     }
   }
 
+  @Test
+  void enginePresentationLeasesIncarnationWithoutNestingSelectionState() throws Exception {
+    EngineManager previousManager = Lizzie.engineManager;
+    Leelaz previousPrimary = Lizzie.leelaz;
+    Leelaz previousSecondary = Lizzie.leelaz2;
+    Menu previousMenu = LizzieFrame.menu;
+    boolean previousEmpty = EngineManager.isEmpty;
+    int previousEngineNo = EngineManager.currentEngineNo;
+    PresentationLockOrderLeelaz engine =
+        new PresentationLockOrderLeelaz(engineSelectionStateLock());
+    EngineManager manager = new EngineManager(List.of(engine));
+    SilentUpdateMenu menu = allocate(SilentUpdateMenu.class);
+    try {
+      Lizzie.engineManager = manager;
+      Lizzie.setPrimaryEngine(engine);
+      Lizzie.leelaz2 = null;
+      LizzieFrame.menu = menu;
+      EngineManager.isEmpty = false;
+      EngineManager.currentEngineNo = 0;
+      engine.started = true;
+      engine.isLoaded = true;
+      Object incarnation = engine.currentEngineIncarnation();
+
+      EngineManager.publishStoppedEngineIconIfCurrent(engine, incarnation);
+      EngineManager.publishStartedEngineIconIfCurrent(engine, incarnation);
+      EngineManager.publishReadyEngineIconIfCurrent(engine, incarnation);
+      manager.publishReplacementEngineMenuStateIfCurrent(
+          0, engine, incarnation, "Current engine", 2);
+      SwingUtilities.invokeAndWait(() -> {});
+
+      assertEquals(2, engine.runtimeUiLeaseChecks.get());
+      assertEquals(2, engine.presentationLeaseChecks.get());
+      assertFalse(
+          engine.selectionLockHeldDuringLeaseClaim.get(),
+          "engine presentation must not nest selection and endpoint lock acquisition");
+    } finally {
+      Lizzie.engineManager = previousManager;
+      Lizzie.setPrimaryEngine(previousPrimary);
+      Lizzie.leelaz2 = previousSecondary;
+      LizzieFrame.menu = previousMenu;
+      EngineManager.isEmpty = previousEmpty;
+      EngineManager.currentEngineNo = previousEngineNo;
+    }
+  }
+
   private static void assertStaleBindingExitDoesNotAffectReplacement(
       boolean normalQuit, boolean retiredLocal, boolean replacementLocal) throws Exception {
     Leelaz previousPrimary = Lizzie.leelaz;
@@ -9178,6 +9223,35 @@ class EngineManagerLifecycleReservationTest {
 
     @Override
     public void leela0110StopPonder() {}
+  }
+
+  private static final class PresentationLockOrderLeelaz extends QuietExitLeelaz {
+    private final Object selectionLock;
+    private final AtomicBoolean selectionLockHeldDuringLeaseClaim = new AtomicBoolean();
+    private final AtomicInteger runtimeUiLeaseChecks = new AtomicInteger();
+    private final AtomicInteger presentationLeaseChecks = new AtomicInteger();
+
+    private PresentationLockOrderLeelaz(Object selectionLock) throws Exception {
+      this.selectionLock = selectionLock;
+    }
+
+    @Override
+    EngineRuntimeUiLease claimEngineRuntimeUiLeaseIfCurrent(Object expectedIncarnation) {
+      runtimeUiLeaseChecks.incrementAndGet();
+      selectionLockHeldDuringLeaseClaim.compareAndSet(
+          false, Thread.holdsLock(selectionLock));
+      return super.claimEngineRuntimeUiLeaseIfCurrent(expectedIncarnation);
+    }
+
+    @Override
+    EngineRuntimeUiLease claimEnginePresentationLeaseIfCurrent(
+        Object expectedIncarnation, boolean requireParserReady) {
+      presentationLeaseChecks.incrementAndGet();
+      selectionLockHeldDuringLeaseClaim.compareAndSet(
+          false, Thread.holdsLock(selectionLock));
+      return super.claimEnginePresentationLeaseIfCurrent(
+          expectedIncarnation, requireParserReady);
+    }
   }
 
   private static final class PartialPublishedStartLeelaz extends QuietExitLeelaz {
