@@ -135,6 +135,41 @@ class AccessibilitySupportTest {
   }
 
   @Test
+  void treePassPreservesExplicitProgressSemanticsAsPercentageChanges() {
+    JPanel panel = new JPanel();
+    JProgressBar progress = new JProgressBar(0, 1000);
+    progress.setStringPainted(true);
+    progress.setString("0%");
+    AccessibilitySupport.progress(
+        progress, "Setup progress", "Download, installation, or optimization progress");
+    panel.add(progress);
+
+    AccessibilitySupport.applyToTree(panel);
+    progress.setValue(995);
+    progress.setString("99%");
+    AccessibilitySupport.applyToTree(panel);
+
+    assertEquals("Setup progress", progress.getAccessibleContext().getAccessibleName());
+    assertEquals(
+        "Download, installation, or optimization progress",
+        progress.getAccessibleContext().getAccessibleDescription());
+  }
+
+  @Test
+  void relabelButtonUpdatesVisibleAndAccessibleDynamicActionText() {
+    JButton button = new JButton("Stop download");
+    AccessibilitySupport.button(button, "Stop download", "Stop download");
+
+    AccessibilitySupport.relabelButton(button, "Stop benchmark", "Stop benchmark");
+    AccessibilitySupport.applyToTree(button);
+
+    assertEquals("Stop benchmark", button.getText());
+    assertEquals("Stop benchmark", button.getToolTipText());
+    assertEquals("Stop benchmark", button.getAccessibleContext().getAccessibleName());
+    assertEquals("Stop benchmark", button.getAccessibleContext().getAccessibleDescription());
+  }
+
+  @Test
   void treePassUsesReadableTooltipInsteadOfSymbolOnlyButtonText() {
     JPanel panel = new JPanel();
     JButton firstMove = new JButton("|<");

@@ -551,7 +551,7 @@ public class KataGoAutoSetupDialog extends JDialog {
     btnOptimizePerformance.setText(text("AutoSetup.optimizePerformance"));
     btnExperimentalPerformance.setText(text("AutoSetup.experimentalPerformance"));
     btnExperimentalPerformance.setVisible(false);
-    btnStopDownload.setText(text("AutoSetup.stopDownload"));
+    setStopAction("AutoSetup.stopDownload");
     btnStopDownload.setEnabled(false);
     btnClose.setText(text("AutoSetup.close"));
     btnOfficialWeightTab.setText(text("AutoSetup.officialWeightTab"));
@@ -3393,7 +3393,7 @@ public class KataGoAutoSetupDialog extends JDialog {
 
     final DownloadSession session = new DownloadSession();
     activeDownloadSession = session;
-    btnStopDownload.setText(text("AutoSetup.stopDownload"));
+    setStopAction("AutoSetup.stopDownload");
     setBusy(true, text("AutoSetup.tensorRtPreparing"), 0, status.downloadBytes);
     Thread worker =
         new Thread(
@@ -3650,7 +3650,7 @@ public class KataGoAutoSetupDialog extends JDialog {
     benchmarkDisplayState = BenchmarkDisplayState.RUNNING;
     benchmarkTransientStatus = "";
     updateBenchmarkInfo();
-    btnStopDownload.setText(text("AutoSetup.stopBenchmark"));
+    setStopAction("AutoSetup.stopBenchmark");
     setBusy(true, text("AutoSetup.benchmarkPreparing"), 30, 1000);
     Thread worker =
         new Thread(
@@ -3701,8 +3701,7 @@ public class KataGoAutoSetupDialog extends JDialog {
               } finally {
                 KataGoRuntimeHelper.restoreAnalysisAfterBenchmark(analysisWasPondering);
                 clearActiveDownload(session, Thread.currentThread());
-                SwingUtilities.invokeLater(
-                    () -> btnStopDownload.setText(text("AutoSetup.stopDownload")));
+                SwingUtilities.invokeLater(() -> setStopAction("AutoSetup.stopDownload"));
               }
             },
             experimental
@@ -3710,6 +3709,11 @@ public class KataGoAutoSetupDialog extends JDialog {
                 : "katago-performance-benchmark");
     activeWorkerThread = worker;
     worker.start();
+  }
+
+  private void setStopAction(String resourceKey) {
+    String label = text(resourceKey);
+    AccessibilitySupport.relabelButton(btnStopDownload, label, label);
   }
 
   private void startWeightEngineSetup(

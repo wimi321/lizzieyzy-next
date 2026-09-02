@@ -52,6 +52,19 @@ public final class AccessibilitySupport {
     return configureButton(button, name, description, true);
   }
 
+  /** Keeps visible text, tooltip, and screen-reader semantics in sync for dynamic actions. */
+  public static <T extends AbstractButton> T relabelButton(
+      T button, String text, String description) {
+    if (button == null) {
+      return null;
+    }
+    String cleanText = clean(text);
+    String cleanDescription = firstNonBlank(description, cleanText);
+    button.setText(cleanText);
+    button.setToolTipText(cleanDescription);
+    return button(button, cleanText, cleanDescription);
+  }
+
   /** Adds button semantics without showing a tooltip that can cover rapid-repeat controls. */
   public static <T extends AbstractButton> T buttonWithoutTooltip(
       T button, String name, String description) {
@@ -133,9 +146,16 @@ public final class AccessibilitySupport {
       }
     } else if (root instanceof JProgressBar) {
       JProgressBar progressBar = (JProgressBar) root;
-      String name = firstNonBlank(progressBar.getString(), progressBar.getToolTipText());
+      String name =
+          firstNonBlank(
+              (String) progressBar.getClientProperty(EXPLICIT_NAME),
+              firstNonBlank(progressBar.getString(), progressBar.getToolTipText()));
+      String description =
+          firstNonBlank(
+              (String) progressBar.getClientProperty(EXPLICIT_DESCRIPTION),
+              firstNonBlank(progressBar.getToolTipText(), name));
       if (!name.isBlank()) {
-        progress(progressBar, name, firstNonBlank(progressBar.getToolTipText(), name));
+        progress(progressBar, name, description);
       }
     } else if (root instanceof JComponent) {
       JComponent component = (JComponent) root;

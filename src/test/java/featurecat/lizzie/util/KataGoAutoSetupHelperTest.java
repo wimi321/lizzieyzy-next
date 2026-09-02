@@ -32,6 +32,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 import org.slf4j.LoggerFactory;
 
@@ -572,10 +573,27 @@ public class KataGoAutoSetupHelperTest {
     assertTrue(engine.toFile().setExecutable(true));
 
     KataGoAutoSetupHelper.EngineValidationResult result =
-        KataGoAutoSetupHelper.validateLocalEngine(engine, 3L);
+        KataGoAutoSetupHelper.validateLocalEngine(engine, 8L);
 
     assertEquals(KataGoAutoSetupHelper.EngineValidationStatus.VALID, result.status);
     assertTrue(result.detail.contains("KataGo test version"));
+  }
+
+  @Test
+  void timesOutAHungKataGoExecutableWithinTheConfiguredBound() throws Exception {
+    assumeFalse(System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("win"));
+    Path root = Files.createTempDirectory("katago-version-timeout");
+    Path engine = root.resolve("katago");
+    Files.writeString(engine, "#!/bin/sh\nsleep 30\n");
+    assertTrue(engine.toFile().setExecutable(true));
+
+    long startedAt = System.nanoTime();
+    KataGoAutoSetupHelper.EngineValidationResult result =
+        KataGoAutoSetupHelper.validateLocalEngine(engine, 1L);
+    long elapsedMillis = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startedAt);
+
+    assertEquals(KataGoAutoSetupHelper.EngineValidationStatus.TIMED_OUT, result.status);
+    assertTrue(elapsedMillis < 10_000L, "hung version probe must remain time-bounded");
   }
 
   @Test
