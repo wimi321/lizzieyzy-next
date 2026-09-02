@@ -384,18 +384,31 @@ class LoggingRuntimeTest {
             new WorkDirectoryResolution(tempDir, List.of()),
             new LoggingLimits(32, 4, 4, 4, 7, 10000, 1000));
     runtime.startFullTrace(EnumSet.of(TraceScope.ENGINE_GTP));
-    CountDownLatch gate = new CountDownLatch(1);
-    runtime.blockPersistenceForTests(LogStream.ENGINE_TRACE, gate);
+    runtime.awaitIdle();
+    CountDownLatch handoffEntered = new CountDownLatch(1);
+    CountDownLatch handoffHold = new CountDownLatch(1);
+    runtime.pauseHandoffForTests(LogStream.ENGINE_TRACE, handoffEntered, handoffHold);
     org.slf4j.Logger trace = LoggerFactory.getLogger(LogCategories.ENGINE_TRACE);
-    for (int i = 0; i < 64; i++) {
-      trace.info("flood-{}", i);
+    trace.info("accepted-before-saturation");
+    assertTrue(handoffEntered.await(1, TimeUnit.SECONDS));
+    try {
+      for (int i = 0; i < 64; i++) {
+        trace.info("flood-{}", i);
+      }
+      LoggingStatus.StreamStatus blocked =
+          runtime.status().stream(LogStream.ENGINE_TRACE).orElseThrow();
+      assertTrue(blocked.droppedCount() > 0);
+      assertEquals("queue saturation", blocked.reason());
+      assertFalse(blocked.recovered());
+    } finally {
+      handoffHold.countDown();
     }
-    LoggingStatus.StreamStatus blocked =
+    runtime.awaitIdle();
+    LoggingStatus.StreamStatus drained =
         runtime.status().stream(LogStream.ENGINE_TRACE).orElseThrow();
-    assertTrue(blocked.droppedCount() > 0);
-    assertEquals("queue saturation", blocked.reason());
-    assertFalse(blocked.recovered());
-    gate.countDown();
+    assertFalse(
+        drained.recovered(),
+        "events admitted before saturation must not report that the stream recovered");
     trace.info("after-drain");
     runtime.awaitIdle();
     LoggingStatus.StreamStatus recovered =

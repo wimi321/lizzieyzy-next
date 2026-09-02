@@ -373,22 +373,31 @@ public final class LoggingRuntime {
   void recordFailure(LogStream stream, String reason) {
     StreamState state = streams.get(stream);
     if (state != null) {
-      state.recordFailure(reason);
-    }
-    if (stream == LogStream.APP) {
-      persistenceEnabled.set(false);
+      synchronized (state) {
+        state.recordFailure(reason);
+        if (stream == LogStream.APP) {
+          persistenceEnabled.set(false);
+        }
+      }
     }
     notice(stream.name() + ":failure", reason);
   }
 
-  void recordSuccess(LogStream stream) {
+  void recordSuccess(LogStream stream, long incidentGeneration) {
     StreamState state = streams.get(stream);
     if (state != null) {
-      state.recordSuccess();
-      if (stream == LogStream.APP && state.recovered) {
-        persistenceEnabled.set(true);
+      synchronized (state) {
+        boolean recovered = state.recordSuccess(incidentGeneration);
+        if (stream == LogStream.APP && recovered) {
+          persistenceEnabled.set(true);
+        }
       }
     }
+  }
+
+  long incidentGeneration(LogStream stream) {
+    StreamState state = streams.get(stream);
+    return state == null ? 0L : state.incidentGeneration();
   }
 
   long failureGeneration(LogStream stream) {
@@ -772,6 +781,7 @@ public final class LoggingRuntime {
     private final LogStream stream;
     private final AtomicLong dropped = new AtomicLong();
     private final AtomicLong failures = new AtomicLong();
+    private final AtomicLong incidents = new AtomicLong();
     private volatile String reason;
     private volatile Instant firstOccurrence;
     private volatile Instant lastOccurrence;
@@ -781,8 +791,9 @@ public final class LoggingRuntime {
       this.stream = stream;
     }
 
-    private void recordDrop() {
+    private synchronized void recordDrop() {
       dropped.incrementAndGet();
+      incidents.incrementAndGet();
       Instant now = Instant.now();
       if (firstOccurrence == null) {
         firstOccurrence = now;
@@ -794,8 +805,9 @@ public final class LoggingRuntime {
       recovered = false;
     }
 
-    private void recordFailure(String failureReason) {
+    private synchronized void recordFailure(String failureReason) {
       failures.incrementAndGet();
+      incidents.incrementAndGet();
       Instant now = Instant.now();
       if (firstOccurrence == null) {
         firstOccurrence = now;
@@ -809,13 +821,19 @@ public final class LoggingRuntime {
       return failures.get();
     }
 
-    private void recordSuccess() {
-      if (reason != null || dropped.get() > 0) {
-        recovered = true;
-      }
+    private long incidentGeneration() {
+      return incidents.get();
     }
 
-    private LoggingStatus.StreamStatus snapshot() {
+    private synchronized boolean recordSuccess(long incidentGeneration) {
+      // A write admitted before the latest drop/failure does not prove that the stream recovered.
+      if (incidentGeneration == incidents.get() && (reason != null || dropped.get() > 0)) {
+        recovered = true;
+      }
+      return recovered;
+    }
+
+    private synchronized LoggingStatus.StreamStatus snapshot() {
       return new LoggingStatus.StreamStatus(
           stream, reason, firstOccurrence, lastOccurrence, dropped.get(), recovered);
     }

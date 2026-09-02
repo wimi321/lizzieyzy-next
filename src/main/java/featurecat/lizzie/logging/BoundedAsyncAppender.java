@@ -18,10 +18,12 @@ import java.util.concurrent.atomic.AtomicLong;
 final class BoundedAsyncAppender extends UnsynchronizedAppenderBase<ILoggingEvent> {
   private static final class QueuedEvent {
     final long sequence;
+    final long incidentGeneration;
     final ILoggingEvent event;
 
-    QueuedEvent(long sequence, ILoggingEvent event) {
+    QueuedEvent(long sequence, long incidentGeneration, ILoggingEvent event) {
       this.sequence = sequence;
+      this.incidentGeneration = incidentGeneration;
       this.event = event;
     }
   }
@@ -242,7 +244,9 @@ final class BoundedAsyncAppender extends UnsynchronizedAppenderBase<ILoggingEven
         rejected = true;
       } else {
         long sequence = nextSequence.get() + 1L;
-        QueuedEvent queued = new QueuedEvent(sequence, event);
+        long incidentGeneration =
+            runtime == null ? 0L : runtime.incidentGeneration(stream);
+        QueuedEvent queued = new QueuedEvent(sequence, incidentGeneration, event);
         synchronized (progress) {
           outstanding++;
         }
@@ -305,7 +309,7 @@ final class BoundedAsyncAppender extends UnsynchronizedAppenderBase<ILoggingEven
               nested.isStarted()
                   && (runtime == null || runtime.failureGeneration(stream) == generation);
           if (persisted && runtime != null) {
-            runtime.recordSuccess(stream);
+            runtime.recordSuccess(stream, queued.incidentGeneration);
           }
         } finally {
           inFlight.decrementAndGet();
