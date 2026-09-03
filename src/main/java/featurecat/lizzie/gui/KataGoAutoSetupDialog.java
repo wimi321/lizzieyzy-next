@@ -50,6 +50,7 @@ import java.awt.Polygon;
 import java.awt.Rectangle;
 import java.awt.RenderingHints;
 import java.awt.Shape;
+import java.awt.Toolkit;
 import java.awt.Window;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
@@ -71,6 +72,10 @@ import java.util.Collections;
 import java.util.IllegalFormatException;
 import java.util.List;
 import java.util.Locale;
+import java.util.concurrent.Callable;
+import java.util.concurrent.CancellationException;
+import java.util.concurrent.ExecutionException;
+import java.util.function.Consumer;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import javax.swing.AbstractAction;
@@ -99,6 +104,7 @@ import javax.swing.ListSelectionModel;
 import javax.swing.Scrollable;
 import javax.swing.SwingConstants;
 import javax.swing.SwingUtilities;
+import javax.swing.SwingWorker;
 import javax.swing.filechooser.FileNameExtensionFilter;
 import javax.swing.plaf.basic.BasicButtonUI;
 import javax.swing.plaf.basic.BasicScrollBarUI;
@@ -167,6 +173,8 @@ public class KataGoAutoSetupDialog extends JDialog {
   private volatile boolean nvidiaGpuDetectionRunning;
   private volatile EngineValidationResult engineValidationResult;
   private long engineValidationRequestId;
+  private long stateRefreshRequestId;
+  private SwingWorker<SetupSnapshot, Void> stateRefreshWorker;
   private long progressStartedAtMillis;
   private String lastBackgroundErrorMessage = "";
   private long lastBackgroundErrorMillis = 0L;
@@ -303,8 +311,9 @@ public class KataGoAutoSetupDialog extends JDialog {
     setModal(false);
     setTitle(text("AutoSetup.title"));
     configureNativeWindowChrome();
-    setSize(initialDialogSize());
-    setMinimumSize(new Dimension(900, 620));
+    Rectangle availableBounds = availableBoundsFor(owner);
+    setSize(dialogSizeForBounds(availableBounds));
+    setMinimumSize(minimumDialogSizeForBounds(availableBounds));
     setDefaultCloseOperation(DO_NOTHING_ON_CLOSE);
     setAlwaysOnTop(owner instanceof LizzieFrame && ((LizzieFrame) owner).isAlwaysOnTop());
     placeOnOwnerScreen(owner);
@@ -415,12 +424,25 @@ public class KataGoAutoSetupDialog extends JDialog {
     return System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("mac");
   }
 
-  private static Dimension initialDialogSize() {
-    Rectangle available =
-        GraphicsEnvironment.getLocalGraphicsEnvironment().getMaximumWindowBounds();
-    int width = Math.max(900, Math.min(DIALOG_WIDTH, available.width - 72));
-    int height = Math.max(620, Math.min(DIALOG_HEIGHT, available.height - 72));
+  static Dimension dialogSizeForBounds(Rectangle available) {
+    int width = Math.max(1, Math.min(DIALOG_WIDTH, available.width - 72));
+    int height = Math.max(1, Math.min(DIALOG_HEIGHT, available.height - 72));
     return new Dimension(width, height);
+  }
+
+  static Dimension minimumDialogSizeForBounds(Rectangle available) {
+    Dimension initial = dialogSizeForBounds(available);
+    return new Dimension(Math.min(900, initial.width), Math.min(620, initial.height));
+  }
+
+  static Point dialogLocationForBounds(Rectangle available, Dimension dialogSize) {
+    int offsetX = Math.max(24, Math.min(48, available.width / 20));
+    int offsetY = Math.max(24, Math.min(48, available.height / 20));
+    int maxX = available.x + Math.max(0, available.width - dialogSize.width);
+    int maxY = available.y + Math.max(0, available.height - dialogSize.height);
+    int x = Math.max(available.x, Math.min(available.x + offsetX, maxX));
+    int y = Math.max(available.y, Math.min(available.y + offsetY, maxY));
+    return new Point(x, y);
   }
 
   /** Opens the dialog directly on the Weights card (nav index 1 maps to CARD_WEIGHTS). */
@@ -488,12 +510,59 @@ public class KataGoAutoSetupDialog extends JDialog {
 
 
   public void refreshState() {
+    refreshState(null);
+  }
+
+  private void refreshState(Runnable afterRefresh) {
+    if (!SwingUtilities.isEventDispatchThread()) {
+      SwingUtilities.invokeLater(() -> refreshState(afterRefresh));
+      return;
+    }
     benchmarkDisplayState = BenchmarkDisplayState.IDLE;
     benchmarkTransientStatus = "";
     if (!nvidiaGpuDetectionRunning) {
       nvidiaGpuDetection = null;
     }
-    SetupSnapshot discoveredSnapshot = KataGoAutoSetupHelper.inspectLocalSetup();
+    cancelStateRefresh();
+    final long requestId = ++stateRefreshRequestId;
+    setStateRefreshPending(true);
+    SwingWorker<SetupSnapshot, Void> worker =
+        createUiBackgroundWorker(
+            KataGoAutoSetupHelper::inspectLocalSetup,
+            discoveredSnapshot -> {
+              if (requestId != stateRefreshRequestId) {
+                return;
+              }
+              stateRefreshWorker = null;
+              setStateRefreshPending(false);
+              applyDiscoveredSnapshot(discoveredSnapshot);
+              if (afterRefresh != null) {
+                afterRefresh.run();
+              }
+            },
+            error -> {
+              if (requestId != stateRefreshRequestId) {
+                return;
+              }
+              stateRefreshWorker = null;
+              setStateRefreshPending(false);
+              setRefreshDependentControlsEnabled(false);
+              btnRefresh.setEnabled(true);
+              btnOpenAppFolder.setEnabled(true);
+              btnViewFullDownloads.setEnabled(true);
+              btnClose.setEnabled(true);
+              String detail = error == null || error.getMessage() == null ? "" : error.getMessage();
+              lblStatus.setText(detail.trim().isEmpty() ? text("AutoSetup.failed") : detail);
+              lblStatus.setForeground(ERROR_COLOR);
+              footerPanel.setVisible(true);
+              revalidate();
+              repaint();
+            });
+    stateRefreshWorker = worker;
+    worker.execute();
+  }
+
+  private void applyDiscoveredSnapshot(SetupSnapshot discoveredSnapshot) {
     boolean discoveredSetupIsActive =
         isDiscoveredSetupActive(discoveredSnapshot, Lizzie.engineManager, Lizzie.leelaz);
     weightSwitchDisplayState =
@@ -506,8 +575,109 @@ public class KataGoAutoSetupDialog extends JDialog {
     snapshot = weightSwitchDisplayState.displayedSnapshot();
     engineValidationResult = null;
     renderSnapshot();
+    refreshIdleControls();
     validateDiscoveredEngineAsync();
     loadRemoteWeightInfo();
+  }
+
+  private void setStateRefreshPending(boolean pending) {
+    if (pending) {
+      String status = text("AutoSetup.validationChecking");
+      String previousStatus = progressStatusLabel.getText();
+      lblStatus.setText(status);
+      lblStatus.setForeground(WARN_COLOR);
+      progressStatusLabel.setText(status);
+      progressStatusLabel.setForeground(WARN_COLOR);
+      progressPanel.setVisible(true);
+      footerPanel.setVisible(true);
+      progressBar.setIndeterminate(true);
+      progressBar.setString("");
+      sectionNav.setEnabled(false);
+      btnRemoteCompute.setEnabled(false);
+      setRefreshDependentControlsEnabled(false);
+      btnClose.setEnabled(true);
+      setCursor(Cursor.getPredefinedCursor(Cursor.WAIT_CURSOR));
+      AccessibilitySupport.announce(progressStatusLabel, previousStatus, status);
+    } else {
+      progressBar.setIndeterminate(false);
+      progressBar.setValue(0);
+      progressBar.setString("");
+      progressPanel.setVisible(false);
+      footerPanel.setVisible(false);
+      sectionNav.setEnabled(true);
+      btnRemoteCompute.setEnabled(true);
+      setCursor(Cursor.getDefaultCursor());
+    }
+    revalidate();
+    repaint();
+  }
+
+  private void setRefreshDependentControlsEnabled(boolean enabled) {
+    btnRefresh.setEnabled(enabled);
+    btnChooseLocalEngine.setEnabled(enabled);
+    btnRepairAnalysisConfig.setEnabled(enabled);
+    btnOpenAppFolder.setEnabled(enabled);
+    btnViewFullDownloads.setEnabled(enabled);
+    btnReloadRemoteWeights.setEnabled(enabled);
+    btnDownloadWeight.setEnabled(enabled);
+    btnImportWeight.setEnabled(enabled);
+    btnUseWeight.setEnabled(enabled);
+    btnDownloadHumanSlModel.setEnabled(enabled);
+    btnImportHumanSlModel.setEnabled(enabled);
+    btnDownloadQuickAnalysisModel.setEnabled(enabled);
+    chkUseQuickAnalysisModel.setEnabled(enabled);
+    weightCatalogList.setEnabled(enabled);
+    btnOfficialWeightTab.setEnabled(enabled);
+    btnCustomWeightTab.setEnabled(enabled);
+    balancedRecommendation.setEnabled(enabled);
+    strongestRecommendation.setEnabled(enabled);
+    lightweightRecommendation.setEnabled(enabled);
+    btnInstallNvidiaRuntime.setEnabled(enabled);
+    btnInstallTensorRt.setEnabled(enabled);
+    btnEnableTensorRt.setEnabled(enabled);
+    btnSwitchBackCuda.setEnabled(enabled);
+    btnCleanTensorRtCache.setEnabled(enabled);
+    cmbExperimentalBackend.setEnabled(enabled);
+    btnInstallExperimentalBackend.setEnabled(enabled);
+    btnOptimizePerformance.setEnabled(enabled);
+    btnExperimentalPerformance.setEnabled(enabled);
+    btnStopDownload.setEnabled(false);
+  }
+
+  private void cancelStateRefresh() {
+    SwingWorker<SetupSnapshot, Void> worker = stateRefreshWorker;
+    stateRefreshWorker = null;
+    if (worker != null) {
+      worker.cancel(true);
+    }
+  }
+
+  static <T> SwingWorker<T, Void> createUiBackgroundWorker(
+      Callable<T> task, Consumer<T> onSuccess, Consumer<Throwable> onFailure) {
+    return new SwingWorker<T, Void>() {
+      @Override
+      protected T doInBackground() throws Exception {
+        return task.call();
+      }
+
+      @Override
+      protected void done() {
+        if (isCancelled()) {
+          return;
+        }
+        try {
+          onSuccess.accept(get());
+        } catch (CancellationException ignored) {
+          // A superseding refresh owns the UI now.
+        } catch (InterruptedException interrupted) {
+          Thread.currentThread().interrupt();
+          onFailure.accept(interrupted);
+        } catch (ExecutionException failed) {
+          Throwable cause = failed.getCause();
+          onFailure.accept(cause == null ? failed : cause);
+        }
+      }
+    };
   }
 
   public void startRecommendedWeightDownload() {
@@ -1735,18 +1905,44 @@ public class KataGoAutoSetupDialog extends JDialog {
   }
 
   private void placeOnOwnerScreen(Window owner) {
+    Rectangle available = availableBoundsFor(owner);
+    Dimension maximumSize = dialogSizeForBounds(available);
+    Dimension currentSize = getSize();
+    Dimension fittedSize =
+        new Dimension(
+            Math.min(currentSize.width, maximumSize.width),
+            Math.min(currentSize.height, maximumSize.height));
+    setMinimumSize(minimumDialogSizeForBounds(available));
+    if (!fittedSize.equals(currentSize)) {
+      setSize(fittedSize);
+    }
+    setLocation(dialogLocationForBounds(available, fittedSize));
+  }
+
+  private static Rectangle availableBoundsFor(Window owner) {
     GraphicsConfiguration graphicsConfiguration =
-        owner != null ? owner.getGraphicsConfiguration() : getGraphicsConfiguration();
+        owner != null ? owner.getGraphicsConfiguration() : null;
     if (graphicsConfiguration == null) {
       graphicsConfiguration =
           GraphicsEnvironment.getLocalGraphicsEnvironment()
               .getDefaultScreenDevice()
               .getDefaultConfiguration();
     }
-    Rectangle bounds = graphicsConfiguration.getBounds();
-    int x = bounds.x + Math.max(24, Math.min(48, bounds.width / 20));
-    int y = bounds.y + Math.max(24, Math.min(48, bounds.height / 20));
-    setLocation(x, y);
+    Rectangle bounds = new Rectangle(graphicsConfiguration.getBounds());
+    try {
+      Insets insets = Toolkit.getDefaultToolkit().getScreenInsets(graphicsConfiguration);
+      bounds.x += insets.left;
+      bounds.y += insets.top;
+      bounds.width = Math.max(1, bounds.width - insets.left - insets.right);
+      bounds.height = Math.max(1, bounds.height - insets.top - insets.bottom);
+    } catch (UnsupportedOperationException ignored) {
+      Rectangle maximum =
+          GraphicsEnvironment.getLocalGraphicsEnvironment().getMaximumWindowBounds();
+      if (maximum.intersects(bounds)) {
+        bounds = bounds.intersection(maximum);
+      }
+    }
+    return bounds;
   }
 
   private void styleInfoLabel(JLabel valueLabel) {
@@ -2198,12 +2394,14 @@ public class KataGoAutoSetupDialog extends JDialog {
                 KataGoAutoSetupHelper.rememberSelectedLocalKataGo(selected);
                 SwingUtilities.invokeLater(
                     () -> {
-                      refreshState();
-                      lblStatus.setText(
-                          text("AutoSetup.analysisConfigRepaired")
-                              + " · "
-                              + repaired.getFileName());
-                      lblStatus.setForeground(OK_COLOR);
+                      refreshState(
+                          () -> {
+                            lblStatus.setText(
+                                text("AutoSetup.analysisConfigRepaired")
+                                    + " · "
+                                    + repaired.getFileName());
+                            lblStatus.setForeground(OK_COLOR);
+                          });
                     });
               } catch (IOException e) {
                 SwingUtilities.invokeLater(
@@ -4213,6 +4411,8 @@ public class KataGoAutoSetupDialog extends JDialog {
   }
 
   private void closeOrCancelActiveTask() {
+    stateRefreshRequestId++;
+    cancelStateRefresh();
     if (pendingWeightSwitchTimer != null) {
       pendingWeightSwitchTimer.stop();
       pendingWeightSwitchTimer = null;
@@ -4398,7 +4598,8 @@ public class KataGoAutoSetupDialog extends JDialog {
   }
 
   private boolean hasActiveBackgroundTask() {
-    return activeDownloadSession != null
+    return stateRefreshWorker != null
+        || activeDownloadSession != null
         || activeWorkerThread != null
         || pendingWeightSwitchTimer != null;
   }

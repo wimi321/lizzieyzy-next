@@ -1040,6 +1040,27 @@ class BoardNodeKindHistoryPipelineTest {
   }
 
   @Test
+  void detachedParseSgfDoesNotRunLiveMoveSideEffects() throws Exception {
+    TestEnvironment env = TestEnvironment.open();
+    try {
+      TrackingBoard board = (TrackingBoard) Lizzie.board;
+      TrackingLeelaz leelaz = (TrackingLeelaz) Lizzie.leelaz;
+      int initialClearAfterMoveCalls = board.clearAfterMoveCallCount;
+      int initialClearBestMovesCalls = leelaz.clearBestMovesCallCount;
+      int initialPdaAdjustmentCalls = leelaz.pdaAdjustmentCallCount;
+
+      BoardHistoryList parsed = SGFParser.parseSgf("(;SZ[3];B[aa];W[bb];B[cc])", false);
+
+      assertTrue(parsed.getStart().next().isPresent(), "detached SGF should still parse its moves.");
+      assertEquals(initialClearAfterMoveCalls, board.clearAfterMoveCallCount);
+      assertEquals(initialClearBestMovesCalls, leelaz.clearBestMovesCallCount);
+      assertEquals(initialPdaAdjustmentCalls, leelaz.pdaAdjustmentCallCount);
+    } finally {
+      env.close();
+    }
+  }
+
+  @Test
   void setHistoryAndGenerateNodeKeepParseSgfRectangularBoardSize() throws Exception {
     TestEnvironment env = TestEnvironment.open();
     try {
@@ -5993,6 +6014,7 @@ class BoardNodeKindHistoryPipelineTest {
     private volatile String blockedHistoryNavigationRootReplayCommand;
     private volatile CountDownLatch blockedHistoryNavigationRootReplayCommandStarted;
     private volatile CountDownLatch blockedHistoryNavigationRootReplayCommandRelease;
+    private int clearAfterMoveCallCount;
 
     @Override
     void beforeHistoryNavigationRootReplayCommand(String command) {
@@ -6100,7 +6122,9 @@ class BoardNodeKindHistoryPipelineTest {
     }
 
     @Override
-    public void clearAfterMove() {}
+    public void clearAfterMove() {
+      clearAfterMoveCallCount++;
+    }
   }
 
   private static final class TrackingFrame extends LizzieFrame {
@@ -6237,6 +6261,8 @@ class BoardNodeKindHistoryPipelineTest {
     private boolean pretendingToPonder;
     private int ponderCallCount;
     private int notPonderingCallCount;
+    private int clearBestMovesCallCount;
+    private int pdaAdjustmentCallCount;
 
     private TrackingLeelaz() throws IOException {
       super("");
@@ -6253,10 +6279,14 @@ class BoardNodeKindHistoryPipelineTest {
     }
 
     @Override
-    public void clearBestMoves() {}
+    public void clearBestMoves() {
+      clearBestMovesCallCount++;
+    }
 
     @Override
-    public void maybeAjustPDA(BoardHistoryNode node) {}
+    public void maybeAjustPDA(BoardHistoryNode node) {
+      pdaAdjustmentCallCount++;
+    }
 
     @Override
     public boolean isPonderingOrWasPonderingBeforeTracking() {

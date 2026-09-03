@@ -1586,6 +1586,8 @@ class LizzieFrameRegressionTest {
           .analysisHeaderSlots = 3;
 
       SwingUtilities.invokeAndWait(engine.completionCallback);
+      waitForMovelistRefreshThreads();
+      drainEdt();
 
       assertEquals(
           1,
@@ -1593,6 +1595,37 @@ class LizzieFrameRegressionTest {
           "foreground candidate analysis should restart immediately after fast curve completion.");
       assertEquals(1, board.syncCount);
       assertEquals(1, frame.refreshCount);
+      assertEquals(1, frame.problemSnapshotRefreshCount);
+      assertEquals(1, frame.silentProgressRefreshCount);
+    } finally {
+      env.close();
+    }
+  }
+
+  @Test
+  void completedQuickAnalysisRefreshesFinalProgressWithoutOverridingUserPause()
+      throws Exception {
+    TestEnvironment env = TestEnvironment.open();
+    try {
+      Lizzie.config = configWithAutoQuickAnalyze();
+      Lizzie.board = boardWith(historyWithTargetVisitAnalyzedMove());
+      TrackingLeelaz leelaz = allocate(TrackingLeelaz.class);
+      Lizzie.leelaz = leelaz;
+      EngineManager.isEmpty = false;
+      QuickAnalysisResumeFrame frame = allocate(QuickAnalysisResumeFrame.class);
+      Lizzie.frame = frame;
+      BoardHistoryNode root = Lizzie.board.getHistory().getStart();
+      armLoadedGameQuickAnalysis(frame, root, true);
+      setField(frame, "userAnalysisPaused", true);
+
+      invokeFinishLoadedGameQuickAnalysisAttempt(frame, 17L, root, false);
+      waitForMovelistRefreshThreads();
+      drainEdt();
+
+      assertEquals(1, frame.problemSnapshotRefreshCount);
+      assertEquals(1, frame.silentProgressRefreshCount);
+      assertEquals(0, leelaz.ponderCount);
+      assertFalse(leelaz.isPondering());
     } finally {
       env.close();
     }
@@ -1772,6 +1805,7 @@ class LizzieFrameRegressionTest {
           leelaz.ponderCount,
           "foreground analysis should restart after navigation-triggered curve completion.");
       assertEquals(1, board.syncCount);
+      waitForMovelistRefreshThreads();
     } finally {
       env.close();
     }
@@ -1815,15 +1849,58 @@ class LizzieFrameRegressionTest {
       Lizzie.board = boardWith(historyWithUnanalyzedMove());
       LizzieFrame frame = allocate(LizzieFrame.class);
       NavigationQuickAnalysisEngine engine = allocate(NavigationQuickAnalysisEngine.class);
+      frame.analysisEngine = engine;
       Lizzie.frame = frame;
 
       Method method =
           LizzieFrame.class.getDeclaredMethod(
               "startYikeCurveCompletionRequests", AnalysisEngine.class, String.class);
       method.setAccessible(true);
-      method.invoke(frame, engine, "test-status");
+      AtomicReference<Throwable> invocationFailure = new AtomicReference<>();
+      SwingUtilities.invokeAndWait(
+          () -> {
+            try {
+              method.invoke(frame, engine, "test-status");
+            } catch (Throwable failure) {
+              invocationFailure.set(failure);
+            }
+          });
 
+      assertNull(invocationFailure.get());
+      assertTrue(engine.awaitRequestStarted());
       assertTrue(engine.failureCallback != null);
+      assertFalse(
+          engine.requestStartedOnEdt,
+          "Yike curve request serialization and pipe writes must stay off the Swing EDT.");
+    } finally {
+      env.close();
+    }
+  }
+
+  @Test
+  void completedYikeCurveRefreshesFinalProgressWithoutOverridingUserPause()
+      throws Exception {
+    TestEnvironment env = TestEnvironment.open();
+    try {
+      Lizzie.config = configWithAutoQuickAnalyze();
+      Lizzie.board = boardWith(historyWithTargetVisitAnalyzedMove());
+      TrackingLeelaz leelaz = allocate(TrackingLeelaz.class);
+      Lizzie.leelaz = leelaz;
+      EngineManager.isEmpty = false;
+      QuickAnalysisResumeFrame frame = allocate(QuickAnalysisResumeFrame.class);
+      Lizzie.frame = frame;
+      BoardHistoryNode root = Lizzie.board.getHistory().getStart();
+      setField(frame, "yikeCurveCompletionGeneration", 23L);
+      setField(frame, "userAnalysisPaused", true);
+
+      invokeFinishYikeCurveCompletion(frame, 23L, root, false);
+      waitForMovelistRefreshThreads();
+      drainEdt();
+
+      assertEquals(1, frame.problemSnapshotRefreshCount);
+      assertEquals(1, frame.silentProgressRefreshCount);
+      assertEquals(0, leelaz.ponderCount);
+      assertFalse(leelaz.isPondering());
     } finally {
       env.close();
     }
@@ -3074,6 +3151,31 @@ class LizzieFrameRegressionTest {
         () -> invokeReflectiveResult(method, frame, generation, root, failed));
   }
 
+  private static void invokeFinishYikeCurveCompletion(
+      LizzieFrame frame, long generation, BoardHistoryNode root, boolean failed) throws Exception {
+    Method method =
+        LizzieFrame.class.getDeclaredMethod(
+            "finishYikeCurveCompletion",
+            AnalysisEngine.class,
+            String.class,
+            long.class,
+            BoardHistoryNode.class,
+            boolean.class,
+            AtomicBoolean.class);
+    method.setAccessible(true);
+    SwingUtilities.invokeAndWait(
+        () ->
+            invokeReflectiveResult(
+                method,
+                frame,
+                null,
+                "test-status",
+                generation,
+                root,
+                failed,
+                new AtomicBoolean(false)));
+  }
+
   private static boolean invokeStopBusyQuickAnalysisEngineBeforeLoadedKifuAnalysis(
       LizzieFrame frame, Runnable continuation) throws Exception {
     Method method =
@@ -3304,6 +3406,14 @@ class LizzieFrameRegressionTest {
 
   private static void drainEdt() throws Exception {
     SwingUtilities.invokeAndWait(() -> {});
+  }
+
+  private static void waitForMovelistRefreshThreads() throws InterruptedException {
+    for (Thread thread : Thread.getAllStackTraces().keySet()) {
+      if ("lizzie-movelist-refresh".equals(thread.getName()) && thread.isAlive()) {
+        thread.join(1000);
+      }
+    }
   }
 
   @SuppressWarnings("unchecked")
@@ -3613,10 +3723,22 @@ class LizzieFrameRegressionTest {
 
   private static final class QuickAnalysisResumeFrame extends LizzieFrame {
     private int refreshCount;
+    private int problemSnapshotRefreshCount;
+    private int silentProgressRefreshCount;
 
     @Override
     public void refresh() {
       refreshCount++;
+    }
+
+    @Override
+    public void refreshProblemListSnapshot() {
+      problemSnapshotRefreshCount++;
+    }
+
+    @Override
+    public void refreshSilentAnalysisProgress() {
+      silentProgressRefreshCount++;
     }
   }
 
@@ -3795,6 +3917,7 @@ class LizzieFrameRegressionTest {
     private CountDownLatch requestStarted = new CountDownLatch(1);
     private Runnable completionCallback;
     private Runnable failureCallback;
+    private volatile boolean requestStartedOnEdt;
 
     @SuppressWarnings("unused")
     private NavigationQuickAnalysisEngine() throws java.io.IOException {
@@ -3841,6 +3964,7 @@ class LizzieFrameRegressionTest {
     @Override
     public int startRequestMissingMainline(boolean showProgressDialog) {
       missingMainlineRequestCount++;
+      requestStartedOnEdt = SwingUtilities.isEventDispatchThread();
       requestStartedLatch().countDown();
       return 1;
     }

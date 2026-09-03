@@ -1,7 +1,10 @@
 package featurecat.lizzie.gui;
 
+import featurecat.lizzie.AppLocale;
 import featurecat.lizzie.Config;
+import featurecat.lizzie.Lizzie;
 import featurecat.lizzie.gui.LizzieFrame.HtmlKit;
+import featurecat.lizzie.util.LocaleFontSupport;
 import java.awt.Desktop;
 import java.awt.Font;
 import java.awt.Toolkit;
@@ -9,6 +12,7 @@ import java.awt.Window;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import java.io.IOException;
+import java.util.Locale;
 import javax.imageio.ImageIO;
 import javax.swing.JDialog;
 import javax.swing.JEditorPane;
@@ -46,6 +50,12 @@ public class HtmlMessage extends JDialog {
     HtmlKit htmlKit;
     StyleSheet htmlStyle;
 
+    Locale appLocale =
+        Lizzie.config == null
+            ? Locale.getDefault()
+            : AppLocale.fromConfigValue(Lizzie.config.useLanguage).locale();
+    String messageFontName = resolveMessageFontName(Config.sysDefaultFontName, appLocale);
+
     htmlKit = new HtmlKit();
     htmlDoc = (HTMLDocument) htmlKit.createDefaultDocument();
     htmlStyle = htmlKit.getStyleSheet();
@@ -56,8 +66,9 @@ public class HtmlMessage extends JDialog {
             + background
             + "; color:#"
             + foreground
-            + "; font-family:"
-            + Config.sysDefaultFontName
+            + "; font-family:'"
+            + messageFontName
+            + "'"
             + ", 'Microsoft YaHei', 'PingFang SC', Consolas, Menlo, Monaco, 'Ubuntu Mono', monospace;"
             + "}";
     htmlStyle.addRule(style);
@@ -66,7 +77,7 @@ public class HtmlMessage extends JDialog {
     lblMessage.setDocument(htmlDoc);
     lblMessage.setText(content);
     lblMessage.setEditable(false);
-    lblMessage.setFont(new Font(Config.sysDefaultFontName, Font.PLAIN, Config.frameFontSize));
+    lblMessage.setFont(new Font(messageFontName, Font.PLAIN, Config.frameFontSize));
     lblMessage.putClientProperty(JEditorPane.HONOR_DISPLAY_PROPERTIES, Boolean.TRUE);
     lblMessage.addHyperlinkListener(
         new HyperlinkListener() {
@@ -90,5 +101,9 @@ public class HtmlMessage extends JDialog {
     }
     pack();
     setLocationRelativeTo(owner);
+  }
+
+  static String resolveMessageFontName(String preferredName, Locale locale) {
+    return LocaleFontSupport.resolveLanguageFontName(preferredName, locale);
   }
 }

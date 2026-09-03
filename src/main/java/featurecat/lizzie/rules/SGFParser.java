@@ -3539,8 +3539,12 @@ public class SGFParser {
       if (switchedBoardContext) {
         applyParseBoardContext(boardWidth, boardHeight);
       }
-      history = new BoardHistoryList(BoardData.empty(boardWidth, boardHeight));
-      parseValue(value, history, false, first);
+      String detachedSgf = value;
+      BoardHistoryList detachedHistory =
+          new BoardHistoryList(BoardData.empty(boardWidth, boardHeight));
+      BoardHistoryNode.runWithoutGlobalMoveSideEffects(
+          () -> parseValue(detachedSgf, detachedHistory, false, first));
+      history = detachedHistory;
     } finally {
       if (switchedBoardContext) {
         restoreParseBoardContext(boardContext);

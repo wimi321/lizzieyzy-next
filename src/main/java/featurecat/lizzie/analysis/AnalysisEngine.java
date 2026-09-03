@@ -569,7 +569,7 @@ public class AnalysisEngine {
       waitFrame.setProgress(resultCount, analyzeMap.size());
     } else if (silentProgress && shouldRefreshSilentProgress(resultCount, analyzeMap.size())) {
       Lizzie.board.setMovelistAll();
-      Lizzie.frame.refresh();
+      Lizzie.frame.refreshSilentAnalysisProgress();
     }
     if (canFinalizeCurrentRequest() && responseCount == analyzeMap.size()) setResult();
   }
@@ -932,7 +932,7 @@ public class AnalysisEngine {
       waitFrame.setProgress(resultCount, analyzeMap.size());
     } else if (silentProgress && shouldRefreshSilentProgress(resultCount, analyzeMap.size())) {
       Lizzie.board.setMovelistAll();
-      Lizzie.frame.refresh();
+      Lizzie.frame.refreshSilentAnalysisProgress();
     }
     return true;
   }
@@ -1048,13 +1048,16 @@ public class AnalysisEngine {
     if (resultCount <= 0) {
       return false;
     }
+    if (resultCount == totalCount) {
+      return true;
+    }
     if (resultCount <= 12) {
       return true;
     }
     if (resultCount <= 64) {
       return resultCount % 4 == 0;
     }
-    return resultCount % 8 == 0 || resultCount == totalCount;
+    return resultCount % 8 == 0;
   }
 
   private boolean shouldKeepForegroundAnalysis(BoardHistoryNode node) {

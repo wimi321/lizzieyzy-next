@@ -275,6 +275,10 @@ public class YikeApiClient {
       return handsCount;
     }
 
+    public boolean isPreviewWithoutMoves() {
+      return status == 1 && handsCount <= 0;
+    }
+
     public String toRoomUrl() {
       String roomPath = version == 2 ? "new-room" : "room";
       return "https://home.yikeweiqi.com/#/live/" + roomPath + "/" + id + "/" + hall + "/" + room;

@@ -2,6 +2,7 @@
 
 from pathlib import Path
 import os
+import shutil
 import subprocess
 import tempfile
 import unittest
@@ -12,6 +13,9 @@ from scripts import run_local_ci
 class RunLocalCiTest(unittest.TestCase):
     def test_shell_wrapper_accepts_profile_without_optional_arguments(self):
         repository = Path(__file__).resolve().parents[1]
+        bash = os.environ.get("LIZZIE_BASH") or shutil.which("bash")
+        if not bash:
+            self.skipTest("bash is required to exercise the POSIX local-CI wrapper")
         with tempfile.TemporaryDirectory() as temporary:
             temporary_path = Path(temporary)
             fake_python = temporary_path / "python"
@@ -31,7 +35,7 @@ class RunLocalCiTest(unittest.TestCase):
             )
 
             completed = subprocess.run(
-                ["/bin/bash", "scripts/run_local_ci.sh", "--profile", "all"],
+                [bash, "scripts/run_local_ci.sh", "--profile", "all"],
                 cwd=repository,
                 env=environment,
                 capture_output=True,

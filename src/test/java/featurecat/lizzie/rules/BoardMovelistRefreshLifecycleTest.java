@@ -58,6 +58,47 @@ class BoardMovelistRefreshLifecycleTest {
     }
   }
 
+  @Test
+  void completionRunsOnlyAfterEveryMoveListNodeIsUpdated() throws Exception {
+    Board previousBoard = Lizzie.board;
+    TrackingBoard board = trackingBoard(twoNodeHistory());
+    CountDownLatch completed = new CountDownLatch(1);
+    try {
+      Lizzie.board = board;
+
+      board.setMovelistAll(completed::countDown);
+
+      assertTrue(completed.await(2, TimeUnit.SECONDS), "refresh completion should be delivered.");
+      assertEquals(2, board.updates.get(), "completion must observe a fully rebuilt move list.");
+    } finally {
+      board.releaseFirstUpdate.countDown();
+      Lizzie.board = previousBoard;
+    }
+  }
+
+  @Test
+  void staleRefreshDoesNotDeliverItsCompletionAfterHistoryReplacement() throws Exception {
+    Board previousBoard = Lizzie.board;
+    TrackingBoard board = trackingBoard(twoNodeHistory());
+    CountDownLatch completed = new CountDownLatch(1);
+    try {
+      Lizzie.board = board;
+      board.blockFirstUpdate = true;
+      board.setMovelistAll(completed::countDown);
+      assertTrue(board.firstUpdate.await(2, TimeUnit.SECONDS), "refresh should reach its first node.");
+
+      board.setHistory(singleNodeHistory());
+      board.releaseFirstUpdate.countDown();
+
+      assertFalse(
+          completed.await(500, TimeUnit.MILLISECONDS),
+          "a refresh for replaced history must not publish a stale completion.");
+    } finally {
+      board.releaseFirstUpdate.countDown();
+      Lizzie.board = previousBoard;
+    }
+  }
+
   private static TrackingBoard trackingBoard(BoardHistoryList history) throws Exception {
     TrackingBoard board = allocate(TrackingBoard.class);
     board.updates = new AtomicInteger();

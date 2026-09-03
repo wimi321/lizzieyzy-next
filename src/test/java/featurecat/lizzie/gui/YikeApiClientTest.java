@@ -1,6 +1,8 @@
 package featurecat.lizzie.gui;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import featurecat.lizzie.gui.YikeApiClient.YikeLiveDetail;
 import featurecat.lizzie.gui.YikeApiClient.YikeLiveGame;
@@ -68,6 +70,34 @@ class YikeApiClientTest {
 
     assertEquals("(;GM[1]SZ[19];B[aa];W[bb])", detail.getSgf());
     assertEquals(2, detail.getStatus());
+  }
+
+  @Test
+  void previewWithoutMovesDoesNotStartAWebSyncSession() throws Exception {
+    String response =
+        "{\"Status\":1200,\"Result\":{\"since\":1,\"list\":[{"
+            + "\"Id\":1,\"Version\":2,\"GameName\":\"Upcoming\","
+            + "\"Status\":1,\"HandsCount\":0,\"hall\":0,\"room\":0"
+            + "}]}}";
+
+    YikeLiveGame preview = YikeApiClient.parseLiveList(response).getGames().get(0);
+
+    assertTrue(preview.isPreviewWithoutMoves());
+    assertFalse(YikeLiveDialog.canStartSync(preview));
+  }
+
+  @Test
+  void liveRoomCanBeWatchedBeforeItsFirstMoveArrives() throws Exception {
+    String response =
+        "{\"Status\":1200,\"Result\":{\"since\":2,\"list\":[{"
+            + "\"Id\":2,\"Version\":2,\"GameName\":\"Starting\","
+            + "\"Status\":2,\"HandsCount\":0,\"hall\":0,\"room\":0"
+            + "}]}}";
+
+    YikeLiveGame live = YikeApiClient.parseLiveList(response).getGames().get(0);
+
+    assertFalse(live.isPreviewWithoutMoves());
+    assertTrue(YikeLiveDialog.canStartSync(live));
   }
 
   @Test

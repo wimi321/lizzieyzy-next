@@ -103,6 +103,16 @@ class OnlineDialogYikeSessionStateTest {
   }
 
   @Test
+  void newLiveRoomKeepsCurrentBoardUntilUsableSgfArrives() {
+    assertFalse(
+        OnlineDialog.shouldClearBoardBeforeSync(false, YikeUrlInfo.TYPE_NEW_LIVE_ROOM));
+    assertFalse(
+        OnlineDialog.shouldClearBoardBeforeSync(true, YikeUrlInfo.TYPE_NEW_LIVE_ROOM));
+    assertTrue(OnlineDialog.shouldClearBoardBeforeSync(false, YikeUrlInfo.TYPE_OLD_LIVE_ROOM));
+    assertFalse(OnlineDialog.shouldClearBoardBeforeSync(true, YikeUrlInfo.TYPE_OLD_LIVE_ROOM));
+  }
+
+  @Test
   void yikeLiveKomiKeepsManualOverrideOnRefresh() {
     GameInfo current = new GameInfo();
     current.setKomiNoMenu(7.0);

@@ -564,6 +564,7 @@ public class LizzieFrame extends JFrame {
   private static final int YIKE_CURVE_COMPLETION_BUSY_RETRY_MS = 3000;
   private javax.swing.Timer yikeCurveCompletionTimer;
   private String pendingYikeCurveCompletionUrl = "";
+  private long yikeCurveCompletionGeneration;
 
   /** Web 试下模式下的渲染节点覆盖。null 表示无 override，渲染端读 Board.history 当前节点。 */
   private volatile featurecat.lizzie.rules.BoardHistoryNode displayNodeOverride;
@@ -7131,6 +7132,42 @@ public class LizzieFrame extends JFrame {
     notifyWebBoard(false);
   }
 
+  /** Repaints graph progress without rebuilding the board and suggestion surfaces. */
+  public void refreshSilentAnalysisProgress() {
+    if (!SwingUtilities.isEventDispatchThread()) {
+      SwingUtilities.invokeLater(this::refreshSilentAnalysisProgress);
+      return;
+    }
+    redrawWinratePaneOnly = true;
+    if (mainPanel != null) mainPanel.repaint();
+    if (listTable != null && listTable.isVisible()) listTable.repaint();
+    if (analysisSidebarRefreshCoalescer != null) analysisSidebarRefreshCoalescer.request();
+    notifyWebBoard(true);
+  }
+
+  void refreshCompletedSilentAnalysisProgress() {
+    if (!SwingUtilities.isEventDispatchThread()) {
+      SwingUtilities.invokeLater(this::refreshCompletedSilentAnalysisProgress);
+      return;
+    }
+    if (Lizzie.board == null || Lizzie.board.getHistory() == null) {
+      return;
+    }
+    Board completedBoard = Lizzie.board;
+    BoardHistoryList completedHistory = completedBoard.getHistory();
+    completedBoard.setMovelistAll(
+        () ->
+            SwingUtilities.invokeLater(
+                () -> {
+                  if (Lizzie.board != completedBoard
+                      || completedBoard.getHistory() != completedHistory) {
+                    return;
+                  }
+                  refreshProblemListSnapshot();
+                  refreshSilentAnalysisProgress();
+                }));
+  }
+
   public void refresh(int mode) {
     // 分开各部分刷新,1代表来自info move的刷新
     if (independentSubBoard != null && independentSubBoard.isVisible())
@@ -11477,6 +11514,19 @@ public class LizzieFrame extends JFrame {
         });
   }
 
+  public void revealYikeLiveSyncStatus(String url, String status) {
+    SwingUtilities.invokeLater(
+        new Runnable() {
+          @Override
+          public void run() {
+            if (yikeLiveDialog != null && yikeLiveDialog.isDisplayable()) {
+              yikeLiveDialog.updateSyncStatus(url, status);
+              yikeLiveDialog.showAndActivate();
+            }
+          }
+        });
+  }
+
   public void scheduleYikeLiveCurveCompletion(String sourceUrl) {
     if (!SwingUtilities.isEventDispatchThread()) {
       SwingUtilities.invokeLater(() -> scheduleYikeLiveCurveCompletion(sourceUrl));
@@ -11486,6 +11536,7 @@ public class LizzieFrame extends JFrame {
       return;
     }
     pendingYikeCurveCompletionUrl = sourceUrl == null ? "" : sourceUrl;
+    yikeCurveCompletionGeneration++;
     if (yikeCurveCompletionTimer == null) {
       yikeCurveCompletionTimer =
           new javax.swing.Timer(
@@ -11504,6 +11555,7 @@ public class LizzieFrame extends JFrame {
       return;
     }
     pendingYikeCurveCompletionUrl = "";
+    yikeCurveCompletionGeneration++;
     if (yikeCurveCompletionTimer != null) {
       yikeCurveCompletionTimer.stop();
     }
@@ -11514,6 +11566,8 @@ public class LizzieFrame extends JFrame {
       return;
     }
     String statusUrl = pendingYikeCurveCompletionUrl;
+    long generation = yikeCurveCompletionGeneration;
+    BoardHistoryNode root = currentHistoryRoot();
     int missingMoves = countMissingMainlineAnalysisNodes();
     if (missingMoves <= 0) {
       if (fromBusyRetry) {
@@ -11539,9 +11593,9 @@ public class LizzieFrame extends JFrame {
             text("YikeLiveDialog.curveCompleting", "Completing winrate/score graph (%d moves)..."),
             missingMoves));
     if (needsNewFlashAnalysisEngine()) {
-      startYikeCurveCompletionWithNewEngine(statusUrl);
+      startYikeCurveCompletionWithNewEngine(statusUrl, generation, root);
     } else {
-      startYikeCurveCompletionRequests(analysisEngine, statusUrl);
+      startYikeCurveCompletionRequests(analysisEngine, statusUrl, generation, root);
     }
   }
 
@@ -11567,22 +11621,29 @@ public class LizzieFrame extends JFrame {
         && Lizzie.board.getHistory() != null;
   }
 
-  private void startYikeCurveCompletionWithNewEngine(String statusUrl) {
+  private void startYikeCurveCompletionWithNewEngine(
+      String statusUrl, long generation, BoardHistoryNode root) {
     Thread starter =
         new Thread(
             () -> {
               try {
-                AnalysisEngine newAnalysisEngine = new AnalysisEngine(false);
+                AnalysisEngine newAnalysisEngine = createYikeCurveAnalysisEngine();
                 SwingUtilities.invokeLater(
                     () -> {
-                      analysisEngine = newAnalysisEngine;
+                      if (!isCurrentYikeCurveCompletion(generation, root)) {
+                        newAnalysisEngine.normalQuit();
+                        return;
+                      }
                       if (!newAnalysisEngine.isLoaded()) {
+                        newAnalysisEngine.normalQuit();
                         updateYikeLiveSyncStatus(
                             statusUrl,
                             text("YikeLiveDialog.curveFailed", "Failed to start graph completion"));
                         return;
                       }
-                      startYikeCurveCompletionRequests(newAnalysisEngine, statusUrl);
+                      analysisEngine = newAnalysisEngine;
+                      startYikeCurveCompletionRequests(
+                          newAnalysisEngine, statusUrl, generation, root);
                     });
               } catch (IOException e) {
                 SwingUtilities.invokeLater(
@@ -11599,29 +11660,112 @@ public class LizzieFrame extends JFrame {
     starter.start();
   }
 
+  AnalysisEngine createYikeCurveAnalysisEngine() throws IOException {
+    return AnalysisEngine.createAutomaticQuickAnalysis();
+  }
+
   private void startYikeCurveCompletionRequests(AnalysisEngine targetEngine, String statusUrl) {
-    if (targetEngine == null || !targetEngine.isLoaded()) {
+    startYikeCurveCompletionRequests(
+        targetEngine, statusUrl, yikeCurveCompletionGeneration, currentHistoryRoot());
+  }
+
+  private void startYikeCurveCompletionRequests(
+      AnalysisEngine targetEngine, String statusUrl, long generation, BoardHistoryNode root) {
+    if (targetEngine == null
+        || !targetEngine.isLoaded()
+        || !isCurrentYikeCurveCompletion(generation, root)) {
       updateYikeLiveSyncStatus(
           statusUrl, text("YikeLiveDialog.curveFailed", "Failed to start graph completion"));
       return;
     }
+    AtomicBoolean finished = new AtomicBoolean(false);
     targetEngine.setCompletionCallback(
         () ->
-            updateYikeLiveSyncStatus(
-                statusUrl, text("YikeLiveDialog.curveUpdated", "Graph updated.")));
+            finishYikeCurveCompletion(
+                targetEngine, statusUrl, generation, root, false, finished));
     targetEngine.setFailureCallback(
         () ->
-            updateYikeLiveSyncStatus(
-                statusUrl, text("YikeLiveDialog.curveFailed", "Failed to start graph completion")));
-    int requestCount = targetEngine.startRequestMissingMainline(false);
-    if (requestCount < 0) {
-      targetEngine.setCompletionCallback(null);
+            finishYikeCurveCompletion(
+                targetEngine, statusUrl, generation, root, true, finished));
+    Thread requestSender =
+        new Thread(
+            () -> {
+              if (!isCurrentYikeCurveCompletion(generation, root)
+                  || targetEngine != analysisEngine) {
+                targetEngine.clearRequestCallbacks();
+                finishYikeCurveCompletion(
+                    targetEngine, statusUrl, generation, root, true, finished);
+                return;
+              }
+              int requestCount = targetEngine.startRequestMissingMainline(false);
+              if (requestCount < 0) {
+                targetEngine.clearRequestCallbacks();
+                finishYikeCurveCompletion(
+                    targetEngine, statusUrl, generation, root, true, finished);
+              } else if (requestCount == 0) {
+                targetEngine.clearRequestCallbacks();
+                finishYikeCurveCompletion(
+                    targetEngine, statusUrl, generation, root, false, finished);
+              }
+            },
+            "yike-curve-analysis-request");
+    requestSender.setDaemon(true);
+    requestSender.start();
+  }
+
+  private void finishYikeCurveCompletion(
+      AnalysisEngine targetEngine,
+      String statusUrl,
+      long generation,
+      BoardHistoryNode root,
+      boolean failed,
+      AtomicBoolean finished) {
+    if (!SwingUtilities.isEventDispatchThread()) {
+      SwingUtilities.invokeLater(
+          () ->
+              finishYikeCurveCompletion(
+                  targetEngine, statusUrl, generation, root, failed, finished));
       return;
     }
-    if (requestCount <= 0) {
-      targetEngine.clearRequestCallbacks();
+    if (!finished.compareAndSet(false, true)) {
+      return;
+    }
+    boolean current = isCurrentYikeCurveCompletion(generation, root);
+    if (current) {
       updateYikeLiveSyncStatus(
-          statusUrl, text("YikeLiveDialog.curveUpToDate", "Graph is up to date."));
+          statusUrl,
+          failed
+              ? text("YikeLiveDialog.curveFailed", "Failed to start graph completion")
+              : (countMissingMainlineAnalysisNodes() > 0
+                  ? text("YikeLiveDialog.curveUpdated", "Graph updated.")
+                  : text("YikeLiveDialog.curveUpToDate", "Graph is up to date.")));
+    }
+    releaseCompletedYikeCurveEngine(targetEngine);
+    if (current) {
+      if (!failed) {
+        refreshCompletedSilentAnalysisProgress();
+      }
+      resumeForegroundAnalysisAfterQuickAnalysisComplete();
+    }
+  }
+
+  private boolean isCurrentYikeCurveCompletion(long generation, BoardHistoryNode root) {
+    return generation == yikeCurveCompletionGeneration
+        && root != null
+        && root == currentHistoryRoot();
+  }
+
+  private void releaseCompletedYikeCurveEngine(AnalysisEngine targetEngine) {
+    if (targetEngine == null
+        || !targetEngine.isAutomaticBackgroundTask()
+        || targetEngine.usesSharedForegroundEngine()
+        || targetEngine.hasRequestLifecycleInProgress()) {
+      return;
+    }
+    targetEngine.clearRequestCallbacks();
+    targetEngine.normalQuit();
+    if (analysisEngine == targetEngine) {
+      analysisEngine = null;
     }
   }
 
@@ -15783,6 +15927,8 @@ public class LizzieFrame extends JFrame {
     if (shouldAutoQuickAnalyzeLoadedGame()) {
       if (failed) {
         releaseIdleAutomaticQuickAnalysisEngine();
+      } else {
+        refreshCompletedSilentAnalysisProgress();
       }
       scheduleLoadedGameQuickAnalysisRetry();
       if (failed) {
@@ -15792,6 +15938,9 @@ public class LizzieFrame extends JFrame {
     }
     releaseIdleAutomaticQuickAnalysisEngine();
     stopLoadedGameQuickAnalysisRetry();
+    if (!failed) {
+      refreshCompletedSilentAnalysisProgress();
+    }
     resumeForegroundAnalysisAfterQuickAnalysisComplete();
   }
 

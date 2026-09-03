@@ -287,9 +287,21 @@ public class YikeLiveDialog extends JFrame {
       statusLabel.setText(text("YikeLiveDialog.noSelection", "Select a live game first."));
       return;
     }
+    if (!canStartSync(game)) {
+      activeSyncUrl = "";
+      statusLabel.setText(
+          text("YikeLiveDialog.syncNoSgf", "No SGF is available yet.")
+              + " "
+              + game.getGameName());
+      return;
+    }
     activeSyncUrl = game.toRoomUrl();
     statusLabel.setText(text("YikeLiveDialog.syncing", "Syncing") + ": " + game.getGameName());
     Lizzie.frame.syncOnline(activeSyncUrl);
+  }
+
+  static boolean canStartSync(YikeLiveGame game) {
+    return game != null && !game.isPreviewWithoutMoves();
   }
 
   private YikeLiveGame selectedGame() {

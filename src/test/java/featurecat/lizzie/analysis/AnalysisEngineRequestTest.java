@@ -1621,6 +1621,49 @@ class AnalysisEngineRequestTest {
   }
 
   @Test
+  void silentProgressRefreshesGraphWithoutTriggeringFullBoardRefresh() throws Exception {
+    try (TestEnvironment env = TestEnvironment.open()) {
+      BoardHistoryList history = new BoardHistoryList(BoardData.empty(BOARD_SIZE, BOARD_SIZE));
+      history.add(
+          moveNode(stones(placement(0, 0, Stone.BLACK)), new int[] {0, 0}, Stone.BLACK, false, 1));
+      history.add(
+          moveNode(
+              stones(placement(0, 0, Stone.BLACK), placement(1, 1, Stone.WHITE)),
+              new int[] {1, 1},
+              Stone.WHITE,
+              true,
+              2));
+      boardWithHistory(history);
+      SilentProgressTrackingFrame frame = allocate(SilentProgressTrackingFrame.class);
+      Lizzie.frame = frame;
+      TrackingAnalysisEngine engine = TrackingAnalysisEngine.create();
+
+      assertEquals(2, engine.startRequestMissingMainline(false));
+      engine.parseResult(analysisResult(1, 200, 62.0));
+
+      assertEquals(1, frame.silentProgressRefreshCalls);
+      assertEquals(
+          0,
+          frame.fullRefreshCalls,
+          "an intermediate silent result must not rebuild the full board render surface.");
+      waitForMovelistRefreshThreads();
+    }
+  }
+
+  @Test
+  void silentProgressAlwaysRefreshesTheFinalResultBetweenThrottleIntervals() throws Exception {
+    Method method =
+        AnalysisEngine.class.getDeclaredMethod(
+            "shouldRefreshSilentProgress", int.class, int.class);
+    method.setAccessible(true);
+
+    assertTrue((boolean) method.invoke(null, 13, 13));
+    assertTrue((boolean) method.invoke(null, 49, 49));
+    assertFalse((boolean) method.invoke(null, 49, 50));
+    assertTrue((boolean) method.invoke(null, 48, 50));
+  }
+
+  @Test
   void wholeGameRequestNeverDowngradesCachedResultsEvenWhenOverrideIsEnabled() throws Exception {
     try (TestEnvironment env = TestEnvironment.open()) {
       Lizzie.config.analysisAlwaysOverride = true;
@@ -3945,6 +3988,26 @@ class AnalysisEngineRequestTest {
     protected void showContributeBenchmarkConflict() {
       contributeBenchmarkConflictCount++;
     }
+  }
+
+  private static final class SilentProgressTrackingFrame extends LizzieFrame {
+    private int silentProgressRefreshCalls;
+    private int fullRefreshCalls;
+
+    private SilentProgressTrackingFrame() {}
+
+    @Override
+    public void refreshSilentAnalysisProgress() {
+      silentProgressRefreshCalls++;
+    }
+
+    @Override
+    public void refresh() {
+      fullRefreshCalls++;
+    }
+
+    @Override
+    public void requestProblemListRefresh() {}
   }
 
   private static final class SilentGtpConsole extends GtpConsolePane {

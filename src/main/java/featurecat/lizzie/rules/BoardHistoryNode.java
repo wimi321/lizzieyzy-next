@@ -12,6 +12,9 @@ import java.util.Optional;
 
 /** Node structure for the board history / sgf tree */
 public class BoardHistoryNode {
+  private static final ThreadLocal<Integer> DETACHED_HISTORY_MUTATION_DEPTH =
+      ThreadLocal.withInitial(() -> 0);
+
   private Optional<BoardHistoryNode> previous;
   public ArrayList<BoardHistoryNode> variations;
   public NodeInfo nodeInfo;
@@ -28,6 +31,25 @@ public class BoardHistoryNode {
 
   // Save the children for restore to branch
   private int fromBackChildren;
+
+  static void runWithoutGlobalMoveSideEffects(Runnable action) {
+    Objects.requireNonNull(action, "action");
+    int previousDepth = DETACHED_HISTORY_MUTATION_DEPTH.get();
+    DETACHED_HISTORY_MUTATION_DEPTH.set(previousDepth + 1);
+    try {
+      action.run();
+    } finally {
+      if (previousDepth == 0) {
+        DETACHED_HISTORY_MUTATION_DEPTH.remove();
+      } else {
+        DETACHED_HISTORY_MUTATION_DEPTH.set(previousDepth);
+      }
+    }
+  }
+
+  private static boolean suppressGlobalMoveSideEffects() {
+    return DETACHED_HISTORY_MUTATION_DEPTH.get() > 0;
+  }
 
   /** Initializes a new list node */
   public BoardHistoryNode(BoardData data) {
@@ -174,12 +196,15 @@ public class BoardHistoryNode {
 
   public BoardHistoryNode addOrGoto(
       BoardData data, boolean newBranch, boolean changeMove, boolean tsumego) {
-    if (!Lizzie.board.isLoadingFile
+    boolean suppressSideEffects = suppressGlobalMoveSideEffects();
+    if (!suppressSideEffects
+        && !Lizzie.board.isLoadingFile
         && Lizzie.leelaz != null
         && !Lizzie.engineGame.current().playing()) {
       Lizzie.leelaz.clearBestMoves();
     }
-    if (Lizzie.frame.isPlayingAgainstLeelaz || Lizzie.frame.isAnaPlayingAgainstLeelaz) {
+    if (!suppressSideEffects
+        && (Lizzie.frame.isPlayingAgainstLeelaz || Lizzie.frame.isAnaPlayingAgainstLeelaz)) {
       if (Lizzie.frame.playerIsBlack == Lizzie.board.getHistory().isBlacksTurn())
         Lizzie.frame.tryToResetByoTime();
     }
@@ -201,7 +226,9 @@ public class BoardHistoryNode {
             break;
           }
           // if (Lizzie.config.playSound) Utils.playVoiceFile();
-          Lizzie.board.clearAfterMove();
+          if (!suppressSideEffects) {
+            Lizzie.board.clearAfterMove();
+          }
           return variations.get(i);
         }
       }
@@ -241,8 +268,12 @@ public class BoardHistoryNode {
     }
     node.previous = Optional.of(this);
     // if (Lizzie.config.playSound) Utils.playVoiceFile();
-    Lizzie.board.clearAfterMove();
-    Lizzie.leelaz.maybeAjustPDA(node);
+    if (!suppressSideEffects) {
+      Lizzie.board.clearAfterMove();
+      if (Lizzie.leelaz != null) {
+        Lizzie.leelaz.maybeAjustPDA(node);
+      }
+    }
     return node;
   }
 

@@ -15,6 +15,7 @@ import java.awt.Dimension;
 import java.awt.FlowLayout;
 import java.awt.Font;
 import java.awt.FontMetrics;
+import java.awt.Point;
 import java.awt.Rectangle;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -31,10 +32,108 @@ import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.JTextArea;
 import javax.swing.SwingUtilities;
+import javax.swing.SwingWorker;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 class KataGoAutoSetupDialogLayoutTest {
+  @Test
+  void localSetupDiscoveryRunsOffTheEventDispatchThreadAndReturnsOnIt() throws Exception {
+    AtomicBoolean discoveryRanOnEdt = new AtomicBoolean(true);
+    AtomicBoolean callbackRanOnEdt = new AtomicBoolean(false);
+    CountDownLatch completed = new CountDownLatch(1);
+
+    SwingUtilities.invokeAndWait(
+        () -> {
+          SwingWorker<Integer, Void> worker =
+              KataGoAutoSetupDialog.createUiBackgroundWorker(
+                  () -> {
+                    discoveryRanOnEdt.set(SwingUtilities.isEventDispatchThread());
+                    return 42;
+                  },
+                  value -> {
+                    callbackRanOnEdt.set(SwingUtilities.isEventDispatchThread() && value == 42);
+                    completed.countDown();
+                  },
+                  error -> completed.countDown());
+          worker.execute();
+        });
+
+    assertTrue(completed.await(3, TimeUnit.SECONDS));
+    assertFalse(discoveryRanOnEdt.get());
+    assertTrue(callbackRanOnEdt.get());
+  }
+
+  @Test
+  void localSetupDiscoveryFailureReturnsItsCauseOnTheEventDispatchThread() throws Exception {
+    IllegalStateException expected = new IllegalStateException("controlled discovery failure");
+    AtomicReference<Throwable> failure = new AtomicReference<>();
+    AtomicBoolean callbackRanOnEdt = new AtomicBoolean(false);
+    CountDownLatch completed = new CountDownLatch(1);
+
+    SwingUtilities.invokeAndWait(
+        () -> {
+          SwingWorker<Integer, Void> worker =
+              KataGoAutoSetupDialog.createUiBackgroundWorker(
+                  () -> {
+                    throw expected;
+                  },
+                  value -> completed.countDown(),
+                  error -> {
+                    failure.set(error);
+                    callbackRanOnEdt.set(SwingUtilities.isEventDispatchThread());
+                    completed.countDown();
+                  });
+          worker.execute();
+        });
+
+    assertTrue(completed.await(3, TimeUnit.SECONDS));
+    assertSame(expected, failure.get());
+    assertTrue(callbackRanOnEdt.get());
+  }
+
+  @Test
+  void dialogRetainsItsDesignedSizeWhenTheWorkAreaCanFitIt() {
+    Rectangle workArea = new Rectangle(0, 0, 1920, 1040);
+
+    assertEquals(new Dimension(1200, 900), KataGoAutoSetupDialog.dialogSizeForBounds(workArea));
+    assertEquals(
+        new Dimension(900, 620),
+        KataGoAutoSetupDialog.minimumDialogSizeForBounds(workArea));
+  }
+
+  @Test
+  void dialogShrinksBelowItsDesktopMinimumAtHighDisplayScaling() {
+    Rectangle scaledWorkArea = new Rectangle(0, 0, 853, 533);
+
+    Dimension size = KataGoAutoSetupDialog.dialogSizeForBounds(scaledWorkArea);
+    Dimension minimum = KataGoAutoSetupDialog.minimumDialogSizeForBounds(scaledWorkArea);
+
+    assertEquals(new Dimension(781, 461), size);
+    assertEquals(size, minimum);
+    assertTrue(size.width <= scaledWorkArea.width);
+    assertTrue(size.height <= scaledWorkArea.height);
+  }
+
+  @Test
+  void dialogPlacementStaysInsidePositiveAndNegativeMonitorCoordinates() {
+    Rectangle rightMonitor = new Rectangle(1920, 0, 853, 533);
+    Dimension rightSize = KataGoAutoSetupDialog.dialogSizeForBounds(rightMonitor);
+    Point rightLocation = KataGoAutoSetupDialog.dialogLocationForBounds(rightMonitor, rightSize);
+    assertTrue(rightLocation.x >= rightMonitor.x);
+    assertTrue(rightLocation.y >= rightMonitor.y);
+    assertTrue(rightLocation.x + rightSize.width <= rightMonitor.x + rightMonitor.width);
+    assertTrue(rightLocation.y + rightSize.height <= rightMonitor.y + rightMonitor.height);
+
+    Rectangle leftMonitor = new Rectangle(-1600, 0, 1600, 900);
+    Dimension leftSize = KataGoAutoSetupDialog.dialogSizeForBounds(leftMonitor);
+    Point leftLocation = KataGoAutoSetupDialog.dialogLocationForBounds(leftMonitor, leftSize);
+    assertTrue(leftLocation.x >= leftMonitor.x);
+    assertTrue(leftLocation.y >= leftMonitor.y);
+    assertTrue(leftLocation.x + leftSize.width <= leftMonitor.x + leftMonitor.width);
+    assertTrue(leftLocation.y + leftSize.height <= leftMonitor.y + leftMonitor.height);
+  }
+
   @Test
   void missingSetupPathsAreHandledAsAbsentFiles() {
     assertFalse(KataGoAutoSetupDialog.isRegularFile(null));

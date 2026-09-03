@@ -867,7 +867,7 @@ public class OnlineDialog extends JDialog {
       } catch (Exception ignored) {
       }
     }
-    if (!hasActiveYikeSession()) {
+    if (shouldClearBoardBeforeSync(hasActiveYikeSession(), syncType)) {
       Lizzie.board.clearForOnline();
     }
     switch (syncType) {
@@ -894,7 +894,7 @@ public class OnlineDialog extends JDialog {
         break;
       case 6:
         reqNewYikeRoom(
-            true, syncAjaxUrl, syncRoomId, syncRefreshTime, syncSourceUrl, syncType, syncSessionId);
+            false, syncAjaxUrl, syncRoomId, syncRefreshTime, syncSourceUrl, syncType, syncSessionId);
         break;
       case 7:
         startYikeUnitePolling(syncRoomId, syncRefreshTime, syncAjaxUrl);
@@ -920,6 +920,10 @@ public class OnlineDialog extends JDialog {
     if (online == null || online.isShutdown() || online.isTerminated()) {
       online = Executors.newScheduledThreadPool(1);
     }
+  }
+
+  static boolean shouldClearBoardBeforeSync(boolean hasActiveSession, int syncType) {
+    return !hasActiveSession && syncType != YikeUrlInfo.TYPE_NEW_LIVE_ROOM;
   }
 
   private int nextYikeLiveSessionId() {
@@ -1103,9 +1107,10 @@ public class OnlineDialog extends JDialog {
       }
       if (Utils.isBlank(sgf)) {
         YikeSyncDebugLog.log("OnlineDialog.parseSgf no sgf in live payload");
-        updateYikeSyncStatus(
-            currentYikeSourceUrl(), text("YikeLiveDialog.syncNoSgf", "No SGF is available yet."));
-        error(true);
+        String sourceUrl = currentYikeSourceUrl();
+        String status = text("YikeLiveDialog.syncNoSgf", "No SGF is available yet.");
+        updateYikeSyncStatus(sourceUrl, status);
+        Lizzie.frame.revealYikeLiveSyncStatus(sourceUrl, status);
         return;
       }
     }
@@ -1543,7 +1548,17 @@ public class OnlineDialog extends JDialog {
                       + " sgfLen="
                       + (detail.getSgf() == null ? -1 : detail.getSgf().length()));
               if (Utils.isBlank(detail.getSgf())) {
-                throw new IOException(text("YikeLiveDialog.syncNoSgf", "No SGF is available yet."));
+                String noSgfStatus =
+                    text("YikeLiveDialog.syncNoSgf", "No SGF is available yet.");
+                updateYikeSyncStatus(sourceUrl, noSgfStatus);
+                Lizzie.frame.revealYikeLiveSyncStatus(sourceUrl, noSgfStatus);
+                if (detail.getStatus() >= 3
+                    && schedule != null
+                    && !schedule.isCancelled()
+                    && !schedule.isDone()) {
+                  schedule.cancel(false);
+                }
+                return;
               }
               String mainlineSgf = YikeSgfMainline.withoutVariations(detail.getSgf());
               boolean hasNewMoves = !mainlineSgf.equals(lastYikeMainlineSgf);

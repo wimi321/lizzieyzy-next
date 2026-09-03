@@ -5672,6 +5672,11 @@ public class Board {
   }
 
   public void setMovelistAll() {
+    setMovelistAll(null);
+  }
+
+  /** Rebuilds move-list metadata asynchronously and runs {@code onComplete} after it is coherent. */
+  public void setMovelistAll(Runnable onComplete) {
     final int generation = ++movelistRefreshGeneration;
     final BoardHistoryList refreshHistory = history;
     if (refreshHistory == null) {
@@ -5708,6 +5713,11 @@ public class Board {
                   if (processed % 128 == 0 && !sleepMovelistRefresh(1)) {
                     return;
                   }
+                }
+                if (generation == movelistRefreshGeneration
+                    && history == refreshHistory
+                    && onComplete != null) {
+                  onComplete.run();
                 }
               }
             },

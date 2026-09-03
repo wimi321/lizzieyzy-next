@@ -15,6 +15,7 @@ import featurecat.lizzie.theme.MorandiPalette;
 import featurecat.lizzie.theme.Theme;
 import featurecat.lizzie.training.HumanSlTrainingSession;
 import featurecat.lizzie.update.WindowsUpdateController;
+import featurecat.lizzie.util.LocaleFontSupport;
 import featurecat.lizzie.util.Utils;
 import featurecat.lizzie.logging.LoggingRuntime;
 import java.awt.Color;
@@ -71,6 +72,12 @@ public class Menu extends JMenuBar {
   JFontMenuItem shutdownOtherEngine;
   JFontMenuItem minPlayoutsForNextMove;
   private TencentKifuDownload tencentKifuDownload;
+
+  static Font languageOptionFont(AppLocale locale, String preferredName, int size) {
+    String fontName =
+        LocaleFontSupport.resolveLanguageFontName(preferredName, locale.locale());
+    return new Font(fontName, Font.PLAIN, size);
+  }
 
   public static JFontMenuItem[] engine2 = new JFontMenuItem[21];
   public static JFontMenu engineMenu2;
@@ -5351,10 +5358,13 @@ public class Menu extends JMenuBar {
     languageDefault.addActionListener(event -> selectLanguage(AppLocale.SYSTEM));
 
     final JFontCheckBoxMenuItem languageZH = new JFontCheckBoxMenuItem("简体中文");
+    languageZH.setFont(languageOptionFont(AppLocale.SIMPLIFIED_CHINESE, "Dialog", Config.frameFontSize));
     language.add(languageZH);
     languageZH.addActionListener(event -> selectLanguage(AppLocale.SIMPLIFIED_CHINESE));
 
     final JFontCheckBoxMenuItem languageTW = new JFontCheckBoxMenuItem("繁體中文");
+    languageTW.setFont(
+        languageOptionFont(AppLocale.TRADITIONAL_CHINESE, "Dialog", Config.frameFontSize));
     language.add(languageTW);
     languageTW.addActionListener(event -> selectLanguage(AppLocale.TRADITIONAL_CHINESE));
 
@@ -5363,17 +5373,19 @@ public class Menu extends JMenuBar {
     languageEN.addActionListener(event -> selectLanguage(AppLocale.ENGLISH));
 
     final JFontCheckBoxMenuItem languageJP = new JFontCheckBoxMenuItem("日本語");
-    languageJP.setFont(new Font("Yu Gothic UI", Font.PLAIN, Config.frameFontSize));
+    languageJP.setFont(
+        languageOptionFont(AppLocale.JAPANESE, "Yu Gothic UI", Config.frameFontSize));
     language.add(languageJP);
     languageJP.addActionListener(event -> selectLanguage(AppLocale.JAPANESE));
 
     final JFontCheckBoxMenuItem languageKR = new JFontCheckBoxMenuItem("한국어");
-    languageKR.setFont(new Font("맑은 고딕", Font.PLAIN, Config.frameFontSize));
+    languageKR.setFont(
+        languageOptionFont(AppLocale.KOREAN, "Malgun Gothic", Config.frameFontSize));
     language.add(languageKR);
     languageKR.addActionListener(event -> selectLanguage(AppLocale.KOREAN));
 
     final JFontCheckBoxMenuItem languageTH = new JFontCheckBoxMenuItem("ไทย");
-    languageTH.setFont(new Font("Dialog", Font.PLAIN, Config.frameFontSize));
+    languageTH.setFont(languageOptionFont(AppLocale.THAI, "Dialog", Config.frameFontSize));
     language.add(languageTH);
     languageTH.addActionListener(event -> selectLanguage(AppLocale.THAI));
 
