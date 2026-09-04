@@ -1,6 +1,7 @@
 package featurecat.lizzie.gui;
 
 import featurecat.lizzie.Lizzie;
+import featurecat.lizzie.analysis.WholeGameAnalysisOptions;
 import featurecat.lizzie.analysis.WholeGameAnalysisSession;
 import java.awt.BasicStroke;
 import java.awt.BorderLayout;
@@ -21,6 +22,7 @@ import java.awt.event.KeyEvent;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import java.text.MessageFormat;
+import java.text.ParseException;
 import java.util.ResourceBundle;
 import javax.swing.AbstractAction;
 import javax.swing.BorderFactory;
@@ -28,14 +30,17 @@ import javax.swing.Box;
 import javax.swing.BoxLayout;
 import javax.swing.Icon;
 import javax.swing.JButton;
+import javax.swing.JComboBox;
 import javax.swing.JComponent;
 import javax.swing.JDialog;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.JProgressBar;
 import javax.swing.JScrollPane;
+import javax.swing.JSpinner;
 import javax.swing.JTextArea;
 import javax.swing.KeyStroke;
+import javax.swing.SpinnerNumberModel;
 import javax.swing.SwingConstants;
 import javax.swing.SwingUtilities;
 import javax.swing.WindowConstants;
@@ -66,8 +71,19 @@ public final class WholeGameAnalysisDialog extends JDialog
   private final JButton startButton = new JButton();
   private final JButton pauseButton = new JButton();
   private final JButton stopButton = new JButton();
+  private final JComboBox<PresetChoice> visitsPreset = new JComboBox<>();
+  private final JSpinner customVisits =
+      new JSpinner(
+          new SpinnerNumberModel(
+              WholeGameAnalysisOptions.DEFAULT_VISITS,
+              WholeGameAnalysisOptions.MINIMUM_VISITS,
+              WholeGameAnalysisOptions.MAXIMUM_VISITS,
+              100));
+  private final JTextArea visitsHint = textArea();
   private WholeGameAnalysisSession session;
   private WholeGameAnalysisSession.State latestState = WholeGameAnalysisSession.State.IDLE;
+  private int lastCustomVisits = WholeGameAnalysisOptions.DEFAULT_VISITS;
+  private boolean adjustingVisits;
 
   public WholeGameAnalysisDialog(LizzieFrame owner) {
     super(owner, Lizzie.resourceBundle.getString("WholeGameAnalysis.title"), false);
@@ -76,6 +92,7 @@ public final class WholeGameAnalysisDialog extends JDialog
     setType(Window.Type.UTILITY);
     setResizable(true);
     setContentPane(buildContent());
+    initializeVisitsSelection();
     pack();
     fitToUsableScreen();
     setLocationRelativeTo(owner);
@@ -84,6 +101,7 @@ public final class WholeGameAnalysisDialog extends JDialog
 
   public void setSession(WholeGameAnalysisSession session) {
     this.session = session;
+    setVisitControlsEnabled(session == null);
   }
 
   public void showOnScreen() {
@@ -194,6 +212,11 @@ public final class WholeGameAnalysisDialog extends JDialog
     constraints.fill = GridBagConstraints.HORIZONTAL;
     constraints.anchor = GridBagConstraints.WEST;
 
+    card.add(buildVisitControls(), constraints);
+
+    constraints.gridy++;
+    constraints.insets = new Insets(18, 0, 0, 0);
+
     phaseLabel.setName("wholeGamePhase");
     phaseLabel.setForeground(TEXT);
     phaseLabel.setFont(phaseLabel.getFont().deriveFont(Font.BOLD, 18f));
@@ -227,6 +250,199 @@ public final class WholeGameAnalysisDialog extends JDialog
     constraints.insets = new Insets(10, 0, 0, 0);
     card.add(buildMetadataRow(), constraints);
     return card;
+  }
+
+  private JComponent buildVisitControls() {
+    JPanel controls = new JPanel(new GridBagLayout());
+    controls.setName("wholeGameVisitControls");
+    controls.setOpaque(false);
+
+    JLabel label = new JLabel(resources.getString("WholeGameAnalysis.visits.label"));
+    label.setLabelFor(visitsPreset);
+    label.setForeground(TEXT);
+    label.setFont(label.getFont().deriveFont(Font.BOLD, 13f));
+
+    GridBagConstraints labelConstraints = new GridBagConstraints();
+    labelConstraints.gridx = 0;
+    labelConstraints.gridy = 0;
+    labelConstraints.anchor = GridBagConstraints.WEST;
+    controls.add(label, labelConstraints);
+
+    for (WholeGameAnalysisOptions.Preset preset : WholeGameAnalysisOptions.Preset.values()) {
+      visitsPreset.addItem(new PresetChoice(preset, resources.getString(preset.resourceKey())));
+    }
+    visitsPreset.setName("wholeGameVisitsPreset");
+    visitsPreset.setPreferredSize(new Dimension(230, 34));
+    visitsPreset
+        .getAccessibleContext()
+        .setAccessibleName(resources.getString("WholeGameAnalysis.visits.label"));
+    visitsPreset.addActionListener(event -> applySelectedPreset());
+
+    GridBagConstraints presetConstraints = new GridBagConstraints();
+    presetConstraints.gridx = 1;
+    presetConstraints.gridy = 0;
+    presetConstraints.weightx = 1;
+    presetConstraints.fill = GridBagConstraints.HORIZONTAL;
+    presetConstraints.insets = new Insets(0, 16, 0, 0);
+    controls.add(visitsPreset, presetConstraints);
+
+    customVisits.setName("wholeGameCustomVisits");
+    customVisits.setPreferredSize(new Dimension(132, 34));
+    customVisits
+        .getAccessibleContext()
+        .setAccessibleName(resources.getString("WholeGameAnalysis.visits.customValue"));
+    JSpinner.NumberEditor editor = new JSpinner.NumberEditor(customVisits, "#");
+    customVisits.setEditor(editor);
+    customVisits.addChangeListener(
+        event -> {
+          if (selectedPreset() == WholeGameAnalysisOptions.Preset.CUSTOM) {
+            lastCustomVisits = ((Number) customVisits.getValue()).intValue();
+            updateVisitHint();
+          }
+        });
+
+    GridBagConstraints customConstraints = new GridBagConstraints();
+    customConstraints.gridx = 2;
+    customConstraints.gridy = 0;
+    customConstraints.insets = new Insets(0, 10, 0, 0);
+    controls.add(customVisits, customConstraints);
+
+    visitsHint.setName("wholeGameVisitsHint");
+    visitsHint.setRows(2);
+    visitsHint.setColumns(48);
+    visitsHint.setForeground(MUTED);
+    visitsHint.setFont(visitsHint.getFont().deriveFont(12f));
+    visitsHint
+        .getAccessibleContext()
+        .setAccessibleName(resources.getString("WholeGameAnalysis.visits.label"));
+
+    GridBagConstraints hintConstraints = new GridBagConstraints();
+    hintConstraints.gridx = 0;
+    hintConstraints.gridy = 1;
+    hintConstraints.gridwidth = 3;
+    hintConstraints.weightx = 1;
+    hintConstraints.fill = GridBagConstraints.HORIZONTAL;
+    hintConstraints.anchor = GridBagConstraints.WEST;
+    hintConstraints.insets = new Insets(7, 0, 0, 0);
+    controls.add(visitsHint, hintConstraints);
+    return controls;
+  }
+
+  private void initializeVisitsSelection() {
+    int configured =
+        Lizzie.config == null
+            ? WholeGameAnalysisOptions.DEFAULT_VISITS
+            : Lizzie.config.wholeGameAnalysisDeepVisits;
+    setSelectedVisits(configured);
+  }
+
+  private void applySelectedPreset() {
+    if (adjustingVisits) {
+      return;
+    }
+    WholeGameAnalysisOptions.Preset preset = selectedPreset();
+    boolean custom = preset == WholeGameAnalysisOptions.Preset.CUSTOM;
+    if (custom) {
+      customVisits.setValue(lastCustomVisits);
+    } else if (preset != null) {
+      customVisits.setValue(preset.visits());
+    }
+    customVisits.setVisible(custom);
+    customVisits.setEnabled(
+        custom && latestState == WholeGameAnalysisSession.State.IDLE && session == null);
+    updateVisitHint();
+    revalidate();
+    repaint();
+  }
+
+  private WholeGameAnalysisOptions.Preset selectedPreset() {
+    Object selected = visitsPreset.getSelectedItem();
+    return selected instanceof PresetChoice ? ((PresetChoice) selected).preset : null;
+  }
+
+  WholeGameAnalysisOptions selectedOptions() {
+    WholeGameAnalysisOptions.Preset preset = selectedPreset();
+    int visits =
+        preset == null || preset == WholeGameAnalysisOptions.Preset.CUSTOM
+            ? ((Number) customVisits.getValue()).intValue()
+            : preset.visits();
+    return WholeGameAnalysisOptions.of(visits);
+  }
+
+  WholeGameAnalysisOptions commitSelectedOptions() {
+    if (selectedPreset() == WholeGameAnalysisOptions.Preset.CUSTOM) {
+      try {
+        customVisits.commitEdit();
+      } catch (ParseException exception) {
+        return null;
+      }
+    }
+    WholeGameAnalysisOptions options = selectedOptions();
+    if (options.isValid()) {
+      lastCustomVisits = options.deepVisits();
+    }
+    return options;
+  }
+
+  void setSelectedVisits(int visits) {
+    WholeGameAnalysisOptions options = WholeGameAnalysisOptions.fromStored(visits);
+    adjustingVisits = true;
+    try {
+      lastCustomVisits = options.deepVisits();
+      selectPresetItem(options.preset());
+      customVisits.setValue(options.deepVisits());
+      customVisits.setVisible(options.preset() == WholeGameAnalysisOptions.Preset.CUSTOM);
+      customVisits.setEnabled(
+          options.preset() == WholeGameAnalysisOptions.Preset.CUSTOM
+              && latestState == WholeGameAnalysisSession.State.IDLE
+              && session == null);
+    } finally {
+      adjustingVisits = false;
+    }
+    updateVisitHint();
+  }
+
+  private void selectPresetItem(WholeGameAnalysisOptions.Preset preset) {
+    for (int index = 0; index < visitsPreset.getItemCount(); index++) {
+      PresetChoice choice = visitsPreset.getItemAt(index);
+      if (choice.preset == preset) {
+        visitsPreset.setSelectedIndex(index);
+        return;
+      }
+    }
+  }
+
+  private void updateVisitHint() {
+    WholeGameAnalysisOptions options = selectedOptions();
+    visitsHint.setForeground(options.isValid() ? MUTED : new Color(173, 52, 49));
+    visitsHint.setText(
+        resources.getString(
+            options.isValid()
+                ? "WholeGameAnalysis.visits.hint"
+                : "WholeGameAnalysis.visits.invalid"));
+    if (options.isValid() && ownerFrame != null) {
+      ownerFrame.requestWholeGameAnalysisEstimate(this, options);
+    }
+  }
+
+  void showPreStartEstimate(WholeGameAnalysisOptions options, long estimatedMillis) {
+    if (latestState != WholeGameAnalysisSession.State.IDLE
+        || options == null
+        || selectedOptions().deepVisits() != options.deepVisits()) {
+      return;
+    }
+    visitsHint.setForeground(MUTED);
+    visitsHint.setText(
+        estimatedMillis > 0
+            ? MessageFormat.format(
+                resources.getString("WholeGameAnalysis.visits.estimate"),
+                formatDuration(estimatedMillis))
+            : resources.getString("WholeGameAnalysis.visits.hint"));
+  }
+
+  private void setVisitControlsEnabled(boolean enabled) {
+    visitsPreset.setEnabled(enabled);
+    customVisits.setEnabled(enabled && selectedPreset() == WholeGameAnalysisOptions.Preset.CUSTOM);
   }
 
   private JComponent buildMetadataRow() {
@@ -275,7 +491,14 @@ public final class WholeGameAnalysisDialog extends JDialog
     styleButton(startButton, true);
     startButton.addActionListener(
         event -> {
-          if (session != null && ownerFrame.startWholeGameDeepAnalysis(session)) {
+          WholeGameAnalysisOptions options = commitSelectedOptions();
+          if (options == null || !options.isValid()) {
+            visitsHint.setForeground(new Color(173, 52, 49));
+            visitsHint.setText(resources.getString("WholeGameAnalysis.visits.invalid"));
+            return;
+          }
+          if (session == null && ownerFrame.startWholeGameDeepAnalysis(this, options)) {
+            setVisitControlsEnabled(false);
             applyControlState(controlState(WholeGameAnalysisSession.State.PREPARING));
           }
         });
@@ -324,6 +547,7 @@ public final class WholeGameAnalysisDialog extends JDialog
     startButton.setEnabled(controls.startEnabled);
     pauseButton.setEnabled(controls.pauseEnabled);
     stopButton.setEnabled(controls.stopEnabled);
+    setVisitControlsEnabled(controls.startEnabled && session == null);
     pauseButton.setText(
         resources.getString(
             controls.resumeLabel ? "WholeGameAnalysis.resume" : "WholeGameAnalysis.pause"));
@@ -508,6 +732,21 @@ public final class WholeGameAnalysisDialog extends JDialog
       this.stopEnabled = stopEnabled;
       this.resumeLabel = resumeLabel;
       this.closeLabel = closeLabel;
+    }
+  }
+
+  private static final class PresetChoice {
+    private final WholeGameAnalysisOptions.Preset preset;
+    private final String label;
+
+    private PresetChoice(WholeGameAnalysisOptions.Preset preset, String label) {
+      this.preset = preset;
+      this.label = label;
+    }
+
+    @Override
+    public String toString() {
+      return label;
     }
   }
 

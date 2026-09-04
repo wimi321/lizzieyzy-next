@@ -15,6 +15,23 @@ import org.junit.jupiter.api.Test;
 class ConfigTransactionalSaveTest {
 
   @Test
+  void wholeGameAnalysisDepthIsValidatedAndPersistedTransactionally() throws Exception {
+    Path workDirectory = Files.createTempDirectory("lizzie-whole-game-analysis-depth");
+    Config config = ConfigTestHelper.createForTests(workDirectory);
+    initializeConfigSections(config);
+
+    config.saveWholeGameAnalysisDeepVisits(3_000);
+
+    JSONObject saved = new JSONObject(Files.readString(Path.of(config.getConfigFilePath())));
+    assertEquals(3_000, config.wholeGameAnalysisDeepVisits);
+    assertEquals(3_000, saved.getJSONObject("ui").getInt("whole-game-analysis-deep-visits"));
+
+    assertThrows(
+        IllegalArgumentException.class, () -> config.saveWholeGameAnalysisDeepVisits(499));
+    assertEquals(3_000, config.wholeGameAnalysisDeepVisits);
+  }
+
+  @Test
   void readBoardWebSocketPonderingNoticeSuppressionDefaultsToFalseAndPersists()
       throws Exception {
     Path workDirectory = Files.createTempDirectory("lizzie-readboard-pondering-notice");

@@ -12,7 +12,7 @@ import java.util.List;
 /** Immutable main-line work plan for the two-stage whole-game analysis workflow. */
 public final class WholeGameAnalysisPlan {
   public static final int DEFAULT_BASELINE_VISITS = 32;
-  public static final int MINIMUM_DEEP_VISITS = 500;
+  public static final int MINIMUM_DEEP_VISITS = WholeGameAnalysisOptions.MINIMUM_VISITS;
 
   private final BoardHistoryNode root;
   private final List<BoardHistoryNode> positions;
@@ -51,7 +51,32 @@ public final class WholeGameAnalysisPlan {
         root,
         positions,
         Math.max(1, baselineVisits),
-        Math.max(MINIMUM_DEEP_VISITS, requestedDeepVisits));
+        Math.max(
+            MINIMUM_DEEP_VISITS,
+            Math.min(WholeGameAnalysisOptions.MAXIMUM_VISITS, requestedDeepVisits)));
+  }
+
+  public static WholeGameAnalysisPlan create(
+      BoardHistoryNode root, int baselineVisits, WholeGameAnalysisOptions options) {
+    if (options == null) {
+      throw new IllegalArgumentException("Whole-game analysis options are required");
+    }
+    return create(root, baselineVisits, options.requireValidVisits());
+  }
+
+  public static int countMainlineMoves(BoardHistoryNode root) {
+    if (root == null) {
+      return 0;
+    }
+    int moves = 0;
+    BoardHistoryNode node = root;
+    while (node.next().isPresent()) {
+      node = node.next().get();
+      if (isRealHistoryAction(node.getData())) {
+        moves++;
+      }
+    }
+    return moves;
   }
 
   public BoardHistoryNode root() {

@@ -55,6 +55,7 @@ import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.JPopupMenu;
 import javax.swing.JTextField;
+import javax.swing.SwingUtilities;
 import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
 import javax.swing.text.Document;
@@ -236,6 +237,7 @@ public class BottomToolbar extends JPanel {
   JPanel enginePkPanel;
   private Thread threadAnalyzeAllNode;
   private Thread threadAnalyzeDiffNode;
+  private boolean autoAnalysisStartPending;
 
   private BoardHistoryNode autoAnaStartNode;
   // public int enginePKGenmoveBestMovesSize;
@@ -2676,6 +2678,13 @@ public class BottomToolbar extends JPanel {
   }
 
   public void stopAutoAna(boolean needCheckDiff, boolean isForceStop) {
+    if (autoAnalysisStartPending) {
+      if (Lizzie.frame != null) {
+        Lizzie.frame.cancelPendingManualAutoAnalysisStart();
+      }
+      finishPendingAutoAnalysisStart(false);
+      return;
+    }
     if (needCheckDiff) {
       if (checkDiffAnalyze(isForceStop)) return;
     } else {
@@ -3752,6 +3761,80 @@ public class BottomToolbar extends JPanel {
   }
 
   public void startAutoAna() {
+    if (!SwingUtilities.isEventDispatchThread()) {
+      SwingUtilities.invokeLater(this::startAutoAna);
+      return;
+    }
+    if (autoAnalysisStartPending || Lizzie.config.isAutoAna) {
+      return;
+    }
+    autoAnalysisStartPending = true;
+    chkAutoAnalyse.setSelected(true);
+    chkAutoAnalyse.setEnabled(false);
+    start.setEnabled(false);
+    start.setText(text("AutoAnalyze.preparing", "Switching..."));
+    Utils.showMsgNoModalForTime(
+        text("AutoAnalyze.preparingStatus", "Switching to step-by-step analysis..."), 3);
+    Lizzie.frame.requestManualAutoAnalysisStart(
+        this::startAutoAnaAfterQuickAnalysisReleased, this::failPendingAutoAnalysisStart);
+  }
+
+  private void startAutoAnaAfterQuickAnalysisReleased() {
+    if (!autoAnalysisStartPending) {
+      return;
+    }
+    if (Lizzie.leelaz == null) {
+      failPendingAutoAnalysisStart(
+          LizzieFrame.ManualAutoAnalysisStartFailure.ENGINE_UNAVAILABLE);
+      return;
+    }
+    finishPendingAutoAnalysisStart(true);
+    Lizzie.leelaz.nameCmd();
+    startAutoAnaNow();
+  }
+
+  private void failPendingAutoAnalysisStart(
+      LizzieFrame.ManualAutoAnalysisStartFailure failure) {
+    finishPendingAutoAnalysisStart(false);
+    if (failure == null || failure == LizzieFrame.ManualAutoAnalysisStartFailure.CANCELLED) {
+      return;
+    }
+    String key;
+    String fallback;
+    switch (failure) {
+      case ANALYSIS_CONFLICT:
+        key = "AutoAnalyze.conflict";
+        fallback = "Another analysis task is running. Stop it before starting auto-analysis.";
+        break;
+      case ENGINE_UNAVAILABLE:
+        key = "AutoAnalyze.engineUnavailable";
+        fallback = "The current engine is not ready. Start or repair it, then try again.";
+        break;
+      case GAME_CHANGED:
+        key = "AutoAnalyze.gameChanged";
+        fallback = "The game changed before auto-analysis could start.";
+        break;
+      case RELEASE_FAILED:
+      default:
+        key = "AutoAnalyze.releaseFailed";
+        fallback = "Quick analysis could not release the engine. Please try again.";
+        break;
+    }
+    Utils.showMsgNoModalForTime(text(key, fallback), 5);
+  }
+
+  private void finishPendingAutoAnalysisStart(boolean starting) {
+    autoAnalysisStartPending = false;
+    chkAutoAnalyse.setEnabled(true);
+    chkAutoAnalyse.setSelected(starting);
+    start.setEnabled(true);
+    start.setText(
+        text(
+            starting ? "BottomToolbar.detail.stop" : "BottomToolbar.detail.start",
+            starting ? "Stop" : "Start"));
+  }
+
+  private void startAutoAnaNow() {
     if (threadAnalyzeDiffNode != null) threadAnalyzeDiffNode.interrupt();
     Lizzie.frame.isAutoAnalyzingDiffNode = false;
     chkAutoAnalyse.setSelected(true);

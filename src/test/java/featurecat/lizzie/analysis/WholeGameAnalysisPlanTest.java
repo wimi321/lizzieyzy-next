@@ -33,8 +33,30 @@ class WholeGameAnalysisPlanTest {
 
     assertEquals(4, plan.positionCount());
     assertEquals(3, plan.moveCount());
+    assertEquals(3, WholeGameAnalysisPlan.countMainlineMoves(root));
     assertEquals(Arrays.asList(root, move, realPass, lastMove), plan.positions());
     assertEquals(WholeGameAnalysisPlan.MINIMUM_DEEP_VISITS, plan.deepVisits());
+  }
+
+  @Test
+  void validatedOptionsControlTheDeepStageWithoutClamping() {
+    BoardHistoryNode root = new BoardHistoryNode(BoardData.empty(BOARD_SIZE, BOARD_SIZE));
+    root.add(new BoardHistoryNode(moveData(Stone.BLACK, 1, 0)));
+
+    WholeGameAnalysisPlan plan =
+        WholeGameAnalysisPlan.create(root, 32, WholeGameAnalysisOptions.of(12_345));
+
+    assertEquals(32, plan.baselineVisits());
+    assertEquals(12_345, plan.deepVisits());
+  }
+
+  @Test
+  void invalidOptionsCannotCreateAPlan() {
+    BoardHistoryNode root = new BoardHistoryNode(BoardData.empty(BOARD_SIZE, BOARD_SIZE));
+
+    org.junit.jupiter.api.Assertions.assertThrows(
+        IllegalArgumentException.class,
+        () -> WholeGameAnalysisPlan.create(root, 32, WholeGameAnalysisOptions.of(499)));
   }
 
   @Test

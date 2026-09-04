@@ -1,6 +1,7 @@
 package featurecat.lizzie;
 
 import featurecat.lizzie.analysis.MoveRankEvaluationMode;
+import featurecat.lizzie.analysis.WholeGameAnalysisOptions;
 import featurecat.lizzie.gui.LizzieFrame;
 import featurecat.lizzie.logging.CrashHandlers;
 import featurecat.lizzie.logging.DiagnosticModule;
@@ -1036,6 +1037,7 @@ public class Config {
   public boolean analysisEnginePreLoad = false;
   public boolean analysisReuseCurrentEngine = false;
   public boolean analysisAlwaysOverride = false;
+  public int wholeGameAnalysisDeepVisits = WholeGameAnalysisOptions.DEFAULT_VISITS;
   public int trackingAnalysisMaxVisits = 500;
   public boolean showTrackingPointOutline = true;
   public Color trackingPointInteriorColor = new Color(255, 156, 156);
@@ -1620,6 +1622,11 @@ public class Config {
     useJavaLooks = uiConfig.optBoolean("use-java-looks", !OS.isWindows());
     showNextMoveBlunder = uiConfig.optBoolean("show-next-move-blunder", true);
     batchAnalysisPlayouts = uiConfig.optInt("batch-analysis-playouts", 100);
+    wholeGameAnalysisDeepVisits =
+        WholeGameAnalysisOptions.fromStored(
+                uiConfig.optInt(
+                    "whole-game-analysis-deep-visits", WholeGameAnalysisOptions.DEFAULT_VISITS))
+            .deepVisits();
     minPlayoutsForNextMove = uiConfig.optInt("min-playouts-for-next-move", 30);
     try {
       shouldWidenCheckBox =
@@ -2851,6 +2858,7 @@ public class Config {
     ui.put("winrate-stroke-width", 1.7);
     ui.put("show-blunder-bar", false);
     ui.put("auto-quick-analyze-on-load", true);
+    ui.put("whole-game-analysis-deep-visits", WholeGameAnalysisOptions.DEFAULT_VISITS);
     ui.put("quick-analysis-lightweight-model-enabled", false);
     ui.put("minimum-blunder-bar-width", 1);
     ui.put("weighted-blunder-bar-height", false);
@@ -3553,6 +3561,15 @@ public class Config {
     } catch (IOException e) {
       logConfig("save", "config", "failed", 0, e);
     }
+  }
+
+  public void saveWholeGameAnalysisDeepVisits(int visits) throws IOException {
+    WholeGameAnalysisOptions options = WholeGameAnalysisOptions.of(visits);
+    int validatedVisits = options.requireValidVisits();
+    JSONObject candidateUi = new JSONObject(uiConfig.toString());
+    candidateUi.put("whole-game-analysis-deep-visits", validatedVisits);
+    saveConfigSections(candidateUi, leelazConfig);
+    wholeGameAnalysisDeepVisits = validatedVisits;
   }
 
   public void saveConfigSections(JSONObject candidateUi, JSONObject candidateLeelaz)

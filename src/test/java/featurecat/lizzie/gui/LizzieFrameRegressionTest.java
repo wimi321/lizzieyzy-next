@@ -564,6 +564,222 @@ class LizzieFrameRegressionTest {
   }
 
   @Test
+  void manualAutoAnalysisWaitsForAutomaticSharedEngineRestore() throws Exception {
+    try (TestEnvironment env = TestEnvironment.open()) {
+      Lizzie.config = configWithAutoQuickAnalyze();
+      Lizzie.board = boardWith(historyWithUnanalyzedMove());
+      Lizzie.leelaz = allocate(TrackingLeelaz.class);
+      LizzieFrame frame = allocate(LizzieFrame.class);
+      ResourceTrackingAnalysisEngine engine = allocate(ResourceTrackingAnalysisEngine.class);
+      engine.shared = true;
+      engine.automatic = true;
+      engine.requestLifecycleInProgress = true;
+      frame.analysisEngine = engine;
+      Lizzie.frame = frame;
+      BoardHistoryNode root = Lizzie.board.getHistory().getStart();
+      armLoadedGameQuickAnalysis(frame, root, true);
+      AtomicInteger starts = new AtomicInteger();
+      AtomicReference<LizzieFrame.ManualAutoAnalysisStartFailure> failure =
+          new AtomicReference<>();
+
+      SwingUtilities.invokeAndWait(
+          () ->
+              frame.requestManualAutoAnalysisStart(
+                  () -> {
+                    Lizzie.config.isAutoAna = true;
+                    starts.incrementAndGet();
+                  },
+                  failure::set));
+
+      assertTrue(frame.isManualAutoAnalysisStarting());
+      assertNull(frame.analysisEngine);
+      assertFalse((boolean) getField(frame, "loadedGameQuickAnalysisActive"));
+      assertSame(root, getField(frame, "userCancelledQuickAnalysisRoot"));
+      assertEquals(1, engine.normalQuitCount);
+      assertEquals(0, starts.get());
+
+      engine.completeExit();
+      drainEdt();
+
+      assertEquals(1, starts.get());
+      assertNull(failure.get());
+      assertFalse(frame.isManualAutoAnalysisStarting());
+      assertFalse(invokeShouldAutoQuickAnalyze(frame));
+
+      Lizzie.config.isAutoAna = false;
+      assertFalse(invokeShouldAutoQuickAnalyze(frame));
+
+      Lizzie.board = boardWith(historyWithUnanalyzedMove());
+      SwingUtilities.invokeAndWait(frame::startNewKifuAnalysisContextAfterSuccessfulLoad);
+      assertTrue(invokeShouldAutoQuickAnalyze(frame));
+    }
+  }
+
+  @Test
+  void manualAutoAnalysisDoesNotInterruptUserStartedAnalysis() throws Exception {
+    try (TestEnvironment env = TestEnvironment.open()) {
+      Lizzie.config = configWithAutoQuickAnalyze();
+      Lizzie.board = boardWith(historyWithUnanalyzedMove());
+      Lizzie.leelaz = allocate(TrackingLeelaz.class);
+      LizzieFrame frame = allocate(LizzieFrame.class);
+      ResourceTrackingAnalysisEngine userTask = allocate(ResourceTrackingAnalysisEngine.class);
+      userTask.analysisInProgress = true;
+      frame.analysisEngine = userTask;
+      Lizzie.frame = frame;
+      AtomicInteger starts = new AtomicInteger();
+      AtomicReference<LizzieFrame.ManualAutoAnalysisStartFailure> failure =
+          new AtomicReference<>();
+
+      SwingUtilities.invokeAndWait(
+          () ->
+              frame.requestManualAutoAnalysisStart(
+                  starts::incrementAndGet, failure::set));
+
+      assertSame(userTask, frame.analysisEngine);
+      assertEquals(0, userTask.normalQuitCount);
+      assertEquals(0, starts.get());
+      assertEquals(
+          LizzieFrame.ManualAutoAnalysisStartFailure.ANALYSIS_CONFLICT, failure.get());
+      assertFalse(frame.isManualAutoAnalysisStarting());
+    }
+  }
+
+  @Test
+  void failedAutomaticEngineRestoreDoesNotStartManualAutoAnalysis() throws Exception {
+    try (TestEnvironment env = TestEnvironment.open()) {
+      Lizzie.config = configWithAutoQuickAnalyze();
+      Lizzie.board = boardWith(historyWithUnanalyzedMove());
+      Lizzie.leelaz = allocate(TrackingLeelaz.class);
+      LizzieFrame frame = allocate(LizzieFrame.class);
+      ResourceTrackingAnalysisEngine engine = allocate(ResourceTrackingAnalysisEngine.class);
+      engine.shared = true;
+      engine.automatic = true;
+      engine.requestLifecycleInProgress = true;
+      frame.analysisEngine = engine;
+      Lizzie.frame = frame;
+      armLoadedGameQuickAnalysis(frame, Lizzie.board.getHistory().getStart(), true);
+      AtomicInteger starts = new AtomicInteger();
+      AtomicReference<LizzieFrame.ManualAutoAnalysisStartFailure> failure =
+          new AtomicReference<>();
+
+      SwingUtilities.invokeAndWait(
+          () ->
+              frame.requestManualAutoAnalysisStart(
+                  starts::incrementAndGet, failure::set));
+      engine.failExit();
+      drainEdt();
+
+      assertEquals(0, starts.get());
+      assertEquals(LizzieFrame.ManualAutoAnalysisStartFailure.RELEASE_FAILED, failure.get());
+      assertFalse(frame.isManualAutoAnalysisStarting());
+      assertTrue(invokeShouldAutoQuickAnalyze(frame));
+    }
+  }
+
+  @Test
+  void changingGamesCancelsPendingManualAutoAnalysisAndDiscardsLateRestore() throws Exception {
+    try (TestEnvironment env = TestEnvironment.open()) {
+      Lizzie.config = configWithAutoQuickAnalyze();
+      Lizzie.board = boardWith(historyWithUnanalyzedMove());
+      Lizzie.leelaz = allocate(TrackingLeelaz.class);
+      LizzieFrame frame = allocate(LizzieFrame.class);
+      ResourceTrackingAnalysisEngine engine = allocate(ResourceTrackingAnalysisEngine.class);
+      engine.shared = true;
+      engine.automatic = true;
+      engine.requestLifecycleInProgress = true;
+      frame.analysisEngine = engine;
+      Lizzie.frame = frame;
+      armLoadedGameQuickAnalysis(frame, Lizzie.board.getHistory().getStart(), true);
+      AtomicInteger starts = new AtomicInteger();
+      AtomicReference<LizzieFrame.ManualAutoAnalysisStartFailure> failure =
+          new AtomicReference<>();
+
+      SwingUtilities.invokeAndWait(
+          () ->
+              frame.requestManualAutoAnalysisStart(
+                  starts::incrementAndGet, failure::set));
+      Lizzie.board = boardWith(historyWithUnanalyzedMove());
+      SwingUtilities.invokeAndWait(frame::startNewKifuAnalysisContextAfterSuccessfulLoad);
+      engine.completeExit();
+      drainEdt();
+
+      assertEquals(0, starts.get());
+      assertEquals(LizzieFrame.ManualAutoAnalysisStartFailure.GAME_CHANGED, failure.get());
+      assertFalse(frame.isManualAutoAnalysisStarting());
+      assertNull(getField(frame, "userCancelledQuickAnalysisRoot"));
+    }
+  }
+
+  @Test
+  void manualAutoAnalysisWaitsForSlowPrimaryEngineWithoutRetryLimit() throws Exception {
+    try (TestEnvironment env = TestEnvironment.open()) {
+      Lizzie.config = configWithAutoQuickAnalyze();
+      Lizzie.board = boardWith(historyWithUnanalyzedMove());
+      LoadingLeelaz leelaz = allocate(LoadingLeelaz.class);
+      Lizzie.leelaz = leelaz;
+      LizzieFrame frame = allocate(LizzieFrame.class);
+      Lizzie.frame = frame;
+      setField(frame, "quickAnalysisEngineGeneration", new AtomicLong());
+      AtomicInteger starts = new AtomicInteger();
+      AtomicReference<LizzieFrame.ManualAutoAnalysisStartFailure> failure =
+          new AtomicReference<>();
+
+      SwingUtilities.invokeAndWait(
+          () ->
+              frame.requestManualAutoAnalysisStart(
+                  starts::incrementAndGet, failure::set));
+      drainEdt();
+
+      assertTrue(frame.isManualAutoAnalysisStarting());
+      assertEquals(0, starts.get());
+      javax.swing.Timer readinessTimer =
+          (javax.swing.Timer) getField(frame, "manualAutoAnalysisEngineReadyTimer");
+      assertTrue(readinessTimer.isRunning());
+
+      leelaz.loaded = true;
+      SwingUtilities.invokeAndWait(
+          () -> readinessTimer.getActionListeners()[0].actionPerformed(null));
+
+      assertEquals(1, starts.get());
+      assertNull(failure.get());
+      assertFalse(frame.isManualAutoAnalysisStarting());
+      assertNull(getField(frame, "manualAutoAnalysisEngineReadyTimer"));
+    }
+  }
+
+  @Test
+  void manualAutoAnalysisWaitsForInvalidatedQuickEngineStartupToFinish() throws Exception {
+    try (TestEnvironment env = TestEnvironment.open()) {
+      Lizzie.config = configWithAutoQuickAnalyze();
+      Lizzie.board = boardWith(historyWithUnanalyzedMove());
+      Lizzie.leelaz = allocate(TrackingLeelaz.class);
+      LizzieFrame frame = allocate(LizzieFrame.class);
+      AtomicBoolean quickEngineStarting = new AtomicBoolean(true);
+      setField(frame, "quickAnalysisEngineStarting", quickEngineStarting);
+      setField(frame, "quickAnalysisEngineGeneration", new AtomicLong());
+      Lizzie.frame = frame;
+      AtomicInteger starts = new AtomicInteger();
+
+      SwingUtilities.invokeAndWait(
+          () -> frame.requestManualAutoAnalysisStart(starts::incrementAndGet, failure -> {}));
+      drainEdt();
+
+      assertTrue(frame.isManualAutoAnalysisStarting());
+      assertEquals(0, starts.get());
+      javax.swing.Timer readinessTimer =
+          (javax.swing.Timer) getField(frame, "manualAutoAnalysisEngineReadyTimer");
+      assertTrue(readinessTimer.isRunning());
+
+      quickEngineStarting.set(false);
+      SwingUtilities.invokeAndWait(
+          () -> readinessTimer.getActionListeners()[0].actionPerformed(null));
+
+      assertEquals(1, starts.get());
+      assertFalse(frame.isManualAutoAnalysisStarting());
+    }
+  }
+
+  @Test
   void rapidDownloadedKifuSwitchKeepsOnlyLatestDeferredLoad() throws Exception {
     TestEnvironment env = TestEnvironment.open();
     try {

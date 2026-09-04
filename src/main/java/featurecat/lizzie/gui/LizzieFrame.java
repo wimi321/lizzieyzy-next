@@ -27,6 +27,7 @@ import featurecat.lizzie.analysis.ReadBoardUpdateInstaller;
 import featurecat.lizzie.analysis.ReadBoardUpdateRequest;
 import featurecat.lizzie.analysis.TrackingAnalysisController;
 import featurecat.lizzie.analysis.WholeGameAnalysisPlan;
+import featurecat.lizzie.analysis.WholeGameAnalysisOptions;
 import featurecat.lizzie.analysis.WholeGameAnalysisSession;
 import featurecat.lizzie.analysis.remote.RemoteComputeConfig;
 import featurecat.lizzie.enginegame.EngineGamePresentation;
@@ -116,6 +117,14 @@ import org.json.JSONObject;
 /** The window used to display the game. */
 public class LizzieFrame extends JFrame {
   private static final Map<String, BufferedImage> PLAYER_STRENGTH_IMAGE_CACHE = new HashMap<>();
+
+  enum ManualAutoAnalysisStartFailure {
+    ANALYSIS_CONFLICT,
+    ENGINE_UNAVAILABLE,
+    RELEASE_FAILED,
+    GAME_CHANGED,
+    CANCELLED
+  }
 
   public interface RestartInteractionGate extends AutoCloseable {
     @Override
@@ -805,6 +814,12 @@ public class LizzieFrame extends JFrame {
       new java.util.concurrent.atomic.AtomicLong(0L);
   private Runnable pendingQuickAnalysisCallback;
   private javax.swing.Timer quickAnalysisNavigationResumeTimer;
+  private boolean manualAutoAnalysisStarting;
+  private long manualAutoAnalysisStartGeneration;
+  private Runnable pendingManualAutoAnalysisReady;
+  private Consumer<ManualAutoAnalysisStartFailure> pendingManualAutoAnalysisFailure;
+  private BoardHistoryNode pendingManualAutoAnalysisRoot;
+  private javax.swing.Timer manualAutoAnalysisEngineReadyTimer;
   private volatile TrackingAnalysisController trackingAnalysisController;
   private boolean redrawWinratePaneOnly = false;
   private boolean redrawBoardSurfacesOnly = false;
@@ -4458,6 +4473,194 @@ public class LizzieFrame extends JFrame {
     analysisEngine = null;
     currentEngine.clearRequestCallbacks();
     currentEngine.normalQuit(() -> SwingUtilities.invokeLater(continuation));
+  }
+
+  /**
+   * Starts a foreground auto-analysis only after automatic curve analysis has fully released its
+   * worker or shared foreground-engine lease.
+   */
+  void requestManualAutoAnalysisStart(
+      Runnable ready, Consumer<ManualAutoAnalysisStartFailure> failure) {
+    if (ready == null) {
+      return;
+    }
+    if (!SwingUtilities.isEventDispatchThread()) {
+      SwingUtilities.invokeLater(() -> requestManualAutoAnalysisStart(ready, failure));
+      return;
+    }
+    if (manualAutoAnalysisStarting || (Lizzie.config != null && Lizzie.config.isAutoAna)) {
+      return;
+    }
+
+    BoardHistoryNode root = currentHistoryRoot();
+    AnalysisEngine currentEngine = analysisEngine;
+    long loadedGeneration = loadedGameQuickAnalysisGeneration;
+    AnalysisEngine loadedEngine = loadedGameQuickAnalysisEngine;
+    boolean loadedEngineOwnsCurrentQuickAnalysis =
+        loadedGameQuickAnalysisActive
+            && loadedEngine != null
+            && loadedGameQuickAnalysisEngineGeneration == loadedGeneration
+            && loadedGameQuickAnalysisRoot == root;
+    AnalysisEngine interruptibleEngine =
+        loadedEngineOwnsCurrentQuickAnalysis
+            ? loadedEngine
+            : currentEngine != null && currentEngine.isAutomaticBackgroundTask()
+                ? currentEngine
+                : null;
+
+    if (isWholeGameAnalysisStartingOrRunning()
+        || (currentEngine != null
+            && currentEngine != interruptibleEngine
+            && currentEngine.hasRequestLifecycleInProgress())) {
+      notifyManualAutoAnalysisStartFailure(failure, ManualAutoAnalysisStartFailure.ANALYSIS_CONFLICT);
+      return;
+    }
+    if (root == null || Lizzie.leelaz == null) {
+      notifyManualAutoAnalysisStartFailure(failure, ManualAutoAnalysisStartFailure.ENGINE_UNAVAILABLE);
+      return;
+    }
+
+    manualAutoAnalysisStarting = true;
+    long startGeneration = ++manualAutoAnalysisStartGeneration;
+    pendingManualAutoAnalysisReady = ready;
+    pendingManualAutoAnalysisFailure = failure;
+    pendingManualAutoAnalysisRoot = root;
+    userCancelledQuickAnalysisRoot = root;
+
+    quickAnalysisEngineGeneration.incrementAndGet();
+    stopQuickAnalysisWarmupTimer();
+    stopQuickAnalysisNavigationResumeTimer();
+    stopLoadedGameQuickAnalysisRetry();
+    clearPendingQuickAnalysisCallback();
+
+    if (interruptibleEngine == null) {
+      SwingUtilities.invokeLater(
+          () -> finishManualAutoAnalysisStart(startGeneration, root, true));
+      return;
+    }
+    if (analysisEngine == interruptibleEngine) {
+      analysisEngine = null;
+    }
+    interruptibleEngine.clearRequestCallbacks();
+    interruptibleEngine.normalQuit(
+        () ->
+            SwingUtilities.invokeLater(
+                () -> finishManualAutoAnalysisStart(startGeneration, root, true)),
+        () ->
+            SwingUtilities.invokeLater(
+                () -> finishManualAutoAnalysisStart(startGeneration, root, false)));
+  }
+
+  void cancelPendingManualAutoAnalysisStart() {
+    if (!SwingUtilities.isEventDispatchThread()) {
+      SwingUtilities.invokeLater(this::cancelPendingManualAutoAnalysisStart);
+      return;
+    }
+    cancelPendingManualAutoAnalysisStart(ManualAutoAnalysisStartFailure.CANCELLED);
+  }
+
+  private void cancelPendingManualAutoAnalysisStart(ManualAutoAnalysisStartFailure reason) {
+    if (!SwingUtilities.isEventDispatchThread()) {
+      SwingUtilities.invokeLater(() -> cancelPendingManualAutoAnalysisStart(reason));
+      return;
+    }
+    if (!manualAutoAnalysisStarting) {
+      return;
+    }
+    manualAutoAnalysisStartGeneration++;
+    manualAutoAnalysisStarting = false;
+    stopManualAutoAnalysisEngineReadyTimer();
+    pendingManualAutoAnalysisReady = null;
+    clearAbortedManualAutoAnalysisSuppression();
+    Consumer<ManualAutoAnalysisStartFailure> failure = pendingManualAutoAnalysisFailure;
+    pendingManualAutoAnalysisFailure = null;
+    notifyManualAutoAnalysisStartFailure(failure, reason);
+  }
+
+  private void finishManualAutoAnalysisStart(
+      long generation, BoardHistoryNode root, boolean releaseSucceeded) {
+    if (!manualAutoAnalysisStarting || generation != manualAutoAnalysisStartGeneration) {
+      return;
+    }
+    if (!releaseSucceeded) {
+      completeManualAutoAnalysisStartFailure(ManualAutoAnalysisStartFailure.RELEASE_FAILED);
+      return;
+    }
+    if (root != currentHistoryRoot()) {
+      completeManualAutoAnalysisStartFailure(ManualAutoAnalysisStartFailure.GAME_CHANGED);
+      return;
+    }
+    if (quickAnalysisEngineStarting != null && quickAnalysisEngineStarting.get()) {
+      waitForPrimaryEngineBeforeManualAutoAnalysis(generation, root);
+      return;
+    }
+    if (Lizzie.leelaz == null
+        || (Lizzie.leelaz.isDownWithError && !Lizzie.leelaz.isStarted())) {
+      completeManualAutoAnalysisStartFailure(ManualAutoAnalysisStartFailure.ENGINE_UNAVAILABLE);
+      return;
+    }
+    if (!Lizzie.leelaz.isLoaded()) {
+      waitForPrimaryEngineBeforeManualAutoAnalysis(generation, root);
+      return;
+    }
+    Runnable ready = pendingManualAutoAnalysisReady;
+    manualAutoAnalysisStarting = false;
+    stopManualAutoAnalysisEngineReadyTimer();
+    pendingManualAutoAnalysisReady = null;
+    pendingManualAutoAnalysisFailure = null;
+    pendingManualAutoAnalysisRoot = null;
+    ready.run();
+  }
+
+  private void waitForPrimaryEngineBeforeManualAutoAnalysis(
+      long generation, BoardHistoryNode root) {
+    if (manualAutoAnalysisEngineReadyTimer == null) {
+      manualAutoAnalysisEngineReadyTimer =
+          new javax.swing.Timer(
+              400, event -> finishManualAutoAnalysisStart(generation, root, true));
+      manualAutoAnalysisEngineReadyTimer.setRepeats(true);
+    }
+    if (!manualAutoAnalysisEngineReadyTimer.isRunning()) {
+      manualAutoAnalysisEngineReadyTimer.start();
+    }
+  }
+
+  private void stopManualAutoAnalysisEngineReadyTimer() {
+    if (manualAutoAnalysisEngineReadyTimer != null) {
+      manualAutoAnalysisEngineReadyTimer.stop();
+      manualAutoAnalysisEngineReadyTimer = null;
+    }
+  }
+
+  private void completeManualAutoAnalysisStartFailure(
+      ManualAutoAnalysisStartFailure reason) {
+    Consumer<ManualAutoAnalysisStartFailure> failure = pendingManualAutoAnalysisFailure;
+    manualAutoAnalysisStarting = false;
+    stopManualAutoAnalysisEngineReadyTimer();
+    pendingManualAutoAnalysisReady = null;
+    clearAbortedManualAutoAnalysisSuppression();
+    pendingManualAutoAnalysisFailure = null;
+    notifyManualAutoAnalysisStartFailure(failure, reason);
+  }
+
+  private void clearAbortedManualAutoAnalysisSuppression() {
+    if (pendingManualAutoAnalysisRoot != null
+        && userCancelledQuickAnalysisRoot == pendingManualAutoAnalysisRoot) {
+      userCancelledQuickAnalysisRoot = null;
+    }
+    pendingManualAutoAnalysisRoot = null;
+  }
+
+  private static void notifyManualAutoAnalysisStartFailure(
+      Consumer<ManualAutoAnalysisStartFailure> failure,
+      ManualAutoAnalysisStartFailure reason) {
+    if (failure != null) {
+      failure.accept(reason);
+    }
+  }
+
+  boolean isManualAutoAnalysisStarting() {
+    return manualAutoAnalysisStarting;
   }
 
   private static final class DeferredKifuOpen {
@@ -15089,7 +15292,10 @@ public class LizzieFrame extends JFrame {
       SwingUtilities.invokeLater(this::openWholeGameDeepAnalysis);
       return;
     }
-    if (wholeGameAnalysisSession != null && !wholeGameAnalysisSession.isTerminal()) {
+    if ((wholeGameAnalysisSession != null && !wholeGameAnalysisSession.isTerminal())
+        || (wholeGameAnalysisSession == null
+            && wholeGameAnalysisDialog != null
+            && wholeGameAnalysisDialog.isDisplayable())) {
       if (wholeGameAnalysisDialog != null) {
         wholeGameAnalysisDialog.showOnScreen();
       }
@@ -15099,13 +15305,7 @@ public class LizzieFrame extends JFrame {
       Utils.showMsg(Lizzie.resourceBundle.getString("WholeGameAnalysis.noGame"));
       return;
     }
-    WholeGameAnalysisPlan plan =
-        WholeGameAnalysisPlan.create(
-            Lizzie.board.getHistory().getStart(),
-            WholeGameAnalysisPlan.DEFAULT_BASELINE_VISITS,
-            Math.max(
-                WholeGameAnalysisPlan.MINIMUM_DEEP_VISITS, AnalysisEngine.targetAnalysisVisits()));
-    if (plan.moveCount() == 0) {
+    if (WholeGameAnalysisPlan.countMainlineMoves(Lizzie.board.getHistory().getStart()) == 0) {
       Utils.showMsg(Lizzie.resourceBundle.getString("WholeGameAnalysis.noGame"));
       return;
     }
@@ -15113,22 +15313,22 @@ public class LizzieFrame extends JFrame {
       wholeGameAnalysisDialog.dispose();
     }
     WholeGameAnalysisDialog dialog = new WholeGameAnalysisDialog(this);
-    WholeGameAnalysisSession session = new WholeGameAnalysisSession(this, plan, dialog);
-    dialog.setSession(session);
     wholeGameAnalysisDialog = dialog;
-    wholeGameAnalysisSession = session;
+    wholeGameAnalysisSession = null;
     dialog.showOnScreen();
-    session.publishReady();
   }
 
-  boolean startWholeGameDeepAnalysis(WholeGameAnalysisSession session) {
-    if (session == null
-        || session != wholeGameAnalysisSession
-        || session.state() != WholeGameAnalysisSession.State.IDLE) {
+  boolean startWholeGameDeepAnalysis(
+      WholeGameAnalysisDialog dialog, WholeGameAnalysisOptions options) {
+    if (dialog == null
+        || dialog != wholeGameAnalysisDialog
+        || options == null
+        || !options.isValid()
+        || wholeGameAnalysisSession != null) {
       return false;
     }
-    if (!session.matchesCurrentGame()) {
-      Utils.showMsg(Lizzie.resourceBundle.getString("WholeGameAnalysis.error.gameChanged"));
+    if (Lizzie.board == null || Lizzie.board.getHistory() == null) {
+      Utils.showMsg(Lizzie.resourceBundle.getString("WholeGameAnalysis.noGame"));
       return false;
     }
     if (isWholeGameAnalysisConflict()) {
@@ -15148,12 +15348,96 @@ public class LizzieFrame extends JFrame {
       analysisEngine.normalQuit();
       analysisEngine = null;
     }
+    WholeGameAnalysisPlan plan =
+        WholeGameAnalysisPlan.create(
+            Lizzie.board.getHistory().getStart(),
+            WholeGameAnalysisPlan.DEFAULT_BASELINE_VISITS,
+            options);
+    if (plan.moveCount() == 0) {
+      Utils.showMsg(Lizzie.resourceBundle.getString("WholeGameAnalysis.noGame"));
+      return false;
+    }
+    WholeGameAnalysisSession session = new WholeGameAnalysisSession(this, plan, dialog);
+    wholeGameAnalysisSession = session;
+    dialog.setSession(session);
     stopQuickAnalysisNavigationResumeTimer();
     stopLoadedGameQuickAnalysisRetry();
     clearPendingQuickAnalysisCallback();
     activateWholeGameAnalysisResultView(Lizzie.board.getHistory().getStart());
     session.start();
+    try {
+      Lizzie.config.saveWholeGameAnalysisDeepVisits(options.deepVisits());
+    } catch (IOException saveFailure) {
+      saveFailure.printStackTrace();
+      Utils.showMsgNoModalForTime(
+          Lizzie.resourceBundle.getString("WholeGameAnalysis.visits.saveFailed"), 4);
+    }
     return session.state() != WholeGameAnalysisSession.State.IDLE;
+  }
+
+  void requestWholeGameAnalysisEstimate(
+      WholeGameAnalysisDialog dialog, WholeGameAnalysisOptions options) {
+    if (dialog == null || options == null || !options.isValid()) {
+      return;
+    }
+    BoardHistoryNode root = currentHistoryRoot();
+    if (root == null
+        || Lizzie.leelaz == null
+        || RemoteComputeConfig.isRemoteComputeEngineCommand(Lizzie.leelaz.engineCommand())) {
+      dialog.showPreStartEstimate(options, -1L);
+      return;
+    }
+    Thread estimator =
+        new Thread(
+            () -> {
+              long estimate = estimateWholeGameAnalysisMillis(root, options.deepVisits());
+              SwingUtilities.invokeLater(
+                  () -> {
+                    if (wholeGameAnalysisDialog == dialog
+                        && root == currentHistoryRoot()
+                        && dialog.isDisplayable()) {
+                      dialog.showPreStartEstimate(options, estimate);
+                    }
+                  });
+            },
+            "whole-game-analysis-estimator");
+    estimator.setDaemon(true);
+    estimator.start();
+  }
+
+  private long estimateWholeGameAnalysisMillis(BoardHistoryNode root, int deepVisits) {
+    try {
+      KataGoAutoSetupHelper.SetupSnapshot setup = KataGoAutoSetupHelper.inspectLocalSetup();
+      KataGoRuntimeHelper.BenchmarkResult benchmark =
+          KataGoRuntimeHelper.getStoredBenchmarkResult(setup);
+      if (benchmark == null || benchmark.visitsPerSecond <= 0.0) {
+        return -1L;
+      }
+      long requiredVisits = 0L;
+      BoardHistoryNode node = root;
+      while (node != null) {
+        BoardData data = node.getData();
+        if (data == null
+            || !data.hasCompletePrimaryAnalysis(
+                WholeGameAnalysisPlan.DEFAULT_BASELINE_VISITS, false)) {
+          requiredVisits += WholeGameAnalysisPlan.DEFAULT_BASELINE_VISITS;
+        }
+        if (data == null || !data.hasCompletePrimaryAnalysis(deepVisits, false)) {
+          // Analysis requests start a fresh search for this position. Existing shallow visits are
+          // useful for deciding whether to skip the position, but are not carried into maxVisits.
+          requiredVisits += deepVisits;
+        }
+        BoardHistoryNode next = node.next().orElse(null);
+        while (next != null && !isRealHistoryActionNode(next.getData())) {
+          next = next.next().orElse(null);
+        }
+        node = next;
+      }
+      return Math.max(
+          1L, Math.round(requiredVisits * 1000.0 / benchmark.visitsPerSecond));
+    } catch (RuntimeException estimateFailure) {
+      return -1L;
+    }
   }
 
   void closeWholeGameAnalysisDialog(
@@ -15604,7 +15888,7 @@ public class LizzieFrame extends JFrame {
   }
 
   public void onMainEnginePonder() {
-    if (loadedGameQuickAnalysisOwnsAnalysisResources()) {
+    if (manualAutoAnalysisStarting || loadedGameQuickAnalysisOwnsAnalysisResources()) {
       return;
     }
     releaseSecondaryAnalysisResourcesForForeground();
@@ -20105,6 +20389,7 @@ public class LizzieFrame extends JFrame {
 
   private boolean resumeForegroundAnalysisForCurrentPosition() {
     if (userAnalysisPaused
+        || manualAutoAnalysisStarting
         || isWholeGameAnalysisStartingOrRunning()
         || Lizzie.leelaz == null
         || EngineManager.isEmpty) {
@@ -20329,6 +20614,7 @@ public class LizzieFrame extends JFrame {
   }
 
   void startNewKifuAnalysisContextAfterSuccessfulLoad() {
+    cancelPendingManualAutoAnalysisStart(ManualAutoAnalysisStartFailure.GAME_CHANGED);
     clearUserAnalysisPauseForNewKifuLoadContext();
   }
 
@@ -20423,6 +20709,8 @@ public class LizzieFrame extends JFrame {
   private boolean isQuickAnalysisWarmupContextEligible(boolean requiresAutoAnalyze) {
     return Lizzie.config != null
         && !userAnalysisPaused
+        && !manualAutoAnalysisStarting
+        && !Lizzie.config.isAutoAna
         && (!requiresAutoAnalyze || Lizzie.config.autoQuickAnalyzeOnLoad)
         && !isWholeGameAnalysisStartingOrRunning()
         && !EngineGamePresentation.current().startingOrPlaying()
@@ -20600,7 +20888,10 @@ public class LizzieFrame extends JFrame {
       }
     } finally {
       quickAnalysisEngineStarting.set(false);
-      if (invalidated && !userAnalysisPaused) {
+      if (invalidated
+          && !userAnalysisPaused
+          && !manualAutoAnalysisStarting
+          && (Lizzie.config == null || !Lizzie.config.isAutoAna)) {
         scheduleQuickAnalysisWarmupWhenPrimaryReady(1200, false);
       }
     }
@@ -20691,6 +20982,8 @@ public class LizzieFrame extends JFrame {
   private boolean canContinueQuickAnalysisAfterHistoryNavigation() {
     return Lizzie.config != null
         && Lizzie.config.autoQuickAnalyzeOnLoad
+        && !manualAutoAnalysisStarting
+        && !Lizzie.config.isAutoAna
         && !isWholeGameAnalysisStartingOrRunning()
         && !isBatchAna
         && !isBatchAnalysisMode
@@ -20755,7 +21048,12 @@ public class LizzieFrame extends JFrame {
     if (Lizzie.config == null || Lizzie.board == null || Lizzie.board.getHistory() == null) {
       return false;
     }
-    if (!Lizzie.config.autoQuickAnalyzeOnLoad || isBatchAna || isEnginePKSgfStart || isTrying) {
+    if (!Lizzie.config.autoQuickAnalyzeOnLoad
+        || manualAutoAnalysisStarting
+        || Lizzie.config.isAutoAna
+        || isBatchAna
+        || isEnginePKSgfStart
+        || isTrying) {
       return false;
     }
     if (userCancelledQuickAnalysisRoot != null

@@ -15,8 +15,6 @@ import java.awt.event.WindowEvent;
 import java.io.IOException;
 import java.text.DecimalFormat;
 import java.text.NumberFormat;
-import java.util.Timer;
-import java.util.TimerTask;
 import javax.imageio.ImageIO;
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
@@ -353,11 +351,11 @@ public class StartAnaDialog extends JDialog {
       }
     }
 
-    Lizzie.leelaz.nameCmd();
     cancelled = false;
     this.setVisible(false);
     setTxtFontSize(true);
     if (isAnalysisMode) {
+      Lizzie.leelaz.nameCmd();
       Lizzie.config.batchAnalysisPlayouts =
           Utils.parseTextToInt(txtAnalysisPlayouts, Lizzie.config.batchAnalysisPlayouts);
       Lizzie.config.uiConfig.put("batch-analysis-playouts", Lizzie.config.batchAnalysisPlayouts);
@@ -366,16 +364,7 @@ public class StartAnaDialog extends JDialog {
     } else {
       Lizzie.config.autoAnaDiffEnable = chkUseDiff.isSelected();
       Lizzie.config.uiConfig.put("auto-ana-diff-enable", Lizzie.config.autoAnaDiffEnable);
-      Timer timer = new Timer();
-      timer.schedule(
-          new TimerTask() {
-            public void run() {
-              LizzieFrame.toolbar.startAutoAna();
-              this.cancel();
-            }
-          },
-          300);
-      LizzieFrame.toolbar.chkAutoAnalyse.setSelected(true);
+      LizzieFrame.toolbar.startAutoAna();
     }
     LizzieFrame.toolbar.resetAutoAna();
   }
