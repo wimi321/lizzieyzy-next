@@ -4508,10 +4508,7 @@ public class LizzieFrame extends JFrame {
                 ? currentEngine
                 : null;
 
-    if (isWholeGameAnalysisStartingOrRunning()
-        || (currentEngine != null
-            && currentEngine != interruptibleEngine
-            && currentEngine.hasRequestLifecycleInProgress())) {
+    if (hasManualAutoAnalysisStartConflict(interruptibleEngine)) {
       notifyManualAutoAnalysisStartFailure(failure, ManualAutoAnalysisStartFailure.ANALYSIS_CONFLICT);
       return;
     }
@@ -4590,6 +4587,10 @@ public class LizzieFrame extends JFrame {
       completeManualAutoAnalysisStartFailure(ManualAutoAnalysisStartFailure.GAME_CHANGED);
       return;
     }
+    if (hasManualAutoAnalysisStartConflict(null)) {
+      completeManualAutoAnalysisStartFailure(ManualAutoAnalysisStartFailure.ANALYSIS_CONFLICT);
+      return;
+    }
     if (quickAnalysisEngineStarting != null && quickAnalysisEngineStarting.get()) {
       waitForPrimaryEngineBeforeManualAutoAnalysis(generation, root);
       return;
@@ -4661,6 +4662,22 @@ public class LizzieFrame extends JFrame {
 
   boolean isManualAutoAnalysisStarting() {
     return manualAutoAnalysisStarting;
+  }
+
+  private boolean hasManualAutoAnalysisStartConflict(AnalysisEngine allowedAutomaticEngine) {
+    if (isWholeGameAnalysisStartingOrRunning() || isWholeGameAnalysisConflict()) {
+      return true;
+    }
+    AnalysisEngine currentEngine = analysisEngine;
+    return currentEngine != null
+        && currentEngine != allowedAutomaticEngine
+        && currentEngine.hasRequestLifecycleInProgress();
+  }
+
+  private void cancelPendingManualAutoAnalysisForExclusiveTask() {
+    if (manualAutoAnalysisStarting) {
+      cancelPendingManualAutoAnalysisStart(ManualAutoAnalysisStartFailure.CANCELLED);
+    }
   }
 
   private static final class DeferredKifuOpen {
@@ -15327,6 +15344,7 @@ public class LizzieFrame extends JFrame {
         || wholeGameAnalysisSession != null) {
       return false;
     }
+    cancelPendingManualAutoAnalysisForExclusiveTask();
     if (Lizzie.board == null || Lizzie.board.getHistory() == null) {
       Utils.showMsg(Lizzie.resourceBundle.getString("WholeGameAnalysis.noGame"));
       return false;
@@ -16018,6 +16036,7 @@ public class LizzieFrame extends JFrame {
       return;
     }
     if (!silentAnalyze) {
+      cancelPendingManualAutoAnalysisForExclusiveTask();
       prepareForManualFlashAnalysis();
       releaseDedicatedLightweightQuickAnalysisEngine();
     }
