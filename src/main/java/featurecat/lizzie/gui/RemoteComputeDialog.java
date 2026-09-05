@@ -74,6 +74,8 @@ import javax.swing.event.DocumentListener;
 
 public class RemoteComputeDialog extends JDialog {
   private static final String ZHIZI_OFFICIAL_URL = "http://www.zhizigo.cn/";
+  private static final String CUSTOM_DEPLOYMENT_URL =
+      "https://github.com/wimi321/katago-remote-one-click";
   private static final Color BG_TOP = new Color(251, 247, 238);
   private static final Color BG_BOTTOM = new Color(240, 248, 243);
   private static final Color CARD = new Color(255, 253, 248);
@@ -151,6 +153,8 @@ public class RemoteComputeDialog extends JDialog {
       primaryButton(text("RemoteCompute.enableCustom", "Enable custom compute"));
   private final JButton localFromCustomButton =
       secondaryButton(text("RemoteCompute.backToLocal", "Switch to local engine"));
+  private final JButton customDeploymentGuideButton =
+      secondaryButton(text("RemoteCompute.deployGuide", "View one-click setup"));
 
   private JPanel loginFormPanel;
   private JPanel loggedInPanel;
@@ -461,6 +465,14 @@ public class RemoteComputeDialog extends JDialog {
             text(
                 "RemoteCompute.customEffect",
                 "The main board, quick graph, and score estimate will use this remote engine.")));
+    card.add(Box.createVerticalStrut(14));
+    card.add(
+        createCustomDeploymentGuideCard(
+            customDeploymentGuideButton,
+            text("RemoteCompute.noLinkTitle", "No remote link yet?"),
+            text(
+                "RemoteCompute.noLinkDescription",
+                "Run one command on a Linux NVIDIA GPU server to get a WSS link and QR code.")));
     card.add(Box.createVerticalGlue());
     return card;
   }
@@ -645,6 +657,58 @@ public class RemoteComputeDialog extends JDialog {
     return panel;
   }
 
+  static JPanel createCustomDeploymentGuideCard(
+      JButton guideButton, String titleText, String descriptionText) {
+    JPanel panel = new RoundPanel(22, new Color(246, 252, 247), new Color(188, 222, 200));
+    panel.setLayout(new BorderLayout(12, 10));
+    panel.setBorder(new EmptyBorder(14, 15, 14, 15));
+    panel.setAlignmentX(Component.LEFT_ALIGNMENT);
+
+    JPanel copy = transparent(new BorderLayout(12, 0));
+    DeploymentGlyph glyph = new DeploymentGlyph();
+    glyph.setName("customDeploymentGlyph");
+    copy.add(glyph, BorderLayout.WEST);
+
+    JPanel textPanel = transparent();
+    textPanel.setLayout(new BoxLayout(textPanel, BoxLayout.Y_AXIS));
+    JLabel title = new JLabel(titleText);
+    title.setName("customDeploymentTitle");
+    title.setForeground(TEXT);
+    title.setFont(title.getFont().deriveFont(Font.BOLD, 16F));
+    title.setAlignmentX(Component.LEFT_ALIGNMENT);
+    textPanel.add(title);
+    textPanel.add(Box.createVerticalStrut(4));
+
+    JTextArea description = new JTextArea(descriptionText, 2, 24);
+    description.setName("customDeploymentDescription");
+    description.setEditable(false);
+    description.setFocusable(false);
+    description.setOpaque(false);
+    description.setLineWrap(true);
+    description.setWrapStyleWord(true);
+    description.setForeground(MUTED);
+    description.setFont(description.getFont().deriveFont(Font.BOLD, 12.5F));
+    description.setBorder(null);
+    description.setAlignmentX(Component.LEFT_ALIGNMENT);
+    textPanel.add(description);
+    copy.add(textPanel, BorderLayout.CENTER);
+    panel.add(copy, BorderLayout.CENTER);
+
+    guideButton.setName("customDeploymentAction");
+    JPanel action = transparent(new BorderLayout());
+    action.setPreferredSize(new Dimension(0, 42));
+    action.setMinimumSize(new Dimension(0, 42));
+    action.add(guideButton, BorderLayout.CENTER);
+    panel.add(action, BorderLayout.SOUTH);
+
+    Dimension preferred = panel.getPreferredSize();
+    int cardHeight = Math.max(122, preferred.height);
+    panel.setPreferredSize(new Dimension(preferred.width, cardHeight));
+    panel.setMinimumSize(new Dimension(0, cardHeight));
+    panel.setMaximumSize(new Dimension(Integer.MAX_VALUE, cardHeight));
+    return panel;
+  }
+
   private void initActions() {
     zhiziTab.addActionListener(e -> showPage(RemoteComputeConfig.PROVIDER_ZHIZI));
     customTab.addActionListener(e -> showPage(RemoteComputeConfig.PROVIDER_CUSTOM));
@@ -711,6 +775,7 @@ public class RemoteComputeDialog extends JDialog {
     importQrButton.addActionListener(e -> importQrCode());
     useCustomButton.addActionListener(e -> useCustomCompute());
     localFromCustomButton.addActionListener(e -> switchToLocalProvider());
+    customDeploymentGuideButton.addActionListener(e -> openCustomDeploymentGuide());
   }
 
   private void initPresetOptions() {
@@ -1416,32 +1481,54 @@ public class RemoteComputeDialog extends JDialog {
   }
 
   private void openZhiziOfficialWebsite() {
+    openExternalPage(
+        ZHIZI_OFFICIAL_URL,
+        text("RemoteCompute.status.websiteOpened", "Zhizi official website opened."),
+        text(
+            "RemoteCompute.status.websiteCopied",
+            "Could not open a browser. The Zhizi website link was copied."),
+        format(
+            "RemoteCompute.websiteCopiedMessage",
+            "Could not open a browser. The official website link was copied:\n{0}",
+            ZHIZI_OFFICIAL_URL),
+        text("RemoteCompute.websiteCopiedTitle", "Zhizi link copied"));
+  }
+
+  private void openCustomDeploymentGuide() {
+    openExternalPage(
+        CUSTOM_DEPLOYMENT_URL,
+        text("RemoteCompute.status.deployGuideOpened", "One-click setup guide opened."),
+        text(
+            "RemoteCompute.status.deployGuideCopied",
+            "Could not open a browser. The setup guide link was copied."),
+        format(
+            "RemoteCompute.deployGuideCopiedMessage",
+            "Could not open a browser. The setup guide link was copied:\n{0}",
+            CUSTOM_DEPLOYMENT_URL),
+        text("RemoteCompute.deployGuideCopiedTitle", "Setup guide link copied"));
+  }
+
+  private void openExternalPage(
+      String url,
+      String openedStatus,
+      String copiedStatus,
+      String copiedMessage,
+      String copiedTitle) {
     try {
       if (!Desktop.isDesktopSupported()
           || !Desktop.getDesktop().isSupported(Desktop.Action.BROWSE)) {
         throw new UnsupportedOperationException(
             text("RemoteCompute.error.browserUnsupported", "The system cannot open a browser."));
       }
-      Desktop.getDesktop().browse(URI.create(ZHIZI_OFFICIAL_URL));
-      updateStatus(
-          text("RemoteCompute.status.websiteOpened", "Zhizi official website opened."), true);
+      Desktop.getDesktop().browse(URI.create(url));
+      updateStatus(openedStatus, true);
     } catch (Exception e) {
       Toolkit.getDefaultToolkit()
           .getSystemClipboard()
-          .setContents(new StringSelection(ZHIZI_OFFICIAL_URL), null);
-      updateStatus(
-          text(
-              "RemoteCompute.status.websiteCopied",
-              "Could not open a browser. The Zhizi website link was copied."),
-          false);
+          .setContents(new StringSelection(url), null);
+      updateStatus(copiedStatus, false);
       JOptionPane.showMessageDialog(
-          this,
-          format(
-              "RemoteCompute.websiteCopiedMessage",
-              "Could not open a browser. The official website link was copied:\n{0}",
-              ZHIZI_OFFICIAL_URL),
-          text("RemoteCompute.websiteCopiedTitle", "Zhizi link copied"),
-          JOptionPane.INFORMATION_MESSAGE);
+          this, copiedMessage, copiedTitle, JOptionPane.INFORMATION_MESSAGE);
     }
   }
 
@@ -2055,6 +2142,12 @@ public class RemoteComputeDialog extends JDialog {
         useCustomButton, useCustomButton.getText(), useCustomButton.getText());
     AccessibilitySupport.button(
         localFromCustomButton, localFromCustomButton.getText(), localFromCustomButton.getText());
+    AccessibilitySupport.button(
+        customDeploymentGuideButton,
+        customDeploymentGuideButton.getText(),
+        text(
+            "RemoteCompute.deployGuideDescription",
+            "Open the one-click setup guide for a Linux NVIDIA GPU server."));
     AccessibilitySupport.button(
         showPasswordButton,
         text("RemoteCompute.showPassword", "Show password"),
@@ -2822,6 +2915,33 @@ public class RemoteComputeDialog extends JDialog {
       g2.drawLine(x + 10, y + size / 2, x + size - 10, y + size / 2);
       g2.setColor(GOLD);
       g2.fillOval(x + size - 16, y + 8, 9, 9);
+      g2.dispose();
+    }
+  }
+
+  private static final class DeploymentGlyph extends JComponent {
+    @Override
+    public Dimension getPreferredSize() {
+      return new Dimension(44, 44);
+    }
+
+    @Override
+    protected void paintComponent(Graphics g) {
+      Graphics2D g2 = (Graphics2D) g.create();
+      g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+      g2.setColor(new Color(43, 139, 90, 30));
+      g2.fillOval(0, 0, getWidth(), getHeight());
+      g2.setColor(GREEN);
+      g2.setStroke(new BasicStroke(2F, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+      int left = 9;
+      int right = getWidth() - 9;
+      g2.drawRoundRect(left, 10, right - left, 9, 4, 4);
+      g2.drawRoundRect(left, 25, right - left, 9, 4, 4);
+      g2.fillOval(left + 4, 13, 3, 3);
+      g2.fillOval(left + 4, 28, 3, 3);
+      g2.setColor(GOLD);
+      g2.drawLine(right - 8, 15, right - 3, 15);
+      g2.drawLine(right - 8, 30, right - 3, 30);
       g2.dispose();
     }
   }
