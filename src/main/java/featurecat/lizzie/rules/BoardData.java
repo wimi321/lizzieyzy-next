@@ -4,6 +4,7 @@ import featurecat.lizzie.Lizzie;
 import featurecat.lizzie.analysis.Leelaz;
 import featurecat.lizzie.analysis.MoveData;
 import featurecat.lizzie.gui.LizzieFrame;
+import featurecat.lizzie.logging.EngineObservation;
 import java.util.*;
 
 public class BoardData {
@@ -401,14 +402,57 @@ public class BoardData {
           || (metadataEngine != null && pda != metadataEngine.pda))) {
         if (totalplayouts < playouts) {
           // Requesting ownership restarts KataGo's stream at low visits. Backfill only the map.
-          if (estimateArray == null || estimateArray.isEmpty()) return false;
+          if (estimateArray == null || estimateArray.isEmpty()) {
+            traceAnalysisCacheDecision(
+                metadataEngine,
+                engName,
+                totalplayouts,
+                moves,
+                playouts,
+                winrate,
+                scoreMean,
+                "REJECT",
+                "LOWER_VISITS");
+            return false;
+          }
+          traceAnalysisCacheDecision(
+              metadataEngine,
+              engName,
+              totalplayouts,
+              moves,
+              playouts,
+              winrate,
+              scoreMean,
+              "ACCEPT",
+              "OWNERSHIP_BACKFILL");
           this.estimateArray = compactEstimateArray(estimateArray);
           return true;
         }
-        if (estimateArray == null || estimateArray.isEmpty() || this.estimateArray != null)
+        if (estimateArray == null || estimateArray.isEmpty() || this.estimateArray != null) {
+          traceAnalysisCacheDecision(
+              metadataEngine,
+              engName,
+              totalplayouts,
+              moves,
+              playouts,
+              winrate,
+              scoreMean,
+              "REJECT",
+              "EQUAL_VISITS");
           return false;
+        }
       }
     }
+    traceAnalysisCacheDecision(
+        metadataEngine,
+        engName,
+        totalplayouts,
+        moves,
+        playouts,
+        winrate,
+        scoreMean,
+        "ACCEPT",
+        primaryFullAcceptReason(forceOverride, totalplayouts, metadataEngine));
     // added for change bestmoves when playouts is not increased
     if (totalplayouts < playouts) isChanged = false;
     setPlayouts(totalplayouts);
@@ -539,13 +583,57 @@ public class BoardData {
           || (metadataEngine != null && pda2 != metadataEngine.pda))) { // ||Lizzie.frame.urlSgf
         if (totalplayouts < playouts2) {
           // Keep the stronger secondary analysis while accepting its restarted ownership stream.
-          if (estimateArray == null || estimateArray.isEmpty()) return;
+          if (estimateArray == null || estimateArray.isEmpty()) {
+            traceAnalysisCacheDecision(
+                metadataEngine,
+                engName,
+                totalplayouts,
+                moves,
+                playouts2,
+                winrate2,
+                scoreMean2,
+                "REJECT",
+                "LOWER_VISITS");
+            return;
+          }
+          traceAnalysisCacheDecision(
+              metadataEngine,
+              engName,
+              totalplayouts,
+              moves,
+              playouts2,
+              winrate2,
+              scoreMean2,
+              "ACCEPT",
+              "OWNERSHIP_BACKFILL");
           this.estimateArray2 = compactEstimateArray(estimateArray);
           return;
         }
-        if (estimateArray == null || estimateArray.isEmpty() || this.estimateArray2 != null) return;
+        if (estimateArray == null || estimateArray.isEmpty() || this.estimateArray2 != null) {
+          traceAnalysisCacheDecision(
+              metadataEngine,
+              engName,
+              totalplayouts,
+              moves,
+              playouts2,
+              winrate2,
+              scoreMean2,
+              "REJECT",
+              "EQUAL_VISITS");
+          return;
+        }
       }
     }
+    traceAnalysisCacheDecision(
+        metadataEngine,
+        engName,
+        totalplayouts,
+        moves,
+        playouts2,
+        winrate2,
+        scoreMean2,
+        "ACCEPT",
+        secondaryFullAcceptReason(totalplayouts, metadataEngine));
     if (totalplayouts < playouts2) isChanged2 = false;
     setPlayouts2(totalplayouts);
     this.estimateArray2 = compactEstimateArray(estimateArray);
@@ -578,6 +666,89 @@ public class BoardData {
         });
     tryToLimitMoves(moves, bestMoves2, false);
     bestMoves2 = moves;
+  }
+
+  private void traceAnalysisCacheDecision(
+      Leelaz engineOwner,
+      String engName,
+      int incomingVisits,
+      List<MoveData> moves,
+      int cachedVisits,
+      double cachedWinrate,
+      double cachedScoreLead,
+      String decision,
+      String reason) {
+    try {
+      if (!EngineObservation.traceEnabled()) {
+        return;
+      }
+      MoveData incoming = moves == null || moves.isEmpty() ? null : moves.get(0);
+      EngineObservation.traceAnalysisCacheDecision(
+          engineOwner,
+          moveNumber,
+          currentBoardRevision(),
+          blackToPlay,
+          engName,
+          incomingVisits,
+          incoming == null ? 0.0 : incoming.winrate,
+          incoming == null ? 0.0 : incoming.scoreMean,
+          cachedVisits,
+          cachedWinrate,
+          cachedScoreLead,
+          decision,
+          reason);
+    } catch (RuntimeException ignored) {
+    }
+  }
+
+  private static long currentBoardRevision() {
+    Board board = Lizzie.board;
+    return board == null ? -1L : board.getContextRevision();
+  }
+
+  private String primaryFullAcceptReason(
+      boolean forceOverride, int totalplayouts, Leelaz metadataEngine) {
+    if (forceOverride) {
+      return "FORCE_OVERRIDE";
+    }
+    if (!Lizzie.config.enableLizzieCache) {
+      return "CACHE_DISABLED";
+    }
+    if (Lizzie.config.isAutoAna) {
+      return "AUTO_ANA";
+    }
+    if (Lizzie.engineGame.current().playing()) {
+      return "ENGINE_GAME";
+    }
+    if (totalplayouts > playouts) {
+      return "HIGHER_VISITS";
+    }
+    if (isChanged) {
+      return "IS_CHANGED";
+    }
+    if (metadataEngine != null && pda != metadataEngine.pda) {
+      return "PDA_CHANGED";
+    }
+    return "OWNERSHIP_FILL";
+  }
+
+  private String secondaryFullAcceptReason(int totalplayouts, Leelaz metadataEngine) {
+    if (!Lizzie.config.enableLizzieCache) {
+      return "CACHE_DISABLED";
+    }
+    if (Lizzie.config.isAutoAna) {
+      return "AUTO_ANA";
+    }
+    if (totalplayouts > playouts2) {
+      return "HIGHER_VISITS";
+    }
+    if (isChanged2) {
+      return "IS_CHANGED";
+    }
+    if (metadataEngine != null && pda2 != metadataEngine.pda) {
+      return "PDA_CHANGED";
+    }
+    return "OWNERSHIP_FILL";
   }
 
   public static double getWinrateFromBestMoves(List<MoveData> bestMoves) {

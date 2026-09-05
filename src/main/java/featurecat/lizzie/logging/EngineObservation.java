@@ -391,6 +391,81 @@ public final class EngineObservation {
         () -> TRACE.info("gtp raw stream={}", ObservationText.boundedRawEvent(line)));
   }
 
+  /**
+   * Records the final history-node analysis-cache accept/reject decision on the Full Trace
+   * {@code engine-gtp} channel. No-op when Full Trace is off; never throws to callers.
+   */
+  public static void traceAnalysisCacheDecision(
+      Object engineOwner,
+      int nodeMove,
+      long boardRevision,
+      boolean blackToPlay,
+      String engineName,
+      int incomingVisits,
+      double incomingWinrate,
+      double incomingScoreLead,
+      int cachedVisits,
+      double cachedWinrate,
+      double cachedScoreLead,
+      String decision,
+      String reason) {
+    try {
+      if (!traceEnabled()) {
+        return;
+      }
+      String safeEngine = ObservationText.boundedRawEvent(engineName == null ? "" : engineName);
+      String safeDecision = safeAnalysisCacheDecision(decision);
+      String safeReason = safeAnalysisCacheReason(reason);
+      inContext(
+          identityFor(engineOwner),
+          null,
+          () ->
+              TRACE.info(
+                  "analysis-cache nodeMove={} boardRevision={} blackToPlay={} engine={}"
+                      + " incomingVisits={} incomingWinrate={} incomingScoreLead={}"
+                      + " cachedVisits={} cachedWinrate={} cachedScoreLead={}"
+                      + " decision={} reason={}",
+                  nodeMove,
+                  boardRevision,
+                  blackToPlay,
+                  safeEngine,
+                  incomingVisits,
+                  incomingWinrate,
+                  incomingScoreLead,
+                  cachedVisits,
+                  cachedWinrate,
+                  cachedScoreLead,
+                  safeDecision,
+                  safeReason));
+    } catch (RuntimeException ignored) {
+    }
+  }
+
+  private static String safeAnalysisCacheDecision(String decision) {
+    if ("ACCEPT".equals(decision) || "REJECT".equals(decision)) {
+      return decision;
+    }
+    return "unknown";
+  }
+
+  private static String safeAnalysisCacheReason(String reason) {
+    return switch (reason == null ? "" : reason) {
+      case "HIGHER_VISITS",
+          "LOWER_VISITS",
+          "OWNERSHIP_BACKFILL",
+          "OWNERSHIP_FILL",
+          "FORCE_OVERRIDE",
+          "IS_CHANGED",
+          "PDA_CHANGED",
+          "EQUAL_VISITS",
+          "CACHE_DISABLED",
+          "AUTO_ANA",
+          "ENGINE_GAME" ->
+          reason;
+      default -> "unknown";
+    };
+  }
+
   public static void inContext(String engineId, String commandId, Runnable action) {
     if (action == null) {
       return;

@@ -9,6 +9,7 @@ import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.EnumSet;
 import java.util.List;
@@ -233,6 +234,100 @@ class EngineObservationTest {
 
     assertEquals(1, events.list.size(), events.list.toString());
     assertTrue(events.list.get(0).getFormattedMessage().contains("event=bootstrap"));
+  }
+
+  @Test
+  void analysisCacheDecisionUsesEngineTraceWhenFullTraceIsOn() throws Exception {
+    LoggingRuntime runtime =
+        LoggingRuntime.initialize(
+            new WorkDirectoryResolution(tempDir, List.of()),
+            new LoggingLimits(64, 32, 32, 32, 7, 1_000_000, 256_000));
+    runtime.startFullTrace(EnumSet.of(TraceScope.ENGINE_GTP));
+    Logger trace = (Logger) LoggerFactory.getLogger(LogCategories.ENGINE_TRACE);
+    ListAppender<ILoggingEvent> events = attach(trace);
+
+    EngineObservation.traceAnalysisCacheDecision(
+        null,
+        206,
+        1842L,
+        true,
+        "KataGo",
+        10621,
+        99.87,
+        30.6,
+        10555,
+        0.12,
+        -27.1,
+        "ACCEPT",
+        "HIGHER_VISITS");
+    runtime.awaitIdle();
+
+    assertEquals(1, events.list.size(), formatted(events));
+    String message = events.list.get(0).getFormattedMessage();
+    assertTrue(message.contains("analysis-cache "), message);
+    assertTrue(message.contains("nodeMove=206"), message);
+    assertTrue(message.contains("boardRevision=1842"), message);
+    assertTrue(message.contains("blackToPlay=true"), message);
+    assertTrue(message.contains("engine=KataGo"), message);
+    assertTrue(message.contains("incomingVisits=10621"), message);
+    assertTrue(message.contains("incomingWinrate=99.87"), message);
+    assertTrue(message.contains("incomingScoreLead=30.6"), message);
+    assertTrue(message.contains("cachedVisits=10555"), message);
+    assertTrue(message.contains("cachedWinrate=0.12"), message);
+    assertTrue(message.contains("cachedScoreLead=-27.1"), message);
+    assertTrue(message.contains("decision=ACCEPT"), message);
+    assertTrue(message.contains("reason=HIGHER_VISITS"), message);
+    String persisted =
+        Files.readString(tempDir.resolve("logs/engine-trace.log"), StandardCharsets.UTF_8);
+    assertTrue(persisted.contains("analysis-cache "), persisted);
+    assertTrue(persisted.contains("reason=HIGHER_VISITS"), persisted);
+  }
+
+  @Test
+  void analysisCacheDecisionIsSkippedWhenFullTraceIsOffEvenIfTraceLoggerIsInfo() {
+    LoggingRuntime.initialize(
+        new WorkDirectoryResolution(tempDir, List.of()),
+        new LoggingLimits(64, 32, 32, 32, 7, 1_000_000, 256_000));
+    Logger trace = (Logger) LoggerFactory.getLogger(LogCategories.ENGINE_TRACE);
+    trace.setLevel(Level.INFO);
+    ListAppender<ILoggingEvent> events = attach(trace);
+
+    assertFalse(EngineObservation.traceEnabled());
+    EngineObservation.traceAnalysisCacheDecision(
+        null,
+        206,
+        1842L,
+        true,
+        "KataGo",
+        868,
+        99.91,
+        30.4,
+        10555,
+        0.12,
+        -27.1,
+        "REJECT",
+        "LOWER_VISITS");
+
+    assertTrue(events.list.isEmpty(), formatted(events));
+  }
+
+  @Test
+  void analysisCacheDecisionSanitizesUnknownReasonTokens() {
+    LoggingRuntime runtime =
+        LoggingRuntime.initialize(
+            new WorkDirectoryResolution(tempDir, List.of()),
+            new LoggingLimits(64, 32, 32, 32, 7, 1_000_000, 256_000));
+    runtime.startFullTrace(EnumSet.of(TraceScope.ENGINE_GTP));
+    Logger trace = (Logger) LoggerFactory.getLogger(LogCategories.ENGINE_TRACE);
+    ListAppender<ILoggingEvent> events = attach(trace);
+
+    EngineObservation.traceAnalysisCacheDecision(
+        null, 1, 1L, false, "KataGo", 1, 50.0, 0.0, 1, 50.0, 0.0, "REJECT", "not-a-real-reason");
+
+    assertEquals(1, events.list.size(), formatted(events));
+    String message = events.list.get(0).getFormattedMessage();
+    assertTrue(message.contains("reason=unknown"), message);
+    assertFalse(message.contains("not-a-real-reason"), message);
   }
 
   private static String formatted(ListAppender<ILoggingEvent> events) {
