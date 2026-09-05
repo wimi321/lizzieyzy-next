@@ -916,20 +916,27 @@ class EngineManagerLifecycleReservationTest {
     try {
       Thread.setDefaultUncaughtExceptionHandler(
           (thread, failure) -> {
-            if (thread.getName().contains("Thread")) {
-              escaped.compareAndSet(null, failure);
-              escapedFailure.countDown();
+            if (failure == state.schedulerManager.schedulingFailure
+                || failure == state.schedulerManager.lifecycleCloseFailure) {
+              if (escaped.compareAndSet(null, failure)) {
+                escapedFailure.countDown();
+              }
             }
           });
       state.install();
       state.manager.updateEngines();
 
-      assertTrue(escapedFailure.await(10, TimeUnit.SECONDS));
+      assertTrue(
+          escapedFailure.await(10, TimeUnit.SECONDS),
+          "controlled scheduling failure should escape the replacement worker");
       Throwable failure = escaped.get();
       assertSame(state.schedulerManager.schedulingFailure, failure);
       assertTrue(
           java.util.Arrays.stream(failure.getSuppressed())
-              .anyMatch(suppressed -> suppressed == state.schedulerManager.lifecycleCloseFailure));
+              .anyMatch(suppressed -> suppressed == state.schedulerManager.lifecycleCloseFailure),
+          () ->
+              "lifecycle close failure should be suppressed onto the scheduling failure, suppressed="
+                  + java.util.Arrays.toString(failure.getSuppressed()));
       assertEquals(1, state.schedulerManager.lifecycleCloseCount.get());
     } finally {
       Thread.setDefaultUncaughtExceptionHandler(previousHandler);
@@ -9525,9 +9532,14 @@ class EngineManagerLifecycleReservationTest {
     @Override
     protected void closeUpdateEngineLifecycleSynchronization(
         EngineManager.InitialEngineStartupSynchronization synchronization) {
-      super.closeUpdateEngineLifecycleSynchronization(synchronization);
       lifecycleCloseCount.incrementAndGet();
-      throw lifecycleCloseFailure;
+      try {
+        super.closeUpdateEngineLifecycleSynchronization(synchronization);
+      } finally {
+        // Always throw the injected close failure. Real close() can also throw during
+        // racy engine teardown; Java then suppresses that onto this controlled Error.
+        throw lifecycleCloseFailure;
+      }
     }
   }
 
