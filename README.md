@@ -60,6 +60,8 @@
 
 勾选“记住登录/密码”后，凭据由 Windows DPAPI、macOS Keychain 或 Linux Secret Service 保护，不写入普通配置。系统安全存储不可用时，凭据只保留到程序退出。断线后会自动重连，也可一键切回本机引擎。
 
+有 Linux x86_64 NVIDIA GPU 服务器、但还没有 `WSS` 链接时，可使用 [KataGo 远程算力一键部署](https://github.com/wimi321/katago-remote-one-click)。在服务器运行一条命令即可生成加密链接和二维码，再到 `远程算力 -> 自建算力` 中粘贴或导入；无需自行开放公网端口。
+
 ## 先下载哪个
 
 <p align="center">
