@@ -44,6 +44,11 @@ def validate_catalog(catalog: dict[str, Any]) -> None:
         validate_entry(model, f"model {model_id}")
         require_text(model, "fileName")
         require_text(model, "minimumKataGoVersion")
+        override = model.get("downloadUrl", "")
+        if override and override != (
+            "https://media.katagotraining.org/uploaded/networks/models/kata1/" + model["fileName"]
+        ):
+            raise ValueError(f"model {model_id} has unsupported official downloadUrl")
     for asset_id, asset in assets.items():
         validate_entry(asset, f"asset {asset_id}")
         name = require_text(asset, "assetName")
@@ -85,6 +90,14 @@ def resolve(catalog: dict[str, Any], dotted_path: str) -> Any:
     return current
 
 
+def model_download_url(catalog: dict[str, Any], model_id: str) -> str:
+    model = catalog["models"][model_id]
+    return model.get("downloadUrl") or (
+        f"https://github.com/lightvector/KataGo/releases/download/{catalog['modelReleaseTag']}/"
+        + model["fileName"]
+    )
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--catalog", type=Path, default=DEFAULT_CATALOG)
@@ -92,9 +105,13 @@ def main() -> int:
     subparsers.add_parser("validate")
     get_parser = subparsers.add_parser("get")
     get_parser.add_argument("path")
+    model_url_parser = subparsers.add_parser("model-url")
+    model_url_parser.add_argument("model_id")
     args = parser.parse_args()
 
     catalog = load_catalog(args.catalog)
+    if args.command == "model-url":
+        print(model_download_url(catalog, args.model_id))
     if args.command == "get":
         value = resolve(catalog, args.path)
         if isinstance(value, (dict, list)):

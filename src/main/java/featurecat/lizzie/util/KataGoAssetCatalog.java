@@ -95,7 +95,9 @@ public final class KataGoAssetCatalog {
   }
 
   public String modelDownloadUrl(Model model) {
-    return releaseUrl(modelReleaseTag, model.fileName());
+    return model.downloadUrl().isEmpty()
+        ? releaseUrl(modelReleaseTag, model.fileName())
+        : model.downloadUrl();
   }
 
   public String assetDownloadUrl(Asset asset) {
@@ -121,9 +123,22 @@ public final class KataGoAssetCatalog {
               required(value, "minimumKataGoVersion"),
               value.getLong("sizeBytes"),
               requiredSha256(value, "sha256"),
-              value.optBoolean("bundled", false)));
+              value.optBoolean("bundled", false),
+              modelDownloadOverride(value),
+              value.optString("publishedAt", "2026-07-29")));
     }
     return parsed;
+  }
+
+  private static String modelDownloadOverride(JSONObject value) {
+    String url = value.optString("downloadUrl", "").trim();
+    if (!url.isEmpty()
+        && !url.equals(
+            "https://media.katagotraining.org/uploaded/networks/models/kata1/"
+                + required(value, "fileName"))) {
+      throw new IllegalStateException("Unsupported official model download URL");
+    }
+    return url;
   }
 
   private static Map<String, Asset> parseAssets(JSONObject values) {
@@ -196,7 +211,9 @@ public final class KataGoAssetCatalog {
       String minimumKataGoVersion,
       long sizeBytes,
       String sha256,
-      boolean bundled) {
+      boolean bundled,
+      String downloadUrl,
+      String publishedAt) {
     public String modelName() {
       return fileName.endsWith(".bin.gz")
           ? fileName.substring(0, fileName.length() - ".bin.gz".length())

@@ -7,13 +7,15 @@
   "defaultModelId": "b11-flagship",
   "models": {
     "b11-flagship": {
-      "fileName": "b11c768h12nbt3tflrs-fson-silu.bin.gz",
+      "fileName": "kata1-tf3-b11c768-s11500M-d6163M.bin.gz",
+      "downloadUrl": "https://media.katagotraining.org/uploaded/networks/models/kata1/kata1-tf3-b11c768-s11500M-d6163M.bin.gz",
+      "publishedAt": "2026-09-07",
       "displayFamily": "11B",
       "tier": "strongest",
       "architecture": "transformer",
       "minimumKataGoVersion": "1.17.0",
-      "sizeBytes": 211660960,
-      "sha256": "1881600caab9e9d85a3dd6a019e9b8e7d2c237b5f984e13ed49a8645be3077c6",
+      "sizeBytes": 211568937,
+      "sha256": "73f6454eba62d2f6d099af8ce66d8c3fde6225e223c55817da0627590e98b0ae",
       "bundled": true
     },
     "b10-balanced": {

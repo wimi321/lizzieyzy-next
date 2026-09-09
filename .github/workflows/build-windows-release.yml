@@ -164,11 +164,11 @@ jobs:
           grep -qx "sha256=1ba4c265f560cd988be24f4ea0eeb29516883f42ece477bd32b72f8bccf6565d" "dist/windows/input-with-katago/readboard/lizzieyzy-next-readboard-manifest.txt"
           grep -qx 'KataGo release: v1.18.1' "dist/windows/input-with-katago/engines/katago/VERSION.txt"
           grep -qx 'Windows bundle: katago-v1.18.1-eigen-windows-x64.zip' "dist/windows/input-with-katago/engines/katago/VERSION.txt"
-          grep -qx 'Model source: b11c768h12nbt3tflrs-fson-silu.bin.gz' "dist/windows/input-with-katago/engines/katago/VERSION.txt"
+          grep -qx 'Model source: kata1-tf3-b11c768-s11500M-d6163M.bin.gz' "dist/windows/input-with-katago/engines/katago/VERSION.txt"
           grep -qx 'Model architecture: transformer' "dist/windows/input-with-katago/engines/katago/VERSION.txt"
           grep -qx 'Minimum KataGo version: 1.17.0' "dist/windows/input-with-katago/engines/katago/VERSION.txt"
           test "$(sha256sum "dist/windows/input-with-katago/weights/default.bin.gz" | awk '{print $1}')" = \
-            "1881600caab9e9d85a3dd6a019e9b8e7d2c237b5f984e13ed49a8645be3077c6"
+            "73f6454eba62d2f6d099af8ce66d8c3fde6225e223c55817da0627590e98b0ae"
           test -f "dist/windows/input-opencl/engines/katago/windows-x64/katago.exe"
           test -f "dist/windows/input-opencl/PROJECT_INFO.txt"
           test -f "dist/windows/input-opencl/readboard/readboard.exe"
@@ -241,7 +241,7 @@ jobs:
             test -f "dist/windows/app-image-${flavor}/${app_name}/${app_name}.exe"
             test -f "dist/release/${RELEASE_DATE_TAG}-windows64.${flavor}.portable.zip"
             test "$(sha256sum "dist/windows/app-image-${flavor}/${app_name}/app/weights/default.bin.gz" | awk '{print $1}')" = \
-              "1881600caab9e9d85a3dd6a019e9b8e7d2c237b5f984e13ed49a8645be3077c6"
+              "73f6454eba62d2f6d099af8ce66d8c3fde6225e223c55817da0627590e98b0ae"
           done
           test -d "dist/windows/app-image-experimental.rocm.gfx103x/LizzieYzy Next ROCm gfx103x Experimental/app/engines/katago/windows-x64/rocblas"
           test -d "dist/windows/app-image-experimental.rocm.gfx103x/LizzieYzy Next ROCm gfx103x Experimental/app/engines/katago/windows-x64/hipblaslt"

@@ -33,7 +33,11 @@ PREFERRED_MODEL_SIZE_BYTES="${PREFERRED_MODEL_SIZE_BYTES:-$(catalog_get models.$
 PREFERRED_MODEL_ARCHITECTURE="${PREFERRED_MODEL_ARCHITECTURE:-$(catalog_get models.$DEFAULT_MODEL_ID.architecture)}"
 PREFERRED_MODEL_MINIMUM_KATAGO="${PREFERRED_MODEL_MINIMUM_KATAGO:-$(catalog_get models.$DEFAULT_MODEL_ID.minimumKataGoVersion)}"
 MODEL_RELEASE_TAG="$(catalog_get modelReleaseTag)"
-MODEL_URL="${MODEL_URL:-https://github.com/lightvector/KataGo/releases/download/$MODEL_RELEASE_TAG/$PREFERRED_MODEL_NAME}"
+if [[ "$PREFERRED_MODEL_NAME" == "$(catalog_get models.$DEFAULT_MODEL_ID.fileName)" ]]; then
+  MODEL_URL="${MODEL_URL:-$("$CATEGORY_READER" "$ASSET_CATALOG_READER" model-url "$DEFAULT_MODEL_ID")}"
+else
+  MODEL_URL="${MODEL_URL:-https://github.com/lightvector/KataGo/releases/download/$MODEL_RELEASE_TAG/$PREFERRED_MODEL_NAME}"
+fi
 MODEL_SOURCE="${MODEL_SOURCE:-}"
 
 ENGINES_ROOT="$ROOT_DIR/engines/katago"

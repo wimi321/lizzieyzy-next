@@ -24,6 +24,7 @@ import featurecat.lizzie.logging.WorkDirectoryResolution;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
@@ -693,7 +694,15 @@ public class KataGoAutoSetupHelperTest {
             .orElseThrow()
             .recommended);
     assertTrue(weights.stream().allMatch(KataGoAutoSetupHelper.RemoteWeightInfo::isTransformer));
-    assertTrue(weights.stream().allMatch(info -> info.downloadUrl.contains("/v1.17.1/")));
+    assertEquals("2026-09-07", strongest.uploadedAt);
+    assertEquals(
+        "https://media.katagotraining.org/uploaded/networks/models/kata1/"
+            + KataGoAutoSetupHelper.DEFAULT_TRANSFORMER_FILE_NAME,
+        strongest.downloadUrl);
+    assertTrue(
+        weights.stream()
+            .filter(info -> info != strongest)
+            .allMatch(info -> info.downloadUrl.contains("/v1.17.1/")));
   }
 
   @Test
@@ -736,8 +745,52 @@ public class KataGoAutoSetupHelperTest {
     assertTrue(KataGoAutoSetupHelper.isTransformerWeight(weight));
     String displayName = KataGoAutoSetupHelper.resolveWeightDisplayName(weight);
     assertTrue(displayName.contains("Transformer"));
-    assertTrue(displayName.contains("11B"));
+    assertEquals("Transformer B11 · 2026-09-07", displayName);
     assertFalse(displayName.equals("default"));
+  }
+
+  @Test
+  void recognizesTrainedTransformersWithoutRelabelingOldModels() {
+    assertTrue(
+        KataGoAutoSetupHelper.isTransformerWeight("kata1-tf3-b11c768-s11500M-d6163M.bin.gz"));
+    assertTrue(
+        KataGoAutoSetupHelper.isTransformerWeight("b11c768h12nbt3tflrs-fson-silu.bin.gz"));
+    assertFalse(
+        KataGoAutoSetupHelper.isTransformerWeight(
+            "kata1-b28c512nbt-s12763923712-d5805955894.bin.gz"));
+    assertFalse(
+        KataGoAutoSetupHelper.resolveWeightDisplayName("b11c768h12nbt3tflrs-fson-silu.bin.gz")
+            .contains("2026-09-07"));
+  }
+
+  @Test
+  void onlineCatalogKeepsPinnedIntegrityAndRatingWithoutDuplicateB11() throws Exception {
+    String model = KataGoAutoSetupHelper.DEFAULT_TRANSFORMER_MODEL;
+    String html =
+        "<table class=\"table mt-3\"><tr><td>"
+            + model
+            + "</td><td>2026-09-07</td><td>14545.3 Elo</td><td>"
+            + officialLink(model)
+            + "</td></tr></table>";
+    try (FixtureServer server = FixtureServer.start(html.getBytes(StandardCharsets.UTF_8))) {
+      String previous = System.getProperty("lizzie.katago.networks.url");
+      try {
+        System.setProperty("lizzie.katago.networks.url", server.url());
+        List<KataGoAutoSetupHelper.RemoteWeightInfo> weights =
+            KataGoAutoSetupHelper.fetchOfficialWeights();
+        assertEquals(3, weights.size());
+        KataGoAutoSetupHelper.RemoteWeightInfo b11 =
+            weights.stream()
+                .filter(info -> info.modelName.equals(model))
+                .findFirst()
+                .orElseThrow();
+        assertEquals("14545.3 Elo", b11.eloRating);
+        assertEquals(KataGoAutoSetupHelper.DEFAULT_TRANSFORMER_SHA256, b11.sha256);
+        assertEquals(KataGoAutoSetupHelper.DEFAULT_TRANSFORMER_SIZE_BYTES, b11.sizeBytes);
+      } finally {
+        restoreProperty("lizzie.katago.networks.url", previous);
+      }
+    }
   }
 
   @Test

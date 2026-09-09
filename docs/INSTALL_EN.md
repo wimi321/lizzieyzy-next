@@ -212,7 +212,7 @@ Notes:
 Current bundled defaults:
 
 - KataGo version: `v1.18.1`
-- Weight: official flagship B11 Transformer `b11c768h12nbt3tflrs-fson-silu.bin.gz` (shown as “Transformer 11B Strength First”, `211,660,960` bytes, about 202 MiB)
+- Weight: official flagship B11 Transformer `kata1-tf3-b11c768-s11500M-d6163M.bin.gz` (shown as “Transformer B11 · 2026-09-07”, `211,568,937` bytes, about 202 MiB)
 - B11 makes stronger individual evaluations and handles complex positions better, but search can be slower; users who prioritize throughput can download and switch to B10 in `KataGo Auto Setup`
 - Upgrading an older full bundle requires the latest full package; `core-update.zip` does not contain the new engine or weight
 

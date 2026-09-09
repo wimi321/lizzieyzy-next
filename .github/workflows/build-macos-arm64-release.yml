@@ -99,11 +99,11 @@ jobs:
         run: |
           app_root="dist/macos/app-image/LizzieYzy Next.app/Contents/app"
           grep -qx "KataGo release: v1.18.1" "$app_root/engines/katago/VERSION.txt"
-          grep -qx "Model source: b11c768h12nbt3tflrs-fson-silu.bin.gz" "$app_root/engines/katago/VERSION.txt"
+          grep -qx "Model source: kata1-tf3-b11c768-s11500M-d6163M.bin.gz" "$app_root/engines/katago/VERSION.txt"
           grep -qx "Model architecture: transformer" "$app_root/engines/katago/VERSION.txt"
           grep -qx "Minimum KataGo version: 1.17.0" "$app_root/engines/katago/VERSION.txt"
           test "$(shasum -a 256 "$app_root/weights/default.bin.gz" | awk '{print $1}')" = \
-            "1881600caab9e9d85a3dd6a019e9b8e7d2c237b5f984e13ed49a8645be3077c6"
+            "73f6454eba62d2f6d099af8ce66d8c3fde6225e223c55817da0627590e98b0ae"
           grep -q -- "java-options=-Dlizzie.next.version=$RELEASE_TAG" \
             "dist/macos/app-image/LizzieYzy Next.app/Contents/app/LizzieYzy Next.cfg"
           grep -q -- "java-options=-Xshare:auto" \

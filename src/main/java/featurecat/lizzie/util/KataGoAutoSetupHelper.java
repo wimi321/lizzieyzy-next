@@ -58,10 +58,6 @@ public final class KataGoAutoSetupHelper {
           + "(KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36";
   private static final String NETWORKS_URL = "https://katagotraining.org/networks/";
   private static final String NETWORKS_URL_PROPERTY = "lizzie.katago.networks.url";
-  private static final String KATAGO_MODEL_RELEASE_BASE =
-      "https://github.com/lightvector/KataGo/releases/download/"
-          + ASSET_CATALOG.modelReleaseTag()
-          + "/";
   private static final Pattern STRONGEST_PATTERN =
       Pattern.compile(
           "Strongest confidently-rated network:</span>\\s*<a href=\"([^\"]+)\">([^<]+)</a>",
@@ -1130,7 +1126,35 @@ public final class KataGoAutoSetupHelper {
   public static List<RemoteWeightInfo> fetchOfficialWeights() throws IOException {
     List<RemoteWeightInfo> weights = new ArrayList<>(officialTransformerWeights());
     try {
-      weights.addAll(parseOfficialWeights(httpGet(officialNetworksUrl())));
+      for (RemoteWeightInfo info : parseOfficialWeights(httpGet(officialNetworksUrl()))) {
+        int pinnedIndex = -1;
+        for (int i = 0; i < weights.size(); i++) {
+          if (weights.get(i).fileName().equals(info.fileName())) {
+            pinnedIndex = i;
+            break;
+          }
+        }
+        if (pinnedIndex < 0) {
+          weights.add(info);
+        } else {
+          // Keep trusted integrity metadata while refreshing the online rating.
+          RemoteWeightInfo pinned = weights.get(pinnedIndex);
+          weights.set(
+              pinnedIndex,
+              new RemoteWeightInfo(
+                  pinned.typeLabel,
+                  pinned.modelName,
+                  pinned.downloadUrl,
+                  pinned.uploadedAt,
+                  info.eloRating,
+                  pinned.recommended,
+                  info.latest,
+                  pinned.sha256,
+                  pinned.sizeBytes,
+                  pinned.minimumKataGoVersion,
+                  pinned.transformerTier));
+        }
+      }
     } catch (IOException e) {
       if (weights.isEmpty()) {
         throw e;
@@ -1172,17 +1196,21 @@ public final class KataGoAutoSetupHelper {
 
   private static RemoteWeightInfo transformerWeight(
       String typeLabel, String modelName, long sizeBytes, String sha256, TransformerTier tier) {
+    KataGoAssetCatalog.Model model =
+        tier == TransformerTier.STRONGEST
+            ? TRANSFORMER_STRONGEST
+            : tier == TransformerTier.BALANCED ? TRANSFORMER_BALANCED : TRANSFORMER_LIGHTWEIGHT;
     return new RemoteWeightInfo(
         typeLabel,
         modelName,
-        KATAGO_MODEL_RELEASE_BASE + modelName + ".bin.gz",
-        "2026-07-29",
+        ASSET_CATALOG.modelDownloadUrl(model),
+        model.publishedAt(),
         "",
         tier == TransformerTier.STRONGEST,
         true,
         sha256,
         sizeBytes,
-        TRANSFORMER_MINIMUM_KATAGO_VERSION,
+        model.minimumKataGoVersion(),
         tier);
   }
 
@@ -1370,7 +1398,7 @@ public final class KataGoAutoSetupHelper {
         resource("AutoSetup.quickAnalysisModel", "Quick curve lightweight model"),
         TRANSFORMER_LIGHTWEIGHT_MODEL,
         quickAnalysisModelDownloadUrl(),
-        "2026-07-29",
+        TRANSFORMER_LIGHTWEIGHT.publishedAt(),
         "",
         false,
         false,
@@ -1857,6 +1885,7 @@ public final class KataGoAutoSetupHelper {
     return normalized.equals(TRANSFORMER_LIGHTWEIGHT_MODEL)
         || normalized.equals(TRANSFORMER_BALANCED_MODEL)
         || normalized.equals(TRANSFORMER_STRONGEST_MODEL)
+        || normalized.matches("kata1-tf[23]-b\\d+c\\d+-.*")
         || normalized.contains("tflrs");
   }
 
@@ -2482,6 +2511,9 @@ public final class KataGoAutoSetupHelper {
       return resource("AutoSetup.transformerBalancedModel", "Transformer Balanced 10B");
     }
     if (TRANSFORMER_STRONGEST_MODEL.equalsIgnoreCase(baseName)) {
+      return "Transformer B11 · " + TRANSFORMER_STRONGEST.publishedAt();
+    }
+    if ("b11c768h12nbt3tflrs-fson-silu".equalsIgnoreCase(baseName)) {
       return resource("AutoSetup.transformerStrongestModel", "Transformer Flagship 11B");
     }
     if (BUNDLED_2026_06_28B_MODEL.equalsIgnoreCase(baseName)) {

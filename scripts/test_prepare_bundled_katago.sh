@@ -6,10 +6,11 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$ROOT_DIR/scripts/prepare_bundled_katago.sh"
 
 [[ "$KATAGO_TAG" == "v1.18.1" ]]
-[[ "$PREFERRED_MODEL_NAME" == "b11c768h12nbt3tflrs-fson-silu.bin.gz" ]]
-[[ "$PREFERRED_MODEL_SIZE_BYTES" == "211660960" ]]
+[[ "$PREFERRED_MODEL_NAME" == "kata1-tf3-b11c768-s11500M-d6163M.bin.gz" ]]
+[[ "$PREFERRED_MODEL_SIZE_BYTES" == "211568937" ]]
+[[ "$MODEL_URL" == "https://media.katagotraining.org/uploaded/networks/models/kata1/$PREFERRED_MODEL_NAME" ]]
 [[ "$PREFERRED_MODEL_SHA256" == \
-  "1881600caab9e9d85a3dd6a019e9b8e7d2c237b5f984e13ed49a8645be3077c6" ]]
+  "73f6454eba62d2f6d099af8ce66d8c3fde6225e223c55817da0627590e98b0ae" ]]
 [[ "$HUMAN_SL_CUDA_COMPANION_SHA256" == \
   "e207abb6e2403f0f34e9f4cac6079b988bf853537367d18f899c4b246eeb044c" ]]
 [[ "$(expected_asset_sha256 "$WINDOWS_ASSET")" == \

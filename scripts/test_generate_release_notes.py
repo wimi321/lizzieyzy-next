@@ -75,7 +75,7 @@ class GenerateReleaseNotesTest(unittest.TestCase):
 
         self.assertEqual("v1.18.1", metadata["katago_version"])
         self.assertEqual(
-            "b11c768h12nbt3tflrs-fson-silu.bin.gz", metadata["model_source"]
+            "kata1-tf3-b11c768-s11500M-d6163M.bin.gz", metadata["model_source"]
         )
         self.assertEqual(
             "katago-v1.18.1-cuda12.8-cudnn9.8.0-windows-x64.zip",

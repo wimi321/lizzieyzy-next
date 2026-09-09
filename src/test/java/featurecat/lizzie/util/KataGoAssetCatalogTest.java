@@ -14,13 +14,21 @@ class KataGoAssetCatalogTest {
 
     assertEquals("1.18.1", catalog.katagoVersion());
     assertEquals("v1.18.1", catalog.katagoReleaseTag());
-    assertEquals("b11c768h12nbt3tflrs-fson-silu.bin.gz", model.fileName());
-    assertEquals(211_660_960L, model.sizeBytes());
+    assertEquals("kata1-tf3-b11c768-s11500M-d6163M.bin.gz", model.fileName());
+    assertEquals(211_568_937L, model.sizeBytes());
     assertEquals(
-        "1881600caab9e9d85a3dd6a019e9b8e7d2c237b5f984e13ed49a8645be3077c6",
+        "73f6454eba62d2f6d099af8ce66d8c3fde6225e223c55817da0627590e98b0ae",
         model.sha256());
     assertTrue(model.bundled());
     assertFalse(catalog.model("b10-balanced").bundled());
+    assertEquals("2026-09-07", model.publishedAt());
+    assertEquals(
+        "https://media.katagotraining.org/uploaded/networks/models/kata1/" + model.fileName(),
+        catalog.modelDownloadUrl(model));
+    assertEquals(
+        "https://github.com/lightvector/KataGo/releases/download/v1.17.1/"
+            + catalog.model("b10-balanced").fileName(),
+        catalog.modelDownloadUrl(catalog.model("b10-balanced")));
   }
 
   @Test

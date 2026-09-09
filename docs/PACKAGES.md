@@ -132,8 +132,8 @@
 
 - KataGo 版本：`v1.18.1`，CPU、OpenCL、CUDA、TensorRT、Metal 和 Linux 包统一升级；Linux NVIDIA 为兼容系统运行时继续使用 CUDA `12.1`
 - macOS 发布构建固定使用官方 `v1.18.1` commit `92ee95c0a4b25fec214da00951ab69e97e207729`。如果 Homebrew 稳定版仍滞后，打包脚本会从该 commit 构建 Metal 引擎并校验真实二进制版本，不能只靠 `VERSION.txt` 宣称升级
-- 默认权重：官方旗舰 B11 Transformer `b11c768h12nbt3tflrs-fson-silu.bin.gz`，界面显示为“Transformer 11B 棋力优先”
-- 默认权重大小：`211,660,960` 字节（约 202 MiB），SHA-256：`1881600caab9e9d85a3dd6a019e9b8e7d2c237b5f984e13ed49a8645be3077c6`
+- 默认权重：官方旗舰 B11 Transformer `kata1-tf3-b11c768-s11500M-d6163M.bin.gz`，界面显示为“Transformer B11 · 2026-09-07”
+- 默认权重大小：`211,568,937` 字节（约 202 MiB），SHA-256：`73f6454eba62d2f6d099af8ce66d8c3fde6225e223c55817da0627590e98b0ae`
 - B11 单次判断更强、复杂局面效果更好，但搜索速度可能较慢；B10 保留为“速度优先”按需下载，不重复内置
 - Windows NVIDIA 统一使用 CUDA `12.8` + cuDNN `9.8`，覆盖 RTX 20/30/40/50；不再发布独立 `nvidia50` 包
 - Windows NVIDIA 运行时同时携带对应版本的 NVRTC 编译器与 builtins，发布审计会检查精确 DLL、官方资产 SHA 和 manifest 记录，避免解压即引擎启动失败

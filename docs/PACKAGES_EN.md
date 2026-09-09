@@ -112,8 +112,8 @@ Current bundled defaults:
 
 - KataGo version: `v1.18.1` across CPU, OpenCL, CUDA, TensorRT, Metal, and Linux bundles; Linux NVIDIA remains on CUDA `12.1` for runtime compatibility
 - macOS release builds pin the official `v1.18.1` commit `92ee95c0a4b25fec214da00951ab69e97e207729`. If Homebrew lags, packaging builds Metal from that commit and verifies the real binary version instead of trusting `VERSION.txt` alone
-- Default weight: official flagship B11 Transformer `b11c768h12nbt3tflrs-fson-silu.bin.gz`, shown as “Transformer 11B Strength First”
-- Default weight size: `211,660,960` bytes (about 202 MiB), SHA-256: `1881600caab9e9d85a3dd6a019e9b8e7d2c237b5f984e13ed49a8645be3077c6`
+- Default weight: official flagship B11 Transformer `kata1-tf3-b11c768-s11500M-d6163M.bin.gz`, shown as “Transformer B11 · 2026-09-07”
+- Default weight size: `211,568,937` bytes (about 202 MiB), SHA-256: `73f6454eba62d2f6d099af8ce66d8c3fde6225e223c55817da0627590e98b0ae`
 - B11 makes stronger individual evaluations and performs better in complex positions, but search can be slower; B10 remains available as an on-demand speed-first model and is not duplicated in full packages
 - The single Windows NVIDIA package uses CUDA `12.8` + cuDNN `9.8` for RTX 20/30/40/50; separate `nvidia50` assets are no longer published
 - Windows NVIDIA runtimes include matching NVRTC compiler and builtins; release audits verify exact DLLs, official asset hashes, and manifest records

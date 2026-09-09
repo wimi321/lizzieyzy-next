@@ -125,11 +125,11 @@ jobs:
           grep -qx "Linux bundle: katago-v1.18.1-eigen-linux-x64.zip" "$manifest"
           grep -qx "Linux OpenCL bundle: katago-v1.18.1-opencl-linux-x64.zip" "$manifest"
           grep -qx "Linux NVIDIA bundle: katago-v1.18.1-cuda12.1-cudnn9.8.0-linux-x64.zip" "$manifest"
-          grep -qx "Model source: b11c768h12nbt3tflrs-fson-silu.bin.gz" "$manifest"
+          grep -qx "Model source: kata1-tf3-b11c768-s11500M-d6163M.bin.gz" "$manifest"
           grep -qx "Model architecture: transformer" "$manifest"
           grep -qx "Minimum KataGo version: 1.17.0" "$manifest"
           test "$(sha256sum "dist/stage/${RELEASE_DATE_TAG}-linux64.with-katago/Lizzieyzy/weights/default.bin.gz" | awk '{print $1}')" = \
-            "1881600caab9e9d85a3dd6a019e9b8e7d2c237b5f984e13ed49a8645be3077c6"
+            "73f6454eba62d2f6d099af8ce66d8c3fde6225e223c55817da0627590e98b0ae"
           cpu_version="$("dist/stage/${RELEASE_DATE_TAG}-linux64.with-katago/Lizzieyzy/engines/katago/linux-x64/katago" version 2>&1)"
           echo "$cpu_version"
           echo "$cpu_version" | grep -q "KataGo v1.18.1"

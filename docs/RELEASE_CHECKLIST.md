@@ -153,9 +153,9 @@ python3 scripts/generate_app_icons.py
 当前默认：
 
 - KataGo 版本：`v1.18.1`
-- 默认模型：`b11c768h12nbt3tflrs-fson-silu.bin.gz`
-- 默认模型 SHA-256：`1881600caab9e9d85a3dd6a019e9b8e7d2c237b5f984e13ed49a8645be3077c6`
-- 默认模型大小：`211,660,960` 字节；架构：`transformer`；最低 KataGo：`1.17.0`
+- 默认模型：`kata1-tf3-b11c768-s11500M-d6163M.bin.gz`
+- 默认模型 SHA-256：`73f6454eba62d2f6d099af8ce66d8c3fde6225e223c55817da0627590e98b0ae`
+- 默认模型大小：`211,568,937` 字节；架构：`transformer`；最低 KataGo：`1.17.0`
 - Windows NVIDIA 包：官方 `cuda12.8-cudnn9.8.0` 构建，统一覆盖 RTX 20/30/40/50
 - Linux NVIDIA 包：官方 CUDA `12.1` 构建，避免提高现有 Linux 系统运行时要求
 - Windows TensorRT：不内嵌到普通 Windows 主推荐包；RTX 30 系及以下用户由软件内 `KataGo 一键设置` 显式下载安装官方 KataGo `v1.18.1` `trt10.9.0-cuda12.8` 构建和所需运行库；RTX 40/50 默认使用 CUDA；当前预发布链路仍强制生成并上传可选离线 TensorRT 分卷及其 README、manifest、SHA-256 文件，缺少任一项都不能公开 pre-release

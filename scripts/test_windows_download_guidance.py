@@ -69,7 +69,7 @@ class WindowsDownloadGuidanceTest(unittest.TestCase):
             asset_map,
             {
                 "katago_version": "v1.18.1",
-                "model_source": "b11c768h12nbt3tflrs-fson-silu.bin.gz",
+                "model_source": "kata1-tf3-b11c768-s11500M-d6163M.bin.gz",
             },
             "wimi321/lizzieyzy-next",
             "next-2099-01-01.1",
