@@ -4,13 +4,23 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 
 /** Test-only transport that exercises Leelaz's real command queue and response routing. */
 public final class ExactSnapshotRestoreProtocolFixture {
   private ExactSnapshotRestoreProtocolFixture() {}
 
   public static Transport install(Leelaz engine, CommandBehavior behavior) {
-    Transport transport = new Transport(engine, behavior);
+    Transport transport = new Transport(engine, behavior, false);
+    engine.installCommandOutputForTest(transport);
+    return transport;
+  }
+
+  public static Transport installAsync(Leelaz engine, CommandBehavior behavior) {
+    Transport transport = new Transport(engine, behavior, true);
     engine.installCommandOutputForTest(transport);
     return transport;
   }
@@ -44,10 +54,21 @@ public final class ExactSnapshotRestoreProtocolFixture {
     private final StringBuilder current = new StringBuilder();
     private final List<String> commands = new ArrayList<>();
     private final List<String> rawCommands = new ArrayList<>();
+    private final ExecutorService responseReader;
+    private final AtomicReference<Throwable> responseFailure = new AtomicReference<>();
 
-    private Transport(Leelaz engine, CommandBehavior behavior) {
+    private Transport(Leelaz engine, CommandBehavior behavior, boolean asynchronous) {
       this.engine = engine;
       this.behavior = behavior;
+      responseReader =
+          asynchronous
+              ? Executors.newSingleThreadExecutor(
+                  task -> {
+                    Thread thread = new Thread(task, "snapshot-fixture-reader");
+                    thread.setDaemon(true);
+                    return thread;
+                  })
+              : null;
     }
 
     @Override
@@ -67,7 +88,7 @@ public final class ExactSnapshotRestoreProtocolFixture {
       try {
         Response response = behavior.onCommand(commandPayload(commandLine));
         if (response != null) {
-          invokeResponse(responseLine(commandLine, response));
+          respond(responseLine(commandLine, response));
         }
       } catch (IOException failure) {
         throw failure;
@@ -84,8 +105,48 @@ public final class ExactSnapshotRestoreProtocolFixture {
       return List.copyOf(rawCommands);
     }
 
-    private void invokeResponse(String responseLine) {
-      engine.processCommandResponseLineForTest(responseLine);
+    public void respond(String responseLine) {
+      if (responseReader == null) {
+        engine.processCommandResponseLineForTest(responseLine);
+      } else {
+        // Real engine responses arrive on a reader, never inside the physical write lock.
+        responseReader.execute(
+            () -> {
+              try {
+                engine.processCommandResponseLineForTest(responseLine);
+              } catch (Throwable failure) {
+                responseFailure.compareAndSet(null, failure);
+              }
+            });
+      }
+    }
+
+    @Override
+    public void close() throws IOException {
+      if (responseReader == null) return;
+      responseReader.shutdown();
+      try {
+        if (!responseReader.awaitTermination(3, TimeUnit.SECONDS)) {
+          responseReader.shutdownNow();
+          throw new IOException("Snapshot fixture reader did not terminate");
+        }
+      } catch (InterruptedException interrupted) {
+        responseReader.shutdownNow();
+        Thread.currentThread().interrupt();
+        throw new IOException(interrupted);
+      }
+      if (responseFailure.get() != null) {
+        throw new IOException("Snapshot fixture reader failed", responseFailure.get());
+      }
+    }
+
+    public void awaitResponses() throws Exception {
+      if (responseReader != null) {
+        responseReader.submit(() -> {}).get(3, TimeUnit.SECONDS);
+      }
+      if (responseFailure.get() != null) {
+        throw new AssertionError("Snapshot fixture reader failed", responseFailure.get());
+      }
     }
 
     private static String commandPayload(String commandLine) {

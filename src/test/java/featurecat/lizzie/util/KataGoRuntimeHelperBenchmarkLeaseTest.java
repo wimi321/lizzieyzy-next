@@ -27,7 +27,6 @@ import java.io.IOException;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -405,14 +404,17 @@ class KataGoRuntimeHelperBenchmarkLeaseTest {
     Config config =
         ConfigTestHelper.createForTests(Files.createTempDirectory("katago-benchmark-lease"));
     Leelaz engine = reusableKatagoEngine();
+    Leelaz.ForegroundAnalysisLease foregroundLease = null;
     try {
       Lizzie.config = config;
       Lizzie.leelaz = engine;
       Lizzie.frame = null;
       config.showPonderLimitedTips = true;
-      assertEquals(
-          Leelaz.ExclusiveGtpLeaseAvailability.AVAILABLE,
-          engine.beginExclusiveGtpSession(line -> {}, () -> {}, () -> {}));
+      Leelaz.ForegroundAnalysisLeaseAcquisition foreground =
+          engine.acquireForegroundAnalysisLease(line -> {}, lease -> {}, lease -> {});
+      assertEquals(Leelaz.ExclusiveGtpLeaseAvailability.AVAILABLE, foreground.availability());
+      assertNotNull(foreground.lease());
+      foregroundLease = foreground.lease();
 
       KataGoRuntimeHelper.BenchmarkPauseResult result =
           KataGoRuntimeHelper.pauseCurrentAnalysisForBenchmark();
@@ -424,7 +426,9 @@ class KataGoRuntimeHelperBenchmarkLeaseTest {
       assertTrue(engine.isLoaded());
       assertTrue(engine.isStarted());
     } finally {
-      engine.endExclusiveGtpSession();
+      if (foregroundLease != null) {
+        engine.endExclusiveGtpSession();
+      }
       Lizzie.config = previousConfig;
       Lizzie.leelaz = previousEngine;
       Lizzie.frame = previousFrame;
@@ -499,62 +503,6 @@ class KataGoRuntimeHelperBenchmarkLeaseTest {
     }
   }
 
-  @Test
-  void benchmarkPauseClaimsActiveTrackingAndRestoresSavedPonderIntentInOneClick() throws Exception {
-    try (BenchmarkEnvironment environment = new BenchmarkEnvironment(1)) {
-      RecordingBenchmarkLeelaz engine = environment.engine(0);
-      ByteArrayOutputStream output = installOutput(engine);
-      engine.Pondering();
-      engine.ponderingCallCount = 0;
-      Leelaz.TrackingStreamLeaseAcquisition tracking =
-          engine.acquireTrackingStreamLease(line -> {}, lease -> {}, lease -> {});
-      processCommandResponse(engine, "=800000000");
-      assertTrue(dispatchExclusiveLine(engine, ""));
-
-      KataGoRuntimeHelper.BenchmarkPauseResult pause = environment.pause(0);
-
-      assertTrue(pause.accepted());
-      assertTrue(pause.analysisWasPondering());
-      int pausePonderCalls = engine.ponderingCallCount;
-      assertEquals(Leelaz.TrackingReleaseDisposition.CLEARED, tracking.lease().disposition());
-      assertEquals("800000000 stop\n800000001 stop\n", output.toString(StandardCharsets.UTF_8));
-
-      assertTrue(dispatchExclusiveLine(engine, "=800000001"));
-      assertTrue(dispatchExclusiveLine(engine, ""));
-      KataGoRuntimeHelper.restoreAnalysisAfterBenchmark(pause.analysisWasPondering());
-      assertEquals(2, engine.reservationAttempts);
-      assertEquals(1, engine.restartCount);
-      assertEquals(pausePonderCalls + 1, engine.ponderingCallCount);
-    }
-  }
-
-  @Test
-  void nonShutdownBenchmarkKeepsTrackingPausedAndRestoresSavedPonderIntent() throws Exception {
-    try (BenchmarkEnvironment environment = new BenchmarkEnvironment(1)) {
-      RecordingBenchmarkLeelaz engine = environment.engine(0);
-      installOutput(engine);
-      engine.Pondering();
-      engine.acquireTrackingStreamLease(line -> {}, lease -> {}, lease -> {});
-      processCommandResponse(engine, "=800000000");
-      assertTrue(dispatchExclusiveLine(engine, ""));
-      EngineManager.isEmpty = true;
-
-      KataGoRuntimeHelper.BenchmarkPauseResult pause = environment.pause(0);
-
-      assertTrue(pause.accepted());
-      assertTrue(pause.analysisWasPondering());
-      assertFalse(pause.computeIsolated());
-      assertFalse(
-          engine.isPondering(), "benchmark must not restart ponder while tracking settles.");
-
-      assertTrue(dispatchExclusiveLine(engine, "=800000001"));
-      assertTrue(dispatchExclusiveLine(engine, ""));
-      KataGoRuntimeHelper.restoreAnalysisAfterBenchmark(pause.analysisWasPondering());
-
-      assertTrue(engine.isPondering());
-      assertFalse(engine.hasExclusiveGtpWorkInProgress());
-    }
-  }
 
   @Test
   void shutdownWaitReportsOnlyConfirmedIsolation() throws Exception {
@@ -1003,13 +951,6 @@ class KataGoRuntimeHelperBenchmarkLeaseTest {
     return (T) UnsafeHolder.UNSAFE.allocateInstance(type);
   }
 
-  private static ByteArrayOutputStream installOutput(Leelaz engine) throws Exception {
-    ByteArrayOutputStream output = new ByteArrayOutputStream();
-    Field field = Leelaz.class.getDeclaredField("outputStream");
-    field.setAccessible(true);
-    field.set(engine, new BufferedOutputStream(output));
-    return output;
-  }
 
   private static void awaitRestartSettlement(Leelaz engine) {
     long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
@@ -1044,11 +985,6 @@ class KataGoRuntimeHelperBenchmarkLeaseTest {
     }
   }
 
-  private static boolean dispatchExclusiveLine(Leelaz engine, String line) throws Exception {
-    Method method = Leelaz.class.getDeclaredMethod("dispatchExclusiveGtpLine", String.class);
-    method.setAccessible(true);
-    return (boolean) method.invoke(engine, line);
-  }
 
   private static void processCommandResponse(Leelaz engine, String line) throws Exception {
     Method method = Leelaz.class.getDeclaredMethod("processCommandResponseLine", String.class);

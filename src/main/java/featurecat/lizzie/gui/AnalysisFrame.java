@@ -486,27 +486,31 @@ public class AnalysisFrame extends JFrame {
     // TODO Auto-generated method stub
     int minHeight = 22;
     int trueHeight = height - minHeight;
-    int totalPlayouts = 0;
+    int totalPlayouts = index == 2
+        ? Lizzie.board.getData().getPlayouts2() : Lizzie.board.getData().getPlayouts();
     int maxPlayouts = 0;
+    int maxMoveVisits = 0;
     double stable = 0;
     List<MoveData> bestMoves = null;
     if (index == 1) bestMoves = Lizzie.board.getData().bestMoves;
     else if (index == 2) bestMoves = Lizzie.board.getData().bestMoves2;
     if (bestMoves == null || bestMoves.isEmpty()) return;
+    int totalAllocation = MoveData.getAllocationVisits(bestMoves);
     Graphics2D g = (Graphics2D) g0;
     g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
     for (MoveData move : bestMoves) {
-      totalPlayouts += move.playouts;
-      if (move.playouts > maxPlayouts) maxPlayouts = move.playouts;
+      if (move.allocationVisits() > maxPlayouts) maxPlayouts = move.allocationVisits();
+      if (move.playouts > maxMoveVisits) maxMoveVisits = move.playouts;
     }
     int length = bestMoves.size();
     for (int i = 0; i < 11; i++) {
       if (i < length)
         stable +=
-            (maxPlayouts - bestMoves.get(i).playouts) * (maxPlayouts - bestMoves.get(i).playouts);
-      else stable += maxPlayouts * maxPlayouts;
+            (double) (maxPlayouts - bestMoves.get(i).allocationVisits())
+                * (maxPlayouts - bestMoves.get(i).allocationVisits());
+      else stable += (double) maxPlayouts * maxPlayouts;
     }
-    stable = stable / 10 / totalPlayouts / totalPlayouts;
+    stable = totalAllocation > 0 ? stable / 10 / totalAllocation / totalAllocation : 0;
     stable = Math.pow(stable, 0.5) * 100;
     g.setColor(Color.BLACK);
     g.setFont(new Font(Lizzie.config.uiFontName, Font.PLAIN, 13));
@@ -515,7 +519,7 @@ public class AnalysisFrame extends JFrame {
             + Utils.getPlayoutsString(totalPlayouts)
             + " "
             + resourceBundle.getString("AnalysisFrame.maxVisits")
-            + Utils.getPlayoutsString(maxPlayouts)
+            + Utils.getPlayoutsString(maxMoveVisits)
             + " "
             + resourceBundle.getString("AnalysisFrame.concentration")
             + String.format(Locale.ENGLISH, "%.2f", stable)
@@ -532,13 +536,13 @@ public class AnalysisFrame extends JFrame {
         g.drawString(String.valueOf(i + 1), 3, minHeight + i * 20 + 15);
         g.setColor(Color.DARK_GRAY);
         if (i < length) {
-          double percents = (double) bestMoves.get(i).playouts / maxPlayouts;
+          double percents = bestMoves.get(i).allocationRatio(maxPlayouts);
           g.fillRect(20, minHeight + i * 20 + 2, (int) ((width - 80) * percents), 16);
           g.drawString(
               String.format(
                       Locale.ENGLISH,
                       "%.2f",
-                      (double) bestMoves.get(i).playouts * 100 / totalPlayouts)
+                      bestMoves.get(i).allocationRatio(totalAllocation) * 100)
                   + "%",
               26 + (int) ((width - 80) * percents),
               minHeight + i * 20 + 15);
@@ -984,10 +988,7 @@ public class AnalysisFrame extends JFrame {
         // MoveDataSorter(data2);
         // ArrayList sortedMoveData = MoveDataSorter.getSortedMoveDataByPolicy();
         //   double maxlcb = 0;
-        int totalPlayouts = 0;
-        for (MoveData move : data2) {
-          totalPlayouts = totalPlayouts + move.playouts;
-        }
+        int totalPlayouts = MoveData.getAllocationVisits(data2);
         MoveData data = data2.get(row);
         switch (col) {
           case 0:
@@ -1022,7 +1023,7 @@ public class AnalysisFrame extends JFrame {
             else return Utils.getPlayoutsString(data.playouts);
           case 5:
             return String.format(
-                Locale.ENGLISH, "%.1f", (double) data.playouts * 100 / totalPlayouts);
+                Locale.ENGLISH, "%.1f", data.allocationRatio(totalPlayouts) * 100);
           case 6:
             if (data.isNextMove && data.policy < -1000) return "--";
             return String.format(Locale.ENGLISH, "%.2f", data.policy);

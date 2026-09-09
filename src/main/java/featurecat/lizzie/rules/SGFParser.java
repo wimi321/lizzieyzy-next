@@ -2784,7 +2784,7 @@ public class SGFParser {
         data.scoreStdev,
         data.pda,
         data.bestMovesToString(),
-        data.estimateArray);
+        data.estimateArray, data.rootVisits);
   }
 
   private static String formatNodeData2(BoardHistoryNode node) {
@@ -2814,7 +2814,7 @@ public class SGFParser {
         data.scoreStdev2,
         data.pda2,
         data.bestMovesToString2(),
-        data.estimateArray2);
+        data.estimateArray2, data.rootVisits2);
   }
 
   private static String formatAnalysisPayload(
@@ -2827,13 +2827,14 @@ public class SGFParser {
       double scoreStdev,
       double pda,
       String bestMoves,
-      List<Double> estimateArray) {
+      List<Double> estimateArray, int rootVisits) {
     StringBuilder header = new StringBuilder();
     header.append(engineName).append(" ").append(curWinrate).append(" ").append(playouts);
-    if (kataData) {
-      boolean hasExplicitHeaderSlots = headerSlots > 0;
+    if (kataData || rootVisits >= 0) {
+      boolean hasExplicitHeaderSlots = rootVisits < 0 && headerSlots > 0;
       boolean includeScoreStdev = !hasExplicitHeaderSlots || headerSlots >= 5;
-      boolean includePda = hasExplicitHeaderSlots ? headerSlots >= 6 : Double.compare(pda, 0) != 0;
+      boolean includePda = rootVisits >= 0
+          || (hasExplicitHeaderSlots ? headerSlots >= 6 : Double.compare(pda, 0) != 0);
       header.append(" ").append(formatAnalysisScalar(scoreMean));
       if (includeScoreStdev) {
         header.append(" ").append(formatAnalysisScalar(scoreStdev));
@@ -2842,6 +2843,7 @@ public class SGFParser {
         header.append(" ").append(formatAnalysisScalar(pda));
       }
     }
+    if (rootVisits >= 0) header.append(" rootVisits=").append(rootVisits);
 
     String detailLine = formatAnalysisDetailLine(bestMoves, estimateArray);
     if (Utils.isBlank(detailLine)) {
@@ -3191,6 +3193,7 @@ public class SGFParser {
     snapshotData.engineName = moveData.engineName;
     snapshotData.winrate = moveData.winrate;
     snapshotData.setPlayouts(moveData.getPlayouts());
+    snapshotData.rootVisits = moveData.rootVisits;
     snapshotData.bestMoves = copyMoveDataListAllowNull(moveData.bestMoves);
     snapshotData.bestMovesOutOfRange = copyMoveDataListAllowNull(moveData.bestMovesOutOfRange);
     snapshotData.estimateArray = copyEstimateArray(moveData.estimateArray);
@@ -3213,6 +3216,7 @@ public class SGFParser {
     snapshotData.engineName2 = moveData.engineName2;
     snapshotData.winrate2 = moveData.winrate2;
     snapshotData.setPlayouts2(moveData.getPlayouts2());
+    snapshotData.rootVisits2 = moveData.rootVisits2;
     snapshotData.bestMoves2 = copyMoveDataListAllowNull(moveData.bestMoves2);
     snapshotData.bestMoves2OutOfRange = copyMoveDataListAllowNull(moveData.bestMoves2OutOfRange);
     snapshotData.estimateArray2 = copyEstimateArray(moveData.estimateArray2);
@@ -4413,7 +4417,7 @@ public class SGFParser {
     String line2 = lines.length > 1 ? lines[1] : "";
     boolean secondaryEngine = isSecondaryEngineAnalysisTag(tag);
     applyAnalysisHeader(target, line1, secondaryEngine);
-    int numPlayouts = parseAnalysisPlayouts(line1[2]);
+    int numPlayouts = secondaryEngine ? target.getPlayouts2() : target.getPlayouts();
     if (numPlayouts <= 0 || Utils.isBlank(line2)) {
       return;
     }
@@ -4425,11 +4429,23 @@ public class SGFParser {
   private static void applyAnalysisHeader(
       BoardData target, String[] line1, boolean secondaryEngineTag) {
     int headerPlayouts = parseAnalysisPlayouts(line1[2]);
-    int headerSlots = line1.length;
+    int headerSlots = Math.min(6, line1.length);
+    int rootVisits = -1;
+    for (int i = 6; i < line1.length; i++) {
+      if (line1[i].startsWith("rootVisits=")) {
+        try {
+          rootVisits = Integer.parseInt(line1[i].substring("rootVisits=".length()));
+        } catch (NumberFormatException ignored) {
+          rootVisits = -1;
+        }
+      }
+    }
+    if (rootVisits >= 0) headerPlayouts = rootVisits;
     if (secondaryEngineTag) {
       target.engineName2 = line1[0];
       target.winrate2 = 100 - parseDoubleOrDefault(line1[1], 50);
       target.setPlayouts2(headerPlayouts);
+      target.rootVisits2 = rootVisits;
       target.isKataData2 = false;
       target.analysisHeaderSlots2 = headerSlots;
       target.scoreMean2 = 0;
@@ -4450,6 +4466,7 @@ public class SGFParser {
     target.engineName = line1[0];
     target.winrate = 100 - parseDoubleOrDefault(line1[1], 50);
     target.setPlayouts(headerPlayouts);
+    target.rootVisits = rootVisits;
     target.isKataData = false;
     target.analysisHeaderSlots = headerSlots;
     target.scoreMean = 0;
@@ -4539,6 +4556,7 @@ public class SGFParser {
 
   private static MoveData parseMoveDataFromAnalysis(String variation, List<MoveData> bestMoves) {
     MoveData result = new MoveData();
+    result.order = bestMoves.size();
     String[] data = variation.trim().split("\\s+");
     for (int i = 0; i < data.length - 1; i++) {
       String key = data[i];
@@ -4549,7 +4567,6 @@ public class SGFParser {
       String value = data[++i];
       applyMoveDataToken(result, key, value);
     }
-    result.order = bestMoves.size();
     if ((result.variation == null || result.variation.isEmpty())
         && !Utils.isBlank(result.coordinate)) {
       result.variation = new ArrayList<>();
@@ -4580,6 +4597,10 @@ public class SGFParser {
       target.coordinate = value;
     } else if ("visits".equals(key)) {
       target.playouts = parseAnalysisPlayouts(value);
+    } else if ("order".equals(key)) {
+      target.order = Integer.parseInt(value);
+    } else if ("edgeVisits".equals(key)) {
+      target.edgeVisits = Integer.parseInt(value);
     } else if ("winrate".equals(key)) {
       target.winrate = parseAnalysisPlayouts(value) / 100.0;
       target.lcb = target.winrate;

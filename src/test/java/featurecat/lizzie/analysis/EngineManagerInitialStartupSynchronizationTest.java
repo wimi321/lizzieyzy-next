@@ -649,7 +649,8 @@ class EngineManagerInitialStartupSynchronizationTest {
       }
       assertTrue(
           engine.analysisStarted.await(2, TimeUnit.SECONDS),
-          "analysis must start after the final board fence succeeds");
+          "analysis must start after final fence; commands=" + engine.commands
+              + " phase=" + manager.engineSwitchUiSnapshot(true).phase());
       assertTrue(
           manager.firstSynchronizationCompleted.await(2, TimeUnit.SECONDS),
           "production synchronization worker must complete before assertions");
@@ -4188,60 +4189,6 @@ class EngineManagerInitialStartupSynchronizationTest {
     }
   }
 
-  @Test
-  void lifecycleReservationsCloseRetainsFirstFailureAndSuppressesEveryLaterFailure()
-      throws Exception {
-    try (StartupTestEnvironment env = StartupTestEnvironment.open()) {
-      StartupSyncLeelaz current = new StartupSyncLeelaz();
-      StartupSyncLeelaz target = new StartupSyncLeelaz();
-      env.publish(current, boardWithHistory(emptyRootHistory(0)));
-      Leelaz.ExclusiveGtpLifecycleReservation currentReservation =
-          current.beginExclusiveGtpLifecycleReservation();
-      Leelaz.ExclusiveGtpLifecycleReservation targetReservation =
-          target.beginExclusiveGtpLifecycleReservation();
-      assertNotNull(currentReservation);
-      assertNotNull(targetReservation);
-      queueFailingCommandForLifecycleRelease(current, "name");
-      queueFailingCommandForLifecycleRelease(target, "name");
-      current.installCommandOutputForTest(new FailingOutputStream("current release failure"));
-      target.installCommandOutputForTest(new FailingOutputStream("target release failure"));
-      AssertionError gateFailure = new AssertionError("controlled interaction gate close failure");
-      AtomicInteger gateCloseCount = new AtomicInteger();
-
-      Class<?> reservationsType =
-          Class.forName("featurecat.lizzie.analysis.EngineManager$EngineLifecycleReservations");
-      Constructor<?> constructor =
-          reservationsType.getDeclaredConstructor(
-              Leelaz.ExclusiveGtpLifecycleReservation.class,
-              Leelaz.ExclusiveGtpLifecycleReservation.class);
-      constructor.setAccessible(true);
-      Object reservations = constructor.newInstance(currentReservation, targetReservation);
-      Field interactionGate = reservationsType.getDeclaredField("interactionGate");
-      interactionGate.setAccessible(true);
-      interactionGate.set(
-          reservations,
-          (LizzieFrame.RestartInteractionGate)
-              () -> {
-                gateCloseCount.incrementAndGet();
-                throw gateFailure;
-              });
-      Method close = reservationsType.getDeclaredMethod("close");
-      close.setAccessible(true);
-
-      InvocationTargetException invocationFailure =
-          assertThrows(InvocationTargetException.class, () -> close.invoke(reservations));
-      Throwable failure = invocationFailure.getCause();
-
-      assertTrue(failure instanceof RuntimeException);
-      assertTrue(failure.getMessage().contains("target release failure"));
-      assertEquals(2, failure.getSuppressed().length);
-      assertTrue(failure.getSuppressed()[0].getMessage().contains("current release failure"));
-      assertSame(gateFailure, failure.getSuppressed()[1]);
-      assertEquals(1, gateCloseCount.get());
-      assertFalse(current.hasExclusiveGtpWorkInProgress());
-      assertFalse(target.hasExclusiveGtpWorkInProgress());
-    }
-  }
 
   @Test
   void captureFailureRetainsPrimaryFailureWhenReservationCleanupAlsoFails() throws Exception {

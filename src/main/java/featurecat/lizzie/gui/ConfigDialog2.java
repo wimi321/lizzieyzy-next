@@ -295,16 +295,9 @@ public class ConfigDialog2 extends JDialog {
   private JCheckBox chkAutoQuickAnalyzeOnLoad;
   private JTextField txtTrackingAnalysisMaxVisits;
   private JCheckBox chkShowTrackingPointOutline;
-  private ColorLabel lblTrackingPointInteriorColor;
-  private JSlider sldTrackingPointInteriorOpacity;
-  private JLabel lblTrackingPointInteriorOpacityValue;
-  private JPanel pnlTrackingPointInteriorOpacity;
   private JSlider sldTrackingPointOutlineOpacity;
   private JLabel lblTrackingPointOutlineOpacityValue;
   private JPanel pnlTrackingPointOutlineOpacity;
-  private JCheckBox chkTrackingPointTextAutoColor;
-  private ColorLabel lblTrackingPointTextColor;
-  private JPanel pnlTrackingPointTextColor;
   private JCheckBox chkShowMoveList;
   private JLabel lblShowMoveNumInVariationPane;
   private JCheckBox chkShowIndependentMoveList;
@@ -1490,27 +1483,12 @@ public class ConfigDialog2 extends JDialog {
 
     chkShowTrackingPointOutline = new JCheckBox();
     chkShowTrackingPointOutline.setSelected(Lizzie.config.showTrackingPointOutline);
-    lblTrackingPointInteriorColor = new ColorLabel(this, false);
-    lblTrackingPointInteriorColor.setColor(Lizzie.config.trackingPointInteriorColor);
-    sldTrackingPointInteriorOpacity =
-        new JSlider(0, 100, Lizzie.config.trackingPointInteriorOpacityPercent);
-    lblTrackingPointInteriorOpacityValue = new JLabel();
-    pnlTrackingPointInteriorOpacity =
-        createPercentSliderControl(
-            sldTrackingPointInteriorOpacity, lblTrackingPointInteriorOpacityValue);
     sldTrackingPointOutlineOpacity =
         new JSlider(0, 100, Lizzie.config.trackingPointOutlineOpacityPercent);
     lblTrackingPointOutlineOpacityValue = new JLabel();
     pnlTrackingPointOutlineOpacity =
         createPercentSliderControl(
             sldTrackingPointOutlineOpacity, lblTrackingPointOutlineOpacityValue);
-    chkTrackingPointTextAutoColor = new JCheckBox();
-    chkTrackingPointTextAutoColor.setSelected(Lizzie.config.trackingPointTextAutoColor);
-    lblTrackingPointTextColor = new ColorLabel(this, false);
-    lblTrackingPointTextColor.setColor(Lizzie.config.trackingPointTextColor);
-    pnlTrackingPointTextColor = createColorControl(lblTrackingPointTextColor);
-    chkTrackingPointTextAutoColor.addItemListener(e -> syncTrackingPointTextColorControl());
-    syncTrackingPointTextColorControl();
 
     JLabel lblShowMoveList = new JLabel(resourceBundle.getString("LizzieConfig.lblShowMoveList"));
     lblShowMoveList.setBounds(608, 78, 173, 15);
@@ -3491,49 +3469,24 @@ public class ConfigDialog2 extends JDialog {
 
     JPanel trackingAppearance =
         createDesignSettingsCard(
-            configText("ConfigDialog2.modern.trackingAppearance.title", "选点评估结果外观"),
+            configText("ConfigDialog2.modern.trackingAppearance.title", "选点评估关注外框"),
             configText(
                 "ConfigDialog2.modern.trackingAppearance.subtitle",
-                "调整评估结果的底色、动态质量外框和文字颜色。"));
+                "质量外框随当前普通候选更新；计算进度独立显示。"));
     addToggleRow(
         trackingAppearance,
-        configText("ConfigDialog2.modern.trackingAppearance.outline", "显示评估结果外框"),
+        configText("ConfigDialog2.modern.trackingAppearance.outline", "显示选点评估关注外框"),
         configText(
             "ConfigDialog2.modern.trackingAppearance.outlineSub",
-            "用虚线外框显示等待状态和实时落子质量"),
+            "只控制质量外框；不会清除关注或改变分析。"),
         chkShowTrackingPointOutline);
-    addColorRow(
-        trackingAppearance,
-        configText("ConfigDialog2.modern.trackingAppearance.interiorColor", "内部颜色"),
-        lblTrackingPointInteriorColor);
-    addComponentRow(
-        trackingAppearance,
-        configText("ConfigDialog2.modern.trackingAppearance.interiorOpacity", "内部不透明度"),
-        configText(
-            "ConfigDialog2.modern.trackingAppearance.interiorOpacitySub",
-            "调整固定内部颜色的不透明程度"),
-        pnlTrackingPointInteriorOpacity);
     addComponentRow(
         trackingAppearance,
         configText("ConfigDialog2.modern.trackingAppearance.outlineOpacity", "外框不透明度"),
         configText(
             "ConfigDialog2.modern.trackingAppearance.outlineOpacitySub",
-            "调整动态质量虚线外框的不透明程度"),
+            "调整动态质量外框的不透明程度"),
         pnlTrackingPointOutlineOpacity);
-    addToggleRow(
-        trackingAppearance,
-        configText("ConfigDialog2.modern.trackingAppearance.autoTextColor", "文字颜色自动适配"),
-        configText(
-            "ConfigDialog2.modern.trackingAppearance.autoTextColorSub",
-            "根据内部颜色、不透明度和棋盘背景自动选择黑字或白字"),
-        chkTrackingPointTextAutoColor);
-    addComponentRow(
-        trackingAppearance,
-        configText("ConfigDialog2.modern.trackingAppearance.textColor", "文字颜色"),
-        configText(
-            "ConfigDialog2.modern.trackingAppearance.textColorSub", "关闭自动适配后使用此颜色"),
-        pnlTrackingPointTextColor);
-    syncTrackingPointTextColorControl();
     content.add(trackingAppearance);
     content.add(javax.swing.Box.createVerticalStrut(12));
 
@@ -3658,20 +3611,6 @@ public class ConfigDialog2 extends JDialog {
     return controls;
   }
 
-  private void syncTrackingPointTextColorControl() {
-    if (pnlTrackingPointTextColor == null || chkTrackingPointTextAutoColor == null) return;
-    setComponentTreeEnabled(
-        pnlTrackingPointTextColor, !chkTrackingPointTextAutoColor.isSelected());
-  }
-
-  private void setComponentTreeEnabled(Component component, boolean enabled) {
-    component.setEnabled(enabled);
-    if (component instanceof java.awt.Container) {
-      for (Component child : ((java.awt.Container) component).getComponents()) {
-        setComponentTreeEnabled(child, enabled);
-      }
-    }
-  }
 
   private void addToggleInputRow(
       JPanel card,
@@ -6184,13 +6123,8 @@ public class ConfigDialog2 extends JDialog {
       Lizzie.config.uiConfig.put(
           "tracking-analysis-max-visits", Lizzie.config.trackingAnalysisMaxVisits);
       Lizzie.config.showTrackingPointOutline = chkShowTrackingPointOutline.isSelected();
-      Lizzie.config.trackingPointInteriorColor = lblTrackingPointInteriorColor.getColor();
-      Lizzie.config.trackingPointInteriorOpacityPercent =
-          sldTrackingPointInteriorOpacity.getValue();
       Lizzie.config.trackingPointOutlineOpacityPercent =
           sldTrackingPointOutlineOpacity.getValue();
-      Lizzie.config.trackingPointTextAutoColor = chkTrackingPointTextAutoColor.isSelected();
-      Lizzie.config.trackingPointTextColor = lblTrackingPointTextColor.getColor();
       Lizzie.config.saveTrackingPointAppearanceConfig();
       Lizzie.config.loadSgfLast = chkSgfLoadLast.isSelected();
       Lizzie.config.uiConfig.put("load-sgf-last", Lizzie.config.loadSgfLast);

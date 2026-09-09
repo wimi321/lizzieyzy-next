@@ -168,6 +168,76 @@ class MoveDataParseTest {
   }
 
   @Test
+  void missingEdgePreservesLegacySymmetricCandidatePercentages() {
+    KataGoAnalysisPayload payload = KataGoAnalysisPayload.parse(
+        "info move D4 visits 10 pv D4 info move F6 visits 10 isSymmetryOf D4 pv F6");
+    assertEquals(10, payload.totalVisits());
+    assertEquals(0.5,
+        payload.moves.get(0).allocationRatio(MoveData.getAllocationVisits(payload.moves)));
+  }
+
+  @Test
+  void upstreamRootCountIsIndependentOfCandidateResearch() throws Exception {
+    String line;
+    try (var input = getClass().getResourceAsStream("/analysis/katago-root-focus-info.txt")) {
+      line = new String(input.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+    }
+    KataGoAnalysisPayload payload = KataGoAnalysisPayload.parse(line);
+    assertEquals(100, payload.rootVisits);
+    assertEquals(100, payload.totalVisits());
+    assertEquals(848, MoveData.getPlayouts(payload.moves));
+    MoveData c3 = payload.moves.stream().filter(move -> move.coordinate.equals("C3")).findFirst().orElseThrow();
+    assertEquals(368, c3.playouts);
+    assertEquals(0, c3.edgeVisits);
+    assertEquals(10, c3.order);
+    assertFalse(c3.variation.contains("rootInfo"));
+    assertEquals(0.0, c3.allocationRatio(MoveData.getAllocationVisits(payload.moves)));
+    assertEquals(0.0, c3.allocationRatio(0));
+    KataGoAnalysisPayload legacy = KataGoAnalysisPayload.parse("info move D4 visits 40 pv D4");
+    assertEquals(-1, legacy.rootVisits);
+    assertEquals(40, legacy.totalVisits());
+    assertEquals(1.0, legacy.moves.get(0).allocationRatio(40));
+  }
+
+  @Test
+  void frameSeparatesOwnershipAndPvArrays() {
+    KataGoAnalysisPayload payload = KataGoAnalysisPayload.parse(
+        "info move C3 visits 8 pv C3 D4 pvVisits 5 3 pvEdgeVisits 2 1"
+            + " movesOwnership 0.5 -0.5 rootInfo visits 4 winrate 0.6"
+            + " ownership 0.25 -0.25 ownershipStdev 0.1 0.2");
+    assertEquals(4, payload.totalVisits());
+    assertEquals(List.of(0.25, -0.25), payload.ownership);
+    assertEquals(List.of(0.5, -0.5), payload.moves.get(0).movesEstimateArray);
+    assertEquals(List.of("2", "1"), payload.moves.get(0).pvEdgeVisits);
+  }
+
+  @Test
+  void preservesZeroEdgeAndSeparatePvStatistics() {
+    MoveData move =
+        MoveData.fromInfoKatago(
+            "move C3 visits 368 edgeVisits 0 order 10 pv C3 D4"
+                + " pvVisits 300 20 pvEdgeVisits 0 10 movesOwnership 0.5 -0.5"
+                + " rootInfo visits 100 ownership 0.25 -0.25");
+    assertEquals(368, move.playouts);
+    assertEquals(0, move.edgeVisits);
+    assertEquals(10, move.order);
+    assertEquals(List.of("C3", "D4"), move.variation);
+    assertEquals(List.of("300", "20"), move.pvVisits);
+    assertEquals(List.of("0", "10"), move.pvEdgeVisits);
+    assertEquals(List.of(0.5, -0.5), move.movesEstimateArray);
+    assertEquals(-1, MoveData.fromInfoKatago("move D4 visits 1 pv D4").edgeVisits);
+  }
+
+  @Test
+  void rootAndOwnershipNeverBecomeCandidateVariation() {
+    MoveData move =
+        MoveData.fromInfoKatago(
+            "move C3 visits 368 order 10 pv C3 D4"
+                + " rootInfo visits 100 winrate 0.6 ownership 0.25 -0.25");
+    assertEquals(List.of("C3", "D4"), move.variation);
+  }
+
+  @Test
   void fromInfoParsesLeelaZeroLine() {
     MoveData move =
         MoveData.fromInfo("move Q16 visits 50 winrate 5123 prior 800 order 0 pv Q16 D4");

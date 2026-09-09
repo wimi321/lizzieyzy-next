@@ -127,238 +127,6 @@ public class LizzieFrame extends JFrame {
     CANCELLED
   }
 
-  public interface RestartInteractionGate extends AutoCloseable {
-    @Override
-    void close();
-  }
-
-  public RestartInteractionGate beginRestartInteractionGate() {
-    return beginRestartInteractionGate(this);
-  }
-
-  static RestartInteractionGate beginRestartInteractionGate(Window root) {
-    AtomicReference<RestartInteractionGate> result = new AtomicReference<>();
-    try {
-      runRestartInteractionMutationOnEdt(
-          () -> {
-            List<Window> windows = new ArrayList<>();
-            collectOwnedWindows(
-                root, windows, Collections.newSetFromMap(new IdentityHashMap<>()));
-            Map<Window, Boolean> enabledStates = new IdentityHashMap<>();
-            Map<JComponent, TransferHandler> transferHandlers = new IdentityHashMap<>();
-            for (Window window : windows) {
-              enabledStates.put(window, window.isEnabled());
-              collectTransferHandlers(window, transferHandlers);
-            }
-            Component focusOwner =
-                KeyboardFocusManager.getCurrentKeyboardFocusManager().getFocusOwner();
-            KeyboardFocusManager focusManager =
-                KeyboardFocusManager.getCurrentKeyboardFocusManager();
-            KeyEventDispatcher keyboardGate =
-                event -> {
-                  Component source = event.getComponent();
-                  Window sourceWindow =
-                      source == null
-                          ? focusManager.getFocusedWindow()
-                          : SwingUtilities.getWindowAncestor(source);
-                  if (sourceWindow != null && windows.contains(sourceWindow)) {
-                    event.consume();
-                    return true;
-                  }
-                  return false;
-                };
-            try {
-              focusManager.addKeyEventDispatcher(keyboardGate);
-              for (JComponent component : transferHandlers.keySet()) {
-                component.setTransferHandler(null);
-              }
-              for (Window window : windows) {
-                window.setEnabled(false);
-              }
-            } catch (RuntimeException | Error failure) {
-              restoreRestartInteractionState(
-                  windows,
-                  enabledStates,
-                  transferHandlers,
-                  focusManager,
-                  keyboardGate,
-                  focusOwner,
-                  failure);
-              throw failure;
-            }
-            AtomicBoolean closed = new AtomicBoolean(false);
-            result.set(
-                () -> {
-                  if (!closed.compareAndSet(false, true)) {
-                    return;
-                  }
-                  runRestartInteractionMutationOnEdt(
-                      () ->
-                          restoreRestartInteractionState(
-                              windows,
-                              enabledStates,
-                              transferHandlers,
-                              focusManager,
-                              keyboardGate,
-                              focusOwner,
-                              null));
-                });
-          });
-    } catch (RuntimeException | Error failure) {
-      RestartInteractionGate abandonedGate = result.get();
-      if (abandonedGate != null) {
-        boolean restoreInterrupt = Thread.interrupted();
-        try {
-          abandonedGate.close();
-        } catch (RuntimeException | Error cleanupFailure) {
-          addRestartInteractionCleanupFailure(failure, cleanupFailure);
-        } finally {
-          if (restoreInterrupt) {
-            Thread.currentThread().interrupt();
-          }
-        }
-      }
-      throw failure;
-    }
-    return result.get();
-  }
-
-  private static void restoreRestartInteractionState(
-      List<Window> windows,
-      Map<Window, Boolean> enabledStates,
-      Map<JComponent, TransferHandler> transferHandlers,
-      KeyboardFocusManager focusManager,
-      KeyEventDispatcher keyboardGate,
-      Component focusOwner,
-      Throwable primaryFailure) {
-    AtomicReference<Throwable> cleanupFailure = new AtomicReference<>(primaryFailure);
-    for (Window window : windows) {
-      runRestartInteractionCleanup(
-          cleanupFailure,
-          () -> window.setEnabled(Boolean.TRUE.equals(enabledStates.get(window))));
-    }
-    for (Map.Entry<JComponent, TransferHandler> entry : transferHandlers.entrySet()) {
-      runRestartInteractionCleanup(
-          cleanupFailure, () -> entry.getKey().setTransferHandler(entry.getValue()));
-    }
-    runRestartInteractionCleanup(
-        cleanupFailure, () -> focusManager.removeKeyEventDispatcher(keyboardGate));
-    runRestartInteractionCleanup(
-        cleanupFailure,
-        () -> {
-          if (focusOwner != null && focusOwner.isDisplayable()) {
-            focusOwner.requestFocusInWindow();
-          }
-        });
-    Throwable failure = cleanupFailure.get();
-    if (primaryFailure == null && failure != null) {
-      rethrowRestartInteractionFailure(failure);
-    }
-  }
-
-  private static void runRestartInteractionCleanup(
-      AtomicReference<Throwable> failure, Runnable cleanup) {
-    try {
-      cleanup.run();
-    } catch (RuntimeException | Error cleanupFailure) {
-      Throwable primary = failure.get();
-      if (primary == null) {
-        failure.set(cleanupFailure);
-      } else {
-        addRestartInteractionCleanupFailure(primary, cleanupFailure);
-      }
-    }
-  }
-
-  private static void addRestartInteractionCleanupFailure(
-      Throwable primary, Throwable cleanupFailure) {
-    if (primary != null && cleanupFailure != null && primary != cleanupFailure) {
-      primary.addSuppressed(cleanupFailure);
-    }
-  }
-
-  private static void rethrowRestartInteractionFailure(Throwable failure) {
-    if (failure instanceof Error) {
-      throw (Error) failure;
-    }
-    throw (RuntimeException) failure;
-  }
-
-  private static void collectOwnedWindows(
-      Window window, List<Window> windows, Set<Window> visited) {
-    if (window == null || !visited.add(window)) {
-      return;
-    }
-    windows.add(window);
-    for (Window owned : window.getOwnedWindows()) {
-      collectOwnedWindows(owned, windows, visited);
-    }
-  }
-
-  private static void collectTransferHandlers(
-      Component component, Map<JComponent, TransferHandler> transferHandlers) {
-    if (component instanceof JComponent) {
-      JComponent swingComponent = (JComponent) component;
-      TransferHandler transferHandler = swingComponent.getTransferHandler();
-      if (transferHandler != null) {
-        transferHandlers.put(swingComponent, transferHandler);
-      }
-    }
-    if (component instanceof Container) {
-      for (Component child : ((Container) component).getComponents()) {
-        collectTransferHandlers(child, transferHandlers);
-      }
-    }
-  }
-
-  private static void runRestartInteractionMutationOnEdt(Runnable action) {
-    if (SwingUtilities.isEventDispatchThread()) {
-      action.run();
-      return;
-    }
-    AtomicReference<Throwable> actionFailure = new AtomicReference<>();
-    CountDownLatch completed = new CountDownLatch(1);
-    try {
-      SwingUtilities.invokeLater(
-          () -> {
-            try {
-              action.run();
-            } catch (RuntimeException | Error failure) {
-              actionFailure.set(failure);
-            } finally {
-              completed.countDown();
-            }
-          });
-    } catch (RuntimeException | Error schedulingFailure) {
-      throw new IllegalStateException(
-          "Failed to schedule restart interaction gate update", schedulingFailure);
-    }
-    InterruptedException interruption = null;
-    while (true) {
-      try {
-        completed.await();
-        break;
-      } catch (InterruptedException interrupted) {
-        if (interruption == null) {
-          interruption = interrupted;
-        } else if (interruption != interrupted) {
-          interruption.addSuppressed(interrupted);
-        }
-      }
-    }
-    Throwable failure = actionFailure.get();
-    if (interruption != null) {
-      if (failure != null && failure != interruption) {
-        interruption.addSuppressed(failure);
-      }
-      Thread.currentThread().interrupt();
-      throw new IllegalStateException(
-          "Interrupted while updating restart interaction gate", interruption);
-    }
-    if (failure != null) {
-      throw new IllegalStateException("Failed to update restart interaction gate", failure);
-    }
-  }
 
   enum PasteSgfDecision {
     IGNORE_EMPTY,
@@ -824,6 +592,8 @@ public class LizzieFrame extends JFrame {
   private BoardHistoryNode pendingManualAutoAnalysisRoot;
   private javax.swing.Timer manualAutoAnalysisEngineReadyTimer;
   private volatile TrackingAnalysisController trackingAnalysisController;
+  private TrackingAnalysisController.Context trackingVisibilityContext;
+  private java.util.Set<String> trackingVisibilityPoints = java.util.Set.of();
   private boolean redrawWinratePaneOnly = false;
   private boolean redrawBoardSurfacesOnly = false;
   private javax.swing.Timer deferredMoveUiRefreshTimer;
@@ -3848,7 +3618,18 @@ public class LizzieFrame extends JFrame {
     if (deferUntilHumanSlExit(this::startNewGame)) {
       return;
     }
-    startRetainedEngineMode(RetainedEngineModeTarget.startNewGame(this));
+    Leelaz engine = Lizzie.leelaz;
+    Leelaz.EngineModeReservation reservation =
+        engine == null ? null : engine.beginEngineModeReservation();
+    if (engine != null && reservation == null) {
+      showForegroundEngineLeaseConflict();
+      return;
+    }
+    try {
+      startNewGameReserved(reservation);
+    } finally {
+      if (reservation != null) reservation.close();
+    }
   }
 
   protected void startNewGameReserved() {
@@ -12512,7 +12293,7 @@ public class LizzieFrame extends JFrame {
     if (deferUntilHumanSlExit(this::startAnalyzeGameDialog)) {
       return;
     }
-    startRetainedEngineMode(RetainedEngineModeTarget.startAnalyzeGame(this));
+    runWithForegroundEngineModeReservation(this::startAnalyzeGameDialogReserved);
   }
 
   protected void startAnalyzeGameDialogReserved() {
@@ -12568,9 +12349,8 @@ public class LizzieFrame extends JFrame {
         () -> continueAiPlaying(isGenmove, continueNow, playerIsB, fromShortCut))) {
       return;
     }
-    startRetainedEngineMode(
-        RetainedEngineModeTarget.continuePlaying(
-            this, isGenmove, continueNow, playerIsB, fromShortCut));
+    runWithForegroundEngineModeReservation(
+        () -> continueAiPlayingReserved(isGenmove, continueNow, playerIsB, fromShortCut));
   }
 
   protected void continueAiPlayingReserved(
@@ -13789,10 +13569,7 @@ public class LizzieFrame extends JFrame {
 
       public Object getValueAt(int row, int col) {
 
-        int totalPlayouts = 0;
-        for (MoveData move : data2) {
-          totalPlayouts = totalPlayouts + move.playouts;
-        }
+        int totalPlayouts = MoveData.getAllocationVisits(data2);
         if (row > data2.size() - 1) return "";
         MoveData data = data2.get(row);
         switch (col) {
@@ -13835,7 +13612,7 @@ public class LizzieFrame extends JFrame {
             return Utils.getPlayoutsString(data.playouts);
           case 4:
             return String.format(
-                Locale.ENGLISH, "%.1f", (double) data.playouts * 100 / totalPlayouts);
+                Locale.ENGLISH, "%.1f", data.allocationRatio(totalPlayouts) * 100);
           case 5:
             double score = data.scoreMean;
             if (EngineGamePresentation.current().playingGenmove()) {
@@ -15632,218 +15409,11 @@ public class LizzieFrame extends JFrame {
     }
   }
 
-  private void startRetainedEngineMode(RetainedEngineModeTarget target) {
-    Leelaz currentForegroundEngine = target.engine;
-    if (currentForegroundEngine == null) {
-      target.runWithoutTracking(null);
-      return;
-    }
-    Leelaz.TrackingHandoffClaim claim = currentForegroundEngine.claimTrackingHandoff(target);
-    if (claim.availability() == Leelaz.TrackingHandoffAvailability.ACCEPTED_PENDING) {
-      return;
-    }
-    if (claim.availability() != Leelaz.TrackingHandoffAvailability.NOT_TRACKING) {
-      target.reportConflict();
-      return;
-    }
-    Leelaz.EngineModeReservation reservation = currentForegroundEngine.beginEngineModeReservation();
-    if (reservation == null) {
-      target.reportConflict();
-      return;
-    }
-    try {
-      target.runWithoutTracking(reservation);
-    } finally {
-      reservation.close();
-    }
-  }
-
-  private static final class RetainedEngineModeTarget implements Leelaz.TrackingHandoffTarget {
-    private enum Action {
-      START_NEW_GAME,
-      START_ANALYZE_GAME,
-      CONTINUE_PLAYING
-    }
-
-    private final LizzieFrame frame;
-    private final Leelaz engine;
-    private final BoardHistoryNode historyNode;
-    private final Zobrist boardPosition;
-    private final boolean blackToPlay;
-    private final long contextRevision;
-    private final Action action;
-    private final boolean isGenmove;
-    private final boolean continueNow;
-    private final boolean playerIsBlack;
-    private final boolean fromShortCut;
-    private final java.util.concurrent.atomic.AtomicBoolean settled =
-        new java.util.concurrent.atomic.AtomicBoolean(false);
-
-    private RetainedEngineModeTarget(
-        LizzieFrame frame,
-        Action action,
-        boolean isGenmove,
-        boolean continueNow,
-        boolean playerIsBlack,
-        boolean fromShortCut) {
-      this.frame = frame;
-      this.engine = Lizzie.leelaz;
-      this.historyNode =
-          Lizzie.board == null || Lizzie.board.getHistory() == null
-              ? null
-              : Lizzie.board.getHistory().getCurrentHistoryNode();
-      this.boardPosition =
-          Lizzie.board == null || Lizzie.board.getHistory() == null
-              ? null
-              : Lizzie.board.getHistory().getZobrist();
-      this.blackToPlay =
-          Lizzie.board != null
-              && Lizzie.board.getHistory() != null
-              && Lizzie.board.getHistory().isBlacksTurn();
-      this.contextRevision = Lizzie.board == null ? 0L : Lizzie.board.getContextRevision();
-      this.action = action;
-      this.isGenmove = isGenmove;
-      this.continueNow = continueNow;
-      this.playerIsBlack = playerIsBlack;
-      this.fromShortCut = fromShortCut;
-    }
-
-    private static RetainedEngineModeTarget startNewGame(LizzieFrame frame) {
-      return new RetainedEngineModeTarget(frame, Action.START_NEW_GAME, false, false, false, false);
-    }
-
-    private static RetainedEngineModeTarget startAnalyzeGame(LizzieFrame frame) {
-      return new RetainedEngineModeTarget(
-          frame, Action.START_ANALYZE_GAME, false, false, false, false);
-    }
-
-    private static RetainedEngineModeTarget continuePlaying(
-        LizzieFrame frame,
-        boolean isGenmove,
-        boolean continueNow,
-        boolean playerIsBlack,
-        boolean fromShortCut) {
-      return new RetainedEngineModeTarget(
-          frame, Action.CONTINUE_PLAYING, isGenmove, continueNow, playerIsBlack, fromShortCut);
-    }
-
-    @Override
-    public Leelaz.TrackingHandoffKind kind() {
-      return Leelaz.TrackingHandoffKind.RETAINED_ENGINE_MODE;
-    }
-
-    @Override
-    public boolean isCurrent() {
-      if (Lizzie.frame != frame || Lizzie.leelaz != engine) {
-        return false;
-      }
-      BoardHistoryNode currentNode =
-          Lizzie.board == null || Lizzie.board.getHistory() == null
-              ? null
-              : Lizzie.board.getHistory().getCurrentHistoryNode();
-      return currentNode == historyNode
-          && Lizzie.board.getHistory().getZobrist().equals(boardPosition)
-          && Lizzie.board.getHistory().isBlacksTurn() == blackToPlay
-          && Lizzie.board.getContextRevision() == contextRevision
-          && !frame.isPlayingAgainstLeelaz
-          && !frame.isAnaPlayingAgainstLeelaz;
-    }
-
-    @Override
-    public void activate(Leelaz.TrackingHandoffActivation activation) {
-      if (settled.get()) {
-        return;
-      }
-      if (!callOnEdtAndWait(
-          () -> {
-            if (!isCurrent()) {
-              return false;
-            }
-            Leelaz.EngineModeReservation reservation =
-                activation.beginRetainedEngineModeReservation();
-            if (reservation == null) {
-              return false;
-            }
-            try {
-              runAction(reservation);
-            } finally {
-              reservation.close();
-            }
-            return true;
-          })) {
-        return;
-      }
-      settled.compareAndSet(false, true);
-    }
-
-    @Override
-    public void fail(Leelaz.TrackingHandoffFailure failure) {
-      if (settled.compareAndSet(false, true)) {
-        runOnEdtAndWait(() -> frame.showRetainedEngineModeActivationFailure(failure));
-      }
-    }
-
-    private void runWithoutTracking(Leelaz.EngineModeReservation reservation) {
-      if (settled.compareAndSet(false, true)) {
-        runAction(reservation);
-      }
-    }
-
-    private void runAction(Leelaz.EngineModeReservation reservation) {
-      switch (action) {
-        case START_NEW_GAME:
-          frame.startNewGameReserved(reservation);
-          break;
-        case START_ANALYZE_GAME:
-          frame.startAnalyzeGameDialogReserved();
-          break;
-        case CONTINUE_PLAYING:
-          frame.continueAiPlayingReserved(isGenmove, continueNow, playerIsBlack, fromShortCut);
-          break;
-      }
-    }
-
-    private void reportConflict() {
-      if (action == Action.START_NEW_GAME) {
-        frame.showForegroundEngineLeaseConflict();
-      } else {
-        frame.showForegroundEngineModeReservationConflict();
-      }
-    }
-
-    private static void runOnEdtAndWait(Runnable action) {
-      if (SwingUtilities.isEventDispatchThread()) {
-        action.run();
-        return;
-      }
-      try {
-        SwingUtilities.invokeAndWait(action);
-      } catch (Exception failure) {
-        throw new IllegalStateException(failure);
-      }
-    }
-
-    private static boolean callOnEdtAndWait(BooleanSupplier action) {
-      if (SwingUtilities.isEventDispatchThread()) {
-        return action.getAsBoolean();
-      }
-      AtomicBoolean result = new AtomicBoolean(false);
-      runOnEdtAndWait(() -> result.set(action.getAsBoolean()));
-      return result.get();
-    }
-  }
 
   protected void showForegroundEngineModeReservationConflict() {
     Utils.showMsg(Lizzie.resourceBundle.getString("AnalysisSettings.reuseStatus.existing_lease"));
   }
 
-  protected void showRetainedEngineModeActivationFailure(Leelaz.TrackingHandoffFailure failure) {
-    String key =
-        failure == Leelaz.TrackingHandoffFailure.CONTEXT_INVALIDATED
-            ? "AnalysisSettings.reuseStatus.not_current_foreground_engine"
-            : "AnalysisSettings.reuseStatus.engine_state_unrestored";
-    Utils.showMsg(Lizzie.resourceBundle.getString(key));
-  }
 
   public TrackingAnalysisController trackingAnalysisController() {
     TrackingAnalysisController controller = trackingAnalysisController;
@@ -15852,10 +15422,23 @@ public class LizzieFrame extends JFrame {
     }
     synchronized (this) {
       if (trackingAnalysisController == null) {
-        trackingAnalysisController = new TrackingAnalysisController(this::requestAnalysisRefresh);
+        trackingAnalysisController = new TrackingAnalysisController(this::onTrackingDisplayChanged);
       }
       return trackingAnalysisController;
     }
+  }
+
+  private void onTrackingDisplayChanged() {
+    TrackingAnalysisController.DisplaySnapshot snapshot = trackingAnalysisController.snapshot();
+    if (trackingVisibilityContext != snapshot.context()
+        || !snapshot.selectedPoints().equals(trackingVisibilityPoints)) {
+      trackingVisibilityContext = snapshot.context();
+      trackingVisibilityPoints = snapshot.selectedPoints();
+      if (isTrackingDisplayCurrent(snapshot)) {
+        getDisplayNode().getData().refreshFocusCandidateVisibility();
+      }
+    }
+    requestAnalysisRefresh();
   }
 
   public TrackingAnalysisController.AddResult addTrackingPoint(String coordinate) {
@@ -15864,6 +15447,7 @@ public class LizzieFrame extends JFrame {
       return TrackingAnalysisController.AddResult.LEASE_UNAVAILABLE;
     }
     TrackingAnalysisController controller = trackingAnalysisController();
+    controller.contextChanged(context);
     if (readBoard == null) {
       return controller.addPoint(coordinate, context);
     }
@@ -15906,6 +15490,7 @@ public class LizzieFrame extends JFrame {
     if (Lizzie.board == null
         || Lizzie.leelaz == null
         || !Lizzie.leelaz.isEligibleLocalKataGoForReadBoardTracking()
+        || !Lizzie.leelaz.canStartMoveFocus()
         || Lizzie.board.getHistory() == null) {
       return false;
     }

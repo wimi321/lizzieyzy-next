@@ -24,6 +24,53 @@ import org.junit.jupiter.params.provider.ValueSource;
 class SGFParserSemanticRoundTripTest {
   private static final int SIZE = 5;
 
+  @ParameterizedTest
+  @ValueSource(strings = {"LZ", "LZOP", "LZ2", "LZOP2"})
+  void exactRootAndSparseCandidateMetricsSurviveAdoptAndRepeatedSave(String tag) throws Exception {
+    try (RulesLayerTestHarness ignored = RulesLayerTestHarness.open(SIZE)) {
+      boolean secondary = tag.endsWith("2");
+      String sgf = "(;SZ[5]" + tag
+          + "[KataGo 45 12.3k 2.5 1.2 0 rootVisits=12345\n"
+          + "move C3 visits 50000 winrate 5500 order 10 edgeVisits 0 pv C3 D4])";
+      for (int round = 0; round < 3; round++) {
+        BoardHistoryList history = SGFParser.parseSgf(sgf, true);
+        Lizzie.board.setHistory(history);
+        BoardData data = history.getStart().getData();
+        assertEquals(12345, secondary ? data.getPlayouts2() : data.getPlayouts());
+        assertEquals(12345, secondary ? data.rootVisits2 : data.rootVisits);
+        var move = (secondary ? data.bestMoves2 : data.bestMoves).get(0);
+        assertEquals(50000, move.playouts);
+        assertEquals(10, move.order);
+        assertEquals(0, move.edgeVisits);
+        assertEquals(List.of("C3", "D4"), move.variation);
+        BoardData copy = data.clone();
+        assertEquals(12345, secondary ? copy.rootVisits2 : copy.rootVisits);
+        sgf = SGFParser.saveToString(false);
+      }
+    }
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"LZ", "LZOP", "LZ2", "LZOP2"})
+  void headerOnlyExactRootAndDowngradedLegacyRemainDistinct(String tag) throws Exception {
+    try (RulesLayerTestHarness ignored = RulesLayerTestHarness.open(SIZE)) {
+      boolean secondary = tag.endsWith("2");
+      String sgf = "(;SZ[5]" + tag + "[KataGo 45 12.3k 2.5 1.2 0 rootVisits=12345])";
+      for (int round = 0; round < 2; round++) {
+        BoardHistoryList history = SGFParser.parseSgf(sgf, true);
+        Lizzie.board.setHistory(history);
+        BoardData data = history.getStart().getData();
+        assertEquals(12345, secondary ? data.getPlayouts2() : data.getPlayouts());
+        assertEquals(12345, secondary ? data.rootVisits2 : data.rootVisits);
+        sgf = SGFParser.saveToString(false);
+      }
+      BoardData legacy = SGFParser.parseSgf(
+          "(;SZ[5]" + tag + "[KataGo 45 12k 2.5 1.2 0])", true).getStart().getData();
+      assertEquals(12000, secondary ? legacy.getPlayouts2() : legacy.getPlayouts());
+      assertEquals(-1, secondary ? legacy.rootVisits2 : legacy.rootVisits);
+    }
+  }
+
   @Test
   void mainlineMovesPreserveOrderColorAndBoard() throws Exception {
     try (RulesLayerTestHarness ignored = RulesLayerTestHarness.open(SIZE)) {

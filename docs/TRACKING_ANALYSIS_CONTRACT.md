@@ -1,168 +1,99 @@
 # Tracking Analysis Contract
 
-面向维护者的架构、取舍、踩坑与扩展说明见
-[`TRACKING_ANALYSIS_DEVELOPER_GUIDE.md`](TRACKING_ANALYSIS_DEVELOPER_GUIDE.md)。
+“评估此点”在当前前台、本地直连且已确认支持 move focus 的 KataGo 普通搜索树中追加研究。
+开发入口和维护说明见 [`TRACKING_ANALYSIS_DEVELOPER_GUIDE.md`](TRACKING_ANALYSIS_DEVELOPER_GUIDE.md)。
+本合同补充 [`SNAPSHOT_NODE_KIND.md`](SNAPSHOT_NODE_KIND.md)，不改变 MOVE、PASS、SNAPSHOT、
+setup、dummy PASS、exact restore 或 ReadBoard history 的更高权威语义。
 
-“评估此点”复用当前前台本地 KataGo 的唯一 GTP stream。Production 不再创建第二个
-tracking KataGo 进程，也不保留 legacy runtime、console、preload、warning、keep-tracking、
-feature flag 或失败 fallback。
+## 准入与能力
 
-本合同补充 `docs/SNAPSHOT_NODE_KIND.md`；tracking 只显示 transient overlay，不改变其中的
-`MOVE`、`PASS`、`SNAPSHOT` 或 ReadBoard history 语义。
+- `LizzieFrame.addTrackingPoint` 是本地和稳定 ReadBoard 的共同入口，同一 frame 只有一个
+  `TrackingAnalysisController`，只使用当前 `Lizzie.leelaz`。
+- Remote、SSH、WebSocket、双引擎、对局、GMA、Web trial、foreground 独占任务和未恢复位置
+  不准入用户 focus；这些模式保留自己的既有 owner 与错误处理。
+- move focus 是 analyze 参数，`list_commands` 或版本字符串不构成支持证明。
+- 每个实际 engine incarnation 最多一次受控能力探针。在位置已确认、合法 idle owner 且普通
+  ponder 尚未启动时发送合法 pass、probability 0 和 rootInfo 的 analyze，再结束分析。
+  启动成功和 stop/final 完整响应边界均消费后才能标为 SUPPORTED。
+- 语法拒绝标为 UNSUPPORTED，普通分析仍可用。通信、发送和 fence 不确定按当前 binding 的
+  既有失败路径处理，不把通信故障缓存成“不支持”。旧探针不改变替换 binding 的能力或分析意图。
+- 探针不打断活跃普通流；正常分析交接完成后才开放用户准入，不能由迟到的启动覆盖新 focus。
+- 用户暂停时不启动探针；探针结束后的普通分析恢复与主线分析控制共用暂停锁，同时检查暂停
+  代次和界面暂停状态。成功、语法拒绝及 lifecycle 延迟回调均不得绕过用户暂停。
 
-## Production 入口
+## 关注、进度与取消
 
-- `LizzieFrame` 在一个 frame 生命周期内只实例化一个 `TrackingAnalysisController`。
-- 本地右键入口把 add/remove/clear 意图提交给该 controller。
-- 当前 `ReadBoard` 存在时，同一右键入口必须先通过
-  `ReadBoardTrackingEligibilityAdapter` 复验 stable accepted frame；不稳定 frame 不发送
-  tracking request，也不重试。
-- 两个入口只复用 `Lizzie.leelaz`。引擎必须 started、loaded、local direct、KataGo，且不在
-  engine-game mode；Remote/WebSocket/SSH/double-engine 不在本合同范围。
-- Add 失败不显示 tracking-specific popup、`X` 或 retry 文案。
+`TrackingAnalysisController` 唯一拥有用户关注点、其中尚需增益的活动点、每点累计目标、context、
+进度高水位、8 秒无进展时钟及 immutable `DisplaySnapshot`。Controller 不拥有评价副本、引擎
+进程、writer、queue、lease、receipt 或 handoff。
 
-## Controller ownership
+- 多点等权，总 focus probability 固定为 0.5；目标沿用每点累计 N visits。
+- 进度读取裁剪前的当前合法普通 payload。旧 SGF 或其他树的候选不能证明当前树达标。
+- 当前 live 已达目标可立即采纳，不重发 focus。报告中同时达标的点合并成一次集合更新。
+- 达标只移出活动集合、停止该点时钟，关注保留；后续普通输出不自动重新添加增益。
+- 只有该点 visits 严格超过已观察高水位才续期 8 秒；root 或其他点增长不续期。
+  占用、受限、非法或无进展的点不能被标为完成。
+- remove/clear 立即移除相应关注与外圈，安全撤去尚在运行的增益；不回滚已采纳普通分析。
+- 达标、请求取消和引擎已确认撤去增益是不同状态。取消在途或失败时，不显示为已确认撤去。
+- 暂停、时限、root 总量限制、超时、错误和 context 退休不自动重试、不恢复旧增益。
+- 落子、导航离开、换谱、引擎切换/重启及语义失效清关注，返回或恢复不复活旧意图。
 
-`TrackingAnalysisController` 唯一拥有：
+## 普通命令与搜索树
 
-- selected points、newest-first pending points 和每点 current attempt；
-- immutable context、request generation 和 progress timeout；
-- current stream-only lease handle；
-- immutable `DisplaySnapshot`。
+`Leelaz` 唯一拥有 ordinary queue/writer、numbered response、fence、timeout、reader binding、
+output ownership/generation 和位置 lineage。锁序维持 `engineArbitrationLock -> commandQueue`，
+controller 通知不得在引擎 ownership locks 内执行。
 
-UI 只能提交 add/remove/clear。Controller 不启动、切换或重启引擎，不写 Board/history，也不写
-普通 `bestMoves`；仅本节明确允许的 clean handback 可凭首个 receipt 请求 `Leelaz` 恢复原
-ponder。
+- 调整 focus 只重发普通 analyze，保持位置、轮次、allow/avoid、输出选项及非 focus 参数。
+  不 clear、loadsgf、重放或修改允许集合；普通开始时间和总量预算不因重发重置。
+- 先结束旧 GTP response，再将新输出绑定新请求；请求编号变化本身不表示清树。
+- 相同集合、相同 ReadBoard 完整帧不重发。原队列内取消和 `QueuedCommand.beginOutputWrite`
+  竞争同一物理写入边界，未写出的旧更新不能复活已移除点。
+- 未确认旧 stream 已结束或通信已失效时，后续普通写入不能穿过该边界。
+- 共享 foreground、GMA、retained mode 与 lifecycle owner 保留；focus 不再持有独占 tracking lease。
 
-每个点使用一个独立 stream-only lease。Initial numbered stop 完整结束后只发送：
+## Live、节点缓存与 SGF
 
-```text
-kata-analyze <interval> allow B <coord> 1 allow W <coord> 1
-```
+- parser 和最终 publication 均复验 reader/incarnation、输出归属、位置 lineage、Board identity/
+  revision、display node 和引擎槽位。focus payload 必须有精确 root，不能以候选 visits 和替代。
+- 普通非 focus 分析维持既有缓存保护。合法显式 focus 为当前节点、槽位、树建立采纳权限；
+  首份合法完整 payload 整槽接管，允许新 root1000 替换旧 root10000，不拼接两棵树的候选。
+- 拒绝、发送失败、首份前 remove/clear/暂停/context 变化均保留旧缓存并退休未消费权限。
+  仍有效的完整 live snapshot 可在请求接受时直接采纳。
+- 首次接管后，同树同 root 的新评价继续刷新。只有 focus 重发延续同树关系；真正清树、
+  binding/位置替换不能继承旧采纳权限，不能根据 visits 猜测来源。
+- 主副槽独立。新树接管清旧树 ownership；同树后续缺失地图保留仍有效的同树地图。
+- 完成、取消和同局面暂停不回滚已采纳结果；导航和引擎退休保留节点值、退休旧输出权限。
+- 显示和 SGF 保存使用同一份普通节点分析，沿用 rootVisits/order/edgeVisits 的既有 payload
+  格式。SGF 不保存或恢复关注点、目标、活动集合、timer 或已完成/取消的 focus 意图。
 
-只有目标坐标 visits 严格增加才续期 8 秒 progress timeout。达到该点 visits 后发送 final
-numbered stop；只有 final fence 成功关闭后结果才标记 completed，然后调度 newest pending
-point。Clean natural completion，以及用户显式 remove current / clear 后成功关闭的 final
-fence，可按首个 receipt 恢复原 ponder；任何 handoff、ordinary release、context failure 或
-transport failure 都不得恢复。
+## ReadBoard
 
-## Context 与 ReadBoard
+- accepted remote evidence、当前新请求准入和已有请求有效性分别判断。
+- FRAME_PENDING/纯 SYNCING 关闭新请求准入，但保留属于最后 accepted 语义的 focus；相同
+  完整帧不清关注、不重启分析。坏帧、停止、helper 退休和真实语义变化仍退休旧请求。
+- 导航离开清关注但保留可重验的远端证据；返回时完整重验盘面、history/node、轮次、尺寸、
+  rules/komi、当前 Board revision 和已确认的 engine incarnation，无新 helper frame 也可新建。
+- processing epoch 隔离迟到接受；LF/CRLF 保持，非法单元整帧拒绝。Adapter 的失效 listener
+  走 `contextChanged(null)`，不是用户 clear。
 
-Tracking context 至少绑定：
+## 显示与配置
 
-- history identity 与 current display/history node identity；
-- board size、完整 stones fingerprint、to-play、rules、komi；
-- engine identity/incarnation；
-- interval 与每点 visits；
-- 可选 ReadBoard helper identity、revision、accepted node 与 board revision。
+- 候选本体、文字、填充/透明度、字体、显示项和 order 完全走普通绘制；不存在第二份结果圆。
+- 关注质量外圈使用同一普通 payload 的该候选与 order 0 候选，按 `MoveRankDefinition`
+  胜率/目差损失实时配色；缺候选/基准时中性显示。质量外圈不表示仍在追加计算。
+- 达标和同局面暂停保留质量外圈，活动进度结束；取消关注立即清圈。普通蓝点只服从引擎 order。
+- 仍关注的点豁免数量/低比例过滤，包含已达标和外圈关闭时；取消关注恢复普通过滤，不删分析。
+- `show-tracking-point-outline` 只控制外圈；重开不发 focus、不恢复已清关注。
+- 保留 `tracking-analysis-max-visits` 和 `tracking-point-outline-opacity`。旧正值 visits 配置
+  按既有规则迁移；独立结果填充和文字外观配置删除，不再读取或保存。
+- 全部语言资源同次保持 keys、顺序、placeholder parity，说明评估会更新当前局面普通分析。
 
-第一个点建立 context；后续 add 必须匹配。局面、history/display node、board size、stones、
-to-play、rules、komi、engine/incarnation、参数或 ReadBoard identity/revision/node 任一变化都
-立即清 selected/pending/result 并 release 当前 lease。
+## 验证与发布边界
 
-ReadBoard stable 条件与失效顺序由 `ReadBoardTrackingEligibilityAdapter` 和 `ReadBoard`
-eligibility snapshot 拥有。Tracking 不拦截 helper protocol，不推导或补造 `MOVE/PASS`。
+T1 经过 production add/remove/clear、真实 Leelaz queue/writer/response/parser/publication；
+T2 经过真实 ReadBoard 帧和导航；T3 使用普通 payload、renderer 和生产 SGF parse/adopt/save。
+受控 transport 只替代外部进程，不能伪造准入、缓存或 owner 校验。
 
-## Display 与 renderer
-
-- `DisplaySnapshot` 是 immutable value；renderer 不读取 controller 内部 mutable state。
-- Renderer 只在 snapshot 的 history identity 与 current history 相同，且 display node identity
-  同时等于 current display/history node时绘制。
-- selected point 立即显示虚线环；remove pending 立即隐藏且不影响 current；remove current 或
-  clear 立即隐藏全部相应 overlay，后台只完成安全归还。
-- selected point 立即占用该坐标并隐藏同坐标普通候选，默认显示圆角分段虚线外框；尚无结果时
-  使用中性灰。首份 visits 大于零的 current result 到达后立即显示 result，不等待 final
-  fence。用户关闭外框后，首份结果前不显示占位标记。
-- Tracking result 以同一局面当前普通最佳候选为动态基准，按 `MoveRankDefinition` 的胜率/目差
-  损失等级实时绘制虚线外框；普通分析更新时实时重算颜色。没有普通最佳候选时外框使用中性灰。
-- Tracking result 内部使用用户配置的固定颜色和不透明度，不随质量等级变化，默认颜色为
-  `RGB(255, 156, 156)`，默认不透明度为 100%。外框默认开启，颜色由质量等级决定，不透明度
-  可配置。
-- Tracking result 文字复用普通候选的显示项、行序、字体缩放和定位；前景色按实际背景在黑/白
-  中选择较高对比度，也可关闭自动适配并使用自定义颜色。启用 score diff 时显示 tracking score
-  减当前普通最佳候选 score。
-- Completed result 可在同一 context 内与新点并存。Tracking result 只画 overlay，不进入
-  SGF、普通候选、胜率图或 history node。
-- Strict safe-GTP release 可冻结最后一个仍 valid result snapshot；其他 ordinary、typed
-  handoff、lifecycle、context 或 transport release 清空 selected/display。
-
-## Stream arbitration
-
-`Leelaz` 唯一拥有 stream arbitration、initial/final fence、ordinary queue、typed handoff 和
-transport terminal/rebind settlement。锁序保持：
-
-```text
-engineArbitrationLock -> commandQueue
-```
-
-- Ordinary command 先进入原 queue，再 claim tracking release；final fence 后由原 writer 按
-  FIFO 写出。
-- Active tracking 中的普通落子若在同一次调用排队后续 ponder，只能在 `play` 成功响应后结算
-  tracking stream 不提供的单格 ordinary response watermark；`play` 错误响应不得结算，也不得
-  提前接受新局面的 `info`。
-- Clean ponder handback 只能在 final fence 后排队原 ponder，并在该 streaming analysis 已排队时
-  结算同样的单格 watermark。
-- Safe raw GTP whitelist 仅包含无 caller ID、exact arity 的 `name`、`version`、
-  `protocol_version`、`list_commands`、`known_command <name>` 和 `showboard`。
-- Safe query 发布 `SAFE_READ_ONLY_QUERY` 并冻结最后 valid overlay；其他 admitted ordinary
-  发布 `ORDINARY_OPERATION` 并清空，二者都不自动 reacquire。
-- Typed foreground/retained-mode first winner 在 claim 时立即清 display，final fence 后激活
-  existing target owner。第二 typed/lifecycle contender沿用 existing busy。
-- Destructive lifecycle 继续使用 existing reservation并立即执行原 action；不得保存 callback、
-  continuation 或 user intent。
-- Final fence、terminal 或 transport 输出不确定时 fail-closed，ordinary queue 不能穿过可能
-  仍开放的 analysis stream。
-
-## 配置兼容
-
-Tracking 每点 visits 使用：
-
-```text
-tracking-analysis-max-visits
-```
-
-该值可在“综合设置 → 引擎与分析”的“选点评估计算量”中调整。
-
-选点评估结果外观使用以下 UI 配置：
-
-```text
-show-tracking-point-outline
-tracking-point-interior-color
-tracking-point-interior-opacity
-tracking-point-outline-opacity
-tracking-point-text-auto-color
-tracking-point-text-color
-```
-
-这些外观项位于“主题外观”设置页。两个 `opacity` 百分比均表示不透明度：0 为完全透明，100 为
-完全不透明。
-
-加载旧配置时，若新 key 不存在，则迁移 `tracking-engine-max-visits` 的正值；随后删除旧
-`tracking-engine-max-visits`、`tracking-engine-preload` 和
-`tracking-engine-skip-warning`。旧 preload/engine command 不能启动第二进程。
-
-## 测试与发布边界
-
-- Production-entry tests 必须同时覆盖 local 与 stable ReadBoard route，并证明二者共享同一
-  controller/current engine。
-- Controller、lease、ordinary、handoff、lifecycle、ReadBoard GMA、renderer stale-node gate
-  和配置迁移必须有 deterministic headless coverage。
-- Windows integration harness 只存在于 test source，通过 public controller/lease/handoff
-  seam 使用 monotonic clock 输出原始 CSV/JSON；它必须捕获并恢复 default uncaught handler
-  与 EDT EventQueue，Executor task 必须显式取得 `Future` 或 join。
-- 未设置真实引擎时，`TrackingWindowsIntegrationHarnessTest` 运行 controlled transport
-  characterization。Ticket 07 通过 `tracking.real.command` system property 或
-  `TRACKING_REAL_COMMAND` environment variable 提供已批准的真实 KataGo 命令；harness 先做
-  3 次 warm-up，再采集 30 个 acquisition/handoff/target-operation 原始样本，输出
-  `real-samples.csv`、`real-samples.json` 及 P50/P95/max。可用
-  `tracking.real.output` 指定输出目录。
-- Windows GUI、真实 KataGo/OpenCL 与实际进程数仍需 Ticket 07 验收；本 source candidate 在
-  该 gate 前不得 merge 或 release。
-
-## Out of scope
-
-- Remote Compute/WebSocket、Java SSH、外部 ssh/plink、double-engine tracking。
-- 第二 tracking process、dual-runtime route、feature flag 或 fallback。
-- Cross-point persistent lease、跨 context 恢复、结果持久化、PV overlay、SGF tracking 字段。
-- Ordinary response ledger、第二 queue、generic transaction/callback registry、rollback 或
-  自动重试。
+真实 KataGo 保树证据、实际窗口绘制和自动化回归分别记录。固定实验候选证明不解除正式
+KataGo 能力发布门禁 G3；#445 final-fence 和完整 Windows 整合门禁 G4 仍归后续验收票。

@@ -3998,7 +3998,7 @@ public final class KataGoRuntimeHelper {
     boolean analysisWasPondering =
         currentEngine != null
             && currentEngine.isLoaded()
-            && currentEngine.isPonderingOrWasPonderingBeforeTracking();
+            && currentEngine.isPondering();
     Leelaz.ExclusiveGtpLifecycleReservation reservation =
         currentEngine == null ? null : currentEngine.beginExclusiveGtpLifecycleReservation();
     if (currentEngine != null && reservation == null) {

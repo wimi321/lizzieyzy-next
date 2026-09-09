@@ -51,7 +51,7 @@ class WebTrialSingleStreamExclusionTest {
     previousManager = Lizzie.webBoardManager;
     previousConfig = Lizzie.config;
     previousBoard = Lizzie.board;
-    engine = trackingCapableEngine();
+    engine = reusableLocalKatago();
     output = new ByteArrayOutputStream();
     setLeelazField(engine, "outputStream", new BufferedOutputStream(output));
     overrideMutations = new AtomicInteger();
@@ -73,8 +73,8 @@ class WebTrialSingleStreamExclusionTest {
   }
 
   @Test
-  void activeTrackingWinsBeforeTrialWithoutAnyTrialOrTrackingMutation() throws Exception {
-    Leelaz.TrackingStreamLeaseAcquisition tracking = activateTracking(engine);
+  void activeForegroundAnalysisWinsBeforeTrialWithoutAnyTrialMutation() throws Exception {
+    Leelaz.ForegroundAnalysisLeaseAcquisition foreground = activateForegroundAnalysis(engine);
     BoardHistoryNode anchor = anyNode();
     EngineFollowController controller = new EngineFollowController(new NoOpEngineCommandSink());
     manager.setEngineFollowController(controller);
@@ -82,58 +82,14 @@ class WebTrialSingleStreamExclusionTest {
 
     assertEquals(
         WebBoardManager.TrialEnterResult.ENGINE_BUSY,
-        manager.enterTrialWithResult("tracking-loser", anchor));
+        manager.enterTrialWithResult("foreground-loser", anchor));
 
-    assertTrue(tracking.lease().isOwned());
-    assertEquals(Leelaz.TrackingReleaseDisposition.ACTIVE, tracking.lease().disposition());
+    assertTrue(foreground.lease().isOwned());
     assertEquals(bytesBeforeEnter, output.toString(StandardCharsets.UTF_8));
     assertNull(manager.getTrialOwnerForTest());
     assertTrue(anchor.variations.isEmpty());
     assertFalse(controller.isTrialActive());
     assertEquals(0, overrideMutations.get());
-  }
-
-  @Test
-  void acquiringTrackingWinsBeforeTrialWithoutAnyTrialMutation() throws Exception {
-    Leelaz.TrackingStreamLeaseAcquisition tracking =
-        engine.acquireTrackingStreamLease(line -> {}, lease -> {}, lease -> {});
-    BoardHistoryNode anchor = anyNode();
-    String bytesBeforeEnter = output.toString(StandardCharsets.UTF_8);
-
-    assertEquals(Leelaz.ExclusiveGtpLeaseAvailability.AVAILABLE, tracking.availability());
-    assertEquals(
-        WebBoardManager.TrialEnterResult.ENGINE_BUSY,
-        manager.enterTrialWithResult("tracking-acquiring", anchor));
-    assertTrue(tracking.lease().isOwned());
-    assertEquals(bytesBeforeEnter, output.toString(StandardCharsets.UTF_8));
-    assertNull(manager.getTrialOwnerForTest());
-    assertTrue(anchor.variations.isEmpty());
-    assertEquals(0, overrideMutations.get());
-
-    processCommandResponse(engine, "=800000000");
-    assertTrue(dispatchExclusiveLine(engine, ""));
-  }
-
-  @Test
-  void releaseClosingTrackingWinsBeforeTrialWithoutAnyTrialMutation() throws Exception {
-    Leelaz.TrackingStreamLeaseAcquisition tracking = activateTracking(engine);
-    BoardHistoryNode anchor = anyNode();
-    assertTrue(tracking.lease().release());
-    String bytesBeforeEnter = output.toString(StandardCharsets.UTF_8);
-
-    assertEquals(
-        WebBoardManager.TrialEnterResult.ENGINE_BUSY,
-        manager.enterTrialWithResult("tracking-closing", anchor));
-    assertTrue(tracking.lease().isOwned());
-    assertEquals(bytesBeforeEnter, output.toString(StandardCharsets.UTF_8));
-    assertNull(manager.getTrialOwnerForTest());
-    assertTrue(anchor.variations.isEmpty());
-    assertEquals(0, overrideMutations.get());
-
-    assertTrue(dispatchExclusiveLine(engine, ""));
-    assertTrue(dispatchExclusiveLine(engine, "=800000002"));
-    assertTrue(dispatchExclusiveLine(engine, ""));
-    assertFalse(tracking.lease().isOwned());
   }
 
   @Test
@@ -190,7 +146,7 @@ class WebTrialSingleStreamExclusionTest {
   void productionMessageEntryReturnsEngineBusyWithoutTrialMutation() throws Exception {
     Board board = new Board();
     Lizzie.board = board;
-    Leelaz.TrackingStreamLeaseAcquisition tracking = activateTracking(engine);
+    Leelaz.ForegroundAnalysisLeaseAcquisition foreground = activateForegroundAnalysis(engine);
     RecordingWebBoardServer server = new RecordingWebBoardServer();
     manager.attachWebSocketServer(server);
     String bytesBeforeEnter = output.toString(StandardCharsets.UTF_8);
@@ -201,7 +157,7 @@ class WebTrialSingleStreamExclusionTest {
     assertEquals("trial_denied", denied.getString("type"));
     assertEquals("engine_busy", denied.getString("reason"));
     assertEquals("", denied.getString("ownerClientId"));
-    assertTrue(tracking.lease().isOwned());
+    assertTrue(foreground.lease().isOwned());
     assertEquals(bytesBeforeEnter, output.toString(StandardCharsets.UTF_8));
     assertNull(manager.getTrialOwnerForTest());
     assertEquals(0, overrideMutations.get());
@@ -261,38 +217,47 @@ class WebTrialSingleStreamExclusionTest {
   }
 
   private void assertTrialExcludesEngineOwners() throws Exception {
-    Leelaz.TrackingStreamLeaseAcquisition tracking =
-        engine.acquireTrackingStreamLease(line -> {}, lease -> {}, lease -> {});
-    assertEquals(
-        Leelaz.ExclusiveGtpLeaseAvailability.APPLICATION_EXCLUSIVE_MODE, tracking.availability());
-    assertNull(tracking.lease());
+    Leelaz.ForegroundAnalysisLeaseAcquisition foreground =
+        engine.acquireForegroundAnalysisLease(line -> {}, lease -> {}, lease -> {});
     assertEquals(
         Leelaz.ExclusiveGtpLeaseAvailability.APPLICATION_EXCLUSIVE_MODE,
-        engine.previewForegroundAnalysisLeaseAvailability());
+        foreground.availability());
+    assertNull(foreground.lease());
     assertNull(engine.beginExclusiveGtpLifecycleReservation());
     assertNull(engine.beginEngineModeReservation());
     assertFalse(invokeCanArmReadBoardGma(engine));
     assertFalse(invokeBeginReadBoardGmaSession(engine));
   }
 
-  private static Leelaz trackingCapableEngine() throws Exception {
+  private static Leelaz reusableLocalKatago() throws Exception {
     Leelaz engine = new Leelaz("");
     engine.started = true;
     engine.isLoaded = true;
     engine.isKatago = true;
-    engine.commandLists.addAll(List.of("stop", "boardsize", "komi", "kata-analyze"));
+    engine.commandLists.addAll(
+        List.of(
+            "stop",
+            "boardsize",
+            "komi",
+            "kata-get-rules",
+            "kata-set-rules",
+            "clear_board",
+            "play",
+            "set_position",
+            "kata-analyze"));
     setLeelazField(engine, "endGetCommandList", true);
     return engine;
   }
 
-  private static Leelaz.TrackingStreamLeaseAcquisition activateTracking(Leelaz engine)
-      throws Exception {
-    Leelaz.TrackingStreamLeaseAcquisition tracking =
-        engine.acquireTrackingStreamLease(line -> {}, lease -> {}, lease -> {});
+  private static Leelaz.ForegroundAnalysisLeaseAcquisition activateForegroundAnalysis(
+      Leelaz engine) throws Exception {
+    Leelaz.ForegroundAnalysisLeaseAcquisition foreground =
+        engine.acquireForegroundAnalysisLease(line -> {}, lease -> {}, lease -> {});
+    assertEquals(Leelaz.ExclusiveGtpLeaseAvailability.AVAILABLE, foreground.availability());
+    assertNotNull(foreground.lease());
     processCommandResponse(engine, "=800000000");
     assertTrue(dispatchExclusiveLine(engine, ""));
-    assertTrue(tracking.lease().send("kata-analyze B 10"));
-    return tracking;
+    return foreground;
   }
 
   private static void setLeelazField(Leelaz engine, String name, Object value) throws Exception {

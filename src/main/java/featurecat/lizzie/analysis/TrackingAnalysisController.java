@@ -1,8 +1,11 @@
 package featurecat.lizzie.analysis;
 
-import java.util.ArrayDeque;
+import featurecat.lizzie.Lizzie;
+import featurecat.lizzie.gui.LizzieFrame;
+import featurecat.lizzie.rules.BoardHistoryNode;
+import featurecat.lizzie.rules.Stone;
 import java.util.Collections;
-import java.util.Deque;
+import java.util.List;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.Map;
@@ -11,7 +14,7 @@ import java.util.Set;
 import java.util.Timer;
 import java.util.TimerTask;
 
-/** Owns single-stream tracking requests and their immutable display state. */
+/** Owns attention points and cumulative progress in the current ordinary search tree. */
 public final class TrackingAnalysisController {
   static final long PROGRESS_TIMEOUT_MILLIS = 8000L;
 
@@ -222,133 +225,47 @@ public final class TrackingAnalysisController {
 
   public static final class DisplaySnapshot {
     private static final DisplaySnapshot EMPTY =
-        new DisplaySnapshot(null, 0L, Collections.emptySet(), Collections.emptyMap(), false, false);
-
+        new DisplaySnapshot(null, 0L, Set.of(), Set.of(), Map.of(), false);
     private final Context context;
     private final long generation;
     private final Set<String> selectedPoints;
-    private final Map<String, PointResult> results;
-    private final boolean active;
-    private final boolean frozen;
+    private final Set<String> activePoints;
+    private final Map<String, Integer> visits;
+    private final boolean cancellationPending;
 
-    private DisplaySnapshot(
-        Context context,
-        long generation,
-        Set<String> selectedPoints,
-        Map<String, PointResult> results,
-        boolean active,
-        boolean frozen) {
+    private DisplaySnapshot(Context context, long generation, Set<String> selectedPoints,
+        Set<String> activePoints, Map<String, Integer> visits, boolean cancellationPending) {
       this.context = context;
       this.generation = generation;
-      this.selectedPoints = Collections.unmodifiableSet(new LinkedHashSet<String>(selectedPoints));
-      this.results = Collections.unmodifiableMap(new LinkedHashMap<String, PointResult>(results));
-      this.active = active;
-      this.frozen = frozen;
+      this.selectedPoints = Collections.unmodifiableSet(new LinkedHashSet<>(selectedPoints));
+      this.activePoints = Collections.unmodifiableSet(new LinkedHashSet<>(activePoints));
+      this.visits = Collections.unmodifiableMap(new LinkedHashMap<>(visits));
+      this.cancellationPending = cancellationPending;
     }
 
-    public Set<String> selectedPoints() {
-      return selectedPoints;
-    }
-
-    public Context context() {
-      return context;
-    }
-
-    public long generation() {
-      return generation;
-    }
-
-    public boolean active() {
-      return active;
-    }
-
-    public Map<String, PointResult> results() {
-      return results;
-    }
-
-    public boolean frozen() {
-      return frozen;
-    }
-  }
-
-  public static final class PointResult {
-    private final String coordinate;
-    private final int visits;
-    private final double winrate;
-    private final double scoreLead;
-    private final boolean completed;
-
-    private PointResult(MoveData move) {
-      this.coordinate = move.coordinate;
-      this.visits = move.playouts;
-      this.winrate = move.winrate;
-      this.scoreLead = move.scoreMean;
-      this.completed = false;
-    }
-
-    private PointResult(PointResult source, boolean completed) {
-      this.coordinate = source.coordinate;
-      this.visits = source.visits;
-      this.winrate = source.winrate;
-      this.scoreLead = source.scoreLead;
-      this.completed = completed;
-    }
-
-    public String coordinate() {
-      return coordinate;
-    }
-
-    public int visits() {
-      return visits;
-    }
-
-    public double winrate() {
-      return winrate;
-    }
-
-    public double scoreLead() {
-      return scoreLead;
-    }
-
-    public boolean completed() {
-      return completed;
-    }
-
-    private PointResult asCompleted() {
-      return completed ? this : new PointResult(this, true);
-    }
-  }
-
-  private static final class PointAttempt {
-    private final long generation;
-    private final String coordinate;
-    private Leelaz.TrackingStreamLease lease;
-    private Cancellable timeout;
-    private long timeoutToken;
-    private PointResult result;
-    private boolean cancelled;
-    private boolean restorePonderOnClose;
-    private boolean acquisitionValidated;
-    private boolean ready;
-    private boolean requestSent;
-    private Leelaz.TrackingReleaseDisposition disposition =
-        Leelaz.TrackingReleaseDisposition.ACTIVE;
-
-    private PointAttempt(long generation, String coordinate) {
-      this.generation = generation;
-      this.coordinate = coordinate;
-    }
+    public Context context() { return context; }
+    public long generation() { return generation; }
+    public Set<String> selectedPoints() { return selectedPoints; }
+    public Set<String> activePoints() { return activePoints; }
+    public Map<String, Integer> visits() { return visits; }
+    public int targetVisits() { return context == null ? 0 : context.parameters.targetVisits(); }
+    public boolean active() { return !activePoints.isEmpty() || cancellationPending; }
+    public boolean cancellationPending() { return cancellationPending; }
   }
 
   private final TimeoutScheduler timeoutScheduler;
   private final Runnable displayChanged;
   private final LinkedHashSet<String> selectedPoints = new LinkedHashSet<>();
-  private final Deque<String> pendingPoints = new ArrayDeque<>();
-  private final LinkedHashMap<String, PointResult> results = new LinkedHashMap<>();
+  private final LinkedHashSet<String> activePoints = new LinkedHashSet<>();
+  private final LinkedHashMap<String, Integer> visits = new LinkedHashMap<>();
+  private final LinkedHashMap<String, Cancellable> timeouts = new LinkedHashMap<>();
+  private final LinkedHashMap<String, Long> timeoutTokens = new LinkedHashMap<>();
+  private Set<String> installedPoints = Set.of();
   private Context context;
   private long generation;
-  private PointAttempt current;
-  private Leelaz.TrackingStreamLeaseReceipt initialReceipt;
+  private long updateRevision;
+  private long timeoutSequence;
+  private boolean cancellationPending;
   private volatile DisplaySnapshot snapshot = DisplaySnapshot.EMPTY;
 
   public TrackingAnalysisController() {
@@ -372,350 +289,214 @@ public final class TrackingAnalysisController {
     return addPoint(coordinate, requestedContext, null);
   }
 
-  synchronized AddResult addPoint(
-      String coordinate, Context requestedContext, java.util.function.BooleanSupplier validator) {
+  synchronized AddResult addPoint(String coordinate, Context requestedContext,
+      java.util.function.BooleanSupplier validator) {
     Objects.requireNonNull(requestedContext, "requestedContext");
-    String normalized = normalizeCoordinate(coordinate, requestedContext);
-    if (normalized == null) {
-      return AddResult.ILLEGAL;
-    }
-    if (context != null && !context.matches(requestedContext)) {
-      return AddResult.CONTEXT_MISMATCH;
-    }
-    if (current != null
-        && (current.cancelled
-            || current.disposition != Leelaz.TrackingReleaseDisposition.ACTIVE)) {
-      return AddResult.LEASE_UNAVAILABLE;
-    }
-    if (current == null && snapshot.frozen()) {
-      clearPointState();
-      initialReceipt = null;
-      publishEmptySnapshot();
-    }
-    if (selectedPoints.contains(normalized)) {
-      return AddResult.DUPLICATE;
-    }
-
-    context = requestedContext;
-    selectedPoints.add(normalized);
-    if (current != null) {
-      pendingPoints.addFirst(normalized);
-      publishSnapshot(true, false);
-      return AddResult.ADDED;
-    }
-    return startPoint(normalized, validator);
-  }
-
-  public synchronized boolean removePoint(String coordinate) {
+    String point = normalizeCoordinate(coordinate, requestedContext);
+    if (point == null) return AddResult.ILLEGAL;
+    if (context != null && !context.matches(requestedContext)) return AddResult.CONTEXT_MISMATCH;
+    if (selectedPoints.contains(point)) return AddResult.DUPLICATE;
+    if (!requestedContext.engine.canStartMoveFocus()) return AddResult.LEASE_UNAVAILABLE;
+    if (!isAvailablePoint(point, requestedContext)) return AddResult.ILLEGAL;
+    Context acceptedContext = context == null ? requestedContext : context;
+    List<MoveData> live = acceptedContext.engine.beginMoveFocus(this, acceptedContext,
+        () -> isAvailablePoint(point, acceptedContext)
+            && (validator == null || validator.getAsBoolean()));
+    if (live == null) return AddResult.LEASE_UNAVAILABLE;
     if (context == null) {
-      return false;
+      context = acceptedContext;
+      generation++;
     }
-    String normalized = normalizeCoordinate(coordinate, context);
-    if (normalized == null || !selectedPoints.remove(normalized)) {
-      return false;
-    }
-    results.remove(normalized);
-    if (current != null && current.coordinate.equals(normalized)) {
-      current.cancelled = true;
-      current.restorePonderOnClose = true;
-      cancelTimeout(current);
-      publishSnapshot(false, false);
-      current.lease.release();
-    } else {
-      pendingPoints.remove(normalized);
-      publishSnapshot(current != null, false);
-    }
-    if (selectedPoints.isEmpty() && current == null) {
-      context = null;
-    }
-    return true;
-  }
-
-  public synchronized void clear() {
-    PointAttempt attempt = current;
-    clearPointState();
-    if (attempt == null) {
-      context = null;
-      initialReceipt = null;
-      publishEmptySnapshot();
-      return;
-    }
-    attempt.cancelled = true;
-    attempt.restorePonderOnClose = true;
-    cancelTimeout(attempt);
-    publishEmptySnapshot();
-    if (attempt.lease != null) {
-      attempt.lease.release();
-    }
-  }
-
-  public synchronized void contextChanged(Context currentContext) {
-    if (context != null && (currentContext == null || !context.matches(currentContext))) {
-      clearState();
-    }
-  }
-
-  private void clearState() {
-    PointAttempt attempt = current;
-    generation++;
-    current = null;
-    if (attempt != null) {
-      attempt.cancelled = true;
-      cancelTimeout(attempt);
-    }
-    clearPointState();
-    context = null;
-    initialReceipt = null;
-    publishEmptySnapshot();
-    if (attempt != null && attempt.lease != null) {
-      attempt.lease.release();
-    }
-  }
-
-  private AddResult startPoint(String coordinate) {
-    return startPoint(coordinate, null);
-  }
-
-  private AddResult startPoint(
-      String coordinate, java.util.function.BooleanSupplier acquisitionValidator) {
-    PointAttempt attempt = new PointAttempt(++generation, coordinate);
-    current = attempt;
-    publishSnapshot(true, false);
-    Leelaz.TrackingStreamLeaseAcquisition acquisition =
-        context.engine.acquireTrackingStreamLease(
-            line -> handleLine(attempt.generation, line),
-            lease -> handleReady(attempt.generation, lease),
-            lease -> handleClosed(attempt.generation, lease),
-            new LeaseObserver(attempt.generation));
-    if (current != attempt
-        || acquisition.availability() != Leelaz.ExclusiveGtpLeaseAvailability.AVAILABLE
-        || acquisition.receipt() == null
-        || acquisition.receipt().engine() != context.engine
-        || acquisition.receipt().engineIncarnation() != context.engineIncarnation) {
-      if (acquisition.lease() != null) {
-        acquisition.lease().release();
-      }
-      if (current == attempt) {
-        current = null;
-      }
-      clearPointState();
-      context = null;
-      initialReceipt = null;
-      publishEmptySnapshot();
+    selectedPoints.add(point);
+    activePoints.add(point);
+    visits.put(point, 0);
+    observeProgress(live);
+    if (activePoints.contains(point)) scheduleTimeout(point);
+    if (!sendUpdate(false)) {
+      selectedPoints.remove(point);
+      visits.remove(point);
+      publishSnapshot();
       return AddResult.LEASE_UNAVAILABLE;
-    }
-    attempt.lease = acquisition.lease();
-    boolean validAfterAcquisition =
-        acquisitionValidator == null || acquisitionValidator.getAsBoolean();
-    if (!validAfterAcquisition || current != attempt) {
-      attempt.cancelled = true;
-      if (attempt.lease != null) {
-        attempt.lease.release();
-      }
-      if (current == attempt) {
-        current = null;
-        clearPointState();
-        context = null;
-        initialReceipt = null;
-        publishEmptySnapshot();
-      }
-      return AddResult.LEASE_UNAVAILABLE;
-    }
-    attempt.acquisitionValidated = true;
-    if (initialReceipt == null) {
-      initialReceipt = acquisition.receipt();
-    }
-    if (attempt.ready) {
-      sendTrackingRequest(attempt);
     }
     return AddResult.ADDED;
   }
 
-  public DisplaySnapshot snapshot() {
-    return snapshot;
+  public synchronized boolean removePoint(String coordinate) {
+    if (context == null) return false;
+    String point = normalizeCoordinate(coordinate, context);
+    if (point == null || !selectedPoints.remove(point)) return false;
+    activePoints.remove(point);
+    visits.remove(point);
+    cancelTimeout(point);
+    // Hide attention immediately; the installed set remains evidence until its boundary closes.
+    publishSnapshot();
+    sendUpdate(true);
+    return true;
   }
 
-  private synchronized void handleReady(long expectedGeneration, Leelaz.TrackingStreamLease lease) {
-    PointAttempt attempt = current;
-    if (attempt == null
-        || attempt.generation != expectedGeneration
-        || (attempt.lease != null && attempt.lease != lease)) {
-      lease.release();
-      return;
-    }
-    attempt.lease = lease;
-    attempt.ready = true;
-    if (!attempt.acquisitionValidated) {
-      return;
-    }
-    sendTrackingRequest(attempt);
-  }
-
-  private void sendTrackingRequest(PointAttempt attempt) {
-    if (current != attempt || attempt.requestSent || attempt.cancelled) {
-      return;
-    }
-    attempt.requestSent = true;
-    String command =
-        "kata-analyze "
-            + context.parameters.intervalCentiseconds()
-            + " allow B "
-            + attempt.coordinate
-            + " 1 allow W "
-            + attempt.coordinate
-            + " 1";
-    if (attempt.lease.send(command) && current == attempt) {
-      scheduleProgressTimeout(attempt);
-    }
-  }
-
-  private synchronized void handleLine(long expectedGeneration, String line) {
-    PointAttempt attempt = current;
-    if (attempt == null
-        || attempt.generation != expectedGeneration
-        || attempt.cancelled
-        || attempt.disposition != Leelaz.TrackingReleaseDisposition.ACTIVE
-        || line == null
-        || !line.startsWith("info ")) {
-      return;
-    }
-    PointResult parsed;
-    try {
-      parsed = new PointResult(MoveData.fromInfoKatago(line.substring(5)));
-    } catch (RuntimeException parseFailure) {
-      return;
-    }
-    if (!attempt.coordinate.equalsIgnoreCase(parsed.coordinate)
-        || parsed.visits <= 0
-        || (attempt.result != null && parsed.visits <= attempt.result.visits)) {
-      return;
-    }
-    attempt.result = parsed;
-    results.put(attempt.coordinate, parsed);
-    cancelTimeout(attempt);
-    if (parsed.visits >= context.parameters.targetVisits()) {
-      attempt.lease.release();
-    } else {
-      scheduleProgressTimeout(attempt);
-    }
-    publishSnapshot(true, false);
-  }
-
-  private synchronized void handleClosed(
-      long expectedGeneration, Leelaz.TrackingStreamLease lease) {
-    PointAttempt attempt = current;
-    if (attempt == null
-        || attempt.generation != expectedGeneration
-        || (attempt.lease != null && attempt.lease != lease)) {
-      return;
-    }
-    attempt.lease = lease;
-    cancelTimeout(attempt);
-    current = null;
-    if (attempt.disposition != Leelaz.TrackingReleaseDisposition.ACTIVE) {
-      if (attempt.disposition == Leelaz.TrackingReleaseDisposition.CLEARED) {
-        context = null;
-      }
-      return;
-    }
-    boolean completed =
-        !attempt.cancelled
-            && lease.failureReason().isEmpty()
-            && attempt.result != null
-            && attempt.result.visits >= context.parameters.targetVisits();
-    boolean cleanUserCancellation =
-        attempt.restorePonderOnClose && lease.failureReason().isEmpty();
-    if (!completed) {
-      selectedPoints.remove(attempt.coordinate);
-      results.remove(attempt.coordinate);
-    } else {
-      attempt.result = attempt.result.asCompleted();
-      results.put(attempt.coordinate, attempt.result);
-    }
-    String next = pendingPoints.pollFirst();
-    if (next != null) {
-      startPoint(next);
-    } else {
-      publishSnapshot(false, false);
-      Leelaz.TrackingStreamLeaseReceipt handbackReceipt = initialReceipt;
-      initialReceipt = null;
-      if ((completed || cleanUserCancellation)
-          && lease.disposition() == Leelaz.TrackingReleaseDisposition.ACTIVE
-          && handbackReceipt != null
-          && context.engine == handbackReceipt.engine()
-          && context.engineIncarnation == handbackReceipt.engineIncarnation()) {
-        context.engine.restorePonderAfterTracking(handbackReceipt);
-      }
-      if (selectedPoints.isEmpty()) {
-        context = null;
-        publishEmptySnapshot();
-      }
-    }
-  }
-
-  private void scheduleProgressTimeout(PointAttempt attempt) {
-    long token = ++attempt.timeoutToken;
-    attempt.timeout =
-        timeoutScheduler.schedule(
-            PROGRESS_TIMEOUT_MILLIS, () -> handleTimeout(attempt.generation, token));
-  }
-
-  private synchronized void handleTimeout(long expectedGeneration, long expectedToken) {
-    PointAttempt attempt = current;
-    if (attempt == null
-        || attempt.generation != expectedGeneration
-        || attempt.timeoutToken != expectedToken
-        || attempt.disposition != Leelaz.TrackingReleaseDisposition.ACTIVE) {
-      return;
-    }
-    attempt.timeout = null;
-    attempt.timeoutToken++;
-    attempt.lease.release();
-  }
-
-  private synchronized void handleDisposition(
-      long expectedGeneration, Leelaz.TrackingReleaseDisposition disposition) {
-    PointAttempt attempt = current;
-    if (attempt == null
-        || attempt.generation != expectedGeneration
-        || attempt.disposition.ordinal() >= disposition.ordinal()) {
-      return;
-    }
-    attempt.disposition = disposition;
-    initialReceipt = null;
-    cancelTimeout(attempt);
-    if (disposition == Leelaz.TrackingReleaseDisposition.FROZEN_BY_SAFE) {
-      pendingPoints.clear();
-      selectedPoints.retainAll(results.keySet());
-      publishSnapshot(false, !results.isEmpty());
-    } else {
-      clearPointState();
-      publishSnapshot(false, false);
-    }
-  }
-
-  private static void cancelTimeout(PointAttempt attempt) {
-    attempt.timeoutToken++;
-    if (attempt.timeout != null) {
-      attempt.timeout.cancel();
-      attempt.timeout = null;
-    }
-  }
-
-  private void clearPointState() {
-    pendingPoints.clear();
+  public synchronized void clear() {
+    if (context == null) return;
     selectedPoints.clear();
-    results.clear();
+    activePoints.clear();
+    visits.clear();
+    cancelTimeouts();
+    publishSnapshot();
+    sendUpdate(true);
   }
 
-  private void publishSnapshot(boolean active, boolean frozen) {
-    snapshot = new DisplaySnapshot(context, generation, selectedPoints, results, active, frozen);
+  public synchronized void contextChanged(Context currentContext) {
+    if (context == null || (currentContext != null && context.matches(currentContext))) return;
+    Context retired = context;
+    clearContext();
+    retired.engine.retireMoveFocus(this, retired);
+  }
+
+  public DisplaySnapshot snapshot() { return snapshot; }
+
+  synchronized void onFocusAnalysis(Context source, List<MoveData> moves) {
+    if (context != source) return;
+    boolean completed = observeProgress(moves);
+    if (completed) sendUpdate(false);
+    else publishSnapshot();
+  }
+
+  private boolean observeProgress(List<MoveData> moves) {
+    boolean completed = false;
+    for (MoveData move : moves) {
+      String point = move.coordinate;
+      if (!selectedPoints.contains(point)) continue;
+      int previous = visits.getOrDefault(point, 0);
+      visits.put(point, Math.max(previous, move.playouts));
+      if (!activePoints.contains(point)) continue;
+      if (move.playouts >= context.parameters.targetVisits()) {
+        activePoints.remove(point);
+        cancelTimeout(point);
+        completed = true;
+      } else if (move.playouts > previous) {
+        scheduleTimeout(point);
+      }
+    }
+    return completed;
+  }
+
+  synchronized void onFocusUpdateConfirmed(Context source, long revision, Set<String> points) {
+    if (context != source || revision != updateRevision) return;
+    installedPoints = Set.copyOf(points);
+    cancellationPending = !activePoints.containsAll(installedPoints);
+    publishSnapshot();
+  }
+
+  synchronized void onFocusStopping(Context source, long revision, boolean gainPending) {
+    if (context != source || revision != updateRevision) return;
+    activePoints.clear();
+    cancelTimeouts();
+    cancellationPending = gainPending;
+    publishSnapshot();
+  }
+
+  synchronized void onFocusStopped(Context source, boolean retireContext) {
+    if (context != source) return;
+    if (retireContext) {
+      clearContext();
+      return;
+    }
+    activePoints.clear();
+    installedPoints = Set.of();
+    cancellationPending = false;
+    updateRevision++;
+    cancelTimeouts();
+    publishSnapshot();
+  }
+
+  private boolean sendUpdate(boolean retireUnconsumed) {
+    Context target = context;
+    if (target == null) return false;
+    long revision = ++updateRevision;
+    cancellationPending = cancellationPending || !activePoints.containsAll(installedPoints);
+    publishSnapshot();
+    boolean accepted = target.engine.updateMoveFocus(
+        this, target, Set.copyOf(activePoints), revision, retireUnconsumed);
+    if (!accepted && context == target) {
+      activePoints.clear();
+      cancelTimeouts();
+      // A failed update is not a cancellation acknowledgement. Engine retirement settles it.
+      cancellationPending = cancellationPending || !installedPoints.isEmpty();
+      publishSnapshot();
+    }
+    return accepted;
+  }
+
+  private void scheduleTimeout(String point) {
+    cancelTimeout(point);
+    long token = ++timeoutSequence;
+    timeoutTokens.put(point, token);
+    Context source = context;
+    timeouts.put(point, timeoutScheduler.schedule(PROGRESS_TIMEOUT_MILLIS,
+        () -> onTimeout(source, point, token)));
+  }
+
+  private synchronized void onTimeout(Context source, String point, long token) {
+    if (context != source || !Objects.equals(timeoutTokens.get(point), token)
+        || !activePoints.remove(point)) return;
+    cancelTimeout(point);
+    sendUpdate(true);
+  }
+
+  private void cancelTimeout(String point) {
+    timeoutTokens.remove(point);
+    Cancellable timeout = timeouts.remove(point);
+    if (timeout != null) timeout.cancel();
+  }
+
+  private void cancelTimeouts() {
+    for (Cancellable timeout : timeouts.values()) timeout.cancel();
+    timeouts.clear();
+    timeoutTokens.clear();
+  }
+
+  private void clearContext() {
+    cancelTimeouts();
+    selectedPoints.clear();
+    activePoints.clear();
+    visits.clear();
+    installedPoints = Set.of();
+    cancellationPending = false;
+    context = null;
+    generation++;
+    updateRevision++;
+    publishSnapshot();
+  }
+
+  private void publishSnapshot() {
+    snapshot = context == null ? DisplaySnapshot.EMPTY
+        : new DisplaySnapshot(context, generation, selectedPoints, activePoints, visits,
+            cancellationPending);
     displayChanged.run();
   }
 
-  private void publishEmptySnapshot() {
-    snapshot = DisplaySnapshot.EMPTY;
-    displayChanged.run();
+  private static boolean isAvailablePoint(String point, Context context) {
+    if (!(context.displayNodeIdentity instanceof BoardHistoryNode)) return false;
+    BoardHistoryNode node = (BoardHistoryNode) context.displayNodeIdentity;
+    char column = point.charAt(0);
+    int x = column - 'A' - (column > 'I' ? 1 : 0);
+    int y = context.boardHeight - Integer.parseInt(point.substring(1));
+    Stone[] stones = node.getData().stones;
+    int index = x * context.boardHeight + y;
+    if (index >= stones.length || stones[index] != Stone.EMPTY) return false;
+    if (Lizzie.frame != null && (Lizzie.frame.isKeepingForce || LizzieFrame.isKeepForcing)) {
+      String allow = LizzieFrame.allowcoords;
+      if (allow != null && !allow.isEmpty()) return containsCoordinate(allow, point);
+      String avoid = LizzieFrame.avoidcoords;
+      if (avoid != null && !avoid.isEmpty()) return !containsCoordinate(avoid, point);
+    }
+    return true;
+  }
+
+  private static boolean containsCoordinate(String coordinates, String point) {
+    for (String coordinate : coordinates.split(",")) {
+      if (point.equalsIgnoreCase(coordinate.trim())) return true;
+    }
+    return false;
   }
 
   private static String normalizeCoordinate(String coordinate, Context context) {
@@ -740,27 +521,6 @@ public final class TrackingAnalysisController {
     return normalized;
   }
 
-  private final class LeaseObserver implements Leelaz.TrackingReleaseDispositionObserver {
-    private final long expectedGeneration;
-
-    private LeaseObserver(long expectedGeneration) {
-      this.expectedGeneration = expectedGeneration;
-    }
-
-    @Override
-    public void onDispositionChanged(Leelaz.TrackingReleaseDisposition disposition) {
-      handleDisposition(expectedGeneration, disposition);
-    }
-
-    @Override
-    public void onReleaseClaimed(Leelaz.TrackingReleaseReason reason) {
-      handleDisposition(
-          expectedGeneration,
-          reason == Leelaz.TrackingReleaseReason.SAFE_READ_ONLY_QUERY
-              ? Leelaz.TrackingReleaseDisposition.FROZEN_BY_SAFE
-              : Leelaz.TrackingReleaseDisposition.CLEARED);
-    }
-  }
 
   private static final class DaemonTimeoutScheduler implements TimeoutScheduler {
     private final Timer timer = new Timer("lizzie-tracking-analysis-progress-timeout", true);

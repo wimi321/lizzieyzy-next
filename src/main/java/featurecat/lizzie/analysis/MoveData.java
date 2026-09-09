@@ -13,10 +13,13 @@ import java.util.regex.Pattern;
 public class MoveData {
   public String coordinate;
   public int playouts;
+  /** Missing edge statistics are distinct from a known zero allocation. */
+  public int edgeVisits = -1;
   public double winrate;
   public List<String> variation;
   // 待完成
   public List<String> pvVisits;
+  public List<String> pvEdgeVisits;
   public double lcb;
   // public double oriwinrate;
   public double policy;
@@ -33,6 +36,23 @@ public class MoveData {
   public boolean lastTimeUnlimited;
   public long lastTimeUnlimitedTime;
   public boolean isSymmetry = false;
+  /** Root allocation when supplied by KataGo, otherwise the legacy candidate count. */
+  public int allocationVisits() {
+    return edgeVisits >= 0 ? edgeVisits : playouts;
+  }
+
+  public double allocationRatio(int denominator) {
+    return denominator > 0 ? (double) allocationVisits() / denominator : 0.0;
+  }
+
+  public static int getAllocationVisits(List<MoveData> moves) {
+    int total = 0;
+    for (MoveData move : moves) {
+      if (move.edgeVisits < 0 || !move.isSymmetry) total += move.allocationVisits();
+    }
+    return total;
+  }
+
   public List<Double> movesEstimateArray;
 
   public MoveData() {}
@@ -197,9 +217,17 @@ public class MoveData {
   }
 
   public static MoveData fromInfoKatago(String line) throws ArrayIndexOutOfBoundsException {
+    return fromInfoKatago(new TokenCursor(line));
+  }
+
+  static MoveData fromInfoKatago(TokenCursor tokens) {
     MoveData result = new MoveData();
-    TokenCursor tokens = new TokenCursor(line);
+    String line = tokens.value;
     while (tokens.next()) {
+      if (tokens.isTopLevelBoundary()) {
+        tokens.rewind();
+        break;
+      }
       if (tokens.matches("pv")) {
         parseKataGoVariation(tokens, result);
         break;
@@ -215,6 +243,8 @@ public class MoveData {
         result.coordinate = tokens.text();
       } else if (tokens.matches(line, keyStart, keyEnd, "visits")) {
         result.playouts = tokens.fastInt();
+      } else if (tokens.matches(line, keyStart, keyEnd, "edgeVisits")) {
+        result.edgeVisits = tokens.fastInt();
       } else if (tokens.matches(line, keyStart, keyEnd, "lcb")) {
         result.lcb = tokens.fastDouble() * 100;
       } else if (tokens.matches(line, keyStart, keyEnd, "prior")) {
@@ -242,9 +272,18 @@ public class MoveData {
     double[] ownership = null;
     int ownershipSize = 0;
     while (tokens.next()) {
+      if (tokens.isTopLevelBoundary()) {
+        tokens.rewind();
+        break;
+      }
       if (tokens.matches("pvVisits")) {
         mode = 1;
         result.pvVisits = new ArrayList<>();
+        continue;
+      }
+      if (tokens.matches("pvEdgeVisits")) {
+        mode = 3;
+        result.pvEdgeVisits = new ArrayList<>();
         continue;
       }
       if (tokens.matches("movesOwnership")) {
@@ -259,6 +298,10 @@ public class MoveData {
       } else if (mode == 1) {
         if (result.pvVisits.size() < result.variation.size()) {
           result.pvVisits.add(tokens.text());
+        }
+      } else if (mode == 3) {
+        if (result.pvEdgeVisits.size() < result.variation.size()) {
+          result.pvEdgeVisits.add(tokens.text());
         }
       } else {
         if (ownershipSize == ownership.length) {
@@ -277,17 +320,26 @@ public class MoveData {
     }
   }
 
-  private static final class TokenCursor {
-    private final String value;
+  static final class TokenCursor {
+    final String value;
     private int position;
-    private int start;
-    private int end;
+    int start;
+    int end;
 
-    private TokenCursor(String value) {
+    TokenCursor(String value) {
       this.value = value == null ? "" : value;
     }
 
-    private boolean next() {
+    void rewind() {
+      position = start;
+    }
+
+    boolean isTopLevelBoundary() {
+      return matches("info") || matches("rootInfo")
+          || matches("ownership") || matches("ownershipStdev");
+    }
+
+    boolean next() {
       int length = value.length();
       while (position < length && value.charAt(position) <= ' ') {
         position++;
@@ -303,16 +355,16 @@ public class MoveData {
       return true;
     }
 
-    private boolean matches(String expected) {
+    boolean matches(String expected) {
       return matches(value, start, end, expected);
     }
 
-    private boolean matches(String source, int tokenStart, int tokenEnd, String expected) {
+    boolean matches(String source, int tokenStart, int tokenEnd, String expected) {
       return tokenEnd - tokenStart == expected.length()
           && source.regionMatches(tokenStart, expected, 0, expected.length());
     }
 
-    private String text() {
+    String text() {
       return value.substring(start, end);
     }
 
@@ -334,7 +386,7 @@ public class MoveData {
       return count;
     }
 
-    private int fastInt() {
+    int fastInt() {
       int index = start;
       boolean negative = false;
       if (index < end && (value.charAt(index) == '-' || value.charAt(index) == '+')) {
@@ -359,7 +411,7 @@ public class MoveData {
       return negative ? (int) -result : (int) result;
     }
 
-    private double fastDouble() {
+    double fastDouble() {
       int index = start;
       boolean negative = false;
       if (index < end && (value.charAt(index) == '-' || value.charAt(index) == '+')) {
@@ -426,6 +478,7 @@ public class MoveData {
   public static MoveData fromInfofromfile(String line, List<MoveData> bestMoves)
       throws ArrayIndexOutOfBoundsException {
     MoveData result = new MoveData();
+    result.order = bestMoves.size();
     String[] data = line.trim().split(" ");
 
     // Todo: Proper tag parsing in case gtp protocol is extended(?)/changed
@@ -469,6 +522,8 @@ public class MoveData {
         if (key.equals("visits")) {
           result.playouts = Integer.parseInt(value);
         }
+        if (key.equals("order")) result.order = Integer.parseInt(value);
+        if (key.equals("edgeVisits")) result.edgeVisits = Integer.parseInt(value);
         if (key.equals("winrate")) {
           // support 0.16 0.15
           result.winrate = Integer.parseInt(value) / 100.0;
@@ -490,7 +545,6 @@ public class MoveData {
         }
       }
     }
-    result.order = bestMoves.size();
     return result;
   }
 

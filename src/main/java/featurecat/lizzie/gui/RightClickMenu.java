@@ -178,7 +178,18 @@ public class RightClickMenu extends JPopupMenu {
                       RightClickMenu.coords[0], RightClickMenu.coords[1]);
               boolean isTracked = Lizzie.frame.isTrackingPoint(coordName);
               boolean hasTracked = Lizzie.frame.hasTrackingPoints();
-              trackPoint.setVisible(canTrack && !isTracked);
+              trackPoint.setVisible(!isTracked && Lizzie.board.iscoordsempty(coords[0], coords[1]));
+              trackPoint.setEnabled(canTrack);
+              trackPoint.setText(
+                  resourceBundle.getString(
+                      canTrack
+                          ? "RightClickMenu.trackPoint"
+                          : "RightClickMenu.trackPoint.requiresCapability"));
+              trackPoint.setToolTipText(
+                  resourceBundle.getString(
+                      canTrack
+                          ? "RightClickMenu.trackPoint.tooltip"
+                          : "RightClickMenu.trackPoint.unavailableTooltip"));
               untrackPoint.setVisible(isTracked);
               clearAllTracked.setVisible(hasTracked);
             }
@@ -249,6 +260,7 @@ public class RightClickMenu extends JPopupMenu {
     cancelavoid.setIcon(iconRecycle);
     trackPoint = new JFontMenuItem(resourceBundle.getString("RightClickMenu.trackPoint"));
     trackPoint.setIcon(iconTrackPoint);
+    trackPoint.setToolTipText(resourceBundle.getString("RightClickMenu.trackPoint.tooltip"));
     untrackPoint = new JFontMenuItem(resourceBundle.getString("RightClickMenu.untrackPoint"));
     untrackPoint.setIcon(iconRemovePoint);
     clearAllTracked = new JFontMenuItem(resourceBundle.getString("RightClickMenu.clearAllTracked"));

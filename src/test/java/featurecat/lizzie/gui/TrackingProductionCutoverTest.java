@@ -2,7 +2,6 @@ package featurecat.lizzie.gui;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import featurecat.lizzie.Config;
@@ -13,7 +12,6 @@ import featurecat.lizzie.analysis.Leelaz;
 import featurecat.lizzie.analysis.MoveData;
 import featurecat.lizzie.analysis.MoveRankEvaluationMode;
 import featurecat.lizzie.analysis.ReadBoard;
-import featurecat.lizzie.analysis.ReadBoardTrackingEligibilityAdapter;
 import featurecat.lizzie.analysis.TrackingAnalysisController;
 import featurecat.lizzie.rules.Board;
 import featurecat.lizzie.rules.BoardData;
@@ -34,489 +32,609 @@ import org.junit.jupiter.api.Test;
 
 class TrackingProductionCutoverTest {
   @Test
-  void localAndStableReadBoardEntriesUseTheSameCurrentEngineController() throws Exception {
+  void userPausedAnalysisDoesNotStartCapabilityProbe() throws Exception {
     try (TestEnvironment environment = TestEnvironment.open()) {
+      Field paused = LizzieFrame.class.getDeclaredField("userAnalysisPaused");
+      paused.setAccessible(true);
+      paused.setBoolean(environment.frame, true);
+      assertFalse(environment.engine.startMoveFocusProbeAfterInitialization());
+      assertFalse(environment.engine.ponderIfAnalysisControlAllows());
+      assertEquals("", environment.commands());
+      assertEquals(Leelaz.MoveFocusCapability.UNKNOWN, environment.engine.moveFocusCapability());
+    }
+  }
+
+  @Test
+  void userPauseDuringRejectedProbeDoesNotRestartOrdinaryAnalysis() throws Exception {
+    try (TestEnvironment environment = TestEnvironment.open()) {
+      assertTrue(environment.engine.startMoveFocusProbeAfterInitialization());
+      String probe = environment.commands().trim();
+      String id = probe.substring(0, probe.indexOf(' '));
+      environment.engine.pauseForAnalysisControl(() -> {});
+      environment.dispatch("?" + id + " unknown analyze option focus");
+      environment.dispatch("");
+      environment.respondedCommands = 1;
+      environment.settleCommands();
+      assertEquals(Leelaz.MoveFocusCapability.UNSUPPORTED, environment.engine.moveFocusCapability());
+      assertFalse(environment.engine.isPondering());
+      assertEquals(1, environment.commands().lines().filter(line -> line.contains("kata-analyze")).count());
+    }
+  }
+
+  @Test
+  void successfulProbeAfterUserPauseDoesNotRestartOrdinaryAnalysis() throws Exception {
+    try (TestEnvironment environment = TestEnvironment.open()) {
+      assertTrue(environment.engine.startMoveFocusProbeAfterInitialization());
+      String probe = environment.commands().trim();
+      String id = probe.substring(0, probe.indexOf(' '));
+      environment.dispatch("=" + id);
+      environment.respondedCommands = 1;
+      environment.streaming = true;
+      environment.engine.pauseForAnalysisControl(() -> {});
+      environment.settleCommands();
+      assertEquals(Leelaz.MoveFocusCapability.SUPPORTED, environment.engine.moveFocusCapability());
+      assertFalse(environment.engine.isPondering());
+      assertEquals(1, environment.commands().lines().filter(line -> line.contains("kata-analyze")).count());
+    }
+  }
+
+  @Test
+  void probeCompletionRespectsFramePauseEvenWithoutANewPauseGeneration() throws Exception {
+    try (TestEnvironment environment = TestEnvironment.open()) {
+      assertTrue(environment.engine.startMoveFocusProbeAfterInitialization());
+      Field paused = LizzieFrame.class.getDeclaredField("userAnalysisPaused");
+      paused.setAccessible(true);
+      paused.setBoolean(environment.frame, true);
+      environment.settleCommands();
+      assertEquals(Leelaz.MoveFocusCapability.SUPPORTED, environment.engine.moveFocusCapability());
+      assertFalse(environment.engine.isPondering());
+      assertEquals(1, environment.commands().lines().filter(line -> line.contains("kata-analyze")).count());
+    }
+  }
+
+  @Test
+  void capabilityProbeCannotGrantSupportBeforeItsFinalResponseTerminates() throws Exception {
+    try (TestEnvironment environment = TestEnvironment.open()) {
+      assertTrue(environment.engine.startMoveFocusProbeAfterInitialization());
+      long deadline = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(3);
+      while (!environment.commands().contains("focus") && System.nanoTime() < deadline) {
+        Thread.sleep(1);
+      }
+      assertEquals(Leelaz.MoveFocusCapability.PROBING, environment.engine.moveFocusCapability());
+      String[] commands = environment.commands().trim().split("\n");
+      String probe = commands[0];
+      assertTrue(probe.contains("focus pass 0"), probe);
+      String probeId = probe.substring(0, probe.indexOf(' '));
+      environment.dispatch("=" + probeId);
+      assertEquals(Leelaz.MoveFocusCapability.PROBING, environment.engine.moveFocusCapability());
+      assertEquals(TrackingAnalysisController.AddResult.LEASE_UNAVAILABLE,
+          environment.frame.addTrackingPoint("A1"));
+      environment.respondedCommands = 1;
+      environment.streaming = true;
+      environment.settleCommands();
+      assertEquals(Leelaz.MoveFocusCapability.SUPPORTED, environment.engine.moveFocusCapability());
+    }
+  }
+
+  @Test
+  void rejectedProbePreservesOrdinaryAnalysisAndIsNotRepeated() throws Exception {
+    try (TestEnvironment environment = TestEnvironment.open()) {
+      assertTrue(environment.engine.startMoveFocusProbeAfterInitialization());
+      String probe = environment.commands().trim();
+      String id = probe.substring(0, probe.indexOf(' '));
+      environment.dispatch("?" + id + " unknown analyze option focus");
+      assertEquals(Leelaz.MoveFocusCapability.PROBING, environment.engine.moveFocusCapability());
+      environment.dispatch("");
+      environment.respondedCommands = 1;
+      environment.settleCommands();
+      assertEquals(Leelaz.MoveFocusCapability.UNSUPPORTED, environment.engine.moveFocusCapability());
+      assertEquals(TrackingAnalysisController.AddResult.LEASE_UNAVAILABLE,
+          environment.frame.addTrackingPoint("A1"));
+      environment.sendOrdinaryInfo("info move A1 visits 40 order 0 winrate 0.51 pv A1");
+      assertEquals(40, candidate("A1").playouts);
+      environment.engine.ponder();
+      environment.settleCommands();
+      assertEquals(1, environment.commands().lines().filter(line -> line.contains("focus pass")).count());
+    }
+  }
+
+  @Test
+  void retiredProbeResponseCannotGrantSupportToTheReplacementBinding() throws Exception {
+    try (TestEnvironment environment = TestEnvironment.open()) {
+      assertTrue(environment.engine.startMoveFocusProbeAfterInitialization());
+      String probe = environment.commands().trim();
+      String oldId = probe.substring(0, probe.indexOf(' '));
+      Method install = Leelaz.class.getDeclaredMethod("installFreshCommandStreamsForTest",
+          java.io.InputStream.class, java.io.OutputStream.class, java.io.InputStream.class);
+      install.setAccessible(true);
+      install.invoke(environment.engine, java.io.InputStream.nullInputStream(), environment.output,
+          java.io.InputStream.nullInputStream());
+      environment.output.reset();
+      environment.respondedCommands = 0;
+      environment.streaming = false;
+      environment.dispatch("=" + oldId);
+      environment.dispatch("");
+      assertEquals(Leelaz.MoveFocusCapability.UNKNOWN, environment.engine.moveFocusCapability());
+      environment.startSupportedAnalysis();
+      assertEquals(1, environment.commands().lines().filter(line -> line.contains("focus pass")).count());
+    }
+  }
+
+  @Test
+  void localAndStableReadBoardEntriesUseOrdinaryFocusAndKeepAttentionAfterTarget() throws Exception {
+    try (TestEnvironment environment = TestEnvironment.open()) {
+      environment.startSupportedAnalysis();
       LizzieFrame frame = environment.frame;
-
       assertEquals(TrackingAnalysisController.AddResult.ADDED, frame.addTrackingPoint("A1"));
-      assertTrue(environment.commands().contains("800000000 stop\n"));
-      TrackingAnalysisController controller = frame.trackingAnalysisController();
-      assertSame(controller, frame.trackingAnalysisController());
-
-      controller.clear();
-      environment.completeInitialFence(800000000);
+      environment.settleCommands();
+      assertEquals(TrackingAnalysisController.AddResult.ADDED, frame.addTrackingPoint("B2"));
+      environment.settleCommands();
+      environment.sendOrdinaryInfo(payload(50, 110, 120, 0.50, 0.60));
+      assertTrue(frame.trackingDisplaySnapshot().activePoints().isEmpty(),
+          "active=" + frame.trackingDisplaySnapshot().activePoints() + " visits="
+              + frame.trackingDisplaySnapshot().visits() + " root=" + Lizzie.board.getData().rootVisits
+              + " commands=" + environment.commands());
+      assertEquals(java.util.Set.of("A1", "B2"), frame.trackingDisplaySnapshot().selectedPoints());
+      environment.settleCommands();
+      assertFalse(frame.trackingDisplaySnapshot().active());
+      assertTrue(environment.engine.isPondering());
+      assertFalse(environment.commands().contains("allow B"));
+      frame.clearTrackingPoints();
+      environment.settleCommands();
       environment.installStableReadBoard();
-
-      assertEquals(TrackingAnalysisController.AddResult.ADDED, frame.addTrackingPoint("B2"));
-      assertSame(controller, frame.trackingAnalysisController());
-      assertTrue(
-          controller.snapshot().context().readBoardContext().isPresent(),
-          "stable ReadBoard entry must bind its accepted frame identity to the same controller");
-      assertTrue(environment.commands().contains("800000001 stop\n"));
-    }
-  }
-
-  @Test
-  void productionEntryRemovesPendingAndClearsCurrentImmediately() throws Exception {
-    try (TestEnvironment environment = TestEnvironment.open()) {
-      LizzieFrame frame = environment.frame;
-
       assertEquals(TrackingAnalysisController.AddResult.ADDED, frame.addTrackingPoint("A1"));
-      environment.completeInitialFence(800000000);
-      assertEquals(TrackingAnalysisController.AddResult.ADDED, frame.addTrackingPoint("B2"));
-
-      assertTrue(frame.removeTrackingPoint("B2"));
-      assertEquals(List.of("A1"), List.copyOf(frame.trackingDisplaySnapshot().selectedPoints()));
-
-      frame.clearTrackingPoints();
-
-      assertTrue(frame.trackingDisplaySnapshot().selectedPoints().isEmpty());
-      assertTrue(environment.commands().contains("800000002 stop\n"));
+      assertTrue(frame.trackingDisplaySnapshot().context().readBoardContext().isPresent());
     }
   }
 
   @Test
-  void removingCurrentTrackingPointResumesPriorNormalAnalysis() throws Exception {
-    try (TestEnvironment environment = TestEnvironment.open()) {
-      LizzieFrame frame = environment.frame;
-      environment.engine.ponder();
-      environment.processCommandResponse("=");
-      assertEquals(TrackingAnalysisController.AddResult.ADDED, frame.addTrackingPoint("A1"));
-      environment.completeInitialFence(800000000);
-
-      assertTrue(frame.removeTrackingPoint("A1"));
-      environment.completeFinalFence(800000002);
-
-      assertTrue(environment.engine.isPondering());
-      assertTrue(environment.commands().endsWith("kata-analyze B 10\n"), environment.commands());
-      assertTrue(environment.engine.isResponseUpToDate());
-      environment.sendOrdinaryInfo(
-          "info move B2 visits 40 winrate 0.51 scoreLead 2.5 prior 0.2 pv B2");
-      assertEquals(1, environment.engine.getBestMoves().size());
-    }
-  }
-
-  @Test
-  void clearingTrackingPointsResumesPriorNormalAnalysis() throws Exception {
-    try (TestEnvironment environment = TestEnvironment.open()) {
-      LizzieFrame frame = environment.frame;
-      environment.engine.ponder();
-      environment.processCommandResponse("=");
-      assertEquals(TrackingAnalysisController.AddResult.ADDED, frame.addTrackingPoint("A1"));
-      environment.completeInitialFence(800000000);
-
-      frame.clearTrackingPoints();
-      environment.completeFinalFence(800000002);
-
-      assertTrue(environment.engine.isPondering());
-      assertTrue(environment.commands().endsWith("kata-analyze B 10\n"), environment.commands());
-      assertTrue(environment.engine.isResponseUpToDate());
-      environment.sendOrdinaryInfo(
-          "info move B2 visits 40 winrate 0.51 scoreLead 2.5 prior 0.2 pv B2");
-      assertEquals(1, environment.engine.getBestMoves().size());
-    }
-  }
-
-  @Test
-  void playingMoveDuringTrackingResumesNormalAnalysisThroughProductionController()
-      throws Exception {
-    assertPlayingMoveDuringTrackingAcceptsNormalAnalysisAfterResponse("=", true);
-  }
-
-  @Test
-  void failedPlayDuringTrackingDoesNotAcceptNormalAnalysisForTheUnplayedPosition()
-      throws Exception {
-    assertPlayingMoveDuringTrackingAcceptsNormalAnalysisAfterResponse("? illegal move", false);
-  }
-
-  private void assertPlayingMoveDuringTrackingAcceptsNormalAnalysisAfterResponse(
-      String playResponse, boolean expectNormalAnalysis) throws Exception {
-    BoardRenderer previousBoardRenderer = LizzieFrame.boardRenderer;
+  void returningToAcceptedReadBoardPositionAllowsNewEvaluationWithoutAnotherFrame() throws Exception {
+    BoardRenderer previousRenderer = LizzieFrame.boardRenderer;
     try (TestEnvironment environment = TestEnvironment.open()) {
       LizzieFrame.boardRenderer = new BoardRenderer(false);
-      Lizzie.config.analyzeBlack = true;
-      Lizzie.config.analyzeWhite = true;
-      environment.engine.ponder();
-      environment.processCommandResponse("=");
-      assertEquals(
-          TrackingAnalysisController.AddResult.ADDED,
-          environment.frame.addTrackingPoint("A1"));
-      environment.completeInitialFence(800000000);
-
+      environment.startSupportedAnalysis();
       Lizzie.board.place(0, 0, Stone.BLACK);
-      environment.completeFinalFence(800000002);
-      String beforeAck = environment.commands().trim();
-      String playCommand = beforeAck.substring(beforeAck.lastIndexOf('\n') + 1);
-      assertTrue(playCommand.endsWith("play B A2"), beforeAck);
-      String playId = playCommand.substring(0, playCommand.indexOf(' '));
-      environment.processCommandResponse(
-          playResponse.substring(0, 1) + playId + playResponse.substring(1));
-      environment.sendOrdinaryInfo(
-          "info move B2 visits 40 winrate 0.51 scoreLead 2.5 prior 0.2 pv B2");
-
-      String commands = environment.commands();
-      assertTrue(environment.engine.isPondering());
-      assertEquals(
-          expectNormalAnalysis,
-          commands.lastIndexOf("kata-analyze") > commands.lastIndexOf("play B A2"),
-          commands);
-      assertEquals(expectNormalAnalysis ? 1 : 0, environment.engine.getBestMoves().size());
+      environment.settleCommands();
+      environment.installStableReadBoard("re=3,0", "re=0,0");
+      ReadBoard helper = environment.frame.readBoard;
+      assertEquals(TrackingAnalysisController.AddResult.ADDED,
+          environment.frame.addTrackingPoint("A1"));
+      environment.settleCommands();
+      environment.sendOrdinaryInfo("info move A1 visits 20 order 0 winrate 0.51 pv A1 rootInfo visits 30");
+      assertEquals(20, environment.frame.trackingDisplaySnapshot().visits().get("A1"));
+      long acceptedRevision = Lizzie.board.getContextRevision();
+      assertTrue(Lizzie.board.previousMove(false));
+      environment.settleCommands();
+      assertFalse(helper.snapshot().stable());
+      assertTrue(environment.frame.trackingDisplaySnapshot().selectedPoints().isEmpty());
+      assertTrue(Lizzie.board.nextMove(false));
+      assertFalse(environment.frame.canStartTrackingAnalysis());
+      environment.settleCommands();
+      assertTrue(Lizzie.board.getContextRevision() > acceptedRevision);
+      assertTrue(helper.snapshot().stable());
+      assertTrue(environment.frame.trackingDisplaySnapshot().selectedPoints().isEmpty());
+      assertEquals(TrackingAnalysisController.AddResult.ADDED,
+          environment.frame.addTrackingPoint("B2"));
     } finally {
-      LizzieFrame.boardRenderer = previousBoardRenderer;
+      LizzieFrame.boardRenderer = previousRenderer;
     }
   }
 
   @Test
-  void rendererGateSuppressesStaleNodeAndPonderInvalidationDoesNotReacquire() throws Exception {
+  void nativeCrlfIsAcceptedButMalformedCellsCannotPublishAnAcceptedFrame() throws Exception {
     try (TestEnvironment environment = TestEnvironment.open()) {
-      LizzieFrame frame = environment.frame;
-      environment.engine.Pondering();
-      assertEquals(TrackingAnalysisController.AddResult.ADDED, frame.addTrackingPoint("A1"));
-      environment.completeInitialFence(800000000);
-      TrackingAnalysisController.DisplaySnapshot original = frame.trackingDisplaySnapshot();
-      assertTrue(frame.isTrackingDisplayCurrent(original));
-
-      Lizzie.board.setHistory(new BoardHistoryList(BoardData.empty(2, 2)));
-
-      assertFalse(frame.isTrackingDisplayCurrent(original));
-      frame.onMainEnginePonder();
-
-      assertTrue(frame.trackingDisplaySnapshot().selectedPoints().isEmpty());
-      assertTrue(environment.commands().contains("800000002 stop\n"));
-      assertFalse(environment.commands().contains("800000003 stop\n"));
-      environment.completeFinalFence(800000002);
-      assertFalse(environment.engine.isPondering());
+      environment.installStableReadBoard();
+      ReadBoard readBoard = environment.frame.readBoard;
+      readBoard.parseLine("re=0,0\r\n");
+      assertFalse(readBoard.snapshot().stable());
+      readBoard.parseLine("re=0,0\r\n");
+      readBoard.parseLine("end\r\n");
+      assertTrue(readBoard.snapshot().stable());
+      readBoard.parseLine("re=0junk,0");
+      readBoard.parseLine("re=0,0");
+      readBoard.parseLine("end");
+      assertFalse(readBoard.snapshot().stable());
+      assertEquals(
+          TrackingAnalysisController.AddResult.LEASE_UNAVAILABLE,
+          environment.frame.addTrackingPoint("A1"));
     }
   }
 
   @Test
-  void internalTrackingInvalidationDoesNotRestorePriorNormalAnalysis() throws Exception {
-    try (TestEnvironment environment = TestEnvironment.open()) {
-      LizzieFrame frame = environment.frame;
-      environment.engine.ponder();
-      environment.processCommandResponse("=");
-      assertEquals(TrackingAnalysisController.AddResult.ADDED, frame.addTrackingPoint("A1"));
-      environment.completeInitialFence(800000000);
-
-      frame.invalidateTrackingAnalysis();
-      environment.completeFinalFence(800000002);
-
-      assertFalse(environment.engine.isPondering());
-      assertTrue(frame.trackingDisplaySnapshot().selectedPoints().isEmpty());
-      assertFalse(environment.commands().endsWith("kata-analyze B 10\n"));
-    }
-  }
-
-  @Test
-  void trackingDisplayChangesRequestRefreshWithoutOrdinaryParserRepaint() throws Exception {
-    try (TestEnvironment environment = TestEnvironment.open()) {
-      TrackingFrame frame = (TrackingFrame) environment.frame;
-      assertEquals(TrackingAnalysisController.AddResult.ADDED, frame.addTrackingPoint("A1"));
-      environment.completeInitialFence(800000000);
-      int beforeInfo = frame.analysisRefreshRequests;
-
-      environment.sendTrackingInfo("info move A1 visits 100 winrate 0.51 scoreLead 1.5 pv A1");
-
-      assertTrue(frame.analysisRefreshRequests > beforeInfo);
-      int beforeCompletion = frame.analysisRefreshRequests;
-      environment.completeFinalFence(800000002);
-      assertTrue(frame.analysisRefreshRequests > beforeCompletion);
-    }
-  }
-
-  @Test
-  void trackingOverlayIsIndependentOfCandidateVisibilityAndSuppressedForBranchOrStaleNode()
-      throws Exception {
-    try (TestEnvironment environment = TestEnvironment.open()) {
-      TrackingFrame frame = (TrackingFrame) environment.frame;
-      Font previousWinrateFont = LizzieFrame.winrateFont;
-      Font previousPlayoutsFont = LizzieFrame.playoutsFont;
-      LizzieFrame.winrateFont = new Font(Font.SANS_SERIF, Font.PLAIN, 12);
-      LizzieFrame.playoutsFont = new Font(Font.SANS_SERIF, Font.PLAIN, 12);
-      try {
-        assertEquals(TrackingAnalysisController.AddResult.ADDED, frame.addTrackingPoint("A1"));
-        environment.completeInitialFence(800000000);
-        environment.sendTrackingInfo("info move A1 visits 10 winrate 0.51 scoreLead 1.5 pv A1");
-        Lizzie.config.showBestMoves = false;
-        frame.isShowingHeatmap = true;
-        frame.isShowingPolicy = true;
-        BoardRenderer renderer = configuredRenderer();
-
-        assertTrue(hasVisiblePaint(renderTrackingOverlay(renderer)));
-
-        setField(renderer, BoardRenderer.class, "isShowingBranch", true);
-        assertFalse(hasVisiblePaint(renderTrackingOverlay(renderer)));
-        setField(renderer, BoardRenderer.class, "isShowingBranch", false);
-        Lizzie.board.setHistory(new BoardHistoryList(BoardData.empty(2, 2)));
-        assertFalse(hasVisiblePaint(renderTrackingOverlay(renderer)));
-      } finally {
-        LizzieFrame.winrateFont = previousWinrateFont;
-        LizzieFrame.playoutsFont = previousPlayoutsFont;
+  void stoppingDiscardsMalformedSamplingBeforeTheFirstResumedFrame() throws Exception {
+    for (String boundary : List.of("endsync", "stopsync")) {
+      try (TestEnvironment environment = TestEnvironment.open()) {
+        environment.installStableReadBoard();
+        ReadBoard helper = environment.frame.readBoard;
+        helper.parseLine("re=x,0");
+        helper.parseLine(boundary);
+        assertFalse(environment.frame.canStartTrackingAnalysis());
+        helper.parseLine("re=0,0");
+        helper.parseLine("re=0,0");
+        helper.parseLine("end");
+        environment.completeSyncConfirmation();
+        assertTrue(environment.frame.canStartTrackingAnalysis(), boundary);
+        assertEquals(TrackingAnalysisController.AddResult.ADDED,
+            environment.frame.addTrackingPoint("A1"));
       }
     }
   }
 
   @Test
-  void trackingResultUsesFixedInteriorAndLiveQualityOutline() throws Exception {
+  void acceptedNodeIdentityDoesNotOverridePositionHistoryOrHelperMismatch() throws Exception {
+    List<Runnable> mutations =
+        List.of(
+            () -> Lizzie.board.getHistory().getData().stones[0] = Stone.BLACK,
+            () -> Lizzie.board.getHistory().getData().blackToPlay = false,
+            () -> Board.boardWidth = 3,
+            () -> Board.boardHeight = 3,
+            () -> Lizzie.config.currentKataGoRules = "japanese",
+            () -> Lizzie.board.getHistory().getGameInfo().setKomi(0.5),
+            () ->
+                Lizzie.board.setHistory(new BoardHistoryList(Lizzie.board.getHistory().getData())),
+            () -> Lizzie.frame.readBoard = null);
+    for (Runnable mutation : mutations) {
+      try (TestEnvironment environment = TestEnvironment.open()) {
+        environment.installStableReadBoard();
+        ReadBoard helper = environment.frame.readBoard;
+        mutation.run();
+        assertFalse(helper.snapshot().stable());
+        if (environment.frame.readBoard != null) {
+          assertFalse(environment.frame.canStartTrackingAnalysis());
+        }
+      }
+    }
+  }
+
+  @Test
+  void stoppedOrIncompleteFrameCannotReadmitAnOldAcceptedPosition() throws Exception {
+    for (String boundary : List.of("endsync", "stopsync", "clear", "re=0,0")) {
+      try (TestEnvironment environment = TestEnvironment.open()) {
+        environment.installStableReadBoard();
+        ReadBoard helper = environment.frame.readBoard;
+        helper.parseLine(boundary);
+        assertFalse(environment.frame.canStartTrackingAnalysis());
+        helper.onLocalHistoryNavigation();
+        assertFalse(helper.snapshot().stable());
+        assertEquals(
+            TrackingAnalysisController.AddResult.LEASE_UNAVAILABLE,
+            environment.frame.addTrackingPoint("A1"));
+      }
+    }
+  }
+
+  @Test
+  void lateFrameAcceptanceCannotReopenAStoppedHelper() throws Exception {
+    BoardRenderer previousRenderer = LizzieFrame.boardRenderer;
     try (TestEnvironment environment = TestEnvironment.open()) {
-      Lizzie.config.trackingPointInteriorColor = new Color(10, 20, 30);
-      Lizzie.config.trackingPointInteriorOpacityPercent = 50;
+      LizzieFrame.boardRenderer = new BoardRenderer(false);
+      environment.installStableReadBoard();
+      ReadBoard helper = environment.frame.readBoard;
+      java.util.concurrent.atomic.AtomicBoolean reached =
+          new java.util.concurrent.atomic.AtomicBoolean();
+      ((TrackingBoard) Lizzie.board).afterSyncMove =
+          () -> {
+            assertFalse(environment.frame.canStartTrackingAnalysis());
+            helper.parseLine("endsync");
+            reached.set(true);
+          };
+      helper.parseLine("re=3,0");
+      helper.parseLine("re=0,0");
+      helper.parseLine("end");
+      environment.acknowledgePositionCommands();
+      assertTrue(reached.get());
+      assertFalse(helper.snapshot().stable());
+      assertEquals(
+          TrackingAnalysisController.AddResult.LEASE_UNAVAILABLE,
+          environment.frame.addTrackingPoint("B2"));
+    } finally {
+      LizzieFrame.boardRenderer = previousRenderer;
+    }
+  }
+
+  @Test
+  void sameReadBoardFrameRetainsFocusButPendingFrameRejectsNewRequest() throws Exception {
+    try (TestEnvironment environment = TestEnvironment.open()) {
+      environment.startSupportedAnalysis();
+      environment.installStableReadBoard();
+      assertEquals(TrackingAnalysisController.AddResult.ADDED,
+          environment.frame.addTrackingPoint("A1"));
+      environment.settleCommands();
+      String before = environment.commands();
+      ReadBoard helper = environment.frame.readBoard;
+      helper.parseLine("re=0,0");
+      assertFalse(environment.frame.canStartTrackingAnalysis());
+      assertEquals(java.util.Set.of("A1"), environment.frame.trackingDisplaySnapshot().selectedPoints());
+      helper.parseLine("re=0,0");
+      helper.parseLine("end");
+      environment.completeSyncConfirmation();
+      assertTrue(environment.frame.canStartTrackingAnalysis());
+      assertEquals(before, environment.commands());
+      assertEquals(java.util.Set.of("A1"), environment.frame.trackingDisplaySnapshot().activePoints());
+    }
+  }
+
+  @Test
+  void explicitFocusAdoptsWholeLowRootPayloadAndCancellationDoesNotRollItBack() throws Exception {
+    try (TestEnvironment environment = TestEnvironment.open()) {
+      environment.startSupportedAnalysis();
+      Lizzie.config.enableLizzieCache = true;
+      environment.sendOrdinaryInfo(payload(10000, 9000, 1000, 0.90, 0.91));
+      environment.engine.sendCommand("kata-analyze B 10 rootInfo true");
+      environment.settleCommands();
+      environment.sendOrdinaryInfo(payload(1000, 20, 30, 0.40, 0.60));
+      assertEquals(10000, Lizzie.board.getData().rootVisits);
+      assertEquals(TrackingAnalysisController.AddResult.ADDED,
+          environment.frame.addTrackingPoint("A1"));
+      assertEquals(1000, Lizzie.board.getData().rootVisits);
+      assertEquals(20, candidate("A1").playouts);
+      environment.settleCommands();
+      environment.sendOrdinaryInfo(payload(1000, 100, 40, 0.50, 0.65));
+      environment.settleCommands();
+      environment.frame.clearTrackingPoints();
+      environment.settleCommands();
+      environment.sendOrdinaryInfo(payload(1000, 100, 40, 0.55, 0.70));
+      assertEquals(1000, Lizzie.board.getData().rootVisits);
+      assertEquals(55.0, candidate("A1").winrate, 0.001);
+      assertTrue(environment.frame.trackingDisplaySnapshot().selectedPoints().isEmpty());
+      String saved = featurecat.lizzie.rules.SGFParser.saveToString(false);
+      assertTrue(saved.contains("rootVisits=1000"));
+      var loaded = featurecat.lizzie.rules.SGFParser.parseSgf(saved, true);
+      assertEquals(1000, loaded.getData().rootVisits);
+      assertEquals(100, loaded.getData().bestMoves.stream()
+          .filter(move -> move.coordinate.equals("A1")).findFirst().orElseThrow().playouts);
+    }
+  }
+
+  @Test
+  void outlineSwitchDoesNotHideCompletedCandidateOrRestartFocus() throws Exception {
+    try (TestEnvironment environment = TestEnvironment.open()) {
+      environment.startSupportedAnalysis();
+      environment.sendOrdinaryInfo(payload(200, 120, 130, 0.50, 0.60)
+          .replace("edgeVisits 0", "edgeVisits 10"));
+      Lizzie.config.showTrackingPointOutline = false;
+      BufferedImage ordinary = renderMainBoard();
+      String before = environment.commands();
+      assertEquals(TrackingAnalysisController.AddResult.ADDED,
+          environment.frame.addTrackingPoint("A1"));
+      environment.settleCommands();
+      assertEquals(before, environment.commands());
+      assertTrue(environment.frame.trackingDisplaySnapshot().activePoints().isEmpty());
+      BufferedImage attended = renderMainBoard();
+      assertTrue(java.util.Arrays.equals(
+          ordinary.getRGB(0, 0, 180, 180, null, 0, 180),
+          attended.getRGB(0, 0, 180, 180, null, 0, 180)));
       Lizzie.config.showTrackingPointOutline = true;
-      Lizzie.config.trackingPointOutlineOpacityPercent = 100;
-      Lizzie.config.showWinrateInSuggestion = false;
-      Lizzie.config.showPlayoutsInSuggestion = false;
-      Lizzie.config.showScoremeanInSuggestion = false;
-      environment.installOrdinaryBestMove("B2", 1000, 60.0, 5.0);
-      assertEquals(
-          TrackingAnalysisController.AddResult.ADDED, environment.frame.addTrackingPoint("A1"));
-      environment.completeInitialFence(800000000);
-      environment.sendTrackingInfo("info move A1 visits 10 winrate 0.50 scoreLead 2.0 pv A1");
-
-      BufferedImage rendered = renderTrackingOverlay(configuredRenderer());
-
-      assertTrue(
-          countArgb(rendered, new Color(10, 20, 30, 128)) > 200,
-          "the tracking result disc should use the configured fixed interior");
-      assertTrue(
-          countArgb(rendered, new Color(200, 140, 50)) > 20,
-          "a 10-point winrate and 3-point score loss should color the dashed outline");
-    }
-  }
-
-  @Test
-  void disablingTrackingOutlineKeepsTheResultInteriorWithoutQualityColor() throws Exception {
-    try (TestEnvironment environment = TestEnvironment.open()) {
-      Lizzie.config.trackingPointInteriorColor = new Color(10, 20, 30);
-      Lizzie.config.trackingPointInteriorOpacityPercent = 100;
+      assertTrue(hasVisiblePaint(renderTrackingOverlay(configuredRenderer())));
       Lizzie.config.showTrackingPointOutline = false;
-      Lizzie.config.trackingPointOutlineOpacityPercent = 100;
-      Lizzie.config.showWinrateInSuggestion = false;
-      Lizzie.config.showPlayoutsInSuggestion = false;
-      Lizzie.config.showScoremeanInSuggestion = false;
-      environment.installOrdinaryBestMove("B2", 1000, 60.0, 5.0);
-      assertEquals(
-          TrackingAnalysisController.AddResult.ADDED, environment.frame.addTrackingPoint("A1"));
-      environment.completeInitialFence(800000000);
-      environment.sendTrackingInfo("info move A1 visits 10 winrate 0.50 scoreLead 2.0 pv A1");
-
-      BufferedImage rendered = renderTrackingOverlay(configuredRenderer());
-
-      assertTrue(countArgb(rendered, new Color(10, 20, 30)) > 200);
-      assertEquals(0, countArgb(rendered, new Color(200, 140, 50)));
+      assertFalse(hasVisiblePaint(renderTrackingOverlay(configuredRenderer())));
+      assertEquals(before, environment.commands());
+      assertTrue(environment.frame.isTrackingPoint("A1"));
     }
   }
 
   @Test
-  void trackingResultUsesNeutralGrayUntilAnOrdinaryBaselineExists() throws Exception {
+  void unsupportedEngineModesRejectFocusWithoutWriting() throws Exception {
     try (TestEnvironment environment = TestEnvironment.open()) {
-      Lizzie.config.showTrackingPointOutline = true;
-      Lizzie.config.trackingPointOutlineOpacityPercent = 100;
-      Lizzie.config.showWinrateInSuggestion = false;
-      Lizzie.config.showPlayoutsInSuggestion = false;
-      Lizzie.config.showScoremeanInSuggestion = false;
-      assertEquals(
-          TrackingAnalysisController.AddResult.ADDED, environment.frame.addTrackingPoint("A1"));
-      environment.completeInitialFence(800000000);
-      environment.sendTrackingInfo("info move A1 visits 10 winrate 0.50 scoreLead 2.0 pv A1");
-
-      BufferedImage rendered = renderTrackingOverlay(configuredRenderer());
-
-      assertTrue(
-          countArgb(rendered, new Color(112, 118, 124)) > 20,
-          "a tracking result without an ordinary best candidate should keep a neutral outline");
-    }
-  }
-
-  @Test
-  void trackingResultRecolorsWhenTheOrdinaryBaselineChanges() throws Exception {
-    try (TestEnvironment environment = TestEnvironment.open()) {
-      Lizzie.config.showTrackingPointOutline = true;
-      Lizzie.config.trackingPointOutlineOpacityPercent = 100;
-      Lizzie.config.showWinrateInSuggestion = false;
-      Lizzie.config.showPlayoutsInSuggestion = false;
-      Lizzie.config.showScoremeanInSuggestion = false;
-      environment.installOrdinaryBestMove("B2", 1000, 60.0, 5.0);
-      assertEquals(
-          TrackingAnalysisController.AddResult.ADDED, environment.frame.addTrackingPoint("A1"));
-      environment.completeInitialFence(800000000);
-      environment.sendTrackingInfo("info move A1 visits 10 winrate 0.50 scoreLead 2.0 pv A1");
-      assertTrue(
-          countArgb(renderTrackingOverlay(configuredRenderer()), new Color(200, 140, 50)) > 20);
-
-      environment.installOrdinaryBestMove("B2", 1000, 50.0, 2.0);
-
-      assertTrue(
-          countArgb(renderTrackingOverlay(configuredRenderer()), new Color(0, 180, 0)) > 20,
-          "the existing tracking outline should be recolored from the current ordinary baseline");
-    }
-  }
-
-  @Test
-  void trackingResultOverridesOrdinaryCandidateAtTheSameCoordinate() throws Exception {
-    try (TestEnvironment environment = TestEnvironment.open()) {
-      Lizzie.config.showTrackingPointOutline = false;
-      Lizzie.config.trackingPointInteriorColor = new Color(33, 44, 55);
-      Lizzie.config.trackingPointInteriorOpacityPercent = 100;
-      Lizzie.config.showWinrateInSuggestion = false;
-      Lizzie.config.showPlayoutsInSuggestion = false;
-      Lizzie.config.showScoremeanInSuggestion = false;
-      environment.installOrdinaryBestMove("A1", 1000, 60.0, 5.0);
-      assertEquals(
-          TrackingAnalysisController.AddResult.ADDED, environment.frame.addTrackingPoint("A1"));
-      environment.completeInitialFence(800000000);
-      environment.sendTrackingInfo("info move A1 visits 10 winrate 0.50 scoreLead 2.0 pv A1");
-
-      BufferedImage rendered = renderMainBoard();
-
-      assertTrue(
-          countOpaqueRgb(rendered, new Color(33, 44, 55)) > 200,
-          "the fixed tracking interior should replace the ordinary candidate at that coordinate");
-    }
-  }
-
-  @Test
-  void selectedTrackingPointSuppressesTheOrdinaryCandidateWhenOutlineIsDisabled()
-      throws Exception {
-    try (TestEnvironment environment = TestEnvironment.open()) {
-      Lizzie.config.showTrackingPointOutline = false;
-      Lizzie.config.showWinrateInSuggestion = false;
-      Lizzie.config.showPlayoutsInSuggestion = false;
-      Lizzie.config.showScoremeanInSuggestion = false;
-      Lizzie.config.showBlueRing = true;
-      environment.installOrdinaryBestMove("A1", 1000, 60.0, 5.0);
-
-      assertTrue(countOpaqueRgb(renderMainBoard(), Color.BLUE) > 10);
-      assertEquals(
-          TrackingAnalysisController.AddResult.ADDED, environment.frame.addTrackingPoint("A1"));
-
-      assertEquals(
-          0,
-          countOpaqueRgb(renderMainBoard(), Color.BLUE),
-          "the selected tracking point should own the coordinate before its first result arrives");
-    }
-  }
-
-  @Test
-  void selectedTrackingPointUsesTheNeutralPendingOutline() throws Exception {
-    try (TestEnvironment environment = TestEnvironment.open()) {
-      Lizzie.config.showTrackingPointOutline = true;
-      Lizzie.config.trackingPointOutlineOpacityPercent = 100;
-      assertEquals(
-          TrackingAnalysisController.AddResult.ADDED, environment.frame.addTrackingPoint("A1"));
-
-      BufferedImage rendered = renderMainBoard();
-
-      assertTrue(
-          countOpaqueRgb(rendered, new Color(112, 118, 124)) > 20,
-          "a selected point without a result should use the neutral dashed outline");
-    }
-  }
-
-  @Test
-  void transparentDarkInteriorUsesBlackTextAutomaticallyAndAllowsManualOverride() throws Exception {
-    try (TestEnvironment environment = TestEnvironment.open()) {
-      Lizzie.config.showTrackingPointOutline = false;
-      Lizzie.config.trackingPointInteriorColor = Color.BLACK;
-      Lizzie.config.trackingPointInteriorOpacityPercent = 10;
-      Lizzie.config.showWinrateInSuggestion = true;
-      Lizzie.config.showPlayoutsInSuggestion = false;
-      Lizzie.config.showScoremeanInSuggestion = false;
-      Lizzie.config.trackingPointTextAutoColor = false;
-      Lizzie.config.trackingPointTextColor = Color.WHITE;
-      environment.installOrdinaryBestMove("B2", 1000, 60.0, 5.0);
-      assertEquals(
-          TrackingAnalysisController.AddResult.ADDED, environment.frame.addTrackingPoint("A1"));
-      environment.completeInitialFence(800000000);
-      environment.sendTrackingInfo("info move A1 visits 100 winrate 0.50 scoreLead 2.0 pv A1");
-
-      BufferedImage manualWhite = renderMainBoard();
-      Lizzie.config.trackingPointTextAutoColor = true;
-      BufferedImage automatic = renderMainBoard();
-
-      assertTrue(
-          opaqueRgbMaskDifferences(manualWhite, automatic, Color.BLACK, 51, 129, 24).size() > 5,
-          "a mostly transparent dark fill over the light board should automatically use black text");
-    }
-  }
-
-  @Test
-  void trackingResultReusesOrdinaryCandidateTextLayout() throws Exception {
-    try (TestEnvironment environment = TestEnvironment.open()) {
-      Lizzie.config.showTrackingPointOutline = false;
-      Lizzie.config.useDefaultInfoRowOrder = false;
-      Lizzie.config.suggestionInfoPlayouts = 1;
-      Lizzie.config.suggestionInfoScoreLead = 2;
-      Lizzie.config.suggestionInfoWinrate = 3;
-      Lizzie.config.showSuggestionOrder = false;
-      Lizzie.config.showScoreAsDiff = true;
-      environment.installOrdinaryMoves("B2", 1000000, 60.0, 5.0, "A1", 12345, 50.0, 2.0);
-
-      BufferedImage ordinaryCandidate = renderMainBoard();
-
-      assertEquals(
-          TrackingAnalysisController.AddResult.ADDED, environment.frame.addTrackingPoint("A1"));
-      environment.completeInitialFence(800000000);
-      environment.sendTrackingInfo("info move A1 visits 12345 winrate 0.50 scoreLead 2.0 pv A1");
-
-      BufferedImage trackingResult = renderMainBoard();
-
-      List<String> differences =
-          opaqueRgbMaskDifferences(ordinaryCandidate, trackingResult, Color.BLACK, 51, 129, 30);
-      assertTrue(
-          differences.size() <= 2,
-          "tracking text should reuse ordinary row order, positions, and score-difference baseline; "
-              + "only antialiasing edge pixels may differ over the translucent interior: "
-              + differences);
-    }
-  }
-
-  @Test
-  void trackingResultUsesTheOrdinaryCandidateInformationVisibility() throws Exception {
-    try (TestEnvironment environment = TestEnvironment.open()) {
-      Lizzie.config.showTrackingPointOutline = false;
-      Lizzie.config.showWinrateInSuggestion = false;
-      Lizzie.config.showScoremeanInSuggestion = false;
-      Lizzie.config.showSuggestionOrder = false;
-      environment.installOrdinaryMoves("B2", 1000000, 60.0, 5.0, "A1", 12345, 50.0, 2.0);
-
-      BufferedImage ordinaryCandidate = renderMainBoard();
-
-      assertEquals(
-          TrackingAnalysisController.AddResult.ADDED, environment.frame.addTrackingPoint("A1"));
-      environment.completeInitialFence(800000000);
-      environment.sendTrackingInfo("info move A1 visits 12345 winrate 0.50 scoreLead 2.0 pv A1");
-
-      BufferedImage trackingResult = renderMainBoard();
-      List<String> differences =
-          opaqueRgbMaskDifferences(ordinaryCandidate, trackingResult, Color.BLACK, 51, 129, 30);
-
-      assertTrue(
-          differences.size() <= 2,
-          "tracking text should honor the ordinary candidate information switches; only "
-              + "antialiasing edge pixels may differ over the translucent interior: "
-              + differences);
-    }
-  }
-
-  @Test
-  void unsupportedEngineModesAndMissingCapabilitiesAreHiddenBeforeLeaseAcquisition()
-      throws Exception {
-    try (TestEnvironment environment = TestEnvironment.open()) {
+      environment.startSupportedAnalysis();
+      String before = environment.commands();
       environment.engine.useJavaSSH = true;
       assertFalse(environment.frame.canStartTrackingAnalysis());
-
       environment.engine.useJavaSSH = false;
       Lizzie.config.extraMode = ExtraMode.Double_Engine;
       assertFalse(environment.frame.canStartTrackingAnalysis());
-
-      Lizzie.config.extraMode = ExtraMode.Normal;
-      environment.engine.commandLists.remove("kata-analyze");
-      assertFalse(environment.frame.canStartTrackingAnalysis());
-
-      environment.engine.commandLists.add("kata-analyze");
-      setField(environment.engine, Leelaz.class, "outputStream", null);
-      assertFalse(environment.frame.canStartTrackingAnalysis());
+      assertEquals(before, environment.commands());
     }
+  }
+  @Test
+  void removingSelectedFocusBeforeItsPhysicalWriteCannotSendTheRetiredPoint() throws Exception {
+    try (TestEnvironment environment = TestEnvironment.open()) {
+      environment.startSupportedAnalysis();
+      assertEquals(TrackingAnalysisController.AddResult.ADDED,
+          environment.frame.addTrackingPoint("A1"));
+      Field field = EngineManager.class.getDeclaredField("ENGINE_GAME_ANALYSIS_OUTPUT_MUTATION_LOCK");
+      field.setAccessible(true);
+      var admission = (java.util.concurrent.locks.ReentrantLock) field.get(null);
+      var failure = new java.util.concurrent.atomic.AtomicReference<Throwable>();
+      Thread writer = new Thread(() -> {
+        try { environment.settleCommands(); }
+        catch (Throwable thrown) { failure.set(thrown); }
+      }, "focus-selected-before-write");
+      admission.lock();
+      try {
+        writer.start();
+        long deadline = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(3);
+        while (!admission.hasQueuedThread(writer) && System.nanoTime() < deadline) Thread.sleep(1);
+        assertTrue(admission.hasQueuedThread(writer));
+        assertTrue(environment.frame.removeTrackingPoint("A1"));
+      } finally {
+        admission.unlock();
+        writer.join(3000);
+      }
+      assertFalse(writer.isAlive());
+      assertEquals(null, failure.get());
+      environment.settleCommands();
+      assertFalse(environment.commands().contains("focus A1"), environment.commands());
+      assertTrue(environment.frame.trackingDisplaySnapshot().selectedPoints().isEmpty());
+      assertTrue(environment.engine.isLoaded());
+    }
+  }
+
+  @Test
+  void addingFocusDoesNotRestartTheOrdinaryTimeBudget() throws Exception {
+    try (TestEnvironment environment = TestEnvironment.open()) {
+      environment.startSupportedAnalysis();
+      Lizzie.config.limitTime = true;
+      Lizzie.config.maxAnalyzeTimeMillis = 100;
+      Thread.sleep(150);
+      assertEquals(TrackingAnalysisController.AddResult.ADDED,
+          environment.frame.addTrackingPoint("A1"));
+      environment.settleCommands();
+      environment.dispatch(payload(200, 20, 130, 0.50, 0.60));
+      environment.settleCommands();
+      assertTrue(environment.engine.isStopPonderingByLimit());
+      assertFalse(environment.frame.trackingDisplaySnapshot().active());
+    }
+  }
+
+  @Test
+  void manualPauseRetainsAttentionAndAnalysisWithoutRestartingGain() throws Exception {
+    try (TestEnvironment environment = TestEnvironment.open()) {
+      environment.startSupportedAnalysis();
+      assertEquals(TrackingAnalysisController.AddResult.ADDED,
+          environment.frame.addTrackingPoint("A1"));
+      environment.settleCommands();
+      environment.sendOrdinaryInfo(payload(200, 40, 130, 0.50, 0.60));
+      environment.engine.pauseForAnalysisControl(() -> {});
+      environment.settleCommands();
+      assertFalse(environment.engine.isPondering());
+      assertEquals(java.util.Set.of("A1"), environment.frame.trackingDisplaySnapshot().selectedPoints());
+      assertTrue(environment.frame.trackingDisplaySnapshot().activePoints().isEmpty());
+      assertFalse(environment.frame.trackingDisplaySnapshot().cancellationPending());
+      assertEquals(40, candidate("A1").playouts);
+      String paused = environment.commands();
+      environment.dispatch(payload(300, 1000, 140, 0.99, 0.60));
+      environment.settleCommands();
+      assertEquals(paused, environment.commands());
+      assertTrue(environment.frame.trackingDisplaySnapshot().activePoints().isEmpty());
+      environment.engine.ponder();
+      environment.settleCommands();
+      environment.sendOrdinaryInfo(payload(400, 80, 200, 0.55, 0.65));
+      assertEquals(400, Lizzie.board.getData().rootVisits);
+      assertEquals(80, candidate("A1").playouts);
+      assertTrue(environment.frame.trackingDisplaySnapshot().activePoints().isEmpty());
+    }
+  }
+
+  @Test
+  void clearingTheEngineTreeRetiresExplicitAdoptionEvenAtTheSameDisplayNode() throws Exception {
+    try (TestEnvironment environment = TestEnvironment.open()) {
+      environment.startSupportedAnalysis();
+      Lizzie.config.enableLizzieCache = true;
+      assertEquals(TrackingAnalysisController.AddResult.ADDED,
+          environment.frame.addTrackingPoint("A1"));
+      environment.settleCommands();
+      environment.sendOrdinaryInfo(payload(1000, 120, 130, 0.50, 0.60));
+      environment.settleCommands();
+      environment.engine.sendCommand("clear_board");
+      environment.settleCommands();
+      environment.engine.sendCommand("kata-analyze B 10 rootInfo true");
+      environment.settleCommands();
+      environment.dispatch(payload(100, 50000, 80, 0.99, 0.60));
+      assertEquals(1000, Lizzie.board.getData().rootVisits);
+      assertEquals(120, candidate("A1").playouts);
+      assertTrue(environment.frame.trackingDisplaySnapshot().selectedPoints().isEmpty());
+    }
+  }
+
+  @Test
+  void focusedPayloadWithoutRootCannotOverwriteOrCompleteOrdinaryAnalysis() throws Exception {
+    try (TestEnvironment environment = TestEnvironment.open()) {
+      environment.startSupportedAnalysis();
+      environment.sendOrdinaryInfo(payload(200, 20, 30, 0.50, 0.60));
+      assertEquals(TrackingAnalysisController.AddResult.ADDED,
+          environment.frame.addTrackingPoint("A1"));
+      environment.settleCommands();
+      environment.dispatch("info move A1 visits 50000 order 0 winrate 0.99 pv A1");
+      environment.settleCommands();
+      assertEquals(200, Lizzie.board.getData().rootVisits);
+      assertEquals(20, candidate("A1").playouts);
+      assertFalse(environment.frame.trackingDisplaySnapshot().active());
+    }
+  }
+
+  @Test
+  void completedEdgeZeroAttentionSurvivesOutlineOffAndRemovalRestoresFiltering() throws Exception {
+    try (TestEnvironment environment = TestEnvironment.open()) {
+      environment.startSupportedAnalysis();
+      Lizzie.config.limitMaxSuggestion = 1;
+      Lizzie.config.showTrackingPointOutline = false;
+      environment.sendOrdinaryInfo(payload(200, 120, 130, 0.50, 0.60));
+      assertFalse(Lizzie.board.getData().bestMoves.stream().anyMatch(move -> move.coordinate.equals("A1")));
+      assertEquals(TrackingAnalysisController.AddResult.ADDED,
+          environment.frame.addTrackingPoint("A1"));
+      environment.settleCommands();
+      assertEquals(0, candidate("A1").edgeVisits);
+      assertEquals(10, candidate("A1").order);
+      assertTrue(environment.frame.trackingDisplaySnapshot().activePoints().isEmpty());
+      assertTrue(environment.frame.removeTrackingPoint("A1"));
+      environment.settleCommands();
+      assertFalse(Lizzie.board.getData().bestMoves.stream().anyMatch(move -> move.coordinate.equals("A1")));
+      assertTrue(Lizzie.board.getData().bestMovesOutOfRange.stream()
+          .anyMatch(move -> move.coordinate.equals("A1") && move.playouts == 120));
+    }
+  }
+
+
+  @Test
+  void cancellingBeforeFirstFocusPayloadPreservesTheOldNodeAnalysis() throws Exception {
+    try (TestEnvironment environment = TestEnvironment.open()) {
+      environment.startSupportedAnalysis();
+      Lizzie.config.enableLizzieCache = true;
+      environment.sendOrdinaryInfo(payload(10000, 9000, 1000, 0.80, 0.90));
+      environment.engine.sendCommand("kata-analyze B 10 rootInfo true");
+      environment.settleCommands();
+      assertEquals(TrackingAnalysisController.AddResult.ADDED,
+          environment.frame.addTrackingPoint("A1"));
+      environment.frame.clearTrackingPoints();
+      environment.settleCommands();
+      environment.sendOrdinaryInfo(payload(1000, 50000, 40, 0.40, 0.60));
+      assertEquals(10000, Lizzie.board.getData().rootVisits);
+      assertEquals(9000, candidate("A1").playouts);
+      assertEquals(80.0, candidate("A1").winrate, 0.001);
+      assertTrue(environment.frame.trackingDisplaySnapshot().selectedPoints().isEmpty());
+    }
+  }
+
+  @Test
+  void onlyEachPointsOwnNewHighWaterRenewsItsNoProgressDeadline() throws Exception {
+    try (TestEnvironment environment = TestEnvironment.open()) {
+      environment.startSupportedAnalysis();
+      var deadlines = new java.util.ArrayList<Runnable>();
+      Class<?> schedulerType = Class.forName(
+          "featurecat.lizzie.analysis.TrackingAnalysisController$TimeoutScheduler");
+      Class<?> cancellableType = Class.forName(
+          "featurecat.lizzie.analysis.TrackingAnalysisController$Cancellable");
+      Object scheduler = java.lang.reflect.Proxy.newProxyInstance(
+          schedulerType.getClassLoader(), new Class<?>[] {schedulerType}, (proxy, method, args) -> {
+            deadlines.add((Runnable) args[1]);
+            return java.lang.reflect.Proxy.newProxyInstance(cancellableType.getClassLoader(),
+                new Class<?>[] {cancellableType}, (p, m, a) -> null);
+          });
+      var constructor = TrackingAnalysisController.class.getDeclaredConstructor(schedulerType);
+      constructor.setAccessible(true);
+      TrackingAnalysisController controller =
+          (TrackingAnalysisController) constructor.newInstance(scheduler);
+      setField(environment.frame, LizzieFrame.class, "trackingAnalysisController", controller);
+      assertEquals(TrackingAnalysisController.AddResult.ADDED,
+          environment.frame.addTrackingPoint("A1"));
+      environment.settleCommands();
+      assertEquals(TrackingAnalysisController.AddResult.ADDED,
+          environment.frame.addTrackingPoint("B2"));
+      environment.settleCommands();
+      environment.sendOrdinaryInfo(payload(40, 20, 30, 0.5, 0.6));
+      Runnable a1Deadline = deadlines.get(deadlines.size() - 1);
+      environment.sendOrdinaryInfo(payload(50, 10, 40, 0.5, 0.6));
+      environment.sendOrdinaryInfo(payload(60, 15, 50, 0.5, 0.6));
+      a1Deadline.run();
+      assertEquals(java.util.Set.of("B2"), controller.snapshot().activePoints());
+      assertEquals(java.util.Set.of("A1", "B2"), controller.snapshot().selectedPoints());
+      assertTrue(controller.snapshot().visits().get("A1") < controller.snapshot().targetVisits());
+      environment.settleCommands();
+      assertEquals(java.util.Set.of("B2"), controller.snapshot().activePoints());
+    }
+  }
+
+  private static String payload(int root, int a1, int b2, double a1Winrate, double b2Winrate) {
+    return "info move B2 visits " + b2 + " edgeVisits 30 order 0 winrate " + b2Winrate
+        + " scoreLead 5 pv B2 info move A1 visits " + a1
+        + " edgeVisits 0 order 10 winrate " + a1Winrate
+        + " scoreLead 2 pv A1 rootInfo visits " + root;
+  }
+
+  private static MoveData candidate(String coordinate) {
+    return Lizzie.board.getData().bestMoves.stream()
+        .filter(move -> move.coordinate.equals(coordinate)).findFirst().orElseThrow();
   }
 
   private static BoardRenderer configuredRenderer() throws Exception {
@@ -588,99 +706,18 @@ class TrackingProductionCutoverTest {
     }
   }
 
-  private static int countOpaqueRgb(BufferedImage image, Color color) {
-    int expected = color.getRGB() & 0x00FFFFFF;
-    int count = 0;
-    for (int y = 0; y < image.getHeight(); y++) {
-      for (int x = 0; x < image.getWidth(); x++) {
-        int pixel = image.getRGB(x, y);
-        if ((pixel >>> 24) == 0xFF && (pixel & 0x00FFFFFF) == expected) {
-          count++;
-        }
-      }
-    }
-    return count;
-  }
-
-  private static int countArgb(BufferedImage image, Color color) {
-    int expected = color.getRGB();
-    int count = 0;
-    for (int y = 0; y < image.getHeight(); y++) {
-      for (int x = 0; x < image.getWidth(); x++) {
-        if (image.getRGB(x, y) == expected) count++;
-      }
-    }
-    return count;
-  }
-
-  private static int countOpaqueRgbNear(BufferedImage image, Color color, int tolerance) {
-    int count = 0;
-    for (int y = 0; y < image.getHeight(); y++) {
-      for (int x = 0; x < image.getWidth(); x++) {
-        Color pixel = new Color(image.getRGB(x, y), true);
-        if (pixel.getAlpha() == 0xFF
-            && Math.abs(pixel.getRed() - color.getRed()) <= tolerance
-            && Math.abs(pixel.getGreen() - color.getGreen()) <= tolerance
-            && Math.abs(pixel.getBlue() - color.getBlue()) <= tolerance) {
-          count++;
-        }
-      }
-    }
-    return count;
-  }
-
-  private static List<String> opaqueRgbMaskDifferences(
-      BufferedImage first,
-      BufferedImage second,
-      Color color,
-      int centerX,
-      int centerY,
-      int radius) {
-    int expected = color.getRGB() & 0x00FFFFFF;
-    java.util.ArrayList<String> differences = new java.util.ArrayList<>();
-    for (int y = centerY - radius; y <= centerY + radius; y++) {
-      for (int x = centerX - radius; x <= centerX + radius; x++) {
-        int firstPixel = first.getRGB(x, y);
-        int secondPixel = second.getRGB(x, y);
-        boolean firstMatches = (firstPixel >>> 24) == 0xFF && (firstPixel & 0x00FFFFFF) == expected;
-        boolean secondMatches =
-            (secondPixel >>> 24) == 0xFF && (secondPixel & 0x00FFFFFF) == expected;
-        if (firstMatches != secondMatches) differences.add(x + "," + y);
-      }
-    }
-    return differences;
-  }
-
-  private static void closeExclusiveSessionForTest(Leelaz engine) throws Exception {
-    Field field = Leelaz.class.getDeclaredField("exclusiveGtpSession");
-    field.setAccessible(true);
-    Object session = field.get(engine);
-    if (session == null) {
-      return;
-    }
-    Method cancelInitial =
-        Leelaz.class.getDeclaredMethod("cancelExclusiveGtpInitialStopTimeout", session.getClass());
-    cancelInitial.setAccessible(true);
-    cancelInitial.invoke(engine, session);
-    Method cancelRelease =
-        Leelaz.class.getDeclaredMethod("cancelExclusiveGtpReleaseStopTimeout", session.getClass());
-    cancelRelease.setAccessible(true);
-    cancelRelease.invoke(engine, session);
-    Method close = Leelaz.class.getDeclaredMethod("closeExclusiveGtpSession", session.getClass());
-    close.setAccessible(true);
-    close.invoke(engine, session);
-  }
-
   private static final class TestEnvironment implements AutoCloseable {
     private final Leelaz previousEngine;
     private final Board previousBoard;
     private final Config previousConfig;
     private final LizzieFrame previousFrame;
     private final Menu previousMenu;
+    private GtpConsolePane previousConsole;
     private final BottomToolbar previousToolbar;
     private final boolean previousEmpty;
     private final int previousWidth;
     private final int previousHeight;
+    private Object previousZobristTables;
     private final Leelaz engine;
     private final ByteArrayOutputStream output;
     private final LizzieFrame frame;
@@ -722,20 +759,20 @@ class TrackingProductionCutoverTest {
       boolean previousEmpty = EngineManager.isEmpty;
       int previousWidth = Board.boardWidth;
       int previousHeight = Board.boardHeight;
+      Method captureTables = featurecat.lizzie.rules.Zobrist.class.getDeclaredMethod("captureTables");
+      captureTables.setAccessible(true);
+      Object previousZobristTables = captureTables.invoke(null);
 
       Board.boardWidth = 2;
       Board.boardHeight = 2;
+      featurecat.lizzie.rules.Zobrist.init();
       Board board = allocate(TrackingBoard.class);
       board.setHistory(new BoardHistoryList(BoardData.empty(2, 2)));
       Config config = allocate(Config.class);
       config.analyzeUpdateIntervalCentisec = 10;
       config.trackingAnalysisMaxVisits = 100;
       config.showTrackingPointOutline = true;
-      config.trackingPointInteriorColor = new Color(255, 156, 156);
-      config.trackingPointInteriorOpacityPercent = 100;
       config.trackingPointOutlineOpacityPercent = 92;
-      config.trackingPointTextAutoColor = true;
-      config.trackingPointTextColor = Color.BLACK;
       config.currentKataGoRules = "chinese";
       config.extraMode = ExtraMode.Normal;
       config.boardStyle = Config.BOARD_STYLE_JAPANESE;
@@ -768,6 +805,7 @@ class TrackingProductionCutoverTest {
       engine.isLoaded = true;
       engine.started = true;
       engine.isKatago = true;
+      engine.bestMovesEnginename = "KataGo";
       engine.commandLists.addAll(List.of("stop", "kata-analyze"));
       setField(engine, Leelaz.class, "endGetCommandList", true);
       ByteArrayOutputStream output = new ByteArrayOutputStream();
@@ -784,7 +822,7 @@ class TrackingProductionCutoverTest {
       Lizzie.frame = frame;
       LizzieFrame.menu = allocate(SilentMenu.class);
       LizzieFrame.toolbar = allocate(BottomToolbar.class);
-      return new TestEnvironment(
+      TestEnvironment environment = new TestEnvironment(
           previousEngine,
           previousBoard,
           previousConfig,
@@ -797,93 +835,117 @@ class TrackingProductionCutoverTest {
           engine,
           output,
           frame);
+      environment.previousZobristTables = previousZobristTables;
+      environment.previousConsole = Lizzie.gtpConsole;
+      Lizzie.gtpConsole = allocate(SilentConsole.class);
+      return environment;
     }
 
-    void installStableReadBoard() throws Exception {
+    void installStableReadBoard(String... rows) throws Exception {
       ReadBoard readBoard = allocate(ReadBoard.class);
-      BoardHistoryNode node = Lizzie.board.getHistory().getCurrentHistoryNode();
-      setField(readBoard, ReadBoard.class, "trackingEligibilityIdentity", new Object());
-      setField(readBoard, ReadBoard.class, "trackingEligibilityRevision", 7L);
-      setField(readBoard, ReadBoard.class, "trackingEligibilityNode", node);
-      setField(
-          readBoard,
-          ReadBoard.class,
-          "trackingEligibilityBoardRevision",
-          Lizzie.board.getContextRevision());
-      setField(
-          readBoard,
-          ReadBoard.class,
-          "trackingEligibilityReason",
-          ReadBoardTrackingEligibilityAdapter.Reason.STABLE);
+      if (engine.moveFocusCapability() == Leelaz.MoveFocusCapability.UNKNOWN) {
+        startSupportedAnalysis();
+      }
+      for (String name :
+          List.of("conflictTracker", "historyJumpTracker", "localNavigationTracker")) {
+        Field field = ReadBoard.class.getDeclaredField(name);
+        field.setAccessible(true);
+        boolean navigation = name.equals("localNavigationTracker");
+        java.lang.reflect.Constructor<?> constructor =
+            navigation
+                ? field.getType().getDeclaredConstructor(java.util.function.BooleanSupplier.class)
+                : field.getType().getDeclaredConstructor();
+        constructor.setAccessible(true);
+        field.set(
+            readBoard,
+            navigation
+                ? constructor.newInstance((java.util.function.BooleanSupplier) () -> true)
+                : constructor.newInstance());
+      }
+      setField(readBoard, ReadBoard.class, "tempcount", new java.util.ArrayList<Integer>());
       frame.readBoard = readBoard;
+      for (String row : rows.length == 0 ? new String[] {"re=0,0", "re=0,0"} : rows) {
+        readBoard.parseLine(row);
+      }
+      readBoard.parseLine("end");
+      completeSyncConfirmation();
+      assertTrue(
+          readBoard.snapshot().stable(), readBoard.snapshot().reason().name() + " " + commands());
     }
 
-    void installOrdinaryBestMove(String coordinate, int visits, double winrate, double scoreLead) {
-      Lizzie.board.getHistory().getCurrentHistoryNode().getData().bestMoves =
-          List.of(ordinaryMove(coordinate, visits, winrate, scoreLead, 0));
+    private int respondedCommands;
+    private boolean streaming;
+
+    void startSupportedAnalysis() throws Exception {
+      assertTrue(engine.startMoveFocusProbeAfterInitialization());
+      settleCommands();
+      assertEquals(Leelaz.MoveFocusCapability.SUPPORTED, engine.moveFocusCapability());
     }
 
-    void installOrdinaryMoves(
-        String bestCoordinate,
-        int bestVisits,
-        double bestWinrate,
-        double bestScoreLead,
-        String otherCoordinate,
-        int otherVisits,
-        double otherWinrate,
-        double otherScoreLead) {
-      Lizzie.board.getHistory().getCurrentHistoryNode().getData().bestMoves =
-          List.of(
-              ordinaryMove(bestCoordinate, bestVisits, bestWinrate, bestScoreLead, 0),
-              ordinaryMove(otherCoordinate, otherVisits, otherWinrate, otherScoreLead, 1));
-    }
-
-    private static MoveData ordinaryMove(
-        String coordinate, int visits, double winrate, double scoreLead, int order) {
-      MoveData move = new MoveData();
-      move.coordinate = coordinate;
-      move.playouts = visits;
-      move.winrate = winrate;
-      move.scoreMean = scoreLead;
-      move.order = order;
-      move.isKataData = true;
-      return move;
-    }
-
-    void completeInitialFence(int id) throws Exception {
-      dispatch("=" + id);
-      processCommandResponse("=" + id);
-      dispatch("");
-    }
-
-    void completeFinalFence(int id) throws Exception {
-      dispatch("");
-      dispatch("=" + id);
-      dispatch("");
-    }
-
-    void sendTrackingInfo(String line) throws Exception {
-      dispatch(line);
+    void settleCommands() throws Exception {
+      long deadline = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(3);
+      int quiet = 0;
+      while (System.nanoTime() < deadline) {
+        String[] lines = commands().split("\n");
+        if (respondedCommands >= lines.length || lines[respondedCommands].isEmpty()) {
+          if (++quiet >= 5) return;
+          Thread.sleep(1);
+          continue;
+        }
+        quiet = 0;
+        String command = lines[respondedCommands++];
+        if (streaming) {
+          dispatch("");
+          streaming = false;
+        }
+        String id = command.matches("[0-9]+ .*" )
+            ? command.substring(0, command.indexOf(' ')) : "";
+        String body = id.isEmpty() ? command : command.substring(command.indexOf(' ') + 1);
+        dispatch("=" + id);
+        if (body.startsWith("kata-analyze")) streaming = true;
+        else dispatch("");
+      }
+      throw new AssertionError("Command exchange did not settle: " + commands());
     }
 
     private void dispatch(String line) throws Exception {
-      java.lang.reflect.Method method =
-          Leelaz.class.getDeclaredMethod("dispatchExclusiveGtpLine", String.class);
-      method.setAccessible(true);
-      method.invoke(engine, line);
-    }
-
-    private void processCommandResponse(String line) throws Exception {
-      java.lang.reflect.Method method =
-          Leelaz.class.getDeclaredMethod("processCommandResponseLine", String.class);
+      Method method = Leelaz.class.getDeclaredMethod("dispatchReaderLineForTest", String.class);
       method.setAccessible(true);
       method.invoke(engine, line);
     }
 
     private void sendOrdinaryInfo(String line) throws Exception {
-      java.lang.reflect.Method method = Leelaz.class.getDeclaredMethod("parseLine", String.class);
-      method.setAccessible(true);
-      method.invoke(engine, line);
+      dispatch(line);
+      long deadline = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(3);
+      while (System.nanoTime() < deadline) {
+        var snapshot = frame.trackingDisplaySnapshot();
+        boolean delivered = true;
+        for (MoveData move : engine.getBestMoves()) {
+          if (snapshot.selectedPoints().contains(move.coordinate)
+              && snapshot.visits().getOrDefault(move.coordinate, 0) < move.playouts) {
+            delivered = false;
+          }
+        }
+        if (delivered) return;
+        Thread.sleep(1);
+      }
+      throw new AssertionError("Focus progress did not consume the accepted ordinary payload");
+    }
+
+    void acknowledgePositionCommands() throws Exception {
+      settleCommands();
+    }
+
+    void completeSyncConfirmation() throws Exception {
+      java.util.concurrent.CompletableFuture<Void> confirmation =
+          ((TrackingBoard) Lizzie.board).syncConfirmation;
+      long deadline = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(3);
+      do {
+        acknowledgePositionCommands();
+        if (confirmation == null || confirmation.isDone()) break;
+        Thread.sleep(1);
+      } while (System.nanoTime() < deadline);
+      if (confirmation != null) confirmation.get(1, java.util.concurrent.TimeUnit.SECONDS);
     }
 
     String commands() {
@@ -892,16 +954,23 @@ class TrackingProductionCutoverTest {
 
     @Override
     public void close() throws Exception {
-      closeExclusiveSessionForTest(engine);
+      completeSyncConfirmation();
+      frame.clearTrackingPoints();
+      settleCommands();
       Lizzie.leelaz = previousEngine;
       Lizzie.board = previousBoard;
       Lizzie.config = previousConfig;
       Lizzie.frame = previousFrame;
       LizzieFrame.menu = previousMenu;
+      Lizzie.gtpConsole = previousConsole;
       LizzieFrame.toolbar = previousToolbar;
       EngineManager.isEmpty = previousEmpty;
       Board.boardWidth = previousWidth;
       Board.boardHeight = previousHeight;
+      Method restoreTables = featurecat.lizzie.rules.Zobrist.class.getDeclaredMethod(
+          "restoreTables", previousZobristTables.getClass());
+      restoreTables.setAccessible(true);
+      restoreTables.invoke(null, previousZobristTables);
     }
   }
 
@@ -921,8 +990,29 @@ class TrackingProductionCutoverTest {
   }
 
   private static final class TrackingBoard extends Board {
+    private Runnable afterSyncMove;
+    private java.util.concurrent.CompletableFuture<Void> syncConfirmation;
+
+    @Override
+    public java.util.concurrent.CompletableFuture<Void> applyReadBoardSync(
+        Runnable localChanges, java.util.function.BooleanSupplier requiresConfirmation) {
+      syncConfirmation = super.applyReadBoardSync(localChanges, requiresConfirmation);
+      return syncConfirmation;
+    }
+
+    @Override
+    public void placeForSync(int x, int y, Stone color, boolean newBranch) {
+      super.placeForSync(x, y, color, newBranch);
+      if (afterSyncMove != null) afterSyncMove.run();
+    }
+
     @Override
     public void clearAfterMove() {}
+  }
+
+  private static final class SilentConsole extends GtpConsolePane {
+    private SilentConsole() { super((java.awt.Window) null); }
+    @Override public boolean isVisible() { return false; }
   }
 
   private static final class SilentMenu extends Menu {

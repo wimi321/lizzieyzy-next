@@ -49,7 +49,7 @@ public final class LeelazEngineCommandSink implements EngineCommandSink {
       return;
     }
 
-    boolean resumePonder = engine.isPonderingOrWasPonderingBeforeTracking();
+    boolean resumePonder = engine.isPondering();
     Leelaz mirror = engine.resolveLoadSgfMirrorEngine();
     Leelaz.ExactSnapshotRestoreAdmission admission =
         engine.captureExactSnapshotRestoreAdmission(

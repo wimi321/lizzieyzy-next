@@ -1393,6 +1393,7 @@ public class Utils {
       mv.order = moveInfo.getInt("order");
       mv.coordinate = moveInfo.getString("move");
       mv.playouts = moveInfo.getInt("visits");
+      mv.edgeVisits = moveInfo.optInt("edgeVisits", -1);
       mv.winrate = moveInfo.getDouble("winrate") * 100;
       // mv.oriwinrate = mv.winrate;
       mv.lcb = moveInfo.getDouble("lcb") * 100;

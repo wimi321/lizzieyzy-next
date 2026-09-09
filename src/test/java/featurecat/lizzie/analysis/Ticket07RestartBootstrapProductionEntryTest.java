@@ -104,10 +104,7 @@ class Ticket07RestartBootstrapProductionEntryTest {
       setField(engine, "endGetCommandList", true);
       setField(engine, "outputStream", new BufferedOutputStream(new ByteArrayOutputStream()));
 
-      Leelaz.TrackingStreamLeaseAcquisition tracking = activateTracking(engine);
       Object oldBinding = getField(engine, "readerStreamBinding");
-      long oldIncarnation = engine.trackingStreamIncarnation();
-      assertTrue(tracking.lease().isOwned(), "precondition: active tracking must be owned");
 
       PhaseAEngineManager manager = new PhaseAEngineManager(List.of(engine));
       try (WatchService watchService = FileSystems.getDefault().newWatchService()) {
@@ -122,8 +119,6 @@ class Ticket07RestartBootstrapProductionEntryTest {
         assertNotNull(newProcess, "public restart must publish a new process");
         assertTrue(newProcess.isAlive(), "new process must remain alive while startup is gated");
         assertNotSame(oldBinding, newBinding, "restart must publish a new reader binding");
-        assertTrue(engine.trackingStreamIncarnation() > oldIncarnation);
-        assertFalse(tracking.lease().isOwned(), "old tracking must retire at rebind");
         assertFalse(
             engine.sendRawConsoleCommand("showboard"),
             "non-receipt commands must not enter the new restart binding");
@@ -135,14 +130,8 @@ class Ticket07RestartBootstrapProductionEntryTest {
         boolean lifecycleGate = (boolean) getField(engine, "exclusiveGtpLifecycleQueueGate");
         assertTrue(
             markerCreated,
-            "startup name was queued but did not reach the new writer; oldIncarnation="
-                + oldIncarnation
-                + ", newPid="
+            "startup name was queued but did not reach the new writer; newPid="
                 + newPid
-                + ", newIncarnation="
-                + engine.trackingStreamIncarnation()
-                + ", trackingOwned="
-                + tracking.lease().isOwned()
                 + ", lifecycleGate="
                 + lifecycleGate
                 + ", queueHead="
@@ -275,19 +264,6 @@ class Ticket07RestartBootstrapProductionEntryTest {
     }
   }
 
-  private static Leelaz.TrackingStreamLeaseAcquisition activateTracking(Leelaz engine)
-      throws Exception {
-    Leelaz.TrackingStreamLeaseAcquisition tracking =
-        engine.acquireTrackingStreamLease(line -> {}, lease -> {}, lease -> {});
-    Method response = Leelaz.class.getDeclaredMethod("processCommandResponseLine", String.class);
-    response.setAccessible(true);
-    response.invoke(engine, "=800000000");
-    Method dispatch = Leelaz.class.getDeclaredMethod("dispatchExclusiveGtpLine", String.class);
-    dispatch.setAccessible(true);
-    assertTrue((boolean) dispatch.invoke(engine, ""));
-    assertTrue(tracking.lease().send("kata-analyze B 10"));
-    return tracking;
-  }
 
   private static void stopEngineForTest(Leelaz engine) {
     try {

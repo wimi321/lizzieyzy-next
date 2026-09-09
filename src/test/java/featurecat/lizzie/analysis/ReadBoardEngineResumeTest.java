@@ -526,42 +526,6 @@ class ReadBoardEngineResumeTest {
     }
   }
 
-  @Test
-  void oneMoveAutoPlayResumesOrdinaryAnalysisWhenTrackingStillOwnsTheStream() throws Exception {
-    try (EngineResumeHarness harness =
-        EngineResumeHarness.create(rootHistory(emptyStones(), true))) {
-      harness.frame.bothSync = true;
-      harness.leelaz.isKatago = true;
-      buildHistory(harness.board, placement(0, 0, Stone.BLACK));
-      harness.leelaz.Pondering();
-      Leelaz.TrackingStreamLeaseAcquisition acquisition =
-          harness.leelaz.acquireTrackingStreamLease(line -> {}, lease -> {}, lease -> {});
-      assertFalse(dispatchTrackingLine(harness.leelaz, "=800000000"));
-      processTrackingCommandResponse(harness.leelaz, "=800000000");
-      assertTrue(dispatchTrackingLine(harness.leelaz, ""));
-      assertTrue(acquisition.lease().isOwned());
-      assertTrue(acquisition.lease().send("kata-analyze 10"));
-      assertTrue(dispatchTrackingLine(harness.leelaz, "=800000001"));
-      harness.leelaz.Pondering();
-      harness.frame.isAnaPlayingAgainstLeelaz = true;
-
-      harness.sync(
-          snapshot(
-              stones(placement(0, 0, Stone.BLACK), placement(1, 0, Stone.WHITE)),
-              Optional.of(new int[] {1, 0}),
-              Stone.WHITE));
-
-      assertEquals(
-          1,
-          harness.leelaz.ponderCount,
-          "one-move auto-play must submit ordinary analysis when tracking still owns the only stream.");
-
-      assertTrue(acquisition.lease().release());
-      assertTrue(dispatchTrackingLine(harness.leelaz, ""));
-      assertTrue(dispatchTrackingLine(harness.leelaz, "=800000002"));
-      assertTrue(dispatchTrackingLine(harness.leelaz, ""));
-    }
-  }
 
   @Test
   void forceRebuildRegeneratesFailedEngineMoveWhenPlayingAgainstLeelaz() throws Exception {
@@ -2566,23 +2530,12 @@ class ReadBoardEngineResumeTest {
     method.invoke(readBoard, "error place failed");
   }
 
-  private static boolean dispatchTrackingLine(Leelaz engine, String line) throws Exception {
-    Method method = Leelaz.class.getDeclaredMethod("dispatchExclusiveGtpLine", String.class);
-    method.setAccessible(true);
-    return (boolean) method.invoke(engine, line);
-  }
-
   private static boolean beginReadBoardGmaSessionForTest(Leelaz engine) throws Exception {
     Method method = Leelaz.class.getDeclaredMethod("beginReadBoardGmaSession");
     method.setAccessible(true);
     return (boolean) method.invoke(engine);
   }
 
-  private static void processTrackingCommandResponse(Leelaz engine, String line) throws Exception {
-    Method method = Leelaz.class.getDeclaredMethod("processCommandResponseLine", String.class);
-    method.setAccessible(true);
-    method.invoke(engine, line);
-  }
 
   private static void invokeClearFailedLocalMoveStateIfAutoPlaySideChanged(
       ReadBoard readBoard, Stone autoPlayColor) throws Exception {

@@ -1272,7 +1272,7 @@ public class SubBoardRenderer {
         }
       }
       for (MoveData move : bestMoves) {
-        if (move.playouts > maxPlayouts) maxPlayouts = move.playouts;
+        if (move.allocationVisits() > maxPlayouts) maxPlayouts = move.allocationVisits();
 
         if (move.policy > maxPolicy) maxPolicy = move.policy;
         //          if (move.winrate < minWinrate) minWinrate = move.winrate;
@@ -1311,7 +1311,7 @@ public class SubBoardRenderer {
 
           int length = 0;
           if (showHeatAfterCalc)
-            length = (int) ((move.playouts * 2.7f * squareWidth) / maxPlayouts);
+            length = (int) (move.allocationRatio(maxPlayouts) * 2.7f * squareWidth);
           else length = (int) ((move.policy * 2.7f * squareWidth) / maxPolicy);
           drawHeat(g, suggestionX - length / 2, suggestionY - length / 2, length);
         }

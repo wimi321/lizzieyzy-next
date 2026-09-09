@@ -280,7 +280,11 @@ class EngineManagerBenchmarkTest {
       tool.awaitReady();
       BenchmarkExecution old = tool.engine.benchmarkExecution();
       assertTrue(manager.switchEngineIfAvailable(1, true));
-      await(() -> manager.isEngineSwitchActive(1, true));
+      try { await(() -> manager.isEngineSwitchActive(1, true)); }
+      catch (AssertionError failure) {
+        throw new AssertionError(Files.readString(gtp.path.resolve("stdin"))
+            + " failure=" + manager.engineSwitchUiSnapshot(true).failureDetail(), failure);
+      }
       assertFalse(tool.alive());
       assertEquals(BenchmarkExecution.State.CANCELLED, old.snapshot().state());
       assertTrue(Files.readString(gtp.path.resolve("stdin")).contains("clear_board"));

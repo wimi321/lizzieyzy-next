@@ -4788,122 +4788,6 @@ class EngineManagerLifecycleReservationTest {
     }
   }
 
-  @Test
-  void killAllEnginesClaimsActiveTrackingAndRunsImmediatelyOnce() throws Exception {
-    assertDestructiveKillClaimsActiveTracking(true);
-  }
-
-  @Test
-  void killThisEngineClaimsActiveTrackingAndRunsImmediatelyOnce() throws Exception {
-    assertDestructiveKillClaimsActiveTracking(false);
-  }
-
-  @Test
-  void activeRestartResumesPonderAfterFinalBoardFenceAndRetiresTrackingOnRebind()
-      throws Exception {
-    Leelaz previousEngine = Lizzie.leelaz;
-    LizzieFrame previousFrame = Lizzie.frame;
-    boolean previousEmpty = EngineManager.isEmpty;
-    int previousEngineNo = EngineManager.currentEngineNo;
-    TrackingRestartActionLeelaz engine = new TrackingRestartActionLeelaz();
-    CountingRestartGateFrame frame = allocate(CountingRestartGateFrame.class);
-    DeferredSwitchEngineManager manager =
-        new DeferredSwitchEngineManager(List.of(engine));
-    ByteArrayOutputStream output = new ByteArrayOutputStream();
-    setLeelazField(engine, "outputStream", new BufferedOutputStream(output));
-    setCapabilityDiscoveryComplete(engine, true);
-    try {
-      Lizzie.leelaz = engine;
-      Lizzie.frame = frame;
-      EngineManager.isEmpty = false;
-      EngineManager.currentEngineNo = 0;
-      engine.Pondering();
-      Leelaz.TrackingStreamLeaseAcquisition tracking = activateTracking(engine);
-      engine.emitPonderCommand = true;
-      engine.Pondering();
-
-      manager.reStartEngine(0);
-
-      assertEquals(1, engine.shutdownCount);
-      assertEquals(1, manager.switchCount);
-      assertEquals(1, frame.beginCount);
-      assertFalse(tracking.lease().isOwned());
-      assertTrue(engine.hasExclusiveGtpWorkInProgress());
-      assertNotNull(manager.afterSync);
-      assertFalse(engine.isStarted());
-      assertFalse(engine.isLoaded());
-      engine.started = true;
-      engine.isLoaded = true;
-      engine.Pondering();
-      manager.afterSync.run();
-      assertNotNull(engine.confirmation);
-      assertTrue(engine.hasExclusiveGtpWorkInProgress());
-      assertEquals(0, engine.ponderCount);
-      setLeelazField(engine, "currentCmdNum", 15);
-      setLeelazField(engine, "cmdNumber", 16);
-      engine.confirmation.run();
-      assertFalse(engine.hasExclusiveGtpWorkInProgress());
-      assertEquals(1, engine.ponderCount);
-      assertTrue(engine.ponderWhileLifecycleHeld);
-      assertEquals(17, getLeelazField(engine, "cmdNumber"));
-      assertTrue(
-          engine.isResponseUpToDate(),
-          "post-fence ponder must accept the first analysis info without another board action");
-    } finally {
-      Lizzie.leelaz = previousEngine;
-      Lizzie.frame = previousFrame;
-      EngineManager.isEmpty = previousEmpty;
-      EngineManager.currentEngineNo = previousEngineNo;
-    }
-  }
-
-  @Test
-  void activeRestartReleasesLifecycleAfterBoardFenceFailure() throws Exception {
-    Leelaz previousEngine = Lizzie.leelaz;
-    LizzieFrame previousFrame = Lizzie.frame;
-    boolean previousEmpty = EngineManager.isEmpty;
-    int previousEngineNo = EngineManager.currentEngineNo;
-    TrackingRestartActionLeelaz engine = new TrackingRestartActionLeelaz();
-    CountingRestartGateFrame frame = allocate(CountingRestartGateFrame.class);
-    DeferredSwitchEngineManager manager =
-        new DeferredSwitchEngineManager(List.of(engine));
-    setLeelazField(engine, "outputStream", new BufferedOutputStream(new ByteArrayOutputStream()));
-    setCapabilityDiscoveryComplete(engine, true);
-    try {
-      Lizzie.leelaz = engine;
-      Lizzie.frame = frame;
-      EngineManager.isEmpty = false;
-      EngineManager.currentEngineNo = 0;
-      activateTracking(engine);
-
-      manager.reStartEngine(0);
-
-      assertEquals(1, engine.shutdownCount);
-      assertEquals(1, frame.beginCount);
-      assertNotNull(manager.afterSync);
-      assertFalse(engine.isStarted());
-      assertFalse(engine.isLoaded());
-      engine.started = true;
-      engine.isLoaded = true;
-      engine.Pondering();
-      manager.afterSync.run();
-      assertNotNull(engine.rejection);
-      assertTrue(engine.hasExclusiveGtpWorkInProgress());
-
-      engine.rejection.accept("controlled board fence failure");
-
-      assertFalse(engine.hasExclusiveGtpWorkInProgress());
-      assertFalse(engine.isLoaded());
-      assertEquals(0, engine.ponderCount);
-      assertFalse(engine.hasUnrestoredReadBoardGmaState());
-      assertEquals(1, manager.failureCount);
-    } finally {
-      Lizzie.leelaz = previousEngine;
-      Lizzie.frame = previousFrame;
-      EngineManager.isEmpty = previousEmpty;
-      EngineManager.currentEngineNo = previousEngineNo;
-    }
-  }
 
   @Test
   void unresponsiveRemoteAnalysisRestartsAndRestoresThroughExistingLifecycle() throws Exception {
@@ -5139,59 +5023,6 @@ class EngineManagerLifecycleReservationTest {
     }
   }
 
-  @Test
-  void retainedSwitchRejectsOldTrackingOrdinaryCommandAtQueueGate() throws Exception {
-    Leelaz previousEngine = Lizzie.leelaz;
-    LizzieFrame previousFrame = Lizzie.frame;
-    Config previousConfig = Lizzie.config;
-    TrackingKillLeelaz current = new TrackingKillLeelaz();
-    TrackingRestartActionLeelaz target = new TrackingRestartActionLeelaz();
-    LifecycleFrame frame = allocate(LifecycleFrame.class);
-    ByteArrayOutputStream output = new ByteArrayOutputStream();
-    current.installCommandOutputForTest(new BufferedOutputStream(output));
-    setCapabilityDiscoveryComplete(current, true);
-    DeferredSwitchEngineManager manager =
-        new DeferredSwitchEngineManager(List.of(current, target));
-    try {
-      Lizzie.frame = frame;
-      Lizzie.leelaz = current;
-      Lizzie.config = allocate(Config.class);
-      activateTracking(current);
-
-      manager.switchEngine(1, true);
-      target.started = true;
-      target.isLoaded = true;
-      target.Pondering();
-      Lizzie.leelaz = target;
-
-      assertEquals(1, manager.switchCount);
-      assertNotNull(manager.afterSync);
-      assertEquals(
-          "800000000 stop\n800000001 kata-analyze B 10\n800000002 stop\n",
-          output.toString(StandardCharsets.UTF_8));
-      current.sendCommand("stop");
-      manager.afterSync.run();
-      assertNotNull(target.confirmation);
-      target.confirmation.run();
-      assertEquals(0, target.ponderCount, "regular switch must preserve its existing ponder path");
-      assertEquals(
-          "800000000 stop\n800000001 kata-analyze B 10\n800000002 stop\n",
-          output.toString(StandardCharsets.UTF_8));
-
-      assertTrue(dispatchExclusiveLine(current, ""));
-      assertTrue(dispatchExclusiveLine(current, "=800000002"));
-      assertTrue(dispatchExclusiveLine(current, ""));
-      assertFalse(current.hasExclusiveGtpWorkInProgress());
-      assertEquals(
-          "800000000 stop\n800000001 kata-analyze B 10\n800000002 stop\n",
-          output.toString(StandardCharsets.UTF_8),
-          "an uncredentialed ordinary command rejected behind the lifecycle gate must not replay");
-    } finally {
-      Lizzie.leelaz = previousEngine;
-      Lizzie.frame = previousFrame;
-      Lizzie.config = previousConfig;
-    }
-  }
 
   @Test
   void configurationSwitchReportsReservationConflictWithoutGenericPopup() throws Exception {
@@ -5751,7 +5582,8 @@ class EngineManagerLifecycleReservationTest {
               .filter(
                   method ->
                       method.getName().equals("releaseEngineLifecycleAfterBoardSync")
-                          && method.getParameterCount() == 8)
+                          && method.getParameterCount() == 7
+                          && method.getParameterTypes()[5] == Runnable.class)
               .findFirst()
               .orElseThrow();
       callbackFactory.setAccessible(true);
@@ -5765,7 +5597,6 @@ class EngineManagerLifecycleReservationTest {
                   true,
                   false,
                   (Runnable) releaseCount::incrementAndGet,
-                  false,
                   null);
 
       if (callbackOnEdt) {
@@ -5893,7 +5724,8 @@ class EngineManagerLifecycleReservationTest {
               .filter(
                   method ->
                       method.getName().equals("releaseEngineLifecycleAfterBoardSync")
-                          && method.getParameterCount() == 8)
+                          && method.getParameterCount() == 7
+                          && method.getParameterTypes()[5] == Runnable.class)
               .findFirst()
               .orElseThrow();
       callbackFactory.setAccessible(true);
@@ -5911,7 +5743,6 @@ class EngineManagerLifecycleReservationTest {
                         releaseCount.incrementAndGet();
                         throw cleanupFailure;
                       },
-                  false,
                   lifecycleRestore);
 
       AssertionError thrown = assertThrows(AssertionError.class, completion::run);
@@ -6164,11 +5995,11 @@ class EngineManagerLifecycleReservationTest {
       EngineManager.currentEngineNo = 0;
       EngineManager.currentEngineNo2 = 1;
       Lizzie.engineStartupStatus.ready();
+      secondary.restartOutput = gatedOutput;
 
       manager.reStartEngine2();
       assertEquals(1, secondary.shutdownCount);
       assertNotNull(manager.afterSync);
-      setLeelazField(secondary, "outputStream", new BufferedOutputStream(gatedOutput));
 
       fenceThread = new Thread(() -> manager.afterSync.run(), "secondary-restart-board-fence");
       fenceThread.start();
@@ -6203,7 +6034,6 @@ class EngineManagerLifecycleReservationTest {
       assertEquals(0, primary.ponderCount);
       assertEquals(0, secondary.ponderCount);
       assertFalse(secondary.responseWatermarkWhileLifecycleHeld);
-      assertFalse(secondary.isResponseUpToDate());
       assertEquals(1, manager.failureCount);
       assertFalse(primary.hasExclusiveGtpWorkInProgress());
       assertFalse(secondary.hasExclusiveGtpWorkInProgress());
@@ -6255,7 +6085,7 @@ class EngineManagerLifecycleReservationTest {
     BottomToolbar previousToolbar = LizzieFrame.toolbar;
     boolean previousEmpty = EngineManager.isEmpty;
     TrackingRestartActionLeelaz engine = new TrackingRestartActionLeelaz();
-    CountingRestartGateFrame frame = allocate(CountingRestartGateFrame.class);
+    CountingRestartFrame frame = allocate(CountingRestartFrame.class);
     CountingRestartMenu menu = allocate(CountingRestartMenu.class);
     BottomToolbar toolbar = allocate(SilentSwitchToolbar.class);
     PreparedRestoreBoard board = preparedRestoreBoard();
@@ -6336,7 +6166,6 @@ class EngineManagerLifecycleReservationTest {
     Lizzie.leelaz = engine;
     Leelaz.ExclusiveGtpLifecycleReservation reservation = null;
     try {
-      activateTracking(engine);
       reservation = engine.beginExclusiveGtpLifecycleReservation();
       assertNotNull(reservation);
       rebindReader(engine);
@@ -6365,7 +6194,6 @@ class EngineManagerLifecycleReservationTest {
     Lizzie.leelaz = engine;
     Leelaz.ExclusiveGtpLifecycleReservation reservation = null;
     try {
-      activateTracking(engine);
       reservation = engine.beginExclusiveGtpLifecycleReservation();
       assertNotNull(reservation);
       rebindReader(engine);
@@ -6401,7 +6229,6 @@ class EngineManagerLifecycleReservationTest {
     Lizzie.leelaz = engine;
     Leelaz.ExclusiveGtpLifecycleReservation reservation = null;
     try {
-      activateTracking(engine);
       reservation = engine.beginExclusiveGtpLifecycleReservation();
       assertNotNull(reservation);
       rebindReader(engine);
@@ -6431,7 +6258,6 @@ class EngineManagerLifecycleReservationTest {
     setLeelazField(engine, "outputStream", new BufferedOutputStream(new ByteArrayOutputStream()));
     Lizzie.leelaz = engine;
     try {
-      activateTracking(engine);
       Leelaz.ExclusiveGtpLifecycleReservation reservation =
           engine.beginExclusiveGtpLifecycleReservation();
       assertNotNull(reservation);
@@ -6447,129 +6273,6 @@ class EngineManagerLifecycleReservationTest {
     }
   }
 
-  @Test
-  void restartGateFailureReleasesLifecycleBeforeDestructiveWork() throws Exception {
-    Leelaz previousEngine = Lizzie.leelaz;
-    LizzieFrame previousFrame = Lizzie.frame;
-    boolean previousEmpty = EngineManager.isEmpty;
-    TrackingRestartActionLeelaz engine = new TrackingRestartActionLeelaz();
-    setLeelazField(engine, "outputStream", new BufferedOutputStream(new ByteArrayOutputStream()));
-    setCapabilityDiscoveryComplete(engine, true);
-    GateFailureEngineManager manager = new GateFailureEngineManager(List.of(engine));
-    try {
-      Lizzie.leelaz = engine;
-      Lizzie.frame = null;
-      EngineManager.isEmpty = false;
-      Leelaz.TrackingStreamLeaseAcquisition tracking = activateTracking(engine);
-      Lizzie.frame = allocate(FailingRestartGateFrame.class);
-
-      manager.reStartEngine(0);
-
-      assertEquals(0, engine.shutdownCount);
-      assertEquals(1, manager.failureCount);
-      assertEquals(Leelaz.TrackingReleaseDisposition.CLEARED, tracking.lease().disposition());
-      assertFalse((boolean) getLeelazField(engine, "exclusiveGtpLifecycleTransition"));
-      assertTrue(dispatchExclusiveLine(engine, ""));
-      assertTrue(dispatchExclusiveLine(engine, "=800000002"));
-      assertTrue(dispatchExclusiveLine(engine, ""));
-      assertFalse(tracking.lease().isOwned());
-    } finally {
-      Lizzie.leelaz = previousEngine;
-      Lizzie.frame = previousFrame;
-      EngineManager.isEmpty = previousEmpty;
-    }
-  }
-
-  @Test
-  void ordinaryRestartGateErrorReleasesLifecycleAndPropagatesOriginalError() throws Exception {
-    Leelaz previousEngine = Lizzie.leelaz;
-    LizzieFrame previousFrame = Lizzie.frame;
-    Board previousBoard = Lizzie.board;
-    boolean previousEmpty = EngineManager.isEmpty;
-    int previousEngineNo = EngineManager.currentEngineNo;
-    TrackingRestartActionLeelaz engine = new TrackingRestartActionLeelaz();
-    setLeelazField(engine, "outputStream", new BufferedOutputStream(new ByteArrayOutputStream()));
-    setCapabilityDiscoveryComplete(engine, true);
-    AssertionError gateFailure = new AssertionError("controlled ordinary restart gate error");
-    GateFailureEngineManager manager = new GateFailureEngineManager(List.of(engine));
-    try {
-      Lizzie.leelaz = engine;
-      Lizzie.frame = null;
-      Lizzie.board = null;
-      EngineManager.isEmpty = false;
-      EngineManager.currentEngineNo = 0;
-      Leelaz.TrackingStreamLeaseAcquisition tracking = activateTracking(engine);
-      Lizzie.frame = allocate(ErrorRestartGateFrame.class);
-      ((ErrorRestartGateFrame) Lizzie.frame).failure = gateFailure;
-
-      AssertionError observed =
-          assertThrows(AssertionError.class, () -> manager.reStartEngine(0));
-
-      assertSame(gateFailure, observed);
-      assertEquals(0, engine.shutdownCount);
-      assertEquals(Leelaz.TrackingReleaseDisposition.CLEARED, tracking.lease().disposition());
-      assertFalse((boolean) getLeelazField(engine, "exclusiveGtpLifecycleTransition"));
-      assertTrue(dispatchExclusiveLine(engine, ""));
-      assertTrue(dispatchExclusiveLine(engine, "=800000002"));
-      assertTrue(dispatchExclusiveLine(engine, ""));
-      assertFalse(tracking.lease().isOwned());
-    } finally {
-      Lizzie.leelaz = previousEngine;
-      Lizzie.frame = previousFrame;
-      Lizzie.board = previousBoard;
-      EngineManager.isEmpty = previousEmpty;
-      EngineManager.currentEngineNo = previousEngineNo;
-    }
-  }
-
-  @Test
-  void preparedRestartGateErrorClosesStartupSynchronizationAndPropagatesOriginalError()
-      throws Exception {
-    Leelaz previousEngine = Lizzie.leelaz;
-    LizzieFrame previousFrame = Lizzie.frame;
-    Board previousBoard = Lizzie.board;
-    Config previousConfig = Lizzie.config;
-    boolean previousEmpty = EngineManager.isEmpty;
-    int previousEngineNo = EngineManager.currentEngineNo;
-    TrackingRestartActionLeelaz engine = new TrackingRestartActionLeelaz();
-    setLeelazField(engine, "outputStream", new BufferedOutputStream(new ByteArrayOutputStream()));
-    setCapabilityDiscoveryComplete(engine, true);
-    AssertionError gateFailure = new AssertionError("controlled prepared restart gate error");
-    GateFailureEngineManager manager = new GateFailureEngineManager(List.of(engine));
-    try {
-      Config config = allocate(Config.class);
-      config.extraMode = ExtraMode.Normal;
-      Lizzie.config = config;
-      Lizzie.leelaz = engine;
-      Lizzie.frame = null;
-      Lizzie.board = preparedRestoreBoard();
-      EngineManager.isEmpty = false;
-      EngineManager.currentEngineNo = 0;
-      Leelaz.TrackingStreamLeaseAcquisition tracking = activateTracking(engine);
-      Lizzie.frame = allocate(ErrorRestartGateFrame.class);
-      ((ErrorRestartGateFrame) Lizzie.frame).failure = gateFailure;
-
-      AssertionError observed =
-          assertThrows(AssertionError.class, () -> manager.reStartEngine(0));
-
-      assertSame(gateFailure, observed);
-      assertEquals(0, engine.shutdownCount);
-      assertEquals(Leelaz.TrackingReleaseDisposition.CLEARED, tracking.lease().disposition());
-      assertFalse((boolean) getLeelazField(engine, "exclusiveGtpLifecycleTransition"));
-      assertNull(getLeelazField(engine, "initialEngineSyncAdmission"));
-      assertTrue(dispatchExclusiveLine(engine, ""));
-      assertTrue(dispatchExclusiveLine(engine, "=800000002"));
-      assertTrue(dispatchExclusiveLine(engine, ""));
-      assertFalse(tracking.lease().isOwned());
-    } finally {
-      Lizzie.leelaz = previousEngine;
-      Lizzie.frame = previousFrame;
-      Lizzie.board = previousBoard;
-      Lizzie.config = previousConfig;
-      EngineManager.isEmpty = previousEmpty;
-      EngineManager.currentEngineNo = previousEngineNo;
-    }
-  }
 
   @Test
   void secondaryRestartConflictDoesNotShutDownSecondaryEngine() throws Exception {
@@ -8015,49 +7718,6 @@ class EngineManagerLifecycleReservationTest {
     return engine;
   }
 
-  private static void assertDestructiveKillClaimsActiveTracking(boolean killAll) throws Exception {
-    Leelaz previousEngine = Lizzie.leelaz;
-    LizzieFrame previousFrame = Lizzie.frame;
-    JFontMenu previousEngineMenu = Menu.engineMenu;
-    boolean previousEmpty = EngineManager.isEmpty;
-    int previousEngineNo = EngineManager.currentEngineNo;
-    TrackingKillLeelaz engine = new TrackingKillLeelaz();
-    LifecycleFrame frame = allocate(LifecycleFrame.class);
-    ByteArrayOutputStream output = new ByteArrayOutputStream();
-    setLeelazField(engine, "outputStream", new BufferedOutputStream(output));
-    setCapabilityDiscoveryComplete(engine, true);
-    try {
-      Lizzie.frame = frame;
-      Lizzie.leelaz = engine;
-      Menu.engineMenu = new JFontMenu();
-      EngineManager.isEmpty = false;
-      EngineManager.currentEngineNo = 0;
-      Leelaz.TrackingStreamLeaseAcquisition tracking = activateTracking(engine);
-      EngineManager manager = new EngineManager(List.of(engine));
-
-      if (killAll) {
-        assertTrue(manager.killAllEngines());
-      } else {
-        manager.killThisEngines();
-      }
-
-      assertEquals(1, engine.forceQuitCount);
-      assertEquals(Leelaz.TrackingReleaseDisposition.CLEARED, tracking.lease().disposition());
-      assertEquals(
-          "800000000 stop\n800000001 kata-analyze B 10\n800000002 stop\n",
-          output.toString(StandardCharsets.UTF_8));
-      assertEquals(1, frame.trackingInvalidationCount);
-      assertTrue(dispatchExclusiveLine(engine, ""));
-      assertTrue(dispatchExclusiveLine(engine, "=800000002"));
-      assertTrue(dispatchExclusiveLine(engine, ""));
-    } finally {
-      Lizzie.leelaz = previousEngine;
-      Lizzie.frame = previousFrame;
-      Menu.engineMenu = previousEngineMenu;
-      EngineManager.isEmpty = previousEmpty;
-      EngineManager.currentEngineNo = previousEngineNo;
-    }
-  }
 
   @SuppressWarnings("unchecked")
   private static <T> T allocate(Class<T> type) throws Exception {
@@ -8432,11 +8092,6 @@ class EngineManagerLifecycleReservationTest {
     }
   }
 
-  private static boolean dispatchExclusiveLine(Leelaz engine, String line) throws Exception {
-    Method method = Leelaz.class.getDeclaredMethod("dispatchExclusiveGtpLine", String.class);
-    method.setAccessible(true);
-    return (boolean) method.invoke(engine, line);
-  }
 
   private static void processCommandResponse(Leelaz engine, String line) throws Exception {
     Method method = Leelaz.class.getDeclaredMethod("processCommandResponseLine", String.class);
@@ -8473,15 +8128,6 @@ class EngineManagerLifecycleReservationTest {
     field.setBoolean(engine, value);
   }
 
-  private static Leelaz.TrackingStreamLeaseAcquisition activateTracking(Leelaz engine)
-      throws Exception {
-    Leelaz.TrackingStreamLeaseAcquisition tracking =
-        engine.acquireTrackingStreamLease(line -> {}, lease -> {}, lease -> {});
-    processCommandResponse(engine, "=800000000");
-    assertTrue(dispatchExclusiveLine(engine, ""));
-    assertTrue(tracking.lease().send("kata-analyze B 10"));
-    return tracking;
-  }
 
   private static void rebindReader(Leelaz engine) {
     rebindReader(engine, new ByteArrayOutputStream());
@@ -8996,7 +8642,7 @@ class EngineManagerLifecycleReservationTest {
       Lizzie.leelaz2 = target;
       target.started = true;
       target.isLoaded = true;
-      this.afterSync = afterSync;
+      this.afterSync = target.withCurrentRestartBootstrapReceipt(afterSync);
     }
 
     @Override
@@ -9061,22 +8707,6 @@ class EngineManagerLifecycleReservationTest {
 
   }
 
-  private static final class TrackingKillLeelaz extends Leelaz {
-    private int forceQuitCount;
-
-    private TrackingKillLeelaz() throws Exception {
-      super("");
-      started = true;
-      isLoaded = true;
-      isKatago = true;
-      commandLists.addAll(List.of("stop", "boardsize", "komi", "kata-analyze"));
-    }
-
-    @Override
-    public void forceQuit() {
-      forceQuitCount++;
-    }
-  }
 
   private static final class TrackingRestartActionLeelaz extends Leelaz {
     private int shutdownCount;
@@ -9096,6 +8726,7 @@ class EngineManagerLifecycleReservationTest {
     private Runnable onResponseWatermark;
     private boolean useRealBoardSynchronizationFence;
     private long boardSynchronizationTimeoutMillis = -1L;
+    private java.io.OutputStream restartOutput;
 
     private TrackingRestartActionLeelaz() throws Exception {
       super("");
@@ -9108,7 +8739,8 @@ class EngineManagerLifecycleReservationTest {
     @Override
     public void shutdown() {
       shutdownCount++;
-      rebindReader(this);
+      if (restartOutput == null) rebindReader(this);
+      else installFreshCommandOutputForTest(restartOutput);
     }
 
     @Override
@@ -9174,17 +8806,6 @@ class EngineManagerLifecycleReservationTest {
     }
   }
 
-  private static final class LifecycleFrame extends LizzieFrame {
-    private int trackingInvalidationCount;
-
-    @Override
-    public void invalidateTrackingAnalysis() {
-      trackingInvalidationCount++;
-    }
-
-    @Override
-    public void refresh() {}
-  }
 
   private static final class SilentSwitchFrame extends LizzieFrame {
     private int reSetLocCount;
@@ -11429,7 +11050,7 @@ class EngineManagerLifecycleReservationTest {
       config.fastChange = true;
       config.extraMode = ExtraMode.Double_Engine;
       Lizzie.config = config;
-      Lizzie.frame = allocate(CountingRestartGateFrame.class);
+      Lizzie.frame = allocate(CountingRestartFrame.class);
       LizzieFrame.toolbar = allocate(SilentSwitchToolbar.class);
       LizzieFrame.menu = allocate(SilentUpdateMenu.class);
       Menu.engineMenu = new SilentJFontMenu();
@@ -11602,20 +11223,9 @@ class EngineManagerLifecycleReservationTest {
     }
   }
 
-  private static final class CountingRestartGateFrame extends LizzieFrame {
-    private int beginCount;
+  private static final class CountingRestartFrame extends LizzieFrame {
     private int reSetLocCount;
 
-    @Override
-    public boolean isDisplayable() {
-      return true;
-    }
-
-    @Override
-    public RestartInteractionGate beginRestartInteractionGate() {
-      beginCount++;
-      return () -> {};
-    }
 
     @Override
     public void reSetLoc() {
@@ -11652,44 +11262,6 @@ class EngineManagerLifecycleReservationTest {
     }
   }
 
-  private static final class FailingRestartGateFrame extends LizzieFrame {
-    @Override
-    public boolean isDisplayable() {
-      return true;
-    }
-
-    @Override
-    public RestartInteractionGate beginRestartInteractionGate() {
-      throw new IllegalStateException("controlled restart gate failure");
-    }
-  }
-
-  private static final class ErrorRestartGateFrame extends LizzieFrame {
-    private AssertionError failure;
-
-    @Override
-    public boolean isDisplayable() {
-      return true;
-    }
-
-    @Override
-    public RestartInteractionGate beginRestartInteractionGate() {
-      throw failure;
-    }
-  }
-
-  private static final class GateFailureEngineManager extends EngineManager {
-    private int failureCount;
-
-    private GateFailureEngineManager(List<Leelaz> engines) {
-      super(engines);
-    }
-
-    @Override
-    protected void showEngineSynchronizationFailure(Leelaz engine) {
-      failureCount++;
-    }
-  }
 
   private static final class OrderedLifecycleLeelaz extends Leelaz {
     private final String name;

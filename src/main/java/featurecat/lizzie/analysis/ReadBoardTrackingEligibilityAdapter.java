@@ -103,7 +103,7 @@ public final class ReadBoardTrackingEligibilityAdapter {
     if (!before.matches(readBoardContext)) {
       return TrackingAnalysisController.AddResult.LEASE_UNAVAILABLE;
     }
-    source.observeInvalidation(before.identity(), controller::clear);
+    source.observeInvalidation(before.identity(), () -> controller.contextChanged(null));
     return controller.addPoint(
         coordinate,
         context,

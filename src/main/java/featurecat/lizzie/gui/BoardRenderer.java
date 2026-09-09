@@ -1641,9 +1641,9 @@ public class BoardRenderer {
     mouseOverTempNode = Lizzie.frame.getDisplayNode();
     int maxPlayouts = 0;
     for (MoveData move : bestMoves) {
-      if (move.playouts > maxPlayouts) maxPlayouts = move.playouts;
+      if (move.allocationVisits() > maxPlayouts) maxPlayouts = move.allocationVisits();
     }
-    float percentPlayouts = (float) suggestedMove.get().playouts / maxPlayouts;
+    float percentPlayouts = (float) suggestedMove.get().allocationRatio(maxPlayouts);
 
     //        (Lizzie.config.leelaversion >= 17 && Lizzie.config.showlcbcolor &&
     // !Lizzie.leelaz.noLcb)
@@ -2579,7 +2579,7 @@ public class BoardRenderer {
         double minWinrate = 100.0;
         double maxScoreMean = -300;
         for (MoveData move : bestMoves) {
-          if (move.playouts > maxPlayouts) maxPlayouts = move.playouts;
+          if (move.allocationVisits() > maxPlayouts) maxPlayouts = move.allocationVisits();
           if (move.winrate > maxWinrate) maxWinrate = move.winrate;
           if (move.winrate < minWinrate) minWinrate = move.winrate;
           if (move.isKataData && Lizzie.config.showScoremeanInSuggestion) {
@@ -2609,7 +2609,6 @@ public class BoardRenderer {
             }
             continue; // This actually can happen
           }
-          if (selectedTrackingPoints.contains(move.coordinate)) continue;
           Optional<int[]> coordsOpt = Board.asCoordinates(move.coordinate);
           if (!coordsOpt.isPresent()) {
             continue;
@@ -2653,7 +2652,7 @@ public class BoardRenderer {
               Lizzie.config.winrateAlwaysBlack
                   && !Lizzie.frame.getDisplayNode().getData().blackToPlay;
           double fraction = 0;
-          float percentPlayouts = (float) move.playouts / maxPlayouts;
+          float percentPlayouts = (float) move.allocationRatio(maxPlayouts);
           int[] coords = coordsOpt.get();
 
           int suggestionX = x + scaledMarginWidth + squareWidth * coords[0];
@@ -2671,7 +2670,8 @@ public class BoardRenderer {
               Board.getIndex(coords[0], coords[1]) < hasDrawBackground.length
                   ? hasDrawBackground[Board.getIndex(coords[0], coords[1])]
                   : false;
-          if (outOfOrder && !isMouseOver && hasBackground) continue;
+          if (outOfOrder && !isMouseOver && hasBackground
+              && !selectedTrackingPoints.contains(move.coordinate)) continue;
 
           float hue;
           // boolean hue2;
@@ -2694,7 +2694,7 @@ public class BoardRenderer {
           Color hsbColor = Color.getHSBColor(hue, saturation, brightness);
           Color color =
               new Color(hsbColor.getRed(), hsbColor.getGreen(), hsbColor.getBlue(), (int) alpha);
-          boolean needShow = false;
+          boolean needShow = selectedTrackingPoints.contains(move.coordinate);
           if (Lizzie.frame.priorityMoveCoords.size() > 0) {
             for (String coord : Lizzie.frame.priorityMoveCoords) {
               if (coord.equals(move.coordinate)) needShow = true;
@@ -2855,7 +2855,9 @@ public class BoardRenderer {
                 showPlayouts,
                 showScoreLead,
                 canShowMaxColor && hasMaxWinrate ? maxColor : normalColor,
-                canShowMaxColor && move.playouts == maxPlayouts ? maxColor : normalColor,
+                canShowMaxColor && move.allocationVisits() == maxPlayouts
+                    ? maxColor
+                    : normalColor,
                 canShowMaxColor && move.scoreMean == maxScoreMean ? maxColor : normalColor);
           }
         }
@@ -2867,110 +2869,26 @@ public class BoardRenderer {
   }
 
   private void drawTrackingOverlay(Graphics2D g) {
-    if (boardIndex != 0 || isShowingBranch) return;
-    float alphaFactor = 5.0f;
-    try {
-      if (Lizzie.board == null) return;
-      TrackingAnalysisController.DisplaySnapshot trackingSnapshot =
-          Lizzie.frame == null ? null : Lizzie.frame.trackingDisplaySnapshot();
-      boolean currentTrackingDisplay =
-          Lizzie.frame != null && Lizzie.frame.isTrackingDisplayCurrent(trackingSnapshot);
-      MoveData ordinaryBestMove =
-          bestMoves == null || bestMoves.isEmpty() ? null : bestMoves.get(0);
-      Map<String, TrackingAnalysisController.PointResult> trackingResults =
-          currentTrackingDisplay
-              ? trackingSnapshot.results()
-              : java.util.Collections.emptyMap();
-      if (currentTrackingDisplay) {
-        java.util.Collection<TrackingAnalysisController.PointResult> trackedMoves =
-            trackingResults.values();
-        if (!trackedMoves.isEmpty()) {
-          long maxPlayoutsTracked = 0;
-          for (TrackingAnalysisController.PointResult result : trackedMoves) {
-            if (result.visits() > maxPlayoutsTracked) maxPlayoutsTracked = result.visits();
-          }
-          for (TrackingAnalysisController.PointResult result : trackedMoves) {
-            String moveCoord = result.coordinate();
-            if (moveCoord == null) continue;
-            int movePlayouts = result.visits();
-            double moveWinrate = result.winrate();
-            double moveScoreMean = result.scoreLead();
-            if (movePlayouts == 0) continue;
-            Optional<int[]> coordsOpt = Board.asCoordinates(moveCoord);
-            if (!coordsOpt.isPresent()) continue;
-            int[] tCoords = coordsOpt.get();
-            if (tCoords[0] < 0
-                || tCoords[0] >= Board.boardWidth
-                || tCoords[1] < 0
-                || tCoords[1] >= Board.boardHeight) continue;
-            int suggestionX = x + scaledMarginWidth + squareWidth * tCoords[0];
-            int suggestionY = y + scaledMarginHeight + squareHeight * tCoords[1];
-
-            float alphaRatio =
-                maxPlayoutsTracked > 0
-                    ? max(
-                        0,
-                        (float) log((double) movePlayouts / maxPlayoutsTracked) / alphaFactor + 1)
-                    : 1.0f;
-            Color interiorColor =
-                withOpacity(
-                    Lizzie.config.trackingPointInteriorColor,
-                    Lizzie.config.trackingPointInteriorOpacityPercent);
-
-            g.setColor(interiorColor);
-            fillCircle(g, suggestionX, suggestionY, stoneRadius + 1);
-            float alphaCircle = 48 + 48 * alphaRatio;
-            g.setColor(new Color(0, 0, 0, (int) alphaCircle));
-            drawCircle(g, suggestionX, suggestionY, stoneRadius + 1, 26.5f);
-
-            boolean flipWinrate =
-                Lizzie.config.winrateAlwaysBlack
-                    && !Lizzie.frame.getDisplayNode().getData().blackToPlay;
-            double roundedWinrate = round(moveWinrate * 10) / 10.0;
-            if (flipWinrate) roundedWinrate = 100.0 - roundedWinrate;
-            Color textColor =
-                Lizzie.config.trackingPointTextAutoColor
-                    ? readableTextColor(
-                        trackingInteriorDisplayColor(interiorColor, suggestionX, suggestionY))
-                    : Lizzie.config.trackingPointTextColor;
-            double ordinaryBestScore =
-                ordinaryBestMove == null ? moveScoreMean : ordinaryBestMove.scoreMean;
-            drawSuggestionText(
-                g,
-                suggestionX,
-                suggestionY,
-                roundedWinrate,
-                movePlayouts,
-                moveScoreMean,
-                ordinaryBestScore,
-                Lizzie.frame.shouldShowSuggestionWinrateFor(Lizzie.frame.getDisplayNode()),
-                Lizzie.frame.shouldShowSuggestionPlayoutsFor(Lizzie.frame.getDisplayNode()),
-                Lizzie.config.showScoremeanInSuggestion,
-                textColor,
-                textColor,
-                textColor);
-          }
-        }
+    if (boardIndex != 0 || isShowingBranch || Lizzie.frame == null) return;
+    TrackingAnalysisController.DisplaySnapshot snapshot = Lizzie.frame.trackingDisplaySnapshot();
+    if (!Lizzie.frame.isTrackingDisplayCurrent(snapshot)) return;
+    BoardData data = Lizzie.frame.getDisplayNode().getData();
+    MoveData baseline = null;
+    for (MoveData candidate : data.bestMoves) {
+      if (candidate.order == 0) {
+        baseline = candidate;
+        break;
       }
-      drawTrackedPointMarkers(
-          g,
-          currentTrackingDisplay
-              ? trackingSnapshot.selectedPoints()
-              : java.util.Collections.emptySet(),
-          trackingResults,
-          ordinaryBestMove);
-    } catch (Exception e) {
-      e.printStackTrace();
     }
+    drawTrackedPointMarkers(g, snapshot, data.bestMoves, baseline);
   }
 
-  private Color trackingResultColor(
-      MoveData ordinaryBestMove, TrackingAnalysisController.PointResult result) {
-    if (ordinaryBestMove == null) return new Color(112, 118, 124);
-    double winrateLoss = ordinaryBestMove.winrate - result.winrate();
+  private Color trackingResultColor(MoveData ordinaryBestMove, MoveData result) {
+    if (ordinaryBestMove == null || result == null) return new Color(112, 118, 124);
+    double winrateLoss = ordinaryBestMove.winrate - result.winrate;
     Optional<Double> scoreLoss =
-        ordinaryBestMove.isKataData
-            ? Optional.of(ordinaryBestMove.scoreMean - result.scoreLead())
+        ordinaryBestMove.isKataData && result.isKataData
+            ? Optional.of(ordinaryBestMove.scoreMean - result.scoreMean)
             : Optional.empty();
     return MoveRankDefinition.classifyLosses(winrateLoss, scoreLoss, Lizzie.config)
         .color(Lizzie.config.useMorandiColors);
@@ -3144,80 +3062,25 @@ public class BoardRenderer {
     }
   }
 
-  private static Color readableTextColor(Color background) {
-    double luminance = relativeLuminance(background);
-    double blackContrast = (luminance + 0.05) / 0.05;
-    double whiteContrast = 1.05 / (luminance + 0.05);
-    return whiteContrast > blackContrast ? Color.WHITE : Color.BLACK;
-  }
-
-  private static double relativeLuminance(Color color) {
-    double red = linearColorComponent(color.getRed() / 255.0);
-    double green = linearColorComponent(color.getGreen() / 255.0);
-    double blue = linearColorComponent(color.getBlue() / 255.0);
-    return 0.2126 * red + 0.7152 * green + 0.0722 * blue;
-  }
-
-  private static double linearColorComponent(double value) {
-    return value <= 0.04045 ? value / 12.92 : Math.pow((value + 0.055) / 1.055, 2.4);
-  }
-
-  private static Color withOpacity(Color color, int opacityPercent) {
-    int alpha = (int) Math.round(255 * opacityPercent / 100.0);
-    return new Color(color.getRed(), color.getGreen(), color.getBlue(), alpha);
-  }
-
-  private Color trackingInteriorDisplayColor(Color interior, int centerX, int centerY) {
-    Color background = Lizzie.config.pureBoardColor;
-    int sampleX = centerX - x + Math.max(1, stoneRadius / 2);
-    int sampleY = centerY - y + Math.max(1, stoneRadius / 2);
-    if (cachedBackgroundImage != emptyImage
-        && sampleX >= 0
-        && sampleX < cachedBackgroundImage.getWidth()
-        && sampleY >= 0
-        && sampleY < cachedBackgroundImage.getHeight()) {
-      background = new Color(cachedBackgroundImage.getRGB(sampleX, sampleY), true);
-    }
-    if (background == null) background = new Color(198, 178, 148);
-    double alpha = interior.getAlpha() / 255.0;
-    return new Color(
-        compositeChannel(interior.getRed(), background.getRed(), alpha),
-        compositeChannel(interior.getGreen(), background.getGreen(), alpha),
-        compositeChannel(interior.getBlue(), background.getBlue(), alpha));
-  }
-
-  private static int compositeChannel(int foreground, int background, double alpha) {
-    return (int) Math.round(foreground * alpha + background * (1.0 - alpha));
-  }
 
   private void drawTrackedPointMarkers(
       Graphics2D g,
-      Set<String> trackedSnapshot,
-      Map<String, TrackingAnalysisController.PointResult> trackingResults,
+      TrackingAnalysisController.DisplaySnapshot snapshot,
+      List<MoveData> ordinaryMoves,
       MoveData ordinaryBestMove) {
-    if (trackedSnapshot.isEmpty() || !Lizzie.config.showTrackingPointOutline) return;
+    if (snapshot.selectedPoints().isEmpty()) return;
     Stroke oldStroke = g.getStroke();
     Color oldColor = g.getColor();
     Composite oldComposite = g.getComposite();
     Object oldAntialiasing = g.getRenderingHint(KEY_ANTIALIASING);
     try {
       g.setRenderingHint(KEY_ANTIALIASING, VALUE_ANTIALIAS_ON);
-      float ringWidth = Math.max(2.2f, squareWidth * 0.055f);
-      float dash = Math.max(4.5f, squareWidth * 0.14f);
-      float gap = Math.max(3.0f, squareWidth * 0.09f);
-      g.setStroke(
-          new BasicStroke(
-              ringWidth,
-              BasicStroke.CAP_ROUND,
-              BasicStroke.JOIN_ROUND,
-              10.0f,
-              new float[] {dash, gap},
-              0.0f));
-      g.setComposite(
-          AlphaComposite.getInstance(
-              AlphaComposite.SRC_OVER, Lizzie.config.trackingPointOutlineOpacityPercent / 100.0f));
-      int radius = Math.max(stoneRadius + 2, (int) Math.round(squareWidth * 0.48));
-      for (String coordName : trackedSnapshot) {
+      int qualityRadius = Math.max(stoneRadius + 2, (int) Math.round(squareWidth * 0.48));
+      int progressRadius = qualityRadius + Math.max(3, (int) Math.round(squareWidth * 0.075));
+      float qualityWidth = Math.max(2.2f, squareWidth * 0.055f);
+      float progressWidth = Math.max(2.4f, squareWidth * 0.065f);
+      float qualityAlpha = Lizzie.config.trackingPointOutlineOpacityPercent / 100.0f;
+      for (String coordName : snapshot.selectedPoints()) {
         Optional<int[]> coordsOpt = Board.asCoordinates(coordName);
         if (!coordsOpt.isPresent()) continue;
         int[] coords = coordsOpt.get();
@@ -3228,12 +3091,72 @@ public class BoardRenderer {
         if (Lizzie.board != null && !Lizzie.board.iscoordsempty(coords[0], coords[1])) continue;
         int centerX = x + scaledMarginWidth + squareWidth * coords[0];
         int centerY = y + scaledMarginHeight + squareHeight * coords[1];
-        TrackingAnalysisController.PointResult result = trackingResults.get(coordName);
-        g.setColor(
-            result != null && result.visits() > 0
-                ? trackingResultColor(ordinaryBestMove, result)
-                : new Color(112, 118, 124));
-        g.drawOval(centerX - radius, centerY - radius, radius * 2, radius * 2);
+        MoveData result = null;
+        for (MoveData candidate : ordinaryMoves) {
+          if (coordName.equals(candidate.coordinate)) {
+            result = candidate;
+            break;
+          }
+        }
+
+        if (Lizzie.config.showTrackingPointOutline) {
+          float dash = Math.max(4.5f, squareWidth * 0.14f);
+          float gap = Math.max(3.0f, squareWidth * 0.09f);
+          g.setStroke(
+              new BasicStroke(
+                  qualityWidth,
+                  BasicStroke.CAP_ROUND,
+                  BasicStroke.JOIN_ROUND,
+                  10.0f,
+                  new float[] {dash, gap},
+                  0.0f));
+          g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, qualityAlpha));
+          g.setColor(trackingResultColor(ordinaryBestMove, result));
+          g.drawOval(
+              centerX - qualityRadius,
+              centerY - qualityRadius,
+              qualityRadius * 2,
+              qualityRadius * 2);
+        }
+
+        if (snapshot.activePoints().contains(coordName)) {
+          int visits = snapshot.visits().getOrDefault(coordName, 0);
+          double ratio =
+              snapshot.targetVisits() <= 0
+                  ? 0.0
+                  : Math.max(0.0, Math.min(1.0, (double) visits / snapshot.targetVisits()));
+          g.setComposite(AlphaComposite.SrcOver);
+          g.setStroke(
+              new BasicStroke(
+                  progressWidth, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+          g.setColor(new Color(25, 118, 210, 105));
+          g.drawOval(
+              centerX - progressRadius,
+              centerY - progressRadius,
+              progressRadius * 2,
+              progressRadius * 2);
+          g.setColor(new Color(66, 165, 245));
+          g.drawArc(
+              centerX - progressRadius,
+              centerY - progressRadius,
+              progressRadius * 2,
+              progressRadius * 2,
+              90,
+              -(int) Math.round(360.0 * ratio));
+        } else if (snapshot.cancellationPending()) {
+          g.setComposite(AlphaComposite.SrcOver);
+          g.setStroke(
+              new BasicStroke(
+                  progressWidth, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+          g.setColor(new Color(245, 166, 35));
+          g.drawArc(
+              centerX - progressRadius,
+              centerY - progressRadius,
+              progressRadius * 2,
+              progressRadius * 2,
+              35,
+              110);
+        }
       }
     } finally {
       g.setStroke(oldStroke);
@@ -3300,7 +3223,7 @@ public class BoardRenderer {
       int maxPlayouts = 0;
       double maxWinrate = 0;
       for (MoveData move : bestMoves) {
-        if (move.playouts > maxPlayouts) maxPlayouts = move.playouts;
+        if (move.allocationVisits() > maxPlayouts) maxPlayouts = move.allocationVisits();
         if (move.winrate > maxWinrate) maxWinrate = move.winrate;
       }
       for (int i = bestMoves.size() - 1; i >= 0; i--) {
@@ -3311,7 +3234,7 @@ public class BoardRenderer {
           continue; // This actually can happen
         }
 
-        float percentPlayouts = (float) move.playouts / maxPlayouts;
+        float percentPlayouts = (float) move.allocationRatio(maxPlayouts);
         if (!branchOpt.isPresent()) {
 
           Optional<int[]> coordsOpt = Board.asCoordinates(move.coordinate);
@@ -3329,6 +3252,9 @@ public class BoardRenderer {
           if (!outOfOrder && move.order < 20) {
             continue;
           }
+          TrackingAnalysisController.DisplaySnapshot focus = Lizzie.frame.trackingDisplaySnapshot();
+          if (boardIndex == 0 && Lizzie.frame.isTrackingDisplayCurrent(focus)
+              && focus.selectedPoints().contains(move.coordinate)) continue;
           if (Lizzie.frame.priorityMoveCoords.size() > 0) {
             boolean needSkip = false;
             for (String coords2 : Lizzie.frame.priorityMoveCoords) {

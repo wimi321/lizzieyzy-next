@@ -35,6 +35,64 @@ public class BoardData {
   public List<MoveData> bestMovesOutOfRange;
   public List<MoveData> bestMoves2;
   public List<MoveData> bestMoves2OutOfRange;
+  /** Exact root counts; -1 denotes legacy/unknown totals in the corresponding slot. */
+  public int rootVisits = -1;
+  public int rootVisits2 = -1;
+  private Object analysisSource;
+  private Object analysisSource2;
+
+  public enum AnalysisAdoption { REJECTED, OWNERSHIP_ONLY, FULL }
+
+  /** Called only after the engine has revalidated the exact ordinary output owner. */
+  public AnalysisAdoption adoptOrdinaryAnalysis(
+      List<MoveData> moves, String engineName, Leelaz engine, int totalVisits,
+      int exactRootVisits, List<Double> ownership, Object source, boolean secondary,
+      boolean forceFull) {
+    if (moves == null || moves.isEmpty()) return AnalysisAdoption.REJECTED;
+    int cached = secondary ? playouts2 : playouts;
+    int cachedRoot = secondary ? rootVisits2 : rootVisits;
+    Object cachedSource = secondary ? analysisSource2 : analysisSource;
+    boolean invalidated = secondary ? isChanged2 : isChanged;
+    double cachedPda = secondary ? pda2 : pda;
+    boolean sameSource = source != null && source == cachedSource;
+    boolean comparable = cachedRoot < 0 || exactRootVisits >= 0;
+    int comparisonVisits = cachedRoot < 0 && exactRootVisits >= 0
+        ? MoveData.getPlayouts(moves) : totalVisits;
+    boolean protectedCache = Lizzie.config.enableLizzieCache && !Lizzie.config.isAutoAna
+        && (secondary || !Lizzie.engineGame.current().playing());
+    boolean full = forceFull || !protectedCache || invalidated || cachedPda != engine.pda
+        || (comparable && comparisonVisits > cached)
+        || (sameSource && cachedRoot >= 0 && exactRootVisits >= 0 && totalVisits == cached);
+    if (!full) {
+      List<Double> oldOwnership = secondary ? estimateArray2 : estimateArray;
+      if (ownership != null && !ownership.isEmpty()
+          && (!comparable || comparisonVisits < cached || oldOwnership == null)) {
+        if (secondary) estimateArray2 = compactEstimateArray(ownership);
+        else estimateArray = compactEstimateArray(ownership);
+        return AnalysisAdoption.OWNERSHIP_ONLY;
+      }
+      return AnalysisAdoption.REJECTED;
+    }
+    List<Double> retainedOwnership = ownership;
+    if (sameSource && (ownership == null || ownership.isEmpty())) {
+      retainedOwnership = secondary ? estimateArray2 : estimateArray;
+    }
+    moves.sort(Comparator.comparingInt(move -> move.order));
+    if (secondary) {
+      tryToSetBestMoves2FromEngine(
+          moves, engineName, true, engine, totalVisits, retainedOwnership, true);
+      rootVisits2 = exactRootVisits;
+      analysisSource2 = source;
+      isChanged2 = false;
+    } else {
+      tryToSetBestMovesFromEngine(
+          moves, engineName, engine, totalVisits, retainedOwnership, true);
+      rootVisits = exactRootVisits;
+      analysisSource = source;
+      isChanged = false;
+    }
+    return AnalysisAdoption.FULL;
+  }
   public int blackCaptures;
   public int whiteCaptures;
   public boolean isChanged = false;
@@ -496,15 +554,34 @@ public class BoardData {
     return true;
   }
 
+  /** Reapplies only candidate visibility after attention changes; analysis values stay intact. */
+  public void refreshFocusCandidateVisibility() {
+    if (bestMovesOutOfRange != null && !bestMovesOutOfRange.isEmpty()) {
+      List<MoveData> complete = new ArrayList<>(bestMoves.size() + bestMovesOutOfRange.size());
+      complete.addAll(bestMoves);
+      complete.addAll(bestMovesOutOfRange);
+      complete.sort(Comparator.comparingInt(move -> move.order));
+      bestMoves = complete;
+    } else {
+      bestMoves = new ArrayList<>(bestMoves);
+    }
+    bestMovesOutOfRange = new ArrayList<>();
+    tryToLimitMoves(bestMoves, List.of(), true);
+  }
+
   private void tryToLimitMoves(List<MoveData> moves, List<MoveData> lastMoves, boolean isMain) {
     // TODO Auto-generated method stub
     List<MoveData> outOfRangeMoves = new ArrayList<>();
+    featurecat.lizzie.analysis.TrackingAnalysisController.DisplaySnapshot focus =
+        isMain && Lizzie.frame != null ? Lizzie.frame.trackingDisplaySnapshot() : null;
+    Set<String> attended = focus != null && Lizzie.frame.isTrackingDisplayCurrent(focus)
+        && Lizzie.frame.getDisplayNode().getData() == this ? focus.selectedPoints() : Set.of();
     if (Lizzie.config.limitMaxSuggestion > 0
         && !Lizzie.config.showNoSuggCircle
         && (moves.size() > Lizzie.config.limitMaxSuggestion)) {
       for (int n = Lizzie.config.limitMaxSuggestion; n < moves.size(); n++) {
         MoveData move = moves.get(n);
-        boolean needSkip = false;
+        boolean needSkip = attended.contains(move.coordinate);
         int absoluteMaxSuggestionOrder = Lizzie.config.limitMaxSuggestion + 1;
         if (move.order < absoluteMaxSuggestionOrder) {
           for (int s = 0; s < absoluteMaxSuggestionOrder && s < lastMoves.size(); s++) {
@@ -577,7 +654,14 @@ public class BoardData {
       Leelaz metadataEngine,
       int totalplayouts,
       List<Double> estimateArray) {
-    if (Lizzie.config.enableLizzieCache && !Lizzie.config.isAutoAna) {
+    tryToSetBestMoves2FromEngine(
+        moves, engName, isFromLeelaz, metadataEngine, totalplayouts, estimateArray, false);
+  }
+
+  private void tryToSetBestMoves2FromEngine(
+      List<MoveData> moves, String engName, boolean isFromLeelaz,
+      Leelaz metadataEngine, int totalplayouts, List<Double> estimateArray, boolean forceOverride) {
+    if (!forceOverride && Lizzie.config.enableLizzieCache && !Lizzie.config.isAutoAna) {
       if (!(totalplayouts > playouts2
           || isChanged2
           || (metadataEngine != null && pda2 != metadataEngine.pda))) { // ||Lizzie.frame.urlSgf
@@ -788,6 +872,8 @@ public class BoardData {
       sb.append(" prior ").append((int) (move.policy * 100));
       if (isKataData)
         sb.append(" scoreMean ").append(String.format(Locale.ENGLISH, "%.2f", move.scoreMean));
+      sb.append(" order ").append(move.order);
+      if (move.edgeVisits >= 0) sb.append(" edgeVisits ").append(move.edgeVisits);
       sb.append(" pv ")
           .append(
               move.variation == null
@@ -815,6 +901,8 @@ public class BoardData {
       sb.append(" winrate ").append((int) (move.winrate * 100));
       sb.append(" prior ").append((int) (move.policy * 100));
       if (isKataData2) sb.append(" scoreMean ").append(move.scoreMean);
+      sb.append(" order ").append(move.order);
+      if (move.edgeVisits >= 0) sb.append(" edgeVisits ").append(move.edgeVisits);
       sb.append(" pv ").append(move.variation.stream().reduce((a, b) -> a + " " + b).get());
       sb.append(" info "); // this order is just because of how the MoveData info parser works
     }
@@ -824,12 +912,16 @@ public class BoardData {
   public void setPlayouts(int playouts) {
     // if (playouts > this.playouts || isChanged) {
     this.playouts = playouts;
+    rootVisits = -1;
+    analysisSource = null;
     // }
   }
 
   public void setPlayouts2(int playouts) {
     // if (playouts > this.playouts || isChanged) {
     this.playouts2 = playouts;
+    rootVisits2 = -1;
+    analysisSource2 = null;
     // }
   }
 
@@ -846,7 +938,7 @@ public class BoardData {
   }
 
   public void setPlayoutsForce(int playouts) {
-    this.playouts = playouts;
+    setPlayouts(playouts);
   }
 
   public int getPlayouts() {
@@ -1014,6 +1106,11 @@ public class BoardData {
     this.winrate2 = data.winrate2;
     this.playouts = data.playouts;
     this.playouts2 = data.playouts2;
+    this.rootVisits = data.rootVisits;
+    this.rootVisits2 = data.rootVisits2;
+    // Copies preserve saved analysis, not permission to refresh it from a live stream.
+    this.analysisSource = null;
+    this.analysisSource2 = null;
     this.scoreMean = data.scoreMean;
     this.scoreMean2 = data.scoreMean2;
     this.scoreStdev = data.scoreStdev;

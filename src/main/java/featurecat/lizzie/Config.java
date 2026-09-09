@@ -1038,11 +1038,7 @@ public class Config {
   public int wholeGameAnalysisDeepVisits = WholeGameAnalysisOptions.DEFAULT_VISITS;
   public int trackingAnalysisMaxVisits = 500;
   public boolean showTrackingPointOutline = true;
-  public Color trackingPointInteriorColor = new Color(255, 156, 156);
-  public int trackingPointInteriorOpacityPercent = 100;
   public int trackingPointOutlineOpacityPercent = 92;
-  public boolean trackingPointTextAutoColor = true;
-  public Color trackingPointTextColor = Color.BLACK;
   public boolean autoQuickAnalyzeOnLoad = true;
   public boolean quickAnalysisLightweightModelEnabled = false;
   public String analysisSpecificRules = "";
@@ -2915,33 +2911,29 @@ public class Config {
     ui.remove("tracking-engine-preload");
     ui.remove("tracking-engine-skip-warning");
     ui.remove("tracking-engine-max-visits");
+    removeRetiredTrackingAppearanceConfig(ui);
     return visits;
   }
 
   void loadTrackingPointAppearanceConfig(JSONObject ui) {
     showTrackingPointOutline = ui.optBoolean("show-tracking-point-outline", true);
-    trackingPointInteriorColor =
-        Theme.array2Color(
-            ui.optJSONArray("tracking-point-interior-color"), new Color(255, 156, 156));
-    trackingPointInteriorOpacityPercent =
-        clampPercent(ui.optInt("tracking-point-interior-opacity", 100));
     trackingPointOutlineOpacityPercent =
         clampPercent(ui.optInt("tracking-point-outline-opacity", 92));
-    trackingPointTextAutoColor = ui.optBoolean("tracking-point-text-auto-color", true);
-    trackingPointTextColor =
-        Theme.array2Color(ui.optJSONArray("tracking-point-text-color"), Color.BLACK);
+    removeRetiredTrackingAppearanceConfig(ui);
   }
 
   public void saveTrackingPointAppearanceConfig() {
     uiConfig.put("show-tracking-point-outline", showTrackingPointOutline);
     uiConfig.put(
-        "tracking-point-interior-color", Theme.color2ArrayNoAlpha(trackingPointInteriorColor));
-    uiConfig.put(
-        "tracking-point-interior-opacity", clampPercent(trackingPointInteriorOpacityPercent));
-    uiConfig.put(
         "tracking-point-outline-opacity", clampPercent(trackingPointOutlineOpacityPercent));
-    uiConfig.put("tracking-point-text-auto-color", trackingPointTextAutoColor);
-    uiConfig.put("tracking-point-text-color", Theme.color2ArrayNoAlpha(trackingPointTextColor));
+    removeRetiredTrackingAppearanceConfig(uiConfig);
+  }
+
+  private static void removeRetiredTrackingAppearanceConfig(JSONObject ui) {
+    ui.remove("tracking-point-interior-color");
+    ui.remove("tracking-point-interior-opacity");
+    ui.remove("tracking-point-text-auto-color");
+    ui.remove("tracking-point-text-color");
   }
 
   private static int clampPercent(int value) {
