@@ -360,7 +360,10 @@ class KataGoRuntimeLayeredTuningTest {
   void currentOfficialGpuRecommendationsAreAppliedButStaleModelResultsAreIgnored()
       throws Exception {
     Config previousConfig = Lizzie.config;
+    String previousOsArch = System.getProperty("os.arch");
     try {
+      // CUDA recommendations intentionally do not apply on Apple Silicon hosts.
+      System.setProperty("os.arch", "amd64");
       Config config =
           ConfigTestHelper.createForTests(
               Files.createDirectories(temporaryDirectory.resolve("gpu-recommendation-config")));
@@ -397,6 +400,7 @@ class KataGoRuntimeLayeredTuningTest {
           KataGoRuntimeHelper.applyEntryLaunchPolicy(command, snapshot.enginePath, entry);
       assertTrue(KataGoCommandSpec.parse(stale).effectiveOverrides().isEmpty());
     } finally {
+      restoreProperty("os.arch", previousOsArch);
       Lizzie.config = previousConfig;
     }
   }
