@@ -43,6 +43,7 @@ public final class WholeGameAnalysisSession {
     public final int targetVisits;
     public final long estimatedRemainingMillis;
     public final boolean remoteBackend;
+    public final String analysisModeKey;
     public final String detailKey;
 
     private Snapshot(
@@ -53,6 +54,7 @@ public final class WholeGameAnalysisSession {
         int targetVisits,
         long estimatedRemainingMillis,
         boolean remoteBackend,
+        String analysisModeKey,
         String detailKey) {
       this.state = state;
       this.overallPercent = overallPercent;
@@ -61,6 +63,7 @@ public final class WholeGameAnalysisSession {
       this.targetVisits = targetVisits;
       this.estimatedRemainingMillis = estimatedRemainingMillis;
       this.remoteBackend = remoteBackend;
+      this.analysisModeKey = analysisModeKey;
       this.detailKey = detailKey;
     }
   }
@@ -81,6 +84,7 @@ public final class WholeGameAnalysisSession {
   private volatile boolean terminal;
   private AnalysisEngine engine;
   private boolean remoteBackend;
+  private String analysisModeKey = "WholeGameAnalysis.mode.local";
   private boolean resumeForegroundAnalysis;
   private int baselineCompleted;
   private int deepCompleted;
@@ -320,6 +324,7 @@ public final class WholeGameAnalysisSession {
       engine = created;
     }
     remoteBackend = created.usesRemoteBackend();
+    analysisModeKey = analysisModeKey(created);
     frame.attachWholeGameAnalysisEngine(this, created);
     if (!created.usesSharedForegroundEngine()
         && Lizzie.leelaz != null
@@ -639,6 +644,15 @@ public final class WholeGameAnalysisSession {
     return state == State.BASELINE ? "WholeGameAnalysis.baseline" : "WholeGameAnalysis.deep";
   }
 
+  static String analysisModeKey(AnalysisEngine engine) {
+    if (engine.usesRemoteBackend()) {
+      return "WholeGameAnalysis.mode.remote";
+    }
+    return engine.usesSharedForegroundEngine()
+        ? "WholeGameAnalysis.mode.localShared"
+        : "WholeGameAnalysis.mode.local";
+  }
+
   private void publish(
       String detailKey, int completedPositions, int targetVisits, long remainingMillis) {
     int percent = overallPercent(plan.positionCount(), baselineCompleted, deepCompleted, state);
@@ -651,6 +665,7 @@ public final class WholeGameAnalysisSession {
             targetVisits,
             remainingMillis,
             remoteBackend,
+            analysisModeKey,
             detailKey);
     if (SwingUtilities.isEventDispatchThread()) {
       listener.onSnapshot(snapshot);

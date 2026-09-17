@@ -135,10 +135,7 @@ public final class WholeGameAnalysisDialog extends JDialog
         snapshot.state == WholeGameAnalysisSession.State.IDLE
                 || snapshot.state == WholeGameAnalysisSession.State.PREPARING
             ? ""
-            : resources.getString(
-                snapshot.remoteBackend
-                    ? "WholeGameAnalysis.mode.remote"
-                    : "WholeGameAnalysis.mode.local"));
+            : resources.getString(snapshot.analysisModeKey));
     remainingLabel.setText(remainingText(snapshot));
     applyControlState(controlState(snapshot.state));
     progressBar

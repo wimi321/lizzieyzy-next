@@ -18,6 +18,7 @@ import featurecat.lizzie.rules.SGFParser;
 import featurecat.lizzie.rules.Stone;
 import featurecat.lizzie.rules.Zobrist;
 import featurecat.lizzie.util.CommandLaunchHelper;
+import featurecat.lizzie.util.EngineThreadPolicy;
 import featurecat.lizzie.util.KataGoAutoSetupHelper;
 import featurecat.lizzie.util.KataGoRuntimeHelper;
 import featurecat.lizzie.util.KataGoRuntimeHelper.TensorRtRepairContext;
@@ -2959,6 +2960,9 @@ public class AnalysisEngine {
   }
 
   public boolean usesRemoteBackend() {
+    if (sharedForegroundEngine != null) {
+      return EngineThreadPolicy.isRemoteManaged(sharedForegroundEngine);
+    }
     return useRemoteCompute || useJavaSSH;
   }
 

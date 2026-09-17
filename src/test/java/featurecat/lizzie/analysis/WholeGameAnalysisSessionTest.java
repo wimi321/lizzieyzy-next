@@ -35,6 +35,52 @@ class WholeGameAnalysisSessionTest {
   private static final int BOARD_SIZE = 3;
 
   @Test
+  void localSharedGtpIsNotMislabelledAsRemoteCompute() throws Exception {
+    AnalysisEngine engine = allocate(AnalysisEngine.class);
+    Leelaz foreground = allocate(Leelaz.class);
+    engine.useRemoteCompute = true;
+    setField(engine, "sharedForegroundEngine", foreground);
+
+    assertFalse(engine.usesRemoteBackend());
+    assertEquals(
+        "WholeGameAnalysis.mode.localShared", WholeGameAnalysisSession.analysisModeKey(engine));
+  }
+
+  @Test
+  void independentLocalAnalysisKeepsParallelModeLabel() throws Exception {
+    AnalysisEngine engine = allocate(AnalysisEngine.class);
+    assertFalse(engine.usesRemoteBackend());
+    assertEquals("WholeGameAnalysis.mode.local", WholeGameAnalysisSession.analysisModeKey(engine));
+  }
+
+  @Test
+  void sharedCloudAndSshStillHaveRemoteLabels() throws Exception {
+    for (boolean cloud : List.of(true, false)) {
+      AnalysisEngine engine = allocate(AnalysisEngine.class);
+      Leelaz foreground = allocate(Leelaz.class);
+      engine.useRemoteCompute = true;
+      foreground.useRemoteCompute = cloud;
+      foreground.useJavaSSH = !cloud;
+      setField(engine, "sharedForegroundEngine", foreground);
+      assertTrue(engine.usesRemoteBackend());
+      assertEquals(
+          "WholeGameAnalysis.mode.remote", WholeGameAnalysisSession.analysisModeKey(engine));
+    }
+  }
+
+  @Test
+  void dedicatedRemoteTransportsKeepRemoteLabels() throws Exception {
+    for (boolean cloud : List.of(true, false)) {
+      AnalysisEngine engine = allocate(AnalysisEngine.class);
+      engine.useRemoteCompute = cloud;
+      engine.useJavaSSH = !cloud;
+      assertTrue(engine.usesRemoteBackend());
+      assertEquals(
+          "WholeGameAnalysis.mode.remote", WholeGameAnalysisSession.analysisModeKey(engine));
+    }
+  }
+
+  @Test
   void engineFailureTerminatesInsteadOfReusingAPotentiallyDirtyTransport() throws Exception {
     try (TestEnvironment env = TestEnvironment.open()) {
       SessionFixture fixture = SessionFixture.create();
@@ -678,7 +724,7 @@ class WholeGameAnalysisSessionTest {
   }
 
   private static void setField(Object target, String name, Object value) throws Exception {
-    Field field = WholeGameAnalysisSession.class.getDeclaredField(name);
+    Field field = target.getClass().getDeclaredField(name);
     field.setAccessible(true);
     field.set(target, value);
   }
