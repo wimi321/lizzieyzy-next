@@ -127,6 +127,15 @@ GitHub Actions：
 - `.github/workflows/promote-stable-release.yml`
 - `.github/workflows/publish-test-channel-pointer.yml`
 
+不发布候选工作流：
+
+- `.github/workflows/candidate-windows.yml`
+- `.github/workflows/candidate-linux.yml`
+- `.github/workflows/candidate-macos.yml`
+- `.github/workflows/candidate-java17.yml`
+
+它们只使用 `contents: read`，调用与正式发布相同的前台打包脚本，并把最终资产、run-bound provenance 与构建证据上传为 Actions artifact；不上传 GitHub Release、不晋升 R2、不读取签名或发布 secret。下载后必须在原生消费主机重新执行 `release_asset_provenance.py verify-candidate`，不能把 producer 的路径记录直接用于启动。完整 handoff、status/phase 语义和批量记录校验见[专项验收契约](SPECIALIZED_ACCEPTANCE.md#非发布候选构建与交接)。
+
 ## 四、构建前检查
 
 发版前至少确认：

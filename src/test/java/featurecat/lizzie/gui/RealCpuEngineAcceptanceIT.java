@@ -1470,7 +1470,7 @@ public final class RealCpuEngineAcceptanceIT {
     }
 
     String identity(Thread thread) {
-      return thread.getName() + "#" + thread.threadId();
+      return thread.getName() + "#" + thread.getId();
     }
   }
 

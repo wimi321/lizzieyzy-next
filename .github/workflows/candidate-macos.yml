@@ -1,0 +1,115 @@
+name: macOS candidate builds
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/candidate-macos.yml'
+      - 'pom.xml'
+      - 'packaging/**'
+      - 'scripts/package_macos_dmg.sh'
+      - 'scripts/create_macos_drag_dmg.sh'
+      - 'scripts/generate_app_icons.py'
+      - 'scripts/macos_bundle_version.py'
+      - 'scripts/package_runtime_tools.py'
+      - 'scripts/release_metadata.sh'
+      - 'scripts/prepare_bundled_katago.sh'
+      - 'scripts/prepare_bundled_runtime.sh'
+      - 'scripts/prepare_bundled_jcef.py'
+      - 'scripts/macos_katago_bundle.py'
+      - 'scripts/release_asset_provenance.py'
+      - 'scripts/release_asset_topology.py'
+      - 'scripts/validate_macos_dmg_layout.sh'
+      - 'scripts/validate_release_assets.sh'
+  workflow_dispatch:
+    inputs:
+      date_tag:
+        description: Candidate date tag; defaults to the run date
+        required: false
+      release_tag:
+        description: Candidate release tag; defaults to next-<date>.run-attempt
+        required: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: candidate-macos-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build ${{ matrix.platform }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: mac-arm64
+            runner: macos-15
+            asset_glob: '*mac-apple-silicon.with-katago.dmg'
+          - platform: mac-amd64
+            runner: macos-15-intel
+            asset_glob: '*mac-intel.with-katago.dmg'
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 180
+    env:
+      INPUT_DATE_TAG: ${{ inputs.date_tag }}
+      INPUT_RELEASE_TAG: ${{ inputs.release_tag }}
+      RELEASE_TARGET_SHA: ${{ github.sha }}
+      RELEASE_RUN_ID: ${{ github.run_id }}
+      RELEASE_RUN_ATTEMPT: ${{ github.run_attempt }}
+      CANDIDATE_PLATFORM: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.x'
+      - name: Set run-bound candidate identity
+        run: |
+          set -euo pipefail
+          date_tag="${INPUT_DATE_TAG:-$(date -u +%F)}"
+          release_tag="${INPUT_RELEASE_TAG:-next-${date_tag}.${RELEASE_RUN_ATTEMPT}}"
+          [[ "$date_tag" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]
+          [[ "$release_tag" =~ ^next-${date_tag}\.[1-9][0-9]*$ ]]
+          printf 'RELEASE_DATE_TAG=%s\nRELEASE_TAG=%s\n' "$date_tag" "$release_tag" >> "$GITHUB_ENV"
+      - name: Install packaging tools
+        run: brew install maven cmake ninja protobuf abseil libzip
+      - name: Generate app icons
+        run: |
+          python3 -m pip install pillow
+          python3 scripts/generate_app_icons.py
+      - name: Build normal JDK 21 shaded JAR
+        run: mvn -B -DskipTests package
+      - name: Prepare bundled KataGo assets
+        env:
+          HTTPS_PROXY: ''
+          HTTP_PROXY: ''
+          ALL_PROXY: ''
+        run: ./scripts/prepare_bundled_katago.sh
+      - name: Build final native macOS candidate asset
+        run: ./scripts/package_macos_dmg.sh "$RELEASE_DATE_TAG" 1.0.0 target/lizzie-yzy2.5.3-shaded.jar "$RELEASE_TAG"
+      - name: Validate final native macOS asset
+        run: bash ./scripts/validate_release_assets.sh "$CANDIDATE_PLATFORM" dist/release "$RELEASE_DATE_TAG" "$RELEASE_TAG"
+      - name: Create producer provenance
+        run: |
+          python3 scripts/release_asset_provenance.py \
+            --release-dir dist/release --platform "$CANDIDATE_PLATFORM" \
+            --date-tag "$RELEASE_DATE_TAG" --release-tag "$RELEASE_TAG" \
+            --target-sha "$RELEASE_TARGET_SHA" --run-id "$RELEASE_RUN_ID" \
+            --run-attempt "$RELEASE_RUN_ATTEMPT" \
+            --output dist/release-meta/release-asset-provenance.json
+      - name: Upload final asset, provenance, and build evidence
+        uses: actions/upload-artifact@v6
+        with:
+          name: candidate-${{ matrix.platform }}-${{ github.sha }}-attempt-${{ github.run_attempt }}
+          path: |
+            dist/release/${{ matrix.asset_glob }}
+            dist/release-meta/*.json
+            dist/release-meta/*.md
+            dist/release-meta/release-asset-provenance.json
+          if-no-files-found: error
+          retention-days: 14

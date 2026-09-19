@@ -349,7 +349,8 @@ class LizzieFrameRegressionTest {
       Method render =
           LizzieFrame.class.getDeclaredMethod("setRenderedComment", JPaintTextPane.class, String.class);
       render.setAccessible(true);
-      try (var worker = java.util.concurrent.Executors.newSingleThreadExecutor()) {
+      var worker = java.util.concurrent.Executors.newSingleThreadExecutor();
+      try {
         worker.submit(() -> {
           for (int index = 0; index < 20; index++) {
             try {
@@ -359,6 +360,9 @@ class LizzieFrameRegressionTest {
             }
           }
         }).get(10, TimeUnit.SECONDS);
+      } finally {
+        worker.shutdownNow();
+        assertTrue(worker.awaitTermination(10, TimeUnit.SECONDS), "Comment worker must stop");
       }
       SwingUtilities.invokeAndWait(() -> {});
       assertEquals(0, offEdtWrites.get(), "Engine callbacks must not mutate Swing HTML off the EDT");

@@ -1,0 +1,117 @@
+name: Windows candidate build
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/candidate-windows.yml'
+      - 'pom.xml'
+      - 'packaging/**'
+      - 'scripts/package_windows_exe.sh'
+      - 'scripts/generate_app_icons.py'
+      - 'scripts/katago_windows_pins.sh'
+      - 'scripts/package_runtime_tools.py'
+      - 'scripts/release_metadata.sh'
+      - 'scripts/prepare_bundled_katago.sh'
+      - 'scripts/prepare_bundled_jcef.py'
+      - 'scripts/prepare_bundled_nvidia_runtime.py'
+      - 'scripts/release_asset_provenance.py'
+      - 'scripts/release_asset_topology.py'
+      - 'scripts/validate_release_assets.sh'
+  workflow_dispatch:
+    inputs:
+      date_tag:
+        description: Candidate date tag; defaults to the run date
+        required: false
+      release_tag:
+        description: Candidate release tag; defaults to next-<date>.run-attempt
+        required: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: candidate-windows-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 280
+    env:
+      INPUT_DATE_TAG: ${{ inputs.date_tag }}
+      INPUT_RELEASE_TAG: ${{ inputs.release_tag }}
+      RELEASE_TARGET_SHA: ${{ github.sha }}
+      RELEASE_RUN_ID: ${{ github.run_id }}
+      RELEASE_RUN_ATTEMPT: ${{ github.run_attempt }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.x'
+      - name: Set run-bound candidate identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          date_tag="${INPUT_DATE_TAG:-$(date -u +%F)}"
+          release_tag="${INPUT_RELEASE_TAG:-next-${date_tag}.${RELEASE_RUN_ATTEMPT}}"
+          [[ "$date_tag" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]
+          [[ "$release_tag" =~ ^next-${date_tag}\.[1-9][0-9]*$ ]]
+          printf 'RELEASE_DATE_TAG=%s\nRELEASE_TAG=%s\n' "$date_tag" "$release_tag" >> "$GITHUB_ENV"
+      - name: Install packaging tools
+        shell: powershell
+        run: |
+          choco install wixtoolset --no-progress -y
+          choco install 7zip --no-progress -y
+      - name: Generate app icons
+        shell: bash
+        run: |
+          python -m pip install pillow
+          python scripts/generate_app_icons.py
+      - name: Build normal JDK 21 shaded JAR
+        shell: bash
+        run: mvn -B -DskipTests package
+      - name: Prepare bundled KataGo assets
+        shell: bash
+        env:
+          PREPARE_WINDOWS_EXPERIMENTAL: 'true'
+        run: ./scripts/prepare_bundled_katago.sh
+      - name: Build final Windows candidate assets
+        timeout-minutes: 240
+        shell: bash
+        env:
+          WINDOWS_BUILD_EXPERIMENTAL_PORTABLES: 'true'
+          LIZZIE_RELEASE_PRERELEASE: 'true'
+        run: |
+          set -euo pipefail
+          serial="${RELEASE_TAG##*.}"
+          [[ "$serial" =~ ^[1-9][0-9]*$ ]]
+          WINDOWS_BUILD_SERIAL="$serial" \
+            ./scripts/package_windows_exe.sh "$RELEASE_DATE_TAG" 1.0.0 target/lizzie-yzy2.5.3-shaded.jar "$RELEASE_TAG"
+      - name: Validate final Windows assets
+        shell: bash
+        run: bash ./scripts/validate_release_assets.sh windows dist/release "$RELEASE_DATE_TAG" "$RELEASE_TAG" true
+      - name: Create producer provenance
+        shell: bash
+        run: |
+          python scripts/release_asset_provenance.py \
+            --release-dir dist/release --platform windows \
+            --date-tag "$RELEASE_DATE_TAG" --release-tag "$RELEASE_TAG" \
+            --target-sha "$RELEASE_TARGET_SHA" --run-id "$RELEASE_RUN_ID" \
+            --run-attempt "$RELEASE_RUN_ATTEMPT" \
+            --output dist/release-meta/release-asset-provenance.json
+      - name: Upload final assets, provenance, and build evidence
+        uses: actions/upload-artifact@v6
+        with:
+          name: candidate-windows-${{ github.sha }}-attempt-${{ github.run_attempt }}
+          path: |
+            dist/release/*
+            dist/release-meta/*windows64-*.json
+            dist/release-meta/*windows64-*.md
+            dist/release-meta/release-asset-provenance.json
+          if-no-files-found: error
+          retention-days: 14
