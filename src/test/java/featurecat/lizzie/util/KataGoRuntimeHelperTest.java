@@ -35,6 +35,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.security.MessageDigest;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
@@ -1124,6 +1125,48 @@ public class KataGoRuntimeHelperTest {
                                     .resolve("downloads")
                                     .resolve("katago-trt.zip")),
                             "Successful TensorRT installs should remove the completed installer archive.");
+                      }));
+        });
+  }
+
+  @Test
+  void tensorRtInstallReusesExistingTargetPathProfile() throws Exception {
+    withOsName(
+        WINDOWS_OS_NAME,
+        () -> {
+          Path tempRoot = Files.createTempDirectory("katago-helper-tensorrt-profile-reuse");
+          Path runtimeWorkDirectory = Files.createDirectories(tempRoot.resolve("runtime-root"));
+          SetupSnapshot snapshot = createUnifiedNvidiaSnapshot(tempRoot);
+          Path fixtureZip =
+              createTensorRtFixtureZip(tempRoot.resolve("fixture").resolve("katago-trt.zip"));
+
+          withTensorRtFixtureProperties(
+              fixtureZip.toUri().toString(),
+              sha256(fixtureZip),
+              Files.size(fixtureZip),
+              () ->
+                  withConfig(
+                      runtimeWorkDirectory,
+                      () -> {
+                        KataGoRuntimeHelper.TensorRtInstallSpec spec =
+                            KataGoRuntimeHelper.buildTensorRtInstallSpec(snapshot);
+                        EngineData existing = new EngineData();
+                        existing.name = "TensorRT managed missing";
+                        existing.commands = spec.targetEnginePath + " gtp";
+                        existing.isDefault = true;
+                        Utils.saveEngineSettings(new ArrayList<>(List.of(existing)));
+                        Lizzie.config.uiConfig.put("default-engine", 0);
+
+                        SetupResult result =
+                            KataGoRuntimeHelper.downloadAndInstallTensorRt(
+                                snapshot, null, new DownloadSession());
+
+                        ArrayList<EngineData> engines = Utils.getEngineData();
+                        assertEquals(0, result.engineIndex);
+                        assertFalse(result.createdEngine);
+                        assertEquals(1, engines.size());
+                        assertEquals("KataGo TensorRT", engines.get(0).name);
+                        assertTrue(engines.get(0).commands.contains(spec.targetEnginePath.toString()));
                       }));
         });
   }

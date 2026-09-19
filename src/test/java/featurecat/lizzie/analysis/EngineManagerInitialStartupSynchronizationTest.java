@@ -820,6 +820,63 @@ class EngineManagerInitialStartupSynchronizationTest {
   }
 
   @Test
+  void ordinarySwitchRestartsPreviousEngineWhenTargetPublishesNoReader() throws Exception {
+    try (StartupTestEnvironment env = StartupTestEnvironment.open()) {
+      StartupSyncLeelaz previous = new StartupSyncLeelaz();
+      EmptyOrdinarySwitchStartLeelaz target = new EmptyOrdinarySwitchStartLeelaz();
+      previous.started = true;
+      previous.isLoaded = true;
+      previous.Pondering();
+      previous.analysisOutputRecoveryCompleted = new CountDownLatch(1);
+      Lizzie.config.fastChange = false;
+      Lizzie.board = boardWithHistory(emptyRootHistory(1));
+      Lizzie.leelaz = previous;
+      EngineManager.isEmpty = false;
+      EngineManager.currentEngineNo = 0;
+      ProductionEntryEngineManager manager =
+          new ProductionEntryEngineManager(new ArrayList<>(List.of(previous, target)));
+      Lizzie.engineManager = manager;
+
+      assertTrue(manager.switchEngineIfAvailable(1, true));
+      assertTrue(target.returnedWithoutReader.await(2, TimeUnit.SECONDS));
+      boolean recovered =
+          previous.analysisOutputRecoveryCompleted.await(10, TimeUnit.SECONDS);
+      Object activeTransaction = managerAtomicReferenceValue(manager, "engineSwitchTransaction");
+      Object activeRecovery = managerAtomicReferenceValue(manager, "failedRollbackRecovery");
+      assertTrue(
+          recovered,
+          "the stopped previous engine must recover after a pre-reader target failure; primary="
+              + Lizzie.leelaz
+              + ", index="
+              + EngineManager.currentEngineNo
+              + ", empty="
+              + EngineManager.isEmpty
+              + ", phase="
+              + manager.engineSwitchUiSnapshot(true).phase()
+              + ", transaction="
+              + activeTransaction
+              + ", recovery="
+              + activeRecovery);
+      long settlementDeadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
+      while (managerAtomicReferenceValue(manager, "engineSwitchTransaction") != null
+          && System.nanoTime() < settlementDeadline) {
+        Thread.sleep(10L);
+      }
+
+      assertSame(previous, Lizzie.leelaz);
+      assertEquals(0, EngineManager.currentEngineNo);
+      assertFalse(EngineManager.isEmpty);
+      assertEquals(
+          EngineManager.EngineSwitchUiPhase.FAILED,
+          manager.engineSwitchUiSnapshot(true).phase());
+      assertNull(managerAtomicReferenceValue(manager, "engineSwitchTransaction"));
+      assertLifecycleReservationReleased(previous);
+      assertFalse(target.hasExclusiveGtpWorkInProgress());
+    }
+  }
+
+
+  @Test
   void ordinarySwitchSynchronizationDispatchErrorExactClosesTheStartedTarget()
       throws Exception {
     try (StartupTestEnvironment env = StartupTestEnvironment.open()) {
@@ -7652,6 +7709,19 @@ class EngineManagerInitialStartupSynchronizationTest {
         values.add(valueMatcher.group(1));
       }
       return values;
+    }
+  }
+
+  private static final class EmptyOrdinarySwitchStartLeelaz extends Leelaz {
+    private final CountDownLatch returnedWithoutReader = new CountDownLatch(1);
+
+    private EmptyOrdinarySwitchStartLeelaz() throws Exception {
+      super("");
+    }
+
+    @Override
+    public void startEngine(int index) {
+      returnedWithoutReader.countDown();
     }
   }
 

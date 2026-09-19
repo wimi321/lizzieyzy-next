@@ -8,7 +8,7 @@ If you only want to use the app, start with the [Installation Guide](INSTALL_EN.
 
 - This is a maintained LizzieYzy fork, not a one-off patch repository.
 - The most important user flow is: install the app, launch it, fetch public Fox games through **Fox nickname**, and analyze normally.
-- The project does not currently have a full automated test suite. The practical maintenance baseline is local builds, doc checks, and targeted manual verification.
+- The repository has a broad deterministic JUnit suite plus focused Python and shell checks. Native packaging, desktop, Gatekeeper, installer-upgrade, and real-GPU acceptance remain separate platform gates.
 
 ## Building Locally
 
@@ -19,6 +19,8 @@ If you already have a working Java + Maven environment, you can build directly:
 ```bash
 mvn -B -DskipTests package
 ```
+
+The source/API baseline and standalone shaded-JAR runtime target are Java 17. Maintained release workflows build on JDK 21, and final platform packages include a Java 21 runtime. Use JDK 21 for normal builds; use an explicit Temurin 17 installation only for the standalone-runtime acceptance described in [Specialized Acceptance](SPECIALIZED_ACCEPTANCE.md#非发布候选构建与交接).
 
 ### Option 2: Use the bundled tool cache in the repo
 
@@ -157,13 +159,15 @@ These changes usually also require updates to:
 - `scripts/prepare_bundled_katago.sh`
   - prepares bundled KataGo plus default weight
 - `scripts/package_release.sh`
-  - builds Windows / Linux / advanced zip packages
+  - builds the three Linux release archives
 - `scripts/package_macos_dmg.sh`
   - builds macOS `.dmg` packages
 - `scripts/validate_release_assets.sh`
   - checks that `dist/release/` only contains the public-facing main assets
 - `scripts/check_markdown_links.py`
   - validates local markdown links
+- `.github/workflows/candidate-{windows,linux,macos,java17}.yml`
+  - build read-only, non-publishing candidate artifacts and implementation evidence; native hosts still verify transferred assets locally before launch
 
 ## Final Pre-PR Checklist
 

@@ -55,6 +55,33 @@ spctl --assess --type open --context context:primary-signature -vvv path/to/Lizz
 #   source=Notarized Developer ID
 ```
 
+## unsigned 候选的 Open Anyway 取证
+
+此流程只用于四项必需 Apple 凭据全部不可用、且 `codesign` 明确确认 app 完全未签名的本地验收。畸形、损坏或部分签名不能用 Open Anyway 绕过。
+
+1. 启动 `scripts/macos_product_acceptance.sh` 时，把 `LIZZIE_MACOS_OPEN_ANYWAY_MARKER` 指向一个尚不存在的 JSON 文件。runner 对隔离安装副本写入 quarantine，并先通过 LaunchServices 观察 Gatekeeper 拒绝。
+2. 等待同一 evidence 目录出现 `open-anyway-request.json`。不要预先创建 confirmation；request 含本次随机 `nonce`、DMG SHA-256、installed app 绝对路径、launcher SHA-256、quarantine attribute 和 `blockedAt`。
+3. 打开“系统设置 → 隐私与安全性”，确认页面显示刚被阻止的 `LizzieYzy Next`，点击“仍要打开”（Open Anyway），按系统提示确认。随后通过 Finder 或系统给出的“打开”动作重试该 request 中的 installed app；不要改为挂载卷中的副本或另一份 app。
+4. 在窗口实际出现后截取包含应用窗口及可辨认系统时间的截图。把截图保存到稳定绝对路径；不要在验收结束前删除。
+5. 在 `LIZZIE_MACOS_OPEN_ANYWAY_MARKER` 指定路径原子写入 JSON。先逐字段复制 request，再增加下列三项；`confirmedAt` 必须晚于 `blockedAt`：
+
+```json
+{
+  "schemaVersion": 1,
+  "nonce": "<copy from request>",
+  "artifactSha256": "<copy from request>",
+  "appPath": "<copy from request>",
+  "launcherSha256": "<copy from request>",
+  "quarantineAttribute": "<copy from request>",
+  "blockedAt": "<copy from request>",
+  "confirmedAt": "2026-09-19T12:34:56.789Z",
+  "screenshot": "/absolute/path/to/open-anyway.png",
+  "launchObserved": true
+}
+```
+
+runner 要求字段集合完全一致、绑定值逐项相同、截图存在且时间顺序正确，然后才继续从同一 installed launcher 执行隔离工作目录、离线边界和引擎验收。fixture 生成的确认仅验证绑定与时序逻辑，不是 Gatekeeper UI 或 LaunchServices 原生证据。
+
 ## 失败兜底
 
 如果证书导入、逐层签名、公证、票据附着、布局校验或最终 `spctl` Gatekeeper 评估失败，workflow 会在替换原始 DMG 和上传 Release asset 之前终止，因此不会把本次未通过完整校验的 DMG 上传到 GitHub Release。清理 trap 会在任何早期失败时删除 `certificate.p12` 及其随机临时目录、随机 keychain、挂载点和工作目录；即使失败发生在临时路径或原 keychain 列表尚为空时也会安全完成清理。只有全部校验成功后，工作目录中的已签名 DMG 才会替换原文件并进入 provenance 与 Release 上传步骤。

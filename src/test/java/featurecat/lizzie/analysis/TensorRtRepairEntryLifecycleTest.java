@@ -52,6 +52,24 @@ class TensorRtRepairEntryLifecycleTest {
   }
 
   @Test
+  void repairableStartupDiagnosticDoesNotBlockEngineSwitchRollback() {
+    TensorRtRepairContext repairable = repairable("katago.exe gtp");
+    TensorRtRepairContext diagnosticOnly =
+        TensorRtRepairContext.of(
+            TARGET,
+            repairable.originalCommand,
+            repairable.failureKind,
+            repairable.missingItems,
+            false,
+            repairable.displayMessage);
+
+    assertFalse(Leelaz.startupFailureDiagnosticIsModal(repairable));
+    assertTrue(Leelaz.startupFailureDiagnosticIsModal(diagnosticOnly));
+    assertTrue(Leelaz.startupFailureDiagnosticIsModal(null));
+  }
+
+
+  @Test
   void consumeRequiresIdentityAndPreservesReplacement() throws Exception {
     Leelaz engine = new Leelaz("");
     TensorRtRepairContext pending = repairable("katago.exe gtp");

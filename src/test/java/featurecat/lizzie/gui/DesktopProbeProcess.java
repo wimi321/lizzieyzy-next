@@ -43,12 +43,38 @@ final class DesktopProbeProcess {
   static Path run(
       Class<?> entry, String name, List<String> vmArgs, List<String> args, long timeoutSeconds)
       throws Exception {
+    return run(entry, name, vmArgs, args, Map.of(), timeoutSeconds);
+  }
+
+  static Path run(
+      Class<?> entry,
+      String name,
+      List<String> vmArgs,
+      List<String> args,
+      Map<String, String> environment,
+      long timeoutSeconds)
+      throws Exception {
+    return run(entry, name, vmArgs, args, environment, timeoutSeconds, null, null);
+  }
+  static Path run(
+      Class<?> entry,
+      String name,
+      List<String> vmArgs,
+      List<String> args,
+      Map<String, String> environment,
+      long timeoutSeconds,
+      Path workRoot,
+      Path processDirectory)
+      throws Exception {
     Path root =
         Path.of(System.getProperty("lizzie.desktop.evidence.dir", "target/desktop-smoke/probes"))
             .toAbsolutePath();
     Files.createDirectories(root);
     Path evidence = Files.createTempDirectory(root, name + "-");
-    Path work = Files.createDirectory(evidence.resolve("work"));
+    Path work =
+        workRoot == null
+            ? Files.createDirectory(evidence.resolve("work"))
+            : Files.createTempDirectory(workRoot, name + "-work-");
     Path result = evidence.resolve("result.txt");
     Path lifecycle = evidence.resolve("lifecycle.txt");
     List<String> command = javaCommand(entry);
@@ -63,12 +89,13 @@ final class DesktopProbeProcess {
     Map<Long, ProcessHandle> owned = new LinkedHashMap<>();
     Throwable failure = null;
     try {
-      child =
+      ProcessBuilder builder =
           new ProcessBuilder(command)
-              .directory(work.toFile())
+              .directory((processDirectory == null ? work : processDirectory).toFile())
               .redirectOutput(evidence.resolve("stdout.log").toFile())
-              .redirectError(evidence.resolve("stderr.log").toFile())
-              .start();
+              .redirectError(evidence.resolve("stderr.log").toFile());
+      builder.environment().putAll(environment);
+      child = builder.start();
       owned.put(child.pid(), child.toHandle());
       Files.writeString(
           lifecycle,

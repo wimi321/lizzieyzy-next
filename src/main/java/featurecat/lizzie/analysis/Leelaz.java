@@ -575,6 +575,10 @@ public class Leelaz {
     return engine.consumePendingTensorRtRepairContext(transferred);
   }
 
+  static boolean startupFailureDiagnosticIsModal(TensorRtRepairContext repairContext) {
+    return repairContext == null || !repairContext.repairable;
+  }
+
   public List<String> commandLists = new ArrayList<String>();
   private boolean startGetCommandList = false;
   private boolean endGetCommandList = false;
@@ -1387,12 +1391,14 @@ public class Leelaz {
               engineCommand,
               deferredEngineGameRecovery ? null : Lizzie.frame);
         } catch (IOException e) {
-          storePendingTensorRtRepairContext(
+          TensorRtRepairContext repairContext =
               e instanceof TensorRtRuntimeException
                   ? ((TensorRtRuntimeException) e).context
-                  : null);
+                  : null;
+          storePendingTensorRtRepairContext(repairContext);
           closeBundledStartupDialog();
           String err = e.getLocalizedMessage();
+          boolean modalDiagnostic = startupFailureDiagnosticIsModal(repairContext);
           try {
             tryToDignostic(
                 Lizzie.resourceBundle.getString("Leelaz.engineFailed")
@@ -1400,8 +1406,8 @@ public class Leelaz {
                     + ((err == null)
                         ? Lizzie.resourceBundle.getString("Leelaz.engineStartNoExceptionMessage")
                         : err),
-                true);
-            if (shouldOpenInteractiveDiagnostic()) {
+                modalDiagnostic);
+            if (modalDiagnostic && shouldOpenInteractiveDiagnostic()) {
               LizzieFrame.openMoreEngineDialog();
             }
           } catch (JSONException e1) {

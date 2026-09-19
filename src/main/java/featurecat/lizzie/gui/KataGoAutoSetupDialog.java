@@ -3804,7 +3804,8 @@ public class KataGoAutoSetupDialog extends JDialog {
               } catch (DownloadCancelledException e) {
                 SwingUtilities.invokeLater(() -> onDownloadCancelled());
               } catch (IOException e) {
-                SwingUtilities.invokeLater(() -> onBackgroundError(e));
+                SwingUtilities.invokeLater(
+                    session.isCancelled() ? this::onDownloadCancelled : () -> onBackgroundError(e));
               } finally {
                 clearActiveDownload(session, Thread.currentThread());
               }
@@ -4600,6 +4601,9 @@ public class KataGoAutoSetupDialog extends JDialog {
     renderSnapshot();
     lblStatus.setText(text("AutoSetup.downloadCancelled"));
     lblStatus.setForeground(WARN_COLOR);
+    footerPanel.setVisible(true);
+    footerPanel.revalidate();
+    footerPanel.repaint();
   }
 
   private void onBenchmarkCancelled() {

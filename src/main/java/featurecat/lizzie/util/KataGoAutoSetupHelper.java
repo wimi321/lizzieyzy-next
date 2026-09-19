@@ -1962,6 +1962,19 @@ public final class KataGoAutoSetupHelper {
       SetupSnapshot snapshot, String engineName, boolean makeDefault) throws IOException {
     return applyEngineProfile(snapshot, engineName, makeDefault, -1);
   }
+  static SetupResult applyEngineProfile(
+      SetupSnapshot snapshot,
+      String engineName,
+      boolean makeDefault,
+      Path preferredExecutable)
+      throws IOException {
+    ArrayList<EngineData> engines = Utils.getEngineData();
+    int existingIndex = findManagedEngineIndex(engines, engineName);
+    if (existingIndex < 0 && preferredExecutable != null) {
+      existingIndex = findEngineIndexByExecutable(engines, preferredExecutable);
+    }
+    return applyEngineProfile(snapshot, engineName, makeDefault, existingIndex);
+  }
 
   private static SetupResult applyEngineProfile(
       SetupSnapshot snapshot, String engineName, boolean makeDefault, int preferredEngineIndex)
@@ -2186,6 +2199,16 @@ public final class KataGoAutoSetupHelper {
       EngineData engineData = engines.get(i);
       if ("KataGo Bundled".equals(engineData.name)
           || (engineData.commands != null && hasRelativeBundledPath(engineData.commands))) {
+        return i;
+      }
+    }
+    return -1;
+  }
+
+  private static int findEngineIndexByExecutable(
+      ArrayList<EngineData> engines, Path preferredExecutable) {
+    for (int i = 0; i < engines.size(); i++) {
+      if (commandUsesExecutable(engines.get(i).commands, preferredExecutable)) {
         return i;
       }
     }

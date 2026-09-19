@@ -733,6 +733,85 @@ def validate_acceptance_record(payload: object) -> dict[str, object]:
         require(failed_assertion, "Assertion failure requires a false assertion in the failed phase")
     return record
 
+
+def acceptance_record_key(record: dict[str, object]) -> str:
+    expected = _mapping(record.get("expected"), "expected")
+    artifact = _mapping(expected.get("artifact"), "expected.artifact")
+    components = (
+        _required_string(expected.get("platform"), "expected.platform"),
+        _required_string(expected.get("architecture"), "expected.architecture"),
+        _required_string(artifact.get("key"), "expected.artifact.key"),
+        _required_string(record.get("scenarioId"), "scenarioId"),
+    )
+    require(
+        all("/" not in component for component in components),
+        "Acceptance row identity components must not contain '/'",
+    )
+    return "/".join(components)
+
+
+def build_acceptance_report(
+    record_paths: list[Path], target_sha: str, required_rows: list[str]
+) -> dict[str, object]:
+    require(
+        re.fullmatch(r"[0-9a-f]{40}", target_sha) is not None,
+        "targetSha must be a full lowercase commit SHA",
+    )
+    require(bool(record_paths), "At least one acceptance record is required")
+    require(bool(required_rows), "At least one required acceptance row is required")
+    require(
+        len(required_rows) == len(set(required_rows)),
+        "Required acceptance rows must be unique",
+    )
+
+    records: dict[str, dict[str, object]] = {}
+    for record_path in record_paths:
+        payload, digest = _load_json(record_path, "acceptance record")
+        record = validate_acceptance_record(payload)
+        expected = _mapping(record.get("expected"), "expected")
+        require(
+            expected.get("targetSha") == target_sha,
+            f"Acceptance record targetSha does not match: {record_path}",
+        )
+        row_id = acceptance_record_key(record)
+        require(row_id not in records, f"Duplicate acceptance row: {row_id}")
+        require(row_id in required_rows, f"Unexpected acceptance row: {row_id}")
+        records[row_id] = {
+            "rowId": row_id,
+            "status": record["status"],
+            "phase": record["phase"],
+            "recordPath": str(_resolved_file(record_path, "acceptance record")),
+            "recordSha256": digest,
+        }
+
+    missing = [row_id for row_id in required_rows if row_id not in records]
+    require(not missing, f"Missing required acceptance rows: {', '.join(missing)}")
+    rows = [records[row_id] for row_id in required_rows]
+    return {
+        "schemaVersion": SCHEMA_VERSION,
+        "targetSha": target_sha,
+        "requiredRows": required_rows,
+        "summary": {
+            status: sum(row["status"] == status for row in rows)
+            for status in ("PASS", "FAIL", "BLOCKED")
+        },
+        "rows": rows,
+    }
+
+
+def _require_distinct_acceptance_output(output: Path, record_paths: list[Path]) -> None:
+    try:
+        resolved_output = output.resolve(strict=False)
+        protected_inputs = {
+            record_path.resolve(strict=True) for record_path in record_paths
+        }
+    except OSError as exc:
+        raise ProvenanceError(f"Unable to resolve acceptance report output path: {exc}") from exc
+    require(
+        resolved_output not in protected_inputs,
+        "Acceptance report output must not replace an acceptance record",
+    )
+
 def _provenance_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--release-dir", required=True, type=Path)
@@ -763,10 +842,24 @@ def _candidate_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _acceptance_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        description="Validate and summarize a complete acceptance-record set"
+    )
+    parser.add_argument("--target-sha", required=True)
+    parser.add_argument("--require-row", required=True, action="append")
+    parser.add_argument("--record", required=True, action="append", type=Path)
+    parser.add_argument("--output", required=True, type=Path)
+    parser.set_defaults(operation="validate-acceptance")
+    return parser
+
+
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     arguments = list(sys.argv[1:] if argv is None else argv)
     if arguments and arguments[0] == "verify-candidate":
         return _candidate_parser().parse_args(arguments[1:])
+    if arguments and arguments[0] == "validate-acceptance":
+        return _acceptance_parser().parse_args(arguments[1:])
     return _provenance_parser().parse_args(arguments)
 
 
@@ -789,6 +882,12 @@ def main(argv: list[str] | None = None) -> int:
                 args.asset_file,
             )
             success_message = f"Wrote verified release candidate: {args.output}"
+        elif args.operation == "validate-acceptance":
+            _require_distinct_acceptance_output(args.output, args.record)
+            payload = build_acceptance_report(
+                args.record, args.target_sha, args.require_row
+            )
+            success_message = f"Wrote acceptance record report: {args.output}"
         else:
             payload = build_provenance(
                 args.release_dir,

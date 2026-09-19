@@ -2754,7 +2754,8 @@ public final class KataGoRuntimeHelper {
   private static SetupResult applyTensorRtEngineProfile(
       SetupSnapshot snapshot, TensorRtInstallSpec spec) throws IOException {
     SetupSnapshot tensorRtSnapshot = snapshot.withEnginePath(spec.targetEnginePath);
-    return KataGoAutoSetupHelper.applyEngineProfile(tensorRtSnapshot, TENSORRT_ENGINE_NAME, true);
+    return KataGoAutoSetupHelper.applyEngineProfile(
+        tensorRtSnapshot, TENSORRT_ENGINE_NAME, true, spec.targetEnginePath);
   }
 
   private static void observeTensorRtStage(String stage, MaintenanceObservation.IoTask task)

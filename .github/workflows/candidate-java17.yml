@@ -1,0 +1,76 @@
+name: Standalone Java 17 candidate acceptance
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/candidate-java17.yml'
+      - 'pom.xml'
+      - 'scripts/release_asset_provenance.py'
+      - 'scripts/verify_java17_runtime.py'
+      - 'src/test/java/featurecat/lizzie/logging/LoggingProviderSmokeIT.java'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: candidate-java17-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - name: Build full shaded JAR on JDK 21
+        run: mvn -B -DskipTests package
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Install application-smoke isolation tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb xauth x11-utils iproute2 nftables
+      - name: Run shaded logging provider with explicit Temurin 17
+        run: >-
+          JAVA_HOME="$JAVA_HOME_21_X64" mvn -B -Dfmt.skip=true -DskipTests=false
+          -Dtest=FunctionSearchTest -Dit.test=LoggingProviderSmokeIT
+          -Dlizzie.test.java.executable="$JAVA_HOME_17_X64/bin/java" verify
+      - name: Run Java 17 static shaded-artifact gate
+        run: >-
+          python3 scripts/verify_java17_runtime.py
+          --jar target/lizzie-yzy2.5.3-shaded.jar
+          --source-sha "$GITHUB_SHA"
+          --java-home "$JAVA_HOME_17_X64"
+          --evidence-dir target/java17-static
+          --scenario static
+      - name: Run Java 17 application smoke
+        env:
+          LANG: C.UTF-8
+          LC_ALL: C.UTF-8
+        run: >-
+          python3 scripts/verify_java17_runtime.py
+          --jar target/lizzie-yzy2.5.3-shaded.jar
+          --source-sha "$GITHUB_SHA"
+          --java-home "$JAVA_HOME_17_X64"
+          --evidence-dir 'target/Java 17 验收'
+          --scenario application-smoke
+      - name: Upload exact shaded JAR and implementation evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: candidate-standalone-java17-${{ github.sha }}-attempt-${{ github.run_attempt }}
+          path: |
+            target/lizzie-yzy2.5.3-shaded.jar
+            target/java17-static
+            target/Java 17 验收
+            target/failsafe-reports
+          if-no-files-found: warn
+          retention-days: 14

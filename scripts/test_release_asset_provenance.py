@@ -632,6 +632,92 @@ class AcceptanceRecordTest(unittest.TestCase):
         with self.assertRaisesRegex(provenance.ProvenanceError, "Completed observation"):
             provenance.validate_acceptance_record(record)
 
+    def test_builds_ordered_acceptance_report(self) -> None:
+        passing = self.record()
+        blocked = self.record()
+        blocked["scenarioId"] = "variant-launch"
+        blocked["expected"]["scenario"] = "variant-launch"
+        blocked.update(
+            status="BLOCKED",
+            phase="extraction",
+            blockedPhase="launch",
+            reason="native display is unavailable",
+        )
+        for path in (
+            "observed.launcher.pid",
+            "assertions.launcherReady",
+            "evidence.launchLog",
+        ):
+            self.set_path(blocked, path, None)
+            blocked["notObserved"][path] = "blocked before launch: native display unavailable"
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            records = []
+            for index, record in enumerate((passing, blocked)):
+                path = root / f"acceptance-{index}.json"
+                path.write_text(json.dumps(record), encoding="utf-8")
+                records.append(path)
+            required = [
+                "linux/x86_64/linux64/linux-cpu-offline-first-run",
+                "linux/x86_64/linux64/variant-launch",
+            ]
+            report = provenance.build_acceptance_report(records, TARGET_SHA, required)
+
+        self.assertEqual({"PASS": 1, "FAIL": 0, "BLOCKED": 1}, report["summary"])
+        self.assertEqual(required, [row["rowId"] for row in report["rows"]])
+
+    def test_acceptance_report_rejects_missing_duplicate_wrong_sha_and_unexpected_rows(self) -> None:
+        record = self.record()
+        row_id = "linux/x86_64/linux64/linux-cpu-offline-first-run"
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            first = root / "first.json"
+            second = root / "second.json"
+            first.write_text(json.dumps(record), encoding="utf-8")
+            second.write_text(json.dumps(record), encoding="utf-8")
+            cases = (
+                ([first], TARGET_SHA, [row_id, "linux/x86_64/linux64/missing"], "Missing"),
+                ([first, second], TARGET_SHA, [row_id], "Duplicate"),
+                ([first], "b" * 40, [row_id], "targetSha"),
+                ([first], TARGET_SHA, ["linux/x86_64/linux64/other"], "Unexpected"),
+            )
+            for paths, target_sha, required, message in cases:
+                with self.subTest(message=message):
+                    with self.assertRaisesRegex(provenance.ProvenanceError, message):
+                        provenance.build_acceptance_report(paths, target_sha, required)
+
+    def test_validate_acceptance_cli_writes_atomic_report(self) -> None:
+        record = self.record()
+        row_id = "linux/x86_64/linux64/linux-cpu-offline-first-run"
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            record_path = root / "acceptance.json"
+            output = root / "report.json"
+            record_path.write_text(json.dumps(record), encoding="utf-8")
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(SCRIPT),
+                    "validate-acceptance",
+                    "--target-sha",
+                    TARGET_SHA,
+                    "--require-row",
+                    row_id,
+                    "--record",
+                    str(record_path),
+                    "--output",
+                    str(output),
+                ],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+
+            self.assertEqual(0, result.returncode, result.stderr)
+            self.assertEqual(row_id, json.loads(output.read_text())["rows"][0]["rowId"])
+            self.assertFalse(any(root.glob(".report.json.*.tmp")))
+
     @staticmethod
     def set_path(record: dict[str, object], path: str, value: object) -> None:
         parts = path.split(".")

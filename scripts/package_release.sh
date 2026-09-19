@@ -288,7 +288,7 @@ External Java installation is not required for this package.
 EOF
   else
     cat >"$root/Required java version.txt" <<'EOF'
-Java 11+ is required.
+Java 17+ is required.
 EOF
   fi
 
@@ -339,13 +339,17 @@ make_linux_bundle() {
     "$bundle_name" \
     "start-linux64.sh" \
     "#!/usr/bin/env bash
-set -e
+set -euo pipefail
 cd \"\$(dirname \"\$0\")\"
 JAVA_CMD=\"java\"
 if [[ -x \"Lizzieyzy/runtime/linux-x64/bin/java\" ]]; then
   JAVA_CMD=\"Lizzieyzy/runtime/linux-x64/bin/java\"
 fi
-\"\$JAVA_CMD\" -Xshare:auto -Dlizzie.next.version=\"$APP_DISPLAY_VERSION\" -jar \"Lizzieyzy/lizzie-yzy2.5.3-shaded.jar\"" \
+JAVA_ARGS=(-Xshare:auto -Dlizzie.next.version=\"$APP_DISPLAY_VERSION\")
+if [[ -n \"\${LIZZIE_WORK_DIR:-}\" ]]; then
+  JAVA_ARGS+=(\"-Dlizzie.work.dir=\$LIZZIE_WORK_DIR\")
+fi
+exec \"\$JAVA_CMD\" \"\${JAVA_ARGS[@]}\" -jar \"Lizzieyzy/lizzie-yzy2.5.3-shaded.jar\"" \
     "$bundle_note" \
     "" \
     "$LINUX_STANDARD_ENGINE_PLATFORM_DIR"
@@ -391,7 +395,7 @@ if [[ "$WINDOWS64_FLAVOR" == "with-katago" ]]; then
   if has_runtime_files windows-x64; then
     WINDOWS64_RUNTIME_NOTE="Bundled KataGo and Java runtime included for Windows x64."
   else
-    WINDOWS64_RUNTIME_NOTE="Bundled KataGo included for Windows x64. Install Java 11+ separately."
+    WINDOWS64_RUNTIME_NOTE="Bundled KataGo included for Windows x64. Install Java 17+ separately."
   fi
 else
   WINDOWS64_RUNTIME_NOTE="No bundled KataGo in this package."
@@ -403,7 +407,7 @@ if [[ "$LINUX64_FLAVOR" == "with-katago" ]]; then
   if has_runtime_files "$LINUX_STANDARD_ENGINE_PLATFORM_DIR"; then
     LINUX64_RUNTIME_NOTE="Bundled KataGo Eigen/CPU backend and Java runtime included for Linux x64."
   else
-    LINUX64_RUNTIME_NOTE="Bundled KataGo Eigen/CPU backend included for Linux x64. Install Java 11+ separately."
+    LINUX64_RUNTIME_NOTE="Bundled KataGo Eigen/CPU backend included for Linux x64. Install Java 17+ separately."
   fi
 else
   LINUX64_RUNTIME_NOTE="No bundled KataGo in this package."
@@ -413,8 +417,8 @@ if has_runtime_files "$LINUX_STANDARD_ENGINE_PLATFORM_DIR"; then
   LINUX64_OPENCL_RUNTIME_NOTE="Bundled KataGo OpenCL backend and Java runtime included for Linux x64. Requires a working system OpenCL driver."
   LINUX64_NVIDIA_RUNTIME_NOTE="Bundled KataGo NVIDIA CUDA backend and Java runtime included for Linux x64. Requires a compatible NVIDIA driver."
 else
-  LINUX64_OPENCL_RUNTIME_NOTE="Bundled KataGo OpenCL backend included for Linux x64. Install Java 11+ separately and make sure a system OpenCL driver is available."
-  LINUX64_NVIDIA_RUNTIME_NOTE="Bundled KataGo NVIDIA CUDA backend included for Linux x64. Install Java 11+ separately and make sure a compatible NVIDIA driver is available."
+  LINUX64_OPENCL_RUNTIME_NOTE="Bundled KataGo OpenCL backend included for Linux x64. Install Java 17+ separately and make sure a system OpenCL driver is available."
+  LINUX64_NVIDIA_RUNTIME_NOTE="Bundled KataGo NVIDIA CUDA backend included for Linux x64. Install Java 17+ separately and make sure a compatible NVIDIA driver is available."
 fi
 
 if [[ "$MAC_LINUX_FLAVOR" == "with-katago" ]]; then

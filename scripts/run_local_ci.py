@@ -74,6 +74,17 @@ ENGINE_PROCESS_REQUIRED_TESTS = (
         "cleansUpPeerThatRefusesQuit",
     ),
 )
+TENSORRT_UI_REQUIRED_TESTS = (
+    (
+        "featurecat.lizzie.gui.TensorRtRepairAcceptanceTest",
+        "englishRepairFlow",
+    ),
+    (
+        "featurecat.lizzie.gui.TensorRtRepairAcceptanceTest",
+        "chineseRepairFlow",
+    ),
+)
+
 
 
 PY_COMPILE_FILES = (
@@ -81,6 +92,7 @@ PY_COMPILE_FILES = (
     "scripts/audit_katago_source_bundle.py",
     "scripts/test_audit_katago_source_bundle.py",
     "scripts/prepare_cpu_engine_acceptance.py",
+    "scripts/test_candidate_workflows.py",
     "scripts/test_prepare_cpu_engine_acceptance.py",
     "scripts/test_run_acceptance.py",
     "scripts/build_katago_cuda_dependencies.py",
@@ -192,6 +204,7 @@ DIRECT_PYTHON_TESTS = (
 )
 
 UNITTEST_MODULES = (
+    "scripts.test_candidate_workflows",
     "scripts.test_publish_release_request",
     "scripts.test_release_asset_provenance",
     "scripts.test_release_asset_topology",
@@ -488,6 +501,33 @@ def build_steps(
     profile: str, maven: str, bash: str | None, powershell: str | None,
     group: str = "all",
 ) -> list[Step]:
+    if group == "tensorrt-ui":
+        if profile != "windows":
+            raise RuntimeError("The tensorrt-ui group requires --profile windows.")
+        evidence_dir = REPO_ROOT / "target" / "tensorrt-ui" / "probes"
+        reports_dir = REPO_ROOT / "target" / "tensorrt-ui" / "surefire-reports"
+        maven_log = REPO_ROOT / "target" / "tensorrt-ui" / "maven.log"
+        return [
+            Step(
+                "Run TensorRT UI acceptance",
+                (
+                    maven,
+                    "-B",
+                    "--log-file",
+                    str(maven_log),
+                    "-Dfmt.skip=true",
+                    "-Djacoco.skip=true",
+                    "-Djava.awt.headless=false",
+                    "-Dlizzie.desktop.required=true",
+                    f"-Dlizzie.desktop.evidence.dir={evidence_dir}",
+                    f"-Dsurefire.reportsDirectory={reports_dir}",
+                    "-Dtest=TensorRtRepairAcceptanceTest#englishRepairFlow+chineseRepairFlow",
+                    "test",
+                ),
+                group="tensorrt-ui",
+            )
+        ]
+
     if group == "desktop":
         evidence_dir = REPO_ROOT / "target" / "desktop-smoke" / "probes"
         reports_dir = REPO_ROOT / "target" / "desktop-smoke" / "surefire-reports"
@@ -715,7 +755,8 @@ def run(args: argparse.Namespace) -> int:
     java_selected = args.group in {"all", "java"}
     desktop_selected = args.group == "desktop"
     engine_process_selected = args.group == "engine-process"
-    display_selected = desktop_selected or engine_process_selected
+    tensorrt_ui_selected = args.group == "tensorrt-ui"
+    display_selected = desktop_selected or engine_process_selected or tensorrt_ui_selected
     scripts_selected = args.group in {"all", "scripts"}
     needs_java = java_selected or display_selected
     java_details = "not executed"
@@ -724,6 +765,8 @@ def run(args: argparse.Namespace) -> int:
     try:
         if args.require_clean:
             require_clean_checkout()
+        if tensorrt_ui_selected and args.profile != "windows":
+            raise RuntimeError("The tensorrt-ui group requires --profile windows.")
         if display_selected and not args.dry_run:
             if sys.platform.startswith("linux") and not os.environ.get("DISPLAY", "").strip():
                 raise RuntimeError(
@@ -731,6 +774,12 @@ def run(args: argparse.Namespace) -> int:
                 )
         if java_selected and not args.dry_run:
             reset_junit_reports()
+            junit_executed = True
+        elif tensorrt_ui_selected and not args.dry_run:
+            tensorrt_root = REPO_ROOT / "target" / "tensorrt-ui"
+            if tensorrt_root.exists():
+                shutil.rmtree(tensorrt_root)
+            tensorrt_root.mkdir(parents=True, exist_ok=True)
             junit_executed = True
         elif display_selected and not args.dry_run:
             report_root = "desktop-smoke" if desktop_selected else "engine-process-smoke"
@@ -790,6 +839,12 @@ def run(args: argparse.Namespace) -> int:
                 raise RuntimeError(
                     f"Step failed with exit code {completed.returncode}: {step.name}"
                 )
+        if tensorrt_ui_selected and not args.dry_run:
+            maven_log = REPO_ROOT / "target" / "tensorrt-ui" / "maven.log"
+            if not maven_log.is_file() or maven_log.stat().st_size == 0:
+                raise RuntimeError(
+                    f"TensorRT UI acceptance did not preserve Maven output: {maven_log}"
+                )
         if args.require_clean:
             require_clean_checkout()
         return_code = 0
@@ -806,6 +861,9 @@ def run(args: argparse.Namespace) -> int:
             elif engine_process_selected:
                 required_tests = ENGINE_PROCESS_REQUIRED_TESTS
                 report_root = REPO_ROOT / "target" / "engine-process-smoke"
+            elif tensorrt_ui_selected:
+                required_tests = TENSORRT_UI_REQUIRED_TESTS
+                report_root = REPO_ROOT / "target" / "tensorrt-ui"
             else:
                 required_tests = JAVA_REQUIRED_TESTS
                 report_root = None
@@ -853,7 +911,9 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--group",
-        choices=("all", "repository", "scripts", "java", "desktop", "engine-process"),
+        choices=(
+            "all", "repository", "scripts", "java", "desktop", "engine-process", "tensorrt-ui"
+        ),
         default="all",
     )
     parser.add_argument("--dry-run", action="store_true")

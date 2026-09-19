@@ -166,7 +166,129 @@ class RunLocalCiTest(unittest.TestCase):
         )
         self.assertEqual(7, len(run_local_ci.ENGINE_PROCESS_REQUIRED_TESTS))
 
+    def test_tensorrt_ui_plan_is_windows_only_and_selects_exact_parent_methods(self):
+        steps = run_local_ci.build_steps(
+            "windows", "mvn", None, None, "tensorrt-ui"
+        )
 
+        self.assertEqual(1, len(steps))
+        self.assertEqual("tensorrt-ui", steps[0].group)
+        self.assertIn(
+            "-Dtest=TensorRtRepairAcceptanceTest#englishRepairFlow+chineseRepairFlow",
+            steps[0].command,
+        )
+        self.assertIn("-Djava.awt.headless=false", steps[0].command)
+        self.assertIn("-Djacoco.skip=true", steps[0].command)
+        log_option = steps[0].command.index("--log-file")
+        self.assertEqual(
+            str(run_local_ci.REPO_ROOT / "target/tensorrt-ui/maven.log"),
+            steps[0].command[log_option + 1],
+        )
+        self.assertIn("-Dlizzie.desktop.required=true", steps[0].command)
+        self.assertIn(
+            "-Dlizzie.desktop.evidence.dir="
+            + str(run_local_ci.REPO_ROOT / "target/tensorrt-ui/probes"),
+            steps[0].command,
+        )
+        self.assertIn(
+            "-Dsurefire.reportsDirectory="
+            + str(run_local_ci.REPO_ROOT / "target/tensorrt-ui/surefire-reports"),
+            steps[0].command,
+        )
+        self.assertEqual(
+            (
+                (
+                    "featurecat.lizzie.gui.TensorRtRepairAcceptanceTest",
+                    "englishRepairFlow",
+                ),
+                (
+                    "featurecat.lizzie.gui.TensorRtRepairAcceptanceTest",
+                    "chineseRepairFlow",
+                ),
+            ),
+            run_local_ci.TENSORRT_UI_REQUIRED_TESTS,
+        )
+        for profile in ("portable", "all"):
+            with self.subTest(profile=profile), self.assertRaisesRegex(
+                RuntimeError, "requires --profile windows"
+            ):
+                run_local_ci.build_steps(profile, "mvn", None, None, "tensorrt-ui")
+
+    def test_tensorrt_ui_wrapper_maps_group_and_requires_jpackage(self):
+        wrapper = (Path(__file__).parent / "run_local_ci.ps1").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn("'TensorRtUi'", wrapper)
+        self.assertIn("'bin\\jpackage.exe'", wrapper)
+        self.assertIn(
+            "if ($Group -eq 'TensorRtUi') { 'tensorrt-ui' }", wrapper
+        )
+        self.assertIn("Get-Command py, python3, python", wrapper)
+
+    def test_tensorrt_ui_gate_requires_preserved_maven_log(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            subprocess.run(["git", "init", "-q", temporary], check=True)
+            subprocess.run(
+                [
+                    "git",
+                    "-C",
+                    temporary,
+                    "-c",
+                    "user.name=Test",
+                    "-c",
+                    "user.email=test@example.invalid",
+                    "commit",
+                    "--allow-empty",
+                    "-qm",
+                    "test fixture",
+                ],
+                check=True,
+            )
+            reports = root / "target/tensorrt-ui/surefire-reports"
+            cases = "".join(
+                f'<testcase classname="{classname}" name="{method}"/>'
+                for classname, method in run_local_ci.TENSORRT_UI_REQUIRED_TESTS
+            )
+            xml = f'<testsuite tests="2">{cases}</testsuite>'
+            args = run_local_ci.parse_args(
+                [
+                    "--profile",
+                    "windows",
+                    "--group",
+                    "tensorrt-ui",
+                    "--summary-dir",
+                    str(root / "summary"),
+                ]
+            )
+
+            def run_case(preserve_log: bool) -> int:
+                statements = [
+                    "import pathlib",
+                    f"p = pathlib.Path(r'{reports}')",
+                    "p.mkdir(parents=True, exist_ok=True)",
+                    f"(p / 'TEST-tensorrt.xml').write_text('''{xml}''', encoding='utf-8')",
+                ]
+                if preserve_log:
+                    statements.append(
+                        f"pathlib.Path(r'{root / 'target/tensorrt-ui/maven.log'}').write_text('maven output', encoding='utf-8')"
+                    )
+                step = run_local_ci.Step(
+                    "write TensorRT reports",
+                    (run_local_ci.sys.executable, "-c", "; ".join(statements)),
+                )
+                with patch.object(run_local_ci, "build_steps", return_value=[step]):
+                    return run_local_ci.run(args)
+
+            with (
+                patch.object(run_local_ci, "resolve_maven", return_value="mvn"),
+                patch.object(run_local_ci, "java_major_version", return_value=(21, "Java21")),
+                patch.object(run_local_ci, "REPO_ROOT", root),
+                patch.dict(os.environ, {"DISPLAY": ":99"}),
+            ):
+                self.assertEqual(1, run_case(False))
+                self.assertEqual(0, run_case(True))
 
     def test_syntax_gate_rejects_each_invalid_script_and_accepts_valid_selection(self):
         bash = shutil.which("bash")

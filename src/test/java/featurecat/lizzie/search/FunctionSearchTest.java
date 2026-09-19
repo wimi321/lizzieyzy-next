@@ -78,9 +78,9 @@ class FunctionSearchTest {
     List<FunctionSearch.Match> browse = search.search("", Locale.US);
     assertEquals(FunctionCatalog.entries().size(), browse.size());
     assertEquals(browse.size(), browse.stream().map(FunctionSearch.Match::id).distinct().count());
-    assertEquals("weights.download", search.search("quanzhong", Locale.US).getFirst().id());
-    assertEquals("weights.download", search.search("qz", Locale.US).getFirst().id());
-    assertEquals("sync.board", search.search("lianpan", Locale.US).getFirst().id());
+    assertEquals("weights.download", search.search("quanzhong", Locale.US).get(0).id());
+    assertEquals("weights.download", search.search("qz", Locale.US).get(0).id());
+    assertEquals("sync.board", search.search("lianpan", Locale.US).get(0).id());
     assertTrue(
         search.search("GTP", Locale.JAPAN).stream()
             .anyMatch(match -> match.id().equals("config.engine.always-gtp")));
@@ -102,8 +102,8 @@ class FunctionSearchTest {
   @Test
   void distinctGameIntentAndSharedToolbarSurfaceRemainSearchable() {
     FunctionSearch search = new FunctionSearch();
-    assertEquals("game.stop-human", search.search("终止人机对局", Locale.CHINA).getFirst().id());
-    assertEquals("analysis.toggle", search.search("暂停分析", Locale.CHINA).getFirst().id());
+    assertEquals("game.stop-human", search.search("终止人机对局", Locale.CHINA).get(0).id());
+    assertEquals("analysis.toggle", search.search("暂停分析", Locale.CHINA).get(0).id());
     for (Locale locale :
         List.of(
             Locale.US,
@@ -116,10 +116,10 @@ class FunctionSearchTest {
       ResourceBundle bundle = ResourceBundle.getBundle("l10n.DisplayStrings", locale);
       assertEquals(
           "toolbar.detailed",
-          search.search(bundle.getString("Accessibility.toolbarDetails"), locale).getFirst().id());
+          search.search(bundle.getString("Accessibility.toolbarDetails"), locale).get(0).id());
       assertEquals(
           "game.stop-human",
-          search.search(bundle.getString("Menu.breakGame"), locale).getFirst().id());
+          search.search(bundle.getString("Menu.breakGame"), locale).get(0).id());
     }
   }
 
