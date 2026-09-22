@@ -73,9 +73,11 @@ include is a fingerprint failure, not permission to skip validation.
 `commandSemantics` contains the final effective non-tuning inline `override-config`
 settings, including existing launch policies. Visit/time limits, numerical
 precision, search parameters and `analysisPVLen` remain part of the comparison.
-Managed concurrency keys and the generated `homeDataDir` cache location
-are excluded. Values are only compared to the current command; nothing in this
-object is executed or copied into a launch command. The engine, model and config
+Managed concurrency keys and output locations (`homeDataDir`, `logDir`, `logFile`,
+`logDirDated`) are excluded, since each evidence run has its own output directory.
+Logging behavior such as `logToStderr` and `logSearchInfo` remains bound. No search
+parameter is normalized out. Values are only compared to the current command;
+nothing in this object is executed or copied into a launch command. The engine, model and config
 are resolved from the saved local command, never from a report-provided path.
 
 Accepted parameters are added as a scene-specific launch overlay. The saved

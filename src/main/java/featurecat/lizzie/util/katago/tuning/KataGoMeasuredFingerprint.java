@@ -23,13 +23,15 @@ import org.json.JSONObject;
 
 /** Fresh content identity for one measured launch; never hashes model files on the event thread. */
 public final class KataGoMeasuredFingerprint {
-  private static final Set<String> MANAGED =
+  private static final Set<String> SCENE_TUNING_KEYS =
       Set.of(
           "numSearchThreads",
           "numAnalysisThreads",
           "numSearchThreadsPerAnalysisThread",
-          "nnMaxBatchSize",
-          "homeDataDir");
+          "nnMaxBatchSize");
+  // Evidence runs use distinct output directories. Only locations are ignored, never log behavior.
+  private static final Set<String> OUTPUT_LOCATION_KEYS =
+      Set.of("homeDataDir", "logDir", "logFile", "logDirDated");
 
   private KataGoMeasuredFingerprint() {}
 
@@ -58,7 +60,8 @@ public final class KataGoMeasuredFingerprint {
         .effectiveOverrides()
         .forEach(
             (key, value) -> {
-              if (!MANAGED.contains(key)) semantics.put(key, value);
+              if (!SCENE_TUNING_KEYS.contains(key) && !OUTPUT_LOCATION_KEYS.contains(key))
+                semantics.put(key, value);
             });
     validateArguments(effectiveCommand);
     return new JSONObject()

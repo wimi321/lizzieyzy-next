@@ -93,6 +93,33 @@ class KataGoMeasuredFingerprintTest {
     assertFalse(fingerprint.similar(KataGoMeasuredFingerprint.capture(snapshot, gpu())));
   }
 
+  @Test
+  void perRunOutputLocationsAreIgnoredButLoggingBehaviorIsStillBound() throws Exception {
+    var snapshot = KataGoAutoSetupHelper.inspectSavedEngine(entry());
+    var command = new java.util.ArrayList<>(snapshot.sourceArguments);
+    command.add("-override-config");
+    command.add(
+        "homeDataDir=cache-a,logDir=round-a,logFile=round-a.log,logDirDated=dated-a,"
+            + "logToStderr=false,logSearchInfo=false,maxVisits=5000,analysisPVLen=100");
+    var first = KataGoMeasuredFingerprint.capture(snapshot, gpu(), command);
+    var semantics = first.getJSONObject("commandSemantics");
+    for (String key : java.util.List.of("homeDataDir", "logDir", "logFile", "logDirDated"))
+      assertFalse(semantics.has(key));
+    assertEquals("false", semantics.getString("logToStderr"));
+    assertEquals("false", semantics.getString("logSearchInfo"));
+    command.add("-override-config");
+    command.add("homeDataDir=cache-b,logDir=round-b,logFile=round-b.log,logDirDated=dated-b");
+    assertTrue(first.similar(KataGoMeasuredFingerprint.capture(snapshot, gpu(), command)));
+    for (String change :
+        java.util.List.of(
+            "logToStderr=true", "logSearchInfo=true", "maxVisits=6000", "analysisPVLen=15")) {
+      var changed = new java.util.ArrayList<>(command);
+      changed.add("-override-config");
+      changed.add(change);
+      assertFalse(first.similar(KataGoMeasuredFingerprint.capture(snapshot, gpu(), changed)), change);
+    }
+  }
+
   private EngineData entry() throws Exception {
     Path engine = Files.writeString(directory.resolve("katago.exe"), "engine");
     Path model = Files.writeString(directory.resolve("model.bin.gz"), "model A");
