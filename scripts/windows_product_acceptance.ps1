@@ -1061,7 +1061,10 @@ function Start-PreparedProduct {
             }
         }
         if (-not $ready) { throw "Timed out waiting for visible window, application-ready/repair log, owned startup engine, config.txt and persist." }
-        if ($layout.Backend -eq "none") { Require-Value -Condition ($readinessState -eq "explicit-repair") -Message "No-engine product did not expose the required visible repair/no-engine state." }
+        # A live session only proves packaged process/readiness identity. An intentionally
+        # engine-free editor may be ready without a repair condition; keep the stricter
+        # repair/no-engine-state requirement for terminal distribution scenarios.
+        if ($layout.Backend -eq "none" -and $ScenarioId -ne "live-session") { Require-Value -Condition ($readinessState -eq "explicit-repair") -Message "No-engine product did not expose the required visible repair/no-engine state." }
         $currentOwned = @(Get-OwnedProcessTree -RootPid $process.Id -ProductRoot $layout.Root)
         foreach ($processId in $currentOwned) { [void]$ownedHistory.Add([int]$processId) }
         foreach ($snapshot in @(Get-ProcessSnapshot -ProcessIds $currentOwned)) {

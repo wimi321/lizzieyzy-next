@@ -107,11 +107,14 @@ namespace FixtureJvmHost {
       // Reproduce the production window-before-engine startup ordering.
       var engineStarter = new Thread(() => {
         Thread.Sleep(3000);
-        Process.Start(new ProcessStartInfo {
-          FileName = Path.Combine(root, "app", "engines", "katago", "windows-x64", "katago.exe"),
-          WorkingDirectory = root,
-          UseShellExecute = false
-        });
+        string engine = Path.Combine(root, "app", "engines", "katago", "windows-x64", "katago.exe");
+        if (File.Exists(engine)) {
+          Process.Start(new ProcessStartInfo {
+            FileName = engine,
+            WorkingDirectory = root,
+            UseShellExecute = false
+          });
+        }
       });
       engineStarter.IsBackground = true;
       engineStarter.Start();
@@ -263,12 +266,14 @@ namespace FixtureLauncher {
         *,
         unsafe: bool = False,
         ready: bool = True,
+        no_engine: bool = False,
         launcher_override: Path | None = None,
         date_tag: str = DATE_TAG,
         release_tag: str = RELEASE_TAG,
         target_sha: str = TARGET_SHA,
     ) -> tuple[Path, Path]:
-        asset = self.root / f"{date_tag}-windows64.with-katago.portable.zip"
+        flavor = "without.engine" if no_engine else "with-katago"
+        asset = self.root / f"{date_tag}-windows64.{flavor}.portable.zip"
         product = "LizzieYzy Next"
         files: dict[str, bytes] = {
             f"{product}/.lizzie-portable": b"portable fixture\n",
@@ -279,7 +284,7 @@ namespace FixtureLauncher {
             f"{product}/app/LizzieYzy Next.cfg": b"[Application]\napp.mainjar=lizzie-yzy2.5.3-shaded.jar\n",
             f"{product}/app/lizzie-yzy2.5.3-shaded.jar": b"fixture-shaded-jar",
             f"{product}/app/lizzieyzy-next-installed-manifest.json": (
-                json.dumps({"schemaVersion": 1, "releaseTag": release_tag, "platform": "windows", "flavor": "with-katago"}) + "\n"
+                json.dumps({"schemaVersion": 1, "releaseTag": release_tag, "platform": "windows", "flavor": flavor}) + "\n"
             ).encode(),
             f"{product}/app/engines/katago/configs/gtp.cfg": b"fixture config",
             f"{product}/app/engines/katago/windows-x64/katago.exe": self.sleepy_launcher.read_bytes(),
@@ -290,6 +295,9 @@ namespace FixtureLauncher {
             f"{product}/app/readboard/readboard.exe": b"fixture readboard",
             f"{product}/app/readboard/lizzieyzy-next-readboard-manifest.txt": b"fixture readboard manifest",
         }
+        if no_engine:
+            files = {name: content for name, content in files.items()
+                     if "/app/engines/" not in name and "/app/weights/" not in name}
         with zipfile.ZipFile(asset, "w", compression=zipfile.ZIP_DEFLATED) as archive:
             archive.writestr(f"{product}/user-data/", b"")
             for name, content in files.items():
@@ -368,8 +376,8 @@ namespace FixtureLauncher {
         )
         return evidence, result
 
-    def start_live_fixture(self, name: str) -> tuple[Path, dict[str, object]]:
-        asset, manifest = self.create_portable()
+    def start_live_fixture(self, name: str, *, no_engine: bool = False) -> tuple[Path, dict[str, object]]:
+        asset, manifest = self.create_portable(no_engine=no_engine)
         evidence, prepared = self.prepare(asset, manifest, name)
         self.assertEqual(0, prepared.returncode, prepared.stderr or prepared.stdout)
         started = self.run_script(
@@ -391,6 +399,17 @@ namespace FixtureLauncher {
         if run["state"] == "RUNNING":
             stopped = self.run_script("-Command", "Stop", "-RunJson", windows_path(run_path))
             self.assertEqual(0, stopped.returncode, stopped.stderr or stopped.stdout)
+
+    def test_no_engine_live_session_records_readiness_without_claiming_repair(self) -> None:
+        evidence, run = self.start_live_fixture("no engine live evidence", no_engine=True)
+        self.assertEqual("none", run["backend"]["expected"])
+        self.assertEqual("application-ready", run["backend"]["readinessState"])
+        self.assertIsNone(run["engine"]["path"])
+        status = self.run_script("-Command", "Status", "-RunJson", windows_path(evidence / "run.json"))
+        self.assertEqual(0, status.returncode, status.stderr or status.stdout)
+        self.stop_live_fixture(evidence)
+        stopped = json.loads((evidence / "run.json").read_text(encoding="utf-8"))
+        self.assertTrue(stopped["cleanup"]["complete"])
 
     def test_status_accepts_original_start_record_with_owned_child_jvm(self) -> None:
         # Supplementary-plane characters cannot round-trip through legacy ANSI

@@ -148,6 +148,8 @@ Windows 最终产品在原生主机按同一入口交接。`Prepare` 接收已�
 ./scripts/windows_product_acceptance.ps1 -Command Stop -RunJson <run.json>
 ```
 
+无引擎版的 `live-session` 可以记录 `application-ready`：它仅证明正确的成品、窗口、日志与进程身份，不要求把主动选择的无引擎编辑器误判为修复故障，也不证明推理可用。`Run` 的终态分发场景仍保留原有明确修复/无引擎状态要求；不能把 live-session 的成功替代该场景验收。
+
 `Start` 在任何进程变更前复验 candidate、provenance、资产、launcher、runtime、JVM module、shaded JAR、installed manifest、backend marker、engine/config/model、JCEF 与 ReadBoard 闭包哈希，并原子写入 `RUNNING` 的 `run.json`；该记录绑定 launcher PID/image/command line、全部活跃 owned process 的 incarnation、实际加载 packaged `jvm.dll` 的确切 owned process、数据目录及完整产品身份。`Status` 只读复验这些身份与 owned PID 树，并要求记录的 JVM host 仍是同一进程 incarnation、仍受 launcher 拥有且仍加载记录路径的 packaged `jvm.dll`；它同时复验 readiness 证据和离线连接状态，不扫描或接纳任意 Java 进程。`Stop` 即使 launcher 已退出或产品文件已漂移，也先按已记录的 image/creation time 清理匹配的 owned 进程、逐项移除本次 firewall rules、精确恢复 launcher cfg 与 Windows audit policy，再写入 `STOPPED`、identity errors、survivors 和清理错误。离线验收对除 loopback 外的 IPv4/IPv6 地址使用 Windows Firewall 阻断，并以 Windows Security 5157 deny events 与活动连接的双重零计数取证；不能查询 Security log、连接或 firewall state 时失败或写严格 `BLOCKED`，不把查询错误当作空结果。
 
 `Run` 执行 `portable-offline-first-run`、`installer-offline-first-run`、`installer-upgrade-preserve`、`core-update-preserve` 或 `variant-launch`，并写 phase-discriminated `acceptance.json`。缺少已传输 candidate 时，需同时传 `-TargetSha` 与 `-ExpectedArtifactKey/-ExpectedArtifactName/-ExpectedArtifactClass`，脚本才会写带精确请求身份的 `BLOCKED` 记录。MSI 使用 `/qn /norestart` 安装到 disposable Unicode/空格路径，拒绝未明确归属的既有 Lizzie 安装；升级必须证明 prior 与 candidate ProductCode 按预期 UpgradeUUID 注册且版本身份发生变化。core update 使用每次运行唯一且新建的目标，只修改 manifest-owned files、保持资源 sentinel，并真实启动更新后产品。
