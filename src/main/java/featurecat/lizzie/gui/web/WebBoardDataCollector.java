@@ -6,15 +6,13 @@ import featurecat.lizzie.rules.Board;
 import featurecat.lizzie.rules.BoardData;
 import featurecat.lizzie.rules.BoardHistoryNode;
 import featurecat.lizzie.rules.Stone;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
-import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
-import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Supplier;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
@@ -24,20 +22,46 @@ import org.json.JSONObject;
  */
 public class WebBoardDataCollector {
 
-  private final ScheduledExecutorService executor =
-      Executors.newSingleThreadScheduledExecutor(
-          r -> {
-            Thread t = new Thread(r, "WebBoardDataCollector");
-            t.setDaemon(true);
-            return t;
-          });
+  private final ScheduledThreadPoolExecutor executor;
+  private final WebBoardUpdateQueue updates;
+  private final Supplier<BoardHistoryNode> displayNode;
+  private final Supplier<BoardHistoryNode> historyRoot;
   private volatile WebBoardServer server;
-  private volatile long lastBroadcastTime = 0;
-  private static final long MIN_BROADCAST_INTERVAL_MS = 100; // 10 updates/sec max
-  private final AtomicBoolean pendingUpdate = new AtomicBoolean(false);
-  private final AtomicBoolean pendingFullState = new AtomicBoolean(false);
+  private static final long MIN_BROADCAST_INTERVAL_MS = 100; // 10 analysis updates/sec max
 
-  public WebBoardDataCollector() {}
+  private static ScheduledThreadPoolExecutor createExecutor() {
+    return new ScheduledThreadPoolExecutor(
+        1,
+        r -> {
+          Thread t = new Thread(r, "WebBoardDataCollector");
+          t.setDaemon(true);
+          return t;
+        });
+  }
+
+  public WebBoardDataCollector() {
+    this(
+        createExecutor(),
+        () -> Lizzie.frame.getDisplayNode(),
+        () -> Lizzie.board.getHistory().getStart());
+  }
+
+  WebBoardDataCollector(
+      ScheduledThreadPoolExecutor executor,
+      Supplier<BoardHistoryNode> displayNode,
+      Supplier<BoardHistoryNode> historyRoot) {
+    this.executor = executor;
+    this.displayNode = displayNode;
+    this.historyRoot = historyRoot;
+    updates =
+        new WebBoardUpdateQueue(
+            executor,
+            MIN_BROADCAST_INTERVAL_MS,
+            update -> {
+              if (update.fullState) doBroadcastFullState(update);
+              else doBroadcastAnalysis(update);
+            });
+  }
 
   public void setServer(WebBoardServer server) {
     this.server = server;
@@ -45,36 +69,20 @@ public class WebBoardDataCollector {
 
   /** Called when analysis data is updated. Throttles to max 10 updates/sec. */
   public void onAnalysisUpdated() {
-    try {
-      long now = System.currentTimeMillis();
-      if (now - lastBroadcastTime < MIN_BROADCAST_INTERVAL_MS) {
-        if (pendingUpdate.compareAndSet(false, true)) {
-          long delay = MIN_BROADCAST_INTERVAL_MS - (now - lastBroadcastTime);
-          executor.schedule(this::doBroadcastAnalysis, delay, TimeUnit.MILLISECONDS);
-        }
-        return;
-      }
-      executor.execute(this::doBroadcastAnalysis);
-    } catch (RejectedExecutionException ignored) {
-    }
+    updates.requestAnalysis();
   }
 
   /** Called when board state changes (new move, navigation, etc.). Coalesces rapid calls. */
   public void onBoardStateChanged() {
-    try {
-      if (pendingFullState.compareAndSet(false, true)) {
-        executor.execute(this::doBroadcastFullState);
-      }
-    } catch (RejectedExecutionException ignored) {
-    }
+    updates.requestFullState();
   }
 
-  private void doBroadcastAnalysis() {
-    pendingUpdate.set(false);
-    lastBroadcastTime = System.currentTimeMillis();
-    if (server == null) return;
+  private void doBroadcastAnalysis(WebBoardUpdateQueue.Update update) {
+    WebBoardServer target = server;
+    if (target == null) return;
     try {
-      BoardData data = Lizzie.frame.getDisplayNode().getData();
+      BoardHistoryNode currentNode = displayNode.get();
+      BoardData data = currentNode.getData();
       if (data.bestMoves == null || data.bestMoves.isEmpty()) return;
       int bw = Board.boardWidth;
       int bh = Board.boardHeight;
@@ -83,17 +91,17 @@ public class WebBoardDataCollector {
       JSONObject json =
           buildAnalysisUpdateJson(
               data.bestMoves, wr, sm, data.getPlayouts(), data.estimateArray, bw, bh);
-      server.broadcastMessage(json.toString());
+      String message = json.toString();
+      if (canBroadcast(update, currentNode, target)) target.broadcastMessage(message);
     } catch (Exception ignored) {
     }
   }
 
-  private void doBroadcastFullState() {
-    pendingFullState.set(false);
-    lastBroadcastTime = System.currentTimeMillis();
-    if (server == null) return;
+  private void doBroadcastFullState(WebBoardUpdateQueue.Update update) {
+    WebBoardServer target = server;
+    if (target == null) return;
     try {
-      BoardHistoryNode currentNode = Lizzie.frame.getDisplayNode();
+      BoardHistoryNode currentNode = displayNode.get();
       BoardData data = currentNode.getData();
       int bw = Board.boardWidth;
       int bh = Board.boardHeight;
@@ -113,18 +121,32 @@ public class WebBoardDataCollector {
               sm,
               data.getPlayouts(),
               data.estimateArray);
-      server.broadcastFullState(fullState.toString());
-
-      BoardHistoryNode root = Lizzie.board.getHistory().getStart();
+      BoardHistoryNode root = historyRoot.get();
       JSONObject history = buildWinrateHistoryJson(root, currentNode);
-      server.broadcastMessage(history.toString());
+      String stateMessage = fullState.toString();
+      String historyMessage = history.toString();
+      if (!canBroadcast(update, currentNode, target)) return;
+      target.broadcastFullState(stateMessage);
+      if (canBroadcast(update, currentNode, target)) target.broadcastMessage(historyMessage);
     } catch (Exception e) {
       e.printStackTrace();
     }
   }
 
+  private boolean canBroadcast(
+      WebBoardUpdateQueue.Update update, BoardHistoryNode currentNode, WebBoardServer target) {
+    if (!update.isCurrent() || server != target) return false;
+    if (displayNode.get() != currentNode) {
+      // Navigation can precede its notification; ensure a complete state repairs that window.
+      updates.requestFullState();
+      return false;
+    }
+    return update.isCurrent();
+  }
+
   /** Shuts down the executor. */
   public void shutdown() {
+    updates.close();
     executor.shutdownNow();
     try {
       executor.awaitTermination(1, TimeUnit.SECONDS);
