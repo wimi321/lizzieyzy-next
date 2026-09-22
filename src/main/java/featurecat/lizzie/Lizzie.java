@@ -1466,6 +1466,12 @@ public class Lizzie {
   }
 
   static void shutdown(IntConsumer exit) {
+    java.util.concurrent.CompletableFuture<Void> pendingSaves =
+        featurecat.lizzie.gui.SgfSaveCoordinator.pendingSaves();
+    if (!pendingSaves.isDone()) {
+      pendingSaves.thenRun(() -> SwingUtilities.invokeLater(() -> shutdown(exit)));
+      return;
+    }
     logShutdownRequested();
     try {
       if (config.autoSaveOnExit) frame.saveAutoGame(1);

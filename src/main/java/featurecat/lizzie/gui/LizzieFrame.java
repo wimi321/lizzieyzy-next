@@ -3884,82 +3884,7 @@ public class LizzieFrame extends JFrame {
   }
 
   public void saveRawFileComment() {
-    boolean rawBefore = isSavingRaw;
-    boolean commentsBefore = isSavingRawComment;
-    try {
-      saveRawFileCommentWithDialog();
-    } finally {
-      isSavingRaw = rawBefore;
-      isSavingRawComment = commentsBefore;
-    }
-  }
-
-  private void saveRawFileCommentWithDialog() {
-    isSavingRaw = true;
-    isSavingRawComment = true;
-    FileNameExtensionFilter filter = new FileNameExtensionFilter("*.sgf", "SGF");
-    JSONObject filesystem = Lizzie.config.persisted.getJSONObject("filesystem");
-    JFileChooser chooser = new JFileChooser(filesystem.getString("last-folder"));
-    chooser.setFileFilter(filter);
-    JFrame frame = new JFrame();
-    frame.setAlwaysOnTop(Lizzie.frame.isAlwaysOnTop());
-    chooser.setMultiSelectionEnabled(false);
-    String fileName = Lizzie.board.getHistory().getGameInfo().getSaveFileName();
-    String sf = new SimpleDateFormat("yyyyMMddHHmmss").format(new Date());
-    if (!fileName.equals("")) {
-      text = getTextField(chooser);
-      text.setText(fileName + "_" + sf);
-      text.setEnabled(false);
-    } else {
-      text = getTextField(chooser);
-      text.setText(sf);
-      text.setEnabled(false);
-    }
-    Runnable runnable =
-        new Runnable() {
-          public void run() {
-            try {
-              Thread.sleep(400);
-            } catch (InterruptedException e) {
-              // TODO Auto-generated catch block
-              e.printStackTrace();
-            }
-            text.setEnabled(true);
-            text.requestFocus(true);
-            text.selectAll();
-          }
-        };
-    Thread thread = new Thread(runnable);
-    thread.start();
-
-    int result = chooser.showSaveDialog(frame);
-    if (result == JFileChooser.APPROVE_OPTION) {
-      File file = sgfSaveTarget(chooser.getSelectedFile());
-      if (file.exists()) {
-        int ret =
-            JOptionPane.showConfirmDialog(
-                Lizzie.frame,
-                Lizzie.resourceBundle.getString("LizzieFrame.prompt.sgfExists"),
-                Lizzie.resourceBundle.getString("LizzieFrame.warning"),
-                JOptionPane.OK_CANCEL_OPTION);
-        if (ret == JOptionPane.CANCEL_OPTION || ret == -1) {
-          return;
-        }
-      }
-      try {
-        SGFParser.save(Lizzie.board, file.getPath());
-        if (file.getParent() != null) {
-          filesystem.put("last-folder", file.getParent());
-        }
-      } catch (IOException err) {
-        //   Message msg = new Message();
-        //  msg.setMessage("保存失败");
-        Utils.showMsg(Lizzie.resourceBundle.getString("LizzieFrame.saveFileFailed"));
-        // msg.setVisible(true);LizzieFrame.saveFileFailed
-      }
-      isSavingRawComment = false;
-      isSavingRaw = false;
-    }
+    SgfSaveCoordinator.chooseAndSave(SgfSaveCoordinator.Mode.RAW_COMMENT);
   }
 
   public void saveOriFile() {
@@ -4015,95 +3940,15 @@ public class LizzieFrame extends JFrame {
           // System.out.println("取消");
           return;
       }
-      try {
-        SGFParser.save(Lizzie.board, curFile.getPath());
-      } catch (IOException e) {
-        // SgfObservation already recorded the save failure.
-      }
+      SgfSaveCoordinator.saveOriginal(curFile);
     } else {
       saveFile(false);
     }
   }
 
   public static void saveFile(boolean savingRaw) {
-    Leelaz engine = Lizzie.leelaz;
-    boolean pondering = engine != null && engine.isPondering()
-        && !EngineGamePresentation.current().playing();
-    boolean rawBefore = isSavingRaw;
-    boolean commentsBefore = isSavingRawComment;
-    if (pondering) engine.togglePonder();
-    try {
-      saveFileWithDialog(savingRaw);
-    } finally {
-      isSavingRaw = rawBefore;
-      isSavingRawComment = commentsBefore;
-      if (pondering && Lizzie.leelaz == engine && !engine.isPondering()) engine.togglePonder();
-    }
-  }
-
-  private static void saveFileWithDialog(boolean savingRaw) {
-    isSavingRaw = savingRaw;
-    FileNameExtensionFilter filter = new FileNameExtensionFilter("*.sgf", "SGF");
-    JSONObject filesystem = Lizzie.config.persisted.getJSONObject("filesystem");
-    JFileChooser chooser = new JFileChooser(filesystem.getString("last-folder"));
-    chooser.setFileFilter(filter);
-    JFrame frame = new JFrame();
-    frame.setAlwaysOnTop(Lizzie.frame.isAlwaysOnTop());
-    chooser.setMultiSelectionEnabled(false);
-    String fileName = Lizzie.board.getHistory().getGameInfo().getSaveFileName();
-    String sf = new SimpleDateFormat("yyyyMMddHHmmss").format(new Date());
-    if (!fileName.equals("")) {
-      text = getTextField(chooser);
-      text.setText(fileName + "_" + sf);
-      text.setEnabled(false);
-    } else {
-      text = getTextField(chooser);
-      text.setText(sf);
-      text.setEnabled(false);
-    }
-    Runnable runnable =
-        new Runnable() {
-          public void run() {
-            try {
-              Thread.sleep(400);
-            } catch (InterruptedException e) {
-              // TODO Auto-generated catch block
-              e.printStackTrace();
-            }
-            text.setEnabled(true);
-            text.requestFocus(true);
-            text.selectAll();
-          }
-        };
-    Thread thread = new Thread(runnable);
-    thread.start();
-
-    int result = chooser.showSaveDialog(frame);
-    if (result == JFileChooser.APPROVE_OPTION) {
-      File file = sgfSaveTarget(chooser.getSelectedFile());
-      if (file.exists()) {
-        int ret =
-            JOptionPane.showConfirmDialog(
-                Lizzie.frame,
-                Lizzie.resourceBundle.getString("LizzieFrame.prompt.sgfExists"),
-                Lizzie.resourceBundle.getString("LizzieFrame.warning"),
-                JOptionPane.OK_CANCEL_OPTION);
-        if (ret == JOptionPane.CANCEL_OPTION || ret == -1) {
-          return;
-        }
-      }
-      try {
-        SGFParser.save(Lizzie.board, file.getPath());
-        curFile = file;
-        if (file.getParent() != null) {
-          filesystem.put("last-folder", file.getParent());
-        }
-      } catch (IOException err) {
-        Utils.showMsg(Lizzie.resourceBundle.getString("LizzieFrame.saveFileFailed")); // 保存失败
-        // msg.setVisible(true);
-      }
-      isSavingRaw = false;
-    }
+    SgfSaveCoordinator.chooseAndSave(
+        savingRaw ? SgfSaveCoordinator.Mode.RAW : SgfSaveCoordinator.Mode.NORMAL);
   }
 
   public void setMainPanelFocus() {
@@ -4111,75 +3956,7 @@ public class LizzieFrame extends JFrame {
   }
 
   public static void saveCurrentBranch() {
-    FileNameExtensionFilter filter = new FileNameExtensionFilter("*.sgf", "SGF");
-    JSONObject filesystem = Lizzie.config.persisted.getJSONObject("filesystem");
-    JFileChooser chooser = new JFileChooser(filesystem.getString("last-folder"));
-    chooser.setFileFilter(filter);
-    JFrame frame = new JFrame();
-    frame.setAlwaysOnTop(Lizzie.frame.isAlwaysOnTop());
-    chooser.setMultiSelectionEnabled(false);
-    String fileName = Lizzie.board.getHistory().getGameInfo().getSaveFileName();
-    String sf = new SimpleDateFormat("yyyyMMddHHmmss").format(new Date());
-    if (!fileName.equals("")) {
-      text = getTextField(chooser);
-      text.setText(fileName + "_" + sf);
-      text.setEnabled(false);
-    } else {
-      text = getTextField(chooser);
-      text.setText(sf);
-      text.setEnabled(false);
-    }
-    Runnable runnable =
-        new Runnable() {
-          public void run() {
-            try {
-              Thread.sleep(400);
-            } catch (InterruptedException e) {
-              // TODO Auto-generated catch block
-              e.printStackTrace();
-            }
-            text.setEnabled(true);
-            text.requestFocus(true);
-            text.selectAll();
-          }
-        };
-    Thread thread = new Thread(runnable);
-    thread.start();
-
-    int result = chooser.showSaveDialog(frame);
-    if (result == JFileChooser.APPROVE_OPTION) {
-      File file = sgfSaveTarget(chooser.getSelectedFile());
-      if (file.exists()) {
-        int ret =
-            JOptionPane.showConfirmDialog(
-                Lizzie.frame,
-                Lizzie.resourceBundle.getString("LizzieFrame.prompt.sgfExists"),
-                Lizzie.resourceBundle.getString("LizzieFrame.warning"),
-                JOptionPane.OK_CANCEL_OPTION);
-        if (ret == JOptionPane.CANCEL_OPTION || ret == -1) {
-          return;
-        }
-      }
-      try {
-
-        int startMoveNumber = 0;
-        boolean blackToPlay = Lizzie.board.getHistory().getStart().getData().blackToPlay;
-        if (Lizzie.board.hasStartStone) startMoveNumber += Lizzie.board.startStonelist.size();
-        Lizzie.board.saveListForEdit();
-        Lizzie.board.clearforedit();
-        Lizzie.board.setMoveListWithFlatten(
-            Lizzie.board.tempallmovelist, startMoveNumber, blackToPlay);
-        isSavingRaw = true;
-        SGFParser.save(Lizzie.board, file.getPath());
-        isSavingRaw = false;
-        if (file.getParent() != null) {
-          filesystem.put("last-folder", file.getParent());
-        }
-        Lizzie.board.clearEditStuff();
-      } catch (IOException err) {
-        Utils.showMsg(Lizzie.resourceBundle.getString("LizzieFrame.saveFileFailed"));
-      }
-    }
+    SgfSaveCoordinator.chooseAndSave(SgfSaveCoordinator.Mode.CURRENT_BRANCH);
   }
 
   public void openFile() {

@@ -103,6 +103,7 @@ public final class OfflineBoardAcceptanceTest {
                 () -> verifyOverwriteCancel(work, LizzieFrame::saveCurrentBranch),
                 () -> verifySaveAnalysisState(work));
           });
+      verifySuccessfulSaves(work);
       Files.writeString(result, "PASS");
       exit = 0;
     } catch (Throwable failure) {
@@ -147,6 +148,7 @@ public final class OfflineBoardAcceptanceTest {
         if (!window.isShowing()) continue;
         javax.swing.JFileChooser chooser = findChooser(window);
         if (chooser != null) {
+          assertEquals(Lizzie.frame, window.getOwner(), "Main window must own the save dialog");
           cancelled.set(true);
           chooser.cancelSelection();
           ((javax.swing.Timer) event.getSource()).stop();
@@ -176,6 +178,57 @@ public final class OfflineBoardAcceptanceTest {
       }
     }
     return null;
+  }
+
+  private static void verifySuccessfulSaves(Path work) throws Exception {
+    Runnable[] saves = {
+        () -> LizzieFrame.saveFile(false), () -> LizzieFrame.saveFile(true),
+        () -> Lizzie.frame.saveRawFileComment(), LizzieFrame::saveCurrentBranch};
+    for (int index = 0; index < saves.length; index++) {
+      Path target = work.resolve("成功保存-中文-" + index + ".SGF");
+      Runnable save = saves[index];
+      int mode = index;
+      SwingUtilities.invokeAndWait(() -> {
+        assertTrue(SGFParser.loadFromString("(;SZ[19];B[aa](;W[bb])(;W[dd]C[before]))"));
+        var history = Lizzie.board.getHistory();
+        var root = history.getStart();
+        var fork = root.next().orElseThrow();
+        var selected = fork.getVariation(1).orElseThrow();
+        history.setHead(selected);
+        javax.swing.Timer approve = new javax.swing.Timer(100, event -> {
+          for (java.awt.Window window : java.awt.Window.getWindows()) {
+            if (!window.isShowing()) continue;
+            javax.swing.JFileChooser chooser = findChooser(window);
+            if (chooser != null) {
+              assertEquals(Lizzie.frame, window.getOwner());
+              chooser.setSelectedFile(target.toFile());
+              chooser.approveSelection();
+              ((javax.swing.Timer) event.getSource()).stop();
+              return;
+            }
+          }
+        });
+        approve.start();
+        try {
+          save.run();
+          assertEquals(history, Lizzie.board.getHistory(), "Save must not rebuild the board");
+          assertEquals(selected, history.getCurrentHistoryNode());
+          assertEquals(2, fork.numberOfChildren());
+          selected.getData().comment = "edited after snapshot";
+        } finally {
+          approve.stop();
+        }
+      });
+      SgfSaveCoordinator.pendingSaves().get(10, java.util.concurrent.TimeUnit.SECONDS);
+      String written = Files.readString(target);
+      assertTrue(written.contains(";B[aa]"));
+      assertTrue(written.contains(";W[dd]"));
+      assertEquals(mode != 3, written.contains(";W[bb]"));
+      assertEquals(mode == 0 || mode == 2, written.contains("C[before]"));
+      assertTrue(!written.contains("edited after snapshot"));
+      assertTrue(!Files.exists(Path.of(target + ".sgf")), "Uppercase SGF must not gain another suffix");
+      if (mode < 2) SwingUtilities.invokeAndWait(() -> assertEquals(target.toFile(), LizzieFrame.curFile));
+    }
   }
 
   private static void verifyOverwriteCancel(Path work, Runnable save) throws Exception {

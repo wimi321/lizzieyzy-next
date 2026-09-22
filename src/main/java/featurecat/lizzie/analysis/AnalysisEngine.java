@@ -950,47 +950,49 @@ public class AnalysisEngine {
       return false;
     }
     BoardData data = node.getData();
-    boolean ownershipRequired =
-        explicitRequestTargetVisits > 0 && explicitRequestOwnershipRequested;
-    if (preserveExistingAnalysis
-        && data.hasCompletePrimaryAnalysis(explicitRequestTargetVisits, ownershipRequired)) {
-      return false;
-    }
-    if (preserveExistingAnalysis
-        && ownershipRequired
-        && data.hasCompletePrimaryAnalysis(explicitRequestTargetVisits, false)
-        && data.getPlayouts() > incomingPlayouts) {
-      if (ownershipArray == null || ownershipArray.isEmpty()) {
+    synchronized (data) {
+      boolean ownershipRequired =
+          explicitRequestTargetVisits > 0 && explicitRequestOwnershipRequested;
+      if (preserveExistingAnalysis
+          && data.hasCompletePrimaryAnalysis(explicitRequestTargetVisits, ownershipRequired)) {
         return false;
       }
-      data.estimateArray = new ArrayList<Double>(ownershipArray);
+      if (preserveExistingAnalysis
+          && ownershipRequired
+          && data.hasCompletePrimaryAnalysis(explicitRequestTargetVisits, false)
+          && data.getPlayouts() > incomingPlayouts) {
+        if (ownershipArray == null || ownershipArray.isEmpty()) {
+          return false;
+        }
+        data.estimateArray = new ArrayList<Double>(ownershipArray);
+        data.comment = SGFParser.formatComment(node);
+        Lizzie.board.updateMovelist(node);
+        return data.hasCompletePrimaryAnalysis(explicitRequestTargetVisits, true);
+      }
+
+      List<Double> ownershipToApply =
+          preserveExistingAnalysis && ownershipArray == null && data.estimateArray != null
+              ? data.estimateArray
+              : ownershipArray;
+      boolean payloadApplied =
+          data.tryToSetBestMovesWithStatus(
+              moves,
+              resourceBundle.getString(
+                  workload == Workload.WHOLE_GAME
+                      ? "AnalysisEngine.wholeGameDeepAnalyze"
+                      : "AnalysisEngine.flashAnalyze"),
+              false,
+              incomingPlayouts,
+              ownershipToApply,
+              preserveExistingAnalysis || Lizzie.config.analysisAlwaysOverride);
+      if (!payloadApplied) {
+        return false;
+      }
       data.comment = SGFParser.formatComment(node);
       Lizzie.board.updateMovelist(node);
-      return data.hasCompletePrimaryAnalysis(explicitRequestTargetVisits, true);
+      return explicitRequestTargetVisits <= 0
+          || data.hasCompletePrimaryAnalysis(explicitRequestTargetVisits, ownershipRequired);
     }
-
-    List<Double> ownershipToApply =
-        preserveExistingAnalysis && ownershipArray == null && data.estimateArray != null
-            ? data.estimateArray
-            : ownershipArray;
-    boolean payloadApplied =
-        data.tryToSetBestMovesWithStatus(
-            moves,
-            resourceBundle.getString(
-                workload == Workload.WHOLE_GAME
-                    ? "AnalysisEngine.wholeGameDeepAnalyze"
-                    : "AnalysisEngine.flashAnalyze"),
-            false,
-            incomingPlayouts,
-            ownershipToApply,
-            preserveExistingAnalysis || Lizzie.config.analysisAlwaysOverride);
-    if (!payloadApplied) {
-      return false;
-    }
-    data.comment = SGFParser.formatComment(node);
-    Lizzie.board.updateMovelist(node);
-    return explicitRequestTargetVisits <= 0
-        || data.hasCompletePrimaryAnalysis(explicitRequestTargetVisits, ownershipRequired);
   }
 
   private static boolean shouldRefreshSilentProgress(int resultCount, int totalCount) {

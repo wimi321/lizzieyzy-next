@@ -344,6 +344,21 @@ public class BoardHistoryNode {
     nodeInfoMain2 = copyNodeInfo(source.nodeInfoMain2);
   }
 
+  /** Detached node for saving; callers reconnect only detached parents/children. */
+  BoardHistoryNode copyForSave() {
+    BoardHistoryNode copy = new BoardHistoryNode(data.clone());
+    copy.analyzed = analyzed;
+    copy.diffAnalyzed = diffAnalyzed;
+    copy.isBest = isBest;
+    copy.nodeInfo = copyNodeInfo(nodeInfo);
+    copy.nodeInfoMain = copyNodeInfo(nodeInfoMain);
+    copy.nodeInfo2 = copyNodeInfo(nodeInfo2);
+    copy.nodeInfoMain2 = copyNodeInfo(nodeInfoMain2);
+    copy.extraStones = cloneExtraStones(extraStones);
+    copy.hasRemovedStone = hasRemovedStone;
+    return copy;
+  }
+
   /**
    * @return variations for display
    */

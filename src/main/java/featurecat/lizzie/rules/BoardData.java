@@ -44,7 +44,7 @@ public class BoardData {
   public enum AnalysisAdoption { REJECTED, OWNERSHIP_ONLY, FULL }
 
   /** Called only after the engine has revalidated the exact ordinary output owner. */
-  public AnalysisAdoption adoptOrdinaryAnalysis(
+  public synchronized AnalysisAdoption adoptOrdinaryAnalysis(
       List<MoveData> moves, String engineName, Leelaz engine, int totalVisits,
       int exactRootVisits, List<Double> ownership, Object source, boolean secondary,
       boolean forceFull) {
@@ -440,7 +440,7 @@ public class BoardData {
         moves, engName, sourceEngine, totalplayouts, estimateArray, forceOverride);
   }
 
-  private boolean tryToSetBestMovesWithStatusFromEngine(
+  private synchronized boolean tryToSetBestMovesWithStatusFromEngine(
       List<MoveData> moves,
       String engName,
       Leelaz sourceEngine,
@@ -658,7 +658,7 @@ public class BoardData {
         moves, engName, isFromLeelaz, metadataEngine, totalplayouts, estimateArray, false);
   }
 
-  private void tryToSetBestMoves2FromEngine(
+  private synchronized void tryToSetBestMoves2FromEngine(
       List<MoveData> moves, String engName, boolean isFromLeelaz,
       Leelaz metadataEngine, int totalplayouts, List<Double> estimateArray, boolean forceOverride) {
     if (!forceOverride && Lizzie.config.enableLizzieCache && !Lizzie.config.isAutoAna) {
@@ -959,7 +959,8 @@ public class BoardData {
     copyAnalysisStateFrom(data, false);
   }
 
-  public BoardData clone() {
+  /** Shares the short payload-commit lock so a save cannot mix visits and candidates from updates. */
+  public synchronized BoardData clone() {
     BoardData data = copyCoreData();
     data.copyCoreStateFrom(this);
     data.copyAnalysisStateFrom(this, true);

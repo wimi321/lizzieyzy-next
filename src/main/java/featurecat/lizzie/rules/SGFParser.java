@@ -23,6 +23,7 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -962,6 +963,26 @@ public class SGFParser {
     }
   }
 
+  /** Capture the complete write payload before leaving the UI thread. No background caller may
+   * serialize the live board or borrow the process-wide raw export flags. */
+  public static String saveSnapshot(Board board, boolean raw, boolean comments, boolean currentBranch)
+      throws IOException {
+    if (!SwingUtilities.isEventDispatchThread()) {
+      throw new IllegalStateException("SGF save snapshots must be captured on the event thread");
+    }
+    boolean originalRaw = LizzieFrame.isSavingRaw;
+    boolean originalComments = LizzieFrame.isSavingRawComment;
+    try (StringWriter writer = new StringWriter()) {
+      LizzieFrame.isSavingRaw = raw;
+      LizzieFrame.isSavingRawComment = comments;
+      saveToStream(board, writer, false, false, currentBranch, currentBranch, true);
+      return writer.toString();
+    } finally {
+      LizzieFrame.isSavingRaw = originalRaw;
+      LizzieFrame.isSavingRawComment = originalComments;
+    }
+  }
+
   public static String saveMainTrunkRawToString() throws IOException {
     boolean originalSavingRaw = LizzieFrame.isSavingRaw;
     boolean originalSavingRawComment = LizzieFrame.isSavingRawComment;
@@ -1000,6 +1021,28 @@ public class SGFParser {
     copy.setHandicap(original.getHandicap());
     copy.setResult(original.getResult());
     copy.copyEngineGameHistoryFrom(original);
+    return copy;
+  }
+
+  private static BoardHistoryList captureSaveHistory(BoardHistoryList source) {
+    BoardHistoryList copy = source.shallowCopy();
+    Map<BoardHistoryNode, BoardHistoryNode> nodes = new IdentityHashMap<>();
+    ArrayDeque<BoardHistoryNode> pending = new ArrayDeque<>();
+    BoardHistoryNode root = source.getStart();
+    nodes.put(root, root.copyForSave());
+    pending.add(root);
+    while (!pending.isEmpty()) {
+      BoardHistoryNode original = pending.removeFirst();
+      BoardHistoryNode parent = nodes.get(original);
+      for (BoardHistoryNode child : original.getVariations()) {
+        BoardHistoryNode detached = child.copyForSave();
+        detached.reparentAsLastVariationOf(parent);
+        nodes.put(child, detached);
+        pending.addLast(child);
+      }
+    }
+    copy.setHead(nodes.get(source.getCurrentHistoryNode()));
+    copy.setGameInfo(copyGameInfo(source.getGameInfo()));
     return copy;
   }
 
@@ -1281,6 +1324,18 @@ public class SGFParser {
       boolean mainTrunkOnly,
       boolean stripRootMetadata)
       throws IOException {
+    saveToStream(board, writer, forUpload, fromAutoSave, mainTrunkOnly, stripRootMetadata, false);
+  }
+
+  private static void saveToStream(
+      Board board,
+      Writer writer,
+      boolean forUpload,
+      boolean fromAutoSave,
+      boolean mainTrunkOnly,
+      boolean stripRootMetadata,
+      boolean captureSnapshot)
+      throws IOException {
     maybeCaptureEngineGameSaveSnapshot(board);
     BoardHistoryList history = board.getHistory().shallowCopy();
     int[] historyBoardSize = resolveHistoryBoardSize(history);
@@ -1423,10 +1478,20 @@ public class SGFParser {
       // }
 
       // move to the first move
+      if (captureSnapshot) history = captureSaveHistory(history);
+      Map<BoardHistoryNode, BoardHistoryNode> selectedBranch = new IdentityHashMap<>();
+      if (mainTrunkOnly) {
+        BoardHistoryNode selected = history.getCurrentHistoryNode();
+        while (selected.previous().isPresent()) {
+          BoardHistoryNode parent = selected.previous().get();
+          selectedBranch.put(parent, selected);
+          selected = parent;
+        }
+      }
       history.toStart();
 
       // Game properties
-      BoardData rootData = history.getData();
+      BoardData rootData = history.getData().clone();
       rootData.addProperties(generalProps.toString());
       if (rootData.isSnapshotNode()) {
         builder.append(materializedRootSnapshotProperties(rootData, history.getStones()));
@@ -1519,9 +1584,8 @@ public class SGFParser {
           builder = generateNode(board, cur, forUpload, builder);
         }
         if (mainTrunkOnly) {
-          if (cur.next().isPresent()) {
-            stack.push(cur.next().get());
-          }
+          BoardHistoryNode next = selectedBranch.getOrDefault(cur, cur.next().orElse(null));
+          if (next != null) stack.push(next);
         } else {
           boolean hasBrothers = (cur.numberOfChildren() > 1);
           if (cur.numberOfChildren() >= 1) {
