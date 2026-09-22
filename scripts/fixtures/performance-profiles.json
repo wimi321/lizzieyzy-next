@@ -1,0 +1,4 @@
+[
+  {"name": "baseline", "parameters": {"numSearchThreads": 8, "numAnalysisThreads": 8, "numSearchThreadsPerAnalysisThread": 2, "nnMaxBatchSize": 16}},
+  {"name": "candidate", "parameters": {"numSearchThreads": 16, "numAnalysisThreads": 12, "numSearchThreadsPerAnalysisThread": 2, "nnMaxBatchSize": 32}}
+]

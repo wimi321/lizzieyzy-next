@@ -144,6 +144,8 @@ PY_COMPILE_FILES = (
     "scripts/release_asset_topology.py",
     "scripts/run_local_ci.py",
     "scripts/summarize_jfr.py",
+    "scripts/measure_analysis.py",
+    "scripts/test_measure_analysis.py",
     "scripts/test_audit_katago_binary_version.py",
     "scripts/test_audit_katago_package_metadata.py",
     "scripts/test_generate_release_notes.py",
@@ -173,6 +175,7 @@ PY_COMPILE_FILES = (
 )
 
 DIRECT_PYTHON_TESTS = (
+    "scripts/test_measure_analysis.py",
     "scripts/test_audit_katago_source_bundle.py",
     "scripts/test_audit_katago_linux_compatibility.py",
     "scripts/test_prepare_katago_source_assets.py",

@@ -36,6 +36,41 @@ powershell -ExecutionPolicy Bypass -File scripts\windows_rtx50_analysis_benchmar
 
 ## Next 运行诊断
 
+### 同局面、固定预算的实时与整盘对照
+
+`scripts/measure_analysis.py` 在独立目录启动真实引擎，不读写日常应用设置。固定引擎、模型、配置、局面、规则、贴目、visits 预算和输出内容；仅允许比较搜索线程、并行局面、每局面线程、批大小。输出保存输入 SHA-256、每次最终覆盖参数、原始日志、冷启动时间、GPU/驱动/显存及可见 KataGo 进程数。
+
+```powershell
+python scripts/measure_analysis.py --engine "D:\KataGo\katago.exe" `
+  --model "D:\KataGo\b11.bin.gz" --config "D:\KataGo\gtp.cfg" `
+  --fixture scripts/fixtures/performance-opening.json `
+  --profiles scripts/fixtures/performance-profiles.json `
+  --output "D:\measurement\engine" --source-commit "<measured-commit>" `
+  --visits 5000 --rounds 3
+```
+
+示例 fixture 为 8 手开局、整盘场景包含空盘在内的 9 个局面，只能证明该样本的结果。正式推荐应再加入用户常用棋谱和中盘局面；示例 profiles 是待比较参数，不是推荐或默认值。固定预算使用相同配置；配置含 `include` 时还必须归档并核对所有被包含文件。并发搜索可能略微超出目标 visits，原始 root visits 会保留。
+
+每组先记录独立缓存目录的冷进程结果，然后按 A/B、B/A 交替至少三轮。热轮在同一进程内先完成一次同预算预热，再清除搜索/神经网络缓存进行计时；驱动的全局缓存不在脚本控制范围内，不能把这里的冷进程等同首次安装。`--rounds 0` 仅用于冒烟验证，不是调优依据；波动较大时用新的输出目录运行 `--rounds 5`。
+
+实时场景测最后落子到首次有效 rootInfo、达到固定 visits 的耗时以及带编号的 stop 回执。整盘场景核对每个局面预算完成，另外提交高预算请求并等待全部取消回执，不能把“收到 terminate ACK”当成搜索已经停止。
+
+应用内对照复用生产 Swing 窗口、`Leelaz` 和 `AnalysisEngine`，不修改生产分析入口：
+
+```powershell
+mvn -DskipTests test-compile dependency:build-classpath -Dmdep.outputFile=target/performance-classpath.txt
+$measurementClasspath = (Join-Path $PWD 'target/test-classes') + ';' + `
+  (Join-Path $PWD 'target/classes') + ';' + (Get-Content target/performance-classpath.txt -Raw).Trim()
+# 在同一上方命令中改用新的 --output，并追加：
+# --app-classpath $measurementClasspath --java "$env:JAVA_HOME\bin\java.exe"
+```
+
+应用探针额外保存 EDT 事件延迟样本、Java 堆使用量和应用最终命令；整盘取消按生产流程关闭专用引擎。探针仅对其测试清缓存命令的回执作特殊处理，其余分析仍交给生产解析器。引擎侧和应用侧须使用相同 manifest 输入；不能用不同局面的官方 benchmark 来计算应用开销。`--scene realtime` 或 `--scene whole-game` 可单独复测。
+
+运行期间不要并行运行其他引擎、编译或桌面验收。Windows WDDM 的进程显存可能显示 `N/A`；此时总 GPU 显存不能冒充单进程显存，其他桌面程序的占用也应记录为限制。样本失败立即停止，原始失败日志保留；不要混入成功样本，也不要覆盖旧输出目录。
+
+验收比较每轮及中位数，而非单次最好数字；同时看首结果、暂停/取消、EDT 的 p95/p99、显存峰值和预算完整性。只有多个实际棋谱上稳定收益且无明显延迟/内存回退才推荐参数；没有足够证据继续使用原配置。
+
 复制一份 Windows 启动器旁的 `app\LizzieYzy Next*.cfg`，只在测试副本的 `[JavaOptions]` 末尾加入：
 
 ```text
