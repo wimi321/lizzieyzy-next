@@ -2171,7 +2171,9 @@ public class KataGoAutoSetupDialog extends JDialog {
                 return;
               lblStatus.setText(error.getMessage());
               lblStatus.setForeground(ERROR_COLOR);
-              refreshIdleControls();
+              // Keep unscanned model actions disabled; only retry or close is safe here.
+              btnRefresh.setEnabled(true);
+              btnClose.setEnabled(true);
             });
     catalogRefreshWorker.execute();
   }
