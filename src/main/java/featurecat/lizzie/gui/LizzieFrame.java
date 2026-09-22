@@ -3876,7 +3876,25 @@ public class LizzieFrame extends JFrame {
     return textField;
   }
 
+  /** Resolve the actual write target before checking whether overwrite confirmation is needed. */
+  static File sgfSaveTarget(File selected) {
+    return selected.getName().toLowerCase(Locale.ROOT).endsWith(".sgf")
+        ? selected
+        : new File(selected.getPath() + ".sgf");
+  }
+
   public void saveRawFileComment() {
+    boolean rawBefore = isSavingRaw;
+    boolean commentsBefore = isSavingRawComment;
+    try {
+      saveRawFileCommentWithDialog();
+    } finally {
+      isSavingRaw = rawBefore;
+      isSavingRawComment = commentsBefore;
+    }
+  }
+
+  private void saveRawFileCommentWithDialog() {
     isSavingRaw = true;
     isSavingRawComment = true;
     FileNameExtensionFilter filter = new FileNameExtensionFilter("*.sgf", "SGF");
@@ -3916,8 +3934,7 @@ public class LizzieFrame extends JFrame {
 
     int result = chooser.showSaveDialog(frame);
     if (result == JFileChooser.APPROVE_OPTION) {
-      File file = chooser.getSelectedFile();
-      if (!file.getName().contains("sgf")) file = new File(file.getAbsolutePath() + ".sgf");
+      File file = sgfSaveTarget(chooser.getSelectedFile());
       if (file.exists()) {
         int ret =
             JOptionPane.showConfirmDialog(
@@ -3928,9 +3945,6 @@ public class LizzieFrame extends JFrame {
         if (ret == JOptionPane.CANCEL_OPTION || ret == -1) {
           return;
         }
-      }
-      if (!file.getPath().endsWith(".sgf")) {
-        file = new File(file.getPath() + ".sgf");
       }
       try {
         SGFParser.save(Lizzie.board, file.getPath());
@@ -4012,11 +4026,22 @@ public class LizzieFrame extends JFrame {
   }
 
   public static void saveFile(boolean savingRaw) {
-    boolean pondering = false;
-    if (Lizzie.leelaz.isPondering() && !EngineGamePresentation.current().playing()) {
-      pondering = true;
-      Lizzie.leelaz.togglePonder();
+    Leelaz engine = Lizzie.leelaz;
+    boolean pondering = engine != null && engine.isPondering()
+        && !EngineGamePresentation.current().playing();
+    boolean rawBefore = isSavingRaw;
+    boolean commentsBefore = isSavingRawComment;
+    if (pondering) engine.togglePonder();
+    try {
+      saveFileWithDialog(savingRaw);
+    } finally {
+      isSavingRaw = rawBefore;
+      isSavingRawComment = commentsBefore;
+      if (pondering && Lizzie.leelaz == engine && !engine.isPondering()) engine.togglePonder();
     }
+  }
+
+  private static void saveFileWithDialog(boolean savingRaw) {
     isSavingRaw = savingRaw;
     FileNameExtensionFilter filter = new FileNameExtensionFilter("*.sgf", "SGF");
     JSONObject filesystem = Lizzie.config.persisted.getJSONObject("filesystem");
@@ -4055,8 +4080,7 @@ public class LizzieFrame extends JFrame {
 
     int result = chooser.showSaveDialog(frame);
     if (result == JFileChooser.APPROVE_OPTION) {
-      File file = chooser.getSelectedFile();
-      if (!file.getName().contains("sgf")) file = new File(file.getAbsolutePath() + ".sgf");
+      File file = sgfSaveTarget(chooser.getSelectedFile());
       if (file.exists()) {
         int ret =
             JOptionPane.showConfirmDialog(
@@ -4067,9 +4091,6 @@ public class LizzieFrame extends JFrame {
         if (ret == JOptionPane.CANCEL_OPTION || ret == -1) {
           return;
         }
-      }
-      if (!file.getPath().endsWith(".sgf")) {
-        file = new File(file.getPath() + ".sgf");
       }
       try {
         SGFParser.save(Lizzie.board, file.getPath());
@@ -4083,7 +4104,6 @@ public class LizzieFrame extends JFrame {
       }
       isSavingRaw = false;
     }
-    if (pondering) Lizzie.leelaz.togglePonder();
   }
 
   public void setMainPanelFocus() {
@@ -4128,8 +4148,7 @@ public class LizzieFrame extends JFrame {
 
     int result = chooser.showSaveDialog(frame);
     if (result == JFileChooser.APPROVE_OPTION) {
-      File file = chooser.getSelectedFile();
-      if (!file.getName().contains("sgf")) file = new File(file.getAbsolutePath() + ".sgf");
+      File file = sgfSaveTarget(chooser.getSelectedFile());
       if (file.exists()) {
         int ret =
             JOptionPane.showConfirmDialog(
@@ -4140,9 +4159,6 @@ public class LizzieFrame extends JFrame {
         if (ret == JOptionPane.CANCEL_OPTION || ret == -1) {
           return;
         }
-      }
-      if (!file.getPath().endsWith(".sgf")) {
-        file = new File(file.getPath() + ".sgf");
       }
       try {
 

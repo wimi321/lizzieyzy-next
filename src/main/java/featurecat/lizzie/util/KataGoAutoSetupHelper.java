@@ -749,7 +749,9 @@ public final class KataGoAutoSetupHelper {
             gtpConfig,
             siblingFile(gtpConfig, "analysis.cfg"),
             model,
-            model == null ? List.of() : List.of(model),
+            // Keep the local catalog when this snapshot is published after a weight switch.
+            // Discovery adds candidates only; the selected entry still owns every launch input.
+            prependUnique(model, collectWeightCandidates(currentWorkingDir(), appRoot)),
             DiscoverySource.MANUAL_SELECTION,
             entry.name,
             entry.commands,

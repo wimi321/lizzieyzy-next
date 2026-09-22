@@ -2240,7 +2240,7 @@ public class Menu extends JMenuBar {
             Lizzie.config.showKataGoEstimate = false;
             Lizzie.config.uiConfig.put("show-katago-estimate", Lizzie.config.showKataGoEstimate);
             Lizzie.frame.clearKataEstimate();
-            Lizzie.leelaz.ponder();
+            if (Lizzie.leelaz != null) Lizzie.leelaz.ponder();
             Lizzie.frame.refresh();
           }
         });
@@ -2266,7 +2266,7 @@ public class Menu extends JMenuBar {
                   "show-katago-estimate-onmainboard", Lizzie.config.showKataGoEstimateOnMainbord);
               Lizzie.frame.clearKataEstimate();
             }
-            Lizzie.leelaz.ponder();
+            if (Lizzie.leelaz != null) Lizzie.leelaz.ponder();
             Lizzie.frame.refresh();
           }
         });
@@ -2284,7 +2284,7 @@ public class Menu extends JMenuBar {
             Lizzie.config.showKataGoEstimateOnMainbord = true;
             Lizzie.config.showKataGoEstimateOnSubbord = false;
             if (Lizzie.config.showSubBoard) LizzieFrame.subBoardRenderer.removeKataEstimateImage();
-            Lizzie.leelaz.ponder();
+            if (Lizzie.leelaz != null) Lizzie.leelaz.ponder();
             Lizzie.frame.refresh();
             if (Lizzie.config.saveKataEstimateStatus) {
               Lizzie.config.uiConfig.put("show-katago-estimate", Lizzie.config.showKataGoEstimate);
@@ -2311,7 +2311,7 @@ public class Menu extends JMenuBar {
             LizzieFrame.boardRenderer.removeKataEstimateImage();
             if (Lizzie.frame.floatBoard != null)
               Lizzie.frame.floatBoard.boardRenderer.removeKataEstimateImage();
-            Lizzie.leelaz.ponder();
+            if (Lizzie.leelaz != null) Lizzie.leelaz.ponder();
             Lizzie.frame.refresh();
             if (Lizzie.config.saveKataEstimateStatus) {
               Lizzie.config.uiConfig.put("show-katago-estimate", Lizzie.config.showKataGoEstimate);
@@ -2335,7 +2335,7 @@ public class Menu extends JMenuBar {
             Lizzie.config.showKataGoEstimate = true;
             Lizzie.config.showKataGoEstimateOnMainbord = true;
             Lizzie.config.showKataGoEstimateOnSubbord = true;
-            Lizzie.leelaz.ponder();
+            if (Lizzie.leelaz != null) Lizzie.leelaz.ponder();
             Lizzie.frame.refresh();
             if (Lizzie.config.saveKataEstimateStatus) {
               Lizzie.config.uiConfig.put("show-katago-estimate", Lizzie.config.showKataGoEstimate);
@@ -2385,7 +2385,7 @@ public class Menu extends JMenuBar {
             Lizzie.config.showKataGoEstimateBigBelow = false;
             Lizzie.config.showKataGoEstimateNotOnlive = false;
             Lizzie.config.showKataGoEstimateSmall = true;
-            if (Lizzie.leelaz.isKatago && !Lizzie.config.showKataGoEstimate)
+            if (Lizzie.leelaz != null && Lizzie.leelaz.isKatago && !Lizzie.config.showKataGoEstimate)
               Lizzie.frame.toggleShowKataEstimate();
             Lizzie.config.saveKataEstimateConfigs();
           }
@@ -2406,7 +2406,7 @@ public class Menu extends JMenuBar {
             Lizzie.config.showKataGoEstimateBigBelow = false;
             Lizzie.config.showKataGoEstimateNotOnlive = false;
             Lizzie.config.showKataGoEstimateSmall = false;
-            if (Lizzie.leelaz.isKatago && !Lizzie.config.showKataGoEstimate)
+            if (Lizzie.leelaz != null && Lizzie.leelaz.isKatago && !Lizzie.config.showKataGoEstimate)
               Lizzie.frame.toggleShowKataEstimate();
             Lizzie.config.saveKataEstimateConfigs();
           }
@@ -2425,7 +2425,7 @@ public class Menu extends JMenuBar {
             Lizzie.config.showKataGoEstimateBigBelow = false;
             Lizzie.config.showKataGoEstimateNotOnlive = true;
             Lizzie.config.showKataGoEstimateSmall = false;
-            if (Lizzie.leelaz.isKatago && !Lizzie.config.showKataGoEstimate)
+            if (Lizzie.leelaz != null && Lizzie.leelaz.isKatago && !Lizzie.config.showKataGoEstimate)
               Lizzie.frame.toggleShowKataEstimate();
             Lizzie.config.saveKataEstimateConfigs();
           }
@@ -2446,7 +2446,7 @@ public class Menu extends JMenuBar {
             Lizzie.config.showKataGoEstimateBySize = false;
             Lizzie.config.showKataGoEstimateBigBelow = true;
             Lizzie.config.showKataGoEstimateSmall = false;
-            if (Lizzie.leelaz.isKatago && !Lizzie.config.showKataGoEstimate)
+            if (Lizzie.leelaz != null && Lizzie.leelaz.isKatago && !Lizzie.config.showKataGoEstimate)
               Lizzie.frame.toggleShowKataEstimate();
             Lizzie.config.saveKataEstimateConfigs();
           }
@@ -2465,7 +2465,7 @@ public class Menu extends JMenuBar {
             Lizzie.config.showKataGoEstimateBySize = true;
             Lizzie.config.showKataGoEstimateBigBelow = false;
             Lizzie.config.showKataGoEstimateSmall = false;
-            if (Lizzie.leelaz.isKatago && !Lizzie.config.showKataGoEstimate)
+            if (Lizzie.leelaz != null && Lizzie.leelaz.isKatago && !Lizzie.config.showKataGoEstimate)
               Lizzie.frame.toggleShowKataEstimate();
             Lizzie.config.saveKataEstimateConfigs();
           }
@@ -2487,7 +2487,7 @@ public class Menu extends JMenuBar {
             Lizzie.config.showPureEstimateBigBelow = false;
             Lizzie.config.showPureEstimateNotOnlive = false;
             Lizzie.config.showPureEstimateSmall = true;
-            if (Lizzie.leelaz.isheatmap) Lizzie.leelaz.ponder();
+            if (Lizzie.leelaz != null && Lizzie.leelaz.isheatmap) Lizzie.leelaz.ponder();
             Lizzie.config.saveKataEstimateConfigs();
           }
         });
@@ -2507,7 +2507,7 @@ public class Menu extends JMenuBar {
             Lizzie.config.showPureEstimateBigBelow = false;
             Lizzie.config.showPureEstimateNotOnlive = false;
             Lizzie.config.showPureEstimateSmall = false;
-            if (Lizzie.leelaz.isheatmap) Lizzie.leelaz.ponder();
+            if (Lizzie.leelaz != null && Lizzie.leelaz.isheatmap) Lizzie.leelaz.ponder();
             Lizzie.config.saveKataEstimateConfigs();
           }
         });
@@ -2525,7 +2525,7 @@ public class Menu extends JMenuBar {
             Lizzie.config.showPureEstimateBigBelow = false;
             Lizzie.config.showPureEstimateNotOnlive = true;
             Lizzie.config.showPureEstimateSmall = false;
-            if (Lizzie.leelaz.isheatmap) Lizzie.leelaz.ponder();
+            if (Lizzie.leelaz != null && Lizzie.leelaz.isheatmap) Lizzie.leelaz.ponder();
             Lizzie.config.saveKataEstimateConfigs();
           }
         });
@@ -2545,7 +2545,7 @@ public class Menu extends JMenuBar {
             Lizzie.config.showPureEstimateBySize = false;
             Lizzie.config.showPureEstimateBigBelow = true;
             Lizzie.config.showPureEstimateSmall = false;
-            if (Lizzie.leelaz.isheatmap) Lizzie.leelaz.ponder();
+            if (Lizzie.leelaz != null && Lizzie.leelaz.isheatmap) Lizzie.leelaz.ponder();
             Lizzie.config.saveKataEstimateConfigs();
           }
         });
@@ -2563,7 +2563,7 @@ public class Menu extends JMenuBar {
             Lizzie.config.showPureEstimateBySize = true;
             Lizzie.config.showPureEstimateBigBelow = false;
             Lizzie.config.showPureEstimateSmall = false;
-            if (Lizzie.leelaz.isheatmap) Lizzie.leelaz.ponder();
+            if (Lizzie.leelaz != null && Lizzie.leelaz.isheatmap) Lizzie.leelaz.ponder();
             Lizzie.config.saveKataEstimateConfigs();
           }
         });

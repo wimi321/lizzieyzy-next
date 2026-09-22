@@ -40,6 +40,32 @@ import org.slf4j.LoggerFactory;
 
 public class KataGoAutoSetupHelperTest {
   @Test
+  void switchingPortableWeightRetainsBundledAndDownloadedCatalogCandidates() throws Exception {
+    Path root = Files.createTempDirectory("katago-switch-catalog");
+    Path app = Files.createDirectories(root.resolve("app"));
+    Path work = Files.createDirectories(root.resolve("user-data"));
+    touch(root.resolve(".lizzie-portable"));
+    Path engine = touch(app.resolve("engines/katago").resolve(testKataGoBinaryName()));
+    Path gtp = touch(app.resolve("engines/katago/configs/gtp.cfg"));
+    touch(gtp.resolveSibling("analysis.cfg"));
+    Path bundled = touch(app.resolve("weights/default.bin.gz"));
+    Path downloaded = touch(work.resolve("weights/downloaded.bin.gz"));
+    withProcessDirAndConfig(root, work, () -> {
+      EngineData entry = engineData("Portable", engine, gtp, bundled, true);
+      Utils.saveEngineSettings(new ArrayList<>(List.of(entry)));
+      KataGoAutoSetupHelper.SetupSnapshot initial = KataGoAutoSetupHelper.inspectLocalSetup();
+      KataGoAutoSetupHelper.SetupResult switched =
+          KataGoAutoSetupHelper.applyAutoSetup(initial.withActiveWeight(downloaded), false);
+      assertEquals(downloaded, switched.snapshot.activeWeightPath);
+      assertTrue(switched.snapshot.weightCandidates.contains(bundled),
+          "Switching must not turn the bundled model back into a download-only catalog entry");
+      assertTrue(switched.snapshot.weightCandidates.contains(downloaded));
+      assertEquals(engine, switched.snapshot.enginePath);
+      assertEquals(gtp, switched.snapshot.gtpConfigPath);
+    });
+  }
+
+  @Test
   void discoversCompleteExternalKataGoFromDefaultEngineAsOneCoherentProfile() throws Exception {
     Path root = Files.createTempDirectory("katago-discovery-external");
     Path external = Files.createDirectories(root.resolve("外部 KataGo 有空格"));

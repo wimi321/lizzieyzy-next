@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import featurecat.lizzie.Lizzie;
+import featurecat.lizzie.analysis.Leelaz;
 import featurecat.lizzie.rules.SGFParser;
 import featurecat.lizzie.rules.Stone;
 import java.nio.file.Files;
@@ -91,6 +92,16 @@ public final class OfflineBoardAcceptanceTest {
             assertEquals(3, Lizzie.board.getHistory().mainTrunkLength());
             Lizzie.board.clear(false);
             assertEquals(0, Lizzie.board.getHistory().getMoveNumber());
+            verifyOfflineEstimateMenus();
+            org.junit.jupiter.api.Assertions.assertAll(
+                () -> verifyCancelledOfflineSave(() -> LizzieFrame.saveFile(false)),
+                () -> verifyCancelledOfflineSave(() -> LizzieFrame.saveFile(true)),
+                () -> verifyCancelledOfflineSave(() -> Lizzie.frame.saveRawFileComment()),
+                () -> verifyOverwriteCancel(work, () -> LizzieFrame.saveFile(false)),
+                () -> verifyOverwriteCancel(work, () -> LizzieFrame.saveFile(true)),
+                () -> verifyOverwriteCancel(work, () -> Lizzie.frame.saveRawFileComment()),
+                () -> verifyOverwriteCancel(work, LizzieFrame::saveCurrentBranch),
+                () -> verifySaveAnalysisState(work));
           });
       Files.writeString(result, "PASS");
       exit = 0;
@@ -100,5 +111,204 @@ public final class OfflineBoardAcceptanceTest {
     } finally {
       System.exit(exit);
     }
+  }
+
+  private static void verifyOfflineEstimateMenus() {
+    javax.swing.JMenu estimate = findMenu(LizzieFrame.menu, "Menu.kataEstimate");
+    for (String key : new String[] {
+        "Menu.kataEstimateClose", "Menu.kataEstimateCloseView",
+        "Menu.kataEstimateOnMainBoard", "Menu.kataEstimateOnSubBoard",
+        "Menu.kataEstimateOnBothBoard", "Menu.kataEstimateByTransparentSmall",
+        "Menu.kataEstimateByTransparent", "Menu.kataEstimateByTransparentNotOnLive",
+        "Menu.kataEstimateByBigSquare", "Menu.kataEstimateBySize"}) {
+      javax.swing.JMenuItem item = findMenuItem(estimate.getMenuComponents(), key);
+      assertTrue(item.isEnabled(), key);
+      assertDoesNotThrow(() -> { item.doClick(); }, key);
+      assertNull(Lizzie.leelaz, "Changing display preferences must not create an engine");
+    }
+    javax.swing.JMenu pure = (javax.swing.JMenu) findMenuItem(
+        estimate.getMenuComponents(), "Menu.kataEstimateInPureNet");
+    for (String key : new String[] {
+        "Menu.kataEstimateByTransparentSmall", "Menu.kataEstimateByTransparent",
+        "Menu.kataEstimateByTransparentNotOnLive", "Menu.kataEstimateByBigSquare",
+        "Menu.kataEstimateBySize"}) {
+      javax.swing.JMenuItem item = findMenuItem(pure.getMenuComponents(), key);
+      assertDoesNotThrow(() -> { item.doClick(); }, key);
+      assertNull(Lizzie.leelaz);
+    }
+  }
+
+  private static void verifyCancelledOfflineSave(Runnable save) {
+    boolean rawBefore = LizzieFrame.isSavingRaw;
+    boolean commentsBefore = LizzieFrame.isSavingRawComment;
+    java.util.concurrent.atomic.AtomicBoolean cancelled = new java.util.concurrent.atomic.AtomicBoolean();
+    javax.swing.Timer cancelChooser = new javax.swing.Timer(100, event -> {
+      for (java.awt.Window window : java.awt.Window.getWindows()) {
+        if (!window.isShowing()) continue;
+        javax.swing.JFileChooser chooser = findChooser(window);
+        if (chooser != null) {
+          cancelled.set(true);
+          chooser.cancelSelection();
+          ((javax.swing.Timer) event.getSource()).stop();
+          return;
+        }
+      }
+    });
+    cancelChooser.start();
+    try {
+      assertDoesNotThrow(() -> { save.run(); });
+      assertTrue(cancelled.get(), "Save must reach its chooser with no foreground engine");
+      assertEquals(rawBefore, LizzieFrame.isSavingRaw, "Cancelled save leaked raw mode");
+      assertEquals(commentsBefore, LizzieFrame.isSavingRawComment, "Cancelled save leaked comment mode");
+    } finally {
+      cancelChooser.stop();
+      LizzieFrame.isSavingRaw = rawBefore;
+      LizzieFrame.isSavingRawComment = commentsBefore;
+    }
+  }
+
+  private static javax.swing.JFileChooser findChooser(java.awt.Container root) {
+    for (java.awt.Component component : root.getComponents()) {
+      if (component instanceof javax.swing.JFileChooser chooser) return chooser;
+      if (component instanceof java.awt.Container container) {
+        javax.swing.JFileChooser found = findChooser(container);
+        if (found != null) return found;
+      }
+    }
+    return null;
+  }
+
+  private static void verifyOverwriteCancel(Path work, Runnable save) throws Exception {
+    Path selected = work.resolve("protected-sgf-中文");
+    Path target = work.resolve("protected-sgf-中文.sgf");
+    String original = "(;GM[1]SZ[19]C[Do not overwrite this fixture])";
+    Files.writeString(target, original);
+    java.util.concurrent.atomic.AtomicBoolean approved = new java.util.concurrent.atomic.AtomicBoolean();
+    java.util.concurrent.atomic.AtomicBoolean cancelled = new java.util.concurrent.atomic.AtomicBoolean();
+    javax.swing.Timer control = new javax.swing.Timer(100, event -> {
+      for (java.awt.Window window : java.awt.Window.getWindows()) {
+        if (!window.isShowing()) continue;
+        if (!approved.get()) {
+          javax.swing.JFileChooser chooser = findChooser(window);
+          if (chooser != null) {
+            approved.set(true);
+            chooser.setSelectedFile(selected.toFile());
+            chooser.approveSelection();
+            return;
+          }
+        } else {
+          javax.swing.JOptionPane pane = findOptionPane(window);
+          if (pane != null) {
+            cancelled.set(true);
+            pane.setValue(javax.swing.JOptionPane.CANCEL_OPTION);
+            return;
+          }
+        }
+      }
+    });
+    control.start();
+    try {
+      save.run();
+      assertTrue(cancelled.get(), "The final suffixed target requires overwrite confirmation");
+      assertEquals(original, Files.readString(target));
+      assertTrue(!Files.exists(selected), "The unsuffixed name must not be written");
+    } finally {
+      control.stop();
+    }
+  }
+
+  private static void verifySaveAnalysisState(Path work) throws Exception {
+    Leelaz previous = Lizzie.leelaz;
+    try {
+      SaveTrackingEngine active = new SaveTrackingEngine(true);
+      Lizzie.setPrimaryEngine(active);
+      verifyCancelledOfflineSave(() -> LizzieFrame.saveFile(true));
+      assertTrue(active.pondering);
+      assertEquals(2, active.toggles, "Cancel should stop then resume the same active engine");
+      verifyOverwriteCancel(work, () -> LizzieFrame.saveFile(false));
+      assertTrue(active.pondering);
+      assertEquals(4, active.toggles, "Overwrite cancellation must also resume analysis");
+
+      SaveTrackingEngine paused = new SaveTrackingEngine(false);
+      Lizzie.setPrimaryEngine(paused);
+      verifyCancelledOfflineSave(() -> LizzieFrame.saveFile(false));
+      assertEquals(0, paused.toggles, "Saving must preserve a user's paused engine");
+
+      SaveTrackingEngine replacement = new SaveTrackingEngine(false);
+      Lizzie.setPrimaryEngine(active);
+      javax.swing.Timer switchEngine = new javax.swing.Timer(50, event -> {
+        Lizzie.setPrimaryEngine(replacement);
+        ((javax.swing.Timer) event.getSource()).stop();
+      });
+      switchEngine.start();
+      try {
+        verifyCancelledOfflineSave(() -> LizzieFrame.saveFile(false));
+        assertEquals(replacement, Lizzie.leelaz);
+        assertEquals(0, replacement.toggles, "A replacement engine must not be resumed by save");
+        assertEquals(5, active.toggles, "The replaced engine must remain stopped");
+      } finally {
+        switchEngine.stop();
+      }
+    } finally {
+      Lizzie.setPrimaryEngine(previous);
+    }
+  }
+
+  private static final class SaveTrackingEngine extends Leelaz {
+    private boolean pondering;
+    private int toggles;
+
+    SaveTrackingEngine(boolean pondering) throws java.io.IOException {
+      super("");
+      this.pondering = pondering;
+    }
+
+    @Override
+    public boolean isPondering() {
+      return pondering;
+    }
+
+    @Override
+    public void togglePonder() {
+      pondering = !pondering;
+      toggles++;
+    }
+  }
+
+  private static javax.swing.JOptionPane findOptionPane(java.awt.Container root) {
+    for (java.awt.Component component : root.getComponents()) {
+      if (component instanceof javax.swing.JOptionPane pane) return pane;
+      if (component instanceof java.awt.Container container) {
+        javax.swing.JOptionPane found = findOptionPane(container);
+        if (found != null) return found;
+      }
+    }
+    return null;
+  }
+
+  private static javax.swing.JMenu findMenu(javax.swing.JMenuBar bar, String key) {
+    javax.swing.JMenuItem item = findMenuItem(bar.getComponents(), key);
+    assertTrue(item instanceof javax.swing.JMenu, key);
+    return (javax.swing.JMenu) item;
+  }
+
+  private static javax.swing.JMenuItem findMenuItem(java.awt.Component[] components, String key) {
+    String label = Lizzie.resourceBundle.getString(key);
+    javax.swing.JMenuItem result = findMenuItemByLabel(components, label);
+    assertTrue(result != null, "Missing production menu: " + key);
+    return result;
+  }
+
+  private static javax.swing.JMenuItem findMenuItemByLabel(
+      java.awt.Component[] components, String label) {
+    for (java.awt.Component component : components) {
+      if (component instanceof javax.swing.JMenuItem item && label.equals(item.getText()))
+        return item;
+      if (component instanceof javax.swing.JMenu menu) {
+        javax.swing.JMenuItem found = findMenuItemByLabel(menu.getMenuComponents(), label);
+        if (found != null) return found;
+      }
+    }
+    return null;
   }
 }
