@@ -85,6 +85,10 @@ command remains unchanged. Whole-game overlays do not affect quick analysis or
 HumanSL. Restore removes the accepted overlay and retains the original command,
 including explicit user overrides. Changed assets, hardware, driver or commands
 invalidate the recommendation; the existing defaults remain available.
+Whole-game reports measure an independent local analysis process: both a separate
+SSH analysis configuration and `analysisReuseCurrentEngine` are unsupported.
+These mode checks run at review, apply and process launch, including after slow
+fingerprint verification. They do not disable local live-scene reports.
 
 ## Acceptance thresholds
 
@@ -111,6 +115,9 @@ parameter comparison and paired speed improvement. Applying requires a separate
 confirmation; restore removes both accepted scene overlays while retaining any
 subsequent manual command edits. The old Apple tuning profile is stored under
 its original key and is not migrated or deleted.
+Closing or hiding the performance window invalidates its pending operation and
+cancels its worker. Late confirmations, errors and success popups are suppressed,
+including when the same window is shown again before the old worker completes.
 
 No model hashing occurs in rendering or on the event thread. Fresh content and
 hardware verification occurs only when reviewing, confirming or starting an

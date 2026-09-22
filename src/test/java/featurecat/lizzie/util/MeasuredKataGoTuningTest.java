@@ -187,6 +187,77 @@ class MeasuredKataGoTuningTest {
     }
   }
 
+  @Test
+  void independentRemoteAnalysisIsRejectedEvenWhenTheSavedPrimaryEntryIsLocal() throws Exception {
+    assertUnsupportedWholeGameMode(false);
+  }
+
+  @Test
+  void reusingTheCurrentEngineCannotApplyAnIndependentWholeGameReport() throws Exception {
+    assertUnsupportedWholeGameMode(true);
+  }
+
+  private void assertUnsupportedWholeGameMode(boolean reuse) throws Exception {
+    try (Environment env = new Environment()) {
+      Path report = env.report(Scene.WHOLE_GAME);
+      var review = MeasuredKataGoTuning.review(env.entry.id, report, VERIFIED);
+      setUnsupportedMode(reuse, true);
+      AtomicInteger verifications = new AtomicInteger();
+      MeasuredKataGoTuning.Verification verification =
+          (entry, command, evidence) -> verifications.incrementAndGet();
+      IOException rejected = assertThrows(
+          IOException.class, () -> MeasuredKataGoTuning.review(env.entry.id, report, verification));
+      assertTrue(rejected.getMessage().contains(reuse ? "reusing" : "SSH"));
+      assertThrows(IOException.class, () -> MeasuredKataGoTuning.apply(review, verification));
+      assertEquals(0, verifications.get());
+      assertFalse(MeasuredKataGoTuning.hasProfile(env.entry.id));
+      assertFalse(EngineThreadPolicy.findSavedEntry(env.entry.id).useJavaSSH);
+      assertEquals(env.analysis, Lizzie.config.analysisEngineCommand);
+      // A separate analysis mode must not disable a genuinely local live-scene report.
+      assertNotNull(MeasuredKataGoTuning.review(env.entry.id, env.report(Scene.LIVE), VERIFIED));
+      setUnsupportedMode(reuse, false);
+      MeasuredKataGoTuning.apply(review, VERIFIED);
+      EngineData entry = EngineThreadPolicy.findSavedEntry(env.entry.id);
+      List<String> original = List.of("katago", "analysis");
+      setUnsupportedMode(reuse, true);
+      assertSame(original, MeasuredKataGoTuning.applyOverlay(
+          original, entry, env.analysis, Scene.WHOLE_GAME, verification));
+      assertSame(original, MeasuredKataGoTuning.applyWholeGame(original, env.analysis));
+      assertEquals(0, verifications.get());
+    }
+  }
+
+  @Test
+  void sceneModeChangesDuringFingerprintVerificationFailClosedBeforeReviewCommitOrLaunch()
+      throws Exception {
+    for (boolean reuse : new boolean[] {false, true}) {
+      try (Environment env = new Environment()) {
+        Path report = env.report(Scene.WHOLE_GAME);
+        MeasuredKataGoTuning.Verification changeDuringVerification =
+            (entry, command, evidence) -> setUnsupportedMode(reuse, true);
+        assertThrows(IOException.class,
+            () -> MeasuredKataGoTuning.review(env.entry.id, report, changeDuringVerification));
+        setUnsupportedMode(reuse, false);
+        var review = MeasuredKataGoTuning.review(env.entry.id, report, VERIFIED);
+        assertThrows(IOException.class,
+            () -> MeasuredKataGoTuning.apply(review, changeDuringVerification));
+        assertFalse(MeasuredKataGoTuning.hasProfile(env.entry.id));
+        setUnsupportedMode(reuse, false);
+        MeasuredKataGoTuning.apply(review, VERIFIED);
+        EngineData entry = EngineThreadPolicy.findSavedEntry(env.entry.id);
+        List<String> original = List.of("katago", "analysis");
+        assertSame(original, MeasuredKataGoTuning.applyOverlay(
+            original, entry, env.analysis, Scene.WHOLE_GAME, changeDuringVerification));
+      }
+    }
+  }
+
+  private static void setUnsupportedMode(boolean reuse, boolean enabled) {
+    if (reuse) Lizzie.config.analysisReuseCurrentEngine = enabled;
+    else Lizzie.config.leelazConfig.put(
+        "analysis-engine-ssh-info", new JSONObject().put("useJavaSSH", enabled));
+  }
+
   private final class Environment implements AutoCloseable {
     final Config previous = Lizzie.config;
     final EngineData entry = new EngineData();
@@ -199,6 +270,7 @@ class MeasuredKataGoTuningTest {
       Lizzie.config.uiConfig = new JSONObject();
       Lizzie.config.leelazConfig = new JSONObject();
       Lizzie.config.analysisEngineCommand = analysis;
+      Lizzie.config.analysisReuseCurrentEngine = false;
       entry.commands = "katago gtp -config gtp.cfg -model model.bin.gz";
       entry.name = "measured";
       entry.threadPolicy = new JSONObject().put("katago-apple-tuning-profile-v1", "keep-apple");

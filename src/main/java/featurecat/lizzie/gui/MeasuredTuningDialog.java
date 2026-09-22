@@ -15,16 +15,28 @@ import javax.swing.filechooser.FileNameExtensionFilter;
 
 /** Review and explicit confirmation for measurement-backed settings in the existing setup page. */
 final class MeasuredTuningDialog {
-  private MeasuredTuningDialog() {}
+  private final MeasuredTuningOperation operation = new MeasuredTuningOperation();
 
-  static void importReport(Window owner, String entryId, Consumer<Boolean> busy, Runnable changed) {
+  void invalidate() {
+    operation.invalidate();
+  }
+
+  private boolean canDeliver(Window owner, long token) {
+    return operation.canDeliver(token, owner.isVisible(), owner.isDisplayable());
+  }
+
+  void importReport(Window owner, String entryId, Consumer<Boolean> busy, Runnable changed) {
+    if (!owner.isVisible() || !owner.isDisplayable()) return;
+    long token = operation.begin(busy);
     JFileChooser chooser = new JFileChooser();
     chooser.setDialogTitle(text("import"));
     chooser.setFileFilter(new FileNameExtensionFilter("JSON", "json"));
-    if (chooser.showOpenDialog(owner) != JFileChooser.APPROVE_OPTION) return;
+    if (chooser.showOpenDialog(owner) != JFileChooser.APPROVE_OPTION || !canDeliver(owner, token)) {
+      operation.finish(token);
+      return;
+    }
     java.nio.file.Path reportPath = chooser.getSelectedFile().toPath();
-    busy.accept(true);
-    new SwingWorker<MeasuredKataGoTuning.Review, Void>() {
+    SwingWorker<MeasuredKataGoTuning.Review, Void> worker = new SwingWorker<>() {
       @Override
       protected MeasuredKataGoTuning.Review doInBackground() throws Exception {
         return MeasuredKataGoTuning.review(entryId, reportPath);
@@ -32,8 +44,10 @@ final class MeasuredTuningDialog {
 
       @Override
       protected void done() {
-        busy.accept(false);
-        if (!owner.isDisplayable()) return;
+        if (!canDeliver(owner, token)) {
+          operation.finish(token);
+          return;
+        }
         try {
           var review = get();
           var report = review.report();
@@ -55,7 +69,7 @@ final class MeasuredTuningDialog {
                   text("title"),
                   JOptionPane.OK_CANCEL_OPTION,
                   JOptionPane.QUESTION_MESSAGE)
-              == JOptionPane.OK_OPTION) {
+              == JOptionPane.OK_OPTION && canDeliver(owner, token)) {
             runWorker(
                 owner,
                 busy,
@@ -66,20 +80,29 @@ final class MeasuredTuningDialog {
                 });
           }
         } catch (Exception failure) {
-          showFailure(owner, failure);
+          if (canDeliver(owner, token)) showFailure(owner, failure);
+        } finally {
+          operation.finish(token);
         }
       }
-    }.execute();
+    };
+    operation.attach(token, worker);
+    worker.execute();
   }
 
-  static void restore(Window owner, String entryId, Consumer<Boolean> busy, Runnable changed) {
+  void restore(Window owner, String entryId, Consumer<Boolean> busy, Runnable changed) {
+    if (!owner.isVisible() || !owner.isDisplayable()) return;
+    long token = operation.begin(busy);
     if (JOptionPane.showConfirmDialog(
             owner,
             plainText(text("restoreConfirm")),
             text("title"),
             JOptionPane.OK_CANCEL_OPTION,
             JOptionPane.QUESTION_MESSAGE)
-        != JOptionPane.OK_OPTION) return;
+        != JOptionPane.OK_OPTION || !canDeliver(owner, token)) {
+      operation.finish(token);
+      return;
+    }
     runWorker(
         owner,
         busy,
@@ -90,10 +113,10 @@ final class MeasuredTuningDialog {
         });
   }
 
-  private static void runWorker(
+  private void runWorker(
       Window owner, Consumer<Boolean> busy, Runnable changed, Callable<Void> action) {
-    busy.accept(true);
-    new SwingWorker<Void, Void>() {
+    long token = operation.begin(busy);
+    SwingWorker<Void, Void> worker = new SwingWorker<>() {
       @Override
       protected Void doInBackground() throws Exception {
         return action.call();
@@ -101,18 +124,25 @@ final class MeasuredTuningDialog {
 
       @Override
       protected void done() {
-        busy.accept(false);
-        if (!owner.isDisplayable()) return;
+        if (!canDeliver(owner, token)) {
+          operation.finish(token);
+          return;
+        }
         try {
           get();
           changed.run();
-          JOptionPane.showMessageDialog(
-              owner, plainText(text("saved")), text("title"), JOptionPane.INFORMATION_MESSAGE);
+          if (canDeliver(owner, token))
+            JOptionPane.showMessageDialog(
+                owner, plainText(text("saved")), text("title"), JOptionPane.INFORMATION_MESSAGE);
         } catch (Exception failure) {
-          showFailure(owner, failure);
+          if (canDeliver(owner, token)) showFailure(owner, failure);
+        } finally {
+          operation.finish(token);
         }
       }
-    }.execute();
+    };
+    operation.attach(token, worker);
+    worker.execute();
   }
 
   private static void showFailure(Window owner, Exception failure) {

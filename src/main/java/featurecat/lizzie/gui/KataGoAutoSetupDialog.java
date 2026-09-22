@@ -278,6 +278,7 @@ public class KataGoAutoSetupDialog extends JDialog {
   private final JFontButton btnOptimizePerformance = new JFontButton();
   private final JFontButton btnImportMeasuredTuning = new JFontButton();
   private final JFontButton btnRestoreMeasuredTuning = new JFontButton();
+  private final MeasuredTuningDialog measuredTuningDialog = new MeasuredTuningDialog();
   private boolean measuredTuningBusy;
   public static final class OpenRequest {
     public final TensorRtRepairContext context;
@@ -956,9 +957,9 @@ public class KataGoAutoSetupDialog extends JDialog {
     btnInstallExperimentalBackend.addActionListener(e -> startExperimentalBackendInstall());
     cmbExperimentalBackend.addActionListener(e -> updateExperimentalBackendInfo());
     btnOptimizePerformance.addActionListener(e -> startPerformanceBenchmark(false));
-    btnImportMeasuredTuning.addActionListener(e -> MeasuredTuningDialog.importReport(
+    btnImportMeasuredTuning.addActionListener(e -> measuredTuningDialog.importReport(
         this, measuredTuningEntryId(), this::setMeasuredTuningBusy, this::updateBenchmarkInfo));
-    btnRestoreMeasuredTuning.addActionListener(e -> MeasuredTuningDialog.restore(
+    btnRestoreMeasuredTuning.addActionListener(e -> measuredTuningDialog.restore(
         this, measuredTuningEntryId(), this::setMeasuredTuningBusy, this::updateBenchmarkInfo));
     btnExperimentalPerformance.addActionListener(e -> startPerformanceBenchmark(true));
     btnStopDownload.addActionListener(e -> stopActiveDownload());
@@ -4868,7 +4869,20 @@ public class KataGoAutoSetupDialog extends JDialog {
         this, new JScrollPane(details), text("AutoSetup.failed"), JOptionPane.ERROR_MESSAGE);
   }
 
+  @Override
+  public void setVisible(boolean visible) {
+    if (!visible && measuredTuningDialog != null) measuredTuningDialog.invalidate();
+    super.setVisible(visible);
+  }
+
+  @Override
+  public void dispose() {
+    if (measuredTuningDialog != null) measuredTuningDialog.invalidate();
+    super.dispose();
+  }
+
   private void closeOrCancelActiveTask() {
+    measuredTuningDialog.invalidate();
     stateRefreshRequestId++;
     cancelStateRefresh();
     if (pendingWeightSwitchTimer != null) {

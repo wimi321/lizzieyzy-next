@@ -43,7 +43,9 @@ public final class MeasuredKataGoTuning {
     if (!assessment.eligible()) throw new IOException(String.join("\n", assessment.reasons()));
     EngineData entry = requireEntry(entryId);
     String command = commandFor(entry, report.scene());
+    requireSupportedScene(entry, report.scene());
     verification.verify(entry, command, report);
+    requireSupportedScene(requireEntry(entryId), report.scene());
     return new Review(entryId, command, report);
   }
 
@@ -60,10 +62,12 @@ public final class MeasuredKataGoTuning {
     }
     if (!reviewed.report().assess().eligible())
       throw new IOException("Report no longer passes acceptance");
+    requireSupportedScene(current, reviewed.report().scene());
     verification.verify(current, reviewed.command(), reviewed.report());
     synchronized (Utils.class) {
       ArrayList<EngineData> entries = Utils.getEngineData();
       EngineData target = find(entries, reviewed.entryId());
+      requireSupportedScene(target, reviewed.report().scene());
       if (!reviewed.command().equals(commandFor(target, reviewed.report().scene()))) {
         throw new IOException("Engine command changed before commit");
       }
@@ -140,7 +144,9 @@ public final class MeasuredKataGoTuning {
     try {
       KataGoMeasuredReport report = KataGoMeasuredReport.parse(stored.getJSONObject("report"));
       if (report.scene() != scene || !report.assess().eligible()) return command;
+      requireSupportedScene(entry, scene);
       verification.verify(entry, configured, report);
+      requireSupportedScene(entry, scene);
       Map<String, String> overrides = new LinkedHashMap<>(report.candidateOverrides());
       if (scene == Scene.WHOLE_GAME) overrides.put("numSearchThreads", "");
       return KataGoCommandSpec.parse(command).withForcedOverrides(overrides);
@@ -153,6 +159,21 @@ public final class MeasuredKataGoTuning {
     JSONObject scenes =
         entry == null || entry.threadPolicy == null ? null : entry.threadPolicy.optJSONObject(KEY);
     return scenes == null ? null : scenes.optJSONObject(scene.id());
+  }
+
+  private static void requireSupportedScene(EngineData entry, Scene scene) throws IOException {
+    if (entry.useJavaSSH) throw new IOException("Measured profiles require a local saved engine");
+    if (scene != Scene.WHOLE_GAME) return;
+    if (Lizzie.config == null || Lizzie.config.leelazConfig == null)
+      throw new IOException("Whole-game analysis settings are unavailable");
+    if (Lizzie.config.analysisReuseCurrentEngine)
+      throw new IOException(
+          "This whole-game report measures an independent analysis process; "
+              + "reusing the current engine is not supported");
+    if (Utils.getAnalysisEngineRemoteEngineData().useJavaSSH)
+      throw new IOException(
+          "This whole-game report measures local hardware; remote analysis through SSH "
+              + "is not supported");
   }
 
   private static void verifyFingerprint(
