@@ -92,7 +92,7 @@ public class WebBoardDataCollector {
           buildAnalysisUpdateJson(
               data.bestMoves, wr, sm, data.getPlayouts(), data.estimateArray, bw, bh);
       String message = json.toString();
-      if (canBroadcast(update, currentNode, target)) target.broadcastMessage(message);
+      if (canBroadcast(update, currentNode, target)) target.broadcastAnalysis(message);
     } catch (Exception ignored) {
     }
   }
@@ -127,7 +127,7 @@ public class WebBoardDataCollector {
       String historyMessage = history.toString();
       if (!canBroadcast(update, currentNode, target)) return;
       target.broadcastFullState(stateMessage);
-      if (canBroadcast(update, currentNode, target)) target.broadcastMessage(historyMessage);
+      if (canBroadcast(update, currentNode, target)) target.broadcastHistory(historyMessage);
     } catch (Exception e) {
       e.printStackTrace();
     }

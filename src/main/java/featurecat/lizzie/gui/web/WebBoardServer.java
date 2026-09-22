@@ -1,7 +1,6 @@
 package featurecat.lizzie.gui.web;
 
 import java.net.InetSocketAddress;
-import java.util.concurrent.atomic.AtomicReference;
 import org.java_websocket.WebSocket;
 import org.java_websocket.handshake.ClientHandshake;
 import org.java_websocket.server.WebSocketServer;
@@ -14,7 +13,7 @@ public class WebBoardServer extends WebSocketServer {
   }
 
   private final int maxConnections;
-  private final AtomicReference<String> lastFullState = new AtomicReference<>();
+  private final WebBoardClientUpdates updates = new WebBoardClientUpdates();
   private volatile MessageHandler messageHandler;
 
   public WebBoardServer(InetSocketAddress address, int maxConnections) {
@@ -33,14 +32,19 @@ public class WebBoardServer extends WebSocketServer {
       conn.close(1013, "Max connections reached");
       return;
     }
-    String state = lastFullState.get();
-    if (state != null) {
-      conn.send(state);
-    }
+    updates.connected(conn);
   }
 
   @Override
-  public void onClose(WebSocket conn, int code, String reason, boolean remote) {}
+  public void onClose(WebSocket conn, int code, String reason, boolean remote) {
+    updates.disconnected(conn);
+  }
+
+  @Override
+  public void stop(int timeout, String closeMessage) throws InterruptedException {
+    updates.close();
+    super.stop(timeout, closeMessage);
+  }
 
   @Override
   public void onMessage(WebSocket conn, String message) {
@@ -64,8 +68,15 @@ public class WebBoardServer extends WebSocketServer {
   }
 
   public void broadcastFullState(String json) {
-    lastFullState.set(json);
-    broadcast(json);
+    updates.fullState(json);
+  }
+
+  public void broadcastAnalysis(String json) {
+    updates.analysis(json);
+  }
+
+  public void broadcastHistory(String json) {
+    updates.history(json);
   }
 
   public void sendToConnection(WebSocket conn, String json) {
